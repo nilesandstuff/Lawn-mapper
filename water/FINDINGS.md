@@ -623,8 +623,14 @@ the wetter group in those months.
 
 ET = full-sun ET x (0.3 + 0.7 x the share of sunlight received)
 (Danielson & Feldhake 1981): about 30% of the use comes with warm dry air,
-which shade does not stop. In lib/balance.js (shadeFactor); the light per
-cell from the shade map is not yet wired in (all cells full sun).
+which shade does not stop. In lib/balance.js (shadeFactor). WIRED IN
+2026-10-18: on a map with a traced lawn the page runs the shade map's own
+light worker (copied unchanged, lib/shade/light-worker.js) over the lawn for
+the summer days of the growing season, and each cell's share is its daily
+light against the open sky's (NASA's clouds). On the dev test lot: 4 s, the
+lawn's middle at 52% of open sky, zones at 45-67%; the plan went from two
+zones to three. The growing season is now the shade map's (climate.js
+growingSeason, the owner's 20% GP rule), about 190 days there, for both maps.
 
 ### S1. Many real wet spots may not be low spots at all
 

@@ -29,6 +29,7 @@
  */
 
 import { KC } from './et.js';
+import { dayIndex } from './shade/climate.js';
 
 export const PARAMS = {
   kc: KC,                 // the owner's grass coefficient (VISION.md), 0.8 for now
@@ -124,6 +125,9 @@ export function buildModel(res, { kinds, soilAt, soils, roofTo, light = null, pa
 /**
  * Run the balance over `days` ([{ date, tmax, tmin, rain, et0 }]).
  *
+ * season: a Set of day-of-year indices (0..364, shade/climate.js dayIndex) -- the shade map's growing
+ * season (20% growth potential, the owner's rule), the same for both maps; without it, a week's mean
+ * temperature of PARAMS.seasonC or more.
  * irrigate(dayIndex, state) -> Float32Array of mm per cell to apply that day, or null. The state it
  * sees: { Dr (depletion, mm), grav, month, inSeason }.
  * start: { Dr: Float32Array } to begin from (default: every cell at field capacity).
@@ -132,7 +136,7 @@ export function buildModel(res, { kinds, soilAt, soils, roofTo, light = null, pa
  * -> totals per cell over the run: irrigation, et, drained (below the roots), ranOff (left the cell
  *    on the surface), wetDays, dryDays, seasonDays; and the end state.
  */
-export function simulate(model, days, { irrigate = null, start = null, record = null } = {}) {
+export function simulate(model, days, { irrigate = null, start = null, record = null, season = null } = {}) {
   const { N, kinds, order, down, roofTo, slope, pondCap, taw, raw, satRoom, drainDay, soils, soilAt, params } = model;
   const Dr = start?.Dr ? Float32Array.from(start.Dr) : new Float32Array(N);
   const grav = new Float32Array(N), pond = new Float32Array(N), film = new Float32Array(N);
@@ -146,7 +150,7 @@ export function simulate(model, days, { irrigate = null, start = null, record = 
     const month = Number(day.date.slice(5, 7)) - 1;
     const tmean = (day.tmax + day.tmin) / 2;
     temps.push(tmean); if (temps.length > 7) temps.shift();
-    const inSeason = temps.reduce((s, v) => s + v, 0) / temps.length >= params.seasonC;
+    const inSeason = season ? season.has(dayIndex(day.date.replace(/-/g, ''))) : temps.reduce((s, v) => s + v, 0) / temps.length >= params.seasonC;
     if (month !== lastMonth) { // curve numbers and drainage follow the month's water table
       for (let i = 0; i < N; i++) {
         const s = soils[soilAt[i]] || soils[0];

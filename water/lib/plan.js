@@ -39,7 +39,7 @@ const DEFAULT_SOIL = { name: 'no survey soil here (a loam assumed)', drainage: '
  *   topsoil (bool), downspouts, gutters, typical (days), week ({ days, today }), light (Float32Array | null),
  *   zoneOf (Int16Array, the user's own zones, optional), params
  */
-export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, topsoil = false, downspouts = [], gutters = [], typical, week = null, light = null, zoneOf: userZones = null, params = PARAMS } = {}) {
+export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, topsoil = false, downspouts = [], gutters = [], typical, week = null, light = null, season = null, zoneOf: userZones = null, params = PARAMS } = {}) {
   const g = res.grid, N = g.W * g.H;
   // 1. what each cell is
   const kinds = new Uint8Array(N);
@@ -71,14 +71,14 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
   // 3. the ideal, cell by cell
   const perMonth = Array.from({ length: 12 }, () => new Float32Array(N));
   const ideal = idealIrrigation(model);
-  simulate(model, typical, { irrigate: (d, st) => { const out = ideal(d, st); if (out) { const m = st.month; for (let i = 0; i < N; i++) if (out[i]) perMonth[m][i] += out[i]; } return out; } });
+  simulate(model, typical, { season, irrigate: (d, st) => { const out = ideal(d, st); if (out) { const m = st.month; for (let i = 0; i < N; i++) if (out[i]) perMonth[m][i] += out[i]; } return out; } });
   const zones = userZones ? { zoneOf: userZones, n: Math.max(0, ...userZones) + 1, peakMonth: null, user: true } : drawZones(model, perMonth, years);
 
   // 4. the zones watered as zones
   const events = [];
-  const planned = simulate(model, typical, { irrigate: zoneIrrigation(model, zones.zoneOf, zones.n, events) });
+  const planned = simulate(model, typical, { season, irrigate: zoneIrrigation(model, zones.zoneOf, zones.n, events) });
   // 5. rain alone
-  const rainOnly = simulate(model, typical);
+  const rainOnly = simulate(model, typical, { season });
 
   const yearOf = (d) => Number(typical[d].date.slice(0, 4));
   const y0 = yearOf(0);
@@ -115,6 +115,7 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
       peakMonth: peak.month, peakEveryDays: peak.waterings ? DAYS_IN[peak.month] / peak.waterings : null,
       months,
       slope: med(cells.map((i) => model.slope[i])),
+      sun: light ? med(cells.map((i) => light[i])) : null,
       soils: unitNames, drainage, runOnShare: runOn,
       /* too wet: the plan's watering adds wet days (5% of the season or more) over what rain alone
          gives -- over-watered; wet anyway: rain alone keeps it wet a tenth of the season -- a drainage
@@ -131,7 +132,7 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
   let thisWeek = null;
   if (week?.days?.length) {
     const wev = [];
-    simulate(model, week.days, { irrigate: zoneIrrigation(model, zones.zoneOf, zones.n, wev) });
+    simulate(model, week.days, { season, irrigate: zoneIrrigation(model, zones.zoneOf, zones.n, wev) });
     const ti = Math.max(0, week.days.findIndex((d) => d.date >= week.today));
     thisWeek = {
       today: week.today,
@@ -156,7 +157,8 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
     zones: out, zoneOf: zones.zoneOf, userZones: !!zones.user, kinds, wetShare, dryShare, wetFromWatering, wetAnyway,
     roofs: { pieces: roofs.pieces.length, guessed: roofs.pieces.filter((p) => p.guessed).length, unusedDownspouts: roofs.unused },
     soil: units.map((u) => ({ name: u.name, share: u.share ?? null, drainage: u.drainage, hydgrp: u.hydgrp, wtMinCm: u.wtMinCm ?? null, wetByMonth: u.wetByMonth, assumed: !!u.assumed, tawMm: rootZone(u.profile)?.tawMm ?? null, tawTopsoilMm: rootZone(u.profile, { topsoil: true })?.tawMm ?? null })),
-    years, topsoil, thisWeek,
+    years, topsoil, thisWeek, shaded: !!light,
+    sunShare: light ? (() => { const v = []; for (let i = 0; i < N; i++) if (kinds[i] === KIND.lawn) v.push(light[i]); return med(v); })() : null,
     weather: monthly(typical, years, params),
   };
 }

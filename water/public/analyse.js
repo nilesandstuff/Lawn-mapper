@@ -18,8 +18,10 @@ import { soilFor, sdaPost } from '/lib/soil.js';
 import { typicalYears, thisWeek } from '/lib/weather.js';
 import { waterPlan } from '/lib/plan.js';
 import { demAround, terrain, hillside } from '/lib/upslope.js';
+import { powerUrl, typicalYear, growingSeason, SEASON_GP } from '/lib/shade/climate.js';
+import { polygonsOf } from '/lib/geo.js';
 
-const kept = { r: null, lawn: null, standIn: false, soil: null, typical: null, week: null, lng: null, lat: null };
+const kept = { r: null, lawn: null, standIn: false, soil: null, typical: null, week: null, lng: null, lat: null, season: null, climate: null, light: null };
 
 function standInLawn(res) {
   // no traced lawn (an address typed here, not a Lawn Mapper map): open ground with no trees, not paving
@@ -34,12 +36,13 @@ async function plan(inputs = {}) {
   const p = waterPlan(r.result, {
     lawnMask: kept.lawn, paved: r.impervious ? r.impervious.paved : null, soil: kept.soil,
     topsoil: !!inputs.topsoil, downspouts: inputs.downspouts || [], gutters: inputs.gutters || [],
-    typical: kept.typical, week: kept.week,
+    typical: kept.typical, week: kept.week, season: kept.season, light: kept.light,
   });
   const out = {
     zones: p.zones, zoneOf: p.zoneOf, wetFromWatering: p.wetFromWatering, wetAnyway: p.wetAnyway, dryShare: p.dryShare,
     roofs: p.roofs, soil: p.soil, weather: p.weather, thisWeek: p.thisWeek, years: p.years, topsoil: p.topsoil,
-    standIn: kept.standIn, seconds: (Date.now() - t0) / 1000,
+    standIn: kept.standIn, seconds: (Date.now() - t0) / 1000, shaded: p.shaded, sunShare: p.sunShare,
+    seasonDays: kept.season ? kept.season.size : null,
   };
   self.postMessage({ plan: out }, [out.zoneOf.buffer, out.wetFromWatering.buffer, out.wetAnyway.buffer, out.dryShare.buffer]);
 }
@@ -60,6 +63,9 @@ async function start(site, inputs) {
   })().catch((err) => ({ units: [], error: err.message }));
   const typicalP = typicalYears(lat, lng).then((x) => x.days);
   const weekP = thisWeek(lat, lng, { back: 60 }).catch(() => null);
+  // the shade map's typical year (its own reader, lib/shade/climate.js): its growing season and its light
+  const y1 = new Date().getUTCFullYear() - 1;
+  const climateP = fetch(powerUrl(lng, lat, y1 - 9, y1)).then((x) => x.json()).then((p) => typicalYear(p)).catch(() => null);
 
   const r = await runSite(site, io, pickCloud, { progress });
   if (r.error) { self.postMessage({ error: r.error, notOnAws: r.notOnAws }); return; }
@@ -92,6 +98,11 @@ async function start(site, inputs) {
   kept.soil = await soilP;
   kept.typical = await typicalP;
   kept.week = await weekP;
+  kept.climate = await climateP;
+  if (kept.climate) {
+    const gs = growingSeason(kept.climate.tMean, 'cool', SEASON_GP, kept.climate.tSoil?.every?.(Number.isFinite) ? kept.climate.tSoil : null);
+    if (gs.days.length) kept.season = new Set(gs.days);
+  }
   self.postMessage({ planProgress: 'Working out the watering plan…' });
   await plan(inputs);
   // the hillside above the lawn (USGS 10 m ground, 600 m round): after the plan, so it never holds it up
@@ -105,12 +116,59 @@ async function start(site, inputs) {
   } catch (e) {
     self.postMessage({ hill: { error: e.message || String(e) } });
   }
+  // the shade on the lawn, by the shade map's own light worker: then the plan again, with it
+  if (site.lawn?.length && kept.climate && typeof Worker !== 'undefined') {
+    try {
+      self.postMessage({ planProgress: 'Working out the shade on the lawn…' });
+      kept.light = await lawnLight(res, site, kept.climate, kept.season);
+      if (kept.light) { self.postMessage({ planProgress: 'Working out the watering plan with the shade…' }); await plan(kept.inputs || inputs); }
+    } catch (e) {
+      self.postMessage({ planProgress: `The shade could not be worked out (${e.message || e}); the plan takes the lawn as in full sun.` });
+    }
+  }
+}
+
+/**
+ * The share of open-sky sunlight each lawn cell gets over the growing season's summer (June-August
+ * days in it, every 4th), from the shade map's light worker (lib/shade/light-worker.js, copied
+ * unchanged): its daily light integral against the open sky's, with NASA's clouds.
+ */
+function lawnLight(res, site, climate, season) {
+  return new Promise((resolve, reject) => {
+    const w = new Worker('/lib/shade/light-worker.js', { type: 'module' });
+    const g = res.grid, N = g.W * g.H;
+    const done = (v, err) => { w.terminate(); if (err) reject(err); else resolve(v); };
+    const timer = setTimeout(() => done(null, new Error('the shade took too long')), 240000);
+    w.onerror = (e) => { clearTimeout(timer); done(null, new Error(e.message || 'the light worker stopped')); };
+    w.onmessage = ({ data: m }) => {
+      if (m.type === 'error') { clearTimeout(timer); done(null, new Error(m.message)); return; }
+      if (m.type === 'built') {
+        if (m.w !== g.W || m.h !== g.H) { clearTimeout(timer); done(null, new Error('the shade grid is not the water grid')); return; }
+        const days = [];
+        for (let k = 151; k <= 242; k += 4) if (!season || season.has(k)) days.push(k);
+        w.postMessage({ type: 'period', days, climate });
+        return;
+      }
+      if (m.type === 'period') {
+        clearTimeout(timer);
+        if (!m.dli || !(m.openDli > 0)) { done(null); return; }
+        const light = new Float32Array(N).fill(1);
+        for (let p = 0; p < m.dli.length; p++) {
+          const x = Math.floor(m.xy[2 * p]), y = Math.floor(m.xy[2 * p + 1]);
+          if (x >= 0 && y >= 0 && x < g.W && y < g.H) light[y * g.W + x] = Math.max(0, Math.min(1, m.dli[p] / m.openDli));
+        }
+        done(light);
+      }
+    };
+    const pts = res.points;
+    w.postMessage({ type: 'build', cols: pts, box: g.bbox, lat: site.lat, lng: site.lng, shift: null, lot: polygonsOf(site.lawn), lawn: polygonsOf(site.lawn), canopy: 'measured', flight: null });
+  });
 }
 
 self.onmessage = async ({ data }) => {
   try {
-    if (data.site) await start(data.site, data.inputs || {});
-    else if (data.replan) { if (kept.r) await plan(data.replan); }
+    if (data.site) { kept.inputs = data.inputs || {}; await start(data.site, data.inputs || {}); }
+    else if (data.replan) { kept.inputs = data.replan; if (kept.r) await plan(data.replan); }
   } catch (e) {
     self.postMessage(kept.r ? { planError: e.message || String(e) } : { error: e.message || String(e) });
   }

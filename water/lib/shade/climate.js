@@ -1,0 +1,298 @@
+/**
+ * CLOUDS AND THE GROWING SEASON (shade map, step 3).
+ *
+ * Steps 1-2 give each patch of lawn its share of a CLEAR sky. Real days
+ * are cloudier, and grass only uses light while it grows. Both come from
+ * NASA POWER (power.larc.nasa.gov, free, no key), daily, ten years:
+ *
+ *   ALLSKY_SFC_SW_DWN    sunlight reaching the ground, clouds included, MJ/m2/day
+ *   ALLSKY_SFC_SW_DIFF   the diffuse (scattered sky) part of it
+ *   T2M                  mean air temperature, C
+ *   TSOIL1               mean temperature of the top soil layer (MERRA-2's
+ *                        first layer, about the top 10 cm), C
+ *
+ * folded into a typical year: for each day of the year, the mean (and the
+ * 10th and 90th percentiles) over the ten years and a week either side.
+ *
+ * A PATCH'S LIGHT ON A REAL DAY. The clear-sky ray tracing says, for each
+ * patch and each date, what share of OPEN ground's direct beam it gets
+ * (beamShare: shade, and the ground's slope) and what share of the sky it
+ * sees (sky view). NASA says how much of the day's light came as beam and
+ * as diffuse. So:
+ *
+ *   DLI = 2.04 umol/J x [ beam MJ x beamShare + diffuse MJ x skyView ]
+ *
+ * (assuming clouds come and go without favoring morning or afternoon).
+ *
+ * THE GROWING SEASON, ESTIMATED until Turf Tools' numbers arrive: growth
+ * potential (PACE Turf; Gelernter & Stowell 2005), a bell curve of daily
+ * mean temperature around the grass type's optimum:
+ *
+ *   GP = exp( -0.5 ((T - Topt) / sd)^2 )   cool-season 20 C, sd 5.5
+ *                                          warm-season 31 C, sd 7
+ *
+ * and the season starts on the day GP reaches SEASON_GP in spring. IT ENDS
+ * ON THE SOIL (owner, 2026-10-17: "change the trigger for winter dormancy
+ * to 5 day average soil temps"): the first day after the summer's peak on
+ * which the 5-day mean of the top-layer soil temperature falls under the
+ * grass kind's dormancy point (SOIL_DORMANT_C), which is where shoot growth
+ * stops; without soil data the GP threshold ends it too.
+ */
+
+export const GRASS = {
+  cool: { label: 'Cool-season', opt: 20, sd: 5.5 },
+  warm: { label: 'Warm-season', opt: 31, sd: 7 },
+};
+/* The growing season runs from the day growth potential reaches this in
+   spring to the day it falls under it in autumn (owner, 2026-10-17: "the
+   growing season starts at 20% GP in the spring and ends at 20% gp in the
+   fall"). */
+export const SEASON_GP = 0.2;
+/* Winter dormancy: the 5-day mean of the top soil layer under this stops
+   growth. Cool-season about 45 F (shoot growth stops as soils fall through
+   the mid-40s), warm-season about 55 F (bermudagrass and zoysia brown out
+   as soils fall through the mid-50s). Owner's figures to tune. */
+export const SOIL_DORMANT_C = { cool: 7, warm: 13 };
+export const SOIL_MEAN_DAYS = 5;
+export const PAR_MOL_PER_MJ = 2.04;
+
+export const powerUrl = (lng, lat, y0, y1) => 'https://power.larc.nasa.gov/api/temporal/daily/point?'
+  + new URLSearchParams({
+    parameters: 'ALLSKY_SFC_SW_DWN,ALLSKY_SFC_SW_DIFF,T2M,TSOIL1', community: 'AG',
+    longitude: lng.toFixed(3), latitude: lat.toFixed(3), start: `${y0}0101`, end: `${y1}1231`, format: 'JSON',
+  });
+
+/** 0-based day of the year for 'YYYYMMDD', 29 Feb folded onto 28 Feb, so every year has 365. */
+export function dayIndex(ymd) {
+  const y = Number(ymd.slice(0, 4)), m = Number(ymd.slice(4, 6)) - 1, d = Number(ymd.slice(6, 8));
+  const leap = (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+  const doy = Math.round((Date.UTC(y, m, d) - Date.UTC(y, 0, 1)) / 86400000);
+  return leap && doy >= 59 ? Math.max(58, doy - 1) : doy;
+}
+
+const pct = (sorted, q) => sorted[Math.min(sorted.length - 1, Math.max(0, Math.round(q * (sorted.length - 1))))];
+
+/**
+ * A NASA POWER daily response -> the typical year: 365 values each of
+ * ghi (mean MJ), ghiP10, ghiP90, diffuse (mean share of ghi, 0..1), tMean (C),
+ * and tSoil (C, the top soil layer; null when POWER sent none).
+ * Each day pools the same date +- `halfWindow` days over every year.
+ */
+export function typicalYear(power, { halfWindow = 7 } = {}) {
+  const p = power?.properties?.parameter;
+  if (!p?.ALLSKY_SFC_SW_DWN || !p?.T2M) throw new Error('NASA POWER sent no sunlight or temperature');
+  const fill = Number(power?.header?.fill_value ?? -999);
+  const by = Array.from({ length: 365 }, () => ({ ghi: [], diff: [], t: [], soil: [] }));
+  for (const [ymd, ghi] of Object.entries(p.ALLSKY_SFC_SW_DWN)) {
+    const k = dayIndex(ymd);
+    const diff = p.ALLSKY_SFC_SW_DIFF?.[ymd];
+    const t = p.T2M[ymd], soil = p.TSOIL1?.[ymd];
+    if (Number.isFinite(ghi) && ghi !== fill && ghi >= 0) {
+      by[k].ghi.push(ghi);
+      if (Number.isFinite(diff) && diff !== fill && ghi > 0) by[k].diff.push(Math.min(1, Math.max(0, diff / ghi)));
+    }
+    if (Number.isFinite(t) && t !== fill) by[k].t.push(t);
+    if (Number.isFinite(soil) && soil !== fill && soil > -90) by[k].soil.push(soil);
+  }
+  const out = { ghi: [], ghiP10: [], ghiP90: [], diffuse: [], tMean: [], tSoil: [], years: new Set(Object.keys(p.T2M).map((d) => d.slice(0, 4))).size };
+  for (let k = 0; k < 365; k++) {
+    const g = [], f = [], t = [], so = [];
+    for (let j = -halfWindow; j <= halfWindow; j++) {
+      const b = by[(k + j + 365) % 365];
+      g.push(...b.ghi); f.push(...b.diff); t.push(...b.t); so.push(...b.soil);
+    }
+    g.sort((a, b) => a - b);
+    const mean = (a) => (a.length ? a.reduce((s, v) => s + v, 0) / a.length : NaN);
+    out.ghi.push(mean(g)); out.ghiP10.push(pct(g, 0.1)); out.ghiP90.push(pct(g, 0.9));
+    out.diffuse.push(f.length ? mean(f) : NaN); out.tMean.push(mean(t)); out.tSoil.push(mean(so));
+  }
+  if (!out.tSoil.every(Number.isFinite)) out.tSoil = null;
+  /* Where POWER gave no diffuse split, Erbs et al. (1982) from clearness would
+     go here; POWER has always sent it so far, so a missing day takes 0.5. */
+  out.diffuse = out.diffuse.map((v) => (Number.isFinite(v) ? v : 0.5));
+  return out;
+}
+
+/* ------------------------------------------- this year as it is */
+
+/** NASA POWER's daily T2M (or another parameter) for one year -> { 'YYYYMMDD': C } without fill values. */
+export function observedDays(power, parameter = 'T2M') {
+  const t = power?.properties?.parameter?.[parameter] || {};
+  const fill = Number(power?.header?.fill_value ?? -999);
+  const out = {};
+  for (const [ymd, v] of Object.entries(t)) if (Number.isFinite(v) && v !== fill && v > -90) out[ymd] = v;
+  return out;
+}
+
+/**
+ * The NWS point forecast's periods (api.weather.gov, F, day and night in
+ * turn) -> { 'YYYYMMDD': mean C }, each day the mean of its daytime high and
+ * the following night's low; a lone period counts alone.
+ */
+export function nwsDailyMeans(periods) {
+  const by = {};
+  for (const p of periods || []) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(p.startTime || '');
+    if (!m || !Number.isFinite(Number(p.temperature))) continue;
+    /* A night period starting at 18:00 belongs to the day it started on. */
+    const ymd = `${m[1]}${m[2]}${m[3]}`;
+    const c = p.temperatureUnit === 'C' ? Number(p.temperature) : ((Number(p.temperature) - 32) * 5) / 9;
+    (by[ymd] ||= []).push(c);
+  }
+  const out = {};
+  for (const [ymd, a] of Object.entries(by)) out[ymd] = a.reduce((s, v) => s + v, 0) / a.length;
+  return out;
+}
+
+const ymdOf = (d) => `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`;
+
+/**
+ * THIS YEAR AS IT IS (owner, 2026-10-15: "leaf drop should be determined by
+ * weather"; this fall ran warm and the typical-year calendar had the lawn
+ * trees half bare two weeks before they were). The typical year's daily
+ * mean (365, climate.js typicalYear) with:
+ *   - the days already lived replaced by what was observed (NASA POWER, a
+ *     few days behind),
+ *   - the week ahead by the forecast (NWS, where it answers),
+ *   - and beyond that the typical mean plus the recent anomaly (the last
+ *     `memoryDays` observed days against typical), fading with an e-folding
+ *     of `fadeDays`: a warm fortnight makes a warm week likely, less so
+ *     next month (the last 14 days, not 30: in the owner's county 2026 ran
+ *     +3 C in early September, -3 C late September, +3 C in October),
+ * then a +-`half`-day running mean, as the typical year is pooled, so one
+ * hot day does not green a canopy. Returns { tMean, through (day index of
+ * the last observed day, or null), forecastTo, anomaly (C), year }.
+ */
+export function yearAsItIs(typical, observed = {}, forecast = {}, { today = new Date(), half = 7, memoryDays = 14, fadeDays = 20 } = {}) {
+  const year = today.getUTCFullYear();
+  const raw = Float64Array.from(typical);
+  const seen = new Uint8Array(365);
+  let through = null, forecastTo = null;
+  for (const [ymd, v] of Object.entries(observed)) {
+    if (ymd.slice(0, 4) !== String(year)) continue;
+    const k = dayIndex(ymd);
+    raw[k] = v; seen[k] = 1;
+    if (through === null || k > through) through = k;
+  }
+  /* The anomaly: the last memoryDays observed days against typical, the
+     latest weighing most (weights 1..memoryDays), so a spell that has ended
+     fades from the forecast faster than one still running. */
+  let anomaly = 0;
+  if (through !== null) {
+    let s = 0, n = 0;
+    for (let k = Math.max(0, through - memoryDays + 1); k <= through; k++) if (seen[k]) { const w = k - (through - memoryDays); s += w * (raw[k] - typical[k]); n += w; }
+    anomaly = n ? s / n : 0;
+  }
+  for (const [ymd, v] of Object.entries(forecast)) {
+    if (ymd.slice(0, 4) !== String(year)) continue;
+    const k = dayIndex(ymd);
+    if (seen[k]) continue; // what was observed beats what was forecast
+    raw[k] = v; seen[k] = 2;
+    if (forecastTo === null || k > forecastTo) forecastTo = k;
+  }
+  /* Every day after the last observed one that neither source gave (the few
+     days before the forecast starts, and all of them after it ends): the
+     typical mean plus the anomaly, fading from the last observed day. */
+  if (through !== null) for (let k = through + 1; k < 365; k++) if (!seen[k]) raw[k] = typical[k] + anomaly * Math.exp(-(k - through) / fadeDays);
+  /* Lived days with no value (a gap in POWER) take the neighbours' smoothing. */
+  const tMean = new Float64Array(365);
+  for (let k = 0; k < 365; k++) {
+    let s = 0, n = 0;
+    for (let j = -half; j <= half; j++) { const v = raw[(k + j + 365) % 365]; if (Number.isFinite(v)) { s += v; n++; } }
+    tMean[k] = n ? s / n : typical[k];
+  }
+  return { tMean: Array.from(tMean), through, forecastTo, anomaly, year, today: ymdOf(today) };
+}
+
+/** Growth potential, 0..1, at a mean temperature. */
+export const growthPotential = (tC, grass = 'cool') => {
+  const g = GRASS[grass] || GRASS.cool;
+  return Math.exp(-0.5 * ((tC - g.opt) / g.sd) ** 2);
+};
+
+/** The trailing `n`-day mean of a 365-day series, round the year. */
+export function trailingMean(series, n = SOIL_MEAN_DAYS) {
+  const out = new Array(365);
+  for (let k = 0; k < 365; k++) { let s = 0; for (let j = 0; j < n; j++) s += series[(k - j + 365) % 365]; out[k] = s / n; }
+  return out;
+}
+
+/**
+ * The first dormant day: after the year's warmest 5-day soil mean, the
+ * first day that mean falls under the grass kind's dormancy point; null
+ * when it never does (the soil stays warm all year).
+ */
+export function soilDormancyDay(tSoil, grass = 'cool') {
+  if (!tSoil || tSoil.length !== 365 || !tSoil.every(Number.isFinite)) return null;
+  const limit = SOIL_DORMANT_C[grass] ?? SOIL_DORMANT_C.cool;
+  const m = trailingMean(tSoil);
+  let peak = 0;
+  for (let k = 1; k < 365; k++) if (m[k] > m[peak]) peak = k;
+  for (let j = 1; j < 365; j++) { const k = (peak + j) % 365; if (m[k] < limit) return k; }
+  return null;
+}
+
+/**
+ * The season: day indices (0..364) and its first and last day (null if all
+ * year or none). It starts where GP reaches `threshold` (the longest such
+ * run, wrapping round New Year for warm places) and, given the typical
+ * year's top-layer soil temperatures `tSoil`, ends the day before the soil
+ * says dormant (soilDormancyDay); `soilEnd` says which rule ended it.
+ */
+export function growingSeason(tMean, grass = 'cool', threshold = SEASON_GP, tSoil = null) {
+  const on = tMean.map((t) => growthPotential(t, grass) >= threshold);
+  let days = on.flatMap((v, k) => (v ? [k] : []));
+  if (!days.length) return { days, start: null, end: null, allYear: false, soilEnd: false };
+  if (days.length === 365) return { days, start: null, end: null, allYear: true, soilEnd: false };
+  /* The longest run, wrapping round New Year for warm places. */
+  let best = { start: 0, len: 0 };
+  for (let k = 0; k < 365; k++) {
+    if (!on[k] || on[(k + 364) % 365]) continue;
+    let len = 0;
+    while (len < 365 && on[(k + len) % 365]) len++;
+    if (len > best.len) best = { start: k, len };
+  }
+  let end = (best.start + best.len - 1) % 365, len = best.len, soilEnd = false;
+  const dormant = soilDormancyDay(tSoil, grass);
+  if (dormant !== null) {
+    /* From the start forward to the day before dormancy, at most a year less a day. */
+    const span = ((dormant - best.start) % 365 + 365) % 365;
+    if (span > 0) { end = (dormant + 364) % 365; len = span; soilEnd = true; days = Array.from({ length: len }, (_, i) => (best.start + i) % 365); }
+  }
+  return { days, start: best.start, end, allYear: false, mainRun: len, soilEnd };
+}
+
+/**
+ * The days of a period of the growing season (owner, 2026-10-17: "the
+ * period presets should be around leaf drop and leaf in dates (both before
+ * and after, but still end at the gp thresholds)"). `which`: 'season' (all
+ * of it), 'beforeLeaves' (season days before the leaves are half out),
+ * 'inLeaf' (half out to half fallen), 'afterLeaves' (half fallen to the
+ * season's end). `cal` is seasonal.js's leafCalendar ({ halfOut, halfFall,
+ * always, never }); without one, or with leaves all year or never, only
+ * 'season' has days.
+ */
+export function periodDays(seasonDays, cal, which) {
+  const days = Array.from(seasonDays || []);
+  if (which === 'season' || !which) return days;
+  if (!cal || cal.always || cal.never || cal.halfOut == null || cal.halfFall == null) return [];
+  const a = cal.halfOut, b = cal.halfFall;
+  const inLeaf = (k) => (a <= b ? k >= a && k < b : k >= a || k < b);
+  if (which === 'inLeaf') return days.filter(inLeaf);
+  /* Before and after are the bare stretches: the one that ends at leaf-out
+     and the one that starts at leaf-fall. Where the season runs through the
+     winter (a warm place) the bare days are one run from leaf-fall to
+     leaf-out, split at its middle: the nearer half to leaf-out is "before". */
+  const bare = days.filter((k) => !inLeaf(k));
+  const toOut = (k) => ((a - k) % 365 + 365) % 365, fromFall = (k) => ((k - b) % 365 + 365) % 365;
+  if (which === 'beforeLeaves') return bare.filter((k) => toOut(k) <= fromFall(k));
+  if (which === 'afterLeaves') return bare.filter((k) => toOut(k) > fromFall(k));
+  return [];
+}
+
+/** A patch's light on a day: beam and diffuse MJ split, its beam share and sky view -> mol/m2. */
+export const dliOn = (ghiMJ, diffuseShare, beamShare, skyView) =>
+  PAR_MOL_PER_MJ * (ghiMJ * (1 - diffuseShare) * beamShare + ghiMJ * diffuseShare * skyView);
+
+/** 'Mar 20' for a day index. */
+export const dayLabel = (k) => new Date(Date.UTC(2025, 0, 1 + k)).toUTCString().slice(5, 11).replace(/^0/, '').replace(/^(\d+) (\w+)$/, '$2 $1');
