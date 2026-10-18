@@ -890,6 +890,67 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H100. FLAIR out of the box (E13) on the locked 104: a poor lawn finder (35.5% median against THE PLAN's ~19%), a precise veto (building+impervious takes 0.6-2.5% of the traced lawn, 95-98% of it truly not lawn), and on 14 Chesapeake lots roofs and paving kept apart (1.6-9.5% confused) -- 2026-10-18
+*Workflow 36, run 39161315061. Owner: "try it, since it may have usefulness
+for the lawnmap", then: the water map needs concrete/blacktop and roofs,
+ideally apart, and a veto on lawn creeping onto them would be a bonus.*
+
+**Method.**
+- IGNF's three published FLAIR-INC 15-class ResNet-34 U-Nets, run as
+  published: rgb; rgbi (+ NAIP near-infrared); rgbie (+ height above ground
+  from our lidar at 1 m, encoded 0.2 m a step as the card says).
+- Each lot's photo was resampled to 0.2 m and read in overlapping 512 px
+  windows. tools/flair_try.py; nothing trained.
+- **NAIP came back for only 34 of 104 lots** (the step's fetches failed for
+  the rest; not looked into), so rgbi read 34 lots and rgbie 32. Those rows
+  are a third of the corpus. Lidar was missing for 3.
+
+**As a lawn finder: no.** "Herbaceous" against the traced lawn, inside the
+property line:
+- rgb median 35.5% over all 104 (quartiles 19-61%);
+- on the 32 lots all three read: rgb 35.1%, rgbi 44.0%, rgbie 37.0%.
+- Counting agricultural land as lawn changed nothing, nor did counting the
+  lawn under trees.
+- A few lots blow up past 300%: meadow and field read as herbaceous.
+- THE PLAN reads about 19% on the same lots (H92). Out of the box this is
+  not a detector.
+
+**As a veto on lawn: promising, and the measure is only a proxy.** Inside the
+property line, FLAIR's building + impervious against the traced lawn, pooled
+over the lots each read:
+
+| | erases of the traced lawn | median lot | worst lot | of its building+impervious, not lawn | of the not-lawn, covered |
+|---|---|---|---|---|---|
+| rgb (104) | 2.5% | 1.0% | 64.8% | 94.6% | 46.6% |
+| rgbi (34) | 0.8% | 0.4% | 19.1% | 97.6% | 35.8% |
+| rgbie (32) | 0.6% | 0.3% | 16.2% | 98.2% | 36.8% |
+
+This measures the veto against the TRACE, not against the detector. What
+matters is whether removing FLAIR's building+impervious from THE PLAN's
+output lowers its lot error. That is NOT measured; S42 is the test. The rgb
+worst lot (64.8%) is not identified in the log; the per-lot file is in the
+run's artifact.
+
+**For the water map, against the Chesapeake 1 m land use: 14 of the
+locked lots fall in it.** Pooled cells, with canopy-over-impervious left out;
+exact / within one 1 m cell:
+
+| | roofs found | roofs right | paving found | paving right | roof called paving | paving called roof |
+|---|---|---|---|---|---|---|
+| rgb | 73.0 / 79.5% | 62.4 / 72.8% | 79.3 / 87.6% | 71.0 / 77.0% | 9.5% | 3.2% |
+| rgbi | 65.3 / 73.4% | 59.4 / 70.2% | 70.1 / 80.9% | 83.5 / 88.8% | 18.7% | 1.8% |
+| rgbie | 78.0 / 87.2% | 67.1 / 76.6% | 72.9 / 84.1% | 85.0 / 90.1% | 8.3% | 1.6% |
+
+**For comparison, NOT the same lots or photos:**
+- The water session's lidar + photo paving finder: 81% found, 83% precise
+  on its 23 Chesapeake squares (water H18, NAIP photo).
+- The shade map's roof mask: 83% found, 85% right, 91/94% within 1 m
+  (SHADE-FINDINGS 24).
+
+So on roofs the lidar masks look better than FLAIR. On paving FLAIR is in the
+same range with sharper photos, and it keeps roof and paving apart. The fair
+test is FLAIR on the water session's own 23 squares.
+
 ### H99. California's turf polygons land on our Mapbox photo with no visible shift, but only 9 of 20 are clean lawn as the photo shows it now; 7 of 20 are not lawn at all -- by eye, 2026-10-17
 *S40's first look, done before any training (owner: "Do the eyeball check
 on 20 Encinitas lawns").*
@@ -6843,6 +6904,20 @@ not:** a 27 m block is less context than a whole lot, and H4 once found
 fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
+
+### S42. FLAIR's building + impervious as a veto on THE PLAN's lawn (owner, 2026-10-18 -- NOT BUILT, NOT MEASURED)
+**The idea:** H100 found FLAIR's building+impervious lands on only 0.6-2.5%
+of the traced lawn, and 95-98% of it is truly not lawn. Erasing it from the
+detector's output could stop lawn creeping onto drives, walks and roofs.
+
+**Why it might not help:** the decoder may already rarely claim pavement.
+H39's lidar veto moved no median, and H53 put the remaining error in a thin
+band along the true edge, where FLAIR's 0.2 m cells are coarse.
+
+**The test:** THE PLAN's predictions with and without the veto (rgb, which
+reads every lot; rgbie where NAIP and lidar came back), paired lot by lot,
+under the full bar. It costs no training: one more stage on predictions
+workflow 14 already writes.
 
 ### S41. THE PLAN's lidar veto may miss about half of pitched roofs, and the shade map's roof catch finds them (from the water and features sessions, 2026-10-17 -- NOT MEASURED HERE)
 **Source:** docs/SHADE-FINDINGS.md finding 24. The water session measured
