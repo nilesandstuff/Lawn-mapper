@@ -33,15 +33,17 @@ export const PAVED_MODEL = {
 };
 
 /* WITH THE USDA PHOTO (NAIP, lib/naip.js), owner 2026-10-18: "whatever is most accurate and fastest".
-   Fitted 2026-10-18 on 12 Chesapeake squares, tested on 11 (FINDINGS H17): right on 86.6% of open cells
-   (lidar alone 84.5%, photo alone 84.8%), finds 84% of paving (lidar alone 75%), AUC 0.925 (0.898).
-   x = the four above, then the photo's vegetation index, it less the lawn's, log(brightness / the lawn's),
-   (blue - red) / 255; per cell, the lawn's being the median over the traced open lawn. */
+   Fitted 2026-10-18 on 12 Chesapeake squares, tested on 11 (FINDINGS H17): right on 85.2% of open cells,
+   finds 82% of paving (lidar alone 84.5% / 75%). The photo's own greenness (not against the lawn) scored
+   1.4 points higher there but is left out: a photo flown in a dry or late season would read every lawn
+   "paved", and these squares are all one region's photos. x = the four above, then the vegetation index
+   less the lawn's, log(brightness / the lawn's), (blue - red) / 255; the lawn's = the median over the
+   traced open lawn. */
 export const PAVED_MODEL_PHOTO = {
-  mean: [-0.2985, 0.0609, 0.8949, 1.434, 0.1568, -0.0976, 0.0487, -0.0142],
-  sd: [0.5385, 0.052, 0.2061, 0.6349, 0.1601, 0.1606, 0.3267, 0.0847],
-  w: [-1.053, -0.01, 0.223, -0.138, -0.868, -0.435, 0.787, 0.878],
-  b: -0.373,
+  mean: [-0.2985, 0.0609, 0.8949, 1.434, -0.0976, 0.0487, -0.0142],
+  sd: [0.5385, 0.052, 0.2061, 0.6349, 0.1606, 0.3267, 0.0847],
+  w: [-1.199, -0.039, 0.308, -0.093, -1.172, 0.676, 0.755],
+  b: -0.336,
 };
 
 /** Runoff coefficients (the share of rain that runs off), for the weighted flow. Rational-method textbook values. */
@@ -95,7 +97,7 @@ export function imperviousness(res, lawnMask, { photo = null } = {}) {
     const x = [Math.log(Math.max(0.02, (gi[i] / gn[i]) / lawnI)), Number.isFinite(res.sd?.[i]) ? Math.min(0.3, res.sd[i]) : 0.05, all3[i] ? single3[i] / all3[i] : 0, Math.log(all3[i] / 9 + 0.1)];
     if (withPhoto) {
       if (!Number.isFinite(V[i])) { runoff[i] = RUNOFF.ground; continue; }
-      x.push(V[i], V[i] - lawnV, Math.log(Math.max(1, bright[i]) / Math.max(1, lawnB)), (photo.blue[i] - photo.red[i]) / 255);
+      x.push(V[i] - lawnV, Math.log(Math.max(1, bright[i]) / Math.max(1, lawnB)), (photo.blue[i] - photo.red[i]) / 255);
     }
     let z = model.b;
     for (let j = 0; j < x.length; j++) z += model.w[j] * ((x[j] - model.mean[j]) / model.sd[j]);

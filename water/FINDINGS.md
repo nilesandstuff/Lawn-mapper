@@ -611,18 +611,26 @@ residential squares, fitted on 12, tested on 11, open ground cells only
 | lidar: + scatter, single returns, density (was in use) | 84.5% | 75% | 89% | 0.898 |
 | photo: vegetation index | 83.8% | 81% | 83% | 0.883 |
 | photo: + brightness, blueness | 84.8% | 81% | 85% | 0.905 |
-| **lidar + photo, all eight (in use from now)** | **86.6%** | **84%** | **86%** | **0.925** |
+| lidar + photo, all eight | 86.6% | 84% | 86% | 0.925 |
+| **lidar + photo, all against the lawn (in use)** | **85.2%** | **82%** | **85%** | -- |
+| lidar brightness + photo greenness and brightness, against the lawn | 83.9% | 82% | 82% | -- |
 
 So the photo alone is about as good as the lidar alone, and together they
 are better than either: 9 more points of the paving found. Against beds and
 bare ground the gain is small (0.843 -> 0.854): bare soil and gravel have no
-green, like paving, and are not bright like concrete. lib/impervious.js
+green, like paving, and are not bright like concrete. IN USE: the
+against-the-lawn seven (no raw vegetation index), 1.4 points under all
+eight, because a photo flown in a dry or late season would read a whole
+lawn as paving, and these 23 squares are one region's photos (VA/PA); on a
+Michigan test lot with a stand-in "lawn" that included driveway, the raw
+index moved the paved share from 14% to 36%. lib/impervious.js
 PAVED_MODEL_PHOTO; the lidar-only model stays for when the photo does not
 answer. A first 4-square run said the photo was worse (0.84): small samples
 mislead here as in the detector's findings.
 Still to measure before anything paid: a vision model on Replicate needs the
 owner's API token (a GitHub secret) and costs per image; its bar is now
-86.6% right / 84% found on these same squares.
+85.2% right / 82% found (86.6% / 84% for the region-fitted eight) on these
+same squares.
 
 ---
 
