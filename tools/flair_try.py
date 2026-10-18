@@ -27,6 +27,21 @@ seen lawn plus what the tracer marked as under trees ("all").
 
     FRAMES=frames LIDAR=lidar NAIP=naip WEIGHTS=flair OUT=flair-out python3 tools/flair_try.py
 
+FOR THE WATER MAP (owner, 2026-10-18: it "needs something that segments
+concrete/blacktop and roofs ... ideally ... roofs apart from concrete"): where
+the Chesapeake Bay 1 m land use covers a lot (E7), FLAIR's building and
+impervious classes are scored against its Structures (22) and Roads + Other
+Impervious (21, 23), at 1 m, exactly and within one cell. Cells it marks as
+tree canopy over impervious (24-26) are left out: nothing says what is under.
+
+AS A VETO FOR THE LAWN MAP ("veto lawn traces that end up creeping onto
+pavements or roofs"): inside the property line, how much of the TRACED lawn
+FLAIR calls building or impervious (what a veto would wrongly erase), and how
+much of what it calls building or impervious is not lawn (its precision).
+
+Every lot's classes are kept (OUT/maps/<id>.npz) so a later question is a
+re-score, not a re-run.
+
 A lot with no near-infrared or no lidar is skipped by the variants that need
 them and said so; the medians are printed over the lots every variant read,
 so the rows compare.
@@ -42,7 +57,15 @@ import numpy as np
 import torch
 from PIL import Image
 
+import io
+import urllib.parse
+import urllib.request
+
 import segmentation_models_pytorch as smp
+from scipy import ndimage
+
+CHESAPEAKE = "https://cicgis.org/arcgis/rest/services/LULC/bay_lu_tif/ImageServer/exportImage"
+CB_BUILDING, CB_PAVING, CB_UNSEEN = (22,), (21, 23), (24, 25, 26)
 
 CELL = 0.2  # metres a pixel, FLAIR's training scale
 TILE = 512
@@ -95,6 +118,40 @@ def classify(model, x):
     acc = acc[:, :h, :w] / n[:h, :w]
     acc[OFF] = -1e9
     return acc.argmax(0)
+
+
+def chesapeake(box, lat):
+    """The Chesapeake classes over a Web Mercator box at about 1 m, or None outside it."""
+    k = math.cos(math.radians(lat))
+    w = max(8, min(2000, round((box[2] - box[0]) * k)))
+    h = max(8, min(2000, round((box[3] - box[1]) * k)))
+    q = {"bbox": ",".join(str(v) for v in box), "bboxSR": "3857", "imageSR": "3857", "size": f"{w},{h}",
+         "format": "tiff", "pixelType": "U8", "interpolation": "RSP_NearestNeighbor",
+         "renderingRule": json.dumps({"rasterFunction": "None"}), "f": "image"}
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(f"{CHESAPEAKE}?{urllib.parse.urlencode(q)}", timeout=90) as r:
+                a = np.asarray(Image.open(io.BytesIO(r.read())))
+            if a.ndim == 3:
+                a = a[:, :, 0]
+            return a if (a > 0).mean() > 0.5 else None
+        except OSError:
+            continue
+    return None
+
+
+def agree(f, c, keep):
+    """Counts for one class pair, exactly and within one cell."""
+    f, c = f & keep, c & keep
+    fd = ndimage.binary_dilation(f)
+    cd = ndimage.binary_dilation(c)
+    return {"f": int(f.sum()), "c": int(c.sum()), "both": int((f & c).sum()),
+            "c_found_1": int((c & fd).sum()), "f_right_1": int((f & cd).sum()), "union": int((f | c).sum())}
+
+
+def lat_of(box):
+    y = (box[1] + box[3]) / 2
+    return math.degrees(2 * math.atan(math.exp(y / 6378137.0)) - math.pi / 2)
 
 
 def score(got, want, within):
@@ -163,6 +220,31 @@ def main():
                 "building_share": round(float((grid[within] == BUILDING).mean()), 3),
                 "impervious_share": round(float((grid[within] == IMPERVIOUS).mean()), 3),
             }
+        box = scale.get("boxes", {}).get(lot)
+        cb = chesapeake(box, lat_of(box)) if box else None
+        row["chesapeake"] = cb is not None
+        for name, cls in maps.items():
+            grid = resize(cls.astype(np.float32), G, GH, nearest=True).astype(np.int64)
+            lawn = (seen | inferred) & within
+            hard = ((grid == BUILDING) | (grid == IMPERVIOUS)) & within
+            row[name]["veto"] = {"lawn": int(lawn.sum()), "hard": int(hard.sum()),
+                                 "hard_on_lawn": int((hard & lawn).sum()),
+                                 "hard_off_lawn": int((hard & ~lawn).sum()),
+                                 "not_lawn": int((within & ~lawn).sum())}
+            if cb is not None:
+                f = resize(cls.astype(np.float32), cb.shape[1], cb.shape[0], nearest=True).astype(np.int64)
+                keep = (cb > 0) & ~np.isin(cb, CB_UNSEEN)
+                row[name]["cb"] = {
+                    "building": agree(f == BUILDING, np.isin(cb, CB_BUILDING), keep),
+                    "paving": agree(f == IMPERVIOUS, np.isin(cb, CB_PAVING), keep),
+                    "hard": agree((f == BUILDING) | (f == IMPERVIOUS), np.isin(cb, CB_BUILDING + CB_PAVING), keep),
+                    # A roof called pavement, or pavement called roof: the water map needs them apart.
+                    "roof_as_paving": int(((f == IMPERVIOUS) & np.isin(cb, CB_BUILDING) & keep).sum()),
+                    "paving_as_roof": int(((f == BUILDING) & np.isin(cb, CB_PAVING) & keep).sum()),
+                }
+        (out / "maps").mkdir(exist_ok=True)
+        np.savez_compressed(out / "maps" / f"{lot.replace(':', '_').replace(',', '_')}.npz",
+                            **{n: maps[n].astype(np.uint8) for n in maps}, **({"chesapeake": cb} if cb is not None else {}))
         rows.append(row)
         if shown < 16:
             shown += 1
@@ -182,6 +264,36 @@ def main():
             v = [r[n][d] for r in common if r[n][d] is not None]
             cells.append(f"{n} {np.median(v):5.1f}%" if v else f"{n}   -  ")
         print(f"  {d:14s} " + "   ".join(cells))
+    print("\nAS A VETO ON LAWN (inside the property line, pooled over every lot it read):")
+    for n in VARIANTS:
+        vs = [r[n]["veto"] for r in rows if n in r]
+        if not vs:
+            continue
+        lawn = sum(v["lawn"] for v in vs); hard = sum(v["hard"] for v in vs)
+        on = sum(v["hard_on_lawn"] for v in vs); off = sum(v["hard_off_lawn"] for v in vs)
+        notl = sum(v["not_lawn"] for v in vs)
+        per = [100 * v["hard_on_lawn"] / v["lawn"] for v in vs if v["lawn"]]
+        print(f"  {n:6s} building+impervious would erase {100 * on / max(1, lawn):4.1f}% of the traced lawn "
+              f"(median lot {np.median(per):.1f}%, worst {max(per):.1f}%); "
+              f"{100 * off / max(1, hard):4.1f}% of what it calls building+impervious is not lawn; "
+              f"it covers {100 * off / max(1, notl):4.1f}% of the not-lawn")
+    cbrows = [r for r in rows if r.get("chesapeake")]
+    print(f"\nAGAINST THE CHESAPEAKE 1 m LAND USE, {len(cbrows)} lots it covers (pooled cells; "
+          "exact, then within one cell):")
+    for n in VARIANTS:
+        rs = [r[n]["cb"] for r in cbrows if n in r and "cb" in r[n]]
+        if not rs:
+            continue
+        for kind in ("building", "paving", "hard"):
+            t = {k: sum(r[kind][k] for r in rs) for k in rs[0][kind]}
+            rec = 100 * t["both"] / max(1, t["c"]); pre = 100 * t["both"] / max(1, t["f"])
+            rec1 = 100 * t["c_found_1"] / max(1, t["c"]); pre1 = 100 * t["f_right_1"] / max(1, t["f"])
+            iou = 100 * t["both"] / max(1, t["union"])
+            print(f"  {n:6s} {kind:8s} found {rec:4.1f}% / {rec1:4.1f}%   right {pre:4.1f}% / {pre1:4.1f}%   IoU {iou:4.1f}%")
+        ra = sum(r["roof_as_paving"] for r in rs); pa = sum(r["paving_as_roof"] for r in rs)
+        tb = sum(r["building"]["c"] for r in rs); tp = sum(r["paving"]["c"] for r in rs)
+        print(f"  {n:6s} mixed up: {100 * ra / max(1, tb):.1f}% of roof called pavement, "
+              f"{100 * pa / max(1, tp):.1f}% of pavement called roof")
     for n in VARIANTS:
         v = [r[n]["herb_seen"] for r in rows if n in r and r[n]["herb_seen"] is not None]
         if v:
