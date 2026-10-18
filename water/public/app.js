@@ -354,6 +354,23 @@ function planReport(p) {
   $('#plan').innerHTML = parts.join('');
 }
 
+/** The ground water the land round the lawn may send it (lib/upslope.js): a first cut, worded "likely". */
+function hillReport(h) {
+  if (h.error) { $('#hill').innerHTML = `<p class="dim">The land round the lawn could not be read (${esc(h.error)}).</p>`; return; }
+  const acres = (ha) => (ha * 2.471).toFixed(ha * 2.471 < 10 ? 1 : 0);
+  const head = h.level === 'likely' ? 'Water from below: likely in wet seasons' : h.level === 'possible' ? 'Water from below: possible in wet seasons' : 'Water from below: unlikely';
+  const why = [];
+  if (h.belowHill) why.push(`about ${acres(h.upslopeHa)} acres of slope (${Math.round(h.upslopeSlope * 100)}% on average) drain toward the lawn`);
+  else if (h.upslopeHa >= 0.1) why.push(`about ${acres(h.upslopeHa)} acres drain toward the lawn, most of it gentle (${Math.round(h.upslopeSlope * 100)}%)`);
+  else why.push('little land drains toward the lawn');
+  why.push(`the lawn sits wetter than ${Math.round(h.twiPercentile * 100)}% of the land within about a third of a mile, by its shape`);
+  if (h.handM !== null) why.push(`its middle is about ${Math.round(h.handM * 3.28)} ft above the nearest natural drainage line${h.channelM !== null ? `, ${Math.round(h.channelM * 3.28).toLocaleString()} ft away` : ''}`);
+  $('#hill').innerHTML = `<div class="card"><h2>${head}</h2>
+    <p>${why.join('; ').replace(/^./, (c) => c.toUpperCase())}.</p>
+    <p>${h.level === 'likely' ? 'Ground water from the land above can keep the soil under this lawn wetter than rain alone would, most in spring. Water less than the plan says until a soak test or a soil probe shows the ground drying, and watch for spots that stay soft.' : h.level === 'possible' ? 'Some ground water from the land above may reach the lawn in a wet spring. The plan does not count it yet.' : 'The plan needs no allowance for it.'}</p>
+    <p class="dim">From the USGS 10 m ground model round the lawn. A first reading, not yet checked against real lawns; the soil survey's own water table, where it has one, is in the soil card above.</p></div>`;
+}
+
 /* ----------------------------------------------------------------- flow */
 
 let running = null;
@@ -361,7 +378,7 @@ let running = null;
 async function run(site) {
   running?.terminate();
   view.site = site; view.data = null; view.plan = null;
-  $('#result').hidden = true; $('#plan').innerHTML = '';
+  $('#result').hidden = true; $('#plan').innerHTML = ''; $('#hill').innerHTML = '';
   const kept = site.water || {};
   inputs.downspouts = Array.isArray(kept.downspouts) ? kept.downspouts : [];
   inputs.gutters = Array.isArray(kept.gutters) ? kept.gutters : [];
@@ -379,6 +396,7 @@ async function run(site) {
       else if (data.planProgress) $('#saved').textContent = data.planProgress;
       else if (data.plan) { view.plan = data.plan; $('#saved').textContent = savedNote; planReport(data.plan); draw(); }
       else if (data.planError) $('#saved').textContent = `The watering plan could not be worked out: ${data.planError}`;
+      else if (data.hill) hillReport(data.hill);
     };
     w.onerror = (e) => { w.terminate(); reject(new Error(e.message || 'the analysis stopped')); };
   });

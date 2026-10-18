@@ -14,7 +14,8 @@ import { roofRouting } from '../lib/gutters.js';
 import { waterPlan } from '../lib/plan.js';
 import { analyse } from '../lib/lowspots.js';
 import { cloud, LAT } from '../lib/synthetic.js';
-import { fromMerc } from '../lib/ept.js';
+import { fromMerc, toMerc, mercScale } from '../lib/ept.js';
+import { terrain, hillside } from '../lib/upslope.js';
 
 const tests = [];
 const test = (name, fn) => tests.push([name, fn]);
@@ -137,6 +138,21 @@ test('a lawn half sand, half loam: two zones, and the sand is watered more often
   assert.ok(jul(often).waterings > jul(seldom).waterings && jul(often).mmEach < jul(seldom).mmEach);
   assert.ok(Math.abs(often.m2 - seldom.m2) < 200, `${often.m2} / ${seldom.m2}`);
   assert.equal(plan.roofs.pieces, 0);
+});
+
+test('a lawn at the foot of a steep hill is flagged; one on a gentle rise is not', () => {
+  // 600 m square, 10 m cells, row 0 north: a 15% hill falling south onto a flat strip, which falls 1% east
+  const W = 60, H = 60, cell = 10, z = new Float32Array(W * H);
+  for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) z[r * W + c] = (r < 40 ? (40 - r) * cell * 0.15 : 0) - c * cell * 0.01 + (r >= 40 ? (r - 40) * 0.05 : 0);
+  const [cx, cy] = toMerc([-85, 43]), k = mercScale(43), h = 300 / k;
+  const dem = { W, H, cell, z, bbox: [cx - h, cy - h, cx + h, cy + h], k };
+  const t = terrain(dem);
+  const at = (r, c) => fromMerc([dem.bbox[0] + ((c + 0.5) / W) * (dem.bbox[2] - dem.bbox[0]), dem.bbox[3] - ((r + 0.5) / H) * (dem.bbox[3] - dem.bbox[1])]);
+  const foot = hillside(dem, t, [28, 29, 30, 31, 32, 33].flatMap((c) => [at(40, c), at(41, c)]));
+  assert.ok(foot.belowHill && foot.upslopeHa > 1, JSON.stringify(foot));
+  assert.notEqual(foot.level, 'unlikely');
+  const top = hillside(dem, t, [at(2, 30), at(3, 30)]);
+  assert.equal(top.belowHill, false); assert.ok(top.twiPercentile < foot.twiPercentile);
 });
 
 let failed = 0;

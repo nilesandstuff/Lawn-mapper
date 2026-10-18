@@ -600,6 +600,25 @@ paving is found well (task: the most accurate and fastest paving finder,
 owner 2026-10-18). Paving's own runoff and evaporation ARE in it: curve
 number 98, a 1 mm film that evaporates (measured 0.4-1 mm, Zhou 2021).
 
+### S10. Ground water from the land above a lawn (the hillside reading)
+
+Owner, 2026-10-18: "known details about the water table if possible,
+especially in areas below steep hills." lib/upslope.js reads the USGS 3DEP
+10 m ground 600 m round the lot (the elevation service's raw float format,
+6-13 s) and gives: the land draining toward the lawn and its slope; the
+lawn's topographic wetness index as a percentile of its surroundings; its
+height above the nearest drainage line (HAND; Agren et al. 2014: wet if 1 m
+or less). Graded likely / possible / unlikely; on the page only, NOT in the
+water balance.
+On ten corpus lots: a 4 ha channel threshold marked street gutters (two lots
+"10 m from a channel" with nothing draining onto them), so 20 ha; the lawn's
+median, not its wettest cell (the wettest made every lawn rank 72-98th).
+Then: #40 (7.5 ha of 16% slope above it, 93rd percentile) likely; the other
+nine unlikely. No ground truth yet: a wet spring on lawns it calls likely and
+unlikely is the check. The soil survey's own monthly water table (lib/soil.js,
+"Wet" layers) IS in the balance: it stops drainage and makes dual-group soils
+the wetter group in those months.
+
 ### S9. Shaded lawn needs less water, but less than the shade suggests
 
 ET = full-sun ET x (0.3 + 0.7 x the share of sunlight received)

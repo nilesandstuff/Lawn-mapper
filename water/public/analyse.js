@@ -17,6 +17,7 @@ import { runSite } from '/lib/site.js';
 import { soilFor, sdaPost } from '/lib/soil.js';
 import { typicalYears, thisWeek } from '/lib/weather.js';
 import { waterPlan } from '/lib/plan.js';
+import { demAround, terrain, hillside } from '/lib/upslope.js';
 
 const kept = { r: null, lawn: null, standIn: false, soil: null, typical: null, week: null, lng: null, lat: null };
 
@@ -93,6 +94,17 @@ async function start(site, inputs) {
   kept.week = await weekP;
   self.postMessage({ planProgress: 'Working out the watering plan…' });
   await plan(inputs);
+  // the hillside above the lawn (USGS 10 m ground, 600 m round): after the plan, so it never holds it up
+  try {
+    const pts = [];
+    const g = res.grid;
+    for (let r0 = 0; r0 < g.H; r0 += 3) for (let c0 = 0; c0 < g.W; c0 += 3) if (kept.lawn[r0 * g.W + c0]) pts.push(res.lngLat(r0 + 0.5, c0 + 0.5));
+    if (!pts.length) pts.push([lng, lat]);
+    const dem = await demAround(lng, lat);
+    self.postMessage({ hill: hillside(dem, terrain(dem), pts) });
+  } catch (e) {
+    self.postMessage({ hill: { error: e.message || String(e) } });
+  }
 }
 
 self.onmessage = async ({ data }) => {

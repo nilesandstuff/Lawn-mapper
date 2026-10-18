@@ -35,6 +35,7 @@ each step has to pass, and what is still only a theory.
     lib/gutters.js     where each roof's water lands (downspouts, gutters)
     lib/zones.js       lawn cells with the same need -> zones
     lib/plan.js        zones -> how much and how often, month by month, this week
+    lib/upslope.js     the hillside above the lawn: USGS 10 m ground, TWI, HAND
     tools/plan-try.mjs the whole chain on one corpus map, numbers only
     test/plan.test.js  node water/test/plan.test.js
     PARAMS-SOURCES.md  every parameter's published source
