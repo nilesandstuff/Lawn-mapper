@@ -27,7 +27,7 @@
 const $ = (s) => document.querySelector(s);
 const R = 6378137;
 const view = { photo: null, data: null, frame: null, site: null, plan: null };
-const inputs = { downspouts: [], gutters: [], topsoil: false };
+const inputs = { downspouts: [], gutters: [], topsoil: false, grass: 'cool' };
 let mode = null, pending = null; // 'from' | 'to' (a downspout) | 'gutter'
 const ZONE_RGB = [[46, 134, 222], [230, 126, 34], [142, 68, 173], [22, 160, 133]];
 const HOME = document.documentElement.dataset.home || '';
@@ -316,7 +316,7 @@ function planReport(p) {
   const peak = (z) => z.months.reduce((a, b) => ((b.mmMonth || 0) > (a.mmMonth || 0) ? b : a), z.months[0]);
   parts.push(`<div class="card"><h2>Your watering plan: ${p.zones.length} zone${p.zones.length > 1 ? 's' : ''}</h2>
     <p>Each zone below needs a different amount, or a different rhythm, to stay between too wet and too dry. Water a zone when it says, by about the depth it says; more is wasted below the roots, less leaves it short.</p>
-    <p class="dim">Worked out day by day over ten years of this place's weather: rain and runoff in, the grass's use out, the soil's root zone in between. ${p.shaded ? ` Shade from trees and buildings is counted (the shade map's own light model; the lawn's middle gets about ${Math.round(p.sunShare * 100)}% of open-sky sunlight in summer).` : ' The lawn is taken as in full sun until the shade is worked out.'}${p.seasonDays ? ` The watering season is the shade map's growing season here, about ${p.seasonDays} days.` : ''} These are likely amounts, until a soak test on your lawn confirms them. Depths are what reaches the grass; sprinklers that water unevenly need a little more.${p.standIn ? ' <strong>No lawn was traced, so this plans for all the open ground</strong>: open this from a Lawn Mapper map for your lawn alone.' : ''}</p></div>`);
+    <p class="dim">Worked out day by day over ten years of this place's weather: rain and runoff in, the grass's use out, the soil's root zone in between. ${p.shaded ? ` Shade from trees and buildings is counted (the shade map's own light model; the lawn's middle gets about ${Math.round(p.sunShare * 100)}% of open-sky sunlight in summer).` : ' The lawn is taken as in full sun until the shade is worked out.'}${p.seasonDays ? ` The watering season is the shade map's growing season here for ${p.grass === 'warm' ? 'warm' : 'cool'}-season grass, about ${p.seasonDays} days.` : ''} Grass beside paving and sunny walls is counted as using a little more (up to 8% at the edge, an estimate from published measurements).${p.grass === 'warm' ? ' Warm-season grass is let dry a little further between waterings than cool-season.' : ''} These are likely amounts, until a soak test on your lawn confirms them. Depths are what reaches the grass; sprinklers that water unevenly need a little more.${p.standIn ? ' <strong>No lawn was traced, so this plans for all the open ground</strong>: open this from a Lawn Mapper map for your lawn alone.' : ''}</p></div>`);
   const week = p.thisWeek;
   for (const z of p.zones) {
     const pk = peak(z), w = week?.zones.find((x) => x.zone === z.zone);
@@ -324,7 +324,8 @@ function planReport(p) {
     const why = [];
     why.push(`its soil holds about ${inch(z.tawMm)} in where the roots are (${z.soils.map(esc).join('; ')}; ${z.drainage.map((d) => esc(String(d).toLowerCase())).join(', ')})`);
     if (z.slope >= 0.04) why.push(`it slopes about ${Math.round(z.slope * 100)}%, so heavy rain runs off`);
-    if (z.runOnShare >= 0.05) why.push(`${Math.round(z.runOnShare * 100)}% of it also gets water off a roof or paving`);
+    if (z.runOnShare >= 0.05) why.push(`${Math.round(z.runOnShare * 100)}% of it gets at least a quarter more water than its own rain, running off roofs, paving or ground uphill`);
+    if (z.heatShare >= 0.2) why.push(`${Math.round(z.heatShare * 100)}% of it lies beside paving or a sunny wall, which warms it`);
     if (z.sun !== null && z.sun !== undefined) why.push(z.sun >= 0.85 ? 'it is in nearly full sun' : `it gets about ${Math.round(z.sun * 100)}% of full sun in summer, so it uses less`);
     const problems = [];
     if (z.wetAnyway > 0) problems.push(`About <strong>${sqft(z.wetAnyway)} sq ft</strong> stays wet even with no watering at all: likely a drainage matter, not a watering one.`);
@@ -384,7 +385,9 @@ async function run(site) {
   inputs.downspouts = Array.isArray(kept.downspouts) ? kept.downspouts : [];
   inputs.gutters = Array.isArray(kept.gutters) ? kept.gutters : [];
   inputs.topsoil = !!kept.topsoil;
+  inputs.grass = kept.grass === 'warm' ? 'warm' : 'cool';
   $('#topsoil').checked = inputs.topsoil;
+  $('#grass').value = inputs.grass;
   setMode(null);
   status(`Reading the survey for ${site.label}…`);
   const w = new Worker('/analyse.js', { type: 'module' });
@@ -439,7 +442,7 @@ async function save() {
   try {
     const res = await fetch(`/api/maps/tool?id=${encodeURIComponent(site.mapId)}&tool=water`, {
       method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ data: { v: 1, downspouts: inputs.downspouts, gutters: inputs.gutters, topsoil: inputs.topsoil }, basedOn: site.at }),
+      body: JSON.stringify({ data: { v: 1, downspouts: inputs.downspouts, gutters: inputs.gutters, topsoil: inputs.topsoil, grass: inputs.grass }, basedOn: site.at }),
     });
     savedNote = res.ok ? 'Saved with your map.' : `Not saved (${res.status}).`;
   } catch (e) { savedNote = `Not saved: ${e.message}`; }
@@ -483,6 +486,7 @@ $('#clear').addEventListener('click', () => {
   inputs.downspouts = []; inputs.gutters = []; setMode(null); changed();
 });
 $('#topsoil').addEventListener('change', () => { inputs.topsoil = $('#topsoil').checked; changed(); });
+$('#grass').addEventListener('change', () => { inputs.grass = $('#grass').value === 'warm' ? 'warm' : 'cool'; changed(); });
 
 async function guarded(fn) {
   $('#go').disabled = true; $('#here').disabled = true;

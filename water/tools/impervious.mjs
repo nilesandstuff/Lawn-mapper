@@ -42,6 +42,71 @@ import { naipFor, ndvi } from '../lib/naip.js';
 import { rng } from '../lib/synthetic.js';
 import { lidarAt } from '../../worker/src/shade.js';
 import { shadeRoofs } from '../lib/roofs.js';
+import { PNG } from 'pngjs';
+
+/* THE PAID CANDIDATE (owner, 2026-10-18: "whatever is most accurate and fastest"; his Replicate token,
+   REPLICATE_TOKEN, the one the main site uses): SAM 3 on Replicate (mattsays/sam3-image, the model the
+   main site asks for "grass"), asked here for paving -- one concept per prompt, as the core found works
+   best -- on the same NAIP photo. Only with SAM=1; at most SAM_MAX predictions in all. */
+const SAM = process.env.SAM === '1' && !!process.env.REPLICATE_TOKEN;
+const SAM_PROMPTS = (process.env.SAM_PROMPTS || 'pavement,driveway,road').split(',').map((s) => s.trim()).filter(Boolean);
+const SAM_MAX = Number(process.env.SAM_MAX || 80);
+const samStats = { predictions: 0, seconds: 0, failed: 0 };
+let samVersion = null;
+
+async function samMask(png, prompt, w, h) {
+  if (samStats.predictions >= SAM_MAX) return null;
+  const auth = { Authorization: `Bearer ${process.env.REPLICATE_TOKEN}`, 'Content-Type': 'application/json' };
+  if (!samVersion) samVersion = (await (await fetch('https://api.replicate.com/v1/models/mattsays/sam3-image', { headers: auth })).json()).latest_version?.id;
+  samStats.predictions++;
+  let p = await (await fetch('https://api.replicate.com/v1/predictions', {
+    method: 'POST', headers: { ...auth, Prefer: 'wait' },
+    body: JSON.stringify({ version: samVersion, input: { image: `data:image/png;base64,${png.toString('base64')}`, prompt, mask_only: true, save_overlay: false, return_zip: false, threshold: 0.2 } }),
+  })).json();
+  for (let k = 0; k < 60 && p && !['succeeded', 'failed', 'canceled'].includes(p.status); k++) {
+    await new Promise((r) => setTimeout(r, 2000));
+    p = await (await fetch(`https://api.replicate.com/v1/predictions/${p.id}`, { headers: auth })).json();
+  }
+  if (p?.metrics?.predict_time) samStats.seconds += p.metrics.predict_time;
+  const url = Array.isArray(p?.output) ? p.output[0] : p?.output;
+  if (p?.status !== 'succeeded' || !url) { samStats.failed++; return null; }
+  const img = PNG.sync.read(Buffer.from(await (await fetch(url)).arrayBuffer()));
+  // the mask, white = found, onto the picture's pixel grid (it may come back at another size)
+  const out = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const sx = Math.min(img.width - 1, Math.floor((x / w) * img.width)), sy = Math.min(img.height - 1, Math.floor((y / h) * img.height));
+    const o = (sy * img.width + sx) * 4;
+    out[y * w + x] = img.data[o] + img.data[o + 1] + img.data[o + 2] > 382 && img.data[o + 3] > 0 ? 1 : 0;
+  }
+  return out;
+}
+
+/** The photo as a PNG the model can see: 3 pixels a metre (lib/naip.js UP), red-green-blue. */
+async function samShare(g) {
+  const UPX = 3, W = g.W * UPX, H = g.H * UPX;
+  const url = `https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPImagery/ImageServer/exportImage?bbox=${g.bbox.map((v) => v.toFixed(2)).join(',')}&bboxSR=3857&imageSR=3857&size=${W},${H}&format=bsq&pixelType=U8&interpolation=RSP_BilinearInterpolation&f=image`;
+  const buf = new Uint8Array(await (await fetch(url)).arrayBuffer());
+  if (buf.length < W * H * 3) return null;
+  const png = new PNG({ width: W, height: H });
+  for (let i = 0; i < W * H; i++) { png.data[i * 4] = buf[i]; png.data[i * 4 + 1] = buf[W * H + i]; png.data[i * 4 + 2] = buf[2 * W * H + i]; png.data[i * 4 + 3] = 255; }
+  const file = PNG.sync.write(png);
+  const union = new Uint8Array(W * H);
+  let any = false;
+  for (const prompt of SAM_PROMPTS) {
+    const m = await samMask(file, prompt, W, H).catch(() => { samStats.failed++; return null; });
+    if (!m) continue;
+    any = true;
+    for (let i = 0; i < m.length; i++) union[i] |= m[i];
+  }
+  if (!any) return null;
+  const share = new Float32Array(g.W * g.H);
+  for (let r = 0; r < g.H; r++) for (let c = 0; c < g.W; c++) {
+    let s = 0;
+    for (let dr = 0; dr < UPX; dr++) for (let dc = 0; dc < UPX; dc++) s += union[(r * UPX + dr) * W + c * UPX + dc];
+    share[r * g.W + c] = s / (UPX * UPX);
+  }
+  return share;
+}
 
 const SQUARES = Number(process.env.SQUARES || 24);
 const SIZE = Number(process.env.SIZE || 160);
@@ -136,6 +201,7 @@ async function one(lng, lat) {
   const bright = photo ? Float32Array.from(photo.red, (r, i) => (r + photo.green[i] + photo.blue[i]) / 3) : null;
   const lawnV = V ? med(Array.from(V).filter((v, i) => truth[i] === G.turf && !res.wall[i] && Number.isFinite(v))) : NaN;
   const lawnB = bright ? med(Array.from(bright).filter((v, i) => truth[i] === G.turf && !res.wall[i])) : NaN;
+  const sam = SAM ? await samShare(g).catch(() => null) : null;
   const cells = [];
   for (let i = 0; i < N; i++) {
     if (!Number.isFinite(I[i]) || res.wall[i]) continue;
@@ -149,6 +215,7 @@ async function one(lng, lat) {
       raw: I[i], box: pc.groundP75 ? I[i] / pc.groundP75 : NaN, lawn: lawnI ? I[i] / lawnI : NaN,
       lr: Number.isFinite(roofI) && lawnI !== roofI ? (I[i] - roofI) / (lawnI - roofI) : NaN,
       // for the combined model: smoothness, single returns, return density
+      sam: sam ? sam[i] : NaN,
       x: [Math.log(Math.max(0.02, I[i] / lawnI)), Number.isFinite(res.sd[i]) ? Math.min(0.3, res.sd[i]) : 0.05, all3[i] ? single3[i] / all3[i] : 0, Math.log(all3[i] / 9 + 0.1),
         // 4-7: the photo -- vegetation index, it against the turf's, brightness against the turf's, blueness
         V ? V[i] : NaN, V ? V[i] - lawnV : NaN, bright ? Math.log(Math.max(1, bright[i]) / Math.max(1, lawnB)) : NaN, photo ? (photo.blue[i] - photo.red[i]) / 255 : NaN],
@@ -227,6 +294,27 @@ async function main() {
     const called = T.filter((c) => p(c) > 0), precise = called.filter((c) => c.cls === 'imp').length / Math.max(1, called.length);
     console.log(`  ${label}: right on ${(right * 100).toFixed(1)}% of cells, finds ${(found * 100).toFixed(0)}% of paving, ${(precise * 100).toFixed(0)}% of what it calls paving is paving`);
     console.log(`  ${label}, fitted on ${Math.ceil(done.length / 2)} squares, tested on ${Math.floor(done.length / 2)}: paved vs both ${auc(T.filter((c) => c.cls === 'imp').map(p), T.filter((c) => c.cls !== 'imp').map(p)).toFixed(3)}, paved vs pervious ${auc(T.filter((c) => c.cls === 'imp').map(p), T.filter((c) => c.cls === 'perv').map(p)).toFixed(3)}; weights ${JSON.stringify({ keys, mean: m.mean.map((v) => +v.toFixed(4)), sd: m.sd.map((v) => +v.toFixed(4)), w: m.w.map((v) => +v.toFixed(3)), b: +m.b.toFixed(3) })}`);
+  }
+  if (SAM) {
+    // the paid model: on the test squares' cells it saw, alone (its mask as it is) and as a ninth input
+    const seen = (list) => list.filter((c) => c.x.every(Number.isFinite) && Number.isFinite(c.sam));
+    const F = seen(fitC), T = seen(testC);
+    console.log(`  SAM 3 on Replicate (prompts ${SAM_PROMPTS.join(', ')}): ${samStats.predictions} predictions, ${samStats.failed} failed, ${samStats.seconds.toFixed(0)} s of GPU; cells it saw: ${F.length} to fit, ${T.length} to test`);
+    if (T.length) {
+      const score = (label, pred) => {
+        const right = T.filter((c) => pred(c) === (c.cls === 'imp')).length / T.length;
+        const impT = T.filter((c) => c.cls === 'imp'), found = impT.filter(pred).length / Math.max(1, impT.length);
+        const called = T.filter(pred), precise = called.filter((c) => c.cls === 'imp').length / Math.max(1, called.length);
+        console.log(`  ${label}: right on ${(right * 100).toFixed(1)}% of cells, finds ${(found * 100).toFixed(0)}% of paving, ${(precise * 100).toFixed(0)}% of what it calls paving is paving`);
+      };
+      score('SAM 3 alone (half the cell or more in its mask)', (c) => c.sam >= 0.5);
+      for (const [keys, label] of [[[0, 1, 2, 3, 5, 6, 7], 'lidar + photo against the lawn (in use), on the same cells'], [[0, 1, 2, 3, 5, 6, 7, 8], 'lidar + photo + SAM 3']]) {
+        const rows = (list) => thin(list, 40000).map((c) => [keys.map((k) => (k === 8 ? c.sam : c.x[k])), c.cls === 'imp' ? 1 : 0]);
+        const m = fitLogistic(rows(F));
+        const z = (c) => { let v = m.b; keys.forEach((k, j) => { v += m.w[j] * (((k === 8 ? c.sam : c.x[k]) - m.mean[j]) / m.sd[j]); }); return v; };
+        score(label, (c) => z(c) > 0);
+      }
+    }
   }
   const lr = all.filter((x) => Number.isFinite(x.lr));
   for (const c of ['imp', 'perv', 'turf']) {

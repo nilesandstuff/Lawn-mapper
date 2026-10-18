@@ -22,7 +22,7 @@
 import { rootZone, maxSprinklerRate } from './soil.js';
 import { maskOf } from './geo.js';
 import { roofRouting } from './gutters.js';
-import { buildModel, simulate, idealIrrigation, zoneIrrigation, PARAMS } from './balance.js';
+import { buildModel, simulate, idealIrrigation, zoneIrrigation, PARAMS, WARM } from './balance.js';
 import { drawZones } from './zones.js';
 
 export const KIND = { other: 0, lawn: 1, roof: 2, paved: 3 };
@@ -39,7 +39,9 @@ const DEFAULT_SOIL = { name: 'no survey soil here (a loam assumed)', drainage: '
  *   topsoil (bool), downspouts, gutters, typical (days), week ({ days, today }), light (Float32Array | null),
  *   zoneOf (Int16Array, the user's own zones, optional), params
  */
-export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, topsoil = false, downspouts = [], gutters = [], typical, week = null, light = null, season = null, zoneOf: userZones = null, params = PARAMS } = {}) {
+export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, topsoil = false, downspouts = [], gutters = [], typical, week = null, light = null, season = null, grass = 'cool', zoneOf: userZones = null, params: given = null } = {}) {
+  // warm-season turf (owner 2026-10-18): FAO-56's p 0.5 in place of cool-season's 0.4
+  const params = given || (grass === 'warm' ? { ...PARAMS, ...WARM } : PARAMS);
   const g = res.grid, N = g.W * g.H;
   // 1. what each cell is
   const kinds = new Uint8Array(N);
@@ -100,7 +102,9 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
     const rz = cells.map((i) => soils[soilAt[i]].rz?.tawMm ?? null);
     const unitNames = [...new Set(cells.map((i) => soils[soilAt[i]].unit.name))];
     const drainage = [...new Set(cells.map((i) => soils[soilAt[i]].drainage))];
-    const runOn = cells.filter((i) => roofOrPaveFeeds(model, i)).length / cells.length;
+    // run-on: the zone's cells that get a quarter or more again of their own rain, off roofs, paving or uphill
+    const runOn = cells.filter((i) => planned.ranOn[i] >= 0.25 * planned.rain).length / cells.length;
+    const runOnRatio = med(cells.map((i) => planned.ranOn[i] / Math.max(1, planned.rain)));
     const peak = months.reduce((a, b) => ((b.mmMonth || 0) > (a.mmMonth || 0) ? b : a), months[0]);
     /* cycle and soak: the zone's slowest-taking ground (the 10th percentile rate) against typical
        sprinklers -- spray heads about 1.5 in/h, rotors about 0.5 in/h (until the heads are mapped) */
@@ -116,7 +120,8 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
       months,
       slope: med(cells.map((i) => model.slope[i])),
       sun: light ? med(cells.map((i) => light[i])) : null,
-      soils: unitNames, drainage, runOnShare: runOn,
+      heatShare: cells.filter((i) => model.heat[i] > 1.02).length / cells.length,
+      soils: unitNames, drainage, runOnShare: runOn, runOnRatio,
       /* too wet: the plan's watering adds wet days (5% of the season or more) over what rain alone
          gives -- over-watered; wet anyway: rain alone keeps it wet a tenth of the season -- a drainage
          matter, not a watering one */
@@ -157,21 +162,10 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
     zones: out, zoneOf: zones.zoneOf, userZones: !!zones.user, kinds, wetShare, dryShare, wetFromWatering, wetAnyway,
     roofs: { pieces: roofs.pieces.length, guessed: roofs.pieces.filter((p) => p.guessed).length, unusedDownspouts: roofs.unused },
     soil: units.map((u) => ({ name: u.name, share: u.share ?? null, drainage: u.drainage, hydgrp: u.hydgrp, wtMinCm: u.wtMinCm ?? null, wetByMonth: u.wetByMonth, assumed: !!u.assumed, tawMm: rootZone(u.profile)?.tawMm ?? null, tawTopsoilMm: rootZone(u.profile, { topsoil: true })?.tawMm ?? null })),
-    years, topsoil, thisWeek, shaded: !!light,
+    years, topsoil, grass, thisWeek, shaded: !!light,
     sunShare: light ? (() => { const v = []; for (let i = 0; i < N; i++) if (kinds[i] === KIND.lawn) v.push(light[i]); return med(v); })() : null,
     weather: monthly(typical, years, params),
   };
-}
-
-/** Whether a cell gets water from a roof or paving (any roof cell lands on it, or paving drains into it). */
-function roofOrPaveFeeds(model, i) {
-  model._fed ||= (() => {
-    const fed = new Uint8Array(model.N);
-    for (let j = 0; j < model.N; j++) if (model.kinds[j] === 2 && model.roofTo[j] >= 0) fed[model.roofTo[j]] = 1;
-    for (const j of model.order) if (model.down[j] >= 0 && (fed[j] || model.kinds[j] === 3)) fed[model.down[j]] = 1;
-    return fed;
-  })();
-  return model._fed[i] === 1;
 }
 
 /** Rain and grass water use by month, typical-year medians (mm). */

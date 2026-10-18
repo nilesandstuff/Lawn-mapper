@@ -30,19 +30,29 @@ function standInLawn(res) {
   return m;
 }
 
+/** The shade map's growing season for this grass (climate.js, the owner's 20% GP rule), as a Set. */
+function seasonFor(grass) {
+  if (!kept.climate) return null;
+  const tSoil = kept.climate.tSoil?.every?.(Number.isFinite) ? kept.climate.tSoil : null;
+  const gs = growingSeason(kept.climate.tMean, grass === 'warm' ? 'warm' : 'cool', SEASON_GP, tSoil);
+  return gs.days.length ? new Set(gs.days) : null;
+}
+
 async function plan(inputs = {}) {
   const { r } = kept;
+  const grass = inputs.grass === 'warm' ? 'warm' : 'cool';
+  kept.season = seasonFor(grass);
   const t0 = Date.now();
   const p = waterPlan(r.result, {
     lawnMask: kept.lawn, paved: r.impervious ? r.impervious.paved : null, soil: kept.soil,
     topsoil: !!inputs.topsoil, downspouts: inputs.downspouts || [], gutters: inputs.gutters || [],
-    typical: kept.typical, week: kept.week, season: kept.season, light: kept.light,
+    typical: kept.typical, week: kept.week, season: kept.season, light: kept.light, grass,
   });
   const out = {
     zones: p.zones, zoneOf: p.zoneOf, wetFromWatering: p.wetFromWatering, wetAnyway: p.wetAnyway, dryShare: p.dryShare,
     roofs: p.roofs, soil: p.soil, weather: p.weather, thisWeek: p.thisWeek, years: p.years, topsoil: p.topsoil,
     standIn: kept.standIn, seconds: (Date.now() - t0) / 1000, shaded: p.shaded, sunShare: p.sunShare,
-    seasonDays: kept.season ? kept.season.size : null,
+    seasonDays: kept.season ? kept.season.size : null, grass,
   };
   self.postMessage({ plan: out }, [out.zoneOf.buffer, out.wetFromWatering.buffer, out.wetAnyway.buffer, out.dryShare.buffer]);
 }
@@ -99,10 +109,6 @@ async function start(site, inputs) {
   kept.typical = await typicalP;
   kept.week = await weekP;
   kept.climate = await climateP;
-  if (kept.climate) {
-    const gs = growingSeason(kept.climate.tMean, 'cool', SEASON_GP, kept.climate.tSoil?.every?.(Number.isFinite) ? kept.climate.tSoil : null);
-    if (gs.days.length) kept.season = new Set(gs.days);
-  }
   self.postMessage({ planProgress: 'Working out the watering plan…' });
   await plan(inputs);
   // the hillside above the lawn (USGS 10 m ground, 600 m round): after the plan, so it never holds it up

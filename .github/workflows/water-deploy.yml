@@ -19,6 +19,8 @@ name: W. Water tool
 #   surfaces  is each 1 m cell lawn? the points' measures (brightness,
 #             returns, canopy...) fitted on half the corpus's traced lawns
 #             and scored on the other half (water/FINDINGS.md H11)
+#   paving-sam  the impervious scoring plus SAM 3 on Replicate asked for paving (PAID:
+#             the owner's REPLICATE_TOKEN; at most 80 predictions, about half a cent each)
 #   impervious  roofs and imperviousness scored on the Chesapeake Bay
 #             Program's 1 m land use, residential squares in VA/MD/PA
 #             (water/FINDINGS.md H12)
@@ -36,7 +38,7 @@ on:
         required: true
         default: tests
         type: choice
-        options: [tests, deploy, limits, corpus, surfaces, impervious, baro, lowspots]
+        options: [tests, deploy, limits, corpus, surfaces, impervious, paving-sam, baro, lowspots]
 
 permissions:
   contents: read
@@ -116,6 +118,12 @@ jobs:
       - name: Roofs and imperviousness on the Chesapeake land use
         if: ${{ inputs.task == 'impervious' }}
         run: SQUARES=24 node water/tools/impervious.mjs | tee impervious.txt
+      - name: Paving by SAM 3 on Replicate, against the lidar and the photo (paid, capped)
+        if: ${{ inputs.task == 'paving-sam' }}
+        env:
+          REPLICATE_TOKEN: ${{ secrets.REPLICATE_TOKEN }}
+          SAM: '1'
+        run: SQUARES=24 node water/tools/impervious.mjs | tee impervious.txt
 
       - name: The owner's barometer against the lidar ground
         if: ${{ inputs.task == 'baro' }}
@@ -139,7 +147,7 @@ jobs:
             limits)   tail -40 limits.txt 2>/dev/null || echo "no table: see the step above" ;;
             corpus)   sed -n '/=====/,$p' corpus.txt 2>/dev/null || echo "no summary: see the step above" ;;
             surfaces) sed -n '/=====/,$p' surfaces.txt 2>/dev/null || echo "no summary: see the step above" ;;
-            impervious) sed -n '/=====/,$p' impervious.txt 2>/dev/null || echo "no summary: see the step above" ;;
+            impervious|paving-sam) sed -n '/=====/,$p' impervious.txt 2>/dev/null || echo "no summary: see the step above" ;;
             baro)     sed -n '/=====/,$p' baro.txt 2>/dev/null || echo "no summary: see the step above" ;;
             lowspots) cat lowspots.txt 2>/dev/null || echo "no lots run: see the step above" ;;
             deploy)   echo "Water site: ${WATER_STATE:-not deployed -- see the steps above}" ;;

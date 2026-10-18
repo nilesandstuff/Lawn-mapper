@@ -49,7 +49,20 @@ export const PARAMS = {
   wetSat: 0.5,            // a WET day: the root zone at least this far from field capacity to saturation, or water standing
   snowMeltMmPerC: 3.5,    // degree-day melt
   seasonC: 10,            // growing season: the week's mean temperature at or above this
+  /* HEAT OFF PAVING AND WALLS (owner 2026-10-18: "thermal effects of impervious surfaces"): turf beside
+     hardscape uses about 5-11% more water at the edge, fading to under 5% by about 7 m, the
+     afternoon-facing (south and west) side the strongest (Brown 2005; WUCOLS's 1.1-1.4 near south and
+     southwest walls is expert judgement). An estimate, FINDINGS S8: up to edgeBoost at the edge, to
+     nothing at edgeReachM, half as much from paving or a wall to the north or east of the grass. */
+  edgeBoost: 0.08,
+  edgeReachM: 7,
+  /* Water running over the ground spreads to every lower neighbour, in proportion to the slope to the
+     power 1.1 (Freeman 1991's multiple flow directions), not down one line: a downspout's water fans out. */
+  spreadPower: 1.1,
 };
+
+/** Warm-season turf (owner 2026-10-18: "warm season should be an option"): FAO-56 Table 22's p 0.5. */
+export const WARM = { p: 0.5 };
 
 const HYD = (h) => String(h || 'B').trim().toUpperCase();
 
@@ -109,6 +122,45 @@ export function buildModel(res, { kinds, soilAt, soils, roofTo, light = null, pa
   const pondCap = new Float32Array(N);
   for (const s of res.spots.spots) if (s.reported) for (const i of s.cells) pondCap[i] = res.spots.depth[i] * 1000;
 
+  // where surface water goes: every lower neighbour on the filled ground (no roofs), by slope^power
+  const recv = new Int32Array(N * 8).fill(-1), share = new Float32Array(N * 8), nRecv = new Uint8Array(N);
+  for (let i = 0; i < N; i++) {
+    if (kinds[i] === 2) continue;
+    const r = Math.floor(i / g.W), c = i % g.W;
+    let tot = 0, n = 0;
+    for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+      if (!dr && !dc) continue;
+      const rr = r + dr, cc = c + dc;
+      if (rr < 0 || cc < 0 || rr >= g.H || cc >= g.W) continue;
+      const j = rr * g.W + cc;
+      if (kinds[j] === 2) continue;
+      const drop = (filled[i] - filled[j]) / (Math.hypot(dr, dc) * g.cell);
+      if (drop <= 0) continue;
+      const w = drop ** params.spreadPower;
+      recv[i * 8 + n] = j; share[i * 8 + n] = w; tot += w; n++;
+    }
+    for (let k = 0; k < n; k++) share[i * 8 + k] /= tot;
+    nRecv[i] = n;
+  }
+  // heat off paving and walls onto the grass beside them
+  const heat = new Float32Array(N).fill(1);
+  const reach = Math.ceil(params.edgeReachM / g.cell);
+  if (params.edgeBoost > 0) for (let i = 0; i < N; i++) {
+    if (kinds[i] !== 1) continue;
+    const r = Math.floor(i / g.W), c = i % g.W;
+    let best = 0;
+    for (let rr = Math.max(0, r - reach); rr <= Math.min(g.H - 1, r + reach); rr++) for (let cc = Math.max(0, c - reach); cc <= Math.min(g.W - 1, c + reach); cc++) {
+      const k = kinds[rr * g.W + cc];
+      if (k !== 2 && k !== 3) continue;
+      const d = Math.hypot(rr - r, cc - c) * g.cell;
+      if (d > params.edgeReachM) continue;
+      // row grows southward: the hot surface is to the south when rr > r, to the west when cc < c
+      const sunSide = rr > r || cc < c ? 1 : 0.5;
+      best = Math.max(best, params.edgeBoost * (1 - d / params.edgeReachM) * sunSide);
+    }
+    heat[i] = 1 + best;
+  }
+
   const taw = new Float32Array(N), raw = new Float32Array(N), satRoom = new Float32Array(N), drainDay = new Float32Array(N);
   for (let i = 0; i < N; i++) {
     const s = soils[soilAt[i]] || soils[0];
@@ -119,7 +171,9 @@ export function buildModel(res, { kinds, soilAt, soils, roofTo, light = null, pa
     const below = rz?.belowMmH ?? 5;
     drainDay[i] = below * 24 * (params.drainFactor[s?.drainage] ?? 0.5);
   }
-  return { g, N, kinds, soilAt, soils, roofTo, light, order, down, slope, pondCap, taw, raw, satRoom, drainDay, params };
+  // what the grass in each cell uses, as a multiple of the open lawn's: shade, then heat
+  const etFactor = Float32Array.from(heat, (h, i) => h * shadeFactor(light ? light[i] : 1));
+  return { g, N, kinds, soilAt, soils, roofTo, light, order, down, recv, share, nRecv, slope, pondCap, taw, raw, satRoom, drainDay, heat, etFactor, params };
 }
 
 /**
@@ -137,10 +191,10 @@ export function buildModel(res, { kinds, soilAt, soils, roofTo, light = null, pa
  *    on the surface), wetDays, dryDays, seasonDays; and the end state.
  */
 export function simulate(model, days, { irrigate = null, start = null, record = null, season = null } = {}) {
-  const { N, kinds, order, down, roofTo, slope, pondCap, taw, raw, satRoom, drainDay, soils, soilAt, params } = model;
+  const { N, kinds, order, recv, share, nRecv, roofTo, slope, pondCap, taw, raw, satRoom, drainDay, soils, soilAt, params, etFactor } = model;
   const Dr = start?.Dr ? Float32Array.from(start.Dr) : new Float32Array(N);
   const grav = new Float32Array(N), pond = new Float32Array(N), film = new Float32Array(N);
-  const tot = { irrigation: new Float32Array(N), et: new Float32Array(N), drained: new Float32Array(N), ranOff: new Float32Array(N), wetDays: new Uint16Array(N), dryDays: new Uint16Array(N), seasonDays: 0, rain: 0 };
+  const tot = { irrigation: new Float32Array(N), et: new Float32Array(N), drained: new Float32Array(N), ranOff: new Float32Array(N), ranOn: new Float32Array(N), wetDays: new Uint16Array(N), dryDays: new Uint16Array(N), seasonDays: 0, rain: 0 };
   const inflow = new Float32Array(N);
   const cn = new Float32Array(N);
   let snow = 0, lastMonth = -1;
@@ -178,6 +232,7 @@ export function simulate(model, days, { irrigate = null, start = null, record = 
     for (const i of order) {
       const add = irr ? irr[i] || 0 : 0;
       if (add) tot.irrigation[i] += add;
+      tot.ranOn[i] += inflow[i];
       let w = P + inflow[i] + pond[i];
       pond[i] = 0;
       let q;
@@ -193,14 +248,14 @@ export function simulate(model, days, { irrigate = null, start = null, record = 
         if (Dr[i] < 0) { grav[i] += -Dr[i]; Dr[i] = 0; }
         if (q > 0 && pondCap[i] > 0) { const hold = Math.min(q, pondCap[i]); pond[i] = hold; q -= hold; }
       }
-      if (q > 0) { tot.ranOff[i] += q; if (down[i] >= 0) inflow[down[i]] += q; }
+      if (q > 0) { tot.ranOff[i] += q; for (let k = 0; k < nRecv[i]; k++) inflow[recv[i * 8 + k]] += q * share[i * 8 + k]; }
     }
     // the day's water use and drainage
     for (let i = 0; i < N; i++) {
       const k = kinds[i];
       if (k === 2) continue;
       if (k === 3) { film[i] = Math.max(0, film[i] - et0); continue; }
-      const etc = et0 * params.kc * shadeFactor(model.light ? model.light[i] : 1);
+      const etc = et0 * params.kc * etFactor[i];
       // gravity water drains first, then the roots draw
       if (grav[i] > 0) {
         const rate = model.blocked[i] ? drainDay[i] * 0.05 : drainDay[i];
@@ -239,7 +294,7 @@ export function idealIrrigation(model) {
     // watered the morning the day's use would take it past the readily available water
     for (let i = 0; i < model.N; i++) {
       if (model.kinds[i] !== 1) continue;
-      const use = st.use * shadeFactor(model.light ? model.light[i] : 1);
+      const use = st.use * model.etFactor[i];
       if (st.Dr[i] + use > model.raw[i]) { out[i] = st.Dr[i] + use; any = true; }
     }
     return any ? out : null;
@@ -263,7 +318,7 @@ export function zoneIrrigation(model, zoneOf, nZones, events = []) {
       const cs = cells[z];
       if (!cs.length) continue;
       let dr = 0, rw = 0, use = 0;
-      for (const i of cs) { dr += st.Dr[i]; rw += model.raw[i]; use += st.use * shadeFactor(model.light ? model.light[i] : 1); }
+      for (const i of cs) { dr += st.Dr[i]; rw += model.raw[i]; use += st.use * model.etFactor[i]; }
       dr /= cs.length; rw /= cs.length; use /= cs.length;
       if (dr + use > rw) {
         dr += use; // refill to full, today's use included

@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 
 import { penmanMonteith, ra, hargreaves, dayOfYear } from '../lib/et.js';
 import { hoursOf, hourly } from '../lib/weather.js';
-import { parseWkt, rootZone, boxWkt } from '../lib/soil.js';
+import { parseWkt, rootZone, boxWkt, ROOT_CM } from '../lib/soil.js';
 import { scsRunoff, cnSlope, curveNumber, buildModel, simulate, idealIrrigation, PARAMS } from '../lib/balance.js';
 import { roofRouting } from '../lib/gutters.js';
 import { waterPlan } from '../lib/plan.js';
@@ -42,7 +42,7 @@ test('the soil survey\'s shapes and a profile\'s root zone read right, topsoil i
   assert.match(boxWkt([-85, 42, -84.9, 42.1]), /^POLYGON\(\(-85\.0000000 42\.1000000,/);
   const sand = { horizons: [{ topCm: 0, bottomCm: 50, awc: 0.07, ksatUmS: 100 }, { topCm: 50, bottomCm: 150, awc: 0.1, ksatUmS: 1 }] };
   const rz = rootZone(sand);
-  assert.ok(Math.abs(rz.tawMm - 150 * 0.07) < 1e-9, 'TAW = root depth x available water');
+  assert.ok(Math.abs(rz.tawMm - ROOT_CM * 10 * 0.07) < 1e-9, 'TAW = root depth x available water');
   assert.ok(Math.abs(rz.ksatMmH - 360) < 1e-9 && Math.abs(rz.belowMmH - 3.6) < 1e-9);
   const top = rootZone(sand, { topsoil: true });
   assert.ok(top.tawMm > rz.tawMm, '4 in of loam holds more than sand');
@@ -82,7 +82,7 @@ test('the water balance adds up: rain = use + drained + run off the grid + what 
   for (let i = 0; i < N; i++) {
     if (kinds[i] === 2) { roofLoss += rainDays * PARAMS.roofLossMm; continue; }
     use += out.et[i]; drained += out.drained[i];
-    if (model.down[i] < 0) left += out.ranOff[i];
+    if (model.nRecv[i] === 0) left += out.ranOff[i];
     held += -out.end.Dr[i] + out.end.grav[i] + out.end.pond[i];
   }
   const rain = days.reduce((s, d) => s + d.rain, 0) * N;
@@ -153,6 +153,37 @@ test('a lawn at the foot of a steep hill is flagged; one on a gentle rise is not
   assert.notEqual(foot.level, 'unlikely');
   const top = hillside(dem, t, [at(2, 30), at(3, 30)]);
   assert.equal(top.belowHill, false); assert.ok(top.twiPercentile < foot.twiPercentile);
+});
+
+test('grass beside paving to its south uses more water than grass in the open, and less to its north', () => {
+  const res = lot({ roofs: [] });
+  const g = res.grid, N = g.W * g.H;
+  const kinds = new Uint8Array(N).fill(1);
+  for (let r = 18; r < 22; r++) for (let c = 0; c < g.W; c++) kinds[r * g.W + c] = 3; // an east-west drive across the middle
+  const soils = [{ rz: rootZone(loam.profile), drainage: loam.drainage, hydgrp: loam.hydgrp, wetByMonth: loam.wetByMonth }];
+  const m = buildModel(res, { kinds, soilAt: new Int16Array(N), soils, roofTo: new Int32Array(N).fill(-1) });
+  const north = m.heat[17 * g.W + 20], south = m.heat[22 * g.W + 20], far = m.heat[2 * g.W + 20];
+  assert.ok(Math.abs(north - (1 + PARAMS.edgeBoost * (1 - 1 / PARAMS.edgeReachM))) < 1e-6, `north edge ${north}`); // drive to its south
+  assert.ok(south > 1 && south < north, `south edge ${south}`);
+  assert.equal(far, 1);
+});
+
+test('a downspout\'s water fans out downhill over several cells, not one line', () => {
+  const res = lot();
+  const g = res.grid, N = g.W * g.H;
+  const at = (x, y) => fromMerc([g.bbox[0] + x / g.k, g.bbox[1] + y / g.k]);
+  const kinds = Uint8Array.from(res.wall, (w) => (w ? 2 : 1));
+  const routing = roofRouting(g, res.wall, res.runoff.filled, { downspouts: [{ from: at(25, 20), to: at(27, 20) }] });
+  const soils = [{ rz: rootZone({ horizons: [{ topCm: 0, bottomCm: 150, awc: 0.05, ksatUmS: 0.5 }] }), drainage: 'Poorly drained', hydgrp: 'D', wetByMonth: new Array(12).fill(null) }];
+  const m = buildModel(res, { kinds, soilAt: new Int16Array(N), soils, roofTo: routing.roofTo });
+  const storm = [{ date: '2025-06-01', tmax: 25, tmin: 15, rain: 30, et0: 0 }];
+  const withRoof = simulate(m, storm);
+  const noRoof = simulate(buildModel(res, { kinds, soilAt: new Int16Array(N), soils, roofTo: new Int32Array(N).fill(-1) }), storm);
+  // cells that took in more water because of the downspout
+  let fed = 0;
+  const held = (o, i) => o.end.grav[i] - o.end.Dr[i] + o.end.pond[i];
+  for (let i = 0; i < N; i++) if (kinds[i] === 1 && held(withRoof, i) - held(noRoof, i) > 0.5) fed++;
+  assert.ok(fed >= 10, `cells reached by the downspout's water: ${fed}`);
 });
 
 let failed = 0;

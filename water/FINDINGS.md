@@ -27,8 +27,9 @@ go in this file (or anywhere in the repository): lots are named by a label.
   week's next watering, ground left too wet or dry; downspouts, gutters and
   the 4 in topsoil choice saved with the map; shade from the shade map's own
   light worker; the hillside reading (S10). H16, S8-S10; sources in
-  PARAMS-SOURCES.md. Open with the owner: root-zone depth (6 in used),
-  Replicate token (to test a paid model against H17's 86.6%).
+  PARAMS-SOURCES.md. Root zone 12 in, cool/warm season (owner). Paving
+  heat as an estimate (S8). SAM 3 on Replicate being scored for paving
+  (workflow task paving-sam, the owner's REPLICATE_TOKEN).
 - **Step 1, the low-spot map, works offline** (2026-10-16): water/lib/ reads
   a lot's lidar from the public octrees, builds a 1 m ground surface, finds
   roofs, fills low spots, traces runoff and measures the ground beside each
@@ -583,8 +584,17 @@ usually under 1 s a query, but once 211 s (now: 20 s timeout, 3 tries).
 POWER's newest days lag 3-4 days (sunshine longest); the nearest NWS
 station fills them.
 
-Open choices with a large effect (asked of the owner, 2026-10-18):
-- **The root zone depth.** 6 in (15 cm) is used; practice runs 6-12 in and
+Owner's answers, 2026-10-18 (later the same day): root zone **12 in** ("varies
+based on species. But let's call it 12 inches for now") -- now used; a
+**warm-season** choice (p 0.5, the shade map's warm-season growing season) --
+on the page, saved with the map; his own Kc numbers to come. The table above
+was run at 6 in. Also changed then: water running over the ground now spreads
+to every lower neighbour (Freeman 1991, slope^1.1) instead of one line, so a
+downspout's water fans out (test: 10+ cells wetter); and "run-on" is now
+measured by volume (cells getting a quarter or more again of their rain).
+
+Open choices with a large effect (as asked, before the answers):
+- **The root zone depth.** 6 in (15 cm) was used; practice runs 6-12 in and
   the irrigation industry's controller protocol uses 10 in for tall fescue.
   On sand (#60) a 6 in root zone holds 0.41 in, so the plan waters nearly
   daily in July at 0.17 in; at 10 in it would hold 0.68 in and water about
@@ -642,9 +652,12 @@ The literature (water/PARAMS-SOURCES.md 1c): turf beside hardscape uses
 about 5-11% more water at the edge, fading to under 5% by about 7 m; the
 afternoon-facing edge is the strongest (Brown 2005, a desert field edge;
 WUCOLS gives 1.1-1.4 as an expert microclimate factor). Not measured on a
-lawn by orientation anywhere found. NOT in the model yet; a candidate once
-paving is found well (task: the most accurate and fastest paving finder,
-owner 2026-10-18). Paving's own runoff and evaporation ARE in it: curve
+lawn by orientation anywhere found. IN THE MODEL since 2026-10-18 (owner asked
+about "thermal effects of impervious surfaces"), as an ESTIMATE: grass
+within 7 m of paving or a roof uses up to 8% more at the edge, fading to
+nothing at 7 m, half as much when the hot surface is north or east of it
+(lib/balance.js edgeBoost). Unmeasured on a lawn; the page says "an
+estimate". Paving's own runoff and evaporation ARE in it: curve
 number 98, a 1 mm film that evaporates (measured 0.4-1 mm, Zhou 2021).
 
 ### S10. Ground water from the land above a lawn (the hillside reading)

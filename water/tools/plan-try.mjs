@@ -43,7 +43,7 @@ for (const topsoil of [false, true]) {
   console.log(`\nplan${topsoil ? ' WITH 4 in of loamy topsoil' : ''} ${((t() - t0) / 1000).toFixed(1)} s; ${plan.zones.length} zone(s); roofs ${plan.roofs.pieces} (${plan.roofs.guessed} guessed)`);
   const M = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   for (const z of plan.zones) {
-    console.log(` zone ${z.zone + 1}: ${z.m2} m2, ${(z.depthMm / 25.4).toFixed(2)} in each time (root zone holds ${(z.tawMm / 25.4).toFixed(2)} in), slope ${(z.slope * 100).toFixed(0)}%, ${z.drainage.join('/')}, fed by roof/paving ${(z.runOnShare * 100).toFixed(0)}%`);
+    console.log(` zone ${z.zone + 1}: ${z.m2} m2, ${(z.depthMm / 25.4).toFixed(2)} in each time (root zone holds ${(z.tawMm / 25.4).toFixed(2)} in), slope ${(z.slope * 100).toFixed(0)}%, ${z.drainage.join('/')}, run-on (a quarter or more over its rain) on ${(z.runOnShare * 100).toFixed(0)}%`);
     console.log(`   ${z.months.filter((m) => m.waterings).map((m) => `${M[m.month]} ${m.waterings}x (${m.low}-${m.high})`).join(', ')}`);
     console.log(`   in season: wet ${(z.wetShare * 100).toFixed(0)}% of days, dry ${(z.dryShare * 100).toFixed(0)}% (rain alone: dry ${(z.rainAloneDryShare * 100).toFixed(0)}%); watering makes ${z.tooWet} m2 wet, ${z.wetAnyway} m2 wet anyway, ${z.tooDry} m2 still dry; rain alone wet ${(z.rainAloneWetShare * 100).toFixed(0)}%`);
   }
