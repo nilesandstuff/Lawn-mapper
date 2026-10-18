@@ -216,7 +216,8 @@ async function main() {
   const fitB = both(fitC), testB = both(testC);
   console.log(`  cells with lidar and photo: ${fitB.length} to fit, ${testB.length} to test (of ${fitC.length} / ${testC.length})`);
   for (const [keys, label] of [[[0], 'lidar brightness over the lawn alone'], [[0, 1, 2, 3], 'lidar: brightness + smoothness + single returns + density (in use)'],
-    [[4, 5], 'photo: vegetation index'], [[4, 5, 6, 7], 'photo: vegetation index + brightness + blueness'], [[0, 1, 2, 3, 4, 5, 6, 7], 'lidar + photo, all eight']]) {
+    [[4, 5], 'photo: vegetation index'], [[4, 5, 6, 7], 'photo: vegetation index + brightness + blueness'], [[0, 1, 2, 3, 4, 5, 6, 7], 'lidar + photo, all eight'],
+    [[0, 1, 2, 3, 5, 6, 7], 'lidar + photo, all against the lawn (no raw vegetation index)'], [[0, 5, 6], 'lidar brightness + photo greenness and brightness, against the lawn']]) {
     const m = fitLogistic(rowsOf(fitB, keys));
     const p = (c) => { let z = m.b; keys.forEach((k, j) => { z += m.w[j] * ((c.x[k] - m.mean[j]) / m.sd[j]); }); return z; };
     const T = testB;

@@ -32,6 +32,18 @@ export const PAVED_MODEL = {
   b: -0.177,
 };
 
+/* WITH THE USDA PHOTO (NAIP, lib/naip.js), owner 2026-10-18: "whatever is most accurate and fastest".
+   Fitted 2026-10-18 on 12 Chesapeake squares, tested on 11 (FINDINGS H17): right on 86.6% of open cells
+   (lidar alone 84.5%, photo alone 84.8%), finds 84% of paving (lidar alone 75%), AUC 0.925 (0.898).
+   x = the four above, then the photo's vegetation index, it less the lawn's, log(brightness / the lawn's),
+   (blue - red) / 255; per cell, the lawn's being the median over the traced open lawn. */
+export const PAVED_MODEL_PHOTO = {
+  mean: [-0.2985, 0.0609, 0.8949, 1.434, 0.1568, -0.0976, 0.0487, -0.0142],
+  sd: [0.5385, 0.052, 0.2061, 0.6349, 0.1601, 0.1606, 0.3267, 0.0847],
+  w: [-1.053, -0.01, 0.223, -0.138, -0.868, -0.435, 0.787, 0.878],
+  b: -0.373,
+};
+
 /** Runoff coefficients (the share of rain that runs off), for the weighted flow. Rational-method textbook values. */
 export const RUNOFF = { roof: 0.9, paved: 0.85, lawn: 0.15, ground: 0.3 };
 
@@ -54,7 +66,7 @@ function box3(g, a) {
  * analyse(); `lawnMask` the traced lawn on its grid. Returns null when the
  * lawn gives nothing to calibrate on.
  */
-export function imperviousness(res, lawnMask, model = PAVED_MODEL) {
+export function imperviousness(res, lawnMask, { photo = null } = {}) {
   const g = res.grid, pc = res.perCell, N = g.W * g.H;
   const gi = box3(g, pc.groundI), gn = box3(g, pc.groundN), all3 = box3(g, pc.all), single3 = box3(g, pc.single), tall3 = box3(g, pc.tall);
   const lawnVals = [];
@@ -63,6 +75,17 @@ export function imperviousness(res, lawnMask, model = PAVED_MODEL) {
   lawnVals.sort((a, b) => a - b);
   const lawnI = lawnVals[lawnVals.length >> 1];
   if (!(lawnI > 0)) return null;
+  // the photo, calibrated on the same open lawn
+  let V = null, bright = null, lawnV = NaN, lawnB = NaN;
+  if (photo) {
+    V = Float32Array.from(photo.red, (r, i) => { const n = photo.nir[i]; return n + r > 0 ? (n - r) / (n + r) : NaN; });
+    bright = Float32Array.from(photo.red, (r, i) => (r + photo.green[i] + photo.blue[i]) / 3);
+    const lv = [], lb = [];
+    for (let i = 0; i < N; i++) if (lawnMask[i] && !res.wall[i] && (!all3[i] || tall3[i] / all3[i] < 0.2) && Number.isFinite(V[i])) { lv.push(V[i]); lb.push(bright[i]); }
+    if (lv.length >= 20) { lv.sort((a, b) => a - b); lb.sort((a, b) => a - b); lawnV = lv[lv.length >> 1]; lawnB = lb[lb.length >> 1]; }
+  }
+  const withPhoto = Number.isFinite(lawnV) && lawnB > 0;
+  const model = withPhoto ? PAVED_MODEL_PHOTO : PAVED_MODEL;
   const paved = new Float32Array(N).fill(NaN), runoff = new Float32Array(N);
   for (let i = 0; i < N; i++) {
     if (res.wall[i]) { paved[i] = 1; runoff[i] = RUNOFF.roof; continue; }
@@ -70,13 +93,17 @@ export function imperviousness(res, lawnMask, model = PAVED_MODEL) {
     const canopy = all3[i] ? tall3[i] / all3[i] : 0;
     if (!gn[i] || canopy >= 0.5) { runoff[i] = RUNOFF.ground; continue; }
     const x = [Math.log(Math.max(0.02, (gi[i] / gn[i]) / lawnI)), Number.isFinite(res.sd?.[i]) ? Math.min(0.3, res.sd[i]) : 0.05, all3[i] ? single3[i] / all3[i] : 0, Math.log(all3[i] / 9 + 0.1)];
+    if (withPhoto) {
+      if (!Number.isFinite(V[i])) { runoff[i] = RUNOFF.ground; continue; }
+      x.push(V[i], V[i] - lawnV, Math.log(Math.max(1, bright[i]) / Math.max(1, lawnB)), (photo.blue[i] - photo.red[i]) / 255);
+    }
     let z = model.b;
     for (let j = 0; j < x.length; j++) z += model.w[j] * ((x[j] - model.mean[j]) / model.sd[j]);
     const p = 1 / (1 + Math.exp(-z));
     paved[i] = p;
     runoff[i] = RUNOFF.ground + p * (RUNOFF.paved - RUNOFF.ground);
   }
-  return { paved, runoff, lawnI };
+  return { paved, runoff, lawnI, withPhoto };
 }
 
 /**

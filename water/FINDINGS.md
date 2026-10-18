@@ -28,7 +28,7 @@ go in this file (or anywhere in the repository): lots are named by a label.
   the 4 in topsoil choice saved with the map; shade from the shade map's own
   light worker; the hillside reading (S10). H16, S8-S10; sources in
   PARAMS-SOURCES.md. Open with the owner: root-zone depth (6 in used),
-  paving finder (NAIP vs lidar vs a paid model), Replicate token.
+  Replicate token (to test a paid model against H17's 86.6%).
 - **Step 1, the low-spot map, works offline** (2026-10-16): water/lib/ reads
   a lot's lidar from the public octrees, builds a 1 m ground surface, finds
   roofs, fills low spots, traces runoff and measures the ground beside each
@@ -592,6 +592,37 @@ Open choices with a large effect (asked of the owner, 2026-10-18):
 - **Loam topsoil's conductivity**: 13.2 mm/h (Rawls 1982/1993) or 3.4 mm/h
   (the Green-Ampt effective value, Rawls 1983); the slower is used, for a
   packed lawn.
+
+---
+
+### H17. Paving: the lidar and the USDA photo together (water session, 2026-10-18)
+
+Owner, 2026-10-18: paving by "whatever is most accurate and fastest", a paid
+vision model allowed if it is best. First the free candidates: NAIP, the
+USDA's aerial photo with a near-infrared band (lib/naip.js; USGS image
+service, no key, open to browsers, one request per lot, about 0.3 m averaged
+onto the 1 m grid). Scored like H12 on the Chesapeake 1 m land use: 23
+residential squares, fitted on 12, tested on 11, open ground cells only
+(roofs apart), each model on the same 162,288 test cells:
+
+| features | right | finds paving | precise | AUC paved vs rest |
+|---|---|---|---|---|
+| lidar brightness over the lawn | 78.5% | 62% | 87% | 0.891 |
+| lidar: + scatter, single returns, density (was in use) | 84.5% | 75% | 89% | 0.898 |
+| photo: vegetation index | 83.8% | 81% | 83% | 0.883 |
+| photo: + brightness, blueness | 84.8% | 81% | 85% | 0.905 |
+| **lidar + photo, all eight (in use from now)** | **86.6%** | **84%** | **86%** | **0.925** |
+
+So the photo alone is about as good as the lidar alone, and together they
+are better than either: 9 more points of the paving found. Against beds and
+bare ground the gain is small (0.843 -> 0.854): bare soil and gravel have no
+green, like paving, and are not bright like concrete. lib/impervious.js
+PAVED_MODEL_PHOTO; the lidar-only model stays for when the photo does not
+answer. A first 4-square run said the photo was worse (0.84): small samples
+mislead here as in the detector's findings.
+Still to measure before anything paid: a vision model on Replicate needs the
+owner's API token (a GitHub secret) and costs per image; its bar is now
+86.6% right / 84% found on these same squares.
 
 ---
 

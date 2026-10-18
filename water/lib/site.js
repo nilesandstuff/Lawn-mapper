@@ -16,6 +16,7 @@ import { analyse, spotRecords } from './lowspots.js';
 import { boundsOf, maskOf, maskBox } from './geo.js';
 import { gridFor } from './surface.js';
 import { imperviousness, weightedFlow } from './impervious.js';
+import { naipFor } from './naip.js';
 
 export const PAD = 30;
 
@@ -75,7 +76,9 @@ export async function runSite(site, io, pickCloud, { progress = () => {}, nullRu
   const share = (f) => (besideLot.length ? besideLot.filter(f).length / besideLot.length : null);
 
   // how impervious the rest is, calibrated on the traced lawn (lib/impervious.js)
-  const imp = lawnMask ? imperviousness(res, lawnMask) : null;
+  // with the USDA photo when it answers (FINDINGS H17); the lidar alone when it does not
+  const photo = lawnMask ? await naipFor(g).catch(() => null) : null;
+  const imp = lawnMask ? imperviousness(res, lawnMask, { photo }) : null;
   const wflow = imp ? weightedFlow(res, imp.runoff) : null;
   let cover = null;
   if (imp && parcelMask) {
@@ -120,7 +123,7 @@ export async function runSite(site, io, pickCloud, { progress = () => {}, nullRu
       hollowLawnM2: onLawn.filter((o) => o.spot.kind === 'hollow').reduce((t, o) => t + o.insideM2, 0),
       deepestHollowOnLawnCm: (() => { const h = onLawn.filter((o) => o.spot.kind === 'hollow'); return h.length ? Math.max(...h.map((o) => o.spot.depth)) * 100 : null; })(),
       roofOnLotM2: wallOnLot * g.cell * g.cell,
-      cover,
+      cover, pavingFromPhoto: !!imp?.withPhoto,
       besideHouse: {
         outlineCells: besideLot.length,
         towardShare: share((w) => w.fallAway < -0.01),
