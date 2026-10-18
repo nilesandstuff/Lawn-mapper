@@ -272,6 +272,31 @@ async function main() {
         + `${s.tile_merc ? 'tile cache' : s.type || '?'}${s.export_ok ? ', exports' : ''}${s.max_px ? `, max ${s.max_px}px` : ''}\n  ${s.url}`);
     } catch { /* the picture below still says what it can */ }
   }
+  /* WHAT WENT WRONG WITH THE COUNTY PHOTO WHILE IT WAS BEING MADE (owner,
+     2026-10-18: the county photo dropped out of the picker after the
+     property line moved). Every failure logged within about 150 m of the
+     map in the two days before it was saved, oldest first. */
+  for (const row of rows) {
+    const f = parse(row.frame);
+    if (!f || !Number.isFinite(f.lng) || !Number.isFinite(f.lat)) continue;
+    try {
+      /* Both ends as ISO text, the way `at` is stored: SQLite's datetime()
+         writes a space where the stored times have a T, and the two do not
+         compare. */
+      const saved = Date.parse(row.at) || Date.now();
+      const from = new Date(saved - 2 * 86400e3).toISOString();
+      const to = new Date(saved + 3600e3).toISOString();
+      const fails = query(`SELECT at, stage, kind, http, reason, svc_id, svc_title, picked, note FROM county_photo_failures
+                            WHERE lng BETWEEN ${f.lng - 0.002} AND ${f.lng + 0.002} AND lat BETWEEN ${f.lat - 0.0015} AND ${f.lat + 0.0015}
+                              AND at >= '${from}' AND at <= '${to}'
+                            ORDER BY at`);
+      console.log(`\ncounty photo failures near ${row.id} (${fails.length}):`);
+      for (const x of fails) {
+        console.log(`  ${x.at}  ${x.stage}  ${x.kind}${x.http ? ` (${x.http})` : ''}  #${x.svc_id ?? '?'} ${x.svc_title || ''}`
+          + `${x.picked ? `  [${x.picked}]` : ''}${x.reason ? `\n     ${x.reason}` : ''}${x.note ? `\n     note: ${x.note}` : ''}`);
+      }
+    } catch (err) { console.log(`\ncounty photo failures near ${row.id}: not read (${err.message})`); }
+  }
   for (const row of rows) await picture(row);
 
   console.log(`\n${'='.repeat(64)}`);
