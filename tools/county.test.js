@@ -96,6 +96,24 @@ function check(name, ok, detail = '') {
     && await probeService({ url: 'https://x/MapServer', type: 'MapServer' }, -85.6, 42.9, { fetcher: answer(png(() => [0, 0, 0, 0])) }) === false);
   check('and one that does not answer is "not known", not "no"',
     await probeService({ url: 'https://x/ImageServer', type: 'ImageServer' }, -85.6, 42.9, { fetcher: async () => { throw new Error('timeout'); } }) === null);
+  /* A tile cache that lists levels it never filled (owner, 2026-10-18: a
+     2020 cache with tiles to z19, none at z20, dropped from a lot it covers). */
+  const O = 20037508.342787;
+  const lods = [17, 18, 19, 20, 21].map((level) => ({ level, resolution: (2 * O / 256) / 2 ** level, scale: 591657527.591555 / 2 ** level }));
+  const meta = { tileInfo: { rows: 256, cols: 256, origin: { x: -O, y: O }, spatialReference: { wkid: 102100 }, lods } };
+  const asked = [];
+  const sparse = async (u) => {
+    if (u.endsWith('?f=json')) return new Response(JSON.stringify(meta), { headers: { 'content-type': 'application/json' } });
+    const level = Number(u.split('/tile/')[1].split('/')[0]);
+    asked.push(level);
+    return level >= 20 ? new Response('not here', { status: 404 }) : answer(png(ground))();
+  };
+  const found = await probeService({ url: 'https://x/MapServer', type: 'MapServer', tiled: true }, -83.47, 42.41, { fetcher: sparse });
+  check('a tile cache with nothing at the level wanted is asked one level coarser before it is called empty',
+    found === true && asked.includes(20) && asked.includes(19), `answer ${found}, levels asked ${asked.join(',')}`);
+  const none = await probeService({ url: 'https://x/MapServer', type: 'MapServer', tiled: true }, -83.47, 42.41,
+    { fetcher: async (u) => (u.endsWith('?f=json') ? new Response(JSON.stringify(meta)) : new Response('', { status: 404 })) });
+  check('and one with nothing at any level is still empty', none === false);
 }
 
 /* The newest sharp one; ten years at most (owner, 2026-10-02: Marquette's 2020 beats its 2025). */

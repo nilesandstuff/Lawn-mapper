@@ -120,6 +120,16 @@ got here. Update it whenever the in-flight run changes.*
   band of H53, not implausible shapes); self-training on the detector's own
   confident output (possible later, but H57 says added data must be
   measured, not assumed).
+- **Queue maps now get the property line out to the road (owner,
+  2026-10-18).** The volunteer and paid queues used to skip the automatic
+  stretch, so their lots stopped at the recorded right-of-way, while the
+  owner's and public maps reached the pavement. Maps finished from the
+  queues after this date carry the wider line: the frame, and the lawn a
+  tracer can draw, reach the kerb.
+  - The stretch limit also went from 6.1 m to 9 m, for corner lots whose
+    side street sits further out.
+  - Nothing is measured: a run that mixes queue maps from before and after
+    is NOT comparable on those lots without saying so.
 - **The public outlines are dropped (owner, 2026-09-29).** They were mostly the
   middle of a road, roof or pond and rarely its edge. Replaced by NOT-LAWN
   TRACES the owner draws in tinker mode (#tinker: "Trace not-lawn" beside the

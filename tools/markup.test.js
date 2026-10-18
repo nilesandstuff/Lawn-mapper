@@ -500,7 +500,9 @@ for (const page of ['admin', 'grade', 'maps', 'mywork', 'outlines', 'payouts', '
     /<th scope="row">Shade map<\/th>/.test(html) && html.includes('href="/shade"') && /Shade analyzer:/.test(html));
 }
 check('neighbours, merge and the road are on for everybody, not only tinker mode',
-  /if \(!document\.body\.classList\.contains\('job-mode'\)\) aroundParcel\(\);/.test(js) && !/if \(state\.dev\) \w*[Aa]roundParcel/.test(js));
+  /clearNeighbours\(\);\n\s*aroundParcel\(\);/.test(js) && !/if \(state\.dev\) \w*[Aa]roundParcel/.test(js));
+check('the tracing queues get the stretch to the road but never the merge buttons (owner, 2026-10-18)',
+  /if \(!pr \|\| document\.body\.classList\.contains\('job-mode'\)\) return;/.test(js));
 check('merge buttons show on the Property line step only, the dashed lines everywhere',
   /const onBoundaryStep = state\.tab === 'address' && !tabLock\('address'\);/.test(js)
   && /if \(!onBoundaryStep\) \{ el\.style\.display = 'none'; continue; \}/.test(js));

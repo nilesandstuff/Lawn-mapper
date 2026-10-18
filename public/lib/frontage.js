@@ -14,8 +14,8 @@
  *   - the nearest road lies OUTSIDE the lot, in front of the edge;
  *   - the road runs within MAX_ANGLE_DEG of parallel to it;
  *   - the gap from the edge to the road's estimated pavement edge is more
- *     than AT_ROAD_M (it is not already at the road) and at most MAX_GAP_M
- *     (so the house end of a flag lot, far back, stays where it is);
+ *     than AT_ROAD_M (it is not already at the road) and at most MAX_GAP_M,
+ *     9 m (so the house end of a flag lot, far back, stays where it is);
  *   - the strip it would add overlaps no neighbouring parcel (the lot behind
  *     another, a neighbour's front yard).
  * A run of consecutive frontage edges moves together, so a bent or curving
@@ -31,7 +31,16 @@
 
 import { makeFrame, openRing, signedArea } from './edges.js';
 
-export const MAX_GAP_M = 6.1;       // 20 ft
+/*
+ * 9 m (30 ft) since 2026-10-18; it was 6.1 m (20 ft). The owner's corner lot
+ * in Wayne County: the front moved, and the long side on the cross street,
+ * 6.1 to 7 m from the estimated pavement edge, did not ("this actually
+ * happens a lot"). A side street's right-of-way is often wider than the
+ * front's, and the gap is measured to a pavement edge ESTIMATED from the
+ * road's class. A flag lot's house end (tools/frontage.test.js, 40 m back)
+ * is still far past it, and a neighbour in the way still stops it.
+ */
+export const MAX_GAP_M = 9;
 export const AT_ROAD_M = 0.3;
 export const MIN_EDGE_M = 3;
 export const MAX_ANGLE_DEG = 30;

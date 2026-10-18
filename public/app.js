@@ -2637,12 +2637,15 @@ async function confirmLocation() {
       );
       /*
        * Neighbours, merge, and the line out to the road: for everybody since
-       * 2026-09-30 (the owner, after trying them in tinker mode). Not on the
-       * paid tracing queue, where the lot is the job's to set, not the
-       * tracer's to grow.
+       * 2026-09-30 (the owner, after trying them in tinker mode). On the
+       * tracing queues too since 2026-10-18 (owner, tracing volunteer lots:
+       * "the property line wasn't auto stretched to the road ... this
+       * actually happens a lot") -- the stretch only, never the merge
+       * buttons: the lot is still the job's to set, not the tracer's to grow
+       * by a neighbour (refreshNeighbours).
        */
       clearNeighbours();
-      if (!document.body.classList.contains('job-mode')) aroundParcel();
+      aroundParcel();
       /* THE RECORD HAS CHANGED UNDER THE JOB: the county's parcel here is
          not the one queued, and none of that size is beside it. Said plainly,
          so nobody traces the wrong property (owner, 2026-10-10). */
@@ -5980,6 +5983,20 @@ async function lookupCountyPhoto({ makeDefault = false, chosen = false, prefer =
   if (own > 0) list.unshift(...list.splice(own, 1));
   const a = own >= 0 && align && [align.east, align.north, align.scale].every(Number.isFinite) ? align : null;
   if (a) state.countyAlign = { east: a.east, north: a.north, scale: a.scale, source: a.source || 'auto', saved: true };
+  /*
+   * THE COUNTY PHOTO ALREADY ON SCREEN FOR THIS LOT IS NOT FORGOTTEN (owner,
+   * 2026-10-18). A lookup that no longer names the service showing here --
+   * its spot check failing, a slow service timing out -- left the photo up
+   * with no service behind it: "County photo" vanished from Layers, every
+   * property-line move asked the Worker for a county photo with no service
+   * and was refused, and once Mapbox was picked it could not be got back.
+   * Kept at the front of the list instead, while it is this lot's picture.
+   */
+  const onScreen = state.provider === 'county' && state.altShows === 'county' && state.countySvc;
+  const sameLot = onScreen && state.altFrame && at
+    && Math.abs(state.altFrame.lng - at.lng) * 111320 * Math.cos((at.lat * Math.PI) / 180) < 150
+    && Math.abs(state.altFrame.lat - at.lat) * 111320 < 150;
+  if (sameLot && !list.some((x) => String(x.id) === String(state.countySvc.id))) list.unshift(state.countySvc);
   /* Best first; showImagery moves down the list past any with gaps here. */
   state.countyList = list;
   state.countyNext = list.slice(1);
@@ -6617,6 +6634,10 @@ async function showImagery({ quiet = false } = {}) {
      Only Mapbox waits: a photo picked in Layers meanwhile is shown. */
   if (state.holdFrame && state.provider === 'mapbox') { hideImagery(); return; }
 
+  /* NO COUNTY PHOTO WITHOUT ITS SERVICE (owner, 2026-10-18): the Worker
+     refuses it, and a quiet refresh after a property-line move would only
+     say so. The picture already up stays; a chosen one falls back below. */
+  if (state.provider === 'county' && !state.countySvc && quiet) return;
   const info = providerInfo(state.provider);
   const before = bottomOfOurLayers();
 
@@ -10359,7 +10380,7 @@ function adoptDrawnParcel(feature) {
     state.frame = parcelFrame(bbox, FRAME_SIZE, { marginM: FRAME_MARGIN_M });
     /* The photo is a picture of the old frame (every source is one now, Mapbox
        included): fetched again for the new one when the line reaches past it. */
-    if (map.getLayer('imagery-alt') && !frameInside(state.frame, state.altFrame)) showImagery({ quiet: true });
+    if (map.getLayer('imagery-alt') && !lineInsidePicture(bbox, state.altFrame)) showImagery({ quiet: true });
   }
 
   const a = measure(state.parcel.geometry);
@@ -12472,7 +12493,8 @@ function refreshNeighbours() {
     features: live.map((nb) => ({ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [nb.ring] } })),
   });
   const pr = parcelRing();
-  if (!pr) return;
+  /* No merging on the tracing queues: the job sets the lot (aroundParcel). */
+  if (!pr || document.body.classList.contains('job-mode')) return;
   for (const nb of live) {
     const at = mergeButtonPoint(pr, nb.ring);
     if (!at) continue;
@@ -12719,23 +12741,35 @@ function setParcelRing(ring) {
      * the server, so a picture bigger than the frame is only for looking at.
      */
     if ((map.getLayer('imagery-alt') || state.provider !== 'mapbox') && !providerInfo(state.provider).tiles
-      && !frameInside(state.frame, state.altFrame)) {
+      && !lineInsidePicture(bbox, state.altFrame)) {
       clearTimeout(setParcelRing.refetch);
       setParcelRing.refetch = setTimeout(() => showImagery({ quiet: true }), 600); // not awaited: nothing here depends on it
     }
   }
 }
 
-/** True when frame `a`'s ground lies inside frame `b`'s. */
-function frameInside(a, b) {
-  if (!a || !b) return false;
-  const box = (f) => {
-    const c = frameCorners(f);
-    const lngs = c.map((p) => p[0]), lats = c.map((p) => p[1]);
-    return [Math.min(...lngs), Math.min(...lats), Math.max(...lngs), Math.max(...lats)];
-  };
-  const [aw, as, ae, an] = box(a), [bw, bs, be, bn] = box(b);
-  return aw >= bw && as >= bs && ae <= be && an <= bn;
+/*
+ * HOW FAR THE LINE MAY GO BEFORE THE PICTURE IS FETCHED AGAIN (owner,
+ * 2026-10-18: dragging the property line ten feet reloaded the county photo,
+ * and the reload failed). The picture on screen reaches FRAME_MARGIN_M past
+ * the line it was fetched for, and it is for looking at only: detection and
+ * the photo kept with a finished map are fetched on the server for the frame
+ * as it is then. So it is fetched again only when the LINE comes within this
+ * much of the picture's edge -- not, as before, whenever the line plus the
+ * whole 10 m margin reached past it, which was any outward move at all.
+ */
+const REFETCH_EDGE_M = 3;
+
+/** True when the property line's box, with REFETCH_EDGE_M around it, lies inside picture frame `pic`. */
+function lineInsidePicture(bbox, pic) {
+  if (!bbox || !pic) return false;
+  const c = frameCorners(pic);
+  const lngs = c.map((p) => p[0]), lats = c.map((p) => p[1]);
+  const midLat = (bbox[1] + bbox[3]) / 2;
+  const dLat = REFETCH_EDGE_M / 111320;
+  const dLng = REFETCH_EDGE_M / (111320 * Math.cos((midLat * Math.PI) / 180));
+  return bbox[0] - dLng >= Math.min(...lngs) && bbox[1] - dLat >= Math.min(...lats)
+    && bbox[2] + dLng <= Math.max(...lngs) && bbox[3] + dLat <= Math.max(...lats);
 }
 
 function currentEdgeRing() {

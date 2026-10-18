@@ -184,9 +184,18 @@ export async function measureService(svc, lng, lat, { fetcher = fetch } = {}) {
       const ti = m.tileInfo, size = ti.rows || 256;
       const pick = pickLevel(m, PROBE_M / cos);
       if (!pick) return { ok: null, detail: null };
-      const l = pick.byRes[pick.at];
-      const span = l.resolution * size;
-      const res = await fetcher(`${svc.url}/tile/${l.level}/${Math.floor((ti.origin.y - y) / span)}/${Math.floor((x - ti.origin.x) / span)}`, opts);
+      /* The finest level the cache REALLY holds here, as the stitcher finds
+         it (lib/tile-stitch.js): some caches list levels they never filled.
+         A 404 at the level wanted was read as "no ground here" and the
+         service dropped (owner, 2026-10-18: a 2020 cache with tiles to z19
+         and none at z20 vanished from a Wayne County lot it covers). */
+      let l = null, res = null;
+      for (let k = pick.at; k < pick.byRes.length && k < pick.at + 6; k++) {
+        l = pick.byRes[k];
+        const span = l.resolution * size;
+        res = await fetcher(`${svc.url}/tile/${l.level}/${Math.floor((ti.origin.y - y) / span)}/${Math.floor((x - ti.origin.x) / span)}`, opts);
+        if (res.status !== 404) break;
+      }
       if (res.status === 404) return { ok: false, detail: null };
       if (!res.ok) return { ok: null, detail: null };
       const b = new Uint8Array(await res.arrayBuffer());

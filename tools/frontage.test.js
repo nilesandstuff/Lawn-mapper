@@ -45,13 +45,21 @@ check('a lot already at the road is left alone', r.moved.length === 0 && r.ring 
 
 // Too far: the road is 40 m away (a big front lawn behind a wide verge is not this).
 r = extendToRoads(lot, [road('street', [-100, -44], [100, -44])], { clip });
-check('a road beyond the 20 ft limit moves nothing', r.moved.length === 0);
+check('a road beyond the 30 ft limit moves nothing', r.moved.length === 0);
 
 // Corner lot: a second street down the west side, centreline at x = -9.
 r = extendToRoads(lot, [street, road('street', [-9, -100], [-9, 100])], { clip });
 const c = xy(r.ring);
 check('a corner lot moves both frontages, and they meet at the new corner',
   r.moved.length === 2 && near(c[0], [-5, -5]) && near(c[1], [-5, 30]) && near(c[3], [20, -5]), show(r.ring));
+
+// The owner's corner lot (2026-10-18): the cross street's pavement edge 7 m
+// beyond the side line -- over the old 20 ft limit, under the new 30 ft one.
+r = extendToRoads(lot, [street, road('street', [-11, -100], [-11, 100])], { clip });
+check('a corner lot whose side street sits 7 m beyond the line still moves both frontages',
+  r.moved.length === 2 && near(xy(r.ring)[1], [-7, 30]), show(r.ring));
+r = extendToRoads(lot, [street, road('street', [-14, -100], [-14, 100])], { clip });
+check('and one 10 m beyond it moves only the front', r.moved.length === 1, show(r.ring));
 
 // A service road (driveway, alley) is not frontage.
 r = extendToRoads(lot, [road('service', [-100, -9], [100, -9])], { clip });
