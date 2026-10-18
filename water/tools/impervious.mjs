@@ -38,6 +38,7 @@ import { nodeIo } from '../lib/node-io.js';
 import { analyse } from '../lib/lowspots.js';
 import { truthFor, GROUP_NAMES } from '../lib/chesapeake.js';
 import { auc, fitLogistic } from '../lib/cells.js';
+import { naipFor, ndvi } from '../lib/naip.js';
 import { rng } from '../lib/synthetic.js';
 import { lidarAt } from '../../worker/src/shade.js';
 import { shadeRoofs } from '../lib/roofs.js';
@@ -129,6 +130,12 @@ async function one(lng, lat) {
   for (let i = 0; i < N; i++) { rI += pc.roofI[i]; rN += pc.roofN[i]; }
   const roofCells = []; for (let i = 0; i < N; i++) if (pc.roofN[i]) roofCells.push(pc.roofI[i] / pc.roofN[i]);
   const roofI = med(roofCells);
+  // the USDA photo with its near-infrared band (lib/naip.js), calibrated on this square's own turf like the brightness
+  const photo = await naipFor(g).catch(() => null);
+  const V = photo ? ndvi(photo) : null;
+  const bright = photo ? Float32Array.from(photo.red, (r, i) => (r + photo.green[i] + photo.blue[i]) / 3) : null;
+  const lawnV = V ? med(Array.from(V).filter((v, i) => truth[i] === G.turf && !res.wall[i] && Number.isFinite(v))) : NaN;
+  const lawnB = bright ? med(Array.from(bright).filter((v, i) => truth[i] === G.turf && !res.wall[i])) : NaN;
   const cells = [];
   for (let i = 0; i < N; i++) {
     if (!Number.isFinite(I[i]) || res.wall[i]) continue;
@@ -142,7 +149,9 @@ async function one(lng, lat) {
       raw: I[i], box: pc.groundP75 ? I[i] / pc.groundP75 : NaN, lawn: lawnI ? I[i] / lawnI : NaN,
       lr: Number.isFinite(roofI) && lawnI !== roofI ? (I[i] - roofI) / (lawnI - roofI) : NaN,
       // for the combined model: smoothness, single returns, return density
-      x: [Math.log(Math.max(0.02, I[i] / lawnI)), Number.isFinite(res.sd[i]) ? Math.min(0.3, res.sd[i]) : 0.05, all3[i] ? single3[i] / all3[i] : 0, Math.log(all3[i] / 9 + 0.1)],
+      x: [Math.log(Math.max(0.02, I[i] / lawnI)), Number.isFinite(res.sd[i]) ? Math.min(0.3, res.sd[i]) : 0.05, all3[i] ? single3[i] / all3[i] : 0, Math.log(all3[i] / 9 + 0.1),
+        // 4-7: the photo -- vegetation index, it against the turf's, brightness against the turf's, blueness
+        V ? V[i] : NaN, V ? V[i] - lawnV : NaN, bright ? Math.log(Math.max(1, bright[i]) / Math.max(1, lawnB)) : NaN, photo ? (photo.blue[i] - photo.red[i]) / 255 : NaN],
     });
   }
   return {
@@ -202,10 +211,20 @@ async function main() {
   const fitC = done.filter((_, j) => j % 2 === 0).flatMap((d) => d.cells), testC = done.filter((_, j) => j % 2 === 1).flatMap((d) => d.cells);
   const thin = (list, n) => list.filter((_, j) => j % Math.max(1, Math.floor(list.length / n)) === 0);
   const rowsOf = (list, keys) => thin(list, 40000).filter((c) => c.x.every(Number.isFinite)).map((c) => [keys.map((k) => c.x[k]), c.cls === 'imp' ? 1 : 0]);
-  for (const [keys, label] of [[[0], 'brightness over the lawn alone'], [[0, 1, 2, 3], 'brightness + smoothness + single returns + density']]) {
-    const m = fitLogistic(rowsOf(fitC, keys));
+  /* the same cells for every model: those with the photo too, so the comparison is like for like */
+  const both = (list) => list.filter((c) => c.x.every(Number.isFinite));
+  const fitB = both(fitC), testB = both(testC);
+  console.log(`  cells with lidar and photo: ${fitB.length} to fit, ${testB.length} to test (of ${fitC.length} / ${testC.length})`);
+  for (const [keys, label] of [[[0], 'lidar brightness over the lawn alone'], [[0, 1, 2, 3], 'lidar: brightness + smoothness + single returns + density (in use)'],
+    [[4, 5], 'photo: vegetation index'], [[4, 5, 6, 7], 'photo: vegetation index + brightness + blueness'], [[0, 1, 2, 3, 4, 5, 6, 7], 'lidar + photo, all eight']]) {
+    const m = fitLogistic(rowsOf(fitB, keys));
     const p = (c) => { let z = m.b; keys.forEach((k, j) => { z += m.w[j] * ((c.x[k] - m.mean[j]) / m.sd[j]); }); return z; };
-    const T = testC.filter((c) => c.x.every(Number.isFinite));
+    const T = testB;
+    // right how often: the share of test cells on the right side of an even-odds line
+    const right = T.filter((c) => (p(c) > 0) === (c.cls === 'imp')).length / Math.max(1, T.length);
+    const impT = T.filter((c) => c.cls === 'imp'), found = impT.filter((c) => p(c) > 0).length / Math.max(1, impT.length);
+    const called = T.filter((c) => p(c) > 0), precise = called.filter((c) => c.cls === 'imp').length / Math.max(1, called.length);
+    console.log(`  ${label}: right on ${(right * 100).toFixed(1)}% of cells, finds ${(found * 100).toFixed(0)}% of paving, ${(precise * 100).toFixed(0)}% of what it calls paving is paving`);
     console.log(`  ${label}, fitted on ${Math.ceil(done.length / 2)} squares, tested on ${Math.floor(done.length / 2)}: paved vs both ${auc(T.filter((c) => c.cls === 'imp').map(p), T.filter((c) => c.cls !== 'imp').map(p)).toFixed(3)}, paved vs pervious ${auc(T.filter((c) => c.cls === 'imp').map(p), T.filter((c) => c.cls === 'perv').map(p)).toFixed(3)}; weights ${JSON.stringify({ keys, mean: m.mean.map((v) => +v.toFixed(4)), sd: m.sd.map((v) => +v.toFixed(4)), w: m.w.map((v) => +v.toFixed(3)), b: +m.b.toFixed(3) })}`);
   }
   const lr = all.filter((x) => Number.isFinite(x.lr));
