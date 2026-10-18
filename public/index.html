@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- SEO:START (tools/home-prepare.js copies this block to the home page) -->
-<title>Lawn Mapper — AI lawn measurement from your address</title>
+<title>Lawn Mapper: AI lawn measurement from your address</title>
 <meta name="description" content="Measure your lawn's square footage from your address. County parcel maps draw your property line, high-resolution county aerial photos show the yard, and our trained AI lawn detector traces the grass using the photo, near-infrared and lidar. Fine-tune it with drawing tools, then map its sun and shade with a lidar shade map. Free.">
 <meta name="keywords" content="AI lawn detector, AI lawn measurement, measure lawn size, lawn square footage calculator, lawn size by address, yard measurement tool, property lines, parcel map, property line map by address, county parcel maps, high resolution aerial imagery, county aerial photos, orthoimagery, satellite lawn measuring, near-infrared, NDVI, multispectral, lidar lawn mapping, 3DEP lidar, tree canopy, lawn drawing tool, draw lawn outline, turf area calculator, lawn care estimate, lidar shade map, shade map, sun hours map, sun and shade analysis, daily light integral, DLI map, grass for shade, choosing grass type">
 <!--
@@ -22,7 +22,7 @@
 <link rel="canonical" href="__SITE__/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Lawn Mapper">
-<meta property="og:title" content="Lawn Mapper — AI lawn measurement from your address">
+<meta property="og:title" content="Lawn Mapper: AI lawn measurement from your address">
 <meta property="og:description" content="Your property line from county parcel maps, your yard in high-resolution county aerial photos, and a trained AI lawn detector that reads the photo, near-infrared and lidar. Square footage in a minute, fine-tuned with drawing tools, and a shade map built from lidar. Free.">
 <meta property="og:url" content="__SITE__/">
 <meta property="og:image" content="__SITE__/og-image.png?v=2">
@@ -30,7 +30,7 @@
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="Lawn Mapper: a lawn outline traced by the trained AI lawn detector, inside a dashed property line.">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Lawn Mapper — AI lawn measurement from your address">
+<meta name="twitter:title" content="Lawn Mapper: AI lawn measurement from your address">
 <meta name="twitter:description" content="Property lines from county parcel maps, high-resolution aerial photos, and a trained AI lawn detector reading the photo, near-infrared and lidar. Lawn square footage, free.">
 <meta name="twitter:image" content="__SITE__/og-image.png?v=2">
 <script type="application/ld+json">
@@ -45,8 +45,8 @@
     "Property lines from county parcel maps, for over half of US counties, checked nightly",
     "High-resolution county and state aerial photos, often sharper than satellite, alongside Mapbox, Google, Esri and USDA NAIP",
     "Trained AI lawn detector that reads several layers at once: the aerial photo, NAIP near-infrared (NDVI), USGS 3DEP lidar height, and a tree-canopy model",
-    "Manual drawing tools: trace or redraw the lawn and the property line point by point, paint with brushes, mark areas that are not lawn",
-    "Lawn under trees estimated where the photo cannot see it, and marked separately",
+    "Manual drawing tools: trace or redraw the lawn and the property line point by point, paint with brushes, cut out what is not lawn",
+    "Lawn under trees estimated from logic and lidar where the photo cannot see it",
     "Square footage and acreage, saved to an account",
     "Shade analyzer: a shade map built from USGS 3DEP lidar, whose pulses pass through the gaps in tree crowns, so trees let through the light they really do instead of being solid shapes; hours of sun and daily light (DLI) across the lawn for any day of the year, with the leaves on the local calendar, for choosing the grass type that will grow there",
     "Free, with no ads, no analytics or ad trackers, and no address sold or passed to contractors"
@@ -113,7 +113,7 @@
       "name": "How is the shade map different from other shade maps?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Most shade maps build the yard from 3D imagery, where every tree is a solid shape that blocks all the sun. The shade analyzer builds it from lidar, a laser survey whose pulses pass through the gaps between leaves and branches, so each tree lets through the light it really does. That matters most for choosing grass: it already shows each part of the lawn's light through the growing season, and suggesting the grass type for it is being built."
+        "text": "Most shade maps build the yard from 3D imagery, where every tree is a solid shape that blocks all the sun. The shade analyzer builds it from lidar, a laser survey whose pulses pass through the gaps between leaves and branches, so each tree lets through the light it really does. That matters most for choosing grass: it shows which grass types can tolerate the shade in each part of the lawn."
       }
     },
     {
@@ -1514,9 +1514,9 @@
   <section class="lp-band lp-intro" aria-labelledby="lp-intro-title">
     <h2 id="lp-intro-title">Your lawn, measured from public records and a trained AI</h2>
     <p class="lp-lead">Most lawn calculators hand you a satellite picture and a
-      pencil. Lawn Mapper starts from your county's own property line, looks at
-      the yard through several kinds of imagery at once &mdash; aerial photos,
-      near-infrared and lidar &mdash; and has its own AI trace the grass. Then it
+      pencil. Lawn Mapper starts from your county's own property line (when
+      available), looks at the yard through several kinds of imagery at once
+      (aerial photos, near-infrared and lidar) and has its own AI trace the grass. Then it
       gives you proper tools to make the outline exact. Then its shade analyzer
       maps the sun and shade on that lawn from lidar, to tell you which grass
       will grow where.</p>
@@ -1529,11 +1529,14 @@
     <ol class="lp-steps">
       <li><b>Enter an address</b> or use your location. Confirm the pin is on
         your house.</li>
-      <li><b>Check the property line.</b> Where the county publishes parcel
-        records it is drawn for you; anywhere else you trace it in a few
-        taps.</li>
+      <li><b>Check the property line (when available).</b> Where the county
+        publishes parcel records it is drawn for you; anywhere else you trace it
+        in a few taps.</li>
       <li><b>Find the lawn.</b> One press and the AI traces the grass inside the
         line, or draw it yourself. Square feet and acres update as you go.</li>
+      <li><b>Analyze shade and water.</b> Open the map in the shade analyzer to
+        see the sun and shade on every part of the lawn, and in the water map to
+        see how rain and irrigation water moves across it (coming soon).</li>
     </ol>
   </section>
 
@@ -1546,15 +1549,15 @@
         <tr><th scope="col">Feature</th><th scope="col">Lawn Mapper</th><th scope="col">Typical sites</th></tr>
       </thead>
       <tbody>
-        <tr><th scope="row">Property lines</th><td>Drawn for you from county records</td><td>You trace them, or guess</td></tr>
+        <tr><th scope="row">Property lines</th><td>Drawn for you from county records (when available)</td><td>You trace them, or guess</td></tr>
         <tr><th scope="row">Aerial photos</th><td>County surveys at 3&ndash;15&nbsp;cm, plus Mapbox, Google, Esri and NAIP</td><td>One satellite map</td></tr>
         <tr><th scope="row">Lidar</th><td>Tells lawn from trees, hedges and roofs</td><td>Not used</td></tr>
         <tr><th scope="row">Near-infrared</th><td>A living-plant signal from NAIP</td><td>Not used</td></tr>
         <tr><th scope="row">AI tracing</th><td>One press, trained on hand-traced lawns</td><td>Click every edge</td></tr>
-        <tr><th scope="row">Lawn under trees</th><td>Estimated, and marked apart</td><td>Left out</td></tr>
-        <tr><th scope="row">Drawing tools</th><td>Points, brushes, cutouts, not-lawn marks</td><td>A basic shape tool</td></tr>
+        <tr><th scope="row">Lawn under trees</th><td>Estimated based on logic and lidar when not visible</td><td>Left out</td></tr>
+        <tr><th scope="row">Drawing tools</th><td>Points, brushes, cutouts</td><td>A basic shape tool</td></tr>
         <tr><th scope="row">Shade map</th><td>Built from lidar: light passes through the gaps in each tree, as it really does</td><td>Trees as solid 3D shapes, or none</td></tr>
-        <tr><th scope="row">Choosing grass</th><td>Each spot's sun through the growing season; grass-type picks being built</td><td>Not offered</td></tr>
+        <tr><th scope="row">Choosing grass</th><td>See which grass types can tolerate the different levels of shade in your lawn</td><td>Not offered</td></tr>
         <tr><th scope="row">Price</th><td>Free</td><td>Ads, a subscription or a quote form</td></tr>
         <tr><th scope="row">Ads and tracking</th><td>None</td><td>Common</td></tr>
         <tr><th scope="row">Your address</th><td>Never sold or passed on</td><td>Often the price of the quote</td></tr>
@@ -1570,9 +1573,10 @@
       sun. Real trees don't. Lidar is a laser survey, and its pulses slip through
       the gaps between leaves and branches on their way to the ground, so they
       record how open each crown really is.</p>
-    <p>The shade analyzer builds your property in 3D from those pulses &mdash;
-      USGS's public 3DEP lidar, lined up with the aerial photo and your property
-      line &mdash; and each tree lets through the light it actually lets through.
+    <p>The shade analyzer builds your property in 3D from those pulses (USGS's
+      public 3DEP lidar, lined up with the aerial photo and your property line
+      when available), and each tree lets through the light it actually lets
+      through.
       That makes it inherently more accurate under trees, which is exactly where
       a lawn struggles.</p>
     <ul class="lp-points">
@@ -1587,11 +1591,9 @@
       <li><b>Made for choosing grass.</b> Shade, more than anything, decides
         which grass will grow where: fine fescues take shade that Bermudagrass
         and Kentucky bluegrass won't. It already shows each spot's light through
-        the growing season for cool-season and warm-season grass; recommending
-        the grass type for each part of your lawn is the part being built
-        next.</li>
+        the growing season for cool-season and warm-season grass.</li>
     </ul>
-    <p>Finish a lawn map and open it from the Workshop tab, or
+    <p>Finish a lawn map and open it from the dashboard, or
       <a href="/shade">go straight to the shade analyzer</a> with an
       address. It works wherever USGS lidar covers the address.</p>
   </section>
@@ -1681,7 +1683,7 @@
         about it.</li>
       <li><b>What is kept, said plainly.</b> Maps you save stay in your account.
         When you finish a map, its lawn outline and aerial view may be kept to
-        train the detector &mdash; without your address or your account.</li>
+        train the detector, without your address or your account.</li>
       <li><b>Paid for by people who want it to exist.</b> If it saved you a
         trip with a measuring wheel, the Support button is there.</li>
     </ul>
@@ -1714,8 +1716,8 @@
         shape that blocks all the sun. The shade analyzer builds it from lidar, a laser
         survey whose pulses pass through the gaps between leaves and branches, so each
         tree lets through the light it really does. That matters most for choosing
-        grass: it already shows each part of the lawn's light through the growing
-        season, and suggesting the grass type for it is being built.</p></details>
+        grass: it shows which grass types can tolerate the shade in each part of
+        the lawn.</p></details>
     <details class="lp-faq"><summary>What happens to my data?</summary>
       <p>Saved maps belong to your account. A finished map's lawn outline and aerial
         view may be kept to train the detector, without your address or your
