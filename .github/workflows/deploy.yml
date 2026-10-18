@@ -91,6 +91,9 @@ jobs:
         run: |
           node tools/shade-prepare.js
           if [ ! -f shade-site/wrangler.toml ]; then exit 0; fi
+          # A GITHUB_ENV line reaches only LATER steps, so the host is read back here.
+          SHADE_HOST_RESOLVED=$(grep '^SHADE_HOST_RESOLVED=' "$GITHUB_ENV" | tail -1 | cut -d= -f2-)
+          if [ -z "$SHADE_HOST_RESOLVED" ]; then echo "SHADE_STATE=not built -- no host was worked out" >> "$GITHUB_ENV"; exit 0; fi
           if npx wrangler deploy --config shade-site/wrangler.toml > shade-deploy.log 2>&1; then
             echo "SHADE_HOST=${SHADE_HOST_RESOLVED}" >> "$GITHUB_ENV"
             echo "SHADE_STATE=ON at https://${SHADE_HOST_RESOLVED} (lawnmap's /shade sends people there)" >> "$GITHUB_ENV"
