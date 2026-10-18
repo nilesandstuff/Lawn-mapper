@@ -6445,6 +6445,48 @@ never assumed. The `:example:` frame mechanism (trained on, never scored;
 workflow 14 `not_lawn: on`) is the existing way to add frames that are not
 corpus maps, and a pilot would use it. See S40 (SPECULATION).
 
+### E13. A published model that reads photo + near-infrared + height above ground at 20 cm, with building and impervious-surface classes: IGNF's FLAIR, France-trained, 2026-10-18
+*Looked up at the owner's request ("models that can take lidar and RGB ...
+to segment roofs, concrete/blacktop? Out of the box"). Nothing run here.*
+
+**IGNF/FLAIR-INC_rgbie_15cl_resnet34-unet** (Hugging Face), from the French
+mapping agency's FLAIR land cover work (arXiv 2211.12979):
+- **Input:** five channels, RGB + near-infrared + elevation. The card calls
+  the elevation the "height of building and vegetation", 8-bit, 0.2 m a
+  step: height above ground, the thing our 3DEP grids already give.
+- **Scale:** 0.2 m a pixel, 512-px patches. A ResNet-34 U-Net in
+  segmentation_models_pytorch, light enough for a CPU.
+- **Classes (15):** among them building, impervious surface, pervious
+  surface, swimming pool, herbaceous, bare soil, and two kinds of tree.
+- **Licence:** Etalab 2.0, which is open.
+- **Also published:** RGB-only and RGBI variants in the same collection.
+- **The card's IoU** on France: building ~83, impervious ~74. The same
+  figures appear on the RGB model's card, so whether they are this model's
+  own is NOT confirmed.
+
+**The catches, before anybody expects it to work:**
+- It is trained on France only, and the card warns performance may drop
+  elsewhere.
+- Our near-infrared is NAIP's at 0.6-1 m, five times coarser than its
+  input, and its height channel's encoding must be matched exactly.
+- Unmeasured here. The water session already scores paving and roofs
+  against the Chesapeake 1 m land use (SHADE-FINDINGS 24, water H18), and
+  that is the place to measure it.
+- If it holds up, its "herbaceous" class is a lawn-adjacent signal this
+  file has never had from outside: SPECULATION until measured.
+
+**Others looked at the same day, none better as an out-of-the-box fit:**
+- SAM 3 on Replicate: RGB and text only. Water H18: it found 60% of
+  paving.
+- Potsdam/Vaihingen RGB+nDSM research models: no maintained checkpoint
+  found.
+- OpenEarthMap: RGB at 0.25-0.5 m, with building, road and developed
+  classes. Weights only in third-party competition repositories.
+- Esri's pretrained building and land-cover packages: need ArcGIS, so not
+  free.
+- Microsoft and Overture building footprints: data, not a model; roofs to
+  a metre or two.
+
 ## SPECULATION — theories not yet tested
 
 Marked so they are not later quoted as findings.
