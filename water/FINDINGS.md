@@ -21,6 +21,14 @@ go in this file (or anywhere in the repository): lots are named by a label.
 
 *Kept current so a fresh session can pick up without the conversation.*
 
+- **THE WATERING PLAN (owner's vision, VISION.md, 2026-10-18) is live on the
+  admin-only site**: soil survey + ten years of weather + the daily water
+  balance per square metre -> zones, how much and how often each month, this
+  week's next watering, ground left too wet or dry; downspouts, gutters and
+  the 4 in topsoil choice saved with the map; shade from the shade map's own
+  light worker; the hillside reading (S10). H16, S8-S10; sources in
+  PARAMS-SOURCES.md. Open with the owner: root-zone depth (6 in used),
+  paving finder (NAIP vs lidar vs a paid model), Replicate token.
 - **Step 1, the low-spot map, works offline** (2026-10-16): water/lib/ reads
   a lot's lidar from the public octrees, builds a 1 m ground surface, finds
   roofs, fills low spots, traces runoff and measures the ground beside each
