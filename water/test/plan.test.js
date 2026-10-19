@@ -214,6 +214,24 @@ test('Overture: PMTiles tile ids follow the spec, a vector tile decodes, a road 
   assert.ok(b >= 90 && b <= 110, `building ${b} cells`);
 });
 
+test('zones hold still: marking a 3 x 3 m bed moves no more lawn between zones than about the bed itself', () => {
+  const res = lot({ roofs: [] });
+  const g = res.grid;
+  const corner = (x, y) => fromMerc([g.bbox[0] + x / g.k, g.bbox[1] + y / g.k]);
+  const half = (x0, x1) => [[corner(x0, 0), corner(x1, 0), corner(x1, 40), corner(x0, 40), corner(x0, 0)]];
+  const sandy = { ...loam, name: 'sand', hydgrp: 'A', profile: { horizons: [{ topCm: 0, bottomCm: 150, awc: 0.05, ksatUmS: 100 }] }, polygons: [half(0, 20)] };
+  const silty = { ...loam, name: 'silt loam', profile: { horizons: [{ topCm: 0, bottomCm: 150, awc: 0.2, ksatUmS: 2 }] }, polygons: [half(20, 40)] };
+  const days = [];
+  for (let y = 0; y < 3; y++) for (const d of summer(150)) days.push({ ...d, date: `${2023 + y}${d.date.slice(4)}` });
+  const opts = { lawnMask: new Uint8Array(g.W * g.H).fill(1), soil: { units: [sandy, silty] }, typical: days };
+  const a = waterPlan(res, opts);
+  const b = waterPlan(res, { ...opts, areas: [{ kind: 'bed', ring: [corner(30, 30), corner(33, 30), corner(33, 33), corner(30, 33)] }] });
+  assert.equal(a.zones.length, b.zones.length);
+  let moved = 0;
+  for (let i = 0; i < g.W * g.H; i++) if (a.zoneOf[i] >= 0 && b.zoneOf[i] >= 0 && a.zoneOf[i] !== b.zoneOf[i]) moved++;
+  assert.ok(moved <= 20, `${moved} cells changed zone`);
+});
+
 let failed = 0;
 for (const [name, fn] of tests) {
   try { await fn(); console.log(`ok  ${name}`); } catch (e) { failed++; console.log(`FAIL ${name}\n     ${e.stack.split('\n').slice(0, 3).join('\n     ')}`); }

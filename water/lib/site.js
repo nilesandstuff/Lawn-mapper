@@ -60,8 +60,10 @@ export async function runSite(site, io, pickCloud, { progress = () => {}, nullRu
   if (!cloud) return { error: 'no public lidar over this property', notOnAws: pick?.notOnAws || [] };
   const bbox = kept ? kept.box : boxFor(site);
   // Overture's roads, sidewalks and buildings, and the USDA photo, fetched while the lidar is read
-  const ovP = overtureFor(bbox).catch(() => null);
-  const photoP = naipFor(gridFor(bbox, site.lat)).catch(() => null);
+  // each asked up to three times: a source that drops out once must not change the map (owner 2026-10-19)
+  const thrice = async (fn) => { for (let k = 0; k < 3; k++) { const v = await fn().catch(() => null); if (v) return v; await new Promise((r) => setTimeout(r, 1500 * (k + 1))); } return null; };
+  const ovP = thrice(() => overtureFor(bbox));
+  const photoP = thrice(() => naipFor(gridFor(bbox, site.lat)));
   const { cols, flown } = await pointsIn(cloud.url, bbox, io, { progress });
   const epoch = cloud.epoch || (flown ? 1970 + flown.mid / (365.25 * 864e5) : null);
   // the noise floor is judged over the property itself, not the margin

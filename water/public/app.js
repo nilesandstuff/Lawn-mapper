@@ -29,8 +29,10 @@ import { tracedOn, lineUpAt } from '/lib/shade/traced.js';
 const $ = (s) => document.querySelector(s);
 const R = 6378137;
 const view = { photo: null, data: null, frame: null, site: null, plan: null };
-const inputs = { downspouts: [], gutters: [], topsoil: false, grass: 'cool', texture: '' };
-let mode = null, pending = null; // 'from' | 'to' (a downspout) | 'gutter'
+const inputs = { downspouts: [], gutters: [], areas: [], topsoil: false, grass: 'cool', texture: '' };
+let mode = null, pending = null; // 'from' | 'to' (a downspout) | 'gutter' | 'area'
+const added = []; // what was entered, in order, for Undo: 'spout' | 'gutter' | 'area'
+const AREA_COLOR = { deck: '#a1887f', pavers: '#bf360c', solid: '#212121', roof: '#fafafa', lawn: '#69f0ae', bed: '#6d4c41' };
 const ZONE_RGB = [[46, 134, 222], [230, 126, 34], [142, 68, 173], [22, 160, 133]];
 const HOME = document.documentElement.dataset.home || '';
 const mapId = new URLSearchParams(location.search).get('map');
@@ -171,8 +173,11 @@ function overlay(d, { flow = true, grade = true, hard = true, zones = true } = {
   const p = view.plan;
   for (let i = 0; i < W * H; i++) {
     let rgba = null;
-    if (d.wall[i]) rgba = [250, 250, 250, 170]; // roofs white (owner 2026-10-19)
-    if (hard && d.paved && !d.wall[i] && Number.isFinite(d.paved[i]) && d.paved[i] >= 0.5) rgba = [12, 12, 12, Math.round(90 + 120 * d.paved[i])]; // paving black
+    // roofs white, paving black (owner 2026-10-19); the plan's own reading once it is in, the person's marks included
+    const kind = p?.kinds ? p.kinds[i] : d.wall[i] ? 2 : hard && d.paved && Number.isFinite(d.paved[i]) && d.paved[i] >= 0.5 ? 3 : 0;
+    if (kind === 2) rgba = [250, 250, 250, 170];
+    if (hard && kind === 3) rgba = [12, 12, 12, 190];
+    if (hard && kind === 4) rgba = [150, 60, 30, 170]; // a brick or paver patio
     if (zones && p && p.zoneOf[i] >= 0) {
       rgba = [...ZONE_RGB[p.zoneOf[i] % ZONE_RGB.length], 105];
       if (p.wetAnyway[i] >= 0.1) rgba = [13, 71, 161, 200];
@@ -242,6 +247,15 @@ function draw() {
     g.strokeStyle = '#ffffff'; g.lineWidth = lw * 1.4;
     g.beginPath(); line.forEach((p, k) => { const [x, y] = at(p); if (k) g.lineTo(x, y); else g.moveTo(x, y); }); g.stroke();
     for (const p of line) { const [x, y] = at(p); g.fillStyle = '#ffffff'; g.beginPath(); g.arc(x, y, lw, 0, 7); g.fill(); }
+  }
+  // the person's marked areas, outlined in their kind's colour
+  const areas = [...inputs.areas, ...(mode === 'area' && pending?.length ? [{ kind: $('#area-kind').value, ring: pending }] : [])];
+  for (const a of areas) {
+    g.strokeStyle = AREA_COLOR[a.kind] || '#fff'; g.lineWidth = lw; g.setLineDash([lw * 2, lw]);
+    g.beginPath(); a.ring.forEach((p, k) => { const [x, y] = at(p); if (k) g.lineTo(x, y); else g.moveTo(x, y); });
+    if (a.ring.length > 2) g.closePath();
+    g.stroke(); g.setLineDash([]);
+    for (const p of a.ring) { const [x, y] = at(p); g.fillStyle = AREA_COLOR[a.kind] || '#fff'; g.beginPath(); g.arc(x, y, lw, 0, 7); g.fill(); }
   }
   const spouts = [...inputs.downspouts, ...(mode === 'to' && pending ? [{ from: pending, to: null }] : [])];
   for (const sp of spouts) {
@@ -354,6 +368,7 @@ function planReport(p) {
   legend.innerHTML = p.zones.map((z) => `${chip(z.zone)}zone ${z.zone + 1}`).join(' &nbsp; ');
   if (!p.zones.length) { $('#plan').innerHTML = '<div class="card"><h2>No lawn to plan for</h2><p class="dim">Trace the lawn in Lawn Mapper and open the map from your dashboard.</p></div>'; return; }
   const peak = (z) => z.months.reduce((a, b) => ((b.mmMonth || 0) > (a.mmMonth || 0) ? b : a), z.months[0]);
+  if (p.trouble?.length) parts.push(`<div class="card" style="border-color:var(--warn)"><h2>Not everything answered this time</h2><ul>${p.trouble.map((t) => `<li>${esc(t)}</li>`).join('')}</ul><p class="dim">Reload the page to try again; the plan below is worked out without it.</p></div>`);
   parts.push(`<div class="card"><h2>Your watering plan: ${p.zones.length} zone${p.zones.length > 1 ? 's' : ''}</h2>
     <p>Each zone below needs a different amount, or a different rhythm, to stay between too wet and too dry. Water a zone when it says, by about the depth it says; more is wasted below the roots, less leaves it short.</p>
     <p class="dim">Worked out day by day over ten years of this place's weather: rain and runoff in, the grass's use out, the soil's root zone in between. ${p.shaded ? ` Shade from trees and buildings is counted (the shade map's own light model; the lawn's middle gets about ${Math.round(p.sunShare * 100)}% of open-sky sunlight in summer).` : ' The lawn is taken as in full sun until the shade is worked out.'}${p.seasonDays ? ` The watering season is the shade map's growing season here for ${p.grass === 'warm' ? 'warm' : 'cool'}-season grass, about ${p.seasonDays} days.` : ''} Grass beside paving and sunny walls is counted as using a little more (up to 8% at the edge, an estimate from published measurements).${p.grass === 'warm' ? ' Warm-season grass is let dry a little further between waterings than cool-season.' : ''} These are likely amounts, until a soak test on your lawn confirms them. Depths are what reaches the grass; sprinklers that water unevenly need a little more.${p.standIn ? ' <strong>No lawn was traced, so this plans for all the open ground</strong>: open this from a Lawn Mapper map for your lawn alone.' : ''}</p></div>`);
@@ -429,6 +444,8 @@ async function run(site) {
   const kept = site.water || {};
   inputs.downspouts = Array.isArray(kept.downspouts) ? kept.downspouts : [];
   inputs.gutters = Array.isArray(kept.gutters) ? kept.gutters : [];
+  inputs.areas = Array.isArray(kept.areas) ? kept.areas : [];
+  added.length = 0;
   inputs.topsoil = !!kept.topsoil;
   inputs.grass = kept.grass === 'warm' ? 'warm' : 'cool';
   inputs.texture = ''; // the soil is the survey's (owner 2026-10-19: no override)
@@ -489,7 +506,7 @@ async function save() {
   try {
     const res = await fetch(`/api/maps/tool?id=${encodeURIComponent(site.mapId)}&tool=water`, {
       method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ data: { v: 1, downspouts: inputs.downspouts, gutters: inputs.gutters, topsoil: inputs.topsoil, grass: inputs.grass }, basedOn: site.at }),
+      body: JSON.stringify({ data: { v: 1, downspouts: inputs.downspouts, gutters: inputs.gutters, areas: inputs.areas, topsoil: inputs.topsoil, grass: inputs.grass }, basedOn: site.at }),
     });
     savedNote = res.ok ? 'Saved with your map.' : `Not saved (${res.status}).`;
   } catch (e) { savedNote = `Not saved: ${e.message}`; }
@@ -497,14 +514,18 @@ async function save() {
 }
 
 function setMode(m) {
-  mode = m; pending = m === 'gutter' ? [] : null;
+  mode = m; pending = m === 'gutter' || m === 'area' ? [] : null;
+  $('#add-area').classList.toggle('on', m === 'area');
+  $('#add-area').textContent = m === 'area' ? 'Done with this area' : 'Mark an area';
+  $('#area-kind').hidden = m !== 'area';
   $('#add-spout').classList.toggle('on', m === 'from' || m === 'to');
   $('#add-gutter').classList.toggle('on', m === 'gutter');
   $('#add-gutter').textContent = m === 'gutter' ? 'Done with this gutter' : 'Draw a gutter';
   $('#view').classList.toggle('picking', !!m);
   $('#hint').textContent = m === 'from' ? 'Tap the spot on the roof edge where the downspout comes down.'
     : m === 'to' ? 'Now tap where it empties onto the ground (the end of its extension, or the drain it goes into).'
-      : m === 'gutter' ? 'Tap along the eave, corner to corner, then "Done with this gutter".' : '';
+      : m === 'gutter' ? 'Tap along the eave, corner to corner, then "Done with this gutter".'
+        : m === 'area' ? 'Choose what it is, then tap its corners all the way round, then "Done with this area". It overrides what the map found there.' : '';
 }
 
 /* ZOOM AND PAN (owner 2026-10-19: "the image is static and can't be zoomed in, that makes it difficult
@@ -563,26 +584,35 @@ stageEl.addEventListener('click', (ev) => { // on the stage: it holds the pointe
   if (!mode || !view.data) return;
   const p = tapAt(ev);
   if (mode === 'from') { setMode('to'); pending = p; draw(); return; }
-  if (mode === 'to') { inputs.downspouts.push({ from: pending, to: p }); setMode(null); changed(); return; }
-  if (mode === 'gutter') { pending.push(p); draw(); }
+  if (mode === 'to') { inputs.downspouts.push({ from: pending, to: p }); added.push('spout'); setMode(null); changed(); return; }
+  if (mode === 'gutter' || mode === 'area') { pending.push(p); draw(); }
 });
 $('#add-spout').addEventListener('click', () => setMode(mode === 'from' || mode === 'to' ? null : 'from'));
+$('#add-area').addEventListener('click', () => {
+  if (mode === 'area') {
+    const ring = pending, kind = $('#area-kind').value;
+    setMode(null);
+    if (ring.length >= 3) { inputs.areas.push({ kind, ring }); added.push('area'); changed(); } else draw();
+    return;
+  }
+  setMode('area');
+});
+$('#area-kind').addEventListener('change', draw);
 $('#add-gutter').addEventListener('click', () => {
-  if (mode === 'gutter') { const line = pending; setMode(null); if (line.length >= 2) { inputs.gutters.push(line); changed(); } else draw(); return; }
+  if (mode === 'gutter') { const line = pending; setMode(null); if (line.length >= 2) { inputs.gutters.push(line); added.push('gutter'); changed(); } else draw(); return; }
   setMode('gutter');
 });
 $('#undo').addEventListener('click', () => {
   if (mode) { setMode(null); draw(); return; }
-  // the last thing entered: a gutter or a downspout, whichever is newer (gutters are kept in order too)
-  if (inputs._last === 'gutter' && inputs.gutters.length) inputs.gutters.pop();
-  else if (inputs.downspouts.length) inputs.downspouts.pop();
-  else inputs.gutters.pop();
+  // the last thing entered this visit; after a reload, the last area, then gutter, then downspout
+  const last = added.pop() || (inputs.areas.length ? 'area' : inputs.gutters.length ? 'gutter' : 'spout');
+  if (last === 'area') inputs.areas.pop(); else if (last === 'gutter') inputs.gutters.pop(); else inputs.downspouts.pop();
   changed();
 });
 $('#clear').addEventListener('click', () => {
-  if (!inputs.downspouts.length && !inputs.gutters.length) return;
-  if (!confirm('Remove every downspout and gutter on this map?')) return;
-  inputs.downspouts = []; inputs.gutters = []; setMode(null); changed();
+  if (!inputs.downspouts.length && !inputs.gutters.length && !inputs.areas.length) return;
+  if (!confirm('Remove every downspout, gutter and marked area on this map?')) return;
+  inputs.downspouts = []; inputs.gutters = []; inputs.areas = []; added.length = 0; setMode(null); changed();
 });
 $('#topsoil').addEventListener('change', () => { inputs.topsoil = $('#topsoil').checked; changed(); });
 $('#grass').addEventListener('change', () => { inputs.grass = $('#grass').value === 'warm' ? 'warm' : 'cool'; changed(); });

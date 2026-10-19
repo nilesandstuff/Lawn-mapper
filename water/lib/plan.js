@@ -25,7 +25,18 @@ import { roofRouting } from './gutters.js';
 import { buildModel, simulate, idealIrrigation, zoneIrrigation, PARAMS, WARM } from './balance.js';
 import { drawZones } from './zones.js';
 
-export const KIND = { other: 0, lawn: 1, roof: 2, paved: 3 };
+export const KIND = { other: 0, lawn: 1, roof: 2, paved: 3, pavers: 4 };
+
+/* WHAT THE OWNER MARKED (owner, 2026-10-19: a wooden deck and a hot tub read as blacktop; an evergreen row
+   as roof). An area the person outlines and names wins over every finder. */
+export const AREA_KINDS = {
+  deck: { kind: 0, label: 'deck with gaps (rain falls through)', deck: true },
+  pavers: { kind: 4, label: 'brick or paver patio' },
+  solid: { kind: 3, label: 'solid surface (hot tub, slab, shed floor)' },
+  roof: { kind: 2, label: 'roof' },
+  lawn: { kind: 1, label: 'lawn' },
+  bed: { kind: 0, label: 'garden bed or mulch' },
+};
 const DAYS_IN = [31, 28.25, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 const med = (v) => { const s = v.filter(Number.isFinite).sort((a, b) => a - b); return s.length ? s[s.length >> 1] : null; };
 const q = (v, f) => { const s = v.filter(Number.isFinite).sort((a, b) => a - b); return s.length ? s[Math.min(s.length - 1, Math.floor(f * s.length))] : null; };
@@ -39,7 +50,7 @@ const DEFAULT_SOIL = { name: 'no survey soil here (a loam assumed)', drainage: '
  *   topsoil (bool), downspouts, gutters, typical (days), week ({ days, today }), light (Float32Array | null),
  *   zoneOf (Int16Array, the user's own zones, optional), params
  */
-export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, topsoil = false, downspouts = [], gutters = [], typical, week = null, light = null, season = null, grass = 'cool', texture = null, parcelMask = null, zoneOf: userZones = null, params: given = null } = {}) {
+export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, topsoil = false, downspouts = [], gutters = [], typical, week = null, light = null, season = null, grass = 'cool', texture = null, parcelMask = null, areas = [], zoneOf: userZones = null, params: given = null } = {}) {
   // warm-season turf (owner 2026-10-18): FAO-56's p 0.5 in place of cool-season's 0.4
   const params = given || (grass === 'warm' ? { ...PARAMS, ...WARM } : PARAMS);
   const g = res.grid, N = g.W * g.H;
@@ -51,6 +62,16 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
     else if (paved && paved[i] >= 0.5) kinds[i] = KIND.paved;
     else kinds[i] = KIND.other;
   }
+  // the person's own marks, last drawn on top
+  const deckCells = new Uint8Array(N);
+  for (const a of areas || []) {
+    const t = AREA_KINDS[a?.kind];
+    if (!t || !Array.isArray(a.ring) || a.ring.length < 3) continue;
+    const ring = a.ring[0][0] === a.ring[a.ring.length - 1][0] && a.ring[0][1] === a.ring[a.ring.length - 1][1] ? a.ring : [...a.ring, a.ring[0]];
+    const m = maskOf(g, { type: 'Polygon', coordinates: [ring] });
+    for (let i = 0; i < N; i++) if (m[i]) { kinds[i] = t.kind; deckCells[i] = t.deck ? 1 : 0; }
+  }
+  const wallNow = Uint8Array.from(kinds, (k) => (k === KIND.roof ? 1 : 0));
   const units = (soil.units.length ? soil.units : [DEFAULT_SOIL]).map((u) => (texture ? withTexture(u, texture) : u));
   const soils = [];
   for (const u of units) {
@@ -66,8 +87,9 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
   if (topsoil) for (let i = 0; i < N; i++) if (kinds[i] === KIND.lawn) soilAt[i] += 1;
 
   // 2. roofs
-  const roofs = roofRouting(g, res.wall, res.runoff.filled, { downspouts, gutters });
+  const roofs = roofRouting(g, wallNow, res.runoff.filled, { downspouts, gutters });
   const model = buildModel(res, { kinds, soilAt, soils, roofTo: roofs.roofTo, light, params });
+  for (let i = 0; i < N; i++) if (deckCells[i]) model.etFactor[i] *= params.deckShelter;
 
   const years = Math.max(1, Math.round(typical.length / 365.25));
   // 3. the ideal, cell by cell

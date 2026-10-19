@@ -47,15 +47,30 @@ async function plan(inputs = {}) {
     lawnMask: kept.lawn, paved: r.impervious ? r.impervious.paved : null, soil: kept.soil,
     topsoil: !!inputs.topsoil, downspouts: inputs.downspouts || [], gutters: inputs.gutters || [],
     typical: kept.typical, week: kept.week, season: kept.season, light: kept.light, grass,
-    texture: inputs.texture || null, parcelMask: r.parcelMask || null,
+    texture: inputs.texture || null, parcelMask: r.parcelMask || null, areas: inputs.areas || [],
   });
   const out = {
-    zones: p.zones, zoneOf: p.zoneOf, wetFromWatering: p.wetFromWatering, wetAnyway: p.wetAnyway, dryShare: p.dryShare,
+    zones: p.zones, zoneOf: p.zoneOf, kinds: p.kinds, wetFromWatering: p.wetFromWatering, wetAnyway: p.wetAnyway, dryShare: p.dryShare,
     roofs: p.roofs, soil: p.soil, weather: p.weather, thisWeek: p.thisWeek, years: p.years, topsoil: p.topsoil,
     standIn: kept.standIn, seconds: (Date.now() - t0) / 1000, shaded: p.shaded, sunShare: p.sunShare,
     seasonDays: kept.season ? kept.season.size : null, grass, rainFrom: kept.rainFrom, texture: p.texture,
+    trouble: Object.values(kept.sources || {}).filter(Boolean),
   };
-  self.postMessage({ plan: out }, [out.zoneOf.buffer, out.wetFromWatering.buffer, out.wetAnyway.buffer, out.dryShare.buffer]);
+  self.postMessage({ plan: out }, [out.zoneOf.buffer, out.kinds.buffer, out.wetFromWatering.buffer, out.wetAnyway.buffer, out.dryShare.buffer]);
+}
+
+/* THE SAME MAP EVERY LOAD (owner, 2026-10-19: "the map loads a bit differently each time... there wasn't a
+   zone 3 this time"). Every outside source is asked up to three times before the plan goes without it, the
+   plan is shown once -- with the shade already in it -- and the page says which source, if any, did not
+   answer. */
+async function again(fn, tries = 3) {
+  let last;
+  for (let k = 0; k < tries; k++) {
+    try { const v = await fn(); if (v !== null && v !== undefined) return v; } catch (e) { last = e; }
+    await new Promise((r) => setTimeout(r, 1500 * (k + 1)));
+  }
+  if (last) throw last;
+  return null;
 }
 
 async function start(site, inputs) {
@@ -68,15 +83,15 @@ async function start(site, inputs) {
   const progress = (done, total) => self.postMessage({ progress: { done, total } });
   // the soil and the weather do not wait for the lidar
   const lng = site.lng, lat = site.lat;
-  const soilP = (async () => {
+  const soilP = again(() => {
     const d = 120 / 111320, e = d / Math.cos((lat * Math.PI) / 180);
-    return soilFor([lng - e, lat - d, lng + e, lat + d], (q) => sdaPost(q));
-  })().catch((err) => ({ units: [], error: err.message }));
-  const typicalP = typicalYears(lat, lng);
-  const weekP = thisWeek(lat, lng, { back: 60 }).catch(() => null);
+    return soilFor([lng - e, lat - d, lng + e, lat + d], (q) => sdaPost(q)).then((x) => (x.units.length ? x : null));
+  }).catch((err) => ({ units: [], error: err.message })).then((x) => x || { units: [], error: 'no answer' });
+  const typicalP = again(() => typicalYears(lat, lng));
+  const weekP = again(() => thisWeek(lat, lng, { back: 60 })).catch(() => null);
   // the shade map's typical year (its own reader, lib/shade/climate.js): its growing season and its light
   const y1 = new Date().getUTCFullYear() - 1;
-  const climateP = fetch(powerUrl(lng, lat, y1 - 9, y1)).then((x) => x.json()).then((p) => typicalYear(p)).catch(() => null);
+  const climateP = again(() => fetch(powerUrl(lng, lat, y1 - 9, y1)).then((x) => x.json()).then((p) => typicalYear(p))).catch(() => null);
 
   const r = await runSite(site, io, pickCloud, { progress });
   if (r.error) { self.postMessage({ error: r.error, notOnAws: r.notOnAws }); return; }
@@ -111,6 +126,22 @@ async function start(site, inputs) {
   kept.typical = typ.days; kept.rainFrom = typ.rainFrom;
   kept.week = await weekP;
   kept.climate = await climateP;
+  // the shade first, so the plan is shown once, with it (lib/shade/light-worker.js)
+  kept.shade = site.lawn?.length ? 'failed' : 'no traced lawn';
+  if (site.lawn?.length && kept.climate && typeof Worker !== 'undefined') {
+    self.postMessage({ planProgress: 'Working out the shade on the lawn…' });
+    kept.season = seasonFor(inputs.grass === 'warm' ? 'warm' : 'cool');
+    kept.light = await again(() => lawnLight(res, site, kept.climate, kept.season), 2).catch(() => null);
+    if (kept.light) kept.shade = 'ok';
+  }
+  kept.sources = {
+    soil: kept.soil.error ? `the soil survey did not answer (${kept.soil.error}); a loam is assumed` : null,
+    weather: null,
+    week: kept.week ? null : "this week's weather did not answer",
+    overture: r.summary.overture ? null : 'Overture did not answer: roofs and paving from the laser and the photo only',
+    photo: r.summary.pavingFromPhoto || !r.lawnMask ? null : 'the USDA photo did not answer: paving and roofs from the laser only',
+    shade: kept.shade === 'failed' ? 'the shade could not be worked out: the lawn is taken as in full sun' : null,
+  };
   self.postMessage({ planProgress: 'Working out the watering plan…' });
   await plan(inputs);
   // the hillside above the lawn (USGS 10 m ground, 600 m round): after the plan, so it never holds it up
@@ -123,16 +154,6 @@ async function start(site, inputs) {
     self.postMessage({ hill: hillside(dem, terrain(dem), pts) });
   } catch (e) {
     self.postMessage({ hill: { error: e.message || String(e) } });
-  }
-  // the shade on the lawn, by the shade map's own light worker: then the plan again, with it
-  if (site.lawn?.length && kept.climate && typeof Worker !== 'undefined') {
-    try {
-      self.postMessage({ planProgress: 'Working out the shade on the lawn…' });
-      kept.light = await lawnLight(res, site, kept.climate, kept.season);
-      if (kept.light) { self.postMessage({ planProgress: 'Working out the watering plan with the shade…' }); await plan(kept.inputs || inputs); }
-    } catch (e) {
-      self.postMessage({ planProgress: `The shade could not be worked out (${e.message || e}); the plan takes the lawn as in full sun.` });
-    }
   }
 }
 

@@ -39,6 +39,8 @@ export const PARAMS = {
   cnLawn: { A: 39, B: 61, C: 74, D: 80 }, // TR-55 (USDA 1986), open space in good condition
   cnOther: { A: 49, B: 69, C: 79, D: 84 }, // TR-55, open space in fair condition (beds, bare edges)
   cnPaved: 98,
+  cnPavers: { A: 76, B: 85, C: 89, D: 91 }, // brick or paver patio: TR-55's gravel, water getting through the joints
+  deckShelter: 0.3,       // the ground under a deck dries at this share of the open lawn's rate (it is shaded and covered)
   satRoomFrac: 0.1,       // water the root zone holds above field capacity before it ponds, as a share of its depth
   drainShareMax: 0.6,     // at most this share of the gravity water drains in a day (a day or two to field capacity)
   drainFactor: {          // drainage class -> how freely gravity water leaves (the survey's words, read as rates)
@@ -77,6 +79,7 @@ export function curveNumber(hydgrp, kind, wetTable, params = PARAMS) {
   if (g.includes('/')) g = wetTable ? g.split('/')[1] : g.split('/')[0];
   g = 'ABCD'.includes(g[0]) ? g[0] : 'B';
   if (kind === 'paved') return params.cnPaved;
+  if (kind === 'pavers') return params.cnPavers[g];
   return (kind === 'lawn' ? params.cnLawn : params.cnOther)[g];
 }
 
@@ -210,7 +213,7 @@ export function simulate(model, days, { irrigate = null, start = null, record = 
         const s = soils[soilAt[i]] || soils[0];
         const wt = s?.wetByMonth?.[month];
         const wetTable = wt !== null && wt !== undefined && wt <= (s?.rz?.rootCm ?? 15) + params.tableBlockCm;
-        const kind = kinds[i] === 1 ? 'lawn' : kinds[i] === 3 ? 'paved' : 'other';
+        const kind = kinds[i] === 1 ? 'lawn' : kinds[i] === 3 ? 'paved' : kinds[i] === 4 ? 'pavers' : 'other';
         cn[i] = kinds[i] === 2 ? 99 : cnSlope(curveNumber(s?.hydgrp, kind, wetTable, params), slope[i]);
         model.blocked ||= new Uint8Array(N);
         model.blocked[i] = wetTable ? 1 : 0;

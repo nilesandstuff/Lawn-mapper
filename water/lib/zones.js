@@ -11,13 +11,15 @@
  *   HOW OFTEN  that, divided by what the cell loses a day in its thirstiest
  *              month (its ideal irrigation that month, per day)
  *
- * Cells with the same pair belong in one zone. k-means on the two (as
- * logarithms, so a doubling counts the same anywhere) for k = 1..MAX_ZONES,
- * the fewest zones that explain most of the spread; then tidied on the map
- * (a majority filter, and patches under MIN_M2 joined to their neighbour).
+ * Cells with the same rhythm belong in one zone: fixed bands of HOW OFTEN (BANDS, days), so a cell
+ * changes zone only when its own need crosses an edge (owner, 2026-10-19, zones that changed between
+ * loads); then tidied on the map (a majority filter, and patches under MIN_M2 joined to their neighbour).
  */
 
 export const MAX_ZONES = 4, MIN_M2 = 12, ENOUGH = 0.25;
+/** Band edges, days between waterings in the thirstiest month; a band under MIN_SHARE of the lawn joins a
+    neighbour, and neighbours within NEAR times each other's rhythm merge. */
+export const BANDS = [2, 3, 4.5, 7, 10], MIN_SHARE = 0.08, NEAR = 1.3;
 
 function kmeans(pts, k, iters = 40) {
   // deterministic start: spread along the first feature's quantiles
@@ -62,32 +64,51 @@ export function drawZones(model, perMonth, years, { maxZones = MAX_ZONES } = {})
     depth[i] = raw[i]; interval[i] = raw[i] / perDay;
     return [Math.log(Math.max(1, raw[i])), Math.log(Math.max(0.5, interval[i]))];
   });
-  let best = kmeans(pts, 1);
-  const total = best.sse || 1;
-  // a lawn whose cells all need about the same (spread under ~10% either way) is one zone
-  for (let k = 2; k <= maxZones && total / pts.length > 0.01; k++) {
-    if (lawn.length < k * MIN_M2) break;
-    const r = kmeans(pts, k);
-    if (best.sse / total <= ENOUGH) break;
-    best = r;
+  /* FIXED BANDS, NOT CLUSTERS (owner, 2026-10-19: "the map loads a bit differently each time... there
+     wasn't a zone 3 this time"). Clustering looks at the whole lawn at once, so a small change anywhere (a
+     marked deck, a roof that came out a little different) moved every zone. Now each cell falls in a band of
+     how often it needs water in its thirstiest month -- edges at BANDS days -- and changes zone only when its
+     own need crosses an edge. Bands under MIN_SHARE of the lawn join their nearest neighbour; neighbours
+     needing water within NEAR of each other's rhythm merge; at most maxZones. */
+  const bandOf = (v) => { let k = 0; while (k < BANDS.length && v >= BANDS[k]) k++; return k; };
+  const lab = lawn.map((i) => bandOf(interval[i]));
+  let groups = Array.from({ length: BANDS.length + 1 }, (_, k) => ({ bands: [k], n: 0, logSum: 0 }));
+  lawn.forEach((i, n) => { const gp = groups[lab[n]]; gp.n++; gp.logSum += pts[n][1]; });
+  groups = groups.filter((gp) => gp.n);
+  const mean = (gp) => gp.logSum / gp.n;
+  const merge = (a, b) => ({ bands: [...a.bands, ...b.bands], n: a.n + b.n, logSum: a.logSum + b.logSum });
+  const minN = Math.max(MIN_M2 / (g.cell * g.cell), MIN_SHARE * lawn.length);
+  for (;;) {
+    if (groups.length <= 1) break;
+    // the closest pair of neighbours, by rhythm
+    let j = -1, d = Infinity;
+    for (let k = 0; k + 1 < groups.length; k++) { const dd = Math.abs(mean(groups[k + 1]) - mean(groups[k])); if (dd < d) { d = dd; j = k; } }
+    const small = groups.findIndex((gp) => gp.n < minN);
+    if (small >= 0) {
+      const left = small - 1, right = small + 1;
+      const into = left < 0 ? right : right >= groups.length ? left : Math.abs(mean(groups[left]) - mean(groups[small])) <= Math.abs(mean(groups[right]) - mean(groups[small])) ? left : right;
+      const [lo, hi] = [Math.min(small, into), Math.max(small, into)];
+      groups.splice(lo, 2, merge(groups[lo], groups[hi]));
+      continue;
+    }
+    if (groups.length > maxZones || d < Math.log(NEAR)) { groups.splice(j, 2, merge(groups[j], groups[j + 1])); continue; }
+    break;
   }
-  // order zones by how often they need water (most often first)
-  const k = best.cent.length;
-  const rank = best.cent.map((c, j) => [c[1], j]).sort((a, b) => a[0] - b[0]).map(([, j]) => j);
-  const remap = new Int16Array(k); rank.forEach((j, r) => { remap[j] = r; });
-  lawn.forEach((i, n) => { zoneOf[i] = remap[best.lab[n]]; });
+  const k = groups.length;
+  const zoneOfBand = new Int16Array(BANDS.length + 1);
+  groups.forEach((gp, z) => { for (const b0 of gp.bands) zoneOfBand[b0] = z; });
+  lawn.forEach((i, n) => { zoneOf[i] = zoneOfBand[lab[n]]; });
   tidy(g, zoneOf, k);
-  // a zone left under MIN_M2 in all (scattered single cells) joins the zone whose need is nearest
+  // a zone left under MIN_M2 in all (scattered single cells) joins the zone whose rhythm is nearest
   const count = new Array(k).fill(0);
   for (const i of lawn) count[zoneOf[i]]++;
   const big = [...Array(k).keys()].filter((z) => count[z] * g.cell * g.cell >= MIN_M2);
   if (big.length) {
-    const cent = best.cent;
     lawn.forEach((i, n) => {
       if (big.includes(zoneOf[i])) return;
-      let b = big[0], bd = Infinity;
-      for (const z of big) { const c = cent[rank[z]]; const d = (pts[n][0] - c[0]) ** 2 + (pts[n][1] - c[1]) ** 2; if (d < bd) { bd = d; b = z; } }
-      zoneOf[i] = b;
+      let b1 = big[0], bd = Infinity;
+      for (const z of big) { const dd = Math.abs(pts[n][1] - mean(groups[z])); if (dd < bd) { bd = dd; b1 = z; } }
+      zoneOf[i] = b1;
     });
   }
   // renumber to the zones that survived

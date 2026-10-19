@@ -96,6 +96,15 @@
     <div class="tools">
       <button type="button" id="add-spout">Add a downspout</button>
       <button type="button" id="add-gutter">Draw a gutter</button>
+      <button type="button" id="add-area">Mark an area</button>
+      <select id="area-kind" hidden aria-label="What the area is">
+        <option value="deck">deck with gaps (rain falls through)</option>
+        <option value="pavers">brick or paver patio</option>
+        <option value="solid">solid surface (hot tub, slab, shed floor)</option>
+        <option value="roof">roof</option>
+        <option value="lawn">lawn</option>
+        <option value="bed">garden bed or mulch</option>
+      </select>
       <button type="button" class="plain" id="undo">Undo</button>
       <button type="button" class="plain" id="clear">Clear</button>
     </div>
