@@ -25,6 +25,10 @@ import { frameOfBox } from './lidar-photo.js';
 
 const SITE = process.env.SITE || 'https://lawnmap.nilesandstuff.com';
 const OFF_M = 0.3; // a patch further than this from one shift's prediction is "off"
+/* register.js keeps as inliers only the patches within TOL_M of the fitted model, so a distortion
+   bigger than that would be thrown out as outliers and never show in the field. 1 m (the first run
+   used register.js's 0.3 m default and could not have seen more than that). */
+const TOL_M = Number(process.env.TOL_M || 1.0);
 
 const median = (xs) => { const s = xs.filter(Number.isFinite).sort((a, b) => a - b); return s.length ? (s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2) : NaN; };
 const num = (x, d = 2) => (Number.isFinite(x) ? x.toFixed(d) : '-');
@@ -108,6 +112,10 @@ function picture(PNG, frame, r, file) {
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const s = (Math.min(frame.height - 1, y * K) * frame.width + Math.min(frame.width - 1, x * K)) * 4, o = (y * w + x) * 4; out.data[o] = frame.data[s]; out.data[o + 1] = frame.data[s + 1]; out.data[o + 2] = frame.data[s + 2]; out.data[o + 3] = 255; }
   const v = r.vectors.filter((p) => p.inlier);
   if (!v.length) { writeFileSync(file, PNG.sync.write(out)); return; }
+  const gw0 = r.gridW, gh0 = r.gridH;
+  const dot0 = (x, y, rgb) => { x = Math.round(x); y = Math.round(y); if (x >= 0 && y >= 0 && x < w && y < h) { const o = (y * w + x) * 4; out.data[o] = rgb[0]; out.data[o + 1] = rgb[1]; out.data[o + 2] = rgb[2]; } };
+  // the outliers first, grey: matched to something, but not within TOL_M of the model
+  for (const p of r.vectors) if (!p.inlier) { const cx = (p.x / gw0) * w, cy = (p.y / gh0) * h; for (let d = -2; d <= 2; d++) { dot0(cx + d, cy + d, [160, 160, 160]); dot0(cx + d, cy - d, [160, 160, 160]); } }
   const mx = median(v.map((p) => p.dx)), my = median(v.map((p) => p.dy));
   const gw = r.gridW, gh = r.gridH;
   const dot = (x, y, rgb) => { x = Math.round(x); y = Math.round(y); if (x >= 0 && y >= 0 && x < w && y < h) { const o = (y * w + x) * 4; out.data[o] = rgb[0]; out.data[o + 1] = rgb[1]; out.data[o + 2] = rgb[2]; } };
@@ -139,7 +147,7 @@ async function main() {
       if (Math.abs(mb.width / mb.height - frame.width / frame.height) > 0.02) { skipped[id] = 'Mapbox answered a different shape'; continue; }
       const k = Math.cos((frameOfBox(box, 1, 1).lat * Math.PI) / 180);
       const widthM = (box[2] - box[0]) * k;
-      const r = registerImages(mb, frame, widthM, { cellM: 0.2, reachM: 6 });
+      const r = registerImages(mb, frame, widthM, { cellM: 0.2, reachM: 6, tolM: TOL_M });
       // the working grid, for the field: register.js caps it at 700 cells across
       let cell = 0.2, gw = Math.round(widthM / cell); if (gw > 700) { cell = widthM / 700; gw = 700; }
       const gh = Math.max(16, Math.round((gw * mb.height) / mb.width));
@@ -150,6 +158,8 @@ async function main() {
       const row = {
         id, source: sources[id] || 'unknown', widthM, model: r.model, confident: r.confident, why: r.why, inliers: r.inliers, patches: r.patches,
         offsetM: r.offsetM, rmsM: r.rmsM, scale: scaleOf, rotationDeg: rot, models: r.models, ...field,
+        // patches that matched something but sit more than TOL_M from the model: vegetation that differs, or distortion beyond the tolerance
+        outlierShare: r.patches ? (r.patches - r.inliers) / r.patches : NaN,
       };
       rows.push(row);
       if (rows.length <= pictures) picture(PNG, frame, r, join(dirs.out, 'pictures', `${id.replace(/[^\w.-]+/g, '_')}.png`));
@@ -172,8 +182,9 @@ async function main() {
     console.log(`  the field, beyond one shift: side-to-side median ${num(median(ok.map((r) => r.sideToSideM)))} m; over 0.3 m on ${ok.filter((r) => r.sideToSideM > 0.3).length}, over 0.5 m on ${ok.filter((r) => r.sideToSideM > 0.5).length}, over 1 m on ${ok.filter((r) => r.sideToSideM > 1).length}`);
     console.log(`  stretch: median |EW| ${num(100 * median(ok.map((r) => Math.abs(r.stretchEW))), 2)}%, |NS| ${num(100 * median(ok.map((r) => Math.abs(r.stretchNS))), 2)}%; lots over 0.5% either way ${ok.filter((r) => Math.abs(r.stretchEW) > 0.005 || Math.abs(r.stretchNS) > 0.005).length} (0.5% over 40 m is 0.2 m)`);
     console.log(`  patches off by more than ${OFF_M} m from one shift: median share ${pct(median(ok.map((r) => r.offShare)))}; rms about one shift median ${num(median(ok.map((r) => r.rmsM)))} m`);
+    console.log(`  matched patches thrown out (over ${TOL_M} m from the model): median share ${pct(median(set.map((r) => r.outlierShare)))}; lots with over half thrown out ${set.filter((r) => r.outlierShare > 0.5).length}`);
   }
-  console.log('\nPictures: each agreeing patch\'s offset less the lot\'s one shift, drawn 20x (yellow; red when over 0.3 m).');
+  console.log(`\nPictures: each agreeing patch's offset less the lot's one shift, drawn 20x (yellow; red when over ${OFF_M} m); grey crosses = matched patches more than ${TOL_M} m from the model, left out.`);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) main().catch((err) => { console.error(err); process.exit(1); });
