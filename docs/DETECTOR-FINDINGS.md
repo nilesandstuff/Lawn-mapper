@@ -38,10 +38,11 @@ changes and results from different corpora are not comparable.
 *Kept current so a fresh session can pick up without the conversation that
 got here. Update it whenever the in-flight run changes.*
 
-- **OVERTURE (2026-10-19, H101):** its buildings, roads and sidewalks line up
-  within about a metre (workflow 37) and are in the editor as a tracing layer.
-  As a never-lawn rule they would cost 0.9% of the traced lawn; what they would
-  gain on THE PLAN's output is not measured yet.
+- **OVERTURE AND THE PHOTO (2026-10-19, H101, H102):** Overture lines up with
+  the LIDAR within about a metre, but NOT consistently with the PHOTO -- a
+  Mapbox frame can sit metres off both (H101's correction), which also puts
+  the lidar inputs off the photo. Being measured per lot (workflow 37, photo
+  fit); the editor's Overture layer is drawn as published until it is fixed.
 - **THE LIVE MODEL HAS A NAME AND A VERSION HISTORY (owner, 2026-10-06):**
   "Turf Trace - alpha version 2 (79% accuracy)". Every release ships with a
   row in worker/src/model-versions.js: the next version number, the date,
@@ -894,7 +895,7 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
-### H101. Overture's buildings sit under a metre from the lidar's roofs, all of a lot's buildings off together; only 0.9% of the traced lawn lies under an Overture building, road or sidewalk band, but two lots lose 11% and 14% -- 2026-10-19
+### H101. Overture's buildings sit under a metre from the LIDAR's roofs, all of a lot's buildings off together; only 0.9% of the traced lawn lies under an Overture building, road or sidewalk band, but two lots lose 11% and 14%. NOT a measurement against the PHOTO -- see the correction below -- 2026-10-19
 *Workflow 37, run 39288686018 (101 of the 104 locked lots; 3 have no lidar).
 Owner: Overture "would be good info for every stage... the detector, the
 grass under canopy guesser, and manual tracing", but "the 'if it lines up'
@@ -945,10 +946,18 @@ the water session's water/lib/overture.js):
   all. Where both see the house, the shift is a metre or less and
   the same for every building on the lot, so Overture's outline is not leaning
   or scattered per building.
-- The photo's own offset from the lidar is about half a metre (H63/H64), so
-  Overture on the PHOTO is expected within a metre or so at the ground. A roof
-  in the photo still leans away from its outline by its height; that is the
-  photo, not Overture.
+- **CORRECTION, same day (owner: "Your points about the fit are completely
+  ignoring the imagery... the imagery is not consistently lining up with the
+  overture shapes").** This entry first said Overture should land on the
+  photo within about a metre because "the photo's own offset from the lidar
+  is about half a metre (H63/H64)". H63/H64 measured county photos against
+  MAPBOX's photo; nothing has ever measured a photo against the lidar or
+  against Overture. On a first look at three live Mapbox frames, Overture's
+  outline sat 3.4 m (a Fargo locked lot, where it is 0.7 m from the lidar)
+  and 1.3 m (North Carolina) from the house in the photo. So the photo, not
+  Overture, is the part that is off there, and the lidar layers the decoder
+  reads -- laid on the frame's box -- are off from the photo by as much.
+  Measured on the locked lots in H102.
 - 0.9% of all traced lawn is the COST side of a never-lawn rule. The gain side
   (how much of the detector's wrong lawn lies under Overture) is not measured
   here.
