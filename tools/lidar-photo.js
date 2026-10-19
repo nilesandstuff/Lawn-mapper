@@ -71,7 +71,7 @@ export function quarterPattern(fit, widthM, heightM) {
   return out;
 }
 
-async function cloudFor(id, box, plan) {
+export async function cloudFor(id, box, plan) {
   const p = plan[id];
   if (p) {
     const tiles = typeof p.url === 'string' && p.url.startsWith('tiles://');

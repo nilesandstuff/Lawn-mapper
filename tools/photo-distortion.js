@@ -21,7 +21,11 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { registerImages } from '../public/lib/register.js';
-import { frameOfBox } from './lidar-photo.js';
+import { frameOfBox, cloudFor } from './lidar-photo.js';
+import { gridOver, rasterise, fillGaps } from '../public/shade/grid.js';
+import { dilate } from '../public/shade/align.js';
+import { pointsIn } from '../water/lib/ept.js';
+import { nodeIo } from '../water/lib/node-io.js';
 
 const SITE = process.env.SITE || 'https://lawnmap.nilesandstuff.com';
 const OFF_M = 0.3; // a patch further than this from one shift's prediction is "off"
@@ -29,6 +33,13 @@ const OFF_M = 0.3; // a patch further than this from one shift's prediction is "
    bigger than that would be thrown out as outliers and never show in the field. 1 m (the first run
    used register.js's 0.3 m default and could not have seen more than that). */
 const TOL_M = Number(process.env.TOL_M || 1.0);
+/* GROUND AND ROOFS APART (2026-10-19, the first run's pictures): on a county leaf-off photo against
+   leaf-on Mapbox, the patches that agree are mostly ROOFS, and a roof leans differently in each
+   photo. Their offsets are lean, not ground. So each patch is sorted by the lidar: tall (1.5 m+
+   above the ground, with a 3 m margin for the lean) or open ground, and the field is reported for
+   each. The ground field is the owner's question; the tall field is how far the two photos' roofs
+   and crowns sit apart. */
+const TALL_M = 1.5, LEAN_M = 3;
 
 const median = (xs) => { const s = xs.filter(Number.isFinite).sort((a, b) => a - b); return s.length ? (s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2) : NaN; };
 const num = (x, d = 2) => (Number.isFinite(x) ? x.toFixed(d) : '-');
@@ -65,6 +76,21 @@ export function residualField(vectors, cellM, w, h) {
     rmsM: Math.sqrt(res.reduce((a, r) => a + r.e * r.e + r.n * r.n, 0) / res.length),
     thirds: { west: [mean(west, 'e'), mean(west, 'n'), west.length], east: [mean(east, 'e'), mean(east, 'n'), east.length], north: [mean(north, 'e'), mean(north, 'n'), north.length], south: [mean(south, 'e'), mean(south, 'n'), south.length] },
   };
+}
+
+/** A 1 m grid over the box: 1 where the lidar is tall (or unknown under a roof), grown by LEAN_M. null without lidar. */
+async function tallMask(id, box, io) {
+  const cloud = await cloudFor(id, box, {}).catch(() => null);
+  if (!cloud) return null;
+  const { cols } = await pointsIn(cloud.url, box, io);
+  if (!cols || cols.n < 500) return null;
+  const lat = frameOfBox(box, 1, 1).lat;
+  const g = gridOver(box, 1, lat);
+  const r = rasterise(cols, g);
+  const ground = fillGaps(r.zGround, g.w, g.h, 3), top = fillGaps(r.zTop, g.w, g.h, 2);
+  const tall = new Uint8Array(g.w * g.h);
+  for (let i = 0; i < tall.length; i++) if (Number.isNaN(ground[i]) || top[i] - ground[i] >= TALL_M) tall[i] = 1;
+  return { mask: dilate(tall, g.w, g.h, LEAN_M), w: g.w, h: g.h, cloud: cloud.name };
 }
 
 function rgba(PNG, buf) { const p = PNG.sync.read(buf); return { data: p.data, width: p.width, height: p.height }; }
@@ -122,7 +148,7 @@ function picture(PNG, frame, r, file) {
   for (const p of v) {
     const cx = (p.x / gw) * w, cy = (p.y / gh) * h, ex = (p.dx - mx) * 20 * (w / gw), ey = (p.dy - my) * 20 * (h / gh);
     const off = Math.hypot((p.dx - mx) * r.cellM, (p.dy - my) * r.cellM) > OFF_M;
-    for (let t = 0; t <= 1; t += 0.02) dot(cx + ex * t, cy + ey * t, off ? [255, 50, 50] : [255, 255, 60]);
+    for (let t = 0; t <= 1; t += 0.02) dot(cx + ex * t, cy + ey * t, p.tall ? (off ? [255, 60, 255] : [120, 200, 255]) : (off ? [255, 50, 50] : [255, 255, 60]));
     for (let d = -3; d <= 3; d++) { dot(cx + d, cy, [255, 255, 255]); dot(cx, cy + d, [255, 255, 255]); }
   }
   writeFileSync(file, PNG.sync.write(out));
@@ -138,7 +164,8 @@ async function main() {
   const ids = Object.keys(boxes).filter((id) => !id.includes(':example:') && existsSync(join(dirs.frames, `${id}.png`))).sort();
   const pictures = Number(process.env.PICTURES || 40);
   const rows = [], skipped = {};
-  console.log(`${ids.length} lots; each frame's photo registered to Mapbox's photo of the same box (public/lib/register.js), patch by patch\n`);
+  const io = nodeIo();
+  console.log(`${ids.length} lots; each frame's photo registered to Mapbox's photo of the same box (public/lib/register.js), patch by patch; the lidar sorts each patch into open ground or tall\n`);
   for (const id of ids) {
     const box = boxes[id];
     try {
@@ -153,6 +180,17 @@ async function main() {
       const gh = Math.max(16, Math.round((gw * mb.height) / mb.width));
       r.gridW = gw; r.gridH = gh;
       const field = residualField(r.vectors, r.cellM, gw, gh);
+      // ground and tall apart, by the lidar
+      const tm = await tallMask(id, box, io).catch(() => null);
+      let groundField = null, tallField = null, nGround = NaN, nTall = NaN;
+      if (tm) {
+        const isTall = (p) => { const c = Math.min(tm.w - 1, Math.floor((p.x / gw) * tm.w)), rr = Math.min(tm.h - 1, Math.floor((p.y / gh) * tm.h)); return tm.mask[rr * tm.w + c] === 1; };
+        for (const p of r.vectors) p.tall = isTall(p);
+        const gv = r.vectors.filter((p) => !p.tall), tv = r.vectors.filter((p) => p.tall);
+        nGround = gv.filter((p) => p.inlier).length; nTall = tv.filter((p) => p.inlier).length;
+        groundField = residualField(gv, r.cellM, gw, gh);
+        tallField = residualField(tv, r.cellM, gw, gh);
+      }
       // A maps ref pixels to mov pixels; on the ground, identity is mov.width / ref.width, so the scale is read against that
       const A = r.A, scaleOf = A ? Math.sqrt(Math.abs(A[0] * A[4] - A[1] * A[3])) * (mb.width / frame.width) : NaN, rot = A ? (Math.atan2(A[3], A[0]) * 180) / Math.PI : NaN;
       const row = {
@@ -160,10 +198,13 @@ async function main() {
         offsetM: r.offsetM, rmsM: r.rmsM, scale: scaleOf, rotationDeg: rot, models: r.models, ...field,
         // patches that matched something but sit more than TOL_M from the model: vegetation that differs, or distortion beyond the tolerance
         outlierShare: r.patches ? (r.patches - r.inliers) / r.patches : NaN,
+        lidar: !!tm, nGround, nTall, ground: groundField, tall: tallField,
+        // the two photos' roofs and crowns apart: the tall patches' median offset less the ground patches'
+        tallVsGroundM: groundField?.shiftM && tallField?.shiftM ? Math.hypot(tallField.shiftM[0] - groundField.shiftM[0], tallField.shiftM[1] - groundField.shiftM[1]) : NaN,
       };
       rows.push(row);
       if (rows.length <= pictures) picture(PNG, frame, r, join(dirs.out, 'pictures', `${id.replace(/[^\w.-]+/g, '_')}.png`));
-      console.log(`  ${String(rows.length).padStart(3)} ${id.slice(0, 26).padEnd(26)} ${(row.source || '?').padEnd(7)} ${String(r.inliers).padStart(3)}/${String(r.patches).padEnd(3)} patches  ${(r.model || '-').padEnd(11)} shift ${num(r.offsetM?.east)} E ${num(r.offsetM?.north)} N  scale ${num(100 * (scaleOf - 1), 1)}% rot ${num(rot, 2)}°  field: stretch EW ${num(100 * field.stretchEW, 2)}% NS ${num(100 * field.stretchNS, 2)}%, side-to-side ${num(field.sideToSideM)} m, off ${pct(field.offShare)}, rms ${num(field.rmsM)} m  ${r.confident ? '' : `(${r.why})`}`);
+      console.log(`  ${String(rows.length).padStart(3)} ${id.slice(0, 26).padEnd(26)} ${(row.source || '?').padEnd(7)} ${String(r.inliers).padStart(3)}/${String(r.patches).padEnd(3)} patches  ${(r.model || '-').padEnd(11)} shift ${num(r.offsetM?.east)} E ${num(r.offsetM?.north)} N  scale ${num(100 * (scaleOf - 1), 1)}% rot ${num(rot, 2)}°  all: side-to-side ${num(field.sideToSideM)} m, off ${pct(field.offShare)}; GROUND ${Number.isFinite(nGround) ? `${nGround} patches: stretch EW ${num(100 * (groundField?.stretchEW ?? NaN), 2)}% NS ${num(100 * (groundField?.stretchNS ?? NaN), 2)}%, side-to-side ${num(groundField?.sideToSideM)} m, off ${pct(groundField?.offShare)}` : 'no lidar'}; TALL ${Number.isFinite(nTall) ? `${nTall} patches, ${num(row.tallVsGroundM)} m from the ground's shift` : '-'}  ${r.confident ? '' : `(${r.why})`}`);
     } catch (err) {
       skipped[id] = String(err?.message || err).slice(0, 100);
       console.log(`  --- ${id.slice(0, 26).padEnd(26)} failed: ${skipped[id]}`);
@@ -183,8 +224,12 @@ async function main() {
     console.log(`  stretch: median |EW| ${num(100 * median(ok.map((r) => Math.abs(r.stretchEW))), 2)}%, |NS| ${num(100 * median(ok.map((r) => Math.abs(r.stretchNS))), 2)}%; lots over 0.5% either way ${ok.filter((r) => Math.abs(r.stretchEW) > 0.005 || Math.abs(r.stretchNS) > 0.005).length} (0.5% over 40 m is 0.2 m)`);
     console.log(`  patches off by more than ${OFF_M} m from one shift: median share ${pct(median(ok.map((r) => r.offShare)))}; rms about one shift median ${num(median(ok.map((r) => r.rmsM)))} m`);
     console.log(`  matched patches thrown out (over ${TOL_M} m from the model): median share ${pct(median(set.map((r) => r.outlierShare)))}; lots with over half thrown out ${set.filter((r) => r.outlierShare > 0.5).length}`);
+    const gk = set.filter((r) => r.ground && r.ground.patches >= 4 && Number.isFinite(r.ground.sideToSideM));
+    console.log(`  OPEN GROUND ONLY (${gk.length} lots with 4+ agreeing ground patches): side-to-side median ${num(median(gk.map((r) => r.ground.sideToSideM)))} m; over 0.3 m on ${gk.filter((r) => r.ground.sideToSideM > 0.3).length}, over 0.5 m on ${gk.filter((r) => r.ground.sideToSideM > 0.5).length}; stretch median |EW| ${num(100 * median(gk.map((r) => Math.abs(r.ground.stretchEW))), 2)}% |NS| ${num(100 * median(gk.map((r) => Math.abs(r.ground.stretchNS))), 2)}%; patches off by more than ${OFF_M} m median ${pct(median(gk.map((r) => r.ground.offShare)))}`);
+    const tk = set.filter((r) => Number.isFinite(r.tallVsGroundM));
+    console.log(`  ROOFS AND CROWNS against the ground (${tk.length} lots): the tall patches sit a median ${num(median(tk.map((r) => r.tallVsGroundM)))} m from where the ground says (lean differing between the two photos); over 0.5 m on ${tk.filter((r) => r.tallVsGroundM > 0.5).length}, over 1 m on ${tk.filter((r) => r.tallVsGroundM > 1).length}`);
   }
-  console.log(`\nPictures: each agreeing patch's offset less the lot's one shift, drawn 20x (yellow; red when over ${OFF_M} m); grey crosses = matched patches more than ${TOL_M} m from the model, left out.`);
+  console.log(`\nPictures: each agreeing patch's offset less the lot's one shift, drawn 20x (ground yellow, red when over ${OFF_M} m; tall blue, magenta when over); grey crosses = matched patches more than ${TOL_M} m from the model, left out.`);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) main().catch((err) => { console.error(err); process.exit(1); });
