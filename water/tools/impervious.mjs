@@ -170,6 +170,7 @@ async function one(lng, lat) {
       overture: ovm.building,
       eitherOverture: Uint8Array.from(res.ownRoofs, (v, i) => (v || shade.roof[i] || ovm.building[i] ? 1 : 0)),
       eitherAndOverture: Uint8Array.from(res.ownRoofs, (v, i) => ((v || shade.roof[i]) && ovm.building[i] ? 1 : 0)),
+      overtureOrBoth: Uint8Array.from(res.ownRoofs, (v, i) => (ovm.building[i] || (v && shade.roof[i]) ? 1 : 0)),
     } : {}),
   };
   const near = (mask, i) => {
@@ -292,7 +293,7 @@ async function main() {
   console.log(`  roofs (cells; "Structures" is the truth): found ${Math.round(100 * R.tp / (R.tp + R.fn))}% of roof cells, ${Math.round(100 * R.tp / (R.tp + R.fp))}% of what it calls roof is roof, IoU ${(R.tp / (R.tp + R.fp + R.fn)).toFixed(2)}`);
   console.log('  roof finders, pooled (exact | within 1 m):       found      precise     IoU');
   const label = { water: 'water map (surface.js)', shadeFlat: 'shade: flat-roof rule alone', shadeSolid: 'shade: + solid at the grass, + eaves', shade: 'shade: + tree-vs-roof patch test (full)', either: 'either says roof', both: 'both say roof', waterNoEvergreen: 'water map, less what shade calls evergreen',
-    overture: 'Overture buildings alone', eitherOverture: 'either, or an Overture building', eitherAndOverture: 'either, and an Overture building' };
+    overture: 'Overture buildings alone', eitherOverture: 'either, or an Overture building', eitherAndOverture: 'either, and an Overture building', overtureOrBoth: 'Overture, or both lidar finders agree' };
   const names = [...new Set(done.flatMap((d) => Object.keys(d.roofScores)))];
   const withOv = done.filter((d) => d.roofScores.overture);
   for (const [name, list, tag] of [...names.map((n) => [n, done.filter((d) => d.roofScores[n]), '']), ['either', withOv, ' (Overture squares)']]) {
