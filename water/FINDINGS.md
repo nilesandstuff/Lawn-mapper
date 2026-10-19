@@ -30,7 +30,8 @@ go in this file (or anywhere in the repository): lots are named by a label.
   PARAMS-SOURCES.md. Root zone 12 in, cool/warm season (owner). Paving
   heat as an estimate (S8). SAM 3 on Replicate scored for paving and
   lost to the free lidar + photo (H18); so did IGNF's FLAIR, with or without
-  lidar height (H19).
+  lidar height (H19). Overture's buildings (with roofs both lidar finders
+  agree on) and its road and sidewalk bands are on top since 2026-10-19 (H20).
 - **Step 1, the low-spot map, works offline** (2026-10-16): water/lib/ reads
   a lot's lidar from the public octrees, builds a 1 m ground surface, finds
   roofs, fills low spots, traces runoff and measures the ground beside each
@@ -694,6 +695,43 @@ roof called paving), likely because US NAIP infrared is not French IRC
 photography. Nothing changes in the map. CAVEAT, as in H18: NAIP is softer
 than the main site's Mapbox photos (the core's run used ~10 cm Mapbox and got
 paving 73-79% found); a runner cannot fetch Mapbox (the lawnmap 403).
+
+---
+
+### H20. Overture's buildings, roads and sidewalks on top (water session, 2026-10-19)
+
+Owner, 2026-10-19: Overture "even shows sidewalks ... let's use that on top of
+current system. It doesn't show driveways, so we'll still have to use the
+current system to find driveways." lib/overture.js reads the latest release's
+PMTiles (transportation and buildings themes; STAC catalog for the release;
+range requests, open to browsers, about 1.5 s a lot) with no library; a road
+segment becomes a paved band of a typical width for its class (residential
+8 m, sidewalk/footway 1.5 m, service 4 m...). Scored on the 23 Chesapeake
+squares as H12/H17 (roofs: every judged cell, exact | within 1 m; paving: the
+H17 test cells, 162,288):
+
+| roofs | found | precise | IoU |
+|---|---|---|---|
+| lidar finders, either (was in use) | 91% / 98% | 77% / 86% | 0.71 |
+| Overture buildings alone | 89% / 96% | 89% / 96% | 0.79 |
+| either, and Overture | 84% / 95% | 94% / 99% | 0.80 |
+| either, or Overture | 96% / 99% | 74% / 85% | 0.72 |
+| **Overture, or both lidar finders agree (in use)** | **92% / 98%** | **85% / 94%** | **0.79** |
+
+| paving | right | finds | precise |
+|---|---|---|---|
+| lidar + photo against the lawn (H17) | 85.2% | 82% | 85% |
+| Overture road and sidewalk bands alone | 68.9% | 35% | 90% |
+| **in use OR an Overture band (in use)** | **85.5%** | **85%** | **83%** |
+| in use + the bands as two more inputs | 85.3% | 82% | 85% |
+
+90% of the cells under an Overture band are paved in the land use. The bands
+add little on these squares (most of their road was found already); they
+matter most under trees, where the laser and photo see least. Overture had 49
+driveways round one Michigan test lot, so some driveways come from it too.
+Band widths are a first cut, not tuned. Also live since 2026-10-19: a saved
+map is drawn on the photo it was saved with (the county photo and the
+editor's line-up, or Mapbox; the shade map's traced.js).
 
 ---
 
