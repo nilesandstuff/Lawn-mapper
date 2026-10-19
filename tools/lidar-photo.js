@@ -218,7 +218,7 @@ async function main() {
       if (!cols || cols.n < 500) { skipped[id] = `only ${cols?.n || 0} points`; console.log(`  --- ${id.slice(0, 26).padEnd(26)} only ${cols?.n || 0} points in the frame`); continue; }
       const datum = nad83Correction(frame.lat, frame.lng, cloud.epoch);
       const pre = [datum.east / k, datum.north / k];
-      const fit = alignToPhoto(cols, frame, photo, { pre });
+      const fit = alignToPhoto(cols, frame, photo, { pre, cellM: Number(process.env.CELL_M || 0.3), reachM: Number(process.env.REACH_M || 4), layer: process.env.LAYER || 'iLow' });
       const pattern = quarterPattern(fit, widthM, heightM);
       const shiftM = Number.isFinite(fit.east) ? Math.hypot(fit.east, fit.north) : NaN;
       // the move to apply to the lidar: the datum, plus what the photo match found (3857 m)

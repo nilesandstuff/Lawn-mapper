@@ -40,10 +40,12 @@ got here. Update it whenever the in-flight run changes.*
 
 - **OVERTURE AND THE PHOTO (2026-10-19, H101, H102):** Overture lines up with
   the LIDAR within about a metre, but NOT consistently with the PHOTO, which
-  was first read as a shifted photo (H102 as first written). By eye on five lots (H102's
-  correction) the lidar sits on the photo to about a metre and the mismatch
-  with Overture is mostly Overture's own shapes and roof lean. The editor's
-  Overture layer is drawn as published.
+  was first read as a shifted photo, then as Overture's shapes being wrong;
+  the owner's reading (H102's second correction): Overture's buildings are
+  right, the lidar's tall mask includes porches and decks, neither sits on
+  the foundation, a photo's perspective distorts flat ground as well as
+  roofs, and the lidar has never been measured against the photo. Workflow
+  38 is measuring that; the editor's Overture layer is drawn as published.
 - **THE LIVE MODEL HAS A NAME AND A VERSION HISTORY (owner, 2026-10-06):**
   "Turf Trace - alpha version 2 (79% accuracy)". Every release ships with a
   row in worker/src/model-versions.js: the next version number, the date,
@@ -959,6 +961,33 @@ The editor's Overture layer was moved onto the photo by this fit for a few
 hours on 2026-10-19 (deploy 39311383755) and put back where Overture puts it,
 because on lots like Fargo the fit slid everything, roads too, the wrong way.
 
+**SECOND CORRECTION, same evening -- the owner's reading of the five pictures
+(2026-10-19), recorded as his observation:**
+- In those pictures NEITHER the lidar outline nor Overture's sits on the
+  foundation footprint, which is the thing to line up to. The lidar outline
+  (everything 2.5 m or taller) catches raised decks and porches; Overture is
+  the building alone, and its building shapes appear correct. So "Overture
+  misses a wing" above was wrong: the extra width was the lidar's.
+- The perspective of each RGB flight distorts FLAT GROUND, not only roofs.
+  Lining his own traces up between Mapbox and county photos, "the lawn
+  traces would line up on one side of the property but they'd be off on the
+  other side, or the whole property would just be slightly larger/smaller
+  between different photo sources, or both." That is first-hand across many
+  maps; H63's "a plain shift" rests on five lots, and H64's on one method's
+  own held-out test over 38. Neither measured anything against the lidar.
+- "Lidar has been at least somewhat misaligned this whole time": nothing has
+  ever measured the lidar against the Mapbox photo. It is laid on the
+  frame's box as if the photo were exact; the only correction ever applied
+  is S35/H98's datum move, about 1.1 m north-west on every lot.
+
+Being measured (workflow 38, tools/lidar-photo.js): the lidar's ground
+intensity matched to each locked lot's photo with the shade map's matcher
+(public/shade/align.js, open ground only, the frame whole and each quarter
+alone), so a stretched or skewed photo shows as quarters that disagree. On
+six live Mapbox frames at 0.25 m a pixel (not the corpus) the whole-frame
+answers were 0.3-5.3 m and no lot's quarters agreed to 20 cm; whether those
+answers are right is not yet known.
+
 ### H101. Overture's buildings sit under a metre from the LIDAR's roofs, all of a lot's buildings off together; only 0.9% of the traced lawn lies under an Overture building, road or sidewalk band, but two lots lose 11% and 14%. NOT a measurement against the PHOTO -- see the correction below -- 2026-10-19
 *Workflow 37, run 39288686018 (101 of the 104 locked lots; 3 have no lidar).
 Owner: Overture "would be good info for every stage... the detector, the
@@ -1019,9 +1048,11 @@ the water session's water/lib/overture.js):
   against Overture. On a first look at three live Mapbox frames, Overture's
   outline sat 3.4 m (a Fargo locked lot, where it is 0.7 m from the lidar)
   and 1.3 m (North Carolina) from the house in the photo. This was first read
-  as the photo being off (and the lidar with it); H102's correction found, by
-  drawing the lidar over the photo, that on the Fargo lot Overture's outline
-  misses a wing the photo and the lidar both show.
+  as the photo being off (and the lidar with it); then as Overture's outline
+  missing a wing on the Fargo lot. The owner, looking at the same pictures:
+  the lidar outline there was everything 2.5 m or taller, which catches
+  raised decks and porches that Overture (the building alone) leaves out;
+  Overture's building shapes appear correct. See H102's second correction.
 - 0.9% of all traced lawn is the COST side of a never-lawn rule. The gain side
   (how much of the detector's wrong lawn lies under Overture) is not measured
   here.
