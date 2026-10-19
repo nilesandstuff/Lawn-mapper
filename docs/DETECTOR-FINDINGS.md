@@ -44,8 +44,12 @@ got here. Update it whenever the in-flight run changes.*
   the owner's reading (H102's second correction): Overture's buildings are
   right, the lidar's tall mask includes porches and decks, neither sits on
   the foundation, a photo's perspective distorts flat ground as well as
-  roofs, and the lidar has never been measured against the photo. Workflow
-  38 is measuring that; the editor's Overture layer is drawn as published.
+  roofs, and the lidar had never been measured against the photo. Now it
+  has (H103): the datum move is 1.2 m; after it, where the ground can be
+  matched (14 lots), the lidar is within about half a metre and Overture as
+  published sits on the houses; on the other 84 the matcher cannot say.
+  Workflow 39 measures the photo's own distortion, county against Mapbox.
+  The editor's Overture layer is drawn as published.
 - **THE LIVE MODEL HAS A NAME AND A VERSION HISTORY (owner, 2026-10-06):**
   "Turf Trace - alpha version 2 (79% accuracy)". Every release ships with a
   row in worker/src/model-versions.js: the next version number, the date,
@@ -897,6 +901,48 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 ---
 
 ## HARD FINDINGS — our own measurements
+
+### H103. The lidar against the PHOTO, measured for the first time: the datum move is 1.2 m on every lot; after it, where the shade map's ground matcher can commit (14 of 98 lots), the lidar sits a median 0.45 m from the photo's ground and never more than 1.2 m; on the other 84 the matcher cannot say, and its quarters test is too noisy to measure stretch -- 2026-10-19
+*Workflow 38, run 39329128490 (the same numbers as run 39327559766), 98
+of the 104 locked lots (6 have no public point cloud). Owner: "lidar has
+been at least somewhat misaligned this whole time." Pictures:
+https://github.com/nilesandstuff/Lawn-mapper/tree/pictures/lidar-photo-2/pictures*
+
+**Method** (tools/lidar-photo.js). Each lot's public 3DEP cloud, the datum
+move applied (S35/H98), matched to the frame's own photo with the shade
+map's alignToPhoto (public/shade/align.js, the features session's): the
+lidar's ground intensity against the photo's edges on open ground only,
+roofs and crowns masked with a 3 m margin, the frame whole and then each
+quarter alone; "measured" when the quarters agree to under 20 cm. Also,
+without the matcher: the share of VISIBLE traced lawn standing under 2 m+
+of lidar, with the lidar as it was, as the decoder reads it today (datum
+only), and moved by the match.
+
+| | |
+|---|---|
+| The datum move (NAD83 -> WGS84), already applied | median 1.20 m, north-west on every lot (E -0.4 to -1.3, N +0.4 to +1.2) |
+| Left after it, the 14 measured lots | median 0.45 m; 5 over 0.5 m, 1 over 1 m (1.16), none over 2 m; east median +0.14, north -0.25 (no common direction) |
+| Left after it, all 97 with an answer | median 0.57 m; 27 over 1 m, 8 over 2 m -- but the unsure answers include plain wrong peaks (6.6 m on a lot that is 98% open field) |
+| Why 84 were unsure | 71: the quarters scatter 0.5-2 m; 10: a rival peak nearly as good; 3: too little open ground |
+| Lawn under 2 m+ of lidar, measured lots | none 8.8% -> datum only 8.6% -> moved 8.4% (means); better on 6, worse on 3 |
+| the same, all 97 | 14.4% -> 13.8% -> 13.9%; better on 39, worse on 32 |
+
+**What this says.**
+- Where the ground can be matched, the lidar is already close: the datum
+  move did most of the work and the rest is half a metre. On those lots the
+  pictures show Overture's outlines, as published, on the houses to about
+  half a metre (the Colorado and Virginia lots), with the lidar's trees and
+  roofs on the photo's.
+- Where it cannot be matched, nothing here says how far off the lidar is.
+  The quarters scatter is the matcher's own limit on lawn with little
+  texture (each quarter wanders inside its 2 m search; the "stretch" they
+  imply has a random sign, 37 wider against 39 narrower), NOT a measurement
+  of the photo's distortion. That is the owner's question (H102's second
+  correction) and it is measured photo against photo in workflow 39.
+- The lawn test is too blunt to see half-metre moves: crowns overhanging
+  the lawn's edge dominate it.
+- H102's "lidar 1.2 m from the photo" was the roof-edge method's artefact
+  (roof lean and eaves), not this.
 
 ### H102. Overture's outlines sit a median 1.6 m from the same houses in our photos (43% over 2 m), measured by sliding each outline onto the photo's edges. CORRECTED THE SAME DAY: by eye that is mostly Overture's own shapes and roof lean, not a shifted photo, and the lidar matched the photo on 4 of 5 lots looked at -- 2026-10-19
 *Workflow 37, run 39305034342, the 101 locked lots with lidar. Owner:
