@@ -38,6 +38,10 @@ changes and results from different corpora are not comparable.
 *Kept current so a fresh session can pick up without the conversation that
 got here. Update it whenever the in-flight run changes.*
 
+- **OVERTURE (2026-10-19, H101):** its buildings, roads and sidewalks line up
+  within about a metre (workflow 37) and are in the editor as a tracing layer.
+  As a never-lawn rule they would cost 0.9% of the traced lawn; what they would
+  gain on THE PLAN's output is not measured yet.
 - **THE LIVE MODEL HAS A NAME AND A VERSION HISTORY (owner, 2026-10-06):**
   "Turf Trace - alpha version 2 (79% accuracy)". Every release ships with a
   row in worker/src/model-versions.js: the next version number, the date,
@@ -889,6 +893,69 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 ---
 
 ## HARD FINDINGS — our own measurements
+
+### H101. Overture's buildings sit under a metre from the lidar's roofs, all of a lot's buildings off together; only 0.9% of the traced lawn lies under an Overture building, road or sidewalk band, but two lots lose 11% and 14% -- 2026-10-19
+*Workflow 37, run 39288686018 (101 of the 104 locked lots; 3 have no lidar).
+Owner: Overture "would be good info for every stage... the detector, the
+grass under canopy guesser, and manual tracing", but "the 'if it lines up'
+statement is doing some heavy lifting... roofs especially are really
+susceptible to tilting due to perspective".*
+
+**Method** (tools/overture-check.js, reader public/lib/overture.js copied from
+the water session's water/lib/overture.js):
+- Overture's buildings and road/sidewalk bands (the water session's width
+  table: residential 8 m, sidewalk 1.5 m...) rasterised on a 0.5 m grid over
+  each frame.
+- Against the lidar roof mask (lidar_frame.py at 1 m: no ground return, 2.5 m+
+  up, flat within 1.5 m). The lidar looks straight down, so its roofs carry no
+  lean. Best single shift per lot searched within 6 m; then each building
+  (30 m²+, wholly in the frame, lidar-seen) its own shift within 3 m of the
+  lot's.
+- Against the traced lawn (labels R|B): the share of lawn cells under each
+  Overture layer, as published and at the lot's shift.
+
+**Results:**
+
+| | |
+|---|---|
+| Lots where both see 50 m²+ of roof | 77 of 101 |
+| Their overlap (IoU), median | 52.0% as published, 56.8% at the lot's best shift |
+| Best shift, median (all 101) | 0.87 m; 47 lots over 1 m, 9 over 2 m (mostly lots with almost no lidar roof) |
+| Each building's own shift, about the lot's | median 0.38 m; share of buildings off by more than 1.5 m, median 0% |
+| Lidar sees a roof, Overture has none | 1 lot |
+| Overture has a building, lidar sees no roof | 9 lots |
+
+| traced lawn under | as published | at the lot's shift |
+|---|---|---|
+| an Overture building | 0.5% | 0.5% |
+| a road band | 0.3% | 0.3% |
+| a sidewalk band | 0.1% | 0.2% |
+| (the lidar's own roofs, for scale) | 0.2% | |
+
+- Worst lots: 11.1% and 7.3% of the lawn under an Overture building (two
+  Fargo lots); 13.8% under a road or sidewalk band (one Georgia lot, 11.3% of
+  it road).
+- Inside the property line, the median sidewalk band is 6.7% traced lawn; the
+  median road band 0%.
+
+**What this does and does not say.**
+- The overlap is held down by the LIDAR, not Overture: on the low-IoU lots the
+  lidar finds 7-60 m² of roof where Overture has a 300-900 m² house (pitched or
+  tree-covered roofs fail the flat-roof rule), and 9 lots have no lidar roof at
+  all. Where both see the house, the shift is a metre or less and
+  the same for every building on the lot, so Overture's outline is not leaning
+  or scattered per building.
+- The photo's own offset from the lidar is about half a metre (H63/H64), so
+  Overture on the PHOTO is expected within a metre or so at the ground. A roof
+  in the photo still leans away from its outline by its height; that is the
+  photo, not Overture.
+- 0.9% of all traced lawn is the COST side of a never-lawn rule. The gain side
+  (how much of the detector's wrong lawn lies under Overture) is not measured
+  here.
+
+**Next:** the editor's tracing layer (on 2026-10-19). A never-lawn rule or
+decoder inputs are to be measured on THE PLAN's own output under the full bar
+before anything is adopted.
 
 ### H100. FLAIR out of the box (E13) on the locked 104: a poor lawn finder (35.5% median against THE PLAN's ~19%), a precise veto (building+impervious takes 0.6-2.5% of the traced lawn, 95-98% of it truly not lawn), and on 14 Chesapeake lots roofs and paving kept apart (1.6-9.5% confused) -- 2026-10-18
 *Workflow 36, run 39161315061. Owner: "try it, since it may have usefulness

@@ -73,9 +73,13 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: overture-lidar
-          path: lidar
+          path: .
           run-id: ${{ inputs.lidar_from }}
           github-token: ${{ github.token }}
+
+      - name: Unpack them
+        if: inputs.lidar_from != ''
+        run: tar -xf overture-lidar.tar && ls lidar | wc -l
 
       - name: Match the frames to the 3DEP projects
         if: inputs.lidar_from == ''
@@ -119,12 +123,17 @@ jobs:
           OUT: overture-out
         run: node tools/overture-check.js
 
+      # One tar: the lots' ids carry colons, which an artifact refuses in a file name.
+      - name: Pack the lidar roof masks
+        if: always() && inputs.lidar_from == ''
+        run: tar -cf overture-lidar.tar lidar/*-roof.png 2>/dev/null || true
+
       - name: Keep the lidar roof masks for a rerun
         if: always() && inputs.lidar_from == ''
         uses: actions/upload-artifact@v4
         with:
           name: overture-lidar
-          path: lidar/*-roof.png
+          path: overture-lidar.tar
           if-no-files-found: ignore
 
       - name: Keep the scores and the pictures
