@@ -6905,7 +6905,7 @@ fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
 
-### S42. FLAIR's building + impervious as a veto on THE PLAN's lawn (owner, 2026-10-18 -- NOT BUILT, NOT MEASURED)
+### S42. FLAIR's building + impervious as a veto on THE PLAN's lawn (owner, 2026-10-18 -- PARKED by the owner, 2026-10-19: "in theory it shouldn't be any better than the trained detector for the lawn map"; NOT BUILT, NOT MEASURED)
 **The idea:** H100 found FLAIR's building+impervious lands on only 0.6-2.5%
 of the traced lawn, and 95-98% of it is truly not lawn. Erasing it from the
 detector's output could stop lawn creeping onto drives, walks and roofs.
