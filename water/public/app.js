@@ -29,7 +29,7 @@ import { tracedOn, lineUpAt } from '/lib/shade/traced.js';
 const $ = (s) => document.querySelector(s);
 const R = 6378137;
 const view = { photo: null, data: null, frame: null, site: null, plan: null };
-const inputs = { downspouts: [], gutters: [], topsoil: false, grass: 'cool' };
+const inputs = { downspouts: [], gutters: [], topsoil: false, grass: 'cool', texture: '' };
 let mode = null, pending = null; // 'from' | 'to' (a downspout) | 'gutter'
 const ZONE_RGB = [[46, 134, 222], [230, 126, 34], [142, 68, 173], [22, 160, 133]];
 const HOME = document.documentElement.dataset.home || '';
@@ -171,7 +171,8 @@ function overlay(d, { flow = true, grade = true, hard = true, zones = true } = {
   const p = view.plan;
   for (let i = 0; i < W * H; i++) {
     let rgba = null;
-    if (hard && d.paved && !d.wall[i] && Number.isFinite(d.paved[i]) && d.paved[i] >= 0.5) rgba = [120, 60, 160, Math.round(60 + 120 * d.paved[i])];
+    if (d.wall[i]) rgba = [250, 250, 250, 170]; // roofs white (owner 2026-10-19)
+    if (hard && d.paved && !d.wall[i] && Number.isFinite(d.paved[i]) && d.paved[i] >= 0.5) rgba = [12, 12, 12, Math.round(90 + 120 * d.paved[i])]; // paving black
     if (zones && p && p.zoneOf[i] >= 0) {
       rgba = [...ZONE_RGB[p.zoneOf[i] % ZONE_RGB.length], 105];
       if (p.wetAnyway[i] >= 0.1) rgba = [13, 71, 161, 200];
@@ -334,6 +335,19 @@ function howOften(m) {
   return `about every ${every < 1.5 ? 'day' : `${Math.round(every)} days`} (${m.waterings} time${m.waterings > 1 ? 's' : ''}; ${m.low}–${m.high} across ten years)`;
 }
 
+/**
+ * How to put a watering down without it running off: the ground takes `takes` in an hour, so a watering of
+ * `mm` goes down in runs of at most an hour's worth, an hour apart -- each run as many minutes as the
+ * sprinklers need to put that much down (spray heads about 1.5 in/h, rotors about 0.5 in/h, until the
+ * heads are mapped).
+ */
+function soakAdvice(takes, mm) {
+  const depth = mm / 25.4, runs = Math.max(1, Math.ceil(depth / takes - 1e-9));
+  const minutes = (rate) => Math.max(1, Math.round((Math.min(depth, takes) / rate) * 60));
+  const head = (rate, name) => (rate <= takes ? `${name} can put it down in one go` : `${name}: ${runs} run${runs > 1 ? 's' : ''} of about ${minutes(rate)} minutes`);
+  return `This ground takes about ${takes.toFixed(2)} in of water an hour before it runs off. To put down ${inch(mm)} in${runs > 1 ? `, water in short runs an hour apart` : ''} -- ${head(1.5, 'spray heads (about 1.5 in an hour)')}; ${head(0.5, 'rotors (about 0.5 in an hour)')}.`;
+}
+
 function planReport(p) {
   const parts = [];
   const legend = $('#zone-legend');
@@ -362,22 +376,24 @@ function planReport(p) {
       ${w ? `<p>${w.next ? `Next watering: likely <strong>${dayName(w.next.date)}</strong>, about ${inch(w.next.mm)} in.` : `No watering needed through ${dayName(week.through)}, from the last weeks' weather and the forecast.`}</p>` : ''}
       <table class="months"><tr><th>Month</th><th>How often</th><th>Each time</th></tr>
       ${season.map((m) => `<tr><td>${MONTH[m.month]}</td><td>${howOften(m)}</td><td>${m.mmEach ? `${inch(m.mmEach)} in` : '–'}</td></tr>`).join('')}</table>
-      ${z.takesInPerH ? `<p class="dim">This ground takes about ${z.takesInPerH.toFixed(2)} in an hour before water runs off. ${z.cycles.spray > 1 ? `With spray heads (about 1.5 in/h), split each watering into ${z.cycles.spray} short runs with half an hour or more between them` : 'Spray heads (about 1.5 in/h) can put it down in one run'}${z.cycles.rotor > 1 ? `; with rotors (about 0.5 in/h), ${z.cycles.rotor} runs.` : '; rotors (about 0.5 in/h) in one run.'}</p>` : ''}
+      ${z.takesInPerH ? `<p class="dim">${soakAdvice(z.takesInPerH, pk.mmEach || z.depthMm)}</p>` : ''}
       <p class="dim">Why: ${why.join('; ')}.</p>
       ${problems.length ? `<ul>${problems.map((x) => `<li>${x}</li>`).join('')}</ul>` : ''}</div>`);
   }
-  const soilRows = p.soil.map((u) => {
+  const soilList = p.texture ? [{ ...p.soil[0], name: p.soil.map((u) => u.name).filter(Boolean).join('; '), share: null }] : p.soil;
+  const soilRows = soilList.map((u) => {
     const wet = u.wetByMonth.map((v, m) => (v !== null && v !== undefined ? [m, v] : null)).filter(Boolean);
     const table = wet.length ? ` The water table comes within about ${Math.round(Math.min(...wet.map((x) => x[1])) / 2.54)} in of the surface in ${wet.map((x) => MONTH[x[0]].slice(0, 3)).join(', ')}.` : '';
-    return `<li><strong>${esc(u.name || 'unnamed')}</strong>${u.share !== null ? ` (${Math.round(u.share * 100)}% of the area)` : ''}: ${esc(String(u.drainage || 'drainage not given').toLowerCase())}, hydrologic group ${esc(u.hydgrp || '?')}. The top 6 in hold about ${inch(u.tawMm ?? 0)} in of water the grass can use${u.tawTopsoilMm ? `; with 4 in of loamy topsoil on it, about ${inch(u.tawTopsoilMm)} in` : ''}.${table}</li>`;
+    const what = u.chosen ? `<strong>${esc(u.chosen)}</strong>, as you chose (the survey says ${esc(u.name || 'unnamed')})` : `<strong>${esc(u.name || 'unnamed')}</strong>`;
+    return `<li>${what}${u.share !== null && !u.chosen ? ` (${Math.round(u.share * 100)}% of the area)` : ''}: ${esc(String(u.drainage || 'drainage not given').toLowerCase())}, hydrologic group ${esc(u.hydgrp || '?')}. The top 12 in, where the roots are, hold about ${inch((p.topsoil ? u.tawTopsoilMm : u.tawMm) ?? 0)} in of water the grass can use${p.topsoil ? ', with your 4 in of loamy topsoil on top' : ''}.${table}</li>`;
   });
   parts.push(`<div class="card"><h2>The soil${p.topsoil ? ' (with 4 in of loamy topsoil on the lawn)' : ''}</h2><ul>${soilRows.join('')}</ul>
-    <p class="dim">From the USDA soil survey, which maps the native soil. A lawn on graded fill or packed topsoil can drink slower than this.</p></div>`);
+    <p class="dim">${p.texture ? 'Your choice of soil, with the survey\'s drainage class and water table kept.' : 'From the USDA soil survey. If you know your soil is different, choose it under the map.'} A soak test (coming) will tell how fast it really drinks.</p></div>`);
   const wm = p.weather.filter((m) => m.grassUseMm > 10);
   parts.push(`<div class="card"><h2>The weather it is planned on</h2>
-    <table class="months"><tr><th>Month</th><th>Rain</th><th>Grass uses</th></tr>${wm.map((m) => `<tr><td>${MONTH[m.month]}</td><td>${inch(m.rainMm)} in</td><td>${inch(m.grassUseMm)} in</td></tr>`).join('')}</table>
-    <p class="dim">Typical months over ${p.years} years (NASA POWER). The grass's use is the reference evapotranspiration (FAO-56) times 0.8. Not all rain soaks in: on a slope or in a downpour some runs off, which the plan counts.</p></div>`);
-  if (p.roofs.guessed) parts.push(`<p class="hint">${p.roofs.guessed} roof${p.roofs.guessed > 1 ? 's have' : ' has'} no downspouts entered, so ${p.roofs.guessed > 1 ? 'their' : 'its'} water is assumed to come off at the low corner. Add the downspouts for a truer plan: tap <em>Add a downspout</em>, then the roof edge it comes from, then where it empties.</p>`);
+    <table class="months"><tr><th>Month</th><th>Rain</th><th>Reference ET</th><th>Your grass uses</th></tr>${wm.map((m) => `<tr><td>${MONTH[m.month]}</td><td>${inch(m.rainMm)} in</td><td>${inch(m.referenceMm)} in</td><td>${inch(m.grassUseMm)} in</td></tr>`).join('')}</table>
+    <p class="dim">Typical months: the middle of the last ${p.years} years. Rain: ${esc(p.rainFrom || 'NASA POWER')}. Reference ET is what well-watered, clipped grass would use (FAO-56 Penman-Monteith from NASA POWER's weather; Enviroweather and most weather networks call it potential ET); your grass's use is that times 0.8, before shade and paving change it square by square. Not all rain soaks in: on a slope or in a downpour some runs off, which the plan counts.</p></div>`);
+  if (p.roofs.guessed) parts.push(`<p class="hint">${p.roofs.guessed} roof${p.roofs.guessed > 1 ? 's' : ''} on your property ${p.roofs.guessed > 1 ? 'have' : 'has'} no downspouts entered, so ${p.roofs.guessed > 1 ? 'their' : 'its'} water is assumed to come off at the low corner. Add the downspouts for a truer plan: tap <em>Add a downspout</em>, then the roof edge it comes from, then where it empties.</p>`);
   if (p.roofs.unusedDownspouts.length) parts.push(`<p class="hint">${p.roofs.unusedDownspouts.length} downspout${p.roofs.unusedDownspouts.length > 1 ? 's are' : ' is'} not on a roof: tap closer to the roof's edge.</p>`);
   $('#plan').innerHTML = parts.join('');
 }
@@ -406,12 +422,15 @@ let running = null;
 async function run(site) {
   running?.terminate();
   view.site = site; view.data = null; view.plan = null;
+  zoom.s = 1; zoom.tx = 0; zoom.ty = 0; $('#view').style.transform = '';
   $('#result').hidden = true; $('#plan').innerHTML = ''; $('#hill').innerHTML = '';
   const kept = site.water || {};
   inputs.downspouts = Array.isArray(kept.downspouts) ? kept.downspouts : [];
   inputs.gutters = Array.isArray(kept.gutters) ? kept.gutters : [];
   inputs.topsoil = !!kept.topsoil;
   inputs.grass = kept.grass === 'warm' ? 'warm' : 'cool';
+  inputs.texture = typeof kept.texture === 'string' ? kept.texture : '';
+  $('#texture').value = inputs.texture;
   $('#topsoil').checked = inputs.topsoil;
   $('#grass').value = inputs.grass;
   setMode(null);
@@ -469,7 +488,7 @@ async function save() {
   try {
     const res = await fetch(`/api/maps/tool?id=${encodeURIComponent(site.mapId)}&tool=water`, {
       method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ data: { v: 1, downspouts: inputs.downspouts, gutters: inputs.gutters, topsoil: inputs.topsoil, grass: inputs.grass }, basedOn: site.at }),
+      body: JSON.stringify({ data: { v: 1, downspouts: inputs.downspouts, gutters: inputs.gutters, topsoil: inputs.topsoil, grass: inputs.grass, texture: inputs.texture }, basedOn: site.at }),
     });
     savedNote = res.ok ? 'Saved with your map.' : `Not saved (${res.status}).`;
   } catch (e) { savedNote = `Not saved: ${e.message}`; }
@@ -487,7 +506,59 @@ function setMode(m) {
       : m === 'gutter' ? 'Tap along the eave, corner to corner, then "Done with this gutter".' : '';
 }
 
-$('#view').addEventListener('click', (ev) => {
+/* ZOOM AND PAN (owner 2026-10-19: "the image is static and can't be zoomed in, that makes it difficult
+   ... to place the gutters accurately"). The canvas is scaled and moved inside the stage with a CSS
+   transform; a tap is mapped through it (tapAt reads the transformed box), and a drag or a pinch never
+   counts as a tap. */
+const zoom = { s: 1, tx: 0, ty: 0, pts: new Map(), moved: false, start: null };
+function applyZoom() {
+  const cv = $('#view');
+  const w = cv.offsetWidth, h = cv.offsetHeight; // the canvas's laid-out size, before the transform
+  zoom.s = Math.max(1, Math.min(8, zoom.s));
+  zoom.tx = Math.min(0, Math.max(w - w * zoom.s, zoom.tx));
+  zoom.ty = Math.min(0, Math.max(h - h * zoom.s, zoom.ty));
+  cv.style.transform = `translate(${zoom.tx}px, ${zoom.ty}px) scale(${zoom.s})`;
+}
+function zoomAt(factor, cx, cy) {
+  const st = $('#stage').getBoundingClientRect();
+  const x = cx - st.left, y = cy - st.top;
+  const s1 = Math.max(1, Math.min(8, zoom.s * factor)), k = s1 / zoom.s;
+  zoom.tx = x - (x - zoom.tx) * k; zoom.ty = y - (y - zoom.ty) * k; zoom.s = s1;
+  applyZoom();
+}
+const stageEl = $('#stage');
+stageEl.addEventListener('pointerdown', (ev) => {
+  if (ev.target.closest('.zoom')) return;
+  zoom.pts.set(ev.pointerId, [ev.clientX, ev.clientY]);
+  if (zoom.pts.size === 1) { zoom.moved = false; zoom.start = [ev.clientX, ev.clientY]; }
+  stageEl.setPointerCapture?.(ev.pointerId);
+});
+stageEl.addEventListener('pointermove', (ev) => {
+  if (!zoom.pts.has(ev.pointerId)) return;
+  const prev = zoom.pts.get(ev.pointerId);
+  if (zoom.pts.size === 1) {
+    if (Math.hypot(ev.clientX - zoom.start[0], ev.clientY - zoom.start[1]) > 6) zoom.moved = true;
+    if (zoom.moved) { zoom.tx += ev.clientX - prev[0]; zoom.ty += ev.clientY - prev[1]; applyZoom(); }
+  } else if (zoom.pts.size === 2) {
+    const [a, b] = [...zoom.pts.values()];
+    const other = a === prev ? b : a;
+    const d0 = Math.hypot(prev[0] - other[0], prev[1] - other[1]), d1 = Math.hypot(ev.clientX - other[0], ev.clientY - other[1]);
+    if (d0 > 0) zoomAt(d1 / d0, (ev.clientX + other[0]) / 2, (ev.clientY + other[1]) / 2);
+    zoom.moved = true;
+  }
+  zoom.pts.set(ev.pointerId, [ev.clientX, ev.clientY]);
+});
+const lift = (ev) => { zoom.pts.delete(ev.pointerId); };
+stageEl.addEventListener('pointerup', lift);
+stageEl.addEventListener('pointercancel', lift);
+stageEl.addEventListener('wheel', (ev) => { ev.preventDefault(); zoomAt(ev.deltaY < 0 ? 1.25 : 0.8, ev.clientX, ev.clientY); }, { passive: false });
+$('#zoom-in').addEventListener('click', () => { const r = stageEl.getBoundingClientRect(); zoomAt(1.6, r.left + r.width / 2, r.top + r.height / 2); });
+$('#zoom-out').addEventListener('click', () => { const r = stageEl.getBoundingClientRect(); zoomAt(1 / 1.6, r.left + r.width / 2, r.top + r.height / 2); });
+$('#zoom-reset').addEventListener('click', () => { zoom.s = 1; zoom.tx = 0; zoom.ty = 0; applyZoom(); });
+
+stageEl.addEventListener('click', (ev) => { // on the stage: it holds the pointer while a finger is down
+  if (ev.target.closest('.zoom')) return;
+  if (zoom.moved) { zoom.moved = false; return; } // the end of a drag or a pinch, not a tap
   if (!mode || !view.data) return;
   const p = tapAt(ev);
   if (mode === 'from') { setMode('to'); pending = p; draw(); return; }
@@ -513,6 +584,7 @@ $('#clear').addEventListener('click', () => {
   inputs.downspouts = []; inputs.gutters = []; setMode(null); changed();
 });
 $('#topsoil').addEventListener('change', () => { inputs.topsoil = $('#topsoil').checked; changed(); });
+$('#texture').addEventListener('change', () => { inputs.texture = $('#texture').value; changed(); });
 $('#grass').addEventListener('change', () => { inputs.grass = $('#grass').value === 'warm' ? 'warm' : 'cool'; changed(); });
 
 async function guarded(fn) {

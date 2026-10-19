@@ -735,6 +735,48 @@ editor's line-up, or Mapbox; the shade map's traced.js).
 
 ---
 
+### H21. The owner's first check on his own lot: rain read high, reference ET reads high (water session, 2026-10-19)
+
+The owner checked the plan on the owner's lot. His sources against the app's typical months (medians of ten):
+
+| | app (before) | owner's sources |
+|---|---|---|
+| June rain | 3.4 in | 3.0-3.9 in |
+| July rain | 3.95 in | 2.7-3.4 in |
+| June grass use (ET0 x 0.8) | 4.1 in | Enviroweather 4.0-4.4 in |
+| July grass use | 4.4 in | Enviroweather 4.4-4.8 in |
+
+RAIN, FIXED: NASA POWER's rain is a ~50 km grid. PRISM's daily 4 km grid
+(built from the gauges; ACIS GridData grid 21, free, open to browsers) gives,
+for the same place, ten Junes median 2.80 in and ten Julys 2.94 in (POWER 3.22
+and 3.94). Rain now comes from PRISM for the typical years and the recent
+weeks (lib/weather.js prismRain); POWER keeps temperature, humidity, wind and
+sunshine. Days neither POWER nor the station has yet take PRISM's rain and the
+last three days' water use.
+
+ET, OPEN: Enviroweather's "Potential ET" is the REFERENCE (FAO-56 / ASCE
+grass) ET, before any grass coefficient (MSU Extension). The app's reference
+there: June 5.09 in, July 5.39 in (medians; by year 4.12-5.29 June,
+5.07-5.65 July) -- about 15-20% ABOVE Enviroweather's reference, not below it;
+the 0.8 grass coefficient made the app's grass use land close to
+Enviroweather's reference. Not NASA's sunshine (estimating sunshine from the
+temperature range instead moves June by -2%) and not the wind (2 m/s fixed:
+-1%). Asked of the owner how the 0.8 should apply to a reference that
+matches Enviroweather's. The weather card now shows the reference beside the
+grass's use.
+
+Also from his check: the roof count asked about every roof in the analysis
+box, 30 m past the property line (21 roofs): now only roofs on the property
+(or within 5 m of the lawn), 6 m2 or more. The map zooms (pinch, drag, wheel,
+buttons; a drag is never a tap). Paving black, roofs white. Plainer labels. A
+soil choice (sand ... heavy clay: Rawls 1982 texture averages, TR-55 group) for
+when the owner knows the survey is wrong -- his lot is heavy clay where the
+survey says loam; heavy clay takes 0.10-0.20 in an hour (USDA table), so the
+plan splits a watering into runs of an hour's worth, an hour apart. The soil
+card no longer mentions topsoil unless it was chosen, and says 12 in.
+
+---
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge

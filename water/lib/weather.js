@@ -56,7 +56,39 @@ export async function powerDays(lat, lng, start, end, fetchFn = fetch) {
 /** The ten whole years before this one, from POWER: the typical-year runs. */
 export async function typicalYears(lat, lng, { years = 10, now = new Date(), fetchFn = fetch } = {}) {
   const y1 = now.getUTCFullYear() - 1, y0 = y1 - years + 1;
-  return powerDays(lat, lng, `${y0}-01-01`, `${y1}-12-31`, fetchFn);
+  const [power, prism] = await Promise.all([
+    powerDays(lat, lng, `${y0}-01-01`, `${y1}-12-31`, fetchFn),
+    prismRain(lat, lng, `${y0}-01-01`, `${y1}-12-31`, fetchFn).catch(() => null),
+  ]);
+  return { ...power, rainFrom: withPrism(power.days, prism) };
+}
+
+/* ---------------------------------------------------------------- PRISM rain */
+
+/* RAIN FROM PRISM, NOT NASA (owner, 2026-10-19: the plan's July rain read high -- 3.95 in, where other
+   sources give 2.7-3.4). NASA POWER's rain is a ~50 km grid; PRISM's daily grid is 4 km and built from the
+   rain gauges (Oregon State's PRISM Climate Group), served free and open to browsers by the NOAA Regional
+   Climate Centers' ACIS (data.rcc-acis.org, grid 21). On the owner's lot, ten Julys: POWER median 3.94 in,
+   PRISM 2.94. POWER keeps the temperatures, humidity, wind and sunshine. */
+export const ACIS = 'https://data.rcc-acis.org/GridData';
+
+/** PRISM daily rain (mm) by 'YYYY-MM-DD' at a point, from start to end; missing days absent. */
+export async function prismRain(lat, lng, start, end, fetchFn = fetch) {
+  const q = encodeURIComponent(JSON.stringify({ loc: `${lng.toFixed(4)},${lat.toFixed(4)}`, sdate: start, edate: end, grid: '21', elems: [{ name: 'pcpn' }] }));
+  const res = await fetchFn(`${ACIS}?params=${q}`);
+  if (!res.ok) throw new Error(`ACIS answered ${res.status}`);
+  const j = await res.json();
+  const out = new Map();
+  for (const [d, v] of j.data || []) { const x = Number(v); if (Number.isFinite(x) && x >= 0) out.set(d, x * 25.4); }
+  return out;
+}
+
+/** Put PRISM's rain on the days it has; -> which source the rain came from. */
+function withPrism(days, prism) {
+  if (!prism || !prism.size) return 'NASA POWER';
+  let n = 0;
+  for (const d of days) if (prism.has(d.date)) { d.rain = prism.get(d.date); d.src = `${d.src} + PRISM rain`; n++; }
+  return n ? 'PRISM (4 km, from the rain gauges)' : 'NASA POWER';
 }
 
 /* ---------------------------------------------------------------- the NWS */
@@ -143,7 +175,11 @@ export async function nwsObserved(stationsUrl, start, tz, lat, fetchFn = fetch) 
  */
 export async function thisWeek(lat, lng, { back = 14, now = new Date(), gauge = {}, fetchFn = fetch } = {}) {
   const start = ymd(new Date(now.getTime() - back * 864e5));
-  const power = await powerDays(lat, lng, start, ymd(now), fetchFn).catch(() => ({ days: [] }));
+  const [power, prism] = await Promise.all([
+    powerDays(lat, lng, start, ymd(now), fetchFn).catch(() => ({ days: [] })),
+    prismRain(lat, lng, start, ymd(now), fetchFn).catch(() => null),
+  ]);
+  withPrism(power.days, prism);
   const past = power.days.filter((d) => d.rain !== null);
   const fc = await nwsForecast(lat, lng, fetchFn).catch(() => null);
   let filled = [];
@@ -153,8 +189,23 @@ export async function thisWeek(lat, lng, { back = 14, now = new Date(), gauge = 
     const today = fc.days[0]?.date;
     filled = ob.days.filter((d) => d.date > lastPast && (!today || d.date < today));
   }
-  const coming = fc ? fc.days.filter((d) => !filled.length || d.date > filled[filled.length - 1].date).filter((d) => d.date > lastPast) : [];
-  const days = [...past, ...filled, ...coming];
+  const coming = fc ? fc.days.filter((d) => d.date > lastPast) : [];
+  // PRISM reaches the days the station fills too (it runs a day behind; POWER three or four)
+  withPrism(filled, prism);
+  /* A day neither POWER nor the station has yet: PRISM's rain (or none), and the water use of the last
+     three known days -- so the run has no hole between the past and the forecast. */
+  const today0 = fc?.days[0]?.date ?? ymd(now);
+  const known = [...past, ...filled];
+  const lastKnown = known.length ? known[known.length - 1].date : start;
+  const recentEt = known.slice(-3).map((d) => d.et0).filter(Number.isFinite);
+  const etGuess = recentEt.length ? recentEt.reduce((a, b) => a + b, 0) / recentEt.length : 2;
+  for (let t = Date.parse(`${lastKnown}T12:00:00Z`) + 864e5; ymd(new Date(t)) < today0; t += 864e5) {
+    const date = ymd(new Date(t)), tmp = known[known.length - 1] || { tmax: 20, tmin: 10 };
+    filled.push({ date, tmax: tmp.tmax, tmin: tmp.tmin, rain: prism?.get(date) ?? 0, et0: etGuess, src: prism?.has(date) ? 'PRISM rain; water use from the days before' : 'no record yet' });
+  }
+  filled.sort((a, b) => a.date.localeCompare(b.date));
+  const seen = new Set();
+  const days = [...past, ...filled, ...coming].filter((d) => !seen.has(d.date) && seen.add(d.date));
   for (const d of days) if (gauge[d.date] !== undefined) { d.rain = gauge[d.date]; d.src += ' + gauge'; }
   return { days, today: fc?.days[0]?.date ?? ymd(now) };
 }

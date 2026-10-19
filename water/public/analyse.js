@@ -47,12 +47,13 @@ async function plan(inputs = {}) {
     lawnMask: kept.lawn, paved: r.impervious ? r.impervious.paved : null, soil: kept.soil,
     topsoil: !!inputs.topsoil, downspouts: inputs.downspouts || [], gutters: inputs.gutters || [],
     typical: kept.typical, week: kept.week, season: kept.season, light: kept.light, grass,
+    texture: inputs.texture || null, parcelMask: r.parcelMask || null,
   });
   const out = {
     zones: p.zones, zoneOf: p.zoneOf, wetFromWatering: p.wetFromWatering, wetAnyway: p.wetAnyway, dryShare: p.dryShare,
     roofs: p.roofs, soil: p.soil, weather: p.weather, thisWeek: p.thisWeek, years: p.years, topsoil: p.topsoil,
     standIn: kept.standIn, seconds: (Date.now() - t0) / 1000, shaded: p.shaded, sunShare: p.sunShare,
-    seasonDays: kept.season ? kept.season.size : null, grass,
+    seasonDays: kept.season ? kept.season.size : null, grass, rainFrom: kept.rainFrom, texture: p.texture,
   };
   self.postMessage({ plan: out }, [out.zoneOf.buffer, out.wetFromWatering.buffer, out.wetAnyway.buffer, out.dryShare.buffer]);
 }
@@ -71,7 +72,7 @@ async function start(site, inputs) {
     const d = 120 / 111320, e = d / Math.cos((lat * Math.PI) / 180);
     return soilFor([lng - e, lat - d, lng + e, lat + d], (q) => sdaPost(q));
   })().catch((err) => ({ units: [], error: err.message }));
-  const typicalP = typicalYears(lat, lng).then((x) => x.days);
+  const typicalP = typicalYears(lat, lng);
   const weekP = thisWeek(lat, lng, { back: 60 }).catch(() => null);
   // the shade map's typical year (its own reader, lib/shade/climate.js): its growing season and its light
   const y1 = new Date().getUTCFullYear() - 1;
@@ -106,7 +107,8 @@ async function start(site, inputs) {
   kept.r = r; kept.lng = lng; kept.lat = lat;
   kept.lawn = r.lawnMask || standInLawn(res); kept.standIn = !r.lawnMask;
   kept.soil = await soilP;
-  kept.typical = await typicalP;
+  const typ = await typicalP;
+  kept.typical = typ.days; kept.rainFrom = typ.rainFrom;
   kept.week = await weekP;
   kept.climate = await climateP;
   self.postMessage({ planProgress: 'Working out the watering plan…' });

@@ -19,7 +19,7 @@
  *      when to water next and how much.
  */
 
-import { rootZone, maxSprinklerRate } from './soil.js';
+import { rootZone, maxSprinklerRate, withTexture } from './soil.js';
 import { maskOf } from './geo.js';
 import { roofRouting } from './gutters.js';
 import { buildModel, simulate, idealIrrigation, zoneIrrigation, PARAMS, WARM } from './balance.js';
@@ -39,7 +39,7 @@ const DEFAULT_SOIL = { name: 'no survey soil here (a loam assumed)', drainage: '
  *   topsoil (bool), downspouts, gutters, typical (days), week ({ days, today }), light (Float32Array | null),
  *   zoneOf (Int16Array, the user's own zones, optional), params
  */
-export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, topsoil = false, downspouts = [], gutters = [], typical, week = null, light = null, season = null, grass = 'cool', zoneOf: userZones = null, params: given = null } = {}) {
+export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, topsoil = false, downspouts = [], gutters = [], typical, week = null, light = null, season = null, grass = 'cool', texture = null, parcelMask = null, zoneOf: userZones = null, params: given = null } = {}) {
   // warm-season turf (owner 2026-10-18): FAO-56's p 0.5 in place of cool-season's 0.4
   const params = given || (grass === 'warm' ? { ...PARAMS, ...WARM } : PARAMS);
   const g = res.grid, N = g.W * g.H;
@@ -51,7 +51,7 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
     else if (paved && paved[i] >= 0.5) kinds[i] = KIND.paved;
     else kinds[i] = KIND.other;
   }
-  const units = soil.units.length ? soil.units : [DEFAULT_SOIL];
+  const units = (soil.units.length ? soil.units : [DEFAULT_SOIL]).map((u) => (texture ? withTexture(u, texture) : u));
   const soils = [];
   for (const u of units) {
     soils.push({ unit: u, rz: rootZone(u.profile), drainage: u.drainage, hydgrp: u.hydgrp, wetByMonth: u.wetByMonth });
@@ -160,8 +160,20 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
   }
   return {
     zones: out, zoneOf: zones.zoneOf, userZones: !!zones.user, kinds, wetShare, dryShare, wetFromWatering, wetAnyway,
-    roofs: { pieces: roofs.pieces.length, guessed: roofs.pieces.filter((p) => p.guessed).length, unusedDownspouts: roofs.unused },
-    soil: units.map((u) => ({ name: u.name, share: u.share ?? null, drainage: u.drainage, hydgrp: u.hydgrp, wtMinCm: u.wtMinCm ?? null, wetByMonth: u.wetByMonth, assumed: !!u.assumed, tawMm: rootZone(u.profile)?.tawMm ?? null, tawTopsoilMm: rootZone(u.profile, { topsoil: true })?.tawMm ?? null })),
+    roofs: (() => {
+      /* Only the roofs on the property count for asking: the analysis reaches 30 m past the property line,
+         where the neighbours' houses are (owner, 2026-10-19: "it says I still have 21 unmarked roofs"). With
+         no property line, the roofs within 5 m of the lawn. */
+      let mine = parcelMask;
+      if (!mine) {
+        mine = new Uint8Array(N);
+        for (let i = 0; i < N; i++) if (kinds[i] === KIND.lawn) { const r = Math.floor(i / g.W), c = i % g.W; for (let dr = -5; dr <= 5; dr++) for (let dc = -5; dc <= 5; dc++) { const rr = r + dr, cc = c + dc; if (rr >= 0 && cc >= 0 && rr < g.H && cc < g.W) mine[rr * g.W + cc] = 1; } }
+      }
+      const onLot = roofs.pieces.filter((p) => p.cells.some((i) => mine[i]) && p.cells.length >= 6);
+      return { pieces: onLot.length, guessed: onLot.filter((p) => p.guessed).length, unusedDownspouts: roofs.unused, allPieces: roofs.pieces.length };
+    })(),
+    texture: texture || null,
+    soil: units.map((u) => ({ name: u.name, chosen: u.chosen || null, share: u.share ?? null, drainage: u.drainage, hydgrp: u.hydgrp, wtMinCm: u.wtMinCm ?? null, wetByMonth: u.wetByMonth, assumed: !!u.assumed, tawMm: rootZone(u.profile)?.tawMm ?? null, tawTopsoilMm: rootZone(u.profile, { topsoil: true })?.tawMm ?? null })),
     years, topsoil, grass, thisWeek, shaded: !!light,
     sunShare: light ? (() => { const v = []; for (let i = 0; i < N; i++) if (kinds[i] === KIND.lawn) v.push(light[i]); return med(v); })() : null,
     weather: monthly(typical, years, params),
@@ -175,7 +187,8 @@ export function monthly(days, years, params = PARAMS) {
   for (const d of days) {
     const m = Number(d.date.slice(5, 7)) - 1, y = Number(d.date.slice(0, 4)) - y0;
     if (y < 0 || y >= years) continue;
-    rain[m][y] += d.rain || 0; et[m][y] += (d.et0 || 0) * params.kc;
+    rain[m][y] += d.rain || 0; et[m][y] += d.et0 || 0;
   }
-  return rain.map((r, m) => ({ month: m, rainMm: med(r), grassUseMm: med(et[m]) }));
+  // the reference (clipped, well-watered grass: what Enviroweather calls Potential ET) and the grass's own use
+  return rain.map((r, m) => ({ month: m, rainMm: med(r), referenceMm: med(et[m]), grassUseMm: med(et[m]) * params.kc }));
 }

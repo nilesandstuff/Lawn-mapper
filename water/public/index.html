@@ -46,6 +46,11 @@
   .chip { display: inline-block; width: 14px; height: 14px; border-radius: 3px; vertical-align: -2px; margin-right: 6px; }
   .big { font-size: 1.15rem; font-weight: 600; }
   .stage canvas.picking { cursor: crosshair; }
+  .stage { touch-action: none; }
+  .stage canvas { transform-origin: 0 0; }
+  .zoom { position: absolute; right: 8px; top: 8px; display: flex; flex-direction: column; gap: 6px; z-index: 2; }
+  .zoom button { width: 40px; height: 40px; padding: 0; font-size: 22px; line-height: 1; background: rgba(0,0,0,.6); border-color: rgba(255,255,255,.5); }
+  .zoom button.small { font-size: 12px; }
 </style>
 </head>
 <body>
@@ -63,19 +68,21 @@
   <div id="status" class="status"></div>
 
   <div id="result" hidden>
-    <div class="stage"><canvas id="view"></canvas></div>
+    <div class="stage" id="stage"><canvas id="view"></canvas><div class="zoom"><button type="button" id="zoom-in" aria-label="Zoom in">+</button><button type="button" id="zoom-out" aria-label="Zoom out">&minus;</button><button type="button" class="small" id="zoom-reset" aria-label="Whole map">All</button></div></div>
+    <p class="dim" style="margin:4px 0 0">Pinch or use + and &minus; to zoom; drag to move around.</p>
     <div class="legend">
       <span id="zone-legend"></span>
       <span><i style="background:#ff1744"></i>too wet if watered with its zone</span>
       <span><i style="background:#0d47a1"></i>wet even without watering</span>
       <span><i style="background:#ffd600"></i>still dries out</span>
-      <span><i style="background:#1e6bff"></i>holds water</span>
-      <span><i style="background:#bec8d7"></i>low, not a lawn problem</span>
-      <span><i style="background:#22d3ee"></i>runoff gathers</span>
-      <span><i style="background:#8a4fb4"></i>paving, likely</span>
-      <span><i style="background:#e53935"></i>ground falls toward the house</span>
-      <span><i style="background:#ffb300"></i>falls away, under 5%</span>
-      <span><i style="background:#43a047"></i>falls away 5%+</span>
+      <span><i style="background:#1e6bff"></i>a hollow in the lawn that holds water</span>
+      <span><i style="background:#bec8d7"></i>low ground off the lawn (paving, under trees, a ditch)</span>
+      <span><i style="background:#22d3ee"></i>where runoff runs together</span>
+      <span><i style="background:#111;border:1px solid #888"></i>paving</span>
+      <span><i style="background:#fff;border:1px solid #888"></i>roof</span>
+      <span><i style="background:#e53935"></i>ground slopes toward the house</span>
+      <span><i style="background:#ffb300"></i>slopes away from the house, but less than 6 in over the first 10 ft</span>
+      <span><i style="background:#43a047"></i>slopes away 6 in or more over the first 10 ft (what building codes ask)</span>
       <span><i style="background:#ffeb3b"></i>property line</span>
       <span><i style="background:#69f0ae"></i>your lawn</span>
     </div>
@@ -94,6 +101,7 @@
     </div>
     <div class="tools">
       <label class="toggle"><input type="checkbox" id="topsoil"> My lawn has about 4 in of loamy topsoil over the native soil</label>
+      <label class="toggle">Soil: <select id="texture"><option value="">as the USDA soil survey says</option><option value="sand">sand</option><option value="sandy loam">sandy loam</option><option value="loam">loam</option><option value="silt loam">silt loam</option><option value="clay loam">clay loam</option><option value="clay">heavy clay</option></select></label>
       <label class="toggle">Grass: <select id="grass"><option value="cool">cool-season (bluegrass, fescue, rye)</option><option value="warm">warm-season (bermuda, zoysia, St. Augustine)</option></select></label>
     </div>
     <div id="hint" class="hint"></div>
@@ -109,7 +117,7 @@
       <li>The ground as the laser saw it on the survey date shown. Anything regraded, built or planted since is not in it.</li>
       <li>Hollows about 25 ft across or wider that hold about 2 inches or more are usually found. Ones under about 10 ft across are not: the survey is too coarse.</li>
       <li>Until you add your downspouts, it guesses where each roof lets its water off.</li>
-      <li>The soil is the USDA soil survey's native soil. Most lawns sit on graded fill and packed topsoil, so how fast yours drinks can be slower than the survey says; a soak test (coming) will tell.</li>
+      <li>The soil is the USDA soil survey's, unless you choose your own under the map. A soak test (coming) will tell how fast yours really drinks.</li>
       <li>The weather is NASA's daily record and the National Weather Service forecast, on a grid about 30 miles across: a local storm it missed is not in the plan.</li>
       <li>Storm drains and yard drains look like ponds to it, because it can't see the pipe.</li>
     </ul>

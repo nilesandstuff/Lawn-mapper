@@ -185,6 +185,26 @@ export function rootZone(profile, { rootCm = ROOT_CM, topsoil = false } = {}) {
   };
 }
 
+/* WHEN THE OWNER KNOWS BETTER THAN THE SURVEY (owner, 2026-10-19: "my soil is really heavy clay"; the
+   survey said loam). Texture-class averages, Rawls, Brakensiek & Saxton (1982): water the roots can use
+   (field capacity less wilting point) and saturated conductivity; hydrologic group by texture (TR-55).
+   The survey's drainage class and water table are kept: they describe the site, not only the topsoil. */
+export const TEXTURES = {
+  sand: { label: 'sand', awc: 0.058, ksatMmH: 210, sand: 92, clay: 3, hydgrp: 'A' },
+  'sandy loam': { label: 'sandy loam', awc: 0.112, ksatMmH: 25.9, sand: 65, clay: 10, hydgrp: 'B' },
+  loam: { label: 'loam', awc: 0.153, ksatMmH: 13.2, sand: 40, clay: 18, hydgrp: 'B' },
+  'silt loam': { label: 'silt loam', awc: 0.197, ksatMmH: 6.8, sand: 20, clay: 15, hydgrp: 'B' },
+  'clay loam': { label: 'clay loam', awc: 0.121, ksatMmH: 2.3, sand: 32, clay: 34, hydgrp: 'C' },
+  clay: { label: 'heavy clay', awc: 0.124, ksatMmH: 0.6, sand: 20, clay: 50, hydgrp: 'D' },
+};
+
+/** A map unit with its profile replaced by a texture's (TEXTURES), the rest of it kept. */
+export function withTexture(unit, key) {
+  const t = TEXTURES[key];
+  if (!t) return unit;
+  return { ...unit, hydgrp: t.hydgrp, chosen: t.label, profile: { name: t.label, horizons: [{ topCm: 0, bottomCm: 150, awc: t.awc, ksatUmS: t.ksatMmH / 3.6, sand: t.sand, clay: t.clay }] } };
+}
+
 /** The shallowest seasonal water table (cm) in a month, survey "Wet" layers, else the annual minimum, else null. */
 export function waterTableCm(unit, month) {
   const v = unit?.wetByMonth?.[month];
