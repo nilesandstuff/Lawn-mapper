@@ -126,7 +126,7 @@ jobs:
       # One tar: the lots' ids carry colons, which an artifact refuses in a file name.
       - name: Pack the lidar roof masks
         if: always() && inputs.lidar_from == ''
-        run: tar -cf overture-lidar.tar lidar/*-roof.png 2>/dev/null || true
+        run: tar -cf overture-lidar.tar lidar/*-roof.png lidar/*-height.png 2>/dev/null || true
 
       - name: Keep the lidar roof masks for a rerun
         if: always() && inputs.lidar_from == ''

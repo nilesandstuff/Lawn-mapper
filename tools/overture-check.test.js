@@ -36,3 +36,24 @@ const ex = bandWidth(0);
 assert.ok(Math.abs(ex[4][2] - (512 * 2 ** 14) / 40075016.686) < 1e-9 && Math.abs(ex[6][2] / ex[4][2] - 1024) < 1e-6, 'doubles each zoom');
 assert.ok(covers([0, 0, 2, 2], [0.5, 0.5, 1, 1]) && !covers([0, 0, 2, 2], [0.5, 0.5, 3, 1]) && !covers(null, [0, 0, 1, 1]));
 console.log('overture-layer: ok');
+
+// The photo fit (tools/overture-check.js edgeFit, leanFit).
+const { edgeFit, leanFit } = await import('./overture-check.js');
+{
+  const Wg = 80, Hg = 60, gx = new Float32Array(Wg * Hg), gy = new Float32Array(Wg * Hg);
+  // a bright square from (30,20) to (50,40): its edges, as gradients, 3 cells east and 2 south of the outline below
+  for (let r = 23; r <= 42; r++) { gx[r * Wg + 33] = 1; gx[r * Wg + 53] = -1; }
+  for (let c = 33; c <= 53; c++) { gy[22 * Wg + c] = 1; gy[42 * Wg + c] = -1; }
+  const pts = [];
+  for (let t = 0.5; t < 20; t += 1) { pts.push([30 + t, 20, 0, 1], [30 + t, 40, 0, 1], [30, 20 + t, 1, 0], [50, 20 + t, 1, 0]); }
+  const f = edgeFit(pts, gx, gy, Wg, Hg, 8);
+  assert.equal(f.dx, 3); assert.equal(f.dy, 2); assert.ok(f.peak > 2);
+}
+{
+  // shift = (0.5, -0.2) + (0.3, 0.1) * h, exactly, plus one stray
+  const rows = [3, 5, 7, 9, 4].map((h) => ({ h, s: [0.5 + 0.3 * h, -0.2 + 0.1 * h] }));
+  rows.push({ h: 6, s: [9, 9] });
+  const lf = leanFit(rows);
+  assert.ok(Math.abs(lf.g[0] - 0.5) < 1e-6 && Math.abs(lf.L[0] - 0.3) < 1e-6 && Math.abs(lf.L[1] - 0.1) < 1e-6, 'the stray is trimmed');
+}
+console.log('photo fit: ok');
