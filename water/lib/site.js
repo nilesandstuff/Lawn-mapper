@@ -15,7 +15,7 @@ import { pointsIn, toMerc, mercScale } from './ept.js';
 import { analyse, spotRecords } from './lowspots.js';
 import { boundsOf, maskOf, maskBox } from './geo.js';
 import { gridFor } from './surface.js';
-import { imperviousness, weightedFlow } from './impervious.js';
+import { imperviousness, weightedFlow, runOnSources } from './impervious.js';
 import { naipFor, ndvi } from './naip.js';
 import { overtureFor, overtureMasks } from './overture.js';
 
@@ -99,13 +99,10 @@ export async function runSite(site, io, pickCloud, { progress = () => {}, nullRu
       else { cover.pavedM2 += imp.paved[i]; cover.otherM2 += 1 - imp.paved[i]; }
     }
     for (const k of Object.keys(cover)) cover[k] = Math.round(cover[k] * g.cell * g.cell);
-    // runoff reaching the lawn from roofs and pavement: the weighted flow stepping onto lawn cells from
-    // outside it, and roof water let off straight onto the lawn (lib/impervious.js weightedFlow)
-    let onto = 0;
-    const { down } = res.runoff;
-    for (let i = 0; i < down.length; i++) if (!lawnMask[i] && !res.wall[i] && down[i] >= 0 && lawnMask[down[i]] && parcelMask[down[i]]) onto += wflow[i];
-    for (const [o, m2] of wflow.roofDrops) if (lawnMask[o] && parcelMask[o]) onto += m2;
-    cover.runoffOntoLawnM2 = Math.round(onto);
+    // what drains onto the lawn, each square metre once, on the lot and beyond its line (lib/impervious.js)
+    const src = runOnSources(res, wflow, imp, lawnMask, parcelMask);
+    const m2 = (v) => Math.round(v);
+    cover.runOn = { lot: Object.fromEntries(Object.entries(src.lot).map(([k, v]) => [k, m2(v)])), beyond: Object.fromEntries(Object.entries(src.beyond).map(([k, v]) => [k, m2(v)])), weightedM2: m2(src.weightedM2) };
   }
 
   return {

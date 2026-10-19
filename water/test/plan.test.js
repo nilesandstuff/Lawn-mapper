@@ -18,6 +18,7 @@ import { fromMerc, toMerc, mercScale } from '../lib/ept.js';
 import { terrain, hillside } from '../lib/upslope.js';
 import { tileId, decodeMvt, overtureMasks } from '../lib/overture.js';
 import { gridFor } from '../lib/surface.js';
+import { runOnSources } from '../lib/impervious.js';
 
 const tests = [];
 const test = (name, fn) => tests.push([name, fn]);
@@ -250,6 +251,23 @@ test('knock-on: a downspout moved to the other side of the house waters the lawn
   assert.ok(near(west, 18, 23, 28, 40) > near(east, 18, 23, 28, 40) + 5, `east of the house ${near(west, 18, 23, 28, 40).toFixed(0)} vs ${near(east, 18, 23, 28, 40).toFixed(0)} mm`);
   // the south-west corner, which neither outlet's water reaches: the same
   assert.ok(Math.abs(near(west, 32, 40, 0, 8) - near(east, 32, 40, 0, 8)) < 1, 'a corner nothing reaches is unchanged');
+});
+
+test('run-on: each patch counted once where it first reaches the lawn, the lot apart from beyond its line', () => {
+  // one row running downhill to the right: 0-1 beyond the lot line, 2-3 the lot's drive, 4 lawn, 5 a bed,
+  // 6-8 lawn, 9 a roof that lets off at 3. The bed's water reaches the lawn again at 6: still counted once.
+  const W = 10, g = { W, H: 1, cell: 1 };
+  const down = Int32Array.from({ length: W }, (_, i) => (i + 1 < W ? i + 1 : -1)); down[8] = -1;
+  const wall = new Uint8Array(W); wall[9] = 1;
+  const lawn = new Uint8Array(W); for (const i of [4, 6, 7, 8]) lawn[i] = 1;
+  const parcel = new Uint8Array(W); for (let i = 2; i < W; i++) parcel[i] = 1;
+  const paved = Float32Array.from({ length: W }, (_, i) => (i === 2 || i === 3 ? 0.9 : 0));
+  const runoff = Float32Array.from({ length: W }, (_, i) => (wall[i] ? 0.9 : lawn[i] ? 0.15 : paved[i] > 0.5 ? 0.85 : 0.3));
+  const wflow = { roofDrops: [[3, 0.9, [9]]] };
+  const o = runOnSources({ grid: g, runoff: { down }, wall }, wflow, { paved, runoff }, lawn, parcel);
+  assert.deepEqual(o.beyond, { roof: 0, paved: 0, ground: 2 });
+  assert.deepEqual(o.lot, { roof: 1, paved: 2, ground: 1 });
+  assert.ok(Math.abs(o.weightedM2 - (0.3 * 3 + 0.85 * 2 + 0.9)) < 1e-6, `weighted ${o.weightedM2}`);
 });
 
 let failed = 0;

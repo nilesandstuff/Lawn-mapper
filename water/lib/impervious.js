@@ -142,7 +142,7 @@ export function weightedFlow(res, runoff) {
       let m2 = 0;
       for (const i of piece) m2 += runoff[i] * g.cell * g.cell;
       acc[outlet] += m2;
-      roofDrops.push([outlet, m2]);
+      roofDrops.push([outlet, m2, piece]);
     }
   }
   const order = [];
@@ -152,4 +152,50 @@ export function weightedFlow(res, runoff) {
   for (const i of order) if (down[i] >= 0) acc[down[i]] += acc[i];
   acc.roofDrops = roofDrops;
   return acc;
+}
+
+/**
+ * WHERE THE RUN-ON COMES FROM (owner, 2026-10-19: "I'm confused about where the 38,901 number is coming
+ * from. Is it the street, and/or neighbor's lawns?... it should say that"). Every cell off the lawn is
+ * followed downhill to the FIRST lawn cell on the lot it reaches, and counted there once -- not again each
+ * time its water leaves the lawn through a bed and comes back on -- and the lawn's own rain is not counted.
+ * Plain areas (m^2), split by what the ground is and whether it is on the lot or beyond its line
+ * (neighbours' yards, roofs and drives, the street), plus the runoff-weighted total that says how hard a
+ * storm hits the lawn. A roof belongs to the lot when most of it lies on the lot.
+ */
+export function runOnSources(res, wflow, imp, lawnMask, parcelMask) {
+  const g = res.grid, N = g.W * g.H, { down } = res.runoff, a = g.cell * g.cell;
+  const target = (i) => lawnMask[i] && parcelMask[i];
+  const entry = new Int32Array(N).fill(-2); // -2 not yet followed, -1 never reaches the lawn
+  const reach = (s) => {
+    const path = [];
+    let i = s, hit = -1;
+    for (let n = 0; n < N; n++) {
+      if (entry[i] !== -2) { hit = entry[i]; break; }
+      if (target(i)) { hit = i; break; }
+      path.push(i);
+      const j = down[i];
+      if (j < 0 || res.wall[j]) break;
+      i = j;
+    }
+    for (const k of path) entry[k] = hit;
+    return hit;
+  };
+  const z = () => ({ roof: 0, paved: 0, ground: 0 });
+  const out = { lot: z(), beyond: z(), weightedM2: 0 };
+  for (let i = 0; i < N; i++) {
+    if (res.wall[i] || lawnMask[i] && parcelMask[i]) continue;
+    if (reach(i) < 0) continue;
+    const kind = imp.paved[i] > 0.5 ? 'paved' : 'ground';
+    out[parcelMask[i] ? 'lot' : 'beyond'][kind] += a;
+    out.weightedM2 += imp.runoff[i] * a;
+  }
+  for (const [o, m2, piece] of wflow.roofDrops) {
+    if (reach(o) < 0) continue;
+    let on = 0;
+    for (const i of piece) if (parcelMask[i]) on++;
+    out[on * 2 >= piece.length ? 'lot' : 'beyond'].roof += piece.length * a;
+    out.weightedM2 += m2;
+  }
+  return out;
 }

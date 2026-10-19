@@ -287,6 +287,22 @@ function tapAt(ev) {
 
 const inches = (cm) => (cm / 2.54).toFixed(1);
 const sqft = (m2) => Math.round(m2 * 10.764).toLocaleString();
+
+/** What drains onto the lawn, from the lot and from beyond its line (lib/impervious.js runOnSources). */
+function runOnCard(cv) {
+  const o = cv.runOn;
+  if (!o) return '';
+  const sum = (x) => x.roof + x.paved + x.ground;
+  const lot = sum(o.lot), beyond = sum(o.beyond);
+  if (!lot && !beyond) return '<p>No roof, paving or other ground drains onto the lawn: only the rain that falls on it.</p>';
+  const parts = (x) => [[x.roof, 'roof'], [x.paved, 'paving'], [x.ground, 'beds, bare ground and ground under trees']].filter(([v]) => v >= 1).map(([v, w]) => `${sqft(v)} sq ft of ${w}`);
+  const list = [];
+  if (lot) list.push(`<li>From your own lot: ${parts(o.lot).join(', ')}.</li>`);
+  if (beyond) list.push(`<li>From beyond your lot line (neighbours' yards, roofs and driveways, and the street, within about 100 ft of it): ${parts(o.beyond).join(', ')}.</li>`);
+  const hard = o.weightedM2 > 0.5 * cv.lawnM2;
+  return `<p>Rain that lands on this ground runs onto the lawn:</p><ul>${list.join('')}</ul>
+      <p class="dim">Each patch is counted once, where its water first reaches the lawn. Roofs and paving shed almost all their rain; beds, yards and ground under trees shed some, mostly in heavy rain. Altogether it sends the lawn about as much water as the rain falling on ${sqft(o.weightedM2)} sq ft${hard ? ' — a lot for the lawn to take in a storm' : ''}.</p>`;
+}
 const gallons = (l) => Math.round(l / 3.785).toLocaleString();
 const pct = (x) => `${Math.round(x * 100)}%`;
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -323,7 +339,7 @@ function report(d, site) {
       <li>Roofs: ${sqft(cv.roofM2)} sq ft (${p(cv.roofM2)})</li>
       <li>Paving, likely: ${sqft(cv.pavedM2)} sq ft (${p(cv.pavedM2)})</li>
       <li>Other ground (beds, bare soil, gravel): ${sqft(cv.otherM2)} sq ft (${p(cv.otherM2)})${cv.unjudgedM2 ? `; under trees, not judged: ${sqft(cv.unjudgedM2)} sq ft` : ''}</li></ul>
-      <p>Rain off about <strong>${sqft(cv.runoffOntoLawnM2)} sq ft</strong> of roof, paving and other ground drains onto the lawn${cv.runoffOntoLawnM2 > 0.5 * cv.lawnM2 ? ' — a lot for the lawn to take in a storm' : ''}.</p>
+      ${runOnCard(cv)}
       <p class="dim">${s.pavingFromPhoto ? "Paving is judged from how brightly the laser came back and from the USDA's aerial photo, whose infrared band shows living grass, both measured against your own lawn: in a test against a published 1 m land-use map it was right on about 85 cells in 100 and found 82% of the paving." : 'Paving is judged from how brightly the laser came back, measured against your own lawn: in a test against a published 1 m land-use map it was right on about 85 cells in 100 and found three quarters of the paving.'} Add your downspouts so the roofs' water lands where it really does.</p></div>`);
   }
   const b = s.besideHouse;
