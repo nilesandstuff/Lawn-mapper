@@ -43,6 +43,13 @@ import { rng } from '../lib/synthetic.js';
 import { lidarAt } from '../../worker/src/shade.js';
 import { shadeRoofs } from '../lib/roofs.js';
 import { PNG } from 'pngjs';
+import { mkdirSync, writeFileSync } from 'node:fs';
+
+/* DUMP=<dir>: for each held-out test square, what water/tools/flair_score.py needs to score IGNF's FLAIR
+   land-cover U-Nets (the core session's find, 2026-10-19) on exactly the cells everything else is scored
+   on: the NAIP photo at FLAIR's 0.2 m, height above ground from the lidar, the land use as a simple code,
+   the roof finder's mask and the in-use paving model's chance per cell. Numbers only, no places. */
+const DUMP = process.env.DUMP || '';
 
 /* THE PAID CANDIDATE (owner, 2026-10-18: "whatever is most accurate and fastest"; his Replicate token,
    REPLICATE_TOKEN, the one the main site uses): SAM 3 on Replicate (mattsays/sam3-image, the model the
@@ -211,6 +218,7 @@ async function one(lng, lat) {
     const turf = t === G.turf;
     if (!imp && !perv && !turf) continue;
     cells.push({
+      i,
       cls: imp ? 'imp' : perv ? 'perv' : 'turf',
       raw: I[i], box: pc.groundP75 ? I[i] / pc.groundP75 : NaN, lawn: lawnI ? I[i] / lawnI : NaN,
       lr: Number.isFinite(roofI) && lawnI !== roofI ? (I[i] - roofI) / (lawnI - roofI) : NaN,
@@ -221,7 +229,24 @@ async function one(lng, lat) {
         V ? V[i] : NaN, V ? V[i] - lawnV : NaN, bright ? Math.log(Math.max(1, bright[i]) / Math.max(1, lawnB)) : NaN, photo ? (photo.blue[i] - photo.red[i]) / 255 : NaN],
     });
   }
+  let dump = null;
+  if (DUMP) {
+    const hag = new Float32Array(N);
+    const P = res.points;
+    for (let k = 0; k < P.n; k++) {
+      if (P.cls[k] === 7 || P.cls[k] === 18) continue;
+      const [fc, fr] = g.toCell(P.x[k], P.y[k]);
+      const c = Math.floor(fc), r = Math.floor(fr);
+      if (c < 0 || r < 0 || c >= g.W || r >= g.H) continue;
+      const j = r * g.W + c, h = P.z[k] - res.z[j];
+      if (h > hag[j]) hag[j] = h;
+    }
+    // 1 roof, 2 paved, 3 pervious, 4 turf, 5 other land use, 0 not to be judged (no answer, canopy over impervious)
+    const simple = Uint8Array.from(truth, (t) => (!t || t === G.canopyOverImpervious ? 0 : t === G.structure ? 1 : t === G.road || t === G.impervious ? 2 : t === G.pervious ? 3 : t === G.turf ? 4 : 5));
+    dump = { W: g.W, H: g.H, bbox: g.bbox, hag, simple, roof: finders.either };
+  }
   return {
+    dump,
     cloud: cloud.name, roofs: { tp, fp, fn }, roofScores, cells, lawnI, roofI, p75: pc.groundP75,
     shares: { turf: share('turf'), structure: share('structure'), road: share('road'), impervious: share('impervious'), pervious: share('pervious') },
   };
@@ -294,6 +319,32 @@ async function main() {
     const called = T.filter((c) => p(c) > 0), precise = called.filter((c) => c.cls === 'imp').length / Math.max(1, called.length);
     console.log(`  ${label}: right on ${(right * 100).toFixed(1)}% of cells, finds ${(found * 100).toFixed(0)}% of paving, ${(precise * 100).toFixed(0)}% of what it calls paving is paving`);
     console.log(`  ${label}, fitted on ${Math.ceil(done.length / 2)} squares, tested on ${Math.floor(done.length / 2)}: paved vs both ${auc(T.filter((c) => c.cls === 'imp').map(p), T.filter((c) => c.cls !== 'imp').map(p)).toFixed(3)}, paved vs pervious ${auc(T.filter((c) => c.cls === 'imp').map(p), T.filter((c) => c.cls === 'perv').map(p)).toFixed(3)}; weights ${JSON.stringify({ keys, mean: m.mean.map((v) => +v.toFixed(4)), sd: m.sd.map((v) => +v.toFixed(4)), w: m.w.map((v) => +v.toFixed(3)), b: +m.b.toFixed(3) })}`);
+  }
+  if (DUMP) {
+    // the in-use model (lidar + photo against the lawn, lib/impervious.js PAVED_MODEL_PHOTO's inputs), fitted
+    // on the even squares as above; each odd (test) square written out for flair_score.py
+    const keys = [0, 1, 2, 3, 5, 6, 7];
+    const m = fitLogistic(rowsOf(fitB, keys));
+    const z = (c) => { let v = m.b; keys.forEach((k, j) => { v += m.w[j] * ((c.x[k] - m.mean[j]) / m.sd[j]); }); return v; };
+    mkdirSync(DUMP, { recursive: true });
+    let n = 0;
+    for (let j = 1; j < done.length; j += 2) {
+      const d = done[j];
+      if (!d.dump) continue;
+      const { W, H, bbox, hag, simple, roof } = d.dump;
+      const UPX = 5;
+      const url = `https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPImagery/ImageServer/exportImage?bbox=${bbox.map((v) => v.toFixed(2)).join(',')}&bboxSR=3857&imageSR=3857&size=${W * UPX},${H * UPX}&format=bsq&pixelType=U8&interpolation=RSP_BilinearInterpolation&f=image`;
+      const photo = Buffer.from(await (await fetch(url)).arrayBuffer());
+      if (photo.length < W * H * UPX * UPX * 4) continue;
+      const cells = d.cells.filter((c) => c.x.every(Number.isFinite)).map((c) => [c.i, c.cls === 'imp' ? 1 : c.cls === 'perv' ? 2 : 3, +(1 / (1 + Math.exp(-z(c)))).toFixed(4)]);
+      const id = `sq${String(++n).padStart(2, '0')}`;
+      writeFileSync(`${DUMP}/${id}.json`, JSON.stringify({ W, H, up: UPX, cells }));
+      writeFileSync(`${DUMP}/${id}-naip.bsq`, photo.subarray(0, W * H * UPX * UPX * 4));
+      writeFileSync(`${DUMP}/${id}-hag.f32`, Buffer.from(hag.buffer));
+      writeFileSync(`${DUMP}/${id}-truth.u8`, Buffer.from(simple.buffer));
+      writeFileSync(`${DUMP}/${id}-roof.u8`, Buffer.from(Uint8Array.from(roof).buffer));
+    }
+    console.log(`  written for FLAIR: ${n} test squares`);
   }
   if (SAM) {
     // the paid model: on the test squares' cells it saw, alone (its mask as it is) and as a ninth input
