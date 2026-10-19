@@ -41,8 +41,9 @@ got here. Update it whenever the in-flight run changes.*
 - **OVERTURE AND THE PHOTO (2026-10-19, H101, H102):** Overture lines up with
   the LIDAR within about a metre, but NOT consistently with the PHOTO -- a
   Mapbox frame can sit metres off both (H101's correction), which also puts
-  the lidar inputs off the photo. Being measured per lot (workflow 37, photo
-  fit); the editor's Overture layer is drawn as published until it is fixed.
+  the lidar inputs off the photo: a median 1.2 m per lot, 17 of 55 lots over
+  2 m (H102). Next: the lidar lined up with each photo, measured under the
+  full bar; the editor's Overture layer moved onto the photo on screen.
 - **THE LIVE MODEL HAS A NAME AND A VERSION HISTORY (owner, 2026-10-06):**
   "Turf Trace - alpha version 2 (79% accuracy)". Every release ships with a
   row in worker/src/model-versions.js: the next version number, the date,
@@ -894,6 +895,47 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 ---
 
 ## HARD FINDINGS — our own measurements
+
+### H102. The PHOTO is what is off: Overture's buildings sit a median 1.6 m from the same houses in our photos (43% over 2 m, 27% over 3 m), and the LIDAR sits a median 1.2 m from the photo per lot (17 of 55 lots over 2 m); one shift per lot takes out most of it (0.6 m left) -- 2026-10-19
+*Workflow 37, run 39305034342, the 101 locked lots with lidar. Owner:
+"Your points about the fit are completely ignoring the imagery... the
+imagery is not consistently lining up with the overture shapes... that
+almost certainly means that we need to line up lidar better too."*
+
+**Method** (tools/overture-check.js photoFit). Each Overture outline (30 m²+,
+inside the frame) is slid over the frame's own photo -- the photo the lawn
+was traced on -- within 6 m, scoring the brightness gradient across the
+outline; the best shift is where that building's roof edge is in the photo.
+Each building's lidar height (30th percentile inside it) and its own shift
+onto the lidar roofs (H101) are kept beside it. Checked by eye on six live
+Mapbox frames of these lots: the moved outline lands on the roof (a
+Louisiana lot about 6 m out as published, a Fargo lot about 2 m, a rural
+Illinois lot already on).
+
+| | |
+|---|---|
+| Buildings fitted | 179 on 99 lots |
+| Overture -> photo, per building | median 1.61 m; over 1 m 72%, over 2 m 43%, over 3 m 27% |
+| per lot (median building) | median 1.65 m; 70 lots over 1 m, 42 over 2 m |
+| One shift per lot? (48 lots with 2+ buildings) | buildings scatter a median 0.60 m about the lot's shift |
+| Lean against height | only 3 lots have 3+ fitted buildings of different heights; not measurable here |
+| LIDAR -> photo (Overture->photo less Overture->lidar, per building) | 55 lots, 104 buildings; per building median 1.55 m; per lot median 1.19 m; 33 lots over 1 m, 17 over 2 m |
+
+**What it means.**
+- Overture and the lidar agree with each other (0.87 m, H101); the photo is
+  the one that is off, by more than a metre on most lots and 2-6 m on a
+  third. The traces are drawn on the photo, so the decoder's lidar inputs
+  (laid on the frame's box) are off from the very lawn they are trained on
+  by about as much -- at 2 m lidar cells, often a cell or two.
+- One shift per lot removes most of it; the 0.6 m left is lean, footprint
+  shape and fit noise together.
+- Not separated here: how much of a building's shift is the photo's ground
+  offset and how much is its roof's lean.
+
+**Next:** line the lidar up with each photo before the decoder reads it (one
+shift per lot, found from the photo itself), and measure it on the locked
+104 under the full bar; and draw the editor's Overture layer at the lot's
+shift onto the photo on screen.
 
 ### H101. Overture's buildings sit under a metre from the LIDAR's roofs, all of a lot's buildings off together; only 0.9% of the traced lawn lies under an Overture building, road or sidewalk band, but two lots lose 11% and 14%. NOT a measurement against the PHOTO -- see the correction below -- 2026-10-19
 *Workflow 37, run 39288686018 (101 of the 104 locked lots; 3 have no lidar).
