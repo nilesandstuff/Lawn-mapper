@@ -165,7 +165,10 @@ function photoFit(PNG, id, box, k, ov, lidarOwn, dirs, wantPicture = false) {
   if (wantPicture) photoPicture(PNG, photo, Wg, Hg, fits, join(dirs.out, 'pictures', `${id.replace(/[^\w.-]+/g, '_')}-photo.png`));
   const good = fits.filter((f) => f.peak >= PEAK_MIN);
   const out = { photo: true, photoBuildings: fits.length, photoFitted: good.length };
-  if (!good.length) return out;
+  if (!good.length) {
+    if (hp) { const d = lidarEdgeFit(hp, Wg, Hg, gx, gy, reach); if (d) { out.directShift = d.s; out.directPeak = d.peak; out.directPoints = d.n; } }
+    return out;
+  }
   const mags = good.map((f) => Math.hypot(...f.s));
   out.photoShiftMedianM = median(mags);
   out.photoShiftMaxM = Math.max(...mags);
@@ -198,8 +201,34 @@ function photoFit(PNG, id, box, k, ov, lidarOwn, dirs, wantPicture = false) {
     out.lidarToPhotoHeights = both.map((f) => f.h);
     out.lidarToPhotoVecs = lp;
   }
+  // THE LIDAR ONTO THE PHOTO WITHOUT OVERTURE: the lidar's own height edges (a step of 1.5 m+
+  // between neighbouring cells, beside something 2.5 m+ up) slid over the photo's edges. This is
+  // what can run wherever there is lidar, Overture or not; compared here with the answer above.
+  if (hp) {
+    const direct = lidarEdgeFit(hp, Wg, Hg, gx, gy, reach);
+    if (direct) {
+      out.directShift = direct.s; out.directPeak = direct.peak; out.directPoints = direct.n;
+      if (out.lidarToPhoto) out.directVsOverture = Math.hypot(direct.s[0] - out.lidarToPhoto[0], direct.s[1] - out.lidarToPhoto[1]);
+    }
+  }
   out.photoFits = good.map((f) => ({ s: f.s.map((v) => +v.toFixed(2)), h: Number.isFinite(f.h) ? +f.h.toFixed(1) : null, peak: +f.peak.toFixed(2), areaM2: Math.round(f.areaM2), lidar: f.lidar && f.lidar.map((v) => +v.toFixed(2)) }));
   return out;
+}
+
+/** The lidar's height edges (height png, decimetres) as points with normals on the photo grid, fitted to the photo. */
+function lidarEdgeFit(hp, Wg, Hg, gx, gy, reach) {
+  const W = hp.width, H = hp.height, h = (c, r) => hp.data[(r * W + c) * 4] / 10;
+  const pts = [];
+  for (let r = 1; r < H - 1; r++) for (let c = 1; c < W - 1; c++) {
+    const dx = (h(c + 1, r) - h(c - 1, r)) / 2, dy = (h(c, r + 1) - h(c, r - 1)) / 2, m = Math.hypot(dx, dy);
+    if (m < 1.5 || Math.max(h(c - 1, r), h(c + 1, r), h(c, r - 1), h(c, r + 1)) < 2.5) continue;
+    // the cell's centre on the photo grid; the edge runs across the height gradient
+    pts.push([((c + 0.5) / W) * Wg, ((r + 0.5) / H) * Hg, dx / m, dy / m]);
+  }
+  if (pts.length < 30) return null;
+  const f = edgeFit(pts, gx, gy, Wg, Hg, reach);
+  if (!f || f.peak < PEAK_MIN) return null;
+  return { s: [f.dx * PHOTO_CELL_M, -f.dy * PHOTO_CELL_M], peak: f.peak, n: pts.length };
 }
 
 /* The photo at the 0.2 m grid: Overture's outline as published in yellow, moved onto the photo's
@@ -367,7 +396,7 @@ async function main() {
     if (!row) { console.log(`  --- ${id.slice(0, 26).padEnd(26)} skipped: ${skipped[id]}`); continue; }
     if (shown < pictures) shown++;
     rows.push(row);
-    console.log(`  ${String(rows.length).padStart(3)} ${id.slice(0, 26).padEnd(26)} roof ${row.roofM2.toFixed(0).padStart(4)} m² lidar / ${row.overtureM2.toFixed(0).padStart(4)} m² Overture; IoU ${pct(row.iou0)} -> ${pct(row.iouBest)} at ${row.shiftM.toFixed(1)} m (E ${row.shiftEast.toFixed(1)}, N ${row.shiftNorth.toFixed(1)}); own-shift spread ${num(row.residualMedianM)} m over ${row.ownShifts}; PHOTO ${row.photoFitted ?? 0}/${row.photoBuildings ?? 0} bldgs fit, shift ${num(row.photoShiftMedianM)} m (max ${num(row.photoShiftMaxM)}), spread ${num(row.photoSpreadM)} m${Number.isFinite(row.leanPerM) ? `, lean ${num(row.leanPerM)} m/m (res ${num(row.leanResM)} vs ${num(row.constResM)} one shift)` : ''}${Number.isFinite(row.lidarToPhotoMedianM) ? `, lidar->photo ${num(row.lidarToPhotoMedianM)} m over ${row.lidarToPhotoN}` : ''}; lawn on bldg ${pct(row.lawnOnBuilding0)}, road ${pct(row.lawnOnRoad0)}, walk ${pct(row.lawnOnWalk0)}, lidar roof ${pct(row.lawnOnLidarRoof)}`);
+    console.log(`  ${String(rows.length).padStart(3)} ${id.slice(0, 26).padEnd(26)} roof ${row.roofM2.toFixed(0).padStart(4)} m² lidar / ${row.overtureM2.toFixed(0).padStart(4)} m² Overture; IoU ${pct(row.iou0)} -> ${pct(row.iouBest)} at ${row.shiftM.toFixed(1)} m (E ${row.shiftEast.toFixed(1)}, N ${row.shiftNorth.toFixed(1)}); own-shift spread ${num(row.residualMedianM)} m over ${row.ownShifts}; PHOTO ${row.photoFitted ?? 0}/${row.photoBuildings ?? 0} bldgs fit, shift ${num(row.photoShiftMedianM)} m (max ${num(row.photoShiftMaxM)}), spread ${num(row.photoSpreadM)} m${Number.isFinite(row.leanPerM) ? `, lean ${num(row.leanPerM)} m/m (res ${num(row.leanResM)} vs ${num(row.constResM)} one shift)` : ''}${Number.isFinite(row.lidarToPhotoMedianM) ? `, lidar->photo ${num(row.lidarToPhotoMedianM)} m over ${row.lidarToPhotoN}` : ''}${row.directShift ? `, lidar edges->photo ${num(Math.hypot(...row.directShift))} m${Number.isFinite(row.directVsOverture) ? ` (${num(row.directVsOverture)} m from the Overture answer)` : ''}` : ''}; lawn on bldg ${pct(row.lawnOnBuilding0)}, road ${pct(row.lawnOnRoad0)}, walk ${pct(row.lawnOnWalk0)}, lidar roof ${pct(row.lawnOnLidarRoof)}`);
   }
   writeFileSync(join(dirs.out, 'overture-check.json'), JSON.stringify({ cell: CELL, shiftM: SHIFT_M, rows, skipped }, null, 1));
 
@@ -413,6 +442,12 @@ async function main() {
   const lp = rows.filter((r) => Number.isFinite(r.lidarToPhotoMedianM));
   console.log('\nTHE LIDAR ON THE PHOTO (per building: where the photo has its roof edge, less where the lidar has the roof):');
   console.log(`  ${lp.length} lots, ${lp.reduce((a, r) => a + r.lidarToPhotoN, 0)} buildings; per building median ${num(median(lp.flatMap((r) => r.lidarToPhotoVecs.map((v) => Math.hypot(...v)))))} m; per lot median ${num(median(lp.map((r) => Math.hypot(...r.lidarToPhoto))))} m; lots over 1 m ${lp.filter((r) => Math.hypot(...r.lidarToPhoto) > 1).length}, over 2 m ${lp.filter((r) => Math.hypot(...r.lidarToPhoto) > 2).length}`);
+
+  const dr = rows.filter((r) => r.directShift);
+  const both2 = dr.filter((r) => Number.isFinite(r.directVsOverture));
+  console.log('\nTHE LIDAR ON THE PHOTO FROM THE LIDAR\'S OWN EDGES (no Overture needed):');
+  console.log(`  found on ${dr.length} of ${rows.length} lots; shift median ${num(median(dr.map((r) => Math.hypot(...r.directShift))))} m; over 1 m ${dr.filter((r) => Math.hypot(...r.directShift) > 1).length}, over 2 m ${dr.filter((r) => Math.hypot(...r.directShift) > 2).length}`);
+  console.log(`  against the Overture answer, on the ${both2.length} lots with both: median ${num(median(both2.map((r) => r.directVsOverture)))} m apart; within 0.5 m ${both2.filter((r) => r.directVsOverture <= 0.5).length}, within 1 m ${both2.filter((r) => r.directVsOverture <= 1).length}`);
 
   console.log('\nTHE TRACED LAWN ON OVERTURE (pooled over all lawn cells; what a never-lawn rule would cost):');
   console.log(`  on an Overture building  ${pct(pooled('lawnOnBuilding0'))} as published, ${pct(pooled('lawnOnBuildingBest'))} at the lot's shift   (on the lidar's own roofs: ${pct(pooled('lawnOnLidarRoof'))})`);
