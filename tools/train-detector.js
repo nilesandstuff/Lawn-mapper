@@ -2227,6 +2227,9 @@ async function main() {
         naipAlign: Object.fromEntries(lawns.filter((L) => L.naipAlign).map((L) => [L.id, L.naipAlign])),
         /* B01..B32, for the Python readers' tables (worker/src/benchmark-ids.js). */
         tags: Object.fromEntries(lawns.filter((L) => L.tag).map((L) => [L.id, L.tag])),
+        /* Which photo each frame is (mapbox, county, google...), for the checks
+           that compare a frame's photo with another photo of the same box. */
+        sources: Object.fromEntries(lawns.map((L) => [L.id, L.photoSource || null])),
         /* Metres DOWN each frame, which since the crop is not the same as
            across it. */
         downs: Object.fromEntries(lawns.map((L) => [L.id, L.mpp * (L.gridH || L.grid || GRID)])),
