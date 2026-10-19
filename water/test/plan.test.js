@@ -16,6 +16,8 @@ import { analyse } from '../lib/lowspots.js';
 import { cloud, LAT } from '../lib/synthetic.js';
 import { fromMerc, toMerc, mercScale } from '../lib/ept.js';
 import { terrain, hillside } from '../lib/upslope.js';
+import { tileId, decodeMvt, overtureMasks } from '../lib/overture.js';
+import { gridFor } from '../lib/surface.js';
 
 const tests = [];
 const test = (name, fn) => tests.push([name, fn]);
@@ -184,6 +186,32 @@ test('a downspout\'s water fans out downhill over several cells, not one line', 
   const held = (o, i) => o.end.grav[i] - o.end.Dr[i] + o.end.pond[i];
   for (let i = 0; i < N; i++) if (kinds[i] === 1 && held(withRoof, i) - held(noRoof, i) > 0.5) fed++;
   assert.ok(fed >= 10, `cells reached by the downspout's water: ${fed}`);
+});
+
+test('Overture: PMTiles tile ids follow the spec, a vector tile decodes, a road becomes a band its width', () => {
+  // the PMTiles v3 spec's own examples
+  assert.deepEqual([tileId(0, 0, 0), tileId(1, 0, 0), tileId(1, 0, 1), tileId(1, 1, 1), tileId(1, 1, 0), tileId(2, 0, 0)], [0, 1, 2, 3, 4, 5]);
+  assert.equal(tileId(20, 0, 0), 366503875925);
+  // a hand-built tile: layer "segment", one line (0,0)->(10,0) with class=residential
+  const vint = (n) => { const b = []; do { let x = n & 0x7f; n >>>= 7; if (n) x |= 0x80; b.push(x); } while (n); return b; };
+  const zz = (n) => (n << 1) ^ (n >> 31);
+  const field = (f, w, bytes) => [...vint((f << 3) | w), ...(w === 2 ? vint(bytes.length) : []), ...bytes];
+  const str = (t) => [...new TextEncoder().encode(t)];
+  const geom = [...vint((1 & 7) | (1 << 3)), ...vint(zz(0)), ...vint(zz(0)), ...vint((2 & 7) | (1 << 3)), ...vint(zz(10)), ...vint(zz(0))];
+  const feat = [...field(2, 2, [0, 0]), ...field(3, 0, vint(2)), ...field(4, 2, geom)];
+  const layer = [...field(1, 2, str('segment')), ...field(2, 2, feat), ...field(3, 2, str('class')), ...field(4, 2, field(1, 2, str('residential'))), ...field(5, 0, vint(4096))];
+  const tile = decodeMvt(Uint8Array.from(field(3, 2, layer)));
+  assert.equal(tile.segment.features[0].props.class, 'residential');
+  assert.deepEqual(tile.segment.features[0].geom[0], [[0, 0], [10, 0]]);
+  // an 8 m road across a 40 m grid, and a 10 x 10 m building
+  const { bbox } = cloud({ size: 40, density: 0.1, height: () => 0 });
+  const g = gridFor(bbox, LAT);
+  const at = (x, y) => fromMerc([g.bbox[0] + x / g.k, g.bbox[1] + y / g.k]);
+  const m = overtureMasks(g, { roads: [{ cls: 'residential', width: 8, walk: false, lines: [[at(0, 20), at(40, 20)]] }], buildings: [[[at(5, 5), at(15, 5), at(15, 15), at(5, 15), at(5, 5)]]] });
+  let col = 0; for (let r = 0; r < g.H; r++) if (m.paved[r * g.W + 20]) col++;
+  assert.ok(col >= 7 && col <= 9, `road band ${col} cells across`);
+  const b = m.building.reduce((a, v) => a + v, 0);
+  assert.ok(b >= 90 && b <= 110, `building ${b} cells`);
 });
 
 let failed = 0;

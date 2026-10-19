@@ -64,7 +64,7 @@ export function noiseFloor(bbox, lat, groundPerM2, scatter, { runs = 8, within =
  * epoch: the flight's decimal year (for the datum, lib/datum.js), or null to
  * leave the cloud where the octree put it.
  */
-export function analyse(cols0, bbox, lat, { epoch = null, shift: givenShift = null, cell = 1, within = null, nullRuns = 8, floor = null, useShadeRoofs = cell === 1 } = {}) {
+export function analyse(cols0, bbox, lat, { epoch = null, shift: givenShift = null, cell = 1, within = null, nullRuns = 8, floor = null, useShadeRoofs = cell === 1, overture = null } = {}) {
   /* THE FRAME, THE SHADE MAP'S (owner, 2026-10-17: "make sure your system is the exact same as the shade
      map"): the cloud is moved onto the web map's ground BEFORE it is gridded, by the published NAD83 ->
      ITRF transformation at the flight's epoch (lib/datum.js), as the shade map's cellOf(..., shift) does.
@@ -89,9 +89,17 @@ export function analyse(cols0, bbox, lat, { epoch = null, shift: givenShift = nu
      roof cells (98% within 1 m) at 77% precision (86% within 1 m). A missed roof is the worse error here --
      it becomes a fake low spot and a hole in the walls -- so the union. */
   let wall = ownRoofs;
+  let shadeRoof = null;
   if (useShadeRoofs && cols.n) {
     const sh = shadeRoofs(cols, bbox, lat);
-    if (sh.w === g.W && sh.h === g.H) wall = Uint8Array.from(ownRoofs, (v, i) => (v || sh.roof[i] ? 1 : 0));
+    if (sh.w === g.W && sh.h === g.H) { shadeRoof = sh.roof; wall = Uint8Array.from(ownRoofs, (v, i) => (v || sh.roof[i] ? 1 : 0)); }
+  }
+  /* WITH OVERTURE'S BUILDINGS (lib/overture.js; owner 2026-10-19, "use that on top of current system"):
+     on the 23 Chesapeake squares its buildings alone found 89% of roof cells at 89% precision, against the
+     lidar finders' 91% at 77% (FINDINGS H20). ROOF_RULE: its buildings, plus any roof both lidar finders
+     agree on (a shed, or a house newer than the map data). */
+  if (overture?.building && overture.building.length === g.W * g.H) {
+    wall = Uint8Array.from(overture.building, (b, i) => (b || (ownRoofs[i] && (!shadeRoof || shadeRoof[i])) ? 1 : 0));
   }
   const groundOk = new Uint8Array(g.W * g.H);
   for (let i = 0; i < groundOk.length; i++) groundOk[i] = !wall[i] && Number.isFinite(raw.z[i]) ? 1 : 0;

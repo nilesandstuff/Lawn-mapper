@@ -315,7 +315,7 @@ function report(d, site) {
     parts.push(`<div class="card"><h2>Beside the house</h2><p>${verdict}</p>
       <p class="dim">Falls toward the house along ${pct(b.towardShare)} of the walls; away by the building code's 5% (6 in over the first 10 ft) along ${pct(b.meetsCodeShare)}. Measured 1.5–10 ft out, on the ground around each point, so a planting bed against the wall is not what is judged.</p></div>`);
   }
-  parts.push(`<p class="dim">Survey: ${esc(d.cloud.name.replace(/^USGS_LPC_/, '').replace(/_/g, ' '))}, flown ${flown}${d.cloud.ql ? `, ${esc(d.cloud.ql)}` : ''}. ${s.groundPointsPerM2.toFixed(1)} ground points per square meter; scatter ${inches(s.scatter * 100)} in. Worked out in ${s.seconds.toFixed(0)} s. Photo: ${esc(view.photoName || "Mapbox's photo")}.</p>`);
+  parts.push(`<p class="dim">Survey: ${esc(d.cloud.name.replace(/^USGS_LPC_/, '').replace(/_/g, ' '))}, flown ${flown}${d.cloud.ql ? `, ${esc(d.cloud.ql)}` : ''}. ${s.groundPointsPerM2.toFixed(1)} ground points per square meter; scatter ${inches(s.scatter * 100)} in. Worked out in ${s.seconds.toFixed(0)} s. Photo: ${esc(view.photoName || "Mapbox's photo")}.${s.overture ? ' Building outlines, roads and sidewalks: Overture Maps (OpenStreetMap, Microsoft and others), on top of what the laser and the photo show.' : ''}</p>`);
   if (d.cloud.notOnAws?.length) parts.push('<p class="dim">USGS lists a newer survey here that is not yet readable by this page.</p>');
   $('#report').innerHTML = parts.join('');
 }

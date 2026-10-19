@@ -68,7 +68,7 @@ function box3(g, a) {
  * analyse(); `lawnMask` the traced lawn on its grid. Returns null when the
  * lawn gives nothing to calibrate on.
  */
-export function imperviousness(res, lawnMask, { photo = null } = {}) {
+export function imperviousness(res, lawnMask, { photo = null, bands = null } = {}) {
   const g = res.grid, pc = res.perCell, N = g.W * g.H;
   const gi = box3(g, pc.groundI), gn = box3(g, pc.groundN), all3 = box3(g, pc.all), single3 = box3(g, pc.single), tall3 = box3(g, pc.tall);
   const lawnVals = [];
@@ -92,6 +92,10 @@ export function imperviousness(res, lawnMask, { photo = null } = {}) {
   for (let i = 0; i < N; i++) {
     if (res.wall[i]) { paved[i] = 1; runoff[i] = RUNOFF.roof; continue; }
     if (lawnMask[i]) { paved[i] = 0; runoff[i] = RUNOFF.lawn; continue; }
+    /* OVERTURE'S ROADS AND SIDEWALKS on top (owner 2026-10-19): a cell under one of their paved bands is
+       paving -- 90% of such cells were, on the Chesapeake squares (FINDINGS H20) -- even under trees, where
+       the laser and the photo see least. Driveways are still the model's. */
+    if (bands && bands[i]) { paved[i] = 0.95; runoff[i] = RUNOFF.ground + 0.95 * (RUNOFF.paved - RUNOFF.ground); continue; }
     const canopy = all3[i] ? tall3[i] / all3[i] : 0;
     if (!gn[i] || canopy >= 0.5) { runoff[i] = RUNOFF.ground; continue; }
     const x = [Math.log(Math.max(0.02, (gi[i] / gn[i]) / lawnI)), Number.isFinite(res.sd?.[i]) ? Math.min(0.3, res.sd[i]) : 0.05, all3[i] ? single3[i] / all3[i] : 0, Math.log(all3[i] / 9 + 0.1)];

@@ -72,7 +72,7 @@ function readDirectory(buf) {
 }
 
 export class PMTiles {
-  constructor(url, fetchFn = fetch) { this.url = url; this.fetchFn = fetchFn; this.dirs = new Map(); this.h = null; }
+  constructor(url, fetchFn = fetch) { this.url = url; this.fetchFn = (u, o) => fetchFn(u, o); this.dirs = new Map(); this.h = null; } // unbound: a browser refuses fetch called as a method
 
   async range(off, len) {
     const res = await this.fetchFn(this.url, { headers: { Range: `bytes=${off}-${off + len - 1}` } });
