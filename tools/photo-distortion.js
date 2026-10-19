@@ -65,20 +65,41 @@ export function residualField(vectors, cellM, w, h) {
 
 function rgba(PNG, buf) { const p = PNG.sync.read(buf); return { data: p.data, width: p.width, height: p.height }; }
 
-async function mapboxOf(box, width, height, jpeg) {
-  const f = frameOfBox(box, width, height);
-  const size = 640, hgt = Math.round((size * height) / width);
-  const url = `${SITE}/api/imagery?${new URLSearchParams({ lng: f.lng, lat: f.lat, zoom: f.zoom.toFixed(4), size, height: hgt, provider: 'mapbox' })}`;
+/**
+ * Mapbox's photo of exactly this box. The Worker clamps zoom to 20 and the logical size to 1280,
+ * so the request is sized to put the box at zoom 20 where it fits (a 60 m box is 800 logical px)
+ * and at 1280 px wide otherwise; Mapbox answers at @2x. Asking at the frame's own @2x pixel
+ * width was the first run's mistake: zoom 21, clamped to 20, a picture of different ground.
+ */
+async function mapboxOf(box, jpeg) {
+  const perPx20 = (2 * Math.PI * 6378137) / (512 * 2 ** 20); // 3857 metres a logical pixel at zoom 20
+  const wPx = (box[2] - box[0]) / perPx20, hPx = (box[3] - box[1]) / perPx20;
+  const fit = Math.min(1, 1280 / Math.max(wPx, hPx));
+  const size = Math.max(256, Math.round(wPx * fit)), hgt = Math.max(256, Math.round(hPx * fit));
+  const f = frameOfBox(box, size, hgt);
+  /* With a Mapbox token of its own (CI has MAPBOX_SERVER_TOKEN) the picture is asked of Mapbox
+     directly, by the Worker's own URL builder, so nothing between the runner and the Worker can
+     refuse it; otherwise through the site. */
+  const token = process.env.MAPBOX_SERVER_TOKEN || process.env.MAPBOX_TOKEN;
+  let url = `${SITE}/api/imagery?${new URLSearchParams({ lng: f.lng, lat: f.lat, zoom: f.zoom.toFixed(4), size, height: hgt, provider: 'mapbox' })}`;
+  if (token) {
+    try {
+      const { imageryUrl } = await import('../worker/src/imagery.js');
+      url = imageryUrl('mapbox', { lng: f.lng, lat: f.lat, zoom: Math.min(20, f.zoom), size, height: hgt }, token, {}) || url;
+    } catch { /* the Worker's route, then */ }
+  }
+  let last = '';
   for (let t = 0; t < 3; t++) {
-    const r = await fetch(url);
+    const r = await fetch(url, { headers: { 'User-Agent': 'lawn-mapper photo-distortion (GitHub Actions)', Accept: 'image/*' } });
     if (r.ok) {
       const buf = Buffer.from(await r.arrayBuffer());
       const j = jpeg.decode(buf, { useTArray: true });
       return { data: j.data, width: j.width, height: j.height };
     }
+    last = `HTTP ${r.status} ${(await r.text().catch(() => '')).slice(0, 120).replace(/\s+/g, ' ')}`;
     await new Promise((ok) => setTimeout(ok, 3000 * (t + 1)));
   }
-  throw new Error('Mapbox would not answer');
+  throw new Error(`Mapbox would not answer: ${last}`);
 }
 
 function picture(PNG, frame, r, file) {
@@ -114,7 +135,7 @@ async function main() {
     const box = boxes[id];
     try {
       const frame = rgba(PNG, readFileSync(join(dirs.frames, `${id}.png`)));
-      const mb = await mapboxOf(box, frame.width, frame.height, jpeg);
+      const mb = await mapboxOf(box, jpeg);
       if (Math.abs(mb.width / mb.height - frame.width / frame.height) > 0.02) { skipped[id] = 'Mapbox answered a different shape'; continue; }
       const k = Math.cos((frameOfBox(box, 1, 1).lat * Math.PI) / 180);
       const widthM = (box[2] - box[0]) * k;
@@ -124,7 +145,8 @@ async function main() {
       const gh = Math.max(16, Math.round((gw * mb.height) / mb.width));
       r.gridW = gw; r.gridH = gh;
       const field = residualField(r.vectors, r.cellM, gw, gh);
-      const A = r.A, scaleOf = A ? Math.sqrt(Math.abs(A[0] * A[4] - A[1] * A[3])) : NaN, rot = A ? (Math.atan2(A[3], A[0]) * 180) / Math.PI : NaN;
+      // A maps ref pixels to mov pixels; on the ground, identity is mov.width / ref.width, so the scale is read against that
+      const A = r.A, scaleOf = A ? Math.sqrt(Math.abs(A[0] * A[4] - A[1] * A[3])) * (mb.width / frame.width) : NaN, rot = A ? (Math.atan2(A[3], A[0]) * 180) / Math.PI : NaN;
       const row = {
         id, source: sources[id] || 'unknown', widthM, model: r.model, confident: r.confident, why: r.why, inliers: r.inliers, patches: r.patches,
         offsetM: r.offsetM, rmsM: r.rmsM, scale: scaleOf, rotationDeg: rot, models: r.models, ...field,

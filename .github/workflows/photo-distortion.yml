@@ -54,6 +54,8 @@ jobs:
         env:
           FRAMES: frames
           OUT: photo-distortion
+          MAPBOX_SERVER_TOKEN: ${{ secrets.MAPBOX_SERVER_TOKEN }}
+          MAPBOX_TOKEN: ${{ secrets.MAPBOX_TOKEN }}
         run: node tools/photo-distortion.js
 
       # An artifact is a zip nobody opens on a phone; a branch of PNGs opens in
