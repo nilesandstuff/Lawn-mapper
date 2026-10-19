@@ -22,7 +22,7 @@ jobs:
   check:
     name: Overture against the lidar roofs and the traced lawns
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 300
     env:
       PIP_DEFAULT_TIMEOUT: '60'
       PIP_RETRIES: '10'
@@ -74,8 +74,12 @@ jobs:
           MODE: newest
         run: node tools/lidar-newest.js
 
+      # Capped: on 2026-10-19 USGS's tile host timed out and lots fell back to
+      # octree reads of 8-14 minutes each. The masks are written lot by lot, so
+      # a capped step still leaves the lots it finished for the check below.
       - name: Read the lidar over the frames, at 1 m
         continue-on-error: true
+        timeout-minutes: 100
         env:
           FRAMES: frames
           CANOPY: canopy
@@ -83,11 +87,13 @@ jobs:
           OUT: lidar
           TILE_DIR: lidar-tiles
           CELL_M: '1'
+          PYTHONUNBUFFERED: '1'
         run: |
           python3 tools/lidar_frame.py
           rm -rf lidar-tiles
 
       - name: Overture against the lidar roofs and the traced lawns
+        if: always()
         env:
           FRAMES: frames
           LIDAR: lidar
