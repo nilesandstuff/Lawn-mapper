@@ -17,12 +17,19 @@ on:
         default: 'locked'
         type: choice
         options: [locked, all]
+      lidar_from:
+        description: 'Reuse the lidar masks from an earlier run of this workflow (its run id); blank reads the lidar afresh'
+        required: false
+        default: ''
 
 jobs:
   check:
     name: Overture against the lidar roofs and the traced lawns
     runs-on: ubuntu-latest
     timeout-minutes: 300
+    permissions:
+      contents: read
+      actions: read
     env:
       PIP_DEFAULT_TIMEOUT: '60'
       PIP_RETRIES: '10'
@@ -61,13 +68,24 @@ jobs:
           LAWN_SET: ${{ inputs.lawns }}
         run: node tools/train-detector.js
 
+      - name: Reuse an earlier run's lidar masks
+        if: inputs.lidar_from != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: overture-lidar
+          path: lidar
+          run-id: ${{ inputs.lidar_from }}
+          github-token: ${{ github.token }}
+
       - name: Match the frames to the 3DEP projects
+        if: inputs.lidar_from == ''
         env:
           FRAMES: frames
           OUT: lidar-plan.json
         run: node tools/lidar-plan.js
 
       - name: Plan the newest flight over each frame
+        if: inputs.lidar_from == ''
         env:
           FRAMES: frames
           PLAN: lidar-plan.json
@@ -78,6 +96,7 @@ jobs:
       # octree reads of 8-14 minutes each. The masks are written lot by lot, so
       # a capped step still leaves the lots it finished for the check below.
       - name: Read the lidar over the frames, at 1 m
+        if: inputs.lidar_from == ''
         continue-on-error: true
         timeout-minutes: 100
         env:
@@ -99,6 +118,14 @@ jobs:
           LIDAR: lidar
           OUT: overture-out
         run: node tools/overture-check.js
+
+      - name: Keep the lidar roof masks for a rerun
+        if: always() && inputs.lidar_from == ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: overture-lidar
+          path: lidar/*-roof.png
+          if-no-files-found: ignore
 
       - name: Keep the scores and the pictures
         if: always()

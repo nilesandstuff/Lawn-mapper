@@ -199,6 +199,7 @@ function feature(buf, a, b, keys, values) {
 
 const R = 6378137;
 let latest = null;
+const themeUrls = new Map(), archives = new Map(); // lawn mapper's change to the copy: one catalog read and one header read per theme, not per lot
 
 /** The latest release's PMTiles URL for a theme, from Overture's STAC catalog. */
 export async function themeUrl(theme, fetchFn = fetch) {
@@ -207,15 +208,19 @@ export async function themeUrl(theme, fetchFn = fetch) {
     const child = cat.links.find((l) => l.rel === 'child' && l.latest) || cat.links.filter((l) => l.rel === 'child').pop();
     latest = child.href.replace(/\/catalog\.json$/, '');
   }
+  if (themeUrls.has(theme)) return themeUrls.get(theme);
   const t = await (await fetchFn(`${latest}/${theme}/catalog.json`)).json();
   const link = t.links.find((l) => l.rel === 'pmtiles');
   if (!link) throw new Error(`no PMTiles for ${theme}`);
+  themeUrls.set(theme, link.href);
   return link.href;
 }
 
 /** The features of one theme over an EPSG:3857 box, in [lng, lat]: [{ layer, type, props, parts }]. */
 export async function themeIn(theme, bbox, { fetchFn = fetch } = {}) {
-  const pm = new PMTiles(await themeUrl(theme, fetchFn), fetchFn);
+  const url = await themeUrl(theme, fetchFn);
+  if (!archives.has(url)) archives.set(url, new PMTiles(url, fetchFn));
+  const pm = archives.get(url);
   const h = await pm.header();
   const z = h.maxZoom, n = 2 ** z, W = 2 * Math.PI * R;
   const tx = (x) => Math.floor(((x + Math.PI * R) / W) * n), ty = (y) => Math.floor(((Math.PI * R - y) / W) * n);

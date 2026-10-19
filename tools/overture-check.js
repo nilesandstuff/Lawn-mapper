@@ -138,6 +138,8 @@ async function checkLot(PNG, id, box, dirs, wantPicture) {
   const row = {
     id, buildings: ov.buildings.length, roads: ov.roads.filter((r) => !r.walk).length, walks: ov.roads.filter((r) => r.walk).length,
     roofCells: fit.refN,
+    roofM2: fit.refN * CELL * CELL * k * k,
+    overtureM2: (() => { let x = 0; for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) x += building[(r + P) * (W + 2 * P) + c + P] ? 1 : 0; return x * CELL * CELL * k * k; })(),
     iou0: fit.zero.iou, iouBest: fit.best.iou,
     shiftEast: m(fit.best.dx), shiftNorth: -m(fit.best.dy), shiftM: m(Math.hypot(fit.best.dx, fit.best.dy)),
   };
@@ -217,13 +219,17 @@ async function main() {
     if (!existsSync(join(dirs.frames, `${id}-labels.png`))) { skipped[id] = 'no labels'; continue; }
     if (!existsSync(join(dirs.lidar, `${id}-roof.png`))) { skipped[id] = 'no lidar'; continue; }
     let row = null;
-    for (let tries = 0; tries < 3 && !row; tries++) {
-      try { row = await checkLot(PNG, id, boxes[id], dirs, shown < pictures); } catch (err) { if (tries === 2) skipped[id] = `overture: ${String(err.message || err).slice(0, 80)}`; }
+    for (let tries = 0; tries < 4 && !row; tries++) {
+      try { row = await checkLot(PNG, id, boxes[id], dirs, shown < pictures); } catch (err) {
+        const why = String(err?.cause?.message || err?.message || err).slice(0, 120);
+        if (tries === 3) skipped[id] = `overture: ${why}`;
+        else await new Promise((ok) => setTimeout(ok, [5, 30, 90][tries] * 1000)); // a throttled host, not a broken lot
+      }
     }
-    if (!row) continue;
+    if (!row) { console.log(`  --- ${id.slice(0, 26).padEnd(26)} skipped: ${skipped[id]}`); continue; }
     if (shown < pictures) shown++;
     rows.push(row);
-    console.log(`  ${String(rows.length).padStart(3)} ${id.slice(0, 26).padEnd(26)} IoU ${pct(row.iou0)} -> ${pct(row.iouBest)} at ${row.shiftM.toFixed(1)} m (E ${row.shiftEast.toFixed(1)}, N ${row.shiftNorth.toFixed(1)}); own-shift spread ${num(row.residualMedianM)} m over ${row.ownShifts}; lawn on bldg ${pct(row.lawnOnBuilding0)}, road ${pct(row.lawnOnRoad0)}, walk ${pct(row.lawnOnWalk0)}, lidar roof ${pct(row.lawnOnLidarRoof)}`);
+    console.log(`  ${String(rows.length).padStart(3)} ${id.slice(0, 26).padEnd(26)} roof ${row.roofM2.toFixed(0).padStart(4)} m² lidar / ${row.overtureM2.toFixed(0).padStart(4)} m² Overture; IoU ${pct(row.iou0)} -> ${pct(row.iouBest)} at ${row.shiftM.toFixed(1)} m (E ${row.shiftEast.toFixed(1)}, N ${row.shiftNorth.toFixed(1)}); own-shift spread ${num(row.residualMedianM)} m over ${row.ownShifts}; lawn on bldg ${pct(row.lawnOnBuilding0)}, road ${pct(row.lawnOnRoad0)}, walk ${pct(row.lawnOnWalk0)}, lidar roof ${pct(row.lawnOnLidarRoof)}`);
   }
   writeFileSync(join(dirs.out, 'overture-check.json'), JSON.stringify({ cell: CELL, shiftM: SHIFT_M, rows, skipped }, null, 1));
 
@@ -232,6 +238,9 @@ async function main() {
   console.log(`\n${rows.length} lots checked; ${Object.keys(skipped).length} skipped (${summariseSkips(skipped)}).`);
   console.log('\nOVERTURE BUILDINGS AGAINST THE LIDAR ROOFS (lidar has no perspective lean):');
   console.log(`  overlap (IoU), median: as published ${pct(median(col('iou0')))}, at each lot's best shift ${pct(median(col('iouBest')))}`);
+  const both = rows.filter((r) => r.roofM2 >= 50 && r.overtureM2 >= 50);
+  console.log(`  lots where both see at least 50 m² of roof: ${both.length}; their IoU median ${pct(median(both.map((r) => r.iou0)))} as published, ${pct(median(both.map((r) => r.iouBest)))} shifted`);
+  console.log(`  lots where the lidar sees a roof and Overture has none: ${rows.filter((r) => r.roofM2 >= 50 && r.overtureM2 < 10).length}; Overture a building the lidar does not: ${rows.filter((r) => r.overtureM2 >= 50 && r.roofM2 < 10).length}`);
   console.log(`  best shift, median ${num(median(col('shiftM')))} m; lots needing more than 1 m: ${rows.filter((r) => r.shiftM > 1).length}, more than 2 m: ${rows.filter((r) => r.shiftM > 2).length}`);
   console.log(`  each building its own shift, about the lot's: median ${num(median(col('residualMedianM')))} m; share of buildings off by more than 1.5 m, median ${pct(median(col('residualOver15')))}`);
   console.log('\nTHE TRACED LAWN ON OVERTURE (pooled over all lawn cells; what a never-lawn rule would cost):');
