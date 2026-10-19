@@ -777,6 +777,56 @@ card no longer mentions topsoil unless it was chosen, and says 12 in.
 
 ---
 
+### H22. The owner's second check: the soil read wrong in one place, evergreens, a deck, zones that moved (water session, 2026-10-19)
+
+SOIL. Owner: "i don't want to override the tool by putting in my own soil
+type ... are we sure that we're reading the info right?" Under the owner's lot
+the survey has Filer loam (90%; Capac, Parkhill, Metea, Oshtemo minor): Ap
+0-23 cm loam (sand 50, clay 15, Ksat 1 um/s, AWC 0.21), B/E and Bt 23-92 cm
+clay loam (clay 28, Ksat 0.55 um/s), C loam to 203 cm. Read right: the water
+the roots can use (2.35 in in the top 12 in), group C, well drained. Read
+WRONG: how fast it takes water. The survey's own Ksat for the top layer is
+3.6 mm/h = 0.14 in/h (slow -- what the owner sees); the plan said 1.25 in/h
+because the old rule put a loam on the 50%-sand line in the USDA slope
+table's "light sandy loam" row and never looked at the measured Ksat. Now:
+the USDA texture triangle, and no more than the survey's measured Ksat of the
+top 6 in (lib/soil.js maxSprinklerRate, textureClass). The soil card lists
+the layers (loam over clay loam). The soil menu is gone (no override).
+
+ROOFS. His evergreen row read as roof. On his lot the pieces the lidar
+alone calls roof that are evergreens have a NAIP vegetation index of 0.27-0.36,
+real roofs 0.02-0.13, open ground 0.35. Lidar-only roof cells at 60% or more
+of the scene's open-ground green are now dropped (lib/lowspots.js greenVeto;
+Overture's buildings stand). Chesapeake squares with the photo (21):
+
+| roofs | found | precise | IoU |
+|---|---|---|---|
+| Overture, or both lidar finders agree | 92% / 98% | 85% / 94% | 0.79 |
+| **that, less what the photo shows green (in use)** | **92% / 98%** | **86% / 96%** | **0.80** |
+| either lidar finder (when Overture fails) | 91% / 98% | 77% / 86% | 0.71 |
+| either, less what the photo shows green | 85% / 94% | 87% / 96% | 0.75 |
+
+DECK. A 5 ft wooden deck and a hot tub read as blacktop. The flight over
+his lot has 2-3 points per square meter, and no flat raised surface stood out
+there (a search for flat surfaces 0.4-2.5 m up found only scattered cells).
+So the person marks it: an area tool -- deck with gaps (the ground under it,
+dried at 0.3 of the open lawn's rate), brick or paver patio (TR-55 gravel
+curve numbers), solid surface, roof, lawn, bed -- saved with the map, over
+every finder.
+
+ZONES THAT MOVED. "The map loads a bit differently each time... there wasn't
+a zone 3 this time." Causes: the plan was shown first in full sun, then again
+with shade; a source that failed silently (Overture, the photo, soil,
+weather); and k-means zones, where a small change anywhere moved every zone
+(a marked deck took one zone from 1,873 to 205 sq ft). Now: each source asked
+three times and named on the page when it still fails; the plan shown once,
+shade in; zones are fixed bands of days between waterings in the thirstiest
+month (2, 3, 4.5, 7, 10), small bands joined to a neighbour, close ones
+merged -- the same deck now leaves two zones untouched and takes from the
+other two about its own area (test: a 3 x 3 m bed moves at most 20 cells).
+
+---
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge
