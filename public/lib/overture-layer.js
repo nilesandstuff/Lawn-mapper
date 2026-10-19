@@ -3,9 +3,10 @@
  * 2026-10-19: "it would be good info for every stage... the detector, the grass under canopy
  * guesser, and manual tracing").
  *
- * Measured first (workflow 37): Overture sits under a metre from the lidar (H101) but a median
- * 1.6 m from the same houses in our PHOTOS, up to 6 m (H102), so app.js slides it onto the photo
- * on screen (lib/photo-fit.js) before drawing it.
+ * Measured (workflow 37): Overture sits within about a metre of the lidar (H101). Against our
+ * photos it is often further off, but by eye mostly because its own shapes are wrong (a missing
+ * wing) or the photo's roof leans, not because the photo is shifted (H102's correction); so it
+ * is drawn where Overture puts it.
  *
  * Pure: what public/lib/overture.js returns, made into one GeoJSON collection and the line widths
  * that draw each road at its width on the ground. The map work is in app.js.
