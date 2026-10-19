@@ -32,6 +32,7 @@ import { sharpTiles } from './lib/sharp-tiles.js';
 import { alignFromRegistration } from './lib/register.js';
 import { extraDetail } from './lib/sharpness.js';
 import { enhance, DEFAULTS as ENHANCE_DEFAULTS } from './lib/enhance.js';
+import { overtureGeoJSON, bandWidth, covers } from './lib/overture-layer.js';
 import { snapPoint, nearestOnRings } from './lib/snap.js';
 import { notchShapes } from './lib/cutout.js';
 // Pasting the pieces of a big lot's detection back into one mask.
@@ -94,6 +95,9 @@ const state = {
   /* The photo made easier to trace on (lib/enhance.js), for the eye only:
      on unless this browser was told otherwise. */
   enhance: (() => { try { return localStorage.getItem('lm_enhance') !== '0'; } catch { return true; } })(),
+  /* Overture's buildings, roads and sidewalks drawn over the photo for tracing
+     (lib/overture-layer.js): off unless this browser turned them on. */
+  overtureOn: (() => { try { return localStorage.getItem('lm_overture') === '1'; } catch { return false; } })(),
   /* While the lot's photo is being decided (lookupCountyPhoto), nothing is
      painted over the frame, so one photo appears rather than two in turn. */
   holdFrame: false,
@@ -2228,7 +2232,7 @@ async function initMap() {
    * than `move`: projecting every vertex on every animation frame is real work
    * for a dot that nobody can tap mid-gesture anyway.
    */
-  map.on('moveend', () => { if (state.edgeEdit) drawPoints(); });
+  map.on('moveend', () => { if (state.edgeEdit) drawPoints(); if (state.overtureOn) showOverture(); });
 
   // The map moves under a fixed box, so a tip pinned to a rail button has to
   // be re-aimed when the layout changes rather than when the map pans.
@@ -5798,7 +5802,7 @@ function bottomOfOurLayers() {
      the one thing that overlay exists to do -- be compared against the
      photograph. A comparison layer under the thing it is compared with is not
      a cosmetic fault. */
-  const ours = /^(gl-draw|parcel-|edge-highlight|erase-stroke|points|point-|surveyed|mask-overlay|lawn-pins|lulc-)/;
+  const ours = /^(gl-draw|parcel-|edge-highlight|erase-stroke|points|point-|surveyed|mask-overlay|lawn-pins|lulc-|ovt-)/;
   for (const layer of map.getStyle().layers) {
     if (layer.id !== 'imagery-alt' && ours.test(layer.id)) return layer.id;
   }
@@ -6115,6 +6119,18 @@ function buildLayerList() {
     b.append(label);
     b.addEventListener('click', () => setEnhance(!state.enhance));
     list.append(rule, b);
+
+    const o = document.createElement('button');
+    o.type = 'button';
+    o.setAttribute('role', 'menuitemcheckbox');
+    o.setAttribute('aria-checked', String(state.overtureOn));
+    o.dataset.overture = '1';
+    o.title = 'Outlines from Overture Maps (OpenStreetMap, Microsoft and others): buildings in yellow, roads in blue, sidewalks in pink. Usually within a metre of the ground. A roof in the photo leans away from its outline; the outline is where the house stands. For your eye only.';
+    const ol = document.createElement('span');
+    ol.textContent = 'Buildings, roads and sidewalks';
+    o.append(ol);
+    o.addEventListener('click', () => setOverture(!state.overtureOn));
+    list.append(o);
   }
 
   // Overlays left on from a Virginia address come off away from it.
@@ -6149,7 +6165,7 @@ function buildLayerList() {
 /** Repaint the ticks without rebuilding, so the open list does not flicker. */
 function refreshLayerList() {
   for (const b of $('#layer-list').querySelectorAll('button')) {
-    b.setAttribute('aria-checked', String(b.dataset.enhance ? state.enhance : b.dataset.overlay
+    b.setAttribute('aria-checked', String(b.dataset.enhance ? state.enhance : b.dataset.overture ? state.overtureOn : b.dataset.overlay
       ? state.overlaysOn.has(b.dataset.overlay)
       : b.dataset.provider === pickedSource()));
   }
@@ -6534,6 +6550,65 @@ async function displayUrl(blob, scale = 1) {
   } catch {
     return URL.createObjectURL(blob); // the photo as it came is still the photo
   }
+}
+
+/* ------------------------------------------- Overture, for tracing by eye */
+/*
+ * Overture Maps' buildings, roads and sidewalks over the photo (owner,
+ * 2026-10-19), read straight from Overture's public tiles by the browser
+ * (lib/overture.js, the water session's reader). Fetched for a few hundred
+ * metres round the view and fetched again only when the view leaves that.
+ * Drawn under the property line and the shapes, like every comparison layer.
+ */
+const OVT_REACH_M = 250;
+let ovtRun = 0;
+
+function setOverture(on) {
+  state.overtureOn = on;
+  try { localStorage.setItem('lm_overture', on ? '1' : '0'); } catch { /* private mode: this visit only */ }
+  refreshLayerList();
+  if (on) showOverture(); else hideOverture();
+}
+
+async function showOverture() {
+  if (!state.overtureOn || map.getZoom() < 15) return;
+  const b = map.getBounds();
+  const view = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
+  if (covers(state.overtureBox, view) && map.getSource('ovt')) return;
+  const mine = ++ovtRun;
+  const c = map.getCenter();
+  const R = 6378137, x = (c.lng * Math.PI / 180) * R, y = Math.log(Math.tan(Math.PI / 4 + (c.lat * Math.PI / 180) / 2)) * R;
+  const reach = OVT_REACH_M / Math.cos((c.lat * Math.PI) / 180); // ground metres, in web-mercator metres
+  const toDeg = (mx, my) => [(mx / R) * 180 / Math.PI, (2 * Math.atan(Math.exp(my / R)) - Math.PI / 2) * 180 / Math.PI];
+  const [w, s] = toDeg(x - reach, y - reach), [e, n] = toDeg(x + reach, y + reach);
+  let ov;
+  try {
+    const { overtureFor } = await import('./lib/overture.js');
+    ov = await overtureFor([x - reach, y - reach, x + reach, y + reach]);
+  } catch (err) {
+    console.warn('Overture outlines could not be read here:', err);
+    return;
+  }
+  if (mine !== ovtRun || !state.overtureOn) return;
+  state.overtureBox = [w, s, e, n];
+  const data = overtureGeoJSON(ov);
+  if (map.getSource('ovt')) { map.getSource('ovt').setData(data); return; }
+  map.addSource('ovt', { type: 'geojson', data });
+  const before = map.getLayer('parcel-fill') ? 'parcel-fill' : undefined;
+  const width = bandWidth(c.lat);
+  map.addLayer({ id: 'ovt-road', type: 'line', source: 'ovt', filter: ['==', ['get', 'kind'], 'road'],
+    layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#3d7bff', 'line-opacity': 0.35, 'line-width': width } }, before);
+  map.addLayer({ id: 'ovt-walk', type: 'line', source: 'ovt', filter: ['==', ['get', 'kind'], 'walk'],
+    layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#ff4fd8', 'line-opacity': 0.45, 'line-width': width } }, before);
+  map.addLayer({ id: 'ovt-building', type: 'line', source: 'ovt', filter: ['==', ['get', 'kind'], 'building'],
+    paint: { 'line-color': '#ffe600', 'line-width': 2, 'line-opacity': 0.9 } }, before);
+}
+
+function hideOverture() {
+  ovtRun++;
+  for (const id of ['ovt-building', 'ovt-walk', 'ovt-road']) if (map.getLayer(id)) map.removeLayer(id);
+  if (map.getSource('ovt')) map.removeSource('ovt');
+  state.overtureBox = null;
 }
 
 function setEnhance(on) {
