@@ -24,6 +24,8 @@ jobs:
     name: Each frame's photo against Mapbox's
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    permissions:
+      contents: write   # the pictures go to a branch a phone can open
     steps:
       - uses: actions/checkout@v5
 
@@ -53,6 +55,22 @@ jobs:
           FRAMES: frames
           OUT: photo-distortion
         run: node tools/photo-distortion.js
+
+      # An artifact is a zip nobody opens on a phone; a branch of PNGs opens in
+      # the GitHub app. Force-pushed, one branch per run, so history never grows.
+      - name: Publish the pictures where a phone can see them
+        if: always()
+        run: |
+          set -e
+          b="pictures/photo-distortion-${{ github.run_number }}"
+          d=$(mktemp -d)
+          cp -r photo-distortion/pictures "$d/" 2>/dev/null || { echo "no pictures"; exit 0; }
+          cp photo-distortion/*.json "$d/" 2>/dev/null || true
+          git -C "$d" init -q -b "$b"
+          git -C "$d" -c user.name=actions -c user.email=actions@users.noreply.github.com add -A
+          git -C "$d" -c user.name=actions -c user.email=actions@users.noreply.github.com commit -qm "Pictures from run ${{ github.run_id }}"
+          git -C "$d" push -q --force "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" "HEAD:refs/heads/$b"
+          echo "PICTURES: https://github.com/${{ github.repository }}/tree/$b/pictures"
 
       - name: Keep the measurements and the pictures
         if: always()

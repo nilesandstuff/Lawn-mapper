@@ -24,6 +24,8 @@ jobs:
     name: The lidar's ground against each photo
     runs-on: ubuntu-latest
     timeout-minutes: 240
+    permissions:
+      contents: write   # the pictures go to a branch a phone can open
     steps:
       - uses: actions/checkout@v5
 
@@ -66,7 +68,24 @@ jobs:
           FRAMES: frames
           PLAN: lidar-plan.json
           OUT: lidar-photo
+          PICTURES: '30'
         run: node tools/lidar-photo.js
+
+      # An artifact is a zip nobody opens on a phone; a branch of PNGs opens in
+      # the GitHub app. Force-pushed, one branch per run, so history never grows.
+      - name: Publish the pictures where a phone can see them
+        if: always()
+        run: |
+          set -e
+          b="pictures/lidar-photo-${{ github.run_number }}"
+          d=$(mktemp -d)
+          cp -r lidar-photo/pictures "$d/" 2>/dev/null || { echo "no pictures"; exit 0; }
+          cp lidar-photo/*.json "$d/" 2>/dev/null || true
+          git -C "$d" init -q -b "$b"
+          git -C "$d" -c user.name=actions -c user.email=actions@users.noreply.github.com add -A
+          git -C "$d" -c user.name=actions -c user.email=actions@users.noreply.github.com commit -qm "Pictures from run ${{ github.run_id }}"
+          git -C "$d" push -q --force "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" "HEAD:refs/heads/$b"
+          echo "PICTURES: https://github.com/${{ github.repository }}/tree/$b/pictures"
 
       - name: Keep the measurements and the pictures
         if: always()
