@@ -24,6 +24,8 @@
  * watering leaves too wet or still dry.
  */
 
+import { tracedOn, lineUpAt } from '/lib/shade/traced.js';
+
 const $ = (s) => document.querySelector(s);
 const R = 6378137;
 const view = { photo: null, data: null, frame: null, site: null, plan: null };
@@ -96,6 +98,8 @@ async function siteFromMap(id) {
     // the shade map's cloud, box and shift, when it has worked on this map: the same cells as its part
     lidar: s.tools?.shade?.data?.lidar || null,
     mapId: id, at: s.at || null,
+    // the photo the lawn was traced on (owner 2026-10-19: a county photo if one was saved, Mapbox if Mapbox)
+    tracedOn: tracedOn(s),
     water: s.tools?.water?.data || null,
   };
 }
@@ -121,11 +125,33 @@ function frameFor(bbox, lat) {
   return { lng, lat: clat, zoom, size: 1280, height: 1280 };
 }
 
-async function photoOf(frame) {
-  const q = new URLSearchParams({ lng: frame.lng, lat: frame.lat, zoom: frame.zoom, size: frame.size, height: frame.height, provider: 'mapbox' });
+async function photoOf(frame, provider = 'mapbox', svc = null) {
+  const q = new URLSearchParams({ lng: frame.lng, lat: frame.lat, zoom: frame.zoom, size: frame.size, height: frame.height, provider });
+  if (svc != null) q.set('svc', svc);
   const res = await fetch(`/api/imagery?${q}`);
-  if (!res.ok) throw new Error(`the photo would not load (${res.status})`);
+  if (!res.ok) throw new Error(`the ${provider === 'county' ? 'county' : 'Mapbox'} photo would not load (${res.status})`);
   return createImageBitmap(await res.blob());
+}
+
+/**
+ * The photo the map was saved on (lib/shade/traced.js, the shade map's own reading of a save): a county
+ * photo moved by the editor's line-up onto the web map's ground, where the lawn was traced over it; Mapbox
+ * otherwise, or when the county's will not load. -> { photo, shift: [px, py] to draw it at, name }
+ */
+async function savedPhoto(frame, site) {
+  const t = site.tracedOn || { provider: 'mapbox' };
+  if (t.provider === 'county') {
+    try {
+      const photo = await photoOf(frame, 'county', t.svc);
+      const move = lineUpAt(t, [frame.lng, frame.lat]);
+      const k = Math.cos((frame.lat * Math.PI) / 180), s = (worldSize(frame.zoom) / (2 * Math.PI * R)) * (photo.width / frame.size);
+      return { photo, shift: [(move.east / k) * s, -(move.north / k) * s], name: `the county photo the map was saved on${t.align ? ', where the editor lined it up' : ''}` };
+    } catch (e) {
+      const photo = await photoOf(frame).catch(() => null);
+      return { photo, shift: [0, 0], name: `Mapbox's photo (the county photo the map was saved on would not load: ${e.message})` };
+    }
+  }
+  return { photo: await photoOf(frame).catch(() => null), shift: [0, 0], name: "Mapbox's photo" };
 }
 
 /** EPSG:3857 -> pixel on the photo. */
@@ -174,7 +200,7 @@ function draw() {
   cv.width = photo.width; cv.height = photo.height;
   const g = cv.getContext('2d');
   g.fillStyle = '#222'; g.fillRect(0, 0, cv.width, cv.height);
-  if ($('#show-photo').checked) g.drawImage(photo, 0, 0);
+  if ($('#show-photo').checked && photo.close) g.drawImage(photo, view.photoShift[0], view.photoShift[1]);
   else { g.fillStyle = '#3a4440'; g.fillRect(0, 0, cv.width, cv.height); }
 
   const o = overlay(d, { flow: $('#show-flow').checked, grade: $('#show-grade').checked, hard: $('#show-hard').checked, zones: $('#show-zones').checked });
@@ -289,7 +315,7 @@ function report(d, site) {
     parts.push(`<div class="card"><h2>Beside the house</h2><p>${verdict}</p>
       <p class="dim">Falls toward the house along ${pct(b.towardShare)} of the walls; away by the building code's 5% (6 in over the first 10 ft) along ${pct(b.meetsCodeShare)}. Measured 1.5–10 ft out, on the ground around each point, so a planting bed against the wall is not what is judged.</p></div>`);
   }
-  parts.push(`<p class="dim">Survey: ${esc(d.cloud.name.replace(/^USGS_LPC_/, '').replace(/_/g, ' '))}, flown ${flown}${d.cloud.ql ? `, ${esc(d.cloud.ql)}` : ''}. ${s.groundPointsPerM2.toFixed(1)} ground points per square meter; scatter ${inches(s.scatter * 100)} in. Worked out in ${s.seconds.toFixed(0)} s.</p>`);
+  parts.push(`<p class="dim">Survey: ${esc(d.cloud.name.replace(/^USGS_LPC_/, '').replace(/_/g, ' '))}, flown ${flown}${d.cloud.ql ? `, ${esc(d.cloud.ql)}` : ''}. ${s.groundPointsPerM2.toFixed(1)} ground points per square meter; scatter ${inches(s.scatter * 100)} in. Worked out in ${s.seconds.toFixed(0)} s. Photo: ${esc(view.photoName || "Mapbox's photo")}.</p>`);
   if (d.cloud.notOnAws?.length) parts.push('<p class="dim">USGS lists a newer survey here that is not yet readable by this page.</p>');
   $('#report').innerHTML = parts.join('');
 }
@@ -408,8 +434,9 @@ async function run(site) {
   const d = await first;
   status('Fetching the photo…');
   view.frame = frameFor(d.grid.bbox, d.grid.lat);
-  view.photo = await photoOf(view.frame).catch(() => null);
-  if (!view.photo) { $('#show-photo').checked = false; view.photo = { width: 1280, height: 1280 }; }
+  const saved = await savedPhoto(view.frame, site);
+  view.photo = saved.photo; view.photoShift = saved.shift; view.photoName = saved.name;
+  if (!view.photo) { $('#show-photo').checked = false; view.photo = { width: 1280, height: 1280 }; view.photoName = 'no photo (it would not load)'; }
   view.data = d;
   $('#result').hidden = false;
   draw();

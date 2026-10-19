@@ -15,3 +15,8 @@ worker over the traced lawn for the summer days of the growing season and takes 
 cell's daily light against the open sky's as its share of sunlight (FINDINGS S9), and
 takes the growing season itself from climate.js's growingSeason (the owner's 20% GP
 rule), so both maps use one season.
+
+2026-10-19, for drawing a saved map on the photo it was saved with (owner: "If a county
+photo is saved, use the county photo, if mapbox is saved, use that"): traced.js,
+unchanged from public/shade/ on the default branch at commit f070fb0 -- which photo a
+saved map was traced on (Mapbox, or a county service and the editor's line-up).
