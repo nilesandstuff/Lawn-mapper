@@ -50,13 +50,13 @@ async function plan(inputs = {}) {
     texture: inputs.texture || null, parcelMask: r.parcelMask || null, areas: inputs.areas || [],
   });
   const out = {
-    zones: p.zones, zoneOf: p.zoneOf, kinds: p.kinds, wetFromWatering: p.wetFromWatering, wetAnyway: p.wetAnyway, dryShare: p.dryShare,
+    zones: p.zones, zoneOf: p.zoneOf, kinds: p.kinds, needMm: p.needMm, needMonth: p.needMonth, wetFromWatering: p.wetFromWatering, wetAnyway: p.wetAnyway, dryShare: p.dryShare,
     roofs: p.roofs, soil: p.soil, weather: p.weather, thisWeek: p.thisWeek, years: p.years, topsoil: p.topsoil,
     standIn: kept.standIn, seconds: (Date.now() - t0) / 1000, shaded: p.shaded, sunShare: p.sunShare,
     seasonDays: kept.season ? kept.season.size : null, grass, rainFrom: kept.rainFrom, texture: p.texture,
     trouble: Object.values(kept.sources || {}).filter(Boolean),
   };
-  self.postMessage({ plan: out }, [out.zoneOf.buffer, out.kinds.buffer, out.wetFromWatering.buffer, out.wetAnyway.buffer, out.dryShare.buffer]);
+  self.postMessage({ plan: out }, [out.zoneOf.buffer, out.kinds.buffer, out.needMm.buffer, out.wetFromWatering.buffer, out.wetAnyway.buffer, out.dryShare.buffer]);
 }
 
 /* THE SAME MAP EVERY LOAD (owner, 2026-10-19: "the map loads a bit differently each time... there wasn't a

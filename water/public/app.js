@@ -178,7 +178,11 @@ function overlay(d, { flow = true, grade = true, hard = true, zones = true } = {
     if (kind === 2) rgba = [250, 250, 250, 170];
     if (hard && kind === 3) rgba = [12, 12, 12, 190];
     if (hard && kind === 4) rgba = [150, 60, 30, 170]; // a brick or paver patio
-    if (zones && p && p.zoneOf[i] >= 0) {
+    if (p && view.need && Number.isFinite(p.needMm[i])) {
+      // each square metre's own need in the thirstiest month, light (little) to dark (much)
+      const t = Math.max(0, Math.min(1, (p.needMm[i] - view.need.lo) / Math.max(1, view.need.hi - view.need.lo)));
+      rgba = [Math.round(227 - 214 * t), Math.round(242 - 171 * t), Math.round(253 - 92 * t), 200];
+    } else if (zones && p && p.zoneOf[i] >= 0) {
       rgba = [...ZONE_RGB[p.zoneOf[i] % ZONE_RGB.length], 105];
       if (p.wetAnyway[i] >= 0.1) rgba = [13, 71, 161, 200];
       else if (p.wetFromWatering[i] >= 0.05) rgba = [255, 23, 68, 200];
@@ -461,7 +465,7 @@ async function run(site) {
       else if (data.error) { w.terminate(); reject(new Error(data.error)); }
       else if (data.done) resolve(data.done);
       else if (data.planProgress) $('#saved').textContent = data.planProgress;
-      else if (data.plan) { view.plan = data.plan; $('#saved').textContent = savedNote; planReport(data.plan); draw(); }
+      else if (data.plan) { view.plan = data.plan; $('#saved').textContent = savedNote; planReport(data.plan); needScale(); draw(); }
       else if (data.planError) $('#saved').textContent = `The watering plan could not be worked out: ${data.planError}`;
       else if (data.hill) hillReport(data.hill);
     };
@@ -636,5 +640,17 @@ $('#here').addEventListener('click', () => guarded(async () => {
 }));
 
 for (const id of ['#show-flow', '#show-grade', '#show-photo', '#show-hard', '#show-zones']) $(id).addEventListener('change', draw);
+/* The water-need layer (owner 2026-10-19: knock-on effects of every input, as on a real lawn): each square
+   metre's own watering in the lawn's thirstiest month, scaled from the lawn's 5th to 95th percentile. */
+function needScale() {
+  const p = view.plan;
+  if (!p || !$('#show-need').checked) { view.need = null; $('#need-legend').hidden = true; return; }
+  const v = Array.from(p.needMm).filter(Number.isFinite).sort((a, b) => a - b);
+  if (!v.length) { view.need = null; return; }
+  view.need = { lo: v[Math.floor(v.length * 0.05)], hi: v[Math.floor(v.length * 0.95)] };
+  $('#need-text').textContent = `${inch(view.need.lo)} to ${inch(view.need.hi)} in of watering in a typical ${MONTH[p.needMonth ?? 6]}, square by square`;
+  $('#need-legend').hidden = false;
+}
+$('#show-need').addEventListener('change', () => { needScale(); draw(); });
 
 if (mapId) guarded(async () => { status('Opening your map…'); await run(await siteFromMap(mapId)); });

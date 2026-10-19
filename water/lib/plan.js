@@ -174,6 +174,13 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
   }
 
   // per-cell overlays for the page
+  /* EACH SQUARE METRE'S OWN NEED (owner, 2026-10-19: "changes to map inputs do have knock-on effects in
+     the same way that a real lawn is affected by many different things"): the watering it would want in the
+     lawn's thirstiest month, typical year, cell by cell -- every input's effect shows here, whether or not
+     it moves a zone line. */
+  const pm = zones.peakMonth ?? 6;
+  const needMm = new Float32Array(N).fill(NaN);
+  for (let i = 0; i < N; i++) if (kinds[i] === KIND.lawn) needMm[i] = perMonth[pm][i] / years;
   const wetShare = new Float32Array(N), dryShare = new Float32Array(N), wetFromWatering = new Float32Array(N), wetAnyway = new Float32Array(N);
   for (let i = 0; i < N; i++) if (kinds[i] === KIND.lawn) {
     wetShare[i] = planned.wetDays[i] / Math.max(1, planned.seasonDays); dryShare[i] = planned.dryDays[i] / Math.max(1, planned.seasonDays);
@@ -181,7 +188,7 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
     wetAnyway[i] = rainOnly.wetDays[i] / Math.max(1, rainOnly.seasonDays);
   }
   return {
-    zones: out, zoneOf: zones.zoneOf, userZones: !!zones.user, kinds, wetShare, dryShare, wetFromWatering, wetAnyway,
+    zones: out, zoneOf: zones.zoneOf, userZones: !!zones.user, kinds, needMm, needMonth: pm, wetShare, dryShare, wetFromWatering, wetAnyway,
     roofs: (() => {
       /* Only the roofs on the property count for asking: the analysis reaches 30 m past the property line,
          where the neighbours' houses are (owner, 2026-10-19: "it says I still have 21 unmarked roofs"). With

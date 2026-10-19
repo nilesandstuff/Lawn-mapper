@@ -825,6 +825,20 @@ month (2, 3, 4.5, 7, 10), small bands joined to a neighbour, close ones
 merged -- the same deck now leaves two zones untouched and takes from the
 other two about its own area (test: a 3 x 3 m bed moves at most 20 cells).
 
+Owner, same day: "i do want the tool to be sensitive in the sense that changes
+to map inputs do have knock-on effects in the same way that a real lawn is
+affected by many different things." They are: the bands change where zone
+LINES are drawn, not what each square metre gets. Every cell's need comes from
+the daily balance with everything that reaches it. Test (plan.test.js,
+"knock-on"): moving a downspout from the east side of a house to the west sends
+the roof's water round the north side -- that band of lawn needs > 5 mm less a
+July -- and leaves the old east outlet's lawn > 5 mm drier; a corner the water
+never reaches changes by < 1 mm. A zone line moves wherever a cell's need
+crosses a band edge, knock-ons included; each zone's schedule and its too-wet /
+still-dry ground follow its cells' needs even when no line moves. The page has
+a "water need, square by square" layer: each lawn square's own watering in the
+thirstiest month.
+
 ---
 
 ## SPECULATION

@@ -214,7 +214,7 @@ test('Overture: PMTiles tile ids follow the spec, a vector tile decodes, a road 
   assert.ok(b >= 90 && b <= 110, `building ${b} cells`);
 });
 
-test('zones hold still: marking a 3 x 3 m bed moves no more lawn between zones than about the bed itself', () => {
+test('zone lines move only where a change reaches: a 3 x 3 m bed on flat ground moves about its own area', () => {
   const res = lot({ roofs: [] });
   const g = res.grid;
   const corner = (x, y) => fromMerc([g.bbox[0] + x / g.k, g.bbox[1] + y / g.k]);
@@ -230,6 +230,26 @@ test('zones hold still: marking a 3 x 3 m bed moves no more lawn between zones t
   let moved = 0;
   for (let i = 0; i < g.W * g.H; i++) if (a.zoneOf[i] >= 0 && b.zoneOf[i] >= 0 && a.zoneOf[i] !== b.zoneOf[i]) moved++;
   assert.ok(moved <= 20, `${moved} cells changed zone`);
+});
+
+test('knock-on: a downspout moved to the other side of the house waters the lawn below its new outlet and dries the old side', () => {
+  const res = lot(); // 2% fall to the east, a 10 x 10 m roof in the middle
+  const g = res.grid;
+  const at = (x, y) => fromMerc([g.bbox[0] + x / g.k, g.bbox[1] + y / g.k]);
+  const days = [];
+  for (let y = 0; y < 3; y++) for (const d of summer(150, { rainEvery: 6, rainMm: 15 })) days.push({ ...d, date: `${2023 + y}${d.date.slice(4)}` });
+  const lawnMask = Uint8Array.from(res.wall, (w) => (w ? 0 : 1));
+  const opts = { lawnMask, soil: { units: [loam] }, typical: days };
+  const east = waterPlan(res, { ...opts, downspouts: [{ from: at(25, 20), to: at(26, 20) }] });
+  const west = waterPlan(res, { ...opts, downspouts: [{ from: at(15, 20), to: at(14, 20) }] });
+  // rows count down from the north edge, columns east from the west edge (1 m each)
+  const near = (p, r0, r1, c0, c1) => { let s2 = 0, n = 0; for (let r = r0; r < r1; r++) for (let c = c0; c < c1; c++) { const v = p.needMm[r * g.W + c]; if (Number.isFinite(v)) { s2 += v; n++; } } return s2 / n; };
+  // the roof's water from the west outlet runs east round the north side of the house: wetter there, less to water
+  assert.ok(near(west, 10, 15, 18, 30) < near(east, 10, 15, 18, 30) - 5, `north of the house ${near(west, 10, 15, 18, 30).toFixed(0)} vs ${near(east, 10, 15, 18, 30).toFixed(0)} mm`);
+  // below the old east outlet, where the roof's water no longer lands: drier, more to water
+  assert.ok(near(west, 18, 23, 28, 40) > near(east, 18, 23, 28, 40) + 5, `east of the house ${near(west, 18, 23, 28, 40).toFixed(0)} vs ${near(east, 18, 23, 28, 40).toFixed(0)} mm`);
+  // the south-west corner, which neither outlet's water reaches: the same
+  assert.ok(Math.abs(near(west, 32, 40, 0, 8) - near(east, 32, 40, 0, 8)) < 1, 'a corner nothing reaches is unchanged');
 });
 
 let failed = 0;
