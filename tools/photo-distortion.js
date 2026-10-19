@@ -79,8 +79,8 @@ export function residualField(vectors, cellM, w, h) {
 }
 
 /** A 1 m grid over the box: 1 where the lidar is tall (or unknown under a roof), grown by LEAN_M. null without lidar. */
-async function tallMask(id, box, io) {
-  const cloud = await cloudFor(id, box, {}).catch(() => null);
+async function tallMask(id, box, io, plan) {
+  const cloud = await cloudFor(id, box, plan).catch((e) => { console.log(`      (no cloud for the tall mask: ${String(e?.message || e).slice(0, 80)})`); return null; });
   if (!cloud) return null;
   const { cols } = await pointsIn(cloud.url, box, io);
   if (!cols || cols.n < 500) return null;
@@ -161,6 +161,8 @@ async function main() {
   const jpeg = (await import('jpeg-js')).default;
   const scale = JSON.parse(readFileSync(join(dirs.frames, 'scale.json'), 'utf8'));
   const boxes = scale.boxes || {}, sources = scale.sources || {};
+  const planFile = process.env.PLAN || 'lidar-plan.json';
+  const plan = existsSync(planFile) ? JSON.parse(readFileSync(planFile, 'utf8')) : {};
   const ids = Object.keys(boxes).filter((id) => !id.includes(':example:') && existsSync(join(dirs.frames, `${id}.png`))).sort();
   const pictures = Number(process.env.PICTURES || 40);
   const rows = [], skipped = {};
@@ -181,7 +183,7 @@ async function main() {
       r.gridW = gw; r.gridH = gh;
       const field = residualField(r.vectors, r.cellM, gw, gh);
       // ground and tall apart, by the lidar
-      const tm = await tallMask(id, box, io).catch(() => null);
+      const tm = await tallMask(id, box, io, plan).catch((e) => { console.log(`      (no tall mask: ${String(e?.message || e).slice(0, 80)})`); return null; });
       let groundField = null, tallField = null, nGround = NaN, nTall = NaN;
       if (tm) {
         const isTall = (p) => { const c = Math.min(tm.w - 1, Math.floor((p.x / gw) * tm.w)), rr = Math.min(tm.h - 1, Math.floor((p.y / gh) * tm.h)); return tm.mask[rr * tm.w + c] === 1; };

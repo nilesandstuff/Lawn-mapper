@@ -50,9 +50,25 @@ jobs:
           LAWN_SET: ${{ inputs.lawns }}
         run: node tools/train-detector.js
 
+      # The lidar sorts each patch into open ground or tall; the plan says which
+      # cloud covers each frame (the site's own lookup refuses GitHub's runner).
+      - name: Match the frames to the 3DEP projects
+        env:
+          FRAMES: frames
+          OUT: lidar-plan.json
+        run: node tools/lidar-plan.js
+
+      - name: Plan the newest flight over each frame
+        env:
+          FRAMES: frames
+          PLAN: lidar-plan.json
+          MODE: newest
+        run: node tools/lidar-newest.js
+
       - name: Register each frame's photo to Mapbox's
         env:
           FRAMES: frames
+          PLAN: lidar-plan.json
           OUT: photo-distortion
           MAPBOX_SERVER_TOKEN: ${{ secrets.MAPBOX_SERVER_TOKEN }}
           MAPBOX_TOKEN: ${{ secrets.MAPBOX_TOKEN }}
