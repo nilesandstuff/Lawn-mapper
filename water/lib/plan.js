@@ -19,7 +19,7 @@
  *      when to water next and how much.
  */
 
-import { rootZone, maxSprinklerRate, withTexture } from './soil.js';
+import { rootZone, maxSprinklerRate, withTexture, layersOf } from './soil.js';
 import { maskOf } from './geo.js';
 import { roofRouting } from './gutters.js';
 import { buildModel, simulate, idealIrrigation, zoneIrrigation, PARAMS, WARM } from './balance.js';
@@ -173,7 +173,7 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
       return { pieces: onLot.length, guessed: onLot.filter((p) => p.guessed).length, unusedDownspouts: roofs.unused, allPieces: roofs.pieces.length };
     })(),
     texture: texture || null,
-    soil: units.map((u) => ({ name: u.name, chosen: u.chosen || null, share: u.share ?? null, drainage: u.drainage, hydgrp: u.hydgrp, wtMinCm: u.wtMinCm ?? null, wetByMonth: u.wetByMonth, assumed: !!u.assumed, tawMm: rootZone(u.profile)?.tawMm ?? null, tawTopsoilMm: rootZone(u.profile, { topsoil: true })?.tawMm ?? null })),
+    soil: units.map((u) => ({ name: u.name, chosen: u.chosen || null, share: u.share ?? null, layers: layersOf(u.profile), intakeInH: (() => { const r = rootZone(u.profile); return r?.topKsatMmH ? r.topKsatMmH / 25.4 : null; })(), drainage: u.drainage, hydgrp: u.hydgrp, wtMinCm: u.wtMinCm ?? null, wetByMonth: u.wetByMonth, assumed: !!u.assumed, tawMm: rootZone(u.profile)?.tawMm ?? null, tawTopsoilMm: rootZone(u.profile, { topsoil: true })?.tawMm ?? null })),
     years, topsoil, grass, thisWeek, shaded: !!light,
     sunShare: light ? (() => { const v = []; for (let i = 0; i < N; i++) if (kinds[i] === KIND.lawn) v.push(light[i]); return med(v); })() : null,
     weather: monthly(typical, years, params),

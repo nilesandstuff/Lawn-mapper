@@ -144,13 +144,45 @@ const MAX_RATE = {
   clay: [0.2, 0.15, 0.12, 0.1], clayCompact: [0.2, 0.15, 0.12, 0.1],
 };
 
-/** in/h the lawn takes before water runs off: rz from rootZone, slope m/m. */
+/** The USDA texture class of a layer from its sand and clay (%), the soil texture triangle. */
+export function textureClass(sand, clay) {
+  if (!Number.isFinite(sand) || !Number.isFinite(clay)) return null;
+  const silt = 100 - sand - clay;
+  if (silt + 1.5 * clay < 15) return 'sand';
+  if (silt + 1.5 * clay >= 15 && silt + 2 * clay < 30) return 'loamy sand';
+  if ((clay >= 7 && clay < 20 && sand > 52 && silt + 2 * clay >= 30) || (clay < 7 && silt < 50 && silt + 2 * clay >= 30)) return 'sandy loam';
+  if (clay >= 7 && clay < 27 && silt >= 28 && silt < 50 && sand <= 52) return 'loam';
+  if ((silt >= 50 && clay >= 12 && clay < 27) || (silt >= 50 && silt < 80 && clay < 12)) return 'silt loam';
+  if (silt >= 80 && clay < 12) return 'silt';
+  if (clay >= 20 && clay < 35 && silt < 28 && sand > 45) return 'sandy clay loam';
+  if (clay >= 27 && clay < 40 && sand > 20 && sand <= 45) return 'clay loam';
+  if (clay >= 27 && clay < 40 && sand <= 20) return 'silty clay loam';
+  if (clay >= 35 && sand > 45) return 'sandy clay';
+  if (clay >= 40 && silt >= 40) return 'silty clay';
+  if (clay >= 40 && sand <= 45 && silt < 40) return 'clay';
+  return 'loam';
+}
+
+const RATE_ROW = {
+  sand: 'sand', 'loamy sand': 'sand', 'sandy loam': 'sandyLoam', loam: 'siltLoam', 'silt loam': 'siltLoam', silt: 'siltLoam',
+  'sandy clay loam': 'siltLoam', 'clay loam': 'clay', 'silty clay loam': 'clay', 'sandy clay': 'clay', 'silty clay': 'clay', clay: 'clay',
+};
+
+/**
+ * in/h the lawn takes before water runs off: rz from rootZone, slope m/m. The USDA slope table by the top
+ * layer's texture class, AND NO MORE THAN THE SURVEY MEASURED: the top 6 in's saturated conductivity is
+ * what the ground takes once it is wet, which is how a long watering ends. (Owner, 2026-10-19: the plan said
+ * 1.25 in/h on a lawn he knows drinks slowly. The survey's Filer loam there has Ksat 3.6 mm/h -- 0.14 in/h --
+ * but sits on the line between loam and sandy loam, and the old rule put it in the table's sandy loam row.)
+ */
 export function maxSprinklerRate(rz, slope) {
-  const sand = rz?.texture?.sand ?? 40, clay = rz?.texture?.clay ?? 20;
-  const row = sand >= 80 ? 'sand' : clay >= 27 ? 'clay' : sand >= 50 ? 'sandyLoam' : 'siltLoam';
+  const cls = textureClass(rz?.texture?.sand ?? 40, rz?.texture?.clay ?? 20) || 'loam';
+  const row = RATE_ROW[cls] || 'siltLoam';
   const compact = rz?.belowMmH !== null && rz?.ksatMmH && rz.belowMmH < 0.25 * rz.ksatMmH;
   const col = slope < 0.05 ? 0 : slope < 0.08 ? 1 : slope < 0.12 ? 2 : 3;
-  return { inPerH: MAX_RATE[compact ? `${row}Compact` : row][col], texture: row, compact: !!compact };
+  const table = MAX_RATE[compact ? `${row}Compact` : row][col];
+  const measured = Number.isFinite(rz?.topKsatMmH) ? rz.topKsatMmH / 25.4 : Infinity;
+  return { inPerH: Math.max(0.02, Math.min(table, measured)), texture: cls, compact: !!compact, fromSurvey: measured < table };
 }
 
 /**
@@ -167,11 +199,12 @@ export function rootZone(profile, { rootCm = ROOT_CM, topsoil = false } = {}) {
     layers = [{ top: 0, bottom: t, awc: TOPSOIL.awc, ksat: TOPSOIL.ksatMmH, sand: 40, clay: 20 }, ...layers.map((l) => ({ ...l, top: l.top + t, bottom: l.bottom + t }))];
   }
   if (!layers.length) return null;
-  let taw = 0, ksat = Infinity, below = Infinity, depth = 0;
+  let taw = 0, ksat = Infinity, below = Infinity, depth = 0, topKsat = Infinity;
   for (const l of layers) {
     const a = Math.max(l.top, 0), b = Math.min(l.bottom, rootCm);
     if (b > a && l.awc !== null) { taw += (b - a) * 10 * l.awc; depth += b - a; }
     if (b > a && l.ksat !== null) ksat = Math.min(ksat, l.ksat);
+    if (l.top < 15 && l.ksat !== null) topKsat = Math.min(topKsat, l.ksat); // the top 6 in: what water first soaks into
     const a2 = Math.max(l.top, rootCm), b2 = Math.min(l.bottom, rootCm + 100);
     if (b2 > a2 && l.ksat !== null) below = Math.min(below, l.ksat);
   }
@@ -179,6 +212,7 @@ export function rootZone(profile, { rootCm = ROOT_CM, topsoil = false } = {}) {
   return {
     tawMm: taw, rootCm,
     ksatMmH: Number.isFinite(ksat) ? ksat : null,
+    topKsatMmH: Number.isFinite(topKsat) ? topKsat : null,
     belowMmH: Number.isFinite(below) ? below : (Number.isFinite(ksat) ? ksat : null),
     texture: { sand: layers[0].sand, clay: layers[0].clay },
     topsoil: !!topsoil,
@@ -203,6 +237,20 @@ export function withTexture(unit, key) {
   const t = TEXTURES[key];
   if (!t) return unit;
   return { ...unit, hydgrp: t.hydgrp, chosen: t.label, profile: { name: t.label, horizons: [{ topCm: 0, bottomCm: 150, awc: t.awc, ksatUmS: t.ksatMmH / 3.6, sand: t.sand, clay: t.clay }] } };
+}
+
+/** The profile's layers in the top `cm`, plainly: [{ topIn, bottomIn, texture }], neighbours of one texture joined. */
+export function layersOf(profile, cm = 120) {
+  const out = [];
+  for (const h of profile?.horizons || []) {
+    if (h.topCm === null || h.topCm >= cm) continue;
+    const t = textureClass(h.sand, h.clay);
+    if (!t) continue;
+    const top = Math.round(h.topCm / 2.54), bottom = Math.round(Math.min(h.bottomCm, cm) / 2.54);
+    if (out.length && out[out.length - 1].texture === t) out[out.length - 1].bottomIn = bottom;
+    else out.push({ topIn: top, bottomIn: bottom, texture: t });
+  }
+  return out;
 }
 
 /** The shallowest seasonal water table (cm) in a month, survey "Wet" layers, else the annual minimum, else null. */

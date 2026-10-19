@@ -35,7 +35,7 @@
 
 import { pointsIn, toMerc, mercScale } from '../lib/ept.js';
 import { nodeIo } from '../lib/node-io.js';
-import { analyse } from '../lib/lowspots.js';
+import { analyse, greenVeto } from '../lib/lowspots.js';
 import { truthFor, GROUP_NAMES } from '../lib/chesapeake.js';
 import { auc, fitLogistic } from '../lib/cells.js';
 import { naipFor, ndvi } from '../lib/naip.js';
@@ -161,16 +161,23 @@ async function one(lng, lat) {
   const shade = shadeRoofs(res.points, bbox, lat, { parts: true }); // the points as analysed: moved onto the web map's ground
   // Overture's roads, sidewalks and buildings (lib/overture.js; owner 2026-10-19: "use that on top of current system")
   const ovm = await overtureFor(g.bbox).then((ov) => overtureMasks(g, ov)).catch(() => null);
+  // the photo, early: its green vetoes lidar-only roofs (lib/lowspots.js greenVeto; owner 2026-10-19, evergreens)
+  const photo = await naipFor(g).catch(() => null);
+  const V0 = photo ? ndvi(photo) : null;
+  let groundGreen = null;
+  if (V0) { const gz = []; for (let i = 0; i < N; i++) if (!res.wall[i] && Number.isFinite(res.rawZ[i]) && Number.isFinite(V0[i])) gz.push(V0[i]); gz.sort((a, b) => a - b); groundGreen = gz.length > 50 ? gz[gz.length >> 1] : null; }
   const finders = {
     water: res.ownRoofs, shadeFlat: shade.flat, shadeSolid: shade.solid, shade: shade.roof,
     either: Uint8Array.from(res.ownRoofs, (v, i) => (v || shade.roof[i] ? 1 : 0)),
     both: Uint8Array.from(res.ownRoofs, (v, i) => (v && shade.roof[i] ? 1 : 0)),
     waterNoEvergreen: Uint8Array.from(res.ownRoofs, (v, i) => (v && !shade.evergreen[i] ? 1 : 0)),
+    ...(V0 ? { eitherNotGreen: greenVeto(Uint8Array.from(res.ownRoofs, (v, i) => (v || shade.roof[i] ? 1 : 0)), V0, groundGreen) } : {}),
     ...(ovm ? {
       overture: ovm.building,
       eitherOverture: Uint8Array.from(res.ownRoofs, (v, i) => (v || shade.roof[i] || ovm.building[i] ? 1 : 0)),
       eitherAndOverture: Uint8Array.from(res.ownRoofs, (v, i) => ((v || shade.roof[i]) && ovm.building[i] ? 1 : 0)),
       overtureOrBoth: Uint8Array.from(res.ownRoofs, (v, i) => (ovm.building[i] || (v && shade.roof[i]) ? 1 : 0)),
+      ...(V0 ? { overtureOrBothNotGreen: greenVeto(Uint8Array.from(res.ownRoofs, (v, i) => (ovm.building[i] || (v && shade.roof[i]) ? 1 : 0)), V0, groundGreen, ovm.building) } : {}),
     } : {}),
   };
   const near = (mask, i) => {
@@ -212,7 +219,6 @@ async function one(lng, lat) {
   const roofCells = []; for (let i = 0; i < N; i++) if (pc.roofN[i]) roofCells.push(pc.roofI[i] / pc.roofN[i]);
   const roofI = med(roofCells);
   // the USDA photo with its near-infrared band (lib/naip.js), calibrated on this square's own turf like the brightness
-  const photo = await naipFor(g).catch(() => null);
   const V = photo ? ndvi(photo) : null;
   const bright = photo ? Float32Array.from(photo.red, (r, i) => (r + photo.green[i] + photo.blue[i]) / 3) : null;
   const lawnV = V ? med(Array.from(V).filter((v, i) => truth[i] === G.turf && !res.wall[i] && Number.isFinite(v))) : NaN;
@@ -293,7 +299,7 @@ async function main() {
   console.log(`  roofs (cells; "Structures" is the truth): found ${Math.round(100 * R.tp / (R.tp + R.fn))}% of roof cells, ${Math.round(100 * R.tp / (R.tp + R.fp))}% of what it calls roof is roof, IoU ${(R.tp / (R.tp + R.fp + R.fn)).toFixed(2)}`);
   console.log('  roof finders, pooled (exact | within 1 m):       found      precise     IoU');
   const label = { water: 'water map (surface.js)', shadeFlat: 'shade: flat-roof rule alone', shadeSolid: 'shade: + solid at the grass, + eaves', shade: 'shade: + tree-vs-roof patch test (full)', either: 'either says roof', both: 'both say roof', waterNoEvergreen: 'water map, less what shade calls evergreen',
-    overture: 'Overture buildings alone', eitherOverture: 'either, or an Overture building', eitherAndOverture: 'either, and an Overture building', overtureOrBoth: 'Overture, or both lidar finders agree' };
+    overture: 'Overture buildings alone', eitherOverture: 'either, or an Overture building', eitherAndOverture: 'either, and an Overture building', overtureOrBoth: 'Overture, or both lidar finders agree', overtureOrBothNotGreen: 'that, less what the photo shows green', eitherNotGreen: 'either, less what the photo shows green' };
   const names = [...new Set(done.flatMap((d) => Object.keys(d.roofScores)))];
   const withOv = done.filter((d) => d.roofScores.overture);
   for (const [name, list, tag] of [...names.map((n) => [n, done.filter((d) => d.roofScores[n]), '']), ['either', withOv, ' (Overture squares)']]) {

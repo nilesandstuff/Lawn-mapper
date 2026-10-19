@@ -64,7 +64,21 @@ export function noiseFloor(bbox, lat, groundPerM2, scatter, { runs = 8, within =
  * epoch: the flight's decimal year (for the datum, lib/datum.js), or null to
  * leave the cloud where the octree put it.
  */
-export function analyse(cols0, bbox, lat, { epoch = null, shift: givenShift = null, cell = 1, within = null, nullRuns = 8, floor = null, useShadeRoofs = cell === 1, overture = null } = {}) {
+/**
+ * GREEN IS NOT A ROOF (owner, 2026-10-19: "the row of evergreens at the back of my property read as roofs").
+ * A cell the lidar alone calls roof is dropped when the USDA photo's vegetation index there (lib/naip.js) is
+ * at least GREEN_SHARE of the open low ground's in the same photo -- the scene's own green, so a photo flown
+ * in a drier year or another season is judged against itself. On the owner's lot: roofs 0.02-0.13, the
+ * evergreens 0.27-0.36, open ground 0.35.
+ */
+export const GREEN_SHARE = 0.6;
+export function greenVeto(mask, ndvi, ref, keep = null) {
+  if (!ndvi || !(ref > 0)) return mask;
+  const cut = Math.max(0.12, GREEN_SHARE * ref);
+  return Uint8Array.from(mask, (v, i) => (v && (keep?.[i] || !(ndvi[i] >= cut)) ? 1 : 0));
+}
+
+export function analyse(cols0, bbox, lat, { epoch = null, shift: givenShift = null, cell = 1, within = null, nullRuns = 8, floor = null, useShadeRoofs = cell === 1, overture = null, ndvi = null } = {}) {
   /* THE FRAME, THE SHADE MAP'S (owner, 2026-10-17: "make sure your system is the exact same as the shade
      map"): the cloud is moved onto the web map's ground BEFORE it is gridded, by the published NAD83 ->
      ITRF transformation at the flight's epoch (lib/datum.js), as the shade map's cellOf(..., shift) does.
@@ -100,6 +114,15 @@ export function analyse(cols0, bbox, lat, { epoch = null, shift: givenShift = nu
      agree on (a shed, or a house newer than the map data). */
   if (overture?.building && overture.building.length === g.W * g.H) {
     wall = Uint8Array.from(overture.building, (b, i) => (b || (ownRoofs[i] && (!shadeRoof || shadeRoof[i])) ? 1 : 0));
+  }
+  // the photo's green vetoes what only the lidar called roof (Overture's buildings stand)
+  let groundGreen = null;
+  if (ndvi && ndvi.length === g.W * g.H) {
+    const gz = [];
+    for (let i = 0; i < ndvi.length; i++) if (!wall[i] && Number.isFinite(raw.z[i]) && Number.isFinite(ndvi[i])) gz.push(ndvi[i]);
+    gz.sort((a, b) => a - b);
+    groundGreen = gz.length > 50 ? gz[gz.length >> 1] : null;
+    wall = greenVeto(wall, ndvi, groundGreen, overture?.building || null);
   }
   const groundOk = new Uint8Array(g.W * g.H);
   for (let i = 0; i < groundOk.length; i++) groundOk[i] = !wall[i] && Number.isFinite(raw.z[i]) ? 1 : 0;

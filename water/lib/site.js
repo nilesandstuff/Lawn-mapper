@@ -16,7 +16,7 @@ import { analyse, spotRecords } from './lowspots.js';
 import { boundsOf, maskOf, maskBox } from './geo.js';
 import { gridFor } from './surface.js';
 import { imperviousness, weightedFlow } from './impervious.js';
-import { naipFor } from './naip.js';
+import { naipFor, ndvi } from './naip.js';
 import { overtureFor, overtureMasks } from './overture.js';
 
 export const PAD = 30;
@@ -59,8 +59,9 @@ export async function runSite(site, io, pickCloud, { progress = () => {}, nullRu
   const cloud = pick?.clouds?.[0];
   if (!cloud) return { error: 'no public lidar over this property', notOnAws: pick?.notOnAws || [] };
   const bbox = kept ? kept.box : boxFor(site);
-  // Overture's roads, sidewalks and buildings, fetched while the lidar is read (lib/overture.js)
+  // Overture's roads, sidewalks and buildings, and the USDA photo, fetched while the lidar is read
   const ovP = overtureFor(bbox).catch(() => null);
+  const photoP = naipFor(gridFor(bbox, site.lat)).catch(() => null);
   const { cols, flown } = await pointsIn(cloud.url, bbox, io, { progress });
   const epoch = cloud.epoch || (flown ? 1970 + flown.mid / (365.25 * 864e5) : null);
   // the noise floor is judged over the property itself, not the margin
@@ -70,7 +71,8 @@ export async function runSite(site, io, pickCloud, { progress = () => {}, nullRu
   const within = (parcelMask && maskBox(g, parcelMask)) || (lawnMask && maskBox(g, lawnMask)) || null;
   const ov = await ovP;
   const ovMasks = ov ? overtureMasks(g, ov) : null;
-  const res = analyse(cols, bbox, site.lat, { epoch, within, nullRuns, shift: kept && Array.isArray(kept.shift) ? kept.shift : null, overture: ovMasks });
+  const photo = await photoP;
+  const res = analyse(cols, bbox, site.lat, { epoch, within, nullRuns, shift: kept && Array.isArray(kept.shift) ? kept.shift : null, overture: ovMasks, ndvi: photo ? ndvi(photo) : null });
 
   const onParcel = parcelMask ? spotsOn(res, parcelMask) : [];
   const onLawn = lawnMask ? spotsOn(res, lawnMask) : [];
@@ -82,7 +84,6 @@ export async function runSite(site, io, pickCloud, { progress = () => {}, nullRu
 
   // how impervious the rest is, calibrated on the traced lawn (lib/impervious.js)
   // with the USDA photo when it answers (FINDINGS H17); the lidar alone when it does not
-  const photo = lawnMask ? await naipFor(g).catch(() => null) : null;
   const imp = lawnMask ? imperviousness(res, lawnMask, { photo, bands: ovMasks?.paved || null }) : null;
   const wflow = imp ? weightedFlow(res, imp.runoff) : null;
   let cover = null;

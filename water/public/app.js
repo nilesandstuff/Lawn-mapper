@@ -385,10 +385,12 @@ function planReport(p) {
     const wet = u.wetByMonth.map((v, m) => (v !== null && v !== undefined ? [m, v] : null)).filter(Boolean);
     const table = wet.length ? ` The water table comes within about ${Math.round(Math.min(...wet.map((x) => x[1])) / 2.54)} in of the surface in ${wet.map((x) => MONTH[x[0]].slice(0, 3)).join(', ')}.` : '';
     const what = u.chosen ? `<strong>${esc(u.chosen)}</strong>, as you chose (the survey says ${esc(u.name || 'unnamed')})` : `<strong>${esc(u.name || 'unnamed')}</strong>`;
-    return `<li>${what}${u.share !== null && !u.chosen ? ` (${Math.round(u.share * 100)}% of the area)` : ''}: ${esc(String(u.drainage || 'drainage not given').toLowerCase())}, hydrologic group ${esc(u.hydgrp || '?')}. The top 12 in, where the roots are, hold about ${inch((p.topsoil ? u.tawTopsoilMm : u.tawMm) ?? 0)} in of water the grass can use${p.topsoil ? ', with your 4 in of loamy topsoil on top' : ''}.${table}</li>`;
+    const layers = u.layers?.length ? ` Layers: ${u.layers.map((l) => `${l.topIn}–${l.bottomIn} in ${esc(l.texture)}`).join('; ')}.` : '';
+    const intake = u.intakeInH ? ` Water soaks into the top layer at about ${u.intakeInH < 0.1 ? u.intakeInH.toFixed(2) : u.intakeInH.toFixed(1)} in an hour, as the survey measured it${u.intakeInH < 0.3 ? ': slowly' : ''}.` : '';
+    return `<li>${what}${u.share !== null && !u.chosen ? ` (${Math.round(u.share * 100)}% of the area)` : ''}: ${esc(String(u.drainage || 'drainage not given').toLowerCase())}, hydrologic group ${esc(u.hydgrp || '?')}.${layers} The top 12 in, where the roots are, hold about ${inch((p.topsoil ? u.tawTopsoilMm : u.tawMm) ?? 0)} in of water the grass can use${p.topsoil ? ', with your 4 in of loamy topsoil on top' : ''}.${intake}${table}</li>`;
   });
   parts.push(`<div class="card"><h2>The soil${p.topsoil ? ' (with 4 in of loamy topsoil on the lawn)' : ''}</h2><ul>${soilRows.join('')}</ul>
-    <p class="dim">${p.texture ? 'Your choice of soil, with the survey\'s drainage class and water table kept.' : 'From the USDA soil survey. If you know your soil is different, choose it under the map.'} A soak test (coming) will tell how fast it really drinks.</p></div>`);
+    <p class="dim">From the USDA soil survey (NRCS). A soak test (coming) will check it on your lawn.</p></div>`);
   const wm = p.weather.filter((m) => m.grassUseMm > 10);
   parts.push(`<div class="card"><h2>The weather it is planned on</h2>
     <table class="months"><tr><th>Month</th><th>Rain</th><th>Reference ET</th><th>Your grass uses</th></tr>${wm.map((m) => `<tr><td>${MONTH[m.month]}</td><td>${inch(m.rainMm)} in</td><td>${inch(m.referenceMm)} in</td><td>${inch(m.grassUseMm)} in</td></tr>`).join('')}</table>
@@ -429,8 +431,7 @@ async function run(site) {
   inputs.gutters = Array.isArray(kept.gutters) ? kept.gutters : [];
   inputs.topsoil = !!kept.topsoil;
   inputs.grass = kept.grass === 'warm' ? 'warm' : 'cool';
-  inputs.texture = typeof kept.texture === 'string' ? kept.texture : '';
-  $('#texture').value = inputs.texture;
+  inputs.texture = ''; // the soil is the survey's (owner 2026-10-19: no override)
   $('#topsoil').checked = inputs.topsoil;
   $('#grass').value = inputs.grass;
   setMode(null);
@@ -488,7 +489,7 @@ async function save() {
   try {
     const res = await fetch(`/api/maps/tool?id=${encodeURIComponent(site.mapId)}&tool=water`, {
       method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ data: { v: 1, downspouts: inputs.downspouts, gutters: inputs.gutters, topsoil: inputs.topsoil, grass: inputs.grass, texture: inputs.texture }, basedOn: site.at }),
+      body: JSON.stringify({ data: { v: 1, downspouts: inputs.downspouts, gutters: inputs.gutters, topsoil: inputs.topsoil, grass: inputs.grass }, basedOn: site.at }),
     });
     savedNote = res.ok ? 'Saved with your map.' : `Not saved (${res.status}).`;
   } catch (e) { savedNote = `Not saved: ${e.message}`; }
@@ -584,7 +585,6 @@ $('#clear').addEventListener('click', () => {
   inputs.downspouts = []; inputs.gutters = []; setMode(null); changed();
 });
 $('#topsoil').addEventListener('change', () => { inputs.topsoil = $('#topsoil').checked; changed(); });
-$('#texture').addEventListener('change', () => { inputs.texture = $('#texture').value; changed(); });
 $('#grass').addEventListener('change', () => { inputs.grass = $('#grass').value === 'warm' ? 'warm' : 'cool'; changed(); });
 
 async function guarded(fn) {
