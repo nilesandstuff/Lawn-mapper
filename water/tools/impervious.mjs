@@ -39,6 +39,7 @@ import { analyse } from '../lib/lowspots.js';
 import { truthFor, GROUP_NAMES } from '../lib/chesapeake.js';
 import { auc, fitLogistic } from '../lib/cells.js';
 import { naipFor, ndvi } from '../lib/naip.js';
+import { overtureFor, overtureMasks } from '../lib/overture.js';
 import { rng } from '../lib/synthetic.js';
 import { lidarAt } from '../../worker/src/shade.js';
 import { shadeRoofs } from '../lib/roofs.js';
@@ -158,11 +159,18 @@ async function one(lng, lat) {
 
   // roofs, each finder and each stage of the shade map's (lib/roofs.js), exact and within 1 m
   const shade = shadeRoofs(res.points, bbox, lat, { parts: true }); // the points as analysed: moved onto the web map's ground
+  // Overture's roads, sidewalks and buildings (lib/overture.js; owner 2026-10-19: "use that on top of current system")
+  const ovm = await overtureFor(g.bbox).then((ov) => overtureMasks(g, ov)).catch(() => null);
   const finders = {
     water: res.ownRoofs, shadeFlat: shade.flat, shadeSolid: shade.solid, shade: shade.roof,
     either: Uint8Array.from(res.ownRoofs, (v, i) => (v || shade.roof[i] ? 1 : 0)),
     both: Uint8Array.from(res.ownRoofs, (v, i) => (v && shade.roof[i] ? 1 : 0)),
     waterNoEvergreen: Uint8Array.from(res.ownRoofs, (v, i) => (v && !shade.evergreen[i] ? 1 : 0)),
+    ...(ovm ? {
+      overture: ovm.building,
+      eitherOverture: Uint8Array.from(res.ownRoofs, (v, i) => (v || shade.roof[i] || ovm.building[i] ? 1 : 0)),
+      eitherAndOverture: Uint8Array.from(res.ownRoofs, (v, i) => ((v || shade.roof[i]) && ovm.building[i] ? 1 : 0)),
+    } : {}),
   };
   const near = (mask, i) => {
     const r = Math.floor(i / g.W), c = i % g.W;
@@ -224,6 +232,7 @@ async function one(lng, lat) {
       lr: Number.isFinite(roofI) && lawnI !== roofI ? (I[i] - roofI) / (lawnI - roofI) : NaN,
       // for the combined model: smoothness, single returns, return density
       sam: sam ? sam[i] : NaN,
+      ovRoad: ovm ? (ovm.paved[i] === 1 ? 1 : 0) : NaN, ovWalk: ovm ? (ovm.paved[i] === 2 ? 1 : 0) : NaN,
       x: [Math.log(Math.max(0.02, I[i] / lawnI)), Number.isFinite(res.sd[i]) ? Math.min(0.3, res.sd[i]) : 0.05, all3[i] ? single3[i] / all3[i] : 0, Math.log(all3[i] / 9 + 0.1),
         // 4-7: the photo -- vegetation index, it against the turf's, brightness against the turf's, blueness
         V ? V[i] : NaN, V ? V[i] - lawnV : NaN, bright ? Math.log(Math.max(1, bright[i]) / Math.max(1, lawnB)) : NaN, photo ? (photo.blue[i] - photo.red[i]) / 255 : NaN],
@@ -282,11 +291,15 @@ async function main() {
   console.log(`ROOFS AND IMPERVIOUSNESS ON THE CHESAPEAKE LAND USE: ${done.length} residential squares of ${SIZE} m (${tries} tried)`);
   console.log(`  roofs (cells; "Structures" is the truth): found ${Math.round(100 * R.tp / (R.tp + R.fn))}% of roof cells, ${Math.round(100 * R.tp / (R.tp + R.fp))}% of what it calls roof is roof, IoU ${(R.tp / (R.tp + R.fp + R.fn)).toFixed(2)}`);
   console.log('  roof finders, pooled (exact | within 1 m):       found      precise     IoU');
-  const label = { water: 'water map (surface.js)', shadeFlat: 'shade: flat-roof rule alone', shadeSolid: 'shade: + solid at the grass, + eaves', shade: 'shade: + tree-vs-roof patch test (full)', either: 'either says roof', both: 'both say roof', waterNoEvergreen: 'water map, less what shade calls evergreen' };
-  for (const name of Object.keys(done[0]?.roofScores || {})) {
-    const t = done.reduce((a, d) => { for (const k of Object.keys(a)) a[k] += d.roofScores[name][k]; return a; }, { tp: 0, fp: 0, fn: 0, tpNear: 0, predN: 0, foundNear: 0, truthN: 0 });
+  const label = { water: 'water map (surface.js)', shadeFlat: 'shade: flat-roof rule alone', shadeSolid: 'shade: + solid at the grass, + eaves', shade: 'shade: + tree-vs-roof patch test (full)', either: 'either says roof', both: 'both say roof', waterNoEvergreen: 'water map, less what shade calls evergreen',
+    overture: 'Overture buildings alone', eitherOverture: 'either, or an Overture building', eitherAndOverture: 'either, and an Overture building' };
+  const names = [...new Set(done.flatMap((d) => Object.keys(d.roofScores)))];
+  const withOv = done.filter((d) => d.roofScores.overture);
+  for (const [name, list, tag] of [...names.map((n) => [n, done.filter((d) => d.roofScores[n]), '']), ['either', withOv, ' (Overture squares)']]) {
+    if (!list.length) continue;
+    const t = list.reduce((a, d) => { for (const k of Object.keys(a)) a[k] += d.roofScores[name][k]; return a; }, { tp: 0, fp: 0, fn: 0, tpNear: 0, predN: 0, foundNear: 0, truthN: 0 });
     const f = (v) => `${Math.round(100 * v)}%`;
-    console.log(`    ${label[name].padEnd(42)} ${f(t.tp / (t.tp + t.fn))} | ${f(t.foundNear / t.truthN)}   ${f(t.tp / (t.tp + t.fp))} | ${f(t.tpNear / t.predN)}   ${(t.tp / (t.tp + t.fp + t.fn)).toFixed(2)}`);
+    console.log(`    ${(label[name] + tag).padEnd(42)} ${f(t.tp / (t.tp + t.fn))} | ${f(t.foundNear / t.truthN)}   ${f(t.tp / (t.tp + t.fp))} | ${f(t.tpNear / t.predN)}   ${(t.tp / (t.tp + t.fp + t.fn)).toFixed(2)}   (${list.length} squares)`);
   }
   const perFlight = {};
   for (const d of done) { const f = (perFlight[d.cloud] ||= { water: [0, 0, 0], shade: [0, 0, 0], waterNoEvergreen: [0, 0, 0] }); for (const n of ['water', 'shade', 'waterNoEvergreen']) { f[n][0] += d.roofScores[n].tp; f[n][1] += d.roofScores[n].fp; f[n][2] += d.roofScores[n].fn; } }
@@ -319,6 +332,36 @@ async function main() {
     const called = T.filter((c) => p(c) > 0), precise = called.filter((c) => c.cls === 'imp').length / Math.max(1, called.length);
     console.log(`  ${label}: right on ${(right * 100).toFixed(1)}% of cells, finds ${(found * 100).toFixed(0)}% of paving, ${(precise * 100).toFixed(0)}% of what it calls paving is paving`);
     console.log(`  ${label}, fitted on ${Math.ceil(done.length / 2)} squares, tested on ${Math.floor(done.length / 2)}: paved vs both ${auc(T.filter((c) => c.cls === 'imp').map(p), T.filter((c) => c.cls !== 'imp').map(p)).toFixed(3)}, paved vs pervious ${auc(T.filter((c) => c.cls === 'imp').map(p), T.filter((c) => c.cls === 'perv').map(p)).toFixed(3)}; weights ${JSON.stringify({ keys, mean: m.mean.map((v) => +v.toFixed(4)), sd: m.sd.map((v) => +v.toFixed(4)), w: m.w.map((v) => +v.toFixed(3)), b: +m.b.toFixed(3) })}`);
+  }
+  {
+    // OVERTURE ON TOP (owner 2026-10-19): its road and sidewalk bands, alone, OR'd with the in-use model, and
+    // as two more inputs to it -- on the test squares' cells that have the lidar, the photo and Overture
+    const has = (list) => list.filter((c) => c.x.every(Number.isFinite) && Number.isFinite(c.ovRoad));
+    const F = has(fitC), T = has(testC);
+    if (T.length) {
+      const score = (label, pred) => {
+        const right = T.filter((c) => pred(c) === (c.cls === 'imp')).length / T.length;
+        const impT = T.filter((c) => c.cls === 'imp'), found = impT.filter(pred).length / Math.max(1, impT.length);
+        const called = T.filter(pred), precise = called.filter((c) => c.cls === 'imp').length / Math.max(1, called.length);
+        console.log(`  ${label}: right on ${(right * 100).toFixed(1)}% of cells, finds ${(found * 100).toFixed(0)}% of paving, ${(precise * 100).toFixed(0)}% of what it calls paving is paving`);
+      };
+      const val = (c, k) => (k === 8 ? c.ovRoad : k === 9 ? c.ovWalk : c.x[k]);
+      const fitZ = (keys) => {
+        const m = fitLogistic(thin(F, 40000).map((c) => [keys.map((k) => val(c, k)), c.cls === 'imp' ? 1 : 0]));
+        return (c) => { let v = m.b; keys.forEach((k, j) => { v += m.w[j] * ((val(c, k) - m.mean[j]) / m.sd[j]); }); return v; };
+      };
+      console.log(`  OVERTURE, on ${T.length} test cells with lidar, photo and Overture (${T.filter((c) => c.ovRoad).length} under a road band, ${T.filter((c) => c.ovWalk).length} under a sidewalk or path band):`);
+      const inUse = fitZ([0, 1, 2, 3, 5, 6, 7]);
+      score('lidar + photo against the lawn (in use)', (c) => inUse(c) > 0);
+      score('Overture road and sidewalk bands alone', (c) => c.ovRoad === 1 || c.ovWalk === 1);
+      score('in use OR an Overture band', (c) => inUse(c) > 0 || c.ovRoad === 1 || c.ovWalk === 1);
+      const both = fitZ([0, 1, 2, 3, 5, 6, 7, 8, 9]);
+      score('in use + Overture bands as two more inputs', (c) => both(c) > 0);
+      // under trees, where the photo and the laser see least: the Chesapeake class "pervious" is not here, but
+      // the bands are judged on the cells they fall on
+      const band = T.filter((c) => c.ovRoad || c.ovWalk);
+      console.log(`    of the cells under an Overture band, ${(100 * band.filter((c) => c.cls === 'imp').length / Math.max(1, band.length)).toFixed(0)}% are paved in the land use`);
+    }
   }
   if (DUMP) {
     // the in-use model (lidar + photo against the lawn, lib/impervious.js PAVED_MODEL_PHOTO's inputs), fitted
