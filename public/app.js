@@ -32,7 +32,8 @@ import { sharpTiles } from './lib/sharp-tiles.js';
 import { alignFromRegistration } from './lib/register.js';
 import { extraDetail } from './lib/sharpness.js';
 import { enhance, DEFAULTS as ENHANCE_DEFAULTS } from './lib/enhance.js';
-import { overtureGeoJSON, bandWidth, covers } from './lib/overture-layer.js';
+import { overtureGeoJSON, bandWidth, covers, shiftGeoJSON } from './lib/overture-layer.js';
+import { greyGrid, gradients, lotShift } from './lib/photo-fit.js';
 import { snapPoint, nearestOnRings } from './lib/snap.js';
 import { notchShapes } from './lib/cutout.js';
 // Pasting the pieces of a big lot's detection back into one mask.
@@ -6567,10 +6568,39 @@ function setOverture(on) {
   state.overtureOn = on;
   try { localStorage.setItem('lm_overture', on ? '1' : '0'); } catch { /* private mode: this visit only */ }
   refreshLayerList();
-  if (on) showOverture(); else hideOverture();
+  if (on) showOverture({ announce: true }); else hideOverture();
 }
 
-async function showOverture() {
+/*
+ * OVERTURE MOVED ONTO THE PHOTO (owner, 2026-10-19: "the imagery is not
+ * consistently lining up with the overture shapes"; H102: our photos sit a
+ * median 1.6 m from Overture's buildings, up to 6 m). Overture's outlines are
+ * slid over Mapbox's photo of the view (every other photo is lined up to
+ * Mapbox's ground, H64) and moved by the median of the buildings' best fits
+ * (lib/photo-fit.js). One shift for everything in view: within a lot the
+ * buildings agree to about 0.6 m.
+ */
+const FIT_CELL_M = 0.2, FIT_REACH_M = 6;
+async function overtureShiftHere(ov, c) {
+  const zoom = Math.round(Math.min(20, Math.max(17, map.getZoom())) * 100) / 100;
+  const frame = { lng: c.lng, lat: c.lat, zoom, size: 640, height: 640 };
+  const cos = Math.cos((c.lat * Math.PI) / 180);
+  const acrossM = (640 * 40075016.686 * cos) / (512 * 2 ** zoom);
+  const Wg = Math.round(acrossM / FIT_CELL_M), Hg = Wg;
+  const pic = await rgbaOf(imageryUrlFor('mapbox', frame), Wg, Hg);
+  const { gx, gy } = gradients(greyGrid(pic.data, Wg, Hg, Wg, Hg), Wg, Hg);
+  const R = 6378137, cx = (c.lng * Math.PI / 180) * R, cy = Math.log(Math.tan(Math.PI / 4 + (c.lat * Math.PI / 180) / 2)) * R;
+  const perCell = FIT_CELL_M / cos; // web-mercator metres a cell
+  const toG = ([lng, la]) => {
+    const x = (lng * Math.PI / 180) * R, y = Math.log(Math.tan(Math.PI / 4 + (la * Math.PI / 180) / 2)) * R;
+    return [(x - cx) / perCell + Wg / 2, (cy - y) / perCell + Hg / 2];
+  };
+  const rings = ov.buildings.map((poly) => poly[0].map(toG));
+  const fit = lotShift(rings, gx, gy, Wg, Hg, Math.round(FIT_REACH_M / FIT_CELL_M));
+  return fit ? { east: fit.dx * FIT_CELL_M, north: -fit.dy * FIT_CELL_M, n: fit.n } : null;
+}
+
+async function showOverture({ announce = false } = {}) {
   if (!state.overtureOn || map.getZoom() < 15) return;
   const b = map.getBounds();
   const view = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
@@ -6590,8 +6620,17 @@ async function showOverture() {
     return;
   }
   if (mine !== ovtRun || !state.overtureOn) return;
+  let fit = null;
+  try { fit = await overtureShiftHere(ov, c); } catch (err) { console.warn('Could not fit Overture to the photo:', err); }
+  if (mine !== ovtRun || !state.overtureOn) return;
   state.overtureBox = [w, s, e, n];
-  const data = overtureGeoJSON(ov);
+  state.overtureFit = fit;
+  const data = fit ? shiftGeoJSON(overtureGeoJSON(ov), fit.east, fit.north) : overtureGeoJSON(ov);
+  if (announce) {
+    setStatus(fit
+      ? `Overture's outlines moved ${Math.hypot(fit.east, fit.north).toFixed(1)} m to sit on this photo (fitted to ${fit.n} building${fit.n === 1 ? '' : 's'}).`
+      : "Overture's outlines are drawn where Overture puts them: no building here could be matched to the photo, so they may sit a metre or more off it.");
+  }
   if (map.getSource('ovt')) { map.getSource('ovt').setData(data); return; }
   map.addSource('ovt', { type: 'geojson', data });
   const before = map.getLayer('parcel-fill') ? 'parcel-fill' : undefined;

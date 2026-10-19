@@ -26,6 +26,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { overtureFor, overtureMasks } from '../public/lib/overture.js';
+import { greyGrid, gradients, ringPoints, edgeFit, leanFit, PEAK_MIN } from '../public/lib/photo-fit.js';
 
 const CELL = 0.5;    // web-mercator metres a cell of the comparison grid
 const SHIFT_M = 6;   // the search, in ground metres, each way
@@ -118,83 +119,13 @@ function picture(PNG, photoFile, W, H, layers) {
  */
 const PHOTO_CELL_M = 0.2;     // ground metres a cell of the photo grid
 const PHOTO_REACH_M = 6;
-const PEAK_MIN = 1.35;        // best score over the median score of the search: a real edge fit, not noise
 
 function photoGrid(PNG, file, Wg, Hg) {
   const p = PNG.sync.read(readFileSync(file));
-  const g = new Float32Array(Wg * Hg);
-  // area-average each grid cell from the photo's pixels (the photo is usually finer than 0.2 m)
-  const sx = p.width / Wg, sy = p.height / Hg;
-  for (let r = 0; r < Hg; r++) for (let c = 0; c < Wg; c++) {
-    const x0 = Math.floor(c * sx), x1 = Math.max(x0 + 1, Math.floor((c + 1) * sx)), y0 = Math.floor(r * sy), y1 = Math.max(y0 + 1, Math.floor((r + 1) * sy));
-    let t = 0, n = 0;
-    for (let y = y0; y < Math.min(y1, p.height); y++) for (let x = x0; x < Math.min(x1, p.width); x++) { const o = (y * p.width + x) * 4; t += 0.299 * p.data[o] + 0.587 * p.data[o + 1] + 0.114 * p.data[o + 2]; n++; }
-    g[r * Wg + c] = n ? t / n : 0;
-  }
-  // a light blur, then central differences
-  const b = new Float32Array(Wg * Hg);
-  for (let r = 0; r < Hg; r++) for (let c = 0; c < Wg; c++) {
-    let t = 0, n = 0;
-    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const rr = r + dy, cc = c + dx; if (rr >= 0 && cc >= 0 && rr < Hg && cc < Wg) { const w8 = (dx ? 1 : 2) * (dy ? 1 : 2); t += w8 * g[rr * Wg + cc]; n += w8; } }
-    b[r * Wg + c] = t / n;
-  }
-  const gx = new Float32Array(Wg * Hg), gy = new Float32Array(Wg * Hg), mag = [];
-  for (let r = 1; r < Hg - 1; r++) for (let c = 1; c < Wg - 1; c++) {
-    const i = r * Wg + c;
-    gx[i] = (b[i + 1] - b[i - 1]) / 2; gy[i] = (b[i + Wg] - b[i - Wg]) / 2;
-    if ((r * 7 + c) % 5 === 0) mag.push(Math.hypot(gx[i], gy[i]));
-  }
-  mag.sort((a, z) => a - z);
-  const scale = mag[Math.floor(mag.length * 0.95)] || 1; // an edge as strong as the photo's 95th percentile counts 1
-  for (let i = 0; i < gx.length; i++) { gx[i] /= scale; gy[i] /= scale; }
-  return { gx, gy };
+  return gradients(greyGrid(p.data, p.width, p.height, Wg, Hg), Wg, Hg);
 }
 
-/** The best shift (cells) of points with normals over the gradient field, searched ±reach cells, coarse then fine. */
-export function edgeFit(pts, gx, gy, Wg, Hg, reach) {
-  const score = (dx, dy) => {
-    let t = 0, n = 0;
-    for (const [x, y, nx, ny] of pts) {
-      const c = Math.round(x + dx), r = Math.round(y + dy);
-      if (c < 1 || r < 1 || c >= Wg - 1 || r >= Hg - 1) continue;
-      const i = r * Wg + c;
-      t += Math.min(1, Math.abs(gx[i] * nx + gy[i] * ny)); n++;
-    }
-    return n >= pts.length * 0.8 ? t / n : NaN;
-  };
-  const all = [];
-  let best = { s: -1, dx: 0, dy: 0 };
-  for (let dy = -reach; dy <= reach; dy += 2) for (let dx = -reach; dx <= reach; dx += 2) {
-    const v = score(dx, dy);
-    if (!Number.isFinite(v)) continue;
-    all.push(v);
-    if (v > best.s) best = { s: v, dx, dy };
-  }
-  if (best.s < 0) return null;
-  for (let dy = best.dy - 2; dy <= best.dy + 2; dy++) for (let dx = best.dx - 2; dx <= best.dx + 2; dx++) {
-    const v = score(dx, dy);
-    if (Number.isFinite(v) && v > best.s) best = { s: v, dx, dy };
-  }
-  return { ...best, peak: best.s / (median(all) || 1e-9), at0: score(0, 0) };
-}
-
-/** Robust (one round of trimming) least squares of shift = g + L * h, each axis apart. */
-export function leanFit(rows) {
-  const fit = (pts) => {
-    const n = pts.length, mh = pts.reduce((a, p) => a + p.h, 0) / n;
-    const vh = pts.reduce((a, p) => a + (p.h - mh) ** 2, 0);
-    const axis = (k) => { const my = pts.reduce((a, p) => a + p.s[k], 0) / n; const L = vh > 1e-9 ? pts.reduce((a, p) => a + (p.h - mh) * (p.s[k] - my), 0) / vh : 0; return [my - L * mh, L]; };
-    const [gx, Lx] = axis(0), [gy, Ly] = axis(1);
-    return { g: [gx, gy], L: [Lx, Ly], res: pts.map((p) => Math.hypot(p.s[0] - gx - Lx * p.h, p.s[1] - gy - Ly * p.h)) };
-  };
-  let f = fit(rows);
-  if (rows.length >= 5) {
-    const cut = Math.max(0.6, 2.5 * median(f.res));
-    const keep = rows.filter((_, i) => f.res[i] <= cut);
-    if (keep.length >= 3) f = fit(keep);
-  }
-  return f;
-}
+export { edgeFit, leanFit }; // tested in tools/overture-check.test.js
 
 function photoFit(PNG, id, box, k, ov, lidarOwn, dirs, wantPicture = false) {
   const photo = join(dirs.frames, `${id}.png`), hfile = join(dirs.lidar, `${id}-height.png`);
@@ -219,13 +150,7 @@ function photoFit(PNG, id, box, k, ov, lidarOwn, dirs, wantPicture = false) {
     let a2 = 0; for (let i = 0; i + 1 < ring.length; i++) a2 += ring[i][0] * ring[i + 1][1] - ring[i + 1][0] * ring[i][1];
     const areaM2 = Math.abs(a2 / 2) * PHOTO_CELL_M ** 2;
     if (areaM2 < 30) continue;
-    const pts = [];
-    for (let i = 0; i + 1 < ring.length; i++) {
-      const [ax, ay] = ring[i], [bx, by] = ring[i + 1], L = Math.hypot(bx - ax, by - ay);
-      if (L < 1e-6) continue;
-      const nx = -(by - ay) / L, ny = (bx - ax) / L;
-      for (let t = 0.5; t < L; t += 1) pts.push([ax + ((bx - ax) * t) / L, ay + ((by - ay) * t) / L, nx, ny]);
-    }
+    const pts = ringPoints(ring);
     if (pts.length < 40) continue;
     const f = edgeFit(pts, gx, gy, Wg, Hg, reach);
     if (!f) continue;

@@ -57,3 +57,12 @@ const { edgeFit, leanFit } = await import('./overture-check.js');
   assert.ok(Math.abs(lf.g[0] - 0.5) < 1e-6 && Math.abs(lf.L[0] - 0.3) < 1e-6 && Math.abs(lf.L[1] - 0.1) < 1e-6, 'the stray is trimmed');
 }
 console.log('photo fit: ok');
+
+// Moving the layer onto the photo (overture-layer.js shiftGeoJSON).
+{
+  const { shiftGeoJSON } = await import('../public/lib/overture-layer.js');
+  const moved = shiftGeoJSON({ type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [[0, 0], [0, 1]] } }] }, 111.32, -110.57);
+  const [lng, lat] = moved.features[0].geometry.coordinates[0];
+  assert.ok(Math.abs(lng - 0.001) < 1e-5 && Math.abs(lat + 0.000993) < 1e-5);
+  console.log('layer shift: ok');
+}

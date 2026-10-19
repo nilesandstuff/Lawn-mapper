@@ -3,10 +3,9 @@
  * 2026-10-19: "it would be good info for every stage... the detector, the grass under canopy
  * guesser, and manual tracing").
  *
- * How well it lines up was measured first (workflow 37, H101 in docs/DETECTOR-FINDINGS.md): against
- * the lidar's roofs, which carry no perspective lean, Overture's buildings sit under a metre off
- * at the median, and one lot's buildings are off together rather than each its own way. A roof in
- * the PHOTO leans away from its outline by its height; the outline is where the house stands.
+ * Measured first (workflow 37): Overture sits under a metre from the lidar (H101) but a median
+ * 1.6 m from the same houses in our PHOTOS, up to 6 m (H102), so app.js slides it onto the photo
+ * on screen (lib/photo-fit.js) before drawing it.
  *
  * Pure: what public/lib/overture.js returns, made into one GeoJSON collection and the line widths
  * that draw each road at its width on the ground. The map work is in app.js.
@@ -35,6 +34,14 @@ export function overtureGeoJSON(ov) {
 export function bandWidth(lat) {
   const px = (z) => (512 * 2 ** z) / (40075016.686 * Math.cos((lat * Math.PI) / 180));
   return ['interpolate', ['exponential', 2], ['zoom'], 14, ['*', ['get', 'w'], px(14)], 24, ['*', ['get', 'w'], px(24)]];
+}
+
+/** Every coordinate moved `east` and `north` ground metres (onto the photo, H102). */
+export function shiftGeoJSON(fc, east, north) {
+  const R = 6378137;
+  const mv = ([lng, lat]) => [lng + (east / (R * Math.cos((lat * Math.PI) / 180))) * (180 / Math.PI), lat + (north / R) * (180 / Math.PI)];
+  const geom = (g) => (g.type === 'LineString' ? { ...g, coordinates: g.coordinates.map(mv) } : { ...g, coordinates: g.coordinates.map((ring) => ring.map(mv)) });
+  return { ...fc, features: fc.features.map((f) => ({ ...f, geometry: geom(f.geometry) })) };
 }
 
 /** Is the box [w, s, e, n] (degrees) wholly inside `got`? Then the features fetched for `got` cover it. */
