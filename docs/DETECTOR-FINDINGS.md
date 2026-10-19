@@ -48,8 +48,10 @@ got here. Update it whenever the in-flight run changes.*
   has (H103): the datum move is 1.2 m; after it, where the ground can be
   matched (14 lots), the lidar is within about half a metre and Overture as
   published sits on the houses; on the other 84 the matcher cannot say.
-  Workflow 39 measures the photo's own distortion, county against Mapbox.
-  The editor's Overture layer is drawn as published.
+  Photo against photo (H104): after one shift, a county photo's ground
+  differs from Mapbox's by 0.2 m median, 0.3-0.6 m on half the lots; two
+  Mapbox flights differ by up to 0.6 m across a lot; roofs lean a further
+  0.3 m. The editor's Overture layer is drawn as published.
 - **THE LIVE MODEL HAS A NAME AND A VERSION HISTORY (owner, 2026-10-06):**
   "Turf Trace - alpha version 2 (79% accuracy)". Every release ships with a
   row in worker/src/model-versions.js: the next version number, the date,
@@ -901,6 +903,61 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 ---
 
 ## HARD FINDINGS — our own measurements
+
+### H104. One photo against another, across the lot: after one shift, a county photo's OPEN GROUND differs from Mapbox's by a median 0.22 m side to side (0.3-0.6 m on 7 of 16 lots, a 0.3% stretch), its roofs and crowns by a further 0.31 m (lean); two Mapbox flights of the same place differ by up to 0.6 m across a lot; the control reads 0.08 m -- 2026-10-19
+*Workflow 39, run 39337388084, all 104 locked lots. Owner: "the lawn traces
+would line up on one side of the property but they'd be off on the other
+side, or the whole property would just be slightly larger/smaller between
+different photo sources, or both." Pictures:
+https://github.com/nilesandstuff/Lawn-mapper/tree/pictures/photo-distortion-6/pictures*
+
+**Method** (tools/photo-distortion.js). Each frame's photo against
+Mapbox's photo of exactly the same box, with register.js (the matcher the
+county photos are banked with; 9 m patches every 5 m, 20 cm cells,
+agreeing = within 1 m of the fitted model, NOT its 0.3 m default, which
+would throw a bigger distortion out as outliers). Kept per lot: every
+agreeing patch's offset less one shift (the median), as a FIELD: the east
+third against the west, north against south, the share of patches over
+0.3 m from one shift. Each patch sorted by the lidar (public 3DEP, 1.5 m+
+with a 3 m margin) into open ground or tall, since a roof leans differently
+in each photo. CONTROL: the 73 frames that are themselves Mapbox photos.
+TREATMENT: the 31 county-photo frames (already re-lined to Mapbox by one
+shift, H64).
+
+| | control (Mapbox vs Mapbox) | county vs Mapbox |
+|---|---|---|
+| lots with a field | 73 | 25 (16 with 4+ ground patches) |
+| one shift, median | 0.06 m | 0.17 m |
+| all patches, side to side, median | 0.08 m | 0.43 m; over 0.5 m on 11 |
+| OPEN GROUND, side to side, median | 0.08 m; over 0.3 m on 5 | 0.22 m; over 0.3 m on 7, over 0.5 m on 3 |
+| open ground, stretch (per metre) | 0.13% / 0.11% | 0.26% / 0.32% |
+| ground patches over 0.3 m from one shift | 0% | 19% |
+| roofs and crowns, from where the ground says | 0.02 m | 0.31 m; over 0.5 m on 5, none over 1 m |
+| matched patches thrown out (over 1 m) | 0% | 26%; over half on 7 lots |
+
+- **The 5 control lots that read 0.4-0.8 m** (-85.57742,43.09564; -85.58216,43.08465;
+  -85.64033,43.07105; -85.67425,42.80681; -90.09720,29.68990) are frames
+  whose Mapbox imagery has CHANGED since the frame was saved: a new flight
+  under the trace. Between those two flights the open ground differs by
+  0.4-0.6 m across the lot (a 0.5-0.6% scale; 25-58% of ground patches over
+  0.3 m from one shift). That is the owner's observation measured between
+  two flights of the same product.
+- **County against Mapbox:** the ground mostly lines up to a shift; 7 of 16
+  lots carry 0.3-0.6 m side to side on top. Roofs sit another 0.3 m off the
+  ground's answer (lean differing between the flights). On 7 lots over half
+  the matched patches were more than 1 m from any model: leaf-off against
+  leaf-on vegetation, or a distortion this cannot read -- not measured.
+- **What a plain shift cannot fix:** 0.3-0.6 m across a lot on about half
+  the county lots and on any lot whose Mapbox flight changed. The model
+  picker chose a scale or affine on only 4 of 25 county lots (its
+  held-out test wants a clear win), so the banked re-lining (H64) left this
+  in.
+
+**What it does not say.** Nothing here measures a photo against TRUE ground
+(that is H103, sub-metre where the lidar can be matched). Metre-scale
+disagreement between Overture's footprints and the photo's ROOFS (H102,
+1.6 m median) is eaves plus each photo's own lean against nadir, which
+is larger than the lean DIFFERENCE between two photos measured here.
 
 ### H103. The lidar against the PHOTO, measured for the first time: the datum move is 1.2 m on every lot; after it, where the shade map's ground matcher can commit (14 of 98 lots), the lidar sits a median 0.45 m from the photo's ground and never more than 1.2 m; on the other 84 the matcher cannot say, and its quarters test is too noisy to measure stretch -- 2026-10-19
 *Workflow 38, run 39329128490 (the same numbers as run 39327559766), 98
