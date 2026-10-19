@@ -217,6 +217,16 @@ function photoFit(PNG, id, box, k, ov, lidarOwn, dirs, wantPicture = false) {
   const cs = good.filter((f) => f.lidarEdge).map((f) => [f.s[0] - f.lidarEdge[0], f.s[1] - f.lidarEdge[1]]);
   if (cs.length) { out.methodC = [median(cs.map((v) => v[0])), median(cs.map((v) => v[1]))]; out.methodCN = cs.length; out.tallC = lawnTest(out.methodC); }
   out.tallPhoto = lawnTest(out.photoLotShift); // Overture -> photo alone, as if Overture were the lidar
+  // E: LEAN, not shift. Each building's shift onto the photo (less its shift onto the lidar, where
+  // known) over its height gives the lot's lean; the lidar is then leaned, ground left in place.
+  const leanRows = good.filter((f) => Number.isFinite(f.h) && f.h >= 2.5).map((f) => { const base = f.lidarEdge || [0, 0]; return [(f.s[0] - base[0]) / f.h, (f.s[1] - base[1]) / f.h]; });
+  if (leanRows.length && hg && seen) {
+    const L = [median(leanRows.map((v) => v[0])), median(leanRows.map((v) => v[1]))];
+    out.leanE = L; out.leanEPerM = Math.hypot(...L);
+    const leaned = leanHeights(hg, Wg, Hg, L);
+    out.tallE = seenLawnUnderTall(leaned, seen, Wg, Hg, [0, 0]);
+  }
+  out.buildingsByHeight = good.filter((f) => Number.isFinite(f.h)).map((f) => [f.h, Math.hypot(...f.s), f.lidarEdge ? Math.hypot(f.s[0] - f.lidarEdge[0], f.s[1] - f.lidarEdge[1]) : null]);
 
   // THE LIDAR ONTO THE PHOTO WITHOUT OVERTURE: the lidar's own height edges (a step of 1.5 m+
   // between neighbouring cells, beside something 2.5 m+ up) slid over the photo's edges. This is
@@ -257,6 +267,29 @@ function seenLawnUnderTall(hg, seen, Wg, Hg, s) {
     n++; if (hg[sr * Wg + sc] >= 2) tall++;
   }
   return n >= 200 ? tall / n : NaN;
+}
+
+/**
+ * The lidar LEANED the way the photo leans: each cell's height moved L * height ground metres
+ * ([east, north] per metre up), the taller winning where two land on one cell (the photo sees the
+ * top). Ground stays where it is; roofs and trees move onto where the photo shows them.
+ */
+function leanHeights(hg, Wg, Hg, L) {
+  const out = new Float32Array(Wg * Hg);
+  for (let r = 0; r < Hg; r++) for (let c = 0; c < Wg; c++) {
+    const h = hg[r * Wg + c];
+    if (h < 0.5) { if (out[r * Wg + c] < h) out[r * Wg + c] = h; continue; }
+    const tc = Math.round(c + (L[0] * h) / PHOTO_CELL_M), tr = Math.round(r - (L[1] * h) / PHOTO_CELL_M);
+    if (tc < 0 || tr < 0 || tc >= Wg || tr >= Hg) continue;
+    // a roof moved by lean covers the cells between too (its wall, seen from the side)
+    const steps = Math.max(Math.abs(tc - c), Math.abs(tr - r));
+    for (let k = 0; k <= steps; k++) {
+      const cc = Math.round(c + ((tc - c) * k) / (steps || 1)), rr = Math.round(r + ((tr - r) * k) / (steps || 1));
+      const hk = (h * k) / (steps || 1); // the wall rises along the way
+      if (out[rr * Wg + cc] < hk) out[rr * Wg + cc] = hk;
+    }
+  }
+  return out;
 }
 
 /** The lidar's height edges (height png, decimetres) as points with normals on the photo grid, fitted to the photo. */
@@ -494,11 +527,20 @@ async function main() {
   console.log(`  against the Overture answer, on the ${both2.length} lots with both: median ${num(median(both2.map((r) => r.directVsOverture)))} m apart; within 0.5 m ${both2.filter((r) => r.directVsOverture <= 0.5).length}, within 1 m ${both2.filter((r) => r.directVsOverture <= 1).length}`);
 
   console.log('\nWHICH SHIFT PUTS THE LIDAR ON THE PHOTO? Seen lawn standing under 2 m+ of lidar, before and after moving the lidar, on the same lots:');
-  for (const [k, name] of [['tallA', 'A: Overture->photo less Overture->lidar roofs'], ['tallB', 'B: the lidar\'s own height edges'], ['tallC', 'C: Overture->photo less Overture->lidar height edges'], ['tallPhoto', 'D: Overture->photo alone']]) {
+  for (const [k, name] of [['tallA', 'A: Overture->photo less Overture->lidar roofs'], ['tallB', 'B: the lidar\'s own height edges'], ['tallC', 'C: Overture->photo less Overture->lidar height edges'], ['tallPhoto', 'D: Overture->photo alone'], ['tallE', 'E: LEAN the lidar by the lot\'s lean (ground stays)']]) {
     const rs = rows.filter((r) => Number.isFinite(r[k]) && Number.isFinite(r.tall0));
     const better = rs.filter((r) => r[k] < r.tall0 - 0.002).length, worse = rs.filter((r) => r[k] > r.tall0 + 0.002).length;
     const pooled0 = rs.reduce((a, r) => a + r.tall0, 0) / (rs.length || 1), pooled1 = rs.reduce((a, r) => a + r[k], 0) / (rs.length || 1);
     console.log(`  ${name}: ${rs.length} lots; mean ${pct(pooled0)} -> ${pct(pooled1)}; median ${pct(median(rs.map((r) => r.tall0)))} -> ${pct(median(rs.map((r) => r[k])))}; better on ${better}, worse on ${worse}`);
+  }
+
+  const le = rows.filter((r) => Number.isFinite(r.leanEPerM));
+  console.log(`  E's lean, median ${num(median(le.map((r) => r.leanEPerM)))} m sideways per metre up, on ${le.length} lots`);
+  const bh = rows.flatMap((r) => r.buildingsByHeight || []);
+  console.log('\nSHIFT AGAINST HEIGHT, every fitted building (if the photo leans, taller moves further; if it is shifted, all move alike):');
+  for (const [a, b] of [[0, 2.5], [2.5, 4], [4, 5.5], [5.5, 7], [7, 10], [10, 99]]) {
+    const in_ = bh.filter((x) => x[0] >= a && x[0] < b);
+    console.log(`  ${a}-${b === 99 ? '' : b} m: ${in_.length} buildings; onto the photo median ${num(median(in_.map((x) => x[1])))} m; the photo less the lidar edges median ${num(median(in_.map((x) => x[2])))} m`);
   }
 
   console.log('\nTHE TRACED LAWN ON OVERTURE (pooled over all lawn cells; what a never-lawn rule would cost):');
