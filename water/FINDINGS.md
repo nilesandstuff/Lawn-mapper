@@ -29,7 +29,8 @@ go in this file (or anywhere in the repository): lots are named by a label.
   light worker; the hillside reading (S10). H16, S8-S10; sources in
   PARAMS-SOURCES.md. Root zone 12 in, cool/warm season (owner). Paving
   heat as an estimate (S8). SAM 3 on Replicate scored for paving and
-  lost to the free lidar + photo (H18).
+  lost to the free lidar + photo (H18); so did IGNF's FLAIR, with or without
+  lidar height (H19).
 - **Step 1, the low-spot map, works offline** (2026-10-16): water/lib/ reads
   a lot's lidar from the public octrees, builds a 1 m ground surface, finds
   roofs, fills low spots, traces runoff and measures the ground beside each
@@ -664,6 +665,35 @@ SAM 3 is precise but misses 40% of the paving, and as a ninth input it made
 the fit slightly worse. So the free lidar + photo stays. CAVEAT: the model saw
 NAIP (0.3-0.6 m); the main site's Mapbox photos are sharper, and a runner
 cannot fetch them (the lawnmap 403) -- SAM 3 on a sharper photo is untested.
+
+---
+
+### H19. IGNF's FLAIR land-cover U-Nets, out of the box, lose to the water map's own finders (water session, 2026-10-19)
+
+Owner, 2026-10-18: any models that take lidar and RGB (NIR if need be) and
+segment roofs and concrete/blacktop with no training on our part? The core
+session found IGNF's FLAIR (Etalab 2.0; FLAIR-INC_{rgb,rgbi,rgbie}_15cl
+_resnet34-unet; trained on French photos at 0.2 m; "e" adds height above
+ground) and scored it on its own lots (DETECTOR-FINDINGS H100; message
+2026-10-19). Here, the fair test it suggested: water/tools/flair_score.py
+(workflow task flair) on the water map's held-out Chesapeake squares (9 of the
+H17 test squares had everything), NAIP at 0.2 m, height above ground from the
+same lidar, the same open-ground cells as H17 for paving, every judged cell for
+roofs (exact | within 1 m):
+
+| | paving: right | finds | precise | roofs: found | precise |
+|---|---|---|---|---|---|
+| in use: lidar + photo (paving), lidar roof finders, either (roofs) | 84.0% | 82% | 86% | 91% / 97% | 78% / 83% |
+| FLAIR rgb | 78.5% | 68% | 86% | 75% / 80% | 82% / 88% |
+| FLAIR rgbi (+ NAIP NIR) | 77.6% | 62% | 90% | 52% / 58% | 87% / 94% |
+| FLAIR rgbie (+ NIR + lidar height) | 77.7% | 63% | 90% | 72% / 78% | 87% / 94% |
+
+FLAIR is precise but misses a third of the paving and a quarter or more of
+the roofs; NAIP's near-infrared makes it call roofs paving (rgb: 15.5% of
+roof called paving), likely because US NAIP infrared is not French IRC
+photography. Nothing changes in the map. CAVEAT, as in H18: NAIP is softer
+than the main site's Mapbox photos (the core's run used ~10 cm Mapbox and got
+paving 73-79% found); a runner cannot fetch Mapbox (the lawnmap 403).
 
 ---
 
