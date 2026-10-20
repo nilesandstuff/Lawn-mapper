@@ -11,6 +11,7 @@
  */
 
 import { latLngText, coordsLine } from '/lib/coords.js';
+import { withOverture, drawOverture, roofFromSprite, frameGrid } from '/lib/predictions-overture.js';
 
 const $ = (s) => document.querySelector(s);
 
@@ -402,6 +403,8 @@ function row(e, i) {
 let LAYER_DEFS = [];
 const LAYER_STORE = 'predictions-layers';
 let layerOn = {};
+/* Every Overture canvas on the page, with the function that draws it. */
+const redraws = [];
 const imageUrl = (key) => `/api/admin/prediction-image?key=${encodeURIComponent(key)}`;
 
 /* A <style> rule per hidden layer, so a switch is one change for every lawn
@@ -415,6 +418,12 @@ function applyLayers() {
   }
   css.textContent = LAYER_DEFS.filter((l) => !layerOn[l.id])
     .map((l) => `.layer-${l.id} { display: none; }`).join('\n');
+  /* Overture's layers share one canvas per lawn: drawn again with the
+     switches as they are now; a canvas whose lawn is gone is dropped. */
+  for (let i = redraws.length - 1; i >= 0; i--) {
+    if (!redraws[i].canvas.isConnected) { redraws.splice(i, 1); continue; }
+    redraws[i].redraw(layerOn);
+  }
   for (const lab of document.querySelectorAll('.layerbar label[data-id]')) {
     lab.classList.toggle('on', Boolean(layerOn[lab.dataset.id]));
     const box = lab.querySelector('input');
@@ -502,7 +511,7 @@ const seen = 'IntersectionObserver' in window
   }, { rootMargin: '400px' })
   : null;
 
-function layerStack(e, cls, eager = false) {
+function layerStack(e, cls, eager = false, onCaption = null) {
   const wrap = el('div', `${cls} stack`);
   const w = e.renderPx || 1;
   const h = e.renderPy || w;
@@ -512,17 +521,51 @@ function layerStack(e, cls, eager = false) {
   photo.alt = '';
   photo.draggable = false;
   wrap.append(photo);
-  const N = LAYER_DEFS.length;
-  const layers = LAYER_DEFS.map((l, k) => {
+  /*
+   * THE RUN'S LAYERS come as frames of one tall image; OVERTURE'S (owner,
+   * 2026-10-20, lib/predictions-overture.js) are drawn by the browser on a
+   * canvas each, over the lawn's photo frame, and need no run to have drawn
+   * them. The sprite's frames are counted without them.
+   */
+  const sprite = LAYER_DEFS.filter((l) => !l.client);
+  const N = sprite.length;
+  const layers = [];
+  let canvas = null;
+  for (const l of LAYER_DEFS) {
+    if (l.client) {
+      /* One canvas for all of Overture's layers, placed where the first of
+         them sits in the stack; the switches redraw it (see applyLayers). */
+      if (canvas) continue;
+      canvas = el('canvas', 'layer layer-ovt');
+      /* Full size only in the full-size view: the list's thirty lawns at
+         1280 px each would be more canvas than a phone keeps. */
+      const cw = eager ? w : Math.min(w, 800);
+      canvas.width = cw; canvas.height = Math.round((h * cw) / w);
+      wrap.append(canvas);
+      continue;
+    }
+    const k = sprite.indexOf(l);
     const d = el('div', `layer layer-${l.id}`);
     d.style.backgroundSize = `100% ${N * 100}%`;
     d.style.backgroundPosition = `0 ${N > 1 ? (k / (N - 1)) * 100 : 0}%`;
     wrap.append(d);
-    return d;
-  });
+    layers.push(d);
+  }
   const load = () => {
     photo.src = imageUrl(e.photoKey);
     for (const d of layers) d.style.backgroundImage = `url("${imageUrl(e.layersKey)}")`;
+    if (canvas && e.frame) {
+      /* The lidar roof the fit slides onto: the run's own roof frame. */
+      const roofAt = sprite.findIndex((l) => l.id === 'roof');
+      const g = frameGrid(e.frame);
+      const roof = roofAt >= 0 ? roofFromSprite(imageUrl(e.layersKey), roofAt, N, w, h, g.W, g.H) : Promise.resolve(null);
+      drawOverture(e, canvas, roof, layerOn).then(
+        ({ caption, redraw }) => { redraws.push({ canvas, redraw }); if (onCaption) onCaption(caption); },
+        (err) => { console.warn('Overture could not be drawn here:', err); if (onCaption) onCaption('Overture\'s shapes could not be read for this lawn.'); },
+      );
+    } else if (canvas && onCaption) {
+      onCaption('No photo frame on record for this lawn, so Overture\'s shapes cannot be placed on it.');
+    }
   };
   if (eager || !seen) load();
   else {
@@ -537,7 +580,8 @@ function layerStack(e, cls, eager = false) {
 
 function withLayers(box, e, i, alt) {
   const frame = el('div', 'shotwrap');
-  const pic = layerStack(e, 'shot pred');
+  const caption = el('div', 'meta ovt');
+  const pic = layerStack(e, 'shot pred', false, (text) => { caption.textContent = text; });
   pic.setAttribute('role', 'img');
   pic.setAttribute('aria-label', alt);
   const open = el('button', 'shotopen');
@@ -550,6 +594,7 @@ function withLayers(box, e, i, alt) {
   pic.addEventListener('click', full);
   frame.append(pic, open);
   box.append(frame, layerPanel());
+  if (LAYER_DEFS.some((l) => l.client)) box.append(caption);
   if (e.missedInferredPct !== null && e.missedInferredPct !== undefined) {
     box.append(el('div', 'meta',
       `Of the ground marked "inferred, not seen", the outline misses `
@@ -802,7 +847,9 @@ function settingsLine(settings) {
   /* A run drawn with layers gets the switches; the raw mask is one of them,
      so the old all-or-nothing flip steps aside. */
   if (Array.isArray(data.layers) && data.layers.length && entries.some((e) => e.layersKey)) {
-    layerBar(data.layers);
+    /* Overture's and OpenStreetMap's shapes over every lawn whose photo
+       frame the server knows (owner, 2026-10-20: to judge the fit by eye). */
+    layerBar(entries.some((e) => e.frame) ? withOverture(data.layers) : data.layers);
     flip.hidden = true;
   }
 

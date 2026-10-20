@@ -1371,7 +1371,7 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
        * else by the address point every id starts with.
        */
       try {
-        const rows = (await env.DB.prepare('SELECT id, lot_no FROM corpus').all()).results || [];
+        const rows = (await env.DB.prepare('SELECT id, lot_no, frame, image_frame FROM corpus').all()).results || [];
         const point = (lng, lat) => `${Number(lng)},${Number(lat)}`;
         const byId = new Map(rows.map((r) => [r.id, r]));
         const byPoint = new Map();
@@ -1379,10 +1379,31 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
           const c = coordsOfId(r.id);
           if (c) byPoint.set(point(c.lng, c.lat), r);
         }
+        /*
+         * THE FRAME THE PICTURE WAS DRAWN ON (owner, 2026-10-20: Overture's and
+         * OpenStreetMap's shapes over each lawn, to judge the fit by eye). The
+         * page draws them in the browser from the lot's photo frame, which the
+         * run never wrote: image_frame is the stored photo's, as training uses
+         * it, with `frame` for rows banked before that column existed. Only
+         * the numbers that place the picture travel.
+         */
+        const frameOf = (r) => {
+          for (const text of [r.image_frame, r.frame]) {
+            try {
+              const f = JSON.parse(text);
+              if (f && Number.isFinite(f.lng) && Number.isFinite(f.lat) && Number.isFinite(f.zoom) && Number.isFinite(f.size)) {
+                return { lng: f.lng, lat: f.lat, zoom: f.zoom, size: f.size, ...(Number.isFinite(f.height) ? { height: f.height } : {}) };
+              }
+            } catch { /* not this one */ }
+          }
+          return null;
+        };
         for (const e of Array.isArray(data?.entries) ? data.entries : []) {
           const r = (e?.id && byId.get(e.id)) || (Number.isFinite(e?.lng) && byPoint.get(point(e.lng, e.lat)));
           const name = r ? mapName(r.id, r.lot_no) : null;
           if (name) e.tag = name;
+          const frame = r ? frameOf(r) : null;
+          if (frame && e.layersKey) e.frame = frame;
         }
       } catch { /* the names the run wrote, then */ }
       return json(data, 200, origin);

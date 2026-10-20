@@ -23,6 +23,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { overtureFor, overtureMasks } from '../public/lib/overture.js';
+import { fitToRoof, shiftRaster, ALIGN_MIN_IOU, ALIGN_MIN_GAIN, ALIGN_REACH_M } from '../public/lib/overture-fit.js';
 
 const CELL_M = 0.5;
 export const WALK_REACH_M = 10, ROAD_REACH_M = 15;
@@ -60,59 +61,10 @@ export function nearness(lines, W, H, reachCells) {
  * OVERTURE'S BUILDINGS ONTO THE LIDAR'S ROOFS (owner, 2026-10-20: the outlines "are not lining up
  * with the building footprints... may just legitimately be an issue with the placements according to
  * overture"; H101: a median 0.87 m from the lidar's roofs, over 1 m on 47 of 101 lots, every
- * building on a lot off by the same amount -- the imagery its outlines were traced from). The
- * lidar's roof mask (lidar_frame.py, no ground return, 2.5 m+, flat) is symmetric about the real
- * building, so the shift that best overlaps it is Overture's own error, and one shift per lot
- * corrects it. Only the buildings move: roads and sidewalks are OpenStreetMap's, another source.
- *
- * `roof` is {data (0/1), w, h} on any grid over the same box; the search is ±maxCells on the
- * building raster's grid. Returns the best shift in cells (+dx east, +dy south), the overlap (IoU)
- * before and after, or null when there is no building or no roof to fit to.
+ * building on a lot off by the same amount). The fit lives in public/lib/overture-fit.js since the
+ * predictions page draws the same move in the browser; re-exported here for the tests and the log.
  */
-export function fitToRoof(building, W, H, roof, maxCells, minRoofCells = 200) {
-  const R = new Uint8Array(W * H);
-  let roofN = 0, bN = 0;
-  for (let r = 0; r < H; r++) {
-    const rr = Math.min(roof.h - 1, Math.floor(((r + 0.5) * roof.h) / H));
-    for (let c = 0; c < W; c++) {
-      const cc = Math.min(roof.w - 1, Math.floor(((c + 0.5) * roof.w) / W));
-      const v = roof.data[rr * roof.w + cc] ? 1 : 0;
-      R[r * W + c] = v; roofN += v;
-    }
-  }
-  const cells = [];
-  for (let i = 0; i < W * H; i++) if (building[i]) { cells.push(i); bN++; }
-  if (!bN || roofN < minRoofCells) return null;
-  const iou = (dx, dy) => {
-    let inter = 0;
-    for (const i of cells) {
-      const r = Math.floor(i / W) + dy, c = (i % W) + dx;
-      if (r >= 0 && c >= 0 && r < H && c < W && R[r * W + c]) inter++;
-    }
-    return inter / (bN + roofN - inter);
-  };
-  const iou0 = iou(0, 0);
-  let best = { dx: 0, dy: 0, iou: iou0 };
-  for (let dy = -maxCells; dy <= maxCells; dy++) for (let dx = -maxCells; dx <= maxCells; dx++) {
-    const v = iou(dx, dy);
-    if (v > best.iou + 1e-9 || (Math.abs(v - best.iou) <= 1e-9 && Math.hypot(dx, dy) < Math.hypot(best.dx, best.dy))) best = { dx, dy, iou: v };
-  }
-  return { ...best, iou0, roofCells: roofN, buildingCells: bN };
-}
-
-/** The building raster moved by (dx, dy) cells. */
-export function shiftRaster(building, W, H, dx, dy) {
-  const out = new Uint8Array(W * H);
-  for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) {
-    if (!building[r * W + c]) continue;
-    const rr = r + dy, cc = c + dx;
-    if (rr >= 0 && cc >= 0 && rr < H && cc < W) out[rr * W + cc] = 1;
-  }
-  return out;
-}
-
-/* Applied only when it is a fit: some overlap, and clearly more than as published. */
-export const ALIGN_MIN_IOU = 0.3, ALIGN_MIN_GAIN = 0.02, ALIGN_REACH_M = 4;
+export { fitToRoof, shiftRaster, ALIGN_MIN_IOU, ALIGN_MIN_GAIN, ALIGN_REACH_M } from '../public/lib/overture-fit.js';
 
 /** The three channels for one box ([w, s, e, n] in EPSG:3857 metres) from Overture's answer. Pure. */
 export function rasterise(box, ov) {
