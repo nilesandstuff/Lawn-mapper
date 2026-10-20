@@ -27,7 +27,6 @@
 import { tracedOn, lineUpAt } from '/lib/shade/traced.js';
 import { boxFor } from '/lib/site.js';
 import { sprinklers } from '/heads.js';
-import { featuresMoved, inputsMoved, usable } from '/lib/photoshift.js';
 
 const $ = (s) => document.querySelector(s);
 const R = 6378137;
@@ -106,8 +105,6 @@ async function siteFromMap(id) {
     // the photo the lawn was traced on (owner 2026-10-19: a county photo if one was saved, Mapbox if Mapbox)
     tracedOn: tracedOn(s),
     water: s.tools?.water?.data || null,
-    // the core's one move per map, photo onto lidar, when it keeps one (proposed 2026-10-20: tools.core.data.photo.shift)
-    coreShift: s.tools?.core?.data?.photo?.shift || null,
   };
 }
 
@@ -142,42 +139,23 @@ async function photoOf(frame, provider = 'mapbox', svc = null) {
 
 /**
  * The photo the map was saved on (lib/shade/traced.js, the shade map's own reading of a save): a county
- * photo if it was traced on one, Mapbox otherwise or when the county's will not load. The county photo is
- * shown WHERE THE COUNTY PUT IT, not moved by the editor's line-up onto Mapbox's ground (the core session,
- * 2026-10-20: Mapbox's is the wrong frame now that the lidar is the truth); the line-up is passed on so the
- * trace, drawn on the lined-up photo, can be moved back with it. Then every photo is moved onto the lidar
- * (lib/photoshift.js). -> { photo, name, source, svc, lineUp: { east, north } }
+ * photo moved by the editor's line-up onto the web map's ground, where the lawn was traced over it; Mapbox
+ * otherwise, or when the county's will not load. -> { photo, shift: [px, py] to draw it at, name }
  */
 async function savedPhoto(frame, site) {
   const t = site.tracedOn || { provider: 'mapbox' };
-  const none = { east: 0, north: 0 };
   if (t.provider === 'county') {
     try {
       const photo = await photoOf(frame, 'county', t.svc);
-      return { photo, name: 'the county photo the map was saved on', source: 'county', svc: t.svc, lineUp: lineUpAt(t, [frame.lng, frame.lat]) };
+      const move = lineUpAt(t, [frame.lng, frame.lat]);
+      const k = Math.cos((frame.lat * Math.PI) / 180), s = (worldSize(frame.zoom) / (2 * Math.PI * R)) * (photo.width / frame.size);
+      return { photo, shift: [(move.east / k) * s, -(move.north / k) * s], name: `the county photo the map was saved on${t.align ? ', where the editor lined it up' : ''}` };
     } catch (e) {
       const photo = await photoOf(frame).catch(() => null);
-      return { photo, name: `Mapbox's photo (the county photo the map was saved on would not load: ${e.message})`, source: 'mapbox', svc: null, lineUp: none };
+      return { photo, shift: [0, 0], name: `Mapbox's photo (the county photo the map was saved on would not load: ${e.message})` };
     }
   }
-  return { photo: await photoOf(frame).catch(() => null), name: "Mapbox's photo", source: 'mapbox', svc: null, lineUp: none };
-}
-
-/** Photo pixels for a move of the photo `east`, `north` ground metres. */
-function photoPx(m) {
-  const { frame, photo } = view;
-  const k = Math.cos((frame.lat * Math.PI) / 180), s = (worldSize(frame.zoom) / (2 * Math.PI * R)) * (photo.width / frame.size);
-  return [((m?.east || 0) / k) * s, -((m?.north || 0) / k) * s];
-}
-
-/** The photo's pixels, for the worker to line it up on the lidar. */
-function pixelsOf(bitmap) {
-  try {
-    const c = new OffscreenCanvas(bitmap.width, bitmap.height), g = c.getContext('2d');
-    g.drawImage(bitmap, 0, 0);
-    const d = g.getImageData(0, 0, bitmap.width, bitmap.height);
-    return { data: d.data, width: d.width, height: d.height };
-  } catch { return null; }
+  return { photo: await photoOf(frame).catch(() => null), shift: [0, 0], name: "Mapbox's photo" };
 }
 
 /** EPSG:3857 -> pixel on the photo. */
@@ -234,7 +212,7 @@ function draw() {
   cv.width = photo.width; cv.height = photo.height;
   const g = cv.getContext('2d');
   g.fillStyle = '#222'; g.fillRect(0, 0, cv.width, cv.height);
-  if ($('#show-photo').checked && photo.close) { const [px, py] = photoPx(view.photoMove); g.drawImage(photo, px, py); }
+  if ($('#show-photo').checked && photo.close) g.drawImage(photo, view.photoShift[0], view.photoShift[1]);
   else { g.fillStyle = '#3a4440'; g.fillRect(0, 0, cv.width, cv.height); }
 
   // the analysis over the photo, once it is in, and not while the sprinklers are being placed
@@ -591,10 +569,6 @@ let running = null;
 async function run(site) {
   running?.terminate();
   view.site = site; view.data = null; view.plan = null;
-  // the lawn as traced, on the photo it was traced on; site.lawn is it moved onto the lidar once that is known
-  site.lawnTraced = site.lawnTraced || site.lawn || [];
-  site.lawn = site.lawnTraced;
-  view.photoMove = null; view.photoFit = null; view.nudge = null;
   zoom.s = 1; zoom.tx = 0; zoom.ty = 0; $('#view').style.transform = '';
   $('#result').hidden = true; $('#plan').innerHTML = ''; $('#hill').innerHTML = '';
   const kept = site.water || {};
@@ -605,12 +579,6 @@ async function run(site) {
   inputs.topsoil = !!kept.topsoil;
   inputs.grass = kept.grass === 'warm' ? 'warm' : 'cool';
   inputs.texture = ''; // the soil is the survey's (owner 2026-10-19: no override)
-  // what was tapped is kept on the lidar's ground ('lidar') once a map has been opened with the photo on it;
-  // before that, on the photo as it was shown, and moved once (lib/photoshift.js inputsMoved)
-  view.onLidar = kept.frame === 'lidar';
-  view.keptShift = usable(kept.photoShift) ? kept.photoShift : null;
-  let headsOpen;
-  const headsReady = new Promise((r) => { headsOpen = r; });
   $('#topsoil').checked = inputs.topsoil;
   $('#grass').value = inputs.grass;
   setMode(null);
@@ -620,8 +588,6 @@ async function run(site) {
   const first = new Promise((resolve, reject) => {
     w.onmessage = ({ data }) => {
       if (data.progress) status(`Reading the survey… ${data.progress.done} of ${data.progress.total} pieces`);
-      else if (data.stage) status(data.stage);
-      else if (data.photoShift) headsReady.then(() => photoOnLidar(data.photoShift));
       else if (data.error) { w.terminate(); reject(new Error(data.error)); }
       else if (data.done) resolve(data.done);
       else if (data.planProgress) $('#saved').textContent = data.planProgress;
@@ -638,19 +604,10 @@ async function run(site) {
   const box = site.lidar?.box?.length === 4 ? site.lidar.box : boxFor(site);
   view.frame = frameFor(box, site.lat);
   const saved = await savedPhoto(view.frame, site);
-  view.photo = saved.photo; view.photoName = saved.name; view.photoSource = saved;
+  view.photo = saved.photo; view.photoShift = saved.shift; view.photoName = saved.name;
   if (!view.photo) { $('#show-photo').checked = false; view.photo = { width: 1280, height: 1280 }; view.photoName = 'no photo (it would not load)'; }
-  // the photo to the worker, to line it up on the lidar: the move kept with the map when there is one (the
-  // core's first, then this tool's own for the same photo), else measured there
-  const same = (x) => x && (x.source || 'mapbox') === saved.source && (x.svc ?? null) === (saved.svc ?? null);
-  // a move the person set by hand first, then the core's, then this tool's own measurement of the same photo
-  const mine = same(view.keptShift) ? { ...view.keptShift, from: view.keptShift.method === 'hand' ? 'kept-hand' : 'kept' } : null;
-  const prior = mine?.method === 'hand' ? mine : usable(site.coreShift) ? { ...site.coreShift, from: 'core' } : mine;
-  const px = !prior && view.photo.close ? pixelsOf(view.photo) : null;
-  w.postMessage({ photoFor: { photo: px, frame: view.frame, source: saved.source, svc: saved.svc, lineUp: saved.lineUp, prior, inputsOnLidar: view.onLidar, at: [site.lng, site.lat] } }, px ? [px.data.buffer] : []);
   $('#result').hidden = false;
   const asking = await heads.open(kept.irrigation);
-  headsOpen();
   $('#result').classList.toggle('heads-on', asking);
   headsCard();
   draw();
@@ -664,72 +621,6 @@ async function run(site) {
   const back = $('#back');
   if (back && site.mapId) back.href = `${HOME}/dashboard?map=${encodeURIComponent(site.mapId)}`;
 }
-
-/**
- * THE PHOTO ON THE LIDAR (lib/photoshift.js), as the worker found it or the map kept it: the photo drawn
- * moved by it, the traced lawn with it, and -- once, on a map whose taps were made over the photo as it used
- * to be shown -- the downspouts, gutters, areas and sprinklers moved the same way, so they stay on the
- * picture's roof edges and lawn they were tapped on.
- */
-function photoOnLidar(r) {
-  const site = view.site;
-  view.photoMove = { east: r.east, north: r.north };
-  view.photoFit = r;
-  site.lawn = featuresMoved(site.lawnTraced, r.traceMove);
-  let changedAny = false;
-  if (!view.onLidar) {
-    const m = inputsMoved({ downspouts: inputs.downspouts, gutters: inputs.gutters, areas: inputs.areas }, r.traceMove);
-    inputs.downspouts = m.downspouts; inputs.gutters = m.gutters; inputs.areas = m.areas;
-    heads.moveAll(r.traceMove);
-    view.onLidar = true; changedAny = true;
-  }
-  if (r.from === 'measured' || r.from === 'hand') {
-    view.keptShift = { east: r.east, north: r.north, method: r.method, errorM: r.errorM, peak: r.peak, lots: r.lots, measuredAt: r.measuredAt, source: r.source, svc: r.svc };
-    changedAny = true;
-  }
-  photoFitNote();
-  draw();
-  if (changedAny) keep();
-}
-
-const FIT_WORDS = {
-  ground: 'matched on the lines of the open ground (kerbs, drives, paths)',
-  'ground-loose': 'matched on the lines of the open ground, a little loosely',
-  roof: 'matched on the roof edges',
-  neighbours: 'from measured lots nearby (no clear match here)',
-  source: "from this kind of photo's typical error (no clear match here, no measured lot near)",
-  hand: 'set by hand',
-};
-/** Under the map: how far the photo was moved onto the lidar, how that was decided, and the nudge. */
-function photoFitNote() {
-  const el = $('#photo-fit');
-  const r = view.photoFit;
-  if (!el || !r) return;
-  const m = view.nudge || r, ft = (v) => (Math.abs(v) * 3.2808).toFixed(1);
-  const dir = `${ft(m.east)} ft ${m.east >= 0 ? 'east' : 'west'}, ${ft(m.north)} ft ${m.north >= 0 ? 'north' : 'south'}`;
-  const how = view.nudge ? 'set by hand, not yet used' : r.from === 'core' ? "the main map's line-up" : r.method === 'hand' ? 'set by hand' : FIT_WORDS[r.method] || r.method;
-  el.innerHTML = `<p class="dim">The photo is lined up on the lidar's survey: moved ${dir} (${esc(how)}${r.errorM && !view.nudge ? `, to about ${ft(r.errorM)} ft` : ''}). The lidar's roofs, paving and property line are where they were surveyed; the photo and your traced lawn are moved onto them.</p>
-    <div class="tools"><span class="dim">Photo still off the roofs? Move it:</span>
-      <button type="button" class="plain" data-nudge="-1,0" aria-label="west">◀</button><button type="button" class="plain" data-nudge="0,1" aria-label="north">▲</button><button type="button" class="plain" data-nudge="0,-1" aria-label="south">▼</button><button type="button" class="plain" data-nudge="1,0" aria-label="east">▶</button>
-      ${view.nudge ? '<button type="button" data-act="nudge-use">Use this and work the map out again</button><button type="button" class="plain" data-act="nudge-undo">Undo</button>' : ''}</div>`;
-  el.querySelectorAll('[data-nudge]').forEach((b) => b.addEventListener('click', () => {
-    const [e, n] = b.dataset.nudge.split(',').map(Number), base = view.nudge || view.photoMove || { east: 0, north: 0 };
-    view.nudge = { east: +(base.east + e * NUDGE_M).toFixed(3), north: +(base.north + n * NUDGE_M).toFixed(3), method: 'hand', from: 'hand', measuredAt: new Date().toISOString(), source: view.photoSource?.source || 'mapbox', svc: view.photoSource?.svc ?? null };
-    view.photoMove = { east: view.nudge.east, north: view.nudge.north };
-    const lu = view.photoSource?.lineUp || { east: 0, north: 0 };
-    view.site.lawn = featuresMoved(view.site.lawnTraced, { east: view.nudge.east - lu.east, north: view.nudge.north - lu.north });
-    photoFitNote(); draw();
-  }));
-  el.querySelector('[data-act=nudge-undo]')?.addEventListener('click', () => { view.nudge = null; photoOnLidar(view.photoFit); });
-  el.querySelector('[data-act=nudge-use]')?.addEventListener('click', async () => {
-    const n = view.nudge;
-    view.keptShift = { east: n.east, north: n.north, method: 'hand', measuredAt: n.measuredAt, source: n.source, svc: n.svc };
-    dirty = true; await save();
-    view.site.water = JSON.parse(saveBody()).data;
-    run(view.site).catch((e) => status(e.message, 'error'));
-  });
-}
-const NUDGE_M = 0.25;
 
 /* ------------------------------------------- what the person enters, kept */
 
@@ -771,7 +662,7 @@ function keep() {
 }
 
 function saveBody() {
-  return JSON.stringify({ data: { v: 1, downspouts: inputs.downspouts, gutters: inputs.gutters, areas: inputs.areas, topsoil: inputs.topsoil, grass: inputs.grass, irrigation: heads.data, ...(view.onLidar ? { frame: 'lidar' } : {}), ...(view.keptShift ? { photoShift: view.keptShift } : {}) }, basedOn: view.site.at });
+  return JSON.stringify({ data: { v: 1, downspouts: inputs.downspouts, gutters: inputs.gutters, areas: inputs.areas, topsoil: inputs.topsoil, grass: inputs.grass, irrigation: heads.data }, basedOn: view.site.at });
 }
 const saveUrl = () => `/api/maps/tool?id=${encodeURIComponent(view.site.mapId)}&tool=water`;
 

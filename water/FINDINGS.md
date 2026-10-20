@@ -31,8 +31,7 @@ go in this file (or anywhere in the repository): lots are named by a label.
   at most two soak cycles a day, and depths put down with the IA scheduling multiplier (H24). Paving
   heat as an estimate (S8). SAM 3 on Replicate scored for paving and
   lost to the free lidar + photo (H18); so did IGNF's FLAIR, with or without
-  lidar height (H19). Since 2026-10-20 the PHOTO is lined up on the RAW lidar, once per map, and the
-  traced lawn with it (H28; the core session's advice); ground lines first, roof edges after (S11). Overture's buildings (with roofs both lidar finders
+  lidar height (H19). Overture's buildings (with roofs both lidar finders
   agree on) and its road and sidewalk bands are on top since 2026-10-19 (H20).
 - **Step 1, the low-spot map, works offline** (2026-10-16): water/lib/ reads
   a lot's lidar from the public octrees, builds a 1 m ground surface, finds
@@ -982,55 +981,24 @@ lib/hydraulics.js, from three research files in lib/hydraulics/ (devices.json, p
   real audits run about 50% (Mecham 2004). Not modelled: the profile's shift with pressure (measured: water
   moves inward as pressure rises; a doughnut forms at 25-30 psi on rotors), wind, ragged arc edges.
 
-### H28. The photo lined up on the lidar, not the lidar on the photo (water session, 2026-10-20)
+### H28. No per-map lining up: the water map shows a finished map as it was saved (water session, 2026-10-20)
 
-Owner: "Line up mapbox and county photos as best as possible with the lidar. Ask the core session for
-advice." The core session's advice (2026-10-20) is followed: the RAW lidar is the truth (no datum move, no
-shade shift); each photo is moved onto it, once per map, and the lawn traced on that photo moves with it.
-Property lines share the lidar's datum and stay. The county photo is shown where the county put it, not
-moved by the editor's line-up onto Mapbox (the wrong frame now). lib/photoshift.js; the core's roof fit and
-the shade map's ground matcher are copied unchanged (lib/roof-fit.js, lib/lib/photo-fit.js, lib/shade/align.js,
-lib/lib/register.js), with the core's 38 measured lots as lib/photo-shifts.json.
-
-- THE ORDER, AND WHY THE GROUND COMES FIRST. Tried in turn: the ground matcher when it commits (quarters
-  within 0.2 m); the ground matcher when its error bar is under 0.5 m; the roof-edge fit when its peak is clear
-  (1.35); the core's measured lots within 2 km on the same photos; that source's median. The page says which.
-  On the two lots read by hand -- the edges of a road and driveways, photo brightness against the lidar's
-  ground intensity, edge by edge -- the ground matcher agreed with the hand reading and the roof fit did not:
-    Fargo lot (C20, Mapbox)   ground matcher E +1.18 N -0.62 (to 0.21 m)  hand E +0.7..+1.1   roof fit E +3.00 N -1.00
-    the owner's lot (Mapbox)  ground matcher E +0.43 N -1.01 (to 0.35 m)  hand E +0.65 N -1.05  roof fit unsure
-  (moves of the photo, metres). The roof fit includes the roofs' lean in the photo; on the Fargo lot that is
-  about 2 m. For the water map the ground is what matters (the traced lawn, paving, sprinklers), so a loose
-  ground match outranks a clear roof match. Two lots: the order is a judgement, not a measurement.
-- THE FALLBACKS ARE ROOF FITS. The core's per-lot table and its source medians (Mapbox E +1.79 N -1.06,
-  county E +0.22 N -0.75 as moves of the photo) come from the roof fit, lean included. On the owner's lot the
-  Mapbox median would have been 1.2 m wrong in the east; the looser ground tier answers there instead.
-- WHAT MOVES. The photo and the traced lawn by the shift (less the editor's line-up, for a county photo).
-  Everything tapped in the water map -- downspouts, gutters, marked areas, sprinkler heads, the backflow
-  preventer, valve boxes -- is kept on the lidar's ground from now on (tools.water.data.frame = 'lidar'); a map
-  tapped before this is moved once by the same amount, so each point stays on the picture's roof edge or lawn
-  it was tapped on. The GPS calibration is dropped then (it was a move onto the old photo).
-- KEPT AND REUSED. The shift is kept with the map (tools.water.data.photoShift: east, north, method, errorM or
-  peak, measuredAt, source, svc) and reused on the next open: same map every load. Order on open: a move set
-  by hand, then the core's (tools.core.data.photo.shift, when it ships), then this tool's own for the same
-  photo, else measured. The page has a nudge (a quarter metre a tap) and "use this", which re-works the map.
-- Tested: water/test/photoshift.test.js (a synthetic house drawn 1.5 m east and 1 m south of its lidar is
-  found to a quarter metre; taps and traces move; fallbacks). In the browser on the Fargo lot: the ground
-  matcher committed (E +1.12 N -0.61, to 0.14 m), the old downspout and head moved once and were saved with
-  the frame; reopened, nothing moved twice; a hand nudge was kept; a county-traced map moved its taps by the
-  shift less the editor's line-up (-1.38 m E, +0.19 m N, as computed).
+Owner, 2026-10-20: "the water map will only ever receive finished maps via the unified save, so you won't
+need to do any lining up. So don't apply any shifts." A per-map photo-onto-lidar move (ground matcher, then
+roof fit, then the core's lots) was built, shipped and taken out the same day (commits cee6feb and its
+revert). The water map draws the saved map's photo and trace as saved, and reads the lidar in the frame the
+shade map and the detector share (the datum move, S35; the shade map's own kept shift when it has one).
+The core session reached the same place independently: with the datum move the lidar's GROUND sits within
+0.1-0.5 m of the photo on every lot its ground matcher measures, and its 1-3 m roof-fit offsets are roof
+lean (docs/DETECTOR-FINDINGS.md H107, S46). What the water session measured on the way, kept for the record
+(moves of the photo onto the RAW lidar, metres, before the datum move):
+  Fargo C20 (Mapbox)       ground matcher E +1.18 N -0.62; driveway edges by hand E +0.7..+1.1; roof fit E +3.00 N -1.00
+  the owner's lot (Mapbox) ground matcher E +0.43 N -1.01; road and driveway edges by hand E +0.65 N -1.05; roof fit unsure
+The datum move alone, as a move of the photo, is E +1.16 N -0.80 at Fargo (flight 2022) and E +0.77 N -0.94
+on the owner's lot (2016): within about 0.35 m of the ground numbers above, which is why the ground sits on
+the photo after it.
 
 ## SPECULATION
-
-### S11. The core's Mapbox offsets are partly the roofs' lean (water session, 2026-10-20)
-
-The core session's roof-edge fit puts every Fargo Mapbox lot about 2.9 m from the raw lidar (six lots within
-0.25 m of each other) and reads that as Mapbox's error there. On one of those lots the ground matcher and a
-hand reading of the driveways' edges put the ground about 1 m off, not 2.9: the other ~2 m looks like the
-roofs leaning in an oblique photo, one vector per town because one flight strip covers the town. One lot
-read by hand. If it holds, the core's per-town table measures where the ROOFS are in the picture (what its
-detector reads) but over-moves the GROUND by the lean; the water map uses it only as a fallback. Told to the
-core session 2026-10-20.
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge
 

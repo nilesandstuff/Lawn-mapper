@@ -20,41 +20,6 @@ import { waterPlan } from '/lib/plan.js';
 import { demAround, terrain, hillside } from '/lib/upslope.js';
 import { powerUrl, typicalYear, growingSeason, SEASON_GP } from '/lib/shade/climate.js';
 import { polygonsOf } from '/lib/geo.js';
-import { measure, usable, inputsMoved } from '/lib/photoshift.js';
-
-/* THE PHOTO ON THE LIDAR (lib/photoshift.js). The page sends the photo it shows ({ photo: { data, width,
-   height } | null, frame, source, svc, lineUp, prior, inputsOnLidar }); the shift is the prior one kept
-   with the map when there is one, else measured here once the lidar is read. -> { photoShift } to the
-   page, as soon as it is known. */
-let photoMsg = null, photoGot;
-const photoIn = new Promise((resolve) => { photoGot = resolve; });
-let lotsP = null;
-function shiftResult(m, msg) {
-  const lu = msg.lineUp || { east: 0, north: 0 };
-  return {
-    east: +m.east.toFixed(3), north: +m.north.toFixed(3), method: m.method, why: m.why || null,
-    errorM: m.errorM ?? null, peak: m.peak ?? null, lots: m.lots ?? null, measuredAt: m.measuredAt || new Date().toISOString(),
-    source: msg.source || 'mapbox', svc: msg.svc ?? null, from: m.from || 'measured',
-    // the trace (and anything tapped over the photo as it used to be shown) moves by the shift less the editor's
-    // line-up of a county photo, which is no longer applied: the county photo is shown where the county put it
-    traceMove: { east: m.east - lu.east, north: m.north - lu.north },
-  };
-}
-function announce(r) {
-  if (!photoMsg.inputsOnLidar && kept.inputs) kept.inputs = inputsMoved(kept.inputs, r.traceMove);
-  self.postMessage({ photoShift: r });
-  return r;
-}
-async function alignPhoto(cols) {
-  const msg = await photoIn;
-  if (usable(msg.prior)) return announce(shiftResult({ ...msg.prior, from: msg.prior.from || 'kept' }, msg));
-  self.postMessage({ stage: 'Lining the photo up on the lidar…' });
-  if (!lotsP) lotsP = fetch('/lib/photo-shifts.json').then((r) => (r.ok ? r.json() : null)).catch(() => null);
-  const lots = (await lotsP)?.lots || [];
-  const m = measure(cols, msg.frame, msg.photo, { source: msg.source || 'mapbox', lots, at: msg.at || [msg.frame.lng, msg.frame.lat] });
-  msg.photo = null; // the pixels are not needed again
-  return announce(shiftResult(m, msg));
-}
 
 const kept = { r: null, lawn: null, standIn: false, soil: null, typical: null, week: null, lng: null, lat: null, season: null, climate: null, light: null };
 
@@ -128,7 +93,7 @@ async function start(site, inputs) {
   const y1 = new Date().getUTCFullYear() - 1;
   const climateP = again(() => fetch(powerUrl(lng, lat, y1 - 9, y1)).then((x) => x.json()).then((p) => typicalYear(p))).catch(() => null);
 
-  const r = await runSite(site, io, pickCloud, { progress, alignPhoto });
+  const r = await runSite(site, io, pickCloud, { progress });
   if (r.error) { self.postMessage({ error: r.error, notOnAws: r.notOnAws }); return; }
   const res = r.result, g = res.grid;
   const reported = new Uint8Array(g.W * g.H);
@@ -178,7 +143,7 @@ async function start(site, inputs) {
     shade: kept.shade === 'failed' ? 'the shade could not be worked out: the lawn is taken as in full sun' : null,
   };
   self.postMessage({ planProgress: 'Working out the watering plan…' });
-  await plan(kept.inputs || inputs);
+  await plan(inputs);
   // the hillside above the lawn (USGS 10 m ground, 600 m round): after the plan, so it never holds it up
   try {
     const pts = [];
@@ -231,8 +196,7 @@ function lawnLight(res, site, climate, season) {
 
 self.onmessage = async ({ data }) => {
   try {
-    if (data.photoFor) { photoMsg = data.photoFor; photoGot(photoMsg); }
-    else if (data.site) { kept.inputs = data.inputs || {}; await start(data.site, data.inputs || {}); }
+    if (data.site) { kept.inputs = data.inputs || {}; await start(data.site, data.inputs || {}); }
     else if (data.replan) { kept.inputs = data.replan; if (kept.r) await plan(data.replan); }
   } catch (e) {
     self.postMessage(kept.r ? { planError: e.message || String(e) } : { error: e.message || String(e) });
