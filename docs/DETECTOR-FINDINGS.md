@@ -71,30 +71,26 @@ got here. Update it whenever the in-flight run changes.*
   channel. The editor's layer and the predictions page draw the thin
   lines; S44 (the lines as one decoder channel) MEASURED WORSE too (H106:
   29 / 54, +0.6, p 0.008). Overture is out of the detector for good.
-- **THE LIDAR IS TRUE, THE MAPBOX PHOTOS ARE NOT (H107, workflow 40,
-  2026-10-20):** the owner's observation (S45, lidar roofs off the
-  houses and over the lawn on some of the 104) measured by sliding the
-  lidar's roof edges onto each photo: against the raw lidar the county
-  photos sit a median 1.1 m off (mostly north) and Mapbox's 1.9 m (west
-  and north), in clusters by place -- the six Fargo Mapbox lots 3 m, the
-  Kentucky site 3-4 m, one direction each. After the datum move S35
-  shipped (-0.9 E, +0.85 N) the county photos are 0.8 m off to the east
-  and Mapbox's 1.75 m to the west: the move's north half fits both, its
-  west half fits only half of Mapbox's error. (Corrected the same day: the
-  first write-up said county photos agree with the raw lidar to a third of
-  a metre; they do not.) The training's roof mask never touches the
-  traced lawn (0.0%); what the owner saw is the whole lidar off. The
-  water session (S46, two lots) then found the ground matcher and
-  hand-read driveway edges put Fargo's ground about 1.2 m off, not 2.9:
-  the roof fit carries about 2 m of roof lean there, so H107's sizes are
-  roof numbers and upper bounds for the ground. NEXT
-  (owner's decision pending, 2026-10-20): register the
-  lidar onto each photo before the decoder reads it (training and the
-  live lookup), measured where the fit is clear, the source's typical
-  move where not, and no datum move on county photos; separately, whether
-  the saved maps (drawn on Mapbox, carrying its offset) move onto the
-  lidar's truth. Workflow 40 measures 38 of 98 lots clearly; a ground
-  matcher for the rest is still wanted.
+- **THE LIDAR'S GROUND IS ON THE PHOTO; THE ROOFS LEAN (H107, workflows 38
+  and 40, 2026-10-20, corrected twice that day):** the owner's observation
+  (S45, lidar roofs off the houses and over the lawn on some of the 104)
+  measured two ways. The ROOF fit (workflow 40) found 1-3 m offsets, one
+  vector per town (Fargo 1.75 m, Kentucky 3 m). The GROUND matcher
+  (workflow 38, H103) on the same lots finds the lidar's ground within
+  0.1-0.5 m of the photo after the datum move, county and Mapbox alike,
+  Fargo included. The difference is roof lean in the photo. So: S35's
+  datum move stands, the lidar is lined up with the imagery on the ground
+  to half a patch, nothing is 2-3 m off, and what the owner sees is the
+  photo's roof leaning off the lidar's true roof. The training's roof mask
+  never touches the traced lawn (0.0%). NEXT, the owner's call: a
+  workflow 14 trial that moves the ROOF mask and roof channels by each
+  lot's lean (roof fit minus ground fit) so the lidar's roof sits where
+  the picture's roof is, the ground untouched; and the labelling question
+  of traces that follow a leaning roof's edge rather than the footprint.
+  No per-lot move of the lidar's ground, no move of the saved maps, and
+  the earlier "register every photo onto the lidar" plan is withdrawn.
+  The water session (S46) read the same on two lots and shipped a
+  ground-first order in its own map; told to keep the datum move.
 - **THE LIVE MODEL HAS A NAME AND A VERSION HISTORY (owner, 2026-10-06):**
   "Turf Trace - alpha version 2 (79% accuracy)". Every release ships with a
   row in worker/src/model-versions.js: the next version number, the date,
@@ -947,7 +943,7 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
-### H107. The lidar and the photo, measured by their roofs: against the RAW lidar the county photos sit a median 1.1 m off (mostly north) and Mapbox's 1.9 m (west and north), in clusters by place (all six Fargo Mapbox lots 2.9-3.1 m, the three Kentucky lots 3.2-4.2 m, one direction each); after the shipped datum move the county photos are 0.8 m off (east) and Mapbox's 1.75 m (west). The training's 2 m roof mask does not overlap the traced lawn at all (0.0%). CORRECTED the same day: the first write-up said county photos agree with the raw lidar "to about a third of a metre"; they do not -- 2026-10-20
+### H107. The lidar's GROUND sits on the photo: after the datum move, within 0.1-0.5 m on all 14 lots the ground matcher can measure (H103) and on every Fargo lot it tried, county and Mapbox alike. The 1-3 m per-town offsets the ROOF fit found (Fargo 1.75 m, Kentucky 3 m, one direction each) are where the roof is in the picture: roof LEAN, not a lidar or a photo error. The datum move (S35) stands; the training's 2 m roof mask does not overlap the traced lawn (0.0%). CORRECTED TWICE the same day (first "county photos agree to a third of a metre", then "Mapbox is 2-3 m off"): both read the roof fit as a ground offset -- 2026-10-20
 *Workflow 40, run 39422474794 (tools/lidar-roof-fit.js), all 104 locked
 lots, 98 read (6 have no public cloud). Owner: "I looked through the 104
 corpus maps and some lidar roof shapes are not centered on the foundation
@@ -987,23 +983,49 @@ SOURCE:
 | all county photos | 9 | +0.75, 0.00 (0.79 m) | | -0.22, +0.75 (1.12 m; 3 of 9 within 1 m) |
 
 The sign is the move to give the lidar, so a negative east means the
-PHOTO'S content sits west of the lidar. Read together: the raw lidar sits
-about a metre south of the county photos' content (E -0.2, N +0.75) and
-about two metres south-east of Mapbox's (E -1.8, N +1.1), by a different
-amount in each place (Fargo 3 m, the Kentucky site 3.2-4.2 m, elsewhere
-1-1.5 m). The datum move that S35 shipped (about -0.9 E, +0.85 N) takes
-out the NORTH part of both and the west part of Mapbox's only half: after
-it the county photos are 0.8 m off, now to the EAST (the move's west part
-was not wanted there), and Mapbox's 1.75 m off, still west. Nine county
-lots with two outliers (C51 6 m, C71 1.4 m the other way) is thin; the
-north-only reading of them is what the medians say, not a finding on its
-own. By eye (C20, C26, B01): the yellow lidar roof sits east of the
-house, over the lawn, and the cyan moved roof sits on it. C71 (the owner's
-example, Ingham MI, county photo): a clear fit, 2.0 m E / 1.5 m S with the
-datum, 1.4 m without -- the one county lot that does not fit the pattern,
-and its lower east wing is not in the lidar at all. C110 (Alabama,
-county): unsure by the number, by eye about a metre south-west; C104
-(Colorado, county): on the roof, 0.75 m raw.
+PHOTO'S content sits west of the lidar. Taken alone, this table read as
+"Mapbox's photos sit 2-3 m off the lidar by place". THAT WAS WRONG, and
+the correction came from putting workflow 38's GROUND matcher (H103,
+public/shade/align.js: the lidar's ground-return intensity against the
+photo on open ground, roofs and crowns masked out) beside the roof fit
+lot by lot, same lots, same sign, after the datum move:
+
+| lot | photo | ground matcher (E, N), error | roof fit (E, N) | apart |
+|---|---|---|---|---|
+| C26 Fargo | Mapbox | +0.12, -0.18 (0.14 m) | -1.75, 0.00 | 1.9 m |
+| C105 Fargo | county | +0.09, -0.30 (0.06 m) | +1.00, -0.50 | 0.9 m |
+| B01, C41, C28, C38, C20 Fargo (matcher unsure, error 0.6-1.0 m) | Mapbox | +0.04..+0.43, -0.33..+0.07 | -1.75, about 0 | 1.8-2.2 m |
+| C31 Northern VA | Mapbox | +0.32, -0.34 (0.13 m) | -3.25, +1.00 | 3.8 m |
+| B23 Northern VA | Mapbox | -0.49, -0.33 (0.17 m) | +2.00, +0.25 | 2.6 m |
+| C67 PA | Mapbox | +0.04, -0.15 (0.15 m) | +1.00, +0.25 | 1.0 m |
+| C101 Northern VA | county | +0.21, -0.47 (0.10 m) | +1.25, 0.00 | 1.1 m |
+| C104 CO | county | +0.15, -0.20 (0.12 m) | +0.75, 0.00 | 0.6 m |
+| C82 OH, B32 NC, C100 IA, B10 MI | mixed | all within 0.6 m | within 0.75 m | 0.3-0.6 m |
+
+On every one of the 14 lots where the ground matcher commits, the lidar's
+ground is within 0.1 to 0.9 m of the photo's AFTER THE DATUM MOVE (median
+about 0.4 m), county and Mapbox alike; on the five Fargo lots where it is
+unsure it still reads 0.1-0.4 m. The roof fit on the same lots reads 1-4
+m, in one direction per town. The difference is where the roof is in the
+picture: a roof leans away from its footprint by its height times the
+camera's off-nadir angle, the same way for every house in one flight
+strip, which is exactly "one vector per town, 0.25 m scatter". The water
+session read the same thing independently on Fargo C20 and the owner's
+lot (S46: ground about 1.2 m before the datum move, i.e. 0.2 m after it;
+roof 3 m). So:
+- the lidar's GROUND is lined up with both photo sources to about half a
+  metre, half a decoder patch, after the datum move -- S35's move was the
+  right one, and dropping it would put the ground 1.2 m off;
+- the "Mapbox 2-3 m" and "county 1.1 m" figures of the first two
+  write-ups are roof-lean figures and are withdrawn as ground numbers;
+- what the owner saw -- lidar roof outlines off the houses and over the
+  lawn on some lots -- is the roof leaning in the photo while the lidar's
+  roof sits over the true footprint: on the side the roof leans away
+  from, the lidar's roof covers ground the photo shows as lawn (and the
+  trace, drawn on the photo, follows the leaning roof's edge). C71 (the
+  owner's example, Ingham MI): roof fit 2.5 m, ground matcher unsure; C110
+  (Alabama): by eye about a metre south-west, which is the lean on an
+  oblique county photo; C104 (Colorado): ground 0.25 m, roof 0.75 m.
 
 **The owner's symptom.** The training's 2 m roof mask covers 0.0% of the
 traced lawn on 87 lots (mean 0.0%), and the 1 m rule 0.1%: the "no ground
@@ -1014,29 +1036,33 @@ should be. So the roof outline the owner saw overlapping lawn is the
 whole lidar sitting 1.75 m off on the Fargo lots and the like, not the
 mask's rule.
 
-**What this means for the detector.** The decoder reads the lidar on the
-photo's frame; on a Fargo lot every lidar number is 1.75 m east of the
-thing it describes (half a patch), on the Kentucky site 3 m (two patches),
-and on a county lot 0.8 m the other way. The lidar is the one in true
-coordinates (the owner's baseline is the county property lines, which the
-owner sees within a metre of Mapbox and which share the lidar's datum);
-the Mapbox photo is the one that is off by place, and the traces were
-drawn on it. The fix for the detector is one measured move per photo
-before the lidar is read, for training and for the live lookup alike --
-the move measured here where it is clear, the nearest measured lots'
-where it is not (Mapbox's error is one vector per town), the photo
-source's median last. Whether the photo moves onto the lidar's truth or
-the lidar onto the photo is the owner's call; see the summary.
+**What this means for the detector.** The ground is right: lawn edges,
+drives, the open ground the lidar's height and ground-return channels
+describe, all sit within about half a metre of the photo's on the lots
+measured, so the decoder can trust the lidar on the ground in shadow,
+and no per-lot move of the lidar is wanted. What is off is the ROOF:
+the lidar's roof (true footprint) against the photo's (leaning by 1-3 m
+in Fargo, Kentucky, Northern Virginia). The training's 2 m roof mask
+never touches the traced lawn (0.0%), so the veto does no harm today;
+but on the lean side the lidar says "roof" over ground the photo and the
+trace call lawn, and on the far side the photo shows roof where the
+lidar says open ground. The measurable fix is a per-lot LEAN VECTOR
+(roof fit minus ground fit, one per lot, the same direction over a
+town) applied to the roof mask and roof-height channels alone, so the
+lidar's roof sits where the picture's roof is while its ground stays
+put. That is a workflow 14 trial under the full bar, and it needs the
+lean measured on more than the 10 lots where both fits commit. Whether
+a trace that follows a leaning roof's edge should instead follow the
+footprint (the owner's "property lines are the baseline truth") is a
+labelling question for the owner, not an alignment one.
 
-**Standing:** HARD on the 38 measured lots and the by-eye checks above,
-AS ROOF NUMBERS: they say where the roof is in the picture against the
-lidar. They include roof lean, and S46 (the water session, two lots) puts
-that at about 2 m of Fargo's 2.9 m, with the ground about 1.2 m off
-there. So the per-town sizes above are upper bounds for the ground; the
-direction and the one-vector-per-town pattern stand. The roof fit cannot
-measure 60 lots; the ground matcher (H103's, 14 of 98) over the same 38
-lots, roof against ground lot by lot, is the next measurement before any
-per-lot move ships for the detector.
+**Standing:** HARD: the ground alignment on the 14 lots the ground
+matcher commits on (and the five unsure Fargo lots that agree), and the
+roof fit's 38 lots AS ROOF-IN-THE-PICTURE numbers. The lean reading of
+the difference rests on 10 lots with both fits and on the one-vector-per-
+town pattern; S46 is the same reading from the water session. Not yet
+measured: the lean on the other 88 lots, and whether a lean-moved roof
+mask helps the detector.
 
 ### H106. The paved centrelines as one decoder channel make THE PLAN worse too: 29 better / 54 worse, +0.6 [+0.1, +1.1], p 0.008 (S44, one seed) -- 2026-10-20
 *Workflow 14 run 39409589116 (`overture: compare`, the lines only: 1 on an
@@ -7408,7 +7434,7 @@ fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
 
-### S46. About two metres of Fargo's 2.9 m "Mapbox offset" may be roof LEAN, not ground offset: the ground matcher and hand-read driveway edges put the photo move at about 1.2 m there, the roof fit at 3 m (from the water session, 2026-10-20 -- TWO LOTS, NOT MEASURED HERE)
+### S46. About two metres of Fargo's 2.9 m "Mapbox offset" may be roof LEAN, not ground offset: the ground matcher and hand-read driveway edges put the photo move at about 1.2 m there, the roof fit at 3 m (from the water session, 2026-10-20 -- TWO LOTS). CONFIRMED the same evening by H103's ground matcher beside the roof fit on the same 14 lots: see H107's third write-up
 *Source: the water session (session_01BRMHw2UgvcLy5957Rsxivs), its
 water/FINDINGS.md S11 and H28, after copying tools/lidar-roof-fit.js and
 public/shade/align.js into water/ for its own photo-onto-lidar move.
@@ -8955,4 +8981,4 @@ deploy log says how many are locked and how many are waiting.
 | 2026-10-20 | 39360940348 | 104 (locked, 131u7jm) | S43 `overture: aligned`: as above with each lot's buildings moved onto the lidar's roof mask first (moved on 25 of 94 fitted frames, median 1.12 m), seed 7, CPU, features from the run above's cache | 17.9% (edge refined + stage 3, span, veto) | 18.6% (Overture aligned, same) | **H105.** Workflow 24 run 39383033308: 33 / 49 / 22, +0.3 [+0.0, +1.0], p 0.097; untuned 22 / 33, +0.3. Worse, less so; C49 14.7 -> 54.8, B28 30.9 -> 52.3; B20 59.0 -> 44.3 |
 | 2026-10-20 | 39409589116 | 104 (locked, 131u7jm) | S44 `overture: compare`, the lines only: THE PLAN beside the same decoder with nearness (within 2 m) to an OpenStreetMap road or sidewalk centreline and a flag, seed 7, CPU | 17.9% (edge refined + stage 3, span, veto) | 17.8% (paved lines, same) | **H106.** Workflow 24 run 39429662409: 29 / 54 / 21, +0.6 [+0.1, +1.1], p 0.008; county lots 6 / 20, +1.6. Worse; Overture closed for the detector |
 | 2026-10-20 | 39411799953 (workflow 40, run 1) | 104 (locked) | tools/lidar-roof-fit.js, first cut: a 1 m roof mask's edges slid onto the photo | — | — | **NOT A RESULT.** The mask is ragged at 1 m and the fit matched its holes: median 2.78 m, more lawn under the roof after the move on 58 of 80. Discarded after the pictures |
-| 2026-10-20 | 39422474794 (workflow 40, run 2) | 104 (locked), 98 read | tools/lidar-roof-fit.js: the lidar's height-surface drops slid onto each photo's edges, with and without the datum move; traced lawn under the 2 m / 1 m / 2.5 m+ masks | — | — | **H107.** 38 measured: median 1.18 m; Fargo (ND_3DEPProcessing_6_D22) 6 Mapbox lots all -1.75 E (scatter 0.25), its county lot +1.00; KY_FullState 3 lots -3.00 E; county photos +0.75 E (9), Mapbox -1.25 E (29). Raw lidar: county photos 1.1 m off (N), Mapbox 1.9 m (W+N; Fargo 3 m). Training roof mask on traced lawn 0.0% |
+| 2026-10-20 | 39422474794 (workflow 40, run 2) | 104 (locked), 98 read | tools/lidar-roof-fit.js: the lidar's height-surface drops slid onto each photo's edges, with and without the datum move; traced lawn under the 2 m / 1 m / 2.5 m+ masks | — | — | **H107.** 38 measured: median 1.18 m; Fargo 6 Mapbox lots all -1.75 E (scatter 0.25); KY_FullState 3 lots -3.00 E -- ROOF LEAN: H103's ground matcher on the same lots reads 0.1-0.5 m after the datum move. The lidar's ground is on the photo; the datum move stands. Training roof mask on traced lawn 0.0% |
