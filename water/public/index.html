@@ -52,6 +52,7 @@
   .zoom button { width: 40px; height: 40px; padding: 0; font-size: 22px; line-height: 1; background: rgba(0,0,0,.6); border-color: rgba(255,255,255,.5); }
   .zoom button.small { font-size: 12px; }
   #result.heads-on .main-only { display: none; }
+  #result:not(.heads-on) #heads-saved { display: none; }
   #heads-panel select { padding: 8px; font-size: 16px; max-width: 100%; }
   #heads-panel .tools button[style] { color: #fff; text-shadow: 0 0 2px #000; }
 </style>
@@ -75,6 +76,7 @@
     <div class="stage" id="stage"><canvas id="view"></canvas><div class="zoom"><button type="button" id="zoom-in" aria-label="Zoom in">+</button><button type="button" id="zoom-out" aria-label="Zoom out">&minus;</button><button type="button" class="small" id="zoom-reset" aria-label="Whole map">All</button></div></div>
     <p class="dim" style="margin:4px 0 0">Pinch or use + and &minus; to zoom; drag to move around.</p>
     <div id="heads-panel" class="card" hidden></div>
+    <p id="heads-saved" class="dim" style="margin:4px 0 0"></p>
     <div class="main-only">
     <div class="legend">
       <span id="zone-legend"></span>

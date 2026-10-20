@@ -293,7 +293,8 @@ export function sprinklers(ctx) {
     WIRE[step]?.(P);
     ctx.draw();
   }
-  const go = (s) => { step = s; sel.clear(); if (s !== 'place') stopGps(); if (s === 'arcs') { for (const h of irr.heads) if (h.arcSet !== 'user') autoSet(h); ctx.changed(); } render(); };
+  // the step is kept with the map too, so a reload comes back to it (owner: every step saves progress)
+  const go = (s) => { step = s; irr.step = s; sel.clear(); if (s !== 'place') stopGps(); if (s === 'arcs') { for (const h of irr.heads) if (h.arcSet !== 'user') autoSet(h); } ctx.changed(); render(); };
   const back = () => go(step === 'place' ? 'intro' : STEPS[Math.max(0, STEPS.indexOf(step) - 1)]);
   const nav = (next, { ok = true, label = 'Next' } = {}) => `<div class="tools"><button type="button" class="plain" data-act="back">Back</button><button type="button" data-act="next" ${ok ? '' : 'disabled'}>${label}</button></div>`;
   const wireNav = (P, next) => {
@@ -724,8 +725,9 @@ export function sprinklers(ctx) {
     P.querySelector('[data-act=calgo]')?.addEventListener('click', () => listen(20000, (fixes) => {
       gps.cal = calibrate(gps.ref, fixes);
       if (!gps.cal) { alert('No location came in. Check that the page may use your location, then try again.'); return; }
-      irr.gpsCal = { offsetM: gps.cal.offsetM, jitterM: gps.cal.jitterM, at: gps.cal.at };
-      gps.phase = 'walk'; render();
+      // kept with the map, so a reload within the hour carries on placing without standing on the spot again
+      irr.gpsCal = { offset: gps.cal.offset, ref: gps.cal.ref, offsetM: gps.cal.offsetM, jitterM: gps.cal.jitterM, n: gps.cal.n, at: gps.cal.at };
+      gps.phase = 'walk'; changed(); render();
     }));
     P.querySelector('[data-act=repick]')?.addEventListener('click', () => { gps.phase = 'pick'; gps.ref = null; render(); });
     P.querySelector('[data-act=recal]')?.addEventListener('click', () => { gps.phase = 'pick'; gps.ref = null; gps.cal = null; render(); });
@@ -735,8 +737,11 @@ export function sprinklers(ctx) {
       add(p.at, { by: 'gps', spreadM: +p.spreadM.toFixed(2) });
     }));
   }
+  const CAL_KEEP_MS = 60 * 60 * 1000; // a calibration is trusted for an hour: satellites and the phone drift
   function startGps() {
     if (gps.watch !== null || !('geolocation' in navigator)) return;
+    const kept = irr.gpsCal;
+    if (!gps.cal && kept?.offset && Date.now() - (kept.at || 0) < CAL_KEEP_MS) gps.cal = { ...kept };
     gps.phase = gps.cal ? 'walk' : 'pick';
     gps.watch = navigator.geolocation.watchPosition((pos) => {
       const f = { lng: pos.coords.longitude, lat: pos.coords.latitude, acc: pos.coords.accuracy, t: Date.now() };
@@ -962,7 +967,8 @@ export function sprinklers(ctx) {
       await loadDevices;
       await loadCat;
       if (irr.done && !force) { step = null; render(); return false; }
-      step = resumeAt || (force && irr.heads.length ? 'review' : 'intro');
+      const savedStep = !irr.done && STEPS.includes(irr.step) ? irr.step : null;
+      step = resumeAt || (force && irr.heads.length ? 'review' : savedStep || 'intro');
       render();
       return true;
     },

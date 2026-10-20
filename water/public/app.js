@@ -638,24 +638,67 @@ function changed() {
   keep();
 }
 
+/* EVERY CHANGE IS KEPT WITH THE MAP (owner, 2026-10-20: "make sure that every step in the sprinkler placement
+   saves progress to the unified save file"): the water part of the map (POST /api/maps/tool, docs/MAPS.md)
+   is written a moment after the last change; a save that fails is tried again until it lands; one that is
+   still waiting when the page is closed or put away is sent with keepalive, so it outlives the page. */
+let dirty = false, saving = null, retryTimer = null;
+const MAX_TOOL_BYTES = 64 * 1024; // the unified save's limit for one tool's part
+
+function showSaved(note) {
+  savedNote = note;
+  if (!/Working/.test($('#saved').textContent)) $('#saved').textContent = note;
+  const hs = $('#heads-saved');
+  if (hs) hs.textContent = note;
+}
+
 /** Save what was entered, a moment after the last change. */
 function keep() {
-  if (!view.site?.mapId) { savedNote = 'Open this from your dashboard to keep your sprinklers, downspouts and gutters with the map.'; return; }
+  if (!view.site?.mapId) { showSaved('Open this from your dashboard to keep your sprinklers, downspouts and gutters with the map.'); return; }
+  dirty = true;
+  showSaved('Saving…');
   clearTimeout(saveTimer);
   saveTimer = setTimeout(save, 800);
 }
 
-async function save() {
-  const site = view.site;
-  try {
-    const res = await fetch(`/api/maps/tool?id=${encodeURIComponent(site.mapId)}&tool=water`, {
-      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ data: { v: 1, downspouts: inputs.downspouts, gutters: inputs.gutters, areas: inputs.areas, topsoil: inputs.topsoil, grass: inputs.grass, irrigation: heads.data }, basedOn: site.at }),
-    });
-    savedNote = res.ok ? 'Saved with your map.' : `Not saved (${res.status}).`;
-  } catch (e) { savedNote = `Not saved: ${e.message}`; }
-  if (!/Working/.test($('#saved').textContent)) $('#saved').textContent = savedNote;
+function saveBody() {
+  return JSON.stringify({ data: { v: 1, downspouts: inputs.downspouts, gutters: inputs.gutters, areas: inputs.areas, topsoil: inputs.topsoil, grass: inputs.grass, irrigation: heads.data }, basedOn: view.site.at });
 }
+const saveUrl = () => `/api/maps/tool?id=${encodeURIComponent(view.site.mapId)}&tool=water`;
+
+async function save() {
+  clearTimeout(saveTimer); saveTimer = null;
+  if (!dirty || !view.site?.mapId) return;
+  if (saving) { await saving; return save(); } // one at a time: a change made meanwhile goes in the next
+  dirty = false;
+  const body = saveBody();
+  if (body.length > MAX_TOOL_BYTES) { dirty = true; showSaved(`Not saved: this map's water part is ${Math.round(body.length / 1024)} KB, over the ${MAX_TOOL_BYTES / 1024} KB a tool may keep.`); return; }
+  saving = (async () => {
+    try {
+      const res = await fetch(saveUrl(), { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body });
+      if (res.ok) { showSaved('Saved with your map.'); return; }
+      dirty = true;
+      showSaved(res.status === 401 || res.status === 403 ? `Not saved: sign in again to keep it (${res.status}).` : `Not saved yet (${res.status}); trying again.`);
+    } catch (e) {
+      dirty = true;
+      showSaved(`Not saved yet (${e.message || 'no connection'}); trying again.`);
+    }
+    clearTimeout(retryTimer);
+    retryTimer = setTimeout(save, 5000);
+  })();
+  await saving;
+  saving = null;
+}
+
+// closing the page, or a phone putting it away, with a change not yet sent: send it now, outliving the page
+function flush() {
+  if (!dirty || !view.site?.mapId) return;
+  const body = saveBody();
+  if (body.length > MAX_TOOL_BYTES) return;
+  try { fetch(saveUrl(), { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body, keepalive: true }); dirty = false; } catch { /* the next visit's save will try */ }
+}
+addEventListener('pagehide', flush);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); });
 
 function setMode(m) {
   mode = m; pending = m === 'gutter' || m === 'area' ? [] : null;
