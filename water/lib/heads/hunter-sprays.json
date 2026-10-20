@@ -1,0 +1,5557 @@
+{
+  "group": "hunter-sprays",
+  "retrieved": "2026-10-20",
+  "bodies": [
+    {
+      "id": "hu-pros-02",
+      "brand": "Hunter",
+      "model": "Pro-Spray PROS-02",
+      "kind": "spray",
+      "popUpIn": 2,
+      "regulatedPsi": null,
+      "swappable": true,
+      "nozzleFamilies": [
+        "hu-pro-fixed",
+        "hu-pro-fixed-tt-tq",
+        "hu-pro-adjustable",
+        "hu-strip",
+        "hu-mp-rotator",
+        "hu-mp800",
+        "hu-mp-strip"
+      ],
+      "fixedNozzles": null,
+      "source": "https://d7.hunterindustries.com/sites/default/files/CA-Cutsheet-Pro-Spray-US.pdf"
+    },
+    {
+      "id": "hu-pros-03",
+      "brand": "Hunter",
+      "model": "Pro-Spray PROS-03",
+      "kind": "spray",
+      "popUpIn": 3,
+      "regulatedPsi": null,
+      "swappable": true,
+      "nozzleFamilies": [
+        "hu-pro-fixed",
+        "hu-pro-fixed-tt-tq",
+        "hu-pro-adjustable",
+        "hu-strip",
+        "hu-mp-rotator",
+        "hu-mp800",
+        "hu-mp-strip"
+      ],
+      "fixedNozzles": null,
+      "source": "https://d7.hunterindustries.com/sites/default/files/CA-Cutsheet-Pro-Spray-US.pdf"
+    },
+    {
+      "id": "hu-pros-04",
+      "brand": "Hunter",
+      "model": "Pro-Spray PROS-04",
+      "kind": "spray",
+      "popUpIn": 4,
+      "regulatedPsi": null,
+      "swappable": true,
+      "nozzleFamilies": [
+        "hu-pro-fixed",
+        "hu-pro-fixed-tt-tq",
+        "hu-pro-adjustable",
+        "hu-strip",
+        "hu-mp-rotator",
+        "hu-mp800",
+        "hu-mp-strip"
+      ],
+      "fixedNozzles": null,
+      "source": "https://d7.hunterindustries.com/sites/default/files/CA-Cutsheet-Pro-Spray-US.pdf"
+    },
+    {
+      "id": "hu-pros-06",
+      "brand": "Hunter",
+      "model": "Pro-Spray PROS-06",
+      "kind": "spray",
+      "popUpIn": 6,
+      "regulatedPsi": null,
+      "swappable": true,
+      "nozzleFamilies": [
+        "hu-pro-fixed",
+        "hu-pro-fixed-tt-tq",
+        "hu-pro-adjustable",
+        "hu-strip",
+        "hu-mp-rotator",
+        "hu-mp800",
+        "hu-mp-strip"
+      ],
+      "fixedNozzles": null,
+      "source": "https://d7.hunterindustries.com/sites/default/files/CA-Cutsheet-Pro-Spray-US.pdf"
+    },
+    {
+      "id": "hu-pros-12",
+      "brand": "Hunter",
+      "model": "Pro-Spray PROS-12",
+      "kind": "spray",
+      "popUpIn": 12,
+      "regulatedPsi": null,
+      "swappable": true,
+      "nozzleFamilies": [
+        "hu-pro-fixed",
+        "hu-pro-fixed-tt-tq",
+        "hu-pro-adjustable",
+        "hu-strip",
+        "hu-mp-rotator",
+        "hu-mp800",
+        "hu-mp-strip"
+      ],
+      "fixedNozzles": null,
+      "source": "https://d7.hunterindustries.com/sites/default/files/CA-Cutsheet-Pro-Spray-US.pdf"
+    },
+    {
+      "id": "hu-pros-03-prs30",
+      "brand": "Hunter",
+      "model": "Pro-Spray PRS30 PROS-03-PRS30",
+      "kind": "spray",
+      "popUpIn": 3,
+      "regulatedPsi": 30,
+      "swappable": true,
+      "nozzleFamilies": [
+        "hu-pro-fixed",
+        "hu-pro-fixed-tt-tq",
+        "hu-pro-adjustable",
+        "hu-strip",
+        "hu-mp-rotator",
+        "hu-mp800",
+        "hu-mp-strip"
+      ],
+      "fixedNozzles": null,
+      "source": "https://d7.hunterindustries.com/sites/default/files/CA-Cutsheet-PRS30-US.pdf"
+    },
+    {
+      "id": "hu-pros-04-prs30",
+      "brand": "Hunter",
+      "model": "Pro-Spray PRS30 PROS-04-PRS30",
+      "kind": "spray",
+      "popUpIn": 4,
+      "regulatedPsi": 30,
+      "swappable": true,
+      "nozzleFamilies": [
+        "hu-pro-fixed",
+        "hu-pro-fixed-tt-tq",
+        "hu-pro-adjustable",
+        "hu-strip",
+        "hu-mp-rotator",
+        "hu-mp800",
+        "hu-mp-strip"
+      ],
+      "fixedNozzles": null,
+      "source": "https://d7.hunterindustries.com/sites/default/files/CA-Cutsheet-PRS30-US.pdf"
+    },
+    {
+      "id": "hu-pros-06-prs30",
+      "brand": "Hunter",
+      "model": "Pro-Spray PRS30 PROS-06-PRS30",
+      "kind": "spray",
+      "popUpIn": 6,
+      "regulatedPsi": 30,
+      "swappable": true,
+      "nozzleFamilies": [
+        "hu-pro-fixed",
+        "hu-pro-fixed-tt-tq",
+        "hu-pro-adjustable",
+        "hu-strip",
+        "hu-mp-rotator",
+        "hu-mp800",
+        "hu-mp-strip"
+      ],
+      "fixedNozzles": null,
+      "source": "https://d7.hunterindustries.com/sites/default/files/CA-Cutsheet-PRS30-US.pdf"
+    },
+    {
+      "id": "hu-pros-12-prs30",
+      "brand": "Hunter",
+      "model": "Pro-Spray PRS30 PROS-12-PRS30",
+      "kind": "spray",
+      "popUpIn": 12,
+      "regulatedPsi": 30,
+      "swappable": true,
+      "nozzleFamilies": [
+        "hu-pro-fixed",
+        "hu-pro-fixed-tt-tq",
+        "hu-pro-adjustable",
+        "hu-strip",
+        "hu-mp-rotator",
+        "hu-mp800",
+        "hu-mp-strip"
+      ],
+      "fixedNozzles": null,
+      "source": "https://d7.hunterindustries.com/sites/default/files/CA-Cutsheet-PRS30-US.pdf"
+    },
+    {
+      "id": "hu-pros-03-prs40",
+      "brand": "Hunter",
+      "model": "Pro-Spray PRS40 PROS-03-PRS40",
+      "kind": "spray",
+      "popUpIn": 3,
+      "regulatedPsi": 40,
+      "swappable": true,
+      "nozzleFamilies": [
+        "hu-pro-fixed",
+        "hu-pro-fixed-tt-tq",
+        "hu-pro-adjustable",
+        "hu-strip",
+        "hu-mp-rotator",
+        "hu-mp800",
+        "hu-mp-strip"
+      ],
+      "fixedNozzles": null,
+      "source": "https://d7.hunterindustries.com/sites/default/files/CA-Cutsheet-PRS40-US.pdf"
+    },
+    {
+      "id": "hu-pros-04-prs40",
+      "brand": "Hunter",
+      "model": "Pro-Spray PRS40 PROS-04-PRS40",
+      "kind": "spray",
+      "popUpIn": 4,
+      "regulatedPsi": 40,
+      "swappable": true,
+      "nozzleFamilies": [
+        "hu-pro-fixed",
+        "hu-pro-fixed-tt-tq",
+        "hu-pro-adjustable",
+        "hu-strip",
+        "hu-mp-rotator",
+        "hu-mp800",
+        "hu-mp-strip"
+      ],
+      "fixedNozzles": null,
+      "source": "https://d7.hunterindustries.com/sites/default/files/CA-Cutsheet-PRS40-US.pdf"
+    },
+    {
+      "id": "hu-pros-06-prs40",
+      "brand": "Hunter",
+      "model": "Pro-Spray PRS40 PROS-06-PRS40",
+      "kind": "spray",
+      "popUpIn": 6,
+      "regulatedPsi": 40,
+      "swappable": true,
+      "nozzleFamilies": [
+        "hu-pro-fixed",
+        "hu-pro-fixed-tt-tq",
+        "hu-pro-adjustable",
+        "hu-strip",
+        "hu-mp-rotator",
+        "hu-mp800",
+        "hu-mp-strip"
+      ],
+      "fixedNozzles": null,
+      "source": "https://d7.hunterindustries.com/sites/default/files/CA-Cutsheet-PRS40-US.pdf"
+    },
+    {
+      "id": "hu-pros-12-prs40",
+      "brand": "Hunter",
+      "model": "Pro-Spray PRS40 PROS-12-PRS40",
+      "kind": "spray",
+      "popUpIn": 12,
+      "regulatedPsi": 40,
+      "swappable": true,
+      "nozzleFamilies": [
+        "hu-pro-fixed",
+        "hu-pro-fixed-tt-tq",
+        "hu-pro-adjustable",
+        "hu-strip",
+        "hu-mp-rotator",
+        "hu-mp800",
+        "hu-mp-strip"
+      ],
+      "fixedNozzles": null,
+      "source": "https://d7.hunterindustries.com/sites/default/files/CA-Cutsheet-PRS40-US.pdf"
+    },
+    {
+      "id": "hu-psu-02",
+      "brand": "Hunter",
+      "model": "PS Ultra PSU-02",
+      "kind": "spray",
+      "popUpIn": 2,
+      "regulatedPsi": null,
+      "swappable": true,
+      "nozzleFamilies": [
+        "hu-pro-fixed",
+        "hu-pro-fixed-tt-tq",
+        "hu-pro-adjustable",
+        "hu-strip",
+        "hu-mp-rotator",
+        "hu-mp800",
+        "hu-mp-strip"
+      ],
+      "fixedNozzles": null,
+      "source": "https://d7.hunterindustries.com/sites/default/files/CA-Cutsheet-PS-Ultra-US.pdf"
+    },
+    {
+      "id": "hu-psu-04",
+      "brand": "Hunter",
+      "model": "PS Ultra PSU-04",
+      "kind": "spray",
+      "popUpIn": 4,
+      "regulatedPsi": null,
+      "swappable": true,
+      "nozzleFamilies": [
+        "hu-pro-fixed",
+        "hu-pro-fixed-tt-tq",
+        "hu-pro-adjustable",
+        "hu-strip",
+        "hu-mp-rotator",
+        "hu-mp800",
+        "hu-mp-strip"
+      ],
+      "fixedNozzles": null,
+      "source": "https://d7.hunterindustries.com/sites/default/files/CA-Cutsheet-PS-Ultra-US.pdf"
+    },
+    {
+      "id": "hu-psu-06",
+      "brand": "Hunter",
+      "model": "PS Ultra PSU-06",
+      "kind": "spray",
+      "popUpIn": 6,
+      "regulatedPsi": null,
+      "swappable": true,
+      "nozzleFamilies": [
+        "hu-pro-fixed",
+        "hu-pro-fixed-tt-tq",
+        "hu-pro-adjustable",
+        "hu-strip",
+        "hu-mp-rotator",
+        "hu-mp800",
+        "hu-mp-strip"
+      ],
+      "fixedNozzles": null,
+      "source": "https://d7.hunterindustries.com/sites/default/files/CA-Cutsheet-PS-Ultra-US.pdf"
+    }
+  ],
+  "families": [
+    {
+      "id": "hu-pro-fixed",
+      "brand": "Hunter",
+      "name": "Pro Fixed spray nozzles (Pro-Spray fixed arc)",
+      "kind": "spray",
+      "flow": "arc",
+      "nozzles": [
+        {
+          "id": "hu-pf-5q",
+          "label": "5Q",
+          "arcFixed": 90,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 0,
+          "rows": [
+            {
+              "psi": 20,
+              "radiusFt": 4,
+              "gpm": 0.36
+            },
+            {
+              "psi": 25,
+              "radiusFt": 4,
+              "gpm": 0.44
+            },
+            {
+              "psi": 30,
+              "radiusFt": 5,
+              "gpm": 0.48
+            },
+            {
+              "psi": 35,
+              "radiusFt": 6,
+              "gpm": 0.52
+            },
+            {
+              "psi": 40,
+              "radiusFt": 6,
+              "gpm": 0.56
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.8,
+            "triangle": 2.08
+          }
+        },
+        {
+          "id": "hu-pf-5h",
+          "label": "5H",
+          "arcFixed": 180,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 0,
+          "rows": [
+            {
+              "psi": 20,
+              "radiusFt": 4,
+              "gpm": 0.38
+            },
+            {
+              "psi": 25,
+              "radiusFt": 4,
+              "gpm": 0.42
+            },
+            {
+              "psi": 30,
+              "radiusFt": 5,
+              "gpm": 0.46
+            },
+            {
+              "psi": 35,
+              "radiusFt": 6,
+              "gpm": 0.5
+            },
+            {
+              "psi": 40,
+              "radiusFt": 6,
+              "gpm": 0.54
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.8,
+            "triangle": 2.08
+          }
+        },
+        {
+          "id": "hu-pf-5f",
+          "label": "5F",
+          "arcFixed": 360,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 0,
+          "rows": [
+            {
+              "psi": 20,
+              "radiusFt": 4,
+              "gpm": 0.37
+            },
+            {
+              "psi": 25,
+              "radiusFt": 4,
+              "gpm": 0.42
+            },
+            {
+              "psi": 30,
+              "radiusFt": 5,
+              "gpm": 0.47
+            },
+            {
+              "psi": 35,
+              "radiusFt": 6,
+              "gpm": 0.51
+            },
+            {
+              "psi": 40,
+              "radiusFt": 6,
+              "gpm": 0.55
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.8,
+            "triangle": 2.08
+          }
+        },
+        {
+          "id": "hu-pf-8q",
+          "label": "8Q",
+          "arcFixed": 90,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 15,
+          "rows": [
+            {
+              "psi": 20,
+              "radiusFt": 7,
+              "gpm": 0.8
+            },
+            {
+              "psi": 25,
+              "radiusFt": 8,
+              "gpm": 0.88
+            },
+            {
+              "psi": 30,
+              "radiusFt": 8,
+              "gpm": 0.96
+            },
+            {
+              "psi": 35,
+              "radiusFt": 9,
+              "gpm": 1.04
+            },
+            {
+              "psi": 40,
+              "radiusFt": 9,
+              "gpm": 1.12
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.46,
+            "triangle": 1.69
+          }
+        },
+        {
+          "id": "hu-pf-8t",
+          "label": "8T",
+          "arcFixed": 120,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 15,
+          "rows": [
+            {
+              "psi": 20,
+              "radiusFt": 7,
+              "gpm": 0.78
+            },
+            {
+              "psi": 25,
+              "radiusFt": 8,
+              "gpm": 0.87
+            },
+            {
+              "psi": 30,
+              "radiusFt": 8,
+              "gpm": 0.96
+            },
+            {
+              "psi": 35,
+              "radiusFt": 9,
+              "gpm": 1.05
+            },
+            {
+              "psi": 40,
+              "radiusFt": 9,
+              "gpm": 1.14
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.46,
+            "triangle": 1.69
+          }
+        },
+        {
+          "id": "hu-pf-8h",
+          "label": "8H",
+          "arcFixed": 180,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 15,
+          "rows": [
+            {
+              "psi": 20,
+              "radiusFt": 7,
+              "gpm": 0.76
+            },
+            {
+              "psi": 25,
+              "radiusFt": 8,
+              "gpm": 0.86
+            },
+            {
+              "psi": 30,
+              "radiusFt": 8,
+              "gpm": 0.94
+            },
+            {
+              "psi": 35,
+              "radiusFt": 9,
+              "gpm": 1.02
+            },
+            {
+              "psi": 40,
+              "radiusFt": 9,
+              "gpm": 1.08
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.41,
+            "triangle": 1.63
+          }
+        },
+        {
+          "id": "hu-pf-8f",
+          "label": "8F",
+          "arcFixed": 360,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 15,
+          "rows": [
+            {
+              "psi": 20,
+              "radiusFt": 7,
+              "gpm": 0.78
+            },
+            {
+              "psi": 25,
+              "radiusFt": 8,
+              "gpm": 0.88
+            },
+            {
+              "psi": 30,
+              "radiusFt": 8,
+              "gpm": 0.97
+            },
+            {
+              "psi": 35,
+              "radiusFt": 9,
+              "gpm": 1.05
+            },
+            {
+              "psi": 40,
+              "radiusFt": 9,
+              "gpm": 1.13
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.46,
+            "triangle": 1.69
+          }
+        },
+        {
+          "id": "hu-pf-10q",
+          "label": "10Q",
+          "arcFixed": 90,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 15,
+          "rows": [
+            {
+              "psi": 20,
+              "radiusFt": 9,
+              "gpm": 1.36
+            },
+            {
+              "psi": 25,
+              "radiusFt": 10,
+              "gpm": 1.56
+            },
+            {
+              "psi": 30,
+              "radiusFt": 10,
+              "gpm": 1.68
+            },
+            {
+              "psi": 35,
+              "radiusFt": 11,
+              "gpm": 1.84
+            },
+            {
+              "psi": 40,
+              "radiusFt": 11,
+              "gpm": 1.96
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.63,
+            "triangle": 1.89
+          }
+        },
+        {
+          "id": "hu-pf-10t",
+          "label": "10T",
+          "arcFixed": 120,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 15,
+          "rows": [
+            {
+              "psi": 20,
+              "radiusFt": 9,
+              "gpm": 1.38
+            },
+            {
+              "psi": 25,
+              "radiusFt": 10,
+              "gpm": 1.53
+            },
+            {
+              "psi": 30,
+              "radiusFt": 10,
+              "gpm": 1.71
+            },
+            {
+              "psi": 35,
+              "radiusFt": 11,
+              "gpm": 1.83
+            },
+            {
+              "psi": 40,
+              "radiusFt": 11,
+              "gpm": 1.98
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.63,
+            "triangle": 1.89
+          }
+        },
+        {
+          "id": "hu-pf-10h",
+          "label": "10H",
+          "arcFixed": 180,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 15,
+          "rows": [
+            {
+              "psi": 20,
+              "radiusFt": 9,
+              "gpm": 1.4
+            },
+            {
+              "psi": 25,
+              "radiusFt": 10,
+              "gpm": 1.58
+            },
+            {
+              "psi": 30,
+              "radiusFt": 10,
+              "gpm": 1.76
+            },
+            {
+              "psi": 35,
+              "radiusFt": 11,
+              "gpm": 1.9
+            },
+            {
+              "psi": 40,
+              "radiusFt": 11,
+              "gpm": 2.06
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.69,
+            "triangle": 1.95
+          }
+        },
+        {
+          "id": "hu-pf-10f",
+          "label": "10F",
+          "arcFixed": 360,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 15,
+          "rows": [
+            {
+              "psi": 20,
+              "radiusFt": 9,
+              "gpm": 1.29
+            },
+            {
+              "psi": 25,
+              "radiusFt": 10,
+              "gpm": 1.45
+            },
+            {
+              "psi": 30,
+              "radiusFt": 10,
+              "gpm": 1.59
+            },
+            {
+              "psi": 35,
+              "radiusFt": 11,
+              "gpm": 1.72
+            },
+            {
+              "psi": 40,
+              "radiusFt": 11,
+              "gpm": 1.84
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.53,
+            "triangle": 1.76
+          }
+        },
+        {
+          "id": "hu-pf-12q",
+          "label": "12Q",
+          "arcFixed": 90,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 28,
+          "rows": [
+            {
+              "psi": 20,
+              "radiusFt": 11,
+              "gpm": 2.16
+            },
+            {
+              "psi": 25,
+              "radiusFt": 12,
+              "gpm": 2.44
+            },
+            {
+              "psi": 30,
+              "radiusFt": 12,
+              "gpm": 2.68
+            },
+            {
+              "psi": 35,
+              "radiusFt": 13,
+              "gpm": 2.88
+            },
+            {
+              "psi": 40,
+              "radiusFt": 13,
+              "gpm": 3.12
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.78,
+            "triangle": 2.06
+          }
+        },
+        {
+          "id": "hu-pf-12t",
+          "label": "12T",
+          "arcFixed": 120,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 28,
+          "rows": [
+            {
+              "psi": 20,
+              "radiusFt": 11,
+              "gpm": 2.16
+            },
+            {
+              "psi": 25,
+              "radiusFt": 12,
+              "gpm": 2.43
+            },
+            {
+              "psi": 30,
+              "radiusFt": 12,
+              "gpm": 2.67
+            },
+            {
+              "psi": 35,
+              "radiusFt": 13,
+              "gpm": 2.91
+            },
+            {
+              "psi": 40,
+              "radiusFt": 13,
+              "gpm": 3.12
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.78,
+            "triangle": 2.06
+          }
+        },
+        {
+          "id": "hu-pf-12h",
+          "label": "12H",
+          "arcFixed": 180,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 28,
+          "rows": [
+            {
+              "psi": 20,
+              "radiusFt": 11,
+              "gpm": 2.1
+            },
+            {
+              "psi": 25,
+              "radiusFt": 12,
+              "gpm": 2.36
+            },
+            {
+              "psi": 30,
+              "radiusFt": 12,
+              "gpm": 2.6
+            },
+            {
+              "psi": 35,
+              "radiusFt": 13,
+              "gpm": 2.84
+            },
+            {
+              "psi": 40,
+              "radiusFt": 13,
+              "gpm": 3.04
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.74,
+            "triangle": 2.01
+          }
+        },
+        {
+          "id": "hu-pf-12f",
+          "label": "12F",
+          "arcFixed": 360,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 28,
+          "rows": [
+            {
+              "psi": 20,
+              "radiusFt": 11,
+              "gpm": 2.17
+            },
+            {
+              "psi": 25,
+              "radiusFt": 12,
+              "gpm": 2.45
+            },
+            {
+              "psi": 30,
+              "radiusFt": 12,
+              "gpm": 2.7
+            },
+            {
+              "psi": 35,
+              "radiusFt": 13,
+              "gpm": 2.93
+            },
+            {
+              "psi": 40,
+              "radiusFt": 13,
+              "gpm": 3.15
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.8,
+            "triangle": 2.08
+          }
+        },
+        {
+          "id": "hu-pf-15q",
+          "label": "15Q",
+          "arcFixed": 90,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 28,
+          "rows": [
+            {
+              "psi": 20,
+              "radiusFt": 14,
+              "gpm": 3.12
+            },
+            {
+              "psi": 25,
+              "radiusFt": 15,
+              "gpm": 3.52
+            },
+            {
+              "psi": 30,
+              "radiusFt": 15,
+              "gpm": 3.88
+            },
+            {
+              "psi": 35,
+              "radiusFt": 16,
+              "gpm": 4.24
+            },
+            {
+              "psi": 40,
+              "radiusFt": 17,
+              "gpm": 4.56
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.67,
+            "triangle": 1.92
+          }
+        },
+        {
+          "id": "hu-pf-15t",
+          "label": "15T",
+          "arcFixed": 120,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 28,
+          "rows": [
+            {
+              "psi": 20,
+              "radiusFt": 14,
+              "gpm": 3.12
+            },
+            {
+              "psi": 25,
+              "radiusFt": 15,
+              "gpm": 3.51
+            },
+            {
+              "psi": 30,
+              "radiusFt": 15,
+              "gpm": 3.9
+            },
+            {
+              "psi": 35,
+              "radiusFt": 16,
+              "gpm": 4.23
+            },
+            {
+              "psi": 40,
+              "radiusFt": 17,
+              "gpm": 4.56
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.67,
+            "triangle": 1.92
+          }
+        },
+        {
+          "id": "hu-pf-15h",
+          "label": "15H",
+          "arcFixed": 180,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 28,
+          "rows": [
+            {
+              "psi": 20,
+              "radiusFt": 14,
+              "gpm": 3.02
+            },
+            {
+              "psi": 25,
+              "radiusFt": 15,
+              "gpm": 3.38
+            },
+            {
+              "psi": 30,
+              "radiusFt": 15,
+              "gpm": 3.72
+            },
+            {
+              "psi": 35,
+              "radiusFt": 16,
+              "gpm": 4.04
+            },
+            {
+              "psi": 40,
+              "radiusFt": 17,
+              "gpm": 4.32
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.59,
+            "triangle": 1.84
+          }
+        },
+        {
+          "id": "hu-pf-15f",
+          "label": "15F",
+          "arcFixed": 360,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 28,
+          "rows": [
+            {
+              "psi": 20,
+              "radiusFt": 14,
+              "gpm": 3.04
+            },
+            {
+              "psi": 25,
+              "radiusFt": 15,
+              "gpm": 3.41
+            },
+            {
+              "psi": 30,
+              "radiusFt": 15,
+              "gpm": 3.75
+            },
+            {
+              "psi": 35,
+              "radiusFt": 16,
+              "gpm": 4.07
+            },
+            {
+              "psi": 40,
+              "radiusFt": 17,
+              "gpm": 4.36
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.61,
+            "triangle": 1.85
+          }
+        },
+        {
+          "id": "hu-pf-17q",
+          "label": "17Q",
+          "arcFixed": 90,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 28,
+          "rows": [
+            {
+              "psi": 20,
+              "radiusFt": 16,
+              "gpm": 3.72
+            },
+            {
+              "psi": 25,
+              "radiusFt": 17,
+              "gpm": 4.2
+            },
+            {
+              "psi": 30,
+              "radiusFt": 17,
+              "gpm": 4.6
+            },
+            {
+              "psi": 35,
+              "radiusFt": 18,
+              "gpm": 5
+            },
+            {
+              "psi": 40,
+              "radiusFt": 19,
+              "gpm": 5.36
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.54,
+            "triangle": 1.77
+          }
+        },
+        {
+          "id": "hu-pf-17h",
+          "label": "17H",
+          "arcFixed": 180,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 28,
+          "rows": [
+            {
+              "psi": 20,
+              "radiusFt": 16,
+              "gpm": 3.82
+            },
+            {
+              "psi": 25,
+              "radiusFt": 17,
+              "gpm": 4.3
+            },
+            {
+              "psi": 30,
+              "radiusFt": 17,
+              "gpm": 4.74
+            },
+            {
+              "psi": 35,
+              "radiusFt": 18,
+              "gpm": 5.14
+            },
+            {
+              "psi": 40,
+              "radiusFt": 19,
+              "gpm": 5.52
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.58,
+            "triangle": 1.82
+          }
+        }
+      ],
+      "source": "https://d7.hunterindustries.com/sites/default/files/CA-Cutsheet-Pro-Spray-Fixed-Arc-Nozzles-US.pdf"
+    },
+    {
+      "id": "hu-pro-fixed-tt-tq",
+      "brand": "Hunter",
+      "name": "Pro-Spray fixed arc nozzles, 240 and 270 degree (TT/TQ) - 2016 catalogue only",
+      "kind": "spray",
+      "flow": "arc",
+      "nozzles": [
+        {
+          "id": "hu-pf-12tt",
+          "label": "12TT",
+          "arcFixed": 240,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 28,
+          "rows": [
+            {
+              "psi": 20,
+              "radiusFt": 11,
+              "gpm": 2.1
+            },
+            {
+              "psi": 25,
+              "radiusFt": 12,
+              "gpm": 2.37
+            },
+            {
+              "psi": 30,
+              "radiusFt": 12,
+              "gpm": 2.61
+            },
+            {
+              "psi": 35,
+              "radiusFt": 13,
+              "gpm": 2.835
+            },
+            {
+              "psi": 40,
+              "radiusFt": 13,
+              "gpm": 3.045
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.74,
+            "triangle": 2.01
+          }
+        },
+        {
+          "id": "hu-pf-15tt",
+          "label": "15TT",
+          "arcFixed": 240,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 28,
+          "rows": [
+            {
+              "psi": 20,
+              "radiusFt": 14,
+              "gpm": 3.015
+            },
+            {
+              "psi": 25,
+              "radiusFt": 15,
+              "gpm": 3.39
+            },
+            {
+              "psi": 30,
+              "radiusFt": 15,
+              "gpm": 3.72
+            },
+            {
+              "psi": 35,
+              "radiusFt": 16,
+              "gpm": 4.035
+            },
+            {
+              "psi": 40,
+              "radiusFt": 17,
+              "gpm": 4.32
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.59,
+            "triangle": 1.84
+          }
+        },
+        {
+          "id": "hu-pf-12tq",
+          "label": "12TQ",
+          "arcFixed": 270,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 28,
+          "rows": [
+            {
+              "psi": 20,
+              "radiusFt": 11,
+              "gpm": 2.147
+            },
+            {
+              "psi": 25,
+              "radiusFt": 12,
+              "gpm": 2.427
+            },
+            {
+              "psi": 30,
+              "radiusFt": 12,
+              "gpm": 2.667
+            },
+            {
+              "psi": 35,
+              "radiusFt": 13,
+              "gpm": 2.893
+            },
+            {
+              "psi": 40,
+              "radiusFt": 13,
+              "gpm": 3.107
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.74,
+            "triangle": 2.01
+          }
+        },
+        {
+          "id": "hu-pf-15tq",
+          "label": "15TQ",
+          "arcFixed": 270,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 28,
+          "rows": [
+            {
+              "psi": 20,
+              "radiusFt": 14,
+              "gpm": 3.12
+            },
+            {
+              "psi": 25,
+              "radiusFt": 15,
+              "gpm": 3.52
+            },
+            {
+              "psi": 30,
+              "radiusFt": 15,
+              "gpm": 3.893
+            },
+            {
+              "psi": 35,
+              "radiusFt": 16,
+              "gpm": 4.24
+            },
+            {
+              "psi": 40,
+              "radiusFt": 17,
+              "gpm": 4.56
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.59,
+            "triangle": 1.84
+          }
+        }
+      ],
+      "source": "https://www.dripdepot.com/file/parent/2443/2443-Pro%20Fixed%20Nozzle.pdf"
+    },
+    {
+      "id": "hu-pro-adjustable",
+      "brand": "Hunter",
+      "name": "Pro Adjustable spray nozzles",
+      "kind": "spray",
+      "flow": "arc",
+      "nozzles": [
+        {
+          "id": "hu-pa-4a",
+          "label": "4A",
+          "arcFixed": null,
+          "arcMin": 0,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 0,
+          "rows": [
+            {
+              "psi": 20,
+              "radiusFt": 3,
+              "gpm": 0.66
+            },
+            {
+              "psi": 25,
+              "radiusFt": 3,
+              "gpm": 0.72
+            },
+            {
+              "psi": 30,
+              "radiusFt": 4,
+              "gpm": 0.8
+            },
+            {
+              "psi": 35,
+              "radiusFt": 4,
+              "gpm": 0.86
+            },
+            {
+              "psi": 40,
+              "radiusFt": 4,
+              "gpm": 0.9
+            }
+          ],
+          "chartPrecip": {
+            "square": 4.81,
+            "triangle": 5.56
+          },
+          "printedByArc": [
+            {
+              "arcDeg": 45,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 3,
+                  "gpm": 0.1
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 3,
+                  "gpm": 0.11
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 4,
+                  "gpm": 0.13
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 4,
+                  "gpm": 0.14
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 4,
+                  "gpm": 0.16
+                }
+              ]
+            },
+            {
+              "arcDeg": 90,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 3,
+                  "gpm": 0.19
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 3,
+                  "gpm": 0.2
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 4,
+                  "gpm": 0.22
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 4,
+                  "gpm": 0.24
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 4,
+                  "gpm": 0.25
+                }
+              ]
+            },
+            {
+              "arcDeg": 120,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 3,
+                  "gpm": 0.28
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 3,
+                  "gpm": 0.3
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 4,
+                  "gpm": 0.34
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 4,
+                  "gpm": 0.36
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 4,
+                  "gpm": 0.37
+                }
+              ]
+            },
+            {
+              "arcDeg": 180,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 3,
+                  "gpm": 0.34
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 3,
+                  "gpm": 0.38
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 4,
+                  "gpm": 0.45
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 4,
+                  "gpm": 0.46
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 4,
+                  "gpm": 0.48
+                }
+              ]
+            },
+            {
+              "arcDeg": 240,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 3,
+                  "gpm": 0.58
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 3,
+                  "gpm": 0.62
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 4,
+                  "gpm": 0.68
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 4,
+                  "gpm": 0.74
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 4,
+                  "gpm": 0.8
+                }
+              ]
+            },
+            {
+              "arcDeg": 270,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 3,
+                  "gpm": 0.62
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 3,
+                  "gpm": 0.66
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 4,
+                  "gpm": 0.73
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 4,
+                  "gpm": 0.78
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 4,
+                  "gpm": 0.84
+                }
+              ]
+            },
+            {
+              "arcDeg": 360,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 3,
+                  "gpm": 0.66
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 3,
+                  "gpm": 0.72
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 4,
+                  "gpm": 0.8
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 4,
+                  "gpm": 0.86
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 4,
+                  "gpm": 0.9
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "hu-pa-6a",
+          "label": "6A",
+          "arcFixed": null,
+          "arcMin": 0,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 0,
+          "rows": [
+            {
+              "psi": 20,
+              "radiusFt": 5,
+              "gpm": 1.05
+            },
+            {
+              "psi": 25,
+              "radiusFt": 5,
+              "gpm": 1.1
+            },
+            {
+              "psi": 30,
+              "radiusFt": 6,
+              "gpm": 1.26
+            },
+            {
+              "psi": 35,
+              "radiusFt": 6,
+              "gpm": 1.3
+            },
+            {
+              "psi": 40,
+              "radiusFt": 6,
+              "gpm": 1.4
+            }
+          ],
+          "chartPrecip": {
+            "square": 3.37,
+            "triangle": 3.89
+          },
+          "printedByArc": [
+            {
+              "arcDeg": 45,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 5,
+                  "gpm": 0.15
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 5,
+                  "gpm": 0.17
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 6,
+                  "gpm": 0.18
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 6,
+                  "gpm": 0.18
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 6,
+                  "gpm": 0.19
+                }
+              ]
+            },
+            {
+              "arcDeg": 90,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 5,
+                  "gpm": 0.3
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 5,
+                  "gpm": 0.34
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 6,
+                  "gpm": 0.37
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 6,
+                  "gpm": 0.38
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 6,
+                  "gpm": 0.4
+                }
+              ]
+            },
+            {
+              "arcDeg": 120,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 5,
+                  "gpm": 0.37
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 5,
+                  "gpm": 0.38
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 6,
+                  "gpm": 0.44
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 6,
+                  "gpm": 0.46
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 6,
+                  "gpm": 0.48
+                }
+              ]
+            },
+            {
+              "arcDeg": 180,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 5,
+                  "gpm": 0.5
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 5,
+                  "gpm": 0.54
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 6,
+                  "gpm": 0.6
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 6,
+                  "gpm": 0.64
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 6,
+                  "gpm": 0.68
+                }
+              ]
+            },
+            {
+              "arcDeg": 240,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 5,
+                  "gpm": 0.73
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 5,
+                  "gpm": 0.78
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 6,
+                  "gpm": 0.88
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 6,
+                  "gpm": 0.92
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 6,
+                  "gpm": 1.02
+                }
+              ]
+            },
+            {
+              "arcDeg": 270,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 5,
+                  "gpm": 0.88
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 5,
+                  "gpm": 0.98
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 6,
+                  "gpm": 1.1
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 6,
+                  "gpm": 1.15
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 6,
+                  "gpm": 1.2
+                }
+              ]
+            },
+            {
+              "arcDeg": 360,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 5,
+                  "gpm": 1.05
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 5,
+                  "gpm": 1.1
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 6,
+                  "gpm": 1.26
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 6,
+                  "gpm": 1.3
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 6,
+                  "gpm": 1.4
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "hu-pa-8a",
+          "label": "8A",
+          "arcFixed": null,
+          "arcMin": 0,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 15,
+          "rows": [
+            {
+              "psi": 20,
+              "radiusFt": 7,
+              "gpm": 1.44
+            },
+            {
+              "psi": 25,
+              "radiusFt": 8,
+              "gpm": 1.6
+            },
+            {
+              "psi": 30,
+              "radiusFt": 8,
+              "gpm": 1.76
+            },
+            {
+              "psi": 35,
+              "radiusFt": 9,
+              "gpm": 1.88
+            },
+            {
+              "psi": 40,
+              "radiusFt": 9,
+              "gpm": 2
+            }
+          ],
+          "chartPrecip": {
+            "square": 2.65,
+            "triangle": 3.06
+          },
+          "printedByArc": [
+            {
+              "arcDeg": 45,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 7,
+                  "gpm": 0.18
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 8,
+                  "gpm": 0.2
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 8,
+                  "gpm": 0.22
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 9,
+                  "gpm": 0.24
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 9,
+                  "gpm": 0.25
+                }
+              ]
+            },
+            {
+              "arcDeg": 90,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 7,
+                  "gpm": 0.36
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 8,
+                  "gpm": 0.4
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 8,
+                  "gpm": 0.44
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 9,
+                  "gpm": 0.47
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 9,
+                  "gpm": 0.5
+                }
+              ]
+            },
+            {
+              "arcDeg": 120,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 7,
+                  "gpm": 0.48
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 8,
+                  "gpm": 0.53
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 8,
+                  "gpm": 0.59
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 9,
+                  "gpm": 0.63
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 9,
+                  "gpm": 0.67
+                }
+              ]
+            },
+            {
+              "arcDeg": 180,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 7,
+                  "gpm": 0.72
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 8,
+                  "gpm": 0.8
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 8,
+                  "gpm": 0.88
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 9,
+                  "gpm": 0.94
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 9,
+                  "gpm": 1
+                }
+              ]
+            },
+            {
+              "arcDeg": 240,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 7,
+                  "gpm": 0.96
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 8,
+                  "gpm": 1.07
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 8,
+                  "gpm": 1.17
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 9,
+                  "gpm": 1.25
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 9,
+                  "gpm": 1.33
+                }
+              ]
+            },
+            {
+              "arcDeg": 270,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 7,
+                  "gpm": 1.08
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 8,
+                  "gpm": 1.2
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 8,
+                  "gpm": 1.32
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 9,
+                  "gpm": 1.41
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 9,
+                  "gpm": 1.5
+                }
+              ]
+            },
+            {
+              "arcDeg": 360,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 7,
+                  "gpm": 1.44
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 8,
+                  "gpm": 1.6
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 8,
+                  "gpm": 1.76
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 9,
+                  "gpm": 1.88
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 9,
+                  "gpm": 2
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "hu-pa-10a",
+          "label": "10A",
+          "arcFixed": null,
+          "arcMin": 0,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 15,
+          "rows": [
+            {
+              "psi": 20,
+              "radiusFt": 9,
+              "gpm": 1.6
+            },
+            {
+              "psi": 25,
+              "radiusFt": 10,
+              "gpm": 1.8
+            },
+            {
+              "psi": 30,
+              "radiusFt": 10,
+              "gpm": 2
+            },
+            {
+              "psi": 35,
+              "radiusFt": 11,
+              "gpm": 2.2
+            },
+            {
+              "psi": 40,
+              "radiusFt": 11,
+              "gpm": 2.36
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.93,
+            "triangle": 2.22
+          },
+          "printedByArc": [
+            {
+              "arcDeg": 45,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 9,
+                  "gpm": 0.2
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 10,
+                  "gpm": 0.23
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 10,
+                  "gpm": 0.25
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 11,
+                  "gpm": 0.28
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 11,
+                  "gpm": 0.3
+                }
+              ]
+            },
+            {
+              "arcDeg": 90,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 9,
+                  "gpm": 0.4
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 10,
+                  "gpm": 0.45
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 10,
+                  "gpm": 0.5
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 11,
+                  "gpm": 0.55
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 11,
+                  "gpm": 0.59
+                }
+              ]
+            },
+            {
+              "arcDeg": 120,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 9,
+                  "gpm": 0.53
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 10,
+                  "gpm": 0.6
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 10,
+                  "gpm": 0.67
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 11,
+                  "gpm": 0.73
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 11,
+                  "gpm": 0.79
+                }
+              ]
+            },
+            {
+              "arcDeg": 180,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 9,
+                  "gpm": 0.8
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 10,
+                  "gpm": 0.9
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 10,
+                  "gpm": 1
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 11,
+                  "gpm": 1.1
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 11,
+                  "gpm": 1.18
+                }
+              ]
+            },
+            {
+              "arcDeg": 240,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 9,
+                  "gpm": 1.07
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 10,
+                  "gpm": 1.2
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 10,
+                  "gpm": 1.33
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 11,
+                  "gpm": 1.47
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 11,
+                  "gpm": 1.57
+                }
+              ]
+            },
+            {
+              "arcDeg": 270,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 9,
+                  "gpm": 1.2
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 10,
+                  "gpm": 1.35
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 10,
+                  "gpm": 1.5
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 11,
+                  "gpm": 1.65
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 11,
+                  "gpm": 1.77
+                }
+              ]
+            },
+            {
+              "arcDeg": 360,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 9,
+                  "gpm": 1.6
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 10,
+                  "gpm": 1.8
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 10,
+                  "gpm": 2
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 11,
+                  "gpm": 2.2
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 11,
+                  "gpm": 2.36
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "hu-pa-12a",
+          "label": "12A",
+          "arcFixed": null,
+          "arcMin": 0,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 28,
+          "rows": [
+            {
+              "psi": 20,
+              "radiusFt": 11,
+              "gpm": 2
+            },
+            {
+              "psi": 25,
+              "radiusFt": 12,
+              "gpm": 2.2
+            },
+            {
+              "psi": 30,
+              "radiusFt": 12,
+              "gpm": 2.52
+            },
+            {
+              "psi": 35,
+              "radiusFt": 13,
+              "gpm": 2.92
+            },
+            {
+              "psi": 40,
+              "radiusFt": 13,
+              "gpm": 3.36
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.68,
+            "triangle": 1.95
+          },
+          "printedByArc": [
+            {
+              "arcDeg": 45,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 11,
+                  "gpm": 0.25
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 12,
+                  "gpm": 0.28
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 12,
+                  "gpm": 0.32
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 13,
+                  "gpm": 0.37
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 13,
+                  "gpm": 0.42
+                }
+              ]
+            },
+            {
+              "arcDeg": 90,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 11,
+                  "gpm": 0.5
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 12,
+                  "gpm": 0.55
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 12,
+                  "gpm": 0.63
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 13,
+                  "gpm": 0.73
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 13,
+                  "gpm": 0.84
+                }
+              ]
+            },
+            {
+              "arcDeg": 120,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 11,
+                  "gpm": 0.67
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 12,
+                  "gpm": 0.73
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 12,
+                  "gpm": 0.84
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 13,
+                  "gpm": 0.97
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 13,
+                  "gpm": 1.12
+                }
+              ]
+            },
+            {
+              "arcDeg": 180,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 11,
+                  "gpm": 1
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 12,
+                  "gpm": 1.1
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 12,
+                  "gpm": 1.26
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 13,
+                  "gpm": 1.46
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 13,
+                  "gpm": 1.68
+                }
+              ]
+            },
+            {
+              "arcDeg": 240,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 11,
+                  "gpm": 1.33
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 12,
+                  "gpm": 1.47
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 12,
+                  "gpm": 1.68
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 13,
+                  "gpm": 1.95
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 13,
+                  "gpm": 2.24
+                }
+              ]
+            },
+            {
+              "arcDeg": 270,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 11,
+                  "gpm": 1.5
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 12,
+                  "gpm": 1.65
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 12,
+                  "gpm": 1.89
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 13,
+                  "gpm": 2.19
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 13,
+                  "gpm": 2.52
+                }
+              ]
+            },
+            {
+              "arcDeg": 360,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 11,
+                  "gpm": 2
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 12,
+                  "gpm": 2.2
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 12,
+                  "gpm": 2.52
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 13,
+                  "gpm": 2.92
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 13,
+                  "gpm": 3.36
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "hu-pa-15a",
+          "label": "15A",
+          "arcFixed": null,
+          "arcMin": 0,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 28,
+          "rows": [
+            {
+              "psi": 20,
+              "radiusFt": 14,
+              "gpm": 3.08
+            },
+            {
+              "psi": 25,
+              "radiusFt": 15,
+              "gpm": 3.44
+            },
+            {
+              "psi": 30,
+              "radiusFt": 15,
+              "gpm": 3.72
+            },
+            {
+              "psi": 35,
+              "radiusFt": 16,
+              "gpm": 4.12
+            },
+            {
+              "psi": 40,
+              "radiusFt": 17,
+              "gpm": 4.52
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.59,
+            "triangle": 1.84
+          },
+          "printedByArc": [
+            {
+              "arcDeg": 45,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 14,
+                  "gpm": 0.39
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 15,
+                  "gpm": 0.43
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 15,
+                  "gpm": 0.47
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 16,
+                  "gpm": 0.52
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 17,
+                  "gpm": 0.57
+                }
+              ]
+            },
+            {
+              "arcDeg": 90,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 14,
+                  "gpm": 0.77
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 15,
+                  "gpm": 0.86
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 15,
+                  "gpm": 0.93
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 16,
+                  "gpm": 1.03
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 17,
+                  "gpm": 1.13
+                }
+              ]
+            },
+            {
+              "arcDeg": 120,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 14,
+                  "gpm": 1.03
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 15,
+                  "gpm": 1.15
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 15,
+                  "gpm": 1.24
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 16,
+                  "gpm": 1.37
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 17,
+                  "gpm": 1.51
+                }
+              ]
+            },
+            {
+              "arcDeg": 180,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 14,
+                  "gpm": 1.54
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 15,
+                  "gpm": 1.72
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 15,
+                  "gpm": 1.86
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 16,
+                  "gpm": 2.06
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 17,
+                  "gpm": 2.26
+                }
+              ]
+            },
+            {
+              "arcDeg": 240,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 14,
+                  "gpm": 2.05
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 15,
+                  "gpm": 2.29
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 15,
+                  "gpm": 2.48
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 16,
+                  "gpm": 2.75
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 17,
+                  "gpm": 3.01
+                }
+              ]
+            },
+            {
+              "arcDeg": 270,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 14,
+                  "gpm": 2.31
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 15,
+                  "gpm": 2.58
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 15,
+                  "gpm": 2.79
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 16,
+                  "gpm": 3.09
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 17,
+                  "gpm": 3.39
+                }
+              ]
+            },
+            {
+              "arcDeg": 360,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 14,
+                  "gpm": 3.08
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 15,
+                  "gpm": 3.44
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 15,
+                  "gpm": 3.72
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 16,
+                  "gpm": 4.12
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 17,
+                  "gpm": 4.52
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "hu-pa-17a",
+          "label": "17A",
+          "arcFixed": null,
+          "arcMin": 0,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 28,
+          "rows": [
+            {
+              "psi": 20,
+              "radiusFt": 16,
+              "gpm": 3.88
+            },
+            {
+              "psi": 25,
+              "radiusFt": 17,
+              "gpm": 4.52
+            },
+            {
+              "psi": 30,
+              "radiusFt": 17,
+              "gpm": 4.6
+            },
+            {
+              "psi": 35,
+              "radiusFt": 18,
+              "gpm": 5
+            },
+            {
+              "psi": 40,
+              "radiusFt": 19,
+              "gpm": 5.52
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.53,
+            "triangle": 1.77
+          },
+          "printedByArc": [
+            {
+              "arcDeg": 45,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 16,
+                  "gpm": 0.49
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 17,
+                  "gpm": 0.57
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 17,
+                  "gpm": 0.58
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 18,
+                  "gpm": 0.63
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 19,
+                  "gpm": 0.69
+                }
+              ]
+            },
+            {
+              "arcDeg": 90,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 16,
+                  "gpm": 0.97
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 17,
+                  "gpm": 1.13
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 17,
+                  "gpm": 1.15
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 18,
+                  "gpm": 1.25
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 19,
+                  "gpm": 1.38
+                }
+              ]
+            },
+            {
+              "arcDeg": 120,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 16,
+                  "gpm": 1.29
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 17,
+                  "gpm": 1.51
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 17,
+                  "gpm": 1.53
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 18,
+                  "gpm": 1.67
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 19,
+                  "gpm": 1.84
+                }
+              ]
+            },
+            {
+              "arcDeg": 180,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 16,
+                  "gpm": 1.94
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 17,
+                  "gpm": 2.26
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 17,
+                  "gpm": 2.3
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 18,
+                  "gpm": 2.5
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 19,
+                  "gpm": 2.76
+                }
+              ]
+            },
+            {
+              "arcDeg": 240,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 16,
+                  "gpm": 2.59
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 17,
+                  "gpm": 3.01
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 17,
+                  "gpm": 3.07
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 18,
+                  "gpm": 3.33
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 19,
+                  "gpm": 3.68
+                }
+              ]
+            },
+            {
+              "arcDeg": 270,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 16,
+                  "gpm": 2.91
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 17,
+                  "gpm": 3.39
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 17,
+                  "gpm": 3.45
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 18,
+                  "gpm": 3.75
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 19,
+                  "gpm": 4.14
+                }
+              ]
+            },
+            {
+              "arcDeg": 360,
+              "rows": [
+                {
+                  "psi": 20,
+                  "radiusFt": 16,
+                  "gpm": 3.88
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 17,
+                  "gpm": 4.52
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 17,
+                  "gpm": 4.6
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 18,
+                  "gpm": 5
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 19,
+                  "gpm": 5.52
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "source": "https://d7.hunterindustries.com/sites/default/files/CA-Cutsheet-Pro-Adjustable-Nozzles-US.pdf"
+    },
+    {
+      "id": "hu-strip",
+      "brand": "Hunter",
+      "name": "Strip Pattern spray nozzles",
+      "kind": "spray",
+      "flow": "constant",
+      "nozzles": [
+        {
+          "id": "hu-st-lcs-515",
+          "label": "LCS-515",
+          "arcFixed": null,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": {
+            "widthFt": 5,
+            "lengthFt": 15,
+            "type": "end",
+            "corner": "left"
+          },
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 20,
+              "radiusFt": null,
+              "gpm": 0.55,
+              "widthFt": 4,
+              "lengthFt": 14
+            },
+            {
+              "psi": 25,
+              "radiusFt": null,
+              "gpm": 0.6,
+              "widthFt": 5,
+              "lengthFt": 15
+            },
+            {
+              "psi": 30,
+              "radiusFt": null,
+              "gpm": 0.65,
+              "widthFt": 5,
+              "lengthFt": 15
+            },
+            {
+              "psi": 35,
+              "radiusFt": null,
+              "gpm": 0.7,
+              "widthFt": 5,
+              "lengthFt": 15
+            },
+            {
+              "psi": 40,
+              "radiusFt": null,
+              "gpm": 0.75,
+              "widthFt": 5,
+              "lengthFt": 15
+            }
+          ],
+          "chartPrecip": null
+        },
+        {
+          "id": "hu-st-rcs-515",
+          "label": "RCS-515",
+          "arcFixed": null,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": {
+            "widthFt": 5,
+            "lengthFt": 15,
+            "type": "end",
+            "corner": "right"
+          },
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 20,
+              "radiusFt": null,
+              "gpm": 0.55,
+              "widthFt": 4,
+              "lengthFt": 14
+            },
+            {
+              "psi": 25,
+              "radiusFt": null,
+              "gpm": 0.6,
+              "widthFt": 5,
+              "lengthFt": 15
+            },
+            {
+              "psi": 30,
+              "radiusFt": null,
+              "gpm": 0.65,
+              "widthFt": 5,
+              "lengthFt": 15
+            },
+            {
+              "psi": 35,
+              "radiusFt": null,
+              "gpm": 0.7,
+              "widthFt": 5,
+              "lengthFt": 15
+            },
+            {
+              "psi": 40,
+              "radiusFt": null,
+              "gpm": 0.75,
+              "widthFt": 5,
+              "lengthFt": 15
+            }
+          ],
+          "chartPrecip": null
+        },
+        {
+          "id": "hu-st-es-515",
+          "label": "ES-515",
+          "arcFixed": null,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": {
+            "widthFt": 5,
+            "lengthFt": 15,
+            "type": "end"
+          },
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 20,
+              "radiusFt": null,
+              "gpm": 0.55,
+              "widthFt": 4,
+              "lengthFt": 14
+            },
+            {
+              "psi": 25,
+              "radiusFt": null,
+              "gpm": 0.6,
+              "widthFt": 5,
+              "lengthFt": 15
+            },
+            {
+              "psi": 30,
+              "radiusFt": null,
+              "gpm": 0.65,
+              "widthFt": 5,
+              "lengthFt": 15
+            },
+            {
+              "psi": 35,
+              "radiusFt": null,
+              "gpm": 0.7,
+              "widthFt": 5,
+              "lengthFt": 15
+            },
+            {
+              "psi": 40,
+              "radiusFt": null,
+              "gpm": 0.75,
+              "widthFt": 5,
+              "lengthFt": 15
+            }
+          ],
+          "chartPrecip": null
+        },
+        {
+          "id": "hu-st-ss-530",
+          "label": "SS-530",
+          "arcFixed": null,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": {
+            "widthFt": 5,
+            "lengthFt": 30,
+            "type": "side"
+          },
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 20,
+              "radiusFt": null,
+              "gpm": 1.1,
+              "widthFt": 4,
+              "lengthFt": 28
+            },
+            {
+              "psi": 25,
+              "radiusFt": null,
+              "gpm": 1.2,
+              "widthFt": 5,
+              "lengthFt": 30
+            },
+            {
+              "psi": 30,
+              "radiusFt": null,
+              "gpm": 1.3,
+              "widthFt": 5,
+              "lengthFt": 30
+            },
+            {
+              "psi": 35,
+              "radiusFt": null,
+              "gpm": 1.4,
+              "widthFt": 5,
+              "lengthFt": 30
+            },
+            {
+              "psi": 40,
+              "radiusFt": null,
+              "gpm": 1.5,
+              "widthFt": 5,
+              "lengthFt": 30
+            }
+          ],
+          "chartPrecip": null
+        },
+        {
+          "id": "hu-st-cs-530",
+          "label": "CS-530",
+          "arcFixed": null,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": {
+            "widthFt": 5,
+            "lengthFt": 30,
+            "type": "center"
+          },
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 20,
+              "radiusFt": null,
+              "gpm": 1.1,
+              "widthFt": 4,
+              "lengthFt": 28
+            },
+            {
+              "psi": 25,
+              "radiusFt": null,
+              "gpm": 1.2,
+              "widthFt": 5,
+              "lengthFt": 30
+            },
+            {
+              "psi": 30,
+              "radiusFt": null,
+              "gpm": 1.3,
+              "widthFt": 5,
+              "lengthFt": 30
+            },
+            {
+              "psi": 35,
+              "radiusFt": null,
+              "gpm": 1.4,
+              "widthFt": 5,
+              "lengthFt": 30
+            },
+            {
+              "psi": 40,
+              "radiusFt": null,
+              "gpm": 1.5,
+              "widthFt": 5,
+              "lengthFt": 30
+            }
+          ],
+          "chartPrecip": null
+        },
+        {
+          "id": "hu-st-ss-918",
+          "label": "SS-918",
+          "arcFixed": null,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": {
+            "widthFt": 9,
+            "lengthFt": 18,
+            "type": "side"
+          },
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 20,
+              "radiusFt": null,
+              "gpm": 1.45,
+              "widthFt": 8,
+              "lengthFt": 17
+            },
+            {
+              "psi": 25,
+              "radiusFt": null,
+              "gpm": 1.58,
+              "widthFt": 9,
+              "lengthFt": 18
+            },
+            {
+              "psi": 30,
+              "radiusFt": null,
+              "gpm": 1.72,
+              "widthFt": 9,
+              "lengthFt": 18
+            },
+            {
+              "psi": 35,
+              "radiusFt": null,
+              "gpm": 1.88,
+              "widthFt": 9,
+              "lengthFt": 18
+            },
+            {
+              "psi": 40,
+              "radiusFt": null,
+              "gpm": 2.08,
+              "widthFt": 9,
+              "lengthFt": 18
+            }
+          ],
+          "chartPrecip": null
+        }
+      ],
+      "source": "https://d7.hunterindustries.com/sites/default/files/CA-Cutsheet-Strip-Pattern-Nozzles-US.pdf"
+    },
+    {
+      "id": "hu-mp-rotator",
+      "brand": "Hunter",
+      "name": "MP Rotator (standard: MP1000, MP2000, MP3000, MP3500, MP Corner)",
+      "kind": "rotary",
+      "flow": "arc",
+      "nozzles": [
+        {
+          "id": "hu-mp1000-90",
+          "label": "MP1000-90",
+          "arcFixed": null,
+          "arcMin": 90,
+          "arcMax": 210,
+          "strip": null,
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 12,
+              "gpm": 0.68
+            },
+            {
+              "psi": 35,
+              "radiusFt": 13,
+              "gpm": 0.76
+            },
+            {
+              "psi": 40,
+              "radiusFt": 14,
+              "gpm": 0.84
+            },
+            {
+              "psi": 45,
+              "radiusFt": 14,
+              "gpm": 0.88
+            },
+            {
+              "psi": 50,
+              "radiusFt": 15,
+              "gpm": 1
+            },
+            {
+              "psi": 55,
+              "radiusFt": 15,
+              "gpm": 1.02
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.41,
+            "triangle": 0.48
+          },
+          "printedByArc": [
+            {
+              "arcDeg": 90,
+              "rows": [
+                {
+                  "psi": 30,
+                  "radiusFt": 12,
+                  "gpm": 0.17
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 13,
+                  "gpm": 0.19
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 14,
+                  "gpm": 0.21
+                },
+                {
+                  "psi": 45,
+                  "radiusFt": 14,
+                  "gpm": 0.23
+                },
+                {
+                  "psi": 50,
+                  "radiusFt": 15,
+                  "gpm": 0.25
+                },
+                {
+                  "psi": 55,
+                  "radiusFt": 15,
+                  "gpm": 0.27
+                }
+              ]
+            },
+            {
+              "arcDeg": 180,
+              "rows": [
+                {
+                  "psi": 30,
+                  "radiusFt": 12,
+                  "gpm": 0.34
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 13,
+                  "gpm": 0.38
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 14,
+                  "gpm": 0.42
+                },
+                {
+                  "psi": 45,
+                  "radiusFt": 14,
+                  "gpm": 0.44
+                },
+                {
+                  "psi": 50,
+                  "radiusFt": 15,
+                  "gpm": 0.5
+                },
+                {
+                  "psi": 55,
+                  "radiusFt": 15,
+                  "gpm": 0.51
+                }
+              ]
+            },
+            {
+              "arcDeg": 210,
+              "rows": [
+                {
+                  "psi": 30,
+                  "radiusFt": 12,
+                  "gpm": 0.4
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 13,
+                  "gpm": 0.45
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 14,
+                  "gpm": 0.49
+                },
+                {
+                  "psi": 45,
+                  "radiusFt": 14,
+                  "gpm": 0.51
+                },
+                {
+                  "psi": 50,
+                  "radiusFt": 15,
+                  "gpm": 0.57
+                },
+                {
+                  "psi": 55,
+                  "radiusFt": 15,
+                  "gpm": 0.59
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "hu-mp1000-210",
+          "label": "MP1000-210",
+          "arcFixed": null,
+          "arcMin": 210,
+          "arcMax": 270,
+          "strip": null,
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 12,
+              "gpm": 0.64
+            },
+            {
+              "psi": 35,
+              "radiusFt": 13,
+              "gpm": 0.707
+            },
+            {
+              "psi": 40,
+              "radiusFt": 14,
+              "gpm": 0.84
+            },
+            {
+              "psi": 45,
+              "radiusFt": 14,
+              "gpm": 0.893
+            },
+            {
+              "psi": 50,
+              "radiusFt": 15,
+              "gpm": 0.96
+            },
+            {
+              "psi": 55,
+              "radiusFt": 15,
+              "gpm": 1
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.41,
+            "triangle": 0.48
+          },
+          "printedByArc": [
+            {
+              "arcDeg": 210,
+              "rows": [
+                {
+                  "psi": 30,
+                  "radiusFt": 12,
+                  "gpm": 0.4
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 13,
+                  "gpm": 0.45
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 14,
+                  "gpm": 0.49
+                },
+                {
+                  "psi": 45,
+                  "radiusFt": 14,
+                  "gpm": 0.51
+                },
+                {
+                  "psi": 50,
+                  "radiusFt": 15,
+                  "gpm": 0.57
+                },
+                {
+                  "psi": 55,
+                  "radiusFt": 15,
+                  "gpm": 0.59
+                }
+              ]
+            },
+            {
+              "arcDeg": 270,
+              "rows": [
+                {
+                  "psi": 30,
+                  "radiusFt": 12,
+                  "gpm": 0.48
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 13,
+                  "gpm": 0.53
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 14,
+                  "gpm": 0.63
+                },
+                {
+                  "psi": 45,
+                  "radiusFt": 14,
+                  "gpm": 0.67
+                },
+                {
+                  "psi": 50,
+                  "radiusFt": 15,
+                  "gpm": 0.72
+                },
+                {
+                  "psi": 55,
+                  "radiusFt": 15,
+                  "gpm": 0.75
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "hu-mp1000-360",
+          "label": "MP1000-360",
+          "arcFixed": 360,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 12,
+              "gpm": 0.69
+            },
+            {
+              "psi": 35,
+              "radiusFt": 13,
+              "gpm": 0.77
+            },
+            {
+              "psi": 40,
+              "radiusFt": 14,
+              "gpm": 0.84
+            },
+            {
+              "psi": 45,
+              "radiusFt": 14,
+              "gpm": 0.88
+            },
+            {
+              "psi": 50,
+              "radiusFt": 15,
+              "gpm": 0.98
+            },
+            {
+              "psi": 55,
+              "radiusFt": 15,
+              "gpm": 1.01
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.41,
+            "triangle": 0.48
+          }
+        },
+        {
+          "id": "hu-mp2000-90",
+          "label": "MP2000-90",
+          "arcFixed": null,
+          "arcMin": 90,
+          "arcMax": 210,
+          "strip": null,
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 25,
+              "radiusFt": 16,
+              "gpm": 1.2
+            },
+            {
+              "psi": 30,
+              "radiusFt": 17,
+              "gpm": 1.28
+            },
+            {
+              "psi": 35,
+              "radiusFt": 18,
+              "gpm": 1.42
+            },
+            {
+              "psi": 40,
+              "radiusFt": 19,
+              "gpm": 1.54
+            },
+            {
+              "psi": 45,
+              "radiusFt": 20,
+              "gpm": 1.7
+            },
+            {
+              "psi": 50,
+              "radiusFt": 21,
+              "gpm": 1.82
+            },
+            {
+              "psi": 55,
+              "radiusFt": 21,
+              "gpm": 1.9
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.41,
+            "triangle": 0.47
+          },
+          "printedByArc": [
+            {
+              "arcDeg": 90,
+              "rows": [
+                {
+                  "psi": 25,
+                  "radiusFt": 17,
+                  "gpm": 0.34
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 18,
+                  "gpm": 0.38
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 19,
+                  "gpm": 0.4
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 20,
+                  "gpm": 0.43
+                },
+                {
+                  "psi": 45,
+                  "radiusFt": 21,
+                  "gpm": 0.46
+                },
+                {
+                  "psi": 50,
+                  "radiusFt": 21,
+                  "gpm": 0.47
+                },
+                {
+                  "psi": 55,
+                  "radiusFt": 21,
+                  "gpm": 0.48
+                }
+              ]
+            },
+            {
+              "arcDeg": 180,
+              "rows": [
+                {
+                  "psi": 25,
+                  "radiusFt": 16,
+                  "gpm": 0.6
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 17,
+                  "gpm": 0.64
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 18,
+                  "gpm": 0.71
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 19,
+                  "gpm": 0.77
+                },
+                {
+                  "psi": 45,
+                  "radiusFt": 20,
+                  "gpm": 0.85
+                },
+                {
+                  "psi": 50,
+                  "radiusFt": 21,
+                  "gpm": 0.91
+                },
+                {
+                  "psi": 55,
+                  "radiusFt": 21,
+                  "gpm": 0.95
+                }
+              ]
+            },
+            {
+              "arcDeg": 210,
+              "rows": [
+                {
+                  "psi": 25,
+                  "radiusFt": 16,
+                  "gpm": 0.72
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 17,
+                  "gpm": 0.75
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 18,
+                  "gpm": 0.81
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 19,
+                  "gpm": 0.86
+                },
+                {
+                  "psi": 45,
+                  "radiusFt": 20,
+                  "gpm": 0.91
+                },
+                {
+                  "psi": 50,
+                  "radiusFt": 21,
+                  "gpm": 0.98
+                },
+                {
+                  "psi": 55,
+                  "radiusFt": 21,
+                  "gpm": 1.01
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "hu-mp2000-210",
+          "label": "MP2000-210",
+          "arcFixed": null,
+          "arcMin": 210,
+          "arcMax": 270,
+          "strip": null,
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 25,
+              "radiusFt": 16,
+              "gpm": 1.16
+            },
+            {
+              "psi": 30,
+              "radiusFt": 17,
+              "gpm": 1.267
+            },
+            {
+              "psi": 35,
+              "radiusFt": 18,
+              "gpm": 1.373
+            },
+            {
+              "psi": 40,
+              "radiusFt": 19,
+              "gpm": 1.467
+            },
+            {
+              "psi": 45,
+              "radiusFt": 20,
+              "gpm": 1.56
+            },
+            {
+              "psi": 50,
+              "radiusFt": 21,
+              "gpm": 1.64
+            },
+            {
+              "psi": 55,
+              "radiusFt": 21,
+              "gpm": 1.733
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.39,
+            "triangle": 0.45
+          },
+          "printedByArc": [
+            {
+              "arcDeg": 210,
+              "rows": [
+                {
+                  "psi": 25,
+                  "radiusFt": 16,
+                  "gpm": 0.72
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 17,
+                  "gpm": 0.75
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 18,
+                  "gpm": 0.81
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 19,
+                  "gpm": 0.86
+                },
+                {
+                  "psi": 45,
+                  "radiusFt": 20,
+                  "gpm": 0.91
+                },
+                {
+                  "psi": 50,
+                  "radiusFt": 21,
+                  "gpm": 0.98
+                },
+                {
+                  "psi": 55,
+                  "radiusFt": 21,
+                  "gpm": 1.01
+                }
+              ]
+            },
+            {
+              "arcDeg": 270,
+              "rows": [
+                {
+                  "psi": 25,
+                  "radiusFt": 16,
+                  "gpm": 0.87
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 17,
+                  "gpm": 0.95
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 18,
+                  "gpm": 1.03
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 19,
+                  "gpm": 1.1
+                },
+                {
+                  "psi": 45,
+                  "radiusFt": 20,
+                  "gpm": 1.17
+                },
+                {
+                  "psi": 50,
+                  "radiusFt": 21,
+                  "gpm": 1.23
+                },
+                {
+                  "psi": 55,
+                  "radiusFt": 21,
+                  "gpm": 1.3
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "hu-mp2000-360",
+          "label": "MP2000-360",
+          "arcFixed": 360,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 25,
+              "radiusFt": 16,
+              "gpm": 1.2
+            },
+            {
+              "psi": 30,
+              "radiusFt": 17,
+              "gpm": 1.28
+            },
+            {
+              "psi": 35,
+              "radiusFt": 18,
+              "gpm": 1.37
+            },
+            {
+              "psi": 40,
+              "radiusFt": 19,
+              "gpm": 1.48
+            },
+            {
+              "psi": 45,
+              "radiusFt": 20,
+              "gpm": 1.57
+            },
+            {
+              "psi": 50,
+              "radiusFt": 21,
+              "gpm": 1.68
+            },
+            {
+              "psi": 55,
+              "radiusFt": 21,
+              "gpm": 1.74
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.39,
+            "triangle": 0.46
+          }
+        },
+        {
+          "id": "hu-mp3000-90",
+          "label": "MP3000-90",
+          "arcFixed": null,
+          "arcMin": 90,
+          "arcMax": 210,
+          "strip": null,
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 25,
+              "radiusFt": 25,
+              "gpm": 2.88
+            },
+            {
+              "psi": 30,
+              "radiusFt": 27,
+              "gpm": 3.16
+            },
+            {
+              "psi": 35,
+              "radiusFt": 28,
+              "gpm": 3.4
+            },
+            {
+              "psi": 40,
+              "radiusFt": 30,
+              "gpm": 3.64
+            },
+            {
+              "psi": 45,
+              "radiusFt": 30,
+              "gpm": 3.86
+            },
+            {
+              "psi": 50,
+              "radiusFt": 30,
+              "gpm": 4.08
+            },
+            {
+              "psi": 55,
+              "radiusFt": 30,
+              "gpm": 4.26
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.39,
+            "triangle": 0.45
+          },
+          "printedByArc": [
+            {
+              "arcDeg": 90,
+              "rows": [
+                {
+                  "psi": 25,
+                  "radiusFt": 25,
+                  "gpm": 0.71
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 27,
+                  "gpm": 0.76
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 28,
+                  "gpm": 0.82
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 30,
+                  "gpm": 0.86
+                },
+                {
+                  "psi": 45,
+                  "radiusFt": 30,
+                  "gpm": 0.9
+                },
+                {
+                  "psi": 50,
+                  "radiusFt": 30,
+                  "gpm": 0.95
+                },
+                {
+                  "psi": 55,
+                  "radiusFt": 30,
+                  "gpm": 1.01
+                }
+              ]
+            },
+            {
+              "arcDeg": 180,
+              "rows": [
+                {
+                  "psi": 25,
+                  "radiusFt": 25,
+                  "gpm": 1.44
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 27,
+                  "gpm": 1.58
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 28,
+                  "gpm": 1.7
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 30,
+                  "gpm": 1.82
+                },
+                {
+                  "psi": 45,
+                  "radiusFt": 30,
+                  "gpm": 1.93
+                },
+                {
+                  "psi": 50,
+                  "radiusFt": 30,
+                  "gpm": 2.04
+                },
+                {
+                  "psi": 55,
+                  "radiusFt": 30,
+                  "gpm": 2.13
+                }
+              ]
+            },
+            {
+              "arcDeg": 210,
+              "rows": [
+                {
+                  "psi": 25,
+                  "radiusFt": 25,
+                  "gpm": 1.68
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 27,
+                  "gpm": 1.84
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 28,
+                  "gpm": 1.99
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 30,
+                  "gpm": 2.12
+                },
+                {
+                  "psi": 45,
+                  "radiusFt": 30,
+                  "gpm": 2.25
+                },
+                {
+                  "psi": 50,
+                  "radiusFt": 30,
+                  "gpm": 2.37
+                },
+                {
+                  "psi": 55,
+                  "radiusFt": 30,
+                  "gpm": 2.49
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "hu-mp3000-210",
+          "label": "MP3000-210",
+          "arcFixed": null,
+          "arcMin": 210,
+          "arcMax": 270,
+          "strip": null,
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 25,
+              "radiusFt": 25,
+              "gpm": 2.92
+            },
+            {
+              "psi": 30,
+              "radiusFt": 27,
+              "gpm": 3.16
+            },
+            {
+              "psi": 35,
+              "radiusFt": 28,
+              "gpm": 3.4
+            },
+            {
+              "psi": 40,
+              "radiusFt": 30,
+              "gpm": 3.64
+            },
+            {
+              "psi": 45,
+              "radiusFt": 30,
+              "gpm": 3.853
+            },
+            {
+              "psi": 50,
+              "radiusFt": 30,
+              "gpm": 4.08
+            },
+            {
+              "psi": 55,
+              "radiusFt": 30,
+              "gpm": 4.293
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.39,
+            "triangle": 0.45
+          },
+          "printedByArc": [
+            {
+              "arcDeg": 210,
+              "rows": [
+                {
+                  "psi": 25,
+                  "radiusFt": 25,
+                  "gpm": 1.68
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 27,
+                  "gpm": 1.84
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 28,
+                  "gpm": 1.99
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 30,
+                  "gpm": 2.12
+                },
+                {
+                  "psi": 45,
+                  "radiusFt": 30,
+                  "gpm": 2.25
+                },
+                {
+                  "psi": 50,
+                  "radiusFt": 30,
+                  "gpm": 2.37
+                },
+                {
+                  "psi": 55,
+                  "radiusFt": 30,
+                  "gpm": 2.49
+                }
+              ]
+            },
+            {
+              "arcDeg": 270,
+              "rows": [
+                {
+                  "psi": 25,
+                  "radiusFt": 25,
+                  "gpm": 2.19
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 27,
+                  "gpm": 2.37
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 28,
+                  "gpm": 2.55
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 30,
+                  "gpm": 2.73
+                },
+                {
+                  "psi": 45,
+                  "radiusFt": 30,
+                  "gpm": 2.89
+                },
+                {
+                  "psi": 50,
+                  "radiusFt": 30,
+                  "gpm": 3.06
+                },
+                {
+                  "psi": 55,
+                  "radiusFt": 30,
+                  "gpm": 3.22
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "hu-mp3000-360",
+          "label": "MP3000-360",
+          "arcFixed": 360,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 25,
+              "radiusFt": 25,
+              "gpm": 2.88
+            },
+            {
+              "psi": 30,
+              "radiusFt": 27,
+              "gpm": 3.15
+            },
+            {
+              "psi": 35,
+              "radiusFt": 28,
+              "gpm": 3.4
+            },
+            {
+              "psi": 40,
+              "radiusFt": 30,
+              "gpm": 3.64
+            },
+            {
+              "psi": 45,
+              "radiusFt": 30,
+              "gpm": 3.86
+            },
+            {
+              "psi": 50,
+              "radiusFt": 30,
+              "gpm": 4.07
+            },
+            {
+              "psi": 55,
+              "radiusFt": 30,
+              "gpm": 4.27
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.39,
+            "triangle": 0.45
+          }
+        },
+        {
+          "id": "hu-mp3500-90",
+          "label": "MP3500-90",
+          "arcFixed": null,
+          "arcMin": 90,
+          "arcMax": 210,
+          "strip": null,
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 25,
+              "radiusFt": 33,
+              "gpm": 4.42
+            },
+            {
+              "psi": 30,
+              "radiusFt": 34,
+              "gpm": 4.48
+            },
+            {
+              "psi": 35,
+              "radiusFt": 34,
+              "gpm": 5.3
+            },
+            {
+              "psi": 40,
+              "radiusFt": 35,
+              "gpm": 5.72
+            },
+            {
+              "psi": 45,
+              "radiusFt": 35,
+              "gpm": 6.2
+            },
+            {
+              "psi": 50,
+              "radiusFt": 35,
+              "gpm": 6.42
+            },
+            {
+              "psi": 55,
+              "radiusFt": 35,
+              "gpm": 6.56
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.45,
+            "triangle": 0.52
+          },
+          "printedByArc": [
+            {
+              "arcDeg": 90,
+              "rows": [
+                {
+                  "psi": 25,
+                  "radiusFt": 33,
+                  "gpm": 1.04
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 34,
+                  "gpm": 1.13
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 34,
+                  "gpm": 1.21
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 35,
+                  "gpm": 1.28
+                },
+                {
+                  "psi": 45,
+                  "radiusFt": 35,
+                  "gpm": 1.38
+                },
+                {
+                  "psi": 50,
+                  "radiusFt": 35,
+                  "gpm": 1.43
+                },
+                {
+                  "psi": 55,
+                  "radiusFt": 35,
+                  "gpm": 1.5
+                }
+              ]
+            },
+            {
+              "arcDeg": 180,
+              "rows": [
+                {
+                  "psi": 25,
+                  "radiusFt": 33,
+                  "gpm": 2.21
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 34,
+                  "gpm": 2.24
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 34,
+                  "gpm": 2.65
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 35,
+                  "gpm": 2.86
+                },
+                {
+                  "psi": 45,
+                  "radiusFt": 35,
+                  "gpm": 3.1
+                },
+                {
+                  "psi": 50,
+                  "radiusFt": 35,
+                  "gpm": 3.21
+                },
+                {
+                  "psi": 55,
+                  "radiusFt": 35,
+                  "gpm": 3.28
+                }
+              ]
+            },
+            {
+              "arcDeg": 210,
+              "rows": [
+                {
+                  "psi": 25,
+                  "radiusFt": 33,
+                  "gpm": 2.59
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 34,
+                  "gpm": 2.84
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 34,
+                  "gpm": 3.08
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 35,
+                  "gpm": 3.29
+                },
+                {
+                  "psi": 45,
+                  "radiusFt": 35,
+                  "gpm": 3.54
+                },
+                {
+                  "psi": 50,
+                  "radiusFt": 35,
+                  "gpm": 3.76
+                },
+                {
+                  "psi": 55,
+                  "radiusFt": 35,
+                  "gpm": 3.94
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "hu-mp-corner",
+          "label": "MP-CORNER",
+          "arcFixed": null,
+          "arcMin": 45,
+          "arcMax": 105,
+          "strip": null,
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 25,
+              "radiusFt": 11,
+              "gpm": 1.24
+            },
+            {
+              "psi": 30,
+              "radiusFt": 12,
+              "gpm": 1.36
+            },
+            {
+              "psi": 35,
+              "radiusFt": 13,
+              "gpm": 1.44
+            },
+            {
+              "psi": 40,
+              "radiusFt": 14,
+              "gpm": 1.56
+            },
+            {
+              "psi": 45,
+              "radiusFt": 14,
+              "gpm": 1.64
+            },
+            {
+              "psi": 50,
+              "radiusFt": 15,
+              "gpm": 1.72
+            },
+            {
+              "psi": 55,
+              "radiusFt": 15,
+              "gpm": 1.84
+            }
+          ],
+          "chartPrecip": null,
+          "printedByArc": [
+            {
+              "arcDeg": 45,
+              "rows": [
+                {
+                  "psi": 30,
+                  "radiusFt": 12,
+                  "gpm": 0.17
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 13,
+                  "gpm": 0.18
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 14,
+                  "gpm": 0.19
+                },
+                {
+                  "psi": 45,
+                  "radiusFt": 14,
+                  "gpm": 0.21
+                },
+                {
+                  "psi": 50,
+                  "radiusFt": 14,
+                  "gpm": 0.22
+                },
+                {
+                  "psi": 55,
+                  "radiusFt": 15,
+                  "gpm": 0.23
+                }
+              ]
+            },
+            {
+              "arcDeg": 90,
+              "rows": [
+                {
+                  "psi": 25,
+                  "radiusFt": 11,
+                  "gpm": 0.31
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 12,
+                  "gpm": 0.34
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 13,
+                  "gpm": 0.36
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 14,
+                  "gpm": 0.39
+                },
+                {
+                  "psi": 45,
+                  "radiusFt": 14,
+                  "gpm": 0.41
+                },
+                {
+                  "psi": 50,
+                  "radiusFt": 15,
+                  "gpm": 0.43
+                },
+                {
+                  "psi": 55,
+                  "radiusFt": 15,
+                  "gpm": 0.46
+                }
+              ]
+            },
+            {
+              "arcDeg": 105,
+              "rows": [
+                {
+                  "psi": 25,
+                  "radiusFt": 11,
+                  "gpm": 0.36
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 12,
+                  "gpm": 0.39
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 13,
+                  "gpm": 0.42
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 14,
+                  "gpm": 0.45
+                },
+                {
+                  "psi": 45,
+                  "radiusFt": 14,
+                  "gpm": 0.48
+                },
+                {
+                  "psi": 50,
+                  "radiusFt": 15,
+                  "gpm": 0.51
+                },
+                {
+                  "psi": 55,
+                  "radiusFt": 15,
+                  "gpm": 0.53
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "source": "https://d7.hunterindustries.com/sites/default/files/CA-Cutsheet-MP-Rotator-US.pdf"
+    },
+    {
+      "id": "hu-mp800",
+      "brand": "Hunter",
+      "name": "MP Rotator 800 series (MP800SR, MP815)",
+      "kind": "rotary",
+      "flow": "arc",
+      "nozzles": [
+        {
+          "id": "hu-mp800sr-90",
+          "label": "MP800SR-90",
+          "arcFixed": null,
+          "arcMin": 90,
+          "arcMax": 210,
+          "strip": null,
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 8,
+              "gpm": 0.66,
+              "minRadiusFt": 6,
+              "minRadiusGpm": 0.52
+            },
+            {
+              "psi": 35,
+              "radiusFt": 9,
+              "gpm": 0.76,
+              "minRadiusFt": 7,
+              "minRadiusGpm": 0.58
+            },
+            {
+              "psi": 40,
+              "radiusFt": 10,
+              "gpm": 0.84,
+              "minRadiusFt": 8,
+              "minRadiusGpm": 0.64
+            },
+            {
+              "psi": 45,
+              "radiusFt": 11,
+              "gpm": 0.92,
+              "minRadiusFt": 8,
+              "minRadiusGpm": 0.72
+            },
+            {
+              "psi": 50,
+              "radiusFt": 11,
+              "gpm": 0.96,
+              "minRadiusFt": 9,
+              "minRadiusGpm": 0.76
+            },
+            {
+              "psi": 55,
+              "radiusFt": 12,
+              "gpm": 1,
+              "minRadiusFt": 10,
+              "minRadiusGpm": 0.8
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.81,
+            "triangle": 0.93
+          },
+          "printedByArc": [
+            {
+              "arcDeg": 90,
+              "rows": [
+                {
+                  "psi": 30,
+                  "radiusFt": 8,
+                  "gpm": 0.17
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 9,
+                  "gpm": 0.21
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 10,
+                  "gpm": 0.23
+                },
+                {
+                  "psi": 45,
+                  "radiusFt": 11,
+                  "gpm": 0.25
+                },
+                {
+                  "psi": 50,
+                  "radiusFt": 11,
+                  "gpm": 0.27
+                },
+                {
+                  "psi": 55,
+                  "radiusFt": 12,
+                  "gpm": 0.28
+                }
+              ]
+            },
+            {
+              "arcDeg": 180,
+              "rows": [
+                {
+                  "psi": 30,
+                  "radiusFt": 8,
+                  "gpm": 0.33
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 9,
+                  "gpm": 0.38
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 10,
+                  "gpm": 0.42
+                },
+                {
+                  "psi": 45,
+                  "radiusFt": 11,
+                  "gpm": 0.46
+                },
+                {
+                  "psi": 50,
+                  "radiusFt": 11,
+                  "gpm": 0.48
+                },
+                {
+                  "psi": 55,
+                  "radiusFt": 12,
+                  "gpm": 0.5
+                }
+              ]
+            },
+            {
+              "arcDeg": 210,
+              "rows": [
+                {
+                  "psi": 30,
+                  "radiusFt": 8,
+                  "gpm": 0.35
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 9,
+                  "gpm": 0.38
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 10,
+                  "gpm": 0.43
+                },
+                {
+                  "psi": 45,
+                  "radiusFt": 10,
+                  "gpm": 0.45
+                },
+                {
+                  "psi": 50,
+                  "radiusFt": 11,
+                  "gpm": 0.49
+                },
+                {
+                  "psi": 55,
+                  "radiusFt": 12,
+                  "gpm": 0.56
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "hu-mp800sr-360",
+          "label": "MP800SR-360",
+          "arcFixed": 360,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 8,
+              "gpm": 0.66,
+              "minRadiusFt": 6,
+              "minRadiusGpm": 0.47
+            },
+            {
+              "psi": 35,
+              "radiusFt": 9,
+              "gpm": 0.71,
+              "minRadiusFt": 7,
+              "minRadiusGpm": 0.52
+            },
+            {
+              "psi": 40,
+              "radiusFt": 10,
+              "gpm": 0.78,
+              "minRadiusFt": 8,
+              "minRadiusGpm": 0.56
+            },
+            {
+              "psi": 45,
+              "radiusFt": 10,
+              "gpm": 0.85,
+              "minRadiusFt": 8,
+              "minRadiusGpm": 0.59
+            },
+            {
+              "psi": 50,
+              "radiusFt": 11,
+              "gpm": 0.88,
+              "minRadiusFt": 9,
+              "minRadiusGpm": 0.63
+            },
+            {
+              "psi": 55,
+              "radiusFt": 12,
+              "gpm": 0.98,
+              "minRadiusFt": 10,
+              "minRadiusGpm": 0.7
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.79,
+            "triangle": 0.91
+          }
+        },
+        {
+          "id": "hu-mp815-90",
+          "label": "MP815-90",
+          "arcFixed": null,
+          "arcMin": 90,
+          "arcMax": 210,
+          "strip": null,
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 13,
+              "gpm": 1.5
+            },
+            {
+              "psi": 35,
+              "radiusFt": 14,
+              "gpm": 1.72
+            },
+            {
+              "psi": 40,
+              "radiusFt": 15,
+              "gpm": 1.86
+            },
+            {
+              "psi": 45,
+              "radiusFt": 15,
+              "gpm": 1.92
+            },
+            {
+              "psi": 50,
+              "radiusFt": 16,
+              "gpm": 2.12
+            },
+            {
+              "psi": 55,
+              "radiusFt": 16,
+              "gpm": 2.22
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.8,
+            "triangle": 0.92
+          },
+          "printedByArc": [
+            {
+              "arcDeg": 90,
+              "rows": [
+                {
+                  "psi": 30,
+                  "radiusFt": 14,
+                  "gpm": 0.42
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 15,
+                  "gpm": 0.46
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 15,
+                  "gpm": 0.49
+                },
+                {
+                  "psi": 45,
+                  "radiusFt": 16,
+                  "gpm": 0.52
+                },
+                {
+                  "psi": 50,
+                  "radiusFt": 16,
+                  "gpm": 0.55
+                },
+                {
+                  "psi": 55,
+                  "radiusFt": 16,
+                  "gpm": 0.58
+                }
+              ]
+            },
+            {
+              "arcDeg": 180,
+              "rows": [
+                {
+                  "psi": 30,
+                  "radiusFt": 13,
+                  "gpm": 0.75
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 14,
+                  "gpm": 0.86
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 15,
+                  "gpm": 0.93
+                },
+                {
+                  "psi": 45,
+                  "radiusFt": 15,
+                  "gpm": 0.96
+                },
+                {
+                  "psi": 50,
+                  "radiusFt": 16,
+                  "gpm": 1.06
+                },
+                {
+                  "psi": 55,
+                  "radiusFt": 16,
+                  "gpm": 1.11
+                }
+              ]
+            },
+            {
+              "arcDeg": 210,
+              "rows": [
+                {
+                  "psi": 30,
+                  "radiusFt": 13,
+                  "gpm": 0.88
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 14,
+                  "gpm": 0.96
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 15,
+                  "gpm": 1.1
+                },
+                {
+                  "psi": 45,
+                  "radiusFt": 15,
+                  "gpm": 1.16
+                },
+                {
+                  "psi": 50,
+                  "radiusFt": 16,
+                  "gpm": 1.24
+                },
+                {
+                  "psi": 55,
+                  "radiusFt": 16,
+                  "gpm": 1.3
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "hu-mp815-210",
+          "label": "MP815-210",
+          "arcFixed": null,
+          "arcMin": 210,
+          "arcMax": 270,
+          "strip": null,
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 13,
+              "gpm": 1.52
+            },
+            {
+              "psi": 35,
+              "radiusFt": 14,
+              "gpm": 1.653
+            },
+            {
+              "psi": 40,
+              "radiusFt": 15,
+              "gpm": 1.867
+            },
+            {
+              "psi": 45,
+              "radiusFt": 15,
+              "gpm": 1.96
+            },
+            {
+              "psi": 50,
+              "radiusFt": 16,
+              "gpm": 2.053
+            },
+            {
+              "psi": 55,
+              "radiusFt": 16,
+              "gpm": 2.147
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.8,
+            "triangle": 0.92
+          },
+          "printedByArc": [
+            {
+              "arcDeg": 210,
+              "rows": [
+                {
+                  "psi": 30,
+                  "radiusFt": 13,
+                  "gpm": 0.88
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 14,
+                  "gpm": 0.96
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 15,
+                  "gpm": 1.1
+                },
+                {
+                  "psi": 45,
+                  "radiusFt": 15,
+                  "gpm": 1.16
+                },
+                {
+                  "psi": 50,
+                  "radiusFt": 16,
+                  "gpm": 1.24
+                },
+                {
+                  "psi": 55,
+                  "radiusFt": 16,
+                  "gpm": 1.3
+                }
+              ]
+            },
+            {
+              "arcDeg": 270,
+              "rows": [
+                {
+                  "psi": 30,
+                  "radiusFt": 13,
+                  "gpm": 1.14
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 14,
+                  "gpm": 1.24
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 15,
+                  "gpm": 1.4
+                },
+                {
+                  "psi": 45,
+                  "radiusFt": 15,
+                  "gpm": 1.47
+                },
+                {
+                  "psi": 50,
+                  "radiusFt": 16,
+                  "gpm": 1.54
+                },
+                {
+                  "psi": 55,
+                  "radiusFt": 16,
+                  "gpm": 1.61
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "hu-mp815-360",
+          "label": "MP815-360",
+          "arcFixed": 360,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 13,
+              "gpm": 1.52
+            },
+            {
+              "psi": 35,
+              "radiusFt": 14,
+              "gpm": 1.7
+            },
+            {
+              "psi": 40,
+              "radiusFt": 15,
+              "gpm": 1.87
+            },
+            {
+              "psi": 45,
+              "radiusFt": 15,
+              "gpm": 2
+            },
+            {
+              "psi": 50,
+              "radiusFt": 16,
+              "gpm": 2.13
+            },
+            {
+              "psi": 55,
+              "radiusFt": 16,
+              "gpm": 2.26
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.8,
+            "triangle": 0.92
+          }
+        }
+      ],
+      "source": "https://d7.hunterindustries.com/sites/default/files/CA-Cutsheet-MP-Rotator-800-US.pdf"
+    },
+    {
+      "id": "hu-mp-strip",
+      "brand": "Hunter",
+      "name": "MP Rotator strip nozzles",
+      "kind": "rotary",
+      "flow": "constant",
+      "nozzles": [
+        {
+          "id": "hu-mplcs-515",
+          "label": "MPLCS-515",
+          "arcFixed": null,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": {
+            "widthFt": 5,
+            "lengthFt": 15,
+            "type": "end",
+            "corner": "left"
+          },
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": null,
+              "gpm": 0.19,
+              "widthFt": 4,
+              "lengthFt": 14
+            },
+            {
+              "psi": 35,
+              "radiusFt": null,
+              "gpm": 0.21,
+              "widthFt": 5,
+              "lengthFt": 15
+            },
+            {
+              "psi": 40,
+              "radiusFt": null,
+              "gpm": 0.22,
+              "widthFt": 5,
+              "lengthFt": 15
+            },
+            {
+              "psi": 45,
+              "radiusFt": null,
+              "gpm": 0.23,
+              "widthFt": 5,
+              "lengthFt": 15
+            },
+            {
+              "psi": 50,
+              "radiusFt": null,
+              "gpm": 0.25,
+              "widthFt": 6,
+              "lengthFt": 16
+            },
+            {
+              "psi": 55,
+              "radiusFt": null,
+              "gpm": 0.26,
+              "widthFt": 6,
+              "lengthFt": 16
+            }
+          ],
+          "chartPrecip": null
+        },
+        {
+          "id": "hu-mprcs-515",
+          "label": "MPRCS-515",
+          "arcFixed": null,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": {
+            "widthFt": 5,
+            "lengthFt": 15,
+            "type": "end",
+            "corner": "right"
+          },
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": null,
+              "gpm": 0.19,
+              "widthFt": 4,
+              "lengthFt": 14
+            },
+            {
+              "psi": 35,
+              "radiusFt": null,
+              "gpm": 0.21,
+              "widthFt": 5,
+              "lengthFt": 15
+            },
+            {
+              "psi": 40,
+              "radiusFt": null,
+              "gpm": 0.22,
+              "widthFt": 5,
+              "lengthFt": 15
+            },
+            {
+              "psi": 45,
+              "radiusFt": null,
+              "gpm": 0.23,
+              "widthFt": 5,
+              "lengthFt": 15
+            },
+            {
+              "psi": 50,
+              "radiusFt": null,
+              "gpm": 0.25,
+              "widthFt": 6,
+              "lengthFt": 16
+            },
+            {
+              "psi": 55,
+              "radiusFt": null,
+              "gpm": 0.26,
+              "widthFt": 6,
+              "lengthFt": 16
+            }
+          ],
+          "chartPrecip": null
+        },
+        {
+          "id": "hu-mpss-530",
+          "label": "MPSS-530",
+          "arcFixed": null,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": {
+            "widthFt": 5,
+            "lengthFt": 30,
+            "type": "side"
+          },
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": null,
+              "gpm": 0.38,
+              "widthFt": 4,
+              "lengthFt": 28
+            },
+            {
+              "psi": 35,
+              "radiusFt": null,
+              "gpm": 0.41,
+              "widthFt": 5,
+              "lengthFt": 30
+            },
+            {
+              "psi": 40,
+              "radiusFt": null,
+              "gpm": 0.44,
+              "widthFt": 5,
+              "lengthFt": 30
+            },
+            {
+              "psi": 45,
+              "radiusFt": null,
+              "gpm": 0.47,
+              "widthFt": 5,
+              "lengthFt": 30
+            },
+            {
+              "psi": 50,
+              "radiusFt": null,
+              "gpm": 0.49,
+              "widthFt": 6,
+              "lengthFt": 32
+            },
+            {
+              "psi": 55,
+              "radiusFt": null,
+              "gpm": 0.51,
+              "widthFt": 6,
+              "lengthFt": 32
+            }
+          ],
+          "chartPrecip": null
+        }
+      ],
+      "source": "https://d7.hunterindustries.com/sites/default/files/CA-Cutsheet-MP-Rotator-US.pdf"
+    }
+  ],
+  "notes": [
+    "SOURCES. Hunter's current sites (www.hunterirrigation.com, www.hunterindustries.com) answered every automated request with 403, so the US cut sheets were read from Hunter's own legacy file host d7.hunterindustries.com (same CA-Cutsheet-*-US.pdf files; PDF dates Nov 2021 to Oct 2022). The numbers were cross-checked against older Hunter catalogue pages held by distributors: Pro Fixed (dripdepot.com, 2016 catalogue pp. 61-63), Pro Adjustable (dripworks.com, 2015 catalogue pp. 56-58), MP Rotator (sprinklerwarehouse.com, 2018 catalogue pp. 42-44), MP800 (nelsonirrigation.com, 2019 cut sheet), MP design guide (dripdepot.com, 2016). Every value common to two editions agrees, except the trajectories noted below.",
+    "FULL-CIRCLE GPM. For flow = 'arc' families every row's gpm is the full-circle equivalent: the printed gpm x 360 / the arc of the chart row used, rounded to 3 decimals (e.g. 12Q 30 psi 0.67 x 4 = 2.68; 12TQ 2.00 x 4/3 = 2.667). radiusFt and chartPrecip are as printed for that same row.",
+    "PRO FIXED: the chart offers no 5T (use 4A/6A), no 17T or 17F (use 17A); the 2016 catalogue also lists 5/8/10 TT and TQ and 17 TT/TQ as 'use 4A/6A, 8A, 10A, 17A'. chartPrecip at 30 psi (the chart's bold recommended pressure). Trajectory of the 8 series: 15 deg in the 2022 cut sheet, 0 deg in the 2016 catalogue; 15 used.",
+    "PRO FIXED TT/TQ (12TT, 12TQ, 15TT, 15TQ, family hu-pro-fixed-tt-tq) appear only in the 2016 catalogue chart (distributor copy); the 2022 Hunter cut sheet lists Q, T, H, F only, so these may be discontinued. Their rows are the 2016 numbers.",
+    "PRO ADJUSTABLE: rows are the chart's 360 deg rows; arcMin 0 / arcMax 360 as the chart says ('Adjustable from 0 to 360'), though its rows start at 45 deg. chartPrecip from the 360 deg row at 30 psi. Flow is close to proportional to arc for 8A, 10A, 12A, 15A, 17A (within 5%), NOT for 4A worst 42% (45 deg, 40 psi: 0.16 gpm = 1.28 full-circle vs 360 deg row 0.9); 6A worst 24% (45 deg, 25 psi: 0.17 gpm = 1.36 full-circle vs 360 deg row 1.1). Each Pro Adjustable nozzle also carries printedByArc (every arc table the chart prints, 45 to 360 deg, gpm AS PRINTED for that arc, not full-circle), the field heads.js rowAtArc reads. The 4A/6A printed precipitation also changes with arc (4A at 30 psi: 4.81 to 6.26 in/h square). Trajectory of 8A: 15 deg in the 2021 cut sheet, 0 deg in the 2015 catalogue; 15 used. The chart notes that the PRS30 regulates to a maximum of 30 psi and that the radius screw may need adjusting to reach catalogue radius and flow.",
+    "PS ULTRA: its cut sheet's 'standard nozzles' chart (8A, 10A, 12A, 15A, 17A) is number-for-number the Pro Adjustable chart (checked), and its strip table is SS-530 (the spec builder calls the factory-fitted strip '5SS'). So a PS Ultra with a preinstalled nozzle uses hu-pro-adjustable or hu-st-ss-530; the body still takes any female-threaded nozzle.",
+    "STRIPS (hu-strip, hu-mp-strip): flow = 'constant' because a strip nozzle has no arc; gpm is as printed for the whole pattern. The charts give width x length, not radius, so radiusFt is null and each row carries the printed widthFt and lengthFt (fields beyond SCHEMA.md). Neither chart prints a precipitation rate, so chartPrecip is null. LCS/RCS corner strips are written as type 'end' with corner 'left'/'right', the encoding rainbird-sprays.json uses (the head sits at a corner of the rectangle). arcFixed is null (the charts print no arc for strips).",
+    "MP ROTATOR is matched-precipitation and stored as flow = 'arc'. The chart prints rows at several arcs per model; the stored full-circle gpm comes from ONE row per model: the 180 deg row x 2 for the 90-210 deg models (MP1000-90, MP2000-90, MP3000-90, MP3500-90, MP800SR-90, MP815-90), the 270 deg row x 4/3 for the 210-270 deg models (-210), the 360 deg row for -360 models, and the 90 deg row x 4 for MP-CORNER (45-105 deg). chartPrecip is from that same row at 40 psi (the chart's optimal/bold pressure). The adjustable MP nozzles also carry printedByArc with every arc row the chart prints for them, gpm as printed for that arc: -90 models 90/180/210, -210 models 210/270, MP-CORNER 45/90/105. The chart does not say whether its 210 deg row belongs to the -90 model (at its maximum) or the -210 model (at its minimum); it is given to both. The chart gives no trajectory (null). MP1000 and MP Corner (45 deg) print '--' at 25 psi, so those nozzles have no 25 psi row.",
+    "MP ROTATOR ARC SPREAD (other arc rows of the same nozzle differ from the stored full-circle value by more than 5%, at 40 psi): MP2000 90 deg row at 40 psi implies 1.72 gpm full-circle vs 1.54 stored (from the 180 deg row); MP3000 90 deg row at 40 psi implies 3.44 gpm full-circle vs 3.64 stored (from the 180 deg row); MP3500 90 deg row at 40 psi implies 5.12 gpm full-circle vs 5.72 stored (from the 180 deg row); MP800SR 90 deg row at 40 psi implies 0.92 gpm full-circle vs 0.84 stored (from the 180 deg row); MP800SR 210 deg row at 40 psi implies 0.737 gpm full-circle vs 0.84 stored (from the 180 deg row); MP815 90 deg row at 40 psi implies 1.96 gpm full-circle vs 1.86 stored (from the 180 deg row). Every other MP model's arc rows agree within 5%. MP800SR 210 deg row: its GPH column (e.g. 29.4 GPH = 0.49 gpm at 40 psi, i.e. 0.84 full-circle) agrees with the 180 deg row, so the 210 deg GPM column may be the misprint.",
+    "PRO FIXED proportionality (full-circle equivalent vs the series' F nozzle, more than 5% apart at 30 psi): 10Q at 30 psi: 1.68 gpm full-circle vs 10F 1.59; 10T at 30 psi: 1.71 gpm full-circle vs 10F 1.59; 10H at 30 psi: 1.76 gpm full-circle vs 10F 1.59. This is as Hunter prints it: the 10F's own printed precipitation (1.53 in/h square) is lower than the 10Q/T/H (1.63 to 1.69).",
+    "MP800SR: the chart has MAX RADIUS and MIN RADIUS columns. Rows hold the max-radius values; minRadiusFt and minRadiusGpm (full-circle equivalent of the MIN RADIUS flow column) are added to each MP800SR row (fields beyond SCHEMA.md). The 800 cut sheet says the minimum radius setting is reached at 30 psi (PRS30) and nominal at 40 psi (PRS40). MP815 has no min-radius columns.",
+    "MP800 CHART INCONSISTENCY: its GPH column disagrees with its GPM column in several rows; GPM was transcribed. MP800SR 90 deg 35 psi: 0.21 GPM vs 11.4 GPH (= 0.19 GPM); MP800SR 210 deg 30 psi: 0.35 GPM vs 22.2 GPH (= 0.37 GPM); MP800SR 210 deg 35 psi: 0.38 GPM vs 26.4 GPH (= 0.44 GPM); MP800SR 210 deg 40 psi: 0.43 GPM vs 29.4 GPH (= 0.49 GPM); MP800SR 210 deg 45 psi: 0.45 GPM vs 31.8 GPH (= 0.53 GPM); MP800SR 210 deg 50 psi: 0.49 GPM vs 33.6 GPH (= 0.56 GPM); MP800SR 210 deg 55 psi: 0.56 GPM vs 34.8 GPH (= 0.58 GPM); MP800SR 360 deg 30 psi: 0.66 GPM vs 37.8 GPH (= 0.63 GPM).",
+    "MP CORNER DOUBT: the MP Corner flows as printed (e.g. 0.39 gpm at 90 deg, 14 ft, 40 psi; the MP1000 at the same arc and radius prints 0.21) work out to about 0.77 in/h head-to-head square, yet the same cut sheet badges the MP Corner '0.4 in/hr' and prints no precipitation column for it. The 2016 design guide prints the same flows. Transcribed as printed; treat MP-CORNER precipitation with suspicion.",
+    "MP ROTATOR radius reduction: up to about 25% on all models (cut sheet); the chart rows are at full radius.",
+    "BODIES: every Pro-Spray, PRS30, PRS40 and PS Ultra body is listed as taking all seven families, since each cut sheet says 'Compatible with all female-threaded nozzles'. Hunter's recommended pairing: PRS30 with Pro Fixed / Pro Adjustable / strip nozzles (30 psi), PRS40 with MP Rotator (40 psi; PRS30 for MP minimum-radius settings). Pro-Spray (unregulated) operating range 15-100 psi (PRS30/PRS40 the same inlet range); PS Ultra 20-70 psi, not regulated. Not included: PROS-00 shrub adapters, the side-inlet -SI variants of the 6\" and 12\" bodies (same hydraulics), and MP Rotator 'HT' male-threaded nozzles.",
+    "Body pop-up heights are the cut sheets' 'Pop-up height' (PROS-03 3\", PROS-04 4\", PROS-06 6\", PROS-12 12\"; PSU-02 2\", PSU-04 4\", PSU-06 6\"). PSU-06 and the PS Ultra side strip: the 5SS strip is offered on 2\" and 4\" models only."
+  ]
+}

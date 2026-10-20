@@ -896,7 +896,7 @@ lib/heads.js reads them: a head's flow and throw at the pressure reaching it (li
 rows, held at its ends), for its arc; a zone's flow and rate; pipes; GPS.
 
 - Rain Bird sprays (55 nozzles: MPR, VAN, HE-VAN, U, R-VAN, strips), Rain Bird rotors (78), Hunter rotors
-  (77) in so far; Hunter sprays and MP Rotator, and Toro / K-Rain / Orbit, to follow.
+  (77), Hunter sprays and MP Rotator (57); Toro / K-Rain / Orbit to follow.
 - Checked: the tool's rate for a Rain Bird 5000 3.0 nozzle at 45 psi, half circle, 0.39 in/h, and a Hunter
   PGP Ultra blue 3.0 at 45 psi, 0.40 in/h, are the charts' own printed rates (0.39, 0.40).
 - Small VAN nozzles (4, 6, 8, 10) do not put out flow in proportion to the arc (a 4-VAN at 90 degrees puts
