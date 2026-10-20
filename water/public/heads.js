@@ -23,6 +23,7 @@ import { catalogue, headWater, zoneWater, calibrate, placeByGps, facing, arcOf, 
 import { autoArc, MIN_THROW, BIN_DEG } from '/lib/arcs.js';
 import { precipitation, setProfiles } from '/lib/precip.js';
 import { route, solveZone, headFlow, regulatedOut, deviceLoss, dwPerFt, roughnessMm, SWING, FITTINGS_SHARE, pipeById, pipeSize, PIPE_FAMILIES, sizeFor, fraction, fps, FT_PER_M, MAX_FPS } from '/lib/hydraulics.js';
+import { inputsMoved } from '/lib/photoshift.js';
 
 const FILES = ['rainbird-sprays', 'rainbird-rotors', 'hunter-sprays', 'hunter-rotors', 'other-brands'];
 const ZONE_COLORS = ['#e53935', '#1e88e5', '#43a047', '#fb8c00', '#8e24aa', '#00acc1', '#fdd835', '#6d4c41', '#d81b60', '#3949ab', '#7cb342', '#546e7a'];
@@ -975,6 +976,14 @@ export function sprinklers(ctx) {
     get active() { return !!step; },
     get data() { return irr; },
     tap, grab, move, drop, drawOn,
+    /** Every point moved `east`, `north` metres (lib/photoshift.js inputsMoved): once, when the photo they
+        were tapped on is first put on the lidar. The GPS calibration goes with it (a move onto the old photo). */
+    moveAll(d) {
+      irr = inputsMoved({ irrigation: irr }, d).irrigation;
+      gps.cal = null; if (gps.phase === 'walk') gps.phase = 'pick';
+      solvedKey = '';
+      if (step) render(); else ctx.draw();
+    },
     /** The ground came in (or anything the solve reads): solve again and show it. */
     refresh() { solvedKey = ''; if (step === 'arcs') { for (const h of irr.heads) if (h.arcSet !== 'user') autoSet(h); ctx.changed(); } if (step) render(); else ctx.draw(); },
     summary() {

@@ -20,3 +20,9 @@ rule), so both maps use one season.
 photo is saved, use the county photo, if mapbox is saved, use that"): traced.js,
 unchanged from public/shade/ on the default branch at commit f070fb0 -- which photo a
 saved map was traced on (Mapbox, or a county service and the editor's line-up).
+
+2026-10-20, for lining the photo up on the lidar (water/lib/photoshift.js, on the core session's advice):
+align.js (the ground matcher, alignToPhoto) unchanged from public/shade/ on the default branch at 0eaed6d,
+with public/lib/register.js (which it imports as ../lib/register.js) as water/lib/lib/register.js and
+public/lib/photo-fit.js as water/lib/lib/photo-fit.js, both unchanged. The core's roof fit (heightSurface,
+dropPoints, fitRoof from tools/lidar-roof-fit.js) is water/lib/roof-fit.js.

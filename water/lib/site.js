@@ -18,6 +18,7 @@ import { gridFor } from './surface.js';
 import { imperviousness, weightedFlow, runOnSources } from './impervious.js';
 import { naipFor, ndvi } from './naip.js';
 import { overtureFor, overtureMasks } from './overture.js';
+import { featuresMoved } from './photoshift.js';
 
 export const PAD = 30;
 
@@ -49,7 +50,7 @@ function countKinds(list) {
   return out;
 }
 
-export async function runSite(site, io, pickCloud, { progress = () => {}, nullRuns = 8 } = {}) {
+export async function runSite(site, io, pickCloud, { progress = () => {}, nullRuns = 8, alignPhoto = null } = {}) {
   const t0 = Date.now();
   /* A map the shade map has worked on carries the cloud, box and shift it used (docs/MAPS.md;
      tools.shade.data.lidar: { url, name, epoch, box [x0, y0, x1, y1] in 3857, shift [dx, dy] }): take
@@ -66,6 +67,16 @@ export async function runSite(site, io, pickCloud, { progress = () => {}, nullRu
   const photoP = thrice(() => naipFor(gridFor(bbox, site.lat)));
   const { cols, flown } = await pointsIn(cloud.url, bbox, io, { progress });
   const epoch = cloud.epoch || (flown ? 1970 + flown.mid / (365.25 * 864e5) : null);
+  /* THE PHOTO ON THE LIDAR (lib/photoshift.js; owner and core session, 2026-10-20): given alignPhoto, the
+     lidar is gridded where it was surveyed -- no datum move, no shade shift -- and the lawn traced on the
+     photo is moved with the photo onto it (alignPhoto(cols) -> { traceMove: { east, north } }). Property
+     lines share the lidar's datum and stay. Without it (the node tools), the frame as before. */
+  let aligned = null;
+  if (alignPhoto) {
+    aligned = await alignPhoto(cols, bbox).catch(() => null);
+    const d = aligned?.traceMove;
+    if (d && (d.east || d.north) && site.lawn?.length) site.lawn = featuresMoved(site.lawn, d);
+  }
   // the noise floor is judged over the property itself, not the margin
   const g = gridFor(bbox, site.lat);
   const parcelMask = site.parcel ? maskOf(g, site.parcel) : null;
@@ -74,7 +85,8 @@ export async function runSite(site, io, pickCloud, { progress = () => {}, nullRu
   const ov = await ovP;
   const ovMasks = ov ? overtureMasks(g, ov) : null;
   const photo = await photoP;
-  const res = analyse(cols, bbox, site.lat, { epoch, within, nullRuns, shift: kept && Array.isArray(kept.shift) ? kept.shift : null, overture: ovMasks, ndvi: photo ? ndvi(photo) : null });
+  const raw = !!alignPhoto;
+  const res = analyse(cols, bbox, site.lat, { epoch: raw ? null : epoch, within, nullRuns, shift: !raw && kept && Array.isArray(kept.shift) ? kept.shift : null, overture: ovMasks, ndvi: photo ? ndvi(photo) : null });
 
   const onParcel = parcelMask ? spotsOn(res, parcelMask) : [];
   const onLawn = lawnMask ? spotsOn(res, lawnMask) : [];
@@ -106,7 +118,7 @@ export async function runSite(site, io, pickCloud, { progress = () => {}, nullRu
   }
 
   return {
-    sameGridAsShade: !!kept,
+    sameGridAsShade: !!kept && !alignPhoto, photoShift: aligned,
     cloud: { name: cloud.name, ql: cloud.unit?.ql ?? null, flown: flown ? new Date(flown.mid).toISOString().slice(0, 10) : null, notOnAws: pick.notOnAws || [] },
     result: res, parcelMask, lawnMask, impervious: imp, weightedFlow: wflow,
     spots: spotRecords(res).filter((r) => !parcelMask || parcelMask[r.row * g.W + r.col] || onParcel.some((o) => o.spot.row === r.row && o.spot.col === r.col))
