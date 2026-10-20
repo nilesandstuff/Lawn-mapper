@@ -51,7 +51,12 @@ got here. Update it whenever the in-flight run changes.*
   Photo against photo (H104): after one shift, a county photo's ground
   differs from Mapbox's by 0.2 m median, 0.3-0.6 m on half the lots; two
   Mapbox flights differ by up to 0.6 m across a lot; roofs lean a further
-  0.3 m. The editor's Overture layer is drawn as published.
+  0.3 m. The editor's Overture layer is drawn as published (the walls).
+  OWNER'S DECISION (2026-10-20): "lidar is the closest thing to objective
+  truth, that's what we should align everything to" -- so each photo is to
+  be corrected onto it (scale/affine, not only a shift), the county photos
+  at banking first, measured before it ships. In flight: S43, Overture as
+  a decoder input (workflow 14 run 39349072551, `overture: compare`).
 - **THE LIVE MODEL HAS A NAME AND A VERSION HISTORY (owner, 2026-10-06):**
   "Turf Trace - alpha version 2 (79% accuracy)". Every release ships with a
   row in worker/src/model-versions.js: the next version number, the date,
@@ -7178,6 +7183,27 @@ not:** a 27 m block is less context than a whole lot, and H4 once found
 fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
+
+### S43. Overture as a decoder input: the building footprint, nearness to a sidewalk line, nearness to a road centreline (owner, 2026-10-19/20) -- IN FLIGHT, workflow 14 run 39349072551
+*Owner: "it would be good info for every stage... the detector, the grass
+under canopy guesser, and manual tracing"; and "the detector could be told
+'there's a curb or sidewalk edge that runs parallel to this at an unknown
+distance'". H101-H104 put Overture within about a metre of the lidar and
+the photo within about half a metre of that, so it goes in as published.*
+
+tools/overture-frames.js writes three channels at 0.5 m over each frame
+(footprint 0/1; nearness falling from 1 on a sidewalk, footway, crosswalk
+or path line to 0 at 10 m; the same for a road centreline to 15 m) and
+fuse_layers.py appends them, with a flag, as their own source for modality
+dropout (0.3). Workflow 14 `overture: compare` trains THE PLAN once more
+with them over the same features, seed and folds, scored as "decoder,
+Overture". To read with workflow 24 against THE PLAN's own row of the same
+run, under the full bar. Not adopted until it clears it; the live server
+(alpha_infer.py) does not read Overture yet.
+
+Untested ideas kept apart from it: the footprint as never-lawn in stage 3
+(H101: it would cost 0.5% of traced lawn, 11% on one Fargo lot), and the
+sidewalk bands as not-lawn there (0.1-0.2%).
 
 ### S42. FLAIR's building + impervious as a veto on THE PLAN's lawn (owner, 2026-10-18 -- PARKED by the owner, 2026-10-19: "in theory it shouldn't be any better than the trained detector for the lawn map"; NOT BUILT, NOT MEASURED)
 **The idea:** H100 found FLAIR's building+impervious lands on only 0.6-2.5%
