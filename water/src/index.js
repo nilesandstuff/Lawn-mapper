@@ -15,7 +15,8 @@
  *             lidar search: the shade map's way of finding a property. Those
  *             answer only Lawn Mapper's origin in a browser.
  *
- * Nothing else under /api/ is passed on, and this Worker stores nothing.
+ * Nothing else under /api/ is passed on. The one thing this Worker keeps is gauge readings, in its own D1
+ * (src/readings.js, water/schema.sql), and the admin page that reads them (/admin, the admin only).
  *
  * ADMIN ONLY UNTIL IT SHIPS (owner, 2026-10-16: "make the water site
  * admin-only too until we're ready to ship"). While ADMIN_ONLY is "1"
@@ -25,6 +26,8 @@
  * not the admin gets a "not open yet" page (404) and no data. It fails
  * closed: no binding, or no answer, is no.
  */
+
+import { readings } from './readings.js';
 
 export const PROXIED = ['/api/geocode', '/api/parcel', '/api/imagery', '/api/county-imagery', '/api/shade/lidar'];
 
@@ -70,6 +73,16 @@ export default {
     if (env.ADMIN_ONLY === '1' && !signIn && !(await isAdmin(request, env))) {
       return url.pathname.startsWith('/api/') ? notFound() : notOpenYet(env.LAWNMAP_HOST?.split('.').slice(1).join('.'));
     }
+    // the water tool's admin page: the admin only, whether or not the site is open (src/readings.js)
+    if (url.pathname === '/admin' || url.pathname === '/admin.html') {
+      if (!(await isAdmin(request, env))) return notOpenYet(env.LAWNMAP_HOST?.split('.').slice(1).join('.'));
+      const res = await env.ASSETS.fetch(new Request(new URL('/admin.html', url), request));
+      const out = new Response(res.body, res);
+      out.headers.set('Cache-Control', 'private, no-store');
+      return out;
+    }
+    const kept = await readings(request, env, url, { isAdmin });
+    if (kept) return kept;
     if (!url.pathname.startsWith('/api/')) {
       const res = await env.ASSETS.fetch(request);
       if (env.ADMIN_ONLY !== '1') return res;

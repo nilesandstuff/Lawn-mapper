@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en" data-home="__HOME__">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Water Admin</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<style>
+  :root { --bg: #f6f8f7; --surface: #fcfcfb; --fg: #17201c; --dim: #5d6b64; --line: #d9e1dd; --grid: #e6ebe8; --accent: #1f6fd1; --bad: #c62828;
+    --s1: #2a78d6; --s2: #eb6834; --band: rgba(42,120,214,.08); }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg: #101513; --surface: #1a1a19; --fg: #e7eeea; --dim: #9aa8a1; --line: #2c3631; --grid: #2a2f2c; --accent: #6aa8ff; --bad: #ff6b6b;
+      --s1: #3987e5; --s2: #d95926; --band: rgba(57,135,229,.12); }
+  }
+  :root[data-theme="dark"] { --bg: #101513; --surface: #1a1a19; --fg: #e7eeea; --dim: #9aa8a1; --line: #2c3631; --grid: #2a2f2c; --accent: #6aa8ff; --bad: #ff6b6b;
+    --s1: #3987e5; --s2: #d95926; --band: rgba(57,135,229,.12); }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  main { max-width: 960px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 1.4rem; margin: 6px 0 2px; }
+  h2 { font-size: 1.05rem; margin: 0 0 8px; }
+  .dim { color: var(--dim); font-size: 13px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin-top: 14px; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+  .tile b { display: block; font-size: 1.5rem; font-variant-numeric: tabular-nums; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 5px 6px; border-top: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--dim); font-weight: 600; }
+  .scroll { overflow-x: auto; }
+  button { font: inherit; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: var(--bad); cursor: pointer; }
+  a { color: var(--accent); }
+  svg text { fill: var(--dim); font-size: 11px; }
+  .legend { display: flex; gap: 14px; font-size: 13px; color: var(--dim); margin: 6px 0; }
+  .legend svg { vertical-align: -2px; margin-right: 4px; }
+  #tip { position: fixed; pointer-events: none; background: var(--surface); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font-size: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.15); display: none; max-width: 260px; }
+</style>
+</head>
+<body>
+<main>
+  <p class="dim" style="margin:0"><a href="/">&larr; Lawn Water</a> · <a id="core" href="__LAWNMAP__/admin.html">Lawn Mapper admin</a></p>
+  <h1>Lawn Water admin</h1>
+  <p class="dim">Pressure-gauge readings taken at sprinkler heads with their zone running, beside what the pressure model (lib/hydraulics.js) predicted there. The ground truth for the model: FINDINGS H26.</p>
+
+  <div class="card"><h2>How close the model is</h2><div class="tiles" id="tiles"></div><p class="dim" id="note"></p></div>
+
+  <div class="card">
+    <h2>Measured against predicted</h2>
+    <div class="legend"><span><svg width="12" height="12"><circle cx="6" cy="6" r="5" fill="var(--s1)"/></svg>pitot in the stream (the nozzle's pressure)</span><span><svg width="12" height="12"><rect x="1" y="1" width="10" height="10" rx="2" fill="var(--s2)"/></svg>gauge on the riser, nozzle off</span><span><svg width="18" height="12"><line x1="0" y1="6" x2="18" y2="6" stroke="var(--dim)" stroke-width="2" stroke-dasharray="4 3"/></svg>measured = predicted, shaded ±3 psi</span></div>
+    <div id="chart"></div>
+  </div>
+
+  <div class="card"><h2>Where the error comes from</h2><div class="scroll"><table id="split"></table></div>
+    <p class="dim">Error = measured − predicted. A reading of the pressure "with nothing running" leaves the meter and street line to the model; "with a zone running" at the backflow preventer takes them out. "Typical" devices are the median of the makers' charts for a size.</p></div>
+
+  <div class="card"><h2>Every reading</h2><p class="dim"><a href="/api/water/readings?format=csv">Download as CSV</a></p><div class="scroll"><table id="rows"></table></div></div>
+</main>
+<div id="tip" role="tooltip"></div>
+<script>
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const f1 = (v) => (Number.isFinite(v) ? v.toFixed(1) : '–');
+const stats = (rs) => {
+  const e = rs.filter((r) => Number.isFinite(r.predicted_psi)).map((r) => r.measured_psi - r.predicted_psi);
+  if (!e.length) return null;
+  const mean = e.reduce((a, b) => a + b, 0) / e.length;
+  return { n: e.length, mean, mae: e.reduce((a, b) => a + Math.abs(b), 0) / e.length, rms: Math.sqrt(e.reduce((a, b) => a + b * b, 0) / e.length), in3: e.filter((x) => Math.abs(x) <= 3).length / e.length, in5: e.filter((x) => Math.abs(x) <= 5).length / e.length };
+};
+
+function tiles(rs) {
+  const s = stats(rs);
+  const t = (label, v) => `<div class="tile"><span class="dim">${label}</span><b>${v}</b></div>`;
+  $('#tiles').innerHTML = s ? [t('Readings', s.n), t('Average error', `${s.mean >= 0 ? '+' : ''}${f1(s.mean)} psi`), t('Typical miss', `${f1(s.mae)} psi`), t('Within 3 psi', `${Math.round(s.in3 * 100)}%`), t('Within 5 psi', `${Math.round(s.in5 * 100)}%`)].join('') : t('Readings', rs.length);
+  $('#note').textContent = s ? `Average error above zero means the heads read higher than predicted (the model loses too much on the way); below zero, lower. RMS ${f1(s.rms)} psi.` : 'No readings with a prediction yet. Enter one on a head in the water map\'s pressure step.';
+}
+
+function split(rs) {
+  const groups = [
+    ['How it was read', (r) => (r.method === 'riser' ? 'gauge on the riser' : 'pitot')],
+    ['Pressure given', (r) => (r.source_from === 'well' ? 'a well (cut-in)' : r.source_read === 'working' ? 'with a zone running' : 'with nothing running')],
+    ['Backflow preventer', (r) => (r.typical_pvb ? 'typical' : 'their model')],
+    ['Valve', (r) => (r.typical_valve ? 'typical' : 'their model')],
+    ['Head', (r) => r.kind || '?'],
+  ];
+  let html = '<tr><th></th><th>Readings</th><th>Average error</th><th>Typical miss</th><th>Within 3 psi</th></tr>';
+  for (const [name, key] of groups) {
+    const by = new Map();
+    for (const r of rs) { const k = key(r); if (!by.has(k)) by.set(k, []); by.get(k).push(r); }
+    html += `<tr><th colspan="5">${name}</th></tr>`;
+    for (const [k, list] of by) { const s = stats(list); html += `<tr><td>${esc(k)}</td><td>${list.length}</td><td>${s ? `${s.mean >= 0 ? '+' : ''}${f1(s.mean)}` : '–'}</td><td>${s ? f1(s.mae) : '–'}</td><td>${s ? `${Math.round(s.in3 * 100)}%` : '–'}</td></tr>`; }
+  }
+  $('#split').innerHTML = html;
+}
+
+function chart(rs) {
+  const pts = rs.filter((r) => Number.isFinite(r.predicted_psi));
+  const W = Math.min(640, $('#chart').clientWidth || 600), H = Math.round(W * 0.7), m = { l: 40, r: 12, t: 10, b: 34 };
+  if (!pts.length) { $('#chart').innerHTML = '<p class="dim">Nothing to plot yet.</p>'; return; }
+  const all = pts.flatMap((r) => [r.measured_psi, r.predicted_psi]);
+  const lo = Math.max(0, Math.floor((Math.min(...all) - 5) / 5) * 5), hi = Math.ceil((Math.max(...all) + 5) / 5) * 5;
+  const x = (v) => m.l + ((v - lo) / (hi - lo)) * (W - m.l - m.r), y = (v) => H - m.b - ((v - lo) / (hi - lo)) * (H - m.t - m.b);
+  const ticks = []; for (let v = lo; v <= hi; v += (hi - lo) > 40 ? 10 : 5) ticks.push(v);
+  let g = `<svg width="${W}" height="${H}" role="img" aria-label="Measured against predicted pressure, ${pts.length} readings">`;
+  for (const v of ticks) g += `<line x1="${m.l}" x2="${W - m.r}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)"/><text x="${m.l - 6}" y="${y(v) + 4}" text-anchor="end">${v}</text><text x="${x(v)}" y="${H - m.b + 16}" text-anchor="middle">${v}</text>`;
+  g += `<polygon points="${x(lo)},${y(lo + 3)} ${x(hi - 3)},${y(hi)} ${x(hi)},${y(hi)} ${x(hi)},${y(hi - 3)} ${x(lo + 3)},${y(lo)} ${x(lo)},${y(lo)}" fill="var(--band)"/>`;
+  g += `<line x1="${x(lo)}" y1="${y(lo)}" x2="${x(hi)}" y2="${y(hi)}" stroke="var(--dim)" stroke-width="2" stroke-dasharray="4 3"/>`;
+  g += `<text x="${(m.l + W - m.r) / 2}" y="${H - 4}" text-anchor="middle">predicted, psi</text><text transform="translate(11 ${(m.t + H - m.b) / 2}) rotate(-90)" text-anchor="middle">measured, psi</text>`;
+  pts.forEach((r, k) => {
+    const cx = x(r.predicted_psi), cy = y(r.measured_psi), tip = `data-k="${k}"`;
+    g += r.method === 'riser'
+      ? `<rect ${tip} x="${cx - 5}" y="${cy - 5}" width="10" height="10" rx="2" fill="var(--s2)" stroke="var(--surface)" stroke-width="2"/>`
+      : `<circle ${tip} cx="${cx}" cy="${cy}" r="5.5" fill="var(--s1)" stroke="var(--surface)" stroke-width="2"/>`;
+    g += `<circle data-k="${k}" cx="${cx}" cy="${cy}" r="12" fill="transparent"/>`;
+  });
+  $('#chart').innerHTML = `${g}</svg>`;
+  const tipEl = $('#tip');
+  $('#chart').onmousemove = (ev) => {
+    const k = ev.target.dataset?.k;
+    if (k === undefined) { tipEl.style.display = 'none'; return; }
+    const r = pts[Number(k)];
+    tipEl.innerHTML = `<b>${f1(r.measured_psi)} psi measured</b>, ${f1(r.predicted_psi)} predicted (${r.measured_psi - r.predicted_psi >= 0 ? '+' : ''}${f1(r.measured_psi - r.predicted_psi)})<br>${esc(r.body || '')} ${esc(r.nozzle || '')}<br>zone ${r.zone ?? '?'}, ${f1(r.zone_gpm)} gpm; ${r.method === 'riser' ? 'riser gauge' : 'pitot'}<br>${new Date(r.at).toLocaleDateString()}`;
+    tipEl.style.display = 'block'; tipEl.style.left = `${ev.clientX + 12}px`; tipEl.style.top = `${ev.clientY + 12}px`;
+  };
+  $('#chart').onmouseleave = () => { tipEl.style.display = 'none'; };
+}
+
+function rows(rs) {
+  $('#rows').innerHTML = '<tr><th>When</th><th>Map</th><th>Zone</th><th>Head</th><th>How</th><th>Measured</th><th>Predicted</th><th>Error</th><th>Zone flow</th><th>Pressure given</th><th></th></tr>' + rs.map((r) => `<tr>
+    <td>${new Date(r.at).toLocaleString()}</td><td><a href="/?map=${encodeURIComponent(r.map_id || '')}">${esc((r.map_id || '').slice(0, 8))}</a></td><td>${r.zone ?? ''}</td><td>${esc(r.body || '')}<br><span class="dim">${esc(r.nozzle || '')}</span></td>
+    <td>${r.method === 'riser' ? 'riser' : 'pitot'}</td><td>${f1(r.measured_psi)}</td><td>${f1(r.predicted_psi)}</td><td>${Number.isFinite(r.predicted_psi) ? `${r.measured_psi - r.predicted_psi >= 0 ? '+' : ''}${f1(r.measured_psi - r.predicted_psi)}` : '–'}</td>
+    <td>${f1(r.zone_gpm)} gpm</td><td>${f1(r.source_psi)} ${esc(r.source_read || '')}</td><td><button data-del="${esc(r.id)}" aria-label="Remove this reading">Remove</button></td></tr>`).join('');
+  $('#rows').querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', async () => {
+    if (!confirm('Remove this reading?')) return;
+    await fetch(`/api/water/readings?id=${encodeURIComponent(b.dataset.del)}`, { method: 'DELETE', credentials: 'same-origin' });
+    load();
+  }));
+}
+
+async function load() {
+  const res = await fetch('/api/water/readings', { credentials: 'same-origin' });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) { $('#tiles').innerHTML = `<p class="dim">${res.status === 503 ? 'The water database is not set up yet: the next deploy makes it.' : `Could not read the readings (${res.status}).`}</p>`; return; }
+  const rs = j.readings || [];
+  tiles(rs); split(rs); chart(rs); rows(rs);
+}
+load();
+addEventListener('resize', () => load());
+</script>
+</body>
+</html>

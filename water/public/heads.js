@@ -20,7 +20,7 @@
  */
 
 import { catalogue, headWater, zoneWater, calibrate, placeByGps, facing, arcOf, enu } from '/lib/heads.js';
-import { route, solveZone, headFlow, deviceLoss, dwPerFt, roughnessMm, SWING, FITTINGS_SHARE, pipeById, pipeSize, PIPE_FAMILIES, sizeFor, fraction, fps, FT_PER_M, MAX_FPS } from '/lib/hydraulics.js';
+import { route, solveZone, headFlow, regulatedOut, deviceLoss, dwPerFt, roughnessMm, SWING, FITTINGS_SHARE, pipeById, pipeSize, PIPE_FAMILIES, sizeFor, fraction, fps, FT_PER_M, MAX_FPS } from '/lib/hydraulics.js';
 
 const FILES = ['rainbird-sprays', 'rainbird-rotors', 'hunter-sprays', 'hunter-rotors', 'other-brands'];
 const ZONE_COLORS = ['#e53935', '#1e88e5', '#43a047', '#fb8c00', '#8e24aa', '#00acc1', '#fdd835', '#6d4c41', '#d81b60', '#3949ab', '#7cb342', '#546e7a'];
@@ -62,7 +62,7 @@ export function sprinklers(ctx) {
   let step = null, cat = null, catNote = '';
   const sel = new Set();
   const gps = { on: false, watch: null, fixes: [], cal: null, phase: null, ref: null, live: null, busy: false };
-  let drag = null, dragged = false, placeMode = 'tap', labelsHidden = 0, placing = null;
+  let drag = null, dragged = false, placeMode = 'tap', labelsHidden = 0, placing = null, gaugeNote = '';
   let nextId = 1;
 
   const loadCat = (async () => {
@@ -133,6 +133,42 @@ export function sprinklers(ctx) {
         // sprays on flexible swing pipe, rotors on a rigid 3/4 in swing joint (lib/hydraulics.js SWING)
         swingLoss: (h, g) => deviceLoss(/rotor|impact/.test(cat.familyOfNozzle(h.nozzle)?.kind || '') ? SWING.rigid : SWING.flexible, g),
       }, { psi: P, gaugeAt: sys.pvb.at, gaugeElevM: Number.isFinite(groundPvb) ? groundPvb + 0.3 : null, upstream });
+      /* GAUGE READINGS (owner, 2026-10-20: "to override estimates"): a head with a reading takes it; the
+         zone's other heads move by the zone's average miss, since what a reading shows -- the pressure
+         coming in, a device's loss -- is mostly the whole zone's. A pitot reads the nozzle's pressure (after
+         any regulator); a gauge on the riser, the lateral's with that head shut. */
+      const miss = [];
+      for (const [id, hr] of res.heads) {
+        hr.model = { psi: hr.psi, nozzlePsi: hr.water?.nozzlePsi ?? hr.psi, riserPsi: res.pressures.get(id), gpm: hr.gpm };
+        const hd = hs.find((x) => x.id === id), g = hd?.gauge;
+        if (!g || !Number.isFinite(g.psi)) continue;
+        // what the reading says the pressure at this head's inlet is
+        let inlet = null;
+        if (g.method === 'riser') inlet = g.psi - (hr.swingLoss ?? 0); // the riser, less this head's own swing joint once it flows
+        else {
+          const b = cat.body(hd.body), fam = cat.familyOfNozzle(hd.nozzle), reg = b?.regulatedPsi;
+          if (Number.isFinite(reg) && fam?.pressureIs !== 'inlet') {
+            // a regulated nozzle at its setting says only "at least the setting plus what it needs"; under it, the inlet
+            const diff = reg - regulatedOut(b, reg); // what the regulator needs above its setting (lib/hydraulics.js)
+            inlet = g.psi < reg - 0.5 ? g.psi + diff : null;
+          } else inlet = g.psi;
+        }
+        miss.push({ id, inlet, d: inlet === null ? null : inlet - hr.model.psi });
+      }
+      if (miss.length) {
+        const told = miss.filter((m) => m.d !== null);
+        const off = told.length ? told.reduce((t, m) => t + m.d, 0) / told.length : 0;
+        let Q = 0;
+        for (const [id, hr] of res.heads) {
+          const own = miss.find((m) => m.id === id);
+          hr.psi = hr.model.psi + (own && own.d !== null ? own.d : off);
+          hr.measured = !!own; hr.adjusted = !own;
+          const w = headFlow(hs.find((x) => x.id === id), cat, Math.max(0, hr.psi));
+          hr.water = w; hr.gpm = w ? w.gpm : hr.gpm; Q += hr.gpm;
+        }
+        res.calibrated = { readings: miss.length, offset: off, modelGpm: res.gpm };
+        res.gpm = Q;
+      }
       zones.push({ n: z.n, tree, res, lenFt, parts: parts(res.gpm) });
     }
     solved = { zones, pvbDev, slPipe, at: Date.now() };
@@ -147,6 +183,28 @@ export function sprinklers(ctx) {
     return headFlow(h, cat, Number.isFinite(irr.system.source.psi) ? irr.system.source.psi - 15 : NaN);
   };
   const STATUS_COLOR = { ok: '#43a047', low: '#fb8c00', high: '#8e24aa' };
+
+  /** A reading, with the model's own prediction (before any reading moved it) and what it rested on, to the
+      water tool's ground truth (src/readings.js). -> a note for the panel */
+  async function keepReading(h, psi, method, hr, zs) {
+    const m = hr?.model;
+    if (!m) return 'Kept with your map; the model could not be compared here.';
+    const sys = irr.system, z = irr.zones.find((x) => x.n === h.zone), fam = cat.familyOfNozzle(h.nozzle);
+    const ground = ctx.elev?.(h.at), pvbG = ctx.elev?.(sys.pvb.at);
+    const body = {
+      map_id: ctx.mapId?.() || null, head_id: h.id, zone: h.zone, method, measured_psi: psi,
+      predicted_psi: method === 'riser' ? m.riserPsi : m.nozzlePsi, predicted_inlet_psi: m.psi, predicted_nozzle_psi: m.nozzlePsi,
+      body: h.body, nozzle: h.nozzle, kind: fam?.kind || null, head_gpm: m.gpm, zone_gpm: zs?.res.calibrated?.modelGpm ?? zs?.res.gpm ?? null,
+      source_psi: sys.source.psi, source_read: sys.source.read, source_from: sys.source.from,
+      typical_pvb: !sys.pvb.device, typical_valve: !z?.valve,
+      rise_ft: Number.isFinite(ground) && Number.isFinite(pvbG) ? (ground - pvbG) * FT_PER_M : null,
+      detail: { worksheet: zs?.res.worksheet || null, parts: zs?.parts || null, supplyLine: sys.supplyLine, zoneLine: { family: z?.family || 'pe', size: z?.size || 'auto' }, quality: sys.quality },
+    };
+    try {
+      const res = await fetch('/api/water/readings', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      return res.ok ? 'Saved, and kept to check the model.' : res.status === 401 ? 'Saved with your map (sign in to add it to the model check).' : `Saved with your map (the model check did not take it: ${res.status}).`;
+    } catch { return 'Saved with your map (the model check could not be reached).'; }
+  }
 
   /* ------------------------------------------------------------------ the panel */
 
@@ -297,7 +355,8 @@ export function sprinklers(ctx) {
         <tr><td>Lateral pipes and fittings</td><td>−${ws.lateral.toFixed(1)}</td></tr>
         <tr><td>Swing joint</td><td>−${ws.swing.toFixed(1)}</td></tr>
         <tr><td>${ws.flat ? 'Ground height (not yet read: taken as level)' : ws.elevation >= 0 ? 'Downhill to the head' : 'Uphill to the head'}</td><td>${ws.elevation >= 0 ? '+' : '−'}${Math.abs(ws.elevation).toFixed(1)}</td></tr>
-        <tr><td><strong>At the head</strong></td><td><strong>${ws.atHead.toFixed(1)} psi</strong></td></tr></table>` : '';
+        <tr><td><strong>At the head</strong></td><td><strong>${ws.atHead.toFixed(1)} psi</strong></td></tr></table>
+        ${zsel.res.calibrated ? `<p class="dim">That is the model's own estimate. Your ${zsel.res.calibrated.readings} reading${zsel.res.calibrated.readings > 1 ? 's' : ''} in zone ${zsel.n} put${zsel.res.calibrated.readings > 1 ? '' : 's'} the heads ${zsel.res.calibrated.offset >= 0 ? 'higher' : 'lower'} by ${Math.abs(zsel.res.calibrated.offset).toFixed(1)} psi on average; the map and the table use your readings.</p>` : ''}` : '';
       const warn = [];
       for (const z of s0.zones) {
         // the zone's spread: 20% is the FAO's and most designers' limit, the Irrigation Association asks 10%
@@ -325,7 +384,12 @@ export function sprinklers(ctx) {
         if (Number.isFinite(pvbG) && Number.isFinite(top) && top + 0.1 > pvbG) warn.push(`The highest head is ${((top - pvbG) * FT_PER_M).toFixed(1)} ft ${top >= pvbG ? 'above' : 'below'} the ground at the backflow preventer: plumbing codes put a pressure vacuum breaker at least 12 in above the highest head.`);
       }
       return `<p class="hint">The lines are drawn as an installer most likely laid them; each head is coloured by its pressure: <span style="color:${STATUS_COLOR.ok}">●</span> in its chart's range, <span style="color:${STATUS_COLOR.low}">●</span> under it, <span style="color:${STATUS_COLOR.high}">●</span> over it. Tap a head for its numbers.</p>
-        ${ph ? `<p>${headLine(pick)}<br>${ph.psi.toFixed(1)} psi at the head${ph.water?.regulated ? `, ${Math.round(ph.water.nozzlePsi)} at the nozzle after its regulator` : ''}; chart ${Math.round(ph.water?.chartLo)}–${Math.round(ph.water?.chartHi)} psi.</p>` : ''}
+        ${ph ? `<p>${headLine(pick)}<br>${ph.psi.toFixed(1)} psi at the head${ph.measured ? ' (from your reading)' : ph.adjusted ? ' (moved by your readings in this zone)' : ''}${ph.water?.regulated ? `, ${Math.round(ph.water.nozzlePsi)} at the nozzle after its regulator` : ''}; chart ${Math.round(ph.water?.chartLo)}–${Math.round(ph.water?.chartHi)} psi.</p>
+          <div class="card" style="margin-top:6px"><strong>Your gauge reading</strong> at this head, with its zone running:
+            <div class="tools"><input type="number" inputmode="decimal" min="0" max="200" step="0.5" data-act="gpsi" value="${pick.gauge ? pick.gauge.psi : ''}" style="width:90px;padding:8px;font-size:16px"> psi
+            <select data-act="gmethod"><option value="pitot" ${pick.gauge?.method !== 'riser' ? 'selected' : ''}>pitot gauge held in the stream</option><option value="riser" ${pick.gauge?.method === 'riser' ? 'selected' : ''}>gauge on the riser, nozzle off</option></select>
+            <button type="button" data-act="gsave">Save the reading</button>${pick.gauge ? '<button type="button" class="plain" data-act="gdrop">Remove it</button>' : ''}</div>
+            <p class="dim">Predicted there: ${ph.model ? `${ph.model.nozzlePsi.toFixed(1)} psi at the nozzle (what a pitot reads), ${ph.model.riserPsi.toFixed(1)} in the riser with the nozzle off` : '–'}. A reading replaces the estimate for this head and moves the zone's others by the zone's average miss; it is also kept, with the prediction, to check the model.${gaugeNote ? ` <strong>${esc(gaugeNote)}</strong>` : ''}</p></div>` : '<p class="dim">Tap a head to see its numbers or enter a gauge reading for it.</p>'}
         <table class="months"><tr><th>Zone</th><th>Flow</th><th>At the heads</th><th>Spread</th><th></th></tr>${zoneRows}</table>
         ${sheet}
         ${warn.length ? `<ul>${warn.map((w) => `<li>${w}</li>`).join('')}</ul>` : ''}
@@ -455,7 +519,20 @@ export function sprinklers(ctx) {
       P.querySelectorAll('[data-q]').forEach((el) => el.addEventListener('change', () => { qy[el.dataset.q] = el.checked; changed(); render(); }));
       wireNav(P, () => go('pressure'));
     },
-    pressure: (P) => wireNav(P, () => { irr.done = true; irr.none = false; changed(); finish(); }),
+    pressure: (P) => {
+      const h = sel.size === 1 ? head([...sel][0]) : null;
+      P.querySelector('[data-act=gsave]')?.addEventListener('click', async () => {
+        const v = Number(P.querySelector('[data-act=gpsi]').value), method = P.querySelector('[data-act=gmethod]').value;
+        if (!h || !Number.isFinite(v) || v < 0 || v > 200) { gaugeNote = 'Enter the reading in psi.'; render(); return; }
+        const before = solvedHead(h.id), zs = solved?.zones.find((z) => z.res.heads.has(h.id));
+        h.gauge = { psi: v, method, at: Date.now() };
+        gaugeNote = 'Saving…'; changed(); render();
+        gaugeNote = await keepReading(h, v, method, before, zs);
+        render();
+      });
+      P.querySelector('[data-act=gdrop]')?.addEventListener('click', () => { if (h) { delete h.gauge; gaugeNote = ''; changed(); render(); } });
+      wireNav(P, () => { irr.done = true; irr.none = false; changed(); finish(); });
+    },
   };
   const resetForm = () => { form.brand = ''; form.body = ''; form.nozzle = ''; form.arc = ''; };
 

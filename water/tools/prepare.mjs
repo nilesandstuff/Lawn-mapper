@@ -22,7 +22,7 @@ export function waterDomainFor(custom) {
   return parts.length >= 3 ? `water.${parts.slice(1).join('.')}` : null;
 }
 
-export function wranglerFor(domain, lawnmap, adminOnly = true) {
+export function wranglerFor(domain, lawnmap, adminOnly = true, d1Id = null) {
   return `# Written by water/tools/prepare.mjs at deploy time. Not checked in.
 name = "lawn-water"
 main = "src/index.js"
@@ -50,7 +50,13 @@ ADMIN_ONLY = "${adminOnly ? '1' : '0'}"
 [[routes]]
 pattern = "${domain}"
 custom_domain = true
-`;
+${d1Id ? `
+# The water tool's own database (water/schema.sql): gauge readings, ground truth for the pressure model.
+[[d1_databases]]
+binding = "DB"
+database_name = "lawn-water"
+database_id = "${d1Id}"
+` : ''}`;
 }
 
 function main() {
@@ -65,15 +71,17 @@ function main() {
   rmSync(build, { recursive: true, force: true });
   mkdirSync(build, { recursive: true });
   cpSync(join(water, 'public'), build, { recursive: true });
-  const page = join(build, 'index.html');
   const home = lawnmap.split('.').slice(1).join('.');
-  writeFileSync(page, readFileSync(page, 'utf8').split('__LAWNMAP__').join(`https://${lawnmap}`).split('__HOME__').join(`https://${home}`));
+  for (const f of ['index.html', 'admin.html']) {
+    const page = join(build, f);
+    writeFileSync(page, readFileSync(page, 'utf8').split('__LAWNMAP__').join(`https://${lawnmap}`).split('__HOME__').join(`https://${home}`));
+  }
   cpSync(join(water, 'lib'), join(build, 'lib'), { recursive: true, filter: (src) => !src.endsWith('node-io.js') });
   for (const f of ['favicon.svg', 'favicon-32.png', 'favicon.ico', 'apple-touch-icon.png']) {
     cpSync(join(water, '..', 'public', f), join(build, f));
   }
   writeFileSync(join(build, 'robots.txt'), 'User-agent: *\nAllow: /\n');
-  writeFileSync(join(water, 'wrangler.toml'), wranglerFor(domain, lawnmap));
+  writeFileSync(join(water, 'wrangler.toml'), wranglerFor(domain, lawnmap, true, (process.env.WATER_D1_ID || '').trim() || null));
   env(`WATER_DOMAIN=${domain}`);
   console.log(`Water site built for https://${domain}, asking https://${lawnmap} for addresses, property lines and photos.`);
 }

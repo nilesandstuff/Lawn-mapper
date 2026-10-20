@@ -349,6 +349,7 @@ const heads = sprinklers({
     }
     return false;
   },
+  mapId: () => view.site?.mapId || null,
   lawnMiddle: () => {
     const pts = (view.site?.lawn || []).flatMap((f) => (f.geometry?.type === 'Polygon' ? f.geometry.coordinates[0] : f.geometry?.type === 'MultiPolygon' ? f.geometry.coordinates.flatMap((p) => p[0]) : []));
     if (!pts.length) return view.site ? [view.site.lng, view.site.lat] : null;

@@ -6,6 +6,7 @@
 import assert from 'node:assert/strict';
 
 import worker, { upstreamFor, isAdmin } from '../src/index.js';
+import { readings, cleanReading, toCsv } from '../src/readings.js';
 import { waterDomainFor, wranglerFor } from '../tools/prepare.mjs';
 import { gridFor } from '../lib/surface.js';
 import { maskOf, boundsOf } from '../lib/geo.js';
@@ -112,6 +113,54 @@ test('the barometer fit takes out the hopper height and the weather, and keeps t
   // a running mean leaves a step's edges and takes out the slow wave
   const hp = highPass(t, g, 20);
   assert.ok(Math.max(...hp.slice(15, -15).map(Math.abs)) < 0.02, 'a 250 s wave is nearly gone at 20 s, away from the ends');
+});
+
+/** A D1 stand-in: enough of prepare/bind/run/all for the readings table. */
+function fakeDb() {
+  const rows = [];
+  return {
+    rows,
+    prepare(sql) {
+      let args = [];
+      const st = {
+        bind: (...a) => { args = a; return st; },
+        run: async () => {
+          if (/^INSERT/.test(sql)) { const cols = sql.match(/\(([^)]+)\) VALUES/)[1].split(', '); rows.push(Object.fromEntries(cols.map((c, k) => [c, args[k]]))); }
+          if (/^DELETE/.test(sql)) { const k = rows.findIndex((r) => r.id === args[0]); if (k >= 0) rows.splice(k, 1); }
+          return { success: true };
+        },
+        all: async () => ({ results: rows.slice().sort((a, b) => b.at - a.at) }),
+      };
+      return st;
+    },
+  };
+}
+
+test('gauge readings: a signed-in visitor keeps one; only the admin reads them back, as JSON or CSV, and can take one off', async () => {
+  const env = { DB: fakeDb() };
+  const u = (q = '') => new URL(`https://water.example.com/api/water/readings${q}`);
+  const post = (body) => new Request(u(), { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } });
+  const signedIn = { isAdmin: async () => false, who: async () => ({ id: 'u1' }) };
+  const admin = { isAdmin: async () => true, who: async () => ({ id: 'a' }) };
+  // signed out: no
+  assert.equal((await readings(post({ measured_psi: 40, method: 'pitot' }), env, u(), { isAdmin: async () => false, who: async () => null })).status, 401);
+  // a bad one: no
+  assert.equal((await readings(post({ measured_psi: 400, method: 'pitot' }), env, u(), signedIn)).status, 400);
+  assert.equal((await readings(post({ measured_psi: 40, method: 'guess' }), env, u(), signedIn)).status, 400);
+  const ok = await readings(post({ measured_psi: 41.5, method: 'pitot', predicted_psi: 43.2, map_id: 'm1', head_id: 'h1', zone: 2, detail: { worksheet: { gauge: 60 } } }), env, u(), signedIn);
+  assert.equal(ok.status, 200);
+  assert.equal(env.DB.rows.length, 1); assert.equal(env.DB.rows[0].measured_psi, 41.5); assert.equal(env.DB.rows[0].typical_pvb, 0);
+  // reading them back: the admin only
+  assert.equal((await readings(new Request(u()), env, u(), signedIn)).status, 404);
+  const back = await (await readings(new Request(u()), env, u(), admin)).json();
+  assert.equal(back.readings[0].predicted_psi, 43.2);
+  const csv = await (await readings(new Request(u('?format=csv')), env, u('?format=csv'), admin)).text();
+  assert.match(csv.split('\n')[0], /^id,at,map_id/); assert.match(csv.split('\n')[1], /41\.5/);
+  await readings(new Request(u(`?id=${back.readings[0].id}`), { method: 'DELETE' }), env, u(`?id=${back.readings[0].id}`), admin);
+  assert.equal(env.DB.rows.length, 0);
+  // no database yet: 503, never a crash
+  assert.equal((await readings(post({ measured_psi: 40, method: 'pitot' }), {}, u(), signedIn)).status, 503);
+  assert.equal(await readings(new Request('https://water.example.com/api/other'), env, new URL('https://water.example.com/api/other'), admin), null);
 });
 
 let failed = 0;

@@ -1,0 +1,2 @@
+-- ALTERs for tables of water/schema.sql that have already shipped (none yet). Each must be safe to run again:
+-- the deploy runs this file every time, and an ALTER that fails because its column exists is ignored there.
