@@ -55,8 +55,12 @@ got here. Update it whenever the in-flight run changes.*
   OWNER'S DECISION (2026-10-20): "lidar is the closest thing to objective
   truth, that's what we should align everything to" -- so each photo is to
   be corrected onto it (scale/affine, not only a shift), the county photos
-  at banking first, measured before it ships. In flight: S43, Overture as
-  a decoder input (workflow 14 run 39349072551, `overture: compare`).
+  at banking first, measured before it ships. OVERTURE ITSELF sits a
+  median 0.87 m off the lidar's buildings (H101, read right 2026-10-20:
+  its own placement), so it is fitted to the lidar's roofs per lot before
+  use. In flight: S43, Overture as a decoder input, as published (workflow
+  14 run 39349072551) and moved onto the lidar's roofs (`overture:
+  aligned`, dispatched when that run's features are cached).
 - **THE LIVE MODEL HAS A NAME AND A VERSION HISTORY (owner, 2026-10-06):**
   "Turf Trace - alpha version 2 (79% accuracy)". Every release ships with a
   row in worker/src/model-versions.js: the next version number, the date,
@@ -1144,9 +1148,21 @@ the water session's water/lib/overture.js):
 - The overlap is held down by the LIDAR, not Overture: on the low-IoU lots the
   lidar finds 7-60 m² of roof where Overture has a 300-900 m² house (pitched or
   tree-covered roofs fail the flat-roof rule), and 9 lots have no lidar roof at
-  all. Where both see the house, the shift is a metre or less and
-  the same for every building on the lot, so Overture's outline is not leaning
-  or scattered per building.
+  all.
+- **THE SHIFT IS OVERTURE'S OWN PLACEMENT ERROR (read right on 2026-10-20,
+  after the owner: the outlines "are not lining up with the building
+  footprints... may just legitimately be an issue with the placements
+  according to overture").** The lidar's roof mask is symmetric about the
+  real building (eaves all round; porches and decks pull it a little), so a
+  SHIFT between it and Overture is not eaves or lean: it is where Overture
+  put the building. A median 0.87 m, over 1 m on 47 of 101 lots, over 2 m on
+  9, in a direction that changes lot by lot, every building on a lot by the
+  same amount (0.38 m scatter) -- what outlines machine-traced from one
+  imagery source (Microsoft's, from Bing) carry: that imagery's own offset.
+  So the outlines do not sit on the footprints, and one shift per lot,
+  fitted to the lidar's roofs, corrects it (tools/overture-frames.js
+  fitToRoof; S43's aligned arm). Roads and sidewalks are OpenStreetMap's,
+  another source, and are not moved by it.
 - **CORRECTION, same day (owner: "Your points about the fit are completely
   ignoring the imagery... the imagery is not consistently lining up with the
   overture shapes").** This entry first said Overture should land on the
@@ -7200,6 +7216,13 @@ with them over the same features, seed and folds, scored as "decoder,
 Overture". To read with workflow 24 against THE PLAN's own row of the same
 run, under the full bar. Not adopted until it clears it; the live server
 (alpha_infer.py) does not read Overture yet.
+
+The aligned arm (`overture: aligned`, 2026-10-20): each lot's buildings
+moved onto the lidar's roof mask first (fitToRoof: the shift of best overlap
+within 4 m, applied when the overlap is at least 30% and clearly better;
+roads and sidewalks untouched). On a local check with the "roof" placed
+1.8 m from the footprints on a 2 m grid it moved them 1.1-1.4 m, overlap
+70-82% -> 84-90%: the 2 m lidar cells blunt it by about half a metre.
 
 Untested ideas kept apart from it: the footprint as never-lawn in stage 3
 (H101: it would cost 0.5% of traced lawn, 11% on one Fargo lot), and the
