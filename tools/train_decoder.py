@@ -548,7 +548,8 @@ def with_dropout(x, rng, distrust=False):
     more = intensity_index(bool(FUSE_RETURNS)) if FUSE_INTENSITY else ()
     o = overture_index(bool(FUSE_RETURNS), FUSE_INTENSITY)
     ov = tuple(range(o, o + len(OVERTURE_CHANNELS))) if FUSE_OVERTURE else ()
-    e = drop_sources(x[-k:].numpy(), rng, 1.0 if distrust else DROP_LIDAR, DROP_NAIP, more_lidar=more, overture=ov, p_overture=DROP_OVERTURE)
+    e = drop_sources(x[-k:].numpy(), rng, 1.0 if distrust else DROP_LIDAR, DROP_NAIP, more_lidar=more, overture=ov, p_overture=DROP_OVERTURE,
+                     with_returns=bool(FUSE_RETURNS))
     return torch.cat([x[:-k], torch.from_numpy(e)], dim=0)
 
 

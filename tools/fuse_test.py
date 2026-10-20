@@ -113,6 +113,9 @@ check("without the switch Overture is not there", extra_channels(2, 2, 1.0, 1.0,
 check("no Overture: zeros and a 0 flag", not extra_channels(2, 2, 1.0, 1.0, with_intensity=True, with_overture=True)[o:o + 4].any())
 do = drop_sources(eo, np.random.default_rng(4), 0.0, 0.0, overture=tuple(range(o, o + 4)), p_overture=1.0)
 check("dropping Overture zeroes its four and leaves the lidar", not do[o:o + 4].any() and np.array_equal(do[list(LIDAR)], eo[list(LIDAR)]))
-check("dropping the lidar leaves Overture", np.array_equal(drop_sources(eo, np.random.default_rng(5), 1.0, 0.0, more_lidar=(i, f))[o:o + 4], eo[o:o + 4]))
+dl = drop_sources(eo, np.random.default_rng(5), 1.0, 0.0, more_lidar=(i, f), overture=tuple(range(o, o + 4)), p_overture=0.0, with_returns=False)
+check("dropping the lidar leaves Overture (the returns' slots are Overture's here)", np.array_equal(dl[o:o + 4], eo[o:o + 4]) and not dl[list(LIDAR) + [i, f]].any())
+check("told the returns are off, their slots are left alone even without Overture's indices",
+      np.array_equal(drop_sources(eo, np.random.default_rng(5), 1.0, 0.0, more_lidar=(i, f), with_returns=False)[o:o + 4], eo[o:o + 4]))
 
 print(f"\nAll {passed} checks passed.")

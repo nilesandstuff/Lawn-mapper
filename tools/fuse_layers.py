@@ -154,14 +154,16 @@ def extra_channels(grid_w, grid_h, cover_x, cover_y, lidar=None, ndvi=None, ndvi
     return out
 
 
-def drop_sources(extra, rng, p_lidar, p_naip, more_lidar=(), overture=(), p_overture=0.0):
+def drop_sources(extra, rng, p_lidar, p_naip, more_lidar=(), overture=(), p_overture=0.0, with_returns=None):
     """Modality dropout: zero a whole source's channels, flag included, as a missing one reads.
     `more_lidar`: channels from the same flight placed elsewhere (the intensity).
-    `overture`: the Overture channels' indices, hidden on their own with p_overture."""
+    `overture`: the Overture channels' indices, hidden on their own with p_overture.
+    `with_returns`: whether RETURN_LIDAR's slots hold the returns (None: assume so when they exist --
+    the old reading, wrong once Overture sits in those slots, so say it)."""
     e = extra.copy()
     if p_lidar and rng.random() < p_lidar:
-        # RETURN_LIDAR's slots belong to Overture when the returns are off and Overture is on: never those.
-        e[[i for i in LIDAR + RETURN_LIDAR + tuple(more_lidar) if i < len(e) and i not in overture]] = 0.0
+        returns = RETURN_LIDAR if with_returns or (with_returns is None and not overture) else ()
+        e[[i for i in LIDAR + returns + tuple(more_lidar) if i < len(e) and i not in overture]] = 0.0
     if p_naip and rng.random() < p_naip:
         e[list(NAIP)] = 0.0
     if p_overture and overture and rng.random() < p_overture:
