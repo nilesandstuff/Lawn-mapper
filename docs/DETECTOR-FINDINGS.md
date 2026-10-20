@@ -70,7 +70,7 @@ got here. Update it whenever the in-flight run changes.*
   center", so no typical-width band (it overlapped lawn) and no distance
   channel. The editor's layer and the predictions page draw the thin
   lines; the decoder trial is S44 (one channel: on a line, falling to 0 at
-  2 m), in flight. The owner also reports (S45) that on the 104 training
+  2 m), in flight as workflow 14 run 39409589116. The owner also reports (S45) that on the 104 training
   maps the lidar still does not line up with the building footprints.
 - **THE LIVE MODEL HAS A NAME AND A VERSION HISTORY (owner, 2026-10-06):**
   "Turf Trace - alpha version 2 (79% accuracy)". Every release ships with a
@@ -7270,7 +7270,7 @@ fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
 
-### S44. The paved centrelines as ONE decoder channel: on an OpenStreetMap road, sidewalk, footway or path line, falling to 0 two metres off it (owner, 2026-10-20) -- IN FLIGHT, workflow 14 run RUN_S44
+### S44. The paved centrelines as ONE decoder channel: on an OpenStreetMap road, sidewalk, footway or path line, falling to 0 two metres off it (owner, 2026-10-20) -- IN FLIGHT, workflow 14 run 39409589116
 *Owner, after H105 and his own look at the predictions page: "If we used
 only the center lines of the road/sidewalk shapes, that might be useful...
 the center lines of the shapes do seem to always fall on actual
