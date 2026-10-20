@@ -61,7 +61,7 @@ export const FIT_CELL_M = 0.25, REACH_M = 4;
    brightness edges (the top GROUND_EDGE_SHARE of ground cells by gradient: a drive's edge, a kerb,
    a path) slid onto the photo's edges within GROUND_REACH_M. Roofs and crowns lean; the ground
    does not. */
-export const GROUND_MAX_M = 0.5, GROUND_MARGIN_M = 1.5, GROUND_EDGE_SHARE = 0.12, GROUND_REACH_M = 3;
+export const GROUND_MAX_M = 0.5, GROUND_MARGIN_M = 1.5, GROUND_EDGE_SHARE = 0.12, GROUND_REACH_M = 3, GROUND_MIN_OPEN = 0.2;
 export const MIN_EDGE_CELLS = 24; // a garage-sized roof has 24 edge metres
 
 const median = (xs) => { const s = xs.filter(Number.isFinite).sort((a, b) => a - b); return s.length ? (s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2) : NaN; };
@@ -351,7 +351,12 @@ async function main() {
   writeFileSync(join(dirs.out, 'lidar-roof-fit.json'), JSON.stringify({ roofCellM: ROOF_CELL_M, fitCellM: FIT_CELL_M, reachM: REACH_M, groundReachM: GROUND_REACH_M, rows, skipped }, null, 1));
   /* THE GROUND SHIFTS, for the training (lidar_frame.py adds them to the datum move): the move
      for the lidar in ground metres, only where the ground fit is clear. */
-  const shifts = Object.fromEntries(rows.filter((r) => r.groundConfident).map((r) => [r.id, { east: r.groundEast, north: r.groundNorth, peak: r.groundPeak, method: 'ground' }]));
+  /* Kept out of the file: a fit that ran to the edge of its search (nothing to say it would not
+     have gone further), and a frame with little open ground to match on (under GROUND_MIN_OPEN of
+     its cells): run 3 put C88 at 4.6 m on 11% open ground, which is a fit to the wrong edges. */
+  const usable = (r) => r.groundConfident && Math.abs(r.groundEast) < GROUND_REACH_M && Math.abs(r.groundNorth) < GROUND_REACH_M && r.groundShareOfFrame >= GROUND_MIN_OPEN;
+  const shifts = Object.fromEntries(rows.filter(usable).map((r) => [r.id, { east: r.groundEast, north: r.groundNorth, peak: r.groundPeak, open: Number(r.groundShareOfFrame.toFixed(2)), method: 'ground' }]));
+  console.log(`\nlidar-shifts.json: ${Object.keys(shifts).length} lots' ground moves kept (measured, inside the ${GROUND_REACH_M} m search, ${Math.round(100 * GROUND_MIN_OPEN)}%+ of the frame open); ${rows.filter((r) => r.groundConfident && !usable(r)).length} measured but not kept.`);
   writeFileSync(join(dirs.out, 'lidar-shifts.json'), JSON.stringify({ unit: 'ground metres, the move to give the lidar after the datum move', shifts }, null, 1));
 
   const gsure = rows.filter((r) => r.groundConfident);
