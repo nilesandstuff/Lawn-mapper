@@ -6,6 +6,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { autoArc } from '../lib/arcs.js';
+import { precipitation, rateAt } from '../lib/precip.js';
 import { catalogue, rowAt, headWater, zoneWater, headPsi, lineCheck, gpmAt, psiPer100ft, pipe, settle, calibrate, placeByGps, enu, unEnu, facing } from '../lib/heads.js';
 
 const tests = [];
@@ -137,6 +138,25 @@ test('arcs: a corner head waters its quarter of the lawn, an edge head its half,
   assert.ok(nearDrive.arc < 360 && nearDrive.hardShare <= 0.15, JSON.stringify(nearDrive));
   const fullNearDrive = autoArc(unEnu(ref, [17, 10]), 5, { arcFixed: 360 }, ground);
   assert.ok(fullNearDrive.throw < 1 && fullNearDrive.throw >= 0.75, JSON.stringify(fullNearDrive));
+});
+
+test('precipitation: every head\'s water adds back up to its gpm over the ground; a quarter puts the same gpm on a quarter of the area; two heads head to head even out', () => {
+  const ref = [-85.5, 43.0], cellM = 0.25, W = 120, H = 120;
+  const grid = { W, H, cellM, at: (c, r) => unEnu(ref, [(c + 0.5) * cellM - 15, (r + 0.5) * cellM - 15]), lawn: () => true };
+  const total = (a) => a.reduce((s, v) => s + v, 0) * cellM * cellM * 10.7639 / 96.25; // in/h x ft2 -> gpm
+  for (const h of [{ zone: 1, at: ref, gpm: 3.7, radiusM: 4.6, arc: 360, dir: 0, kind: 'spray' }, { zone: 1, at: ref, gpm: 0.93, radiusM: 4.6, arc: 90, dir: 45, kind: 'spray' }, { zone: 1, at: ref, gpm: 0.5, radiusM: 0, arc: null, dir: 90, kind: 'spray', strip: { type: 'end', lengthM: 4.5, widthM: 1.0 } }]) {
+    const p = precipitation(grid, [h]);
+    assert.ok(Math.abs(total(p.byZone.get(1)) - h.gpm) / h.gpm < 0.04, `${h.arc ?? 'strip'}: ${total(p.byZone.get(1)).toFixed(3)} gpm vs ${h.gpm}`);
+  }
+  // the quarter's rate is the full circle's (matched precipitation)
+  const fullR = rateAt({ gpm: 3.7, radiusM: 4.6, arc: 360, dir: 0, kind: 'spray' }, 1, 1), quarterR = rateAt({ gpm: 0.925, radiusM: 4.6, arc: 90, dir: 45, kind: 'spray' }, 1, 1);
+  assert.ok(Math.abs(fullR - quarterR) < 1e-9);
+  // a single head: no even coverage; heads at head-to-head spacing in a row: better
+  const one = precipitation({ ...grid, lawn: (i) => { const r = Math.floor(i / W), c = i % W; return Math.abs((c + 0.5) * cellM - 15) < 4 && Math.abs((r + 0.5) * cellM - 15) < 4; } }, [{ zone: 1, at: ref, gpm: 3.7, radiusM: 4.6, arc: 360, dir: 0, kind: 'spray' }]);
+  const row = [];
+  for (let x = -9.2; x <= 9.2; x += 4.6) for (let y = -9.2; y <= 9.2; y += 4.6) row.push({ zone: 1, at: unEnu(ref, [x, y]), gpm: 3.7, radiusM: 4.6, arc: 360, dir: 0, kind: 'spray' });
+  const many = precipitation({ ...grid, lawn: (i) => { const r = Math.floor(i / W), c = i % W; return Math.abs((c + 0.5) * cellM - 15) < 4 && Math.abs((r + 0.5) * cellM - 15) < 4; } }, row);
+  assert.ok(many.du > one.du, `DU ${one.du.toFixed(2)} alone, ${many.du.toFixed(2)} head to head`);
 });
 
 let failed = 0;

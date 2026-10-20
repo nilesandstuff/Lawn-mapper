@@ -350,6 +350,13 @@ const heads = sprinklers({
     return false;
   },
   mapId: () => view.site?.mapId || null,
+  showCoverage: () => !!$('#show-coverage')?.checked,
+  // the traced lawn's corners, [[west, south], [east, north]]
+  lawnBox: () => {
+    const pts = (view.site?.lawn || []).flatMap((f) => (f.geometry?.type === 'Polygon' ? f.geometry.coordinates.flat() : f.geometry?.type === 'MultiPolygon' ? f.geometry.coordinates.flat(2) : []));
+    if (!pts.length) return null;
+    return [[Math.min(...pts.map((p) => p[0])), Math.min(...pts.map((p) => p[1]))], [Math.max(...pts.map((p) => p[0])), Math.max(...pts.map((p) => p[1]))]];
+  },
   // what is on the ground at a point, for the arcs (lib/arcs.js): the traced lawn, a building or paving, other
   get groundAt() {
     const d = view.data;
@@ -777,7 +784,7 @@ $('#here').addEventListener('click', () => guarded(async () => {
   await run(await siteFromPoint(pos.coords.latitude, pos.coords.longitude));
 }));
 
-for (const id of ['#show-flow', '#show-grade', '#show-photo', '#show-hard', '#show-zones', '#show-heads']) $(id).addEventListener('change', draw);
+for (const id of ['#show-flow', '#show-grade', '#show-photo', '#show-hard', '#show-zones', '#show-heads', '#show-coverage']) $(id).addEventListener('change', draw);
 $('#edit-heads').addEventListener('click', async () => { setMode(null); if (await heads.open(heads.data, { force: true })) { $('#result').classList.add('heads-on'); draw(); $('#stage').scrollIntoView({ behavior: 'smooth' }); } });
 /* The water-need layer (owner 2026-10-19: knock-on effects of every input, as on a real lawn): each square
    metre's own watering in the lawn's thirstiest month, scaled from the lawn's 5th to 95th percentile. */

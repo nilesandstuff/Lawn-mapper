@@ -19,14 +19,15 @@
  * it draws on the photo. Kept with the map as the water part's `irrigation` (POST /api/maps/tool).
  */
 
-import { catalogue, headWater, zoneWater, calibrate, placeByGps, facing, arcOf, enu } from '/lib/heads.js';
+import { catalogue, headWater, zoneWater, calibrate, placeByGps, facing, arcOf, enu, unEnu } from '/lib/heads.js';
 import { autoArc, MIN_THROW, BIN_DEG } from '/lib/arcs.js';
+import { precipitation, setProfiles } from '/lib/precip.js';
 import { route, solveZone, headFlow, regulatedOut, deviceLoss, dwPerFt, roughnessMm, SWING, FITTINGS_SHARE, pipeById, pipeSize, PIPE_FAMILIES, sizeFor, fraction, fps, FT_PER_M, MAX_FPS } from '/lib/hydraulics.js';
 
 const FILES = ['rainbird-sprays', 'rainbird-rotors', 'hunter-sprays', 'hunter-rotors', 'other-brands'];
 const ZONE_COLORS = ['#e53935', '#1e88e5', '#43a047', '#fb8c00', '#8e24aa', '#00acc1', '#fdd835', '#6d4c41', '#d81b60', '#3949ab', '#7cb342', '#546e7a'];
-const STEPS = ['place', 'review', 'zones', 'models', 'details', 'equipment', 'supply', 'lines', 'water', 'pressure', 'arcs'];
-const STEP_TITLE = { place: 'Place your sprinkler heads', review: 'Check where they are', zones: 'Which valve is each head on?', models: 'What heads and nozzles are they?', details: 'Your heads', equipment: 'The backflow preventer and the valves', supply: 'The water coming in', lines: 'The pipe to each zone', water: 'Your water (optional)', pressure: 'The pressure at every head', arcs: "Each head's arc and throw" };
+const STEPS = ['place', 'review', 'zones', 'models', 'details', 'equipment', 'supply', 'lines', 'water', 'pressure', 'arcs', 'coverage'];
+const STEP_TITLE = { place: 'Place your sprinkler heads', review: 'Check where they are', zones: 'Which valve is each head on?', models: 'What heads and nozzles are they?', details: 'Your heads', equipment: 'The backflow preventer and the valves', supply: 'The water coming in', lines: 'The pipe to each zone', water: 'Your water (optional)', pressure: 'The pressure at every head', arcs: "Each head's arc and throw", coverage: 'How evenly the lawn is watered' };
 /** The pipe families a zone's lines may be, and the supply line's. */
 const LINE_FAMILIES = ['pe', 'pvc200', 'pvc40'];
 const SUPPLY_FAMILIES = ['pvc40', 'pvc200', 'pe', 'cuL', 'cuK', 'pex', 'galv'];
@@ -63,7 +64,7 @@ export function sprinklers(ctx) {
   let step = null, cat = null, catNote = '';
   const sel = new Set();
   const gps = { on: false, watch: null, fixes: [], cal: null, phase: null, ref: null, live: null, busy: false };
-  let drag = null, dragged = false, placeMode = 'tap', labelsHidden = 0, placing = null, gaugeNote = '';
+  let drag = null, dragged = false, placeMode = 'tap', labelsHidden = 0, placing = null, gaugeNote = '', coverView = 'all';
   let nextId = 1;
 
   const loadCat = (async () => {
@@ -184,6 +185,69 @@ export function sprinklers(ctx) {
     return headFlow(h, cat, Number.isFinite(irr.system.source.psi) ? irr.system.source.psi - 15 : NaN);
   };
   const STATUS_COLOR = { ok: '#43a047', low: '#fb8c00', high: '#8e24aa' };
+
+  /* THE COVERAGE (lib/precip.js): a grid over the lawn, every head's water laid over its arc and throw by its
+     kind's radial profile (lib/hydraulics/profiles.json when it loads). */
+  let profilesNote = "an estimated spread (even to 70% of the throw, falling to its edge)";
+  fetch('/lib/hydraulics/profiles.json').then((r) => (r.ok ? r.json() : null)).then((j) => {
+    const p = j?.forPrecip;
+    if (p) { setProfiles(p); profilesNote = j.forPrecipNote || "each kind's measured spread (lib/hydraulics/profiles.json)"; coverKey = ''; ctx.draw(); }
+  }).catch(() => {});
+  const COVER = { missed: '#d32f2f', dry: '#f57c00', mid: '#9e9e9e', wet: '#1565c0' };
+  let coverKey = '', coverCache = null;
+  function coverage() {
+    if (!cat || !ctx.groundAt || !solve()) return null;
+    const key = solvedKey + JSON.stringify(irr.heads.map((h) => [h.dir, h.arc, h.throw]));
+    if (key === coverKey) return coverCache;
+    // the grid: half-metre cells over the heads' reach
+    const hs = [];
+    for (const h of irr.heads) {
+      const w = waterOf(h), fam = cat.familyOfNozzle(h.nozzle);
+      if (!w || !(w.gpm > 0)) continue;
+      const t = h.throw ?? 1;
+      hs.push({ zone: h.zone, at: h.at, gpm: w.gpm, radiusM: (w.radiusFt / FT_PER_M) * t, arc: w.arc ?? 360, dir: h.dir ?? 0, kind: fam?.kind, strip: w.strip ? { type: w.strip.type, lengthM: (w.strip.lengthFt / FT_PER_M) * t, widthM: w.strip.widthFt / FT_PER_M } : null });
+    }
+    if (!hs.length) return null;
+    const ref = hs[0].at, xy = hs.map((h) => enu(ref, h.at)), reach = Math.max(...hs.map((h) => h.strip ? h.strip.lengthM : h.radiusM));
+    // the heads' reach and the whole traced lawn, so lawn no head reaches counts as missed
+    const lb = ctx.lawnBox?.(), corners = lb ? [enu(ref, lb[0]), enu(ref, lb[1])] : [];
+    const xs = [...xy.map((p) => p[0] - reach), ...xy.map((p) => p[0] + reach), ...corners.map((p) => p[0])];
+    const ys = [...xy.map((p) => p[1] - reach), ...xy.map((p) => p[1] + reach), ...corners.map((p) => p[1])];
+    const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    const cellM = 0.5, W = Math.ceil((x1 - x0) / cellM), H = Math.ceil((y1 - y0) / cellM);
+    const at = (c, r) => unEnu(ref, [x0 + (c + 0.5) * cellM, y1 - (r + 0.5) * cellM]);
+    const lawnFlag = new Uint8Array(W * H);
+    for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) lawnFlag[r * W + c] = ctx.groundAt(at(c, r)) === 'lawn' ? 1 : 0;
+    const p = precipitation({ W, H, cellM, at, lawn: (i) => lawnFlag[i] === 1 }, hs);
+    coverCache = { p, W, H, cellM, nw: unEnu(ref, [x0, y1]), lawnFlag };
+    coverKey = key;
+    return coverCache;
+  }
+  /** The coverage as an image over the photo: the all-zones depth share, or one zone's rate. */
+  function drawCoverage(g) {
+    const cv = coverage();
+    if (!cv) return;
+    const { p, W, H, cellM, lawnFlag } = cv;
+    const img = new ImageData(W, H), hex = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+    const [mr, mg, mb] = hex(COVER.missed), [dr, dg, db] = hex(COVER.dry), [nr, ng, nb] = hex(COVER.mid), [wr, wg, wb] = hex(COVER.wet);
+    const zone = coverView === 'all' ? null : p.byZone.get(coverView);
+    const zmax = zone ? Math.max(...zone) : 1;
+    for (let i = 0; i < W * H; i++) {
+      if (!lawnFlag[i] && !(zone ? zone[i] > 0 : p.coverage[i] > 0)) continue;
+      let rgb, a = lawnFlag[i] ? 200 : 90;
+      if (zone) { const t = zmax > 0 ? Math.min(1, zone[i] / zmax) : 0; if (t <= 0) continue; rgb = [227 - t * 214, 242 - t * 171, 253 - t * 92]; }
+      else {
+        const v = p.coverage[i];
+        if (v <= 0) rgb = [mr, mg, mb];
+        else if (v < 1) { const t = Math.max(0, Math.min(1, (v - 0.4) / 0.6)); rgb = [dr + (nr - dr) * t, dg + (ng - dg) * t, db + (nb - db) * t]; if (v >= 0.85) a = Math.round(a * 0.45); }
+        else { const t = Math.max(0, Math.min(1, (v - 1) / 0.6)); rgb = [nr + (wr - nr) * t, ng + (wg - ng) * t, nb + (wb - nb) * t]; if (v <= 1.25) a = Math.round(a * 0.45); }
+      }
+      img.data.set([rgb[0], rgb[1], rgb[2], a], i * 4);
+    }
+    const tmp = document.createElement('canvas'); tmp.width = W; tmp.height = H; tmp.getContext('2d').putImageData(img, 0, 0);
+    const [x, y] = ctx.toPx(cv.nw), s = cellM * ctx.pxPerM();
+    g.save(); g.imageSmoothingEnabled = true; g.drawImage(tmp, x, y, W * s, H * s); g.restore();
+  }
 
   /** A reading, with the model's own prediction (before any reading moved it) and what it rested on, to the
       water tool's ground truth (src/readings.js). -> a note for the panel */
@@ -348,6 +412,19 @@ export function sprinklers(ctx) {
           <div class="tools"><button type="button" class="plain" data-act="autoone">Set this one automatically</button></div></div>` : ''}
         <div class="tools"><button type="button" class="plain" data-act="autoall">Set every head automatically${changedByYou ? ` (undoes your ${changedByYou} change${changedByYou > 1 ? 's' : ''})` : ''}</button></div>
         <p class="dim">The throw is the chart's radius at each head's pressure; a nozzle's radius screw (or a rotor's break-up screw) shortens it, usually by up to about 25%. Where the arc can't be turned off a hard surface, the throw is shortened instead.</p>
+        ${nav('coverage', { label: 'Next: the coverage' })}`;
+    },
+
+    coverage: () => {
+      const cv = coverage();
+      if (!cv) return `<p>${ctx.groundAt ? 'Give every head its nozzle and the pressure first.' : 'The lawn map is still loading; the coverage follows it.'}</p>${nav('done', { label: 'Done' })}`;
+      const p = cv.p, m2 = (cells) => cells * cv.cellM * cv.cellM;
+      const zones = [...p.zoneMean.entries()].sort((a, b) => a[0] - b[0]);
+      return `<p class="hint">${coverView === 'all' ? 'Each zone run long enough to put down its average depth, all the zones together: <span style="color:' + COVER.dry + '">orange</span> gets under 60% of it (dry), <span style="color:' + COVER.missed + '">red</span> gets none, <span style="color:' + COVER.wet + '">blue</span> over 150% (where zones overlap, or water piles up near heads).' : `Zone ${coverView}'s own rate, inches an hour, darker for more.`}</p>
+        <div class="tools"><button type="button" class="${coverView === 'all' ? '' : 'plain'}" data-view="all">All zones</button>${zones.map(([z]) => `<button type="button" class="${coverView === z ? '' : 'plain'}" data-view="${z}" style="border-color:${colorOf(z)}">Zone ${z}</button>`).join('')}</div>
+        <table class="months"><tr><th>Zone</th><th>Puts down, on average</th></tr>${zones.map(([z, v]) => `<tr><td><span class="chip" style="background:${colorOf(z)}"></span>Zone ${z}</td><td>${v.toFixed(2)} in/h</td></tr>`).join('')}</table>
+        <p><strong>Distribution uniformity ${Math.round(p.du * 100)}%</strong> (the driest quarter of the lawn against the average; irrigation audits call 70% good, 55% typical of home spray zones). ${p.missed ? `About <strong>${Math.round(m2(p.missed) * 10.76)} sq ft</strong> of lawn gets no water at all. ` : ''}${p.dryShare > 0.02 ? `${Math.round(p.dryShare * 100)}% of the lawn gets under 60% of the depth: those are the dry spots.` : 'No sizeable dry spots.'}${p.wetShare > 0.02 ? ` ${Math.round(p.wetShare * 100)}% gets over 150%.` : ''}</p>
+        <p class="dim">From each head's flow at the pressure it gets, over its arc and throw, by ${profilesNote}. Wind, a tilted head or a clogged nozzle are not in it: a catch-cup test on the lawn measures them.</p>
         ${nav('done', { label: 'Done' })}`;
     },
 
@@ -612,6 +689,10 @@ export function sprinklers(ctx) {
       P.querySelector('[data-arc=throw]')?.addEventListener('change', set((v) => { h.throw = v / 100; }));
       P.querySelector('[data-act=autoone]')?.addEventListener('click', () => { if (h) { autoSet(h); changed(); render(); } });
       P.querySelector('[data-act=autoall]')?.addEventListener('click', () => { for (const x of irr.heads) autoSet(x); changed(); render(); });
+      wireNav(P, () => go('coverage'));
+    },
+    coverage: (P) => {
+      P.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', () => { coverView = b.dataset.view === 'all' ? 'all' : Number(b.dataset.view); render(); }));
       wireNav(P, () => { irr.done = true; irr.none = false; changed(); finish(); });
     },
   };
@@ -739,7 +820,8 @@ export function sprinklers(ctx) {
     // sized on the screen, not the photo: the same on a phone at any zoom
     const px = ctx.cssScale(), r = 6 * px;
     lw = 2 * px;
-    const fans = ['details', 'models', 'lines', 'supply', 'arcs'].includes(step) || (!step && irr.done);
+    if (step === 'coverage' || (!step && irr.done && ctx.showCoverage?.())) drawCoverage(g);
+    const fans = ['details', 'models', 'lines', 'supply', 'arcs'].includes(step) || (!step && irr.done && !ctx.showCoverage?.());
     if (fans && cat) for (const h of irr.heads) {
       const w = waterOf(h);
       if (!w) continue;

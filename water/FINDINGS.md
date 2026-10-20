@@ -952,6 +952,28 @@ lib/hydraulics.js, from three research files in lib/hydraulics/ (devices.json, p
 - Not yet: valve-box depth and riser losses; the IA's 10% and others' 20% spread rules both shown; a field
   check with a gauge on a head (a pitot on a nozzle) is the bar this has not met.
 
+### H27. Gauge readings, the head picker, arcs and coverage (water session, 2026-10-20)
+
+- GAUGE READINGS: a reading at a head replaces the estimate there, worked back to the head's inlet (a pitot
+  reads the nozzle, after any regulator: under its setting the inlet is the reading plus what the regulator
+  needs; a riser gauge reads the lateral with that head shut: the inlet is that less its swing joint), and the
+  zone's other heads move by the zone's average miss. Each reading is kept with the model's own prediction
+  in the water Worker's D1 "lawn-water" (made by the deploy, 2026-10-20); /admin shows the model's misses.
+  No readings yet: the model's accuracy is UNMEASURED.
+- HEAD PICKER: four sections (rotary nozzles on a spray body; fixed spray / shrub; gear-driven rotors;
+  impact). A rotary nozzle defaults onto the body made for it whose regulator is nearest its design pressure
+  (an R-VAN on Rain Bird's 45 psi body, as Rain Bird recommends).
+- ARCS (lib/arcs.js): rays every 5 degrees to each head's throw at its own pressure; an adjustable nozzle
+  takes the widest run of lawn that spares buildings and paving, a fixed pattern is turned to the most lawn,
+  the throw is shortened (not under 75%) where the arc can't be turned off a hard surface. Choosing between
+  a narrower arc and a shorter throw is by lawn area watered (an adjustable head 3 m from a drive takes a
+  260 degree arc at full throw rather than a full circle cut to 75%). Tested on a square lawn: corner 90,
+  edge 180, middle 360.
+- COVERAGE (lib/precip.js): each head's flow laid over its arc and throw by its kind's radial profile;
+  conserves each head's gpm to within 4% on a 0.25 m grid (tested). Shown as each zone run to its own
+  average depth, summed: dry (under 60%), missed, overlapping (over 150%), with the lawn's lower-quarter DU.
+  The profiles are ESTIMATED (even to 70% of the throw, falling to the edge) until the profile research is in.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge
