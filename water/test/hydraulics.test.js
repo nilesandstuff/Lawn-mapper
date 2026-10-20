@@ -16,15 +16,10 @@ const ref = [-85.5, 43];
 const at = (e, n) => unEnu(ref, [e, n]);
 const near = (a, b, tol, what) => assert.ok(Math.abs(a - b) <= tol, `${what}: ${a} vs ${b}`);
 
-test('routing: heads in a row are one run; a head beside the middle of it joins by a tee, not a pipe of its own to the valve', () => {
+test('routing: heads in a row are one run, each after its parent', () => {
   const t = route(ref, [{ id: 'a', at: at(5, 0) }, { id: 'b', at: at(10, 0) }, { id: 'c', at: at(15, 0) }]);
   const n = Object.fromEntries(t.nodes.map((x) => [x.id, x]));
   assert.equal(n.a.parent, 'valve'); assert.equal(n.b.parent, 'a'); assert.equal(n.c.parent, 'b');
-  // a head off the middle of a run laid first: a tee in it
-  const t2 = route(ref, [{ id: 'a', at: at(6, 0) }, { id: 'd', at: at(3, 6) }]);
-  const n2 = Object.fromEntries(t2.nodes.map((x) => [x.id, x]));
-  assert.ok(n2.d.parent.startsWith('tee'), `d joins ${n2.d.parent}`);
-  near(n2.d.lenFt, 6 * FT_PER_M, 0.05, 'the branch to d');
   assert.equal(t.order[0].id, 'valve');
   for (const x of t.order.slice(1)) assert.ok(t.order.findIndex((y) => y.id === x.parent) < t.order.indexOf(x), 'parents first');
 });
@@ -36,6 +31,17 @@ test('routing: a run through a building goes round it if it can', () => {
   assert.equal(Object.fromEntries(t.nodes.map((x) => [x.id, x])).b.parent, 'a');
 });
 
+test("routing: Hunter's six heads in two rows are fed as a trunk with branches, not one line snaking through all six (his WRONG)", () => {
+  // two columns of three heads 5 m apart, the valve 5 m below the middle of the pair
+  const hs = [];
+  for (const e of [0, 5]) for (const n of [5, 10, 15]) hs.push({ id: `h${e}${n}`, at: at(e, n) });
+  const t = route(at(2.5, 0), hs);
+  const byId = new Map(t.nodes.map((x) => [x.id, x]));
+  const depth = (id) => { let k = 0; for (let x = byId.get(id); x && x.parent !== null; x = byId.get(x.parent)) if (x.kind === 'head') k++; return k; };
+  const most = Math.max(...hs.map((h) => depth(h.id)));
+  assert.ok(most <= 3, `the farthest head is behind ${most} heads`);
+});
+
 test('devices: between the maker\'s points a line; past the last the square of the flow; a check valve holds its spring below the first', () => {
   const pvb = { kind: 'pvb', points: [{ gpm: 5, psi: 4 }, { gpm: 15, psi: 8 }] };
   near(deviceLoss(pvb, 10), 6, 1e-9, 'between'); near(deviceLoss(pvb, 30), 32, 1e-9, 'past'); near(deviceLoss(pvb, 1), 4, 1e-9, 'below');
@@ -44,6 +50,10 @@ test('devices: between the maker\'s points a line; past the last the square of t
 
 test('friction: Hazen-Williams, 1 in Schedule 40 at 10 gpm loses about 2.4 psi per 100 ft; runs are sized under 5 ft/s from 3/4 in', () => {
   near(frictionPerFt(1.049, 150, 10) * 100, 2.39, 0.05, 'psi per 100 ft');
+  // Rain Bird's worked example (Landscape Irrigation Design Manual, p. 91): 162.8 ft of 2 in Schedule 40 at
+  // 39.2 gpm, 1.872 psi in their table; Hazen-Williams with C 150 within 5% of it
+  const rb = frictionPerFt(2.067, 150, 39.2) * 162.8;
+  assert.ok(Math.abs(rb - 1.872) / 1.872 < 0.05, `Rain Bird's main: ${rb.toFixed(3)} psi vs 1.872`);
   assert.equal(sizeFor('pe', 2).nominal, 0.75);
   assert.equal(sizeFor('pe', 10).nominal, 1);
   assert.equal(sizeFor('pe', 20).nominal, 1.25);
@@ -87,9 +97,8 @@ test('elevation: the same zone 10 ft uphill gets about 4.3 psi less at its heads
   near(d, (10 + 4 / 12) * PSI_PER_FT - lessLoss, 0.05, 'the rise, less the losses saved');
 });
 
-test('scale: hard water and rust slow metal pipe far more than plastic, more with age', () => {
-  const soft = cFactors({ hardness: 'soft' }), hard = cFactors({ hardness: 'veryHard', iron: true, ageYears: 25 });
-  assert.equal(soft.metal, 1); assert.ok(hard.metal < 0.85 && hard.plastic >= 0.95 && hard.plastic < 1, JSON.stringify(hard));
+test('water quality: plastic pipe is left as it is (no maker or study gives a number for scale in it)', () => {
+  assert.equal(cFactors({ hardness: 'veryHard', orange: true }).plastic, 1);
 });
 
 let failed = 0;

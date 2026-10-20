@@ -20,7 +20,7 @@
  */
 
 import { catalogue, headWater, zoneWater, calibrate, placeByGps, facing, arcOf, enu } from '/lib/heads.js';
-import { route, solveZone, headFlow, deviceLoss, frictionPerFt, pipeById, pipeSize, PIPE_FAMILIES, sizeFor, fraction, cFactors, FT_PER_M, MAX_FPS } from '/lib/hydraulics.js';
+import { route, solveZone, headFlow, deviceLoss, frictionPerFt, FITTINGS_SHARE, pipeById, pipeSize, PIPE_FAMILIES, sizeFor, fraction, cFactors, fps, FT_PER_M, MAX_FPS } from '/lib/hydraulics.js';
 
 const FILES = ['rainbird-sprays', 'rainbird-rotors', 'hunter-sprays', 'hunter-rotors', 'other-brands'];
 const ZONE_COLORS = ['#e53935', '#1e88e5', '#43a047', '#fb8c00', '#8e24aa', '#00acc1', '#fdd835', '#6d4c41', '#d81b60', '#3949ab', '#7cb342', '#546e7a'];
@@ -48,7 +48,7 @@ export function emptySystem() {
     boxes: [],
     source: { psi: null, read: 'static', from: 'city', meter: '058', serviceFamily: 'cuK', serviceSize: 0.75, serviceFt: 60 },
     supplyLine: { family: 'pvc40', size: 1, lenFt: null },
-    quality: { hardness: 'unknown', iron: false, ageYears: null },
+    quality: { hardness: 'unknown', crust: false, spots: false, orange: false, black: false, slime: false, headCrust: false },
   };
 }
 
@@ -118,12 +118,12 @@ export function sprinklers(ctx) {
       const lenFt = Number.isFinite(sl.lenFt) ? sl.lenFt : distFt(sys.pvb.at, box) * 1.15 + 3;
       const parts = (Q) => ({
         meter: meterDev ? deviceLoss(meterDev, Q) : 0,
-        service: svc ? frictionPerFt(svc.idIn, svcC, Q) * (src.serviceFt || 0) : 0,
+        service: svc ? frictionPerFt(svc.idIn, svcC, Q) * (src.serviceFt || 0) * (1 + FITTINGS_SHARE) : 0,
         pvb: pvbDev ? deviceLoss(pvbDev, Q) : 0,
-        supply: frictionPerFt(slPipe.idIn, slC, Q) * lenFt,
+        supply: frictionPerFt(slPipe.idIn, slC, Q) * lenFt * (1 + FITTINGS_SHARE),
       });
       const upstream = (Q) => Object.values(parts(Q)).reduce((t, v) => t + v, 0);
-      const tree = route(box, hs.map((h) => ({ id: h.id, at: h.at })), { blocked: ctx.blocked });
+      const tree = route(box, hs.map((h) => ({ id: h.id, at: h.at })), { cost: ctx.routeCost });
       const family = z.family || 'pe';
       const res = solveZone({
         tree, heads: new Map(hs.map((h) => [h.id, h])), water: (h, psi) => headFlow(h, cat, psi), elev: ctx.elev,
@@ -262,12 +262,15 @@ export function sprinklers(ctx) {
 
     water: () => {
       const qy = irr.system.quality;
-      const H = [['soft', 'Soft: no white crust on taps or shower heads'], ['moderate', 'Moderately hard: a little white crust, spots on glasses'], ['hard', 'Hard: white crust builds on taps and shower heads within weeks'], ['veryHard', 'Very hard: thick crust, or a water softener on the house'], ['unknown', "I don't know"]];
-      return `<p>These change how much scale lines the pipes, and so how much they slow the water. Your water utility's report gives the hardness in mg/L or grains (soft under 60 mg/L, about 3.5 grains; very hard over 180, about 10.5).</p>
-        ${H.map(([v, l]) => `<label class="toggle" style="display:flex"><input type="radio" name="hard" value="${v}" ${qy.hardness === v ? 'checked' : ''}> ${l}</label>`).join('')}
-        <label class="toggle" style="display:flex;margin-top:6px"><input type="checkbox" data-act="iron" ${qy.iron ? 'checked' : ''}> Orange or rust-coloured stains where the sprinklers hit (the house, the walk, rocks): iron in the water</label>
-        <p>The system is about <input type="number" min="0" max="80" data-act="age" value="${Number.isFinite(qy.ageYears) ? qy.ageYears : ''}" style="width:70px;padding:6px"> years old (blank if you don't know).</p>
-        ${nav('pressure', { label: qy.hardness === 'unknown' && !qy.iron ? 'Skip' : 'Next' })}`;
+      const H = [['soft', 'Soft (under 60 mg/L, 3.5 grains)'], ['moderate', 'Moderately hard (61-120 mg/L)'], ['hard', 'Hard (121-180 mg/L)'], ['veryHard', 'Very hard (over 180 mg/L, 10.5 grains)'], ['unknown', "I don't know"]];
+      const chk = (k, label) => `<label class="toggle" style="display:flex"><input type="checkbox" data-q="${k}" ${qy[k] ? 'checked' : ''}> ${label}</label>`;
+      return `<p>Your water's hardness, from your utility's water report or a test (the USGS classes):</p>
+        <select data-act="hard">${H.map(([v, l]) => `<option value="${v}" ${qy.hardness === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        ${qy.hardness === 'unknown' ? `<p class="dim">If you don't know, any of these suggest hard water:</p>${chk('crust', 'White, chalky crust on taps or shower heads')}${chk('spots', 'Spots or film on glasses after washing')}` : ''}
+        <p>Where your sprinklers hit (the house, the walk, rocks, a fence), are there stains?</p>
+        ${chk('orange', 'Orange or rust-coloured: iron')}${chk('black', 'Black or brownish-black: manganese')}${chk('slime', 'A slimy dark film in the valve box or an outside tap: possibly iron bacteria')}${chk('headCrust', 'White crust on the sprinkler heads or nozzles after watering')}
+        <p class="dim">These do not change the pressures: no maker or study gives a number for scale in plastic pipe or for its effect on nozzles. They tell you what to look after.</p>
+        ${nav('pressure', { label: qy.hardness === 'unknown' && !['crust', 'spots', 'orange', 'black', 'slime', 'headCrust'].some((k) => qy[k]) ? 'Skip' : 'Next' })}`;
     },
 
     pressure: () => {
@@ -293,12 +296,26 @@ export function sprinklers(ctx) {
         <tr><td><strong>At the head</strong></td><td><strong>${ws.atHead.toFixed(1)} psi</strong></td></tr></table>` : '';
       const warn = [];
       for (const z of s0.zones) {
-        if (z.res.spread > 0.2) warn.push(`Zone ${z.n}'s pressure varies ${Math.round(z.res.spread * 100)}% from its first head to its last; designers keep it under 20%, or the far heads throw short.`);
+        // the zone's spread: 20% is the FAO's and most designers' limit, the Irrigation Association asks 10%
+        if (z.res.spread > 0.2) warn.push(`Zone ${z.n}'s pressure varies ${Math.round(z.res.spread * 100)}% from head to head; designers keep it under 20% (the Irrigation Association asks 10%), or the far heads throw short and the near ones flood. Feeding the zone from nearer its middle, or a bigger lateral, evens it out.`);
+        else if (z.res.spread > 0.1) warn.push(`Zone ${z.n}'s pressure varies ${Math.round(z.res.spread * 100)}% from head to head: inside the usual 20%, over the Irrigation Association's 10%.`);
+        // the rules for the meter and the valve (Rain Bird, IA): each under 10% of the static pressure
+        const sp = irr.system.source;
+        if (sp.read === 'static' && z.parts.meter > 0.1 * sp.psi) warn.push(`Zone ${z.n} loses ${z.parts.meter.toFixed(1)} psi in the water meter, over the 10% of your pressure that designers allow: the zone draws more than the meter passes easily.`);
+        if (z.res.valveLoss > 0.1 * sp.psi) warn.push(`Zone ${z.n}'s valve takes ${z.res.valveLoss.toFixed(1)} psi, over 10% of your pressure (Rain Bird, IA): a larger valve, or a smaller zone.`);
+        const svc = sp.read === 'static' && sp.from === 'city' ? pipeSize(sp.serviceFamily, sp.serviceSize) : null;
+        if (svc && fps(svc.idIn, z.res.gpm) > 7) warn.push(`At ${z.res.gpm.toFixed(1)} gpm the water in your ${fraction(svc.nominal)} in line from the street moves ${fps(svc.idIn, z.res.gpm).toFixed(1)} ft/s, over the 7 the Irrigation Association allows.`);
         const hi = [...z.res.heads.values()].filter((h) => h.water?.status === 'high');
         if (hi.length) warn.push(`Zone ${z.n}: ${hi.length} head${hi.length > 1 ? 's get' : ' gets'} more than ${Math.round(hi[0].water.chartHi)} psi, past its chart: it mists, and the wind takes the water. Pressure-regulating bodies (PRS) or a regulator on the zone would fix it.`);
         const lo = [...z.res.heads.values()].filter((h) => h.water?.status === 'low');
         if (lo.length) warn.push(`Zone ${z.n}: ${lo.length} head${lo.length > 1 ? 's get' : ' gets'} less than ${Math.round(lo[0].water.chartLo)} psi, under its chart: short throw and dry spots between heads.`);
       }
+      // water quality (lib/hydraulics/PRACTICE.md 3): what to look after, not a change to the numbers
+      const qy = irr.system.quality;
+      const hits = irr.heads.filter((h) => { const w = waterOf(h); return w && ctx.hardNear?.(h.at, (w.radiusFt || 0) / FT_PER_M); }).length;
+      if (qy.orange || qy.black) warn.push(`${qy.orange && qy.black ? 'Iron and manganese' : qy.orange ? 'Iron' : 'Manganese'} in the water stains what it lands on${hits ? `: ${hits} head${hits > 1 ? 's' : ''} reach${hits > 1 ? '' : 'es'} the house, the drive or a walk. Turning their arcs off the hard surfaces keeps them clean` : ''}. Above about 0.2-0.3 mg/L iron or 0.05 mg/L manganese it shows (NDSU); it can also plug nozzles and screens over the years (Penn State).`);
+      if (qy.slime) warn.push('A slimy film can be iron bacteria (UF/IFAS): check the nozzle screens and the valve for build-up each spring.');
+      if (qy.hardness === 'veryHard' || qy.headCrust || (qy.hardness === 'unknown' && qy.crust && qy.spots)) warn.push('Hard water leaves lime on heads and nozzles: soak a crusted nozzle in vinegar and water (Rain Bird), never drill it.');
       if (ctx.elevReady?.()) {
         const pvbG = ctx.elev(irr.system.pvb.at), top = Math.max(...irr.heads.map((h) => ctx.elev(h.at)).filter(Number.isFinite));
         if (Number.isFinite(pvbG) && Number.isFinite(top) && top + 0.1 > pvbG) warn.push(`The highest head is ${((top - pvbG) * FT_PER_M).toFixed(1)} ft ${top >= pvbG ? 'above' : 'below'} the ground at the backflow preventer: plumbing codes put a pressure vacuum breaker at least 12 in above the highest head.`);
@@ -429,9 +446,8 @@ export function sprinklers(ctx) {
     },
     water: (P) => {
       const qy = irr.system.quality;
-      P.querySelectorAll('[name=hard]').forEach((r) => r.addEventListener('change', () => { qy.hardness = r.value; changed(); render(); }));
-      P.querySelector('[data-act=iron]').addEventListener('change', (e) => { qy.iron = e.target.checked; changed(); render(); });
-      P.querySelector('[data-act=age]').addEventListener('change', (e) => { const v = e.target.value === '' ? null : Number(e.target.value); qy.ageYears = Number.isFinite(v) ? v : null; changed(); });
+      P.querySelector('[data-act=hard]').addEventListener('change', (e) => { qy.hardness = e.target.value; changed(); render(); });
+      P.querySelectorAll('[data-q]').forEach((el) => el.addEventListener('change', () => { qy[el.dataset.q] = el.checked; changed(); render(); }));
       wireNav(P, () => go('pressure'));
     },
     pressure: (P) => wireNav(P, () => { irr.done = true; irr.none = false; changed(); finish(); }),

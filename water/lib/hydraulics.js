@@ -32,7 +32,7 @@ export const MAX_FPS = 5;
 export const PIPE_FAMILIES = {
   pe: { label: 'poly (black roll pipe, SIDR-15)', C: 150, sizes: [['050', 0.5, 0.622], ['075', 0.75, 0.824], ['100', 1, 1.049], ['125', 1.25, 1.380], ['150', 1.5, 1.610]] },
   pvc200: { label: 'PVC Class 200', C: 150, sizes: [['075', 0.75, 0.930], ['100', 1, 1.189], ['125', 1.25, 1.502], ['150', 1.5, 1.720]] },
-  pvc40: { label: 'PVC Schedule 40', C: 150, sizes: [['050', 0.5, 0.622], ['075', 0.75, 0.824], ['100', 1, 1.049], ['125', 1.25, 1.380], ['150', 1.5, 1.610]] },
+  pvc40: { label: 'PVC Schedule 40', C: 150, sizes: [['050', 0.5, 0.622], ['075', 0.75, 0.824], ['100', 1, 1.049], ['125', 1.25, 1.380], ['150', 1.5, 1.610], ['200', 2, 2.067]] },
   cuL: { label: 'copper, type L', C: 140, sizes: [['075', 0.75, 0.785], ['100', 1, 1.025], ['125', 1.25, 1.265]] },
   cuK: { label: 'copper, type K', C: 140, sizes: [['075', 0.75, 0.745], ['100', 1, 0.995], ['125', 1.25, 1.245]] },
   pex: { label: 'PEX', C: 150, sizes: [['075', 0.75, 0.671], ['100', 1, 0.862]] },
@@ -52,7 +52,7 @@ export function pipeById(id) {
   const s = f?.sizes.find((x) => x[0] === code);
   return s ? pipeSize(family, s[1]) : null;
 }
-export const fraction = (n) => ({ 0.5: '1/2', 0.75: '3/4', 1: '1', 1.25: '1 1/4', 1.5: '1 1/2' }[n] || String(n));
+export const fraction = (n) => ({ 0.5: '1/2', 0.625: '5/8', 0.75: '3/4', 1: '1', 1.25: '1 1/4', 1.5: '1 1/2', 2: '2' }[n] || String(n));
 
 /** Friction, psi per ft of pipe (Hazen-Williams: 4.52 Q^1.852 / (C^1.852 d^4.87)). */
 export const frictionPerFt = (idIn, C, gpm) => (gpm > 0 ? (4.52 * gpm ** 1.852) / (C ** 1.852 * idIn ** 4.87) : 0);
@@ -105,59 +105,61 @@ function nearestOnSegment(a, b, p) {
 }
 
 /**
- * The lines of one zone, as an installer most likely laid them: from the valve, the head nearest the trench
- * so far joins it at its nearest point (a tee mid-run, or the end of a run), until every head is on. A run
- * that would cross a building (blocked(a, b)) costs BLOCK_COST times its length, so it goes round if it can.
+ * The lines of one zone, as an installer most likely laid them (lib/hydraulics/PRACTICE.md 1a, 1d): a tree fed
+ * from the valve, never a loop; the flow split near the valve -- Rain Bird calls a valve at the end of one long
+ * line "the least optimum of all lateral designs", and Hunter draws the one line snaking through every head as
+ * WRONG -- with each head on the lateral by a short stub. The shortest trench (a spanning tree of the heads) IS
+ * that snake, so the length alone cannot choose: a head joins the tree where its own pipe plus PD_C times the
+ * pipe from the valve to that point is least (Alpert et al. 1995's Prim-Dijkstra trade-off between the
+ * shortest trench, PD_C 0, and a pipe of its own to every head, PD_C 1), at a node or at a tee mid-run.
+ * cost(a, b) -> a multiplier on a run's length: going through a building (forbidden in practice) or under paving
+ * (a sleeve; installers go round when they can) costs more.
  * heads: [{ id, at }]. -> { nodes: [{ id, at, kind: 'valve'|'tee'|'head', parent, lenFt }], order (root first) }
  */
-export const BLOCK_COST = 4;
-export function route(valveAt, heads, { blocked = null } = {}) {
-  const nodes = [{ id: 'valve', at: valveAt, kind: 'valve', parent: null, lenFt: 0 }];
-  const cost = (a, b) => distM(a, b) * (blocked && blocked(a, b) ? BLOCK_COST : 1);
+export const PD_C = 0.5, BLOCK_COST = 4;
+export function route(valveAt, heads, { blocked = null, cost: costOf = null, c = PD_C } = {}) {
+  const nodes = [{ id: 'valve', at: valveAt, kind: 'valve', parent: null, lenFt: 0, path: 0 }];
+  const mult = (a, b) => (costOf ? costOf(a, b) : blocked && blocked(a, b) ? BLOCK_COST : 1);
+  const cost = (a, b) => distM(a, b) * mult(a, b);
   const left = heads.filter((h) => Array.isArray(h.at));
   let tees = 0;
   while (left.length) {
     let best = null;
     for (const h of left) {
-      // to a node
-      for (const n of nodes) { const c = cost(n.at, h.at); if (!best || c < best.c) best = { h, c, to: n, split: null }; }
-      // to a point along a run (a tee)
+      for (const n of nodes) { const k = cost(n.at, h.at) + c * n.path; if (!best || k < best.k) best = { h, k, to: n, split: null }; }
       for (const n of nodes) {
         if (n.parent === null) continue;
         const p = nodes.find((x) => x.id === n.parent);
-        const s = nearestOnSegment(p.at, n.at, h.at);
-        if (s.t <= 0.02 || s.t >= 0.98) continue;
-        const c = cost(s.at, h.at) + 0.3; // a tee is a fitting: a run straight to a head is as good when as near
-        if (c < best.c) best = { h, c, to: n, split: s };
+        const sp = nearestOnSegment(p.at, n.at, h.at);
+        if (sp.t <= 0.02 || sp.t >= 0.98) continue;
+        const k = cost(sp.at, h.at) + c * (p.path + sp.t * (n.path - p.path)) + 0.3; // a tee is a fitting
+        if (k < best.k) best = { h, k, to: n, split: sp };
       }
     }
     let to = best.to;
     if (best.split) {
-      // split the run parent -> to at the tee
-      const tee = { id: `tee${++tees}`, at: best.split.at, kind: 'tee', parent: to.parent, lenFt: 0 };
+      const p = nodes.find((x) => x.id === to.parent);
+      const tee = { id: `tee${++tees}`, at: best.split.at, kind: 'tee', parent: to.parent, lenFt: 0, path: p.path + best.split.t * (to.path - p.path) };
       nodes.push(tee);
       to.parent = tee.id;
       to = tee;
     }
-    nodes.push({ id: best.h.id, at: best.h.at, kind: 'head', parent: to.id, lenFt: 0 });
+    nodes.push({ id: best.h.id, at: best.h.at, kind: 'head', parent: to.id, lenFt: 0, path: to.path + distM(to.at, best.h.at) });
     left.splice(left.indexOf(best.h), 1);
   }
   for (const n of nodes) if (n.parent !== null) n.lenFt = distM(nodes.find((x) => x.id === n.parent).at, n.at) * FT_PER_M;
-  // root first: each node after its parent
   const order = [], byParent = new Map();
   for (const n of nodes) { if (!byParent.has(n.parent)) byParent.set(n.parent, []); byParent.get(n.parent).push(n); }
-  const walk = (id) => { for (const c of byParent.get(id) || []) { order.push(c); walk(c.id); } };
+  const walk = (id) => { for (const ch of byParent.get(id) || []) { order.push(ch); walk(ch.id); } };
   order.push(nodes[0]); walk('valve');
   return { nodes, order };
 }
 
 /* -------------------------------------------------------------------- solving */
 
-/**
- * The loss items of a fitting where a run leaves a node, as feet of the run's pipe: a tee's branch, a tee's
- * run, an elbow where the run turns. Defaults until the research's values are in (lib/hydraulics/pipes.json).
- */
-export const FITTINGS = { teeRunFt: 2, teeBranchFt: 6, elbowFt: 4, insertFactor: 1 };
+/** Fittings: Rain Bird's default, "10% of all pipe losses" (Landscape Irrigation Design Manual, p. 91; the
+    only maker's guide with a fittings line: lib/hydraulics/PRACTICE.md 4). */
+export const FITTINGS_SHARE = 0.10;
 
 /**
  * One zone, solved. z: {
@@ -218,10 +220,7 @@ export function solveZone(z, up, { maxIter = 60, tol = 1e-4 } = {}) {
       const parent = byId.get(n.parent), f = flow.get(n.id);
       const pipe = pipeOf.get(n.id);
       const C = pipe.C * (z.cFactor ?? 1);
-      // fittings: the run leaving a tee (branch or run), an elbow where it turns
-      const sib = (kids.get(parent.id) || []).length;
-      const fitFt = parent.kind === 'tee' || sib > 1 ? FITTINGS.teeBranchFt * pipe.nominal : FITTINGS.elbowFt * pipe.nominal * 0.5;
-      const loss = frictionPerFt(pipe.idIn * (z.idFactor ?? 1), C, f) * (n.lenFt + fitFt) * FITTINGS.insertFactor;
+      const loss = frictionPerFt(pipe.idIn, C, f) * n.lenFt * (1 + FITTINGS_SHARE);
       p.set(n.id, p.get(parent.id) - loss + PSI_PER_FT * (hNode(parent) - hNode(n)));
       runs.push({ id: n.id, from: parent.id, pipe, gpm: f, fps: fps(pipe.idIn, f), lossPsi: loss, lenFt: n.lenFt });
     }
@@ -264,22 +263,17 @@ export function solveZone(z, up, { maxIter = 60, tol = 1e-4 } = {}) {
 /* ---------------------------------------------------------------- the questionnaire */
 
 /**
- * Scale and rust (owner: "possibly scale/rust buildup frictional losses (optional, with a questionnaire
- * about water hardness or rust buildup on concrete/rocks in the landscape)"). The answers -> what they do to
- * the pipes: a Hazen-Williams C multiplier for metal and for plastic, and the bore lost to scale in metal.
- * Defaults until the research's values are in (lib/hydraulics/pipes.json).
+ * Scale and rust (owner: "possibly scale/rust buildup frictional losses (optional, with a questionnaire...)").
+ * The research (lib/hydraulics/PRACTICE.md 3d) found no maker or study that gives a number for scale in PVC or
+ * PE, or for its effect on nozzles or valves -- Rain Bird's tables use one C, unaged -- so the answers leave
+ * plastic alone. Metal pipe (a copper or galvanized line from the street) is aged by METAL_AGED when the water
+ * is hard or rusty.
  */
-export const QUALITY = {
-  hardness: { soft: 1, moderate: 0.97, hard: 0.92, veryHard: 0.85, unknown: 1 },
-  ironStains: 0.9,      // orange stains where the sprinklers hit: iron in the water
-  plasticFloor: 0.95,   // PVC and PE scale far less than metal: never below this share of C
-};
+export const METAL_AGED = { soft: 1, moderate: 1, hard: 1, veryHard: 1, unknown: 1, iron: 1 };
 export function cFactors(answers = {}) {
-  const h = QUALITY.hardness[answers.hardness] ?? 1;
-  const age = Math.max(0, Math.min(1, (answers.ageYears ?? 0) / 25)); // scale builds over years
-  const metal = 1 - (1 - h * (answers.iron ? QUALITY.ironStains : 1)) * (0.4 + 0.6 * age);
-  const plastic = Math.max(QUALITY.plasticFloor, 1 - (1 - metal) * 0.25);
-  return { metal, plastic };
+  const hard = METAL_AGED[answers.hardness] ?? 1;
+  const metal = Math.min(hard, answers.orange ? METAL_AGED.iron : 1);
+  return { metal, plastic: 1 };
 }
 
 /* ------------------------------------------------------------------- a head's flow */

@@ -317,16 +317,35 @@ const heads = sprinklers({
     const v = (1 - fy) * ((1 - fx) * Z(r0, c0) + fx * Z(r0, c0 + 1)) + fy * ((1 - fx) * Z(r0 + 1, c0) + fx * Z(r0 + 1, c0 + 1));
     return Number.isFinite(v) ? v : null;
   },
-  // a run of pipe through a building: the analysis's roofs, sampled every half metre
-  blocked: (a, b) => {
+  // what a run of pipe costs per foot, as a multiple of open ground (lib/hydraulics.js route): through a
+  // building 4 (installers never do), under paving 2 (a sleeve; they go round when they can) -- the
+  // analysis's roofs and paving, sampled every half metre
+  routeCost: (a, b) => {
     const d = view.data;
-    if (!d?.wall) return false;
+    if (!d?.wall) return 1;
     const g = d.grid, dx = d.shift.east / g.k, dy = d.shift.north / g.k;
     const [ax, ay] = toMerc(a), [bx, by] = toMerc(b), L = Math.hypot(bx - ax, by - ay) * g.k, n = Math.max(2, Math.ceil(L / 0.5));
+    let worst = 1;
     for (let k = 1; k < n; k++) {
       const x = ax + ((bx - ax) * k) / n, y = ay + ((by - ay) * k) / n;
       const c = Math.floor(((x - (g.bbox[0] + dx)) * g.k) / g.cell), r = Math.floor(((g.bbox[3] + dy - y) * g.k) / g.cell);
-      if (c >= 0 && r >= 0 && c < g.W && r < g.H && d.wall[r * g.W + c]) return true;
+      if (c < 0 || r < 0 || c >= g.W || r >= g.H) continue;
+      const i = r * g.W + c;
+      if (d.wall[i]) return 4;
+      if (d.paved && d.paved[i] >= 0.5) worst = 2;
+    }
+    return worst;
+  },
+  // a building or paving within `m` metres of a point (a head's throw reaching it)
+  hardNear: (at, m) => {
+    const d = view.data;
+    if (!d?.wall || !(m > 0)) return false;
+    const g = d.grid, dx = d.shift.east / g.k, dy = d.shift.north / g.k, [x, y] = toMerc(at);
+    const c0 = ((x - (g.bbox[0] + dx)) * g.k) / g.cell, r0 = ((g.bbox[3] + dy - y) * g.k) / g.cell, R = m / g.cell;
+    for (let r = Math.floor(r0 - R); r <= Math.ceil(r0 + R); r++) for (let c = Math.floor(c0 - R); c <= Math.ceil(c0 + R); c++) {
+      if (r < 0 || c < 0 || r >= g.H || c >= g.W || Math.hypot(r + 0.5 - r0, c + 0.5 - c0) > R) continue;
+      const i = r * g.W + c;
+      if (d.wall[i] || (d.paved && d.paved[i] >= 0.5)) return true;
     }
     return false;
   },
