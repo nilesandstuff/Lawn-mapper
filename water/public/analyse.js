@@ -110,12 +110,12 @@ async function start(site, inputs) {
   const out = {
     grid: { W: g.W, H: g.H, cell: g.cell, k: g.k, bbox: g.bbox, lat: g.lat },
     shift: res.shift,
-    depth: res.spots.depth.slice(), reported, flow: (r.weightedFlow || res.runoff.area).slice(), weighted: !!r.weightedFlow, wall: res.wall.slice(), grade,
+    depth: res.spots.depth.slice(), reported, z: Float32Array.from(res.z), flow: (r.weightedFlow || res.runoff.area).slice(), weighted: !!r.weightedFlow, wall: res.wall.slice(), grade,
     paved: r.impervious ? r.impervious.paved.slice() : null,
     parcelMask: r.parcelMask, lawnMask: r.lawnMask,
     spots: r.spots, hasLawn: r.hasLawn, summary: { ...r.summary, noiseRuns: undefined }, cloud: r.cloud,
   };
-  const transfer = [out.depth.buffer, reported.buffer, out.flow.buffer, out.wall.buffer, grade.buffer, ...(out.paved ? [out.paved.buffer] : [])];
+  const transfer = [out.depth.buffer, out.z.buffer, reported.buffer, out.flow.buffer, out.wall.buffer, grade.buffer, ...(out.paved ? [out.paved.buffer] : [])];
   self.postMessage({ done: out }, transfer);
 
   self.postMessage({ planProgress: 'Reading the soil survey and ten years of weather…' });

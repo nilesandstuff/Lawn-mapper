@@ -305,6 +305,31 @@ const heads = sprinklers({
   // photo pixels per ground metre at the frame's middle
   pxPerM: () => (worldSize(view.frame.zoom) / (2 * Math.PI * R * Math.cos((view.frame.lat * Math.PI) / 180))) * (view.photo.width / view.frame.size),
   cssScale: () => { const cv = $('#view'); return cv.width / cv.getBoundingClientRect().width; },
+  // the ground's height (USGS lidar, metres) at a point, once the survey is read
+  elevReady: () => !!view.data?.z,
+  elev: (at) => {
+    const d = view.data;
+    if (!d?.z) return null;
+    const [x, y] = toMerc(at), g = d.grid, dx = d.shift.east / g.k, dy = d.shift.north / g.k;
+    const c = ((x - (g.bbox[0] + dx)) * g.k) / g.cell - 0.5, r = ((g.bbox[3] + dy - y) * g.k) / g.cell - 0.5;
+    const c0 = Math.max(0, Math.min(g.W - 2, Math.floor(c))), r0 = Math.max(0, Math.min(g.H - 2, Math.floor(r)));
+    const fx = Math.max(0, Math.min(1, c - c0)), fy = Math.max(0, Math.min(1, r - r0)), Z = (rr, cc) => d.z[rr * g.W + cc];
+    const v = (1 - fy) * ((1 - fx) * Z(r0, c0) + fx * Z(r0, c0 + 1)) + fy * ((1 - fx) * Z(r0 + 1, c0) + fx * Z(r0 + 1, c0 + 1));
+    return Number.isFinite(v) ? v : null;
+  },
+  // a run of pipe through a building: the analysis's roofs, sampled every half metre
+  blocked: (a, b) => {
+    const d = view.data;
+    if (!d?.wall) return false;
+    const g = d.grid, dx = d.shift.east / g.k, dy = d.shift.north / g.k;
+    const [ax, ay] = toMerc(a), [bx, by] = toMerc(b), L = Math.hypot(bx - ax, by - ay) * g.k, n = Math.max(2, Math.ceil(L / 0.5));
+    for (let k = 1; k < n; k++) {
+      const x = ax + ((bx - ax) * k) / n, y = ay + ((by - ay) * k) / n;
+      const c = Math.floor(((x - (g.bbox[0] + dx)) * g.k) / g.cell), r = Math.floor(((g.bbox[3] + dy - y) * g.k) / g.cell);
+      if (c >= 0 && r >= 0 && c < g.W && r < g.H && d.wall[r * g.W + c]) return true;
+    }
+    return false;
+  },
   lawnMiddle: () => {
     const pts = (view.site?.lawn || []).flatMap((f) => (f.geometry?.type === 'Polygon' ? f.geometry.coordinates[0] : f.geometry?.type === 'MultiPolygon' ? f.geometry.coordinates.flatMap((p) => p[0]) : []));
     if (!pts.length) return view.site ? [view.site.lng, view.site.lat] : null;
@@ -321,8 +346,8 @@ function headsCard() {
   if (!z) { $('#heads-summary').innerHTML = ''; return; }
   $('#heads-summary').innerHTML = `<div class="card"><h2>Your sprinkler system: ${irr.heads.length} heads on ${z.length} valve${z.length === 1 ? '' : 's'}</h2>
     <table class="months"><tr><th>Valve</th><th>Heads</th><th>Flow</th><th>Puts down</th><th>At the heads</th></tr>
-    ${z.map((v) => `<tr><td><span class="chip" style="background:${v.color}"></span>Zone ${v.n}</td><td>${v.heads}</td><td>${v.gpm.toFixed(1)} gpm</td><td>${v.precipInH ? `${v.precipInH.toFixed(2)} in/h` : '?'}${v.mixed ? ' (sprays and rotors mixed)' : ''}</td><td>${v.psi ? `about ${Math.round(v.psi)} psi` : '?'}</td></tr>`).join('')}</table>
-    <p class="dim">From the makers' performance charts, at about the pressure that reaches each zone: what comes in, less about 8 psi through the backflow preventer and valve, and friction in about 50 ft of supply line and 50 ft of zone line. "Puts down" is at head-to-head spacing; a catch-cup test on the lawn would measure the real rate.</p></div>`;
+    ${z.map((v) => `<tr><td><span class="chip" style="background:${v.color}"></span>Zone ${v.n}</td><td>${v.heads}</td><td>${v.gpm.toFixed(1)} gpm</td><td>${v.precipInH ? `${v.precipInH.toFixed(2)} in/h` : '?'}${v.mixed ? ' (sprays and rotors mixed)' : ''}</td><td>${Number.isFinite(v.psiLo) ? `${Math.round(v.psiLo)}–${Math.round(v.psiHi)} psi` : '?'}</td></tr>`).join('')}</table>
+    <p class="dim">From the makers' performance charts, at the pressure each head gets: worked out from your pressure through the backflow preventer, the supply line, the valve and each run of pipe as an installer most likely laid it, with the ground's rise and fall. "Puts down" is at head-to-head spacing; a catch-cup test on the lawn would measure the real rate.</p></div>`;
 }
 
 /* ------------------------------------------------------------- the words */
@@ -548,6 +573,7 @@ async function run(site) {
   status(asking ? 'Reading the survey while you do this…' : `Reading the survey for ${site.label}…`);
   const d = await first;
   view.data = d;
+  heads.refresh(); // the ground's heights and the buildings: the pressure model solves again with them
   draw();
   if (!heads.active) report(d, site);
   status('');

@@ -1,0 +1,100 @@
+/**
+ * The pressure at each head (water session): routing, devices, friction, elevation, the solve.
+ *   node water/test/hydraulics.test.js
+ */
+
+import assert from 'node:assert/strict';
+import { readFileSync, readdirSync } from 'node:fs';
+import { route, solveZone, deviceLoss, frictionPerFt, sizeFor, pipeSize, headFlow, PSI_PER_FT, FT_PER_M, cFactors } from '../lib/hydraulics.js';
+import { catalogue, unEnu } from '../lib/heads.js';
+
+const tests = [];
+const test = (name, fn) => tests.push([name, fn]);
+const dir = new URL('../lib/heads/', import.meta.url);
+const cat = catalogue(readdirSync(dir).filter((f) => f.endsWith('.json')).map((f) => JSON.parse(readFileSync(new URL(f, dir), 'utf8'))));
+const ref = [-85.5, 43];
+const at = (e, n) => unEnu(ref, [e, n]);
+const near = (a, b, tol, what) => assert.ok(Math.abs(a - b) <= tol, `${what}: ${a} vs ${b}`);
+
+test('routing: heads in a row are one run; a head beside the middle of it joins by a tee, not a pipe of its own to the valve', () => {
+  const t = route(ref, [{ id: 'a', at: at(5, 0) }, { id: 'b', at: at(10, 0) }, { id: 'c', at: at(15, 0) }]);
+  const n = Object.fromEntries(t.nodes.map((x) => [x.id, x]));
+  assert.equal(n.a.parent, 'valve'); assert.equal(n.b.parent, 'a'); assert.equal(n.c.parent, 'b');
+  // a head off the middle of a run laid first: a tee in it
+  const t2 = route(ref, [{ id: 'a', at: at(6, 0) }, { id: 'd', at: at(3, 6) }]);
+  const n2 = Object.fromEntries(t2.nodes.map((x) => [x.id, x]));
+  assert.ok(n2.d.parent.startsWith('tee'), `d joins ${n2.d.parent}`);
+  near(n2.d.lenFt, 6 * FT_PER_M, 0.05, 'the branch to d');
+  assert.equal(t.order[0].id, 'valve');
+  for (const x of t.order.slice(1)) assert.ok(t.order.findIndex((y) => y.id === x.parent) < t.order.indexOf(x), 'parents first');
+});
+
+test('routing: a run through a building goes round it if it can', () => {
+  // the straight way to b crosses a wall between x 4 and 6; a is a way round
+  const blocked = (p, q) => { const [e1] = [((p[0] - ref[0]) * 111320 * Math.cos(43 * Math.PI / 180))], [e2] = [((q[0] - ref[0]) * 111320 * Math.cos(43 * Math.PI / 180))]; const n1 = (p[1] - ref[1]) * 111320, n2 = (q[1] - ref[1]) * 111320; return Math.min(e1, e2) < 5 && Math.max(e1, e2) > 5 && Math.min(n1, n2) < 1; };
+  const t = route(ref, [{ id: 'b', at: at(10, 0) }, { id: 'a', at: at(5, 4) }], { blocked });
+  assert.equal(Object.fromEntries(t.nodes.map((x) => [x.id, x])).b.parent, 'a');
+});
+
+test('devices: between the maker\'s points a line; past the last the square of the flow; a check valve holds its spring below the first', () => {
+  const pvb = { kind: 'pvb', points: [{ gpm: 5, psi: 4 }, { gpm: 15, psi: 8 }] };
+  near(deviceLoss(pvb, 10), 6, 1e-9, 'between'); near(deviceLoss(pvb, 30), 32, 1e-9, 'past'); near(deviceLoss(pvb, 1), 4, 1e-9, 'below');
+  near(deviceLoss({ kind: 'valve', points: [{ gpm: 10, psi: 2 }] }, 5), 0.5, 1e-9, 'an open valve below its first point');
+});
+
+test('friction: Hazen-Williams, 1 in Schedule 40 at 10 gpm loses about 2.4 psi per 100 ft; runs are sized under 5 ft/s from 3/4 in', () => {
+  near(frictionPerFt(1.049, 150, 10) * 100, 2.39, 0.05, 'psi per 100 ft');
+  assert.equal(sizeFor('pe', 2).nominal, 0.75);
+  assert.equal(sizeFor('pe', 10).nominal, 1);
+  assert.equal(sizeFor('pe', 20).nominal, 1.25);
+  assert.equal(sizeFor('pvc40', 30).nominal, 1.5, 'the largest when none keeps it under 5 ft/s');
+});
+
+test('a head past its chart: flow by the square root of the pressure; a regulated body holds its nozzle at its setting', () => {
+  const free = headFlow({ body: 'rb-1804', nozzle: 'rb-mpr-15h' }, cat, 60);
+  near(free.gpm, 1.85 * Math.sqrt(60 / 30), 0.02, '15H at 60 psi'); assert.equal(free.status, 'high');
+  const prs = headFlow({ body: 'rb-1804-prs', nozzle: 'rb-mpr-15h' }, cat, 60);
+  near(prs.nozzlePsi, 30, 1e-9, 'PRS'); assert.equal(prs.status, 'ok');
+});
+
+const zone = (heads, opts = {}) => {
+  const tree = route(ref, heads);
+  return solveZone({ tree, heads: new Map(heads.map((h) => [h.id, h])), water: (h, psi) => headFlow(h, cat, psi), family: 'pe', valve: { kind: 'valve', points: [{ gpm: 10, psi: 2 }] }, ...opts },
+    { psi: 50, gaugeAt: ref, gaugeElevM: opts.elev ? 0 : null, upstream: (Q) => deviceLoss({ kind: 'pvb', points: [{ gpm: 5, psi: 4 }, { gpm: 15, psi: 8 }] }, Q) });
+};
+const row = (n, dy = 0, nozzle = 'rb-mpr-15h') => Array.from({ length: n }, (_, k) => ({ id: `h${k}`, at: at(5 + 4.5 * k, dy), body: 'rb-1804', nozzle }));
+
+test('the solve: the valve passes what the heads put out, each head puts out its chart\'s flow at its own pressure, pressure falls along the run', () => {
+  const r = zone(row(6));
+  const sum = [...r.heads.values()].reduce((t, h) => t + h.gpm, 0);
+  near(r.gpm, sum, 0.01, 'valve flow = heads');
+  for (const [id, h] of r.heads) near(h.gpm, headFlow({ body: 'rb-1804', nozzle: 'rb-mpr-15h' }, cat, h.psi).gpm, 0.01, `${id} on its chart`);
+  const ps = ['h0', 'h1', 'h2', 'h3', 'h4', 'h5'].map((id) => r.heads.get(id).psi);
+  for (let k = 1; k < ps.length; k++) assert.ok(ps[k] <= ps[k - 1] + 1e-9, `falls along the run: ${ps.map((p) => p.toFixed(2))}`);
+  assert.ok(r.iterations < 60, `settled in ${r.iterations}`);
+  // the worksheet adds up
+  const w = r.worksheet;
+  near(w.gauge - w.upstream - w.valve - w.lateral - w.swing + w.elevation, w.atHead, 0.05, 'worksheet');
+});
+
+test('elevation: the same zone 10 ft uphill gets about 4.3 psi less at its heads', () => {
+  const flat = zone(row(4)), up = zone(row(4), { elev: (p) => (p === ref ? 0 : ((p[0] - ref[0]) * 111320 * Math.cos(43 * Math.PI / 180) > 1 ? 10 / FT_PER_M : 0)) });
+  const d = flat.heads.get('h3').psi - up.heads.get('h3').psi;
+  near(up.worksheet.elevation, -(10 + 4 / 12) * PSI_PER_FT, 0.01, 'the rise: 10 ft and the 4 in pop-up');
+  // less than the rise alone: the heads run a little less water, so the devices and pipes lose a little less
+  const lessLoss = (flat.worksheet.upstream + flat.worksheet.valve + flat.worksheet.lateral + flat.worksheet.swing) - (up.worksheet.upstream + up.worksheet.valve + up.worksheet.lateral + up.worksheet.swing);
+  assert.ok(lessLoss > 0, 'lower flow, lower losses');
+  near(d, (10 + 4 / 12) * PSI_PER_FT - lessLoss, 0.05, 'the rise, less the losses saved');
+});
+
+test('scale: hard water and rust slow metal pipe far more than plastic, more with age', () => {
+  const soft = cFactors({ hardness: 'soft' }), hard = cFactors({ hardness: 'veryHard', iron: true, ageYears: 25 });
+  assert.equal(soft.metal, 1); assert.ok(hard.metal < 0.85 && hard.plastic >= 0.95 && hard.plastic < 1, JSON.stringify(hard));
+});
+
+let failed = 0;
+for (const [name, fn] of tests) {
+  try { await fn(); console.log(`ok  ${name}`); } catch (e) { failed++; console.log(`FAIL ${name}\n     ${e.stack.split('\n').slice(0, 3).join('\n     ')}`); }
+}
+if (failed) { console.log(`${failed} failed`); process.exit(1); }
+console.log(`water hydraulics: ${tests.length} passed`);

@@ -7,23 +7,31 @@
  *   zones    select heads, give them the valve (irrigation zone) they are on
  *   models   select heads, give them a brand and model, and the nozzle (one for all, or one by one)
  *   details  the map of heads and zones with each head's details over it; confirm
- *   supply   the pipe from the backflow preventer to the valve box, and the pressure
- *   lines    the line from the valve box to each zone, from standard sizes
+ *   equipment  where the backflow preventer and the valve box(es) are, and their makes if known
+ *   supply   the water coming in: the pressure, how it was read, the pipe to the valve box
+ *   lines    each zone's pipe: its material, sized by flow unless a size is given
+ *   water    (optional) hard water, rust stains, the system's age: scale in the pipes
+ *   pressure the lines as an installer most likely laid them, and the pressure and flow at every head
+ *            (lib/hydraulics.js), with the ground's rise and fall from the lidar
  *   done
  *
  * The page (app.js) owns the photo, the zoom and the save; this module owns the steps, the panel and what
  * it draws on the photo. Kept with the map as the water part's `irrigation` (POST /api/maps/tool).
  */
 
-import { catalogue, headWater, zoneWater, PIPES, pipe, lineCheck, gpmAt, psiPer100ft, calibrate, placeByGps, facing, arcOf } from '/lib/heads.js';
+import { catalogue, headWater, zoneWater, calibrate, placeByGps, facing, arcOf, enu } from '/lib/heads.js';
+import { route, solveZone, headFlow, deviceLoss, frictionPerFt, pipeById, pipeSize, PIPE_FAMILIES, sizeFor, fraction, cFactors, FT_PER_M, MAX_FPS } from '/lib/hydraulics.js';
 
 const FILES = ['rainbird-sprays', 'rainbird-rotors', 'hunter-sprays', 'hunter-rotors', 'other-brands'];
 const ZONE_COLORS = ['#e53935', '#1e88e5', '#43a047', '#fb8c00', '#8e24aa', '#00acc1', '#fdd835', '#6d4c41', '#d81b60', '#3949ab', '#7cb342', '#546e7a'];
-const STEPS = ['place', 'review', 'zones', 'models', 'details', 'supply', 'lines'];
-const STEP_TITLE = { place: 'Place your sprinkler heads', review: 'Check where they are', zones: 'Which valve is each head on?', models: 'What heads and nozzles are they?', details: 'Your system', supply: 'The water coming in', lines: 'The lines to each zone' };
-// what a backflow preventer and a zone valve take, together, at a home system's flows (makers' loss
-// charts run about 3-8 psi for a 1 in PVB at 8-12 gpm and 2-4 psi for a 1 in valve): an estimate
-const FITTINGS_PSI = 8, ASSUMED_RUN_FT = 50;
+const STEPS = ['place', 'review', 'zones', 'models', 'details', 'equipment', 'supply', 'lines', 'water', 'pressure'];
+const STEP_TITLE = { place: 'Place your sprinkler heads', review: 'Check where they are', zones: 'Which valve is each head on?', models: 'What heads and nozzles are they?', details: 'Your heads', equipment: 'The backflow preventer and the valves', supply: 'The water coming in', lines: 'The pipe to each zone', water: 'Your water (optional)', pressure: 'The pressure at every head' };
+/** The pipe families a zone's lines may be, and the supply line's. */
+const LINE_FAMILIES = ['pe', 'pvc200', 'pvc40'];
+const SUPPLY_FAMILIES = ['pvc40', 'pvc200', 'pe', 'cuL', 'cuK', 'pex', 'galv'];
+/** A water meter between the street and the house (AWWA C700 sizes) and the service line, when the
+    pressure was read with nothing running: their losses come off it once the water flows. */
+const METERS = [['058', '5/8 x 3/4 in (most homes)'], ['075', '3/4 in'], ['100', '1 in'], ['none', 'no meter (a well)']];
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const ft = (m) => Math.round(m * 3.281);
@@ -31,7 +39,17 @@ const ft = (m) => Math.round(m * 3.281);
 const throwOf = (w) => (w.strip ? `${Math.round(w.strip.widthFt)} x ${Math.round(w.strip.lengthFt)} ft strip` : `${Math.round(w.arc)}° · ${Math.round(w.radiusFt)} ft`);
 
 export function emptyIrrigation() {
-  return { v: 1, done: false, none: false, heads: [], zones: [], supply: { pipe: null, psi: null } };
+  return { v: 2, done: false, none: false, heads: [], zones: [], supply: { pipe: null, psi: null }, system: emptySystem() };
+}
+
+export function emptySystem() {
+  return {
+    pvb: { at: null, device: '' },
+    boxes: [],
+    source: { psi: null, read: 'static', from: 'city', meter: '058', serviceFamily: 'cuK', serviceSize: 0.75, serviceFt: 60 },
+    supplyLine: { family: 'pvc40', size: 1, lenFt: null },
+    quality: { hardness: 'unknown', iron: false, ageYears: null },
+  };
 }
 
 /**
@@ -44,7 +62,7 @@ export function sprinklers(ctx) {
   let step = null, cat = null, catNote = '';
   const sel = new Set();
   const gps = { on: false, watch: null, fixes: [], cal: null, phase: null, ref: null, live: null, busy: false };
-  let drag = null, dragged = false, placeMode = 'tap', labelsHidden = 0;
+  let drag = null, dragged = false, placeMode = 'tap', labelsHidden = 0, placing = null;
   let nextId = 1;
 
   const loadCat = (async () => {
@@ -57,24 +75,75 @@ export function sprinklers(ctx) {
   const zoneN = () => irr.zones.map((z) => z.n);
   const colorOf = (n) => (n ? ZONE_COLORS[(n - 1) % ZONE_COLORS.length] : '#ffffff');
   const head = (id) => irr.heads.find((h) => h.id === id);
-  const zonePsi = (z) => {
-    // the pressure at a zone's heads: what comes in, less the backflow preventer and valve, and friction in
-    // an assumed 50 ft of supply line and 50 ft of zone line at the zone's flow (an estimate: about)
-    const psi = irr.supply.psi;
-    if (!Number.isFinite(psi)) return null;
-    let p = psi - FITTINGS_PSI, gpm = 0;
-    for (let k = 0; k < 2; k++) {
-      gpm = zoneWater(irr.heads.filter((h) => h.zone === z.n), cat, p).gpm;
-      const sup = pipe(irr.supply.pipe), line = pipe(z.line);
-      p = psi - FITTINGS_PSI - (sup && gpm ? (psiPer100ft(sup, gpm) * ASSUMED_RUN_FT) / 100 : 0) - (line && gpm ? (psiPer100ft(line, gpm) * ASSUMED_RUN_FT) / 100 : 0);
+  /* ------------------------------------------------- the devices and the solve */
+
+  let devices = [];
+  const loadDevices = fetch('/lib/hydraulics/devices.json').then((r) => (r.ok ? r.json() : null)).then((j) => { devices = j?.devices || []; }).catch(() => {});
+  const deviceOf = (id) => devices.find((d) => d.id === id) || null;
+  /** A typical device of a kind and size, when the person does not know theirs: the middle of the makers'
+      curves, flow by flow. */
+  function typical(kind, sizeIn) {
+    let list = devices.filter((d) => d.kind === kind && d.sizeIn === sizeIn);
+    if (!list.length) list = devices.filter((d) => d.kind === kind);
+    if (!list.length) return null;
+    const mid = (v) => { const x = v.slice().sort((p, q) => p - q); return x[Math.floor((x.length - 1) / 2)]; };
+    return { id: `typical-${kind}`, kind, sizeIn, typical: list.length, points: [2, 4, 6, 8, 10, 12, 15, 20, 25, 30].map((g) => ({ gpm: g, psi: mid(list.map((d) => deviceLoss(d, g))) })) };
+  }
+  const METER_IN = { '058': 0.625, '075': 0.75, '100': 1 };
+  const metal = (fam) => ['cuL', 'cuK', 'galv'].includes(fam);
+  const distFt = (a, b) => Math.hypot(...enu(a, b)) * FT_PER_M;
+
+  let solved = null, solvedKey = '';
+  /** Every zone solved from the backflow preventer to the nozzles (lib/hydraulics.js), or null until the
+      equipment is placed and the pressure given. Kept until something changes. */
+  function solve() {
+    const sys = irr.system, src = sys.source, P = src.psi;
+    if (!cat || !Number.isFinite(P) || !sys.pvb.at || !sys.boxes.length) return null;
+    const key = JSON.stringify([irr.heads, irr.zones, sys, ctx.elevReady?.() ?? false, devices.length]);
+    if (key === solvedKey) return solved;
+    const q = cFactors(sys.quality);
+    const pvbDev = deviceOf(sys.pvb.device) || typical('pvb', 1);
+    const sl = sys.supplyLine, slPipe = pipeSize(sl.family, sl.size) || pipeSize('pvc40', 1);
+    const slC = slPipe.C * (metal(sl.family) ? q.metal : q.plastic);
+    const fromStatic = src.read === 'static' && src.from === 'city';
+    const meterDev = fromStatic && src.meter !== 'none' ? typical('meter', METER_IN[src.meter] ?? 0.625) : null;
+    const svc = fromStatic ? pipeSize(src.serviceFamily, src.serviceSize) : null;
+    const svcC = svc ? svc.C * (metal(src.serviceFamily) ? q.metal : q.plastic) : 0;
+    const groundPvb = ctx.elev?.(sys.pvb.at);
+    const zones = [];
+    for (const z of irr.zones) {
+      const hs = irr.heads.filter((h) => h.zone === z.n && h.nozzle);
+      if (!hs.length) continue;
+      const box = (sys.boxes.find((b) => b.id === z.box) || sys.boxes[0]).at;
+      const lenFt = Number.isFinite(sl.lenFt) ? sl.lenFt : distFt(sys.pvb.at, box) * 1.15 + 3;
+      const parts = (Q) => ({
+        meter: meterDev ? deviceLoss(meterDev, Q) : 0,
+        service: svc ? frictionPerFt(svc.idIn, svcC, Q) * (src.serviceFt || 0) : 0,
+        pvb: pvbDev ? deviceLoss(pvbDev, Q) : 0,
+        supply: frictionPerFt(slPipe.idIn, slC, Q) * lenFt,
+      });
+      const upstream = (Q) => Object.values(parts(Q)).reduce((t, v) => t + v, 0);
+      const tree = route(box, hs.map((h) => ({ id: h.id, at: h.at })), { blocked: ctx.blocked });
+      const family = z.family || 'pe';
+      const res = solveZone({
+        tree, heads: new Map(hs.map((h) => [h.id, h])), water: (h, psi) => headFlow(h, cat, psi), elev: ctx.elev,
+        family, size: z.size && z.size !== 'auto' ? pipeSize(family, Number(z.size))?.id : null,
+        valve: deviceOf(z.valve) || typical('valve', 1), cFactor: q.plastic,
+      }, { psi: P, gaugeAt: sys.pvb.at, gaugeElevM: Number.isFinite(groundPvb) ? groundPvb + 0.3 : null, upstream });
+      zones.push({ n: z.n, tree, res, lenFt, parts: parts(res.gpm) });
     }
-    return Math.max(10, p);
-  };
+    solved = { zones, pvbDev, slPipe, at: Date.now() };
+    solvedKey = key;
+    return solved;
+  }
+  const solvedHead = (id) => { const s = solved; if (!s) return null; for (const z of s.zones) { const h = z.res.heads.get(id); if (h) return h; } return null; };
   const waterOf = (h) => {
     if (!cat) return null;
-    const z = irr.zones.find((x) => x.n === h.zone);
-    return headWater(h, cat, z ? zonePsi(z) : irr.supply.psi ?? null);
+    const got = solve() && solvedHead(h.id);
+    if (got?.water) return { ...got.water, gpm: got.gpm };
+    return headFlow(h, cat, Number.isFinite(irr.system.source.psi) ? irr.system.source.psi - 15 : NaN);
   };
+  const STATUS_COLOR = { ok: '#43a047', low: '#fb8c00', high: '#8e24aa' };
 
   /* ------------------------------------------------------------------ the panel */
 
@@ -131,44 +200,123 @@ export function sprinklers(ctx) {
 
     details: () => {
       const rows = irr.zones.map((z) => {
-        const hs = irr.heads.filter((h) => h.zone === z.n), w = cat ? zoneWater(hs, cat, zonePsi(z)) : null;
-        return `<tr><td><span class="chip" style="background:${colorOf(z.n)}"></span>Zone ${z.n}</td><td>${hs.length}</td><td>${w ? w.gpm.toFixed(1) : '?'} gpm</td><td>${w?.precipInH ? `${w.precipInH.toFixed(2)} in/h` : '?'}${w?.mixed ? ' <strong>(sprays and rotors mixed)</strong>' : ''}</td></tr>`;
+        const hs = irr.heads.filter((h) => h.zone === z.n), ws = hs.map(waterOf).filter(Boolean);
+        const pr = ws.map((w) => w.precipInH).filter(Number.isFinite).sort((x, y) => x - y);
+        return `<tr><td><span class="chip" style="background:${colorOf(z.n)}"></span>Zone ${z.n}</td><td>${hs.length}</td><td>${ws.reduce((t, w) => t + w.gpm, 0).toFixed(1)} gpm</td><td>${pr.length ? `${pr[Math.floor((pr.length - 1) / 2)].toFixed(2)} in/h` : '?'}</td></tr>`;
       }).join('');
       return `<p class="hint">Each head's details are over it on the map (zoom in where they crowd); the shaded fans are where each throws. Tap a head to see it here.</p>
         ${sel.size === 1 ? `<p>${headLine(head([...sel][0]))}</p>` : ''}
         <table class="months"><tr><th>Zone</th><th>Heads</th><th>Flow</th><th>Puts down</th></tr>${rows}</table>
-        <p class="dim">Flows are at ${Number.isFinite(irr.supply.psi) ? 'the pressure you give next, less what the fittings and lines take' : 'the chart\'s middle pressure until you give yours next'}. "Puts down" is the heads' rate at head-to-head spacing. The fans point toward the middle of the lawn until you turn them (coming).</p>
-        ${nav('supply', { label: 'Looks right' })}`;
+        <p class="dim">${solve() ? 'At the pressure each head gets, worked out over the next steps.' : "At about the chart's working pressure until the next steps work out each head's own."} "Puts down" is the heads' rate at head-to-head spacing. The fans point toward the middle of the lawn until you turn them (coming).</p>
+        ${nav('equipment', { label: 'Looks right' })}`;
     },
 
-    supply: () => `<p>The pipe from your backflow preventer (the valve assembly where the system leaves the house, often a PVB) to the valve box:</p>
-      <select data-act="supplypipe" aria-label="Supply pipe">${pipeOptions(irr.supply.pipe)}</select>
-      <p>The water pressure, in psi (a gauge on an outside tap with nothing else running; homes are often 40-80):</p>
-      <input type="number" inputmode="decimal" min="10" max="150" step="1" data-act="psi" value="${Number.isFinite(irr.supply.psi) ? irr.supply.psi : ''}" style="width:120px;padding:8px;font-size:16px">
-      ${nav('lines', { ok: !!irr.supply.pipe && Number.isFinite(irr.supply.psi) })}`,
+    equipment: () => {
+      const sys = irr.system;
+      const kinds = { pvb: 'Pressure vacuum breaker (PVB)', avb: 'Atmospheric vacuum breaker', dcva: 'Double check valve', rpz: 'Reduced pressure zone (RPZ)' };
+      const opts = (list, cur) => list.map((d) => `<option value="${d.id}" ${d.id === cur ? 'selected' : ''}>${esc(d.brand)} ${esc(d.model)}${d.sizeIn ? `, ${fraction(d.sizeIn)} in` : ''}</option>`).join('');
+      const bf = devices.filter((d) => kinds[d.kind]), valves = devices.filter((d) => d.kind === 'valve');
+      return `<p>${placing === 'pvb' ? '<span class="hint">Tap where your backflow preventer is: the brass valve assembly, usually beside the house, where the sprinkler line leaves the house\'s water.</span>' : placing === 'box' ? '<span class="hint">Tap where the valve box is: the green lid in the lawn or bed that the zone valves sit under.</span>' : ''}</p>
+        <div class="tools"><button type="button" data-act="placepvb" class="${placing === 'pvb' ? 'on' : sys.pvb.at ? 'plain' : ''}">${sys.pvb.at ? 'Move the backflow preventer' : 'Place the backflow preventer'}</button>
+        <button type="button" data-act="placebox" class="${placing === 'box' ? 'on' : sys.boxes.length ? 'plain' : ''}">${sys.boxes.length ? '+ Another valve box' : 'Place the valve box'}</button>
+        ${sys.boxes.length > 1 ? '<button type="button" class="plain" data-act="unbox">Remove the last valve box</button>' : ''}</div>
+        <p>Your backflow preventer: <select data-act="pvbdev"><option value="">I don't know (a typical 1 in one)</option>${Object.entries(kinds).map(([k, label]) => { const l = bf.filter((d) => d.kind === k); return l.length ? `<optgroup label="${label}">${opts(l, sys.pvb.device)}</optgroup>` : ''; }).join('')}</select></p>
+        ${irr.zones.map((z) => `<div style="margin-top:6px"><span class="chip" style="background:${colorOf(z.n)}"></span>Zone ${z.n}'s valve: <select data-valve="${z.n}"><option value="">I don't know (a typical 1 in valve)</option>${opts(valves, z.valve)}</select>
+          ${sys.boxes.length > 1 ? ` in <select data-box="${z.n}">${sys.boxes.map((b, k) => `<option value="${b.id}" ${b.id === (z.box || sys.boxes[0].id) ? 'selected' : ''}>valve box ${k + 1}</option>`).join('')}</select>` : ''}</div>`).join('')}
+        <p class="dim">The brand and model are cast on the lid or body. The losses through each are from the makers' own charts.</p>
+        ${nav('supply', { ok: !!sys.pvb.at && sys.boxes.length > 0 })}`;
+    },
+
+    supply: () => {
+      const src = irr.system.source, sl = irr.system.supplyLine, sys = irr.system;
+      const box = sys.boxes[0]?.at, autoLen = sys.pvb.at && box ? Math.round(distFt(sys.pvb.at, box) * 1.15 + 3) : null;
+      return `<p>Your water pressure, in psi: <input type="number" inputmode="decimal" min="10" max="150" step="1" data-act="psi" value="${Number.isFinite(src.psi) ? src.psi : ''}" style="width:90px;padding:8px;font-size:16px"></p>
+        <div class="tools"><label class="toggle"><input type="radio" name="from" value="city" ${src.from === 'city' ? 'checked' : ''}> City water</label><label class="toggle"><input type="radio" name="from" value="well" ${src.from === 'well' ? 'checked' : ''}> A well</label></div>
+        ${src.from === 'well' ? '<p class="dim">For a well, give the pump\'s cut-in pressure: the lower number on its pressure switch (often 30, 40 or 50), the least it delivers while running.</p>'
+          : `<div class="tools"><label class="toggle"><input type="radio" name="read" value="static" ${src.read === 'static' ? 'checked' : ''}> Read with nothing running (a gauge on an outside tap)</label><label class="toggle"><input type="radio" name="read" value="working" ${src.read === 'working' ? 'checked' : ''}> Read at the backflow preventer with a zone running</label></div>
+          ${src.read === 'static' ? `<p class="dim">With nothing running the pressure is the street's; once a zone runs, some is lost in the water meter and the pipe from the street. Their sizes, if you know them:</p>
+            <p>Water meter: <select data-act="meter">${METERS.map(([v, l]) => `<option value="${v}" ${v === src.meter ? 'selected' : ''}>${l}</option>`).join('')}</select></p>
+            <p>Pipe from the street: <select data-act="svcfam">${[['cuK', 'copper'], ['pex', 'PEX'], ['pe', 'poly'], ['galv', 'galvanized steel (older homes)']].map(([v, l]) => `<option value="${v}" ${v === src.serviceFamily ? 'selected' : ''}>${l}</option>`).join('')}</select>
+            <select data-act="svcsize">${[0.75, 1].map((n) => `<option value="${n}" ${n === src.serviceSize ? 'selected' : ''}>${fraction(n)} in</option>`).join('')}</select>, about <input type="number" min="0" max="500" data-act="svcft" value="${src.serviceFt}" style="width:70px;padding:6px"> ft long</p>` : ''}`}
+        <p>The pipe from the backflow preventer to the valve box: <select data-act="slfam">${SUPPLY_FAMILIES.map((f) => `<option value="${f}" ${f === sl.family ? 'selected' : ''}>${PIPE_FAMILIES[f].label}</option>`).join('')}</select>
+          <select data-act="slsize">${PIPE_FAMILIES[sl.family].sizes.map((x) => `<option value="${x[1]}" ${x[1] === sl.size ? 'selected' : ''}>${fraction(x[1])} in</option>`).join('')}</select>,
+          about <input type="number" min="1" max="500" data-act="sllen" value="${Number.isFinite(sl.lenFt) ? sl.lenFt : ''}" placeholder="${autoLen ?? ''}" style="width:70px;padding:6px"> ft long${autoLen ? ` (${autoLen} from the map, if left blank)` : ''}</p>
+        ${nav('lines', { ok: Number.isFinite(src.psi) })}`;
+    },
 
     lines: () => {
+      const s0 = solve();
       const rows = irr.zones.map((z) => {
-        const hs = irr.heads.filter((h) => h.zone === z.n), w = cat ? zoneWater(hs, cat, zonePsi(z)) : null;
-        const chk = z.line && w ? lineCheck(z.line, w.gpm) : null;
-        return `<div style="margin-top:8px"><span class="chip" style="background:${colorOf(z.n)}"></span>Zone ${z.n} (${w ? w.gpm.toFixed(1) : '?'} gpm): <select data-line="${z.n}" aria-label="Zone ${z.n} line">${pipeOptions(z.line)}</select>
-          ${chk ? `<div class="dim">${chk.over ? `<strong style="color:var(--bad)">Too small:</strong> the water moves ${chk.fps.toFixed(1)} ft/s; lines are kept under 5 ft/s, about ${chk.capacityGpm.toFixed(1)} gpm in this one.` : `Water moves ${chk.fps.toFixed(1)} ft/s (under 5: fine); it loses about ${chk.lossPer100.toFixed(1)} psi per 100 ft.`}</div>` : ''}</div>`;
+        const fam = z.family || 'pe', zs = s0?.zones.find((x) => x.n === z.n);
+        const byNom = new Map();
+        for (const r of zs?.res.runs || []) byNom.set(r.pipe.nominal, (byNom.get(r.pipe.nominal) || 0) + r.lenFt);
+        const fast = (zs?.res.runs || []).filter((r) => r.fps > MAX_FPS);
+        return `<div style="margin-top:8px"><span class="chip" style="background:${colorOf(z.n)}"></span>Zone ${z.n}${zs ? ` (${zs.res.gpm.toFixed(1)} gpm)` : ''}:
+          <select data-fam="${z.n}">${LINE_FAMILIES.map((f) => `<option value="${f}" ${f === fam ? 'selected' : ''}>${PIPE_FAMILIES[f].label}</option>`).join('')}</select>
+          <select data-size="${z.n}"><option value="auto">sized by flow (recommended)</option>${PIPE_FAMILIES[fam].sizes.map((x) => `<option value="${x[1]}" ${String(x[1]) === String(z.size) ? 'selected' : ''}>all ${fraction(x[1])} in</option>`).join('')}</select>
+          ${zs ? `<div class="dim">${[...byNom].sort((x, y) => y[0] - x[0]).map(([n, L]) => `${fraction(n)} in for about ${Math.round(L)} ft`).join(', ')}.${fast.length ? ` <strong style="color:var(--bad)">${fast.length} run${fast.length > 1 ? 's' : ''} over 5 ft/s</strong>: a bigger pipe there.` : ''}</div>` : ''}</div>`;
       }).join('');
-      const sup = pipe(irr.supply.pipe), biggest = Math.max(0, ...irr.zones.map((z) => (cat ? zoneWater(irr.heads.filter((h) => h.zone === z.n), cat, zonePsi(z)).gpm : 0)));
-      return `<p class="hint">The line from the valve box out to each zone's heads.</p>${rows}
-        ${sup && biggest > gpmAt(sup) ? `<p class="hint">The supply line (${esc(sup.label)}) carries about ${gpmAt(sup).toFixed(1)} gpm under 5 ft/s; your biggest zone draws ${biggest.toFixed(1)}.</p>` : ''}
-        ${nav('done', { ok: irr.zones.every((z) => z.line), label: 'Done' })}`;
+      return `<p class="hint">What the lines from the valve box to the heads are made of. "Sized by flow" gives each run the size an installer would: the smallest that keeps the water under 5 ft/s, larger near the valve, smaller toward the last heads. The routes are on the map.</p>${rows}
+        ${nav('water', {})}`;
+    },
+
+    water: () => {
+      const qy = irr.system.quality;
+      const H = [['soft', 'Soft: no white crust on taps or shower heads'], ['moderate', 'Moderately hard: a little white crust, spots on glasses'], ['hard', 'Hard: white crust builds on taps and shower heads within weeks'], ['veryHard', 'Very hard: thick crust, or a water softener on the house'], ['unknown', "I don't know"]];
+      return `<p>These change how much scale lines the pipes, and so how much they slow the water. Your water utility's report gives the hardness in mg/L or grains (soft under 60 mg/L, about 3.5 grains; very hard over 180, about 10.5).</p>
+        ${H.map(([v, l]) => `<label class="toggle" style="display:flex"><input type="radio" name="hard" value="${v}" ${qy.hardness === v ? 'checked' : ''}> ${l}</label>`).join('')}
+        <label class="toggle" style="display:flex;margin-top:6px"><input type="checkbox" data-act="iron" ${qy.iron ? 'checked' : ''}> Orange or rust-coloured stains where the sprinklers hit (the house, the walk, rocks): iron in the water</label>
+        <p>The system is about <input type="number" min="0" max="80" data-act="age" value="${Number.isFinite(qy.ageYears) ? qy.ageYears : ''}" style="width:70px;padding:6px"> years old (blank if you don't know).</p>
+        ${nav('pressure', { label: qy.hardness === 'unknown' && !qy.iron ? 'Skip' : 'Next' })}`;
+    },
+
+    pressure: () => {
+      const s0 = solve();
+      if (!s0) return `<p>Place the backflow preventer and the valve box and give the pressure first.</p>${nav('done', { ok: false })}`;
+      const pick = sel.size === 1 ? head([...sel][0]) : null, ph = pick && solvedHead(pick.id);
+      const zoneRows = s0.zones.map((z) => {
+        const hs = [...z.res.heads.values()], ps = hs.map((h) => h.psi);
+        const low = hs.filter((h) => h.water?.status === 'low').length, high = hs.filter((h) => h.water?.status === 'high').length;
+        return `<tr><td><span class="chip" style="background:${colorOf(z.n)}"></span>Zone ${z.n}</td><td>${z.res.gpm.toFixed(1)} gpm</td><td>${Math.round(Math.min(...ps))}–${Math.round(Math.max(...ps))} psi</td><td>${Math.round(z.res.spread * 100)}%${z.res.spread > 0.2 ? ' <strong>uneven</strong>' : ''}</td><td>${low ? `${low} low` : ''}${low && high ? ', ' : ''}${high ? `${high} high` : ''}${!low && !high ? 'all in range' : ''}</td></tr>`;
+      }).join('');
+      const zsel = pick ? s0.zones.find((z) => z.res.heads.has(pick.id)) : s0.zones[0];
+      const ws = zsel?.res.worksheet, pr = zsel?.parts;
+      const sheet = ws ? `<table class="months"><tr><th colspan="2">Zone ${zsel.n}'s farthest head, from the gauge to the nozzle</th></tr>
+        <tr><td>Pressure given</td><td>${ws.gauge.toFixed(1)} psi</td></tr>
+        ${pr.meter ? `<tr><td>Water meter</td><td>−${pr.meter.toFixed(1)}</td></tr>` : ''}${pr.service ? `<tr><td>Pipe from the street</td><td>−${pr.service.toFixed(1)}</td></tr>` : ''}
+        <tr><td>Backflow preventer${s0.pvbDev?.typical ? ' (typical)' : ''}</td><td>−${pr.pvb.toFixed(1)}</td></tr>
+        <tr><td>Pipe to the valve box (${Math.round(zsel.lenFt)} ft)</td><td>−${pr.supply.toFixed(1)}</td></tr>
+        <tr><td>Zone valve</td><td>−${ws.valve.toFixed(1)}</td></tr>
+        <tr><td>Lateral pipes and fittings</td><td>−${ws.lateral.toFixed(1)}</td></tr>
+        <tr><td>Swing joint</td><td>−${ws.swing.toFixed(1)}</td></tr>
+        <tr><td>${ws.flat ? 'Ground height (not yet read: taken as level)' : ws.elevation >= 0 ? 'Downhill to the head' : 'Uphill to the head'}</td><td>${ws.elevation >= 0 ? '+' : '−'}${Math.abs(ws.elevation).toFixed(1)}</td></tr>
+        <tr><td><strong>At the head</strong></td><td><strong>${ws.atHead.toFixed(1)} psi</strong></td></tr></table>` : '';
+      const warn = [];
+      for (const z of s0.zones) {
+        if (z.res.spread > 0.2) warn.push(`Zone ${z.n}'s pressure varies ${Math.round(z.res.spread * 100)}% from its first head to its last; designers keep it under 20%, or the far heads throw short.`);
+        const hi = [...z.res.heads.values()].filter((h) => h.water?.status === 'high');
+        if (hi.length) warn.push(`Zone ${z.n}: ${hi.length} head${hi.length > 1 ? 's get' : ' gets'} more than ${Math.round(hi[0].water.chartHi)} psi, past its chart: it mists, and the wind takes the water. Pressure-regulating bodies (PRS) or a regulator on the zone would fix it.`);
+        const lo = [...z.res.heads.values()].filter((h) => h.water?.status === 'low');
+        if (lo.length) warn.push(`Zone ${z.n}: ${lo.length} head${lo.length > 1 ? 's get' : ' gets'} less than ${Math.round(lo[0].water.chartLo)} psi, under its chart: short throw and dry spots between heads.`);
+      }
+      if (ctx.elevReady?.()) {
+        const pvbG = ctx.elev(irr.system.pvb.at), top = Math.max(...irr.heads.map((h) => ctx.elev(h.at)).filter(Number.isFinite));
+        if (Number.isFinite(pvbG) && Number.isFinite(top) && top + 0.1 > pvbG) warn.push(`The highest head is ${((top - pvbG) * FT_PER_M).toFixed(1)} ft ${top >= pvbG ? 'above' : 'below'} the ground at the backflow preventer: plumbing codes put a pressure vacuum breaker at least 12 in above the highest head.`);
+      }
+      return `<p class="hint">The lines are drawn as an installer most likely laid them; each head is coloured by its pressure: <span style="color:${STATUS_COLOR.ok}">●</span> in its chart's range, <span style="color:${STATUS_COLOR.low}">●</span> under it, <span style="color:${STATUS_COLOR.high}">●</span> over it. Tap a head for its numbers.</p>
+        ${ph ? `<p>${headLine(pick)}<br>${ph.psi.toFixed(1)} psi at the head${ph.water?.regulated ? `, ${Math.round(ph.water.nozzlePsi)} at the nozzle after its regulator` : ''}; chart ${Math.round(ph.water?.chartLo)}–${Math.round(ph.water?.chartHi)} psi.</p>` : ''}
+        <table class="months"><tr><th>Zone</th><th>Flow</th><th>At the heads</th><th>Spread</th><th></th></tr>${zoneRows}</table>
+        ${sheet}
+        ${warn.length ? `<ul>${warn.map((w) => `<li>${w}</li>`).join('')}</ul>` : ''}
+        <p class="dim">Losses from the makers' charts and the Hazen-Williams formula, at each zone's own flow, worked out with every head's flow at the pressure it gets${ctx.elevReady?.() ? '; heights from the USGS lidar' : ''}. The routes are a likely layout, not a dig: drag a head if a line runs where it can't.</p>
+        ${nav('done', { label: 'Done' })}`;
     },
   };
-
-  function pipeOptions(cur) {
-    return `<option value="">Choose…</option>${PIPES.map((p) => `<option value="${p.id}" ${p.id === cur ? 'selected' : ''}>${esc(p.label)}</option>`).join('')}`;
-  }
 
   function headLine(h) {
     if (!h) return '';
     const b = cat?.body(h.body), n = cat?.nozzle(h.nozzle), w = waterOf(h);
-    return `<span class="chip" style="background:${colorOf(h.zone)}"></span>${b ? `${esc(b.brand)} ${esc(b.model)}` : 'no model'}${n ? ` · nozzle ${esc(n.label)}` : ''}${w ? ` · ${throwOf(w)} · ${w.gpm.toFixed(2)} gpm at ${Math.round(w.psi)} psi${w.outside ? ' (outside the chart: its nearest row)' : ''}` : ''}`;
+    return `<span class="chip" style="background:${colorOf(h.zone)}"></span>${b ? `${esc(b.brand)} ${esc(b.model)}` : 'no model'}${n ? ` · nozzle ${esc(n.label)}` : ''}${w ? ` · ${throwOf(w)} · ${w.gpm.toFixed(2)} gpm${Number.isFinite(w.inletPsi) ? ` at ${Math.round(w.inletPsi)} psi` : ''}${w.status === 'low' ? ' (under its chart: short throw)' : w.status === 'high' ? ' (over its chart: misting)' : ''}` : ''}`;
   }
 
   /* the brand -> model -> nozzle -> arc form, for the selected heads */
@@ -243,16 +391,50 @@ export function sprinklers(ctx) {
       });
       wireNav(P, () => go('details'));
     },
-    details: (P) => wireNav(P, () => go('supply')),
+    details: (P) => wireNav(P, () => go('equipment')),
+    equipment: (P) => {
+      const sys = irr.system;
+      P.querySelector('[data-act=placepvb]').addEventListener('click', () => { placing = placing === 'pvb' ? null : 'pvb'; render(); });
+      P.querySelector('[data-act=placebox]').addEventListener('click', () => { placing = placing === 'box' ? null : 'box'; render(); });
+      P.querySelector('[data-act=unbox]')?.addEventListener('click', () => { const gone = sys.boxes.pop(); for (const z of irr.zones) if (z.box === gone?.id) z.box = null; changed(); render(); });
+      P.querySelector('[data-act=pvbdev]').addEventListener('change', (e) => { sys.pvb.device = e.target.value; changed(); render(); });
+      P.querySelectorAll('[data-valve]').forEach((el) => el.addEventListener('change', () => { irr.zones.find((z) => z.n === Number(el.dataset.valve)).valve = el.value; changed(); }));
+      P.querySelectorAll('[data-box]').forEach((el) => el.addEventListener('change', () => { irr.zones.find((z) => z.n === Number(el.dataset.box)).box = el.value; changed(); ctx.draw(); }));
+      wireNav(P, () => { placing = null; go('supply'); });
+    },
     supply: (P) => {
-      P.querySelector('[data-act=supplypipe]').addEventListener('change', (e) => { irr.supply.pipe = e.target.value || null; changed(); render(); });
-      P.querySelector('[data-act=psi]').addEventListener('change', (e) => { const v = Number(e.target.value); irr.supply.psi = v >= 10 && v <= 150 ? v : null; changed(); render(); });
+      const src = irr.system.source, sl = irr.system.supplyLine;
+      const num = (sel, f) => P.querySelector(sel)?.addEventListener('change', (e) => { const v = e.target.value === '' ? null : Number(e.target.value); f(Number.isFinite(v) ? v : null); changed(); render(); });
+      num('[data-act=psi]', (v) => { src.psi = v !== null && v >= 10 && v <= 150 ? v : null; });
+      num('[data-act=svcft]', (v) => { src.serviceFt = v ?? 0; });
+      num('[data-act=sllen]', (v) => { sl.lenFt = v; });
+      num('[data-act=svcsize]', (v) => { src.serviceSize = v; });
+      num('[data-act=slsize]', (v) => { sl.size = v; });
+      P.querySelectorAll('[name=from]').forEach((r) => r.addEventListener('change', () => { src.from = r.value; if (r.value === 'well') src.read = 'working'; changed(); render(); }));
+      P.querySelectorAll('[name=read]').forEach((r) => r.addEventListener('change', () => { src.read = r.value; changed(); render(); }));
+      P.querySelector('[data-act=meter]')?.addEventListener('change', (e) => { src.meter = e.target.value; changed(); render(); });
+      P.querySelector('[data-act=svcfam]')?.addEventListener('change', (e) => { src.serviceFamily = e.target.value; changed(); render(); });
+      P.querySelector('[data-act=slfam]').addEventListener('change', (e) => {
+        sl.family = e.target.value;
+        const sizes = PIPE_FAMILIES[sl.family].sizes.map((x) => x[1]);
+        if (!sizes.includes(sl.size)) sl.size = sizes.includes(1) ? 1 : sizes[0];
+        changed(); render();
+      });
       wireNav(P, () => go('lines'));
     },
     lines: (P) => {
-      P.querySelectorAll('[data-line]').forEach((s) => s.addEventListener('change', () => { const z = irr.zones.find((x) => x.n === Number(s.dataset.line)); z.line = s.value || null; changed(); render(); }));
-      wireNav(P, () => { irr.done = true; irr.none = false; changed(); finish(); });
+      P.querySelectorAll('[data-fam]').forEach((el) => el.addEventListener('change', () => { const z = irr.zones.find((x) => x.n === Number(el.dataset.fam)); z.family = el.value; z.size = 'auto'; changed(); render(); }));
+      P.querySelectorAll('[data-size]').forEach((el) => el.addEventListener('change', () => { const z = irr.zones.find((x) => x.n === Number(el.dataset.size)); z.size = el.value; changed(); render(); }));
+      wireNav(P, () => go('water'));
     },
+    water: (P) => {
+      const qy = irr.system.quality;
+      P.querySelectorAll('[name=hard]').forEach((r) => r.addEventListener('change', () => { qy.hardness = r.value; changed(); render(); }));
+      P.querySelector('[data-act=iron]').addEventListener('change', (e) => { qy.iron = e.target.checked; changed(); render(); });
+      P.querySelector('[data-act=age]').addEventListener('change', (e) => { const v = e.target.value === '' ? null : Number(e.target.value); qy.ageYears = Number.isFinite(v) ? v : null; changed(); });
+      wireNav(P, () => go('pressure'));
+    },
+    pressure: (P) => wireNav(P, () => { irr.done = true; irr.none = false; changed(); finish(); }),
   };
   const resetForm = () => { form.brand = ''; form.body = ''; form.nozzle = ''; form.arc = ''; };
 
@@ -334,9 +516,16 @@ export function sprinklers(ctx) {
       add(ctx.toLngLat(ctx.tapPx(ev)));
       return true;
     }
+    if (step === 'equipment' && placing) {
+      const at = ctx.toLngLat(ctx.tapPx(ev)).map((v) => +v.toFixed(7)), sys = irr.system;
+      if (placing === 'pvb') sys.pvb.at = at;
+      else sys.boxes.push({ id: `b${Date.now().toString(36)}`, at });
+      placing = null; changed(); render();
+      return true;
+    }
     const h = nearest(ev);
     if (!h) return true;
-    if (step === 'details' || step === 'review') { sel.clear(); sel.add(h.id); }
+    if (step === 'details' || step === 'review' || step === 'pressure' || step === 'lines' || step === 'equipment' || step === 'supply' || step === 'water') { sel.clear(); sel.add(h.id); }
     else if (sel.has(h.id)) sel.delete(h.id); else sel.add(h.id);
     if (step === 'models') { if (sel.size === 1) { resetForm(); } }
     render();
@@ -394,10 +583,61 @@ export function sprinklers(ctx) {
       if (w.arc >= 359) g.arc(x, y, R, 0, Math.PI * 2); else g.arc(x, y, R, mid - half, mid + half);
       g.closePath(); g.fill(); g.stroke();
     }
+    // the lines as an installer most likely laid them, thicker for bigger pipe
+    const showLines = ['lines', 'water', 'pressure'].includes(step) || (!step && irr.done);
+    const s0 = showLines ? solve() : null;
+    if (s0) {
+      const sys = irr.system;
+      g.lineCap = 'round';
+      for (const z of s0.zones) {
+        const box = z.tree.nodes[0].at;
+        // the supply line, backflow preventer to valve box
+        g.strokeStyle = 'rgba(255,255,255,.85)'; g.lineWidth = px * 4; g.setLineDash([px * 6, px * 4]);
+        g.beginPath(); g.moveTo(...ctx.toPx(sys.pvb.at)); g.lineTo(...ctx.toPx(box)); g.stroke(); g.setLineDash([]);
+        const byId = new Map(z.tree.nodes.map((n) => [n.id, n]));
+        for (const r of z.res.runs) {
+          const a = ctx.toPx(byId.get(r.from).at), b = ctx.toPx(byId.get(r.id).at);
+          g.strokeStyle = 'rgba(0,0,0,.55)'; g.lineWidth = px * (1.5 + r.pipe.nominal * 3) + px * 1.5;
+          g.beginPath(); g.moveTo(...a); g.lineTo(...b); g.stroke();
+          g.strokeStyle = r.fps > MAX_FPS ? '#ff1744' : colorOf(z.n); g.lineWidth = px * (1.5 + r.pipe.nominal * 3);
+          g.beginPath(); g.moveTo(...a); g.lineTo(...b); g.stroke();
+        }
+      }
+    }
+    // the backflow preventer and the valve boxes
+    const sysq = irr.system;
+    if (sysq && (['equipment', 'supply', 'lines', 'water', 'pressure'].includes(step) || (!step && irr.done))) {
+      if (sysq.pvb.at) {
+        const [x, y] = ctx.toPx(sysq.pvb.at), a = px * 9;
+        g.fillStyle = '#ffd54f'; g.strokeStyle = '#000'; g.lineWidth = px * 1.5;
+        g.beginPath(); g.moveTo(x, y - a); g.lineTo(x + a, y); g.lineTo(x, y + a); g.lineTo(x - a, y); g.closePath(); g.fill(); g.stroke();
+        g.font = `700 ${10 * px}px system-ui, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#000'; g.fillText('B', x, y);
+      }
+      sysq.boxes.forEach((b, k) => {
+        const [x, y] = ctx.toPx(b.at), a = px * 9;
+        g.fillStyle = '#2e7d32'; g.strokeStyle = '#000'; g.lineWidth = px * 1.5;
+        g.fillRect(x - a, y - a * 0.7, a * 2, a * 1.4); g.strokeRect(x - a, y - a * 0.7, a * 2, a * 1.4);
+        g.font = `700 ${10 * px}px system-ui, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#fff'; g.fillText(`V${sysq.boxes.length > 1 ? k + 1 : ''}`, x, y);
+      });
+    }
+    const byPressure = step === 'pressure' && s0;
     for (const h of irr.heads) {
       const [x, y] = ctx.toPx(h.at);
-      g.fillStyle = colorOf(h.zone); g.strokeStyle = sel.has(h.id) ? '#ffeb3b' : '#000'; g.lineWidth = sel.has(h.id) ? lw * 1.2 : lw * 0.6;
+      g.fillStyle = byPressure ? STATUS_COLOR[solvedHead(h.id)?.water?.status] || '#9e9e9e' : colorOf(h.zone); g.strokeStyle = sel.has(h.id) ? '#ffeb3b' : '#000'; g.lineWidth = sel.has(h.id) ? lw * 1.2 : lw * 0.6;
       g.beginPath(); g.arc(x, y, sel.has(h.id) ? r * 1.4 : r, 0, 7); g.fill(); g.stroke();
+    }
+    // the pressure over each head, where it has room
+    if (byPressure) {
+      const fs = 11 * px, boxes = [];
+      g.font = `700 ${fs}px system-ui, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'bottom';
+      for (const h of irr.heads) {
+        const sh = solvedHead(h.id);
+        if (!sh) continue;
+        const t = `${Math.round(sh.psi)} psi`, [x, y] = ctx.toPx(h.at), w0 = g.measureText(t).width, bx = [x - w0 / 2, y - r * 1.5 - fs, x + w0 / 2, y - r * 1.5];
+        if (boxes.some((d) => bx[0] < d[2] && bx[2] > d[0] && bx[1] < d[3] && bx[3] > d[1])) continue;
+        boxes.push(bx);
+        g.lineWidth = fs / 4; g.strokeStyle = 'rgba(0,0,0,.85)'; g.strokeText(t, x, y - r * 1.5); g.fillStyle = '#fff'; g.fillText(t, x, y - r * 1.5);
+      }
     }
     // the details over each head (owner: "the full details of that head")
     if ((step === 'details' || (!step && irr.done && ctx.labels?.())) && cat) {
@@ -438,18 +678,36 @@ export function sprinklers(ctx) {
     /** Open the steps for this map's irrigation (kept), at the start unless they were finished. */
     async open(kept, { force = false } = {}) {
       irr = kept && typeof kept === 'object' ? { ...emptyIrrigation(), ...kept, supply: { ...emptyIrrigation().supply, ...(kept.supply || {}) } } : emptyIrrigation();
+      // a map saved before the pressure model (v1): its pressure and pipes carried over
+      const e = emptySystem();
+      irr.system = { ...e, ...(irr.system || {}), pvb: { ...e.pvb, ...(irr.system?.pvb || {}) }, source: { ...e.source, ...(irr.system?.source || {}) }, supplyLine: { ...e.supplyLine, ...(irr.system?.supplyLine || {}) }, quality: { ...e.quality, ...(irr.system?.quality || {}) }, boxes: irr.system?.boxes || [] };
+      if (!Number.isFinite(irr.system.source.psi) && Number.isFinite(irr.supply?.psi)) irr.system.source.psi = irr.supply.psi;
+      const old = pipeById(irr.supply?.pipe);
+      if (old && !irr.system?.supplyLine?.migrated) { irr.system.supplyLine = { ...irr.system.supplyLine, family: old.family, size: old.nominal, migrated: true }; }
+      for (const z of irr.zones) if (z.line && !z.family) { const p0 = pipeById(z.line); if (p0 && LINE_FAMILIES.includes(p0.family)) { z.family = p0.family; z.size = p0.nominal; } }
+      let resumeAt = null;
+      if (irr.v < 2 && irr.done && !irr.none) { irr.v = 2; irr.done = false; resumeAt = 'equipment'; } // the new steps still to do
+      await loadDevices;
       await loadCat;
       if (irr.done && !force) { step = null; render(); return false; }
-      step = force && irr.heads.length ? 'review' : 'intro';
+      step = resumeAt || (force && irr.heads.length ? 'review' : 'intro');
       render();
       return true;
     },
     get active() { return !!step; },
     get data() { return irr; },
     tap, grab, move, drop, drawOn,
+    /** The ground came in (or anything the solve reads): solve again and show it. */
+    refresh() { solvedKey = ''; if (step) render(); else ctx.draw(); },
     summary() {
       if (!cat || irr.none || !irr.done) return null;
-      return irr.zones.map((z) => ({ n: z.n, color: colorOf(z.n), ...zoneWater(irr.heads.filter((h) => h.zone === z.n), cat, zonePsi(z)), psi: zonePsi(z) }));
+      const s0 = solve();
+      return irr.zones.map((z) => {
+        const hs = irr.heads.filter((h) => h.zone === z.n), ws = hs.map(waterOf).filter(Boolean), zs = s0?.zones.find((x) => x.n === z.n);
+        const pr = ws.map((w) => w.precipInH).filter(Number.isFinite).sort((x, y) => x - y), ps = zs ? [...zs.res.heads.values()].map((h) => h.psi) : [];
+        const kinds = new Set(ws.map((w) => (w.kind === 'rotor' || w.kind === 'impact' ? 'rotor' : w.kind === 'rotary' ? 'rotary' : 'spray')));
+        return { n: z.n, color: colorOf(z.n), heads: hs.length, gpm: zs ? zs.res.gpm : ws.reduce((t, w) => t + w.gpm, 0), precipInH: pr.length ? pr[Math.floor((pr.length - 1) / 2)] : null, mixed: kinds.has('spray') && kinds.size > 1, psiLo: ps.length ? Math.min(...ps) : null, psiHi: ps.length ? Math.max(...ps) : null };
+      });
     },
     arcOf: (h) => arcOf(h, cat?.nozzle(h.nozzle)),
   };
