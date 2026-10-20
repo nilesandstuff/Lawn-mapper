@@ -48,3 +48,12 @@ Things to think about:
   adjustment from recent rain and ET and the forecast.
 - **Areas**: the tool draws the zones (soil, slope, sun, run-on); the user
   can redraw them.
+
+## Later choices (owner, 2026-10-20)
+
+- Root depth: "a functional root depth of 8 inches is probably a better starting point than the 12
+  inches I gave. There's also species specific numbers and soil texture effects root depth...
+  (Compact soil reduces functional root depth)... But we'll dial those in more later."
+- "the soak cycle watering regimens that are prescribed should be limited to 2 per day."
+- The check: the front yard, full sun, needs about 1 inch a week over 2 or 3 waterings in late June and
+  July to keep a good appearance.

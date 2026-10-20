@@ -61,7 +61,21 @@ export const PARAMS = {
   /* Water running over the ground spreads to every lower neighbour, in proportion to the slope to the
      power 1.1 (Freeman 1991's multiple flow directions), not down one line: a downspout's water fans out. */
   spreadPower: 1.1,
+  /* AT MOST TWO SOAK CYCLES A DAY (owner, 2026-10-20: "the soak cycle watering regimens that are prescribed
+     should be limited to 2 per day"). A cycle puts down at most what the ground takes in an hour (a run,
+     then an hour's soak), so a day's watering is at most cyclesPerDay times that: on slow ground a watering
+     is smaller and comes more often. */
+  cyclesPerDay: 2,
+  /* SPRINKLERS WATER UNEVENLY: to give the driest quarter of a zone what it needs the zone gets more on
+     average. The Irrigation Association's scheduling multiplier, 1 / (0.4 + 0.6 DU), on a lower-quarter
+     distribution uniformity of 0.65, a typical home spray system (IA auditor figures: spray 0.65, rotors
+     0.70; until the heads are mapped). The plan simulates what reaches the grass; what to put down is
+     that times the multiplier. */
+  duLq: 0.65,
 };
+
+/** What to put down for each mm the grass needs, sprinklers watering unevenly (PARAMS.duLq). */
+export const schedulingMultiplier = (params = PARAMS) => 1 / (0.4 + 0.6 * params.duLq);
 
 /** Warm-season turf (owner 2026-10-18: "warm season should be an option"): FAO-56 Table 22's p 0.5. */
 export const WARM = { p: 0.5 };
@@ -290,15 +304,19 @@ export function simulate(model, days, { irrigate = null, start = null, record = 
  */
 export function idealIrrigation(model) {
   const out = new Float32Array(model.N);
+  const cap = model.dayCapMm;
   return (d, st) => {
     if (!st.inSeason) return null;
     let any = false;
     out.fill(0);
-    // watered the morning the day's use would take it past the readily available water
+    // watered the morning the day's use would take it past the readily available water, back to full -- or
+    // as far as a day's soak cycles go (PARAMS.cyclesPerDay), so slow ground is watered again sooner while
+    // the root zone keeps its room for rain
     for (let i = 0; i < model.N; i++) {
       if (model.kinds[i] !== 1) continue;
       const use = st.use * model.etFactor[i];
-      if (st.Dr[i] + use > model.raw[i]) { out[i] = st.Dr[i] + use; any = true; }
+      const most = cap ? cap[i] : Infinity;
+      if (st.Dr[i] + use > model.raw[i]) { out[i] = Math.min(st.Dr[i] + use, most); any = true; }
     }
     return any ? out : null;
   };
@@ -313,6 +331,12 @@ export function zoneIrrigation(model, zoneOf, nZones, events = []) {
   const out = new Float32Array(model.N);
   const cells = Array.from({ length: nZones }, () => []);
   for (let i = 0; i < model.N; i++) if (zoneOf[i] >= 0 && model.kinds[i] === 1) cells[zoneOf[i]].push(i);
+  // the most a day's watering can put down on the zone: what its slowest-taking tenth allows
+  const caps = cells.map((cs) => {
+    if (!model.dayCapMm || !cs.length) return Infinity;
+    const v = cs.map((i) => model.dayCapMm[i]).sort((a, b) => a - b);
+    return v[Math.floor(0.1 * (v.length - 1))];
+  });
   return (d, st) => {
     if (!st.inSeason) return null;
     let any = false;
@@ -324,7 +348,7 @@ export function zoneIrrigation(model, zoneOf, nZones, events = []) {
       for (const i of cs) { dr += st.Dr[i]; rw += model.raw[i]; use += st.use * model.etFactor[i]; }
       dr /= cs.length; rw /= cs.length; use /= cs.length;
       if (dr + use > rw) {
-        dr += use; // refill to full, today's use included
+        dr = Math.min(dr + use, caps[z]); // refill to full, today's use included, or as far as a day's cycles go
         for (const i of cs) out[i] = dr;
         events.push({ d, zone: z, mm: dr });
         any = true;

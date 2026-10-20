@@ -376,10 +376,11 @@ function howOften(m) {
  * heads are mapped).
  */
 function soakAdvice(takes, mm) {
-  const depth = mm / 25.4, runs = Math.max(1, Math.ceil(depth / takes - 1e-9));
-  const minutes = (rate) => Math.max(1, Math.round((Math.min(depth, takes) / rate) * 60));
+  // at most two runs a day (owner, 2026-10-20); the plan keeps a watering within that
+  const depth = mm / 25.4, runs = Math.min(2, Math.max(1, Math.ceil(depth / takes - 0.05)));
+  const minutes = (rate) => Math.max(1, Math.round((depth / runs / rate) * 60));
   const head = (rate, name) => (rate <= takes ? `${name} can put it down in one go` : `${name}: ${runs} run${runs > 1 ? 's' : ''} of about ${minutes(rate)} minutes`);
-  return `This ground takes about ${takes.toFixed(2)} in of water an hour before it runs off. To put down ${inch(mm)} in${runs > 1 ? `, water in short runs an hour apart` : ''} -- ${head(1.5, 'spray heads (about 1.5 in an hour)')}; ${head(0.5, 'rotors (about 0.5 in an hour)')}.`;
+  return `This ground takes about ${takes.toFixed(2)} in of water an hour before it runs off. To put down ${inch(mm)} in${runs > 1 ? `, water in two short runs an hour apart` : ''} -- ${head(1.5, 'spray heads (about 1.5 in an hour)')}; ${head(0.5, 'rotors (about 0.5 in an hour)')}.`;
 }
 
 function planReport(p) {
@@ -391,7 +392,7 @@ function planReport(p) {
   if (p.trouble?.length) parts.push(`<div class="card" style="border-color:var(--warn)"><h2>Not everything answered this time</h2><ul>${p.trouble.map((t) => `<li>${esc(t)}</li>`).join('')}</ul><p class="dim">Reload the page to try again; the plan below is worked out without it.</p></div>`);
   parts.push(`<div class="card"><h2>Your watering plan: ${p.zones.length} zone${p.zones.length > 1 ? 's' : ''}</h2>
     <p>Each zone below needs a different amount, or a different rhythm, to stay between too wet and too dry. Water a zone when it says, by about the depth it says; more is wasted below the roots, less leaves it short.</p>
-    <p class="dim">Worked out day by day over ten years of this place's weather: rain and runoff in, the grass's use out, the soil's root zone in between. ${p.shaded ? ` Shade from trees and buildings is counted (the shade map's own light model; the lawn's middle gets about ${Math.round(p.sunShare * 100)}% of open-sky sunlight in summer).` : ' The lawn is taken as in full sun until the shade is worked out.'}${p.seasonDays ? ` The watering season is the shade map's growing season here for ${p.grass === 'warm' ? 'warm' : 'cool'}-season grass, about ${p.seasonDays} days.` : ''} Grass beside paving and sunny walls is counted as using a little more (up to 8% at the edge, an estimate from published measurements).${p.grass === 'warm' ? ' Warm-season grass is let dry a little further between waterings than cool-season.' : ''} These are likely amounts, until a soak test on your lawn confirms them. Depths are what reaches the grass; sprinklers that water unevenly need a little more.${p.standIn ? ' <strong>No lawn was traced, so this plans for all the open ground</strong>: open this from a Lawn Mapper map for your lawn alone.' : ''}</p></div>`);
+    <p class="dim">Worked out day by day over ten years of this place's weather: rain and runoff in, the grass's use out, the soil's root zone in between. ${p.shaded ? ` Shade from trees and buildings is counted (the shade map's own light model; the lawn's middle gets about ${Math.round(p.sunShare * 100)}% of open-sky sunlight in summer).` : ' The lawn is taken as in full sun until the shade is worked out.'}${p.seasonDays ? ` The watering season is the shade map's growing season here for ${p.grass === 'warm' ? 'warm' : 'cool'}-season grass, about ${p.seasonDays} days.` : ''} Grass beside paving and sunny walls is counted as using a little more (up to 8% at the edge, an estimate from published measurements).${p.grass === 'warm' ? ' Warm-season grass is let dry a little further between waterings than cool-season.' : ''} These are likely amounts, until a soak test on your lawn confirms them. Depths are what to put down: about a quarter more than the grass uses, since sprinklers water unevenly and the driest spots must get enough (a typical home system, until your heads are mapped). Roots are taken to reach ${Math.round(p.rootIn || 8)} in, and a day's watering is at most two runs with a soak between, so on slow ground it comes more often, a little at a time.${p.standIn ? ' <strong>No lawn was traced, so this plans for all the open ground</strong>: open this from a Lawn Mapper map for your lawn alone.' : ''}</p></div>`);
   const week = p.thisWeek;
   for (const z of p.zones) {
     const pk = peak(z), w = week?.zones.find((x) => x.zone === z.zone);
@@ -408,6 +409,7 @@ function planReport(p) {
     if (z.tooDry > 0) problems.push(`About <strong>${sqft(z.tooDry)} sq ft</strong> still dries out between waterings: it holds less, or loses more, than the rest.`);
     parts.push(`<div class="card"><h2>${chip(z.zone)}Zone ${z.zone + 1} · ${sqft(z.m2)} sq ft</h2>
       <p class="big">${pk.waterings ? `About ${inch(pk.mmEach)} in each time; in ${MONTH[pk.month]}, ${howOften(pk).replace(/ \(.*$/, '')}.` : 'Rain likely covers it in a typical year.'}</p>
+      ${z.dryWeek ? `<p>In a ${MONTH[z.dryWeek.month]} week with no rain: about <strong>${inch(z.dryWeek.mm)} in</strong>, over ${z.dryWeek.waterings} watering${z.dryWeek.waterings > 1 ? 's' : ''}. Skip one for each ${inch(z.dryWeek.each)} in or so of rain.</p>` : ''}
       ${w ? `<p>${w.next ? `Next watering: likely <strong>${dayName(w.next.date)}</strong>, about ${inch(w.next.mm)} in.` : `No watering needed through ${dayName(week.through)}, from the last weeks' weather and the forecast.`}</p>` : ''}
       <table class="months"><tr><th>Month</th><th>How often</th><th>Each time</th></tr>
       ${season.map((m) => `<tr><td>${MONTH[m.month]}</td><td>${howOften(m)}</td><td>${m.mmEach ? `${inch(m.mmEach)} in` : '–'}</td></tr>`).join('')}</table>
@@ -422,7 +424,7 @@ function planReport(p) {
     const what = u.chosen ? `<strong>${esc(u.chosen)}</strong>, as you chose (the survey says ${esc(u.name || 'unnamed')})` : `<strong>${esc(u.name || 'unnamed')}</strong>`;
     const layers = u.layers?.length ? ` Layers: ${u.layers.map((l) => `${l.topIn}–${l.bottomIn} in ${esc(l.texture)}`).join('; ')}.` : '';
     const intake = u.intakeInH ? ` Water soaks into the top layer at about ${u.intakeInH < 0.1 ? u.intakeInH.toFixed(2) : u.intakeInH.toFixed(1)} in an hour, as the survey measured it${u.intakeInH < 0.3 ? ': slowly' : ''}.` : '';
-    return `<li>${what}${u.share !== null && !u.chosen ? ` (${Math.round(u.share * 100)}% of the area)` : ''}: ${esc(String(u.drainage || 'drainage not given').toLowerCase())}, hydrologic group ${esc(u.hydgrp || '?')}.${layers} The top 12 in, where the roots are, hold about ${inch((p.topsoil ? u.tawTopsoilMm : u.tawMm) ?? 0)} in of water the grass can use${p.topsoil ? ', with your 4 in of loamy topsoil on top' : ''}.${intake}${table}</li>`;
+    return `<li>${what}${u.share !== null && !u.chosen ? ` (${Math.round(u.share * 100)}% of the area)` : ''}: ${esc(String(u.drainage || 'drainage not given').toLowerCase())}, hydrologic group ${esc(u.hydgrp || '?')}.${layers} The top ${Math.round(p.rootIn || 8)} in, where the roots are, hold about ${inch((p.topsoil ? u.tawTopsoilMm : u.tawMm) ?? 0)} in of water the grass can use${p.topsoil ? ', with your 4 in of loamy topsoil on top' : ''}.${intake}${table}</li>`;
   });
   parts.push(`<div class="card"><h2>The soil${p.topsoil ? ' (with 4 in of loamy topsoil on the lawn)' : ''}</h2><ul>${soilRows.join('')}</ul>
     <p class="dim">From the USDA soil survey (NRCS). A soak test (coming) will check it on your lawn.</p></div>`);

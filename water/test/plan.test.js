@@ -134,7 +134,7 @@ test('a lawn half sand, half loam: two zones, and the sand is watered more often
   const days = [];
   for (let y = 0; y < 3; y++) for (const d of summer(150)) days.push({ ...d, date: `${2023 + y}${d.date.slice(4)}` });
   const plan = waterPlan(res, { lawnMask: lawn, soil: { units: [sandy, silty] }, typical: days });
-  assert.equal(plan.zones.length, 2);
+  assert.equal(plan.zones.length, 2, JSON.stringify(plan.zones.map((z) => [z.soils, z.depthMm, z.months[6]])));
   const [often, seldom] = plan.zones;
   assert.ok(often.soils.includes('sand') && seldom.soils.includes('silt loam'), JSON.stringify(plan.zones.map((z) => z.soils)));
   const jul = (z) => z.months[6];
@@ -179,7 +179,7 @@ test('a downspout\'s water fans out downhill over several cells, not one line', 
   const routing = roofRouting(g, res.wall, res.runoff.filled, { downspouts: [{ from: at(25, 20), to: at(27, 20) }] });
   const soils = [{ rz: rootZone({ horizons: [{ topCm: 0, bottomCm: 150, awc: 0.05, ksatUmS: 0.5 }] }), drainage: 'Poorly drained', hydgrp: 'D', wetByMonth: new Array(12).fill(null) }];
   const m = buildModel(res, { kinds, soilAt: new Int16Array(N), soils, roofTo: routing.roofTo });
-  const storm = [{ date: '2025-06-01', tmax: 25, tmin: 15, rain: 30, et0: 0 }];
+  const storm = [{ date: '2025-06-01', tmax: 25, tmin: 15, rain: 12, et0: 0 }]; // room left in an 8 in root zone
   const withRoof = simulate(m, storm);
   const noRoof = simulate(buildModel(res, { kinds, soilAt: new Int16Array(N), soils, roofTo: new Int32Array(N).fill(-1) }), storm);
   // cells that took in more water because of the downspout
@@ -286,6 +286,25 @@ test("Overture's buildings moved onto the lidar's roofs: a 1.25 m east, 0.75 m n
   assert.equal(same, roof.length);
   // no lidar roof to fit to: left as published
   assert.equal(alignBuildings(g, masks, new Uint8Array(g.W * g.H)).applied, false);
+});
+
+test('at most two soak cycles a day: on slow clay a watering is smaller and comes more often, and is never more than two runs', () => {
+  const res = lot({ roofs: [] });
+  const g = res.grid;
+  const lawn = new Uint8Array(g.W * g.H).fill(1);
+  const days = [];
+  for (let y = 0; y < 3; y++) for (const d of summer(150, { rainEvery: 30 })) days.push({ ...d, date: `${2023 + y}${d.date.slice(4)}` });
+  const quick = { ...loam, name: 'quick', profile: { horizons: [{ topCm: 0, bottomCm: 150, awc: 0.18, ksatUmS: 20 }] } };
+  const slow = { ...loam, name: 'slow', hydgrp: 'D', profile: { horizons: [{ topCm: 0, bottomCm: 150, awc: 0.18, ksatUmS: 0.8 }] } };
+  const a = waterPlan(res, { lawnMask: lawn, soil: { units: [quick] }, typical: days }).zones[0];
+  const b = waterPlan(res, { lawnMask: lawn, soil: { units: [slow] }, typical: days }).zones[0];
+  const jul = (z) => z.months[6];
+  assert.ok(jul(b).waterings > jul(a).waterings, `waterings ${jul(a).waterings} -> ${jul(b).waterings}`);
+  assert.ok(jul(b).mmEach < jul(a).mmEach, `each ${jul(a).mmEach.toFixed(1)} -> ${jul(b).mmEach.toFixed(1)} mm`);
+  assert.ok(jul(b).mmEach <= 2 * b.takesInPerH * 25.4 + 0.5, `${jul(b).mmEach.toFixed(1)} mm against two runs of ${(b.takesInPerH * 25.4).toFixed(1)}`);
+  // what is put down covers the grass's use, sprinklers watering unevenly: more than the month's use less its rain
+  const use = 31 * 5 * 0.8, rain = 12 * 1;
+  assert.ok(jul(b).mmMonth > use - rain, `${jul(b).mmMonth.toFixed(0)} mm put down against ${use - rain} mm used`);
 });
 
 let failed = 0;

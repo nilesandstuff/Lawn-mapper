@@ -129,9 +129,10 @@ export async function soilFor(box, post) {
    (water/PARAMS-SOURCES.md 4a, 4d). */
 export const TOPSOIL = { cm: 10.16, awc: 0.14, ksatMmH: 3.4, name: 'loamy topsoil (added)' };
 
-/** The root zone a lawn draws on, in cm: 12 in (owner, 2026-10-18: "Root depth varies based on species.
-    But let's call it 12 inches for now."). Practice runs 6-12 in; FAO-56's 0.5-1.0 m is a maximum. */
-export const ROOT_CM = 30.48;
+/** The root zone a lawn draws on, in cm: 8 in, the FUNCTIONAL root depth (owner, 2026-10-20: "a functional
+    root depth of 8 inches is probably a better starting point than the 12 inches I gave"; species and
+    compacted soil to come). It was 12 in (owner, 2026-10-18). FAO-56's 0.5-1.0 m is a maximum. */
+export const ROOT_CM = 20.32;
 
 /* HOW FAST THE GROUND TAKES SPRINKLER WATER BEFORE IT RUNS OFF, in/h, by texture and slope, under turf
    (USDA/NRCS "Maximum precipitation rates for slopes", as Hunter Industries' Irrigation Notes Table 3

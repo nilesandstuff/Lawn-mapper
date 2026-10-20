@@ -22,7 +22,7 @@
 import { rootZone, maxSprinklerRate, withTexture, layersOf } from './soil.js';
 import { maskOf } from './geo.js';
 import { roofRouting } from './gutters.js';
-import { buildModel, simulate, idealIrrigation, zoneIrrigation, PARAMS, WARM } from './balance.js';
+import { buildModel, simulate, idealIrrigation, zoneIrrigation, schedulingMultiplier, PARAMS, WARM } from './balance.js';
 import { drawZones } from './zones.js';
 
 export const KIND = { other: 0, lawn: 1, roof: 2, paved: 3, pavers: 4 };
@@ -90,8 +90,13 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
   const roofs = roofRouting(g, wallNow, res.runoff.filled, { downspouts, gutters });
   const model = buildModel(res, { kinds, soilAt, soils, roofTo: roofs.roofTo, light, params });
   for (let i = 0; i < N; i++) if (deckCells[i]) model.etFactor[i] *= params.deckShelter;
+  // the most a day's watering can put down, cell by cell (PARAMS.cyclesPerDay runs of an hour's intake),
+  // as water reaching the grass: what is put down, over the scheduling multiplier
+  const SM = schedulingMultiplier(params);
+  model.dayCapMm = new Float32Array(N).fill(Infinity);
+  for (let i = 0; i < N; i++) if (kinds[i] === KIND.lawn) model.dayCapMm[i] = (params.cyclesPerDay * maxSprinklerRate(soils[soilAt[i]].rz, model.slope[i]).inPerH * 25.4) / SM;
 
-  const years = Math.max(1, Math.round(typical.length / 365.25));
+  const years = Math.max(1, new Set(typical.map((d) => d.date.slice(0, 4))).size); // distinct years (a test may give summers only)
   // 3. the ideal, cell by cell
   const perMonth = Array.from({ length: 12 }, () => new Float32Array(N));
   const ideal = idealIrrigation(model);
@@ -107,6 +112,7 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
   const yearOf = (d) => Number(typical[d].date.slice(0, 4));
   const y0 = yearOf(0);
   const monthOf = (d) => Number(typical[d].date.slice(5, 7)) - 1;
+  const wx = monthly(typical, years, params);
   const out = [];
   for (let z = 0; z < zones.n; z++) {
     const cells = [];
@@ -118,7 +124,7 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
       const perYear = Array.from({ length: years }, () => ({ n: 0, mm: 0 }));
       for (const e of mine) if (monthOf(e.d) === m) { const y = yearOf(e.d) - y0; if (perYear[y]) { perYear[y].n++; perYear[y].mm += e.mm; } }
       const counts = perYear.map((p) => p.n), mms = mine.filter((e) => monthOf(e.d) === m).map((e) => e.mm);
-      months.push({ month: m, waterings: med(counts), low: q(counts, 0.1), high: q(counts, 0.9), mmEach: med(mms), mmMonth: med(perYear.map((p) => p.mm)) });
+      months.push({ month: m, waterings: med(counts), low: q(counts, 0.1), high: q(counts, 0.9), mmEach: med(mms) * SM, mmMonth: med(perYear.map((p) => p.mm)) * SM });
     }
     const share = (arr, days) => med(cells.map((i) => arr[i] / Math.max(1, days)));
     const rz = cells.map((i) => soils[soilAt[i]].rz?.tawMm ?? null);
@@ -133,10 +139,16 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
     const rates = cells.map((i) => maxSprinklerRate(soils[soilAt[i]].rz, model.slope[i]).inPerH);
     const takes = q(rates, 0.1);
     const cyclesFor = (pr) => Math.max(1, Math.ceil(pr / takes));
+    /* A WEEK WITH NO RAIN in the zone's thirstiest month: its grass's use (the month's typical ET, this
+       zone's sun and heat) times the scheduling multiplier, in waterings of what a day's cycles allow. The
+       figure to set a controller by; rain skips waterings (the typical month above counts it). */
+    const each = (peak.mmEach || med(cells.map((i) => Math.min(model.raw[i], model.dayCapMm[i]))) * SM);
+    const dryMm = (wx[peak.month].grassUseMm / DAYS_IN[peak.month]) * 7 * med(cells.map((i) => model.etFactor[i])) * SM;
     out.push({
+      dryWeek: { month: peak.month, mm: dryMm, each, waterings: Math.max(1, Math.round(dryMm / Math.max(0.1, each))) },
       takesInPerH: takes, cycles: { spray: cyclesFor(1.5), rotor: cyclesFor(0.5) },
       zone: z, m2: cells.length * g.cell * g.cell,
-      depthMm: med(cells.map((i) => model.raw[i])),
+      depthMm: med(cells.map((i) => Math.min(model.raw[i], model.dayCapMm[i]))) * SM,
       tawMm: med(rz),
       peakMonth: peak.month, peakEveryDays: peak.waterings ? DAYS_IN[peak.month] / peak.waterings : null,
       months,
@@ -166,7 +178,7 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
       zones: out.map((o) => {
         const next = wev.find((e) => e.zone === o.zone && e.d >= ti);
         const last = [...wev].reverse().find((e) => e.zone === o.zone && e.d < ti);
-        return { zone: o.zone, next: next ? { date: week.days[next.d].date, mm: next.mm } : null, last: last ? { date: week.days[last.d].date } : null };
+        return { zone: o.zone, next: next ? { date: week.days[next.d].date, mm: next.mm * SM } : null, last: last ? { date: week.days[last.d].date } : null };
       }),
       rainComing: week.days.slice(ti).reduce((s, d) => s + (d.rain || 0), 0),
       through: week.days[week.days.length - 1].date,
@@ -180,7 +192,7 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
      it moves a zone line. */
   const pm = zones.peakMonth ?? 6;
   const needMm = new Float32Array(N).fill(NaN);
-  for (let i = 0; i < N; i++) if (kinds[i] === KIND.lawn) needMm[i] = perMonth[pm][i] / years;
+  for (let i = 0; i < N; i++) if (kinds[i] === KIND.lawn) needMm[i] = (perMonth[pm][i] / years) * SM;
   const wetShare = new Float32Array(N), dryShare = new Float32Array(N), wetFromWatering = new Float32Array(N), wetAnyway = new Float32Array(N);
   for (let i = 0; i < N; i++) if (kinds[i] === KIND.lawn) {
     wetShare[i] = planned.wetDays[i] / Math.max(1, planned.seasonDays); dryShare[i] = planned.dryDays[i] / Math.max(1, planned.seasonDays);
@@ -188,6 +200,7 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
     wetAnyway[i] = rainOnly.wetDays[i] / Math.max(1, rainOnly.seasonDays);
   }
   return {
+    multiplier: SM, rootIn: (soils[0]?.rz?.rootCm ?? 20.32) / 2.54,
     zones: out, zoneOf: zones.zoneOf, userZones: !!zones.user, kinds, needMm, needMonth: pm, wetShare, dryShare, wetFromWatering, wetAnyway,
     roofs: (() => {
       /* Only the roofs on the property count for asking: the analysis reaches 30 m past the property line,
@@ -205,7 +218,7 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
     soil: units.map((u) => ({ name: u.name, chosen: u.chosen || null, share: u.share ?? null, layers: layersOf(u.profile), intakeInH: (() => { const r = rootZone(u.profile); return r?.topKsatMmH ? r.topKsatMmH / 25.4 : null; })(), drainage: u.drainage, hydgrp: u.hydgrp, wtMinCm: u.wtMinCm ?? null, wetByMonth: u.wetByMonth, assumed: !!u.assumed, tawMm: rootZone(u.profile)?.tawMm ?? null, tawTopsoilMm: rootZone(u.profile, { topsoil: true })?.tawMm ?? null })),
     years, topsoil, grass, thisWeek, shaded: !!light,
     sunShare: light ? (() => { const v = []; for (let i = 0; i < N; i++) if (kinds[i] === KIND.lawn) v.push(light[i]); return med(v); })() : null,
-    weather: monthly(typical, years, params),
+    weather: wx,
   };
 }
 

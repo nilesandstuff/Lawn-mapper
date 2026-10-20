@@ -61,8 +61,10 @@ export function drawZones(model, perMonth, years, { maxZones = MAX_ZONES } = {})
   const depth = new Float32Array(N), interval = new Float32Array(N);
   const pts = lawn.map((i) => {
     const perDay = Math.max(0.05, perMonth[peakMonth][i] / daysIn);
-    depth[i] = raw[i]; interval[i] = raw[i] / perDay;
-    return [Math.log(Math.max(1, raw[i])), Math.log(Math.max(0.5, interval[i]))];
+    // a watering is the readily available water, or what a day's soak cycles can put down if less
+    const each = Math.min(raw[i], model.dayCapMm ? model.dayCapMm[i] : Infinity);
+    depth[i] = each; interval[i] = each / perDay;
+    return [Math.log(Math.max(1, each)), Math.log(Math.max(0.5, interval[i]))];
   });
   /* FIXED BANDS, NOT CLUSTERS (owner, 2026-10-19: "the map loads a bit differently each time... there
      wasn't a zone 3 this time"). Clustering looks at the whole lawn at once, so a small change anywhere (a

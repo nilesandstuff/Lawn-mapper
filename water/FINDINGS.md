@@ -27,7 +27,8 @@ go in this file (or anywhere in the repository): lots are named by a label.
   week's next watering, ground left too wet or dry; downspouts, gutters and
   the 4 in topsoil choice saved with the map; shade from the shade map's own
   light worker; the hillside reading (S10). H16, S8-S10; sources in
-  PARAMS-SOURCES.md. Root zone 12 in, cool/warm season (owner). Paving
+  PARAMS-SOURCES.md. Root zone 8 in (owner, 2026-10-20; was 12), cool/warm season (owner);
+  at most two soak cycles a day, and depths put down with the IA scheduling multiplier (H24). Paving
   heat as an estimate (S8). SAM 3 on Replicate scored for paving and
   lost to the free lidar + photo (H18); so did IGNF's FLAIR, with or without
   lidar height (H19). Overture's buildings (with roofs both lidar finders
@@ -861,6 +862,31 @@ the overlap is at least 0.3 and gains at least 0.02.
   share part of the offset the fit removes, and could understate the gain; that is not measured.
   In the plan, the gain is where it matters most: the strip of lawn against the house, which as published
   was partly a roof on one side and missing a roof edge on the other.
+
+### H24. "Too efficient with water": three causes, and the owner's dry-week figure (water session, 2026-10-20)
+
+The owner: the front yard (full sun) needs about 1 in a week in late June and July, over 2 or 3 waterings,
+to look good; the plan asked for less, less often. The balance is the owner's equation,
+dS = (P + I + CR) - (ETc + R + D), plus water running on from roofs, paving and uphill; CR (capillary rise
+from a water table) is the one term it does not have. On the owner's lot, a stand-in lawn (the lot's
+open ground; his traced lawn is not readable from here), typical July (rain 3.31 in, grass use 4.32 in):
+
+| | each | July waterings | July total | a week with no rain |
+|---|---|---|---|---|
+| before: 12 in roots, refill to full, depths as reaching the grass | 1.00 in | 3 (2-4) | 2.93 in | (not shown) |
+| 8 in roots, two cycles a day, scheduling multiplier 1.27 | 0.28 in | 11 (7-15) | 3.12 in | about 1.2 in, 4 waterings |
+
+- Root depth 8 in (owner): the soil holds 1.68 in there, the readily available water 0.67 in.
+- At most two soak cycles a day (owner), each at most an hour's intake: the survey's top-6-in rate here is
+  0.14 in/h, so a day puts down 0.28 in. That, not the root zone, sets the depth and the rhythm on this
+  clay. Watering lightly as soon as the soil had dried by a cycle's worth was tried and kept the root zone
+  full, so the rain ran off: 5.67 in in July, 1.3 in a week. Kept: wait for the readily available water,
+  then put back what a day allows -- the root zone keeps its room for rain.
+- The Irrigation Association's scheduling multiplier 1 / (0.4 + 0.6 DU), DU 0.65 (a typical home spray
+  system): 1.27. Before, depths were what reaches the grass.
+- The dry-week figure is the one comparable to the owner's 1 in: 1.2 in. The reference ET reads 15-20%
+  above Enviroweather's (H21, deferred by the owner); with that, about 1.0 in. The 4 waterings against his
+  2-3 come from the 0.14 in/h intake and the one-hour cycle, an assumption a soak test would check.
 
 ## SPECULATION
 
