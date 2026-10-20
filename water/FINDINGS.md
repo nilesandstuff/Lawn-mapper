@@ -915,6 +915,43 @@ rows, held at its ends), for its arc; a zone's flow and rate; pipes; GPS.
   GPS placing averages each head's fixes after a calibration on a known spot; not yet measured in the
   field.
 
+### H26. The pressure at every head: how it is worked out, and what is measured vs estimated (water session, 2026-10-20)
+
+The owner asked for the pressure at each head from a likely layout of the lines, their sizes, the ground's
+rise and fall, the real flows and the pressure at the backflow preventer, with scale as an option.
+lib/hydraulics.js, from three research files in lib/hydraulics/ (devices.json, pipes.json, PRACTICE.md):
+
+- Devices (HARD, the makers' own charts): 74 backflow preventers, valves and meters, 573 points. A typical
+  1 in PVB loses 2.7 psi at 10 gpm, a typical 1 in valve 3.1 psi (medians of the makers'). Every backflow
+  curve was read off a chart image (about +/-0.3 psi; the method checked on Badger's meter curves, within 0.4
+  of its printed table); valves and the meter table are printed values.
+- Friction (HARD formula, chosen): Darcy-Weisbach at 60 F, not the industry's Hazen-Williams C 150, which reads
+  5-25% low in 1/2-1 in plastic pipe (Keller & Bliesner; checked: 3/4 in Class 200 at 4 gpm, 1.02 psi per 100
+  ft as derived in pipes.json; Rain Bird's own 2 in main within 10% of its chart). IDs are the Irrigation
+  Association's average-wall IDs.
+- Fittings: each lateral tee counted (Spears' PVC equivalents, published; poly's barbed inserts from the ASTM
+  D2609 minimum bore, DERIVED and an upper bound); the supply and street lines take Rain Bird's and Hunter's
+  10%. Swing joints: Hunter's SJ curve for sprays (it agrees with designers' 1-2 psi; Rain Bird's SA figure is
+  a third of it -- the unpublished barb bores decide), Rain Bird TSJ for rotors.
+- Heads: the charts are at the base of the head (Toro states it; Rain Bird's 5000 graph agrees), so no body
+  loss. Past a chart, flow as pressure^0.52 (sprays) or ^0.53 (rotors), fitted on this catalogue's charts.
+  Regulated bodies: Rain Bird 1800 PRS holds its setting from 5 psi above it, below that loses 5 (its spec:
+  at most 6); Hunter PRB rotors need 15.
+- Layout (SPECULATION, untested against real trenches -- none in hand): a tree from the valve where a head
+  joins at the least pipe plus half its distance back along the pipe (Prim-Dijkstra), so the flow splits near
+  the valve as Rain Bird and Hunter say and Hunter's WRONG snake is not drawn; under paving costs 2x, through
+  a building 4x. Pipe sized by design flow under 5 ft/s from 3/4 in.
+- Elevation (HARD): the lidar ground at the PVB (gauge 0.3 m up), the laterals 8 in down, nozzles 4 in up.
+- Scale: nothing published gives a number for scale in PVC, PE, PEX or copper, so they stay smooth; old
+  galvanized roughens at Kamerstein's rates by water type (measured on mains; ESTIMATE for a home line). The
+  water questions otherwise give care, not numbers: staining where heads reach paving or walls, iron bacteria,
+  lime on nozzles.
+- Checked in the browser on a test lot: 60 psi static -> 53.8 psi at Zone 1's farthest head on flat ground
+  (meter 0.3, street line 0.5, PVB 2.7, supply 0.1, valve 1.7, laterals 0.2, swing joint 0.7), 57.0 with the
+  lidar's 3.2 psi of fall to it.
+- Not yet: valve-box depth and riser losses; the IA's 10% and others' 20% spread rules both shown; a field
+  check with a gauge on a head (a pitot on a nozzle) is the bar this has not met.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge

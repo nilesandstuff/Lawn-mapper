@@ -5,7 +5,7 @@
 
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
-import { route, solveZone, deviceLoss, frictionPerFt, sizeFor, pipeSize, headFlow, PSI_PER_FT, FT_PER_M, cFactors } from '../lib/hydraulics.js';
+import { route, solveZone, deviceLoss, frictionPerFt, dwPerFt, roughnessMm, regulatedOut, sizeFor, pipeSize, headFlow, PSI_PER_FT, FT_PER_M } from '../lib/hydraulics.js';
 import { catalogue, unEnu } from '../lib/heads.js';
 
 const tests = [];
@@ -60,9 +60,9 @@ test('friction: Hazen-Williams, 1 in Schedule 40 at 10 gpm loses about 2.4 psi p
   assert.equal(sizeFor('pvc40', 30).nominal, 1.5, 'the largest when none keeps it under 5 ft/s');
 });
 
-test('a head past its chart: flow by the square root of the pressure; a regulated body holds its nozzle at its setting', () => {
+test('a head past its chart: flow by the pressure to the 0.52 (sprays, fitted on the charts); a regulated body holds its nozzle at its setting', () => {
   const free = headFlow({ body: 'rb-1804', nozzle: 'rb-mpr-15h' }, cat, 60);
-  near(free.gpm, 1.85 * Math.sqrt(60 / 30), 0.02, '15H at 60 psi'); assert.equal(free.status, 'high');
+  near(free.gpm, 1.85 * (60 / 30) ** 0.52, 0.02, '15H at 60 psi'); assert.equal(free.status, 'high');
   const prs = headFlow({ body: 'rb-1804-prs', nozzle: 'rb-mpr-15h' }, cat, 60);
   near(prs.nozzlePsi, 30, 1e-9, 'PRS'); assert.equal(prs.status, 'ok');
 });
@@ -97,8 +97,37 @@ test('elevation: the same zone 10 ft uphill gets about 4.3 psi less at its heads
   near(d, (10 + 4 / 12) * PSI_PER_FT - lessLoss, 0.05, 'the rise, less the losses saved');
 });
 
-test('water quality: plastic pipe is left as it is (no maker or study gives a number for scale in it)', () => {
-  assert.equal(cFactors({ hardness: 'veryHard', orange: true }).plastic, 1);
+test('water quality: plastic and copper stay smooth; galvanized roughens with years, faster in iron-bearing water', () => {
+  assert.equal(roughnessMm('pvc40', { hardness: 'veryHard', orange: true }, 40), 0.0015);
+  assert.equal(roughnessMm('cuK', { hardness: 'veryHard' }, 40), 0.0015);
+  const mild = roughnessMm('galv', { hardness: 'soft' }, 40), rusty = roughnessMm('galv', { hardness: 'soft', orange: true }, 40);
+  assert.ok(Math.abs(mild - (0.15 + 40 * 0.025)) < 1e-9 && rusty > mild, `${mild} ${rusty}`);
+  assert.ok(dwPerFt(0.824, rusty, 6) > 1.5 * dwPerFt(0.824, 0.15, 6), 'an old rusty line loses far more');
+});
+
+test("Darcy-Weisbach: the research's worked value (3/4 in Class 200, 4 gpm, 1.02 psi per 100 ft) and more than Hazen-Williams' 150 in small pipe", () => {
+  const dw = dwPerFt(0.91, 0.0015, 4) * 100;
+  assert.ok(Math.abs(dw - 1.02) < 0.03, `${dw}`);
+  assert.ok(dw > frictionPerFt(0.91, 150, 4) * 100, 'H-W 150 reads low in small plastic pipe');
+  // Rain Bird's 2 in main (1.872 psi in their H-W chart): Darcy-Weisbach within 10% of it
+  const rb = dwPerFt(2.047, 0.0015, 39.2) * 162.8;
+  assert.ok(Math.abs(rb - 1.872) / 1.872 < 0.10, `Rain Bird's main by Darcy-Weisbach: ${rb.toFixed(3)}`);
+});
+
+test("pressure-regulating bodies: Rain Bird's 1800 PRS holds 30 from 35 psi in and passes less below; Hunter's PRB rotor needs 15 psi over its 45", () => {
+  const prs = { id: 'rb-1804-prs', kind: 'spray', regulatedPsi: 30 };
+  assert.equal(regulatedOut(prs, 60), 30); assert.equal(regulatedOut(prs, 35), 30); assert.equal(regulatedOut(prs, 32), 27);
+  const prb = { id: 'hu-pgp-ultra-04-prb', kind: 'rotor', regulatedPsi: 45 };
+  assert.equal(regulatedOut(prb, 70), 45); assert.equal(regulatedOut(prb, 55), 40);
+});
+
+test("the makers' devices: every curve reads, and a typical 1 in PVB and valve lose a few psi at a home zone's 10 gpm", () => {
+  const dev = JSON.parse(readFileSync(new URL('../lib/hydraulics/devices.json', import.meta.url), 'utf8')).devices;
+  for (const d of dev) assert.ok(d.points.length && d.points.every((p) => p.gpm > 0 && p.psi >= 0), d.id);
+  const mid = (kind) => { const v = dev.filter((d) => d.kind === kind && d.sizeIn === 1).map((d) => deviceLoss(d, 10)).sort((a, b) => a - b); return v[Math.floor((v.length - 1) / 2)]; };
+  const pvb = mid('pvb'), valve = mid('valve');
+  assert.ok(pvb > 1 && pvb < 10, `PVB ${pvb}`); assert.ok(valve > 0.5 && valve < 6, `valve ${valve}`);
+  console.log(`     typical at 10 gpm: 1 in PVB ${pvb.toFixed(1)} psi, 1 in valve ${valve.toFixed(1)} psi`);
 });
 
 let failed = 0;

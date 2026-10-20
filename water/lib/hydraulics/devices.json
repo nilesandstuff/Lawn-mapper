@@ -1,0 +1,3767 @@
+{
+  "retrieved": "2026-10-20",
+  "devices": [
+    {
+      "id": "rainbird-dv-075",
+      "kind": "valve",
+      "brand": "Rain Bird",
+      "model": "075-DV (DV series, 3/4\" globe)",
+      "sizeIn": 0.75,
+      "points": [
+        {
+          "gpm": 1,
+          "psi": 3.2,
+          "read": "table"
+        },
+        {
+          "gpm": 3,
+          "psi": 3.9,
+          "read": "table"
+        },
+        {
+          "gpm": 5,
+          "psi": 4.2,
+          "read": "table"
+        },
+        {
+          "gpm": 10,
+          "psi": 5.0,
+          "read": "table"
+        },
+        {
+          "gpm": 20,
+          "psi": 7.7,
+          "read": "table"
+        }
+      ],
+      "maxGpm": 22,
+      "source": "https://rainbird.com/media/11743",
+      "note": "Rain Bird catalog page \"DV and DVF Valve Pressure Loss (psi)\" (page 64, PDF dated 2020; the same table is in the 2017 and 2018 catalogs). Flow range 0.2-22 gpm from the DV tech spec (rainbird.com/media/4650). That 2017 tech spec prints an OLDER, lower table for the same valve: 1:2.5, 3:2.5, 5:2.9, 10:3.8, 20:5.1 psi."
+    },
+    {
+      "id": "rainbird-dv-100",
+      "kind": "valve",
+      "brand": "Rain Bird",
+      "model": "100-DV / 100-DVF (1\" globe, female NPT or slip)",
+      "sizeIn": 1,
+      "points": [
+        {
+          "gpm": 1,
+          "psi": 3.3,
+          "read": "table"
+        },
+        {
+          "gpm": 3,
+          "psi": 3.6,
+          "read": "table"
+        },
+        {
+          "gpm": 5,
+          "psi": 3.8,
+          "read": "table"
+        },
+        {
+          "gpm": 10,
+          "psi": 3.8,
+          "read": "table"
+        },
+        {
+          "gpm": 20,
+          "psi": 5.1,
+          "read": "table"
+        },
+        {
+          "gpm": 30,
+          "psi": 6.4,
+          "read": "table"
+        },
+        {
+          "gpm": 40,
+          "psi": 8.6,
+          "read": "table"
+        }
+      ],
+      "maxGpm": 40,
+      "source": "https://rainbird.com/media/11743",
+      "note": "Same catalog table as rainbird-dv-075 (column \"100-DV/100-DVF 1 in.\"). Flow range 0.2-40 gpm (tech spec). The 2017 tech spec (rainbird.com/media/4650) prints an older table: 1:2.2, 3:2.2, 5:2.4, 10:2.7, 20:4.2, 30:6.1, 40:9.3 psi. DVF = with flow control; table is for flow control fully open (not stated, assumed)."
+    },
+    {
+      "id": "rainbird-dv-100-angle",
+      "kind": "valve",
+      "brand": "Rain Bird",
+      "model": "100-DV-A / 100-DVF-A (1\" angle)",
+      "sizeIn": 1,
+      "points": [
+        {
+          "gpm": 1,
+          "psi": 2.8,
+          "read": "table"
+        },
+        {
+          "gpm": 3,
+          "psi": 3.0,
+          "read": "table"
+        },
+        {
+          "gpm": 5,
+          "psi": 3.2,
+          "read": "table"
+        },
+        {
+          "gpm": 10,
+          "psi": 3.9,
+          "read": "table"
+        },
+        {
+          "gpm": 20,
+          "psi": 4.3,
+          "read": "table"
+        },
+        {
+          "gpm": 30,
+          "psi": 5.4,
+          "read": "table"
+        },
+        {
+          "gpm": 40,
+          "psi": 8.2,
+          "read": "table"
+        }
+      ],
+      "maxGpm": 40,
+      "source": "https://rainbird.com/media/11743",
+      "note": "Table \"100-DV Angle, MxB Valve Pressure Loss (psi)\". The 2018 and 2020 catalog pages head its two columns \"075-DV\" and \"100-DV/100-DVF\", which is a header error (there is no 3/4 in. angle DV); the 2017 catalog (rainbird.com/media/4763) prints the identical numbers under the headers \"Angle 1 in.\" and \"Male x barb 1 in.\", which is the reading used here. Older 2017 tech spec values for Angle: 1:1.6, 3:1.6, 5:1.8, 10:2.3, 20:3.6, 30:5.5, 40:9.1."
+    },
+    {
+      "id": "rainbird-dv-100-mb",
+      "kind": "valve",
+      "brand": "Rain Bird",
+      "model": "100-DV-MB / 100-DVF-MB (1\" male x barb)",
+      "sizeIn": 1,
+      "points": [
+        {
+          "gpm": 1,
+          "psi": 2.5,
+          "read": "table"
+        },
+        {
+          "gpm": 3,
+          "psi": 2.9,
+          "read": "table"
+        },
+        {
+          "gpm": 5,
+          "psi": 3.0,
+          "read": "table"
+        },
+        {
+          "gpm": 10,
+          "psi": 3.1,
+          "read": "table"
+        },
+        {
+          "gpm": 20,
+          "psi": 4.3,
+          "read": "table"
+        },
+        {
+          "gpm": 30,
+          "psi": 7.4,
+          "read": "table"
+        },
+        {
+          "gpm": 40,
+          "psi": 12.7,
+          "read": "table"
+        }
+      ],
+      "maxGpm": 30,
+      "source": "https://rainbird.com/media/11743",
+      "note": "Second column of the Angle/MxB table (see rainbird-dv-100-angle for the header issue). Rain Bird: male x barb not recommended above 30 gpm, hence maxGpm 30. Older 2017 tech spec values: 1:2.2, 3:2.2, 5:2.4, 10:2.7, 20:5.2, 30:10.5, 40:18.5."
+    },
+    {
+      "id": "rainbird-asvf-075",
+      "kind": "valve",
+      "brand": "Rain Bird",
+      "model": "075-ASVF (3/4\" anti-siphon valve, integral AVB)",
+      "sizeIn": 0.75,
+      "points": [
+        {
+          "gpm": 1,
+          "psi": 2.8,
+          "read": "table"
+        },
+        {
+          "gpm": 3,
+          "psi": 3.4,
+          "read": "table"
+        },
+        {
+          "gpm": 5,
+          "psi": 3.8,
+          "read": "table"
+        },
+        {
+          "gpm": 10,
+          "psi": 4.6,
+          "read": "table"
+        },
+        {
+          "gpm": 20,
+          "psi": 6.5,
+          "read": "table"
+        }
+      ],
+      "maxGpm": 22,
+      "source": "https://rainbird.com/media/4166",
+      "note": "Anti-siphon valve: the loss includes its built-in atmospheric vacuum breaker, so no separate backflow device is added for it. Catalog page PDF dated 2020 (same table in the 2018 catalog). Flow 0.2-22 gpm. Older 2017 tech spec (rainbird.com/media/4650): 1:3.6, 3:3.6, 5:4.2, 10:5.7, 20:8.6."
+    },
+    {
+      "id": "rainbird-asvf-100",
+      "kind": "valve",
+      "brand": "Rain Bird",
+      "model": "100-ASVF (1\" anti-siphon valve, integral AVB)",
+      "sizeIn": 1,
+      "points": [
+        {
+          "gpm": 1,
+          "psi": 2.9,
+          "read": "table"
+        },
+        {
+          "gpm": 3,
+          "psi": 3.1,
+          "read": "table"
+        },
+        {
+          "gpm": 5,
+          "psi": 3.3,
+          "read": "table"
+        },
+        {
+          "gpm": 10,
+          "psi": 3.9,
+          "read": "table"
+        },
+        {
+          "gpm": 20,
+          "psi": 5.0,
+          "read": "table"
+        },
+        {
+          "gpm": 30,
+          "psi": 7.8,
+          "read": "table"
+        },
+        {
+          "gpm": 40,
+          "psi": 13.4,
+          "read": "table"
+        }
+      ],
+      "maxGpm": 40,
+      "source": "https://rainbird.com/media/4166",
+      "note": "See rainbird-asvf-075. Flow 0.2-40 gpm. Older 2017 tech spec: 1:3.1, 3:3.1, 5:4.0, 10:5.4, 20:7.3, 30:10.3, 40:15.9."
+    },
+    {
+      "id": "rainbird-hv-100",
+      "kind": "valve",
+      "brand": "Rain Bird",
+      "model": "100-HV (1\" globe)",
+      "sizeIn": 1,
+      "points": [
+        {
+          "gpm": 1,
+          "psi": 1.57,
+          "read": "table"
+        },
+        {
+          "gpm": 3,
+          "psi": 2.07,
+          "read": "table"
+        },
+        {
+          "gpm": 5,
+          "psi": 2.38,
+          "read": "table"
+        },
+        {
+          "gpm": 10,
+          "psi": 3.33,
+          "read": "table"
+        },
+        {
+          "gpm": 20,
+          "psi": 4.59,
+          "read": "table"
+        },
+        {
+          "gpm": 30,
+          "psi": 6.14,
+          "read": "table"
+        },
+        {
+          "gpm": 40,
+          "psi": 8.23,
+          "read": "table"
+        }
+      ],
+      "maxGpm": 30,
+      "source": "https://rainbird.com/media/8391",
+      "note": "Rain Bird 2018 catalog, valves section, \"HV Valve Pressure Loss (psi)\", column 1\" HV. Printed flow range is 0.2-30 gpm yet the table runs to 40 gpm."
+    },
+    {
+      "id": "rainbird-hv-100-mb",
+      "kind": "valve",
+      "brand": "Rain Bird",
+      "model": "100-HV-MB (1\" male x barb)",
+      "sizeIn": 1,
+      "points": [
+        {
+          "gpm": 1,
+          "psi": 1.73,
+          "read": "table"
+        },
+        {
+          "gpm": 3,
+          "psi": 2.03,
+          "read": "table"
+        },
+        {
+          "gpm": 5,
+          "psi": 2.25,
+          "read": "table"
+        },
+        {
+          "gpm": 10,
+          "psi": 2.8,
+          "read": "table"
+        },
+        {
+          "gpm": 20,
+          "psi": 4.45,
+          "read": "table"
+        },
+        {
+          "gpm": 30,
+          "psi": 7.85,
+          "read": "table"
+        },
+        {
+          "gpm": 40,
+          "psi": 13.68,
+          "read": "table"
+        }
+      ],
+      "maxGpm": 30,
+      "source": "https://rainbird.com/media/8391",
+      "note": "Same table as rainbird-hv-100, column 1\" HV-MB."
+    },
+    {
+      "id": "rainbird-pga-100-globe",
+      "kind": "valve",
+      "brand": "Rain Bird",
+      "model": "100-PGA (1\" globe)",
+      "sizeIn": 1,
+      "points": [
+        {
+          "gpm": 2,
+          "psi": 5.1,
+          "read": "table"
+        },
+        {
+          "gpm": 5,
+          "psi": 5.5,
+          "read": "table"
+        },
+        {
+          "gpm": 10,
+          "psi": 5.9,
+          "read": "table"
+        },
+        {
+          "gpm": 20,
+          "psi": 6.0,
+          "read": "table"
+        },
+        {
+          "gpm": 30,
+          "psi": 6.4,
+          "read": "table"
+        },
+        {
+          "gpm": 40,
+          "psi": 7.0,
+          "read": "table"
+        }
+      ],
+      "maxGpm": 40,
+      "source": "https://rainbird.com/media/8391",
+      "note": "Rain Bird 2018 catalog \"PGA Series Valve Pressure Loss (psi)\". Flow 2-40 gpm (PGA brochure, rainbird.com/media/12769)."
+    },
+    {
+      "id": "rainbird-pga-100-angle",
+      "kind": "valve",
+      "brand": "Rain Bird",
+      "model": "100-PGA (1\" angle)",
+      "sizeIn": 1,
+      "points": [
+        {
+          "gpm": 2,
+          "psi": 4.3,
+          "read": "table"
+        },
+        {
+          "gpm": 5,
+          "psi": 5.0,
+          "read": "table"
+        },
+        {
+          "gpm": 10,
+          "psi": 5.5,
+          "read": "table"
+        },
+        {
+          "gpm": 20,
+          "psi": 5.6,
+          "read": "table"
+        },
+        {
+          "gpm": 30,
+          "psi": 5.5,
+          "read": "table"
+        },
+        {
+          "gpm": 40,
+          "psi": 7.5,
+          "read": "table"
+        }
+      ],
+      "maxGpm": 40,
+      "source": "https://rainbird.com/media/8391",
+      "note": "Same table as rainbird-pga-100-globe, angle column."
+    },
+    {
+      "id": "hunter-pgv-100-globe",
+      "kind": "valve",
+      "brand": "Hunter",
+      "model": "PGV-100/101 (1\" globe, female thread; also jar-top PGV-100/101-JT)",
+      "sizeIn": 1,
+      "points": [
+        {
+          "gpm": 1,
+          "psi": 3,
+          "read": "table"
+        },
+        {
+          "gpm": 5,
+          "psi": 4,
+          "read": "table"
+        },
+        {
+          "gpm": 10,
+          "psi": 4,
+          "read": "table"
+        },
+        {
+          "gpm": 15,
+          "psi": 5,
+          "read": "table"
+        },
+        {
+          "gpm": 20,
+          "psi": 5,
+          "read": "table"
+        },
+        {
+          "gpm": 25,
+          "psi": 6,
+          "read": "table"
+        },
+        {
+          "gpm": 30,
+          "psi": 8,
+          "read": "table"
+        },
+        {
+          "gpm": 40,
+          "psi": 14,
+          "read": "table"
+        }
+      ],
+      "maxGpm": 40,
+      "source": "https://redesign.hunterindustries.com/sites/default/files/Hunter_Catalog_US.pdf",
+      "note": "Hunter US catalog (PDF dated 2023-05), \"PGV PRESSURE LOSS IN PSI\", PDF page 79; whole-psi values as printed. The current hunterirrigation.com 1-in. PGV page carries the same chart (couldn't be fetched: the site blocks automated requests). The 2016 Hunter catalog printed a different, single-column 1\" globe table (1:1.1, 5:1.6, 10:1.9, 15:2.3, 20:3.3, 30:9.0, 35:16, 40:20) that predates the current chart. Flow 0.2-40 gpm, recommended 20-150 psi. Column \"Globe\"."
+    },
+    {
+      "id": "hunter-pgv-100-angle",
+      "kind": "valve",
+      "brand": "Hunter",
+      "model": "PGV-100-A/101-A (1\" angle)",
+      "sizeIn": 1,
+      "points": [
+        {
+          "gpm": 1,
+          "psi": 1,
+          "read": "table"
+        },
+        {
+          "gpm": 5,
+          "psi": 1,
+          "read": "table"
+        },
+        {
+          "gpm": 10,
+          "psi": 1,
+          "read": "table"
+        },
+        {
+          "gpm": 15,
+          "psi": 1,
+          "read": "table"
+        },
+        {
+          "gpm": 20,
+          "psi": 2,
+          "read": "table"
+        },
+        {
+          "gpm": 25,
+          "psi": 2,
+          "read": "table"
+        },
+        {
+          "gpm": 30,
+          "psi": 3,
+          "read": "table"
+        },
+        {
+          "gpm": 40,
+          "psi": 5,
+          "read": "table"
+        }
+      ],
+      "maxGpm": 40,
+      "source": "https://redesign.hunterindustries.com/sites/default/files/Hunter_Catalog_US.pdf",
+      "note": "Hunter US catalog (PDF dated 2023-05), \"PGV PRESSURE LOSS IN PSI\", PDF page 79; whole-psi values as printed. The current hunterirrigation.com 1-in. PGV page carries the same chart (couldn't be fetched: the site blocks automated requests). The 2016 Hunter catalog printed a different, single-column 1\" globe table (1:1.1, 5:1.6, 10:1.9, 15:2.3, 20:3.3, 30:9.0, 35:16, 40:20) that predates the current chart. Flow 0.2-40 gpm, recommended 20-150 psi. Column \"Angle\"."
+    },
+    {
+      "id": "hunter-pgv-100-mm",
+      "kind": "valve",
+      "brand": "Hunter",
+      "model": "PGV-100/101-MM (1\" male x male)",
+      "sizeIn": 1,
+      "points": [
+        {
+          "gpm": 1,
+          "psi": 2,
+          "read": "table"
+        },
+        {
+          "gpm": 5,
+          "psi": 2,
+          "read": "table"
+        },
+        {
+          "gpm": 10,
+          "psi": 2,
+          "read": "table"
+        },
+        {
+          "gpm": 15,
+          "psi": 3,
+          "read": "table"
+        },
+        {
+          "gpm": 20,
+          "psi": 4,
+          "read": "table"
+        },
+        {
+          "gpm": 25,
+          "psi": 7,
+          "read": "table"
+        },
+        {
+          "gpm": 30,
+          "psi": 10,
+          "read": "table"
+        },
+        {
+          "gpm": 40,
+          "psi": 18,
+          "read": "table"
+        }
+      ],
+      "maxGpm": 40,
+      "source": "https://redesign.hunterindustries.com/sites/default/files/Hunter_Catalog_US.pdf",
+      "note": "Hunter US catalog (PDF dated 2023-05), \"PGV PRESSURE LOSS IN PSI\", PDF page 79; whole-psi values as printed. The current hunterirrigation.com 1-in. PGV page carries the same chart (couldn't be fetched: the site blocks automated requests). The 2016 Hunter catalog printed a different, single-column 1\" globe table (1:1.1, 5:1.6, 10:1.9, 15:2.3, 20:3.3, 30:9.0, 35:16, 40:20) that predates the current chart. Flow 0.2-40 gpm, recommended 20-150 psi. Column \"Male x Male\"."
+    },
+    {
+      "id": "hunter-pgv-100-mb",
+      "kind": "valve",
+      "brand": "Hunter",
+      "model": "PGV-100/101-MB (1\" male x barb)",
+      "sizeIn": 1,
+      "points": [
+        {
+          "gpm": 1,
+          "psi": 2,
+          "read": "table"
+        },
+        {
+          "gpm": 5,
+          "psi": 2,
+          "read": "table"
+        },
+        {
+          "gpm": 10,
+          "psi": 2,
+          "read": "table"
+        },
+        {
+          "gpm": 15,
+          "psi": 3,
+          "read": "table"
+        },
+        {
+          "gpm": 20,
+          "psi": 4,
+          "read": "table"
+        },
+        {
+          "gpm": 25,
+          "psi": 6,
+          "read": "table"
+        },
+        {
+          "gpm": 30,
+          "psi": 10,
+          "read": "table"
+        },
+        {
+          "gpm": 40,
+          "psi": 16,
+          "read": "table"
+        }
+      ],
+      "maxGpm": 40,
+      "source": "https://redesign.hunterindustries.com/sites/default/files/Hunter_Catalog_US.pdf",
+      "note": "Hunter US catalog (PDF dated 2023-05), \"PGV PRESSURE LOSS IN PSI\", PDF page 79; whole-psi values as printed. The current hunterirrigation.com 1-in. PGV page carries the same chart (couldn't be fetched: the site blocks automated requests). The 2016 Hunter catalog printed a different, single-column 1\" globe table (1:1.1, 5:1.6, 10:1.9, 15:2.3, 20:3.3, 30:9.0, 35:16, 40:20) that predates the current chart. Flow 0.2-40 gpm, recommended 20-150 psi. Column \"Male x Barb\"."
+    },
+    {
+      "id": "hunter-icv-101g",
+      "kind": "valve",
+      "brand": "Hunter",
+      "model": "ICV-101G (1\" globe)",
+      "sizeIn": 1,
+      "points": [
+        {
+          "gpm": 0.1,
+          "psi": 2.0,
+          "read": "table"
+        },
+        {
+          "gpm": 0.5,
+          "psi": 2.0,
+          "read": "table"
+        },
+        {
+          "gpm": 1,
+          "psi": 2.0,
+          "read": "table"
+        },
+        {
+          "gpm": 5,
+          "psi": 2.5,
+          "read": "table"
+        },
+        {
+          "gpm": 10,
+          "psi": 3.0,
+          "read": "table"
+        },
+        {
+          "gpm": 15,
+          "psi": 3.0,
+          "read": "table"
+        },
+        {
+          "gpm": 20,
+          "psi": 3.0,
+          "read": "table"
+        },
+        {
+          "gpm": 30,
+          "psi": 9.0,
+          "read": "table"
+        },
+        {
+          "gpm": 40,
+          "psi": 20.0,
+          "read": "table"
+        }
+      ],
+      "maxGpm": 40,
+      "source": "https://redesign.hunterindustries.com/sites/default/files/Hunter_Catalog_US.pdf",
+      "note": "Hunter 2023 US catalog, \"ICV PRESSURE LOSS (AT OPTIMAL FLOWS) IN PSI\", PDF page 83; identical in the 2016 catalog. Flow 0.1-40 gpm. The jump to 9 psi at 30 and 20 psi at 40 gpm is as printed (the 30 and 40 gpm figures equal the old 2016 PGV 1\" table)."
+    },
+    {
+      "id": "hunter-pgv-asv-075",
+      "kind": "valve",
+      "brand": "Hunter",
+      "model": "PGV-075-ASV (3/4\" anti-siphon, integral AVB)",
+      "sizeIn": 0.75,
+      "points": [
+        {
+          "gpm": 1,
+          "psi": 1,
+          "read": "table"
+        },
+        {
+          "gpm": 5,
+          "psi": 2,
+          "read": "table"
+        },
+        {
+          "gpm": 10,
+          "psi": 2,
+          "read": "table"
+        },
+        {
+          "gpm": 15,
+          "psi": 3,
+          "read": "table"
+        },
+        {
+          "gpm": 20,
+          "psi": 6,
+          "read": "table"
+        }
+      ],
+      "maxGpm": null,
+      "source": "https://redesign.hunterindustries.com/sites/default/files/Hunter_Catalog_US.pdf",
+      "note": "Hunter 2023 US catalog, \"PGV-ASV PRESSURE LOSS IN PSI\", PDF page 80; identical in the 2016 catalog. Anti-siphon valve: the loss includes its built-in vacuum breaker. Whole-psi values as printed. Flow range not printed beside the table."
+    },
+    {
+      "id": "hunter-pgv-asv-100",
+      "kind": "valve",
+      "brand": "Hunter",
+      "model": "PGV-101-ASV (1\" anti-siphon, integral AVB)",
+      "sizeIn": 1,
+      "points": [
+        {
+          "gpm": 1,
+          "psi": 1,
+          "read": "table"
+        },
+        {
+          "gpm": 5,
+          "psi": 2,
+          "read": "table"
+        },
+        {
+          "gpm": 10,
+          "psi": 2,
+          "read": "table"
+        },
+        {
+          "gpm": 15,
+          "psi": 3,
+          "read": "table"
+        },
+        {
+          "gpm": 20,
+          "psi": 6,
+          "read": "table"
+        },
+        {
+          "gpm": 25,
+          "psi": 6,
+          "read": "table"
+        },
+        {
+          "gpm": 30,
+          "psi": 9,
+          "read": "table"
+        },
+        {
+          "gpm": 35,
+          "psi": 16,
+          "read": "table"
+        },
+        {
+          "gpm": 40,
+          "psi": 20,
+          "read": "table"
+        }
+      ],
+      "maxGpm": null,
+      "source": "https://redesign.hunterindustries.com/sites/default/files/Hunter_Catalog_US.pdf",
+      "note": "Hunter 2023 US catalog, \"PGV-ASV PRESSURE LOSS IN PSI\", PDF page 80; identical in the 2016 catalog. Anti-siphon valve: the loss includes its built-in vacuum breaker. Whole-psi values as printed. Flow range not printed beside the table."
+    },
+    {
+      "id": "toro-ezflo-plus-100-inline",
+      "kind": "valve",
+      "brand": "Toro",
+      "model": "EZ-Flo Plus EZF-2x-04 / EZF-0x-04 (1\" in-line)",
+      "sizeIn": 1,
+      "points": [
+        {
+          "gpm": 0.25,
+          "psi": 2.0,
+          "read": "table"
+        },
+        {
+          "gpm": 5,
+          "psi": 3.5,
+          "read": "table"
+        },
+        {
+          "gpm": 10,
+          "psi": 4.0,
+          "read": "table"
+        },
+        {
+          "gpm": 15,
+          "psi": 3.0,
+          "read": "table"
+        },
+        {
+          "gpm": 20,
+          "psi": 3.3,
+          "read": "table"
+        },
+        {
+          "gpm": 30,
+          "psi": 6.2,
+          "read": "table"
+        }
+      ],
+      "maxGpm": 30,
+      "source": "https://cdn2.toro.com/en/-/media/Files/Toro/professional-contractor/Valves/EZ-Flo-Plus/ezflow_sell_sheet.ashx",
+      "note": "Toro EZ-Flo Plus sell sheet (PDF dated 2020), \"PRESSURE LOSS DATA\", row 1\" In-line; the 2015 sell sheet and the 2002 installation guide (form 373-0137, row \"Globe\") print the same numbers. Flow 0.25-30 gpm. Numbers are effectively the same as the Irritrol 2400 (also a Toro company)."
+    },
+    {
+      "id": "toro-ezflo-plus-100-angle",
+      "kind": "valve",
+      "brand": "Toro",
+      "model": "EZ-Flo Plus 1\" (angle configuration)",
+      "sizeIn": 1,
+      "points": [
+        {
+          "gpm": 0.25,
+          "psi": 2.0,
+          "read": "table"
+        },
+        {
+          "gpm": 5,
+          "psi": 3.3,
+          "read": "table"
+        },
+        {
+          "gpm": 10,
+          "psi": 2.2,
+          "read": "table"
+        },
+        {
+          "gpm": 15,
+          "psi": 1.8,
+          "read": "table"
+        },
+        {
+          "gpm": 20,
+          "psi": 1.9,
+          "read": "table"
+        },
+        {
+          "gpm": 30,
+          "psi": 3.9,
+          "read": "table"
+        }
+      ],
+      "maxGpm": 30,
+      "source": "https://cdn2.toro.com/en/-/media/Files/Toro/professional-contractor/Valves/EZ-Flo-Plus/EZ-1-inch-guide.ashx",
+      "note": "Only in the 2002 installation guide (form 373-0137 rev B), \"Friction Loss ... (Angle)\"; current sell sheets list no angle row. Numbers match the Irritrol 2600 angle valve."
+    },
+    {
+      "id": "toro-ezflo-plus-100-asv",
+      "kind": "valve",
+      "brand": "Toro",
+      "model": "EZ-Flo Plus EZF-29-04 (1\" anti-siphon, integral AVB)",
+      "sizeIn": 1,
+      "points": [
+        {
+          "gpm": 0.25,
+          "psi": 2.0,
+          "read": "table"
+        },
+        {
+          "gpm": 5,
+          "psi": 2.1,
+          "read": "table"
+        },
+        {
+          "gpm": 10,
+          "psi": 3.1,
+          "read": "table"
+        },
+        {
+          "gpm": 15,
+          "psi": 2.3,
+          "read": "table"
+        },
+        {
+          "gpm": 20,
+          "psi": 3.8,
+          "read": "table"
+        },
+        {
+          "gpm": 30,
+          "psi": 8.1,
+          "read": "table"
+        }
+      ],
+      "maxGpm": 30,
+      "source": "https://cdn2.toro.com/en/-/media/Files/Toro/professional-contractor/Valves/EZ-Flo-Plus/ezflow_sell_sheet.ashx",
+      "note": "Sell sheet row 1\" Anti-siphon; same in installation guide form 373-0136. Includes the built-in vacuum breaker. Flow 0.25-30 gpm."
+    },
+    {
+      "id": "toro-ezflo-plus-075-asv",
+      "kind": "valve",
+      "brand": "Toro",
+      "model": "EZ-Flo Plus EZF-29-03 (3/4\" anti-siphon, integral AVB)",
+      "sizeIn": 0.75,
+      "points": [
+        {
+          "gpm": 0.25,
+          "psi": 2.0,
+          "read": "table"
+        },
+        {
+          "gpm": 5,
+          "psi": 4.2,
+          "read": "table"
+        },
+        {
+          "gpm": 10,
+          "psi": 4.2,
+          "read": "table"
+        },
+        {
+          "gpm": 15,
+          "psi": 4.8,
+          "read": "table"
+        },
+        {
+          "gpm": 20,
+          "psi": 7.6,
+          "read": "table"
+        }
+      ],
+      "maxGpm": 20,
+      "source": "https://cdn2.toro.com/en/-/media/Files/Toro/professional-contractor/Valves/EZ-Flo-Plus/ezflow_sell_sheet.ashx",
+      "note": "Sell sheet row 3/4\" Anti-siphon (30 gpm printed as a dash). Flow 0.25-20 gpm."
+    },
+    {
+      "id": "toro-254-075",
+      "kind": "valve",
+      "brand": "Toro",
+      "model": "254/264 Series 3/4\" electric (globe)",
+      "sizeIn": 0.75,
+      "points": [
+        {
+          "gpm": 5,
+          "psi": 1.5,
+          "read": "table"
+        },
+        {
+          "gpm": 10,
+          "psi": 3.0,
+          "read": "table"
+        },
+        {
+          "gpm": 15,
+          "psi": 6.5,
+          "read": "table"
+        }
+      ],
+      "maxGpm": null,
+      "source": "https://cdn2.toro.com/en/-/media/Files/Toro/professional-contractor/Literature/26-1020-DB-ResCom-Irritrol-Catalog.ashx",
+      "note": "Toro/Irritrol 2026 ResCom catalog, \"254/264 SERIES PRESSURE LOSS DATA\", PDF page 37. At 0.5, 1 and 2 gpm the table prints \"<1.0\" (left out here: not a number). Toro: flow rates recommended not to exceed 5 psi loss. Toro bidding spec agrees: not over 6.5 psi at 15 gpm."
+    },
+    {
+      "id": "toro-254-100",
+      "kind": "valve",
+      "brand": "Toro",
+      "model": "254/264 Series 1\" electric (globe)",
+      "sizeIn": 1,
+      "points": [
+        {
+          "gpm": 5,
+          "psi": 2.0,
+          "read": "table"
+        },
+        {
+          "gpm": 10,
+          "psi": 2.0,
+          "read": "table"
+        },
+        {
+          "gpm": 15,
+          "psi": 2.3,
+          "read": "table"
+        },
+        {
+          "gpm": 20,
+          "psi": 3.1,
+          "read": "table"
+        },
+        {
+          "gpm": 25,
+          "psi": 4.0,
+          "read": "table"
+        },
+        {
+          "gpm": 30,
+          "psi": 5.4,
+          "read": "table"
+        },
+        {
+          "gpm": 35,
+          "psi": 7.0,
+          "read": "table"
+        },
+        {
+          "gpm": 40,
+          "psi": 8.7,
+          "read": "table"
+        },
+        {
+          "gpm": 45,
+          "psi": 10.5,
+          "read": "table"
+        }
+      ],
+      "maxGpm": null,
+      "source": "https://cdn2.toro.com/en/-/media/Files/Toro/professional-contractor/Literature/26-1020-DB-ResCom-Irritrol-Catalog.ashx",
+      "note": "Same table as toro-254-075, 1\" row. Toro: flow rates recommended not to exceed 5 psi loss."
+    },
+    {
+      "id": "toro-252-100-globe",
+      "kind": "valve",
+      "brand": "Toro",
+      "model": "252 Series 1\" electric, globe",
+      "sizeIn": 1,
+      "points": [
+        {
+          "gpm": 5,
+          "psi": 3.0,
+          "read": "table"
+        },
+        {
+          "gpm": 10,
+          "psi": 4.0,
+          "read": "table"
+        },
+        {
+          "gpm": 20,
+          "psi": 5.0,
+          "read": "table"
+        },
+        {
+          "gpm": 25,
+          "psi": 6.0,
+          "read": "table"
+        },
+        {
+          "gpm": 30,
+          "psi": 7.0,
+          "read": "table"
+        },
+        {
+          "gpm": 40,
+          "psi": 9.5,
+          "read": "table"
+        }
+      ],
+      "maxGpm": 40,
+      "source": "https://cdn2.toro.com/en/-/media/Files/Toro/professional-contractor/Literature/26-1020-DB-ResCom-Irritrol-Catalog.ashx",
+      "note": "2026 catalog \"252 SERIES PRESSURE LOSS DATA\", PDF page 51; recommended flow 5-40 gpm (an older 2016 252 sheet gave 5-20 gpm for 1\"). Commercial valve, included because it is common."
+    },
+    {
+      "id": "toro-252-100-angle",
+      "kind": "valve",
+      "brand": "Toro",
+      "model": "252 Series 1\" electric, angle",
+      "sizeIn": 1,
+      "points": [
+        {
+          "gpm": 5,
+          "psi": 2.0,
+          "read": "table"
+        },
+        {
+          "gpm": 10,
+          "psi": 3.5,
+          "read": "table"
+        },
+        {
+          "gpm": 20,
+          "psi": 4.5,
+          "read": "table"
+        },
+        {
+          "gpm": 25,
+          "psi": 4.5,
+          "read": "table"
+        },
+        {
+          "gpm": 30,
+          "psi": 5.0,
+          "read": "table"
+        },
+        {
+          "gpm": 40,
+          "psi": 7.5,
+          "read": "table"
+        }
+      ],
+      "maxGpm": 40,
+      "source": "https://cdn2.toro.com/en/-/media/Files/Toro/professional-contractor/Literature/26-1020-DB-ResCom-Irritrol-Catalog.ashx",
+      "note": "Same table, angle row."
+    },
+    {
+      "id": "irritrol-2400-100",
+      "kind": "valve",
+      "brand": "Irritrol",
+      "model": "2400 Series 1\" (globe)",
+      "sizeIn": 1,
+      "points": [
+        {
+          "gpm": 0.25,
+          "psi": 5.0,
+          "read": "table"
+        },
+        {
+          "gpm": 2,
+          "psi": 4.6,
+          "read": "table"
+        },
+        {
+          "gpm": 5,
+          "psi": 3.5,
+          "read": "table"
+        },
+        {
+          "gpm": 10,
+          "psi": 4.0,
+          "read": "table"
+        },
+        {
+          "gpm": 15,
+          "psi": 2.97,
+          "read": "table"
+        },
+        {
+          "gpm": 20,
+          "psi": 3.26,
+          "read": "table"
+        },
+        {
+          "gpm": 30,
+          "psi": 6.2,
+          "read": "table"
+        }
+      ],
+      "maxGpm": 30,
+      "source": "https://cdn2.toro.com/en/-/media/Files/Irritrol/products/valves/2400-2600-series/2400_2600-pdf.ashx",
+      "note": "Irritrol 2400/2600 sheet (form 20-TL1565, 05/20); identical in the 2026 Toro/Irritrol catalog p.33. \"Pressure loss data derived from valves independently tested by CIT, Fresno, CA.\" Flow 0.25-30 gpm. Non-monotonic as printed."
+    },
+    {
+      "id": "irritrol-2600-100",
+      "kind": "valve",
+      "brand": "Irritrol",
+      "model": "2600 Series 1\" (angle)",
+      "sizeIn": 1,
+      "points": [
+        {
+          "gpm": 0.25,
+          "psi": 5.0,
+          "read": "table"
+        },
+        {
+          "gpm": 2,
+          "psi": 4.6,
+          "read": "table"
+        },
+        {
+          "gpm": 5,
+          "psi": 3.34,
+          "read": "table"
+        },
+        {
+          "gpm": 10,
+          "psi": 2.15,
+          "read": "table"
+        },
+        {
+          "gpm": 15,
+          "psi": 1.78,
+          "read": "table"
+        },
+        {
+          "gpm": 20,
+          "psi": 1.9,
+          "read": "table"
+        },
+        {
+          "gpm": 30,
+          "psi": 3.85,
+          "read": "table"
+        }
+      ],
+      "maxGpm": 30,
+      "source": "https://cdn2.toro.com/en/-/media/Files/Irritrol/products/valves/2400-2600-series/2400_2600-pdf.ashx",
+      "note": "Same table, 2600 row."
+    },
+    {
+      "id": "irritrol-700-075",
+      "kind": "valve",
+      "brand": "Irritrol",
+      "model": "700 UltraFlow 700B-.75 (3/4\")",
+      "sizeIn": 0.75,
+      "points": [
+        {
+          "gpm": 0.1,
+          "psi": 0.38,
+          "read": "table"
+        },
+        {
+          "gpm": 2,
+          "psi": 0.38,
+          "read": "table"
+        },
+        {
+          "gpm": 5,
+          "psi": 0.86,
+          "read": "table"
+        },
+        {
+          "gpm": 10,
+          "psi": 1.22,
+          "read": "table"
+        },
+        {
+          "gpm": 15,
+          "psi": 2.03,
+          "read": "table"
+        },
+        {
+          "gpm": 20,
+          "psi": 3.27,
+          "read": "table"
+        },
+        {
+          "gpm": 30,
+          "psi": 6.75,
+          "read": "table"
+        }
+      ],
+      "maxGpm": null,
+      "source": "https://cdn2.toro.com/en/-/media/Files/Toro/professional-contractor/Literature/26-1020-DB-ResCom-Irritrol-Catalog.ashx",
+      "note": "2026 Toro/Irritrol catalog \"700 SERIES VALVES PRESSURE LOSS DATA\", PDF page 46 (checked against the page image; the 15 gpm cell is printed \"2.03v\", read as 2.03). CIT-tested. Series flow range .1-180 gpm (not given per size)."
+    },
+    {
+      "id": "irritrol-700-100",
+      "kind": "valve",
+      "brand": "Irritrol",
+      "model": "700 UltraFlow 700-1 (1\")",
+      "sizeIn": 1,
+      "points": [
+        {
+          "gpm": 0.1,
+          "psi": 2.2,
+          "read": "table"
+        },
+        {
+          "gpm": 2,
+          "psi": 1.59,
+          "read": "table"
+        },
+        {
+          "gpm": 5,
+          "psi": 1.8,
+          "read": "table"
+        },
+        {
+          "gpm": 10,
+          "psi": 2.41,
+          "read": "table"
+        },
+        {
+          "gpm": 15,
+          "psi": 2.23,
+          "read": "table"
+        },
+        {
+          "gpm": 20,
+          "psi": 1.84,
+          "read": "table"
+        },
+        {
+          "gpm": 30,
+          "psi": 3.22,
+          "read": "table"
+        },
+        {
+          "gpm": 40,
+          "psi": 5.58,
+          "read": "table"
+        },
+        {
+          "gpm": 50,
+          "psi": 8.59,
+          "read": "table"
+        }
+      ],
+      "maxGpm": null,
+      "source": "https://cdn2.toro.com/en/-/media/Files/Toro/professional-contractor/Literature/26-1020-DB-ResCom-Irritrol-Catalog.ashx",
+      "note": "Same table, 700-1 row."
+    },
+    {
+      "id": "krain-pro150-7101-globe",
+      "kind": "valve",
+      "brand": "K-Rain",
+      "model": "ProSeries 150 7101 (1\" globe)",
+      "sizeIn": 1,
+      "points": [
+        {
+          "gpm": 5,
+          "psi": 2.9,
+          "read": "table"
+        },
+        {
+          "gpm": 10,
+          "psi": 2.1,
+          "read": "table"
+        },
+        {
+          "gpm": 15,
+          "psi": 1.8,
+          "read": "table"
+        },
+        {
+          "gpm": 20,
+          "psi": 3.0,
+          "read": "table"
+        },
+        {
+          "gpm": 30,
+          "psi": 5.0,
+          "read": "table"
+        }
+      ],
+      "maxGpm": 30,
+      "source": "https://www.krain.com/content/files/images/landingpages/catalogs/2026%20product%20catalog%20english.pdf",
+      "note": "K-Rain 2026 catalog, ProSeries 150 \"Pressure Loss in PSI\", PDF page 57; same in the ProSeries 150 brochure. Flow 5-30 gpm (comparison chart; the brochure says .5-30), 10-150 psi."
+    },
+    {
+      "id": "krain-pro150-7101-fc",
+      "kind": "valve",
+      "brand": "K-Rain",
+      "model": "ProSeries 150 7101-FC (1\" with flow control)",
+      "sizeIn": 1,
+      "points": [
+        {
+          "gpm": 5,
+          "psi": 6,
+          "read": "table"
+        },
+        {
+          "gpm": 10,
+          "psi": 4.1,
+          "read": "table"
+        },
+        {
+          "gpm": 15,
+          "psi": 4.1,
+          "read": "table"
+        },
+        {
+          "gpm": 20,
+          "psi": 3.1,
+          "read": "table"
+        },
+        {
+          "gpm": 30,
+          "psi": 6.0,
+          "read": "table"
+        }
+      ],
+      "maxGpm": 30,
+      "source": "https://www.krain.com/content/files/images/landingpages/electric%20valves/proseries%20150/proseries%20150%20valve%20product%20brochure.pdf",
+      "note": "Only in the ProSeries 150 brochure (PDF dated 2022), \"7101-FC PROSERIES 150 1 in. VALVE\"; not repeated in the 2026 catalog. 5 gpm printed as \"6\"."
+    },
+    {
+      "id": "krain-pro150-7101-jartop",
+      "kind": "valve",
+      "brand": "K-Rain",
+      "model": "ProSeries 150 7101-J (1\" jar-top)",
+      "sizeIn": 1,
+      "points": [
+        {
+          "gpm": 5,
+          "psi": 3.3,
+          "read": "table"
+        },
+        {
+          "gpm": 10,
+          "psi": 3.9,
+          "read": "table"
+        },
+        {
+          "gpm": 15,
+          "psi": 2.9,
+          "read": "table"
+        },
+        {
+          "gpm": 20,
+          "psi": 3.2,
+          "read": "table"
+        },
+        {
+          "gpm": 30,
+          "psi": 6.1,
+          "read": "table"
+        }
+      ],
+      "maxGpm": 30,
+      "source": "https://www.krain.com/content/files/images/landingpages/catalogs/2026%20product%20catalog%20english.pdf",
+      "note": "Same catalog table, column \"1 in. Jar Top\"."
+    },
+    {
+      "id": "krain-pro150-7101-angle",
+      "kind": "valve",
+      "brand": "K-Rain",
+      "model": "ProSeries 150 7101-ANGLE (1\" angle)",
+      "sizeIn": 1,
+      "points": [
+        {
+          "gpm": 5,
+          "psi": 2.5,
+          "read": "table"
+        },
+        {
+          "gpm": 10,
+          "psi": 2.1,
+          "read": "table"
+        },
+        {
+          "gpm": 15,
+          "psi": 2.1,
+          "read": "table"
+        },
+        {
+          "gpm": 20,
+          "psi": 2.2,
+          "read": "table"
+        },
+        {
+          "gpm": 30,
+          "psi": 4.1,
+          "read": "table"
+        }
+      ],
+      "maxGpm": 30,
+      "source": "https://www.krain.com/content/files/images/landingpages/catalogs/2026%20product%20catalog%20english.pdf",
+      "note": "Same catalog table, column \"1 in. Angle\"."
+    },
+    {
+      "id": "krain-pro100-7075",
+      "kind": "valve",
+      "brand": "K-Rain",
+      "model": "ProSeries 100 7075 (3/4\")",
+      "sizeIn": 0.75,
+      "points": [
+        {
+          "gpm": 1,
+          "psi": 4.0,
+          "read": "table"
+        },
+        {
+          "gpm": 5,
+          "psi": 5.0,
+          "read": "table"
+        },
+        {
+          "gpm": 10,
+          "psi": 6.0,
+          "read": "table"
+        },
+        {
+          "gpm": 15,
+          "psi": 11.0,
+          "read": "table"
+        },
+        {
+          "gpm": 20,
+          "psi": 14.0,
+          "read": "table"
+        }
+      ],
+      "maxGpm": 20,
+      "source": "https://www.krain.com/content/files/images/landingpages/catalogs/2026%20product%20catalog%20english.pdf",
+      "note": "K-Rain 2026 catalog, ProSeries 100, PDF page 54. Flow 1-20 gpm, 20-150 psi."
+    },
+    {
+      "id": "krain-pro100-7001",
+      "kind": "valve",
+      "brand": "K-Rain",
+      "model": "ProSeries 100 7001 (1\")",
+      "sizeIn": 1,
+      "points": [
+        {
+          "gpm": 5,
+          "psi": 2.2,
+          "read": "table"
+        },
+        {
+          "gpm": 10,
+          "psi": 3.0,
+          "read": "table"
+        },
+        {
+          "gpm": 15,
+          "psi": 3.5,
+          "read": "table"
+        },
+        {
+          "gpm": 20,
+          "psi": 4.0,
+          "read": "table"
+        },
+        {
+          "gpm": 30,
+          "psi": 5.0,
+          "read": "table"
+        }
+      ],
+      "maxGpm": 30,
+      "source": "https://www.krain.com/content/files/images/landingpages/catalogs/2026%20product%20catalog%20english.pdf",
+      "note": "Same table, 1\" column. Flow 5-30 gpm."
+    },
+    {
+      "id": "orbit-57100-075",
+      "kind": "valve",
+      "brand": "Orbit",
+      "model": "57100 inline valve (3/4\" FNPT)",
+      "sizeIn": 0.75,
+      "points": [
+        {
+          "gpm": 5,
+          "psi": 2.5,
+          "read": "table"
+        },
+        {
+          "gpm": 10,
+          "psi": 3,
+          "read": "table"
+        },
+        {
+          "gpm": 15,
+          "psi": 4,
+          "read": "table"
+        },
+        {
+          "gpm": 20,
+          "psi": 5.5,
+          "read": "table"
+        },
+        {
+          "gpm": 25,
+          "psi": 9.5,
+          "read": "table"
+        },
+        {
+          "gpm": 30,
+          "psi": 13,
+          "read": "table"
+        },
+        {
+          "gpm": 35,
+          "psi": 16.5,
+          "read": "table"
+        }
+      ],
+      "maxGpm": 35,
+      "source": "https://images.orgill.com/weblarge/10027/Orbit_57101_Catalog.pdf",
+      "note": "Orbit catalog page \"Inline Sprinkler Control Valves\", \"Standard Valve Pressure Loss (psi)\" (PDF dated 2011, hosted by distributor Orgill). Flow 3/4\": 5-35 gpm, 15-150 psi. Orbit recommends flows at or below 5 ft/s."
+    },
+    {
+      "id": "orbit-57101-100",
+      "kind": "valve",
+      "brand": "Orbit",
+      "model": "57101 / 57105 inline valve (1\" FNPT / slip)",
+      "sizeIn": 1,
+      "points": [
+        {
+          "gpm": 5,
+          "psi": 3,
+          "read": "table"
+        },
+        {
+          "gpm": 10,
+          "psi": 3.5,
+          "read": "table"
+        },
+        {
+          "gpm": 15,
+          "psi": 4.5,
+          "read": "table"
+        },
+        {
+          "gpm": 20,
+          "psi": 5.5,
+          "read": "table"
+        },
+        {
+          "gpm": 25,
+          "psi": 7,
+          "read": "table"
+        },
+        {
+          "gpm": 30,
+          "psi": 10,
+          "read": "table"
+        },
+        {
+          "gpm": 35,
+          "psi": 12.5,
+          "read": "table"
+        },
+        {
+          "gpm": 40,
+          "psi": 15,
+          "read": "table"
+        }
+      ],
+      "maxGpm": 40,
+      "source": "https://images.orgill.com/weblarge/10027/Orbit_57101_Catalog.pdf",
+      "note": "Same table, 1\" column. Flow 5-40 gpm."
+    },
+    {
+      "id": "febco-765-075",
+      "kind": "pvb",
+      "brand": "FEBCO (Watts)",
+      "model": "765 pressure vacuum breaker",
+      "sizeIn": 0.75,
+      "points": [
+        {
+          "gpm": 5,
+          "psi": 3.4,
+          "read": "curve"
+        },
+        {
+          "gpm": 10,
+          "psi": 3.8,
+          "read": "curve"
+        },
+        {
+          "gpm": 15,
+          "psi": 4.4,
+          "read": "curve"
+        },
+        {
+          "gpm": 20,
+          "psi": 5.1,
+          "read": "curve"
+        },
+        {
+          "gpm": 25,
+          "psi": 6.0,
+          "read": "curve"
+        },
+        {
+          "gpm": 30,
+          "psi": 6.9,
+          "read": "curve"
+        }
+      ],
+      "maxGpm": null,
+      "source": "https://devsc10.watts.com/dfsmedia/0533dbba17714b1ab581ab07a4cbb521/34431-source/es-f-765",
+      "note": "FEBCO ES-F-765 (rev 2409, (c)2024 Watts), \"Capacity\" chart, headloss 0-15 psi, gridlines every 5 psi; the chart runs to 30 gpm. No rated-flow marker on this sheet. Curve values were digitised from the chart rendered at 600 dpi (pixel positions of the curve centre against the printed gridlines), read at the flows listed only; expect about +/-0.3 psi (the drawn line is itself 0.5-0.9 psi thick on these small charts). Served from Watts' devsc10.watts.com host; www.watts.com blocks automated downloads."
+    },
+    {
+      "id": "febco-765-100",
+      "kind": "pvb",
+      "brand": "FEBCO (Watts)",
+      "model": "765 pressure vacuum breaker",
+      "sizeIn": 1,
+      "points": [
+        {
+          "gpm": 10,
+          "psi": 3.1,
+          "read": "curve"
+        },
+        {
+          "gpm": 20,
+          "psi": 3.8,
+          "read": "curve"
+        },
+        {
+          "gpm": 30,
+          "psi": 4.5,
+          "read": "curve"
+        },
+        {
+          "gpm": 40,
+          "psi": 5.1,
+          "read": "curve"
+        },
+        {
+          "gpm": 50,
+          "psi": 6.1,
+          "read": "curve"
+        },
+        {
+          "gpm": 60,
+          "psi": 7.3,
+          "read": "curve"
+        }
+      ],
+      "maxGpm": null,
+      "source": "https://devsc10.watts.com/dfsmedia/0533dbba17714b1ab581ab07a4cbb521/34431-source/es-f-765",
+      "note": "FEBCO ES-F-765 (rev 2409, (c)2024 Watts), \"Capacity\" chart, headloss 0-15 psi, gridlines every 5 psi; the chart runs to 60 gpm. No rated-flow marker on this sheet. Curve values were digitised from the chart rendered at 600 dpi (pixel positions of the curve centre against the printed gridlines), read at the flows listed only; expect about +/-0.3 psi (the drawn line is itself 0.5-0.9 psi thick on these small charts). Served from Watts' devsc10.watts.com host; www.watts.com blocks automated downloads."
+    },
+    {
+      "id": "febco-765-125",
+      "kind": "pvb",
+      "brand": "FEBCO (Watts)",
+      "model": "765 pressure vacuum breaker",
+      "sizeIn": 1.25,
+      "points": [
+        {
+          "gpm": 10,
+          "psi": 3.6,
+          "read": "curve"
+        },
+        {
+          "gpm": 20,
+          "psi": 3.9,
+          "read": "curve"
+        },
+        {
+          "gpm": 30,
+          "psi": 4.5,
+          "read": "curve"
+        },
+        {
+          "gpm": 40,
+          "psi": 5.2,
+          "read": "curve"
+        },
+        {
+          "gpm": 50,
+          "psi": 6.6,
+          "read": "curve"
+        },
+        {
+          "gpm": 60,
+          "psi": 7.7,
+          "read": "curve"
+        },
+        {
+          "gpm": 70,
+          "psi": 9.4,
+          "read": "curve"
+        },
+        {
+          "gpm": 80,
+          "psi": 10.4,
+          "read": "curve"
+        }
+      ],
+      "maxGpm": null,
+      "source": "https://devsc10.watts.com/dfsmedia/0533dbba17714b1ab581ab07a4cbb521/34431-source/es-f-765",
+      "note": "FEBCO ES-F-765 (rev 2409, (c)2024 Watts), \"Capacity\" chart, headloss 0-15 psi, gridlines every 5 psi; the chart runs to 80 gpm. No rated-flow marker on this sheet. Curve values were digitised from the chart rendered at 600 dpi (pixel positions of the curve centre against the printed gridlines), read at the flows listed only; expect about +/-0.3 psi (the drawn line is itself 0.5-0.9 psi thick on these small charts). Served from Watts' devsc10.watts.com host; www.watts.com blocks automated downloads."
+    },
+    {
+      "id": "watts-800m4qt-075",
+      "kind": "pvb",
+      "brand": "Watts",
+      "model": "800M4QT pressure vacuum breaker",
+      "sizeIn": 0.75,
+      "points": [
+        {
+          "gpm": 5,
+          "psi": 3.5,
+          "read": "curve"
+        },
+        {
+          "gpm": 10,
+          "psi": 4.6,
+          "read": "curve"
+        },
+        {
+          "gpm": 15,
+          "psi": 5.8,
+          "read": "curve"
+        },
+        {
+          "gpm": 20,
+          "psi": 7.1,
+          "read": "curve"
+        },
+        {
+          "gpm": 25,
+          "psi": 8.4,
+          "read": "curve"
+        },
+        {
+          "gpm": 30,
+          "psi": 9.9,
+          "read": "curve"
+        }
+      ],
+      "maxGpm": null,
+      "source": "https://devsc10.watts.ca/dfsmedia/0533dbba17714b1ab581ab07a4cbb521/632390-source/es-800m4qt-2409-es-mx",
+      "note": "Watts ES-800M4QT (rev 2409, (c)2024), \"Capacidad\" chart, gridlines every 2 psi; the only copy reachable was the Spanish (Mexico) edition of the sheet on Watts' own host. Curves are from USC Foundation for Cross-Connection Control lab data. The sheet's asterisk line (typical max system flow at 7.5 ft/s) sits at about 12.4 gpm (read off the chart). Curve values were digitised from the chart rendered at 600 dpi (pixel positions of the curve centre against the printed gridlines), read at the flows listed only; expect about +/-0.3 psi (the drawn line is itself 0.5-0.9 psi thick on these small charts). The older non-QT 800M4 and the 008PCQT were not found."
+    },
+    {
+      "id": "watts-800m4qt-100",
+      "kind": "pvb",
+      "brand": "Watts",
+      "model": "800M4QT pressure vacuum breaker",
+      "sizeIn": 1,
+      "points": [
+        {
+          "gpm": 10,
+          "psi": 2.4,
+          "read": "curve"
+        },
+        {
+          "gpm": 20,
+          "psi": 2.9,
+          "read": "curve"
+        },
+        {
+          "gpm": 30,
+          "psi": 4.5,
+          "read": "curve"
+        },
+        {
+          "gpm": 40,
+          "psi": 6.6,
+          "read": "curve"
+        },
+        {
+          "gpm": 50,
+          "psi": 8.6,
+          "read": "curve"
+        },
+        {
+          "gpm": 60,
+          "psi": 9.9,
+          "read": "curve"
+        }
+      ],
+      "maxGpm": null,
+      "source": "https://devsc10.watts.ca/dfsmedia/0533dbba17714b1ab581ab07a4cbb521/632390-source/es-800m4qt-2409-es-mx",
+      "note": "Watts ES-800M4QT (rev 2409, (c)2024), \"Capacidad\" chart, gridlines every 2 psi; the only copy reachable was the Spanish (Mexico) edition of the sheet on Watts' own host. Curves are from USC Foundation for Cross-Connection Control lab data. The sheet's asterisk line (typical max system flow at 7.5 ft/s) sits at about 21 gpm (read off the chart). Curve values were digitised from the chart rendered at 600 dpi (pixel positions of the curve centre against the printed gridlines), read at the flows listed only; expect about +/-0.3 psi (the drawn line is itself 0.5-0.9 psi thick on these small charts). The older non-QT 800M4 and the 008PCQT were not found."
+    },
+    {
+      "id": "watts-800m4qt-125",
+      "kind": "pvb",
+      "brand": "Watts",
+      "model": "800M4QT pressure vacuum breaker",
+      "sizeIn": 1.25,
+      "points": [
+        {
+          "gpm": 10,
+          "psi": 2.3,
+          "read": "curve"
+        },
+        {
+          "gpm": 20,
+          "psi": 2.9,
+          "read": "curve"
+        },
+        {
+          "gpm": 30,
+          "psi": 2.8,
+          "read": "curve"
+        },
+        {
+          "gpm": 40,
+          "psi": 3.0,
+          "read": "curve"
+        },
+        {
+          "gpm": 50,
+          "psi": 4.1,
+          "read": "curve"
+        },
+        {
+          "gpm": 60,
+          "psi": 4.4,
+          "read": "curve"
+        },
+        {
+          "gpm": 70,
+          "psi": 4.9,
+          "read": "curve"
+        },
+        {
+          "gpm": 80,
+          "psi": 6.0,
+          "read": "curve"
+        }
+      ],
+      "maxGpm": null,
+      "source": "https://devsc10.watts.ca/dfsmedia/0533dbba17714b1ab581ab07a4cbb521/632390-source/es-800m4qt-2409-es-mx",
+      "note": "Watts ES-800M4QT (rev 2409, (c)2024), \"Capacidad\" chart, gridlines every 2 psi; the only copy reachable was the Spanish (Mexico) edition of the sheet on Watts' own host. Curves are from USC Foundation for Cross-Connection Control lab data. The sheet's asterisk line (typical max system flow at 7.5 ft/s) sits at about 36 gpm (read off the chart). Curve values were digitised from the chart rendered at 600 dpi (pixel positions of the curve centre against the printed gridlines), read at the flows listed only; expect about +/-0.3 psi (the drawn line is itself 0.5-0.9 psi thick on these small charts). The older non-QT 800M4 and the 008PCQT were not found."
+    },
+    {
+      "id": "wilkins-720a-075",
+      "kind": "pvb",
+      "brand": "Zurn Wilkins",
+      "model": "720A pressure vacuum breaker",
+      "sizeIn": 0.75,
+      "points": [
+        {
+          "gpm": 10,
+          "psi": 4.1,
+          "read": "curve"
+        },
+        {
+          "gpm": 15,
+          "psi": 4.6,
+          "read": "curve"
+        },
+        {
+          "gpm": 20,
+          "psi": 5.4,
+          "read": "curve"
+        },
+        {
+          "gpm": 25,
+          "psi": 6.5,
+          "read": "curve"
+        },
+        {
+          "gpm": 30,
+          "psi": 7.6,
+          "read": "curve"
+        }
+      ],
+      "maxGpm": 30,
+      "source": "https://cdn.shopify.com/s/files/1/1987/5531/files/BF-720A.pdf",
+      "note": "Zurn Wilkins BF-720A rev D (2/19), \"Flow Characteristics\", gridlines every 1 psi; curves of all sizes overlap below about 7 gpm, so no points are given there. Rated-flow diamond at 30 gpm (on the 30 gpm gridline). Curve values were digitised from the chart rendered at 600 dpi (pixel positions of the curve centre against the printed gridlines), read at the flows listed only; expect about +/-0.3 psi (the drawn line is itself 0.5-0.9 psi thick on these small charts). PDF copy hosted on a distributor's Shopify CDN (zurn.com blocks automated downloads)."
+    },
+    {
+      "id": "wilkins-720a-100",
+      "kind": "pvb",
+      "brand": "Zurn Wilkins",
+      "model": "720A pressure vacuum breaker",
+      "sizeIn": 1,
+      "points": [
+        {
+          "gpm": 10,
+          "psi": 3.8,
+          "read": "curve"
+        },
+        {
+          "gpm": 15,
+          "psi": 4.0,
+          "read": "curve"
+        },
+        {
+          "gpm": 20,
+          "psi": 4.3,
+          "read": "curve"
+        },
+        {
+          "gpm": 25,
+          "psi": 4.5,
+          "read": "curve"
+        },
+        {
+          "gpm": 30,
+          "psi": 5.0,
+          "read": "curve"
+        },
+        {
+          "gpm": 35,
+          "psi": 5.4,
+          "read": "curve"
+        },
+        {
+          "gpm": 40,
+          "psi": 5.9,
+          "read": "curve"
+        },
+        {
+          "gpm": 45,
+          "psi": 6.6,
+          "read": "curve"
+        },
+        {
+          "gpm": 50,
+          "psi": 7.4,
+          "read": "curve"
+        },
+        {
+          "gpm": 55,
+          "psi": 8.5,
+          "read": "curve"
+        }
+      ],
+      "maxGpm": 50,
+      "source": "https://cdn.shopify.com/s/files/1/1987/5531/files/BF-720A.pdf",
+      "note": "Zurn Wilkins BF-720A rev D (2/19), \"Flow Characteristics\", gridlines every 1 psi; curves of all sizes overlap below about 7 gpm, so no points are given there. Rated-flow diamond at 50 gpm (on the 50 gpm gridline). Curve values were digitised from the chart rendered at 600 dpi (pixel positions of the curve centre against the printed gridlines), read at the flows listed only; expect about +/-0.3 psi (the drawn line is itself 0.5-0.9 psi thick on these small charts). PDF copy hosted on a distributor's Shopify CDN (zurn.com blocks automated downloads)."
+    },
+    {
+      "id": "wilkins-720a-125",
+      "kind": "pvb",
+      "brand": "Zurn Wilkins",
+      "model": "720A pressure vacuum breaker",
+      "sizeIn": 1.25,
+      "points": [
+        {
+          "gpm": 10,
+          "psi": 3.6,
+          "read": "curve"
+        },
+        {
+          "gpm": 20,
+          "psi": 4.1,
+          "read": "curve"
+        },
+        {
+          "gpm": 30,
+          "psi": 4.6,
+          "read": "curve"
+        },
+        {
+          "gpm": 40,
+          "psi": 5.1,
+          "read": "curve"
+        },
+        {
+          "gpm": 50,
+          "psi": 5.6,
+          "read": "curve"
+        },
+        {
+          "gpm": 60,
+          "psi": 6.1,
+          "read": "curve"
+        },
+        {
+          "gpm": 70,
+          "psi": 6.8,
+          "read": "curve"
+        },
+        {
+          "gpm": 76,
+          "psi": 7.3,
+          "read": "curve"
+        },
+        {
+          "gpm": 90,
+          "psi": 8.3,
+          "read": "curve"
+        },
+        {
+          "gpm": 100,
+          "psi": 9.2,
+          "read": "curve"
+        }
+      ],
+      "maxGpm": null,
+      "source": "https://cdn.shopify.com/s/files/1/1987/5531/files/BF-720A.pdf",
+      "note": "Zurn Wilkins BF-720A rev D (2/19), \"Flow Characteristics\", gridlines every 1 psi; curves of all sizes overlap below about 7 gpm, so no points are given there. Rated-flow diamond drawn at about 76 gpm (the 76 gpm point is its centre); curve ends near 100 gpm. Curve values were digitised from the chart rendered at 600 dpi (pixel positions of the curve centre against the printed gridlines), read at the flows listed only; expect about +/-0.3 psi (the drawn line is itself 0.5-0.9 psi thick on these small charts). PDF copy hosted on a distributor's Shopify CDN (zurn.com blocks automated downloads)."
+    },
+    {
+      "id": "apollo-pvb4a-075",
+      "kind": "pvb",
+      "brand": "Apollo (Aalberts IPS)",
+      "model": "PVB4A / PVBLF4A (4A-500 series) pressure vacuum breaker",
+      "sizeIn": 0.75,
+      "points": [
+        {
+          "gpm": 10,
+          "psi": 3.1,
+          "read": "curve"
+        },
+        {
+          "gpm": 15,
+          "psi": 3.3,
+          "read": "curve"
+        },
+        {
+          "gpm": 20,
+          "psi": 3.9,
+          "read": "curve"
+        },
+        {
+          "gpm": 25,
+          "psi": 5.3,
+          "read": "curve"
+        },
+        {
+          "gpm": 30,
+          "psi": 6.8,
+          "read": "curve"
+        }
+      ],
+      "maxGpm": null,
+      "source": "https://cdn.shopify.com/s/files/1/1987/5531/files/PVB_SS1382.pdf",
+      "note": "Apollo submittal sheet SS1382 (10/18), \"Flow Curves\", gridlines every 1 psi. This is the 4A-500 series that replaced the older 4V-500 asked for; no 4V-500 curve was found (the 4V500 sheet on aalberts-ips.us is behind a bot check). Dashed curve; rated-flow marker near 29-30 gpm. Curve values were digitised from the chart rendered at 600 dpi (pixel positions of the curve centre against the printed gridlines), read at the flows listed only; expect about +/-0.3 psi (the drawn line is itself 0.5-0.9 psi thick on these small charts). PDF copy hosted on a distributor's Shopify CDN."
+    },
+    {
+      "id": "apollo-pvb4a-100",
+      "kind": "pvb",
+      "brand": "Apollo (Aalberts IPS)",
+      "model": "PVB4A / PVBLF4A (4A-500 series) pressure vacuum breaker",
+      "sizeIn": 1,
+      "points": [
+        {
+          "gpm": 10,
+          "psi": 2.7,
+          "read": "curve"
+        },
+        {
+          "gpm": 20,
+          "psi": 2.9,
+          "read": "curve"
+        },
+        {
+          "gpm": 30,
+          "psi": 3.7,
+          "read": "curve"
+        },
+        {
+          "gpm": 40,
+          "psi": 5.1,
+          "read": "curve"
+        },
+        {
+          "gpm": 60,
+          "psi": 11.4,
+          "read": "curve"
+        }
+      ],
+      "maxGpm": null,
+      "source": "https://cdn.shopify.com/s/files/1/1987/5531/files/PVB_SS1382.pdf",
+      "note": "Apollo submittal sheet SS1382 (10/18), \"Flow Curves\", gridlines every 1 psi. This is the 4A-500 series that replaced the older 4V-500 asked for; no 4V-500 curve was found (the 4V500 sheet on aalberts-ips.us is behind a bot check). Solid curve; rated-flow marker near 49 gpm (about 7.4 psi; the 50 gpm reading is skipped because the marker covers it). Curve values were digitised from the chart rendered at 600 dpi (pixel positions of the curve centre against the printed gridlines), read at the flows listed only; expect about +/-0.3 psi (the drawn line is itself 0.5-0.9 psi thick on these small charts). PDF copy hosted on a distributor's Shopify CDN."
+    },
+    {
+      "id": "apollo-pvb4a-125",
+      "kind": "pvb",
+      "brand": "Apollo (Aalberts IPS)",
+      "model": "PVB4A / PVBLF4A (4A-500 series) pressure vacuum breaker",
+      "sizeIn": 1.25,
+      "points": [
+        {
+          "gpm": 10,
+          "psi": 2.0,
+          "read": "curve"
+        },
+        {
+          "gpm": 20,
+          "psi": 2.3,
+          "read": "curve"
+        },
+        {
+          "gpm": 30,
+          "psi": 2.4,
+          "read": "curve"
+        },
+        {
+          "gpm": 40,
+          "psi": 2.5,
+          "read": "curve"
+        },
+        {
+          "gpm": 50,
+          "psi": 2.9,
+          "read": "curve"
+        },
+        {
+          "gpm": 60,
+          "psi": 3.2,
+          "read": "curve"
+        },
+        {
+          "gpm": 90,
+          "psi": 5.9,
+          "read": "curve"
+        }
+      ],
+      "maxGpm": null,
+      "source": "https://cdn.shopify.com/s/files/1/1987/5531/files/PVB_SS1382.pdf",
+      "note": "Apollo submittal sheet SS1382 (10/18), \"Flow Curves\", gridlines every 1 psi. This is the 4A-500 series that replaced the older 4V-500 asked for; no 4V-500 curve was found (the 4V500 sheet on aalberts-ips.us is behind a bot check). Dashed curve; rated-flow marker near 74 gpm; 70-80 gpm skipped (the curve label sits on it). Curve values were digitised from the chart rendered at 600 dpi (pixel positions of the curve centre against the printed gridlines), read at the flows listed only; expect about +/-0.3 psi (the drawn line is itself 0.5-0.9 psi thick on these small charts). PDF copy hosted on a distributor's Shopify CDN."
+    },
+    {
+      "id": "watts-007-075",
+      "kind": "dcva",
+      "brand": "Watts",
+      "model": "007 double check valve assembly (007M3QT)",
+      "sizeIn": 0.75,
+      "points": [
+        {
+          "gpm": 5,
+          "psi": 4.4,
+          "read": "curve"
+        },
+        {
+          "gpm": 10,
+          "psi": 4.1,
+          "read": "curve"
+        },
+        {
+          "gpm": 15,
+          "psi": 4.4,
+          "read": "curve"
+        },
+        {
+          "gpm": 20,
+          "psi": 5.1,
+          "read": "curve"
+        },
+        {
+          "gpm": 25,
+          "psi": 6.7,
+          "read": "curve"
+        },
+        {
+          "gpm": 30,
+          "psi": 9.4,
+          "read": "curve"
+        },
+        {
+          "gpm": 35,
+          "psi": 13.2,
+          "read": "curve"
+        },
+        {
+          "gpm": 40,
+          "psi": 16.8,
+          "read": "curve"
+        },
+        {
+          "gpm": 45,
+          "psi": 20.7,
+          "read": "curve"
+        }
+      ],
+      "maxGpm": null,
+      "source": "https://devsc10.watts.com/dfsmedia/0533dbba17714b1ab581ab07a4cbb521/20186-source/es-007",
+      "note": "Watts ES-007 (rev 2409, (c)2024), \"Capacity\", compiled from USC Foundation for Cross-Connection Control lab tests; gridlines every 2 psi. Typical-max (7.5 ft/s) line at about 12.3 gpm, where the curve reads 4.1 psi. The curve has a hump (about 5 psi) near 2.5 gpm as the checks open. Curve values were digitised from the chart rendered at 600 dpi (pixel positions of the curve centre against the printed gridlines), read at the flows listed only; expect about +/-0.3 psi (the drawn line is itself 0.5-0.9 psi thick on these small charts)."
+    },
+    {
+      "id": "watts-007-100",
+      "kind": "dcva",
+      "brand": "Watts",
+      "model": "007 double check valve assembly",
+      "sizeIn": 1,
+      "points": [
+        {
+          "gpm": 5,
+          "psi": 2.9,
+          "read": "curve"
+        },
+        {
+          "gpm": 10,
+          "psi": 2.8,
+          "read": "curve"
+        },
+        {
+          "gpm": 15,
+          "psi": 2.9,
+          "read": "curve"
+        },
+        {
+          "gpm": 20,
+          "psi": 3.6,
+          "read": "curve"
+        },
+        {
+          "gpm": 25,
+          "psi": 4.0,
+          "read": "curve"
+        },
+        {
+          "gpm": 30,
+          "psi": 4.0,
+          "read": "curve"
+        },
+        {
+          "gpm": 35,
+          "psi": 4.7,
+          "read": "curve"
+        },
+        {
+          "gpm": 40,
+          "psi": 5.0,
+          "read": "curve"
+        },
+        {
+          "gpm": 45,
+          "psi": 6.0,
+          "read": "curve"
+        },
+        {
+          "gpm": 50,
+          "psi": 7.0,
+          "read": "curve"
+        },
+        {
+          "gpm": 55,
+          "psi": 8.1,
+          "read": "curve"
+        },
+        {
+          "gpm": 60,
+          "psi": 9.8,
+          "read": "curve"
+        }
+      ],
+      "maxGpm": null,
+      "source": "https://devsc10.watts.com/dfsmedia/0533dbba17714b1ab581ab07a4cbb521/20186-source/es-007",
+      "note": "Watts ES-007 (rev 2409, (c)2024), \"Capacity\", compiled from USC Foundation for Cross-Connection Control lab tests; gridlines every 2 psi. Typical-max (7.5 ft/s) line at about 21 gpm. DOUBT: the y-axis labels on this chart read 16, 12, 10, 8, 6, 4, 2 with equal spacing, so the top label \"16\" should be 14; values were read against the 2-12 labels, which are self-consistent. Curve values were digitised from the chart rendered at 600 dpi (pixel positions of the curve centre against the printed gridlines), read at the flows listed only; expect about +/-0.3 psi (the drawn line is itself 0.5-0.9 psi thick on these small charts)."
+    },
+    {
+      "id": "watts-007-125",
+      "kind": "dcva",
+      "brand": "Watts",
+      "model": "007 double check valve assembly",
+      "sizeIn": 1.25,
+      "points": [
+        {
+          "gpm": 10,
+          "psi": 4.5,
+          "read": "curve"
+        },
+        {
+          "gpm": 20,
+          "psi": 4.6,
+          "read": "curve"
+        },
+        {
+          "gpm": 30,
+          "psi": 4.6,
+          "read": "curve"
+        },
+        {
+          "gpm": 40,
+          "psi": 5.0,
+          "read": "curve"
+        },
+        {
+          "gpm": 50,
+          "psi": 5.2,
+          "read": "curve"
+        },
+        {
+          "gpm": 60,
+          "psi": 5.5,
+          "read": "curve"
+        },
+        {
+          "gpm": 70,
+          "psi": 6.0,
+          "read": "curve"
+        },
+        {
+          "gpm": 80,
+          "psi": 7.0,
+          "read": "curve"
+        },
+        {
+          "gpm": 90,
+          "psi": 8.0,
+          "read": "curve"
+        },
+        {
+          "gpm": 100,
+          "psi": 9.9,
+          "read": "curve"
+        },
+        {
+          "gpm": 110,
+          "psi": 10.9,
+          "read": "curve"
+        }
+      ],
+      "maxGpm": null,
+      "source": "https://devsc10.watts.com/dfsmedia/0533dbba17714b1ab581ab07a4cbb521/20186-source/es-007",
+      "note": "Watts ES-007 (rev 2409, (c)2024), \"Capacity\", compiled from USC Foundation for Cross-Connection Control lab tests; gridlines every 2 psi. Typical-max (7.5 ft/s) line at about 36 gpm. Curve values were digitised from the chart rendered at 600 dpi (pixel positions of the curve centre against the printed gridlines), read at the flows listed only; expect about +/-0.3 psi (the drawn line is itself 0.5-0.9 psi thick on these small charts)."
+    },
+    {
+      "id": "febco-850-075",
+      "kind": "dcva",
+      "brand": "FEBCO (Watts)",
+      "model": "850 double check valve assembly (Series 850 Small)",
+      "sizeIn": 0.75,
+      "points": [
+        {
+          "gpm": 5,
+          "psi": 5.9,
+          "read": "curve"
+        },
+        {
+          "gpm": 10,
+          "psi": 5.7,
+          "read": "curve"
+        },
+        {
+          "gpm": 15,
+          "psi": 5.9,
+          "read": "curve"
+        },
+        {
+          "gpm": 20,
+          "psi": 6.2,
+          "read": "curve"
+        },
+        {
+          "gpm": 25,
+          "psi": 7.1,
+          "read": "curve"
+        },
+        {
+          "gpm": 30,
+          "psi": 8.7,
+          "read": "curve"
+        }
+      ],
+      "maxGpm": null,
+      "source": "https://devsc10.watts.com/dfsmedia/0533dbba17714b1ab581ab07a4cbb521/74286-source/es-f-850s",
+      "note": "FEBCO ES-F-850S (rev 2409, (c)2024 Watts), \"Capacity\", headloss 0-20 psi, gridlines every 5 psi. No rated-flow marker. Curve values were digitised from the chart rendered at 600 dpi (pixel positions of the curve centre against the printed gridlines), read at the flows listed only; expect about +/-0.3 psi (the drawn line is itself 0.5-0.9 psi thick on these small charts)."
+    },
+    {
+      "id": "febco-850-100",
+      "kind": "dcva",
+      "brand": "FEBCO (Watts)",
+      "model": "850 double check valve assembly (Series 850 Small)",
+      "sizeIn": 1,
+      "points": [
+        {
+          "gpm": 10,
+          "psi": 6.4,
+          "read": "curve"
+        },
+        {
+          "gpm": 20,
+          "psi": 7.2,
+          "read": "curve"
+        },
+        {
+          "gpm": 30,
+          "psi": 8.1,
+          "read": "curve"
+        },
+        {
+          "gpm": 40,
+          "psi": 9.1,
+          "read": "curve"
+        },
+        {
+          "gpm": 50,
+          "psi": 10.2,
+          "read": "curve"
+        },
+        {
+          "gpm": 60,
+          "psi": 12.2,
+          "read": "curve"
+        }
+      ],
+      "maxGpm": null,
+      "source": "https://devsc10.watts.com/dfsmedia/0533dbba17714b1ab581ab07a4cbb521/74286-source/es-f-850s",
+      "note": "FEBCO ES-F-850S (rev 2409, (c)2024 Watts), \"Capacity\", headloss 0-20 psi, gridlines every 5 psi. No rated-flow marker. Curve values were digitised from the chart rendered at 600 dpi (pixel positions of the curve centre against the printed gridlines), read at the flows listed only; expect about +/-0.3 psi (the drawn line is itself 0.5-0.9 psi thick on these small charts)."
+    },
+    {
+      "id": "febco-850-125",
+      "kind": "dcva",
+      "brand": "FEBCO (Watts)",
+      "model": "850 double check valve assembly (Series 850 Small)",
+      "sizeIn": 1.25,
+      "points": [
+        {
+          "gpm": 10,
+          "psi": 4.7,
+          "read": "curve"
+        },
+        {
+          "gpm": 20,
+          "psi": 5.0,
+          "read": "curve"
+        },
+        {
+          "gpm": 40,
+          "psi": 6.0,
+          "read": "curve"
+        },
+        {
+          "gpm": 60,
+          "psi": 6.5,
+          "read": "curve"
+        },
+        {
+          "gpm": 80,
+          "psi": 7.4,
+          "read": "curve"
+        },
+        {
+          "gpm": 100,
+          "psi": 8.1,
+          "read": "curve"
+        },
+        {
+          "gpm": 120,
+          "psi": 9.9,
+          "read": "curve"
+        }
+      ],
+      "maxGpm": null,
+      "source": "https://devsc10.watts.com/dfsmedia/0533dbba17714b1ab581ab07a4cbb521/74286-source/es-f-850s",
+      "note": "FEBCO ES-F-850S (rev 2409, (c)2024 Watts), \"Capacity\", headloss 0-20 psi, gridlines every 5 psi. No rated-flow marker. Curve values were digitised from the chart rendered at 600 dpi (pixel positions of the curve centre against the printed gridlines), read at the flows listed only; expect about +/-0.3 psi (the drawn line is itself 0.5-0.9 psi thick on these small charts)."
+    },
+    {
+      "id": "wilkins-950xl-075",
+      "kind": "dcva",
+      "brand": "Zurn Wilkins",
+      "model": "950XL double check valve assembly",
+      "sizeIn": 0.75,
+      "points": [
+        {
+          "gpm": 5,
+          "psi": 5.5,
+          "read": "curve"
+        },
+        {
+          "gpm": 10,
+          "psi": 6.1,
+          "read": "curve"
+        },
+        {
+          "gpm": 15,
+          "psi": 7.0,
+          "read": "curve"
+        },
+        {
+          "gpm": 20,
+          "psi": 7.9,
+          "read": "curve"
+        },
+        {
+          "gpm": 25,
+          "psi": 8.8,
+          "read": "curve"
+        },
+        {
+          "gpm": 29,
+          "psi": 9.5,
+          "read": "curve"
+        },
+        {
+          "gpm": 35,
+          "psi": 10.6,
+          "read": "curve"
+        },
+        {
+          "gpm": 40,
+          "psi": 11.5,
+          "read": "curve"
+        },
+        {
+          "gpm": 45,
+          "psi": 12.3,
+          "read": "curve"
+        }
+      ],
+      "maxGpm": null,
+      "source": "https://cdn.shopify.com/s/files/1/1987/5531/files/BF-950XL.pdf",
+      "note": "Zurn Wilkins BF-950XL rev E (8/17), \"Flow Characteristics\", gridlines every 1 psi. Rated-flow diamond drawn at about 29 gpm (the 29 gpm point is its centre); curve ends at about 45 gpm. Curve values were digitised from the chart rendered at 600 dpi (pixel positions of the curve centre against the printed gridlines), read at the flows listed only; expect about +/-0.3 psi (the drawn line is itself 0.5-0.9 psi thick on these small charts). PDF copy hosted on a distributor's Shopify CDN."
+    },
+    {
+      "id": "wilkins-950xl-100",
+      "kind": "dcva",
+      "brand": "Zurn Wilkins",
+      "model": "950XL double check valve assembly",
+      "sizeIn": 1,
+      "points": [
+        {
+          "gpm": 5,
+          "psi": 4.9,
+          "read": "curve"
+        },
+        {
+          "gpm": 10,
+          "psi": 5.4,
+          "read": "curve"
+        },
+        {
+          "gpm": 15,
+          "psi": 5.5,
+          "read": "curve"
+        },
+        {
+          "gpm": 20,
+          "psi": 5.5,
+          "read": "curve"
+        },
+        {
+          "gpm": 25,
+          "psi": 5.6,
+          "read": "curve"
+        },
+        {
+          "gpm": 30,
+          "psi": 5.9,
+          "read": "curve"
+        },
+        {
+          "gpm": 35,
+          "psi": 6.5,
+          "read": "curve"
+        },
+        {
+          "gpm": 40,
+          "psi": 7.1,
+          "read": "curve"
+        },
+        {
+          "gpm": 45,
+          "psi": 7.9,
+          "read": "curve"
+        },
+        {
+          "gpm": 50,
+          "psi": 8.6,
+          "read": "curve"
+        },
+        {
+          "gpm": 55,
+          "psi": 9.3,
+          "read": "curve"
+        },
+        {
+          "gpm": 60,
+          "psi": 10.0,
+          "read": "curve"
+        },
+        {
+          "gpm": 65,
+          "psi": 11.0,
+          "read": "curve"
+        },
+        {
+          "gpm": 70,
+          "psi": 12.0,
+          "read": "curve"
+        },
+        {
+          "gpm": 75,
+          "psi": 13.9,
+          "read": "curve"
+        }
+      ],
+      "maxGpm": 50,
+      "source": "https://cdn.shopify.com/s/files/1/1987/5531/files/BF-950XL.pdf",
+      "note": "Zurn Wilkins BF-950XL rev E (8/17), \"Flow Characteristics\", gridlines every 1 psi. Rated-flow diamond at 50 gpm (on the 50 gpm position). Curve values were digitised from the chart rendered at 600 dpi (pixel positions of the curve centre against the printed gridlines), read at the flows listed only; expect about +/-0.3 psi (the drawn line is itself 0.5-0.9 psi thick on these small charts). PDF copy hosted on a distributor's Shopify CDN."
+    },
+    {
+      "id": "watts-009-075",
+      "kind": "rpz",
+      "brand": "Watts",
+      "model": "009 reduced pressure zone assembly (009M3QT)",
+      "sizeIn": 0.75,
+      "points": [
+        {
+          "gpm": 4,
+          "psi": 13.5,
+          "read": "curve"
+        },
+        {
+          "gpm": 6,
+          "psi": 13.3,
+          "read": "curve"
+        },
+        {
+          "gpm": 10,
+          "psi": 13.3,
+          "read": "curve"
+        },
+        {
+          "gpm": 14,
+          "psi": 13.5,
+          "read": "curve"
+        },
+        {
+          "gpm": 18,
+          "psi": 13.7,
+          "read": "curve"
+        },
+        {
+          "gpm": 20,
+          "psi": 13.9,
+          "read": "curve"
+        },
+        {
+          "gpm": 22,
+          "psi": 14.2,
+          "read": "curve"
+        },
+        {
+          "gpm": 26,
+          "psi": 15.2,
+          "read": "curve"
+        },
+        {
+          "gpm": 30,
+          "psi": 16.6,
+          "read": "curve"
+        },
+        {
+          "gpm": 34,
+          "psi": 18.1,
+          "read": "curve"
+        },
+        {
+          "gpm": 38,
+          "psi": 19.6,
+          "read": "curve"
+        },
+        {
+          "gpm": 42,
+          "psi": 21.4,
+          "read": "curve"
+        },
+        {
+          "gpm": 46,
+          "psi": 25.1,
+          "read": "curve"
+        }
+      ],
+      "maxGpm": null,
+      "source": "https://www.watts.ca/dfsmedia/0533dbba17714b1ab581ab07a4cbb521/494718-source/638957165830000000/es-009-2521.pdf",
+      "note": "Watts ES-009 (rev 2521, (c)2025; same curves as the 2021 edition), \"Capacity\", performance from an independent testing laboratory. Gridlines every 2 gpm and 3 psi. Typical-max (7.5 ft/s) line at about 12.7 gpm. Curve values were digitised from the chart rendered at 600 dpi (pixel positions of the curve centre against the printed gridlines), read at the flows listed only; expect about +/-0.3 psi (the drawn line is itself 0.5-0.9 psi thick on these small charts)."
+    },
+    {
+      "id": "watts-009-100",
+      "kind": "rpz",
+      "brand": "Watts",
+      "model": "009 reduced pressure zone assembly (009M2QT)",
+      "sizeIn": 1,
+      "points": [
+        {
+          "gpm": 20,
+          "psi": 9.9,
+          "read": "curve"
+        },
+        {
+          "gpm": 25,
+          "psi": 10.0,
+          "read": "curve"
+        },
+        {
+          "gpm": 30,
+          "psi": 10.7,
+          "read": "curve"
+        },
+        {
+          "gpm": 40,
+          "psi": 11.4,
+          "read": "curve"
+        },
+        {
+          "gpm": 50,
+          "psi": 12.7,
+          "read": "curve"
+        },
+        {
+          "gpm": 60,
+          "psi": 14.9,
+          "read": "curve"
+        },
+        {
+          "gpm": 70,
+          "psi": 18.9,
+          "read": "curve"
+        },
+        {
+          "gpm": 80,
+          "psi": 24.2,
+          "read": "curve"
+        }
+      ],
+      "maxGpm": null,
+      "source": "https://www.watts.ca/dfsmedia/0533dbba17714b1ab581ab07a4cbb521/494718-source/638957165830000000/es-009-2521.pdf",
+      "note": "Watts ES-009 (rev 2521, (c)2025; same curves as the 2021 edition), \"Capacity\", performance from an independent testing laboratory. Gridlines every 5 psi. DOUBT: this chart's flow axis is not linear below 20 gpm (the labels 0, 5, 10, 20 sit on three equal grid spaces while 20-80 are 10 gpm apart), so no points below 20 gpm are given; the curve shows a hump to about 12 psi near 7 gpm and a dip to about 9 psi near 20 gpm. Typical-max line at about 21 gpm. Curve values were digitised from the chart rendered at 600 dpi (pixel positions of the curve centre against the printed gridlines), read at the flows listed only; expect about +/-0.3 psi (the drawn line is itself 0.5-0.9 psi thick on these small charts)."
+    },
+    {
+      "id": "watts-009-125",
+      "kind": "rpz",
+      "brand": "Watts",
+      "model": "009 reduced pressure zone assembly (009M2QT)",
+      "sizeIn": 1.25,
+      "points": [
+        {
+          "gpm": 5,
+          "psi": 10.5,
+          "read": "curve"
+        },
+        {
+          "gpm": 10,
+          "psi": 11.2,
+          "read": "curve"
+        },
+        {
+          "gpm": 20,
+          "psi": 13.0,
+          "read": "curve"
+        },
+        {
+          "gpm": 30,
+          "psi": 14.1,
+          "read": "curve"
+        },
+        {
+          "gpm": 35,
+          "psi": 14.7,
+          "read": "curve"
+        },
+        {
+          "gpm": 40,
+          "psi": 14.9,
+          "read": "curve"
+        },
+        {
+          "gpm": 50,
+          "psi": 15.1,
+          "read": "curve"
+        },
+        {
+          "gpm": 60,
+          "psi": 15.1,
+          "read": "curve"
+        },
+        {
+          "gpm": 70,
+          "psi": 15.0,
+          "read": "curve"
+        },
+        {
+          "gpm": 80,
+          "psi": 15.2,
+          "read": "curve"
+        }
+      ],
+      "maxGpm": null,
+      "source": "https://www.watts.ca/dfsmedia/0533dbba17714b1ab581ab07a4cbb521/494718-source/638957165830000000/es-009-2521.pdf",
+      "note": "Watts ES-009 (rev 2521, (c)2025; same curves as the 2021 edition), \"Capacity\", performance from an independent testing laboratory. Gridlines every 5 psi; from 50 gpm on the curve runs along the 15 psi gridline. Typical-max line at about 35 gpm. Curve values were digitised from the chart rendered at 600 dpi (pixel positions of the curve centre against the printed gridlines), read at the flows listed only; expect about +/-0.3 psi (the drawn line is itself 0.5-0.9 psi thick on these small charts)."
+    },
+    {
+      "id": "febco-825y-075",
+      "kind": "rpz",
+      "brand": "FEBCO (Watts)",
+      "model": "825Y reduced pressure zone assembly",
+      "sizeIn": 0.75,
+      "points": [
+        {
+          "gpm": 5,
+          "psi": 11.6,
+          "read": "curve"
+        },
+        {
+          "gpm": 10,
+          "psi": 12.3,
+          "read": "curve"
+        },
+        {
+          "gpm": 15,
+          "psi": 12.4,
+          "read": "curve"
+        },
+        {
+          "gpm": 20,
+          "psi": 12.8,
+          "read": "curve"
+        },
+        {
+          "gpm": 25,
+          "psi": 13.6,
+          "read": "curve"
+        },
+        {
+          "gpm": 30,
+          "psi": 15.0,
+          "read": "curve"
+        }
+      ],
+      "maxGpm": null,
+      "source": "https://devsc10.watts.com/dfsmedia/0533dbba17714b1ab581ab07a4cbb521/55986-source/es-f-825y",
+      "note": "FEBCO ES-F-825Y (rev 2321, (c)2023 Watts), \"Capacity\", headloss axis 5-20 psi, gridlines every 5 psi; the sheet covers 3/4\"-2\" and has no 1-1/4\" chart in the version read. No rated-flow marker. Curve values were digitised from the chart rendered at 600 dpi (pixel positions of the curve centre against the printed gridlines), read at the flows listed only; expect about +/-0.3 psi (the drawn line is itself 0.5-0.9 psi thick on these small charts)."
+    },
+    {
+      "id": "febco-825y-100",
+      "kind": "rpz",
+      "brand": "FEBCO (Watts)",
+      "model": "825Y reduced pressure zone assembly",
+      "sizeIn": 1,
+      "points": [
+        {
+          "gpm": 10,
+          "psi": 11.8,
+          "read": "curve"
+        },
+        {
+          "gpm": 20,
+          "psi": 11.1,
+          "read": "curve"
+        },
+        {
+          "gpm": 30,
+          "psi": 10.6,
+          "read": "curve"
+        },
+        {
+          "gpm": 40,
+          "psi": 10.8,
+          "read": "curve"
+        },
+        {
+          "gpm": 50,
+          "psi": 11.6,
+          "read": "curve"
+        },
+        {
+          "gpm": 60,
+          "psi": 12.8,
+          "read": "curve"
+        }
+      ],
+      "maxGpm": null,
+      "source": "https://devsc10.watts.com/dfsmedia/0533dbba17714b1ab581ab07a4cbb521/55986-source/es-f-825y",
+      "note": "FEBCO ES-F-825Y (rev 2321, (c)2023 Watts), \"Capacity\", headloss axis 5-20 psi, gridlines every 5 psi; the sheet covers 3/4\"-2\" and has no 1-1/4\" chart in the version read. No rated-flow marker. Curve values were digitised from the chart rendered at 600 dpi (pixel positions of the curve centre against the printed gridlines), read at the flows listed only; expect about +/-0.3 psi (the drawn line is itself 0.5-0.9 psi thick on these small charts)."
+    },
+    {
+      "id": "febco-860-075",
+      "kind": "rpz",
+      "brand": "FEBCO (Watts)",
+      "model": "860 reduced pressure zone assembly (Series 860 Small)",
+      "sizeIn": 0.75,
+      "points": [
+        {
+          "gpm": 5,
+          "psi": 10.9,
+          "read": "curve"
+        },
+        {
+          "gpm": 10,
+          "psi": 10.7,
+          "read": "curve"
+        },
+        {
+          "gpm": 15,
+          "psi": 10.9,
+          "read": "curve"
+        },
+        {
+          "gpm": 20,
+          "psi": 11.2,
+          "read": "curve"
+        },
+        {
+          "gpm": 25,
+          "psi": 12.2,
+          "read": "curve"
+        },
+        {
+          "gpm": 30,
+          "psi": 13.8,
+          "read": "curve"
+        }
+      ],
+      "maxGpm": null,
+      "source": "https://devsc10.watts.com/dfsmedia/0533dbba17714b1ab581ab07a4cbb521/74287-source/es-f-860s",
+      "note": "FEBCO ES-F-860S (ES-860S rev 2321, (c)2023 Watts), \"Capacity\", headloss axis 5-25 psi, gridlines every 5 psi. No rated-flow marker. Curve values were digitised from the chart rendered at 600 dpi (pixel positions of the curve centre against the printed gridlines), read at the flows listed only; expect about +/-0.3 psi (the drawn line is itself 0.5-0.9 psi thick on these small charts)."
+    },
+    {
+      "id": "febco-860-100",
+      "kind": "rpz",
+      "brand": "FEBCO (Watts)",
+      "model": "860 reduced pressure zone assembly (Series 860 Small)",
+      "sizeIn": 1,
+      "points": [
+        {
+          "gpm": 10,
+          "psi": 11.4,
+          "read": "curve"
+        },
+        {
+          "gpm": 20,
+          "psi": 12.2,
+          "read": "curve"
+        },
+        {
+          "gpm": 30,
+          "psi": 13.1,
+          "read": "curve"
+        },
+        {
+          "gpm": 40,
+          "psi": 14.0,
+          "read": "curve"
+        },
+        {
+          "gpm": 50,
+          "psi": 15.2,
+          "read": "curve"
+        },
+        {
+          "gpm": 60,
+          "psi": 17.2,
+          "read": "curve"
+        }
+      ],
+      "maxGpm": null,
+      "source": "https://devsc10.watts.com/dfsmedia/0533dbba17714b1ab581ab07a4cbb521/74287-source/es-f-860s",
+      "note": "FEBCO ES-F-860S (ES-860S rev 2321, (c)2023 Watts), \"Capacity\", headloss axis 5-25 psi, gridlines every 5 psi. No rated-flow marker. Curve values were digitised from the chart rendered at 600 dpi (pixel positions of the curve centre against the printed gridlines), read at the flows listed only; expect about +/-0.3 psi (the drawn line is itself 0.5-0.9 psi thick on these small charts)."
+    },
+    {
+      "id": "febco-860-125",
+      "kind": "rpz",
+      "brand": "FEBCO (Watts)",
+      "model": "860 reduced pressure zone assembly (Series 860 Small)",
+      "sizeIn": 1.25,
+      "points": [
+        {
+          "gpm": 10,
+          "psi": 9.6,
+          "read": "curve"
+        },
+        {
+          "gpm": 20,
+          "psi": 10.0,
+          "read": "curve"
+        },
+        {
+          "gpm": 40,
+          "psi": 11.0,
+          "read": "curve"
+        },
+        {
+          "gpm": 60,
+          "psi": 11.4,
+          "read": "curve"
+        },
+        {
+          "gpm": 80,
+          "psi": 12.4,
+          "read": "curve"
+        },
+        {
+          "gpm": 100,
+          "psi": 13.1,
+          "read": "curve"
+        },
+        {
+          "gpm": 120,
+          "psi": 15.0,
+          "read": "curve"
+        }
+      ],
+      "maxGpm": null,
+      "source": "https://devsc10.watts.com/dfsmedia/0533dbba17714b1ab581ab07a4cbb521/74287-source/es-f-860s",
+      "note": "FEBCO ES-F-860S (ES-860S rev 2321, (c)2023 Watts), \"Capacity\", headloss axis 5-25 psi, gridlines every 5 psi. No rated-flow marker. Curve values were digitised from the chart rendered at 600 dpi (pixel positions of the curve centre against the printed gridlines), read at the flows listed only; expect about +/-0.3 psi (the drawn line is itself 0.5-0.9 psi thick on these small charts)."
+    },
+    {
+      "id": "wilkins-975xl3-075",
+      "kind": "rpz",
+      "brand": "Zurn Wilkins",
+      "model": "975XL3 reduced pressure principle assembly (current successor of 975XL)",
+      "sizeIn": 0.75,
+      "points": [
+        {
+          "gpm": 15,
+          "psi": 14.0,
+          "read": "curve"
+        },
+        {
+          "gpm": 20,
+          "psi": 15.4,
+          "read": "curve"
+        },
+        {
+          "gpm": 25,
+          "psi": 15.7,
+          "read": "curve"
+        },
+        {
+          "gpm": 30,
+          "psi": 19.0,
+          "read": "curve"
+        },
+        {
+          "gpm": 35,
+          "psi": 23.9,
+          "read": "curve"
+        },
+        {
+          "gpm": 40,
+          "psi": 32.0,
+          "read": "curve"
+        },
+        {
+          "gpm": 45,
+          "psi": 37.8,
+          "read": "curve"
+        }
+      ],
+      "maxGpm": 30,
+      "source": "https://www.afsupply.com/pub/media/catalog/product/matridtech/Zurn_Wilkins/spec/975XL320.pdf",
+      "note": "Zurn Wilkins BF-975XL3 rev F (4/24), \"Flow Characteristics\", 0-50 psi axis, minor gridlines every 2 psi. Rated-flow diamond at 30 gpm (its centre read as 19.0 psi; points beside it suggest 18.7, so +/-0.5 here). Below about 12 gpm this curve overlaps the 1/2\" curve, so no points there. Curve values were digitised from the chart rendered at 600 dpi (pixel positions of the curve centre against the printed gridlines), read at the flows listed only; expect about +/-0.3 psi (the drawn line is itself 0.5-0.9 psi thick on these small charts). PDF copy hosted by a distributor (afsupply.com). The older 975XL sheet (rev 6/09) was not digitised."
+    },
+    {
+      "id": "wilkins-975xl3-100",
+      "kind": "rpz",
+      "brand": "Zurn Wilkins",
+      "model": "975XL3 reduced pressure principle assembly (current successor of 975XL)",
+      "sizeIn": 1,
+      "points": [
+        {
+          "gpm": 15,
+          "psi": 12.0,
+          "read": "curve"
+        },
+        {
+          "gpm": 20,
+          "psi": 12.0,
+          "read": "curve"
+        },
+        {
+          "gpm": 25,
+          "psi": 12.0,
+          "read": "curve"
+        },
+        {
+          "gpm": 30,
+          "psi": 12.0,
+          "read": "curve"
+        },
+        {
+          "gpm": 35,
+          "psi": 12.1,
+          "read": "curve"
+        },
+        {
+          "gpm": 40,
+          "psi": 12.5,
+          "read": "curve"
+        },
+        {
+          "gpm": 45,
+          "psi": 13.0,
+          "read": "curve"
+        },
+        {
+          "gpm": 50,
+          "psi": 15.0,
+          "read": "curve"
+        },
+        {
+          "gpm": 55,
+          "psi": 16.3,
+          "read": "curve"
+        },
+        {
+          "gpm": 60,
+          "psi": 19.4,
+          "read": "curve"
+        },
+        {
+          "gpm": 65,
+          "psi": 22.4,
+          "read": "curve"
+        },
+        {
+          "gpm": 70,
+          "psi": 25.3,
+          "read": "curve"
+        },
+        {
+          "gpm": 75,
+          "psi": 29.6,
+          "read": "curve"
+        }
+      ],
+      "maxGpm": 50,
+      "source": "https://www.afsupply.com/pub/media/catalog/product/matridtech/Zurn_Wilkins/spec/975XL320.pdf",
+      "note": "Zurn Wilkins BF-975XL3 rev F (4/24), \"Flow Characteristics\", 0-50 psi axis, minor gridlines every 2 psi. Rated-flow diamond at 50 gpm (centre 15.0 psi; neighbours suggest 14.6, so +/-0.5 here). Curve values were digitised from the chart rendered at 600 dpi (pixel positions of the curve centre against the printed gridlines), read at the flows listed only; expect about +/-0.3 psi (the drawn line is itself 0.5-0.9 psi thick on these small charts). PDF copy hosted by a distributor (afsupply.com). The older 975XL sheet (rev 6/09) was not digitised."
+    },
+    {
+      "id": "meter-typical-058",
+      "kind": "meter",
+      "brand": "Industry table (Rain Bird / Hunter / Toro)",
+      "model": "typical 5/8\" displacement meter",
+      "sizeIn": 0.625,
+      "points": [
+        {
+          "gpm": 1,
+          "psi": 0.2,
+          "read": "table"
+        },
+        {
+          "gpm": 2,
+          "psi": 0.3,
+          "read": "table"
+        },
+        {
+          "gpm": 3,
+          "psi": 0.4,
+          "read": "table"
+        },
+        {
+          "gpm": 4,
+          "psi": 0.6,
+          "read": "table"
+        },
+        {
+          "gpm": 5,
+          "psi": 0.9,
+          "read": "table"
+        },
+        {
+          "gpm": 6,
+          "psi": 1.3,
+          "read": "table"
+        },
+        {
+          "gpm": 7,
+          "psi": 1.8,
+          "read": "table"
+        },
+        {
+          "gpm": 8,
+          "psi": 2.3,
+          "read": "table"
+        },
+        {
+          "gpm": 9,
+          "psi": 3.0,
+          "read": "table"
+        },
+        {
+          "gpm": 10,
+          "psi": 3.7,
+          "read": "table"
+        },
+        {
+          "gpm": 11,
+          "psi": 4.4,
+          "read": "table"
+        },
+        {
+          "gpm": 12,
+          "psi": 5.1,
+          "read": "table"
+        },
+        {
+          "gpm": 13,
+          "psi": 6.1,
+          "read": "table"
+        },
+        {
+          "gpm": 14,
+          "psi": 7.2,
+          "read": "table"
+        },
+        {
+          "gpm": 15,
+          "psi": 8.3,
+          "read": "table"
+        },
+        {
+          "gpm": 16,
+          "psi": 9.4,
+          "read": "table"
+        },
+        {
+          "gpm": 17,
+          "psi": 10.7,
+          "read": "table"
+        },
+        {
+          "gpm": 18,
+          "psi": 12.0,
+          "read": "table"
+        },
+        {
+          "gpm": 19,
+          "psi": 13.4,
+          "read": "table"
+        },
+        {
+          "gpm": 20,
+          "psi": 15.0,
+          "read": "table"
+        }
+      ],
+      "maxGpm": null,
+      "source": "https://rainbird.com/media/3573",
+      "note": "Industry \"Pressure Loss Through Water Meters\" table, printed identically by Rain Bird (reference sheet, rainbird.com/media/3573, 2007), Hunter (US catalog 2023, PDF page 196, \"Typical Pressure Loss\") and Toro/Irritrol (2026 catalog, PDF page 184). Not tied to a meter model: a generic displacement-meter curve. The table stops where the loss reaches 15.0 psi, at 20 gpm; that matches the commonly quoted AWWA C700 ceiling (15 psi at the safe maximum flow), but the C700 text itself is paywalled and was NOT checked, so this is not a transcription of the standard."
+    },
+    {
+      "id": "meter-typical-075",
+      "kind": "meter",
+      "brand": "Industry table (Rain Bird / Hunter / Toro)",
+      "model": "typical 3/4\" displacement meter",
+      "sizeIn": 0.75,
+      "points": [
+        {
+          "gpm": 1,
+          "psi": 0.1,
+          "read": "table"
+        },
+        {
+          "gpm": 2,
+          "psi": 0.2,
+          "read": "table"
+        },
+        {
+          "gpm": 3,
+          "psi": 0.3,
+          "read": "table"
+        },
+        {
+          "gpm": 4,
+          "psi": 0.5,
+          "read": "table"
+        },
+        {
+          "gpm": 5,
+          "psi": 0.6,
+          "read": "table"
+        },
+        {
+          "gpm": 6,
+          "psi": 0.7,
+          "read": "table"
+        },
+        {
+          "gpm": 7,
+          "psi": 0.8,
+          "read": "table"
+        },
+        {
+          "gpm": 8,
+          "psi": 1.0,
+          "read": "table"
+        },
+        {
+          "gpm": 9,
+          "psi": 1.3,
+          "read": "table"
+        },
+        {
+          "gpm": 10,
+          "psi": 1.6,
+          "read": "table"
+        },
+        {
+          "gpm": 11,
+          "psi": 1.9,
+          "read": "table"
+        },
+        {
+          "gpm": 12,
+          "psi": 2.2,
+          "read": "table"
+        },
+        {
+          "gpm": 13,
+          "psi": 2.6,
+          "read": "table"
+        },
+        {
+          "gpm": 14,
+          "psi": 3.1,
+          "read": "table"
+        },
+        {
+          "gpm": 15,
+          "psi": 3.6,
+          "read": "table"
+        },
+        {
+          "gpm": 16,
+          "psi": 4.1,
+          "read": "table"
+        },
+        {
+          "gpm": 17,
+          "psi": 4.6,
+          "read": "table"
+        },
+        {
+          "gpm": 18,
+          "psi": 5.2,
+          "read": "table"
+        },
+        {
+          "gpm": 19,
+          "psi": 5.8,
+          "read": "table"
+        },
+        {
+          "gpm": 20,
+          "psi": 6.5,
+          "read": "table"
+        },
+        {
+          "gpm": 22,
+          "psi": 7.9,
+          "read": "table"
+        },
+        {
+          "gpm": 24,
+          "psi": 9.5,
+          "read": "table"
+        },
+        {
+          "gpm": 26,
+          "psi": 11.2,
+          "read": "table"
+        },
+        {
+          "gpm": 28,
+          "psi": 13.0,
+          "read": "table"
+        },
+        {
+          "gpm": 30,
+          "psi": 15.0,
+          "read": "table"
+        }
+      ],
+      "maxGpm": null,
+      "source": "https://rainbird.com/media/3573",
+      "note": "Industry \"Pressure Loss Through Water Meters\" table, printed identically by Rain Bird (reference sheet, rainbird.com/media/3573, 2007), Hunter (US catalog 2023, PDF page 196, \"Typical Pressure Loss\") and Toro/Irritrol (2026 catalog, PDF page 184). Not tied to a meter model: a generic displacement-meter curve. The table stops where the loss reaches 15.0 psi, at 30 gpm; that matches the commonly quoted AWWA C700 ceiling (15 psi at the safe maximum flow), but the C700 text itself is paywalled and was NOT checked, so this is not a transcription of the standard."
+    },
+    {
+      "id": "meter-typical-100",
+      "kind": "meter",
+      "brand": "Industry table (Rain Bird / Hunter / Toro)",
+      "model": "typical 1\" displacement meter",
+      "sizeIn": 1,
+      "points": [
+        {
+          "gpm": 4,
+          "psi": 0.1,
+          "read": "table"
+        },
+        {
+          "gpm": 5,
+          "psi": 0.2,
+          "read": "table"
+        },
+        {
+          "gpm": 6,
+          "psi": 0.3,
+          "read": "table"
+        },
+        {
+          "gpm": 7,
+          "psi": 0.4,
+          "read": "table"
+        },
+        {
+          "gpm": 8,
+          "psi": 0.5,
+          "read": "table"
+        },
+        {
+          "gpm": 9,
+          "psi": 0.6,
+          "read": "table"
+        },
+        {
+          "gpm": 10,
+          "psi": 0.7,
+          "read": "table"
+        },
+        {
+          "gpm": 11,
+          "psi": 0.8,
+          "read": "table"
+        },
+        {
+          "gpm": 12,
+          "psi": 0.9,
+          "read": "table"
+        },
+        {
+          "gpm": 13,
+          "psi": 1.0,
+          "read": "table"
+        },
+        {
+          "gpm": 14,
+          "psi": 1.1,
+          "read": "table"
+        },
+        {
+          "gpm": 15,
+          "psi": 1.2,
+          "read": "table"
+        },
+        {
+          "gpm": 16,
+          "psi": 1.4,
+          "read": "table"
+        },
+        {
+          "gpm": 17,
+          "psi": 1.6,
+          "read": "table"
+        },
+        {
+          "gpm": 18,
+          "psi": 1.8,
+          "read": "table"
+        },
+        {
+          "gpm": 19,
+          "psi": 2.0,
+          "read": "table"
+        },
+        {
+          "gpm": 20,
+          "psi": 2.2,
+          "read": "table"
+        },
+        {
+          "gpm": 22,
+          "psi": 2.8,
+          "read": "table"
+        },
+        {
+          "gpm": 24,
+          "psi": 3.4,
+          "read": "table"
+        },
+        {
+          "gpm": 26,
+          "psi": 4.0,
+          "read": "table"
+        },
+        {
+          "gpm": 28,
+          "psi": 4.6,
+          "read": "table"
+        },
+        {
+          "gpm": 30,
+          "psi": 5.3,
+          "read": "table"
+        },
+        {
+          "gpm": 32,
+          "psi": 6.0,
+          "read": "table"
+        },
+        {
+          "gpm": 34,
+          "psi": 6.9,
+          "read": "table"
+        },
+        {
+          "gpm": 36,
+          "psi": 7.8,
+          "read": "table"
+        },
+        {
+          "gpm": 38,
+          "psi": 8.7,
+          "read": "table"
+        },
+        {
+          "gpm": 40,
+          "psi": 9.6,
+          "read": "table"
+        },
+        {
+          "gpm": 42,
+          "psi": 10.6,
+          "read": "table"
+        },
+        {
+          "gpm": 44,
+          "psi": 11.7,
+          "read": "table"
+        },
+        {
+          "gpm": 46,
+          "psi": 12.8,
+          "read": "table"
+        },
+        {
+          "gpm": 48,
+          "psi": 13.9,
+          "read": "table"
+        },
+        {
+          "gpm": 50,
+          "psi": 15.0,
+          "read": "table"
+        }
+      ],
+      "maxGpm": null,
+      "source": "https://rainbird.com/media/3573",
+      "note": "Industry \"Pressure Loss Through Water Meters\" table, printed identically by Rain Bird (reference sheet, rainbird.com/media/3573, 2007), Hunter (US catalog 2023, PDF page 196, \"Typical Pressure Loss\") and Toro/Irritrol (2026 catalog, PDF page 184). Not tied to a meter model: a generic displacement-meter curve. The table stops where the loss reaches 15.0 psi, at 50 gpm; that matches the commonly quoted AWWA C700 ceiling (15 psi at the safe maximum flow), but the C700 text itself is paywalled and was NOT checked, so this is not a transcription of the standard."
+    },
+    {
+      "id": "badger-m25-058x075",
+      "kind": "meter",
+      "brand": "Badger Meter",
+      "model": "Recordall Disc M25 bronze, 5/8\" x 3/4\"",
+      "sizeIn": 0.75,
+      "points": [
+        {
+          "gpm": 8,
+          "psi": 0.8,
+          "read": "curve"
+        },
+        {
+          "gpm": 10,
+          "psi": 1.3,
+          "read": "curve"
+        },
+        {
+          "gpm": 15,
+          "psi": 2.8,
+          "read": "table"
+        },
+        {
+          "gpm": 20,
+          "psi": 4.8,
+          "read": "curve"
+        }
+      ],
+      "maxGpm": 25,
+      "source": "https://core.instrumart.com/assets/IDM-DS-00113-EN_Datasheet.pdf",
+      "note": "Typical operating range 0.5-25 gpm; maximum continuous 15 gpm. The common residential \"5/8 x 3/4\" meter (5/8 in. measuring chamber, 3/4 in. connections); sizeIn is the connection size. Badger Meter data sheet IDM-DS-00113-EN (June 2021; copy hosted by Instrumart): the table point is \"Pressure Loss at Maximum Continuous Operation\"; the curve points are digitised from the \"Pressure Loss Charts\" (log flow axis, 1 psi gridlines) at 600 dpi, +/-0.3 psi. Each curve passes within 0.4 psi of its own table point, which checks the reading. The October 2015 data sheet RDM-DS-00464 prints the same table values."
+    },
+    {
+      "id": "badger-m25-058",
+      "kind": "meter",
+      "brand": "Badger Meter",
+      "model": "Recordall Disc M25 bronze, 5/8\"",
+      "sizeIn": 0.625,
+      "points": [
+        {
+          "gpm": 15,
+          "psi": 3.5,
+          "read": "table"
+        }
+      ],
+      "maxGpm": 25,
+      "source": "https://core.instrumart.com/assets/IDM-DS-00113-EN_Datasheet.pdf",
+      "note": "Table point only (curve not digitised). Typical operating range 0.5-25 gpm; maximum continuous 15 gpm. The polymer M25 5/8\" prints 4.2 psi at 15 gpm. Badger Meter data sheet IDM-DS-00113-EN (June 2021; copy hosted by Instrumart): the table point is \"Pressure Loss at Maximum Continuous Operation\"; the curve points are digitised from the \"Pressure Loss Charts\" (log flow axis, 1 psi gridlines) at 600 dpi, +/-0.3 psi. Each curve passes within 0.4 psi of its own table point, which checks the reading. The October 2015 data sheet RDM-DS-00464 prints the same table values."
+    },
+    {
+      "id": "badger-m35-075",
+      "kind": "meter",
+      "brand": "Badger Meter",
+      "model": "Recordall Disc M35 bronze, 3/4\"",
+      "sizeIn": 0.75,
+      "points": [
+        {
+          "gpm": 10,
+          "psi": 0.75,
+          "read": "curve"
+        },
+        {
+          "gpm": 15,
+          "psi": 1.6,
+          "read": "curve"
+        },
+        {
+          "gpm": 20,
+          "psi": 3.3,
+          "read": "curve"
+        },
+        {
+          "gpm": 25,
+          "psi": 5.0,
+          "read": "table"
+        },
+        {
+          "gpm": 30,
+          "psi": 7.4,
+          "read": "curve"
+        },
+        {
+          "gpm": 35,
+          "psi": 10.4,
+          "read": "curve"
+        }
+      ],
+      "maxGpm": 35,
+      "source": "https://core.instrumart.com/assets/IDM-DS-00113-EN_Datasheet.pdf",
+      "note": "Typical operating range 0.75-35 gpm; maximum continuous 25 gpm (the curve reads 5.4 there against the table's 5.0). Badger Meter data sheet IDM-DS-00113-EN (June 2021; copy hosted by Instrumart): the table point is \"Pressure Loss at Maximum Continuous Operation\"; the curve points are digitised from the \"Pressure Loss Charts\" (log flow axis, 1 psi gridlines) at 600 dpi, +/-0.3 psi. Each curve passes within 0.4 psi of its own table point, which checks the reading. The October 2015 data sheet RDM-DS-00464 prints the same table values."
+    },
+    {
+      "id": "badger-m55-100",
+      "kind": "meter",
+      "brand": "Badger Meter",
+      "model": "Recordall Disc M55 bronze, 1\"",
+      "sizeIn": 1,
+      "points": [
+        {
+          "gpm": 20,
+          "psi": 0.8,
+          "read": "curve"
+        },
+        {
+          "gpm": 30,
+          "psi": 1.8,
+          "read": "curve"
+        },
+        {
+          "gpm": 40,
+          "psi": 3.4,
+          "read": "table"
+        },
+        {
+          "gpm": 50,
+          "psi": 5.3,
+          "read": "curve"
+        },
+        {
+          "gpm": 55,
+          "psi": 6.3,
+          "read": "curve"
+        }
+      ],
+      "maxGpm": 55,
+      "source": "https://core.instrumart.com/assets/IDM-DS-00113-EN_Datasheet.pdf",
+      "note": "Typical operating range 1-55 gpm; maximum continuous 40 gpm. Badger Meter data sheet IDM-DS-00113-EN (June 2021; copy hosted by Instrumart): the table point is \"Pressure Loss at Maximum Continuous Operation\"; the curve points are digitised from the \"Pressure Loss Charts\" (log flow axis, 1 psi gridlines) at 600 dpi, +/-0.3 psi. Each curve passes within 0.4 psi of its own table point, which checks the reading. The October 2015 data sheet RDM-DS-00464 prints the same table values."
+    }
+  ],
+  "notes": [
+    "Scope: manufacturer pressure-loss-vs-flow data for US residential irrigation devices. Each point is psi lost across the device at that flow. \"read\":\"table\" = a number printed in a table; \"read\":\"curve\" = digitised from a printed curve (method and tolerance in that device's note). Nothing is interpolated: a flow not listed has no value here; the caller decides whether to interpolate between listed points.",
+    "maxGpm: valves = the top of the maker's printed flow range; meters = the top of the typical operating range (the max-continuous figure is in the note); backflow = the approval-agency rated flow only where the sheet marks it on a labelled gridline, otherwise null and the marker position is described in the note. null = not printed.",
+    "Backflow loss charts (Watts, FEBCO, Zurn Wilkins, Apollo) are curves only; no maker prints a table. Their curves come from USC Foundation for Cross-Connection Control or independent-lab tests. Low-flow parts of overlapping multi-size charts were skipped wherever the curves could not be told apart.",
+    "Anti-siphon valves (Rain Bird ASVF, Hunter PGV-ASV, Toro EZ-Flo Plus anti-siphon) are listed as kind \"valve\" and their tables include the built-in atmospheric vacuum breaker. No loss chart was found for a standalone atmospheric vacuum breaker (AVB), so kind \"avb\" has no entries.",
+    "NOT FOUND / NOT USED: Rain Bird JTV (the only copy, a distributor mirror, could not be fetched and its column headers are reported ambiguous); Rain Bird 1-1/2\" PGA and other 1-1/2\"+ valves (left out as outside residential scope); Hunter's live site (blocks automated requests; its 2023 catalog was used instead); Watts 800M4 (non-QT) and 008PCQT; Conbraco/Apollo 4V-500 (the PVB4A successor is given instead); Neptune T-10 and Sensus SR II pressure-loss curves (product sheets 404 or blocked); the AWWA C700 standard text (paywalled).",
+    "Several hosts block scripted downloads (watts.com, zurn.com, hunterirrigation.com, plumbersstock.com). Watts/FEBCO sheets were taken from Watts' own devsc10.watts.com / watts.ca hosts with the same document ids as www.watts.com. Zurn and Apollo sheets come from distributor copies of the maker's PDF; the document number and revision are in each note so the original can be checked.",
+    "Rain Bird has published two different tables for DV and ASVF valves: the 2017 tech spec values (in the notes) are lower at low flow than the catalog values used for the points. The catalog (2017-2020 editions) is the later document."
+  ]
+}

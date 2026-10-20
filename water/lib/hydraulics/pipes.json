@@ -1,0 +1,2080 @@
+{
+  "id": "pipes",
+  "retrieved": "2026-10-20",
+  "status_legend": {
+    "published": "a number printed by the named source (a maker, a standard, a peer-reviewed paper or a trade association)",
+    "secondary": "a number from a reference site or textbook that does not show its own primary source",
+    "derived": "computed here from published inputs (formula and inputs named); not itself published anywhere",
+    "practice": "a designer's or forum's rule of thumb, not a measurement",
+    "speculation": "a reasoned guess with no direct measurement behind it; do not treat as established"
+  },
+  "units": {
+    "diameter": "in",
+    "length": "ft",
+    "flow": "gpm (US)",
+    "pressure": "psi",
+    "lossPer100": "psi per 100 ft of pipe",
+    "velocity": "ft/s"
+  },
+  "formulas": {
+    "hazenWilliams_psiPer100ft": {
+      "expr": "hf = 0.2083 * (100/C)^1.852 * Q^1.852 / d^4.8655 * 0.433",
+      "note": "Irrigation Association 2008 friction-loss charts (reproduced in the Hunter handbook) and every Rain Bird / Spears chart use exactly this form; 0.2083... gives ft of head per 100 ft, x 0.433 converts to psi. Hunter writes the per-foot form hf = 0.00090194*(100/C)^1.852*Q^1.852/d^4.866*L.",
+      "check": "1 in Class 200 PVC (d=1.169), 10 gpm, C=150 gives 1.42 psi/100 ft; the IA chart prints 1.42 (Hunter handbook) -- the formula reproduces the charts.",
+      "sources": [
+        "hunter-handbook",
+        "rb-class200-2018",
+        "spears-friction"
+      ],
+      "status": "published"
+    },
+    "velocity": {
+      "expr": "V = 0.408 * Q / d^2",
+      "note": "ft/s from gpm and in. Charts shade V > 5 ft/s 'use with caution' (surge).",
+      "sources": [
+        "hunter-handbook",
+        "tamu-hunter-charts"
+      ],
+      "status": "published"
+    },
+    "darcyWeisbach": {
+      "expr": "hf_ft = f * (L/D) * V^2/(2g); f from Colebrook (or Swamee-Jain); psi = 0.433 * ft",
+      "roughness_mm": {
+        "pvc_pe_pex_smooth": 0.0015,
+        "pe_libretexts_table": 0.0127,
+        "galvanized_new": 0.15
+      },
+      "note": "0.0015 mm is the usual 'drawn tubing / smooth plastic' value; the LibreTexts microirrigation table uses e = 0.0005 in (0.0127 mm) for PE; 0.15 mm (0.006 in) is the usual galvanized-iron value (secondary, Engineering ToolBox / pipeflow listings). Kinematic viscosity of water: 1.41e-5 ft2/s at 50 F, 1.22e-5 at 60 F, 1.06e-5 at 70 F.",
+      "sources": [
+        "libretexts-laterals",
+        "etb-hw"
+      ],
+      "status": "secondary"
+    },
+    "minorLossK": {
+      "expr": "dp_psi = K * V^2/(2g) * 0.433 (V in the pipe, ft/s; V^2/2g in ft); equivalent length Le = K * D / f",
+      "note": "An equivalent length in ft is only exact at the friction factor it was derived with; at the low Reynolds numbers of residential zones (Re 3,000-30,000) f is 0.025-0.045, so a fixed-ft table and a fixed-K table disagree by up to ~1.5x. The 2-K method (Hooper 1981) handles this: K = K1/Re + Kinf*(1 + 1/D_in).",
+      "sources": [
+        "neutrium-k",
+        "neutrium-2k"
+      ],
+      "status": "published"
+    },
+    "suddenContractionExpansion": {
+      "expr": "contraction K = 0.5*(1 - beta^2); expansion K = (1 - beta^2)^2; both on the SMALL-bore velocity; beta = d_small/d_large; refer to pipe velocity by dividing by beta^4",
+      "note": "Textbook Borda-Carnot / Crane-style relations (sharp edges). Used below to DERIVE insert-fitting losses.",
+      "status": "derived",
+      "sources": [
+        "neutrium-k"
+      ]
+    },
+    "orificeNozzle": {
+      "expr": "q = 29.82 * Cd * D^2 * sqrt(P); in ratio form q2 = q1 * (P2/P1)^x with x = 0.5",
+      "note": "LibreTexts (Irrigation Systems Management) defines P as 'pressure of the water at the inlet to the sprinkler device' and gives Cd about 0.96 for straight-bore nozzles.",
+      "sources": [
+        "libretexts-sprinklers",
+        "bentley-emitter"
+      ],
+      "status": "published"
+    }
+  },
+  "hazenWilliamsC": {
+    "industryStandard": {
+      "summary": "YES for PVC: C = 150 is the irrigation industry's design value. The Irrigation Association 2008 charts (Hunter handbook), Rain Bird's current and 2018 charts, Spears and Toro all print C=150 for Sch 40, Class 160/200/315 PVC. For polyethylene the same industry charts use C = 140, NOT 150 (IA 'PE 3408 ASTM D2239 C=140', Rain Bird 'SDR 7, 9, 11.5, 15 C=140', Toro/Hunter design C 140). PEX: C=150 (plumbing industry, PPFA). Copper: the irrigation charts use 140; the Copper Development Association and NFPA 13 use 150. Steel: the irrigation charts use C = 100 for Schedule 40 steel (a design/aged value).",
+      "sources": [
+        "hunter-handbook",
+        "rb-sch40-2021",
+        "rb-class160-2021",
+        "rb-pe",
+        "rb-steel",
+        "spears-friction",
+        "toro-hw",
+        "ppfa-pex"
+      ],
+      "status": "published"
+    },
+    "materials": {
+      "pvc": {
+        "new": 150,
+        "design": 150,
+        "rangeReported": [
+          145,
+          165
+        ],
+        "values": [
+          {
+            "C": 150,
+            "what": "design value, all irrigation charts and AWWA M23",
+            "sources": [
+              "hunter-handbook",
+              "rb-sch40-2021",
+              "spears-friction",
+              "ipex-hydraulics"
+            ],
+            "status": "published"
+          },
+          {
+            "C": "160-145 range, 150 new, 150 design",
+            "what": "Hunter handbook table 'Roughness coefficient C values' (same table as Toro's)",
+            "sources": [
+              "hunter-handbook",
+              "toro-hw"
+            ],
+            "status": "published"
+          },
+          {
+            "C": "155 (12 in) and 159 (6 in) new; 164.2 and 163.3 on 8 in pipe in service since 1976 (46 years)",
+            "what": "Uni-Bell / Utah State Water Research Lab tests, 2022 (industry-funded; large municipal pipe, not 1/2-1 in)",
+            "sources": [
+              "unibell-2023"
+            ],
+            "status": "published"
+          },
+          {
+            "C": "155-165 for new and used PVC",
+            "what": "IPEX bulletin citing experimental data; AWWA M23 still recommends 150",
+            "sources": [
+              "ipex-hydraulics"
+            ],
+            "status": "published"
+          }
+        ],
+        "aging": "No measured loss of C with age was found for PVC; the only in-service test (46 years, 8 in, municipal water) measured C > 160. Uni-Bell is the PVC trade association, so this is industry data.",
+        "hardWater": "NO quantitative study of calcium-carbonate scale in PVC irrigation pipe was found. The Russian corrosion literature (Kamerstein, via Shcherbakov & Cuong) states that deposit and corrosion growth 'are not affected in plastic' pipes. A lateral that stays full of hard water between cycles can still scale at heads and fittings; treat any C below 150 for hard water as speculation.",
+        "iron": "PVC does not rust. Iron-rich well water (iron bacteria / ochre slime) coats any pipe; extension sources give >0.1 ppm Fe as a drip-clogging risk, >0.3 ppm as staining, >1 ppm as an iron-bacteria risk. No C value for slimed PVC was found."
+      },
+      "pe_polyethylene_sidr": {
+        "new": 140,
+        "design": 140,
+        "rangeReported": [
+          129,
+          150
+        ],
+        "values": [
+          {
+            "C": 140,
+            "what": "IA 2008 chart 'Polyethylene Plastic Pipe ID Controlled, PE 3408 ASTM D2239 C=140'; Rain Bird PE chart 'SDR 7, 9, 11.5, 15 C=140'",
+            "sources": [
+              "hunter-handbook",
+              "rb-pe"
+            ],
+            "status": "published"
+          },
+          {
+            "C": "150-130 range, 140 new, 140 design",
+            "what": "Hunter/Toro C table",
+            "sources": [
+              "hunter-handbook",
+              "toro-hw"
+            ],
+            "status": "published"
+          },
+          {
+            "C": "129 / 136 / 144 / 148 for 13 / 16 / 19 / 22 mm PE",
+            "what": "Moghazi (1998), laboratory: C rises with diameter; fixed 130/140 gave errors up to 27%",
+            "sources": [
+              "moghazi-1998"
+            ],
+            "status": "published"
+          },
+          {
+            "C": 150,
+            "what": "IPEX lists 'Plastic (PVC & HDPE) 150' (from Karassik Pump Handbook)",
+            "sources": [
+              "ipex-hydraulics"
+            ],
+            "status": "published"
+          }
+        ],
+        "disagreement": "Irrigation charts use 140; IPEX/Pump Handbook use 150 for HDPE; Moghazi measured 129-148 depending on size. For 3/4-1 in SIDR (19-27 mm ID) 140-148 is supported; for 1/2 in (15.8 mm ID) 135 is closer to Moghazi.",
+        "aging": "Not found.",
+        "hardWater": "Not found (as PVC).",
+        "iron": "As PVC."
+      },
+      "pex": {
+        "new": 150,
+        "design": 150,
+        "values": [
+          {
+            "C": 150,
+            "what": "PPFA/NAHB Residential PEX design guide friction tables: 'Friction Loss based on Hazen-Williams Formula (C = 150)'",
+            "sources": [
+              "ppfa-pex"
+            ],
+            "status": "published"
+          }
+        ],
+        "aging": "PPFA: 'PEX pipe does not corrode, and it is resistant to mineral build-up' (a claim, no C-vs-age data).",
+        "hardWater": "Claimed resistant to mineral build-up (PPFA); no measurement found.",
+        "iron": "Not found."
+      },
+      "copper_k_l_m": {
+        "new": 150,
+        "design": 140,
+        "values": [
+          {
+            "C": 140,
+            "what": "IA 2008 Type K/L/M copper charts (ASTM B88 C=140) and Rain Bird Type K chart",
+            "sources": [
+              "hunter-handbook",
+              "rb-friction-index"
+            ],
+            "status": "published"
+          },
+          {
+            "C": "150-120 range, 140 new, 130 design",
+            "what": "Hunter/Toro C table ('Copper, Brass')",
+            "sources": [
+              "hunter-handbook",
+              "toro-hw"
+            ],
+            "status": "published"
+          },
+          {
+            "C": 150,
+            "what": "Copper Development Association's sizing calculator / Copper Tube Handbook (C = 150); NFPA 13 copper tube 150",
+            "sources": [
+              "cda-calculator",
+              "bcrl-nfpa13"
+            ],
+            "status": "secondary"
+          },
+          {
+            "C": "130-140",
+            "what": "Engineering ToolBox / Wikipedia table",
+            "sources": [
+              "etb-hw",
+              "wikipedia-hw"
+            ],
+            "status": "secondary"
+          }
+        ],
+        "disagreement": "150 (CDA, NFPA 13) vs 140 (irrigation charts) vs 130 (Hunter/Toro 'design'). Use 140 new; 130 for old tube or hard water (Hunter's design value is the only aged-style number found).",
+        "hardWater": "Copper scales in hard water; no measured C-vs-age for small copper tube was found. Hunter/Toro's design C 130 (vs 140 new) is the only published allowance.",
+        "iron": "Not applicable to the tube; iron-bearing water deposits as in any pipe."
+      },
+      "galvanized_steel": {
+        "new": 120,
+        "design": 100,
+        "values": [
+          {
+            "C": 120,
+            "what": "NFPA 13: galvanized steel, all system types (fire sprinklers)",
+            "sources": [
+              "bcrl-nfpa13"
+            ],
+            "status": "secondary"
+          },
+          {
+            "C": 120,
+            "what": "Engineering ToolBox / Wikipedia 'galvanized iron 120' (no age given)",
+            "sources": [
+              "etb-hw",
+              "wikipedia-hw"
+            ],
+            "status": "secondary"
+          },
+          {
+            "C": 100,
+            "what": "IA 2008 and Rain Bird Schedule 40 steel friction charts (ASTM A53, C=100) -- the irrigation industry's design value for steel",
+            "sources": [
+              "hunter-handbook",
+              "rb-steel"
+            ],
+            "status": "published"
+          },
+          {
+            "C": "150-80 range, 140 new, 100 design",
+            "what": "Hunter/Toro C table, 'Welded steel' (not galvanized specifically)",
+            "sources": [
+              "hunter-handbook",
+              "toro-hw"
+            ],
+            "status": "published"
+          },
+          {
+            "C": 140,
+            "what": "LibreTexts irrigation text, 'Galvanized steel pipe 140' (vs 'Standard steel pipe 100') -- an outlier, probably new irrigation-grade galvanized",
+            "sources": [
+              "libretexts-friction"
+            ],
+            "status": "secondary"
+          },
+          {
+            "C": "120 new, 95 aged",
+            "what": "pipeflowlab (cites Moody 1944 and Crane TP-410; could not verify against those)",
+            "sources": [
+              "pipeflowlab"
+            ],
+            "status": "secondary"
+          },
+          {
+            "C": "80-100 aged",
+            "what": "a DIY calculator site, no age band, low authority -- the only source found for the '80-100' figure",
+            "sources": [
+              "diysmarthomehub"
+            ],
+            "status": "secondary"
+          }
+        ],
+        "ageBands": {
+          "found": false,
+          "note": "NO published C-by-age table for galvanized steel was found. The age bands that exist are for unlined CAST IRON and are often borrowed as a proxy: new 130; 10 yr 107-113; 20 yr 89-100; 30 yr 75-90; 40 yr 64-83 (Engineering ToolBox; Wikipedia copies it). EN 12845 uses C=100 for cast iron 'roughly a 20-year-old pipe' (Canute, secondary). Applying them to galvanized is SPECULATION.",
+          "castIronProxy": [
+            {
+              "years": 0,
+              "C": 130
+            },
+            {
+              "years": 10,
+              "C": [
+                107,
+                113
+              ]
+            },
+            {
+              "years": 20,
+              "C": [
+                89,
+                100
+              ]
+            },
+            {
+              "years": 30,
+              "C": [
+                75,
+                90
+              ]
+            },
+            {
+              "years": 40,
+              "C": [
+                64,
+                83
+              ]
+            }
+          ],
+          "sources": [
+            "etb-hw",
+            "wikipedia-hw"
+          ],
+          "status": "speculation"
+        },
+        "waterChemistry": {
+          "note": "The mechanism is roughness growth (tubercles, scale) AND loss of bore. Kamerstein's classification (Russian literature, for steel and cast-iron mains) gives annual growth of absolute roughness by water group: 1 low-corrosion 0.005-0.05 mm/yr (avg 0.025); 2 moderate, organic matter and dissolved iron < 3 g/m3, 0.055-0.18 (avg 0.07); 3 significant, iron > 3 g/m3, 0.18-0.4 (avg 0.20); 4 strong, high sulfates/chlorides, 0.4-0.6 (avg 0.51); 5 very strong, 'significant carbonate' and highly mineralized, 0.6-3.0 mm/yr. The paper's C-vs-age tables are for 250 and 400 mm mains (e.g. group 1, 250 mm, e0 0.3 mm: 127.9 at 5 yr, 109.4 at 20, 83.8 at 40).",
+          "smallPipeWarning": "In a 3/4 in (21 mm) pipe the same mm of growth is ~12x larger relative to the bore than in a 250 mm main, so a residential galvanized line ages far faster in C terms, and the bore itself closes. DERIVED illustration (Colebrook, 60 F, 4 gpm in 0.824 in pipe): e = 0.15 mm new -> C_equiv ~ 119; e = 0.15 + 20 yr x 0.025 = 0.65 mm -> C_equiv ~ 94; e = 0.15 + 20 yr x 0.07 = 1.55 mm -> C_equiv ~ 76, before any loss of bore. Treat as speculation: the growth rates are for mains.",
+          "hardWater": "Sources disagree on direction: moderately hard water can lay a protective calcium/zinc carbonate film that slows zinc loss (slower corrosion), but the scale itself narrows the bore. Net effect depends on chemistry (Langelier/stability index); no residential measurement found.",
+          "iron": "Iron in the water (Kamerstein groups 2-3) and iron bacteria accelerate tuberculation; once the zinc is gone, steel corrodes internally (tuberculation), which is the usual functional failure of galvanized water lines (secondary sources, 40-70 yr service life).",
+          "sources": [
+            "kamerstein-shcherbakov",
+            "galv-secondary"
+          ],
+          "status": "speculation"
+        }
+      },
+      "sensitivity": "Loss scales as C^-1.852: C 150 -> 140 is +13.6% loss; 150 -> 120 is +51%; 150 -> 100 is +112%; 150 -> 80 is +220%.",
+      "temperature": "Hazen-Williams has no viscosity term. The IA 2008 chart notes: 'Head loss decreases (increases) approximately 1% for every 3 F above (below) the reference temperature (73.4 F)'. Hunter/Toro tables are for 60 F / 50 F water. Engineering ToolBox limits H-W to 40-75 F water.",
+      "temperatureSources": [
+        "hunter-handbook",
+        "toro-hw"
+      ]
+    }
+  },
+  "darcyVsHazenWilliams": {
+    "irrigationReferencesPrefer": "For SMALL smooth plastic pipe the agricultural/micro-irrigation references prefer Darcy-Weisbach: 'For small-diameter, smooth-walled pipe used in microirrigation (e.g., laterals), the Hazen-Williams equation with a C value of 150 underestimates the friction loss (Keller and Bliesner, 1990). They recommend the Darcy-Weisbach equation' (LibreTexts, quoting Keller & Bliesner). Allen (1996, Applied Eng. in Agric. 12:685-693) shows the H-W C is not a constant but varies with Reynolds number and velocity. Moghazi (1998) measured C rising from 129 to 148 as PE diameter rose 13 -> 22 mm. The landscape makers (Rain Bird, Hunter, Toro, IA) nonetheless publish only H-W charts for 1/2-6 in pipe.",
+    "sources": [
+      "libretexts-laterals",
+      "allen-1996",
+      "moghazi-1998",
+      "hunter-handbook"
+    ],
+    "status": "published",
+    "derivedComparison": {
+      "method": "Colebrook with e = 0.0015 mm (smooth), water at 60 F (nu = 1.217e-5 ft2/s), compared with H-W C=150 on the same ID; C_equiv is the H-W C that would give the Darcy-Weisbach loss.",
+      "status": "derived",
+      "rows": [
+        {
+          "pipe": "1/2 Sch 40 PVC",
+          "id": 0.602,
+          "byGpm": [
+            {
+              "gpm": 1,
+              "dw": 0.65,
+              "hw150": 0.5,
+              "C_equiv": 130
+            },
+            {
+              "gpm": 2,
+              "dw": 2.16,
+              "hw150": 1.82,
+              "C_equiv": 137
+            },
+            {
+              "gpm": 4,
+              "dw": 7.24,
+              "hw150": 6.55,
+              "C_equiv": 142
+            }
+          ]
+        },
+        {
+          "pipe": "3/4 Class 200 PVC (IA ID)",
+          "id": 0.91,
+          "byGpm": [
+            {
+              "gpm": 2,
+              "dw": 0.31,
+              "hw150": 0.24,
+              "C_equiv": 133
+            },
+            {
+              "gpm": 4,
+              "dw": 1.02,
+              "hw150": 0.88,
+              "C_equiv": 139
+            },
+            {
+              "gpm": 8,
+              "dw": 3.42,
+              "hw150": 3.17,
+              "C_equiv": 144
+            }
+          ]
+        },
+        {
+          "pipe": "1 Class 200 PVC (IA ID)",
+          "id": 1.169,
+          "byGpm": [
+            {
+              "gpm": 4,
+              "dw": 0.31,
+              "hw150": 0.26,
+              "C_equiv": 136
+            },
+            {
+              "gpm": 8,
+              "dw": 1.04,
+              "hw150": 0.94,
+              "C_equiv": 142
+            },
+            {
+              "gpm": 10,
+              "dw": 1.54,
+              "hw150": 1.42,
+              "C_equiv": 144
+            }
+          ]
+        },
+        {
+          "pipe": "3/4 PE SIDR",
+          "id": 0.824,
+          "byGpm": [
+            {
+              "gpm": 2,
+              "dw": 0.49,
+              "hw150": 0.39,
+              "hw140": 0.45,
+              "C_equiv": 134
+            },
+            {
+              "gpm": 4,
+              "dw": 1.63,
+              "hw150": 1.42,
+              "hw140": 1.62,
+              "C_equiv": 140
+            },
+            {
+              "gpm": 8,
+              "dw": 5.5,
+              "hw150": 5.14,
+              "hw140": 5.84,
+              "C_equiv": 145
+            }
+          ]
+        },
+        {
+          "pipe": "1/2 PEX",
+          "id": 0.475,
+          "byGpm": [
+            {
+              "gpm": 1,
+              "dw": 2.0,
+              "hw150": 1.59,
+              "C_equiv": 133
+            },
+            {
+              "gpm": 2,
+              "dw": 6.64,
+              "hw150": 5.75,
+              "C_equiv": 139
+            }
+          ]
+        },
+        {
+          "pipe": "swing pipe",
+          "id": 0.49,
+          "byGpm": [
+            {
+              "gpm": 1,
+              "dw": 1.72,
+              "hw150": 1.37,
+              "C_equiv": 132
+            },
+            {
+              "gpm": 2,
+              "dw": 5.73,
+              "hw150": 4.94,
+              "C_equiv": 138
+            },
+            {
+              "gpm": 4,
+              "dw": 19.3,
+              "hw150": 17.8,
+              "C_equiv": 144
+            }
+          ]
+        }
+      ],
+      "units": "psi per 100 ft",
+      "reading": "At residential lateral flows in 1/2-1 in smooth pipe (Re 5,000-30,000) Darcy-Weisbach behaves like H-W with C = 130-145, i.e. H-W C=150 under-predicts by ~5-25%, the gap largest at the lowest flows (where the absolute loss is smallest). The PE charts' C=140 lands near Darcy-Weisbach for 3/4-1 in at 4-8 gpm. Below Re ~4,000 (e.g. <1 gpm in 1 in pipe) flow is laminar/transitional and neither formula is reliable, but the loss there is negligible."
+    }
+  },
+  "insideDiameters": {
+    "note": "Two ID conventions are in circulation for OD-controlled pipe (PVC, steel): (a) the IA 2008 'average ID' = OD - 2 x average wall (average wall = minimum wall + half the wall tolerance), used by the Hunter handbook and Rain Bird's current (2021) charts; (b) OD - 2 x MINIMUM wall, used by Rain Bird's older (2018) Class 200 chart and Hunter's older charts (TAMU copy). (b) is ~0.02 in larger, which is ~11% less friction at 3/4 in. Use (a): it is the IA's and the newer charts'. ID-controlled pipe (PE SIDR) has the same nominal ID at every SIDR; copper and PEX are CTS.",
+    "pvc_sch40": {
+      "standard": "ASTM D1785",
+      "C": 150,
+      "sources": [
+        "hunter-handbook",
+        "rb-sch40-2021",
+        "tamu-hunter-charts"
+      ],
+      "status": "published",
+      "sizes": {
+        "1/2": {
+          "od": 0.84,
+          "minWall": 0.109,
+          "avgWall": 0.119,
+          "idAvg": 0.602,
+          "idOdMinus2MinWall": 0.622,
+          "pressurePsi": 600
+        },
+        "3/4": {
+          "od": 1.05,
+          "minWall": 0.113,
+          "avgWall": 0.123,
+          "idAvg": 0.804,
+          "idOdMinus2MinWall": 0.824,
+          "pressurePsi": 480
+        },
+        "1": {
+          "od": 1.315,
+          "minWall": 0.133,
+          "avgWall": 0.143,
+          "idAvg": 1.029,
+          "idOdMinus2MinWall": 1.049,
+          "pressurePsi": 450
+        },
+        "1-1/4": {
+          "od": 1.66,
+          "minWall": 0.14,
+          "avgWall": 0.15,
+          "idAvg": 1.36,
+          "idOdMinus2MinWall": 1.38,
+          "pressurePsi": 370
+        },
+        "1-1/2": {
+          "od": 1.9,
+          "minWall": 0.145,
+          "avgWall": 0.155,
+          "idAvg": 1.59,
+          "idOdMinus2MinWall": 1.61,
+          "pressurePsi": 330
+        }
+      },
+      "pressureNote": "pressurePsi: Hunter handbook rating at 73.4 F, rounded; not for threaded pipe."
+    },
+    "pvc_class200_sdr21": {
+      "standard": "ASTM D2241 SDR 21",
+      "C": 150,
+      "sources": [
+        "hunter-handbook",
+        "rb-class200-2018"
+      ],
+      "status": "published",
+      "sizes": {
+        "1/2": {
+          "note": "Class 200 is NOT made in 1/2 in (wall would be < 0.060 in min); charts substitute Class 315 (SDR 13.5)",
+          "od": 0.84,
+          "minWall": 0.062,
+          "idAvg": 0.696,
+          "idOdMinus2MinWall": 0.716
+        },
+        "3/4": {
+          "od": 1.05,
+          "minWall": 0.06,
+          "avgWall": 0.07,
+          "idAvg": 0.91,
+          "idOdMinus2MinWall": 0.93
+        },
+        "1": {
+          "od": 1.315,
+          "minWall": 0.063,
+          "avgWall": 0.073,
+          "idAvg": 1.169,
+          "idOdMinus2MinWall": 1.189
+        },
+        "1-1/4": {
+          "od": 1.66,
+          "minWall": 0.079,
+          "avgWall": 0.089,
+          "idAvg": 1.482,
+          "idOdMinus2MinWall": 1.502
+        },
+        "1-1/2": {
+          "od": 1.9,
+          "minWall": 0.09,
+          "avgWall": 0.1,
+          "idAvg": 1.7,
+          "idOdMinus2MinWall": 1.72
+        }
+      },
+      "pressurePsi": 200
+    },
+    "pvc_class160_sdr26": {
+      "standard": "ASTM D2241 SDR 26",
+      "C": 150,
+      "sources": [
+        "hunter-handbook",
+        "rb-class160-2021"
+      ],
+      "status": "published",
+      "sizes": {
+        "1/2": {
+          "note": "not made; Class 315 substituted (idAvg 0.696)",
+          "idAvg": 0.696
+        },
+        "3/4": {
+          "note": "not made (wall < 0.060); charts substitute Class 200",
+          "idAvg": 0.91,
+          "idOdMinus2MinWall": 0.93
+        },
+        "1": {
+          "od": 1.315,
+          "minWall": 0.06,
+          "avgWall": 0.07,
+          "idAvg": 1.175,
+          "idOdMinus2MinWall": 1.195
+        },
+        "1-1/4": {
+          "od": 1.66,
+          "minWall": 0.064,
+          "avgWall": 0.074,
+          "idAvg": 1.512,
+          "idOdMinus2MinWall": 1.532
+        },
+        "1-1/2": {
+          "od": 1.9,
+          "minWall": 0.073,
+          "avgWall": 0.083,
+          "idAvg": 1.734,
+          "idOdMinus2MinWall": 1.754
+        }
+      },
+      "pressurePsi": 160
+    },
+    "pe_sidr": {
+      "standard": "ASTM D2239 (ID-controlled), D2104 (Sch 40 PE)",
+      "C": 140,
+      "sources": [
+        "hunter-handbook",
+        "rb-pe",
+        "spears-insert"
+      ],
+      "status": "published",
+      "note": "ID-controlled: SIDR-15, -11.5, -9 and -7 share the SAME nominal ID; only the wall/OD changes. Rain Bird's chart is headed 'SDR 7, 9, 11.5, 15' with one ID row.",
+      "sizes": {
+        "1/2": {
+          "id": 0.622,
+          "tol": "+0.010/-0.010"
+        },
+        "3/4": {
+          "id": 0.824,
+          "tol": "+0.010/-0.015"
+        },
+        "1": {
+          "id": 1.049,
+          "tol": "+0.010/-0.020"
+        },
+        "1-1/4": {
+          "id": 1.38,
+          "tol": "+0.010/-0.020"
+        },
+        "1-1/2": {
+          "id": 1.61,
+          "tol": "+0.015/-0.020"
+        }
+      },
+      "pressureRating": {
+        "rule": "P = 2*HDS/(SIDR+1)",
+        "SIDR15": {
+          "PE2306_3306_HDS630": 79,
+          "PE3408_4710_HDS800": 100
+        },
+        "SIDR7": {
+          "PE3408_HDS800": 200
+        },
+        "note": "DERIVED: this is why 'SIDR-15' is sold as both 80 psi (older PE 2306/3306 compounds) and 100 psi (PE 3408/4710). D2239-12a(2020) dropped the 2306/3306/3408 designations.",
+        "status": "derived"
+      }
+    },
+    "pex_sdr9_cts": {
+      "standard": "ASTM F876/F877, SDR 9, copper tube size",
+      "C": 150,
+      "sources": [
+        "ppfa-pex"
+      ],
+      "status": "published",
+      "sizes": {
+        "1/2": {
+          "od": 0.625,
+          "avgWall": 0.075,
+          "id": 0.475
+        },
+        "3/4": {
+          "od": 0.875,
+          "avgWall": 0.102,
+          "id": 0.671
+        },
+        "1": {
+          "od": 1.125,
+          "avgWall": 0.13,
+          "id": 0.865,
+          "idFrictionTable": 0.863
+        },
+        "1-1/4": {
+          "od": 1.375,
+          "avgWall": 0.16,
+          "id": 1.055
+        },
+        "1-1/2": {
+          "od": 1.625,
+          "avgWall": 0.19,
+          "id": 1.245
+        }
+      },
+      "note": "IDs from PPFA Table 3.1 (average OD and average wall per ASTM F876); PPFA's own friction table uses 0.863 for 1 in."
+    },
+    "copper": {
+      "standard": "ASTM B88",
+      "C": 140,
+      "sources": [
+        "hunter-handbook"
+      ],
+      "status": "published",
+      "typeK": {
+        "1/2": 0.527,
+        "3/4": 0.745,
+        "1": 0.995,
+        "1-1/4": 1.245,
+        "1-1/2": 1.481
+      },
+      "typeL": {
+        "1/2": 0.545,
+        "3/4": 0.785,
+        "1": 1.025,
+        "1-1/4": 1.265,
+        "1-1/2": 1.505
+      },
+      "typeM": {
+        "1/2": 0.569,
+        "3/4": 0.811,
+        "1": 1.055,
+        "1-1/4": 1.291,
+        "1-1/2": 1.527
+      },
+      "od": {
+        "1/2": 0.625,
+        "3/4": 0.875,
+        "1": 1.125,
+        "1-1/4": 1.375,
+        "1-1/2": 1.625
+      }
+    },
+    "galvanized_sch40": {
+      "standard": "ASTM A53 / ASME B36.10 Schedule 40",
+      "C": 100,
+      "sources": [
+        "hunter-handbook",
+        "rb-steel",
+        "bcrl-nfpa13"
+      ],
+      "status": "published",
+      "sizes": {
+        "1/2": {
+          "od": 0.84,
+          "wall": 0.109,
+          "id": 0.622
+        },
+        "3/4": {
+          "od": 1.05,
+          "wall": 0.113,
+          "id": 0.824
+        },
+        "1": {
+          "od": 1.315,
+          "wall": 0.133,
+          "id": 1.049
+        },
+        "1-1/4": {
+          "od": 1.66,
+          "wall": 0.14,
+          "id": 1.38
+        },
+        "1-1/2": {
+          "od": 1.9,
+          "wall": 0.145,
+          "id": 1.61
+        }
+      },
+      "note": "New-pipe ID. Old galvanized loses bore to tuberculation/scale; no published residential shrinkage figure was found."
+    },
+    "swingPipe_funnyPipe": {
+      "sources": [
+        "rb-spx",
+        "rb-sa",
+        "hunter-hsbe",
+        "hunter-sj",
+        "toro-sfp"
+      ],
+      "status": "published",
+      "values": [
+        {
+          "maker": "Rain Bird SPX / SPX-FLEX",
+          "id": 0.487,
+          "note": "spec text 'nominal inside diameter of 0.487 in', headline 0.49 in; wall 0.098 in; LLDPE; 80 psi; '8 gpm maximum'"
+        },
+        {
+          "maker": "Rain Bird SA swing assemblies",
+          "id": 0.49,
+          "note": "wall 0.090 in; 80 psi; max 8 gpm"
+        },
+        {
+          "maker": "Hunter FLEXsg / SJ",
+          "id": 0.49,
+          "note": "FLEXsg 'Meets ASTM D2104, D2239, D2737'; SJ 150 psi"
+        },
+        {
+          "maker": "Toro Super Funny Pipe",
+          "id": 0.49,
+          "tol": "+/-0.005",
+          "note": "OD 0.70, wall 0.10, 120 psi; Toro sells it as '3/8 in'"
+        }
+      ],
+      "note": "Swing pipe is NOT SIDR pipe: 0.49 in ID vs 0.622 for 1/2 in SIDR."
+    }
+  },
+  "fittings": {
+    "pvc_solventWeld_equivalentFt": {
+      "spears": {
+        "what": "'Average Friction Loss for PVC and CPVC Fittings in Equivalent Feet of Straight Run Pipe' (Spears; Sch 40 basis)",
+        "sources": [
+          "spears-friction"
+        ],
+        "status": "published",
+        "teeRun": {
+          "1/2": 1.0,
+          "3/4": 1.4,
+          "1": 1.7,
+          "1-1/4": 2.3,
+          "1-1/2": 2.7
+        },
+        "teeBranch": {
+          "1/2": 3.8,
+          "3/4": 4.9,
+          "1": 6.0,
+          "1-1/4": 7.3,
+          "1-1/2": 8.4
+        },
+        "ell90": {
+          "1/2": 1.5,
+          "3/4": 2.0,
+          "1": 2.5,
+          "1-1/4": 3.8,
+          "1-1/2": 4.0
+        },
+        "ell45": {
+          "1/2": 0.8,
+          "3/4": 1.1,
+          "1": 1.4,
+          "1-1/4": 1.8,
+          "1-1/2": 2.1
+        }
+      },
+      "engineeringToolbox": {
+        "what": "PVC/CPVC equivalent lengths (no schedule stated)",
+        "sources": [
+          "etb-pvc-fittings"
+        ],
+        "status": "secondary",
+        "ell90": {
+          "1/2": 1.6,
+          "3/4": 2.1,
+          "1": 2.6,
+          "1-1/4": 3.5,
+          "1-1/2": 4.0
+        },
+        "ell45": {
+          "1/2": 0.8,
+          "3/4": 1.1,
+          "1": 1.4,
+          "1-1/4": 1.8,
+          "1-1/2": 2.2
+        },
+        "teeRun": {
+          "1/2": 1.0,
+          "3/4": 1.4,
+          "1": 1.7,
+          "1-1/4": 2.3,
+          "1-1/2": 2.7
+        },
+        "teeBranch": {
+          "1/2": 3.1,
+          "3/4": 4.1,
+          "1": 5.3,
+          "1-1/4": 6.9,
+          "1-1/2": 8.1
+        },
+        "maleFemaleAdapter": {
+          "1/2": 1.0,
+          "3/4": 1.5,
+          "1": 2.0,
+          "1-1/4": 2.8,
+          "1-1/2": 3.5
+        }
+      },
+      "hunterHandbook_plasticIPSorCopper": {
+        "what": "'Table of approximate pressure losses for pipe fittings', 'Plastic IPS or Copper' rows; Hunter: use 'only when the manufacturer's recommended pressure loss values are not available'",
+        "sources": [
+          "hunter-handbook"
+        ],
+        "status": "published",
+        "coupling": {
+          "1/2": 1.5,
+          "3/4": 2.5,
+          "1": 3.0,
+          "1-1/4": 3.0,
+          "1-1/2": 4.0
+        },
+        "teeRun": {
+          "1/2": 2.5,
+          "3/4": 3.0,
+          "1": 4.0,
+          "1-1/4": 5.0,
+          "1-1/2": 6.0
+        },
+        "teeSideOutlet": {
+          "1/2": 7.0,
+          "3/4": 9.0,
+          "1": 12.0,
+          "1-1/4": 15.0,
+          "1-1/2": 18.0
+        },
+        "teeRunReduced": {
+          "1/2": 3.5,
+          "3/4": 4.5,
+          "1": 6.0,
+          "1-1/4": 8.0,
+          "1-1/2": 9.0
+        },
+        "ell90": {
+          "1/2": 3.5,
+          "3/4": 4.5,
+          "1": 6.0,
+          "1-1/4": 8.0,
+          "1-1/2": 9.0
+        },
+        "ell45": {
+          "1/2": 1.5,
+          "3/4": 2.0,
+          "1": 3.0,
+          "1-1/4": 3.5,
+          "1-1/2": 4.0,
+          "note": "the PDF's text layer reads 'Elbow, 34 deg' (typo or glyph error); taken as 45 deg, matching the steel table's row order"
+        }
+      },
+      "hunterOlderChart_standardSteelPipe": {
+        "what": "Hunter friction-loss charts (TAMU copy): 'Equivalent Length in Feet of Standard Steel Pipe'",
+        "sources": [
+          "tamu-hunter-charts"
+        ],
+        "status": "published",
+        "teeSide": {
+          "1/2": 4,
+          "3/4": 5,
+          "1": 6,
+          "1-1/4": 8,
+          "1-1/2": 10
+        },
+        "teeRun": {
+          "1/2": 1,
+          "3/4": 2,
+          "1": 2,
+          "1-1/4": 3,
+          "1-1/2": 3
+        },
+        "ell90": {
+          "1/2": 2,
+          "3/4": 3,
+          "1": 3,
+          "1-1/4": 4,
+          "1-1/2": 5
+        },
+        "ell45": {
+          "1/2": 1,
+          "3/4": 1,
+          "1": 2,
+          "1-1/4": 2,
+          "1-1/2": 2
+        }
+      },
+      "disagreement": "Hunter's 2019 handbook 'Plastic IPS' values are ~2x Spears/Engineering ToolBox (3/4 in 90 ell 4.5 ft vs 2.0 ft; branch 9.0 vs 4.9). Spears is a PVC fitting maker; Hunter's table is generic. No source gives a coupling for PVC other than Hunter (1.5-4 ft); a solvent-weld coupling has a socket the size of the pipe OD and adds only a small step, so Hunter's coupling value is probably conservative (speculation).",
+      "male_adapter": "Only Engineering ToolBox lists a male/female adapter (1.0 / 1.5 / 2.0 ft at 1/2 / 3/4 / 1 in). Note the thread end of an MPT adapter is a smaller bore than the pipe."
+    },
+    "kValues_turbulent": {
+      "sources": [
+        "neutrium-k",
+        "neutrium-2k"
+      ],
+      "status": "published",
+      "fixedK": {
+        "ell90_standard": 0.75,
+        "ell90_longRadius": 0.45,
+        "ell45_standard": 0.35,
+        "ell45_longRadius": 0.2,
+        "teeRun_branchBlanked": 0.4,
+        "teeBranch": 1.0
+      },
+      "twoK_Hooper": {
+        "ell90_threaded_standard": {
+          "K1": 800,
+          "Kinf": 0.4
+        },
+        "ell90_longRadius": {
+          "K1": 800,
+          "Kinf": 0.2
+        },
+        "ell45_standard": {
+          "K1": 500,
+          "Kinf": 0.2
+        },
+        "tee_asElbow_threaded": {
+          "K1": 500,
+          "Kinf": 0.7
+        },
+        "tee_runThrough_threaded": {
+          "K1": 200,
+          "Kinf": 0.1
+        },
+        "formula": "K = K1/Re + Kinf*(1 + 1/D_in)"
+      },
+      "derivedExample": "3/4 in at Re 12,000: 90 ell K = 800/12000 + 0.4*(1+1/0.93) = 0.90; tee branch K = 1.49 -- consistent with Spears' 2.0 ft and 4.9 ft at f ~0.03 (K = f*Le/D = 0.77 and 1.9)."
+    },
+    "insert_barbed_pe": {
+      "boreStandard": {
+        "what": "ASTM D2609 plastic insert fittings for PE pipe: MINIMUM inside diameter 'D' of the insert",
+        "sources": [
+          "spears-insert",
+          "boshart-insert"
+        ],
+        "status": "published",
+        "minBore": {
+          "1/2": 0.406,
+          "3/4": 0.562,
+          "1": 0.75,
+          "1-1/4": 0.995,
+          "1-1/2": 1.125
+        },
+        "barbOD": {
+          "1/2": [
+            0.635,
+            0.665
+          ],
+          "3/4": [
+            0.835,
+            0.865
+          ],
+          "1": [
+            1.065,
+            1.095
+          ]
+        },
+        "insertLengthMin": {
+          "1/2": 1.25,
+          "3/4": 1.25,
+          "1": 1.25
+        },
+        "spearsTwistLockCouplingMinBore": {
+          "1/2": 0.46,
+          "3/4": 0.6,
+          "1": 0.775
+        },
+        "note": "These are MINIMUM bores; a given maker's fitting may be larger. Area ratio to SIDR pipe at the minimum bore: 1/2 0.43, 3/4 0.47, 1 0.51."
+      },
+      "measuredLoss": {
+        "found": "No maker publishes a loss for barbed PE insert tees/ells/couplings. Nearest measurement: Bombardelli et al. 2019 (micro-irrigation connectors on 13 and 16 mm laterals) measured K_L from 2.72 to 24.16 (on lateral velocity), constant above Re 10,000, flow exponent ~2; the smallest K (2.72) was the near-coaxial union connector, the largest the one with a 1.56 diameter-ratio expansion.",
+        "sources": [
+          "bombardelli-2019"
+        ],
+        "status": "published"
+      },
+      "derived": {
+        "status": "derived",
+        "method": "Sharp contraction into the D2609 minimum bore + sudden expansion out of it (both on bore velocity) + a turn loss at bore velocity (tee run 0.4, ell 0.75, tee branch 1.0) + Darcy friction over 3 in of bore; referred to pipe velocity by 1/beta^4. Water 60 F, smooth.",
+        "K_pipeVelocity": {
+          "1/2": {
+            "coupling": 3.4,
+            "teeRun": 5.6,
+            "ell90": 7.5,
+            "teeBranch": 8.9
+          },
+          "3/4": {
+            "coupling": 2.6,
+            "teeRun": 4.4,
+            "ell90": 6.0,
+            "teeBranch": 7.2
+          },
+          "1": {
+            "coupling": 1.85,
+            "teeRun": 3.4,
+            "ell90": 4.7,
+            "teeBranch": 5.7
+          }
+        },
+        "psiAtGpm": {
+          "1/2": {
+            "coupling": {
+              "1": 0.04,
+              "2": 0.14,
+              "4": 0.53,
+              "6": 1.16
+            },
+            "ell90": {
+              "1": 0.07,
+              "2": 0.26,
+              "4": 1.02,
+              "6": 2.28
+            },
+            "teeBranch": {
+              "1": 0.08,
+              "2": 0.3,
+              "4": 1.19,
+              "6": 2.65
+            }
+          },
+          "3/4": {
+            "coupling": {
+              "2": 0.03,
+              "4": 0.13,
+              "6": 0.28,
+              "8": 0.49
+            },
+            "ell90": {
+              "2": 0.07,
+              "4": 0.26,
+              "6": 0.58,
+              "8": 1.03
+            },
+            "teeBranch": {
+              "2": 0.08,
+              "4": 0.31,
+              "6": 0.68,
+              "8": 1.21
+            }
+          },
+          "1": {
+            "coupling": {
+              "4": 0.03,
+              "6": 0.08,
+              "8": 0.13
+            },
+            "ell90": {
+              "4": 0.08,
+              "6": 0.17,
+              "8": 0.3
+            },
+            "teeBranch": {
+              "4": 0.09,
+              "6": 0.2,
+              "8": 0.36
+            }
+          }
+        },
+        "equivalentFtOfSamePE": {
+          "coupling": "5-10 ft",
+          "teeRun": "8-15 ft",
+          "ell90": "10-19 ft",
+          "teeBranch": "12-22 ft",
+          "note": "range over 1-8 gpm; grows with flow because K is fixed while f falls"
+        },
+        "crossCheck": "Same order as PPFA's MEASURED PEX insert-fitting equivalents (1/2 in: elbow 9.4 ft, tee branch 10.4, tee run 2.4, coupling 2.0) and Bombardelli's K >= 2.7 for small barbed couplings; roughly 3x the solvent-weld PVC values. Couplings come out higher than PPFA's (crimp PEX couplings have a larger relative bore).",
+        "caveat": "Uses the D2609 MINIMUM bore; a real fitting with a larger bore loses much less (loss ~ 1/bore^4)."
+      }
+    },
+    "pex_insert_equivalentFt": {
+      "what": "PPFA/NAHB design guide, 'Consult manufacturer for other fitting friction losses'",
+      "sources": [
+        "ppfa-pex"
+      ],
+      "status": "published",
+      "coupling": {
+        "3/8": 2.9,
+        "1/2": 2.0,
+        "3/4": 0.6,
+        "1": 1.3
+      },
+      "ell90": {
+        "3/8": 9.2,
+        "1/2": 9.4,
+        "3/4": 9.4,
+        "1": 10.0
+      },
+      "teeBranch": {
+        "3/8": 9.4,
+        "1/2": 10.4,
+        "3/4": 8.9,
+        "1": 11.0
+      },
+      "teeRun": {
+        "3/8": 2.9,
+        "1/2": 2.4,
+        "3/4": 1.9,
+        "1": 2.3
+      },
+      "note": "'Long-radius tubing bends have the same head loss as straight tubing.'"
+    },
+    "copper_equivalentFt": {
+      "what": "Wrought copper (equivalent ft of straight tube)",
+      "sources": [
+        "hunter-handbook",
+        "tamu-hunter-charts"
+      ],
+      "status": "published",
+      "ell90": {
+        "1/2": 0.5,
+        "3/4": 1,
+        "1": 1,
+        "1-1/4": 2,
+        "1-1/2": 2
+      },
+      "ell45": {
+        "1/2": 0.5,
+        "3/4": 0.5,
+        "1": 1,
+        "1-1/4": 1,
+        "1-1/2": 2
+      },
+      "teeRun": {
+        "1/2": 0.5,
+        "3/4": 0.5,
+        "1": 0.5,
+        "1-1/4": 0.5,
+        "1-1/2": 1
+      },
+      "teeSide": {
+        "1/2": 1,
+        "3/4": 2,
+        "1": 3,
+        "1-1/4": 4,
+        "1-1/2": 5
+      }
+    },
+    "steel_threaded_equivalentFt": {
+      "what": "Hunter handbook 'Steel Fitting Type'",
+      "sources": [
+        "hunter-handbook"
+      ],
+      "status": "published",
+      "coupling": {
+        "1/2": 0.6,
+        "3/4": 0.8,
+        "1": 1.0,
+        "1-1/4": 1.2,
+        "1-1/2": 1.5
+      },
+      "teeRun": {
+        "1/2": 1.0,
+        "3/4": 1.0,
+        "1": 1.5,
+        "1-1/4": 2.0,
+        "1-1/2": 2.0
+      },
+      "teeSide": {
+        "1/2": 3.0,
+        "3/4": 4.5,
+        "1": 5.0,
+        "1-1/4": 7.0,
+        "1-1/2": 9.0
+      },
+      "ell90": {
+        "1/2": 1.5,
+        "3/4": 2.5,
+        "1": 3.0,
+        "1-1/4": 4.0,
+        "1-1/2": 5.0
+      },
+      "ell45": {
+        "1/2": 0.75,
+        "3/4": 1.0,
+        "1": 1.3,
+        "1-1/4": 1.7,
+        "1-1/2": 2.0
+      }
+    },
+    "designerPractice": {
+      "values": [
+        {
+          "rule": "fittings = 10% of the PIPE FRICTION LOSS",
+          "where": "Hunter handbook worked example: '0.28 PSI friction loss in fittings (estimate, 10% of friction loss in pipe)'",
+          "sources": [
+            "hunter-handbook"
+          ],
+          "status": "published"
+        },
+        {
+          "rule": "10%, 15% and up to 25% of mainline losses, or 30-50 pipe diameters of equivalent pipe",
+          "where": "CIGR Journal 2022, describing industry practice (agricultural)",
+          "sources": [
+            "cigr-2022"
+          ],
+          "status": "practice"
+        },
+        {
+          "rule": "allow 10-20% pressure variation along a lateral (Hunter recommends 10%)",
+          "where": "Hunter friction-factor method",
+          "sources": [
+            "hunter-handbook",
+            "tamu-hunter-charts"
+          ],
+          "status": "published"
+        }
+      ],
+      "notFound": "A rule stated as '10-20% of pipe LENGTH' was not found in a maker's guide; Hunter's is 10% of the pipe's friction LOSS (equivalent for straight runs). With insert fittings every few feet (barbed tees at each head on poly), 10% is far too low: one 3/4 in barbed tee branch is ~15-20 ft of pipe (derived above)."
+    }
+  },
+  "swingJoints": {
+    "hunter_SJ": {
+      "what": "Hunter SJ Swing Joint (LIT-117 BR US 3/22): 0.49 in ID LDPE tubing, swivel ells both ends, 6 in or 12 in links, 1/2 or 3/4 in threads. ONE 'Swing joint friction loss' curve, not labelled by length or thread size.",
+      "psiAtGpm_readFromChart": [
+        {
+          "gpm": 1,
+          "psi": 0.82
+        },
+        {
+          "gpm": 2,
+          "psi": 1.74
+        },
+        {
+          "gpm": 3,
+          "psi": 2.79
+        },
+        {
+          "gpm": 4,
+          "psi": 3.95
+        },
+        {
+          "gpm": 5,
+          "psi": 5.25
+        },
+        {
+          "gpm": 6,
+          "psi": 6.75
+        },
+        {
+          "gpm": 7,
+          "psi": 8.43
+        },
+        {
+          "gpm": 8,
+          "psi": 10.4
+        },
+        {
+          "gpm": 9,
+          "psi": 12.8
+        },
+        {
+          "gpm": 10,
+          "psi": 16.0
+        }
+      ],
+      "readNote": "Read by pixel-tracing the curve (+/- 0.15 psi). The curve's shape is odd for hydraulics: nearly linear below 4 gpm (loss ~ Q^1.1) and ~Q^1.6 above, where a fitting loss should go as ~Q^2 throughout. It may be a schematic drawing; use with doubt.",
+      "sources": [
+        "hunter-sj"
+      ],
+      "status": "published"
+    },
+    "rainbird_SA": {
+      "what": "Rain Bird SA Series swing assemblies (6, 12, 18 in; 1/2 and 3/4 in; 0.490 in ID tubing): 'Pressure loss at 6 gpm (0.38 l/sec) is 2.0 psi'; 'Maximum flow is 8 gpm'. One figure for all lengths.",
+      "psiAtGpm": [
+        {
+          "gpm": 6,
+          "psi": 2.0
+        }
+      ],
+      "sources": [
+        "rb-sa"
+      ],
+      "status": "published",
+      "scaledByQsquared": {
+        "status": "derived",
+        "rows": [
+          {
+            "gpm": 0.5,
+            "psi": 0.01
+          },
+          {
+            "gpm": 1,
+            "psi": 0.06
+          },
+          {
+            "gpm": 2,
+            "psi": 0.22
+          },
+          {
+            "gpm": 3,
+            "psi": 0.5
+          },
+          {
+            "gpm": 4,
+            "psi": 0.89
+          },
+          {
+            "gpm": 5,
+            "psi": 1.39
+          },
+          {
+            "gpm": 6,
+            "psi": 2.0
+          },
+          {
+            "gpm": 7,
+            "psi": 2.72
+          },
+          {
+            "gpm": 8,
+            "psi": 3.56
+          }
+        ],
+        "note": "scaled from the single published point as K*Q^2; the pipe part goes as Q^1.75-1.85, so low-flow values are slightly low."
+      }
+    },
+    "rainbird_SPX_SB": {
+      "what": "Rain Bird SPX-FLEX swing pipe (0.487 in nominal ID) and SB spiral-barb fittings (SBE-050, SBE-075, SB-TEE, SB-CPLG): 80 psi, 8 gpm max. NO pressure-loss figure published.",
+      "sources": [
+        "rb-spx"
+      ],
+      "status": "published"
+    },
+    "hunter_HSBE_FLEXsg": {
+      "what": "Hunter HSBE-050/-075 spiral barb elbows and FLEXsg tubing (0.49 in ID), 80 psi. NO pressure-loss figure published.",
+      "sources": [
+        "hunter-hsbe"
+      ],
+      "status": "published"
+    },
+    "toro_superFunnyPipe": {
+      "what": "Toro Super Funny Pipe friction loss, psi PER FOOT of pipe (no fittings)",
+      "psiPerFt": [
+        {
+          "gpm": 1,
+          "psi": 0.01
+        },
+        {
+          "gpm": 2,
+          "psi": 0.02
+        },
+        {
+          "gpm": 3,
+          "psi": 0.06
+        },
+        {
+          "gpm": 4,
+          "psi": 0.09
+        },
+        {
+          "gpm": 5,
+          "psi": 0.15
+        },
+        {
+          "gpm": 6,
+          "psi": 0.21
+        },
+        {
+          "gpm": 7,
+          "psi": 0.27
+        }
+      ],
+      "disagreement": "These are about HALF of H-W C=150 on a 0.49 in bore (2 gpm: 0.05 psi/ft computed vs 0.02 printed; 6 gpm: 0.38 vs 0.21). Toro's numbers would need a 0.55-0.59 in bore (or C ~ 200) to come out of H-W. Treat Toro's table as optimistic; use H-W/D-W on 0.49 in.",
+      "sources": [
+        "toro-sfp"
+      ],
+      "status": "published"
+    },
+    "rainbird_TSJ_rigidPVC": {
+      "what": "Rain Bird TSJ turf swing joints (rigid PVC, swept elbows, 12 in), the three/four-elbow rotor style",
+      "points": [
+        {
+          "size": "3/4 in (TSJ-12075)",
+          "gpm": 6,
+          "psi": 0.3
+        },
+        {
+          "size": "1 in (TSJ-12)",
+          "gpm": 18,
+          "psi": 1.5
+        },
+        {
+          "size": "1 in (TSJ-12)",
+          "gpm": 23,
+          "psi": 2.5
+        }
+      ],
+      "note": "Rain Bird markets the swept elbows as lower-loss than competitors' sharp-cornered joints, so a field-built joint of standard street ells will lose more. TSJ-PRS (1 in) regulates to 70 psi and is 'not recommended' where lateral pressure is at or below the regulation pressure.",
+      "sources": [
+        "rb-tsj"
+      ],
+      "status": "published"
+    },
+    "comparisonAt6gpm": "Rain Bird SA (flexible, 0.49 in) 2.0 psi; Hunter SJ (flexible, 0.49 in, swivel ells) ~6.7 psi; Rain Bird TSJ 3/4 in rigid 0.3 psi. The two flexible assemblies differ by ~3x for nominally the same thing: the barb/swivel fitting bores (not published by anyone) dominate, not the tubing (12 in of 0.49 in tube at 6 gpm is ~0.4 psi).",
+    "designerPractice": [
+      {
+        "rule": "'we figure 2.0 lbs. of pressure loss for these Funny Pipe swing joints' on sprays; never on rotors ('0.5 to 4.0 GPM through a 5/16 in hole... the barbed fittings are even smaller with a 1/4 in hole')",
+        "sources": [
+          "landfx-forum"
+        ],
+        "status": "practice",
+        "note": "forum post (2017) quoted through a search snippet; landfx.com refused the fetch. The 5/16 in figure for the tube conflicts with the makers' 0.49 in ID; the 1/4 in barb bore is unverified."
+      },
+      {
+        "rule": "1 in swing joint at ~11 gpm ~2.5 psi; typical 4 in pop-up rotor body ~5 psi, 6 in ~6 psi",
+        "sources": [
+          "landfx-forum"
+        ],
+        "status": "practice"
+      },
+      {
+        "rule": "designers 'would use a number of 1 or 2 psi for the swing-joint friction loss'",
+        "sources": [
+          "msu-golf-2013"
+        ],
+        "status": "practice",
+        "note": "golf-course article; quoted via search snippet"
+      }
+    ],
+    "threeElbowPVC_fieldBuilt": {
+      "status": "derived",
+      "note": "No maker chart. From Spears equivalents a 1/2 in Sch 40 joint of 3 x 90 ells (+ ~1 ft nipple) is ~5.5 ft of 1/2 in Sch 40: at 2 gpm ~0.10 psi, 4 gpm ~0.36, 6 gpm ~0.76 (H-W 150, ID 0.602). Threaded street ells have a smaller bore than solvent ells, so treat as a floor; 3/4 in ~4x less."
+    }
+  },
+  "sprinklerBodies": {
+    "whereChartPressureIsQuoted": [
+      {
+        "maker": "Toro",
+        "finding": "'All performance specifications are based on the stated working pressure available at the base of the sprinkler.' (Toro spec catalog pages for Mini 8, 300 Series and 640; the same sentence is on Toro's MPR Plus spray-nozzle sheet, which fits the 570Z.)",
+        "reference": "base/inlet",
+        "sources": [
+          "toro-spec-catalog"
+        ],
+        "status": "published"
+      },
+      {
+        "maker": "Rain Bird 5000 rotor",
+        "finding": "Charts say only 'Performance data derived from tests that conform with ASAE Standards; ASAE S398.1' and zero wind. But the same document's 'Flow Rate v Inlet Pressure' graph (no PRS) matches the table within ~2.5% (8.0 RC: table 5.90/7.06/8.03 gpm at 25/35/45 psi; graph ~5.7/6.85/7.83 at that INLET pressure), so the table pressure behaves as inlet (base) pressure.",
+        "reference": "inlet (inferred)",
+        "sources": [
+          "rb-5000-chart"
+        ],
+        "status": "derived"
+      },
+      {
+        "maker": "Rain Bird 1800 sprays",
+        "finding": "No statement found on where the nozzle-chart pressure is taken. PRS spec language speaks of regulating 'the nozzle pressure'.",
+        "reference": "not stated",
+        "sources": [
+          "rb-1800-ts"
+        ],
+        "status": "published"
+      },
+      {
+        "maker": "Hunter Pro-Spray / PGP Ultra / I-20",
+        "finding": "Charts label the column 'Pressure PSI' with no measurement point. For the PRB (regulated) rotor Hunter writes 'Nozzle discharge pressure: 45 PSI', i.e. the charts' 45 psi row is the nozzle pressure for a PRB.",
+        "reference": "not stated (nozzle for PRB)",
+        "sources": [
+          "hunter-prb",
+          "hunter-pro-spray"
+        ],
+        "status": "published"
+      },
+      {
+        "maker": "Textbook",
+        "finding": "LibreTexts defines P in q = 29.82 Cd D^2 sqrt(P) as 'pressure of the water at the inlet to the sprinkler device'.",
+        "reference": "inlet",
+        "sources": [
+          "libretexts-sprinklers"
+        ],
+        "status": "published"
+      }
+    ],
+    "summary": "Where stated (Toro) or inferable (Rain Bird 5000) the chart pressure is at the BASE/inlet of the head, so the body's internal loss is already inside the chart and must NOT be subtracted again. ASAE S398.1 / ISO 15886-3 set the actual tap location; their text was not accessible (ISO 15886-3:2021 notes it 'revised the pressure measurement method for pop-up sprinklers').",
+    "bodyInletLoss": {
+      "found": "No maker publishes a separate body/inlet loss for 1800, Pro-Spray, 570Z, 5000 or PGP. The only numbers are designers' allowances (4 in rotor ~5 psi, 6 in ~6 psi; landfx forum, practice) -- which double-count if the charts are at the base.",
+      "status": "practice",
+      "sources": [
+        "landfx-forum"
+      ]
+    },
+    "pressureRegulatingStems": {
+      "rainbird_1800_PRS": {
+        "setPsi": 30,
+        "spec": "'The device shall regulate the nozzle pressure to 30 psi for inlet pressures from 35 to 70 psi. Below 35 psi the pressure loss shall not exceed 6 psi.' Product text: 'Regulates nozzle pressure to an average 30 psi with inlet pressures of up to 70 psi'; operating range 15-70 psi.",
+        "minInletToRegulate": 35,
+        "belowSetPoint": "pass-through, loss <= 6 psi (a ceiling, not a curve)",
+        "sources": [
+          "rb-1800-ts"
+        ],
+        "status": "published"
+      },
+      "rainbird_1800_P45": {
+        "setPsi": 45,
+        "spec": "'regulate the nozzle pressure to 45 psi for inlet pressures from 50 to 70 psi. Below 50 psi the pressure loss shall not exceed 6 psi.'",
+        "minInletToRegulate": 50,
+        "belowSetPoint": "pass-through, loss <= 6 psi",
+        "sources": [
+          "rb-1800-ts"
+        ],
+        "status": "published"
+      },
+      "rainbird_5000_PRS": {
+        "setPsi": 45,
+        "chart": "PRS table rows at 25/35/45 psi INLET are IDENTICAL to the non-PRS table (no pass-through loss assumed); the 55-75 psi band gives flows ~3.5% above the 45 psi row (8.0 RC 8.31 vs 8.03 gpm), i.e. a regulated nozzle pressure ~48 psi.",
+        "graphReading": {
+          "status": "derived",
+          "note": "Same document, 'Flow Rate v Inlet Pressure' graph, read by pixel tracing (+/- 1 psi). 8.0 RC: PRS flow below no-PRS by 9% at 20 psi, 8% at 30-45 psi -> equivalent pass-through loss ~3.6 psi at 4.5 gpm, ~4.8 at 5.8 gpm, ~5.7 at 6.8 gpm, ~6.3 at 7.3 gpm; regulation plateau (8.18 gpm) reached at ~55-60 psi inlet. 5.0 RC: curves coincide up to ~32 psi (no measurable loss at ~4 gpm), then ~2-4 psi in the 35-45 psi band as the regulator begins to close; plateau 5.0 gpm from ~52 psi."
+        },
+        "disagreement": "The 5000's own table (no loss below set point) and its own graph (3-6 psi loss) disagree. Rain Bird's 1800 spec (<= 6 psi) brackets both.",
+        "sources": [
+          "rb-5000-chart"
+        ],
+        "status": "published"
+      },
+      "hunter_ProSpray_PRS30_PRS40": {
+        "setPsi": [
+          30,
+          40
+        ],
+        "spec": "'Pressure-regulated to 30 PSI' / 'to 40 PSI'; 'Operational pressure range: 15 to 100 PSI'; catalog note: 'built-in pressure regulator controls output to a maximum of 30 PSI'.",
+        "minInletToRegulate": null,
+        "belowSetPoint": "not published ('maximum of 30 PSI' implies pass-through below)",
+        "sources": [
+          "hunter-prs30",
+          "hunter-prs40",
+          "hunter-catalog"
+        ],
+        "status": "published"
+      },
+      "hunter_PRB_rotor": {
+        "setPsi": 45,
+        "spec": "'Pressure-regulated body (45 PSI)... (requires dynamic pressure differential: 15 PSI)'; 'Nozzle discharge pressure: 45 PSI'; 'Operating pressure range: 60 to 100 PSI' (2023 catalog); the web page says inlet '50-100 PSI'.",
+        "minInletToRegulate": 60,
+        "disagreement": "50 vs 60 psi minimum inlet in two Hunter documents; the stated 15 psi differential implies 60.",
+        "sources": [
+          "hunter-prb",
+          "hunter-catalog"
+        ],
+        "status": "published"
+      },
+      "toro_570Z_PR": {
+        "setPsi": 30,
+        "spec": "'In-stem... built-in pressure regulator... provides steady 30 PSI outlet pressure'; body operating range 20-75 psi (15-75 for LP models).",
+        "minInletToRegulate": null,
+        "belowSetPoint": "not published",
+        "sources": [
+          "toro-spec-catalog",
+          "toro-570z"
+        ],
+        "status": "published"
+      },
+      "inlineRegulatorRule": {
+        "rule": "Hunter's inline regulators (PMR/ACZ): 'will maintain the predetermined operating pressure, provided that the inlet pressure is at least 5 PSI above the expected outlet pressure'.",
+        "sources": [
+          "hunter-catalog"
+        ],
+        "status": "published"
+      },
+      "modelSuggestion": {
+        "status": "speculation",
+        "rule": "Below (set + ~5 psi for in-stem spray PRS; set + 15 psi for Hunter PRB rotors) treat the stem as pass-through: P_nozzle = P_inlet - dp, with dp ~ K*Q^2 bounded by Rain Bird's 6 psi spec; at spray flows (<= 4 gpm) the 5000 graph suggests dp of 0-3 psi. Above it, P_nozzle = set (Rain Bird 5000 data suggest ~set + 3 psi)."
+      }
+    },
+    "checkValves": {
+      "note": "SAM / CV drain-check options hold back 10-14 ft of head (Rain Bird SAM '14 feet... 6 psi'; Hunter CV 10 or 14 ft). They must be cracked open, an added opening pressure of ~4-6 psi; no flowing-loss figure is published.",
+      "sources": [
+        "rb-1800-ts",
+        "hunter-prs30"
+      ],
+      "status": "published"
+    }
+  },
+  "nozzleFlowVsPressure": {
+    "law": "q = k * P^x with x = 0.5 for an orifice (turbulent jet). Sprinkler nozzles are treated as orifices in the textbooks and network software ('for nozzles and sprinkler heads the exponent on pressure is 0.5', Bentley WaterCAD); pressure-compensating devices have x near 0, laminar emitters near 1.",
+    "sources": [
+      "libretexts-sprinklers",
+      "bentley-emitter"
+    ],
+    "status": "published",
+    "fittedToThisCatalogue": {
+      "status": "derived",
+      "method": "log-log least-squares slope of gpm vs psi for every nozzle with >= 3 charted pressures in water/lib/heads/*.json (2026-10-20); pressure-compensating families (Toro PSN/PCD, MPR Plus -PC) and the Rain Bird 5000 PRS inlet-indexed chart excluded.",
+      "byKind": {
+        "rotor": {
+          "n": 189,
+          "median": 0.531,
+          "iqr": [
+            0.506,
+            0.549
+          ],
+          "p10p90": [
+            0.458,
+            0.59
+          ]
+        },
+        "spray": {
+          "n": 175,
+          "median": 0.519,
+          "iqr": [
+            0.49,
+            0.555
+          ],
+          "p10p90": [
+            0.447,
+            0.641
+          ]
+        },
+        "rotaryMultiStream": {
+          "n": 48,
+          "median": 0.563,
+          "iqr": [
+            0.497,
+            0.635
+          ],
+          "p10p90": [
+            0.442,
+            0.689
+          ]
+        },
+        "impact": {
+          "n": 7,
+          "median": 0.483
+        }
+      },
+      "examples": "Rain Bird 5000 8.0 RC 25 -> 45 psi: x = 0.52; Rain Bird U-Series 0.50, MPR 0.50, HE-VAN 0.50; Hunter Pro fixed 0.53, MP Rotator 0.51, MP800 0.64; Toro PSN (pressure-compensating) 0.18; Rain Bird 5000 PRS by inlet 0.32.",
+      "reading": "Charts are consistent with x = 0.5 to within rounding for sprays and rotors (median 0.52-0.53). The slight excess over 0.5 is what a base-referenced chart with a small internal loss (~Q^2) would produce. Use x = 0.5 to extrapolate; use the family's own fitted x if it differs by > 0.05."
+    },
+    "validity": {
+      "inside": "Within the chart's printed pressure range the law is good to a few percent.",
+      "outside": "Not for pressure-compensating nozzles (x 0-0.35) or any PRS body above its set point (flow flat). Below the chart's lowest row the stream breaks up/radius collapses and the body may not pop up or seal (Rain Bird 1800 flow-by is 0 only at >= 8 psi; makers' minimum operating pressures 15-25 psi), so flow extrapolated below ~15 psi is unreliable. Above the top row misting changes radius, not flow; flow still follows x ~ 0.5 up to the body's maximum (70-100 psi). Keep extrapolation to about +/-20% beyond the chart's rows (speculation).",
+      "sources": [
+        "rb-1800-ts",
+        "hunter-prs30",
+        "toro-spec-catalog"
+      ],
+      "status": "practice"
+    },
+    "minorLossExponent": "Bombardelli et al. 2019 measured flow exponents ~2 for connector losses (dp ~ Q^2), consistent with fixed-K fitting losses.",
+    "minorLossSources": [
+      "bombardelli-2019"
+    ]
+  },
+  "sources": [
+    {
+      "id": "hunter-handbook",
+      "title": "Hunter Handbook of Technical Irrigation Information (LIT-194 K 3/19), incl. Irrigation Association Friction Loss and Velocity Charts 2008, C-value table (p.125), fitting tables (pp.126-128), hydraulics examples (pp.5-11)",
+      "url": "https://redesign.hunterindustries.com/sites/default/files/BR_IrrigationTechManual_dom.pdf"
+    },
+    {
+      "id": "tamu-hunter-charts",
+      "title": "Hunter Friction Loss Charts (older Hunter brochure, hosted by Texas A&M)",
+      "url": "https://irrigation.tamu.edu/wp-content/uploads/sites/3/2024/10/Hunter-Friction-Loss-Charts.pdf"
+    },
+    {
+      "id": "rb-friction-index",
+      "title": "Rain Bird friction loss charts index",
+      "url": "https://www.rainbird.com/professionals/friction-loss-charts"
+    },
+    {
+      "id": "rb-class200-2018",
+      "title": "Rain Bird PVC Class 200 IPS Plastic Pipe reference (2018)",
+      "url": "https://www.rainbird.com/sites/default/files/media/documents/2018-01/ref_PVC_Class200_IP_PlasticPipe.pdf"
+    },
+    {
+      "id": "rb-sch40-2021",
+      "title": "Rain Bird PVC Schedule 40 IPS Plastic Pipe reference (2021 catalogue)",
+      "url": "https://www.rainbird.com/sites/default/files/media/documents/2022-05/2021-dom-turf-catalog-v1-sch-40.pdf"
+    },
+    {
+      "id": "rb-class160-2021",
+      "title": "Rain Bird PVC Class 160 IPS Plastic Pipe reference (2021 catalogue)",
+      "url": "https://www.rainbird.com/sites/default/files/media/documents/2022-05/2021-dom-turf-catalog-v1-160.pdf"
+    },
+    {
+      "id": "rb-pe",
+      "title": "Rain Bird Polyethylene (PE) SDR Pressure Rated Tube reference",
+      "url": "https://www.rainbird.com/sites/default/files/media/documents/2020-09/polyethylene-pe-sdr-pressure-rated-tube.pdf"
+    },
+    {
+      "id": "rb-steel",
+      "title": "Rain Bird Schedule 40 Standard Steel Pipe reference (C=100)",
+      "url": "https://www.rainbird.com/sites/default/files/media/documents/2022-05/2021-dom-turf-catalog-v1-steel-sch-40.pdf"
+    },
+    {
+      "id": "toro-hw",
+      "title": "Toro Ag, Hazen-Williams Equation / C-value table",
+      "url": "https://media.toro.com/Documents/Agriculture/HazenWilliamsEquation.pdf"
+    },
+    {
+      "id": "spears-friction",
+      "title": "Spears PVC/CPVC Engineering & Design Data: flow velocity & friction loss, fitting equivalent lengths (Texas A&M copy)",
+      "url": "https://irrigation.tamu.edu/wp-content/uploads/sites/3/2024/10/Spears-PVC-Friction-Loss-Tables.pdf"
+    },
+    {
+      "id": "unibell-2023",
+      "title": "Uni-Bell PVC Pipe Association, Testing Confirms PVC Pipe Hydraulic Coefficients (technical brief, 2023)",
+      "url": "https://www.uni-bell.org/portals/0/ResourceFile/testing-confirms-pvc-pipe-hydraulic-coefficients.pdf"
+    },
+    {
+      "id": "ipex-hydraulics",
+      "title": "IPEX bulletin, Hydraulics of PVC Pipe (cites AWWA M23 and Karassik Pump Handbook)",
+      "url": "https://ipexna.com/wp-content/uploads/2022/08/bulletin-caen-ipex-hydraulics-of-pvc-pipe.pdf"
+    },
+    {
+      "id": "ppfa-pex",
+      "title": "PPFA/NAHB Research Center, Design Guide: Residential PEX Water Supply Plumbing Systems (2006; HUD copy)",
+      "url": "https://www.huduser.gov/Publications/PDF/pex_design_guide.pdf"
+    },
+    {
+      "id": "spears-insert",
+      "title": "Spears PVC & PP Insert Fittings for PE pipe (ASTM D2609 insert dimensions; D2104/D2239 pipe IDs)",
+      "url": "https://www.spearsmfg.com/super_sourcebook/SSB-1%20Part%202%20Technical%20Information%20Catalog/005%20PVC%20&%20PP%20Insert%20Fitting.pdf"
+    },
+    {
+      "id": "boshart-insert",
+      "title": "Boshart nylon/PP/PVC insert fittings technical sheet (dimensions to ASTM D2609)",
+      "url": "https://boshart.com/wp-content/uploads/product-assets/f18f9f204348eca0709cecca82f52eebe7c6db3f_Nylon_Poly_PVC_PlasticInsertFittingsBooklet_technicalsheet.pdf"
+    },
+    {
+      "id": "etb-pvc-fittings",
+      "title": "Engineering ToolBox, PVC pipes: equivalent length of fittings",
+      "url": "https://engineeringtoolbox.com/pvc-pipes-equivalent-length-fittings-d_801.html"
+    },
+    {
+      "id": "etb-hw",
+      "title": "Engineering ToolBox, Hazen-Williams coefficients",
+      "url": "https://www.engineeringtoolbox.com/hazen-williams-coefficients-d_798.html"
+    },
+    {
+      "id": "wikipedia-hw",
+      "title": "Wikipedia, Hazen-Williams equation (C table copied from Engineering ToolBox)",
+      "url": "https://en.wikipedia.org/wiki/Hazen%E2%80%93Williams_equation"
+    },
+    {
+      "id": "libretexts-friction",
+      "title": "Irrigation Systems Management (AET 021), 8.3.1 Computing Losses Due to Friction",
+      "url": "https://workforce.libretexts.org/Bookshelves/Water_Systems_Technology/Irrigation_Systems_Management_(AET_021)/08%3A_Pump_and_Pipeline_Hydraulics/8.03%3A_Pressure_Loss/8.3.01%3A_Computing_Losses_Due_to_Friction"
+    },
+    {
+      "id": "libretexts-laterals",
+      "title": "Irrigation Systems Management (AET 021), 14.4.3 Laterals (quotes Keller & Bliesner 1990 on H-W C=150 underestimating)",
+      "url": "https://workforce.libretexts.org/Bookshelves/Water_Systems_Technology/Irrigation_Systems_Management_(AET_021)/14%3A_Microirrigation/14.04%3A_System_Components/14.4.03%3A_Laterals"
+    },
+    {
+      "id": "libretexts-sprinklers",
+      "title": "Irrigation Systems Management (AET 021), 11.3 Sprinkler Performance (q = 29.82 Cd D^2 sqrt P)",
+      "url": "https://workforce.libretexts.org/Bookshelves/Water_Systems_Technology/Irrigation_Systems_Management_(AET_021)/11%3A_Sprinklers/11.03%3A_Sprinkler_Performance"
+    },
+    {
+      "id": "moghazi-1998",
+      "title": "Moghazi, H.E.M. (1998) Estimating Hazen-Williams coefficient for polyethylene pipes, J. Transportation Eng. 124(2):197 (abstract)",
+      "url": "https://ascelibrary.com/doi/10.1061/(ASCE)0733-947X(1998)124:2(197)"
+    },
+    {
+      "id": "allen-1996",
+      "title": "Allen, R.G. (1996) Relating the Hazen-Williams and Darcy-Weisbach friction loss equations for pressurized irrigation, Applied Eng. in Agriculture 12(6):685-693 (AGRIS abstract)",
+      "url": "https://agris.fao.org/search/en/records/65e000477c7033e84befa9bf"
+    },
+    {
+      "id": "bcrl-nfpa13",
+      "title": "Building Code Resource Library (R. Schulte, 2010), The Hazen-Williams Friction Loss Formula -- reproduces NFPA 13 C factors and steel/copper IDs",
+      "url": "https://buildingcoderesourcelibrary.com/The-Hazen-Williams-Formula.pdf"
+    },
+    {
+      "id": "cda-calculator",
+      "title": "Copper Development Association copper tube sizing calculator (H-W, C=150) -- seen via search snippet; the site refused the fetch",
+      "url": "https://archive.copper.org/applications/plumbing/calculator/"
+    },
+    {
+      "id": "kamerstein-shcherbakov",
+      "title": "Shcherbakov & Nguyen Huy Cuong, Mathematical Model of Corrosion Inside Metal Water Pipes, EasyChair preprint 2908 (Kamerstein water groups; C vs age for 250/400 mm mains)",
+      "url": "https://easychair.org/publications/preprint/kk38/open"
+    },
+    {
+      "id": "pipeflowlab",
+      "title": "pipeflowlab, Pipe-material C-factors -- sources and aging (secondary)",
+      "url": "https://pipeflowlab.com/guides/pipe-material-cfactors"
+    },
+    {
+      "id": "diysmarthomehub",
+      "title": "Water pressure loss by pipe length calculator (low authority; aged galvanized 80-100)",
+      "url": "https://www.diysmarthomehub.com/?p=19529"
+    },
+    {
+      "id": "galv-secondary",
+      "title": "Secondary/consumer sources on galvanized service life and tuberculation (engineerfix and similar; weak)",
+      "url": "https://engineerfix.com/how-long-do-galvanized-pipes-last/"
+    },
+    {
+      "id": "iron-ucce",
+      "title": "UCCE Sonoma, Water quality technical note: iron (>0.1 ppm drip clogging, >0.3 ppm staining)",
+      "url": "https://ucanr.edu/county/ucce-sonoma-county/article/water-quality-technical-note-iron-fe"
+    },
+    {
+      "id": "iron-ia-2006",
+      "title": "Irrigation Association technical paper 2006, Shock chlorination of irrigation wells to reduce iron-related bacteria and emitter clogging",
+      "url": "https://www.irrigation.org/IA/FileUploads/IA/Resources/TechnicalPapers/2006/ShockChlorinationOfIrrigationWellsToReduceIron-RelatedBacteriaAndEmitterClogging.pdf"
+    },
+    {
+      "id": "cigr-2022",
+      "title": "CIGR Journal (Dec 2022) paper on minor losses: industry adds 10/15/25% or 30-50 diameters",
+      "url": "https://cigrjournal.org/index.php/Ejounral/article/download/8057/3939/38241"
+    },
+    {
+      "id": "neutrium-k",
+      "title": "Neutrium, Pressure loss from fittings -- excess head (K) method",
+      "url": "https://neutrium.net/articles/fluid-flow/pressure-loss-from-fittings-excess-head-k-method/"
+    },
+    {
+      "id": "neutrium-2k",
+      "title": "Neutrium, Pressure loss from fittings -- 2K method (Hooper 1981)",
+      "url": "https://neutrium.net/articles/fluid-flow/pressure-loss-from-fittings-2k-method/"
+    },
+    {
+      "id": "bombardelli-2019",
+      "title": "Bombardelli et al. (2019) Local head loss caused in connections used in micro-irrigation systems, Rev. Bras. Eng. Agric. Ambiental 23(7):492-498",
+      "url": "https://doi.org/10.1590/1807-1929/agriambi.v23n7p492-498"
+    },
+    {
+      "id": "rb-spx",
+      "title": "Rain Bird Tech Spec D39610B (2023): SPX-FLEX swing pipe and SB spiral barb fittings",
+      "url": "https://rainbird.com/media/4729"
+    },
+    {
+      "id": "rb-sa",
+      "title": "Rain Bird SA Series swing assemblies spec D39659 (2008)",
+      "url": "https://rainbird.com/media/4730"
+    },
+    {
+      "id": "rb-tsj",
+      "title": "Rain Bird TSJ & TSJ-PRS turf swing joints tech spec",
+      "url": "https://rainbird.com/media/4734"
+    },
+    {
+      "id": "hunter-sj",
+      "title": "Hunter SJ Swing Joint brochure LIT-117 BR US 3/22 (friction-loss chart)",
+      "url": "https://d7.hunterindustries.com/sites/default/files/br_swingjoint_dom.pdf"
+    },
+    {
+      "id": "hunter-hsbe",
+      "title": "Hunter spray accessories cut sheet: SJ, HSBE spiral barb elbows, FLEXsg",
+      "url": "https://d7.hunterindustries.com/sites/default/files/ca-cutsheet-hsbe-fittings-us.pdf"
+    },
+    {
+      "id": "toro-sfp",
+      "title": "Toro Super Funny Pipe catalog page (distributor-hosted copy) with per-foot friction loss",
+      "url": "https://cdn.shopify.com/s/files/1/1987/5531/files/catalog_page.pdf"
+    },
+    {
+      "id": "landfx-forum",
+      "title": "Land F/X community thread 'Pressure loss for head swing joint' (2017) -- quoted via search snippets; site refused the fetch",
+      "url": "https://landfx.com/community/pressure-loss-for-head-swing-joint.html"
+    },
+    {
+      "id": "msu-golf-2013",
+      "title": "Golf Course Industry, Nov 2013 (MSU Turfgrass Information Center archive) -- swing-joint allowance of 1-2 psi; via search snippet",
+      "url": "https://archive.lib.msu.edu/tic/gcnew/article/2013nov28.pdf"
+    },
+    {
+      "id": "rb-1800-ts",
+      "title": "Rain Bird 1800 Series tech spec (10/20), incl. PRS/P45 specification text",
+      "url": "https://www.rainbird.com/sites/default/files/media/documents/2020-11/1800-series-tech-spec.pdf"
+    },
+    {
+      "id": "rb-5000-chart",
+      "title": "Rain Bird 5000/5000 Plus nozzle performance charts incl. PRS tables and 'Flow Rate v Inlet Pressure' graph (p.55)",
+      "url": "https://www.rainbird.com/sites/default/files/media/documents/2017-07/chart_5000.pdf"
+    },
+    {
+      "id": "hunter-prs30",
+      "title": "Hunter Pro-Spray PRS30 cut sheet",
+      "url": "https://d7.hunterindustries.com/sites/default/files/CA-Cutsheet-PRS30-US.pdf"
+    },
+    {
+      "id": "hunter-prs40",
+      "title": "Hunter Pro-Spray PRS40 cut sheet",
+      "url": "https://d7.hunterindustries.com/sites/default/files/CA-Cutsheet-PRS40-US.pdf"
+    },
+    {
+      "id": "hunter-pro-spray",
+      "title": "Hunter Pro-Spray cut sheet",
+      "url": "https://d7.hunterindustries.com/sites/default/files/CA-Cutsheet-Pro-Spray-US.pdf"
+    },
+    {
+      "id": "hunter-prb",
+      "title": "Hunter PGP Ultra & I-20 PRB product page (45 psi, 15 psi differential, 50-100 psi inlet)",
+      "url": "https://www.hunterindustries.com/fr/node/50721"
+    },
+    {
+      "id": "hunter-catalog",
+      "title": "Hunter Product Catalog, Residential & Commercial Irrigation, US (c) 2023 -- PRB operating 60-100 psi, PRS30 note, PMR regulator rule (copy read in this session; source URL not kept)",
+      "url": null
+    },
+    {
+      "id": "toro-spec-catalog",
+      "title": "Toro Irrigation specification catalog (570Z pp.6-7; 'base of the sprinkler' on pp.51, 53, 59)",
+      "url": "https://specifier.toro.com/manuals/toro-spec-catalog.pdf"
+    },
+    {
+      "id": "toro-570z",
+      "title": "Toro 570Z with pressure regulation (WaterSmart page)",
+      "url": "https://toro.com/en/watersmart/570z-sprays"
+    },
+    {
+      "id": "bentley-emitter",
+      "title": "Bentley WaterCAD help, Flow Emitters (exponent 0.5 for nozzles and sprinkler heads)",
+      "url": "https://docs.bentley.com/LiveContent/web/Bentley%20WaterCAD%20CONNECT%20Edition%20Help-v1/en/GUID-FB7909636F314666BC10208A44ACC843.html"
+    },
+    {
+      "id": "heads-catalogue",
+      "title": "This repository's sprinkler catalogue, water/lib/heads/*.json (2026-10-20), used for the exponent fit",
+      "url": null
+    }
+  ],
+  "notes": [
+    "WHAT TO USE (recommendation, not a finding): PVC C=150 on the IA average ID; PE SIDR C=140 on the nominal ID (135 for 1/2 in); PEX C=150 on PPFA IDs; copper C=140 (130 old); galvanized C=120 new, 100 as the irrigation-chart design value, and lower for old pipe with no published curve; check small-pipe results against Darcy-Weisbach (smooth) which runs ~5-25% higher at residential flows.",
+    "Hard water and iron: no measured C-vs-time for PVC/PE/PEX in hard or iron-rich water was found. PVC in service 46 years measured C > 160 (municipal water). Galvanized ages fastest and also loses bore; the only age bands in print are for cast iron. Iron > 0.1-0.3 ppm and iron bacteria are documented as clogging emitters/nozzles (an IA paper: untreated 10 ppm-iron well lost 50-73% of drip flow in 18 days) rather than as a pipe C change.",
+    "Two ID conventions (IA average-wall vs OD - 2 x minimum wall) differ by ~0.02 in, worth ~10% of friction at 3/4 in. Rain Bird's own charts switched between them (2018 Class 200: 0.930; 2021 Sch 40: 0.804 average).",
+    "Swing joints are the largest single disagreement: at 6 gpm Rain Bird SA 2.0 psi vs Hunter SJ ~6.7 psi for the same 0.49 in tubing; Toro's per-foot table is about half of H-W. Nobody publishes the bore of a spiral-barb elbow.",
+    "Barbed insert fittings: only the ASTM D2609 MINIMUM bore is published; the derived losses assume it and are an upper bound for a fitting with a bigger bore.",
+    "Chart pressure is at the base/inlet where stated (Toro) or inferable (Rain Bird 5000); do not subtract a body loss from it. PRS stems below set point behave as pass-through with up to 6 psi loss (Rain Bird spec); Rain Bird's 5000 table assumes 0 loss and its graph shows 3-6 psi.",
+    "Not accessed: ASABE S398.1 / ISO 15886-3 text (pressure-tap location), Crane TP-410, AWWA M23, Keller & Bliesner, the Copper Tube Handbook (copper.org refused), the Hunter SJ metric sheet, Land F/X forum (refused). Their contents above come only through the sources named.",
+    "Units: every loss here is psi of water at ordinary temperature; 1 psi = 2.31 ft of head."
+  ]
+}

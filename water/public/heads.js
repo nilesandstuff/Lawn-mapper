@@ -20,7 +20,7 @@
  */
 
 import { catalogue, headWater, zoneWater, calibrate, placeByGps, facing, arcOf, enu } from '/lib/heads.js';
-import { route, solveZone, headFlow, deviceLoss, frictionPerFt, FITTINGS_SHARE, pipeById, pipeSize, PIPE_FAMILIES, sizeFor, fraction, cFactors, fps, FT_PER_M, MAX_FPS } from '/lib/hydraulics.js';
+import { route, solveZone, headFlow, deviceLoss, dwPerFt, roughnessMm, SWING, FITTINGS_SHARE, pipeById, pipeSize, PIPE_FAMILIES, sizeFor, fraction, fps, FT_PER_M, MAX_FPS } from '/lib/hydraulics.js';
 
 const FILES = ['rainbird-sprays', 'rainbird-rotors', 'hunter-sprays', 'hunter-rotors', 'other-brands'];
 const ZONE_COLORS = ['#e53935', '#1e88e5', '#43a047', '#fb8c00', '#8e24aa', '#00acc1', '#fdd835', '#6d4c41', '#d81b60', '#3949ab', '#7cb342', '#546e7a'];
@@ -101,14 +101,15 @@ export function sprinklers(ctx) {
     if (!cat || !Number.isFinite(P) || !sys.pvb.at || !sys.boxes.length) return null;
     const key = JSON.stringify([irr.heads, irr.zones, sys, ctx.elevReady?.() ?? false, devices.length]);
     if (key === solvedKey) return solved;
-    const q = cFactors(sys.quality);
     const pvbDev = deviceOf(sys.pvb.device) || typical('pvb', 1);
     const sl = sys.supplyLine, slPipe = pipeSize(sl.family, sl.size) || pipeSize('pvc40', 1);
-    const slC = slPipe.C * (metal(sl.family) ? q.metal : q.plastic);
+    const years = Number.isFinite(src.pipeYears) ? src.pipeYears : 50; // galvanized lines are mostly from before 1970
+    const slEps = roughnessMm(sl.family, sys.quality, years);
     const fromStatic = src.read === 'static' && src.from === 'city';
-    const meterDev = fromStatic && src.meter !== 'none' ? typical('meter', METER_IN[src.meter] ?? 0.625) : null;
+    // the meter-loss table Rain Bird, Hunter and Toro all print (lib/hydraulics/devices.json meter-typical-*)
+    const meterDev = fromStatic && src.meter !== 'none' ? deviceOf(`meter-typical-${src.meter}`) || typical('meter', METER_IN[src.meter] ?? 0.625) : null;
     const svc = fromStatic ? pipeSize(src.serviceFamily, src.serviceSize) : null;
-    const svcC = svc ? svc.C * (metal(src.serviceFamily) ? q.metal : q.plastic) : 0;
+    const svcEps = svc ? roughnessMm(src.serviceFamily, sys.quality, years) : 0;
     const groundPvb = ctx.elev?.(sys.pvb.at);
     const zones = [];
     for (const z of irr.zones) {
@@ -118,9 +119,9 @@ export function sprinklers(ctx) {
       const lenFt = Number.isFinite(sl.lenFt) ? sl.lenFt : distFt(sys.pvb.at, box) * 1.15 + 3;
       const parts = (Q) => ({
         meter: meterDev ? deviceLoss(meterDev, Q) : 0,
-        service: svc ? frictionPerFt(svc.idIn, svcC, Q) * (src.serviceFt || 0) * (1 + FITTINGS_SHARE) : 0,
+        service: svc ? dwPerFt(svc.idIn, svcEps, Q) * (src.serviceFt || 0) * (1 + FITTINGS_SHARE) : 0,
         pvb: pvbDev ? deviceLoss(pvbDev, Q) : 0,
-        supply: frictionPerFt(slPipe.idIn, slC, Q) * lenFt * (1 + FITTINGS_SHARE),
+        supply: dwPerFt(slPipe.idIn, slEps, Q) * lenFt * (1 + FITTINGS_SHARE),
       });
       const upstream = (Q) => Object.values(parts(Q)).reduce((t, v) => t + v, 0);
       const tree = route(box, hs.map((h) => ({ id: h.id, at: h.at })), { cost: ctx.routeCost });
@@ -128,7 +129,9 @@ export function sprinklers(ctx) {
       const res = solveZone({
         tree, heads: new Map(hs.map((h) => [h.id, h])), water: (h, psi) => headFlow(h, cat, psi), elev: ctx.elev,
         family, size: z.size && z.size !== 'auto' ? pipeSize(family, Number(z.size))?.id : null,
-        valve: deviceOf(z.valve) || typical('valve', 1), cFactor: q.plastic,
+        valve: deviceOf(z.valve) || typical('valve', 1),
+        // sprays on flexible swing pipe, rotors on a rigid 3/4 in swing joint (lib/hydraulics.js SWING)
+        swingLoss: (h, g) => deviceLoss(/rotor|impact/.test(cat.familyOfNozzle(h.nozzle)?.kind || '') ? SWING.rigid : SWING.flexible, g),
       }, { psi: P, gaugeAt: sys.pvb.at, gaugeElevM: Number.isFinite(groundPvb) ? groundPvb + 0.3 : null, upstream });
       zones.push({ n: z.n, tree, res, lenFt, parts: parts(res.gpm) });
     }
@@ -238,6 +241,7 @@ export function sprinklers(ctx) {
             <p>Water meter: <select data-act="meter">${METERS.map(([v, l]) => `<option value="${v}" ${v === src.meter ? 'selected' : ''}>${l}</option>`).join('')}</select></p>
             <p>Pipe from the street: <select data-act="svcfam">${[['cuK', 'copper'], ['pex', 'PEX'], ['pe', 'poly'], ['galv', 'galvanized steel (older homes)']].map(([v, l]) => `<option value="${v}" ${v === src.serviceFamily ? 'selected' : ''}>${l}</option>`).join('')}</select>
             <select data-act="svcsize">${[0.75, 1].map((n) => `<option value="${n}" ${n === src.serviceSize ? 'selected' : ''}>${fraction(n)} in</option>`).join('')}</select>, about <input type="number" min="0" max="500" data-act="svcft" value="${src.serviceFt}" style="width:70px;padding:6px"> ft long</p>` : ''}`}
+        ${(src.read === 'static' && src.from === 'city' && src.serviceFamily === 'galv') || sl.family === 'galv' ? `<p>Galvanized pipe rusts and scales inside: about how old is it (often the house's age)? <input type="number" min="0" max="120" data-act="pipeyears" value="${Number.isFinite(src.pipeYears) ? src.pipeYears : ''}" placeholder="50" style="width:70px;padding:6px"> years</p>` : ''}
         <p>The pipe from the backflow preventer to the valve box: <select data-act="slfam">${SUPPLY_FAMILIES.map((f) => `<option value="${f}" ${f === sl.family ? 'selected' : ''}>${PIPE_FAMILIES[f].label}</option>`).join('')}</select>
           <select data-act="slsize">${PIPE_FAMILIES[sl.family].sizes.map((x) => `<option value="${x[1]}" ${x[1] === sl.size ? 'selected' : ''}>${fraction(x[1])} in</option>`).join('')}</select>,
           about <input type="number" min="1" max="500" data-act="sllen" value="${Number.isFinite(sl.lenFt) ? sl.lenFt : ''}" placeholder="${autoLen ?? ''}" style="width:70px;padding:6px"> ft long${autoLen ? ` (${autoLen} from the map, if left blank)` : ''}</p>
@@ -289,7 +293,7 @@ export function sprinklers(ctx) {
         ${pr.meter ? `<tr><td>Water meter</td><td>−${pr.meter.toFixed(1)}</td></tr>` : ''}${pr.service ? `<tr><td>Pipe from the street</td><td>−${pr.service.toFixed(1)}</td></tr>` : ''}
         <tr><td>Backflow preventer${s0.pvbDev?.typical ? ' (typical)' : ''}</td><td>−${pr.pvb.toFixed(1)}</td></tr>
         <tr><td>Pipe to the valve box (${Math.round(zsel.lenFt)} ft)</td><td>−${pr.supply.toFixed(1)}</td></tr>
-        <tr><td>Zone valve</td><td>−${ws.valve.toFixed(1)}</td></tr>
+        <tr><td>Zone valve${irr.zones.find((z) => z.n === zsel.n)?.valve ? '' : ' (typical)'}</td><td>−${ws.valve.toFixed(1)}</td></tr>
         <tr><td>Lateral pipes and fittings</td><td>−${ws.lateral.toFixed(1)}</td></tr>
         <tr><td>Swing joint</td><td>−${ws.swing.toFixed(1)}</td></tr>
         <tr><td>${ws.flat ? 'Ground height (not yet read: taken as level)' : ws.elevation >= 0 ? 'Downhill to the head' : 'Uphill to the head'}</td><td>${ws.elevation >= 0 ? '+' : '−'}${Math.abs(ws.elevation).toFixed(1)}</td></tr>
@@ -325,7 +329,7 @@ export function sprinklers(ctx) {
         <table class="months"><tr><th>Zone</th><th>Flow</th><th>At the heads</th><th>Spread</th><th></th></tr>${zoneRows}</table>
         ${sheet}
         ${warn.length ? `<ul>${warn.map((w) => `<li>${w}</li>`).join('')}</ul>` : ''}
-        <p class="dim">Losses from the makers' charts and the Hazen-Williams formula, at each zone's own flow, worked out with every head's flow at the pressure it gets${ctx.elevReady?.() ? '; heights from the USGS lidar' : ''}. The routes are a likely layout, not a dig: drag a head if a line runs where it can't.</p>
+        <p class="dim">Devices from the makers' loss charts (a typical one of its size where you don't know yours); pipe friction by Darcy-Weisbach, which irrigation research prefers for small plastic pipe, with each tee and swing joint counted; at each zone's own flow, worked out with every head's flow at the pressure it gets${ctx.elevReady?.() ? '; heights from the USGS lidar' : ''}. The routes are a likely layout, not a dig: drag a head if a line runs where it can't.</p>
         ${nav('done', { label: 'Done' })}`;
     },
   };
@@ -424,6 +428,7 @@ export function sprinklers(ctx) {
       const num = (sel, f) => P.querySelector(sel)?.addEventListener('change', (e) => { const v = e.target.value === '' ? null : Number(e.target.value); f(Number.isFinite(v) ? v : null); changed(); render(); });
       num('[data-act=psi]', (v) => { src.psi = v !== null && v >= 10 && v <= 150 ? v : null; });
       num('[data-act=svcft]', (v) => { src.serviceFt = v ?? 0; });
+      num('[data-act=pipeyears]', (v) => { src.pipeYears = v; });
       num('[data-act=sllen]', (v) => { sl.lenFt = v; });
       num('[data-act=svcsize]', (v) => { src.serviceSize = v; });
       num('[data-act=slsize]', (v) => { sl.size = v; });

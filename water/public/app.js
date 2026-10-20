@@ -366,7 +366,7 @@ function headsCard() {
   $('#heads-summary').innerHTML = `<div class="card"><h2>Your sprinkler system: ${irr.heads.length} heads on ${z.length} valve${z.length === 1 ? '' : 's'}</h2>
     <table class="months"><tr><th>Valve</th><th>Heads</th><th>Flow</th><th>Puts down</th><th>At the heads</th></tr>
     ${z.map((v) => `<tr><td><span class="chip" style="background:${v.color}"></span>Zone ${v.n}</td><td>${v.heads}</td><td>${v.gpm.toFixed(1)} gpm</td><td>${v.precipInH ? `${v.precipInH.toFixed(2)} in/h` : '?'}${v.mixed ? ' (sprays and rotors mixed)' : ''}</td><td>${Number.isFinite(v.psiLo) ? `${Math.round(v.psiLo)}–${Math.round(v.psiHi)} psi` : '?'}</td></tr>`).join('')}</table>
-    <p class="dim">From the makers' performance charts, at the pressure each head gets: worked out from your pressure through the backflow preventer, the supply line, the valve and each run of pipe as an installer most likely laid it, with the ground's rise and fall. "Puts down" is at head-to-head spacing; a catch-cup test on the lawn would measure the real rate.</p></div>`;
+    <p class="dim">From the makers' performance charts, at the pressure each head gets: worked out from your pressure through the meter, the backflow preventer, the supply line, the valve, each run of pipe and fitting as an installer most likely laid it, and each swing joint, with the ground's rise and fall. "Puts down" is at head-to-head spacing; a catch-cup test on the lawn would measure the real rate.</p></div>`;
 }
 
 /* ------------------------------------------------------------- the words */
