@@ -33,4 +33,19 @@ import { nearness, rasterise } from './overture-frames.js';
   assert.ok(r.road[at(20, 1)] > 0 && r.road[at(20, 1)] < 0.4, 'the road 11 m south of the south edge, within the 15 m reach');
   assert.deepEqual(r.counts, { buildings: 1, walks: 1, roads: 1 });
 }
+{
+  // the lidar's roof 3 cells east and 2 south of Overture's footprint, on a coarser grid (half the cells across)
+  const { fitToRoof, shiftRaster } = await import('./overture-frames.js');
+  const W = 60, H = 40, b = new Uint8Array(W * H);
+  for (let r = 10; r < 24; r++) for (let c = 20; c < 40; c++) b[r * W + c] = 1;
+  const roof = { data: new Uint8Array(30 * 20), w: 30, h: 20 };
+  for (let r = 6; r < 13; r++) for (let c = 11; c < 21; c++) roof.data[r * 30 + c] = 1; // rows 12-25, cols 22-41 on the fine grid
+  const f = fitToRoof(b, W, H, roof, 8, 20);
+  assert.equal(f.dx, 2); assert.equal(f.dy, 2);
+  assert.ok(f.iou > 0.95 && f.iou0 < 0.7, `iou ${f.iou0} -> ${f.iou}`);
+  const moved = shiftRaster(b, W, H, f.dx, f.dy);
+  assert.equal(moved[12 * W + 22], 1); assert.equal(moved[10 * W + 20], 0);
+  assert.equal(fitToRoof(new Uint8Array(W * H), W, H, roof, 8, 20), null, 'no building: nothing to fit');
+  assert.equal(fitToRoof(b, W, H, { data: new Uint8Array(30 * 20), w: 30, h: 20 }, 8, 20), null, 'no roof: nothing to fit to');
+}
 console.log('overture-frames: ok');

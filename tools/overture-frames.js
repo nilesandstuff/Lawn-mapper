@@ -56,6 +56,64 @@ export function nearness(lines, W, H, reachCells) {
   return out;
 }
 
+/*
+ * OVERTURE'S BUILDINGS ONTO THE LIDAR'S ROOFS (owner, 2026-10-20: the outlines "are not lining up
+ * with the building footprints... may just legitimately be an issue with the placements according to
+ * overture"; H101: a median 0.87 m from the lidar's roofs, over 1 m on 47 of 101 lots, every
+ * building on a lot off by the same amount -- the imagery its outlines were traced from). The
+ * lidar's roof mask (lidar_frame.py, no ground return, 2.5 m+, flat) is symmetric about the real
+ * building, so the shift that best overlaps it is Overture's own error, and one shift per lot
+ * corrects it. Only the buildings move: roads and sidewalks are OpenStreetMap's, another source.
+ *
+ * `roof` is {data (0/1), w, h} on any grid over the same box; the search is ±maxCells on the
+ * building raster's grid. Returns the best shift in cells (+dx east, +dy south), the overlap (IoU)
+ * before and after, or null when there is no building or no roof to fit to.
+ */
+export function fitToRoof(building, W, H, roof, maxCells, minRoofCells = 200) {
+  const R = new Uint8Array(W * H);
+  let roofN = 0, bN = 0;
+  for (let r = 0; r < H; r++) {
+    const rr = Math.min(roof.h - 1, Math.floor(((r + 0.5) * roof.h) / H));
+    for (let c = 0; c < W; c++) {
+      const cc = Math.min(roof.w - 1, Math.floor(((c + 0.5) * roof.w) / W));
+      const v = roof.data[rr * roof.w + cc] ? 1 : 0;
+      R[r * W + c] = v; roofN += v;
+    }
+  }
+  const cells = [];
+  for (let i = 0; i < W * H; i++) if (building[i]) { cells.push(i); bN++; }
+  if (!bN || roofN < minRoofCells) return null;
+  const iou = (dx, dy) => {
+    let inter = 0;
+    for (const i of cells) {
+      const r = Math.floor(i / W) + dy, c = (i % W) + dx;
+      if (r >= 0 && c >= 0 && r < H && c < W && R[r * W + c]) inter++;
+    }
+    return inter / (bN + roofN - inter);
+  };
+  const iou0 = iou(0, 0);
+  let best = { dx: 0, dy: 0, iou: iou0 };
+  for (let dy = -maxCells; dy <= maxCells; dy++) for (let dx = -maxCells; dx <= maxCells; dx++) {
+    const v = iou(dx, dy);
+    if (v > best.iou + 1e-9 || (Math.abs(v - best.iou) <= 1e-9 && Math.hypot(dx, dy) < Math.hypot(best.dx, best.dy))) best = { dx, dy, iou: v };
+  }
+  return { ...best, iou0, roofCells: roofN, buildingCells: bN };
+}
+
+/** The building raster moved by (dx, dy) cells. */
+export function shiftRaster(building, W, H, dx, dy) {
+  const out = new Uint8Array(W * H);
+  for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) {
+    if (!building[r * W + c]) continue;
+    const rr = r + dy, cc = c + dx;
+    if (rr >= 0 && cc >= 0 && rr < H && cc < W) out[rr * W + cc] = 1;
+  }
+  return out;
+}
+
+/* Applied only when it is a fit: some overlap, and clearly more than as published. */
+export const ALIGN_MIN_IOU = 0.3, ALIGN_MIN_GAIN = 0.02, ALIGN_REACH_M = 4;
+
 /** The three channels for one box ([w, s, e, n] in EPSG:3857 metres) from Overture's answer. Pure. */
 export function rasterise(box, ov) {
   const [w, s, e, n] = box;
@@ -78,14 +136,18 @@ export function rasterise(box, ov) {
 
 async function main() {
   const frames = process.env.FRAMES || 'frames', out = process.env.OUT || 'overture';
+  /* LIDAR=dir of lidar_frame.py's <id>-roof.png and OVERTURE_ALIGN=1: each lot's buildings moved
+     onto the lidar's roofs (fitToRoof) before the channels are written. */
+  const lidar = process.env.LIDAR || '', align = process.env.OVERTURE_ALIGN === '1' && !!lidar;
   mkdirSync(out, { recursive: true });
   const { PNG } = await import('pngjs');
   const scale = JSON.parse(readFileSync(join(frames, 'scale.json'), 'utf8'));
   const boxes = scale.boxes || {};
   const ids = Object.keys(boxes).filter((id) => existsSync(join(frames, `${id}.png`))).sort();
-  const summary = { cell: CELL_M, walkReachM: WALK_REACH_M, roadReachM: ROAD_REACH_M, frames: {}, skipped: {} };
-  let withBuilding = 0, withWalk = 0, withRoad = 0;
-  console.log(`${ids.length} frames; Overture's footprints, sidewalk lines and road centrelines over each\n`);
+  const summary = { cell: CELL_M, walkReachM: WALK_REACH_M, roadReachM: ROAD_REACH_M, aligned: align, frames: {}, skipped: {} };
+  let withBuilding = 0, withWalk = 0, withRoad = 0, fitted = 0, applied = 0;
+  const shifts = [];
+  console.log(`${ids.length} frames; Overture's footprints, sidewalk lines and road centrelines over each${align ? ", the buildings moved onto the lidar's roofs" : ' (as published)'}\n`);
   for (const id of ids) {
     const box = boxes[id];
     const pad = ROAD_REACH_M * 2; // mercator metres past the box, so a line just outside still counts
@@ -103,6 +165,22 @@ async function main() {
     };
     ov = { roads: ov.roads.filter((r) => r.lines.some(near)), buildings: ov.buildings.filter((b) => b[0] && near(b[0])) };
     const r = rasterise(box, ov);
+    let fit = null, moved = '';
+    const roofFile = join(lidar, `${id}-roof.png`);
+    if (align && existsSync(roofFile) && r.counts.buildings) {
+      const rp = PNG.sync.read(readFileSync(roofFile));
+      const roof = { data: new Uint8Array(rp.width * rp.height), w: rp.width, h: rp.height };
+      for (let i = 0; i < roof.data.length; i++) roof.data[i] = rp.data[i * 4] >= 128 ? 1 : 0;
+      fit = fitToRoof(r.building, r.W, r.H, roof, Math.round(ALIGN_REACH_M / CELL_M));
+      if (fit) {
+        fitted++;
+        fit.shiftM = Math.hypot(fit.dx, fit.dy) * CELL_M;
+        fit.applied = fit.iou >= ALIGN_MIN_IOU && fit.iou - fit.iou0 >= ALIGN_MIN_GAIN;
+        if (fit.applied) { r.building = shiftRaster(r.building, r.W, r.H, fit.dx, fit.dy); applied++; shifts.push(fit.shiftM); }
+        moved = fit.applied ? `; buildings moved ${fit.shiftM.toFixed(1)} m onto the lidar's roofs (overlap ${(100 * fit.iou0).toFixed(0)}% -> ${(100 * fit.iou).toFixed(0)}%)`
+          : `; left as published (overlap ${(100 * fit.iou0).toFixed(0)}% -> ${(100 * fit.iou).toFixed(0)}% at ${fit.shiftM.toFixed(1)} m: not a fit)`;
+      } else moved = '; no lidar roof to fit to';
+    }
     const png = new PNG({ width: r.W, height: r.H });
     for (let i = 0; i < r.W * r.H; i++) {
       png.data[i * 4] = r.building[i] ? 255 : 0;
@@ -112,14 +190,18 @@ async function main() {
     }
     writeFileSync(join(out, `${id}-overture.png`), PNG.sync.write(png));
     const share = (a, test) => { let x = 0; for (let i = 0; i < a.length; i++) if (test(a[i])) x++; return x / a.length; };
-    const rec = { ...r.counts, building: share(r.building, (v) => v > 0), nearWalk: share(r.walk, (v) => v > 0), nearRoad: share(r.road, (v) => v > 0) };
+    const rec = { ...r.counts, building: share(r.building, (v) => v > 0), nearWalk: share(r.walk, (v) => v > 0), nearRoad: share(r.road, (v) => v > 0), fit };
     summary.frames[id] = rec;
     if (rec.buildings) withBuilding++; if (rec.walks) withWalk++; if (rec.roads) withRoad++;
-    console.log(`  ${id.slice(0, 30).padEnd(30)} ${String(rec.buildings).padStart(3)} buildings (${(100 * rec.building).toFixed(0)}% of the frame), ${String(rec.walks).padStart(3)} walk lines (${(100 * rec.nearWalk).toFixed(0)}% within ${WALK_REACH_M} m), ${String(rec.roads).padStart(3)} roads (${(100 * rec.nearRoad).toFixed(0)}% within ${ROAD_REACH_M} m)`);
+    console.log(`  ${id.slice(0, 30).padEnd(30)} ${String(rec.buildings).padStart(3)} buildings (${(100 * rec.building).toFixed(0)}% of the frame), ${String(rec.walks).padStart(3)} walk lines (${(100 * rec.nearWalk).toFixed(0)}% within ${WALK_REACH_M} m), ${String(rec.roads).padStart(3)} roads (${(100 * rec.nearRoad).toFixed(0)}% within ${ROAD_REACH_M} m)${moved}`);
   }
   writeFileSync(join(out, 'summary.json'), JSON.stringify(summary, null, 1));
   const n = Object.keys(summary.frames).length;
   console.log(`\n${n} frames written, ${Object.keys(summary.skipped).length} skipped; a building on ${withBuilding}, a sidewalk or path line on ${withWalk}, a road on ${withRoad}.`);
+  if (align) {
+    const s = shifts.sort((a, b) => a - b), med = s.length ? s[s.length >> 1] : NaN;
+    console.log(`Buildings fitted to the lidar's roofs on ${fitted} frames, moved on ${applied} (median ${Number.isFinite(med) ? med.toFixed(2) : '-'} m; over 1 m on ${s.filter((v) => v > 1).length}, over 2 m on ${s.filter((v) => v > 2).length}); as published where the fit was no better.`);
+  }
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) main().catch((err) => { console.error(err); process.exit(1); });
