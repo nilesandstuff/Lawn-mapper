@@ -29,6 +29,7 @@ import { lngLatToFramePx } from '/lib/mercator.js';
 /* The card's drawing, shared with the every-map page so the two cannot
    disagree about where an outline sits. See lib/review-draw.js. */
 import { REVIEW_COLOURS, paint, overlapFraction } from '/lib/review-draw.js';
+import { waterAdminUrl } from '/lib/water-link.js';
 
 const $ = (s) => document.querySelector(s);
 const el = (tag, cls, text) => {
@@ -1345,6 +1346,13 @@ async function renderLog() {
 }
 
 /* ----------------------------------------------------------------- boot */
+
+/* The water tool's admin page, on its own site (lib/water-link.js). */
+{
+  const p = document.getElementById('water-admin');
+  const url = waterAdminUrl(location.hostname);
+  if (p && url) { p.querySelector('a').href = url; p.hidden = false; }
+}
 
 (async () => {
   let overview;
