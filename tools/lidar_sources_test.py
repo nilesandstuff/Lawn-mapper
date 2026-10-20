@@ -75,6 +75,13 @@ def check_one_read():
     assert (pts[:, 0] >= box[0]).all() and (pts[:, 0] <= box[2]).all(), "cropped back to the frame"
     assert len(pts) == 2 and not np.isin(pts[:, 4], t.NOISE).any(), "the west point moved out, the margin one in, noise gone"
     assert info["shift_m"][0] < 0 < info["shift_m"][1] and info["points"] == 2 and info["nodes"] == 3
+    # The lot's own ground move (LIDAR_SHIFTS, 2026-10-20): 1 m east and 0.5 m
+    # south in ground metres, on top of the datum move, recorded as given.
+    pts2, info2 = t.read_points(octree, box, 2017.3, extra_m=(1.0, -0.5))
+    assert abs((info2["shift_m"][0] - info["shift_m"][0]) - 1.0) < 0.01 and abs((info2["shift_m"][1] - info["shift_m"][1]) + 0.5) < 0.01, (info["shift_m"], info2["shift_m"])
+    assert info2["ground_shift_m"] == [1.0, -0.5] and "ground_shift_m" not in info
+    mid = (box[0] + box[2]) / 2
+    assert abs((pts2[pts2[:, 4] == 1.0][0, 0] - pts[pts[:, 4] == 1.0][0, 0]) * math.cos(math.radians(t.merc_to_lnglat(mid, (box[1] + box[3]) / 2)[1])) - 1.0) < 0.01, "the middle point moved 1 ground metre east"
     # Whatever a read returns must carry what lidar_frame.main() records
     # (the first CI run of the newest trial died on a missing "nodes").
     import inspect

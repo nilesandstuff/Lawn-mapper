@@ -403,6 +403,19 @@ on:
         type: choice
         default: 'off'
         options: ['off', 'compare']
+      lidar_align:
+        # THE LIDAR LINED UP WITH EACH PHOTO'S GROUND (owner, 2026-10-20:
+        # "above all else, lidar needs to line up with the ground"; H107/H108).
+        # "ground": tools/lidar-roof-fit.js slides each lot's lidar ground
+        # brightness edges onto the photo's edges and writes the clear moves
+        # to lidar-shifts.json; lidar_frame.py adds each lot's move to the
+        # datum move. The lidar cache is keyed on it, so "off" and "ground"
+        # never share a saved lidar. Scored as THE PLAN's own row; read with
+        # workflow 24 against a run with it off.
+        description: 'Line the lidar up with each photo''s ground before it is read: off, or ground (one measured move per lot)'
+        type: choice
+        default: 'off'
+        options: ['off', 'ground']
       about:
         # WHAT THIS RUN IS FOR, kept with the pictures for ever.
         #
@@ -566,7 +579,7 @@ jobs:
             lidar
             lidar-plan.json
             naip
-          key: prep-v1-${{ steps.frames.outputs.fp }}-fused${{ startsWith(inputs.decoder, 'fused') }}-${{ hashFiles('tools/tree-canopy.py', 'tools/clumps.py', 'tools/lidar-plan.js', 'tools/lidar-cover.js', 'tools/lidar-newest.js', 'tools/lidar_frame.py', 'tools/lidar_sources.py', 'tools/naip_bands.py', 'tools/naip_align.py', 'tools/requirements-trees.txt', 'tools/requirements-lidar.txt') }}
+          key: prep-v1-${{ steps.frames.outputs.fp }}-fused${{ startsWith(inputs.decoder, 'fused') }}-align${{ inputs.lidar_align }}-${{ hashFiles('tools/tree-canopy.py', 'tools/clumps.py', 'tools/lidar-plan.js', 'tools/lidar-cover.js', 'tools/lidar-newest.js', 'tools/lidar_frame.py', 'tools/lidar_sources.py', 'tools/naip_bands.py', 'tools/naip_align.py', 'tools/requirements-trees.txt', 'tools/requirements-lidar.txt') }}
 
       - name: Reuse the backbone's features if saved
         id: feats
@@ -654,6 +667,20 @@ jobs:
           node tools/lidar-newest.test.js
           node tools/lidar-newest.js
 
+      # EACH LOT'S GROUND MOVE (lidar_align: ground): the clear ones only, in
+      # lidar-fit/lidar-shifts.json; the other lots keep the datum move alone.
+      - name: Line the lidar up with each photo's ground
+        if: ${{ inputs.lidar_align == 'ground' && inputs.canopy != 'off' && steps.prep.outputs.cache-hit != 'true' }}
+        env:
+          FRAMES: frames
+          PLAN: lidar-plan.json
+          OUT: lidar-fit
+          PICTURES: '0'
+        run: |
+          set -o pipefail
+          node tools/lidar-roof-fit.test.js
+          node tools/lidar-roof-fit.js | tail -40
+
       - name: Read the lidar over the frames
         if: ${{ inputs.canopy != 'off' && steps.prep.outputs.cache-hit != 'true' }}
         env:
@@ -662,6 +689,7 @@ jobs:
           PLAN: lidar-plan.json
           OUT: lidar
           TILE_DIR: lidar-tiles
+          LIDAR_SHIFTS: ${{ inputs.lidar_align == 'ground' && 'lidar-fit/lidar-shifts.json' || '' }}
           # NAIP-CHM (E9, H41) is no longer read (owner, 2026-09-29): its
           # only uses were the shelved "lidar ∩ NAIP canopy" row and a
           # picture layer. NAIP_CHM=1 brings it back.
@@ -800,7 +828,7 @@ jobs:
             lidar
             lidar-plan.json
             naip
-          key: prep-v1-${{ steps.frames.outputs.fp }}-fused${{ startsWith(inputs.decoder, 'fused') }}-${{ hashFiles('tools/tree-canopy.py', 'tools/clumps.py', 'tools/lidar-plan.js', 'tools/lidar-cover.js', 'tools/lidar-newest.js', 'tools/lidar_frame.py', 'tools/lidar_sources.py', 'tools/naip_bands.py', 'tools/naip_align.py', 'tools/requirements-trees.txt', 'tools/requirements-lidar.txt') }}
+          key: prep-v1-${{ steps.frames.outputs.fp }}-fused${{ startsWith(inputs.decoder, 'fused') }}-align${{ inputs.lidar_align }}-${{ hashFiles('tools/tree-canopy.py', 'tools/clumps.py', 'tools/lidar-plan.js', 'tools/lidar-cover.js', 'tools/lidar-newest.js', 'tools/lidar_frame.py', 'tools/lidar_sources.py', 'tools/naip_bands.py', 'tools/naip_align.py', 'tools/requirements-trees.txt', 'tools/requirements-lidar.txt') }}
 
       - name: Save the backbone's features for later runs
         if: ${{ inputs.gpu != 'modal' && steps.feats.outputs.cache-hit != 'true' }}

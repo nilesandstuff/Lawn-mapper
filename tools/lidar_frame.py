@@ -534,6 +534,16 @@ def main():
         ids = ids[:limit]
     print(f"{len(ids)} frames, {cell:g} m cells\n")
     summary = {"cell_m": cell, "lawns": {}}
+    # EACH LOT'S OWN GROUND MOVE (LIDAR_SHIFTS=lidar-shifts.json from
+    # tools/lidar-roof-fit.js; owner, 2026-10-20: "above all else, lidar needs
+    # to line up with the ground"): added to the datum move for the lots it
+    # names, nothing for the rest. Workflow 14's `lidar_align: ground`.
+    shifts = {}
+    shifts_file = os.environ.get("LIDAR_SHIFTS", "")
+    if shifts_file and Path(shifts_file).exists():
+        shifts = (json.loads(Path(shifts_file).read_text()) or {}).get("shifts") or {}
+        print(f"Ground moves for {len(shifts)} lots from {shifts_file} (the rest: the datum move alone).\n")
+    summary["ground_shifts"] = len(shifts)
     pooled = {k: {"under canopy": [[], []], "visible": [[], []]} for k in SEPARATED}
     t_all = time.time()
     # NAIP-CHM (E9), when asked: the index once, then a windowed read a frame.
@@ -571,15 +581,18 @@ def main():
             # The newest flight (an octree, or USGS's tiles), noise dropped and
             # the datum moved, exactly as the live server reads it (lidar_sources.py).
             try:
+                extra = shifts.get(lawn_id)
+                extra_m = (extra["east"], extra["north"]) if extra else None
                 pts, got = lidar_sources.read_points(lambda b: points_over(base, b), bbox, lidar_sources.epoch_of(p),
-                                                     tiles=p.get("tiles"), tile_dir=os.environ.get("TILE_DIR", "lidar-tiles"))
+                                                     tiles=p.get("tiles"), tile_dir=os.environ.get("TILE_DIR", "lidar-tiles"),
+                                                     extra_m=extra_m)
             except Exception as e:  # noqa: BLE001 - USGS's tiles failed: the newest octree, as the live server falls back
                 if not (p.get("tiles") and p.get("octreeUrl")):
                     raise
                 print(f"  {label} tiles failed ({str(e)[:60]}); reading the newest octree, {p.get('octreeName')}")
                 o_base = p["octreeUrl"].rsplit("/", 1)[0]
                 pts, got = lidar_sources.read_points(lambda b: points_over(o_base, b), bbox,
-                                                     p.get("octreeEpoch") or lidar_sources.DEFAULT_EPOCH)
+                                                     p.get("octreeEpoch") or lidar_sources.DEFAULT_EPOCH, extra_m=extra_m)
                 got = dict(got, fellBack=True)
         except Exception as e:  # noqa: BLE001 - one lawn's failure is reported, not fatal
             print(f"  {label} FAILED: {str(e)[:70]}")
@@ -659,6 +672,7 @@ def main():
             "naip": naip_rec,
             "clumps": clumps_here,
             "segments": segs_here,
+            "ground_shift_m": got.get("ground_shift_m"),
         }
         summary["lawns"][lawn_id] = rec
         for k in pooled:

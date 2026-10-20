@@ -254,13 +254,17 @@ def crop(pts, bbox):
     return pts[keep]
 
 
-def read_points(read_octree, bbox, epoch, tiles=None, tile_dir=None):
+def read_points(read_octree, bbox, epoch, tiles=None, tile_dir=None, extra_m=None):
     """
     One frame's points, (x, y, z, intensity, class) in Web Mercator, with
     noise dropped and the datum move applied. From `tiles` (paths or URLs;
     URLs are fetched into tile_dir) when given, else `read_octree(bbox)`, which
     is lidar_frame.points_over for the frame's octree. Read 5 m wider, moved,
     then cropped, so the frame's edge is filled from the margin.
+    `extra_m`, (east, north) in GROUND metres, is one more move after the
+    datum's: the lot's own, measured against its photo's ground (H107/H108,
+    tools/lidar-roof-fit.js, LIDAR_SHIFTS) -- the owner's "above all else,
+    lidar needs to line up with the ground".
     Returns (points, info) with the keys lidar_frame.main() records.
     """
     wide = grow(bbox, 5)
@@ -279,6 +283,11 @@ def read_points(read_octree, bbox, epoch, tiles=None, tile_dir=None):
     if len(pts):
         lng, lat = merc_to_lnglat((bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2)
         dx, dy = mercator_shift(lat, lng, epoch)
+        if extra_m:
+            k = math.cos(math.radians(lat))
+            dx += float(extra_m[0]) / k
+            dy += float(extra_m[1]) / k
+            info["ground_shift_m"] = [round(float(v), 3) for v in extra_m]
         pts = pts.copy()
         pts[:, 0] += dx
         pts[:, 1] += dy
