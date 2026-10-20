@@ -190,9 +190,19 @@ export function sprinklers(ctx) {
      kind's radial profile (lib/hydraulics/profiles.json when it loads). */
   let profilesNote = "an estimated spread (even to 70% of the throw, falling to its edge)";
   fetch('/lib/hydraulics/profiles.json').then((r) => (r.ok ? r.json() : null)).then((j) => {
-    const p = j?.forPrecip;
-    if (p) { setProfiles(p); profilesNote = j.forPrecipNote || "each kind's measured spread (lib/hydraulics/profiles.json)"; coverKey = ''; ctx.draw(); }
+    if (!j?.typical) return;
+    setProfiles(j);
+    profilesNote = "each kind of head's measured spread (Fresno State's Center for Irrigation Technology tests of rotors, rotary nozzles and high-efficiency sprays; Hunter's MP Rotator curves), and for conventional sprays, of which no measurement was found, an estimate with a dry ring about 2 ft round the head";
+    coverKey = ''; ctx.draw(); if (step === 'coverage') render();
   }).catch(() => {});
+  /** Which measured spread a head follows (lib/precip.js profileFor). */
+  const profileOf = (fam) => {
+    if (!fam) return 'spray';
+    if (fam.kind === 'impact') return 'impact';
+    if (fam.kind === 'rotor') return /-la\b|gray-la|low/.test(fam.id) ? 'rotor-la' : 'rotor';
+    if (fam.kind === 'rotary') return 'rotary';
+    return /^to-psn|^rb-he-van/.test(fam.id) ? 'spray-he' : 'spray';
+  };
   const COVER = { missed: '#d32f2f', dry: '#f57c00', mid: '#9e9e9e', wet: '#1565c0' };
   let coverKey = '', coverCache = null;
   function coverage() {
@@ -205,10 +215,10 @@ export function sprinklers(ctx) {
       const w = waterOf(h), fam = cat.familyOfNozzle(h.nozzle);
       if (!w || !(w.gpm > 0)) continue;
       const t = h.throw ?? 1;
-      hs.push({ zone: h.zone, at: h.at, gpm: w.gpm, radiusM: (w.radiusFt / FT_PER_M) * t, arc: w.arc ?? 360, dir: h.dir ?? 0, kind: fam?.kind, strip: w.strip ? { type: w.strip.type, lengthM: (w.strip.lengthFt / FT_PER_M) * t, widthM: w.strip.widthFt / FT_PER_M } : null });
+      hs.push({ zone: h.zone, at: h.at, gpm: w.gpm, radiusM: (w.radiusFt / FT_PER_M) * t, arc: w.arc ?? 360, dir: h.dir ?? 0, profile: profileOf(fam), strip: w.strip ? { type: w.strip.type, lengthM: (w.strip.lengthFt / FT_PER_M) * t, widthM: w.strip.widthFt / FT_PER_M } : null });
     }
     if (!hs.length) return null;
-    const ref = hs[0].at, xy = hs.map((h) => enu(ref, h.at)), reach = Math.max(...hs.map((h) => h.strip ? h.strip.lengthM : h.radiusM));
+    const ref = hs[0].at, xy = hs.map((h) => enu(ref, h.at)), reach = Math.max(...hs.map((h) => h.strip ? h.strip.lengthM : h.radiusM * 1.3));
     // the heads' reach and the whole traced lawn, so lawn no head reaches counts as missed
     const lb = ctx.lawnBox?.(), corners = lb ? [enu(ref, lb[0]), enu(ref, lb[1])] : [];
     const xs = [...xy.map((p) => p[0] - reach), ...xy.map((p) => p[0] + reach), ...corners.map((p) => p[0])];
@@ -423,7 +433,7 @@ export function sprinklers(ctx) {
       return `<p class="hint">${coverView === 'all' ? 'Each zone run long enough to put down its average depth, all the zones together: <span style="color:' + COVER.dry + '">orange</span> gets under 60% of it (dry), <span style="color:' + COVER.missed + '">red</span> gets none, <span style="color:' + COVER.wet + '">blue</span> over 150% (where zones overlap, or water piles up near heads).' : `Zone ${coverView}'s own rate, inches an hour, darker for more.`}</p>
         <div class="tools"><button type="button" class="${coverView === 'all' ? '' : 'plain'}" data-view="all">All zones</button>${zones.map(([z]) => `<button type="button" class="${coverView === z ? '' : 'plain'}" data-view="${z}" style="border-color:${colorOf(z)}">Zone ${z}</button>`).join('')}</div>
         <table class="months"><tr><th>Zone</th><th>Puts down, on average</th></tr>${zones.map(([z, v]) => `<tr><td><span class="chip" style="background:${colorOf(z)}"></span>Zone ${z}</td><td>${v.toFixed(2)} in/h</td></tr>`).join('')}</table>
-        <p><strong>Distribution uniformity ${Math.round(p.du * 100)}%</strong> (the driest quarter of the lawn against the average; irrigation audits call 70% good, 55% typical of home spray zones). ${p.missed ? `About <strong>${Math.round(m2(p.missed) * 10.76)} sq ft</strong> of lawn gets no water at all. ` : ''}${p.dryShare > 0.02 ? `${Math.round(p.dryShare * 100)}% of the lawn gets under 60% of the depth: those are the dry spots.` : 'No sizeable dry spots.'}${p.wetShare > 0.02 ? ` ${Math.round(p.wetShare * 100)}% gets over 150%.` : ''}</p>
+        <p><strong>Distribution uniformity ${Math.round(p.du * 100)}%</strong>: the driest quarter of the lawn against the average. The Irrigation Association rates spray zones good at 55% and very good at 65%, rotor zones good at 65% and very good at 70%; real home systems audit at about 50% (Mecham 2004, over 4,500 audits), since wind, tilted heads and worn nozzles take their share, and this map has none of them. ${p.missed ? `About <strong>${Math.round(m2(p.missed) * 10.76)} sq ft</strong> of lawn gets no water at all. ` : ''}${p.dryShare > 0.02 ? `${Math.round(p.dryShare * 100)}% of the lawn gets under 60% of the depth: those are the dry spots.` : 'No sizeable dry spots.'}${p.wetShare > 0.02 ? ` ${Math.round(p.wetShare * 100)}% gets over 150%.` : ''}</p>
         <p class="dim">From each head's flow at the pressure it gets, over its arc and throw, by ${profilesNote}. Wind, a tilted head or a clogged nozzle are not in it: a catch-cup test on the lawn measures them.</p>
         ${nav('done', { label: 'Done' })}`;
     },

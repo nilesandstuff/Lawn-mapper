@@ -972,7 +972,14 @@ lib/hydraulics.js, from three research files in lib/hydraulics/ (devices.json, p
 - COVERAGE (lib/precip.js): each head's flow laid over its arc and throw by its kind's radial profile;
   conserves each head's gpm to within 4% on a 0.25 m grid (tested). Shown as each zone run to its own
   average depth, summed: dry (under 60%), missed, overlapping (over 150%), with the lawn's lower-quarter DU.
-  The profiles are ESTIMATED (even to 70% of the throw, falling to the edge) until the profile research is in.
+  The radial profiles (lib/hydraulics/profiles.json): MEASURED for gear rotors, low-angle rotors, rotary
+  nozzles and high-efficiency sprays (Fresno State CIT's zero-wind tests: Hunter I-20 and PGJ, Rain Bird 5000,
+  Toro T5 and PRN; CIT grids of Toro Precision and Rain Bird HE-VAN; Hunter's MP curves), impact from farm
+  heads; ASSUMED for conventional sprays (no profile found: a wedge with a dry ring about 2 ft round the head,
+  from a Rain Bird patent). Near-head spikes (one catch can) clamped at 3x the mean. Check: rotors at
+  head-to-head spacing, zero wind, DU 73% -- inside the research's own simulated 69-90% and the makers' claims;
+  real audits run about 50% (Mecham 2004). Not modelled: the profile's shift with pressure (measured: water
+  moves inward as pressure rises; a doughnut forms at 25-30 psi on rotors), wind, ragged arc edges.
 
 ## SPECULATION
 

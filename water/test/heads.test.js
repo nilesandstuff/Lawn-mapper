@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { autoArc } from '../lib/arcs.js';
-import { precipitation, rateAt } from '../lib/precip.js';
+import { precipitation, rateAt, setProfiles } from '../lib/precip.js';
 import { catalogue, rowAt, headWater, zoneWater, headPsi, lineCheck, gpmAt, psiPer100ft, pipe, settle, calibrate, placeByGps, enu, unEnu, facing } from '../lib/heads.js';
 
 const tests = [];
@@ -157,6 +157,25 @@ test('precipitation: every head\'s water adds back up to its gpm over the ground
   for (let x = -9.2; x <= 9.2; x += 4.6) for (let y = -9.2; y <= 9.2; y += 4.6) row.push({ zone: 1, at: unEnu(ref, [x, y]), gpm: 3.7, radiusM: 4.6, arc: 360, dir: 0, kind: 'spray' });
   const many = precipitation({ ...grid, lawn: (i) => { const r = Math.floor(i / W), c = i % W; return Math.abs((c + 0.5) * cellM - 15) < 4 && Math.abs((r + 0.5) * cellM - 15) < 4; } }, row);
   assert.ok(many.du > one.du, `DU ${one.du.toFixed(2)} alone, ${many.du.toFixed(2)} head to head`);
+});
+
+test("precipitation with the measured spreads: each still adds back up to its gpm, and rotors at head-to-head spacing are as even as the research's own zero-wind simulations (69-90%)", () => {
+  setProfiles(JSON.parse(readFileSync(new URL('../lib/hydraulics/profiles.json', import.meta.url), 'utf8')));
+  const ref = [-85.5, 43.0], cellM = 0.25, W = 160, H = 160;
+  const grid = { W, H, cellM, at: (c, r) => unEnu(ref, [(c + 0.5) * cellM - 20, (r + 0.5) * cellM - 20]), lawn: () => true };
+  const total = (a) => a.reduce((s, v) => s + v, 0) * cellM * cellM * 10.7639 / 96.25;
+  for (const profile of ['rotor', 'rotor-la', 'rotary', 'spray-he', 'spray', 'impact']) {
+    const h = { zone: 1, at: ref, gpm: 2, radiusM: 5, arc: 360, dir: 0, profile };
+    const got = total(precipitation(grid, [h]).byZone.get(1));
+    assert.ok(Math.abs(got - 2) / 2 < 0.05, `${profile}: ${got.toFixed(3)} gpm vs 2`);
+  }
+  // rotors on a 10 m square grid, each throwing 10 m (head to head): the middle square's uniformity
+  const heads = [];
+  for (let x = -20; x <= 20; x += 10) for (let y = -20; y <= 20; y += 10) heads.push({ zone: 1, at: unEnu(ref, [x, y]), gpm: 3, radiusM: 10, arc: 360, dir: 0, profile: 'rotor' });
+  const mid = (i) => { const r = Math.floor(i / W), c = i % W, x = (c + 0.5) * cellM - 20, y = (r + 0.5) * cellM - 20; return x >= 0 && x < 10 && y >= 0 && y < 10; };
+  const p = precipitation({ ...grid, lawn: mid }, heads);
+  assert.ok(p.du >= 0.6 && p.du <= 0.95, `rotors head to head: DU ${p.du.toFixed(2)}`);
+  console.log(`     rotors head to head, zero wind: DU ${(p.du * 100).toFixed(0)}%`);
 });
 
 let failed = 0;
