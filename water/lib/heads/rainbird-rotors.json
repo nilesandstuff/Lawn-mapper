@@ -1,0 +1,3250 @@
+{
+ "group": "rainbird-rotors",
+ "retrieved": "2026-10-20",
+ "bodies": [
+  {
+   "id": "rb-5004",
+   "brand": "Rain Bird",
+   "model": "5004",
+   "kind": "rotor",
+   "popUpIn": 4,
+   "regulatedPsi": null,
+   "swappable": true,
+   "nozzleFamilies": [
+    "rb-5000-rc",
+    "rb-5000-la",
+    "rb-5000-mpr"
+   ],
+   "fixedNozzles": null,
+   "source": "https://rainbird.com/media/4635"
+  },
+  {
+   "id": "rb-5004-plus",
+   "brand": "Rain Bird",
+   "model": "5004 Plus (5004+)",
+   "kind": "rotor",
+   "popUpIn": 4,
+   "regulatedPsi": null,
+   "swappable": true,
+   "nozzleFamilies": [
+    "rb-5000-rc",
+    "rb-5000-la",
+    "rb-5000-mpr"
+   ],
+   "fixedNozzles": null,
+   "source": "https://rainbird.com/media/4635"
+  },
+  {
+   "id": "rb-5004-prs",
+   "brand": "Rain Bird",
+   "model": "5004 PRS (5004-PC-R)",
+   "kind": "rotor",
+   "popUpIn": 4,
+   "regulatedPsi": 45,
+   "swappable": true,
+   "nozzleFamilies": [
+    "rb-5000-prs-rc",
+    "rb-5000-prs-la",
+    "rb-5000-mpr"
+   ],
+   "fixedNozzles": null,
+   "source": "https://rainbird.com/media/4635"
+  },
+  {
+   "id": "rb-5004-plus-prs",
+   "brand": "Rain Bird",
+   "model": "5004 Plus PRS (5004+ ... R)",
+   "kind": "rotor",
+   "popUpIn": 4,
+   "regulatedPsi": 45,
+   "swappable": true,
+   "nozzleFamilies": [
+    "rb-5000-prs-rc",
+    "rb-5000-prs-la",
+    "rb-5000-mpr"
+   ],
+   "fixedNozzles": null,
+   "source": "https://rainbird.com/media/4635"
+  },
+  {
+   "id": "rb-5006",
+   "brand": "Rain Bird",
+   "model": "5006",
+   "kind": "rotor",
+   "popUpIn": 6,
+   "regulatedPsi": null,
+   "swappable": true,
+   "nozzleFamilies": [
+    "rb-5000-rc",
+    "rb-5000-la",
+    "rb-5000-mpr"
+   ],
+   "fixedNozzles": null,
+   "source": "https://rainbird.com/media/4635"
+  },
+  {
+   "id": "rb-5006-plus",
+   "brand": "Rain Bird",
+   "model": "5006 Plus (5006+)",
+   "kind": "rotor",
+   "popUpIn": 6,
+   "regulatedPsi": null,
+   "swappable": true,
+   "nozzleFamilies": [
+    "rb-5000-rc",
+    "rb-5000-la",
+    "rb-5000-mpr"
+   ],
+   "fixedNozzles": null,
+   "source": "https://rainbird.com/media/4635"
+  },
+  {
+   "id": "rb-5006-plus-prs",
+   "brand": "Rain Bird",
+   "model": "5006 Plus PRS (5006+ ... R)",
+   "kind": "rotor",
+   "popUpIn": 6,
+   "regulatedPsi": 45,
+   "swappable": true,
+   "nozzleFamilies": [
+    "rb-5000-prs-rc",
+    "rb-5000-prs-la",
+    "rb-5000-mpr"
+   ],
+   "fixedNozzles": null,
+   "source": "https://rainbird.com/media/4635"
+  },
+  {
+   "id": "rb-5012-plus-prs",
+   "brand": "Rain Bird",
+   "model": "5012 Plus PRS (5012+ ... R)",
+   "kind": "rotor",
+   "popUpIn": 12,
+   "regulatedPsi": 45,
+   "swappable": true,
+   "nozzleFamilies": [
+    "rb-5000-prs-rc",
+    "rb-5000-prs-la",
+    "rb-5000-mpr"
+   ],
+   "fixedNozzles": null,
+   "source": "https://rainbird.com/media/4635"
+  },
+  {
+   "id": "rb-5000-shrub",
+   "brand": "Rain Bird",
+   "model": "5000 S (shrub, riser-mounted)",
+   "kind": "rotor",
+   "popUpIn": null,
+   "regulatedPsi": null,
+   "swappable": true,
+   "nozzleFamilies": [
+    "rb-5000-rc",
+    "rb-5000-la",
+    "rb-5000-mpr"
+   ],
+   "fixedNozzles": null,
+   "source": "https://rainbird.com/media/4635"
+  },
+  {
+   "id": "rb-5000-plus-shrub",
+   "brand": "Rain Bird",
+   "model": "5000 Plus S (shrub, riser-mounted)",
+   "kind": "rotor",
+   "popUpIn": null,
+   "regulatedPsi": null,
+   "swappable": true,
+   "nozzleFamilies": [
+    "rb-5000-rc",
+    "rb-5000-la",
+    "rb-5000-mpr"
+   ],
+   "fixedNozzles": null,
+   "source": "https://rainbird.com/media/4635"
+  },
+  {
+   "id": "rb-5000-plus-shrub-prs",
+   "brand": "Rain Bird",
+   "model": "5000 Plus S PRS (shrub, riser-mounted)",
+   "kind": "rotor",
+   "popUpIn": null,
+   "regulatedPsi": 45,
+   "swappable": true,
+   "nozzleFamilies": [
+    "rb-5000-prs-rc",
+    "rb-5000-prs-la",
+    "rb-5000-mpr"
+   ],
+   "fixedNozzles": null,
+   "source": "https://rainbird.com/media/4635"
+  },
+  {
+   "id": "rb-3504",
+   "brand": "Rain Bird",
+   "model": "3504",
+   "kind": "rotor",
+   "popUpIn": 4,
+   "regulatedPsi": null,
+   "swappable": true,
+   "nozzleFamilies": [
+    "rb-3500"
+   ],
+   "fixedNozzles": null,
+   "source": "https://rainbird.com/media/4634"
+  },
+  {
+   "id": "rb-3500-shrub",
+   "brand": "Rain Bird",
+   "model": "3500 S (shrub, riser-mounted)",
+   "kind": "rotor",
+   "popUpIn": null,
+   "regulatedPsi": null,
+   "swappable": true,
+   "nozzleFamilies": [
+    "rb-3500"
+   ],
+   "fixedNozzles": null,
+   "source": "https://rainbird.com/media/4634"
+  },
+  {
+   "id": "rb-32sa",
+   "brand": "Rain Bird",
+   "model": "32SA",
+   "kind": "rotor",
+   "popUpIn": 4,
+   "regulatedPsi": null,
+   "swappable": true,
+   "nozzleFamilies": [
+    "rb-32sa"
+   ],
+   "fixedNozzles": null,
+   "source": "https://www.rainbird.com/products/32sa-simple-adjust-rotor-sprinklers"
+  },
+  {
+   "id": "rb-42sa-plus",
+   "brand": "Rain Bird",
+   "model": "42SA+",
+   "kind": "rotor",
+   "popUpIn": 4,
+   "regulatedPsi": null,
+   "swappable": true,
+   "nozzleFamilies": [
+    "rb-42sa-rc",
+    "rb-42sa-la"
+   ],
+   "fixedNozzles": null,
+   "source": "https://www.rainbird.com/products/42sa-heavy-duty-simple-adjust-rotor-sprinklers"
+  },
+  {
+   "id": "rb-52sa",
+   "brand": "Rain Bird",
+   "model": "52SA",
+   "kind": "rotor",
+   "popUpIn": 4,
+   "regulatedPsi": null,
+   "swappable": true,
+   "nozzleFamilies": [
+    "rb-52sa"
+   ],
+   "fixedNozzles": null,
+   "source": "https://www.rainbird.com/products/52sa-premium-stainless-steel-rotor-sprinklers"
+  },
+  {
+   "id": "rb-22saf",
+   "brand": "Rain Bird",
+   "model": "22SAF (full circle)",
+   "kind": "rotary-body",
+   "popUpIn": 4,
+   "regulatedPsi": null,
+   "swappable": false,
+   "nozzleFamilies": [],
+   "fixedNozzles": "rb-22sa",
+   "source": "https://store.rainbird.com/22sa-rotor-full-with-prs-17-24.html"
+  },
+  {
+   "id": "rb-22sah",
+   "brand": "Rain Bird",
+   "model": "22SAH (half circle)",
+   "kind": "rotary-body",
+   "popUpIn": 4,
+   "regulatedPsi": null,
+   "swappable": false,
+   "nozzleFamilies": [],
+   "fixedNozzles": "rb-22sa",
+   "source": "https://store.rainbird.com/22sa-rotor-full-with-prs-17-24.html"
+  },
+  {
+   "id": "rb-22saq",
+   "brand": "Rain Bird",
+   "model": "22SAQ (quarter circle)",
+   "kind": "rotary-body",
+   "popUpIn": 4,
+   "regulatedPsi": null,
+   "swappable": false,
+   "nozzleFamilies": [],
+   "fixedNozzles": "rb-22sa",
+   "source": "https://store.rainbird.com/22sa-rotor-full-with-prs-17-24.html"
+  },
+  {
+   "id": "rb-2045a-maxi-paw",
+   "brand": "Rain Bird",
+   "model": "2045A Maxi-Paw",
+   "kind": "impact",
+   "popUpIn": 3,
+   "regulatedPsi": null,
+   "swappable": true,
+   "nozzleFamilies": [
+    "rb-maxipaw"
+   ],
+   "fixedNozzles": null,
+   "source": "https://rainbird.com/media/4699"
+  },
+  {
+   "id": "rb-2045-pj-maxi-bird",
+   "brand": "Rain Bird",
+   "model": "2045-PJ Maxi-Bird (riser-mounted)",
+   "kind": "impact",
+   "popUpIn": null,
+   "regulatedPsi": null,
+   "swappable": true,
+   "nozzleFamilies": [
+    "rb-maxipaw"
+   ],
+   "fixedNozzles": null,
+   "source": "https://rainbird.com/media/8388"
+  }
+ ],
+ "families": [
+  {
+   "id": "rb-5000-rc",
+   "brand": "Rain Bird",
+   "name": "5000 / 5000 Plus Series Rain Curtain standard-angle nozzles (1.5-8.0), body without PRS",
+   "kind": "rotor",
+   "flow": "constant",
+   "nozzles": [
+    {
+     "id": "rb-5000-rc-1-5",
+     "label": "1.5",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": 25,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 33,
+       "gpm": 1.12
+      },
+      {
+       "psi": 35,
+       "radiusFt": 34,
+       "gpm": 1.35
+      },
+      {
+       "psi": 45,
+       "radiusFt": 35,
+       "gpm": 1.54
+      },
+      {
+       "psi": 55,
+       "radiusFt": 35,
+       "gpm": 1.71
+      },
+      {
+       "psi": 65,
+       "radiusFt": 34,
+       "gpm": 1.86
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-5000-rc-2-0",
+     "label": "2.0",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": 25,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 35,
+       "gpm": 1.5
+      },
+      {
+       "psi": 35,
+       "radiusFt": 36,
+       "gpm": 1.81
+      },
+      {
+       "psi": 45,
+       "radiusFt": 37,
+       "gpm": 2.07
+      },
+      {
+       "psi": 55,
+       "radiusFt": 37,
+       "gpm": 2.3
+      },
+      {
+       "psi": 65,
+       "radiusFt": 35,
+       "gpm": 2.52
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-5000-rc-2-5",
+     "label": "2.5",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": 25,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 35,
+       "gpm": 1.81
+      },
+      {
+       "psi": 35,
+       "radiusFt": 37,
+       "gpm": 2.17
+      },
+      {
+       "psi": 45,
+       "radiusFt": 37,
+       "gpm": 2.51
+      },
+      {
+       "psi": 55,
+       "radiusFt": 37,
+       "gpm": 2.76
+      },
+      {
+       "psi": 65,
+       "radiusFt": 37,
+       "gpm": 3.01
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-5000-rc-3-0",
+     "label": "3.0",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": 25,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 36,
+       "gpm": 2.26
+      },
+      {
+       "psi": 35,
+       "radiusFt": 38,
+       "gpm": 2.71
+      },
+      {
+       "psi": 45,
+       "radiusFt": 39,
+       "gpm": 3.09
+      },
+      {
+       "psi": 55,
+       "radiusFt": 40,
+       "gpm": 3.47
+      },
+      {
+       "psi": 65,
+       "radiusFt": 40,
+       "gpm": 3.78
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-5000-rc-4-0",
+     "label": "4.0",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": 25,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 36,
+       "gpm": 2.91
+      },
+      {
+       "psi": 35,
+       "radiusFt": 40,
+       "gpm": 3.5
+      },
+      {
+       "psi": 45,
+       "radiusFt": 42,
+       "gpm": 4.01
+      },
+      {
+       "psi": 55,
+       "radiusFt": 42,
+       "gpm": 4.44
+      },
+      {
+       "psi": 65,
+       "radiusFt": 42,
+       "gpm": 4.83
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-5000-rc-5-0",
+     "label": "5.0",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": 25,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 37,
+       "gpm": 3.72
+      },
+      {
+       "psi": 35,
+       "radiusFt": 41,
+       "gpm": 4.47
+      },
+      {
+       "psi": 45,
+       "radiusFt": 43,
+       "gpm": 5.09
+      },
+      {
+       "psi": 55,
+       "radiusFt": 45,
+       "gpm": 5.66
+      },
+      {
+       "psi": 65,
+       "radiusFt": 45,
+       "gpm": 6.16
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-5000-rc-6-0",
+     "label": "6.0",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": 25,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 37,
+       "gpm": 4.25
+      },
+      {
+       "psi": 35,
+       "radiusFt": 43,
+       "gpm": 5.23
+      },
+      {
+       "psi": 45,
+       "radiusFt": 44,
+       "gpm": 6.01
+      },
+      {
+       "psi": 55,
+       "radiusFt": 50,
+       "gpm": 6.63
+      },
+      {
+       "psi": 65,
+       "radiusFt": 50,
+       "gpm": 7.22
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-5000-rc-8-0",
+     "label": "8.0",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": 25,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 33,
+       "gpm": 5.9
+      },
+      {
+       "psi": 35,
+       "radiusFt": 41,
+       "gpm": 7.06
+      },
+      {
+       "psi": 45,
+       "radiusFt": 44,
+       "gpm": 8.03
+      },
+      {
+       "psi": 55,
+       "radiusFt": 47,
+       "gpm": 8.86
+      },
+      {
+       "psi": 65,
+       "radiusFt": 48,
+       "gpm": 9.63
+      }
+     ],
+     "chartPrecip": null
+    }
+   ],
+   "source": "https://rainbird.com/media/4635"
+  },
+  {
+   "id": "rb-5000-la",
+   "brand": "Rain Bird",
+   "name": "5000 / 5000 Plus Series low-angle nozzles (1.0 LA-3.0 LA), body without PRS",
+   "kind": "rotor",
+   "flow": "constant",
+   "nozzles": [
+    {
+     "id": "rb-5000-la-1-0",
+     "label": "1.0 LA",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": 10,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 25,
+       "gpm": 0.76
+      },
+      {
+       "psi": 35,
+       "radiusFt": 28,
+       "gpm": 0.92
+      },
+      {
+       "psi": 45,
+       "radiusFt": 29,
+       "gpm": 1.05
+      },
+      {
+       "psi": 55,
+       "radiusFt": 29,
+       "gpm": 1.17
+      },
+      {
+       "psi": 65,
+       "radiusFt": 29,
+       "gpm": 1.27
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-5000-la-1-5",
+     "label": "1.5 LA",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": 10,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 27,
+       "gpm": 1.15
+      },
+      {
+       "psi": 35,
+       "radiusFt": 30,
+       "gpm": 1.38
+      },
+      {
+       "psi": 45,
+       "radiusFt": 31,
+       "gpm": 1.58
+      },
+      {
+       "psi": 55,
+       "radiusFt": 31,
+       "gpm": 1.76
+      },
+      {
+       "psi": 65,
+       "radiusFt": 31,
+       "gpm": 1.92
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-5000-la-2-0",
+     "label": "2.0 LA",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": 10,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 29,
+       "gpm": 1.47
+      },
+      {
+       "psi": 35,
+       "radiusFt": 31,
+       "gpm": 1.77
+      },
+      {
+       "psi": 45,
+       "radiusFt": 32,
+       "gpm": 2.02
+      },
+      {
+       "psi": 55,
+       "radiusFt": 33,
+       "gpm": 2.24
+      },
+      {
+       "psi": 65,
+       "radiusFt": 33,
+       "gpm": 2.45
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-5000-la-3-0",
+     "label": "3.0 LA",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": 10,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 29,
+       "gpm": 2.23
+      },
+      {
+       "psi": 35,
+       "radiusFt": 33,
+       "gpm": 2.68
+      },
+      {
+       "psi": 45,
+       "radiusFt": 35,
+       "gpm": 3.07
+      },
+      {
+       "psi": 55,
+       "radiusFt": 36,
+       "gpm": 3.41
+      },
+      {
+       "psi": 65,
+       "radiusFt": 36,
+       "gpm": 3.72
+      }
+     ],
+     "chartPrecip": null
+    }
+   ],
+   "source": "https://rainbird.com/media/4635"
+  },
+  {
+   "id": "rb-5000-prs-rc",
+   "brand": "Rain Bird",
+   "name": "5000 Series with PRS: Rain Curtain standard-angle nozzles (1.5-8.0), PRS chart",
+   "kind": "rotor",
+   "flow": "constant",
+   "nozzles": [
+    {
+     "id": "rb-5000-prs-rc-1-5",
+     "label": "1.5",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": 25,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 33,
+       "gpm": 1.12
+      },
+      {
+       "psi": 35,
+       "radiusFt": 34,
+       "gpm": 1.35
+      },
+      {
+       "psi": 45,
+       "radiusFt": 35,
+       "gpm": 1.54
+      },
+      {
+       "psi": 55,
+       "radiusFt": 35,
+       "gpm": 1.59
+      },
+      {
+       "psi": 65,
+       "radiusFt": 35,
+       "gpm": 1.59
+      },
+      {
+       "psi": 75,
+       "radiusFt": 35,
+       "gpm": 1.59
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-5000-prs-rc-2-0",
+     "label": "2.0",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": 25,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 35,
+       "gpm": 1.5
+      },
+      {
+       "psi": 35,
+       "radiusFt": 36,
+       "gpm": 1.81
+      },
+      {
+       "psi": 45,
+       "radiusFt": 37,
+       "gpm": 2.07
+      },
+      {
+       "psi": 55,
+       "radiusFt": 37,
+       "gpm": 2.14
+      },
+      {
+       "psi": 65,
+       "radiusFt": 37,
+       "gpm": 2.14
+      },
+      {
+       "psi": 75,
+       "radiusFt": 37,
+       "gpm": 2.14
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-5000-prs-rc-2-5",
+     "label": "2.5",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": 25,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 35,
+       "gpm": 1.81
+      },
+      {
+       "psi": 35,
+       "radiusFt": 37,
+       "gpm": 2.17
+      },
+      {
+       "psi": 45,
+       "radiusFt": 37,
+       "gpm": 2.51
+      },
+      {
+       "psi": 55,
+       "radiusFt": 37,
+       "gpm": 2.6
+      },
+      {
+       "psi": 65,
+       "radiusFt": 37,
+       "gpm": 2.6
+      },
+      {
+       "psi": 75,
+       "radiusFt": 37,
+       "gpm": 2.6
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-5000-prs-rc-3-0",
+     "label": "3.0",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": 25,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 36,
+       "gpm": 2.26
+      },
+      {
+       "psi": 35,
+       "radiusFt": 38,
+       "gpm": 2.71
+      },
+      {
+       "psi": 45,
+       "radiusFt": 39,
+       "gpm": 3.09
+      },
+      {
+       "psi": 55,
+       "radiusFt": 39,
+       "gpm": 3.2
+      },
+      {
+       "psi": 65,
+       "radiusFt": 39,
+       "gpm": 3.2
+      },
+      {
+       "psi": 75,
+       "radiusFt": 39,
+       "gpm": 3.2
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-5000-prs-rc-4-0",
+     "label": "4.0",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": 25,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 36,
+       "gpm": 2.91
+      },
+      {
+       "psi": 35,
+       "radiusFt": 40,
+       "gpm": 3.5
+      },
+      {
+       "psi": 45,
+       "radiusFt": 42,
+       "gpm": 4.01
+      },
+      {
+       "psi": 55,
+       "radiusFt": 42,
+       "gpm": 4.15
+      },
+      {
+       "psi": 65,
+       "radiusFt": 42,
+       "gpm": 4.15
+      },
+      {
+       "psi": 75,
+       "radiusFt": 42,
+       "gpm": 4.15
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-5000-prs-rc-5-0",
+     "label": "5.0",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": 25,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 37,
+       "gpm": 3.72
+      },
+      {
+       "psi": 35,
+       "radiusFt": 41,
+       "gpm": 4.47
+      },
+      {
+       "psi": 45,
+       "radiusFt": 43,
+       "gpm": 5.09
+      },
+      {
+       "psi": 55,
+       "radiusFt": 43,
+       "gpm": 5.27
+      },
+      {
+       "psi": 65,
+       "radiusFt": 43,
+       "gpm": 5.27
+      },
+      {
+       "psi": 75,
+       "radiusFt": 43,
+       "gpm": 5.27
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-5000-prs-rc-6-0",
+     "label": "6.0",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": 25,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 37,
+       "gpm": 4.25
+      },
+      {
+       "psi": 35,
+       "radiusFt": 43,
+       "gpm": 5.23
+      },
+      {
+       "psi": 45,
+       "radiusFt": 44,
+       "gpm": 6.01
+      },
+      {
+       "psi": 55,
+       "radiusFt": 44,
+       "gpm": 6.22
+      },
+      {
+       "psi": 65,
+       "radiusFt": 44,
+       "gpm": 6.22
+      },
+      {
+       "psi": 75,
+       "radiusFt": 44,
+       "gpm": 6.22
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-5000-prs-rc-8-0",
+     "label": "8.0",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": 25,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 33,
+       "gpm": 5.9
+      },
+      {
+       "psi": 35,
+       "radiusFt": 41,
+       "gpm": 7.06
+      },
+      {
+       "psi": 45,
+       "radiusFt": 44,
+       "gpm": 8.03
+      },
+      {
+       "psi": 55,
+       "radiusFt": 44,
+       "gpm": 8.31
+      },
+      {
+       "psi": 65,
+       "radiusFt": 44,
+       "gpm": 8.31
+      },
+      {
+       "psi": 75,
+       "radiusFt": 44,
+       "gpm": 8.31
+      }
+     ],
+     "chartPrecip": null
+    }
+   ],
+   "source": "https://rainbird.com/media/4635",
+   "pressureIs": "inlet"
+  },
+  {
+   "id": "rb-5000-prs-la",
+   "brand": "Rain Bird",
+   "name": "5000 Series with PRS: low-angle nozzles (1.0 LA-3.0 LA), PRS chart",
+   "kind": "rotor",
+   "flow": "constant",
+   "nozzles": [
+    {
+     "id": "rb-5000-prs-la-1-0",
+     "label": "1.0 LA",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": 10,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 25,
+       "gpm": 0.76
+      },
+      {
+       "psi": 35,
+       "radiusFt": 28,
+       "gpm": 0.92
+      },
+      {
+       "psi": 45,
+       "radiusFt": 29,
+       "gpm": 1.05
+      },
+      {
+       "psi": 55,
+       "radiusFt": 29,
+       "gpm": 1.09
+      },
+      {
+       "psi": 65,
+       "radiusFt": 29,
+       "gpm": 1.09
+      },
+      {
+       "psi": 75,
+       "radiusFt": 29,
+       "gpm": 1.09
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-5000-prs-la-1-5",
+     "label": "1.5 LA",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": 10,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 27,
+       "gpm": 1.15
+      },
+      {
+       "psi": 35,
+       "radiusFt": 30,
+       "gpm": 1.38
+      },
+      {
+       "psi": 45,
+       "radiusFt": 31,
+       "gpm": 1.58
+      },
+      {
+       "psi": 55,
+       "radiusFt": 31,
+       "gpm": 1.64
+      },
+      {
+       "psi": 65,
+       "radiusFt": 31,
+       "gpm": 1.64
+      },
+      {
+       "psi": 75,
+       "radiusFt": 31,
+       "gpm": 1.64
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-5000-prs-la-2-0",
+     "label": "2.0 LA",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": 10,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 29,
+       "gpm": 1.47
+      },
+      {
+       "psi": 35,
+       "radiusFt": 31,
+       "gpm": 1.77
+      },
+      {
+       "psi": 45,
+       "radiusFt": 32,
+       "gpm": 2.02
+      },
+      {
+       "psi": 55,
+       "radiusFt": 32,
+       "gpm": 2.09
+      },
+      {
+       "psi": 65,
+       "radiusFt": 32,
+       "gpm": 2.09
+      },
+      {
+       "psi": 75,
+       "radiusFt": 32,
+       "gpm": 2.09
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-5000-prs-la-3-0",
+     "label": "3.0 LA",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": 10,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 29,
+       "gpm": 2.23
+      },
+      {
+       "psi": 35,
+       "radiusFt": 33,
+       "gpm": 2.68
+      },
+      {
+       "psi": 45,
+       "radiusFt": 35,
+       "gpm": 3.07
+      },
+      {
+       "psi": 55,
+       "radiusFt": 35,
+       "gpm": 3.18
+      },
+      {
+       "psi": 65,
+       "radiusFt": 35,
+       "gpm": 3.18
+      },
+      {
+       "psi": 75,
+       "radiusFt": 35,
+       "gpm": 3.18
+      }
+     ],
+     "chartPrecip": null
+    }
+   ],
+   "source": "https://rainbird.com/media/4635",
+   "pressureIs": "inlet"
+  },
+  {
+   "id": "rb-5000-mpr",
+   "brand": "Rain Bird",
+   "name": "5000 Series MPR rotor nozzles (25, 30, 35 ft; Q/T/H/F)",
+   "kind": "rotor",
+   "flow": "constant",
+   "nozzles": [
+    {
+     "id": "rb-5000-mpr-25q",
+     "label": "MPR-25 Q",
+     "arcFixed": 90,
+     "arcMin": null,
+     "arcMax": null,
+     "strip": null,
+     "trajectoryDeg": null,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 23,
+       "gpm": 0.74
+      },
+      {
+       "psi": 35,
+       "radiusFt": 24,
+       "gpm": 0.88
+      },
+      {
+       "psi": 45,
+       "radiusFt": 25,
+       "gpm": 1.0
+      },
+      {
+       "psi": 55,
+       "radiusFt": 25,
+       "gpm": 1.11
+      },
+      {
+       "psi": 65,
+       "radiusFt": 25,
+       "gpm": 1.21
+      }
+     ],
+     "chartPrecip": {
+      "square": 0.62,
+      "triangle": 0.71
+     }
+    },
+    {
+     "id": "rb-5000-mpr-25t",
+     "label": "MPR-25 T",
+     "arcFixed": 120,
+     "arcMin": null,
+     "arcMax": null,
+     "strip": null,
+     "trajectoryDeg": null,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 23,
+       "gpm": 1.0
+      },
+      {
+       "psi": 35,
+       "radiusFt": 24,
+       "gpm": 1.21
+      },
+      {
+       "psi": 45,
+       "radiusFt": 25,
+       "gpm": 1.38
+      },
+      {
+       "psi": 55,
+       "radiusFt": 25,
+       "gpm": 1.53
+      },
+      {
+       "psi": 65,
+       "radiusFt": 25,
+       "gpm": 1.67
+      }
+     ],
+     "chartPrecip": {
+      "square": 0.64,
+      "triangle": 0.74
+     }
+    },
+    {
+     "id": "rb-5000-mpr-25h",
+     "label": "MPR-25 H",
+     "arcFixed": 180,
+     "arcMin": null,
+     "arcMax": null,
+     "strip": null,
+     "trajectoryDeg": null,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 23,
+       "gpm": 1.44
+      },
+      {
+       "psi": 35,
+       "radiusFt": 24,
+       "gpm": 1.73
+      },
+      {
+       "psi": 45,
+       "radiusFt": 25,
+       "gpm": 1.98
+      },
+      {
+       "psi": 55,
+       "radiusFt": 25,
+       "gpm": 2.21
+      },
+      {
+       "psi": 65,
+       "radiusFt": 25,
+       "gpm": 2.41
+      }
+     ],
+     "chartPrecip": {
+      "square": 0.61,
+      "triangle": 0.7
+     }
+    },
+    {
+     "id": "rb-5000-mpr-25f",
+     "label": "MPR-25 F",
+     "arcFixed": 360,
+     "arcMin": null,
+     "arcMax": null,
+     "strip": null,
+     "trajectoryDeg": null,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 23,
+       "gpm": 2.78
+      },
+      {
+       "psi": 35,
+       "radiusFt": 24,
+       "gpm": 3.34
+      },
+      {
+       "psi": 45,
+       "radiusFt": 25,
+       "gpm": 3.82
+      },
+      {
+       "psi": 55,
+       "radiusFt": 25,
+       "gpm": 4.25
+      },
+      {
+       "psi": 65,
+       "radiusFt": 25,
+       "gpm": 4.63
+      }
+     ],
+     "chartPrecip": {
+      "square": 0.59,
+      "triangle": 0.68
+     }
+    },
+    {
+     "id": "rb-5000-mpr-30q",
+     "label": "MPR-30 Q",
+     "arcFixed": 90,
+     "arcMin": null,
+     "arcMax": null,
+     "strip": null,
+     "trajectoryDeg": null,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 29,
+       "gpm": 1.03
+      },
+      {
+       "psi": 35,
+       "radiusFt": 30,
+       "gpm": 1.23
+      },
+      {
+       "psi": 45,
+       "radiusFt": 30,
+       "gpm": 1.4
+      },
+      {
+       "psi": 55,
+       "radiusFt": 30,
+       "gpm": 1.56
+      },
+      {
+       "psi": 65,
+       "radiusFt": 30,
+       "gpm": 1.69
+      }
+     ],
+     "chartPrecip": {
+      "square": 0.6,
+      "triangle": 0.69
+     }
+    },
+    {
+     "id": "rb-5000-mpr-30t",
+     "label": "MPR-30 T",
+     "arcFixed": 120,
+     "arcMin": null,
+     "arcMax": null,
+     "strip": null,
+     "trajectoryDeg": null,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 29,
+       "gpm": 1.34
+      },
+      {
+       "psi": 35,
+       "radiusFt": 30,
+       "gpm": 1.62
+      },
+      {
+       "psi": 45,
+       "radiusFt": 30,
+       "gpm": 1.85
+      },
+      {
+       "psi": 55,
+       "radiusFt": 30,
+       "gpm": 2.06
+      },
+      {
+       "psi": 65,
+       "radiusFt": 30,
+       "gpm": 2.24
+      }
+     ],
+     "chartPrecip": {
+      "square": 0.59,
+      "triangle": 0.69
+     }
+    },
+    {
+     "id": "rb-5000-mpr-30h",
+     "label": "MPR-30 H",
+     "arcFixed": 180,
+     "arcMin": null,
+     "arcMax": null,
+     "strip": null,
+     "trajectoryDeg": null,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 29,
+       "gpm": 2.15
+      },
+      {
+       "psi": 35,
+       "radiusFt": 30,
+       "gpm": 2.59
+      },
+      {
+       "psi": 45,
+       "radiusFt": 30,
+       "gpm": 2.96
+      },
+      {
+       "psi": 55,
+       "radiusFt": 30,
+       "gpm": 3.3
+      },
+      {
+       "psi": 65,
+       "radiusFt": 30,
+       "gpm": 3.6
+      }
+     ],
+     "chartPrecip": {
+      "square": 0.63,
+      "triangle": 0.73
+     }
+    },
+    {
+     "id": "rb-5000-mpr-30f",
+     "label": "MPR-30 F",
+     "arcFixed": 360,
+     "arcMin": null,
+     "arcMax": null,
+     "strip": null,
+     "trajectoryDeg": null,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 29,
+       "gpm": 4.24
+      },
+      {
+       "psi": 35,
+       "radiusFt": 30,
+       "gpm": 5.08
+      },
+      {
+       "psi": 45,
+       "radiusFt": 30,
+       "gpm": 5.78
+      },
+      {
+       "psi": 55,
+       "radiusFt": 30,
+       "gpm": 6.39
+      },
+      {
+       "psi": 65,
+       "radiusFt": 30,
+       "gpm": 6.92
+      }
+     ],
+     "chartPrecip": {
+      "square": 0.62,
+      "triangle": 0.71
+     }
+    },
+    {
+     "id": "rb-5000-mpr-35q",
+     "label": "MPR-35 Q",
+     "arcFixed": 90,
+     "arcMin": null,
+     "arcMax": null,
+     "strip": null,
+     "trajectoryDeg": null,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 32,
+       "gpm": 1.4
+      },
+      {
+       "psi": 35,
+       "radiusFt": 34,
+       "gpm": 1.67
+      },
+      {
+       "psi": 45,
+       "radiusFt": 35,
+       "gpm": 1.92
+      },
+      {
+       "psi": 55,
+       "radiusFt": 35,
+       "gpm": 2.13
+      },
+      {
+       "psi": 65,
+       "radiusFt": 35,
+       "gpm": 2.31
+      }
+     ],
+     "chartPrecip": {
+      "square": 0.6,
+      "triangle": 0.7
+     }
+    },
+    {
+     "id": "rb-5000-mpr-35t",
+     "label": "MPR-35 T",
+     "arcFixed": 120,
+     "arcMin": null,
+     "arcMax": null,
+     "strip": null,
+     "trajectoryDeg": null,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 32,
+       "gpm": 1.77
+      },
+      {
+       "psi": 35,
+       "radiusFt": 34,
+       "gpm": 2.15
+      },
+      {
+       "psi": 45,
+       "radiusFt": 35,
+       "gpm": 2.46
+      },
+      {
+       "psi": 55,
+       "radiusFt": 35,
+       "gpm": 2.74
+      },
+      {
+       "psi": 65,
+       "radiusFt": 35,
+       "gpm": 2.99
+      }
+     ],
+     "chartPrecip": {
+      "square": 0.58,
+      "triangle": 0.67
+     }
+    },
+    {
+     "id": "rb-5000-mpr-35h",
+     "label": "MPR-35 H",
+     "arcFixed": 180,
+     "arcMin": null,
+     "arcMax": null,
+     "strip": null,
+     "trajectoryDeg": null,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 32,
+       "gpm": 2.75
+      },
+      {
+       "psi": 35,
+       "radiusFt": 34,
+       "gpm": 3.33
+      },
+      {
+       "psi": 45,
+       "radiusFt": 35,
+       "gpm": 3.81
+      },
+      {
+       "psi": 55,
+       "radiusFt": 35,
+       "gpm": 4.23
+      },
+      {
+       "psi": 65,
+       "radiusFt": 35,
+       "gpm": 4.62
+      }
+     ],
+     "chartPrecip": {
+      "square": 0.6,
+      "triangle": 0.69
+     }
+    },
+    {
+     "id": "rb-5000-mpr-35f",
+     "label": "MPR-35 F",
+     "arcFixed": 360,
+     "arcMin": null,
+     "arcMax": null,
+     "strip": null,
+     "trajectoryDeg": null,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 32,
+       "gpm": 5.36
+      },
+      {
+       "psi": 35,
+       "radiusFt": 34,
+       "gpm": 6.62
+      },
+      {
+       "psi": 45,
+       "radiusFt": 35,
+       "gpm": 7.58
+      },
+      {
+       "psi": 55,
+       "radiusFt": 35,
+       "gpm": 8.43
+      },
+      {
+       "psi": 65,
+       "radiusFt": 35,
+       "gpm": 9.18
+      }
+     ],
+     "chartPrecip": {
+      "square": 0.6,
+      "triangle": 0.69
+     }
+    }
+   ],
+   "source": "https://rainbird.com/media/4173"
+  },
+  {
+   "id": "rb-3500",
+   "brand": "Rain Bird",
+   "name": "3500 Series Rain Curtain nozzles (0.75-4.0)",
+   "kind": "rotor",
+   "flow": "constant",
+   "nozzles": [
+    {
+     "id": "rb-3500-0-75",
+     "label": "0.75",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": null,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 15,
+       "gpm": 0.54
+      },
+      {
+       "psi": 35,
+       "radiusFt": 17,
+       "gpm": 0.67
+      },
+      {
+       "psi": 45,
+       "radiusFt": 17,
+       "gpm": 0.77
+      },
+      {
+       "psi": 55,
+       "radiusFt": 18,
+       "gpm": 0.85
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-3500-1-0",
+     "label": "1.0",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": null,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 20,
+       "gpm": 0.77
+      },
+      {
+       "psi": 35,
+       "radiusFt": 21,
+       "gpm": 0.92
+      },
+      {
+       "psi": 45,
+       "radiusFt": 21,
+       "gpm": 1.06
+      },
+      {
+       "psi": 55,
+       "radiusFt": 22,
+       "gpm": 1.18
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-3500-1-5",
+     "label": "1.5",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": null,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 23,
+       "gpm": 1.06
+      },
+      {
+       "psi": 35,
+       "radiusFt": 23,
+       "gpm": 1.28
+      },
+      {
+       "psi": 45,
+       "radiusFt": 24,
+       "gpm": 1.48
+      },
+      {
+       "psi": 55,
+       "radiusFt": 24,
+       "gpm": 1.65
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-3500-2-0",
+     "label": "2.0",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": null,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 27,
+       "gpm": 1.4
+      },
+      {
+       "psi": 35,
+       "radiusFt": 27,
+       "gpm": 1.69
+      },
+      {
+       "psi": 45,
+       "radiusFt": 27,
+       "gpm": 1.93
+      },
+      {
+       "psi": 55,
+       "radiusFt": 28,
+       "gpm": 2.15
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-3500-3-0",
+     "label": "3.0",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": null,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 29,
+       "gpm": 2.17
+      },
+      {
+       "psi": 35,
+       "radiusFt": 31,
+       "gpm": 2.6
+      },
+      {
+       "psi": 45,
+       "radiusFt": 31,
+       "gpm": 3.0
+      },
+      {
+       "psi": 55,
+       "radiusFt": 32,
+       "gpm": 3.25
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-3500-4-0",
+     "label": "4.0",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": null,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 31,
+       "gpm": 2.97
+      },
+      {
+       "psi": 35,
+       "radiusFt": 33,
+       "gpm": 3.58
+      },
+      {
+       "psi": 45,
+       "radiusFt": 35,
+       "gpm": 4.13
+      },
+      {
+       "psi": 55,
+       "radiusFt": 35,
+       "gpm": 4.6
+      }
+     ],
+     "chartPrecip": null
+    }
+   ],
+   "source": "https://rainbird.com/media/4634"
+  },
+  {
+   "id": "rb-32sa",
+   "brand": "Rain Bird",
+   "name": "32SA nozzles (homeowner chart)",
+   "kind": "rotor",
+   "flow": "constant",
+   "nozzles": [
+    {
+     "id": "rb-32sa-0-75",
+     "label": ".75",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": null,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 15,
+       "gpm": 0.5
+      },
+      {
+       "psi": 45,
+       "radiusFt": 17,
+       "gpm": 0.8
+      },
+      {
+       "psi": 55,
+       "radiusFt": 18,
+       "gpm": 0.9
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-32sa-1-0",
+     "label": "1.0",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": null,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 20,
+       "gpm": 0.8
+      },
+      {
+       "psi": 45,
+       "radiusFt": 21,
+       "gpm": 1.1
+      },
+      {
+       "psi": 55,
+       "radiusFt": 22,
+       "gpm": 1.2
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-32sa-1-5",
+     "label": "1.5",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": null,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 23,
+       "gpm": 1.1
+      },
+      {
+       "psi": 45,
+       "radiusFt": 24,
+       "gpm": 1.5
+      },
+      {
+       "psi": 55,
+       "radiusFt": 24,
+       "gpm": 1.7
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-32sa-2-0",
+     "label": "2.0",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": null,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 27,
+       "gpm": 1.4
+      },
+      {
+       "psi": 45,
+       "radiusFt": 27,
+       "gpm": 1.9
+      },
+      {
+       "psi": 55,
+       "radiusFt": 28,
+       "gpm": 2.2
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-32sa-3-0",
+     "label": "3.0",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": null,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 29,
+       "gpm": 2.2
+      },
+      {
+       "psi": 45,
+       "radiusFt": 30,
+       "gpm": 3.0
+      },
+      {
+       "psi": 55,
+       "radiusFt": 32,
+       "gpm": 3.3
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-32sa-4-0",
+     "label": "4.0",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": null,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 31,
+       "gpm": 3.0
+      },
+      {
+       "psi": 45,
+       "radiusFt": 35,
+       "gpm": 4.1
+      },
+      {
+       "psi": 55,
+       "radiusFt": 35,
+       "gpm": 4.6
+      }
+     ],
+     "chartPrecip": null
+    }
+   ],
+   "source": "https://rainbird.com/media/1328"
+  },
+  {
+   "id": "rb-42sa-rc",
+   "brand": "Rain Bird",
+   "name": "42SA+ standard-angle nozzles (homeowner chart)",
+   "kind": "rotor",
+   "flow": "constant",
+   "nozzles": [
+    {
+     "id": "rb-42sa-rc-1-5",
+     "label": "1.5",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": null,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 33,
+       "gpm": 1.1
+      },
+      {
+       "psi": 35,
+       "radiusFt": 34,
+       "gpm": 1.3
+      },
+      {
+       "psi": 45,
+       "radiusFt": 35,
+       "gpm": 1.5
+      },
+      {
+       "psi": 55,
+       "radiusFt": 35,
+       "gpm": 1.7
+      },
+      {
+       "psi": 65,
+       "radiusFt": 34,
+       "gpm": 1.9
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-42sa-rc-2-0",
+     "label": "2.0",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": null,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 35,
+       "gpm": 1.5
+      },
+      {
+       "psi": 35,
+       "radiusFt": 36,
+       "gpm": 1.8
+      },
+      {
+       "psi": 45,
+       "radiusFt": 37,
+       "gpm": 2.1
+      },
+      {
+       "psi": 55,
+       "radiusFt": 37,
+       "gpm": 2.3
+      },
+      {
+       "psi": 65,
+       "radiusFt": 35,
+       "gpm": 2.5
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-42sa-rc-2-5",
+     "label": "2.5",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": null,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 35,
+       "gpm": 1.8
+      },
+      {
+       "psi": 35,
+       "radiusFt": 37,
+       "gpm": 2.2
+      },
+      {
+       "psi": 45,
+       "radiusFt": 37,
+       "gpm": 2.5
+      },
+      {
+       "psi": 55,
+       "radiusFt": 37,
+       "gpm": 2.8
+      },
+      {
+       "psi": 65,
+       "radiusFt": 37,
+       "gpm": 3.0
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-42sa-rc-3-0",
+     "label": "3.0",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": null,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 36,
+       "gpm": 2.3
+      },
+      {
+       "psi": 35,
+       "radiusFt": 38,
+       "gpm": 2.7
+      },
+      {
+       "psi": 45,
+       "radiusFt": 40,
+       "gpm": 3.1
+      },
+      {
+       "psi": 55,
+       "radiusFt": 40,
+       "gpm": 3.5
+      },
+      {
+       "psi": 65,
+       "radiusFt": 40,
+       "gpm": 3.8
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-42sa-rc-4-0",
+     "label": "4.0",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": null,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 37,
+       "gpm": 2.9
+      },
+      {
+       "psi": 35,
+       "radiusFt": 40,
+       "gpm": 3.5
+      },
+      {
+       "psi": 45,
+       "radiusFt": 42,
+       "gpm": 4.0
+      },
+      {
+       "psi": 55,
+       "radiusFt": 42,
+       "gpm": 4.4
+      },
+      {
+       "psi": 65,
+       "radiusFt": 42,
+       "gpm": 4.8
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-42sa-rc-5-0",
+     "label": "5.0",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": null,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 39,
+       "gpm": 3.7
+      },
+      {
+       "psi": 35,
+       "radiusFt": 41,
+       "gpm": 4.5
+      },
+      {
+       "psi": 45,
+       "radiusFt": 45,
+       "gpm": 5.1
+      },
+      {
+       "psi": 55,
+       "radiusFt": 45,
+       "gpm": 5.7
+      },
+      {
+       "psi": 65,
+       "radiusFt": 45,
+       "gpm": 6.2
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-42sa-rc-6-0",
+     "label": "6.0",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": null,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 39,
+       "gpm": 4.2
+      },
+      {
+       "psi": 35,
+       "radiusFt": 43,
+       "gpm": 5.2
+      },
+      {
+       "psi": 45,
+       "radiusFt": 46,
+       "gpm": 6.0
+      },
+      {
+       "psi": 55,
+       "radiusFt": 47,
+       "gpm": 6.6
+      },
+      {
+       "psi": 65,
+       "radiusFt": 48,
+       "gpm": 7.2
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-42sa-rc-8-0",
+     "label": "8.0",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": null,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 36,
+       "gpm": 5.9
+      },
+      {
+       "psi": 35,
+       "radiusFt": 43,
+       "gpm": 7.1
+      },
+      {
+       "psi": 45,
+       "radiusFt": 47,
+       "gpm": 8.0
+      },
+      {
+       "psi": 55,
+       "radiusFt": 50,
+       "gpm": 8.9
+      },
+      {
+       "psi": 65,
+       "radiusFt": 50,
+       "gpm": 9.7
+      }
+     ],
+     "chartPrecip": null
+    }
+   ],
+   "source": "https://rainbird.com/media/1328"
+  },
+  {
+   "id": "rb-42sa-la",
+   "brand": "Rain Bird",
+   "name": "42SA+ low-angle nozzles (homeowner chart)",
+   "kind": "rotor",
+   "flow": "constant",
+   "nozzles": [
+    {
+     "id": "rb-42sa-la-1-0",
+     "label": "1.0",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": null,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 25,
+       "gpm": 0.7
+      },
+      {
+       "psi": 35,
+       "radiusFt": 28,
+       "gpm": 0.9
+      },
+      {
+       "psi": 45,
+       "radiusFt": 29,
+       "gpm": 1.0
+      },
+      {
+       "psi": 55,
+       "radiusFt": 29,
+       "gpm": 1.1
+      },
+      {
+       "psi": 65,
+       "radiusFt": 29,
+       "gpm": 1.2
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-42sa-la-1-5",
+     "label": "1.5",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": null,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 27,
+       "gpm": 1.1
+      },
+      {
+       "psi": 35,
+       "radiusFt": 30,
+       "gpm": 1.4
+      },
+      {
+       "psi": 45,
+       "radiusFt": 31,
+       "gpm": 1.6
+      },
+      {
+       "psi": 55,
+       "radiusFt": 31,
+       "gpm": 1.8
+      },
+      {
+       "psi": 65,
+       "radiusFt": 31,
+       "gpm": 2.0
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-42sa-la-2-0",
+     "label": "2.0",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": null,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 28,
+       "gpm": 1.5
+      },
+      {
+       "psi": 35,
+       "radiusFt": 31,
+       "gpm": 1.8
+      },
+      {
+       "psi": 45,
+       "radiusFt": 32,
+       "gpm": 2.0
+      },
+      {
+       "psi": 55,
+       "radiusFt": 33,
+       "gpm": 2.2
+      },
+      {
+       "psi": 65,
+       "radiusFt": 33,
+       "gpm": 2.4
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-42sa-la-3-0",
+     "label": "3.0",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": null,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 29,
+       "gpm": 2.2
+      },
+      {
+       "psi": 35,
+       "radiusFt": 33,
+       "gpm": 2.7
+      },
+      {
+       "psi": 45,
+       "radiusFt": 35,
+       "gpm": 3.1
+      },
+      {
+       "psi": 55,
+       "radiusFt": 36,
+       "gpm": 3.4
+      },
+      {
+       "psi": 65,
+       "radiusFt": 36,
+       "gpm": 3.7
+      }
+     ],
+     "chartPrecip": null
+    }
+   ],
+   "source": "https://rainbird.com/media/1328"
+  },
+  {
+   "id": "rb-52sa",
+   "brand": "Rain Bird",
+   "name": "52SA nozzles (homeowner chart)",
+   "kind": "rotor",
+   "flow": "constant",
+   "nozzles": [
+    {
+     "id": "rb-52sa-1-5",
+     "label": "1.5",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": null,
+     "rows": [
+      {
+       "psi": 35,
+       "radiusFt": 34,
+       "gpm": 1.35
+      },
+      {
+       "psi": 45,
+       "radiusFt": 35,
+       "gpm": 1.54
+      },
+      {
+       "psi": 55,
+       "radiusFt": 35,
+       "gpm": 1.71
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-52sa-2-0",
+     "label": "2.0",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": null,
+     "rows": [
+      {
+       "psi": 35,
+       "radiusFt": 36,
+       "gpm": 1.81
+      },
+      {
+       "psi": 45,
+       "radiusFt": 37,
+       "gpm": 2.07
+      },
+      {
+       "psi": 55,
+       "radiusFt": 37,
+       "gpm": 2.3
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-52sa-2-5",
+     "label": "2.5",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": null,
+     "rows": [
+      {
+       "psi": 35,
+       "radiusFt": 37,
+       "gpm": 2.17
+      },
+      {
+       "psi": 45,
+       "radiusFt": 37,
+       "gpm": 2.51
+      },
+      {
+       "psi": 55,
+       "radiusFt": 37,
+       "gpm": 2.76
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-52sa-3-0",
+     "label": "3.0",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": null,
+     "rows": [
+      {
+       "psi": 35,
+       "radiusFt": 38,
+       "gpm": 2.71
+      },
+      {
+       "psi": 45,
+       "radiusFt": 40,
+       "gpm": 3.09
+      },
+      {
+       "psi": 55,
+       "radiusFt": 40,
+       "gpm": 3.47
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-52sa-4-0",
+     "label": "4.0",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": null,
+     "rows": [
+      {
+       "psi": 35,
+       "radiusFt": 40,
+       "gpm": 3.5
+      },
+      {
+       "psi": 45,
+       "radiusFt": 42,
+       "gpm": 4.01
+      },
+      {
+       "psi": 55,
+       "radiusFt": 42,
+       "gpm": 4.44
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-52sa-5-0",
+     "label": "5.0",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": null,
+     "rows": [
+      {
+       "psi": 35,
+       "radiusFt": 41,
+       "gpm": 4.47
+      },
+      {
+       "psi": 45,
+       "radiusFt": 45,
+       "gpm": 5.09
+      },
+      {
+       "psi": 55,
+       "radiusFt": 45,
+       "gpm": 5.66
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-52sa-6-0",
+     "label": "6.0",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": null,
+     "rows": [
+      {
+       "psi": 35,
+       "radiusFt": 43,
+       "gpm": 5.23
+      },
+      {
+       "psi": 45,
+       "radiusFt": 46,
+       "gpm": 6.01
+      },
+      {
+       "psi": 55,
+       "radiusFt": 47,
+       "gpm": 6.63
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-52sa-8-0",
+     "label": "8.0",
+     "arcFixed": null,
+     "arcMin": 40,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": null,
+     "rows": [
+      {
+       "psi": 35,
+       "radiusFt": 43,
+       "gpm": 7.06
+      },
+      {
+       "psi": 45,
+       "radiusFt": 47,
+       "gpm": 8.03
+      },
+      {
+       "psi": 55,
+       "radiusFt": 50,
+       "gpm": 8.86
+      }
+     ],
+     "chartPrecip": null
+    }
+   ],
+   "source": "https://rainbird.com/media/1328"
+  },
+  {
+   "id": "rb-22sa",
+   "brand": "Rain Bird",
+   "name": "22SA mini rotary (built-in multi-stream nozzle; full, half and quarter models)",
+   "kind": "rotary",
+   "flow": "arc",
+   "nozzles": [
+    {
+     "id": "rb-22sa-f",
+     "label": "Full (22SAF)",
+     "arcFixed": 360,
+     "arcMin": null,
+     "arcMax": null,
+     "strip": null,
+     "trajectoryDeg": null,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 19,
+       "gpm": 2.74
+      },
+      {
+       "psi": 35,
+       "radiusFt": 22,
+       "gpm": 3.24
+      },
+      {
+       "psi": 45,
+       "radiusFt": 23,
+       "gpm": 3.67
+      },
+      {
+       "psi": 55,
+       "radiusFt": 24,
+       "gpm": 4.06
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-22sa-h",
+     "label": "Half (22SAH)",
+     "arcFixed": 180,
+     "arcMin": null,
+     "arcMax": null,
+     "strip": null,
+     "trajectoryDeg": null,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 19,
+       "gpm": 2.74
+      },
+      {
+       "psi": 35,
+       "radiusFt": 22,
+       "gpm": 3.24
+      },
+      {
+       "psi": 45,
+       "radiusFt": 23,
+       "gpm": 3.68
+      },
+      {
+       "psi": 55,
+       "radiusFt": 24,
+       "gpm": 4.06
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-22sa-q",
+     "label": "Quarter (22SAQ)",
+     "arcFixed": 90,
+     "arcMin": null,
+     "arcMax": null,
+     "strip": null,
+     "trajectoryDeg": null,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 19,
+       "gpm": 2.72
+      },
+      {
+       "psi": 35,
+       "radiusFt": 22,
+       "gpm": 3.24
+      },
+      {
+       "psi": 45,
+       "radiusFt": 23,
+       "gpm": 3.68
+      },
+      {
+       "psi": 55,
+       "radiusFt": 24,
+       "gpm": 4.08
+      }
+     ],
+     "chartPrecip": null
+    }
+   ],
+   "source": "https://rainbird.com/media/1328"
+  },
+  {
+   "id": "rb-maxipaw",
+   "brand": "Rain Bird",
+   "name": "Maxi-Paw / Maxi-Bird impact nozzles (06-12 standard, 07 LA and 10 LA)",
+   "kind": "impact",
+   "flow": "constant",
+   "nozzles": [
+    {
+     "id": "rb-maxipaw-06",
+     "label": "06",
+     "arcFixed": null,
+     "arcMin": 20,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": 23,
+     "rows": [
+      {
+       "psi": 35,
+       "radiusFt": 37,
+       "gpm": 2.0
+      },
+      {
+       "psi": 45,
+       "radiusFt": 38,
+       "gpm": 2.3
+      },
+      {
+       "psi": 55,
+       "radiusFt": 38,
+       "gpm": 2.5
+      },
+      {
+       "psi": 60,
+       "radiusFt": 38,
+       "gpm": 2.6
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-maxipaw-07",
+     "label": "07",
+     "arcFixed": null,
+     "arcMin": 20,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": 23,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 32,
+       "gpm": 2.2
+      },
+      {
+       "psi": 35,
+       "radiusFt": 37,
+       "gpm": 2.7
+      },
+      {
+       "psi": 45,
+       "radiusFt": 39,
+       "gpm": 3.0
+      },
+      {
+       "psi": 55,
+       "radiusFt": 41,
+       "gpm": 3.3
+      },
+      {
+       "psi": 60,
+       "radiusFt": 41,
+       "gpm": 3.5
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-maxipaw-08",
+     "label": "08",
+     "arcFixed": null,
+     "arcMin": 20,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": 23,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 35,
+       "gpm": 2.8
+      },
+      {
+       "psi": 35,
+       "radiusFt": 38,
+       "gpm": 3.3
+      },
+      {
+       "psi": 45,
+       "radiusFt": 40,
+       "gpm": 3.7
+      },
+      {
+       "psi": 55,
+       "radiusFt": 41,
+       "gpm": 4.1
+      },
+      {
+       "psi": 60,
+       "radiusFt": 42,
+       "gpm": 4.2
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-maxipaw-10",
+     "label": "10",
+     "arcFixed": null,
+     "arcMin": 20,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": 23,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 38,
+       "gpm": 4.2
+      },
+      {
+       "psi": 35,
+       "radiusFt": 41,
+       "gpm": 4.8
+      },
+      {
+       "psi": 45,
+       "radiusFt": 42,
+       "gpm": 5.4
+      },
+      {
+       "psi": 55,
+       "radiusFt": 43,
+       "gpm": 6.0
+      },
+      {
+       "psi": 60,
+       "radiusFt": 44,
+       "gpm": 6.4
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-maxipaw-12",
+     "label": "12",
+     "arcFixed": null,
+     "arcMin": 20,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": 23,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 39,
+       "gpm": 5.5
+      },
+      {
+       "psi": 35,
+       "radiusFt": 42,
+       "gpm": 6.3
+      },
+      {
+       "psi": 45,
+       "radiusFt": 44,
+       "gpm": 7.1
+      },
+      {
+       "psi": 55,
+       "radiusFt": 45,
+       "gpm": 7.9
+      },
+      {
+       "psi": 60,
+       "radiusFt": 45,
+       "gpm": 8.4
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-maxipaw-07-la",
+     "label": "07 LA",
+     "arcFixed": null,
+     "arcMin": 20,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": 11,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 22,
+       "gpm": 1.5
+      },
+      {
+       "psi": 35,
+       "radiusFt": 23,
+       "gpm": 1.9
+      },
+      {
+       "psi": 45,
+       "radiusFt": 25,
+       "gpm": 2.1
+      },
+      {
+       "psi": 55,
+       "radiusFt": 25,
+       "gpm": 2.3
+      },
+      {
+       "psi": 60,
+       "radiusFt": 25,
+       "gpm": 2.4
+      }
+     ],
+     "chartPrecip": null
+    },
+    {
+     "id": "rb-maxipaw-10-la",
+     "label": "10 LA",
+     "arcFixed": null,
+     "arcMin": 20,
+     "arcMax": 360,
+     "strip": null,
+     "trajectoryDeg": 11,
+     "rows": [
+      {
+       "psi": 25,
+       "radiusFt": 25,
+       "gpm": 3.4
+      },
+      {
+       "psi": 35,
+       "radiusFt": 29,
+       "gpm": 4.0
+      },
+      {
+       "psi": 45,
+       "radiusFt": 31,
+       "gpm": 4.5
+      },
+      {
+       "psi": 55,
+       "radiusFt": 32,
+       "gpm": 5.0
+      },
+      {
+       "psi": 60,
+       "radiusFt": 32,
+       "gpm": 5.4
+      }
+     ],
+     "chartPrecip": null
+    }
+   ],
+   "source": "https://rainbird.com/media/4699"
+  }
+ ],
+ "notes": [
+  "SOURCES. 5000 Series bodies and nozzles: Rain Bird '5000 Series Rotors Technical Specifications' D42380 (c) 2023, https://rainbird.com/media/4635 (its imperial tables are identical, value for value, to the 2020 catalogue pages at https://rainbird.com/media/4159). 3500 Series: '3500 Series Rotors Technical Specifications' D42378 (c) 2023, https://rainbird.com/media/4634 (same table as D42377 https://rainbird.com/media/4228 and the 2018 catalogue). 5000 MPR nozzles: Rain Bird catalogue pages 46-47 (2020 PDF) https://rainbird.com/media/4173, identical to the 2018 catalogue https://rainbird.com/media/8388. Maxi-Paw: 'Maxi-Paw 2045A Rotor Technical Specifications' D42379 (c) 2023, https://rainbird.com/media/4699, identical to the 2018 catalogue page 56. 32SA, 42SA+, 52SA, 22SA: Rain Bird homeowner catalogue page 21 'Rotor Performance' (2010 PDF) https://rainbird.com/media/1328, which is the 'Gear Drive Rotor Performance Charts' document Rain Bird still links from its 42SA+ product page; read from a 250 dpi render of the page and checked against its text layer.",
+  "OLDER 5000 CHART NOT USED. The 2010 chart https://www.rainbird.com/sites/default/files/media/documents/2017-07/chart_5000.pdf gives different radii for several Rain Curtain nozzles than the 2020/2023 charts used here (e.g. 4.0 at 25 psi: 37 ft then, 36 ft now; 6.0 at 55 and 65 psi: 47/48 ft then, 50 ft now; 8.0 at 25/35/45 psi: 36/43/47 ft then, 33/41/44 ft now). The current values are stored. The 42SA+ and 52SA homeowner charts reproduce the 2010 5000 values (see below).",
+  "ROTOR FLOW. Every rotor and impact family is flow 'constant': gpm is the nozzle's discharge as printed, whatever arc the head is set to. Rain Bird's charts print precipitation for HALF-CIRCLE operation at every pressure (square and triangular spacing at 50% of diameter of throw), with no single reference pressure, so chartPrecip is null for those families; it is derivable from gpm and radius. Only the MPR family has a reference pressure (see MPR note). All charts: zero wind, ASAE/ASABE S398.1.",
+  "ARC. 5000, 3500, 32SA, 42SA+ and 52SA part-circle (PC) units adjust 40-360 degrees (reversing); 5000 full-circle (FC) units are 360 only, non-reversing. Nozzle arcMin/arcMax record the PC range; an FC body simply runs at 360. The 2018 catalogue's 5000 model list says '40-350 degrees' in one line; the 2023 tech spec and the same catalogue's operating specifications say 40-360, which is used.",
+  "5000 PLUS. 'Plus' (+) adds only the flow shut-off ('The Green Top'); Rain Bird publishes one chart for 5000 and 5000 Plus, so Plus bodies take the same families.",
+  "5000 PRS. The PRS (R) bodies regulate to 45 psi ('regulating pressure to precisely 45 psi', tech spec D42380), hence regulatedPsi 45, but Rain Bird publishes a SEPARATE PRS chart, stored as rb-5000-prs-rc and rb-5000-prs-la: rows are by INLET pressure 25, 35, 45 and one band printed '55-75' psi. That band is stored as three identical rows at 55, 65 and 75 psi (the chart's one printed row repeated, not interpolated). Its flows are slightly above the 45 psi row (e.g. 3.0 nozzle: 3.09 gpm at 45, 3.20 gpm at 55-75). Use the PRS chart with the zone's inlet pressure rather than clamping the non-PRS chart at 45 psi.",
+  "5000 MPR NOZZLES (rb-5000-mpr). 25 ft (red), 30 ft (green), 35 ft (beige) in Q/T/H/F, labelled 'MPR-25 Q' etc. after Rain Bird's specifier code 5000-MPR-25-Q, in which the letter is the 'Pattern'. They are rotor nozzles, so flow 'constant' and gpm is AS PRINTED for that nozzle (NOT a full-circle equivalent). arcFixed is the pattern the nozzle is made for (Q 90, T 120, H 180, F 360): the rotor body still has its own 40-360 arc adjustment, and Rain Bird's matched precipitation holds only when the rotor arc is set to the nozzle's pattern, which is what arcFixed assumes. chartPrecip is the chart's 45 psi row, Rain Bird's own reference ('matched precipitation rate of 0.6 in/hr at 45 psi', tech spec D42380), at the nozzle's pattern. Trajectory is given only as 'varied between 12-25 degrees' (2018 catalogue), so null. There is no PRS-specific MPR chart; the PRS bodies list rb-5000-mpr because the nozzle fits, and reading it at the regulated 45 psi there is a judgement, not chart data.",
+  "3500 SERIES. Trajectory is null: the 2023 tech spec says the nozzle bore trajectory is 'no more than 25 and no less than 10 degrees' while the 2018 catalogue says 'nozzle trajectory of 25'. Pressure range 25-55 psi. The 2023 tech spec gives radius reduction both as 'up to 35%' and 'up to 25%'.",
+  "32SA. Its own chart is stored (rb-32sa), from the homeowner chart: flows printed to 0.1 gpm, pressures 25, 45, 55 only (no 35 psi). Rain Bird sells one nozzle tree (32SANZLPK) for the 32SA and the 3500 Series, and this chart is the 3500 chart rounded, with one exception: the 3.0 nozzle at 45 psi is printed 30 ft here, but 31 ft in the 3500 chart, in the 32SA nozzle manual (https://rainbird.com/media/1301) and on the 32SA box chart (https://rainbird.com/media/1286: 3.0 nozzle at 25/35/45/55 psi = 29/31/31/32 ft, 2.17/2.60/3.00/3.25 gpm). 30 ft is probably a misprint but is kept as printed. Pressure range 25-55 psi; 4 in pop-up and 40-360 arc from the 32SA product page and box.",
+  "42SA+ AND 52SA. Both take the 5000 nozzle tree (Rain Bird store: '4252NZLPK - Nozzle Tree for 42SA+, 52SA & 5000+ Rotors'). Their homeowner charts are stored as printed (rb-42sa-rc, rb-42sa-la, rb-52sa). The 52SA chart equals the 2010 5000 chart at 35, 45 and 55 psi and lists no low-angle nozzles, although its tree contains them. The 42SA+ charts are the 2010 5000 values rounded to 0.1 gpm, except: 8.0 at 65 psi printed 9.7 gpm (5000 chart 9.63); low-angle 1.0 at 25/55/65 psi printed 0.7/1.1/1.2 gpm (5000 chart 0.76/1.17/1.27); low-angle 1.5 at 65 psi printed 2.0 gpm (1.92); low-angle 2.0 at 25 psi printed 28 ft (29 ft). Kept as printed; where the two disagree the 5000 families (rb-5000-rc, rb-5000-la) are the more precise Rain Bird data for the same nozzles. The 42SA+ low-angle table labels its nozzles '1.0', '1.5', '2.0', '3.0' without 'LA' (they are the tree's 1.0 LA-3.0 LA). Trajectory is not printed on the homeowner chart, so null. Pressure ranges from the Rain Bird store comparison table: 42SA+ 25-65 psi, 52SA 35-70 psi. Both are true 4 in pop-ups per their product pages.",
+  "22SA. Fixed-pattern mini rotary with a built-in multi-stream nozzle, one body per pattern (22SAF, 22SAH, 22SAQ), all fixedNozzles rb-22sa. Per the schema, gpm is stored as the FULL-CIRCLE equivalent: half x2, quarter x4. The printed flows are proportional to arc within rounding (e.g. at 25 psi full 2.74, half 1.37 -> 2.74, quarter 0.68 -> 2.72; at 55 psi full 4.06, quarter 1.02 -> 4.08). The 4 in pop-up comes from the Rain Bird store page of the current 22SAFPROPR ('Rotor Series 22SA, Pop-Up Height 4 in'). The current PRO / pressure-regulated models (22SAFPROPR full, 22SAPROPR adjustable 45-270 degrees) are NOT catalogued: the store gives only radius (30/40/45/50 psi -> 19/22/23/24 ft), no flow, and no regulated pressure. Whether the 2010 22SA chart still describes them is unknown.",
+  "MAXI-PAW (impact). 2045A Maxi-Paw, 3 in pop-up, arc 20-340 part circle or 360 full circle (trip disengaged), hence arcMin 20 / arcMax 360. Trajectory 23 degrees standard, 11 degrees LA (tech spec D42379). The 06 nozzle is printed '-' at 25 psi (not rated), so it has no 25 psi row. Pressure 25-60 psi. The 2045-PJ Maxi-Bird is riser-mounted and shares the chart (the 2018 catalogue titles it 'Maxi-Paw and Maxi-Bird Nozzle Performance').",
+  "RADIUS REDUCTION. All charts are at full radius. The radius-reduction screw cuts radius by up to 25% (5000), 25% or 35% (3500, see above), 35% (32SA); the flow at a reduced radius is not charted.",
+  "NOT FOUND / NOT DONE. 25BPJ and LF-series impacts were not attempted (riser-mounted / agricultural, not quick). The retail 'Pro Rotor' packs CP3504PC and CP5004PC are not added as bodies: the store lists them beside the 32SA and 42SA+ with the same distances, and they are presumably the 3504 and 5004 in retail packs, but that is not confirmed. No PRS-specific chart exists for the MPR nozzles. 12SA and 8SA mini rotaries are out of this group.",
+  "pressureIs: 'inlet' (added by the water session): the 5000 PRS chart is indexed by inlet pressure, so a PRS body's regulation is not applied on top of it."
+ ]
+}

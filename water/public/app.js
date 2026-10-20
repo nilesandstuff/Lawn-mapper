@@ -25,6 +25,8 @@
  */
 
 import { tracedOn, lineUpAt } from '/lib/shade/traced.js';
+import { boxFor } from '/lib/site.js';
+import { sprinklers } from '/heads.js';
 
 const $ = (s) => document.querySelector(s);
 const R = 6378137;
@@ -205,7 +207,7 @@ function overlay(d, { flow = true, grade = true, hard = true, zones = true } = {
 
 function draw() {
   const { photo, data: d, frame, site } = view;
-  if (!d || !photo) return;
+  if (!photo || !frame) return;
   const cv = $('#view');
   cv.width = photo.width; cv.height = photo.height;
   const g = cv.getContext('2d');
@@ -213,16 +215,19 @@ function draw() {
   if ($('#show-photo').checked && photo.close) g.drawImage(photo, view.photoShift[0], view.photoShift[1]);
   else { g.fillStyle = '#3a4440'; g.fillRect(0, 0, cv.width, cv.height); }
 
-  const o = overlay(d, { flow: $('#show-flow').checked, grade: $('#show-grade').checked, hard: $('#show-hard').checked, zones: $('#show-zones').checked });
-  const tmp = document.createElement('canvas');
-  tmp.width = d.grid.W; tmp.height = d.grid.H;
-  tmp.getContext('2d').putImageData(o, 0, 0);
-  // the grid's corners, moved by the datum correction (real meters -> web-mercator meters)
-  const dx = d.shift.east / d.grid.k, dy = d.shift.north / d.grid.k;
-  const [x0, y0] = toPx(frame, photo, [d.grid.bbox[0] + dx, d.grid.bbox[3] + dy]);
-  const [x1, y1] = toPx(frame, photo, [d.grid.bbox[2] + dx, d.grid.bbox[1] + dy]);
-  g.imageSmoothingEnabled = false;
-  g.drawImage(tmp, x0, y0, x1 - x0, y1 - y0);
+  // the analysis over the photo, once it is in, and not while the sprinklers are being placed
+  if (d && !heads.active) {
+    const o = overlay(d, { flow: $('#show-flow').checked, grade: $('#show-grade').checked, hard: $('#show-hard').checked, zones: $('#show-zones').checked });
+    const tmp = document.createElement('canvas');
+    tmp.width = d.grid.W; tmp.height = d.grid.H;
+    tmp.getContext('2d').putImageData(o, 0, 0);
+    // the grid's corners, moved by the datum correction (real meters -> web-mercator meters)
+    const dx = d.shift.east / d.grid.k, dy = d.shift.north / d.grid.k;
+    const [x0, y0] = toPx(frame, photo, [d.grid.bbox[0] + dx, d.grid.bbox[3] + dy]);
+    const [x1, y1] = toPx(frame, photo, [d.grid.bbox[2] + dx, d.grid.bbox[1] + dy]);
+    g.imageSmoothingEnabled = false;
+    g.drawImage(tmp, x0, y0, x1 - x0, y1 - y0);
+  }
 
   if (site.parcel) {
     g.strokeStyle = '#ffeb3b'; g.lineWidth = Math.max(3, photo.width / 250); g.setLineDash([g.lineWidth * 3, g.lineWidth * 2]);
@@ -261,6 +266,7 @@ function draw() {
     g.stroke(); g.setLineDash([]);
     for (const p of a.ring) { const [x, y] = at(p); g.fillStyle = AREA_COLOR[a.kind] || '#fff'; g.beginPath(); g.arc(x, y, lw, 0, 7); g.fill(); }
   }
+  if (heads.active) { heads.drawOn(g, lw); return; }
   const spouts = [...inputs.downspouts, ...(mode === 'to' && pending ? [{ from: pending, to: null }] : [])];
   for (const sp of spouts) {
     const [x0, y0] = at(sp.from);
@@ -270,17 +276,53 @@ function draw() {
     g.strokeStyle = '#ff9100'; g.lineWidth = lw; g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke();
     g.strokeStyle = '#000'; g.lineWidth = lw * 0.6; g.fillStyle = '#00e5ff'; g.beginPath(); g.arc(x1, y1, lw * 2, 0, 7); g.fill(); g.stroke();
   }
+  if ($('#show-heads')?.checked) heads.drawOn(g, lw);
 }
 
 /** A tap on the photo -> [lng, lat]. */
-function tapAt(ev) {
-  const { photo, frame } = view, cv = $('#view'), rect = cv.getBoundingClientRect();
-  const px = ((ev.clientX - rect.left) / rect.width) * cv.width, py = ((ev.clientY - rect.top) / rect.height) * cv.height;
+function tapPx(ev) {
+  const cv = $('#view'), rect = cv.getBoundingClientRect();
+  return [((ev.clientX - rect.left) / rect.width) * cv.width, ((ev.clientY - rect.top) / rect.height) * cv.height];
+}
+/** A pixel on the photo -> [lng, lat]. */
+function pxToLngLat([px, py]) {
+  const { photo, frame } = view;
   const c = mercToWorld(toMerc([frame.lng, frame.lat]), frame.zoom), s = photo.width / frame.size;
   const wx = (px - photo.width / 2) / s + c[0], wy = (py - photo.height / 2) / s + c[1];
   const size = worldSize(frame.zoom);
   const x = (wx / size) * 2 * Math.PI * R - Math.PI * R, y = Math.PI * R - (wy / size) * 2 * Math.PI * R;
   return fromMerc([x, y]).map((v) => +v.toFixed(7));
+}
+function tapAt(ev) { return pxToLngLat(tapPx(ev)); }
+
+/* YOUR SPRINKLERS FIRST (owner, 2026-10-20: "a step that happens before doing anything else within the
+   water map"): public/heads.js runs the steps; the page lends it the photo and the save. */
+const heads = sprinklers({
+  panel: $('#heads-panel'), title: $('#heads-title'),
+  draw: () => draw(),
+  tapPx, toLngLat: pxToLngLat,
+  toPx: (p) => toPx(view.frame, view.photo, toMerc(p)),
+  // photo pixels per ground metre at the frame's middle
+  pxPerM: () => (worldSize(view.frame.zoom) / (2 * Math.PI * R * Math.cos((view.frame.lat * Math.PI) / 180))) * (view.photo.width / view.frame.size),
+  cssScale: () => { const cv = $('#view'); return cv.width / cv.getBoundingClientRect().width; },
+  lawnMiddle: () => {
+    const pts = (view.site?.lawn || []).flatMap((f) => (f.geometry?.type === 'Polygon' ? f.geometry.coordinates[0] : f.geometry?.type === 'MultiPolygon' ? f.geometry.coordinates.flatMap((p) => p[0]) : []));
+    if (!pts.length) return view.site ? [view.site.lng, view.site.lat] : null;
+    return [pts.reduce((a, p) => a + p[0], 0) / pts.length, pts.reduce((a, p) => a + p[1], 0) / pts.length];
+  },
+  changed: () => keep(),
+  finish: () => { $('#result').classList.remove('heads-on'); draw(); headsCard(); if (view.data) report(view.data, view.site); if (view.plan) planReport(view.plan); },
+});
+
+/** The sprinkler system, zone by zone, under the map once its steps are done. */
+function headsCard() {
+  const z = heads.summary(), irr = heads.data;
+  if (irr.none) { $('#heads-summary').innerHTML = '<p class="dim">No in-ground sprinklers on this map. <em>Your sprinklers</em> adds them.</p>'; return; }
+  if (!z) { $('#heads-summary').innerHTML = ''; return; }
+  $('#heads-summary').innerHTML = `<div class="card"><h2>Your sprinkler system: ${irr.heads.length} heads on ${z.length} valve${z.length === 1 ? '' : 's'}</h2>
+    <table class="months"><tr><th>Valve</th><th>Heads</th><th>Flow</th><th>Puts down</th><th>At the heads</th></tr>
+    ${z.map((v) => `<tr><td><span class="chip" style="background:${v.color}"></span>Zone ${v.n}</td><td>${v.heads}</td><td>${v.gpm.toFixed(1)} gpm</td><td>${v.precipInH ? `${v.precipInH.toFixed(2)} in/h` : '?'}${v.mixed ? ' (sprays and rotors mixed)' : ''}</td><td>${v.psi ? `about ${Math.round(v.psi)} psi` : '?'}</td></tr>`).join('')}</table>
+    <p class="dim">From the makers' performance charts, at about the pressure that reaches each zone: what comes in, less about 8 psi through the backflow preventer and valve, and friction in about 50 ft of supply line and 50 ft of zone line. "Puts down" is at head-to-head spacing; a catch-cup test on the lawn would measure the real rate.</p></div>`;
 }
 
 /* ------------------------------------------------------------- the words */
@@ -483,23 +525,31 @@ async function run(site) {
       else if (data.error) { w.terminate(); reject(new Error(data.error)); }
       else if (data.done) resolve(data.done);
       else if (data.planProgress) $('#saved').textContent = data.planProgress;
-      else if (data.plan) { view.plan = data.plan; $('#saved').textContent = savedNote; planReport(data.plan); needScale(); draw(); }
+      else if (data.plan) { view.plan = data.plan; $('#saved').textContent = savedNote; if (!heads.active) planReport(data.plan); needScale(); draw(); }
       else if (data.planError) $('#saved').textContent = `The watering plan could not be worked out: ${data.planError}`;
       else if (data.hill) hillReport(data.hill);
     };
     w.onerror = (e) => { w.terminate(); reject(new Error(e.message || 'the analysis stopped')); };
   });
   w.postMessage({ site, inputs: { ...inputs } });
-  const d = await first;
+  // the photo first, over the analysis box (lib/site.js boxFor; the shade map's own box when it has one),
+  // so the sprinklers can be placed while the survey is read
   status('Fetching the photo…');
-  view.frame = frameFor(d.grid.bbox, d.grid.lat);
+  const box = site.lidar?.box?.length === 4 ? site.lidar.box : boxFor(site);
+  view.frame = frameFor(box, site.lat);
   const saved = await savedPhoto(view.frame, site);
   view.photo = saved.photo; view.photoShift = saved.shift; view.photoName = saved.name;
   if (!view.photo) { $('#show-photo').checked = false; view.photo = { width: 1280, height: 1280 }; view.photoName = 'no photo (it would not load)'; }
-  view.data = d;
   $('#result').hidden = false;
+  const asking = await heads.open(kept.irrigation);
+  $('#result').classList.toggle('heads-on', asking);
+  headsCard();
   draw();
-  report(d, site);
+  status(asking ? 'Reading the survey while you do this…' : `Reading the survey for ${site.label}…`);
+  const d = await first;
+  view.data = d;
+  draw();
+  if (!heads.active) report(d, site);
   status('');
   const back = $('#back');
   if (back && site.mapId) back.href = `${HOME}/dashboard?map=${encodeURIComponent(site.mapId)}`;
@@ -518,7 +568,12 @@ function replan() {
 function changed() {
   draw();
   replan();
-  if (!view.site?.mapId) { savedNote = 'Open this from your dashboard to keep your downspouts and gutters with the map.'; return; }
+  keep();
+}
+
+/** Save what was entered, a moment after the last change. */
+function keep() {
+  if (!view.site?.mapId) { savedNote = 'Open this from your dashboard to keep your sprinklers, downspouts and gutters with the map.'; return; }
   clearTimeout(saveTimer);
   saveTimer = setTimeout(save, 800);
 }
@@ -528,7 +583,7 @@ async function save() {
   try {
     const res = await fetch(`/api/maps/tool?id=${encodeURIComponent(site.mapId)}&tool=water`, {
       method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ data: { v: 1, downspouts: inputs.downspouts, gutters: inputs.gutters, areas: inputs.areas, topsoil: inputs.topsoil, grass: inputs.grass }, basedOn: site.at }),
+      body: JSON.stringify({ data: { v: 1, downspouts: inputs.downspouts, gutters: inputs.gutters, areas: inputs.areas, topsoil: inputs.topsoil, grass: inputs.grass, irrigation: heads.data }, basedOn: site.at }),
     });
     savedNote = res.ok ? 'Saved with your map.' : `Not saved (${res.status}).`;
   } catch (e) { savedNote = `Not saved: ${e.message}`; }
@@ -562,6 +617,8 @@ function applyZoom() {
   zoom.tx = Math.min(0, Math.max(w - w * zoom.s, zoom.tx));
   zoom.ty = Math.min(0, Math.max(h - h * zoom.s, zoom.ty));
   cv.style.transform = `translate(${zoom.tx}px, ${zoom.ty}px) scale(${zoom.s})`;
+  // the sprinklers' dots and labels keep their size on the screen: drawn again once the zoom settles
+  clearTimeout(zoom.redraw); zoom.redraw = setTimeout(draw, 150);
 }
 function zoomAt(factor, cx, cy) {
   const st = $('#stage').getBoundingClientRect();
@@ -573,11 +630,13 @@ function zoomAt(factor, cx, cy) {
 const stageEl = $('#stage');
 stageEl.addEventListener('pointerdown', (ev) => {
   if (ev.target.closest('.zoom')) return;
+  if (view.photo && heads.grab(ev)) { stageEl.setPointerCapture?.(ev.pointerId); return; } // dragging a sprinkler head
   zoom.pts.set(ev.pointerId, [ev.clientX, ev.clientY]);
   if (zoom.pts.size === 1) { zoom.moved = false; zoom.start = [ev.clientX, ev.clientY]; }
   stageEl.setPointerCapture?.(ev.pointerId);
 });
 stageEl.addEventListener('pointermove', (ev) => {
+  if (heads.move(ev)) return;
   if (!zoom.pts.has(ev.pointerId)) return;
   const prev = zoom.pts.get(ev.pointerId);
   if (zoom.pts.size === 1) {
@@ -592,7 +651,7 @@ stageEl.addEventListener('pointermove', (ev) => {
   }
   zoom.pts.set(ev.pointerId, [ev.clientX, ev.clientY]);
 });
-const lift = (ev) => { zoom.pts.delete(ev.pointerId); };
+const lift = (ev) => { if (heads.drop(ev)) return; zoom.pts.delete(ev.pointerId); };
 stageEl.addEventListener('pointerup', lift);
 stageEl.addEventListener('pointercancel', lift);
 stageEl.addEventListener('wheel', (ev) => { ev.preventDefault(); zoomAt(ev.deltaY < 0 ? 1.25 : 0.8, ev.clientX, ev.clientY); }, { passive: false });
@@ -603,6 +662,7 @@ $('#zoom-reset').addEventListener('click', () => { zoom.s = 1; zoom.tx = 0; zoom
 stageEl.addEventListener('click', (ev) => { // on the stage: it holds the pointer while a finger is down
   if (ev.target.closest('.zoom')) return;
   if (zoom.moved) { zoom.moved = false; return; } // the end of a drag or a pinch, not a tap
+  if (view.photo && heads.tap(ev)) return;
   if (!mode || !view.data) return;
   const p = tapAt(ev);
   if (mode === 'from') { setMode('to'); pending = p; draw(); return; }
@@ -657,7 +717,8 @@ $('#here').addEventListener('click', () => guarded(async () => {
   await run(await siteFromPoint(pos.coords.latitude, pos.coords.longitude));
 }));
 
-for (const id of ['#show-flow', '#show-grade', '#show-photo', '#show-hard', '#show-zones']) $(id).addEventListener('change', draw);
+for (const id of ['#show-flow', '#show-grade', '#show-photo', '#show-hard', '#show-zones', '#show-heads']) $(id).addEventListener('change', draw);
+$('#edit-heads').addEventListener('click', async () => { setMode(null); if (await heads.open(heads.data, { force: true })) { $('#result').classList.add('heads-on'); draw(); $('#stage').scrollIntoView({ behavior: 'smooth' }); } });
 /* The water-need layer (owner 2026-10-19: knock-on effects of every input, as on a real lawn): each square
    metre's own watering in the lawn's thirstiest month, scaled from the lawn's 5th to 95th percentile. */
 function needScale() {

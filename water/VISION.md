@@ -57,3 +57,13 @@ Things to think about:
 - "the soak cycle watering regimens that are prescribed should be limited to 2 per day."
 - The check: the front yard, full sun, needs about 1 inch a week over 2 or 3 waterings in late June and
   July to keep a good appearance.
+
+## Sprinkler mapping (owner, 2026-10-20): the first step on the water map
+
+"Now let's add sprinkler mapping. Make this a step that happens before doing anything else within the
+water map." In order: the nozzle performance charts of the common US residential heads; placing heads by
+tap or by GPS (a calibration on an easy-to-recognise spot, a driveway or property-line corner, for the
+GPS's offset and jitter, then walking the lawn); review and drag, confirm; select heads and give them the
+irrigation zone (valve) they are on; select heads and give them brand, model and nozzle (one for all, or
+one by one); the map of heads and zones with each head's details over it, confirm; the pipe from the PVB to
+the valve box and the pressure; the line from the valve box to each zone, from standard presets; done.

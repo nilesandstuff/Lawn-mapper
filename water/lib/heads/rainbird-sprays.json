@@ -1,0 +1,4383 @@
+{
+  "group": "rainbird-sprays",
+  "retrieved": "2026-10-20",
+  "bodies": [
+    {
+      "id": "rb-1802",
+      "brand": "Rain Bird",
+      "model": "1802",
+      "kind": "spray",
+      "popUpIn": 2,
+      "regulatedPsi": null,
+      "swappable": true,
+      "nozzleFamilies": [
+        "rb-mpr",
+        "rb-mpr-strip",
+        "rb-van",
+        "rb-he-van",
+        "rb-u-series",
+        "rb-r-van",
+        "rb-r-van-strip"
+      ],
+      "fixedNozzles": null,
+      "source": "https://www.rainbird.com/products/1800-series-spray-heads"
+    },
+    {
+      "id": "rb-1803",
+      "brand": "Rain Bird",
+      "model": "1803",
+      "kind": "spray",
+      "popUpIn": 3,
+      "regulatedPsi": null,
+      "swappable": true,
+      "nozzleFamilies": [
+        "rb-mpr",
+        "rb-mpr-strip",
+        "rb-van",
+        "rb-he-van",
+        "rb-u-series",
+        "rb-r-van",
+        "rb-r-van-strip"
+      ],
+      "fixedNozzles": null,
+      "source": "https://www.rainbird.com/sites/default/files/media/documents/2022-01/1800-series-tech-spec.pdf"
+    },
+    {
+      "id": "rb-1804",
+      "brand": "Rain Bird",
+      "model": "1804",
+      "kind": "spray",
+      "popUpIn": 4,
+      "regulatedPsi": null,
+      "swappable": true,
+      "nozzleFamilies": [
+        "rb-mpr",
+        "rb-mpr-strip",
+        "rb-van",
+        "rb-he-van",
+        "rb-u-series",
+        "rb-r-van",
+        "rb-r-van-strip"
+      ],
+      "fixedNozzles": null,
+      "source": "https://www.rainbird.com/products/1800-series-spray-heads"
+    },
+    {
+      "id": "rb-1806",
+      "brand": "Rain Bird",
+      "model": "1806",
+      "kind": "spray",
+      "popUpIn": 6,
+      "regulatedPsi": null,
+      "swappable": true,
+      "nozzleFamilies": [
+        "rb-mpr",
+        "rb-mpr-strip",
+        "rb-van",
+        "rb-he-van",
+        "rb-u-series",
+        "rb-r-van",
+        "rb-r-van-strip"
+      ],
+      "fixedNozzles": null,
+      "source": "https://www.rainbird.com/products/1800-series-spray-heads"
+    },
+    {
+      "id": "rb-1812",
+      "brand": "Rain Bird",
+      "model": "1812",
+      "kind": "spray",
+      "popUpIn": 12,
+      "regulatedPsi": null,
+      "swappable": true,
+      "nozzleFamilies": [
+        "rb-mpr",
+        "rb-mpr-strip",
+        "rb-van",
+        "rb-he-van",
+        "rb-u-series",
+        "rb-r-van",
+        "rb-r-van-strip"
+      ],
+      "fixedNozzles": null,
+      "source": "https://www.rainbird.com/products/1800-series-spray-heads"
+    },
+    {
+      "id": "rb-1804-sam",
+      "brand": "Rain Bird",
+      "model": "1804-SAM",
+      "kind": "spray",
+      "popUpIn": 4,
+      "regulatedPsi": null,
+      "swappable": true,
+      "nozzleFamilies": [
+        "rb-mpr",
+        "rb-mpr-strip",
+        "rb-van",
+        "rb-he-van",
+        "rb-u-series",
+        "rb-r-van",
+        "rb-r-van-strip"
+      ],
+      "fixedNozzles": null,
+      "source": "https://www.rainbird.com/products/1800-series-spray-heads"
+    },
+    {
+      "id": "rb-1806-sam",
+      "brand": "Rain Bird",
+      "model": "1806-SAM",
+      "kind": "spray",
+      "popUpIn": 6,
+      "regulatedPsi": null,
+      "swappable": true,
+      "nozzleFamilies": [
+        "rb-mpr",
+        "rb-mpr-strip",
+        "rb-van",
+        "rb-he-van",
+        "rb-u-series",
+        "rb-r-van",
+        "rb-r-van-strip"
+      ],
+      "fixedNozzles": null,
+      "source": "https://www.rainbird.com/products/1800-series-spray-heads"
+    },
+    {
+      "id": "rb-1812-sam",
+      "brand": "Rain Bird",
+      "model": "1812-SAM",
+      "kind": "spray",
+      "popUpIn": 12,
+      "regulatedPsi": null,
+      "swappable": true,
+      "nozzleFamilies": [
+        "rb-mpr",
+        "rb-mpr-strip",
+        "rb-van",
+        "rb-he-van",
+        "rb-u-series",
+        "rb-r-van",
+        "rb-r-van-strip"
+      ],
+      "fixedNozzles": null,
+      "source": "https://www.rainbird.com/products/1800-series-spray-heads"
+    },
+    {
+      "id": "rb-1802-prs",
+      "brand": "Rain Bird",
+      "model": "1802-PRS",
+      "kind": "spray",
+      "popUpIn": 2,
+      "regulatedPsi": 30,
+      "swappable": true,
+      "nozzleFamilies": [
+        "rb-mpr",
+        "rb-mpr-strip",
+        "rb-van",
+        "rb-he-van",
+        "rb-u-series",
+        "rb-r-van",
+        "rb-r-van-strip"
+      ],
+      "fixedNozzles": null,
+      "source": "https://www.rainbird.com/products/1800-series-spray-heads"
+    },
+    {
+      "id": "rb-1803-prs",
+      "brand": "Rain Bird",
+      "model": "1803-PRS",
+      "kind": "spray",
+      "popUpIn": 3,
+      "regulatedPsi": 30,
+      "swappable": true,
+      "nozzleFamilies": [
+        "rb-mpr",
+        "rb-mpr-strip",
+        "rb-van",
+        "rb-he-van",
+        "rb-u-series",
+        "rb-r-van",
+        "rb-r-van-strip"
+      ],
+      "fixedNozzles": null,
+      "source": "https://www.rainbird.com/products/1800-series-spray-heads"
+    },
+    {
+      "id": "rb-1804-prs",
+      "brand": "Rain Bird",
+      "model": "1804-PRS",
+      "kind": "spray",
+      "popUpIn": 4,
+      "regulatedPsi": 30,
+      "swappable": true,
+      "nozzleFamilies": [
+        "rb-mpr",
+        "rb-mpr-strip",
+        "rb-van",
+        "rb-he-van",
+        "rb-u-series",
+        "rb-r-van",
+        "rb-r-van-strip"
+      ],
+      "fixedNozzles": null,
+      "source": "https://www.rainbird.com/products/1800-series-spray-heads"
+    },
+    {
+      "id": "rb-1806-prs",
+      "brand": "Rain Bird",
+      "model": "1806-PRS",
+      "kind": "spray",
+      "popUpIn": 6,
+      "regulatedPsi": 30,
+      "swappable": true,
+      "nozzleFamilies": [
+        "rb-mpr",
+        "rb-mpr-strip",
+        "rb-van",
+        "rb-he-van",
+        "rb-u-series",
+        "rb-r-van",
+        "rb-r-van-strip"
+      ],
+      "fixedNozzles": null,
+      "source": "https://www.rainbird.com/products/1800-series-spray-heads"
+    },
+    {
+      "id": "rb-1812-prs",
+      "brand": "Rain Bird",
+      "model": "1812-PRS",
+      "kind": "spray",
+      "popUpIn": 12,
+      "regulatedPsi": 30,
+      "swappable": true,
+      "nozzleFamilies": [
+        "rb-mpr",
+        "rb-mpr-strip",
+        "rb-van",
+        "rb-he-van",
+        "rb-u-series",
+        "rb-r-van",
+        "rb-r-van-strip"
+      ],
+      "fixedNozzles": null,
+      "source": "https://www.rainbird.com/products/1800-series-spray-heads"
+    },
+    {
+      "id": "rb-1804-sam-prs",
+      "brand": "Rain Bird",
+      "model": "1804-SAM-PRS",
+      "kind": "spray",
+      "popUpIn": 4,
+      "regulatedPsi": 30,
+      "swappable": true,
+      "nozzleFamilies": [
+        "rb-mpr",
+        "rb-mpr-strip",
+        "rb-van",
+        "rb-he-van",
+        "rb-u-series",
+        "rb-r-van",
+        "rb-r-van-strip"
+      ],
+      "fixedNozzles": null,
+      "source": "https://www.rainbird.com/products/1800-series-spray-heads"
+    },
+    {
+      "id": "rb-1806-sam-prs",
+      "brand": "Rain Bird",
+      "model": "1806-SAM-PRS",
+      "kind": "spray",
+      "popUpIn": 6,
+      "regulatedPsi": 30,
+      "swappable": true,
+      "nozzleFamilies": [
+        "rb-mpr",
+        "rb-mpr-strip",
+        "rb-van",
+        "rb-he-van",
+        "rb-u-series",
+        "rb-r-van",
+        "rb-r-van-strip"
+      ],
+      "fixedNozzles": null,
+      "source": "https://www.rainbird.com/products/1800-series-spray-heads"
+    },
+    {
+      "id": "rb-1812-sam-prs",
+      "brand": "Rain Bird",
+      "model": "1812-SAM-PRS",
+      "kind": "spray",
+      "popUpIn": 12,
+      "regulatedPsi": 30,
+      "swappable": true,
+      "nozzleFamilies": [
+        "rb-mpr",
+        "rb-mpr-strip",
+        "rb-van",
+        "rb-he-van",
+        "rb-u-series",
+        "rb-r-van",
+        "rb-r-van-strip"
+      ],
+      "fixedNozzles": null,
+      "source": "https://www.rainbird.com/products/1800-series-spray-heads"
+    },
+    {
+      "id": "rb-1804-p45",
+      "brand": "Rain Bird",
+      "model": "1804-P45",
+      "kind": "spray",
+      "popUpIn": 4,
+      "regulatedPsi": 45,
+      "swappable": true,
+      "nozzleFamilies": [
+        "rb-mpr",
+        "rb-mpr-strip",
+        "rb-van",
+        "rb-he-van",
+        "rb-u-series",
+        "rb-r-van",
+        "rb-r-van-strip"
+      ],
+      "fixedNozzles": null,
+      "source": "https://www.rainbird.com/products/1800-series-spray-heads"
+    },
+    {
+      "id": "rb-1806-p45",
+      "brand": "Rain Bird",
+      "model": "1806-P45",
+      "kind": "spray",
+      "popUpIn": 6,
+      "regulatedPsi": 45,
+      "swappable": true,
+      "nozzleFamilies": [
+        "rb-mpr",
+        "rb-mpr-strip",
+        "rb-van",
+        "rb-he-van",
+        "rb-u-series",
+        "rb-r-van",
+        "rb-r-van-strip"
+      ],
+      "fixedNozzles": null,
+      "source": "https://www.rainbird.com/products/1800-series-spray-heads"
+    },
+    {
+      "id": "rb-1812-p45",
+      "brand": "Rain Bird",
+      "model": "1812-P45",
+      "kind": "spray",
+      "popUpIn": 12,
+      "regulatedPsi": 45,
+      "swappable": true,
+      "nozzleFamilies": [
+        "rb-mpr",
+        "rb-mpr-strip",
+        "rb-van",
+        "rb-he-van",
+        "rb-u-series",
+        "rb-r-van",
+        "rb-r-van-strip"
+      ],
+      "fixedNozzles": null,
+      "source": "https://www.rainbird.com/products/1800-series-spray-heads"
+    },
+    {
+      "id": "rb-1804-sam-p45",
+      "brand": "Rain Bird",
+      "model": "1804-SAM-P45",
+      "kind": "spray",
+      "popUpIn": 4,
+      "regulatedPsi": 45,
+      "swappable": true,
+      "nozzleFamilies": [
+        "rb-mpr",
+        "rb-mpr-strip",
+        "rb-van",
+        "rb-he-van",
+        "rb-u-series",
+        "rb-r-van",
+        "rb-r-van-strip"
+      ],
+      "fixedNozzles": null,
+      "source": "https://www.rainbird.com/products/1800-series-spray-heads"
+    },
+    {
+      "id": "rb-1806-sam-p45",
+      "brand": "Rain Bird",
+      "model": "1806-SAM-P45",
+      "kind": "spray",
+      "popUpIn": 6,
+      "regulatedPsi": 45,
+      "swappable": true,
+      "nozzleFamilies": [
+        "rb-mpr",
+        "rb-mpr-strip",
+        "rb-van",
+        "rb-he-van",
+        "rb-u-series",
+        "rb-r-van",
+        "rb-r-van-strip"
+      ],
+      "fixedNozzles": null,
+      "source": "https://www.rainbird.com/products/1800-series-spray-heads"
+    },
+    {
+      "id": "rb-1812-sam-p45",
+      "brand": "Rain Bird",
+      "model": "1812-SAM-P45",
+      "kind": "spray",
+      "popUpIn": 12,
+      "regulatedPsi": 45,
+      "swappable": true,
+      "nozzleFamilies": [
+        "rb-mpr",
+        "rb-mpr-strip",
+        "rb-van",
+        "rb-he-van",
+        "rb-u-series",
+        "rb-r-van",
+        "rb-r-van-strip"
+      ],
+      "fixedNozzles": null,
+      "source": "https://www.rainbird.com/products/1800-series-spray-heads"
+    },
+    {
+      "id": "rb-us400",
+      "brand": "Rain Bird",
+      "model": "US400",
+      "kind": "spray",
+      "popUpIn": 4,
+      "regulatedPsi": null,
+      "swappable": true,
+      "nozzleFamilies": [
+        "rb-mpr",
+        "rb-mpr-strip",
+        "rb-van",
+        "rb-he-van",
+        "rb-u-series",
+        "rb-r-van",
+        "rb-r-van-strip"
+      ],
+      "fixedNozzles": null,
+      "source": "https://www.rainbird.com/products/uni-spray-series-spray-heads"
+    },
+    {
+      "id": "rb-us408he",
+      "brand": "Rain Bird",
+      "model": "US408HE",
+      "kind": "spray",
+      "popUpIn": 4,
+      "regulatedPsi": null,
+      "swappable": true,
+      "nozzleFamilies": [
+        "rb-mpr",
+        "rb-mpr-strip",
+        "rb-van",
+        "rb-he-van",
+        "rb-u-series",
+        "rb-r-van",
+        "rb-r-van-strip"
+      ],
+      "fixedNozzles": null,
+      "source": "https://www.rainbird.com/products/uni-spray-series-spray-heads"
+    },
+    {
+      "id": "rb-us410he",
+      "brand": "Rain Bird",
+      "model": "US410HE",
+      "kind": "spray",
+      "popUpIn": 4,
+      "regulatedPsi": null,
+      "swappable": true,
+      "nozzleFamilies": [
+        "rb-mpr",
+        "rb-mpr-strip",
+        "rb-van",
+        "rb-he-van",
+        "rb-u-series",
+        "rb-r-van",
+        "rb-r-van-strip"
+      ],
+      "fixedNozzles": null,
+      "source": "https://www.rainbird.com/products/uni-spray-series-spray-heads"
+    },
+    {
+      "id": "rb-us412he",
+      "brand": "Rain Bird",
+      "model": "US412HE",
+      "kind": "spray",
+      "popUpIn": 4,
+      "regulatedPsi": null,
+      "swappable": true,
+      "nozzleFamilies": [
+        "rb-mpr",
+        "rb-mpr-strip",
+        "rb-van",
+        "rb-he-van",
+        "rb-u-series",
+        "rb-r-van",
+        "rb-r-van-strip"
+      ],
+      "fixedNozzles": null,
+      "source": "https://www.rainbird.com/products/uni-spray-series-spray-heads"
+    },
+    {
+      "id": "rb-us415he",
+      "brand": "Rain Bird",
+      "model": "US415HE",
+      "kind": "spray",
+      "popUpIn": 4,
+      "regulatedPsi": null,
+      "swappable": true,
+      "nozzleFamilies": [
+        "rb-mpr",
+        "rb-mpr-strip",
+        "rb-van",
+        "rb-he-van",
+        "rb-u-series",
+        "rb-r-van",
+        "rb-r-van-strip"
+      ],
+      "fixedNozzles": null,
+      "source": "https://www.rainbird.com/products/uni-spray-series-spray-heads"
+    },
+    {
+      "id": "rb-us410",
+      "brand": "Rain Bird",
+      "model": "US410",
+      "kind": "spray",
+      "popUpIn": 4,
+      "regulatedPsi": null,
+      "swappable": true,
+      "nozzleFamilies": [
+        "rb-mpr",
+        "rb-mpr-strip",
+        "rb-van",
+        "rb-he-van",
+        "rb-u-series",
+        "rb-r-van",
+        "rb-r-van-strip"
+      ],
+      "fixedNozzles": null,
+      "source": "https://www.rainbird.com/products/uni-spray-series-spray-heads"
+    },
+    {
+      "id": "rb-us412",
+      "brand": "Rain Bird",
+      "model": "US412",
+      "kind": "spray",
+      "popUpIn": 4,
+      "regulatedPsi": null,
+      "swappable": true,
+      "nozzleFamilies": [
+        "rb-mpr",
+        "rb-mpr-strip",
+        "rb-van",
+        "rb-he-van",
+        "rb-u-series",
+        "rb-r-van",
+        "rb-r-van-strip"
+      ],
+      "fixedNozzles": null,
+      "source": "https://www.rainbird.com/products/uni-spray-series-spray-heads"
+    },
+    {
+      "id": "rb-us415",
+      "brand": "Rain Bird",
+      "model": "US415",
+      "kind": "spray",
+      "popUpIn": 4,
+      "regulatedPsi": null,
+      "swappable": true,
+      "nozzleFamilies": [
+        "rb-mpr",
+        "rb-mpr-strip",
+        "rb-van",
+        "rb-he-van",
+        "rb-u-series",
+        "rb-r-van",
+        "rb-r-van-strip"
+      ],
+      "fixedNozzles": null,
+      "source": "https://www.rainbird.com/products/uni-spray-series-spray-heads"
+    },
+    {
+      "id": "rb-us418",
+      "brand": "Rain Bird",
+      "model": "US418",
+      "kind": "spray",
+      "popUpIn": 4,
+      "regulatedPsi": null,
+      "swappable": true,
+      "nozzleFamilies": [
+        "rb-mpr",
+        "rb-mpr-strip",
+        "rb-van",
+        "rb-he-van",
+        "rb-u-series",
+        "rb-r-van",
+        "rb-r-van-strip"
+      ],
+      "fixedNozzles": null,
+      "source": "https://www.rainbird.com/products/uni-spray-series-spray-heads"
+    }
+  ],
+  "families": [
+    {
+      "id": "rb-mpr",
+      "brand": "Rain Bird",
+      "name": "MPR spray nozzles (5, 8, 8 FLT, 10, 12, 15 Series)",
+      "kind": "spray",
+      "flow": "arc",
+      "nozzles": [
+        {
+          "id": "rb-mpr-5f",
+          "label": "5F",
+          "arcFixed": 360,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 5,
+          "rows": [
+            {
+              "psi": 15,
+              "radiusFt": 3,
+              "gpm": 0.29
+            },
+            {
+              "psi": 20,
+              "radiusFt": 4,
+              "gpm": 0.33
+            },
+            {
+              "psi": 25,
+              "radiusFt": 4,
+              "gpm": 0.37
+            },
+            {
+              "psi": 30,
+              "radiusFt": 5,
+              "gpm": 0.41
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.58,
+            "triangle": 1.83
+          }
+        },
+        {
+          "id": "rb-mpr-5h",
+          "label": "5H",
+          "arcFixed": 180,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 5,
+          "rows": [
+            {
+              "psi": 15,
+              "radiusFt": 3,
+              "gpm": 0.28
+            },
+            {
+              "psi": 20,
+              "radiusFt": 4,
+              "gpm": 0.32
+            },
+            {
+              "psi": 25,
+              "radiusFt": 4,
+              "gpm": 0.36
+            },
+            {
+              "psi": 30,
+              "radiusFt": 5,
+              "gpm": 0.4
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.54,
+            "triangle": 1.78
+          }
+        },
+        {
+          "id": "rb-mpr-5q",
+          "label": "5Q",
+          "arcFixed": 90,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 5,
+          "rows": [
+            {
+              "psi": 15,
+              "radiusFt": 3,
+              "gpm": 0.28
+            },
+            {
+              "psi": 20,
+              "radiusFt": 4,
+              "gpm": 0.32
+            },
+            {
+              "psi": 25,
+              "radiusFt": 4,
+              "gpm": 0.36
+            },
+            {
+              "psi": 30,
+              "radiusFt": 5,
+              "gpm": 0.4
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.54,
+            "triangle": 1.78
+          }
+        },
+        {
+          "id": "rb-mpr-8f",
+          "label": "8F",
+          "arcFixed": 360,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 10,
+          "rows": [
+            {
+              "psi": 15,
+              "radiusFt": 5,
+              "gpm": 0.74
+            },
+            {
+              "psi": 20,
+              "radiusFt": 6,
+              "gpm": 0.86
+            },
+            {
+              "psi": 25,
+              "radiusFt": 7,
+              "gpm": 0.96
+            },
+            {
+              "psi": 30,
+              "radiusFt": 8,
+              "gpm": 1.05
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.58,
+            "triangle": 1.82
+          }
+        },
+        {
+          "id": "rb-mpr-8h",
+          "label": "8H",
+          "arcFixed": 180,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 10,
+          "rows": [
+            {
+              "psi": 15,
+              "radiusFt": 5,
+              "gpm": 0.74
+            },
+            {
+              "psi": 20,
+              "radiusFt": 6,
+              "gpm": 0.84
+            },
+            {
+              "psi": 25,
+              "radiusFt": 7,
+              "gpm": 0.94
+            },
+            {
+              "psi": 30,
+              "radiusFt": 8,
+              "gpm": 1.04
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.56,
+            "triangle": 1.81
+          }
+        },
+        {
+          "id": "rb-mpr-8q",
+          "label": "8Q",
+          "arcFixed": 90,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 10,
+          "rows": [
+            {
+              "psi": 15,
+              "radiusFt": 5,
+              "gpm": 0.72
+            },
+            {
+              "psi": 20,
+              "radiusFt": 6,
+              "gpm": 0.84
+            },
+            {
+              "psi": 25,
+              "radiusFt": 7,
+              "gpm": 0.96
+            },
+            {
+              "psi": 30,
+              "radiusFt": 8,
+              "gpm": 1.04
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.56,
+            "triangle": 1.81
+          }
+        },
+        {
+          "id": "rb-mpr-10f",
+          "label": "10F",
+          "arcFixed": 360,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 15,
+          "rows": [
+            {
+              "psi": 15,
+              "radiusFt": 7,
+              "gpm": 1.16
+            },
+            {
+              "psi": 20,
+              "radiusFt": 8,
+              "gpm": 1.3
+            },
+            {
+              "psi": 25,
+              "radiusFt": 9,
+              "gpm": 1.44
+            },
+            {
+              "psi": 30,
+              "radiusFt": 10,
+              "gpm": 1.58
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.52,
+            "triangle": 1.75
+          }
+        },
+        {
+          "id": "rb-mpr-10h",
+          "label": "10H",
+          "arcFixed": 180,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 15,
+          "rows": [
+            {
+              "psi": 15,
+              "radiusFt": 7,
+              "gpm": 1.16
+            },
+            {
+              "psi": 20,
+              "radiusFt": 8,
+              "gpm": 1.3
+            },
+            {
+              "psi": 25,
+              "radiusFt": 9,
+              "gpm": 1.44
+            },
+            {
+              "psi": 30,
+              "radiusFt": 10,
+              "gpm": 1.58
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.52,
+            "triangle": 1.75
+          }
+        },
+        {
+          "id": "rb-mpr-10q",
+          "label": "10Q",
+          "arcFixed": 90,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 15,
+          "rows": [
+            {
+              "psi": 15,
+              "radiusFt": 7,
+              "gpm": 1.16
+            },
+            {
+              "psi": 20,
+              "radiusFt": 8,
+              "gpm": 1.32
+            },
+            {
+              "psi": 25,
+              "radiusFt": 9,
+              "gpm": 1.44
+            },
+            {
+              "psi": 30,
+              "radiusFt": 10,
+              "gpm": 1.56
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.52,
+            "triangle": 1.75
+          }
+        },
+        {
+          "id": "rb-mpr-12f",
+          "label": "12F",
+          "arcFixed": 360,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 30,
+          "rows": [
+            {
+              "psi": 15,
+              "radiusFt": 9,
+              "gpm": 1.8
+            },
+            {
+              "psi": 20,
+              "radiusFt": 10,
+              "gpm": 2.1
+            },
+            {
+              "psi": 25,
+              "radiusFt": 11,
+              "gpm": 2.4
+            },
+            {
+              "psi": 30,
+              "radiusFt": 12,
+              "gpm": 2.6
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.74,
+            "triangle": 2.01
+          }
+        },
+        {
+          "id": "rb-mpr-12h",
+          "label": "12H",
+          "arcFixed": 180,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 30,
+          "rows": [
+            {
+              "psi": 15,
+              "radiusFt": 9,
+              "gpm": 1.8
+            },
+            {
+              "psi": 20,
+              "radiusFt": 10,
+              "gpm": 2.1
+            },
+            {
+              "psi": 25,
+              "radiusFt": 11,
+              "gpm": 2.4
+            },
+            {
+              "psi": 30,
+              "radiusFt": 12,
+              "gpm": 2.6
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.74,
+            "triangle": 2.01
+          }
+        },
+        {
+          "id": "rb-mpr-12q",
+          "label": "12Q",
+          "arcFixed": 90,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 30,
+          "rows": [
+            {
+              "psi": 15,
+              "radiusFt": 9,
+              "gpm": 1.8
+            },
+            {
+              "psi": 20,
+              "radiusFt": 10,
+              "gpm": 2.12
+            },
+            {
+              "psi": 25,
+              "radiusFt": 11,
+              "gpm": 2.4
+            },
+            {
+              "psi": 30,
+              "radiusFt": 12,
+              "gpm": 2.6
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.74,
+            "triangle": 2.01
+          }
+        },
+        {
+          "id": "rb-mpr-15f",
+          "label": "15F",
+          "arcFixed": 360,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 30,
+          "rows": [
+            {
+              "psi": 15,
+              "radiusFt": 11,
+              "gpm": 2.6
+            },
+            {
+              "psi": 20,
+              "radiusFt": 12,
+              "gpm": 3.0
+            },
+            {
+              "psi": 25,
+              "radiusFt": 14,
+              "gpm": 3.3
+            },
+            {
+              "psi": 30,
+              "radiusFt": 15,
+              "gpm": 3.7
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.58,
+            "triangle": 1.83
+          }
+        },
+        {
+          "id": "rb-mpr-15h",
+          "label": "15H",
+          "arcFixed": 180,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 30,
+          "rows": [
+            {
+              "psi": 15,
+              "radiusFt": 11,
+              "gpm": 2.6
+            },
+            {
+              "psi": 20,
+              "radiusFt": 12,
+              "gpm": 3.0
+            },
+            {
+              "psi": 25,
+              "radiusFt": 14,
+              "gpm": 3.3
+            },
+            {
+              "psi": 30,
+              "radiusFt": 15,
+              "gpm": 3.7
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.58,
+            "triangle": 1.83
+          }
+        },
+        {
+          "id": "rb-mpr-15q",
+          "label": "15Q",
+          "arcFixed": 90,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 30,
+          "rows": [
+            {
+              "psi": 15,
+              "radiusFt": 11,
+              "gpm": 2.6
+            },
+            {
+              "psi": 20,
+              "radiusFt": 12,
+              "gpm": 3.0
+            },
+            {
+              "psi": 25,
+              "radiusFt": 14,
+              "gpm": 3.28
+            },
+            {
+              "psi": 30,
+              "radiusFt": 15,
+              "gpm": 3.68
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.58,
+            "triangle": 1.83
+          }
+        },
+        {
+          "id": "rb-mpr-8h-flt",
+          "label": "8H-FLT",
+          "arcFixed": 180,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 5,
+          "rows": [
+            {
+              "psi": 15,
+              "radiusFt": 6,
+              "gpm": 1.12
+            },
+            {
+              "psi": 20,
+              "radiusFt": 7,
+              "gpm": 1.3
+            },
+            {
+              "psi": 25,
+              "radiusFt": 7,
+              "gpm": 1.44
+            },
+            {
+              "psi": 30,
+              "radiusFt": 8,
+              "gpm": 1.58
+            }
+          ],
+          "chartPrecip": {
+            "square": 2.38,
+            "triangle": 2.75
+          }
+        },
+        {
+          "id": "rb-mpr-8q-flt",
+          "label": "8Q-FLT",
+          "arcFixed": 90,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 5,
+          "rows": [
+            {
+              "psi": 15,
+              "radiusFt": 6,
+              "gpm": 1.12
+            },
+            {
+              "psi": 20,
+              "radiusFt": 7,
+              "gpm": 1.28
+            },
+            {
+              "psi": 25,
+              "radiusFt": 7,
+              "gpm": 1.44
+            },
+            {
+              "psi": 30,
+              "radiusFt": 8,
+              "gpm": 1.56
+            }
+          ],
+          "chartPrecip": {
+            "square": 2.35,
+            "triangle": 2.71
+          }
+        }
+      ],
+      "source": "https://rainbird.com/sites/default/files/media/documents/2020-09/mpr-spray-nozzle-performance-charts_0.pdf"
+    },
+    {
+      "id": "rb-mpr-strip",
+      "brand": "Rain Bird",
+      "name": "MPR 15 Strip Series nozzles (and 9SST)",
+      "kind": "spray",
+      "flow": "constant",
+      "nozzles": [
+        {
+          "id": "rb-mpr-15est",
+          "label": "15EST",
+          "arcFixed": null,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": {
+            "widthFt": 4,
+            "lengthFt": 15,
+            "type": "end"
+          },
+          "trajectoryDeg": 30,
+          "rows": [
+            {
+              "psi": 15,
+              "radiusFt": null,
+              "gpm": 0.45,
+              "widthFt": 4,
+              "lengthFt": 13
+            },
+            {
+              "psi": 20,
+              "radiusFt": null,
+              "gpm": 0.5,
+              "widthFt": 4,
+              "lengthFt": 14
+            },
+            {
+              "psi": 25,
+              "radiusFt": null,
+              "gpm": 0.56,
+              "widthFt": 4,
+              "lengthFt": 14
+            },
+            {
+              "psi": 30,
+              "radiusFt": null,
+              "gpm": 0.61,
+              "widthFt": 4,
+              "lengthFt": 15
+            }
+          ],
+          "chartPrecip": null
+        },
+        {
+          "id": "rb-mpr-15cst",
+          "label": "15CST",
+          "arcFixed": null,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": {
+            "widthFt": 4,
+            "lengthFt": 30,
+            "type": "center"
+          },
+          "trajectoryDeg": 30,
+          "rows": [
+            {
+              "psi": 15,
+              "radiusFt": null,
+              "gpm": 0.89,
+              "widthFt": 4,
+              "lengthFt": 26
+            },
+            {
+              "psi": 20,
+              "radiusFt": null,
+              "gpm": 1.0,
+              "widthFt": 4,
+              "lengthFt": 28
+            },
+            {
+              "psi": 25,
+              "radiusFt": null,
+              "gpm": 1.11,
+              "widthFt": 4,
+              "lengthFt": 28
+            },
+            {
+              "psi": 30,
+              "radiusFt": null,
+              "gpm": 1.21,
+              "widthFt": 4,
+              "lengthFt": 30
+            }
+          ],
+          "chartPrecip": null
+        },
+        {
+          "id": "rb-mpr-15rcs",
+          "label": "15RCS",
+          "arcFixed": null,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": {
+            "widthFt": 4,
+            "lengthFt": 15,
+            "type": "end",
+            "corner": "right"
+          },
+          "trajectoryDeg": 30,
+          "rows": [
+            {
+              "psi": 15,
+              "radiusFt": null,
+              "gpm": 0.35,
+              "widthFt": 3,
+              "lengthFt": 11
+            },
+            {
+              "psi": 20,
+              "radiusFt": null,
+              "gpm": 0.4,
+              "widthFt": 3,
+              "lengthFt": 12
+            },
+            {
+              "psi": 25,
+              "radiusFt": null,
+              "gpm": 0.45,
+              "widthFt": 4,
+              "lengthFt": 14
+            },
+            {
+              "psi": 30,
+              "radiusFt": null,
+              "gpm": 0.49,
+              "widthFt": 4,
+              "lengthFt": 15
+            }
+          ],
+          "chartPrecip": null
+        },
+        {
+          "id": "rb-mpr-15lcs",
+          "label": "15LCS",
+          "arcFixed": null,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": {
+            "widthFt": 4,
+            "lengthFt": 15,
+            "type": "end",
+            "corner": "left"
+          },
+          "trajectoryDeg": 30,
+          "rows": [
+            {
+              "psi": 15,
+              "radiusFt": null,
+              "gpm": 0.35,
+              "widthFt": 3,
+              "lengthFt": 11
+            },
+            {
+              "psi": 20,
+              "radiusFt": null,
+              "gpm": 0.4,
+              "widthFt": 3,
+              "lengthFt": 12
+            },
+            {
+              "psi": 25,
+              "radiusFt": null,
+              "gpm": 0.45,
+              "widthFt": 4,
+              "lengthFt": 14
+            },
+            {
+              "psi": 30,
+              "radiusFt": null,
+              "gpm": 0.49,
+              "widthFt": 4,
+              "lengthFt": 15
+            }
+          ],
+          "chartPrecip": null
+        },
+        {
+          "id": "rb-mpr-15sst",
+          "label": "15SST",
+          "arcFixed": null,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": {
+            "widthFt": 4,
+            "lengthFt": 30,
+            "type": "side"
+          },
+          "trajectoryDeg": 30,
+          "rows": [
+            {
+              "psi": 15,
+              "radiusFt": null,
+              "gpm": 0.89,
+              "widthFt": 4,
+              "lengthFt": 26
+            },
+            {
+              "psi": 20,
+              "radiusFt": null,
+              "gpm": 1.0,
+              "widthFt": 4,
+              "lengthFt": 28
+            },
+            {
+              "psi": 25,
+              "radiusFt": null,
+              "gpm": 1.11,
+              "widthFt": 4,
+              "lengthFt": 28
+            },
+            {
+              "psi": 30,
+              "radiusFt": null,
+              "gpm": 1.21,
+              "widthFt": 4,
+              "lengthFt": 30
+            }
+          ],
+          "chartPrecip": null
+        },
+        {
+          "id": "rb-mpr-9sst",
+          "label": "9SST",
+          "arcFixed": null,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": {
+            "widthFt": 9,
+            "lengthFt": 18,
+            "type": "side"
+          },
+          "trajectoryDeg": 30,
+          "rows": [
+            {
+              "psi": 15,
+              "radiusFt": null,
+              "gpm": 1.34,
+              "widthFt": 9,
+              "lengthFt": 15
+            },
+            {
+              "psi": 20,
+              "radiusFt": null,
+              "gpm": 1.47,
+              "widthFt": 9,
+              "lengthFt": 16
+            },
+            {
+              "psi": 25,
+              "radiusFt": null,
+              "gpm": 1.6,
+              "widthFt": 9,
+              "lengthFt": 18
+            },
+            {
+              "psi": 30,
+              "radiusFt": null,
+              "gpm": 1.73,
+              "widthFt": 9,
+              "lengthFt": 18
+            }
+          ],
+          "chartPrecip": null
+        }
+      ],
+      "source": "https://rainbird.com/sites/default/files/media/documents/2020-09/mpr-spray-nozzle-performance-charts_0.pdf"
+    },
+    {
+      "id": "rb-van",
+      "brand": "Rain Bird",
+      "name": "VAN Series variable arc spray nozzles",
+      "kind": "spray",
+      "flow": "arc",
+      "nozzles": [
+        {
+          "id": "rb-van-4",
+          "label": "4-VAN",
+          "arcFixed": null,
+          "arcMin": 0,
+          "arcMax": 330,
+          "strip": null,
+          "trajectoryDeg": 0,
+          "rows": [
+            {
+              "psi": 15,
+              "radiusFt": 3,
+              "gpm": 0.68
+            },
+            {
+              "psi": 20,
+              "radiusFt": 3,
+              "gpm": 0.76
+            },
+            {
+              "psi": 25,
+              "radiusFt": 4,
+              "gpm": 0.87
+            },
+            {
+              "psi": 30,
+              "radiusFt": 4,
+              "gpm": 0.96
+            }
+          ],
+          "printedByArc": [
+            {
+              "arcDeg": 330,
+              "rows": [
+                {
+                  "psi": 15,
+                  "radiusFt": 3,
+                  "gpm": 0.62
+                },
+                {
+                  "psi": 20,
+                  "radiusFt": 3,
+                  "gpm": 0.7
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 4,
+                  "gpm": 0.8
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 4,
+                  "gpm": 0.88
+                }
+              ]
+            },
+            {
+              "arcDeg": 270,
+              "rows": [
+                {
+                  "psi": 15,
+                  "radiusFt": 3,
+                  "gpm": 0.52
+                },
+                {
+                  "psi": 20,
+                  "radiusFt": 3,
+                  "gpm": 0.58
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 4,
+                  "gpm": 0.66
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 4,
+                  "gpm": 0.73
+                }
+              ]
+            },
+            {
+              "arcDeg": 180,
+              "rows": [
+                {
+                  "psi": 15,
+                  "radiusFt": 3,
+                  "gpm": 0.32
+                },
+                {
+                  "psi": 20,
+                  "radiusFt": 3,
+                  "gpm": 0.37
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 4,
+                  "gpm": 0.41
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 4,
+                  "gpm": 0.45
+                }
+              ]
+            },
+            {
+              "arcDeg": 90,
+              "rows": [
+                {
+                  "psi": 15,
+                  "radiusFt": 3,
+                  "gpm": 0.21
+                },
+                {
+                  "psi": 20,
+                  "radiusFt": 3,
+                  "gpm": 0.24
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 4,
+                  "gpm": 0.26
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 4,
+                  "gpm": 0.29
+                }
+              ]
+            }
+          ],
+          "chartPrecip": {
+            "square": 5.78,
+            "triangle": 6.67
+          }
+        },
+        {
+          "id": "rb-van-6",
+          "label": "6-VAN",
+          "arcFixed": null,
+          "arcMin": 0,
+          "arcMax": 330,
+          "strip": null,
+          "trajectoryDeg": 0,
+          "rows": [
+            {
+              "psi": 15,
+              "radiusFt": 4,
+              "gpm": 0.93
+            },
+            {
+              "psi": 20,
+              "radiusFt": 5,
+              "gpm": 1.05
+            },
+            {
+              "psi": 25,
+              "radiusFt": 5,
+              "gpm": 1.19
+            },
+            {
+              "psi": 30,
+              "radiusFt": 6,
+              "gpm": 1.31
+            }
+          ],
+          "printedByArc": [
+            {
+              "arcDeg": 330,
+              "rows": [
+                {
+                  "psi": 15,
+                  "radiusFt": 4,
+                  "gpm": 0.85
+                },
+                {
+                  "psi": 20,
+                  "radiusFt": 5,
+                  "gpm": 0.96
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 5,
+                  "gpm": 1.09
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 6,
+                  "gpm": 1.2
+                }
+              ]
+            },
+            {
+              "arcDeg": 270,
+              "rows": [
+                {
+                  "psi": 15,
+                  "radiusFt": 4,
+                  "gpm": 0.79
+                },
+                {
+                  "psi": 20,
+                  "radiusFt": 5,
+                  "gpm": 0.88
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 5,
+                  "gpm": 1.0
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 6,
+                  "gpm": 1.1
+                }
+              ]
+            },
+            {
+              "arcDeg": 180,
+              "rows": [
+                {
+                  "psi": 15,
+                  "radiusFt": 4,
+                  "gpm": 0.42
+                },
+                {
+                  "psi": 20,
+                  "radiusFt": 5,
+                  "gpm": 0.49
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 5,
+                  "gpm": 0.55
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 6,
+                  "gpm": 0.6
+                }
+              ]
+            },
+            {
+              "arcDeg": 90,
+              "rows": [
+                {
+                  "psi": 15,
+                  "radiusFt": 4,
+                  "gpm": 0.26
+                },
+                {
+                  "psi": 20,
+                  "radiusFt": 5,
+                  "gpm": 0.3
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 5,
+                  "gpm": 0.34
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 6,
+                  "gpm": 0.37
+                }
+              ]
+            }
+          ],
+          "chartPrecip": {
+            "square": 3.5,
+            "triangle": 4.04
+          }
+        },
+        {
+          "id": "rb-van-8",
+          "label": "8-VAN",
+          "arcFixed": null,
+          "arcMin": 0,
+          "arcMax": 330,
+          "strip": null,
+          "trajectoryDeg": 5,
+          "rows": [
+            {
+              "psi": 15,
+              "radiusFt": 6,
+              "gpm": 1.32
+            },
+            {
+              "psi": 20,
+              "radiusFt": 7,
+              "gpm": 1.48
+            },
+            {
+              "psi": 25,
+              "radiusFt": 7,
+              "gpm": 1.69
+            },
+            {
+              "psi": 30,
+              "radiusFt": 8,
+              "gpm": 1.85
+            }
+          ],
+          "printedByArc": [
+            {
+              "arcDeg": 330,
+              "rows": [
+                {
+                  "psi": 15,
+                  "radiusFt": 6,
+                  "gpm": 1.21
+                },
+                {
+                  "psi": 20,
+                  "radiusFt": 7,
+                  "gpm": 1.36
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 7,
+                  "gpm": 1.55
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 8,
+                  "gpm": 1.7
+                }
+              ]
+            },
+            {
+              "arcDeg": 270,
+              "rows": [
+                {
+                  "psi": 15,
+                  "radiusFt": 6,
+                  "gpm": 1.11
+                },
+                {
+                  "psi": 20,
+                  "radiusFt": 7,
+                  "gpm": 1.24
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 7,
+                  "gpm": 1.41
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 8,
+                  "gpm": 1.55
+                }
+              ]
+            },
+            {
+              "arcDeg": 180,
+              "rows": [
+                {
+                  "psi": 15,
+                  "radiusFt": 6,
+                  "gpm": 0.84
+                },
+                {
+                  "psi": 20,
+                  "radiusFt": 7,
+                  "gpm": 0.97
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 7,
+                  "gpm": 1.09
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 8,
+                  "gpm": 1.19
+                }
+              ]
+            },
+            {
+              "arcDeg": 90,
+              "rows": [
+                {
+                  "psi": 15,
+                  "radiusFt": 6,
+                  "gpm": 0.51
+                },
+                {
+                  "psi": 20,
+                  "radiusFt": 7,
+                  "gpm": 0.59
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 7,
+                  "gpm": 0.66
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 8,
+                  "gpm": 0.72
+                }
+              ]
+            }
+          ],
+          "chartPrecip": {
+            "square": 2.79,
+            "triangle": 3.22
+          }
+        },
+        {
+          "id": "rb-van-10",
+          "label": "10-VAN",
+          "arcFixed": null,
+          "arcMin": 0,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 10,
+          "rows": [
+            {
+              "psi": 15,
+              "radiusFt": 7,
+              "gpm": 1.93
+            },
+            {
+              "psi": 20,
+              "radiusFt": 8,
+              "gpm": 2.32
+            },
+            {
+              "psi": 25,
+              "radiusFt": 9,
+              "gpm": 2.52
+            },
+            {
+              "psi": 30,
+              "radiusFt": 10,
+              "gpm": 2.6
+            }
+          ],
+          "printedByArc": [
+            {
+              "arcDeg": 360,
+              "rows": [
+                {
+                  "psi": 15,
+                  "radiusFt": 7,
+                  "gpm": 1.93
+                },
+                {
+                  "psi": 20,
+                  "radiusFt": 8,
+                  "gpm": 2.32
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 9,
+                  "gpm": 2.52
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 10,
+                  "gpm": 2.6
+                }
+              ]
+            },
+            {
+              "arcDeg": 270,
+              "rows": [
+                {
+                  "psi": 15,
+                  "radiusFt": 7,
+                  "gpm": 1.45
+                },
+                {
+                  "psi": 20,
+                  "radiusFt": 8,
+                  "gpm": 1.75
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 9,
+                  "gpm": 1.89
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 10,
+                  "gpm": 2.1
+                }
+              ]
+            },
+            {
+              "arcDeg": 180,
+              "rows": [
+                {
+                  "psi": 15,
+                  "radiusFt": 7,
+                  "gpm": 0.97
+                },
+                {
+                  "psi": 20,
+                  "radiusFt": 8,
+                  "gpm": 1.2
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 9,
+                  "gpm": 1.26
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 10,
+                  "gpm": 1.45
+                }
+              ]
+            },
+            {
+              "arcDeg": 90,
+              "rows": [
+                {
+                  "psi": 15,
+                  "radiusFt": 7,
+                  "gpm": 0.48
+                },
+                {
+                  "psi": 20,
+                  "radiusFt": 8,
+                  "gpm": 0.58
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 9,
+                  "gpm": 0.63
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 10,
+                  "gpm": 0.75
+                }
+              ]
+            }
+          ],
+          "chartPrecip": {
+            "square": 2.5,
+            "triangle": 2.89
+          }
+        },
+        {
+          "id": "rb-van-12",
+          "label": "12-VAN",
+          "arcFixed": null,
+          "arcMin": 0,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 15,
+          "rows": [
+            {
+              "psi": 15,
+              "radiusFt": 9,
+              "gpm": 1.56
+            },
+            {
+              "psi": 20,
+              "radiusFt": 10,
+              "gpm": 1.86
+            },
+            {
+              "psi": 25,
+              "radiusFt": 11,
+              "gpm": 2.12
+            },
+            {
+              "psi": 30,
+              "radiusFt": 12,
+              "gpm": 2.36
+            }
+          ],
+          "printedByArc": [
+            {
+              "arcDeg": 360,
+              "rows": [
+                {
+                  "psi": 15,
+                  "radiusFt": 9,
+                  "gpm": 1.56
+                },
+                {
+                  "psi": 20,
+                  "radiusFt": 10,
+                  "gpm": 1.86
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 11,
+                  "gpm": 2.12
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 12,
+                  "gpm": 2.36
+                }
+              ]
+            },
+            {
+              "arcDeg": 270,
+              "rows": [
+                {
+                  "psi": 15,
+                  "radiusFt": 9,
+                  "gpm": 1.17
+                },
+                {
+                  "psi": 20,
+                  "radiusFt": 10,
+                  "gpm": 1.39
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 11,
+                  "gpm": 1.59
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 12,
+                  "gpm": 1.77
+                }
+              ]
+            },
+            {
+              "arcDeg": 180,
+              "rows": [
+                {
+                  "psi": 15,
+                  "radiusFt": 9,
+                  "gpm": 0.78
+                },
+                {
+                  "psi": 20,
+                  "radiusFt": 10,
+                  "gpm": 0.93
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 11,
+                  "gpm": 1.06
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 12,
+                  "gpm": 1.18
+                }
+              ]
+            },
+            {
+              "arcDeg": 90,
+              "rows": [
+                {
+                  "psi": 15,
+                  "radiusFt": 9,
+                  "gpm": 0.39
+                },
+                {
+                  "psi": 20,
+                  "radiusFt": 10,
+                  "gpm": 0.46
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 11,
+                  "gpm": 0.53
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 12,
+                  "gpm": 0.59
+                }
+              ]
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.58,
+            "triangle": 1.82
+          }
+        },
+        {
+          "id": "rb-van-15",
+          "label": "15-VAN",
+          "arcFixed": null,
+          "arcMin": 0,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 23,
+          "rows": [
+            {
+              "psi": 15,
+              "radiusFt": 11,
+              "gpm": 2.6
+            },
+            {
+              "psi": 20,
+              "radiusFt": 12,
+              "gpm": 3.0
+            },
+            {
+              "psi": 25,
+              "radiusFt": 14,
+              "gpm": 3.3
+            },
+            {
+              "psi": 30,
+              "radiusFt": 15,
+              "gpm": 3.7
+            }
+          ],
+          "printedByArc": [
+            {
+              "arcDeg": 360,
+              "rows": [
+                {
+                  "psi": 15,
+                  "radiusFt": 11,
+                  "gpm": 2.6
+                },
+                {
+                  "psi": 20,
+                  "radiusFt": 12,
+                  "gpm": 3.0
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 14,
+                  "gpm": 3.3
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 15,
+                  "gpm": 3.7
+                }
+              ]
+            },
+            {
+              "arcDeg": 270,
+              "rows": [
+                {
+                  "psi": 15,
+                  "radiusFt": 11,
+                  "gpm": 1.95
+                },
+                {
+                  "psi": 20,
+                  "radiusFt": 12,
+                  "gpm": 2.25
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 14,
+                  "gpm": 2.48
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 15,
+                  "gpm": 2.78
+                }
+              ]
+            },
+            {
+              "arcDeg": 180,
+              "rows": [
+                {
+                  "psi": 15,
+                  "radiusFt": 11,
+                  "gpm": 1.3
+                },
+                {
+                  "psi": 20,
+                  "radiusFt": 12,
+                  "gpm": 1.5
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 14,
+                  "gpm": 1.65
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 15,
+                  "gpm": 1.85
+                }
+              ]
+            },
+            {
+              "arcDeg": 90,
+              "rows": [
+                {
+                  "psi": 15,
+                  "radiusFt": 11,
+                  "gpm": 0.65
+                },
+                {
+                  "psi": 20,
+                  "radiusFt": 12,
+                  "gpm": 0.75
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 14,
+                  "gpm": 0.82
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 15,
+                  "gpm": 0.92
+                }
+              ]
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.58,
+            "triangle": 1.83
+          }
+        },
+        {
+          "id": "rb-van-18",
+          "label": "18-VAN",
+          "arcFixed": null,
+          "arcMin": 0,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 26,
+          "rows": [
+            {
+              "psi": 15,
+              "radiusFt": 14,
+              "gpm": 4.21
+            },
+            {
+              "psi": 20,
+              "radiusFt": 15,
+              "gpm": 4.7
+            },
+            {
+              "psi": 25,
+              "radiusFt": 17,
+              "gpm": 4.86
+            },
+            {
+              "psi": 30,
+              "radiusFt": 18,
+              "gpm": 5.32
+            }
+          ],
+          "printedByArc": [
+            {
+              "arcDeg": 360,
+              "rows": [
+                {
+                  "psi": 15,
+                  "radiusFt": 14,
+                  "gpm": 4.21
+                },
+                {
+                  "psi": 20,
+                  "radiusFt": 15,
+                  "gpm": 4.7
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 17,
+                  "gpm": 4.86
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 18,
+                  "gpm": 5.32
+                }
+              ]
+            },
+            {
+              "arcDeg": 270,
+              "rows": [
+                {
+                  "psi": 15,
+                  "radiusFt": 14,
+                  "gpm": 3.16
+                },
+                {
+                  "psi": 20,
+                  "radiusFt": 15,
+                  "gpm": 3.52
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 17,
+                  "gpm": 3.65
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 18,
+                  "gpm": 3.99
+                }
+              ]
+            },
+            {
+              "arcDeg": 180,
+              "rows": [
+                {
+                  "psi": 15,
+                  "radiusFt": 14,
+                  "gpm": 2.11
+                },
+                {
+                  "psi": 20,
+                  "radiusFt": 15,
+                  "gpm": 2.35
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 17,
+                  "gpm": 2.43
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 18,
+                  "gpm": 2.66
+                }
+              ]
+            },
+            {
+              "arcDeg": 90,
+              "rows": [
+                {
+                  "psi": 15,
+                  "radiusFt": 14,
+                  "gpm": 1.05
+                },
+                {
+                  "psi": 20,
+                  "radiusFt": 15,
+                  "gpm": 1.17
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 17,
+                  "gpm": 1.22
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 18,
+                  "gpm": 1.33
+                }
+              ]
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.58,
+            "triangle": 1.83
+          }
+        }
+      ],
+      "source": "https://www.rainbird.com/sites/default/files/media/documents/2020-09/van-series-spray-nozzles-performance-charts.pdf"
+    },
+    {
+      "id": "rb-he-van",
+      "brand": "Rain Bird",
+      "name": "HE-VAN high-efficiency variable arc spray nozzles",
+      "kind": "spray",
+      "flow": "arc",
+      "nozzles": [
+        {
+          "id": "rb-he-van-08",
+          "label": "HE-VAN-08",
+          "arcFixed": null,
+          "arcMin": 0,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 24,
+          "rows": [
+            {
+              "psi": 15,
+              "radiusFt": 5,
+              "gpm": 0.83
+            },
+            {
+              "psi": 20,
+              "radiusFt": 6,
+              "gpm": 0.96
+            },
+            {
+              "psi": 25,
+              "radiusFt": 7,
+              "gpm": 1.07
+            },
+            {
+              "psi": 30,
+              "radiusFt": 8,
+              "gpm": 1.17
+            }
+          ],
+          "printedByArc": [
+            {
+              "arcDeg": 360,
+              "rows": [
+                {
+                  "psi": 15,
+                  "radiusFt": 5,
+                  "gpm": 0.83
+                },
+                {
+                  "psi": 20,
+                  "radiusFt": 6,
+                  "gpm": 0.96
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 7,
+                  "gpm": 1.07
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 8,
+                  "gpm": 1.17
+                }
+              ]
+            },
+            {
+              "arcDeg": 270,
+              "rows": [
+                {
+                  "psi": 15,
+                  "radiusFt": 5,
+                  "gpm": 0.62
+                },
+                {
+                  "psi": 20,
+                  "radiusFt": 6,
+                  "gpm": 0.72
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 7,
+                  "gpm": 0.8
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 8,
+                  "gpm": 0.88
+                }
+              ]
+            },
+            {
+              "arcDeg": 180,
+              "rows": [
+                {
+                  "psi": 15,
+                  "radiusFt": 5,
+                  "gpm": 0.41
+                },
+                {
+                  "psi": 20,
+                  "radiusFt": 6,
+                  "gpm": 0.48
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 7,
+                  "gpm": 0.53
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 8,
+                  "gpm": 0.59
+                }
+              ]
+            },
+            {
+              "arcDeg": 90,
+              "rows": [
+                {
+                  "psi": 15,
+                  "radiusFt": 5,
+                  "gpm": 0.21
+                },
+                {
+                  "psi": 20,
+                  "radiusFt": 6,
+                  "gpm": 0.24
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 7,
+                  "gpm": 0.27
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 8,
+                  "gpm": 0.29
+                }
+              ]
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.76,
+            "triangle": 2.03
+          }
+        },
+        {
+          "id": "rb-he-van-10",
+          "label": "HE-VAN-10",
+          "arcFixed": null,
+          "arcMin": 0,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 27,
+          "rows": [
+            {
+              "psi": 15,
+              "radiusFt": 7,
+              "gpm": 1.26
+            },
+            {
+              "psi": 20,
+              "radiusFt": 8,
+              "gpm": 1.46
+            },
+            {
+              "psi": 25,
+              "radiusFt": 9,
+              "gpm": 1.63
+            },
+            {
+              "psi": 30,
+              "radiusFt": 10,
+              "gpm": 1.78
+            }
+          ],
+          "printedByArc": [
+            {
+              "arcDeg": 360,
+              "rows": [
+                {
+                  "psi": 15,
+                  "radiusFt": 7,
+                  "gpm": 1.26
+                },
+                {
+                  "psi": 20,
+                  "radiusFt": 8,
+                  "gpm": 1.46
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 9,
+                  "gpm": 1.63
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 10,
+                  "gpm": 1.78
+                }
+              ]
+            },
+            {
+              "arcDeg": 270,
+              "rows": [
+                {
+                  "psi": 15,
+                  "radiusFt": 7,
+                  "gpm": 0.95
+                },
+                {
+                  "psi": 20,
+                  "radiusFt": 8,
+                  "gpm": 1.09
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 9,
+                  "gpm": 1.22
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 10,
+                  "gpm": 1.34
+                }
+              ]
+            },
+            {
+              "arcDeg": 180,
+              "rows": [
+                {
+                  "psi": 15,
+                  "radiusFt": 7,
+                  "gpm": 0.63
+                },
+                {
+                  "psi": 20,
+                  "radiusFt": 8,
+                  "gpm": 0.73
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 9,
+                  "gpm": 0.81
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 10,
+                  "gpm": 0.89
+                }
+              ]
+            },
+            {
+              "arcDeg": 90,
+              "rows": [
+                {
+                  "psi": 15,
+                  "radiusFt": 7,
+                  "gpm": 0.32
+                },
+                {
+                  "psi": 20,
+                  "radiusFt": 8,
+                  "gpm": 0.36
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 9,
+                  "gpm": 0.41
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 10,
+                  "gpm": 0.45
+                }
+              ]
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.72,
+            "triangle": 1.98
+          }
+        },
+        {
+          "id": "rb-he-van-12",
+          "label": "HE-VAN-12",
+          "arcFixed": null,
+          "arcMin": 0,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 23,
+          "rows": [
+            {
+              "psi": 15,
+              "radiusFt": 9,
+              "gpm": 1.67
+            },
+            {
+              "psi": 20,
+              "radiusFt": 10,
+              "gpm": 1.93
+            },
+            {
+              "psi": 25,
+              "radiusFt": 11,
+              "gpm": 2.16
+            },
+            {
+              "psi": 30,
+              "radiusFt": 12,
+              "gpm": 2.37
+            }
+          ],
+          "printedByArc": [
+            {
+              "arcDeg": 360,
+              "rows": [
+                {
+                  "psi": 15,
+                  "radiusFt": 9,
+                  "gpm": 1.67
+                },
+                {
+                  "psi": 20,
+                  "radiusFt": 10,
+                  "gpm": 1.93
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 11,
+                  "gpm": 2.16
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 12,
+                  "gpm": 2.37
+                }
+              ]
+            },
+            {
+              "arcDeg": 270,
+              "rows": [
+                {
+                  "psi": 15,
+                  "radiusFt": 9,
+                  "gpm": 1.25
+                },
+                {
+                  "psi": 20,
+                  "radiusFt": 10,
+                  "gpm": 1.45
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 11,
+                  "gpm": 1.62
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 12,
+                  "gpm": 1.77
+                }
+              ]
+            },
+            {
+              "arcDeg": 180,
+              "rows": [
+                {
+                  "psi": 15,
+                  "radiusFt": 9,
+                  "gpm": 0.84
+                },
+                {
+                  "psi": 20,
+                  "radiusFt": 10,
+                  "gpm": 0.97
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 11,
+                  "gpm": 1.08
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 12,
+                  "gpm": 1.18
+                }
+              ]
+            },
+            {
+              "arcDeg": 90,
+              "rows": [
+                {
+                  "psi": 15,
+                  "radiusFt": 9,
+                  "gpm": 0.42
+                },
+                {
+                  "psi": 20,
+                  "radiusFt": 10,
+                  "gpm": 0.48
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 11,
+                  "gpm": 0.54
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 12,
+                  "gpm": 0.59
+                }
+              ]
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.58,
+            "triangle": 1.83
+          }
+        },
+        {
+          "id": "rb-he-van-15",
+          "label": "HE-VAN-15",
+          "arcFixed": null,
+          "arcMin": 0,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 25,
+          "rows": [
+            {
+              "psi": 15,
+              "radiusFt": 11,
+              "gpm": 2.62
+            },
+            {
+              "psi": 20,
+              "radiusFt": 12,
+              "gpm": 3.02
+            },
+            {
+              "psi": 25,
+              "radiusFt": 14,
+              "gpm": 3.38
+            },
+            {
+              "psi": 30,
+              "radiusFt": 15,
+              "gpm": 3.7
+            }
+          ],
+          "printedByArc": [
+            {
+              "arcDeg": 360,
+              "rows": [
+                {
+                  "psi": 15,
+                  "radiusFt": 11,
+                  "gpm": 2.62
+                },
+                {
+                  "psi": 20,
+                  "radiusFt": 12,
+                  "gpm": 3.02
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 14,
+                  "gpm": 3.38
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 15,
+                  "gpm": 3.7
+                }
+              ]
+            },
+            {
+              "arcDeg": 270,
+              "rows": [
+                {
+                  "psi": 15,
+                  "radiusFt": 11,
+                  "gpm": 1.96
+                },
+                {
+                  "psi": 20,
+                  "radiusFt": 12,
+                  "gpm": 2.27
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 14,
+                  "gpm": 2.53
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 15,
+                  "gpm": 2.78
+                }
+              ]
+            },
+            {
+              "arcDeg": 180,
+              "rows": [
+                {
+                  "psi": 15,
+                  "radiusFt": 11,
+                  "gpm": 1.31
+                },
+                {
+                  "psi": 20,
+                  "radiusFt": 12,
+                  "gpm": 1.51
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 14,
+                  "gpm": 1.69
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 15,
+                  "gpm": 1.85
+                }
+              ]
+            },
+            {
+              "arcDeg": 90,
+              "rows": [
+                {
+                  "psi": 15,
+                  "radiusFt": 11,
+                  "gpm": 0.65
+                },
+                {
+                  "psi": 20,
+                  "radiusFt": 12,
+                  "gpm": 0.76
+                },
+                {
+                  "psi": 25,
+                  "radiusFt": 14,
+                  "gpm": 0.84
+                },
+                {
+                  "psi": 30,
+                  "radiusFt": 15,
+                  "gpm": 0.93
+                }
+              ]
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.58,
+            "triangle": 1.83
+          }
+        }
+      ],
+      "source": "https://www.rainbird.com/sites/default/files/media/documents/2018-02/chart_HE-VAN.pdf"
+    },
+    {
+      "id": "rb-u-series",
+      "brand": "Rain Bird",
+      "name": "U-Series dual-orifice spray nozzles",
+      "kind": "spray",
+      "flow": "arc",
+      "nozzles": [
+        {
+          "id": "rb-u-8f",
+          "label": "U-8F",
+          "arcFixed": 360,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 10,
+          "rows": [
+            {
+              "psi": 15,
+              "radiusFt": 5,
+              "gpm": 0.74
+            },
+            {
+              "psi": 20,
+              "radiusFt": 6,
+              "gpm": 0.86
+            },
+            {
+              "psi": 25,
+              "radiusFt": 7,
+              "gpm": 0.96
+            },
+            {
+              "psi": 30,
+              "radiusFt": 8,
+              "gpm": 1.05
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.58,
+            "triangle": 1.83
+          }
+        },
+        {
+          "id": "rb-u-8h",
+          "label": "U-8H",
+          "arcFixed": 180,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 10,
+          "rows": [
+            {
+              "psi": 15,
+              "radiusFt": 5,
+              "gpm": 0.74
+            },
+            {
+              "psi": 20,
+              "radiusFt": 6,
+              "gpm": 0.84
+            },
+            {
+              "psi": 25,
+              "radiusFt": 7,
+              "gpm": 0.94
+            },
+            {
+              "psi": 30,
+              "radiusFt": 8,
+              "gpm": 1.04
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.58,
+            "triangle": 1.83
+          }
+        },
+        {
+          "id": "rb-u-8q",
+          "label": "U-8Q",
+          "arcFixed": 90,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 10,
+          "rows": [
+            {
+              "psi": 15,
+              "radiusFt": 5,
+              "gpm": 0.72
+            },
+            {
+              "psi": 20,
+              "radiusFt": 6,
+              "gpm": 0.84
+            },
+            {
+              "psi": 25,
+              "radiusFt": 7,
+              "gpm": 0.96
+            },
+            {
+              "psi": 30,
+              "radiusFt": 8,
+              "gpm": 1.04
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.58,
+            "triangle": 1.83
+          }
+        },
+        {
+          "id": "rb-u-10f",
+          "label": "U-10F",
+          "arcFixed": 360,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 12,
+          "rows": [
+            {
+              "psi": 15,
+              "radiusFt": 7,
+              "gpm": 1.16
+            },
+            {
+              "psi": 20,
+              "radiusFt": 8,
+              "gpm": 1.34
+            },
+            {
+              "psi": 25,
+              "radiusFt": 9,
+              "gpm": 1.5
+            },
+            {
+              "psi": 30,
+              "radiusFt": 10,
+              "gpm": 1.64
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.58,
+            "triangle": 1.83
+          }
+        },
+        {
+          "id": "rb-u-10h",
+          "label": "U-10H",
+          "arcFixed": 180,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 12,
+          "rows": [
+            {
+              "psi": 15,
+              "radiusFt": 7,
+              "gpm": 1.16
+            },
+            {
+              "psi": 20,
+              "radiusFt": 8,
+              "gpm": 1.34
+            },
+            {
+              "psi": 25,
+              "radiusFt": 9,
+              "gpm": 1.5
+            },
+            {
+              "psi": 30,
+              "radiusFt": 10,
+              "gpm": 1.64
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.58,
+            "triangle": 1.83
+          }
+        },
+        {
+          "id": "rb-u-10q",
+          "label": "U-10Q",
+          "arcFixed": 90,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 12,
+          "rows": [
+            {
+              "psi": 15,
+              "radiusFt": 7,
+              "gpm": 1.16
+            },
+            {
+              "psi": 20,
+              "radiusFt": 8,
+              "gpm": 1.32
+            },
+            {
+              "psi": 25,
+              "radiusFt": 9,
+              "gpm": 1.48
+            },
+            {
+              "psi": 30,
+              "radiusFt": 10,
+              "gpm": 1.64
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.58,
+            "triangle": 1.83
+          }
+        },
+        {
+          "id": "rb-u-12f",
+          "label": "U-12F",
+          "arcFixed": 360,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 23,
+          "rows": [
+            {
+              "psi": 15,
+              "radiusFt": 9,
+              "gpm": 1.8
+            },
+            {
+              "psi": 20,
+              "radiusFt": 10,
+              "gpm": 2.1
+            },
+            {
+              "psi": 25,
+              "radiusFt": 11,
+              "gpm": 2.4
+            },
+            {
+              "psi": 30,
+              "radiusFt": 12,
+              "gpm": 2.6
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.74,
+            "triangle": 2.01
+          }
+        },
+        {
+          "id": "rb-u-12h",
+          "label": "U-12H",
+          "arcFixed": 180,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 23,
+          "rows": [
+            {
+              "psi": 15,
+              "radiusFt": 9,
+              "gpm": 1.8
+            },
+            {
+              "psi": 20,
+              "radiusFt": 10,
+              "gpm": 2.1
+            },
+            {
+              "psi": 25,
+              "radiusFt": 11,
+              "gpm": 2.4
+            },
+            {
+              "psi": 30,
+              "radiusFt": 12,
+              "gpm": 2.6
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.74,
+            "triangle": 2.01
+          }
+        },
+        {
+          "id": "rb-u-12q",
+          "label": "U-12Q",
+          "arcFixed": 90,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 23,
+          "rows": [
+            {
+              "psi": 15,
+              "radiusFt": 9,
+              "gpm": 1.8
+            },
+            {
+              "psi": 20,
+              "radiusFt": 10,
+              "gpm": 2.12
+            },
+            {
+              "psi": 25,
+              "radiusFt": 11,
+              "gpm": 2.4
+            },
+            {
+              "psi": 30,
+              "radiusFt": 12,
+              "gpm": 2.6
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.74,
+            "triangle": 2.01
+          }
+        },
+        {
+          "id": "rb-u-15f",
+          "label": "U-15F",
+          "arcFixed": 360,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 23,
+          "rows": [
+            {
+              "psi": 15,
+              "radiusFt": 11,
+              "gpm": 2.6
+            },
+            {
+              "psi": 20,
+              "radiusFt": 12,
+              "gpm": 3.0
+            },
+            {
+              "psi": 25,
+              "radiusFt": 14,
+              "gpm": 3.3
+            },
+            {
+              "psi": 30,
+              "radiusFt": 15,
+              "gpm": 3.7
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.58,
+            "triangle": 1.83
+          }
+        },
+        {
+          "id": "rb-u-15h",
+          "label": "U-15H",
+          "arcFixed": 180,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 23,
+          "rows": [
+            {
+              "psi": 15,
+              "radiusFt": 11,
+              "gpm": 2.6
+            },
+            {
+              "psi": 20,
+              "radiusFt": 12,
+              "gpm": 3.0
+            },
+            {
+              "psi": 25,
+              "radiusFt": 14,
+              "gpm": 3.3
+            },
+            {
+              "psi": 30,
+              "radiusFt": 15,
+              "gpm": 3.7
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.58,
+            "triangle": 1.83
+          }
+        },
+        {
+          "id": "rb-u-15q",
+          "label": "U-15Q",
+          "arcFixed": 90,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": 23,
+          "rows": [
+            {
+              "psi": 15,
+              "radiusFt": 11,
+              "gpm": 2.6
+            },
+            {
+              "psi": 20,
+              "radiusFt": 12,
+              "gpm": 3.0
+            },
+            {
+              "psi": 25,
+              "radiusFt": 14,
+              "gpm": 3.28
+            },
+            {
+              "psi": 30,
+              "radiusFt": 15,
+              "gpm": 3.68
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.58,
+            "triangle": 1.83
+          }
+        }
+      ],
+      "source": "https://www.rainbird.com/sites/default/files/media/documents/2020-09/u-series-spray-nozzles-performance-charts.pdf"
+    },
+    {
+      "id": "rb-r-van",
+      "brand": "Rain Bird",
+      "name": "R-VAN adjustable rotary (multi-stream) nozzles",
+      "kind": "rotary",
+      "flow": "arc",
+      "nozzles": [
+        {
+          "id": "rb-r-van14",
+          "label": "R-VAN14",
+          "arcFixed": null,
+          "arcMin": 45,
+          "arcMax": 270,
+          "strip": null,
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 13,
+              "gpm": 1.12
+            },
+            {
+              "psi": 35,
+              "radiusFt": 13,
+              "gpm": 1.16
+            },
+            {
+              "psi": 40,
+              "radiusFt": 14,
+              "gpm": 1.23
+            },
+            {
+              "psi": 45,
+              "radiusFt": 14,
+              "gpm": 1.25
+            },
+            {
+              "psi": 50,
+              "radiusFt": 15,
+              "gpm": 1.48
+            },
+            {
+              "psi": 55,
+              "radiusFt": 15,
+              "gpm": 1.56
+            }
+          ],
+          "printedByArc": [
+            {
+              "arcDeg": 270,
+              "rows": [
+                {
+                  "psi": 30,
+                  "radiusFt": 13,
+                  "gpm": 0.84
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 13,
+                  "gpm": 0.87
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 14,
+                  "gpm": 0.92
+                },
+                {
+                  "psi": 45,
+                  "radiusFt": 14,
+                  "gpm": 0.94
+                },
+                {
+                  "psi": 50,
+                  "radiusFt": 15,
+                  "gpm": 1.11
+                },
+                {
+                  "psi": 55,
+                  "radiusFt": 15,
+                  "gpm": 1.17
+                }
+              ]
+            },
+            {
+              "arcDeg": 210,
+              "rows": [
+                {
+                  "psi": 30,
+                  "radiusFt": 13,
+                  "gpm": 0.65
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 13,
+                  "gpm": 0.68
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 14,
+                  "gpm": 0.72
+                },
+                {
+                  "psi": 45,
+                  "radiusFt": 14,
+                  "gpm": 0.73
+                },
+                {
+                  "psi": 50,
+                  "radiusFt": 15,
+                  "gpm": 0.86
+                },
+                {
+                  "psi": 55,
+                  "radiusFt": 15,
+                  "gpm": 0.91
+                }
+              ]
+            },
+            {
+              "arcDeg": 180,
+              "rows": [
+                {
+                  "psi": 30,
+                  "radiusFt": 13,
+                  "gpm": 0.56
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 13,
+                  "gpm": 0.58
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 14,
+                  "gpm": 0.61
+                },
+                {
+                  "psi": 45,
+                  "radiusFt": 14,
+                  "gpm": 0.63
+                },
+                {
+                  "psi": 50,
+                  "radiusFt": 15,
+                  "gpm": 0.74
+                },
+                {
+                  "psi": 55,
+                  "radiusFt": 15,
+                  "gpm": 0.78
+                }
+              ]
+            },
+            {
+              "arcDeg": 90,
+              "rows": [
+                {
+                  "psi": 30,
+                  "radiusFt": 13,
+                  "gpm": 0.28
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 13,
+                  "gpm": 0.29
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 14,
+                  "gpm": 0.31
+                },
+                {
+                  "psi": 45,
+                  "radiusFt": 14,
+                  "gpm": 0.32
+                },
+                {
+                  "psi": 50,
+                  "radiusFt": 15,
+                  "gpm": 0.37
+                },
+                {
+                  "psi": 55,
+                  "radiusFt": 15,
+                  "gpm": 0.39
+                }
+              ]
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.62,
+            "triangle": 0.7
+          }
+        },
+        {
+          "id": "rb-r-van14-360",
+          "label": "R-VAN14-360",
+          "arcFixed": 360,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 13,
+              "gpm": 1.1
+            },
+            {
+              "psi": 35,
+              "radiusFt": 13,
+              "gpm": 1.12
+            },
+            {
+              "psi": 40,
+              "radiusFt": 14,
+              "gpm": 1.22
+            },
+            {
+              "psi": 45,
+              "radiusFt": 14,
+              "gpm": 1.27
+            },
+            {
+              "psi": 50,
+              "radiusFt": 15,
+              "gpm": 1.41
+            },
+            {
+              "psi": 55,
+              "radiusFt": 15,
+              "gpm": 1.45
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.62,
+            "triangle": 0.72
+          }
+        },
+        {
+          "id": "rb-r-van18",
+          "label": "R-VAN18",
+          "arcFixed": null,
+          "arcMin": 45,
+          "arcMax": 270,
+          "strip": null,
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 16,
+              "gpm": 1.68
+            },
+            {
+              "psi": 35,
+              "radiusFt": 16,
+              "gpm": 1.8
+            },
+            {
+              "psi": 40,
+              "radiusFt": 17,
+              "gpm": 1.89
+            },
+            {
+              "psi": 45,
+              "radiusFt": 17,
+              "gpm": 2.01
+            },
+            {
+              "psi": 50,
+              "radiusFt": 18,
+              "gpm": 2.09
+            },
+            {
+              "psi": 55,
+              "radiusFt": 18,
+              "gpm": 2.16
+            }
+          ],
+          "printedByArc": [
+            {
+              "arcDeg": 270,
+              "rows": [
+                {
+                  "psi": 30,
+                  "radiusFt": 16,
+                  "gpm": 1.26
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 16,
+                  "gpm": 1.35
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 17,
+                  "gpm": 1.42
+                },
+                {
+                  "psi": 45,
+                  "radiusFt": 17,
+                  "gpm": 1.51
+                },
+                {
+                  "psi": 50,
+                  "radiusFt": 18,
+                  "gpm": 1.57
+                },
+                {
+                  "psi": 55,
+                  "radiusFt": 18,
+                  "gpm": 1.62
+                }
+              ]
+            },
+            {
+              "arcDeg": 210,
+              "rows": [
+                {
+                  "psi": 30,
+                  "radiusFt": 16,
+                  "gpm": 0.98
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 16,
+                  "gpm": 1.05
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 17,
+                  "gpm": 1.1
+                },
+                {
+                  "psi": 45,
+                  "radiusFt": 17,
+                  "gpm": 1.17
+                },
+                {
+                  "psi": 50,
+                  "radiusFt": 18,
+                  "gpm": 1.22
+                },
+                {
+                  "psi": 55,
+                  "radiusFt": 18,
+                  "gpm": 1.26
+                }
+              ]
+            },
+            {
+              "arcDeg": 180,
+              "rows": [
+                {
+                  "psi": 30,
+                  "radiusFt": 16,
+                  "gpm": 0.85
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 16,
+                  "gpm": 0.91
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 17,
+                  "gpm": 0.98
+                },
+                {
+                  "psi": 45,
+                  "radiusFt": 17,
+                  "gpm": 1.01
+                },
+                {
+                  "psi": 50,
+                  "radiusFt": 18,
+                  "gpm": 1.07
+                },
+                {
+                  "psi": 55,
+                  "radiusFt": 18,
+                  "gpm": 1.09
+                }
+              ]
+            },
+            {
+              "arcDeg": 90,
+              "rows": [
+                {
+                  "psi": 30,
+                  "radiusFt": 16,
+                  "gpm": 0.42
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 16,
+                  "gpm": 0.47
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 17,
+                  "gpm": 0.5
+                },
+                {
+                  "psi": 45,
+                  "radiusFt": 17,
+                  "gpm": 0.5
+                },
+                {
+                  "psi": 50,
+                  "radiusFt": 18,
+                  "gpm": 0.54
+                },
+                {
+                  "psi": 55,
+                  "radiusFt": 18,
+                  "gpm": 0.58
+                }
+              ]
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.64,
+            "triangle": 0.73
+          }
+        },
+        {
+          "id": "rb-r-van18-360",
+          "label": "R-VAN18-360",
+          "arcFixed": 360,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 16,
+              "gpm": 1.65
+            },
+            {
+              "psi": 35,
+              "radiusFt": 16,
+              "gpm": 1.67
+            },
+            {
+              "psi": 40,
+              "radiusFt": 17,
+              "gpm": 1.8
+            },
+            {
+              "psi": 45,
+              "radiusFt": 17,
+              "gpm": 1.85
+            },
+            {
+              "psi": 50,
+              "radiusFt": 18,
+              "gpm": 2.05
+            },
+            {
+              "psi": 55,
+              "radiusFt": 18,
+              "gpm": 2.11
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.62,
+            "triangle": 0.71
+          }
+        },
+        {
+          "id": "rb-r-van24",
+          "label": "R-VAN24",
+          "arcFixed": null,
+          "arcMin": 45,
+          "arcMax": 270,
+          "strip": null,
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 19,
+              "gpm": 2.4
+            },
+            {
+              "psi": 35,
+              "radiusFt": 20,
+              "gpm": 2.6
+            },
+            {
+              "psi": 40,
+              "radiusFt": 22,
+              "gpm": 3.08
+            },
+            {
+              "psi": 45,
+              "radiusFt": 23,
+              "gpm": 3.36
+            },
+            {
+              "psi": 50,
+              "radiusFt": 24,
+              "gpm": 3.76
+            },
+            {
+              "psi": 55,
+              "radiusFt": 24,
+              "gpm": 3.84
+            }
+          ],
+          "printedByArc": [
+            {
+              "arcDeg": 270,
+              "rows": [
+                {
+                  "psi": 30,
+                  "radiusFt": 19,
+                  "gpm": 1.8
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 20,
+                  "gpm": 1.95
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 22,
+                  "gpm": 2.31
+                },
+                {
+                  "psi": 45,
+                  "radiusFt": 23,
+                  "gpm": 2.52
+                },
+                {
+                  "psi": 50,
+                  "radiusFt": 24,
+                  "gpm": 2.82
+                },
+                {
+                  "psi": 55,
+                  "radiusFt": 24,
+                  "gpm": 2.88
+                }
+              ]
+            },
+            {
+              "arcDeg": 210,
+              "rows": [
+                {
+                  "psi": 30,
+                  "radiusFt": 19,
+                  "gpm": 1.4
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 20,
+                  "gpm": 1.52
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 22,
+                  "gpm": 1.8
+                },
+                {
+                  "psi": 45,
+                  "radiusFt": 23,
+                  "gpm": 1.96
+                },
+                {
+                  "psi": 50,
+                  "radiusFt": 24,
+                  "gpm": 2.19
+                },
+                {
+                  "psi": 55,
+                  "radiusFt": 24,
+                  "gpm": 2.24
+                }
+              ]
+            },
+            {
+              "arcDeg": 180,
+              "rows": [
+                {
+                  "psi": 30,
+                  "radiusFt": 19,
+                  "gpm": 1.2
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 20,
+                  "gpm": 1.3
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 22,
+                  "gpm": 1.54
+                },
+                {
+                  "psi": 45,
+                  "radiusFt": 23,
+                  "gpm": 1.68
+                },
+                {
+                  "psi": 50,
+                  "radiusFt": 24,
+                  "gpm": 1.88
+                },
+                {
+                  "psi": 55,
+                  "radiusFt": 24,
+                  "gpm": 1.92
+                }
+              ]
+            },
+            {
+              "arcDeg": 90,
+              "rows": [
+                {
+                  "psi": 30,
+                  "radiusFt": 19,
+                  "gpm": 0.6
+                },
+                {
+                  "psi": 35,
+                  "radiusFt": 20,
+                  "gpm": 0.65
+                },
+                {
+                  "psi": 40,
+                  "radiusFt": 22,
+                  "gpm": 0.77
+                },
+                {
+                  "psi": 45,
+                  "radiusFt": 23,
+                  "gpm": 0.84
+                },
+                {
+                  "psi": 50,
+                  "radiusFt": 24,
+                  "gpm": 0.94
+                },
+                {
+                  "psi": 55,
+                  "radiusFt": 24,
+                  "gpm": 0.96
+                }
+              ]
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.61,
+            "triangle": 0.71
+          }
+        },
+        {
+          "id": "rb-r-van24-360",
+          "label": "R-VAN24-360",
+          "arcFixed": 360,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 19,
+              "gpm": 2.35
+            },
+            {
+              "psi": 35,
+              "radiusFt": 20,
+              "gpm": 2.52
+            },
+            {
+              "psi": 40,
+              "radiusFt": 22,
+              "gpm": 3.13
+            },
+            {
+              "psi": 45,
+              "radiusFt": 23,
+              "gpm": 3.48
+            },
+            {
+              "psi": 50,
+              "radiusFt": 24,
+              "gpm": 3.61
+            },
+            {
+              "psi": 55,
+              "radiusFt": 24,
+              "gpm": 3.74
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.63,
+            "triangle": 0.73
+          }
+        }
+      ],
+      "source": "https://www.rainbird.com/sites/default/files/media/documents/2020-09/r-van-nozzles-performance-charts.pdf"
+    },
+    {
+      "id": "rb-r-van-strip",
+      "brand": "Rain Bird",
+      "name": "R-VAN rotary strip nozzles",
+      "kind": "rotary",
+      "flow": "constant",
+      "nozzles": [
+        {
+          "id": "rb-r-van-lcs",
+          "label": "R-VAN-LCS",
+          "arcFixed": null,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": {
+            "widthFt": 5,
+            "lengthFt": 15,
+            "type": "end",
+            "corner": "left"
+          },
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": null,
+              "gpm": 0.18,
+              "widthFt": 4,
+              "lengthFt": 14
+            },
+            {
+              "psi": 35,
+              "radiusFt": null,
+              "gpm": 0.22,
+              "widthFt": 5,
+              "lengthFt": 15
+            },
+            {
+              "psi": 40,
+              "radiusFt": null,
+              "gpm": 0.23,
+              "widthFt": 5,
+              "lengthFt": 15
+            },
+            {
+              "psi": 45,
+              "radiusFt": null,
+              "gpm": 0.24,
+              "widthFt": 5,
+              "lengthFt": 15
+            },
+            {
+              "psi": 50,
+              "radiusFt": null,
+              "gpm": 0.25,
+              "widthFt": 5,
+              "lengthFt": 15
+            },
+            {
+              "psi": 55,
+              "radiusFt": null,
+              "gpm": 0.28,
+              "widthFt": 6,
+              "lengthFt": 16
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.62,
+            "triangle": 0.62
+          }
+        },
+        {
+          "id": "rb-r-van-sst",
+          "label": "R-VAN-SST",
+          "arcFixed": null,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": {
+            "widthFt": 5,
+            "lengthFt": 30,
+            "type": "side"
+          },
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": null,
+              "gpm": 0.36,
+              "widthFt": 4,
+              "lengthFt": 28
+            },
+            {
+              "psi": 35,
+              "radiusFt": null,
+              "gpm": 0.44,
+              "widthFt": 5,
+              "lengthFt": 30
+            },
+            {
+              "psi": 40,
+              "radiusFt": null,
+              "gpm": 0.46,
+              "widthFt": 5,
+              "lengthFt": 30
+            },
+            {
+              "psi": 45,
+              "radiusFt": null,
+              "gpm": 0.48,
+              "widthFt": 5,
+              "lengthFt": 30
+            },
+            {
+              "psi": 50,
+              "radiusFt": null,
+              "gpm": 0.5,
+              "widthFt": 5,
+              "lengthFt": 30
+            },
+            {
+              "psi": 55,
+              "radiusFt": null,
+              "gpm": 0.56,
+              "widthFt": 6,
+              "lengthFt": 32
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.62,
+            "triangle": 0.62
+          }
+        },
+        {
+          "id": "rb-r-van-rcs",
+          "label": "R-VAN-RCS",
+          "arcFixed": null,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": {
+            "widthFt": 5,
+            "lengthFt": 15,
+            "type": "end",
+            "corner": "right"
+          },
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": null,
+              "gpm": 0.18,
+              "widthFt": 4,
+              "lengthFt": 14
+            },
+            {
+              "psi": 35,
+              "radiusFt": null,
+              "gpm": 0.22,
+              "widthFt": 5,
+              "lengthFt": 15
+            },
+            {
+              "psi": 40,
+              "radiusFt": null,
+              "gpm": 0.23,
+              "widthFt": 5,
+              "lengthFt": 15
+            },
+            {
+              "psi": 45,
+              "radiusFt": null,
+              "gpm": 0.24,
+              "widthFt": 5,
+              "lengthFt": 15
+            },
+            {
+              "psi": 50,
+              "radiusFt": null,
+              "gpm": 0.25,
+              "widthFt": 5,
+              "lengthFt": 15
+            },
+            {
+              "psi": 55,
+              "radiusFt": null,
+              "gpm": 0.28,
+              "widthFt": 6,
+              "lengthFt": 16
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.62,
+            "triangle": 0.62
+          }
+        }
+      ],
+      "source": "https://www.rainbird.com/sites/default/files/media/documents/2020-09/r-van-nozzles-performance-charts.pdf"
+    }
+  ],
+  "notes": [
+    "Every number was transcribed from Rain Bird's own charts (text layer of the PDFs, parsed by script with row-count checks, plus visual spot checks of the MPR strip/FLT page and the R-VAN strip page). Each family's per-series chart PDF was cross-checked number-for-number against the same tables in Rain Bird's 2023 Domestic Landscape Irrigation Catalog (d42139, https://www.rainbird.com/sites/default/files/media/documents/2022-11/d42139_2023_dom_turf_catalog_v3_eng.pdf, pp. 15-35): VAN, HE-VAN, U-Series, MPR and R-VAN tables are identical in both. That catalog is the latest landscape catalog Rain Bird links (checked 2026-10-20); the 2026 'What's New' guide adds no spray nozzle or 1800 body changes beyond SQ patterns.",
+    "Fixed-arc nozzles (MPR, U-Series): rows hold the FULL-CIRCLE equivalent per the schema (H x2, Q x4). Rain Bird's F/H/Q flows are close to but not exactly proportional, e.g. 5F at 30 psi prints 0.41 gpm while 5H prints 0.20 (=0.40 full) and 5Q 0.10 (=0.40 full); 8F 1.05 vs 8H 0.52 (1.04) vs 8Q 0.26 (1.04); 10F 1.58 vs 10H 0.79 (1.58) vs 10Q 0.39 (1.56).",
+    "Adjustable-arc nozzles (VAN, HE-VAN, R-VAN adjustable): the charts print a separate table per arc setting. 'rows' is the full-circle equivalent taken from the largest printed arc: the 360 deg table as printed for 10/12/15/18-VAN and all HE-VAN; for 4/6/8-VAN (max arc 330 deg) the 330 deg gpm x 360/330; for R-VAN14/18/24 (max arc 270 deg) the 270 deg gpm x 4/3, rounded to 0.01. Those two cases are derived numbers, not printed ones. Each such nozzle also carries 'printedByArc' (an addition to the schema): every arc table exactly as printed, gpm for THAT arc, not scaled.",
+    "4-VAN, 6-VAN and 8-VAN flows are clearly NOT proportional to arc: e.g. 4-VAN at 30 psi prints 0.88 gpm at 330 deg (0.96 per full circle) but 0.29 at 90 deg (1.16 per full circle), and the chart's own precip rates differ by arc (5.78 vs 6.98 in/h square). 10-VAN is also uneven (360 deg 2.60 gpm, 90 deg 0.75 = 3.00 per full circle). For these, prefer printedByArc at the nearest arc. VAN 12/15/18, HE-VAN, U-Series and R-VAN are proportional to within rounding.",
+    "chartPrecip is the chart's own square / triangular (50% diameter-of-throw spacing) value at the reference psi: 30 psi for MPR, VAN, HE-VAN and U-Series (Rain Bird's 'optimum pressure'); 45 psi for R-VAN (Rain Bird's 'recommended operating pressure', the bold row). For adjustable nozzles it is the value printed with the largest arc's table (precip differs slightly by arc on VAN). For R-VAN strips the two columns are Rain Bird's 'straight-line spacing' and 'triangular spacing based on 50% overlap of throw', stored as square / triangle. The MPR 15 Strip Series chart prints no precip, so null.",
+    "Strip nozzles are in their own families with flow 'constant' (gpm as printed; there is no arc to scale). Their rows carry radiusFt null plus widthFt and lengthFt per pressure as printed (an addition to the schema), because the pattern size changes with pressure. The 'strip' object holds the size at the reference pressure (30 psi MPR, 45 psi R-VAN). Corner strips (15LCS, 15RCS, R-VAN-LCS, R-VAN-RCS) are stored as type 'end' with an added 'corner': 'left'|'right', since the schema's types have no corner; they are placed at the corner of the strip, not mid-end.",
+    "15CST and 15SST print identical numbers (4x26 to 4x30, 0.89 to 1.21 gpm). 9SST is printed in the 15 Strip Series table (30 deg trajectory heading). 15CST is labelled center strip in Rain Bird's model codes; its printed W x L is 4 x 30 at 30 psi.",
+    "MPR patterns: Rain Bird's current MPR chart (2020) and the 2023 catalog list only F, H and Q for the 5, 8, 10, 12 and 15 Series (plus 8H-FLT and 8Q-FLT). No TQ (270), T (120) or TT (240) MPR or U-Series nozzles appear in any current Rain Bird chart; the 2017 catalog says to use HE-VAN 'for specialty patterns (previously U-Series T, TT, TQ nozzles)'. So TQ/T patterns were not found and are not included.",
+    "U-Series: the chart notes 'Radius refers to recommended product spacing. Actual radii along arc may vary'. Labels are normalized to U-8F style; the chart prints both U-8H and U8H. U-8, U-12 and U-15 print the same radius and gpm as MPR 8, 12 and 15 Series (U-8 precip differs by 0.01-0.02); U-10 differs from MPR 10 (1.64 vs 1.58 gpm full circle at 30 psi).",
+    "R-VAN: chart rows run 30-55 psi; no trajectory is printed (null). Rain Bird: do not reduce the radius below 17 ft (R-VAN24/24-360), 13 ft (R-VAN18/18-360) or 8 ft (R-VAN14/14-360). Rain Bird recommends 45 psi (1800-P45 / SAM-P45 bodies); on a 30 psi PRS body read the 30 psi row. Rain Bird's charts note all nozzles were tested on 4 in pop-ups in zero wind.",
+    "MPR, VAN, HE-VAN and U-Series charts print 15-30 psi only; Rain Bird recommends 30 psi regulated (PRS) bodies for higher supply pressure. Radius reduction over 25% of normal throw is not recommended (spray charts).",
+    "Bodies: 1800 models from Rain Bird's 1800 Series product page (base 1802/1804/1806/1812; SAM 1804/1806/1812; PRS-30 1802/1803/1804/1806/1812; P45, SAM-PRS and SAM-P45 1804/1806/1812). The 1803 base model is listed only in the 2022 1800 Series tech spec (5 in body, 3 in pop-up), not on the current product page. PRS = 30 psi in-stem regulator, P45 = 45 psi, 'with inlet pressures of up to 70 psi'. Rain Bird says all its plastic spray nozzles (U-Series, HE-VAN, R-VAN, MPR, VAN) fit all 1800 bodies and the UNI-Spray 'accepts all Rain Bird nozzles', so every body lists every family.",
+    "UNI-Spray: US400 is the 4 in body; US408HE/US410HE/US412HE/US415HE are the same body shipped with an HE-VAN-08/10/12/15 pre-attached and US410/US412/US415/US418 with a 10/12/15/18-VAN pre-attached (nozzle still swappable). Not pressure regulated. A field-installed SAM check valve (USSAM) exists.",
+    "Not included: RD1800 series bodies (not in this group's list; same nozzles fit), 1800 'XPCN' nozzles, R-Series fixed rotary nozzles, SQ square-pattern nozzles, 5 Series MPR stream bubblers (5F-B/5H-B/5Q-B/5CST-B) and other bubblers, and all metric columns."
+  ]
+}

@@ -888,6 +888,28 @@ open ground; his traced lawn is not readable from here), typical July (rain 3.31
   above Enviroweather's (H21, deferred by the owner); with that, about 1.0 in. The 4 waterings against his
   2-3 come from the 0.14 in/h intake and the one-hour cycle, an assumption a soak test would check.
 
+### H25. The sprinkler catalogue: makers' charts, checked against their own printed rates (water session, 2026-10-20)
+
+lib/heads/*.json, transcribed by five research agents from the makers' performance charts (schema and
+rules: lib/heads/SCHEMA.md; each family names its source; each file's "notes" lists its doubts).
+lib/heads.js reads them: a head's flow and throw at the pressure reaching it (linear between the chart's
+rows, held at its ends), for its arc; a zone's flow and rate; pipes; GPS.
+
+- Rain Bird sprays (55 nozzles: MPR, VAN, HE-VAN, U, R-VAN, strips), Rain Bird rotors (78), Hunter rotors
+  (77) in so far; Hunter sprays and MP Rotator, and Toro / K-Rain / Orbit, to follow.
+- Checked: the tool's rate for a Rain Bird 5000 3.0 nozzle at 45 psi, half circle, 0.39 in/h, and a Hunter
+  PGP Ultra blue 3.0 at 45 psi, 0.40 in/h, are the charts' own printed rates (0.39, 0.40).
+- Small VAN nozzles (4, 6, 8, 10) do not put out flow in proportion to the arc (a 4-VAN at 90 degrees puts
+  out more per degree than at 330): their per-arc tables are read, between the printed arcs.
+- Rain Bird's 5000 PRS chart is printed by the pressure coming in, so a PRS body's regulation is not
+  applied on top of it (pressureIs: inlet).
+- Hunter's original Hunter-hosted PDFs answered 403 to the agent; its numbers are Hunter's own documents
+  as distributors host them, cross-checked against a second Hunter edition.
+- The pressure at a zone's heads is an estimate: what comes in, less 8 psi for the backflow preventer
+  and valve, and friction in an assumed 50 ft of supply line and 50 ft of zone line (Hazen-Williams).
+  GPS placing averages each head's fixes after a calibration on a known spot; not yet measured in the
+  field.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge

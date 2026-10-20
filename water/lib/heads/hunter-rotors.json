@@ -1,0 +1,3386 @@
+{
+  "group": "hunter-rotors",
+  "retrieved": "2026-10-20",
+  "bodies": [
+    {
+      "id": "hu-pgp-ultra-00",
+      "brand": "Hunter",
+      "model": "PGP Ultra PGP-00 (shrub)",
+      "kind": "rotor",
+      "popUpIn": null,
+      "regulatedPsi": null,
+      "swappable": true,
+      "nozzleFamilies": [
+        "hu-pgpu-blue",
+        "hu-pgpu-gray-la",
+        "hu-pgpu-black-sr",
+        "hu-pgpu-green-hf",
+        "hu-pgpu-mpr25",
+        "hu-pgpu-mpr30",
+        "hu-pgpu-mpr35"
+      ],
+      "fixedNozzles": null,
+      "source": "https://orders.dbcirrigation.com/doc/specsheets/hunter/PGPULTRA-SPEC.pdf (Hunter's own PGP Ultra product page as printed by hunterindustries.com, 'Generated 14 Sep 2022', distributor copy; hunterirrigation.com refused the fetch)"
+    },
+    {
+      "id": "hu-pgp-ultra-04",
+      "brand": "Hunter",
+      "model": "PGP Ultra PGP-04",
+      "kind": "rotor",
+      "popUpIn": 4,
+      "regulatedPsi": null,
+      "swappable": true,
+      "nozzleFamilies": [
+        "hu-pgpu-blue",
+        "hu-pgpu-gray-la",
+        "hu-pgpu-black-sr",
+        "hu-pgpu-green-hf",
+        "hu-pgpu-mpr25",
+        "hu-pgpu-mpr30",
+        "hu-pgpu-mpr35"
+      ],
+      "fixedNozzles": null,
+      "source": "https://orders.dbcirrigation.com/doc/specsheets/hunter/PGPULTRA-SPEC.pdf (Hunter's own PGP Ultra product page as printed by hunterindustries.com, 'Generated 14 Sep 2022', distributor copy; hunterirrigation.com refused the fetch)"
+    },
+    {
+      "id": "hu-pgp-ultra-06",
+      "brand": "Hunter",
+      "model": "PGP Ultra PGP-06",
+      "kind": "rotor",
+      "popUpIn": 6,
+      "regulatedPsi": null,
+      "swappable": true,
+      "nozzleFamilies": [
+        "hu-pgpu-blue",
+        "hu-pgpu-gray-la",
+        "hu-pgpu-black-sr",
+        "hu-pgpu-green-hf",
+        "hu-pgpu-mpr25",
+        "hu-pgpu-mpr30",
+        "hu-pgpu-mpr35"
+      ],
+      "fixedNozzles": null,
+      "source": "https://orders.dbcirrigation.com/doc/specsheets/hunter/PGPULTRA-SPEC.pdf (Hunter's own PGP Ultra product page as printed by hunterindustries.com, 'Generated 14 Sep 2022', distributor copy; hunterirrigation.com refused the fetch)"
+    },
+    {
+      "id": "hu-pgp-ultra-12",
+      "brand": "Hunter",
+      "model": "PGP Ultra PGP-12",
+      "kind": "rotor",
+      "popUpIn": 12,
+      "regulatedPsi": null,
+      "swappable": true,
+      "nozzleFamilies": [
+        "hu-pgpu-blue",
+        "hu-pgpu-gray-la",
+        "hu-pgpu-black-sr",
+        "hu-pgpu-green-hf",
+        "hu-pgpu-mpr25",
+        "hu-pgpu-mpr30",
+        "hu-pgpu-mpr35"
+      ],
+      "fixedNozzles": null,
+      "source": "https://orders.dbcirrigation.com/doc/specsheets/hunter/PGPULTRA-SPEC.pdf (Hunter's own PGP Ultra product page as printed by hunterindustries.com, 'Generated 14 Sep 2022', distributor copy; hunterirrigation.com refused the fetch)"
+    },
+    {
+      "id": "hu-pgp-ultra-04-prb",
+      "brand": "Hunter",
+      "model": "PGP Ultra PGP-04-PRB (pressure-regulated body)",
+      "kind": "rotor",
+      "popUpIn": 4,
+      "regulatedPsi": 45,
+      "swappable": true,
+      "nozzleFamilies": [
+        "hu-pgpu-blue",
+        "hu-pgpu-gray-la",
+        "hu-pgpu-black-sr",
+        "hu-pgpu-mpr25",
+        "hu-pgpu-mpr30",
+        "hu-pgpu-mpr35"
+      ],
+      "fixedNozzles": null,
+      "source": "https://gestor-doc-s3.s3.eu-west-1.amazonaws.com/documents/genuxSku/hunter_catalog_dom-55022.pdf (Hunter Product Catalog, Residential and Commercial Irrigation, domestic edition, Oct 2016, rotor pages 19-27; distributor copy)"
+    },
+    {
+      "id": "hu-i20-00",
+      "brand": "Hunter",
+      "model": "I-20-00 (shrub)",
+      "kind": "rotor",
+      "popUpIn": null,
+      "regulatedPsi": null,
+      "swappable": true,
+      "nozzleFamilies": [
+        "hu-pgpu-blue",
+        "hu-pgpu-gray-la",
+        "hu-pgpu-black-sr",
+        "hu-pgpu-green-hf",
+        "hu-pgpu-mpr25",
+        "hu-pgpu-mpr30",
+        "hu-pgpu-mpr35"
+      ],
+      "fixedNozzles": null,
+      "source": "https://orders.dbcirrigation.com/doc/specsheets/hunter/I20-SPEC.pdf (Hunter I-20 spec sheet, Nov 2021, distributor copy)"
+    },
+    {
+      "id": "hu-i20-04",
+      "brand": "Hunter",
+      "model": "I-20-04",
+      "kind": "rotor",
+      "popUpIn": 4,
+      "regulatedPsi": null,
+      "swappable": true,
+      "nozzleFamilies": [
+        "hu-pgpu-blue",
+        "hu-pgpu-gray-la",
+        "hu-pgpu-black-sr",
+        "hu-pgpu-green-hf",
+        "hu-pgpu-mpr25",
+        "hu-pgpu-mpr30",
+        "hu-pgpu-mpr35"
+      ],
+      "fixedNozzles": null,
+      "source": "https://orders.dbcirrigation.com/doc/specsheets/hunter/I20-SPEC.pdf (Hunter I-20 spec sheet, Nov 2021, distributor copy)"
+    },
+    {
+      "id": "hu-i20-06",
+      "brand": "Hunter",
+      "model": "I-20-06",
+      "kind": "rotor",
+      "popUpIn": 6,
+      "regulatedPsi": null,
+      "swappable": true,
+      "nozzleFamilies": [
+        "hu-pgpu-blue",
+        "hu-pgpu-gray-la",
+        "hu-pgpu-black-sr",
+        "hu-pgpu-green-hf",
+        "hu-pgpu-mpr25",
+        "hu-pgpu-mpr30",
+        "hu-pgpu-mpr35"
+      ],
+      "fixedNozzles": null,
+      "source": "https://orders.dbcirrigation.com/doc/specsheets/hunter/I20-SPEC.pdf (Hunter I-20 spec sheet, Nov 2021, distributor copy)"
+    },
+    {
+      "id": "hu-i20-12",
+      "brand": "Hunter",
+      "model": "I-20-12",
+      "kind": "rotor",
+      "popUpIn": 12,
+      "regulatedPsi": null,
+      "swappable": true,
+      "nozzleFamilies": [
+        "hu-pgpu-blue",
+        "hu-pgpu-gray-la",
+        "hu-pgpu-black-sr",
+        "hu-pgpu-green-hf",
+        "hu-pgpu-mpr25",
+        "hu-pgpu-mpr30",
+        "hu-pgpu-mpr35"
+      ],
+      "fixedNozzles": null,
+      "source": "https://orders.dbcirrigation.com/doc/specsheets/hunter/I20-SPEC.pdf (Hunter I-20 spec sheet, Nov 2021, distributor copy)"
+    },
+    {
+      "id": "hu-i20-04-ss",
+      "brand": "Hunter",
+      "model": "I-20-04-SS (stainless riser)",
+      "kind": "rotor",
+      "popUpIn": 4,
+      "regulatedPsi": null,
+      "swappable": true,
+      "nozzleFamilies": [
+        "hu-pgpu-blue",
+        "hu-pgpu-gray-la",
+        "hu-pgpu-black-sr",
+        "hu-pgpu-green-hf",
+        "hu-pgpu-mpr25",
+        "hu-pgpu-mpr30",
+        "hu-pgpu-mpr35"
+      ],
+      "fixedNozzles": null,
+      "source": "https://orders.dbcirrigation.com/doc/specsheets/hunter/I20-SPEC.pdf (Hunter I-20 spec sheet, Nov 2021, distributor copy)"
+    },
+    {
+      "id": "hu-i20-06-ss",
+      "brand": "Hunter",
+      "model": "I-20-06-SS (stainless riser)",
+      "kind": "rotor",
+      "popUpIn": 6,
+      "regulatedPsi": null,
+      "swappable": true,
+      "nozzleFamilies": [
+        "hu-pgpu-blue",
+        "hu-pgpu-gray-la",
+        "hu-pgpu-black-sr",
+        "hu-pgpu-green-hf",
+        "hu-pgpu-mpr25",
+        "hu-pgpu-mpr30",
+        "hu-pgpu-mpr35"
+      ],
+      "fixedNozzles": null,
+      "source": "https://orders.dbcirrigation.com/doc/specsheets/hunter/I20-SPEC.pdf (Hunter I-20 spec sheet, Nov 2021, distributor copy)"
+    },
+    {
+      "id": "hu-i20-04-prb",
+      "brand": "Hunter",
+      "model": "I-20-04-PRB (pressure-regulated body)",
+      "kind": "rotor",
+      "popUpIn": 4,
+      "regulatedPsi": 45,
+      "swappable": true,
+      "nozzleFamilies": [
+        "hu-pgpu-blue",
+        "hu-pgpu-gray-la",
+        "hu-pgpu-black-sr",
+        "hu-pgpu-mpr25",
+        "hu-pgpu-mpr30",
+        "hu-pgpu-mpr35"
+      ],
+      "fixedNozzles": null,
+      "source": "https://gestor-doc-s3.s3.eu-west-1.amazonaws.com/documents/genuxSku/hunter_catalog_dom-55022.pdf (Hunter Product Catalog, Residential and Commercial Irrigation, domestic edition, Oct 2016, rotor pages 19-27; distributor copy)"
+    },
+    {
+      "id": "hu-i20-06-prb",
+      "brand": "Hunter",
+      "model": "I-20-06-PRB (pressure-regulated body)",
+      "kind": "rotor",
+      "popUpIn": 6,
+      "regulatedPsi": 45,
+      "swappable": true,
+      "nozzleFamilies": [
+        "hu-pgpu-blue",
+        "hu-pgpu-gray-la",
+        "hu-pgpu-black-sr",
+        "hu-pgpu-mpr25",
+        "hu-pgpu-mpr30",
+        "hu-pgpu-mpr35"
+      ],
+      "fixedNozzles": null,
+      "source": "https://gestor-doc-s3.s3.eu-west-1.amazonaws.com/documents/genuxSku/hunter_catalog_dom-55022.pdf (Hunter Product Catalog, Residential and Commercial Irrigation, domestic edition, Oct 2016, rotor pages 19-27; distributor copy)"
+    },
+    {
+      "id": "hu-i20-04-ss-prb",
+      "brand": "Hunter",
+      "model": "I-20-04-SS-PRB (stainless, pressure-regulated)",
+      "kind": "rotor",
+      "popUpIn": 4,
+      "regulatedPsi": 45,
+      "swappable": true,
+      "nozzleFamilies": [
+        "hu-pgpu-blue",
+        "hu-pgpu-gray-la",
+        "hu-pgpu-black-sr",
+        "hu-pgpu-mpr25",
+        "hu-pgpu-mpr30",
+        "hu-pgpu-mpr35"
+      ],
+      "fixedNozzles": null,
+      "source": "https://gestor-doc-s3.s3.eu-west-1.amazonaws.com/documents/genuxSku/hunter_catalog_dom-55022.pdf (Hunter Product Catalog, Residential and Commercial Irrigation, domestic edition, Oct 2016, rotor pages 19-27; distributor copy)"
+    },
+    {
+      "id": "hu-i20-06-ss-prb",
+      "brand": "Hunter",
+      "model": "I-20-06-SS-PRB (stainless, pressure-regulated)",
+      "kind": "rotor",
+      "popUpIn": 6,
+      "regulatedPsi": 45,
+      "swappable": true,
+      "nozzleFamilies": [
+        "hu-pgpu-blue",
+        "hu-pgpu-gray-la",
+        "hu-pgpu-black-sr",
+        "hu-pgpu-mpr25",
+        "hu-pgpu-mpr30",
+        "hu-pgpu-mpr35"
+      ],
+      "fixedNozzles": null,
+      "source": "https://gestor-doc-s3.s3.eu-west-1.amazonaws.com/documents/genuxSku/hunter_catalog_dom-55022.pdf (Hunter Product Catalog, Residential and Commercial Irrigation, domestic edition, Oct 2016, rotor pages 19-27; distributor copy)"
+    },
+    {
+      "id": "hu-pgp-adj",
+      "brand": "Hunter",
+      "model": "PGP-ADJ (original PGP, adjustable arc)",
+      "kind": "rotor",
+      "popUpIn": 4,
+      "regulatedPsi": null,
+      "swappable": true,
+      "nozzleFamilies": [
+        "hu-pgp-red",
+        "hu-pgp-blue",
+        "hu-pgp-gray-la"
+      ],
+      "fixedNozzles": null,
+      "source": "https://gestor-doc-s3.s3.eu-west-1.amazonaws.com/documents/genuxSku/hunter_catalog_dom-55022.pdf (Hunter Product Catalog, Residential and Commercial Irrigation, domestic edition, Oct 2016, rotor pages 19-27; distributor copy); https://www.dripdepot.com/file/parent/2372/hunter-pgp-adj-series-rotors-118.pdf (Hunter PGP Rotor Product Information, LIT-213 Rev E, 2008, distributor copy)"
+    },
+    {
+      "id": "hu-pgp-360",
+      "brand": "Hunter",
+      "model": "PGP-360 (original PGP, full circle only)",
+      "kind": "rotor",
+      "popUpIn": 4,
+      "regulatedPsi": null,
+      "swappable": true,
+      "nozzleFamilies": [
+        "hu-pgp-red",
+        "hu-pgp-blue",
+        "hu-pgp-gray-la"
+      ],
+      "fixedNozzles": null,
+      "source": "https://www.dripdepot.com/file/parent/2372/hunter-pgp-adj-series-rotors-118.pdf (Hunter PGP Rotor Product Information, LIT-213 Rev E, 2008, distributor copy)"
+    },
+    {
+      "id": "hu-pgj-00",
+      "brand": "Hunter",
+      "model": "PGJ-00 (shrub)",
+      "kind": "rotor",
+      "popUpIn": null,
+      "regulatedPsi": null,
+      "swappable": true,
+      "nozzleFamilies": [
+        "hu-pgj-red"
+      ],
+      "fixedNozzles": null,
+      "source": "https://www.dripworks.com/content/PGJ.pdf (Hunter's PGJ product page as printed from hunterirrigation.com/irrigation-product/rotors/pgj, (c) 2025, dated 041725, distributor copy); heights from https://gestor-doc-s3.s3.eu-west-1.amazonaws.com/documents/genuxSku/hunter_catalog_dom-55022.pdf (Hunter Product Catalog, Residential and Commercial Irrigation, domestic edition, Oct 2016, rotor pages 19-27; distributor copy)"
+    },
+    {
+      "id": "hu-pgj-04",
+      "brand": "Hunter",
+      "model": "PGJ-04",
+      "kind": "rotor",
+      "popUpIn": 4,
+      "regulatedPsi": null,
+      "swappable": true,
+      "nozzleFamilies": [
+        "hu-pgj-red"
+      ],
+      "fixedNozzles": null,
+      "source": "https://www.dripworks.com/content/PGJ.pdf (Hunter's PGJ product page as printed from hunterirrigation.com/irrigation-product/rotors/pgj, (c) 2025, dated 041725, distributor copy); heights from https://gestor-doc-s3.s3.eu-west-1.amazonaws.com/documents/genuxSku/hunter_catalog_dom-55022.pdf (Hunter Product Catalog, Residential and Commercial Irrigation, domestic edition, Oct 2016, rotor pages 19-27; distributor copy)"
+    },
+    {
+      "id": "hu-pgj-06",
+      "brand": "Hunter",
+      "model": "PGJ-06",
+      "kind": "rotor",
+      "popUpIn": 6,
+      "regulatedPsi": null,
+      "swappable": true,
+      "nozzleFamilies": [
+        "hu-pgj-red"
+      ],
+      "fixedNozzles": null,
+      "source": "https://www.dripworks.com/content/PGJ.pdf (Hunter's PGJ product page as printed from hunterirrigation.com/irrigation-product/rotors/pgj, (c) 2025, dated 041725, distributor copy); heights from https://gestor-doc-s3.s3.eu-west-1.amazonaws.com/documents/genuxSku/hunter_catalog_dom-55022.pdf (Hunter Product Catalog, Residential and Commercial Irrigation, domestic edition, Oct 2016, rotor pages 19-27; distributor copy)"
+    },
+    {
+      "id": "hu-pgj-12",
+      "brand": "Hunter",
+      "model": "PGJ-12",
+      "kind": "rotor",
+      "popUpIn": 12,
+      "regulatedPsi": null,
+      "swappable": true,
+      "nozzleFamilies": [
+        "hu-pgj-red"
+      ],
+      "fixedNozzles": null,
+      "source": "https://www.dripworks.com/content/PGJ.pdf (Hunter's PGJ product page as printed from hunterirrigation.com/irrigation-product/rotors/pgj, (c) 2025, dated 041725, distributor copy); heights from https://gestor-doc-s3.s3.eu-west-1.amazonaws.com/documents/genuxSku/hunter_catalog_dom-55022.pdf (Hunter Product Catalog, Residential and Commercial Irrigation, domestic edition, Oct 2016, rotor pages 19-27; distributor copy)"
+    },
+    {
+      "id": "hu-srm-04",
+      "brand": "Hunter",
+      "model": "SRM-04",
+      "kind": "rotor",
+      "popUpIn": 4,
+      "regulatedPsi": null,
+      "swappable": true,
+      "nozzleFamilies": [
+        "hu-srm-green"
+      ],
+      "fixedNozzles": null,
+      "source": "https://www.dripdepot.com/file/parent/16662/16662-Hunter%20SRM%20Spec-.pdf (Hunter's own SRM product page as printed by hunterindustries.com, 'Generated 26 Sep 2022', distributor copy); rows identical to Hunter SRM/PGJ Performance Card LIT-379 D 10/20, https://www.dripworks.com/content/ic_pgj_dom.pdf"
+    }
+  ],
+  "families": [
+    {
+      "id": "hu-pgpu-blue",
+      "brand": "Hunter",
+      "name": "PGP Ultra / I-20 blue standard nozzles (1.5-8.0)",
+      "kind": "rotor",
+      "flow": "constant",
+      "nozzles": [
+        {
+          "id": "hu-pgpu-blue-15",
+          "label": "1.5",
+          "arcFixed": null,
+          "arcMin": 50,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 25,
+          "rows": [
+            {
+              "psi": 25,
+              "radiusFt": 29,
+              "gpm": 1.2
+            },
+            {
+              "psi": 35,
+              "radiusFt": 31,
+              "gpm": 1.4
+            },
+            {
+              "psi": 45,
+              "radiusFt": 31,
+              "gpm": 1.5
+            },
+            {
+              "psi": 55,
+              "radiusFt": 32,
+              "gpm": 1.8
+            },
+            {
+              "psi": 65,
+              "radiusFt": 32,
+              "gpm": 1.9
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.3,
+            "triangle": 0.35,
+            "psi": 45,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgpu-blue-20",
+          "label": "2.0",
+          "arcFixed": null,
+          "arcMin": 50,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 25,
+          "rows": [
+            {
+              "psi": 25,
+              "radiusFt": 33,
+              "gpm": 1.4
+            },
+            {
+              "psi": 35,
+              "radiusFt": 33,
+              "gpm": 1.7
+            },
+            {
+              "psi": 45,
+              "radiusFt": 34,
+              "gpm": 2.0
+            },
+            {
+              "psi": 55,
+              "radiusFt": 34,
+              "gpm": 2.1
+            },
+            {
+              "psi": 65,
+              "radiusFt": 34,
+              "gpm": 2.3
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.33,
+            "triangle": 0.38,
+            "psi": 45,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgpu-blue-25",
+          "label": "2.5",
+          "arcFixed": null,
+          "arcMin": 50,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 25,
+          "rows": [
+            {
+              "psi": 25,
+              "radiusFt": 33,
+              "gpm": 1.7
+            },
+            {
+              "psi": 35,
+              "radiusFt": 35,
+              "gpm": 2.1
+            },
+            {
+              "psi": 45,
+              "radiusFt": 35,
+              "gpm": 2.5
+            },
+            {
+              "psi": 55,
+              "radiusFt": 35,
+              "gpm": 2.6
+            },
+            {
+              "psi": 65,
+              "radiusFt": 35,
+              "gpm": 2.9
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.39,
+            "triangle": 0.45,
+            "psi": 45,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgpu-blue-30",
+          "label": "3.0",
+          "arcFixed": null,
+          "arcMin": 50,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 25,
+          "rows": [
+            {
+              "psi": 25,
+              "radiusFt": 35,
+              "gpm": 2.2
+            },
+            {
+              "psi": 35,
+              "radiusFt": 36,
+              "gpm": 2.7
+            },
+            {
+              "psi": 45,
+              "radiusFt": 38,
+              "gpm": 3.0
+            },
+            {
+              "psi": 55,
+              "radiusFt": 39,
+              "gpm": 3.4
+            },
+            {
+              "psi": 65,
+              "radiusFt": 39,
+              "gpm": 3.7
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.4,
+            "triangle": 0.46,
+            "psi": 45,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgpu-blue-40",
+          "label": "4.0",
+          "arcFixed": null,
+          "arcMin": 50,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 25,
+          "rows": [
+            {
+              "psi": 25,
+              "radiusFt": 37,
+              "gpm": 3.0
+            },
+            {
+              "psi": 35,
+              "radiusFt": 39,
+              "gpm": 3.5
+            },
+            {
+              "psi": 45,
+              "radiusFt": 40,
+              "gpm": 4.0
+            },
+            {
+              "psi": 55,
+              "radiusFt": 41,
+              "gpm": 4.5
+            },
+            {
+              "psi": 65,
+              "radiusFt": 41,
+              "gpm": 4.8
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.48,
+            "triangle": 0.56,
+            "psi": 45,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgpu-blue-50",
+          "label": "5.0",
+          "arcFixed": null,
+          "arcMin": 50,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 25,
+          "rows": [
+            {
+              "psi": 25,
+              "radiusFt": 37,
+              "gpm": 3.7
+            },
+            {
+              "psi": 35,
+              "radiusFt": 39,
+              "gpm": 4.5
+            },
+            {
+              "psi": 45,
+              "radiusFt": 42,
+              "gpm": 5.0
+            },
+            {
+              "psi": 55,
+              "radiusFt": 42,
+              "gpm": 5.7
+            },
+            {
+              "psi": 65,
+              "radiusFt": 42,
+              "gpm": 6.2
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.55,
+            "triangle": 0.63,
+            "psi": 45,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgpu-blue-60",
+          "label": "6.0",
+          "arcFixed": null,
+          "arcMin": 50,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 25,
+          "rows": [
+            {
+              "psi": 25,
+              "radiusFt": 38,
+              "gpm": 4.3
+            },
+            {
+              "psi": 35,
+              "radiusFt": 40,
+              "gpm": 5.6
+            },
+            {
+              "psi": 45,
+              "radiusFt": 43,
+              "gpm": 6.0
+            },
+            {
+              "psi": 55,
+              "radiusFt": 44,
+              "gpm": 6.7
+            },
+            {
+              "psi": 65,
+              "radiusFt": 44,
+              "gpm": 7.3
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.62,
+            "triangle": 0.72,
+            "psi": 45,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgpu-blue-80",
+          "label": "8.0",
+          "arcFixed": null,
+          "arcMin": 50,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 25,
+          "rows": [
+            {
+              "psi": 25,
+              "radiusFt": 37,
+              "gpm": 6.0
+            },
+            {
+              "psi": 35,
+              "radiusFt": 41,
+              "gpm": 7.0
+            },
+            {
+              "psi": 45,
+              "radiusFt": 44,
+              "gpm": 8.0
+            },
+            {
+              "psi": 55,
+              "radiusFt": 46,
+              "gpm": 9.0
+            },
+            {
+              "psi": 65,
+              "radiusFt": 46,
+              "gpm": 9.8
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.8,
+            "triangle": 0.92,
+            "psi": 45,
+            "arcDeg": 180
+          }
+        }
+      ],
+      "source": "https://orders.dbcirrigation.com/doc/specsheets/hunter/PGPULTRA-SPEC.pdf (Hunter's own PGP Ultra product page as printed by hunterindustries.com, 'Generated 14 Sep 2022', distributor copy; hunterirrigation.com refused the fetch)"
+    },
+    {
+      "id": "hu-pgpu-gray-la",
+      "brand": "Hunter",
+      "name": "PGP Ultra / I-20 grey low-angle nozzles (2.0LA-4.5LA)",
+      "kind": "rotor",
+      "flow": "constant",
+      "nozzles": [
+        {
+          "id": "hu-pgpu-gray-la-20la",
+          "label": "2.0LA",
+          "arcFixed": null,
+          "arcMin": 50,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 13,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 25,
+              "gpm": 1.6
+            },
+            {
+              "psi": 40,
+              "radiusFt": 27,
+              "gpm": 1.9
+            },
+            {
+              "psi": 50,
+              "radiusFt": 28,
+              "gpm": 2.1
+            },
+            {
+              "psi": 60,
+              "radiusFt": 30,
+              "gpm": 2.3
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.52,
+            "triangle": 0.6,
+            "psi": 50,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgpu-gray-la-25la",
+          "label": "2.5LA",
+          "arcFixed": null,
+          "arcMin": 50,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 13,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 27,
+              "gpm": 2.1
+            },
+            {
+              "psi": 40,
+              "radiusFt": 30,
+              "gpm": 2.5
+            },
+            {
+              "psi": 50,
+              "radiusFt": 33,
+              "gpm": 2.8
+            },
+            {
+              "psi": 60,
+              "radiusFt": 35,
+              "gpm": 3.0
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.49,
+            "triangle": 0.57,
+            "psi": 50,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgpu-gray-la-35la",
+          "label": "3.5LA",
+          "arcFixed": null,
+          "arcMin": 50,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 13,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 29,
+              "gpm": 2.8
+            },
+            {
+              "psi": 40,
+              "radiusFt": 32,
+              "gpm": 3.1
+            },
+            {
+              "psi": 50,
+              "radiusFt": 35,
+              "gpm": 3.5
+            },
+            {
+              "psi": 60,
+              "radiusFt": 37,
+              "gpm": 3.8
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.55,
+            "triangle": 0.64,
+            "psi": 50,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgpu-gray-la-45la",
+          "label": "4.5LA",
+          "arcFixed": null,
+          "arcMin": 50,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 13,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 29,
+              "gpm": 3.4
+            },
+            {
+              "psi": 40,
+              "radiusFt": 32,
+              "gpm": 3.9
+            },
+            {
+              "psi": 50,
+              "radiusFt": 35,
+              "gpm": 4.4
+            },
+            {
+              "psi": 60,
+              "radiusFt": 37,
+              "gpm": 4.7
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.69,
+            "triangle": 0.8,
+            "psi": 50,
+            "arcDeg": 180
+          }
+        }
+      ],
+      "source": "https://orders.dbcirrigation.com/doc/specsheets/hunter/PGPULTRA-SPEC.pdf (Hunter's own PGP Ultra product page as printed by hunterindustries.com, 'Generated 14 Sep 2022', distributor copy; hunterirrigation.com refused the fetch)"
+    },
+    {
+      "id": "hu-pgpu-green-hf",
+      "brand": "Hunter",
+      "name": "PGP Ultra / I-20 dark green high-flow nozzles (10, 13, 6.0 LA, 8.0 LA)",
+      "kind": "rotor",
+      "flow": "constant",
+      "nozzles": [
+        {
+          "id": "hu-pgpu-green-hf-10",
+          "label": "10",
+          "arcFixed": null,
+          "arcMin": 50,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 40,
+              "radiusFt": 42,
+              "gpm": 8.4
+            },
+            {
+              "psi": 50,
+              "radiusFt": 43,
+              "gpm": 9.5
+            },
+            {
+              "psi": 60,
+              "radiusFt": 45,
+              "gpm": 10.5
+            },
+            {
+              "psi": 70,
+              "radiusFt": 47,
+              "gpm": 11.4
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.0,
+            "triangle": 1.15,
+            "psi": 60,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgpu-green-hf-13",
+          "label": "13",
+          "arcFixed": null,
+          "arcMin": 50,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 40,
+              "radiusFt": 43,
+              "gpm": 10.9
+            },
+            {
+              "psi": 50,
+              "radiusFt": 44,
+              "gpm": 12.3
+            },
+            {
+              "psi": 60,
+              "radiusFt": 45,
+              "gpm": 13.6
+            },
+            {
+              "psi": 70,
+              "radiusFt": 47,
+              "gpm": 14.8
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.29,
+            "triangle": 1.49,
+            "psi": 60,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgpu-green-hf-60la",
+          "label": "6.0LA",
+          "arcFixed": null,
+          "arcMin": 50,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 31,
+              "gpm": 4.2
+            },
+            {
+              "psi": 40,
+              "radiusFt": 35,
+              "gpm": 5.0
+            },
+            {
+              "psi": 50,
+              "radiusFt": 37,
+              "gpm": 5.8
+            },
+            {
+              "psi": 60,
+              "radiusFt": 39,
+              "gpm": 6.3
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.82,
+            "triangle": 0.94,
+            "psi": 50,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgpu-green-hf-80la",
+          "label": "8.0LA",
+          "arcFixed": null,
+          "arcMin": 50,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 40,
+              "radiusFt": 37,
+              "gpm": 6.7
+            },
+            {
+              "psi": 50,
+              "radiusFt": 39,
+              "gpm": 7.7
+            },
+            {
+              "psi": 60,
+              "radiusFt": 41,
+              "gpm": 8.5
+            },
+            {
+              "psi": 70,
+              "radiusFt": 41,
+              "gpm": 9.2
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.97,
+            "triangle": 1.12,
+            "psi": 60,
+            "arcDeg": 180
+          }
+        }
+      ],
+      "source": "https://orders.dbcirrigation.com/doc/specsheets/hunter/PGPULTRA-SPEC.pdf (Hunter's own PGP Ultra product page as printed by hunterindustries.com, 'Generated 14 Sep 2022', distributor copy; hunterirrigation.com refused the fetch)"
+    },
+    {
+      "id": "hu-pgpu-black-sr",
+      "brand": "Hunter",
+      "name": "PGP Ultra / I-20 black short-radius nozzles (18 ft: .50, 1.0, 2.0 SR; 25 ft: .75, 1.5, 3.0 SR)",
+      "kind": "rotor",
+      "flow": "constant",
+      "nozzles": [
+        {
+          "id": "hu-pgpu-black-sr-50sr",
+          "label": ".50SR",
+          "arcFixed": null,
+          "arcMin": 50,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 17,
+              "gpm": 0.36
+            },
+            {
+              "psi": 40,
+              "radiusFt": 17,
+              "gpm": 0.43
+            },
+            {
+              "psi": 50,
+              "radiusFt": 18,
+              "gpm": 0.5
+            },
+            {
+              "psi": 60,
+              "radiusFt": 19,
+              "gpm": 0.57
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.3,
+            "triangle": 0.34,
+            "psi": 50,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgpu-black-sr-10sr",
+          "label": "1.0SR",
+          "arcFixed": null,
+          "arcMin": 50,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 17,
+              "gpm": 0.78
+            },
+            {
+              "psi": 40,
+              "radiusFt": 17,
+              "gpm": 0.9
+            },
+            {
+              "psi": 50,
+              "radiusFt": 18,
+              "gpm": 1.0
+            },
+            {
+              "psi": 60,
+              "radiusFt": 19,
+              "gpm": 1.1
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.59,
+            "triangle": 0.69,
+            "psi": 50,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgpu-black-sr-20sr",
+          "label": "2.0SR",
+          "arcFixed": null,
+          "arcMin": 50,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 17,
+              "gpm": 1.4
+            },
+            {
+              "psi": 40,
+              "radiusFt": 17,
+              "gpm": 1.7
+            },
+            {
+              "psi": 50,
+              "radiusFt": 18,
+              "gpm": 2.0
+            },
+            {
+              "psi": 60,
+              "radiusFt": 19,
+              "gpm": 2.2
+            }
+          ],
+          "chartPrecip": {
+            "square": 1.19,
+            "triangle": 1.37,
+            "psi": 50,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgpu-black-sr-75sr",
+          "label": ".75SR",
+          "arcFixed": null,
+          "arcMin": 50,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 23,
+              "gpm": 0.58
+            },
+            {
+              "psi": 40,
+              "radiusFt": 24,
+              "gpm": 0.68
+            },
+            {
+              "psi": 50,
+              "radiusFt": 25,
+              "gpm": 0.75
+            },
+            {
+              "psi": 60,
+              "radiusFt": 26,
+              "gpm": 0.83
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.23,
+            "triangle": 0.27,
+            "psi": 50,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgpu-black-sr-15sr",
+          "label": "1.5SR",
+          "arcFixed": null,
+          "arcMin": 50,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 23,
+              "gpm": 1.1
+            },
+            {
+              "psi": 40,
+              "radiusFt": 24,
+              "gpm": 1.3
+            },
+            {
+              "psi": 50,
+              "radiusFt": 25,
+              "gpm": 1.5
+            },
+            {
+              "psi": 60,
+              "radiusFt": 26,
+              "gpm": 1.6
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.46,
+            "triangle": 0.53,
+            "psi": 50,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgpu-black-sr-30sr",
+          "label": "3.0SR",
+          "arcFixed": null,
+          "arcMin": 50,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 23,
+              "gpm": 2.5
+            },
+            {
+              "psi": 40,
+              "radiusFt": 24,
+              "gpm": 2.7
+            },
+            {
+              "psi": 50,
+              "radiusFt": 25,
+              "gpm": 3.0
+            },
+            {
+              "psi": 60,
+              "radiusFt": 26,
+              "gpm": 3.1
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.92,
+            "triangle": 1.07,
+            "psi": 50,
+            "arcDeg": 180
+          }
+        }
+      ],
+      "source": "https://orders.dbcirrigation.com/doc/specsheets/hunter/PGPULTRA-SPEC.pdf (Hunter's own PGP Ultra product page as printed by hunterindustries.com, 'Generated 14 Sep 2022', distributor copy; hunterirrigation.com refused the fetch)"
+    },
+    {
+      "id": "hu-pgpu-mpr25",
+      "brand": "Hunter",
+      "name": "PGP Ultra / I-20 MPR-25 matched-precipitation rotor nozzles (red; Q, T, H, F)",
+      "kind": "rotor",
+      "flow": "constant",
+      "nozzles": [
+        {
+          "id": "hu-pgpu-mpr25-q",
+          "label": "MPR-25-Q (90°)",
+          "arcFixed": 90,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 25,
+              "radiusFt": 23,
+              "gpm": 0.74
+            },
+            {
+              "psi": 35,
+              "radiusFt": 24,
+              "gpm": 0.88
+            },
+            {
+              "psi": 45,
+              "radiusFt": 25,
+              "gpm": 1.0
+            },
+            {
+              "psi": 55,
+              "radiusFt": 25,
+              "gpm": 1.11
+            },
+            {
+              "psi": 65,
+              "radiusFt": 25,
+              "gpm": 1.21
+            }
+          ],
+          "chartPrecip": null
+        },
+        {
+          "id": "hu-pgpu-mpr25-t",
+          "label": "MPR-25-T (120°)",
+          "arcFixed": 120,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 25,
+              "radiusFt": 23,
+              "gpm": 1.0
+            },
+            {
+              "psi": 35,
+              "radiusFt": 24,
+              "gpm": 1.21
+            },
+            {
+              "psi": 45,
+              "radiusFt": 25,
+              "gpm": 1.38
+            },
+            {
+              "psi": 55,
+              "radiusFt": 25,
+              "gpm": 1.53
+            },
+            {
+              "psi": 65,
+              "radiusFt": 25,
+              "gpm": 1.67
+            }
+          ],
+          "chartPrecip": null
+        },
+        {
+          "id": "hu-pgpu-mpr25-h",
+          "label": "MPR-25-H (180°)",
+          "arcFixed": 180,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 25,
+              "radiusFt": 23,
+              "gpm": 1.44
+            },
+            {
+              "psi": 35,
+              "radiusFt": 24,
+              "gpm": 1.73
+            },
+            {
+              "psi": 45,
+              "radiusFt": 25,
+              "gpm": 1.98
+            },
+            {
+              "psi": 55,
+              "radiusFt": 25,
+              "gpm": 2.21
+            },
+            {
+              "psi": 65,
+              "radiusFt": 25,
+              "gpm": 2.41
+            }
+          ],
+          "chartPrecip": null
+        },
+        {
+          "id": "hu-pgpu-mpr25-f",
+          "label": "MPR-25-F (360°)",
+          "arcFixed": 360,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 25,
+              "radiusFt": 23,
+              "gpm": 2.78
+            },
+            {
+              "psi": 35,
+              "radiusFt": 24,
+              "gpm": 3.34
+            },
+            {
+              "psi": 45,
+              "radiusFt": 25,
+              "gpm": 3.82
+            },
+            {
+              "psi": 55,
+              "radiusFt": 25,
+              "gpm": 4.25
+            },
+            {
+              "psi": 65,
+              "radiusFt": 25,
+              "gpm": 4.63
+            }
+          ],
+          "chartPrecip": null
+        }
+      ],
+      "source": "https://orders.dbcirrigation.com/doc/specsheets/hunter/PGPULTRA-SPEC.pdf (Hunter's own PGP Ultra product page as printed by hunterindustries.com, 'Generated 14 Sep 2022', distributor copy; hunterirrigation.com refused the fetch); the 65 psi row of the 360° (F) nozzle from https://gestor-doc-s3.s3.eu-west-1.amazonaws.com/documents/genuxSku/hunter_catalog_dom-55022.pdf (Hunter Product Catalog, Residential and Commercial Irrigation, domestic edition, Oct 2016, rotor pages 19-27; distributor copy)"
+    },
+    {
+      "id": "hu-pgpu-mpr30",
+      "brand": "Hunter",
+      "name": "PGP Ultra / I-20 MPR-30 matched-precipitation rotor nozzles (light green; Q, T, H, F)",
+      "kind": "rotor",
+      "flow": "constant",
+      "nozzles": [
+        {
+          "id": "hu-pgpu-mpr30-q",
+          "label": "MPR-30-Q (90°)",
+          "arcFixed": 90,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 25,
+              "radiusFt": 29,
+              "gpm": 1.03
+            },
+            {
+              "psi": 35,
+              "radiusFt": 30,
+              "gpm": 1.23
+            },
+            {
+              "psi": 45,
+              "radiusFt": 30,
+              "gpm": 1.4
+            },
+            {
+              "psi": 55,
+              "radiusFt": 30,
+              "gpm": 1.56
+            },
+            {
+              "psi": 65,
+              "radiusFt": 30,
+              "gpm": 1.69
+            }
+          ],
+          "chartPrecip": null
+        },
+        {
+          "id": "hu-pgpu-mpr30-t",
+          "label": "MPR-30-T (120°)",
+          "arcFixed": 120,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 25,
+              "radiusFt": 29,
+              "gpm": 1.34
+            },
+            {
+              "psi": 35,
+              "radiusFt": 30,
+              "gpm": 1.62
+            },
+            {
+              "psi": 45,
+              "radiusFt": 30,
+              "gpm": 1.85
+            },
+            {
+              "psi": 55,
+              "radiusFt": 30,
+              "gpm": 2.06
+            },
+            {
+              "psi": 65,
+              "radiusFt": 30,
+              "gpm": 2.24
+            }
+          ],
+          "chartPrecip": null
+        },
+        {
+          "id": "hu-pgpu-mpr30-h",
+          "label": "MPR-30-H (180°)",
+          "arcFixed": 180,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 25,
+              "radiusFt": 29,
+              "gpm": 2.15
+            },
+            {
+              "psi": 35,
+              "radiusFt": 30,
+              "gpm": 2.59
+            },
+            {
+              "psi": 45,
+              "radiusFt": 30,
+              "gpm": 2.96
+            },
+            {
+              "psi": 55,
+              "radiusFt": 30,
+              "gpm": 3.3
+            },
+            {
+              "psi": 65,
+              "radiusFt": 30,
+              "gpm": 3.6
+            }
+          ],
+          "chartPrecip": null
+        },
+        {
+          "id": "hu-pgpu-mpr30-f",
+          "label": "MPR-30-F (360°)",
+          "arcFixed": 360,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 25,
+              "radiusFt": 29,
+              "gpm": 4.24
+            },
+            {
+              "psi": 35,
+              "radiusFt": 30,
+              "gpm": 5.08
+            },
+            {
+              "psi": 45,
+              "radiusFt": 30,
+              "gpm": 5.78
+            },
+            {
+              "psi": 55,
+              "radiusFt": 30,
+              "gpm": 6.39
+            }
+          ],
+          "chartPrecip": null
+        }
+      ],
+      "source": "https://orders.dbcirrigation.com/doc/specsheets/hunter/PGPULTRA-SPEC.pdf (Hunter's own PGP Ultra product page as printed by hunterindustries.com, 'Generated 14 Sep 2022', distributor copy; hunterirrigation.com refused the fetch)"
+    },
+    {
+      "id": "hu-pgpu-mpr35",
+      "brand": "Hunter",
+      "name": "PGP Ultra / I-20 MPR-35 matched-precipitation rotor nozzles (beige; Q, T, H, F)",
+      "kind": "rotor",
+      "flow": "constant",
+      "nozzles": [
+        {
+          "id": "hu-pgpu-mpr35-q",
+          "label": "MPR-35-Q (90°)",
+          "arcFixed": 90,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 25,
+              "radiusFt": 32,
+              "gpm": 1.4
+            },
+            {
+              "psi": 35,
+              "radiusFt": 34,
+              "gpm": 1.67
+            },
+            {
+              "psi": 45,
+              "radiusFt": 35,
+              "gpm": 1.92
+            },
+            {
+              "psi": 55,
+              "radiusFt": 35,
+              "gpm": 2.13
+            },
+            {
+              "psi": 65,
+              "radiusFt": 35,
+              "gpm": 2.31
+            }
+          ],
+          "chartPrecip": null
+        },
+        {
+          "id": "hu-pgpu-mpr35-t",
+          "label": "MPR-35-T (120°)",
+          "arcFixed": 120,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 25,
+              "radiusFt": 32,
+              "gpm": 1.77
+            },
+            {
+              "psi": 35,
+              "radiusFt": 34,
+              "gpm": 2.15
+            },
+            {
+              "psi": 45,
+              "radiusFt": 35,
+              "gpm": 2.46
+            },
+            {
+              "psi": 55,
+              "radiusFt": 35,
+              "gpm": 2.74
+            },
+            {
+              "psi": 65,
+              "radiusFt": 35,
+              "gpm": 2.99
+            }
+          ],
+          "chartPrecip": null
+        },
+        {
+          "id": "hu-pgpu-mpr35-h",
+          "label": "MPR-35-H (180°)",
+          "arcFixed": 180,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 25,
+              "radiusFt": 32,
+              "gpm": 2.75
+            },
+            {
+              "psi": 35,
+              "radiusFt": 34,
+              "gpm": 3.33
+            },
+            {
+              "psi": 45,
+              "radiusFt": 35,
+              "gpm": 3.81
+            },
+            {
+              "psi": 55,
+              "radiusFt": 35,
+              "gpm": 4.23
+            },
+            {
+              "psi": 65,
+              "radiusFt": 35,
+              "gpm": 4.62
+            }
+          ],
+          "chartPrecip": null
+        },
+        {
+          "id": "hu-pgpu-mpr35-f",
+          "label": "MPR-35-F (360°)",
+          "arcFixed": 360,
+          "arcMin": null,
+          "arcMax": null,
+          "strip": null,
+          "trajectoryDeg": null,
+          "rows": [
+            {
+              "psi": 25,
+              "radiusFt": 32,
+              "gpm": 5.36
+            },
+            {
+              "psi": 35,
+              "radiusFt": 34,
+              "gpm": 6.62
+            },
+            {
+              "psi": 45,
+              "radiusFt": 35,
+              "gpm": 7.58
+            },
+            {
+              "psi": 55,
+              "radiusFt": 35,
+              "gpm": 8.43
+            },
+            {
+              "psi": 65,
+              "radiusFt": 35,
+              "gpm": 9.18
+            }
+          ],
+          "chartPrecip": null
+        }
+      ],
+      "source": "https://orders.dbcirrigation.com/doc/specsheets/hunter/PGPULTRA-SPEC.pdf (Hunter's own PGP Ultra product page as printed by hunterindustries.com, 'Generated 14 Sep 2022', distributor copy; hunterirrigation.com refused the fetch); the 65 psi row of the 360° (F) nozzle from https://gestor-doc-s3.s3.eu-west-1.amazonaws.com/documents/genuxSku/hunter_catalog_dom-55022.pdf (Hunter Product Catalog, Residential and Commercial Irrigation, domestic edition, Oct 2016, rotor pages 19-27; distributor copy)"
+    },
+    {
+      "id": "hu-pgp-red",
+      "brand": "Hunter",
+      "name": "PGP (original, PGP-ADJ) red standard nozzles #1-#12",
+      "kind": "rotor",
+      "flow": "constant",
+      "nozzles": [
+        {
+          "id": "hu-pgp-red-1",
+          "label": "1",
+          "arcFixed": null,
+          "arcMin": 40,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 25,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 28,
+              "gpm": 0.5
+            },
+            {
+              "psi": 40,
+              "radiusFt": 29,
+              "gpm": 0.6
+            },
+            {
+              "psi": 50,
+              "radiusFt": 29,
+              "gpm": 0.7
+            },
+            {
+              "psi": 60,
+              "radiusFt": 30,
+              "gpm": 0.8
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.16,
+            "triangle": 0.19,
+            "psi": 50,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgp-red-2",
+          "label": "2",
+          "arcFixed": null,
+          "arcMin": 40,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 25,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 29,
+              "gpm": 0.7
+            },
+            {
+              "psi": 40,
+              "radiusFt": 30,
+              "gpm": 0.8
+            },
+            {
+              "psi": 50,
+              "radiusFt": 30,
+              "gpm": 0.9
+            },
+            {
+              "psi": 60,
+              "radiusFt": 31,
+              "gpm": 1.0
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.19,
+            "triangle": 0.22,
+            "psi": 50,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgp-red-3",
+          "label": "3",
+          "arcFixed": null,
+          "arcMin": 40,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 25,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 30,
+              "gpm": 0.9
+            },
+            {
+              "psi": 40,
+              "radiusFt": 31,
+              "gpm": 1.0
+            },
+            {
+              "psi": 50,
+              "radiusFt": 31,
+              "gpm": 1.2
+            },
+            {
+              "psi": 60,
+              "radiusFt": 32,
+              "gpm": 1.3
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.24,
+            "triangle": 0.28,
+            "psi": 50,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgp-red-4",
+          "label": "4",
+          "arcFixed": null,
+          "arcMin": 40,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 25,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 32,
+              "gpm": 1.2
+            },
+            {
+              "psi": 40,
+              "radiusFt": 33,
+              "gpm": 1.4
+            },
+            {
+              "psi": 50,
+              "radiusFt": 34,
+              "gpm": 1.6
+            },
+            {
+              "psi": 60,
+              "radiusFt": 34,
+              "gpm": 1.8
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.27,
+            "triangle": 0.31,
+            "psi": 50,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgp-red-5",
+          "label": "5",
+          "arcFixed": null,
+          "arcMin": 40,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 25,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 32,
+              "gpm": 1.6
+            },
+            {
+              "psi": 40,
+              "radiusFt": 36,
+              "gpm": 1.8
+            },
+            {
+              "psi": 50,
+              "radiusFt": 38,
+              "gpm": 2.0
+            },
+            {
+              "psi": 60,
+              "radiusFt": 38,
+              "gpm": 2.2
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.27,
+            "triangle": 0.31,
+            "psi": 50,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgp-red-6",
+          "label": "6",
+          "arcFixed": null,
+          "arcMin": 40,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 25,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 34,
+              "gpm": 2.0
+            },
+            {
+              "psi": 40,
+              "radiusFt": 36,
+              "gpm": 2.4
+            },
+            {
+              "psi": 50,
+              "radiusFt": 38,
+              "gpm": 2.7
+            },
+            {
+              "psi": 60,
+              "radiusFt": 38,
+              "gpm": 2.9
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.36,
+            "triangle": 0.42,
+            "psi": 50,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgp-red-7",
+          "label": "7",
+          "arcFixed": null,
+          "arcMin": 40,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 25,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 34,
+              "gpm": 2.6
+            },
+            {
+              "psi": 40,
+              "radiusFt": 38,
+              "gpm": 3.0
+            },
+            {
+              "psi": 50,
+              "radiusFt": 40,
+              "gpm": 3.4
+            },
+            {
+              "psi": 60,
+              "radiusFt": 40,
+              "gpm": 3.7
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.41,
+            "triangle": 0.47,
+            "psi": 50,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgp-red-8",
+          "label": "8",
+          "arcFixed": null,
+          "arcMin": 40,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 25,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 37,
+              "gpm": 3.2
+            },
+            {
+              "psi": 40,
+              "radiusFt": 39,
+              "gpm": 3.7
+            },
+            {
+              "psi": 50,
+              "radiusFt": 41,
+              "gpm": 3.9
+            },
+            {
+              "psi": 60,
+              "radiusFt": 42,
+              "gpm": 4.6
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.45,
+            "triangle": 0.52,
+            "psi": 50,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgp-red-9",
+          "label": "9",
+          "arcFixed": null,
+          "arcMin": 40,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 25,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 38,
+              "gpm": 3.6
+            },
+            {
+              "psi": 40,
+              "radiusFt": 41,
+              "gpm": 4.3
+            },
+            {
+              "psi": 50,
+              "radiusFt": 44,
+              "gpm": 5.2
+            },
+            {
+              "psi": 60,
+              "radiusFt": 45,
+              "gpm": 5.5
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.52,
+            "triangle": 0.6,
+            "psi": 50,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgp-red-10",
+          "label": "10",
+          "arcFixed": null,
+          "arcMin": 40,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 25,
+          "rows": [
+            {
+              "psi": 40,
+              "radiusFt": 44,
+              "gpm": 6.0
+            },
+            {
+              "psi": 50,
+              "radiusFt": 46,
+              "gpm": 6.8
+            },
+            {
+              "psi": 60,
+              "radiusFt": 47,
+              "gpm": 7.6
+            },
+            {
+              "psi": 70,
+              "radiusFt": 49,
+              "gpm": 8.2
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.62,
+            "triangle": 0.71,
+            "psi": 50,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgp-red-11",
+          "label": "11",
+          "arcFixed": null,
+          "arcMin": 40,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 25,
+          "rows": [
+            {
+              "psi": 40,
+              "radiusFt": 46,
+              "gpm": 8.0
+            },
+            {
+              "psi": 50,
+              "radiusFt": 48,
+              "gpm": 8.9
+            },
+            {
+              "psi": 60,
+              "radiusFt": 50,
+              "gpm": 9.8
+            },
+            {
+              "psi": 70,
+              "radiusFt": 51,
+              "gpm": 10.5
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.74,
+            "triangle": 0.86,
+            "psi": 50,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgp-red-12",
+          "label": "12",
+          "arcFixed": null,
+          "arcMin": 40,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 25,
+          "rows": [
+            {
+              "psi": 40,
+              "radiusFt": 46,
+              "gpm": 10.5
+            },
+            {
+              "psi": 50,
+              "radiusFt": 48,
+              "gpm": 11.9
+            },
+            {
+              "psi": 60,
+              "radiusFt": 50,
+              "gpm": 12.7
+            },
+            {
+              "psi": 70,
+              "radiusFt": 52,
+              "gpm": 14.1
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.99,
+            "triangle": 1.15,
+            "psi": 50,
+            "arcDeg": 180
+          }
+        }
+      ],
+      "source": "https://gestor-doc-s3.s3.eu-west-1.amazonaws.com/documents/genuxSku/hunter_catalog_dom-55022.pdf (Hunter Product Catalog, Residential and Commercial Irrigation, domestic edition, Oct 2016, rotor pages 19-27; distributor copy)"
+    },
+    {
+      "id": "hu-pgp-blue",
+      "brand": "Hunter",
+      "name": "PGP (original, PGP-ADJ) blue standard nozzles 1.5-8.0",
+      "kind": "rotor",
+      "flow": "constant",
+      "nozzles": [
+        {
+          "id": "hu-pgp-blue-15",
+          "label": "1.5",
+          "arcFixed": null,
+          "arcMin": 40,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 25,
+          "rows": [
+            {
+              "psi": 25,
+              "radiusFt": 29,
+              "gpm": 1.2
+            },
+            {
+              "psi": 35,
+              "radiusFt": 31,
+              "gpm": 1.4
+            },
+            {
+              "psi": 45,
+              "radiusFt": 31,
+              "gpm": 1.5
+            },
+            {
+              "psi": 55,
+              "radiusFt": 32,
+              "gpm": 1.8
+            },
+            {
+              "psi": 65,
+              "radiusFt": 32,
+              "gpm": 1.9
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.3,
+            "triangle": 0.35,
+            "psi": 45,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgp-blue-20",
+          "label": "2.0",
+          "arcFixed": null,
+          "arcMin": 40,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 25,
+          "rows": [
+            {
+              "psi": 25,
+              "radiusFt": 33,
+              "gpm": 1.4
+            },
+            {
+              "psi": 35,
+              "radiusFt": 33,
+              "gpm": 1.7
+            },
+            {
+              "psi": 45,
+              "radiusFt": 34,
+              "gpm": 2.0
+            },
+            {
+              "psi": 55,
+              "radiusFt": 34,
+              "gpm": 2.1
+            },
+            {
+              "psi": 65,
+              "radiusFt": 32,
+              "gpm": 2.3
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.33,
+            "triangle": 0.38,
+            "psi": 45,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgp-blue-25",
+          "label": "2.5",
+          "arcFixed": null,
+          "arcMin": 40,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 25,
+          "rows": [
+            {
+              "psi": 25,
+              "radiusFt": 33,
+              "gpm": 1.7
+            },
+            {
+              "psi": 35,
+              "radiusFt": 35,
+              "gpm": 2.1
+            },
+            {
+              "psi": 45,
+              "radiusFt": 35,
+              "gpm": 2.5
+            },
+            {
+              "psi": 55,
+              "radiusFt": 35,
+              "gpm": 2.6
+            },
+            {
+              "psi": 65,
+              "radiusFt": 35,
+              "gpm": 2.9
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.39,
+            "triangle": 0.45,
+            "psi": 45,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgp-blue-30",
+          "label": "3.0",
+          "arcFixed": null,
+          "arcMin": 40,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 25,
+          "rows": [
+            {
+              "psi": 25,
+              "radiusFt": 35,
+              "gpm": 2.2
+            },
+            {
+              "psi": 35,
+              "radiusFt": 36,
+              "gpm": 2.7
+            },
+            {
+              "psi": 45,
+              "radiusFt": 38,
+              "gpm": 3.0
+            },
+            {
+              "psi": 55,
+              "radiusFt": 39,
+              "gpm": 3.4
+            },
+            {
+              "psi": 65,
+              "radiusFt": 39,
+              "gpm": 3.7
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.4,
+            "triangle": 0.46,
+            "psi": 45,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgp-blue-40",
+          "label": "4.0",
+          "arcFixed": null,
+          "arcMin": 40,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 25,
+          "rows": [
+            {
+              "psi": 25,
+              "radiusFt": 37,
+              "gpm": 3.0
+            },
+            {
+              "psi": 35,
+              "radiusFt": 39,
+              "gpm": 3.5
+            },
+            {
+              "psi": 45,
+              "radiusFt": 40,
+              "gpm": 4.0
+            },
+            {
+              "psi": 55,
+              "radiusFt": 41,
+              "gpm": 4.5
+            },
+            {
+              "psi": 65,
+              "radiusFt": 41,
+              "gpm": 4.8
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.48,
+            "triangle": 0.56,
+            "psi": 45,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgp-blue-50",
+          "label": "5.0",
+          "arcFixed": null,
+          "arcMin": 40,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 25,
+          "rows": [
+            {
+              "psi": 25,
+              "radiusFt": 37,
+              "gpm": 3.7
+            },
+            {
+              "psi": 35,
+              "radiusFt": 39,
+              "gpm": 4.5
+            },
+            {
+              "psi": 45,
+              "radiusFt": 42,
+              "gpm": 5.0
+            },
+            {
+              "psi": 55,
+              "radiusFt": 42,
+              "gpm": 5.7
+            },
+            {
+              "psi": 65,
+              "radiusFt": 42,
+              "gpm": 6.2
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.55,
+            "triangle": 0.63,
+            "psi": 45,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgp-blue-60",
+          "label": "6.0",
+          "arcFixed": null,
+          "arcMin": 40,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 25,
+          "rows": [
+            {
+              "psi": 25,
+              "radiusFt": 38,
+              "gpm": 4.3
+            },
+            {
+              "psi": 35,
+              "radiusFt": 40,
+              "gpm": 5.6
+            },
+            {
+              "psi": 45,
+              "radiusFt": 43,
+              "gpm": 6.0
+            },
+            {
+              "psi": 55,
+              "radiusFt": 44,
+              "gpm": 6.7
+            },
+            {
+              "psi": 65,
+              "radiusFt": 44,
+              "gpm": 7.3
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.62,
+            "triangle": 0.72,
+            "psi": 45,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgp-blue-80",
+          "label": "8.0",
+          "arcFixed": null,
+          "arcMin": 40,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 25,
+          "rows": [
+            {
+              "psi": 25,
+              "radiusFt": 37,
+              "gpm": 6.0
+            },
+            {
+              "psi": 35,
+              "radiusFt": 41,
+              "gpm": 7.0
+            },
+            {
+              "psi": 45,
+              "radiusFt": 44,
+              "gpm": 8.0
+            },
+            {
+              "psi": 55,
+              "radiusFt": 46,
+              "gpm": 9.0
+            },
+            {
+              "psi": 65,
+              "radiusFt": 46,
+              "gpm": 9.8
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.8,
+            "triangle": 0.92,
+            "psi": 45,
+            "arcDeg": 180
+          }
+        }
+      ],
+      "source": "https://gestor-doc-s3.s3.eu-west-1.amazonaws.com/documents/genuxSku/hunter_catalog_dom-55022.pdf (Hunter Product Catalog, Residential and Commercial Irrigation, domestic edition, Oct 2016, rotor pages 19-27; distributor copy)"
+    },
+    {
+      "id": "hu-pgp-gray-la",
+      "brand": "Hunter",
+      "name": "PGP (original, PGP-ADJ) gray low-angle nozzles #4LA-#10LA",
+      "kind": "rotor",
+      "flow": "constant",
+      "nozzles": [
+        {
+          "id": "hu-pgp-gray-la-4la",
+          "label": "4LA",
+          "arcFixed": null,
+          "arcMin": 40,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 13,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 22,
+              "gpm": 1.4
+            },
+            {
+              "psi": 40,
+              "radiusFt": 24,
+              "gpm": 1.7
+            },
+            {
+              "psi": 50,
+              "radiusFt": 26,
+              "gpm": 1.8
+            },
+            {
+              "psi": 60,
+              "radiusFt": 28,
+              "gpm": 2.0
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.51,
+            "triangle": 0.59,
+            "psi": 50,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgp-gray-la-5la",
+          "label": "5LA",
+          "arcFixed": null,
+          "arcMin": 40,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 13,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 25,
+              "gpm": 1.6
+            },
+            {
+              "psi": 40,
+              "radiusFt": 27,
+              "gpm": 1.9
+            },
+            {
+              "psi": 50,
+              "radiusFt": 28,
+              "gpm": 2.1
+            },
+            {
+              "psi": 60,
+              "radiusFt": 30,
+              "gpm": 2.3
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.52,
+            "triangle": 0.6,
+            "psi": 50,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgp-gray-la-6la",
+          "label": "6LA",
+          "arcFixed": null,
+          "arcMin": 40,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 13,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 27,
+              "gpm": 2.1
+            },
+            {
+              "psi": 40,
+              "radiusFt": 30,
+              "gpm": 2.5
+            },
+            {
+              "psi": 50,
+              "radiusFt": 33,
+              "gpm": 2.8
+            },
+            {
+              "psi": 60,
+              "radiusFt": 35,
+              "gpm": 3.0
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.49,
+            "triangle": 0.57,
+            "psi": 50,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgp-gray-la-7la",
+          "label": "7LA",
+          "arcFixed": null,
+          "arcMin": 40,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 13,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 29,
+              "gpm": 2.8
+            },
+            {
+              "psi": 40,
+              "radiusFt": 32,
+              "gpm": 3.1
+            },
+            {
+              "psi": 50,
+              "radiusFt": 35,
+              "gpm": 3.5
+            },
+            {
+              "psi": 60,
+              "radiusFt": 37,
+              "gpm": 3.8
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.55,
+            "triangle": 0.64,
+            "psi": 50,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgp-gray-la-8la",
+          "label": "8LA",
+          "arcFixed": null,
+          "arcMin": 40,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 13,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 31,
+              "gpm": 3.4
+            },
+            {
+              "psi": 40,
+              "radiusFt": 34,
+              "gpm": 3.9
+            },
+            {
+              "psi": 50,
+              "radiusFt": 37,
+              "gpm": 4.4
+            },
+            {
+              "psi": 60,
+              "radiusFt": 38,
+              "gpm": 4.7
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.62,
+            "triangle": 0.71,
+            "psi": 50,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgp-gray-la-9la",
+          "label": "9LA",
+          "arcFixed": null,
+          "arcMin": 40,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 13,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 33,
+              "gpm": 4.3
+            },
+            {
+              "psi": 40,
+              "radiusFt": 37,
+              "gpm": 5.0
+            },
+            {
+              "psi": 50,
+              "radiusFt": 40,
+              "gpm": 5.6
+            },
+            {
+              "psi": 60,
+              "radiusFt": 42,
+              "gpm": 6.1
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.67,
+            "triangle": 0.78,
+            "psi": 50,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgp-gray-la-10la",
+          "label": "10LA",
+          "arcFixed": null,
+          "arcMin": 40,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 13,
+          "rows": [
+            {
+              "psi": 40,
+              "radiusFt": 38,
+              "gpm": 6.5
+            },
+            {
+              "psi": 50,
+              "radiusFt": 40,
+              "gpm": 7.3
+            },
+            {
+              "psi": 60,
+              "radiusFt": 42,
+              "gpm": 8.0
+            },
+            {
+              "psi": 70,
+              "radiusFt": 44,
+              "gpm": 8.6
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.87,
+            "triangle": 1.01,
+            "psi": 60,
+            "arcDeg": 180
+          }
+        }
+      ],
+      "source": "https://gestor-doc-s3.s3.eu-west-1.amazonaws.com/documents/genuxSku/hunter_catalog_dom-55022.pdf (Hunter Product Catalog, Residential and Commercial Irrigation, domestic edition, Oct 2016, rotor pages 19-27; distributor copy)"
+    },
+    {
+      "id": "hu-pgj-red",
+      "brand": "Hunter",
+      "name": "PGJ red nozzles (.75-5.0)",
+      "kind": "rotor",
+      "flow": "constant",
+      "nozzles": [
+        {
+          "id": "hu-pgj-red-75",
+          "label": ".75",
+          "arcFixed": null,
+          "arcMin": 40,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 14,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 15,
+              "gpm": 0.64
+            },
+            {
+              "psi": 40,
+              "radiusFt": 16,
+              "gpm": 0.75
+            },
+            {
+              "psi": 50,
+              "radiusFt": 17,
+              "gpm": 0.85
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.56,
+            "triangle": 0.65,
+            "psi": 40,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgj-red-10",
+          "label": "1.0",
+          "arcFixed": null,
+          "arcMin": 40,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 14,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 18,
+              "gpm": 0.85
+            },
+            {
+              "psi": 40,
+              "radiusFt": 19,
+              "gpm": 1.0
+            },
+            {
+              "psi": 50,
+              "radiusFt": 19,
+              "gpm": 1.1
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.53,
+            "triangle": 0.62,
+            "psi": 40,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgj-red-15",
+          "label": "1.5",
+          "arcFixed": null,
+          "arcMin": 40,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 14,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 21,
+              "gpm": 1.3
+            },
+            {
+              "psi": 40,
+              "radiusFt": 22,
+              "gpm": 1.5
+            },
+            {
+              "psi": 50,
+              "radiusFt": 22,
+              "gpm": 1.7
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.6,
+            "triangle": 0.69,
+            "psi": 40,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgj-red-20",
+          "label": "2.0",
+          "arcFixed": null,
+          "arcMin": 40,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 14,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 24,
+              "gpm": 1.7
+            },
+            {
+              "psi": 40,
+              "radiusFt": 25,
+              "gpm": 2.0
+            },
+            {
+              "psi": 50,
+              "radiusFt": 25,
+              "gpm": 2.3
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.62,
+            "triangle": 0.71,
+            "psi": 40,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgj-red-25",
+          "label": "2.5",
+          "arcFixed": null,
+          "arcMin": 40,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 14,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 27,
+              "gpm": 2.2
+            },
+            {
+              "psi": 40,
+              "radiusFt": 28,
+              "gpm": 2.5
+            },
+            {
+              "psi": 50,
+              "radiusFt": 28,
+              "gpm": 2.8
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.61,
+            "triangle": 0.71,
+            "psi": 40,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgj-red-30",
+          "label": "3.0",
+          "arcFixed": null,
+          "arcMin": 40,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 14,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 30,
+              "gpm": 2.5
+            },
+            {
+              "psi": 40,
+              "radiusFt": 31,
+              "gpm": 3.0
+            },
+            {
+              "psi": 50,
+              "radiusFt": 31,
+              "gpm": 3.4
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.6,
+            "triangle": 0.69,
+            "psi": 40,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgj-red-40",
+          "label": "4.0",
+          "arcFixed": null,
+          "arcMin": 40,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 14,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 33,
+              "gpm": 3.7
+            },
+            {
+              "psi": 40,
+              "radiusFt": 34,
+              "gpm": 4.0
+            },
+            {
+              "psi": 50,
+              "radiusFt": 34,
+              "gpm": 4.3
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.67,
+            "triangle": 0.77,
+            "psi": 40,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-pgj-red-50",
+          "label": "5.0",
+          "arcFixed": null,
+          "arcMin": 40,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 14,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 36,
+              "gpm": 4.7
+            },
+            {
+              "psi": 40,
+              "radiusFt": 37,
+              "gpm": 5.0
+            },
+            {
+              "psi": 50,
+              "radiusFt": 37,
+              "gpm": 5.3
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.7,
+            "triangle": 0.81,
+            "psi": 40,
+            "arcDeg": 180
+          }
+        }
+      ],
+      "source": "https://www.dripworks.com/content/PGJ.pdf (Hunter's PGJ product page as printed from hunterirrigation.com/irrigation-product/rotors/pgj, (c) 2025, dated 041725, distributor copy)"
+    },
+    {
+      "id": "hu-srm-green",
+      "brand": "Hunter",
+      "name": "SRM dark green nozzles (.50-4.0)",
+      "kind": "rotor",
+      "flow": "constant",
+      "nozzles": [
+        {
+          "id": "hu-srm-green-50",
+          "label": ".50",
+          "arcFixed": null,
+          "arcMin": 40,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 14,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 14,
+              "gpm": 0.42
+            },
+            {
+              "psi": 40,
+              "radiusFt": 15,
+              "gpm": 0.5
+            },
+            {
+              "psi": 50,
+              "radiusFt": 16,
+              "gpm": 0.58
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.43,
+            "triangle": 0.49,
+            "psi": 40,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-srm-green-75",
+          "label": ".75",
+          "arcFixed": null,
+          "arcMin": 40,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 14,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 15,
+              "gpm": 0.64
+            },
+            {
+              "psi": 40,
+              "radiusFt": 16,
+              "gpm": 0.75
+            },
+            {
+              "psi": 50,
+              "radiusFt": 17,
+              "gpm": 0.85
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.56,
+            "triangle": 0.65,
+            "psi": 40,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-srm-green-10",
+          "label": "1.0",
+          "arcFixed": null,
+          "arcMin": 40,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 14,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 18,
+              "gpm": 0.85
+            },
+            {
+              "psi": 40,
+              "radiusFt": 19,
+              "gpm": 1.0
+            },
+            {
+              "psi": 50,
+              "radiusFt": 19,
+              "gpm": 1.1
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.51,
+            "triangle": 0.59,
+            "psi": 40,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-srm-green-15",
+          "label": "1.5",
+          "arcFixed": null,
+          "arcMin": 40,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 14,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 21,
+              "gpm": 1.3
+            },
+            {
+              "psi": 40,
+              "radiusFt": 22,
+              "gpm": 1.5
+            },
+            {
+              "psi": 50,
+              "radiusFt": 22,
+              "gpm": 1.7
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.6,
+            "triangle": 0.69,
+            "psi": 40,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-srm-green-20",
+          "label": "2.0",
+          "arcFixed": null,
+          "arcMin": 40,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 14,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 24,
+              "gpm": 1.7
+            },
+            {
+              "psi": 40,
+              "radiusFt": 25,
+              "gpm": 2.0
+            },
+            {
+              "psi": 50,
+              "radiusFt": 25,
+              "gpm": 2.3
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.62,
+            "triangle": 0.71,
+            "psi": 40,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-srm-green-25",
+          "label": "2.5",
+          "arcFixed": null,
+          "arcMin": 40,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 14,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 27,
+              "gpm": 2.2
+            },
+            {
+              "psi": 40,
+              "radiusFt": 28,
+              "gpm": 2.5
+            },
+            {
+              "psi": 50,
+              "radiusFt": 28,
+              "gpm": 2.8
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.6,
+            "triangle": 0.69,
+            "psi": 40,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-srm-green-30",
+          "label": "3.0",
+          "arcFixed": null,
+          "arcMin": 40,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 14,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 30,
+              "gpm": 2.5
+            },
+            {
+              "psi": 40,
+              "radiusFt": 31,
+              "gpm": 3.0
+            },
+            {
+              "psi": 50,
+              "radiusFt": 31,
+              "gpm": 3.4
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.6,
+            "triangle": 0.69,
+            "psi": 40,
+            "arcDeg": 180
+          }
+        },
+        {
+          "id": "hu-srm-green-40",
+          "label": "4.0",
+          "arcFixed": null,
+          "arcMin": 40,
+          "arcMax": 360,
+          "strip": null,
+          "trajectoryDeg": 14,
+          "rows": [
+            {
+              "psi": 30,
+              "radiusFt": 33,
+              "gpm": 3.7
+            },
+            {
+              "psi": 40,
+              "radiusFt": 33,
+              "gpm": 4.0
+            },
+            {
+              "psi": 50,
+              "radiusFt": 34,
+              "gpm": 4.3
+            }
+          ],
+          "chartPrecip": {
+            "square": 0.71,
+            "triangle": 0.82,
+            "psi": 40,
+            "arcDeg": 180
+          }
+        }
+      ],
+      "source": "https://www.dripdepot.com/file/parent/16662/16662-Hunter%20SRM%20Spec-.pdf (Hunter's own SRM product page as printed by hunterindustries.com, 'Generated 26 Sep 2022', distributor copy); rows identical to Hunter SRM/PGJ Performance Card LIT-379 D 10/20, https://www.dripworks.com/content/ic_pgj_dom.pdf"
+    }
+  ],
+  "notes": [
+    "SOURCES. hunterirrigation.com / hunterindustries.com (product pages, their print/pdf pages and /sites/default/files/IC_I20_dom.pdf) refused every automated fetch (HTTP 403 from Hunter's CDN) and web.archive.org was unreachable, so every chart was read from Hunter's own documents as hosted by distributors: Hunter product-page prints generated by hunterindustries.com (PGP Ultra, SRM: Sep 2022; PGJ: Apr 2025), the Hunter domestic Product Catalog (Oct 2016), the Hunter SRM/PGJ Performance Card (LIT-379 D 10/20) and the Hunter PGP Product Information booklet (LIT-213 Rev E, 2008). Each family's source names the exact file. US-unit charts only; the metric charts were not used.",
+    "CROSS-CHECK. Every row was compared by script with a second Hunter document (PGP Ultra/I-20 2022 page vs 2016 catalogue; PGP 2016 catalogue vs 2008 booklet; PGJ 2025 page vs 2016 catalogue; SRM 2022 page vs 2020 performance card) and every row's square precip was checked against 96.25 x gpm x 2 / radius^2. The only disagreements are the ones listed in these notes.",
+    "PRECIP BASIS. Hunter's footnote on every rotor chart: 'All precipitation rates calculated for 180 degree operation. For the precipitation rate for a 360 degree sprinkler, divide by 2.' So chartPrecip for a rotor nozzle is the figure for a HALF-circle head; a full-circle head with the same nozzle gives half. chartPrecip carries two keys beyond SCHEMA.md: 'psi' (the chart's bold 'recommended pressure' row the figures come from) and 'arcDeg' (180, the arc they are calculated for). Hunter prints precip at every pressure; only the recommended row is kept.",
+    "RECOMMENDED PRESSURE (the bold rows, read from the font weight of the 2016 catalogue and the 2025 PGJ page): blue standard 45 psi; grey low-angle 50; black short-radius 50; green high-flow 10, 13 and 8.0 LA 60, 6.0 LA 50; original-PGP red 50, original-PGP gray low-angle 50 (10LA 60); PGJ and SRM 40. The 2022 PGP Ultra page's faux-bold rendering appears to bold 13 and 8.0 LA at 50 psi instead; that rendering is unreliable and the 2016 bolding was used.",
+    "MPR ROTOR NOZZLES (hu-pgpu-mpr25/30/35). Fixed-arc matched-precipitation nozzles for the PGP Ultra / I-20 rotor: flow 'constant', gpm AS PRINTED for the nozzle at its own arc (NOT a full-circle equivalent; e.g. MPR-25-Q at 25 psi = 0.74 gpm), arcFixed set, arcMin/arcMax null; the rotor's arc must be set to match. Flows are not proportional to the arc (Q x 4 = 2.96 gpm vs F = 2.78 gpm at 25 psi), which is another reason they are kept per arc. Their printed precip is for their own arc and no row is bolded, so chartPrecip is null.",
+    "MPR 360-degree (F) rows at 65 psi: the 2022 page stops at 55 psi for all three F nozzles. The 2016 catalogue prints a 65 psi row for MPR-25-F (25 ft, 4.63 gpm) and MPR-35-F (35 ft, 9.18 gpm); those two rows are included from it (their families' source says so). MPR-30-F has no 65 psi row in either document.",
+    "BLUE 2.0 AT 65 PSI: the current PGP Ultra / I-20 chart (2022 page) prints 34 ft, 2.3 gpm, 0.38/0.44; the 2016 catalogue and the 2008 PGP booklet print 32 ft, 2.3 gpm, 0.43/0.50 (each internally consistent). hu-pgpu-blue uses the 2022 value (34 ft); hu-pgp-blue (the original-PGP chart) keeps 32 ft. Every other blue row is identical between the two.",
+    "TRAJECTORY: 25 degrees for blue and red standard nozzles, 13 degrees for grey/gray low-angle, as the spec lines state. No trajectory is given for the green high-flow nozzles (including 6.0 LA and 8.0 LA, which are presumably low-angle but not stated) or the black short-radius nozzles: null. PGJ and SRM: Hunter says '14 degrees approximately'.",
+    "ARC: PGP Ultra and I-20 (and their PRB bodies) adjust 50-360; PGJ and SRM 40-360; the original PGP-ADJ 40-360. PGP-360 is a full-circle-only body that takes the same nozzles, but the schema keeps the arc on the nozzle and those nozzles say 40-360: treat a PGP-360 head as 360 degrees.",
+    "PGP ULTRA AND I-20 take the same nozzles (every Hunter chart is titled 'PGP Ultra / I-20'). The pressure-regulated bodies (PGP-04-PRB, I-20-04/06-PRB, I-20-04/06-SS-PRB, regulated to 45 psi at the nozzle, inlet 55-100 psi) are from the 2016 catalogue, which lists blue, grey, black and MPR nozzles for them but not green high-flow; they are not on the 2022 page, so whether they are still sold was not confirmed.",
+    "'I-20 ULTRA': no separate US product was found. The name appears on a 2015 Hunter brochure for New Zealand describing the same I-20 (50-360 arc, same nozzle racks, though it lists 'MPR-20' where US documents list MPR-25 -- not transcribed). Treat an 'I-20 Ultra' as the hu-i20-* bodies.",
+    "ORIGINAL PGP (pre-Ultra, PGP-ADJ / PGP-360): red #1-#12, blue 1.5-8.0 and gray low-angle #4LA-#10LA from the 2016 catalogue's PGP page, cross-checked against the 2008 booklet. One disagreement: red #5 at 30 psi is 32 ft, 1.6 gpm (0.30/0.35) in 2016 but 34 ft, 1.6 gpm (0.27/0.31) in 2008; the 2016 value is used. The 2008 booklet labels the gray nozzles 4-10 without 'LA'. The old gray numbering is not the Ultra numbering (old 5LA, 6LA, 7LA rows equal Ultra 2.0LA, 2.5LA, 3.5LA; old 8LA is not 4.5LA). The shrub (PGS) and 12-inch (PGH) versions of the original PGP were not added. PGP-360 appears only in the 2008 booklet.",
+    "SRM: the current 8-nozzle SRM (.50-4.0, dark green) from the 2022 page, identical to the 2020 performance card. The 2016 catalogue shows an older 6-nozzle SRM chart (.50-3.0, 18 degree trajectory, longer radii, e.g. 3.0 at 40 psi = 30 ft) whose .75 rows repeat the .50 rows exactly, apparently a misprint; it was NOT transcribed. An older SRM may carry that older nozzle set. SRM 1.0 at 40 psi prints 19 ft, 1.0 gpm with precip 0.51/0.59, a little below what 1.0 gpm at 19 ft gives (0.53); transcribed as printed.",
+    "PGJ: the 2025 page's header says 'Radius 15-34 ft, Flow 0.42-4.3 GPM' (the SRM's figures), but its chart runs .75-5.0 to 37 ft and 5.3 gpm; the chart was used, and it is identical to the 2016 catalogue's. PGJ (red .75-5.0) and SRM (dark green .50-4.0) are separate nozzle sets with near-identical rows where they overlap (e.g. 4.0 at 40 psi: 34 ft PGJ, 33 ft SRM).",
+    "Hunter's chart notes (2008 PGP booklet): data are test results in zero wind; the radius may be reduced up to 25% with the adjustment screw, so rows are for an unreduced nozzle. Shrub-riser models (PGP-00, I-20-00, PGJ-00) have popUpIn null."
+  ]
+}

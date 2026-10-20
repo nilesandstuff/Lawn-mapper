@@ -51,6 +51,9 @@
   .zoom { position: absolute; right: 8px; top: 8px; display: flex; flex-direction: column; gap: 6px; z-index: 2; }
   .zoom button { width: 40px; height: 40px; padding: 0; font-size: 22px; line-height: 1; background: rgba(0,0,0,.6); border-color: rgba(255,255,255,.5); }
   .zoom button.small { font-size: 12px; }
+  #result.heads-on .main-only { display: none; }
+  #heads-panel select { padding: 8px; font-size: 16px; max-width: 100%; }
+  #heads-panel .tools button[style] { color: #fff; text-shadow: 0 0 2px #000; }
 </style>
 </head>
 <body>
@@ -68,8 +71,11 @@
   <div id="status" class="status"></div>
 
   <div id="result" hidden>
+    <p id="heads-title" class="big" hidden></p>
     <div class="stage" id="stage"><canvas id="view"></canvas><div class="zoom"><button type="button" id="zoom-in" aria-label="Zoom in">+</button><button type="button" id="zoom-out" aria-label="Zoom out">&minus;</button><button type="button" class="small" id="zoom-reset" aria-label="Whole map">All</button></div></div>
     <p class="dim" style="margin:4px 0 0">Pinch or use + and &minus; to zoom; drag to move around.</p>
+    <div id="heads-panel" class="card" hidden></div>
+    <div class="main-only">
     <div class="legend">
       <span id="zone-legend"></span>
       <span id="need-legend" hidden><i style="background:linear-gradient(90deg,#e3f2fd,#0d47a1);width:48px"></i><span id="need-text"></span></span>
@@ -94,8 +100,10 @@
       <label class="toggle"><input type="checkbox" id="show-grade"> beside the house</label>
       <label class="toggle"><input type="checkbox" id="show-hard" checked> paving</label>
       <label class="toggle"><input type="checkbox" id="show-photo" checked> photo</label>
+      <label class="toggle"><input type="checkbox" id="show-heads" checked> sprinklers</label>
     </div>
     <div class="tools">
+      <button type="button" class="plain" id="edit-heads">Your sprinklers</button>
       <button type="button" id="add-spout">Add a downspout</button>
       <button type="button" id="add-gutter">Draw a gutter</button>
       <button type="button" id="add-area">Mark an area</button>
@@ -116,9 +124,11 @@
     </div>
     <div id="hint" class="hint"></div>
     <div id="saved" class="dim"></div>
+    <div id="heads-summary"></div>
     <div id="plan"></div>
     <div id="hill"></div>
     <div id="report"></div>
+    </div>
   </div>
 
   <div class="card">
@@ -132,7 +142,7 @@
       <li>Storm drains and yard drains look like ponds to it, because it can't see the pipe.</li>
     </ul>
   </div>
-  <p class="dim">An early test. Lidar: USGS 3DEP. Soil: USDA NRCS Soil Survey. Weather: NASA POWER and the National Weather Service. Buildings, roads and sidewalks: <a href="https://overturemaps.org">Overture Maps Foundation</a> (&copy; OpenStreetMap contributors, Microsoft and others; ODbL). Property lines and photos: <a href="__LAWNMAP__">Lawn Mapper</a>. Downspouts, gutters and the topsoil choice are saved with your map when you open it from your dashboard.</p>
+  <p class="dim">An early test. Lidar: USGS 3DEP. Soil: USDA NRCS Soil Survey. Weather: NASA POWER and the National Weather Service. Buildings, roads and sidewalks: <a href="https://overturemaps.org">Overture Maps Foundation</a> (&copy; OpenStreetMap contributors, Microsoft and others; ODbL). Property lines and photos: <a href="__LAWNMAP__">Lawn Mapper</a>. Sprinklers, downspouts, gutters and the topsoil choice are saved with your map when you open it from your dashboard.</p>
 </main>
 <script type="module" src="/app.js"></script>
 </body>
