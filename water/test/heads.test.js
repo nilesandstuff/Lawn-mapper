@@ -109,6 +109,14 @@ test("Rain Bird's own charts: a 4-VAN at a quarter reads its printed quarter, a 
   assert.equal(q.arc, 90); assert.ok(q.gpm > 0.8 && q.gpm < 1.0, `15Q ${q.gpm}`);
 });
 
+test("Toro's TVAN reads its printed quarter (0.71 gpm at 30 psi), not its full circle scaled down", () => {
+  const cat = catalogue([JSON.parse(readFileSync(new URL('../lib/heads/other-brands.json', import.meta.url), 'utf8'))]);
+  const body = cat.bodies.find((b) => (b.nozzleFamilies || []).includes('to-tvan'));
+  const w = headWater({ body: body?.id, nozzle: 'to-tvan8', arc: 90 }, cat, 30);
+  assert.ok(Math.abs(w.gpm - 0.71) < 1e-9, `TVAN8 at 90: ${w.gpm}`);
+  assert.ok(!cat.brands.includes('Orbit') || cat.bodies.some((b) => b.brand === 'Orbit' && cat.charted(b)), 'a brand with no chart is not offered');
+});
+
 let failed = 0;
 for (const [name, fn] of tests) {
   try { await fn(); console.log(`ok  ${name}`); } catch (e) { failed++; console.log(`FAIL ${name}\n     ${e.stack.split('\n').slice(0, 3).join('\n     ')}`); }

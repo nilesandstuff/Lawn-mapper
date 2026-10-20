@@ -177,7 +177,7 @@ export function sprinklers(ctx) {
     if (!cat) return '<p class="dim">Loading the list of heads…</p>';
     const first = head([...sel][0]);
     if (first && !form.body && first.body) { const b = cat.body(first.body); form.brand = b?.brand || ''; form.body = first.body; form.nozzle = first.nozzle || ''; form.arc = first.arc ? String(first.arc) : ''; }
-    const bodies = cat.bodies.filter((b) => b.brand === form.brand);
+    const bodies = cat.bodies.filter((b) => b.brand === form.brand && cat.charted(b));
     const fams = form.body ? cat.familiesFor(form.body) : [];
     const n = form.nozzle ? cat.nozzle(form.nozzle) : null;
     const adjustable = n && !n.strip && !Number.isFinite(n.arcFixed);

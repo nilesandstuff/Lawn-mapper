@@ -21,7 +21,7 @@ export function catalogue(files) {
     for (const b of f.bodies || []) if (b?.id && !bodies.some((x) => x.id === b.id)) bodies.push(b);
     for (const fam of f.families || []) {
       if (!fam?.id || families.some((x) => x.id === fam.id)) continue;
-      const nozzles = (fam.nozzles || []).filter((n) => n?.id && Array.isArray(n.rows) && n.rows.some(rowOk));
+      const nozzles = (fam.nozzles || []).filter((n) => n?.id && Array.isArray(n.rows) && n.rows.some(rowOk)).map(byArcTables);
       const clean = { ...fam, nozzles };
       families.push(clean);
       for (const n of nozzles) { byNozzle.set(n.id, n); famOf.set(n.id, clean); }
@@ -29,9 +29,11 @@ export function catalogue(files) {
   }
   const famById = new Map(families.map((f) => [f.id, f]));
   const bodyById = new Map(bodies.map((b) => [b.id, b]));
-  const brands = [...new Set(bodies.map((b) => b.brand))].sort();
+  // a body is offered only when some chart for its nozzles was found
+  const charted = (b) => [...(b.nozzleFamilies || []), ...(b.fixedNozzles ? [b.fixedNozzles] : [])].some((id) => famById.get(id)?.nozzles.length);
+  const brands = [...new Set(bodies.filter(charted).map((b) => b.brand))].sort();
   return {
-    bodies, families, brands,
+    bodies, families, brands, charted,
     body: (id) => bodyById.get(id) || null,
     family: (id) => famById.get(id) || null,
     nozzle: (id) => byNozzle.get(id) || null,
@@ -44,6 +46,18 @@ export function catalogue(files) {
       return ids.map((id) => famById.get(id)).filter(Boolean);
     },
   };
+}
+
+/** Per-arc tables in either file's shape: printedByArc [{ arcDeg, rows }] or arcRows [{ arc, psi, radiusFt, gpmAtArc }]. */
+function byArcTables(n) {
+  if (n.printedByArc?.length || !n.arcRows?.length) return n;
+  const by = new Map();
+  for (const r of n.arcRows) {
+    if (!Number.isFinite(r.arc)) continue;
+    if (!by.has(r.arc)) by.set(r.arc, []);
+    by.get(r.arc).push({ psi: r.psi, radiusFt: r.radiusFt, gpm: r.gpmAtArc });
+  }
+  return { ...n, printedByArc: [...by].map(([arcDeg, rows]) => ({ arcDeg, rows })) };
 }
 
 /** A chart row with a flow and a throw (a radius, or a strip's length). */
