@@ -20,12 +20,13 @@
  */
 
 import { catalogue, headWater, zoneWater, calibrate, placeByGps, facing, arcOf, enu } from '/lib/heads.js';
+import { autoArc, MIN_THROW, BIN_DEG } from '/lib/arcs.js';
 import { route, solveZone, headFlow, regulatedOut, deviceLoss, dwPerFt, roughnessMm, SWING, FITTINGS_SHARE, pipeById, pipeSize, PIPE_FAMILIES, sizeFor, fraction, fps, FT_PER_M, MAX_FPS } from '/lib/hydraulics.js';
 
 const FILES = ['rainbird-sprays', 'rainbird-rotors', 'hunter-sprays', 'hunter-rotors', 'other-brands'];
 const ZONE_COLORS = ['#e53935', '#1e88e5', '#43a047', '#fb8c00', '#8e24aa', '#00acc1', '#fdd835', '#6d4c41', '#d81b60', '#3949ab', '#7cb342', '#546e7a'];
-const STEPS = ['place', 'review', 'zones', 'models', 'details', 'equipment', 'supply', 'lines', 'water', 'pressure'];
-const STEP_TITLE = { place: 'Place your sprinkler heads', review: 'Check where they are', zones: 'Which valve is each head on?', models: 'What heads and nozzles are they?', details: 'Your heads', equipment: 'The backflow preventer and the valves', supply: 'The water coming in', lines: 'The pipe to each zone', water: 'Your water (optional)', pressure: 'The pressure at every head' };
+const STEPS = ['place', 'review', 'zones', 'models', 'details', 'equipment', 'supply', 'lines', 'water', 'pressure', 'arcs'];
+const STEP_TITLE = { place: 'Place your sprinkler heads', review: 'Check where they are', zones: 'Which valve is each head on?', models: 'What heads and nozzles are they?', details: 'Your heads', equipment: 'The backflow preventer and the valves', supply: 'The water coming in', lines: 'The pipe to each zone', water: 'Your water (optional)', pressure: 'The pressure at every head', arcs: "Each head's arc and throw" };
 /** The pipe families a zone's lines may be, and the supply line's. */
 const LINE_FAMILIES = ['pe', 'pvc200', 'pvc40'];
 const SUPPLY_FAMILIES = ['pvc40', 'pvc200', 'pe', 'cuL', 'cuK', 'pex', 'galv'];
@@ -218,7 +219,7 @@ export function sprinklers(ctx) {
     WIRE[step]?.(P);
     ctx.draw();
   }
-  const go = (s) => { step = s; sel.clear(); if (s !== 'place') stopGps(); render(); };
+  const go = (s) => { step = s; sel.clear(); if (s !== 'place') stopGps(); if (s === 'arcs') { for (const h of irr.heads) if (h.arcSet !== 'user') autoSet(h); ctx.changed(); } render(); };
   const back = () => go(step === 'place' ? 'intro' : STEPS[Math.max(0, STEPS.indexOf(step) - 1)]);
   const nav = (next, { ok = true, label = 'Next' } = {}) => `<div class="tools"><button type="button" class="plain" data-act="back">Back</button><button type="button" data-act="next" ${ok ? '' : 'disabled'}>${label}</button></div>`;
   const wireNav = (P, next) => {
@@ -335,6 +336,21 @@ export function sprinklers(ctx) {
         ${nav('pressure', { label: qy.hardness === 'unknown' && !['crust', 'spots', 'orange', 'black', 'slime', 'headCrust'].some((k) => qy[k]) ? 'Skip' : 'Next' })}`;
     },
 
+    arcs: () => {
+      const h = sel.size === 1 ? head([...sel][0]) : null, n = h && cat?.nozzle(h.nozzle), w = h && waterOf(h);
+      const adjustable = n && !n.strip && !Number.isFinite(n.arcFixed);
+      const changedByYou = irr.heads.filter((x) => x.arcSet === 'user').length;
+      return `<p class="hint">Each head's arc is set to water the most lawn and throw the least onto the house and paving, its throw from the pressure it gets${ctx.groundAt ? '' : ' (the lawn map is still loading: the arcs face the middle of the lawn until it is in)'}. Tap a head to turn it, widen it or shorten its throw.</p>
+        ${h && n && w ? `<div class="card" style="margin-top:6px"><p style="margin:0">${headLine(h)}</p>
+          <label class="toggle" style="display:flex;margin-top:6px">Turn: <input type="range" min="0" max="355" step="${BIN_DEG}" value="${Math.round(h.dir ?? 0)}" data-arc="dir" style="flex:1"> ${Math.round(h.dir ?? 0)}°</label>
+          ${adjustable ? `<label class="toggle" style="display:flex">Arc: <input type="range" min="${Math.max(BIN_DEG, n.arcMin ?? 0)}" max="${n.arcMax ?? 360}" step="${BIN_DEG}" value="${Math.round(arcOf(h, n))}" data-arc="arc" style="flex:1"> ${Math.round(arcOf(h, n))}°</label>` : `<p class="dim">${n.strip ? 'A strip nozzle: turn it to lie along the strip.' : `A fixed ${n.arcFixed}° pattern: it can be turned, not widened.`}</p>`}
+          <label class="toggle" style="display:flex">Throw: <input type="range" min="${Math.round(MIN_THROW * 100)}" max="100" step="5" value="${Math.round((h.throw ?? 1) * 100)}" data-arc="throw" style="flex:1"> ${Math.round((h.throw ?? 1) * 100)}% (${Math.round(w.radiusFt * (h.throw ?? 1))} ft)</label>
+          <div class="tools"><button type="button" class="plain" data-act="autoone">Set this one automatically</button></div></div>` : ''}
+        <div class="tools"><button type="button" class="plain" data-act="autoall">Set every head automatically${changedByYou ? ` (undoes your ${changedByYou} change${changedByYou > 1 ? 's' : ''})` : ''}</button></div>
+        <p class="dim">The throw is the chart's radius at each head's pressure; a nozzle's radius screw (or a rotor's break-up screw) shortens it, usually by up to about 25%. Where the arc can't be turned off a hard surface, the throw is shortened instead.</p>
+        ${nav('done', { label: 'Done' })}`;
+    },
+
     pressure: () => {
       const s0 = solve();
       if (!s0) return `<p>Place the backflow preventer and the valve box and give the pressure first.</p>${nav('done', { ok: false })}`;
@@ -394,9 +410,18 @@ export function sprinklers(ctx) {
         ${sheet}
         ${warn.length ? `<ul>${warn.map((w) => `<li>${w}</li>`).join('')}</ul>` : ''}
         <p class="dim">Devices from the makers' loss charts (a typical one of its size where you don't know yours); pipe friction by Darcy-Weisbach, which irrigation research prefers for small plastic pipe, with each tee and swing joint counted; at each zone's own flow, worked out with every head's flow at the pressure it gets${ctx.elevReady?.() ? '; heights from the USGS lidar' : ''}. The routes are a likely layout, not a dig: drag a head if a line runs where it can't.</p>
-        ${nav('done', { label: 'Done' })}`;
+        ${nav('arcs', { label: 'Next: the arcs' })}`;
     },
   };
+
+  /** One head's arc and throw, set for the lawn (lib/arcs.js): its throw at the pressure it gets. */
+  function autoSet(h) {
+    const n = cat?.nozzle(h.nozzle), w = waterOf(h);
+    if (!n || !w || !ctx.groundAt) return;
+    const a = autoArc(h.at, w.radiusFt / FT_PER_M, n, ctx.groundAt);
+    if (!a) return;
+    h.dir = a.dir; if (!n.strip && !Number.isFinite(n.arcFixed)) h.arc = a.arc; h.throw = a.throw; h.arcSet = 'auto';
+  }
 
   function headLine(h) {
     if (!h) return '';
@@ -574,6 +599,19 @@ export function sprinklers(ctx) {
         render();
       });
       P.querySelector('[data-act=gdrop]')?.addEventListener('click', () => { if (h) { delete h.gauge; gaugeNote = ''; changed(); render(); } });
+      wireNav(P, () => go('arcs'));
+    },
+    arcs: (P) => {
+      const h = sel.size === 1 ? head([...sel][0]) : null;
+      const set = (f) => (e) => { if (!h) return; f(Number(e.target.value)); h.arcSet = 'user'; if (e.type === 'change') { changed(); render(); } else ctx.draw(); };
+      P.querySelector('[data-arc=dir]')?.addEventListener('input', set((v) => { h.dir = v; }));
+      P.querySelector('[data-arc=dir]')?.addEventListener('change', set((v) => { h.dir = v; }));
+      P.querySelector('[data-arc=arc]')?.addEventListener('input', set((v) => { h.arc = v; }));
+      P.querySelector('[data-arc=arc]')?.addEventListener('change', set((v) => { h.arc = v; }));
+      P.querySelector('[data-arc=throw]')?.addEventListener('input', set((v) => { h.throw = v / 100; }));
+      P.querySelector('[data-arc=throw]')?.addEventListener('change', set((v) => { h.throw = v / 100; }));
+      P.querySelector('[data-act=autoone]')?.addEventListener('click', () => { if (h) { autoSet(h); changed(); render(); } });
+      P.querySelector('[data-act=autoall]')?.addEventListener('click', () => { for (const x of irr.heads) autoSet(x); changed(); render(); });
       wireNav(P, () => { irr.done = true; irr.none = false; changed(); finish(); });
     },
   };
@@ -666,7 +704,7 @@ export function sprinklers(ctx) {
     }
     const h = nearest(ev);
     if (!h) return true;
-    if (step === 'details' || step === 'review' || step === 'pressure' || step === 'lines' || step === 'equipment' || step === 'supply' || step === 'water') { sel.clear(); sel.add(h.id); }
+    if (['details', 'review', 'pressure', 'lines', 'equipment', 'supply', 'water', 'arcs'].includes(step)) { sel.clear(); sel.add(h.id); }
     else if (sel.has(h.id)) sel.delete(h.id); else sel.add(h.id);
     if (step === 'models') { if (sel.size === 1) { resetForm(); } }
     render();
@@ -701,13 +739,14 @@ export function sprinklers(ctx) {
     // sized on the screen, not the photo: the same on a phone at any zoom
     const px = ctx.cssScale(), r = 6 * px;
     lw = 2 * px;
-    const fans = step === 'details' || step === 'models' || step === 'lines' || step === 'supply' || (!step && irr.done);
+    const fans = ['details', 'models', 'lines', 'supply', 'arcs'].includes(step) || (!step && irr.done);
     if (fans && cat) for (const h of irr.heads) {
       const w = waterOf(h);
       if (!w) continue;
-      const [x, y] = ctx.toPx(h.at), R = (w.radiusFt / 3.281) * ctx.pxPerM();
+      const [x, y] = ctx.toPx(h.at), R = (w.radiusFt / 3.281) * (h.throw ?? 1) * ctx.pxPerM();
       const mid = ((h.dir ?? 0) - 90) * (Math.PI / 180);
-      g.fillStyle = `${colorOf(h.zone)}26`; g.strokeStyle = `${colorOf(h.zone)}99`; g.lineWidth = lw * 0.5;
+      const picked = step === 'arcs' && sel.has(h.id);
+      g.fillStyle = `${colorOf(h.zone)}${picked ? '55' : '26'}`; g.strokeStyle = picked ? '#ffeb3b' : `${colorOf(h.zone)}99`; g.lineWidth = picked ? lw * 1.5 : lw * 0.5;
       if (w.strip) {
         // a strip: its rectangle, along the head's direction (an end strip from the head, a centre strip
         // either side of it, a side strip out from its long side)
@@ -839,7 +878,7 @@ export function sprinklers(ctx) {
     get data() { return irr; },
     tap, grab, move, drop, drawOn,
     /** The ground came in (or anything the solve reads): solve again and show it. */
-    refresh() { solvedKey = ''; if (step) render(); else ctx.draw(); },
+    refresh() { solvedKey = ''; if (step === 'arcs') { for (const h of irr.heads) if (h.arcSet !== 'user') autoSet(h); ctx.changed(); } if (step) render(); else ctx.draw(); },
     summary() {
       if (!cat || irr.none || !irr.done) return null;
       const s0 = solve();

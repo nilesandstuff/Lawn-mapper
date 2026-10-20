@@ -350,6 +350,20 @@ const heads = sprinklers({
     return false;
   },
   mapId: () => view.site?.mapId || null,
+  // what is on the ground at a point, for the arcs (lib/arcs.js): the traced lawn, a building or paving, other
+  get groundAt() {
+    const d = view.data;
+    if (!d?.wall) return null;
+    return (at) => {
+      const g = d.grid, dx = d.shift.east / g.k, dy = d.shift.north / g.k, [x, y] = toMerc(at);
+      const c = Math.floor(((x - (g.bbox[0] + dx)) * g.k) / g.cell), r = Math.floor(((g.bbox[3] + dy - y) * g.k) / g.cell);
+      if (c < 0 || r < 0 || c >= g.W || r >= g.H) return null;
+      const i = r * g.W + c;
+      if (d.wall[i] || (d.paved && d.paved[i] >= 0.5)) return 'hard';
+      if (d.lawnMask) return d.lawnMask[i] ? 'lawn' : 'other';
+      return 'lawn';
+    };
+  },
   lawnMiddle: () => {
     const pts = (view.site?.lawn || []).flatMap((f) => (f.geometry?.type === 'Polygon' ? f.geometry.coordinates[0] : f.geometry?.type === 'MultiPolygon' ? f.geometry.coordinates.flatMap((p) => p[0]) : []));
     if (!pts.length) return view.site ? [view.site.lng, view.site.lat] : null;

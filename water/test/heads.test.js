@@ -5,6 +5,7 @@
 
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
+import { autoArc } from '../lib/arcs.js';
 import { catalogue, rowAt, headWater, zoneWater, headPsi, lineCheck, gpmAt, psiPer100ft, pipe, settle, calibrate, placeByGps, enu, unEnu, facing } from '../lib/heads.js';
 
 const tests = [];
@@ -115,6 +116,27 @@ test("Toro's TVAN reads its printed quarter (0.71 gpm at 30 psi), not its full c
   const w = headWater({ body: body?.id, nozzle: 'to-tvan8', arc: 90 }, cat, 30);
   assert.ok(Math.abs(w.gpm - 0.71) < 1e-9, `TVAN8 at 90: ${w.gpm}`);
   assert.ok(!cat.brands.includes('Orbit') || cat.bodies.some((b) => b.brand === 'Orbit' && cat.charted(b)), 'a brand with no chart is not offered');
+});
+
+test('arcs: a corner head waters its quarter of the lawn, an edge head its half, a head mid-lawn a full circle; a fixed half faces the lawn; the throw stops short of a drive', () => {
+  const ref = [-85.5, 43.0];
+  // the lawn: x 0-20 m, y 0-20 m; a drive beyond x > 20; anything else other ground
+  const ground = (p) => { const [x, y] = enu(ref, p); return x > 20 ? 'hard' : x >= 0 && y >= 0 && y <= 20 ? 'lawn' : 'other'; };
+  const adj = { arcFixed: null, arcMin: 45, arcMax: 360 };
+  const corner = autoArc(ref, 5, adj, ground);
+  assert.ok(Math.abs(corner.arc - 90) <= 10 && Math.abs(corner.dir - 45) <= 10, JSON.stringify(corner));
+  const edge = autoArc(unEnu(ref, [10, 0]), 5, adj, ground);
+  assert.ok(Math.abs(edge.arc - 180) <= 10 && (edge.dir <= 10 || edge.dir >= 350), JSON.stringify(edge));
+  const mid = autoArc(unEnu(ref, [10, 10]), 5, adj, ground);
+  assert.equal(mid.arc, 360);
+  const half = autoArc(unEnu(ref, [10, 0]), 5, { arcFixed: 180 }, ground);
+  assert.ok(half.arc === 180 && (half.dir <= 10 || half.dir >= 350), JSON.stringify(half));
+  // 3 m from the drive with a 5 m throw: an adjustable head turns its arc off the drive (more lawn watered
+  // than a full circle cut short); a full-circle nozzle, which cannot turn away, is shortened, never below 75%
+  const nearDrive = autoArc(unEnu(ref, [17, 10]), 5, adj, ground);
+  assert.ok(nearDrive.arc < 360 && nearDrive.hardShare <= 0.15, JSON.stringify(nearDrive));
+  const fullNearDrive = autoArc(unEnu(ref, [17, 10]), 5, { arcFixed: 360 }, ground);
+  assert.ok(fullNearDrive.throw < 1 && fullNearDrive.throw >= 0.75, JSON.stringify(fullNearDrive));
 });
 
 let failed = 0;
