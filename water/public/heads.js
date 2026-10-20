@@ -404,22 +404,54 @@ export function sprinklers(ctx) {
     return `<span class="chip" style="background:${colorOf(h.zone)}"></span>${b ? `${esc(b.brand)} ${esc(b.model)}` : 'no model'}${n ? ` · nozzle ${esc(n.label)}` : ''}${w ? ` · ${throwOf(w)} · ${w.gpm.toFixed(2)} gpm${Number.isFinite(w.inletPsi) ? ` at ${Math.round(w.inletPsi)} psi` : ''}${w.status === 'low' ? ' (under its chart: short throw)' : w.status === 'high' ? ' (over its chart: misting)' : ''}` : ''}`;
   }
 
-  /* the brand -> model -> nozzle -> arc form, for the selected heads */
-  const form = { brand: '', body: '', nozzle: '', arc: '' };
+  /* THE HEAD PICKER, in four sections (owner, 2026-10-20): rotary heads -- the multi-stream nozzles that swap
+     onto any spray body (R-VAN, MP Rotator, PRN, K-Rain RN): the nozzle first, then the body it sits on;
+     fixed spray / shrub heads; gear-driven rotors; impact heads. Then brand, model, nozzle, arc. */
+  const SECTIONS = [['rotary', 'Rotary heads (rotary nozzles on a spray body)'], ['spray', 'Fixed spray / shrub heads'], ['rotor', 'Gear-driven rotors'], ['impact', 'Impact heads']];
+  /** Which section a body or a family belongs to. */
+  const sectionOfFamily = (f) => (f.kind === 'rotary' && !/^rb-22sa/.test(f.id) ? 'rotary' : f.kind === 'impact' ? 'impact' : f.kind === 'rotor' || f.kind === 'rotary' ? 'rotor' : 'spray');
+  const sectionOfBody = (b) => (b.kind === 'impact' ? 'impact' : b.kind === 'rotor' || b.kind === 'rotary-body' ? 'rotor' : 'spray');
+  const form = { type: '', brand: '', body: '', nozzle: '', arc: '' };
+  const opt = (v, label, cur) => `<option value="${esc(v)}" ${v === cur ? 'selected' : ''}>${esc(label)}</option>`;
+  const nozzleLabel = (z) => `${z.label}${z.strip ? ` (${z.strip.widthFt} x ${z.strip.lengthFt} ft strip)` : Number.isFinite(z.arcFixed) ? ` (${z.arcFixed}°)` : ''}`;
   function modelForm() {
     if (!cat) return '<p class="dim">Loading the list of heads…</p>';
     const first = head([...sel][0]);
-    if (first && !form.body && first.body) { const b = cat.body(first.body); form.brand = b?.brand || ''; form.body = first.body; form.nozzle = first.nozzle || ''; form.arc = first.arc ? String(first.arc) : ''; }
-    const bodies = cat.bodies.filter((b) => b.brand === form.brand && cat.charted(b));
-    const fams = form.body ? cat.familiesFor(form.body) : [];
+    if (first && !form.type && first.nozzle) {
+      const fam = cat.familyOfNozzle(first.nozzle), b = cat.body(first.body);
+      form.type = fam ? sectionOfFamily(fam) : ''; form.body = first.body || ''; form.nozzle = first.nozzle;
+      form.brand = form.type === 'rotary' ? fam?.brand || '' : b?.brand || ''; form.arc = first.arc ? String(first.arc) : '';
+    }
     const n = form.nozzle ? cat.nozzle(form.nozzle) : null;
     const adjustable = n && !n.strip && !Number.isFinite(n.arcFixed);
-    return `<div class="tools" style="flex-direction:column;align-items:stretch">
-      <select data-f="brand" aria-label="Brand"><option value="">Brand…</option>${cat.brands.map((b) => `<option ${b === form.brand ? 'selected' : ''}>${esc(b)}</option>`).join('')}</select>
-      ${form.brand ? `<select data-f="body" aria-label="Model"><option value="">Model…</option>${bodies.map((b) => `<option value="${b.id}" ${b.id === form.body ? 'selected' : ''}>${esc(b.model)}${b.kind ? ` (${esc(b.kind)})` : ''}</option>`).join('')}</select>` : ''}
-      ${form.body ? `<select data-f="nozzle" aria-label="Nozzle"><option value="">Nozzle…</option>${fams.map((f) => `<optgroup label="${esc(f.name)}">${f.nozzles.map((z) => `<option value="${z.id}" ${z.id === form.nozzle ? 'selected' : ''}>${esc(z.label)}${z.strip ? ` (${z.strip.widthFt} x ${z.strip.lengthFt} ft strip)` : Number.isFinite(z.arcFixed) ? ` (${z.arcFixed}°)` : ''}</option>`).join('')}</optgroup>`).join('')}</select>` : ''}
-      ${adjustable ? `<label class="toggle">Arc it waters: <select data-f="arc">${[45, 90, 120, 180, 210, 240, 270, 300, 360].filter((a) => a >= (n.arcMin ?? 0) && a <= (n.arcMax ?? 360)).map((a) => `<option ${String(a) === form.arc ? 'selected' : ''}>${a}</option>`).join('')}</select> degrees</label>` : ''}
-      <button type="button" data-act="apply" ${form.nozzle ? '' : 'disabled'}>Give the ${sel.size} selected head${sel.size > 1 ? 's' : ''} this</button></div>`;
+    const rows = [`<select data-f="type" aria-label="Kind of head"><option value="">What kind of head…</option>${SECTIONS.map(([v, l]) => opt(v, l, form.type)).join('')}</select>`];
+    if (form.type === 'rotary') {
+      // the nozzle first: every maker's rotary nozzles, by maker
+      const fams = cat.families.filter((f) => sectionOfFamily(f) === 'rotary' && f.nozzles.length);
+      const brands = [...new Set(fams.map((f) => f.brand))].sort();
+      rows.push(`<select data-f="brand" aria-label="Nozzle brand"><option value="">Nozzle brand…</option>${brands.map((x) => opt(x, x, form.brand)).join('')}</select>`);
+      if (form.brand) rows.push(`<select data-f="nozzle" aria-label="Rotary nozzle"><option value="">Rotary nozzle…</option>${fams.filter((f) => f.brand === form.brand).map((f) => `<optgroup label="${esc(f.name)}">${f.nozzles.map((z) => opt(z.id, nozzleLabel(z), form.nozzle)).join('')}</optgroup>`).join('')}</select>`);
+      if (form.nozzle) {
+        // then the spray body it sits on: those made for it first, then every other spray body
+        const fam = cat.familyOfNozzle(form.nozzle), sprays = cat.bodies.filter((b) => sectionOfBody(b) === 'spray');
+        const made = sprays.filter((b) => (b.nozzleFamilies || []).includes(fam.id)), other = sprays.filter((b) => !made.includes(b));
+        const group = (label, list) => (list.length ? `<optgroup label="${esc(label)}">${list.map((b) => opt(b.id, `${b.brand} ${b.model}${b.regulatedPsi ? ` (regulated to ${b.regulatedPsi} psi)` : ''}`, form.body)).join('')}</optgroup>` : '');
+        rows.push(`<select data-f="body" aria-label="Spray body"><option value="">The spray body it's on…</option>${group(`Made for ${fam.name}`, made)}${group('Other spray bodies', other)}</select>`);
+      }
+    } else if (form.type) {
+      const bodies = cat.bodies.filter((b) => sectionOfBody(b) === form.type && cat.charted(b));
+      const brands = [...new Set(bodies.map((b) => b.brand))].sort();
+      rows.push(`<select data-f="brand" aria-label="Brand"><option value="">Brand…</option>${brands.map((x) => opt(x, x, form.brand)).join('')}</select>`);
+      if (form.brand) rows.push(`<select data-f="body" aria-label="Model"><option value="">Model…</option>${bodies.filter((b) => b.brand === form.brand).map((b) => opt(b.id, `${b.model}${b.regulatedPsi ? ` (regulated to ${b.regulatedPsi} psi)` : ''}`, form.body)).join('')}</select>`);
+      if (form.body) {
+        // its nozzles in this section (a spray body's rotary nozzles are under Rotary heads)
+        const fams = cat.familiesFor(form.body).filter((f) => form.type !== 'spray' || sectionOfFamily(f) === 'spray');
+        rows.push(`<select data-f="nozzle" aria-label="Nozzle"><option value="">Nozzle…</option>${fams.map((f) => `<optgroup label="${esc(f.name)}">${f.nozzles.map((z) => opt(z.id, nozzleLabel(z), form.nozzle)).join('')}</optgroup>`).join('')}</select>`);
+      }
+    }
+    if (adjustable) rows.push(`<label class="toggle">Arc it waters: <select data-f="arc">${[45, 90, 120, 180, 210, 240, 270, 300, 360].filter((x) => x >= (n.arcMin ?? 0) && x <= (n.arcMax ?? 360)).map((x) => opt(String(x), String(x), form.arc)).join('')}</select> degrees (you can turn and fine-tune it on the map later)</label>`);
+    return `<div class="tools" style="flex-direction:column;align-items:stretch">${rows.join('')}
+      <button type="button" data-act="apply" ${form.nozzle && form.body ? '' : 'disabled'}>Give the ${sel.size} selected head${sel.size > 1 ? 's' : ''} this</button></div>`;
   }
 
   const WIRE = {
@@ -455,11 +487,22 @@ export function sprinklers(ctx) {
       P.querySelectorAll('[data-f]').forEach((s) => s.addEventListener('change', () => {
         const f = s.dataset.f;
         form[f] = s.value;
+        if (f === 'type') { form.brand = ''; form.body = ''; form.nozzle = ''; form.arc = ''; }
         if (f === 'brand') { form.body = ''; form.nozzle = ''; form.arc = ''; }
-        if (f === 'body') {
+        if (f === 'body' && form.type !== 'rotary') {
           form.nozzle = ''; form.arc = '';
           const fams = cat.familiesFor(form.body), all = fams.flatMap((x) => x.nozzles);
           if (all.length === 1) form.nozzle = all[0].id; // a body with one built-in nozzle
+        }
+        if (f === 'nozzle' && form.type === 'rotary') {
+          // a regulated body made for this nozzle, as the maker recommends, until the person picks theirs
+          const fam = cat.familyOfNozzle(form.nozzle), made = cat.bodies.filter((b) => (b.nozzleFamilies || []).includes(fam?.id));
+          // the one whose regulator is nearest the nozzle's design pressure (Rain Bird puts R-VANs on 45 psi
+          // bodies; Hunter, MP Rotators on 40), a 4 in pop-up, the lawn's usual
+          const nz = cat.nozzle(form.nozzle), rows = (nz?.rows || []).map((r) => r.psi).filter(Number.isFinite).sort((x, y) => x - y);
+          const design = nz?.chartPrecip?.psi ?? rows[Math.floor((rows.length - 1) / 2)] ?? 40;
+          const score = (b) => (Number.isFinite(b.regulatedPsi) ? Math.abs(b.regulatedPsi - design) : 30) + (b.popUpIn === 4 ? 0 : 2);
+          if (!form.body || !cat.body(form.body) || sectionOfBody(cat.body(form.body)) !== 'spray') form.body = made.slice().sort((x, y) => score(x) - score(y))[0]?.id || '';
         }
         if (f === 'nozzle') { const n = cat.nozzle(form.nozzle); form.arc = n && !n.strip && !Number.isFinite(n.arcFixed) ? String(Math.min(n.arcMax ?? 360, 180)) : ''; }
         render();
@@ -534,7 +577,7 @@ export function sprinklers(ctx) {
       wireNav(P, () => { irr.done = true; irr.none = false; changed(); finish(); });
     },
   };
-  const resetForm = () => { form.brand = ''; form.body = ''; form.nozzle = ''; form.arc = ''; };
+  const resetForm = () => { form.type = ''; form.brand = ''; form.body = ''; form.nozzle = ''; form.arc = ''; };
 
   /* -------------------------------------------------------------------- GPS */
 
