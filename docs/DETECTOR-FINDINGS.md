@@ -58,9 +58,18 @@ got here. Update it whenever the in-flight run changes.*
   at banking first, measured before it ships. OVERTURE ITSELF sits a
   median 0.87 m off the lidar's buildings (H101, read right 2026-10-20:
   its own placement), so it is fitted to the lidar's roofs per lot before
-  use. In flight: S43, Overture as a decoder input, as published (workflow
-  14 run 39349072551) and moved onto the lidar's roofs (`overture:
-  aligned`, dispatched when that run's features are cached).
+  use. S43 MEASURED (H105, 2026-10-20): Overture as a decoder input made
+  THE PLAN worse both as published (+0.5, 25 better / 52 worse, p 0.003)
+  and moved onto the lidar's roofs (+0.3, 33 / 49); not adopted, the live
+  model does not read it. The sidewalk channel was empty on 69 of 104
+  lots. Still untested: Overture as a stage-3 rule (footprint never lawn).
+  THE OWNER JUDGES THE FIT BY EYE on the predictions page (deployed
+  2026-10-20): switches for Overture's buildings as published, the same
+  moved onto the run's lidar roof, OpenStreetMap sidewalks and roads, over
+  every lawn of every layered run, with a line under each saying how far
+  the buildings moved. "I'd want to be able to see the building shapes and
+  the road/sidewalk shapes lined up myself before deciding how I want to
+  deal with all of that."
 - **THE LIVE MODEL HAS A NAME AND A VERSION HISTORY (owner, 2026-10-06):**
   "Turf Trace - alpha version 2 (79% accuracy)". Every release ships with a
   row in worker/src/model-versions.js: the next version number, the date,
@@ -912,6 +921,65 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 ---
 
 ## HARD FINDINGS — our own measurements
+
+### H105. Overture as a decoder input makes THE PLAN WORSE, one seed each way: as published +0.5 on the median (25 better / 52 worse, p 0.003); moved onto the lidar's roofs first +0.3 (33 / 49, p 0.10). Not adopted; the live model does not read it -- 2026-10-20
+*S43's two arms. Workflow 14 runs 39349072551 (`overture: compare`, the
+footprints and lines as published) and 39360940348 (`overture: aligned`,
+each lot's buildings moved onto the lidar's roof mask first), both `lawns:
+locked` (104, fingerprint 131u7jm), seed 7, folds by place, the free CPU
+runner; each read with workflow 24 against THE PLAN's own row of the same
+run (runs 39383029186 and 39383033308).*
+
+**What went in** (tools/overture-frames.js, fuse_layers.py): four more
+numbers a patch after the lidar's -- the building footprint (0/1),
+nearness to a sidewalk, footway, crosswalk or path line (1 on it, 0 at
+10 m), nearness to a road centreline (0 at 15 m), and a flag -- their own
+source for modality dropout at 0.3. Every one of the 104 frames had a
+building and a road; a sidewalk or path line was on only 35, so the
+"curb or sidewalk edge runs parallel to this" channel the owner asked
+for was empty on two lots in three. The aligned arm fitted buildings to
+the lidar's roofs on 94 frames and moved them on 25 (median 1.12 m, over
+1 m on 15, over 2 m on 4); the other 69 were left as published because no
+move overlapped the roof better.
+
+**The result, THE PLAN's row (edge refined + stage 3, span, lidar veto)
+against the same with Overture, paired lot by lot:**
+
+| arm | median | better / worse / level | paired change, 95% | sign test | frozen 32 | since (72) | county (31) | Mapbox (73) |
+|---|---|---|---|---|---|---|---|---|
+| as published | 17.9 -> 18.3% | 25 / 52 / 27 | +0.5 [+0.1, +1.2] | p 0.003 | 8 / 17, +0.6 | 17 / 35, +0.5 (p 0.018) | 8 / 17, +1.0 | 17 / 35, +0.4 |
+| moved onto the lidar roofs | 17.9 -> 18.6% | 33 / 49 / 22 | +0.3 [+0.0, +1.0] | p 0.097 | 11 / 16, +0.5 | 22 / 33, +0.3 | 9 / 16, +0.8 | 24 / 33, +0.3 |
+
+Both arms are worse, on the tuned lots and the untuned alike, on county
+photos and Mapbox alike. The as-published arm clears the bar in the wrong
+direction (p 0.003); the aligned arm is less bad but still not better on
+any slice. The decoder-only rows say the same before stage 3 and the veto:
+18.3% -> 18.6% (published) and 18.3% -> 19.3% (aligned). What Overture did
+change: the error on ground marked "inferred" fell (9.3 -> 7.2% published,
+8.7 -> 7.7% aligned) while the error on seen ground rose (16.6 -> 17.7% and
+16.6 -> 17.0%) -- it helped a little where the tracer guessed and hurt
+where the photo is plain. The lots that moved most are the usual hard ones
+both ways: B19, B20, C30 better by 8-14 points in both arms; B28 worse by
+21-23 in both; C49 14.7 -> 54.8% in the aligned arm alone, C89 41 -> 65 /
+50.
+
+**What this does and does not say.** One seed a side, so a swing of a
+point on a lot is noise (H54's rule); the sign over 104 lots is not. A
+building footprint is already in the lidar's roof channel and the veto; a
+road's typical-width band says nothing about the kerb; and the sidewalk
+line was missing on most lots. So the four channels added little the
+decoder did not have and some it could overfit, which is what the
+seen/inferred split shows. The aligning itself was not the problem (it
+moved the needle 0.2 the right way) and is kept for the predictions page
+(the owner's call on what to do with Overture is still open there). NOT
+measured: Overture as a stage-3 rule (footprint = never lawn; sidewalk band
+= not lawn), which costs no training and is the untested idea S43 kept
+apart.
+
+**Standing:** HARD for THE PLAN with these four channels at seed 7. The
+`overture` input of workflow 14 stays (off by default) for a re-run if the
+channels are changed; the live server (alpha_infer.py) does not read
+Overture, and should not.
 
 ### H104. One photo against another, across the lot: after one shift, a county photo's OPEN GROUND differs from Mapbox's by a median 0.22 m side to side (0.3-0.6 m on 7 of 16 lots, a 0.3% stretch), its roofs and crowns by a further 0.31 m (lean); two Mapbox flights of the same place differ by up to 0.6 m across a lot; the control reads 0.08 m -- 2026-10-19
 *Workflow 39, run 39337388084, all 104 locked lots. Owner: "the lawn traces
@@ -7200,7 +7268,7 @@ fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
 
-### S43. Overture as a decoder input: the building footprint, nearness to a sidewalk line, nearness to a road centreline (owner, 2026-10-19/20) -- IN FLIGHT, workflow 14 run 39349072551
+### S43. Overture as a decoder input: the building footprint, nearness to a sidewalk line, nearness to a road centreline (owner, 2026-10-19/20) -- MEASURED 2026-10-20, BOTH ARMS WORSE: see H105. Closed as a decoder input; the stage-3 rule below stays untested
 *Owner: "it would be good info for every stage... the detector, the grass
 under canopy guesser, and manual tracing"; and "the detector could be told
 'there's a curb or sidewalk edge that runs parallel to this at an unknown
@@ -8664,3 +8732,5 @@ deploy log says how many are locked and how many are waiting.
 | 2026-10-10 | 38085221591 / 38085219178 / 38085217225 | 104 (locked, 131u7jm) | S32 again at 31 county-drawn: `refiner_trial: held out by photo`, seeds 7/8/9, CPU, everything else default, as H90 | 19.0 / 19.1 / 18.9% (edge refined + stage 3, span, veto) | — | **H92.** County arm 4 / 24 / 3, +2.7 [+2.1, +9.9], p < 0.001; control 4 / 4 / 4, -0.0. With 31 county lots, county examples in training ARE worth something to county lots -- H90's "nothing measurable" was 11 against none |
 | 2026-10-08 | 37791602756 / 37791654341 / 37791705849 | 81 (locked) | S32 `refiner_trial: held out by photo` (county lots answered by a decoder trained on the 69 Mapbox lots; 12 Mapbox lots held out the same way), seeds 7/8/9, CPU | 20.9 / 22.5 / 22.0% (edge refined + stage 3, span, veto) | — | **H90.** County arm 5 / 6, +0.9 [-1.9, +5.4]; control 6 / 4, -0.8. County examples in training worth nothing measurable |
 | 2026-10-10 | 37999935674 / 38000318035 / 38000326730 | 81 (locked) | S34 `refiner_trial: no flips` (THE PLAN's decoder with every training grid as drawn), seeds 7/8/9, CPU | 20.4 / 22.4 / 21.5% (edge refined + stage 3, span, veto) | 22.0 / 20.7 / 20.7% (no flips, same) | **H91.** Workflow 24 run 38017280676: 28 / 23 / 30, -0.0 [-0.3, +0.1], p 0.58; untuned 49 lots +0.0. No difference; flips stay on |
+| 2026-10-20 | 39349072551 | 104 (locked, 131u7jm) | S43 `overture: compare`: THE PLAN beside the same decoder with Overture's footprint, sidewalk nearness and road nearness as published (4 more numbers a patch, dropout 0.3), seed 7, CPU | 17.9% (edge refined + stage 3, span, veto) | 18.3% (Overture, same) | **H105.** Workflow 24 run 39383029186: 25 / 52 / 27, +0.5 [+0.1, +1.2], p 0.003; untuned 72 lots 17 / 35, +0.5; county 8 / 17, Mapbox 17 / 35. Worse. Sidewalk line on 35 of 104 frames only |
+| 2026-10-20 | 39360940348 | 104 (locked, 131u7jm) | S43 `overture: aligned`: as above with each lot's buildings moved onto the lidar's roof mask first (moved on 25 of 94 fitted frames, median 1.12 m), seed 7, CPU, features from the run above's cache | 17.9% (edge refined + stage 3, span, veto) | 18.6% (Overture aligned, same) | **H105.** Workflow 24 run 39383033308: 33 / 49 / 22, +0.3 [+0.0, +1.0], p 0.097; untuned 22 / 33, +0.3. Worse, less so; C49 14.7 -> 54.8, B28 30.9 -> 52.3; B20 59.0 -> 44.3 |
