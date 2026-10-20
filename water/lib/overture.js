@@ -306,6 +306,14 @@ export const ALIGN_MIN_IOU = 0.3, ALIGN_MIN_GAIN = 0.02, ALIGN_REACH_M = 4, ALIG
  */
 export function alignBuildings(g, masks, roof) {
   const { W, H } = g, S = ALIGN_STEP, FW = W * S, FH = H * S;
+  // only the lidar's roofs within reach of an Overture building are scored: a shed or a house it does not
+  // have would otherwise dilute every shift's overlap alike and hide the fit
+  const reachC = Math.ceil(ALIGN_REACH_M / g.cell) + 1;
+  const pub = fillOutlines(new Uint8Array(W * H), W, H, masks.outlines || [], 0, 0, 1);
+  const rowNear = new Uint8Array(W * H), near = new Uint8Array(W * H);
+  for (let r = 0; r < H; r++) { let last = -1e9; for (let c = 0; c < W; c++) { if (pub[r * W + c]) last = c; if (c - last <= reachC) rowNear[r * W + c] = 1; } last = 1e9; for (let c = W - 1; c >= 0; c--) { if (pub[r * W + c]) last = c; if (last - c <= reachC) rowNear[r * W + c] = 1; } }
+  for (let c = 0; c < W; c++) { let last = -1e9; for (let r = 0; r < H; r++) { if (rowNear[r * W + c]) last = r; if (r - last <= reachC) near[r * W + c] = 1; } last = 1e9; for (let r = H - 1; r >= 0; r--) { if (rowNear[r * W + c]) last = r; if (last - r <= reachC) near[r * W + c] = 1; } }
+  roof = Uint8Array.from(roof, (v, i) => (v && near[i] ? 1 : 0));
   let roofN = 0;
   for (let i = 0; i < W * H; i++) if (roof[i]) roofN++;
   const asIs = { building: masks.building, dxM: 0, dyM: 0, iou0: null, iou: null, applied: false };
