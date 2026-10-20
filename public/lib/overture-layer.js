@@ -1,48 +1,30 @@
 /*
- * OVERTURE'S BUILDINGS, ROADS AND SIDEWALKS ON THE EDITOR'S MAP, for tracing by eye (owner,
- * 2026-10-19: "it would be good info for every stage... the detector, the grass under canopy
- * guesser, and manual tracing").
+ * THE ROAD AND SIDEWALK CENTRELINES ON THE EDITOR'S MAP, for tracing by eye.
  *
- * Measured (workflows 37-39, H101-H104): Overture sits within about a metre of the lidar, and the
- * photos within about half a metre of the lidar's ground where it can be matched. What looks "off"
- * is the roof: the outline is the walls, and a roof in a photo overhangs them and leans off them
- * by its height, so it is drawn where Overture puts it, the footprint.
+ * What is left of Overture's layer after the owner looked at the shapes on the
+ * predictions page (2026-10-20): "the overture building outlines are bad. Some
+ * shapes are just plain wrong when aligned correctly. Let's completely scrap
+ * the overture shapes for the lawn map." The roads and sidewalks are "a mixed
+ * bag... the lines aren't always perfectly centered on roads/sidewalks, so the
+ * full width of the lines sometimes overlaps with lawn", but "the center lines
+ * of the shapes do seem to always fall on actual roads/sidewalks, just not
+ * always on the center." So: thin lines only, no buildings, no band at a
+ * typical width. (H101-H105 are the measurements behind this.)
  *
- * Pure: what public/lib/overture.js returns, made into one GeoJSON collection and the line widths
- * that draw each road at its width on the ground. The map work is in app.js.
+ * Pure: what public/lib/overture.js returns, made into one GeoJSON collection
+ * of the lines. The map work is in app.js.
  */
 
-/** Overture's roads and buildings ({ roads, buildings } from overtureFor) as one FeatureCollection. */
+/** OpenStreetMap's road and sidewalk centrelines ({ roads } from overtureFor) as one FeatureCollection. Buildings are ignored. */
 export function overtureGeoJSON(ov) {
   const features = [];
   for (const r of ov?.roads || []) {
     for (const line of r.lines || []) {
       if (line.length < 2) continue;
-      features.push({ type: 'Feature', properties: { kind: r.walk ? 'walk' : 'road', w: r.width, cls: r.sub || r.cls }, geometry: { type: 'LineString', coordinates: line } });
+      features.push({ type: 'Feature', properties: { kind: r.walk ? 'walk' : 'road', cls: r.sub || r.cls }, geometry: { type: 'LineString', coordinates: line } });
     }
   }
-  for (const poly of ov?.buildings || []) {
-    if (!poly?.[0] || poly[0].length < 4) continue;
-    features.push({ type: 'Feature', properties: { kind: 'building' }, geometry: { type: 'Polygon', coordinates: poly } });
-  }
   return { type: 'FeatureCollection', features };
-}
-
-/**
- * A line-width expression that draws a band `w` ground metres wide at latitude `lat`, at any zoom.
- * Mapbox GL's tiles are 512 px, so a pixel at zoom z is 40075016.686 cos(lat) / (512 2^z) metres.
- */
-export function bandWidth(lat) {
-  const px = (z) => (512 * 2 ** z) / (40075016.686 * Math.cos((lat * Math.PI) / 180));
-  return ['interpolate', ['exponential', 2], ['zoom'], 14, ['*', ['get', 'w'], px(14)], 24, ['*', ['get', 'w'], px(24)]];
-}
-
-/** Every coordinate moved `east` and `north` ground metres (onto the photo, H102). */
-export function shiftGeoJSON(fc, east, north) {
-  const R = 6378137;
-  const mv = ([lng, lat]) => [lng + (east / (R * Math.cos((lat * Math.PI) / 180))) * (180 / Math.PI), lat + (north / R) * (180 / Math.PI)];
-  const geom = (g) => (g.type === 'LineString' ? { ...g, coordinates: g.coordinates.map(mv) } : { ...g, coordinates: g.coordinates.map((ring) => ring.map(mv)) });
-  return { ...fc, features: fc.features.map((f) => ({ ...f, geometry: geom(f.geometry) })) };
 }
 
 /** Is the box [w, s, e, n] (degrees) wholly inside `got`? Then the features fetched for `got` cover it. */

@@ -44,14 +44,15 @@ RETURN_LIDAR = (7, 8, 9, 10)
 # Ranked, because 3DEP intensity is on each flight's own scale; hidden with
 # the lidar, since it comes from the same flight.
 INTENSITY_CHANNELS = ("intensity_rank", "has_intensity")
-# OVERTURE'S FOOTPRINTS, SIDEWALK LINES AND ROAD CENTRELINES (owner, 2026-10-19/20):
-# appended last when asked for (FUSE_OVERTURE; tools/overture-frames.js writes
-# <id>-overture.png). The footprint is where a house stands (not where its roof
-# leans to in the photo); the two nearness channels fall from 1 on a sidewalk
-# line or a road centreline to 0 at 10 / 15 m, "there's an edge parallel to
-# this at an unknown distance", the distance left to the decoder. Its own
-# source for modality dropout: Overture has gaps of its own.
-OVERTURE_CHANNELS = ("building", "walk_near", "road_near", "has_overture")
+# THE PAVED CENTRELINES (owner, 2026-10-20): appended last when asked for
+# (FUSE_OVERTURE; tools/overture-frames.js writes <id>-overture.png). One
+# number, 1 on an OpenStreetMap road, sidewalk, footway or path centreline
+# falling to 0 two metres off it -- "this center line falls somewhere on a
+# road, sidewalk, or sometimes a driveway" -- and a flag. The building
+# footprint and the wide nearness channels that were here made THE PLAN worse
+# (H105) and the owner scrapped Overture's shapes for the lawn map. Its own
+# source for modality dropout: the lines have gaps of their own.
+OVERTURE_CHANNELS = ("paved_line", "has_overture")
 
 
 def intensity_index(with_returns):
@@ -97,7 +98,7 @@ def extra_channels(grid_w, grid_h, cover_x, cover_y, lidar=None, ndvi=None, ndvi
     lidar:    dict with height (m), n_ground, n_all on the lidar grid, or None
     ndvi:     NDVI -1..1 over the photograph, with ndvi_valid, or None
     canopy:   the tree model's mask (bool) over the photograph, or None
-    overture: dict with building (0/1), walk, road (nearness 0..1) over the frame, or None
+    overture: dict with line (nearness 0..1 to a paved centreline) over the frame, or None
     """
     n = (len(CHANNELS) + (len(RETURN_CHANNELS) if with_returns else 0) + (len(INTENSITY_CHANNELS) if with_intensity else 0)
          + (len(OVERTURE_CHANNELS) if with_overture else 0))
@@ -147,10 +148,8 @@ def extra_channels(grid_w, grid_h, cover_x, cover_y, lidar=None, ndvi=None, ndvi
         out[f] = v
     if with_overture and overture is not None:
         o = overture_index(with_returns, with_intensity)
-        out[o] = down(np.asarray(overture["building"], dtype=np.float64))
-        out[o + 1] = down(np.asarray(overture["walk"], dtype=np.float64))
-        out[o + 2] = down(np.asarray(overture["road"], dtype=np.float64))
-        out[o + 3] = 1.0
+        out[o] = down(np.asarray(overture["line"], dtype=np.float64))
+        out[o + 1] = 1.0
     return out
 
 

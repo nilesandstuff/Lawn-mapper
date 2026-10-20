@@ -1380,8 +1380,8 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
           if (c) byPoint.set(point(c.lng, c.lat), r);
         }
         /*
-         * THE FRAME THE PICTURE WAS DRAWN ON (owner, 2026-10-20: Overture's and
-         * OpenStreetMap's shapes over each lawn, to judge the fit by eye). The
+         * THE FRAME THE PICTURE WAS DRAWN ON (owner, 2026-10-20: OpenStreetMap's
+         * road and sidewalk lines over each lawn, judged by eye). The
          * page draws them in the browser from the lot's photo frame, which the
          * run never wrote: image_frame is the stored photo's, as training uses
          * it, with `frame` for rows banked before that column existed. Only

@@ -61,15 +61,17 @@ got here. Update it whenever the in-flight run changes.*
   use. S43 MEASURED (H105, 2026-10-20): Overture as a decoder input made
   THE PLAN worse both as published (+0.5, 25 better / 52 worse, p 0.003)
   and moved onto the lidar's roofs (+0.3, 33 / 49); not adopted, the live
-  model does not read it. The sidewalk channel was empty on 69 of 104
-  lots. Still untested: Overture as a stage-3 rule (footprint never lawn).
-  THE OWNER JUDGES THE FIT BY EYE on the predictions page (deployed
-  2026-10-20): switches for Overture's buildings as published, the same
-  moved onto the run's lidar roof, OpenStreetMap sidewalks and roads, over
-  every lawn of every layered run, with a line under each saying how far
-  the buildings moved. "I'd want to be able to see the building shapes and
-  the road/sidewalk shapes lined up myself before deciding how I want to
-  deal with all of that."
+  model does not read it. THE OWNER'S DECISION, after judging the shapes
+  by eye on the predictions page (2026-10-20): OVERTURE'S BUILDINGS ARE
+  SCRAPPED FOR THE LAWN MAP -- "some shapes are just plain wrong when
+  aligned correctly" (the water map keeps them; its own site). The roads
+  and sidewalks stay AS CENTRELINES ONLY: "the center lines of the shapes
+  do seem to always fall on actual roads/sidewalks, just not always on the
+  center", so no typical-width band (it overlapped lawn) and no distance
+  channel. The editor's layer and the predictions page draw the thin
+  lines; the decoder trial is S44 (one channel: on a line, falling to 0 at
+  2 m), in flight. The owner also reports (S45) that on the 104 training
+  maps the lidar still does not line up with the building footprints.
 - **THE LIVE MODEL HAS A NAME AND A VERSION HISTORY (owner, 2026-10-06):**
   "Turf Trace - alpha version 2 (79% accuracy)". Every release ships with a
   row in worker/src/model-versions.js: the next version number, the date,
@@ -970,11 +972,11 @@ road's typical-width band says nothing about the kerb; and the sidewalk
 line was missing on most lots. So the four channels added little the
 decoder did not have and some it could overfit, which is what the
 seen/inferred split shows. The aligning itself was not the problem (it
-moved the needle 0.2 the right way) and is kept for the predictions page
-(the owner's call on what to do with Overture is still open there). NOT
-measured: Overture as a stage-3 rule (footprint = never lawn; sidewalk band
-= not lawn), which costs no training and is the untested idea S43 kept
-apart.
+moved the needle 0.2 the right way). The owner then judged the shapes by
+eye on the predictions page and scrapped Overture's buildings for the lawn
+map the same day ("some shapes are just plain wrong when aligned
+correctly"); the centrelines alone are S44. NOT measured: a stage-3 rule
+on the lines, which costs no training.
 
 **Standing:** HARD for THE PLAN with these four channels at seed 7. The
 `overture` input of workflow 14 stays (off by default) for a re-run if the
@@ -7267,6 +7269,51 @@ not:** a 27 m block is less context than a whole lot, and H4 once found
 fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
+
+### S44. The paved centrelines as ONE decoder channel: on an OpenStreetMap road, sidewalk, footway or path line, falling to 0 two metres off it (owner, 2026-10-20) -- IN FLIGHT, workflow 14 run RUN_S44
+*Owner, after H105 and his own look at the predictions page: "If we used
+only the center lines of the road/sidewalk shapes, that might be useful...
+the center lines of the shapes do seem to always fall on actual
+roads/sidewalks, just not always on the center. So if it could be at all
+useful to tell the detector 'this center line falls somewhere on a road,
+sidewalk, or sometimes a driveway' then yes let's give it to the detector."*
+
+**What changed from S43.** No building (scrapped), no typical-width band,
+no 10/15 m nearness (H105: both hurt). tools/overture-frames.js now writes
+one grey channel at 0.5 m: 255 on any road or sidewalk centreline, 0 at
+LINE_REACH_M = 2 m -- a short skirt so a one-cell line survives the
+decoder's metre-and-a-half patches, still inside any road's half-width.
+Roads and sidewalks are one channel on purpose: the owner's meaning for
+both is "paved somewhere here". fuse_layers.py appends it with a flag (2
+numbers a patch, own dropout source at 0.3). Workflow 14 `overture:
+compare` trains THE PLAN once more with it, scored as "decoder, paved
+lines". To read with workflow 24 against THE PLAN's own row, under the
+full bar.
+
+**Why it might still fail:** H105's split said Overture helped only on
+"inferred" ground and hurt seen ground; a thin line is less to overfit on
+but also less information, and the sidewalk lines were present on 35 of
+104 frames. If it fails: the same channel as a stage-3 rule (a thin band
+on the line is not lawn) costs no training and stays untested.
+
+### S45. The lidar still does not sit on the building footprints on the 104 training maps (owner, 2026-10-20) -- NOT MEASURED
+*Owner, with the predictions page's layers in front of him: "in the 104
+training maps, there are still issues with the lidar lining up with the
+building footprint."*
+
+**What is known.** H103 measured the lidar against the PHOTO's ground on
+the 14 lots where the shade map's matcher could commit: 0.45 m median after
+the 1.2 m datum move, never over 1.2 m; on the other 84 it could not say.
+The lidar's roof mask (lidar_frame.py: no ground return, 2.5 m+, flat) is
+on 2 m cells and takes in porches and decks (H102's correction), so it is
+not the footprint and was never going to sit on it; what the owner sees as
+"not lining up" may be that, a residual datum error on some surveys, or a
+photo whose own ground is off (H104: 0.2-0.6 m between photos). Which, and
+how far, is not measured on the 104. The agreed next step (the owner's
+decision of 2026-10-20: align everything to the lidar, the county photos
+at banking first, scale/affine not only a shift) needs a lot-by-lot
+measure of the lidar against each photo before it ships; H103's matcher
+is too unsure on most lots to be it.
 
 ### S43. Overture as a decoder input: the building footprint, nearness to a sidewalk line, nearness to a road centreline (owner, 2026-10-19/20) -- MEASURED 2026-10-20, BOTH ARMS WORSE: see H105. Closed as a decoder input; the stage-3 rule below stays untested
 *Owner: "it would be good info for every stage... the detector, the grass

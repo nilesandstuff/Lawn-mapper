@@ -22,18 +22,15 @@ assert.equal(median([3, 1, 2]), 2);
 assert.equal(median([4, 1, 2, NaN, 3]), 2.5);
 console.log('overture-check: ok');
 
-// The editor's layer (public/lib/overture-layer.js).
-const { overtureGeoJSON, bandWidth, covers } = await import('../public/lib/overture-layer.js');
+// The editor's layer (public/lib/overture-layer.js): lines only (owner, 2026-10-20).
+const { overtureGeoJSON, covers } = await import('../public/lib/overture-layer.js');
 const fc = overtureGeoJSON({
   roads: [{ cls: 'residential', sub: null, width: 8, walk: false, lines: [[[0, 0], [0.001, 0]], [[1, 1]]] },
     { cls: 'footway', sub: 'sidewalk', width: 1.5, walk: true, lines: [[[0, 0], [0, 0.001]]] }],
-  buildings: [[[[0, 0], [0.0001, 0], [0.0001, 0.0001], [0, 0]]], [[[0, 0], [1, 1]]]],
+  buildings: [[[[0, 0], [0.0001, 0], [0.0001, 0.0001], [0, 0]]]],
 });
-assert.deepEqual(fc.features.map((f) => f.properties.kind), ['road', 'walk', 'building'], 'one-point lines and degenerate rings dropped');
-assert.equal(fc.features[0].properties.w, 8);
-// 8 m at the equator at zoom 20: 8 / (40075016.686 / (512 * 2^20)) px
-const ex = bandWidth(0);
-assert.ok(Math.abs(ex[4][2] - (512 * 2 ** 14) / 40075016.686) < 1e-9 && Math.abs(ex[6][2] / ex[4][2] - 1024) < 1e-6, 'doubles each zoom');
+assert.deepEqual(fc.features.map((f) => f.properties.kind), ['road', 'walk'], 'one-point lines dropped; buildings not drawn');
+assert.ok(!('w' in fc.features[0].properties), 'no width: the band is gone');
 assert.ok(covers([0, 0, 2, 2], [0.5, 0.5, 1, 1]) && !covers([0, 0, 2, 2], [0.5, 0.5, 3, 1]) && !covers(null, [0, 0, 1, 1]));
 console.log('overture-layer: ok');
 
@@ -58,11 +55,3 @@ const { edgeFit, leanFit } = await import('./overture-check.js');
 }
 console.log('photo fit: ok');
 
-// Moving the layer onto the photo (overture-layer.js shiftGeoJSON).
-{
-  const { shiftGeoJSON } = await import('../public/lib/overture-layer.js');
-  const moved = shiftGeoJSON({ type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [[0, 0], [0, 1]] } }] }, 111.32, -110.57);
-  const [lng, lat] = moved.features[0].geometry.coordinates[0];
-  assert.ok(Math.abs(lng - 0.001) < 1e-5 && Math.abs(lat + 0.000993) < 1e-5);
-  console.log('layer shift: ok');
-}

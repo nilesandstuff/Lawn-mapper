@@ -163,10 +163,11 @@ FUSE_RETURNS = os.environ.get("FUSE_RETURNS", "")
 # (alpha_sources.py) and reads it for a release whose manifest says so.
 # FUSE_INTENSITY=0 trains the decoder without it.
 FUSE_INTENSITY = os.environ.get("FUSE_INTENSITY", "1") == "1"
-# FUSE_OVERTURE=dir of tools/overture-frames.js's <id>-overture.png: four more
-# fused numbers a patch, Overture's building footprint, nearness to a sidewalk
-# line, nearness to a road centreline, and a flag (owner, 2026-10-19/20). Its
-# own source for dropout (DROP_OVERTURE), since Overture has gaps of its own.
+# FUSE_OVERTURE=dir of tools/overture-frames.js's <id>-overture.png: two more
+# fused numbers a patch, nearness (within 2 m) to an OpenStreetMap road or
+# sidewalk centreline via Overture and a flag (owner, 2026-10-20: "this center
+# line falls somewhere on a road, sidewalk, or sometimes a driveway"). Their
+# own source for dropout (DROP_OVERTURE), since the lines have gaps of their own.
 FUSE_OVERTURE = os.environ.get("FUSE_OVERTURE", "")
 DROP_OVERTURE = float(os.environ.get("DROP_OVERTURE", "0.3"))
 
@@ -427,8 +428,7 @@ def read_lawn(feats, frames, stem, shape):
         ov_in = None
         of = os.path.join(FUSE_OVERTURE, f"{stem}-overture.png") if FUSE_OVERTURE else None
         if of and os.path.exists(of):
-            a = np.asarray(Image.open(of).convert("RGB"), dtype=np.float32) / 255.0
-            ov_in = {"building": a[..., 0], "walk": a[..., 1], "road": a[..., 2]}
+            ov_in = {"line": np.asarray(Image.open(of).convert("L"), dtype=np.float32) / 255.0}
             sources.append("overture")
         extra = extra_channels(gw, gh, cx, cy, lidar=lidar, ndvi=ndvi, ndvi_valid=valid, canopy=can_in,
                                returns=returns, with_returns=bool(FUSE_RETURNS), with_intensity=FUSE_INTENSITY,
@@ -760,8 +760,8 @@ def main():
                   "the ground intensity ranked within its frame, hidden with the lidar", flush=True)
         if FUSE_OVERTURE:
             n_o = sum(1 for L in lawns if "overture" in L["sources"])
-            print(f"OVERTURE: 4 more numbers a patch (building, walk_near, road_near, has_overture) "
-                  f"on {n_o} of {len(lawns)} lawns, dropout {DROP_OVERTURE:g}", flush=True)
+            print(f"PAVED CENTRELINES: 2 more numbers a patch (paved_line, has_overture), OpenStreetMap's road and "
+                  f"sidewalk lines via Overture, on {n_o} of {len(lawns)} lawns, dropout {DROP_OVERTURE:g}", flush=True)
     if CORRECTIONS_WEIGHT:
         n_c = sum(1 for L in lawns if L.get("corrected"))
         print(f"CORRECTIONS WEIGHTED (S21): on {n_c} lots the live model's own outline is here; cells where the "

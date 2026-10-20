@@ -32,7 +32,7 @@ import { sharpTiles } from './lib/sharp-tiles.js';
 import { alignFromRegistration } from './lib/register.js';
 import { extraDetail } from './lib/sharpness.js';
 import { enhance, DEFAULTS as ENHANCE_DEFAULTS } from './lib/enhance.js';
-import { overtureGeoJSON, bandWidth, covers } from './lib/overture-layer.js';
+import { overtureGeoJSON, covers } from './lib/overture-layer.js';
 import { snapPoint, nearestOnRings } from './lib/snap.js';
 import { notchShapes } from './lib/cutout.js';
 // Pasting the pieces of a big lot's detection back into one mask.
@@ -95,7 +95,7 @@ const state = {
   /* The photo made easier to trace on (lib/enhance.js), for the eye only:
      on unless this browser was told otherwise. */
   enhance: (() => { try { return localStorage.getItem('lm_enhance') !== '0'; } catch { return true; } })(),
-  /* Overture's buildings, roads and sidewalks drawn over the photo for tracing
+  /* The road and sidewalk centrelines drawn over the photo for tracing
      (lib/overture-layer.js): off unless this browser turned them on. */
   overtureOn: (() => { try { return localStorage.getItem('lm_overture') === '1'; } catch { return false; } })(),
   /* While the lot's photo is being decided (lookupCountyPhoto), nothing is
@@ -6125,9 +6125,9 @@ function buildLayerList() {
     o.setAttribute('role', 'menuitemcheckbox');
     o.setAttribute('aria-checked', String(state.overtureOn));
     o.dataset.overture = '1';
-    o.title = 'Outlines from Overture Maps (OpenStreetMap, Microsoft and others): buildings in yellow, roads in blue, sidewalks in pink. Usually within a metre of the ground. A roof in the photo leans away from its outline; the outline is where the house stands. For your eye only.';
+    o.title = 'OpenStreetMap\'s road centrelines (blue) and sidewalk, footway and path lines (pink), via Overture Maps. Each falls somewhere on a road, sidewalk or driveway, not always its middle. For your eye only.';
     const ol = document.createElement('span');
-    ol.textContent = 'Buildings, roads and sidewalks';
+    ol.textContent = 'Road and sidewalk lines';
     o.append(ol);
     o.addEventListener('click', () => setOverture(!state.overtureOn));
     list.append(o);
@@ -6552,13 +6552,20 @@ async function displayUrl(blob, scale = 1) {
   }
 }
 
-/* ------------------------------------------- Overture, for tracing by eye */
+/* ------------------------- the road and sidewalk lines, for tracing by eye */
 /*
- * Overture Maps' buildings, roads and sidewalks over the photo (owner,
- * 2026-10-19), read straight from Overture's public tiles by the browser
- * (lib/overture.js, the water session's reader). Fetched for a few hundred
- * metres round the view and fetched again only when the view leaves that.
- * Drawn under the property line and the shapes, like every comparison layer.
+ * OpenStreetMap's road and sidewalk centrelines over the photo, read straight
+ * from Overture's public tiles by the browser (lib/overture.js, the water
+ * session's reader). Fetched for a few hundred metres round the view and
+ * fetched again only when the view leaves that. Drawn under the property line
+ * and the shapes, like every comparison layer.
+ *
+ * LINES ONLY (owner, 2026-10-20, after judging the shapes on the predictions
+ * page): Overture's buildings are scrapped for the lawn map -- "some shapes
+ * are just plain wrong when aligned correctly" -- and the roads' and
+ * sidewalks' typical-width bands too, since a line not quite centred on its
+ * road put the band over lawn. "The center lines of the shapes do seem to
+ * always fall on actual roads/sidewalks, just not always on the center."
  */
 const OVT_REACH_M = 250;
 let ovtRun = 0;
@@ -6586,41 +6593,25 @@ async function showOverture({ announce = false } = {}) {
     const { overtureFor } = await import('./lib/overture.js');
     ov = await overtureFor([x - reach, y - reach, x + reach, y + reach]);
   } catch (err) {
-    console.warn('Overture outlines could not be read here:', err);
+    console.warn('The road and sidewalk lines could not be read here:', err);
     return;
   }
   if (mine !== ovtRun || !state.overtureOn) return;
   state.overtureBox = [w, s, e, n];
-  /* DRAWN WHERE OVERTURE PUTS THEM (2026-10-19, H102's correction). Sliding
-     the outlines onto the photo's edges was tried and taken out the same day:
-     where Overture's outline is the wrong shape (a missing wing), the fit
-     slid everything, roads too, metres the wrong way. Against the lidar,
-     Overture is within about a metre (H101); a roof in the photo can still
-     lean off its outline. */
   const data = overtureGeoJSON(ov);
-  /* H103/H104: Overture sits within about a metre of the lidar, the photos within about half a
-     metre of it where the ground can be matched. What a person sees as "off" is the roof: the
-     outline is the walls, and a roof in the photo overhangs them and leans off them by its height. */
-  if (announce) setStatus('Building outlines are the walls, where the grass stops. The roof in the photo overhangs them and can lean a metre or two off them. Sidewalks and roads are drawn at a typical width.');
+  if (announce) setStatus('Each line falls somewhere on a road, sidewalk or driveway, not always its middle. Blue is a road, pink a sidewalk or path.');
   if (map.getSource('ovt')) { map.getSource('ovt').setData(data); return; }
   map.addSource('ovt', { type: 'geojson', data });
   const before = map.getLayer('parcel-fill') ? 'parcel-fill' : undefined;
-  const width = bandWidth(c.lat);
   map.addLayer({ id: 'ovt-road', type: 'line', source: 'ovt', filter: ['==', ['get', 'kind'], 'road'],
-    layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#3d7bff', 'line-opacity': 0.35, 'line-width': width } }, before);
+    layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#3d7bff', 'line-opacity': 0.9, 'line-width': 1.5 } }, before);
   map.addLayer({ id: 'ovt-walk', type: 'line', source: 'ovt', filter: ['==', ['get', 'kind'], 'walk'],
-    layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#ff4fd8', 'line-opacity': 0.45, 'line-width': width } }, before);
-  /* The sidewalk's own line, thin, so it can be followed as a line and not only as a band
-     (owner, 2026-10-19: Overture's sidewalks looked right in the field). */
-  map.addLayer({ id: 'ovt-walk-line', type: 'line', source: 'ovt', filter: ['==', ['get', 'kind'], 'walk'],
     layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#ff4fd8', 'line-opacity': 0.9, 'line-width': 1.5 } }, before);
-  map.addLayer({ id: 'ovt-building', type: 'line', source: 'ovt', filter: ['==', ['get', 'kind'], 'building'],
-    paint: { 'line-color': '#ffe600', 'line-width': 2, 'line-opacity': 0.9 } }, before);
 }
 
 function hideOverture() {
   ovtRun++;
-  for (const id of ['ovt-building', 'ovt-walk-line', 'ovt-walk', 'ovt-road']) if (map.getLayer(id)) map.removeLayer(id);
+  for (const id of ['ovt-walk', 'ovt-road']) if (map.getLayer(id)) map.removeLayer(id);
   if (map.getSource('ovt')) map.removeSource('ovt');
   state.overtureBox = null;
 }

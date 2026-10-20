@@ -99,23 +99,23 @@ check("no lidar: brightness and flag are zeros", not extra_channels(2, 2, 1.0, 1
 di = drop_sources(ei, np.random.default_rng(3), 1.0, 0.0, more_lidar=(i, f))
 check("dropping the lidar zeroes the brightness too", not di[list(LIDAR) + [i, f]].any() and np.array_equal(di[list(NAIP)], ei[list(NAIP)]))
 
-# Overture's footprints and lines (owner, 2026-10-19/20): after everything else, their own source for dropout.
+# The paved centrelines (owner, 2026-10-20): after everything else, their own source for dropout.
 from fuse_layers import OVERTURE_CHANNELS, overture_index  # noqa: E402
-ovt = {"building": np.pad(np.ones((5, 5)), ((0, 5), (0, 5))), "walk": np.full((10, 10), 0.4), "road": np.zeros((10, 10))}
+ovt = {"line": np.pad(np.ones((5, 5)), ((0, 5), (0, 5))) * 0.4}
 eo = extra_channels(2, 2, 1.0, 1.0, lidar=li, with_intensity=True, overture=ovt, with_overture=True)
 o = overture_index(False, True)
-check("thirteen channels with Overture, last four", eo.shape[0] == len(CHANNELS) + len(INTENSITY_CHANNELS) + len(OVERTURE_CHANNELS) and o == 9)
-check("the building fills its quarter and nothing else; the sidewalk nearness carries; the flag is 1",
-      eo[o, 0, 0] == 1 and eo[o, 1, 1] == 0 and abs(eo[o + 1, 1, 1] - 0.4) < 1e-6 and eo[o + 2].max() == 0 and eo[o + 3].min() == 1)
-check("with the returns on too, Overture sits after the brightness", overture_index(True, True) == 13
-      and extra_channels(2, 2, 1.0, 1.0, lidar=li, returns=ret, with_returns=True, with_intensity=True, overture=ovt, with_overture=True).shape[0] == 17)
-check("without the switch Overture is not there", extra_channels(2, 2, 1.0, 1.0, lidar=li, with_intensity=True, overture=ovt).shape[0] == 9)
-check("no Overture: zeros and a 0 flag", not extra_channels(2, 2, 1.0, 1.0, with_intensity=True, with_overture=True)[o:o + 4].any())
-do = drop_sources(eo, np.random.default_rng(4), 0.0, 0.0, overture=tuple(range(o, o + 4)), p_overture=1.0)
-check("dropping Overture zeroes its four and leaves the lidar", not do[o:o + 4].any() and np.array_equal(do[list(LIDAR)], eo[list(LIDAR)]))
-dl = drop_sources(eo, np.random.default_rng(5), 1.0, 0.0, more_lidar=(i, f), overture=tuple(range(o, o + 4)), p_overture=0.0, with_returns=False)
-check("dropping the lidar leaves Overture (the returns' slots are Overture's here)", np.array_equal(dl[o:o + 4], eo[o:o + 4]) and not dl[list(LIDAR) + [i, f]].any())
-check("told the returns are off, their slots are left alone even without Overture's indices",
-      np.array_equal(drop_sources(eo, np.random.default_rng(5), 1.0, 0.0, more_lidar=(i, f), with_returns=False)[o:o + 4], eo[o:o + 4]))
+check("eleven channels with the lines, last two", eo.shape[0] == len(CHANNELS) + len(INTENSITY_CHANNELS) + len(OVERTURE_CHANNELS) and o == 9)
+check("the line's nearness fills its quarter and nothing else; the flag is 1",
+      abs(eo[o, 0, 0] - 0.4) < 1e-6 and eo[o, 1, 1] == 0 and eo[o + 1].min() == 1)
+check("with the returns on too, the lines sit after the brightness", overture_index(True, True) == 13
+      and extra_channels(2, 2, 1.0, 1.0, lidar=li, returns=ret, with_returns=True, with_intensity=True, overture=ovt, with_overture=True).shape[0] == 15)
+check("without the switch the lines are not there", extra_channels(2, 2, 1.0, 1.0, lidar=li, with_intensity=True, overture=ovt).shape[0] == 9)
+check("no lines: zeros and a 0 flag", not extra_channels(2, 2, 1.0, 1.0, with_intensity=True, with_overture=True)[o:o + 2].any())
+do = drop_sources(eo, np.random.default_rng(4), 0.0, 0.0, overture=tuple(range(o, o + 2)), p_overture=1.0)
+check("dropping the lines zeroes their two and leaves the lidar", not do[o:o + 2].any() and np.array_equal(do[list(LIDAR)], eo[list(LIDAR)]))
+dl = drop_sources(eo, np.random.default_rng(5), 1.0, 0.0, more_lidar=(i, f), overture=tuple(range(o, o + 2)), p_overture=0.0, with_returns=False)
+check("dropping the lidar leaves the lines (the returns' slots are theirs here)", np.array_equal(dl[o:o + 2], eo[o:o + 2]) and not dl[list(LIDAR) + [i, f]].any())
+check("told the returns are off, their slots are left alone even without the lines' indices",
+      np.array_equal(drop_sources(eo, np.random.default_rng(5), 1.0, 0.0, more_lidar=(i, f), with_returns=False)[o:o + 2], eo[o:o + 2]))
 
 print(f"\nAll {passed} checks passed.")

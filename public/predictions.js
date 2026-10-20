@@ -11,7 +11,7 @@
  */
 
 import { latLngText, coordsLine } from '/lib/coords.js';
-import { withOverture, drawOverture, roofFromSprite, frameGrid } from '/lib/predictions-overture.js';
+import { withOverture, drawOverture } from '/lib/predictions-overture.js';
 
 const $ = (s) => document.querySelector(s);
 
@@ -403,7 +403,7 @@ function row(e, i) {
 let LAYER_DEFS = [];
 const LAYER_STORE = 'predictions-layers';
 let layerOn = {};
-/* Every Overture canvas on the page, with the function that draws it. */
+/* Every lines canvas on the page, with the function that draws it. */
 const redraws = [];
 const imageUrl = (key) => `/api/admin/prediction-image?key=${encodeURIComponent(key)}`;
 
@@ -418,8 +418,8 @@ function applyLayers() {
   }
   css.textContent = LAYER_DEFS.filter((l) => !layerOn[l.id])
     .map((l) => `.layer-${l.id} { display: none; }`).join('\n');
-  /* Overture's layers share one canvas per lawn: drawn again with the
-     switches as they are now; a canvas whose lawn is gone is dropped. */
+  /* The road and sidewalk lines share one canvas per lawn: drawn again with
+     the switches as they are now; a canvas whose lawn is gone is dropped. */
   for (let i = redraws.length - 1; i >= 0; i--) {
     if (!redraws[i].canvas.isConnected) { redraws.splice(i, 1); continue; }
     redraws[i].redraw(layerOn);
@@ -522,10 +522,10 @@ function layerStack(e, cls, eager = false, onCaption = null) {
   photo.draggable = false;
   wrap.append(photo);
   /*
-   * THE RUN'S LAYERS come as frames of one tall image; OVERTURE'S (owner,
-   * 2026-10-20, lib/predictions-overture.js) are drawn by the browser on a
-   * canvas each, over the lawn's photo frame, and need no run to have drawn
-   * them. The sprite's frames are counted without them.
+   * THE RUN'S LAYERS come as frames of one tall image; THE ROAD AND SIDEWALK
+   * LINES (owner, 2026-10-20, lib/predictions-overture.js) are drawn by the
+   * browser on a canvas over the lawn's photo frame, and need no run to have
+   * drawn them. The sprite's frames are counted without them.
    */
   const sprite = LAYER_DEFS.filter((l) => !l.client);
   const N = sprite.length;
@@ -533,7 +533,7 @@ function layerStack(e, cls, eager = false, onCaption = null) {
   let canvas = null;
   for (const l of LAYER_DEFS) {
     if (l.client) {
-      /* One canvas for all of Overture's layers, placed where the first of
+      /* One canvas for the road and sidewalk lines, placed where the first of
          them sits in the stack; the switches redraw it (see applyLayers). */
       if (canvas) continue;
       canvas = el('canvas', 'layer layer-ovt');
@@ -555,16 +555,12 @@ function layerStack(e, cls, eager = false, onCaption = null) {
     photo.src = imageUrl(e.photoKey);
     for (const d of layers) d.style.backgroundImage = `url("${imageUrl(e.layersKey)}")`;
     if (canvas && e.frame) {
-      /* The lidar roof the fit slides onto: the run's own roof frame. */
-      const roofAt = sprite.findIndex((l) => l.id === 'roof');
-      const g = frameGrid(e.frame);
-      const roof = roofAt >= 0 ? roofFromSprite(imageUrl(e.layersKey), roofAt, N, w, h, g.W, g.H) : Promise.resolve(null);
-      drawOverture(e, canvas, roof, layerOn).then(
+      drawOverture(e, canvas, layerOn).then(
         ({ caption, redraw }) => { redraws.push({ canvas, redraw }); if (onCaption) onCaption(caption); },
-        (err) => { console.warn('Overture could not be drawn here:', err); if (onCaption) onCaption('Overture\'s shapes could not be read for this lawn.'); },
+        (err) => { console.warn('The road and sidewalk lines could not be drawn here:', err); if (onCaption) onCaption('The road and sidewalk lines could not be read for this lawn.'); },
       );
     } else if (canvas && onCaption) {
-      onCaption('No photo frame on record for this lawn, so Overture\'s shapes cannot be placed on it.');
+      onCaption('No photo frame on record for this lawn, so the road and sidewalk lines cannot be placed on it.');
     }
   };
   if (eager || !seen) load();
@@ -847,8 +843,9 @@ function settingsLine(settings) {
   /* A run drawn with layers gets the switches; the raw mask is one of them,
      so the old all-or-nothing flip steps aside. */
   if (Array.isArray(data.layers) && data.layers.length && entries.some((e) => e.layersKey)) {
-    /* Overture's and OpenStreetMap's shapes over every lawn whose photo
-       frame the server knows (owner, 2026-10-20: to judge the fit by eye). */
+    /* OpenStreetMap's road and sidewalk centrelines over every lawn whose
+       photo frame the server knows (owner, 2026-10-20: judged by eye here;
+       what the decoder's paved-lines trial sees). */
     layerBar(entries.some((e) => e.frame) ? withOverture(data.layers) : data.layers);
     flip.hidden = true;
   }
