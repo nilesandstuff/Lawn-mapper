@@ -6598,7 +6598,10 @@ async function showOverture({ announce = false } = {}) {
      Overture is within about a metre (H101); a roof in the photo can still
      lean off its outline. */
   const data = overtureGeoJSON(ov);
-  if (announce) setStatus("Overture's outlines are where Overture puts them. Its shapes can miss part of a house, and a roof in the photo can lean a metre or two off its outline.");
+  /* H103/H104: Overture sits within about a metre of the lidar, the photos within about half a
+     metre of it where the ground can be matched. What a person sees as "off" is the roof: the
+     outline is the walls, and a roof in the photo overhangs them and leans off them by its height. */
+  if (announce) setStatus('Building outlines are the walls, where the grass stops. The roof in the photo overhangs them and can lean a metre or two off them. Sidewalks and roads are drawn at a typical width.');
   if (map.getSource('ovt')) { map.getSource('ovt').setData(data); return; }
   map.addSource('ovt', { type: 'geojson', data });
   const before = map.getLayer('parcel-fill') ? 'parcel-fill' : undefined;
@@ -6607,13 +6610,17 @@ async function showOverture({ announce = false } = {}) {
     layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#3d7bff', 'line-opacity': 0.35, 'line-width': width } }, before);
   map.addLayer({ id: 'ovt-walk', type: 'line', source: 'ovt', filter: ['==', ['get', 'kind'], 'walk'],
     layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#ff4fd8', 'line-opacity': 0.45, 'line-width': width } }, before);
+  /* The sidewalk's own line, thin, so it can be followed as a line and not only as a band
+     (owner, 2026-10-19: Overture's sidewalks looked right in the field). */
+  map.addLayer({ id: 'ovt-walk-line', type: 'line', source: 'ovt', filter: ['==', ['get', 'kind'], 'walk'],
+    layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#ff4fd8', 'line-opacity': 0.9, 'line-width': 1.5 } }, before);
   map.addLayer({ id: 'ovt-building', type: 'line', source: 'ovt', filter: ['==', ['get', 'kind'], 'building'],
     paint: { 'line-color': '#ffe600', 'line-width': 2, 'line-opacity': 0.9 } }, before);
 }
 
 function hideOverture() {
   ovtRun++;
-  for (const id of ['ovt-building', 'ovt-walk', 'ovt-road']) if (map.getLayer(id)) map.removeLayer(id);
+  for (const id of ['ovt-building', 'ovt-walk-line', 'ovt-walk', 'ovt-road']) if (map.getLayer(id)) map.removeLayer(id);
   if (map.getSource('ovt')) map.removeSource('ovt');
   state.overtureBox = null;
 }
