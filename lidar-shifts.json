@@ -1,0 +1,491 @@
+{
+ "unit": "ground metres, the move to give the lidar after the datum move",
+ "shifts": {
+  "-105.09292,40.01875:alpha:find": {
+   "east": 0.5,
+   "north": 0.75,
+   "peak": 1.6222485454035065,
+   "method": "ground"
+  },
+  "-105.13443,39.89326:manual:manual": {
+   "east": 0.25,
+   "north": 0,
+   "peak": 1.985468316145546,
+   "method": "ground"
+  },
+  "-111.93092,40.58577:alpha:find": {
+   "east": 3.25,
+   "north": -0.25,
+   "peak": 1.956349869477727,
+   "method": "ground"
+  },
+  "-70.99743,42.51353:alpha:find": {
+   "east": 0.25,
+   "north": 0.25,
+   "peak": 1.7761547655935308,
+   "method": "ground"
+  },
+  "-71.11028,42.49341:alpha:find": {
+   "east": -1,
+   "north": -2.25,
+   "peak": 1.4570690025815838,
+   "method": "ground"
+  },
+  "-71.12122,42.71011:alpha:find": {
+   "east": 0,
+   "north": 0.25,
+   "peak": 2.0920346589654377,
+   "method": "ground"
+  },
+  "-71.45962,42.28080:alpha:find": {
+   "east": 0,
+   "north": -0.5,
+   "peak": 2.059062671278811,
+   "method": "ground"
+  },
+  "-71.50260,41.64383:alpha:find": {
+   "east": 3.5,
+   "north": -3,
+   "peak": 1.4401421695866188,
+   "method": "ground"
+  },
+  "-72.17332,41.85107:sam3_exclude:exclude": {
+   "east": -0.25,
+   "north": -0.5,
+   "peak": 2.0119402265343487,
+   "method": "ground"
+  },
+  "-74.07922,40.37016:sam3:find": {
+   "east": 0.25,
+   "north": 0,
+   "peak": 1.4853928141693444,
+   "method": "ground"
+  },
+  "-74.90795,40.19277:alpha:find": {
+   "east": -0.25,
+   "north": 0,
+   "peak": 2.35080939855771,
+   "method": "ground"
+  },
+  "-75.12517,40.14428:alpha:find": {
+   "east": 2.25,
+   "north": -1,
+   "peak": 1.589062100984798,
+   "method": "ground"
+  },
+  "-75.17892,39.87284:alpha:find": {
+   "east": -0.25,
+   "north": -0.5,
+   "peak": 1.3744370918297983,
+   "method": "ground"
+  },
+  "-75.23157,39.73969:alpha:find": {
+   "east": -0.25,
+   "north": -0.5,
+   "peak": 1.629039682557757,
+   "method": "ground"
+  },
+  "-75.29166,39.75224:alpha:find": {
+   "east": 0,
+   "north": -0.25,
+   "peak": 1.8512177987191913,
+   "method": "ground"
+  },
+  "-75.52344,40.60945:alpha:find": {
+   "east": -0.25,
+   "north": 0,
+   "peak": 1.6066407778863483,
+   "method": "ground"
+  },
+  "-75.63050,39.47810:alpha:find": {
+   "east": 1.75,
+   "north": 0,
+   "peak": 1.8841428529677484,
+   "method": "ground"
+  },
+  "-76.88650,39.64553:manual:manual": {
+   "east": -0.5,
+   "north": 0.25,
+   "peak": 1.3501516038187704,
+   "method": "ground"
+  },
+  "-77.21901,34.66301:sam3:find": {
+   "east": -0.5,
+   "north": -0.5,
+   "peak": 1.7224160563615545,
+   "method": "ground"
+  },
+  "-77.40500,38.46195:sam3_exclude:exclude": {
+   "east": 0,
+   "north": -0.25,
+   "peak": 1.8342602882051489,
+   "method": "ground"
+  },
+  "-77.45907,38.72650:alpha:find": {
+   "east": 0.25,
+   "north": 0.5,
+   "peak": 1.6832918927214149,
+   "method": "ground"
+  },
+  "-77.48013,34.73608:sam3:find": {
+   "east": -0.75,
+   "north": -0.75,
+   "peak": 1.3944507279901974,
+   "method": "ground"
+  },
+  "-77.48222,34.73669:sam3:find": {
+   "east": 1.5,
+   "north": 0.25,
+   "peak": 1.5947507743777078,
+   "method": "ground"
+  },
+  "-77.60251,38.77674:sam3:find": {
+   "east": -1,
+   "north": -0.25,
+   "peak": 1.6400485358472225,
+   "method": "ground"
+  },
+  "-77.60953,38.77517:sam3:find": {
+   "east": 0,
+   "north": 0.25,
+   "peak": 2.2519013010960367,
+   "method": "ground"
+  },
+  "-77.61167,38.77826:sam3:find": {
+   "east": -0.25,
+   "north": 0,
+   "peak": 1.9338285570593068,
+   "method": "ground"
+  },
+  "-78.54605,33.87955:sam3:find": {
+   "east": -2.25,
+   "north": -1.25,
+   "peak": 1.7510300364695304,
+   "method": "ground"
+  },
+  "-79.98066,40.55172:alpha:find": {
+   "east": 0,
+   "north": 0.25,
+   "peak": 1.4891389959052048,
+   "method": "ground"
+  },
+  "-80.55371,34.99379:sam3:find": {
+   "east": -0.25,
+   "north": 0,
+   "peak": 1.5631550347459056,
+   "method": "ground"
+  },
+  "-81.62058,41.11245:sam3:find": {
+   "east": -0.25,
+   "north": 0,
+   "peak": 1.8961228700187536,
+   "method": "ground"
+  },
+  "-83.19566,40.04976:manual:manual": {
+   "east": 0.25,
+   "north": 0.25,
+   "peak": 2.150540744494969,
+   "method": "ground"
+  },
+  "-83.45285,42.40950:sam3:find": {
+   "east": -0.25,
+   "north": 0.25,
+   "peak": 2.746511364664506,
+   "method": "ground"
+  },
+  "-83.95454,34.08553:sam3:find": {
+   "east": -0.25,
+   "north": -0.25,
+   "peak": 1.426825058238804,
+   "method": "ground"
+  },
+  "-84.18219,42.67372:alpha:find": {
+   "east": 2,
+   "north": -2.5,
+   "peak": 1.663125362617012,
+   "method": "ground"
+  },
+  "-84.34646,33.86764:manual:manual": {
+   "east": 0,
+   "north": 0,
+   "peak": 2.1284723891039197,
+   "method": "ground"
+  },
+  "-84.53477,38.97799:manual:manual": {
+   "east": 0.25,
+   "north": 0,
+   "peak": 1.5802909884072553,
+   "method": "ground"
+  },
+  "-84.53700,38.97534:sam3:find": {
+   "east": 0,
+   "north": 0,
+   "peak": 1.678286060370243,
+   "method": "ground"
+  },
+  "-85.22596,41.09165:sam3:find": {
+   "east": -0.25,
+   "north": 0.25,
+   "peak": 1.513900992843057,
+   "method": "ground"
+  },
+  "-85.57742,43.09564:sam3_exclude:exclude": {
+   "east": 0.25,
+   "north": -0.25,
+   "peak": 1.9385761720537638,
+   "method": "ground"
+  },
+  "-85.58069,43.05429:sam3:find": {
+   "east": -0.25,
+   "north": -0.25,
+   "peak": 1.5175221710011377,
+   "method": "ground"
+  },
+  "-85.58216,43.08465:sam3:find": {
+   "east": 0.25,
+   "north": 0,
+   "peak": 2.064871426398369,
+   "method": "ground"
+  },
+  "-85.61014,43.03520:sam3_exclude:exclude": {
+   "east": 0.25,
+   "north": 0.25,
+   "peak": 1.775099154972248,
+   "method": "ground"
+  },
+  "-85.64033,43.07105:sam3:find": {
+   "east": 0.75,
+   "north": 0.25,
+   "peak": 1.6041327296029504,
+   "method": "ground"
+  },
+  "-85.64651,42.81639:sam3:find": {
+   "east": 0.25,
+   "north": 0.25,
+   "peak": 1.5642829786201462,
+   "method": "ground"
+  },
+  "-85.67425,42.80681:sam3:find": {
+   "east": 0,
+   "north": 0.25,
+   "peak": 1.7211057196906954,
+   "method": "ground"
+  },
+  "-85.67808,38.04124:sam3:find": {
+   "east": 0,
+   "north": 0.5,
+   "peak": 1.8150607291372474,
+   "method": "ground"
+  },
+  "-85.67816,38.04042:sam3:find": {
+   "east": -0.25,
+   "north": 0.75,
+   "peak": 1.9724041496388267,
+   "method": "ground"
+  },
+  "-85.67913,38.04131:sam3:find": {
+   "east": -0.25,
+   "north": 0.5,
+   "peak": 1.8674387105130106,
+   "method": "ground"
+  },
+  "-85.72400,42.87286:sam3:find": {
+   "east": 0.25,
+   "north": 0.5,
+   "peak": 1.7388703873378393,
+   "method": "ground"
+  },
+  "-85.74709,42.87412:sam3:find": {
+   "east": 0.25,
+   "north": 0,
+   "peak": 2.292871982250116,
+   "method": "ground"
+  },
+  "-85.81809,43.02488:sam3:find": {
+   "east": 0.75,
+   "north": 0.25,
+   "peak": 1.7313700939415617,
+   "method": "ground"
+  },
+  "-85.95191,42.78183:sam3:find": {
+   "east": 0.75,
+   "north": 0,
+   "peak": 2.170887382119711,
+   "method": "ground"
+  },
+  "-86.18935,39.60427:alpha:find": {
+   "east": -0.25,
+   "north": 0,
+   "peak": 1.8171103778842834,
+   "method": "ground"
+  },
+  "-86.43590,35.78178:alpha:find": {
+   "east": 0.25,
+   "north": 0,
+   "peak": 1.884220313010069,
+   "method": "ground"
+  },
+  "-87.15828,34.54738:manual:manual": {
+   "east": 0,
+   "north": -0.5,
+   "peak": 1.419476026323219,
+   "method": "ground"
+  },
+  "-87.16333,34.55359:manual:manual": {
+   "east": 1,
+   "north": -0.5,
+   "peak": 1.503410524354624,
+   "method": "ground"
+  },
+  "-87.16411,34.55438:manual:manual": {
+   "east": 0.5,
+   "north": -0.75,
+   "peak": 1.486451701825432,
+   "method": "ground"
+  },
+  "-87.51020,38.08274:alpha:find": {
+   "east": 0,
+   "north": 0.25,
+   "peak": 1.626023503659733,
+   "method": "ground"
+  },
+  "-87.95621,42.86220:alpha:find": {
+   "east": -0.5,
+   "north": 0,
+   "peak": 1.789605220319156,
+   "method": "ground"
+  },
+  "-88.05249,42.18937:alpha:find": {
+   "east": -0.25,
+   "north": 0,
+   "peak": 1.7970256426884363,
+   "method": "ground"
+  },
+  "-89.69384,38.60645:alpha:find": {
+   "east": -1.75,
+   "north": -0.5,
+   "peak": 2.1345802483374836,
+   "method": "ground"
+  },
+  "-90.09404,29.68568:manual:manual": {
+   "east": 1,
+   "north": -1,
+   "peak": 1.7317304775877023,
+   "method": "ground"
+  },
+  "-90.09679,29.68626:manual:manual": {
+   "east": 0.5,
+   "north": -0.75,
+   "peak": 1.6513187866898398,
+   "method": "ground"
+  },
+  "-90.09720,29.68990:manual:manual": {
+   "east": 0.25,
+   "north": -1.25,
+   "peak": 1.5521071866466878,
+   "method": "ground"
+  },
+  "-91.28631,42.44254:manual:manual": {
+   "east": 0,
+   "north": 1.25,
+   "peak": 1.4030228486313396,
+   "method": "ground"
+  },
+  "-92.81531,41.03537:alpha:find": {
+   "east": 0.5,
+   "north": 0.75,
+   "peak": 2.390472174965217,
+   "method": "ground"
+  },
+  "-93.29754,42.53715:manual:manual": {
+   "east": -1,
+   "north": -1.5,
+   "peak": 1.550636082262916,
+   "method": "ground"
+  },
+  "-93.29807,42.53696:sam3:find": {
+   "east": -1,
+   "north": -1,
+   "peak": 1.3905707691831286,
+   "method": "ground"
+  },
+  "-94.16953,36.34423:alpha:find": {
+   "east": -0.75,
+   "north": 0.25,
+   "peak": 1.4500719085581149,
+   "method": "ground"
+  },
+  "-96.03718,41.12233:alpha:find": {
+   "east": 0,
+   "north": 0,
+   "peak": 1.7887412051086673,
+   "method": "ground"
+  },
+  "-96.10307,41.15881:manual:manual": {
+   "east": 0,
+   "north": -0.5,
+   "peak": 1.560818198992436,
+   "method": "ground"
+  },
+  "-96.31024,30.59139:sam3:find": {
+   "east": 0.5,
+   "north": 0.5,
+   "peak": 2.128504909380668,
+   "method": "ground"
+  },
+  "-96.61237,40.71458:manual:manual": {
+   "east": 0.25,
+   "north": -1,
+   "peak": 1.6186094941130262,
+   "method": "ground"
+  },
+  "-96.87726,46.80986:sam3:find": {
+   "east": 0,
+   "north": -0.25,
+   "peak": 2.541775141147656,
+   "method": "ground"
+  },
+  "-96.87732,46.81159:manual:manual": {
+   "east": 0,
+   "north": 0.25,
+   "peak": 2.2022458519835353,
+   "method": "ground"
+  },
+  "-96.88012,46.81036:manual:manual": {
+   "east": -0.25,
+   "north": 0,
+   "peak": 2.084376614211798,
+   "method": "ground"
+  },
+  "-96.88309,46.81273:sam3:find": {
+   "east": 0,
+   "north": -0.25,
+   "peak": 2.057945774785162,
+   "method": "ground"
+  },
+  "-96.88449,46.81280:manual:manual": {
+   "east": 0,
+   "north": 0,
+   "peak": 2.727321474884167,
+   "method": "ground"
+  },
+  "-96.88525,46.81320:manual:manual": {
+   "east": 0.25,
+   "north": -0.25,
+   "peak": 2.114034105262109,
+   "method": "ground"
+  },
+  "-96.88854,46.81110:sam3:find": {
+   "east": 0.25,
+   "north": 0,
+   "peak": 1.7410110817929143,
+   "method": "ground"
+  },
+  "-97.60852,35.63305:alpha:find": {
+   "east": 0,
+   "north": 0,
+   "peak": 1.6336100453890183,
+   "method": "ground"
+  }
+ }
+}
