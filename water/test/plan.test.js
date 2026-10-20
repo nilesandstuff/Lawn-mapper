@@ -16,7 +16,7 @@ import { analyse } from '../lib/lowspots.js';
 import { cloud, LAT } from '../lib/synthetic.js';
 import { fromMerc, toMerc, mercScale } from '../lib/ept.js';
 import { terrain, hillside } from '../lib/upslope.js';
-import { tileId, decodeMvt, overtureMasks } from '../lib/overture.js';
+import { tileId, decodeMvt, overtureMasks, alignBuildings } from '../lib/overture.js';
 import { gridFor } from '../lib/surface.js';
 import { runOnSources } from '../lib/impervious.js';
 
@@ -268,6 +268,24 @@ test('run-on: each patch counted once where it first reaches the lawn, the lot a
   assert.deepEqual(o.beyond, { roof: 0, paved: 0, ground: 2 });
   assert.deepEqual(o.lot, { roof: 1, paved: 2, ground: 1 });
   assert.ok(Math.abs(o.weightedM2 - (0.3 * 3 + 0.85 * 2 + 0.9)) < 1e-6, `weighted ${o.weightedM2}`);
+});
+
+test("Overture's buildings moved onto the lidar's roofs: a 1.25 m east, 0.75 m north offset is found and undone", () => {
+  const g = { W: 40, H: 40, cell: 1 };
+  // the lidar's roof: a 12 x 8 m house, cells 10-21 across, 14-21 down
+  const roof = new Uint8Array(g.W * g.H);
+  for (let r = 14; r < 22; r++) for (let c = 10; c < 22; c++) roof[r * g.W + c] = 1;
+  // Overture's outline of it, 1.25 m east and 0.75 m north of where it is (rows grow southward)
+  const ring = [[11.25, 13.25], [23.25, 13.25], [23.25, 21.25], [11.25, 21.25], [11.25, 13.25]];
+  const masks = { building: new Uint8Array(g.W * g.H), outlines: [ring] };
+  const a = alignBuildings(g, masks, roof);
+  assert.ok(a.applied, 'the fit is used');
+  assert.equal(a.dxM, -1.25); assert.equal(a.dyM, 0.75);
+  assert.ok(a.iou > 0.99 && a.iou0 < 0.8, `overlap ${a.iou0.toFixed(2)} -> ${a.iou.toFixed(2)}`);
+  let same = 0; for (let i = 0; i < roof.length; i++) same += a.building[i] === roof[i] ? 1 : 0;
+  assert.equal(same, roof.length);
+  // no lidar roof to fit to: left as published
+  assert.equal(alignBuildings(g, masks, new Uint8Array(g.W * g.H)).applied, false);
 });
 
 let failed = 0;

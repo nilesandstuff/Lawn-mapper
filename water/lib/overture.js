@@ -267,17 +267,78 @@ export function overtureMasks(g, ov) {
       }
     }
   }
+  const outlines = [];
   for (const poly of ov.buildings) {
     const rings = poly.map((ring) => ring.map((p) => { const [x, y] = toMerc(p); return g.toCell(x, y); }));
     if (!rings.length || rings[0].length < 3) continue;
-    const xs = rings[0].map((p) => p[0]), ys = rings[0].map((p) => p[1]);
-    for (let rr = Math.max(0, Math.floor(Math.min(...ys))); rr <= Math.min(g.H - 1, Math.ceil(Math.max(...ys))); rr++) {
-      for (let cc = Math.max(0, Math.floor(Math.min(...xs))); cc <= Math.min(g.W - 1, Math.ceil(Math.max(...xs))); cc++) {
-        if (inRing(rings[0], cc + 0.5, rr + 0.5)) building[rr * g.W + cc] = 1;
+    outlines.push(rings[0]);
+  }
+  fillOutlines(building, g.W, g.H, outlines, 0, 0, 1);
+  return { paved, building, outlines };
+}
+
+/** Outlines (rings in grid cells) filled into a W x H raster at `scale` cells per grid cell, moved (dx, dy) grid cells. */
+function fillOutlines(out, W, H, outlines, dx, dy, scale) {
+  for (const ring0 of outlines) {
+    const ring = ring0.map(([x, y]) => [(x + dx) * scale, (y + dy) * scale]);
+    const xs = ring.map((p) => p[0]), ys = ring.map((p) => p[1]);
+    for (let rr = Math.max(0, Math.floor(Math.min(...ys))); rr <= Math.min(H - 1, Math.ceil(Math.max(...ys))); rr++) {
+      for (let cc = Math.max(0, Math.floor(Math.min(...xs))); cc <= Math.min(W - 1, Math.ceil(Math.max(...xs))); cc++) {
+        if (inRing(ring, cc + 0.5, rr + 0.5)) out[rr * W + cc] = 1;
       }
     }
   }
-  return { paved, building };
+  return out;
+}
+
+/* OVERTURE'S BUILDINGS SIT OFF THE ROOFS (the core session's H101 in docs/DETECTOR-FINDINGS.md, 2026-10-20:
+   on 104 lots a median 0.87 m from the lidar's roofs, over 2 m on 9, one shift per lot in a direction that
+   changes lot by lot -- Microsoft's outlines carry their imagery's offset; the owner saw it in the field).
+   The same cure as the core's tools/overture-frames.js fitToRoof, at a quarter cell rather than whole
+   cells (the error is under a cell): the one shift, within ALIGN_REACH_M, that best overlaps the lidar's
+   own roofs, used only when it is a fit -- an overlap of ALIGN_MIN_IOU and clearly better than as
+   published. Roads and sidewalks are OpenStreetMap's and do not share the shift; they are left alone. */
+export const ALIGN_MIN_IOU = 0.3, ALIGN_MIN_GAIN = 0.02, ALIGN_REACH_M = 4, ALIGN_STEP = 4, ALIGN_MIN_ROOF_M2 = 50;
+
+/**
+ * masks: overtureMasks' answer; roof: the lidar's roof mask on the same grid.
+ * -> { building (moved, or as published), dxM, dyM (east, south, metres), iou0, iou, applied }
+ */
+export function alignBuildings(g, masks, roof) {
+  const { W, H } = g, S = ALIGN_STEP, FW = W * S, FH = H * S;
+  let roofN = 0;
+  for (let i = 0; i < W * H; i++) if (roof[i]) roofN++;
+  const asIs = { building: masks.building, dxM: 0, dyM: 0, iou0: null, iou: null, applied: false };
+  if (!masks.outlines?.length || roofN * g.cell * g.cell < ALIGN_MIN_ROOF_M2) return asIs;
+  const fine = fillOutlines(new Uint8Array(FW * FH), FW, FH, masks.outlines, 0, 0, S);
+  const cells = [];
+  for (let i = 0; i < FW * FH; i++) if (fine[i]) cells.push(i);
+  if (!cells.length) return asIs;
+  const bN = cells.length / (S * S);
+  const iou = (sx, sy) => {
+    let inter = 0;
+    for (const i of cells) {
+      const r = Math.floor((Math.floor(i / FW) + sy) / S), c = Math.floor(((i % FW) + sx) / S);
+      if (r >= 0 && c >= 0 && r < H && c < W && roof[r * W + c]) inter++;
+    }
+    inter /= S * S;
+    return inter / (bN + roofN - inter);
+  };
+  const reach = Math.round((ALIGN_REACH_M / g.cell) * S);
+  const better = (v, sx, sy, b) => v > b.iou + 1e-9 || (Math.abs(v - b.iou) <= 1e-9 && Math.hypot(sx, sy) < Math.hypot(b.sx, b.sy));
+  const iou0 = iou(0, 0);
+  let best = { sx: 0, sy: 0, iou: iou0 };
+  // whole cells first, then quarter cells round the best
+  for (let sy = -reach; sy <= reach; sy += S) for (let sx = -reach; sx <= reach; sx += S) { const v = iou(sx, sy); if (better(v, sx, sy, best)) best = { sx, sy, iou: v }; }
+  const c0 = best;
+  for (let sy = c0.sy - S; sy <= c0.sy + S; sy++) for (let sx = c0.sx - S; sx <= c0.sx + S; sx++) {
+    if (Math.abs(sx) > reach || Math.abs(sy) > reach) continue;
+    const v = iou(sx, sy); if (better(v, sx, sy, best)) best = { sx, sy, iou: v };
+  }
+  const dx = best.sx / S, dy = best.sy / S;
+  const fits = best.iou >= ALIGN_MIN_IOU && best.iou >= iou0 + ALIGN_MIN_GAIN;
+  if (!fits) return { ...asIs, iou0, iou: best.iou };
+  return { building: fillOutlines(new Uint8Array(W * H), W, H, masks.outlines, dx, dy, 1), dxM: dx * g.cell, dyM: dy * g.cell, iou0, iou: best.iou, applied: true };
 }
 
 function inRing(ring, x, y) {

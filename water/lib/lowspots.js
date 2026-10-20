@@ -17,6 +17,7 @@ import { nad83Correction } from './datum.js';
 import { rng, gauss } from './synthetic.js';
 import { sortSpots } from './kinds.js';
 import { shadeRoofs } from './roofs.js';
+import { alignBuildings } from './overture.js';
 
 /**
  * HOW DEEP A SPOT PURE NOISE DIGS, ON THIS FLIGHT (the noise floor).
@@ -112,8 +113,13 @@ export function analyse(cols0, bbox, lat, { epoch = null, shift: givenShift = nu
      on the 23 Chesapeake squares its buildings alone found 89% of roof cells at 89% precision, against the
      lidar finders' 91% at 77% (FINDINGS H20). ROOF_RULE: its buildings, plus any roof both lidar finders
      agree on (a shed, or a house newer than the map data). */
+  let aligned = null;
   if (overture?.building && overture.building.length === g.W * g.H) {
-    wall = Uint8Array.from(overture.building, (b, i) => (b || (ownRoofs[i] && (!shadeRoof || shadeRoof[i])) ? 1 : 0));
+    // Overture's outlines moved onto the lidar's roofs first (lib/overture.js alignBuildings; H101)
+    const both = Uint8Array.from(ownRoofs, (v, i) => (v && (!shadeRoof || shadeRoof[i]) ? 1 : 0));
+    aligned = alignBuildings(g, overture, both);
+    overture = { ...overture, building: aligned.building };
+    wall = Uint8Array.from(overture.building, (b, i) => (b || both[i] ? 1 : 0));
   }
   // the photo's green vetoes what only the lidar called roof (Overture's buildings stand)
   let groundGreen = null;
@@ -183,6 +189,7 @@ export function analyse(cols0, bbox, lat, { epoch = null, shift: givenShift = nu
       noiseRuns: nf.runs,
       buildingCells: wall.reduce((s, v) => s + v, 0),
       buildingsFromClass6: fromClass6,
+      overtureShift: aligned ? { applied: aligned.applied, eastM: aligned.dxM, southM: aligned.dyM, iou0: aligned.iou0, iou: aligned.iou } : null,
       spotsFound: spots.spots.length,
       spotsReported: spots.spots.filter((s) => s.reported).length,
       hollows: spots.spots.filter((s) => s.reported && s.kind === 'hollow').length,
