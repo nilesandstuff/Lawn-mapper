@@ -43,6 +43,7 @@ import { join } from 'node:path';
 import { frameOfBox, cloudFor } from './lidar-photo.js';
 import { nad83Correction } from '../public/shade/datum.js';
 import { gridOver, rasterise, fillGaps } from '../public/shade/grid.js';
+import { dilate } from '../public/shade/align.js';
 import { greyGrid, gradients, edgeFit, PEAK_MIN } from '../public/lib/photo-fit.js';
 import { pointsIn } from '../water/lib/ept.js';
 import { nodeIo } from '../water/lib/node-io.js';
@@ -54,6 +55,13 @@ export const ROOF_CELL_M = 1, TRAIN_CELL_M = 2, ROOF_MIN_M = 2.5, ROOF_SPREAD_M 
 export const HEIGHT_CELL_M = 0.5, DROP_MIN_M = 2;
 /* The photo's edges on a quarter-metre grid; the search reaches 4 m each way. */
 export const FIT_CELL_M = 0.25, REACH_M = 4;
+/* The GROUND fit (owner, 2026-10-20: "above all else, lidar needs to line up with the ground"):
+   the lidar's ground brightness (iLow, the returns within 0.3 m of each cell's lowest) where the
+   surface is under GROUND_MAX_M and at least GROUND_MARGIN_M from anything taller, its strongest
+   brightness edges (the top GROUND_EDGE_SHARE of ground cells by gradient: a drive's edge, a kerb,
+   a path) slid onto the photo's edges within GROUND_REACH_M. Roofs and crowns lean; the ground
+   does not. */
+export const GROUND_MAX_M = 0.5, GROUND_MARGIN_M = 1.5, GROUND_EDGE_SHARE = 0.12, GROUND_REACH_M = 3;
 export const MIN_EDGE_CELLS = 24; // a garage-sized roof has 24 edge metres
 
 const median = (xs) => { const s = xs.filter(Number.isFinite).sort((a, b) => a - b); return s.length ? (s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2) : NaN; };
@@ -154,6 +162,65 @@ export function lawnUnderRoof(mask, g, labels) {
 }
 
 /**
+ * The lidar's ground brightness per cell of `g`, filled and lightly smoothed (3 x 3), NaN where no
+ * low return came back within reach; and the ground mask: cells under GROUND_MAX_M of height and
+ * at least `marginCells` from any cell GROUND_MAX_M or taller. Pure.
+ */
+export function groundSurface(r, h, g, marginCells) {
+  const raw = fillGaps(r.iLow, g.w, g.h, 2);
+  const b = new Float32Array(g.w * g.h).fill(NaN);
+  for (let y = 0; y < g.h; y++) for (let x = 0; x < g.w; x++) {
+    let t = 0, n = 0;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const yy = y + dy, xx = x + dx;
+      if (yy < 0 || xx < 0 || yy >= g.h || xx >= g.w) continue;
+      const v = raw[yy * g.w + xx];
+      if (!Number.isNaN(v)) { t += v; n++; }
+    }
+    if (n) b[y * g.w + x] = t / n;
+  }
+  const tall = new Uint8Array(g.w * g.h);
+  for (let i = 0; i < tall.length; i++) tall[i] = h[i] >= GROUND_MAX_M ? 1 : 0;
+  const near = dilate(tall, g.w, g.h, marginCells);
+  const ground = new Uint8Array(g.w * g.h);
+  for (let i = 0; i < ground.length; i++) ground[i] = !near[i] && !Number.isNaN(h[i]) && !Number.isNaN(b[i]) ? 1 : 0;
+  return { bright: b, ground };
+}
+
+/**
+ * The ground's brightness edges as fit-grid points with their direction: the ground cells whose
+ * brightness gradient is in the top `share` of all ground cells. Pure.
+ */
+export function groundPoints(bright, ground, w, hgt, scale, share = GROUND_EDGE_SHARE) {
+  const cand = [];
+  for (let y = 1; y < hgt - 1; y++) for (let x = 1; x < w - 1; x++) {
+    const i = y * w + x;
+    if (!ground[i] || !ground[i - 1] || !ground[i + 1] || !ground[i - w] || !ground[i + w]) continue;
+    const gx = bright[i + 1] - bright[i - 1], gy = bright[i + w] - bright[i - w];
+    const L = Math.hypot(gx, gy);
+    if (!(L > 0)) continue;
+    cand.push([L, (x + 0.5) * scale, (y + 0.5) * scale, gx / L, gy / L]);
+  }
+  if (!cand.length) return [];
+  cand.sort((a, b) => b[0] - a[0]);
+  return cand.slice(0, Math.max(1, Math.round(cand.length * share))).map(([, x, y, nx, ny]) => [x, y, nx, ny]);
+}
+
+/**
+ * The shift that puts the lidar's GROUND edges on the photo's: { east, north } in ground metres,
+ * edgeFit's peak, the point count, and `confident`. Null with too few ground edges. Pure.
+ */
+export function fitGround(bright, ground, g, grey, Wg, Hg) {
+  const scale = g.cellM / FIT_CELL_M;
+  const pts = groundPoints(bright, ground, g.w, g.h, scale);
+  if (pts.length < MIN_EDGE_CELLS * 2) return null;
+  const { gx, gy } = gradients(grey, Wg, Hg);
+  const f = edgeFit(pts, gx, gy, Wg, Hg, Math.round(GROUND_REACH_M / FIT_CELL_M));
+  if (!f) return null;
+  return { east: f.dx * FIT_CELL_M, north: -f.dy * FIT_CELL_M, peak: f.peak, score: f.s, at0: f.at0, edges: pts.length, confident: f.peak >= PEAK_MIN };
+}
+
+/**
  * The shift that puts the lidar's height drops (eaves, crown edges) on the photo's edges: { east,
  * north } in ground metres (the move to add to the lidar), with edgeFit's peak and the edge count.
  * Null with too few edges. `grey` is the photo on the fit grid (Wg x Hg), `h` the height surface on
@@ -238,6 +305,14 @@ async function main() {
       const grey = greyGrid(photo.data, photo.width, photo.height, fg.w, fg.h);
       const fit = fitRoof(hToday, hg, grey, fg.w, fg.h, k);
       const fitRaw = fitRoof(heightSurface(rasterise(cols, hg), hg), hg, grey, fg.w, fg.h, k);
+      /* THE GROUND (owner, 2026-10-20): the lidar's ground brightness edges against the photo's,
+         roofs and crowns and a margin for their lean kept out. This is the number that moves the
+         lidar; the roof fit less it is the roof's lean in the picture. */
+      const rToday = rasterise(cols, hg, { shift: pre });
+      const gs = groundSurface(rToday, hToday, hg, Math.round(GROUND_MARGIN_M / HEIGHT_CELL_M));
+      const gfit = fitGround(gs.bright, gs.ground, hg, grey, fg.w, fg.h);
+      let groundCells = 0; for (let i = 0; i < gs.ground.length; i++) groundCells += gs.ground[i];
+      const lean = fit?.confident && gfit?.confident ? { east: fit.east - gfit.east, north: fit.north - gfit.north } : null;
       const tallOf = (h) => { const m = new Uint8Array(h.length); for (let i = 0; i < m.length; i++) m[i] = h[i] >= ROOF_MIN_M ? 1 : 0; return m; };
       const tallToday = tallOf(hToday);
       const hMoved = fit ? heightSurface(rasterise(cols, hg, { shift: [pre[0] + fit.east / k, pre[1] + fit.north / k] }), hg) : null;
@@ -252,6 +327,10 @@ async function main() {
         east: fit?.east ?? NaN, north: fit?.north ?? NaN, shiftM: fit ? Math.hypot(fit.east, fit.north) : NaN,
         peak: fit?.peak ?? NaN, score: fit?.score ?? NaN, at0: fit?.at0 ?? NaN, edges: fit?.edges ?? 0, confident: !!fit?.confident,
         rawEast: fitRaw?.east ?? NaN, rawNorth: fitRaw?.north ?? NaN, rawScore: fitRaw?.score ?? NaN, rawAt0: fitRaw?.at0 ?? NaN,
+        groundEast: gfit?.east ?? NaN, groundNorth: gfit?.north ?? NaN, groundM: gfit ? Math.hypot(gfit.east, gfit.north) : NaN,
+        groundPeak: gfit?.peak ?? NaN, groundScore: gfit?.score ?? NaN, groundAt0: gfit?.at0 ?? NaN, groundEdges: gfit?.edges ?? 0, groundConfident: !!gfit?.confident,
+        groundShareOfFrame: groundCells / gs.ground.length,
+        leanEast: lean?.east ?? NaN, leanNorth: lean?.north ?? NaN, leanM: lean ? Math.hypot(lean.east, lean.north) : NaN,
         lawnUnderRoof2m: labels ? lawnUnderRoof(roof2, g2, labels) : NaN,
         lawnUnderRoof1m: labels ? lawnUnderRoof(roof1, g1, labels) : NaN,
         lawnUnderTallToday: labels ? lawnUnderRoof(tallToday, hg, labels) : NaN,
@@ -263,17 +342,43 @@ async function main() {
         const safe = `${tag}-${id.slice(0, 18)}`.replace(/[^\w.-]+/g, '_');
         picture(PNG, photo, box, labels, [{ mask: roof2, g: g2, rgb: [255, 120, 0] }, { mask: tallToday, g: hg, rgb: [255, 230, 0] }, ...(hMoved ? [{ mask: tallOf(hMoved), g: hg, rgb: [0, 230, 230] }] : [])], join(dirs.out, 'pictures', `${safe}.png`));
       }
-      console.log(`  ${String(rows.length).padStart(3)} ${tag.padEnd(6)} ${(sources[id] || '?').padEnd(7)} roof ${String(roofCells).padStart(4)} m²  ${fit ? `moved ${num(row.shiftM)} m (E ${num(fit.east)}, N ${num(fit.north)}) peak ${num(fit.peak)} at0 ${num(fit.at0)} ${fit.confident ? 'MEASURED' : 'unsure  '}` : 'no edge to fit                       '}  no-datum fit ${fitRaw ? `${num(Math.hypot(fitRaw.east, fitRaw.north))} m, score ${num(fitRaw.score)} vs ${num(fit?.score)}` : '-'}  lawn under roof: 2 m ${pct(row.lawnUnderRoof2m)} 1 m ${pct(row.lawnUnderRoof1m)} tall ${pct(row.lawnUnderTallToday)} -> ${pct(row.lawnUnderTallMoved)}  ${row.seconds.toFixed(0)}s  ${cloud.name || ''}`);
+      console.log(`  ${String(rows.length).padStart(3)} ${tag.padEnd(6)} ${(sources[id] || '?').padEnd(7)} GROUND ${gfit ? `${num(row.groundM)} m (E ${num(gfit.east)}, N ${num(gfit.north)}) peak ${num(gfit.peak)} ${gfit.confident ? 'MEASURED' : 'unsure  '}` : 'no ground edge to fit             '} (${pct(row.groundShareOfFrame)} of the frame open)  roof ${fit ? `${num(row.shiftM)} m (E ${num(fit.east)}, N ${num(fit.north)}) peak ${num(fit.peak)} ${fit.confident ? 'MEASURED' : 'unsure  '}` : 'no edge to fit                  '}  lean ${lean ? `${num(row.leanM)} m (E ${num(lean.east)}, N ${num(lean.north)})` : '  -  '}  lawn under roof 2 m ${pct(row.lawnUnderRoof2m)}  ${row.seconds.toFixed(0)}s  ${cloud.name || ''}`);
     } catch (err) {
       skipped[id] = String(err?.message || err).slice(0, 100);
       console.log(`  --- ${tag.padEnd(6)} failed: ${skipped[id]}`);
     }
   }
-  writeFileSync(join(dirs.out, 'lidar-roof-fit.json'), JSON.stringify({ roofCellM: ROOF_CELL_M, fitCellM: FIT_CELL_M, reachM: REACH_M, rows, skipped }, null, 1));
+  writeFileSync(join(dirs.out, 'lidar-roof-fit.json'), JSON.stringify({ roofCellM: ROOF_CELL_M, fitCellM: FIT_CELL_M, reachM: REACH_M, groundReachM: GROUND_REACH_M, rows, skipped }, null, 1));
+  /* THE GROUND SHIFTS, for the training (lidar_frame.py adds them to the datum move): the move
+     for the lidar in ground metres, only where the ground fit is clear. */
+  const shifts = Object.fromEntries(rows.filter((r) => r.groundConfident).map((r) => [r.id, { east: r.groundEast, north: r.groundNorth, peak: r.groundPeak, method: 'ground' }]));
+  writeFileSync(join(dirs.out, 'lidar-shifts.json'), JSON.stringify({ unit: 'ground metres, the move to give the lidar after the datum move', shifts }, null, 1));
 
+  const gsure = rows.filter((r) => r.groundConfident);
+  console.log(`\n${rows.length} lots read, ${Object.keys(skipped).length} skipped.`);
+  console.log(`THE LIDAR'S GROUND AGAINST THE PHOTO'S (the number that matters): a ground fit on ${rows.filter((r) => Number.isFinite(r.groundM)).length}, MEASURED (peak ${PEAK_MIN}+) on ${gsure.length}.`);
+  if (gsure.length) {
+    const gm = gsure.map((r) => r.groundM);
+    console.log(`  measured lots: median ${num(median(gm))} m off after the datum move (E ${num(median(gsure.map((r) => r.groundEast)))}, N ${num(median(gsure.map((r) => r.groundNorth)))}); within 0.5 m on ${gm.filter((v) => v <= 0.5).length}, over 1 m on ${gm.filter((v) => v > 1).length}, over 2 m on ${gm.filter((v) => v > 2).length} of ${gsure.length}.`);
+    for (const src of ['mapbox', 'county']) {
+      const s2 = gsure.filter((r) => (r.source || '').toLowerCase().includes(src));
+      if (s2.length) console.log(`  ${src.padEnd(7)} photos: ${s2.length} measured, median ${num(median(s2.map((r) => r.groundM)))} m (E ${num(median(s2.map((r) => r.groundEast)))}, N ${num(median(s2.map((r) => r.groundNorth)))})`);
+    }
+    const far = gsure.filter((r) => r.groundM > 0.75).sort((a, b) => b.groundM - a.groundM);
+    if (far.length) console.log(`  ground over 0.75 m: ${far.map((r) => `${r.tag} ${num(r.groundM)} m (E ${num(r.groundEast)}, N ${num(r.groundNorth)}, peak ${num(r.groundPeak)})`).join('; ')}`);
+    const leans = rows.filter((r) => Number.isFinite(r.leanM));
+    if (leans.length) {
+      console.log(`  LEAN (roof fit less ground fit, both measured, ${leans.length} lots): median ${num(median(leans.map((r) => r.leanM)))} m; over 1 m on ${leans.filter((r) => r.leanM > 1).length}, over 2 m on ${leans.filter((r) => r.leanM > 2).length}.`);
+      const byCloudL = new Map();
+      for (const r of leans) { const c = r.cloud || '?'; if (!byCloudL.has(c)) byCloudL.set(c, []); byCloudL.get(c).push(r); }
+      for (const [c, rs] of [...byCloudL.entries()].sort((a, b) => b[1].length - a[1].length)) if (rs.length >= 2) console.log(`    ${c.slice(0, 40).padEnd(40)} ${rs.length} lots: lean E ${num(median(rs.map((r) => r.leanEast)))} N ${num(median(rs.map((r) => r.leanNorth)))}, ground E ${num(median(rs.map((r) => r.groundEast)))} N ${num(median(rs.map((r) => r.groundNorth)))}`);
+    }
+  }
+  const gunsure = rows.filter((r) => !r.groundConfident);
+  if (gunsure.length) console.log(`  ground unsure (${gunsure.length}): ${gunsure.map((r) => `${r.tag} (peak ${num(r.groundPeak)}, ${r.groundEdges} edges, ${pct(r.groundShareOfFrame)} open)`).join(', ')}`);
   const sure = rows.filter((r) => r.confident);
   const sh = sure.map((r) => r.shiftM);
-  console.log(`\n${rows.length} lots read, ${Object.keys(skipped).length} skipped; a roof fit on ${rows.filter((r) => Number.isFinite(r.shiftM)).length}, MEASURED (peak ${PEAK_MIN}+) on ${sure.length}.`);
+  console.log(`\nTHE ROOFS: a roof fit on ${rows.filter((r) => Number.isFinite(r.shiftM)).length}, MEASURED (peak ${PEAK_MIN}+) on ${sure.length}. These are where the roof is IN THE PICTURE (lean included), not a ground number.`);
   if (sure.length) {
     console.log(`THE LIDAR'S ROOFS AGAINST THE PHOTO'S, the measured lots: median ${num(median(sh))} m off (E ${num(median(sure.map((r) => r.east)))}, N ${num(median(sure.map((r) => r.north)))}); over 0.5 m on ${sh.filter((v) => v > 0.5).length}, over 1 m on ${sh.filter((v) => v > 1).length}, over 2 m on ${sh.filter((v) => v > 2).length} of ${sure.length}.`);
     const pooled = (key, set = sure) => { const xs = set.map((r) => r[key]).filter(Number.isFinite); return xs.length ? { med: median(xs), mean: xs.reduce((a, b) => a + b, 0) / xs.length, n: xs.length } : { med: NaN, mean: NaN, n: 0 }; };

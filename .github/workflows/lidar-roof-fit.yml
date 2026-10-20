@@ -1,13 +1,14 @@
-name: 40. Do the lidar's roofs sit on the photo's
+name: 40. Does the lidar sit on the photo's ground (and its roofs on the roofs)
 
-# The lidar's ROOF edges slid onto each locked lot's photo (tools/lidar-roof-fit.js,
-# public/lib/photo-fit.js edgeFit): one shift per frame, the share of the traced
-# lawn under the lidar's roof before and after, and the shifts grouped by lidar
-# project (owner, 2026-10-20: "some lidar roof shapes are not centered on the
-# foundation and overlap with actual lawn. So yes, there's an alignment issue
-# that needs to be addressed"). Pictures: yellow = the roof as the decoder reads
-# it today, cyan = moved, green = the traced lawn. Nothing is trained and
-# nothing changes on the site.
+# Two fits per locked lot (tools/lidar-roof-fit.js, public/lib/photo-fit.js
+# edgeFit): the lidar's GROUND brightness edges (drives, kerbs, paths; roofs and
+# crowns kept out) onto the photo's edges -- the number that moves the lidar
+# (owner, 2026-10-20: "above all else, lidar needs to line up with the ground")
+# -- and its ROOF edges onto the photo's, whose difference is the roof's lean in
+# the picture. Writes lidar-shifts.json (the clear ground moves, for the
+# training) and the shifts by lidar project. Pictures: orange = the training's 2 m
+# roof mask today, yellow = the 2.5 m+ surface today, cyan = roof-moved, green =
+# the traced lawn. Nothing is trained and nothing changes on the site.
 #
 # FREE: GitHub's own CPU runner. Public EPT clouds only, read in Node.
 on:
@@ -64,7 +65,7 @@ jobs:
           MODE: newest
         run: node tools/lidar-newest.js
 
-      - name: Slide the lidar's roofs onto each photo
+      - name: Slide the lidar's ground and roofs onto each photo
         env:
           FRAMES: frames
           PLAN: lidar-plan.json

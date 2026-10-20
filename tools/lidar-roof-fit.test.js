@@ -1,6 +1,6 @@
 // tools/lidar-roof-fit.js: the roof rule on a grid, the edge points, the lawn share, and a roof slid onto a photo's edges.
 import assert from 'node:assert/strict';
-import { roofMask, edgePoints, lawnUnderRoof, fitRoof, heightSurface, dropPoints, ROOF_CELL_M, FIT_CELL_M } from './lidar-roof-fit.js';
+import { roofMask, edgePoints, lawnUnderRoof, fitRoof, heightSurface, dropPoints, groundSurface, groundPoints, fitGround, ROOF_CELL_M, FIT_CELL_M } from './lidar-roof-fit.js';
 
 const g = { w: 40, h: 30, cell: 1, x0: 0, y1: 30, lat: 0 };
 const N = g.w * g.h;
@@ -58,4 +58,32 @@ assert.ok(f, 'a fit');
 assert.ok(Math.abs(f.east - 2) <= 0.3 && Math.abs(f.north + 1) <= 0.3, `moved 2 m east, 1 m south: E ${f.east} N ${f.north}`);
 assert.ok(f.confident && f.peak > 1.35, `a clear peak (${f.peak})`);
 assert.equal(fitRoof(new Float32Array(hg.w * hg.h), hg, grey, Wg, Hg, 1), null, 'flat ground: nothing to fit');
+
+// THE GROUND FIT: open ground with a bright drive (lidar brightness 200 on 60) whose edge in the
+// photo sits 1 m east and 0.5 m south of the lidar's; a house in the corner that must be kept out.
+{
+  const w = 80, hh = 60, cellM = 0.5, gg = { w, h: hh, cell: 0.5, cellM };
+  const N = w * hh;
+  const hgt = new Float32Array(N); // flat ground, a 10 x 8 m house 6 m up at cols 60-79, rows 0-15
+  for (let y = 0; y < 16; y++) for (let x = 60; x < 80; x++) hgt[y * w + x] = 6;
+  const iLow = new Float32Array(N).fill(60);
+  for (let y = 0; y < hh; y++) for (let x = 20; x < 32; x++) iLow[y * w + x] = 200; // a 6 m wide bright drive, cols 20-31
+  for (let y = 40; y < 46; y++) for (let x = 0; x < 60; x++) iLow[y * w + x] = 200; // and a 3 m path across, rows 40-45, so both axes are held
+  const r2 = { iLow };
+  const gs = groundSurface(r2, hgt, gg, 3);
+  assert.equal(gs.ground[5 * w + 70], 0, 'the house is not ground');
+  assert.equal(gs.ground[5 * w + 58], 0, 'nor the 1.5 m beside it');
+  assert.equal(gs.ground[30 * w + 10], 1, 'open ground is');
+  const pts = groundPoints(gs.bright, gs.ground, w, hh, cellM / FIT_CELL_M);
+  assert.ok(pts.length > 50 && pts.every(([x, y]) => (x >= 18 * 2 && x <= 34 * 2) || (y >= 38 * 2 && y <= 48 * 2)), `the drive's and the path's edges are the strong brightness edges (${pts.length} points)`);
+  let seed2 = 11;
+  const noise2 = (a) => { seed2 = (seed2 * 1103515245 + 12345) % 2147483648; return ((seed2 / 2147483648) - 0.5) * a; };
+  const Wg2 = 160, Hg2 = 120, grey2 = new Float32Array(Wg2 * Hg2);
+  for (let i = 0; i < grey2.length; i++) grey2[i] = 90 + noise2(30);
+  for (let y = 0; y < Hg2; y++) for (let x = 40 + 4; x < 64 + 4; x++) grey2[y * Wg2 + x] = 200 + noise2(20); // the drive in the photo, 1 m (4 cells) east
+  for (let y = 80 + 2; y < 92 + 2; y++) for (let x = 0; x < 120 + 4; x++) grey2[y * Wg2 + x] = 200 + noise2(20); // the path, 0.5 m (2 cells) south
+  const gf = fitGround(gs.bright, gs.ground, gg, grey2, Wg2, Hg2);
+  assert.ok(gf && gf.confident, `a clear ground fit (${gf && gf.peak})`);
+  assert.ok(Math.abs(gf.east - 1) <= 0.3 && Math.abs(gf.north + 0.5) <= 0.3, `moved 1 m east, 0.5 m south: E ${gf.east} N ${gf.north}`);
+}
 console.log('lidar-roof-fit: ok');
