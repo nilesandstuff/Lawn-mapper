@@ -83,7 +83,12 @@ got here. Update it whenever the in-flight run changes.*
   west half fits only half of Mapbox's error. (Corrected the same day: the
   first write-up said county photos agree with the raw lidar to a third of
   a metre; they do not.) The training's roof mask never touches the
-  traced lawn (0.0%); what the owner saw is the whole lidar off. NEXT (owner's decision pending, 2026-10-20): register the
+  traced lawn (0.0%); what the owner saw is the whole lidar off. The
+  water session (S46, two lots) then found the ground matcher and
+  hand-read driveway edges put Fargo's ground about 1.2 m off, not 2.9:
+  the roof fit carries about 2 m of roof lean there, so H107's sizes are
+  roof numbers and upper bounds for the ground. NEXT
+  (owner's decision pending, 2026-10-20): register the
   lidar onto each photo before the decoder reads it (training and the
   live lookup), measured where the fit is clear, the source's typical
   move where not, and no datum move on county photos; separately, whether
@@ -1023,12 +1028,15 @@ where it is not (Mapbox's error is one vector per town), the photo
 source's median last. Whether the photo moves onto the lidar's truth or
 the lidar onto the photo is the owner's call; see the summary.
 
-**Standing:** HARD on the 38 measured lots and the by-eye checks above.
-The roof fit cannot measure 60 lots; a ground matcher that can (H103's
-could commit on 14) is still wanted before a per-lot move ships for every
-lot. The numbers include roof lean, which is why the county (oblique)
-lots are the ones expected to be off and are not: the lean is smaller
-than Mapbox's registration error.
+**Standing:** HARD on the 38 measured lots and the by-eye checks above,
+AS ROOF NUMBERS: they say where the roof is in the picture against the
+lidar. They include roof lean, and S46 (the water session, two lots) puts
+that at about 2 m of Fargo's 2.9 m, with the ground about 1.2 m off
+there. So the per-town sizes above are upper bounds for the ground; the
+direction and the one-vector-per-town pattern stand. The roof fit cannot
+measure 60 lots; the ground matcher (H103's, 14 of 98) over the same 38
+lots, roof against ground lot by lot, is the next measurement before any
+per-lot move ships for the detector.
 
 ### H106. The paved centrelines as one decoder channel make THE PLAN worse too: 29 better / 54 worse, +0.6 [+0.1, +1.1], p 0.008 (S44, one seed) -- 2026-10-20
 *Workflow 14 run 39409589116 (`overture: compare`, the lines only: 1 on an
@@ -7399,6 +7407,40 @@ not:** a 27 m block is less context than a whole lot, and H4 once found
 fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
+
+### S46. About two metres of Fargo's 2.9 m "Mapbox offset" may be roof LEAN, not ground offset: the ground matcher and hand-read driveway edges put the photo move at about 1.2 m there, the roof fit at 3 m (from the water session, 2026-10-20 -- TWO LOTS, NOT MEASURED HERE)
+*Source: the water session (session_01BRMHw2UgvcLy5957Rsxivs), its
+water/FINDINGS.md S11 and H28, after copying tools/lidar-roof-fit.js and
+public/shade/align.js into water/ for its own photo-onto-lidar move.
+Nothing here re-ran it.*
+
+**What it reports** (moves OF THE PHOTO onto the raw lidar, so the
+opposite sign of H107's lidar moves):
+- Fargo C20 (Mapbox): the ground matcher (align.js, lidar ground
+  intensity against the photo on open ground) E +1.18 N -0.62 at 0.21 m
+  error; driveway edges read by hand on 1-D cross-profiles E +0.7..+1.1;
+  H107's roof fit E +3.00 N -1.00 (peak 2.23). In the browser the page's
+  own frame committed the ground matcher at E +1.12 N -0.61.
+- The owner's lot (Mapbox, Kent Co. MI): ground matcher E +0.43 N -1.01
+  at 0.35 m; road and driveway edges by hand E +0.65 N -1.05; roof fit
+  unsure (peak 1.07); H107's Mapbox median would be 1.2 m wrong in the
+  east there.
+
+**Why it matters.** H107 said its numbers include lean; this puts a size
+on it: on one Fargo lot about 2 m of the 2.9 m is where the ROOF is in an
+oblique photo, and the ground is about 1.2 m off. For the lawn (the
+traces, the lawn edge) the ground number is the one that counts; for a
+roof veto, where the roof is in the picture. One shift per lot cannot do
+both; a per-lot shift from the ground plus a roof moved by its own height
+(the lean direction is one per photo flight) could. Two lots. H107's
+per-town figures stay as roof numbers until the ground matcher is run
+over the same lots -- that is the next measurement before any per-lot
+move ships for the detector: workflow 38's tool over the 38 clear lots,
+roof against ground, lot by lot.
+
+The water map's own order, shipped in water/ the same day: ground matcher
+committed, then ground matcher with error up to 0.5 m and a clear margin,
+then the roof fit, then H107's lots within 2 km, then the source median.
 
 ### S44. The paved centrelines as ONE decoder channel: on an OpenStreetMap road, sidewalk, footway or path line, falling to 0 two metres off it (owner, 2026-10-20) -- MEASURED 2026-10-20, WORSE: see H106. Closed
 *Owner, after H105 and his own look at the predictions page: "If we used
