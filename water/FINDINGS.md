@@ -841,6 +841,27 @@ thirstiest month.
 
 ---
 
+### H23. Overture's buildings sit about a metre off the roofs; moved onto the lidar's, a small gain (water session, 2026-10-20)
+
+Source: the core session's H101 (docs/DETECTOR-FINDINGS.md; on 104 lots Overture's buildings are a median
+0.87 m from the lidar's roofs, one shift per lot, in a direction that changes lot by lot). lib/overture.js
+alignBuildings moves all of a box's outlines by the one shift, at a quarter metre within 4 m, that best
+overlaps the roofs both lidar finders agree on, scored only within reach of Overture's buildings; used when
+the overlap is at least 0.3 and gains at least 0.02.
+
+- Scored only near Overture's buildings, or the lidar's roofs it does not have (sheds, newer houses) dilute
+  every shift alike: on the owner's lot the fit read 0.32 -> 0.34 (not applied) over the whole box and
+  0.74 -> 0.77 near its buildings, about 0.7 m (applied). Every lidar reference (water finder, shade
+  finder, both, either) gave the same shift there to within a quarter metre.
+- 23 Chesapeake squares (workflow W run 39, task impervious): applied on 11 of 20 with Overture, shifts
+  0.5 to 2.0 m. Pooled roof IoU: Overture alone 0.79 -> 0.80 (precise within 1 m 96% -> 97%); the
+  map's rule (Overture, or both lidar finders) 0.79 -> 0.80; with the green veto 0.81 -> 0.81. Found
+  unchanged (89%, 92%, 91-92%).
+- Read: a small gain, and nothing lost. The Chesapeake truth is drawn on aerial photos itself, so it may
+  share part of the offset the fit removes, and could understate the gain; that is not measured.
+  In the plan, the gain is where it matters most: the strip of lawn against the house, which as published
+  was partly a roof on one side and missing a roof edge on the other.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge
