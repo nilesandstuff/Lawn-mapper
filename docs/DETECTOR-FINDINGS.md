@@ -995,7 +995,7 @@ carries them as measured.
 about half a metre on most lots and the datum move is right; a per-lot
 ground move exists for 81 lots and is sub-metre on 63 of them. Whether
 the decoder gains from it is S47, the workflow 14 trial `lidar_align:
-ground`, dispatched 2026-10-20 (THE PLAN with each lot's lidar moved by
+ground`, run 39500140037 (THE PLAN with each lot's lidar moved by
 its ground fit, read with workflow 24 against run 39409589116's PLAN row,
 same seed and lots). Under the full bar; a null result would mean half a
 metre does not matter at the decoder's patch size, which is a finding too.
@@ -7493,6 +7493,29 @@ not:** a 27 m block is less context than a whole lot, and H4 once found
 fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
+
+### S47. Each lot's lidar moved onto its photo's GROUND before the decoder reads it (owner, 2026-10-20: "above all else, lidar needs to line up with the ground") -- IN FLIGHT, workflow 14 run 39500140037
+*H108's ground fit (81 of 98 lots, median 0.5 m, agreeing with H103's
+matcher to 0.33 m) as the move each lot's lidar gets on top of the datum
+move: workflow 14 `lidar_align: ground` runs tools/lidar-roof-fit.js in
+the extract job, keeps the fits inside the 3 m search on 20%+ open
+ground, and lidar_frame.py adds each lot's move (lidar_sources.read_points
+extra_m); the other lots keep the datum move alone. The roofs are left to
+lean: the lidar's roof stays over the true footprint, which the owner
+wants ("that will allow the detector to see behind the lean").*
+
+**The bar.** THE PLAN's row of this run against run 39409589116's (same
+seed 7, same locked 104, the datum move alone), with workflow 24, under
+the full bar. A null result is the expected one -- half a metre is a
+third of a decoder patch -- and would say the alignment is already good
+enough for the decoder; a gain would say the half-metre tail (18 lots
+over 1 m) mattered. Either way the lidar's ground placement is then
+settled by measurement.
+
+**Not in this trial:** the roof mask moved by its lean (the roof veto
+where the picture's roof is); the live lookup (the fit would have to run
+at detection time, on Modal, from the photo and the cloud it already
+has); property lines drawn with the lot's ground move.
 
 ### S46. About two metres of Fargo's 2.9 m "Mapbox offset" may be roof LEAN, not ground offset: the ground matcher and hand-read driveway edges put the photo move at about 1.2 m there, the roof fit at 3 m (from the water session, 2026-10-20 -- TWO LOTS). CONFIRMED the same evening by H103's ground matcher beside the roof fit on the same 14 lots: see H107's third write-up
 *Source: the water session (session_01BRMHw2UgvcLy5957Rsxivs), its
