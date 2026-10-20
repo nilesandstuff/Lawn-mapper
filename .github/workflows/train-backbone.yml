@@ -388,6 +388,19 @@ on:
         type: choice
         default: 'off'
         options: ['off', 'on']
+      overture:
+        # OVERTURE AS AN INPUT (owner, 2026-10-19/20; H101-H104). "compare"
+        # trains THE PLAN's decoder once more over the same features, seed and
+        # folds with four more numbers a patch from Overture Maps
+        # (tools/overture-frames.js, tools/fuse_layers.py): the building
+        # footprint, nearness to a sidewalk line, nearness to a road
+        # centreline, and a flag -- "there's an edge parallel to this at an
+        # unknown distance" -- scored beside THE PLAN as "decoder, Overture
+        # ...". Free runner only. Overture is read live, about 3 minutes.
+        description: 'Overture Maps as an input: off, or compare (also train THE PLAN with its footprints, sidewalk and road lines)'
+        type: choice
+        default: 'off'
+        options: ['off', 'compare']
       about:
         # WHAT THIS RUN IS FOR, kept with the pictures for ever.
         #
@@ -665,6 +678,19 @@ jobs:
           OUT: naip
         run: python3 tools/naip_bands.py
 
+      # OVERTURE over every frame (the `overture` input): footprints, sidewalk
+      # lines and road centrelines as three channels at 0.5 m, read live from
+      # Overture's public tiles. Not cached: a release of Overture is monthly
+      # and the read is minutes.
+      - name: Overture's footprints, sidewalks and roads over the frames
+        if: ${{ inputs.overture != 'off' && inputs.gpu != 'modal' }}
+        env:
+          FRAMES: frames
+          OUT: overture
+        run: |
+          node tools/overture-frames.test.js
+          node tools/overture-frames.js
+
       # THE LIDAR BY RETURN (owner, 2026-10-05; H73), for the decoders taught
       # under trees. The same frames and 3DEP plan as the lidar step above,
       # read again keeping each point's return number (tools/tree_lidar.py).
@@ -797,7 +823,7 @@ jobs:
         run: |
           mkdir -p work
           have=""
-          for d in frames canopy lidar naip tree-lidar feats feats-whole feats-multi lidar-plan.json preds preds-edge preds-corr preds-nonl preds-wide preds-hardedge preds-widegate preds-ens3 preds-ep15 preds-ep60 preds-noflip preds-multi preds-l8 preds-l16 preds-lsmall preds-hold-county preds-hold-mapbox preds-trees preds-trees-canopy preds-trees-returns preds-none preds-lawn preds-all; do
+          for d in frames canopy lidar naip overture tree-lidar feats feats-whole feats-multi lidar-plan.json preds preds-edge preds-corr preds-nonl preds-wide preds-hardedge preds-widegate preds-ens3 preds-ep15 preds-ep60 preds-noflip preds-multi preds-l8 preds-l16 preds-lsmall preds-hold-county preds-hold-mapbox preds-trees preds-trees-canopy preds-trees-returns preds-overture preds-none preds-lawn preds-all; do
             if [ -e "$d" ]; then have="$have $d"; fi
           done
           du -sh $have || true
@@ -938,6 +964,30 @@ jobs:
           UNDER_TREES: ${{ inputs.canopy != 'off' && '1' || '' }}
           REFINE: '1'
           REFINE_REACH: wide
+        run: python3 tools/train_decoder.py
+
+      # OVERTURE AS AN INPUT (`overture: compare`): THE PLAN's decoder and
+      # refiner over the same features, seed and folds, with Overture's
+      # footprint and its sidewalk and road nearness as four more numbers a
+      # patch (FUSE_OVERTURE), scored beside THE PLAN as "decoder, Overture".
+      - name: Train THE PLAN's decoder with Overture's footprints and lines
+        if: ${{ inputs.release == 'off' && startsWith(inputs.decoder, 'fused + edge') && inputs.overture == 'compare' && inputs.canopy != 'compare' && inputs.gpu != 'modal' }}
+        env:
+          FEATURES: feats
+          FEATURES_WHOLE: ${{ inputs.windows == 'both' && 'feats-whole' || '' }}
+          FRAMES: frames
+          OUT: preds-overture
+          CANOPY: ${{ inputs.canopy != 'off' && 'canopy' || '' }}
+          CANOPY_MODE: ${{ inputs.canopy == 'everywhere' && 'all' || 'lawn' }}
+          SEED: ${{ inputs.seed }}
+          FUSE: '1'
+          FUSE_LIDAR: lidar
+          FOLDS: ${{ (inputs.lawns == 'all' || inputs.lawns == 'locked') && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
+          FUSE_NAIP: naip
+          FUSE_CANOPY: ${{ inputs.canopy != 'off' && '1' || '0' }}
+          UNDER_TREES: ${{ inputs.canopy != 'off' && '1' || '' }}
+          REFINE: '1'
+          FUSE_OVERTURE: overture
         run: python3 tools/train_decoder.py
 
       # AIMING THE REFINER (refiner_trial: compare), over THE PLAN's features.
@@ -1433,7 +1483,7 @@ jobs:
           # The three-way comparison, one row each. The seen column is scored
           # with the canopy unseen on lawn, whichever decoder is being read.
           # S19 (`fused + edge`): the refined decoder as a row of its own.
-          PREDICTIONS_DIRS: ${{ (inputs.decoder != 'off' && inputs.canopy == 'compare' && 'no canopy=preds-none,canopy on lawn=preds-lawn,canopy everywhere=preds-all') || (inputs.decoder == 'fused + edge' && format('edge refined=preds-edge{0}{1}{2}{3}{4}{5}{6}{7}{8}', inputs.corrections == 'on' && ',corrections weighted=preds-corr' || '', inputs.not_lawn == 'on' && ',no pond maps=preds-nonl' || '', inputs.edge_reach == 'compare' && ',wide edge=preds-wide' || '', inputs.refiner_trial == 'compare' && ',hard edges=preds-hardedge,wide gated=preds-widegate' || '', inputs.refiner_trial == 'average of 3' && ',averaged x3=preds-ens3' || '', inputs.refiner_trial == 'epochs' && ',15 epochs=preds-ep15,60 epochs=preds-ep60' || inputs.refiner_trial == 'no flips' && ',no flips=preds-noflip' || inputs.refiner_trial == 'upernet' && ',UperNet=preds-upernet' || '', inputs.layers == 'compare' && ',middle layers=preds-multi' || '', inputs.layers == 'variants' && ',layer 8=preds-l8,layer 16=preds-l16,layers small=preds-lsmall' || '', inputs.refiner_trial == 'held out by photo' && ',held out county=preds-hold-county,held out 12 Mapbox=preds-hold-mapbox' || '')) || (inputs.decoder == 'fused + edge + trees' && 'edge refined=preds-edge,taught under trees=preds-trees,taught under trees with canopy input=preds-trees-canopy') || (inputs.decoder == 'fused + edge + trees + returns' && 'edge refined=preds-edge,taught under trees=preds-trees,taught under trees with canopy input=preds-trees-canopy,taught under trees + returns=preds-trees-returns') || '' }}
+          PREDICTIONS_DIRS: ${{ (inputs.decoder != 'off' && inputs.canopy == 'compare' && 'no canopy=preds-none,canopy on lawn=preds-lawn,canopy everywhere=preds-all') || (inputs.decoder == 'fused + edge' && format('edge refined=preds-edge{0}{1}{2}{3}{4}{5}{6}{7}{8}{9}', inputs.corrections == 'on' && ',corrections weighted=preds-corr' || '',inputs.not_lawn == 'on' && ',no pond maps=preds-nonl' || '', inputs.edge_reach == 'compare' && ',wide edge=preds-wide' || '', inputs.refiner_trial == 'compare' && ',hard edges=preds-hardedge,wide gated=preds-widegate' || '', inputs.refiner_trial == 'average of 3' && ',averaged x3=preds-ens3' || '', inputs.refiner_trial == 'epochs' && ',15 epochs=preds-ep15,60 epochs=preds-ep60' || inputs.refiner_trial == 'no flips' && ',no flips=preds-noflip' || inputs.refiner_trial == 'upernet' && ',UperNet=preds-upernet' || '', inputs.layers == 'compare' && ',middle layers=preds-multi' || '', inputs.layers == 'variants' && ',layer 8=preds-l8,layer 16=preds-l16,layers small=preds-lsmall' || '', inputs.refiner_trial == 'held out by photo' && ',held out county=preds-hold-county,held out 12 Mapbox=preds-hold-mapbox' || '', inputs.overture == 'compare' && ',Overture=preds-overture' || '')) || (inputs.decoder == 'fused + edge + trees' && 'edge refined=preds-edge,taught under trees=preds-trees,taught under trees with canopy input=preds-trees-canopy') || (inputs.decoder == 'fused + edge + trees + returns' && 'edge refined=preds-edge,taught under trees=preds-trees,taught under trees with canopy input=preds-trees-canopy,taught under trees + returns=preds-trees-returns') || '' }}
           # The canopy joins the hand-marked unseen ground for the seen column.
           CANOPY_DIR: ${{ inputs.canopy != 'off' && 'canopy' || '' }}
           CANOPY_MODE: ${{ inputs.canopy == 'everywhere' && 'all' || 'lawn' }}

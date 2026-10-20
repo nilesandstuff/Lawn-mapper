@@ -44,12 +44,25 @@ RETURN_LIDAR = (7, 8, 9, 10)
 # Ranked, because 3DEP intensity is on each flight's own scale; hidden with
 # the lidar, since it comes from the same flight.
 INTENSITY_CHANNELS = ("intensity_rank", "has_intensity")
+# OVERTURE'S FOOTPRINTS, SIDEWALK LINES AND ROAD CENTRELINES (owner, 2026-10-19/20):
+# appended last when asked for (FUSE_OVERTURE; tools/overture-frames.js writes
+# <id>-overture.png). The footprint is where a house stands (not where its roof
+# leans to in the photo); the two nearness channels fall from 1 on a sidewalk
+# line or a road centreline to 0 at 10 / 15 m, "there's an edge parallel to
+# this at an unknown distance", the distance left to the decoder. Its own
+# source for modality dropout: Overture has gaps of its own.
+OVERTURE_CHANNELS = ("building", "walk_near", "road_near", "has_overture")
 
 
 def intensity_index(with_returns):
     """Where the intensity channels sit: after CHANNELS, and after the returns when those are on."""
     i = len(CHANNELS) + (len(RETURN_CHANNELS) if with_returns else 0)
     return (i, i + 1)
+
+
+def overture_index(with_returns, with_intensity):
+    """Where the Overture channels start: after everything else that is on."""
+    return len(CHANNELS) + (len(RETURN_CHANNELS) if with_returns else 0) + (len(INTENSITY_CHANNELS) if with_intensity else 0)
 
 
 def frame_rank(intensity):
@@ -77,15 +90,17 @@ def ndvi_from_png(rgb):
 
 
 def extra_channels(grid_w, grid_h, cover_x, cover_y, lidar=None, ndvi=None, ndvi_valid=None, canopy=None,
-                   returns=None, with_returns=False, with_intensity=False):
+                   returns=None, with_returns=False, with_intensity=False, overture=None, with_overture=False):
     """
     (len(CHANNELS), grid_h, grid_w) float32.
 
-    lidar:  dict with height (m), n_ground, n_all on the lidar grid, or None
-    ndvi:   NDVI -1..1 over the photograph, with ndvi_valid, or None
-    canopy: the tree model's mask (bool) over the photograph, or None
+    lidar:    dict with height (m), n_ground, n_all on the lidar grid, or None
+    ndvi:     NDVI -1..1 over the photograph, with ndvi_valid, or None
+    canopy:   the tree model's mask (bool) over the photograph, or None
+    overture: dict with building (0/1), walk, road (nearness 0..1) over the frame, or None
     """
-    n = len(CHANNELS) + (len(RETURN_CHANNELS) if with_returns else 0) + (len(INTENSITY_CHANNELS) if with_intensity else 0)
+    n = (len(CHANNELS) + (len(RETURN_CHANNELS) if with_returns else 0) + (len(INTENSITY_CHANNELS) if with_intensity else 0)
+         + (len(OVERTURE_CHANNELS) if with_overture else 0))
     out = np.zeros((n, grid_h, grid_w), dtype=np.float32)
 
     def down(layer):
@@ -130,15 +145,25 @@ def extra_channels(grid_w, grid_h, cover_x, cover_y, lidar=None, ndvi=None, ndvi
         s = down(np.where(ok, r, 0.0))
         out[i] = np.where(v > 0, s / np.maximum(v, 1e-6), 0.0)
         out[f] = v
+    if with_overture and overture is not None:
+        o = overture_index(with_returns, with_intensity)
+        out[o] = down(np.asarray(overture["building"], dtype=np.float64))
+        out[o + 1] = down(np.asarray(overture["walk"], dtype=np.float64))
+        out[o + 2] = down(np.asarray(overture["road"], dtype=np.float64))
+        out[o + 3] = 1.0
     return out
 
 
-def drop_sources(extra, rng, p_lidar, p_naip, more_lidar=()):
+def drop_sources(extra, rng, p_lidar, p_naip, more_lidar=(), overture=(), p_overture=0.0):
     """Modality dropout: zero a whole source's channels, flag included, as a missing one reads.
-    `more_lidar`: channels from the same flight placed elsewhere (the intensity)."""
+    `more_lidar`: channels from the same flight placed elsewhere (the intensity).
+    `overture`: the Overture channels' indices, hidden on their own with p_overture."""
     e = extra.copy()
     if p_lidar and rng.random() < p_lidar:
-        e[[i for i in LIDAR + RETURN_LIDAR + tuple(more_lidar) if i < len(e)]] = 0.0
+        # RETURN_LIDAR's slots belong to Overture when the returns are off and Overture is on: never those.
+        e[[i for i in LIDAR + RETURN_LIDAR + tuple(more_lidar) if i < len(e) and i not in overture]] = 0.0
     if p_naip and rng.random() < p_naip:
         e[list(NAIP)] = 0.0
+    if p_overture and overture and rng.random() < p_overture:
+        e[[i for i in overture if i < len(e)]] = 0.0
     return e

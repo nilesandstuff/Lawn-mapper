@@ -163,6 +163,12 @@ FUSE_RETURNS = os.environ.get("FUSE_RETURNS", "")
 # (alpha_sources.py) and reads it for a release whose manifest says so.
 # FUSE_INTENSITY=0 trains the decoder without it.
 FUSE_INTENSITY = os.environ.get("FUSE_INTENSITY", "1") == "1"
+# FUSE_OVERTURE=dir of tools/overture-frames.js's <id>-overture.png: four more
+# fused numbers a patch, Overture's building footprint, nearness to a sidewalk
+# line, nearness to a road centreline, and a flag (owner, 2026-10-19/20). Its
+# own source for dropout (DROP_OVERTURE), since Overture has gaps of its own.
+FUSE_OVERTURE = os.environ.get("FUSE_OVERTURE", "")
+DROP_OVERTURE = float(os.environ.get("DROP_OVERTURE", "0.3"))
 
 # TAUGHT UNDER TREES (owner, 2026-10-05: "simply letting scale Mae figure out
 # the scenarios where there's likely to be grass, which it learns from the
@@ -418,8 +424,15 @@ def read_lawn(feats, frames, stem, shape):
         returns = read_returns(stem) if FUSE_RETURNS else None
         if returns is not None:
             sources.append("returns")
+        ov_in = None
+        of = os.path.join(FUSE_OVERTURE, f"{stem}-overture.png") if FUSE_OVERTURE else None
+        if of and os.path.exists(of):
+            a = np.asarray(Image.open(of).convert("RGB"), dtype=np.float32) / 255.0
+            ov_in = {"building": a[..., 0], "walk": a[..., 1], "road": a[..., 2]}
+            sources.append("overture")
         extra = extra_channels(gw, gh, cx, cy, lidar=lidar, ndvi=ndvi, ndvi_valid=valid, canopy=can_in,
-                               returns=returns, with_returns=bool(FUSE_RETURNS), with_intensity=FUSE_INTENSITY)
+                               returns=returns, with_returns=bool(FUSE_RETURNS), with_intensity=FUSE_INTENSITY,
+                               overture=ov_in, with_overture=bool(FUSE_OVERTURE))
         grid = np.concatenate([grid, extra.transpose(1, 2, 0)], axis=2)
 
     target, inside = box_targets(truth, gw, gh, cx, cy)
@@ -529,10 +542,13 @@ def with_dropout(x, rng, distrust=False):
     and the lidar always hidden on a lot whose lidar disagrees with its photo."""
     if not FUSE:
         return x
-    from fuse_layers import CHANNELS, RETURN_CHANNELS, INTENSITY_CHANNELS, drop_sources, intensity_index
-    k = len(CHANNELS) + (len(RETURN_CHANNELS) if FUSE_RETURNS else 0) + (len(INTENSITY_CHANNELS) if FUSE_INTENSITY else 0)
+    from fuse_layers import CHANNELS, RETURN_CHANNELS, INTENSITY_CHANNELS, OVERTURE_CHANNELS, drop_sources, intensity_index, overture_index
+    k = (len(CHANNELS) + (len(RETURN_CHANNELS) if FUSE_RETURNS else 0) + (len(INTENSITY_CHANNELS) if FUSE_INTENSITY else 0)
+         + (len(OVERTURE_CHANNELS) if FUSE_OVERTURE else 0))
     more = intensity_index(bool(FUSE_RETURNS)) if FUSE_INTENSITY else ()
-    e = drop_sources(x[-k:].numpy(), rng, 1.0 if distrust else DROP_LIDAR, DROP_NAIP, more_lidar=more)
+    o = overture_index(bool(FUSE_RETURNS), FUSE_INTENSITY)
+    ov = tuple(range(o, o + len(OVERTURE_CHANNELS))) if FUSE_OVERTURE else ()
+    e = drop_sources(x[-k:].numpy(), rng, 1.0 if distrust else DROP_LIDAR, DROP_NAIP, more_lidar=more, overture=ov, p_overture=DROP_OVERTURE)
     return torch.cat([x[:-k], torch.from_numpy(e)], dim=0)
 
 
@@ -741,6 +757,10 @@ def main():
         if FUSE_INTENSITY:
             print("LIDAR BRIGHTNESS (S38): 2 more numbers a patch (intensity_rank, has_intensity), "
                   "the ground intensity ranked within its frame, hidden with the lidar", flush=True)
+        if FUSE_OVERTURE:
+            n_o = sum(1 for L in lawns if "overture" in L["sources"])
+            print(f"OVERTURE: 4 more numbers a patch (building, walk_near, road_near, has_overture) "
+                  f"on {n_o} of {len(lawns)} lawns, dropout {DROP_OVERTURE:g}", flush=True)
     if CORRECTIONS_WEIGHT:
         n_c = sum(1 for L in lawns if L.get("corrected"))
         print(f"CORRECTIONS WEIGHTED (S21): on {n_c} lots the live model's own outline is here; cells where the "
@@ -808,7 +828,7 @@ def main():
             "backbone": manifest.get("model"), "size": manifest.get("size"),
             "resFactor": manifest.get("resFactor", 1.0),
             "dim": dim, "refine": REFINE, "refineReach": (os.environ.get("REFINE_REACH") or "normal") if REFINE else None, "refineEdges": os.environ.get("REFINE_EDGES") == "1", "refineGate": os.environ.get("REFINE_GATE") == "1", "fuse": FUSE, "fuseCanopy": FUSE_CANOPY,
-            "underTrees": UNDER_TREES, "fuseReturns": bool(FUSE_RETURNS), "fuseIntensity": FUSE_INTENSITY, "lidarDistrust": bool(LIDAR_DISTRUST), "correctionsWeight": CORRECTIONS_WEIGHT,
+            "underTrees": UNDER_TREES, "fuseReturns": bool(FUSE_RETURNS), "fuseIntensity": FUSE_INTENSITY, "fuseOverture": bool(FUSE_OVERTURE), "lidarDistrust": bool(LIDAR_DISTRUST), "correctionsWeight": CORRECTIONS_WEIGHT,
             "channels": list(CHANNELS) if FUSE else [],
             "canopyMode": CANOPY_MODE if CANOPY else None,
             "epochs": EPOCHS, "seed": SEED, "lr": LR, "weightDecay": WEIGHT_DECAY, "dropout": DROPOUT,
@@ -893,7 +913,7 @@ def main():
             "fused": ({"lidar": sum(1 for L in lawns if "lidar" in L["sources"]),
                        "naip": sum(1 for L in lawns if "naip" in L["sources"]),
                        "canopy": sum(1 for L in lawns if "canopy" in L["sources"]),
-                       "canopyInput": FUSE_CANOPY, "underTrees": UNDER_TREES, "fuseReturns": bool(FUSE_RETURNS), "fuseIntensity": FUSE_INTENSITY, "lidarDistrust": bool(LIDAR_DISTRUST), "correctionsWeight": CORRECTIONS_WEIGHT,
+                       "canopyInput": FUSE_CANOPY, "underTrees": UNDER_TREES, "fuseReturns": bool(FUSE_RETURNS), "fuseIntensity": FUSE_INTENSITY, "fuseOverture": bool(FUSE_OVERTURE), "lidarDistrust": bool(LIDAR_DISTRUST), "correctionsWeight": CORRECTIONS_WEIGHT,
                        "dropLidar": DROP_LIDAR, "dropNaip": DROP_NAIP} if FUSE else None),
             "seconds": round(total),
         }, f)
