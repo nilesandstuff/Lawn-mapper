@@ -158,6 +158,9 @@ jobs:
           # accounts existed, which is a working site and not a broken one.
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           MAIL_FROM: ${{ vars.MAIL_FROM }}
+          # A read-only key into the owner's saved maps (/api/admin/saved-maps,
+          # 2026-10-21), for a cloud session with no cookie. Optional.
+          MAPS_READ_TOKEN: ${{ secrets.MAPS_READ_TOKEN }}
           # Optional, and only a Worker secret because that is how a value gets
           # to the runtime. Replies to a sign-in link are the first thing a
           # confused person sends, and a From address that eats them is both a
@@ -199,6 +202,12 @@ jobs:
           # Optional. Without it the Worker uses MAPBOX_TOKEN for its own calls,
           # which is fine until that token is URL-restricted -- a Worker sends no
           # Referer, so it cannot satisfy one.
+          if [ -n "$MAPS_READ_TOKEN" ]; then
+            printf '%s' "$MAPS_READ_TOKEN" | npx wrangler secret put MAPS_READ_TOKEN
+            echo "Applied MAPS_READ_TOKEN: GET /api/admin/saved-maps and saved-maps/one open to it."
+          else
+            echo "No MAPS_READ_TOKEN secret; the saved-maps read routes answer only a signed-in administrator."
+          fi
           if [ -n "$MAPBOX_SERVER_TOKEN" ]; then
             printf '%s' "$MAPBOX_SERVER_TOKEN" | npx wrangler secret put MAPBOX_SERVER_TOKEN
             echo "Applied MAPBOX_SERVER_TOKEN for the Worker's own Mapbox calls."

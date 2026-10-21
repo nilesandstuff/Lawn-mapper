@@ -16,6 +16,7 @@
 import { testDb } from './d1.js';
 import { handleAdmin, isAdminPath } from '../worker/src/routes-admin.js';
 import { findOrCreateUser, createSession, spendCredits, dailyState } from '../worker/src/db.js';
+import { upsertMap, putTool, userOwner } from '../worker/src/unified.js';
 import { limits, setLimit, LIMIT_KEYS } from '../worker/src/limits.js';
 import { SESSION_COOKIE } from '../worker/src/auth.js';
 
@@ -2223,3 +2224,40 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
 process.exit(failures === 0 ? 0 : 1);
+
+/* ------------------------------------------- the owner's maps, for a key */
+/*
+ * THE READ-ONLY KEY (the water session's ask, 2026-10-21): a cloud session
+ * with no cookie reads the owner's saved maps with MAPS_READ_TOKEN. Wrong,
+ * missing or unconfigured: 404, like every admin route. The signed-in
+ * administrator needs no key; a guest's cookie gets nothing.
+ */
+{
+  const w = await world();
+  w.env.MAPS_READ_TOKEN = 'k-' + 'x'.repeat(30);
+  await upsertMap(w.env, userOwner(w.owner), { id: 'm1', address: '1 Owner Lane', lng: -85.6, lat: 43.0, squareFeet: 10, shapes: [] });
+  await putTool(w.env, userOwner(w.owner), 'm1', 'water', { zones: 3 }, null);
+  await upsertMap(w.env, userOwner(w.guest), { id: 'g1', address: '2 Guest Lane', lng: -85.6, lat: 43.0, squareFeet: 10, shapes: [] });
+  const withKey = async (path, key, method = 'GET') => {
+    const url = new URL(`https://site.test/api/admin/${path}`);
+    const req = new Request(url, { method, headers: key ? { Authorization: `Bearer ${key}` } : {} });
+    const res = await handleAdmin(req, w.env, url, '', ctx, json);
+    return { status: res.status, body: await res.json() };
+  };
+  const list = await withKey('saved-maps', w.env.MAPS_READ_TOKEN);
+  assert.equal(list.status, 200);
+  assert.deepEqual(list.body.maps.map((m) => [m.id, m.address, m.tools, m.owner]), [['m1', '1 Owner Lane', ['water'], 'owner@b.com']], "the owner's maps and no guest's, with its tools");
+  const one = await withKey('saved-maps/one?id=m1', w.env.MAPS_READ_TOKEN);
+  assert.equal(one.status, 200);
+  assert.equal(one.body.map.tools.water.data.zones, 3, 'one map, every tool\'s part');
+  assert.equal((await withKey('saved-maps/one?id=g1', w.env.MAPS_READ_TOKEN)).status, 404, 'another account\'s map is not reachable');
+  assert.equal((await withKey('saved-maps', 'k-' + 'y'.repeat(30))).status, 404, 'wrong key: hidden');
+  assert.equal((await withKey('saved-maps', '')).status, 404, 'no key, no cookie: hidden');
+  assert.equal((await withKey('saved-maps', w.env.MAPS_READ_TOKEN, 'POST')).status, 404, 'nothing but GET');
+  const cookie = await ask(w.env, w.ownerToken, 'saved-maps');
+  assert.equal(cookie.status, 200, 'the signed-in administrator reads them without a key');
+  assert.equal((await ask(w.env, w.guestToken, 'saved-maps')).status, 404, 'a signed-in non-admin does not');
+  delete w.env.MAPS_READ_TOKEN;
+  assert.equal((await withKey('saved-maps', 'k-' + 'x'.repeat(30))).status, 404, 'no secret configured: a key opens nothing');
+  console.log('admin: the owner\'s maps for a read-only key');
+}

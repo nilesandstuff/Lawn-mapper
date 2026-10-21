@@ -54,6 +54,8 @@ Every answer carries `signedIn`, `guest` (true when the owner is a guest) and `m
 | `POST /api/maps/tool?id=&tool=` | This tool's part: `{ data, basedOn }`, at most 64 KB of JSON. `basedOn` is the map's `at` the tool worked from. |
 | `DELETE /api/maps?id=` | A map and every tool's part of it. |
 
+**Reading the owner's maps from a session with no cookie** (2026-10-21): `GET /api/admin/saved-maps` (the administrators' maps, newest first: `id`, `address`, `at`, `county`, `provider`, `tools` as a list of tool ids, `owner`) and `GET /api/admin/saved-maps/one?id=` (exactly what `/api/maps/one` returns, plus `owner`), with `Authorization: Bearer <MAPS_READ_TOKEN>` -- a Worker secret the deploy applies from the repository secret of the same name. A missing or wrong key answers 404 like every admin route. Read-only; a signed-in administrator can call them without the key.
+
 A guest's second map (`POST /api/maps` or `/api/maps/new`) answers **409** with `{ error: 'guest-limit', message }`: show the message and a way to sign in. Signing in keeps the map they have.
 
 ## What each tool keeps in its part

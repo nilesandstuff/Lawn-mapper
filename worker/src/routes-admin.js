@@ -22,8 +22,9 @@ import { usageSince, usageDaily } from './usage.js';
 import { currentUser } from './auth.js';
 import { benchmarkId, coordsOfId, mapName } from './benchmark-ids.js';
 import {
-  accountsEnabled, grantCredits, publicUser, setDailyLimit, dayKey,
+  accountsEnabled, grantCredits, publicUser, setDailyLimit, dayKey, timingSafeEqual,
 } from './db.js';
+import { listMaps, getMap, userOwner } from './unified.js';
 import { limits, limitsForConsole, setLimit, LIMITS } from './limits.js';
 import { logEntries, loggingEnabled } from './testlog.js';
 import { feedbackEntries, feedbackEnabled } from './feedback.js';
@@ -93,10 +94,52 @@ export async function measureDisagreement(env, { limit = 400 } = {}) {
 export async function handleAdmin(request, env, url, origin, ctx, json) {
   if (!accountsEnabled(env)) return hidden(json, origin);
 
+  const path = url.pathname.slice('/api/admin/'.length);
+
+  /*
+   * THE OWNER'S SAVED MAPS, READ-ONLY, FOR A KEY (/api/admin/saved-maps and
+   * saved-maps/one; `maps` below is the console's every-account list; the water session's ask,
+   * 2026-10-21, the owner: "yes, ask the core session to add it"). A cloud
+   * session has no cookie, so these two routes also open to
+   * `Authorization: Bearer <MAPS_READ_TOKEN>` -- a Worker secret the deploy
+   * applies from the repository secret of the same name. Compared in
+   * constant time; a missing or wrong key answers 404 like every admin route,
+   * so the route does not announce itself. GET only; nothing here writes.
+   * The scope is the administrators' own accounts (ADMIN_EMAILS): the
+   * owner's maps, not every account's. The signed-in administrator can read
+   * them the same way without a key.
+   */
+  if (path === 'saved-maps' || path === 'saved-maps/one') {
+    if (request.method !== 'GET') return hidden(json, origin);
+    const given = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim();
+    const byKey = Boolean(env.MAPS_READ_TOKEN) && Boolean(given) && timingSafeEqual(given, String(env.MAPS_READ_TOKEN));
+    if (!byKey) {
+      const me = await currentUser(request, env, ctx);
+      if (!me || me.role !== 'admin') return hidden(json, origin);
+    }
+    const admins = (await env.DB.prepare("SELECT id, email FROM users WHERE role = 'admin' ORDER BY created_at").all()).results || [];
+    console.log(`maps read by ${byKey ? 'key' : 'cookie'}: ${path}${url.searchParams.get('id') ? ' one map' : ''}`);
+    if (path === 'saved-maps') {
+      const maps = [];
+      for (const a of admins) {
+        for (const m of await listMaps(env, userOwner(a))) {
+          maps.push({ id: m.id, address: m.address || null, at: m.at, county: m.county || null, provider: m.provider || m.imageProvider || null, tools: Object.keys(m.tools || {}), owner: a.email });
+        }
+      }
+      maps.sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
+      return json({ maps }, 200, origin);
+    }
+    const key = url.searchParams.get('id');
+    if (!key) return json({ error: 'id required' }, 400, origin);
+    for (const a of admins) {
+      const map = await getMap(env, userOwner(a), key);
+      if (map) return json({ map, owner: a.email }, 200, origin);
+    }
+    return json({ error: 'no-map' }, 404, origin);
+  }
+
   const me = await currentUser(request, env, ctx);
   if (!me || me.role !== 'admin') return hidden(json, origin);
-
-  const path = url.pathname.slice('/api/admin/'.length);
 
   /* ------------------------------------------------------------ overview */
   if (path === 'overview') {
