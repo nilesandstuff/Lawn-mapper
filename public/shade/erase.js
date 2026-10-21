@@ -95,25 +95,71 @@ export class Erased {
   get any() { return this.count > 0 || this.cubeCount > 0; }
 }
 
-/**
- * THE BRANCHES BRUSH (owner, 2026-10-17: "another erasing mode for removing
- * specific branches, so just remove the tree blocks that are facing the
- * camera. 1 swipe removes the top layer of blocks (top as in closest to the
- * camera...), another swipe takes out the next layer, and so on").
+/*
+ * THE BRANCHES BRUSH (owner, 2026-10-17: "just remove the tree blocks that
+ * are facing the camera. 1 swipe removes the top layer of blocks (top as in
+ * closest to the camera...), another swipe takes out the next layer").
  *
- * Of a column's drawn blocks (`runs`: [{ l0, l1, base, top }], cube layers
- * and meters over the ground), the one nearest the camera at `cam`
- * ([gx, gy, z]: grid cells and absolute meters), measured to the block's
- * center, `cm` meters per cell. Null when the column has none.
+ * WHAT THE FINGER IS ON (owner, 2026-10-21: branch mode "is still deleting
+ * whole columns"). The map's own event gives the point on the GROUND under
+ * the finger; with the map tilted, a finger on a crown 10 m up is over
+ * ground some 17 m behind the tree, so the brush worked on columns nobody
+ * was touching. The block under the finger is the first one a ray from the
+ * camera through that ground point meets.
+ *
+ * rayHit(cam, target, opts): cam and target are [x, y, z] in the grid's
+ * cells (x east, y south; one cell is one real metre) and metres up; the ray
+ * runs from cam through target and on. opts: { w, h, cubeAt(k, z) -> layer
+ * or -1, visible(k, l) -> bool, taken: Set of cube indices (k * nz + l) the
+ * ray must stop at, nz, zTop, zBottom, stepM }. Returns { k, l, at: [x, y,
+ * z], s } for the first visible block, or null (nothing, or a taken one
+ * first: one layer per stroke).
  */
-export function nearestRun(runs, k, w, groundZ, cam, cm) {
-  if (!runs?.length) return null;
-  const cx = (k % w) + 0.5, cy = Math.floor(k / w) + 0.5;
-  let best = null, bestD = Infinity;
-  for (const r of runs) {
-    const z = groundZ + (r.base + r.top) / 2;
-    const d = Math.hypot((cam[0] - cx) * cm, (cam[1] - cy) * cm, cam[2] - z);
-    if (d < bestD) { bestD = d; best = r; }
+export function rayHit(cam, target, { w, h, nz, cubeAt, visible, taken = null, zTop = 90, zBottom = -40, stepM = 0.2 }) {
+  const d = [target[0] - cam[0], target[1] - cam[1], target[2] - cam[2]];
+  const len = Math.hypot(d[0], d[1], d[2]);
+  if (!(len > 0)) return null;
+  const u = d.map((v) => v / len);
+  /* Only the stretch inside the grid and between the heights can hit anything (slabs). */
+  let s0 = 0, s1 = Infinity;
+  for (const [i, lo, hi] of [[0, 0, w], [1, 0, h], [2, zBottom, zTop]]) {
+    if (Math.abs(u[i]) < 1e-12) { if (cam[i] < lo || cam[i] > hi) return null; continue; }
+    let a = (lo - cam[i]) / u[i], b = (hi - cam[i]) / u[i];
+    if (a > b) [a, b] = [b, a];
+    s0 = Math.max(s0, a); s1 = Math.min(s1, b);
   }
-  return best;
+  if (!(s1 > s0)) return null;
+  for (let s = s0; s <= s1; s += stepM) {
+    const x = cam[0] + u[0] * s, y = cam[1] + u[1] * s, z = cam[2] + u[2] * s;
+    const cx = Math.floor(x), cy = Math.floor(y);
+    if (cx < 0 || cy < 0 || cx >= w || cy >= h) continue;
+    const k = cy * w + cx, l = cubeAt(k, z);
+    if (l < 0) continue;
+    if (taken && taken.has(k * nz + l)) return null;
+    if (visible(k, l)) return { k, l, at: [x, y, z], s };
+  }
+  return null;
+}
+
+/**
+ * The brush's rays: targets spread over a square `sizeM` wide, square to the
+ * line of sight, centred on the point `at` the finger's ray hit; about two
+ * per metre each way. The blocks they meet first are the surface facing the
+ * camera, whatever the camera's angle.
+ */
+export function brushTargets(cam, at, sizeM) {
+  const d = [at[0] - cam[0], at[1] - cam[1], at[2] - cam[2]];
+  const len = Math.hypot(d[0], d[1], d[2]) || 1;
+  const u = d.map((v) => v / len);
+  let a = [u[1], -u[0], 0]; // across the view, level
+  const al = Math.hypot(a[0], a[1]);
+  a = al > 1e-6 ? [a[0] / al, a[1] / al, 0] : [1, 0, 0];
+  const b = [a[1] * u[2] - a[2] * u[1], a[2] * u[0] - a[0] * u[2], a[0] * u[1] - a[1] * u[0]]; // up the view
+  const n = Math.max(1, Math.round(sizeM / 0.5));
+  const out = [];
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+    const p = ((i + 0.5) / n - 0.5) * sizeM, q = ((j + 0.5) / n - 0.5) * sizeM;
+    out.push([at[0] + a[0] * p + b[0] * q, at[1] + a[1] * p + b[1] * q, at[2] + a[2] * p + b[2] * q]);
+  }
+  return out;
 }
