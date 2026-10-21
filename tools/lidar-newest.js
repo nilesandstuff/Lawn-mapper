@@ -146,7 +146,11 @@ const boxDegrees = (box) => {
 
 /* ------------------------------------------------------------- the network */
 
-async function getJson(url, tries = 3, timeoutMs = 60000) {
+/* WESM fails about one query in eight on a bad day (2026-10-21: 17 of 111
+   frames, then 13 of 111 of a different set, each "400 Failed to execute
+   query" on a 200), so a query is tried six times with waits growing to half
+   a minute, and the frames still unanswered get one more pass at the end. */
+async function getJson(url, tries = 6, timeoutMs = 60000) {
   let last;
   for (let i = 0; i < tries; i++) {
     try {
@@ -161,7 +165,7 @@ async function getJson(url, tries = 3, timeoutMs = 60000) {
         last = new Error(`HTTP ${res.status}`);
       }
     } catch (e) { last = e; }
-    if (i < tries - 1) await new Promise((r) => { setTimeout(r, 2000 * (i + 1)); });
+    if (i < tries - 1) await new Promise((r) => { setTimeout(r, Math.min(30000, 2000 * 2 ** i)); });
   }
   throw last;
 }
@@ -225,6 +229,23 @@ async function main() {
     await new Promise((r) => { setTimeout(r, 200); });
   }
   const n = Object.keys(boxes).length;
+  if (wesmDown.length && MODE === 'newest') {
+    // THE SECOND PASS: the frames the index would not answer for, asked
+    // again after everything else, a minute on.
+    const again = wesmDown.splice(0, wesmDown.length).map((l) => l.slice(0, l.indexOf(': ')));
+    console.log(`\nUSGS's flight index did not answer for ${again.length} frames; asking again in a minute.`);
+    await new Promise((r) => { setTimeout(r, 60000); });
+    for (const id of again) {
+      const box = boxes[id];
+      const [lng, lat] = fromMercator([(box[0] + box[2]) / 2, (box[1] + box[3]) / 2]);
+      const units = workUnits(await wesmAt(lng, lat).catch((e) => { wesmDown.push(`${id}: ${e.message}`); return null; }));
+      if (!units) continue;
+      const octrees = octreesOver(fc, lng, lat, units);
+      const items = (await tnmOver(boxDegrees(box)).catch(() => null))?.items || [];
+      out[id] = entryFor(id, octrees, pickNewest(octrees, tileSets(items, units, octrees.map((o) => o.unit))));
+      await new Promise((r) => { setTimeout(r, 500); });
+    }
+  }
   if (wesmDown.length) {
     // Without USGS's dates a frame silently falls back to its name's year and
     // never to newer tiles: a different corpus than the one the findings were
