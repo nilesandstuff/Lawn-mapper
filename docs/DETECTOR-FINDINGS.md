@@ -953,6 +953,35 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H110. The public 3DEP clouds over the locked lots carry NO colour: every project checked (Fargo, Kent, Kentucky, DRCOG, Ingham, Northern VA) has X, Y, Z, Intensity, returns, class, angle, time -- no Red, Green, Blue. The lidar's only picture of the ground is its intensity, which is what the ground fit already matches -- 2026-10-21
+*Owner, 2026-10-21, from a GIS professional: "apparently you can get RGB
+point values from lidar. Could we use that to match ground objects, like
+roads and sidewalks?" Checked by reading each project's ept.json schema
+from usgs-lidar-public.*
+
+A LAS point can carry RGB (formats 2, 3, 7, 8), but only when the vendor
+colourised the cloud from an orthophoto, and USGS's 3DEP deliveries over
+these lots did not: six of six schemas end at ScanChannel/ClassFlags/
+OriginId with no colour. What every point does carry is Intensity, the
+return's near-infrared reflectance, which draws drives, kerbs, paths and
+bed edges bright or dark against grass -- a true-orthographic picture of
+the ground with no lean, in the lidar's own coordinates. That is the
+layer the ground fit (H108) and the shade map's matcher (H103) already
+slide onto the photo. A colourised cloud would add colour edges to the
+same idea; it is not available here.
+
+The second half of the idea, warping the PHOTO (shift, scale, skew) onto
+the lidar's ground picture where the match is confident, is the full
+registration public/lib/register.js does between two photos (H64, H104:
+patch matches, an affine model, inliers within a tolerance). Run with the
+intensity image as the reference it would give each lot an affine, not
+only a shift. Not built: H109 found a per-lot shift of the lidar (median
+0.5 m) changes THE PLAN by nothing, and the residual after a shift is of
+the same size as the distortion H104 measured between photos (0.2-0.6 m
+across a lot), so the decoder would not see an affine either. The gain
+would be for the eye -- everything lining up on the screen -- and that is
+the owner's call to ask for.
+
 ### H109. Moving each lot's lidar onto its photo's ground (74 lots, median 0.5 m) changes THE PLAN by nothing: 17.9 -> 18.1% on the median, 20 better / 29 worse / 55 level, +0.1 [-0.1, +0.1], p 0.25 (S47, one seed). The lidar's ground placement is settled: the datum move alone is good enough for the decoder -- 2026-10-21
 *Workflow 14 run 39500140037 (`lidar_align: ground`, `lawns: locked`, seed
 7): tools/lidar-roof-fit.js in the extract job gave 74 of 98 lots a
@@ -7538,6 +7567,41 @@ not:** a 27 m block is less context than a whole lot, and H4 once found
 fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
+
+### S48. Ground hidden behind a leaning roof: the trace cannot claim it, so the label says not-lawn where the lidar says open ground (owner, 2026-10-21: "in cases of heavy lean, the lawn traces don't guess at grass behind the lean") -- NOT MEASURED
+**The problem.** On a lot whose photo leans (Fargo 1.75 m, Kentucky 3 m,
+H107), the roof in the picture covers a strip of ground on its lean side.
+The lidar sees that strip as open ground, and it is most likely lawn, but
+the trace, drawn on the photo, stops at the visible roof edge, so the
+label there is not-lawn. The decoder is taught to disbelieve the lidar on
+exactly the strip where the owner wants it trusted ("that will allow the
+detector to see behind the lean"), and the scorer counts lawn found there
+as an error.
+
+**A possible rule, untested.** Mark that strip as "inferred, not seen" at
+training and scoring, the way the span rule marks ground under trees: a
+cell where the lidar's height surface is under 0.5 m, that lies inside the
+lidar's roof mask moved by the lot's lean vector (H108's roof fit less
+ground fit, or the flight's median lean where a lot has no clear pair),
+and outside the roof mask itself. The label there would then count as
+inferred rather than seen, and the decoder could call it lawn from the
+lidar without being penalised on the seen score. Needs the lean on more
+lots than the 10 where both fits commit (one vector per flight strip
+would do, H107), and a look at a few lots by eye first. Cost: no new
+data, one rule in the label dump, a workflow 14 run under the full bar.
+
+**What the owner's 13 lots show** (B03, B19, B27, B30, C20, C22, C23,
+C25, C38, C60, C74, C84, C106, 2026-10-21: the lidar roof outline extends
+beyond the footprint in one or two directions; C74 "almost looks rotated").
+In workflow 40's pictures the yellow outline is the 2.5 m+ surface, roofs
+AND crowns, so where a tree stands against a house the outline runs off
+the roof into the canopy (C74: the big tree west of the house), and the
+0.5 m smoothed surface adds half a metre all round; the orange line, the
+training's own 2 m roof mask, sits inside the roof on every lot checked.
+The one-direction excess is the lean (B19, B30, C20, C25, C38 are the
+Kentucky, North Carolina, Fargo and Louisiana Mapbox lots with 1.5-3 m of
+lean); a two-storey part leans further than a garage, which shears the
+picture's outline against the lidar's and reads as a rotation.
 
 ### S47. Each lot's lidar moved onto its photo's GROUND before the decoder reads it (owner, 2026-10-20: "above all else, lidar needs to line up with the ground") -- MEASURED 2026-10-21, NO CHANGE: see H109. Closed; the datum move alone stands
 *H108's ground fit (81 of 98 lots, median 0.5 m, agreeing with H103's
