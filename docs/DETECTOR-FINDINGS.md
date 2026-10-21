@@ -953,6 +953,58 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H111. THE 2 m BOX AT C60 IS S47'S OWN MOVE, NOT THE CORPUS'S LIDAR; C71 IS A TRUE 2 m OFFSET OF THE LIDAR AGAINST THE COUNTY PHOTO, ROOF AND GROUND ALIKE. The ground fit's "confident" flag does not separate the two -- 2026-10-21
+*Owner, 2026-10-21: "I disagree with your confidence that the lidar is
+actually lining up and that the labels are the problem. Look at C60.
+There's little, if any, lean in that image, yet the lidar box extends a
+full 2 m off of the roof and onto fully visible lawn ... the lidar roof
+outline should never overlap traced lawn." Measured by drawing the
+detector's own roof mask (lidar_frame.py's 2 m `-roof.png`, the blue
+"lidar roof" layer of the predictions page) over the photo and the trace,
+once from S47's work artifact (run 39500140037) and once from a local
+read of the same 14 frames with no ground move.*
+
+**C60 (Mapbox, MA_CentralEastern_1_2021).** With no move the roof mask
+sits inside the roof on all four sides. In S47 the lidar was moved by the
+ground fit, (-1.0 E, -2.25 N) m, so the mask runs one 2 m row past the
+roof's south edge onto the drive and the lawn and one column past its
+west edge: the box the owner saw. S47 was the newest drawing on the
+predictions page (2026-10-20 evening), and nothing on the page said its
+lidar had been moved. The roof fit on C60 was (0.25, -0.25) m; the ground
+fit (peak 1.46, "confident") was wrong by two metres.
+
+**C71 (county, Ingham 2017 lidar).** With no move the mask sits about 2 m
+west and 1.5 m north of the photo's roof: one column of it on traced lawn
+west of the house (4 cells of 98), the roof's east part uncovered. The
+roof fit says (2, -1.5) and the ground fit (2, -2.5): they agree, so the
+offset is not lean, it is the whole lidar (or the photo) two metres off
+after the datum move. S47's move (2, -2.5) put the mask on the roof, 0
+cells on lawn. The owner was right to name it.
+
+**The 14 lots the owner listed, roof cells of the mask on traced lawn
+(majority of the cell), no move -> S47's move:** B03 5 -> 5 (no move;
+lidar not confident), C106 10 -> 10 (no move), C71 4 -> 0, B27 0 -> 4,
+C60 0 -> 2, B30 0 -> 1, the other eight 0 -> 0. S47 helped one lot and
+hurt three, in a sample the owner chose for looking wrong.
+
+**The whole corpus, from the extract logs' per-lot table (2 m cells, lot
+classed by majority):** the published release has 76 roof cells on traced
+lawn of 11,060 roof cells (0.7%), on 27 of 101 lots, 11 lots with 3 or
+more: C106 10, C95 6, B11 6, B16 5, B03 5, B12 4, B09 4, C71 4, B13 3,
+C27 3, B15 3. S47 has 77 (0.7%), a different 25 lots: it fixed C71, B12,
+B16 and broke C27 (3 -> 8), C35 (2 -> 6), B27 (0 -> 4), C60 (0 -> 3).
+That is H109's null, seen by eye: per-lot ground moves fix as many lots
+as they break.
+
+**What this corrects.** H108's "ground fit on 81/98, median 0.5 m" stands
+as a median; it was read in H110/S48 as "the ground is on the photo", and
+on C71 it is not, by 2-3 m, and on C60 the fit itself is wrong by 2 m
+while flagged confident. The ground fit is not a tool for moving the
+lidar on its own. The lean story (S48) is not what the owner was looking
+at on C60, and it is not C71 either; it may still be B03 (Utah Mapbox,
+roof fit (-2.25, 3), ground fit not confident) and the Fargo and Kentucky
+lots, where roof and ground fits disagree by the flight's lean.
+
 ### H110. The public 3DEP clouds over the locked lots carry NO colour: every project checked (Fargo, Kent, Kentucky, DRCOG, Ingham, Northern VA) has X, Y, Z, Intensity, returns, class, angle, time -- no Red, Green, Blue. The lidar's only picture of the ground is its intensity, which is what the ground fit already matches -- 2026-10-21
 *Owner, 2026-10-21, from a GIS professional: "apparently you can get RGB
 point values from lidar. Could we use that to match ground objects, like
@@ -7625,6 +7677,7 @@ settled by measurement.
 where the picture's roof is); the live lookup (the fit would have to run
 at detection time, on Modal, from the photo and the cloud it already
 has); property lines drawn with the lot's ground move.
+**By eye (H111):** the moves put C60's roof mask 2 m off its roof onto lawn and fixed C71's; over the corpus they fixed as many lots as they broke. Not to be used alone.
 
 ### S46. About two metres of Fargo's 2.9 m "Mapbox offset" may be roof LEAN, not ground offset: the ground matcher and hand-read driveway edges put the photo move at about 1.2 m there, the roof fit at 3 m (from the water session, 2026-10-20 -- TWO LOTS). CONFIRMED the same evening by H103's ground matcher beside the roof fit on the same 14 lots: see H107's third write-up
 *Source: the water session (session_01BRMHw2UgvcLy5957Rsxivs), its
