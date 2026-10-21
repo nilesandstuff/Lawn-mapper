@@ -1,105 +1,105 @@
 {
   "ar-statewide": {
-    "at": "2026-10-20",
+    "at": "2026-10-21",
     "ok": true,
     "acres": 3.941
   },
   "az-statewide": {
-    "at": "2026-10-20",
+    "at": "2026-10-21",
     "ok": true,
     "acres": 5.006
   },
   "ct-statewide": {
-    "at": "2026-10-20",
+    "at": "2026-10-21",
     "ok": true,
     "acres": 0.242
   },
   "dc-statewide": {
-    "at": "2026-10-20",
+    "at": "2026-10-21",
     "ok": true,
     "acres": 0.037
   },
   "de-statewide": {
-    "at": "2026-10-20",
+    "at": "2026-10-21",
     "ok": true,
     "acres": 0.195
   },
   "id-statewide": {
-    "at": "2026-10-20",
+    "at": "2026-10-21",
     "ok": true,
     "acres": 1.93
   },
   "in-statewide": {
-    "at": "2026-10-20",
+    "at": "2026-10-21",
     "ok": true,
     "acres": 1.66
   },
   "md-statewide": {
-    "at": "2026-10-20",
+    "at": "2026-10-21",
     "ok": false,
     "down": true,
     "why": "MD's server did not answer 5 times running (HTTP 503) -- the endpoint is there, the service is not",
     "since": "2026-10-04",
-    "strikes": 18
+    "strikes": 19
   },
   "mn-statewide": {
-    "at": "2026-10-20",
+    "at": "2026-10-21",
     "ok": true,
     "acres": 1.406
   },
   "nh-statewide": {
-    "at": "2026-10-20",
+    "at": "2026-10-21",
     "ok": true,
     "acres": 0.413
   },
   "ny-statewide": {
-    "at": "2026-10-20",
+    "at": "2026-10-21",
     "ok": true,
     "acres": 6.602
   },
   "oh-statewide": {
-    "at": "2026-10-20",
+    "at": "2026-10-21",
     "ok": false,
     "why": "0 of 25 points across OH returned a parcel (25 nothing, 0 under 0.01 ac, 0 over 100000 ac)",
     "since": "2026-10-04",
-    "strikes": 18
+    "strikes": 19
   },
   "or-statewide": {
-    "at": "2026-10-20",
+    "at": "2026-10-21",
     "ok": false,
     "why": "OR's server refused 5 times running (Token Required) -- an answer, and a permanent one",
     "since": "2026-10-04",
-    "strikes": 18
+    "strikes": 19
   },
   "tx-statewide": {
-    "at": "2026-10-20",
+    "at": "2026-10-21",
     "ok": false,
     "why": "TX's server refused 5 times running (Service not found) -- an answer, and a permanent one",
     "since": "2026-10-04",
-    "strikes": 18
+    "strikes": 19
   },
   "ut-statewide": {
-    "at": "2026-10-20",
+    "at": "2026-10-21",
     "ok": true,
     "acres": 25.768
   },
   "va-statewide": {
-    "at": "2026-10-20",
+    "at": "2026-10-21",
     "ok": true,
     "acres": 0.408
   },
   "vt-statewide": {
-    "at": "2026-10-20",
+    "at": "2026-10-21",
     "ok": true,
     "acres": 0.997
   },
   "wa-statewide": {
-    "at": "2026-10-20",
+    "at": "2026-10-21",
     "ok": true,
     "acres": 12.226
   },
   "wv-statewide": {
-    "at": "2026-10-20",
+    "at": "2026-10-21",
     "ok": true,
     "acres": 0.229
   },
@@ -834,20 +834,24 @@
     "acres": 156.155
   },
   "wa-king": {
-    "at": "2026-09-18",
-    "ok": true
+    "at": "2026-10-21",
+    "ok": true,
+    "acres": 0.296
   },
   "wa-snohomish": {
-    "at": "2026-09-18",
-    "ok": true
+    "at": "2026-10-21",
+    "ok": true,
+    "acres": 0.111
   },
   "wa-spokane": {
-    "at": "2026-09-18",
-    "ok": true
+    "at": "2026-10-21",
+    "ok": true,
+    "acres": 139.764
   },
   "wa-thurston": {
-    "at": "2026-09-18",
-    "ok": true
+    "at": "2026-10-21",
+    "ok": true,
+    "acres": 3.146
   },
   "wi-brown": {
     "at": "2026-09-18",
@@ -1791,7 +1795,7 @@
     "why": "layer metadata: fetch failed"
   },
   "ma-statewide": {
-    "at": "2026-10-20",
+    "at": "2026-10-21",
     "ok": true,
     "acres": 0.169
   },
@@ -3885,9 +3889,9 @@
     "acres": 29.94
   },
   "sc-greenville": {
-    "at": "2026-10-20",
+    "at": "2026-10-21",
     "ok": true,
-    "acres": 0.256
+    "acres": 0.271
   },
   "sc-greenwood": {
     "at": "2026-10-13",
@@ -4491,62 +4495,66 @@
     "strikes": 2
   },
   "wa-grant": {
-    "at": "2026-09-18",
+    "at": "2026-10-21",
     "ok": true,
     "acres": 0.092
   },
   "wa-island": {
-    "at": "2026-09-18",
-    "ok": true,
-    "acres": 0.416
+    "at": "2026-10-21",
+    "ok": false,
+    "why": "layer metadata: HTTP 500",
+    "since": "2026-10-21",
+    "strikes": 1
   },
   "wa-jefferson": {
-    "at": "2026-09-18",
+    "at": "2026-10-21",
     "ok": true,
     "acres": 15.592
   },
   "wa-kittitas": {
-    "at": "2026-09-18",
+    "at": "2026-10-21",
     "ok": false,
-    "why": "layer metadata: Token Required"
+    "why": "12 samples, none parcel-sized: 12 with no usable geometry [the feature carried no geometry at all]",
+    "since": "2026-10-21",
+    "strikes": 2
   },
   "wa-lincoln": {
-    "at": "2026-09-18",
+    "at": "2026-10-21",
     "ok": true,
     "acres": 4.034
   },
   "wa-mason": {
-    "at": "2026-09-18",
+    "at": "2026-10-21",
     "ok": true,
-    "acres": 0.934
+    "acres": 0.457
   },
   "wa-pend-oreille": {
-    "at": "2026-09-18",
+    "at": "2026-10-21",
     "ok": true,
     "acres": 0.41
   },
   "wa-pierce": {
-    "at": "2026-09-18",
+    "at": "2026-10-21",
     "ok": true,
     "acres": 2.419
   },
   "wa-san-juan": {
-    "at": "2026-09-18",
+    "at": "2026-10-21",
     "ok": true,
-    "acres": 43.167
+    "acres": 0.458
   },
   "wa-skagit": {
-    "at": "2026-09-18",
+    "at": "2026-10-21",
     "ok": true,
     "acres": 55.224
   },
   "wa-skamania": {
-    "at": "2026-09-18",
+    "at": "2026-10-21",
     "ok": true,
     "acres": 0.193
   },
   "wa-stevens": {
-    "at": "2026-09-18",
+    "at": "2026-10-21",
     "ok": true,
     "acres": 0.307
   },
@@ -5041,111 +5049,111 @@
     "acres": 61.002
   },
   "fl-statewide": {
-    "at": "2026-10-20",
+    "at": "2026-10-21",
     "ok": true,
     "acres": 5.346
   },
   "hi-statewide": {
-    "at": "2026-10-20",
+    "at": "2026-10-21",
     "ok": false,
     "why": "0 of 25 points across HI returned a parcel (25 nothing, 0 under 0.01 ac, 0 over 100000 ac)",
     "since": "2026-10-04",
-    "strikes": 18
+    "strikes": 19
   },
   "ia-statewide": {
-    "at": "2026-10-20",
+    "at": "2026-10-21",
     "ok": true,
     "acres": 9.885
   },
   "me-statewide": {
-    "at": "2026-10-20",
+    "at": "2026-10-21",
     "ok": false,
     "why": "7 hits but all within 76% x 38% of ME -- a local layer wearing a statewide name",
     "since": "2026-10-04",
-    "strikes": 18
+    "strikes": 19
   },
   "mt-statewide": {
-    "at": "2026-10-20",
+    "at": "2026-10-21",
     "ok": true,
     "acres": 4.969
   },
   "nc-statewide": {
-    "at": "2026-10-20",
+    "at": "2026-10-21",
     "ok": true,
     "acres": 4.51
   },
   "nj-statewide": {
-    "at": "2026-10-20",
+    "at": "2026-10-21",
     "ok": true,
     "acres": 0.164
   },
   "nv-statewide": {
-    "at": "2026-10-20",
+    "at": "2026-10-21",
     "ok": true,
     "acres": 240.92
   },
   "ri-statewide": {
-    "at": "2026-10-20",
+    "at": "2026-10-21",
     "ok": true,
     "acres": 0.116
   },
   "tn-statewide": {
-    "at": "2026-10-20",
+    "at": "2026-10-21",
     "ok": true,
     "acres": 2.03
   },
   "wi-statewide": {
-    "at": "2026-10-20",
+    "at": "2026-10-21",
     "ok": true,
     "acres": 4.437
   },
   "wy-statewide": {
-    "at": "2026-10-20",
+    "at": "2026-10-21",
     "ok": true,
     "acres": 40.626
   },
   "ks-johnson": {
-    "at": "2026-10-20",
+    "at": "2026-10-21",
     "ok": true,
     "acres": 0.355
   },
   "ks-leavenworth": {
-    "at": "2026-10-20",
+    "at": "2026-10-21",
     "ok": true,
     "acres": 2.529
   },
   "mi-washtenaw": {
-    "at": "2026-10-20",
+    "at": "2026-10-21",
     "ok": true,
     "acres": 0.05
   },
   "oh-athens": {
-    "at": "2026-10-20",
+    "at": "2026-10-21",
     "ok": true,
     "acres": 0.485
   },
   "oh-warren": {
-    "at": "2026-10-20",
+    "at": "2026-10-21",
     "ok": true,
     "acres": 62.727
   },
   "pa-delaware": {
-    "at": "2026-10-20",
+    "at": "2026-10-21",
     "ok": true,
     "acres": 2.992
   },
   "pa-lackawanna": {
-    "at": "2026-10-20",
+    "at": "2026-10-21",
     "ok": true,
     "acres": 2.007
   },
   "tn-knox": {
-    "at": "2026-10-20",
+    "at": "2026-10-21",
     "ok": true,
     "acres": 2.787
   },
   "tn-rutherford": {
-    "at": "2026-10-20",
+    "at": "2026-10-21",
     "ok": true,
     "acres": 0.164
   },
@@ -5185,8 +5193,13 @@
     "acres": 39.251
   },
   "pa-york": {
-    "at": "2026-10-20",
+    "at": "2026-10-21",
     "ok": true,
     "acres": 0.172
+  },
+  "ny-nassau": {
+    "at": "2026-10-21",
+    "ok": true,
+    "acres": 0.092
   }
 }

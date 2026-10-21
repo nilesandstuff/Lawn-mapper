@@ -1,6 +1,6 @@
 {
   "foundBy": "tools/find-parcels.js",
-  "foundAt": "2026-10-20",
+  "foundAt": "2026-10-21",
   "note": "Candidates only, from parcel_gaps. Nothing here is coverage until verify-counties.js says so.",
   "candidates": [
     {
@@ -88,6 +88,44 @@
           "fields": {
             "pin": "PIN",
             "address": null
+          }
+        }
+      ]
+    },
+    {
+      "key": "ny-nassau",
+      "name": "Nassau County, NY",
+      "fips": "36059",
+      "service": "https://services9.arcgis.com/VTuQFPmUVRH4KfU4/arcgis/rest/services/Parcels_1/FeatureServer",
+      "layer": 0,
+      "layerName": "GISDATA.DBO.Nassau_County_Parcels_2018",
+      "fields": {
+        "pin": "PARCELKEY",
+        "address": "T_PROPERTY_STREET_ADDR"
+      },
+      "fallbacks": [
+        {
+          "service": "https://services6.arcgis.com/dptt3Slw4IV02m0l/arcgis/rest/services/Nassau_County_Parcels_v2/FeatureServer",
+          "layer": 0,
+          "fields": {
+            "pin": "PARCEL_ADD",
+            "address": "MAIL_ADDR"
+          }
+        },
+        {
+          "service": "https://services6.arcgis.com/Lrj7EgTnNlXGxnlh/arcgis/rest/services/PARCELS_2025_2026_NC/FeatureServer",
+          "layer": 25,
+          "fields": {
+            "pin": "ParcelID",
+            "address": "T_PROPERTY_STREET_ADDR"
+          }
+        },
+        {
+          "service": "https://services.arcgis.com/pcBKyZSkteUjyLHC/arcgis/rest/services/Marinas/FeatureServer",
+          "layer": 0,
+          "fields": {
+            "pin": "PARCELKEY",
+            "address": "T_PROPERTY_STREET_ADDR"
           }
         }
       ]
