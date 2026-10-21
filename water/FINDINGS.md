@@ -998,6 +998,35 @@ The datum move alone, as a move of the photo, is E +1.16 N -0.80 at Fargo (fligh
 on the owner's lot (2016): within about 0.35 m of the ground numbers above, which is why the ground sits on
 the photo after it.
 
+### H29. The head picker asks only what can be seen; adjustable arcs are fitted together (water session, 2026-10-21)
+
+Owner: "most homeowners only know what they can learn by looking at the actual head while it's installed"; "the
+spray body only matters here in terms of A. how high it pops up. B. if it's pressure regulated"; "for heads with
+an adjustable arc, let's automatically try to fit the correct arc for best head to head coverage and max coverage
+of the lawn ... tap the head to adjust the arc, so there's not overlapping drag handles".
+
+- PICKER. Spray and rotary nozzles: what's on top when it runs; the nozzle's brand; the nozzle by the name printed
+  on it; how high it pops up (2, 3, 4, 6, 12 in, or a shrub riser); whether the body says PRS/PR/P30/P40/P45 (no
+  or can't tell, 30, 40, 45 psi). One generic spray body per height and setting (lib/heads.js sprayBodyId) takes
+  every swappable spray and rotary nozzle: a check valve, side inlet, stainless stem or the maker change nothing
+  the model computes. Rotors and impacts: the series on the cap (named by hand, lib/heads.js seriesOf: "PGP Ultra
+  or I-20", "5000 series"...), a regulator if that series has one, the nozzle's number, the pop-up height. The
+  arc is no longer asked. The pop-up height now sets the nozzle's height in the pressure model (was 4 in for all).
+  Older saves keep their exact bodies.
+- ARCS (lib/arcs.js fitArcs). The lawn round the heads in half-metre cells; a cell is worth, by how many heads
+  reach it, 1 for the first, 0.5 the second (head to head), 0.3 a third, 0.1 more; -2 a head on a building or
+  paving; -0.4 on other ground. Each adjustable head takes the arc (within its nozzle's range) AND the throw (full
+  down to 75%, the radius screw) that add the most given every other head; fixed patterns are only turned; three
+  rounds. On a 12 x 9 m test lawn with heads at the corners and mid-sides: every corner 90 deg and every side
+  180 deg, facing in; the sides next to a house throw 85% rather than narrow (water/test/heads.test.js). On the
+  owner's real map (30 R-VAN24 heads, read with the saved-maps key, nothing written back): fitted in the page in
+  well under a second; arcs 130-270 deg, half of them at the nozzle's 270 max. Not yet checked against what the
+  owner's heads are actually set to.
+- EDITING. In the arcs step, tapping a head selects it; only that head shows handles: a white dot on each edge
+  of its arc (one for a strip, which it turns) and a yellow square at the end of its throw. Dragging an edge
+  moves that edge alone, within the nozzle's range; a fixed pattern turns. The head is then "set by you" and
+  the others fit round it.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge

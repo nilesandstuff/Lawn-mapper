@@ -54,7 +54,11 @@
   #result.heads-on .main-only { display: none; }
   #result:not(.heads-on) #heads-saved { display: none; }
   #heads-panel select { padding: 8px; font-size: 16px; max-width: 100%; }
-  #heads-panel .tools button[style] { color: #fff; text-shadow: 0 0 2px #000; }
+  #heads-panel .tools button[style]:not(.plain) { color: #fff; text-shadow: 0 0 2px #000; }
+  /* the head picker: each question over its own full-width menu, so nothing runs off a phone's screen */
+  .picker label { display: block; margin: 6px 0; min-width: 0; }
+  .picker select { display: block; width: 100%; max-width: 100%; margin-top: 4px; }
+  .picker button { white-space: normal; }
 </style>
 </head>
 <body>

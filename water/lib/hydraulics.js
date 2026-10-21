@@ -242,11 +242,12 @@ export function solveZone(z, up, { maxIter = 60, tol = 1e-4 } = {}) {
   const kids = new Map();
   for (const n of tree.nodes) if (n.parent !== null) { if (!kids.has(n.parent)) kids.set(n.parent, []); kids.get(n.parent).push(n); }
   const groundFt = (at) => { const e = z.elev ? z.elev(at) : null; return Number.isFinite(e) ? e * FT_PER_M : null; };
-  // heights: the gauge where it was given; the lateral 8 in below the ground; a nozzle 4 in above it
+  // heights: the gauge where it was given; the lateral 8 in below the ground; a nozzle its pop-up above it
   const gaugeFt = Number.isFinite(up.gaugeElevM) ? up.gaugeElevM * FT_PER_M : groundFt(up.gaugeAt);
   const flat = gaugeFt === null;
   const hNode = (n) => { const g = groundFt(n.at); return flat || g === null ? 0 : g - 8 / 12; };
-  const hNozzle = (n) => { const g = groundFt(n.at); return flat || g === null ? 0 : g + 4 / 12; };
+  // the nozzle as high as its pop-up (z.riseIn(head) -> inches; 4 when not known)
+  const hNozzle = (n) => { const g = groundFt(n.at); return flat || g === null ? 0 : g + (z.riseIn?.(heads.get(n.id)) ?? 4) / 12; };
   const g0 = flat ? 0 : gaugeFt;
 
   // the pipes are sized once, as an installer sizes them: from each head's flow at its design pressure

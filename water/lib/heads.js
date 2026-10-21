@@ -27,11 +27,24 @@ export function catalogue(files) {
       for (const n of nozzles) { byNozzle.set(n.id, n); famOf.set(n.id, clean); }
     }
   }
+  /* THE SPRAY BODY, AS A HOMEOWNER CAN TELL IT (owner, 2026-10-21: "the spray body only matters here in terms
+     of A. how high it pops up. B. if it's pressure regulated ... most homeowners only know what they can learn
+     by looking at the actual head"). A spray body changes nothing else here -- a check valve (SAM), a side
+     inlet, a stainless stem or the maker do not change the spray -- so one body for every height and
+     regulator setting, taking every swappable spray and rotary nozzle in the catalogue. */
+  const fixedOnly = new Set(bodies.flatMap((b) => (b.fixedNozzles ? [b.fixedNozzles] : [])));
+  const swappable = families.filter((f) => (f.kind === 'spray' || f.kind === 'rotary') && !fixedOnly.has(f.id) && f.nozzles.length).map((f) => f.id);
+  for (const pop of SPRAY_POP_IN) for (const reg of SPRAY_REG_PSI) {
+    const id = sprayBodyId(pop, reg);
+    if (bodies.some((x) => x.id === id)) continue;
+    bodies.push({ id, generic: true, brand: 'Any', kind: 'spray', popUpIn: pop, riserIn: pop === null ? 12 : null, regulatedPsi: reg, swappable: true, nozzleFamilies: swappable,
+      model: `${pop === null ? 'shrub head on a riser' : `${pop} in pop-up`}${reg ? `, pressure-regulated to ${reg} psi` : ''}` });
+  }
   const famById = new Map(families.map((f) => [f.id, f]));
   const bodyById = new Map(bodies.map((b) => [b.id, b]));
   // a body is offered only when some chart for its nozzles was found
   const charted = (b) => [...(b.nozzleFamilies || []), ...(b.fixedNozzles ? [b.fixedNozzles] : [])].some((id) => famById.get(id)?.nozzles.length);
-  const brands = [...new Set(bodies.filter(charted).map((b) => b.brand))].sort();
+  const brands = [...new Set(bodies.filter((b) => !b.generic && charted(b)).map((b) => b.brand))].sort();
   return {
     bodies, families, brands, charted,
     body: (id) => bodyById.get(id) || null,
@@ -46,6 +59,32 @@ export function catalogue(files) {
       return ids.map((id) => famById.get(id)).filter(Boolean);
     },
   };
+}
+
+/* The spray body's two questions: how high it pops up (null: a shrub head on a riser), and the pressure its
+   regulator holds (null: none, or the person cannot tell -- "PRS", "PR", "P30", "P40", "P45" on its cap or stem). */
+export const SPRAY_POP_IN = [2, 3, 4, 6, 12, null];
+export const SPRAY_REG_PSI = [null, 30, 40, 45];
+export const sprayBodyId = (pop, reg) => `any-spray-${pop ?? 'riser'}-${reg ?? 'open'}`;
+/** How far above the ground a head's nozzle sits, inches: its pop-up height, a riser's, else 4. */
+export const nozzleRiseIn = (body) => body?.popUpIn ?? body?.riserIn ?? 4;
+
+/**
+ * A rotor's or impact head's SERIES: the name on its cap, which decides its nozzles. Bodies of one series
+ * differ only in pop-up height, a regulator, a stainless stem or a check valve, which the picker asks
+ * apart (or, the last two, not at all). Named by hand: the makers' model codes do not group by rule.
+ */
+const SERIES = [
+  [/^(PGP Ultra|I-20)/, 'PGP Ultra or I-20'], [/^PGP-ADJ/, 'PGP (original, adjustable)'], [/^PGP-360/, 'PGP (original, full circle only)'],
+  [/^PGJ/, 'PGJ'], [/^SRM/, 'SRM'], [/^T5/, 'T5 RapidSet'], [/^MINI8/, 'Mini 8'], [/^Super 800/, 'Super 800'],
+  [/^MiniPro/, 'MiniPro'], [/^RPS75-360/, 'RPS75-360 (full circle only)'], [/^RPS75/, 'RPS75'], [/^ProPlus/, 'ProPlus'],
+  [/^50(0|04|06|12)/, '5000 series (5004, 5006, 5012, 5000 Plus)'], [/^35/, '3500 series (3504)'],
+  [/^2045/, 'Maxi-Paw / Maxi-Bird'], [/^Voyager/, 'Voyager II'],
+];
+export function seriesOf(body) {
+  const m = String(body?.model || '');
+  for (const [re, name] of SERIES) if (re.test(m)) return name;
+  return m.replace(/\s*\(.*$/, '').trim() || m;
 }
 
 /** Per-arc tables in either file's shape: printedByArc [{ arcDeg, rows }] or arcRows [{ arc, psi, radiusFt, gpmAtArc }]. */

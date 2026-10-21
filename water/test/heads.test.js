@@ -5,9 +5,9 @@
 
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
-import { autoArc } from '../lib/arcs.js';
+import { autoArc, fitArcs } from '../lib/arcs.js';
 import { precipitation, rateAt, setProfiles } from '../lib/precip.js';
-import { catalogue, rowAt, headWater, zoneWater, headPsi, lineCheck, gpmAt, psiPer100ft, pipe, settle, calibrate, placeByGps, enu, unEnu, facing } from '../lib/heads.js';
+import { catalogue, rowAt, headWater, zoneWater, headPsi, lineCheck, gpmAt, psiPer100ft, pipe, settle, calibrate, placeByGps, enu, unEnu, facing, sprayBodyId, seriesOf, nozzleRiseIn, SPRAY_POP_IN, SPRAY_REG_PSI } from '../lib/heads.js';
 
 const tests = [];
 const test = (name, fn) => tests.push([name, fn]);
@@ -176,6 +176,46 @@ test("precipitation with the measured spreads: each still adds back up to its gp
   const p = precipitation({ ...grid, lawn: mid }, heads);
   assert.ok(p.du >= 0.6 && p.du <= 0.95, `rotors head to head: DU ${p.du.toFixed(2)}`);
   console.log(`     rotors head to head, zero wind: DU ${(p.du * 100).toFixed(0)}%`);
+});
+
+test('a spray body is only its height and its regulator: one for each, taking every swappable nozzle', () => {
+  const dir = new URL('../lib/heads/', import.meta.url);
+  const cat = catalogue(readdirSync(dir).filter((f) => f.endsWith('.json')).map((f) => JSON.parse(readFileSync(new URL(f, dir), 'utf8'))));
+  for (const pop of SPRAY_POP_IN) for (const reg of SPRAY_REG_PSI) assert.ok(cat.body(sprayBodyId(pop, reg)), `${pop} ${reg}`);
+  const b = cat.body(sprayBodyId(4, null));
+  const rvan = cat.families.find((f) => /r-van/i.test(f.id) && !/strip/.test(f.id));
+  assert.ok(rvan && b.nozzleFamilies.includes(rvan.id), 'an R-VAN goes on any spray body');
+  assert.ok(!cat.brands.includes('Any'), 'the generic bodies are not a brand');
+  assert.equal(nozzleRiseIn(cat.body(sprayBodyId(6, 30))), 6);
+  assert.equal(nozzleRiseIn(cat.body(sprayBodyId(null, null))), 12);
+  // a regulated body holds the nozzle down; an open one passes the zone's pressure
+  const n = rvan.nozzles[0], zone = 60;
+  const open = headWater({ body: sprayBodyId(4, null), nozzle: n.id, arc: 180 }, cat, zone), reg = headWater({ body: sprayBodyId(4, 45), nozzle: n.id, arc: 180 }, cat, zone);
+  assert.ok(open.psi > reg.psi, `${open.psi} vs ${reg.psi}`);
+  // rotors group by the series on the cap
+  const series = new Set(cat.bodies.filter((x) => x.kind === 'rotor' && x.brand === 'Hunter').map(seriesOf));
+  assert.ok(series.has('PGP Ultra or I-20') && series.size <= 6, [...series].join(' | '));
+});
+
+test('adjustable arcs fitted together: corners a quarter, sides a half, all facing in, off the house', () => {
+  const o = [-85.5, 43.0];
+  // a 12 x 9 m lawn, a house north of it, a drive west of it
+  const ground = (at) => { const [e, n] = enu(o, at); if (e >= 0 && e <= 12 && n >= 0 && n <= 9) return 'lawn'; if (n > 9 && n < 15 && e > 2 && e < 10) return 'hard'; if (e < 0 && e > -3) return 'hard'; return 'other'; };
+  const nz = { arcFixed: null, arcMin: 45, arcMax: 270 };
+  const want = [[0, 0, 45, 90], [6, 0, 0, 180], [12, 0, 315, 90], [0, 9, 135, 90], [6, 9, 180, 180], [12, 9, 225, 90], [0, 4.5, 90, 180], [12, 4.5, 270, 180]];
+  const heads = want.map(([e, n], k) => ({ id: `h${k}`, at: unEnu(o, [e, n]), radiusM: 6.5, nozzle: nz, dir: 0, arc: 180 }));
+  const fit = fitArcs(heads, ground);
+  want.forEach(([, , dir, arc], k) => {
+    const x = fit.get(`h${k}`);
+    assert.equal(x.arc, arc, `h${k} arc ${x.arc}`);
+    const off = Math.abs(((x.dir - dir + 540) % 360) - 180);
+    assert.ok(off <= 10, `h${k} faces ${x.dir}, not ${dir}`);
+  });
+  // the side heads shorten their throw rather than water the house
+  assert.ok(fit.get('h6').throw < 1);
+  // a head the person set stays, and the others fit round it
+  heads[0].fixed = true; heads[0].dir = 45; heads[0].arc = 90;
+  assert.ok(!fitArcs(heads, ground).has('h0'));
 });
 
 let failed = 0;

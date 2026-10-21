@@ -20,7 +20,7 @@
  * 'other' | null (off the map).
  */
 
-import { unEnu } from './heads.js';
+import { unEnu, enu as enuOf } from './heads.js';
 
 export const BIN_DEG = 5, MIN_THROW = 0.75;
 const FRACTIONS = [0.15, 0.3, 0.45, 0.6, 0.75, 0.9, 1.0];
@@ -126,4 +126,114 @@ export function autoArc(at, radiusM, nozzle, ground) {
   let lawn = 0, hard = 0;
   for (let k = 0; k < len; k++) { lawn += rs[(start + k) % n].lawn; hard += rs[(start + k) % n].hard; }
   return { dir, arc, throw: throwFor(rs, start, len), lawnShare: lawn / len, hardShare: hard / len };
+}
+
+/*
+ * EVERY ADJUSTABLE HEAD FITTED TOGETHER (owner, 2026-10-21: "for heads with an adjustable arc, let's
+ * automatically try to fit the correct arc for best head to head coverage and max coverage of the lawn").
+ *
+ * Head-to-head coverage is the rule designers space heads by: every piece of lawn inside the throw of two or
+ * more heads, each head's water reaching the next. So the lawn round the heads is cut into half-metre cells,
+ * and each cell is worth something by how many heads reach it:
+ *
+ *   lawn          the first head 1, the second 0.5 (head to head), a third 0.15, more nothing
+ *   building or   -2 a head (water on a wall or a drive is lost, and the reason an arc is turned)
+ *   paving
+ *   other ground  -0.4 a head (beds, a neighbour's yard, off the map: not the lawn's)
+ *
+ * weighted by the area each sample stands for. A head's arc and throw are then the window of directions,
+ * within its nozzle's range, and the throw (full down to MIN_THROW, the radius screw) that add the most, given every other head where it is; heads are fitted in turn, three
+ * rounds, each starting from the last. A fixed pattern is only turned; a full circle and a strip are left to
+ * autoArc; a head the person set (fixed) stays as they set it and counts as it is. Pure.
+ *
+ * heads: [{ id, at [lng, lat], radiusM, nozzle { arcFixed, arcMin, arcMax, strip }, dir, arc, throw, fixed }]
+ * ground(at) -> 'lawn' | 'hard' | 'other' | null. -> Map id -> { dir, arc, throw }
+ */
+export const FIT_CELL_M = 0.5, FIT_ROUNDS = 3;
+const LAWN_GAIN = [1, 0.5, 0.3, 0.1], HARD_GAIN = -2, OTHER_GAIN = -0.4;
+
+export function fitArcs(heads, ground, { only = null } = {}) {
+  const B = 360 / BIN_DEG, out = new Map();
+  const live = heads.filter((h) => h.radiusM > 0 && Array.isArray(h.at));
+  if (!live.length) return out;
+  const o = live[0].at;
+  const cellGround = new Map();
+  const groundOf = (key, e, n) => {
+    if (!cellGround.has(key)) cellGround.set(key, ground(unEnu(o, [e, n])));
+    return cellGround.get(key);
+  };
+  // each head's samples: per bin, [{ key, w, f (fraction of the throw), g }]
+  const plan = new Map();
+  for (const h of live) {
+    const [he, hn] = enuOf(o, h.at), R = h.radiusM, J = Math.max(4, Math.ceil(R / 0.4));
+    const bins = [];
+    for (let k = 0; k < B; k++) {
+      const t = ((k + 0.5) * BIN_DEG * Math.PI) / 180, list = [];
+      for (let j = 0; j < J; j++) {
+        const f = (j + 0.5) / J, r = f * R, e = he + Math.sin(t) * r, n = hn + Math.cos(t) * r;
+        const ce = Math.floor(e / FIT_CELL_M), cn = Math.floor(n / FIT_CELL_M), key = `${ce},${cn}`;
+        list.push({ key, w: r * (R / J) * ((BIN_DEG * Math.PI) / 180), f, g: groundOf(key, (ce + 0.5) * FIT_CELL_M, (cn + 0.5) * FIT_CELL_M) });
+      }
+      bins.push(list);
+    }
+    plan.set(h.id, bins);
+  }
+  const cover = new Map(), mine = new Map();
+  const sectorOf = (h) => {
+    if (h.nozzle?.strip) return null;
+    const arc = Number.isFinite(h.nozzle?.arcFixed) ? h.nozzle.arcFixed : Number.isFinite(h.arc) ? h.arc : 360;
+    const len = Math.max(1, Math.min(B, Math.round(arc / BIN_DEG)));
+    const start = len >= B ? 0 : Math.round(((((h.dir ?? 0) - arc / 2) % 360) + 360) % 360 / BIN_DEG) % B;
+    return { start, len, throw: h.throw ?? 1 };
+  };
+  const add = (id, s) => {
+    const cells = new Set(), bins = plan.get(id);
+    for (let k = 0; k < s.len; k++) for (const p of bins[(s.start + k) % B]) if (p.f <= s.throw + 1e-9) cells.add(p.key);
+    for (const c of cells) cover.set(c, (cover.get(c) || 0) + 1);
+    mine.set(id, cells);
+  };
+  const remove = (id) => { for (const c of mine.get(id) || []) cover.set(c, cover.get(c) - 1); mine.delete(id); };
+  const gainOf = (p) => (p.g === 'lawn' ? LAWN_GAIN[Math.min(3, cover.get(p.key) || 0)] : p.g === 'hard' ? HARD_GAIN : OTHER_GAIN);
+  const free = (h) => !h.fixed && (!only || only.has(h.id)) && !h.nozzle?.strip && !(Number.isFinite(h.nozzle?.arcFixed) && h.nozzle.arcFixed >= 360);
+  // the heads that stay as they are count from the start; the rest go in one at a time
+  const cur = new Map();
+  for (const h of live) { const s = sectorOf(h); if (s && !free(h)) { add(h.id, s); cur.set(h.id, s); } }
+  /* a head's arc AND throw together: the radius screw shortens the whole head, so a sector that would reach the
+     house can be kept by throwing shorter rather than turned away; throws from full down to MIN_THROW */
+  const THROWS = [1, 0.95, 0.9, 0.85, 0.8, 0.75].filter((t) => t >= MIN_THROW - 1e-9);
+  const fit = (h) => {
+    const bins = plan.get(h.id);
+    const fixed = Number.isFinite(h.nozzle?.arcFixed) ? Math.round(h.nozzle.arcFixed / BIN_DEG) : null;
+    const lo = fixed ?? Math.max(1, Math.ceil((Number.isFinite(h.nozzle?.arcMin) ? h.nozzle.arcMin : BIN_DEG) / BIN_DEG));
+    const hi = fixed ?? Math.min(B, Math.floor((Number.isFinite(h.nozzle?.arcMax) ? h.nozzle.arcMax : 360) / BIN_DEG));
+    let best = null;
+    for (const T of h.fixedThrow ? [h.throw ?? 1] : THROWS) {
+      const gain = bins.map((list) => list.reduce((t, p) => (p.f <= T + 1e-9 ? t + p.w * gainOf(p) : t), 0));
+      for (let len = lo; len <= hi; len++) {
+        for (let start = 0; start < (len >= B ? 1 : B); start++) {
+          let t = 0;
+          for (let k = 0; k < len; k++) t += gain[(start + k) % B];
+          // a wider arc or a longer throw must add something real; on a tie, the narrower and the longer throw
+          if (!best || t > best.t + 1e-6 * (1 + Math.abs(best.t))) best = { start, len, t, throw: T };
+        }
+      }
+    }
+    return { start: best.start, len: best.len, throw: best.throw };
+  };
+  const todo = live.filter(free);
+  for (let round = 0; round < FIT_ROUNDS; round++) {
+    let moved = false;
+    for (const h of todo) {
+      if (cur.has(h.id)) remove(h.id);
+      const s = fit(h), was = cur.get(h.id);
+      if (!was || was.start !== s.start || was.len !== s.len || was.throw !== s.throw) moved = true;
+      cur.set(h.id, s); add(h.id, s);
+    }
+    if (!moved) break;
+  }
+  for (const h of todo) {
+    const s = cur.get(h.id), arc = s.len * BIN_DEG;
+    out.set(h.id, { dir: s.len >= B ? 0 : ((s.start * BIN_DEG + arc / 2) % 360), arc: Number.isFinite(h.nozzle?.arcFixed) ? h.nozzle.arcFixed : arc, throw: s.throw });
+  }
+  return out;
 }

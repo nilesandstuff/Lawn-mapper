@@ -19,8 +19,8 @@
  * it draws on the photo. Kept with the map as the water part's `irrigation` (POST /api/maps/tool).
  */
 
-import { catalogue, headWater, zoneWater, calibrate, placeByGps, facing, arcOf, enu, unEnu } from '/lib/heads.js';
-import { autoArc, MIN_THROW, BIN_DEG } from '/lib/arcs.js';
+import { catalogue, headWater, zoneWater, calibrate, placeByGps, facing, arcOf, enu, unEnu, sprayBodyId, seriesOf, nozzleRiseIn, SPRAY_POP_IN, SPRAY_REG_PSI } from '/lib/heads.js';
+import { autoArc, fitArcs, MIN_THROW, BIN_DEG } from '/lib/arcs.js';
 import { precipitation, setProfiles } from '/lib/precip.js';
 import { route, solveZone, headFlow, regulatedOut, deviceLoss, dwPerFt, roughnessMm, SWING, FITTINGS_SHARE, pipeById, pipeSize, PIPE_FAMILIES, sizeFor, fraction, fps, FT_PER_M, MAX_FPS } from '/lib/hydraulics.js';
 
@@ -133,6 +133,7 @@ export function sprinklers(ctx) {
         family, size: z.size && z.size !== 'auto' ? pipeSize(family, Number(z.size))?.id : null,
         valve: deviceOf(z.valve) || typical('valve', 1),
         // sprays on flexible swing pipe, rotors on a rigid 3/4 in swing joint (lib/hydraulics.js SWING)
+        riseIn: (h) => nozzleRiseIn(cat.body(h.body)),
         swingLoss: (h, g) => deviceLoss(/rotor|impact/.test(cat.familyOfNozzle(h.nozzle)?.kind || '') ? SWING.rigid : SWING.flexible, g),
       }, { psi: P, gaugeAt: sys.pvb.at, gaugeElevM: Number.isFinite(groundPvb) ? groundPvb + 0.3 : null, upstream });
       /* GAUGE READINGS (owner, 2026-10-20: "to override estimates"): a head with a reading takes it; the
@@ -294,7 +295,7 @@ export function sprinklers(ctx) {
     ctx.draw();
   }
   // the step is kept with the map too, so a reload comes back to it (owner: every step saves progress)
-  const go = (s) => { step = s; irr.step = s; sel.clear(); if (s !== 'place') stopGps(); if (s === 'arcs') { for (const h of irr.heads) if (h.arcSet !== 'user') autoSet(h); } ctx.changed(); render(); };
+  const go = (s) => { step = s; irr.step = s; sel.clear(); if (s !== 'place') stopGps(); if (s === 'arcs') fitAll(); ctx.changed(); render(); };
   const back = () => go(step === 'place' ? 'intro' : STEPS[Math.max(0, STEPS.indexOf(step) - 1)]);
   const nav = (next, { ok = true, label = 'Next' } = {}) => `<div class="tools"><button type="button" class="plain" data-act="back">Back</button><button type="button" data-act="next" ${ok ? '' : 'disabled'}>${label}</button></div>`;
   const wireNav = (P, next) => {
@@ -413,16 +414,14 @@ export function sprinklers(ctx) {
 
     arcs: () => {
       const h = sel.size === 1 ? head([...sel][0]) : null, n = h && cat?.nozzle(h.nozzle), w = h && waterOf(h);
-      const adjustable = n && !n.strip && !Number.isFinite(n.arcFixed);
       const changedByYou = irr.heads.filter((x) => x.arcSet === 'user').length;
-      return `<p class="hint">Each head's arc is set to water the most lawn and throw the least onto the house and paving, its throw from the pressure it gets${ctx.groundAt ? '' : ' (the lawn map is still loading: the arcs face the middle of the lawn until it is in)'}. Tap a head to turn it, widen it or shorten its throw.</p>
+      const what = n && w ? (n.strip ? 'a strip: drag the white dot to turn it' : Number.isFinite(n.arcFixed) && n.arcFixed < 360 ? `a fixed ${n.arcFixed}° pattern: drag either white dot to turn it` : Number.isFinite(n.arcFixed) ? 'a full circle' : `adjustable ${n.arcMin ?? 0}-${n.arcMax ?? 360}°: drag a white dot to move that edge`) : '';
+      return `<p class="hint">Each adjustable arc is fitted with the others: every part of the lawn reached by two heads where it can be (head to head), as much lawn as they can reach, and as little water on the house and paving${ctx.groundAt ? '' : ' (the lawn map is still loading: the arcs are fitted when it is in)'}. Each throw is from the pressure that head gets. Tap a head to change it.</p>
         ${h && n && w ? `<div class="card" style="margin-top:6px"><p style="margin:0">${headLine(h)}</p>
-          <label class="toggle" style="display:flex;margin-top:6px">Turn: <input type="range" min="0" max="355" step="${BIN_DEG}" value="${Math.round(h.dir ?? 0)}" data-arc="dir" style="flex:1"> ${Math.round(h.dir ?? 0)}°</label>
-          ${adjustable ? `<label class="toggle" style="display:flex">Arc: <input type="range" min="${Math.max(BIN_DEG, n.arcMin ?? 0)}" max="${n.arcMax ?? 360}" step="${BIN_DEG}" value="${Math.round(arcOf(h, n))}" data-arc="arc" style="flex:1"> ${Math.round(arcOf(h, n))}°</label>` : `<p class="dim">${n.strip ? 'A strip nozzle: turn it to lie along the strip.' : `A fixed ${n.arcFixed}° pattern: it can be turned, not widened.`}</p>`}
-          <label class="toggle" style="display:flex">Throw: <input type="range" min="${Math.round(MIN_THROW * 100)}" max="100" step="5" value="${Math.round((h.throw ?? 1) * 100)}" data-arc="throw" style="flex:1"> ${Math.round((h.throw ?? 1) * 100)}% (${Math.round(w.radiusFt * (h.throw ?? 1))} ft)</label>
-          <div class="tools"><button type="button" class="plain" data-act="autoone">Set this one automatically</button></div></div>` : ''}
-        <div class="tools"><button type="button" class="plain" data-act="autoall">Set every head automatically${changedByYou ? ` (undoes your ${changedByYou} change${changedByYou > 1 ? 's' : ''})` : ''}</button></div>
-        <p class="dim">The throw is the chart's radius at each head's pressure; a nozzle's radius screw (or a rotor's break-up screw) shortens it, usually by up to about 25%. Where the arc can't be turned off a hard surface, the throw is shortened instead.</p>
+          <p class="dim" style="margin:6px 0 0">${n.strip ? '' : `Arc ${Math.round(arcOf(h, n))}°, facing ${Math.round(h.dir ?? 0)}° from north; `}throws ${Math.round(w.radiusFt * (h.throw ?? 1))} ft (${Math.round((h.throw ?? 1) * 100)}% of its chart). It is ${esc(what)}; drag the yellow square in or out to shorten or lengthen the throw.${h.arcSet === 'user' ? ' Set by you.' : ''}</p>
+          <div class="tools"><button type="button" class="plain" data-act="autoone">Fit this one again</button></div></div>` : ''}
+        <div class="tools"><button type="button" class="plain" data-act="autoall">Fit every head again${changedByYou ? ` (undoes your ${changedByYou} change${changedByYou > 1 ? 's' : ''})` : ''}</button></div>
+        <p class="dim">The throw is the chart's radius at each head's pressure; a nozzle's radius screw (or a rotor's break-up screw) shortens it, usually by up to about 25%.</p>
         ${nav('coverage', { label: 'Next: the coverage' })}`;
     },
 
@@ -511,60 +510,116 @@ export function sprinklers(ctx) {
     h.dir = a.dir; if (!n.strip && !Number.isFinite(n.arcFixed)) h.arc = a.arc; h.throw = a.throw; h.arcSet = 'auto';
   }
 
+  /** A body as the person told it: a spray body by its height and regulator, a rotor by its maker and model. */
+  const bodyName = (b) => (b.generic ? `spray body, ${b.model}` : `${b.brand} ${b.model}`);
+
+  /** Every adjustable head fitted together (lib/arcs.js fitArcs): head to head, the most lawn, off the house and
+      paving; a fixed pattern turned. `only`: just these heads, the rest as they are. Strips: autoSet. */
+  function fitAll(only = null) {
+    if (!cat || !ctx.groundAt) return;
+    const list = [];
+    for (const h of irr.heads) {
+      const n = cat.nozzle(h.nozzle), w = n && waterOf(h);
+      if (!w) continue;
+      list.push({ id: h.id, at: h.at, radiusM: w.radiusFt / FT_PER_M, nozzle: n, dir: h.dir, arc: arcOf(h, n), throw: h.throw ?? 1, fixed: h.arcSet === 'user' || (only && !only.has(h.id)) });
+    }
+    const fitted = fitArcs(list, ctx.groundAt, { only });
+    for (const h of irr.heads) {
+      const x = fitted.get(h.id);
+      if (x) { const n = cat.nozzle(h.nozzle); h.dir = x.dir; if (!Number.isFinite(n.arcFixed)) h.arc = x.arc; h.throw = x.throw; h.arcSet = 'auto'; }
+      else if (h.nozzle && h.arcSet !== 'user' && (!only || only.has(h.id))) autoSet(h);
+    }
+  }
+
   function headLine(h) {
     if (!h) return '';
     const b = cat?.body(h.body), n = cat?.nozzle(h.nozzle), w = waterOf(h);
-    return `<span class="chip" style="background:${colorOf(h.zone)}"></span>${b ? `${esc(b.brand)} ${esc(b.model)}` : 'no model'}${n ? ` · nozzle ${esc(n.label)}` : ''}${w ? ` · ${throwOf(w)} · ${w.gpm.toFixed(2)} gpm${Number.isFinite(w.inletPsi) ? ` at ${Math.round(w.inletPsi)} psi` : ''}${w.status === 'low' ? ' (under its chart: short throw)' : w.status === 'high' ? ' (over its chart: misting)' : ''}` : ''}`;
+    return `<span class="chip" style="background:${colorOf(h.zone)}"></span>${b ? esc(bodyName(b)) : 'no model'}${n ? ` · nozzle ${esc(n.label)}` : ''}${w ? ` · ${throwOf(w)} · ${w.gpm.toFixed(2)} gpm${Number.isFinite(w.inletPsi) ? ` at ${Math.round(w.inletPsi)} psi` : ''}${w.status === 'low' ? ' (under its chart: short throw)' : w.status === 'high' ? ' (over its chart: misting)' : ''}` : ''}`;
   }
 
-  /* THE HEAD PICKER, in four sections (owner, 2026-10-20): rotary heads -- the multi-stream nozzles that swap
-     onto any spray body (R-VAN, MP Rotator, PRN, K-Rain RN): the nozzle first, then the body it sits on;
-     fixed spray / shrub heads; gear-driven rotors; impact heads. Then brand, model, nozzle, arc. */
-  const SECTIONS = [['rotary', 'Rotary heads (rotary nozzles on a spray body)'], ['spray', 'Fixed spray / shrub heads'], ['rotor', 'Gear-driven rotors'], ['impact', 'Impact heads']];
+  /* THE HEAD PICKER (owner, 2026-10-20: four sections; 2026-10-21: "let's simplify things. Remember that most
+     homeowners only know what they can learn by looking at the actual head while it's installed"). Only what
+     can be seen on a head in the ground:
+       spray and rotary nozzles  what's on top; the nozzle, by the name printed on it; how high it pops up;
+                                 whether the body is pressure-regulated. Nothing else about a spray body
+                                 changes the water (lib/heads.js sprayBodyId).
+       rotors and impact heads   the series on the cap (it decides the nozzles), a regulator if that series
+                                 has one, the nozzle's number, how high it pops up.
+     An adjustable arc is not asked: the arcs step fits it to the lawn. */
+  const SECTIONS = [
+    ['spray', 'A spray nozzle: a fan of fine spray, nothing turns'],
+    ['rotary', 'A rotary nozzle on a spray head: thin streams that turn slowly (R-VAN, MP Rotator…)'],
+    ['rotor', 'A gear rotor: a bigger head, one stream that turns quietly'],
+    ['impact', 'An impact head: a stream and an arm that clicks as it turns'],
+  ];
   /** Which section a body or a family belongs to. */
   const sectionOfFamily = (f) => (f.kind === 'rotary' && !/^rb-22sa/.test(f.id) ? 'rotary' : f.kind === 'impact' ? 'impact' : f.kind === 'rotor' || f.kind === 'rotary' ? 'rotor' : 'spray');
   const sectionOfBody = (b) => (b.kind === 'impact' ? 'impact' : b.kind === 'rotor' || b.kind === 'rotary-body' ? 'rotor' : 'spray');
-  const form = { type: '', brand: '', body: '', nozzle: '', arc: '' };
+  const onSprayBody = (type) => type === 'spray' || type === 'rotary';
+  const form = { type: '', brand: '', series: '', nozzle: '', pop: '4', reg: '' };
   const opt = (v, label, cur) => `<option value="${esc(v)}" ${v === cur ? 'selected' : ''}>${esc(label)}</option>`;
-  const nozzleLabel = (z) => `${z.label}${z.strip ? ` (${z.strip.widthFt} x ${z.strip.lengthFt} ft strip)` : Number.isFinite(z.arcFixed) ? ` (${z.arcFixed}°)` : ''}`;
+  const nozzleLabel = (z) => `${z.label}${z.strip ? ` (${z.strip.widthFt} x ${z.strip.lengthFt} ft strip)` : Number.isFinite(z.arcFixed) ? ` (${z.arcFixed}°)` : Number.isFinite(z.arcMin) || Number.isFinite(z.arcMax) ? ` (adjustable ${z.arcMin ?? 0}-${z.arcMax ?? 360}°)` : ''}`;
+  const popKey = (v) => (v === null || v === undefined ? 'riser' : String(v));
+  const popLabel = (k) => (k === 'riser' ? "doesn't pop up (a shrub head on a riser)" : `${k} in${k === '4' ? ' (most lawns)' : ''}`);
+  /** The rotors and impact heads of the chosen section, brand and series. */
+  const seriesBodies = () => cat.bodies.filter((b) => !b.generic && sectionOfBody(b) === form.type && cat.charted(b) && (!form.brand || b.brand === form.brand) && (!form.series || seriesOf(b) === form.series));
+  /** The body the answers point to. */
+  function bodyFor() {
+    if (onSprayBody(form.type)) return sprayBodyId(form.pop === 'riser' ? null : Number(form.pop), form.reg ? Number(form.reg) : null);
+    const list = seriesBodies();
+    if (!list.length) return '';
+    const regOk = list.filter((b) => (form.reg ? Number.isFinite(b.regulatedPsi) : !Number.isFinite(b.regulatedPsi)));
+    const pool = regOk.length ? regOk : list;
+    const want = form.pop === 'riser' ? null : Number(form.pop);
+    // the plain one of that height: no stainless stem or check valve, which change nothing here
+    const plain = (b) => (/\b(SS|SAM|stainless)\b/i.test(b.model) ? 1 : 0);
+    const dist = (b) => (b.popUpIn === want ? 0 : b.popUpIn === null || want === null ? 50 : Math.abs(b.popUpIn - want));
+    return pool.slice().sort((a, b) => dist(a) - dist(b) || plain(a) - plain(b))[0].id;
+  }
+  /** The answers, read back from a head already given its model. */
+  function formFrom(h) {
+    const fam = cat.familyOfNozzle(h.nozzle), b = cat.body(h.body);
+    form.type = fam ? sectionOfFamily(fam) : b ? sectionOfBody(b) : '';
+    form.nozzle = h.nozzle || '';
+    form.pop = popKey(b ? b.popUpIn : 4); form.reg = Number.isFinite(b?.regulatedPsi) ? String(b.regulatedPsi) : '';
+    if (onSprayBody(form.type)) { form.brand = fam?.brand || ''; form.series = ''; }
+    else { form.brand = b?.brand || ''; form.series = b ? seriesOf(b) : ''; }
+  }
   function modelForm() {
     if (!cat) return '<p class="dim">Loading the list of heads…</p>';
     const first = head([...sel][0]);
-    if (first && !form.type && first.nozzle) {
-      const fam = cat.familyOfNozzle(first.nozzle), b = cat.body(first.body);
-      form.type = fam ? sectionOfFamily(fam) : ''; form.body = first.body || ''; form.nozzle = first.nozzle;
-      form.brand = form.type === 'rotary' ? fam?.brand || '' : b?.brand || ''; form.arc = first.arc ? String(first.arc) : '';
-    }
-    const n = form.nozzle ? cat.nozzle(form.nozzle) : null;
-    const adjustable = n && !n.strip && !Number.isFinite(n.arcFixed);
-    const rows = [`<select data-f="type" aria-label="Kind of head"><option value="">What kind of head…</option>${SECTIONS.map(([v, l]) => opt(v, l, form.type)).join('')}</select>`];
-    if (form.type === 'rotary') {
-      // the nozzle first: every maker's rotary nozzles, by maker
-      const fams = cat.families.filter((f) => sectionOfFamily(f) === 'rotary' && f.nozzles.length);
+    if (first && !form.type && first.nozzle) formFrom(first);
+    const rows = [`<label>What's on top of the head when it runs?<select data-f="type" aria-label="Kind of head"><option value="">Choose…</option>${SECTIONS.map(([v, l]) => opt(v, l, form.type)).join('')}</select></label>`];
+    if (onSprayBody(form.type)) {
+      const fams = cat.families.filter((f) => sectionOfFamily(f) === form.type && f.nozzles.length && cat.body(sprayBodyId(4, null)).nozzleFamilies.includes(f.id));
       const brands = [...new Set(fams.map((f) => f.brand))].sort();
-      rows.push(`<select data-f="brand" aria-label="Nozzle brand"><option value="">Nozzle brand…</option>${brands.map((x) => opt(x, x, form.brand)).join('')}</select>`);
-      if (form.brand) rows.push(`<select data-f="nozzle" aria-label="Rotary nozzle"><option value="">Rotary nozzle…</option>${fams.filter((f) => f.brand === form.brand).map((f) => `<optgroup label="${esc(f.name)}">${f.nozzles.map((z) => opt(z.id, nozzleLabel(z), form.nozzle)).join('')}</optgroup>`).join('')}</select>`);
+      rows.push(`<label>The nozzle's brand<select data-f="brand" aria-label="Nozzle brand"><option value="">Choose…</option>${brands.map((x) => opt(x, x, form.brand)).join('')}</select></label>`);
+      if (form.brand) rows.push(`<label>The nozzle, by the name printed on its top${form.type === 'rotary' ? ' (an R-VAN24 says "R-VAN24")' : ' (a number and a letter or "VAN": 15-VAN, 12Q…)'}<select data-f="nozzle" aria-label="Nozzle"><option value="">Choose…</option>${fams.filter((f) => f.brand === form.brand).map((f) => `<optgroup label="${esc(f.name)}">${f.nozzles.map((z) => opt(z.id, nozzleLabel(z), form.nozzle)).join('')}</optgroup>`).join('')}</select></label>`);
       if (form.nozzle) {
-        // then the spray body it sits on: those made for it first, then every other spray body
-        const fam = cat.familyOfNozzle(form.nozzle), sprays = cat.bodies.filter((b) => sectionOfBody(b) === 'spray');
-        const made = sprays.filter((b) => (b.nozzleFamilies || []).includes(fam.id)), other = sprays.filter((b) => !made.includes(b));
-        const group = (label, list) => (list.length ? `<optgroup label="${esc(label)}">${list.map((b) => opt(b.id, `${b.brand} ${b.model}${b.regulatedPsi ? ` (regulated to ${b.regulatedPsi} psi)` : ''}`, form.body)).join('')}</optgroup>` : '');
-        rows.push(`<select data-f="body" aria-label="Spray body"><option value="">The spray body it's on…</option>${group(`Made for ${fam.name}`, made)}${group('Other spray bodies', other)}</select>`);
+        rows.push(`<label>How high it pops up<select data-f="pop">${SPRAY_POP_IN.map((v) => opt(popKey(v), popLabel(popKey(v)), form.pop)).join('')}</select></label>`);
+        rows.push(`<label>Is the body pressure-regulated? Look on its cap or the side of the stem for "PRS", "PR", "P30", "P40" or "P45".<select data-f="reg"><option value="" ${form.reg ? '' : 'selected'}>No, or I can't tell</option>${SPRAY_REG_PSI.filter(Boolean).map((v) => opt(String(v), `Yes, ${v} psi (${v === 30 ? 'PRS, PR or P30' : v === 40 ? 'PRS40 or P40' : 'P45'})`, form.reg)).join('')}</select></label>`);
       }
     } else if (form.type) {
-      const bodies = cat.bodies.filter((b) => sectionOfBody(b) === form.type && cat.charted(b));
-      const brands = [...new Set(bodies.map((b) => b.brand))].sort();
-      rows.push(`<select data-f="brand" aria-label="Brand"><option value="">Brand…</option>${brands.map((x) => opt(x, x, form.brand)).join('')}</select>`);
-      if (form.brand) rows.push(`<select data-f="body" aria-label="Model"><option value="">Model…</option>${bodies.filter((b) => b.brand === form.brand).map((b) => opt(b.id, `${b.model}${b.regulatedPsi ? ` (regulated to ${b.regulatedPsi} psi)` : ''}`, form.body)).join('')}</select>`);
-      if (form.body) {
-        // its nozzles in this section (a spray body's rotary nozzles are under Rotary heads)
-        const fams = cat.familiesFor(form.body).filter((f) => form.type !== 'spray' || sectionOfFamily(f) === 'spray');
-        rows.push(`<select data-f="nozzle" aria-label="Nozzle"><option value="">Nozzle…</option>${fams.map((f) => `<optgroup label="${esc(f.name)}">${f.nozzles.map((z) => opt(z.id, nozzleLabel(z), form.nozzle)).join('')}</optgroup>`).join('')}</select>`);
+      const all = cat.bodies.filter((b) => !b.generic && sectionOfBody(b) === form.type && cat.charted(b));
+      const brands = [...new Set(all.map((b) => b.brand))].sort();
+      rows.push(`<label>Brand (on the cap)<select data-f="brand" aria-label="Brand"><option value="">Choose…</option>${brands.map((x) => opt(x, x, form.brand)).join('')}</select></label>`);
+      if (form.brand) {
+        const series = [...new Set(all.filter((b) => b.brand === form.brand).map(seriesOf))].sort();
+        rows.push(`<label>Model (on the cap)<select data-f="series" aria-label="Model"><option value="">Choose…</option>${series.map((x) => opt(x, x, form.series)).join('')}</select></label>`);
+      }
+      if (form.series) {
+        const list = seriesBodies(), regs = [...new Set(list.map((b) => b.regulatedPsi).filter(Number.isFinite))];
+        if (regs.length) rows.push(`<label>Pressure-regulated? Look for "PRS" or "PRB" on the cap.<select data-f="reg"><option value="" ${form.reg ? '' : 'selected'}>No, or I can't tell</option>${regs.map((v) => opt(String(v), `Yes (${v} psi)`, form.reg)).join('')}</select></label>`);
+        const b = cat.body(bodyFor());
+        const fams = b ? cat.familiesFor(b.id) : [];
+        rows.push(`<label>The nozzle, by the number on it (lift the head to read it)<select data-f="nozzle" aria-label="Nozzle"><option value="">Choose…</option>${fams.map((f) => `<optgroup label="${esc(f.name)}">${f.nozzles.map((z) => opt(z.id, nozzleLabel(z), form.nozzle)).join('')}</optgroup>`).join('')}</select></label>`);
+        const pops = [...new Set(list.map((x) => popKey(x.popUpIn)))];
+        if (pops.length > 1) rows.push(`<label>How high it pops up<select data-f="pop">${pops.map((k) => opt(k, popLabel(k), form.pop)).join('')}</select></label>`);
       }
     }
-    if (adjustable) rows.push(`<label class="toggle">Arc it waters: <select data-f="arc">${[45, 90, 120, 180, 210, 240, 270, 300, 360].filter((x) => x >= (n.arcMin ?? 0) && x <= (n.arcMax ?? 360)).map((x) => opt(String(x), String(x), form.arc)).join('')}</select> degrees (you can turn and fine-tune it on the map later)</label>`);
-    return `<div class="tools" style="flex-direction:column;align-items:stretch">${rows.join('')}
-      <button type="button" data-act="apply" ${form.nozzle && form.body ? '' : 'disabled'}>Give the ${sel.size} selected head${sel.size > 1 ? 's' : ''} this</button></div>`;
+    const ready = form.nozzle && bodyFor() && cat.familiesFor(bodyFor()).some((f) => f.nozzles.some((z) => z.id === form.nozzle));
+    return `<div class="tools picker" style="flex-direction:column;align-items:stretch">${rows.join('')}
+      <button type="button" data-act="apply" ${ready ? '' : 'disabled'}>Give the ${sel.size} selected head${sel.size > 1 ? 's' : ''} this</button></div>`;
   }
 
   const WIRE = {
@@ -600,31 +655,28 @@ export function sprinklers(ctx) {
       P.querySelectorAll('[data-f]').forEach((s) => s.addEventListener('change', () => {
         const f = s.dataset.f;
         form[f] = s.value;
-        if (f === 'type') { form.brand = ''; form.body = ''; form.nozzle = ''; form.arc = ''; }
-        if (f === 'brand') { form.body = ''; form.nozzle = ''; form.arc = ''; }
-        if (f === 'body' && form.type !== 'rotary') {
-          form.nozzle = ''; form.arc = '';
-          const fams = cat.familiesFor(form.body), all = fams.flatMap((x) => x.nozzles);
-          if (all.length === 1) form.nozzle = all[0].id; // a body with one built-in nozzle
+        if (f === 'type') { form.brand = ''; form.series = ''; form.nozzle = ''; form.reg = ''; form.pop = '4'; }
+        if (f === 'brand') { form.series = ''; form.nozzle = ''; }
+        if (f === 'series') {
+          form.nozzle = ''; form.reg = '';
+          const pops = [...new Set(seriesBodies().map((x) => popKey(x.popUpIn)))];
+          form.pop = pops.includes('4') ? '4' : pops[0] || '4';
+          const fams = cat.familiesFor(bodyFor()), all = fams.flatMap((x) => x.nozzles);
+          if (all.length === 1) form.nozzle = all[0].id; // a head with one built-in nozzle
         }
-        if (f === 'nozzle' && form.type === 'rotary') {
-          // a regulated body made for this nozzle, as the maker recommends, until the person picks theirs
-          const fam = cat.familyOfNozzle(form.nozzle), made = cat.bodies.filter((b) => (b.nozzleFamilies || []).includes(fam?.id));
-          // the one whose regulator is nearest the nozzle's design pressure (Rain Bird puts R-VANs on 45 psi
-          // bodies; Hunter, MP Rotators on 40), a 4 in pop-up, the lawn's usual
-          const nz = cat.nozzle(form.nozzle), rows = (nz?.rows || []).map((r) => r.psi).filter(Number.isFinite).sort((x, y) => x - y);
-          const design = nz?.chartPrecip?.psi ?? rows[Math.floor((rows.length - 1) / 2)] ?? 40;
-          const score = (b) => (Number.isFinite(b.regulatedPsi) ? Math.abs(b.regulatedPsi - design) : 30) + (b.popUpIn === 4 ? 0 : 2);
-          if (!form.body || !cat.body(form.body) || sectionOfBody(cat.body(form.body)) !== 'spray') form.body = made.slice().sort((x, y) => score(x) - score(y))[0]?.id || '';
-        }
-        if (f === 'nozzle') { const n = cat.nozzle(form.nozzle); form.arc = n && !n.strip && !Number.isFinite(n.arcFixed) ? String(Math.min(n.arcMax ?? 360, 180)) : ''; }
+        // a regulated rotor can take its own charts (Rain Bird's 5000 PRS): a nozzle no longer on the list goes
+        if (f === 'reg' && form.nozzle && !cat.familiesFor(bodyFor()).some((x) => x.nozzles.some((z) => z.id === form.nozzle))) form.nozzle = '';
         render();
       }));
       P.querySelector('[data-act=apply]')?.addEventListener('click', () => {
+        const body = bodyFor();
         for (const id of sel) {
           const h = head(id);
-          h.body = form.body; h.nozzle = form.nozzle; h.arc = form.arc ? Number(form.arc) : null;
+          const was = h.nozzle;
+          h.body = body; h.nozzle = form.nozzle;
           const n = cat.nozzle(h.nozzle);
+          // an adjustable arc is fitted in the arcs step; a fixed pattern is the nozzle's
+          if (was !== h.nozzle) { h.arc = null; if (h.arcSet !== 'user') h.arcSet = null; }
           h.dir = h.dir ?? facing(h.at, ctx.lawnMiddle());
           if (n && Number.isFinite(n.arcFixed) && n.arcFixed >= 360) h.dir = 0;
         }
@@ -691,15 +743,8 @@ export function sprinklers(ctx) {
     },
     arcs: (P) => {
       const h = sel.size === 1 ? head([...sel][0]) : null;
-      const set = (f) => (e) => { if (!h) return; f(Number(e.target.value)); h.arcSet = 'user'; if (e.type === 'change') { changed(); render(); } else ctx.draw(); };
-      P.querySelector('[data-arc=dir]')?.addEventListener('input', set((v) => { h.dir = v; }));
-      P.querySelector('[data-arc=dir]')?.addEventListener('change', set((v) => { h.dir = v; }));
-      P.querySelector('[data-arc=arc]')?.addEventListener('input', set((v) => { h.arc = v; }));
-      P.querySelector('[data-arc=arc]')?.addEventListener('change', set((v) => { h.arc = v; }));
-      P.querySelector('[data-arc=throw]')?.addEventListener('input', set((v) => { h.throw = v / 100; }));
-      P.querySelector('[data-arc=throw]')?.addEventListener('change', set((v) => { h.throw = v / 100; }));
-      P.querySelector('[data-act=autoone]')?.addEventListener('click', () => { if (h) { autoSet(h); changed(); render(); } });
-      P.querySelector('[data-act=autoall]')?.addEventListener('click', () => { for (const x of irr.heads) autoSet(x); changed(); render(); });
+      P.querySelector('[data-act=autoone]')?.addEventListener('click', () => { if (h) { h.arcSet = null; fitAll(new Set([h.id])); changed(); render(); } });
+      P.querySelector('[data-act=autoall]')?.addEventListener('click', () => { for (const x of irr.heads) x.arcSet = null; fitAll(); changed(); render(); });
       wireNav(P, () => go('coverage'));
     },
     coverage: (P) => {
@@ -707,7 +752,7 @@ export function sprinklers(ctx) {
       wireNav(P, () => { irr.done = true; irr.none = false; changed(); finish(); });
     },
   };
-  const resetForm = () => { form.type = ''; form.brand = ''; form.body = ''; form.nozzle = ''; form.arc = ''; };
+  const resetForm = () => { form.type = ''; form.brand = ''; form.series = ''; form.nozzle = ''; form.pop = '4'; form.reg = ''; };
 
   /* -------------------------------------------------------------------- GPS */
 
@@ -806,8 +851,64 @@ export function sprinklers(ctx) {
     render();
     return true;
   }
-  /** A finger down on a head in the review step starts dragging it (not the map). */
+  /* THE ARC'S HANDLES (owner, 2026-10-21: "they can drag the edges of the arc to adjust it (tap the head to
+     adjust the arc, so there's not overlapping drag handles)"): on the one selected head only, a white dot at
+     each edge of its arc (one, for a full circle or a strip) and a yellow square at the end of its throw. */
+  let arcDrag = null;
+  const deg = (r) => (r * 180) / Math.PI, mod360 = (a) => ((a % 360) + 360) % 360;
+  function handles(h) {
+    const n = cat?.nozzle(h?.nozzle), w = h && waterOf(h);
+    if (!n || !w) return null;
+    const [x, y] = ctx.toPx(h.at), full = (w.radiusFt / 3.281) * ctx.pxPerM(), R = full * (h.throw ?? 1), dir = h.dir ?? 0;
+    const at = (a, r) => [x + Math.sin((a * Math.PI) / 180) * r, y - Math.cos((a * Math.PI) / 180) * r];
+    const out = { centre: [x, y], full, R, t: at(dir, R) };
+    if (n.strip) { out.a = at(dir, R); out.t = null; return out; }
+    const arc = arcOf(h, n);
+    if (Number.isFinite(n.arcFixed) && n.arcFixed >= 360) return out;
+    out.a = at(dir - arc / 2, R);
+    if (arc < 359) out.b = at(dir + arc / 2, R);
+    if (arc >= 359) out.t = at(dir + 180 + 30, R); // clear of the edge dot
+    return out;
+  }
+  function dragArc(ev) {
+    const h = head(arcDrag.id), n = cat.nozzle(h.nozzle), hs = handles(h);
+    if (!hs) return;
+    const [px, py] = ctx.tapPx(ev), [x, y] = hs.centre;
+    const theta = mod360(deg(Math.atan2(px - x, -(py - y))));
+    if (arcDrag.which === 't') { h.throw = +Math.max(MIN_THROW, Math.min(1, Math.hypot(px - x, py - y) / hs.full)).toFixed(2); return; }
+    const arc = arcOf(h, n), dir = h.dir ?? 0;
+    if (n.strip) { h.dir = Math.round(theta); return; }
+    if (Number.isFinite(n.arcFixed)) { h.dir = Math.round(mod360(arcDrag.which === 'a' ? theta + arc / 2 : theta - arc / 2)); return; }
+    const lo = Math.max(BIN_DEG, n.arcMin ?? 0), hi = Math.min(360, n.arcMax ?? 360);
+    if (arcDrag.which === 'a') {
+      // this edge follows the finger; the other stays
+      const end = dir + arc / 2;
+      let a2 = mod360(end - theta);
+      if (a2 < 1 && arc > 180) a2 = 360;
+      a2 = Math.max(lo, Math.min(hi, a2));
+      h.arc = Math.round(a2); h.dir = Math.round(mod360(end - a2 / 2));
+    } else {
+      const start = dir - arc / 2;
+      let a2 = mod360(theta - start);
+      if (a2 < 1 && arc > 180) a2 = 360;
+      a2 = Math.max(lo, Math.min(hi, a2));
+      h.arc = Math.round(a2); h.dir = Math.round(mod360(start + a2 / 2));
+    }
+  }
+
+  /** A finger down on a head in the review step starts dragging it (not the map); in the arcs step, on one
+      of the selected head's handles, that handle. */
   function grab(ev) {
+    if (step === 'arcs') {
+      const h = sel.size === 1 ? head([...sel][0]) : null, hs = h && handles(h);
+      if (!hs) return false;
+      const [x, y] = ctx.tapPx(ev), lim = 22 * ctx.cssScale();
+      let best = null, bd = lim;
+      for (const k of ['a', 'b', 't']) if (hs[k]) { const d = Math.hypot(hs[k][0] - x, hs[k][1] - y); if (d < bd) { bd = d; best = k; } }
+      if (!best) return false;
+      arcDrag = { id: h.id, which: best }; dragged = false;
+      return true;
+    }
     if (step !== 'review') return false;
     const h = nearest(ev, 22);
     if (!h) return false;
@@ -815,12 +916,14 @@ export function sprinklers(ctx) {
     return true;
   }
   function move(ev) {
+    if (arcDrag) { dragArc(ev); dragged = true; ctx.draw(); return true; }
     if (!drag) return false;
     head(drag).at = ctx.toLngLat(ctx.tapPx(ev)).map((v) => +v.toFixed(7));
     dragged = true; ctx.draw();
     return true;
   }
   function drop() {
+    if (arcDrag) { const h = head(arcDrag.id); arcDrag = null; if (dragged && h) { h.arcSet = 'user'; changed(); } render(); return true; }
     if (!drag) return false;
     drag = null;
     if (dragged) changed();
@@ -843,7 +946,7 @@ export function sprinklers(ctx) {
       const [x, y] = ctx.toPx(h.at), R = (w.radiusFt / 3.281) * (h.throw ?? 1) * ctx.pxPerM();
       const mid = ((h.dir ?? 0) - 90) * (Math.PI / 180);
       const picked = step === 'arcs' && sel.has(h.id);
-      g.fillStyle = `${colorOf(h.zone)}${picked ? '55' : '26'}`; g.strokeStyle = picked ? '#ffeb3b' : `${colorOf(h.zone)}99`; g.lineWidth = picked ? lw * 1.5 : lw * 0.5;
+      g.fillStyle = `${colorOf(h.zone)}${picked ? '66' : step === 'arcs' ? '40' : '26'}`; g.strokeStyle = picked ? '#ffeb3b' : `${colorOf(h.zone)}${step === 'arcs' ? 'ee' : '99'}`; g.lineWidth = picked ? lw * 1.5 : step === 'arcs' ? lw * 0.9 : lw * 0.5;
       if (w.strip) {
         // a strip: its rectangle, along the head's direction (an end strip from the head, a centre strip
         // either side of it, a side strip out from its long side)
@@ -903,6 +1006,17 @@ export function sprinklers(ctx) {
       g.fillStyle = byPressure ? STATUS_COLOR[solvedHead(h.id)?.water?.status] || '#9e9e9e' : colorOf(h.zone); g.strokeStyle = sel.has(h.id) ? '#ffeb3b' : '#000'; g.lineWidth = sel.has(h.id) ? lw * 1.2 : lw * 0.6;
       g.beginPath(); g.arc(x, y, sel.has(h.id) ? r * 1.4 : r, 0, 7); g.fill(); g.stroke();
     }
+    // the selected head's handles, in the arcs step
+    if (step === 'arcs' && sel.size === 1) {
+      const hs = handles(head([...sel][0]));
+      if (hs) {
+        for (const k of ['a', 'b']) if (hs[k]) {
+          g.fillStyle = '#fff'; g.strokeStyle = '#000'; g.lineWidth = lw;
+          g.beginPath(); g.arc(hs[k][0], hs[k][1], r * 1.7, 0, 7); g.fill(); g.stroke();
+        }
+        if (hs.t) { const a = r * 1.4; g.fillStyle = '#ffeb3b'; g.strokeStyle = '#000'; g.lineWidth = lw; g.fillRect(hs.t[0] - a, hs.t[1] - a, a * 2, a * 2); g.strokeRect(hs.t[0] - a, hs.t[1] - a, a * 2, a * 2); }
+      }
+    }
     // the pressure over each head, where it has room
     if (byPressure) {
       const fs = 11 * px, boxes = [];
@@ -924,7 +1038,7 @@ export function sprinklers(ctx) {
       let hidden = 0;
       for (const h of irr.heads) {
         const b = cat.body(h.body), n = cat.nozzle(h.nozzle), w = waterOf(h);
-        const lines = [b ? `${b.brand} ${b.model}` : '?', n && w ? `${n.label} · ${throwOf(w)} · ${w.gpm.toFixed(2)} gpm` : 'no nozzle'];
+        const lines = [b ? bodyName(b) : '?', n && w ? `${n.label} · ${throwOf(w)} · ${w.gpm.toFixed(2)} gpm` : 'no nozzle'];
         const [x, y] = ctx.toPx(h.at);
         // only where it has room: the rest show when zoomed in (the text keeps its size on the screen)
         const wBox = Math.max(...lines.map((t) => g.measureText(t).width)), box = [x - wBox / 2, y - r * 1.6 - fs * 2.3, x + wBox / 2, y - r * 1.6];
@@ -976,7 +1090,7 @@ export function sprinklers(ctx) {
     get data() { return irr; },
     tap, grab, move, drop, drawOn,
     /** The ground came in (or anything the solve reads): solve again and show it. */
-    refresh() { solvedKey = ''; if (step === 'arcs') { for (const h of irr.heads) if (h.arcSet !== 'user') autoSet(h); ctx.changed(); } if (step) render(); else ctx.draw(); },
+    refresh() { solvedKey = ''; if (step === 'arcs') { fitAll(); ctx.changed(); } if (step) render(); else ctx.draw(); },
     summary() {
       if (!cat || irr.none || !irr.done) return null;
       const s0 = solve();
