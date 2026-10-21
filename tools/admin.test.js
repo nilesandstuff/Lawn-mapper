@@ -2223,8 +2223,6 @@ const ask = async (env, token, path, { method = 'GET', body = null } = {}) => {
 }
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
-process.exit(failures === 0 ? 0 : 1);
-
 /* ------------------------------------------- the owner's maps, for a key */
 /*
  * THE READ-ONLY KEY (the water session's ask, 2026-10-21): a cloud session
@@ -2245,19 +2243,19 @@ process.exit(failures === 0 ? 0 : 1);
     return { status: res.status, body: await res.json() };
   };
   const list = await withKey('saved-maps', w.env.MAPS_READ_TOKEN);
-  assert.equal(list.status, 200);
-  assert.deepEqual(list.body.maps.map((m) => [m.id, m.address, m.tools, m.owner]), [['m1', '1 Owner Lane', ['water'], 'owner@b.com']], "the owner's maps and no guest's, with its tools");
+  check("the key reads the owner's maps and no guest's, with their tools", list.status === 200
+    && JSON.stringify(list.body.maps.map((m) => [m.id, m.address, m.tools, m.owner])) === JSON.stringify([['m1', '1 Owner Lane', ['water'], 'owner@b.com']]),
+  JSON.stringify(list.body));
   const one = await withKey('saved-maps/one?id=m1', w.env.MAPS_READ_TOKEN);
-  assert.equal(one.status, 200);
-  assert.equal(one.body.map.tools.water.data.zones, 3, 'one map, every tool\'s part');
-  assert.equal((await withKey('saved-maps/one?id=g1', w.env.MAPS_READ_TOKEN)).status, 404, 'another account\'s map is not reachable');
-  assert.equal((await withKey('saved-maps', 'k-' + 'y'.repeat(30))).status, 404, 'wrong key: hidden');
-  assert.equal((await withKey('saved-maps', '')).status, 404, 'no key, no cookie: hidden');
-  assert.equal((await withKey('saved-maps', w.env.MAPS_READ_TOKEN, 'POST')).status, 404, 'nothing but GET');
-  const cookie = await ask(w.env, w.ownerToken, 'saved-maps');
-  assert.equal(cookie.status, 200, 'the signed-in administrator reads them without a key');
-  assert.equal((await ask(w.env, w.guestToken, 'saved-maps')).status, 404, 'a signed-in non-admin does not');
+  check("one map, every tool's part", one.status === 200 && one.body.map.tools.water.data.zones === 3, JSON.stringify(one.body).slice(0, 200));
+  check("another account's map is not reachable", (await withKey('saved-maps/one?id=g1', w.env.MAPS_READ_TOKEN)).status === 404);
+  check('a wrong key is hidden', (await withKey('saved-maps', 'k-' + 'y'.repeat(30))).status === 404);
+  check('no key and no cookie is hidden', (await withKey('saved-maps', '')).status === 404);
+  check('nothing but GET', (await withKey('saved-maps', w.env.MAPS_READ_TOKEN, 'POST')).status === 404);
+  check('the signed-in administrator reads them without a key', (await ask(w.env, w.ownerToken, 'saved-maps')).status === 200);
+  check('a signed-in non-admin does not', (await ask(w.env, w.guestToken, 'saved-maps')).status === 404);
   delete w.env.MAPS_READ_TOKEN;
-  assert.equal((await withKey('saved-maps', 'k-' + 'x'.repeat(30))).status, 404, 'no secret configured: a key opens nothing');
-  console.log('admin: the owner\'s maps for a read-only key');
+  check('no secret configured: a key opens nothing', (await withKey('saved-maps', 'k-' + 'x'.repeat(30))).status === 404);
 }
+
+process.exit(failures === 0 ? 0 : 1);
