@@ -1005,6 +1005,19 @@ at on C60, and it is not C71 either; it may still be B03 (Utah Mapbox,
 roof fit (-2.25, 3), ground fit not confident) and the Fargo and Kentucky
 lots, where roof and ground fits disagree by the flight's lean.
 
+**The stricter rule, measured (2026-10-21, local read of the 83 lots
+with a public cloud that read without tile downloads, S47's frames):**
+move a lot only when the roof fit and the ground fit are both confident
+and agree within 1 m, by their mean. That picks 15 lots, 14 of them moved
+under 0.9 m and C71 by (2.0, -2.0). Roof cells on traced lawn over those
+83 lots: published 73, S47 75, agree-only 68. Lots changed against the
+published run: C71 4 -> 0, C100 2 -> 0, C55 0 -> 1; nothing else moved by
+a cell. So the agree rule fixes the lot the owner named and breaks
+nothing, where S47's ground-only rule fixed three and broke four. Not yet
+in any training run; a candidate for workflow 14's `lidar_align` in place
+of the ground-only gate, to be scored under the full bar before it is
+believed to matter to the detector (H109 says a move this small will not).
+
 ### H110. The public 3DEP clouds over the locked lots carry NO colour: every project checked (Fargo, Kent, Kentucky, DRCOG, Ingham, Northern VA) has X, Y, Z, Intensity, returns, class, angle, time -- no Red, Green, Blue. The lidar's only picture of the ground is its intensity, which is what the ground fit already matches -- 2026-10-21
 *Owner, 2026-10-21, from a GIS professional: "apparently you can get RGB
 point values from lidar. Could we use that to match ground objects, like
