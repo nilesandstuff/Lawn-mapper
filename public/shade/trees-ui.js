@@ -20,8 +20,8 @@
 import { buildCanopy } from './canopy.js';
 import { seasonalCanopy, muWithLeaves, leafCalendar, CROWN_ABOVE_M } from './seasonal.js';
 import { gridOver, cellOf } from './grid.js';
-import { toMerc, fromMerc, mercScale } from './ept.js';
-import { cellsUnder, squareRing, Erased, SIZES_M, nearestRun } from './erase.js';
+import { toMerc, fromMerc } from './ept.js';
+import { cellsUnder, squareRing, Erased, SIZES_M, rayHit, brushTargets } from './erase.js';
 
 const $ = (s) => document.querySelector(s);
 const NOISE = new Set([7, 18]);
@@ -137,10 +137,17 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
 
   const st = { leaves: today ?? (leafOff ? 1 : null), roofs: true, cut: 0, active: true, erasing: false, size: SIZES_M[1], mode: 'tree', cubeVersion: 0 };
   const er = erase ? new Erased(grid.w * grid.h, model.nz) : null;
-  /* The canopy as drawn: the leaves as chosen, less the single blocks the branches brush took. */
+  /* The canopy as drawn: the leaves as chosen (worked out once per choice,
+     not per brush stroke: that was half of the lag), less the single blocks
+     the branches brush took. */
+  let baseCache = { leaves: undefined, mu: null };
+  const baseMu = () => {
+    if (baseCache.leaves !== st.leaves) baseCache = { leaves: st.leaves, mu: st.leaves === null ? model.mu : muWithLeaves(season, st.leaves) };
+    return baseCache.mu;
+  };
   let muCache = { key: null, mu: null };
   const muNow = () => {
-    const base = st.leaves === null ? model.mu : muWithLeaves(season, st.leaves);
+    const base = baseMu();
     if (!er?.cubeCount) return base;
     const key = `${st.leaves}:${st.cubeVersion}`;
     if (muCache.key !== key) {
@@ -161,7 +168,12 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
     return [ring];
   };
 
-  const ids = BANDS.map((b) => `trees-${b.id}`);
+  /* Per band, a source for the runs and a small one for single cubes (the
+     branches brush splits a column into those): a stroke only ever rewrites
+     the small ones, so the 30,000 runs are never re-read mid-stroke. */
+  const NB = BANDS.length;
+  const ids = [...BANDS.map((b) => `trees-${b.id}`), ...BANDS.map((b) => `trees-${b.id}-cubes`)];
+  const bandAt = (i) => BANDS[i % NB];
   /* The features drawn, per band source, by cell: removed one by one as the
      eraser passes (a whole redraw is too slow for a stroke). `removed`
      remembers what went, for a map without updateData. */
@@ -175,10 +187,11 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
     byCell.clear();
     removed.forEach((s) => s.clear());
     let lastK = -1, idx = 0;
-    BANDS.forEach((b, i) => {
+    ids.forEach((id, i) => {
+      const b = bandAt(i);
       const fc = {
         type: 'FeatureCollection',
-        features: runs.filter((r) => r.band === i).map((r) => {
+        features: i >= NB ? [] : runs.filter((r) => r.band === i).map((r) => {
           idx = r.k === lastK ? idx + 1 : 0; lastK = r.k;
           const f = { type: 'Feature', id: r.k * 64 + idx, geometry: { type: 'Polygon', coordinates: corners(r.k) }, properties: { b: r.base + lift(r.k), t: r.top + lift(r.k), c: KIND_COLOR[r.kind] } };
           if (!byCell.has(r.k)) byCell.set(r.k, []);
@@ -190,8 +203,11 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
       if (map.getSource(ids[i])) map.getSource(ids[i]).setData(fc);
       else {
         map.addSource(ids[i], { type: 'geojson', data: fc, dynamic: true }); // dynamic: updateData (the eraser) is allowed
-        map.addLayer({ id: ids[i], type: 'fill-extrusion', source: ids[i], paint: { 'fill-extrusion-color': ['get', 'c'], 'fill-extrusion-base': ['get', 'b'], 'fill-extrusion-height': ['get', 't'], 'fill-extrusion-opacity': b.opacity } });
+        /* An erased block is flattened by its feature state (`gone`), which
+           the map applies without re-reading the source. */
+        map.addLayer({ id: ids[i], type: 'fill-extrusion', source: ids[i], paint: { 'fill-extrusion-color': ['get', 'c'], 'fill-extrusion-base': ['get', 'b'], 'fill-extrusion-height': ['case', ['boolean', ['feature-state', 'gone'], false], ['get', 'b'], ['get', 't']], 'fill-extrusion-opacity': b.opacity } });
       }
+      map.removeFeatureState({ source: ids[i] });
     });
     for (const [id, on] of [['#tr-today', st.leaves !== null && st.leaves === today], ['#tr-full', st.leaves === 1], ['#tr-bare', st.leaves === 0]]) $(id).setAttribute('aria-pressed', String(on));
     const c = season.counts || {};
@@ -212,7 +228,7 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
   $('#tr-cut').onchange = () => { st.cut = Number($('#tr-cut').value) || 0; draw(); };
   /* How solid the blocks are drawn, kept on this device. */
   const solid = () => Number($('#tr-solid').value) / 100;
-  const applySolid = () => { BANDS.forEach((b, i) => { if (map.getLayer(ids[i])) map.setPaintProperty(ids[i], 'fill-extrusion-opacity', Math.min(1, b.opacity * solid())); }); };
+  const applySolid = () => { ids.forEach((id, i) => { if (map.getLayer(id)) map.setPaintProperty(id, 'fill-extrusion-opacity', Math.min(1, bandAt(i).opacity * solid())); }); };
   try { const v = localStorage.getItem('lawnmapper.shade.treesSolid'); if (v) $('#tr-solid').value = v; } catch { /* not kept */ }
   $('#tr-solid').oninput = () => { applySolid(); try { localStorage.setItem('lawnmapper.shade.treesSolid', $('#tr-solid').value); } catch { /* not kept */ } };
   $('#tr-legend').innerHTML = Object.entries(KIND_COLOR).filter(([k]) => leafOff || k === 'other' || k === 'roof')
@@ -221,8 +237,10 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
 
   const onClick = (e) => {
     if (!st.active || st.erasing) return;
+    /* The column of the block under the finger; the ground's when none is. */
+    const hit = hitUnder(e.lngLat);
     const [x, y] = toMerc([e.lngLat.lng, e.lngLat.lat]);
-    const gx = Math.floor((x - grid.x0) / grid.cell), gy = Math.floor((grid.y1 - y) / grid.cell);
+    const gx = hit ? hit.k % grid.w : Math.floor((x - grid.x0) / grid.cell), gy = hit ? Math.floor(hit.k / grid.w) : Math.floor((grid.y1 - y) / grid.cell);
     if (gx < 0 || gy < 0 || gx >= grid.w || gy >= grid.h) { $('#tr-read').textContent = 'Outside the modelled area.'; return; }
     const k = gy * grid.w + gx, mu = muNow();
     if (er?.mask[k]) { $('#tr-read').textContent = 'Erased: open air here now. Undo or "Put all back" restores it.'; return; }
@@ -254,9 +272,9 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
     if ($('#tr-undo')) $('#tr-undo').disabled = !er.strokes.length;
     if ($('#tr-restore')) $('#tr-restore').disabled = !er.any;
   }
-  const showCursor = (lngLat) => {
+  const showCursor = (lngLat, centre = null) => {
     if (!er || !st.erasing || !lngLat) return;
-    const [x, y] = toMerc([lngLat.lng, lngLat.lat]);
+    const [x, y] = centre || toMerc([lngLat.lng, lngLat.lat]);
     const data = { type: 'Feature', geometry: { type: 'Polygon', coordinates: [squareRing(grid, x, y, st.size)] } };
     if (map.getSource(CURSOR)) map.getSource(CURSOR).setData(data);
     else {
@@ -292,30 +310,38 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
       b.drop = []; b.add = [];
     });
   };
-  const dropCells = (cells) => { for (const k of cells) for (const f of byCell.get(k) || []) batch[f.src].drop.push(f.id); };
-  const dropRuns = (runs) => { for (const r of runs) batch[r.src].drop.push(r.id); };
+  /* Erased blocks already on the map are flattened by feature state (no
+     source update, so no re-tiling: the other half of the lag); a block
+     added in this same frame never reaches the source. */
+  const freshIds = ids.map(() => new Set());
+  const hide = (src, id) => {
+    if (freshIds[src].has(id)) { batch[src].drop.push(id); return; }
+    map.setFeatureState({ source: ids[src], id }, { gone: true });
+  };
+  const dropCells = (cells) => { for (const k of cells) for (const f of byCell.get(k) || []) hide(f.src, f.id); };
   /* THE BRANCHES BRUSH WORKS ON SINGLE CUBES (owner, 2026-10-17: "it
      deletes a whole column up to the sky... we need to break them into
      cubes for this step. if a homeowner trimmed the lowest branches on a
      tree, they need to be able to erase those branches"). A column is
      drawn as runs of cubes; the first time the brush touches it, its runs
-     are redrawn as one block per cube, and then the cube nearest the camera
-     goes. */
+     are hidden and redrawn as one block per cube in the small sources, and
+     then the blocks the camera's rays meet first go. */
   const splitColumn = (k) => {
     const entries = byCell.get(k) || [];
     if (!entries.length || entries.every((e) => e.cube)) return;
-    const mu = muNow();
+    const mu = baseMu();
     const fresh = [];
     for (const e of entries) {
-      batch[e.src].drop.push(e.id);
+      hide(e.src, e.id);
       for (let l = e.l0; l <= e.l1; l++) {
-        const m = mu[k * model.nz + l];
+        const m = er.cubes[k * model.nz + l] ? 0 : mu[k * model.nz + l];
         if (!(m >= MIN_MU)) continue;
         const lo = model.z0 + l * model.dz - model.ground[k], base = Math.max(e.base, lo), top = Math.min(e.top, lo + model.dz);
         if (top <= base) continue;
-        const src = bandOf(m);
+        const src = NB + bandOf(m);
         const f = { type: 'Feature', id: CUBE_ID + k * 128 + l, geometry: { type: 'Polygon', coordinates: corners(k) }, properties: { b: base + lift(k), t: top + lift(k), c: KIND_COLOR[e.kind] } };
         batch[src].add.push(f);
+        freshIds[src].add(f.id);
         fresh.push({ src, id: f.id, l0: l, l1: l, base, top, kind: e.kind, cube: true });
       }
     }
@@ -327,41 +353,68 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
     const fc = map.getFreeCameraOptions();
     const ll = fc.position.toLngLat();
     const [mx, my] = toMerc([ll.lng, ll.lat]);
-    return [(mx - grid.x0) / grid.cell, (grid.y1 - my) / grid.cell, fc.position.toAltitude()];
+    return [(mx - grid.x0) / grid.cell, (grid.y1 - my) / (grid.cellY || grid.cell), fc.position.toAltitude()];
   };
-  const cm = grid.cell * mercScale(site.lat);
-  let stroking = false, strokeTouched = new Set();
+  /* A block as drawn: its layer at a height over the flat map, and whether it is there to be hit. */
+  const isRoof = (k) => !!(leafOff && season?.classified && season.kind[k] === 1);
+  const cubeAt = (k, z) => {
+    const l = Math.floor((z - lift(k) + model.ground[k] - model.z0) / model.dz);
+    return l >= 0 && l < model.nz ? l : -1;
+  };
+  const visible = (k, l) => {
+    if (er?.mask[k]) return false;
+    const i = k * model.nz + l;
+    if (er?.cubes?.[i] || !(baseMu()[i] >= MIN_MU)) return false;
+    if (!st.roofs && isRoof(k)) return false;
+    return model.z0 + (l + 1) * model.dz - model.ground[k] > st.cut;
+  };
+  const camera3 = () => cameraCell();
+  const groundCell = (lngLat) => { const [mx, my] = toMerc([lngLat.lng, lngLat.lat]); return [(mx - grid.x0) / grid.cell, (grid.y1 - my) / (grid.cellY || grid.cell), 0]; };
+  const hitOpts = (taken = null) => ({ w: grid.w, h: grid.h, nz: model.nz, cubeAt, visible, taken });
+  /** The block under the finger (the first a ray from the camera through it meets), or null. */
+  function hitUnder(lngLat) { return lngLat ? rayHit(camera3(), groundCell(lngLat), hitOpts()) : null; }
+  const cellCentre = (k) => [grid.x0 + ((k % grid.w) + 0.5) * grid.cell, grid.y1 - (Math.floor(k / grid.w) + 0.5) * (grid.cellY || grid.cell)];
+
+  let stroking = false, strokeTaken = new Set();
+  /** One frame of the brush at the finger; returns the centre to draw the cursor at (3857). */
   const brush = (lngLat) => {
-    if (!er || !lngLat) return;
-    const [x, y] = toMerc([lngLat.lng, lngLat.lat]);
+    if (!er || !lngLat) return null;
+    const cam = camera3();
+    const hit = rayHit(cam, groundCell(lngLat), hitOpts());
     if (st.mode !== 'branch') {
-      const fresh = er.erase(cellsUnder(grid, x, y, st.size));
-      if (fresh.length) dropCells(fresh);
-      return;
+      /* Whole tree: the columns round the block under the finger (the ground's when nothing is). */
+      const [x, y] = hit ? cellCentre(hit.k) : toMerc([lngLat.lng, lngLat.lat]);
+      if (stroking) { const fresh = er.erase(cellsUnder(grid, x, y, st.size)); if (fresh.length) dropCells(fresh); }
+      return [x, y];
     }
-    /* Branches: in each column under the brush, the cube nearest the
-       camera goes, one per column per stroke, so a swipe peels one layer. */
-    const cam = cameraCell();
-    const gone = [];
-    for (const k of cellsUnder(grid, x, y, st.size)) {
-      if (strokeTouched.has(k) || er.mask[k]) continue;
-      splitColumn(k);
-      const r = nearestRun(byCell.get(k), k, grid.w, lift(k), cam, cm);
+    /* Branches: the blocks facing the camera under the brush, each the first
+       its ray meets; a ray stops at a block taken earlier in this stroke,
+       so one swipe takes one layer and the next swipe the one behind. */
+    const first = hit || rayHit(cam, groundCell(lngLat), hitOpts(strokeTaken));
+    if (!first) return toMerc([lngLat.lng, lngLat.lat]);
+    if (!stroking) return cellCentre(first.k);
+    const seen = new Set();
+    for (const target of brushTargets(cam, first.at, st.size)) {
+      const r = rayHit(cam, target, hitOpts(strokeTaken));
       if (!r) continue;
-      if (!er.eraseCubes([k * model.nz + r.l0]).length) continue;
+      const i = r.k * model.nz + r.l;
+      if (seen.has(i)) continue;
+      seen.add(i);
+      splitColumn(r.k);
+      const entry = (byCell.get(r.k) || []).find((o) => o.l0 === r.l);
+      if (!er.eraseCubes([i]).length) continue;
+      strokeTaken.add(i);
       st.cubeVersion++;
-      strokeTouched.add(k);
-      byCell.set(k, byCell.get(k).filter((o) => o !== r));
-      gone.push(r);
+      if (entry) { byCell.set(r.k, byCell.get(r.k).filter((o) => o !== entry)); hide(entry.src, entry.id); }
     }
-    if (gone.length) dropRuns(gone);
+    return cellCentre(first.k);
   };
   /* Pointer moves are gathered and worked once a frame: the brush, the
      cursor and the map's changes together. */
   let frame = null, lastAt = null;
-  const onFrame = () => { frame = null; const at = lastAt; lastAt = null; if (!at) return; showCursor(at); if (stroking) brush(at); flush(); };
+  const onFrame = () => { frame = null; const at = lastAt; lastAt = null; if (!at) return; const centre = brush(at); showCursor(at, centre); flush(); freshIds.forEach((s) => s.clear()); };
   const queue = (lngLat) => { lastAt = lngLat; if (!frame) frame = requestAnimationFrame(onFrame); };
-  const strokeStart = (e) => { if (!st.erasing || !st.active) return; e.preventDefault?.(); stroking = true; strokeTouched = new Set(); queue(e.lngLat); };
+  const strokeStart = (e) => { if (!st.erasing || !st.active) return; e.preventDefault?.(); stroking = true; strokeTaken = new Set(); queue(e.lngLat); };
   const strokeMove = (e) => { if (!st.erasing || !st.active) return; queue(e.lngLat); };
   const strokeEnd = () => { if (!stroking) return; stroking = false; if (frame) { cancelAnimationFrame(frame); onFrame(); } flush(); er.end(); eraseNote(); onErase?.(); };
   /* While the brush is down the page must not move (owner, 2026-10-17:
@@ -411,6 +464,8 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
     erasedCubes: () => er?.cubeList() || [],
     /** The model's cube layers per column: a kept list of blocks fits only a model with the same. */
     nz: model.nz,
+    /** The block under a point on the map's ground plane as the camera sees it ({ k, l }), or null. */
+    hitAt: (lngLat) => { const h = hitUnder(lngLat); return h && { k: h.k, l: h.l }; },
     /** What was erased last time, back out of the model (one stroke, so one undo puts it all back): a list of cells, or { cells, cubes }. */
     restore(what) {
       if (!er) return;

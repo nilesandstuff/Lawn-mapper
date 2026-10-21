@@ -29,7 +29,7 @@ import { frameCorners } from '../public/lib/mercator.js';
 import { footprintEntry, covers, lidarAt, handleShade, isShadePath } from '../worker/src/shade.js';
 import { metresPerPixel } from '../public/lib/mercator.js';
 import { nearestOnLot, pullBack, zoomFloor, outerRings } from '../public/shade/leash.js';
-import { cellsUnder, squareRing, Erased, nearestRun } from '../public/shade/erase.js';
+import { cellsUnder, squareRing, Erased, rayHit, brushTargets } from '../public/shade/erase.js';
 import { groundSurface, inpaint, groundOf } from '../public/shade/ground.js';
 import { climateZone, rankGrasses, grassBands, plantingWindow, SPECIES, shareWords } from '../public/shade/grass.js';
 
@@ -1316,11 +1316,30 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   check('eraser: blocks are erased once each and only inside the model; a stroke may hold blocks and columns; the list is sorted', c1.join() === '53,54' && eb.cubeCount === 3 && eb.count === 1 && eb.cubeList().join() === '9,53,54' && eb.any, `${c1} ${eb.cubeList()}`);
   const ub = eb.undo();
   check('eraser: undo puts the last stroke\'s blocks back; clear empties both masks', ub.cubes.join() === '9' && eb.cubeCount === 2 && eb.cubes[9] === 0 && eb.cubes[53] === 1 && (eb.clear(), !eb.any && eb.cubes[53] === 0 && eb.mask[7] === 0), '');
-  /* The block nearest the camera: from above the top block, from a low camera to the side the lowest facing it. */
-  const runs = [{ l0: 2, l1: 3, base: 2, top: 4 }, { l0: 6, l1: 9, base: 6, top: 10 }, { l0: 12, l1: 14, base: 12, top: 15 }];
-  const w = 20, k = 5 * w + 5;
-  const fromAbove = nearestRun(runs, k, w, 0, [5.5, 5.5, 200], 1), fromLow = nearestRun(runs, k, w, 0, [5.5, 40, 3], 1);
-  check('eraser: the block nearest the camera is the top one from above and the low one from a low camera; none for an empty column', fromAbove === runs[2] && fromLow === runs[0] && nearestRun([], k, w, 0, [0, 0, 0], 1) === null, `${JSON.stringify([fromAbove, fromLow])}`);
+  /* The block under the finger: the first a ray from the camera meets. A
+     column at cell (5, 5) with blocks 2-4 m and 12-15 m up, 1 m layers on
+     flat ground; a second column at (8, 5) 0-20 m. */
+  {
+    const w = 20, h = 20, nz = 30, filled = new Set();
+    for (const l of [2, 3, 12, 13, 14]) filled.add((5 * w + 5) * nz + l);
+    for (let l = 0; l < 20; l++) filled.add((5 * w + 8) * nz + l);
+    const opts = (taken) => ({ w, h, nz, taken, cubeAt: (k, z) => (z >= 0 && z < nz ? Math.floor(z) : -1), visible: (k, l) => filled.has(k * nz + l) });
+    const above = rayHit([5.5, 5.5, 100], [5.5, 5.5, 0], opts());
+    const low = rayHit([5.5, 30, 2.5], [5.5, 5.5, 2.5], opts());
+    /* A tilted camera 20 m south and 20 m up, the finger on the crown at 13.5 m: the ground under the finger is 36 m behind the tree. */
+    const tilted = rayHit([5.5, 25.5, 20], [5.5, 25.5 - 20 * 20 / 6.5, 0], opts());
+    check('eraser ray: from above the top block of the column; from a low camera the low block facing it; aimed at the crown, not the ground behind it',
+      above?.k === 5 * w + 5 && above.l === 14 && low?.k === 5 * w + 5 && low.l === 2 && tilted?.k === 5 * w + 5 && tilted.l >= 12, JSON.stringify([above, low, tilted]));
+    const stop = rayHit([5.5, 5.5, 100], [5.5, 5.5, 0], opts(new Set([(5 * w + 5) * nz + 14])));
+    const past = rayHit([5.5, 5.5, 100], [5.5, 5.5, 0], { ...opts(), visible: (k, l) => filled.has(k * nz + l) && l !== 14 });
+    check('eraser ray: a block taken in this stroke stops the ray (one layer per stroke); once it is gone the next stroke reaches the one under it',
+      stop === null && past?.l === 13, JSON.stringify([stop, past]));
+    const side = rayHit([30, 5.5, 5.5], [0, 5.5, 5.5], opts());
+    check('eraser ray: the nearer column hides the one behind it; a ray that misses the grid hits nothing', side?.k === 5 * w + 8 && rayHit([-10, -10, 5], [-20, -10, 5], opts()) === null, JSON.stringify(side));
+    const t = brushTargets([0, -50, 50], [0, 0, 5], 3);
+    const span = Math.max(...t.map((p) => p[0])) - Math.min(...t.map((p) => p[0]));
+    check('eraser brush: about two rays a metre each way, spread across the line of sight around the hit', t.length === 36 && Math.abs(span - 2.5) < 1e-9 && t.every((p) => Math.abs(p[1] * 50 + (p[2] - 5) * -45) < 1e-9), String(span));
+  }
 }
 
 /* ------------------------------------------------------- the shade subdomain */
