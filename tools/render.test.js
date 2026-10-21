@@ -409,6 +409,16 @@ const block = (mask, x0, y0, x1, y1) => {
   check('the photograph is opaque and dimmed outside the line',
     L.photo[(5 * GRID + 100) * 4 + 3] === 255 && L.photo[(5 * GRID + 100) * 4] < L.photo[(5 * GRID + 5) * 4]);
   check('every layer has a label and a colour', LAYERS.every((l) => l.label && l.colour.length === 3));
+  /* The half-metre lidar layers (owner, 2026-10-21): the tall outline is an
+     outline, the ground brightness a grey picture seen through. */
+  const bright = new Uint8Array(N);
+  for (let y = 40; y < 60; y++) for (let x = 40; x < 80; x++) bright[y * GRID + x] = 180;
+  const L2 = drawLayers({ photo: photo(), within, grid: GRID, masks: { lidarTall: roof }, greys: { lidarGround: bright } });
+  const frame2 = (id) => L2.sprite.subarray(k(id) * N * 4, (k(id) + 1) * N * 4);
+  const a2 = (id, x, y) => frame2(id)[(y * GRID + x) * 4 + 3];
+  check('the tall outline is painted on the edge of the tall cells and not inside', a2('lidarTall', 10, 20) > 0 && a2('lidarTall', 20, 20) === 0);
+  check('the ground brightness is painted grey, see-through, where there is a reading',
+    a2('lidarGround', 50, 50) > 0 && a2('lidarGround', 50, 50) < 255 && frame2('lidarGround')[(50 * GRID + 50) * 4] === 180 && a2('lidarGround', 5, 5) === 0);
 }
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);

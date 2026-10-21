@@ -308,6 +308,9 @@ def masks_from(raster, layers):
 
 MASKS = ("roof", "void", "lidar_canopy")
 
+# Half-metre cells for the two pictures the predictions page draws (see main).
+FINE_CELL_M = 0.5
+
 
 def mask_shares(classes, masks):
     """Per class, the share of its cells under each mask."""
@@ -692,6 +695,28 @@ def main():
             lo, hi = np.nanpercentile(inten, [2, 98])
             pic = np.where(np.isnan(inten), 0, np.clip((inten - lo) / max(hi - lo, 1e-6), 0, 1) * 255).astype(np.uint8)
             Image.fromarray(pic).save(out / f"{lawn_id}-intensity.png")
+        # THE LIDAR AT HALF-METRE CELLS, FOR THE EYE (owner, 2026-10-21: the
+        # 2 m roof mask on the predictions page is "a crude block", and "I need
+        # to see how things line up before I sign off"). Two more pictures
+        # the page draws over the photo and nothing else reads: the height
+        # above ground, so the page can outline everything 2.5 m and taller
+        # at half a metre, and the ground's own brightness, the lidar's
+        # picture of drives, paths and kerbs, straight down, in the lidar's
+        # own place. Moved exactly as the coarse grid is (datum, and any
+        # ground move), so they show where the detector's lidar actually sits.
+        fine = rasterise(pts, bbox, FINE_CELL_M)
+        fh, fw = fine["n_all"].shape
+        ground_fine = np.asarray(Image.fromarray(layers["ground_z"].astype(np.float32)).resize((fw, fh), Image.BILINEAR))
+        # A quarter-square-metre cell often catches no return at all (7 pts/m²
+        # is under two a cell), so one-cell gaps take their neighbours' top;
+        # one round only, so the outline cannot grow past half a metre.
+        height_fine = np.nan_to_num(np.maximum(0.0, fill_surface(fine["z_max"], rounds=1) - ground_fine), nan=0.0)
+        Image.fromarray(height_png(height_fine)).save(out / f"{lawn_id}-height-fine.png")
+        inten_f = fill_surface(fine["i_ground"], rounds=2)
+        if np.isfinite(inten_f).any():
+            lo, hi = np.nanpercentile(inten_f, [2, 98])
+            pic = np.where(np.isnan(inten_f), 0, 1 + np.clip((inten_f - lo) / max(hi - lo, 1e-6), 0, 1) * 254).astype(np.uint8)
+            Image.fromarray(pic).save(out / f"{lawn_id}-intensity-fine.png")
 
         uc = seps["under canopy"]
         print(f"  {label} {str(p.get('year') or '—'):>4}  {rec['points_per_m2']:5.1f} pts/m²  "

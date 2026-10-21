@@ -561,6 +561,13 @@ export const LAYERS = [
   { id: 'inferred', label: 'marked “inferred, not seen”', colour: INFERRED_EDGE, on: true },
   { id: 'canopy', label: 'tree model canopy', colour: [174, 234, 0], on: false },
   { id: 'roof', label: 'lidar roof', colour: [66, 133, 244], on: false },
+  // THE LIDAR FOR THE EYE (owner, 2026-10-21): the 2 m roof mask above is
+  // "a crude block"; these two are drawn from half-metre cells. The outline
+  // is everything 2.5 m and taller (roofs AND crowns), the detector's lidar
+  // exactly where it sits; the brightness is the lidar's own picture of the
+  // ground, so a drive or kerb in it can be compared with the photo's.
+  { id: 'lidarTall', label: 'lidar: outline of everything 2.5 m+ (half-metre cells)', colour: [255, 230, 0], on: true },
+  { id: 'lidarGround', label: 'lidar: ground brightness (half-metre cells)', colour: [220, 220, 220], on: false, grey: true },
   { id: 'void', label: 'lidar void / water', colour: [0, 188, 212], on: false },
   { id: 'mask', label: 'detector: raw answer', colour: TRACE, on: false },
   { id: 'added', label: 'stage 3: put back under trees', colour: ADDED, on: true },
@@ -587,7 +594,7 @@ export const LAYERS = [
  *
  * Masks are on the drawing grid (grid x gridH); `rings` in drawing pixels.
  */
-export function drawLayers({ photo, within, grid, gridH = grid, rings = [], masks = {} }) {
+export function drawLayers({ photo, within, grid, gridH = grid, rings = [], masks = {}, greys = {} }) {
   const n = grid * gridH;
   const base = new Uint8Array(n * 4);
   for (let i = 0; i < n; i++) {
@@ -641,8 +648,20 @@ export function drawLayers({ photo, within, grid, gridH = grid, rings = [], mask
       }
       continue;
     }
+    if (layer.grey) {
+      /* A picture rather than a mask: one byte a pixel, 0 meaning nothing
+         there, painted as grey the reader can see the photo through. */
+      const g = greys[layer.id];
+      if (!g) continue;
+      for (let i = 0; i < n; i++) {
+        if (!g[i]) continue;
+        const p = i * 4;
+        out[p] = g[i]; out[p + 1] = g[i]; out[p + 2] = g[i]; out[p + 3] = 200;
+      }
+      continue;
+    }
     if (!m) continue;
-    if (layer.id === 'line') outline(out, grid, gridH, m, layer.colour, Math.max(1, half - 1));
+    if (layer.id === 'line' || layer.id === 'lidarTall') outline(out, grid, gridH, m, layer.colour, Math.max(1, half - 1));
     else if (layer.id === 'truth') wash(out, m, layer.colour, 80);
     else if (layer.id === 'inferred' || layer.id.endsWith('anopy')) outline(out, grid, gridH, m, layer.colour, half);
     else fill(out, m, layer.colour, 215, layer.id === 'added' ? 1 : 0);

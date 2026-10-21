@@ -729,7 +729,10 @@ function runLabel(r) {
   /* WHICH ROW WAS DRAWN. Two runs that drew the same row draw the same
      pictures (H36), and the picker used to hide that. */
   const row = r.settings?.config ? ` · ${r.settings.config}` : '';
-  return `${when} · ${r.title || r.slug}${row}${score}`;
+  /* A run that slid the lidar per lot says so (H111): its lidar layers
+     are not where the corpus's lidar is. */
+  const moved = r.settings?.lidarMoved ? ` · LIDAR MOVED (${r.settings.lidarMoved} fit)` : '';
+  return `${when} · ${r.title || r.slug}${row}${moved}${score}`;
 }
 
 function fillPicker(runs, current) {

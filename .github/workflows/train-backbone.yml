@@ -1501,6 +1501,7 @@ jobs:
           # Actions allowance looks like.) The pictures are two minutes and
           # have never been the thing anyone turned off.
           RENDER_PREDICTIONS: 'true'
+          LIDAR_ALIGN: ${{ inputs.lidar_align }}
           SEEN_ONLY_TWINS: ${{ inputs.seen_only }}
           RUN_ABOUT: ${{ inputs.about }}
           # 15 cm a cell, 512 to 1024 across. The old fixed 512 was an input

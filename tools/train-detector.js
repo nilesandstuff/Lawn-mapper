@@ -723,6 +723,21 @@ export function canopyMask(png, G, GH = G) {
  * mask: a 2 m reading copied into the 15 cm cells under it is the reading;
  * an average would invent heights between two trees.
  */
+export function greyMask(png, G, GH = G) {
+  /* A grey picture (one byte a pixel) sampled nearest onto the grid, as the
+     masks are; 0 stays 0, "nothing there". */
+  if (!png || !png.width || !png.height) return null;
+  const out = new Uint8Array(G * GH);
+  for (let y = 0; y < GH; y++) {
+    const sy = Math.min(png.height - 1, Math.floor((y * png.height) / GH));
+    for (let x = 0; x < G; x++) {
+      const sx = Math.min(png.width - 1, Math.floor((x * png.width) / G));
+      out[y * G + x] = png.data[(sy * png.width + sx) * 4];
+    }
+  }
+  return out;
+}
+
 export function heightMask(png, G, GH = G) {
   if (!png || !png.width || !png.height) return null;
   const out = new Float32Array(G * GH);
@@ -1487,6 +1502,7 @@ async function publishRenderings(bucket, best, lawns, using, meta = {}) {
           inferred: big(clipTo(L.inferred)),
           canopy: big(L.canopy),
           roof: big(L.roof),
+          lidarTall: big(L.lidarTall),
           void: big(L.void),
           mask: big(clipTo(r.predicted)),
           added: big(clipTo(added)),
@@ -1497,6 +1513,7 @@ async function publishRenderings(bucket, best, lawns, using, meta = {}) {
           refineRemoved: big(clipTo(r.refineRemoved)),
           line: big(L.within),
         },
+        greys: { lidarGround: big(L.lidarGround) },
       });
 
       /* Named by position, not by map id. The id contains the coordinates of
@@ -1649,6 +1666,11 @@ async function publishRenderings(bucket, best, lawns, using, meta = {}) {
       aerialEye: Boolean(meta.aerialEye),
       noBackbone: Boolean(meta.noBackbone),
       medianErrorPct: Number(best.med.toFixed(1)),
+      /* WHETHER THE LIDAR WAS MOVED (H111): a trial that slides the lidar
+         per lot (workflow 14's `lidar_align`) draws it where it slid, and
+         the owner judged the corpus's alignment from such a drawing without
+         knowing. The page says so beside the run now. */
+      lidarMoved: process.env.LIDAR_ALIGN && process.env.LIDAR_ALIGN !== 'off' ? process.env.LIDAR_ALIGN : null,
     };
 
     const indexFile = join(dir, 'index.json');
@@ -1952,6 +1974,8 @@ async function main() {
          the pictures. NAIP is read over every frame, lidar or not. */
       let lidarCanopy = null;
       let naipCanopy = null;
+      let lidarTall = null;
+      let lidarGround = null;
       if (lidarDir) {
         const file = join(lidarDir, `${row.id}-height.png`);
         if (existsSync(file)) {
@@ -1966,6 +1990,17 @@ async function main() {
         voidMask = read('void');
         lidarCanopy = read('lidar-canopy');
         naipCanopy = read('naip-canopy');
+        /* The half-metre pictures for the predictions page (owner,
+           2026-10-21): everything 2.5 m and taller as an outline, and the
+           lidar's own brightness of the ground. Drawn, never scored. */
+        const fine = join(lidarDir, `${row.id}-height-fine.png`);
+        if (existsSync(fine)) {
+          const hf = heightMask(decoders.png.PNG.sync.read(readFileSync(fine)), G, GH);
+          lidarTall = new Uint8Array(hf.length);
+          for (let i = 0; i < hf.length; i++) lidarTall[i] = hf[i] >= 2.5 ? 1 : 0;
+        }
+        const bright = join(lidarDir, `${row.id}-intensity-fine.png`);
+        if (existsSync(bright)) lidarGround = greyMask(decoders.png.PNG.sync.read(readFileSync(bright)), G, GH);
       }
       const parcelGeom = parse(row.parcel);
       /*
@@ -2077,6 +2112,8 @@ async function main() {
         void: voidMask,
         lidarCanopy,
         naipCanopy,
+        lidarTall,
+        lidarGround,
         /*
          * THE TREE MODEL'S CANOPY PLUS WHAT TWO OTHER INSTRUMENTS AGREE IT
          * MISSED (H41): cells the lidar (2011-2020) AND NAIP-CHM (2021-2023)
