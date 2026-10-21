@@ -29,6 +29,7 @@ on the live server (lidar_frame.lidar_for) alike, so the two cannot drift:
 """
 
 import concurrent.futures
+import json
 import math
 import re
 import urllib.request
@@ -254,7 +255,20 @@ def crop(pts, bbox):
     return pts[keep]
 
 
-def read_points(read_octree, bbox, epoch, tiles=None, tile_dir=None, extra_m=None):
+def raw_cached(raw_cache, key):
+    """The raw points saved under `raw_cache` for this `key`, or (None, None)."""
+    if raw_cache is None or not Path(raw_cache).exists():
+        return None, None
+    try:
+        with np.load(raw_cache, allow_pickle=False) as z:
+            if str(z["key"]) != str(key):
+                return None, None
+            return np.asarray(z["pts"]), json.loads(str(z["info"]))
+    except Exception:  # noqa: BLE001 - a bad file is a cache miss, not a failure
+        return None, None
+
+
+def read_points(read_octree, bbox, epoch, tiles=None, tile_dir=None, extra_m=None, raw_cache=None, key=None):
     """
     One frame's points, (x, y, z, intensity, class) in Web Mercator, with
     noise dropped and the datum move applied. From `tiles` (paths or URLs;
@@ -265,20 +279,34 @@ def read_points(read_octree, bbox, epoch, tiles=None, tile_dir=None, extra_m=Non
     datum's: the lot's own, measured against its photo's ground (H107/H108,
     tools/lidar-roof-fit.js, LIDAR_SHIFTS) -- the owner's "above all else,
     lidar needs to line up with the ground".
+    `raw_cache`, a .npz path, keeps the frame's raw points (before the noise
+    drop and the moves) so a later run with the same `key` (the flight's
+    name and tiles) reads nothing from USGS: workflow 14 saves the folder
+    between runs (owner, 2026-10-21: "shouldn't we just be caching
+    everything related to the training corpus anyways?"). A different key
+    reads afresh and overwrites.
     Returns (points, info) with the keys lidar_frame.main() records.
     """
     wide = grow(bbox, 5)
-    if tiles:
-        parts, mb = [], 0.0
-        for t in tiles:
-            path = Path(t) if not str(t).startswith("http") else fetch_ranged(t, Path(tile_dir) / str(t).rsplit("/", 1)[-1])
-            mb += path.stat().st_size / 1e6
-            parts.append(tile_points(path, wide))
-        pts = np.vstack(parts) if parts else np.zeros((0, 5))
-        info = {"nodes": len(tiles), "tiles": True, "mb": mb}
+    pts, info = raw_cached(raw_cache, key)
+    if pts is None:
+        if tiles:
+            parts, mb = [], 0.0
+            for t in tiles:
+                path = Path(t) if not str(t).startswith("http") else fetch_ranged(t, Path(tile_dir) / str(t).rsplit("/", 1)[-1])
+                mb += path.stat().st_size / 1e6
+                parts.append(tile_points(path, wide))
+            pts = np.vstack(parts) if parts else np.zeros((0, 5))
+            info = {"nodes": len(tiles), "tiles": True, "mb": mb}
+        else:
+            pts, info = read_octree(wide)
+            info = dict(info)
+        if raw_cache is not None:
+            Path(raw_cache).parent.mkdir(parents=True, exist_ok=True)
+            np.savez_compressed(raw_cache, pts=np.asarray(pts, dtype=np.float64), key=np.array(str(key)), info=np.array(json.dumps(info)))
+        info["from_cache"] = False
     else:
-        pts, info = read_octree(wide)
-        info = dict(info)
+        info["from_cache"] = True
     pts = drop_noise(pts)
     if len(pts):
         lng, lat = merc_to_lnglat((bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2)

@@ -542,6 +542,10 @@ def main():
     # to line up with the ground"): added to the datum move for the lots it
     # names, nothing for the rest. Workflow 14's `lidar_align: ground`.
     shifts = {}
+    # THE RAW POINTS, KEPT BETWEEN RUNS (POINTS_CACHE=<dir>): one .npz a frame,
+    # keyed by the flight it came from, saved by workflow 14 under the frames'
+    # fingerprint and the saved plan, so a code change here re-reads nothing.
+    points_cache = os.environ.get("POINTS_CACHE", "")
     shifts_file = os.environ.get("LIDAR_SHIFTS", "")
     if shifts_file and Path(shifts_file).exists():
         shifts = (json.loads(Path(shifts_file).read_text()) or {}).get("shifts") or {}
@@ -586,16 +590,19 @@ def main():
             try:
                 extra = shifts.get(lawn_id)
                 extra_m = (extra["east"], extra["north"]) if extra else None
+                cache_file = (Path(points_cache) / f"{lawn_id}.npz") if points_cache else None
                 pts, got = lidar_sources.read_points(lambda b: points_over(base, b), bbox, lidar_sources.epoch_of(p),
                                                      tiles=p.get("tiles"), tile_dir=os.environ.get("TILE_DIR", "lidar-tiles"),
-                                                     extra_m=extra_m)
+                                                     extra_m=extra_m, raw_cache=cache_file,
+                                                     key=f"{p.get('name')}|{','.join(p.get('tiles') or [])}")
             except Exception as e:  # noqa: BLE001 - USGS's tiles failed: the newest octree, as the live server falls back
                 if not (p.get("tiles") and p.get("octreeUrl")):
                     raise
                 print(f"  {label} tiles failed ({str(e)[:60]}); reading the newest octree, {p.get('octreeName')}")
                 o_base = p["octreeUrl"].rsplit("/", 1)[0]
                 pts, got = lidar_sources.read_points(lambda b: points_over(o_base, b), bbox,
-                                                     p.get("octreeEpoch") or lidar_sources.DEFAULT_EPOCH, extra_m=extra_m)
+                                                     p.get("octreeEpoch") or lidar_sources.DEFAULT_EPOCH, extra_m=extra_m,
+                                                     raw_cache=cache_file, key=f"{p.get('octreeName')}|")
                 got = dict(got, fellBack=True)
         except Exception as e:  # noqa: BLE001 - one lawn's failure is reported, not fatal
             print(f"  {label} FAILED: {str(e)[:70]}")

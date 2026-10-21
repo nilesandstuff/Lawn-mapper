@@ -1,0 +1,1211 @@
+{
+ "_about": "THE SAVED LIDAR PLAN for the locked training lots: which flight each one reads (its 3DEP octree on AWS, or USGS's newer LAZ tiles), with USGS's own dates for the datum move. Made by tools/lidar-newest.js from USGS's flight index (WESM) and the TNM API on 2026-10-20 (workflow 14 run 39500140037, the 104 lots locked 2026-10-10). Workflow 14 reads it instead of asking USGS every run, so a slow or refusing index cannot stop a run and every run reads the same lidar (H111, 2026-10-21). Workflow 41 asks USGS again and rewrites this file; a lot not in it is asked for live.",
+ "-105.09292,40.01875:alpha:find": {
+  "name": "CO_DRCOG_2_2020",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/CO_DRCOG_2_2020/ept.json",
+  "year": 2020,
+  "epoch": 2020.4216290212185,
+  "unit": "CO_DRCOG_2_2020",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 5.024130972404996,
+  "others": 1
+ },
+ "-105.13443,39.89326:manual:manual": {
+  "name": "CO_DRCOG_2_2020",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/CO_DRCOG_2_2020/ept.json",
+  "year": 2020,
+  "epoch": 2020.4216290212185,
+  "unit": "CO_DRCOG_2_2020",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 5.024130972404996,
+  "others": 3
+ },
+ "-111.93092,40.58577:alpha:find": {
+  "name": "UT_2023_SaltLakeCo_1_C24",
+  "url": "tiles://-111.93092,40.58577:alpha:find/ept.json",
+  "tiles": [
+   "https://rockyweb.usgs.gov/vdelivery/Datasets/Staged/Elevation/LPC/Projects/UT_2023SaltLakeCo_C24/UT_2023_SaltLakeCo_1_C24/LAZ/USGS_LPC_UT_2023SaltLakeCo_C24_12TVK2193.laz"
+  ],
+  "mb": 86,
+  "year": 2023,
+  "epoch": 2023.8028747433266,
+  "source": "tiles",
+  "density": null,
+  "others": 1,
+  "octreeUrl": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/USGS_LPC_UT_Wasatch_L4_2013_LAS_2016/ept.json",
+  "octreeName": "USGS_LPC_UT_Wasatch_L4_2013_LAS_2016",
+  "octreeEpoch": 2014.006844626968
+ },
+ "-112.83597,37.70577:sam3:find": {
+  "name": "USGS_LPC_UT_Southern_QL1_2018_LAS_2019",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/USGS_LPC_UT_Southern_QL1_2018_LAS_2019/ept.json",
+  "year": 2018,
+  "epoch": 2018.444900752909,
+  "unit": "UT_Southern_QL1_2018",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 19.733202775915814,
+  "others": 0
+ },
+ "-122.59407,48.03813:sam3:find": null,
+ "-123.04884,48.97927:alpha:find": null,
+ "-70.99743,42.51353:alpha:find": {
+  "name": "MA_CentralEastern_1_2021",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/MA_CentralEastern_1_2021/ept.json",
+  "year": 2021,
+  "epoch": 2021.2621492128678,
+  "unit": "MA_CentralEastern_1_2021",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 20.09881050784056,
+  "others": 1
+ },
+ "-71.11028,42.49341:alpha:find": {
+  "name": "MA_CentralEastern_1_2021",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/MA_CentralEastern_1_2021/ept.json",
+  "year": 2021,
+  "epoch": 2021.2621492128678,
+  "unit": "MA_CentralEastern_1_2021",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 20.09881050784056,
+  "others": 1
+ },
+ "-71.12122,42.71011:alpha:find": {
+  "name": "MA_CentralEastern_1_2021",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/MA_CentralEastern_1_2021/ept.json",
+  "year": 2021,
+  "epoch": 2021.2621492128678,
+  "unit": "MA_CentralEastern_1_2021",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 20.09881050784056,
+  "others": 1
+ },
+ "-71.28902,42.40350:alpha:find": {
+  "name": "MA_CentralEastern_1_2021",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/MA_CentralEastern_1_2021/ept.json",
+  "year": 2021,
+  "epoch": 2021.2621492128678,
+  "unit": "MA_CentralEastern_1_2021",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 20.09881050784056,
+  "others": 1
+ },
+ "-71.45962,42.28080:alpha:find": {
+  "name": "MA_CentralEastern_1_2021",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/MA_CentralEastern_1_2021/ept.json",
+  "year": 2021,
+  "epoch": 2021.2621492128678,
+  "unit": "MA_CentralEastern_1_2021",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 20.09881050784056,
+  "others": 0
+ },
+ "-71.50260,41.64383:alpha:find": {
+  "name": "RI_Statewide_1_D22",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/RI_Statewide_1_D22/ept.json",
+  "year": 2022,
+  "epoch": 2022.2354551676933,
+  "unit": "RI_Statewide_1_D22",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 17.903762741218195,
+  "others": 1
+ },
+ "-72.17332,41.85107:sam3_exclude:exclude": {
+  "name": "USGS_LPC_CT_Statewide_B8_2016",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/USGS_LPC_CT_Statewide_B8_2016/ept.json",
+  "year": 2016,
+  "epoch": 2016.2395619438742,
+  "unit": "CT_Statewide_B8_2016",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 4.857943569684547,
+  "others": 0
+ },
+ "-74.07922,40.37016:sam3:find": {
+  "name": "NJ_NE6Co_2_B23",
+  "url": "tiles://-74.07922,40.37016:sam3:find/ept.json",
+  "tiles": [
+   "https://rockyweb.usgs.gov/vdelivery/Datasets/Staged/Elevation/LPC/Projects/NJ_NE6County_B23/NJ_NE6Co_2_B23/LAZ/USGS_LPC_NJ_NE6County_B23_K10A4.laz",
+   "https://rockyweb.usgs.gov/vdelivery/Datasets/Staged/Elevation/LPC/Projects/NJ_NE6County_B23/NJ_NE6Co_2_B23/LAZ/USGS_LPC_NJ_NE6County_B23_K10A8.laz"
+  ],
+  "mb": 845,
+  "year": 2025,
+  "epoch": 2024.2737850787132,
+  "source": "tiles",
+  "density": null,
+  "others": 1,
+  "octreeUrl": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/USGS_Lidar_Point_Cloud_NJ_SdL5_2014_LAS_2015/ept.json",
+  "octreeName": "USGS_Lidar_Point_Cloud_NJ_SdL5_2014_LAS_2015",
+  "octreeEpoch": 2014.2587268993839
+ },
+ "-74.90795,40.19277:alpha:find": {
+  "name": "PA_17Co_5_D24",
+  "url": "tiles://-74.90795,40.19277:alpha:find/ept.json",
+  "tiles": [
+   "https://rockyweb.usgs.gov/vdelivery/Datasets/Staged/Elevation/LPC/Projects/PA_17County_D24/PA_17Co_5_D24/LAZ/USGS_LPC_PA_17County_D24_18TWK507449.laz"
+  ],
+  "mb": 130,
+  "year": 2025,
+  "epoch": 2024.7789185489391,
+  "source": "tiles",
+  "density": null,
+  "others": 1,
+  "octreeUrl": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/USGS_LPC_DE_DelawareValley_HD_2015_LAS_2017/ept.json",
+  "octreeName": "USGS_LPC_DE_DelawareValley_HD_2015_LAS_2017",
+  "octreeEpoch": 2015.3319644079397
+ },
+ "-75.12517,40.14428:alpha:find": {
+  "name": "PA_17Co_5_D24",
+  "url": "tiles://-75.12517,40.14428:alpha:find/ept.json",
+  "tiles": [
+   "https://rockyweb.usgs.gov/vdelivery/Datasets/Staged/Elevation/LPC/Projects/PA_17County_D24/PA_17Co_5_D24/LAZ/USGS_LPC_PA_17County_D24_18TVK489443.laz"
+  ],
+  "mb": 102,
+  "year": 2025,
+  "epoch": 2024.7789185489391,
+  "source": "tiles",
+  "density": null,
+  "others": 1,
+  "octreeUrl": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/USGS_LPC_DE_DelawareValley_HD_2015_LAS_2017/ept.json",
+  "octreeName": "USGS_LPC_DE_DelawareValley_HD_2015_LAS_2017",
+  "octreeEpoch": 2015.3319644079397
+ },
+ "-75.17892,39.87284:alpha:find": {
+  "name": "USGS_LPC_DE_DelawareValley_HD_2015_LAS_2017",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/USGS_LPC_DE_DelawareValley_HD_2015_LAS_2017/ept.json",
+  "year": 2015,
+  "epoch": 2015.3319644079397,
+  "unit": "DE_DelawareValley_HD_2015",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 4.849064691104918,
+  "others": 1
+ },
+ "-75.23157,39.73969:alpha:find": {
+  "name": "USGS_LPC_DE_DelawareValley_HD_2015_LAS_2017",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/USGS_LPC_DE_DelawareValley_HD_2015_LAS_2017/ept.json",
+  "year": 2015,
+  "epoch": 2015.3319644079397,
+  "unit": "DE_DelawareValley_HD_2015",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 4.849064691104918,
+  "others": 1
+ },
+ "-75.29166,39.75224:alpha:find": {
+  "name": "USGS_LPC_DE_DelawareValley_HD_2015_LAS_2017",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/USGS_LPC_DE_DelawareValley_HD_2015_LAS_2017/ept.json",
+  "year": 2015,
+  "epoch": 2015.3319644079397,
+  "unit": "DE_DelawareValley_HD_2015",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 4.849064691104918,
+  "others": 1
+ },
+ "-75.34553,38.73448:alpha:find": {
+  "name": "DE_Statewide_1_B23",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/DE_Statewide_1_B23/ept.json",
+  "year": 2023,
+  "epoch": 2023.2813141683778,
+  "unit": "DE_Statewide_1_B23",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 19.48738725292255,
+  "others": 1
+ },
+ "-75.52344,40.60945:alpha:find": {
+  "name": "PA_Northcentral_B5_2019",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/PA_Northcentral_B5_2019/ept.json",
+  "year": 2019,
+  "epoch": 2019.557837097878,
+  "unit": "PA_Northcentral_B5_2019",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 7.104851422237231,
+  "others": 1
+ },
+ "-75.63050,39.47810:alpha:find": {
+  "name": "DE_Statewide_1_B23",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/DE_Statewide_1_B23/ept.json",
+  "year": 2023,
+  "epoch": 2023.2813141683778,
+  "unit": "DE_Statewide_1_B23",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 19.48738725292255,
+  "others": 1
+ },
+ "-76.75927,39.99529:alpha:find": {
+  "name": "PA_17Co_6_D24",
+  "url": "tiles://-76.75927,39.99529:alpha:find/ept.json",
+  "tiles": [
+   "https://rockyweb.usgs.gov/vdelivery/Datasets/Staged/Elevation/LPC/Projects/PA_17County_D24/PA_17Co_6_D24/LAZ/USGS_LPC_PA_17County_D24_18SUK349428.laz"
+  ],
+  "mb": 78,
+  "year": 2025,
+  "epoch": 2024.7679671457906,
+  "source": "tiles",
+  "density": null,
+  "others": 0,
+  "octreeUrl": null,
+  "octreeName": null,
+  "octreeEpoch": null
+ },
+ "-76.83871,40.32463:alpha:find": {
+  "name": "USGS_LPC_PA_Dauphin_2016_LAS_2017",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/USGS_LPC_PA_Dauphin_2016_LAS_2017/ept.json",
+  "year": 2016,
+  "epoch": 2016.2286105407256,
+  "unit": "PA_Dauphin_2016",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 4.561873391868969,
+  "others": 0
+ },
+ "-76.88650,39.64553:manual:manual": {
+  "name": "MD_4County_2_D24",
+  "url": "tiles://-76.88650,39.64553:manual:manual/ept.json",
+  "tiles": [
+   "https://rockyweb.usgs.gov/vdelivery/Datasets/Staged/Elevation/LPC/Projects/MD_4County_D24/MD_4County_2_D24/LAZ/USGS_LPC_MD_4County_D24_18suj380900.laz"
+  ],
+  "mb": 55,
+  "year": 2024,
+  "epoch": 2024.977412731006,
+  "source": "tiles",
+  "density": null,
+  "others": 1,
+  "octreeUrl": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/USGS_LPC_MD_PA_SandySupp_2014_LAS_2016/ept.json",
+  "octreeName": "USGS_LPC_MD_PA_SandySupp_2014_LAS_2016",
+  "octreeEpoch": 2015.0773442847365
+ },
+ "-76.89019,39.64422:manual:manual": {
+  "name": "MD_4County_2_D24",
+  "url": "tiles://-76.89019,39.64422:manual:manual/ept.json",
+  "tiles": [
+   "https://rockyweb.usgs.gov/vdelivery/Datasets/Staged/Elevation/LPC/Projects/MD_4County_D24/MD_4County_2_D24/LAZ/USGS_LPC_MD_4County_D24_18suj370890.laz",
+   "https://rockyweb.usgs.gov/vdelivery/Datasets/Staged/Elevation/LPC/Projects/MD_4County_D24/MD_4County_2_D24/LAZ/USGS_LPC_MD_4County_D24_18suj370900.laz"
+  ],
+  "mb": 120,
+  "year": 2024,
+  "epoch": 2024.977412731006,
+  "source": "tiles",
+  "density": null,
+  "others": 1,
+  "octreeUrl": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/USGS_LPC_MD_PA_SandySupp_2014_LAS_2016/ept.json",
+  "octreeName": "USGS_LPC_MD_PA_SandySupp_2014_LAS_2016",
+  "octreeEpoch": 2015.0773442847365
+ },
+ "-77.21901,34.66301:sam3:find": {
+  "name": "NC_HurricaneFlorence_2_2020",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/NC_HurricaneFlorence_2_2020/ept.json",
+  "year": 2020,
+  "epoch": 2019.975359342916,
+  "unit": "NC_HurricaneFlorence_2_2020",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 18.75127084042,
+  "others": 1
+ },
+ "-77.21907,38.78769:manual:manual": {
+  "name": "VA_NorthernVA_1_B22",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/VA_NorthernVA_1_B22/ept.json",
+  "year": 2022,
+  "epoch": 2022.962354551677,
+  "unit": "VA_NorthernVA_1_B22",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 19.45261868733266,
+  "others": 2
+ },
+ "-77.23724,39.19168:sam3:find": {
+  "name": "MD_Central_Processing_3_D24",
+  "url": "tiles://-77.23724,39.19168:sam3:find/ept.json",
+  "tiles": [
+   "https://rockyweb.usgs.gov/vdelivery/Datasets/Staged/Elevation/LPC/Projects/MD_Central_Processing_D24/MD_Central_Processing_3_D24/LAZ/USGS_LPC_MD_Central_Processing_D24_228NW11.laz"
+  ],
+  "mb": 210,
+  "year": 2023,
+  "epoch": 2023.9438740588637,
+  "source": "tiles",
+  "density": null,
+  "others": 0,
+  "octreeUrl": null,
+  "octreeName": null,
+  "octreeEpoch": null
+ },
+ "-77.26011,39.21623:sam3_exclude:exclude": {
+  "name": "MD_Central_Processing_3_D24",
+  "url": "tiles://-77.26011,39.21623:sam3_exclude:exclude/ept.json",
+  "tiles": [
+   "https://rockyweb.usgs.gov/vdelivery/Datasets/Staged/Elevation/LPC/Projects/MD_Central_Processing_D24/MD_Central_Processing_3_D24/LAZ/USGS_LPC_MD_Central_Processing_D24_230NW12.laz"
+  ],
+  "mb": 199,
+  "year": 2023,
+  "epoch": 2023.9438740588637,
+  "source": "tiles",
+  "density": null,
+  "others": 0,
+  "octreeUrl": null,
+  "octreeName": null,
+  "octreeEpoch": null
+ },
+ "-77.40500,38.46195:sam3_exclude:exclude": {
+  "name": "VA_NorthernVA_3_B22",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/VA_NorthernVA_3_B22/ept.json",
+  "year": 2022,
+  "epoch": 2022.9664613278576,
+  "unit": "VA_NorthernVA_3_B22",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 9.627696568911325,
+  "others": 1
+ },
+ "-77.45907,38.72650:alpha:find": {
+  "name": "VA_NorthernVA_1_B22",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/VA_NorthernVA_1_B22/ept.json",
+  "year": 2022,
+  "epoch": 2022.962354551677,
+  "unit": "VA_NorthernVA_1_B22",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 19.45261868733266,
+  "others": 2
+ },
+ "-77.48013,34.73608:sam3:find": {
+  "name": "NC_HurricaneFlorence_2_2020",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/NC_HurricaneFlorence_2_2020/ept.json",
+  "year": 2020,
+  "epoch": 2019.975359342916,
+  "unit": "NC_HurricaneFlorence_2_2020",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 18.75127084042,
+  "others": 1
+ },
+ "-77.48222,34.73669:sam3:find": {
+  "name": "NC_HurricaneFlorence_2_2020",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/NC_HurricaneFlorence_2_2020/ept.json",
+  "year": 2020,
+  "epoch": 2019.975359342916,
+  "unit": "NC_HurricaneFlorence_2_2020",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 18.75127084042,
+  "others": 1
+ },
+ "-77.60251,38.77674:sam3:find": {
+  "name": "VA_NorthernVA_1_B22",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/VA_NorthernVA_1_B22/ept.json",
+  "year": 2022,
+  "epoch": 2022.962354551677,
+  "unit": "VA_NorthernVA_1_B22",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 19.45261868733266,
+  "others": 1
+ },
+ "-77.60953,38.77517:sam3:find": {
+  "name": "VA_NorthernVA_1_B22",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/VA_NorthernVA_1_B22/ept.json",
+  "year": 2022,
+  "epoch": 2022.962354551677,
+  "unit": "VA_NorthernVA_1_B22",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 19.45261868733266,
+  "others": 1
+ },
+ "-77.61167,38.77826:sam3:find": {
+  "name": "VA_NorthernVA_1_B22",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/VA_NorthernVA_1_B22/ept.json",
+  "year": 2022,
+  "epoch": 2022.962354551677,
+  "unit": "VA_NorthernVA_1_B22",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 19.45261868733266,
+  "others": 1
+ },
+ "-78.54605,33.87955:sam3:find": {
+  "name": "NC_HurFlo_NOAA_15_2020",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/NC_HurFlo_NOAA_15_2020/ept.json",
+  "year": 2020,
+  "epoch": 2020.075290896646,
+  "unit": "NC_HurFlo_NOAA_15_2020",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 27.645869527547575,
+  "others": 1
+ },
+ "-78.92586,36.03856:alpha:find": null,
+ "-79.98066,40.55172:alpha:find": {
+  "name": "PA_17Co_1_D24",
+  "url": "tiles://-79.98066,40.55172:alpha:find/ept.json",
+  "tiles": [
+   "https://rockyweb.usgs.gov/vdelivery/Datasets/Staged/Elevation/LPC/Projects/PA_17County_D24/PA_17Co_1_D24/LAZ/USGS_LPC_PA_17County_D24_17TNE586489.laz"
+  ],
+  "mb": 139,
+  "year": 2024,
+  "epoch": 2024.3162217659137,
+  "source": "tiles",
+  "density": null,
+  "others": 1,
+  "octreeUrl": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/PA_WesternPA_2_2019/ept.json",
+  "octreeName": "PA_WesternPA_2_2019",
+  "octreeEpoch": 2020.0588637919234
+ },
+ "-80.55371,34.99379:sam3:find": {
+  "name": "USGS_LPC_NC_Phase4_Union_2016_LAS_2019",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/USGS_LPC_NC_Phase4_Union_2016_LAS_2019/ept.json",
+  "year": 2017,
+  "epoch": 2016.991101984942,
+  "unit": "NC_Phase4_Union_2016",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 25.07745140627177,
+  "others": 0
+ },
+ "-80.65242,35.00238:sam3:find": {
+  "name": "USGS_LPC_NC_Phase4_Union_2016_LAS_2019",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/USGS_LPC_NC_Phase4_Union_2016_LAS_2019/ept.json",
+  "year": 2017,
+  "epoch": 2016.991101984942,
+  "unit": "NC_Phase4_Union_2016",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 25.07745140627177,
+  "others": 0
+ },
+ "-81.62058,41.11245:sam3:find": {
+  "name": "OH_Statewide_Phase1_1_2019",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/OH_Statewide_Phase1_1_2019/ept.json",
+  "year": 2020,
+  "epoch": 2020.0930869267625,
+  "unit": "OH_Statewide_Phase1_1_2019",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 18.565008223128846,
+  "others": 0
+ },
+ "-83.19566,40.04976:manual:manual": {
+  "name": "OH_StatewideP3_5_B21",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/OH_StatewideP3_5_B21/ept.json",
+  "year": 2022,
+  "epoch": 2022.5530458590006,
+  "unit": "OH_StatewideP3_5_B21",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 57.850068721105636,
+  "others": 1
+ },
+ "-83.45285,42.40950:sam3:find": {
+  "name": "USGS_LPC_MI_WayneCo_2017_LAS_2018",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/USGS_LPC_MI_WayneCo_2017_LAS_2018/ept.json",
+  "year": 2017,
+  "epoch": 2017.2963723477071,
+  "unit": "MI_WayneCo_2017",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 3.784248416842062,
+  "others": 0
+ },
+ "-83.71431,32.68209:manual:manual": {
+  "name": "GA_SW_Georgia_B4_2017",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/GA_SW_Georgia_B4_2017/ept.json",
+  "year": 2021,
+  "epoch": 2021.05954825462,
+  "unit": "GA_SW_Georgia_B4_2017",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 6.338623651277652,
+  "others": 2
+ },
+ "-83.71486,32.68287:sam3_exclude:exclude": {
+  "name": "GA_SW_Georgia_B4_2017",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/GA_SW_Georgia_B4_2017/ept.json",
+  "year": 2021,
+  "epoch": 2021.05954825462,
+  "unit": "GA_SW_Georgia_B4_2017",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 6.338623651277652,
+  "others": 2
+ },
+ "-83.95454,34.08553:sam3:find": {
+  "name": "GA_Central_1_2019",
+  "url": "tiles://-83.95454,34.08553:sam3:find/ept.json",
+  "tiles": [
+   "https://rockyweb.usgs.gov/vdelivery/Datasets/Staged/Elevation/LPC/Projects/GA_Central_2019_B19/GA_Central_1_2019/LAZ/USGS_LPC_GA_Central_2019_B19_e1100n1294.laz"
+  ],
+  "mb": 31,
+  "year": 2020,
+  "epoch": 2020.034223134839,
+  "source": "tiles",
+  "density": null,
+  "others": 1,
+  "octreeUrl": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/GA_Central_1_2018/ept.json",
+  "octreeName": "GA_Central_1_2018",
+  "octreeEpoch": 2018.5
+ },
+ "-84.06045,33.94050:sam3:find": {
+  "name": "GA_Central_1_2019",
+  "url": "tiles://-84.06045,33.94050:sam3:find/ept.json",
+  "tiles": [
+   "https://rockyweb.usgs.gov/vdelivery/Datasets/Staged/Elevation/LPC/Projects/GA_Central_2019_B19/GA_Central_1_2019/LAZ/USGS_LPC_GA_Central_2019_B19_e1092n1276.laz",
+   "https://rockyweb.usgs.gov/vdelivery/Datasets/Staged/Elevation/LPC/Projects/GA_Central_2019_B19/GA_Central_1_2019/LAZ/USGS_LPC_GA_Central_2019_B19_e1092n1277.laz"
+  ],
+  "mb": 49,
+  "year": 2020,
+  "epoch": 2020.034223134839,
+  "source": "tiles",
+  "density": null,
+  "others": 1,
+  "octreeUrl": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/GA_Central_1_2018/ept.json",
+  "octreeName": "GA_Central_1_2018",
+  "octreeEpoch": 2018.5
+ },
+ "-84.18219,42.67372:alpha:find": {
+  "name": "USGS_LPC_MI_31Co_Ingham_2017_LAS_2019",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/USGS_LPC_MI_31Co_Ingham_2017_LAS_2019/ept.json",
+  "year": 2018,
+  "epoch": 2018.1081451060918,
+  "unit": "MI_31Co_Ingham_2017",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 3.391811620237563,
+  "others": 2
+ },
+ "-84.34646,33.86764:manual:manual": {
+  "name": "GA_Statewide_B3_2018",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/GA_Statewide_B3_2018/ept.json",
+  "year": 2019,
+  "epoch": 2019.2648870636551,
+  "unit": "GA_Statewide_B3_2018",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 4.949821149166027,
+  "others": 0
+ },
+ "-84.53477,38.97799:manual:manual": {
+  "name": "KY_Western_1_A22",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/KY_Western_1_A22/ept.json",
+  "year": 2022,
+  "epoch": 2022.1916495550993,
+  "unit": "KY_Western_1_A22",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 6.154751582481758,
+  "others": 1
+ },
+ "-84.53700,38.97534:sam3:find": {
+  "name": "KY_Western_1_A22",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/KY_Western_1_A22/ept.json",
+  "year": 2022,
+  "epoch": 2022.1916495550993,
+  "unit": "KY_Western_1_A22",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 6.154751582481758,
+  "others": 1
+ },
+ "-84.55432,42.66899:manual:manual": {
+  "name": "USGS_LPC_MI_31Co_Ingham_2017_LAS_2019",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/USGS_LPC_MI_31Co_Ingham_2017_LAS_2019/ept.json",
+  "year": 2018,
+  "epoch": 2018.1081451060918,
+  "unit": "MI_31Co_Ingham_2017",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 3.391811620237563,
+  "others": 1
+ },
+ "-85.22596,41.09165:sam3:find": {
+  "name": "IN_Statewide_B2_2017",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/IN_Statewide_B2_2017/ept.json",
+  "year": 2017,
+  "epoch": 2017.2156057494867,
+  "unit": "IN_Statewide_B2_2017",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 3.5291552208838817,
+  "others": 1
+ },
+ "-85.54331,34.33089:manual:manual": {
+  "name": "AL_11County_2_B23",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/AL_11County_2_B23/ept.json",
+  "year": 2024,
+  "epoch": 2024.1642710472279,
+  "unit": "AL_11County_2_B23",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 16.55137699123949,
+  "others": 0
+ },
+ "-85.57742,43.09564:sam3_exclude:exclude": {
+  "name": "USGS_LPC_MI_31Co_Kent_2016_LAS_2019",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/USGS_LPC_MI_31Co_Kent_2016_LAS_2019/ept.json",
+  "year": 2018,
+  "epoch": 2018.1177275838468,
+  "unit": "MI_31Co_Kent_2016",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 3.498516287263195,
+  "others": 0
+ },
+ "-85.58069,43.05429:sam3:find": {
+  "name": "USGS_LPC_MI_31Co_Kent_2016_LAS_2019",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/USGS_LPC_MI_31Co_Kent_2016_LAS_2019/ept.json",
+  "year": 2018,
+  "epoch": 2018.1177275838468,
+  "unit": "MI_31Co_Kent_2016",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 3.498516287263195,
+  "others": 0
+ },
+ "-85.58216,43.08465:sam3:find": {
+  "name": "USGS_LPC_MI_31Co_Kent_2016_LAS_2019",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/USGS_LPC_MI_31Co_Kent_2016_LAS_2019/ept.json",
+  "year": 2018,
+  "epoch": 2018.1177275838468,
+  "unit": "MI_31Co_Kent_2016",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 3.498516287263195,
+  "others": 0
+ },
+ "-85.61014,43.03520:sam3_exclude:exclude": {
+  "name": "USGS_LPC_MI_31Co_Kent_2016_LAS_2019",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/USGS_LPC_MI_31Co_Kent_2016_LAS_2019/ept.json",
+  "year": 2018,
+  "epoch": 2018.1177275838468,
+  "unit": "MI_31Co_Kent_2016",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 3.498516287263195,
+  "others": 0
+ },
+ "-85.64033,43.07105:sam3:find": {
+  "name": "USGS_LPC_MI_31Co_Kent_2016_LAS_2019",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/USGS_LPC_MI_31Co_Kent_2016_LAS_2019/ept.json",
+  "year": 2018,
+  "epoch": 2018.1177275838468,
+  "unit": "MI_31Co_Kent_2016",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 3.498516287263195,
+  "others": 0
+ },
+ "-85.64651,42.81639:sam3:find": {
+  "name": "USGS_LPC_MI_31Co_Kent_2016_LAS_2019",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/USGS_LPC_MI_31Co_Kent_2016_LAS_2019/ept.json",
+  "year": 2018,
+  "epoch": 2018.1177275838468,
+  "unit": "MI_31Co_Kent_2016",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 3.498516287263195,
+  "others": 0
+ },
+ "-85.67425,42.80681:sam3:find": {
+  "name": "USGS_LPC_MI_31Co_Kent_2016_LAS_2019",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/USGS_LPC_MI_31Co_Kent_2016_LAS_2019/ept.json",
+  "year": 2018,
+  "epoch": 2018.1177275838468,
+  "unit": "MI_31Co_Kent_2016",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 3.498516287263195,
+  "others": 0
+ },
+ "-85.67808,38.04124:sam3:find": {
+  "name": "KY_CentralEast_1_A23",
+  "url": "tiles://-85.67808,38.04124:sam3:find/ept.json",
+  "tiles": [
+   "https://rockyweb.usgs.gov/vdelivery/Datasets/Staged/Elevation/LPC/Projects/KY_CentralEast_A23/KY_CentralEast_1_A23/LAZ/USGS_LPC_KY_CentralEast_A23_N092E233.laz"
+  ],
+  "mb": 44,
+  "year": 2023,
+  "epoch": 2023.0581793292265,
+  "source": "tiles",
+  "density": null,
+  "others": 1,
+  "octreeUrl": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/KY_FullState/ept.json",
+  "octreeName": "KY_FullState",
+  "octreeEpoch": null
+ },
+ "-85.67816,38.04042:sam3:find": {
+  "name": "KY_CentralEast_1_A23",
+  "url": "tiles://-85.67816,38.04042:sam3:find/ept.json",
+  "tiles": [
+   "https://rockyweb.usgs.gov/vdelivery/Datasets/Staged/Elevation/LPC/Projects/KY_CentralEast_A23/KY_CentralEast_1_A23/LAZ/USGS_LPC_KY_CentralEast_A23_N092E233.laz"
+  ],
+  "mb": 44,
+  "year": 2023,
+  "epoch": 2023.0581793292265,
+  "source": "tiles",
+  "density": null,
+  "others": 1,
+  "octreeUrl": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/KY_FullState/ept.json",
+  "octreeName": "KY_FullState",
+  "octreeEpoch": null
+ },
+ "-85.67913,38.04131:sam3:find": {
+  "name": "KY_CentralEast_1_A23",
+  "url": "tiles://-85.67913,38.04131:sam3:find/ept.json",
+  "tiles": [
+   "https://rockyweb.usgs.gov/vdelivery/Datasets/Staged/Elevation/LPC/Projects/KY_CentralEast_A23/KY_CentralEast_1_A23/LAZ/USGS_LPC_KY_CentralEast_A23_N092E233.laz"
+  ],
+  "mb": 44,
+  "year": 2023,
+  "epoch": 2023.0581793292265,
+  "source": "tiles",
+  "density": null,
+  "others": 1,
+  "octreeUrl": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/KY_FullState/ept.json",
+  "octreeName": "KY_FullState",
+  "octreeEpoch": null
+ },
+ "-85.72400,42.87286:sam3:find": {
+  "name": "USGS_LPC_MI_31Co_Kent_2016_LAS_2019",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/USGS_LPC_MI_31Co_Kent_2016_LAS_2019/ept.json",
+  "year": 2018,
+  "epoch": 2018.1177275838468,
+  "unit": "MI_31Co_Kent_2016",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 3.498516287263195,
+  "others": 0
+ },
+ "-85.74709,42.87412:sam3:find": {
+  "name": "USGS_LPC_MI_31Co_Kent_2016_LAS_2019",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/USGS_LPC_MI_31Co_Kent_2016_LAS_2019/ept.json",
+  "year": 2018,
+  "epoch": 2018.1177275838468,
+  "unit": "MI_31Co_Kent_2016",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 3.498516287263195,
+  "others": 0
+ },
+ "-85.81809,43.02488:sam3:find": {
+  "name": "USGS_LPC_MI_31Co_Ottawa_2016_LAS_2019",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/USGS_LPC_MI_31Co_Ottawa_2016_LAS_2019/ept.json",
+  "year": 2018,
+  "epoch": 2017.9986310746065,
+  "unit": "MI_31Co_Ottawa_2016",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 3.213518305407981,
+  "others": 0
+ },
+ "-85.82204,42.98126:sam3:find": {
+  "name": "USGS_LPC_MI_31Co_Ottawa_2016_LAS_2019",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/USGS_LPC_MI_31Co_Ottawa_2016_LAS_2019/ept.json",
+  "year": 2018,
+  "epoch": 2017.9986310746065,
+  "unit": "MI_31Co_Ottawa_2016",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 3.213518305407981,
+  "others": 0
+ },
+ "-85.87769,42.89148:alpha:find": {
+  "name": "USGS_LPC_MI_31Co_Ottawa_2016_LAS_2019",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/USGS_LPC_MI_31Co_Ottawa_2016_LAS_2019/ept.json",
+  "year": 2018,
+  "epoch": 2017.9986310746065,
+  "unit": "MI_31Co_Ottawa_2016",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 3.213518305407981,
+  "others": 0
+ },
+ "-85.95191,42.78183:sam3:find": {
+  "name": "USGS_LPC_MI_31Co_Ottawa_2016_LAS_2019",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/USGS_LPC_MI_31Co_Ottawa_2016_LAS_2019/ept.json",
+  "year": 2018,
+  "epoch": 2017.9986310746065,
+  "unit": "MI_31Co_Ottawa_2016",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 3.213518305407981,
+  "others": 1
+ },
+ "-86.18935,39.60427:alpha:find": {
+  "name": "IN_Statewide_Opt1_B3_2017",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/IN_Statewide_Opt1_B3_2017/ept.json",
+  "year": 2017,
+  "epoch": 2017.2731006160163,
+  "unit": "IN_Statewide_Opt1_B3_2017",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 7.87506640952149,
+  "others": 2
+ },
+ "-86.43590,35.78178:alpha:find": {
+  "name": "USGS_LPC_TN_Middle_B2_2018_LAS_2019",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/USGS_LPC_TN_Middle_B2_2018_LAS_2019/ept.json",
+  "year": 2018,
+  "epoch": 2018.1697467488023,
+  "unit": "TN_Middle_B2_2018",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 6.506526691191787,
+  "others": 0
+ },
+ "-87.15828,34.54738:manual:manual": {
+  "name": "AL_17Co_1_2020",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/AL_17Co_1_2020/ept.json",
+  "year": 2021,
+  "epoch": 2021.0417522245039,
+  "unit": "AL_17Co_1_2020",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 10.449862087087903,
+  "others": 1
+ },
+ "-87.16333,34.55359:manual:manual": {
+  "name": "AL_17Co_1_2020",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/AL_17Co_1_2020/ept.json",
+  "year": 2021,
+  "epoch": 2021.0417522245039,
+  "unit": "AL_17Co_1_2020",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 10.449862087087903,
+  "others": 1
+ },
+ "-87.16411,34.55438:manual:manual": {
+  "name": "AL_17Co_1_2020",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/AL_17Co_1_2020/ept.json",
+  "year": 2021,
+  "epoch": 2021.0417522245039,
+  "unit": "AL_17Co_1_2020",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 10.449862087087903,
+  "others": 1
+ },
+ "-87.51020,38.08274:alpha:find": {
+  "name": "IN_Statewide_Opt2_B6_2017",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/IN_Statewide_Opt2_B6_2017/ept.json",
+  "year": 2020,
+  "epoch": 2019.2703627652293,
+  "unit": "IN_Statewide_Opt2_B6_2017",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 4.681885639584021,
+  "others": 1
+ },
+ "-87.95621,42.86220:alpha:find": {
+  "name": "USGS_LPC_WI_SEWRPC_2017_LAS_2019",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/USGS_LPC_WI_SEWRPC_2017_LAS_2019/ept.json",
+  "year": 2015,
+  "epoch": 2015.2361396303902,
+  "unit": "WI_SEWRPC_2017",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 5.244846101782314,
+  "others": 0
+ },
+ "-88.05249,42.18937:alpha:find": {
+  "name": "USGS_LPC_IL_4County_Lake_2016_LAS_2019",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/USGS_LPC_IL_4County_Lake_2016_LAS_2019/ept.json",
+  "year": 2017,
+  "epoch": 2017.3169062286106,
+  "unit": "IL_4County_Lake_2016",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 30.922941876707995,
+  "others": 1
+ },
+ "-88.08293,41.49541:manual:manual": {
+  "name": "IL_19County_4_D24",
+  "url": "tiles://-88.08293,41.49541:manual:manual/ept.json",
+  "tiles": [
+   "https://rockyweb.usgs.gov/vdelivery/Datasets/Staged/Elevation/LPC/Projects/IL_19County_D24/IL_19County_4_D24/LAZ/USGS_LPC_IL_19County_D24_1051_1757.laz",
+   "https://rockyweb.usgs.gov/vdelivery/Datasets/Staged/Elevation/LPC/Projects/IL_19County_D24/IL_19County_4_D24/LAZ/USGS_LPC_IL_19County_D24_1053_1757.laz"
+  ],
+  "mb": 137,
+  "year": 2025,
+  "epoch": 2024.955509924709,
+  "source": "tiles",
+  "density": null,
+  "others": 1,
+  "octreeUrl": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/USGS_LPC_IL_5County_WillCo_2014_LAS_2016/ept.json",
+  "octreeName": "USGS_LPC_IL_5County_WillCo_2014_LAS_2016",
+  "octreeEpoch": 2014.2765229295003
+ },
+ "-88.08622,41.49477:manual:manual": {
+  "name": "IL_19County_4_D24",
+  "url": "tiles://-88.08622,41.49477:manual:manual/ept.json",
+  "tiles": [
+   "https://rockyweb.usgs.gov/vdelivery/Datasets/Staged/Elevation/LPC/Projects/IL_19County_D24/IL_19County_4_D24/LAZ/USGS_LPC_IL_19County_D24_1051_1757.laz"
+  ],
+  "mb": 69,
+  "year": 2025,
+  "epoch": 2024.955509924709,
+  "source": "tiles",
+  "density": null,
+  "others": 1,
+  "octreeUrl": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/USGS_LPC_IL_5County_WillCo_2014_LAS_2016/ept.json",
+  "octreeName": "USGS_LPC_IL_5County_WillCo_2014_LAS_2016",
+  "octreeEpoch": 2014.2765229295003
+ },
+ "-89.69384,38.60645:alpha:find": {
+  "name": "IL_SouthCentral_2_2021",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/IL_SouthCentral_2_2021/ept.json",
+  "year": 2021,
+  "epoch": 2021.2265571526352,
+  "unit": "IL_SouthCentral_2_2021",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 9.367831994221351,
+  "others": 1
+ },
+ "-90.09404,29.68568:manual:manual": {
+  "name": "LA_CoastalLouisiana_2_2020",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/LA_CoastalLouisiana_2_2020/ept.json",
+  "year": 2021,
+  "epoch": 2021.2142368240932,
+  "unit": "LA_CoastalLouisiana_2_2020",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 9.542438817346714,
+  "others": 2
+ },
+ "-90.09679,29.68626:manual:manual": {
+  "name": "LA_CoastalLouisiana_2_2020",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/LA_CoastalLouisiana_2_2020/ept.json",
+  "year": 2021,
+  "epoch": 2021.2142368240932,
+  "unit": "LA_CoastalLouisiana_2_2020",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 9.542438817346714,
+  "others": 2
+ },
+ "-90.09720,29.68990:manual:manual": {
+  "name": "LA_CoastalLouisiana_2_2020",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/LA_CoastalLouisiana_2_2020/ept.json",
+  "year": 2021,
+  "epoch": 2021.2142368240932,
+  "unit": "LA_CoastalLouisiana_2_2020",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 9.542438817346714,
+  "others": 2
+ },
+ "-91.28631,42.44254:manual:manual": {
+  "name": "IA_Eastern_2_2019",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/IA_Eastern_2_2019/ept.json",
+  "year": 2020,
+  "epoch": 2020.406570841889,
+  "unit": "IA_Eastern_2_2019",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 8.16251020484172,
+  "others": 1
+ },
+ "-92.81531,41.03537:alpha:find": {
+  "name": "IA_SouthCentral_3_2020",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/IA_SouthCentral_3_2020/ept.json",
+  "year": 2020,
+  "epoch": 2020.2573579739903,
+  "unit": "IA_SouthCentral_3_2020",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 5.8303881202991,
+  "others": 1
+ },
+ "-93.29754,42.53715:manual:manual": {
+  "name": "IA_NorthCentral_3_2020",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/IA_NorthCentral_3_2020/ept.json",
+  "year": 2020,
+  "epoch": 2020.5913757700205,
+  "unit": "IA_NorthCentral_3_2020",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 3.919620875820023,
+  "others": 1
+ },
+ "-93.29807,42.53696:sam3:find": {
+  "name": "IA_NorthCentral_3_2020",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/IA_NorthCentral_3_2020/ept.json",
+  "year": 2020,
+  "epoch": 2020.5913757700205,
+  "unit": "IA_NorthCentral_3_2020",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 3.919620875820023,
+  "others": 1
+ },
+ "-94.16953,36.34423:alpha:find": {
+  "name": "AR_Western_1_B24",
+  "url": "tiles://-94.16953,36.34423:alpha:find/ept.json",
+  "tiles": [
+   "https://rockyweb.usgs.gov/vdelivery/Datasets/Staged/Elevation/LPC/Projects/AR_Western_B24/AR_Western_1_B24/LAZ/USGS_LPC_AR_Western_B24_15SUA950220.laz"
+  ],
+  "mb": 51,
+  "year": 2025,
+  "epoch": 2024.7145790554414,
+  "source": "tiles",
+  "density": null,
+  "others": 1,
+  "octreeUrl": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/USGS_LPC_AR_Benton_Co_2015_LAS_2017/ept.json",
+  "octreeName": "USGS_LPC_AR_Benton_Co_2015_LAS_2017",
+  "octreeEpoch": 2015.9192334017796
+ },
+ "-96.03718,41.12233:alpha:find": {
+  "name": "USGS_LPC_NE_Eastern_UA_2016_LAS_2018",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/USGS_LPC_NE_Eastern_UA_2016_LAS_2018/ept.json",
+  "year": 2017,
+  "epoch": 2017.013004791239,
+  "unit": "NE_Eastern_UA_2016",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 5.57829189789361,
+  "others": 0
+ },
+ "-96.10238,41.15862:manual:manual": {
+  "name": "USGS_LPC_NE_Eastern_UA_2016_LAS_2018",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/USGS_LPC_NE_Eastern_UA_2016_LAS_2018/ept.json",
+  "year": 2017,
+  "epoch": 2017.013004791239,
+  "unit": "NE_Eastern_UA_2016",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 5.57829189789361,
+  "others": 0
+ },
+ "-96.10307,41.15881:manual:manual": {
+  "name": "USGS_LPC_NE_Eastern_UA_2016_LAS_2018",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/USGS_LPC_NE_Eastern_UA_2016_LAS_2018/ept.json",
+  "year": 2017,
+  "epoch": 2017.013004791239,
+  "unit": "NE_Eastern_UA_2016",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 5.57829189789361,
+  "others": 0
+ },
+ "-96.31024,30.59139:sam3:find": {
+  "name": "USGS_LPC_TX_RedRiver_3Area_B2_2018_LAS_2019",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/USGS_LPC_TX_RedRiver_3Area_B2_2018_LAS_2019/ept.json",
+  "year": 2018,
+  "epoch": 2018.0903490759754,
+  "unit": "TX_RedRiver_3Area_B2_2018",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 4.566934062420464,
+  "others": 0
+ },
+ "-96.61237,40.71458:manual:manual": {
+  "name": "USGS_LPC_NE_Eastern_UA_2016_LAS_2018",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/USGS_LPC_NE_Eastern_UA_2016_LAS_2018/ept.json",
+  "year": 2017,
+  "epoch": 2017.013004791239,
+  "unit": "NE_Eastern_UA_2016",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 5.57829189789361,
+  "others": 0
+ },
+ "-96.87726,46.80986:sam3:find": {
+  "name": "ND_3DEPProcessing_6_D22",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/ND_3DEPProcessing_6_D22/ept.json",
+  "year": 2021,
+  "epoch": 2020.321697467488,
+  "unit": "ND_3DEPProcessing_6_D22",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 3.2961319990762767,
+  "others": 1
+ },
+ "-96.87732,46.81159:manual:manual": {
+  "name": "ND_3DEPProcessing_6_D22",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/ND_3DEPProcessing_6_D22/ept.json",
+  "year": 2021,
+  "epoch": 2020.321697467488,
+  "unit": "ND_3DEPProcessing_6_D22",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 3.2961319990762767,
+  "others": 1
+ },
+ "-96.88012,46.81036:manual:manual": {
+  "name": "ND_3DEPProcessing_6_D22",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/ND_3DEPProcessing_6_D22/ept.json",
+  "year": 2021,
+  "epoch": 2020.321697467488,
+  "unit": "ND_3DEPProcessing_6_D22",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 3.2961319990762767,
+  "others": 1
+ },
+ "-96.88309,46.81273:sam3:find": {
+  "name": "ND_3DEPProcessing_6_D22",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/ND_3DEPProcessing_6_D22/ept.json",
+  "year": 2021,
+  "epoch": 2020.321697467488,
+  "unit": "ND_3DEPProcessing_6_D22",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 3.2961319990762767,
+  "others": 1
+ },
+ "-96.88449,46.81280:manual:manual": {
+  "name": "ND_3DEPProcessing_6_D22",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/ND_3DEPProcessing_6_D22/ept.json",
+  "year": 2021,
+  "epoch": 2020.321697467488,
+  "unit": "ND_3DEPProcessing_6_D22",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 3.2961319990762767,
+  "others": 1
+ },
+ "-96.88525,46.81320:manual:manual": {
+  "name": "ND_3DEPProcessing_6_D22",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/ND_3DEPProcessing_6_D22/ept.json",
+  "year": 2021,
+  "epoch": 2020.321697467488,
+  "unit": "ND_3DEPProcessing_6_D22",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 3.2961319990762767,
+  "others": 1
+ },
+ "-96.88854,46.81110:sam3:find": {
+  "name": "ND_3DEPProcessing_6_D22",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/ND_3DEPProcessing_6_D22/ept.json",
+  "year": 2021,
+  "epoch": 2020.321697467488,
+  "unit": "ND_3DEPProcessing_6_D22",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 3.2961319990762767,
+  "others": 1
+ },
+ "-97.60852,35.63305:alpha:find": {
+  "name": "OK_Panhandle_B1B_2018",
+  "url": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/OK_Panhandle_B1B_2018/ept.json",
+  "year": 2019,
+  "epoch": 2019.1279945242984,
+  "unit": "OK_Panhandle_B1B_2018",
+  "dated": "wesm",
+  "source": "octree",
+  "density": 4.801670757365579,
+  "others": 0
+ }
+}

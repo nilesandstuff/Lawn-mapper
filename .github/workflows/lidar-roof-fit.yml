@@ -63,6 +63,7 @@ jobs:
           FRAMES: frames
           PLAN: lidar-plan.json
           MODE: newest
+          SAVED: tools/locked-lidar-plan.json
         run: node tools/lidar-newest.js
 
       - name: Slide the lidar's ground and roofs onto each photo

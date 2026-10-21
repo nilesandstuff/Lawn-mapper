@@ -132,10 +132,36 @@ def check_ranged_download_makes_its_folder():
     print("download: the folder is made, seven ranges land in order, no half file left")
 
 
+def check_raw_points_cache():
+    """The raw points saved once are read back for the same key and re-read for another."""
+    import tempfile
+    from pathlib import Path
+    calls = []
+    pts0 = np.array([[0.0, 0.0, 10.0, 50.0, 2.0], [1.0, 1.0, 12.0, 60.0, 1.0]])
+
+    def read_octree(wide):
+        calls.append(wide)
+        return pts0, {"nodes": 1, "mb": 0.1}
+    bbox = (-10.0, -10.0, 10.0, 10.0)
+    with tempfile.TemporaryDirectory() as d:
+        f = Path(d) / "deep" / "frame.npz"
+        a, ia = t.read_points(read_octree, bbox, 2020.5, raw_cache=f, key="X|")
+        assert f.exists() and ia["from_cache"] is False and len(calls) == 1, "saved on the first read"
+        b, ib = t.read_points(read_octree, bbox, 2020.5, raw_cache=f, key="X|")
+        assert ib["from_cache"] is True and len(calls) == 1, "the second read asks nothing"
+        assert np.allclose(a, b) and ib["shift_m"] == ia["shift_m"], "and gives the same moved points"
+        c, ic = t.read_points(read_octree, bbox, 2020.5, raw_cache=f, key="Y|")
+        assert ic["from_cache"] is False and len(calls) == 2, "another flight's key reads afresh"
+        _, i2 = t.read_points(read_octree, bbox, 2020.5, raw_cache=f, key="Y|", extra_m=(1.0, 0.0))
+        assert i2["from_cache"] is True and i2["ground_shift_m"] == [1.0, 0.0], "a ground move applies on top of the cached raw points"
+    print("raw points cache: saved once, read back by key, re-read for another flight, moves applied on top")
+
+
 if __name__ == "__main__":
     check_datum_matches_the_shade_map()
     check_mercator_shift()
     check_units()
     check_one_read()
     check_ranged_download_makes_its_folder()
+    check_raw_points_cache()
     print("lidar sources: ok")

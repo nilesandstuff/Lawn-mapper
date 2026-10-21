@@ -1,0 +1,112 @@
+name: 41. Refresh the saved lidar plan (which flight each locked lot reads)
+
+# THE SAVED PLAN, ASKED FOR AGAIN. tools/locked-lidar-plan.json says which
+# flight each locked lot's lidar comes from (its 3DEP octree on AWS, or
+# USGS's newer LAZ tiles) with USGS's own dates for the datum move. Workflow
+# 14 reads that file and never asks USGS's index for a locked lot, because
+# the index refused one query in eight on 2026-10-21 and three runs died on
+# it (H111). The price is that a flight USGS publishes AFTER the file was
+# written is not seen until this workflow runs: it asks the index and the
+# TNM API for every locked lot again and commits the answer.
+#
+# A refreshed plan can change which lidar a lot reads, which changes the
+# corpus the findings are measured on. So: run it on purpose, read the
+# summary at the end of the log (every lot whose flight changed is listed),
+# and note the run in docs/DETECTOR-FINDINGS.md.
+#
+# FREE: GitHub's own CPU runner, a few minutes. Nothing is trained and
+# nothing changes on the site.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "refresh" to ask USGS again and rewrite tools/locked-lidar-plan.json'
+        required: true
+        default: ''
+
+jobs:
+  refresh:
+    name: Ask USGS which flight covers each locked lot
+    if: ${{ inputs.confirm == 'refresh' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write   # the plan is committed to the branch
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install the image decoders
+        run: npm install pngjs jpeg-js --no-save
+
+      - name: Fetch the lawns and write the frames out
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CORPUS_BUCKET: lawn-mapper-corpus
+          DUMP_FRAMES: frames
+          DUMP_SIZE: native
+          NO_BACKBONE: 'true'
+          LAWN_SET: locked
+        run: node tools/train-detector.js
+
+      - name: Match the frames to the 3DEP projects
+        env:
+          FRAMES: frames
+          OUT: lidar-plan.json
+        run: node tools/lidar-plan.js
+
+      - name: Ask USGS's index for every locked lot and write the plan
+        env:
+          FRAMES: frames
+          PLAN: lidar-plan.json
+          MODE: newest
+          SAVED: tools/locked-lidar-plan.json
+          REFRESH: '1'
+          SAVE_TO: tools/locked-lidar-plan.json
+        run: |
+          node tools/lidar-newest.test.js
+          node tools/lidar-newest.js | tee plan.log
+
+      - name: What changed against the plan that was saved
+        run: |
+          git diff --stat -- tools/locked-lidar-plan.json || true
+          node -e '
+            const fs = require("node:fs");
+            const now = JSON.parse(fs.readFileSync("tools/locked-lidar-plan.json", "utf8"));
+            let was = {};
+            try { was = JSON.parse(require("node:child_process").execSync("git show HEAD:tools/locked-lidar-plan.json", { encoding: "utf8" })); } catch {}
+            const ids = Object.keys(now).filter((k) => !k.startsWith("_"));
+            const changed = ids.filter((k) => (now[k]?.name || null) !== (was[k]?.name || null) || JSON.stringify(now[k]?.tiles || null) !== JSON.stringify(was[k]?.tiles || null));
+            console.log(`\n${ids.length} locked lots planned; ${changed.length} read a different flight than the saved plan:`);
+            for (const k of changed) console.log(`  ${k.slice(0, 30).padEnd(32)} ${was[k]?.name || "NO LIDAR"}  ->  ${now[k]?.name || "NO LIDAR"}${now[k]?.tiles ? ` (${now[k].tiles.length} tiles)` : ""}`);
+            if (!changed.length) console.log("  (none: the saved plan already said what USGS says today)");
+          '
+
+      - name: Commit it
+        run: |
+          FILE=tools/locked-lidar-plan.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          cp $FILE "$RUNNER_TEMP/plan.json"
+          for attempt in 1 2 3; do
+            git fetch origin "$GITHUB_REF_NAME" || { sleep 5; continue; }
+            git reset --hard FETCH_HEAD
+            cp "$RUNNER_TEMP/plan.json" $FILE
+            git add $FILE
+            if git diff --cached --quiet; then echo "The saved plan did not change."; exit 0; fi
+            git commit -m "Refresh the saved lidar plan: USGS's flights over the locked lots as of $(date -u +%Y-%m-%d)
+
+Workflow 41 run ${{ github.run_id }}."
+            if git push; then echo "Pushed: workflow 14's next run reads the refreshed plan."; exit 0; fi
+            echo "Push $attempt failed; the branch moved. Retrying."
+            sleep 5
+          done
+          echo "::error::Could not push the plan after three tries."
+          exit 1

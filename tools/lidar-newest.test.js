@@ -1,5 +1,5 @@
 /** The newest-lidar plan (tools/lidar-newest.js), offline.   node tools/lidar-newest.test.js */
-import { norm, workUnits, unitOf, dateOctree, unitFolder, tileSets, pickNewest, entryFor } from './lidar-newest.js';
+import { norm, workUnits, unitOf, dateOctree, unitFolder, tileSets, pickNewest, entryFor , savedEntries } from './lidar-newest.js';
 
 let failures = 0;
 const check = (n, ok, d = '') => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${n}${d ? `\n      ${d}` : ''}`); if (!ok) failures++; };
@@ -55,6 +55,18 @@ check('a tiles entry names the newest octree too, for the live server to read un
   entry.source === 'tiles' && entry.tiles.length === 2 && entry.octreeUrl === 'w' && entry.url === 'tiles://x/ept.json' && entry.year === 2025);
 check('an octree entry carries its epoch for the datum move',
   entryFor('x', octrees, pickNewest(octrees, []))?.epoch > 2021 && entryFor('x', [], null) === null);
+
+
+{
+  /* THE SAVED PLAN (2026-10-21): a frame in it is never asked for; a frame
+     outside it is; REFRESH asks for all; the _about note is never a frame. */
+  const saved = { _about: 'note', a: { name: 'A' }, b: null };
+  const r = savedEntries(saved, ['a', 'b', 'c']);
+  check('frames in the saved plan come from it, a null one too', r.use.a?.name === 'A' && Object.hasOwn(r.use, 'b') && r.use.b === null);
+  check('a frame outside it is asked for', r.ask.length === 1 && r.ask[0] === 'c');
+  check('REFRESH asks for every frame', savedEntries(saved, ['a', 'b', 'c'], true).ask.length === 3);
+  check('no saved plan: every frame is asked for', savedEntries(null, ['a']).ask.length === 1);
+}
 
 console.log(failures ? `\n${failures} check(s) FAILED.` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);

@@ -581,6 +581,18 @@ jobs:
             naip
           key: prep-v1-${{ steps.frames.outputs.fp }}-fused${{ startsWith(inputs.decoder, 'fused') }}-align${{ inputs.lidar_align }}-${{ hashFiles('tools/tree-canopy.py', 'tools/clumps.py', 'tools/lidar-plan.js', 'tools/lidar-cover.js', 'tools/lidar-newest.js', 'tools/lidar_frame.py', 'tools/lidar_sources.py', 'tools/naip_bands.py', 'tools/naip_align.py', 'tools/requirements-trees.txt', 'tools/requirements-lidar.txt') }}
 
+      # THE RAW POINTS (2026-10-21): every frame's points as USGS sent them,
+      # saved under the frames and the saved plan alone, so a change to the
+      # reader's code re-reads nothing from USGS (the prep cache above is
+      # keyed on that code and misses whenever it changes).
+      - name: Reuse the lidar's raw points if saved
+        id: points
+        if: ${{ inputs.gpu != 'modal' && inputs.cache == 'use' && inputs.canopy != 'off' }}
+        uses: actions/cache/restore@v4
+        with:
+          path: lidar-points
+          key: points-v1-${{ steps.frames.outputs.fp }}-${{ hashFiles('tools/locked-lidar-plan.json') }}
+
       - name: Reuse the backbone's features if saved
         id: feats
         if: ${{ inputs.gpu != 'modal' && inputs.cache == 'use' }}
@@ -657,12 +669,17 @@ jobs:
       # read into lidar-tiles and deleted after). The reader then drops
       # noise and moves every point by the datum correction for its flight's
       # epoch (H95), as the live server does (tools/lidar_sources.py).
+      # THE SAVED PLAN (2026-10-21): the locked lots read the flight written
+      # in tools/locked-lidar-plan.json and never ask USGS's index, which
+      # refused one query in eight that day and killed three runs. Only a
+      # frame outside it is asked for; workflow 41 refreshes the file.
       - name: Plan the newest flight over each frame
         if: ${{ inputs.canopy != 'off' && steps.prep.outputs.cache-hit != 'true' }}
         env:
           FRAMES: frames
           PLAN: lidar-plan.json
           MODE: newest
+          SAVED: tools/locked-lidar-plan.json
         run: |
           node tools/lidar-newest.test.js
           node tools/lidar-newest.js
@@ -689,6 +706,7 @@ jobs:
           PLAN: lidar-plan.json
           OUT: lidar
           TILE_DIR: lidar-tiles
+          POINTS_CACHE: lidar-points
           LIDAR_SHIFTS: ${{ inputs.lidar_align == 'ground' && 'lidar-fit/lidar-shifts.json' || '' }}
           # NAIP-CHM (E9, H41) is no longer read (owner, 2026-09-29): its
           # only uses were the shelved "lidar ∩ NAIP canopy" row and a
@@ -697,6 +715,14 @@ jobs:
           (cd tools && python3 lidar_sources_test.py)
           python3 tools/lidar_frame.py
           rm -rf lidar-tiles
+          echo "Raw points kept for $(ls lidar-points 2>/dev/null | wc -l) frames ($(du -sh lidar-points 2>/dev/null | cut -f1))."
+
+      - name: Save the lidar's raw points for the next run
+        if: ${{ inputs.gpu != 'modal' && inputs.canopy != 'off' && steps.prep.outputs.cache-hit != 'true' && steps.points.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: lidar-points
+          key: points-v1-${{ steps.frames.outputs.fp }}-${{ hashFiles('tools/locked-lidar-plan.json') }}
 
       # S11, the fused inputs: NAIP's near-infrared over every frame (one
       # exportImage each, about a metre a pixel), for the decoder to read as

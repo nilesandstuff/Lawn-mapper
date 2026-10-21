@@ -23,9 +23,18 @@
  *            octree's, since they are downloaded whole (57-520 MB a tile).
  *
  *   FRAMES=frames PLAN=lidar-plan.json MODE=date|newest node tools/lidar-newest.js
+ *
+ * THE SAVED PLAN (owner, 2026-10-21: "shouldn't we just be caching everything
+ * related to the training corpus anyways?"). USGS's index refused one query
+ * in eight for a day and three runs died on it. So the locked lots' plan is
+ * a FILE in the repository, tools/locked-lidar-plan.json (SAVED=...): a frame
+ * in it is never asked for; only a frame outside it (a new lot) is, and if
+ * the index will not answer for that one it keeps tools/lidar-plan.js's pick
+ * with a loud warning rather than stopping the run. REFRESH=1 asks for every
+ * frame again and SAVE_TO=<file> writes the answer back (workflow 41).
  */
 
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { FOOTPRINTS, fetchFootprints, covers, densityPerSqM, flownYear } from './lidar-cover.js';
@@ -152,7 +161,9 @@ const boxDegrees = (box) => {
    a minute, and the frames still unanswered get one more pass at the end. */
 async function getJson(url, tries = 6, timeoutMs = 60000) {
   let last;
+  const attempts = [];
   for (let i = 0; i < tries; i++) {
+    const t0 = Date.now();
     try {
       const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
       if (res.ok) {
@@ -165,9 +176,25 @@ async function getJson(url, tries = 6, timeoutMs = 60000) {
         last = new Error(`HTTP ${res.status}`);
       }
     } catch (e) { last = e; }
+    attempts.push(`${((Date.now() - t0) / 1000).toFixed(1)}s ${last.message}`);
     if (i < tries - 1) await new Promise((r) => { setTimeout(r, Math.min(30000, 2000 * 2 ** i)); });
   }
+  /* Every try, with its time, so a refusal can be told from a timeout and a
+     slow day from a dead service, on a phone, from the log's last lines. */
+  last.attempts = attempts;
+  last.url = url;
   throw last;
+}
+
+/** Which frames the saved plan answers for and which must be asked of USGS. Pure. */
+export function savedEntries(saved, ids, refresh = false) {
+  const use = {};
+  const ask = [];
+  for (const id of ids) {
+    if (!refresh && saved && Object.hasOwn(saved, id) && !id.startsWith('_')) use[id] = saved[id];
+    else ask.push(id);
+  }
+  return { use, ask };
 }
 
 const wesmAt = (lng, lat, quick = false) => getJson(`${WESM}?${new URLSearchParams({
@@ -201,13 +228,26 @@ async function main() {
   if (!['date', 'newest'].includes(MODE)) throw new Error(`MODE=${MODE}: date or newest`);
   const boxes = JSON.parse(readFileSync(join(FRAMES, 'scale.json'), 'utf8')).boxes || {};
   const base = JSON.parse(readFileSync(PLAN, 'utf8'));
+  const SAVED = process.env.SAVED || '';
+  const REFRESH = /^(1|true|yes)$/i.test(process.env.REFRESH || '');
+  const SAVE_TO = process.env.SAVE_TO || '';
+  const saved = MODE === 'newest' && SAVED && existsSync(SAVED) ? JSON.parse(readFileSync(SAVED, 'utf8')) : null;
+  const { use, ask } = savedEntries(saved, Object.keys(boxes), REFRESH);
+  if (saved) console.log(`${Object.keys(use).length} of ${Object.keys(boxes).length} frames from the saved plan ${SAVED}; ${ask.length} to ask USGS's index for${REFRESH ? ' (REFRESH=1: all of them)' : ''}.`);
   const fc = MODE === 'newest' ? await fetchFootprints(FOOTPRINTS) : null;
   const out = {};
   let changed = 0, toTiles = 0, mb = 0, undated = 0;
   const wesmDown = [];
+  const failed = {};
+  const noteDown = (id, lng, lat) => (e) => {
+    failed[id] = { lng, lat, attempts: e.attempts || [e.message], url: e.url || '' };
+    wesmDown.push(`${id}: ${e.message}`);
+    return null;
+  };
   for (const [id, box] of Object.entries(boxes)) {
+    if (Object.hasOwn(use, id)) { out[id] = use[id]; continue; }
     const [lng, lat] = fromMercator([(box[0] + box[2]) / 2, (box[1] + box[3]) / 2]);
-    const units = workUnits(await wesmAt(lng, lat).catch((e) => { wesmDown.push(`${id}: ${e.message}`); return null; }));
+    const units = workUnits(await wesmAt(lng, lat).catch(noteDown(id, lng, lat)));
     const was = base[id] || null;
     if (MODE === 'date') {
       if (!was) { out[id] = null; continue; }
@@ -238,7 +278,8 @@ async function main() {
     for (const id of again) {
       const box = boxes[id];
       const [lng, lat] = fromMercator([(box[0] + box[2]) / 2, (box[1] + box[3]) / 2]);
-      const units = workUnits(await wesmAt(lng, lat).catch((e) => { wesmDown.push(`${id}: ${e.message}`); return null; }));
+      delete failed[id];
+      const units = workUnits(await wesmAt(lng, lat).catch(noteDown(id, lng, lat)));
       if (!units) continue;
       const octrees = octreesOver(fc, lng, lat, units);
       const items = (await tnmOver(boxDegrees(box)).catch(() => null))?.items || [];
@@ -247,15 +288,41 @@ async function main() {
     }
   }
   if (wesmDown.length) {
-    // Without USGS's dates a frame silently falls back to its name's year and
-    // never to newer tiles: a different corpus than the one the findings were
-    // measured on. Refuse rather than train on it.
-    console.error(`\nUSGS's flight index (WESM) did not answer for ${wesmDown.length} of ${n} frames, after retries:`);
-    for (const l of wesmDown.slice(0, 10)) console.error(`  ${l}`);
-    console.error('Refusing to plan the lidar without it. Re-run when index.nationalmap.gov answers.');
-    process.exit(1);
+    // WHAT FAILED, IN FULL: the service, the point asked about, every try
+    // with its time and answer. "400 Failed to execute query" on a 200 is
+    // the index refusing one query while answering others (a slow day);
+    // timeouts on every try is the index down; HTTP 5xx is their outage.
+    const answered = ask.length - Object.keys(failed).length;
+    console.error(`\nUSGS's flight index (WESM, ${WESM.replace(/\?.*$/, '')}) did not answer for ${wesmDown.length} of the ${ask.length} frames asked, after every retry (it answered ${answered}):`);
+    for (const [id, f] of Object.entries(failed)) {
+      console.error(`  ${id}  at ${f.lng.toFixed(5)}, ${f.lat.toFixed(5)}`);
+      for (const a of f.attempts) console.error(`      ${a}`);
+    }
+    if (!saved) {
+      // Without USGS's dates a frame silently falls back to its name's year and
+      // never to newer tiles: a different corpus than the one the findings were
+      // measured on. Refuse rather than train on it.
+      console.error('No saved plan (SAVED unset): refusing to plan the lidar without the index. Re-run when it answers.');
+      process.exit(1);
+    }
+    // These frames are NOT locked lots (those came from the saved plan), so
+    // the corpus the findings are measured on is untouched: each keeps
+    // tools/lidar-plan.js's pick, the octree dated by its name's year.
+    for (const id of Object.keys(failed)) out[id] = base[id] ? { ...base[id], dated: 'none' } : null;
+    console.error(`WARNING: those ${wesmDown.length} frames are outside the saved plan and keep tools/lidar-plan.js's pick (the octree by its name's year, no newer tiles). The locked lots are unaffected. Run workflow 41 when USGS answers to plan them properly.`);
   }
   writeFileSync(PLAN, JSON.stringify(out, null, 1));
+  if (SAVE_TO && MODE === 'newest') {
+    if (Object.keys(failed).length) {
+      console.error(`Not writing ${SAVE_TO}: ${Object.keys(failed).length} frames are unplanned.`);
+      process.exit(1);
+    }
+    const about = { _about: saved?._about || 'The saved lidar plan for the locked training lots; see tools/lidar-newest.js.' };
+    about._about = about._about.replace(/Made by tools\/lidar-newest\.js from [^.]*\./, `Made by tools/lidar-newest.js from USGS's flight index (WESM) and the TNM API on ${new Date().toISOString().slice(0, 10)} (workflow 41).`);
+    const keep = Object.fromEntries(Object.keys(out).sort().map((k) => [k, out[k]]));
+    writeFileSync(SAVE_TO, JSON.stringify({ ...about, ...keep }, null, 1));
+    console.log(`Saved the plan for ${Object.keys(keep).length} frames to ${SAVE_TO}.`);
+  }
   console.log(MODE === 'date'
     ? `\n${n} frames dated from USGS's index; ${undated} with no matching work unit took the name's year.`
     : `\n${changed} of ${n} frames read a different flight; ${toTiles} of them from USGS's newer LAZ tiles (${mb} MB to download).`);
