@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Route Planner</title>
+<meta name="description" content="A screenshot of the day's jobs in, the fastest route between them out.">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#1f7a4d">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+  :root {
+    --bg: #f4f6f5; --card: #ffffff; --ink: #17201c; --muted: #5c6a63; --line: #dde4e0;
+    --accent: #1f7a4d; --accent-ink: #ffffff; --accent-soft: #e3f1e9; --warn: #9a5b00; --warn-soft: #fff3df;
+    --bad: #b3261e; --done: #8a958f; --field: #ffffff;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f1412; --card: #18201c; --ink: #e6eee9; --muted: #9aa8a0; --line: #2b3631;
+      --accent: #3fb47a; --accent-ink: #06130c; --accent-soft: #1d3328; --warn: #f0b45a; --warn-soft: #33281a;
+      --bad: #ff8a80; --done: #6c7872; --field: #111815;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f1412; --card: #18201c; --ink: #e6eee9; --muted: #9aa8a0; --line: #2b3631;
+    --accent: #3fb47a; --accent-ink: #06130c; --accent-soft: #1d3328; --warn: #f0b45a; --warn-soft: #33281a;
+    --bad: #ff8a80; --done: #6c7872; --field: #111815;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding: 0 16px calc(32px + env(safe-area-inset-bottom));
+  }
+  main { max-width: 640px; margin: 0 auto; }
+  header { padding: 20px 0 8px; }
+  h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+  header p { margin: 2px 0 0; color: var(--muted); font-size: 14px; }
+  h2 { font-size: 17px; margin: 0 0 10px; display: flex; align-items: baseline; gap: 8px; }
+  h2 small { color: var(--muted); font-weight: 400; font-size: 14px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin: 12px 0; }
+  label.field { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+  input[type=text], input[type=number] {
+    width: 100%; font: inherit; color: var(--ink); background: var(--field);
+    border: 1px solid var(--line); border-radius: 9px; padding: 10px 11px; min-height: 44px;
+  }
+  input:focus-visible, button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .seg { display: flex; gap: 0; margin-top: 12px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .seg button { flex: 1; border: 0; background: transparent; color: var(--ink); font: inherit; font-size: 15px; padding: 10px 6px; min-height: 44px; }
+  .seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .btn {
+    display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%;
+    font: inherit; font-weight: 600; border-radius: 12px; min-height: 50px; padding: 12px 16px;
+    border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer; text-decoration: none;
+  }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .btn:disabled { opacity: 0.55; cursor: default; }
+  .btn.small { min-height: 40px; padding: 8px 12px; font-size: 15px; width: auto; }
+  .row-btns { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .row-btns .btn { flex: 1; }
+  .status { margin: 10px 0 0; font-size: 15px; color: var(--muted); min-height: 1em; }
+  .status.bad { color: var(--bad); }
+  progress { width: 100%; height: 8px; margin-top: 10px; accent-color: var(--accent); }
+  .hint { font-size: 13px; color: var(--muted); margin: 0 0 10px; }
+
+  /* the stops, editable */
+  .edit { list-style: none; margin: 0; padding: 0; }
+  .edit li { display: grid; grid-template-columns: 26px 1fr 64px 36px; gap: 6px; align-items: start; padding: 8px 0; border-top: 1px solid var(--line); }
+  .edit li:first-child { border-top: 0; }
+  .edit .n { font-weight: 700; color: var(--muted); padding-top: 11px; text-align: right; font-variant-numeric: tabular-nums; }
+  .edit .addr-fields { display: grid; gap: 6px; }
+  .edit .who { font-size: 13px; color: var(--muted); padding-left: 2px; }
+  .edit input[type=number] { text-align: center; padding: 10px 4px; }
+  .edit .x { border: 0; background: transparent; color: var(--muted); font-size: 22px; min-height: 44px; cursor: pointer; }
+  .edit .err { grid-column: 2 / -1; font-size: 13px; color: var(--bad); }
+  .sum { display: flex; justify-content: space-between; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); font-weight: 600; }
+
+  /* the answer */
+  .totals { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .totals div { background: var(--accent-soft); border-radius: 12px; padding: 10px 12px; }
+  .totals .all { grid-column: 1 / -1; background: var(--accent); color: var(--accent-ink); }
+  .totals b { display: block; font-size: 24px; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+  .totals span { font-size: 13px; opacity: 0.85; }
+  .totals .all b { font-size: 32px; }
+  .notes { margin: 10px 0 0; padding: 0; list-style: none; font-size: 14px; color: var(--muted); }
+  .notes li { margin-top: 4px; }
+  .notes .warn { color: var(--warn); }
+  #map { height: 340px; border-radius: 12px; border: 1px solid var(--line); margin-top: 4px; z-index: 0; }
+  .pin { background: var(--accent); color: var(--accent-ink); border: 2px solid #fff; border-radius: 50%; width: 26px !important; height: 26px !important; display: grid; place-items: center; font: 700 12px/1 system-ui, sans-serif; box-shadow: 0 1px 4px rgba(0,0,0,.35); }
+  .pin.home { background: #17201c; color: #fff; }
+  .legs { list-style: none; margin: 0; padding: 0; }
+  .legs li { display: grid; grid-template-columns: 34px 1fr auto; gap: 10px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+  .legs li:first-child { border-top: 0; }
+  .legs .num { width: 30px; height: 30px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .legs .home .num { background: var(--ink); color: var(--bg); }
+  .legs .body { min-width: 0; cursor: pointer; }
+  .legs .addr { font-weight: 600; overflow-wrap: anywhere; }
+  .legs .meta { font-size: 13px; color: var(--muted); }
+  .legs .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; font-size: 13px; }
+  .legs .chips span { background: var(--bg); border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; font-variant-numeric: tabular-nums; }
+  .legs .found { font-size: 12px; color: var(--warn); background: var(--warn-soft); border-radius: 6px; padding: 2px 6px; margin-top: 4px; }
+  .legs .go { font-weight: 700; color: var(--accent); text-decoration: none; border: 1px solid var(--accent); border-radius: 10px; padding: 8px 12px; min-height: 40px; display: grid; place-items: center; }
+  .legs li.done .addr, .legs li.done .meta { text-decoration: line-through; color: var(--done); }
+  .legs li.done .num { background: var(--line); color: var(--done); }
+  .gm { display: grid; gap: 8px; }
+  footer { text-align: center; font-size: 12px; color: var(--muted); margin-top: 24px; }
+  footer a { color: inherit; }
+  summary { list-style: none; cursor: pointer; }
+  summary::-webkit-details-marker { display: none; }
+  summary h2::after { content: "▾"; margin-left: auto; color: var(--muted); }
+  details:not([open]) summary h2::after { content: "Edit ▸"; font-size: 14px; font-weight: 600; color: var(--accent); }
+  details:not([open]) summary h2 { margin: 0; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Route Planner</h1>
+    <p>Screenshot of the day's jobs in, fastest route out.</p>
+  </header>
+
+  <section class="card" aria-labelledby="where">
+    <h2 id="where">Where the day starts and ends</h2>
+    <label class="field" for="end">Ends at</label>
+    <input id="end" type="text" autocomplete="street-address" placeholder="Shop address, city">
+    <div class="seg" role="group" aria-label="Start from">
+      <button type="button" data-start="end" aria-pressed="true">Start at the shop</button>
+      <button type="button" data-start="here" aria-pressed="false">Start where I am</button>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="shot">
+    <h2 id="shot">Today's jobs</h2>
+    <label class="btn primary" for="pick">Choose screenshot</label>
+    <input id="pick" type="file" accept="image/*" multiple hidden>
+    <progress id="progress" max="1" value="0" hidden></progress>
+    <p id="status" class="status" role="status"></p>
+  </section>
+
+  <section class="card" id="stopsCard" hidden aria-labelledby="stopsH">
+    <details id="stopsBox" open>
+    <summary><h2 id="stopsH">Stops <small id="stopCount"></small></h2></summary>
+    <p class="hint">Check these against the screenshot. Fix anything misread; minutes are each job's time.</p>
+    <ol class="edit" id="stops"></ol>
+    <div class="sum"><span>Job time</span><span id="jobTotal">0m</span></div>
+    <div class="row-btns">
+      <button type="button" class="btn small" id="addStop">+ Add stop</button>
+      <label class="btn small" for="pickMore">+ Another screenshot</label>
+      <input id="pickMore" type="file" accept="image/*" multiple hidden>
+      <button type="button" class="btn small" id="clear">Clear</button>
+    </div>
+    </details>
+    <div class="row-btns"><button type="button" class="btn primary" id="plan">Plan fastest route</button></div>
+  </section>
+
+  <section id="result" hidden aria-labelledby="resultH">
+    <div class="card">
+      <h2 id="resultH">The day <small id="planned"></small></h2>
+      <div class="totals">
+        <div><span>Job time</span><b id="tJobs">-</b></div>
+        <div><span>Driving</span><b id="tDrive">-</b></div>
+        <div class="all"><span>Total</span><b id="tAll">-</b></div>
+      </div>
+      <ul class="notes" id="notes"></ul>
+    </div>
+    <div class="card">
+      <div id="map" role="img" aria-label="Map of the route"></div>
+    </div>
+    <div class="card">
+      <h2>In this order <small>tap a stop to tick it off</small></h2>
+      <ol class="legs" id="legs"></ol>
+    </div>
+    <div class="card">
+      <h2>Open in Google Maps</h2>
+      <p class="hint">Google takes up to 10 stops a trip, so a long day is split.</p>
+      <div class="gm" id="gmaps"></div>
+    </div>
+  </section>
+
+  <footer>The screenshot is read on this phone and never uploaded. Map © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>; routing by Mapbox.</footer>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script type="module" src="/app.js"></script>
+</body>
+</html>

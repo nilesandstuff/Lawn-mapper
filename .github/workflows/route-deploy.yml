@@ -1,0 +1,99 @@
+name: R. Route planner
+
+# The route planner (route session, 2026-10-22): a screenshot of the day's
+# jobs in, the fastest route out. Its own folder (route/), its own tests, its
+# own Worker at route.<home domain>. Nothing here touches Lawn Mapper, the
+# shade map, the water tool or the home page, so a deploy of it can never roll
+# any of them back.
+#
+# FREE: the GitHub runner, Cloudflare's free Worker, and Mapbox's free
+# allowance (the site's own MAPBOX_SERVER_TOKEN, or MAPBOX_TOKEN without one).
+#
+# Runs by itself on a push that changes route/ (tests, then deploy), or by
+# hand: tests, or deploy.
+on:
+  push:
+    branches: ['claude/resume-previous-session-y94slo', 'ccr-3eb796e4-blbxwr']
+    paths: ['route/**', '.github/workflows/route-deploy.yml']
+  workflow_dispatch:
+    inputs:
+      task:
+        description: 'What to run'
+        required: true
+        default: deploy
+        type: choice
+        options: [tests, deploy]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: route-deploy
+  cancel-in-progress: false
+
+jobs:
+  route:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - run: npm ci --no-audit --no-fund
+
+      - name: Tests
+        run: node route/test/all.js
+
+      - name: Deploy the route planner
+        if: ${{ github.event_name == 'push' || inputs.task == 'deploy' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CUSTOM_DOMAIN: ${{ vars.CUSTOM_DOMAIN }}
+          MAPBOX: ${{ secrets.MAPBOX_SERVER_TOKEN || secrets.MAPBOX_TOKEN }}
+        run: |
+          node route/tools/prepare.mjs
+          if npx wrangler deploy --config route/wrangler.toml > route-deploy.log 2>&1; then
+            tail -8 route-deploy.log
+          else
+            tail -30 route-deploy.log
+            echo "ROUTE_STATE=did not deploy -- see the step above" >> "$GITHUB_ENV"
+            exit 1
+          fi
+          if [ -n "$MAPBOX" ]; then
+            printf '%s' "$MAPBOX" | npx wrangler secret put MAPBOX_TOKEN --config route/wrangler.toml > route-secret.log 2>&1 \
+              && echo "Mapbox token applied" || { tail -10 route-secret.log; echo "ROUTE_STATE=deployed, but the Mapbox token did not apply" >> "$GITHUB_ENV"; exit 1; }
+          else
+            echo "ROUTE_STATE=deployed, but there is no MAPBOX_TOKEN secret: it cannot route" >> "$GITHUB_ENV"
+            exit 1
+          fi
+          echo "ROUTE_STATE=live at https://$ROUTE_DOMAIN" >> "$GITHUB_ENV"
+
+      - name: Is it answering
+        if: ${{ github.event_name == 'push' || inputs.task == 'deploy' }}
+        run: |
+          for i in 1 2 3 4 5 6; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "https://$ROUTE_DOMAIN/" || true)
+            if [ "$code" = 200 ]; then
+              api=$(curl -s -o /dev/null -w '%{http_code}' "https://$ROUTE_DOMAIN/api/geocode?q=ab" || true)
+              echo "page answering; API answering $api (400 expected: the test address is too short)"
+              exit 0
+            fi
+            if [ "$code" = 403 ]; then
+              echo "ROUTE_STATE=${ROUTE_STATE} (the zone answers GitHub's runner 403, so it can't be checked from here)" >> "$GITHUB_ENV"
+              exit 0
+            fi
+            echo "page $code -- waiting for the new domain"; sleep 20
+          done
+          echo "ROUTE_STATE=${ROUTE_STATE} (but not answering yet: a new custom domain can take a few minutes)" >> "$GITHUB_ENV"
+
+      - name: The answer
+        if: always()
+        run: |
+          echo "--------------------------------------------------------------"
+          if [ "${{ github.event_name }}" = push ] || [ "${{ inputs.task }}" = deploy ]; then
+            echo "Route planner: ${ROUTE_STATE:-not deployed -- see the steps above}"
+          else
+            echo "Route planner tests: ${{ job.status }}"
+          fi
