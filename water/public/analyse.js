@@ -112,10 +112,12 @@ async function start(site, inputs) {
     shift: res.shift,
     depth: res.spots.depth.slice(), reported, z: Float32Array.from(res.z), flow: (r.weightedFlow || res.runoff.area).slice(), weighted: !!r.weightedFlow, wall: res.wall.slice(), grade,
     paved: r.impervious ? r.impervious.paved.slice() : null,
+    // under tree canopy: two or more laser returns 2 m or more over the ground, not a roof (pipe is kept out)
+    canopy: Uint8Array.from(res.perCell.tall, (v, i) => (v >= 2 && !res.wall[i] ? 1 : 0)),
     parcelMask: r.parcelMask, lawnMask: r.lawnMask,
     spots: r.spots, hasLawn: r.hasLawn, summary: { ...r.summary, noiseRuns: undefined }, cloud: r.cloud,
   };
-  const transfer = [out.depth.buffer, out.z.buffer, reported.buffer, out.flow.buffer, out.wall.buffer, grade.buffer, ...(out.paved ? [out.paved.buffer] : [])];
+  const transfer = [out.depth.buffer, out.z.buffer, reported.buffer, out.flow.buffer, out.wall.buffer, grade.buffer, out.canopy.buffer, ...(out.paved ? [out.paved.buffer] : [])];
   self.postMessage({ done: out }, transfer);
 
   self.postMessage({ planProgress: 'Reading the soil survey and ten years of weather…' });

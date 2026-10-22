@@ -1027,6 +1027,53 @@ of the lawn ... tap the head to adjust the arc, so there's not overlapping drag 
   moves that edge alone, within the nozzle's range; a fixed pattern turns. The head is then "set by you" and
   the others fit round it.
 
+### H30. Placing on a grid, arcs last, the radius screw, valves by series, and pipe laid as installers lay it (water session, 2026-10-21/22)
+
+Owner's notes, 2026-10-21 (snap to grid; arcs only once fitted and last, with the diffuser screw; a check on heads
+with a model; adjustment right after the fit; woods and beds may be watered; "do the valve models actually make
+a difference"; lines not through houses or under trees, and "big improvements ... research how that is usually
+done"). Two research passes (subagents, sources below) and the core session asked about houses, roads and drives
+(its answer pending when this was written).
+
+- GRID (lib/heads.js longestEdgeInSight, snapToGrid). Made when the first head goes down, through it, its lines
+  along the traced lawn's longest straight edge (the outline straightened by Douglas-Peucker at 0.3 m) whose
+  middle the first head can see. Snap is a checkbox in placing and checking, every 0.5-10 ft (1 by default);
+  taps and drags snap, GPS fixes stay where measured. On the owner's map: four heads at whole 5 ft steps of it.
+- ARCS LAST. The steps end on the arcs: they are fitted first ("Fitting every head's arc to your lawn..."), and
+  no arc is drawn anywhere before that; then tap-and-drag adjustment, with the coverage map as a toggle in the
+  same step. Beds, woods and other ground now cost a sprinkler nothing much (-0.05 a head, ties only); buildings
+  and paving -2. Each head of the same zone a head's water reaches is worth 4 m2 of lawn (head to head), so
+  edge heads keep reaching their neighbours: on the 12 x 9 m test lawn, corners 90, sides 180, facing in.
+- THE RADIUS SCREW [P = published]. Every maker allows 25% (K-Rain 30%) [P: Rain Bird spray countermat D41550,
+  HE-VAN, R-VAN, 5000; Toro TVAN, MPR Plus, PRN, Super 800; Hunter MP]. Flow: rotary nozzles keep matched
+  precipitation, gpm ~ R^2 [P: Hunter MP, Rain Bird R-VAN, Toro PRN, K-Rain RN; consistent with the MP2000's own
+  pressure table, n 1.86]; rotors and impacts keep their flow, the screw sitting in the stream [P: Toro Super 800
+  "this does not reduce the flow"], so the rate rises 1/k^2; sprays throttle at the inlet, gpm ~ R^0.85 (an
+  inference from Rain Bird HE-VAN pressure tables, n 0.73-0.97: no maker prints flow at a reduced radius).
+  Distribution: a rotor screwed from 42 to 30 ft doubled the rate 10-20 ft out and left the first 10 ft about the
+  same [P: Hunter Irrigation Notes LIT-085]; modelled as the full spread at rho k raised by 1/k^2 past 3 m (or a
+  third of the throw), volume kept (lib/precip.js screwedProfile). Rotary nozzles cut 25% for 25% closer spacing
+  kept DU 0.72 [P: Kumar et al., IA 2014]. No published DU against reduction for sprays or rotors. Flow and
+  throw both follow the screw now, in the pressure model too (lib/heads.js headWater THROW_GPM_EXP).
+- VALVES. They differ: at 1 in and 10 gpm the makers' charts run from about 1 psi (Hunter PGV angle) to 6 psi
+  (Rain Bird PGA), and that reaches every head on the zone. Within a series the globe, angle, barb and jar-top
+  bodies are close, so the choice is now brand, series and size (37 entries to 24), each its plain body's chart.
+  Pressure-regulating modules (PRS-Dial, Accu-Sync) are not in the device list yet.
+- PIPE LAYOUT (lib/layout.js). Published practice [P]: "the most direct route with the fewest turns" (Hunter,
+  Residential System Design Guide LIT-226); a trunk with spurs, at most two pipes at a head (Stryker, Irrigation
+  Tutorials); the main kept short, sharing trenches (Rain Bird, Landscape Irrigation Design Manual pp. 57-60);
+  "keep the trenches out from under the canopy" (Stryker); paving crossed by one sleeve, perpendicular (Michigan
+  State spec). No commercial tool was found that auto-routes residential laterals. Built: a 0.5 m grid along the
+  lawn's long edge; buildings impassable, canopy x6, paving 25 a cell and no turning on it, a band 0.5-1 m inside
+  the lawn's edge 0.7; a search over (cell, heading) with 3 cells a turn; the main first, then each zone as a tree
+  from its valve (a spine to its farthest head, then each head from the nearest point of the tree, reached
+  anywhere within 0.9 m: its swing pipe); a cell another line runs along costs 0.3 of itself (one trench),
+  crossing one 15; zones farthest first, then each again with the others in place. The costs are the research's
+  guesses (its own words), to tune. On a 30 x 20 m test lot with a house, a tree and a drive: no run through the
+  house or under the tree, every run square, a trunk along the lawn's edges with short stubs (water/test/
+  layout.test.js). Not yet: feeding a zone from its middle (Rain Bird's split-length rule), tree trunk keep-out
+  discs (no trunk sizes), a measured comparison with a real system's pipe.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge

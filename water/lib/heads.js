@@ -159,8 +159,21 @@ export function arcOf(head, nozzle) {
   return Math.max(lo, Math.min(hi, a));
 }
 
+/*
+ * A THROW SHORTENED BY THE RADIUS SCREW (owner, 2026-10-21: "most models have a diffuser screw that can cut the
+ * throw distance when needed... You'll have to look into how that effects distribution"; FINDINGS H30). Every
+ * maker allows 25% (K-Rain 30%), so MIN_THROW 0.75. The flow, by kind:
+ *   spray     the screw throttles the inlet: gpm falls about with the radius (Rain Bird HE-VAN's own pressure
+ *             tables give gpm ~ R^0.7-1.0; no maker prints flow at a reduced radius): gpm x k^0.85
+ *   rotary    "matched precipitation" across radius (Hunter MP, Rain Bird R-VAN, Toro PRN): gpm x k^2
+ *   rotor,    the screw sits in the stream after the nozzle: "this does not reduce the flow" (Toro Super 800):
+ *   impact    gpm unchanged, so the rate rises as 1/k^2 (lib/precip.js piles it up mid-throw)
+ */
+export const THROW_GPM_EXP = { spray: 0.85, rotary: 2, rotor: 0, impact: 0 };
+
 /**
- * One head's water. head: { body, nozzle, arc }; cat: catalogue(); psi: at the zone.
+ * One head's water. head: { body, nozzle, arc, throw (the radius screw: 0.75-1, 1 when not set) }; cat:
+ * catalogue(); psi: at the zone. radiusFt and gpm are as the screw leaves them; fullRadiusFt the chart's.
  * -> { gpm, radiusFt, arc, psi, precipInH (head-to-head square spacing), kind, outside } or null
  */
 export function headWater(head, cat, psi) {
@@ -177,11 +190,13 @@ export function headWater(head, cat, psi) {
   }
   const arc = arcOf(head, n);
   const byArc = fam.flow !== 'constant' && !Number.isFinite(n.arcFixed) ? rowAtArc(n, p, arc) : null;
-  const gpm = byArc ? byArc.gpm : fam.flow === 'constant' ? row.gpm : (row.gpm * arc) / 360;
-  const radiusFt = byArc?.radiusFt ?? row.radiusFt;
+  const gpm0 = byArc ? byArc.gpm : fam.flow === 'constant' ? row.gpm : (row.gpm * arc) / 360;
+  const fullRadiusFt = byArc?.radiusFt ?? row.radiusFt;
+  const k = Number.isFinite(head?.throw) && head.throw < 1 ? Math.max(0.5, head.throw) : 1;
+  const radiusFt = fullRadiusFt * k, q = gpm0 * k ** (THROW_GPM_EXP[fam.kind] ?? 0);
   // the gpm a full circle of this throw would carry: the rate it lays down, at head-to-head spacing
-  const full = (gpm * 360) / arc;
-  return { gpm, radiusFt, arc, psi: row.psi, precipInH: (96.25 * full) / (radiusFt * radiusFt), kind: fam.kind, outside: row.outside };
+  const full = (q * 360) / arc;
+  return { gpm: q, radiusFt, fullRadiusFt, cut: k, arc, psi: row.psi, precipInH: (96.25 * full) / (radiusFt * radiusFt), kind: fam.kind, outside: row.outside };
 }
 
 /**
@@ -312,4 +327,72 @@ export function facing(at, toward) {
   if (!toward) return 0;
   const [e, n] = enu(at, toward);
   return ((Math.atan2(e, n) * 180) / Math.PI + 360) % 360; // degrees clockwise from north
+}
+
+/* ------------------------------------------------------------ snap to a grid */
+
+/*
+ * A GRID TO PLACE HEADS ON (owner, 2026-10-21: "add a snap to grid checkbox when placing or dragging points.
+ * With a customizable grid spacing from .5-10 feet, default to 1 foot. Create the grid after the first point
+ * is placed, and use that first point as the reference point to build the grid from. Align the grid to be
+ * perpendicular to the longest straight lawn edge within direct line of sight").
+ *
+ * The traced lawn's outline is straightened (Douglas-Peucker, GRID_STRAIGHT_M) so a run of short wiggles along
+ * one edge counts as one edge; an edge is in sight of the first head when the line to its middle crosses no
+ * other edge. The grid's lines run along that edge and square to it, through the first head.
+ */
+export const GRID_FT_MIN = 0.5, GRID_FT_MAX = 10, GRID_FT_DEFAULT = 1, GRID_STRAIGHT_M = 0.3;
+
+function simplify(pts, tol) {
+  if (pts.length <= 2) return pts.slice();
+  const [a, b] = [pts[0], pts[pts.length - 1]];
+  const L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1e-9;
+  let far = -1, fd = 0;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const d = Math.abs((b[0] - a[0]) * (a[1] - pts[i][1]) - (a[0] - pts[i][0]) * (b[1] - a[1])) / L;
+    if (d > fd) { fd = d; far = i; }
+  }
+  if (fd <= tol) return [a, b];
+  return [...simplify(pts.slice(0, far + 1), tol).slice(0, -1), ...simplify(pts.slice(far), tol)];
+}
+const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+function crosses(p, q, a, b) {
+  const d1 = cross(a, b, p), d2 = cross(a, b, q), d3 = cross(p, q, a), d4 = cross(p, q, b);
+  return ((d1 > 1e-9 && d2 < -1e-9) || (d1 < -1e-9 && d2 > 1e-9)) && ((d3 > 1e-9 && d4 < -1e-9) || (d3 < -1e-9 && d4 > 1e-9));
+}
+
+/** The longest straight edge of the lawn's outline in sight of `at`. rings: [[lng, lat], ...][]. -> { bearing
+    (degrees clockwise from north, 0-180), lengthM, a, b } or null. */
+export function longestEdgeInSight(rings, at) {
+  const segs = [];
+  for (const ring of rings || []) {
+    if (!ring || ring.length < 3) continue;
+    const local = ring.map((p) => enu(at, p));
+    // a closed ring: straightened as two paths, first point to the point farthest from it and back
+    let far = 0, fd = -1;
+    local.forEach((p, i) => { const d = Math.hypot(p[0] - local[0][0], p[1] - local[0][1]); if (d > fd) { fd = d; far = i; } });
+    const s = [...simplify(local.slice(0, far + 1), GRID_STRAIGHT_M).slice(0, -1), ...simplify(local.slice(far), GRID_STRAIGHT_M)];
+    for (let i = 0; i + 1 < s.length; i++) segs.push([s[i], s[i + 1]]);
+  }
+  let best = null;
+  for (const [a, b] of segs) {
+    const L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (L < 1 || (best && L <= best.lengthM)) continue;
+    const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    if (segs.some(([c, d]) => !(c === a && d === b) && crosses([0, 0], mid, c, d))) continue;
+    const bearing = ((Math.atan2(b[0] - a[0], b[1] - a[1]) * 180) / Math.PI + 360) % 180;
+    best = { bearing, lengthM: L, a: unEnu(at, a), b: unEnu(at, b) };
+  }
+  return best;
+}
+
+/** A point snapped to the grid { origin [lng, lat], bearing (deg), ft }. */
+export function snapToGrid(p, grid) {
+  if (!grid?.origin || !(grid.ft > 0)) return p;
+  const s = grid.ft / 3.2808, t = ((grid.bearing || 0) * Math.PI) / 180;
+  const [e, n] = enu(grid.origin, p);
+  // u along the edge, v square to it
+  const u = e * Math.sin(t) + n * Math.cos(t), v = e * Math.cos(t) - n * Math.sin(t);
+  const U = Math.round(u / s) * s, V = Math.round(v / s) * s;
+  return unEnu(grid.origin, [U * Math.sin(t) + V * Math.cos(t), U * Math.cos(t) - V * Math.sin(t)]);
 }

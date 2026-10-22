@@ -55,10 +55,29 @@ export function sprayProfile(radiusFt) {
   return pts;
 }
 
-/** The profile a head's water follows: its kind's, or a conventional spray's for its throw. */
+/** The profile a head's water follows: its kind's, or a conventional spray's for its throw; a rotor or impact
+    shortened by its screw (h.cut < 1) with the water it no longer throws piled up past the first few metres. */
 export function profileFor(h) {
+  if (h._pts) return h._pts;
   if (h.profile === 'spray' || !h.profile) return measured ? sprayProfile(h.radiusM * 3.2808) : FALLBACK;
-  return TYPICAL[h.profile] || FALLBACK;
+  const base = TYPICAL[h.profile] || FALLBACK;
+  return h.cut < 1 && /^rotor|^impact/.test(h.profile) ? screwedProfile(base, h.cut, h.radiusM / h.cut) : base;
+}
+
+/**
+ * A rotor's or impact head's spread with its radius screw in (Hunter, Irrigation Notes "Reduced Sprinkler
+ * Radius", LIT-085: a PGP cut from 42 to 30 ft laid "minimal increase ... within 10 feet of the head. But in
+ * the area 10 feet to 20 feet from the head, the application rate has doubled"). Over the shortened throw
+ * (rho 0-1 of it): the full spread at rho k, raised past INNER_M (or a third of the throw) by 1/k^2, which at
+ * k = 0.71 is that doubling; the total still adds up to the head's flow (rateAt normalises). One test: an
+ * estimate.
+ */
+export const INNER_M = 3;
+export function screwedProfile(base, k, fullRadiusM) {
+  const rIn = Math.min(1 / 3, INNER_M / Math.max(1e-6, fullRadiusM)), m = 1 / (k * k), top = base[base.length - 1][0];
+  const pts = [];
+  for (let j = 0; j <= 40; j++) { const rho = j / 40, rf = rho * k; pts.push([rho, rf > top ? 0 : profileAt(base, rf) * (rf > rIn ? m : 1)]); }
+  return pts;
 }
 
 /** A profile's value at rho (linear between its points, 0 past the throw). */
@@ -114,6 +133,7 @@ export function precipitation(grid, heads) {
   for (let r = 0; r < grid.H; r++) for (let c = 0; c < grid.W; c++) centres[r * grid.W + c] = grid.at(c, r);
   for (const h of heads) {
     if (!(h.gpm > 0)) continue;
+    if (!h.strip) h._pts = profileFor(h);
     if (!byZone.has(h.zone)) byZone.set(h.zone, new Float32Array(N));
     const out = byZone.get(h.zone), reach = h.strip ? Math.max(h.strip.lengthM, h.strip.widthM) : h.radiusM * profileFor(h).at(-1)[0];
     for (let i = 0; i < N; i++) {

@@ -318,8 +318,8 @@ const heads = sprinklers({
     return Number.isFinite(v) ? v : null;
   },
   // what a run of pipe costs per foot, as a multiple of open ground (lib/hydraulics.js route): through a
-  // building 4 (installers never do), under paving 2 (a sleeve; they go round when they can) -- the
-  // analysis's roofs and paving, sampled every half metre
+  // building 50 (never: owner, 2026-10-21), under a tree 6 (roots: kept out), under paving 2 (a sleeve; they
+  // go round when they can) -- the analysis's roofs, canopy and paving, sampled every half metre
   routeCost: (a, b) => {
     const d = view.data;
     if (!d?.wall) return 1;
@@ -331,10 +331,24 @@ const heads = sprinklers({
       const c = Math.floor(((x - (g.bbox[0] + dx)) * g.k) / g.cell), r = Math.floor(((g.bbox[3] + dy - y) * g.k) / g.cell);
       if (c < 0 || r < 0 || c >= g.W || r >= g.H) continue;
       const i = r * g.W + c;
-      if (d.wall[i]) return 4;
-      if (d.paved && d.paved[i] >= 0.5) worst = 2;
+      if (d.wall[i]) return 50;
+      if (d.canopy && d.canopy[i]) worst = Math.max(worst, 6);
+      else if (d.paved && d.paved[i] >= 0.5) worst = Math.max(worst, 2);
     }
     return worst;
+  },
+  // the ground for laying pipe (lib/layout.js): a building, under a tree, paving, the traced lawn; null until the
+  // lawn map is in, or off it
+  layoutGround: () => {
+    const d = view.data;
+    if (!d?.wall) return null;
+    return (at) => {
+      const g = d.grid, dx = d.shift.east / g.k, dy = d.shift.north / g.k, [x, y] = toMerc(at);
+      const c = Math.floor(((x - (g.bbox[0] + dx)) * g.k) / g.cell), r = Math.floor(((g.bbox[3] + dy - y) * g.k) / g.cell);
+      if (c < 0 || r < 0 || c >= g.W || r >= g.H) return null;
+      const i = r * g.W + c;
+      return { building: !!d.wall[i], canopy: !!d.canopy?.[i], paved: !!(d.paved && d.paved[i] >= 0.5), lawn: d.lawnMask ? !!d.lawnMask[i] : true };
+    };
   },
   // a building or paving within `m` metres of a point (a head's throw reaching it)
   hardNear: (at, m) => {
@@ -351,6 +365,8 @@ const heads = sprinklers({
   },
   mapId: () => view.site?.mapId || null,
   showCoverage: () => !!$('#show-coverage')?.checked,
+  // the traced lawn's outlines, as rings of [lng, lat] (the placing grid lines up with its longest edge)
+  lawnRings: () => (view.site?.lawn || []).flatMap((f) => (f.geometry?.type === 'Polygon' ? f.geometry.coordinates : f.geometry?.type === 'MultiPolygon' ? f.geometry.coordinates.flat() : [])),
   // the traced lawn's corners, [[west, south], [east, north]]
   lawnBox: () => {
     const pts = (view.site?.lawn || []).flatMap((f) => (f.geometry?.type === 'Polygon' ? f.geometry.coordinates.flat() : f.geometry?.type === 'MultiPolygon' ? f.geometry.coordinates.flat(2) : []));

@@ -136,21 +136,26 @@ export function autoArc(at, radiusM, nozzle, ground) {
  * more heads, each head's water reaching the next. So the lawn round the heads is cut into half-metre cells,
  * and each cell is worth something by how many heads reach it:
  *
- *   lawn          the first head 1, the second 0.5 (head to head), a third 0.15, more nothing
+ *   lawn          the first head 1, the second 0.5 (head to head), a third 0.3, more 0.1
  *   building or   -2 a head (water on a wall or a drive is lost, and the reason an arc is turned)
  *   paving
- *   other ground  -0.4 a head (beds, a neighbour's yard, off the map: not the lawn's)
+ *   other ground  -0.05 a head: beds and woods may take a sprinkler's water (owner, 2026-10-21: "arc finding
+ *                 can hit woods and flower beds"); the small cost only breaks ties toward less waste
  *
- * weighted by the area each sample stands for. A head's arc and throw are then the window of directions,
+ * weighted by the area each sample stands for, and each head of its zone that a head's water reaches is worth
+ * NEIGHBOUR_GAIN more (the rule itself: water from each head reaching the next). A head's arc and throw are then the window of directions,
  * within its nozzle's range, and the throw (full down to MIN_THROW, the radius screw) that add the most, given every other head where it is; heads are fitted in turn, three
  * rounds, each starting from the last. A fixed pattern is only turned; a full circle and a strip are left to
  * autoArc; a head the person set (fixed) stays as they set it and counts as it is. Pure.
  *
- * heads: [{ id, at [lng, lat], radiusM, nozzle { arcFixed, arcMin, arcMax, strip }, dir, arc, throw, fixed }]
+ * heads: [{ id, at [lng, lat], zone, radiusM, nozzle { arcFixed, arcMin, arcMax, strip }, dir, arc, throw, fixed }]
  * ground(at) -> 'lawn' | 'hard' | 'other' | null. -> Map id -> { dir, arc, throw }
  */
 export const FIT_CELL_M = 0.5, FIT_ROUNDS = 3;
-const LAWN_GAIN = [1, 0.5, 0.3, 0.1], HARD_GAIN = -2, OTHER_GAIN = -0.4;
+const LAWN_GAIN = [1, 0.5, 0.3, 0.1], HARD_GAIN = -2, OTHER_GAIN = -0.05;
+/* each neighbouring head (same zone) a head's water reaches: head to head, the designer's rule, worth this many
+   square metres of lawn; it keeps an edge head's arc reaching the heads either side of it */
+export const NEIGHBOUR_GAIN = 4;
 
 export function fitArcs(heads, ground, { only = null } = {}) {
   const B = 360 / BIN_DEG, out = new Map();
@@ -163,7 +168,7 @@ export function fitArcs(heads, ground, { only = null } = {}) {
     return cellGround.get(key);
   };
   // each head's samples: per bin, [{ key, w, f (fraction of the throw), g }]
-  const plan = new Map();
+  const plan = new Map(), neighbours = new Map();
   for (const h of live) {
     const [he, hn] = enuOf(o, h.at), R = h.radiusM, J = Math.max(4, Math.ceil(R / 0.4));
     const bins = [];
@@ -177,6 +182,16 @@ export function fitArcs(heads, ground, { only = null } = {}) {
       bins.push(list);
     }
     plan.set(h.id, bins);
+    // its neighbours: the heads of its zone within its throw, by direction (the bins either side of it)
+    const near = [];
+    for (const o2 of live) {
+      if (o2 === h || (h.zone != null && o2.zone != null && o2.zone !== h.zone)) continue;
+      const [e2, n2] = enuOf(o, o2.at), d = Math.hypot(e2 - he, n2 - hn);
+      if (d < 0.5 || d > R) continue;
+      const b = ((Math.atan2(e2 - he, n2 - hn) * 180) / Math.PI + 360) % 360;
+      near.push({ f: d / R, bins: [Math.floor(((b - BIN_DEG / 2 + 360) % 360) / BIN_DEG), Math.floor(((b + BIN_DEG / 2) % 360) / BIN_DEG)] });
+    }
+    neighbours.set(h.id, near);
   }
   const cover = new Map(), mine = new Map();
   const sectorOf = (h) => {
@@ -209,10 +224,13 @@ export function fitArcs(heads, ground, { only = null } = {}) {
     let best = null;
     for (const T of h.fixedThrow ? [h.throw ?? 1] : THROWS) {
       const gain = bins.map((list) => list.reduce((t, p) => (p.f <= T + 1e-9 ? t + p.w * gainOf(p) : t), 0));
+      const nbs = neighbours.get(h.id).filter((nb) => nb.f <= T + 1e-9);
       for (let len = lo; len <= hi; len++) {
         for (let start = 0; start < (len >= B ? 1 : B); start++) {
           let t = 0;
           for (let k = 0; k < len; k++) t += gain[(start + k) % B];
+          // a neighbour on the arc's edge counts once, from either side
+          for (const nb of nbs) if (nb.bins.some((k) => (k - start + B) % B < len)) t += NEIGHBOUR_GAIN;
           // a wider arc or a longer throw must add something real; on a tie, the narrower and the longer throw
           if (!best || t > best.t + 1e-6 * (1 + Math.abs(best.t))) best = { start, len, t, throw: T };
         }
