@@ -1094,6 +1094,39 @@ H111). What it advised, and what the water map does with it:
 - Nothing over HTTP marks drive, walk, road or house per pixel today; the core offered to add a roof/void mask
   to the live server's answer if the owner wants it.
 
+### H32. Roofs by the core's lidar rule; zones fed from their middle; trunks from the crowns (water session, 2026-10-22)
+
+Owner, 2026-10-22: "can't you use the same setup as the core session for finding roofs? Yes I want to drop overture
+buildings"; "If fed from middle is the advice, then yes let's do that"; "can we find trunks with lidar?"
+
+- ROOFS (lib/roofs.js coreRoofs). The detector's training rule (tools/lidar_frame.py masks_from): no ground return,
+  3+ returns, the top 2.5 m+ over the ground, every return within 1.5 m, on 2 m cells; then fitted to the water
+  map's 1 m grid (trimmed where a 1 m cell's own top is under 2 m and the ground was hit; grown into neighbours the
+  laser never got through that are 2.5 m+ up; one-cell holes filled). Overture's buildings are no longer used;
+  its road and sidewalk lines still are, for paving. Scored on the 23 Chesapeake squares (cells found exactly |
+  within 1 m; correct exactly | within 1 m; IoU): the core's rule 73% | 91%, 93% | 97%, 0.69; with the photo's
+  green veto 66% | 86%, 95% | 98%, 0.64; the rule before (Overture moved onto the lidar's roofs, or both lidar
+  finders agree) 92% | 98%, 86% | 95%, 0.80. The core's rule is the most PRECISE roof finder here but misses
+  about a quarter of the roof cells (it sits inside the roof, as the core found: H111). ROOFS_PENDING
+- PIPE FED FROM THE MIDDLE (lib/layout.js zoneTree). Rain Bird: "the valve serving a group of sprinklers should be
+  at the center of the group to balance the flow and size of lateral pipe" (Landscape Irrigation Design Manual
+  pp. 57-60). The valve box is where it is, so each zone's heads are joined first, as one tree grown from the head
+  nearest their middle; then the valve's line, a run of its own (the heads' pipe costs it 20 cells to cross, so it
+  cannot slip along it), joins where the cost to get there plus the farthest head's run from that point is least.
+  On the 30 x 20 m test lot (11 heads round a house) the valve's line now joins the middle of the west run and
+  splits both ways (it had joined at the end of the south run), for 272 ft of pipe against 264.
+- TRUNKS (lib/roofs.js treeTrunks). Airborne lidar at 2-10 returns a square metre hits few trunks and nothing of
+  their thickness; it finds each crown's top well, and an open-grown tree's top stands over its trunk. Trunks are
+  placed at crown tops (the shade map's crown method: local maxima of a pit-free 1 m canopy height model, 4 m and
+  taller, a search radius growing with height, crowns flooded downhill); pipe never crosses a disc of 40% of the
+  crown's radius, at least 1 m (the layout research's stand-in for the arborists' foot-per-inch-of-trunk rule,
+  21 NCAC 23 .0406, when the trunk's size is unknown), and canopy beyond costs x6 as before. Checked against the
+  core's hand-traced crowns (data/labelled-crowns.csv, single crowns of 8-150 m2: 80 on 29 maps): a lidar
+  treetop inside the traced crown for 42 (53%); 48 (60%) counting trees from 2.5 m; within 2 m of the traced
+  crown's centre for 23; median distance 3.8 m. Evergreens 2.6 m, broadleaf 3.9 m. Not a measure of trunks
+  themselves (a crown traced on a photo, years from the flight, leaning, against a lidar crown top): of the
+  water map's trunk positions only that they sit in the right crown about half to three-fifths of the time.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge
