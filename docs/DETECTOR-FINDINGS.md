@@ -7750,6 +7750,28 @@ fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
 
+### S52. Is the decoder part of the problem? The papers' linear probe beside THE PLAN's decoder (owner, 2026-10-22: "be open to the possibility that our decoder is part of the problem") -- RUNNING
+**The question.** THE PLAN's decoder is four convs (1x1, 3x3, 3x3, 1x1,
+224k weights) over the eye's 1024 numbers a patch plus the fused
+channels; a bigger head overfit (H93). The other direction has never
+been measured: a LINEAR probe, one linear map a patch with no neighbours
+and no nonlinearity, which is how the backbone papers (Scale-MAE,
+DINOv3) read their own features. If the probe comes close to the
+decoder, the eye's features carry the answer and the decoder adds little
+-- and a better eye is the whole lever. If the decoder is far ahead, its
+3x3 context does work the eye does not, and the decoder (its size, its
+context, its training) is where to look as well.
+
+**The run.** Workflow 14, 2026-10-22 ~22:00 UTC, `refiner_trial: linear
+probe` (tools/train_decoder.py HEAD=linear: dropout, 1024 -> 32 -> 1,
+both 1x1, the 32 handed to the refiner as the decoder's are): THE PLAN's
+decoder and the probe over the same Scale-MAE features (cached from
+39715167319), folds and seed 7, both with the refiner, stage 3 and the
+veto. Read with workflow 24 within the run ("decoder, linear probe +
+stage 3, span, lidar veto" against THE PLAN's row). Then the same pair
+over DINOv3's features (S51) if that eye is competitive: the gap between
+probe and decoder, eye by eye, is the measurement.
+
 ### S51. DINOv3's satellite ViT-L as the eye, in place of Scale-MAE (owner, 2026-10-22: "let's do #1, and then go down the list if that one isn't superb") -- RUNNING
 **The idea.** Every eye measured here was pretrained before 2024:
 Scale-MAE on fMoW at about 0.3-0.6 m with a scale input (the one that
