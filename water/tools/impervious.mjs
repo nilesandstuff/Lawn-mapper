@@ -173,6 +173,11 @@ async function one(lng, lat) {
     water: res.ownRoofs, shadeFlat: shade.flat, shadeSolid: shade.solid, shade: shade.roof,
     // the core session's rule (lib/roofs.js coreRoofs), alone and with the photo's green veto: what the water map uses now
     core: coreRoofs(g, res.points, res.z),
+    coreGrown: coreRoofs(g, res.points, res.z, { grow: 4, strayGround: 1, growSpread: 2.5 }),
+    coreOrBoth: Uint8Array.from(coreRoofs(g, res.points, res.z), (v, i) => (v || (res.ownRoofs[i] && shade.roof[i]) ? 1 : 0)),
+    coreOrShade: Uint8Array.from(coreRoofs(g, res.points, res.z), (v, i) => (v || shade.roof[i] ? 1 : 0)),
+    coreOrEither: Uint8Array.from(coreRoofs(g, res.points, res.z), (v, i) => (v || res.ownRoofs[i] || shade.roof[i] ? 1 : 0)),
+    coreGrownOrBoth: Uint8Array.from(coreRoofs(g, res.points, res.z, { grow: 4, strayGround: 1, growSpread: 2.5 }), (v, i) => (v || (res.ownRoofs[i] && shade.roof[i]) ? 1 : 0)),
     ...(V0 ? { coreNotGreen: greenVeto(coreRoofs(g, res.points, res.z), V0, groundGreen) } : {}),
     ...(resUnion ? { earlierRule: resUnion.wall } : {}),
     either: Uint8Array.from(res.ownRoofs, (v, i) => (v || shade.roof[i] ? 1 : 0)),
@@ -310,7 +315,7 @@ async function main() {
   console.log(`ROOFS AND IMPERVIOUSNESS ON THE CHESAPEAKE LAND USE: ${done.length} residential squares of ${SIZE} m (${tries} tried)`);
   console.log(`  roofs (cells; "Structures" is the truth): found ${Math.round(100 * R.tp / (R.tp + R.fn))}% of roof cells, ${Math.round(100 * R.tp / (R.tp + R.fp))}% of what it calls roof is roof, IoU ${(R.tp / (R.tp + R.fp + R.fn)).toFixed(2)}`);
   console.log('  roof finders, pooled (exact | within 1 m):       found      precise     IoU');
-  const label = { water: 'water map (surface.js)', shadeFlat: 'shade: flat-roof rule alone', shadeSolid: 'shade: + solid at the grass, + eaves', shade: 'shade: + tree-vs-roof patch test (full)', either: 'either says roof', both: 'both say roof', waterNoEvergreen: 'water map, less what shade calls evergreen',
+  const label = { core: "core's lidar rule (in use)", coreNotGreen: 'core rule, less what the photo shows green', earlierRule: 'the rule before (Overture + lidar)', coreGrown: 'core rule, eaves grown 4 m, 1 stray ground hit', coreOrBoth: 'core rule, or both lidar finders agree', coreOrShade: "core rule, or the shade map's", coreOrEither: 'core rule, or either lidar finder', coreGrownOrBoth: 'core grown, or both lidar finders agree', water: 'water map (surface.js)', shadeFlat: 'shade: flat-roof rule alone', shadeSolid: 'shade: + solid at the grass, + eaves', shade: 'shade: + tree-vs-roof patch test (full)', either: 'either says roof', both: 'both say roof', waterNoEvergreen: 'water map, less what shade calls evergreen',
     overture: 'Overture buildings alone', eitherOverture: 'either, or an Overture building', eitherAndOverture: 'either, and an Overture building', overtureOrBoth: 'Overture, or both lidar finders agree', overtureOrBothNotGreen: 'that, less what the photo shows green', eitherNotGreen: 'either, less what the photo shows green', overtureAligned: 'Overture moved onto the lidar roofs', overtureAlignedOrBoth: 'that, or both lidar finders agree', overtureAlignedOrBothNotGreen: 'that, less what the photo shows green' };
   const names = [...new Set(done.flatMap((d) => Object.keys(d.roofScores)))];
   const withOv = done.filter((d) => d.roofScores.overture);

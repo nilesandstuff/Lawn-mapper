@@ -80,7 +80,7 @@ export function shadeRoofs(cols, bbox, lat, { parts = false } = {}) {
  * grid g: the water map's (lib/surface.js gridFor: W, H, toCell); cols: its points; zGround: its ground (filled).
  */
 export const ROOF_MIN_M = 2.5, ROOF_SPREAD_M = 1.5, ROOF_MIN_RETURNS = 3, ROOF_TRIM_M = 2.0;
-export function coreRoofs(g, cols, zGround) {
+export function coreRoofs(g, cols, zGround, { grow = 2, strayGround = 0, growSpread = ROOF_SPREAD_M } = {}) {
   const W = g.W, H = g.H, N = W * H, W2 = Math.ceil(W / 2), H2 = Math.ceil(H / 2), N2 = W2 * H2;
   const n1 = new Uint16Array(N), ng1 = new Uint16Array(N), top1 = new Float32Array(N).fill(-Infinity), lo1 = new Float32Array(N).fill(Infinity);
   const n2 = new Uint16Array(N2), ng2 = new Uint16Array(N2), top2 = new Float32Array(N2).fill(-Infinity), lo2 = new Float32Array(N2).fill(Infinity);
@@ -110,12 +110,12 @@ export function coreRoofs(g, cols, zGround) {
     roof[k] = ng1[k] && Number.isFinite(h) && h < ROOF_TRIM_M ? 0 : 1;
   }
   const nb = (k) => { const c = k % W, r = (k - c) / W; return [c > 0 ? k - 1 : -1, c < W - 1 ? k + 1 : -1, r > 0 ? k - W : -1, r < H - 1 ? k + W : -1].filter((j) => j >= 0); };
-  for (let round = 0; round < 2; round++) {
+  for (let round = 0; round < grow; round++) {
     const add = [];
     for (let k = 0; k < N; k++) {
-      if (roof[k] || ng1[k] || !n1[k]) continue;
+      if (roof[k] || ng1[k] > strayGround || !n1[k]) continue;
       const h = over(k);
-      if (!(h >= ROOF_MIN_M) || top1[k] - lo1[k] > ROOF_SPREAD_M) continue;
+      if (!(h >= ROOF_MIN_M) || top1[k] - lo1[k] > growSpread) continue;
       if (nb(k).some((j) => roof[j])) add.push(k);
     }
     for (const k of add) roof[k] = 1;
