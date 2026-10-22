@@ -141,7 +141,7 @@ const el = (tag, cls, text) => {
 };
 
 async function load() {
-  const res = await fetch(`/api/feedback/list?token=${encodeURIComponent(token)}`);
+  const res = await fetch('/api/feedback/list', { headers: token ? { Authorization: `Bearer ${token}` } : {} });
   if (!res.ok) {
     $('#gate').hidden = false;
     $('#gate-note').textContent = token

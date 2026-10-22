@@ -18,8 +18,7 @@ import {
   applyConfig,
   bucketExists,
   bucketFailureHelp,
-  fillSiteOrigin,
-} from './ci-prepare.js';
+  fillSiteOrigin, stripComments } from './ci-prepare.js';
 
 let failures = 0;
 const check = (name, ok, detail = '') => {
@@ -231,7 +230,15 @@ id = "REPLACE_WITH_KV_NAMESPACE_ID"
     !none.includes('__SITE__') && !none.includes('rel="canonical"') && none.includes('og:title'));
   const ld = (s) => JSON.parse(s.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)[1]);
   check('the structured data is still JSON either way',
-    ld(filled).url === 'https://lawnmap.example.com/' && ld(none).name === 'Lawn Mapper' && !('url' in ld(none)));
+    ld(filled).url === 'https://lawnmap.example.com/' && ld(none).name === 'Lawn Mapper' && !('url' in
+/* Developer comments do not ship, the build markers and scripts do (2026-10-22). */
+{
+  const sample = '<!-- SEO:START (x) --><title>t</title><!-- SEO:END --><!-- a note --><script>/* <!-- not a comment --> */ var a = 1;</script><!-- LANDING:START (y) -->body<!-- LANDING:END -->';
+  const out = stripComments(sample);
+  check('the markers stay and the note goes', out.includes('<!-- SEO:START (x) -->') && out.includes('<!-- LANDING:END -->') && !out.includes('a note'));
+  check('a script is untouched', out.includes('<script>/* <!-- not a comment --> */ var a = 1;</script>'));
+}
+ ld(none)));
 }
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);

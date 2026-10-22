@@ -168,7 +168,10 @@ export function applyConfig(toml, { kvId, dbId, bucket = true, customDomain } = 
         'repository variable, or delete the routes block from the file.'
       );
     }
-    out += `\n[[routes]]\npattern = "${customDomain}"\ncustom_domain = true\n`;
+    /* The custom domain is THE address: the *.workers.dev one is switched off
+       (owner, 2026-10-22), so there is one host to index and one to protect.
+       Without a custom domain workers.dev stays on, or nothing is reachable. */
+    out += `\n[[routes]]\npattern = "${customDomain}"\ncustom_domain = true\n\nworkers_dev = false\n`;
   }
 
   return out;
@@ -425,6 +428,19 @@ export const SITE_PLACEHOLDER = '__SITE__';
  * So the app's front page names the home page as the canonical one, rather
  * than competing with its own copy. Nothing changes without a home domain.
  */
+/**
+ * The front page's HTML developer comments are not shipped (2026-10-22 audit:
+ * about 32 KB of a 105 KB page). The marker comments home-prepare.js builds
+ * the home page from (SEO:START, LANDING:END and so on) are kept, as is
+ * anything inside <script> or <style>.
+ */
+export function stripComments(html) {
+  const keep = [];
+  const shielded = html.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, (m) => { keep.push(m); return `\u0000${keep.length - 1}\u0000`; });
+  const stripped = shielded.replace(/<!--[\s\S]*?-->/g, (m) => (/:(START|END)\b|^<!-- (SEO|LANDING) -->$/.test(m) ? m : ''));
+  return stripped.replace(/\u0000(\d+)\u0000/g, (_, i) => keep[Number(i)]);
+}
+
 export function canonicalToHome(html, customDomain, homeDomain = '') {
   const home = homeDomainFor(customDomain, homeDomain);
   if (!customDomain || !home) return html;
@@ -602,9 +618,12 @@ function main() {
     const page = new URL('../public/index.html', import.meta.url);
     /* The landing's county table, from the registry this deploy ships with
        (tools/landing-coverage.js), so crawlers read today's list as text. */
-    writeFileSync(page, canonicalToHome(fillCoverage(
+    writeFileSync(page, stripComments(canonicalToHome(fillCoverage(
       fillSiteOrigin(readFileSync(page, 'utf8'), customDomain), coverage()
-    ), customDomain, process.env.HOME_DOMAIN || ''));
+    ), customDomain, process.env.HOME_DOMAIN || '')));
+    /* The privacy page's canonical, on this host. */
+    const privacy = new URL('../public/privacy.html', import.meta.url);
+    writeFileSync(privacy, fillSiteOrigin(readFileSync(privacy, 'utf8'), customDomain));
     /* The shade analyzer is listed for search too (owner, 2026-10-13). */
     const shade = new URL('../public/shade.html', import.meta.url);
     writeFileSync(shade, fillSiteOrigin(readFileSync(shade, 'utf8'), customDomain));

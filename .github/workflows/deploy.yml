@@ -103,6 +103,16 @@ jobs:
             exit 1
           fi
 
+      # THE APP, BUNDLED AND MINIFIED (2026-10-22 audit): app.js and its 22
+      # modules were 900 KB of unminified source fetched in a waterfall on
+      # every phone. One file now, about a third the size; the modules under
+      # public/lib stay as they are for the shade map and the tests.
+      - name: Bundle and minify the app
+        run: |
+          npx esbuild public/app.js --bundle --minify --format=esm --target=es2022 --log-level=warning --outfile=app.bundle.js
+          echo "app.js $(wc -c < public/app.js) bytes -> bundled $(wc -c < app.bundle.js) bytes"
+          mv app.bundle.js public/app.js
+
       - name: Deploy the Worker and the site
         run: npx wrangler deploy ${SHADE_HOST:+--var SHADE_HOST:$SHADE_HOST}
 

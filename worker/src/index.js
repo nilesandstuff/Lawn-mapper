@@ -131,6 +131,11 @@ function cors(origin) {
   };
 }
 
+/* A reading token in the Authorization header (kept out of request logs) or,
+   for an older page, in the query string. */
+const bearerOrQuery = (request, url) =>
+  (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim() || url.searchParams.get('token');
+
 const json = (data, status, origin) =>
   new Response(JSON.stringify(data), {
     status,
@@ -1662,7 +1667,7 @@ async function handle(request, env, ctx) {
          * With no LOG_TOKEN configured this route simply does not exist.
          */
         case '/api/log': {
-          const found = await readLog(env, url.searchParams.get('token'));
+          const found = await readLog(env, bearerOrQuery(request, url));
           if (!found) return json({ error: 'Not found' }, 404, origin);
           return json({ ...found, logging: loggingEnabled(env) }, 200, origin);
         }
@@ -1700,7 +1705,7 @@ async function handle(request, env, ctx) {
           return json({ ok: saved.ok, reason: saved.reason || null }, saved.ok ? 200 : 202, origin);
         }
         case '/api/feedback/list': {
-          const found = await readFeedback(env, url.searchParams.get('token'));
+          const found = await readFeedback(env, bearerOrQuery(request, url));
           if (!found) return json({ error: 'Not found' }, 404, origin);
           return json({ ...found, enabled: feedbackEnabled(env) }, 200, origin);
         }
@@ -1804,10 +1809,7 @@ async function handle(request, env, ctx) {
             + `# of this site for AI assistants: ${url.origin}/llms.txt\n`
             + ROBOTS_AGENTS.map((a) => `User-agent: ${a}\n`).join('')
             + `User-agent: *\nContent-Signal: search=yes, ai-input=yes, ai-train=yes\nAllow: /\n${shadeHere ? 'Allow: /shade\n' : ''}Allow: /api/config\nAllow: /api/coverage\nDisallow: /api/\n`
-            /* The sitemap is named only while it lists something: once the
-               shade map has its own host (SHADE_HOST) /shade is a redirect
-               and this sitemap is empty (2026-10-22 audit). */
-            + (shadeHere ? `\nSitemap: ${url.origin}/sitemap.xml\n` : ''),
+            + `\nSitemap: ${url.origin}/sitemap.xml\n`,
             { headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=86400' } }
           );
         }
@@ -1828,6 +1830,8 @@ async function handle(request, env, ctx) {
                should not list one. */
             + (String(env.SHADE_HOST || '').trim() ? ''
               : `  <url><loc>${url.origin}/shade</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>\n`)
+            /* The privacy and contact page (2026-10-22). */
+            + `  <url><loc>${url.origin}/privacy</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>\n`
             + '</urlset>\n',
             { headers: { 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=86400' } }
           );

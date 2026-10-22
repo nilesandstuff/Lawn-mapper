@@ -79,7 +79,7 @@
   }
   .chip.done { color: var(--done); } .chip.stale { color: var(--stale); }
   .chip.ready { color: var(--ready); } .chip.locked, .chip.soon { color: var(--locked); }
-  ol.tools .btn { font-size: 14px; padding: 7px 12px; white-space: nowrap; }
+  ol.tools .btn { font-size: 14px; padding: 7px 12px; min-height: 44px; display: inline-flex; align-items: center; white-space: nowrap; }
   .why { font-size: 13.5px; color: var(--muted); }
   .empty { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 24px 20px; }
   .empty form { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0 8px; }
@@ -94,6 +94,7 @@
 </style>
 </head>
 <body>
+<noscript><p style="margin:16px;font:16px system-ui,sans-serif">The dashboard needs JavaScript to list your maps. Please turn it on.</p></noscript>
 <div class="wrap">
   <header>
     <a class="home" href="/"><img src="/favicon.svg" alt="" width="36" height="36"><span class="name">nilesandstuff</span></a>

@@ -122,6 +122,8 @@ service = "lawn-mapper"
 [vars]
 LAWNMAP_HOST = "${lawnmap}"
 
+workers_dev = false
+
 [[routes]]
 pattern = "${home}"
 custom_domain = true
@@ -151,7 +153,7 @@ function main() {
   for (const f of ['dashboard.html', 'dashboard.js']) {
     writeFileSync(join(build, f), fillHome(readFileSync(join(root, 'home/public', f), 'utf8'), home, lawnmap));
   }
-  for (const f of ['favicon.svg', 'favicon-32.png', 'favicon.ico', 'apple-touch-icon.png', 'og-image.png']) {
+  for (const f of ['favicon.svg', 'favicon-32.png', 'favicon.ico', 'apple-touch-icon.png', 'og-image.png', 'manifest.webmanifest']) {
     copyFileSync(join(root, 'public', f), join(build, f));
   }
   writeFileSync(join(build, '_headers'), homeHeaders());

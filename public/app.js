@@ -1266,6 +1266,15 @@ function clientId() {
 
 const $ = (sel) => document.querySelector(sel);
 
+/** An error as a sentence a person can act on; the browser's own network words become one. */
+function friendlyError(err) {
+  const m = String(err?.message || err || '');
+  if (err?.name === 'TypeError' || /failed to fetch|load failed|networkerror|network request failed/i.test(m)) {
+    return 'Could not reach the server. Check your connection and try again.';
+  }
+  return m || 'Something went wrong. Try again.';
+}
+
 async function api(path, options = {}) {
   // Every request gets a deadline. Without one, a Worker holding a connection
   // open leaves the UI stuck on a spinner with nothing to react to -- which is
@@ -1299,7 +1308,9 @@ async function api(path, options = {}) {
   const type = res.headers.get('Content-Type') || '';
   const body = type.includes('application/json') ? await res.json() : null;
   if (!res.ok) {
-    const err = new Error(body?.error || `Request failed (${res.status})`);
+    const err = new Error(body?.error || (res.status >= 500
+      ? 'The server had a problem answering. Try again in a minute.'
+      : `Request failed (${res.status})`));
     err.status = res.status;
     err.body = body;
     throw err;
@@ -2308,7 +2319,9 @@ async function search(query) {
     renderCandidates(results);
     showStep('candidates');
   } catch (err) {
-    alert(err.message);
+    /* On the status line, not in a native alert, and in words: "Failed to
+       fetch" and "Load failed" are the browser's for no connection. */
+    setStatus(friendlyError(err), 'error');
     showStep('address');
   } finally {
     idle();
@@ -2721,7 +2734,7 @@ async function confirmLocation() {
       : 'Trace your property line first');
     showTip('parcel');
   } catch (err) {
-    setStatus(err.message, 'error');
+    setStatus(friendlyError(err), 'error');
   } finally {
     idle();
     refreshQuota();
@@ -9589,7 +9602,10 @@ function refreshTabs() {
   // A tab with a lock on it says so on the tab itself, so the reason is
   // findable without opening it and wondering why everything is grey.
   for (const t of TABS) {
-    $(`#tab-${t}`)?.classList.toggle('is-locked', Boolean(tabLock(t)) || needsParcel(t));
+    const locked = Boolean(tabLock(t)) || needsParcel(t);
+    $(`#tab-${t}`)?.classList.toggle('is-locked', locked);
+    /* The padlock is a CSS glyph; a screen reader hears this instead. */
+    $(`#tab-${t}`)?.setAttribute('aria-disabled', locked ? 'true' : 'false');
   }
 
   /*
@@ -15033,6 +15049,8 @@ initMap()
     const dash = dashboardUrl();
     if (!dash || state.job) return;
     $('#tab-plan').hidden = true;
+    /* And the Saved tab: the dashboard is where every saved map is now. */
+    $('#tab-saved').hidden = true;
     const a = $('#maps-link');
     a.href = dash;
     a.hidden = false;

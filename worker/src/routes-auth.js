@@ -405,7 +405,28 @@ export async function handleAuth(request, env, url, origin, ctx, json) {
 
   /* ---------------------------------------------- email: follow the link */
   if (path === 'email/verify') {
-    const done = await finishMagicLink(env, url.searchParams.get('token'));
+    /*
+     * THE LINK LANDS ON A BUTTON (2026-10-22 audit). A GET of the link shows
+     * a page with one "Sign in" button that POSTs the token; only the POST
+     * spends it. Mail scanners (Outlook Safe Links and the like) fetch every
+     * link in a mail with a GET, and used to spend the token before the
+     * person could, who then saw "expired". The token still arrives in the
+     * GET's query string, which the edge logs; it is single-use and twenty
+     * minutes long, so that is accepted.
+     */
+    if (request.method !== 'POST') {
+      const token = url.searchParams.get('token') || '';
+      const page = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>Sign in to Lawn Mapper</title>`
+        + `<style>html{font:17px/1.5 system-ui,sans-serif;color:#1c2a1f;background:#fff}@media(prefers-color-scheme:dark){html{color:#e8efe9;background:#121a15}}body{margin:0;padding:32px 16px}main{max-width:420px;margin:0 auto;text-align:center}button{font:inherit;font-weight:600;color:#fff;background:#2f7d32;border:0;border-radius:12px;padding:14px 22px;min-height:48px;cursor:pointer}p{color:#5d6b62;font-size:15px}</style></head>`
+        + `<body><main><h1>Sign in to Lawn Mapper</h1><form method="post" action="${url.pathname}"><input type="hidden" name="token" value="${token.replace(/[^A-Za-z0-9_.-]/g, '')}"><button type="submit">Sign in</button></form><p>One tap finishes the sign-in. The link works once and for twenty minutes.</p></main></body></html>`;
+      return new Response(page, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } });
+    }
+    let token = url.searchParams.get('token');
+    try {
+      const form = await request.formData();
+      if (form.get('token')) token = String(form.get('token'));
+    } catch { /* no body: the query string's token, as before */ }
+    const done = await finishMagicLink(env, token);
     if (done.error) return land(request.url, '/', `signin-error=${done.error}`);
 
     const session = await createSession(env, done.user.id);

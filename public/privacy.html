@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy and contact | Lawn Mapper</title>
+<meta name="description" content="What Lawn Mapper keeps, what it never keeps, who it talks to, and how to reach the person who runs it.">
+<meta name="robots" content="index, follow">
+<meta name="theme-color" content="#2f7d32">
+<link rel="canonical" href="__SITE__/privacy">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<style>
+  :root { --ink: #1c2a1f; --muted: #5d6b62; --line: #dfe5e0; --green: #2f7d32; --bg: #fff; }
+  @media (prefers-color-scheme: dark) { :root { --ink: #e8efe9; --muted: #a3b2a8; --line: #2c3a31; --green: #8fc99a; --bg: #121a15; } }
+  html { background: var(--bg); color: var(--ink); font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  body { margin: 0; padding: 20px 16px 48px; }
+  main { max-width: 680px; margin: 0 auto; }
+  h1 { font-size: 26px; margin: 8px 0 4px; } h2 { font-size: 19px; margin: 28px 0 6px; }
+  p, li { margin: 6px 0; } ul { padding-left: 20px; }
+  a { color: var(--green); } .back { display: inline-block; margin-bottom: 12px; }
+  .when { color: var(--muted); font-size: 14px; }
+  :focus-visible { outline: 3px solid #8fc99a; outline-offset: 2px; }
+</style>
+</head>
+<body>
+<main>
+  <a class="back" href="/">&larr; Lawn Mapper</a>
+  <h1>Privacy and contact</h1>
+  <p class="when">Last changed 22 October 2026. Plain words, no lawyer; if something here is unclear, ask.</p>
+
+  <h2>What this site is</h2>
+  <p>Lawn Mapper measures a lawn from an address: it finds the property line in public county records, shows aerial photos of the lot, traces the grass with a trained detector, and lets you correct the outline by hand. It is free, with no ads, no analytics scripts and no ad trackers. One person runs it.</p>
+
+  <h2>What it keeps</h2>
+  <ul>
+    <li><b>The address you type</b> is sent to a geocoder and to the county's own parcel server to find the lot. A map you save keeps its address so you can find it again. When no property line can be found for an address, the address goes on a list used to decide which counties to add next.</li>
+    <li><b>Your location</b>, only when you tap the crosshair, and only to find the lot. It is not stored on its own.</li>
+    <li><b>Saved maps</b> live on this site's server. Signed out, you keep one map, tied to a cookie in your browser; a visitor not seen for 90 days is deleted with that map. With a free account you keep every map on every device.</li>
+    <li><b>Your email address</b>, if you sign in. Sign-in is a link sent by email; there is no password. The address is kept lowercased, used only to sign you in and to reach you about your own maps, and never sold or passed to anyone.</li>
+    <li><b>Finished maps help train the detector.</b> When you finish a map, its outline and the aerial view of the lot are kept as training material, with the map frame. Not your address, not your email, not your account: the outline and the picture, and nothing that names you.</li>
+    <li><b>If you do paid tracing work</b> on the queue, the payout handle you give is kept to pay you.</li>
+  </ul>
+
+  <h2>Cookies</h2>
+  <p>Two, both set by this site and readable by no script: a sign-in cookie (90 days, renewed as you use it, shared across the nilesandstuff.com tools so one sign-in covers all of them) and, signed out, a guest cookie that holds your one map. A few per-browser preferences, such as which map layers you ticked, stay in your browser's own storage and never leave it.</p>
+
+  <h2>Who else sees what</h2>
+  <ul>
+    <li><b>Cloudflare</b> hosts the site and, like any host, sees requests and the addresses they come from in its logs.</li>
+    <li><b>Mapbox, Google, Esri and USDA NAIP</b> serve the aerial photos: your browser asks them for the pictures of the area you are looking at.</li>
+    <li><b>County and state GIS servers</b> answer the parcel lookups with public records.</li>
+    <li><b>USGS and USDA</b> provide the public lidar and near-infrared data the detector reads.</li>
+    <li><b>Modal</b> runs the trained detector. It receives the aerial photo of the lot and its frame and property line, not your address or email.</li>
+    <li><b>Resend</b> sends the sign-in email.</li>
+  </ul>
+
+  <h2>Deleting things</h2>
+  <p>Forget any map from your dashboard; everything every tool kept about it goes with it. To delete an account, or to have a finished map's outline removed from the training material, write to the address below and say which map or which email.</p>
+
+  <h2>Contact</h2>
+  <ul>
+    <li>Email: <a href="mailto:nilesandstuff@gmail.com">nilesandstuff@gmail.com</a></li>
+    <li>Reddit: <a href="https://www.reddit.com/user/nilesandstuff" rel="noopener noreferrer">u/nilesandstuff</a>, or the subreddit <a href="https://www.reddit.com/r/lawnanswers" rel="noopener noreferrer">r/lawnanswers</a></li>
+  </ul>
+  <p>Measurements come from aerial imagery and public records; treat them as a close estimate, not a survey. US addresses only.</p>
+</main>
+</body>
+</html>

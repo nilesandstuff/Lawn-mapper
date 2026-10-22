@@ -22,7 +22,7 @@ const esc = (s) => String(s).replace(/[&<>"]/g,
 /** What the middle column says about one state. */
 export function reach(s) {
   if (s.kind === 'whole') return 'Statewide';
-  if (s.kind === 'most') return 'Statewide layer, most counties';
+  if (s.kind === 'most') return /columbia/i.test(s.name || '') ? 'Statewide layer' : 'Statewide layer, most counties';
   return `${s.covered} of ${s.total} ${s.total === 1 ? 'county' : 'counties'}`;
 }
 

@@ -206,8 +206,8 @@ body.job-mode #support-btn, body.job-mode .support-line { display: none; }
   padding: 20px 20px 24px; display: grid; gap: 10px;
 }
 .sheet-x {
-  position: absolute; top: 10px; right: 10px;
-  width: 32px; height: 32px; cursor: pointer;
+  position: absolute; top: 4px; right: 4px;
+  width: 44px; height: 44px; cursor: pointer;
   border: 0; border-radius: 50%; background: transparent;
   font-size: 22px; line-height: 1; color: var(--muted);
 }
@@ -414,7 +414,9 @@ body.inferred-mode .panel { box-shadow: inset 4px 0 0 #7c4dff; }
 
 .link {
   background: none; border: 0; color: var(--muted);
-  text-decoration: underline; padding: 6px 0; font-size: 13px; text-align: left;
+  text-decoration: underline; padding: 12px 0; font-size: 13px; text-align: left;
+  /* A finger's worth of height (2026-10-22 audit): 44px, however short the text. */
+  min-height: 44px; display: inline-flex; align-items: center;
 }
 
 .row { display: flex; gap: 8px; align-items: center; }
