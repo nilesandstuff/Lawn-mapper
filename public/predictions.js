@@ -274,6 +274,31 @@ function row(e, i) {
    * wash, same lazy loading), and reusing its NUMBERS would not be:
    * "undefined% out" over a picture of trees is worse than no pill at all.
    */
+  /*
+   * DRAWN ONLY (workflow 14 `also_draw`, 2026-10-22): a saved map read
+   * through the live model's path with this run's decoder, never trained on
+   * and never scored, so it has no error figure and no green wash -- the
+   * owner's Byron Center condo complex, to see what the detector would hand
+   * them. Its own shapes were not read.
+   */
+  if (e.evalOnly) {
+    top.append(el('span', 'pill warn', 'drawn only: not trained on, not scored'));
+    if (e.windows > 1) top.append(el('span', 'pill grey', `read in ${e.windows} windows`));
+    if (e.lidar === false) top.append(el('span', 'pill grey', 'no lidar'));
+    box.append(top);
+    box.append(el('div', 'meta',
+      `${n(e.squareFeet)} sq ft of lawn found inside the line · ${Math.round(e.mpp * 100)} cm a pixel`
+      + (e.metresAcross ? ` · ${Math.round(e.metresAcross)} m across` : '')
+      + (e.provider ? ` · ${e.provider} photo` : '')));
+    if (Number.isFinite(e.lat) && Number.isFinite(e.lng)) box.append(coordsLine(latLngText(e.lat, e.lng)));
+    if (Number.isFinite(e.pieces)) {
+      box.append(el('div', 'meta cost',
+        `${n(e.pieces)} piece${e.pieces === 1 ? '' : 's'}, ${n(e.vertices)} handles`
+        + (e.droppedPieces ? `; ${n(e.droppedPieces)} speck${e.droppedPieces === 1 ? '' : 's'} (${n(e.droppedSqFt)} sq ft) dropped by the tracer` : '')));
+    }
+    return withPicture(box, e, i, `Lawn ${i + 1}: drawn only, the detector's outline over the photograph`);
+  }
+
   if (e.clumps !== undefined || e.crowns !== undefined) {
     /*
      * PATCHES, NOT TREES, and the wording is the whole point of the change.

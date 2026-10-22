@@ -154,10 +154,15 @@ on:
         # different lots, so this asks whether the decoder can pick. Costs
         # the tiles run plus one whole-lot pass; use `canopy: on lawn` (one
         # decoder) to stay inside the time limit.
-        description: 'Big lots in 10 cm windows (on), every lot whole (off), in blocks: 6 cm (tiles) or 10 cm (tiles 10 cm), or whole + 6 cm blocks stacked (both)'
+        # "on + whole" (2026-10-22, after H112): the 10 cm windows AND the
+        # whole-lot squeezed pass resampled onto the same grid, so the decoder
+        # has the detail and the context the windows alone took away (the
+        # literature's "thumbnail": GeoAgent, ICCV 2023). The whole-lot pass
+        # is one more extraction of a few minutes. CPU runner only.
+        description: 'Big lots in 10 cm windows (on), every lot whole (off), windows + the whole-lot pass stacked (on + whole), in blocks: 6 cm (tiles) or 10 cm (tiles 10 cm), or whole + 6 cm blocks stacked (both)'
         type: choice
         default: 'off'
-        options: ['on', 'off', 'tiles', 'tiles 10 cm', 'both']
+        options: ['on', 'off', 'on + whole', 'tiles', 'tiles 10 cm', 'both']
       lawns:
         # WHICH LAWNS. The 32 maps every table since 2026-09-23 was measured
         # on are frozen as the benchmark (tools/lawn-set.js, cohort column);
@@ -435,6 +440,18 @@ on:
         required: false
         default: ''
 
+      also_draw:
+        # ONE MORE MAP, DRAWN AND NEVER LEARNED FROM (owner, 2026-10-22: the
+        # Byron Center condo complex "just as an evaluation map so I can see
+        # the output trace"). The "lng,lat" of one of the owner's saved maps:
+        # after the scoring, one decoder is trained on every lot and the map is
+        # read through the live server's own path on this runner (the photo,
+        # lidar and NAIP fetched as a press fetches them, the property line as
+        # saved), and its trace joins the run's pictures on the predictions
+        # page, marked as drawn only. Its shapes are never read: nothing from
+        # it is trained on or scored, and the address stays out of the log.
+        description: 'Also draw one of the owner''s saved maps, never trained on or scored: its "lng,lat" (leave empty for none)'
+        default: ''
 jobs:
   extract:
     name: Extract with PyTorch
@@ -783,7 +800,7 @@ jobs:
       # Both scales: the whole-lot pass first, into its own directory, exactly
       # as `windows: off` reads it; the step below then reads the 6 cm blocks.
       - name: Run the backbone over each lot whole (both scales)
-        if: ${{ inputs.windows == 'both' && inputs.gpu != 'modal' && steps.feats.outputs.cache-hit != 'true' }}
+        if: ${{ (inputs.windows == 'both' || inputs.windows == 'on + whole') && inputs.gpu != 'modal' && steps.feats.outputs.cache-hit != 'true' }}
         env:
           IMAGES: frames
           OUT: feats-whole
@@ -959,7 +976,7 @@ jobs:
         if: ${{ inputs.release == 'off' && inputs.decoder != 'off' && inputs.canopy != 'compare' && inputs.gpu != 'modal' }}
         env:
           FEATURES: feats
-          FEATURES_WHOLE: ${{ inputs.windows == 'both' && 'feats-whole' || '' }}
+          FEATURES_WHOLE: ${{ (inputs.windows == 'both' || inputs.windows == 'on + whole') && 'feats-whole' || '' }}
           FRAMES: frames
           OUT: preds
           CANOPY: ${{ inputs.canopy != 'off' && 'canopy' || '' }}
@@ -992,7 +1009,7 @@ jobs:
         if: ${{ inputs.release == 'off' && startsWith(inputs.decoder, 'fused + edge') && inputs.canopy != 'compare' && inputs.gpu != 'modal' }}
         env:
           FEATURES: feats
-          FEATURES_WHOLE: ${{ inputs.windows == 'both' && 'feats-whole' || '' }}
+          FEATURES_WHOLE: ${{ (inputs.windows == 'both' || inputs.windows == 'on + whole') && 'feats-whole' || '' }}
           FRAMES: frames
           OUT: preds-edge
           CANOPY: ${{ inputs.canopy != 'off' && 'canopy' || '' }}
@@ -1014,7 +1031,7 @@ jobs:
         if: ${{ inputs.release == 'off' && startsWith(inputs.decoder, 'fused + edge') && inputs.edge_reach == 'compare' && inputs.canopy != 'compare' && inputs.gpu != 'modal' }}
         env:
           FEATURES: feats
-          FEATURES_WHOLE: ${{ inputs.windows == 'both' && 'feats-whole' || '' }}
+          FEATURES_WHOLE: ${{ (inputs.windows == 'both' || inputs.windows == 'on + whole') && 'feats-whole' || '' }}
           FRAMES: frames
           OUT: preds-wide
           CANOPY: ${{ inputs.canopy != 'off' && 'canopy' || '' }}
@@ -1038,7 +1055,7 @@ jobs:
         if: ${{ inputs.release == 'off' && startsWith(inputs.decoder, 'fused + edge') && inputs.overture == 'compare' && inputs.canopy != 'compare' && inputs.gpu != 'modal' }}
         env:
           FEATURES: feats
-          FEATURES_WHOLE: ${{ inputs.windows == 'both' && 'feats-whole' || '' }}
+          FEATURES_WHOLE: ${{ (inputs.windows == 'both' || inputs.windows == 'on + whole') && 'feats-whole' || '' }}
           FRAMES: frames
           OUT: preds-overture
           CANOPY: ${{ inputs.canopy != 'off' && 'canopy' || '' }}
@@ -1059,7 +1076,7 @@ jobs:
         if: ${{ inputs.release == 'off' && startsWith(inputs.decoder, 'fused + edge') && inputs.refiner_trial == 'compare' && inputs.canopy != 'compare' && inputs.gpu != 'modal' }}
         env:
           FEATURES: feats
-          FEATURES_WHOLE: ${{ inputs.windows == 'both' && 'feats-whole' || '' }}
+          FEATURES_WHOLE: ${{ (inputs.windows == 'both' || inputs.windows == 'on + whole') && 'feats-whole' || '' }}
           FRAMES: frames
           OUT: preds-hardedge
           CANOPY: ${{ inputs.canopy != 'off' && 'canopy' || '' }}
@@ -1079,7 +1096,7 @@ jobs:
         if: ${{ inputs.release == 'off' && startsWith(inputs.decoder, 'fused + edge') && inputs.refiner_trial == 'compare' && inputs.canopy != 'compare' && inputs.gpu != 'modal' }}
         env:
           FEATURES: feats
-          FEATURES_WHOLE: ${{ inputs.windows == 'both' && 'feats-whole' || '' }}
+          FEATURES_WHOLE: ${{ (inputs.windows == 'both' || inputs.windows == 'on + whole') && 'feats-whole' || '' }}
           FRAMES: frames
           OUT: preds-widegate
           CANOPY: ${{ inputs.canopy != 'off' && 'canopy' || '' }}
@@ -1101,7 +1118,7 @@ jobs:
         if: ${{ inputs.release == 'off' && startsWith(inputs.decoder, 'fused + edge') && inputs.refiner_trial == 'average of 3' && inputs.canopy != 'compare' && inputs.gpu != 'modal' }}
         env:
           FEATURES: feats
-          FEATURES_WHOLE: ${{ inputs.windows == 'both' && 'feats-whole' || '' }}
+          FEATURES_WHOLE: ${{ (inputs.windows == 'both' || inputs.windows == 'on + whole') && 'feats-whole' || '' }}
           FRAMES: frames
           OUT: preds-ens3
           CANOPY: ${{ inputs.canopy != 'off' && 'canopy' || '' }}
@@ -1125,7 +1142,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           FEATURES: feats
-          FEATURES_WHOLE: ${{ inputs.windows == 'both' && 'feats-whole' || '' }}
+          FEATURES_WHOLE: ${{ (inputs.windows == 'both' || inputs.windows == 'on + whole') && 'feats-whole' || '' }}
           FRAMES: frames
           OUT: preds-hold-county
           CANOPY: ${{ inputs.canopy != 'off' && 'canopy' || '' }}
@@ -1146,7 +1163,7 @@ jobs:
         if: ${{ inputs.release == 'off' && startsWith(inputs.decoder, 'fused + edge') && inputs.refiner_trial == 'held out by photo' && inputs.canopy != 'compare' && inputs.gpu != 'modal' }}
         env:
           FEATURES: feats
-          FEATURES_WHOLE: ${{ inputs.windows == 'both' && 'feats-whole' || '' }}
+          FEATURES_WHOLE: ${{ (inputs.windows == 'both' || inputs.windows == 'on + whole') && 'feats-whole' || '' }}
           FRAMES: frames
           OUT: preds-hold-mapbox
           CANOPY: ${{ inputs.canopy != 'off' && 'canopy' || '' }}
@@ -1168,7 +1185,7 @@ jobs:
         if: ${{ inputs.release == 'off' && startsWith(inputs.decoder, 'fused + edge') && inputs.refiner_trial == 'epochs' && inputs.canopy != 'compare' && inputs.gpu != 'modal' }}
         env:
           FEATURES: feats
-          FEATURES_WHOLE: ${{ inputs.windows == 'both' && 'feats-whole' || '' }}
+          FEATURES_WHOLE: ${{ (inputs.windows == 'both' || inputs.windows == 'on + whole') && 'feats-whole' || '' }}
           FRAMES: frames
           OUT: preds-ep15
           CANOPY: ${{ inputs.canopy != 'off' && 'canopy' || '' }}
@@ -1188,7 +1205,7 @@ jobs:
         if: ${{ inputs.release == 'off' && startsWith(inputs.decoder, 'fused + edge') && inputs.refiner_trial == 'epochs' && inputs.canopy != 'compare' && inputs.gpu != 'modal' }}
         env:
           FEATURES: feats
-          FEATURES_WHOLE: ${{ inputs.windows == 'both' && 'feats-whole' || '' }}
+          FEATURES_WHOLE: ${{ (inputs.windows == 'both' || inputs.windows == 'on + whole') && 'feats-whole' || '' }}
           FRAMES: frames
           OUT: preds-ep60
           CANOPY: ${{ inputs.canopy != 'off' && 'canopy' || '' }}
@@ -1209,7 +1226,7 @@ jobs:
         if: ${{ inputs.release == 'off' && startsWith(inputs.decoder, 'fused + edge') && inputs.refiner_trial == 'no flips' && inputs.canopy != 'compare' && inputs.gpu != 'modal' }}
         env:
           FEATURES: feats
-          FEATURES_WHOLE: ${{ inputs.windows == 'both' && 'feats-whole' || '' }}
+          FEATURES_WHOLE: ${{ (inputs.windows == 'both' || inputs.windows == 'on + whole') && 'feats-whole' || '' }}
           FRAMES: frames
           OUT: preds-noflip
           CANOPY: ${{ inputs.canopy != 'off' && 'canopy' || '' }}
@@ -1229,7 +1246,7 @@ jobs:
         if: ${{ inputs.release == 'off' && startsWith(inputs.decoder, 'fused + edge') && inputs.refiner_trial == 'upernet' && inputs.canopy != 'compare' && inputs.gpu != 'modal' }}
         env:
           FEATURES: feats
-          FEATURES_WHOLE: ${{ inputs.windows == 'both' && 'feats-whole' || '' }}
+          FEATURES_WHOLE: ${{ (inputs.windows == 'both' || inputs.windows == 'on + whole') && 'feats-whole' || '' }}
           FRAMES: frames
           OUT: preds-upernet
           CANOPY: ${{ inputs.canopy != 'off' && 'canopy' || '' }}
@@ -1332,7 +1349,7 @@ jobs:
         if: ${{ inputs.release == 'off' && startsWith(inputs.decoder, 'fused + edge') && inputs.corrections == 'on' && inputs.canopy != 'compare' && inputs.gpu != 'modal' }}
         env:
           FEATURES: feats
-          FEATURES_WHOLE: ${{ inputs.windows == 'both' && 'feats-whole' || '' }}
+          FEATURES_WHOLE: ${{ (inputs.windows == 'both' || inputs.windows == 'on + whole') && 'feats-whole' || '' }}
           FRAMES: frames
           OUT: preds-corr
           CANOPY: ${{ inputs.canopy != 'off' && 'canopy' || '' }}
@@ -1353,7 +1370,7 @@ jobs:
         if: ${{ inputs.release == 'off' && startsWith(inputs.decoder, 'fused + edge') && inputs.not_lawn == 'on' && inputs.canopy != 'compare' && inputs.gpu != 'modal' }}
         env:
           FEATURES: feats
-          FEATURES_WHOLE: ${{ inputs.windows == 'both' && 'feats-whole' || '' }}
+          FEATURES_WHOLE: ${{ (inputs.windows == 'both' || inputs.windows == 'on + whole') && 'feats-whole' || '' }}
           FRAMES: frames
           OUT: preds-nonl
           CANOPY: ${{ inputs.canopy != 'off' && 'canopy' || '' }}
@@ -1379,7 +1396,7 @@ jobs:
         if: ${{ inputs.release == 'off' && startsWith(inputs.decoder, 'fused + edge + trees') && inputs.canopy != 'compare' && inputs.canopy != 'off' && inputs.gpu != 'modal' }}
         env:
           FEATURES: feats
-          FEATURES_WHOLE: ${{ inputs.windows == 'both' && 'feats-whole' || '' }}
+          FEATURES_WHOLE: ${{ (inputs.windows == 'both' || inputs.windows == 'on + whole') && 'feats-whole' || '' }}
           FRAMES: frames
           OUT: preds-trees
           CANOPY: canopy
@@ -1407,7 +1424,7 @@ jobs:
         if: ${{ inputs.release == 'off' && startsWith(inputs.decoder, 'fused + edge + trees') && inputs.canopy != 'compare' && inputs.canopy != 'off' && inputs.gpu != 'modal' }}
         env:
           FEATURES: feats
-          FEATURES_WHOLE: ${{ inputs.windows == 'both' && 'feats-whole' || '' }}
+          FEATURES_WHOLE: ${{ (inputs.windows == 'both' || inputs.windows == 'on + whole') && 'feats-whole' || '' }}
           FRAMES: frames
           OUT: preds-trees-canopy
           CANOPY: canopy
@@ -1426,7 +1443,7 @@ jobs:
         if: ${{ inputs.release == 'off' && inputs.decoder == 'fused + edge + trees + returns' && inputs.canopy != 'compare' && inputs.canopy != 'off' && inputs.gpu != 'modal' }}
         env:
           FEATURES: feats
-          FEATURES_WHOLE: ${{ inputs.windows == 'both' && 'feats-whole' || '' }}
+          FEATURES_WHOLE: ${{ (inputs.windows == 'both' || inputs.windows == 'on + whole') && 'feats-whole' || '' }}
           FRAMES: frames
           OUT: preds-trees-returns
           CANOPY: canopy
@@ -1449,7 +1466,7 @@ jobs:
         if: ${{ inputs.decoder != 'off' && inputs.canopy == 'compare' && inputs.gpu != 'modal' }}
         env:
           FEATURES: feats
-          FEATURES_WHOLE: ${{ inputs.windows == 'both' && 'feats-whole' || '' }}
+          FEATURES_WHOLE: ${{ (inputs.windows == 'both' || inputs.windows == 'on + whole') && 'feats-whole' || '' }}
           FRAMES: frames
           OUT: preds-none
           SEED: ${{ inputs.seed }}
@@ -1468,7 +1485,7 @@ jobs:
         if: ${{ inputs.decoder != 'off' && inputs.canopy == 'compare' && inputs.gpu != 'modal' }}
         env:
           FEATURES: feats
-          FEATURES_WHOLE: ${{ inputs.windows == 'both' && 'feats-whole' || '' }}
+          FEATURES_WHOLE: ${{ (inputs.windows == 'both' || inputs.windows == 'on + whole') && 'feats-whole' || '' }}
           FRAMES: frames
           OUT: preds-lawn
           CANOPY: canopy
@@ -1492,7 +1509,7 @@ jobs:
         if: ${{ inputs.decoder != 'off' && inputs.canopy == 'compare' && inputs.gpu != 'modal' }}
         env:
           FEATURES: feats
-          FEATURES_WHOLE: ${{ inputs.windows == 'both' && 'feats-whole' || '' }}
+          FEATURES_WHOLE: ${{ (inputs.windows == 'both' || inputs.windows == 'on + whole') && 'feats-whole' || '' }}
           FRAMES: frames
           OUT: preds-all
           CANOPY: canopy
@@ -1593,11 +1610,51 @@ jobs:
       # the live server on Modal's volume. tools/modal_serve.py reads
       # /models/alpha/model.pt when a container starts, so the next cold
       # start serves it; no redeploy of the model server is needed.
+      # THE ASKED MAP (`also_draw`, 2026-10-22). One decoder trained on every
+      # lot, exactly as a release is but kept here and never shipped; then
+      # the saved map read through the live server's own path on this runner
+      # (tools/draw-map.mjs, tools/draw_map.py) and drawn beside the run's
+      # pictures. Measures nothing, changes no table, never fails the run.
+      - name: Train one decoder on every lot, for the asked map
+        if: ${{ inputs.also_draw != '' && inputs.release == 'off' && startsWith(inputs.decoder, 'fused + edge') && inputs.canopy != 'off' && inputs.canopy != 'compare' && inputs.gpu != 'modal' }}
+        continue-on-error: true
+        env:
+          FEATURES: feats
+          FEATURES_WHOLE: ${{ (inputs.windows == 'both' || inputs.windows == 'on + whole') && 'feats-whole' || '' }}
+          FRAMES: frames
+          CANOPY: canopy
+          CANOPY_MODE: ${{ inputs.canopy == 'everywhere' && 'all' || 'lawn' }}
+          SEED: ${{ inputs.seed }}
+          FUSE: '1'
+          FUSE_LIDAR: lidar
+          FUSE_NAIP: naip
+          FUSE_CANOPY: '1'
+          UNDER_TREES: '1'
+          REFINE: '1'
+          OUT: preds-drawn
+          RELEASE_OUT: release-local
+        run: python3 tools/train_decoder.py
+
+      - name: Draw the asked map through the live model's path
+        if: ${{ inputs.also_draw != '' && inputs.release == 'off' && startsWith(inputs.decoder, 'fused + edge') && inputs.canopy != 'off' && inputs.canopy != 'compare' && inputs.gpu != 'modal' }}
+        continue-on-error: true
+        env:
+          ALSO_DRAW: ${{ inputs.also_draw }}
+          SITE: https://${{ vars.CUSTOM_DOMAIN }}
+          MAPS_READ_TOKEN: ${{ secrets.MAPS_READ_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CORPUS_BUCKET: lawn-mapper-corpus
+          RELEASE_DIR: release-local
+          RUN_FOLDER_FILE: run-folder.txt
+          OUT: drawn
+        run: node tools/draw-map.mjs
+
       - name: Train the release model on every lot
         if: ${{ inputs.release != 'off' && inputs.gpu != 'modal' }}
         env:
           FEATURES: feats
-          FEATURES_WHOLE: ${{ inputs.windows == 'both' && 'feats-whole' || '' }}
+          FEATURES_WHOLE: ${{ (inputs.windows == 'both' || inputs.windows == 'on + whole') && 'feats-whole' || '' }}
           FRAMES: frames
           CANOPY: canopy
           CANOPY_MODE: ${{ inputs.canopy == 'everywhere' && 'all' || 'lawn' }}

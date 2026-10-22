@@ -832,6 +832,9 @@ def main():
             # `windows: on`): the live server reads a big lot the same way
             # only for a release trained this way (alpha_infer.features).
             "windowed": int(manifest.get("windowed", 0) or 0),
+            # The whole-lot pass stacked beside the grid (`windows: on + whole`
+            # or `both`): the live server reads such a release both ways too.
+            "bothScales": bool(FEATURES_WHOLE),
             "dim": dim, "refine": REFINE, "refineReach": (os.environ.get("REFINE_REACH") or "normal") if REFINE else None, "refineEdges": os.environ.get("REFINE_EDGES") == "1", "refineGate": os.environ.get("REFINE_GATE") == "1", "fuse": FUSE, "fuseCanopy": FUSE_CANOPY,
             "underTrees": UNDER_TREES, "fuseReturns": bool(FUSE_RETURNS), "fuseIntensity": FUSE_INTENSITY, "fuseOverture": bool(FUSE_OVERTURE), "lidarDistrust": bool(LIDAR_DISTRUST), "correctionsWeight": CORRECTIONS_WEIGHT,
             "channels": list(CHANNELS) if FUSE else [],

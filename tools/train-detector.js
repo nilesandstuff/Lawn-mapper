@@ -1726,6 +1726,8 @@ async function publishRenderings(bucket, best, lawns, using, meta = {}) {
 
     console.log(`\nDrew ${put} of ${best.rows.length} lawns under "${best.cfg.name}".`);
     console.log(`Folder: ${keys.index.replace('/index.json', '')}`);
+    /* The folder's name for the step that draws the asked map (tools/draw-map.mjs). */
+    if (process.env.RUN_FOLDER_FILE) writeFileSync(process.env.RUN_FOLDER_FILE, slug);
     console.log(`The page now lists ${list.runs} run${list.runs === 1 ? '' : 's'}.`);
     console.log('Open /predictions.html to see the outlines it drew, worst first,');
     console.log('and the button at the top to flip every picture to the raw mask.');

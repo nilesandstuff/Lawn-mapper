@@ -1,0 +1,80 @@
+/**
+ * The pure parts of tools/draw-map.mjs: the point asked, the saved map it
+ * names, the mask resampling and the press built for it.
+ *
+ *   node tools/draw-map.test.js
+ */
+
+import { parseLngLat, nearestMap, nearest, resizeRgba, pressFor, evalEntry } from './draw-map.mjs';
+import { runKeys } from './run-folder.js';
+
+let failures = 0;
+const check = (name, ok, detail = '') => {
+  console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? `\n      ${detail}` : ''}`);
+  if (!ok) failures++;
+};
+
+{
+  const p = parseLngLat(' -85.70712, 42.83547 ');
+  check('reads "lng,lat" with spaces', p && p[0] === -85.70712 && p[1] === 42.83547);
+  check('refuses words, a lone number and an impossible latitude',
+    parseLngLat('byron center') === null && parseLngLat('42.8') === null && parseLngLat('-85.7,142.8') === null);
+}
+
+{
+  const maps = [
+    { lng: -85.70712, lat: 42.83547, at: 'a' },
+    { lng: -85.70800, lat: 42.83547, at: 'b' },   // about 72 m west
+    { lng: -85.60000, lat: 42.83547, at: 'c' },   // kilometres away
+    { lng: null, lat: null, at: 'd' },
+  ];
+  const hit = nearestMap(maps, [-85.70720, 42.83547]);
+  check('the nearest saved map within 150 m is chosen', hit?.map.at === 'a' && hit.d < 10, `got ${hit?.map.at} at ${hit?.d?.toFixed(1)} m`);
+  check('nothing within 150 m means null', nearestMap(maps, [-85.65, 42.83547]) === null);
+  check('a map without coordinates is skipped, not matched', nearestMap([maps[3]], [0, 0]) === null);
+}
+
+{
+  const m = new Uint8Array([1, 0, 0, 1]);          // 2x2: diagonal
+  const up = nearest(m, 2, 2, 4, 4);
+  check('nearest resampling keeps each source cell as a 2x2 block',
+    up[0] === 1 && up[1] === 1 && up[2] === 0 && up[5] === 1 && up[10] === 1 && up[15] === 1 && up[3] === 0);
+  const down = nearest(up, 4, 4, 2, 2);
+  check('and comes back to itself', Array.from(down).join('') === '1001');
+  const rgba = resizeRgba(new Uint8Array([10, 20, 30, 255, 50, 60, 70, 255]), 2, 1, 4, 1, 1);
+  check('the photo resize averages the box', rgba[0] === 30 && rgba[1] === 40 && rgba[2] === 50 && rgba[3] === 255);
+}
+
+{
+  const map = {
+    lng: -85.70712, lat: 42.83547, provider: 'county', countySvc: 363,
+    frame: { lng: -85.7057, lat: 42.8358, zoom: 16.31, size: 604, height: 637 },
+    parcel: { type: 'Feature', geometry: { type: 'Polygon', coordinates: [[[0, 0], [1, 0], [1, 1], [0, 0]]] } },
+    naipAlign: { east: 1, north: 2 },
+  };
+  const press = pressFor(map, 'https://lawnmap.example.com');
+  check('the county photo is asked of the site by its service id',
+    press.imageUrl.startsWith('https://lawnmap.example.com/api/imagery?') && press.imageUrl.includes('provider=county') && press.imageUrl.includes('svc=363'));
+  /* 390 m across in the one request the site serves (2560 px): about 18 cm
+     a pixel, the same photo the live app would get for this lot. */
+  check('the capture frame is finer than the saved display frame and inside the site\'s one-request cap',
+    press.frame.zoom > map.frame.zoom && press.groundCm > 10 && press.groundCm <= 20 && press.frame.size <= 1280,
+    `${press.groundCm} cm at zoom ${press.frame.zoom}, ${press.frame.size} logical px`);
+  check('the property line travels as its geometry', press.parcel.type === 'Polygon');
+  check('NAIP\'s Mapbox alignment is not applied to a county photo', press.naipAlign === null);
+  const mb = pressFor({ ...map, provider: 'mapbox', countySvc: null }, 'https://lawnmap.example.com');
+  check('a Mapbox map asks for Mapbox and keeps its alignment', mb.imageUrl.includes('provider=mapbox') && mb.naipAlign.east === 1);
+
+  const keys = runKeys('2026-10-22-1200-edt');
+  const e = evalEntry({
+    keys, n: 104, map, prep: { w: 1024, h: 900, mpp: 0.38, span: 390 }, rec: { lidar: true, naip: false, seconds: { backbone: 600 } },
+    trace: { pieces: 3, vertices: 40, droppedPieces: 2, droppedPx: 10, renderPx: 1280, renderPy: 1125 },
+    lawnCells: 1000, county: 'Kent County', provider: 'county', windows: 36,
+  });
+  check('the entry is marked drawn only, scoreless, and named by position', e.evalOnly === true && e.errorPct === null && e.key === 'runs/2026-10-22-1200-edt/104.png');
+  check('and names no address', !JSON.stringify(e).toLowerCase().includes('drive') && e.id === '-85.70712,42.83547:eval:draw');
+  check('its lawn area comes from the cells and the grid scale', e.squareFeet === Math.round((1000 * 0.38 * 0.38) / 0.09290304));
+}
+
+console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);
+process.exit(failures === 0 ? 0 : 1);

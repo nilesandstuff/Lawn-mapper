@@ -152,8 +152,8 @@ class Detector:
         whole was read at 44 cm a pixel and traced very badly."""
         size = self.eye.side * self.eye.patch
         w, h = photo.size
-        windows_on = bool((self.release.meta.get("windowed") if self.release is not None else 0)
-                          or os.environ.get("ALPHA_WINDOWS") == "1")
+        meta = self.release.meta if self.release is not None else {}
+        windows_on = bool(meta.get("windowed") or os.environ.get("ALPHA_WINDOWS") == "1")
         if windows_on and not extract_features.read_whole(span, w, h, size):
             mpp = (span / w) if self.eye.wants_scale else 0.0
 
@@ -164,7 +164,22 @@ class Detector:
 
             grid, cover, n = windowed(extract_features.normalised(photo), size, self.eye.patch, look)
             self.last_windows = n
-            return grid, cover
+        else:
+            grid, cover = self.whole(photo, span, size)
+            self.last_windows = 1
+        if meta.get("bothScales"):
+            # BOTH SCALES (`windows: on + whole`, 2026-10-22): the whole-lot
+            # pass resampled onto this grid and stacked beside it, exactly as
+            # train_decoder.read_lawn stacks FEATURES_WHOLE. A lot read whole
+            # above is stacked with itself, as its training grid was.
+            from decoder_grid import onto_grid
+            whole, wc = (grid, cover) if self.last_windows == 1 else self.whole(photo, span, size)
+            gh, gw = grid.shape[:2]
+            grid = np.concatenate([grid, onto_grid(whole, wc[0], wc[1], gw, gh, cover[0], cover[1])], axis=2)
+        return grid, cover
+
+    def whole(self, photo, span, size):
+        """The lot squeezed into one pass, as every release before S49 read it."""
         with tempfile.NamedTemporaryFile(suffix=".png") as f:
             photo.save(f.name)
             tensor, cover = extract_features.as_tensor(f.name, size)
@@ -172,7 +187,6 @@ class Detector:
         mpp = (long_m / size) if self.eye.wants_scale else 0.0
         hidden = self.eye.look(tensor, mpp)
         flat, dim, _ = extract_features.patches_of(hidden, self.eye.side)
-        self.last_windows = 1
         return flat.reshape(self.eye.side, self.eye.side, dim), cover
 
     def canopy(self, photo, span, down):
