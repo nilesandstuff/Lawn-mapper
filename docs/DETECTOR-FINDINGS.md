@@ -7750,6 +7750,31 @@ fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
 
+### S51. DINOv3's satellite ViT-L as the eye, in place of Scale-MAE (owner, 2026-10-22: "let's do #1, and then go down the list if that one isn't superb") -- RUNNING
+**The idea.** Every eye measured here was pretrained before 2024:
+Scale-MAE on fMoW at about 0.3-0.6 m with a scale input (the one that
+won, H5/H9 era), DINOv2 on web images (worse, 2026-09-18, under the
+tiled protocol since replaced). DINOv3 (Meta, 2025) ViT-L/16
+`facebook/dinov3-vitl16-pretrain-sat493m` was distilled from the 7B
+teacher on 493 million Maxar satellite tiles at 0.6 m: dense features
+at 16 px patches (the same 56 x 56 grid at 896), RoPE so any size reads,
+no scale input. Its card's GEO-Bench segmentation mean is 74.5 (the 7B
+75.0). Gated on the hub: the owner accepted the licence and added a read
+token as HF_TOKEN (2026-10-22). The extractor reads the checkpoint's own
+pixel mean and sd from its processor config (Maxar's statistics, not
+ImageNet's) and applies them to every picture that eye reads.
+
+**The run.** Workflow 14, 2026-10-22 ~21:45 UTC: THE PLAN's decoder over
+DINOv3-sat features, every lot whole at 896, seed 7, locked 104, saved
+lidar moves; read with workflow 24 against 39715167319 (Scale-MAE,
+17.2%), the same seed and lots. Then the web-trained twin
+(`dinov3-vitl16-pretrain-lvd1689m`) as a second row if the first says
+anything. **The bar:** better by more than H109's band on all lots and
+not worse on the county-photo lots ships as the next eye; within noise
+and the list continues (1280 px, the scale factor, a FLAIR fine-tune).
+A DINOv3 eye for the live model would need the Modal image rebuilt with
+the token and the new backbone, which is not done until it earns it.
+
 ### S50. Big lots read in 10 cm windows WITH the whole-lot pass stacked beside them: the detail and the context (after H112; owner, 2026-10-22: "giving it smaller frames to work with SHOULD yield better results") -- RUNNING
 **The idea.** H112 says the windows alone cost the big lots context; the
 literature says a whole-image thumbnail beside patch features is worth
