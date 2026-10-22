@@ -103,6 +103,7 @@ export function homeHeaders() {
 export function wranglerFor(home, lawnmap = `lawnmap.${home}`) {
   return `# Written by tools/home-prepare.js at deploy time. Not checked in.
 name = "nilesandstuff-home"
+workers_dev = false
 main = "src/index.js"
 compatibility_date = "2025-09-01"
 
@@ -121,8 +122,6 @@ service = "lawn-mapper"
 
 [vars]
 LAWNMAP_HOST = "${lawnmap}"
-
-workers_dev = false
 
 [[routes]]
 pattern = "${home}"

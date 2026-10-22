@@ -171,7 +171,11 @@ export function applyConfig(toml, { kvId, dbId, bucket = true, customDomain } = 
     /* The custom domain is THE address: the *.workers.dev one is switched off
        (owner, 2026-10-22), so there is one host to index and one to protect.
        Without a custom domain workers.dev stays on, or nothing is reachable. */
-    out += `\n[[routes]]\npattern = "${customDomain}"\ncustom_domain = true\n\nworkers_dev = false\n`;
+    out += `\n[[routes]]\npattern = "${customDomain}"\ncustom_domain = true\n`;
+    /* A top-level key, so it goes right after `name`: appended at the end it
+       would belong to whatever table ends the file (the 2026-10-22 deploy
+       failed on exactly that). */
+    out = out.replace(/^(name = "[^"]*"\n)/m, '$1workers_dev = false\n');
   }
 
   return out;
