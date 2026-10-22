@@ -19,7 +19,8 @@
  * it draws on the photo. Kept with the map as the water part's `irrigation` (POST /api/maps/tool).
  */
 
-import { catalogue, headWater, zoneWater, calibrate, placeByGps, facing, arcOf, enu, unEnu, sprayBodyId, seriesOf, nozzleRiseIn, SPRAY_POP_IN, SPRAY_REG_PSI, longestEdgeInSight, snapToGrid, GRID_FT_MIN, GRID_FT_MAX, GRID_FT_DEFAULT } from '/lib/heads.js';
+import { inletFromGauge, inletFromThrow, spreadReadings } from '/lib/measured.js';
+import { catalogue, headWater, zoneWater, calibrate, placeByGps, settle, facing, arcOf, enu, unEnu, sprayBodyId, seriesOf, nozzleRiseIn, SPRAY_POP_IN, SPRAY_REG_PSI, longestEdgeInSight, snapToGrid, GRID_FT_MIN, GRID_FT_MAX, GRID_FT_DEFAULT } from '/lib/heads.js';
 import { autoArc, fitArcs, isLawn, MIN_THROW, BIN_DEG } from '/lib/arcs.js';
 import { precipitation, setProfiles } from '/lib/precip.js';
 import { layout } from '/lib/layout.js';
@@ -28,8 +29,14 @@ import { route, solveZone, headFlow, regulatedOut, deviceLoss, dwPerFt, roughnes
 const FILES = ['rainbird-sprays', 'rainbird-rotors', 'hunter-sprays', 'hunter-rotors', 'other-brands'];
 const ZONE_COLORS = ['#e53935', '#1e88e5', '#43a047', '#fb8c00', '#8e24aa', '#00acc1', '#fdd835', '#6d4c41', '#d81b60', '#3949ab', '#7cb342', '#546e7a'];
 // the arcs last (owner, 2026-10-21): fitted once everything that sets a head's throw is known, then adjusted
-const STEPS = ['place', 'review', 'zones', 'models', 'details', 'equipment', 'supply', 'lines', 'water', 'pressure', 'arcs'];
-const STEP_TITLE = { place: 'Place your sprinkler heads', review: 'Check where they are', zones: 'Which valve is each head on?', models: 'What heads and nozzles are they?', details: 'Your heads', equipment: 'The backflow preventer and the valves', supply: 'The water coming in', lines: 'The pipe to each zone', water: 'Your water (optional)', pressure: 'The pressure at every head', arcs: "Each head's arc, and how evenly the lawn is watered" };
+const STEPS = ['place', 'review', 'zones', 'models', 'details', 'method', 'equipment', 'supply', 'lines', 'water', 'pressure', 'measure', 'arcs'];
+/* THE STEPS FOR THE WAY THE PRESSURE IS FOUND (owner, 2026-10-22): worked out from the pipes and the water
+   supply, or measured at the heads (a gauge, or how far they throw) with nothing buried or in a valve box asked */
+const MEASURED = new Set(['gauge', 'throw']);
+const stepsFor = (method) => ['place', 'review', 'zones', 'models', 'details', 'method', ...(MEASURED.has(method) ? ['measure'] : ['equipment', 'supply', 'lines', 'water', 'pressure']), 'arcs'];
+const STEP_TITLE = { place: 'Place your sprinkler heads', review: 'Check where they are', zones: 'Which valve is each head on?', models: 'What heads and nozzles are they?', details: 'Your heads', equipment: 'The backflow preventer and the valves', supply: 'The water coming in', lines: 'The pipe to each zone', water: 'Your water (optional)', pressure: 'The pressure at every head', arcs: "Each head's arc, and how evenly the lawn is watered", method: 'How to find the pressure at your heads', measure: 'Measure at your heads' };
+/** How a zone's heads join its pipe (lib/hydraulics.js SWING). */
+const CONNECT = [['', "I don't know (swing pipe for sprays, a rigid swing joint for rotors)"], ['swing', 'Flexible 1/2 in swing pipe ("funny pipe") to each head'], ['saddle', 'Saddles: each head on a fitting clamped onto the pipe'], ['rigid', 'Rigid swing joints (three or four elbows)']];
 /** The pipe families a zone's lines may be, and the supply line's. */
 const LINE_FAMILIES = ['pe', 'pvc200', 'pvc40'];
 const SUPPLY_FAMILIES = ['pvc40', 'pvc200', 'pe', 'cuL', 'cuK', 'pex', 'galv'];
@@ -70,7 +77,8 @@ export function sprinklers(ctx) {
   let step = null, cat = null, catNote = '';
   const sel = new Set();
   const gps = { on: false, watch: null, fixes: [], cal: null, phase: null, ref: null, live: null, busy: false };
-  let drag = null, dragged = false, placeMode = 'tap', labelsHidden = 0, placing = null, gaugeNote = '', coverView = 'all', arcPhase = 'fitting', showCover = false;
+  let drag = null, dragged = false, placeMode = 'tap', labelsHidden = 0, placing = null, gaugeNote = '', coverView = 'all', arcPhase = 'fitting', showCover = false, measureNote = '';
+  const throwGps = { head: null, id: null };
   let nextId = 1;
 
   const loadCat = (async () => {
@@ -105,6 +113,7 @@ export function sprinklers(ctx) {
   /** Every zone solved from the backflow preventer to the nozzles (lib/hydraulics.js), or null until the
       equipment is placed and the pressure given. Kept until something changes. */
   function solve() {
+    if (MEASURED.has(irr.method)) return solveMeasured();
     const sys = irr.system, src = sys.source, P = src.psi;
     if (!cat || !Number.isFinite(P) || !sys.pvb.at || !sys.boxes.length) return null;
     const key = JSON.stringify([irr.heads, irr.zones, sys, ctx.elevReady?.() ?? false, devices.length]);
@@ -120,10 +129,11 @@ export function sprinklers(ctx) {
     const svcEps = svc ? roughnessMm(src.serviceFamily, sys.quality, years) : 0;
     const groundPvb = ctx.elev?.(sys.pvb.at);
     /* THE PIPE, LAID AS AN INSTALLER LAYS IT (lib/layout.js), once the lawn map is in: around houses, out from
-       under trees, square runs along the lawn's edges; before it is in, the old straight-line tree. */
+       straight runs, along the lawn's edges where that is cheapest; before it is in, the old straight-line tree. */
     let lay = null;
     if (ctx.layoutGround?.()) {
-      const bearing = Number.isFinite(irr.grid?.bearing) ? irr.grid.bearing : longestEdgeInSight(ctx.lawnRings?.() || [], ctx.lawnMiddle?.() || sys.pvb.at)?.bearing ?? 0;
+      // the pipe's own lines: along the lawn's longest straight edge (never the placing grid's setting)
+      const bearing = longestEdgeInSight(ctx.lawnRings?.() || [], ctx.lawnMiddle?.() || sys.pvb.at, { sight: false })?.bearing ?? 0;
       try {
         lay = layout({
           pvb: sys.pvb.at, boxes: sys.boxes, bearing, ground: ctx.layoutGround(),
@@ -152,9 +162,11 @@ export function sprinklers(ctx) {
         tree, heads: new Map(hs.map((h) => [h.id, h])), water: (h, psi) => headFlow(h, cat, psi), elev: ctx.elev,
         family, size: z.size && z.size !== 'auto' ? pipeSize(family, Number(z.size))?.id : null,
         valve: deviceOf(z.valve) || typical('valve', 1),
-        // sprays on flexible swing pipe, rotors on a rigid 3/4 in swing joint (lib/hydraulics.js SWING)
+        // how each head joins the pipe (owner, 2026-10-22): as the person says for the zone, else sprays on
+        // flexible swing pipe and rotors on a rigid 3/4 in swing joint (lib/hydraulics.js SWING)
         riseIn: (h) => nozzleRiseIn(cat.body(h.body)),
-        swingLoss: (h, g) => deviceLoss(/rotor|impact/.test(cat.familyOfNozzle(h.nozzle)?.kind || '') ? SWING.rigid : SWING.flexible, g),
+        branchFitting: () => z.connect !== 'saddle',
+        swingLoss: (h, g) => z.connect === 'saddle' ? deviceLoss(SWING.saddle, g) : z.connect === 'swing' ? deviceLoss(SWING.flexible, g) : z.connect === 'rigid' ? deviceLoss(SWING.rigid, g) : deviceLoss(/rotor|impact/.test(cat.familyOfNozzle(h.nozzle)?.kind || '') ? SWING.rigid : SWING.flexible, g),
       }, { psi: P, gaugeAt: sys.pvb.at, gaugeElevM: Number.isFinite(groundPvb) ? groundPvb + 0.3 : null, upstream });
       /* GAUGE READINGS (owner, 2026-10-20: "to override estimates"): a head with a reading takes it; the
          zone's other heads move by the zone's average miss, since what a reading shows -- the pressure
@@ -308,8 +320,8 @@ export function sprinklers(ctx) {
     const P = ctx.panel;
     if (!step) { P.hidden = true; ctx.title.hidden = true; return; }
     P.hidden = false; ctx.title.hidden = false;
-    const k = STEPS.indexOf(step);
-    ctx.title.innerHTML = step === 'intro' ? '<strong>Step 1: your sprinklers</strong>' : `<strong>Sprinklers, ${k + 1} of ${STEPS.length}: ${STEP_TITLE[step]}</strong>`;
+    const list = stepsFor(irr.method), k = list.indexOf(step);
+    ctx.title.innerHTML = step === 'intro' ? '<strong>Step 1: your sprinklers</strong>' : `<strong>Sprinklers, ${k + 1} of ${list.length}: ${STEP_TITLE[step]}</strong>`;
     P.innerHTML = BODY[step]();
     WIRE[step]?.(P);
     ctx.draw();
@@ -329,7 +341,7 @@ export function sprinklers(ctx) {
     // a beat for the page to say so before the work
     setTimeout(() => { if (step !== 'arcs') return; fitAll(); arcPhase = 'ready'; changed(); render(); }, 60);
   }
-  const back = () => go(step === 'place' ? 'intro' : STEPS[Math.max(0, STEPS.indexOf(step) - 1)]);
+  const back = () => { const list = stepsFor(irr.method); go(step === 'place' ? 'intro' : list[Math.max(0, list.indexOf(step) - 1)]); };
   const nav = (next, { ok = true, label = 'Next' } = {}) => `<div class="tools"><button type="button" class="plain" data-act="back">Back</button><button type="button" data-act="next" ${ok ? '' : 'disabled'}>${label}</button></div>`;
   const wireNav = (P, next) => {
     P.querySelector('[data-act=back]')?.addEventListener('click', back);
@@ -394,7 +406,44 @@ export function sprinklers(ctx) {
         ${sel.size === 1 ? `<p>${headLine(head([...sel][0]))}</p>` : ''}
         <table class="months"><tr><th>Zone</th><th>Heads</th><th>Flow</th><th>Puts down</th></tr>${rows}</table>
         <p class="dim">${solve() ? 'At the pressure each head gets, worked out over the next steps.' : "At about the chart's working pressure until the next steps work out each head's own."} "Puts down" is the heads' rate at head-to-head spacing.</p>
-        ${nav('equipment', { label: 'Looks right' })}`;
+        ${nav('method', { label: 'Looks right' })}`;
+    },
+
+    method: () => {
+      const m = MEASURED.has(irr.method) ? irr.method : 'model';
+      const card = (v, title, text) => `<label class="card" style="display:block;margin-top:8px;cursor:pointer"><input type="radio" name="method" value="${v}" ${m === v ? 'checked' : ''}> <strong>${title}</strong><br><span class="dim">${text}</span></label>`;
+      return `<p>Each head's pressure sets how far it throws and how much water it puts down. Three ways to find it:</p>
+        ${card('gauge', 'Measure it with a pressure gauge', 'One reading per zone, with the zone running: a pitot tube held in a head\'s spray, or a gauge screwed on in place of a nozzle (a few dollars from an irrigation supplier). Nothing about pipes, valves or your water supply is asked.')}
+        ${card('throw', 'Measure how far heads throw', 'One head per zone: how far its water reaches, with a tape measure or by walking it with your phone\'s GPS. No tools, nothing buried.')}
+        ${card('model', 'Work it out from your pipes and water supply', 'Place the backflow preventer and the valve box, give your water pressure and what the pipes are made of, and the pipe is laid out and every head worked out. No measuring; the most questions.')}
+        ${nav(MEASURED.has(irr.method) ? 'measure' : 'equipment')}`;
+    },
+
+    measure: () => {
+      const s0 = solve(), thr = irr.method === 'throw';
+      const h = sel.size === 1 ? head([...sel][0]) : null;
+      const rows = irr.zones.map((z) => {
+        const hs = irr.heads.filter((x) => x.zone === z.n), rd = hs.filter((x) => (thr ? x.throwFt : x.gauge));
+        const zs = s0?.zones.find((q) => q.n === z.n), ps = zs ? [...zs.res.heads.values()].map((v) => v.psi) : [];
+        return `<tr><td><span class="chip" style="background:${colorOf(z.n)}"></span>Zone ${z.n} <button type="button" class="plain" data-mzone="${z.n}" style="padding:2px 6px;font-size:13px">pick a head</button></td><td>${rd.length ? rd.map((x) => (thr ? `${x.throwFt.ft} ft${x.throwFt.by === 'gps' ? ' (GPS)' : ''}` : `${x.gauge.psi} psi`)).join(', ') : '<span style="color:var(--bad)">none yet</span>'}</td><td>${ps.length ? `${Math.round(Math.min(...ps))}${Math.round(Math.max(...ps)) !== Math.round(Math.min(...ps)) ? `-${Math.round(Math.max(...ps))}` : ''} psi${zs.res.borrowed ? ' (from the other zones)' : ''}` : ''}</td></tr>`;
+      }).join('');
+      const missing = irr.zones.filter((z) => !irr.heads.some((x) => x.zone === z.n && (thr ? x.throwFt : x.gauge))).length;
+      const how = thr
+        ? 'Run one zone at a time. Pick a head whose throw has not been shortened (its radius screw open), and measure from the head straight out along the middle of its spray to the farthest point it wets. Measure on a still morning: wind shortens it. Then tap that head on the map and enter it.'
+        : 'Run one zone at a time. With a pitot tube, hold its tip in the stream right at the nozzle; with a gauge, unscrew a nozzle and screw the gauge on in its place, then run the zone. A head midway along the zone reads closest to the zone\'s average. Then tap that head on the map and enter it.';
+      const now = h ? (thr ? h.throwFt : h.gauge) : null, sh = h ? solvedHead(h.id) : null;
+      return `<p class="hint">${how}</p>
+        ${h ? `<div class="card" style="margin-top:6px"><p style="margin:0">${headLine(h)}</p>
+          <div class="tools">${thr ? `<label class="toggle">It throws <input type="number" inputmode="decimal" min="1" max="120" step="0.5" data-act="mval" value="${now ? now.ft : ''}" style="width:80px;padding:6px;font-size:16px"> ft</label>`
+            : `<label class="toggle">Reading <input type="number" inputmode="decimal" min="1" max="150" step="0.5" data-act="mval" value="${now ? now.psi : ''}" style="width:80px;padding:6px;font-size:16px"> psi</label>
+              <select data-act="mmethod"><option value="pitot" ${now?.method === 'pitot' ? 'selected' : ''}>pitot tube in the spray</option><option value="riser" ${now?.method === 'riser' ? 'selected' : ''}>gauge in place of the nozzle</option></select>`}
+            <button type="button" data-act="msave">Use it</button>${now ? '<button type="button" class="plain" data-act="mdrop">Remove</button>' : ''}</div>
+          ${thr ? `<div class="tools"><span class="dim">Or with your phone:</span><button type="button" class="plain" data-act="gpshead">1. I'm standing at the head</button><button type="button" class="plain" data-act="gpsedge" ${throwGps.head && throwGps.id === h.id ? '' : 'disabled'}>2. I'm where its water stops</button></div>` : ''}
+          ${sh ? `<p class="dim" style="margin:4px 0 0">${sh.measured ? 'Measured here' : 'From the readings'}: ${Math.round(sh.psi)} psi coming in${sh.water ? `; throws ${Math.round(sh.water.radiusFt)} ft, ${sh.water.gpm.toFixed(2)} gpm` : ''}.</p>` : ''}</div>` : '<p class="dim">Tap a head on the map to measure it.</p>'}
+        ${measureNote ? `<p class="hint">${esc(measureNote)}</p>` : ''}
+        <table class="months"><tr><th>Zone</th><th>Measured</th><th>At its heads</th></tr>${rows}</table>
+        <p class="dim">One reading a zone is enough; another at the zone's far end makes it better. The zone's other heads are given the reading's pressure, moved by the height between them (0.433 psi a foot, from the USGS lidar)${thr ? '; a throw is read back through the nozzle\'s chart to the pressure that throws that far' : ''}. ${missing ? `${missing} zone${missing > 1 ? 's have' : ' has'} no reading yet: ${missing > 1 ? 'they borrow' : 'it borrows'} the others'.` : ''}</p>
+        ${nav('arcs', { ok: !!s0, label: 'Next: the arcs' })}`;
     },
 
     equipment: () => {
@@ -441,9 +490,10 @@ export function sprinklers(ctx) {
         return `<div style="margin-top:8px"><span class="chip" style="background:${colorOf(z.n)}"></span>Zone ${z.n}${zs ? ` (${zs.res.gpm.toFixed(1)} gpm)` : ''}:
           <select data-fam="${z.n}">${LINE_FAMILIES.map((f) => `<option value="${f}" ${f === fam ? 'selected' : ''}>${PIPE_FAMILIES[f].label}</option>`).join('')}</select>
           <select data-size="${z.n}"><option value="auto">sized by flow (recommended)</option>${PIPE_FAMILIES[fam].sizes.map((x) => `<option value="${x[1]}" ${String(x[1]) === String(z.size) ? 'selected' : ''}>all ${fraction(x[1])} in</option>`).join('')}</select>
+          <div style="margin-top:4px">Each head joins the pipe by: <select data-connect="${z.n}">${CONNECT.map(([v, l]) => `<option value="${v}" ${v === (z.connect || '') ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
           ${zs ? `<div class="dim">${[...byNom].sort((x, y) => y[0] - x[0]).map(([n, L]) => `${fraction(n)} in for about ${Math.round(L)} ft`).join(', ')}.${fast.length ? ` <strong style="color:var(--bad)">${fast.length} run${fast.length > 1 ? 's' : ''} over 5 ft/s</strong>: a bigger pipe there.` : ''}</div>` : ''}</div>`;
       }).join('');
-      return `<p class="hint">What the lines from the valve box to the heads are made of. "Sized by flow" gives each run the size an installer would: the smallest that keeps the water under 5 ft/s, larger near the valve, smaller toward the last heads. The routes are on the map: laid as installers lay them, square runs along the lawn's edges, each zone fed from the middle of its heads, round the house, and out of the dashed brown circle round each tree's trunk (the lidar finds each crown's top; a trunk's thickness it can't see, so the circle's radius is 40% of the crown's).</p>${rows}
+      return `<p class="hint">What the lines from the valve box to the heads are made of. "Sized by flow" gives each run the size an installer would: the smallest that keeps the water under 5 ft/s, larger near the valve, smaller toward the last heads. The routes are on the map: laid as installers lay them, straight runs with few turns, along the lawn's edges where that is where they belong, each zone fed from the middle of its heads, round the house.</p>${rows}
         ${nav('water', {})}`;
     },
 
@@ -539,6 +589,38 @@ export function sprinklers(ctx) {
         ${nav('arcs', { label: 'Next: the arcs' })}`;
     },
   };
+
+  /* MEASURED (lib/measured.js): each zone's readings, and every head from them by distance and height */
+  function solveMeasured() {
+    if (!cat) return null;
+    const key = JSON.stringify([irr.method, irr.heads, ctx.elevReady?.() ?? false]);
+    if (key === solvedKey) return solved;
+    const readingOf = (h) => (irr.method === 'throw' ? (h.throwFt ? inletFromThrow(h, h.throwFt.ft, cat) : null) : h.gauge ? inletFromGauge(h, h.gauge, cat) : null);
+    const all = [];
+    for (const h of irr.heads) { const r = h.nozzle && readingOf(h); if (r) all.push({ id: h.id, at: h.at, zone: h.zone, psi: r.psi, edge: r.edge || (r.atLeast ? 'over' : null) }); }
+    if (!all.length) { solved = null; solvedKey = key; return null; }
+    const dist = (a, b) => Math.hypot(...enu(a, b));
+    const zones = [];
+    for (const z of irr.zones) {
+      const hs = irr.heads.filter((h) => h.zone === z.n && h.nozzle);
+      if (!hs.length) continue;
+      const own = all.filter((r) => r.zone === z.n);
+      // a zone with no reading of its own borrows the others' (flagged): a valve and its pipe are its own
+      const used = own.length ? own : all;
+      const ps = spreadReadings(hs, used, ctx.elev, dist);
+      const heads = new Map();
+      let gpm = 0;
+      for (const h of hs) {
+        const p = ps.get(h.id), w = headFlow(h, cat, Math.max(0, p.psi));
+        heads.set(h.id, { psi: p.psi, gpm: w ? w.gpm : 0, radiusFt: w?.radiusFt ?? null, water: w, measured: p.measured, adjusted: !p.measured, borrowed: !own.length });
+        gpm += w ? w.gpm : 0;
+      }
+      zones.push({ n: z.n, tree: null, res: { heads, gpm, readings: own.length, borrowed: !own.length, edge: own.some((r) => r.edge) }, main: null });
+    }
+    solved = { zones, measured: true, at: Date.now() };
+    solvedKey = key;
+    return solved;
+  }
 
   /** One head's arc and throw, set for the lawn (lib/arcs.js): its throw at the pressure it gets. */
   function autoSet(h) {
@@ -748,7 +830,42 @@ export function sprinklers(ctx) {
       });
       wireNav(P, () => go('details'));
     },
-    details: (P) => wireNav(P, () => go('equipment')),
+    details: (P) => wireNav(P, () => go('method')),
+    method: (P) => {
+      P.querySelectorAll('[name=method]').forEach((r) => r.addEventListener('change', () => { irr.method = r.value; changed(); render(); }));
+      wireNav(P, () => go(MEASURED.has(irr.method) ? 'measure' : 'equipment'));
+    },
+    measure: (P) => {
+      const h = sel.size === 1 ? head([...sel][0]) : null;
+      // a head midway along the zone: the one nearest the middle of its heads
+      P.querySelectorAll('[data-mzone]').forEach((b) => b.addEventListener('click', () => {
+        const hs = irr.heads.filter((x) => x.zone === Number(b.dataset.mzone));
+        if (!hs.length) return;
+        const mid = hs.reduce((m, x) => [m[0] + x.at[0] / hs.length, m[1] + x.at[1] / hs.length], [0, 0]);
+        const pick = hs.slice().sort((x, y) => Math.hypot(...enu(mid, x.at)) - Math.hypot(...enu(mid, y.at)))[0];
+        sel.clear(); sel.add(pick.id); measureNote = ''; render();
+      }));
+      P.querySelector('[data-act=msave]')?.addEventListener('click', () => {
+        const v = Number(P.querySelector('[data-act=mval]').value);
+        if (!h || !Number.isFinite(v) || v <= 0) { measureNote = irr.method === 'throw' ? 'Enter how far it throws, in feet.' : 'Enter the reading in psi.'; render(); return; }
+        if (irr.method === 'throw') h.throwFt = { ft: v, by: 'tape', at: Date.now() };
+        else h.gauge = { psi: v, method: P.querySelector('[data-act=mmethod]').value, at: Date.now() };
+        measureNote = ''; solvedKey = ''; changed(); render();
+      });
+      P.querySelector('[data-act=mdrop]')?.addEventListener('click', () => { if (h) { if (irr.method === 'throw') delete h.throwFt; else delete h.gauge; solvedKey = ''; changed(); render(); } });
+      // GPS: the head's own spot, then where its water stops; the distance between two fixes taken minutes
+      // apart (the phone's drift is mostly the same in both)
+      P.querySelector('[data-act=gpshead]')?.addEventListener('click', () => { startGps(); listen(6000, (fixes) => { const p = settle(fixes); throwGps.head = p ? [p.lng, p.lat] : null; throwGps.id = h?.id; measureNote = p ? 'Now walk to where its water stops, at the far edge, and press the second button.' : 'No location came in.'; render(); }); });
+      P.querySelector('[data-act=gpsedge]')?.addEventListener('click', () => { listen(6000, (fixes) => {
+        const p = settle(fixes);
+        if (!p || !throwGps.head || throwGps.id !== h?.id) { measureNote = 'Stand at the head first.'; render(); return; }
+        const ft = Math.hypot(...enu(throwGps.head, [p.lng, p.lat])) * 3.2808;
+        h.throwFt = { ft: +ft.toFixed(1), by: 'gps', at: Date.now() };
+        measureNote = `GPS: ${ft.toFixed(0)} ft. A phone is good to a few feet, so a tape is better for a spray's short throw.`;
+        throwGps.head = null; stopGps(); solvedKey = ''; changed(); render();
+      }); });
+      wireNav(P, () => go('arcs'));
+    },
     equipment: (P) => {
       const sys = irr.system;
       P.querySelector('[data-act=placepvb]').addEventListener('click', () => { placing = placing === 'pvb' ? null : 'pvb'; render(); });
@@ -783,6 +900,7 @@ export function sprinklers(ctx) {
     lines: (P) => {
       P.querySelectorAll('[data-fam]').forEach((el) => el.addEventListener('change', () => { const z = irr.zones.find((x) => x.n === Number(el.dataset.fam)); z.family = el.value; z.size = 'auto'; changed(); render(); }));
       P.querySelectorAll('[data-size]').forEach((el) => el.addEventListener('change', () => { const z = irr.zones.find((x) => x.n === Number(el.dataset.size)); z.size = el.value; changed(); render(); }));
+      P.querySelectorAll('[data-connect]').forEach((el) => el.addEventListener('change', () => { const z = irr.zones.find((x) => x.n === Number(el.dataset.connect)); z.connect = el.value; changed(); render(); }));
       wireNav(P, () => go('water'));
     },
     water: (P) => {
@@ -937,7 +1055,7 @@ export function sprinklers(ctx) {
     }
     const h = nearest(ev);
     if (!h) return true;
-    if (['details', 'review', 'pressure', 'lines', 'equipment', 'supply', 'water', 'arcs'].includes(step)) { sel.clear(); sel.add(h.id); }
+    if (['details', 'review', 'pressure', 'lines', 'equipment', 'supply', 'water', 'arcs', 'measure'].includes(step)) { sel.clear(); sel.add(h.id); measureNote = ''; }
     else if (sel.has(h.id)) sel.delete(h.id); else sel.add(h.id);
     if (step === 'models') { if (sel.size === 1) { resetForm(); } }
     render();
@@ -1104,13 +1222,6 @@ export function sprinklers(ctx) {
         }
       }
     }
-    // the trees' trunks the lidar found, and the circle pipe is kept out of (lib/roofs.js treeTrunks)
-    if (showLines) for (const t of ctx.trees?.() || []) {
-      const [x, y] = ctx.toPx(t.at), R = t.keepM * ctx.pxPerM();
-      g.strokeStyle = 'rgba(141,110,99,.95)'; g.lineWidth = px * 1.5; g.setLineDash([px * 4, px * 3]);
-      g.beginPath(); g.arc(x, y, R, 0, 7); g.stroke(); g.setLineDash([]);
-      g.fillStyle = '#6d4c41'; g.strokeStyle = '#fff'; g.lineWidth = px; g.beginPath(); g.arc(x, y, px * 3.5, 0, 7); g.fill(); g.stroke();
-    }
     // the backflow preventer and the valve boxes
     const sysq = irr.system;
     if (sysq && (['equipment', 'supply', 'lines', 'water', 'pressure'].includes(step) || (!step && irr.done))) {
@@ -1127,7 +1238,8 @@ export function sprinklers(ctx) {
         g.font = `700 ${10 * px}px system-ui, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#fff'; g.fillText(`V${sysq.boxes.length > 1 ? k + 1 : ''}`, x, y);
       });
     }
-    const byPressure = step === 'pressure' && s0;
+    const s1 = step === 'measure' ? solve() : s0;
+    const byPressure = (step === 'pressure' && s0) || (step === 'measure' && s1);
     for (const h of irr.heads) {
       const [x, y] = ctx.toPx(h.at);
       g.fillStyle = byPressure ? STATUS_COLOR[solvedHead(h.id)?.water?.status] || '#9e9e9e' : colorOf(h.zone); g.strokeStyle = sel.has(h.id) ? '#ffeb3b' : '#000'; g.lineWidth = sel.has(h.id) ? lw * 1.2 : lw * 0.6;
@@ -1218,7 +1330,7 @@ export function sprinklers(ctx) {
       await loadDevices;
       await loadCat;
       if (irr.done && !force) { step = null; render(); return false; }
-      const savedStep = !irr.done && STEPS.includes(irr.step) ? irr.step : null;
+      const savedStep = !irr.done && stepsFor(irr.method).includes(irr.step) ? irr.step : null;
       // a map saved on the old last step, the coverage, comes back on the arcs
       const was = !irr.done && irr.step === 'coverage' ? 'arcs' : savedStep;
       step = resumeAt || (force && irr.heads.length ? 'review' : was || 'intro');

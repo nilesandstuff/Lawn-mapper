@@ -363,7 +363,7 @@ function crosses(p, q, a, b) {
 
 /** The longest straight edge of the lawn's outline in sight of `at`. rings: [[lng, lat], ...][]. -> { bearing
     (degrees clockwise from north, 0-180), lengthM, a, b } or null. */
-export function longestEdgeInSight(rings, at) {
+export function longestEdgeInSight(rings, at, { sight = true } = {}) {
   const segs = [];
   for (const ring of rings || []) {
     if (!ring || ring.length < 3) continue;
@@ -379,7 +379,7 @@ export function longestEdgeInSight(rings, at) {
     const L = Math.hypot(b[0] - a[0], b[1] - a[1]);
     if (L < 1 || (best && L <= best.lengthM)) continue;
     const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-    if (segs.some(([c, d]) => !(c === a && d === b) && crosses([0, 0], mid, c, d))) continue;
+    if (sight && segs.some(([c, d]) => !(c === a && d === b) && crosses([0, 0], mid, c, d))) continue;
     const bearing = ((Math.atan2(b[0] - a[0], b[1] - a[1]) * 180) / Math.PI + 360) % 180;
     best = { bearing, lengthM: L, a: unEnu(at, a), b: unEnu(at, b) };
   }

@@ -1134,6 +1134,38 @@ buildings"; "If fed from middle is the advice, then yes let's do that"; "can we 
   themselves (a crown traced on a photo, years from the flight, leaning, against a lidar crown top): of the
   water map's trunk positions only that they sit in the right crown about half to three-fifths of the time.
 
+### H33. Trees dropped; straight runs; how heads join the pipe; the pressure measured at the heads (water session, 2026-10-22)
+
+Owner, 2026-10-22: "Scratch the tree rules completely, and stop showing trunks on the map"; on the pipe looking
+gridded, "let's not do that unless the grid is genuinely the best practice way"; "Are you accounting for heads being
+connected ... with a short .5 inch swing pipe... Except zone 5, which are on saddles"; and two more ways to get the
+pressure at the heads, "skip as much other info as possible (especially stuff that's buried or in valve boxes)".
+
+- TREES: no canopy cost, no trunk discs, no trunks drawn; lib/roofs.js treeTrunks removed. H32's crown-top
+  measurement stands as a record (53% of hand-traced crowns had a lidar top inside them).
+- STRAIGHT RUNS: the pipe had come out square for two reasons, neither the practice: the router's grid steps only
+  square, and its grid was turned to the PLACING grid's angle when one was set. Now the router's own lines follow
+  the lawn's longest straight edge (never the placing grid), and every corner is taken out where the straight line
+  between the points either side costs no more to trench (never through a house, across paving no more than
+  before): "the most direct route with the fewest turns" (Hunter). Runs along the lawn's edge stay there where that
+  band is cheaper (installers run laterals there); across open lawn they go straight.
+- HOW HEADS JOIN THE PIPE, per zone: flexible 1/2 in swing pipe (Hunter's SJ curve: 1.7 psi at 2 gpm), rigid
+  swing joints (Rain Bird TSJ), or saddles -- a clamp-on tee with the head on a short nipple, its loss an ESTIMATE
+  (a tee branch, K 1.8 from Crane TP-410, at a 1/2 in schedule 80 bore: 0.09 psi at 2 gpm; no maker publishes
+  one), standing in for the lateral's tee too. Not knowing keeps the old default (sprays swing pipe, rotors rigid).
+- MEASURED PRESSURE (lib/measured.js). A step after the heads asks how to find the pressure: worked out from the
+  pipes and water supply (as before), a gauge reading, or how far a head throws. The two measured ways skip the
+  backflow preventer, valve box, water supply, pipes and water quality (8 steps instead of 12). One reading a
+  zone: a pitot tube (the nozzle's pressure; on a regulated body under its setting, the inlet is that plus what
+  the regulator needs, at its setting only "at least") or a gauge in place of the nozzle (the inlet); or a throw,
+  by tape or by two GPS fixes (at the head, then where its water stops: their drift largely cancels), read back
+  through the nozzle's chart to the inlet pressure that throws that far (flagged "at least" where the chart stops
+  gaining throw: the R-VAN24 reaches 24 ft at 50 psi and holds it to 55). Every other head of the zone gets the
+  readings' pressure moved by the lidar's height between them (0.433 psi a foot), weighted to the nearest; a zone
+  with no reading borrows the others', flagged. What this leaves out is friction along the zone (a few psi end
+  to end), so a head midway along is the one to measure ("pick a head" chooses the one nearest the zone's middle).
+  On the owner's map, four zones read by throw (19-22 ft) gave 30-41 psi at their heads; one zone borrowed.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge

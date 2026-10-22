@@ -98,7 +98,15 @@ export function fittingLoss(pipe, gpm, which) {
  * third of it -- the barb bores, which no one publishes, decide it); a rotor on a 3/4 in rigid swing joint,
  * Rain Bird TSJ's 0.3 psi at 6 gpm, with the square of the flow.
  */
+/* A SADDLE (owner, 2026-10-22: "all of the heads in my system are connected with a short .5 inch swing pipe...
+   Except zone 5, which are on saddles"): a clamp-on tee on the lateral with a 1/2 in threaded outlet and the
+   head on a short nipple, no swing pipe. No maker publishes its loss; an ESTIMATE: a tee's branch, K 1.8
+   (Crane TP-410), at the outlet's bore (1/2 in schedule 80 nipple, 0.546 in), with the square of the flow.
+   It stands in for the lateral's tee too (lib/hydraulics.js solveZone: branchFitting false). */
+const saddlePsi = (gpm) => { const v = (0.4085 * gpm) / (0.546 * 0.546); return (0.433 * 1.8 * v * v) / (2 * 32.174); };
+
 export const SWING = {
+  saddle: { kind: 'valve', source: 'estimate: tee branch K 1.8 at a 1/2 in outlet', points: [1, 2, 3, 4, 6, 8].map((gpm) => ({ gpm, psi: +saddlePsi(gpm).toFixed(3) })) },
   flexible: { kind: 'valve', source: 'Hunter SJ', points: [{ gpm: 1, psi: 0.82 }, { gpm: 2, psi: 1.74 }, { gpm: 3, psi: 2.79 }, { gpm: 4, psi: 3.95 }, { gpm: 5, psi: 5.25 }, { gpm: 6, psi: 6.75 }, { gpm: 8, psi: 10.4 }, { gpm: 10, psi: 16.0 }] },
   rigid: { kind: 'valve', source: 'Rain Bird TSJ-12075', points: [{ gpm: 6, psi: 0.3 }] },
 };
@@ -297,7 +305,9 @@ export function solveZone(z, up, { maxIter = 60, tol = 1e-4 } = {}) {
       const qh = q.get(n.id);
       // the swing joint, and the tee's side outlet it leaves the lateral by
       const lat = pipeOf.get(n.id);
-      const swingLoss = (z.swingLoss ? z.swingLoss(heads.get(n.id), qh) : deviceLoss(SWING.flexible, qh)) + fittingLoss(lat, qh, 'teeBranch');
+      // the swing joint (or saddle), and the tee's side outlet it leaves the lateral by -- a saddle is its own tee
+      const branch = z.branchFitting ? z.branchFitting(heads.get(n.id)) !== false : true;
+      const swingLoss = (z.swingLoss ? z.swingLoss(heads.get(n.id), qh) : deviceLoss(SWING.flexible, qh)) + (branch ? fittingLoss(lat, qh, 'teeBranch') : 0);
       const psi = p.get(n.id) - swingLoss + PSI_PER_FT * (hNode(n) - hNozzle(n));
       const w = water(heads.get(n.id), Math.max(0, psi));
       const next = w ? w.gpm : 0;

@@ -6,12 +6,12 @@
  * What installers and designers do (water/FINDINGS.md H30, with sources): the most direct route with the
  * fewest turns (Hunter, Residential System Design Guide); a trunk with short cut-ins to each head, at most two
  * pipes at a head (Stryker, Irrigation Tutorials); the main kept short and sharing trenches where it can (Rain
- * Bird, Landscape Irrigation Design Manual); never through a house; out from under trees (Stryker: "keep the
- * trenches out from under the canopy"); paving crossed in one straight sleeve.
+ * Bird, Landscape Irrigation Design Manual); never through a house; paving crossed in one straight sleeve. Trees
+ * are not counted (owner, 2026-10-22: "Scratch the tree rules completely").
  *
  * How it is done here (the research's recommendation, the costs its guesses, to tune):
  *   a grid of GRID_M cells turned to the lawn's long edge, so square runs lie along it
- *   each cell's cost to trench: a building can't be crossed; under a tree x CANOPY; lawn 1; a bed or other
+ *   each cell's cost to trench: a building can't be crossed; lawn 1; a bed or other
  *   ground BED; a band just inside the lawn's edge CORRIDOR (installers run laterals there); paving PAVED a
  *   cell, crossed straight (no turning on it)
  *   a route is a search over (cell, heading), every turn costing TURN cells, so runs come out straight
@@ -24,7 +24,7 @@
  * Pure: the ground comes in as a function.
  */
 
-export const GRID_M = 0.5, TURN = 3, CANOPY = 6, BED = 0.9, CORRIDOR = 0.7, PAVED = 25, SHARED = 0.3, CROSS = 15, STUB_M = 0.9, OUTSIDE = 2, ZONE_REACH_M = 5, PAD_M = 8;
+export const GRID_M = 0.5, TURN = 3, BED = 0.9, CORRIDOR = 0.7, PAVED = 25, SHARED = 0.3, CROSS = 15, STUB_M = 0.9, OUTSIDE = 2, ZONE_REACH_M = 5, PAD_M = 8;
 const R = 6371000;
 const D = [[1, 0], [0, 1], [-1, 0], [0, -1]]; // headings in grid cells: +u, +v, -u, -v
 
@@ -34,7 +34,7 @@ const fromEN = (o, [e, n]) => [o[0] + (e / (R * Math.cos((o[1] * Math.PI) / 180)
 
 /**
  * The routing grid over the points to join, turned to `bearing` (degrees; the grid's u axis runs along it).
- * ground(at) -> { building, trunk, canopy, paved, lawn } (booleans; any may be missing) or null off the map.
+ * ground(at) -> { building, paved, lawn } (booleans; any may be missing) or null off the map.
  */
 export function makeGrid(points, bearing, ground, { cellM = GRID_M, padM = PAD_M } = {}) {
   const o = points[0], t = ((bearing || 0) * Math.PI) / 180;
@@ -48,10 +48,10 @@ export function makeGrid(points, bearing, ground, { cellM = GRID_M, padM = PAD_M
   for (let i = 0; i < N; i++) {
     const g = ground(atOf(i));
     if (!g) { cost[i] = BED; continue; }
-    if (g.building || g.trunk) { cost[i] = Infinity; continue; } // a house, or a tree's trunk disc: never trenched
+    if (g.building) { cost[i] = Infinity; continue; } // a house: never trenched
     if (g.lawn) lawn[i] = 1;
     if (g.paved) { paved[i] = 1; cost[i] = PAVED; continue; }
-    cost[i] = g.canopy ? CANOPY : g.lawn ? 1 : BED;
+    cost[i] = g.lawn ? 1 : BED;
   }
   // the band just inside the lawn's edge (0.5-1 m in), where laterals are run
   const edgeDist = new Uint8Array(N).fill(255), q = [];
@@ -291,6 +291,51 @@ function nodesOf(G, valveId, valveAt, t, heads) {
   return { nodes, order };
 }
 
+/*
+ * STRAIGHT RUNS, NOT A GRID (owner, 2026-10-22: "let's not do that unless the grid is genuinely the best practice
+ * way"). It is not: the practice is "the most direct route with the fewest turns" (Hunter), a straight pull of
+ * pipe from point to point, along an edge where that is where the run belongs, across open lawn where it is not.
+ * The search above can only step square, so its corners are taken out wherever the straight line between the
+ * points either side costs no more to trench than the square steps did (it never crosses a house, and crosses
+ * paving no more than they did). Tees and heads stay where they are.
+ */
+function lineCost(G, a, b) {
+  const [ua, va] = G.toUV(a), [ub, vb] = G.toUV(b), L = Math.hypot(ub - ua, vb - va), n = Math.max(1, Math.ceil(L / (G.cellM / 2)));
+  let t = 0, paved = 0;
+  for (let k = 0; k < n; k++) {
+    const f = (k + 0.5) / n, c = G.cellOf(G.fromUV([ua + (ub - ua) * f, va + (vb - va) * f]));
+    const v = c < 0 ? BED : G.cost[c];
+    if (v === Infinity) return { cost: Infinity, paved: Infinity };
+    t += v * (L / n); if (c >= 0 && G.paved[c]) paved += L / n;
+  }
+  return { cost: t, paved };
+}
+function straighten(G, tree) {
+  const nodes = tree.nodes, byId = new Map(nodes.map((n) => [n.id, n])), FT = 3.28084;
+  const kids = () => { const m = new Map(); for (const n of nodes) if (n.parent) { if (!m.has(n.parent)) m.set(n.parent, []); m.get(n.parent).push(n); } return m; };
+  let changed = true;
+  while (changed) {
+    changed = false;
+    const ch = kids();
+    for (const n of nodes) {
+      if (n.kind !== 'bend' || !n.parent || (ch.get(n.id) || []).length !== 1) continue;
+      const c = ch.get(n.id)[0], p = byId.get(n.parent);
+      const via = [lineCost(G, p.at, n.at), lineCost(G, n.at, c.at)], direct = lineCost(G, p.at, c.at);
+      const viaCost = via[0].cost + via[1].cost, viaPaved = via[0].paved + via[1].paved;
+      if (direct.cost <= viaCost + 1e-9 && direct.paved <= viaPaved + G.cellM) {
+        c.parent = n.parent; c.lenFt = Math.hypot(...G.toUV(c.at).map((v, k) => v - G.toUV(p.at)[k])) * FT;
+        nodes.splice(nodes.indexOf(n), 1); byId.delete(n.id); changed = true;
+        break;
+      }
+    }
+  }
+  const order = [], byParent = new Map();
+  for (const x of nodes) { if (!byParent.has(x.parent)) byParent.set(x.parent, []); byParent.get(x.parent).push(x); }
+  const walk = (id) => { for (const c of byParent.get(id) || []) { order.push(c); walk(c.id); } };
+  order.push(nodes[0]); walk(nodes[0].id);
+  return { nodes, order };
+}
+
 /**
  * The whole system laid out. pvb [lng, lat]; boxes [{ id, at }]; zones [{ n, box (id), heads [{ id, at }] }];
  * bearing: the grid's (the lawn's long edge); ground(at) as makeGrid.
@@ -331,6 +376,6 @@ export function layout({ pvb, boxes, zones, bearing = 0, ground, passes = 2 }) {
     }
   }
   const out = new Map();
-  for (const z of order) out.set(z.n, nodesOf(G, 'valve', boxOf(z).at, trees.get(z.n), z.heads));
+  for (const z of order) out.set(z.n, straighten(G, nodesOf(G, 'valve', boxOf(z).at, trees.get(z.n), z.heads)));
   return { main, zones: out, grid: { W: G.W, H: G.H, cellM: G.cellM } };
 }

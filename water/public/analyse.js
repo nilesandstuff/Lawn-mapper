@@ -20,7 +20,6 @@ import { waterPlan } from '/lib/plan.js';
 import { demAround, terrain, hillside } from '/lib/upslope.js';
 import { powerUrl, typicalYear, growingSeason, SEASON_GP } from '/lib/shade/climate.js';
 import { polygonsOf } from '/lib/geo.js';
-import { treeTrunks } from '/lib/roofs.js';
 
 const kept = { r: null, lawn: null, standIn: false, soil: null, typical: null, week: null, lng: null, lat: null, season: null, climate: null, light: null };
 
@@ -113,14 +112,10 @@ async function start(site, inputs) {
     shift: res.shift,
     depth: res.spots.depth.slice(), reported, z: Float32Array.from(res.z), flow: (r.weightedFlow || res.runoff.area).slice(), weighted: !!r.weightedFlow, wall: res.wall.slice(), grade,
     paved: r.impervious ? r.impervious.paved.slice() : null,
-    // under tree canopy: two or more laser returns 2 m or more over the ground, not a roof (pipe is kept out)
-    canopy: Uint8Array.from(res.perCell.tall, (v, i) => (v >= 2 && !res.wall[i] ? 1 : 0)),
-    // each tree's trunk, at its crown's top, and the disc pipe keeps out of (lib/roofs.js treeTrunks)
-    trees: treeTrunks(g, res.points, res.z, res.wall).map((t) => ({ at: res.lngLat(t.r - 0.5, t.c - 0.5), H: t.H, R: t.R, keepM: t.keepM })),
     parcelMask: r.parcelMask, lawnMask: r.lawnMask,
     spots: r.spots, hasLawn: r.hasLawn, summary: { ...r.summary, noiseRuns: undefined }, cloud: r.cloud,
   };
-  const transfer = [out.depth.buffer, out.z.buffer, reported.buffer, out.flow.buffer, out.wall.buffer, grade.buffer, out.canopy.buffer, ...(out.paved ? [out.paved.buffer] : [])];
+  const transfer = [out.depth.buffer, out.z.buffer, reported.buffer, out.flow.buffer, out.wall.buffer, grade.buffer, ...(out.paved ? [out.paved.buffer] : [])];
   self.postMessage({ done: out }, transfer);
 
   self.postMessage({ planProgress: 'Reading the soil survey and ten years of weather…' });

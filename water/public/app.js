@@ -297,21 +297,6 @@ function tapAt(ev) { return pxToLngLat(tapPx(ev)); }
 
 /* YOUR SPRINKLERS FIRST (owner, 2026-10-20: "a step that happens before doing anything else within the
    water map"): public/heads.js runs the steps; the page lends it the photo and the save. */
-/** The cells within a trunk's keep-out disc (lib/roofs.js treeTrunks), on the analysis grid, made once. */
-function trunkMask(d) {
-  if (d.trunkMask) return d.trunkMask;
-  const g = d.grid, m = new Uint8Array(g.W * g.H), dx = d.shift.east / g.k, dy = d.shift.north / g.k;
-  for (const t of d.trees || []) {
-    const [x, y] = toMerc(t.at), fc = ((x - (g.bbox[0] + dx)) * g.k) / g.cell, fr = ((g.bbox[3] + dy - y) * g.k) / g.cell, R = t.keepM / g.cell;
-    for (let r = Math.floor(fr - R); r <= Math.ceil(fr + R); r++) for (let c = Math.floor(fc - R); c <= Math.ceil(fc + R); c++) {
-      if (r < 0 || c < 0 || r >= g.H || c >= g.W) continue;
-      if (Math.hypot(c + 0.5 - fc, r + 0.5 - fr) <= R) m[r * g.W + c] = 1;
-    }
-  }
-  d.trunkMask = m;
-  return m;
-}
-
 const heads = sprinklers({
   panel: $('#heads-panel'), title: $('#heads-title'),
   draw: () => draw(),
@@ -333,8 +318,8 @@ const heads = sprinklers({
     return Number.isFinite(v) ? v : null;
   },
   // what a run of pipe costs per foot, as a multiple of open ground (lib/hydraulics.js route): through a
-  // building 50 (never: owner, 2026-10-21), under a tree 6 (roots: kept out), under paving 2 (a sleeve; they
-  // go round when they can) -- the analysis's roofs, canopy and paving, sampled every half metre
+  // building 50 (never: owner, 2026-10-21), under paving 2 (a sleeve; they go round when they can) -- the
+  // analysis's roofs and paving, sampled every half metre (trees are not counted: owner, 2026-10-22)
   routeCost: (a, b) => {
     const d = view.data;
     if (!d?.wall) return 1;
@@ -347,8 +332,7 @@ const heads = sprinklers({
       if (c < 0 || r < 0 || c >= g.W || r >= g.H) continue;
       const i = r * g.W + c;
       if (d.wall[i]) return 50;
-      if (d.canopy && d.canopy[i]) worst = Math.max(worst, 6);
-      else if (d.paved && d.paved[i] >= 0.5) worst = Math.max(worst, 2);
+      if (d.paved && d.paved[i] >= 0.5) worst = Math.max(worst, 2);
     }
     return worst;
   },
@@ -362,11 +346,9 @@ const heads = sprinklers({
       const c = Math.floor(((x - (g.bbox[0] + dx)) * g.k) / g.cell), r = Math.floor(((g.bbox[3] + dy - y) * g.k) / g.cell);
       if (c < 0 || r < 0 || c >= g.W || r >= g.H) return null;
       const i = r * g.W + c;
-      return { building: !!d.wall[i], trunk: !!trunkMask(d)[i], canopy: !!d.canopy?.[i], paved: !!(d.paved && d.paved[i] >= 0.5), lawn: d.lawnMask ? !!d.lawnMask[i] : true };
+      return { building: !!d.wall[i], paved: !!(d.paved && d.paved[i] >= 0.5), lawn: d.lawnMask ? !!d.lawnMask[i] : true };
     };
   },
-  // the trees the lidar found: [{ at, H, R, keepM }]
-  trees: () => view.data?.trees || [],
   // a building or paving within `m` metres of a point (a head's throw reaching it)
   hardNear: (at, m) => {
     const d = view.data;
