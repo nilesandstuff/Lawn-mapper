@@ -1018,6 +1018,18 @@ yet measured under the full bar (H109 says a move this size changes
 nothing); the next THE PLAN run carries it, and workflow 24 against
 39666176735 (same seed, same lots, the datum move alone) is the reading.
 
+**Scored (2026-10-22): the saved moves change THE PLAN by nothing, as
+H109 said they would.** Run 39715167319 (`lidar_align: saved`) against
+39666176735 (the datum move alone), same seed, same 104 lots, workflow 24
+run 39746335881: B better on 28, worse on 27, level on 49; median 18.4%
+-> 17.2% but the paired change is -0.0 [95% -0.1 to +0.1], sign test p =
+1.000; the frozen 32 +0.1 [-0.3, +0.3], the 72 since -0.1 [-0.1, +0.1];
+county-photo lots -0.1 [-0.4, +0.6], Mapbox +0.0 [-0.1, +0.1]. C71
+itself 5.4% -> 5.1%. The lower median is the middle of the distribution
+moving under seed noise, not lots getting better. So the moves are kept
+for correctness (the lidar sits where the photo's ground is on the lots
+where two measurements agree) and claimed for nothing else.
+
 **The stricter rule, measured (2026-10-21, local read of the 83 lots
 with a public cloud that read without tile downloads, S47's frames):**
 move a lot only when the roof fit and the ground fit are both confident
@@ -9256,4 +9268,4 @@ deploy log says how many are locked and how many are waiting.
 | 2026-10-20 | 39492634512 (workflow 40, run 3) | 104 (locked), 98 read | tools/lidar-roof-fit.js: the GROUND fit (lidar ground brightness edges onto the photo's, roofs and crowns kept out) beside the roof fit; lean = roof less ground | — | — | **H108.** Ground measured on 81: median 0.50 m after the datum move (E 0.00, N 0.00), within 0.5 m on 45, over 1 m on 18; agrees with H103's matcher to 0.33 m on 13 shared lots; Fargo ground within 0.25 m, lean 1.75 m W. The datum move stands |
 | 2026-10-21 | 39500140037 | 104 (locked, 131u7jm) | S47 `lidar_align: ground`: each lot's lidar moved onto its photo's ground (H108's fit, 74 lots) on top of the datum move, seed 7, CPU | 18.1% (edge refined + stage 3, span, veto) | — | **H109.** Workflow 24 run 39536861362 vs 39409589116: 20 / 29 / 55 level, +0.1 [-0.1, +0.1], p 0.25. No change; the datum move alone stands; the lidar's ground placement is settled |
 | 2026-10-21 | 39616276609, 39636876014, 39658563647, then **39666176735** (green, 104 locked) | 111 (all), then 104 (locked, 131u7jm) | Redraw with the lidar at half-metre cells (page layers: the 2.5 m+ outline, the ground brightness), THE PLAN, seed 7, lidar not moved | 18.3% (edge refined + stage 3, span, veto; the fourth run) | — | The fourth run drew 104 of 104 (folder runs/2026-10-21-2213-edt-scalemae-large-896px, the newest on the predictions page; its lidar is NOT moved); 18.3% is THE PLAN's row at seed 7 on the locked lots, against 17.9% (39409589116) and 18.1% (S47), seed noise. The first three died in the planner: USGS's flight index (WESM) answered "400 Failed to execute query" for 17, 13 and (after six tries and a second pass) 1 of 111 frames, a different set each time. Fixed by **the saved plan**: tools/locked-lidar-plan.json (S47's plan of 2026-10-20) is read for the locked lots and USGS is asked only for a frame outside it; workflow 41 refreshes it. Raw points cached between runs (POINTS_CACHE, workflow 14), keyed on the frames and the saved plan |
-| 2026-10-22 | 39715167319 | 104 (locked, 131u7jm) | THE PLAN with `lidar_align: saved` (the agree rule's 15 moves from tools/locked-lidar-shifts.json: C71 2 m, 14 lots under a metre), seed 7, CPU; the saved plan and the raw-points cache (lidar read in seconds) | 17.2% (edge refined + stage 3, span, veto) | — | Drew 104 of 104 (folder runs/2026-10-22-0356-edt, LIDAR MOVED (saved fit) on the predictions page). Against 39666176735 (same seed, same lots, the datum move alone, 18.3%): workflow 24's reading is in H111 |
+| 2026-10-22 | 39715167319 | 104 (locked, 131u7jm) | THE PLAN with `lidar_align: saved` (the agree rule's 15 moves from tools/locked-lidar-shifts.json: C71 2 m, 14 lots under a metre), seed 7, CPU; the saved plan and the raw-points cache (lidar read in seconds) | 17.2% (edge refined + stage 3, span, veto) | — | Drew 104 of 104 (folder runs/2026-10-22-0356-edt, LIDAR MOVED (saved fit) on the predictions page). Against 39666176735 (same seed, same lots, the datum move alone, 18.3%): **H111.** Workflow 24 run 39746335881: 28 / 27 / 49, paired -0.0 [-0.1, +0.1], p 1.000. No change; the moves stay for correctness |
