@@ -1166,6 +1166,36 @@ pressure at the heads, "skip as much other info as possible (especially stuff th
   to end), so a head midway along is the one to measure ("pick a head" chooses the one nearest the zone's middle).
   On the owner's map, four zones read by throw (19-22 ft) gave 30-41 psi at their heads; one zone borrowed.
 
+### H34. Rust and scale in poly pipe: looked for again, still no number to use (water session, 2026-10-22)
+
+The owner asked for a second look at friction from rust and mineral scale in poly (H26 left PE, PVC, PEX and
+copper smooth). What was found, by kind of build-up:
+
+- Rust: none. Polyethylene and PVC do not corrode. Rain Bird's and the Irrigation Association's charts give PE
+  C 140 (PVC 150) with no ageing allowance (lib/hydraulics/pipes.json).
+- Old plastic, measured: the one field test found is an 8 in PVC main in service 46 years, C 164 at 3.9 ft/s
+  (Uni-Bell 2022, "Testing Confirms PVC Pipe Hydraulic Coefficients" -- the PVC trade group's own test). A
+  calibrated city network model put PVC over 20 years old at C 130-140 (Water 2019, 11, 2378; fitted, not
+  measured; it would mean 14-30% more friction loss than C 150). Nothing found for poly roll pipe, and nothing
+  for any pipe as small as a lawn's.
+- Slime (biofilm), measured in polyethylene: Cowle, Babatunde & Bockelmann-Evans (2017, J. Hydraulic
+  Research 55(2), accepted manuscript read) grew it in a 100 mm HDPE pipe for 20 days. Friction rose within
+  25 h, settled after 180 h at a friction factor of 0.026-0.034, and the slower the water the rougher the
+  film; at the same pressure drop that is 15-22% less flow (their figure). Their water was synthetic sewage,
+  far richer than chlorinated tap water, so it is an upper bound, not a lawn line's value.
+- Iron from well water, measured in polyethylene: Gong, Erkelens, Lambert & Forward (2019, J. Water Resour.
+  Plann. Manage. 145(9)) followed HDPE pipelines carrying iron-bacteria ground water in South Australia. Head
+  loss rose steadily, faster in smaller pipes and at higher speeds; the deposit (iron oxide strands from
+  Mariprofundus) narrows the bore as well as roughening it (about 2 mm off the diameter for each 1 mm of
+  roughness). The paper is paywalled and its rates were not readable, so no number is taken from it.
+- Lime scale: hard water drops it where it becomes supersaturated -- warmed, losing CO2, or evaporating. The
+  scaling study found on HDPE (AQUA 2021, 70(8), 1204) had to heat the water to 30-50 C and degas it to get
+  scale. Cold mains water in a buried line is not that; nozzles, screens and the wetted ground are (H26).
+
+So the model is unchanged: poly stays smooth; iron-bearing well water stays a flag. On a lawn's pipe the
+largest of these would be a slow, unmeasured loss. The pressure measured at the heads (H33) already includes
+whatever the pipes have become, which makes it the better answer for an old system.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge
