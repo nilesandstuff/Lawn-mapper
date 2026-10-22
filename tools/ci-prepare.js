@@ -395,14 +395,27 @@ function resolveBucket() {
  * phone.
  */
 function migrate() {
-  try {
-    wrangler(['d1', 'execute', DB_NAME, '--remote', '--file=worker/schema.sql', '--yes']);
-    console.log('  schema applied.');
-    return true;
-  } catch (err) {
-    console.log(`  schema FAILED (${firstLine(err)})`);
-    return false;
+  /*
+   * TWICE. Deploy 39816717004 (2026-10-22) had the schema statement refused
+   * with "internal error; reference = ..." from Cloudflare's side, nothing
+   * in the file, and the migrations right after it went through. One retry
+   * after a pause turns a passing fault into a line in the log instead of a
+   * warning at the end of it.
+   */
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      wrangler(['d1', 'execute', DB_NAME, '--remote', '--file=worker/schema.sql', '--yes']);
+      console.log(`  schema applied${attempt > 1 ? ' on the second try' : ''}.`);
+      return true;
+    } catch (err) {
+      console.log(`  schema FAILED (${firstLine(err)})`);
+      if (attempt < 2) {
+        console.log('  trying once more in 15 s…');
+        execFileSync('sleep', ['15']);
+      }
+    }
   }
+  return false;
 }
 
 /**
