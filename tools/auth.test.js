@@ -28,7 +28,7 @@ import {
 import { handleAuth } from '../worker/src/routes-auth.js';
 import {
   SESSION_COOKIE,
-  safeNext, looksLikeEmail, readCookie, sessionCookie, beginMagicLink,
+  safeNext, looksLikeEmail, readCookie, sessionCookie, beginMagicLink, mailRateLimited, MAIL_PER_ADDRESS_HOUR,
   finishMagicLink,
 } from '../worker/src/auth.js';
 
@@ -827,6 +827,18 @@ const rows = async (e, sql, ...args) => (await e.DB.prepare(sql).bind(...args).a
   check('somebody over the minimum with no destination is told what to do about it',
     poorAsk.status === 400,
     'a request with nowhere to send it is a row the owner cannot clear');
+}
+
+/* Sign-in mails are rationed by the hour (2026-10-22): a fake KV counts them. */
+{
+  const store = new Map();
+  const kv = { get: async (k) => store.get(k) ?? null, put: async (k, v) => { store.set(k, v); } };
+  const req = new Request('https://site.test/api/auth/email', { method: 'POST', headers: { 'CF-Connecting-IP': '203.0.113.9' } });
+  let refused = 0;
+  for (let i = 0; i < MAIL_PER_ADDRESS_HOUR + 2; i++) if (await mailRateLimited(req, { QUOTA: kv }, 'a@b.com')) refused++;
+  check('the sixth and seventh links to one address in an hour are refused', refused === 2);
+  check('another address from the same place is still allowed', (await mailRateLimited(req, { QUOTA: kv }, 'c@d.com')) === false);
+  check('a site without the KV namespace is not limited', (await mailRateLimited(req, {}, 'a@b.com')) === false);
 }
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);

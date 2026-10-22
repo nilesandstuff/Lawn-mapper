@@ -44,7 +44,8 @@ import { charge, refund, allowance } from './allowance.js';
 // Why an upstream refused us, redacted. In its own module because a Workers
 // entrypoint may only export handlers, and this needs a test: it is the only
 // thing between an upstream error page and a leaked API key.
-import { upstreamReason } from './upstream.js';
+import { upstreamReason, redactSecrets } from './upstream.js';
+import { hardened } from './hardened.js';
 import { logMeasurement, readLog, loggingEnabled, recordLater } from './testlog.js';
 import { recordFeedback, readFeedback, feedbackEnabled } from './feedback.js';
 import { recordFinished } from './corpus.js';
@@ -594,7 +595,7 @@ async function handlePrediction(url, env, origin) {
       return json(await pollAlpha(env, id, url.origin), 200, origin);
     } catch (e) {
       // A dropped poll is not a failed lot; the browser asks again.
-      return json({ error: 'Could not read the trained model', detail: String(e?.message || e) }, 502, origin);
+      return json({ error: 'Could not read the trained model', detail: redactSecrets(String(e?.message || e)) }, 502, origin);
     }
   }
   // Replicate ids are opaque alphanumeric strings; anything else is not ours.
@@ -1482,6 +1483,11 @@ async function handleCancelPress(request, env, origin, ctx) {
 /* ------------------------------------------------------------------ router */
 export default {
   async fetch(request, env, ctx) {
+    return hardened(await handle(request, env, ctx), request);
+  },
+};
+
+async function handle(request, env, ctx) {
     const url = new URL(request.url);
     const origin = request.headers.get('Origin') || '';
 
@@ -1791,14 +1797,20 @@ export default {
          * public pages are a sales page meant to be repeated, and nothing a
          * person saved is reachable from here.
          */
-        case '/robots.txt':
+        case '/robots.txt': {
+          const shadeHere = !String(env.SHADE_HOST || '').trim();
           return new Response(
             '# Search engines and AI assistants are welcome. A plain-language summary\n'
             + `# of this site for AI assistants: ${url.origin}/llms.txt\n`
             + ROBOTS_AGENTS.map((a) => `User-agent: ${a}\n`).join('')
-            + `User-agent: *\nContent-Signal: search=yes, ai-input=yes, ai-train=yes\nAllow: /\nAllow: /shade\nAllow: /api/config\nAllow: /api/coverage\nDisallow: /api/\n\nSitemap: ${url.origin}/sitemap.xml\n`,
+            + `User-agent: *\nContent-Signal: search=yes, ai-input=yes, ai-train=yes\nAllow: /\n${shadeHere ? 'Allow: /shade\n' : ''}Allow: /api/config\nAllow: /api/coverage\nDisallow: /api/\n`
+            /* The sitemap is named only while it lists something: once the
+               shade map has its own host (SHADE_HOST) /shade is a redirect
+               and this sitemap is empty (2026-10-22 audit). */
+            + (shadeHere ? `\nSitemap: ${url.origin}/sitemap.xml\n` : ''),
             { headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=86400' } }
           );
+        }
         /* For AI assistants: what the site is, in plain words (llms.js). */
         case '/llms.txt':
           return new Response(llmsTxt(url.origin), {
@@ -1848,7 +1860,10 @@ export default {
           }
       }
     } catch (err) {
-      return json({ error: 'Internal error', detail: String(err.message) }, 500, origin);
+      /* The message, with anything that looks like a key or a token taken out
+         (upstream.js), and the whole error in the Worker's own log. */
+      console.error(err);
+      return json({ error: 'Internal error', detail: redactSecrets(String(err?.message || err)) }, 500, origin);
     }
-  },
-};
+}
+

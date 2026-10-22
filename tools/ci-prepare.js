@@ -429,7 +429,10 @@ export function canonicalToHome(html, customDomain, homeDomain = '') {
   const home = homeDomainFor(customDomain, homeDomain);
   if (!customDomain || !home) return html;
   return html.replace(`<link rel="canonical" href="https://${customDomain}/">`,
-    `<link rel="canonical" href="https://${home}/">`);
+    `<link rel="canonical" href="https://${home}/">`)
+    /* And the landing's shade link straight to shade.<home>, rather than
+       through this Worker's /shade redirect (2026-10-22 audit). */
+    .replace(/href="\/shade"/g, `href="https://shade.${home}/"`);
 }
 
 export function fillSiteOrigin(html, customDomain) {

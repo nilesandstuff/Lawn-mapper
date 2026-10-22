@@ -394,6 +394,9 @@ export async function handleAuth(request, env, url, origin, ctx, json) {
     if (sent.error === 'no-mail') {
       return json({ error: 'no-mail', message: 'This site cannot send email yet.' }, 501, origin);
     }
+    if (sent.error === 'too-many') {
+      return json({ error: 'too-many', message: 'Too many sign-in links asked for in the last hour. Check your inbox and spam folder, or try again later.' }, 429, origin);
+    }
     if (sent.error) {
       return json({ error: 'send-failed', message: sent.detail || 'The email could not be sent.' }, 502, origin);
     }

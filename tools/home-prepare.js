@@ -12,6 +12,7 @@
  */
 
 import { appendFileSync, copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { llmsTxt } from '../worker/src/llms.js';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -26,7 +27,10 @@ export function homeDomainFor(custom, explicit = '') {
 }
 
 export const fillHome = (html, home, lawnmap) =>
-  html.split('__HOME__').join(`https://${home}`).split('__LAWNMAP__').join(`https://${lawnmap}`);
+  html.split('__HOME__').join(`https://${home}`).split('__LAWNMAP__').join(`https://${lawnmap}`)
+    /* The shade analyzer's own host (tools/shade-prepare.js puts it at shade.<home>),
+       linked straight rather than through lawnmap's /shade redirect (2026-10-22 audit). */
+    .split('__SHADE__').join(`https://shade.${home}`);
 
 /** The text between two markers, or null. */
 const between = (text, start, end) => {
@@ -62,11 +66,38 @@ export function buildHome(template, appHtml, appCss, home, lawnmap) {
   const head = seo.split(appOrigin).join(homeOrigin).split('__SITE__').join(homeOrigin);
   const body = landing
     .replace(/\s*<p><button class="link" data-coverage-open[^]*?<\/button><\/p>/, '')
+    // The shade analyzer by its own address, not lawnmap's redirect to it.
+    .replace(/href="\/shade"/g, `href="https://shade.${home}/"`)
     .replace(/href="\//g, `href="${appOrigin}/`);
   return fillHome(template, home, lawnmap)
     .replace('<!-- SEO -->', head.trim())
     .replace('/* LANDING_CSS */', css.trim())
     .replace('<!-- LANDING -->', body.trim());
+}
+
+/**
+ * THE HOME PAGE'S HEADERS (2026-10-22): the same three every Lawn Mapper
+ * page has had since 2026-10-04 (public/_headers) -- the home host had none,
+ * so a visit to nilesandstuff.com was the one page without HSTS -- and the
+ * dashboard, a signed-in page, never framed and never indexed. Cloudflare
+ * reads build/_headers; it is not served.
+ */
+export function homeHeaders() {
+  return [
+    '/*',
+    '  X-Content-Type-Options: nosniff',
+    '  Referrer-Policy: strict-origin-when-cross-origin',
+    '  Strict-Transport-Security: max-age=31536000',
+    '/dashboard',
+    '  X-Frame-Options: DENY',
+    "  Content-Security-Policy: frame-ancestors 'none'",
+    '  X-Robots-Tag: noindex, nofollow',
+    '/dashboard.html',
+    '  X-Frame-Options: DENY',
+    "  Content-Security-Policy: frame-ancestors 'none'",
+    '  X-Robots-Tag: noindex, nofollow',
+    '',
+  ].join('\n');
 }
 
 export function wranglerFor(home, lawnmap = `lawnmap.${home}`) {
@@ -123,7 +154,13 @@ function main() {
   for (const f of ['favicon.svg', 'favicon-32.png', 'favicon.ico', 'apple-touch-icon.png', 'og-image.png']) {
     copyFileSync(join(root, 'public', f), join(build, f));
   }
-  writeFileSync(join(build, 'robots.txt'), `User-agent: *\nAllow: /\nSitemap: https://${home}/sitemap.xml\n`);
+  writeFileSync(join(build, '_headers'), homeHeaders());
+  /* The dashboard is noindex by meta and header, and NOT disallowed here: a
+     disallowed URL hides its noindex from Google, which then lists the bare
+     address as "indexed, though blocked". */
+  writeFileSync(join(build, 'robots.txt'), `# A plain-language summary of this site for AI assistants: https://${home}/llms.txt\nUser-agent: *\nAllow: /\nSitemap: https://${home}/sitemap.xml\n`);
+  /* The same summary the app serves, at the canonical landing too (2026-10-22). */
+  writeFileSync(join(build, 'llms.txt'), llmsTxt(`https://${lawnmap}`));
   writeFileSync(join(build, 'sitemap.xml'),
     '<?xml version="1.0" encoding="UTF-8"?>\n'
     + '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'

@@ -104,7 +104,9 @@ body.job-mode #support-btn, body.job-mode .support-line { display: none; }
   color: var(--ink); text-decoration: none; font-size: 13.5px; font-weight: 550;
 }
 .menu a small { color: var(--muted); font-size: 11.5px; font-weight: 400; }
-.menu a:hover, .menu a:focus-visible { background: var(--bg); outline: none; }
+.menu a:hover, .menu a:focus-visible { background: var(--bg); }
+/* A focus ring on every control (keyboard and switch users; 2026-10-22 audit). */
+:focus-visible { outline: 3px solid #8fc99a; outline-offset: 2px; }
 
 /*
  * The badge shrinks rather than pushing the account button off the edge. It is
@@ -1103,7 +1105,7 @@ kbd {
   .layout { display: block; height: auto; }
   .mapwrap { position: relative; height: 62vh; page-break-after: avoid; }
   .printblock { display: block; padding: 18px 4px; font-size: 13px; }
-  .printblock h1 { font-size: 20px; margin: 0 0 6px; }
+  .printblock .print-title { font-size: 20px; font-weight: 700; margin: 0 0 6px; }
   .print-figure { font-size: 26px; font-weight: 700; margin: 10px 0; }
   .print-foot { color: #666; font-size: 11px; margin-top: 18px; }
 }

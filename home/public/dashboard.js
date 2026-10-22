@@ -126,7 +126,7 @@ function mapCard(map, focus) {
   del.setAttribute('aria-label', `Forget the map of ${map.address || 'this lawn'}`);
   del.textContent = '×';
   del.onclick = async () => {
-    if (!confirm(`Forget the map of ${map.address}? Every tool's work on it goes too.`)) return;
+    if (!confirm(`Forget the map of ${map.address || 'this lawn'}? Every tool's work on it goes too.`)) return;
     await getJson(`/api/maps?id=${encodeURIComponent(map.id)}`, { method: 'DELETE' }).catch(() => {});
     load();
   };

@@ -12,11 +12,16 @@
 # The consoles: never inside another site's frame (an invisible frame over
 # "approve" or "make admin" is how a signed-in admin is tricked into clicking
 # them), and never in a search index.
+#
+# EACH RULE TWICE, with and without .html (2026-10-22). Cloudflare serves
+# /admin.html as a 307 to /admin and the page AT /admin, and a rule written
+# for /admin.html matched only the redirect: for eighteen days the consoles'
+# real addresses carried none of these headers.
 /admin.html
   X-Frame-Options: DENY
   Content-Security-Policy: frame-ancestors 'none'
   X-Robots-Tag: noindex, nofollow
-/county.html
+/admin
   X-Frame-Options: DENY
   Content-Security-Policy: frame-ancestors 'none'
   X-Robots-Tag: noindex, nofollow
@@ -24,7 +29,15 @@
   X-Frame-Options: DENY
   Content-Security-Policy: frame-ancestors 'none'
   X-Robots-Tag: noindex, nofollow
+/trees
+  X-Frame-Options: DENY
+  Content-Security-Policy: frame-ancestors 'none'
+  X-Robots-Tag: noindex, nofollow
 /lidar-trees.html
+  X-Frame-Options: DENY
+  Content-Security-Policy: frame-ancestors 'none'
+  X-Robots-Tag: noindex, nofollow
+/lidar-trees
   X-Frame-Options: DENY
   Content-Security-Policy: frame-ancestors 'none'
   X-Robots-Tag: noindex, nofollow
@@ -32,7 +45,15 @@
   X-Frame-Options: DENY
   Content-Security-Policy: frame-ancestors 'none'
   X-Robots-Tag: noindex, nofollow
+/outlines
+  X-Frame-Options: DENY
+  Content-Security-Policy: frame-ancestors 'none'
+  X-Robots-Tag: noindex, nofollow
 /grade.html
+  X-Frame-Options: DENY
+  Content-Security-Policy: frame-ancestors 'none'
+  X-Robots-Tag: noindex, nofollow
+/grade
   X-Frame-Options: DENY
   Content-Security-Policy: frame-ancestors 'none'
   X-Robots-Tag: noindex, nofollow
@@ -40,7 +61,15 @@
   X-Frame-Options: DENY
   Content-Security-Policy: frame-ancestors 'none'
   X-Robots-Tag: noindex, nofollow
+/workers
+  X-Frame-Options: DENY
+  Content-Security-Policy: frame-ancestors 'none'
+  X-Robots-Tag: noindex, nofollow
 /payouts.html
+  X-Frame-Options: DENY
+  Content-Security-Policy: frame-ancestors 'none'
+  X-Robots-Tag: noindex, nofollow
+/payouts
   X-Frame-Options: DENY
   Content-Security-Policy: frame-ancestors 'none'
   X-Robots-Tag: noindex, nofollow
@@ -48,11 +77,38 @@
   X-Frame-Options: DENY
   Content-Security-Policy: frame-ancestors 'none'
   X-Robots-Tag: noindex, nofollow
+/predictions
+  X-Frame-Options: DENY
+  Content-Security-Policy: frame-ancestors 'none'
+  X-Robots-Tag: noindex, nofollow
 /screen.html
+  X-Frame-Options: DENY
+  Content-Security-Policy: frame-ancestors 'none'
+  X-Robots-Tag: noindex, nofollow
+/screen
   X-Frame-Options: DENY
   Content-Security-Policy: frame-ancestors 'none'
   X-Robots-Tag: noindex, nofollow
 /review.html
   X-Frame-Options: DENY
   Content-Security-Policy: frame-ancestors 'none'
+  X-Robots-Tag: noindex, nofollow
+/review
+  X-Frame-Options: DENY
+  Content-Security-Policy: frame-ancestors 'none'
+  X-Robots-Tag: noindex, nofollow
+# The "every map" console (public/maps.html).
+/maps.html
+  X-Frame-Options: DENY
+  Content-Security-Policy: frame-ancestors 'none'
+  X-Robots-Tag: noindex, nofollow
+/maps
+  X-Frame-Options: DENY
+  Content-Security-Policy: frame-ancestors 'none'
+  X-Robots-Tag: noindex, nofollow
+
+# The queue worker's own page: theirs, not a search result.
+/mywork.html
+  X-Robots-Tag: noindex, nofollow
+/mywork
   X-Robots-Tag: noindex, nofollow

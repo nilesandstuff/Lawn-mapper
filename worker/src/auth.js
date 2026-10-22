@@ -150,11 +150,33 @@ export function safeNext(next) {
  * friends have signed up, one address at a time. The link creates the account
  * if there is not one, so there is nothing to disclose in the first place.
  */
+/*
+ * HOW MANY SIGN-IN MAILS AN HOUR (2026-10-22 audit): anyone could ask for a
+ * link to any address as often as they liked, which is a way to mail-bomb a
+ * stranger from this domain and burn the sender's standing. Counted in the
+ * QUOTA KV namespace by the hour; a site without it is not limited, as before.
+ */
+export const MAIL_PER_ADDRESS_HOUR = 5;
+export const MAIL_PER_IP_HOUR = 20;
+
+export async function mailRateLimited(request, env, address) {
+  const kv = env?.QUOTA;
+  if (!kv) return false;
+  const hour = Math.floor(Date.now() / 3600000);
+  const ip = request.headers.get('CF-Connecting-IP') || request.headers.get('X-Forwarded-For') || 'unknown';
+  const keys = [[`mail:a:${hour}:${address}`, MAIL_PER_ADDRESS_HOUR], [`mail:i:${hour}:${ip}`, MAIL_PER_IP_HOUR]];
+  const counts = await Promise.all(keys.map(([k]) => kv.get(k)));
+  if (keys.some(([, cap], i) => Number(counts[i] || 0) >= cap)) return true;
+  await Promise.all(keys.map(([k], i) => kv.put(k, String(Number(counts[i] || 0) + 1), { expirationTtl: 3600 })));
+  return false;
+}
+
 export async function beginMagicLink(request, env, email, next) {
   if (!mailConfigured(env)) return { error: 'no-mail' };
   if (!looksLikeEmail(email)) return { error: 'bad-email' };
 
   const address = String(email).trim().toLowerCase();
+  if (await mailRateLimited(request, env, address)) return { error: 'too-many' };
   const token = await createChallenge(env, 'magic', {
     email: address,
     data: { next: safeNext(next) },

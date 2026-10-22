@@ -47,7 +47,7 @@
     "Trained AI lawn detector that reads several layers at once: the aerial photo, NAIP near-infrared (NDVI), USGS 3DEP lidar height, and a tree-canopy model",
     "Manual drawing tools: trace or redraw the lawn and the property line point by point, paint with brushes, cut out what is not lawn",
     "Lawn under trees estimated from logic and lidar where the photo cannot see it",
-    "Square footage and acreage, saved to an account",
+    "Square footage and acreage; one map signed out, every map on every device with a free account",
     "Shade analyzer: a shade map built from USGS 3DEP lidar, whose pulses pass through the gaps in tree crowns, so trees let through the light they really do instead of being solid shapes; hours of sun and daily light (DLI) across the lawn for any day of the year, with the leaves on the local calendar, for choosing the grass type that will grow there",
     "Free, with no ads, no analytics or ad trackers, and no address sold or passed to contractors"
   ],
@@ -73,7 +73,7 @@
       "name": "How do I measure my lawn from my address?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Type the address at the top of this page, or tap the crosshair to use your location. Confirm the pin, check the property line, then press the AI step to trace the grass or draw it yourself. The square footage and acreage are shown as you go."
+        "text": "Open Lawn Mapper and type your address, or tap the crosshair to use your location. Confirm the pin, check the property line, then press the AI step to trace the grass or draw it yourself. The square footage and acreage are shown as you go."
       }
     },
     {
@@ -240,7 +240,7 @@
 </div>
 
 <!-- The account menu, once there is one. -->
-<div class="sheet" id="account-sheet" role="dialog" aria-modal="true" hidden>
+<div class="sheet" id="account-sheet" role="dialog" aria-modal="true" aria-labelledby="account-name" hidden>
   <div class="sheet-card">
     <button class="sheet-x" id="account-close" type="button" aria-label="Close">×</button>
     <p class="sheet-title" id="account-name">Your account</p>
@@ -408,7 +408,7 @@
       -->
       <p class="note" id="coverage-note"><span id="coverage-text">Property
         lines come from public records in much of the United States.</span>
-        Anywhere else you trace the lawn yourself, which measures just as
+        Anywhere else you trace the property line yourself, which measures just as
         accurately.
         <button class="link" data-coverage-open type="button">See the full
           list</button>
@@ -592,7 +592,7 @@
         </button>
       </nav>
 
-      <div class="statusline" id="status"></div>
+      <div class="statusline" id="status" role="status" aria-live="polite"></div>
 
       <!--
         Shown at the top of a tab whose tools would undo work already done by
@@ -953,8 +953,7 @@
         before anything has been saved.
       -->
       <div class="tabpane" id="pane-saved" role="tabpanel" aria-labelledby="tab-saved" hidden>
-        <p class="sub" id="saved-lead">Maps you have measured are kept on this
-          device so you can come back to them.</p>
+        <p class="sub" id="saved-lead">Loading your maps…</p>
         <ul class="saves" id="saved-list"></ul>
         <!--
           Rewritten by renderSaves, because the true sentence depends on
@@ -963,8 +962,7 @@
           loses them. The text here is the signed-out case, so the tab reads
           correctly before any script has run.
         -->
-        <p class="note" id="saved-note">Saved in this browser only — clearing
-          your browser data clears these.</p>
+        <p class="note" id="saved-note"></p>
         <button class="link" id="saved-signin" hidden>Sign in to keep them on every device</button>
       </div>
 
@@ -1102,7 +1100,7 @@
       </div>
     </div>
 
-    <p class="disclaimer">Measurements come from satellite imagery and public
+    <p class="disclaimer">Measurements come from aerial imagery and public
       county records. Treat them as a close estimate, not a survey.</p>
   </aside>
 
@@ -1685,14 +1683,14 @@
         When you finish a map, its lawn outline and aerial view may be kept to
         train the detector, without your address or your account.</li>
       <li><b>Paid for by people who want it to exist.</b> If it saved you a
-        trip with a measuring wheel, the Support button is there.</li>
+        trip with a measuring wheel, there is a Support link.</li>
     </ul>
   </section>
 
   <section class="lp-band" aria-labelledby="lp-faq-title">
     <h2 id="lp-faq-title">Questions</h2>
     <details class="lp-faq"><summary>How do I measure my lawn from my address?</summary>
-      <p>Type the address at the top of this page, or tap the crosshair to use your
+      <p>Open Lawn Mapper and type your address, or tap the crosshair to use your
         location. Confirm the pin, check the property line, then press the AI step
         to trace the grass or draw it yourself. The square footage and acreage are
         shown as you go.</p></details>
@@ -1765,7 +1763,7 @@
 
 <!-- Rendered only when printing, so the PDF carries the numbers as text. -->
 <div class="printblock" id="printblock" aria-hidden="true">
-  <h1>Lawn measurement</h1>
+  <p class="print-title">Lawn measurement</p>
   <p id="print-address"></p>
   <p class="print-figure"><span id="print-sqft"></span> sq ft</p>
   <p id="print-detail"></p>

@@ -1,6 +1,6 @@
 /** The home page build (tools/home-prepare.js).   node tools/home.test.js */
 import { readFileSync } from 'node:fs';
-import { homeDomainFor, fillHome, wranglerFor, buildHome } from './home-prepare.js';
+import { homeDomainFor, fillHome, wranglerFor, buildHome, homeHeaders } from './home-prepare.js';
 
 let failures = 0;
 const check = (n, ok, d = '') => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${n}${d ? `\n      ${d}` : ''}`); if (!ok) failures++; };
@@ -22,8 +22,8 @@ check('and its search tags, pointed here',
 check('one h1, and the button that opens the dashboard instead of an address bar',
   (filled.match(/<h1/g) || []).length === 1 && filled.includes('href="/dashboard">Start or resume a lawn map')
   && !filled.includes('id="address-form"'));
-check('the landing\'s own links lead to the app; nothing points at a file this site lacks',
-  filled.includes('href="https://lawnmap.nilesandstuff.com/shade"')
+check('the landing\'s own links lead to the app, the shade link to the shade host; nothing points at a file this site lacks',
+  filled.includes('href="https://shade.nilesandstuff.com/"')
   && !/href="\/(styles\.css|shade|lib)/.test(filled) && !filled.includes('data-coverage-open'));
 let threw = false;
 try { buildHome(page, '<html></html>', appCss, 'a.b', 'x.a.b'); } catch { threw = true; }
@@ -64,6 +64,15 @@ check('measured, with slices after: lawn and slices done, the water ready once t
 const redrawn = { ...measured, at: '2026-10-16T12:00:00Z' };
 check('the lawn redrawn after the slices: the slices need an update', toolState(redrawn, T.slices) === 'stale');
 check('a tool still being built says so', toolState(measured, T.soon) === 'soon');
+
+check('the dashboard\'s shade button and the landing\'s shade link go to the shade host itself',
+  fillHome('<a href="__SHADE__/">s</a>', 'nilesandstuff.com', 'lawnmap.nilesandstuff.com') === '<a href="https://shade.nilesandstuff.com/">s</a>'
+  && filled.includes('href="https://shade.nilesandstuff.com/"') && !/href="https:\/\/lawnmap\.nilesandstuff\.com\/shade"/.test(filled));
+
+/* The home host's headers (2026-10-22): HSTS everywhere, the dashboard never framed or indexed. */
+const hh = homeHeaders();
+check('every home page carries HSTS, nosniff and a referrer policy', /^\/\*\n(  [^\n]+\n){3}/.test(hh) && /Strict-Transport-Security: max-age=31536000/.test(hh) && /nosniff/.test(hh));
+check('the dashboard, at both its addresses, is noindex and never framed', /\n\/dashboard\n(  [^\n]+\n)*  X-Robots-Tag: noindex, nofollow/.test(hh) && /\n\/dashboard\.html\n/.test(hh) && /frame-ancestors 'none'/.test(hh));
 
 console.log(failures ? `\n${failures} check(s) FAILED.` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);

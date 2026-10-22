@@ -1630,10 +1630,8 @@ async function initMap() {
     ? defaultExclusions.slice()
     : state.exclusions.filter((e) => e.byDefault).map((e) => e.id);
   if (!mapboxToken) {
-    fatal(
-      'This site is missing its Mapbox key, so the map cannot start. ' +
-      'If you run this site: set it with `npx wrangler secret put MAPBOX_TOKEN`.'
-    );
+    console.error('MAPBOX_TOKEN is not set: `npx wrangler secret put MAPBOX_TOKEN`');
+    fatal('The map is unavailable right now. Please try again later.');
     return;
   }
 
@@ -5583,7 +5581,8 @@ async function detect({ again = false } = {}) {
         'warn'
       );
     } else {
-      setStatus(`${err.message} — you can still draw the lawn by hand.`, 'error');
+      /* The thrown texts often end "...draw it by hand" already: say it once. */
+      setStatus(/by hand/i.test(err.message) ? err.message : `${err.message} — you can still draw the lawn by hand.`, 'error');
     }
   } finally {
     idle();
@@ -14996,7 +14995,7 @@ const afterMap = (name, fn) => async () => {
 initMap()
   .catch((err) => {
     console.error(err);
-    fatal(`${err.message}. Reloading the page usually clears this.`);
+    fatal(`${String(err.message).replace(/\.$/, '')}. Reloading the page usually clears this.`);
     throw err;                       // the steps below need a map to decorate
   })
   // After the map, because /api/config is what says whether this deployment
