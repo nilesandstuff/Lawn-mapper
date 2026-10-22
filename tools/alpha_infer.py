@@ -36,7 +36,7 @@ if HERE not in sys.path:
 import extract_features  # noqa: E402
 from decoder_grid import to_photo  # noqa: E402,F401  (kept importable beside answer)
 from fuse_layers import extra_channels, ndvi_from_png  # noqa: E402
-from windows import padded_side_metres  # noqa: E402
+from windows import padded_side_metres, windowed  # noqa: E402
 
 
 def _tree_module():
@@ -142,8 +142,29 @@ class Detector:
 
     # --------------------------------------------------------------- pieces
     def features(self, photo, span):
-        """The whole lot through Scale-MAE in one pass (`windows: off`)."""
+        """The lot through Scale-MAE: whole in one pass (`windows: off`, every
+        release before S49), or, for a release trained with `windows: on`
+        (meta "windowed" > 0, or ALPHA_WINDOWS=1), a lot too big for one pass
+        at 10 cm read in overlapping windows at the photograph's own
+        resolution, exactly as tools/extract_features.py reads it for
+        training (windows.py: the margins are read and thrown away, the
+        cores stitched). Owner, 2026-10-22: a 10-acre condo complex squeezed
+        whole was read at 44 cm a pixel and traced very badly."""
         size = self.eye.side * self.eye.patch
+        w, h = photo.size
+        windows_on = bool((self.release.meta.get("windowed") if self.release is not None else 0)
+                          or os.environ.get("ALPHA_WINDOWS") == "1")
+        if windows_on and not extract_features.read_whole(span, w, h, size):
+            mpp = (span / w) if self.eye.wants_scale else 0.0
+
+            def look(win):
+                hidden = self.eye.look(extract_features.to_tensor(win), mpp)
+                flat, d, _ = extract_features.patches_of(hidden, self.eye.side)
+                return flat.reshape(self.eye.side, self.eye.side, d)
+
+            grid, cover, n = windowed(extract_features.normalised(photo), size, self.eye.patch, look)
+            self.last_windows = n
+            return grid, cover
         with tempfile.NamedTemporaryFile(suffix=".png") as f:
             photo.save(f.name)
             tensor, cover = extract_features.as_tensor(f.name, size)
@@ -151,6 +172,7 @@ class Detector:
         mpp = (long_m / size) if self.eye.wants_scale else 0.0
         hidden = self.eye.look(tensor, mpp)
         flat, dim, _ = extract_features.patches_of(hidden, self.eye.side)
+        self.last_windows = 1
         return flat.reshape(self.eye.side, self.eye.side, dim), cover
 
     def canopy(self, photo, span, down):
@@ -200,6 +222,7 @@ class Detector:
             grid, cover = self.features(photo, prep["span"])
             gh, gw = grid.shape[:2]
             t["backbone"] = round(time.time() - t0, 1)
+            rec["windows"] = int(getattr(self, "last_windows", 1))
 
             t0 = time.time()
             can = self.canopy(photo, prep["span"], prep["down"])

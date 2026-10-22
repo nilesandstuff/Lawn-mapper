@@ -7658,6 +7658,34 @@ fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
 
+### S49. Big lots read in windows at the photo's own resolution, for training AND the live server (owner, 2026-10-22: "let's try windowed reading for large lots") -- RUNNING
+**Why now.** A 10-acre condo complex (two associations, Byron Center,
+2026-10-21) was traced "very very badly". The live server reads every lot
+whole in one 896 px pass, as every release's training did, so a 390 m
+lot reaches the backbone at 44 cm a pixel, three times coarser than the
+corpus's lots; and the corpus holds nothing like it.
+
+**What is known.** `windows: on` (tools/windows.py, 2026-09-23) reads a
+lot past ~90 m in overlapping 896 px windows at 10 cm, margins thrown
+away, cores stitched. H22 read it 16 points worse; that was the squeeze's
+registration bug (H25), and the re-run of 2026-09-24 put every row within
+1.5 points either way. It costs three times the extraction and decoder
+time, which is why it stayed off. On the 104 locked lots only the ones
+past 90 m change; the 10-acre lot is not in the corpus, so this run can
+say "no worse on the corpus", not "better on the complex".
+
+**The run.** Workflow 14, 2026-10-22 ~08:40 UTC: THE PLAN, seed 7, locked
+lots, saved lidar moves, `windows: on`; read against 39715167319 (same,
+windows off) with workflow 24. The live server (tools/alpha_infer.py
+`features`) now reads a big lot in windows for a release whose meta says
+`windowed` > 0, so a release trained this way serves this way; releases
+before it are unchanged.
+
+**The bar.** Within noise on the corpus (H109's 95% band of about
+0.1 points) and it ships as the next release, for the big lots' sake;
+worse by more than a point and it stays off, and the condo complex waits
+on corpus lots like it.
+
 ### S48. Ground hidden behind a leaning roof: the trace cannot claim it, so the label says not-lawn where the lidar says open ground (owner, 2026-10-21: "in cases of heavy lean, the lawn traces don't guess at grass behind the lean") -- NOT MEASURED
 **The problem.** On a lot whose photo leans (Fargo 1.75 m, Kentucky 3 m,
 H107), the roof in the picture covers a strip of ground on its lean side.

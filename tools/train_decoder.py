@@ -828,6 +828,10 @@ def main():
         meta = {
             "backbone": manifest.get("model"), "size": manifest.get("size"),
             "resFactor": manifest.get("resFactor", 1.0),
+            # How many lots the extractor read in overlapping windows (S49,
+            # `windows: on`): the live server reads a big lot the same way
+            # only for a release trained this way (alpha_infer.features).
+            "windowed": int(manifest.get("windowed", 0) or 0),
             "dim": dim, "refine": REFINE, "refineReach": (os.environ.get("REFINE_REACH") or "normal") if REFINE else None, "refineEdges": os.environ.get("REFINE_EDGES") == "1", "refineGate": os.environ.get("REFINE_GATE") == "1", "fuse": FUSE, "fuseCanopy": FUSE_CANOPY,
             "underTrees": UNDER_TREES, "fuseReturns": bool(FUSE_RETURNS), "fuseIntensity": FUSE_INTENSITY, "fuseOverture": bool(FUSE_OVERTURE), "lidarDistrust": bool(LIDAR_DISTRUST), "correctionsWeight": CORRECTIONS_WEIGHT,
             "channels": list(CHANNELS) if FUSE else [],
