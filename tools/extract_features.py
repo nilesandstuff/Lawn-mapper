@@ -131,7 +131,35 @@ class HubEye:
         from transformers import AutoModel
 
         self.name = model_id
-        self.model = AutoModel.from_pretrained(model_id).to(DEVICE)
+        try:
+            self.model = AutoModel.from_pretrained(model_id).to(DEVICE)
+        except Exception as e:  # noqa: BLE001 - the one failure worth naming
+            msg = str(e).lower()
+            if "gated" in msg or "401" in msg or "403" in msg or "access" in msg:
+                raise SystemExit(
+                    f"{model_id} is gated on the Hugging Face hub and this run could not open it"
+                    f"{' (no HF_TOKEN was set)' if not os.environ.get('HF_TOKEN') else ' with the HF_TOKEN it was given'}: "
+                    "accept the model's licence on its hub page while signed in, make a read token at "
+                    "huggingface.co/settings/tokens, and add it to the repository's secrets as HF_TOKEN."
+                ) from e
+            raise
+        # THE MODEL'S OWN NORMALISATION (DINOv3's satellite weights, 2026-10-22).
+        # DINOv2 and Scale-MAE both want ImageNet's mean and sd; the SAT-493M
+        # weights were trained with Maxar imagery's own statistics, published
+        # in the checkpoint's processor config. Read from there rather than
+        # assumed, and applied to every picture this eye reads (the whole
+        # pass and the windows alike).
+        try:
+            from transformers import AutoImageProcessor
+            proc = AutoImageProcessor.from_pretrained(model_id)
+            mean, sd = getattr(proc, "image_mean", None), getattr(proc, "image_std", None)
+            if mean and sd and ([round(float(v), 4) for v in mean] != [round(float(v), 4) for v in IMAGENET_MEAN]
+                                or [round(float(v), 4) for v in sd] != [round(float(v), 4) for v in IMAGENET_SD]):
+                set_normalisation(mean, sd)
+                print(f"pixels normalised with {model_id}'s own mean {[round(float(v), 3) for v in mean]} "
+                      f"and sd {[round(float(v), 3) for v in sd]}, from its processor config", flush=True)
+        except Exception as e:  # noqa: BLE001 - ImageNet's constants then, as before
+            print(f"no processor config read for {model_id} ({str(e)[:80]}); ImageNet normalisation", flush=True)
         # eval() and no_grad are not an optimisation here -- training is not
         # happening, and a backbone left in training mode would run its dropout
         # and return a different answer to the same photograph every time,
@@ -259,6 +287,14 @@ def open_eye(model_id, size):
     if model_id.startswith("scalemae"):
         return SatelliteEye(size, res_factor_of(model_id))
     return HubEye(model_id, size)
+
+
+def set_normalisation(mean, sd):
+    """The mean and sd every picture is normalised with, for an eye whose
+    checkpoint was trained with other constants than ImageNet's (HubEye)."""
+    global IMAGENET_MEAN, IMAGENET_SD
+    IMAGENET_MEAN = np.array([float(v) for v in mean], dtype=np.float32)
+    IMAGENET_SD = np.array([float(v) for v in sd], dtype=np.float32)
 
 
 def normalised(img):
