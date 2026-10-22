@@ -39,7 +39,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { liveCaptureFrame } from '../worker/src/imagery.js';
+import { pressPlan, pressBody } from '../worker/src/imagery.js';
 import { runKeys } from './run-folder.js';
 import { parcelMask } from './serve-alpha.mjs';
 import { drawLayers, drawPrediction, tracePrediction, LAYERS } from './render-prediction.js';
@@ -106,22 +106,23 @@ export function resizeRgba(src, w, h, channels, W, H) {
   return out;
 }
 
-/** The press payload for a saved map, as worker/src/alpha.js builds one. */
+/** The press payload for a saved map, as worker/src/alpha.js builds one:
+    the same tile plan, each tile's picture asked of the site. */
 export function pressFor(map, site) {
-  const shot = liveCaptureFrame(map.frame);
   const county = map.provider === 'county' && map.countySvc ? String(map.countySvc) : null;
-  const q = new URLSearchParams({
-    lng: shot.frame.lng, lat: shot.frame.lat, zoom: shot.frame.zoom, size: shot.frame.size,
-    height: shot.frame.height || shot.frame.size, provider: county ? 'county' : 'mapbox',
-    ...(county ? { svc: county } : {}),
-  });
+  const urlFor = (f) => `${site}/api/imagery?${new URLSearchParams({
+    lng: f.lng, lat: f.lat, zoom: f.zoom, size: f.size, height: f.height || f.size,
+    provider: county ? 'county' : 'mapbox', ...(county ? { svc: county } : {}),
+  })}`;
+  const plan = pressPlan(map.frame, urlFor);
   return {
-    imageUrl: `${site}/api/imagery?${q}`,
-    frame: shot.frame,
-    parcel: map.parcel?.geometry || map.parcel || null,
-    naipAlign: county ? null : map.naipAlign || null,
+    ...pressBody(plan, {
+      parcel: map.parcel?.geometry || map.parcel || null,
+      naipAlign: county ? null : map.naipAlign || null,
+    }),
     provider: county ? 'county' : 'mapbox',
-    groundCm: Math.round(shot.groundM * 1000) / 10,
+    groundCm: Math.round(plan.groundM * 1000) / 10,
+    pieces: plan.tiles.length,
   };
 }
 
@@ -189,8 +190,10 @@ async function main() {
   const press = pressFor(map, site);
   writeFileSync(join(out, 'payload.json'), JSON.stringify({
     imageUrl: press.imageUrl, frame: press.frame, parcel: press.parcel, naipAlign: press.naipAlign,
+    ...(press.tiles ? { tiles: press.tiles, cols: press.cols, rows: press.rows } : {}),
   }));
-  console.log(`Press: ${press.provider} photo at ${press.groundCm} cm a pixel, frame ${press.frame.size}x${press.frame.height || press.frame.size} at zoom ${press.frame.zoom}.`);
+  console.log(`Press: ${press.provider} photo at ${press.groundCm} cm a pixel in ${press.pieces} piece${press.pieces === 1 ? '' : 's'}, `
+    + `frame ${press.frame.size}x${press.frame.height || press.frame.size} logical px at zoom ${press.frame.zoom.toFixed(2)}.`);
   const py = spawnSync('python3', [join('tools', 'draw_map.py')], {
     stdio: 'inherit', env: { ...process.env, OUT: out }, timeout: 3 * 3600 * 1000,
   });

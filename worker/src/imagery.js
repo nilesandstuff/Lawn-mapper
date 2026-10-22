@@ -203,6 +203,40 @@ export function captureFrame(frame, target = TARGET_GROUND_M, { maxLogical = MAX
 export const liveCaptureFrame = (frame, target = TARGET_GROUND_M) =>
   captureFrame(frame, target, { maxLogical: MAX_LOGICAL });
 
+/**
+ * THE PICTURES ONE PRESS OF THE TRAINED MODEL IS MADE FROM (2026-10-22).
+ *
+ * Until this, the live press was one request held to what Mapbox serves in
+ * one picture (liveCaptureFrame): past about 256 m the lot was photographed
+ * coarser, flagged `capped`, and a 390 m condo complex reached the model at
+ * 17.6 cm a pixel before it was squeezed at all (owner: "let's fix the
+ * photo cap"). This is capturePlan's grid instead, the same tiles the banking
+ * stitches (tools/refetch-imagery.js), each at most one request: the model
+ * server fetches every tile and pastes them at (col * px, row * px), so the
+ * photo is 10 cm a pixel up to about 512 m across. `urlFor(tileFrame)` names
+ * the picture of one tile -- the county export or Mapbox -- and a plan with
+ * one tile is exactly the press that was sent before.
+ */
+export function pressPlan(frame, urlFor, target = TARGET_GROUND_M) {
+  const plan = capturePlan(frame, target);
+  const tiles = plan.tiles.map((t) => ({ col: t.col, row: t.row, url: urlFor(t.frame) }));
+  if (tiles.some((t) => !t.url)) return null;
+  return {
+    frame: plan.frame, groundM: plan.groundM, capped: plan.capped,
+    cols: plan.cols, rows: plan.rows, tiles,
+  };
+}
+
+/** The body the model server's `start` takes for a plan, plus `extra`. */
+export function pressBody(plan, extra = {}) {
+  return {
+    imageUrl: plan.tiles[0].url,
+    frame: plan.frame,
+    ...(plan.tiles.length > 1 ? { tiles: plan.tiles, cols: plan.cols, rows: plan.rows } : {}),
+    ...extra,
+  };
+}
+
 export function capturePlan(frame, target = TARGET_GROUND_M) {
   const shot = captureFrame(frame, target);
   const { zoom, size, height } = shot.frame;

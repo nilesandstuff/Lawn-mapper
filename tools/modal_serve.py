@@ -9,7 +9,7 @@ run keeps no weights.
 
 HOW THE SITE USES IT. Same shape as the Replicate calls it already makes:
 
-    POST {start url}   {imageUrl, frame, parcel?, naipAlign?}   -> {id}
+    POST {start url}   {imageUrl, frame, parcel?, naipAlign?, tiles?, cols?, rows?}   -> {id}
     GET  {result url}?id=...                                   -> {status: running | succeeded | failed, ...}
     POST {cancel url}?id=...                                   -> {cancelled}
 

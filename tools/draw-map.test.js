@@ -55,11 +55,16 @@ const check = (name, ok, detail = '') => {
   const press = pressFor(map, 'https://lawnmap.example.com');
   check('the county photo is asked of the site by its service id',
     press.imageUrl.startsWith('https://lawnmap.example.com/api/imagery?') && press.imageUrl.includes('provider=county') && press.imageUrl.includes('svc=363'));
-  /* 390 m across in the one request the site serves (2560 px): about 18 cm
-     a pixel, the same photo the live app would get for this lot. */
-  check('the capture frame is finer than the saved display frame and inside the site\'s one-request cap',
-    press.frame.zoom > map.frame.zoom && press.groundCm > 10 && press.groundCm <= 20 && press.frame.size <= 1280,
-    `${press.groundCm} cm at zoom ${press.frame.zoom}, ${press.frame.size} logical px`);
+  /* 390 m across: more than one request serves at 10 cm, so the plan is a
+     grid of tiles the server stitches (the fix of the photo cap, 2026-10-22),
+     each inside the site's one-request limit. */
+  check('a big lot is a grid of tiles at 10 cm, each inside the site\'s one-request cap',
+    press.frame.zoom > map.frame.zoom && press.groundCm <= 10.01 && press.pieces > 1 && press.pieces === press.cols * press.rows
+      && press.tiles.every((t) => /size=\d+/.test(t.url) && Number(t.url.match(/size=(\d+)/)[1]) <= 1280 && t.url.includes('svc=363')),
+    `${press.groundCm} cm, ${press.pieces} pieces (${press.cols}x${press.rows}), frame ${press.frame.size} logical px`);
+  check('the first tile is also the one-picture url, for the server\'s check', press.imageUrl === press.tiles[0].url);
+  const small = pressFor({ ...map, frame: { lng: -85.7057, lat: 42.8358, zoom: 19, size: 640, height: 640 } }, 'https://lawnmap.example.com');
+  check('a small lot is one picture, as every press before', small.pieces === 1 && small.tiles === undefined);
   check('the property line travels as its geometry', press.parcel.type === 'Polygon');
   check('NAIP\'s Mapbox alignment is not applied to a county photo', press.naipAlign === null);
   const mb = pressFor({ ...map, provider: 'mapbox', countySvc: null }, 'https://lawnmap.example.com');

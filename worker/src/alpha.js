@@ -15,7 +15,7 @@
  * never be a button that fails.
  */
 
-import { liveCaptureFrame, imageryUrl, countyExportUrl } from './imagery.js';
+import { pressPlan, pressBody, imageryUrl, countyExportUrl } from './imagery.js';
 
 export const ALPHA_ID = 'alpha';
 const PREFIX = 'alpha-';
@@ -46,24 +46,24 @@ export const isAlphaId = (id) => typeof id === 'string' && id.startsWith(PREFIX)
 export async function startAlpha(env, { frame, parcel = null, naipAlign = null, county = null }) {
   const token = env.MAPBOX_SERVER_TOKEN || env.MAPBOX_TOKEN;
   if (!token) throw new Error('no imagery token');
-  const shot = liveCaptureFrame(frame);
   /* The county photo, when the lot has one and it was chosen (owner,
-     2026-10-01: county photos are not view only). Same capture frame; the
-     model reads whatever size comes back at its own 15 cm grid. Trained on
-     Mapbox only, so how it does here is what the comparison run measures. */
-  const imageUrl = county ? countyExportUrl(county, shot.frame) : imageryUrl('mapbox', shot.frame, token, env);
-  if (!imageUrl) throw new Error('no imagery url');
+     2026-10-01: county photos are not view only). Same capture frames; the
+     model reads whatever size comes back at its own 15 cm grid. A big lot
+     is several tiles the server stitches (pressPlan), so it reads 10 cm a
+     pixel up to about 512 m across rather than one capped picture. */
+  const plan = pressPlan(frame, (f) => (county ? countyExportUrl(county, f) : imageryUrl('mapbox', f, token, env)));
+  if (!plan) throw new Error('no imagery url');
   const res = await fetch(env.ALPHA_URL, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${env.ALPHA_TOKEN}` },
-    body: JSON.stringify({ imageUrl, frame: shot.frame, parcel, naipAlign }),
+    body: JSON.stringify(pressBody(plan, { parcel, naipAlign })),
     signal: AbortSignal.timeout(30000),
   });
   if (!res.ok) throw new Error(`trained model start: HTTP ${res.status}`);
   const got = await res.json();
   if (!got?.id) throw new Error('trained model start: no id');
-  return { id: `${PREFIX}${got.id}`, frame: shot.frame, groundM: shot.groundM, capped: shot.capped,
-    provider: county ? 'county' : 'mapbox' };
+  return { id: `${PREFIX}${got.id}`, frame: plan.frame, groundM: plan.groundM, capped: plan.capped,
+    tiles: plan.tiles.length, provider: county ? 'county' : 'mapbox' };
 }
 
 /**

@@ -558,7 +558,9 @@ jobs:
       # fail; it trains the head on a picture out of register with its labels.
       - name: Check the window stitching
         working-directory: tools
-        run: python3 windows_test.py
+        run: |
+          python3 windows_test.py
+          python3 alpha_sources_test.py
 
       # And that labels land on the right patches and answers on the right
       # cells, before the decoder is trained on either. Same reason.

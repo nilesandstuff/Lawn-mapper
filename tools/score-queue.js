@@ -31,7 +31,7 @@ import { query, resolveDatabase } from './corpus-db.js';
 import { queryCounty } from '../worker/src/parcel.js';
 import { VERIFIED_COUNTIES } from '../worker/src/counties-verified.js';
 import { frameFor, geometryBounds } from '../public/lib/mercator.js';
-import { captureFrame, imageryUrl } from '../worker/src/imagery.js';
+import { captureFrame, imageryUrl, pressPlan, pressBody } from '../worker/src/imagery.js';
 
 const FRAME_SIZE = 640;
 const FRAME_MARGIN_M = 10;
@@ -85,8 +85,8 @@ async function plan() {
     }
     if (!parcel?.geometry) { console.error(`  ${r.id}: no parcel there any more; skipped`); continue; }
     const { shot } = lotFrames(parcel);
-    const imageUrl = imageryUrl('mapbox', shot.frame, token, {});
-    process.stdout.write(`${JSON.stringify({ id: r.id, imageUrl, frame: shot.frame, parcel: parcel.geometry })}\n`);
+    const plan = pressPlan(shot.frame, (f) => imageryUrl('mapbox', f, token, {}));
+    process.stdout.write(`${JSON.stringify({ id: r.id, ...pressBody(plan, { parcel: parcel.geometry }) })}\n`);
     sent++;
   }
   console.error(`${sent} lots ready for the model.`);

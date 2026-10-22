@@ -24,7 +24,9 @@ def main():
         open(dst, "w").close()
         return 0
     Alpha = modal.Cls.from_name("lawn-mapper-alpha", "Alpha")
-    payloads = [{"imageUrl": L["imageUrl"], "frame": L["frame"], "parcel": L.get("parcel")} for L in lots]
+    payloads = [{"imageUrl": L["imageUrl"], "frame": L["frame"], "parcel": L.get("parcel"),
+                 **({"tiles": L["tiles"], "cols": L.get("cols"), "rows": L.get("rows")} if L.get("tiles") else {})}
+                for L in lots]
     t0 = time.time()
     ok = failed = 0
     with open(dst, "w") as out:

@@ -31,6 +31,45 @@ def fetch_photo(url):
         return r.read()
 
 
+def stitch_tiles(tiles, cols, rows):
+    """One photograph from its tiles: (col, row, PIL image) pasted at
+    (col * px, row * px). The tiles abut exactly because the Worker split the
+    frame in world pixels (worker/src/imagery.js pressPlan, the banking's own
+    grid), so this is a plain paste; a tile of another size would paste
+    misaligned and leave a seam, and is refused instead."""
+    if not tiles:
+        raise ValueError("no tiles")
+    px, py = tiles[0][2].size
+    out = Image.new("RGB", (px * cols, py * rows))
+    for col, row, img in tiles:
+        if img.size != (px, py):
+            raise ValueError(f"tile {col},{row} is {img.size[0]}x{img.size[1]} px, the first {px}x{py}")
+        if not (0 <= col < cols and 0 <= row < rows):
+            raise ValueError(f"tile {col},{row} is outside the {cols}x{rows} grid")
+        out.paste(img.convert("RGB"), (col * px, row * py))
+    return out
+
+
+def fetch_press_photo(payload, say=None):
+    """The press's photograph as bytes: one picture, or its tiles stitched
+    (payload["tiles"], 2026-10-22: a big lot at 10 cm a pixel instead of one
+    picture capped at what Mapbox serves in a request)."""
+    tiles = payload.get("tiles") or []
+    if len(tiles) <= 1:
+        return fetch_photo(payload["imageUrl"])
+    cols, rows = int(payload.get("cols") or 1), int(payload.get("rows") or 1)
+    if cols * rows != len(tiles):
+        raise ValueError(f"{len(tiles)} tiles for a {cols}x{rows} grid")
+    got = []
+    for i, t in enumerate(tiles):
+        if say:
+            say(f"Fetching the aerial photograph of your lot (piece {i + 1} of {len(tiles)})")
+        got.append((int(t["col"]), int(t["row"]), Image.open(io.BytesIO(fetch_photo(t["url"])))))
+    buf = io.BytesIO()
+    stitch_tiles(got, cols, rows).save(buf, format="PNG")
+    return buf.getvalue()
+
+
 def _lidar_cache_file(cache_dir, prep, local):
     """Where this frame's lidar layers live on the volume, or None."""
     if not cache_dir:
@@ -158,7 +197,7 @@ def gather(payload, prepare, progress=None, cache_dir=None):
     say("Working out the lot's grid")
     prep = prepare({"frame": payload["frame"]})
     say("Fetching the aerial photograph of your lot")
-    photo_bytes = fetch_photo(payload["imageUrl"])
+    photo_bytes = fetch_press_photo(payload, say)
     photo = Image.open(io.BytesIO(photo_bytes)).convert("RGB")
     sources = gather_sources(photo, prep, payload.get("naipAlign"), progress=progress, cache_dir=cache_dir)
     sources["seconds"]["gather"] = round(time.time() - t0, 1)

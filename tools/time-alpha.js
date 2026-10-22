@@ -15,7 +15,7 @@
 import { fileURLToPath } from 'node:url';
 
 import { query } from './corpus-db.js';
-import { liveCaptureFrame, imageryUrl } from '../worker/src/imagery.js';
+import { pressPlan, pressBody, imageryUrl } from '../worker/src/imagery.js';
 import { mapName } from '../worker/src/benchmark-ids.js';
 
 const parse = (t) => { try { return JSON.parse(t); } catch { return null; } };
@@ -35,10 +35,9 @@ export function summarise(rows) {
 /** One lot through start/result, until it answers or `limitMs` runs out. */
 async function runLot(env, r, limitMs) {
   const headers = { 'content-type': 'application/json', authorization: `Bearer ${env.ALPHA_TOKEN}` };
-  const shot = liveCaptureFrame(parse(r.frame));
-  const imageUrl = imageryUrl('mapbox', shot.frame, env.MAPBOX_TOKEN, env);
+  const plan = pressPlan(parse(r.frame), (f) => imageryUrl('mapbox', f, env.MAPBOX_TOKEN, env));
   const t0 = Date.now();
-  const res = await fetch(env.ALPHA_URL, { method: 'POST', headers, body: JSON.stringify({ imageUrl, frame: shot.frame, parcel: parse(r.parcel) }) });
+  const res = await fetch(env.ALPHA_URL, { method: 'POST', headers, body: JSON.stringify(pressBody(plan, { parcel: parse(r.parcel) })) });
   if (!res.ok) return { got: { status: `start HTTP ${res.status}` }, wall: 0 };
   const { id } = await res.json();
   let got = null;
@@ -89,10 +88,9 @@ async function main(env = process.env) {
   const results = [];
   for (const r of lots) {
     const name = mapName(r.id, r.lot_no);
-    const shot = liveCaptureFrame(parse(r.frame));
-    const imageUrl = imageryUrl('mapbox', shot.frame, env.MAPBOX_TOKEN, env);
+    const plan = pressPlan(parse(r.frame), (f) => imageryUrl('mapbox', f, env.MAPBOX_TOKEN, env));
     const t0 = Date.now();
-    const res = await fetch(env.ALPHA_URL, { method: 'POST', headers, body: JSON.stringify({ imageUrl, frame: shot.frame, parcel: parse(r.parcel) }) });
+    const res = await fetch(env.ALPHA_URL, { method: 'POST', headers, body: JSON.stringify(pressBody(plan, { parcel: parse(r.parcel) })) });
     if (!res.ok) { console.log(`${name}: start HTTP ${res.status}`); continue; }
     const { id } = await res.json();
     let got = null;
