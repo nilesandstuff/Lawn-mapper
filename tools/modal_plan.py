@@ -27,12 +27,14 @@ def plan(inputs, run, send):
     decoder = inputs["decoder"]
     seed = inputs["seed"]
     fused = "1" if decoder.startswith("fused") else ""
-    whole = "feats-whole" if windows == "both" else ""
+    whole = "feats-whole" if windows in ("both", "on + whole") else ""
     distrust = "lidar/ground-check.json" if inputs.get("distrust_lidar") == "on" else ""
 
     steps = []
-    base = {"IMAGES": "frames", "MODEL": inputs["model"], "SIZE": inputs["size"]}
-    if windows == "both":
+    # HF_TOKEN: a gated eye (DINOv3, S51) opens with the owner's hub token,
+    # passed through from the dispatch step's environment; empty otherwise.
+    base = {"IMAGES": "frames", "MODEL": inputs["model"], "SIZE": inputs["size"], "HF_TOKEN": inputs.get("hf_token", "")}
+    if windows in ("both", "on + whole"):
         steps.append({"script": "extract_features.py", "env": {**base, "OUT": "feats-whole", "TARGET_MPP": "9"}})
     tile = "0.06" if windows in ("tiles", "both") else ("0.10" if windows == "tiles 10 cm" else "")
     steps.append({"script": "extract_features.py", "env": {
@@ -123,7 +125,7 @@ def plan(inputs, run, send):
 
 def main():
     e = os.environ
-    inputs = {k: e.get(k.upper(), "") for k in ("windows", "canopy", "decoder", "seed", "lawns", "model", "size", "release", "distrust_lidar", "edge_reach", "refiner_trial", "release_epochs")}
+    inputs = {k: e.get(k.upper(), "") for k in ("windows", "canopy", "decoder", "seed", "lawns", "model", "size", "release", "distrust_lidar", "edge_reach", "refiner_trial", "release_epochs", "hf_token")}
     p = plan(inputs, e["RUN"], (e.get("SEND") or "").split(","))
     # A release records where it came from; Modal's container has no GitHub
     # environment of its own, so the two names are carried across here.

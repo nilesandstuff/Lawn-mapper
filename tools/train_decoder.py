@@ -261,9 +261,14 @@ NOT_LAWN = os.environ.get("NOT_LAWN") == "1"
 # every table was measured with; "upernet" is tools/upernet_head.py, a small
 # UperNet over the same grid, trained and scored exactly the same way, as a
 # trial beside it. A trial only: the live server builds the small decoder.
+# "linear" (S52, owner 2026-10-22: "be open to the possibility that our decoder
+# is part of the problem") is the papers' own probe: a linear map from each
+# patch's numbers to its answer, no neighbours seen, no nonlinearity. Beside
+# the small decoder it says whether the eye's features alone carry the
+# answer, and whether the decoder's 3x3 convs add to them or get in the way.
 HEAD = os.environ.get("HEAD", "small")
-if HEAD not in ("small", "upernet"):
-    raise SystemExit(f"HEAD={HEAD!r}: small or upernet")
+if HEAD not in ("small", "upernet", "linear"):
+    raise SystemExit(f"HEAD={HEAD!r}: small, upernet or linear")
 
 
 # A GPU WHEN THERE IS ONE (Modal, 2026-09-28); the CPU runner is unchanged.
@@ -291,12 +296,36 @@ class Decoder(nn.Module):
         return hidden, self.net[-1](hidden)
 
 
+class LinearProbe(nn.Module):
+    """A linear map per patch, as the backbone papers probe their features:
+    `dim` numbers to 32 to 1 with no nonlinearity between (two linear layers
+    compose to one), so the 32 the refiner reads are a linear view of the
+    patch and the answer sees no neighbouring patch at all."""
+
+    def __init__(self, dim):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Dropout2d(DROPOUT),
+            nn.Conv2d(dim, 32, 1),
+            nn.Conv2d(32, 1, 1),
+        )
+
+    def forward(self, x):
+        return self.net(x)
+
+    def parts(self, x):
+        hidden = self.net[:-1](x)
+        return hidden, self.net[-1](hidden)
+
+
 def make_decoder(dim):
-    """The head HEAD names, over `dim` numbers a patch; both answer at the grid
+    """The head HEAD names, over `dim` numbers a patch; all answer at the grid
     and hand the refiner 32 numbers a patch, so nothing downstream changes."""
     if HEAD == "upernet":
         from upernet_head import UperNetHead
         return UperNetHead(dim, dropout_in=DROPOUT)
+    if HEAD == "linear":
+        return LinearProbe(dim)
     return Decoder(dim)
 
 
@@ -728,6 +757,9 @@ def main():
         print(f"UPERNET HEAD (S26): pyramid pooling + FPN over the one grid at strides 1/2/4/8, {UP_CH} channels, "
               f"GroupNorm, no auxiliary head, dropout {DROPOUT:g} in and 0.1 on the fused features; "
               f"{params:,} weights (the small decoder would be {sum(p.numel() for p in Decoder(dim).parameters()):,})", flush=True)
+    if HEAD == "linear":
+        print(f"LINEAR PROBE (S52): one linear map a patch, no neighbours, no nonlinearity; {params:,} weights "
+              f"(the small decoder would be {sum(p.numel() for p in Decoder(dim).parameters()):,})", flush=True)
     if REFINE:
         from edge_refine import Refiner
         ref_params = sum(p.numel() for p in Refiner().parameters())
