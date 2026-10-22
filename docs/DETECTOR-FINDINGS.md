@@ -38,6 +38,16 @@ changes and results from different corpora are not comparable.
 *Kept current so a fresh session can pick up without the conversation that
 got here. Update it whenever the in-flight run changes.*
 
+- **WINDOWS FOR THE BIG LOTS, MEASURED AND OFF (2026-10-22, S49, H112):**
+  the 10-acre condo complex's bad trace sent the corpus's 26 lots past
+  90 m through overlapping 10 cm windows instead of one squeezed pass. On
+  those 26 it was worse (9 / 16 / 1, +1.9 [-0.6, +3.6]); on all 104,
+  +0.4 [-0.3, +1.0], nothing. The live server reads every lot whole, as
+  before; tools/alpha_infer.py can serve a windowed release (meta
+  `windowed` > 0) if one ever earns it. The lidar moves (H111, the agree
+  rule, 15 lots) are in every run since 39715167319 and change the score
+  by nothing (paired -0.0). The condo complex waits on corpus lots its size
+  or a different idea.
 - **OVERTURE AND THE PHOTO (2026-10-19, H101, H102):** Overture lines up with
   the LIDAR within about a metre, but NOT consistently with the PHOTO, which
   was first read as a shifted photo, then as Overture's shapes being wrong;
@@ -848,7 +858,7 @@ to 319 m across; 11 of 32 are over about 120 m.
 | canopy, `tcd-segformer` (wf 19) | the banked photo, resampled to 0.10 m/px, tiled | 10 | 10 | 10 | 10 | **yes** — since the 10 cm re-bank |
 | lawn backbone, Scale-MAE at `size=896` (wf 14), BEFORE 2026-09-23 | whole frame squeezed to 896 px | 6.7 | 11.2 | **19** | **36** | only under ~90 m |
 | lawn backbone at `size=1280`, BEFORE | whole frame squeezed to 1280 px | 4.7 | 7.8 | **13.4** | **25** | only under ~128 m |
-| lawn backbone, windowed (`tools/windows.py`), one run | one pass under ~90 m at 896; past that, overlapping 896 px windows at the photo's own resolution | 6.7 | 7.8 | 10 | 10 | yes — and **measured worse on every backbone row** (H22), so off by default |
+| lawn backbone, windowed (`tools/windows.py`), one run | one pass under ~90 m at 896; past that, overlapping 896 px windows at the photo's own resolution | 6.7 | 7.8 | 10 | 10 | yes — and **measured worse on every backbone row** (H22, retracted) and again on the big lots under THE PLAN (H112, 2026-10-22), so off by default |
 | lawn backbone, NOW | whole frame squeezed to 896 px, as before; `windows: on` in workflow 14 turns the windows back on | 6.7 | 11.2 | **19** | **36** | **no**, on purpose: H22 |
 | lawn head, `GRID=512` | scores one cell per 1/512 of the frame | 12 | 20 | 34 | 62 | cells, not pixels — see below |
 | SAM 3, live (`/api/segment`), BEFORE 2026-09-23 | the DISPLAY frame: 640 logical @2x = 1280 px, resized by SAM to about 1008 px (its published input size; not measured here) | 6 | 10 | **17** | **32** | only under ~100 m |
@@ -952,6 +962,47 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 ---
 
 ## HARD FINDINGS — our own measurements
+
+### H112. READING BIG LOTS IN WINDOWS (10 cm at the photo's own resolution instead of one squeezed pass) DOES NOT HELP THE BIG LOTS: on the 26 lots past 90 m it read 9 better / 16 worse, +1.9 [-0.6, +3.6], p 0.23; over all 104, 40 / 48 / 16, +0.4 [-0.3, +1.0], p 0.46 (S49, one seed). Not shipped -- 2026-10-22
+*Workflow 14 run 39763223279: THE PLAN, seed 7, locked 104, saved lidar
+moves, `windows: on` (30 of 109 photographs read in windows, 4 to 16
+each; the coarsest any lawn reached the model 38.6 cm a pixel, down from
+the squeeze's 44 cm on the biggest), against 39715167319 (identical,
+windows off, 17.2%). Workflow 24 runs 39816751440 (all lots) and
+39818935512 (the 26 locked lots past 89.6 m, the rule's own threshold at
+896 px and 10 cm; the other 4 windowed photographs are county copies).*
+
+**The lots the windows were for got worse, not better.** Of the 26 big
+lots B better on 9, worse on 16, level on 1; median 22.8% -> 24.9%. The
+two large wins are B20 81.1% -> 29.4% and C80 51.1% -> 36.2%; the losses
+are spread: C33 44.0 -> 56.9, C34 9.4 -> 15.8, C35 44.5 -> 51.8, C32
+25.9 -> 31.9, C21 17.4 -> 23.2, B16 8.6 -> 12.8, B10 23.9 -> 27.8. So the
+squeeze is not what was costing the big lots: read at 10 cm the decoder
+is no better on them, and on a 2 to 1 count worse. The 10-acre condo
+complex is bigger than anything here (390 m against B16's 300 m) and the
+corpus holds no lot like it, so this run says nothing about it directly;
+what it does say is that the obvious fix for it, finer reading, did not
+help the biggest lots there are.
+
+**The small lots moved as much as the big ones, with nothing changed in
+their input.** C50 92.1% -> 43.0% and C99 109.9% -> 86.8% are 50 m lots
+read whole in both runs; C29 464 -> 516, C22 53.2 -> 62.8, C86 14.3 ->
+20.8 likewise. The decoder was trained on a different feature set for
+26 of its 104 lots and came out a different decoder for all of them.
+That is the seed-to-seed scatter H109's band is made of, seen one lot at
+a time: a single lot's change between two one-seed runs is not evidence
+of anything.
+
+**Against S49's bar** (within noise ships; worse by more than a point
+stays off): all lots +0.4 is inside the 95% band of nothing; the big
+lots, the only ones that could gain, +1.9 and worse on 16 of 26. It
+stays off. The live server keeps reading every lot in one pass; the code
+to serve a windowed release (tools/alpha_infer.py `features`, on a
+release whose meta says `windowed` > 0) stays, unused, for a release
+that earns it. A second seed (free runner, six hours) would say whether
++1.9 on the big lots is scatter, and is the next step if windows are
+tried again; a corpus lot or two the size of the condo complex would say
+more.
 
 ### H111. THE 2 m BOX AT C60 IS S47'S OWN MOVE, NOT THE CORPUS'S LIDAR; C71 IS A TRUE 2 m OFFSET OF THE LIDAR AGAINST THE COUNTY PHOTO, ROOF AND GROUND ALIKE. The ground fit's "confident" flag does not separate the two -- 2026-10-21
 *Owner, 2026-10-21: "I disagree with your confidence that the lidar is
@@ -7658,7 +7709,7 @@ fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
 
-### S49. Big lots read in windows at the photo's own resolution, for training AND the live server (owner, 2026-10-22: "let's try windowed reading for large lots") -- RUNNING
+### S49. Big lots read in windows at the photo's own resolution, for training AND the live server (owner, 2026-10-22: "let's try windowed reading for large lots") -- MEASURED 2026-10-22, WORSE ON THE BIG LOTS: see H112. Not shipped; the server code for a windowed release stays, unused
 **Why now.** A 10-acre condo complex (two associations, Byron Center,
 2026-10-21) was traced "very very badly". The live server reads every lot
 whole in one 896 px pass, as every release's training did, so a 390 m
@@ -7685,6 +7736,10 @@ before it are unchanged.
 0.1 points) and it ships as the next release, for the big lots' sake;
 worse by more than a point and it stays off, and the condo complex waits
 on corpus lots like it.
+
+**Measured (H112):** 19.2% against 17.2%; all 104 lots 40 / 48 / 16,
++0.4 [-0.3, +1.0], p 0.46; the 26 lots past 90 m, the ones the windows
+read, 9 / 16 / 1, +1.9 [-0.6, +3.6], p 0.23. Off.
 
 ### S48. Ground hidden behind a leaning roof: the trace cannot claim it, so the label says not-lawn where the lidar says open ground (owner, 2026-10-21: "in cases of heavy lean, the lawn traces don't guess at grass behind the lean") -- NOT MEASURED
 **The problem.** On a lot whose photo leans (Fargo 1.75 m, Kentucky 3 m,
@@ -9297,3 +9352,4 @@ deploy log says how many are locked and how many are waiting.
 | 2026-10-21 | 39500140037 | 104 (locked, 131u7jm) | S47 `lidar_align: ground`: each lot's lidar moved onto its photo's ground (H108's fit, 74 lots) on top of the datum move, seed 7, CPU | 18.1% (edge refined + stage 3, span, veto) | — | **H109.** Workflow 24 run 39536861362 vs 39409589116: 20 / 29 / 55 level, +0.1 [-0.1, +0.1], p 0.25. No change; the datum move alone stands; the lidar's ground placement is settled |
 | 2026-10-21 | 39616276609, 39636876014, 39658563647, then **39666176735** (green, 104 locked) | 111 (all), then 104 (locked, 131u7jm) | Redraw with the lidar at half-metre cells (page layers: the 2.5 m+ outline, the ground brightness), THE PLAN, seed 7, lidar not moved | 18.3% (edge refined + stage 3, span, veto; the fourth run) | — | The fourth run drew 104 of 104 (folder runs/2026-10-21-2213-edt-scalemae-large-896px, the newest on the predictions page; its lidar is NOT moved); 18.3% is THE PLAN's row at seed 7 on the locked lots, against 17.9% (39409589116) and 18.1% (S47), seed noise. The first three died in the planner: USGS's flight index (WESM) answered "400 Failed to execute query" for 17, 13 and (after six tries and a second pass) 1 of 111 frames, a different set each time. Fixed by **the saved plan**: tools/locked-lidar-plan.json (S47's plan of 2026-10-20) is read for the locked lots and USGS is asked only for a frame outside it; workflow 41 refreshes it. Raw points cached between runs (POINTS_CACHE, workflow 14), keyed on the frames and the saved plan |
 | 2026-10-22 | 39715167319 | 104 (locked, 131u7jm) | THE PLAN with `lidar_align: saved` (the agree rule's 15 moves from tools/locked-lidar-shifts.json: C71 2 m, 14 lots under a metre), seed 7, CPU; the saved plan and the raw-points cache (lidar read in seconds) | 17.2% (edge refined + stage 3, span, veto) | — | Drew 104 of 104 (folder runs/2026-10-22-0356-edt, LIDAR MOVED (saved fit) on the predictions page). Against 39666176735 (same seed, same lots, the datum move alone, 18.3%): **H111.** Workflow 24 run 39746335881: 28 / 27 / 49, paired -0.0 [-0.1, +0.1], p 1.000. No change; the moves stay for correctness |
+| 2026-10-22 | 39763223279 | 104 (locked, 131u7jm) | S49 `windows: on`: THE PLAN with the 26 lots past 90 m read in overlapping 896 px windows at 10 cm (30 of 109 photographs, 4 to 16 windows each) instead of one squeezed pass, seed 7, CPU, saved lidar moves; the live server would read such a release the same way | 19.2% (edge refined + stage 3, span, veto) | — | Folder runs/2026-10-22-1220-edt. Against 39715167319 (same, windows off, 17.2%): **H112.** Workflow 24 run 39816751440: 40 / 48 / 16, +0.4 [-0.3, +1.0], p 0.456; run 39818935512 on the 26 big lots alone: 9 / 16 / 1, +1.9 [-0.6, +3.6], p 0.230. Worse where it was meant to help; not shipped |
