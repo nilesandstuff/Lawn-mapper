@@ -68,7 +68,8 @@ jobs:
             echo "ROUTE_STATE=deployed, but there is no MAPBOX_TOKEN secret: it cannot route" >> "$GITHUB_ENV"
             exit 1
           fi
-          echo "ROUTE_STATE=live at https://$ROUTE_DOMAIN" >> "$GITHUB_ENV"
+          d=$(sed -n 's/^pattern = "\(.*\)"$/\1/p' route/wrangler.toml)
+          echo "ROUTE_STATE=live at https://$d" >> "$GITHUB_ENV"
 
       - name: Is it answering
         if: ${{ github.event_name == 'push' || inputs.task == 'deploy' }}

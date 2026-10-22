@@ -201,3 +201,23 @@ export function formatMinutes(min) {
   const h = Math.floor(m / 60);
   return h ? `${h}h ${String(m % 60).padStart(2, '0')}m` : `${m}m`;
 }
+
+/**
+ * Does the map's answer name the street that was asked for? Same house number, and the street's first
+ * word (its first four letters: "Point" finds "Pointe"). The geocoder's own confidence is no guide: it
+ * says "low" for exact matches here.
+ */
+export function sameStreet(label, address) {
+  const words = String(address || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(Boolean);
+  const l = String(label || '').toLowerCase();
+  if (!words.length || !/^\d/.test(words[0])) return true;
+  const street = words.slice(1).find((w) => /[a-z]{2,}/.test(w));
+  return l.startsWith(`${words[0]} `) && (!street || l.includes(street.slice(0, 4)));
+}
+
+/** An address with no street type ("6471 Estate") confuses the geocoder; these are tried after it, in order. */
+export function addressVariants(address) {
+  const a = String(address || '').trim();
+  const typed = /\b(st|street|dr|drive|ave|avenue|rd|road|ct|court|ln|lane|way|blvd|cir|circle|pl|place|trl|trail|pkwy|hwy|ter|terrace|cr)\.?(\s+(n|s|e|w|ne|nw|se|sw))?$/i.test(a);
+  return typed ? [a] : [a, `${a} Dr`, `${a} St`, `${a} Ct`];
+}

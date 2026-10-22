@@ -11,7 +11,7 @@
  * so a bookmark or home-screen icon carries it.
  */
 
-import { formatMinutes, mergeStops, parseWords, slices } from './lib/parse.js';
+import { addressVariants, formatMinutes, mergeStops, parseWords, sameStreet, slices } from './lib/parse.js';
 import { pathCost, solvePath } from './lib/solve.js';
 
 const TESSERACT = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
@@ -238,6 +238,18 @@ async function geocode(q, near) {
   }
 }
 
+/** The stop on the map: as read, then with a street type added, until the answer names its street near the shop. */
+async function findStop(s, end) {
+  let fallback = null;
+  for (const a of addressVariants(s.address)) {
+    const hit = await geocode([a, s.city].filter(Boolean).join(', '), end);
+    if (!hit || km(hit, end) > 80) continue;
+    if (sameStreet(hit.label, s.address)) return hit;
+    fallback ||= { ...hit, shaky: true };
+  }
+  return fallback;
+}
+
 function locate() {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) { reject(new Error('This browser cannot share its location.')); return; }
@@ -279,10 +291,8 @@ async function plan() {
     await Promise.all(Array.from({ length: 5 }, async () => {
       while (queue.length) {
         const s = queue.shift();
-        const q = [s.address, s.city].filter(Boolean).join(', ');
-        const hit = await geocode(q, end);
-        if (!hit) s.error = 'Not found on the map. Check the spelling.';
-        else if (km(hit, end) > 80) s.error = `Found only far away (${hit.label}). Check the city.`;
+        const hit = await findStop(s, end);
+        if (!hit) s.error = 'Not found on the map near the shop. Check the spelling, or add Dr / St.';
         else { delete s.error; found.push({ stop: s, hit }); }
       }
     }));
@@ -404,14 +414,14 @@ function renderResult(scroll = false) {
   const untimed = allStops.filter((s) => s.minutes == null).length;
   const warn = [];
   if (untimed) warn.push(`${untimed} stop${untimed === 1 ? ' has' : 's have'} no job time, so the job total is short.`);
-  if (r.missing.length) warn.push(`Not routed (not found on the map): ${r.missing.map((s) => s.address).join('; ')}. Their job time is counted.`);
+  if (r.missing.length) warn.push(`Not routed (not found on the map near the shop): ${r.missing.map((s) => s.address).join('; ')}. Their job time is counted.`);
   $('#notes').innerHTML = notes.map((n) => `<li>${esc(n)}</li>`).join('') + warn.map((n) => `<li class="warn">${esc(n)}</li>`).join('');
 
   const done = new Set(r.done || []);
   const nav = (label) => `https://www.google.com/maps/dir/?${new URLSearchParams({ api: '1', destination: label, travelmode: 'driving' })}`;
   const items = r.stops.map((s, i) => {
     const leg = r.legs[i] || {};
-    const shaky = s.hit.accuracy && !['exact', 'high'].includes(s.hit.accuracy);
+    const shaky = s.hit.shaky;
     return `<li class="${done.has(s.id) ? 'done' : ''}" data-id="${s.id}">
       <span class="num">${i + 1}</span>
       <div class="body">

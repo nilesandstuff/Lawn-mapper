@@ -20,6 +20,7 @@ async function fakeMapbox(url) {
     return Response.json({ code: 'Ok', durations, distances: durations.map((r) => r.map((x) => x * 10)) });
   }
   if (u.pathname.startsWith('/directions/v5/')) {
+    assert.equal(u.searchParams.get('continue_straight'), 'false', 'U-turns allowed at stops');
     const ids = u.pathname.split('/').pop().split(';').map(index);
     assert.ok(ids.length <= 25);
     const legs = ids.slice(1).map((j, k) => ({ duration: 100 * ids[k] + j, distance: 1 }));

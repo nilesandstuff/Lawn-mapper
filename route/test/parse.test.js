@@ -1,7 +1,7 @@
 // Reading stops out of a screenshot's OCR words.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { formatMinutes, mergeStops, parseWords, readTime, slices } from '../lib/parse.js';
+import { addressVariants, formatMinutes, mergeStops, parseWords, readTime, sameStreet, slices } from '../lib/parse.js';
 
 const fixture = JSON.parse(readFileSync(new URL('./fixture-words.json', import.meta.url)));
 
@@ -70,5 +70,14 @@ assert.deepEqual(parseWords(words, 1080), [{ address: '123 Main St', city: 'Town
 assert.equal(formatMinutes(408), '6h 48m');
 assert.equal(formatMinutes(45), '45m');
 assert.equal(formatMinutes(60), '1h 00m');
+
+// the map's answer checked against the street asked for
+assert.ok(sameStreet('2839 Elm Bende Southwest, Town, Michigan', '2839 Elm Bend Dr.'));
+assert.ok(sameStreet('2531 Willow Drive Southwest, Town', '2531 Willow'));
+assert.ok(!sameStreet('2531 East Broadway Road, Elsewhere', '2531 Willow'));
+assert.ok(!sameStreet('2532 Willow Drive, Town', '2531 Willow'));
+assert.deepEqual(addressVariants('2531 Willow'), ['2531 Willow', '2531 Willow Dr', '2531 Willow St', '2531 Willow Ct']);
+assert.deepEqual(addressVariants('2531 Willow Dr SW'), ['2531 Willow Dr SW']);
+assert.deepEqual(addressVariants('3581 Maple Cr SW'), ['3581 Maple Cr SW']);
 
 console.log(`route parse: ok (${stops.length} stops, ${formatMinutes(408)} of jobs)`);

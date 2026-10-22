@@ -95,7 +95,9 @@ export function routeChunks(n, size = 25) {
 
 export async function route(fetcher, token, points) {
   const parts = await inBatches(routeChunks(points.length).map(([a, b]) => async () => {
-    const params = new URLSearchParams({ geometries: 'geojson', overview: 'full', steps: 'false', access_token: token });
+    // continue_straight=false: a U-turn at a stop is allowed, as the matrix allows it. Without it every
+    // stop on a dead-end or across the street is reached by looping the block (found 2026-10-22: 3 min a leg).
+    const params = new URLSearchParams({ geometries: 'geojson', overview: 'full', steps: 'false', continue_straight: 'false', access_token: token });
     const data = await getJson(fetcher, `${API}/directions/v5/mapbox/driving/${points.slice(a, b + 1).map(coord).join(';')}?${params}`);
     const r = data.routes?.[0];
     if (!r) throw new Error(`Mapbox directions: ${data.code || 'no route'}`);
