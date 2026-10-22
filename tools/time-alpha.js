@@ -96,12 +96,18 @@ async function main(env = process.env) {
     if (!res.ok) { console.log(`${name}: start HTTP ${res.status}`); continue; }
     const { id } = await res.json();
     let got = null;
+    let stage = null;
     while (Date.now() - t0 < 300000) {
       await sleep(2000);
       const p = await fetch(`${env.ALPHA_RESULT_URL}?id=${encodeURIComponent(id)}`, { headers });
       if (!p.ok) continue;
       const b = await p.json();
-      if (b.status === 'running') continue;
+      if (b.status === 'running') {
+        /* The server's own line about where the lot has got to (2026-10-22),
+           printed as it changes: what the app shows while a person waits. */
+        if (b.stage && b.stage !== stage) { stage = b.stage; console.log(`  ${name} ${((Date.now() - t0) / 1000).toFixed(0).padStart(3)}s  ${stage}`); }
+        continue;
+      }
       got = b;
       break;
     }

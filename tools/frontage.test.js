@@ -8,7 +8,7 @@
 import { readFileSync } from 'node:fs';
 import { extendToRoads, mergeButtonPoint, mergeRings, placeInside } from '../public/lib/frontage.js';
 import { makeFrame, openRing } from '../public/lib/edges.js';
-import { envelopeParams } from '../worker/src/parcel.js';
+import { envelopeParams, touchingNeighbours } from '../worker/src/parcel.js';
 
 const clip = (() => {
   const module = { exports: {} };
@@ -133,6 +133,23 @@ check('the merge button sits inside the neighbour, about 20 ft from the shared l
 check('no button on a parcel that does not touch this one', mergeButtonPoint(lot, ring([0, -20], [0, -50], [20, -50], [20, -20])) === null);
 
 const q = envelopeParams([-85.61, 43.02, -85.60, 43.03], "STATUS='A'");
+{
+  /* THE NEIGHBOURS THAT TOUCH (2026-10-22): a lot of 100 m, the parcel next
+     door sharing its east line, one 1.5 m off (a county line drawn twice),
+     one 20 m away, a unit inside it, and the lot itself under another number. */
+  const deg = (m) => m / 111320;
+  const sq = (x0, y0, w, h) => ({ type: 'Polygon', coordinates: [[[x0, y0], [x0 + deg(w), y0], [x0 + deg(w), y0 + deg(h)], [x0, y0 + deg(h)], [x0, y0]]] });
+  const F = (id, g) => ({ type: 'Feature', geometry: g, properties: { pin: id } });
+  const own = sq(0, 0, 100, 100).coordinates[0];
+  const feats = [F('far', sq(deg(120), 0, 50, 50)), F('east', sq(deg(100), 0, 100, 100)), F('near', sq(deg(101.5), deg(10), 30, 30)),
+    F('unit', sq(deg(20), deg(20), 10, 10)), F('me', sq(0, 0, 100, 100)), F('twin', sq(0, 0, 100, 100))];
+  const kept = touchingNeighbours(feats, own, { pin: 'me' }).map((f) => f.properties.pin);
+  check('the parcels sharing or nearly sharing our line are kept, nearest first', kept.join(',') === 'east,near', kept.join(','));
+  check('the lot itself, a twin of it, a unit inside it and a parcel 20 m off are not', !kept.includes('me') && !kept.includes('twin') && !kept.includes('unit') && !kept.includes('far'));
+  check('without our ring, the first few as before', touchingNeighbours(feats, null, { max: 2 }).length === 2);
+  const many = Array.from({ length: 80 }, (_, i) => F(`n${i}`, sq(deg(100), deg(i * 1.2), 1, 1)));
+  check('capped at sixty, the nearest', touchingNeighbours(many, own).length === 60);
+}
 check('the neighbours query is an envelope in WGS84, with the county\'s own filter',
   q.geometryType === 'esriGeometryEnvelope' && JSON.parse(q.geometry).xmin === -85.61 && q.inSR === '4326' && q.where === "STATUS='A'");
 

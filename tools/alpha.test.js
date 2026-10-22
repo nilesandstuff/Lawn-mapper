@@ -66,6 +66,11 @@ assert.ok(!isAlphaId('alpha-../../etc'));
 
   globalThis.fetch = async () => new Response(JSON.stringify({ status: 'running' }));
   assert.equal((await pollAlpha(env, 'alpha-fc-1234567', 'x')).status, 'processing');
+  globalThis.fetch = async () => new Response(JSON.stringify({ status: 'running', stage: 'Separating USGS lidar point clouds over 390 m of ground', since: 42.5 }));
+  const going = await pollAlpha(env, 'alpha-fc-1234567', 'x');
+  assert.equal(going.status, 'processing');
+  assert.equal(going.detail, 'Separating USGS lidar point clouds over 390 m of ground', 'the server\'s stage comes through while running');
+  assert.equal(going.since, 42.5);
   globalThis.fetch = async () => new Response(JSON.stringify({ status: 'failed', error: 'no photo' }));
   const bad = await pollAlpha(env, 'alpha-fc-1234567', 'x');
   assert.equal(bad.status, 'failed');

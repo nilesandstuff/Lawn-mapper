@@ -79,7 +79,9 @@ export async function pollAlpha(env, id, selfOrigin) {
   });
   if (!res.ok) return { status: 'failed', mask: null, detail: `trained model: HTTP ${res.status}` };
   const r = await res.json();
-  if (r.status === 'running') return { status: 'processing', mask: null, detail: null };
+  /* Still going: the server's own line about where the lot has got to, and
+     how long ago it wrote it, so the app can show it and tell slow from stuck. */
+  if (r.status === 'running') return { status: 'processing', mask: null, detail: r.stage || null, since: Number.isFinite(r.since) ? r.since : null };
   if (r.status !== 'succeeded' || !r.mask) {
     return { status: 'failed', mask: null, detail: r.error || 'The trained model could not read this lot.' };
   }

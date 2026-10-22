@@ -1491,15 +1491,29 @@ async function holdForSteps(run) {
 function startDetectionTimer(run) {
   const tick = () => {
     const secs = Math.floor((Date.now() - run.started) / 1000);
-    /* The step on show, unless Cancel or Retry has put its own words up. */
-    if (!run.action) $('#busy-text').textContent = `${detectStepAt(run)}…`;
+    /* The step on show, unless Cancel or Retry has put its own words up:
+       the server's own line once it has one (owner, 2026-10-21: "messages
+       that say what the trace is getting stuck on"), the scripted steps
+       until then. */
+    if (!run.action) $('#busy-text').textContent = `${run.stage || detectStepAt(run)}…`;
     const clock = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
-    /* What to expect (owner, 2026-09-29), and an honest word once past it. */
-    $('#busy-timer').textContent = secs < 60
-      ? `${clock} · usually takes less than 60 seconds`
-      : `${clock} · taking longer than usual`;
+    /* What to expect (owner, 2026-09-29), and an honest word once past it.
+       A big lot is told so: its downloads alone are minutes. */
+    const big = /big lot/.test(run.stage || '');
+    $('#busy-timer').textContent = big
+      ? `${clock} · a lot this size takes a few minutes`
+      : secs < 60
+        ? `${clock} · usually takes less than 60 seconds`
+        : `${clock} · taking longer than usual`;
     $('#busy-timer').hidden = false;
-    if (secs >= AUTO_RETRY_S && !run.action && run.model === 'alpha'
+    /* Stuck means QUIET: no word from the server for AUTO_RETRY_S. Before
+       2026-10-22 any press older than 100 s was restarted, and on a 10-acre
+       lot whose downloads take three minutes that restarted every press
+       before it could finish (owner, 2026-10-21: "took forever and needed
+       to be resent several times"). */
+    const quietSince = run.stage ? run.stageAt : run.started;
+    const quietS = (Date.now() - quietSince) / 1000;
+    if (quietS >= AUTO_RETRY_S && secs >= AUTO_RETRY_S && !run.action && run.model === 'alpha'
         && Date.now() - lastAutoRetry > 10 * 60 * 1000) {
       lastAutoRetry = Date.now();
       giveUpOnDetection('retry', 'This one got stuck — starting it again…');
@@ -5018,6 +5032,13 @@ async function detect({ again = false } = {}) {
     action: null,
     accepted: false,
     model,
+    /* THE SERVER'S OWN LINE about where the press has got to (the trained
+       model only; alpha.js passes it as `detail` while running) and when
+       that line last changed. Shown in place of the scripted steps, and the
+       auto-retry below waits on it: a press whose line is still moving is
+       slow, not stuck. */
+    stage: null,
+    stageAt: 0,
   };
   detection = run;
   startDetectionTimer(run);
@@ -5603,6 +5624,12 @@ async function waitForPrediction(id, frame, signal = null) {
     if (p.status === 'succeeded') return { ...p, frame };
     if (p.status === 'failed' || p.status === 'canceled') {
       throw new Error(p.detail || `The detector ${p.status}.`);
+    }
+    if (detection && p.detail && p.detail !== detection.stage) {
+      detection.stage = p.detail;
+      /* `since`: how long ago the server wrote the line, so a line read
+         late is not counted as new. */
+      detection.stageAt = Date.now() - (Number.isFinite(p.since) ? p.since * 1000 : 0);
     }
   }
 
@@ -12748,7 +12775,15 @@ async function aroundParcel() {
   const bbox = geometryBounds(parcel);
   if (!key || !bbox) return;
   const pad = 0.0004;
+  /* The parcel's own outline goes too (rounded to about a decimetre), so the
+     Worker keeps the parcels that TOUCH it rather than the first sixty the
+     county lists: a condo complex has a parcel per unit (owner, 2026-10-21,
+     Byron Center: 312 in the box, the association next door not among the
+     first sixty, so no merge button). */
+  const own0 = parcelRing();
   const q = new URLSearchParams({ county: key, bbox: [bbox[0] - pad, bbox[1] - pad, bbox[2] + pad, bbox[3] + pad].join(',') });
+  if (own0 && own0.length >= 3 && own0.length <= 2000) q.set('ring', JSON.stringify(own0.map(([x, y]) => [Number(x.toFixed(6)), Number(y.toFixed(6))])));
+  if (parcel.properties?.pin) q.set('pin', String(parcel.properties.pin));
   try {
     const data = await api(`/api/parcel/neighbours?${q}`);
     if (state.parcel !== parcel) return; // a different address since

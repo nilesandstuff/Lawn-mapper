@@ -324,6 +324,76 @@ async function lookupParcel(lng, lat, { pin = null, sqft = null } = {}) {
  * and one around a farm in a subdivision should not return the subdivision.
  */
 const MAX_NEIGHBOURS = 60;
+/* A neighbour is a parcel whose outline comes within this of ours (the
+   frontage code's touchM is 2; county lines of adjoining lots are usually
+   the same line, drawn twice). */
+const TOUCH_M = 3;
+/* The county's layer answers with at most this many; a condo complex has a
+   parcel per unit, and the Byron Center lot (owner, 2026-10-21) had 312 in
+   its box. */
+const FETCH_MAX = 2000;
+
+const M_PER_DEG_LAT = 111320;
+const metresBetween = ([lng1, lat1], [lng2, lat2]) => {
+  const k = Math.cos(((lat1 + lat2) / 2) * (Math.PI / 180));
+  return Math.hypot((lng2 - lng1) * k * M_PER_DEG_LAT, (lat2 - lat1) * M_PER_DEG_LAT);
+};
+/** Metres from a point to a segment, on the flat earth a lot is. */
+function metresToSegment([px, py], [ax, ay], [bx, by]) {
+  const k = Math.cos(py * (Math.PI / 180)) * M_PER_DEG_LAT;
+  const x = (px - ax) * k, y = (py - ay) * M_PER_DEG_LAT;
+  const dx = (bx - ax) * k, dy = (by - ay) * M_PER_DEG_LAT;
+  const L2 = dx * dx + dy * dy;
+  const t = L2 ? Math.max(0, Math.min(1, (x * dx + y * dy) / L2)) : 0;
+  return Math.hypot(x - t * dx, y - t * dy);
+}
+/** The least distance in metres from any vertex of `ring` to the line of `other`. */
+function metresRingToRing(ring, other) {
+  let best = Infinity;
+  for (const p of ring) {
+    for (let i = 0; i + 1 < other.length; i++) {
+      const d = metresToSegment(p, other[i], other[i + 1]);
+      if (d < best) best = d;
+      if (best === 0) return 0;
+    }
+  }
+  return best;
+}
+const outerRings = (geometry) => (geometry?.type === 'Polygon' ? [geometry.coordinates[0]]
+  : geometry?.type === 'MultiPolygon' ? geometry.coordinates.map((p) => p[0]) : []);
+
+/**
+ * THE NEIGHBOURS THAT TOUCH THIS PARCEL, nearest first, at most MAX_NEIGHBOURS,
+ * from everything the county's layer gave for the box. Pure.
+ *
+ * Before 2026-10-22 the route kept the FIRST 60 features the server listed,
+ * in the server's own order. Around a house lot that is every parcel in the
+ * box; around a condo association in Byron Center it was 60 of 312 unit
+ * parcels, not the association next door, so there was no "Merge this
+ * parcel" button to press (owner, 2026-10-21). With the parcel's own ring
+ * given, a feature is kept when its outline comes within TOUCH_M of ours
+ * (the lot itself, at distance 0 everywhere, is dropped by its pin or by
+ * being the same ring); without a ring, the first MAX_NEIGHBOURS as before.
+ */
+export function touchingNeighbours(features, ring, { pin = null, touchM = TOUCH_M, max = MAX_NEIGHBOURS } = {}) {
+  if (!ring || ring.length < 3) return features.slice(0, max);
+  const scored = [];
+  for (const f of features) {
+    if (pin && f.properties?.pin && String(f.properties.pin) === String(pin)) continue;
+    const rings = outerRings(f.geometry);
+    if (!rings.length) continue;
+    let d = Infinity;
+    for (const r of rings) d = Math.min(d, metresRingToRing(r, ring), metresRingToRing(ring, r));
+    if (d > touchM) continue;
+    /* Our own outline under another number (a condo's association parcel is
+       sometimes in the layer twice): every vertex on our line is us. */
+    const same = rings.some((r) => r.every((p) => metresRingToRing([p], ring) < 0.5));
+    if (same) continue;
+    scored.push({ d, f });
+  }
+  scored.sort((a, b) => a.d - b.d);
+  return scored.slice(0, max).map((x) => x.f);
+}
 
 export function envelopeParams(bbox, where) {
   const [w, s, e, n] = bbox;
@@ -340,11 +410,11 @@ export function envelopeParams(bbox, where) {
   };
 }
 
-async function lookupNeighbours(countyKey, bbox) {
+async function lookupNeighbours(countyKey, bbox, ring = null, pin = null) {
   const cfg = ALL_COUNTIES[countyKey];
   if (!cfg || !cfg.service) return [];
   for (const endpoint of endpointsFor(cfg)) {
-    const url = `${endpoint.service}/${endpoint.layer}/query?${new URLSearchParams(envelopeParams(bbox, endpoint.where))}`;
+    const url = `${endpoint.service}/${endpoint.layer}/query?${new URLSearchParams({ ...envelopeParams(bbox, endpoint.where), resultRecordCount: String(FETCH_MAX) })}`;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {
@@ -353,7 +423,7 @@ async function lookupNeighbours(countyKey, bbox) {
       const body = await res.json();
       if (body.error || !Array.isArray(body.features)) continue;
       const f = endpoint.fields || {};
-      return body.features.slice(0, MAX_NEIGHBOURS).map((feat) => {
+      const all = body.features.map((feat) => {
         const geometry = esriToGeoJSON(feat.geometry);
         if (!geometry) return null;
         const attrs = feat.attributes || {};
@@ -363,6 +433,7 @@ async function lookupNeighbours(countyKey, bbox) {
           properties: { pin: attrs[f.pin] ?? null, county: cfg.name, countyKey },
         };
       }).filter(Boolean);
+      return touchingNeighbours(all, ring, { pin });
     } catch {
       // Next endpoint; a county that will not answer simply has no neighbours today.
     } finally {

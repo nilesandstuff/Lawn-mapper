@@ -150,7 +150,9 @@ def _gather_here(payload):
     if f"{REPO}/tools" not in sys.path:
         sys.path.insert(0, f"{REPO}/tools")
     import alpha_sources
-    return alpha_sources.gather(payload, _prepare)
+    key = payload.get("progressKey")
+    return alpha_sources.gather(payload, _prepare, progress=lambda stage, **more: _note(key, stage, **more),
+                                cache_dir="/models/lidar-cache")
 
 
 @app.function(image=cpu_image, volumes={TILE_DIR: tiles}, timeout=3600, cpu=1.0, memory=2048)
@@ -191,6 +193,27 @@ def _gather_with_tiles(payload):
         except Exception as e:  # noqa: BLE001 - next lot asks again
             print(f"tiles not asked for: {e}", flush=True)
     return got
+
+
+# WHERE EACH LOT HAS GOT TO (owner, 2026-10-21: the trace "took forever and
+# needed to be resent several times... messages that say what the trace is
+# getting stuck on"). `lot` and the downloads write a line here under the
+# lot's own call id; `result` hands it back beside "running", the Worker
+# passes it to the app, and the app shows it instead of guessing -- and
+# only restarts a press whose line has not changed for a long time, instead
+# of any press older than 100 s, which on a 10-acre lot (downloads alone
+# 3-4 minutes) restarted every press before its downloads finished.
+progress = modal.Dict.from_name("lawn-mapper-alpha-progress", create_if_missing=True)
+
+
+def _note(key, stage, **more):
+    """One line about a lot, for the app. Never fatal."""
+    if not key:
+        return
+    try:
+        progress[key] = {"stage": stage, "at": time.time(), **more}
+    except Exception:  # noqa: BLE001 - a note that fails to write is only a note
+        pass
 
 
 @app.function(image=cpu_image, volumes={"/models": models, TILE_DIR: tiles}, timeout=300, cpu=1.0, memory=2048,
@@ -329,6 +352,9 @@ def lot(body):
     the downloads, so that press waits for both in turn.
     """
     t0 = time.time()
+    key = modal.current_function_call_id()
+    body = {**body, "progressKey": key}
+    _note(key, "Fetching the aerial photograph, the lidar and the near-infrared imagery")
     got = gather.spawn(body)
     try:
         got.get(timeout=240)
@@ -340,8 +366,10 @@ def lot(body):
         if "Deserialization failed" not in str(e):
             print(f"gather failed, the GPU will read it: {e}", flush=True)
     downloads = round(time.time() - t0, 1)
+    _note(key, "Waking the GPU and reading the lot through the model", downloads=downloads)
     out = Alpha().detect.remote({**body, "gather": got.object_id})
     out.setdefault("seconds", {})["downloads"] = downloads
+    _note(key, "Done", downloads=downloads)
     return out
 
 
@@ -375,7 +403,14 @@ def result(id: str, request: "Request"):
     try:
         out = call.get(timeout=0)
     except TimeoutError:
-        return {"status": "running"}
+        # Still going: say where it has got to, and for how long (seconds
+        # since the line was written), so the app can tell slow from stuck.
+        try:
+            note = progress.get(id) or {}
+        except Exception:  # noqa: BLE001 - the note is a courtesy
+            note = {}
+        stage = note.get("stage")
+        return {"status": "running", "stage": stage, "since": round(time.time() - note["at"], 1) if note.get("at") else None}
     except Exception as e:  # noqa: BLE001 - the detection itself failed
         return {"status": "failed", "error": str(e)[:300]}
     return {"status": "succeeded", **out}

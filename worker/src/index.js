@@ -283,10 +283,24 @@ async function handleNeighbours(url, origin) {
     return json({ error: 'county and bbox=w,s,e,n required' }, 400, origin);
   }
   const [w, s, e, n] = bbox;
-  if (!(e > w && n > s) || e - w > 0.005 || n - s > 0.004) {
+  /* Up to about two kilometres: a 10-acre condo association's box (owner,
+     2026-10-21) was refused by the old 0.005 x 0.004 limit, so it had no
+     neighbours and no merge button at all. With the parcel's ring the route
+     keeps only what touches it (parcel.js touchingNeighbours). */
+  if (!(e > w && n > s) || e - w > 0.02 || n - s > 0.015) {
     return json({ error: 'bbox too large' }, 400, origin);
   }
-  const features = await lookupNeighbours(county, bbox);
+  let ring = null;
+  const rawRing = url.searchParams.get('ring');
+  if (rawRing) {
+    try {
+      const pts = JSON.parse(rawRing);
+      if (Array.isArray(pts) && pts.length >= 3 && pts.length <= 2000
+          && pts.every((p) => Array.isArray(p) && p.length === 2 && p.every(Number.isFinite))) ring = pts;
+    } catch { ring = null; }
+    if (!ring) return json({ error: 'ring must be a JSON list of [lng, lat] pairs' }, 400, origin);
+  }
+  const features = await lookupNeighbours(county, bbox, ring, url.searchParams.get('pin') || null);
   return json({ features }, 200, origin);
 }
 
