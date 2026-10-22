@@ -1,6 +1,6 @@
 // tools/lidar-roof-fit.js: the roof rule on a grid, the edge points, the lawn share, and a roof slid onto a photo's edges.
 import assert from 'node:assert/strict';
-import { roofMask, edgePoints, lawnUnderRoof, fitRoof, heightSurface, dropPoints, groundSurface, groundPoints, fitGround, ROOF_CELL_M, FIT_CELL_M } from './lidar-roof-fit.js';
+import { roofMask, edgePoints, lawnUnderRoof, fitRoof, heightSurface, dropPoints, groundSurface, groundPoints, fitGround, agreeMove, ROOF_CELL_M, FIT_CELL_M } from './lidar-roof-fit.js';
 
 const g = { w: 40, h: 30, cell: 1, x0: 0, y1: 30, lat: 0 };
 const N = g.w * g.h;
@@ -85,5 +85,15 @@ assert.equal(fitRoof(new Float32Array(hg.w * hg.h), hg, grey, Wg, Hg, 1), null, 
   const gf = fitGround(gs.bright, gs.ground, gg, grey2, Wg2, Hg2);
   assert.ok(gf && gf.confident, `a clear ground fit (${gf && gf.peak})`);
   assert.ok(Math.abs(gf.east - 1) <= 0.3 && Math.abs(gf.north + 0.5) <= 0.3, `moved 1 m east, 0.5 m south: E ${gf.east} N ${gf.north}`);
+}
+// THE AGREE RULE (H111): C71's two fits agree and it moves; C60's disagree and it stays; an unsure fit never moves.
+{
+  const c71 = { confident: true, groundConfident: true, east: 2, north: -1.5, groundEast: 2, groundNorth: -2.5, peak: 1.41, groundPeak: 1.66 };
+  const m = agreeMove(c71);
+  assert.ok(m && m.east === 2 && m.north === -2 && m.method === 'agree', `C71 moves by the mean (${JSON.stringify(m)})`);
+  assert.equal(agreeMove({ ...c71, east: 0.25, north: -0.25, groundEast: -1, groundNorth: -2.25 }), null, 'C60: the fits disagree, no move');
+  assert.equal(agreeMove({ ...c71, groundConfident: false }), null, 'an unsure ground fit never moves');
+  assert.equal(agreeMove({ ...c71, confident: false }), null, 'nor an unsure roof fit');
+  assert.equal(agreeMove({ ...c71, east: 3, groundEast: 3 }), null, 'a move at the search edge is not believed');
 }
 console.log('lidar-roof-fit: ok');

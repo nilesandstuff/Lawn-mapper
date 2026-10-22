@@ -20,6 +20,12 @@ on:
         default: 'locked'
         type: choice
         options: [locked, all]
+      save:
+        description: 'commit = write the agree-rule moves to tools/locked-lidar-shifts.json on this branch (what workflow 14 reads by default)'
+        required: false
+        default: 'no'
+        type: choice
+        options: ['no', 'commit']
 
 jobs:
   check:
@@ -27,7 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 240
     permissions:
-      contents: write   # the pictures go to a branch a phone can open
+      contents: write   # the pictures go to a branch a phone can open; save=commit writes the moves to this one
     steps:
       - uses: actions/checkout@v5
 
@@ -91,6 +97,41 @@ jobs:
           git -C "$d" -c user.name=actions -c user.email=actions@users.noreply.github.com commit -qm "Pictures from run ${{ github.run_id }}"
           git -C "$d" push -q --force "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" "HEAD:refs/heads/$b"
           echo "PICTURES: https://github.com/${{ github.repository }}/tree/$b/pictures"
+
+      - name: Commit the moves as the saved file workflow 14 reads
+        if: ${{ inputs.save == 'commit' && inputs.lawns == 'locked' }}
+        run: |
+          FILE=tools/locked-lidar-shifts.json
+          node -e '
+            const fs = require("node:fs");
+            const now = JSON.parse(fs.readFileSync("lidar-roof-fit/lidar-shifts.json", "utf8"));
+            let was = {}; try { was = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); } catch {}
+            const about = (was._about || "THE SAVED LIDAR MOVES for the locked training lots (H111): one move per lot in ground metres, added after the datum move by tools/lidar_frame.py (LIDAR_SHIFTS). THE AGREE RULE of tools/lidar-roof-fit.js. A lot not in it keeps the datum move alone.").replace(/Measured by workflow 40 run \d+ \([^)]*\)/, "Measured by workflow 40 run ${{ github.run_id }} (" + new Date().toISOString().slice(0, 10) + ")");
+            const shifts = Object.fromEntries(Object.keys(now.shifts).sort().map((k) => [k, now.shifts[k]]));
+            fs.writeFileSync(process.argv[1], JSON.stringify({ _about: about, unit: now.unit, rule: now.rule, shifts }, null, 1));
+            const ids = new Set([...Object.keys(was.shifts || {}), ...Object.keys(shifts)]);
+            let changed = 0;
+            for (const k of ids) { const a = (was.shifts || {})[k], b = shifts[k]; if (!a !== !b || (a && b && (Math.abs(a.east - b.east) > 0.01 || Math.abs(a.north - b.north) > 0.01))) { changed++; console.log(`  ${(b || a).tag || k.slice(0, 24)}  ${a ? `E ${a.east} N ${a.north}` : "no move"}  ->  ${b ? `E ${b.east} N ${b.north}` : "no move"}`); } }
+            console.log(`${Object.keys(shifts).length} lots moved; ${changed} changed against the saved file.`);
+          ' $FILE
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          cp $FILE "$RUNNER_TEMP/shifts.json"
+          for attempt in 1 2 3; do
+            git fetch origin "$GITHUB_REF_NAME" || { sleep 5; continue; }
+            git reset --hard FETCH_HEAD
+            cp "$RUNNER_TEMP/shifts.json" $FILE
+            git add $FILE
+            if git diff --cached --quiet; then echo "The saved moves did not change."; exit 0; fi
+            git commit -m "Refresh the saved lidar moves: the agree rule over the locked lots
+
+Workflow 40 run ${{ github.run_id }}."
+            if git push; then echo "Pushed: workflow 14's next run reads the refreshed moves."; exit 0; fi
+            echo "Push $attempt failed; the branch moved. Retrying."
+            sleep 5
+          done
+          echo "::error::Could not push the moves after three tries."
+          exit 1
 
       - name: Keep the measurements and the pictures
         if: always()

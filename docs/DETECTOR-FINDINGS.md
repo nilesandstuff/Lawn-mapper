@@ -1005,6 +1005,19 @@ at on C60, and it is not C71 either; it may still be B03 (Utah Mapbox,
 roof fit (-2.25, 3), ground fit not confident) and the Fargo and Kentucky
 lots, where roof and ground fits disagree by the flight's lean.
 
+**By eye, 2026-10-22 (owner), on the half-metre layers of run 39666176735:
+"C71 is still crazy off... The rest are fine."** So the corpus's lidar is
+lined up with its photos everywhere but C71, and the agree rule below,
+which moves C71 by 2 m and 14 other lots by under a metre and breaks
+nothing, is ADOPTED: tools/locked-lidar-shifts.json carries its moves
+(from workflow 40 run 39492634512), workflow 14's `lidar_align` reads it
+by default ("saved"; "fit" measures afresh, "off" is the datum move alone,
+the corpus every run before this was measured on), and workflow 40 with
+`save: commit` rewrites the file. Its effect on THE PLAN's score is NOT
+yet measured under the full bar (H109 says a move this size changes
+nothing); the next THE PLAN run carries it, and workflow 24 against
+39666176735 (same seed, same lots, the datum move alone) is the reading.
+
 **The stricter rule, measured (2026-10-21, local read of the 83 lots
 with a public cloud that read without tile downloads, S47's frames):**
 move a lot only when the roof fit and the ground fit are both confident

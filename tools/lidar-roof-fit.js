@@ -62,6 +62,22 @@ export const FIT_CELL_M = 0.25, REACH_M = 4;
    a path) slid onto the photo's edges within GROUND_REACH_M. Roofs and crowns lean; the ground
    does not. */
 export const GROUND_MAX_M = 0.5, GROUND_MARGIN_M = 1.5, GROUND_EDGE_SHARE = 0.12, GROUND_REACH_M = 3, GROUND_MIN_OPEN = 0.2;
+/* THE AGREE RULE (H111, adopted after the owner's by-eye check of 2026-10-22):
+   a lot's lidar is moved only when the roof fit and the ground fit are both
+   confident and agree within AGREE_M, by their mean. Two measurements of
+   different things saying the same thing is a lot with no lean and a real
+   offset (C71: 2 m). The ground fit alone was "confident" and 2 m wrong on
+   C60; over the corpus it fixed as many lots as it broke. */
+export const AGREE_M = 1;
+
+/** The agree rule on one measured row: { east, north, peak } in ground metres, or null. Pure. */
+export function agreeMove(r) {
+  if (!r || !r.confident || !r.groundConfident) return null;
+  if (!Number.isFinite(r.east) || !Number.isFinite(r.groundEast)) return null;
+  if (Math.abs(r.east - r.groundEast) > AGREE_M || Math.abs(r.north - r.groundNorth) > AGREE_M) return null;
+  if (Math.max(Math.abs(r.groundEast), Math.abs(r.groundNorth)) >= GROUND_REACH_M) return null;
+  return { east: (r.east + r.groundEast) / 2, north: (r.north + r.groundNorth) / 2, peak: Math.min(r.peak, r.groundPeak), method: 'agree' };
+}
 export const MIN_EDGE_CELLS = 24; // a garage-sized roof has 24 edge metres
 
 const median = (xs) => { const s = xs.filter(Number.isFinite).sort((a, b) => a - b); return s.length ? (s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2) : NaN; };
@@ -354,10 +370,12 @@ async function main() {
   /* Kept out of the file: a fit that ran to the edge of its search (nothing to say it would not
      have gone further), and a frame with little open ground to match on (under GROUND_MIN_OPEN of
      its cells): run 3 put C88 at 4.6 m on 11% open ground, which is a fit to the wrong edges. */
-  const usable = (r) => r.groundConfident && Math.abs(r.groundEast) < GROUND_REACH_M && Math.abs(r.groundNorth) < GROUND_REACH_M && r.groundShareOfFrame >= GROUND_MIN_OPEN;
-  const shifts = Object.fromEntries(rows.filter(usable).map((r) => [r.id, { east: r.groundEast, north: r.groundNorth, peak: r.groundPeak, open: Number(r.groundShareOfFrame.toFixed(2)), method: 'ground' }]));
-  console.log(`\nlidar-shifts.json: ${Object.keys(shifts).length} lots' ground moves kept (measured, inside the ${GROUND_REACH_M} m search, ${Math.round(100 * GROUND_MIN_OPEN)}%+ of the frame open); ${rows.filter((r) => r.groundConfident && !usable(r)).length} measured but not kept.`);
-  writeFileSync(join(dirs.out, 'lidar-shifts.json'), JSON.stringify({ unit: 'ground metres, the move to give the lidar after the datum move', shifts }, null, 1));
+  const shifts = {};
+  for (const r of rows) { const m = agreeMove(r); if (m) shifts[r.id] = { ...m, tag: r.tag }; }
+  const groundOnly = rows.filter((r) => r.groundConfident && Math.abs(r.groundEast) < GROUND_REACH_M && Math.abs(r.groundNorth) < GROUND_REACH_M && r.groundShareOfFrame >= GROUND_MIN_OPEN).length;
+  console.log(`\nlidar-shifts.json: ${Object.keys(shifts).length} lots moved by THE AGREE RULE (roof fit and ground fit both confident and within ${AGREE_M} m of each other; the ground-only rule would have moved ${groundOnly}, and H111 found it breaks as many lots as it fixes).`);
+  for (const [id, m] of Object.entries(shifts)) if (Math.hypot(m.east, m.north) >= 1) console.log(`  ${m.tag || id.slice(0, 24)}  E ${m.east.toFixed(2)}  N ${m.north.toFixed(2)} m`);
+  writeFileSync(join(dirs.out, 'lidar-shifts.json'), JSON.stringify({ unit: 'ground metres, the move to give the lidar after the datum move', rule: `roof fit and ground fit both confident and agreeing within ${AGREE_M} m; the move is their mean (H111)`, shifts }, null, 1));
 
   const gsure = rows.filter((r) => r.groundConfident);
   console.log(`\n${rows.length} lots read, ${Object.keys(skipped).length} skipped.`);

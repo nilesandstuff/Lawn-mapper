@@ -1,0 +1,112 @@
+{
+ "_about": "THE SAVED LIDAR MOVES for the locked training lots (H111, adopted 2026-10-22 after the owner's by-eye check of the half-metre layers: every lot lined up but C71). One move per lot, in ground metres, added after the datum move by tools/lidar_frame.py (LIDAR_SHIFTS). THE AGREE RULE: the roof fit and the ground fit of tools/lidar-roof-fit.js both confident and within 1 m of each other, the move their mean. Measured by workflow 40 run 39492634512 (2026-10-20); workflow 40 with save=commit rewrites this file. A lot not in it keeps the datum move alone.",
+ "unit": "ground metres, the move to give the lidar after the datum move",
+ "rule": "roof fit and ground fit both confident and agreeing within 1 m; the move is their mean (H111)",
+ "shifts": {
+  "-85.67425,42.80681:sam3:find": {
+   "east": 0.0,
+   "north": 0.0,
+   "peak": 1.721,
+   "method": "agree",
+   "tag": "B13"
+  },
+  "-77.21901,34.66301:sam3:find": {
+   "east": -0.875,
+   "north": -0.375,
+   "peak": 1.722,
+   "method": "agree",
+   "tag": "B29"
+  },
+  "-80.55371,34.99379:sam3:find": {
+   "east": -0.5,
+   "north": -0.125,
+   "peak": 1.412,
+   "method": "agree",
+   "tag": "B32"
+  },
+  "-91.28631,42.44254:manual:manual": {
+   "east": 0.375,
+   "north": 0.75,
+   "peak": 1.403,
+   "method": "agree",
+   "tag": "C100"
+  },
+  "-84.53477,38.97799:manual:manual": {
+   "east": 0.125,
+   "north": -0.25,
+   "peak": 1.58,
+   "method": "agree",
+   "tag": "C103"
+  },
+  "-105.13443,39.89326:manual:manual": {
+   "east": 0.5,
+   "north": 0.0,
+   "peak": 1.985,
+   "method": "agree",
+   "tag": "C104"
+  },
+  "-96.88449,46.81280:manual:manual": {
+   "east": 0.5,
+   "north": -0.25,
+   "peak": 1.539,
+   "method": "agree",
+   "tag": "C105"
+  },
+  "-96.10307,41.15881:manual:manual": {
+   "east": 0.25,
+   "north": -0.125,
+   "peak": 1.561,
+   "method": "agree",
+   "tag": "C109"
+  },
+  "-84.53700,38.97534:sam3:find": {
+   "east": 0.125,
+   "north": 0.125,
+   "peak": 1.429,
+   "method": "agree",
+   "tag": "C19"
+  },
+  "-86.18935,39.60427:alpha:find": {
+   "east": -0.125,
+   "north": 0.125,
+   "peak": 1.495,
+   "method": "agree",
+   "tag": "C55"
+  },
+  "-96.03718,41.12233:alpha:find": {
+   "east": 0.0,
+   "north": 0.0,
+   "peak": 1.5,
+   "method": "agree",
+   "tag": "C66"
+  },
+  "-87.95621,42.86220:alpha:find": {
+   "east": -0.25,
+   "north": 0.125,
+   "peak": 1.79,
+   "method": "agree",
+   "tag": "C69"
+  },
+  "-84.18219,42.67372:alpha:find": {
+   "east": 2.0,
+   "north": -2.0,
+   "peak": 1.408,
+   "method": "agree",
+   "tag": "C71"
+  },
+  "-83.19566,40.04976:manual:manual": {
+   "east": 0.25,
+   "north": 0.125,
+   "peak": 2.151,
+   "method": "agree",
+   "tag": "C82"
+  },
+  "-86.43590,35.78178:alpha:find": {
+   "east": 0.0,
+   "north": -0.125,
+   "peak": 1.384,
+   "method": "agree",
+   "tag": "C86"
+  }
+ }
+}

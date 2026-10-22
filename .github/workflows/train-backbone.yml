@@ -412,10 +412,18 @@ on:
         # datum move. The lidar cache is keyed on it, so "off" and "ground"
         # never share a saved lidar. Scored as THE PLAN's own row; read with
         # workflow 24 against a run with it off.
-        description: 'Line the lidar up with each photo''s ground before it is read: off, or ground (one measured move per lot)'
+        # "saved" (the default since 2026-10-22, H111): the moves in
+        # tools/locked-lidar-shifts.json, THE AGREE RULE's (roof fit and
+        # ground fit both confident and within 1 m; 15 locked lots, one of
+        # them C71 by 2 m), measured once by workflow 40 and committed.
+        # "fit": measure them in this run (tools/lidar-roof-fit.js, 20 min).
+        # "off": the datum move alone, the corpus every run before 2026-10-22
+        # was measured on. The ground-only rule of S47 is gone: it fixed as
+        # many lots as it broke (H111).
+        description: 'Each lot''s own lidar move after the datum move: saved (tools/locked-lidar-shifts.json), fit (measure now), off'
         type: choice
-        default: 'off'
-        options: ['off', 'ground']
+        default: 'saved'
+        options: ['saved', 'off', 'fit']
       about:
         # WHAT THIS RUN IS FOR, kept with the pictures for ever.
         #
@@ -579,7 +587,7 @@ jobs:
             lidar
             lidar-plan.json
             naip
-          key: prep-v1-${{ steps.frames.outputs.fp }}-fused${{ startsWith(inputs.decoder, 'fused') }}-align${{ inputs.lidar_align }}-${{ hashFiles('tools/tree-canopy.py', 'tools/clumps.py', 'tools/lidar-plan.js', 'tools/lidar-cover.js', 'tools/lidar-newest.js', 'tools/lidar_frame.py', 'tools/lidar_sources.py', 'tools/naip_bands.py', 'tools/naip_align.py', 'tools/requirements-trees.txt', 'tools/requirements-lidar.txt') }}
+          key: prep-v1-${{ steps.frames.outputs.fp }}-fused${{ startsWith(inputs.decoder, 'fused') }}-align${{ inputs.lidar_align }}-${{ hashFiles('tools/locked-lidar-shifts.json') }}-${{ hashFiles('tools/tree-canopy.py', 'tools/clumps.py', 'tools/lidar-plan.js', 'tools/lidar-cover.js', 'tools/lidar-newest.js', 'tools/lidar_frame.py', 'tools/lidar_sources.py', 'tools/naip_bands.py', 'tools/naip_align.py', 'tools/requirements-trees.txt', 'tools/requirements-lidar.txt') }}
 
       # THE RAW POINTS (2026-10-21): every frame's points as USGS sent them,
       # saved under the frames and the saved plan alone, so a change to the
@@ -684,10 +692,11 @@ jobs:
           node tools/lidar-newest.test.js
           node tools/lidar-newest.js
 
-      # EACH LOT'S GROUND MOVE (lidar_align: ground): the clear ones only, in
-      # lidar-fit/lidar-shifts.json; the other lots keep the datum move alone.
+      # EACH LOT'S OWN MOVE (lidar_align: fit): measured now by the agree
+      # rule, in lidar-fit/lidar-shifts.json; the other lots keep the datum
+      # move alone. "saved" reads the committed file instead (no step).
       - name: Line the lidar up with each photo's ground
-        if: ${{ inputs.lidar_align == 'ground' && inputs.canopy != 'off' && steps.prep.outputs.cache-hit != 'true' }}
+        if: ${{ inputs.lidar_align == 'fit' && inputs.canopy != 'off' && steps.prep.outputs.cache-hit != 'true' }}
         env:
           FRAMES: frames
           PLAN: lidar-plan.json
@@ -707,7 +716,7 @@ jobs:
           OUT: lidar
           TILE_DIR: lidar-tiles
           POINTS_CACHE: lidar-points
-          LIDAR_SHIFTS: ${{ inputs.lidar_align == 'ground' && 'lidar-fit/lidar-shifts.json' || '' }}
+          LIDAR_SHIFTS: ${{ inputs.lidar_align == 'fit' && 'lidar-fit/lidar-shifts.json' || (inputs.lidar_align == 'saved' && 'tools/locked-lidar-shifts.json' || '') }}
           # NAIP-CHM (E9, H41) is no longer read (owner, 2026-09-29): its
           # only uses were the shelved "lidar ∩ NAIP canopy" row and a
           # picture layer. NAIP_CHM=1 brings it back.
@@ -854,7 +863,7 @@ jobs:
             lidar
             lidar-plan.json
             naip
-          key: prep-v1-${{ steps.frames.outputs.fp }}-fused${{ startsWith(inputs.decoder, 'fused') }}-align${{ inputs.lidar_align }}-${{ hashFiles('tools/tree-canopy.py', 'tools/clumps.py', 'tools/lidar-plan.js', 'tools/lidar-cover.js', 'tools/lidar-newest.js', 'tools/lidar_frame.py', 'tools/lidar_sources.py', 'tools/naip_bands.py', 'tools/naip_align.py', 'tools/requirements-trees.txt', 'tools/requirements-lidar.txt') }}
+          key: prep-v1-${{ steps.frames.outputs.fp }}-fused${{ startsWith(inputs.decoder, 'fused') }}-align${{ inputs.lidar_align }}-${{ hashFiles('tools/locked-lidar-shifts.json') }}-${{ hashFiles('tools/tree-canopy.py', 'tools/clumps.py', 'tools/lidar-plan.js', 'tools/lidar-cover.js', 'tools/lidar-newest.js', 'tools/lidar_frame.py', 'tools/lidar_sources.py', 'tools/naip_bands.py', 'tools/naip_align.py', 'tools/requirements-trees.txt', 'tools/requirements-lidar.txt') }}
 
       - name: Save the backbone's features for later runs
         if: ${{ inputs.gpu != 'modal' && steps.feats.outputs.cache-hit != 'true' }}
