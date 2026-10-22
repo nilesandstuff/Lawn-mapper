@@ -44,7 +44,11 @@ got here. Update it whenever the in-flight run changes.*
   those 26 it was worse (9 / 16 / 1, +1.9 [-0.6, +3.6]); on all 104,
   +0.4 [-0.3, +1.0], nothing. The live server reads every lot whole, as
   before; tools/alpha_infer.py can serve a windowed release (meta
-  `windowed` > 0) if one ever earns it. The lidar moves (H111, the agree
+  `windowed` > 0) if one ever earns it. The windowed path was then audited
+  at the owner's doubt and found right (H112's check: geometry exact, scale
+  right); S50 (running) stacks the whole-lot pass beside the windows for
+  the context they lost, with the Byron Center condo map drawn beside the
+  run. The lidar moves (H111, the agree
   rule, 15 lots) are in every run since 39715167319 and change the score
   by nothing (paired -0.0). The condo complex waits on corpus lots its size
   or a different idea.
@@ -1003,6 +1007,43 @@ that earns it. A second seed (free runner, six hours) would say whether
 +1.9 on the big lots is scatter, and is the next step if windows are
 tried again; a corpus lot or two the size of the condo complex would say
 more.
+
+**Checked after the owner's doubt (2026-10-22: "a huge property should
+perform worse if it's being squeezed ... double check that we're actually
+doing it right").** The windowed path, read end to end and tested:
+- *Geometry.* The stitched grid's cover (nx x core / w, ny x core / h) is
+  the same mapping every raster and label goes through (decoder_grid
+  box_targets, patch_edges). On C80's real 1792 x 1586 frame, a stitched
+  grid from a colour-mean eye matches a direct read of the photo through
+  that mapping to 2.6e-6 on all 11,088 patches wholly inside the picture
+  (the rest lie in the reflected padding, weight 0). Lidar, NDVI, canopy
+  and the labels line up with the windows exactly as with the squeeze.
+- *Scale.* A windowed lot passes span / w, the photo's own resolution
+  (0.075-0.100 m/px); span is the frame's width in metres (C88: 1270 px at
+  10 cm = 127 m, the tall frame's width). No lot reached the model coarser
+  than 10 cm; the "38.6 cm" in the extract log was a 1 km not-lawn pond
+  example, read in 16 windows. The 109 photographs are 104 lots + 5
+  examples.
+- *The decoder.* Grids are batched by shape, rotated and flipped with
+  their targets and weights, the refiner given the un-rotated grid and the
+  cover; the feature cache key carries the windows setting. Each big lot
+  trains in a batch of its own (unique shape), so the 26 carried about
+  37% of the steps at 25% of the lots: more weight on them, not less.
+- *What the windows cost.* The decoder is 1x1, 3x3, 3x3, 1x1 convs: a 5x5
+  patch field. Squeezed, a 180 m lot's patch is 3.2 m and the field 16 m,
+  with the eye seeing the whole lot in one pass; windowed, 1.6 m and 8 m,
+  with the eye seeing a 90 m window that never holds the lot's outline,
+  the street or the house against the field. The literature (looked up
+  again 2026-10-22): a whole-image thumbnail beside patch features lifts
+  aerial segmentation by 5 to 23 IoU across five backbones (GeoAgent,
+  ICCV 2023); GLNet (CVPR 2019) and RS-Mamba document the same context
+  loss from tiling; nobody has measured Scale-MAE below 30 cm GSD, and no
+  published pipeline stitches ViT patch tokens from hard window cores
+  (every one averages logits over overlaps). The one unmeasured risk in
+  our path: Scale-MAE's positional encoding is absolute per window, so the
+  same ground gets a different encoding in two windows; a hard-core stitch
+  carries whatever position-dependent channels the backbone has.
+  S50 tests the context explanation directly.
 
 ### H111. THE 2 m BOX AT C60 IS S47'S OWN MOVE, NOT THE CORPUS'S LIDAR; C71 IS A TRUE 2 m OFFSET OF THE LIDAR AGAINST THE COUNTY PHOTO, ROOF AND GROUND ALIKE. The ground fit's "confident" flag does not separate the two -- 2026-10-21
 *Owner, 2026-10-21: "I disagree with your confidence that the lidar is
@@ -7708,6 +7749,33 @@ not:** a 27 m block is less context than a whole lot, and H4 once found
 fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
+
+### S50. Big lots read in 10 cm windows WITH the whole-lot pass stacked beside them: the detail and the context (after H112; owner, 2026-10-22: "giving it smaller frames to work with SHOULD yield better results") -- RUNNING
+**The idea.** H112 says the windows alone cost the big lots context; the
+literature says a whole-image thumbnail beside patch features is worth
+5-23 IoU. `windows: on + whole` (workflow 14, 2026-10-22) reads the big
+lots in 10 cm windows as S49 did AND resamples the whole-lot squeezed grid
+onto the same grid as 1024 more channels a patch (train_decoder
+FEATURES_WHOLE, the tiles mode's mechanism; a small lot is stacked with
+itself). The live path reads such a release both ways (alpha_infer
+features, meta bothScales).
+
+**The run.** Workflow 14, 2026-10-22 ~18:30 UTC: THE PLAN, seed 7, locked
+104, saved lidar moves, `windows: on + whole`; read with workflow 24
+against 39715167319 (windows off, 17.2%) and 39763223279 (windows on,
+19.2%), all lots and the 26 past 90 m. **The bar** as S49's: within noise
+on all lots AND no worse on the 26 ships as a release candidate; worse on
+the 26 again and the windows are closed, the condo complex waiting on a
+different idea (a finer eye, or corpus lots its size).
+
+**Beside it, drawn only:** the owner's saved map of the Byron Center condo
+complex (two associations, the property line moved by hand to hold both;
+its saved shape is a placeholder and is never read) through the live
+path with this run's decoder (`also_draw`, tools/draw-map.mjs): the last
+picture of the run on the predictions page. One caveat for reading it: the
+photo a press gets for a 390 m lot is 17.6 cm a pixel (one county export
+request through the site, 2560 px), so its windows are read at 17.6 cm
+against the training's 7.5-10; the squeezed pass is 44 cm either way.
 
 ### S49. Big lots read in windows at the photo's own resolution, for training AND the live server (owner, 2026-10-22: "let's try windowed reading for large lots") -- MEASURED 2026-10-22, WORSE ON THE BIG LOTS: see H112. Not shipped; the server code for a windowed release stays, unused
 **Why now.** A 10-acre condo complex (two associations, Byron Center,
