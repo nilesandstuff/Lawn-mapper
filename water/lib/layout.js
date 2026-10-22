@@ -16,8 +16,9 @@
  *   cell, crossed straight (no turning on it)
  *   a route is a search over (cell, heading), every turn costing TURN cells, so runs come out straight
  *   the main, backflow preventer to each valve box, first
- *   each zone a tree grown from its valve: first a spine to its farthest head, then each remaining head joined
- *   from the nearest point of the tree; a head is reached anywhere within STUB_M of it (its swing pipe)
+ *   each zone a tree of its heads, grown from the one nearest their middle, each head joined from the nearest
+ *   point of the tree (reached anywhere within STUB_M of it: its swing pipe); then the valve's line brought
+ *   to the point of it that balances the runs either way (fed from the middle: Rain Bird)
  *   a cell another line already runs along costs SHARED of itself (one trench, two pipes); crossing one CROSS
  *   zones routed farthest first, then each routed again with the others in place
  * Pure: the ground comes in as a function.
@@ -33,7 +34,7 @@ const fromEN = (o, [e, n]) => [o[0] + (e / (R * Math.cos((o[1] * Math.PI) / 180)
 
 /**
  * The routing grid over the points to join, turned to `bearing` (degrees; the grid's u axis runs along it).
- * ground(at) -> { building, canopy, paved, lawn } (booleans; any may be missing) or null off the map.
+ * ground(at) -> { building, trunk, canopy, paved, lawn } (booleans; any may be missing) or null off the map.
  */
 export function makeGrid(points, bearing, ground, { cellM = GRID_M, padM = PAD_M } = {}) {
   const o = points[0], t = ((bearing || 0) * Math.PI) / 180;
@@ -47,7 +48,7 @@ export function makeGrid(points, bearing, ground, { cellM = GRID_M, padM = PAD_M
   for (let i = 0; i < N; i++) {
     const g = ground(atOf(i));
     if (!g) { cost[i] = BED; continue; }
-    if (g.building) { cost[i] = Infinity; continue; }
+    if (g.building || g.trunk) { cost[i] = Infinity; continue; } // a house, or a tree's trunk disc: never trenched
     if (g.lawn) lawn[i] = 1;
     if (g.paved) { paved[i] = 1; cost[i] = PAVED; continue; }
     cost[i] = g.canopy ? CANOPY : g.lawn ? 1 : BED;
@@ -98,13 +99,13 @@ class Heap {
  * own: this line's owner id (its own cells are free to reuse); outside(cell) -> extra multiplier.
  * -> [cells, from source to target] or null
  */
-export function search(G, sources, targets, { occ = null, own = null, mult = null } = {}) {
+export function search(G, sources, targets, { occ = null, own = null, mult = null, add = null } = {}) {
   const S = G.N * 4, dist = new Float64Array(S).fill(Infinity), prev = new Int32Array(S).fill(-1), heap = new Heap();
   for (const [cell, hd] of sources) for (let h = 0; h < 4; h++) if (hd < 0 || hd === h) { const s = cell * 4 + h; dist[s] = 0; heap.push(0, s); }
   while (heap.size) {
     const s = heap.pop(), cell = s >> 2, h = s & 3, d0 = dist[s];
     if (d0 === Infinity) continue;
-    if (targets.has(cell) && !sources.has(cell)) {
+    if (targets && targets.has(cell) && !sources.has(cell)) {
       const path = [];
       for (let x = s; x >= 0; x = prev[x]) { const c = x >> 2; if (path[path.length - 1] !== c) path.push(c); }
       return path.reverse();
@@ -126,12 +127,24 @@ export function search(G, sources, targets, { occ = null, own = null, mult = nul
         if (o.axes & axis) step *= SHARED; else step += CROSS;
       } else if (o && own !== null && o.owners.has(own)) step = 0;
       if (mult) step *= mult(j);
+      if (add) step += add(j);
       const nd = d0 + step + (turning && !sources.has(cell) ? TURN : 0) + (turning && sources.has(cell) && sources.get(cell) >= 0 ? TURN : 0);
       const ns = j * 4 + nh;
       if (nd < dist[ns]) { dist[ns] = nd; prev[ns] = s; heap.push(nd, ns); }
     }
   }
-  return null;
+  // with no targets: the whole field, { dist, prev } over (cell, heading), for pathTo
+  return targets ? null : { dist, prev };
+}
+
+/** The cheapest path from search()'s field to a cell, or null. */
+export function pathTo(field, cell) {
+  let best = -1;
+  for (let h = 0; h < 4; h++) { const s = cell * 4 + h; if (field.dist[s] < Infinity && (best < 0 || field.dist[s] < field.dist[best])) best = s; }
+  if (best < 0) return null;
+  const path = [];
+  for (let x = best; x >= 0; x = field.prev[x]) { const c = x >> 2; if (path[path.length - 1] !== c) path.push(c); }
+  return { path: path.reverse(), cost: field.dist[best] };
 }
 
 /** Mark a route's cells as occupied by `owner`, along their axes. */
@@ -160,9 +173,20 @@ function stubCells(G, at) {
   return out;
 }
 
-/** One zone's tree: grown from its valve. -> { parent: Map cell -> cell, headAt: Map headId -> cell, cells: Set } */
+/*
+ * One zone's tree, FED FROM ITS MIDDLE (owner, 2026-10-22, on Rain Bird's advice: "Where possible, the valve
+ * serving a group of sprinklers should be at the center of the group to balance the flow and size of lateral
+ * pipe"; a line fed from one end "is the least optimum of all lateral designs", Landscape Irrigation Design
+ * Manual pp. 57-60). The valve box is where it is, so the zone's heads are joined first, as one tree grown from
+ * the head nearest their middle; then the valve's line is brought to the point of that tree where the cost of
+ * getting there, plus FEED_LAMBDA x the farthest head's run from it, is least -- the split that balances the
+ * runs either way, as the split-length layout does.
+ * -> { parent: Map cell -> cell (rooted at the valve), headAt: Map headId -> cell, cells: Set }
+ */
+export const FEED_LAMBDA = 1, TREE_WALL = 20;
 function zoneTree(G, valveCell, heads, occ, owner) {
-  const parent = new Map([[valveCell, -1]]), headAt = new Map(), cells = new Set([valveCell]);
+  const headAt = new Map(), cells = new Set(), adj = new Map();
+  const link = (a, b) => { if (a === b) return; if (!adj.has(a)) adj.set(a, new Set()); if (!adj.has(b)) adj.set(b, new Set()); adj.get(a).add(b); adj.get(b).add(a); };
   const targetsOf = new Map(heads.map((h) => [h.id, stubCells(G, h.at)]));
   // the zone's own ground: within ZONE_REACH_M of one of its heads (a line out of it costs OUTSIDE)
   const near = new Uint8Array(G.N), reach = Math.ceil(ZONE_REACH_M / G.cellM);
@@ -175,32 +199,55 @@ function zoneTree(G, valveCell, heads, occ, owner) {
     }
   }
   const mult = (j) => (near[j] ? 1 : OUTSIDE);
-  const left = heads.slice();
-  // the spine first: to the farthest head
-  const vat = G.atOf(valveCell), d2 = (h) => { const [a, b] = G.toUV(h.at), [c, d] = G.toUV(vat); return (a - c) ** 2 + (b - d) ** 2; };
-  left.sort((x, y) => d2(y) - d2(x));
-  let first = true;
+  // the heads first: a tree grown from the head nearest the zone's middle
+  const mid = heads.reduce((m, h) => { const [u, v] = G.toUV(h.at); return [m[0] + u / heads.length, m[1] + v / heads.length]; }, [0, 0]);
+  const dMid = (h) => { const [u, v] = G.toUV(h.at); return (u - mid[0]) ** 2 + (v - mid[1]) ** 2; };
+  const left = heads.slice().sort((a, b) => dMid(a) - dMid(b));
+  const seed = left.shift(), seedCell = [...targetsOf.get(seed.id)][0] ?? G.cellOf(seed.at);
+  cells.add(seedCell); headAt.set(seed.id, seedCell);
   while (left.length) {
     const targets = new Map();
-    for (const h of first ? [left[0]] : left) for (const c of targetsOf.get(h.id)) if (!targets.has(c)) targets.set(c, h);
-    // a head whose stub reaches the tree already: fed from there
+    for (const h of left) for (const c of targetsOf.get(h.id)) if (!targets.has(c)) targets.set(c, h);
     const touching = [...targets.entries()].find(([c]) => cells.has(c));
-    let path;
-    if (touching) path = [touching[0]];
-    else {
-      path = search(G, new Map([...cells].map((c) => [c, -1])), new Set(targets.keys()), { occ, own: owner, mult });
-      if (!path) { // nothing reaches it (walled in): straight from the valve, as before
-        const h = first ? left[0] : left[0], c = [...targetsOf.get(h.id)][0] ?? G.cellOf(h.at);
-        path = [valveCell, c];
-      }
-    }
+    let path = touching ? [touching[0]] : search(G, new Map([...cells].map((c) => [c, -1])), new Set(targets.keys()), { occ, own: owner, mult });
+    if (!path) { const h = left[0]; path = [seedCell, [...targetsOf.get(h.id)][0] ?? G.cellOf(h.at)]; }
     const end = path[path.length - 1], h = targets.get(end) || left[0];
-    for (let k = 1; k < path.length; k++) if (!parent.has(path[k])) { parent.set(path[k], path[k - 1]); cells.add(path[k]); }
+    for (let k = 1; k < path.length; k++) { link(path[k - 1], path[k]); cells.add(path[k]); }
     occupy(G, occ, path, owner);
     headAt.set(h.id, end);
     left.splice(left.indexOf(h), 1);
-    first = false;
   }
+  // where the valve's line joins: cheapest to reach, plus the farthest head's run from there
+  // the valve's line is a run of its own up to the join: through the heads' tree it would just meet it at the
+  // first point it touched, so their cells cost TREE_WALL to cross (the same for every join: it enters one)
+  const field = search(G, new Map([[valveCell, -1]]), null, { occ, own: null, mult, add: (j) => (cells.has(j) && j !== valveCell ? TREE_WALL : 0) });
+  const fed = new Set(headAt.values());
+  const ecc = (c0) => {
+    const seen = new Map([[c0, 0]]), q = [c0];
+    let far = 0;
+    for (let k = 0; k < q.length; k++) { const c = q[k], d = seen.get(c); if (fed.has(c) && d > far) far = d; for (const n of adj.get(c) || []) if (!seen.has(n)) { seen.set(n, d + 1); q.push(n); } }
+    return far;
+  };
+  let best = null;
+  for (const c of cells) {
+    const p = pathTo(field, c);
+    if (!p) continue;
+    const score = p.cost + FEED_LAMBDA * ecc(c);
+    if (!best || score < best.score) best = { c, p, score };
+  }
+  const join = best ? best.c : seedCell, valvePath = best ? best.p.path : [valveCell, join];
+  // rooted at the valve: down its line to the join, then out through the head tree
+  occupy(G, occ, valvePath, owner);
+  // the valve's line down to the join, then out through the heads' tree from there
+  const parent = new Map([[valveCell, -1]]);
+  for (let k = 1; k < valvePath.length; k++) if (!parent.has(valvePath[k])) parent.set(valvePath[k], valvePath[k - 1]);
+  if (!parent.has(join)) parent.set(join, valvePath[valvePath.length - 1] ?? valveCell);
+  const q = [join];
+  for (let k = 0; k < q.length; k++) for (const n of adj.get(q[k]) || []) if (!parent.has(n)) { parent.set(n, q[k]); q.push(n); }
+  // anything the walk did not reach (a head walled off): straight to the valve, as before
+  for (const c of cells) if (!parent.has(c)) parent.set(c, valveCell);
+  for (const c of valvePath) cells.add(c);
+  cells.add(valveCell);
   return { parent, headAt, cells };
 }
 

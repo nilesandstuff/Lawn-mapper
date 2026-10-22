@@ -42,7 +42,7 @@ import { naipFor, ndvi } from '../lib/naip.js';
 import { overtureFor, overtureMasks, alignBuildings } from '../lib/overture.js';
 import { rng } from '../lib/synthetic.js';
 import { lidarAt } from '../../worker/src/shade.js';
-import { shadeRoofs } from '../lib/roofs.js';
+import { shadeRoofs, coreRoofs } from '../lib/roofs.js';
 import { PNG } from 'pngjs';
 import { mkdirSync, writeFileSync } from 'node:fs';
 
@@ -161,6 +161,8 @@ async function one(lng, lat) {
   const shade = shadeRoofs(res.points, bbox, lat, { parts: true }); // the points as analysed: moved onto the web map's ground
   // Overture's roads, sidewalks and buildings (lib/overture.js; owner 2026-10-19: "use that on top of current system")
   const ovm = await overtureFor(g.bbox).then((ov) => overtureMasks(g, ov)).catch(() => null);
+  // the earlier rule (the lidar finders with Overture's aligned buildings), for comparison (FINDINGS H32)
+  const resUnion = ovm ? analyse(cols, bbox, lat, { epoch: cloud.epoch, nullRuns: 0, roofRule: 'union', overture: ovm }) : null;
   // the photo, early: its green vetoes lidar-only roofs (lib/lowspots.js greenVeto; owner 2026-10-19, evergreens)
   const photo = await naipFor(g).catch(() => null);
   const V0 = photo ? ndvi(photo) : null;
@@ -169,6 +171,10 @@ async function one(lng, lat) {
   const ovAl = ovm ? alignBuildings(g, ovm, Uint8Array.from(res.ownRoofs, (v, i) => (v && shade.roof[i] ? 1 : 0))) : null;
   const finders = {
     water: res.ownRoofs, shadeFlat: shade.flat, shadeSolid: shade.solid, shade: shade.roof,
+    // the core session's rule (lib/roofs.js coreRoofs), alone and with the photo's green veto: what the water map uses now
+    core: coreRoofs(g, res.points, res.z),
+    ...(V0 ? { coreNotGreen: greenVeto(coreRoofs(g, res.points, res.z), V0, groundGreen) } : {}),
+    ...(resUnion ? { earlierRule: resUnion.wall } : {}),
     either: Uint8Array.from(res.ownRoofs, (v, i) => (v || shade.roof[i] ? 1 : 0)),
     both: Uint8Array.from(res.ownRoofs, (v, i) => (v && shade.roof[i] ? 1 : 0)),
     waterNoEvergreen: Uint8Array.from(res.ownRoofs, (v, i) => (v && !shade.evergreen[i] ? 1 : 0)),

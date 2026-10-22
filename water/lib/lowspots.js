@@ -16,7 +16,7 @@ import { lowSpots, flow, foundation, MIN_AREA } from './hydro.js';
 import { nad83Correction } from './datum.js';
 import { rng, gauss } from './synthetic.js';
 import { sortSpots } from './kinds.js';
-import { shadeRoofs } from './roofs.js';
+import { shadeRoofs, coreRoofs } from './roofs.js';
 import { alignBuildings } from './overture.js';
 
 /**
@@ -79,7 +79,7 @@ export function greenVeto(mask, ndvi, ref, keep = null) {
   return Uint8Array.from(mask, (v, i) => (v && (keep?.[i] || !(ndvi[i] >= cut)) ? 1 : 0));
 }
 
-export function analyse(cols0, bbox, lat, { epoch = null, shift: givenShift = null, cell = 1, within = null, nullRuns = 8, floor = null, useShadeRoofs = cell === 1, overture = null, ndvi = null } = {}) {
+export function analyse(cols0, bbox, lat, { epoch = null, shift: givenShift = null, cell = 1, within = null, nullRuns = 8, floor = null, useShadeRoofs = cell === 1, overture = null, ndvi = null, roofRule = 'core' } = {}) {
   /* THE FRAME, THE SHADE MAP'S (owner, 2026-10-17: "make sure your system is the exact same as the shade
      map"): the cloud is moved onto the web map's ground BEFORE it is gridded, by the published NAD83 ->
      ITRF transformation at the flight's epoch (lib/datum.js), as the shade map's cellOf(..., shift) does.
@@ -105,7 +105,13 @@ export function analyse(cols0, bbox, lat, { epoch = null, shift: givenShift = nu
      it becomes a fake low spot and a hole in the walls -- so the union. */
   let wall = ownRoofs;
   let shadeRoof = null;
-  if (useShadeRoofs && cols.n) {
+  /* THE CORE SESSION'S ROOF RULE (lib/roofs.js coreRoofs; owner 2026-10-22: "use the same setup as the core
+     session for finding roofs ... I want to drop overture buildings"): the detector's own lidar rule, its 2 m
+     cells fitted to this 1 m grid; Overture's buildings are no longer used (its road and sidewalk lines still
+     are, for paving). roofRule 'union' keeps the earlier rule, for the tools that compare them (FINDINGS H32). */
+  const core = roofRule === 'core';
+  if (core) { wall = coreRoofs(g, cols, z); overture = overture ? { ...overture, building: null } : overture; }
+  if (!core && useShadeRoofs && cols.n) {
     const sh = shadeRoofs(cols, bbox, lat);
     if (sh.w === g.W && sh.h === g.H) { shadeRoof = sh.roof; wall = Uint8Array.from(ownRoofs, (v, i) => (v || sh.roof[i] ? 1 : 0)); }
   }
@@ -114,7 +120,7 @@ export function analyse(cols0, bbox, lat, { epoch = null, shift: givenShift = nu
      lidar finders' 91% at 77% (FINDINGS H20). ROOF_RULE: its buildings, plus any roof both lidar finders
      agree on (a shed, or a house newer than the map data). */
   let aligned = null;
-  if (overture?.building && overture.building.length === g.W * g.H) {
+  if (!core && overture?.building && overture.building.length === g.W * g.H) {
     // Overture's outlines moved onto the lidar's roofs first (lib/overture.js alignBuildings; H101)
     const both = Uint8Array.from(ownRoofs, (v, i) => (v && (!shadeRoof || shadeRoof[i]) ? 1 : 0));
     aligned = alignBuildings(g, overture, both);

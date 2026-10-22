@@ -43,6 +43,19 @@ test('a zone round a house: never through it, never under the tree, square runs,
   assert.ok(L.main[0].lenM > 5 && L.main[0].lenM < 12, `main ${L.main[0].lenM}`);
 });
 
+test("fed from its middle: the valve's line joins where the heads split both ways, not at one end", () => {
+  const L = layout({ pvb: P(15, 7.6), boxes: [{ id: 'b1', at: P(9, 7) }], zones: [{ n: 1, box: 'b1', heads: ring }], bearing: 0, ground });
+  const t = L.zones.get(1), kids = new Map();
+  for (const n of t.nodes) if (n.parent) { if (!kids.has(n.parent)) kids.set(n.parent, []); kids.get(n.parent).push(n); }
+  const headsUnder = (id) => (kids.get(id) || []).reduce((s, c) => s + (c.kind === 'head' ? 1 : 0) + headsUnder(c.id), 0);
+  // down the valve's line to the first split
+  let at = 'valve';
+  while ((kids.get(at) || []).length === 1 && kids.get(at)[0].kind !== 'head') at = kids.get(at)[0].id;
+  const branches = (kids.get(at) || []).map((c) => (c.kind === 'head' ? 1 : headsUnder(c.id)));
+  assert.ok(branches.length >= 2, `no split: ${branches}`);
+  assert.ok(Math.max(...branches) / ring.length <= 0.75, `one branch carries ${Math.max(...branches)} of ${ring.length} heads`);
+});
+
 test('two zones on one valve box share the trench out of it rather than running side by side', () => {
   const near = ring.slice(0, 5), far = ring.slice(7).map((h) => ({ ...h, id: `b${h.id}` }));
   const L = layout({ pvb: P(15, 7.6), boxes: [{ id: 'b1', at: P(9, 7) }], zones: [{ n: 1, box: 'b1', heads: near }, { n: 2, box: 'b1', heads: far }], bearing: 0, ground });

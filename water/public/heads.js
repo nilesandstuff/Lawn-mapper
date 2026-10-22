@@ -443,7 +443,7 @@ export function sprinklers(ctx) {
           <select data-size="${z.n}"><option value="auto">sized by flow (recommended)</option>${PIPE_FAMILIES[fam].sizes.map((x) => `<option value="${x[1]}" ${String(x[1]) === String(z.size) ? 'selected' : ''}>all ${fraction(x[1])} in</option>`).join('')}</select>
           ${zs ? `<div class="dim">${[...byNom].sort((x, y) => y[0] - x[0]).map(([n, L]) => `${fraction(n)} in for about ${Math.round(L)} ft`).join(', ')}.${fast.length ? ` <strong style="color:var(--bad)">${fast.length} run${fast.length > 1 ? 's' : ''} over 5 ft/s</strong>: a bigger pipe there.` : ''}</div>` : ''}</div>`;
       }).join('');
-      return `<p class="hint">What the lines from the valve box to the heads are made of. "Sized by flow" gives each run the size an installer would: the smallest that keeps the water under 5 ft/s, larger near the valve, smaller toward the last heads. The routes are on the map.</p>${rows}
+      return `<p class="hint">What the lines from the valve box to the heads are made of. "Sized by flow" gives each run the size an installer would: the smallest that keeps the water under 5 ft/s, larger near the valve, smaller toward the last heads. The routes are on the map: laid as installers lay them, square runs along the lawn's edges, each zone fed from the middle of its heads, round the house, and out of the dashed brown circle round each tree's trunk (the lidar finds each crown's top; a trunk's thickness it can't see, so the circle's radius is 40% of the crown's).</p>${rows}
         ${nav('water', {})}`;
     },
 
@@ -1103,6 +1103,13 @@ export function sprinklers(ctx) {
           g.beginPath(); g.moveTo(...a); g.lineTo(...b); g.stroke();
         }
       }
+    }
+    // the trees' trunks the lidar found, and the circle pipe is kept out of (lib/roofs.js treeTrunks)
+    if (showLines) for (const t of ctx.trees?.() || []) {
+      const [x, y] = ctx.toPx(t.at), R = t.keepM * ctx.pxPerM();
+      g.strokeStyle = 'rgba(141,110,99,.95)'; g.lineWidth = px * 1.5; g.setLineDash([px * 4, px * 3]);
+      g.beginPath(); g.arc(x, y, R, 0, 7); g.stroke(); g.setLineDash([]);
+      g.fillStyle = '#6d4c41'; g.strokeStyle = '#fff'; g.lineWidth = px; g.beginPath(); g.arc(x, y, px * 3.5, 0, 7); g.fill(); g.stroke();
     }
     // the backflow preventer and the valve boxes
     const sysq = irr.system;
