@@ -502,6 +502,37 @@ jobs:
           echo "::error::'fused + edge' (and '+ trees', which also needs a canopy setting) trains its decoders under ONE canopy setting (canopy not 'compare'); not-lawn traces are read on the free runner only; a release is THE PLAN (decoder 'fused + edge', a canopy setting) on either runner."
           exit 1
 
+      # A GATED EYE, CHECKED FIRST (S51, 2026-10-22). DINOv3's weights open
+      # only once Meta has granted the owner's request, which can take a
+      # while after the token is in. Asking the hub now costs seconds; finding
+      # out at the backbone step costs the hour of canopy, lidar and NAIP
+      # before it, and a failure email for nothing.
+      - name: Check the backbone can be opened
+        if: ${{ startsWith(inputs.model, 'facebook/dinov3') }}
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          MODEL: ${{ inputs.model }}
+        run: |
+          pip install --quiet huggingface_hub
+          python3 - <<'PY'
+          import os, sys
+          from huggingface_hub import hf_hub_download
+          from huggingface_hub.errors import GatedRepoError, HfHubHTTPError
+          repo = os.environ["MODEL"]
+          if not os.environ.get("HF_TOKEN"):
+              print(f"::error::{repo} is gated and the HF_TOKEN secret is not set. Accept the licence on its hub page, make a read token at huggingface.co/settings/tokens, add it as the repository secret HF_TOKEN.")
+              sys.exit(1)
+          try:
+              hf_hub_download(repo, "config.json")
+          except GatedRepoError:
+              print(f"::error::{repo} is gated and the token's account has not been granted access yet (the request on the model's hub page is still pending, or was not made). Nothing else was run.")
+              sys.exit(1)
+          except HfHubHTTPError as e:
+              print(f"::error::{repo} could not be opened: {str(e)[:300]}")
+              sys.exit(1)
+          print(f"{repo} opens with the token: access granted.")
+          PY
+
       - run: npm ci
 
       - name: Install the image decoders
