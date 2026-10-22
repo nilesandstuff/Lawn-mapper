@@ -1107,7 +1107,14 @@ buildings"; "If fed from middle is the advice, then yes let's do that"; "can we 
   within 1 m; correct exactly | within 1 m; IoU): the core's rule 73% | 91%, 93% | 97%, 0.69; with the photo's
   green veto 66% | 86%, 95% | 98%, 0.64; the rule before (Overture moved onto the lidar's roofs, or both lidar
   finders agree) 92% | 98%, 86% | 95%, 0.80. The core's rule is the most PRECISE roof finder here but misses
-  about a quarter of the roof cells (it sits inside the roof, as the core found: H111). ROOFS_PENDING
+  about a quarter of the roof cells (it sits inside the roof, as the core found: H111). Lidar-only ways to
+  win the edge back, same squares: its 1 m growth widened (4 rounds, one stray ground hit) 0.71; or both lidar
+  finders agree 0.74; or the shade map's finder 0.74 (86% | 96% found, 84% | 93% correct); or either 0.72. IN USE:
+  the core's rule, or the shade map's finder where the photo is not green (the core's own cells stand: a pulse
+  that never reached the ground is no evergreen's) -- 83% | 95% found, 87% | 95% correct, IoU 0.74 on the 19
+  squares where the photo answered. Dropping Overture's buildings costs 0.06 IoU on these squares (0.80 to
+  0.74), mostly roof edges; the owner chose it, the core having found Overture's shapes plain wrong in places
+  (DETECTOR-FINDINGS H105).
 - PIPE FED FROM THE MIDDLE (lib/layout.js zoneTree). Rain Bird: "the valve serving a group of sprinklers should be
   at the center of the group to balance the flow and size of lateral pipe" (Landscape Irrigation Design Manual
   pp. 57-60). The valve box is where it is, so each zone's heads are joined first, as one tree grown from the head

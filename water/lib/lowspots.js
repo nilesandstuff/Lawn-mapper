@@ -110,10 +110,12 @@ export function analyse(cols0, bbox, lat, { epoch = null, shift: givenShift = nu
      cells fitted to this 1 m grid; Overture's buildings are no longer used (its road and sidewalk lines still
      are, for paving). roofRule 'union' keeps the earlier rule, for the tools that compare them (FINDINGS H32). */
   const core = roofRule === 'core';
-  if (core) { wall = coreRoofs(g, cols, z); overture = overture ? { ...overture, building: null } : overture; }
-  if (!core && useShadeRoofs && cols.n) {
+  let coreRoof = null;
+  if (core) { coreRoof = coreRoofs(g, cols, z); wall = coreRoof; overture = overture ? { ...overture, building: null } : overture; }
+  if (useShadeRoofs && cols.n) {
     const sh = shadeRoofs(cols, bbox, lat);
-    if (sh.w === g.W && sh.h === g.H) { shadeRoof = sh.roof; wall = Uint8Array.from(ownRoofs, (v, i) => (v || sh.roof[i] ? 1 : 0)); }
+    // the core's rule misses the roof's edge (it sits inside: H32), so the shade map's finder is added to it
+    if (sh.w === g.W && sh.h === g.H) { shadeRoof = sh.roof; wall = Uint8Array.from(core ? coreRoof : ownRoofs, (v, i) => (v || sh.roof[i] ? 1 : 0)); }
   }
   /* WITH OVERTURE'S BUILDINGS (lib/overture.js; owner 2026-10-19, "use that on top of current system"):
      on the 23 Chesapeake squares its buildings alone found 89% of roof cells at 89% precision, against the
@@ -134,7 +136,8 @@ export function analyse(cols0, bbox, lat, { epoch = null, shift: givenShift = nu
     for (let i = 0; i < ndvi.length; i++) if (!wall[i] && Number.isFinite(raw.z[i]) && Number.isFinite(ndvi[i])) gz.push(ndvi[i]);
     gz.sort((a, b) => a - b);
     groundGreen = gz.length > 50 ? gz[gz.length >> 1] : null;
-    wall = greenVeto(wall, ndvi, groundGreen, overture?.building || null);
+    // what the core's rule calls roof stands (no pulse got through it); the rest goes where the photo is green
+    wall = greenVeto(wall, ndvi, groundGreen, coreRoof || overture?.building || null);
   }
   const groundOk = new Uint8Array(g.W * g.H);
   for (let i = 0; i < groundOk.length; i++) groundOk[i] = !wall[i] && Number.isFinite(raw.z[i]) ? 1 : 0;
