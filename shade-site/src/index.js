@@ -30,6 +30,16 @@ export const OLD = {
   '/shade-admin': '/admin', '/shade-admin.html': '/admin',
 };
 
+/* The site's own manifest (a manifest must come from the page's own host, and Lawn Mapper's names Lawn Mapper). */
+const manifest = () => JSON.stringify({
+  name: 'Shade Analyzer', short_name: 'Shade map', description: 'A lidar shade map for your lawn.',
+  start_url: '/', display: 'standalone', background_color: '#ffffff', theme_color: '#2f7d32',
+  icons: [
+    { src: '/favicon-32.png', sizes: '32x32', type: 'image/png' },
+    { src: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
+    { src: '/favicon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
+  ],
+}, null, 2);
 const robots = (host) => `User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /log\nDisallow: /admin\nDisallow: /trees\nSitemap: https://${host}/sitemap.xml\n`;
 const sitemap = (host) => '<?xml version="1.0" encoding="UTF-8"?>\n'
   + '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
@@ -51,6 +61,7 @@ export default {
       return new Response(page.body, page);
     }
     if (p === '/robots.txt') return new Response(robots(url.host), { headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=86400' } });
+    if (p === '/manifest.webmanifest') return new Response(manifest(), { headers: { 'Content-Type': 'application/manifest+json; charset=utf-8', 'Cache-Control': 'public, max-age=86400' } });
     if (p === '/sitemap.xml') return new Response(sitemap(url.host), { headers: { 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=86400' } });
     /* Lawn Mapper's own pages live on its host, not here. */
     if (p.endsWith('.html') || !/\.[a-z0-9]{1,8}$/i.test(p)) return Response.redirect(`https://${lawnmap}${p}${url.search}`, 301);
