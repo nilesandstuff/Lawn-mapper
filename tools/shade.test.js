@@ -1360,6 +1360,9 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   const api = await get('https://shade.example.org/api/maps/one?id=7', { headers: { Cookie: 'lm_guest=g' } });
   const mod = await get('https://shade.example.org/shade/sun-ui.js');
   const other = await get('https://shade.example.org/mywork');
+  const man = await get('https://shade.example.org/manifest.webmanifest');
+  const manJson = await man.json().catch(() => null);
+  check('shade subdomain: its own manifest, from its own host (the pages link /manifest.webmanifest)', man.status === 200 && manJson?.start_url === '/' && /manifest/.test(man.headers.get('Content-Type')) && manJson.icons.length === 3, JSON.stringify(manJson));
   check('shade subdomain: the map at /, the old names sent to the new ones with their query, /api/ to Lawn Mapper with the cookie, modules served, Lawn Mapper pages sent home',
     root.status === 200 && seen.some((x) => x[0] === 'asset' && x[1] === '/shade')
     && old.status === 301 && old.headers.get('Location') === 'https://shade.example.org/?at=1,2&truth=x'

@@ -12,6 +12,9 @@
 <meta name="description" content="A shade map of your yard built from USGS lidar, whose pulses pass through the gaps in every tree, so trees let through the light they really do instead of being solid 3D shapes. Hours of sun and daily light across the lawn for any day of the year, for choosing the grass that will grow there. Free.">
 <link rel="canonical" href="__SITE__/shade">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#2f7d32">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.webmanifest">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Lawn Mapper">
 <meta property="og:title" content="Shade Analyzer — a lidar shade map for your lawn">
@@ -206,7 +209,7 @@
         <div class="row">
           <button type="button" id="truth-erase">Eraser</button>
           <button type="button" id="truth-undo">Undo erase</button>
-          <a class="dim" href="/shade-log.html">All recordings</a>
+          <a class="dim" href="/log">All recordings</a>
         </div>
         <div id="truth-summary" class="dim"></div>
       </section>
@@ -288,6 +291,7 @@
         <button type="button" data-back>Back</button>
       </div>
     </section>
+    <p class="dim"><a href="/privacy">Privacy and contact</a></p>
   </div>
 </div>
 <script src="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.js"></script>
