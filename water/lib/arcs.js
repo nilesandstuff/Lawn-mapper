@@ -23,6 +23,10 @@
 import { unEnu, enu as enuOf } from './heads.js';
 
 export const BIN_DEG = 5, MIN_THROW = 0.75;
+/* The ground, as the page names it: 'lawn' (or 'lawn-nearwall' / 'lawn-nearpaved', within a metre of either),
+   'wall', 'paved', 'road', 'other', 'hard' (the older name, either), null off the map. */
+export const isLawn = (g) => typeof g === 'string' && g.startsWith('lawn');
+export const isHard = (g) => g === 'hard' || g === 'wall' || g === 'paved' || g === 'road';
 const FRACTIONS = [0.15, 0.3, 0.45, 0.6, 0.75, 0.9, 1.0];
 
 /** A point `m` metres from `at` toward `deg` (clockwise from north). */
@@ -37,8 +41,8 @@ export function rays(at, radiusM, ground) {
     let lawn = 0, hard = 0, firstHard = 1;
     for (const f of FRACTIONS) {
       const g = ground(toward(at, deg, f * radiusM));
-      if (g === 'lawn') lawn++;
-      else if (g === 'hard') { hard++; if (f < firstHard) firstHard = f; }
+      if (isLawn(g)) lawn++;
+      else if (isHard(g)) { hard++; if (f < firstHard) firstHard = f; }
     }
     out.push({ deg, lawn: lawn / FRACTIONS.length, hard: hard / FRACTIONS.length, firstHard });
   }
@@ -101,7 +105,7 @@ export function autoArc(at, radiusM, nozzle, ground) {
         const across = type === 'side' ? (a - 0.5) * L : b * W;
         const p = unEnu(at, [Math.sin((dir * Math.PI) / 180) * along + Math.cos((dir * Math.PI) / 180) * across, Math.cos((dir * Math.PI) / 180) * along - Math.sin((dir * Math.PI) / 180) * across]);
         const g = ground(p); m++;
-        if (g === 'lawn') lawn++; else if (g === 'hard') hard++;
+        if (isLawn(g)) lawn++; else if (isHard(g)) hard++;
       }
       const s = (lawn - 2 * hard) / m;
       if (!best || s > best.s) best = { dir, s, lawnShare: lawn / m, hardShare: hard / m };
@@ -137,8 +141,9 @@ export function autoArc(at, radiusM, nozzle, ground) {
  * and each cell is worth something by how many heads reach it:
  *
  *   lawn          the first head 1, the second 0.5 (head to head), a third 0.3, more 0.1
- *   building or   -2 a head (water on a wall or a drive is lost, and the reason an arc is turned)
- *   paving
+ *   a wall -3, paving on the lot -2, the road (paving outside the property line) -1.5 a head; lawn within a
+ *   metre of a wall or paving pays a quarter of that (the core session's advice, 2026-10-21: FINDINGS H31);
+ *   and a hard surface just past the throw (out to 1.15x) a third of its cost, the throw being a spread
  *   other ground  -0.05 a head: beds and woods may take a sprinkler's water (owner, 2026-10-21: "arc finding
  *                 can hit woods and flower beds"); the small cost only breaks ties toward less waste
  *
@@ -152,7 +157,14 @@ export function autoArc(at, radiusM, nozzle, ground) {
  * ground(at) -> 'lawn' | 'hard' | 'other' | null. -> Map id -> { dir, arc, throw }
  */
 export const FIT_CELL_M = 0.5, FIT_ROUNDS = 3;
-const LAWN_GAIN = [1, 0.5, 0.3, 0.1], HARD_GAIN = -2, OTHER_GAIN = -0.05;
+const LAWN_GAIN = [1, 0.5, 0.3, 0.1], OTHER_GAIN = -0.05;
+/* what water does on each (the core session, 2026-10-21: "a wall/foundation worse than a drive, a drive worse
+   than a road"); lawn within a metre of one pays a quarter of it, since its edge is good to about half a metre */
+export const HARD_GAIN = { wall: -3, hard: -2, paved: -2, road: -1.5 }, NEAR_SHARE = 0.25;
+/* the throw is a spread, not a line (pressure and wind move it 10-20%): a hard surface just past the throw
+   costs SPREAD_SHARE of itself out to SPREAD x the throw, so an arc whose edge runs beside a drive beats one
+   that points at it */
+export const SPREAD = 1.15, SPREAD_SHARE = 0.3;
 /* each neighbouring head (same zone) a head's water reaches: head to head, the designer's rule, worth this many
    square metres of lawn; it keeps an edge head's arc reaching the heads either side of it */
 export const NEIGHBOUR_GAIN = 4;
@@ -174,7 +186,7 @@ export function fitArcs(heads, ground, { only = null } = {}) {
     const bins = [];
     for (let k = 0; k < B; k++) {
       const t = ((k + 0.5) * BIN_DEG * Math.PI) / 180, list = [];
-      for (let j = 0; j < J; j++) {
+      for (let j = 0; j < Math.ceil(J * SPREAD); j++) {
         const f = (j + 0.5) / J, r = f * R, e = he + Math.sin(t) * r, n = hn + Math.cos(t) * r;
         const ce = Math.floor(e / FIT_CELL_M), cn = Math.floor(n / FIT_CELL_M), key = `${ce},${cn}`;
         list.push({ key, w: r * (R / J) * ((BIN_DEG * Math.PI) / 180), f, g: groundOf(key, (ce + 0.5) * FIT_CELL_M, (cn + 0.5) * FIT_CELL_M) });
@@ -208,7 +220,10 @@ export function fitArcs(heads, ground, { only = null } = {}) {
     mine.set(id, cells);
   };
   const remove = (id) => { for (const c of mine.get(id) || []) cover.set(c, cover.get(c) - 1); mine.delete(id); };
-  const gainOf = (p) => (p.g === 'lawn' ? LAWN_GAIN[Math.min(3, cover.get(p.key) || 0)] : p.g === 'hard' ? HARD_GAIN : OTHER_GAIN);
+  const gainOf = (p) => {
+    if (isLawn(p.g)) return LAWN_GAIN[Math.min(3, cover.get(p.key) || 0)] + (p.g === 'lawn-nearwall' ? NEAR_SHARE * HARD_GAIN.wall : p.g === 'lawn-nearpaved' ? NEAR_SHARE * HARD_GAIN.paved : 0);
+    return HARD_GAIN[p.g] ?? OTHER_GAIN;
+  };
   const free = (h) => !h.fixed && (!only || only.has(h.id)) && !h.nozzle?.strip && !(Number.isFinite(h.nozzle?.arcFixed) && h.nozzle.arcFixed >= 360);
   // the heads that stay as they are count from the start; the rest go in one at a time
   const cur = new Map();
@@ -223,7 +238,7 @@ export function fitArcs(heads, ground, { only = null } = {}) {
     const hi = fixed ?? Math.min(B, Math.floor((Number.isFinite(h.nozzle?.arcMax) ? h.nozzle.arcMax : 360) / BIN_DEG));
     let best = null;
     for (const T of h.fixedThrow ? [h.throw ?? 1] : THROWS) {
-      const gain = bins.map((list) => list.reduce((t, p) => (p.f <= T + 1e-9 ? t + p.w * gainOf(p) : t), 0));
+      const gain = bins.map((list) => list.reduce((t, p) => (p.f <= T + 1e-9 ? t + p.w * gainOf(p) : p.f <= T * SPREAD + 1e-9 && isHard(p.g) ? t + p.w * SPREAD_SHARE * HARD_GAIN[p.g] : t), 0));
       const nbs = neighbours.get(h.id).filter((nb) => nb.f <= T + 1e-9);
       for (let len = lo; len <= hi; len++) {
         for (let start = 0; start < (len >= B ? 1 : B); start++) {

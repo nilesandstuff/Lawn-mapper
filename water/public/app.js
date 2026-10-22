@@ -373,18 +373,34 @@ const heads = sprinklers({
     if (!pts.length) return null;
     return [[Math.min(...pts.map((p) => p[0])), Math.min(...pts.map((p) => p[1]))], [Math.max(...pts.map((p) => p[0])), Math.max(...pts.map((p) => p[1]))]];
   },
-  // what is on the ground at a point, for the arcs (lib/arcs.js): the traced lawn, a building or paving, other
+  /* what is on the ground at a point, for the arcs (lib/arcs.js), on the core session's advice (2026-10-21):
+     'wall' a building (the lidar's footprint), 'paved' paving on the lot, 'road' paving outside the property
+     line; the traced lawn 'lawn', or 'lawn-nearwall' / 'lawn-nearpaved' within a metre of either (the edges
+     are good to about half a metre, so the band costs a little rather than flipping the score); else 'other' */
   get groundAt() {
     const d = view.data;
     if (!d?.wall) return null;
+    const g = d.grid, N = g.W * g.H;
+    const hardAt = (i) => (d.wall[i] ? 2 : d.paved && d.paved[i] >= 0.5 ? 1 : 0);
+    if (!d.nearHard) {
+      // within one cell (a metre) of a building (2) or paving (1)
+      d.nearHard = new Uint8Array(N);
+      for (let r = 0; r < g.H; r++) for (let c = 0; c < g.W; c++) {
+        let m = 0;
+        for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) { const rr = r + dr, cc = c + dc; if (rr >= 0 && cc >= 0 && rr < g.H && cc < g.W) m = Math.max(m, hardAt(rr * g.W + cc)); }
+        d.nearHard[r * g.W + c] = m;
+      }
+    }
     return (at) => {
-      const g = d.grid, dx = d.shift.east / g.k, dy = d.shift.north / g.k, [x, y] = toMerc(at);
+      const dx = d.shift.east / g.k, dy = d.shift.north / g.k, [x, y] = toMerc(at);
       const c = Math.floor(((x - (g.bbox[0] + dx)) * g.k) / g.cell), r = Math.floor(((g.bbox[3] + dy - y) * g.k) / g.cell);
       if (c < 0 || r < 0 || c >= g.W || r >= g.H) return null;
-      const i = r * g.W + c;
-      if (d.wall[i] || (d.paved && d.paved[i] >= 0.5)) return 'hard';
-      if (d.lawnMask) return d.lawnMask[i] ? 'lawn' : 'other';
-      return 'lawn';
+      const i = r * g.W + c, h = hardAt(i);
+      if (h === 2) return 'wall';
+      if (h === 1) return d.parcelMask && !d.parcelMask[i] ? 'road' : 'paved';
+      const lawn = d.lawnMask ? d.lawnMask[i] : 1;
+      if (!lawn) return 'other';
+      return d.nearHard[i] === 2 ? 'lawn-nearwall' : d.nearHard[i] === 1 ? 'lawn-nearpaved' : 'lawn';
     };
   },
   lawnMiddle: () => {

@@ -20,7 +20,7 @@
  */
 
 import { catalogue, headWater, zoneWater, calibrate, placeByGps, facing, arcOf, enu, unEnu, sprayBodyId, seriesOf, nozzleRiseIn, SPRAY_POP_IN, SPRAY_REG_PSI, longestEdgeInSight, snapToGrid, GRID_FT_MIN, GRID_FT_MAX, GRID_FT_DEFAULT } from '/lib/heads.js';
-import { autoArc, fitArcs, MIN_THROW, BIN_DEG } from '/lib/arcs.js';
+import { autoArc, fitArcs, isLawn, MIN_THROW, BIN_DEG } from '/lib/arcs.js';
 import { precipitation, setProfiles } from '/lib/precip.js';
 import { layout } from '/lib/layout.js';
 import { route, solveZone, headFlow, regulatedOut, deviceLoss, dwPerFt, roughnessMm, SWING, FITTINGS_SHARE, pipeById, pipeSize, PIPE_FAMILIES, sizeFor, fraction, fps, FT_PER_M, MAX_FPS } from '/lib/hydraulics.js';
@@ -248,7 +248,7 @@ export function sprinklers(ctx) {
     const cellM = 0.5, W = Math.ceil((x1 - x0) / cellM), H = Math.ceil((y1 - y0) / cellM);
     const at = (c, r) => unEnu(ref, [x0 + (c + 0.5) * cellM, y1 - (r + 0.5) * cellM]);
     const lawnFlag = new Uint8Array(W * H);
-    for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) lawnFlag[r * W + c] = ctx.groundAt(at(c, r)) === 'lawn' ? 1 : 0;
+    for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) lawnFlag[r * W + c] = isLawn(ctx.groundAt(at(c, r))) ? 1 : 0;
     const p = precipitation({ W, H, cellM, at, lawn: (i) => lawnFlag[i] === 1 }, hs);
     coverCache = { p, W, H, cellM, nw: unEnu(ref, [x0, y1]), lawnFlag };
     coverKey = key;

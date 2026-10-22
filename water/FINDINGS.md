@@ -1074,6 +1074,26 @@ done"). Two research passes (subagents, sources below) and the core session aske
   layout.test.js). Not yet: feeding a zone from its middle (Rain Bird's split-length rule), tree trunk keep-out
   discs (no trunk sizes), a measured comparison with a real system's pipe.
 
+### H31. Houses, drives and roads for the arcs: the core session's advice, applied (water session, 2026-10-22)
+
+Asked on the owner's word ("minimizing contact with houses, roads, and driveways ... Ask core session for
+advice"); the core's answer, 2026-10-21, with its measurements (docs/DETECTOR-FINDINGS.md H103, H104, H107, H108,
+H111). What it advised, and what the water map does with it:
+- WALLS: the lidar's footprint, not the photo's roof, which leans 1.5-3 m on Mapbox lots in some towns (Fargo
+  1.75 m W, Kentucky 3 m, Louisiana 3-4 m; H107, H111). The water map's walls are the lidar roof finders with
+  Overture's buildings aligned onto them (H20, H23); the core reports the owner scrapped Overture shapes for the
+  lawn map (H105). NOT CHANGED YET: whether to drop Overture from the water map's walls is the owner's call.
+- DRIVES AND WALKS: the photo's edge where visible, the lidar's ground brightness where not; within ~0.5 m of the
+  photo on most lots (H108 median 0.50 m, 81 lots), a tail of 2-3 m on a few (H111, C71). Overture lines are
+  centrelines only, never widths. ROADS: outside the parcel line, then ground brightness.
+- MARGINS: 0.5 m off a lidar-derived edge; 1 m where sources disagree by more than a metre.
+- SCORING, applied (lib/arcs.js): a wall -3, paving on the lot -2, paving outside the property line (the road)
+  -1.5 a head; lawn within a metre of a wall or paving pays a quarter of that, a soft band instead of a flip;
+  the throw a spread: a hard surface out to 1.15x the throw costs 0.3 of itself, so arcs that run beside a drive
+  beat arcs that point at it. On the 12 x 9 m test lawn the side heads now throw 80% (was 85%) off the house.
+- Nothing over HTTP marks drive, walk, road or house per pixel today; the core offered to add a roof/void mask
+  to the live server's answer if the owner wants it.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge
