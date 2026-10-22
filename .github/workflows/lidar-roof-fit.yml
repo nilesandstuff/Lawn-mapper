@@ -123,9 +123,7 @@ jobs:
             cp "$RUNNER_TEMP/shifts.json" $FILE
             git add $FILE
             if git diff --cached --quiet; then echo "The saved moves did not change."; exit 0; fi
-            git commit -m "Refresh the saved lidar moves: the agree rule over the locked lots
-
-Workflow 40 run ${{ github.run_id }}."
+            git commit -m "Refresh the saved lidar moves: the agree rule over the locked lots" -m "Workflow 40 run ${{ github.run_id }}."
             if git push; then echo "Pushed: workflow 14's next run reads the refreshed moves."; exit 0; fi
             echo "Push $attempt failed; the branch moved. Retrying."
             sleep 5
