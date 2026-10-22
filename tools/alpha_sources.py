@@ -137,7 +137,10 @@ def gather_sources(photo, prep, naip_align=None, progress=None, cache_dir=None):
         out["seconds"]["lidar"] = round(time.time() - t0, 1)
 
     t0 = time.time()
-    say("Aligning the near-infrared imagery")
+    span = max(prep["bbox"][2] - prep["bbox"][0], prep["bbox"][3] - prep["bbox"][1])
+    # The slow step on a big lot (workflow 32, 2026-10-22: 103 s of a 275 m
+    # lot's 116 s of downloads was this; the lidar was 10 s).
+    say("Aligning the near-infrared imagery" + (f" over {span:.0f} m of ground (a big lot: this takes a minute or two)" if span > 200 else ""))
     try:
         naip, _ = naip_bands.naip_for(prep["bbox"], photo=photo, stored=naip_align)
         out["naip"] = np.asarray(naip)

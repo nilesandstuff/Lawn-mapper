@@ -1418,6 +1418,9 @@ let detection = null;   // {press, abort, started, timer, action, model}
  * Replicate cold start can honestly take longer than this.
  */
 const AUTO_RETRY_S = 100;
+/* On a big lot one stage (the near-infrared alignment) can honestly run
+   two minutes without a word, so quiet means longer there. */
+const AUTO_RETRY_BIG_S = 300;
 let lastAutoRetry = 0;
 
 /*
@@ -1499,7 +1502,10 @@ function startDetectionTimer(run) {
     const clock = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
     /* What to expect (owner, 2026-09-29), and an honest word once past it.
        A big lot is told so: its downloads alone are minutes. */
-    const big = /big lot/.test(run.stage || '');
+    /* A big lot, once any stage line has said so: its near-infrared
+       alignment alone ran 103 s on a 275 m lot (workflow 32, 2026-10-22). */
+    if (/big lot/.test(run.stage || '')) run.big = true;
+    const big = Boolean(run.big);
     $('#busy-timer').textContent = big
       ? `${clock} · a lot this size takes a few minutes`
       : secs < 60
@@ -1513,7 +1519,8 @@ function startDetectionTimer(run) {
        to be resent several times"). */
     const quietSince = run.stage ? run.stageAt : run.started;
     const quietS = (Date.now() - quietSince) / 1000;
-    if (quietS >= AUTO_RETRY_S && secs >= AUTO_RETRY_S && !run.action && run.model === 'alpha'
+    const quietLimit = big ? AUTO_RETRY_BIG_S : AUTO_RETRY_S;
+    if (quietS >= quietLimit && secs >= AUTO_RETRY_S && !run.action && run.model === 'alpha'
         && Date.now() - lastAutoRetry > 10 * 60 * 1000) {
       lastAutoRetry = Date.now();
       giveUpOnDetection('retry', 'This one got stuck — starting it again…');
