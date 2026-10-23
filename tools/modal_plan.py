@@ -115,6 +115,16 @@ def plan(inputs, run, send):
                 **common, "OUT": "preds-all", "CANOPY": "canopy", "CANOPY_MODE": "all"}})
             outs = ["preds-none", "preds-lawn", "preds-all"]
 
+    # THE POND AND NOT-LAWN EXAMPLES on Modal too (owner, 2026-10-23: "the not
+    # lawn examples should be included always"). On GitHub NOT_LAWN is the
+    # training job's own environment; here every decoder step carries it. The
+    # traces (<id>-notlawn.png) and the example frames are in frames/, which
+    # the canopy step already sent.
+    if inputs.get("not_lawn") == "on":
+        for step in steps:
+            if step["script"] == "train_decoder.py":
+                step["env"]["NOT_LAWN"] = "1"
+
     return {
         "run": run,
         "send": [s for s in send if s],
@@ -126,7 +136,7 @@ def plan(inputs, run, send):
 
 def main():
     e = os.environ
-    inputs = {k: e.get(k.upper(), "") for k in ("windows", "canopy", "decoder", "seed", "lawns", "model", "size", "release", "distrust_lidar", "edge_reach", "refiner_trial", "release_epochs", "hf_token")}
+    inputs = {k: e.get(k.upper(), "") for k in ("windows", "canopy", "decoder", "seed", "lawns", "model", "size", "release", "distrust_lidar", "edge_reach", "refiner_trial", "release_epochs", "hf_token", "not_lawn")}
     p = plan(inputs, e["RUN"], (e.get("SEND") or "").split(","))
     # A release records where it came from; Modal's container has no GitHub
     # environment of its own, so the two names are carried across here.

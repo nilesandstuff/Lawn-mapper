@@ -39,6 +39,16 @@ def check_release():
     assert "release" in p["fetch"]
 
 
+def check_not_lawn():
+    # On GitHub NOT_LAWN is the job's environment, so no step names it; on
+    # Modal each decoder step must carry it when the examples are on.
+    on = plan(inputs(canopy="on lawn", decoder="fused + edge", release="alpha", not_lawn="on"), "r", [])
+    dec = [s["env"] for s in on["steps"] if s["script"] == "train_decoder.py"]
+    assert dec and all(e.get("NOT_LAWN") == "1" for e in dec), dec
+    off = plan(inputs(canopy="on lawn", decoder="fused + edge", not_lawn="off"), "r", [])
+    assert not any("NOT_LAWN" in s["env"] for s in off["steps"])
+
+
 def check_names():
     p = plan(inputs(), "r", ["lidar", "naip"])
     dec = [s["env"] for s in p["steps"] if s["script"] == "train_decoder.py"]
@@ -103,5 +113,6 @@ def check_trees():
 check_trees()
 check_names()
 check_release()
+check_not_lawn()
 check_values()
 print("modal plan: ok")

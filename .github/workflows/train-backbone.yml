@@ -509,9 +509,9 @@ jobs:
       # Stop in seconds rather than after an hour of extraction when the
       # choices cannot go together.
       - name: Check the choices go together
-        if: ${{ (inputs.release == 'off' && startsWith(inputs.decoder, 'fused + edge') && (inputs.canopy == 'compare' || (startsWith(inputs.decoder, 'fused + edge + trees') && inputs.canopy == 'off'))) || ((inputs.not_lawn == 'on' || inputs.corrections == 'on') && inputs.gpu == 'modal') || (inputs.release != 'off' && (inputs.decoder != 'fused + edge' || inputs.canopy == 'compare' || inputs.canopy == 'off')) }}
+        if: ${{ (inputs.release == 'off' && startsWith(inputs.decoder, 'fused + edge') && (inputs.canopy == 'compare' || (startsWith(inputs.decoder, 'fused + edge + trees') && inputs.canopy == 'off'))) || (inputs.corrections == 'on' && inputs.gpu == 'modal') || (inputs.release != 'off' && (inputs.decoder != 'fused + edge' || inputs.canopy == 'compare' || inputs.canopy == 'off')) }}
         run: |
-          echo "::error::'fused + edge' (and '+ trees', which also needs a canopy setting) trains its decoders under ONE canopy setting (canopy not 'compare'); not-lawn traces are read on the free runner only; a release is THE PLAN (decoder 'fused + edge', a canopy setting) on either runner."
+          echo "::error::'fused + edge' (and '+ trees', which also needs a canopy setting) trains its decoders under ONE canopy setting (canopy not 'compare'); corrections are weighted on the free runner only; a release is THE PLAN (decoder 'fused + edge', a canopy setting) on either runner."
           exit 1
 
       # A GATED EYE, CHECKED FIRST (S51, 2026-10-22). DINOv3's weights open
@@ -913,6 +913,9 @@ jobs:
           MODEL: ${{ inputs.model }}
           SIZE: ${{ inputs.size }}
           RELEASE: ${{ inputs.release }}
+          # Read by modal_plan.py as the input ('on'/'off'), not as the '1' the
+          # training job's own NOT_LAWN is; the plan sets each decoder's.
+          NOT_LAWN: ${{ inputs.not_lawn }}
           OUT: gpu-plan.json
         run: |
           python3 tools/modal_plan.py
