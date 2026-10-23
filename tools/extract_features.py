@@ -50,6 +50,7 @@ windows.py for why overlap rather than tiles.
 """
 
 import json
+import math
 import os
 import sys
 import time
@@ -64,6 +65,15 @@ from windows import padded_side_metres, window_plan, windowed
 # model was trained at this and the live detector is fed it; the rule is that
 # every detector gets it. TARGET_MPP overrides it for an experiment.
 TARGET_MPP = float(os.environ.get("TARGET_MPP", "0.10"))
+# NATIVE (S58, 2026-10-22; owner: "dinov3 can handle up to 4096"): a lot too
+# big for one pass at the target is NOT windowed and NOT squeezed -- it is
+# resized so a pixel IS the target (10 cm) and read whole in one pass, as
+# many patches as that takes, up to NATIVE_MAX_PX a side. The eye sees the
+# whole lot at full detail; attention over 65,000 tokens at 4096 px is a GPU's
+# job, so past 1280 px this refuses to run on a CPU rather than hang it.
+NATIVE = os.environ.get("NATIVE") == "1"
+NATIVE_MAX_PX = int(os.environ.get("NATIVE_MAX_PX", "4096") or 4096)
+NATIVE_CPU_MAX_PX = 1280
 
 # TILES (owner, 2026-09-27): every lot read the same way -- resampled to ONE
 # ground resolution and read in blocks of TILE_SIZE pixels, so the model sees
@@ -537,6 +547,27 @@ def main():
             # What the model resolved, for the summary -- a scale-blind eye is
             # still fed pixels of a known size.
             seen_mpp = long_m / size if span else 0.0
+        elif NATIVE:
+            # WHOLE, AT THE TARGET: the padded square's side in metres over
+            # the target gives the pixels, rounded up to whole patches and
+            # capped; the same squeeze path as a small lot, only bigger.
+            long_m = span * max(w, h) / w
+            S = int(math.ceil(long_m / TARGET_MPP / eye.patch)) * eye.patch
+            S = max(size, min(NATIVE_MAX_PX, S))
+            if DEVICE == "cpu" and S > NATIVE_CPU_MAX_PX:
+                raise SystemExit(
+                    f"{stem[:24]} is {long_m:.0f} m across: reading it whole at {TARGET_MPP * 100:.0f} cm is {S} px, "
+                    f"{(S // eye.patch) ** 2:,} tokens, which this CPU cannot hold. `windows: native` wants `gpu: modal`."
+                )
+            tensor, cover = as_tensor(os.path.join(images, name), S)
+            mpp = (long_m / S) if (eye.wants_scale and span) else 0.0
+            hidden = eye.look(tensor, mpp)
+            flat, dim, extra = patches_of(hidden, S // eye.patch)
+            grid = flat.reshape(S // eye.patch, S // eye.patch, dim)
+            windows = 1
+            seen_mpp = long_m / S
+            manifest["native"] = manifest.get("native", 0) + 1
+            manifest["nativeMaxPx"] = max(manifest.get("nativeMaxPx", 0), S)
         else:
             # At the photograph's own resolution, in overlapping windows.
             mpp = (span / w) if eye.wants_scale else 0.0
@@ -601,6 +632,10 @@ def main():
               f"{manifest.get('tilesSkipped', 0)}.")
     if TILE_MPP > 0:
         pass  # said above, with the block counts
+    elif manifest.get("native"):
+        print(f"{manifest['native']} of {len(names)} lawns were too big to read at {TARGET_MPP * 100:.0f} cm a pixel "
+              f"at {size} px and were read WHOLE at {TARGET_MPP * 100:.0f} cm in one pass, up to {manifest['nativeMaxPx']} px a side "
+              f"({(manifest['nativeMaxPx'] // 16) ** 2:,} patches).")
     elif manifest["windowed"]:
         print(f"{manifest['windowed']} of {len(names)} lawns were too big to read at "
               f"{TARGET_MPP * 100:.0f} cm a pixel in one pass and were read in "

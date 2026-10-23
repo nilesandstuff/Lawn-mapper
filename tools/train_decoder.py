@@ -864,6 +864,10 @@ def main():
             # `windows: on`): the live server reads a big lot the same way
             # only for a release trained this way (alpha_infer.features).
             "windowed": int(manifest.get("windowed", 0) or 0),
+            # `windows: native` (S58): big lots read whole at 10 cm in one
+            # pass; the live server reads such a release the same way.
+            "native": int(manifest.get("native", 0) or 0),
+            "nativeMaxPx": int(manifest.get("nativeMaxPx", 0) or 0),
             # The whole-lot pass stacked beside the grid (`windows: on + whole`
             # or `both`): the live server reads such a release both ways too.
             "bothScales": bool(FEATURES_WHOLE),

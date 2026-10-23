@@ -19,6 +19,7 @@ hidden now and then (DROP_LIDAR / DROP_NAIP) and has met "no lidar here".
 """
 
 import importlib.util
+import math
 import os
 import sys
 import tempfile
@@ -164,6 +165,14 @@ class Detector:
 
             grid, cover, n = windowed(extract_features.normalised(photo), size, self.eye.patch, look)
             self.last_windows = n
+        elif meta.get("native") and not extract_features.read_whole(span, w, h, size):
+            # NATIVE (S58): the whole lot in one pass with a pixel at the
+            # target, as many patches as that takes, capped as training was.
+            long_m = span * max(w, h) / w
+            S = int(math.ceil(long_m / extract_features.TARGET_MPP / self.eye.patch)) * self.eye.patch
+            S = max(size, min(int(meta.get("nativeMaxPx") or extract_features.NATIVE_MAX_PX), S))
+            grid, cover = self.whole(photo, span, S)
+            self.last_windows = 1
         else:
             grid, cover = self.whole(photo, span, size)
             self.last_windows = 1
