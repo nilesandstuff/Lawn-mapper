@@ -110,6 +110,12 @@ function toolRow(map, tool) {
   blurb.className = 'tblurb';
   blurb.textContent = tool.blurb;
   li.append(name, right, blurb);
+  if (tool.note) {
+    const note = document.createElement('p');
+    note.className = 'tnote';
+    note.textContent = tool.note;
+    li.append(note);
+  }
   return li;
 }
 

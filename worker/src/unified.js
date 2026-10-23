@@ -43,6 +43,8 @@ const nowIso = () => new Date().toISOString();
  * (the shade map's own address search), which the dashboard offers beside
  * "New map".
  *
+ * `note`, when set, is a warning the dashboard prints on the tool's card.
+ *
  * 'lawn' is the lawn mapper's own record (the maps row), not a map_tools row.
  */
 export const TOOLS = [
@@ -53,7 +55,9 @@ export const TOOLS = [
   { id: 'shade', name: 'Shade analyzer', blurb: 'The trees around the lawn in 3D from lidar, and the sun and shade through the year.',
     needs: [], url: 'https://{shade}?map={id}', entry: 'https://{shade}' },
   { id: 'water', name: 'Water map', blurb: 'Where rain and irrigation go on this lawn, and how much to water.',
-    needs: ['shade'], url: 'https://water.{home}/?map={id}' },
+    needs: ['shade'], url: 'https://water.{home}/?map={id}',
+    /* Shown on the card under the blurb (owner, 2026-10-23). */
+    note: 'Highly experimental and early in development.' },
 ];
 const TOOL_IDS = new Set(TOOLS.map((t) => t.id));
 export const isTool = (id) => TOOL_IDS.has(id) && id !== 'lawn';
