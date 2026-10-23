@@ -640,6 +640,10 @@ jobs:
           # reads them, so a run with them reuses everything saved without.
           fp=$(cd frames && find . -type f ! -name '*-notlawn.png' ! -name '*-detected.png' -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -c1-20)
           echo "fp=$fp" >> "$GITHUB_OUTPUT"
+          # The model's name as a cache key may carry: a cache key cannot
+          # contain a comma, and "scalemae-large, res x5" has one (every
+          # res-factor run before 2026-10-23 failed here before it began).
+          echo "model=$(printf '%s' "${{ inputs.model }}" | tr -c 'A-Za-z0-9._/-' '-')" >> "$GITHUB_OUTPUT"
           echo "frames fingerprint $fp ($(ls frames | wc -l) files)"
 
       - name: Reuse the canopy, lidar and NAIP if saved
@@ -675,7 +679,7 @@ jobs:
             feats
             feats-whole
             feats-multi
-          key: feats-v1-${{ steps.frames.outputs.fp }}-${{ inputs.model }}-${{ inputs.size }}-${{ inputs.windows }}-${{ inputs.layers == 'last' && 'last' || 'compare' }}-${{ hashFiles('tools/extract_features.py', 'tools/windows.py', 'tools/requirements.txt') }}
+          key: feats-v1-${{ steps.frames.outputs.fp }}-${{ steps.frames.outputs.model }}-${{ inputs.size }}-${{ inputs.windows }}-${{ inputs.layers == 'last' && 'last' || 'compare' }}-${{ hashFiles('tools/extract_features.py', 'tools/windows.py', 'tools/requirements.txt') }}
 
       - name: Install the tree model's loader and the lidar reader
         if: ${{ inputs.canopy != 'off' }}
@@ -944,7 +948,7 @@ jobs:
             feats
             feats-whole
             feats-multi
-          key: feats-v1-${{ steps.frames.outputs.fp }}-${{ inputs.model }}-${{ inputs.size }}-${{ inputs.windows }}-${{ inputs.layers == 'last' && 'last' || 'compare' }}-${{ hashFiles('tools/extract_features.py', 'tools/windows.py', 'tools/requirements.txt') }}
+          key: feats-v1-${{ steps.frames.outputs.fp }}-${{ steps.frames.outputs.model }}-${{ inputs.size }}-${{ inputs.windows }}-${{ inputs.layers == 'last' && 'last' || 'compare' }}-${{ hashFiles('tools/extract_features.py', 'tools/windows.py', 'tools/requirements.txt') }}
 
       # TWO JOBS, NOT ONE (2026-09-28). A job may run six hours at most, and
       # the not-lawn examples (~140 frames beside 55 lots) made every step
