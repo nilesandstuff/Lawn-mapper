@@ -57,6 +57,14 @@ export const MODEL_VERSIONS = [
     lots: 105,
     basis: 'v4\'s arrangement on the new lidar -- the newest USGS flight by its own dates, from its LAZ tiles where AWS lags (H96), the NAD83 datum move (H95), noise dropped -- and the lidar\'s ground brightness as an input (H97); every approved map (105) plus the 5 not-lawn-only maps, run 38474850752 (the first try, 38442418156, lost its 18 tile frames and was replaced). Accuracy: THE PLAN\'s single decoder on that arrangement at the locked 104, 19.1 / 18.6 / 18.0% (runs 38474854745, 38474858216, 38474862635; against the old 18.9 / 18.8 / 19.5%, 44 lots better and 24 worse, p = 0.021). The averaged-of-3 + not-lawn release itself is not separately measured',
   },
+  {
+    version: 6,
+    shipped: '2026-10-23',
+    trainedAt: '2026-10-23T20:27:21Z',
+    accuracy: 85,
+    lots: 106,
+    basis: 'A new eye (owner, 2026-10-23: "1 yes do it"): DINOv3\'s satellite ViT-L in place of Scale-MAE, on v5\'s arrangement -- three decoders averaged, every approved map (106) plus the 5 not-lawn-only maps, every lot read whole at 896 -- run 39997905282. Accuracy: THE PLAN\'s single decoder on this eye at the locked 104, no pond examples, 15.4% (H114, run 39858638936; 71 lots better and 23 worse than Scale-MAE, the county-photo lots 25.9 -> 17.1). The averaged + pond release itself is not separately measured; S62 measures the eye with the pond examples on',
+  },
 ];
 
 /** alpha below 82%, beta below 86%, then no stage label. */
