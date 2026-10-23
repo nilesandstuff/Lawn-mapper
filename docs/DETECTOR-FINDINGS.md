@@ -1035,6 +1035,44 @@ the hub cache on the models volume so a cold start does not fetch
 1.2 GB), and the version row. Prepared 2026-10-23; the owner decides
 when it ships.
 
+### H113. THE WHOLE-LOT PASS STACKED BESIDE THE 10 cm WINDOWS DOES NOT GIVE BACK WHAT THE WINDOWS TOOK: THE PLAN 20.2%, against 18.2% squeezed (29 / 55 / 20, +0.7 [+0.2, +1.1], p 0.006) and 18.4% windowed alone (34 / 48 / 22, +0.3 [-0.1, +1.0], p 0.15); the 26 big lots level either way (S50, one seed) -- 2026-10-23
+*Workflow 14 run 39829073504: `windows: on + whole` (the big lots in 10 cm
+windows AND the whole-lot squeezed grid resampled onto the same grid as
+1024 more channels a patch, FEATURES_WHOLE), THE PLAN, seed 7, locked
+104, saved lidar moves, no pond examples. Folder
+runs/2026-10-22-2135-edt-scalemae-large-896px. Read with workflow 24
+against each baseline's own no-pond twin row (39887504771 vs
+39715167319 windows off; 39887507170 vs 39763223279 windows on).*
+
+| against | lots | B better / worse / level | median A -> B | paired change [95%] | sign test |
+|---|---|---|---|---|---|
+| squeezed (off) | all 104 | 29 / 55 / 20 | 18.2% -> 20.2% | +0.7 [+0.2, +1.1] | p 0.006 |
+| squeezed (off) | the 26 past 90 m | 12 / 12 / 2 | 22.4 -> 23.6 | -0.2 [-1.8, +3.5] | p 1.0 |
+| windowed (on) | all 104 | 34 / 48 / 22 | 18.4% -> 20.2% | +0.3 [-0.1, +1.0] | p 0.15 |
+| windowed (on) | the 26 past 90 m | 15 / 10 / 1 | 23.9 -> 23.6 | -0.8 [-2.5, +1.6] | p 0.42 |
+| windowed (on) | county-photo lots (31) | 7 / 19 / 5 | 18.8 -> 24.8 | +1.2 [+0.3, +3.7] | p 0.029 |
+
+**Reading.** The literature's thumbnail (H112) did not do here what it
+does on land-cover benchmarks: with the whole-lot grid beside the
+windows the decoder is a little worse than with the windows alone, and
+clearly worse than the plain squeeze, on all lots and on the county
+lots; on the 26 big lots it is level with both. Two readings fit, and
+one seed cannot tell them apart: 2048 numbers a patch over 104 lots is
+more input than the decoder can use without overfitting (its train
+loss was 0.177 against 0.20 for THE PLAN, the H93 pattern), or the
+windows' cost is not context at all but something in the stitched
+features themselves (the absolute positional encoding per window, the
+one unmeasured risk named in H112). Either way the windows are closed
+for Scale-MAE at this corpus: three arrangements (on, on + whole, and
+the tiles before them) and none beat the squeeze. S58 reads the big
+lots whole at 10 cm in one pass instead, with DINOv3, where neither
+stitching nor context is in question. **Context:** Scale-MAE,
+THE PLAN's decoder, 104 lots, one seed.
+
+**The asked map was not drawn** on this run: the scoring step was not
+told to write the folder's name and the draw found nothing to draw
+beside (fixed the same night; drawn by S59 with the DINOv3 eye instead).
+
 ### H112. READING BIG LOTS IN WINDOWS (10 cm at the photo's own resolution instead of one squeezed pass) DOES NOT HELP THE BIG LOTS: on the 26 lots past 90 m it read 9 better / 16 worse, +1.9 [-0.6, +3.6], p 0.23; over all 104, 40 / 48 / 16, +0.4 [-0.3, +1.0], p 0.46 (S49, one seed). Not shipped -- 2026-10-22
 *Workflow 14 run 39763223279: THE PLAN, seed 7, locked 104, saved lidar
 moves, `windows: on` (30 of 109 photographs read in windows, 4 to 16
@@ -7908,7 +7946,7 @@ and the list continues (1280 px, the scale factor, a FLAIR fine-tune).
 A DINOv3 eye for the live model would need the Modal image rebuilt with
 the token and the new backbone, which is not done until it earns it.
 
-### S50. Big lots read in 10 cm windows WITH the whole-lot pass stacked beside them: the detail and the context (after H112; owner, 2026-10-22: "giving it smaller frames to work with SHOULD yield better results") -- RUNNING
+### S50. Big lots read in 10 cm windows WITH the whole-lot pass stacked beside them: the detail and the context (after H112; owner, 2026-10-22: "giving it smaller frames to work with SHOULD yield better results") -- MEASURED 2026-10-23, WORSE THAN THE SQUEEZE: see H113. Windows closed for Scale-MAE
 **The idea.** H112 says the windows alone cost the big lots context; the
 literature says a whole-image thumbnail beside patch features is worth
 5-23 IoU. `windows: on + whole` (workflow 14, 2026-10-22) reads the big
@@ -9580,3 +9618,4 @@ deploy log says how many are locked and how many are waiting.
 | 2026-10-22 | 39715167319 | 104 (locked, 131u7jm) | THE PLAN with `lidar_align: saved` (the agree rule's 15 moves from tools/locked-lidar-shifts.json: C71 2 m, 14 lots under a metre), seed 7, CPU; the saved plan and the raw-points cache (lidar read in seconds) | 17.2% (edge refined + stage 3, span, veto) | — | Drew 104 of 104 (folder runs/2026-10-22-0356-edt, LIDAR MOVED (saved fit) on the predictions page). Against 39666176735 (same seed, same lots, the datum move alone, 18.3%): **H111.** Workflow 24 run 39746335881: 28 / 27 / 49, paired -0.0 [-0.1, +0.1], p 1.000. No change; the moves stay for correctness |
 | 2026-10-22 | 39763223279 | 104 (locked, 131u7jm) | S49 `windows: on`: THE PLAN with the 26 lots past 90 m read in overlapping 896 px windows at 10 cm (30 of 109 photographs, 4 to 16 windows each) instead of one squeezed pass, seed 7, CPU, saved lidar moves; the live server would read such a release the same way | 19.2% (edge refined + stage 3, span, veto) | — | Folder runs/2026-10-22-1220-edt. Against 39715167319 (same, windows off, 17.2%): **H112.** Workflow 24 run 39816751440: 40 / 48 / 16, +0.4 [-0.3, +1.0], p 0.456; run 39818935512 on the 26 big lots alone: 9 / 16 / 1, +1.9 [-0.6, +3.6], p 0.230. Worse where it was meant to help; not shipped |
 | 2026-10-22 | 39858638936 | 104 (locked, 131u7jm) | S51: `facebook/dinov3-vitl16-pretrain-sat493m` as the eye (its own pixel normalisation), THE PLAN, seed 7, CPU, saved lidar moves, every lot whole at 896, no pond examples | 15.4% (edge refined + stage 3, span, veto) | — | Folder runs/2026-10-22-2112-edt-facebook-dinov3-vitl16-pretrain-sat493m-896px. **H114.** Workflow 24 run 39885278271 vs 39715167319 (Scale-MAE): 71 / 23 / 10, -1.8 [-3.4, -1.4], p < 0.001; vs its no-pond twin row (39885323971): 70 / 25 / 9, -1.7 [-3.3, -0.9]; county lots 25.9 -> 17.1; big 26: 16 / 9 / 1, -1.9 [-4.5, +1.1] |
+| 2026-10-22 | 39829073504 | 104 (locked, 131u7jm) | S50 `windows: on + whole`: the 26 big lots in 10 cm windows with the whole-lot squeezed grid stacked beside them (2048 numbers a patch), THE PLAN, seed 7, CPU, saved lidar moves, no pond examples | 20.2% (edge refined + stage 3, span, veto) | — | Folder runs/2026-10-22-2135-edt-scalemae-large-896px. **H113.** Workflow 24 vs the no-pond twin rows: vs windows off (39887504771) 29 / 55 / 20, +0.7 [+0.2, +1.1], p 0.006; vs windows on (39887507170) 34 / 48 / 22, +0.3 [-0.1, +1.0], p 0.15; the big 26 level both ways. The asked map was not drawn (folder file missing on the scoring step; fixed) |
