@@ -24,6 +24,11 @@ on:
         type: choice
         default: 'facebook/dinov3-vitl16-pretrain-sat493m'
         options: ['facebook/dinov3-vitl16-pretrain-sat493m', 'facebook/dinov3-vitl16-pretrain-lvd1689m', 'scalemae-large']
+      not_lawn:
+        description: 'Pond and not-lawn examples, as the cached run had them (on since 2026-10-23)'
+        type: choice
+        default: 'on'
+        options: ['on', 'off']
       lidar_align:
         description: 'As the cached run had it'
         type: choice
@@ -95,7 +100,16 @@ jobs:
           DUMP_SIZE: native
           NO_BACKBONE: 'true'
           LAWN_SET: locked
+          NOT_LAWN: ${{ inputs.not_lawn == 'on' && '1' || '' }}
         run: node tools/train-detector.js
+
+      - name: Add the approved not-lawn-only maps
+        if: ${{ inputs.not_lawn == 'on' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CORPUS_BUCKET: lawn-mapper-corpus
+        run: node tools/not-lawn-examples.js maps frames
 
       - name: Which lots' inferred ground is not taught
         continue-on-error: true
@@ -136,7 +150,7 @@ jobs:
       - name: Both caches must be there
         if: ${{ steps.prep.outputs.cache-hit != 'true' || steps.feats.outputs.cache-hit != 'true' }}
         run: |
-          echo "::error::No cached run to draw beside: run workflow 14 with model '${{ inputs.model }}', windows off, lidar_align ${{ inputs.lidar_align }} first (prep hit: ${{ steps.prep.outputs.cache-hit }}, features hit: ${{ steps.feats.outputs.cache-hit }})."
+          echo "::error::No cached run to draw beside: run workflow 14 with model '${{ inputs.model }}', windows off, not_lawn ${{ inputs.not_lawn }}, lidar_align ${{ inputs.lidar_align }} first (prep hit: ${{ steps.prep.outputs.cache-hit }}, features hit: ${{ steps.feats.outputs.cache-hit }})."
           exit 1
 
       - name: Train one decoder on every lot
@@ -152,6 +166,7 @@ jobs:
           FUSE_CANOPY: '1'
           UNDER_TREES: '1'
           REFINE: '1'
+          NOT_LAWN: ${{ inputs.not_lawn == 'on' && '1' || '' }}
           OUT: preds-drawn
           RELEASE_OUT: release-local
         run: python3 tools/train_decoder.py

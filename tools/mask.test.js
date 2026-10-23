@@ -28,6 +28,8 @@ import {
   overTrimmed,
   editTraceLimits,
   editHoleLimit,
+  areaTraceLimits,
+  MAX_TRACE_VERTICES,
 } from '../public/lib/mask.js';
 import {
   framePxToLngLat,
@@ -1068,6 +1070,57 @@ function stripsPx(kept, label, mask) {
     missAt(tight, notch) < 0.25,
     `${missAt(tight, notch).toFixed(2)} m off -- the tolerance rises first, `
     + 'and corners go last');
+}
+
+// ---------------------------------------------------------------------------
+// LIMITS BY AREA (owner, 2026-10-23): an ordinary lot traces as before; a big
+// one keeps its corners, its pieces and its small patches.
+{
+  const plain = areaTraceLimits(0.15, 600, 600);   // a 90 m frame
+  check('an ordinary frame still allows six pieces', plain.maxPolygons === 6, `${plain.maxPolygons}`);
+  check('and never a higher piece floor than the 0.2% it had', plain.minAreaFraction <= 0.002,
+    `${plain.minAreaFraction}`);
+  const big = areaTraceLimits(0.44, 970, 1024);    // the condo complex, 430 m
+  check('a 430 m frame allows many more pieces', big.maxPolygons > 100, `${big.maxPolygons}`);
+  const floorSqFt = (big.minAreaFraction * 970 * 1024 * 0.44 * 0.44) / 0.09290304;
+  check('and keeps a separate patch down to 150 sq ft, not 4,000', Math.abs(floorSqFt - 150) < 1, `${floorSqFt.toFixed(0)} sq ft`);
+  check('no grid scale, no limits', Object.keys(areaTraceLimits(0, 10, 10)).length === 0);
+
+  /* One big wavy lawn: a 300 x 300 cell square at 0.44 m (about 187,000 sq ft)
+     whose edge zig-zags every 6 cells. A flat 80 corners must smear it; one
+     corner per 100 sq ft is room for every zig. */
+  const W = 340, H = 340, mpp = 0.44;
+  const bin = new Uint8Array(W * H);
+  for (let y = 20; y < 320; y++) {
+    for (let x = 20; x < 320; x++) {
+      const wave = (Math.floor(y / 6) % 2) * 4;
+      if (x < 316 - wave) bin[y * W + x] = 1;
+    }
+  }
+  const tol = 0.35 / mpp;
+  const flat = polygonsFromBinary(bin, W, H, (x, y) => [x, y], { tolerance: tol, maxVertices: MAX_TRACE_VERTICES });
+  const byArea = polygonsFromBinary(bin, W, H, (x, y) => [x, y],
+    { tolerance: tol, maxVertices: MAX_TRACE_VERTICES, ...areaTraceLimits(mpp, W, H) });
+  const n = (p) => p[0].coordinates[0].length - 1;
+  check('a flat count holds a big wavy lawn to 80 corners', n(flat) <= MAX_TRACE_VERTICES, `${n(flat)}`);
+  check('by area it keeps the waves', n(byArea) > MAX_TRACE_VERTICES && n(byArea) > 1.5 * n(flat), `${n(byArea)} corners against ${n(flat)}`);
+
+  /* Twelve small separate patches beside a big lawn, 10 x 10 cells each
+     (about 210 sq ft at 0.44 m): dropped by the old 0.2% floor, kept by area
+     (this 150 m frame allows 15 pieces). */
+  const bin2 = new Uint8Array(W * H);
+  for (let y = 100; y < 240; y++) for (let x = 100; x < 240; x++) bin2[y * W + x] = 1;
+  let placed = 0;
+  for (let gy = 0; gy < 5 && placed < 12; gy++) {
+    for (let gx = 0; gx < 16 && placed < 12; gx++, placed++) {
+      const x0 = 4 + gx * 20, y0 = 4 + gy * 18;
+      for (let y = y0; y < y0 + 10; y++) for (let x = x0; x < x0 + 10; x++) bin2[y * W + x] = 1;
+    }
+  }
+  const old = polygonsFromBinary(bin2, W, H, (x, y) => [x, y], { tolerance: tol });
+  const now = polygonsFromBinary(bin2, W, H, (x, y) => [x, y], { tolerance: tol, ...areaTraceLimits(mpp, W, H) });
+  check('the old limits drop the small patches', old.length === 1, `${old.length} piece(s)`);
+  check('by area every 210 sq ft patch is kept', now.length === 13, `${now.length} piece(s)`);
 }
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);

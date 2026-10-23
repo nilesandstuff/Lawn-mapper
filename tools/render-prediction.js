@@ -50,7 +50,7 @@
  */
 
 import {
-  polygonsFromBinary, rasterizePolygon, TRACE_TOLERANCE_M, MAX_TRACE_VERTICES,
+  polygonsFromBinary, rasterizePolygon, TRACE_TOLERANCE_M, MAX_TRACE_VERTICES, areaTraceLimits,
 } from '../public/lib/mask.js';
 
 /*
@@ -121,6 +121,8 @@ export function tracePrediction({ predicted, within, grid, mpp, gridH = grid }) 
   const polygons = polygonsFromBinary(bin, grid, gridH, (x, y) => [x, y], {
     tolerance: mpp ? TRACE_TOLERANCE_M / mpp : 1.5,
     maxVertices: MAX_TRACE_VERTICES,
+    /* Corners, pieces and the smallest piece by area, as the editor traces (2026-10-23). */
+    ...areaTraceLimits(mpp, grid, gridH),
     clipMask: within || null,
   });
 

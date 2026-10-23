@@ -47,6 +47,16 @@ changes and results from different corpora are not comparable.
 *Kept current so a fresh session can pick up without the conversation that
 got here. Update it whenever the in-flight run changes.*
 
+- **SHIPPING THE NEW EYE (owner, 2026-10-23: "1 yes do it").** Release v6
+  is DINOv3-sat on v5's arrangement (three decoders averaged, every
+  approved map, the pond examples), squeezed to 896 as S51 measured it;
+  native 10 cm reads of big lots are not in it. Two standing changes
+  the same day: **pond and not-lawn examples are ON by default** in
+  workflow 14 and 43 (owner: "the not lawn examples should be included
+  always"; H57/H61 measured the old road-and-roof outlines, not the
+  pond maps, which H79 found neutral overall and right on the big Kent
+  pond), so a run's comparison baseline must say which it had; and
+  **the outline limits follow the ground** (S61), not a count per shape.
 - **A NEW EYE (2026-10-23, S51, H114): DINOv3's satellite ViT-L in place
   of Scale-MAE moves THE PLAN from 17.2% to 15.4%, 71 lots better / 23
   worse, -1.8 [-3.4, -1.4], p < 0.001, the county lots 25.9 -> 17.1.
@@ -8034,6 +8044,33 @@ not:** a 27 m block is less context than a whole lot, and H4 once found
 fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
+
+### S61. The traced outline's limits by area, not by count (owner, 2026-10-23: "Rather than X number of handles per shape, it should be X number of handles per sqft") -- CHANGED 2026-10-23, not a detector change; the condo redraw is the first look
+**What the owner saw** on the condo complex's drawn-only picture
+(workflow 43 run 39930373989, DINOv3-sat squeezed, no pond examples):
+the raw mask an improvement on the live v5 but cut into the central pond;
+the finished outline lost much of the detail, dropped small separate
+patches of real grass and was moved on top of some buildings; and the
+trace reached well outside the property line (not yet explained: the
+outline is clipped to the line by construction, so the next draw prints
+how much of the finished mask and of the traced outline lies outside it).
+
+**Why the outline lost detail.** Every limit was per shape or a fraction
+of the frame: 80 corners a ring (MAX_TRACE_VERTICES), 6 pieces, and a
+smallest piece of 0.2% of the frame. On a 90 m lot those are 80 corners,
+6 pieces and about 170 sq ft. On the condo's 430 m frame the smallest
+piece was about 4,000 sq ft and one ring of several acres had 80 corners,
+so the tolerance escalated until edges cut across buildings.
+
+**The change** (public/lib/mask.js `areaTraceLimits`, used by the editor's
+detector trace and by every run's pictures): a ring keeps one corner per
+100 sq ft of its area, never fewer than 80; a piece is kept down to
+150 sq ft (never a higher floor than the frame fraction gave); pieces
+allowed grow one per 1,500 m² of frame, never fewer than 6. An ordinary
+lot traces as before (its rings rarely reach 80; the 0.35 m tolerance
+governs). **What it moves in the record:** the "traced" diagnostic of
+the big lots (edgeDiagnosis) from the next run on; THE PLAN's scored
+rows read the mask, not the outline, and do not move.
 
 ### S53. CHMv2, Meta's canopy height head, zero-shot -- MEASURED 2026-10-23: a roof-against-tree separator (AUC 0.94), not a canopy source: see H115
 

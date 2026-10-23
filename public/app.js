@@ -16,7 +16,7 @@ import { measure, fromSquareMeters, geometryAreaSqM, polygonRings, SQM_PER_SQFT 
 import {
   maskToPolygons, rasterizePolygon, maskBinary, unionMasks, subtractMasks,
   coverage, polygonsFromBinary, distinctFraction, overTrimmed,
-  editTraceLimits, editHoleLimit, TRACE_TOLERANCE_M, MAX_TRACE_VERTICES,
+  editTraceLimits, editHoleLimit, TRACE_TOLERANCE_M, MAX_TRACE_VERTICES, areaTraceLimits,
 } from './lib/mask.js';
 import {
   offsetEdge, nearestEdge, edgeRun, edgeLength, edgeBearing, openRing,
@@ -9954,8 +9954,12 @@ function traceDetection({
   // parcelRaster. Two copies would be two chances to disagree about where
   // someone's property ends, in the same measurement.
   const clipMask = parcelRaster(w, h, (ll) => lngLatToFramePx(rendered, ll, w, h));
+  /* Corners, pieces and the smallest piece follow the ground, not the shape
+     count (owner, 2026-10-23; lib/mask.js areaTraceLimits). */
+  const byArea = areaTraceLimits(mPerPx, w, h);
 
   const options = {
+    ...byArea,
     /*
      * Clip to the property line, always.
      *
@@ -10032,7 +10036,7 @@ function traceDetection({
      * arithmetic rather than the other way round. Anything still dropped is
      * named on screen.
      */
-    maxPolygons: subtractive ? MAX_EXCLUDE_POLYGONS : undefined,
+    maxPolygons: subtractive ? Math.max(MAX_EXCLUDE_POLYGONS, byArea.maxPolygons || 0) : byArea.maxPolygons,
     /*
      * How finely to trace the outline, in metres on the ground rather than in
      * pixels. The default was 1.5 px, which sounds conservative and is not: at

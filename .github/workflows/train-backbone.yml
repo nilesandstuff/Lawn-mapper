@@ -283,12 +283,19 @@ on:
         # labels as <id>-notlawn.png, and the decoders grade those cells as not
         # lawn, even outside the property line. "on" also adds every approved
         # not-lawn-only map (owner, 2026-10-02) as an example frame graded
-        # only inside its traces. Off by default until measured. The cache
-        # ignores the per-lot traces; the example frames are new photographs,
-        # so their features are extracted (and cached) like any frame's.
+        # only inside its traces. The cache ignores the per-lot traces; the
+        # example frames are new photographs, so their features are extracted
+        # (and cached) like any frame's.
+        #
+        # ON BY DEFAULT since 2026-10-23 (owner: "the not lawn examples should
+        # be included always"). H57/H61 measured them as worse when they were
+        # mostly roads and roofs; they are now the owner's pond maps, which
+        # measured as nothing overall and fixed the big Kent pond (H79), and
+        # the condo complex's pond was cut into by a decoder trained without
+        # them. Every release since v4 had them on.
         description: 'Train with the not-lawn traces drawn in tinker mode, and approved not-lawn-only maps (on), or without (off)'
         type: choice
-        default: 'off'
+        default: 'on'
         options: ['off', 'on']
       cache:
         # REUSE WHAT DOES NOT CHANGE (owner, 2026-09-29). The canopy, lidar and

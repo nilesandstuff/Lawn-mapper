@@ -835,6 +835,44 @@ export const TRACE_TOLERANCE_M = 0.35;
  */
 export const MAX_TRACE_VERTICES = 80;
 
+/*
+ * LIMITS THAT SCALE WITH THE GROUND (owner, 2026-10-23: "Rather than X number
+ * of handles per shape, it should be X number of handles per sqft").
+ *
+ * Every limit above was a count per shape or a fraction of the frame, which is
+ * the same thing on an ordinary lot and the wrong thing on a big one. The
+ * Byron Center condo complex (a 430 m frame) showed all three at once: one
+ * ring of a few acres held to 80 corners, so the tolerance escalated until
+ * the outline cut across buildings; six pieces for the whole complex; and a
+ * floor of 0.2% of the frame, which there is 4,000 sq ft, so every small
+ * separate patch of real grass was thrown away.
+ *
+ * So, in ground units:
+ *   - a ring may keep one corner per SQFT_PER_HANDLE of its area, never fewer
+ *     than MAX_TRACE_VERTICES (an ordinary lawn of a few thousand sq ft is
+ *     exactly as before; it rarely reaches 80, the tolerance governs);
+ *   - a piece is kept down to MIN_PIECE_SQFT, never a higher floor than the
+ *     frame fraction gave (a small frame keeps its smaller one);
+ *   - the number of pieces grows with the frame, one per M2_PER_PIECE, never
+ *     fewer than six.
+ */
+export const SQFT_PER_HANDLE = 100;
+export const MIN_PIECE_SQFT = 150;
+export const M2_PER_PIECE = 1500;
+const M2_PER_SQFT = 0.09290304;
+
+/** Options for polygonsFromBinary that follow the ground, for a grid of `mPerPx`. */
+export function areaTraceLimits(mPerPx, width, height) {
+  if (!(mPerPx > 0) || !(width > 0) || !(height > 0)) return {};
+  const pxM2 = mPerPx * mPerPx;
+  const total = width * height;
+  return {
+    minAreaFraction: Math.min(0.002, (MIN_PIECE_SQFT * M2_PER_SQFT) / pxM2 / total),
+    maxPolygons: Math.max(6, Math.round((total * pxM2) / M2_PER_PIECE)),
+    pxPerHandle: (SQFT_PER_HANDLE * M2_PER_SQFT) / pxM2,
+  };
+}
+
 /**
  * A binary layer -> GeoJSON polygons. The tail half of maskToPolygons, reused
  * by exclude mode, which arrives with its pixels already decided.
@@ -849,9 +887,12 @@ export function polygonsFromBinary(bin, width, height, unproject, options = {}) 
     clipMask = null,
     fillGapsUnderPx = 0,
     growPx = 0,
+    // Pixels of area per corner (areaTraceLimits); 0 keeps maxVertices a flat count.
+    pxPerHandle = 0,
   } = options;
 
   const total = width * height;
+  const budget = (px, floor) => (pxPerHandle > 0 ? Math.max(floor, Math.round(px / pxPerHandle)) : floor);
 
   /*
    * Grow before clipping, never after. Growing a mask that has already been
@@ -894,14 +935,14 @@ export function polygonsFromBinary(bin, width, height, unproject, options = {}) 
   let filledGaps = 0;
   let filledGapPx = 0;
 
-  for (const { id } of ranked) {
+  for (const { id, size: regionPx } of ranked) {
     const region = new Uint8Array(total);
     for (let p = 0; p < labels.length; p++) if (labels[p] === id) region[p] = 1;
 
     const outer = traceRegion(region, width, height);
     if (!outer || outer.length < 4) continue;
 
-    const outerRing = simplifyRing(outer, { tolerance, maxVertices });
+    const outerRing = simplifyRing(outer, { tolerance, maxVertices: budget(regionPx, maxVertices) });
     if (!outerRing) continue;
 
     const rings = [outerRing];
@@ -918,7 +959,7 @@ export function polygonsFromBinary(bin, width, height, unproject, options = {}) 
 
       const traced = traceRegion(hole, width, height);
       if (!traced || traced.length < 4) continue;
-      const ring = simplifyRing(traced, { tolerance, maxVertices: Math.round(maxVertices / 2) });
+      const ring = simplifyRing(traced, { tolerance, maxVertices: budget(size, Math.round(maxVertices / 2)) });
       if (ring) rings.push(ring);
     }
 

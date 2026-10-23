@@ -42,7 +42,7 @@ import { join } from 'node:path';
 import { pressPlan, pressBody, imageryUrl, countyExportUrl } from '../worker/src/imagery.js';
 import { runKeys, readRunList, clean } from './run-folder.js';
 import { parcelMask } from './serve-alpha.mjs';
-import { drawLayers, drawPrediction, tracePrediction, LAYERS } from './render-prediction.js';
+import { drawLayers, drawPrediction, tracePrediction, traceMask, LAYERS } from './render-prediction.js';
 
 const SQM_PER_SQFT = 0.09290304;
 
@@ -287,7 +287,18 @@ async function main() {
     masks: { canopy: big(canopy), roof: big(roof), void: big(voidMask), mask: big(raw), line: big(within) },
   });
   let lawnCells = 0;
-  for (let i = 0; i < mask.length; i++) if (mask[i] && (!within || within[i])) lawnCells++;
+  let outsideCells = 0;
+  let lineCells = 0;
+  for (let i = 0; i < mask.length; i++) {
+    if (within && within[i]) lineCells++;
+    if (mask[i] && (!within || within[i])) lawnCells++;
+    else if (mask[i]) outsideCells++;
+  }
+  /* What the traced outline itself covers, rasterised back: it is clipped to
+     the line, so anything here outside it is a fault, not the detector. */
+  const traced = traceMask({ shapes: trace.shapes, within: null, grid: G, gridH: GH });
+  let tracedOutside = 0;
+  for (let i = 0; i < traced.length; i++) if (traced[i] && within && !within[i]) tracedOutside++;
 
   /* 4. Beside the run. */
   const keys = runKeys(slug);
@@ -324,6 +335,11 @@ async function main() {
   console.log(`\nDrawn only, never trained on or scored: ${sqft.toLocaleString()} sq ft of lawn found inside the line `
     + `(${trace.pieces} piece${trace.pieces === 1 ? '' : 's'}, ${trace.vertices} handles; uncertainty ${finished.uncertainty ?? '?'}), `
     + `read in ${rec.windows || 1} window(s)${rec.lidar ? ', lidar read' : ', NO LIDAR'}${rec.naip ? ', NAIP read' : ', no NAIP'}.`);
+  const sq = (cells) => Math.round((cells * prep.mpp * prep.mpp) / SQM_PER_SQFT).toLocaleString();
+  console.log(within
+    ? `The property line holds ${sq(lineCells)} sq ft. The finished mask calls ${sq(outsideCells)} sq ft outside it `
+      + `(shown dimmed in the raw picture, never traced); the traced outline puts ${sq(tracedOutside)} sq ft outside it.`
+    : 'NO PROPERTY LINE could be laid on the grid: the outline is not clipped and the total counts the whole frame.');
   console.log(`It is picture ${n + 1} of runs/${slug} on the predictions page, listed last.`);
 }
 
