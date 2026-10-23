@@ -100,8 +100,14 @@ class Detector:
     so a new release is picked up without a new snapshot.
     """
 
-    def __init__(self, release_path=None, backbone="scalemae-large", size=896):
+    def __init__(self, release_path=None, backbone=None, size=896):
         self.device = extract_features.DEVICE
+        if backbone is None:
+            # The eye the release was trained on, so a DINOv3 release does not
+            # first fetch Scale-MAE's 1.1 GB only to swap it out (workflow 43's
+            # first draw did). The server names its eye itself, from the same meta.
+            meta = torch.load(release_path, map_location="cpu")["meta"] if release_path else {}
+            backbone, size = meta.get("backbone") or "scalemae-large", int(meta.get("size") or size)
         self.eye_key = (backbone, int(size))
         self.eye = extract_features.open_eye(*self.eye_key)
         self.tree = _tree_module()
