@@ -11,6 +11,11 @@
  *
  *   ALPHA_URL, ALPHA_RESULT_URL, ALPHA_TOKEN, MAPBOX_TOKEN, LOTS=B01,C41,...
  *   node tools/time-alpha.js        (workflow 32)
+ *
+ * MAP="lng,lat" (2026-10-23) times one of the owner's saved maps instead, on
+ * the photo it was saved with (a county export in tiles, as the editor sends
+ * it): the way to see what a release that reads big lots at 10 cm costs on
+ * the biggest one. Its address is never printed, only its size and seconds.
  */
 import { fileURLToPath } from 'node:url';
 
@@ -79,7 +84,47 @@ export async function warm(env = process.env) {
     + 'The app retries a stuck press itself, but check Modal.';
 }
 
+/** One saved map, by its coordinates, through the live server; prints its seconds. */
+async function timeMap(env) {
+  const { parseLngLat, nearestMap, mapsOfRows, pressFor, svcOfRow } = await import('./draw-map.mjs');
+  const asked = parseLngLat(env.MAP);
+  const maps = mapsOfRows(query("SELECT m.key, m.lng, m.lat, m.payload, m.updated_at FROM maps m JOIN users u ON u.id = m.user_id WHERE u.role = 'admin'"));
+  const hit = nearestMap(maps, asked);
+  if (!hit) throw new Error(`no saved map within 150 m of ${asked.join(',')}`);
+  const map = hit.map;
+  const svc = map.provider === 'county' && map.countySvc
+    ? svcOfRow(query(`SELECT * FROM county_services WHERE id = ${Number(map.countySvc)}`)[0]) : null;
+  const body = pressFor(map, env.SITE || '', { svc, mapboxToken: env.MAPBOX_TOKEN || '' });
+  const { provider, groundCm, pieces, photoFrom, ...press } = body;
+  console.log(`The saved map ${Math.round(hit.d)} m from the point asked: ${provider} photo from ${photoFrom} at ${groundCm} cm a pixel in ${pieces} piece(s).`);
+  const headers = { 'content-type': 'application/json', authorization: `Bearer ${env.ALPHA_TOKEN}` };
+  for (const round of ['first (cold or warm)', 'second (warm)']) {
+    const t0 = Date.now();
+    const res = await fetch(env.ALPHA_URL, { method: 'POST', headers, body: JSON.stringify(press) });
+    if (!res.ok) { console.log(`${round}: start HTTP ${res.status}`); continue; }
+    const { id } = await res.json();
+    let got = null;
+    let stage = null;
+    while (Date.now() - t0 < 600000) {
+      await sleep(2000);
+      const p = await fetch(`${env.ALPHA_RESULT_URL}?id=${encodeURIComponent(id)}`, { headers });
+      if (!p.ok) continue;
+      const b = await p.json();
+      if (b.status === 'running') {
+        if (b.stage && b.stage !== stage) { stage = b.stage; console.log(`  ${((Date.now() - t0) / 1000).toFixed(0).padStart(3)}s  ${stage}`); }
+        continue;
+      }
+      got = b;
+      break;
+    }
+    const wall = ((Date.now() - t0) / 1000).toFixed(1);
+    if (got?.status !== 'succeeded') { console.log(`${round}: ${got?.status || 'timed out'} ${got?.error || ''}`); continue; }
+    console.log(`${round}: ${got.w}x${got.h} cells, wall ${wall}s, server ${JSON.stringify(got.seconds)}${got.windows ? `, read in ${got.windows} window(s)` : ''}`);
+  }
+}
+
 async function main(env = process.env) {
+  if (env.MAP) return timeMap(env);
   const names = String(env.LOTS || '').split(',').map((s) => s.trim()).filter(Boolean);
   const rows = query(`SELECT id, lot_no, frame, parcel FROM corpus WHERE status = 'approved' AND frame IS NOT NULL`);
   const lots = rows.filter((r) => names.includes(mapName(r.id, r.lot_no)));

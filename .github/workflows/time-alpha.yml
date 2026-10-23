@@ -17,6 +17,10 @@ on:
       lots:
         description: 'Which lots, comma-separated (the first only warms the GPU and is left out of the medians)'
         default: 'B01,B05,B19,B28,C41,C59,C88,C99'
+      map:
+        description: 'Or one of the owner''s saved maps by its "lng,lat", on the photo it was saved with, pressed twice (lots is then ignored)'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -57,4 +61,6 @@ jobs:
       - name: Time the lots
         env:
           LOTS: ${{ inputs.lots }}
+          MAP: ${{ inputs.map }}
+          SITE: https://${{ vars.CUSTOM_DOMAIN }}
         run: node tools/time-alpha.js
