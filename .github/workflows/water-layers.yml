@@ -1,0 +1,74 @@
+name: 44. Find county water layers (storm drains, water bodies) for the water map
+
+# THE WATER MAP'S COUNTY LAYERS (owner, 2026-10-23: "look into adding new
+# layers that we collect from county gis servers, to make them available to
+# the water map"). tools/water-layers.js walks the ArcGIS servers the parcel
+# registry already knows and keeps every layer that is storm inlets,
+# manholes, mains, culverts, outfalls, detention basins, drain districts and
+# easements, open drains, lakes, streams, wetlands, flood zones or
+# watersheds, with its count and its box, in the water_layers table.
+# GET /api/water/layers serves them beside the national layers (USGS
+# hydrography, USFWS wetlands, FEMA flood zones), live at once: no deploy.
+#
+# There are about 730 servers, so each night takes the next batch (those
+# under people's saved maps first) and water_sweep remembers where it got to.
+# FREE: public ArcGIS servers and the free runner.
+on:
+  schedule:
+    # 4:43 AM EDT, off the hour and after the county search (27).
+    - cron: '43 8 * * *'
+  workflow_dispatch:
+    inputs:
+      counties:
+        description: 'Only these registry keys, comma-separated (e.g. mi-kent); empty = the next batch of all'
+        required: false
+        default: ''
+      servers:
+        description: 'How many servers this run looks at'
+        required: false
+        default: '60'
+      dry_run:
+        description: 'Look but write nothing'
+        type: choice
+        default: 'false'
+        options: ['false', 'true']
+
+concurrency:
+  group: water-layers
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sweep:
+    name: Walk the county servers for water layers
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+
+      - name: Find and keep the water layers
+        env:
+          COUNTIES: ${{ inputs.counties || '' }}
+          ROOTS_LIMIT: ${{ inputs.servers || '60' }}
+          DRY_RUN: ${{ inputs.dry_run == 'true' && '1' || '' }}
+          TIME_BUDGET_MIN: '300'
+          REPORT: water-layers-report.json
+        run: node tools/water-layers.js
+
+      - name: Keep the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: water-layers-report
+          path: water-layers-report.json
+          if-no-files-found: ignore

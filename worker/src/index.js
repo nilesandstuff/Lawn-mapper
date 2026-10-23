@@ -55,6 +55,7 @@ import { handleMaps, isMapsPath } from './routes-maps.js';
 import { handleAdmin, isAdminPath } from './routes-admin.js';
 import { handleJobs, spendJobDetection, jobDetection } from './routes-jobs.js';
 import { handleShade, isShadePath, isShadePage, shadePage } from './shade.js';
+import { handleWaterLayers } from './water-layers.js';
 import { accountsEnabled, publicUser } from './db.js';
 import { currentUser } from './auth.js';
 import { recordParcelGap } from './gaps.js';
@@ -1540,6 +1541,9 @@ async function handle(request, env, ctx) {
       if (url.pathname === '/api/job' || url.pathname.startsWith('/api/job/')) {
         return await handleJobs(request, url, env, origin, ctx, json);
       }
+
+      /* Storm drains, water bodies, wetlands and flood zones over a box, for the water map (worker/src/water-layers.js). */
+      if (url.pathname === '/api/water/layers') return await handleWaterLayers(request, url, env, origin, ctx, json);
 
       /* The shade map (features session; worker/src/shade.js); its pages moved to shade.<home> (2026-10-18). */
       if (isShadePath(url.pathname)) return await handleShade(request, url, env, origin, ctx, json);

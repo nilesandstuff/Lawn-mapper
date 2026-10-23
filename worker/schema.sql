@@ -1081,6 +1081,33 @@ CREATE TABLE IF NOT EXISTS county_services (
   season_checked_at TEXT
 );
 
+-- WATER LAYERS FROM COUNTY GIS (owner, 2026-10-23: "adding new layers that we
+-- collect from county gis servers, to make them available to the water map").
+-- One row per ArcGIS layer that tools/water-layers.js (workflow 44) found on a
+-- registry county's server and classified by its name and geometry: storm
+-- inlets, manholes, mains, culverts, outfalls, detention basins, drain
+-- districts and easements, open drains, lakes, streams, wetlands, flood
+-- zones, watersheds (worker/src/water-layers.js KINDS). The box is the
+-- layer's own extent in degrees; ok = 1 when a query over it answered with
+-- features. GET /api/water/layers reads it, beside the national layers.
+CREATE TABLE IF NOT EXISTS water_layers (
+  url         TEXT PRIMARY KEY,
+  kind        TEXT NOT NULL,
+  title       TEXT,
+  service     TEXT,
+  geometry    TEXT,
+  county_key  TEXT,
+  source      TEXT,
+  west        REAL,
+  south       REAL,
+  east        REAL,
+  north       REAL,
+  features    INTEGER,
+  ok          INTEGER NOT NULL DEFAULT 0,
+  checked_at  TEXT
+);
+CREATE INDEX IF NOT EXISTS water_layers_box ON water_layers (west, east, south, north);
+
 -- Where the catalogue sweep has looked, so a run that stops resumes.
 CREATE TABLE IF NOT EXISTS county_sweep (
   point       TEXT PRIMARY KEY,
