@@ -40,7 +40,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { pressPlan, pressBody, imageryUrl, countyExportUrl } from '../worker/src/imagery.js';
-import { runKeys } from './run-folder.js';
+import { runKeys, readRunList, clean } from './run-folder.js';
 import { parcelMask } from './serve-alpha.mjs';
 import { drawLayers, drawPrediction, tracePrediction, LAYERS } from './render-prediction.js';
 
@@ -149,6 +149,14 @@ export function mapsOfRows(rows) {
   });
 }
 
+/** The newest run in the list whose folder names this eye at 896 px, or ''. */
+export function newestRunOf(runs, model) {
+  const want = `-${clean(model)}-896px`;
+  const rows = (runs || []).filter((r) => typeof r?.slug === 'string' && r.slug.endsWith(want));
+  rows.sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')) || String(b.slug).localeCompare(String(a.slug)));
+  return rows[0]?.slug || '';
+}
+
 /** The run index entry for a drawn-only map. */
 export function evalEntry({ keys, n, map, prep, rec, trace, lawnCells, county, provider, windows }) {
   const sqft = (px) => (px * prep.mpp * prep.mpp) / SQM_PER_SQFT;
@@ -187,9 +195,15 @@ async function main() {
   if (!process.env.CLOUDFLARE_API_TOKEN && !(site && token)) throw new Error('the saved map needs the Cloudflare token (the database) or SITE and MAPS_READ_TOKEN');
   const out = process.env.OUT || 'drawn';
   const bucket = process.env.CORPUS_BUCKET || 'lawn-mapper-corpus';
-  const slug = existsSync(process.env.RUN_FOLDER_FILE || '') ? readFileSync(process.env.RUN_FOLDER_FILE, 'utf8').trim() : '';
-  if (!slug) throw new Error('no run folder: the scoring step did not publish its pictures, so there is nothing to draw beside');
   mkdirSync(out, { recursive: true });
+  let slug = existsSync(process.env.RUN_FOLDER_FILE || '') ? readFileSync(process.env.RUN_FOLDER_FILE, 'utf8').trim() : '';
+  if (!slug && process.env.RUN_FOLDER_MODEL) {
+    /* No scoring step in this workflow (43): the newest published run of
+       this eye at 896 px is the folder the picture joins. */
+    slug = newestRunOf(readRunList(bucket, out), process.env.RUN_FOLDER_MODEL);
+    if (slug) console.log(`Drawing beside the newest published run of this eye: runs/${slug}.`);
+  }
+  if (!slug) throw new Error('no run folder: nothing published to draw beside (run workflow 14 with this eye first)');
 
   /* 1. The saved map: from the database when this runner holds the
         Cloudflare token (the site's edge refused a GitHub runner with 403 on

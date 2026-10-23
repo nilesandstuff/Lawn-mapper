@@ -1,0 +1,175 @@
+name: 43. Draw a saved map with a fresh decoder (never trained on)
+
+# ONE MAP, DRAWN, IN MINUTES (2026-10-23). Workflow 14's `also_draw` draws a
+# saved map at the end of a full run, three hours after it starts. This does
+# only the drawing: the locked lots' frames, canopy, lidar, NAIP and the
+# eye's features come back from workflow 14's caches (a run with the same
+# eye must have gone before; this says so if not), one decoder is trained
+# on every lot (as a release is, kept here, never shipped), and the saved
+# map is read through the live server's own path on this runner and drawn
+# beside the newest run of that eye on the predictions page, marked drawn
+# only. The map's own shapes are never read; nothing from it is trained on
+# or scored; the address is not printed.
+#
+# FREE: GitHub's own CPU runner, about ten minutes when the caches hit.
+on:
+  workflow_dispatch:
+    inputs:
+      map:
+        description: 'The saved map to draw: its "lng,lat" (one of the owner''s maps on the dashboard)'
+        required: true
+        default: ''
+      model:
+        description: 'The eye (a workflow 14 run with it, windows off, must have gone before, so its features are cached)'
+        type: choice
+        default: 'facebook/dinov3-vitl16-pretrain-sat493m'
+        options: ['facebook/dinov3-vitl16-pretrain-sat493m', 'facebook/dinov3-vitl16-pretrain-lvd1689m', 'scalemae-large']
+      lidar_align:
+        description: 'As the cached run had it'
+        type: choice
+        default: 'saved'
+        options: ['saved', 'off']
+
+permissions:
+  contents: read
+
+jobs:
+  draw:
+    name: Train one decoder and draw the map
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      PIP_DEFAULT_TIMEOUT: '60'
+      PIP_RETRIES: '10'
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: tools/requirements.txt
+
+      - run: npm ci
+
+      - name: Install the image decoders
+        run: npm install pngjs jpeg-js --no-save
+
+      - name: Install PyTorch, the model loader, the tree model's loader and the lidar reader
+        run: |
+          pip install -r tools/requirements.txt
+          pip install -r tools/requirements-trees.txt -r tools/requirements-lidar.txt
+
+      - name: Check the backbone can be opened
+        if: ${{ startsWith(inputs.model, 'facebook/dinov3') }}
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          MODEL: ${{ inputs.model }}
+        run: |
+          pip install --quiet huggingface_hub
+          python3 - <<'PY'
+          import os, sys
+          from huggingface_hub import hf_hub_download
+          from huggingface_hub.errors import GatedRepoError
+          repo = os.environ["MODEL"]
+          if not os.environ.get("HF_TOKEN"):
+              print(f"::error::{repo} is gated and the HF_TOKEN secret is not set."); sys.exit(1)
+          try:
+              hf_hub_download(repo, "config.json")
+          except GatedRepoError:
+              print(f"::error::{repo} is gated and the token's account has not been granted access."); sys.exit(1)
+          print(f"{repo} opens with the token.")
+          PY
+
+      - name: Fetch the lawns and write the frames out
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CORPUS_BUCKET: lawn-mapper-corpus
+          DUMP_FRAMES: frames
+          DUMP_SIZE: native
+          NO_BACKBONE: 'true'
+          LAWN_SET: locked
+        run: node tools/train-detector.js
+
+      - name: Which lots' inferred ground is not taught
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node tools/inferred-doubt.js inferred-doubt.json
+
+      # The same fingerprint and keys as workflow 14, so its caches answer.
+      - name: Fingerprint the frames for the cache
+        id: frames
+        run: |
+          fp=$(cd frames && find . -type f ! -name '*-notlawn.png' ! -name '*-detected.png' -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -c1-20)
+          echo "fp=$fp" >> "$GITHUB_OUTPUT"
+          echo "model=$(printf '%s' "${{ inputs.model }}" | tr -c 'A-Za-z0-9._/-' '-')" >> "$GITHUB_OUTPUT"
+
+      - name: Reuse the canopy, lidar and NAIP workflow 14 saved
+        id: prep
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            canopy
+            lidar
+            lidar-plan.json
+            naip
+          key: prep-v1-${{ steps.frames.outputs.fp }}-fusedtrue-align${{ inputs.lidar_align }}-${{ hashFiles('tools/locked-lidar-shifts.json') }}-${{ hashFiles('tools/tree-canopy.py', 'tools/clumps.py', 'tools/lidar-plan.js', 'tools/lidar-cover.js', 'tools/lidar-newest.js', 'tools/lidar_frame.py', 'tools/lidar_sources.py', 'tools/naip_bands.py', 'tools/naip_align.py', 'tools/requirements-trees.txt', 'tools/requirements-lidar.txt') }}
+
+      - name: Reuse the eye's features workflow 14 saved
+        id: feats
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            feats
+            feats-whole
+            feats-multi
+          key: feats-v1-${{ steps.frames.outputs.fp }}-${{ steps.frames.outputs.model }}-896-off-last-${{ hashFiles('tools/extract_features.py', 'tools/windows.py', 'tools/requirements.txt') }}
+
+      - name: Both caches must be there
+        if: ${{ steps.prep.outputs.cache-hit != 'true' || steps.feats.outputs.cache-hit != 'true' }}
+        run: |
+          echo "::error::No cached run to draw beside: run workflow 14 with model '${{ inputs.model }}', windows off, lidar_align ${{ inputs.lidar_align }} first (prep hit: ${{ steps.prep.outputs.cache-hit }}, features hit: ${{ steps.feats.outputs.cache-hit }})."
+          exit 1
+
+      - name: Train one decoder on every lot
+        env:
+          FEATURES: feats
+          FRAMES: frames
+          CANOPY: canopy
+          CANOPY_MODE: lawn
+          SEED: '7'
+          FUSE: '1'
+          FUSE_LIDAR: lidar
+          FUSE_NAIP: naip
+          FUSE_CANOPY: '1'
+          UNDER_TREES: '1'
+          REFINE: '1'
+          OUT: preds-drawn
+          RELEASE_OUT: release-local
+        run: python3 tools/train_decoder.py
+
+      - name: Draw the map through the live model's path
+        env:
+          ALSO_DRAW: ${{ inputs.map }}
+          SITE: https://${{ vars.CUSTOM_DOMAIN }}
+          MAPS_READ_TOKEN: ${{ secrets.MAPS_READ_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CORPUS_BUCKET: lawn-mapper-corpus
+          RELEASE_DIR: release-local
+          RUN_FOLDER_FILE: run-folder.txt
+          OUT: drawn
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          MAPBOX_SERVER_TOKEN: ${{ secrets.MAPBOX_SERVER_TOKEN || secrets.MAPBOX_TOKEN }}
+          # No scoring step ran here, so the newest published run of this eye
+          # is the folder the picture joins (tools/draw-map.mjs reads the list).
+          RUN_FOLDER_MODEL: ${{ inputs.model }}
+        run: node tools/draw-map.mjs

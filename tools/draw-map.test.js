@@ -5,7 +5,7 @@
  *   node tools/draw-map.test.js
  */
 
-import { parseLngLat, nearestMap, nearest, resizeRgba, pressFor, evalEntry, svcOfRow, mapsOfRows } from './draw-map.mjs';
+import { parseLngLat, nearestMap, nearest, resizeRgba, pressFor, evalEntry, svcOfRow, mapsOfRows, newestRunOf } from './draw-map.mjs';
 import { runKeys } from './run-folder.js';
 
 let failures = 0;
@@ -90,6 +90,19 @@ const check = (name, ok, detail = '') => {
   check('the entry is marked drawn only, scoreless, and named by position', e.evalOnly === true && e.errorPct === null && e.key === 'runs/2026-10-22-1200-edt/104.png');
   check('and names no address', !JSON.stringify(e).toLowerCase().includes('drive') && e.id === '-85.70712,42.83547:eval:draw');
   check('its lawn area comes from the cells and the grid scale', e.squareFeet === Math.round((1000 * 0.38 * 0.38) / 0.09290304));
+}
+
+{
+  const runs = [
+    { slug: '2026-10-22-2112-edt-facebook-dinov3-vitl16-pretrain-sat493m-896px', at: '2026-10-23T01:12:00Z' },
+    { slug: '2026-10-23-0101-edt-facebook-dinov3-vitl16-pretrain-sat493m-896px', at: '2026-10-23T05:01:00Z' },
+    { slug: '2026-10-23-0045-edt-facebook-dinov3-vitl16-pretrain-sat493m-896px', at: '2026-10-23T04:45:00Z' },
+    { slug: '2026-10-22-2338-edt-facebook-dinov3-vitl16-pretrain-lvd1689m-896px', at: '2026-10-23T03:38:00Z' },
+    { slug: '2026-10-23-0001-edt-scalemae-large-1280px', at: '2026-10-23T04:01:00Z' },
+  ];
+  check('the newest run of the asked eye at 896 px is chosen',
+    newestRunOf(runs, 'facebook/dinov3-vitl16-pretrain-sat493m') === '2026-10-23-0101-edt-facebook-dinov3-vitl16-pretrain-sat493m-896px');
+  check('a 1280 run or another eye is not', newestRunOf(runs, 'scalemae-large') === '' && newestRunOf(runs, 'facebook/dinov3-vitl16-pretrain-lvd1689m').includes('lvd1689m'));
 }
 
 console.log(failures === 0 ? '\nAll checks passed.\n' : `\n${failures} check(s) FAILED.\n`);

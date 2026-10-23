@@ -56,7 +56,7 @@ def main():
 
     t0 = time.time()
     say = lambda stage, **more: print(f"  {stage}", flush=True)  # noqa: E731
-    got = alpha_sources.gather(payload, _node, progress=say)
+    got = alpha_sources.gather(payload, lambda body: _node("prepare", body), progress=say)
     prep = got["prep"]
     photo = Image.open(io.BytesIO(got["photo"])).convert("RGB")
     photo.save(os.path.join(out, "photo-full.png"))
