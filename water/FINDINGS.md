@@ -1245,7 +1245,9 @@ there were test values on a local copy; nothing was saved to the real map):
 
 - The owner: "Make the water map accessible to everyone now". water/tools/prepare.mjs writes ADMIN_ONLY "0"
   (the gate in water/src/index.js stays, for closing it again; /admin stays the admin's). The dashboard's Water
-  map card is still admin-only in worker/src/unified.js (`admin: true`): asked of the core session, which owns it.
+  map card was admin-only in worker/src/unified.js (`admin: true`); asked of the core session, which dropped it
+  and deployed (commit cc1525f, deploy 40025746662), with a note on the card at the owner's word: "Highly
+  experimental and early in development." (commit 435c0cf).
   The footer links Lawn Mapper's privacy and contact page.
 - The owner: "get rid of the address entry and the 'use where I am' and replace it with a drop down menu to load
   other saved maps that have completed lawn and shade maps". lib/maps.js: from GET /api/maps, a map whose
