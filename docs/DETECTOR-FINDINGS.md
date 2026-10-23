@@ -47,6 +47,14 @@ changes and results from different corpora are not comparable.
 *Kept current so a fresh session can pick up without the conversation that
 got here. Update it whenever the in-flight run changes.*
 
+- **A NEW EYE (2026-10-23, S51, H114): DINOv3's satellite ViT-L in place
+  of Scale-MAE moves THE PLAN from 17.2% to 15.4%, 71 lots better / 23
+  worse, -1.8 [-3.4, -1.4], p < 0.001, the county lots 25.9 -> 17.1.
+  One seed. The same night (S52, S54-S58, S53) read the probe, the
+  UperNet head, the web twin, big lots whole at 10 cm on Modal, 1280 px
+  and the res factor for Scale-MAE, and the CHMv2 canopy height head.
+  Not yet served: a release on this eye and the server's hub token are
+  the two steps, the owner's call.
 - **WINDOWS FOR THE BIG LOTS, MEASURED AND OFF (2026-10-22, S49, H112):**
   the 10-acre condo complex's bad trace sent the corpus's 26 lots past
   90 m through overlapping 10 cm windows instead of one squeezed pass. On
@@ -975,6 +983,57 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 ---
 
 ## HARD FINDINGS — our own measurements
+
+### H114. DINOv3's SATELLITE ViT-L AS THE EYE BEATS SCALE-MAE LOT BY LOT: THE PLAN's row 17.2% -> 15.4%, 71 better / 23 worse / 10 level, -1.8 [-3.4, -1.4], p < 0.001; the county-photo lots 25.9% -> 17.1%. The biggest single move since the decoder (S51, one seed) -- 2026-10-23
+*Workflow 14 run 39858638936: `facebook/dinov3-vitl16-pretrain-sat493m`
+(493M Maxar tiles at 0.6 m, distilled from the 7B; 16 px patches, RoPE;
+pixels normalised with its own mean [0.430, 0.411, 0.296] and sd
+[0.213, 0.156, 0.143], read from its processor config) in place of
+Scale-MAE, everything else THE PLAN's: fused + edge decoder, canopy on
+lawn, seed 7, locked 104, saved lidar moves, every lot whole at 896.
+Extraction 31 min on the free runner. Folder
+runs/2026-10-22-2112-edt-facebook-dinov3-vitl16-pretrain-sat493m-896px.
+Read with workflow 24 against 39715167319 (Scale-MAE, same seed, lots
+and settings; its THE PLAN row trained with the 5 pond examples, S51's
+without, so the Scale-MAE run's own "no pond maps" row is the exact
+twin and is read too).*
+
+| lots | B better / worse / level | median A -> B | paired change [95%] | sign test |
+|---|---|---|---|---|
+| all 104, vs THE PLAN (ponds) | 71 / 23 / 10 | 17.2% -> 15.4% | -1.8 [-3.4, -1.4] | p < 0.001 |
+| all 104, vs the no-pond twin | 70 / 25 / 9 | 18.2% -> 15.4% | -1.7 [-3.3, -0.9] | p < 0.001 |
+| frozen 32 (tuned on) | 26 / 5 / 1 | 21.5 -> 17.4 | -2.3 [-5.8, -1.8] | p < 0.001 |
+| approved since (untuned 72) | 45 / 18 / 9 | 16.9 -> 15.3 | -1.6 [-4.1, -0.6] | p 0.001 |
+| county-photo lots (31) | 22 / 6 / 3 | 25.9 -> 17.1 | -2.5 [-6.3, -0.7] | p 0.004 |
+| Mapbox lots (73) | 49 / 17 / 7 | 15.8 -> 15.4 | -1.8 [-2.6, -1.0] | p < 0.001 |
+| the 26 lots past 90 m | 16 / 9 / 1 | 22.8 -> 20.7 | -1.9 [-4.5, +1.1] | p 0.23 |
+
+(Workflow 24 runs 39885278271 and 39885323971.) In the run's own
+table: "decoder, edge refined" 16.4% (Scale-MAE 17.0), seen ground
+14.7% against 15.9, inferred 9.5% against 12.2, sharp boundaries 48.5%
+against 55.7, beat SAM's stored outline on 53 of 67 against 49. The eye
+alone ("the pretrained eye only") is 31.7% against 30.6: the gain is in
+what the decoder can make of the features, not in the raw probe. Most
+improved: B20 81 -> 24, C94 114 -> 54, C99 110 -> 57, B04 72 -> 21;
+worsened: C40 30 -> 74, C88 43 -> 72, C68 19 -> 42, C53 28 -> 44.
+
+**What it means.** Every eye measured before was pretrained before 2024;
+this one is a year newer, trained on fifty times the overhead imagery,
+and it moves THE PLAN by more than the decoder, the refiner or any
+input since. The county-photo lots, the hardest set, gain most. Under
+the file's rule a one-seed result is a finding with a band, not a
+decision; the band here excludes zero on every slice but the 26 big
+lots. **Context:** Scale-MAE's decoder, settings and corpus, one seed,
+every lot squeezed to 896; DINOv3 not told the scale. S54 (UperNet),
+S52 (the probe), S55 (the web twin), S58 (big lots whole at 10 cm) read
+the same eye further the same night.
+
+**To serve it** the live model needs: a release trained on this eye
+(workflow 14 `release: alpha`, model dinov3-sat), the model server's
+container able to open the gated checkpoint (HF_TOKEN in its secret,
+the hub cache on the models volume so a cold start does not fetch
+1.2 GB), and the version row. Prepared 2026-10-23; the owner decides
+when it ships.
 
 ### H112. READING BIG LOTS IN WINDOWS (10 cm at the photo's own resolution instead of one squeezed pass) DOES NOT HELP THE BIG LOTS: on the 26 lots past 90 m it read 9 better / 16 worse, +1.9 [-0.6, +3.6], p 0.23; over all 104, 40 / 48 / 16, +0.4 [-0.3, +1.0], p 0.46 (S49, one seed). Not shipped -- 2026-10-22
 *Workflow 14 run 39763223279: THE PLAN, seed 7, locked 104, saved lidar
@@ -7801,7 +7860,7 @@ stage 3, span, lidar veto" against THE PLAN's row). Then the same pair
 over DINOv3's features (S51) if that eye is competitive: the gap between
 probe and decoder, eye by eye, is the measurement.
 
-### S51. DINOv3's satellite ViT-L as the eye, in place of Scale-MAE (owner, 2026-10-22: "let's do #1, and then go down the list if that one isn't superb") -- RUNNING
+### S51. DINOv3's satellite ViT-L as the eye, in place of Scale-MAE (owner, 2026-10-22: "let's do #1, and then go down the list if that one isn't superb") -- MEASURED 2026-10-23, BETTER BY 1.8 POINTS LOT BY LOT: see H114
 **The idea.** Every eye measured here was pretrained before 2024:
 Scale-MAE on fMoW at about 0.3-0.6 m with a scale input (the one that
 won, H5/H9 era), DINOv2 on web images (worse, 2026-09-18, under the
@@ -9520,3 +9579,4 @@ deploy log says how many are locked and how many are waiting.
 | 2026-10-21 | 39616276609, 39636876014, 39658563647, then **39666176735** (green, 104 locked) | 111 (all), then 104 (locked, 131u7jm) | Redraw with the lidar at half-metre cells (page layers: the 2.5 m+ outline, the ground brightness), THE PLAN, seed 7, lidar not moved | 18.3% (edge refined + stage 3, span, veto; the fourth run) | — | The fourth run drew 104 of 104 (folder runs/2026-10-21-2213-edt-scalemae-large-896px, the newest on the predictions page; its lidar is NOT moved); 18.3% is THE PLAN's row at seed 7 on the locked lots, against 17.9% (39409589116) and 18.1% (S47), seed noise. The first three died in the planner: USGS's flight index (WESM) answered "400 Failed to execute query" for 17, 13 and (after six tries and a second pass) 1 of 111 frames, a different set each time. Fixed by **the saved plan**: tools/locked-lidar-plan.json (S47's plan of 2026-10-20) is read for the locked lots and USGS is asked only for a frame outside it; workflow 41 refreshes it. Raw points cached between runs (POINTS_CACHE, workflow 14), keyed on the frames and the saved plan |
 | 2026-10-22 | 39715167319 | 104 (locked, 131u7jm) | THE PLAN with `lidar_align: saved` (the agree rule's 15 moves from tools/locked-lidar-shifts.json: C71 2 m, 14 lots under a metre), seed 7, CPU; the saved plan and the raw-points cache (lidar read in seconds) | 17.2% (edge refined + stage 3, span, veto) | — | Drew 104 of 104 (folder runs/2026-10-22-0356-edt, LIDAR MOVED (saved fit) on the predictions page). Against 39666176735 (same seed, same lots, the datum move alone, 18.3%): **H111.** Workflow 24 run 39746335881: 28 / 27 / 49, paired -0.0 [-0.1, +0.1], p 1.000. No change; the moves stay for correctness |
 | 2026-10-22 | 39763223279 | 104 (locked, 131u7jm) | S49 `windows: on`: THE PLAN with the 26 lots past 90 m read in overlapping 896 px windows at 10 cm (30 of 109 photographs, 4 to 16 windows each) instead of one squeezed pass, seed 7, CPU, saved lidar moves; the live server would read such a release the same way | 19.2% (edge refined + stage 3, span, veto) | — | Folder runs/2026-10-22-1220-edt. Against 39715167319 (same, windows off, 17.2%): **H112.** Workflow 24 run 39816751440: 40 / 48 / 16, +0.4 [-0.3, +1.0], p 0.456; run 39818935512 on the 26 big lots alone: 9 / 16 / 1, +1.9 [-0.6, +3.6], p 0.230. Worse where it was meant to help; not shipped |
+| 2026-10-22 | 39858638936 | 104 (locked, 131u7jm) | S51: `facebook/dinov3-vitl16-pretrain-sat493m` as the eye (its own pixel normalisation), THE PLAN, seed 7, CPU, saved lidar moves, every lot whole at 896, no pond examples | 15.4% (edge refined + stage 3, span, veto) | — | Folder runs/2026-10-22-2112-edt-facebook-dinov3-vitl16-pretrain-sat493m-896px. **H114.** Workflow 24 run 39885278271 vs 39715167319 (Scale-MAE): 71 / 23 / 10, -1.8 [-3.4, -1.4], p < 0.001; vs its no-pond twin row (39885323971): 70 / 25 / 9, -1.7 [-3.3, -0.9]; county lots 25.9 -> 17.1; big 26: 16 / 9 / 1, -1.9 [-4.5, +1.1] |
