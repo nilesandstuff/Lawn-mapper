@@ -984,6 +984,82 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H120. SCALE-MAE AT 1280 px IS WORSE THAN AT 896 AT 104 LOTS: 18.2% -> 20.7%, 26 / 54 / 24, +0.6 [+0.1, +1.6], p 0.002; the county lots +1.8 (S56, one seed). The 2026-09-19 lean at 23 lots does not survive -- 2026-10-23
+*Workflow 14 run 39879113355, `size: 1280`, THE PLAN, seed 7, locked 104,
+no pond examples; folder runs/2026-10-23-0001-edt-scalemae-large-1280px.
+Workflow 24 run 39900915176 against 39715167319's no-pond twin row. The
+eye alone 30.7% against 30.6: the finer squeeze buys the probe nothing
+and costs the decoder half a point; the county lots 25.1 -> 26.0, +1.8
+[+0.1, +4.0], p 0.015. 896 stays. **Context:** Scale-MAE, one seed, the
+same squeeze for every lot; the 1280 cell is 2.3 m on a 300 m lot either
+way.*
+
+### H119. DINOv3's WEB-TRAINED ViT-L IS AS GOOD AN EYE AS ITS SATELLITE TWIN HERE, AND BOTH BEAT SCALE-MAE: web 16.1% against sat 15.4%, 42 / 42 / 20, +0.1 [-0.5, +0.5], p 1.0; web against Scale-MAE 18.2% -> 16.1%, 72 / 22 / 10, -2.1 [-3.5, -1.0], p < 0.001, the 26 big lots 20 / 3 / 3, -2.5 [-4.0, -1.4] (S55, one seed) -- 2026-10-23
+*Workflow 14 run 39879107955, `facebook/dinov3-vitl16-pretrain-lvd1689m`
+(1.7 billion web images, ImageNet normalisation), THE PLAN, seed 7,
+locked 104; folder
+runs/2026-10-22-2338-edt-facebook-dinov3-vitl16-pretrain-lvd1689m-896px.
+Workflow 24 runs 39900899627 (vs S51, 39858638936) and 39900907327 (vs
+39715167319's no-pond row).*
+
+| against | lots | B better / worse / level | median A -> B | paired change [95%] | sign test |
+|---|---|---|---|---|---|
+| DINOv3 sat (S51) | all 104 | 42 / 42 / 20 | 15.4% -> 16.1% | +0.1 [-0.5, +0.5] | p 1.0 |
+| DINOv3 sat | the 26 past 90 m | 12 / 13 / 1 | 20.7 -> 19.5 | +0.6 [-2.5, +2.2] | p 1.0 |
+| DINOv3 sat | county-photo lots | 16 / 12 / 3 | 17.1 -> 16.3 | -0.6 [-3.2, +0.9] | p 0.57 |
+| Scale-MAE (no-pond twin) | all 104 | 72 / 22 / 10 | 18.2% -> 16.1% | -2.1 [-3.5, -1.0] | p < 0.001 |
+| Scale-MAE | the 26 past 90 m | 20 / 3 / 3 | 22.4 -> 19.5 | -2.5 [-4.0, -1.4] | p < 0.001 |
+| Scale-MAE | county-photo lots | 24 / 7 / 0 | 25.1 -> 16.3 | -3.2 [-8.2, -1.1] | p 0.003 |
+
+The web eye's raw probe is the best any eye has read here (28.3%,
+against 31.7 sat and 30.6 Scale-MAE); its decoder reads the seen ground
+best (13.3%) and "in sun" best (13.7%). The two DINOv3 eyes are a tie
+on the whole and differ lot by lot (42 / 42), which is what an average of
+the two would feed on. The satellite pretraining is not what makes
+DINOv3 better than Scale-MAE: the model and its scale are. **Context:**
+one seed each, every lot squeezed to 896, THE PLAN's decoder.
+
+### H118. THE UPERNET HEAD IS WORSE THAN THE SMALL DECODER ON DINOv3's FEATURES TOO: 15.5% -> 17.1%, 27 / 56 / 21, +0.7 [+0.3, +0.9], p 0.002; the 26 big lots 2 / 20 / 4, +1.7 [+0.7, +3.1] (S54, one seed). H93's finding, measured in its new context, holds -- 2026-10-23
+*Workflow 14 run 39879096019, `refiner_trial: upernet` over DINOv3-sat's
+cached features (S51), the same folds and seed, both heads with the
+refiner; folder
+runs/2026-10-22-2332-edt-facebook-dinov3-vitl16-pretrain-sat493m-896px.
+Workflow 24 run 39900891855 within the run.* The owner's rule (the
+legend) asked for this: H93 was Scale-MAE's context and said nothing
+about this eye until measured. Measured, the 557k-weight head loses to
+the 224k one on both eyes, and most on the big lots. More maps before a
+bigger head, whichever eye. **Context:** 104 lots, one seed, this UperNet
+(64 channels, GroupNorm, dropout).
+
+### H117. THE DECODER ADDS TO THE EYE'S FEATURES ON BOTH EYES, LESS ON THE BETTER ONE: against the papers' linear probe, Scale-MAE 18.5% -> 21.0% (26 / 65 / 13, +1.1 [+0.8, +1.7], p < 0.001; county lots +3.1), DINOv3-sat 15.5% -> 17.1% (26 / 51 / 27, +0.5 [+0.1, +0.9], p 0.006). A linear map over DINOv3 reads as well as the whole decoder over Scale-MAE (S52, one seed each) -- 2026-10-23
+*Workflow 14 runs 39872165080 (Scale-MAE, folder
+runs/2026-10-22-2325-edt-scalemae-large-896px) and 39879102264
+(DINOv3-sat, folder
+runs/2026-10-23-0009-edt-facebook-dinov3-vitl16-pretrain-sat493m-896px):
+`refiner_trial: linear probe` (tools/train_decoder.py HEAD=linear:
+dropout, 1024 -> 32 -> 1, both 1x1, no nonlinearity, 33k weights), beside
+THE PLAN's decoder over the same features, folds and seed, both with the
+refiner, stage 3 and the veto. Workflow 24 runs 39900875160 and
+39900883714 within each run.*
+
+| eye | lots | probe better / worse / level | decoder -> probe | paired change [95%] | sign test |
+|---|---|---|---|---|---|
+| Scale-MAE | all 104 | 26 / 65 / 13 | 18.5% -> 21.0% | +1.1 [+0.8, +1.7] | p < 0.001 |
+| Scale-MAE | county-photo lots | 5 / 25 / 1 | 23.2 -> 27.3 | +3.1 [+1.2, +4.6] | p < 0.001 |
+| DINOv3 sat | all 104 | 26 / 51 / 27 | 15.5% -> 17.1% | +0.5 [+0.1, +0.9] | p 0.006 |
+| DINOv3 sat | county-photo lots | 8 / 17 / 6 | 17.1 -> 20.2 | +0.7 [+0.1, +3.1] | p 0.11 |
+
+**Reading, for the owner's question ("be open to the possibility that our
+decoder is part of the problem").** The decoder is not in the way: on
+both eyes it beats a linear map by a margin the band excludes zero on,
+so its 3x3 context does work the features alone do not. But the margin
+halves on the better eye, and the probe on DINOv3 (17.1%) equals THE
+PLAN on Scale-MAE (17.2%): most of what the decoder was adding on
+Scale-MAE was making up for the features. The lever is the eye, then
+the decoder; a bigger head is not it (H93, H118). **Context:** one seed
+each; the probe sees the fused channels too (lidar, NDVI, canopy), so
+"linear" is linear over everything the decoder sees.
+
 ### H116. SCALE-MAE TOLD FIVE TIMES THE METRES A PIXEL IS WORSE, MOST OF ALL ON THE BIG LOTS: THE PLAN 18.2% -> 18.9%, 33 / 53 / 18, +0.5 [+0.1, +1.3], p 0.04; the 26 lots past 90 m 4 / 19 / 3, +3.1 [+0.8, +9.9], p 0.003; the eye alone 30.6% -> 36.0% (S57, one seed) -- 2026-10-23
 *Workflow 14 run 39879925832: `scalemae-large, res x5` (RES_FACTOR 5: the
 model is told 0.35-0.5 "metres a pixel" instead of 0.07-0.10, nearer
@@ -7918,7 +7994,7 @@ adopted only under the protocol's full bar.
 
 ### S53. CHMv2, Meta's canopy height head, zero-shot -- MEASURED 2026-10-23: a roof-against-tree separator (AUC 0.94), not a canopy source: see H115
 
-### S54-S57. The night of 2026-10-22: everything that makes sense to try, on the free runner (owner: "try everything that makes sense to try ... keep it under $10") -- RUNNING
+### S54-S57. The night of 2026-10-22: everything that makes sense to try, on the free runner (owner: "try everything that makes sense to try ... keep it under $10") -- MEASURED 2026-10-23: H117 (probe), H118 (UperNet on DINOv3: worse), H119 (web eye: a tie with sat, both beat Scale-MAE), H120 (1280: worse), H116 (res x5: worse); S58 read in H121
 All THE PLAN's decoder, seed 7, locked 104, saved lidar moves, every lot
 whole at 896 unless said, read with workflow 24 against 39715167319
 (Scale-MAE 896, 17.2%) and against each other:
@@ -7939,7 +8015,7 @@ Then, on Modal's GPU (S58): DINOv3-sat reading each big lot WHOLE at
 no CPU can do -- the owner's point that DINOv3 takes 4096. And S53, the
 CHMv2 canopy height head, zero-shot.
 
-### S52. Is the decoder part of the problem? The papers' linear probe beside THE PLAN's decoder (owner, 2026-10-22: "be open to the possibility that our decoder is part of the problem") -- RUNNING
+### S52. Is the decoder part of the problem? The papers' linear probe beside THE PLAN's decoder (owner, 2026-10-22: "be open to the possibility that our decoder is part of the problem") -- MEASURED 2026-10-23 on both eyes: the decoder adds, less on DINOv3; see H117
 **The question.** THE PLAN's decoder is four convs (1x1, 3x3, 3x3, 1x1,
 224k weights) over the eye's 1024 numbers a patch plus the fused
 channels; a bigger head overfit (H93). The other direction has never
@@ -9684,3 +9760,8 @@ deploy log says how many are locked and how many are waiting.
 | 2026-10-22 | 39829073504 | 104 (locked, 131u7jm) | S50 `windows: on + whole`: the 26 big lots in 10 cm windows with the whole-lot squeezed grid stacked beside them (2048 numbers a patch), THE PLAN, seed 7, CPU, saved lidar moves, no pond examples | 20.2% (edge refined + stage 3, span, veto) | — | Folder runs/2026-10-22-2135-edt-scalemae-large-896px. **H113.** Workflow 24 vs the no-pond twin rows: vs windows off (39887504771) 29 / 55 / 20, +0.7 [+0.2, +1.1], p 0.006; vs windows on (39887507170) 34 / 48 / 22, +0.3 [-0.1, +1.0], p 0.15; the big 26 level both ways. The asked map was not drawn (folder file missing on the scoring step; fixed) |
 | 2026-10-23 | 39879819878 (workflow 42) | 104 (locked) | S53: CHMv2 canopy height (DPT on DINOv3-sat) out of the box at 0.6 m and 0.3 m, against the lidar at 1 m, the tree mask and the traced lawn | — | — | **H115.** Roof against tree inside the lidar's tall cells AUC 0.94 / 0.95 (82 lots; 11-16 m on trees, 0 m on roofs); canopy against the lidar AUC 0.76 / 0.79, reads 2-3 m low; a 2 m+ veto would erase 9% of visible lawn |
 | 2026-10-23 | 39879925832 | 104 (locked, 131u7jm) | S57 `scalemae-large, res x5`: Scale-MAE told five times the metres a pixel, THE PLAN, seed 7, CPU, no pond examples (the first attempt, 39879118820, died on a comma in the cache key) | 18.9% (edge refined + stage 3, span, veto) | — | **H116.** Workflow 24 run 39890119038 vs the no-pond twin: 33 / 53 / 18, +0.5 [+0.1, +1.3], p 0.04; big 26: 4 / 19 / 3, +3.1 [+0.8, +9.9], p 0.003. Worse; 0.07-0.10 stays |
+| 2026-10-22 | 39872165080 | 104 (locked, 131u7jm) | S52 `refiner_trial: linear probe` on Scale-MAE features (cached), THE PLAN beside a linear map a patch, seed 7, CPU, no pond examples | 18.5% (edge refined + stage 3, span, veto) | 21.0% (linear probe + stage 3, span, veto) | **H117.** Workflow 24 run 39900875160 within the run: probe 26 / 65 / 13, +1.1 [+0.8, +1.7], p < 0.001; county +3.1 |
+| 2026-10-23 | 39879102264 | 104 (locked, 131u7jm) | S52 on DINOv3-sat: the same pair over S51's cached features | 15.5% (same) | 17.1% (linear probe, same) | **H117.** Run 39900883714: probe 26 / 51 / 27, +0.5 [+0.1, +0.9], p 0.006. The probe on DINOv3 equals THE PLAN on Scale-MAE |
+| 2026-10-23 | 39879096019 | 104 (locked, 131u7jm) | S54 `refiner_trial: upernet` over DINOv3-sat's cached features | 15.5% (same) | 17.1% (UperNet + stage 3, span, veto) | **H118.** Run 39900891855: 27 / 56 / 21, +0.7 [+0.3, +0.9], p 0.002; big 26: 2 / 20 / 4, +1.7. Worse on this eye too |
+| 2026-10-23 | 39879107955 | 104 (locked, 131u7jm) | S55 `facebook/dinov3-vitl16-pretrain-lvd1689m` (web) as the eye, THE PLAN, seed 7, CPU, no pond examples | 16.1% (edge refined + stage 3, span, veto) | — | **H119.** Runs 39900899627 (vs S51 sat): 42 / 42 / 20, +0.1 [-0.5, +0.5], p 1.0; 39900907327 (vs Scale-MAE no-pond): 72 / 22 / 10, -2.1 [-3.5, -1.0]; big 26: 20 / 3 / 3, -2.5 |
+| 2026-10-23 | 39879113355 | 104 (locked, 131u7jm) | S56 Scale-MAE at 1280 px, THE PLAN, seed 7, CPU, no pond examples | 20.7% (edge refined + stage 3, span, veto) | — | **H120.** Run 39900915176 vs the no-pond twin: 26 / 54 / 24, +0.6 [+0.1, +1.6], p 0.002; county +1.8. 896 stays |
