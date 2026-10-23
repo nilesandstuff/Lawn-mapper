@@ -18,7 +18,9 @@
  * Nothing else under /api/ is passed on. The one thing this Worker keeps is gauge readings, in its own D1
  * (src/readings.js, water/schema.sql), and the admin page that reads them (/admin, the admin only).
  *
- * ADMIN ONLY UNTIL IT SHIPS (owner, 2026-10-16: "make the water site
+ * OPEN TO EVERYONE since 2026-10-23 (owner: "Make the water map accessible to
+ * everyone now"); water/tools/prepare.mjs writes ADMIN_ONLY "0". The gate below is
+ * kept for closing it again (owner, 2026-10-16: "make the water site
  * admin-only too until we're ready to ship"). While ADMIN_ONLY is "1"
  * (water/tools/prepare.mjs writes it), every request but /api/auth/* first
  * asks Lawn Mapper who this is -- /api/auth/me with the visitor's own

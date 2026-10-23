@@ -22,7 +22,7 @@ export function waterDomainFor(custom) {
   return parts.length >= 3 ? `water.${parts.slice(1).join('.')}` : null;
 }
 
-export function wranglerFor(domain, lawnmap, adminOnly = true, d1Id = null) {
+export function wranglerFor(domain, lawnmap, adminOnly = false, d1Id = null) {
   return `# Written by water/tools/prepare.mjs at deploy time. Not checked in.
 name = "lawn-water"
 main = "src/index.js"
@@ -44,7 +44,8 @@ service = "lawn-mapper"
 
 [vars]
 LAWNMAP_HOST = "${lawnmap}"
-# Admin only until it ships (owner, 2026-10-16). "0" opens it to everyone.
+# Open to everyone (owner, 2026-10-23: "Make the water map accessible to everyone now"); admin only
+# from 2026-10-16 until then. "1" closes it to all but the admin again.
 ADMIN_ONLY = "${adminOnly ? '1' : '0'}"
 
 [[routes]]
@@ -81,7 +82,7 @@ function main() {
     cpSync(join(water, '..', 'public', f), join(build, f));
   }
   writeFileSync(join(build, 'robots.txt'), 'User-agent: *\nAllow: /\n');
-  writeFileSync(join(water, 'wrangler.toml'), wranglerFor(domain, lawnmap, true, (process.env.WATER_D1_ID || '').trim() || null));
+  writeFileSync(join(water, 'wrangler.toml'), wranglerFor(domain, lawnmap, false, (process.env.WATER_D1_ID || '').trim() || null));
   env(`WATER_DOMAIN=${domain}`);
   console.log(`Water site built for https://${domain}, asking https://${lawnmap} for addresses, property lines and photos.`);
 }
