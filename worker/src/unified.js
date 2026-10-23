@@ -53,7 +53,7 @@ export const TOOLS = [
   { id: 'shade', name: 'Shade analyzer', blurb: 'The trees around the lawn in 3D from lidar, and the sun and shade through the year.',
     needs: [], url: 'https://{shade}?map={id}', entry: 'https://{shade}' },
   { id: 'water', name: 'Water map', blurb: 'Where rain and irrigation go on this lawn, and how much to water.',
-    needs: ['shade'], url: 'https://water.{home}/?map={id}', admin: true },
+    needs: ['shade'], url: 'https://water.{home}/?map={id}' },
 ];
 const TOOL_IDS = new Set(TOOLS.map((t) => t.id));
 export const isTool = (id) => TOOL_IDS.has(id) && id !== 'lawn';
@@ -93,6 +93,8 @@ export function hostsOf(host) {
  * The tools as one asker sees them. A tool marked `admin` is still being built
  * and is listed only for an admin account (owner, 2026-10-16: the water map,
  * "for the admin account only at this point"); everyone else never sees it.
+ * None is marked now: the water map opened to everyone on 2026-10-23 (owner,
+ * to the water session: "Make the water map accessible to everyone now").
  */
 export function toolsFor(host, { admin = false } = {}) {
   const { home, lawnmap, shade } = hostsOf(host);

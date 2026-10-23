@@ -54,10 +54,9 @@ check('safeNext lets a sign-in land on the home dashboard, and nowhere else',
   check('the tools open on the right hosts',
     t.find((x) => x.id === 'shade').url === 'https://shade.nilesandstuff.com/?map={id}'
     && toolsFor('lawn-mapper.example.workers.dev').find((x) => x.id === 'shade').url === 'https://lawn-mapper.example.workers.dev/shade?map={id}'
-    && toolsFor('lawnmap.nilesandstuff.com', { admin: true }).find((x) => x.id === 'water').url === 'https://water.nilesandstuff.com/?map={id}');
-  check('a tool still being built is listed for an admin only',
-    !t.some((x) => x.id === 'water')
-    && toolsFor('lawnmap.nilesandstuff.com', { admin: true }).some((x) => x.id === 'water'));
+    && t.find((x) => x.id === 'water').url === 'https://water.nilesandstuff.com/?map={id}');
+  check('the water map is listed for everyone (owner, 2026-10-23)',
+    t.some((x) => x.id === 'water') && toolsFor('lawnmap.nilesandstuff.com', { admin: true }).some((x) => x.id === 'water'));
   check('every tool a tool needs is a tool', TOOLS.every((x) => x.needs.every((n) => TOOLS.some((y) => y.id === n))));
 }
 
@@ -125,8 +124,8 @@ let guestCookie;
   check('and the guest is gone', Number(left.n) === 0);
 
   const plain = await call(env, req('/api/tools', { cookie: `${SESSION_COOKIE}=${token}` }));
-  check('an ordinary account is not shown a tool still being built',
-    plain.res.status === 200 && !plain.body.tools.some((x) => x.id === 'water'));
+  check('an ordinary account is shown the water map',
+    plain.res.status === 200 && plain.body.tools.some((x) => x.id === 'water'));
   const boss = await findOrCreateUser({ ...env, ADMIN_EMAILS: 'boss@example.test' }, { email: 'boss@example.test', provider: 'email', subject: 'boss' });
   const bossSession = await createSession(env, boss.id);
   const admin = await call(env, req('/api/tools', { cookie: `${SESSION_COOKIE}=${bossSession.token}` }));
