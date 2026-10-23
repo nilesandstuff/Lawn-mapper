@@ -1657,6 +1657,10 @@ jobs:
           LIDAR_DIR: ${{ inputs.canopy != 'off' && 'lidar' || '' }}
           # H47: the drawn row's held-out masks, for the step below.
           PRED_OUT: ${{ inputs.canopy != 'off' && 'preds-out' || '' }}
+          # The published folder's name, for the asked map's draw (also_draw).
+          # Missing from this step on the first run (39829073504): the draw
+          # found no folder and drew nothing.
+          RUN_FOLDER_FILE: run-folder.txt
         run: node tools/train-detector.js
 
       # H47's fair half: the per-crown woods test again, with the detector's
@@ -1732,6 +1736,8 @@ jobs:
           RELEASE_DIR: release-local
           RUN_FOLDER_FILE: run-folder.txt
           OUT: drawn
+          # A release on a gated eye (DINOv3) opens its weights with this.
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: node tools/draw-map.mjs
 
       - name: Train the release model on every lot
