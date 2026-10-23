@@ -478,8 +478,15 @@ export const CACHE_SECONDS = 7 * 24 * 3600;
    enough that one slow server does not make every visit wait for it, short
    enough that it is asked again soon. */
 export const PARTIAL_CACHE_SECONDS = 24 * 3600;
-/** How long a slow national source is waited for (in the background, past the deadline). */
-export const SLOW_MS = 45000;
+/*
+ * How long a slow national source is waited for, from the start. Cloudflare
+ * lets work handed to waitUntil run about 30 s past the answer, so this is
+ * kept inside DEADLINE_MS + 30 s, or the whole answer is never kept (it was
+ * not, at 45 s, 2026-10-23).
+ */
+export const SLOW_MS = 38000;
+/** How long an answer with sources still pending is kept: long enough for a quick second ask. */
+export const PENDING_CACHE_SECONDS = 120;
 /*
  * HOW LONG A VISITOR WAITS. USGS's hydrography server answered the same small
  * box in 0.7 s and in 61 s within one minute (2026-10-23). So the answer goes
@@ -508,12 +515,14 @@ export async function handleWaterLayers(request, url, env, origin, ctx, json, { 
   const { body, later } = await waterLayersAt(env, box, { fetcher, deadlineMs: ctx?.waitUntil ? DEADLINE_MS : 0 });
   const keep = (b) => {
     if (!cache) return Promise.resolve();
-    const age = b.failed.length ? PARTIAL_CACHE_SECONDS : CACHE_SECONDS;
+    const age = b.pending ? PENDING_CACHE_SECONDS : b.failed.length ? PARTIAL_CACHE_SECONDS : CACHE_SECONDS;
     return cache.put(key, new Response(JSON.stringify(b), {
       headers: { 'Content-Type': 'application/json', 'Cache-Control': `public, max-age=${age}` },
     })).catch(() => {});
   };
-  if (later) ctx.waitUntil(later.then(keep));
+  /* The answer as it stands is kept at once, for a couple of minutes; the
+     whole one replaces it when the slow sources are in. */
+  if (later) ctx.waitUntil(keep(body).then(() => later).then(keep));
   else if (ctx?.waitUntil) ctx.waitUntil(keep(body));
   else await keep(body);
   return json(body, 200, origin);
