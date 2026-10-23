@@ -13,6 +13,10 @@
  *   water    (optional) hard water, rust stains, the system's age: scale in the pipes
  *   pressure the lines as an installer most likely laid them, and the pressure and flow at every head
  *            (lib/hydraulics.js), with the ground's rise and fall from the lidar
+ *   (method / measure: instead of equipment..pressure, the pressure measured at the heads, lib/measured.js)
+ *   arcs     each head's arc fitted to the lawn, then adjusted by hand
+ *   fixes    what a run time cannot fix: pressure, mixed or unmatched heads, lawn left dry (lib/fixes.js)
+ *   schedule when to water each zone, season by season (lib/schedule.js, the plan run on the valves)
  *   done
  *
  * The page (app.js) owns the photo, the zoom and the save; this module owns the steps, the panel and what
@@ -24,17 +28,20 @@ import { catalogue, headWater, zoneWater, calibrate, placeByGps, settle, facing,
 import { autoArc, fitArcs, isLawn, MIN_THROW, BIN_DEG } from '/lib/arcs.js';
 import { precipitation, setProfiles } from '/lib/precip.js';
 import { layout } from '/lib/layout.js';
+import { suggestions, betweenZones, duReached } from '/lib/fixes.js';
+import { zoneSchedule, valveZones, MONTH } from '/lib/schedule.js';
 import { route, solveZone, headFlow, regulatedOut, deviceLoss, dwPerFt, roughnessMm, SWING, FITTINGS_SHARE, pipeById, pipeSize, PIPE_FAMILIES, sizeFor, fraction, fps, FT_PER_M, MAX_FPS } from '/lib/hydraulics.js';
 
 const FILES = ['rainbird-sprays', 'rainbird-rotors', 'hunter-sprays', 'hunter-rotors', 'other-brands'];
 const ZONE_COLORS = ['#e53935', '#1e88e5', '#43a047', '#fb8c00', '#8e24aa', '#00acc1', '#fdd835', '#6d4c41', '#d81b60', '#3949ab', '#7cb342', '#546e7a'];
 // the arcs last (owner, 2026-10-21): fitted once everything that sets a head's throw is known, then adjusted
-const STEPS = ['place', 'review', 'zones', 'models', 'details', 'method', 'equipment', 'supply', 'lines', 'water', 'pressure', 'measure', 'arcs'];
+const STEPS = ['place', 'review', 'zones', 'models', 'details', 'method', 'equipment', 'supply', 'lines', 'water', 'pressure', 'measure', 'arcs', 'fixes', 'schedule'];
 /* THE STEPS FOR THE WAY THE PRESSURE IS FOUND (owner, 2026-10-22): worked out from the pipes and the water
    supply, or measured at the heads (a gauge, or how far they throw) with nothing buried or in a valve box asked */
 const MEASURED = new Set(['gauge', 'throw']);
-const stepsFor = (method) => ['place', 'review', 'zones', 'models', 'details', 'method', ...(MEASURED.has(method) ? ['measure'] : ['equipment', 'supply', 'lines', 'water', 'pressure']), 'arcs'];
-const STEP_TITLE = { place: 'Place your sprinkler heads', review: 'Check where they are', zones: 'Which valve is each head on?', models: 'What heads and nozzles are they?', details: 'Your heads', equipment: 'The backflow preventer and the valves', supply: 'The water coming in', lines: 'The pipe to each zone', water: 'Your water (optional)', pressure: 'The pressure at every head', arcs: "Each head's arc, and how evenly the lawn is watered", method: 'How to find the pressure at your heads', measure: 'Measure at your heads' };
+/* AFTER THE HEADS (owner, 2026-10-23): what could be better about the system, then when to water each zone */
+const stepsFor = (method) => ['place', 'review', 'zones', 'models', 'details', 'method', ...(MEASURED.has(method) ? ['measure'] : ['equipment', 'supply', 'lines', 'water', 'pressure']), 'arcs', 'fixes', 'schedule'];
+const STEP_TITLE = { place: 'Place your sprinkler heads', review: 'Check where they are', zones: 'Which valve is each head on?', models: 'What heads and nozzles are they?', details: 'Your heads', equipment: 'The backflow preventer and the valves', supply: 'The water coming in', lines: 'The pipe to each zone', water: 'Your water (optional)', pressure: 'The pressure at every head', arcs: "Each head's arc, and how evenly the lawn is watered", method: 'How to find the pressure at your heads', measure: 'Measure at your heads', fixes: 'What could be better', schedule: 'When to water each zone' };
 /** How a zone's heads join its pipe (lib/hydraulics.js SWING). */
 const CONNECT = [['', "I don't know (swing pipe for sprays, a rigid swing joint for rotors)"], ['swing', 'Flexible 1/2 in swing pipe ("funny pipe") to each head'], ['saddle', 'Saddles: each head on a fitting clamped onto the pipe'], ['rigid', 'Rigid swing joints (three or four elbows)']];
 /** The pipe families a zone's lines may be, and the supply line's. */
@@ -77,9 +84,12 @@ export function sprinklers(ctx) {
   let step = null, cat = null, catNote = '';
   const sel = new Set();
   const gps = { on: false, watch: null, fixes: [], cal: null, phase: null, ref: null, live: null, busy: false };
+  let measureAsk = false;
   let drag = null, dragged = false, placeMode = 'tap', labelsHidden = 0, placing = null, gaugeNote = '', coverView = 'all', arcPhase = 'fitting', showCover = false, measureNote = '';
   const throwGps = { head: null, id: null };
   let nextId = 1;
+  // an arc being dragged (the arcs step): the head, the handle, and where the drag started (dragArc)
+  let arcDrag = null;
 
   const loadCat = (async () => {
     const files = await Promise.all(FILES.map((f) => fetch(`/lib/heads/${f}.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null)));
@@ -110,9 +120,13 @@ export function sprinklers(ctx) {
   const distFt = (a, b) => Math.hypot(...enu(a, b)) * FT_PER_M;
 
   let solved = null, solvedKey = '';
+  const layCache = { key: '', lay: null };
   /** Every zone solved from the backflow preventer to the nozzles (lib/hydraulics.js), or null until the
       equipment is placed and the pressure given. Kept until something changes. */
   function solve() {
+    // while an arc is dragged the pressures stay as they were (an arc moves a head's flow a little, not the
+    // zone's pressure): the drag redraws at the phone's frame rate, and the zone is solved again when let go
+    if (arcDrag && solved) return solved;
     if (MEASURED.has(irr.method)) return solveMeasured();
     const sys = irr.system, src = sys.source, P = src.psi;
     if (!cat || !Number.isFinite(P) || !sys.pvb.at || !sys.boxes.length) return null;
@@ -131,7 +145,10 @@ export function sprinklers(ctx) {
     /* THE PIPE, LAID AS AN INSTALLER LAYS IT (lib/layout.js), once the lawn map is in: around houses, out from
        straight runs, along the lawn's edges where that is cheapest; before it is in, the old straight-line tree. */
     let lay = null;
-    if (ctx.layoutGround?.()) {
+    // the layout reads where the heads, the valve boxes and the backflow preventer are, not the arcs: kept
+    const layKey = JSON.stringify([sys.pvb.at, sys.boxes, irr.zones.map((z) => [z.n, z.box]), irr.heads.map((h) => [h.id, h.at, h.zone, !!h.nozzle]), !!ctx.layoutGround?.()]);
+    if (layKey === layCache.key) lay = layCache.lay;
+    else if (ctx.layoutGround?.()) {
       // the pipe's own lines: along the lawn's longest straight edge (never the placing grid's setting)
       const bearing = longestEdgeInSight(ctx.lawnRings?.() || [], ctx.lawnMiddle?.() || sys.pvb.at, { sight: false })?.bearing ?? 0;
       try {
@@ -140,6 +157,7 @@ export function sprinklers(ctx) {
           zones: irr.zones.map((z) => ({ n: z.n, box: z.box, heads: irr.heads.filter((h) => h.zone === z.n && h.nozzle).map((h) => ({ id: h.id, at: h.at })) })),
         });
       } catch (e) { console.warn('layout', e); lay = null; }
+      layCache.key = layKey; layCache.lay = lay;
     }
     const zones = [];
     for (const z of irr.zones) {
@@ -211,11 +229,25 @@ export function sprinklers(ctx) {
     return solved;
   }
   const solvedHead = (id) => { const s = solved; if (!s) return null; for (const z of s.zones) { const h = z.res.heads.get(id); if (h) return h; } return null; };
+  /* MEASURING (owner, 2026-10-23: "don't display the pressure estimates for other zones without measurements
+     yet... Only if the user finishes without submitting a measurement for every zone"): in the measure step a
+     zone with no reading of its own shows no pressure until the person chooses to go on without one. */
+  const hidesBorrowed = () => step === 'measure' && !irr.borrowOk;
+  const shownHead = (id) => { const sh = solvedHead(id); return sh && !(sh.borrowed && hidesBorrowed()) ? sh : null; };
+  /** Has this head a reading of its own (a gauge, or in the throw mode a throw)? */
+  const measuredHere = (h) => (irr.method === 'throw' ? !!h.throwFt : !!h.gauge);
+  /* A head's water: its own nozzle, arc and throw as they are now, at the pressure the solve gives it (so a
+     dragged arc's fan follows the finger), kept until one of them changes. */
+  const flowCache = new Map();
   const waterOf = (h) => {
     if (!cat) return null;
     const got = solve() && solvedHead(h.id);
-    if (got?.water) return { ...got.water, gpm: got.gpm };
-    return headFlow(h, cat, Number.isFinite(irr.system.source.psi) ? irr.system.source.psi - 15 : NaN);
+    const psi = got && Number.isFinite(got.psi) ? Math.max(0, got.psi) : Number.isFinite(irr.system.source.psi) ? irr.system.source.psi - 15 : NaN;
+    const k = `${psi}|${h.body}|${h.nozzle}|${h.arc}|${h.throw}|${h.dir}`, c = flowCache.get(h.id);
+    if (c && c.k === k) return c.w;
+    const w = headFlow(h, cat, psi);
+    flowCache.set(h.id, { k, w });
+    return w;
   };
   const STATUS_COLOR = { ok: '#43a047', low: '#fb8c00', high: '#8e24aa' };
 
@@ -243,13 +275,7 @@ export function sprinklers(ctx) {
     const key = solvedKey + JSON.stringify(irr.heads.map((h) => [h.dir, h.arc, h.throw]));
     if (key === coverKey) return coverCache;
     // the grid: half-metre cells over the heads' reach
-    const hs = [];
-    for (const h of irr.heads) {
-      const w = waterOf(h), fam = cat.familyOfNozzle(h.nozzle);
-      if (!w || !(w.gpm > 0)) continue;
-      // the radius screw is in the head's water already (lib/heads.js headWater: its throw, its flow)
-      hs.push({ zone: h.zone, at: h.at, gpm: w.gpm, radiusM: w.radiusFt / FT_PER_M, cut: w.cut ?? 1, arc: w.arc ?? 360, dir: h.dir ?? 0, profile: profileOf(fam), strip: w.strip ? { type: w.strip.type, lengthM: w.strip.lengthFt / FT_PER_M, widthM: w.strip.widthFt / FT_PER_M } : null });
-    }
+    const hs = coverHeads();
     if (!hs.length) return null;
     const ref = hs[0].at, xy = hs.map((h) => enu(ref, h.at)), reach = Math.max(...hs.map((h) => h.strip ? h.strip.lengthM : h.radiusM * 1.3));
     // the heads' reach and the whole traced lawn, so lawn no head reaches counts as missed
@@ -262,9 +288,26 @@ export function sprinklers(ctx) {
     const lawnFlag = new Uint8Array(W * H);
     for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) lawnFlag[r * W + c] = isLawn(ctx.groundAt(at(c, r))) ? 1 : 0;
     const p = precipitation({ W, H, cellM, at, lawn: (i) => lawnFlag[i] === 1 }, hs);
-    coverCache = { p, W, H, cellM, nw: unEnu(ref, [x0, y1]), lawnFlag };
+    coverCache = { p, W, H, cellM, nw: unEnu(ref, [x0, y1]), lawnFlag, at };
     coverKey = key;
     return coverCache;
+  }
+  /** Every head's water as lib/precip.js lays it, with what lib/fixes.js asks of it too. */
+  function coverHeads() {
+    const hs = [];
+    for (const h of irr.heads) {
+      const w = waterOf(h), fam = cat.familyOfNozzle(h.nozzle), n = cat.nozzle(h.nozzle);
+      if (!w || !(w.gpm > 0)) continue;
+      const sh = solvedHead(h.id);
+      // the radius screw is in the head's water already (lib/heads.js headWater: its throw, its flow)
+      hs.push({
+        id: h.id, zone: h.zone, at: h.at, gpm: w.gpm, radiusM: w.radiusFt / FT_PER_M, fullRadiusM: (w.fullRadiusFt ?? w.radiusFt) / FT_PER_M, cut: w.cut ?? 1, arc: w.arc ?? 360, dir: h.dir ?? 0, throw: h.throw ?? 1,
+        profile: profileOf(fam), strip: w.strip ? { type: w.strip.type, lengthM: w.strip.lengthFt / FT_PER_M, widthM: w.strip.widthFt / FT_PER_M } : null,
+        kind: fam?.kind || 'spray', status: w.status, psi: sh?.psi ?? w.inletPsi, chartLo: w.chartLo, chartHi: w.chartHi, regulated: w.regulated,
+        adjustable: !!n && !n.strip && !Number.isFinite(n.arcFixed), fixedArc: !!n && Number.isFinite(n.arcFixed), arcMax: n?.arcMax ?? 360, label: n?.label || '',
+      });
+    }
+    return hs;
   }
   /** The coverage as an image over the photo: the all-zones depth share, or one zone's rate. */
   function drawCoverage(g) {
@@ -327,7 +370,10 @@ export function sprinklers(ctx) {
     ctx.draw();
   }
   // the step is kept with the map too, so a reload comes back to it (owner: every step saves progress)
-  const go = (s) => { step = s; irr.step = s; sel.clear(); if (s !== 'place') stopGps(); if (s === 'arcs') startArcs({ refit: true }); ctx.changed(); render(); };
+  const go = (s) => {
+    // the arcs are fitted again on the way forward (the pressure may have changed); not when coming back to them
+    const back = step === 'fixes' || step === 'schedule';
+    step = s; irr.step = s; sel.clear(); measureAsk = false; fixPicked = null; if (s !== 'place') stopGps(); if (s === 'arcs') startArcs({ refit: !back }); if (s === 'fixes') showCover = false; if (s === 'schedule') buildSchedule(); ctx.changed(); render(); };
   /* THE ARCS, LAST: nothing of them is shown until they are fitted (owner, 2026-10-21: "don't show the arcs at
      all until the automatic adjustment completes ... when the arc is automatically detected, the manual
      adjustment should come right after"). Fitting waits for the lawn map; a map reopened on this step keeps
@@ -357,10 +403,79 @@ export function sprinklers(ctx) {
       return `<p class="hint">${coverView === 'all' ? 'Each zone run long enough to put down its average depth, all the zones together: <span style="color:' + COVER.dry + '">orange</span> gets under 60% of it (dry), <span style="color:' + COVER.missed + '">red</span> gets none, <span style="color:' + COVER.wet + '">blue</span> over 150% (where zones overlap, or water piles up near heads).' : `Zone ${coverView}'s own rate, inches an hour, darker for more.`}</p>
         <div class="tools"><button type="button" class="${coverView === 'all' ? '' : 'plain'}" data-view="all">All zones</button>${zones.map(([z]) => `<button type="button" class="${coverView === z ? '' : 'plain'}" data-view="${z}" style="border-color:${colorOf(z)}">Zone ${z}</button>`).join('')}</div>
         <table class="months"><tr><th>Zone</th><th>Puts down, on average</th></tr>${zones.map(([z, v]) => `<tr><td><span class="chip" style="background:${colorOf(z)}"></span>Zone ${z}</td><td>${v.toFixed(2)} in/h</td></tr>`).join('')}</table>
-        <p><strong>Distribution uniformity ${Math.round(p.du * 100)}%</strong>: the driest quarter of the lawn against the average. The Irrigation Association rates spray zones good at 55% and very good at 65%, rotor zones good at 65% and very good at 70%; real home systems audit at about 50% (Mecham 2004, over 4,500 audits), since wind, tilted heads and worn nozzles take their share, and this map has none of them. ${p.missed ? `About <strong>${Math.round(m2(p.missed) * 10.76)} sq ft</strong> of lawn gets no water at all. ` : ''}${p.dryShare > 0.02 ? `${Math.round(p.dryShare * 100)}% of the lawn gets under 60% of the depth: those are the dry spots.` : 'No sizeable dry spots.'}${p.wetShare > 0.02 ? ` ${Math.round(p.wetShare * 100)}% gets over 150%.` : ''}</p>
+        <p><strong>Distribution uniformity ${Math.round(duReached(p, cv.lawnFlag) * 100)}%</strong>: the driest quarter of the lawn the heads reach, against its average. The Irrigation Association rates spray zones good at 55% and very good at 65%, rotor zones good at 65% and very good at 70%; real home systems audit at about 50% (Mecham 2004, over 4,500 audits), since wind, tilted heads and worn nozzles take their share, and this map has none of them. ${p.missed ? `About <strong>${Math.round(m2(p.missed) * 10.76)} sq ft</strong> of lawn gets no water at all. ` : ''}${p.dryShare > 0.02 ? `${Math.round(p.dryShare * 100)}% of the lawn gets under 60% of the depth: those are the dry spots.` : 'No sizeable dry spots.'}${p.wetShare > 0.02 ? ` ${Math.round(p.wetShare * 100)}% gets over 150%.` : ''}</p>
         <p class="dim">From each head's flow at the pressure it gets, over its arc and throw, by ${profilesNote}. Wind, a tilted head or a clogged nozzle are not in it: a catch-cup test on the lawn measures them.</p>`;
   }
 
+
+  /* WHAT COULD BE BETTER (lib/fixes.js), kept until the coverage changes */
+  let fixPicked = null, fixKey = '', fixCache = [];
+  function fixList() {
+    const cv = coverage();
+    if (!cv) return [];
+    if (fixKey === coverKey) return fixCache;
+    const { W, H, cellM, at } = cv;
+    fixCache = suggestions({ heads: coverHeads(), cover: { p: cv.p, W, H, cellM, at, lawnFlag: cv.lawnFlag }, groundAt: ctx.groundAt });
+    fixKey = coverKey;
+    return fixCache;
+  }
+
+  /* WHEN TO WATER (lib/schedule.js): each valve's lawn from where its heads throw, on the plan's own grid; the plan
+     run with those as its zones (in the analysis worker); then minutes, runs and days a week, season by season */
+  let sched = { key: '', state: 'idle', plan: null, vz: null, error: '' };
+  async function buildSchedule() {
+    const G = ctx.analysisGrid?.();
+    if (!G || !ctx.planReady?.() || !cat || !solve()) { sched.state = 'waiting'; if (step === 'schedule') render(); return; }
+    const key = solvedKey + JSON.stringify(irr.heads.map((h) => [h.dir, h.arc, h.throw, h.zone]));
+    if (key === sched.key && (sched.state === 'ready' || sched.state === 'working')) return;
+    sched = { key, state: 'working', plan: null, vz: null, error: '' };
+    if (step === 'schedule') render();
+    await new Promise((r) => setTimeout(r, 30)); // the page says so before the work
+    try {
+      const p = precipitation({ W: G.W, H: G.H, cellM: G.cellM, at: G.at, lawn: G.lawn }, coverHeads());
+      const vz = valveZones(p.byZone, G.W * G.H, G.lawn);
+      const plan = await ctx.valvePlan(vz.zoneOf);
+      if (sched.key !== key) return;
+      sched.plan = plan; sched.vz = vz; sched.grid = G; sched.cellM = G.cellM; sched.state = 'ready';
+    } catch (e) {
+      if (sched.key !== key) return;
+      sched.state = 'error'; sched.error = e.message || String(e);
+    }
+    if (step === 'schedule') render(); else ctx.draw();
+  }
+  /** Each valve zone's schedule (lib/schedule.js zoneSchedule), with what the page says about it. */
+  function schedRows() {
+    const { plan, vz } = sched;
+    if (!plan || !vz) return [];
+    const rows = [];
+    for (const z of irr.zones) {
+      const pz = plan.zones.find((x) => x.zone === z.n - 1), own = vz.zones.get(z.n);
+      if (!pz || !own) continue;
+      const s0 = zoneSchedule(pz, own, plan.multiplier);
+      if (!s0) continue;
+      const wk = plan.thisWeek?.zones.find((x) => x.zone === z.n - 1);
+      let next = null;
+      if (wk?.next) { const inches = ((wk.next.mm / plan.multiplier) * s0.sm) / 25.4; next = { date: wk.next.date, ...runsOf(inches, s0) }; }
+      rows.push({ n: z.n, s: s0, pz, ft2: own.cells * sched.cellM * sched.cellM * 10.764, next });
+    }
+    return rows;
+  }
+  const runsOf = (inches, s0) => { const total = (inches / s0.rateInH) * 60, runs = s0.takesInH && s0.rateInH > s0.takesInH ? Math.min(2, Math.max(1, Math.ceil(inches / s0.takesInH - 0.05))) : 1; return { runs, minutes: Math.max(1, Math.round(total / runs)), total: Math.round(total) }; };
+  /** Each valve's lawn, tinted its colour, over the photo (the schedule step). */
+  function drawValveLawn(g) {
+    const { vz, grid: G } = sched;
+    if (!vz || !G) return;
+    const img = new ImageData(G.W, G.H);
+    for (let i = 0; i < G.W * G.H; i++) {
+      const z = vz.zoneOf[i];
+      if (z < 0) continue;
+      const hex = colorOf(z + 1);
+      img.data.set([parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16), 120], i * 4);
+    }
+    const tmp = document.createElement('canvas'); tmp.width = G.W; tmp.height = G.H; tmp.getContext('2d').putImageData(img, 0, 0);
+    const [x0, y0] = ctx.toPx(G.at(-0.5, -0.5)), [x1, y1] = ctx.toPx(G.at(G.W - 0.5, G.H - 0.5));
+    g.save(); g.imageSmoothingEnabled = false; g.drawImage(tmp, x0, y0, x1 - x0, y1 - y0); g.restore();
+  }
 
   const BODY = {
     intro: () => `<p>Before the watering plan: where your sprinkler heads are, which valve each is on, and what heads and nozzles they are. With them the plan can say how long to run each zone, not just how much water it needs.</p>
@@ -424,14 +539,16 @@ export function sprinklers(ctx) {
       const h = sel.size === 1 ? head([...sel][0]) : null;
       const rows = irr.zones.map((z) => {
         const hs = irr.heads.filter((x) => x.zone === z.n), rd = hs.filter((x) => (thr ? x.throwFt : x.gauge));
-        const zs = s0?.zones.find((q) => q.n === z.n), ps = zs ? [...zs.res.heads.values()].map((v) => v.psi) : [];
-        return `<tr><td><span class="chip" style="background:${colorOf(z.n)}"></span>Zone ${z.n} <button type="button" class="plain" data-mzone="${z.n}" style="padding:2px 6px;font-size:13px">pick a head</button></td><td>${rd.length ? rd.map((x) => (thr ? `${x.throwFt.ft} ft${x.throwFt.by === 'gps' ? ' (GPS)' : ''}` : `${x.gauge.psi} psi`)).join(', ') : '<span style="color:var(--bad)">none yet</span>'}</td><td>${ps.length ? `${Math.round(Math.min(...ps))}${Math.round(Math.max(...ps)) !== Math.round(Math.min(...ps)) ? `-${Math.round(Math.max(...ps))}` : ''} psi${zs.res.borrowed ? ' (from the other zones)' : ''}` : ''}</td></tr>`;
+        const zs = s0?.zones.find((q) => q.n === z.n), shown = zs && !(zs.res.borrowed && hidesBorrowed());
+        const ps = shown ? [...zs.res.heads.values()].map((v) => v.psi) : [];
+        return `<tr><td><span class="chip" style="background:${colorOf(z.n)}"></span>Zone ${z.n} <button type="button" class="plain" data-mzone="${z.n}" style="padding:2px 6px;font-size:13px">pick a head</button></td><td>${rd.length ? `<span style="color:var(--good)">&#10003;</span> ${rd.map((x) => (thr ? `${x.throwFt.ft} ft${x.throwFt.by === 'gps' ? ' (GPS)' : ''}` : `${x.gauge.psi} psi`)).join(', ')}` : '<span style="color:var(--bad)">none yet</span>'}</td><td>${ps.length ? `${Math.round(Math.min(...ps))}${Math.round(Math.max(...ps)) !== Math.round(Math.min(...ps)) ? `-${Math.round(Math.max(...ps))}` : ''} psi${zs.res.borrowed ? ' (estimated from the other zones)' : ''}` : ''}</td></tr>`;
       }).join('');
-      const missing = irr.zones.filter((z) => !irr.heads.some((x) => x.zone === z.n && (thr ? x.throwFt : x.gauge))).length;
+      const missingZones = irr.zones.filter((z) => irr.heads.some((x) => x.zone === z.n && x.nozzle) && !irr.heads.some((x) => x.zone === z.n && (thr ? x.throwFt : x.gauge)));
+      const missing = missingZones.length;
       const how = thr
         ? 'Run one zone at a time. Pick a head whose throw has not been shortened (its radius screw open), and measure from the head straight out along the middle of its spray to the farthest point it wets. Measure on a still morning: wind shortens it. Then tap that head on the map and enter it.'
         : 'Run one zone at a time. With a pitot tube, hold its tip in the stream right at the nozzle; with a gauge, unscrew a nozzle and screw the gauge on in its place, then run the zone. A head midway along the zone reads closest to the zone\'s average. Then tap that head on the map and enter it.';
-      const now = h ? (thr ? h.throwFt : h.gauge) : null, sh = h ? solvedHead(h.id) : null;
+      const now = h ? (thr ? h.throwFt : h.gauge) : null, sh = h ? shownHead(h.id) : null;
       return `<p class="hint">${how}</p>
         ${h ? `<div class="card" style="margin-top:6px"><p style="margin:0">${headLine(h)}</p>
           <div class="tools">${thr ? `<label class="toggle">It throws <input type="number" inputmode="decimal" min="1" max="120" step="0.5" data-act="mval" value="${now ? now.ft : ''}" style="width:80px;padding:6px;font-size:16px"> ft</label>`
@@ -442,7 +559,10 @@ export function sprinklers(ctx) {
           ${sh ? `<p class="dim" style="margin:4px 0 0">${sh.measured ? 'Measured here' : 'From the readings'}: ${Math.round(sh.psi)} psi coming in${sh.water ? `; throws ${Math.round(sh.water.radiusFt)} ft, ${sh.water.gpm.toFixed(2)} gpm` : ''}.</p>` : ''}</div>` : '<p class="dim">Tap a head on the map to measure it.</p>'}
         ${measureNote ? `<p class="hint">${esc(measureNote)}</p>` : ''}
         <table class="months"><tr><th>Zone</th><th>Measured</th><th>At its heads</th></tr>${rows}</table>
-        <p class="dim">One reading a zone is enough; another at the zone's far end makes it better. The zone's other heads are given the reading's pressure, moved by the height between them (0.433 psi a foot, from the USGS lidar)${thr ? '; a throw is read back through the nozzle\'s chart to the pressure that throws that far' : ''}. ${missing ? `${missing} zone${missing > 1 ? 's have' : ' has'} no reading yet: ${missing > 1 ? 'they borrow' : 'it borrows'} the others'.` : ''}</p>
+        <p class="dim">On the map each head keeps its zone's colour and number; the ring round it is its pressure: <span style="color:${STATUS_COLOR.ok}">&#9679;</span> in its chart's range, <span style="color:${STATUS_COLOR.low}">&#9679;</span> under it, <span style="color:${STATUS_COLOR.high}">&#9679;</span> over it. A check marks each head you measured.</p>
+        <p class="dim">One reading a zone is enough; another at the zone's far end makes it better. The zone's other heads are given the reading's pressure, moved by the height between them (0.433 psi a foot, from the USGS lidar)${thr ? '; a throw is read back through the nozzle\'s chart to the pressure that throws that far' : ''}.${missing ? ` ${missing} zone${missing > 1 ? 's have' : ' has'} no reading yet.` : ''}</p>
+        ${measureAsk && missing ? `<div class="card" style="border-color:var(--warn)"><p style="margin:0"><strong>Zone${missing > 1 ? 's' : ''} ${missingZones.map((z) => z.n).join(', ')} ${missing > 1 ? 'have' : 'has'} no reading.</strong> ${missing > 1 ? 'Their' : 'Its'} pressure can be estimated from the other zones' readings, moved by the height between them; but each zone has its own valve and pipe, so it is a rougher estimate than one reading of its own.</p>
+          <div class="tools"><button type="button" data-act="measuremore">Measure ${missing > 1 ? 'them' : 'it'}</button><button type="button" class="plain" data-act="borrow" ${s0 ? '' : 'disabled'}>Go on with the estimate</button></div></div>` : ''}
         ${nav('arcs', { ok: !!s0, label: 'Next: the arcs' })}`;
     },
 
@@ -517,13 +637,70 @@ export function sprinklers(ctx) {
       const changedByYou = irr.heads.filter((x) => x.arcSet === 'user').length;
       const what = n && w ? (n.strip ? 'a strip: drag the white dot to turn it' : Number.isFinite(n.arcFixed) && n.arcFixed < 360 ? `a fixed ${n.arcFixed}° pattern: drag either white dot to turn it` : Number.isFinite(n.arcFixed) ? 'a full circle' : `adjustable ${n.arcMin ?? 0}-${n.arcMax ?? 360}°: drag a white dot to move that edge`) : '';
       const views = `<div class="tools"><button type="button" class="${showCover ? 'plain' : ''}" data-show="arcs">The arcs</button><button type="button" class="${showCover ? '' : 'plain'}" data-show="cover">The coverage</button></div>`;
-      if (showCover) return `${views}${coverageCard()}${nav('done', { label: 'Done' })}`;
+      if (showCover) return `${views}${coverageCard()}${nav('fixes', { label: 'Next: what could be better' })}`;
       return `${views}<p class="hint"><strong>Every arc is fitted.</strong> Each covers as much lawn as it can, reaching the next heads (head to head), with as little water as it can on the house, drives and paving; beds and woods are fine. Each throw is from the pressure that head gets. Now check them: tap a head to change it.</p>
         ${h && n && w ? `<div class="card" style="margin-top:6px"><p style="margin:0">${headLine(h)}</p>
           <p class="dim" style="margin:6px 0 0">${n.strip ? '' : `Arc ${Math.round(arcOf(h, n))}°, facing ${Math.round(h.dir ?? 0)}° from north; `}throws ${Math.round(w.radiusFt)} ft (${Math.round((h.throw ?? 1) * 100)}% of its chart${(h.throw ?? 1) < 0.999 ? `, by its radius screw: ${/rotor|impact/.test(w.kind) ? `the same flow on less ground, ${(1 / (h.throw * h.throw)).toFixed(1)}x the rate, piled up partway out` : w.kind === 'rotary' ? 'less flow, the rate it lays down unchanged' : 'less flow'}` : ''}). It is ${esc(what)}; drag the yellow square in or out to shorten or lengthen the throw.${h.arcSet === 'user' ? ' Set by you.' : ''}</p>
           <div class="tools"><button type="button" class="plain" data-act="autoone">Fit this one again</button></div></div>` : ''}
         <div class="tools"><button type="button" class="plain" data-act="autoall">Fit every head again${changedByYou ? ` (undoes your ${changedByYou} change${changedByYou > 1 ? 's' : ''})` : ''}</button></div>
         <p class="dim">The throw is the chart's radius at each head's pressure; a nozzle's radius screw (or a rotor's break-up screw) shortens it, usually by up to about 25%.</p>
+        ${nav('fixes', { label: 'Next: what could be better' })}`;
+    },
+
+    fixes: () => {
+      const list = fixList(), cv = coverage();
+      const views = `<div class="tools"><button type="button" class="${showCover ? 'plain' : ''}" data-show="arcs">The arcs</button><button type="button" class="${showCover ? '' : 'plain'}" data-show="cover">The coverage</button></div>`;
+      if (!cv) return `<p>${ctx.groundAt ? 'Give every head its nozzle and its pressure first.' : 'The lawn map is still loading.'}</p>${nav('schedule', { label: 'Next: when to water' })}`;
+      const between = betweenZones(cv.p.zoneMean);
+      const FIX = { arc: 'Change it in the arcs step', nozzle: 'Pick other nozzles', pressure: 'Pick other heads', head: 'Change the nearest' };
+      const items = list.map((f, k) => `<li style="margin:6px 0${fixPicked === k ? ';background:rgba(255,235,59,.18)' : ''}"><strong>${k + 1}.</strong> ${f.text}
+          <div class="tools" style="margin-top:4px"><button type="button" class="plain" data-fixshow="${k}" style="padding:4px 10px;font-size:14px">Show it</button>${f.heads.length ? `<button type="button" class="plain" data-fixgo="${k}" style="padding:4px 10px;font-size:14px">${FIX[f.fix] || 'Change it'}</button>` : ''}</div></li>`).join('');
+      return `${views}<p class="hint">${list.length ? `${list.length} thing${list.length > 1 ? 's' : ''} that a longer or shorter run can't fix, most important first. Each is numbered on the map; "Show it" marks its heads.` : '<strong>Nothing about the heads needs changing.</strong> The pressure suits every nozzle, each zone puts its water down evenly enough, and the lawn is covered.'}</p>
+        ${list.length ? `<ol style="list-style:none;padding-left:0;margin:0">${items}</ol>` : ''}
+        <p class="dim">${between ? `Zone ${between.hi.zone} puts water down at about ${between.hi.inH.toFixed(2)} in/h and zone ${between.lo.zone} at ${between.lo.inH.toFixed(2)}: that is fine, and nothing to change here. The next step gives each zone its own run time, and cycle and soak where a zone waters faster than the ground takes it in.` : 'Each zone gets its own run time in the next step, and cycle and soak where it waters faster than the ground takes it in.'} How evenly the lawn the heads reach is watered: ${Math.round(duReached(cv.p, cv.lawnFlag) * 100)}% (good is 55% for sprays, 65% for rotors, by the Irrigation Association's figures).</p>
+        ${nav('schedule', { label: 'Next: when to water' })}`;
+    },
+
+    schedule: () => {
+      if (sched.state === 'waiting') return `<p class="hint">${ctx.planReady?.() ? 'The lawn map is still loading.' : 'Reading the soil survey and ten years of weather…'} The schedule follows as soon as they are in.</p>${nav('done', { ok: false, label: 'Done' })}`;
+      if (sched.state === 'working' || sched.state === 'idle') return `<p class="hint"><strong>Working out each zone's watering over ten years of your weather…</strong></p>${nav('done', { ok: false, label: 'Done' })}`;
+      if (sched.state === 'error') return `<p class="hint">The schedule could not be worked out: ${esc(sched.error)}.</p><div class="tools"><button type="button" data-act="schedagain">Try again</button></div>${nav('done', { label: 'Done' })}`;
+      const rows = schedRows();
+      if (!rows.length) return `<p>None of the zones waters the traced lawn, so there is nothing to schedule.</p>${nav('done', { label: 'Done' })}`;
+      const runWords = (x) => (x.runs > 1 ? `${x.runs} runs of ${x.minutes} min, an hour apart` : `${x.minutes} min`);
+      const seasonNames = ['Spring', 'Summer', 'Fall', 'Winter'].filter((n) => rows.some((r) => r.s.seasons.some((q) => q.name === n)));
+      const often = (q) => (q.dryOnly ? 'only in a dry spell' : q.sameAll ? q.often[0].often : q.often.map((o) => `${MONTH[o.month].slice(0, 3)}: ${o.often}`).join('; '));
+      const tables = seasonNames.map((name) => {
+        const lines = rows.map((r) => { const q = r.s.seasons.find((x) => x.name === name); return q ? `<tr><td><span class="chip" style="background:${colorOf(r.n)}"></span>Zone ${r.n}</td><td>${often(q)}</td><td>${runWords(q)}</td></tr>` : ''; }).join('');
+        const ms = [...new Set(rows.flatMap((r) => r.s.seasons.find((x) => x.name === name)?.months || []))].sort((a, b) => ((a + 10) % 12) - ((b + 10) % 12));
+        return `<h3 style="margin:12px 0 0;font-size:1rem">${name} <span class="dim" style="font-weight:400">(${ms.map((m) => MONTH[m].slice(0, 3)).join(', ')})</span></h3>
+          <table class="months"><tr><th>Zone</th><th>How often</th><th>Each watering day</th></tr>${lines}</table>`;
+      }).join('');
+      const summer = rows.map((r) => r.s.seasons.find((x) => x.name === 'Summer')).filter(Boolean);
+      const dayMin = summer.reduce((s2, q) => s2 + q.total, 0);
+      const notes = rows.map((r) => {
+        const s0 = r.s, bits = [];
+        bits.push(`puts down ${s0.rateInH.toFixed(2)} in/h on about ${Math.round(r.ft2 / 10) * 10} sq ft of lawn, ${Math.round(s0.du * 100)}% even`);
+        const each = s0.seasons.length ? s0.seasons.reduce((a, q) => a + q.depthIn, 0) / s0.seasons.length : null;
+        if (each) bits.push(`each watering puts down about ${each < 0.1 ? 'under 0.1' : each.toFixed(2)} in${s0.sm > 1.05 ? `, ${Math.round((s0.sm - 1) * 100)}% more than the grass uses, so the zone's driest quarter gets enough` : ''}`);
+        if (s0.takesInH && s0.rateInH > s0.takesInH) bits.push(`faster than its slowest ground takes water in (${s0.takesInH.toFixed(2)} in/h), hence the runs an hour apart`);
+        if (s0.skipAfterIn) bits.push(`skip a watering after about ${s0.skipAfterIn.toFixed(2)} in of rain`);
+        if (s0.dry) bits.push(`in a week with no rain in ${MONTH[s0.dry.month]}: ${s0.dry.waterings} watering${s0.dry.waterings > 1 ? 's' : ''} of ${runWords(s0.dry)}`);
+        const pz = r.pz, warn = [];
+        if (pz.tooDry > 0) warn.push(`about ${Math.round(pz.tooDry * 10.76 / 10) * 10} sq ft of it still dries out between waterings, and running the whole zone longer would over-water the rest`);
+        if (pz.tooWet > 0) warn.push(`about ${Math.round(pz.tooWet * 10.76 / 10) * 10} sq ft of it gets too wet on this schedule (it takes water from a roof, paving or uphill too)`);
+        if (pz.wetAnyway > 0) warn.push(`about ${Math.round(pz.wetAnyway * 10.76 / 10) * 10} sq ft stays wet with no watering at all: drainage, not watering`);
+        const next = r.next ? `Next watering: likely <strong>${new Date(`${r.next.date}T12:00:00Z`).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric', timeZone: 'UTC' })}</strong>, ${runWords(r.next)}.` : '';
+        return `<li style="margin:6px 0"><span class="chip" style="background:${colorOf(r.n)}"></span><strong>Zone ${r.n}</strong> ${bits.join('; ')}.${next ? ` ${next}` : ''}${warn.length ? ` <span style="color:var(--warn)">Within the zone, ${warn.join('; ')}.</span>` : ''}</li>`;
+      }).join('');
+      return `<p class="hint">Run times for your controller, zone by zone, as the seasons go. Each is from ten years of this place's weather, the soil under each zone's lawn and how fast and how evenly that zone's heads put water down.</p>
+        ${tables}
+        ${summer.length ? `<p class="dim">${dayMin > 180
+          ? `Every zone on one day would run about ${Math.round(dayMin / 60 * 2) / 2} hours. Give the zones different days instead (each keeps its own number of days a week), and where a zone runs twice, let the other zones' runs be its hour's soak: most controllers call this "cycle and soak". Water in the early morning, finishing by about 9 am where you can: less is lost to wind and heat, and the grass dries off by evening.`
+          : `A summer watering day runs about ${dayMin} minutes over all the zones: start early enough to finish by about 9 am, when less is lost to wind and heat and the grass dries off by evening.`}</p>` : ''}
+        <h3 style="margin:12px 0 0;font-size:1rem">Zone by zone</h3>
+        <ul style="padding-left:18px;margin:4px 0">${notes}</ul>
+        <p class="dim">"How often" is a typical year, rain counted: in a dry spell water more often, and after a good rain skip a watering. A controller with a rain sensor or weather adjustment does this by itself. Months not listed need no watering in a typical year. On the map each zone's colour shows the lawn it waters.</p>
         ${nav('done', { label: 'Done' })}`;
     },
 
@@ -575,7 +752,7 @@ export function sprinklers(ctx) {
         const pvbG = ctx.elev(irr.system.pvb.at), top = Math.max(...irr.heads.map((h) => ctx.elev(h.at)).filter(Number.isFinite));
         if (Number.isFinite(pvbG) && Number.isFinite(top) && top + 0.1 > pvbG) warn.push(`The highest head is ${((top - pvbG) * FT_PER_M).toFixed(1)} ft ${top >= pvbG ? 'above' : 'below'} the ground at the backflow preventer: plumbing codes put a pressure vacuum breaker at least 12 in above the highest head.`);
       }
-      return `<p class="hint">The lines are drawn as an installer most likely laid them; each head is coloured by its pressure: <span style="color:${STATUS_COLOR.ok}">●</span> in its chart's range, <span style="color:${STATUS_COLOR.low}">●</span> under it, <span style="color:${STATUS_COLOR.high}">●</span> over it. Tap a head for its numbers.</p>
+      return `<p class="hint">The lines are drawn as an installer most likely laid them; each head keeps its zone's colour and number, and the ring round it is its pressure: <span style="color:${STATUS_COLOR.ok}">●</span> in its chart's range, <span style="color:${STATUS_COLOR.low}">●</span> under it, <span style="color:${STATUS_COLOR.high}">●</span> over it. A check marks a head with a gauge reading. Tap a head for its numbers.</p>
         ${ph ? `<p>${headLine(pick)}<br>${ph.psi.toFixed(1)} psi at the head${ph.measured ? ' (from your reading)' : ph.adjusted ? ' (moved by your readings in this zone)' : ''}${ph.water?.regulated ? `, ${Math.round(ph.water.nozzlePsi)} at the nozzle after its regulator` : ''}; chart ${Math.round(ph.water?.chartLo)}–${Math.round(ph.water?.chartHi)} psi.</p>
           <div class="card" style="margin-top:6px"><strong>Your gauge reading</strong> at this head, with its zone running:
             <div class="tools"><input type="number" inputmode="decimal" min="0" max="200" step="0.5" data-act="gpsi" value="${pick.gauge ? pick.gauge.psi : ''}" style="width:90px;padding:8px;font-size:16px"> psi
@@ -864,7 +1041,14 @@ export function sprinklers(ctx) {
         measureNote = `GPS: ${ft.toFixed(0)} ft. A phone is good to a few feet, so a tape is better for a spray's short throw.`;
         throwGps.head = null; stopGps(); solvedKey = ''; changed(); render();
       }); });
-      wireNav(P, () => go('arcs'));
+      P.querySelector('[data-act=measuremore]')?.addEventListener('click', () => { measureAsk = false; render(); });
+      P.querySelector('[data-act=borrow]')?.addEventListener('click', () => { measureAsk = false; irr.borrowOk = true; changed(); go('arcs'); });
+      wireNav(P, () => {
+        const thr = irr.method === 'throw';
+        const missing = irr.zones.some((z) => irr.heads.some((x) => x.zone === z.n && x.nozzle) && !irr.heads.some((x) => x.zone === z.n && (thr ? x.throwFt : x.gauge)));
+        if (missing && !irr.borrowOk) { measureAsk = true; render(); return; }
+        go('arcs');
+      });
     },
     equipment: (P) => {
       const sys = irr.system;
@@ -929,6 +1113,25 @@ export function sprinklers(ctx) {
       P.querySelector('[data-act=autoall]')?.addEventListener('click', () => { for (const x of irr.heads) x.arcSet = null; fitAll(); changed(); render(); });
       P.querySelectorAll('[data-show]').forEach((b) => b.addEventListener('click', () => { showCover = b.dataset.show === 'cover'; sel.clear(); render(); }));
       P.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', () => { coverView = b.dataset.view === 'all' ? 'all' : Number(b.dataset.view); render(); }));
+      wireNav(P, () => go('fixes'));
+    },
+    fixes: (P) => {
+      P.querySelectorAll('[data-show]').forEach((b) => b.addEventListener('click', () => { showCover = b.dataset.show === 'cover'; render(); }));
+      P.querySelectorAll('[data-fixshow]').forEach((b) => b.addEventListener('click', () => {
+        const f = fixList()[Number(b.dataset.fixshow)];
+        sel.clear(); for (const id of f?.heads || []) sel.add(id); fixPicked = Number(b.dataset.fixshow); render();
+      }));
+      P.querySelectorAll('[data-fixgo]').forEach((b) => b.addEventListener('click', () => {
+        const f = fixList()[Number(b.dataset.fixgo)];
+        if (!f) return;
+        const ids = f.heads.slice();
+        if (f.fix === 'arc') { go('arcs'); sel.clear(); if (ids[0]) sel.add(ids[0]); render(); }
+        else { go('models'); sel.clear(); for (const id of ids) sel.add(id); resetForm(); render(); }
+      }));
+      wireNav(P, () => go('schedule'));
+    },
+    schedule: (P) => {
+      P.querySelector('[data-act=schedagain]')?.addEventListener('click', () => { sched.key = ''; buildSchedule(); });
       wireNav(P, () => { irr.done = true; irr.none = false; changed(); finish(); });
     },
   };
@@ -1064,7 +1267,6 @@ export function sprinklers(ctx) {
   /* THE ARC'S HANDLES (owner, 2026-10-21: "they can drag the edges of the arc to adjust it (tap the head to
      adjust the arc, so there's not overlapping drag handles)"): on the one selected head only, a white dot at
      each edge of its arc (one, for a full circle or a strip) and a yellow square at the end of its throw. */
-  let arcDrag = null;
   const deg = (r) => (r * 180) / Math.PI, mod360 = (a) => ((a % 360) + 360) % 360;
   function handles(h) {
     const n = cat?.nozzle(h?.nozzle), w = h && waterOf(h);
@@ -1080,31 +1282,40 @@ export function sprinklers(ctx) {
     if (arc >= 359) out.t = at(dir + 180 + 30, R); // clear of the edge dot
     return out;
   }
+  /* DRAGGING (owner, 2026-10-23: "dragging the arc is pretty jittery/laggy ... when dragging an arc to its
+     minimum or maximum, it should stop at its minimum/maximum rather than loop back around"). The handle
+     follows how far the finger has turned round the head since it took hold (unwrapped, so passing north or
+     the other edge never jumps the arc round), from the arc and facing it had then; the arc stops at the
+     nozzle's least and greatest, and resumes when the finger comes back within them. Rounded when let go. */
+  const wrap180 = (a) => ((((a + 180) % 360) + 360) % 360) - 180;
+  const fingerAngle = (ev, [x, y]) => { const [px, py] = ctx.tapPx(ev); return mod360(deg(Math.atan2(px - x, -(py - y)))); };
   function dragArc(ev) {
     const h = head(arcDrag.id), n = cat.nozzle(h.nozzle), hs = handles(h);
     if (!hs) return;
-    const [px, py] = ctx.tapPx(ev), [x, y] = hs.centre;
-    const theta = mod360(deg(Math.atan2(px - x, -(py - y))));
-    if (arcDrag.which === 't') { h.throw = +Math.max(MIN_THROW, Math.min(1, Math.hypot(px - x, py - y) / hs.full)).toFixed(2); return; }
-    const arc = arcOf(h, n), dir = h.dir ?? 0;
-    if (n.strip) { h.dir = Math.round(theta); return; }
-    if (Number.isFinite(n.arcFixed)) { h.dir = Math.round(mod360(arcDrag.which === 'a' ? theta + arc / 2 : theta - arc / 2)); return; }
+    if (arcDrag.which === 't') {
+      const [px, py] = ctx.tapPx(ev), [x, y] = hs.centre;
+      h.throw = Math.max(MIN_THROW, Math.min(1, Math.hypot(px - x, py - y) / hs.full));
+      return;
+    }
+    const theta = fingerAngle(ev, hs.centre);
+    arcDrag.turn += wrap180(theta - arcDrag.last); arcDrag.last = theta;
+    const d0 = arcDrag.dir0, a0 = arcDrag.arc0, turn = arcDrag.turn;
+    // a strip or a fixed pattern turns as a whole
+    if (n.strip || Number.isFinite(n.arcFixed)) { h.dir = mod360(d0 + turn); return; }
     const lo = Math.max(BIN_DEG, n.arcMin ?? 0), hi = Math.min(360, n.arcMax ?? 360);
+    const clamp = (a) => Math.max(lo, Math.min(hi, a));
     if (arcDrag.which === 'a') {
-      // this edge follows the finger; the other stays
-      const end = dir + arc / 2;
-      let a2 = mod360(end - theta);
-      if (a2 < 1 && arc > 180) a2 = 360;
-      a2 = Math.max(lo, Math.min(hi, a2));
-      h.arc = Math.round(a2); h.dir = Math.round(mod360(end - a2 / 2));
+      // the left edge follows the finger (turning it clockwise closes the arc); the right edge stays
+      const end = d0 + a0 / 2, a2 = clamp(a0 - turn);
+      h.arc = a2; h.dir = mod360(end - a2 / 2);
     } else {
-      const start = dir - arc / 2;
-      let a2 = mod360(theta - start);
-      if (a2 < 1 && arc > 180) a2 = 360;
-      a2 = Math.max(lo, Math.min(hi, a2));
-      h.arc = Math.round(a2); h.dir = Math.round(mod360(start + a2 / 2));
+      const begin = d0 - a0 / 2, a2 = clamp(a0 + turn);
+      h.arc = a2; h.dir = mod360(begin + a2 / 2);
     }
   }
+  let frame = 0;
+  /** One redraw a screen frame, however many moves the finger sends. */
+  const drawSoon = () => { if (frame) return; frame = requestAnimationFrame(() => { frame = 0; ctx.draw(); }); };
 
   /** A finger down on a head in the review step starts dragging it (not the map); in the arcs step, on one
       of the selected head's handles, that handle. */
@@ -1117,7 +1328,7 @@ export function sprinklers(ctx) {
       let best = null, bd = lim;
       for (const k of ['a', 'b', 't']) if (hs[k]) { const d = Math.hypot(hs[k][0] - x, hs[k][1] - y); if (d < bd) { bd = d; best = k; } }
       if (!best) return false;
-      arcDrag = { id: h.id, which: best }; dragged = false;
+      arcDrag = { id: h.id, which: best, dir0: h.dir ?? 0, arc0: arcOf(h, cat.nozzle(h.nozzle)), last: fingerAngle(ev, hs.centre), turn: 0 }; dragged = false;
       return true;
     }
     if (step !== 'review') return false;
@@ -1127,14 +1338,28 @@ export function sprinklers(ctx) {
     return true;
   }
   function move(ev) {
-    if (arcDrag) { dragArc(ev); dragged = true; ctx.draw(); return true; }
+    if (arcDrag) { dragArc(ev); dragged = true; drawSoon(); return true; }
     if (!drag) return false;
     head(drag).at = snapped(ctx.toLngLat(ctx.tapPx(ev))).map((v) => +v.toFixed(7));
-    dragged = true; ctx.draw();
+    dragged = true; drawSoon();
     return true;
   }
   function drop() {
-    if (arcDrag) { const h = head(arcDrag.id); arcDrag = null; if (dragged && h) { h.arcSet = 'user'; changed(); } render(); return true; }
+    if (arcDrag) {
+      const h = head(arcDrag.id), was = arcDrag;
+      arcDrag = null;
+      if (dragged && h) {
+        // rounded with the edge that was not dragged kept where it was (to half a degree)
+        const n = cat.nozzle(h.nozzle), which = was.which;
+        if (Number.isFinite(h.arc) && n && !n.strip && !Number.isFinite(n.arcFixed) && (which === 'a' || which === 'b')) {
+          const keep = which === 'a' ? h.dir + h.arc / 2 : h.dir - h.arc / 2;
+          h.arc = Math.round(h.arc); h.dir = Math.round(mod360(which === 'a' ? keep - h.arc / 2 : keep + h.arc / 2) * 2) / 2;
+        } else if (Number.isFinite(h.dir)) h.dir = Math.round(mod360(h.dir) * 2) / 2;
+        if (Number.isFinite(h.throw)) h.throw = +h.throw.toFixed(2);
+        h.arcSet = 'user'; changed();
+      }
+      render(); return true;
+    }
     if (!drag) return false;
     drag = null;
     if (dragged) changed();
@@ -1165,6 +1390,39 @@ export function sprinklers(ctx) {
     g.restore();
   }
 
+  /** A green check in a white-edged disc, centred at (cx, cy). */
+  function check(g, cx, cy, cr, px) {
+    g.save();
+    g.fillStyle = '#2e7d32'; g.strokeStyle = '#fff'; g.lineWidth = px * 1.2;
+    g.beginPath(); g.arc(cx, cy, cr, 0, 7); g.fill(); g.stroke();
+    g.strokeStyle = '#fff'; g.lineWidth = px * 1.8; g.lineCap = 'round'; g.lineJoin = 'round';
+    g.beginPath(); g.moveTo(cx - cr * 0.5, cy + cr * 0.02); g.lineTo(cx - cr * 0.12, cy + cr * 0.42); g.lineTo(cx + cr * 0.52, cy - cr * 0.38); g.stroke();
+    g.restore();
+  }
+  /** A head as its zone's colour with the zone's number in it and, when its pressure is shown, a ring of the
+      pressure's colour outside a black line (owner, 2026-10-23: "a colored edge around the dot with a black line
+      separating it... So that you can display both the zone number and the pressure indicator"). -> the outer
+      radius drawn */
+  function numberedDot(g, h, x, y, px, on) {
+    const sh = shownHead(h.id), R0 = 8 * px * (on ? 1.2 : 1), line = 1.3 * px, ring = 3.4 * px;
+    const Ro = sh ? R0 + line + ring : R0 + line;
+    g.save();
+    g.fillStyle = '#000'; g.beginPath(); g.arc(x, y, Ro + (sh ? 0.8 * px : 0), 0, 7); g.fill();
+    if (sh) {
+      g.fillStyle = STATUS_COLOR[sh.water?.status] || '#9e9e9e'; g.beginPath(); g.arc(x, y, Ro, 0, 7); g.fill();
+      g.fillStyle = '#000'; g.beginPath(); g.arc(x, y, R0 + line, 0, 7); g.fill();
+    }
+    g.fillStyle = colorOf(h.zone); g.beginPath(); g.arc(x, y, R0, 0, 7); g.fill();
+    if (on) { g.strokeStyle = '#ffeb3b'; g.lineWidth = 2.4 * px; g.beginPath(); g.arc(x, y, Ro + 2.4 * px, 0, 7); g.stroke(); }
+    if (h.zone) {
+      g.font = `800 ${Math.round(R0 * 1.3)}px system-ui, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.lineWidth = 2.6 * px; g.strokeStyle = 'rgba(0,0,0,.75)'; g.lineJoin = 'round';
+      g.strokeText(String(h.zone), x, y + 0.5 * px); g.fillStyle = '#fff'; g.fillText(String(h.zone), x, y + 0.5 * px);
+    }
+    g.restore();
+    return Ro + (on ? 3.6 * px : 0);
+  }
+
   /** What this step draws over the photo. g: the canvas; lw: the page's line width. */
   function drawOn(g, lw) {
     const showAll = !!step || irr.done;
@@ -1173,8 +1431,10 @@ export function sprinklers(ctx) {
     const px = ctx.cssScale(), r = 6 * px;
     lw = 2 * px;
     if ((step === 'place' || step === 'review') && irr.grid?.on && irr.grid.origin) drawGrid(g, px);
-    const arcsUp = step === 'arcs' && arcPhase === 'ready';
+    const arcsUp = (step === 'arcs' && arcPhase === 'ready') || step === 'fixes';
     if ((arcsUp && showCover) || (!step && irr.done && ctx.showCoverage?.())) drawCoverage(g);
+    // each valve's lawn, in the schedule step
+    if (step === 'schedule') drawValveLawn(g);
     // the fans only once the arcs are fitted
     const fans = (arcsUp && !showCover) || (!step && irr.done && !ctx.showCoverage?.());
     if (fans && cat) for (const h of irr.heads) {
@@ -1182,8 +1442,8 @@ export function sprinklers(ctx) {
       if (!w) continue;
       const [x, y] = ctx.toPx(h.at), R = (w.radiusFt / 3.281) * ctx.pxPerM();
       const mid = ((h.dir ?? 0) - 90) * (Math.PI / 180);
-      const picked = step === 'arcs' && sel.has(h.id);
-      g.fillStyle = `${colorOf(h.zone)}${picked ? '66' : step === 'arcs' ? '40' : '26'}`; g.strokeStyle = picked ? '#ffeb3b' : `${colorOf(h.zone)}${step === 'arcs' ? 'ee' : '99'}`; g.lineWidth = picked ? lw * 1.5 : step === 'arcs' ? lw * 0.9 : lw * 0.5;
+      const picked = (step === 'arcs' || step === 'fixes') && sel.has(h.id), strong = step === 'arcs' || step === 'fixes';
+      g.fillStyle = `${colorOf(h.zone)}${picked ? '66' : strong ? '40' : '26'}`; g.strokeStyle = picked ? '#ffeb3b' : `${colorOf(h.zone)}${strong ? 'ee' : '99'}`; g.lineWidth = picked ? lw * 1.5 : strong ? lw * 0.9 : lw * 0.5;
       if (w.strip) {
         // a strip: its rectangle, along the head's direction (an end strip from the head, a centre strip
         // either side of it, a side strip out from its long side)
@@ -1207,6 +1467,7 @@ export function sprinklers(ctx) {
       const sys = irr.system;
       g.lineCap = 'round';
       for (const z of s0.zones) {
+        if (!z.tree) continue; // measured at the heads: no pipe is laid out
         const box = z.tree.nodes[0].at;
         // the supply line, backflow preventer to valve box
         g.strokeStyle = 'rgba(255,255,255,.85)'; g.lineWidth = px * 4; g.setLineDash([px * 6, px * 4]);
@@ -1240,21 +1501,23 @@ export function sprinklers(ctx) {
     }
     const s1 = step === 'measure' ? solve() : s0;
     const byPressure = (step === 'pressure' && s0) || (step === 'measure' && s1);
+    let labelUp = r * 1.5;
     for (const h of irr.heads) {
       const [x, y] = ctx.toPx(h.at);
-      g.fillStyle = byPressure ? STATUS_COLOR[solvedHead(h.id)?.water?.status] || '#9e9e9e' : colorOf(h.zone); g.strokeStyle = sel.has(h.id) ? '#ffeb3b' : '#000'; g.lineWidth = sel.has(h.id) ? lw * 1.2 : lw * 0.6;
+      if (byPressure) {
+        // the zone's colour and number, the pressure as a ring round it (owner, 2026-10-23), a check if measured
+        const Ro = numberedDot(g, h, x, y, px, sel.has(h.id));
+        labelUp = Math.max(labelUp, Ro + 2 * px);
+        if (measuredHere(h)) check(g, x + Ro * 0.85, y - Ro * 0.85, r * 0.95, px);
+        continue;
+      }
+      g.fillStyle = colorOf(h.zone); g.strokeStyle = sel.has(h.id) ? '#ffeb3b' : '#000'; g.lineWidth = sel.has(h.id) ? lw * 1.2 : lw * 0.6;
       g.beginPath(); g.arc(x, y, sel.has(h.id) ? r * 1.4 : r, 0, 7); g.fill(); g.stroke();
       // choosing models: a check beside each head that has its nozzle (owner, 2026-10-21)
-      if (step === 'models' && h.nozzle) {
-        const cx = x + r * 1.9, cy = y - r * 1.5, cr = r * 0.95;
-        g.fillStyle = '#2e7d32'; g.strokeStyle = '#fff'; g.lineWidth = px * 1.2;
-        g.beginPath(); g.arc(cx, cy, cr, 0, 7); g.fill(); g.stroke();
-        g.strokeStyle = '#fff'; g.lineWidth = px * 1.8; g.lineCap = 'round'; g.lineJoin = 'round';
-        g.beginPath(); g.moveTo(cx - cr * 0.5, cy + cr * 0.02); g.lineTo(cx - cr * 0.12, cy + cr * 0.42); g.lineTo(cx + cr * 0.52, cy - cr * 0.38); g.stroke();
-      }
+      if (step === 'models' && h.nozzle) check(g, x + r * 1.9, y - r * 1.5, r * 0.95, px);
     }
     // the selected head's handles, in the arcs step
-    if (arcsUp && !showCover && sel.size === 1) {
+    if (step === 'arcs' && arcsUp && !showCover && sel.size === 1) {
       const hs = handles(head([...sel][0]));
       if (hs) {
         for (const k of ['a', 'b']) if (hs[k]) {
@@ -1269,12 +1532,12 @@ export function sprinklers(ctx) {
       const fs = 11 * px, boxes = [];
       g.font = `700 ${fs}px system-ui, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'bottom';
       for (const h of irr.heads) {
-        const sh = solvedHead(h.id);
+        const sh = shownHead(h.id);
         if (!sh) continue;
-        const t = `${Math.round(sh.psi)} psi`, [x, y] = ctx.toPx(h.at), w0 = g.measureText(t).width, bx = [x - w0 / 2, y - r * 1.5 - fs, x + w0 / 2, y - r * 1.5];
+        const t = `${Math.round(sh.psi)} psi`, [x, y] = ctx.toPx(h.at), w0 = g.measureText(t).width, bx = [x - w0 / 2, y - labelUp - fs, x + w0 / 2, y - labelUp];
         if (boxes.some((d) => bx[0] < d[2] && bx[2] > d[0] && bx[1] < d[3] && bx[3] > d[1])) continue;
         boxes.push(bx);
-        g.lineWidth = fs / 4; g.strokeStyle = 'rgba(0,0,0,.85)'; g.strokeText(t, x, y - r * 1.5); g.fillStyle = '#fff'; g.fillText(t, x, y - r * 1.5);
+        g.lineWidth = fs / 4; g.strokeStyle = 'rgba(0,0,0,.85)'; g.strokeText(t, x, y - labelUp); g.fillStyle = '#fff'; g.fillText(t, x, y - labelUp);
       }
     }
     // the details over each head (owner: "the full details of that head")
@@ -1298,6 +1561,20 @@ export function sprinklers(ctx) {
         });
       }
       labelsHidden = hidden;
+    }
+    // what could be better: each numbered where it is
+    if (step === 'fixes') {
+      const fs = 12 * px;
+      fixList().forEach((f, k) => {
+        if (!f.at) return;
+        const [x, y] = ctx.toPx(f.at), on = fixPicked === k, R = (on ? 11 : 9) * px;
+        const yy = f.kind === 'missed' || f.kind === 'dry' ? y : y - 16 * px; // over a head, clear of its dot
+        g.save();
+        g.fillStyle = on ? '#ffeb3b' : '#fff'; g.strokeStyle = f.kind === 'missed' || f.kind === 'dry' ? '#d32f2f' : '#000'; g.lineWidth = 2.4 * px;
+        g.beginPath(); g.arc(x, yy, R, 0, 7); g.fill(); g.stroke();
+        g.fillStyle = '#000'; g.font = `800 ${fs}px system-ui, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(String(k + 1), x, yy + 0.5 * px);
+        g.restore();
+      });
     }
     if (step === 'place' && placeMode === 'gps') {
       if (gps.ref) { const [x, y] = ctx.toPx(gps.ref); g.strokeStyle = '#ffeb3b'; g.lineWidth = lw; g.beginPath(); g.moveTo(x - r * 2, y); g.lineTo(x + r * 2, y); g.moveTo(x, y - r * 2); g.lineTo(x, y + r * 2); g.stroke(); }
@@ -1334,7 +1611,8 @@ export function sprinklers(ctx) {
       // a map saved on the old last step, the coverage, comes back on the arcs
       const was = !irr.done && irr.step === 'coverage' ? 'arcs' : savedStep;
       step = resumeAt || (force && irr.heads.length ? 'review' : was || 'intro');
-      if (step === 'arcs') startArcs();
+      if (step === 'arcs' || step === 'fixes') startArcs();
+      if (step === 'schedule') buildSchedule();
       render();
       return true;
     },
@@ -1342,7 +1620,9 @@ export function sprinklers(ctx) {
     get data() { return irr; },
     tap, grab, move, drop, drawOn,
     /** The ground came in (or anything the solve reads): solve again and show it. */
-    refresh() { solvedKey = ''; if (step === 'arcs' && arcPhase === 'waiting') startArcs({ refit: true }); if (step) render(); else ctx.draw(); },
+    refresh() { solvedKey = ''; if ((step === 'arcs' || step === 'fixes') && arcPhase === 'waiting') startArcs({ refit: true }); if (step === 'schedule' && sched.state !== 'ready') buildSchedule(); if (step) render(); else ctx.draw(); },
+    /** The watering plan came in (the soil and the weather): the schedule step can go on. */
+    planIn() { if (step === 'schedule' && sched.state !== 'ready' && sched.state !== 'working') buildSchedule(); },
     summary() {
       if (!cat || irr.none || !irr.done) return null;
       const s0 = solve();

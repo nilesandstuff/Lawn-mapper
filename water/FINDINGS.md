@@ -1196,6 +1196,51 @@ So the model is unchanged: poly stays smooth; iron-bearing well water stays a fl
 largest of these would be a slow, unmeasured loss. The pressure measured at the heads (H33) already includes
 whatever the pipes have become, which makes it the better answer for an old system.
 
+### H35. Smoother arcs, measured pressure shown by zone, what to change, when to water, one map view at a time (water session, 2026-10-23)
+
+The owner's notes of 2026-10-23, all built and checked in a browser on the owner's real map (the readings typed
+there were test values on a local copy; nothing was saved to the real map):
+
+- ARC DRAG: it re-solved the whole system, pipe layout included, on every finger move, and redrew on every
+  pointer event; the edge not being dragged was rebuilt from rounded numbers each move, so it crept. Now the
+  pressures hold still during a drag (a head's own flow at its arc is still recomputed, so the fan follows), the
+  layout is kept until a head, a valve box or the backflow preventer moves, the canvas redraws once a frame, and
+  the edge follows the finger's unwrapped turn since it took hold. Checked: swept 300 degrees past an R-VAN24's
+  270 maximum it stays at 270; swept back past its 45 minimum it stops at 45; the other edge stays put (to half a
+  degree once let go).
+- MEASURE STEP: each head keeps its zone's colour, with the zone's number in it; its pressure is a ring outside a
+  black line (green in its chart, orange under, purple over); a check beside each measured head and in the table.
+  A zone with no reading of its own shows no pressure until the person chooses to go on without one ("Go on with
+  the estimate"); then it borrows the others', as before. The pressure step's dots are drawn the same way. Note:
+  zones 3, 4 and 5's colours are the ring's green, orange and purple; the black line keeps them apart.
+- WHAT COULD BE BETTER (lib/fixes.js, new step after the arcs). The line drawn: a run time can give a zone as a
+  whole more or less (zones at different rates, ground slower than the heads: the schedule's), so only what it
+  cannot fix is listed, each with its change: pressure over a chart (regulating bodies or a valve module), under
+  it (less flow on the zone: rotary nozzles on spray bodies, smaller nozzles, or a split zone), rotors and sprays
+  on one valve, a head laying down 1.7x or 1/1.7 its zone-mates' rate (matched precipitation), lawn no head
+  reaches or that gets under half (turn or open an arc, a wider nozzle, head-to-head spacing, or heads of its own
+  if it is lawn meant to be watered), and a fifth or more of a head's water on the house or paving. Numbered on
+  the map; "Show it" marks the heads; a button takes the person to the step that changes it. Uniformity is now
+  given over the lawn the heads reach (the owner's map: an unwatered west lawn made the whole-lawn DU 0%).
+- WHEN TO WATER (lib/schedule.js, the last step). Each valve's lawn is where its heads put down the most (the
+  coverage model on the plan's own grid); the ten-year plan is run again with those as its zones (the analysis
+  worker); then per zone: the plan's depth over its multiplier for a typical system (DU 0.65), times the IA
+  scheduling multiplier on that zone's own lower-quarter DU (held to 0.4-0.9), in minutes at the zone's own mean
+  rate; one run, or cycle and soak (at most two, an hour apart) where the zone waters faster than its slowest tenth
+  of ground takes in; how often from the plan's typical-year count, month by month, grouped Spring / Summer / Fall
+  / Winter. Also: rain that skips a watering, a dry week in the peak month, the next watering from this week's
+  weather, and the part of a zone that still dries out or gets too wet (a run time cannot fix it). On the owner's
+  map with test readings: R-VAN24 zones at 0.20-0.28 in/h, 30-37% even (heads 22-36 ft apart throwing 19-21 ft),
+  2 runs of 37-51 min, 1-2 days a week in summer; every zone on one day would be about 7.5 hours, so the page says
+  to give zones different days and let the other zones' runs be each one's soak. The rates and evenness are the
+  coverage model's (S-level for conventional sprays, H27); a catch-cup test would measure them.
+- MAP VIEWS: one at a time (watering zones, water need, soil, standing water and runoff, slope, sprinklers), each
+  with only its own key and a line saying what it shows; roofs and paving and the photo stay as switches. New:
+  the SOIL view (the survey's units on the property, and each described: texture on top, water held in the root
+  zone, how fast it takes water in, drainage, runoff group, water table, and what that means for watering) and a
+  SLOPE view (rise over about 4 m from the lidar, on the property, in classes from 2% up, with the beside-the-house
+  strip). The sprinklers view crashed after a measured route (it drew pipe that was never laid): fixed.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge

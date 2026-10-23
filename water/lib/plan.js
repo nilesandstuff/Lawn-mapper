@@ -201,7 +201,9 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
   }
   return {
     multiplier: SM, rootIn: (soils[0]?.rz?.rootCm ?? 20.32) / 2.54,
-    zones: out, zoneOf: zones.zoneOf, userZones: !!zones.user, kinds, needMm, needMonth: pm, wetShare, dryShare, wetFromWatering, wetAnyway,
+    zones: out, zoneOf: zones.zoneOf, userZones: !!zones.user, kinds, needMm,
+    // each cell's soil, as the index of its unit in soil below (the soil view)
+    soilAt: Int16Array.from(soilAt, (v) => v >> 1), needMonth: pm, wetShare, dryShare, wetFromWatering, wetAnyway,
     roofs: (() => {
       /* Only the roofs on the property count for asking: the analysis reaches 30 m past the property line,
          where the neighbours' houses are (owner, 2026-10-19: "it says I still have 21 unmarked roofs"). With

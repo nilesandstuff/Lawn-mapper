@@ -38,25 +38,38 @@ function seasonFor(grass) {
   return gs.days.length ? new Set(gs.days) : null;
 }
 
-async function plan(inputs = {}) {
+function planWith(inputs = {}, zoneOf = null) {
   const { r } = kept;
   const grass = inputs.grass === 'warm' ? 'warm' : 'cool';
   kept.season = seasonFor(grass);
-  const t0 = Date.now();
-  const p = waterPlan(r.result, {
+  return waterPlan(r.result, {
     lawnMask: kept.lawn, paved: r.impervious ? r.impervious.paved : null, soil: kept.soil,
     topsoil: !!inputs.topsoil, downspouts: inputs.downspouts || [], gutters: inputs.gutters || [],
     typical: kept.typical, week: kept.week, season: kept.season, light: kept.light, grass,
-    texture: inputs.texture || null, parcelMask: r.parcelMask || null, areas: inputs.areas || [],
+    texture: inputs.texture || null, parcelMask: r.parcelMask || null, areas: inputs.areas || [], zoneOf,
   });
+}
+
+/* THE PLAN ON THE PERSON'S OWN VALVES (owner, 2026-10-23: "a final step that gives exact watering recs by season
+   and zone"): the same ten years, each valve's lawn (public/heads.js, from where its heads throw) watered as one. */
+function valvePlan({ inputs, zoneOf, id }) {
+  if (!kept.r || !kept.typical) { self.postMessage({ valvePlan: { id, error: 'not ready' } }); return; }
+  const p = planWith(inputs || kept.inputs || {}, zoneOf);
+  self.postMessage({ valvePlan: { id, zones: p.zones, thisWeek: p.thisWeek, multiplier: p.multiplier, weather: p.weather, years: p.years, grass: p.grass, seasonDays: kept.season ? kept.season.size : null, rootIn: p.rootIn } });
+}
+
+async function plan(inputs = {}) {
+  const t0 = Date.now();
+  const p = planWith(inputs);
+  const grass = p.grass;
   const out = {
-    zones: p.zones, zoneOf: p.zoneOf, kinds: p.kinds, needMm: p.needMm, needMonth: p.needMonth, wetFromWatering: p.wetFromWatering, wetAnyway: p.wetAnyway, dryShare: p.dryShare,
+    zones: p.zones, zoneOf: p.zoneOf, kinds: p.kinds, needMm: p.needMm, soilAt: p.soilAt, multiplier: p.multiplier, rootIn: p.rootIn, needMonth: p.needMonth, wetFromWatering: p.wetFromWatering, wetAnyway: p.wetAnyway, dryShare: p.dryShare,
     roofs: p.roofs, soil: p.soil, weather: p.weather, thisWeek: p.thisWeek, years: p.years, topsoil: p.topsoil,
     standIn: kept.standIn, seconds: (Date.now() - t0) / 1000, shaded: p.shaded, sunShare: p.sunShare,
     seasonDays: kept.season ? kept.season.size : null, grass, rainFrom: kept.rainFrom, texture: p.texture,
     trouble: Object.values(kept.sources || {}).filter(Boolean),
   };
-  self.postMessage({ plan: out }, [out.zoneOf.buffer, out.kinds.buffer, out.needMm.buffer, out.wetFromWatering.buffer, out.wetAnyway.buffer, out.dryShare.buffer]);
+  self.postMessage({ plan: out }, [out.zoneOf.buffer, out.kinds.buffer, out.soilAt.buffer, out.needMm.buffer, out.wetFromWatering.buffer, out.wetAnyway.buffer, out.dryShare.buffer]);
 }
 
 /* THE SAME MAP EVERY LOAD (owner, 2026-10-19: "the map loads a bit differently each time... there wasn't a
@@ -198,7 +211,9 @@ self.onmessage = async ({ data }) => {
   try {
     if (data.site) { kept.inputs = data.inputs || {}; await start(data.site, data.inputs || {}); }
     else if (data.replan) { kept.inputs = data.replan; if (kept.r) await plan(data.replan); }
+    else if (data.valvePlan) valvePlan(data.valvePlan);
   } catch (e) {
+    if (data?.valvePlan) { self.postMessage({ valvePlan: { id: data.valvePlan.id, error: e.message || String(e) } }); return; }
     self.postMessage(kept.r ? { planError: e.message || String(e) } : { error: e.message || String(e) });
   }
 };

@@ -168,37 +168,69 @@ function toPx(frame, img, xy) {
 
 /* -------------------------------------------------------------- drawing */
 
-function overlay(d, { flow = true, grade = true, hard = true, zones = true } = {}) {
+/* ONE VIEW AT A TIME (owner, 2026-10-23: "Break up the different views into their respective categories, so
+   that it's not just a sea of overlapping and hard to separate colors. Add soil view"). Roofs (white) and paving
+   (black) under every view, when wanted; each view's own colours on top, and nothing of the others'. */
+const VIEWS = ['zones', 'need', 'soil', 'water', 'slope', 'sprinklers'];
+let mapView = 'zones';
+/** Soil units' colours: earthy, told apart (the soil view). */
+const SOIL_RGB = [[161, 136, 127], [255, 183, 77], [77, 182, 172], [149, 117, 205], [229, 115, 115], [174, 213, 129], [100, 181, 246], [240, 98, 146]];
+/** Slope classes for the slope view: light to deep purple (kept apart from the house strip's red, amber, green). */
+const SLOPE_STEPS = [[0.02, [237, 231, 246, 0]], [0.05, [209, 196, 233, 150]], [0.1, [149, 117, 205, 170]], [0.2, [94, 53, 177, 190]], [Infinity, [49, 27, 146, 210]]];
+const SLOPE_WORDS = ['under 2% (flat)', '2–5%', '5–10%', '10–20%', 'over 20%'];
+
+/** The ground's slope, cell by cell, from the survey's surface (rise over run, central differences). */
+function slopeOf(d) {
+  if (d.slope) return d.slope;
+  const { W, H, cell } = d.grid, z = d.z, out = new Float32Array(W * H).fill(NaN);
+  if (!z) return out;
+  // over two cells each way (about 4 m): the ground's lie, not the survey's scatter
+  const k = 2;
+  for (let r = k; r < H - k; r++) for (let c = k; c < W - k; c++) {
+    const i = r * W + c, gx = (z[i + k] - z[i - k]) / (2 * k * cell), gy = (z[i + k * W] - z[i - k * W]) / (2 * k * cell);
+    if (Number.isFinite(gx) && Number.isFinite(gy)) out[i] = Math.hypot(gx, gy);
+  }
+  d.slope = out;
+  return out;
+}
+
+function overlay(d, v, { hard = true } = {}) {
   const { W, H } = d.grid;
   const img = new ImageData(W, H);
   const px = img.data;
   const p = view.plan;
+  const slope = v === 'slope' ? slopeOf(d) : null;
+  // the soil and the slope on the property only (the lawn when there is no property line): the survey's soil
+  // patch and the woods beyond it say nothing about this lawn
+  const mine = d.parcelMask || d.lawnMask || null;
   for (let i = 0; i < W * H; i++) {
     let rgba = null;
     // roofs white, paving black (owner 2026-10-19); the plan's own reading once it is in, the person's marks included
-    const kind = p?.kinds ? p.kinds[i] : d.wall[i] ? 2 : hard && d.paved && Number.isFinite(d.paved[i]) && d.paved[i] >= 0.5 ? 3 : 0;
-    if (kind === 2) rgba = [250, 250, 250, 170];
+    const kind = p?.kinds ? p.kinds[i] : d.wall[i] ? 2 : d.paved && Number.isFinite(d.paved[i]) && d.paved[i] >= 0.5 ? 3 : 0;
+    if (hard && kind === 2) rgba = [250, 250, 250, 170];
     if (hard && kind === 3) rgba = [12, 12, 12, 190];
     if (hard && kind === 4) rgba = [150, 60, 30, 170]; // a brick or paver patio
-    if (p && view.need && Number.isFinite(p.needMm[i])) {
-      // each square metre's own need in the thirstiest month, light (little) to dark (much)
-      const t = Math.max(0, Math.min(1, (p.needMm[i] - view.need.lo) / Math.max(1, view.need.hi - view.need.lo)));
-      rgba = [Math.round(227 - 214 * t), Math.round(242 - 171 * t), Math.round(253 - 92 * t), 200];
-    } else if (zones && p && p.zoneOf[i] >= 0) {
+    const ground = kind !== 2 && kind !== 3 && kind !== 4;
+    if (v === 'zones' && p && p.zoneOf[i] >= 0 && kind === 1) {
       rgba = [...ZONE_RGB[p.zoneOf[i] % ZONE_RGB.length], 105];
       if (p.wetAnyway[i] >= 0.1) rgba = [13, 71, 161, 200];
       else if (p.wetFromWatering[i] >= 0.05) rgba = [255, 23, 68, 200];
       else if (p.dryShare[i] > 0.1) rgba = [255, 214, 0, 190];
-    }
-    if (d.reported[i] === 2) {
-      const t = Math.min(1, d.depth[i] / 0.10);
-      rgba = [30, 107, 255, Math.round(110 + 130 * t)];
-    } else if (d.reported[i] === 1) rgba = [190, 200, 215, 110]; // not a lawn hollow: pavement, trees, a ditch...
-    // runoff lines: weighted by what each surface sheds when the lawn is traced (m^2 of runoff-producing surface), plain area otherwise
-    if (flow && !d.wall[i] && d.flow[i] >= (d.weighted ? 60 : 250)) rgba = [34, 211, 238, 220];
-    if (grade && Number.isFinite(d.grade[i])) {
-      const g = d.grade[i];
-      rgba = g < -0.01 ? [229, 57, 53, 255] : g < 0.05 ? [255, 179, 0, 255] : [67, 160, 71, 255];
+    } else if (v === 'need' && p && view.need && Number.isFinite(p.needMm[i])) {
+      // each square metre's own need in the thirstiest month, light (little) to dark (much)
+      const t = Math.max(0, Math.min(1, (p.needMm[i] - view.need.lo) / Math.max(1, view.need.hi - view.need.lo)));
+      rgba = [Math.round(227 - 214 * t), Math.round(242 - 171 * t), Math.round(253 - 92 * t), 200];
+    } else if (v === 'soil' && p?.soilAt && ground && (!mine || mine[i])) {
+      rgba = [...SOIL_RGB[p.soilAt[i] % SOIL_RGB.length], kind === 1 ? 200 : 120];
+    } else if (v === 'water') {
+      if (d.reported[i] === 2) rgba = [30, 107, 255, Math.round(110 + 130 * Math.min(1, d.depth[i] / 0.10))];
+      else if (d.reported[i] === 1) rgba = [190, 200, 215, 110]; // not a lawn hollow: pavement, trees, a ditch...
+      // runoff lines: weighted by what each surface sheds when the lawn is traced (m^2 of runoff-producing surface), plain area otherwise
+      if (!d.wall[i] && d.flow[i] >= (d.weighted ? 60 : 250)) rgba = [34, 211, 238, 220];
+    } else if (v === 'slope' && ground && (!mine || mine[i])) {
+      const sl = slope[i];
+      if (Number.isFinite(sl)) { const step = SLOPE_STEPS.find(([lim]) => sl < lim); if (step[1][3]) rgba = step[1]; }
+      if (Number.isFinite(d.grade[i])) { const gr = d.grade[i]; rgba = gr < -0.01 ? [229, 57, 53, 255] : gr < 0.05 ? [255, 179, 0, 255] : [67, 160, 71, 255]; }
     }
     if (rgba) px.set(rgba, i * 4);
   }
@@ -217,7 +249,7 @@ function draw() {
 
   // the analysis over the photo, once it is in, and not while the sprinklers are being placed
   if (d && !heads.active) {
-    const o = overlay(d, { flow: $('#show-flow').checked, grade: $('#show-grade').checked, hard: $('#show-hard').checked, zones: $('#show-zones').checked });
+    const o = overlay(d, mapView, { hard: $('#show-hard').checked });
     const tmp = document.createElement('canvas');
     tmp.width = d.grid.W; tmp.height = d.grid.H;
     tmp.getContext('2d').putImageData(o, 0, 0);
@@ -267,8 +299,9 @@ function draw() {
     for (const p of a.ring) { const [x, y] = at(p); g.fillStyle = AREA_COLOR[a.kind] || '#fff'; g.beginPath(); g.arc(x, y, lw, 0, 7); g.fill(); }
   }
   if (heads.active) { heads.drawOn(g, lw); return; }
+  // the downspouts belong to the water the lot sheds: the zones, the need and the standing water
   const spouts = [...inputs.downspouts, ...(mode === 'to' && pending ? [{ from: pending, to: null }] : [])];
-  for (const sp of spouts) {
+  for (const sp of ['zones', 'need', 'water'].includes(mapView) || mode ? spouts : []) {
     const [x0, y0] = at(sp.from);
     g.fillStyle = '#ff9100'; g.beginPath(); g.arc(x0, y0, lw * 1.6, 0, 7); g.fill();
     if (!sp.to) continue;
@@ -276,7 +309,7 @@ function draw() {
     g.strokeStyle = '#ff9100'; g.lineWidth = lw; g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke();
     g.strokeStyle = '#000'; g.lineWidth = lw * 0.6; g.fillStyle = '#00e5ff'; g.beginPath(); g.arc(x1, y1, lw * 2, 0, 7); g.fill(); g.stroke();
   }
-  if ($('#show-heads')?.checked) heads.drawOn(g, lw);
+  if (mapView === 'sprinklers') heads.drawOn(g, lw);
 }
 
 /** A tap on the photo -> [lng, lat]. */
@@ -363,6 +396,28 @@ const heads = sprinklers({
     return false;
   },
   mapId: () => view.site?.mapId || null,
+  /* THE ANALYSIS GRID (the watering plan's cells), for each valve's lawn: its size, each cell's middle as
+     [lng, lat] (moved by the datum correction, as drawn), and whether it is lawn. null until the survey is in. */
+  analysisGrid: () => {
+    const d = view.data;
+    if (!d?.grid) return null;
+    const g = d.grid, dx = d.shift.east / g.k, dy = d.shift.north / g.k;
+    const lawn = d.lawnMask || view.plan?.kinds;
+    return {
+      W: g.W, H: g.H, cellM: g.cell,
+      at: (c, r) => fromMerc([g.bbox[0] + dx + ((c + 0.5) * g.cell) / g.k, g.bbox[3] + dy - ((r + 0.5) * g.cell) / g.k]),
+      lawn: (i) => (d.lawnMask ? !!d.lawnMask[i] : lawn ? lawn[i] === 1 : false),
+    };
+  },
+  /** The plan is in (the soil and the weather read). */
+  planReady: () => !!view.plan,
+  /** The watering plan run on the valves' own lawn (zoneOf: zone - 1 per cell, -1 none) -> Promise of it. */
+  valvePlan: (zoneOf) => new Promise((resolve, reject) => {
+    if (!running || !view.plan) { reject(new Error('the watering plan is not in yet')); return; }
+    const id = ++valveAsk.n;
+    valveAsk.waiting.set(id, { resolve, reject });
+    running.postMessage({ valvePlan: { inputs: { ...inputs }, zoneOf, id } });
+  }),
   showCoverage: () => !!$('#show-coverage')?.checked,
   // the traced lawn's outlines, as rings of [lng, lat] (the placing grid lines up with its longest edge)
   lawnRings: () => (view.site?.lawn || []).flatMap((f) => (f.geometry?.type === 'Polygon' ? f.geometry.coordinates : f.geometry?.type === 'MultiPolygon' ? f.geometry.coordinates.flat() : [])),
@@ -408,7 +463,7 @@ const heads = sprinklers({
     return [pts.reduce((a, p) => a + p[0], 0) / pts.length, pts.reduce((a, p) => a + p[1], 0) / pts.length];
   },
   changed: () => keep(),
-  finish: () => { $('#result').classList.remove('heads-on'); draw(); headsCard(); if (view.data) report(view.data, view.site); if (view.plan) planReport(view.plan); },
+  finish: () => { $('#result').classList.remove('heads-on'); legend(); draw(); headsCard(); if (view.data) report(view.data, view.site); if (view.plan) planReport(view.plan); },
 });
 
 /** The sprinkler system, zone by zone, under the map once its steps are done. */
@@ -524,8 +579,7 @@ function soakAdvice(takes, mm) {
 
 function planReport(p) {
   const parts = [];
-  const legend = $('#zone-legend');
-  legend.innerHTML = p.zones.map((z) => `${chip(z.zone)}zone ${z.zone + 1}`).join(' &nbsp; ');
+  legend();
   if (!p.zones.length) { $('#plan').innerHTML = '<div class="card"><h2>No lawn to plan for</h2><p class="dim">Trace the lawn in Lawn Mapper and open the map from your dashboard.</p></div>'; return; }
   const peak = (z) => z.months.reduce((a, b) => ((b.mmMonth || 0) > (a.mmMonth || 0) ? b : a), z.months[0]);
   if (p.trouble?.length) parts.push(`<div class="card" style="border-color:var(--warn)"><h2>Not everything answered this time</h2><ul>${p.trouble.map((t) => `<li>${esc(t)}</li>`).join('')}</ul><p class="dim">Reload the page to try again; the plan below is worked out without it.</p></div>`);
@@ -596,6 +650,7 @@ function hillReport(h) {
 /* ----------------------------------------------------------------- flow */
 
 let running = null;
+const valveAsk = { n: 0, waiting: new Map() };
 
 async function run(site) {
   running?.terminate();
@@ -622,7 +677,8 @@ async function run(site) {
       else if (data.error) { w.terminate(); reject(new Error(data.error)); }
       else if (data.done) resolve(data.done);
       else if (data.planProgress) $('#saved').textContent = data.planProgress;
-      else if (data.plan) { view.plan = data.plan; $('#saved').textContent = savedNote; if (!heads.active) planReport(data.plan); needScale(); draw(); }
+      else if (data.valvePlan) { const w = valveAsk.waiting.get(data.valvePlan.id); valveAsk.waiting.delete(data.valvePlan.id); if (w) { if (data.valvePlan.error) w.reject(new Error(data.valvePlan.error)); else w.resolve(data.valvePlan); } }
+      else if (data.plan) { view.plan = data.plan; needScale(); heads.planIn?.(); $('#saved').textContent = savedNote; if (!heads.active) planReport(data.plan); legend(); draw(); }
       else if (data.planError) $('#saved').textContent = `The watering plan could not be worked out: ${data.planError}`;
       else if (data.hill) hillReport(data.hill);
     };
@@ -646,6 +702,7 @@ async function run(site) {
   const d = await first;
   view.data = d;
   heads.refresh(); // the ground's heights and the buildings: the pressure model solves again with them
+  legend();
   draw();
   if (!heads.active) report(d, site);
   status('');
@@ -858,19 +915,85 @@ $('#here').addEventListener('click', () => guarded(async () => {
   await run(await siteFromPoint(pos.coords.latitude, pos.coords.longitude));
 }));
 
-for (const id of ['#show-flow', '#show-grade', '#show-photo', '#show-hard', '#show-zones', '#show-heads', '#show-coverage']) $(id).addEventListener('change', draw);
+for (const id of ['#show-photo', '#show-hard']) $(id).addEventListener('change', () => { legend(); draw(); });
 $('#edit-heads').addEventListener('click', async () => { setMode(null); if (await heads.open(heads.data, { force: true })) { $('#result').classList.add('heads-on'); draw(); $('#stage').scrollIntoView({ behavior: 'smooth' }); } });
 /* The water-need layer (owner 2026-10-19: knock-on effects of every input, as on a real lawn): each square
    metre's own watering in the lawn's thirstiest month, scaled from the lawn's 5th to 95th percentile. */
 function needScale() {
   const p = view.plan;
-  if (!p || !$('#show-need').checked) { view.need = null; $('#need-legend').hidden = true; return; }
+  if (!p) { view.need = null; return; }
   const v = Array.from(p.needMm).filter(Number.isFinite).sort((a, b) => a - b);
   if (!v.length) { view.need = null; return; }
   view.need = { lo: v[Math.floor(v.length * 0.05)], hi: v[Math.floor(v.length * 0.95)] };
-  $('#need-text').textContent = `${inch(view.need.lo)} to ${inch(view.need.hi)} in of watering in a typical ${MONTH[p.needMonth ?? 6]}, square by square`;
-  $('#need-legend').hidden = false;
 }
-$('#show-need').addEventListener('change', () => { needScale(); draw(); });
+
+/* THE KEY AND A FEW WORDS FOR THE VIEW SHOWN: only its own colours (the property line and the lawn's outline
+   are on every view) */
+const key = (bg, text, border = false) => `<span><i style="background:${bg}${border ? ';border:1px solid #888' : ''}"></i>${text}</span>`;
+function legend() {
+  const p = view.plan, d = view.data, items = [], info = [];
+  const base = [key('#ffeb3b', 'property line'), key('#69f0ae', 'your lawn')];
+  if ($('#show-hard').checked) base.push(key('#111', 'paving', true), key('#fff', 'roof', true));
+  if (mapView === 'zones') {
+    if (p?.zones?.length) items.push(...p.zones.map((z) => `<span>${chip(z.zone)}zone ${z.zone + 1}</span>`));
+    items.push(key('#ff1744', 'too wet if watered with its zone'), key('#0d47a1', 'wet even without watering'), key('#ffd600', 'still dries out'));
+    info.push('Parts of the lawn that need the same watering, from the plan below: its soil, its slope, its sun and the water that runs onto it. These are watering needs, not your valves; your valves are under <em>Sprinklers</em>.');
+  } else if (mapView === 'need') {
+    if (view.need) items.push(`<span><i style="background:linear-gradient(90deg,#e3f2fd,#0d47a1);width:48px"></i>${inch(view.need.lo)} to ${inch(view.need.hi)} in of watering in a typical ${MONTH[p.needMonth ?? 6]}, square by square</span>`);
+    info.push('Each square metre\'s own watering in the lawn\'s thirstiest month: darker needs more. Every input shows here, whether or not it moves a zone line.');
+  } else if (mapView === 'soil') {
+    info.push(soilInfo(p));
+  } else if (mapView === 'water') {
+    items.push(key('#1e6bff', 'a hollow in the lawn that holds water'), key('#bec8d7', 'low ground off the lawn (paving, under trees, a ditch)'), key('#22d3ee', 'where runoff runs together'), key('#ff9100', 'downspout, from the roof edge to where it empties'));
+    info.push('Where rain collects and where it runs, from the USGS lidar survey of the ground. The cards below list each hollow.');
+  } else if (mapView === 'slope') {
+    SLOPE_STEPS.forEach(([, c], k) => { if (c[3]) items.push(key(`rgb(${c[0]},${c[1]},${c[2]})`, SLOPE_WORDS[k])); });
+    items.push(key('#e53935', 'beside the house: falls toward it'), key('#ffb300', 'falls away, but under 6 in over 10 ft'), key('#43a047', 'falls away 6 in or more over 10 ft (the building code)'));
+    info.push(`How steep the ground is, from the lidar (ground flatter than 2% is left clear). On a slope water runs off before it soaks in: the plan waters it in shorter runs. The strip along the house is its fall over the first few feet.`);
+  } else if (mapView === 'sprinklers') {
+    const z = heads.summary();
+    if (z) items.push(...z.map((v) => `<span><i style="background:${v.color}"></i>zone ${v.n}</span>`));
+    if ($('#show-coverage').checked) items.push(key('#d32f2f', 'no water'), key('#f57c00', 'under 60% of the average (dry)'), key('#1565c0', 'over 150%'));
+    info.push(heads.data?.done && !heads.data?.none ? ($('#show-coverage').checked ? 'Each zone run long enough to put down its average depth, all the zones together.' : 'Where each head throws. <em>Your sprinklers</em> changes them.') : 'No sprinklers mapped yet: <em>Your sprinklers</em> adds them.');
+  }
+  $('#legend').innerHTML = [...items, ...base].join('');
+  $('#view-info').innerHTML = info.join('');
+  $('#sprinkler-sub').hidden = mapView !== 'sprinklers';
+}
+
+/* THE SOIL, IN A FEW WORDS (owner, 2026-10-23: "give a brief description of the soil characteristics in the info
+   panel"): for each of the survey's soils on the map, its colour, its texture, how much water it holds where the
+   roots are, how fast water soaks in, its drainage and its runoff group, and what that means for watering. */
+const HYD = { A: 'sheds little rain (sandy, water soaks in fast)', B: 'sheds some rain in a storm', C: 'sheds a fair share of a storm (water soaks in slowly)', D: 'sheds most of a storm (clay, or a high water table)' };
+function soilInfo(p) {
+  if (!p?.soil?.length) return 'The soil survey is still being read.';
+  const counts = new Map();
+  if (p.soilAt) for (let i = 0; i < p.soilAt.length; i++) if (p.kinds[i] === 1) counts.set(p.soilAt[i], (counts.get(p.soilAt[i]) || 0) + 1);
+  const total = [...counts.values()].reduce((a, b) => a + b, 0) || 1;
+  const rows = p.soil.map((u, k) => {
+    const share = counts.get(k) || 0;
+    if (p.soil.length > 1 && !share) return null;
+    const top = u.layers?.[0], texture = top ? String(top.texture).toLowerCase() : null;
+    const taw = (p.topsoil ? u.tawTopsoilMm : u.tawMm) ?? null, holds = taw !== null ? taw / 25.4 : null;
+    const holdWord = holds === null ? '' : holds < 0.8 ? 'holds little water' : holds < 1.4 ? 'holds an average amount of water' : 'holds a lot of water';
+    const intake = u.intakeInH, inWord = !Number.isFinite(intake) ? '' : intake < 0.2 ? `takes water in slowly (about ${intake.toFixed(2)} in an hour)` : intake < 1 ? `takes water in at a moderate pace (about ${intake.toFixed(1)} in an hour)` : `takes water in fast (about ${intake.toFixed(1)} in an hour)`;
+    const wet = (u.wetByMonth || []).map((v, m) => (v !== null && v !== undefined ? [m, v] : null)).filter(Boolean);
+    const table = wet.length ? ` Its water table comes within about ${Math.round(Math.min(...wet.map((x) => x[1])) / 2.54)} in of the surface in ${wet.map((x) => MONTH[x[0]].slice(0, 3)).join(', ')}.` : '';
+    const means = [];
+    if (holds !== null && holds < 0.8) means.push('water it more often, a little at a time');
+    else if (holds !== null && holds >= 1.4) means.push('it can go longer between waterings');
+    if (Number.isFinite(intake) && intake < 0.3) means.push('water in short runs with a soak between, or it runs off');
+    const pctLawn = p.soil.length > 1 ? ` (${Math.round((share / total) * 100)}% of the lawn)` : '';
+    return `<li><span class="chip" style="background:rgb(${SOIL_RGB[k % SOIL_RGB.length].join(',')})"></span><strong>${esc(u.name || 'unnamed')}</strong>${pctLawn}: ${[texture ? `${texture} on top` : null, holdWord ? `${holdWord} in the top ${Math.round(p.rootIn || 8)} in (about ${holds.toFixed(1)} in)` : null, inWord || null, u.drainage ? String(u.drainage).toLowerCase() : null, u.hydgrp ? HYD[String(u.hydgrp)[0]] || null : null].filter(Boolean).join('; ')}.${table}${means.length ? ` For watering: ${means.join(', and ')}.` : ''}</li>`;
+  }).filter(Boolean);
+  return `<ul>${rows.join('')}</ul><span>From the USDA soil survey (NRCS): the soil is mapped in patches tens of yards across, so a line between two soils is approximate.${p.topsoil ? ' With your 4 in of loamy topsoil on the lawn.' : ''}</span>`;
+}
+
+document.querySelectorAll('.views [data-view]').forEach((b) => b.addEventListener('click', () => {
+  mapView = b.dataset.view;
+  document.querySelectorAll('.views [data-view]').forEach((x) => x.classList.toggle('on', x === b));
+  legend(); draw();
+}));
+document.querySelectorAll('[name=sprview]').forEach((r) => r.addEventListener('change', () => { legend(); draw(); }));
 
 if (mapId) guarded(async () => { status('Opening your map…'); await run(await siteFromMap(mapId)); });

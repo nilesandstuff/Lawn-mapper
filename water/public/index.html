@@ -31,6 +31,11 @@
   .stage canvas { display: block; width: 100%; height: auto; }
   .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 14px; color: var(--dim); margin: 8px 0 0; }
   .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 2px; vertical-align: -1px; margin-right: 5px; }
+  .views { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .views button { padding: 7px 11px; font-size: 14px; background: transparent; color: var(--accent); }
+  .views button.on { background: var(--accent); color: #fff; }
+  #view-info ul { margin: 4px 0 0; padding-left: 18px; }
+  #view-info li { margin: 4px 0; }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin-top: 14px; }
   .card h2 { font-size: 1.05rem; margin: 0 0 6px; }
   .card ul { margin: 6px 0 0; padding-left: 20px; }
@@ -82,33 +87,23 @@
     <div id="heads-panel" class="card" hidden></div>
     <p id="heads-saved" class="dim" style="margin:4px 0 0"></p>
     <div class="main-only">
-    <div class="legend">
-      <span id="zone-legend"></span>
-      <span id="need-legend" hidden><i style="background:linear-gradient(90deg,#e3f2fd,#0d47a1);width:48px"></i><span id="need-text"></span></span>
-      <span><i style="background:#ff1744"></i>too wet if watered with its zone</span>
-      <span><i style="background:#0d47a1"></i>wet even without watering</span>
-      <span><i style="background:#ffd600"></i>still dries out</span>
-      <span><i style="background:#1e6bff"></i>a hollow in the lawn that holds water</span>
-      <span><i style="background:#bec8d7"></i>low ground off the lawn (paving, under trees, a ditch)</span>
-      <span><i style="background:#22d3ee"></i>where runoff runs together</span>
-      <span><i style="background:#111;border:1px solid #888"></i>paving</span>
-      <span><i style="background:#fff;border:1px solid #888"></i>roof</span>
-      <span><i style="background:#e53935"></i>ground slopes toward the house</span>
-      <span><i style="background:#ffb300"></i>slopes away from the house, but less than 6 in over the first 10 ft</span>
-      <span><i style="background:#43a047"></i>slopes away 6 in or more over the first 10 ft (what building codes ask)</span>
-      <span><i style="background:#ffeb3b"></i>property line</span>
-      <span><i style="background:#69f0ae"></i>your lawn</span>
+    <!-- ONE VIEW AT A TIME (owner, 2026-10-23: "Break up the different views into their respective categories,
+         so that it's not just a sea of overlapping and hard to separate colors") -->
+    <div class="views" role="tablist" aria-label="What the map shows">
+      <button type="button" data-view="zones" class="on">Watering zones</button>
+      <button type="button" data-view="need">Water need</button>
+      <button type="button" data-view="soil">Soil</button>
+      <button type="button" data-view="water">Standing water</button>
+      <button type="button" data-view="slope">Slope</button>
+      <button type="button" data-view="sprinklers">Sprinklers</button>
     </div>
-    <div style="margin-top:8px">
-      <label class="toggle"><input type="checkbox" id="show-zones" checked> zones</label>
-      <label class="toggle"><input type="checkbox" id="show-need"> water need, square by square</label>
-      <label class="toggle"><input type="checkbox" id="show-flow"> runoff</label>
-      <label class="toggle"><input type="checkbox" id="show-grade"> beside the house</label>
-      <label class="toggle"><input type="checkbox" id="show-hard" checked> paving</label>
+    <div style="margin-top:6px">
+      <label class="toggle"><input type="checkbox" id="show-hard" checked> roofs and paving</label>
       <label class="toggle"><input type="checkbox" id="show-photo" checked> photo</label>
-      <label class="toggle"><input type="checkbox" id="show-heads" checked> sprinklers</label>
-      <label class="toggle"><input type="checkbox" id="show-coverage"> watering coverage</label>
+      <span id="sprinkler-sub" hidden><label class="toggle"><input type="radio" name="sprview" value="arcs" checked> arcs</label><label class="toggle"><input type="radio" name="sprview" value="cover" id="show-coverage"> how evenly they water</label></span>
     </div>
+    <div class="legend" id="legend"></div>
+    <div id="view-info" class="dim" style="margin-top:6px"></div>
     <div class="tools">
       <button type="button" class="plain" id="edit-heads">Your sprinklers</button>
       <button type="button" id="add-spout">Add a downspout</button>
