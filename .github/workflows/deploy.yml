@@ -367,6 +367,7 @@ jobs:
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
           MAPBOX_TOKEN: ${{ secrets.MAPBOX_TOKEN }}
           MAPBOX_SERVER_TOKEN: ${{ secrets.MAPBOX_SERVER_TOKEN }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           if [ -z "$MODAL_TOKEN_ID" ] || [ -z "$MODAL_TOKEN_SECRET" ]; then
             echo "ALPHA_STATE=off -- no MODAL_TOKEN_ID / MODAL_TOKEN_SECRET secrets" >> "$GITHUB_ENV"
@@ -381,7 +382,9 @@ jobs:
           # One shared secret between the Worker and the server, derived from
           # the Modal secret already here so there is nothing new to set up.
           token=$(printf '%s:alpha' "$MODAL_TOKEN_SECRET" | sha256sum | cut -d' ' -f1)
-          modal secret create lawn-alpha-auth "ALPHA_TOKEN=$token" --force >/dev/null
+          # The hub token beside it (H114): a release on DINOv3's gated eye
+          # needs the server to open the weights; empty when not set.
+          modal secret create lawn-alpha-auth "ALPHA_TOKEN=$token" "HF_TOKEN=${HF_TOKEN:-}" --force >/dev/null
           # ONLY WHEN THE SERVER CHANGED (owner, 2026-10-08: "I definitely
           # don't want to be sending a warm press after update to the
           # cloudflare site"). Every `modal deploy` is a new version of the

@@ -71,14 +71,35 @@ TILE_DIR = "/tiles"
 tiles = modal.Volume.from_name(TILES_VOLUME, create_if_missing=True)
 
 
+# THE EYES A RELEASE MAY NAME (H114, 2026-10-23): DINOv3's satellite ViT-L
+# beat Scale-MAE lot by lot, so a release may be trained on it. Its weights
+# are gated on the hub; the HF_TOKEN in the lawn-alpha-auth secret (workflow
+# 2 writes it from the repository secret) opens them at image build, and
+# again at run time if a release names an eye the image does not hold.
+DINOV3_EYES = ("facebook/dinov3-vitl16-pretrain-sat493m",)
+
+
 def _bake_weights():
-    """The two big downloads, into the image, so a cold start does not repeat them."""
+    """The big downloads, into the image, so a cold start does not repeat them."""
     from torchgeo.models import ScaleMAELarge16_Weights, scalemae_large_patch16
     from transformers import SegformerForSemanticSegmentation, SegformerImageProcessor
     scalemae_large_patch16(weights=ScaleMAELarge16_Weights.FMOW_RGB, img_size=896, res=1.0)
     SegformerForSemanticSegmentation.from_pretrained("restor/tcd-segformer-mit-b5")
     SegformerImageProcessor.from_pretrained("restor/tcd-segformer-mit-b5", do_resize=False)
+    if os.environ.get("HF_TOKEN"):
+        from transformers import AutoImageProcessor, AutoModel
+        for eye in DINOV3_EYES:
+            try:
+                AutoModel.from_pretrained(eye)
+                AutoImageProcessor.from_pretrained(eye)
+                print(f"baked {eye}", flush=True)
+            except Exception as e:  # noqa: BLE001 - the image still builds; a release on it would fetch at start
+                print(f"not baked, {eye}: {str(e)[:200]}", flush=True)
+    else:
+        print("no HF_TOKEN at build: DINOv3's weights not baked", flush=True)
 
+
+auth = modal.Secret.from_name("lawn-alpha-auth")
 
 gpu_image = (
     modal.Image.debian_slim(python_version="3.12")
@@ -89,7 +110,7 @@ gpu_image = (
         "torch", "torchvision", "transformers", "pillow", "numpy", "torchgeo>=0.7",
         "scikit-image", "scipy", "laspy[lazrs]", "fastapi[standard]",
     )
-    .run_function(_bake_weights)
+    .run_function(_bake_weights, secrets=[auth])
     # The repository's .js files are ES modules, as its package.json says.
     .run_commands(f"mkdir -p {REPO} && cd {REPO} && echo '{{\"type\": \"module\", \"private\": true}}' > package.json"
                   " && npm install pngjs@7 >/dev/null")
@@ -116,7 +137,6 @@ cpu_image = (
 )
 
 web_image = modal.Image.debian_slim(python_version="3.12").pip_install("fastapi[standard]")
-auth = modal.Secret.from_name("lawn-alpha-auth")
 
 
 def _node(cmd, payload):
@@ -229,7 +249,7 @@ def gather(payload):
 
 
 @app.cls(image=gpu_image, gpu=GPU, volumes={"/models": models}, timeout=600,
-         scaledown_window=SCALEDOWN,
+         scaledown_window=SCALEDOWN, secrets=[auth],
          # A ceiling on the bill: at most this many GPUs at once, however
          # many lots arrive together (the queue scorer sends dozens).
          max_containers=MAX_CONTAINERS,
@@ -256,8 +276,18 @@ class Alpha:
             os.environ["REFINE"] = "1"
             t0 = time.time()
             import alpha_infer
-            self.det = alpha_infer.Detector(None)
-            print(f"models loaded for the snapshot in {time.time() - t0:.0f}s", flush=True)
+            # THE EYE THE RELEASE NAMES goes into the snapshot (H114): a
+            # release on DINOv3 would otherwise reopen its eye after every
+            # restore, on the GPU's clock. The decoder itself is read after
+            # the restore as before, so shipping one still needs no snapshot.
+            backbone, size = "scalemae-large", 896
+            try:
+                meta = torch.load(RELEASE, map_location="cpu", weights_only=False).get("meta") or {}
+                backbone, size = meta.get("backbone") or backbone, int(meta.get("size") or size)
+            except Exception as e:  # noqa: BLE001 - no release yet, or unreadable: Scale-MAE as always
+                print(f"release meta not read for the snapshot ({str(e)[:80]}); Scale-MAE eye", flush=True)
+            self.det = alpha_infer.Detector(None, backbone=backbone, size=size)
+            print(f"models loaded for the snapshot in {time.time() - t0:.0f}s ({backbone} at {size})", flush=True)
         finally:
             torch.cuda.is_available = real
 
