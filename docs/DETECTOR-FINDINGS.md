@@ -18,6 +18,15 @@ of a theory that later measured as nothing.
 
 - **HARD FINDING** — measured here, or cited with a link. Repeatable.
 - **SPECULATION** — a theory that fits the evidence and has not been tested.
+- **EVERY FINDING IS BOUND TO ITS CONTEXT** (owner, 2026-10-22: "view
+  detector-findings in the context that they were acquired ... they
+  should be viewed as a summary of our experiences in specific contexts,
+  not as rigid"). A finding names the eye, the corpus, the head and the
+  settings it was measured under, and holds THERE. H93's "a bigger head
+  overfits at 104 lots" was measured with Scale-MAE's features; it says
+  nothing about the same head over DINOv3's until that is measured
+  (S54). When citing a finding to rule something out, say its context
+  and ask whether the new case shares it.
   It may be worth acting on. It is not worth asserting.
 - **THE PLAN** — what is being built, decided by the owner. A decision, not a
   result. It is not evidence for itself, and a stage being in the plan says
@@ -7749,6 +7758,26 @@ not:** a 27 m block is less context than a whole lot, and H4 once found
 fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
+
+### S54-S57. The night of 2026-10-22: everything that makes sense to try, on the free runner (owner: "try everything that makes sense to try ... keep it under $10") -- RUNNING
+All THE PLAN's decoder, seed 7, locked 104, saved lidar moves, every lot
+whole at 896 unless said, read with workflow 24 against 39715167319
+(Scale-MAE 896, 17.2%) and against each other:
+- **S54** UperNet head over DINOv3-sat features (`refiner_trial:
+  upernet`, cached features from S51), beside THE PLAN's decoder: H93's
+  overfit was Scale-MAE's context; the owner's rule above.
+- **S52 on DINOv3-sat** the linear probe beside the decoder over the
+  same features, so the probe-to-decoder gap is known eye by eye.
+- **S55** DINOv3's web-trained ViT-L (`lvd1689m`) as the eye: the
+  paper's web 7B beat its own satellite models on GEO-Bench.
+- **S56** Scale-MAE at 1280 px (unsettled since 2026-09-19 at 23 lots,
+  26.1 against 28.2).
+- **S57** Scale-MAE told 5x the metres a pixel (`res x5`; its
+  pretraining saw 2.2-5.0, we pass 0.07-0.10; never measured).
+Then, on Modal's GPU (S58): DINOv3-sat reading each big lot WHOLE at
+10 cm in one pass (up to 4096 px, RoPE, no windows, no squeeze), which
+no CPU can do -- the owner's point that DINOv3 takes 4096. And S53, the
+CHMv2 canopy height head, zero-shot.
 
 ### S52. Is the decoder part of the problem? The papers' linear probe beside THE PLAN's decoder (owner, 2026-10-22: "be open to the possibility that our decoder is part of the problem") -- RUNNING
 **The question.** THE PLAN's decoder is four convs (1x1, 3x3, 3x3, 1x1,
