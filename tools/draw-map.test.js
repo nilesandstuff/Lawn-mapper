@@ -5,7 +5,7 @@
  *   node tools/draw-map.test.js
  */
 
-import { parseLngLat, nearestMap, nearest, resizeRgba, pressFor, evalEntry } from './draw-map.mjs';
+import { parseLngLat, nearestMap, nearest, resizeRgba, pressFor, evalEntry, svcOfRow, mapsOfRows } from './draw-map.mjs';
 import { runKeys } from './run-folder.js';
 
 let failures = 0;
@@ -63,6 +63,17 @@ const check = (name, ok, detail = '') => {
       && press.tiles.every((t) => /size=\d+/.test(t.url) && Number(t.url.match(/size=(\d+)/)[1]) <= 1280 && t.url.includes('svc=363')),
     `${press.groundCm} cm, ${press.pieces} pieces (${press.cols}x${press.rows}), frame ${press.frame.size} logical px`);
   check('the first tile is also the one-picture url, for the server\'s check', press.imageUrl === press.tiles[0].url);
+  /* The database route (2026-10-23): the county's own export, not the site. */
+  const svc = svcOfRow({ id: 363, url: 'https://gis.example.gov/arcgis/rest/services/Imagery/ImageServer', type: 'image', max_px: 4096, export_ok: 1, tile_merc: 0 });
+  const direct = pressFor(map, 'https://lawnmap.example.com', { svc });
+  check('with the service row the tiles are asked of the county export directly',
+    direct.photoFrom === 'the county export' && direct.tiles.every((t) => t.url.startsWith('https://gis.example.gov/')) && direct.pieces === press.pieces);
+  const mbd = pressFor({ ...map, provider: 'mapbox', countySvc: null }, 'https://lawnmap.example.com', { mapboxToken: 'pk.test' });
+  check('and a Mapbox map of Mapbox with the token', mbd.photoFrom === 'Mapbox' && mbd.tiles.every((t) => t.url.includes('mapbox.com') && t.url.includes('pk.test')));
+  const rows = mapsOfRows([{ key: 'k1', lng: -85.7, lat: 42.8, payload: JSON.stringify({ frame: { lng: -85.7, lat: 42.8, zoom: 18, size: 640 }, provider: 'county', lng: -85.70001, lat: 42.80001 }), updated_at: '2026-10-22T17:45:50Z' },
+    { key: 'k2', lng: -80, lat: 40, payload: '{broken', updated_at: 'x' }]);
+  check('database rows become the API\'s records, the payload first, the columns as fallback',
+    rows[0].id === 'k1' && rows[0].lng === -85.70001 && rows[0].provider === 'county' && rows[1].lng === -80 && rows[1].at === 'x');
   const small = pressFor({ ...map, frame: { lng: -85.7057, lat: 42.8358, zoom: 19, size: 640, height: 640 } }, 'https://lawnmap.example.com');
   check('a small lot is one picture, as every press before', small.pieces === 1 && small.tiles === undefined);
   check('the property line travels as its geometry', press.parcel.type === 'Polygon');

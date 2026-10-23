@@ -39,7 +39,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { pressPlan, pressBody } from '../worker/src/imagery.js';
+import { pressPlan, pressBody, imageryUrl, countyExportUrl } from '../worker/src/imagery.js';
 import { runKeys } from './run-folder.js';
 import { parcelMask } from './serve-alpha.mjs';
 import { drawLayers, drawPrediction, tracePrediction, LAYERS } from './render-prediction.js';
@@ -107,14 +107,18 @@ export function resizeRgba(src, w, h, channels, W, H) {
 }
 
 /** The press payload for a saved map, as worker/src/alpha.js builds one:
-    the same tile plan, each tile's picture asked of the site. */
-export function pressFor(map, site) {
+    the same tile plan. Each tile's picture is asked of the county's own
+    export or Mapbox directly when the service row and a Mapbox token are
+    here (`svc`, `mapboxToken`), and of the site otherwise. */
+export function pressFor(map, site, { svc = null, mapboxToken = '' } = {}) {
   const county = map.provider === 'county' && map.countySvc ? String(map.countySvc) : null;
-  const urlFor = (f) => `${site}/api/imagery?${new URLSearchParams({
+  const direct = county ? (svc && !svc.tiled ? (f) => countyExportUrl(svc, f) : null)
+    : (mapboxToken ? (f) => imageryUrl('mapbox', f, mapboxToken, {}) : null);
+  const viaSite = (f) => `${site}/api/imagery?${new URLSearchParams({
     lng: f.lng, lat: f.lat, zoom: f.zoom, size: f.size, height: f.height || f.size,
     provider: county ? 'county' : 'mapbox', ...(county ? { svc: county } : {}),
   })}`;
-  const plan = pressPlan(map.frame, urlFor);
+  const plan = pressPlan(map.frame, direct || viaSite);
   return {
     ...pressBody(plan, {
       parcel: map.parcel?.geometry || map.parcel || null,
@@ -123,7 +127,26 @@ export function pressFor(map, site) {
     provider: county ? 'county' : 'mapbox',
     groundCm: Math.round(plan.groundM * 1000) / 10,
     pieces: plan.tiles.length,
+    photoFrom: direct ? (county ? 'the county export' : 'Mapbox') : 'the site',
   };
+}
+
+/** A county_services row as the imagery helpers want it (worker/src/county.js svcOf). */
+export function svcOfRow(r) {
+  return r ? {
+    id: Number(r.id), url: r.url, type: r.type, title: r.title, year: r.year,
+    nativeCm: r.native_cm, maxPx: r.max_px,
+    tiled: !Number(r.export_ok) && Boolean(Number(r.tile_merc)),
+  } : null;
+}
+
+/** The saved-map rows of the administrators, from the database, as the API's records. */
+export function mapsOfRows(rows) {
+  return (rows || []).map((r) => {
+    let payload = {};
+    try { payload = JSON.parse(r.payload) || {}; } catch { payload = {}; }
+    return { ...payload, id: r.key, at: r.updated_at, lng: payload.lng ?? r.lng, lat: payload.lat ?? r.lat };
+  });
 }
 
 /** The run index entry for a drawn-only map. */
@@ -161,22 +184,31 @@ async function main() {
   if (!asked) throw new Error(`ALSO_DRAW must be "lng,lat", not "${process.env.ALSO_DRAW || ''}"`);
   const site = String(process.env.SITE || '').replace(/\/$/, '');
   const token = process.env.MAPS_READ_TOKEN || '';
-  if (!site || !token) throw new Error('SITE and MAPS_READ_TOKEN are needed to read the saved map');
+  if (!process.env.CLOUDFLARE_API_TOKEN && !(site && token)) throw new Error('the saved map needs the Cloudflare token (the database) or SITE and MAPS_READ_TOKEN');
   const out = process.env.OUT || 'drawn';
   const bucket = process.env.CORPUS_BUCKET || 'lawn-mapper-corpus';
   const slug = existsSync(process.env.RUN_FOLDER_FILE || '') ? readFileSync(process.env.RUN_FOLDER_FILE, 'utf8').trim() : '';
   if (!slug) throw new Error('no run folder: the scoring step did not publish its pictures, so there is nothing to draw beside');
   mkdirSync(out, { recursive: true });
 
-  /* 1. The saved map. The list has no coordinates, so each is read once;
-        nothing printed names an address. */
-  const list = (await fetchJson(`${site}/api/admin/saved-maps`, token)).maps || [];
-  const maps = [];
-  for (const row of list) {
-    try {
-      const one = await fetchJson(`${site}/api/admin/saved-maps/one?id=${encodeURIComponent(row.id)}`, token);
-      if (one?.map) maps.push(one.map);
-    } catch { /* one unreadable map is not the end of the search */ }
+  /* 1. The saved map: from the database when this runner holds the
+        Cloudflare token (the site's edge refused a GitHub runner with 403 on
+        2026-10-23), through the site's read-only route otherwise. Nothing
+        printed names an address. */
+  let maps = [];
+  let svcRow = null;
+  const fromDb = Boolean(process.env.CLOUDFLARE_API_TOKEN);
+  if (fromDb) {
+    const { query } = await import('./corpus-db.js');
+    maps = mapsOfRows(query("SELECT m.key, m.lng, m.lat, m.payload, m.updated_at FROM maps m JOIN users u ON u.id = m.user_id WHERE u.role = 'admin'"));
+  } else {
+    const list = (await fetchJson(`${site}/api/admin/saved-maps`, token)).maps || [];
+    for (const row of list) {
+      try {
+        const one = await fetchJson(`${site}/api/admin/saved-maps/one?id=${encodeURIComponent(row.id)}`, token);
+        if (one?.map) maps.push(one.map);
+      } catch { /* one unreadable map is not the end of the search */ }
+    }
   }
   const hit = nearestMap(maps, asked);
   if (!hit) throw new Error(`none of the owner's ${maps.length} saved maps is within 150 m of ${asked.join(',')}`);
@@ -187,12 +219,16 @@ async function main() {
   if (!map.frame || !map.parcel) throw new Error('the saved map has no frame or no property line');
 
   /* 2. The press, and the live path on this machine. */
-  const press = pressFor(map, site);
+  if (fromDb && map.provider === 'county' && map.countySvc) {
+    const { query } = await import('./corpus-db.js');
+    svcRow = svcOfRow(query(`SELECT * FROM county_services WHERE id = ${Number(map.countySvc)}`)[0]);
+  }
+  const press = pressFor(map, site, { svc: svcRow, mapboxToken: process.env.MAPBOX_SERVER_TOKEN || process.env.MAPBOX_TOKEN || '' });
   writeFileSync(join(out, 'payload.json'), JSON.stringify({
     imageUrl: press.imageUrl, frame: press.frame, parcel: press.parcel, naipAlign: press.naipAlign,
     ...(press.tiles ? { tiles: press.tiles, cols: press.cols, rows: press.rows } : {}),
   }));
-  console.log(`Press: ${press.provider} photo at ${press.groundCm} cm a pixel in ${press.pieces} piece${press.pieces === 1 ? '' : 's'}, `
+  console.log(`Press: ${press.provider} photo from ${press.photoFrom} at ${press.groundCm} cm a pixel in ${press.pieces} piece${press.pieces === 1 ? '' : 's'}, `
     + `frame ${press.frame.size}x${press.frame.height || press.frame.size} logical px at zoom ${press.frame.zoom.toFixed(2)}.`);
   const py = spawnSync('python3', [join('tools', 'draw_map.py')], {
     stdio: 'inherit', env: { ...process.env, OUT: out }, timeout: 3 * 3600 * 1000,

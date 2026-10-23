@@ -1738,6 +1738,9 @@ jobs:
           OUT: drawn
           # A release on a gated eye (DINOv3) opens its weights with this.
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          # A Mapbox map's tiles come from Mapbox directly (a county map's
+          # from the county's export): the site's edge refused this runner.
+          MAPBOX_SERVER_TOKEN: ${{ secrets.MAPBOX_SERVER_TOKEN || secrets.MAPBOX_TOKEN }}
         run: node tools/draw-map.mjs
 
       - name: Train the release model on every lot
