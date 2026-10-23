@@ -984,6 +984,24 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H116. SCALE-MAE TOLD FIVE TIMES THE METRES A PIXEL IS WORSE, MOST OF ALL ON THE BIG LOTS: THE PLAN 18.2% -> 18.9%, 33 / 53 / 18, +0.5 [+0.1, +1.3], p 0.04; the 26 lots past 90 m 4 / 19 / 3, +3.1 [+0.8, +9.9], p 0.003; the eye alone 30.6% -> 36.0% (S57, one seed) -- 2026-10-23
+*Workflow 14 run 39879925832: `scalemae-large, res x5` (RES_FACTOR 5: the
+model is told 0.35-0.5 "metres a pixel" instead of 0.07-0.10, nearer
+the 2.2-5.0 its pretraining fed it), THE PLAN, seed 7, locked 104, no
+pond examples; folder runs/2026-10-22-2215-edt-scalemae-large-896px.
+Workflow 24 run 39890119038 against 39715167319's no-pond twin row.*
+
+The question since 2026-09-27 (the note in SatelliteEye) was whether the
+scale we pass, which Scale-MAE's pretraining never saw, was costing
+something, and whether a number inside its training range would read
+better. No: the raw probe is 5 points worse and the decoder half a
+point worse; the big lots, which the factor pushes to 1.7-2.2
+"metres a pixel", lose three points. The scale input works as a scale
+input: told it is looking at coarser ground it reads coarser. 0.07-0.10
+stays; the x10 and x25 options are not worth their runs. **Context:**
+Scale-MAE at 896, THE PLAN's decoder, one seed; the factor applied to
+every lot alike.
+
 ### H115. META'S CANOPY HEIGHT MODEL (CHMv2), OUT OF THE BOX, TELLS A ROOF FROM A TREE INSIDE THE LIDAR'S TALL CELLS: AUC 0.94 at 0.6 m, 0.95 at 0.3 m (median height 11-16 m on tree cells, 0.0-0.1 m on roof cells, 82 lots). As a canopy source it is weaker than the lidar (AUC 0.76-0.79 for the lidar's 2.5 m+, reads 2-3 m low); as a blunt veto it would erase 9% of the visible lawn (S53, nothing trained) -- 2026-10-23
 *Workflow 42 run 39879819878, tools/chm_try.py:
 `facebook/dinov3-vitl16-chmv2-dpt-head` (a DPT head on the DINOv3
@@ -7914,7 +7932,8 @@ whole at 896 unless said, read with workflow 24 against 39715167319
 - **S56** Scale-MAE at 1280 px (unsettled since 2026-09-19 at 23 lots,
   26.1 against 28.2).
 - **S57** Scale-MAE told 5x the metres a pixel (`res x5`; its
-  pretraining saw 2.2-5.0, we pass 0.07-0.10; never measured).
+  pretraining saw 2.2-5.0, we pass 0.07-0.10; never measured). MEASURED:
+  worse, +0.5 on all lots and +3.1 on the big 26; see H116.
 Then, on Modal's GPU (S58): DINOv3-sat reading each big lot WHOLE at
 10 cm in one pass (up to 4096 px, RoPE, no windows, no squeeze), which
 no CPU can do -- the owner's point that DINOv3 takes 4096. And S53, the
@@ -9664,3 +9683,4 @@ deploy log says how many are locked and how many are waiting.
 | 2026-10-22 | 39858638936 | 104 (locked, 131u7jm) | S51: `facebook/dinov3-vitl16-pretrain-sat493m` as the eye (its own pixel normalisation), THE PLAN, seed 7, CPU, saved lidar moves, every lot whole at 896, no pond examples | 15.4% (edge refined + stage 3, span, veto) | — | Folder runs/2026-10-22-2112-edt-facebook-dinov3-vitl16-pretrain-sat493m-896px. **H114.** Workflow 24 run 39885278271 vs 39715167319 (Scale-MAE): 71 / 23 / 10, -1.8 [-3.4, -1.4], p < 0.001; vs its no-pond twin row (39885323971): 70 / 25 / 9, -1.7 [-3.3, -0.9]; county lots 25.9 -> 17.1; big 26: 16 / 9 / 1, -1.9 [-4.5, +1.1] |
 | 2026-10-22 | 39829073504 | 104 (locked, 131u7jm) | S50 `windows: on + whole`: the 26 big lots in 10 cm windows with the whole-lot squeezed grid stacked beside them (2048 numbers a patch), THE PLAN, seed 7, CPU, saved lidar moves, no pond examples | 20.2% (edge refined + stage 3, span, veto) | — | Folder runs/2026-10-22-2135-edt-scalemae-large-896px. **H113.** Workflow 24 vs the no-pond twin rows: vs windows off (39887504771) 29 / 55 / 20, +0.7 [+0.2, +1.1], p 0.006; vs windows on (39887507170) 34 / 48 / 22, +0.3 [-0.1, +1.0], p 0.15; the big 26 level both ways. The asked map was not drawn (folder file missing on the scoring step; fixed) |
 | 2026-10-23 | 39879819878 (workflow 42) | 104 (locked) | S53: CHMv2 canopy height (DPT on DINOv3-sat) out of the box at 0.6 m and 0.3 m, against the lidar at 1 m, the tree mask and the traced lawn | — | — | **H115.** Roof against tree inside the lidar's tall cells AUC 0.94 / 0.95 (82 lots; 11-16 m on trees, 0 m on roofs); canopy against the lidar AUC 0.76 / 0.79, reads 2-3 m low; a 2 m+ veto would erase 9% of visible lawn |
+| 2026-10-23 | 39879925832 | 104 (locked, 131u7jm) | S57 `scalemae-large, res x5`: Scale-MAE told five times the metres a pixel, THE PLAN, seed 7, CPU, no pond examples (the first attempt, 39879118820, died on a comma in the cache key) | 18.9% (edge refined + stage 3, span, veto) | — | **H116.** Workflow 24 run 39890119038 vs the no-pond twin: 33 / 53 / 18, +0.5 [+0.1, +1.3], p 0.04; big 26: 4 / 19 / 3, +3.1 [+0.8, +9.9], p 0.003. Worse; 0.07-0.10 stays |
