@@ -76,7 +76,7 @@ const env = { DB: { prepare: () => ({ bind: () => ({ all: async () => ({ results
 {
   const fetcher = fake((u) => {
     if (u.includes('county/arcgis')) return { features: [{ attributes: { OBJECTID: 1, TOP_OF_CASTING: 687 }, geometry: { x: -85.705, y: 42.835 } }] };
-    if (u.includes('NFHL')) return 'slow';
+    if (/NFHL|Flood_Hazard/.test(u)) return 'slow';
     if (u.includes('Wetlands')) return { features: [{ attributes: { WETLAND_TYPE: 'Freshwater Emergent Wetland' }, geometry: { rings: [[[-85.71, 42.83], [-85.71, 42.835], [-85.705, 42.835], [-85.71, 42.83]]] } }] };
     return { features: [] };
   });
@@ -134,7 +134,7 @@ const env = { DB: { prepare: () => ({ bind: () => ({ all: async () => ({ results
   check('no box is a 400', bad.status === 400);
   const store2 = new Map();
   const cache2 = { match: async (k) => store2.get(k.url) || null, put: async (k, res) => { store2.set(k.url, res); } };
-  await handleWaterLayers({ method: 'GET' }, url, {}, '', null, json, { fetcher: fake((u) => (u.includes('NFHL') ? 'slow' : { features: [] })), cache: cache2 });
+  await handleWaterLayers({ method: 'GET' }, url, {}, '', null, json, { fetcher: fake((u) => (/NFHL|Flood_Hazard/.test(u) ? 'slow' : { features: [] })), cache: cache2 });
   const kept = [...store2.values()][0];
   check('an answer with a failed source is kept a day, not a week',
     store2.size === 1 && kept.headers.get('Cache-Control') === `public, max-age=${PARTIAL_CACHE_SECONDS}`);
@@ -174,6 +174,15 @@ const env = { DB: { prepare: () => ({ bind: () => ({ all: async () => ({ results
   check('a server that refuses a record limit is asked again without one', asks === 2 && got[0].features.length === 1);
   check('USGS is asked without a limit and waited for longer', NATIONAL.filter((n) => n.source.includes('Hydrography')).every((n) => n.slow && n.paginate === false)
     && !/resultRecordCount/.test(queryUrl('https://x/MapServer/1', [0, 0, 1, 1], { paginate: false })));
+}
+
+{
+  const flood = NATIONAL.find((n) => n.kind === 'flood_zone');
+  const fetcher = async (url) => ({ ok: !String(url).includes('services.arcgis.com'), status: 403,
+    json: async () => ({ features: [{ attributes: { FLD_ZONE: 'AE' }, geometry: { rings: [[[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]] } }] }) });
+  const got = await queryLayer(flood, [-1, -1, 2, 2], { fetcher });
+  check('flood zones come from Esri\'s copy, and from FEMA itself when the copy fails',
+    /services\.arcgis\.com/.test(flood.url) && /hazards\.fema\.gov/.test(flood.fallback) && got[0].features[0].properties.FLD_ZONE === 'AE');
 }
 
 /* ---------------------------------------------------------- the catalogue */

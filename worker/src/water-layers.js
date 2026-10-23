@@ -121,8 +121,14 @@ export const NATIONAL = [
   { kind: 'wetland', source: 'USFWS National Wetlands Inventory', title: 'Wetlands',
     url: 'https://fwspublicservices.wim.usgs.gov/wetlandsmapservice/rest/services/Wetlands/MapServer/0', fields: ['ATTRIBUTE', 'WETLAND_TYPE', 'ACRES'],
     split: (p) => (/lake|pond|riverine|deepwater/i.test(String(p.WETLAND_TYPE || '')) ? 'water_body' : 'wetland') },
-  { kind: 'flood_zone', source: 'FEMA National Flood Hazard Layer', title: 'Flood Hazard Zones',
-    url: 'https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/28', fields: ['FLD_ZONE', 'ZONE_SUBTY', 'SFHA_TF', 'STATIC_BFE'] },
+  /* FEMA's own server refused the live Worker (HTTP 403, 2026-10-23) and its
+     firewall then refused even a handful of test queries; Esri's public copy
+     of the same zones (minus the unshaded X of minimal hazard) answers in
+     under a second. FEMA's own is asked only when the copy fails. */
+  { kind: 'flood_zone', source: 'FEMA National Flood Hazard Layer (Esri\'s public copy)', title: 'Flood Hazard Zones',
+    url: 'https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/USA_Flood_Hazard_Reduced_Set_gdb/FeatureServer/0',
+    fallback: 'https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/28',
+    fields: ['FLD_ZONE', 'ZONE_SUBTY', 'SFHA_TF', 'STATIC_BFE'] },
 ];
 
 /* ------------------------------------------------------------------ box */
@@ -361,13 +367,21 @@ const margin = (b) => {
  * kind when the layer is split (the wetlands inventory's open water).
  */
 export async function queryLayer(layer, box, { fetcher = fetch, timeoutMs = 12000 } = {}) {
-  const ask = (paginate) => fetchJson(queryUrl(layer.url, box, { fields: layer.fields, paginate }), fetcher, timeoutMs);
+  const ask = (url, paginate) => fetchJson(queryUrl(url, box, { fields: layer.fields, paginate }), fetcher, timeoutMs);
+  const from = async (url) => {
+    try {
+      return await ask(url, layer.paginate !== false);
+    } catch (e) {
+      if (layer.paginate === false || !/pagination/i.test(String(e?.message || e))) throw e;
+      return ask(url, false);
+    }
+  };
   let data;
   try {
-    data = await ask(layer.paginate !== false);
+    data = await from(layer.url);
   } catch (e) {
-    if (layer.paginate === false || !/pagination/i.test(String(e?.message || e))) throw e;
-    data = await ask(false);
+    if (!layer.fallback) throw e;
+    data = await from(layer.fallback);
   }
   const cut = margin(box);
   const byKind = new Map();
@@ -483,7 +497,7 @@ export async function handleWaterLayers(request, url, env, origin, ctx, json, { 
   if (request.method !== 'GET') return json({ error: 'GET only' }, 405, origin);
   const box = boxFrom(url.searchParams);
   if (typeof box === 'string') return json({ error: box }, 400, origin);
-  const key = new Request(`https://water-layers.cache/v1?box=${box.join(',')}`);
+  const key = new Request(`https://water-layers.cache/v2?box=${box.join(',')}`);
   if (cache) {
     const hit = await cache.match(key).catch(() => null);
     if (hit) {

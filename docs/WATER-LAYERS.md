@@ -44,7 +44,7 @@ trusting a unit.
 
 | kind | what |
 |---|---|
-| flood_zone | FEMA flood hazard zone (`FLD_ZONE`, `SFHA_TF`), or a county's own |
+| flood_zone | FEMA flood hazard zone (`FLD_ZONE`, `SFHA_TF`), from Esri's public copy of FEMA's layer (FEMA's own server refuses the Worker), or a county's own |
 | wetland | USFWS National Wetlands Inventory (`WETLAND_TYPE`), or a county's own |
 | water_body | lake or pond: the inventory's open water (lakes, ponds, river channels), USGS NHD waterbodies, or a county's own |
 | watershed | a county's watersheds or sub-basins |
