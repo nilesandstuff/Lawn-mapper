@@ -5,6 +5,7 @@
  */
 import {
   classifyLayer, boxFrom, esriToGeoJSON, tidyAttributes, queryUrl, waterLayersAt, handleWaterLayers, NATIONAL, KINDS, MAX_SPAN_M,
+  clipGeometry, clipLine, clipRing, queryLayer, PARTIAL_CACHE_SECONDS,
 } from '../worker/src/water-layers.js';
 import { registryRoots, sweepOrder, extentDegrees, waterLayersOf, upsertSql, sensibleBox, rootOf } from './water-layers.js';
 
@@ -76,10 +77,10 @@ const env = { DB: { prepare: () => ({ bind: () => ({ all: async () => ({ results
   const fetcher = fake((u) => {
     if (u.includes('county/arcgis')) return { features: [{ attributes: { OBJECTID: 1, TOP_OF_CASTING: 687 }, geometry: { x: -85.705, y: 42.835 } }] };
     if (u.includes('NFHL')) return 'slow';
-    if (u.includes('Wetlands')) return { features: [{ attributes: { WETLAND_TYPE: 'Freshwater Pond' }, geometry: { rings: [[[-85.71, 42.83], [-85.71, 42.835], [-85.705, 42.835], [-85.71, 42.83]]] } }] };
+    if (u.includes('Wetlands')) return { features: [{ attributes: { WETLAND_TYPE: 'Freshwater Emergent Wetland' }, geometry: { rings: [[[-85.71, 42.83], [-85.71, 42.835], [-85.705, 42.835], [-85.71, 42.83]]] } }] };
     return { features: [] };
   });
-  const r = await waterLayersAt(env, box, { fetcher });
+  const { body: r } = await waterLayersAt(env, box, { fetcher });
   check('the county\'s inlets and the national wetland come back, labelled',
     r.layers.some((l) => l.kind === 'storm_inlet' && l.from === 'county' && l.features[0].properties.TOP_OF_CASTING === 687)
     && r.layers.some((l) => l.kind === 'wetland' && l.from === 'national'), JSON.stringify(r.layers.map((l) => [l.kind, l.from])));
@@ -89,8 +90,31 @@ const env = { DB: { prepare: () => ({ bind: () => ({ all: async () => ({ results
   check('every national source names its kind and service', NATIONAL.every((n) => KINDS[n.kind] && /^https:\/\/.+\/(MapServer|FeatureServer)\/\d+$/.test(n.url)));
 }
 {
-  const r = await waterLayersAt({}, box, { fetcher: fake(() => ({ features: [] })) });
+  const { body: r } = await waterLayersAt({}, box, { fetcher: fake(() => ({ features: [] })) });
   check('with no database, the national layers still answer', r.asked.county === 0 && r.failed.length === 0);
+}
+
+/* ------------------------------------------------------- the deadline */
+{
+  const slow = async (url) => {
+    if (String(url).includes('hydro.nationalmap')) await new Promise((r) => setTimeout(r, 150));
+    return { ok: true, json: async () => ({ features: [{ attributes: {}, geometry: { x: -85.705, y: 42.835 } }] }) };
+  };
+  const { body, later } = await waterLayersAt({}, box, { fetcher: slow, deadlineMs: 40 });
+  check('at the deadline the slow sources are pending, not failed',
+    (body.pending || []).length === 2 && body.failed.length === 0 && body.layers.length >= 1, JSON.stringify({ p: body.pending, f: body.failed }));
+  const whole = await later;
+  check('and the whole answer follows', !whole.pending && whole.layers.some((l) => l.source.includes('Hydrography')));
+  const store = new Map();
+  const cache = { match: async (k) => store.get(k.url) || null, put: async (k, res) => { store.set(k.url, res); } };
+  const waits = [];
+  const ctx = { waitUntil: (p) => waits.push(p) };
+  const json = (data, status) => ({ status, data });
+  const url = new URL('https://lawnmap.example/api/water/layers?lng=-85.705&lat=42.835&m=100');
+  // The route's own deadline is 15 s; a fetcher this quick finishes well inside it.
+  const res = await handleWaterLayers({ method: 'GET' }, url, {}, '', ctx, json, { fetcher: slow, cache });
+  await Promise.all(waits);
+  check('the route keeps the whole answer once it is in', res.status === 200 && store.size === 1);
 }
 
 /* ------------------------------------------------------------- the route */
@@ -111,7 +135,45 @@ const env = { DB: { prepare: () => ({ bind: () => ({ all: async () => ({ results
   const store2 = new Map();
   const cache2 = { match: async (k) => store2.get(k.url) || null, put: async (k, res) => { store2.set(k.url, res); } };
   await handleWaterLayers({ method: 'GET' }, url, {}, '', null, json, { fetcher: fake((u) => (u.includes('NFHL') ? 'slow' : { features: [] })), cache: cache2 });
-  check('an answer with a failed source is not kept', store2.size === 0);
+  const kept = [...store2.values()][0];
+  check('an answer with a failed source is kept a day, not a week',
+    store2.size === 1 && kept.headers.get('Cache-Control') === `public, max-age=${PARTIAL_CACHE_SECONDS}`);
+}
+
+/* ---------------------------------------------------------- cut to the box */
+{
+  const b = [0, 0, 10, 10];
+  const big = { type: 'Polygon', coordinates: [[[-5, -5], [-5, 20], [20, 20], [20, -5], [-5, -5]]] };
+  const cut = clipGeometry(big, b);
+  const xs = cut.coordinates[0].map((p) => p[0]), ys = cut.coordinates[0].map((p) => p[1]);
+  check('a shape bigger than the box becomes the box', Math.min(...xs) === 0 && Math.max(...xs) === 10 && Math.min(...ys) === 0 && Math.max(...ys) === 10);
+  check('a shape outside the box is dropped', clipGeometry({ type: 'Polygon', coordinates: [[[20, 20], [20, 30], [30, 30], [30, 20], [20, 20]]] }, b) === null);
+  const line = clipLine([[-5, 5], [5, 5], [15, 5]], b);
+  check('a line through the box keeps only its inside piece', line.length === 1 && line[0][0][0] === 0 && line[0].at(-1)[0] === 10, JSON.stringify(line));
+  const twice = clipLine([[-5, 2], [5, 2], [5, 20], [5, 30], [5, 8], [15, 8]], b);
+  check('a line that leaves and comes back is two pieces', twice.length === 2, JSON.stringify(twice));
+  check('points outside are dropped', clipGeometry({ type: 'Point', coordinates: [11, 5] }, b) === null && clipGeometry({ type: 'Point', coordinates: [5, 5] }, b) !== null);
+  check('a ring is closed after cutting', JSON.stringify(clipRing([[2, 2], [2, 4], [4, 4], [4, 2], [2, 2]], b).at(-1)) === '[2,2]');
+}
+
+/* ----------------------------------------------- the split and the retry */
+{
+  const nwi = NATIONAL.find((n) => n.source.includes('Wetlands'));
+  const fetcher = async () => ({ ok: true, json: async () => ({ features: [
+    { attributes: { WETLAND_TYPE: 'Freshwater Pond' }, geometry: { rings: [[[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]] } },
+    { attributes: { WETLAND_TYPE: 'Freshwater Emergent Wetland' }, geometry: { rings: [[[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]] } },
+  ] }) });
+  const out = await queryLayer(nwi, [-1, -1, 2, 2], { fetcher });
+  check('the inventory\'s ponds are water bodies, its marshes wetlands', out.map((l) => l.kind).sort().join() === 'water_body,wetland', JSON.stringify(out.map((l) => l.kind)));
+  let asks = 0;
+  const picky = async (url) => {
+    asks++;
+    return { ok: true, json: async () => (String(url).includes('resultRecordCount') ? { error: { code: 400, message: 'Pagination is not supported.' } } : { features: [{ attributes: {}, geometry: { x: 0.5, y: 0.5 } }] }) };
+  };
+  const got = await queryLayer({ kind: 'water_body', url: 'https://old/MapServer/3', title: 'Lakes', source: 'x' }, [0, 0, 1, 1], { fetcher: picky });
+  check('a server that refuses a record limit is asked again without one', asks === 2 && got[0].features.length === 1);
+  check('USGS is asked without a limit and waited for longer', NATIONAL.filter((n) => n.source.includes('Hydrography')).every((n) => n.slow && n.paginate === false)
+    && !/resultRecordCount/.test(queryUrl('https://x/MapServer/1', [0, 0, 1, 1], { paginate: false })));
 }
 
 /* ---------------------------------------------------------- the catalogue */

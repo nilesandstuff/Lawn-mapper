@@ -108,12 +108,19 @@ export function classifyLayer(name, esriType) {
 
 /** The national layers: everywhere, free, keyless. */
 export const NATIONAL = [
-  { kind: 'water_body', source: 'USGS National Hydrography Dataset', title: 'Waterbody - Large Scale',
+  /* USGS's own server is slow over big shapes (23 s to over a minute in a
+     test, 2026-10-23), and slower still with a record limit: it gets a longer
+     wait and no limit. The wetlands inventory below holds the same lakes and
+     ponds and answers in a second, so a slow NHD costs little. */
+  { kind: 'water_body', source: 'USGS National Hydrography Dataset', title: 'Waterbody - Large Scale', slow: true, paginate: false,
     url: 'https://hydro.nationalmap.gov/arcgis/rest/services/nhd/MapServer/12', fields: ['GNIS_NAME', 'FTYPE', 'FCODE', 'AREASQKM'] },
-  { kind: 'stream', source: 'USGS National Hydrography Dataset', title: 'Flowline - Large Scale',
+  { kind: 'stream', source: 'USGS National Hydrography Dataset', title: 'Flowline - Large Scale', slow: true, paginate: false,
     url: 'https://hydro.nationalmap.gov/arcgis/rest/services/nhd/MapServer/6', fields: ['GNIS_NAME', 'FTYPE', 'FCODE', 'FLOWDIR'] },
+  /* The inventory's open water (lakes, ponds, river channels) is a water
+     body, not a wetland, so its answer is split by WETLAND_TYPE. */
   { kind: 'wetland', source: 'USFWS National Wetlands Inventory', title: 'Wetlands',
-    url: 'https://fwspublicservices.wim.usgs.gov/wetlandsmapservice/rest/services/Wetlands/MapServer/0', fields: ['ATTRIBUTE', 'WETLAND_TYPE', 'ACRES'] },
+    url: 'https://fwspublicservices.wim.usgs.gov/wetlandsmapservice/rest/services/Wetlands/MapServer/0', fields: ['ATTRIBUTE', 'WETLAND_TYPE', 'ACRES'],
+    split: (p) => (/lake|pond|riverine|deepwater/i.test(String(p.WETLAND_TYPE || '')) ? 'water_body' : 'wetland') },
   { kind: 'flood_zone', source: 'FEMA National Flood Hazard Layer', title: 'Flood Hazard Zones',
     url: 'https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/28', fields: ['FLD_ZONE', 'ZONE_SUBTY', 'SFHA_TF', 'STATIC_BFE'] },
 ];
@@ -208,8 +215,13 @@ export function tidyAttributes(attrs, keep = null) {
 
 /* ---------------------------------------------------------------- query */
 
-/** The query URL for one layer over one box. */
-export function queryUrl(layerUrl, box, { fields = null, max = MAX_FEATURES } = {}) {
+/**
+ * The query URL for one layer over one box. `paginate` false leaves out the
+ * record limit, which some older servers refuse ("Pagination is not
+ * supported") and USGS's answers slowly. Shapes are simplified to about half
+ * a metre, which a lawn never notices and a county-wide flood zone needs.
+ */
+export function queryUrl(layerUrl, box, { fields = null, max = MAX_FEATURES, paginate = true, simplify = 0.000005 } = {}) {
   return `${layerUrl.replace(/\/+$/, '')}/query?` + new URLSearchParams({
     geometry: box.join(','),
     geometryType: 'esriGeometryEnvelope',
@@ -220,7 +232,8 @@ export function queryUrl(layerUrl, box, { fields = null, max = MAX_FEATURES } = 
     returnGeometry: 'true',
     /* About 10 cm at these latitudes: enough for a lawn, small enough to send. */
     geometryPrecision: '6',
-    resultRecordCount: String(max),
+    ...(simplify ? { maxAllowableOffset: String(simplify) } : {}),
+    ...(paginate ? { resultRecordCount: String(max) } : {}),
     f: 'json',
   });
 }
@@ -239,24 +252,144 @@ async function fetchJson(url, fetcher, timeoutMs) {
   }
 }
 
-/** One layer over one box, as a labelled FeatureCollection. */
-export async function queryLayer(layer, box, { fetcher = fetch, timeoutMs = 12000 } = {}) {
-  const data = await fetchJson(queryUrl(layer.url, box, { fields: layer.fields }), fetcher, timeoutMs);
-  const features = [];
-  for (const f of data.features || []) {
-    const geometry = esriToGeoJSON(f.geometry);
-    if (geometry) features.push({ type: 'Feature', geometry, properties: tidyAttributes(f.attributes, layer.fields || null) });
+/* ------------------------------------------------------------- clipping */
+
+/*
+ * CUT TO THE BOX. A service answers "every shape that touches the box" with
+ * the whole shape: a flood zone running the length of a river came back as
+ * 2.5 MB for two features. Everything is cut to the box (a margin of 2% so a
+ * line along the edge stays whole) before it is sent.
+ */
+const inside = (p, b) => p[0] >= b[0] && p[0] <= b[2] && p[1] >= b[1] && p[1] <= b[3];
+
+/** Sutherland-Hodgman against the box's four edges; a closed ring, or null. */
+export function clipRing(ring, b) {
+  let pts = ring.slice(0, ring.length > 1 && ring[0][0] === ring.at(-1)[0] && ring[0][1] === ring.at(-1)[1] ? -1 : undefined);
+  const edges = [
+    (p) => p[0] >= b[0], (p) => p[0] <= b[2], (p) => p[1] >= b[1], (p) => p[1] <= b[3],
+  ];
+  const cross = [
+    (a, c) => [b[0], a[1] + ((c[1] - a[1]) * (b[0] - a[0])) / (c[0] - a[0])],
+    (a, c) => [b[2], a[1] + ((c[1] - a[1]) * (b[2] - a[0])) / (c[0] - a[0])],
+    (a, c) => [a[0] + ((c[0] - a[0]) * (b[1] - a[1])) / (c[1] - a[1]), b[1]],
+    (a, c) => [a[0] + ((c[0] - a[0]) * (b[3] - a[1])) / (c[1] - a[1]), b[3]],
+  ];
+  for (let k = 0; k < 4 && pts.length; k++) {
+    const keep = edges[k];
+    const out = [];
+    for (let i = 0; i < pts.length; i++) {
+      const cur = pts[i];
+      const prev = pts[(i + pts.length - 1) % pts.length];
+      if (keep(cur)) {
+        if (!keep(prev)) out.push(cross[k](prev, cur));
+        out.push(cur);
+      } else if (keep(prev)) {
+        out.push(cross[k](prev, cur));
+      }
+    }
+    pts = out;
   }
-  return {
-    kind: layer.kind,
-    label: KINDS[layer.kind]?.label || layer.kind,
+  if (pts.length < 3) return null;
+  const r = (p) => [Math.round(p[0] * 1e7) / 1e7, Math.round(p[1] * 1e7) / 1e7];
+  const closed = pts.map(r);
+  closed.push(closed[0]);
+  return closed;
+}
+
+/** Liang-Barsky on each segment; the line's pieces inside the box. */
+export function clipLine(line, b) {
+  const pieces = [];
+  let cur = [];
+  const flush = () => { if (cur.length >= 2) pieces.push(cur); cur = []; };
+  for (let i = 1; i < line.length; i++) {
+    const [x0, y0] = line[i - 1];
+    const [x1, y1] = line[i];
+    const dx = x1 - x0, dy = y1 - y0;
+    let t0 = 0, t1 = 1, ok = true;
+    for (const [p, q] of [[-dx, x0 - b[0]], [dx, b[2] - x0], [-dy, y0 - b[1]], [dy, b[3] - y0]]) {
+      if (p === 0) { if (q < 0) { ok = false; break; } continue; }
+      const t = q / p;
+      if (p < 0) { if (t > t1) { ok = false; break; } if (t > t0) t0 = t; } else { if (t < t0) { ok = false; break; } if (t < t1) t1 = t; }
+    }
+    if (!ok) { flush(); continue; }
+    const a = [x0 + t0 * dx, y0 + t0 * dy];
+    const c = [x0 + t1 * dx, y0 + t1 * dy];
+    const last = cur.at(-1);
+    if (!last || t0 > 0 || last[0] !== a[0] || last[1] !== a[1]) { flush(); cur.push(a); }
+    cur.push(c);
+    if (t1 < 1) flush();
+  }
+  flush();
+  return pieces;
+}
+
+/** A GeoJSON geometry cut to the box, or null when nothing of it is inside. */
+export function clipGeometry(g, b) {
+  if (!g) return null;
+  switch (g.type) {
+    case 'Point': return inside(g.coordinates, b) ? g : null;
+    case 'MultiPoint': { const c = g.coordinates.filter((p) => inside(p, b)); return c.length ? { type: 'MultiPoint', coordinates: c } : null; }
+    case 'LineString':
+    case 'MultiLineString': {
+      const lines = g.type === 'LineString' ? [g.coordinates] : g.coordinates;
+      const pieces = lines.flatMap((l) => clipLine(l, b));
+      if (!pieces.length) return null;
+      return pieces.length === 1 ? { type: 'LineString', coordinates: pieces[0] } : { type: 'MultiLineString', coordinates: pieces };
+    }
+    case 'Polygon':
+    case 'MultiPolygon': {
+      const polys = (g.type === 'Polygon' ? [g.coordinates] : g.coordinates).map((rings) => {
+        const outer = clipRing(rings[0], b);
+        if (!outer) return null;
+        return [outer, ...rings.slice(1).map((h) => clipRing(h, b)).filter(Boolean)];
+      }).filter(Boolean);
+      if (!polys.length) return null;
+      return polys.length === 1 ? { type: 'Polygon', coordinates: polys[0] } : { type: 'MultiPolygon', coordinates: polys };
+    }
+    default: return g;
+  }
+}
+
+/** The box with a 2% margin each way. */
+const margin = (b) => {
+  const mx = (b[2] - b[0]) * 0.02, my = (b[3] - b[1]) * 0.02;
+  return [b[0] - mx, b[1] - my, b[2] + mx, b[3] + my];
+};
+
+/**
+ * One layer over one box, as labelled FeatureCollections: one, or one per
+ * kind when the layer is split (the wetlands inventory's open water).
+ */
+export async function queryLayer(layer, box, { fetcher = fetch, timeoutMs = 12000 } = {}) {
+  const ask = (paginate) => fetchJson(queryUrl(layer.url, box, { fields: layer.fields, paginate }), fetcher, timeoutMs);
+  let data;
+  try {
+    data = await ask(layer.paginate !== false);
+  } catch (e) {
+    if (layer.paginate === false || !/pagination/i.test(String(e?.message || e))) throw e;
+    data = await ask(false);
+  }
+  const cut = margin(box);
+  const byKind = new Map();
+  for (const f of data.features || []) {
+    const geometry = clipGeometry(esriToGeoJSON(f.geometry), cut);
+    if (!geometry) continue;
+    const properties = tidyAttributes(f.attributes, layer.fields || null);
+    const kind = layer.split ? layer.split(properties) : layer.kind;
+    if (!byKind.has(kind)) byKind.set(kind, []);
+    byKind.get(kind).push({ type: 'Feature', geometry, properties });
+  }
+  const truncated = Boolean(data.exceededTransferLimit) || (data.features || []).length >= MAX_FEATURES;
+  return [...byKind].map(([kind, features]) => ({
+    kind,
+    label: KINDS[kind]?.label || kind,
     source: layer.source,
     title: layer.title,
     url: layer.url,
-    truncated: Boolean(data.exceededTransferLimit) || features.length >= MAX_FEATURES,
+    truncated,
     type: 'FeatureCollection',
     features,
-  };
+  }));
 }
 
 /* ------------------------------------------------------------- catalogue */
@@ -283,35 +416,64 @@ export async function countyLayersOver(env, box) {
  * Every water layer over a box: the national ones and the county's own, all
  * asked at once. `failed` lists what did not answer, with why.
  */
-export async function waterLayersAt(env, box, { fetcher = fetch, timeoutMs = 25000 } = {}) {
+export async function waterLayersAt(env, box, { fetcher = fetch, timeoutMs = 25000, deadlineMs = 0 } = {}) {
   const county = await countyLayersOver(env, box);
   const all = [...NATIONAL.map((l) => ({ ...l, from: 'national' })), ...county.map((l) => ({ ...l, from: 'county' }))];
-  const settled = await Promise.allSettled(all.map((l) => queryLayer(l, box, { fetcher, timeoutMs })));
-  const layers = [];
-  const failed = [];
-  settled.forEach((s, i) => {
-    const l = all[i];
-    if (s.status === 'fulfilled') {
-      if (s.value.features.length) layers.push({ ...s.value, from: l.from });
-    } else {
-      failed.push({ kind: l.kind, title: l.title, source: l.source, url: l.url, reason: String(s.reason?.message || s.reason).slice(0, 160) });
-    }
-  });
-  const order = Object.keys(KINDS);
-  layers.sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind) || String(a.title).localeCompare(String(b.title)));
-  return {
-    box,
-    kinds: Object.fromEntries(Object.entries(KINDS).map(([k, v]) => [k, v.label])),
-    asked: { national: NATIONAL.length, county: county.length },
-    layers,
-    failed,
+  const asks = all.map((l) => queryLayer(l, box, { fetcher, timeoutMs: l.slow ? SLOW_MS : timeoutMs })
+    .then((value) => ({ status: 'fulfilled', value }), (reason) => ({ status: 'rejected', reason })));
+  const assemble = (settled) => {
+    const layers = [];
+    const failed = [];
+    const pending = [];
+    settled.forEach((s, i) => {
+      const l = all[i];
+      const name = { kind: l.kind, title: l.title, source: l.source, url: l.url };
+      if (!s) pending.push(name);
+      else if (s.status === 'fulfilled') {
+        for (const one of s.value) if (one.features.length) layers.push({ ...one, from: l.from });
+      } else failed.push({ ...name, reason: String(s.reason?.message || s.reason).slice(0, 160) });
+    });
+    const order = Object.keys(KINDS);
+    layers.sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind) || String(a.title).localeCompare(String(b.title)));
+    return {
+      box,
+      kinds: Object.fromEntries(Object.entries(KINDS).map(([k, v]) => [k, v.label])),
+      asked: { national: NATIONAL.length, county: county.length },
+      layers,
+      failed,
+      ...(pending.length ? { pending } : {}),
+    };
   };
+  /* Everything, however long the slowest source takes. */
+  const whole = Promise.all(asks).then(assemble);
+  if (!deadlineMs) return { body: await whole, later: null };
+  /* What has answered by the deadline; the rest is `pending`, and `later`
+     resolves to the whole answer for the caller to keep. */
+  const got = new Array(asks.length).fill(null);
+  asks.forEach((a, i) => a.then((s) => { got[i] = s; }));
+  const done = await Promise.race([whole.then(() => true), new Promise((r) => setTimeout(() => r(false), deadlineMs))]);
+  if (done) return { body: await whole, later: null };
+  return { body: assemble(got.slice()), later: whole };
 }
 
 /* ---------------------------------------------------------------- route */
 
 /** How long an answer is kept, in seconds: the networks change slowly. */
 export const CACHE_SECONDS = 7 * 24 * 3600;
+/* An answer missing a source that timed out is kept a day, not a week: long
+   enough that one slow server does not make every visit wait for it, short
+   enough that it is asked again soon. */
+export const PARTIAL_CACHE_SECONDS = 24 * 3600;
+/** How long a slow national source is waited for (in the background, past the deadline). */
+export const SLOW_MS = 45000;
+/*
+ * HOW LONG A VISITOR WAITS. USGS's hydrography server answered the same small
+ * box in 0.7 s and in 61 s within one minute (2026-10-23). So the answer goes
+ * out at the deadline with whatever has come back, the slow layers named under
+ * `pending`; the asking carries on in the background and the whole answer is
+ * kept, so asking again a minute later returns everything.
+ */
+export const DEADLINE_MS = 15000;
 
 /**
  * GET /api/water/layers?lng=&lat=&m=  or  ?box=west,south,east,north
@@ -329,14 +491,16 @@ export async function handleWaterLayers(request, url, env, origin, ctx, json, { 
       return json({ ...body, cached: true }, 200, origin);
     }
   }
-  const body = await waterLayersAt(env, box, { fetcher });
-  /* Only a complete answer is kept: a layer that timed out is asked again next time. */
-  if (cache && !body.failed.length) {
-    const put = cache.put(key, new Response(JSON.stringify(body), {
-      headers: { 'Content-Type': 'application/json', 'Cache-Control': `public, max-age=${CACHE_SECONDS}` },
-    }));
-    if (ctx?.waitUntil) ctx.waitUntil(put.catch(() => {}));
-    else await put.catch(() => {});
-  }
+  const { body, later } = await waterLayersAt(env, box, { fetcher, deadlineMs: ctx?.waitUntil ? DEADLINE_MS : 0 });
+  const keep = (b) => {
+    if (!cache) return Promise.resolve();
+    const age = b.failed.length ? PARTIAL_CACHE_SECONDS : CACHE_SECONDS;
+    return cache.put(key, new Response(JSON.stringify(b), {
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': `public, max-age=${age}` },
+    })).catch(() => {});
+  };
+  if (later) ctx.waitUntil(later.then(keep));
+  else if (ctx?.waitUntil) ctx.waitUntil(keep(body));
+  else await keep(body);
   return json(body, 200, origin);
 }

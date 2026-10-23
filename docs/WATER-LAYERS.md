@@ -12,7 +12,9 @@ servers, to make them available to the water map").
 - `m` defaults to 150. One answer covers at most 1,200 m across.
 - It is public, like the shade map's lidar route. It is told only the box and stores nothing per address.
 - The water Worker reaches it the same way it reaches `/api/maps*`: forward the path over the service binding. Cross-origin calls from the browser are not allowed.
-- An answer is cached for a week, by its box, and only when every source answered.
+- The answer goes out within about 15 seconds. A source still working then is listed under `pending`, and the server keeps asking it. Ask again a minute later for the whole answer. USGS's hydrography server is the usual one: it answered the same small box in under a second and in a minute, minutes apart.
+- A whole answer is cached for a week, by its box. One with a source that failed is cached for a day.
+- Every shape is cut to the box, with a 2% margin, and simplified to about half a metre.
 
 The answer:
 
@@ -25,7 +27,8 @@ The answer:
           "source": "Kent County, MI", "title": "Storm Inlets", "url": "<the ArcGIS layer>",
           "truncated": false, "type": "FeatureCollection", "features": [ GeoJSON, degrees ] }
       ],
-      "failed": [ { "kind", "title", "source", "url", "reason" } ]
+      "failed": [ { "kind", "title", "source", "url", "reason" } ],
+      "pending": [ { "kind", "title", "source", "url" } ]      (only when some are)
     }
 
 Layers are listed areas first, then lines, then points. A layer with nothing
@@ -43,7 +46,7 @@ trusting a unit.
 |---|---|
 | flood_zone | FEMA flood hazard zone (`FLD_ZONE`, `SFHA_TF`), or a county's own |
 | wetland | USFWS National Wetlands Inventory (`WETLAND_TYPE`), or a county's own |
-| water_body | lake or pond: USGS NHD waterbodies, or a county's own |
+| water_body | lake or pond: the inventory's open water (lakes, ponds, river channels), USGS NHD waterbodies, or a county's own |
 | watershed | a county's watersheds or sub-basins |
 | drain_district | the area a county drain serves |
 | drain_easement | a drain or storm easement |
