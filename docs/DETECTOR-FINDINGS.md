@@ -7786,6 +7786,29 @@ token as HF_TOKEN (2026-10-22). The extractor reads the checkpoint's own
 pixel mean and sd from its processor config (Maxar's statistics, not
 ImageNet's) and applies them to every picture that eye reads.
 
+**What Meta released with it (checked 2026-10-23 against the repository
+README, issue 34 and the paper's Section 8, after the owner caught a
+wrong claim).** Four demonstration heads on the web ViT-7B (ImageNet
+classifier; DPT depth on SYNTHMIX; COCO Plain-DETR detector; ADE20K
+Mask2Former segmenter, 150 ground-level classes), dino.txt on the web
+ViT-L, and ONE head on a satellite backbone: Canopy Height Maps v2
+(March 2026), a DPT head on this very SAT-493M ViT-L, canopy height in
+metres a pixel trained against airborne lidar (SatLidar MAE 2.2 m, R²
+0.91; gated at facebook/dinov3-vitl16-chmv2-dpt-head). No satellite
+segmentation head: the maintainer (issue 34, 2025-08-16) says the
+GEO-Bench heads are trained by the user (TerraTorch), iSAID/DIOR heads
+cannot be released (academic licences), the geospatial results use DPT
+or UperNet on frozen features, SAT-493M was fine-tuned at 512 px, and
+frozen-backbone segmentation trained on 896 px crops is state of the
+art on iSAID. Paper: 493M Maxar tiles at 0.6 m; GEO-Bench segmentation
+mean 74.5 (ViT-L sat) against Prithvi-v2 72.8 and DOFA 68.3; LoveDA
+54.4 and iSAID 62.9 frozen. So the recipe here (frozen eye, a head
+trained on our labels) is Meta's own; the head size is bounded by our
+104 lots (H93). CHMv2 is a lead of its own: tree height from the
+current photo, on the same features, zero-shot -- to measure against
+the lidar heights and the tree mask, then as a stage 3 input (S53, not
+yet written).
+
 **The run.** Workflow 14, 2026-10-22 ~21:45 UTC: THE PLAN's decoder over
 DINOv3-sat features, every lot whole at 896, seed 7, locked 104, saved
 lidar moves; read with workflow 24 against 39715167319 (Scale-MAE,
