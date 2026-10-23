@@ -1241,6 +1241,17 @@ there were test values on a local copy; nothing was saved to the real map):
   SLOPE view (rise over about 4 m from the lidar, on the property, in classes from 2% up, with the beside-the-house
   strip). The sprinklers view crashed after a measured route (it drew pipe that was never laid): fixed.
 
+### H36. Open to everyone; a menu of saved maps in place of an address (water session, 2026-10-23)
+
+- The owner: "Make the water map accessible to everyone now". water/tools/prepare.mjs writes ADMIN_ONLY "0"
+  (the gate in water/src/index.js stays, for closing it again; /admin stays the admin's). The dashboard's Water
+  map card is still admin-only in worker/src/unified.js (`admin: true`): asked of the core session, which owns it.
+  The footer links Lawn Mapper's privacy and contact page.
+- The owner: "get rid of the address entry and the 'use where I am' and replace it with a drop down menu to load
+  other saved maps that have completed lawn and shade maps". lib/maps.js: from GET /api/maps, a map whose
+  squareFeet is over 0 and whose shade part is kept (the dashboard's own rules); choosing one reopens the page on
+  it, sending any change not yet saved first. With none, the page says to finish them from the dashboard.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge

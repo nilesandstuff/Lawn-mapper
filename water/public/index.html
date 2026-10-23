@@ -19,6 +19,7 @@
   h1 { font-size: 1.5rem; margin: 8px 0 4px; }
   p.lede { color: var(--dim); margin: 0 0 16px; }
   form { display: flex; gap: 8px; flex-wrap: wrap; }
+  #map-pick { width: 100%; padding: 10px 12px; font-size: 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--fg); }
   input[type=text] { flex: 1 1 240px; min-width: 0; padding: 10px 12px; font-size: 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--fg); }
   button { padding: 10px 14px; font-size: 16px; border-radius: 8px; border: 1px solid var(--accent); background: var(--accent); color: #fff; cursor: pointer; }
   button.plain { background: transparent; color: var(--accent); }
@@ -72,12 +73,10 @@
   <h1>Lawn Water</h1>
   <p class="lede">How much and how often to water each part of a lawn so it is neither over- nor under-watered, from its slope, its soil, the rain and the weather; and where water stands, from the free USGS lidar survey of the ground.</p>
 
-  <form id="find">
-    <input type="text" id="address" placeholder="Street address, city, state" autocomplete="street-address" aria-label="Address">
-    <button type="submit" id="go">Map it</button>
-    <button type="button" class="plain" id="here">Use where I am</button>
-  </form>
-  <div id="candidates" hidden></div>
+  <!-- YOUR SAVED MAPS (owner, 2026-10-23): the ones with their lawn and shade maps done, in place of an address -->
+  <label for="map-pick" class="dim" style="display:block;margin-bottom:4px">Your maps with the lawn and the shade map done</label>
+  <select id="map-pick" aria-label="Open a saved map"><option value="">Loading your maps…</option></select>
+  <p id="map-none" class="dim" hidden></p>
   <div id="status" class="status"></div>
 
   <div id="result" hidden>

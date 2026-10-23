@@ -1,10 +1,9 @@
 /**
  * water.<home domain>: THE LOW-SPOT MAP FOR ONE PROPERTY (water session).
  *
- * Finding the property is the shade map's way (public/shade.js
- * siteFromAddress / siteFromPoint, features session), through this site's
- * Worker: the address search, the pick when there are several, the county's
- * property line, a photo of the frame. The lidar is read and the map worked
+ * The property is one of the person's saved maps, chosen from a menu of
+ * those whose lawn and shade map are done (lib/maps.js; owner, 2026-10-23:
+ * no address search). The lidar is read and the map worked
  * out in a Web Worker (analyse.js -> lib/site.js); then drawn here over the
  * photo, moved by the datum correction the analysis used (lib/datum.js).
  *
@@ -27,6 +26,7 @@
 import { tracedOn, lineUpAt } from '/lib/shade/traced.js';
 import { boxFor } from '/lib/site.js';
 import { sprinklers } from '/heads.js';
+import { openable } from '/lib/maps.js';
 
 const $ = (s) => document.querySelector(s);
 const R = 6378137;
@@ -47,45 +47,7 @@ function status(text, cls = '') {
 
 /* ------------------------------------------------- finding the property */
 
-async function pickAddress(q) {
-  const res = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`);
-  const j = res.ok ? await res.json() : null;
-  if (!res.ok) throw new Error(j?.error || `The address lookup failed (${res.status}).`);
-  const results = j?.results || [];
-  if (!results.length) throw new Error("That address wasn't found. Try adding the city and state.");
-  if (results.length === 1) return results[0];
-  const box = $('#candidates');
-  box.replaceChildren();
-  status('Which one?');
-  return new Promise((resolve) => {
-    for (const r of results) {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.textContent = r.label;
-      b.onclick = () => { box.hidden = true; resolve(r); };
-      box.append(b);
-    }
-    box.hidden = false;
-  });
-}
-
 const asFeature = (p) => (p?.type === 'Feature' ? p : p?.type ? { type: 'Feature', properties: {}, geometry: p } : null);
-
-async function parcelAt(where) {
-  try {
-    const res = await fetch(`/api/parcel?${new URLSearchParams(where)}`);
-    return res.ok ? asFeature((await res.json()).parcel) : null;
-  } catch { return null; }
-}
-
-async function siteFromAddress(r) {
-  const where = { lng: r.lng, lat: r.lat };
-  if (r.county) where.county = r.county;
-  if (r.state) where.state = r.state;
-  if (r.parcelPin) where.pin = r.parcelPin;
-  if (r.parcelSqFt) where.sqft = r.parcelSqFt;
-  return { label: r.label, lng: r.lng, lat: r.lat, parcel: await parcelAt(where), lawn: [] };
-}
 
 /** A saved map, as the shade page reads one (public/shade.js siteFromSave). */
 async function siteFromMap(id) {
@@ -106,10 +68,6 @@ async function siteFromMap(id) {
     tracedOn: tracedOn(s),
     water: s.tools?.water?.data || null,
   };
-}
-
-async function siteFromPoint(lat, lng) {
-  return { label: 'Where you are', lng, lat, parcel: await parcelAt({ lng, lat }), lawn: [] };
 }
 
 /* ------------------------------------------------------------- the photo */
@@ -898,22 +856,34 @@ $('#topsoil').addEventListener('change', () => { inputs.topsoil = $('#topsoil').
 $('#grass').addEventListener('change', () => { inputs.grass = $('#grass').value === 'warm' ? 'warm' : 'cool'; changed(); });
 
 async function guarded(fn) {
-  $('#go').disabled = true; $('#here').disabled = true;
-  try { await fn(); } catch (e) { status(e.message || String(e), 'bad'); } finally { $('#go').disabled = false; $('#here').disabled = false; }
+  try { await fn(); } catch (e) { status(e.message || String(e), 'bad'); }
 }
 
-$('#find').addEventListener('submit', (e) => {
-  e.preventDefault();
-  const q = $('#address').value.trim();
-  if (!q) return;
-  guarded(async () => { status('Looking up the address…'); const r = await pickAddress(q); status('Finding the property line…'); await run(await siteFromAddress(r)); });
-});
-
-$('#here').addEventListener('click', () => guarded(async () => {
-  status('Finding where you are…');
-  const pos = await new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, () => reject(new Error('Location was not shared.')), { enableHighAccuracy: true, timeout: 20000 }));
-  await run(await siteFromPoint(pos.coords.latitude, pos.coords.longitude));
-}));
+/* THE MAP TO OPEN (owner, 2026-10-23): a menu of the person's saved maps whose lawn and shade map are done (lib/
+   maps.js), in place of an address search. Choosing one reopens the page on it; a change not yet saved on this map
+   is sent first (flush), so it lands on this map, not the next. */
+async function fillMapMenu() {
+  const sel = $('#map-pick'), none = $('#map-none');
+  let maps = [];
+  try {
+    const res = await fetch('/api/maps', { credentials: 'same-origin' });
+    maps = res.ok ? openable((await res.json())?.maps) : [];
+  } catch { maps = []; }
+  const dash = `${HOME}/dashboard`;
+  if (!maps.length) {
+    sel.hidden = true; none.hidden = false;
+    none.innerHTML = `No saved map has its lawn and its shade map done yet. Finish both from <a href="${dash}">your dashboard</a>, then open the water map from there or here.`;
+    return;
+  }
+  sel.innerHTML = `${mapId ? '' : '<option value="">Choose a map…</option>'}${maps.map((m) => `<option value="${esc(m.id)}" ${m.id === mapId ? 'selected' : ''}>${esc(m.label)}</option>`).join('')}`;
+  if (mapId && !maps.some((m) => m.id === mapId)) sel.insertAdjacentHTML('afterbegin', '<option value="" selected>This map (its lawn or shade map is not finished)</option>');
+  sel.onchange = () => {
+    if (!sel.value || sel.value === mapId) return;
+    flush();
+    location.href = `${location.pathname}?map=${encodeURIComponent(sel.value)}`;
+  };
+}
+fillMapMenu();
 
 for (const id of ['#show-photo', '#show-hard']) $(id).addEventListener('change', () => { legend(); draw(); });
 $('#edit-heads').addEventListener('click', async () => { setMode(null); if (await heads.open(heads.data, { force: true })) { $('#result').classList.add('heads-on'); draw(); $('#stage').scrollIntoView({ behavior: 'smooth' }); } });

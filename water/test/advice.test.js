@@ -9,6 +9,7 @@ import { suggestions, betweenZones, ownRate } from '../lib/fixes.js';
 import { zoneSchedule, oftenWords, runsFor, valveZones, schedulingMultiplierFor } from '../lib/schedule.js';
 import { precipitation } from '../lib/precip.js';
 import { unEnu } from '../lib/heads.js';
+import { openable } from '../lib/maps.js';
 
 const tests = [];
 const test = (name, fn) => tests.push([name, fn]);
@@ -134,6 +135,17 @@ test('each valve\'s lawn is where it puts down the most', () => {
   assert.deepEqual([...zoneOf], [0, 0, 2, -1]);
   assert.equal(zones.get(1).cells, 2); assert.equal(zones.get(3).cells, 1);
   assert.ok(Math.abs(zones.get(1).rateInH - 1) < 1e-9);
+});
+
+test('the map menu offers the saved maps whose lawn and shade map are both done, newest first', () => {
+  const maps = [
+    { id: 'a', address: 'A', lng: -85, lat: 42, squareFeet: 5200.4, tools: { shade: { updatedAt: '2026-10-20' } } },
+    { id: 'b', address: 'B', lng: -85, lat: 42, squareFeet: 0, tools: { shade: { updatedAt: '2026-10-20' } } },
+    { id: 'c', address: 'C', lng: -85, lat: 42, squareFeet: 3000, tools: {} },
+    { id: 'd', address: 'D', lng: -85, lat: 42, squareFeet: 900, tools: { shade: { updatedAt: '2026-10-21' }, water: { updatedAt: '2026-10-22' } } },
+  ];
+  assert.deepEqual(openable(maps), [{ id: 'a', label: 'A · 5,200 sq ft' }, { id: 'd', label: 'D · 900 sq ft' }]);
+  assert.deepEqual(openable(null), []);
 });
 
 let failed = 0;
