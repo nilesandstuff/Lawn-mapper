@@ -984,6 +984,48 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H115. META'S CANOPY HEIGHT MODEL (CHMv2), OUT OF THE BOX, TELLS A ROOF FROM A TREE INSIDE THE LIDAR'S TALL CELLS: AUC 0.94 at 0.6 m, 0.95 at 0.3 m (median height 11-16 m on tree cells, 0.0-0.1 m on roof cells, 82 lots). As a canopy source it is weaker than the lidar (AUC 0.76-0.79 for the lidar's 2.5 m+, reads 2-3 m low); as a blunt veto it would erase 9% of the visible lawn (S53, nothing trained) -- 2026-10-23
+*Workflow 42 run 39879819878, tools/chm_try.py:
+`facebook/dinov3-vitl16-chmv2-dpt-head` (a DPT head on the DINOv3
+satellite ViT-L, trained against airborne lidar; its own pixel mean and
+sd from its processor config) read whole over each locked lot's photo
+resampled to 0.6 m (its training scale) and 0.3 m, compared on a 0.5 m
+grid with the lidar's height surface at 1 m (98 lots), the tree model's
+canopy (104) and the traced lawn. Medians over lots.*
+
+| | 0.6 m | 0.3 m |
+|---|---|---|
+| AUC: CHM height for the lidar's 2.5 m+ cells against the rest | 0.758 | 0.789 |
+| IoU: CHM >= 2 m against the lidar's 2.5 m+ | 0.316 | 0.287 |
+| MAE / bias on the lidar's tall cells | 5.5 m / -3.0 m | 7.0 m / -2.1 m |
+| IoU: CHM >= 2 m against the tree model's canopy | 0.538 | 0.583 |
+| **roof against tree inside the lidar's tall cells, AUC** (82 lots) | **0.939** | **0.953** |
+| median CHM on tree cells / on roof cells | 11.5 m / 0.1 m | 15.7 m / 0.0 m |
+| share of the traced visible lawn called 2 m+ | 9.5% | 8.5% |
+| share of the ground traced "under trees" called 2 m+ | 77% | 83% |
+
+**The bar, written before the run: met on the roof side** (0.8), missed on
+the canopy side (0.9). A canopy-height model trained on lidar canopy has
+seen buildings as zero height, and it says so on our photos: inside the
+lidar's tall mask a cell the tree model calls canopy reads 11-16 m, a
+cell it does not reads nothing. That is a second opinion the detector's
+roof mask has never had -- the mask is "2 m+ in the lidar", roofs and
+crowns alike, which is why the yellow outline runs off a roof into the
+tree beside it (S48's pictures) and why the veto cannot be applied under
+a crown. Where the lidar is old (a roof built since the flight; a tree
+felled) this reads the photo of today. **Context:** Maxar-scale model on
+7-10 cm photos resampled down; the tree model's mask as the "tree" truth
+(its own errors count against CHM); no lean correction; 82 lots with 20+
+cells of each kind.
+
+**Next (S60, not run):** the roof mask as lidar 2.5 m+ AND CHM under 2 m,
+the crown mask as lidar 2.5 m+ AND CHM 2 m+ (or the tree model's mask
+where they agree), measured first by eye on S48's 13 lots and the
+roof-cells-on-traced-lawn count, then as the veto and the canopy input
+in a workflow 14 run. One CHMv2 pass is a few seconds a lot on the CPU
+at 0.6 m; on the live server it would share DINOv3's features if the
+eye ships.
+
 ### H114. DINOv3's SATELLITE ViT-L AS THE EYE BEATS SCALE-MAE LOT BY LOT: THE PLAN's row 17.2% -> 15.4%, 71 better / 23 worse / 10 level, -1.8 [-3.4, -1.4], p < 0.001; the county-photo lots 25.9% -> 17.1%. The biggest single move since the decoder (S51, one seed) -- 2026-10-23
 *Workflow 14 run 39858638936: `facebook/dinov3-vitl16-pretrain-sat493m`
 (493M Maxar tiles at 0.6 m, distilled from the 7B; 16 px patches, RoPE;
@@ -7856,6 +7898,8 @@ fused runs (the main set-up); worth confirming with seeds 8 and 9 if THE
 PLAN's median paired change is below zero with more lots better than worse;
 adopted only under the protocol's full bar.
 
+### S53. CHMv2, Meta's canopy height head, zero-shot -- MEASURED 2026-10-23: a roof-against-tree separator (AUC 0.94), not a canopy source: see H115
+
 ### S54-S57. The night of 2026-10-22: everything that makes sense to try, on the free runner (owner: "try everything that makes sense to try ... keep it under $10") -- RUNNING
 All THE PLAN's decoder, seed 7, locked 104, saved lidar moves, every lot
 whole at 896 unless said, read with workflow 24 against 39715167319
@@ -9619,3 +9663,4 @@ deploy log says how many are locked and how many are waiting.
 | 2026-10-22 | 39763223279 | 104 (locked, 131u7jm) | S49 `windows: on`: THE PLAN with the 26 lots past 90 m read in overlapping 896 px windows at 10 cm (30 of 109 photographs, 4 to 16 windows each) instead of one squeezed pass, seed 7, CPU, saved lidar moves; the live server would read such a release the same way | 19.2% (edge refined + stage 3, span, veto) | — | Folder runs/2026-10-22-1220-edt. Against 39715167319 (same, windows off, 17.2%): **H112.** Workflow 24 run 39816751440: 40 / 48 / 16, +0.4 [-0.3, +1.0], p 0.456; run 39818935512 on the 26 big lots alone: 9 / 16 / 1, +1.9 [-0.6, +3.6], p 0.230. Worse where it was meant to help; not shipped |
 | 2026-10-22 | 39858638936 | 104 (locked, 131u7jm) | S51: `facebook/dinov3-vitl16-pretrain-sat493m` as the eye (its own pixel normalisation), THE PLAN, seed 7, CPU, saved lidar moves, every lot whole at 896, no pond examples | 15.4% (edge refined + stage 3, span, veto) | — | Folder runs/2026-10-22-2112-edt-facebook-dinov3-vitl16-pretrain-sat493m-896px. **H114.** Workflow 24 run 39885278271 vs 39715167319 (Scale-MAE): 71 / 23 / 10, -1.8 [-3.4, -1.4], p < 0.001; vs its no-pond twin row (39885323971): 70 / 25 / 9, -1.7 [-3.3, -0.9]; county lots 25.9 -> 17.1; big 26: 16 / 9 / 1, -1.9 [-4.5, +1.1] |
 | 2026-10-22 | 39829073504 | 104 (locked, 131u7jm) | S50 `windows: on + whole`: the 26 big lots in 10 cm windows with the whole-lot squeezed grid stacked beside them (2048 numbers a patch), THE PLAN, seed 7, CPU, saved lidar moves, no pond examples | 20.2% (edge refined + stage 3, span, veto) | — | Folder runs/2026-10-22-2135-edt-scalemae-large-896px. **H113.** Workflow 24 vs the no-pond twin rows: vs windows off (39887504771) 29 / 55 / 20, +0.7 [+0.2, +1.1], p 0.006; vs windows on (39887507170) 34 / 48 / 22, +0.3 [-0.1, +1.0], p 0.15; the big 26 level both ways. The asked map was not drawn (folder file missing on the scoring step; fixed) |
+| 2026-10-23 | 39879819878 (workflow 42) | 104 (locked) | S53: CHMv2 canopy height (DPT on DINOv3-sat) out of the box at 0.6 m and 0.3 m, against the lidar at 1 m, the tree mask and the traced lawn | — | — | **H115.** Roof against tree inside the lidar's tall cells AUC 0.94 / 0.95 (82 lots; 11-16 m on trees, 0 m on roofs); canopy against the lidar AUC 0.76 / 0.79, reads 2-3 m low; a 2 m+ veto would erase 9% of visible lawn |
