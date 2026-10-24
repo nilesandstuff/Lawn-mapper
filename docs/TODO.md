@@ -74,9 +74,6 @@ inside of the loop".
   (S63, owner 2026-10-24). Built and off. Workflow 14 run 40127014446 on the
   free runner scores `small-100` and `small-300` against THE PLAN; read it
   with workflow 24 against the bar in S63.
-- **Why the condo's small front patches were dropped.** Workflow 32 run
-  40126872192 pressed the condo once and lists every patch with its size,
-  confidence, canopy and lidar shares, and the lawn at each slider setting.
 - **Storm drains everywhere.** The nightly sweep (workflow 44) reads ~60
   county servers a night, and the live search runs where people look.
   NCDOT's pipes are retried tonight.
@@ -90,6 +87,11 @@ inside of the loop".
   canopy input.
 
 ## Done
+
+- 2026-10-24: why the condo's small front patches were dropped (workflow 32
+  run 40127224975): mostly the AI's confidence just under 50%, and under
+  trees the tree step clearing them; not the size limit or the lidar. See
+  the run log in docs/DETECTOR-FINDINGS.md.
 
 - 2026-10-24: the confidence slider ("How sure the AI must be", 20% to 80%)
   and lawn pieces down to 100 sq ft (commit 7c5bd1d).
