@@ -21,6 +21,11 @@ on:
         description: 'Or one of the owner''s saved maps by its "lng,lat", on the photo it was saved with, pressed twice (lots is then ignored)'
         required: false
         default: ''
+      patches:
+        description: 'With a map: press it ONCE and explain each small patch (sure, canopy, roof, kept) and the lawn at each slider cut; pictures as an artifact'
+        type: choice
+        default: 'off'
+        options: ['off', 'on']
 
 permissions:
   contents: read
@@ -64,5 +69,14 @@ jobs:
         env:
           LOTS: ${{ inputs.lots }}
           MAP: ${{ inputs.map }}
+          PATCHES: ${{ inputs.patches }}
+          OUT: press-out
           SITE: https://${{ vars.CUSTOM_DOMAIN }}
         run: node tools/time-alpha.js
+      - name: Keep the press's pictures
+        if: ${{ always() && inputs.patches == 'on' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: press-pictures
+          path: press-out
+          if-no-files-found: ignore

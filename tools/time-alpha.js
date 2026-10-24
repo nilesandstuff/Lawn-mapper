@@ -98,7 +98,8 @@ async function timeMap(env) {
   const { provider, groundCm, pieces, photoFrom, ...press } = body;
   console.log(`The saved map ${Math.round(hit.d)} m from the point asked: ${provider} photo from ${photoFrom} at ${groundCm} cm a pixel in ${pieces} piece(s).`);
   const headers = { 'content-type': 'application/json', authorization: `Bearer ${env.ALPHA_TOKEN}` };
-  for (const round of ['first (cold or warm)', 'second (warm)']) {
+  const patches = /^(1|on|true)$/i.test(env.PATCHES || '');
+  for (const round of patches ? ['the press'] : ['first (cold or warm)', 'second (warm)']) {
     const t0 = Date.now();
     const res = await fetch(env.ALPHA_URL, { method: 'POST', headers, body: JSON.stringify(press) });
     if (!res.ok) { console.log(`${round}: start HTTP ${res.status}`); continue; }
@@ -131,7 +132,129 @@ async function timeMap(env) {
         console.log(`  raw mask not read: ${e.message}`);
       }
     }
+    if (patches) await explainPatches(got, press, env.OUT || 'press-out');
   }
+}
+
+/*
+ * WHY A PATCH WAS LEFT OUT (owner, 2026-10-24, the condo: "some of those
+ * small areas didn't make it into the final trace. Is that because our
+ * parameters for sizes of areas are too strict? Or is it because the raw
+ * mask isn't as confident?"). Every patch the decoder thinks at least a
+ * little is lawn, inside the property line and smaller than a yard, with
+ * its size, how sure the decoder was, how much of it is tree canopy or
+ * lidar roof, and how much the served mask kept; and the whole lot's lawn
+ * at each cut the page's slider offers. Pictures go to OUT for the artifact.
+ */
+export const PATCH_CUT = 77;        // 30%: the patches worth asking about
+export const PATCH_MAX_SQFT = 3000; // bigger is the main lawn, not a patch
+const SQFT_PER_M2 = 10.7639;
+
+/** 8-connected pieces of a 0/1 mask: a label per cell (0 = none) and the count. */
+export function pieces(mask, w, h) {
+  const label = new Int32Array(w * h);
+  let n = 0;
+  const stack = [];
+  for (let i = 0; i < w * h; i++) {
+    if (!mask[i] || label[i]) continue;
+    label[i] = ++n;
+    stack.push(i);
+    while (stack.length) {
+      const c = stack.pop();
+      const x = c % w, y = (c / w) | 0;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const xx = x + dx, yy = y + dy;
+        if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+        const k = yy * w + xx;
+        if (mask[k] && !label[k]) { label[k] = n; stack.push(k); }
+      }
+    }
+  }
+  return { label, n };
+}
+
+/**
+ * The patches: pieces of (decoder >= cut, inside the lot) between minSqFt and
+ * maxSqFt, each with its share of cells at 50% and above, its mean
+ * confidence, its share under canopy, under lidar roof or void, and its share
+ * the served mask kept; biggest first.
+ */
+export function patchReport({ probGrey, final, canopy, roof, voidMask, within, w, h, mpp, cut = PATCH_CUT, minSqFt = 20, maxSqFt = PATCH_MAX_SQFT }) {
+  const cand = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) cand[i] = probGrey[i] >= cut && (!within || within[i]) ? 1 : 0;
+  const { label, n } = pieces(cand, w, h);
+  const acc = Array.from({ length: n + 1 }, () => ({ cells: 0, sure: 0, sum: 0, canopy: 0, veto: 0, kept: 0, sx: 0, sy: 0 }));
+  for (let i = 0; i < w * h; i++) {
+    const l = label[i];
+    if (!l) continue;
+    const a = acc[l];
+    a.cells++; a.sum += probGrey[i]; a.sx += i % w; a.sy += (i / w) | 0;
+    if (probGrey[i] >= 128) a.sure++;
+    if (canopy?.[i]) a.canopy++;
+    if (roof?.[i] || voidMask?.[i]) a.veto++;
+    if (final?.[i]) a.kept++;
+  }
+  const sqft = mpp * mpp * SQFT_PER_M2;
+  return acc.slice(1).map((a) => ({
+    sqft: a.cells * sqft,
+    meanPct: Math.round((a.sum / a.cells / 255) * 100),
+    surePct: Math.round((a.sure / a.cells) * 100),
+    canopyPct: Math.round((a.canopy / a.cells) * 100),
+    vetoPct: Math.round((a.veto / a.cells) * 100),
+    keptPct: Math.round((a.kept / a.cells) * 100),
+    keptSqFt: a.kept * sqft,
+    at: [Math.round((a.sx / a.cells) * mpp), Math.round((a.sy / a.cells) * mpp)],
+  })).filter((p) => p.sqft >= minSqFt && p.sqft <= maxSqFt).sort((x, y) => y.sqft - x.sqft);
+}
+
+/** Why each patch of a press was kept or dropped, printed, and its pictures saved. */
+async function explainPatches(got, press, out) {
+  const { PNG } = await import('pngjs');
+  const { mkdirSync, writeFileSync } = await import('node:fs');
+  const { finishLot, canopyMask } = await import('../public/lib/finish.js');
+  const { parcelMask } = await import('./serve-alpha.mjs');
+  mkdirSync(out, { recursive: true });
+  const read = (b64) => (b64 ? PNG.sync.read(Buffer.from(b64, 'base64')) : null);
+  const save = (name, b64) => { if (b64) writeFileSync(`${out}/${name}.png`, Buffer.from(b64, 'base64')); };
+  save('prob', got.prob); save('final', got.mask);
+  for (const [k, v] of Object.entries(got.parts || {})) save(k, v);
+  const prob = read(got.prob);
+  if (!prob) { console.log('  no decoder picture came back: the server is older than this tool'); return; }
+  if (!got.parts?.canopy) console.log('  NOTE: no canopy picture came back (server not yet redeployed?); canopy shares read 0');
+  const w = prob.width, h = prob.height;
+  const mpp = Number(got.mpp) || null;
+  if (!mpp) { console.log('  no grid size came back; cannot measure in sq ft'); return; }
+  const probGrey = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) probGrey[i] = prob.data[i * 4];
+  const finalPng = read(got.mask);
+  const final = finalPng ? canopyMask(finalPng, w, h) : null;
+  const canopyPng = read(got.parts?.canopy), roofPng = read(got.parts?.roof), voidPng = read(got.parts?.void);
+  const canopy = canopyPng ? canopyMask(canopyPng, w, h) : null;
+  const roof = roofPng ? canopyMask(roofPng, w, h) : null;
+  const voidMask = voidPng ? canopyMask(voidPng, w, h) : null;
+  const within = parcelMask(press.parcel, press.frame, w, h);
+  const sqft = mpp * mpp * SQFT_PER_M2;
+  const inLot = (m) => { let n = 0; for (let i = 0; i < w * h; i++) if (m[i] && (!within || within[i])) n++; return n * sqft; };
+  console.log(`  grid ${w}x${h} at ${(mpp * 100).toFixed(1)} cm; lot ${within ? Math.round(inLot(new Uint8Array(w * h).fill(1))) : '?'} sq ft`);
+  console.log('  LAWN IN THE LOT AT EACH CUT (the page\'s slider; the page then drops pieces under 100 sq ft):');
+  for (const pct of [20, 30, 40, 50, 60, 70, 80]) {
+    const m = finishLot({ prob, canopy: canopyPng, roof: roofPng, voidMask: voidPng, height: null, w, h, mpp, threshold: Math.round((pct * 255) / 100) });
+    console.log(`    ${String(pct).padStart(2)}%  ${Math.round(inLot(m)).toLocaleString('en-US').padStart(8)} sq ft${pct === 50 ? '   <- as served' : ''}`);
+  }
+  const report = patchReport({ probGrey, final, canopy, roof, voidMask, within, w, h, mpp });
+  console.log(`  PATCHES the decoder is at least 30% sure of, ${PATCH_MAX_SQFT.toLocaleString('en-US')} sq ft and under, inside the lot (${report.length}):`);
+  console.log('     sq ft  mean sure  >=50%  canopy  roof/void  served kept   where (m from top-left)');
+  for (const p of report.slice(0, 40)) {
+    const why = p.keptPct >= 50 ? 'kept'
+      : p.vetoPct >= 50 ? 'lidar veto'
+        : p.surePct < 50 && p.canopyPct >= 30 ? 'under canopy, unsure'
+          : p.surePct < 50 ? 'unsure'
+            : p.canopyPct >= 30 ? 'tree step cleared it'
+              : p.sqft < 100 ? 'too small' : '?';
+    console.log(`    ${Math.round(p.sqft).toString().padStart(6)}  ${String(p.meanPct).padStart(5)}%  ${String(p.surePct).padStart(8)}%  ${String(p.canopyPct).padStart(5)}%  `
+      + `${String(p.vetoPct).padStart(7)}%  ${String(p.keptPct).padStart(7)}%  (${p.at[0]}, ${p.at[1]})  ${why}`);
+  }
+  writeFileSync(`${out}/patches.json`, JSON.stringify({ mpp, w, h, report }, null, 1));
 }
 
 /*

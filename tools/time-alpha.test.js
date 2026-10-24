@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { summarise, banding } from './time-alpha.js';
+import { summarise, banding, patchReport, pieces } from './time-alpha.js';
 
 const s = summarise([
   { seconds: { total: 20, backbone: 4, canopy: 2, decoder: 1, waited: 10 } },
@@ -21,3 +21,22 @@ assert.equal(s.decoderShareOfTotal, 0.05);
 }
 
 console.log('time alpha: ok');
+
+/* Why a patch was left out (owner, 2026-10-24): two separate pieces, sizes and shares. */
+{
+  const w = 40, h = 20, mpp = 0.3;
+  const probGrey = new Uint8Array(w * h), canopy = new Uint8Array(w * h), final = new Uint8Array(w * h);
+  for (let y = 2; y < 8; y++) for (let x = 2; x < 8; x++) { probGrey[y * w + x] = 200; final[y * w + x] = 1; }
+  for (let y = 10; y < 16; y++) for (let x = 20; x < 30; x++) { probGrey[y * w + x] = 100; canopy[y * w + x] = 1; }
+  assert.equal(pieces(probGrey.map((v) => (v >= 77 ? 1 : 0)), w, h).n, 2);
+  const r = patchReport({ probGrey, final, canopy, roof: null, voidMask: null, within: null, w, h, mpp });
+  assert.equal(r.length, 2);
+  const [big, small] = r;
+  assert.equal(Math.round(big.sqft), Math.round(60 * 0.09 * 10.7639));
+  assert.equal(big.surePct, 0);
+  assert.equal(big.canopyPct, 100);
+  assert.equal(big.keptPct, 0);
+  assert.equal(small.keptPct, 100);
+  assert.equal(small.meanPct, 78);
+}
+console.log('time-alpha patches: ok');
