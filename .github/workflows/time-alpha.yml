@@ -43,6 +43,8 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
+      - name: Install the PNG reader (the raw mask's stripe check)
+        run: npm install pngjs --no-save
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'

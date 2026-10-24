@@ -120,7 +120,40 @@ async function timeMap(env) {
     const wall = ((Date.now() - t0) / 1000).toFixed(1);
     if (got?.status !== 'succeeded') { console.log(`${round}: ${got?.status || 'timed out'} ${got?.error || ''}`); continue; }
     console.log(`${round}: ${got.w}x${got.h} cells, wall ${wall}s, server ${JSON.stringify(got.seconds)}${got.windows ? `, read in ${got.windows} window(s)` : ''}`);
+    if (got.prob) {
+      try {
+        const { PNG } = await import('pngjs');
+        const img = PNG.sync.read(Buffer.from(got.prob, 'base64'));
+        const b = banding(img.data, img.width, img.height);
+        console.log(`  raw mask ${img.width}x${img.height}: lawn in ${(b.lawn * 100).toFixed(1)}% of it; row-to-row change ${b.rows.toFixed(3)}, `
+          + `column-to-column ${b.cols.toFixed(3)}, ratio ${b.ratio.toFixed(2)}${b.ratio > 3 ? '  <-- STRIPES' : ' (no stripes)'}`);
+      } catch (e) {
+        console.log(`  raw mask not read: ${e.message}`);
+      }
+    }
   }
+}
+
+/*
+ * STRIPES, MEASURED (2026-10-24: the condo complex came back as horizontal
+ * bands when the live server unpacked a native read by the wrong grid). The
+ * lawn share of each row and of each column, and how much it changes from one
+ * to the next: a real lawn changes about as much either way; bands across the
+ * lot make rows jump while columns barely move.
+ */
+export function banding(rgba, w, h) {
+  const at = (x, y) => (rgba[(y * w + x) * 4] >= 128 ? 1 : 0);
+  const rows = new Float64Array(h);
+  const cols = new Float64Array(w);
+  let lawn = 0;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) { const v = at(x, y); rows[y] += v; cols[x] += v; lawn += v; }
+  }
+  for (let y = 0; y < h; y++) rows[y] /= w;
+  for (let x = 0; x < w; x++) cols[x] /= h;
+  const step = (a) => { let s = 0; for (let i = 1; i < a.length; i++) s += Math.abs(a[i] - a[i - 1]); return a.length > 1 ? s / (a.length - 1) : 0; };
+  const r = step(rows), c = step(cols);
+  return { lawn: lawn / (w * h), rows: r, cols: c, ratio: c > 0 ? r / c : (r > 0 ? Infinity : 1) };
 }
 
 async function main(env = process.env) {
