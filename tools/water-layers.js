@@ -73,7 +73,7 @@ export const boxHolds = (b, lng, lat) => Array.isArray(b) && lng >= b[0] && lng 
  */
 export function sweepOrder(roots, points = [], done = new Map(), now = Date.now(), recheckDays = RECHECK_DAYS) {
   const fresh = (r) => {
-    const at = done.get(r.root);
+    const at = done.get(r.key || r.root);
     return at && now - Date.parse(at) < recheckDays * 86400000;
   };
   const under = (r) => points.filter(([lng, lat]) => r.boxes.some((b) => boxHolds(b, lng, lat))).length;
@@ -523,24 +523,23 @@ async function main() {
     }
   }
   for (const [root, e] of searched) if (!extra.has(root)) extra.set(root, { services: [...e.services], maps: e.maps || 1 });
-  /* The state inventories: only their own services, under the agency's
-     name. A server a search also found keeps its whole sweep, seeds first. */
-  if (!only.length) {
-    for (const seed of STATE_SEEDS) {
-      const had = extra.get(seed.root);
-      if (had) had.services = [...new Set([...seed.services, ...had.services])];
-      else extra.set(seed.root, { services: [...seed.services], maps: 1, alone: true, source: seed.source });
-    }
-  }
   const registry = registryRoots(ALL_COUNTIES, only.length ? only : null);
   const known = new Set(registry.map((r) => r.root));
   const found = [...extra].filter(([root]) => !known.has(root))
-    .map(([root, e]) => ({ root, keys: [], boxes: [], services: e.services, searched: true, weight: e.maps, alone: !!e.alone, source: e.source || null }));
+    .map(([root, e]) => ({ root, keys: [], boxes: [], services: e.services, searched: true, weight: e.maps }));
   for (const r of registry) if (extra.has(r.root)) r.services = extra.get(r.root).services;
 
   /* 2. THE SWEEP: searched servers first (they are under saved maps by
         construction), then the registry's, those under saved maps first. */
+  /* The state inventories: only their own services, under the agency's
+     name, each remembered by its first service rather than by the server it
+     sits on, so a seed added is due at once even on a server a search swept
+     today. */
+  const seeds = only.length ? [] : STATE_SEEDS.map((x) => ({
+    root: x.root, key: x.services[0], keys: [], boxes: [], services: x.services, searched: true, weight: 1, alone: true, source: x.source,
+  }));
   const order = [
+    ...sweepOrder(seeds, [], done).map((r) => ({ ...r, maps: r.weight })),
     ...sweepOrder(found, [], only.length ? new Map() : done).map((r) => ({ ...r, maps: r.weight })),
     ...sweepOrder(registry, points, only.length ? new Map() : done),
   ];
@@ -608,7 +607,7 @@ async function main() {
     } catch (e) {
       row.error = String(e?.message || e).slice(0, 200);
     }
-    exec(`INSERT INTO water_sweep (root, services, found, error, checked_at) VALUES (${q(r.root)}, ${row.services}, ${row.found.length}, ${q(row.error)}, ${q(new Date().toISOString())})
+    exec(`INSERT INTO water_sweep (root, services, found, error, checked_at) VALUES (${q(r.key || r.root)}, ${row.services}, ${row.found.length}, ${q(row.error)}, ${q(new Date().toISOString())})
           ON CONFLICT(root) DO UPDATE SET services = excluded.services, found = excluded.found, error = excluded.error, checked_at = excluded.checked_at;`);
     report.roots.push(row);
     const okHere = row.found.filter((f) => f.ok).length;
@@ -617,7 +616,7 @@ async function main() {
     const drainage = Object.entries(row.found.filter((f) => f.ok && DRAINAGE.has(f.kind))
       .reduce((m, f) => ({ ...m, [f.kind]: (m[f.kind] || 0) + 1 }), {}))
       .map(([k, n]) => `${KINDS[k]?.label || k} ${n}`).join(', ');
-    console.log(`${row.error ? 'FAILED' : 'looked '} ${r.root} (${r.keys.slice(0, 2).join(', ')}${r.keys.length > 2 ? ', ...' : ''}): `
+    console.log(`${row.error ? 'FAILED' : 'looked '} ${r.source ? `${r.source}: ${r.key}` : r.root} (${r.keys.slice(0, 2).join(', ')}${r.keys.length > 2 ? ', ...' : ''}): `
       + `${row.services} service(s), ${okHere} water layer(s)${drainage ? `; drainage: ${drainage}` : ''}${row.error ? ` -- ${row.error}` : ''}`);
   }
   writeFileSync(REPORT, JSON.stringify(report, null, 1));

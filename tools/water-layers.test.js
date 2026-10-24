@@ -312,6 +312,13 @@ check('no seed is named twice', new Set(STATE_SEEDS.flatMap((x) => x.services)).
     && waterLayersOf('https://services3.arcgis.com/mB6GMjOL4lVKAyZO/arcgis/rest/services/SADES_CCDS_PUBLIC_VIEW/FeatureServer',
       { layers: [{ id: 3, name: 'Pipes', type: 'Feature Layer', geometryType: L }] })[0]?.kind === 'storm_main');
 }
+{
+  const seedRoot = { root: 'https://x.gov/arcgis/rest/services', key: 'https://x.gov/arcgis/rest/services/A/MapServer', boxes: [] };
+  const swept = new Map([['https://x.gov/arcgis/rest/services', new Date().toISOString()]]);
+  check('a seed is remembered by its own service, not by the server a search swept today',
+    sweepOrder([seedRoot], [], swept).length === 1
+    && sweepOrder([seedRoot], [], new Map([[seedRoot.key, new Date().toISOString()]])).length === 0);
+}
 check('a non-culvert pipe is a storm pipe, a culvert still a culvert',
   classifyLayer('Stormwater Non-Culvert Pipe - Office', L) === 'storm_main' && classifyLayer('Stormwater Culvert - Office', L) === 'culvert');
 check('SD and SW are storm drain: pipes, manholes and structures',
