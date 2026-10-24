@@ -7,7 +7,7 @@ import {
   classifyLayer, boxFrom, esriToGeoJSON, tidyAttributes, queryUrl, waterLayersAt, handleWaterLayers, NATIONAL, KINDS, MAX_SPAN_M,
   clipGeometry, clipLine, clipRing, queryLayer, PARTIAL_CACHE_SECONDS, codebookOf, decodeAttributes,
 } from '../worker/src/water-layers.js';
-import { registryRoots, sweepOrder, extentDegrees, waterLayersOf, upsertSql, sensibleBox, rootOf } from './water-layers.js';
+import { registryRoots, sweepOrder, extentDegrees, waterLayersOf, upsertSql, sensibleBox, rootOf, agolWaterKeep, placeNames, searchPoints, sourceOfRoot, agolWaterNameUrl, STATE_SEEDS } from './water-layers.js';
 
 let failures = 0;
 const check = (name, ok, detail = '') => {
@@ -258,6 +258,37 @@ check('a placeholder extent is not a place', !sensibleBox([-180, -90, 180, 90]) 
   const sql = upsertSql({ url: "https://h/x/MapServer/1", kind: 'stream', title: "O'Brien Drain", ok: 1, west: -85, features: null });
   check('a row is quoted and updates in place', /'O''Brien Drain'/.test(sql) && /ON CONFLICT\(url\) DO UPDATE/.test(sql) && /NULL/.test(sql) && /codebook = excluded\.codebook/.test(sql));
 }
+
+/* --------------------------------------------- the search, and what is not storm */
+check('maintenance subsets and water curb boxes are not kept',
+  classifyLayer('Abandoned Storm Mains', L) === null && classifyLayer('Lined Storm Manholes', P) === null
+  && classifyLayer('Catch Basins Clean cleaned in last 10 years', P) === null && classifyLayer('Televised Storm Gravity Mains', L) === null
+  && classifyLayer('Water Curb Boxes', P) === null && classifyLayer('Sewer Lateral Lines', L) === null
+  && classifyLayer('Storm Gravity Mains', L) === 'storm_main' && classifyLayer('Storm Catch Basins', P) === 'storm_inlet');
+check('place names from the Census answer', JSON.stringify(placeNames({
+  Counties: [{ NAME: 'Kent County' }], 'Incorporated Places': [{ NAME: 'Grand Rapids city' }],
+  'County Subdivisions': [{ NAME: 'Byron township' }, { NAME: 'County subdivisions not defined' }],
+})) === JSON.stringify(['Kent County', 'Grand Rapids', 'Byron Township']));
+check('a name search quotes the name', /AND\+%22Grand\+Rapids%22|AND%20%22Grand%20Rapids%22|%22Grand\+Rapids%22/.test(agolWaterNameUrl('Grand Rapids')));
+{
+  const results = [
+    { url: 'https://maps.city.gov/arcgis/rest/services/Storm/MapServer', extent: [[-86.2, 42.7], [-85.3, 43.3]], title: 'Storm' },
+    { url: 'https://maps.city.gov/arcgis/rest/services/Storm/MapServer/3', extent: [[-86.2, 42.7], [-85.3, 43.3]], title: 'Storm inlets' },
+    { url: 'https://mapsdep.nj.gov/arcgis/rest/services/MS4/MapServer', extent: [[-20000000, -20000000], [20000000, 20000000]], title: 'NJ' },
+    { url: 'https://services9.arcgis.com/RHVPKKiFTONKtxq3/arcgis/rest/services/NOAA/FeatureServer', extent: [[-86, 42], [-85, 43]], title: 'feeds' },
+    { url: 'https://other.gov/arcgis/rest/services/Drains/FeatureServer', extent: [[-90, 30], [-89, 31]], title: 'elsewhere' },
+  ];
+  const kept = agolWaterKeep(results, -85.67, 42.96);
+  check('a search keeps local services covering the point, by service, not national ones',
+    kept.length === 2 && kept.every((k) => k.service === 'https://maps.city.gov/arcgis/rest/services/Storm/MapServer' && k.root === 'https://maps.city.gov/arcgis/rest/services'), JSON.stringify(kept));
+}
+check('saved maps a street apart are searched once', searchPoints([[-85.6681, 42.9634], [-85.6683, 42.9636], [-85.70, 42.83]]).length === 2);
+check('a found server is labelled by its host, or as ArcGIS Online',
+  sourceOfRoot('https://maps.grcity.us/arcgis/rest/services') === 'maps.grcity.us'
+  && sourceOfRoot('https://services2.arcgis.com/L81TiOwAPO1ZvU9b/arcgis/rest/services') === 'ArcGIS Online');
+
+check('each statewide seed names its own service on its own server',
+  STATE_SEEDS.length > 0 && STATE_SEEDS.every((x) => x.services.every((sv) => rootOf(sv) === x.root)));
 
 if (failures) { console.log(`\n${failures} check(s) FAILED.`); process.exit(1); }
 console.log('\nwater layers: ok');

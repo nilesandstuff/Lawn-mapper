@@ -1113,6 +1113,25 @@ CREATE TABLE IF NOT EXISTS water_layers (
 );
 CREATE INDEX IF NOT EXISTS water_layers_box ON water_layers (west, east, south, north);
 
+-- Where the water sweep has looked (one row per server), so a run that
+-- stops resumes; and the servers the ArcGIS Online search found near saved
+-- maps (2026-10-24: cities' and townships' own, beside the registry's
+-- counties), with the drainage services it found on each. Written by
+-- tools/water-layers.js; nothing here names a place or an address.
+CREATE TABLE IF NOT EXISTS water_sweep (
+  root        TEXT PRIMARY KEY,
+  services    INTEGER,
+  found       INTEGER,
+  error       TEXT,
+  checked_at  TEXT
+);
+CREATE TABLE IF NOT EXISTS water_roots (
+  root        TEXT PRIMARY KEY,
+  services    TEXT,
+  maps        INTEGER,
+  found_at    TEXT
+);
+
 -- Where the catalogue sweep has looked, so a run that stops resumes.
 CREATE TABLE IF NOT EXISTS county_sweep (
   point       TEXT PRIMARY KEY,

@@ -78,6 +78,16 @@ sanitary sewers, inspections, complaints, drafts and dated layers are never
 kept. About 730 servers; each night takes the next 60, those under people's
 saved maps first.
 
+Before the sweep, each night searches ArcGIS Online near every saved map
+(2026-10-24): by the spot, and by its county's, city's and township's names
+(from the Census Bureau's free geocoder), for storm and drainage services
+whose own extent covers a saved map. The servers they live on, often a
+city's that the registry never knew (Grand Rapids' own: 13,376 storm
+manholes, 21,699 catch basins, 17,147 gravity mains), are swept first. On
+each server a layer published many times over (Grand Rapids' catch basins
+are in 13 services) is kept once, the fullest copy, and maintenance subsets
+(abandoned, lined, cleaned, televised) are never kept.
+
 Coverage is patchy by nature. Storm sewers are often a city's or a
 township's, not the county's, and some are not public. Kent County, MI
 publishes its drain commission's whole network.

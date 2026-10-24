@@ -36,6 +36,9 @@ const MAX_SERVICES = Number(process.env.MAX_SERVICES || 150);
 const TIMEOUT_MS = Number(process.env.TIMEOUT_MS || 20000);
 const POOL = Number(process.env.POOL || 6);
 const REPORT = process.env.REPORT || 'water-layers-report.json';
+/* The ArcGIS Online search before the sweep (on unless SEARCH=0), from at most this many places. */
+const SEARCH = !/^(0|false|no|off)$/i.test(process.env.SEARCH || '');
+const SEARCH_POINTS = Number(process.env.SEARCH_POINTS || 120);
 
 /* ------------------------------------------------------------ pure parts */
 
@@ -133,6 +136,127 @@ export function waterLayersOf(serviceUrl, layersJson) {
   return out;
 }
 
+/* ------------------------------------------------- the ArcGIS Online search */
+
+/*
+ * SEARCHING BY PLACE (owner, 2026-10-24: "go ahead with #1 ... and it sounds
+ * like #2 should be a part of that"). The registry knows each county's own
+ * server, and storm sewers are often a city's or a township's, on a server of
+ * their own or hosted on ArcGIS Online. So, at each place people have saved a
+ * map: ArcGIS Online's public catalogue is asked for drainage services whose
+ * own extent covers that spot. Each one found is read for its water layers at
+ * once, and the server it lives on joins the sweep (water_roots), so the
+ * rest of that city's layers are found too.
+ */
+const SEARCH_TERMS = '(storm OR stormwater OR "storm sewer" OR "storm drain" OR "catch basin" OR inlet OR inlets OR outfall OR '
+  + 'outfalls OR culvert OR culverts OR drain OR drains OR drainage OR MS4 OR "drain commission" OR sewer OR hydrology OR "surface water")';
+const SEARCH_TYPES = '(type:"Feature Service" OR type:"Map Service")';
+
+/** ArcGIS Online's catalogue, near one point, for drainage services. */
+export function agolWaterSearchUrl(lng, lat, start = 1) {
+  const d = 0.001;
+  return 'https://www.arcgis.com/sharing/rest/search?' + new URLSearchParams({
+    q: `${SEARCH_TERMS} AND ${SEARCH_TYPES}`,
+    bbox: [lng - d, lat - d, lng + d, lat + d].join(','),
+    f: 'json', num: '100', start: String(start),
+  });
+}
+
+/*
+ * Never a local server: Esri's own national layers and live feeds, the
+ * national sources the route already asks, and ArcGIS Online's key-holding
+ * proxy (its services need the owner's credentials).
+ */
+export const NATIONAL_HOST = /\/\/(services|server)\.arcgisonline\.com\/|\/\/(utility|tiledbasemaps|basemaps)\.arcgis\.com\/|\/\/hazards\.fema\.gov\/|\/\/hydro\.nationalmap\.gov\/|\/\/fwspublicservices\.wim\.usgs\.gov\/|\/P3ePLMYs2RVChkJx\/|\/RHVPKKiFTONKtxq3\/|mapservices\.weather\.noaa\.gov/i;
+
+/**
+ * The search results worth reading at this point: a map or feature service
+ * (not one of its layers), local (its extent under `maxArea` square degrees,
+ * so a county's or a state's, not the nation's), covering the point.
+ */
+export function agolWaterKeep(results, lng, lat, maxArea = 4) {
+  const out = [];
+  for (const r of results || []) {
+    if (!r?.url || !Array.isArray(r.extent) || r.extent.length !== 2) continue;
+    const [[x0, y0], [x1, y1]] = r.extent;
+    if (!((x1 - x0) * (y1 - y0) <= maxArea)) continue;
+    if (!(lng >= x0 && lng <= x1 && lat >= y0 && lat <= y1)) continue;
+    const m = String(r.url).match(/^(https?:\/\/.+?\/(?:FeatureServer|MapServer))(?:\/\d+)?\/?$/i);
+    if (!m || NATIONAL_HOST.test(m[1]) || !rootOf(m[1])) continue;
+    out.push({ service: m[1], root: rootOf(m[1]), title: String(r.title || '').slice(0, 120) });
+  }
+  return out;
+}
+
+/*
+ * BY NAME, TOO. Searching by the point alone ranks ArcGIS Online's
+ * nationwide items first: around Grand Rapids it returned 10,000 items and
+ * the city's own stormwater service was not in the first 300. Searching by
+ * the place's names finds it at once. The names come from the Census
+ * Bureau's free geocoder (county, incorporated place, township), and a
+ * result is kept only if its own extent covers one of the saved maps that
+ * gave the name -- so "Wyoming" finds Wyoming, Michigan's and not the state's.
+ */
+export function censusUrl(lng, lat) {
+  return 'https://geocoding.geo.census.gov/geocoder/geographies/coordinates?' + new URLSearchParams({
+    x: String(lng), y: String(lat), benchmark: 'Public_AR_Current', vintage: 'Current_Current',
+    layers: 'Counties,Incorporated Places,County Subdivisions', format: 'json',
+  });
+}
+
+/** The names worth searching for, from the Census answer: "Kent County", "Grand Rapids", "Byron Township". */
+export function placeNames(geographies) {
+  const out = new Set();
+  for (const g of Object.values(geographies || {})) {
+    for (const x of g || []) {
+      const name = String(x?.NAME || '').trim();
+      if (!name || /^county subdivisions not defined/i.test(name)) continue;
+      const m = name.match(/^(.*?)\s+(city|village|town|borough|CDP)$/i);
+      if (m) out.add(m[1]);
+      else if (/\s+township$/i.test(name)) out.add(name.replace(/\s+township$/i, ' Township'));
+      else out.add(name);
+    }
+  }
+  return [...out];
+}
+
+/** ArcGIS Online's catalogue, by one place's name, for drainage services. */
+export function agolWaterNameUrl(name, start = 1) {
+  return 'https://www.arcgis.com/sharing/rest/search?' + new URLSearchParams({
+    q: `${SEARCH_TERMS} AND ${SEARCH_TYPES} AND "${String(name).replace(/"/g, '')}"`,
+    f: 'json', num: '100', start: String(start),
+  });
+}
+
+/** The places to search from: saved maps, rounded to about 2 km so a street of maps is asked once. */
+export function searchPoints(points, step = 0.02, max = 120) {
+  const seen = new Map();
+  for (const [lng, lat] of points) {
+    if (!Number.isFinite(lng) || !Number.isFinite(lat)) continue;
+    const k = `${Math.round(lng / step)},${Math.round(lat / step)}`;
+    if (!seen.has(k)) seen.set(k, [Math.round(lng / step) * step, Math.round(lat / step) * step]);
+  }
+  return [...seen.values()].slice(0, max);
+}
+
+/** A source to show for a layer found on a server the registry does not know. */
+export const sourceOfRoot = (root) => {
+  const host = (String(root).match(/^https?:\/\/([^/]+)/) || [])[1] || 'county GIS';
+  return /^services\d*\.arcgis\.com$/i.test(host) ? 'ArcGIS Online' : host;
+};
+
+/*
+ * STATEWIDE DRAINAGE INVENTORIES, named here because a search cannot find
+ * them (2026-10-24). New Jersey's DEP collects every town's MS4 storm-sewer
+ * map -- 77,613 inlets, 73,793 outfalls, 592 culverts and the basins -- and
+ * its ArcGIS Online listings carry a broken extent (metres in the degrees
+ * field), so the search's "does it cover this map" test throws them out.
+ * Swept like any found server, its own service first.
+ */
+export const STATE_SEEDS = [
+  { root: 'https://mapsdep.nj.gov/arcgis/rest/services', services: ['https://mapsdep.nj.gov/arcgis/rest/services/Applications/MS4_Map/MapServer'] },
+];
+
 /** SQL for one row, quoted. */
 const q = (v) => (v === null || v === undefined ? 'NULL' : typeof v === 'number' ? String(v) : `'${String(v).replace(/'/g, "''")}'`);
 export function upsertSql(row) {
@@ -220,6 +344,7 @@ const ENSURE = [
      county_key TEXT, source TEXT, west REAL, south REAL, east REAL, north REAL, features INTEGER, ok INTEGER NOT NULL DEFAULT 0, checked_at TEXT)`,
   'CREATE INDEX IF NOT EXISTS water_layers_box ON water_layers (west, east, south, north)',
   'CREATE TABLE IF NOT EXISTS water_sweep (root TEXT PRIMARY KEY, services INTEGER, found INTEGER, error TEXT, checked_at TEXT)',
+  'CREATE TABLE IF NOT EXISTS water_roots (root TEXT PRIMARY KEY, services TEXT, maps INTEGER, found_at TEXT)',
 ];
 /* The column a deploy's migrations add; the sweep may run before that deploy. */
 const ADD_CODEBOOK = 'ALTER TABLE water_layers ADD COLUMN codebook TEXT';
@@ -240,7 +365,81 @@ async function main() {
     for (const r of query('SELECT root, checked_at FROM water_sweep')) done.set(r.root, r.checked_at);
     points = query('SELECT lng, lat FROM maps WHERE lng IS NOT NULL AND lat IS NOT NULL').map((r) => [Number(r.lng), Number(r.lat)]);
   }
-  const order = sweepOrder(registryRoots(ALL_COUNTIES, only.length ? only : null), points, only.length ? new Map() : done);
+  /* For a trial without the database: TEST_POINTS="lng,lat;lng,lat". */
+  if (!points.length && process.env.TEST_POINTS) {
+    points = process.env.TEST_POINTS.split(';').map((p) => p.split(',').map(Number)).filter((p) => p.length === 2);
+  }
+  /* 1. THE SEARCH: drainage services on ArcGIS Online over saved maps, and
+        the servers they are on, kept in water_roots for the sweep. */
+  const searched = new Map();
+  if (SEARCH && !only.length) {
+    const spots = searchPoints(points, 0.02, SEARCH_POINTS);
+    const keep = (results, spot, here) => {
+      for (const k of agolWaterKeep(results, spot[0], spot[1])) {
+        if (!searched.has(k.root)) searched.set(k.root, { services: new Set(), maps: 0 });
+        searched.get(k.root).services.add(k.service);
+        here.add(k.root);
+      }
+    };
+    /* Each place's names, and the spots that gave each name. */
+    const byName = new Map();
+    const reach = new Map(spots.map((p) => [p.join(','), new Set()]));
+    for (const spot of spots) {
+      const here = reach.get(spot.join(','));
+      /* By the point: one page, for items whose extent is tight around it. */
+      try { keep((await getJson(agolWaterSearchUrl(spot[0], spot[1], 1))).results, spot, here); } catch { /* the names below */ }
+      try {
+        const g = (await getJson(censusUrl(spot[0], spot[1])))?.result?.geographies;
+        for (const name of placeNames(g)) {
+          if (!byName.has(name)) byName.set(name, []);
+          byName.get(name).push(spot);
+        }
+      } catch { /* no names here: the point search above stands */ }
+      await sleep(250);
+    }
+    /* By name: two pages a name, each result kept at every spot it covers. */
+    for (const [name, at] of byName) {
+      for (let start = 1, page = 0; page < 2 && start > 0; page++) {
+        let j;
+        try { j = await getJson(agolWaterNameUrl(name, start)); } catch { break; }
+        for (const spot of at) keep(j.results, spot, reach.get(spot.join(',')));
+        start = j.nextStart > 0 ? j.nextStart : 0;
+        await sleep(250);
+      }
+    }
+    for (const here of reach.values()) for (const root of here) searched.get(root).maps++;
+    console.log(`Place names searched: ${byName.size} (counties, cities and townships under saved maps).`);
+    /* Each found server, with how many places it was found near (the order). */
+    for (const [root, e] of searched) {
+      exec(`INSERT INTO water_roots (root, services, maps, found_at) VALUES (${q(root)}, ${q(JSON.stringify([...e.services].slice(0, 40)))}, ${e.maps}, ${q(new Date().toISOString())})
+            ON CONFLICT(root) DO UPDATE SET services = excluded.services, maps = excluded.maps, found_at = excluded.found_at;`);
+    }
+    console.log(`Searched ArcGIS Online at ${spots.length} place(s) with saved maps: ${searched.size} server(s) with drainage services, `
+      + `${[...searched.values()].reduce((n, e) => n + e.services.size, 0)} service(s).`);
+  }
+  /* The servers found by any search so far, beside the registry's. */
+  const extra = new Map();
+  if (live && !only.length) {
+    for (const r of query('SELECT root, services, maps FROM water_roots')) {
+      let services = [];
+      try { services = JSON.parse(r.services || '[]'); } catch { services = []; }
+      extra.set(r.root, { services, maps: Number(r.maps) || 1 });
+    }
+  }
+  for (const [root, e] of searched) if (!extra.has(root)) extra.set(root, { services: [...e.services], maps: e.maps || 1 });
+  if (!only.length) for (const seed of STATE_SEEDS) if (!extra.has(seed.root)) extra.set(seed.root, { services: seed.services, maps: 1 });
+  const registry = registryRoots(ALL_COUNTIES, only.length ? only : null);
+  const known = new Set(registry.map((r) => r.root));
+  const found = [...extra].filter(([root]) => !known.has(root))
+    .map(([root, e]) => ({ root, keys: [], boxes: [], services: e.services, searched: true, weight: e.maps }));
+  for (const r of registry) if (extra.has(r.root)) r.services = extra.get(r.root).services;
+
+  /* 2. THE SWEEP: searched servers first (they are under saved maps by
+        construction), then the registry's, those under saved maps first. */
+  const order = [
+    ...sweepOrder(found, [], only.length ? new Map() : done).map((r) => ({ ...r, maps: r.weight })),
+    ...sweepOrder(registry, points, only.length ? new Map() : done),
+  ];
   const todo = order.slice(0, ROOTS_LIMIT);
   console.log(`${order.length} server(s) due; this run takes ${todo.length}${DRY_RUN ? ' (dry run: nothing written)' : ''}.`);
 
@@ -249,19 +448,48 @@ async function main() {
     if (Date.now() - started > TIME_BUDGET_MS) { console.log('Time budget spent; the next run carries on.'); break; }
     const row = { root: r.root, counties: r.keys, maps: r.maps, services: 0, found: [], error: null };
     try {
-      const services = await listServices(r.root);
+      /* The services a search found come first, so a big organisation's
+         other hundreds cannot crowd them out of MAX_SERVICES. */
+      const services = [...new Set([...(r.services || []), ...await listServices(r.root).catch((e) => {
+        if (r.services?.length) return [];
+        throw e;
+      })])].slice(0, MAX_SERVICES);
       row.services = services.length;
       const listed = await pool(services, POOL, async (s) => waterLayersOf(s, await getJson(`${s}/layers`)));
       const found = listed.flatMap((x, i) => (Array.isArray(x) ? x.map((l) => ({ ...l, service: services[i] })) : []));
       const measured = await pool(found, 2, measure);
+      /* ONE COPY OF EACH LAYER (2026-10-24): Grand Rapids publishes its catch
+         basins in 13 services and its gravity mains in a dozen, the same layer
+         each time, some a snapshot a few features apart, some a filtered view
+         of ten. On one server, layers of the same kind and name are kept
+         once: the copy with the most features, the most complete. */
+      const best = new Map();
+      found.forEach((l, i) => {
+        const k = `${l.kind}|${String(l.title).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()}`;
+        const n = Number(measured[i]?.count) || 0;
+        if (!best.has(k) || n > best.get(k).n) best.set(k, { i, n });
+      });
+      /* And the same data under another name: Grand Rapids' lakes at eight
+         map scales (Waterbodies_1K ... _144K, 7,262 features each), its
+         laterals as "Storm Laterals" and "Storm Lateral Lines" (23,043). A
+         layer of the same kind with the identical count, 50 or more, is the
+         same layer. */
+      const byCount = new Map();
+      for (const b of best.values()) {
+        const k = `${found[b.i].kind}|${b.n}`;
+        if (b.n < 50 || !byCount.has(k)) byCount.set(b.n < 50 ? `${k}|${b.i}` : k, b);
+      }
+      const keepIdx = new Set([...byCount.values()].map((b) => b.i));
+      const dup = found.map((_, i) => !keepIdx.has(i));
       const now = new Date().toISOString();
       found.forEach((l, i) => {
+        if (dup[i]) return;
         const m = measured[i] || {};
         const box = sensibleBox(m.box) ? m.box : (r.boxes.length === 1 ? r.boxes[0] : null);
         const rec = {
           url: l.url, kind: l.kind, title: l.title, service: l.service, geometry: l.geometry,
           county_key: r.keys.length === 1 ? r.keys[0] : r.keys.slice(0, 3).join(','),
-          source: `${r.keys.length === 1 ? (ALL_COUNTIES[r.keys[0]]?.name || r.keys[0]) : 'county GIS'}`,
+          source: r.searched ? sourceOfRoot(r.root) : `${r.keys.length === 1 ? (ALL_COUNTIES[r.keys[0]]?.name || r.keys[0]) : 'county GIS'}`,
           west: box?.[0] ?? null, south: box?.[1] ?? null, east: box?.[2] ?? null, north: box?.[3] ?? null,
           features: Number.isFinite(m.count) ? m.count : null,
           ok: box && m.count > 0 ? 1 : 0,

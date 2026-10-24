@@ -12,6 +12,11 @@ name: 44. Find county water layers (storm drains, water bodies) for the water ma
 #
 # There are about 730 servers, so each night takes the next batch (those
 # under people's saved maps first) and water_sweep remembers where it got to.
+#
+# First, each night (2026-10-24): ArcGIS Online is searched near every saved
+# map, by the spot and by its county's, city's and township's names, for
+# storm and drainage services; the servers they are on (often a city's, which
+# the registry does not know) are swept before the registry's.
 # FREE: public ArcGIS servers and the free runner.
 on:
   schedule:
@@ -27,6 +32,11 @@ on:
         description: 'How many servers this run looks at'
         required: false
         default: '60'
+      search:
+        description: 'Search ArcGIS Online first for drainage services near saved maps, by place and by name (cities and townships too)'
+        type: choice
+        default: 'on'
+        options: ['on', 'off']
       dry_run:
         description: 'Look but write nothing'
         type: choice
@@ -62,6 +72,7 @@ jobs:
           ROOTS_LIMIT: ${{ inputs.servers || '60' }}
           DRY_RUN: ${{ inputs.dry_run == 'true' && '1' || '' }}
           TIME_BUDGET_MIN: '300'
+          SEARCH: ${{ inputs.search == 'off' && '0' || '1' }}
           REPORT: water-layers-report.json
         run: node tools/water-layers.js
 

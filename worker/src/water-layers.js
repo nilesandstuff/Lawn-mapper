@@ -58,18 +58,18 @@ export const KINDS = {
  * drinking-water and sanitary networks, and the bookkeeping layers that
  * repeat a network (inspections, complaints, work orders, projects).
  */
-const NEVER = /sanitary|\bsan\b|water ?main|hydrant|valve|meter|service ?line|potable|distribution|inspect|by year|complaint|work ?order|project|label|annotation|anno\b|grid|index|tile|footprint|outside of|draft|proposed|historic|\b(19|20)\d\d\b/i;
+const NEVER = /sanitary|\bsan\b|water ?main|hydrant|valve|meter|service ?line|potable|distribution|inspect|by year|complaint|work ?order|project|label|annotation|anno\b|grid|index|tile|footprint|outside of|draft|proposed|historic|\b(19|20)\d\d\b|abandon|retired|lined\b|lining|clean|televis|cctv|curb ?(box|stop)|service ?request|repair/i;
 
 /* Name patterns, tried in order: the first that matches decides the kind. */
 const RULES = [
-  ['storm_inlet', /inlet|catch ?basin|curb ?box|drop ?structure|yard ?drain/i],
+  ['storm_inlet', /inlet|catch ?basin|drop ?structure|yard ?drain/i],
   ['storm_manhole', /(storm|drain).*man ?hole|man ?hole.*(storm|drain)|storm.*structure|^manholes?$/i],
   ['outfall', /outfall|out ?let|discharge ?point|headwall|end ?section/i],
   ['culvert', /culvert/i],
   ['detention_basin', /detention|retention|storm ?water ?(basin|pond)|bmp|bio ?retention|rain ?garden|infiltration/i],
   ['drain_district', /drain(age)? ?district|drainage ?(area|district)|drain ?assessment/i],
   ['drain_easement', /(drain|storm).*easement/i],
-  ['storm_main', /storm.*(main|pipe|line|sewer|gravity|conduit|lateral)|storm ?sewer|storm ?drain|drain ?pipe|lateral/i],
+  ['storm_main', /storm.*(main|pipe|line|sewer|gravity|conduit|lateral)|storm ?sewer|storm ?drain|drain ?pipe/i],
   ['open_drain', /open ?drain|county ?drain|ditch|swale|channel/i],
   ['flood_zone', /flood ?(plain|zone|hazard|way)|fema|dfirm|firm ?zone|sfha/i],
   ['wetland', /wetland|marsh/i],
@@ -488,14 +488,25 @@ export async function queryLayer(layer, box, { fetcher = fetch, timeoutMs = 1200
 
 /* ------------------------------------------------------------- catalogue */
 
+/** The most county and state layers one answer asks (each is a request to their server). */
+export const MAX_COUNTY_LAYERS = 30;
+
 /** The catalogued county layers whose box meets this one (D1 water_layers). */
 export async function countyLayersOver(env, box) {
   if (!env.DB) return [];
   try {
     const { results } = await env.DB.prepare(
+      /* AT MOST MAX_COUNTY_LAYERS, the drainage network first and then the
+         most local (2026-10-24): a statewide server can cover a box with sixty
+         layers of its own -- Massachusetts' alone has 62 -- and every layer is
+         a request to its server on every press. Ranked so a city's inlets beat
+         a state's lakes, and a county's lakes beat the state's. */
       `SELECT url, kind, title, source, county_key, codebook FROM water_layers
         WHERE ok = 1 AND west <= ?3 AND east >= ?1 AND south <= ?4 AND north >= ?2
-        ORDER BY kind, title LIMIT 60`,
+        ORDER BY CASE WHEN kind IN ('storm_inlet','storm_manhole','storm_main','culvert','outfall','open_drain',
+                                    'drain_district','drain_easement','detention_basin') THEN 0 ELSE 1 END,
+                 (east - west) * (north - south), kind, title
+        LIMIT ${MAX_COUNTY_LAYERS}`,
     ).bind(box[0], box[1], box[2], box[3]).all();
     const parse = (t) => { try { return t ? JSON.parse(t) : null; } catch { return null; } };
     return (results || []).filter((r) => KINDS[r.kind]).map((r) => ({
