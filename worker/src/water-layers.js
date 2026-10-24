@@ -7,7 +7,7 @@
  * Two kinds of source, answered together by GET /api/water/layers:
  *
  *   NATIONAL -- free, keyless, everywhere in the US: the USGS National
- *   Hydrography Dataset (water bodies, streams), the USFWS National Wetlands
+ *   Hydrography Dataset (streams), the USFWS National Wetlands
  *   Inventory, and FEMA's National Flood Hazard Layer (flood zones). Fixed
  *   here, never catalogued.
  *
@@ -110,10 +110,11 @@ export function classifyLayer(name, esriType) {
 export const NATIONAL = [
   /* USGS's own server is slow over big shapes (23 s to over a minute in a
      test, 2026-10-23), and slower still with a record limit: it gets a longer
-     wait and no limit. The wetlands inventory below holds the same lakes and
-     ponds and answers in a second, so a slow NHD costs little. */
-  { kind: 'water_body', source: 'USGS National Hydrography Dataset', title: 'Waterbody - Large Scale', slow: true, paginate: false,
-    url: 'https://hydro.nationalmap.gov/arcgis/rest/services/nhd/MapServer/12', fields: ['GNIS_NAME', 'FTYPE', 'FCODE', 'AREASQKM'] },
+     wait and no limit. Its water bodies were dropped on 2026-10-24: they were
+     in `failed` or `pending` on every box the water map asked, and the
+     wetlands inventory below holds the same lakes and ponds and answers in a
+     second. Its streams stay: nothing else draws a small stream nationally.
+     Its high-resolution twin (NHDPlus_HR) timed out on all four boxes tried. */
   { kind: 'stream', source: 'USGS National Hydrography Dataset', title: 'Flowline - Large Scale', slow: true, paginate: false,
     url: 'https://hydro.nationalmap.gov/arcgis/rest/services/nhd/MapServer/6', fields: ['GNIS_NAME', 'FTYPE', 'FCODE', 'FLOWDIR'] },
   /* The inventory's open water (lakes, ponds, river channels) is a water
@@ -258,6 +259,75 @@ async function fetchJson(url, fetcher, timeoutMs) {
   }
 }
 
+/* ---------------------------------------------------------- coded values */
+
+/*
+ * NAMES FOR CODES (the water session's ask, 2026-10-24: Kent's SUBTYPE came
+ * as bare numbers, "which mean nothing to a reader"). A layer says what its
+ * codes mean in up to three places, tried in this order for each field:
+ *   1. its subtypes (`types`, keyed by typeIdField), and each subtype's own
+ *      coded-value domains;
+ *   2. a field's coded-value domain (`fields[].domain.codedValues`);
+ *   3. failing both, the labels its own map style gives the values of the
+ *      field it is styled by (`drawingInfo.renderer`, unique values). Kent
+ *      publishes no subtype names; its style names pipes "Culvert",
+ *      "OpenChannel", "Underdrain" and inlets "Double Catch Basin", "Yard Drain".
+ */
+export function codebookOf(meta) {
+  const book = {};
+  const put = (field, code, name) => {
+    if (!field || name === undefined || name === null || name === '') return;
+    (book[field] = book[field] || {})[String(code)] = String(name);
+  };
+  const domainOf = (d) => (d && d.type === 'codedValue' && Array.isArray(d.codedValues) ? d.codedValues : null);
+  for (const f of meta?.fields || []) {
+    for (const cv of domainOf(f.domain) || []) put(f.name, cv.code, cv.name);
+  }
+  const typeField = meta?.typeIdField || meta?.subtypeField || null;
+  const bySubtype = {};
+  for (const t of meta?.types || []) {
+    put(typeField, t.id, t.name);
+    for (const [field, d] of Object.entries(t.domains || {})) {
+      const values = domainOf(d);
+      if (!values) continue;
+      bySubtype[String(t.id)] = bySubtype[String(t.id)] || {};
+      for (const cv of values) (bySubtype[String(t.id)][field] = bySubtype[String(t.id)][field] || {})[String(cv.code)] = String(cv.name);
+    }
+  }
+  const r = meta?.drawingInfo?.renderer;
+  if (r && r.type === 'uniqueValue' && r.field1 && !r.field2 && !book[r.field1]) {
+    for (const u of r.uniqueValueInfos || []) put(r.field1, u.value, u.label);
+  }
+  return { book, typeField, bySubtype };
+}
+
+/** Attributes with each code replaced by its name, where the layer names it. */
+export function decodeAttributes(attrs, codebook) {
+  if (!codebook || !attrs) return attrs;
+  const out = { ...attrs };
+  const sub = codebook.typeField ? codebook.bySubtype[String(attrs[codebook.typeField])] : null;
+  for (const [k, v] of Object.entries(attrs)) {
+    if (v === null || v === undefined) continue;
+    const name = (sub && sub[k] && sub[k][String(v)]) || (codebook.book[k] && codebook.book[k][String(v)]);
+    if (name !== undefined) out[k] = name;
+  }
+  return out;
+}
+
+/* A layer's codebook, kept for the life of the Worker (a few kilobytes each). */
+const CODEBOOKS = new Map();
+export async function codebookFor(url, fetcher, timeoutMs) {
+  if (CODEBOOKS.has(url)) return CODEBOOKS.get(url);
+  let book = null;
+  try {
+    book = codebookOf(await fetchJson(`${url.replace(/\/+$/, '')}?f=json`, fetcher, Math.min(timeoutMs, 10000)));
+  } catch {
+    book = null; // codes stay codes; asked again on the next Worker
+  }
+  if (book) CODEBOOKS.set(url, book);
+  return book;
+}
+
 /* ------------------------------------------------------------- clipping */
 
 /*
@@ -376,19 +446,24 @@ export async function queryLayer(layer, box, { fetcher = fetch, timeoutMs = 1200
       return ask(url, false);
     }
   };
+  /* The layer's names for its codes, asked beside the features. */
+  const book = layer.decode === false ? Promise.resolve(null) : codebookFor(layer.url, fetcher, timeoutMs);
   let data;
+  let usedFallback = false;
   try {
     data = await from(layer.url);
   } catch (e) {
     if (!layer.fallback) throw e;
     data = await from(layer.fallback);
+    usedFallback = true;
   }
+  const codebook = usedFallback ? null : await book;
   const cut = margin(box);
   const byKind = new Map();
   for (const f of data.features || []) {
     const geometry = clipGeometry(esriToGeoJSON(f.geometry), cut);
     if (!geometry) continue;
-    const properties = tidyAttributes(f.attributes, layer.fields || null);
+    const properties = tidyAttributes(decodeAttributes(f.attributes, codebook), layer.fields || null);
     const kind = layer.split ? layer.split(properties) : layer.kind;
     if (!byKind.has(kind)) byKind.set(kind, []);
     byKind.get(kind).push({ type: 'Feature', geometry, properties });
@@ -504,7 +579,7 @@ export async function handleWaterLayers(request, url, env, origin, ctx, json, { 
   if (request.method !== 'GET') return json({ error: 'GET only' }, 405, origin);
   const box = boxFrom(url.searchParams);
   if (typeof box === 'string') return json({ error: box }, 400, origin);
-  const key = new Request(`https://water-layers.cache/v2?box=${box.join(',')}`);
+  const key = new Request(`https://water-layers.cache/v3?box=${box.join(',')}`);
   if (cache) {
     const hit = await cache.match(key).catch(() => null);
     if (hit) {

@@ -5,7 +5,7 @@
  */
 import {
   classifyLayer, boxFrom, esriToGeoJSON, tidyAttributes, queryUrl, waterLayersAt, handleWaterLayers, NATIONAL, KINDS, MAX_SPAN_M,
-  clipGeometry, clipLine, clipRing, queryLayer, PARTIAL_CACHE_SECONDS,
+  clipGeometry, clipLine, clipRing, queryLayer, PARTIAL_CACHE_SECONDS, codebookOf, decodeAttributes,
 } from '../worker/src/water-layers.js';
 import { registryRoots, sweepOrder, extentDegrees, waterLayersOf, upsertSql, sensibleBox, rootOf } from './water-layers.js';
 
@@ -102,7 +102,7 @@ const env = { DB: { prepare: () => ({ bind: () => ({ all: async () => ({ results
   };
   const { body, later } = await waterLayersAt({}, box, { fetcher: slow, deadlineMs: 40 });
   check('at the deadline the slow sources are pending, not failed',
-    (body.pending || []).length === 2 && body.failed.length === 0 && body.layers.length >= 1, JSON.stringify({ p: body.pending, f: body.failed }));
+    (body.pending || []).length === 1 && body.failed.length === 0 && body.layers.length >= 1, JSON.stringify({ p: body.pending, f: body.failed }));
   const whole = await later;
   check('and the whole answer follows', !whole.pending && whole.layers.some((l) => l.source.includes('Hydrography')));
   const store = new Map();
@@ -167,6 +167,7 @@ const env = { DB: { prepare: () => ({ bind: () => ({ all: async () => ({ results
   check('the inventory\'s ponds are water bodies, its marshes wetlands', out.map((l) => l.kind).sort().join() === 'water_body,wetland', JSON.stringify(out.map((l) => l.kind)));
   let asks = 0;
   const picky = async (url) => {
+    if (String(url).endsWith('?f=json')) return { ok: true, json: async () => ({}) };
     asks++;
     return { ok: true, json: async () => (String(url).includes('resultRecordCount') ? { error: { code: 400, message: 'Pagination is not supported.' } } : { features: [{ attributes: {}, geometry: { x: 0.5, y: 0.5 } }] }) };
   };
@@ -183,6 +184,34 @@ const env = { DB: { prepare: () => ({ bind: () => ({ all: async () => ({ results
   const got = await queryLayer(flood, [-1, -1, 2, 2], { fetcher });
   check('flood zones come from Esri\'s copy, and from FEMA itself when the copy fails',
     /services\.arcgis\.com/.test(flood.url) && /hazards\.fema\.gov/.test(flood.fallback) && got[0].features[0].properties.FLD_ZONE === 'AE');
+}
+
+/* ------------------------------------------------------ names for codes */
+{
+  const meta = {
+    fields: [{ name: 'MATERIAL', domain: { type: 'codedValue', codedValues: [{ code: 3, name: 'Precast' }] } }, { name: 'DIAMETER' }],
+    drawingInfo: { renderer: { type: 'uniqueValue', field1: 'SUBTYPE', uniqueValueInfos: [{ value: '23', label: 'Yard Drain' }, { value: '9', label: 'Flared End Section' }] } },
+  };
+  const book = codebookOf(meta);
+  check('a coded field and the style\'s labels name their codes',
+    JSON.stringify(decodeAttributes({ MATERIAL: 3, SUBTYPE: 23, DIAMETER: 12 }, book)) === JSON.stringify({ MATERIAL: 'Precast', SUBTYPE: 'Yard Drain', DIAMETER: 12 }));
+  check('a code with no name stays a code', decodeAttributes({ SUBTYPE: 5 }, book).SUBTYPE === 5);
+  const typed = codebookOf({
+    typeIdField: 'SUBTYPE',
+    types: [{ id: 2, name: 'Curb Inlet', domains: { MATERIAL: { type: 'codedValue', codedValues: [{ code: 1, name: 'Cast iron' }] } } }],
+    fields: [{ name: 'MATERIAL', domain: { type: 'codedValue', codedValues: [{ code: 1, name: 'Concrete' }] } }],
+    drawingInfo: { renderer: { type: 'uniqueValue', field1: 'SUBTYPE', uniqueValueInfos: [{ value: '2', label: 'Style label' }] } },
+  });
+  const d = decodeAttributes({ SUBTYPE: 2, MATERIAL: 1 }, typed);
+  check('a subtype\'s own name and domains come first, before the style and the field-wide domain',
+    d.SUBTYPE === 'Curb Inlet' && d.MATERIAL === 'Cast iron', JSON.stringify(d));
+  check('no metadata, nothing changes', decodeAttributes({ A: 1 }, null).A === 1);
+  const fetcher = async (url) => ({ ok: true, json: async () => (String(url).endsWith('?f=json') ? meta
+    : { features: [{ attributes: { SUBTYPE: 9, MATERIAL: 3 }, geometry: { x: 0.5, y: 0.5 } }] }) });
+  const got = await queryLayer({ kind: 'storm_inlet', url: 'https://county/MapServer/26', title: 'Storm Inlets', source: 'x' }, [0, 0, 1, 1], { fetcher });
+  check('the route sends names, not codes', got[0].features[0].properties.SUBTYPE === 'Flared End Section' && got[0].features[0].properties.MATERIAL === 'Precast',
+    JSON.stringify(got[0].features[0].properties));
+  check('USGS water bodies are no longer asked (the inventory holds the ponds)', !NATIONAL.some((n) => n.kind === 'water_body' && n.source.includes('Hydrography')));
 }
 
 /* ---------------------------------------------------------- the catalogue */

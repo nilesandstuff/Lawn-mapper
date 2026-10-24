@@ -31,6 +31,15 @@ The answer:
       "pending": [ { "kind", "title", "source", "url" } ]      (only when some are)
     }
 
+Codes come as names (2026-10-24, the water session's ask): a value a layer
+names, in its subtypes, its fields' coded-value domains or, failing both,
+the labels its own map style gives the values of the field it is styled by,
+is sent as the name. Kent's pipes say "StormMain", "Culvert", "OpenChannel",
+"Underdrain"; its inlets "Double Catch Basin", "Flared End Section", "Yard
+Drain" (and "Various Inlets" for the rest, which is all Kent's style says);
+`MATERIAL`, `OWNER`, `JURISDICTION` and `STATUS` are named from their domains.
+A value no layer names stays a number.
+
 Layers are listed areas first, then lines, then points. A layer with nothing
 in the box is left out. A source that did not answer is in `failed`, never
 silently missing. Each feature keeps its service's own attributes, minus ids,
@@ -46,7 +55,7 @@ trusting a unit.
 |---|---|
 | flood_zone | FEMA flood hazard zone (`FLD_ZONE`, `SFHA_TF`), from Esri's public copy of FEMA's layer (FEMA's own server refuses the Worker), or a county's own |
 | wetland | USFWS National Wetlands Inventory (`WETLAND_TYPE`), or a county's own |
-| water_body | lake or pond: the inventory's open water (lakes, ponds, river channels), USGS NHD waterbodies, or a county's own |
+| water_body | lake or pond: the inventory's open water (lakes, ponds, river channels), or a county's own. USGS NHD water bodies were dropped on 2026-10-24: they almost never answered in time |
 | watershed | a county's watersheds or sub-basins |
 | drain_district | the area a county drain serves |
 | drain_easement | a drain or storm easement |
