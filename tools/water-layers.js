@@ -177,6 +177,9 @@ async function listServices(root) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/** The kinds that are a drainage network, not natural water: named per server in the log. */
+const DRAINAGE = new Set(['storm_inlet', 'storm_manhole', 'storm_main', 'culvert', 'outfall', 'open_drain', 'drain_district', 'drain_easement', 'detention_basin']);
+
 /* A count and an extent over a whole county layer can take a server several
    seconds, and some (Kent County's) answer one at a time but fail several at
    once: so measuring goes two at a time, and each ask is tried twice. */
@@ -277,8 +280,13 @@ async function main() {
           ON CONFLICT(root) DO UPDATE SET services = excluded.services, found = excluded.found, error = excluded.error, checked_at = excluded.checked_at;`);
     report.roots.push(row);
     const okHere = row.found.filter((f) => f.ok).length;
+    /* The drainage kinds by name, so "which places got storm drains" is
+       answered by the log itself (owner, 2026-10-24). */
+    const drainage = Object.entries(row.found.filter((f) => f.ok && DRAINAGE.has(f.kind))
+      .reduce((m, f) => ({ ...m, [f.kind]: (m[f.kind] || 0) + 1 }), {}))
+      .map(([k, n]) => `${KINDS[k]?.label || k} ${n}`).join(', ');
     console.log(`${row.error ? 'FAILED' : 'looked '} ${r.root} (${r.keys.slice(0, 2).join(', ')}${r.keys.length > 2 ? ', ...' : ''}): `
-      + `${row.services} service(s), ${okHere} water layer(s)${row.error ? ` -- ${row.error}` : ''}`);
+      + `${row.services} service(s), ${okHere} water layer(s)${drainage ? `; drainage: ${drainage}` : ''}${row.error ? ` -- ${row.error}` : ''}`);
   }
   writeFileSync(REPORT, JSON.stringify(report, null, 1));
 
