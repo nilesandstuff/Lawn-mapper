@@ -744,6 +744,18 @@
             <button type="button" class="stepbtn" id="edge-plus" aria-label="Push the outline out one foot">+</button>
           </div>
           <p class="sub" id="sens-note"></p>
+          <!-- How sure the AI must be (public/lib/finish.js): re-cuts the
+               trained model's own picture without detecting again. Shown only
+               when the server sent the pictures to re-cut. -->
+          <div id="conf-row" hidden>
+            <label for="conf-pct">How sure the AI must be</label>
+            <div class="confrow">
+              <input type="range" id="conf-pct" min="20" max="80" step="5" value="50"
+                     aria-describedby="conf-note">
+              <span class="stepunit" id="conf-val">50%</span>
+            </div>
+            <p class="sub" id="conf-note"></p>
+          </div>
         </div>
 
         <!--

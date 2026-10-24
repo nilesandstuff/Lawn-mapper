@@ -1624,7 +1624,7 @@ async function handle(request, env, ctx) {
           return await handleMask(url, origin, env);
         case '/api/alpha-mask':
           return await alphaMaskResponse(env, url.searchParams.get('id') || '', cors(origin),
-            { raw: url.searchParams.get('raw') === '1' });
+            { raw: url.searchParams.get('raw') === '1', part: url.searchParams.get('part') || null });
         case '/api/prediction':
           return await handlePrediction(url, env, origin);
         case '/api/parcel':

@@ -349,8 +349,18 @@ class Alpha:
             # misread photo (owner, 2026-10-02).
             with open(os.path.join(d, "prob.png"), "rb") as f:
                 prob = base64.b64encode(f.read()).decode()
+            # What the finishing steps read besides it: the tree model's
+            # canopy and the lidar's roofs and voids, so the page's confidence
+            # slider can run the same steps at another cut (public/lib/
+            # finish.js; owner, 2026-10-24). Absent when not made.
+            parts = {}
+            for name in ("canopy", "roof", "void"):
+                fp = os.path.join(d, f"{name}.png")
+                if os.path.exists(fp):
+                    with open(fp, "rb") as f:
+                        parts[name] = base64.b64encode(f.read()).decode()
         return {
-            "mask": mask, "prob": prob, "w": prep["w"], "h": prep["h"], "version": self.version,
+            "mask": mask, "prob": prob, "parts": parts, "w": prep["w"], "h": prep["h"], "mpp": prep["mpp"], "version": self.version,
             "uncertainty": fin.get("uncertainty"), "lawnCells": fin.get("lawnCells"),
             "used": {"lidar": rec["lidar"], "naip": rec["naip"]},
             "seconds": {**rec["seconds"], "total": round(time.time() - t0, 1)},

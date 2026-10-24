@@ -1083,7 +1083,7 @@ function stripsPx(kept, label, mask) {
   const big = areaTraceLimits(0.44, 970, 1024);    // the condo complex, 430 m
   check('a 430 m frame allows many more pieces', big.maxPolygons > 100, `${big.maxPolygons}`);
   const floorSqFt = (big.minAreaFraction * 970 * 1024 * 0.44 * 0.44) / 0.09290304;
-  check('and keeps a separate patch down to 150 sq ft, not 4,000', Math.abs(floorSqFt - 150) < 1, `${floorSqFt.toFixed(0)} sq ft`);
+  check('and keeps a separate patch down to 100 sq ft, not 4,000', Math.abs(floorSqFt - 100) < 1, `${floorSqFt.toFixed(0)} sq ft`);
   check('no grid scale, no limits', Object.keys(areaTraceLimits(0, 10, 10)).length === 0);
 
   /* One big wavy lawn: a 300 x 300 cell square at 0.44 m (about 187,000 sq ft)

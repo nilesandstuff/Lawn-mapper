@@ -96,10 +96,27 @@ export async function pollAlpha(env, id, selfOrigin) {
     await env.CORPUS.put(`${MASKS}${call}-raw.png`, probBytes, { httpMetadata: { contentType: 'image/png' } });
     raw = `${selfOrigin}/api/alpha-mask?id=${encodeURIComponent(id)}&raw=1`;
   }
+  /* The canopy, roofs and voids the finishing steps read, for the page's
+     confidence slider, which runs the same steps at another cut
+     (public/lib/finish.js). Only with the decoder's picture: without it
+     there is nothing to re-cut. */
+  let parts = null;
+  if (raw && r.parts && typeof r.parts === 'object') {
+    parts = {};
+    for (const name of ALPHA_PARTS) {
+      if (typeof r.parts[name] !== 'string' || !r.parts[name]) continue;
+      const b = Uint8Array.from(atob(r.parts[name]), (c) => c.charCodeAt(0));
+      await env.CORPUS.put(`${MASKS}${call}-${name}.png`, b, { httpMetadata: { contentType: 'image/png' } });
+      parts[name] = `${selfOrigin}/api/alpha-mask?id=${encodeURIComponent(id)}&part=${name}`;
+    }
+    if (!parts.canopy) parts = null;
+  }
   return {
     status: 'succeeded',
     mask: `${selfOrigin}/api/alpha-mask?id=${encodeURIComponent(id)}`,
     raw,
+    parts,
+    mpp: Number.isFinite(r.mpp) ? r.mpp : null,
     detail: null,
     /* For the corpus (feedback loop 1: which release drew the outline being
        corrected) and the queue (loop 2: how unsure it was). */
@@ -110,10 +127,14 @@ export async function pollAlpha(env, id, selfOrigin) {
   };
 }
 
-/** The finished mask (or with `raw`, the decoder's own picture), from R2. */
-export async function alphaMaskResponse(env, id, headers = {}, { raw = false } = {}) {
+/** The pictures besides the mask a finished lot keeps (pollAlpha). */
+export const ALPHA_PARTS = ['canopy', 'roof', 'void'];
+
+/** The finished mask (or with `raw`, the decoder's own picture; with `part`, one of ALPHA_PARTS), from R2. */
+export async function alphaMaskResponse(env, id, headers = {}, { raw = false, part = null } = {}) {
   if (!isAlphaId(id) || !env?.CORPUS) return new Response('Not found', { status: 404, headers });
-  const obj = await env.CORPUS.get(`${MASKS}${id.slice(PREFIX.length)}${raw ? '-raw' : ''}.png`);
+  if (part && !ALPHA_PARTS.includes(part)) return new Response('Not found', { status: 404, headers });
+  const obj = await env.CORPUS.get(`${MASKS}${id.slice(PREFIX.length)}${part ? `-${part}` : raw ? '-raw' : ''}.png`);
   if (!obj) return new Response('Not found', { status: 404, headers });
   return new Response(obj.body, {
     headers: { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=3600', ...headers },

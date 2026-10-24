@@ -724,6 +724,9 @@ body.inferred-mode .panel { box-shadow: inset 4px 0 0 #7c4dff; }
  * have to aim at is a control that interrupts what you are looking at.
  */
 .stepper { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+.confrow { display: flex; align-items: center; gap: 10px; margin-top: 2px; }
+.confrow input[type="range"] { flex: 1; min-width: 0; }
+#conf-row { margin-top: 12px; }
 .stepbtn {
   flex: none; width: 44px; height: 44px; font-size: 22px; line-height: 1;
   color: var(--ink); background: #fff;

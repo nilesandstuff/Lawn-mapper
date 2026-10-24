@@ -857,7 +857,9 @@ export const MAX_TRACE_VERTICES = 80;
  *     fewer than six.
  */
 export const SQFT_PER_HANDLE = 100;
-export const MIN_PIECE_SQFT = 150;
+/* 150 until 2026-10-24; the owner, on the condo: "the smallest area is 130
+   sqft, so maybe the cutoff should be 100 sqft". */
+export const MIN_PIECE_SQFT = 100;
 export const M2_PER_PIECE = 1500;
 const M2_PER_SQFT = 0.09290304;
 

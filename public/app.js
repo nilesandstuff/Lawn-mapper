@@ -37,6 +37,7 @@ import { snapPoint, nearestOnRings } from './lib/snap.js';
 import { notchShapes } from './lib/cutout.js';
 // Pasting the pieces of a big lot's detection back into one mask.
 import { stitchMasks } from './lib/tiles.js';
+import { finishLot, maskPicture } from './lib/finish.js';
 import {
   planHandles, HANDLE_DOT_PX, HANDLE_REACH_PX, HANDLE_MAX_CORNERS,
 } from './lib/handles.js';
@@ -167,6 +168,7 @@ const state = {
   measureOutside: false, // may the brush paint past the property line?
 
   edgeFt: 0,          // shrink (-) or grow (+) the detected outline, in feet
+  confidence: 50,     // how sure the AI must be for a spot to be traced, in percent (finish.js)
 
   /*
    * What the NEXT polygon drawn by hand is for. Both default to false, which
@@ -5121,7 +5123,12 @@ async function detect({ again = false } = {}) {
               ? `The detector returned nothing for "${label}".`
               : 'The detector returned no mask. Try drawing it by hand.');
           }
-          return { col: tile.col || 0, row: tile.row || 0, url, image: await loadMask(url), raw: done.raw || null };
+          return {
+            col: tile.col || 0, row: tile.row || 0, url, image: await loadMask(url), raw: done.raw || null,
+            /* The canopy and lidar pictures the server finished with, for the
+               confidence slider (public/lib/finish.js). */
+            parts: done.parts || null, mpp: Number.isFinite(done.mpp) ? done.mpp : null,
+          };
         }));
         return {
           url: pieces[0].url,
@@ -5132,9 +5139,14 @@ async function detect({ again = false } = {}) {
           image: pieces.length === 1
             ? pieces[0].image
             : stitchMasks(pieces, tiling.cols, tiling.rows),
+          /* For the confidence slider: every piece, and the mask as served. */
+          pieces: pieces.map(({ col, row, raw, parts, mpp }) => ({ col, row, raw, parts, mpp })),
+          tiling,
         };
       }));
 
+    for (const l of layers) l.served = l.image;
+    state.confidence = DEFAULT_CONFIDENCE;
     const subtractive = Boolean(data.subtractive);
     /* A picture that was moved onto Mapbox is traced where it was shown, so
        the outline lands on the grass the person saw (Google; see alignKey). */
@@ -8190,6 +8202,7 @@ function snapshotForSave() {
     provider: state.detectedWith || state.provider,
     exclude: state.detectedExcluding ? state.detectedExcluding.split(',') : [],
     edgeFt: state.edgeFt,
+    confidence: state.confidence,
     fillGaps: { ...state.fillGaps },
     handEdited: state.handEdited,
     squareFeet: m.squareFeet,
@@ -9149,6 +9162,7 @@ function openMap(s) {
   state.model = knownModel(s.model) ? s.model : state.defaultModel;
   state.exclude = Array.isArray(s.exclude) ? s.exclude.filter(Boolean) : [];
   state.edgeFt = Number.isFinite(s.edgeFt) ? s.edgeFt : DEFAULT_EDGE_FT;
+  state.confidence = Number.isFinite(s.confidence) ? s.confidence : DEFAULT_CONFIDENCE;
   state.fillGaps = { find: true, exclude: false, ...(s.fillGaps || {}) };
   state.surveyed = [];
   state.pins = [];
@@ -9349,6 +9363,7 @@ async function sendFeedback(rating) {
         provider: state.detectedWith,
         exclude: state.detectedExcluding ? state.detectedExcluding.split(',') : [],
         edgeFt: state.edgeFt,
+        confidence: state.confidence,
         fillGaps: $('#toggle-trees').checked,
         squareFeet: m.squareFeet,
         parcelSqFt: state.parcel ? Math.round(measure(state.parcel.geometry).squareFeet) : null,
@@ -9652,6 +9667,7 @@ function clearLawnAndUnlock({ toDetect = false } = {}) {
   state.detectedExcluding = null;
   state.lastMask = null;
   state.edgeFt = DEFAULT_EDGE_FT;
+  state.confidence = DEFAULT_CONFIDENCE;
   hideOverlay();
   refreshSensitivity();
   refreshMeasurement();
@@ -9880,6 +9896,114 @@ function parseEdgeFt(text) {
   // field from filling with floating-point dust.
   const clamped = Math.min(Math.max(n, -MAX_EDGE_FT), MAX_EDGE_FT);
   return Math.round(clamped * 4) / 4;
+}
+
+/*
+ * HOW SURE THE AI MUST BE (owner, 2026-10-24: "should we add a confidence
+ * (or sensitivity) adjustment that adjusts what confidence gets traced (that
+ * a user could tweak without running a new detection)").
+ *
+ * The trained model's answer is its decoder's picture cut at 50%, then the
+ * tree step and the roof veto (public/lib/finish.js). The server sends that
+ * picture and the canopy and lidar pictures it finished with, so the page
+ * runs the same steps at another cut: 50% here is exactly the server's mask,
+ * and every other setting differs from it only by the cut. Lower traces what
+ * the AI half-thinks is lawn (a patch under a small tree, a narrow strip),
+ * mistakes included; higher keeps only what it is surest of.
+ */
+const DEFAULT_CONFIDENCE = 50;
+const MIN_CONFIDENCE = 20;
+const MAX_CONFIDENCE = 80;
+const CONFIDENCE_STEP = 5;
+let confidenceToken = 0;
+
+/** Can this pass be re-cut? Every piece kept its decoder picture and its canopy. */
+function recuttable(layer) {
+  return Array.isArray(layer?.pieces) && layer.pieces.length > 0
+    && layer.pieces.every((p) => p.raw && p.parts?.canopy) && Boolean(layer.served);
+}
+
+/** A piece's pictures, fetched once: decoder, canopy, roof, void. */
+function piecePictures(piece) {
+  if (!piece.pictures) {
+    piece.pictures = Promise.all([piece.raw, piece.parts.canopy, piece.parts.roof, piece.parts.void]
+      .map((u) => (u ? loadMask(u) : null)));
+    piece.pictures.catch(() => { piece.pictures = null; });
+  }
+  return piece.pictures;
+}
+
+/** This pass's mask at `pct`: the served one at the default, else re-finished. */
+async function recutLayer(layer, pct, frame) {
+  if (pct === DEFAULT_CONFIDENCE || !recuttable(layer)) return layer.served || layer.image;
+  const threshold = Math.round((pct * 255) / 100);
+  const fullW = layer.served.width;
+  const images = await Promise.all(layer.pieces.map(async (p) => {
+    const [prob, canopy, roof, voidMask] = await piecePictures(p);
+    const w = prob.width, h = prob.height;
+    const mpp = p.mpp || metresPerPixel(frame, fullW);
+    const m = finishLot({ prob, canopy, roof, voidMask, height: null, w, h, mpp, threshold });
+    return { col: p.col, row: p.row, image: maskPicture(m, w, h) };
+  }));
+  return images.length === 1 ? images[0].image : stitchMasks(images, layer.tiling?.cols || 1, layer.tiling?.rows || 1);
+}
+
+function refreshConfidence() {
+  const row = $('#conf-row');
+  if (!row) return;
+  const mask = state.lastMask;
+  row.hidden = !(mask?.layers?.length && !mask.subtractive && mask.layers.every(recuttable));
+  const slider = $('#conf-pct');
+  if (slider && document.activeElement !== slider) slider.value = String(state.confidence);
+  describeConfidence(Number(slider?.value ?? state.confidence));
+}
+
+function describeConfidence(pct) {
+  const val = $('#conf-val');
+  if (val) val.textContent = `${pct}%`;
+  const note = $('#conf-note');
+  if (!note) return;
+  note.textContent = pct === DEFAULT_CONFIDENCE
+    ? 'As detected: a spot is traced when the AI is at least half sure it is lawn.'
+    : pct < DEFAULT_CONFIDENCE
+      ? `Traces spots the AI is only ${pct}% sure of: more lawn found (small patches, grass under thin trees), and more mistakes.`
+      : `Traces only spots the AI is ${pct}% sure of: fewer mistakes, and less lawn.`;
+}
+
+/** Set how sure the AI must be, re-finish its picture and re-trace. */
+async function setConfidence(pct) {
+  const n = Number(pct);
+  if (!Number.isFinite(n)) { refreshConfidence(); return; }
+  const next = Math.min(MAX_CONFIDENCE, Math.max(MIN_CONFIDENCE, Math.round(n / CONFIDENCE_STEP) * CONFIDENCE_STEP));
+  const mask = state.lastMask;
+  if (next === state.confidence || !mask?.layers?.length) { refreshConfidence(); return; }
+  const token = ++confidenceToken;
+  const was = state.confidence;
+  const frame = mask.traceFrame || mask.frame;
+  setStatus(`Re-reading the AI's picture at ${next}%…`);
+  let images;
+  try {
+    images = await Promise.all(mask.layers.map((l) => recutLayer(l, next, frame)));
+  } catch (e) {
+    if (token === confidenceToken) {
+      setStatus(`Could not re-read the AI's picture (${e.message}). Left as it is.`, 'warn');
+      refreshConfidence();
+    }
+    return;
+  }
+  /* A later move of the slider has already taken over. */
+  if (token !== confidenceToken || state.lastMask !== mask) return;
+  const before = mask.layers.map((l) => l.image);
+  mask.layers.forEach((l, i) => { l.image = images[i]; });
+  state.confidence = next;
+  if (!retrace('Changing how sure the AI must be')) {
+    mask.layers.forEach((l, i) => { l.image = before[i]; });
+    state.confidence = was;
+    setStatus('Left as it is — your hand corrections are untouched.');
+  } else {
+    setStatus(`Traced at ${next}% sure.`);
+  }
+  refreshConfidence();
 }
 
 /** Set the edge distance and re-trace, unless nothing actually changed. */
@@ -10111,6 +10235,7 @@ function refreshSensitivity() {
   if (plus) plus.disabled = state.edgeFt >= MAX_EDGE_FT;
 
   describeEdgeShift();
+  refreshConfidence();
 }
 
 function describeEdgeShift() {
@@ -13834,6 +13959,7 @@ function reset() {
   state.drawingParcel = false;
   state.drawingHole = false;
   state.edgeFt = DEFAULT_EDGE_FT;
+  state.confidence = DEFAULT_CONFIDENCE;
   $('#edge-ft').value = String(DEFAULT_EDGE_FT);
   $('#sens-panel').hidden = true;
   $('#btn-draw-parcel').hidden = true;
@@ -13890,6 +14016,8 @@ $('#model-choice').addEventListener('change', (e) => setModel(e.target.value));
  * re-trace at 1 on the way past.
  */
 $('#edge-minus').addEventListener('click', () => setEdgeFt(state.edgeFt - EDGE_STEP_FT));
+$('#conf-pct')?.addEventListener('input', (e) => describeConfidence(Number(e.target.value)));
+$('#conf-pct')?.addEventListener('change', (e) => { setConfidence(e.target.value); });
 $('#edge-plus').addEventListener('click', () => setEdgeFt(state.edgeFt + EDGE_STEP_FT));
 
 /* `change` fires on blur and on Enter; the explicit keydown makes Enter commit

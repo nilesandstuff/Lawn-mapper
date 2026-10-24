@@ -54,6 +54,10 @@ import {
 } from './backbone.js';
 import { rasterizePolygon } from '../public/lib/mask.js';
 import { stage3, clearCanopy, bareCanopy, SEE_THROUGH_MODES, LEAF_OFF_SHARE, bareShare, evergreensOf } from './stage3.js';
+/* The grid readers and the lidar veto, shared with the server and the page (public/lib/finish.js). */
+import { predictionMask, canopyMask, greyMask, heightMask, lidarVeto } from '../public/lib/finish.js';
+
+export { predictionMask, canopyMask, greyMask, heightMask, lidarVeto };
 import { colourEdges } from './colour-edges.js';
 import { frameBbox3857 } from '../worker/src/imagery.js';
 import { lawnSetClause, lawnSetName, lawnSetDescription, BENCHMARK_PRINT } from './lawn-set.js';
@@ -682,74 +686,8 @@ export function labelsPng(L, PNG) {
   return PNG.sync.write(png);
 }
 
-/**
- * A decoder's answer, read back off its picture as a mask on the grid.
- *
- * Grey, 255 meaning certainly lawn, cut at the middle -- the same 0.5 the
- * head's own answers are cut at in runFold. Null when the picture is not
- * the size of the grid it claims to answer, because a resample here would
- * hide exactly the registration bug the Python side's tests exist to catch.
- */
-export function predictionMask(png, G, GH = G) {
-  if (!png || png.width !== G || png.height !== GH) return null;
-  const out = new Uint8Array(G * GH);
-  for (let i = 0; i < out.length; i++) out[i] = png.data[i * 4] >= 128 ? 1 : 0;
-  return out;
-}
 
-/**
- * The tree model's mask, written at the frame's own pixels, brought to the
- * scoring grid by nearest neighbour. Both cover the same frame, so a cell
- * reads the mask pixel under its top-left corner; at 15 cm cells over a 10 cm
- * mask that is never more than a cell out. Null for a picture with no pixels.
- */
-export function canopyMask(png, G, GH = G) {
-  if (!png || !png.width || !png.height) return null;
-  const out = new Uint8Array(G * GH);
-  for (let y = 0; y < GH; y++) {
-    const sy = Math.min(png.height - 1, Math.floor((y * png.height) / GH));
-    for (let x = 0; x < G; x++) {
-      const sx = Math.min(png.width - 1, Math.floor((x * png.width) / G));
-      out[y * G + x] = png.data[(sy * png.width + sx) * 4] >= 128 ? 1 : 0;
-    }
-  }
-  return out;
-}
 
-/**
- * The lidar's height above ground, from the grey PNG tools/lidar_frame.py
- * writes (a tenth of a metre a level, on its own 2 m grid), sampled nearest
- * onto the scoring grid as metres. Nearest for the same reason as the canopy
- * mask: a 2 m reading copied into the 15 cm cells under it is the reading;
- * an average would invent heights between two trees.
- */
-export function greyMask(png, G, GH = G) {
-  /* A grey picture (one byte a pixel) sampled nearest onto the grid, as the
-     masks are; 0 stays 0, "nothing there". */
-  if (!png || !png.width || !png.height) return null;
-  const out = new Uint8Array(G * GH);
-  for (let y = 0; y < GH; y++) {
-    const sy = Math.min(png.height - 1, Math.floor((y * png.height) / GH));
-    for (let x = 0; x < G; x++) {
-      const sx = Math.min(png.width - 1, Math.floor((x * png.width) / G));
-      out[y * G + x] = png.data[(sy * png.width + sx) * 4];
-    }
-  }
-  return out;
-}
-
-export function heightMask(png, G, GH = G) {
-  if (!png || !png.width || !png.height) return null;
-  const out = new Float32Array(G * GH);
-  for (let y = 0; y < GH; y++) {
-    const sy = Math.min(png.height - 1, Math.floor((y * png.height) / GH));
-    for (let x = 0; x < G; x++) {
-      const sx = Math.min(png.width - 1, Math.floor((x * png.width) / G));
-      out[y * G + x] = png.data[(sy * png.width + sx) * 4] / 10;
-    }
-  }
-  return out;
-}
 
 /**
  * The tree model's canopy, widened where the lidar and NAIP-CHM agree it
@@ -765,19 +703,6 @@ export function canopyPlus(canopy, lidarCanopy, naipCanopy) {
   return out;
 }
 
-/**
- * THE LIDAR VETO (H38): a cell the point cloud calls roof or void is not
- * lawn, whatever stage 1 and stage 3 said. Returns a copy; a missing mask
- * vetoes nothing.
- */
-export function lidarVeto(mask, roof, voidMask) {
-  if (!roof && !voidMask) return mask;
-  const out = Uint8Array.from(mask);
-  for (let i = 0; i < out.length; i++) {
-    if ((roof && roof[i]) || (voidMask && voidMask[i])) out[i] = 0;
-  }
-  return out;
-}
 
 /** Geometries -> a filled mask on the GRID, using the row's own frame. */
 function maskOf(geoms, frame, size, sizeH = size) {
