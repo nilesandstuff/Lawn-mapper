@@ -122,15 +122,42 @@ export function bareCanopy(canopy, rgba, w, h, { mpp = 0.15, maxExg = BARE_MAX_E
   return out;
 }
 
+/*
+ * TREES IN A LAWN, NOT WOODS (owner, 2026-10-24, on the condo's bare trees:
+ * "the tree guessing algorithm should trust the detector when it comes to
+ * leaf off trees in a lawn ... BUT there should be a safeguard for preventing
+ * lawn traces from showing up in genuine woods"). H69 measured 'trust' --
+ * stage 1's answer under EVERY crown -- as better on the lots that look
+ * leaf-off (26.3 -> 22.6%) and worse over all of them (21.1 -> 24.0%, the
+ * ground under the trees 26 -> 43%). The safeguard here is size: a clump of
+ * canopy under `maxM2` square metres is a tree or two standing in the open,
+ * and keeps stage 1's answer; a bigger clump is woods, and stage 3 decides
+ * there as before. 100 m2 is one big crown (11 m across); 300 m2 a few.
+ * SPECULATION until workflow 14's see-through table has scored it (S63).
+ */
+export function lawnTrees(canopy, w, h, { mpp = 0.15, maxM2 = 100 } = {}) {
+  const out = new Uint8Array(w * h);
+  if (!canopy || !(mpp > 0)) return out;
+  const { labels, count } = clumps(canopy, w, h);
+  const size = new Int32Array(count + 1);
+  for (let i = 0; i < w * h; i++) if (labels[i]) size[labels[i]]++;
+  const maxCells = maxM2 / (mpp * mpp);
+  for (let i = 0; i < w * h; i++) if (labels[i] && size[labels[i]] < maxCells) out[i] = 1;
+  return out;
+}
+
 /**
  * The see-through cells for a mode: 'off' (none -- the rule since H30),
- * 'colour' (bareCanopy), 'evergreen' (the same, plus evergreensOf), or
- * 'trust' (every canopy cell). Null for 'off'.
+ * 'colour' (bareCanopy), 'evergreen' (the same, plus evergreensOf),
+ * 'trust' (every canopy cell), or 'small-N' (lawnTrees: clumps under N m2).
+ * Null for 'off'.
  */
-export const SEE_THROUGH_MODES = ['off', 'colour', 'evergreen', 'trust'];
+export const SEE_THROUGH_MODES = ['off', 'colour', 'evergreen', 'trust', 'small-100', 'small-300'];
 export function seeThroughFor(mode, canopy, rgba, w, h, { mpp = 0.15 } = {}) {
   if (!canopy || !mode || mode === 'off') return null;
   if (mode === 'trust') return Uint8Array.from(canopy);
+  const small = /^small-(\d+)$/.exec(mode);
+  if (small) return lawnTrees(canopy, w, h, { mpp, maxM2: Number(small[1]) });
   if (mode === 'colour' || mode === 'evergreen') return rgba ? bareCanopy(canopy, rgba, w, h, { mpp }) : null;
   throw new Error(`see-through mode "${mode}" is not one of ${SEE_THROUGH_MODES.join(', ')}`);
 }

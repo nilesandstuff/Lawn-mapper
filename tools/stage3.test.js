@@ -5,7 +5,7 @@
  */
 
 import assert from 'node:assert/strict';
-import { clumps, clearCanopy, reach, enclose, span, woods, bridge, stage3, bareCanopy, seeThroughFor } from './stage3.js';
+import { clumps, clearCanopy, reach, enclose, span, woods, bridge, stage3, bareCanopy, seeThroughFor, lawnTrees, SEE_THROUGH_MODES } from './stage3.js';
 
 const grid = (rows) => {
   const h = rows.length, w = rows[0].length;
@@ -311,6 +311,28 @@ const show = (mask, w, h) => {
   /* And it adds nothing stage 1 did not say: bare canopy with no lawn stays empty. */
   const none = stage3(Uint8Array.from([0, 0, 0, 1]), canopy, w, h, { mpp: 1, reachM: 0, minRing: 1, bare });
   assert.deepEqual([...none.mask], [0, 0, 0, 1]);
+}
+
+/* TREES IN THE OPEN, NOT WOODS (S63, owner 2026-10-24): a small crown on an
+   island of grass in a driveway keeps the detector's lawn; woods do not. */
+{
+  const w = 40, h = 20, mpp = 0.5;   // 0.25 m2 a cell
+  const canopy = new Uint8Array(w * h);
+  const lawn = new Uint8Array(w * h);
+  // A crown 8 x 8 cells (16 m2) at x 2..9, the detector saying lawn under it.
+  for (let y = 6; y < 14; y++) for (let x = 2; x < 10; x++) { canopy[y * w + x] = 1; lawn[y * w + x] = 1; }
+  // Woods 20 x 20 cells (100 m2) at x 18..37, the detector saying lawn under half.
+  for (let y = 0; y < 20; y++) for (let x = 18; x < 38; x++) { canopy[y * w + x] = 1; if (x < 28) lawn[y * w + x] = 1; }
+  const keep = lawnTrees(canopy, w, h, { mpp, maxM2: 50 });
+  assert.equal(keep[10 * w + 5], 1, 'the small crown is a tree in the open');
+  assert.equal(keep[10 * w + 25], 0, 'the woods are not');
+  assert.deepEqual([...seeThroughFor('small-50', canopy, null, w, h, { mpp })], [...keep], 'small-N is lawnTrees under N m2');
+  assert.ok(SEE_THROUGH_MODES.includes('small-100') && SEE_THROUGH_MODES.includes('small-300'));
+  const off = stage3(lawn, canopy, w, h, { mpp, spanM: 8, reachM: 1, minRing: 0.5 }).mask;
+  const on = stage3(lawn, canopy, w, h, { mpp, spanM: 8, reachM: 1, minRing: 0.5, bare: keep }).mask;
+  assert.equal(off[10 * w + 5], 0, 'today: the crown on its island is cleared, nothing around to fill from');
+  assert.equal(on[10 * w + 5], 1, 'trees in the open: the detector\'s lawn under it stands');
+  assert.equal(on[10 * w + 22], off[10 * w + 22], 'the woods are decided as before');
 }
 
 console.log('stage 3: ok');

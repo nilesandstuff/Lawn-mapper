@@ -8119,6 +8119,43 @@ governs). **What it moves in the record:** the "traced" diagnostic of
 the big lots (edgeDiagnosis) from the next run on; THE PLAN's scored
 rows read the mask, not the outline, and do not move.
 
+**Smallest piece 150 -> 100 sq ft (owner, 2026-10-24: "the smallest area
+is 130 sqft, so maybe the cutoff should be 100 sqft"),** on the condo,
+where grass islands between driveways run 100 to 150 sq ft. Same scope as
+above: the outline, not the scored mask.
+
+### S63. Trees standing in the open keep the detector's answer; woods do not (owner, 2026-10-24: "the tree guessing algorithm should trust the detector when it comes to leaf off trees in a lawn ... BUT there should be a safeguard for preventing lawn traces from showing up in genuine woods") -- BUILT, OFF, NOT MEASURED
+
+**Where it comes from.** The condo complex (the owner's map at
+-85.70712,42.83547) on release v7: grass islands between driveways, each
+with a small bare tree, are in the decoder's picture as a grey haze and
+missing from the outline. Stage 3 begins by clearing stage 1's answer under
+every canopy cell (clearCanopy) and fills back only from visible lawn
+nearby (span, reach, bridge); an island surrounded by driveway has none,
+so it stays empty whatever the decoder thought.
+
+**What is already measured, in its own context.** H69 (Scale-MAE eye, 80
+lots, seed 7, 2026-10-04): `trust`, stage 1's answer under EVERY crown,
+was better on the 22 lots that look leaf-off (headline 26.3 -> 22.6%) and
+worse over all lots (21.1 -> 24.0%; the inferred column 26.2 -> 43.4%).
+`colour` was no gain (H69, and 11 / 14 / 56 in 37576047303). Nothing has
+measured trust with a woods safeguard, or any mode on DINOv3-sat.
+
+**Built (public/lib/stage3.js `lawnTrees`, modes `small-100` and
+`small-300`):** a clump of canopy (8-connected) under N m² is a tree or a
+few standing in the open and keeps stage 1's answer; a bigger clump is
+woods and stage 3 decides there as before. 100 m² is one big crown (11 m
+across), 300 m² a few. Size is the only safeguard; the lidar's height is
+not used (the woods rule by height measured as nothing, H36). Off in
+serving (public/lib/finish.js SEE_THROUGH).
+
+**Bar, before the run.** Adopt a size only if, as a full row against THE
+PLAN on the same run (workflow 24), it is better on more lots than worse
+over every lot and does not raise the median; or, failing that, if it is
+clearly better on the lots that look leaf-off and level elsewhere, in which
+case serve it only on photos that look leaf-off (looksLeafOff). Fewer than
+about 15 leaf-off lots is too few to read.
+
 ### S53. CHMv2, Meta's canopy height head, zero-shot -- MEASURED 2026-10-23: a roof-against-tree separator (AUC 0.94), not a canopy source: see H115
 
 ### S54-S57. The night of 2026-10-22: everything that makes sense to try, on the free runner (owner: "try everything that makes sense to try ... keep it under $10") -- MEASURED 2026-10-23: H117 (probe), H118 (UperNet on DINOv3: worse), H119 (web eye: a tie with sat, both beat Scale-MAE), H120 (1280: worse), H116 (res x5: worse); S58 read in H121

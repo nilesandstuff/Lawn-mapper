@@ -53,7 +53,7 @@ import {
   loadBackbone, tiledFeatures, sampleAt, projection, project,
 } from './backbone.js';
 import { rasterizePolygon } from '../public/lib/mask.js';
-import { stage3, clearCanopy, bareCanopy, SEE_THROUGH_MODES, LEAF_OFF_SHARE, bareShare, evergreensOf } from './stage3.js';
+import { stage3, clearCanopy, bareCanopy, SEE_THROUGH_MODES, LEAF_OFF_SHARE, bareShare, evergreensOf, seeThroughFor } from './stage3.js';
 /* The grid readers and the lidar veto, shared with the server and the page (public/lib/finish.js). */
 import { predictionMask, canopyMask, greyMask, heightMask, lidarVeto } from '../public/lib/finish.js';
 
@@ -2450,7 +2450,9 @@ async function main() {
         const canopy = opts.plus && L.canopyPlus ? L.canopyPlus : L.canopy;
         if (opts.only && !opts.only(L)) continue;
         const bare = opts.seeThrough === 'colour' || opts.seeThrough === 'evergreen' ? L.bare
-          : opts.seeThrough === 'trust' ? canopy : null;
+          : opts.seeThrough === 'trust' ? canopy
+            /* 'small-N' (S63): crowns standing in the open, not woods. */
+            : /^small-\d+$/.test(opts.seeThrough || '') ? seeThroughFor(opts.seeThrough, canopy, null, L.grid, L.gridH, { mpp: L.mpp }) : null;
         /* 'evergreen': on a photo that looks leaf-off, the crowns that did
            not read bare are never lawn (stage3.js evergreensOf). */
         const evergreen = opts.seeThrough === 'evergreen' ? evergreensOf(canopy, L.bare) : null;
@@ -2711,7 +2713,9 @@ async function main() {
           console.log(`Scoring "${cfgU.name}" (THE PLAN outside the tree model's canopy, "${tl}" inside it)…`);
           table.push(summarise(cfgU, judge(masks, { spanM: 8, reachM: 1, minRing: 0.5, veto: true, under: taught.masks }), cfg.dims));
         }
-        for (const mode of ['colour', 'evergreen']) {
+        /* And S63's trees in the open (owner, 2026-10-24), as full rows so
+           workflow 24 can pair them lot by lot with THE PLAN. */
+        for (const mode of ['colour', 'evergreen', 'small-100', 'small-300']) {
           const cfgS = { ...cfg, name: `${cfg6.name}, see-through ${mode}`, stage3: true };
           console.log(`Scoring "${cfgS.name}"…`);
           table.push(summarise(cfgS, judge(masks, { spanM: 8, reachM: 1, minRing: 0.5, veto: true, seeThrough: mode }), cfg.dims));
