@@ -244,13 +244,28 @@ async function explainPatches(got, press, out) {
   const report = patchReport({ probGrey, final, canopy, roof, voidMask, within, w, h, mpp });
   console.log(`  PATCHES the decoder is at least 30% sure of, ${PATCH_MAX_SQFT.toLocaleString('en-US')} sq ft and under, inside the lot (${report.length}):`);
   console.log('     sq ft  mean sure  >=50%  canopy  roof/void  served kept   where (m from top-left)');
-  for (const p of report.slice(0, 40)) {
-    const why = p.keptPct >= 50 ? 'kept'
-      : p.vetoPct >= 50 ? 'lidar veto'
-        : p.surePct < 50 && p.canopyPct >= 30 ? 'under canopy, unsure'
-          : p.surePct < 50 ? 'unsure'
-            : p.canopyPct >= 30 ? 'tree step cleared it'
-              : p.sqft < 100 ? 'too small' : '?';
+  const whyOf = (p) => (p.keptPct >= 50 ? 'kept'
+    : p.vetoPct >= 50 ? 'lidar veto'
+      : p.surePct < 50 && p.canopyPct >= 30 ? 'under canopy, unsure'
+        : p.surePct < 50 ? 'unsure'
+          : p.canopyPct >= 30 ? 'tree step cleared it'
+            : p.sqft < 100 ? 'too small' : '?');
+  /* Every reason with its count and ground, then every small patch: the
+     first press listed only the 40 biggest, all kept (2026-10-24). */
+  const byWhy = new Map();
+  for (const p of report) {
+    const k = whyOf(p);
+    const b = byWhy.get(k) || { n: 0, sqft: 0 };
+    b.n++; b.sqft += p.sqft;
+    byWhy.set(k, b);
+  }
+  console.log('  BY REASON:');
+  for (const [k, b] of [...byWhy].sort((x, y) => y[1].n - x[1].n)) console.log(`    ${k.padEnd(22)} ${String(b.n).padStart(4)} patches  ${Math.round(b.sqft).toLocaleString('en-US').padStart(8)} sq ft`);
+  const small = report.filter((p) => p.sqft <= 400);
+  console.log(`  EVERY PATCH OF 400 sq ft AND UNDER (${small.length}), biggest first:`);
+  console.log('     sq ft  mean sure  >=50%  canopy  roof/void  served kept   where (m from top-left)');
+  for (const p of [...report.filter((q) => q.sqft > 400).slice(0, 10), ...small]) {
+    const why = whyOf(p);
     console.log(`    ${Math.round(p.sqft).toString().padStart(6)}  ${String(p.meanPct).padStart(5)}%  ${String(p.surePct).padStart(8)}%  ${String(p.canopyPct).padStart(5)}%  `
       + `${String(p.vetoPct).padStart(7)}%  ${String(p.keptPct).padStart(7)}%  (${p.at[0]}, ${p.at[1]})  ${why}`);
   }
