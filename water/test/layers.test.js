@@ -5,7 +5,7 @@
  */
 
 import assert from 'node:assert/strict';
-import { compact, askBox, freshEnough, summary, pick, intakesNear, distanceM, enuOf } from '../lib/layers.js';
+import { typeWords, compact, askBox, freshEnough, summary, pick, intakesNear, distanceM, enuOf } from '../lib/layers.js';
 
 const tests = [];
 const test = (name, fn) => tests.push([name, fn]);
@@ -27,6 +27,14 @@ test('the kept copy: only the fields the page reads, coordinates to 0.1 m, compl
   const c = compact(answer(), { centre: O });
   const inlet = c.layers.find((l) => l.kind === 'storm_inlet').features[0];
   assert.deepEqual(inlet.p, { TOP_OF_CASTING: 806.61 }, 'no ids, no coded subtypes');
+  // a type the source names is kept; a culvert typed so on a storm-pipe layer is drawn as a culvert
+  const named = compact({ layers: [{ kind: 'storm_main', source: 'Kent County, MI', title: 'Storm Mains', features: [
+    { geometry: { type: 'LineString', coordinates: [at(0, 0), at(10, 0)] }, properties: { SUBTYPE: 'StormMain', MATERIAL: 'Precast' } },
+    { geometry: { type: 'LineString', coordinates: [at(0, 5), at(10, 5)] }, properties: { SUBTYPE: 'Culvert', DIAMETER: 24 } },
+    { geometry: { type: 'LineString', coordinates: [at(0, 9), at(10, 9)] }, properties: { SUBTYPE: 'OpenChannel' } }] }] }, { centre: O });
+  assert.deepEqual(named.layers.map((l) => [l.kind, l.features.length]), [['storm_main', 1], ['culvert', 1], ['open_drain', 1]]);
+  assert.deepEqual(named.layers[0].features[0].p, { SUBTYPE: 'StormMain', MATERIAL: 'Precast' });
+  assert.equal(typeWords('StormMain'), 'Storm main'); assert.equal(typeWords('Double Catch Basin'), 'Double catch basin'); assert.equal(typeWords('SUB_DRN_DISTRICT'), 'Sub drn district');
   assert.ok(inlet.g.coordinates.every((v) => Math.abs(v * 1e6 - Math.round(v * 1e6)) < 1e-6));
   assert.equal(c.complete, true); assert.deepEqual(c.sources, ['FEMA', 'Kent County, MI']);
   const part = compact(answer({ pending: [{ title: 'Flowline - Large Scale' }] }), { centre: O });

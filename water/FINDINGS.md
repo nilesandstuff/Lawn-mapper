@@ -1282,7 +1282,10 @@ saves ... So you're responsible for ensuring alignment". The core session's rout
   outfall, culvert, open drain or basin mapped within a spot's radius (+1.5 m, at least 3 m) marks it as built to
   collect water, not a hollow (S2's worry, now answered where the county maps its drains).
 - USGS NHD "Waterbody - Large Scale" was failed or pending on every box asked near Grand Rapids; told to the core
-  session.
+  session, which dropped it (the wetlands inventory's open water carries the same ponds; commit 3b03a2d). Also
+  at the water session's ask, codes come as names (subtypes, coded-value domains, or the layer's map style):
+  the water map keeps a named type, shows it as words, draws a storm "pipe" typed Culvert as a culvert and one
+  typed OpenChannel or FloodRoute as an open drain, and asks again for every copy kept before (SAVED_V 2).
 
 ## SPECULATION
 

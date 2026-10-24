@@ -27,7 +27,7 @@ import { tracedOn, lineUpAt } from '/lib/shade/traced.js';
 import { boxFor } from '/lib/site.js';
 import { sprinklers } from '/heads.js';
 import { openable } from '/lib/maps.js';
-import { KINDS as LAYER_KINDS, FIELD_WORDS, askBox, compact, freshEnough, summary as layerSummary, pick as layerPick, intakesNear } from '/lib/layers.js';
+import { KINDS as LAYER_KINDS, FIELD_WORDS, typeWords, askBox, compact, freshEnough, summary as layerSummary, pick as layerPick, intakesNear } from '/lib/layers.js';
 
 const $ = (s) => document.querySelector(s);
 const R = 6378137;
@@ -1044,7 +1044,7 @@ function legend() {
     }
     if (view.layerPicked) {
       const pk = view.layerPicked, k = LAYER_KINDS[pk.kind];
-      const rows = Object.entries(pk.p || {}).map(([f, v]) => `<li>${esc(FIELD_WORDS[f] || f.toLowerCase().replace(/_/g, ' '))}: ${esc(v)}</li>`).join('');
+      const rows = Object.entries(pk.p || {}).map(([f, v]) => `<li>${esc(FIELD_WORDS[f] || f.toLowerCase().replace(/_/g, ' '))}: ${esc(f === 'SUBTYPE' ? typeWords(v) : v)}</li>`).join('');
       info.push(`<div class="card" style="margin-top:6px"><strong>${esc(k.label.replace(/^./, (c) => c.toUpperCase()))}</strong> <span class="dim">(${esc(pk.title)}, ${esc(pk.source)})</span>${rows ? `<ul>${rows}</ul><span class="dim">As the source records it; elevations and sizes are in its own units (Kent County's are feet and inches).</span>` : ''}</div>`);
     }
     if (L) {

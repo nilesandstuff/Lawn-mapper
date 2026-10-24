@@ -16,26 +16,27 @@
  * Pure.
  */
 
-export const SAVED_V = 1;
+// 2: types sent as names (the core session, 2026-10-24); copies kept before are asked for again
+export const SAVED_V = 2;
 /** How old a saved copy may be before it is asked for again. */
 export const FRESH_DAYS = 30;
 
 /** Each kind: its words, how it is drawn, the fields the page keeps, and how much it matters when trimming. */
 export const KINDS = {
   watershed: { label: 'watershed', draw: 'area', stroke: '#90a4ae', fill: null, dash: [6, 4], keep: ['NAME', 'CLASSIFICATION'], rank: 1 },
-  drain_district: { label: 'county drain district', draw: 'area', stroke: '#ab47bc', fill: null, dash: [8, 4], keep: ['DRAIN_NAME', 'OWNER', 'NAME'], rank: 2 },
+  drain_district: { label: 'county drain district', draw: 'area', stroke: '#ab47bc', fill: null, dash: [8, 4], keep: ['SUBTYPE', 'DRAIN_NAME', 'OWNER', 'NAME'], rank: 2 },
   drain_easement: { label: 'drain or storm easement', draw: 'area', stroke: '#8d6e63', fill: 'rgba(141,110,99,.22)', dash: [4, 3], keep: ['EASEMENT_NAME', 'GRANTEE', 'MAINT_RESP'], rank: 3 },
   wetland: { label: 'wetland', draw: 'area', stroke: '#2e7d32', fill: 'rgba(76,175,80,.28)', keep: ['WETLAND_TYPE', 'ATTRIBUTE', 'CLASS', 'NWI_CODE'], rank: 4 },
   flood_zone: { label: 'flood hazard zone', draw: 'area', stroke: '#ef6c00', fill: 'rgba(255,152,0,.22)', keep: ['FLD_ZONE', 'SFHA_TF', 'FLOOD_ZONE_TYPE', 'ZONE_SUBTY'], rank: 5 },
   water_body: { label: 'lake or pond', draw: 'area', stroke: '#1565c0', fill: 'rgba(30,136,229,.45)', keep: ['GNIS_NAME', 'NAME', 'DESC_', 'WETLAND_TYPE'], rank: 6 },
   detention_basin: { label: 'detention or retention basin', draw: 'area', stroke: '#00838f', fill: 'rgba(0,188,212,.35)', keep: ['NAME', 'TYPE', 'OWNER'], rank: 10 },
   stream: { label: 'stream or river', draw: 'line', stroke: '#1e88e5', width: 2.5, keep: ['GNIS_NAME', 'NAME', 'DESC_'], rank: 7 },
-  open_drain: { label: 'open drain or ditch', draw: 'line', stroke: '#00acc1', width: 2.5, dash: [6, 3], keep: ['DRAIN_NAME', 'NAME', 'OWNER'], rank: 8 },
-  storm_main: { label: 'storm sewer pipe', draw: 'line', stroke: '#5e35b1', width: 2, keep: ['DIAMETER', 'LATERAL_SIZE', 'MATERIAL', 'INFLW_INVRT_ELEV', 'OUTFLW_INVRT_ELEV', 'OWNER', 'YEAR_INSTALLED'], rank: 9 },
-  culvert: { label: 'culvert', draw: 'line', stroke: '#455a64', width: 4, keep: ['DIAMETER', 'MATERIAL', 'OWNER'], rank: 9 },
-  storm_manhole: { label: 'storm manhole', draw: 'point', shape: 'circle', stroke: '#311b92', fill: '#ffffff', keep: ['TOP_OF_CASTING', 'INVERT_IN', 'INVERT_OUT', 'DEPTH', 'OWNER'], rank: 11 },
+  open_drain: { label: 'open drain or ditch', draw: 'line', stroke: '#00acc1', width: 2.5, dash: [6, 3], keep: ['SUBTYPE', 'DRAIN_NAME', 'NAME', 'OWNER'], rank: 8 },
+  storm_main: { label: 'storm sewer pipe', draw: 'line', stroke: '#5e35b1', width: 2, keep: ['SUBTYPE', 'DIAMETER', 'LATERAL_SIZE', 'MATERIAL', 'INFLW_INVRT_ELEV', 'OUTFLW_INVRT_ELEV', 'OWNER', 'YEAR_INSTALLED'], rank: 9 },
+  culvert: { label: 'culvert', draw: 'line', stroke: '#455a64', width: 4, keep: ['SUBTYPE', 'DIAMETER', 'MATERIAL', 'OWNER'], rank: 9 },
+  storm_manhole: { label: 'storm manhole', draw: 'point', shape: 'circle', stroke: '#311b92', fill: '#ffffff', keep: ['SUBTYPE', 'TOP_OF_CASTING', 'INVERT_IN', 'INVERT_OUT', 'DEPTH', 'OWNER'], rank: 11 },
   outfall: { label: 'outfall', draw: 'point', shape: 'triangle', stroke: '#004d40', fill: '#4db6ac', keep: ['OWNER', 'DIAMETER'], rank: 11 },
-  storm_inlet: { label: 'storm inlet or catch basin', draw: 'point', shape: 'square', stroke: '#311b92', fill: '#ffeb3b', keep: ['TOP_OF_CASTING', 'SUMP_DEPTH', 'INVERT_ELEV', 'OWNER', 'YEAR_INSTALLED'], rank: 12 },
+  storm_inlet: { label: 'storm inlet or catch basin', draw: 'point', shape: 'square', stroke: '#311b92', fill: '#ffeb3b', keep: ['SUBTYPE', 'TOP_OF_CASTING', 'SUMP_DEPTH', 'INVERT_ELEV', 'OWNER', 'YEAR_INSTALLED'], rank: 12 },
 };
 /** A field, in words (each service's own name otherwise, lower case). */
 export const FIELD_WORDS = {
@@ -45,7 +46,7 @@ export const FIELD_WORDS = {
   YEAR_INSTALLED: 'installed', DEPTH: 'depth', DRAIN_NAME: 'county drain', EASEMENT_NAME: 'easement', GRANTEE: 'held by', MAINT_RESP: 'maintained by',
   FLD_ZONE: 'FEMA zone', SFHA_TF: 'in the special flood hazard area', FLOOD_ZONE_TYPE: 'flood zone', ZONE_SUBTY: 'zone detail',
   WETLAND_TYPE: 'wetland type', ATTRIBUTE: 'inventory code', CLASS: 'class', NWI_CODE: 'inventory code', GNIS_NAME: 'name', NAME: 'name',
-  DESC_: 'description', CLASSIFICATION: 'classification', TYPE: 'type',
+  DESC_: 'description', CLASSIFICATION: 'classification', TYPE: 'type', SUBTYPE: 'type',
 };
 
 const R = 6378137;
@@ -72,16 +73,23 @@ export function askBox(box, maxM = 1100) {
 export function compact(answer, { centre, budget = 30000, now = Date.now() } = {}) {
   const layers = [];
   for (const l of answer?.layers || []) {
-    const k = KINDS[l.kind];
-    if (!k || !Array.isArray(l.features)) continue;
-    const features = [];
+    if (!KINDS[l.kind] || !Array.isArray(l.features)) continue;
+    // each feature under its own kind: a storm "pipe" its county types as a culvert or an open channel is one
+    const byKind = new Map();
     for (const f of l.features) {
       if (!f?.geometry?.coordinates) continue;
+      const kind = kindOf(l.kind, f.properties?.SUBTYPE), k = KINDS[kind];
       const p = {};
-      for (const key of k.keep) { const v = f.properties?.[key]; if (v !== null && v !== undefined && v !== '' && v !== ' ') p[key] = typeof v === 'number' ? +v.toFixed(2) : String(v).slice(0, 60); }
-      features.push({ g: { type: f.geometry.type, coordinates: roundCoords(f.geometry.coordinates) }, p });
+      for (const key of k.keep) {
+        const v = f.properties?.[key];
+        if (v === null || v === undefined || v === '' || v === ' ') continue;
+        if (key === 'SUBTYPE' && typeof v === 'number') continue; // a code no layer names means nothing to a reader
+        p[key] = typeof v === 'number' ? +v.toFixed(2) : String(v).slice(0, 60);
+      }
+      if (!byKind.has(kind)) byKind.set(kind, []);
+      byKind.get(kind).push({ g: { type: f.geometry.type, coordinates: roundCoords(f.geometry.coordinates) }, p });
     }
-    if (features.length) layers.push({ kind: l.kind, title: String(l.title || '').slice(0, 60), source: String(l.source || '').slice(0, 60), from: l.from === 'national' ? 'national' : 'county', features });
+    for (const [kind, features] of byKind) layers.push({ kind, title: String(l.title || '').slice(0, 60), source: String(l.source || '').slice(0, 60), from: l.from === 'national' ? 'national' : 'county', features });
   }
   const out = {
     v: SAVED_V, at: new Date(now).toISOString(), box: answer?.box || null,
@@ -108,6 +116,17 @@ export function compact(answer, { centre, budget = 30000, now = Date.now() } = {
   }
   return out;
 }
+
+/** A storm main's own type, where its county names one (Kent's style: "Culvert", "OpenChannel", "FloodRoute"). */
+export function kindOf(kind, subtype) {
+  if (kind !== 'storm_main' || typeof subtype !== 'string') return kind;
+  if (/culvert/i.test(subtype)) return 'culvert';
+  if (/open ?channel|flood ?route|ditch|swale/i.test(subtype)) return 'open_drain';
+  return kind;
+}
+
+/** A type as words: "StormMain" -> "Storm main", "SUB_DRN_DISTRICT" -> "Sub drn district". */
+export const typeWords = (v) => String(v).replace(/_/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').trim().toLowerCase().replace(/^./, (c) => c.toUpperCase());
 
 /** Is a saved copy still good to use? */
 export const freshEnough = (saved, now = Date.now()) => !!saved && saved.v === SAVED_V && saved.complete && Date.parse(saved.at) > now - FRESH_DAYS * 86400000;
