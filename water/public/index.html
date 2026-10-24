@@ -65,6 +65,12 @@
   .picker label { display: block; margin: 6px 0; min-width: 0; }
   .picker select { display: block; width: 100%; max-width: 100%; margin-top: 4px; }
   .picker button { white-space: normal; }
+  /* WHAT IS LOADING (owner, 2026-10-24): fixed at the bottom of the screen, never in the way of a tap */
+  #busy { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(12px + env(safe-area-inset-bottom, 0px)); z-index: 50; width: max-content; max-width: calc(100% - 32px); display: flex; gap: 10px; align-items: flex-start; background: rgba(18, 26, 22, .94); color: #fff; padding: 10px 14px; border-radius: 12px; box-shadow: 0 4px 18px rgba(0,0,0,.35); font-size: 14px; line-height: 1.4; pointer-events: none; }
+  #busy[hidden] { display: none; }
+  #busy .spin { flex: none; width: 16px; height: 16px; margin-top: 2px; border: 2.5px solid rgba(255,255,255,.3); border-top-color: #fff; border-radius: 50%; animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { #busy .spin { animation-duration: 2.4s; } }
 </style>
 </head>
 <body>
@@ -146,6 +152,7 @@
   </div>
   <p class="dim">An early test. Lidar: USGS 3DEP. Soil: USDA NRCS Soil Survey. Weather: NASA POWER and the National Weather Service. Buildings, roads and sidewalks: <a href="https://overturemaps.org">Overture Maps Foundation</a> (&copy; OpenStreetMap contributors, Microsoft and others; ODbL). Property lines and photos: <a href="__LAWNMAP__">Lawn Mapper</a>. Sprinklers, downspouts, gutters and the topsoil choice are saved with your map when you open it from your dashboard. <a href="__LAWNMAP__/privacy">Privacy and contact</a>.</p>
 </main>
+<div id="busy" role="status" aria-live="polite" hidden></div>
 <script type="module" src="/app.js"></script>
 </body>
 </html>

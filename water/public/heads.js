@@ -384,8 +384,9 @@ export function sprinklers(ctx) {
     if (!refit && fitted) { arcPhase = 'ready'; return; }
     if (!ctx.groundAt) { arcPhase = 'waiting'; return; }
     arcPhase = 'fitting';
+    ctx.busy?.('arcs', "Fitting every head's arc to your lawn…");
     // a beat for the page to say so before the work
-    setTimeout(() => { if (step !== 'arcs') return; fitAll(); arcPhase = 'ready'; changed(); render(); }, 60);
+    setTimeout(() => { if (step === 'arcs') { fitAll(); arcPhase = 'ready'; changed(); render(); } ctx.busy?.('arcs', null); }, 60);
   }
   const back = () => { const list = stepsFor(irr.method); go(step === 'place' ? 'intro' : list[Math.max(0, list.indexOf(step) - 1)]); };
   const nav = (next, { ok = true, label = 'Next' } = {}) => `<div class="tools"><button type="button" class="plain" data-act="back">Back</button><button type="button" data-act="next" ${ok ? '' : 'disabled'}>${label}</button></div>`;
@@ -429,18 +430,20 @@ export function sprinklers(ctx) {
     const key = solvedKey + JSON.stringify(irr.heads.map((h) => [h.dir, h.arc, h.throw, h.zone]));
     if (key === sched.key && (sched.state === 'ready' || sched.state === 'working')) return;
     sched = { key, state: 'working', plan: null, vz: null, error: '' };
+    ctx.busy?.('schedule', "Working out each zone's watering over ten years of your weather…");
     if (step === 'schedule') render();
     await new Promise((r) => setTimeout(r, 30)); // the page says so before the work
     try {
       const p = precipitation({ W: G.W, H: G.H, cellM: G.cellM, at: G.at, lawn: G.lawn }, coverHeads());
       const vz = valveZones(p.byZone, G.W * G.H, G.lawn);
       const plan = await ctx.valvePlan(vz.zoneOf);
-      if (sched.key !== key) return;
+      if (sched.key !== key) { ctx.busy?.('schedule', null); return; }
       sched.plan = plan; sched.vz = vz; sched.grid = G; sched.cellM = G.cellM; sched.state = 'ready';
     } catch (e) {
-      if (sched.key !== key) return;
+      if (sched.key !== key) { ctx.busy?.('schedule', null); return; }
       sched.state = 'error'; sched.error = e.message || String(e);
     }
+    ctx.busy?.('schedule', null);
     if (step === 'schedule') render(); else ctx.draw();
   }
   /** Each valve zone's schedule (lib/schedule.js zoneSchedule), with what the page says about it. */

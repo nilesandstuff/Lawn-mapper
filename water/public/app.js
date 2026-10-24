@@ -40,6 +40,20 @@ const ZONE_RGB = [[46, 134, 222], [230, 126, 34], [142, 68, 173], [22, 160, 133]
 const HOME = document.documentElement.dataset.home || '';
 const mapId = new URLSearchParams(location.search).get('map');
 
+/* WHAT IS LOADING, IN SIGHT (owner, 2026-10-24: "give a more obvious indication that something is loading, don't
+   lock the UI, but display something that says what's loading in an obvious spot"): every piece of work the page
+   is waiting on, named, in a panel fixed at the bottom of the screen with a spinner; taps go through it. */
+const busyJobs = new Map();
+function busy(key, text) {
+  if (text) busyJobs.set(key, text); else busyJobs.delete(key);
+  const el = $('#busy');
+  if (!el) return;
+  el.hidden = !busyJobs.size;
+  el.innerHTML = busyJobs.size ? `<span class="spin" aria-hidden="true"></span><span>${[...busyJobs.values()].map((t) => String(t).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]))).join('<br>')}</span>` : '';
+}
+const idle = (key) => busy(key, null);
+const clearBusy = () => { busyJobs.clear(); busy('', null); };
+
 function status(text, cls = '') {
   const el = $('#status');
   el.textContent = text;
@@ -346,9 +360,13 @@ function layerBudget() {
 }
 async function loadLayers(boxDeg, kept) {
   const ask = ++layersAsk;
+  try { await askLayers(ask, boxDeg, kept); } finally { if (ask === layersAsk) idle('layers'); }
+}
+async function askLayers(ask, boxDeg, kept) {
   view.layersError = '';
   if (kept?.layers) { view.layers = kept; inputs.layers = kept; layersIn(); }
   if (freshEnough(kept)) return;
+  busy('layers', "Asking the county's and the national maps for drains and water…");
   const q = askBox(boxDeg).join(',');
   for (let k = 0; k < 3; k++) {
     try {
@@ -362,7 +380,8 @@ async function loadLayers(boxDeg, kept) {
         view.layers = saved; inputs.layers = saved; layersIn(); keep();
         // whole, with the county's own: done. With none, the service may still be searching this place: soon again
         if (!j.pending?.length && (hasCounty(saved) || k > 0)) return;
-        if (!j.pending?.length) { await new Promise((r) => setTimeout(r, 20000)); if (ask !== layersAsk) return; continue; }
+        if (!j.pending?.length) { busy('layers', "Looking for this county's drain maps (a first look here takes a few seconds)…"); await new Promise((r) => setTimeout(r, 20000)); if (ask !== layersAsk) return; continue; }
+        busy('layers', `Still waiting on ${j.pending.map((x) => x.title).join(', ')} (asking again in a minute)…`);
       } else if (!view.layers) { view.layersError = `the drains and water layers did not answer (${res.status})`; layersIn(); }
     } catch (e) { if (!view.layers) { view.layersError = `the drains and water layers could not be reached (${e.message})`; layersIn(); } }
     await new Promise((r) => setTimeout(r, 60000));
@@ -525,6 +544,7 @@ const heads = sprinklers({
     return [pts.reduce((a, p) => a + p[0], 0) / pts.length, pts.reduce((a, p) => a + p[1], 0) / pts.length];
   },
   changed: () => keep(),
+  busy: (key, text) => busy(key, text),
   finish: () => { $('#result').classList.remove('heads-on'); legend(); draw(); headsCard(); if (view.data) report(view.data, view.site); if (view.plan) planReport(view.plan); },
 });
 
@@ -735,20 +755,22 @@ async function run(site) {
   $('#grass').value = inputs.grass;
   setMode(null);
   status(`Reading the survey for ${site.label}…`);
+  busyJobs.clear(); busy('survey', 'Reading the lidar survey of the ground…');
+  view.hillIn = false;
   const w = new Worker('/analyse.js', { type: 'module' });
   running = w;
   const first = new Promise((resolve, reject) => {
     w.onmessage = ({ data }) => {
-      if (data.progress) status(`Reading the survey… ${data.progress.done} of ${data.progress.total} pieces`);
-      else if (data.error) { w.terminate(); reject(new Error(data.error)); }
+      if (data.progress) { status(`Reading the survey… ${data.progress.done} of ${data.progress.total} pieces`); busy('survey', `Reading the lidar survey of the ground: ${data.progress.done} of ${data.progress.total} pieces`); }
+      else if (data.error) { w.terminate(); clearBusy(); reject(new Error(data.error)); }
       else if (data.done) resolve(data.done);
-      else if (data.planProgress) $('#saved').textContent = data.planProgress;
+      else if (data.planProgress) { $('#saved').textContent = data.planProgress; busy('plan', data.planProgress); }
       else if (data.valvePlan) { const w = valveAsk.waiting.get(data.valvePlan.id); valveAsk.waiting.delete(data.valvePlan.id); if (w) { if (data.valvePlan.error) w.reject(new Error(data.valvePlan.error)); else w.resolve(data.valvePlan); } }
-      else if (data.plan) { view.plan = data.plan; needScale(); heads.planIn?.(); $('#saved').textContent = savedNote; if (!heads.active) planReport(data.plan); legend(); draw(); }
-      else if (data.planError) $('#saved').textContent = `The watering plan could not be worked out: ${data.planError}`;
-      else if (data.hill) hillReport(data.hill);
+      else if (data.plan) { idle('plan'); if (!view.hillIn) busy('hill', 'Reading the land round the lawn (water from uphill)…'); view.plan = data.plan; needScale(); heads.planIn?.(); $('#saved').textContent = savedNote; if (!heads.active) planReport(data.plan); legend(); draw(); }
+      else if (data.planError) { idle('plan'); idle('hill'); $('#saved').textContent = `The watering plan could not be worked out: ${data.planError}`; }
+      else if (data.hill) { view.hillIn = true; idle('hill'); hillReport(data.hill); }
     };
-    w.onerror = (e) => { w.terminate(); reject(new Error(e.message || 'the analysis stopped')); };
+    w.onerror = (e) => { w.terminate(); clearBusy(); reject(new Error(e.message || 'the analysis stopped')); };
   });
   w.postMessage({ site, inputs: { ...inputs } });
   // the photo first, over the analysis box (lib/site.js boxFor; the shade map's own box when it has one),
@@ -758,7 +780,8 @@ async function run(site) {
   view.frame = frameFor(box, site.lat);
   // the drains and water on the same box, in degrees (lib/layers.js), kept with the map
   { const [w, s0] = fromMerc([box[0], box[1]]), [e, n] = fromMerc([box[2], box[3]]); loadLayers([w, s0, e, n], inputs.layers); }
-  const saved = await savedPhoto(view.frame, site);
+  busy('photo', 'Fetching the photo…');
+  const saved = await savedPhoto(view.frame, site).finally(() => idle('photo'));
   view.photo = saved.photo; view.photoShift = saved.shift; view.photoName = saved.name;
   if (!view.photo) { $('#show-photo').checked = false; view.photo = { width: 1280, height: 1280 }; view.photoName = 'no photo (it would not load)'; }
   $('#result').hidden = false;
@@ -768,6 +791,7 @@ async function run(site) {
   draw();
   status(asking ? 'Reading the survey while you do this…' : `Reading the survey for ${site.label}…`);
   const d = await first;
+  idle('survey');
   view.data = d;
   heads.refresh(); // the ground's heights and the buildings: the pressure model solves again with them
   legend();
@@ -785,6 +809,7 @@ let savedNote = '', saveTimer = null;
 function replan() {
   if (!running || !view.data) return;
   $('#saved').textContent = 'Working out the watering plan…';
+  busy('plan', 'Working out the watering plan again…');
   running.postMessage({ replan: { ...inputs } });
 }
 
@@ -977,7 +1002,7 @@ $('#topsoil').addEventListener('change', () => { inputs.topsoil = $('#topsoil').
 $('#grass').addEventListener('change', () => { inputs.grass = $('#grass').value === 'warm' ? 'warm' : 'cool'; changed(); });
 
 async function guarded(fn) {
-  try { await fn(); } catch (e) { status(e.message || String(e), 'bad'); }
+  try { await fn(); } catch (e) { clearBusy(); status(e.message || String(e), 'bad'); }
 }
 
 /* THE MAP TO OPEN (owner, 2026-10-23): a menu of the person's saved maps whose lawn and shade map are done (lib/
