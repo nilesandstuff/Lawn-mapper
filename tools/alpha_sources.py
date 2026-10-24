@@ -25,10 +25,39 @@ import numpy as np
 from PIL import Image
 
 
-def fetch_photo(url):
-    req = urllib.request.Request(url, headers={"User-Agent": "lawn-mapper-alpha"})
-    with urllib.request.urlopen(req, timeout=60) as r:
-        return r.read()
+def _looks_like_image(data):
+    """PNG, JPEG, GIF, WebP or TIFF by its first bytes."""
+    head = bytes(data[:12])
+    return (head.startswith(b"\x89PNG") or head.startswith(b"\xff\xd8") or head.startswith(b"GIF8")
+            or (head[:4] == b"RIFF" and head[8:12] == b"WEBP") or head[:4] in (b"II*\x00", b"MM\x00*"))
+
+
+def fetch_photo(url, tries=3, pause_s=2.0, opener=None):
+    """One picture's bytes, tried up to `tries` times.
+
+    A county's export can answer a request with an error page instead of a
+    picture, or not at all, and then answer the same request a moment later
+    (Kent County, 2026-10-23: piece 2 of 4 of the condo complex failed and the
+    whole press with it; the next press drew all four). Each failure waits a
+    little longer before the next try. The error raised is a plain
+    RuntimeError naming what came back, so it can be reported anywhere: a
+    Pillow error could not be read back by the server's result page.
+    """
+    opener = opener or urllib.request.urlopen
+    last = None
+    for attempt in range(tries):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "lawn-mapper-alpha"})
+            with opener(req, timeout=60) as r:
+                data = r.read()
+            if _looks_like_image(data):
+                return data
+            last = f"not a picture ({len(data)} bytes: {bytes(data[:80])!r})"
+        except Exception as e:  # noqa: BLE001 - tried again below
+            last = f"{type(e).__name__}: {str(e)[:160]}"
+        if attempt + 1 < tries:
+            time.sleep(pause_s * (attempt + 1))
+    raise RuntimeError(f"the photograph could not be fetched after {tries} tries: {last}")
 
 
 def stitch_tiles(tiles, cols, rows):
@@ -60,11 +89,30 @@ def fetch_press_photo(payload, say=None):
     cols, rows = int(payload.get("cols") or 1), int(payload.get("rows") or 1)
     if cols * rows != len(tiles):
         raise ValueError(f"{len(tiles)} tiles for a {cols}x{rows} grid")
-    got = []
-    for i, t in enumerate(tiles):
+    # Two pieces at a time: a county export took 30-50 s a piece one after
+    # another (Kent County, 2026-10-23), and two at once halve that without
+    # asking more of a county server than an editor's own map does.
+    from concurrent.futures import ThreadPoolExecutor
+
+    done = [0]
+
+    def one(i_t):
+        i, t = i_t
+        data = fetch_photo(t["url"])
+        try:
+            img = Image.open(io.BytesIO(data))
+            img.load()
+        except Exception as e:  # noqa: BLE001 - said plainly, see fetch_photo
+            raise RuntimeError(f"piece {i + 1} of {len(tiles)} is not a readable picture: {type(e).__name__}") from None
+        done[0] += 1
         if say:
-            say(f"Fetching the aerial photograph of your lot (piece {i + 1} of {len(tiles)})")
-        got.append((int(t["col"]), int(t["row"]), Image.open(io.BytesIO(fetch_photo(t["url"])))))
+            say(f"Fetching the aerial photograph of your lot ({done[0]} of {len(tiles)} pieces in)")
+        return (int(t["col"]), int(t["row"]), img)
+
+    if say:
+        say(f"Fetching the aerial photograph of your lot ({len(tiles)} pieces)")
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        got = list(pool.map(one, enumerate(tiles)))
     buf = io.BytesIO()
     stitch_tiles(got, cols, rows).save(buf, format="PNG")
     return buf.getvalue()

@@ -7,7 +7,8 @@ import sys
 from PIL import Image
 
 sys.path.insert(0, ".")
-from alpha_sources import stitch_tiles  # noqa: E402
+from alpha_sources import stitch_tiles, fetch_photo, _looks_like_image  # noqa: E402
+import io  # noqa: E402
 
 ok = True
 
@@ -39,6 +40,40 @@ try:
     check("a tile outside the grid is refused", False)
 except ValueError:
     check("a tile outside the grid is refused", True)
+
+
+# fetch_photo: retried, and a plain error (Kent County, 2026-10-23)
+png = io.BytesIO(); Image.new("RGB", (2, 2)).save(png, format="PNG"); png = png.getvalue()
+
+
+class Answer:
+    def __init__(self, data): self.data = data
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+    def read(self): return self.data
+
+
+def opener_of(answers):
+    calls = []
+    def opener(req, timeout=60):
+        calls.append(req.full_url)
+        a = answers[min(len(calls), len(answers)) - 1]
+        if isinstance(a, Exception):
+            raise a
+        return Answer(a)
+    return opener, calls
+
+
+op, calls = opener_of([b"<html>busy</html>", TimeoutError("slow"), png])
+check("an error page and a timeout are tried again, and the picture kept", fetch_photo("http://x/p", pause_s=0, opener=op) == png and len(calls) == 3)
+op, calls = opener_of([b'{"error":{"code":500}}'])
+try:
+    fetch_photo("http://x/p", tries=2, pause_s=0, opener=op)
+    check("three failures end in a plain error naming what came back", False)
+except RuntimeError as e:
+    check("three failures end in a plain error naming what came back", "not a picture" in str(e) and "error" in str(e) and len(calls) == 2)
+check("a PNG and a JPEG look like pictures, an error page does not",
+      _looks_like_image(png) and _looks_like_image(b"\xff\xd8\xff\xe0rest") and not _looks_like_image(b"<html>"))
 
 print("alpha_sources: ok" if ok else "alpha_sources: FAILED")
 sys.exit(0 if ok else 1)
