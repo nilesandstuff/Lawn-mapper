@@ -253,9 +253,11 @@ export const gridFor = (frame, cell = cellMetres()) => gridDims(frame, cell).w;
  * the floor and the cap) is applied to the LONGER side and the shorter one
  * follows at the same cells per metre, which is what keeps a texture window
  * the same size in both directions. A square frame gets the square it
- * always got.
+ * always got. `cap` is GRID_MAX for training (memory: every lot is held at
+ * once); the live server, one lot at a time, may ask for more
+ * (serve-alpha.mjs prepareFrame).
  */
-export const gridDims = (frame, cell = cellMetres()) => {
+export const gridDims = (frame, cell = cellMetres(), cap = GRID_MAX) => {
   const across = metresPerPixel(frame, 1);
   const height = Number.isFinite(frame?.height) && frame.height > 0 ? frame.height : frame?.size;
   const aspect = Number.isFinite(height) && Number.isFinite(frame?.size) && frame.size > 0
@@ -266,7 +268,7 @@ export const gridDims = (frame, cell = cellMetres()) => {
     cellsLong = GRID;
   } else {
     /* The nudge keeps 150 / 0.15 from rounding up to 1001 cells. */
-    cellsLong = Math.min(GRID_MAX, Math.max(GRID, Math.ceil((across * long) / cell - 1e-9)));
+    cellsLong = Math.min(Math.max(GRID, cap), Math.max(GRID, Math.ceil((across * long) / cell - 1e-9)));
   }
   const w = Math.max(1, Math.round(cellsLong / long));
   const h = Math.max(1, Math.round((cellsLong * aspect) / long));

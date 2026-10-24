@@ -40,3 +40,15 @@ console.log('time alpha: ok');
   assert.equal(small.meanPct, 78);
 }
 console.log('time-alpha patches: ok');
+
+/* The serving grid comparison's arithmetic (S64). */
+{
+  const { upsample, wrongShare, signTest } = await import('./time-alpha.js');
+  assert.deepEqual([...upsample(Uint8Array.from([1, 0, 0, 1]), 2, 2, 4, 4)], [1, 1, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1]);
+  const s = wrongShare(Uint8Array.from([1, 1, 0, 0]), Uint8Array.from([1, 0, 1, 0]), null);
+  assert.equal(s.pct, 100);
+  assert.equal(wrongShare(Uint8Array.from([1, 1]), Uint8Array.from([1, 0]), Uint8Array.from([1, 0])).pct, 0);
+  assert.ok(Math.abs(signTest(9, 1) - 0.0215) < 0.001);
+  assert.equal(signTest(5, 5), 1);
+}
+console.log('time-alpha grids: ok');

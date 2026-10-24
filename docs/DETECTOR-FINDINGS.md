@@ -8124,6 +8124,32 @@ is 130 sqft, so maybe the cutoff should be 100 sqft"),** on the condo,
 where grass islands between driveways run 100 to 150 sq ft. Same scope as
 above: the outline, not the scored mask.
 
+### S64. The live server's grid at 15 cm on big lots, not 1024 cells (owner, 2026-10-24: "That's detail being thrown away") -- BUILT, OFF, NOT MEASURED
+
+**Where it comes from.** The condo press (run log 40127224975): the served
+mask is 970 x 1024 cells at 44 cm, although the photo is read at 10 cm.
+`gridDims` caps a lot at GRID_MAX = 1024 cells across, for TRAINING memory
+(every lot's features are held at once); the server reads one lot at a time
+and took the same cap with it. Lots under about 154 m are at 15 cm already.
+
+**What is measured, in its own context.** H23 (2026-09-23, Scale-MAE at
+896, 32 lots, the old colour and eye heads, before the decoder and the edge
+refiner existed): the 15 cm grid moved nothing outside noise. Nothing has
+measured the grid with THE PLAN's decoder and edge refiner, which re-draws
+edges from the photo at the grid's own scale and was trained at 15 cm on
+every lot under 154 m -- so 44 cm on a big lot is the setting it saw least.
+
+**Built:** a press may ask for `gridMax` (serve-alpha.mjs `serveCap`,
+1024 to 4096); unasked it gets SERVE_GRID_MAX = 1024, as before. Workflow 32
+`grids: on` presses every approved lot the cap coarsens twice, as served and
+at 3072 cells, and scores both against the traced lawn on the fine grid
+inside the property line (the coarse answer read by nearest cell).
+
+**Bar, before the run.** Switch SERVE_GRID_MAX up if the finer grid is
+better on more lots than worse with a sign test under 0.05, or level on the
+error with no lot more than two points worse and the GPU time per lot
+acceptable; not if it is worse on more lots than better.
+
 ### S63. Trees standing in the open keep the detector's answer; woods do not (owner, 2026-10-24: "the tree guessing algorithm should trust the detector when it comes to leaf off trees in a lawn ... BUT there should be a safeguard for preventing lawn traces from showing up in genuine woods") -- BUILT, OFF, NOT MEASURED
 
 **Where it comes from.** The condo complex (the owner's map at

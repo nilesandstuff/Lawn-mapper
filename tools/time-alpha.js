@@ -294,7 +294,126 @@ export function banding(rgba, w, h) {
   return { lawn: lawn / (w * h), rows: r, cols: c, ratio: c > 0 ? r / c : (r > 0 ? Infinity : 1) };
 }
 
+/*
+ * THE SERVING GRID, COMPARED (owner, 2026-10-24: "That's detail being thrown
+ * away"; S64). Every approved lot big enough that the training cap (1024
+ * cells across) coarsens its grid is pressed twice on the live server: as
+ * served, and with `gridMax` FINE_GRID. Both answers (the finished mask, as
+ * the page receives it) are judged against the traced lawn on the FINE grid
+ * inside the property line, the coarse one read by nearest cell, so the same
+ * truth at the same resolution scores both. Wrong ground as a share of the
+ * true lawn, as everywhere in this project.
+ */
+export const FINE_GRID = 3072;
+
+/** A w x h mask read onto W x H cells by nearest cell (both cover the same frame). */
+export function upsample(mask, w, h, W, H) {
+  const out = new Uint8Array(W * H);
+  for (let y = 0; y < H; y++) {
+    const sy = Math.min(h - 1, Math.floor((y * h) / H));
+    for (let x = 0; x < W; x++) out[y * W + x] = mask[sy * w + Math.min(w - 1, Math.floor((x * w) / W))];
+  }
+  return out;
+}
+
+/** Wrong cells over true-lawn cells, inside `within`. */
+export function wrongShare(got, truth, within) {
+  let wrong = 0, lawn = 0;
+  for (let i = 0; i < truth.length; i++) {
+    if (within && !within[i]) continue;
+    if (truth[i]) lawn++;
+    if (got[i] !== truth[i]) wrong++;
+  }
+  return { wrong, lawn, pct: lawn ? (100 * wrong) / lawn : null };
+}
+
+/** Two-sided sign test p for `better` against `worse`, ties dropped. */
+export function signTest(better, worse) {
+  const n = better + worse;
+  if (!n) return 1;
+  const k = Math.min(better, worse);
+  let p = 0, c = 1;
+  for (let i = 0; i <= n; i++) { if (i > 0) c = (c * (n - i + 1)) / i; if (i <= k) p += c; }
+  return Math.min(1, (2 * p) / 2 ** n);
+}
+
+async function pressOnce(env, body, label) {
+  const headers = { 'content-type': 'application/json', authorization: `Bearer ${env.ALPHA_TOKEN}` };
+  const t0 = Date.now();
+  const res = await fetch(env.ALPHA_URL, { method: 'POST', headers, body: JSON.stringify(body) });
+  if (!res.ok) { console.log(`  ${label}: start HTTP ${res.status}`); return null; }
+  const { id } = await res.json();
+  while (Date.now() - t0 < 600000) {
+    await sleep(3000);
+    const p = await fetch(`${env.ALPHA_RESULT_URL}?id=${encodeURIComponent(id)}`, { headers });
+    if (!p.ok) continue;
+    const b = await p.json();
+    if (b.status === 'running') continue;
+    if (b.status !== 'succeeded') { console.log(`  ${label}: ${b.status} ${b.error || ''}`); return null; }
+    return { ...b, wall: (Date.now() - t0) / 1000 };
+  }
+  console.log(`  ${label}: timed out`);
+  return null;
+}
+
+async function compareGrids(env) {
+  const { PNG } = await import('pngjs');
+  const { gridDims } = await import('./train-detector.js');
+  const { rasterizePolygon } = await import('../public/lib/mask.js');
+  const geometriesOf = (stored) => (Array.isArray(stored) ? stored : stored?.features || [])
+    .map((g) => (g?.geometry ? g.geometry : g)).filter((g) => g && g.type);
+  const maskOf = (geoms, w, h, project) => {
+    const out = new Uint8Array(w * h);
+    for (const g of geoms) {
+      const polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : [];
+      for (const rings of polys) { const m = rasterizePolygon(rings, w, h, project); for (let i = 0; i < out.length; i++) if (m[i]) out[i] = 1; }
+    }
+    return out;
+  };
+  const { lngLatToFramePx } = await import('../public/lib/mercator.js');
+  const { serveCap } = await import('./serve-alpha.mjs');
+  const rows = query(`SELECT id, lot_no, frame, image_frame, parcel, shapes FROM corpus WHERE status = 'approved' AND frame IS NOT NULL`);
+  const fine = serveCap(FINE_GRID);
+  const lots = rows.map((r) => ({ r, frame: parse(r.image_frame) || parse(r.frame) }))
+    .filter(({ frame }) => frame)
+    .map((x) => ({ ...x, plan: pressPlan(x.frame, (f) => imageryUrl('mapbox', f, env.MAPBOX_TOKEN, env)) }))
+    .filter(({ plan }) => {
+      const a = gridDims(plan.frame), b = gridDims(plan.frame, undefined, fine);
+      return Math.max(b.w, b.h) > Math.max(a.w, a.h);
+    })
+    .slice(0, Number(env.GRID_LOTS_MAX || 30));
+  console.log(`${lots.length} approved lot(s) the training cap coarsens; each pressed as served and at ${fine} cells.`);
+  const read = (b64) => { const p = PNG.sync.read(Buffer.from(b64, 'base64')); const m = new Uint8Array(p.width * p.height); for (let i = 0; i < m.length; i++) m[i] = p.data[i * 4] >= 128 ? 1 : 0; return { m, w: p.width, h: p.height }; };
+  const out = [];
+  for (const { r, plan } of lots) {
+    const name = mapName(r.id, r.lot_no);
+    const body = pressBody(plan, { parcel: parse(r.parcel) });
+    const a = await pressOnce(env, body, `${name} as served`);
+    const b = a && await pressOnce(env, { ...body, gridMax: fine }, `${name} at ${fine}`);
+    if (!a?.mask || !b?.mask) continue;
+    const A = read(a.mask), B = read(b.mask);
+    const project = (ll) => lngLatToFramePx(plan.frame, ll, B.w, B.h);
+    const truth = maskOf(geometriesOf(parse(r.shapes)), B.w, B.h, project);
+    const parcel = parse(r.parcel);
+    const within = parcel ? maskOf([parcel.geometry || parcel], B.w, B.h, project) : null;
+    const coarse = wrongShare(upsample(A.m, A.w, A.h, B.w, B.h), truth, within);
+    const fineS = wrongShare(B.m, truth, within);
+    const cm = (g) => (Number(g.mpp) ? `${Math.round(Number(g.mpp) * 100)} cm` : `${A.w}`);
+    console.log(`${name.padEnd(5)} ${A.w}x${A.h} (${cm(a)}) ${coarse.pct?.toFixed(1)}%  ->  ${B.w}x${B.h} (${cm(b)}) ${fineS.pct?.toFixed(1)}%`
+      + `   GPU ${a.seconds?.total}s -> ${b.seconds?.total}s, decoder ${a.seconds?.decoder}s -> ${b.seconds?.decoder}s`);
+    out.push({ name, coarse: coarse.pct, fine: fineS.pct, sec: [a.seconds, b.seconds] });
+  }
+  const ok = out.filter((o) => o.coarse !== null && o.fine !== null);
+  const d = ok.map((o) => o.fine - o.coarse).sort((x, y) => x - y);
+  const better = ok.filter((o) => o.fine < o.coarse - 0.5).length, worse = ok.filter((o) => o.fine > o.coarse + 0.5).length;
+  const med = (xs) => { const s = [...xs].sort((x, y) => x - y); return s.length ? s[s.length >> 1] : NaN; };
+  console.log(`\nTHE FINER GRID OVER ${ok.length} LOTS: ${better} better / ${worse} worse / ${ok.length - better - worse} level (half a point), `
+    + `median ${med(ok.map((o) => o.coarse)).toFixed(1)}% -> ${med(ok.map((o) => o.fine)).toFixed(1)}%, median change ${(d[d.length >> 1] ?? NaN).toFixed(2)}, `
+    + `sign test p ${signTest(better, worse).toFixed(3)}.`);
+}
+
 async function main(env = process.env) {
+  if (/^(1|on|true)$/i.test(env.GRIDS || '')) return compareGrids(env);
   if (env.MAP) return timeMap(env);
   const names = String(env.LOTS || '').split(',').map((s) => s.trim()).filter(Boolean);
   const rows = query(`SELECT id, lot_no, frame, parcel FROM corpus WHERE status = 'approved' AND frame IS NOT NULL`);

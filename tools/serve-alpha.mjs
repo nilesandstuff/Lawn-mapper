@@ -35,8 +35,26 @@ import { FOOTPRINTS, fetchFootprints } from './lidar-cover.js';
 export { STAGE3, SEE_THROUGH };
 
 /** Where a lot is and what grid it is judged on -- the scorer's own numbers. */
-export function prepareFrame(frame) {
-  const { w, h } = gridDims(frame);
+/*
+ * THE SERVING GRID (owner, 2026-10-24: "That's detail being thrown away").
+ * Training caps a lot at GRID_MAX (1024) cells across because every lot is
+ * held in memory at once, so the condo's 450 m frame is drawn on 44 cm cells
+ * although the photo is read at 10 cm and the edge refiner was trained at
+ * 15 cm on every lot under 154 m. The server reads one lot at a time and need
+ * not share that cap: a press may ask for up to SERVE_GRID_LIMIT cells
+ * (`gridMax`), and SERVE_GRID_MAX is what it gets unasked -- GRID_MAX until
+ * workflow 32's `grids` comparison has scored the finer grid (S64).
+ */
+export const SERVE_GRID_MAX = 1024;
+export const SERVE_GRID_LIMIT = 4096;
+export function serveCap(asked) {
+  const n = Number(asked);
+  if (!Number.isFinite(n) || n <= 0) return SERVE_GRID_MAX;
+  return Math.min(SERVE_GRID_LIMIT, Math.max(1024, Math.round(n)));
+}
+
+export function prepareFrame(frame, { gridMax } = {}) {
+  const { w, h } = gridDims(frame, undefined, serveCap(gridMax));
   const mpp = metresPerPixel(frame, w);
   const span = mpp * w;
   const height = Number.isFinite(frame?.height) && frame.height > 0 ? frame.height : frame.size;
@@ -96,7 +114,7 @@ async function main() {
   const cmd = process.argv[2];
   const input = JSON.parse(readFileSync(0, 'utf8'));
   if (cmd === 'prepare') {
-    const out = prepareFrame(input.frame);
+    const out = prepareFrame(input.frame, { gridMax: input.gridMax });
     try {
       const fc = await footprintsCached();
       out.lidarUrl = await lidarUrlFor(out.bbox, fc);

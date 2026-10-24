@@ -21,6 +21,11 @@ on:
         description: 'Or one of the owner''s saved maps by its "lng,lat", on the photo it was saved with, pressed twice (lots is then ignored)'
         required: false
         default: ''
+      grids:
+        description: 'Instead: every big lot pressed as served and on a finer grid (3072 cells), both scored against the traced lawn (S64). Two presses a lot'
+        type: choice
+        default: 'off'
+        options: ['off', 'on']
       patches:
         description: 'With a map: press it ONCE and explain each small patch (sure, canopy, roof, kept) and the lawn at each slider cut; pictures as an artifact'
         type: choice
@@ -70,6 +75,7 @@ jobs:
           LOTS: ${{ inputs.lots }}
           MAP: ${{ inputs.map }}
           PATCHES: ${{ inputs.patches }}
+          GRIDS: ${{ inputs.grids }}
           OUT: press-out
           SITE: https://${{ vars.CUSTOM_DOMAIN }}
         run: node tools/time-alpha.js

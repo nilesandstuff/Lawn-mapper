@@ -243,7 +243,8 @@ def gather(payload, prepare, progress=None, cache_dir=None):
     t0 = time.time()
     say = progress or (lambda stage, **more: None)
     say("Working out the lot's grid")
-    prep = prepare({"frame": payload["frame"]})
+    # The grid's cap, when the press asks for a finer one (serve-alpha.mjs serveCap).
+    prep = prepare({"frame": payload["frame"], **({"gridMax": payload["gridMax"]} if payload.get("gridMax") else {})})
     say("Fetching the aerial photograph of your lot")
     photo_bytes = fetch_press_photo(payload, say)
     photo = Image.open(io.BytesIO(photo_bytes)).convert("RGB")
