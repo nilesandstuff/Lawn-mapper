@@ -20,6 +20,8 @@ test('the Worker passes on the account routes and five property reads, nothing e
   const L = 'lawnmap.example.com';
   assert.equal(upstreamFor(u('/api/geocode?q=1+Main'), L), 'https://lawnmap.example.com/api/geocode?q=1+Main');
   assert.equal(upstreamFor(u('/api/shade/lidar?lng=1&lat=2'), L), 'https://lawnmap.example.com/api/shade/lidar?lng=1&lat=2');
+  // the core session's drains and water (docs/WATER-LAYERS.md), read through this Worker
+  assert.equal(upstreamFor(u('/api/water/layers?box=1,2,3,4'), L), 'https://lawnmap.example.com/api/water/layers?box=1,2,3,4');
   assert.equal(upstreamFor(u('/api/maps/one?id=abc'), L), 'https://lawnmap.example.com/api/maps/one?id=abc');
   assert.equal(upstreamFor(u('/api/maps/tool?id=abc&tool=water'), L, 'POST'), 'https://lawnmap.example.com/api/maps/tool?id=abc&tool=water');
   assert.equal(upstreamFor(u('/api/auth/me'), L), 'https://lawnmap.example.com/api/auth/me');

@@ -31,7 +31,7 @@
 
 import { readings } from './readings.js';
 
-export const PROXIED = ['/api/geocode', '/api/parcel', '/api/imagery', '/api/county-imagery', '/api/shade/lidar'];
+export const PROXIED = ['/api/geocode', '/api/parcel', '/api/imagery', '/api/county-imagery', '/api/shade/lidar', '/api/water/layers'];
 
 /** The account routes, as home/src/index.js FORWARDED names them. */
 export const ACCOUNT = (p) => p === '/api/maps' || p.startsWith('/api/maps/') || p === '/api/tools' || p.startsWith('/api/auth/');

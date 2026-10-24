@@ -1254,6 +1254,36 @@ there were test values on a local copy; nothing was saved to the real map):
   squareFeet is over 0 and whose shade part is kept (the dashboard's own rules); choosing one reopens the page on
   it, sending any change not yet saved first. With none, the page says to finish them from the dashboard.
 
+### H37. Drains and water from the county's and the nation's maps; they line up as served (water session, 2026-10-24)
+
+The owner: "build it and ask the core session for anything you need ... you'll be attaching them to the unified
+saves ... So you're responsible for ensuring alignment". The core session's route (docs/WATER-LAYERS.md, GET
+/api/water/layers) is forwarded by the water Worker; lib/layers.js and a "Drains and water" view use it.
+
+- ALIGNMENT (HARD, measured): the expectation was that county servers, queried with outSR 4326 and no datum
+  transformation, would serve NAD83 read as WGS84, a metre off the photo like the lidar (lib/datum.js). They do
+  not, for Kent County, MI: 28 storm inlets over four subdivisions, each on a zoom-20 Mapbox photo centred on it.
+  In the 15 close-ups where a grate could be seen, the inlet AS SERVED sat on it to about 0.2 m. Moved by the
+  NAD83 correction (0.83 m W, 0.94 m N), every one was over a metre off. So layers are drawn as served, on the
+  photo's ground like the traced lawn, and never moved by the lidar's shift. The analysis grid is already on the
+  photo's ground (lowspots.js applies the datum to the points), so spots and layers compare directly. Checked
+  on the page: a Kent storm main runs down the street's middle, its manhole in the road, inlets at both curbs.
+  Other counties: not checked. The national layers' own accuracy (NWI, FEMA, NHD: tens of feet) dwarfs a metre.
+- KEPT WITH THE MAP: the map's own box (at most 1,100 m across); each feature with only the fields the page reads
+  (no ids, no coded subtypes, which Kent serves as bare numbers: asked of the core session to resolve);
+  coordinates to 6 decimals. Under a budget of what the water part's 64 KB leaves after the person's entries, at
+  most 30 KB: past it, the least useful kind's farthest features go first (watershed, districts, easements,
+  wetlands ... inlets last). A copy under 30 days old with every source answered is used as it is; otherwise
+  asked again on opening (a source still working: again a minute later, twice). A Kent test lot: 3 inlets, 2
+  manholes, 6 pipe runs, a district and a watershed, 3.3 KB.
+- USED: the view (areas, lines, points; the key lists only the kinds present; a tap shows a feature's fields in
+  words); a summary under it (the storm sewer and the nearest inlet to the lawn, a flood hazard zone or wetland on
+  or near it, the drain district, an easement across it); and in the low-spot cards, a storm inlet, manhole,
+  outfall, culvert, open drain or basin mapped within a spot's radius (+1.5 m, at least 3 m) marks it as built to
+  collect water, not a hollow (S2's worry, now answered where the county maps its drains).
+- USGS NHD "Waterbody - Large Scale" was failed or pending on every box asked near Grand Rapids; told to the core
+  session.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge

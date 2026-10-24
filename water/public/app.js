@@ -27,6 +27,7 @@ import { tracedOn, lineUpAt } from '/lib/shade/traced.js';
 import { boxFor } from '/lib/site.js';
 import { sprinklers } from '/heads.js';
 import { openable } from '/lib/maps.js';
+import { KINDS as LAYER_KINDS, FIELD_WORDS, askBox, compact, freshEnough, summary as layerSummary, pick as layerPick, intakesNear } from '/lib/layers.js';
 
 const $ = (s) => document.querySelector(s);
 const R = 6378137;
@@ -129,7 +130,7 @@ function toPx(frame, img, xy) {
 /* ONE VIEW AT A TIME (owner, 2026-10-23: "Break up the different views into their respective categories, so
    that it's not just a sea of overlapping and hard to separate colors. Add soil view"). Roofs (white) and paving
    (black) under every view, when wanted; each view's own colours on top, and nothing of the others'. */
-const VIEWS = ['zones', 'need', 'soil', 'water', 'slope', 'sprinklers'];
+const VIEWS = ['zones', 'need', 'soil', 'water', 'drains', 'slope', 'sprinklers'];
 let mapView = 'zones';
 /** Soil units' colours: earthy, told apart (the soil view). */
 const SOIL_RGB = [[161, 136, 127], [255, 183, 77], [77, 182, 172], [149, 117, 205], [229, 115, 115], [174, 213, 129], [100, 181, 246], [240, 98, 146]];
@@ -219,6 +220,8 @@ function draw() {
     g.drawImage(tmp, x0, y0, x1 - x0, y1 - y0);
   }
 
+  if (mapView === 'drains' && view.layers && !heads.active) drawLayers(g);
+
   if (site.parcel) {
     g.strokeStyle = '#ffeb3b'; g.lineWidth = Math.max(3, photo.width / 250); g.setLineDash([g.lineWidth * 3, g.lineWidth * 2]);
     const polys = site.parcel.geometry.type === 'Polygon' ? [site.parcel.geometry.coordinates] : site.parcel.geometry.coordinates;
@@ -268,6 +271,105 @@ function draw() {
     g.strokeStyle = '#000'; g.lineWidth = lw * 0.6; g.fillStyle = '#00e5ff'; g.beginPath(); g.arc(x1, y1, lw * 2, 0, 7); g.fill(); g.stroke();
   }
   if (mapView === 'sprinklers') heads.drawOn(g, lw);
+}
+
+/* DRAINS AND WATER (lib/layers.js): areas, then lines, then points, each kind its own look; drawn as the service
+   serves them, on the photo's ground like the traced lawn (FINDINGS H37: no datum move) */
+function drawLayers(g) {
+  const { photo, frame } = view, at = (p) => toPx(frame, photo, toMerc(p));
+  const cv = $('#view'), css = cv.width / Math.max(1, cv.getBoundingClientRect().width);
+  const order = { area: 0, line: 1, point: 2 };
+  const layers = view.layers.layers.slice().sort((a, b) => order[LAYER_KINDS[a.kind].draw] - order[LAYER_KINDS[b.kind].draw] || LAYER_KINDS[a.kind].rank - LAYER_KINDS[b.kind].rank);
+  g.save(); g.lineJoin = 'round'; g.lineCap = 'round';
+  for (const l of layers) {
+    const k = LAYER_KINDS[l.kind];
+    g.setLineDash((k.dash || []).map((v) => v * css));
+    for (const f of l.features) {
+      const geo = f.g;
+      if (k.draw === 'area') {
+        const polys = geo.type === 'Polygon' ? [geo.coordinates] : geo.type === 'MultiPolygon' ? geo.coordinates : [];
+        for (const poly of polys) {
+          g.beginPath();
+          for (const ring of poly) ring.forEach((p, i) => { const [x, y] = at(p); if (i) g.lineTo(x, y); else g.moveTo(x, y); });
+          if (k.fill) { g.fillStyle = k.fill; g.fill('evenodd'); }
+          g.strokeStyle = k.stroke; g.lineWidth = 1.6 * css; g.stroke();
+        }
+      } else if (k.draw === 'line') {
+        const lines = geo.type === 'LineString' ? [geo.coordinates] : geo.type === 'MultiLineString' ? geo.coordinates : [];
+        const dia = Number(f.p.DIAMETER || f.p.LATERAL_SIZE);
+        for (const line of lines) {
+          g.beginPath(); line.forEach((p, i) => { const [x, y] = at(p); if (i) g.lineTo(x, y); else g.moveTo(x, y); });
+          g.strokeStyle = 'rgba(255,255,255,.75)'; g.lineWidth = (k.width + 2) * css; g.stroke();
+          g.strokeStyle = k.stroke; g.lineWidth = (k.width + (Number.isFinite(dia) && dia > 0 ? Math.min(3, dia / 12) : 0)) * css; g.stroke();
+        }
+      } else {
+        g.setLineDash([]);
+        const pts = geo.type === 'Point' ? [geo.coordinates] : geo.type === 'MultiPoint' ? geo.coordinates : [];
+        for (const p of pts) {
+          const [x, y] = at(p), r = 5 * css;
+          g.fillStyle = k.fill; g.strokeStyle = k.stroke; g.lineWidth = 1.8 * css;
+          g.beginPath();
+          if (k.shape === 'square') g.rect(x - r, y - r, 2 * r, 2 * r);
+          else if (k.shape === 'triangle') { g.moveTo(x, y - r * 1.2); g.lineTo(x + r * 1.1, y + r * 0.8); g.lineTo(x - r * 1.1, y + r * 0.8); g.closePath(); }
+          else g.arc(x, y, r, 0, 7);
+          g.fill(); g.stroke();
+        }
+      }
+    }
+  }
+  if (view.layerPicked?.at) {
+    const [x, y] = at(view.layerPicked.at), r = 9 * css;
+    g.setLineDash([]); g.strokeStyle = '#ff1744'; g.lineWidth = 2.5 * css; g.beginPath(); g.arc(x, y, r, 0, 7); g.stroke();
+  }
+  g.restore();
+}
+
+/** Photo pixels per ground metre at the frame's middle. */
+const pxPerM = () => (worldSize(view.frame.zoom) / (2 * Math.PI * R * Math.cos((view.frame.lat * Math.PI) / 180))) * (view.photo.width / view.frame.size);
+/** The traced lawn's middle, or the map's point. */
+function lawnMid() {
+  const pts = (view.site?.lawn || []).flatMap((f) => (f.geometry?.type === 'Polygon' ? f.geometry.coordinates[0] : f.geometry?.type === 'MultiPolygon' ? f.geometry.coordinates.flatMap((p) => p[0]) : []));
+  if (!pts.length) return view.site ? [view.site.lng, view.site.lat] : null;
+  return [pts.reduce((a, p) => a + p[0], 0) / pts.length, pts.reduce((a, p) => a + p[1], 0) / pts.length];
+}
+const lawnRingsOf = () => (view.site?.lawn || []).flatMap((f) => (f.geometry?.type === 'Polygon' ? f.geometry.coordinates : f.geometry?.type === 'MultiPolygon' ? f.geometry.coordinates.flat() : []));
+
+/* THE LAYERS, KEPT WITH THE MAP (owner, 2026-10-24: "you'll be attaching them to the unified saves"): a copy a
+   month old or less, with every source answered, is used as it is; otherwise asked for again (GET
+   /api/water/layers through this site's Worker), kept, and saved with the map. A source still working is asked
+   again a minute later, twice at most. */
+let layersAsk = 0;
+/** The most the layers may take of the water part's 64 KB, after everything else in it. */
+function layerBudget() {
+  const rest = JSON.stringify({ data: { v: 1, downspouts: inputs.downspouts, gutters: inputs.gutters, areas: inputs.areas, topsoil: inputs.topsoil, grass: inputs.grass, irrigation: heads.data }, basedOn: view.site?.at }).length;
+  return Math.max(4000, Math.min(30000, MAX_TOOL_BYTES - rest - 3000));
+}
+async function loadLayers(boxDeg, kept) {
+  const ask = ++layersAsk;
+  view.layersError = '';
+  if (kept?.layers) { view.layers = kept; inputs.layers = kept; layersIn(); }
+  if (freshEnough(kept)) return;
+  const q = askBox(boxDeg).join(',');
+  for (let k = 0; k < 3; k++) {
+    try {
+      const res = await fetch(`/api/water/layers?box=${q}`);
+      if (ask !== layersAsk) return;
+      if (res.ok) {
+        const j = await res.json();
+        if (ask !== layersAsk) return;
+        view.layersRaw = j; view.layersError = '';
+        const saved = compact(j, { centre: lawnMid(), budget: layerBudget() });
+        view.layers = saved; inputs.layers = saved; layersIn(); keep();
+        if (!j.pending?.length) return;
+      } else if (!view.layers) { view.layersError = `the drains and water layers did not answer (${res.status})`; layersIn(); }
+    } catch (e) { if (!view.layers) { view.layersError = `the drains and water layers could not be reached (${e.message})`; layersIn(); } }
+    await new Promise((r) => setTimeout(r, 60000));
+    if (ask !== layersAsk) return;
+  }
+}
+function layersIn() {
+  if (mapView === 'drains') { legend(); draw(); }
+  if (view.data && !heads.active) report(view.data, view.site);
 }
 
 /** A tap on the photo -> [lng, lat]. */
@@ -469,7 +571,9 @@ function report(d, site) {
   const others = d.spots.filter((p) => !isLawnHollow(p));
   const KIND = { trees: 'under trees', paved: 'pavement, a car or hidden ground', water: 'open water or a pool', ditch: 'a ditch or swale', built: 'a stairwell or window well', deep: 'too deep for a lawn hollow (a pond or basin)', hollow: 'off the lawn' };
   if (hollows.length) {
-    const items = hollows.slice(0, 8).map((p) => `<li>Likely holds water: at least ${inches(p.depthCm)} in deep, about ${sqft(lawnKnown ? p.onLawnM2 : p.areaM2)} sq ft${lawnKnown ? ' of lawn' : ''}, roughly ${gallons(p.volumeL)} gallons when full${p.againstBuilding ? ' — <strong>against a building</strong>' : ''}.</li>`);
+    // a storm inlet, manhole or basin mapped in it (lib/layers.js): built to collect water, not a fault in the lawn
+    const drainIn = (p) => (view.layers && p.lngLat ? intakesNear(view.layers, p.lngLat, Math.max(3, Math.sqrt(p.areaM2 / Math.PI) + 1.5))[0] : null);
+    const items = hollows.slice(0, 8).map((p) => { const dr = drainIn(p); return `<li>${dr ? `<strong>A ${esc(LAYER_KINDS[dr.kind].label)} is mapped here</strong> (${esc(dr.source)}): this low ground is likely built to collect water, not a hollow in the lawn. ` : 'Likely holds water: '}at least ${inches(p.depthCm)} in deep, about ${sqft(lawnKnown ? p.onLawnM2 : p.areaM2)} sq ft${lawnKnown ? ' of lawn' : ''}, roughly ${gallons(p.volumeL)} gallons when full${p.againstBuilding ? ' — <strong>against a building</strong>' : ''}.</li>`; });
     parts.push(`<div class="card"><h2>${hollows.length} low spot${hollows.length > 1 ? 's' : ''} ${lawnKnown ? 'in your lawn' : where}</h2><ul>${items.join('')}</ul>
       <p class="dim">Depths run shallow: smoothing out the survey's scatter takes some off, so read them as "at least".${lawnKnown ? '' : ' Without your lawn traced, some of these may be on pavement or a roof: open this from a Lawn Mapper map for a surer answer.'}</p></div>`);
   } else {
@@ -623,6 +727,8 @@ async function run(site) {
   inputs.topsoil = !!kept.topsoil;
   inputs.grass = kept.grass === 'warm' ? 'warm' : 'cool';
   inputs.texture = ''; // the soil is the survey's (owner 2026-10-19: no override)
+  inputs.layers = kept.layers && typeof kept.layers === 'object' ? kept.layers : null;
+  view.layers = null; view.layersRaw = null; view.layerPicked = null; view.layersError = '';
   $('#topsoil').checked = inputs.topsoil;
   $('#grass').value = inputs.grass;
   setMode(null);
@@ -648,6 +754,8 @@ async function run(site) {
   status('Fetching the photo…');
   const box = site.lidar?.box?.length === 4 ? site.lidar.box : boxFor(site);
   view.frame = frameFor(box, site.lat);
+  // the drains and water on the same box, in degrees (lib/layers.js), kept with the map
+  { const [w, s0] = fromMerc([box[0], box[1]]), [e, n] = fromMerc([box[2], box[3]]); loadLayers([w, s0, e, n], inputs.layers); }
   const saved = await savedPhoto(view.frame, site);
   view.photo = saved.photo; view.photoShift = saved.shift; view.photoName = saved.name;
   if (!view.photo) { $('#show-photo').checked = false; view.photo = { width: 1280, height: 1280 }; view.photoName = 'no photo (it would not load)'; }
@@ -708,7 +816,7 @@ function keep() {
 }
 
 function saveBody() {
-  return JSON.stringify({ data: { v: 1, downspouts: inputs.downspouts, gutters: inputs.gutters, areas: inputs.areas, topsoil: inputs.topsoil, grass: inputs.grass, irrigation: heads.data }, basedOn: view.site.at });
+  return JSON.stringify({ data: { v: 1, downspouts: inputs.downspouts, gutters: inputs.gutters, areas: inputs.areas, topsoil: inputs.topsoil, grass: inputs.grass, irrigation: heads.data, layers: inputs.layers || null }, basedOn: view.site.at });
 }
 const saveUrl = () => `/api/maps/tool?id=${encodeURIComponent(view.site.mapId)}&tool=water`;
 
@@ -717,7 +825,10 @@ async function save() {
   if (!dirty || !view.site?.mapId) return;
   if (saving) { await saving; return save(); } // one at a time: a change made meanwhile goes in the next
   dirty = false;
-  const body = saveBody();
+  let body = saveBody();
+  // the drains and water give way first: trimmed to what is left after the person's own entries
+  if (body.length > MAX_TOOL_BYTES && inputs.layers && view.layersRaw) { inputs.layers = view.layers = compact(view.layersRaw, { centre: lawnMid(), budget: layerBudget() }); body = saveBody(); }
+  if (body.length > MAX_TOOL_BYTES && inputs.layers) { inputs.layers = null; body = saveBody(); }
   if (body.length > MAX_TOOL_BYTES) { dirty = true; showSaved(`Not saved: this map's water part is ${Math.round(body.length / 1024)} KB, over the ${MAX_TOOL_BYTES / 1024} KB a tool may keep.`); return; }
   saving = (async () => {
     try {
@@ -819,6 +930,14 @@ stageEl.addEventListener('click', (ev) => { // on the stage: it holds the pointe
   if (ev.target.closest('.zoom')) return;
   if (zoom.moved) { zoom.moved = false; return; } // the end of a drag or a pinch, not a tap
   if (view.photo && heads.tap(ev)) return;
+  // the drains and water: a tap shows the nearest one's details (about 14 screen px round the finger)
+  if (!mode && mapView === 'drains' && view.layers) {
+    const at = tapAt(ev), cv = $('#view'), css = cv.width / cv.getBoundingClientRect().width;
+    const got = layerPick(view.layers, at, (14 * css) / pxPerM());
+    view.layerPicked = got ? { ...got, at } : null;
+    legend(); draw();
+    return;
+  }
   if (!mode || !view.data) return;
   const p = tapAt(ev);
   if (mode === 'from') { setMode('to'); pending = p; draw(); return; }
@@ -916,6 +1035,23 @@ function legend() {
   } else if (mapView === 'water') {
     items.push(key('#1e6bff', 'a hollow in the lawn that holds water'), key('#bec8d7', 'low ground off the lawn (paving, under trees, a ditch)'), key('#22d3ee', 'where runoff runs together'), key('#ff9100', 'downspout, from the roof edge to where it empties'));
     info.push('Where rain collects and where it runs, from the USGS lidar survey of the ground. The cards below list each hollow.');
+  } else if (mapView === 'drains') {
+    const L = view.layers;
+    if (L?.layers?.length) for (const kind of Object.keys(LAYER_KINDS)) {
+      if (!L.layers.some((l) => l.kind === kind)) continue;
+      const k = LAYER_KINDS[kind];
+      items.push(`<span><i style="background:${k.draw === 'area' ? k.fill || 'transparent' : k.draw === 'line' ? k.stroke : k.fill};border:${k.draw === 'line' ? 0 : `2px ${k.dash ? 'dashed' : 'solid'} ${k.stroke}`}${k.shape === 'circle' ? ';border-radius:50%' : ''}${k.draw === 'line' ? ';height:4px;vertical-align:3px' : ''}"></i>${k.label}</span>`);
+    }
+    if (view.layerPicked) {
+      const pk = view.layerPicked, k = LAYER_KINDS[pk.kind];
+      const rows = Object.entries(pk.p || {}).map(([f, v]) => `<li>${esc(FIELD_WORDS[f] || f.toLowerCase().replace(/_/g, ' '))}: ${esc(v)}</li>`).join('');
+      info.push(`<div class="card" style="margin-top:6px"><strong>${esc(k.label.replace(/^./, (c) => c.toUpperCase()))}</strong> <span class="dim">(${esc(pk.title)}, ${esc(pk.source)})</span>${rows ? `<ul>${rows}</ul><span class="dim">As the source records it; elevations and sizes are in its own units (Kent County's are feet and inches).</span>` : ''}</div>`);
+    }
+    if (L) {
+      const lines = layerSummary(L, { lawn: lawnRingsOf(), mid: lawnMid() });
+      info.push(`<ul>${lines.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>`);
+      info.push(`Tap a drain, a pipe or an area for its details. From ${L.sources.length ? esc(L.sources.join(', ')) : 'the national maps'}: the county's own storm sewer where it publishes one, and USGS water, the national wetlands inventory and FEMA flood zones everywhere; drawn as the sources place them.${L.failed?.length ? ` Not answering this time: ${esc(L.failed.join(', '))}.` : ''}${L.trimmed ? ' The farthest of the less useful pieces were left out to keep the map small.' : ''}`);
+    } else info.push(view.layersError ? `Not here: ${esc(view.layersError)}.` : 'Asking the county and the national maps for drains and water here…');
   } else if (mapView === 'slope') {
     SLOPE_STEPS.forEach(([, c], k) => { if (c[3]) items.push(key(`rgb(${c[0]},${c[1]},${c[2]})`, SLOPE_WORDS[k])); });
     items.push(key('#e53935', 'beside the house: falls toward it'), key('#ffb300', 'falls away, but under 6 in over 10 ft'), key('#43a047', 'falls away 6 in or more over 10 ft (the building code)'));
