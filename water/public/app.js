@@ -27,7 +27,7 @@ import { tracedOn, lineUpAt } from '/lib/shade/traced.js';
 import { boxFor } from '/lib/site.js';
 import { sprinklers } from '/heads.js';
 import { openable } from '/lib/maps.js';
-import { KINDS as LAYER_KINDS, FIELD_WORDS, typeWords, askBox, compact, freshEnough, summary as layerSummary, pick as layerPick, intakesNear } from '/lib/layers.js';
+import { KINDS as LAYER_KINDS, FIELD_WORDS, typeWords, hasCounty, askBox, compact, freshEnough, summary as layerSummary, pick as layerPick, intakesNear } from '/lib/layers.js';
 
 const $ = (s) => document.querySelector(s);
 const R = 6378137;
@@ -360,7 +360,9 @@ async function loadLayers(boxDeg, kept) {
         view.layersRaw = j; view.layersError = '';
         const saved = compact(j, { centre: lawnMid(), budget: layerBudget() });
         view.layers = saved; inputs.layers = saved; layersIn(); keep();
-        if (!j.pending?.length) return;
+        // whole, with the county's own: done. With none, the service may still be searching this place: soon again
+        if (!j.pending?.length && (hasCounty(saved) || k > 0)) return;
+        if (!j.pending?.length) { await new Promise((r) => setTimeout(r, 20000)); if (ask !== layersAsk) return; continue; }
       } else if (!view.layers) { view.layersError = `the drains and water layers did not answer (${res.status})`; layersIn(); }
     } catch (e) { if (!view.layers) { view.layersError = `the drains and water layers could not be reached (${e.message})`; layersIn(); } }
     await new Promise((r) => setTimeout(r, 60000));

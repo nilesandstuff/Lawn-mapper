@@ -41,6 +41,9 @@ test('the kept copy: only the fields the page reads, coordinates to 0.1 m, compl
   assert.equal(part.complete, false); assert.deepEqual(part.failed, ['Flowline - Large Scale']);
   assert.equal(freshEnough(c), true); assert.equal(freshEnough(part), false);
   assert.equal(freshEnough(c, Date.now() + 31 * 86400000), false, 'a month old: asked again');
+  // national layers alone: the service may find the county's soon, so kept two days only
+  const national = compact({ layers: [answer().layers[0]], failed: [] }, { centre: O });
+  assert.equal(freshEnough(national), true); assert.equal(freshEnough(national, Date.now() + 3 * 86400000), false);
 });
 
 test('past its budget the least useful kind goes first, its farthest features first', () => {

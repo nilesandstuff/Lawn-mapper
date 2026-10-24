@@ -129,7 +129,13 @@ export function kindOf(kind, subtype) {
 export const typeWords = (v) => String(v).replace(/_/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').trim().toLowerCase().replace(/^./, (c) => c.toUpperCase());
 
 /** Is a saved copy still good to use? */
-export const freshEnough = (saved, now = Date.now()) => !!saved && saved.v === SAVED_V && saved.complete && Date.parse(saved.at) > now - FRESH_DAYS * 86400000;
+/* A copy with no county layer is kept for two days only: the layers service searches a new place for its county's
+   and city's layers when someone first looks there (the core session, 2026-10-24: "Found while people look"), so
+   a first answer may hold the national layers alone. */
+export const NO_COUNTY_DAYS = 2;
+export const hasCounty = (saved) => !!saved?.layers?.some((l) => l.from === 'county');
+export const freshEnough = (saved, now = Date.now()) => !!saved && saved.v === SAVED_V && saved.complete
+  && Date.parse(saved.at) > now - (hasCounty(saved) ? FRESH_DAYS : NO_COUNTY_DAYS) * 86400000;
 
 /* ------------------------------------------------------------------ geometry */
 

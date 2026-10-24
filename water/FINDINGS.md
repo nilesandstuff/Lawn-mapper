@@ -1286,6 +1286,10 @@ saves ... So you're responsible for ensuring alignment". The core session's rout
   at the water session's ask, codes come as names (subtypes, coded-value domains, or the layer's map style):
   the water map keeps a named type, shows it as words, draws a storm "pipe" typed Culvert as a culvert and one
   typed OpenChannel or FloodRoute as an open drain, and asks again for every copy kept before (SAVED_V 2).
+- 2026-10-24, the core session: a place's county and city layers are now searched for when someone first looks
+  there (docs/WATER-LAYERS.md "Found while people look"), so a first answer may be national only. The page asks
+  again 20 s after an answer with no county layer (and after a minute while a source is pending), and keeps a
+  copy with no county layer for two days, not thirty.
 
 ## SPECULATION
 
