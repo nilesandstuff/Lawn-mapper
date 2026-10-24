@@ -145,8 +145,10 @@ export const STATE_SEEDS = [
     } },
   { state: 'NC', source: 'NCDOT (state roads)', root: 'https://services.arcgis.com/NuWFvHYDMVmmxMeM/arcgis/rest/services',
     /* 368,204 inlets, 28,729 pipes. */
-    services: ['https://services.arcgis.com/NuWFvHYDMVmmxMeM/arcgis/rest/services/NCDOT_Inlets_Public_View_(Draft)/FeatureServer',
-      'https://services.arcgis.com/NuWFvHYDMVmmxMeM/arcgis/rest/services/NCDOT_Storm_Drainage_Pipes_Public_View/FeatureServer'],
+    /* Pipes first: it did not answer on the first sweep, and a seed is
+       remembered by its first service, so this makes it due again. */
+    services: ['https://services.arcgis.com/NuWFvHYDMVmmxMeM/arcgis/rest/services/NCDOT_Storm_Drainage_Pipes_Public_View/FeatureServer',
+      'https://services.arcgis.com/NuWFvHYDMVmmxMeM/arcgis/rest/services/NCDOT_Inlets_Public_View_(Draft)/FeatureServer'],
     kinds: { 'https://services.arcgis.com/NuWFvHYDMVmmxMeM/arcgis/rest/services/NCDOT_Storm_Drainage_Pipes_Public_View/FeatureServer/0': null } },
   { state: 'VA', source: 'VDOT (state roads)', root: 'https://services.arcgis.com/p5v98VHDX9Atv3l7/arcgis/rest/services',
     /* 28,996 outfalls. */
@@ -425,6 +427,9 @@ async function main() {
       }))])].slice(0, MAX_SERVICES);
       row.services = services.length;
       const listed = await pool(services, POOL, async (s) => waterLayersOf(s, await getJson(`${s}/layers`)));
+      /* A state seed with a service that did not answer is not marked done,
+         so the next night tries it again (NCDOT's pipes, 2026-10-24). */
+      row.unanswered = listed.filter((x) => !Array.isArray(x)).length;
       const found = listed.flatMap((x, i) => (Array.isArray(x) ? x.map((l) => ({ ...l, service: services[i] })) : []));
       const measured = await pool(found, 2, measure);
       /* One copy of each layer on a server (water-find.js oneCopyEach). */
@@ -454,7 +459,7 @@ async function main() {
     } catch (e) {
       row.error = why(e);
     }
-    exec(`INSERT INTO water_sweep (root, services, found, error, checked_at) VALUES (${q(r.key || r.root)}, ${row.services}, ${row.found.length}, ${q(row.error)}, ${q(new Date().toISOString())})
+    if (!(r.alone && row.unanswered)) exec(`INSERT INTO water_sweep (root, services, found, error, checked_at) VALUES (${q(r.key || r.root)}, ${row.services}, ${row.found.length}, ${q(row.error)}, ${q(new Date().toISOString())})
           ON CONFLICT(root) DO UPDATE SET services = excluded.services, found = excluded.found, error = excluded.error, checked_at = excluded.checked_at;`);
     report.roots.push(row);
     const okHere = row.found.filter((f) => f.ok).length;
