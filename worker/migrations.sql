@@ -307,3 +307,8 @@ ALTER TABLE shade_lux ADD COLUMN lux_max REAL;
 ALTER TABLE shade_errors ADD COLUMN place TEXT;
 ALTER TABLE shade_errors ADD COLUMN lng REAL;
 ALTER TABLE shade_errors ADD COLUMN lat REAL;
+
+-- Each water layer's names for its codes (2026-10-24), read by the catalogue
+-- (tools/water-layers.js) so GET /api/water/layers sends "Culvert" and not 2
+-- without asking the county's server for the layer's description each time.
+ALTER TABLE water_layers ADD COLUMN codebook TEXT;

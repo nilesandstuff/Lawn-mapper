@@ -26,7 +26,7 @@
 
 import { writeFileSync } from 'node:fs';
 import { ALL_COUNTIES } from '../worker/src/counties.js';
-import { classifyLayer, geometryWord, KINDS } from '../worker/src/water-layers.js';
+import { classifyLayer, geometryWord, KINDS, codebookOf } from '../worker/src/water-layers.js';
 
 const DRY_RUN = /^(1|true|yes)$/i.test(process.env.DRY_RUN || '');
 const ROOTS_LIMIT = Number(process.env.ROOTS_LIMIT || 60);
@@ -121,7 +121,14 @@ export function waterLayersOf(serviceUrl, layersJson) {
     if (Array.isArray(l.subLayers) && l.subLayers.length) continue;
     const kind = classifyLayer(l.name, l.geometryType);
     if (!kind) continue;
-    out.push({ url: `${serviceUrl}/${l.id}`, kind, title: l.name, geometry: geometryWord(l.geometryType), extent: l.extent || null });
+    /* Its names for its codes, from the same description (subtypes, domains,
+       and its map style's labels), kept so the route need not ask again. */
+    const book = codebookOf(l);
+    const named = Object.keys(book.book).length || Object.keys(book.bySubtype).length;
+    out.push({
+      url: `${serviceUrl}/${l.id}`, kind, title: l.name, geometry: geometryWord(l.geometryType), extent: l.extent || null,
+      codebook: named ? JSON.stringify(book) : null,
+    });
   }
   return out;
 }
@@ -129,7 +136,7 @@ export function waterLayersOf(serviceUrl, layersJson) {
 /** SQL for one row, quoted. */
 const q = (v) => (v === null || v === undefined ? 'NULL' : typeof v === 'number' ? String(v) : `'${String(v).replace(/'/g, "''")}'`);
 export function upsertSql(row) {
-  const cols = ['url', 'kind', 'title', 'service', 'geometry', 'county_key', 'source', 'west', 'south', 'east', 'north', 'features', 'ok', 'checked_at'];
+  const cols = ['url', 'kind', 'title', 'service', 'geometry', 'county_key', 'source', 'west', 'south', 'east', 'north', 'features', 'ok', 'checked_at', 'codebook'];
   const vals = cols.map((c) => q(row[c]));
   return `INSERT INTO water_layers (${cols.join(', ')}) VALUES (${vals.join(', ')}) `
     + `ON CONFLICT(url) DO UPDATE SET ${cols.filter((c) => c !== 'url').map((c) => `${c} = excluded.${c}`).join(', ')};`;
@@ -211,6 +218,8 @@ const ENSURE = [
   'CREATE INDEX IF NOT EXISTS water_layers_box ON water_layers (west, east, south, north)',
   'CREATE TABLE IF NOT EXISTS water_sweep (root TEXT PRIMARY KEY, services INTEGER, found INTEGER, error TEXT, checked_at TEXT)',
 ];
+/* The column a deploy's migrations add; the sweep may run before that deploy. */
+const ADD_CODEBOOK = 'ALTER TABLE water_layers ADD COLUMN codebook TEXT';
 
 async function main() {
   const started = Date.now();
@@ -218,6 +227,9 @@ async function main() {
   const live = Boolean(process.env.CLOUDFLARE_API_TOKEN);
   const { query, exec } = live ? await db() : { query: () => [], exec: () => {} };
   for (const sql of ENSURE) exec(sql);
+  try { exec(ADD_CODEBOOK); } catch (e) {
+    if (!/duplicate column/i.test(String(e?.message || e))) throw e;
+  }
 
   const done = new Map();
   let points = [];
@@ -251,6 +263,7 @@ async function main() {
           features: Number.isFinite(m.count) ? m.count : null,
           ok: box && m.count > 0 ? 1 : 0,
           checked_at: now,
+          codebook: l.codebook,
         };
         exec(upsertSql(rec));
         row.found.push({ kind: rec.kind, title: rec.title, features: rec.features, ok: rec.ok });

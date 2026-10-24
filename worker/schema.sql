@@ -1104,7 +1104,12 @@ CREATE TABLE IF NOT EXISTS water_layers (
   north       REAL,
   features    INTEGER,
   ok          INTEGER NOT NULL DEFAULT 0,
-  checked_at  TEXT
+  checked_at  TEXT,
+  -- The layer's names for its codes, as JSON (worker/src/water-layers.js
+  -- codebookOf), read from its description by the catalogue so the route
+  -- need not ask the county's server again on every press. Matching ALTER in
+  -- migrations.sql.
+  codebook    TEXT
 );
 CREATE INDEX IF NOT EXISTS water_layers_box ON water_layers (west, east, south, north);
 

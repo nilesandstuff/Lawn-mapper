@@ -208,9 +208,16 @@ const env = { DB: { prepare: () => ({ bind: () => ({ all: async () => ({ results
   check('no metadata, nothing changes', decodeAttributes({ A: 1 }, null).A === 1);
   const fetcher = async (url) => ({ ok: true, json: async () => (String(url).endsWith('?f=json') ? meta
     : { features: [{ attributes: { SUBTYPE: 9, MATERIAL: 3 }, geometry: { x: 0.5, y: 0.5 } }] }) });
-  const got = await queryLayer({ kind: 'storm_inlet', url: 'https://county/MapServer/26', title: 'Storm Inlets', source: 'x' }, [0, 0, 1, 1], { fetcher });
-  check('the route sends names, not codes', got[0].features[0].properties.SUBTYPE === 'Flared End Section' && got[0].features[0].properties.MATERIAL === 'Precast',
+  const got = await queryLayer({ kind: 'storm_inlet', url: 'https://county/MapServer/26', title: 'Storm Inlets', source: 'x', codebook: book }, [0, 0, 1, 1], { fetcher });
+  check('the route sends names from the catalogue\'s codebook, not codes', got[0].features[0].properties.SUBTYPE === 'Flared End Section' && got[0].features[0].properties.MATERIAL === 'Precast',
     JSON.stringify(got[0].features[0].properties));
+  let metaAsks = 0;
+  const counting = async (url) => { if (String(url).endsWith('?f=json')) metaAsks++; return fetcher(url); };
+  const plain = await queryLayer({ kind: 'storm_inlet', url: 'https://county/MapServer/27', title: 'Storm Inlets', source: 'x' }, [0, 0, 1, 1], { fetcher: counting });
+  check('a layer the catalogue has not described is sent as served, and its server is not asked again',
+    plain[0].features[0].properties.SUBTYPE === 9 && metaAsks === 0);
+  const live = await queryLayer({ kind: 'storm_inlet', url: 'https://county/MapServer/28', title: 'Storm Inlets', source: 'x', decodeLive: true }, [0, 0, 1, 1], { fetcher: counting });
+  check('unless it asks to be described live', live[0].features[0].properties.SUBTYPE === 'Flared End Section' && metaAsks === 1);
   check('USGS water bodies are no longer asked (the inventory holds the ponds)', !NATIONAL.some((n) => n.kind === 'water_body' && n.source.includes('Hydrography')));
 }
 
@@ -240,13 +247,16 @@ check('a placeholder extent is not a place', !sensibleBox([-180, -90, 180, 90]) 
     { id: 17, name: 'Storm Mains', type: 'Group Layer', subLayers: [{ id: 18 }] },
     { id: 18, name: 'Storm Mains (Kent Owned)', type: 'Feature Layer', geometryType: L },
     { id: 29, name: 'Fire Hydrants', type: 'Feature Layer', geometryType: P },
-    { id: 26, name: 'Storm Inlets', type: 'Feature Layer', geometryType: P },
+    { id: 26, name: 'Storm Inlets', type: 'Feature Layer', geometryType: P,
+      drawingInfo: { renderer: { type: 'uniqueValue', field1: 'SUBTYPE', uniqueValueInfos: [{ value: '23', label: 'Yard Drain' }] } } },
   ] });
+  check('the catalogue keeps a layer\'s names for its codes', JSON.parse(found.find((f) => f.kind === 'storm_inlet').codebook).book.SUBTYPE['23'] === 'Yard Drain'
+    && found.find((f) => f.kind === 'storm_main').codebook === null);
   check('a service\'s water layers: leaves only, hydrants out', found.map((f) => `${f.kind}:${f.url.split('/').pop()}`).join() === 'storm_main:18,storm_inlet:26', JSON.stringify(found));
 }
 {
   const sql = upsertSql({ url: "https://h/x/MapServer/1", kind: 'stream', title: "O'Brien Drain", ok: 1, west: -85, features: null });
-  check('a row is quoted and updates in place', /'O''Brien Drain'/.test(sql) && /ON CONFLICT\(url\) DO UPDATE/.test(sql) && /NULL/.test(sql));
+  check('a row is quoted and updates in place', /'O''Brien Drain'/.test(sql) && /ON CONFLICT\(url\) DO UPDATE/.test(sql) && /NULL/.test(sql) && /codebook = excluded\.codebook/.test(sql));
 }
 
 if (failures) { console.log(`\n${failures} check(s) FAILED.`); process.exit(1); }

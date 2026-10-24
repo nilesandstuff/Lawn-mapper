@@ -446,8 +446,13 @@ export async function queryLayer(layer, box, { fetcher = fetch, timeoutMs = 1200
       return ask(url, false);
     }
   };
-  /* The layer's names for its codes, asked beside the features. */
-  const book = layer.decode === false ? Promise.resolve(null) : codebookFor(layer.url, fetcher, timeoutMs);
+  /* The layer's names for its codes: from the catalogue (water_layers.codebook)
+     when it has them. Asking the county's server for them on the spot doubled
+     the requests a press made of it, and Kent's then missed the 15 s answer
+     (2026-10-24), so a layer the catalogue has not described is sent as served
+     unless it asks (`decodeLive`). */
+  const book = layer.codebook !== undefined ? Promise.resolve(layer.codebook)
+    : layer.decodeLive ? codebookFor(layer.url, fetcher, timeoutMs) : Promise.resolve(null);
   let data;
   let usedFallback = false;
   try {
@@ -488,12 +493,14 @@ export async function countyLayersOver(env, box) {
   if (!env.DB) return [];
   try {
     const { results } = await env.DB.prepare(
-      `SELECT url, kind, title, source, county_key FROM water_layers
+      `SELECT url, kind, title, source, county_key, codebook FROM water_layers
         WHERE ok = 1 AND west <= ?3 AND east >= ?1 AND south <= ?4 AND north >= ?2
         ORDER BY kind, title LIMIT 60`,
     ).bind(box[0], box[1], box[2], box[3]).all();
+    const parse = (t) => { try { return t ? JSON.parse(t) : null; } catch { return null; } };
     return (results || []).filter((r) => KINDS[r.kind]).map((r) => ({
       kind: r.kind, url: r.url, title: r.title, source: r.source || r.county_key || 'county GIS', fields: null,
+      codebook: parse(r.codebook),
     }));
   } catch {
     /* A database the schema has not reached yet still answers the national layers. */
