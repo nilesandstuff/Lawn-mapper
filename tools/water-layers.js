@@ -113,6 +113,25 @@ export function servicesFrom(root, listing) {
     .map((s) => `${root}/${s.name}/${s.type}`);
 }
 
+/*
+ * A codebook small enough to store (2026-10-24). Maryland SHA's layers carry
+ * 1.5 MB of "codes": a field with hundreds of values is a list of names or
+ * ids, not a code list, and one command can hold about 128 KB. Such fields
+ * are left out, and a book still too big is not kept (the route then sends
+ * the layer's values as served).
+ */
+export const MAX_CODES_PER_FIELD = 300;
+export const MAX_CODEBOOK_CHARS = 60000;
+export function keptCodebook(book) {
+  const trim = (fields) => Object.fromEntries(Object.entries(fields || {}).filter(([, codes]) => Object.keys(codes).length <= MAX_CODES_PER_FIELD));
+  const kept = {
+    ...book,
+    book: trim(book?.book),
+    bySubtype: Object.fromEntries(Object.entries(book?.bySubtype || {}).map(([t, fields]) => [t, trim(fields)])),
+  };
+  return JSON.stringify(kept).length <= MAX_CODEBOOK_CHARS ? kept : null;
+}
+
 /**
  * The water layers of one service's /layers listing: leaves only (no group
  * layers), classified by name and geometry.
@@ -130,8 +149,8 @@ export function waterLayersOf(serviceUrl, layersJson, seedKinds = SEED_KINDS) {
     if (!kind) continue;
     /* Its names for its codes, from the same description (subtypes, domains,
        and its map style's labels), kept so the route need not ask again. */
-    const book = codebookOf(l);
-    const named = Object.keys(book.book).length || Object.keys(book.bySubtype).length;
+    const book = keptCodebook(codebookOf(l));
+    const named = book && (Object.keys(book.book).length || Object.keys(book.bySubtype).length);
     out.push({
       url: `${serviceUrl}/${l.id}`, kind, title: l.name, geometry: geometryWord(l.geometryType), extent: l.extent || null,
       codebook: named ? JSON.stringify(book) : null,
@@ -425,14 +444,17 @@ async function measure(layer) {
 /* ---------------------------------------------------------------- main */
 
 async function db() {
-  const { query, wrangler, resolveDatabase, flatSql } = await import('./corpus-db.js');
+  const { query, wrangler, resolveDatabase, reasonFrom } = await import('./corpus-db.js');
   let id = null;
+  /* Lines joined, nothing else: flatSql drops everything after a "--" as a
+     comment, even inside a quoted value (a code named "-- none --", or an
+     error that quotes "npx --no-install"). These statements carry none. */
   const exec = (sql) => {
     if (DRY_RUN) return;
     id = id || resolveDatabase(true);
-    wrangler(['d1', 'execute', id, '--remote', '--command', flatSql(sql)]);
+    wrangler(['d1', 'execute', id, '--remote', '--command', String(sql).replace(/\s*\n\s*/g, ' ').trim()]);
   };
-  return { query, exec };
+  return { query, exec, reasonFrom };
 }
 
 const ENSURE = [
@@ -449,7 +471,9 @@ async function main() {
   const started = Date.now();
   const only = (process.env.COUNTIES || '').split(',').map((s) => s.trim()).filter(Boolean);
   const live = Boolean(process.env.CLOUDFLARE_API_TOKEN);
-  const { query, exec } = live ? await db() : { query: () => [], exec: () => {} };
+  const { query, exec, reasonFrom } = live ? await db() : { query: () => [], exec: () => {}, reasonFrom: null };
+  /* A failure as one short line, safe to store: no SQL quoted back. */
+  const why = (e) => String((reasonFrom ? reasonFrom(e) : null) || e?.message || e).replace(/\s+/g, ' ').slice(0, 200);
   for (const sql of ENSURE) exec(sql);
   try { exec(ADD_CODEBOOK); } catch (e) {
     if (!/duplicate column/i.test(String(e?.message || e))) throw e;
@@ -599,13 +623,14 @@ async function main() {
           checked_at: now,
           codebook: l.codebook,
         };
-        exec(upsertSql(rec));
+        /* One layer the database refuses is that layer's failure, not its server's. */
+        try { exec(upsertSql(rec)); } catch (e) { row.refused = (row.refused || 0) + 1; console.log(`  not stored: ${rec.url} -- ${why(e)}`); return; }
         row.found.push({ kind: rec.kind, title: rec.title, features: rec.features, ok: rec.ok });
         report.layers++;
         if (rec.ok) { report.ok++; report.byKind[rec.kind] = (report.byKind[rec.kind] || 0) + 1; }
       });
     } catch (e) {
-      row.error = String(e?.message || e).slice(0, 200);
+      row.error = why(e);
     }
     exec(`INSERT INTO water_sweep (root, services, found, error, checked_at) VALUES (${q(r.key || r.root)}, ${row.services}, ${row.found.length}, ${q(row.error)}, ${q(new Date().toISOString())})
           ON CONFLICT(root) DO UPDATE SET services = excluded.services, found = excluded.found, error = excluded.error, checked_at = excluded.checked_at;`);

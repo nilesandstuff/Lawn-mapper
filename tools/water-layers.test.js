@@ -7,7 +7,7 @@ import {
   classifyLayer, boxFrom, esriToGeoJSON, tidyAttributes, queryUrl, waterLayersAt, handleWaterLayers, NATIONAL, KINDS, MAX_SPAN_M,
   clipGeometry, clipLine, clipRing, queryLayer, PARTIAL_CACHE_SECONDS, codebookOf, decodeAttributes,
 } from '../worker/src/water-layers.js';
-import { registryRoots, sweepOrder, extentDegrees, waterLayersOf, upsertSql, sensibleBox, rootOf, agolWaterKeep, placeNames, searchPoints, sourceOfRoot, agolWaterNameUrl, STATE_SEEDS, SEED_KINDS } from './water-layers.js';
+import { registryRoots, sweepOrder, extentDegrees, waterLayersOf, upsertSql, sensibleBox, rootOf, agolWaterKeep, placeNames, searchPoints, sourceOfRoot, agolWaterNameUrl, STATE_SEEDS, SEED_KINDS, keptCodebook, MAX_CODES_PER_FIELD } from './water-layers.js';
 
 let failures = 0;
 const check = (name, ok, detail = '') => {
@@ -318,6 +318,14 @@ check('no seed is named twice', new Set(STATE_SEEDS.flatMap((x) => x.services)).
   check('a seed is remembered by its own service, not by the server a search swept today',
     sweepOrder([seedRoot], [], swept).length === 1
     && sweepOrder([seedRoot], [], new Map([[seedRoot.key, new Date().toISOString()]])).length === 0);
+}
+{
+  const many = Object.fromEntries(Array.from({ length: MAX_CODES_PER_FIELD + 1 }, (_, i) => [String(i), `Facility ${i}`]));
+  const kept = keptCodebook({ book: { TYPE: { 1: 'Inlet', 2: 'Manhole' }, FACILITY: many }, typeField: null, bySubtype: { 1: { NAME: many, MAT: { C: 'Concrete' } } } });
+  check('a field with hundreds of codes is a list of names, not a code list: left out',
+    kept && kept.book.TYPE[2] === 'Manhole' && !kept.book.FACILITY && kept.bySubtype[1].MAT.C === 'Concrete' && !kept.bySubtype[1].NAME);
+  const huge = Object.fromEntries(Array.from({ length: 400 }, (_, f) => [`F${f}`, Object.fromEntries(Array.from({ length: 200 }, (_, i) => [String(i), 'x'.repeat(10)]))]));
+  check('a book still too big to store is not kept', keptCodebook({ book: huge, typeField: null, bySubtype: {} }) === null);
 }
 check('a non-culvert pipe is a storm pipe, a culvert still a culvert',
   classifyLayer('Stormwater Non-Culvert Pipe - Office', L) === 'storm_main' && classifyLayer('Stormwater Culvert - Office', L) === 'culvert');
