@@ -612,6 +612,7 @@ jobs:
         run: |
           python3 windows_test.py
           python3 alpha_sources_test.py
+          python3 alpha_infer_test.py
           python3 -m pip install --quiet pyyaml
           python3 modal_plan_test.py
 

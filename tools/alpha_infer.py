@@ -194,15 +194,26 @@ class Detector:
         return grid, cover
 
     def whole(self, photo, span, size):
-        """The lot squeezed into one pass, as every release before S49 read it."""
+        """The lot read in one pass at `size` px a side: squeezed to the eye's
+        own size, as every release before S49 read it, or (native, S58) at as
+        many pixels as 10 cm takes.
+
+        THE GRID IS size / patch PATCHES A SIDE, NOT THE EYE'S DEFAULT. Until
+        2026-10-24 this unpacked every answer as eye.side (56) patches a side;
+        a native read at 4096 px returns 256 x 256, and patches_of keeps the
+        LAST side*side tokens -- so the live server laid the bottom twelve rows
+        of the condo complex's grid across the whole lot, as horizontal
+        stripes (the owner's press on release v7). Training unpacked it by
+        S // patch (extract_features.py) and was never affected."""
         with tempfile.NamedTemporaryFile(suffix=".png") as f:
             photo.save(f.name)
             tensor, cover = extract_features.as_tensor(f.name, size)
         long_m = padded_side_metres(span, cover)
         mpp = (long_m / size) if self.eye.wants_scale else 0.0
         hidden = self.eye.look(tensor, mpp)
-        flat, dim, _ = extract_features.patches_of(hidden, self.eye.side)
-        return flat.reshape(self.eye.side, self.eye.side, dim), cover
+        side = int(size) // int(self.eye.patch)
+        flat, dim, _ = extract_features.patches_of(hidden, side)
+        return flat.reshape(side, side, dim), cover
 
     def canopy(self, photo, span, down):
         mask, _, _, _ = self.tree.canopy_at(self.tree_model, self.tree_processor, self.tree_want,
