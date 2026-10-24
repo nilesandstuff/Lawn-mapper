@@ -65,6 +65,14 @@ export const MODEL_VERSIONS = [
     lots: 106,
     basis: 'A new eye (owner, 2026-10-23: "1 yes do it"): DINOv3\'s satellite ViT-L in place of Scale-MAE, on v5\'s arrangement -- three decoders averaged, every approved map (106) plus the 5 not-lawn-only maps, every lot read whole at 896 -- run 39997905282. Accuracy: THE PLAN\'s single decoder on this eye at the locked 104, no pond examples, 15.4% (H114, run 39858638936; 71 lots better and 23 worse than Scale-MAE, the county-photo lots 25.9 -> 17.1). The averaged + pond release itself is not separately measured; S62 measures the eye with the pond examples on',
   },
+  {
+    version: 7,
+    shipped: '2026-10-23',
+    trainedAt: '2026-10-23T23:11:25Z',
+    accuracy: 85,
+    lots: 106,
+    basis: 'v6 with the big lots read whole at 10 cm a pixel in one pass (owner, 2026-10-23: "yes go ahead"; H121), trained on Modal\'s GPU with the pond maps: 31 of the 111 frames read whole at up to 4096 px, three decoders averaged, run 40028974483. Accuracy: still H114\'s 15.4% for this eye; H121 measured the native read on one seed as a tie over all lots and -1.2 points on the 26 past 90 m (20.7% -> 17.3%). The release itself is not separately measured',
+  },
 ];
 
 /** alpha below 82%, beta below 86%, then no stage label. */
