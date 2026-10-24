@@ -29,6 +29,8 @@
  * answer is cached by the box alone.
  */
 
+import { discoverWaterAt, askCell } from './water-find.js';
+
 /* ---------------------------------------------------------------- kinds */
 
 /**
@@ -58,7 +60,7 @@ export const KINDS = {
  * drinking-water and sanitary networks, and the bookkeeping layers that
  * repeat a network (inspections, complaints, work orders, projects).
  */
-const NEVER = /sanitary|\bsan\b|water ?main|hydrant|valve|meter|service ?line|potable|distribution|inspect|by year|complaint|work ?order|project|label|annotation|anno\b|grid|index|tile|footprint|outside of|draft|proposed|historic|\b(19|20)\d\d\b|abandon|retired|lined\b|lining|clean|televis|cctv|curb ?(box|stop)|service ?request|repair/i;
+const NEVER = /sanitary|\bsan\b|septic|\bhsts\b|water ?main|hydrant|valve|meter|service ?line|potable|distribution|inspect|by year|complaint|work ?order|project|label|annotation|anno\b|grid|index|tile|footprint|outside of|draft|proposed|historic|\b(19|20)\d\d\b|abandon|retired|lined\b|lining|clean|televis|cctv|curb ?(box|stop)|service ?request|repair/i;
 
 /* Name patterns, tried in order: the first that matches decides the kind. */
 const RULES = [
@@ -598,7 +600,17 @@ export async function handleWaterLayers(request, url, env, origin, ctx, json, { 
   if (request.method !== 'GET') return json({ error: 'GET only' }, 405, origin);
   const box = boxFrom(url.searchParams);
   if (typeof box === 'string') return json({ error: box }, 400, origin);
-  const key = new Request(`https://water-layers.cache/v3?box=${box.join(',')}`);
+  /* The live search (water-find.js) here: started for this box, and the
+     time it last finished in the cache key, so layers it finds show on the
+     next ask instead of after the week-long cache. */
+  const cx = (box[0] + box[2]) / 2, cy = (box[1] + box[3]) / 2;
+  if (ctx?.waitUntil) ctx.waitUntil(discoverWaterAt(env, cx, cy, { fetcher }));
+  let found = '0';
+  try {
+    const row = await env.DB?.prepare('SELECT done_at FROM water_asks WHERE cell = ?').bind(askCell(cx, cy).key).first();
+    if (row?.done_at) found = String(Date.parse(row.done_at));
+  } catch { /* no asks table yet */ }
+  const key = new Request(`https://water-layers.cache/v4?box=${box.join(',')}&found=${found}`);
   if (cache) {
     const hit = await cache.match(key).catch(() => null);
     if (hit) {

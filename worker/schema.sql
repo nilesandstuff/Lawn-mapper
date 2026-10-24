@@ -1132,6 +1132,22 @@ CREATE TABLE IF NOT EXISTS water_roots (
   found_at    TEXT
 );
 
+-- The live water search (2026-10-24, worker/src/water-find.js): one row per
+-- ~10 km cell someone looked at in the lawn map, the shade map or the water
+-- map, so a cell is searched once a month and the nightly search knows the
+-- place. The cell's centre only, never the address or the point.
+CREATE TABLE IF NOT EXISTS water_asks (
+  cell        TEXT PRIMARY KEY,
+  lng         REAL,
+  lat         REAL,
+  asked_at    TEXT NOT NULL,
+  status      TEXT,
+  services    INTEGER,
+  layers      INTEGER,
+  done_at     TEXT
+);
+CREATE INDEX IF NOT EXISTS water_asks_at ON water_asks (asked_at);
+
 -- Where the catalogue sweep has looked, so a run that stops resumes.
 CREATE TABLE IF NOT EXISTS county_sweep (
   point       TEXT PRIMARY KEY,

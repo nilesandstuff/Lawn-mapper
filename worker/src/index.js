@@ -56,6 +56,7 @@ import { handleAdmin, isAdminPath } from './routes-admin.js';
 import { handleJobs, spendJobDetection, jobDetection } from './routes-jobs.js';
 import { handleShade, isShadePath, isShadePage, shadePage } from './shade.js';
 import { handleWaterLayers } from './water-layers.js';
+import { discoverWaterAt } from './water-find.js';
 import { accountsEnabled, publicUser } from './db.js';
 import { currentUser } from './auth.js';
 import { recordParcelGap } from './gaps.js';
@@ -317,6 +318,12 @@ async function handleParcel(request, url, env, origin, ctx) {
   if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
     return json({ error: 'lng and lat required' }, 400, origin);
   }
+
+  /* THE WATER LAYERS HERE, looked for while the visitor works (owner,
+     2026-10-24): the lawn map, the shade map and the water map all ask this
+     route once an address is picked. After the answer, once a month per
+     ~10 km cell; water-find.js discoverWaterAt. */
+  if (ctx?.waitUntil) ctx.waitUntil(discoverWaterAt(env, lng, lat));
 
   /* What the lawn queue knows about the parcel it meant (parcel.js): its
      number, or its size when it was queued before numbers were kept. */

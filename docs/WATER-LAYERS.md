@@ -99,6 +99,25 @@ along state roads. Only the named services are swept, each layer's
 `source` is the agency, and a seed may name the kind of a layer whose own
 name is too plain to read ("Pipes", "Closed Conveyances").
 
+## Found while people look (the live search)
+
+Since 2026-10-24 a place is searched the moment someone looks at it, not only
+at night. The lawn map, the shade map and the water map all ask
+`/api/parcel` once an address is picked, and the water map asks
+`/api/water/layers`; both start `discoverWaterAt` (worker/src/water-find.js)
+after answering. It is the nightly search cut to fit the ~30 s a Worker has
+after it answers (it takes 5 to 9 s): ArcGIS Online by the point and by the
+place's names, up to 8 services the catalogue does not have yet, up to 30 of
+their layers counted, stored in `water_layers` at once. Every server found
+goes into `water_roots` for the nightly sweep, and the place joins the
+nightly's list of places to search properly, so its county's server is
+swept early too.
+
+Once per ~10 km cell a month, at most 40 new cells an hour across the site.
+`water_asks` keeps the cell's centre, never the address or the point. The
+water route's cache key carries the time the box's cell was last searched,
+so layers a search finds show on the next ask, not after the week's cache.
+
 Coverage is patchy by nature. Storm sewers are often a city's or a
 township's, not the county's, and some are not public. Kent County, MI
 publishes its drain commission's whole network.

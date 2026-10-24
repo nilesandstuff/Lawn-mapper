@@ -26,7 +26,18 @@
 
 import { writeFileSync } from 'node:fs';
 import { ALL_COUNTIES } from '../worker/src/counties.js';
-import { classifyLayer, geometryWord, KINDS, codebookOf } from '../worker/src/water-layers.js';
+import { KINDS } from '../worker/src/water-layers.js';
+import {
+  rootOf, mercToLngLat, extentDegrees, sensibleBox, servicesFrom, keptCodebook, MAX_CODES_PER_FIELD, MAX_CODEBOOK_CHARS, agolWaterSearchUrl, NATIONAL_HOST, agolWaterKeep, censusUrl, placeNames, agolWaterNameUrl, sourceOfRoot,
+  waterLayersOf as readWaterLayers, oneCopyEach,
+} from '../worker/src/water-find.js';
+
+export {
+  rootOf, mercToLngLat, extentDegrees, sensibleBox, servicesFrom, keptCodebook, MAX_CODES_PER_FIELD, MAX_CODEBOOK_CHARS, agolWaterSearchUrl, NATIONAL_HOST, agolWaterKeep, censusUrl, placeNames, agolWaterNameUrl, sourceOfRoot,
+};
+
+/** The water layers of one service's listing, with the state seeds' named kinds. */
+export const waterLayersOf = (serviceUrl, layersJson, seedKinds = SEED_KINDS) => readWaterLayers(serviceUrl, layersJson, seedKinds);
 
 const DRY_RUN = /^(1|true|yes)$/i.test(process.env.DRY_RUN || '');
 const ROOTS_LIMIT = Number(process.env.ROOTS_LIMIT || 60);
@@ -42,11 +53,6 @@ const SEARCH_POINTS = Number(process.env.SEARCH_POINTS || 120);
 
 /* ------------------------------------------------------------ pure parts */
 
-/** The /rest/services root of a service URL, or null. */
-export function rootOf(serviceUrl) {
-  const m = String(serviceUrl || '').match(/^(https?:\/\/.+?\/rest\/services)(\/|$)/i);
-  return m ? m[1] : null;
-}
 
 /** Every server root in the registry, with the counties on it. */
 export function registryRoots(counties = ALL_COUNTIES, only = null) {
@@ -82,174 +88,7 @@ export function sweepOrder(roots, points = [], done = new Map(), now = Date.now(
     .sort((a, b) => b.maps - a.maps || a.root.localeCompare(b.root));
 }
 
-/** Web Mercator metres to degrees. */
-export function mercToLngLat(x, y) {
-  const R = 6378137;
-  return [(x / R) * (180 / Math.PI), (2 * Math.atan(Math.exp(y / R)) - Math.PI / 2) * (180 / Math.PI)];
-}
 
-/** An ArcGIS extent as [w,s,e,n] in degrees when it can be read without a projection library, else null. */
-export function extentDegrees(ext) {
-  if (!ext || ![ext.xmin, ext.ymin, ext.xmax, ext.ymax].every(Number.isFinite)) return null;
-  const wkid = Number(ext.spatialReference?.latestWkid || ext.spatialReference?.wkid);
-  if (wkid === 4326 || wkid === 4269) return [ext.xmin, ext.ymin, ext.xmax, ext.ymax];
-  if (wkid === 3857 || wkid === 102100 || wkid === 102113 || wkid === 900913) {
-    const [w, s] = mercToLngLat(ext.xmin, ext.ymin);
-    const [e, n] = mercToLngLat(ext.xmax, ext.ymax);
-    return [w, s, e, n];
-  }
-  return null;
-}
-
-/** A box that is a real place on Earth, not a placeholder extent. */
-export const sensibleBox = (b) => Array.isArray(b) && b.every(Number.isFinite)
-  && b[0] < b[2] && b[1] < b[3] && b[0] >= -180 && b[2] <= 180 && b[1] >= -85 && b[3] <= 85
-  && (b[2] - b[0]) < 30 && (b[3] - b[1]) < 30;
-
-/** The service URLs a root's listing (and its folders' listings) name. */
-export function servicesFrom(root, listing) {
-  return (listing?.services || [])
-    .filter((s) => s.type === 'MapServer' || s.type === 'FeatureServer')
-    .map((s) => `${root}/${s.name}/${s.type}`);
-}
-
-/*
- * A codebook small enough to store (2026-10-24). Maryland SHA's layers carry
- * 1.5 MB of "codes": a field with hundreds of values is a list of names or
- * ids, not a code list, and one command can hold about 128 KB. Such fields
- * are left out, and a book still too big is not kept (the route then sends
- * the layer's values as served).
- */
-export const MAX_CODES_PER_FIELD = 300;
-export const MAX_CODEBOOK_CHARS = 60000;
-export function keptCodebook(book) {
-  const trim = (fields) => Object.fromEntries(Object.entries(fields || {}).filter(([, codes]) => Object.keys(codes).length <= MAX_CODES_PER_FIELD));
-  const kept = {
-    ...book,
-    book: trim(book?.book),
-    bySubtype: Object.fromEntries(Object.entries(book?.bySubtype || {}).map(([t, fields]) => [t, trim(fields)])),
-  };
-  return JSON.stringify(kept).length <= MAX_CODEBOOK_CHARS ? kept : null;
-}
-
-/**
- * The water layers of one service's /layers listing: leaves only (no group
- * layers), classified by name and geometry.
- */
-export function waterLayersOf(serviceUrl, layersJson, seedKinds = SEED_KINDS) {
-  const out = [];
-  for (const l of layersJson?.layers || []) {
-    if (l.type && !/feature layer/i.test(l.type)) continue;
-    if (Array.isArray(l.subLayers) && l.subLayers.length) continue;
-    /* A seed may name what a plainly named layer is ("Pipes" in a state's
-       storm-drain inventory), or drop one; its geometry must still fit. */
-    const said = seedKinds?.[`${serviceUrl}/${l.id}`];
-    const fits = (k) => k && KINDS[k] && (KINDS[k].geometry === 'any' || KINDS[k].geometry === geometryWord(l.geometryType));
-    const kind = said === null ? null : fits(said) ? said : classifyLayer(l.name, l.geometryType);
-    if (!kind) continue;
-    /* Its names for its codes, from the same description (subtypes, domains,
-       and its map style's labels), kept so the route need not ask again. */
-    const book = keptCodebook(codebookOf(l));
-    const named = book && (Object.keys(book.book).length || Object.keys(book.bySubtype).length);
-    out.push({
-      url: `${serviceUrl}/${l.id}`, kind, title: l.name, geometry: geometryWord(l.geometryType), extent: l.extent || null,
-      codebook: named ? JSON.stringify(book) : null,
-    });
-  }
-  return out;
-}
-
-/* ------------------------------------------------- the ArcGIS Online search */
-
-/*
- * SEARCHING BY PLACE (owner, 2026-10-24: "go ahead with #1 ... and it sounds
- * like #2 should be a part of that"). The registry knows each county's own
- * server, and storm sewers are often a city's or a township's, on a server of
- * their own or hosted on ArcGIS Online. So, at each place people have saved a
- * map: ArcGIS Online's public catalogue is asked for drainage services whose
- * own extent covers that spot. Each one found is read for its water layers at
- * once, and the server it lives on joins the sweep (water_roots), so the
- * rest of that city's layers are found too.
- */
-const SEARCH_TERMS = '(storm OR stormwater OR "storm sewer" OR "storm drain" OR "catch basin" OR inlet OR inlets OR outfall OR '
-  + 'outfalls OR culvert OR culverts OR drain OR drains OR drainage OR MS4 OR "drain commission" OR sewer OR hydrology OR "surface water")';
-const SEARCH_TYPES = '(type:"Feature Service" OR type:"Map Service")';
-
-/** ArcGIS Online's catalogue, near one point, for drainage services. */
-export function agolWaterSearchUrl(lng, lat, start = 1) {
-  const d = 0.001;
-  return 'https://www.arcgis.com/sharing/rest/search?' + new URLSearchParams({
-    q: `${SEARCH_TERMS} AND ${SEARCH_TYPES}`,
-    bbox: [lng - d, lat - d, lng + d, lat + d].join(','),
-    f: 'json', num: '100', start: String(start),
-  });
-}
-
-/*
- * Never a local server: Esri's own national layers and live feeds, the
- * national sources the route already asks, and ArcGIS Online's key-holding
- * proxy (its services need the owner's credentials).
- */
-export const NATIONAL_HOST = /\/\/(services|server)\.arcgisonline\.com\/|\/\/(utility|tiledbasemaps|basemaps)\.arcgis\.com\/|\/\/hazards\.fema\.gov\/|\/\/hydro\.nationalmap\.gov\/|\/\/fwspublicservices\.wim\.usgs\.gov\/|\/P3ePLMYs2RVChkJx\/|\/RHVPKKiFTONKtxq3\/|mapservices\.weather\.noaa\.gov/i;
-
-/**
- * The search results worth reading at this point: a map or feature service
- * (not one of its layers), local (its extent under `maxArea` square degrees,
- * so a county's or a state's, not the nation's), covering the point.
- */
-export function agolWaterKeep(results, lng, lat, maxArea = 4) {
-  const out = [];
-  for (const r of results || []) {
-    if (!r?.url || !Array.isArray(r.extent) || r.extent.length !== 2) continue;
-    const [[x0, y0], [x1, y1]] = r.extent;
-    if (!((x1 - x0) * (y1 - y0) <= maxArea)) continue;
-    if (!(lng >= x0 && lng <= x1 && lat >= y0 && lat <= y1)) continue;
-    const m = String(r.url).match(/^(https?:\/\/.+?\/(?:FeatureServer|MapServer))(?:\/\d+)?\/?$/i);
-    if (!m || NATIONAL_HOST.test(m[1]) || !rootOf(m[1])) continue;
-    out.push({ service: m[1], root: rootOf(m[1]), title: String(r.title || '').slice(0, 120) });
-  }
-  return out;
-}
-
-/*
- * BY NAME, TOO. Searching by the point alone ranks ArcGIS Online's
- * nationwide items first: around Grand Rapids it returned 10,000 items and
- * the city's own stormwater service was not in the first 300. Searching by
- * the place's names finds it at once. The names come from the Census
- * Bureau's free geocoder (county, incorporated place, township), and a
- * result is kept only if its own extent covers one of the saved maps that
- * gave the name -- so "Wyoming" finds Wyoming, Michigan's and not the state's.
- */
-export function censusUrl(lng, lat) {
-  return 'https://geocoding.geo.census.gov/geocoder/geographies/coordinates?' + new URLSearchParams({
-    x: String(lng), y: String(lat), benchmark: 'Public_AR_Current', vintage: 'Current_Current',
-    layers: 'Counties,Incorporated Places,County Subdivisions', format: 'json',
-  });
-}
-
-/** The names worth searching for, from the Census answer: "Kent County", "Grand Rapids", "Byron Township". */
-export function placeNames(geographies) {
-  const out = new Set();
-  for (const g of Object.values(geographies || {})) {
-    for (const x of g || []) {
-      const name = String(x?.NAME || '').trim();
-      if (!name || /^county subdivisions not defined/i.test(name)) continue;
-      const m = name.match(/^(.*?)\s+(city|village|town|borough|CDP)$/i);
-      if (m) out.add(m[1]);
-      else if (/\s+township$/i.test(name)) out.add(name.replace(/\s+township$/i, ' Township'));
-      else out.add(name);
-    }
-  }
-  return [...out];
-}
-
-/** ArcGIS Online's catalogue, by one place's name, for drainage services. */
-export function agolWaterNameUrl(name, start = 1) {
-  return 'https://www.arcgis.com/sharing/rest/search?' + new URLSearchParams({
-    q: `${SEARCH_TERMS} AND ${SEARCH_TYPES} AND "${String(name).replace(/"/g, '')}"`,
-    f: 'json', num: '100', start: String(start),
-  });
-}
 
 /** The places to search from: saved maps, rounded to about 2 km so a street of maps is asked once. */
 export function searchPoints(points, step = 0.02, max = 120) {
@@ -262,11 +101,6 @@ export function searchPoints(points, step = 0.02, max = 120) {
   return [...seen.values()].slice(0, max);
 }
 
-/** A source to show for a layer found on a server the registry does not know. */
-export const sourceOfRoot = (root) => {
-  const host = (String(root).match(/^https?:\/\/([^/]+)/) || [])[1] || 'county GIS';
-  return /^services\d*\.arcgis\.com$/i.test(host) ? 'ArcGIS Online' : host;
-};
 
 /*
  * STATEWIDE DRAINAGE INVENTORIES, named here because a search near a saved
@@ -463,6 +297,7 @@ const ENSURE = [
   'CREATE INDEX IF NOT EXISTS water_layers_box ON water_layers (west, east, south, north)',
   'CREATE TABLE IF NOT EXISTS water_sweep (root TEXT PRIMARY KEY, services INTEGER, found INTEGER, error TEXT, checked_at TEXT)',
   'CREATE TABLE IF NOT EXISTS water_roots (root TEXT PRIMARY KEY, services TEXT, maps INTEGER, found_at TEXT)',
+  'CREATE TABLE IF NOT EXISTS water_asks (cell TEXT PRIMARY KEY, lng REAL, lat REAL, asked_at TEXT NOT NULL, status TEXT, services INTEGER, layers INTEGER, done_at TEXT)',
 ];
 /* The column a deploy's migrations add; the sweep may run before that deploy. */
 const ADD_CODEBOOK = 'ALTER TABLE water_layers ADD COLUMN codebook TEXT';
@@ -484,6 +319,13 @@ async function main() {
   if (live) {
     for (const r of query('SELECT root, checked_at FROM water_sweep')) done.set(r.root, r.checked_at);
     points = query('SELECT lng, lat FROM maps WHERE lng IS NOT NULL AND lat IS NOT NULL').map((r) => [Number(r.lng), Number(r.lat)]);
+    /* And the places people have looked at lately (water_asks, a ~10 km cell
+       each, from the live search): searched properly here, and their
+       counties' servers swept first. */
+    try {
+      const since = new Date(Date.now() - 30 * 86400000).toISOString();
+      points = points.concat(query(`SELECT lng, lat FROM water_asks WHERE asked_at > '${since}'`).map((r) => [Number(r.lng), Number(r.lat)]));
+    } catch { /* no asks yet */ }
   }
   /* For a trial without the database: TEST_POINTS="lng,lat;lng,lat". */
   if (!points.length && process.env.TEST_POINTS) {
@@ -585,28 +427,8 @@ async function main() {
       const listed = await pool(services, POOL, async (s) => waterLayersOf(s, await getJson(`${s}/layers`)));
       const found = listed.flatMap((x, i) => (Array.isArray(x) ? x.map((l) => ({ ...l, service: services[i] })) : []));
       const measured = await pool(found, 2, measure);
-      /* ONE COPY OF EACH LAYER (2026-10-24): Grand Rapids publishes its catch
-         basins in 13 services and its gravity mains in a dozen, the same layer
-         each time, some a snapshot a few features apart, some a filtered view
-         of ten. On one server, layers of the same kind and name are kept
-         once: the copy with the most features, the most complete. */
-      const best = new Map();
-      found.forEach((l, i) => {
-        const k = `${l.kind}|${String(l.title).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()}`;
-        const n = Number(measured[i]?.count) || 0;
-        if (!best.has(k) || n > best.get(k).n) best.set(k, { i, n });
-      });
-      /* And the same data under another name: Grand Rapids' lakes at eight
-         map scales (Waterbodies_1K ... _144K, 7,262 features each), its
-         laterals as "Storm Laterals" and "Storm Lateral Lines" (23,043). A
-         layer of the same kind with the identical count, 50 or more, is the
-         same layer. */
-      const byCount = new Map();
-      for (const b of best.values()) {
-        const k = `${found[b.i].kind}|${b.n}`;
-        if (b.n < 50 || !byCount.has(k)) byCount.set(b.n < 50 ? `${k}|${b.i}` : k, b);
-      }
-      const keepIdx = new Set([...byCount.values()].map((b) => b.i));
+      /* One copy of each layer on a server (water-find.js oneCopyEach). */
+      const keepIdx = oneCopyEach(found, measured.map((m) => m?.count));
       const dup = found.map((_, i) => !keepIdx.has(i));
       const now = new Date().toISOString();
       found.forEach((l, i) => {
