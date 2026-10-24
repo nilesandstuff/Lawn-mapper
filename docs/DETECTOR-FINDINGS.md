@@ -47,6 +47,12 @@ changes and results from different corpora are not comparable.
 *Kept current so a fresh session can pick up without the conversation that
 got here. Update it whenever the in-flight run changes.*
 
+- **LIVE (2026-10-24): release v7, "beta version 7 (85%)"** -- DINOv3-sat,
+  three decoders, every approved map and the pond maps, and the lots past
+  90 m read whole at 10 cm (H121) on Modal. The condo complex: about 80 GPU
+  seconds a press (73 of them the eye at the 4096 px cap), about 2 cents,
+  4.5 minutes wall with the county photo's downloads. The pond maps cost
+  the typical lot 0.4 on this eye and fix B12 (H122); kept by the owner's rule.
 - **SHIPPING THE NEW EYE (owner, 2026-10-23: "1 yes do it").** Release v6
   is DINOv3-sat on v5's arrangement (three decoders averaged, every
   approved map, the pond examples), squeezed to 896 as S51 measured it;
@@ -999,6 +1005,42 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 ---
 
 ## HARD FINDINGS — our own measurements
+
+### H122. ON DINOv3-sat THE POND MAPS COST THE TYPICAL LOT A LITTLE AND FIX THE BIG POND: THE PLAN with them 15.6% against its own twin without them 15.5%, 28 better / 48 worse / 28 level, +0.4 [-0.1, +0.6], p 0.029; the county-photo lots +0.8 [+0.2, +1.4], p 0.011, 5 / 18 / 8; B12 (the big Kent pond) 21.2% -> 10.3% (S62, one seed) -- 2026-10-24
+*Workflow 14 run 39997941983 (S62): `facebook/dinov3-vitl16-pretrain-sat493m`,
+THE PLAN, seed 7, CPU, locked 104 plus the 5 approved not-lawn-only (pond)
+maps and every lot's not-lawn traces (`not_lawn: on`), every lot squeezed
+to 896, saved lidar moves, the traced outline's limits by area (S61).
+The twin is the run's own "decoder, no pond maps" row: the same features
+and seed without the traces or the 5 maps. Folder
+runs/2026-10-23-2006-edt-facebook-dinov3-vitl16-pretrain-sat493m-896px.
+Workflow 24 runs 40046761889 (twin vs THE PLAN, same run) and
+40046758669 (S51 39858638936, the same eye without pond maps, vs S62's
+THE PLAN: 28 / 45 / 31, +0.3 [-0.1, +0.6], p 0.060, the county lots
++0.7, p 0.011 -- the same answer across two runs).*
+
+| slice | pond maps on vs off: better / worse / level | median off -> on | paired change [95%] | sign test |
+|---|---|---|---|---|
+| all 104 | 28 / 48 / 28 | 15.5% -> 15.6% | +0.4 [-0.1, +0.6] | p 0.029 |
+| county-photo lots (31) | 5 / 18 / 8 | 16.9 -> 17.9 | +0.8 [+0.2, +1.4] | p 0.011 |
+| Mapbox lots (73) | 23 / 30 / 20 | 15.2 -> 14.3 | +0.1 [-0.1, +0.6] | p 0.41 |
+
+Most improved: C33 46.0 -> 33.5, **B12 21.2 -> 10.3**, C68 41.6 -> 32.3,
+B10 21.3 -> 12.7. Most worsened: C29 221.9 -> 328.0 (a lot already scored
+past 100%, so mostly over-call on a small lawn), C46 32.5 -> 57.0, C94
+54.9 -> 65.9, C42 21.4 -> 31.6.
+
+**Reading, in its context.** On Scale-MAE (H79, 80 lots) the pond maps were
+nothing measurable overall and carried B12. On DINOv3-sat at 104 lots they
+are a small, consistent cost to the typical lot (two runs agree to a tenth),
+most of it on the county-photo lots, and they still carry B12, by half. So
+the same examples teach this eye something broader than "water is not
+lawn": a county photo's dark or wet-looking grass leans further toward not
+lawn. One seed; the traces and the 5 maps are not separated here.
+**Decision is the owner's** (2026-10-23: "the not lawn examples should be
+included always"); release v7 carries them. Worth trying if the owner
+wants the cost back: the 5 maps at a lower weight, or the traces without
+the 5 whole maps.
 
 ### H121. DINOv3 READING EACH BIG LOT WHOLE AT 10 cm IN ONE PASS (no squeeze, no windows; up to 3008 px, 35,344 patches, on Modal's L4) IS THE FIRST ARRANGEMENT TO HELP THE BIG LOTS: the 26 past 90 m 17 / 5 / 4 against the same eye squeezed, 20.7% -> 17.3%, -1.2 [-1.8, -0.2], p 0.017, while the whole corpus is a tie (42 / 35 / 27, -0.1 [-0.5, +0.3]); against Scale-MAE 67 / 27 / 10, -2.0, the big lots -2.8 (S58, one seed) -- 2026-10-23
 *Workflow 14 run 39879564306, `windows: native`, `gpu: modal`:
