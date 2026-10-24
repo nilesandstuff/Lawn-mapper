@@ -7,7 +7,7 @@ import {
   classifyLayer, boxFrom, esriToGeoJSON, tidyAttributes, queryUrl, waterLayersAt, handleWaterLayers, NATIONAL, KINDS, MAX_SPAN_M,
   clipGeometry, clipLine, clipRing, queryLayer, PARTIAL_CACHE_SECONDS, codebookOf, decodeAttributes,
 } from '../worker/src/water-layers.js';
-import { registryRoots, sweepOrder, extentDegrees, waterLayersOf, upsertSql, sensibleBox, rootOf, agolWaterKeep, placeNames, searchPoints, sourceOfRoot, agolWaterNameUrl, STATE_SEEDS } from './water-layers.js';
+import { registryRoots, sweepOrder, extentDegrees, waterLayersOf, upsertSql, sensibleBox, rootOf, agolWaterKeep, placeNames, searchPoints, sourceOfRoot, agolWaterNameUrl, STATE_SEEDS, SEED_KINDS } from './water-layers.js';
 
 let failures = 0;
 const check = (name, ok, detail = '') => {
@@ -289,6 +289,35 @@ check('a found server is labelled by its host, or as ArcGIS Online',
 
 check('each statewide seed names its own service on its own server',
   STATE_SEEDS.length > 0 && STATE_SEEDS.every((x) => x.services.every((sv) => rootOf(sv) === x.root)));
+
+check('every seed names its agency, and its kinds are kinds of its own layers',
+  STATE_SEEDS.every((x) => x.source && x.state && Object.entries(x.kinds || {}).every(([u, k]) =>
+    (k === null || k in KINDS) && x.services.some((sv) => u.startsWith(`${sv}/`) && /^\d+$/.test(u.slice(sv.length + 1))))));
+check('no seed is named twice', new Set(STATE_SEEDS.flatMap((x) => x.services)).size === STATE_SEEDS.flatMap((x) => x.services).length);
+{
+  const sv = 'https://example.gov/arcgis/rest/services/Storm/FeatureServer';
+  const listing = { layers: [
+    { id: 2, name: 'Pipes', type: 'Feature Layer', geometryType: L },
+    { id: 3, name: 'Inlets', type: 'Feature Layer', geometryType: P },
+    { id: 4, name: 'Structures', type: 'Feature Layer', geometryType: P },
+    { id: 5, name: 'Basins', type: 'Feature Layer', geometryType: P },
+  ] };
+  const named = { [`${sv}/2`]: 'storm_main', [`${sv}/3`]: null, [`${sv}/5`]: 'detention_basin' };
+  const got = Object.fromEntries(waterLayersOf(sv, listing, named).map((l) => [l.title, l.kind]));
+  check('a seed names a plain layer, drops one, and cannot give a point layer an area kind',
+    got.Pipes === 'storm_main' && !('Inlets' in got) && !('Structures' in got) && !('Basins' in got), JSON.stringify(got));
+  check('without the seed, the same listing reads by name alone',
+    JSON.stringify(waterLayersOf(sv, listing, {}).map((l) => l.kind)) === '["storm_inlet"]');
+  check('the seeds\' kinds are the default', Object.keys(SEED_KINDS).length > 0
+    && waterLayersOf('https://services3.arcgis.com/mB6GMjOL4lVKAyZO/arcgis/rest/services/SADES_CCDS_PUBLIC_VIEW/FeatureServer',
+      { layers: [{ id: 3, name: 'Pipes', type: 'Feature Layer', geometryType: L }] })[0]?.kind === 'storm_main');
+}
+check('a non-culvert pipe is a storm pipe, a culvert still a culvert',
+  classifyLayer('Stormwater Non-Culvert Pipe - Office', L) === 'storm_main' && classifyLayer('Stormwater Culvert - Office', L) === 'culvert');
+check('SD and SW are storm drain: pipes, manholes and structures',
+  classifyLayer('SD_PIPES', L) === 'storm_main' && classifyLayer('swPipes_1', L) === 'storm_main' && classifyLayer('SWMConveyance', L) === 'storm_main'
+  && classifyLayer('ES_SD_Manhole', P) === 'storm_manhole' && classifyLayer('SW_STRUCTURE', P) === 'storm_manhole'
+  && classifyLayer('SD Points', P) === null);
 
 if (failures) { console.log(`\n${failures} check(s) FAILED.`); process.exit(1); }
 console.log('\nwater layers: ok');

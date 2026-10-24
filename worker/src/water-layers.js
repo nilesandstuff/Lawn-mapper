@@ -63,13 +63,14 @@ const NEVER = /sanitary|\bsan\b|water ?main|hydrant|valve|meter|service ?line|po
 /* Name patterns, tried in order: the first that matches decides the kind. */
 const RULES = [
   ['storm_inlet', /inlet|catch ?basin|drop ?structure|yard ?drain/i],
-  ['storm_manhole', /(storm|drain).*man ?hole|man ?hole.*(storm|drain)|storm.*structure|^manholes?$/i],
+  ['storm_manhole', /(storm|drain).*man ?hole|man ?hole.*(storm|drain)|storm.*structure|^manholes?$|\b(sd|sw) ?(man ?hole|structure)/i],
   ['outfall', /outfall|out ?let|discharge ?point|headwall|end ?section/i],
-  ['culvert', /culvert/i],
+  /* Not WSDOT's "Stormwater Non-Culvert Pipe": that is a storm pipe. */
+  ['culvert', /(?<!non )culvert/i],
   ['detention_basin', /detention|retention|storm ?water ?(basin|pond)|bmp|bio ?retention|rain ?garden|infiltration/i],
   ['drain_district', /drain(age)? ?district|drainage ?(area|district)|drain ?assessment/i],
   ['drain_easement', /(drain|storm).*easement/i],
-  ['storm_main', /storm.*(main|pipe|line|sewer|gravity|conduit|lateral)|storm ?sewer|storm ?drain|drain ?pipe/i],
+  ['storm_main', /storm.*(main|pipe|line|sewer|gravity|conduit|lateral)|storm ?sewer|storm ?drain|drain ?pipe|\b(sd|sw|swm) ?(pipe|conveyance)/i],
   ['open_drain', /open ?drain|county ?drain|ditch|swale|channel/i],
   ['flood_zone', /flood ?(plain|zone|hazard|way)|fema|dfirm|firm ?zone|sfha/i],
   ['wetland', /wetland|marsh/i],

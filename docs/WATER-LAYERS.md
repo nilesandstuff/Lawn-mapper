@@ -88,6 +88,17 @@ each server a layer published many times over (Grand Rapids' catch basins
 are in 13 services) is kept once, the fullest copy, and maintenance subsets
 (abandoned, lined, cleaned, televised) are never kept.
 
+Fifteen statewide inventories are named outright (`STATE_SEEDS`,
+2026-10-24), about four million features: New Jersey DEP's and New
+Hampshire's and Vermont's collections of the towns' storm sewers,
+Maryland MDE's of the counties', and the state highway departments' own
+drainage in Maryland, North Carolina, Virginia, Massachusetts,
+Connecticut, Vermont, Maine, Washington, Utah, California, Michigan and
+Iowa. A highway department's inventory is real pipes and inlets, but only
+along state roads. Only the named services are swept, each layer's
+`source` is the agency, and a seed may name the kind of a layer whose own
+name is too plain to read ("Pipes", "Closed Conveyances").
+
 Coverage is patchy by nature. Storm sewers are often a city's or a
 township's, not the county's, and some are not public. Kent County, MI
 publishes its drain commission's whole network.

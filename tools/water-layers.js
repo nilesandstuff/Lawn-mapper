@@ -117,12 +117,16 @@ export function servicesFrom(root, listing) {
  * The water layers of one service's /layers listing: leaves only (no group
  * layers), classified by name and geometry.
  */
-export function waterLayersOf(serviceUrl, layersJson) {
+export function waterLayersOf(serviceUrl, layersJson, seedKinds = SEED_KINDS) {
   const out = [];
   for (const l of layersJson?.layers || []) {
     if (l.type && !/feature layer/i.test(l.type)) continue;
     if (Array.isArray(l.subLayers) && l.subLayers.length) continue;
-    const kind = classifyLayer(l.name, l.geometryType);
+    /* A seed may name what a plainly named layer is ("Pipes" in a state's
+       storm-drain inventory), or drop one; its geometry must still fit. */
+    const said = seedKinds?.[`${serviceUrl}/${l.id}`];
+    const fits = (k) => k && KINDS[k] && (KINDS[k].geometry === 'any' || KINDS[k].geometry === geometryWord(l.geometryType));
+    const kind = said === null ? null : fits(said) ? said : classifyLayer(l.name, l.geometryType);
     if (!kind) continue;
     /* Its names for its codes, from the same description (subtypes, domains,
        and its map style's labels), kept so the route need not ask again. */
@@ -246,16 +250,108 @@ export const sourceOfRoot = (root) => {
 };
 
 /*
- * STATEWIDE DRAINAGE INVENTORIES, named here because a search cannot find
- * them (2026-10-24). New Jersey's DEP collects every town's MS4 storm-sewer
- * map -- 77,613 inlets, 73,793 outfalls, 592 culverts and the basins -- and
- * its ArcGIS Online listings carry a broken extent (metres in the degrees
- * field), so the search's "does it cover this map" test throws them out.
- * Swept like any found server, its own service first.
+ * STATEWIDE DRAINAGE INVENTORIES, named here because a search near a saved
+ * map cannot be relied on to find them (2026-10-24; owner: "add other
+ * statewide inventories like New Jersey's"). New Jersey's DEP collects every
+ * town's MS4 storm-sewer map, and its ArcGIS Online listings carry a broken
+ * extent (metres in the degrees field), so the search's "does it cover this
+ * map" test throws them out. The rest are a state agency's own inventory,
+ * mostly a highway department's drainage along state roads: those are
+ * real pipes and inlets, but only along the state's roads, not a town's.
+ *
+ * Only the services named are swept, not the rest of the agency's server:
+ * what else a state publishes is mostly the natural water the national
+ * layers already give. `kinds` names what a plainly named layer is ("Pipes"
+ * in a storm-drain inventory), or drops one (null). Counts as of 2026-10-24.
+ *
+ * Looked at and left out: Montana DOT's MS4 outfalls (token required),
+ * Connecticut DEEP's MS4 layers (the server's certificate does not verify),
+ * Florida's stormwater facilities (permit records with owners' phone numbers
+ * and emails, not drains), WisDOT's "possible" culvert locations (modelled,
+ * not surveyed), and the fish-passage barrier lists (barriers, not drains).
  */
 export const STATE_SEEDS = [
-  { root: 'https://mapsdep.nj.gov/arcgis/rest/services', services: ['https://mapsdep.nj.gov/arcgis/rest/services/Applications/MS4_Map/MapServer'] },
+  { state: 'NJ', source: 'New Jersey DEP (town storm sewers)', root: 'https://mapsdep.nj.gov/arcgis/rest/services',
+    /* 77,613 inlets, 73,793 outfalls, 592 culverts, and the basins. */
+    services: ['https://mapsdep.nj.gov/arcgis/rest/services/Applications/MS4_Map/MapServer'] },
+  { state: 'MD', source: 'Maryland MDE (county storm drains)', root: 'https://services.arcgis.com/njFNhDsUCentVYJW/arcgis/rest/services',
+    /* The counties' own storm-drain maps, gathered by the state: 100,711
+       structures and 91,503 pipes in one county's set alone. */
+    services: ['https://services.arcgis.com/njFNhDsUCentVYJW/arcgis/rest/services/Stormdrain_Data_MD_Statewide_Dec_24_WFL1/FeatureServer'],
+    kinds: Object.fromEntries([[10, 'storm_main'], [20, 'storm_manhole'], [24, 'culvert'], [25, 'culvert'], [35, 'culvert'], [44, 'storm_manhole'], [45, 'storm_main']]
+      .map(([id, k]) => [`https://services.arcgis.com/njFNhDsUCentVYJW/arcgis/rest/services/Stormdrain_Data_MD_Statewide_Dec_24_WFL1/FeatureServer/${id}`, k])) },
+  { state: 'MD', source: 'Maryland SHA (state roads)', root: 'https://maps.roads.maryland.gov/arcgis/rest/services',
+    /* 180,991 structures, 148,643 pipes and channels, 15,664 SWM facilities. */
+    services: ['https://maps.roads.maryland.gov/arcgis/rest/services/NPDES/Structures_NPDES_Maryland_MDOTSHA/MapServer',
+      'https://maps.roads.maryland.gov/arcgis/rest/services/NPDES/Conveyance_NPDES_Maryland_MDOTSHA/MapServer',
+      'https://maps.roads.maryland.gov/arcgis/rest/services/NPDES/SWMFAC_NPDES_Maryland_MDOTSHA/MapServer'],
+    kinds: {
+      'https://maps.roads.maryland.gov/arcgis/rest/services/NPDES/Structures_NPDES_Maryland_MDOTSHA/MapServer/0': 'storm_manhole',
+      'https://maps.roads.maryland.gov/arcgis/rest/services/NPDES/Conveyance_NPDES_Maryland_MDOTSHA/MapServer/0': 'storm_main',
+      'https://maps.roads.maryland.gov/arcgis/rest/services/NPDES/SWMFAC_NPDES_Maryland_MDOTSHA/MapServer/0': 'detention_basin',
+    } },
+  { state: 'NC', source: 'NCDOT (state roads)', root: 'https://services.arcgis.com/NuWFvHYDMVmmxMeM/arcgis/rest/services',
+    /* 368,204 inlets, 28,729 pipes. */
+    services: ['https://services.arcgis.com/NuWFvHYDMVmmxMeM/arcgis/rest/services/NCDOT_Inlets_Public_View_(Draft)/FeatureServer',
+      'https://services.arcgis.com/NuWFvHYDMVmmxMeM/arcgis/rest/services/NCDOT_Storm_Drainage_Pipes_Public_View/FeatureServer'],
+    kinds: { 'https://services.arcgis.com/NuWFvHYDMVmmxMeM/arcgis/rest/services/NCDOT_Storm_Drainage_Pipes_Public_View/FeatureServer/0': null } },
+  { state: 'VA', source: 'VDOT (state roads)', root: 'https://services.arcgis.com/p5v98VHDX9Atv3l7/arcgis/rest/services',
+    /* 28,996 outfalls. */
+    services: ['https://services.arcgis.com/p5v98VHDX9Atv3l7/arcgis/rest/services/OutFalls_and_PODs_06_2016_view/FeatureServer'] },
+  { state: 'MA', source: 'MassDOT (state roads)', root: 'https://gis.massdot.state.ma.us/arcgis/rest/services',
+    /* 143,158 inlets, 145,769 manholes, 22,838 discharge points, the pipes, 6,043 culverts. */
+    services: ['https://gis.massdot.state.ma.us/arcgis/rest/services/Assets/Stormwater/FeatureServer',
+      'https://gis.massdot.state.ma.us/arcgis/rest/services/Assets/Culverts/FeatureServer'],
+    kinds: { 'https://gis.massdot.state.ma.us/arcgis/rest/services/Assets/Stormwater/FeatureServer/5': 'storm_main' } },
+  { state: 'CT', source: 'CTDOT (state roads)', root: 'https://services1.arcgis.com/FCaUeJ5SOVtImake/arcgis/rest/services',
+    /* 99,120 inlets, 39,304 headwalls, 12,327 manholes, 8,720 culverts, the pipes and ditches. */
+    services: ['https://services1.arcgis.com/FCaUeJ5SOVtImake/arcgis/rest/services/CTDOT_Drainage_Network/FeatureServer'],
+    kinds: Object.fromEntries([[1, 'storm_main'], [2, 'open_drain'], [11, null], [12, null]]
+      .map(([id, k]) => [`https://services1.arcgis.com/FCaUeJ5SOVtImake/arcgis/rest/services/CTDOT_Drainage_Network/FeatureServer/${id}`, k])) },
+  { state: 'NH', source: 'New Hampshire SADES (town storm drains)', root: 'https://services3.arcgis.com/mB6GMjOL4lVKAyZO/arcgis/rest/services',
+    /* The towns' stormwater asset exchange: 59,877 outlets, 41,021 inlets, the structures and pipes. */
+    services: ['https://services3.arcgis.com/mB6GMjOL4lVKAyZO/arcgis/rest/services/SADES_CCDS_PUBLIC_VIEW/FeatureServer'],
+    kinds: {
+      'https://services3.arcgis.com/mB6GMjOL4lVKAyZO/arcgis/rest/services/SADES_CCDS_PUBLIC_VIEW/FeatureServer/2': 'storm_manhole',
+      'https://services3.arcgis.com/mB6GMjOL4lVKAyZO/arcgis/rest/services/SADES_CCDS_PUBLIC_VIEW/FeatureServer/3': 'storm_main',
+    } },
+  { state: 'VT', source: 'Vermont ANR (town storm drains)', root: 'https://anrmaps.vermont.gov/arcgis/rest/services',
+    /* The towns' mapped stormwater: 119,308 lines, the points and areas, the
+       stormsheds; and the road-erosion programme's outlets to water (4,021). */
+    services: ['https://anrmaps.vermont.gov/arcgis/rest/services/map_services/MAP_ANR_ANRATLASSTORMWATER_WM_NOCACHE/MapServer'],
+    kinds: Object.fromEntries([[5, 'storm_inlet'], [7, 'detention_basin'], [12, 'watershed'], [23, null], [24, null]]
+      .map(([id, k]) => [`https://anrmaps.vermont.gov/arcgis/rest/services/map_services/MAP_ANR_ANRATLASSTORMWATER_WM_NOCACHE/MapServer/${id}`, k])) },
+  { state: 'VT', source: 'VTrans (state roads)', root: 'https://maps.vtrans.vermont.gov/arcgis/rest/services',
+    /* 48,830 culverts, 21,414 drop inlets, the access holes. */
+    services: ['https://maps.vtrans.vermont.gov/arcgis/rest/services/HWY/AMP_SmallCulvertInventory/FeatureServer'],
+    kinds: { 'https://maps.vtrans.vermont.gov/arcgis/rest/services/HWY/AMP_SmallCulvertInventory/FeatureServer/2': 'storm_manhole' } },
+  { state: 'ME', source: 'MaineDOT (state roads)', root: 'https://services1.arcgis.com/RbMX0mRVOFNTdLzd/arcgis/rest/services',
+    /* 2,380 catch basins, 672 outfalls, the culverts and ditches. */
+    services: ['https://services1.arcgis.com/RbMX0mRVOFNTdLzd/arcgis/rest/services/MAINEDOT_MS4_MAP/FeatureServer'] },
+  { state: 'WA', source: 'WSDOT (state highways)', root: 'https://data.wsdot.wa.gov/arcgis/rest/services',
+    /* Office and field inventories: 43,334 inlets, 13,894 discharge points,
+       55,267 pipes, 22,130 ditches, 13,941 culverts. */
+    services: ['https://data.wsdot.wa.gov/arcgis/rest/services/Shared/StormwaterFeaturesInventoryField/FeatureServer',
+      'https://data.wsdot.wa.gov/arcgis/rest/services/Shared/StormwaterFeaturesInventoryOffice/FeatureServer'] },
+  { state: 'UT', source: 'UDOT (state roads)', root: 'https://services.arcgis.com/pA2nEVnB6tquxgOW/arcgis/rest/services',
+    /* 106,087 catch basins, 47,862 manholes, 155,367 pipes, 4,045 outfalls, 1,832 detention basins. */
+    services: ['https://services.arcgis.com/pA2nEVnB6tquxgOW/arcgis/rest/services/Statewide_Stormwater_Drainage_Features/FeatureServer'] },
+  { state: 'CA', source: 'Caltrans (state highways)', root: 'https://services.arcgis.com/kpMKjjLr8H1rZ4XO/arcgis/rest/services',
+    /* 185,735 culverts and drain pipes. */
+    services: ['https://services.arcgis.com/kpMKjjLr8H1rZ4XO/arcgis/rest/services/Caltrans_Culvert_System/FeatureServer'],
+    kinds: { 'https://services.arcgis.com/kpMKjjLr8H1rZ4XO/arcgis/rest/services/Caltrans_Culvert_System/FeatureServer/3': 'culvert' } },
+  { state: 'MI', source: 'MDOT (state roads)', root: 'https://services2.arcgis.com/67lKNkQ2TO1I3lhR/arcgis/rest/services',
+    /* 40,029 culverts. */
+    services: ['https://services2.arcgis.com/67lKNkQ2TO1I3lhR/arcgis/rest/services/MdotCulvertAncillaryStructuresOpenData/FeatureServer'] },
+  { state: 'IA', source: 'Iowa DOT (state roads)', root: 'https://gis.iowadot.gov/agshost/rest/services',
+    /* 80,408 culverts (the flowlines and subdrains are the same culverts again). */
+    services: ['https://gis.iowadot.gov/agshost/rest/services/Maintenance/Culverts_Data/FeatureServer'],
+    kinds: { 'https://gis.iowadot.gov/agshost/rest/services/Maintenance/Culverts_Data/FeatureServer/1': null,
+      'https://gis.iowadot.gov/agshost/rest/services/Maintenance/Culverts_Data/FeatureServer/4': null } },
 ];
+
+/** Every seed's named kinds, by layer URL. */
+export const SEED_KINDS = Object.assign({}, ...STATE_SEEDS.map((s) => s.kinds || {}));
 
 /** SQL for one row, quoted. */
 const q = (v) => (v === null || v === undefined ? 'NULL' : typeof v === 'number' ? String(v) : `'${String(v).replace(/'/g, "''")}'`);
@@ -427,11 +523,19 @@ async function main() {
     }
   }
   for (const [root, e] of searched) if (!extra.has(root)) extra.set(root, { services: [...e.services], maps: e.maps || 1 });
-  if (!only.length) for (const seed of STATE_SEEDS) if (!extra.has(seed.root)) extra.set(seed.root, { services: seed.services, maps: 1 });
+  /* The state inventories: only their own services, under the agency's
+     name. A server a search also found keeps its whole sweep, seeds first. */
+  if (!only.length) {
+    for (const seed of STATE_SEEDS) {
+      const had = extra.get(seed.root);
+      if (had) had.services = [...new Set([...seed.services, ...had.services])];
+      else extra.set(seed.root, { services: [...seed.services], maps: 1, alone: true, source: seed.source });
+    }
+  }
   const registry = registryRoots(ALL_COUNTIES, only.length ? only : null);
   const known = new Set(registry.map((r) => r.root));
   const found = [...extra].filter(([root]) => !known.has(root))
-    .map(([root, e]) => ({ root, keys: [], boxes: [], services: e.services, searched: true, weight: e.maps }));
+    .map(([root, e]) => ({ root, keys: [], boxes: [], services: e.services, searched: true, weight: e.maps, alone: !!e.alone, source: e.source || null }));
   for (const r of registry) if (extra.has(r.root)) r.services = extra.get(r.root).services;
 
   /* 2. THE SWEEP: searched servers first (they are under saved maps by
@@ -450,10 +554,10 @@ async function main() {
     try {
       /* The services a search found come first, so a big organisation's
          other hundreds cannot crowd them out of MAX_SERVICES. */
-      const services = [...new Set([...(r.services || []), ...await listServices(r.root).catch((e) => {
+      const services = [...new Set([...(r.services || []), ...(r.alone ? [] : await listServices(r.root).catch((e) => {
         if (r.services?.length) return [];
         throw e;
-      })])].slice(0, MAX_SERVICES);
+      }))])].slice(0, MAX_SERVICES);
       row.services = services.length;
       const listed = await pool(services, POOL, async (s) => waterLayersOf(s, await getJson(`${s}/layers`)));
       const found = listed.flatMap((x, i) => (Array.isArray(x) ? x.map((l) => ({ ...l, service: services[i] })) : []));
@@ -489,7 +593,7 @@ async function main() {
         const rec = {
           url: l.url, kind: l.kind, title: l.title, service: l.service, geometry: l.geometry,
           county_key: r.keys.length === 1 ? r.keys[0] : r.keys.slice(0, 3).join(','),
-          source: r.searched ? sourceOfRoot(r.root) : `${r.keys.length === 1 ? (ALL_COUNTIES[r.keys[0]]?.name || r.keys[0]) : 'county GIS'}`,
+          source: r.source || (r.searched ? sourceOfRoot(r.root) : null) || `${r.keys.length === 1 ? (ALL_COUNTIES[r.keys[0]]?.name || r.keys[0]) : 'county GIS'}`,
           west: box?.[0] ?? null, south: box?.[1] ?? null, east: box?.[2] ?? null, north: box?.[3] ?? null,
           features: Number.isFinite(m.count) ? m.count : null,
           ok: box && m.count > 0 ? 1 : 0,
