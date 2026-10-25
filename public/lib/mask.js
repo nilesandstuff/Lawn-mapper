@@ -224,39 +224,75 @@ export function labelComponents(bin, width, height) {
  * started from the border. Whatever the fill cannot reach is, by definition,
  * surrounded -- which is exactly the definition of an interior ring.
  */
-export function findHoles(labels, width, height, id, minPixels) {
-  const outside = new Uint8Array(labels.length);
-  const stack = [];
-
-  const push = (p) => {
-    if (labels[p] !== id && !outside[p]) { outside[p] = 1; stack.push(p); }
+export function findHoles(labels, width, height, id, minPixels, box = null) {
+  /*
+   * WITHIN THE COMPONENT'S OWN BOX (2026-10-25). A hole of a component lies
+   * inside its bounding box, so the fill runs over that box widened by one
+   * cell (clipped to the frame), seeded from the window's border, instead of
+   * over the whole frame once per component -- which at the live server's
+   * 15 cm grid on a big lot (3000 x 2840 cells, a hundred pieces) was nine
+   * seconds of a thirteen-second trace. Same answer: a cell in the window
+   * that cannot reach its border without crossing the component cannot reach
+   * the frame's border either, and every cell outside the window can.
+   */
+  let x0, y0, x1, y1;
+  if (box) ({ x0, y0, x1, y1 } = box);
+  else {
+    x0 = width; y0 = height; x1 = -1; y1 = -1;
+    for (let p = 0; p < labels.length; p++) {
+      if (labels[p] !== id) continue;
+      const x = p % width, y = (p / width) | 0;
+      if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+    }
+    if (x1 < 0) return [];
+  }
+  x0 = Math.max(0, x0 - 1); y0 = Math.max(0, y0 - 1);
+  x1 = Math.min(width - 1, x1 + 1); y1 = Math.min(height - 1, y1 + 1);
+  const ww = x1 - x0 + 1, wh = y1 - y0 + 1;
+  const at = (lx, ly) => (y0 + ly) * width + x0 + lx;
+  const outside = new Uint8Array(ww * wh);
+  const stack = new Int32Array(ww * wh);
+  let sp = 0;
+  const push = (lx, ly) => {
+    const q = ly * ww + lx;
+    if (!outside[q] && labels[at(lx, ly)] !== id) { outside[q] = 1; stack[sp++] = q; }
   };
-
-  for (let x = 0; x < width; x++) { push(x); push((height - 1) * width + x); }
-  for (let y = 0; y < height; y++) { push(y * width); push(y * width + width - 1); }
-
-  while (stack.length) {
-    const p = stack.pop();
-    const x = p % width;
-    const y = (p / width) | 0;
-    if (x > 0) push(p - 1);
-    if (x < width - 1) push(p + 1);
-    if (y > 0) push(p - width);
-    if (y < height - 1) push(p + width);
+  for (let lx = 0; lx < ww; lx++) { push(lx, 0); push(lx, wh - 1); }
+  for (let ly = 0; ly < wh; ly++) { push(0, ly); push(ww - 1, ly); }
+  while (sp > 0) {
+    const q = stack[--sp];
+    const lx = q % ww, ly = (q / ww) | 0;
+    if (lx > 0) push(lx - 1, ly);
+    if (lx < ww - 1) push(lx + 1, ly);
+    if (ly > 0) push(lx, ly - 1);
+    if (ly < wh - 1) push(lx, ly + 1);
   }
 
   // Everything not part of the component and not reachable from outside.
-  const enclosed = new Uint8Array(labels.length);
-  for (let p = 0; p < labels.length; p++) {
-    if (labels[p] !== id && !outside[p]) enclosed[p] = 1;
+  const enclosed = new Uint8Array(ww * wh);
+  for (let ly = 0; ly < wh; ly++) {
+    for (let lx = 0; lx < ww; lx++) {
+      const q = ly * ww + lx;
+      if (!outside[q] && labels[at(lx, ly)] !== id) enclosed[q] = 1;
+    }
   }
 
-  const { labels: holeLabels, sizes } = labelComponents(enclosed, width, height);
+  const { labels: holeLabels, sizes } = labelComponents(enclosed, ww, wh);
   const holes = [];
   for (let h = 1; h < sizes.length; h++) {
     if (sizes[h] < minPixels) continue; // speckle, not a house
     const region = new Uint8Array(labels.length);
-    for (let p = 0; p < holeLabels.length; p++) if (holeLabels[p] === h) region[p] = 1;
+    let first = -1;
+    for (let q = 0; q < holeLabels.length; q++) {
+      if (holeLabels[q] !== h) continue;
+      const p = at(q % ww, (q / ww) | 0);
+      region[p] = 1;
+      if (first < 0) first = p;
+    }
+    /* Its size and its first cell in scan order, so the caller need not
+       walk the frame again to count it or to find where its trace starts. */
+    region.size = sizes[h];
+    region.first = first;
     holes.push(region);
   }
   return holes;
@@ -270,9 +306,12 @@ export function findHoles(labels, width, height, id, minPixels) {
  * its west is guaranteed background -- which gives the trace a valid initial
  * backtrack position without a special case.
  */
-export function traceRegion(region, width, height) {
+export function traceRegion(region, width, height, from = 0) {
+  /* `from`: no cell of the region comes before this index in scan order (a
+     known first row), so a small region low in a big frame is not found by
+     walking every cell above it. */
   let start = -1;
-  for (let i = 0; i < region.length; i++) if (region[i]) { start = i; break; }
+  for (let i = Math.max(0, from | 0); i < region.length; i++) if (region[i]) { start = i; break; }
   if (start < 0) return null;
 
   const sx = start % width;
@@ -937,11 +976,24 @@ export function polygonsFromBinary(bin, width, height, unproject, options = {}) 
   let filledGaps = 0;
   let filledGapPx = 0;
 
-  for (const { id, size: regionPx } of ranked) {
-    const region = new Uint8Array(total);
-    for (let p = 0; p < labels.length; p++) if (labels[p] === id) region[p] = 1;
+  /* Each component's box, in one pass, so its region, its trace and its
+     holes need only look there (2026-10-25: a 3000-cell grid). */
+  const boxes = new Map(ranked.map((c) => [c.id, { x0: width, y0: height, x1: -1, y1: -1 }]));
+  for (let p = 0; p < labels.length; p++) {
+    const b = labels[p] && boxes.get(labels[p]);
+    if (!b) continue;
+    const x = p % width, y = (p / width) | 0;
+    if (x < b.x0) b.x0 = x; if (x > b.x1) b.x1 = x; if (y < b.y0) b.y0 = y; if (y > b.y1) b.y1 = y;
+  }
 
-    const outer = traceRegion(region, width, height);
+  for (const { id, size: regionPx } of ranked) {
+    const box = boxes.get(id);
+    const region = new Uint8Array(total);
+    for (let y = box.y0; y <= box.y1; y++) {
+      for (let x = box.x0, p = y * width + box.x0; x <= box.x1; x++, p++) if (labels[p] === id) region[p] = 1;
+    }
+
+    const outer = traceRegion(region, width, height, box.y0 * width);
     if (!outer || outer.length < 4) continue;
 
     const outerRing = simplifyRing(outer, { tolerance, maxVertices: budget(regionPx, maxVertices) });
@@ -949,17 +1001,17 @@ export function polygonsFromBinary(bin, width, height, unproject, options = {}) 
 
     const rings = [outerRing];
 
-    for (const hole of findHoles(labels, width, height, id, minHoleFraction * total)) {
+    for (const hole of findHoles(labels, width, height, id, minHoleFraction * total, box)) {
       // A gap small enough to be a tree is counted as lawn: not tracing it
       // leaves it filled.
-      const size = hole.reduce((n, v) => n + v, 0);
+      const size = hole.size;
       if (size < fillGapsUnderPx) {
         filledGaps++;
         filledGapPx += size;
         continue;
       }
 
-      const traced = traceRegion(hole, width, height);
+      const traced = traceRegion(hole, width, height, hole.first);
       if (!traced || traced.length < 4) continue;
       const ring = simplifyRing(traced, { tolerance, maxVertices: budget(size, Math.round(maxVertices / 2)) });
       if (ring) rings.push(ring);

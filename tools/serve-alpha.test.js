@@ -93,9 +93,10 @@ console.log('serve-alpha: ok');
 {
   const { prepareFrame: prep, serveCap, SERVE_GRID_MAX, SERVE_GRID_LIMIT } = await import('./serve-alpha.mjs');
   const big = { lng: -85.7, lat: 42.83, zoom: 18.6, size: 4096, height: 4096 };
-  const plain = prep(big);
+  const plain = prep(big, { gridMax: 1024 });
   const fine = prep(big, { gridMax: 3072 });
-  if (!(Math.max(plain.w, plain.h) <= SERVE_GRID_MAX)) throw new Error(`unasked grid ${plain.w}x${plain.h} is over the training cap`);
+  const unasked = prep(big);
+  if (!(Math.max(unasked.w, unasked.h) <= SERVE_GRID_MAX)) throw new Error(`unasked grid ${unasked.w}x${unasked.h} is over the serving cap`);
   if (!(Math.max(fine.w, fine.h) > Math.max(plain.w, plain.h) && fine.mpp < plain.mpp)) throw new Error('a finer grid was asked for and not given');
   if (Math.abs(fine.span - plain.span) > 1e-6 * plain.span) throw new Error('the grid changed the ground it covers');
   if (serveCap(99999) !== SERVE_GRID_LIMIT || serveCap(10) !== 1024 || serveCap(undefined) !== SERVE_GRID_MAX) throw new Error('serveCap bounds');

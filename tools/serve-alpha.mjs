@@ -42,10 +42,12 @@ export { STAGE3, SEE_THROUGH };
  * although the photo is read at 10 cm and the edge refiner was trained at
  * 15 cm on every lot under 154 m. The server reads one lot at a time and need
  * not share that cap: a press may ask for up to SERVE_GRID_LIMIT cells
- * (`gridMax`), and SERVE_GRID_MAX is what it gets unasked -- GRID_MAX until
- * workflow 32's `grids` comparison has scored the finer grid (S64).
+ * (`gridMax`), and SERVE_GRID_MAX is what it gets unasked: 3072 cells, 15 cm
+ * up to a 460 m frame (S64, H124).
  */
-export const SERVE_GRID_MAX = 1024;
+/* 3072 since 2026-10-25 (H124: on the 10 approved lots the old cap coarsened,
+   level or better on every one, never worse, the same GPU time). */
+export const SERVE_GRID_MAX = 3072;
 export const SERVE_GRID_LIMIT = 4096;
 export function serveCap(asked) {
   const n = Number(asked);
