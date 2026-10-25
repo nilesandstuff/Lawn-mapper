@@ -1304,7 +1304,7 @@ async function publishRenderings(bucket, best, lawns, using, meta = {}) {
   let put = 0;
 
   const startedAt = new Date();
-  const slug = runSlug({
+  const slug = meta.slug || runSlug({
     at: startedAt,
     models: [meta.model || 'detector'],
     suffix: meta.size ? `${meta.size}px` : '',
@@ -1570,6 +1570,10 @@ async function publishRenderings(bucket, best, lawns, using, meta = {}) {
      * the run that made them by design now.
      */
     const settings = {
+      /* The comparison's other half (owner, 2026-10-25): the page flips each
+         card to the same lot there. */
+      ...(meta.twin ? { twin: meta.twin } : {}),
+      ...(meta.role ? { role: meta.role } : {}),
       model: meta.model || null,
       sizePx: meta.size || null,
       config: best.cfg.name,
@@ -1644,7 +1648,7 @@ async function publishRenderings(bucket, best, lawns, using, meta = {}) {
     const list = publishRunList(bucket, dir, runRow({
       slug,
       at: startedAt,
-      title: `${meta.model || 'detector'}${meta.size ? ` ${meta.size}px` : ''}`,
+      title: `${meta.model || 'detector'}${meta.size ? ` ${meta.size}px` : ''}${meta.role === 'control' ? ' (control: THE PLAN)' : ''}`,
       about: RUN_ABOUT,
       settings,
       lawns: entries.length,
@@ -2467,8 +2471,11 @@ async function main() {
            prediction time -- never the tracer's lawn. */
         const under = opts.under && opts.under[held];
         if (under && canopy) {
+          /* `underOnly` (S65): only on the clumps a see-through mode names --
+             'small-100', trees standing in the open -- not in the woods. */
+          const where = opts.underOnly ? seeThroughFor(opts.underOnly, canopy, null, L.grid, L.gridH, { mpp: L.mpp }) : canopy;
           mask = Uint8Array.from(mask);
-          for (let i = 0; i < mask.length; i++) if (canopy[i]) mask[i] = under[i] ? 1 : 0;
+          for (let i = 0; i < mask.length; i++) if (where[i]) mask[i] = under[i] ? 1 : 0;
         }
         /* Colour on the edges only (tools/colour-edges.js), before the veto
            so roof and void still have the last word. */
@@ -2610,6 +2617,60 @@ async function main() {
         }
       }
       /*
+       * UNDER THE TRUSTED TREES (S65; owner, 2026-10-25: "Is it that we're not
+       * doing a good job of judging bare vs in leaf ... Is it that the traces
+       * under bare trees are just bad? Is something else happening, like the
+       * edge refiner is being shut off under trusted trees?"). On the cells
+       * S63 trusted (canopy clumps under 100 m2, inside the line), cell by
+       * cell: how much of it the tracer drew as lawn, and what each answer
+       * got right there -- the refined decoder (what 'small-100' kept), THE
+       * PLAN's stage 3 (what it replaced), and the decoder taught under trees
+       * when the run has one -- split by whether the photo looks leaf-off and
+       * whether the crown itself reads bare. "False lawn" is lawn where the
+       * tracer drew none; "missed" is the other way.
+       */
+      {
+        const refined = decoderMasks.find((d) => d.label === 'edge refined');
+        const taught = decoderMasks.find((d) => d.label === 'taught under trees');
+        if (refined) {
+          const groups = new Map();
+          const add = (key, truth, got) => {
+            const g = groups.get(key) || { n: 0, lawn: 0, dec: [0, 0], plan: [0, 0], taught: [0, 0], hasTaught: false };
+            g.n++; if (truth) g.lawn++;
+            for (const [k, v] of [['dec', got.dec], ['plan', got.plan], ['taught', got.taught]]) {
+              if (v === null) continue;
+              if (k === 'taught') g.hasTaught = true;
+              if (v && !truth) g[k][0]++;
+              if (!v && truth) g[k][1]++;
+            }
+            groups.set(key, g);
+          };
+          lawns.forEach((L, held) => {
+            const dec = refined.masks[held];
+            if (!dec || !L.canopy) return;
+            const trusted = seeThroughFor('small-100', L.canopy, null, L.grid, L.gridH, { mpp: L.mpp });
+            const plan = stage3(dec, L.canopy, L.grid, L.gridH, { mpp: L.mpp, spanM: 8, reachM: 1, minRing: 0.5 }).mask;
+            const tm = taught ? taught.masks[held] : null;
+            const season = leafOff(L) ? 'looks leaf-off' : 'looks leaf-on';
+            for (let i = 0; i < trusted.length; i++) {
+              if (!trusted[i] || (L.within && !L.within[i])) continue;
+              const crown = L.bare && L.bare[i] ? 'crown reads bare' : 'crown reads green';
+              const got = { dec: dec[i], plan: plan[i], taught: tm ? tm[i] : null };
+              add(`${season}, ${crown}`, L.truth[i], got);
+              add(`${season}, all`, L.truth[i], got);
+            }
+          });
+          const pc = (a, n) => (n ? `${((100 * a) / n).toFixed(0).padStart(3)}%` : '  --');
+          console.log('\n  UNDER THE TRUSTED TREES (S65): canopy clumps under 100 m2, inside the line, cell by cell.');
+          console.log('  Each answer: false lawn / missed lawn, as shares of the cells. "decoder" is what small-100 kept; "THE PLAN" is stage 3.');
+          console.log(`  ${'cells'.padStart(46)}  traced lawn   decoder        THE PLAN       ${taught ? 'taught decoder' : ''}`);
+          for (const [k, g] of [...groups].sort()) {
+            console.log(`  ${k.padEnd(36)} ${String(g.n).padStart(9)}  ${pc(g.lawn, g.n).padStart(9)}   ${pc(g.dec[0], g.n)} / ${pc(g.dec[1], g.n)}   `
+              + `${pc(g.plan[0], g.n)} / ${pc(g.plan[1], g.n)}   ${g.hasTaught ? `${pc(g.taught[0], g.n)} / ${pc(g.taught[1], g.n)}` : ''}`);
+          }
+        }
+      }
+      /*
        * THE OWNER'S LABELS AGAINST THE GUESSES (2026-10-04). Leaf-off as marked
        * against "looks leaf-off" (the colour rule's bare share), and the
        * traced evergreen crowns against the canopy the colour rule left
@@ -2714,6 +2775,12 @@ async function main() {
           const cfgU = { ...cfg, name: `${cfg6.name}, ${tag} under the canopy`, stage3: true };
           console.log(`Scoring "${cfgU.name}" (THE PLAN outside the tree model's canopy, "${tl}" inside it)…`);
           table.push(summarise(cfgU, judge(masks, { spanM: 8, reachM: 1, minRing: 0.5, veto: true, under: taught.masks }), cfg.dims));
+          /* S65 (owner, 2026-10-25: "we should look into why the bare tree
+             trust isn't helping"): the taught decoder only under trees
+             standing in the open, THE PLAN everywhere else. */
+          const cfgT = { ...cfg, name: `${cfg6.name}, ${tag} under small trees`, stage3: true };
+          console.log(`Scoring "${cfgT.name}" (the taught decoder on canopy clumps under 100 m2 only)…`);
+          table.push(summarise(cfgT, judge(masks, { spanM: 8, reachM: 1, minRing: 0.5, veto: true, under: taught.masks, underOnly: 'small-100' }), cfg.dims));
         }
         /* And S63's trees in the open (owner, 2026-10-24), as full rows so
            workflow 24 can pair them lot by lot with THE PLAN. */
@@ -2964,7 +3031,11 @@ async function main() {
    * find (2026-09-25). The best median is still named in the table.
    */
   const trial = TRIAL_ROWS.map((n) => table.find((t) => t.cfg.name === n)).find(Boolean);
-  const drawn = trial || findPlanRow(table) || best;
+  /* A row asked for by name (workflow 14 `draw_row`, 2026-10-25) beats the
+     trial list: a comparison draws the row it is testing. */
+  const askedRow = process.env.DRAW_ROW ? table.find((t) => t.cfg.name === process.env.DRAW_ROW) : null;
+  if (process.env.DRAW_ROW && !askedRow) console.log(`DRAW_ROW "${process.env.DRAW_ROW}" is not a row of this run; drawing as usual.`);
+  const drawn = askedRow || trial || findPlanRow(table) || best;
   /*
    * THE EDGE REFINER'S LAYERS ON WHATEVER REFINED ROW IS DRAWN (owner,
    * 2026-10-04: "the edge refiner still isn't showing anything"). They were
@@ -3043,13 +3114,28 @@ async function main() {
      * handed. The folder name and the picker label both come out of this, and
      * a run labelled from a guess is a run nobody can find again.
      */
-    await publishRenderings(bucket, drawn, lawns, using, {
+    const ident = {
       model: py ? py.manifest.model : (eye ? 'dinov2-tiled-224' : 'no-backbone'),
       size: py ? py.manifest.size : (eye ? 224 : null),
       noBackbone: process.env.NO_BACKBONE === 'true',
       aerialEye,
       windowed: py ? (py.manifest.windowed ?? null) : null,
-    });
+    };
+    /*
+     * ITS CONTROL, DRAWN TOO (owner, 2026-10-25: "a button that changes the
+     * prediction card that's being viewed with the same lot in its twin
+     * run"). When the drawn row is not THE PLAN's, THE PLAN's row of the same
+     * run is drawn as a second folder, and each names the other as its twin,
+     * so the predictions page flips a card between the two in place.
+     */
+    const plan = findPlanRow(table);
+    const control = plan && drawn !== plan ? plan : null;
+    const mainSlug = runSlug({ at: new Date(), models: [ident.model || 'detector'], suffix: ident.size ? `${ident.size}px` : '' });
+    const controlSlug = control ? `${mainSlug}-control` : null;
+    if (control) {
+      await publishRenderings(bucket, control, lawns, using, { ...ident, slug: controlSlug, twin: mainSlug, role: 'control' });
+    }
+    await publishRenderings(bucket, drawn, lawns, using, { ...ident, slug: mainSlug, ...(control ? { twin: controlSlug, role: 'trial' } : {}) });
   }
 
   /*

@@ -36,6 +36,9 @@ const SET = QS.get('set') === 'crowns' ? 'crowns' : '';
  * real pattern and refuses anything outside it.
  */
 const RUN = /^[a-z0-9][a-z0-9-]{0,95}$/.test(QS.get('run') || '') ? QS.get('run') : '';
+/* The twin run to flip cards against: named in the address bar (empty there
+   means none, overriding the run's own record), else null. */
+const TWIN = QS.has('twin') ? (/^[a-z0-9][a-z0-9-]{0,95}$/.test(QS.get('twin') || '') ? QS.get('twin') : '') : null;
 
 /**
  * Which of the two pictures is showing, for every lawn at once.
@@ -785,6 +788,28 @@ function fillPicker(runs, current) {
   });
 }
 
+/** The twin picker: any other run, or none; the current twin selected. */
+function fillTwinPicker(runs, current, twin) {
+  const sel = $('#twin');
+  if (!sel || runs.length < 2) return;
+  $('#twinpick').hidden = false;
+  const none = el('option', null, 'none');
+  none.value = '';
+  sel.append(none);
+  for (const r of runs) {
+    if (r.slug === current) continue;
+    const o = el('option', null, runLabel(r));
+    o.value = r.slug;
+    if (r.slug === twin) o.selected = true;
+    sel.append(o);
+  }
+  sel.addEventListener('change', () => {
+    const next = new URLSearchParams(location.search);
+    if (sel.value) next.set('twin', sel.value); else next.set('twin', '');
+    location.search = next.toString();
+  });
+}
+
 /**
  * The settings the run was given, as one line.
  *
@@ -883,11 +908,63 @@ function settingsLine(settings) {
    * then C01 on, then any lawn with no name in the order the run wrote them. The index is kept as written;
    * `i` stays the position there, which is what the picture keys are named by.
    */
+  /*
+   * THE TWIN RUN (owner, 2026-10-25: "when we do a comparison run like the
+   * trust under trees vs don't trust under trees, ... a button that changes
+   * the prediction card that's being viewed with the same lot in its twin
+   * run"). The twin is the address bar's `twin`, else the run's own record
+   * of its control (settings.twin, written by a comparison run), else none;
+   * the picker beside the run's changes it. Each card whose lot the twin
+   * also drew gets a button that swaps the card, in place, to the twin's
+   * picture and figures for the same lot, and back.
+   */
+  const twinSlug = TWIN !== null ? TWIN : (data.settings?.twin || '');
+  const twinEntries = new Map();
+  let twinLabel = '';
+  fillTwinPicker(runs, want, twinSlug);
+  if (twinSlug && twinSlug !== want) {
+    try {
+      const res = await fetch(`/api/admin/predictions?run=${encodeURIComponent(twinSlug)}`);
+      if (res.ok) {
+        const t = await res.json();
+        (t.entries || []).forEach((e, i) => { if (e.id) twinEntries.set(e.id, { e, i }); });
+        const r = runs.find((x) => x.slug === twinSlug);
+        twinLabel = t.config || (r ? runLabel(r) : twinSlug);
+      }
+    } catch { /* no twin buttons */ }
+  }
+  const withTwin = (card, e) => {
+    const twin = e.id && twinEntries.get(e.id);
+    if (!twin) return card;
+    const holder = el('div', 'twinholder');
+    const bar = el('div', 'twinbar');
+    const btn = el('button', 'ghost twinbtn', 'Show twin run');
+    btn.type = 'button';
+    btn.setAttribute('aria-pressed', 'false');
+    const which = el('span', 'twinwhich', `Viewing: ${data.config}`);
+    bar.append(btn, which);
+    let other = null;
+    let showingTwin = false;
+    btn.addEventListener('click', () => {
+      if (!other) other = row(twin.e, twin.i);
+      showingTwin = !showingTwin;
+      card.hidden = showingTwin;
+      other.hidden = !showingTwin;
+      if (!other.isConnected) holder.append(other);
+      btn.textContent = showingTwin ? 'Show this run' : 'Show twin run';
+      btn.setAttribute('aria-pressed', String(showingTwin));
+      which.textContent = `Viewing: ${showingTwin ? twinLabel : data.config}`;
+      holder.classList.toggle('istwin', showingTwin);
+    });
+    holder.append(bar, card);
+    return holder;
+  };
+
   const order = entries.map((e, i) => [e, i]).sort(([a, ia], [b, ib]) => {
     if (a.tag && b.tag) return a.tag.localeCompare(b.tag, undefined, { numeric: true });
     if (a.tag || b.tag) return a.tag ? -1 : 1;
     return ia - ib;
   });
   const list = $('#list');
-  for (const [e, i] of order) list.append(row(e, i));
+  for (const [e, i] of order) list.append(withTwin(row(e, i), e));
 })();

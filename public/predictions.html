@@ -111,6 +111,14 @@
           <span>Run</span>
           <select id="run"></select>
         </label>
+        <!-- THE TWIN (owner, 2026-10-25: "a button that changes the prediction
+             card that's being viewed with the same lot in its twin run"). The
+             run a comparison was made against; each card can flip to it in
+             place. Filled from the run's own record, or chosen here. -->
+        <label class="runpick" id="twinpick" hidden>
+          <span>Twin</span>
+          <select id="twin"></select>
+        </label>
         <button type="button" id="flip" class="ghost" aria-pressed="false">
           All: raw mask
         </button>

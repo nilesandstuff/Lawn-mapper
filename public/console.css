@@ -149,6 +149,12 @@ body { background: var(--bg); }
   display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end;
   margin: 12px 0 8px;
 }
+/* The twin flip on each prediction card (2026-10-25): a button above the
+   card, and a coloured edge while the card shows the twin run. */
+.twinbar { display: flex; align-items: center; gap: 10px; margin: 0 0 6px; flex-wrap: wrap; }
+.twinbar .twinbtn { min-height: 36px; }
+.twinwhich { font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
+.twinholder.istwin > .entry { box-shadow: inset 4px 0 0 #b45309; }
 .runpick { display: flex; flex-direction: column; gap: 4px; flex: 1 1 220px; }
 .runpick span { font-size: 12.5px; color: var(--muted); }
 .runpick select {

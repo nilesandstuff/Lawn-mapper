@@ -460,6 +460,16 @@ on:
         required: false
         default: ''
 
+      draw_row:
+        # WHICH ROW THE PICTURES SHOW (owner, 2026-10-25), by its exact name in
+        # the table, e.g. "decoder, edge refined + stage 3, span, lidar veto,
+        # see-through small-100". When it is not THE PLAN's row, THE PLAN's row
+        # is drawn too as its twin, and the predictions page flips each card
+        # between the two.
+        description: 'Draw this row (its exact table name) instead of THE PLAN''s, with THE PLAN''s as its twin; empty = as usual'
+        required: false
+        default: ''
+
       also_draw:
         # ONE MORE MAP, DRAWN AND NEVER LEARNED FROM (owner, 2026-10-22: the
         # Byron Center condo complex "just as an evaluation map so I can see
@@ -1651,6 +1661,7 @@ jobs:
           LIDAR_ALIGN: ${{ inputs.lidar_align }}
           SEEN_ONLY_TWINS: ${{ inputs.seen_only }}
           RUN_ABOUT: ${{ inputs.about }}
+          DRAW_ROW: ${{ inputs.draw_row }}
           # 15 cm a cell, 512 to 1024 across. The old fixed 512 was an input
           # until 2026-09-24; H23 measured the two as the same.
           GRID_CELL_M: '0.15'

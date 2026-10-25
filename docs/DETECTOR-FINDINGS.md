@@ -8165,6 +8165,36 @@ is 130 sqft, so maybe the cutoff should be 100 sqft"),** on the condo,
 where grass islands between driveways run 100 to 150 sq ft. Same scope as
 above: the outline, not the scored mask.
 
+### S65. Why trusting the detector under trees in the open did not help (owner, 2026-10-25: "Is it that we're not doing a good job of judging bare vs in leaf ... Is it that the traces under bare trees are just bad? Is something else happening, like the edge refiner is being shut off under trusted trees?") -- SPECULATION, measurement queued
+
+**From the code, not measured:**
+- **S63 judged nothing about the season.** `small-N` trusts stage 1 under
+  every small clump, leafy or bare, so a green crown on a summer photo is
+  trusted too. The Mapbox lots, mostly leaf-on, are where it lost (H123: 8 /
+  8 and 9 / 17).
+- **The decoder has never been taught under trees.** With `canopy: on
+  lawn` (train_decoder.py), canopy over lawn the tracer drew carries no
+  weight, and canopy the tracer left out is graded not-lawn. Under a crown
+  the decoder has seen only "not lawn" examples; S63 trusted an answer it
+  was never trained to give.
+- **The edge refiner is not switched off under trusted trees.** Those cells
+  keep the refined decoder's answer; the refiner was trained under the same
+  rule, so it inherits the same gap.
+- **H75 and H77 (Scale-MAE, 80 lots, 3 seeds):** the decoder taught under
+  trees is far better under the trees and worse in the open; used under
+  every canopy cell it changed almost nothing. Used only under trees in the
+  open, it has not been tried.
+
+**Built for the next run:** the row "THE PLAN, taught under small trees"
+(the taught decoder on canopy clumps under 100 m2 only, THE PLAN
+elsewhere), and a breakdown printed under the see-through table: on the
+cells S63 trusted, by photo season and by whether the crown reads bare,
+the share the tracer drew as lawn and each answer's false lawn and missed
+lawn -- the refined decoder, THE PLAN's stage 3, the taught decoder. It
+says which of the three explanations carries the error. Labels: the run
+draws the small-100 row with THE PLAN's as its twin, so the pictures can be
+flipped lot by lot on the predictions page.
+
 ### S64. The live server's grid at 15 cm on big lots, not 1024 cells (owner, 2026-10-24: "That's detail being thrown away") -- BUILT, OFF, NOT MEASURED
 
 **Where it comes from.** The condo press (run log 40127224975): the served
