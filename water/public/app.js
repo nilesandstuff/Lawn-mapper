@@ -26,6 +26,7 @@
 import { tracedOn, lineUpAt } from '/lib/shade/traced.js';
 import { boxFor } from '/lib/site.js';
 import { sprinklers } from '/heads.js';
+import { viewer3d, groundMesh } from '/view3d.js';
 import { openable } from '/lib/maps.js';
 import { KINDS as LAYER_KINDS, FIELD_WORDS, typeWords, hasCounty, askBox, compact, freshEnough, summary as layerSummary, pick as layerPick, intakesNear } from '/lib/layers.js';
 
@@ -210,7 +211,57 @@ function overlay(d, v, { hard = true } = {}) {
   return img;
 }
 
+/* TOP DOWN OR 3D (public/view3d.js): the 3D view drapes the 2D map, as it is drawn, over the lidar ground, so
+   every view and every step shows in both; it is for looking (taps and drags edit in the top-down view) */
+const three = { on: false, v: null, meshFor: null, tex: 0, exag: 3 };
 function draw() {
+  draw2d();
+  if (three.on) texSoon();
+}
+function texSoon() {
+  if (three.tex) return;
+  three.tex = requestAnimationFrame(() => {
+    three.tex = 0;
+    if (!three.on || !three.v) return;
+    ensureGround();
+    // the map's canvas, at most 2048 px a side (a phone's texture limit is often 4096; memory is the rest)
+    const cv = $('#view'), s = Math.min(1, 2048 / Math.max(cv.width, cv.height));
+    const c2 = document.createElement('canvas'); c2.width = Math.round(cv.width * s); c2.height = Math.round(cv.height * s);
+    c2.getContext('2d').drawImage(cv, 0, 0, c2.width, c2.height);
+    three.v.setTexture(c2);
+  });
+}
+/** The ground's mesh, made once per survey, each cell's middle placed on the 2D map's canvas. */
+function ensureGround() {
+  const d = view.data;
+  if (!d?.z || three.meshFor === d) return;
+  const g = d.grid, dx = d.shift.east / g.k, dy = d.shift.north / g.k, cv = $('#view');
+  const mesh = groundMesh({ W: g.W, H: g.H, cell: g.cell, z: d.z, uv: (c, r) => { const [x, y] = toPx(view.frame, view.photo, [g.bbox[0] + dx + ((c + 0.5) * g.cell) / g.k, g.bbox[3] + dy - ((r + 0.5) * g.cell) / g.k]); return [x / cv.width, y / cv.height]; } });
+  three.v.setGround(mesh); three.v.setExaggeration(three.exag);
+  three.meshFor = d;
+  three.relief = mesh.zRange;
+  $('#stage-hint').textContent = `Drag to turn it, pinch to zoom and move; heights stretched ${three.exag}x (the ground here rises about ${(mesh.zRange * 3.281).toFixed(0)} ft across the map). Taps edit in the top-down view.`;
+}
+function setDim(dim) {
+  const want = dim === '3d';
+  if (want && !view.data?.z) { $('#stage-hint').textContent = 'The 3D view follows the lidar survey: it is still being read.'; return; }
+  three.on = want;
+  document.querySelectorAll('[data-dim]').forEach((b) => b.classList.toggle('on', b.dataset.dim === (want ? '3d' : '2d')));
+  $('#stage').classList.toggle('three', want); $('#view3d').hidden = !want; $('#dim3d').hidden = !want;
+  if (want) {
+    if (!three.v) {
+      try { three.v = viewer3d($('#view3d')); } catch (e) { three.v = { ok: false, err: e.message }; }
+      if (!three.v.ok) { three.on = false; $('#stage').classList.remove('three'); $('#view3d').hidden = true; $('#dim3d').hidden = true; document.querySelectorAll('[data-dim]').forEach((b) => b.classList.toggle('on', b.dataset.dim === '2d')); $('#stage-hint').textContent = `This browser cannot draw in 3D${three.v.err ? ` (${three.v.err})` : ''}.`; three.v = null; return; }
+    }
+    draw();
+    if (three.meshFor) $('#stage-hint').textContent = `Drag to turn it, pinch to zoom and move; heights stretched ${three.exag}x (the ground here rises about ${(three.relief * 3.281).toFixed(0)} ft across the map). Taps edit in the top-down view.`;
+  } else $('#stage-hint').textContent = 'Pinch or use + and \u2212 to zoom; drag to move around.';
+}
+document.querySelectorAll('[data-dim]').forEach((b) => b.addEventListener('click', () => setDim(b.dataset.dim)));
+$('#exag').addEventListener('input', (e) => { three.exag = Number(e.target.value) || 1; $('#exag-v').textContent = String(three.exag); three.v?.setExaggeration(three.exag); if (three.meshFor) $('#stage-hint').textContent = `Drag to turn it, pinch to zoom and move; heights stretched ${three.exag}x (the ground here rises about ${(three.relief * 3.281).toFixed(0)} ft across the map). Taps edit in the top-down view.`; });
+$('#view3d-reset').addEventListener('click', () => three.v?.reset());
+
+function draw2d() {
   const { photo, data: d, frame, site } = view;
   if (!photo || !frame) return;
   const cv = $('#view');
@@ -792,7 +843,7 @@ async function run(site) {
   status(asking ? 'Reading the survey while you do this…' : `Reading the survey for ${site.label}…`);
   const d = await first;
   idle('survey');
-  view.data = d;
+  view.data = d; three.meshFor = null;
   heads.refresh(); // the ground's heights and the buildings: the pressure model solves again with them
   legend();
   draw();

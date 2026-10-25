@@ -1291,6 +1291,17 @@ saves ... So you're responsible for ensuring alignment". The core session's rout
   again 20 s after an answer with no county layer (and after a minute while a source is pending), and keeps a
   copy with no county layer for two days, not thirty.
 
+### H38. A 3D view of the ground (water session, 2026-10-25)
+
+The owner: "the map should have a 2d top down view, and a 3d view that shows the literal slope of the ground".
+public/view3d.js (raw WebGL; the shade map's viewer is a Mapbox layer this page does not load): the analysis
+grid's ground (the lidar's, already on the photo's ground) as a mesh of at most 250 cells a side, holes (roofs,
+water) filled from the ground round them, lit from the south-west so slopes read under the photo. Its texture is
+the 2D map as drawn, redrawn whenever it changes, so every view and every step shows in 3D too. Heights are
+stretched 1-10x (3 by default), labelled with the ground's own rise across the map. One finger turns and tilts,
+two pinch and move, the wheel zooms; it is for looking (taps edit in the top-down view). Checked in a browser on
+the owner's map: the photo, property line and traced lawn sit on the ground; the map's area rises about 25 ft.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge
