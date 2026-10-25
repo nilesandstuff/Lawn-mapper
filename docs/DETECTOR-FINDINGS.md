@@ -1006,6 +1006,47 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H123. TRUSTING THE DETECTOR UNDER TREES STANDING IN THE OPEN (S63) IS NOT A GAIN: small-100 level, 14 better / 10 worse / 80 level, median 15.6% -> 15.9%, p 0.54; small-300 worse, 14 / 21 / 69, 15.6% -> 16.1%, p 0.31; the ground under the trees 13.6% -> 17.4% wrong (one seed) -- 2026-10-25
+*Workflow 14 run 40127014446: `facebook/dinov3-vitl16-pretrain-sat493m`,
+THE PLAN, seed 7, CPU, locked 104 (131u7jm) plus the pond maps
+(`not_lawn: on`), every lot squeezed to 896 -- S62's settings. The
+see-through modes small-100 and small-300 (public/lib/stage3.js
+lawnTrees) as full rows beside THE PLAN's in the same run. Workflow 24 runs
+40147161423 (small-100) and 40147163108 (small-300), both against THE
+PLAN's row of the same run.*
+
+| slice | small-100: better / worse / level | median | small-300: better / worse / level | median |
+|---|---|---|---|---|
+| all 104 | 14 / 10 / 80, p 0.54 | 15.6 -> 15.9 | 14 / 21 / 69, p 0.31 | 15.6 -> 16.1 |
+| county photo (31) | 6 / 2 / 23, p 0.29 | 17.9 -> 17.8 | 5 / 4 / 22 | 17.9 -> 18.5 |
+| Mapbox photo (73) | 8 / 8 / 57 | 14.3 -> 15.3 | 9 / 17 / 47, p 0.17 | 14.3 -> 15.6 |
+
+**Seen / inferred** (the run's own split, THE PLAN -> small-100 ->
+small-300): seen 14.6 -> 14.2 -> 13.8, **inferred 13.6 -> 17.4 -> 17.7**.
+The ground in the open gets a little better; the ground under the trees
+gets clearly worse, as H69 found for `trust` on another eye.
+
+**The see-through table, stage 3 alone (no veto), over the edge-refined
+decoder:** every lot off 16.0 / small-100 16.3 / small-300 16.3; the 35 lots
+that look leaf-off 17.9 / 17.8 / 18.5 -- level at 100 m2 on exactly the
+lots it was meant for; the county lots 17.9 / 17.8 / 18.5.
+
+**Lot by lot:** helped C99 60.5 -> 54.9, C74 24.6 -> 19.6, C89 33.1 -> 30.8
+(county, leaf-off); hurt C79 33.9 -> 42.1 and **C87 33.6 -> 36.8** -- the lot
+H75 named as the one that "missed lawn under leaf-off canopy", which this
+rule was for. At 300 m2, B24 14.3 -> 37.0 and C49 17.9 -> 31.7.
+
+**Against S63's bar: neither size is adopted.** small-100 is level on the
+lots that look leaf-off and not better overall; small-300 is worse on more
+lots than better. Stays off (public/lib/finish.js SEE_THROUGH 'off').
+
+**What this does NOT say.** One seed. The scorer squeezes every lot to 896,
+not v7's native read, so a crown is a few coarse cells here. The condo's
+islands (a tree on grass in a driveway) are a narrow case inside "canopy
+under 100 m2", and nothing here isolates them. A narrower rule -- trust the
+detector under a small clump only where it is confident, say 70% or more
+-- is not built or measured.
+
 ### H122. ON DINOv3-sat THE POND MAPS COST THE TYPICAL LOT A LITTLE AND FIX THE BIG POND: THE PLAN with them 15.6% against its own twin without them 15.5%, 28 better / 48 worse / 28 level, +0.4 [-0.1, +0.6], p 0.029; the county-photo lots +0.8 [+0.2, +1.4], p 0.011, 5 / 18 / 8; B12 (the big Kent pond) 21.2% -> 10.3% (S62, one seed) -- 2026-10-24
 *Workflow 14 run 39997941983 (S62): `facebook/dinov3-vitl16-pretrain-sat493m`,
 THE PLAN, seed 7, CPU, locked 104 plus the 5 approved not-lawn-only (pond)
@@ -8150,7 +8191,7 @@ better on more lots than worse with a sign test under 0.05, or level on the
 error with no lot more than two points worse and the GPU time per lot
 acceptable; not if it is worse on more lots than better.
 
-### S63. Trees standing in the open keep the detector's answer; woods do not (owner, 2026-10-24: "the tree guessing algorithm should trust the detector when it comes to leaf off trees in a lawn ... BUT there should be a safeguard for preventing lawn traces from showing up in genuine woods") -- BUILT, OFF, NOT MEASURED
+### S63. Trees standing in the open keep the detector's answer; woods do not (owner, 2026-10-24: "the tree guessing algorithm should trust the detector when it comes to leaf off trees in a lawn ... BUT there should be a safeguard for preventing lawn traces from showing up in genuine woods") -- MEASURED 2026-10-25: not a gain, see H123; stays off
 
 **Where it comes from.** The condo complex (the owner's map at
 -85.70712,42.83547) on release v7: grass islands between driveways, each
@@ -9962,6 +10003,7 @@ deploy log says how many are locked and how many are waiting.
 | 2026-10-23 | 39879564306 | 104 (locked, 131u7jm) | S58 `windows: native`, `gpu: modal`: DINOv3-sat with the 26 big lots read whole at 10 cm in one pass (61-188 patches a side) on an L4 (extraction 147 s, decoders 426 + 657 s), THE PLAN, seed 7, no pond examples | 16.0% (edge refined + stage 3, span, veto) | — | **H121.** Workflow 24 run 39906929463 vs S51 (same eye squeezed): all 42 / 35 / 27, -0.1 [-0.5, +0.3]; the big 26: 17 / 5 / 4, -1.2 [-1.8, -0.2], p 0.017; run 39906931875 vs Scale-MAE: 67 / 27 / 10, -2.0; big 26 -2.8 |
 | 2026-10-23 | 39887800268 | 104 (locked, 131u7jm) | S59: S51 again over cached features (seed 7) to draw the Byron Center map | 15.5% (edge refined + stage 3, span, veto) | — | 15.5 against S51's 15.4 from the same features and seed (S54 and S52-on-DINOv3 read 15.5 too): a tenth of a point of nondeterminism, not the decimal reproduction of H26. The draw was refused by the site's edge (403 to the runner); run 3 (39907286242) read the map and the county export from the database and died on a call of mine; the picture came from workflow 43 below |
 | 2026-10-24 | 40054742999 | 1 saved map (the condo complex, drawn only) | Workflow 32 `map`, after 32f396d: release v7's live native read, pressed twice | -- | -- | **A LIVE BUG, FOUND BY THE OWNER AND FIXED:** v7's first live presses on the condo complex (40045019028, and the owner's own) came back as horizontal stripes. alpha_infer.whole unpacked every read as the eye's default 56 x 56 patches; a native read at 4096 px is 256 x 256, and patches_of keeps the last side*side tokens, so the bottom twelve rows of the grid were laid across the whole lot. Training unpacked by S // patch, so H121 and v7's weights were never affected; only the live reading of lots past 90 m on v7 (2026-10-23 23:11 to 2026-10-24 02:31 UTC). After the fix: raw mask 970x1024, lawn in 31.4% of it, row-to-row change 0.011 against column-to-column 0.010, ratio 1.07 (stripes would be > 3). Both presses succeeded (photo pieces two at a time, retried): GPU 131 s cold / 79 s warm (backbone 79 / 74 s), downloads 88 / 71 s, wall 241 / 161 s. tools/alpha_infer_test.py pins the unpacking |
+| 2026-10-25 | 40127014446 | 104 (locked, 131u7jm) + 5 not-lawn-only maps | DINOv3-sat, THE PLAN, seed 7, S62's settings, with S63's see-through rows small-100 and small-300 | 15.6% (THE PLAN) | -- | **H123.** small-100 15.9% (14 / 10 / 80, p 0.54), small-300 16.1% (14 / 21 / 69); inferred 13.6 -> 17.4 / 17.7. Not adopted. Workflow 24: 40147161423, 40147163108 |
 | 2026-10-24 | 40127224975 (and 40126872192) | 1 saved map (the Byron Center condo complex) | Workflow 32 `map`, `patches: on`: one live press on release v7 (county export at 10 cm, 4 pieces), the served mask on a 970 x 1024 grid at **44 cm a cell**; decoder, canopy, roof and void kept | -- | -- | Owner's question, why the small front patches were left out. Of the 110 patches inside the lot the decoder is at least 30% sure of and 3,000 sq ft or under: **87 kept (49,195 sq ft), 16 unsure (1,593), 7 under canopy and unsure (1,296)**; none lost to the lidar veto. The dropped ones sit at a mean of 40-52%, at the 50% cut; on the canopy ones stage 3 also cleared what the decoder did call lawn (e.g. 260 sq ft, 46% of it at 50%+, 100% canopy, 0% kept). Lawn in the lot by cut: 20% 520,246 / 30% 489,824 / 40% 465,314 / **50% 438,509** / 60% 411,753 / 70% 379,018 / 80% 337,269 sq ft. The first press (40126872192) listed only the 40 biggest patches, all kept, so it was pressed again; about 3 cents each. |
 | 2026-10-24 | 40046749639 | 1 saved map (the Byron Center condo complex, drawn only) | Workflow 43 with `not_lawn: on` over S62's caches: DINOv3-sat, pond maps, squeezed at 896 (not v7's native read), the outline limits by area (S61), the fixed photo fetch (4ff3f49) | -- | -- | 412,562 sq ft of lawn inside the line in 24 pieces and 1,858 handles (the first draw, no pond maps and the old limits: 560,710 in 6 pieces and 392 handles). The line holds 1,596,359 sq ft; the finished mask calls 205,585 sq ft outside it, which the raw picture shows dimmed by design; the traced outline puts 37 sq ft outside (edge rounding). So the trace the owner saw past the line was the raw mask, not the outline. The four photo pieces came in 45 s two at a time (about 2 min one at a time). Picture 105 of runs/2026-10-23-2006-edt-facebook-dinov3-vitl16-pretrain-sat493m-896px |
 | 2026-10-24 | 40045019028 | 1 saved map (the Byron Center condo complex, drawn only) | Workflow 32 `map`: a live press on release v7 (native 10 cm reads), county export at 10 cm in 4 pieces, pressed twice | -- | -- | First press FAILED: photo piece 2 of 4 came back as no picture, and the Pillow error could not be read back by the result page; fixed in 4ff3f49 (each piece retried, plain errors, two pieces at once). Second press: 970x1024 cells; GPU billed 79.5 s (backbone 73.1 s at the 4096 px cap, canopy 1.7, decoder 0.6), about 2 cents on the L4; downloads on the CPU 162 s (the photo pieces most of it; lidar 19.7, NAIP 10.2); wall 267 s. No memory trouble |

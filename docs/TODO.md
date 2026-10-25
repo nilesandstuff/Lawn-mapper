@@ -70,10 +70,6 @@ inside of the loop".
 
 ## In progress
 
-- **Trees standing in the open keep the detector's answer, woods do not**
-  (S63, owner 2026-10-24). Built and off. Workflow 14 run 40127014446 on the
-  free runner scores `small-100` and `small-300` against THE PLAN; read it
-  with workflow 24 against the bar in S63.
 - **Storm drains everywhere.** The nightly sweep (workflow 44) reads ~60
   county servers a night, and the live search runs where people look.
   NCDOT's pipes are retried tonight.
@@ -87,6 +83,10 @@ inside of the loop".
   canopy input.
 
 ## Done
+
+- 2026-10-25: trusting the detector under trees in the open (S63) measured
+  as not a gain, H123 (run 40127014446). Off. A narrower version (only where
+  the AI is 70%+ sure) is an untested idea.
 
 - 2026-10-24: why the condo's small front patches were dropped (workflow 32
   run 40127224975): mostly the AI's confidence just under 50%, and under
