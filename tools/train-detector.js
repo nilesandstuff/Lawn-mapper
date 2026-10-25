@@ -2778,13 +2778,18 @@ async function main() {
           /* S65 (owner, 2026-10-25: "we should look into why the bare tree
              trust isn't helping"): the taught decoder only under trees
              standing in the open, THE PLAN everywhere else. */
+          if (tag !== 'taught') continue; /* one is the question; the canopy-input arm would be another three masks a lot */
           const cfgT = { ...cfg, name: `${cfg6.name}, ${tag} under small trees`, stage3: true };
           console.log(`Scoring "${cfgT.name}" (the taught decoder on canopy clumps under 100 m2 only)…`);
           table.push(summarise(cfgT, judge(masks, { spanM: 8, reachM: 1, minRing: 0.5, veto: true, under: taught.masks, underOnly: 'small-100' }), cfg.dims));
         }
         /* And S63's trees in the open (owner, 2026-10-24), as full rows so
            workflow 24 can pair them lot by lot with THE PLAN. */
-        for (const mode of ['colour', 'evergreen', 'small-100', 'small-300']) {
+        /* 'evergreen' (failed, H69) and 'small-300' (worse, H123) stay in the
+           see-through table above but no longer as full rows: every full row
+           holds three masks a lot for the whole run, and run 40210560105
+           lost its runner, out of memory most likely, with them all. */
+        for (const mode of ['colour', 'small-100']) {
           const cfgS = { ...cfg, name: `${cfg6.name}, see-through ${mode}`, stage3: true };
           console.log(`Scoring "${cfgS.name}"…`);
           table.push(summarise(cfgS, judge(masks, { spanM: 8, reachM: 1, minRing: 0.5, veto: true, seeThrough: mode }), cfg.dims));
