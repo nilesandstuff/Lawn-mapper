@@ -6,10 +6,11 @@ SPECULATION), as always.
 
 ## In progress (2026-10-25)
 
-2. **Trees using the lawn's water: research first, build nothing** until the
-   owner decides. Root spread against crown size, how deep tree roots and turf
-   roots overlap, how much a tree draws, how it is shared with grass, how others
-   model it.
+2. **Trees using the lawn's water: researched (FINDINGS H40, research-trees.md);
+   waiting on the owner's decision.** The proposal: shade as now, plus each
+   tree's root draw (its water use x the share from the turf's depth) spread
+   over a disc about twice its crown, every number uncertain about threefold. A
+   probe transect beside a maple and a spruce would settle the numbers.
 
 ## Queued
 

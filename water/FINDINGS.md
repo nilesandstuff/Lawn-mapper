@@ -1324,6 +1324,19 @@ The owner: "we should try to find out the rate of rainfall, at least for short t
   hour; Sep 4, 0.61 in, up to 0.40 -- both partly ran off. A page card lists the recent rains with their hourly
   peaks. Fetching the hours took about 3 s. The ten-year plan still runs on daily totals (TODO 7).
 
+### H40. Trees using the lawn's water: researched, nothing built (water session, 2026-10-25)
+
+The owner: "research trees before doing anything". The notes, with sources and tags, are water/research-trees.md.
+In short (HARD, sourced there): tree roots reach 1.7-3.8x the crown's radius (Gilman 1988, young trees only); in
+forests 38-50% of tree roots lie in the top 20 cm (Jackson 1996), and turf suppresses tree roots in that layer
+(Watson 1988), so a lawn tree likely draws less of it; a tree's water use per m2 of crown is about 0.3x ET0
+(suburban sap flow, Minnesota: Peters 2010) to about 1.0x (a sizing rule: Lindsey & Bassuk 1991), with 0.7 the
+extension figure for humid climates (Pittenger & Shaw 2013). No study measured soil moisture outward from a trunk
+in a lawn. The proposed model (shade as now, plus a root draw K_t x ET0 x crown area x f spread as a cone to k x
+the crown radius) is SPECULATION; at its middle values a tree adds about 5% to the turf's use over its disc and
+the shade under the crown outweighs the roots, at the top of every range it takes about 3 mm a day near the trunk.
+A soil-moisture probe transect, north and south of a maple and a spruce over a dry week, would settle it.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge
