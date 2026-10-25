@@ -1302,6 +1302,28 @@ stretched 1-10x (3 by default), labelled with the ground's own rise across the m
 two pinch and move, the wheel zooms; it is for looking (taps edit in the top-down view). Checked in a browser on
 the owner's map: the photo, property line and traced lawn sit on the ground; the map's area rises about 25 ft.
 
+### H39. How fast the recent rains fell (water session, 2026-10-25)
+
+The owner: "we should try to find out the rate of rainfall, at least for short term 'past week' type looks".
+
+- SOURCE: the Iowa Environmental Mesonet's reanalysis (IEMRE), hourly at a point, free, open to browsers
+  (mesonet.agron.iastate.edu/iemre/hourly/{date}/{lat}/{lon}/json). Its hourly rain is the NWS Stage IV radar
+  analysis, gauge bias-corrected, adjusted to PRISM (its own page; ERA5-Land before 1997). It also carries soil
+  temperature at about 4 in (ECMWF/ERA5-Land): for the soil-cooling item (TODO 6).
+- WHICH 24 HOURS A PRISM DAY IS (HARD, measured on the owner's lot, 14 days with 2.5 mm or more, Aug 27 - Oct 16
+  2026): the 24 hours ENDING 12:00 UTC on its date. That window's radar total tracked PRISM's (e.g. 28.7 vs 31.5
+  mm, 15.2 vs 17.8, 13.5 vs 15.5, 8.1 vs 9.7; worst 24.6 vs 14.2), the UTC day and the window after did not (35.8
+  vs 15.5; 34.3 vs 19.6). Radar and gauges disagree locally by up to a factor of about 1.7 on single days.
+- USE: PRISM's daily total is kept; the radar gives its hours (scaled to the total). For the last 12 rainy days
+  (2.5 mm or more) of the recent-weeks run ("this week"), the day's runoff on each cell is the larger of the curve
+  number's (on the total) and Horton's infiltration excess (each hour's rain over what that ground takes in an
+  hour: the rate the cycle-and-soak advice uses, from the survey's intake, the texture and the slope). Water
+  running on from uphill still comes as the day's sum. Tested: 25 mm in one hour on ground taking 8 mm/h sheds over
+  10 mm a cell; the same over 24 hours sheds what the daily total did.
+- ON THE OWNER'S LOT: the lawn takes about 0.14 in an hour (Filer loam); Oct 2 brought 1.24 in, up to 0.33 in an
+  hour; Sep 4, 0.61 in, up to 0.40 -- both partly ran off. A page card lists the recent rains with their hourly
+  peaks. Fetching the hours took about 3 s. The ten-year plan still runs on daily totals (TODO 7).
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge

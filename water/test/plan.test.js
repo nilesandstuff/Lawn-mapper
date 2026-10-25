@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 import { penmanMonteith, ra, hargreaves, dayOfYear } from '../lib/et.js';
 import { hoursOf, hourly } from '../lib/weather.js';
 import { parseWkt, rootZone, boxWkt, ROOT_CM } from '../lib/soil.js';
+import { rainHours } from '../lib/weather.js';
 import { scsRunoff, cnSlope, curveNumber, buildModel, simulate, idealIrrigation, PARAMS } from '../lib/balance.js';
 import { roofRouting } from '../lib/gutters.js';
 import { waterPlan } from '../lib/plan.js';
@@ -102,6 +103,31 @@ test('watered the day before it would stress, a lawn cell never passes its readi
   assert.equal(Math.max(...out.dryDays), 0);
   const without = simulate(model, summer());
   assert.ok(Math.min(...without.dryDays) > 30, 'rain alone leaves it dry for weeks');
+});
+
+test('rain by the hour: the day\'s total keeps its amount and takes the radar\'s timing; a downpour runs off where a soak does not', () => {
+  // PRISM's day ends at 12:00 UTC: 20 mm falling 03:00-05:00 UTC on the 2nd belongs to the 2nd's window
+  const t = (d, h) => Date.parse(`2026-07-0${d}T${String(h).padStart(2, '0')}:00:00Z`);
+  const hours = [];
+  for (let d = 1; d <= 3; d++) for (let h = 0; h < 24; h++) hours.push({ utc: t(d, h), mm: d === 2 && (h === 3 || h === 4) ? 9 : 0 });
+  const h = rainHours(20, '2026-07-02', hours);
+  assert.equal(rainHours(20, '2026-07-03', hours), null, 'the next PRISM day does not take the same hours');
+  assert.equal(Math.max(...rainHours(20, '2026-07-02', hours, { prism: false })), 10, 'a UTC day has them too');
+  assert.equal(h.length, 24); assert.ok(Math.abs(h.reduce((a, b) => a + b, 0) - 20) < 0.05); assert.equal(Math.max(...h), 10);
+  assert.equal(rainHours(20, '2026-07-02', hours.map((x) => ({ ...x, mm: 0 }))), null, 'no shape: the daily total stands');
+  // the same 25 mm: once in an hour, once over a day
+  const res = lot({ roofs: [] });
+  const N = res.grid.W * res.grid.H;
+  const soils = [{ rz: rootZone(loam.profile), drainage: loam.drainage, hydgrp: loam.hydgrp, wetByMonth: loam.wetByMonth }];
+  const model = buildModel(res, { kinds: new Uint8Array(N).fill(1), soilAt: new Int16Array(N), soils, roofTo: new Int32Array(N).fill(-1) });
+  model.intakeMmH = new Float32Array(N).fill(8); // ground taking 8 mm an hour
+  const day = (hrs) => [{ date: '2026-07-02', tmax: 25, tmin: 15, rain: 25, et0: 4, hours: hrs }];
+  const burst = simulate(model, day([...new Array(23).fill(0), 25]));
+  const soak = simulate(model, day(new Array(24).fill(25 / 24)));
+  const daily = simulate(model, day(undefined));
+  const off = (o) => o.ranOff.reduce((a, b) => a + b, 0) / N;
+  assert.ok(off(burst) > 10, `the downpour sheds ${off(burst).toFixed(1)} mm a cell`);
+  assert.equal(off(soak), off(daily), 'a soak is the daily total\'s runoff');
 });
 
 test('a downspout sends the roof to where it empties; two split it; none is a guess', () => {

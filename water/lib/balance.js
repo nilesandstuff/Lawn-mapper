@@ -258,6 +258,17 @@ export function simulate(model, days, { irrigate = null, start = null, record = 
         film[i] += take; q = w - take;
       } else {
         q = scsRunoff(w, cn[i]);
+        /* THE RATE (weather.js addRainHours): on a day whose hours are known, rain falling faster than this ground
+           takes it in runs off even where the day's total would not (Horton's infiltration excess) -- the larger
+           of the two is taken. The ground's rate is the one the cycle-and-soak advice uses (soil.js
+           maxSprinklerRate: the survey's intake, the soil's texture and the slope). */
+        if (day.hours && model.intakeMmH && P > 0) {
+          const f = model.intakeMmH[i];
+          let excess = 0;
+          for (const h of day.hours) if (h > f) excess += h - f;
+          // its own rain only (water running on from uphill comes as the day's sum, without hours)
+          if (excess > q) q = Math.min(w, excess);
+        }
         let inf = w - q + add;
         const room = Dr[i] + (satRoom[i] - grav[i]);
         if (inf > room) { q += inf - room; inf = room; }

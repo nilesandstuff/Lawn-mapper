@@ -10,8 +10,6 @@ SPECULATION), as always.
    owner decides. Root spread against crown size, how deep tree roots and turf
    roots overlap, how much a tree draws, how it is shared with grass, how others
    model it.
-3. **The rate of rain, at least for the recent weeks** ("this week"): hourly or
-   finer rain, so a cloudburst runs off as it does and a slow soak does not.
 
 ## Queued
 
@@ -40,3 +38,4 @@ SPECULATION), as always.
 (moved here with the date and the FINDINGS entry when finished)
 
 - 2026-10-25: a 3D view of the ground beside the top-down one (FINDINGS H38).
+- 2026-10-25: the rate of the recent rains, hour by hour, in this week's plan (FINDINGS H39).

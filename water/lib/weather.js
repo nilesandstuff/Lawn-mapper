@@ -63,6 +63,59 @@ export async function typicalYears(lat, lng, { years = 10, now = new Date(), fet
   return { ...power, rainFrom: withPrism(power.days, prism) };
 }
 
+/* ------------------------------------------------------------ RAIN BY THE HOUR */
+
+/* HOW FAST IT RAINED (owner, 2026-10-25: "we should try to find out the rate of rainfall, at least for short term
+   'past week' type looks"). The Iowa Environmental Mesonet's reanalysis (IEMRE, free, open to browsers) serves each
+   point's hourly rain: the National Weather Service's Stage IV radar analysis, gauge-corrected, adjusted to PRISM
+   (mesonet.agron.iastate.edu/iemre). The plan keeps PRISM's daily total and takes only the hours' shape from it. */
+export const IEMRE = 'https://mesonet.agron.iastate.edu/iemre/hourly';
+
+/** One local day's hourly rain at a point: [{ utc: ms, mm }]. */
+export async function iemreHours(lat, lng, date, fetchFn = fetch) {
+  const res = await fetchFn(`${IEMRE}/${date}/${lat.toFixed(4)}/${lng.toFixed(4)}/json`);
+  if (!res.ok) throw new Error(`IEMRE answered ${res.status}`);
+  const j = await res.json();
+  return (j.data || []).map((h) => ({ utc: Date.parse(h.valid_utc.replace(/Z$/, ':00Z')), mm: Number.isFinite(h.hourly_precip_in) ? h.hourly_precip_in * 25.4 : 0 }));
+}
+
+/**
+ * The 24 hours a day's rain total belongs to, scaled to that total. A PRISM day is the 24 hours ENDING 12:00 UTC on
+ * its date (7 a.m. Central daylight) -- checked on the owner's lot over 14 rainy days, Aug-Oct 2026: that window's
+ * radar total tracks PRISM's (e.g. 28.7 against 31.5 mm, 15.2 against 17.8), the others do not (FINDINGS H39); a
+ * POWER or station day is taken as the UTC day. hours: [{ utc, mm }] spanning the day before to the day after.
+ * -> [mm x 24], or null when the radar has no rain in the window to give it a shape
+ */
+export function rainHours(dayMm, date, hours, { prism = true } = {}) {
+  if (!(dayMm > 0) || !hours?.length) return null;
+  const H = 3600e3, start = Date.parse(`${date}T00:00:00Z`) - (prism ? 12 * H : 0);
+  const mm = new Array(24).fill(0);
+  for (const h of hours) { const k = Math.floor((h.utc - start) / H); if (k >= 0 && k < 24) mm[k] += h.mm; }
+  const total = mm.reduce((s, v) => s + v, 0);
+  if (!(total > 0)) return null;
+  return mm.map((v) => +((v * dayMm) / total).toFixed(2));
+}
+
+/** The recent rainy days' hours (at least `minMm`; the last `maxDays` of them), on `days` as d.hours. */
+export async function addRainHours(days, lat, lng, { minMm = 2.5, maxDays = 12, fetchFn = fetch } = {}) {
+  const wet = days.filter((d) => d.src !== 'forecast' && d.rain >= minMm).slice(-maxDays);
+  const need = new Set();
+  for (const d of wet) { const t = Date.parse(`${d.date}T12:00:00Z`); for (const o of [-1, 0, 1]) need.add(new Date(t + o * 864e5).toISOString().slice(0, 10)); }
+  const got = new Map(), list = [...need];
+  // four at a time
+  for (let k = 0; k < list.length; k += 4) {
+    await Promise.all(list.slice(k, k + 4).map((date) => iemreHours(lat, lng, date, fetchFn).then((h) => got.set(date, h)).catch(() => {})));
+  }
+  let n = 0;
+  for (const d of wet) {
+    const t = Date.parse(`${d.date}T12:00:00Z`);
+    const hours = [-1, 0, 1].flatMap((o) => got.get(new Date(t + o * 864e5).toISOString().slice(0, 10)) || []);
+    const h = rainHours(d.rain, d.date, hours, { prism: /PRISM/.test(d.src || '') });
+    if (h) { d.hours = h; d.peakMmH = Math.max(...h); n++; }
+  }
+  return n;
+}
+
 /* ---------------------------------------------------------------- PRISM rain */
 
 /* RAIN FROM PRISM, NOT NASA (owner, 2026-10-19: the plan's July rain read high -- 3.95 in, where other
@@ -207,5 +260,7 @@ export async function thisWeek(lat, lng, { back = 14, now = new Date(), gauge = 
   const seen = new Set();
   const days = [...past, ...filled, ...coming].filter((d) => !seen.has(d.date) && seen.add(d.date));
   for (const d of days) if (gauge[d.date] !== undefined) { d.rain = gauge[d.date]; d.src += ' + gauge'; }
-  return { days, today: fc?.days[0]?.date ?? ymd(now) };
+  // how fast the recent rains fell (IEMRE's hours, scaled to the day's total); without them, daily totals
+  const hourly = await addRainHours(days.filter((d) => d.date < (fc?.days[0]?.date ?? ymd(now))), lat, lng, { fetchFn }).catch(() => 0);
+  return { days, today: fc?.days[0]?.date ?? ymd(now), hourly };
 }

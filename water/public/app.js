@@ -722,6 +722,17 @@ function planReport(p) {
     <p>Each zone below needs a different amount, or a different rhythm, to stay between too wet and too dry. Water a zone when it says, by about the depth it says; more is wasted below the roots, less leaves it short.</p>
     <p class="dim">Worked out day by day over ten years of this place's weather: rain and runoff in, the grass's use out, the soil's root zone in between. ${p.shaded ? ` Shade from trees and buildings is counted (the shade map's own light model; the lawn's middle gets about ${Math.round(p.sunShare * 100)}% of open-sky sunlight in summer).` : ' The lawn is taken as in full sun until the shade is worked out.'}${p.seasonDays ? ` The watering season is the shade map's growing season here for ${p.grass === 'warm' ? 'warm' : 'cool'}-season grass, about ${p.seasonDays} days.` : ''} Grass beside paving and sunny walls is counted as using a little more (up to 8% at the edge, an estimate from published measurements).${p.grass === 'warm' ? ' Warm-season grass is let dry a little further between waterings than cool-season.' : ''} These are likely amounts, until a soak test on your lawn confirms them. Depths are what to put down: about a quarter more than the grass uses, since sprinklers water unevenly and the driest spots must get enough (a typical home system, until your heads are mapped). Roots are taken to reach ${Math.round(p.rootIn || 8)} in, and a day's watering is at most two runs with a soak between, so on slow ground it comes more often, a little at a time.${p.standIn ? ' <strong>No lawn was traced, so this plans for all the open ground</strong>: open this from a Lawn Mapper map for your lawn alone.' : ''}</p></div>`);
   const week = p.thisWeek;
+  /* HOW FAST THE RECENT RAINS FELL (lib/weather.js addRainHours): the radar's hours, scaled to the day's total. A
+     rain faster than the lawn takes water in partly ran off, so it did less than its inches suggest. */
+  const rains = (week?.rains || []).slice(-6).reverse();
+  if (rains.length) {
+    const f = week.lawnIntakeMmH;
+    const in2 = (mm) => (mm / 25.4).toFixed(2);
+    const rows = rains.map((r) => `<tr><td>${dayName(r.date)}</td><td>${in2(r.mm)} in</td><td>${in2(r.peakMmH)} in${Number.isFinite(f) && r.peakMmH > f ? ' <strong>(faster than the lawn takes it: some ran off)</strong>' : ''}</td></tr>`).join('');
+    parts.push(`<div class="card"><h2>The recent rains, and how fast they fell</h2>
+      <table class="months"><tr><th>Day</th><th>Rain</th><th>Most in one hour</th></tr>${rows}</table>
+      <p class="dim">${Number.isFinite(f) ? `Your lawn's soil takes in about ${in2(f)} in an hour on its typical ground. ` : ''}Rain faster than that runs off before it soaks in, so a cloudburst waters the lawn less than its total says; this week's plan counts it hour by hour. The hours are the National Weather Service's radar rain (Stage IV, gauge-corrected), from the Iowa Environmental Mesonet, scaled to the day's gauge-based total (PRISM).</p></div>`);
+  }
   for (const z of p.zones) {
     const pk = peak(z), w = week?.zones.find((x) => x.zone === z.zone);
     const season = z.months.filter((m) => m.waterings || m.high);

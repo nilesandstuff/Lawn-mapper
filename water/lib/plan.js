@@ -94,6 +94,9 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
   // as water reaching the grass: what is put down, over the scheduling multiplier
   const SM = schedulingMultiplier(params);
   model.dayCapMm = new Float32Array(N).fill(Infinity);
+  // what each cell of ground takes in an hour, mm (rain faster than this runs off, on days whose hours are known)
+  model.intakeMmH = new Float32Array(N).fill(Infinity);
+  for (let i = 0; i < N; i++) if (kinds[i] === KIND.lawn || kinds[i] === KIND.other) model.intakeMmH[i] = maxSprinklerRate(soils[soilAt[i]].rz, model.slope[i]).inPerH * 25.4;
   for (let i = 0; i < N; i++) if (kinds[i] === KIND.lawn) model.dayCapMm[i] = (params.cyclesPerDay * maxSprinklerRate(soils[soilAt[i]].rz, model.slope[i]).inPerH * 25.4) / SM;
 
   const years = Math.max(1, new Set(typical.map((d) => d.date.slice(0, 4))).size); // distinct years (a test may give summers only)
@@ -182,6 +185,10 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
       }),
       rainComing: week.days.slice(ti).reduce((s, d) => s + (d.rain || 0), 0),
       through: week.days[week.days.length - 1].date,
+      // the recent rains whose hours are known: how much, and the most in one hour (weather.js addRainHours)
+      rains: week.days.filter((d) => d.hours && d.date < week.today).map((d) => ({ date: d.date, mm: d.rain, peakMmH: d.peakMmH })),
+      // the lawn's own intake, the middle of its cells (rain faster than this ran off)
+      lawnIntakeMmH: med(Array.from(model.intakeMmH).filter((v, i) => kinds[i] === KIND.lawn && Number.isFinite(v))),
     };
   }
 
