@@ -1337,6 +1337,22 @@ the crown radius) is SPECULATION; at its middle values a tree adds about 5% to t
 the shade under the crown outweighs the roots, at the top of every range it takes about 3 mm a day near the trunk.
 A soil-moisture probe transect, north and south of a maple and a spruce over a dry week, would settle it.
 
+### H41. Soil temperature now: IEMRE against two NOAA reference stations, one week (water session, 2026-10-26)
+
+Asked by the features session (the owner wants a soil-temperature view on the shade map), measured here: IEMRE's
+hourly soil temperature ("4 inch (cough 0-10 or 0-7cm)", ECMWF IFS short-range until ERA5-Land arrives), free and
+open to browsers, against the measured 5 and 10 cm soil temperature of the two U.S. Climate Reference Network
+stations in Michigan (NCEI hourly02 files), 168 hours, Oct 18-24 2026:
+
+| station | IEMRE minus 5 cm, mean | mean absolute | minus 10 cm, mean / abs | week's range, IEMRE / 5 cm |
+|---|---|---|---|---|
+| Gaylord 9 SSW | +0.1 C | 1.5 C | +0.1 / 2.2 C | 11.7 / 6.7 C |
+| Chatham 1 SE | +2.6 C | 2.8 C | +2.4 / 2.6 C | 9.1 / 5.1 C |
+
+So: daily means within about 1-4 C of the station; its daily swing near twice the 5 cm sensor's (it behaves like a
+shallower layer, consistent with 0-7 cm). One week in late October at two points: not enough for a season's
+verdict. Not compared: Open-Meteo, USDA SCAN.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge
