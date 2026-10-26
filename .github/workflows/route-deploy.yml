@@ -43,7 +43,7 @@ jobs:
       - run: npm ci --no-audit --no-fund
 
       - name: Tests
-        run: node route/test/all.js
+        run: node --disable-warning=ExperimentalWarning route/test/all.js
 
       - name: Storage (the shop's address, the first document)
         if: ${{ github.event_name == 'push' || inputs.task == 'deploy' }}

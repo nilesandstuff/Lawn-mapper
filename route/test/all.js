@@ -4,4 +4,5 @@ import './doc.test.js';
 import './solve.test.js';
 import './cache.test.js';
 import './worker.test.js';
+import './usage.test.js';
 import './site.test.js';

@@ -4,7 +4,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { build, fillHome, KEY_SHA256, routeDomainFor, wranglerFor } from '../tools/prepare.mjs';
-import { findOrMake } from '../tools/kv.mjs';
+import { findOrMake, findOrMakeD1 } from '../tools/kv.mjs';
 
 assert.equal(routeDomainFor('lawnmap.example.com'), 'route.example.com');
 assert.equal(routeDomainFor(' LawnMap.Example.com '), 'route.example.com');
@@ -15,6 +15,12 @@ assert.doesNotMatch(wranglerFor('route.example.com'), /kv_namespaces/, 'no stora
 assert.match(wranglerFor('route.example.com', 'abc123'), /\[\[kv_namespaces\]\]\nbinding = "ROUTE"\nid = "abc123"/);
 assert.match(wranglerFor('route.example.com'), new RegExp(`ROUTE_KEY_SHA256 = "${KEY_SHA256}"`));
 assert.match(KEY_SHA256, /^[0-9a-f]{64}$/);
+assert.match(wranglerFor('route.example.com', 'k1', 'd1-uuid'), /\[\[d1_databases\]\]\nbinding = "USAGE"\ndatabase_name = "route-planner"\ndatabase_id = "d1-uuid"/);
+assert.doesNotMatch(wranglerFor('route.example.com', 'k1'), /d1_databases/);
+const d1 = (list) => async (url, init = {}) => (url.includes('/accounts?') ? Response.json({ success: true, result: [{ id: 'a1' }] })
+  : init.method === 'POST' ? Response.json({ success: true, result: { uuid: 'new-d1' } }) : Response.json({ success: true, result: list }));
+assert.deepEqual(await findOrMakeD1(d1([{ uuid: 'old-d1', name: 'route-planner' }]), '', 't'), { id: 'old-d1', made: false });
+assert.deepEqual(await findOrMakeD1(d1([{ uuid: 'x', name: 'other' }]), 'a1', 't'), { id: 'new-d1', made: true });
 assert.equal(fillHome('<a href="__HOME_URL__">More tools at __HOME_NAME__</a>', 'route.example.com'), '<a href="https://example.com/">More tools at example.com</a>');
 
 // the namespace: found by title, else made

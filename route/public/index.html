@@ -122,6 +122,13 @@
   .endrow input { flex: 1; min-width: 0; }
   .endrow .btn { flex: none; min-height: 44px; }
   .pickers { margin-top: 0; }
+  .usage { margin-top: 10px; font-size: 14px; color: var(--muted); }
+  .usage summary { display: inline-flex; gap: 6px; align-items: baseline; padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--card); }
+  .usage b { color: var(--accent); font-variant-numeric: tabular-nums; }
+  .usage.low b { color: var(--warn); }
+  .usage.out b { color: var(--bad); }
+  .usage ul { margin: 8px 0 0; padding-left: 18px; }
+  .usage li { margin-top: 2px; }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -131,6 +138,10 @@
     <a class="home-link" href="__HOME_URL__">More tools at __HOME_NAME__</a>
     <h1>Route Planner</h1>
     <p>The day's jobs in (a screenshot or a document), fastest route out.</p>
+    <details class="usage" id="usage" hidden>
+      <summary>Free Mapbox use left this month: <b id="usageLeft">–</b></summary>
+      <ul id="usageDetail"></ul>
+    </details>
   </header>
 
   <section class="card" aria-labelledby="where">

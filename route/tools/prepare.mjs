@@ -27,7 +27,7 @@ export function routeDomainFor(custom) {
  */
 export const KEY_SHA256 = '4e3957cfaa2018eb570b9cc61fb690b2cf0c24981a6f26e25630b39ca52bde72';
 
-export function wranglerFor(domain, kvId = null) {
+export function wranglerFor(domain, kvId = null, d1Id = null) {
   return `# Written by route/tools/prepare.mjs at deploy time. Not checked in.
 name = "route-planner"
 main = "src/index.js"
@@ -48,6 +48,12 @@ ${kvId ? `
 [[kv_namespaces]]
 binding = "ROUTE"
 id = "${kvId}"
+` : ''}${d1Id ? `
+# The Mapbox meter (src/usage.js); found or made by tools/kv.mjs. Without it nothing is sent to Mapbox.
+[[d1_databases]]
+binding = "USAGE"
+database_name = "route-planner"
+database_id = "${d1Id}"
 ` : ''}`;
 }
 
@@ -77,7 +83,7 @@ function main() {
     process.exit(1);
   }
   build(join(route, 'build'), domain);
-  writeFileSync(join(route, 'wrangler.toml'), wranglerFor(domain, (process.env.ROUTE_KV_ID || '').trim() || null));
+  writeFileSync(join(route, 'wrangler.toml'), wranglerFor(domain, (process.env.ROUTE_KV_ID || '').trim() || null, (process.env.ROUTE_D1_ID || '').trim() || null));
   if (process.env.GITHUB_ENV) appendFileSync(process.env.GITHUB_ENV, `ROUTE_DOMAIN=${domain}\n`);
   console.log(`Route planner built for https://${domain}`);
 }

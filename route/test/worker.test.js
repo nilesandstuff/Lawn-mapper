@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import { api } from '../src/index.js';
 import { matrixBlocks, routeChunks } from '../src/mapbox.js';
+import { testDb } from './d1.js';
 
 // a fake Mapbox: seconds between points i and j are 100*i + j, metres 10x that
 const pts = Array.from({ length: 30 }, (_, i) => [-85.7 + i * 0.001, 42.8 + i * 0.001]);
@@ -34,7 +35,7 @@ async function fakeMapbox(url) {
   return new Response('no', { status: 404 });
 }
 
-const env = { MAPBOX_TOKEN: 'pk.test' };
+const env = { MAPBOX_TOKEN: 'pk.test', USAGE: testDb() };
 const call = (path, init = {}) => {
   const url = new URL(`https://route.example.com${path}`);
   return api(new Request(url, init), env, url, fakeMapbox);
@@ -102,7 +103,7 @@ console.log('route worker: ok');
     delete: async (k) => { kvData.delete(k); },
   };
   const KEY = 'test-key';
-  const e = { MAPBOX_TOKEN: 'pk.test', ROUTE: kv, ROUTE_KEY_SHA256: createHash('sha256').update(KEY).digest('hex') };
+  const e = { MAPBOX_TOKEN: 'pk.test', USAGE: testDb(), ROUTE: kv, ROUTE_KEY_SHA256: createHash('sha256').update(KEY).digest('hex') };
   const hit = (path, init = {}) => {
     const url = new URL(`https://route.example.com${path}`);
     return api(new Request(url, init), e, url, fakeMapbox);

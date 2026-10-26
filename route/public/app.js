@@ -94,6 +94,27 @@ async function loadShop() {
 }
 loadShop();
 
+/* how much of this month's free Mapbox use is left (src/usage.js counts every call) */
+async function loadUsage() {
+  try {
+    const u = await (await fetch('/api/usage')).json();
+    if (!u.apis) return;
+    const box = $('#usage');
+    box.hidden = false;
+    box.classList.toggle('low', u.left < 20);
+    box.classList.toggle('out', u.left < 1);
+    $('#usageLeft').textContent = u.counting ? `${u.left}%` : 'not counting';
+    const n = (x) => Number(x).toLocaleString();
+    const resets = new Date(`${u.resets}T12:00:00Z`).toLocaleDateString([], { month: 'short', day: 'numeric' });
+    const line = (label, a, note = '') => `<li>${label}: ${n(a.used)} of ${n(a.cap)} used (${Math.max(0, Math.floor((1 - a.used / a.cap) * 1000) / 10)}% left)${note}</li>`;
+    $('#usageDetail').innerHTML = line('Drive times', u.apis.matrix)
+      + line('Address lookups', u.apis.geocode, `, the planner's share of the ${n(u.apis.geocode.free)} it splits with Lawn Mapper`)
+      + line('Drawing routes', u.apis.directions)
+      + `<li>The planner stops itself before going past these, so it never costs money. Resets ${esc(resets)}.</li>`;
+  } catch { /* offline: the figure stays as it was */ }
+}
+loadUsage();
+
 function showStartMode() {
   for (const b of document.querySelectorAll('[data-start]')) b.setAttribute('aria-pressed', String(b.dataset.start === startMode));
 }
@@ -459,11 +480,13 @@ async function plan() {
       done: [],
     };
     store.set('result', result);
+    loadUsage();
     sayPlan('');
     renderResult(true);
   } catch (e) {
     sayPlan('');
     say(e.message || String(e), true);
+    loadUsage();
   } finally {
     btn.disabled = false;
     $('#plan').textContent = 'Plan fastest route';

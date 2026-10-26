@@ -23,8 +23,13 @@ export function validPoints(points) {
       && Math.abs(p[0]) <= 180 && Math.abs(p[1]) <= 90);
 }
 
-async function getJson(fetcher, url) {
+/** No meter: tests and tools that do not count. */
+const UNMETERED = { reserve: async () => {}, add: async () => {} };
+
+/** A GET, retried twice on Mapbox's rate limit; each retry counted as the call it repeats (units of api). */
+async function getJson(fetcher, url, meter = UNMETERED, api = null, units = 0) {
   for (let attempt = 0; ; attempt += 1) {
+    if (attempt) await meter.add(api, units);
     const res = await fetcher(url);
     if (res.status === 429 && attempt < 2) {
       await new Promise((r) => setTimeout(r, 1200 * (attempt + 1)));
@@ -42,10 +47,11 @@ async function inBatches(jobs, size = 6) {
   return out;
 }
 
-export async function geocode(fetcher, token, q, near) {
+export async function geocode(fetcher, token, q, near, meter = UNMETERED) {
+  await meter.reserve('geocode', 1);
   const params = new URLSearchParams({ q, access_token: token, country: 'us', types: 'address', limit: '1', autocomplete: 'false' });
   if (near) params.set('proximity', coord(near));
-  const data = await getJson(fetcher, `${API}/search/geocode/v6/forward?${params}`);
+  const data = await getJson(fetcher, `${API}/search/geocode/v6/forward?${params}`, meter, 'geocode', 1);
   const f = (data.features || [])[0];
   if (!f) return null;
   const [lng, lat] = f.geometry.coordinates;
@@ -80,7 +86,9 @@ export const elements = (sources, destinations) => sources.length * destinations
  * tables (null where not asked). The page asks only for the pairs it has not
  * kept (lib/cache.js), so a stop driven to before costs nothing again.
  */
-export async function matrix(fetcher, token, points, sources = range(points.length), destinations = range(points.length)) {
+export async function matrix(fetcher, token, points, sources = range(points.length), destinations = range(points.length), meter = UNMETERED) {
+  // all of it reserved before the first block goes: a plan is timed whole or not at all
+  await meter.reserve('matrix', elements(sources, destinations));
   const n = points.length;
   const durations = Array.from({ length: n }, () => Array(n).fill(null));
   const distances = Array.from({ length: n }, () => Array(n).fill(null));
@@ -90,7 +98,7 @@ export async function matrix(fetcher, token, points, sources = range(points.leng
       sources: b.sources.join(';'), destinations: b.destinations.join(';'),
       annotations: 'duration,distance', access_token: token,
     });
-    const data = await getJson(fetcher, `${API}/directions-matrix/v1/mapbox/driving/${b.ids.map((i) => coord(points[i])).join(';')}?${params}`);
+    const data = await getJson(fetcher, `${API}/directions-matrix/v1/mapbox/driving/${b.ids.map((i) => coord(points[i])).join(';')}?${params}`, meter, 'matrix', b.from.length * b.to.length);
     if (data.code && data.code !== 'Ok') throw new Error(`Mapbox matrix: ${data.code}`);
     b.from.forEach((i, s) => b.to.forEach((j, d) => {
       durations[i][j] = data.durations?.[s]?.[d] ?? null;
@@ -115,12 +123,14 @@ export function routeChunks(n, size = 25) {
   return out;
 }
 
-export async function route(fetcher, token, points) {
-  const parts = await inBatches(routeChunks(points.length).map(([a, b]) => async () => {
+export async function route(fetcher, token, points, meter = UNMETERED) {
+  const chunks = routeChunks(points.length);
+  await meter.reserve('directions', chunks.length);
+  const parts = await inBatches(chunks.map(([a, b]) => async () => {
     // continue_straight=false: a U-turn at a stop is allowed, as the matrix allows it. Without it every
     // stop on a dead-end or across the street is reached by looping the block (found 2026-10-22: 3 min a leg).
     const params = new URLSearchParams({ geometries: 'geojson', overview: 'full', steps: 'false', continue_straight: 'false', access_token: token });
-    const data = await getJson(fetcher, `${API}/directions/v5/mapbox/driving/${points.slice(a, b + 1).map(coord).join(';')}?${params}`);
+    const data = await getJson(fetcher, `${API}/directions/v5/mapbox/driving/${points.slice(a, b + 1).map(coord).join(';')}?${params}`, meter, 'directions', 1);
     const r = data.routes?.[0];
     if (!r) throw new Error(`Mapbox directions: ${data.code || 'no route'}`);
     return r;
