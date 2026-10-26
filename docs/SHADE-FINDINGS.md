@@ -1166,6 +1166,15 @@ reads NASA's soil (climate.js, shared with the water map), and NASA's
 winter cold bias puts it early; worth moving to IEMRE, asked first.
 Scratch: soil/crn.py, crn-rows.json.
 
+Open-Meteo (allowed: the owner says the tool is non-commercial, 2026-10-26)
+was tried the same way and could not be scored: its free tier refused 11
+of the 16 stations for its daily request limit, which it counts per IP
+address, and this sandbox shares one. The four it answered (archive,
+ERA5-Land 0-7 cm, 2025): -1.6 C mean, 1.9 C mean absolute, IEMRE as close
+or closer at each. NOT USED: on top of the score, a Cloudflare Worker also
+shares its outgoing addresses, so the live site could hit the same limit.
+Scratch: soil/om.py.
+
 ## Speculation
 
 - SOIL UNDER SHADE (2026-10-26, provisional, IN USE in soil.js): 0.2 C
