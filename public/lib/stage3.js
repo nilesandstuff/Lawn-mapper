@@ -149,15 +149,26 @@ export function lawnTrees(canopy, w, h, { mpp = 0.15, maxM2 = 100 } = {}) {
 /**
  * The see-through cells for a mode: 'off' (none -- the rule since H30),
  * 'colour' (bareCanopy), 'evergreen' (the same, plus evergreensOf),
- * 'trust' (every canopy cell), or 'small-N' (lawnTrees: clumps under N m2).
+ * 'trust' (every canopy cell), 'small-N' (lawnTrees: clumps under N m2), or
+ * 'small-N-leafoff' (the same, only on a photo that looks leaf-off).
  * Null for 'off'.
  */
-export const SEE_THROUGH_MODES = ['off', 'colour', 'evergreen', 'trust', 'small-100', 'small-300'];
-export function seeThroughFor(mode, canopy, rgba, w, h, { mpp = 0.15 } = {}) {
+export const SEE_THROUGH_MODES = ['off', 'colour', 'evergreen', 'trust', 'small-100', 'small-300', 'small-100-leafoff'];
+export function seeThroughFor(mode, canopy, rgba, w, h, { mpp = 0.15, bare = null } = {}) {
   if (!canopy || !mode || mode === 'off') return null;
   if (mode === 'trust') return Uint8Array.from(canopy);
-  const small = /^small-(\d+)$/.exec(mode);
-  if (small) return lawnTrees(canopy, w, h, { mpp, maxM2: Number(small[1]) });
+  const small = /^small-(\d+)(-leafoff)?$/.exec(mode);
+  if (small) {
+    /* '-leafoff' (S65, H125): only on a photo that looks leaf-off, where the
+       detector measured better than stage 3 under these trees; on a leaf-on
+       photo stage 3 was better, so nothing is trusted. `bare` may be given
+       (the scorer has it); else it is read from the photo. */
+    if (small[2]) {
+      const b = bare || (rgba ? bareCanopy(canopy, rgba, w, h, { mpp }) : null);
+      if (!looksLeafOff(canopy, b)) return new Uint8Array(w * h);
+    }
+    return lawnTrees(canopy, w, h, { mpp, maxM2: Number(small[1]) });
+  }
   if (mode === 'colour' || mode === 'evergreen') return rgba ? bareCanopy(canopy, rgba, w, h, { mpp }) : null;
   throw new Error(`see-through mode "${mode}" is not one of ${SEE_THROUGH_MODES.join(', ')}`);
 }

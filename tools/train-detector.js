@@ -2347,6 +2347,21 @@ async function main() {
     };
   };
 
+  /*
+   * A ROW THAT WILL NOT BE DRAWN NEED NOT KEEP ITS MASKS (2026-10-26). Every
+   * row holds three masks a lot for the whole run; with the taught decoders'
+   * extra rows the free runner ran out (40210560105). The see-through and
+   * taught-under rows keep only their numbers unless they are the row asked
+   * to be drawn, THE PLAN's, or a trial row.
+   */
+  const keepsMasks = (name) => name === PLAN_ROW || name === process.env.DRAW_ROW || TRIAL_ROWS.includes(name)
+    || name === String(process.env.DRAW_ROW || '').replace('decoder, edge refined', 'the pretrained eye, decoder');
+  const slim = (t) => {
+    if (keepsMasks(t.cfg.name)) return t;
+    for (const r of t.rows) { r.predicted = null; r.base = null; r.preVeto = null; }
+    return t;
+  };
+
   for (const cfg of runnable) {
     /* Squeeze the patches to this configuration's width, once for all lawns. */
     if (cfg.backbone && hasEye) {
@@ -2458,7 +2473,7 @@ async function main() {
         const bare = opts.seeThrough === 'colour' || opts.seeThrough === 'evergreen' ? L.bare
           : opts.seeThrough === 'trust' ? canopy
             /* 'small-N' (S63): crowns standing in the open, not woods. */
-            : /^small-\d+$/.test(opts.seeThrough || '') ? seeThroughFor(opts.seeThrough, canopy, null, L.grid, L.gridH, { mpp: L.mpp }) : null;
+            : /^small-\d+/.test(opts.seeThrough || '') ? seeThroughFor(opts.seeThrough, canopy, null, L.grid, L.gridH, { mpp: L.mpp, bare: L.bare }) : null;
         /* 'evergreen': on a photo that looks leaf-off, the crowns that did
            not read bare are never lawn (stage3.js evergreensOf). */
         const evergreen = opts.seeThrough === 'evergreen' ? evergreensOf(canopy, L.bare) : null;
@@ -2473,7 +2488,7 @@ async function main() {
         if (under && canopy) {
           /* `underOnly` (S65): only on the clumps a see-through mode names --
              'small-100', trees standing in the open -- not in the woods. */
-          const where = opts.underOnly ? seeThroughFor(opts.underOnly, canopy, null, L.grid, L.gridH, { mpp: L.mpp }) : canopy;
+          const where = opts.underOnly ? seeThroughFor(opts.underOnly, canopy, null, L.grid, L.gridH, { mpp: L.mpp, bare: L.bare }) : canopy;
           mask = Uint8Array.from(mask);
           for (let i = 0; i < mask.length; i++) if (where[i]) mask[i] = under[i] ? 1 : 0;
         }
@@ -2774,14 +2789,18 @@ async function main() {
           if (!taught) continue;
           const cfgU = { ...cfg, name: `${cfg6.name}, ${tag} under the canopy`, stage3: true };
           console.log(`Scoring "${cfgU.name}" (THE PLAN outside the tree model's canopy, "${tl}" inside it)…`);
-          table.push(summarise(cfgU, judge(masks, { spanM: 8, reachM: 1, minRing: 0.5, veto: true, under: taught.masks }), cfg.dims));
+          table.push(slim(summarise(cfgU, judge(masks, { spanM: 8, reachM: 1, minRing: 0.5, veto: true, under: taught.masks }), cfg.dims)));
           /* S65 (owner, 2026-10-25: "we should look into why the bare tree
              trust isn't helping"): the taught decoder only under trees
              standing in the open, THE PLAN everywhere else. */
           if (tag !== 'taught') continue; /* one is the question; the canopy-input arm would be another three masks a lot */
           const cfgT = { ...cfg, name: `${cfg6.name}, ${tag} under small trees`, stage3: true };
           console.log(`Scoring "${cfgT.name}" (the taught decoder on canopy clumps under 100 m2 only)…`);
-          table.push(summarise(cfgT, judge(masks, { spanM: 8, reachM: 1, minRing: 0.5, veto: true, under: taught.masks, underOnly: 'small-100' }), cfg.dims));
+          table.push(slim(summarise(cfgT, judge(masks, { spanM: 8, reachM: 1, minRing: 0.5, veto: true, under: taught.masks, underOnly: 'small-100' }), cfg.dims)));
+          /* And only on photos that look leaf-off (H125). */
+          const cfgTL = { ...cfg, name: `${cfg6.name}, ${tag} under small trees, leaf-off photos`, stage3: true };
+          console.log(`Scoring "${cfgTL.name}"…`);
+          table.push(slim(summarise(cfgTL, judge(masks, { spanM: 8, reachM: 1, minRing: 0.5, veto: true, under: taught.masks, underOnly: 'small-100-leafoff' }), cfg.dims)));
         }
         /* And S63's trees in the open (owner, 2026-10-24), as full rows so
            workflow 24 can pair them lot by lot with THE PLAN. */
@@ -2789,10 +2808,10 @@ async function main() {
            see-through table above but no longer as full rows: every full row
            holds three masks a lot for the whole run, and run 40210560105
            lost its runner, out of memory most likely, with them all. */
-        for (const mode of ['colour', 'small-100']) {
+        for (const mode of ['colour', 'small-100', 'small-100-leafoff']) {
           const cfgS = { ...cfg, name: `${cfg6.name}, see-through ${mode}`, stage3: true };
           console.log(`Scoring "${cfgS.name}"…`);
-          table.push(summarise(cfgS, judge(masks, { spanM: 8, reachM: 1, minRing: 0.5, veto: true, seeThrough: mode }), cfg.dims));
+          table.push(slim(summarise(cfgS, judge(masks, { spanM: 8, reachM: 1, minRing: 0.5, veto: true, seeThrough: mode }), cfg.dims)));
         }
         /* WHAT THE EDGE REFINER CHANGED (owner, 2026-09-29: "can it be shown
            separately?"): THE PLAN's final answer against the plain decoder's,

@@ -8246,7 +8246,7 @@ is 130 sqft, so maybe the cutoff should be 100 sqft"),** on the condo,
 where grass islands between driveways run 100 to 150 sq ft. Same scope as
 above: the outline, not the scored mask.
 
-### S65. Why trusting the detector under trees in the open did not help (owner, 2026-10-25: "Is it that we're not doing a good job of judging bare vs in leaf ... Is it that the traces under bare trees are just bad? Is something else happening, like the edge refiner is being shut off under trusted trees?") -- PART 1 MEASURED 2026-10-26: H125
+### S65. Why trusting the detector under trees in the open did not help (owner, 2026-10-25: "Is it that we're not doing a good job of judging bare vs in leaf ... Is it that the traces under bare trees are just bad? Is something else happening, like the edge refiner is being shut off under trusted trees?") -- PART 1 MEASURED 2026-10-26: H125; part 2 (owner: "Yes", Modal) running
 
 **From the code, not measured:**
 - **S63 judged nothing about the season.** `small-N` trusts stage 1 under
@@ -8265,6 +8265,13 @@ above: the outline, not the scored mask.
   trees is far better under the trees and worse in the open; used under
   every canopy cell it changed almost nothing. Used only under trees in the
   open, it has not been tried.
+
+**Part 2 (owner, 2026-10-26: "Yes" to Modal, about $1 to $2):** `gpu:
+modal`, `decoder: fused + edge + trees`, with H125's follow-ups as rows --
+see-through `small-100-leafoff` (trust stage 1 under small crowns only on
+photos that look leaf-off), and the taught decoder under small trees, in
+every season and on leaf-off photos only. Rows that will not be drawn drop
+their masks after scoring, so the free scoring runner holds fewer.
 
 **Built for the next run:** the row "THE PLAN, taught under small trees"
 (the taught decoder on canopy clumps under 100 m2 only, THE PLAN

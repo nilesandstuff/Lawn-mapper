@@ -336,3 +336,19 @@ const show = (mask, w, h) => {
 }
 
 console.log('stage 3: ok');
+
+/* S65: small-N-leafoff trusts small crowns only on a photo that looks leaf-off. */
+{
+  const { seeThroughFor: stf, LEAF_OFF_SHARE } = await import('./stage3.js');
+  const w = 40, h = 20;
+  const canopy = new Uint8Array(w * h);
+  for (let y = 0; y < 20; y++) for (let x = 0; x < 20; x++) canopy[y * w + x] = 1; // 400 cells of canopy
+  const allBare = Uint8Array.from(canopy);
+  const noneBare = new Uint8Array(w * h);
+  const off = stf('small-100-leafoff', canopy, null, w, h, { mpp: 0.4, bare: allBare });
+  const on = stf('small-100-leafoff', canopy, null, w, h, { mpp: 0.4, bare: noneBare });
+  assert.ok(LEAF_OFF_SHARE > 0);
+  assert.equal(off.reduce((a, b) => a + b, 0), 400, 'a leaf-off photo trusts its small crowns');
+  assert.equal(on.reduce((a, b) => a + b, 0), 0, 'a leaf-on photo trusts none');
+}
+console.log('stage 3 leaf-off: ok');
