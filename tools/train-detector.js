@@ -1658,7 +1658,7 @@ async function publishRenderings(bucket, best, lawns, using, meta = {}) {
     console.log(`\nDrew ${put} of ${best.rows.length} lawns under "${best.cfg.name}".`);
     console.log(`Folder: ${keys.index.replace('/index.json', '')}`);
     /* The folder's name for the step that draws the asked map (tools/draw-map.mjs). */
-    if (process.env.RUN_FOLDER_FILE) writeFileSync(process.env.RUN_FOLDER_FILE, slug);
+    if (process.env.RUN_FOLDER_FILE && meta.role !== 'control') writeFileSync(process.env.RUN_FOLDER_FILE, slug);
     console.log(`The page now lists ${list.runs} run${list.runs === 1 ? '' : 's'}.`);
     console.log('Open /predictions.html to see the outlines it drew, worst first,');
     console.log('and the button at the top to flip every picture to the raw mask.');
@@ -3156,10 +3156,24 @@ async function main() {
     const control = plan && drawn !== plan ? plan : null;
     const mainSlug = runSlug({ at: new Date(), models: [ident.model || 'detector'], suffix: ident.size ? `${ident.size}px` : '' });
     const controlSlug = control ? `${mainSlug}-control` : null;
+    /*
+     * THE FEATURES ARE DONE WITH (2026-10-26). Runs 40263507988 and
+     * 40303542434 lost their runner twenty minutes into the second picture
+     * set: every lot still held its scoring features (the cheap per-cell
+     * features alone are up to 59 MB a lot at 1024 cells) on top of the
+     * pictures. Nothing from here on reads them.
+     */
+    for (const L of lawns) { L.cheap = null; L.fine = null; L.fineFull = null; L.coarse = null; L.coarseFull = null; }
+    const mem = () => `${Math.round(process.memoryUsage().rss / 1e6)} MB`;
+    console.log(`Memory before drawing: ${mem()}.`);
+    /* The row asked for first, so the pictures that matter land even if the
+       second set does not. */
+    await publishRenderings(bucket, drawn, lawns, using, { ...ident, slug: mainSlug, ...(control ? { twin: controlSlug, role: 'trial' } : {}) });
+    console.log(`Memory after the first picture set: ${mem()}.`);
     if (control) {
       await publishRenderings(bucket, control, lawns, using, { ...ident, slug: controlSlug, twin: mainSlug, role: 'control' });
+      console.log(`Memory after the control's: ${mem()}.`);
     }
-    await publishRenderings(bucket, drawn, lawns, using, { ...ident, slug: mainSlug, ...(control ? { twin: controlSlug, role: 'trial' } : {}) });
   }
 
   /*
