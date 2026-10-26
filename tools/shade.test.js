@@ -670,9 +670,21 @@ check('the color ramp runs dark to bright and clamps', ramp(-1).join() === '0,0,
   const soilTyp = Object.fromEntries(Object.keys(temp).map((d) => [d, temp[d] - 1]));
   const fake = async (url) => { calls.push(String(url)); return { ok: true, json: async () => ({ header: { fill_value: -999 }, properties: { parameter: { ALLSKY_SFC_SW_DWN: days, ALLSKY_SFC_SW_DIFF: diff, T2M: temp, TSOIL1: soilTyp } } }) }; };
   const cl = await climateAt(-87.96, 42.86, { fetchImpl: fake, now: new Date(Date.UTC(2026, 9, 11)) });
-  check('climate route: the last ten whole years from NASA POWER, the AG community, a 0.05 degree cell, 365 days back',
-    calls.length === 1 && calls[0].includes('start=20160101') && calls[0].includes('end=20251231') && calls[0].includes('community=AG')
-    && cl.lat === 42.85 && cl.lng === -87.95 && cl.ghi.length === 365 && cl.tMean.length === 365 && cl.tSoil?.length === 365 && calls[0].includes('TSOIL1'), calls[0]);
+  const power = calls.filter((u) => u.includes('power.larc.nasa.gov'));
+  check('climate route: the last ten whole years from NASA POWER, the AG community, a 0.05 degree cell, 365 days back; outside IEMRE the soil is NASA\'s',
+    power.length === 1 && power[0].includes('start=20160101') && cl.tSoilSource === 'nasa' && calls.filter((u) => u.includes('/iemre/multiday/')).length === 10 && calls[0].includes('end=20251231') && calls[0].includes('community=AG')
+    && cl.lat === 42.85 && cl.lng === -87.95 && cl.ghi.length === 365 && cl.tMean.length === 365 && cl.tSoil?.length === 365 && power[0].includes('TSOIL1'), power[0]);
+  /* Inside IEMRE's map its ten years are the soil (dormancy), here a steady 9 C. */
+  const withIem = async (url) => {
+    const u = String(url);
+    const m = /multiday\/(\d{4}-\d{2}-\d{2})\/(\d{4}-\d{2}-\d{2})/.exec(u);
+    if (!m) return fake(url);
+    const data = [];
+    for (let t = Date.parse(m[1]); t <= Date.parse(m[2]); t += 86400000) data.push({ date: new Date(t).toISOString().slice(0, 10), soil4t_high_f: 53.6, soil4t_low_f: 42.8 });
+    return new Response(JSON.stringify({ iemre_domain: 'conus', data }), { status: 200 });
+  };
+  const ci = await climateAt(-87.96, 42.86, { fetchImpl: withIem, now: new Date(Date.UTC(2026, 9, 11)) });
+  check('climate route: inside IEMRE the dormancy soil is its ten-year typical year, said so (tSoilSource)', ci.tSoilSource === 'iemre' && ci.tSoil.length === 365 && ci.tSoil.every((c) => c === 9) && ci.tMean.length === 365, JSON.stringify(ci.tSoil?.slice(0, 3)));
   /* This year's weather (worker weatherNow / climateNow): POWER's typical years, POWER's T2M for this year (3 days behind), NWS points then forecast. */
   const seen = [];
   const fake2 = async (url, init) => {

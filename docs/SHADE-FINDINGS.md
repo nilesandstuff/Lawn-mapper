@@ -1161,9 +1161,8 @@ NASA's worst: Tucson -5.1 C and Darrington (WA Cascades) -6.0 C all year.
 IEMRE's worst: Darrington -3.4 C, Goodridge (MN) and Oakley (KS) about
 +2.5 C. Both miss most in a Minnesota winter (snow). IN USE: the soil view
 reads IEMRE (its conus and europe domains; scored on U.S. stations only)
-and NASA elsewhere. NOT CHANGED: the growing season's dormancy day still
-reads NASA's soil (climate.js, shared with the water map), and NASA's
-winter cold bias puts it early; worth moving to IEMRE, asked first.
+and NASA elsewhere. The growing season's dormancy day moved to IEMRE
+too, the same day, once the owner said yes: finding 29.
 Scratch: soil/crn.py, crn-rows.json.
 
 Open-Meteo (allowed: the owner says the tool is non-commercial, 2026-10-26)
@@ -1175,22 +1174,89 @@ or closer at each. NOT USED: on top of the score, a Cloudflare Worker also
 shares its outgoing addresses, so the live site could hit the same limit.
 Scratch: soil/om.py.
 
+### 29. The dormancy day on IEMRE's soil: within a median 4 days of 111 U.S. stations' measured soil, NASA's 8 days early; closer in Germany too; switched (2026-10-26)
+
+The owner (2026-10-26): "switch to the Iowa model as long as it holds true
+to other locations". The test was the date that matters: the growing
+season's end, the first day after summer's peak whose 5-day mean soil falls
+under the dormancy point (climate.js soilDormancyDay; 7 C cool-season, 13 C
+warm-season). Every U.S. Climate Reference Network station with a year of
+soil in 2025 (111 inside IEMRE's map; measured soil the mean of 5 and 10 cm),
+IEMRE's daily soil and NASA POWER's TSOIL1 at each, the same rule on all
+three:
+
+| 2025, dormancy day minus the measured | IEMRE | NASA |
+|---|---|---|
+| cool-season, 72 stations: mean | 3.6 days early | 11.2 days early |
+| median miss | 4 days | 8 days |
+| within a week | 43 of 72 | 30 of 72 |
+| warm-season, 98 stations: mean | 3.7 days early | 9.7 days early |
+| median miss | 4 days | 7 days |
+| within a week | 63 of 98 | 52 of 98 |
+| daily soil, mean / mean absolute | +0.3 / 2.2 C | -1.3 / 2.5 C |
+
+IEMRE's worst daily soil: Redding CA (6.1 C off), La Junta CO, Stovepipe
+Wells CA, Merced CA, Moose WY, Goodwell OK (4.2-4.6 C): the dry West and
+the Rockies.
+
+OTHER PLACES: IEMRE's Europe domain against 13 German weather service
+(DWD) stations' measured 5 and 10 cm soil, 2025: IEMRE -0.7 C mean, 1.3 C
+mean absolute, winter +0.2 C; NASA -1.6 C, 1.8 C, winter -1.0 C. IEMRE
+closer at 12 of 13. Outside its two maps IEMRE does not answer, and NASA
+stays.
+
+SWITCHED: the climate route's tSoil (the dormancy soil the shade map's
+season, the grass finder and the water map all read) is IEMRE's ten-year
+typical year where it answers (tSoilSource 'iemre'), NASA's elsewhere. At
+the test park cool-season dormancy moved from Nov 9 to Nov 17. Scratch:
+soil/dorm.py, dorm-rows.json, dwd/score.py.
+
+### 30. Shade and the soil's daily mean: a sunnier fortnight warms open turf's soil 0.12 C per MJ/m2/day at 10 cm with the air free, 0.03 with the air held; 0.13 taken (2026-10-26)
+
+The owner (2026-10-26): "look further into the shade effect on soil temps".
+The literature found has no measured shaded-against-open lawn soil at 5-10
+cm as a daily mean:
+- Edmondson et al. 2016 (Sci. Rep. 6:33708): 1.5 cm, summer daily mean,
+  3.1 C cooler under trees and shrubs than under grass;
+- Lin & Lin 2010 (HortScience 45:83): Taipei park, midday surface soil
+  3.3-8.1 C cooler under ten tree species, air 0.6-2.5 C;
+- an Inga-shaded coffee plot in Peru (Bois et Forets des Tropiques):
+  soil 1.7 C cooler and air 0.4 C over three years, depth not seen;
+- a Chicago greens study (Settle 2008): air only.
+
+So it was measured from the ground up. NOAA's reference stations are open
+grass with soil sensors and a pyranometer. At each of 114 stations with ten
+years (2015-2025), days were set against the station's own usual for the
+date (+-15 days over the years), averaged over 7, 15 or 30 days, frozen
+spells dropped, and the soil's departure fitted on the sun's departure
+(MJ/m2/day) with the rain held. Medians over stations, 15-day spans:
+
+| soil per MJ/m2/day of sun | 5 cm | 10 cm | summer, 10 cm |
+|---|---|---|---|
+| air free | 0.13 | 0.11 | 0.15 |
+| air held | 0.01 | 0.01 | 0.02 |
+
+At 30 days: 0.14 / 0.12 / 0.15 with the air free, about 0.03 held. The air
+itself warms 0.17 C per MJ in those spans.
+
+READ: almost all of the sun's hold on the soil's daily mean comes WITH the
+air it warms. A tree's shade cools the air under it too, by less than a
+dull fortnight cools a region but of the same order (Peru's 0.4 C a day for
+a big cut in sun), so the truth is nearer the upper bound. TAKEN:
+0.13 C per MJ/m2/day of sunlight lost (soil.js). Full summer shade, about
+20 MJ a day lost, is then about 2.6 C (4.7 F) cooler at 4 inches. That fits
+Edmondson's 3.1 C at 1.5 cm, nearer the surface. Spread between stations
+is wide (IQR 0.02-0.22). Left out: the trees' slightly warmer winter soil
+(Edmondson), and any change of soil moisture under trees. Scratch:
+soil/clim.py, clim.json.
+
 ## Speculation
 
-- SOIL UNDER SHADE (2026-10-26, provisional, IN USE in soil.js): 0.2 C
-  cooler, daily mean, per MJ/m2 of daily sunlight a spot loses. From one
-  study only: Edmondson et al. (2016, Sci. Rep. 6:33708), 79 loggers at
-  1.5 cm in Leicester, UK: summer (May-July) daily mean 17.2 C under grass
-  and 14.1 C under trees and shrubs in non-domestic greenspace, 3.1 C
-  apart. Leicester's summer sun (~17 MJ/m2/day) and a woodland floor
-  losing ~85% of it give the 0.2. Assumed, not measured: the 85%; that a
-  lawn in a tree's shade cools like a wooded floor (litter and no grass
-  there); that 1.5 cm carries to about 10 cm for a daily MEAN (the swing
-  shrinks with depth, the mean less so). The same study found woody cover
-  slightly WARMER in winter, left out. The water session is asked
-  (2026-10-26) for its research; the owner's own logger under a tree and
-  in the open would settle it.
-
+- SOIL UNDER SHADE (2026-10-26): superseded by finding 30 the same day
+  (0.2 from one study replaced by 0.13 from 114 stations). Still not
+  measured: a lawn in a tree's shade against one in the open, at 5-10 cm.
+  The owner's own logger pair, one under a tree and one in the open, would
+  settle it.
 - Mixed-season flights (7) may be better treated as leaf-on for the
   evergreen call (no evergreens called): it would have cut the light cost
   at HARV, BART and TREE, but the page treats mixed as leaf-off for the
