@@ -30,6 +30,10 @@ async function main() {
     console.log('Linking needs exactly one run id on each side; nothing linked.');
     return;
   }
+  if (a === b) {
+    console.log('Both sides are the same run (two rows of one run); nothing to link.');
+    return;
+  }
   const bucket = process.env.CORPUS_BUCKET || 'lawn-mapper-corpus';
   const dir = mkdtempSync(join(tmpdir(), 'link-runs-'));
   const runs = readRunList(bucket, dir);

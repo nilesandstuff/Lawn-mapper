@@ -83,7 +83,7 @@ jobs:
         # Owner, 2026-10-26: comparison runs are independent runs, "linked after
         # the fact so I can still view them like twins". Only when each side is
         # one run; a run that drew no pictures is reported and skipped.
-        if: ${{ always() && !contains(inputs.a_runs, ',') && !contains(inputs.b_runs, ',') }}
+        if: ${{ always() && !contains(inputs.a_runs, ',') && !contains(inputs.b_runs, ',') && inputs.a_runs != inputs.b_runs }}
         continue-on-error: true
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
