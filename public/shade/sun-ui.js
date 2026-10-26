@@ -25,7 +25,7 @@ import { GRASS, dayLabel, growingSeason, periodDays, SEASON_GP, SOIL_DORMANT_C }
 import { climateZone } from './grass.js';
 import { heat, bandsFor, rasterOf, smooth, valueAt, boxStats } from './readout.js';
 import { groundLayer } from './view3d.js';
-import { soilFrames, FRAME_NAME, trailingAverage, dayOfYmd, shadedSoil, tempBands, toF, meanOver, } from './soil.js';
+import { soilFrames, FRAME_NAME, trailingAverage, dayOfYmd, shadedSoil, tempBands, toF, meanOver } from './soil.js';
 
 const $ = (s) => document.querySelector(s);
 const SQFT = 10.7639;
@@ -536,23 +536,38 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
      the cooling each spot's shade gives it over the days shown. ---- */
   const fF = (c) => `${Math.round(toF(c))} °F`;
   const ymdWords = (d) => `${MONTHS[+d.slice(4, 6) - 1]} ${+d.slice(6, 8)}`;
+  /** The typical year's soil: IEMRE's ten years where it answers, else NASA's (the climate route). */
+  const soilTypical = () => st.soilData?.typical || st.climate?.tSoil || null;
+  const atWords = (t) => `${MONTHS[new Date(t).getUTCMonth()]} ${new Date(t).getUTCDate()}, about ${aboutLocal(t, site.lng)}`;
+  /** The last 5 days: IEMRE's last 120 hours to now, else NASA's last 5 days (about 5 days behind). */
+  function soilRecent() {
+    const D = st.soilData;
+    if (!D) return null;
+    if (D.trail) {
+      const days = [];
+      for (let t = D.trail.from; t <= D.trail.to + 1; t += 86400000) days.push(dayOfYmd(new Date(t).toISOString().slice(0, 10).replace(/-/g, '')));
+      return { mean: D.trail.mean, days: [...new Set(days)], words: `the last 5 days (${atWords(D.trail.from)} to ${atWords(D.trail.to)}), averaged`, at: D.trail.to };
+    }
+    const r = trailingAverage(D.daily);
+    return r && { mean: r.mean, days: r.days.map(dayOfYmd), words: `the last 5 days NASA has (${ymdWords(r.days[0])} to ${ymdWords(r.through)}; it runs about 5 days behind), averaged`, at: Date.UTC(+r.through.slice(0, 4), +r.through.slice(4, 6) - 1, +r.through.slice(6, 8), 12) };
+  }
   /** The days, the open ground's soil (C) and the words for what st.soilWhen picks; null while unknown. */
   function soilPick() {
     const frames = st.soilFrames || [];
-    const recent = st.soilData ? trailingAverage(st.soilData.daily) : null;
-    const lastDays = recent ? recent.days.map(dayOfYmd) : null;
+    const recent = soilRecent();
+    const lastDays = recent ? recent.days : null;
     if (st.soilWhen === 'now') {
       const L = st.soilData?.latest;
-      if (!L && !recent) return null;
-      const at = L ? `${MONTHS[new Date(L.t).getUTCMonth()]} ${new Date(L.t).getUTCDate()} about ${aboutLocal(L.t, site.lng)}` : ymdWords(recent.through);
-      return { days: lastDays || [], openC: L ? L.c : st.soilData.daily[recent.through], words: `the latest reading (${at}; NASA runs about 3 days behind)`, short: 'Latest' };
+      if (!L) return null;
+      const behind = Date.now() - L.t > 6 * 3600000 ? ` (the latest there is: ${st.soilData.source === 'nasa' ? 'NASA runs about 3 days behind' : 'the model is behind'})` : '';
+      return { days: lastDays || [], openC: L.c, words: `${atWords(L.t)}${behind}`, short: 'Now' };
     }
     if (st.soilWhen === 'last5') {
       if (!recent) return null;
-      return { days: lastDays, openC: recent.mean, words: `the last 5 days NASA has (${ymdWords(recent.days[0])} to ${ymdWords(recent.through)}), averaged`, short: '5-day average' };
+      return { days: lastDays, openC: recent.mean, words: recent.words, short: '5-day average' };
     }
     const f = frames[Number(st.soilWhen)];
-    if (!f || !st.climate?.tSoil) return null;
+    if (!f || !soilTypical()) return null;
     return { days: f.days, openC: f.mean, words: `${FRAME_NAME[f.kind].toLowerCase()}, ${dayLabel(f.start)} to ${dayLabel(f.end)}, in a typical year`, short: FRAME_NAME[f.kind], frame: f };
   }
   /** The period buttons for the soil: its time frames, then the last 5 days and now. */
@@ -568,12 +583,12 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
   }
   /** Fetch the soil (once), then ask the worker for the light over the days picked. */
   function runSoil() {
-    if (st.climate?.tSoil && !st.soilFrames) { st.soilFrames = soilFrames(st.climate.tSoil); soilButtons(); }
+    if (st.soilData && soilTypical() && !st.soilFrames) { st.soilFrames = soilFrames(soilTypical()); soilButtons(); }
     if (!st.soilAsked) {
       st.soilAsked = true;
       caption('Fetching the soil temperatures here…');
       fetch(`/api/shade/soil?lng=${site.lng}&lat=${site.lat}`).then((r) => r.json()).then((d) => { if (d.error) throw new Error(d.detail || d.error); st.soilData = d; })
-        .catch((e) => { st.soilData = { daily: {}, latest: null, error: e.message }; })
+        .catch((e) => { st.soilData = { daily: {}, latest: null, typical: null, trail: null, error: e.message }; })
         .finally(() => { if (st.what === 'soil') runSoil(); });
       return;
     }
@@ -594,7 +609,7 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     if (!pick || !pe) {
       if (st.soilData && !pick) {
         $('#sun-legend').innerHTML = '<span class="dim">No soil temperatures.</span>';
-        caption(st.soilData.error ? `NASA's soil temperatures could not be read (${st.soilData.error}).` : 'NASA has no soil temperatures for this place.');
+        caption(st.soilData.error ? `The soil temperatures could not be read (${st.soilData.error}).` : 'There are no soil temperatures for this place.');
       }
       readouts();
       return;
@@ -613,20 +628,21 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     const b = tempBands(lo, hi + 0.01);
     const colors = Array.from({ length: b.n }, (_, i) => ramp(b.n === 1 ? 1 : i / (b.n - 1)));
     $('#sun-legend').innerHTML = `<span>${b.lo}</span><span class="ramp" style="background:${bandsCss({ colors, n: b.n })}"></span><span>${b.hi} °F</span><span class="dim">steps of ${b.step}</span>`;
-    paint(values, pe.xy, (v) => [...colors[b.of(v)], ALPHA], { span: 2, smoothed: true, read: { unit: '°F', what: `soil, about the top 10 cm, over ${pick.words}`, dp: 0 } });
+    const depth = st.soilData.depth || 'the top soil';
+    paint(values, pe.xy, (v) => [...colors[b.of(v)], ALPHA], { span: 2, smoothed: true, read: { unit: '°F', what: `soil, ${depth}, ${st.soilWhen === 'now' ? 'at' : 'over'} ${pick.words}`, dp: 0 } });
     const coolest = Number.isFinite(lo) ? toF(pick.openC) - lo : 0;
-    caption(`Soil temperature, about the top 10 cm, over ${pick.words}, ${where()}. Open ground: ${fF(pick.openC)}; the shadiest spot about ${Math.round(coolest)} °F cooler. Shade cools the soil by the sunlight it takes (an estimate from one study, being refined).`);
+    caption(`Soil temperature, ${depth}, ${st.soilWhen === 'now' ? 'at' : 'over'} ${pick.words}, ${where()}. Open ground: ${fF(pick.openC)}; the shadiest spot about ${Math.round(coolest)} °F cooler. Shade cools the soil by the sunlight it takes (an estimate from one study, being refined).`);
     readouts();
   }
   /* The year's soil: the typical year, this year so far, the time frames shaded, today, the 5-day average and the dormancy line. */
   function chartSoil() {
     const box = $('#soil-chart');
     if (!box) return;
-    const typ = st.climate?.tSoil;
+    const typ = soilTypical();
     if (!typ) { box.innerHTML = ''; return; }
     const year = new Date().getUTCFullYear();
     const seen = Object.entries(st.soilData?.daily || {}).filter(([d]) => d.slice(0, 4) === String(year)).map(([d, c]) => [dayOfYmd(d), toF(c)]).sort((a, b) => a[0] - b[0]);
-    const recent = st.soilData ? trailingAverage(st.soilData.daily) : null;
+    const recent = soilRecent();
     const grass = $('#grass').value || 'cool', dormF = toF(SOIL_DORMANT_C[grass] ?? SOIL_DORMANT_C.cool);
     const all = [...typ.map(toF), ...seen.map((p) => p[1]), dormF];
     const lo = Math.floor(Math.min(...all) / 10) * 10, hi = Math.ceil(Math.max(...all) / 10) * 10;
@@ -651,10 +667,11 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     });
     const line = (pts) => pts.map(([k, v], i) => `${i && pts[i - 1][0] === k - 1 ? 'L' : 'M'}${X(k).toFixed(1)},${Y(v).toFixed(1)}`).join('');
     const todayK = dayOfYmd(new Date().toISOString().slice(0, 10).replace(/-/g, ''));
-    const avg = recent ? `<circle cx="${X(dayOfYmd(recent.through))}" cy="${Y(toF(recent.mean))}" r="4" fill="${LAWN}" stroke="#161616" stroke-width="2"/>` : '';
+    const kOf = (t) => dayOfYmd(new Date(t).toISOString().slice(0, 10).replace(/-/g, ''));
+    const avg = recent ? `<circle cx="${X(kOf(recent.at))}" cy="${Y(toF(recent.mean))}" r="4" fill="${LAWN}" stroke="#161616" stroke-width="2"/>` : '';
     const L = st.soilData?.latest;
-    const latest = L ? `<circle cx="${X(dayOfYmd(new Date(L.t).toISOString().slice(0, 10).replace(/-/g, '')))}" cy="${Y(toF(L.c))}" r="3.5" fill="#fff" stroke="#161616" stroke-width="2"/>` : '';
-    box.innerHTML = `<div class="key"><span><i style="background:#9a9a9a"></i>Typical year</span><span><i style="background:${OPEN}"></i>This year</span><span><i style="background:${LAWN}"></i>5-day average</span><span><i style="background:#fff"></i>Latest</span></div>
+    const latest = L ? `<circle cx="${X(kOf(L.t))}" cy="${Y(toF(L.c))}" r="3.5" fill="#fff" stroke="#161616" stroke-width="2"/>` : '';
+    box.innerHTML = `<div class="key"><span><i style="background:#9a9a9a"></i>Typical year</span><span><i style="background:${OPEN}"></i>This year</span><span><i style="background:${LAWN}"></i>5-day average</span><span><i style="background:#fff"></i>Now</span></div>
       <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Open ground's soil temperature through the year, °F, with its time frames">
         ${bands}${grid}${months}
         <line x1="${l}" x2="${W - r}" y1="${Y(dormF)}" y2="${Y(dormF)}" stroke="#3987e5" stroke-dasharray="3 3" stroke-opacity=".7"/>
@@ -664,7 +681,7 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
         <line x1="${X(todayK)}" x2="${X(todayK)}" y1="${t}" y2="${H - b}" stroke="#bbb" stroke-dasharray="2 2"/>
         ${avg}${latest}
       </svg>
-      <p class="dim">${recent ? `Last 5 days (to ${ymdWords(recent.through)}): <b>${fF(recent.mean)}</b>` : ''}${L ? `${recent ? ' · ' : ''}latest: <b>${fF(L.c)}</b>` : ''}${recent ? ` · typical for the date: ${fF(meanOver(typ, recent.days.map(dayOfYmd)))}` : ''}. Open ground, NASA's top soil layer (about 10 cm) for the area.</p>`;
+      <p class="dim">${recent ? `Last 5 days: <b>${fF(recent.mean)}</b>` : ''}${L ? `${recent ? ' · ' : ''}${atWords(L.t)}: <b>${fF(L.c)}</b>` : ''}${recent ? ` · typical for those days: ${fF(meanOver(typ, recent.days))}` : ''}. Open ground, ${st.soilData?.depth || 'the top soil'}, from ${st.soilData?.words || 'NASA'}: a model of the area's soil, ${st.soilData?.source === 'iemre' ? "on average within about 4 °F of the measured soil under open grass at NOAA's reference stations" : "on average about 5 °F off the measured soil under open grass at NOAA's reference stations, and running cold"}.</p>`;
   }
 
   function build() {

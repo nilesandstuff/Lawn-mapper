@@ -1138,9 +1138,33 @@ sunlight (ALLSKY_SFC_SW_DWN, MJ/m2), daily and as 5-day means.
 
 MERRA-2's soil is the mean of a ~50 km cell, forest and town included, so
 it is the area's soil, not an open lawn's, and its response to sun is not
-a lawn's. NOT USED for the rate. The view takes its open-ground soil from
-it all the same (there is nothing better that is free and keyless), and
-says so on the page. Scratch: soil/fit.py.
+a lawn's. NOT USED for the rate. Scratch: soil/fit.py.
+
+### 28. The open ground's soil: Iowa State's IEMRE beats NASA against 16 NOAA reference stations, and NASA runs 3 C cold in winter (2026-10-26)
+
+Which free model to read the open lawn's soil from. The water session had
+scored IEMRE's hourly 4-inch soil against the two Michigan reference
+stations for one week (water/FINDINGS.md H41: daily means within 1-4 C).
+Run here for a whole year at 16 U.S. Climate Reference Network stations
+(open grass, by design; NCEI daily01 files, 2025): each station's measured
+daily soil at 5 and 10 cm against NASA POWER's top layer (TSOIL1) and
+IEMRE's (the mean of its daily 4-inch high and low) at the station.
+
+| | NASA, 5 cm | IEMRE, 5 cm | NASA, 10 cm | IEMRE, 10 cm |
+|---|---|---|---|---|
+| mean error, 16 stations | -1.6 C | +0.1 C | -1.6 C | +0.2 C |
+| mean absolute error | 2.7 C | 2.1 C | 2.9 C | 2.2 C |
+| winter (Dec-Feb) mean error | -3.2 C | -0.6 C | | |
+| summer (Jun-Aug) mean error | -1.0 C | +0.4 C | | |
+
+NASA's worst: Tucson -5.1 C and Darrington (WA Cascades) -6.0 C all year.
+IEMRE's worst: Darrington -3.4 C, Goodridge (MN) and Oakley (KS) about
++2.5 C. Both miss most in a Minnesota winter (snow). IN USE: the soil view
+reads IEMRE (its conus and europe domains; scored on U.S. stations only)
+and NASA elsewhere. NOT CHANGED: the growing season's dormancy day still
+reads NASA's soil (climate.js, shared with the water map), and NASA's
+winter cold bias puts it early; worth moving to IEMRE, asked first.
+Scratch: soil/crn.py, crn-rows.json.
 
 ## Speculation
 

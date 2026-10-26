@@ -1368,19 +1368,43 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   const b = tempBands(48.2, 53.7);
   check('soil: colour bands in whole degrees cover the range; a wide range takes wider steps',
     b.step === 1 && b.lo === 48 && b.hi === 54 && b.of(48.2) === 0 && b.of(53.7) === b.n - 1 && tempBands(40, 80).step === 10 && dayOfYmd('20261021') === 293, JSON.stringify(b));
-  /* The route: NASA's daily and hourly soil, the latest hour picked, fill values dropped. */
-  const { soilNow } = await import('../worker/src/shade.js');
+  /* The route, outside IEMRE's maps: NASA's daily and hourly soil, the latest hour picked, fill values dropped. */
+  const { soilNow, foldYear } = await import('../worker/src/shade.js');
   const urls = [];
   const fake = async (u) => {
     urls.push(u);
+    if (u.includes('mesonet.agron.iastate.edu')) return new Response('not found', { status: 404 });
     const hourly = u.includes('/hourly/');
     const parameter = { TSOIL1: hourly ? { 2026102221: 15.9, 2026102222: 15.5, 2026102223: -999 } : { 20261020: 11.52, 20261021: 11.59, 20261022: -999 } };
     return new Response(JSON.stringify({ header: { fill_value: -999 }, properties: { parameter } }), { status: 200 });
   };
-  const sn = await soilNow(-86.2284, 43.0637, { fetchImpl: fake, now: new Date(Date.UTC(2026, 9, 26, 13)) });
-  check('soil route: the last year of daily soil and the latest hour from NASA, rounded, fill values dropped',
-    sn.daily['20261021'] === 11.6 && !('20261022' in sn.daily) && sn.latest.c === 15.5 && sn.latest.t === Date.UTC(2026, 9, 22, 22)
-    && urls.some((u) => /daily.*start=20251026/.test(u)) && urls.some((u) => u.includes('/hourly/')), JSON.stringify(sn));
+  const sn = await soilNow(151.2, -33.9, { fetchImpl: fake, now: new Date(Date.UTC(2026, 9, 26, 13)) });
+  check('soil route: outside IEMRE, NASA\'s last year of daily soil and its latest hour, rounded, fill values dropped',
+    sn.source === 'nasa' && sn.daily['20261021'] === 11.6 && !('20261022' in sn.daily) && sn.latest.c === 15.5 && sn.latest.t === Date.UTC(2026, 9, 22, 22)
+    && urls.some((u) => /power.*daily.*start=20251026/.test(u)) && sn.trail === null, JSON.stringify(sn));
+  /* Inside: IEMRE's days (the mean of the 4-inch high and low), its hours to now for the 120-hour average and the latest, ten years folded. */
+  const now = Date.UTC(2026, 9, 26, 13);
+  const ie = async (u) => {
+    const m = /multiday\/(\d{4}-\d{2}-\d{2})\/(\d{4}-\d{2}-\d{2})/.exec(u);
+    if (m) {
+      const data = [];
+      for (let t = Date.parse(m[1]); t <= Date.parse(m[2]); t += 86400000) data.push({ date: new Date(t).toISOString().slice(0, 10), soil4t_high_f: 59, soil4t_low_f: 41 });
+      return new Response(JSON.stringify({ iemre_domain: 'conus', data }), { status: 200 });
+    }
+    const h = /hourly\/(\d{4}-\d{2}-\d{2})/.exec(u);
+    if (h) {
+      const data = Array.from({ length: 24 }, (_, i) => ({ valid_utc: new Date(Date.parse(h[1]) + i * 3600000).toISOString().slice(0, 16) + 'Z', soil4t_f: Date.parse(h[1]) + i * 3600000 <= now ? 50 + (i % 2) * 3.6 : 99 }));
+      return new Response(JSON.stringify({ data }), { status: 200 });
+    }
+    return new Response('?', { status: 404 });
+  };
+  const si = await soilNow(-86.2284, 43.0637, { fetchImpl: ie, now: new Date(now) });
+  check('soil route: inside IEMRE, its daily soil (10 C here), the last 120 hours to now averaged (11 C), the latest hour, and a typical year from ten years; forecast hours never count',
+    si.source === 'iemre' && si.domain === 'conus' && si.daily['20261021'] === 10 && si.trail?.hours === 120 && si.trail.mean === 11 && si.trail.to === now
+    && si.latest.t === now && si.typical?.length === 365 && si.typical.every((c) => c === 10), JSON.stringify({ ...si, daily: undefined, typical: si.typical?.slice(0, 3) }));
+  check('soil route: a typical year needs every day of the year; one year folds, a gap leaves none',
+    foldYear(Object.fromEntries(Array.from({ length: 365 }, (_, k) => [new Date(Date.UTC(2025, 0, 1 + k)).toISOString().slice(0, 10).replace(/-/g, ''), k % 2]))).length === 365
+    && foldYear({ 20250101: 1 }) === null, '');
 }
 
 /* ------------------------------------------------------- the shade subdomain */
