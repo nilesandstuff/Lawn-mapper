@@ -39,6 +39,26 @@ assert.deepEqual(slices(1000), [{ top: 0, height: 1000, ownTop: -Infinity, ownBo
 const merged = mergeStops([stops.slice(0, 12), stops.slice(9)]);
 assert.equal(merged.length, 19);
 assert.deepEqual(merged.map((s) => s.address), stops.map((s) => s.address));
+assert.equal(mergeStops([stops, stops, stops]).length, 19, 'three copies of one screenshot');
+// the same address with a different time is a second job, and stays
+const job = (address, minutes) => ({ address, city: 'Fairview', name: 'Pat Doe', minutes, service: '' });
+assert.deepEqual(mergeStops([[job('1 Elm St', 20)], [job('1 Elm St', 35)]]).map((s) => s.minutes), [20, 35]);
+// written differently ("Dr" / "Drive", case), same time: one job
+assert.equal(mergeStops([[job('5974 Oak Hollow Dr SW', 20)], [job('5974 oak hollow drive', 20)]]).length, 1);
+// two cards with one address on ONE screenshot are two jobs; the overlap repeats only one of them
+assert.equal(mergeStops([[job('1 Elm St', 20), job('1 Elm St', 20)]]).length, 2);
+assert.equal(mergeStops([[job('1 Elm St', 20), job('1 Elm St', 20)], [job('1 Elm St', 20)]]).length, 2);
+assert.equal(mergeStops([[job('1 Elm St', 20), job('1 Elm St', 20)], [job('1 Elm St', 20), job('1 Elm St', 20), job('1 Elm St', 20)]]).length, 3);
+// a time OCR missed matches any, and is filled in from the other copy
+const filled = mergeStops([[job('1 Elm St', null)], [job('1 Elm St', 25)]]);
+assert.deepEqual(filled.map((s) => s.minutes), [25]);
+assert.equal(mergeStops([[job('1 Elm St', 25)], [job('1 Elm St', null)]]).length, 1);
+// an exact time is matched before a missing one
+assert.deepEqual(mergeStops([[job('1 Elm St', null), job('1 Elm St', 30)], [job('1 Elm St', 30)]]).map((s) => s.minutes), [null, 30]);
+// the input is not changed
+const a = [job('1 Elm St', null)];
+mergeStops([a, [job('1 Elm St', 25)]]);
+assert.equal(a[0].minutes, null);
 
 // times as the list writes them, and as OCR misreads them
 assert.equal(readTime('20m'), 20);

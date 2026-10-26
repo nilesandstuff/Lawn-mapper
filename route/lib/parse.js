@@ -169,16 +169,34 @@ export function stopKey(s) {
   return words.slice(0, 2).join(' ');
 }
 
-/** Stops from several (overlapping) screenshots, in order, each job once. */
+/**
+ * Stops from several screenshots (or documents), in order. Screenshots of one
+ * long list overlap, so a job seen in an earlier one is dropped -- but only
+ * when its time agrees too (owner, 2026-10-26: "remove duplicates ... unless
+ * they show different times"): the same address with a different time is a
+ * second job there. A time OCR missed (null) agrees with any, and is filled
+ * in from the other copy.
+ *
+ * Only copies from DIFFERENT lists are matched, each earlier stop at most
+ * once per list: two cards with the same address on one screenshot are two
+ * jobs.
+ */
 export function mergeStops(lists) {
-  const seen = new Set();
   const out = [];
   for (const list of lists) {
+    const earlier = out.slice();
+    const used = new Set();
     for (const s of list) {
       const k = stopKey(s);
-      if (k && seen.has(k)) continue;
-      seen.add(k);
-      out.push(s);
+      const free = (e) => !used.has(e) && stopKey(e) === k;
+      const twin = k && (earlier.find((e) => free(e) && e.minutes === s.minutes)
+        || earlier.find((e) => free(e) && (e.minutes == null || s.minutes == null)));
+      if (twin) {
+        used.add(twin);
+        if (twin.minutes == null && s.minutes != null) twin.minutes = s.minutes;
+        continue;
+      }
+      out.push({ ...s });
     }
   }
   return out;

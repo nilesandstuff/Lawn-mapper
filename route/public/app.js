@@ -150,7 +150,7 @@ async function readScreenshots(files) {
     await worker.terminate();
     bar.hidden = true;
   }
-  return mergeStops(lists);
+  return merge(lists);
 }
 
 /* ------------------------------------------------------------ reading documents */
@@ -183,6 +183,13 @@ async function keepFirst(file, bytes, blocks, parsed) {
 }
 
 let kept = false;
+let repeats = 0;
+/** mergeStops, counting the repeats it drops (jobs seen twice with the same time). */
+function merge(lists) {
+  const out = mergeStops(lists);
+  repeats += lists.reduce((a, l) => a + l.length, 0) - out.length;
+  return out;
+}
 async function readDocuments(files) {
   const lists = [];
   for (const f of files) {
@@ -199,7 +206,7 @@ async function readDocuments(files) {
     if (await keepFirst(f, bytes, blocks, parsed)) kept = true;
     lists.push(parsed.stops.map(({ extra, ...s }) => s));
   }
-  return mergeStops(lists);
+  return merge(lists);
 }
 
 async function readFiles(files) {
@@ -208,25 +215,32 @@ async function readFiles(files) {
   const lists = [];
   if (images.length) lists.push(await readScreenshots(images));
   if (docs.length) lists.push(await readDocuments(docs));
-  return mergeStops(lists);
+  return merge(lists);
 }
 
 let nextId = Math.max(0, ...stops.map((s) => s.id || 0)) + 1;
 async function pick(files, append) {
   if (!files.length) return;
   kept = false;
+  repeats = 0;
   const what = [...files].every(isImage) ? 'picture' : 'document';
   try {
     const found = await readFiles([...files]);
     const fresh = found.map((s) => ({ id: nextId++, ...s }));
-    stops = append ? mergeStops([stops, fresh]) : fresh;
+    const before = append ? stops.length : 0;
+    stops = append ? merge([stops, fresh]) : fresh;
+    const added = stops.length - before;
     store.set('stops', stops);
     if (!append) { result = null; store.set('result', null); $('#result').hidden = true; }
     renderStops();
     $('#stopsBox').open = true;
     const timed = fresh.filter((s) => s.minutes != null).length;
+    const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+    const removed = repeats ? ` ${plural(repeats, 'repeat')} removed (same address, same time).` : '';
     say(found.length
-      ? `Found ${found.length} stop${found.length === 1 ? '' : 's'}${timed < found.length ? ` (${found.length - timed} without a time)` : ''}. Check them below.`
+      ? append
+        ? `${added ? `Added ${plural(added, 'stop')}` : 'Nothing new'}: ${stops.length} in all.${removed} Check them below.`
+        : `Found ${plural(found.length, 'stop')}${timed < found.length ? ` (${found.length - timed} without a time)` : ''}.${removed} Check them below.`
       : `No addresses found in that ${what}. Is it the job list?${kept ? ' (A private copy was kept so the reader can learn this layout.)' : ''}`, !found.length);
     if (kept && found.length) say(`${$('#status').textContent} A private copy of this first document was kept, to tune the reader.`);
     if (found.length) $('#stopsCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
