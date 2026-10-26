@@ -70,6 +70,10 @@ inside of the loop".
 
 ## In progress
 
+- **Trust the detector under small leaf-off trees (H127).** One seed:
+  7 better, 0 worse on seen ground. Seeds 8 and 9 are running on the free
+  runner; adopted if they hold (bar in H127).
+
 - **THE PLAN taught only what was traced (S66, owner 2026-10-26).** Inferred
   marks left out of training, lawn traced under trees still taught. Two
   independent free runs, then workflow 24, which also links their pictures

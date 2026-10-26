@@ -1006,6 +1006,63 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H127. TRUSTING THE DETECTOR UNDER SMALL TREES ON LEAF-OFF PHOTOS, PAIRED LOT BY LOT ON ONE DECODER: of the 35 lots that look leaf-off, 7 better, 1 worse, 27 unchanged (p = 0.070); on SEEN ground 7 better, NONE worse (p = 0.016). It touches too few lots to move a median, and trusting it under bigger trees is worse (one seed; seeds 8 and 9 running) -- 2026-10-26
+*Workflow 14 run 40369587372 (S66 side A: THE PLAN as it is), DINOv3-sat,
+896, windows off, locked 104 plus the pond maps, `fused + edge`, seed 7,
+free runner; the per-lot file was kept (the drawing fix held: 6.0 GB before
+drawing, 10.9 GB after). Workflow 24 run 40403326241: THE PLAN's row
+against "... see-through small-100-leafoff" OF THE SAME RUN, so both rows
+come from the same trained decoder and the pairing has no seed noise in
+it. This is the fair test S65/H126 could not give (owner, 2026-10-26: "does
+trusting the detector under leaf off trees, rather than overriding the
+detector with the guess-under-canopy algorithm, help?").*
+
+| lots | B better / worse / level | median wrong | sign test |
+|---|---|---|---|
+| all 104 | 7 / 1 / 96 | 15.6 -> 15.6% | p 0.070 |
+| the 35 that look leaf-off (bare share 30%+) | 7 / 1 / 27 | 17.9 -> 17.8% | p 0.070 |
+| county photo (31) | 5 / 1 / 25 | 17.9 -> 17.8% | p 0.22 |
+| **seen ground only** (workflow 24 run 40404063237), all 104 | 7 / 0 / 97 | 14.6 -> 14.6% | **p 0.016** |
+| seen ground only, the 35 leaf-off | 7 / 0 / 28 | 15.2 -> 15.1% | **p 0.016** |
+
+Most improved: C99 60.5 -> 54.9, C89 33.1 -> 30.8, B14 13.3 -> 11.9, C49
+17.9 -> 16.6, C32 19.6 -> 19.0. Worse: C87 33.6 -> 36.8 (the one real
+loss); B07 and B32 by 0.4 and 0.3. **C87's loss is all on ground the
+tracer marked inferred:** on seen ground it IMPROVES, 41.4 -> 37.7, and
+C89 goes 14.0 -> 9.0, C99 65.7 -> 58.9.
+
+**The see-through table of the same run, the 35 leaf-off lots** (THE
+PLAN's decoder, headline median): off 17.9, small-100 17.8,
+small-100-leafoff 17.8, small-300 18.5, trust (every clump in the open)
+19.5, colour 19.1.
+
+**Reading.**
+- **Where it acts, it mostly helps.** 7 of the 8 lots it changes are
+  better, the gains are larger than the one loss, and it never touches a
+  leaf-on lot by construction. H125 and H126's cell breakdown (detector
+  26-27% wrong against stage 3's 30-31% under these trees on leaf-off
+  photos) points the same way.
+- **On ground the tracer could see, it never made a lot worse** (7 / 0,
+  p = 0.016, one seed). Its only loss on the headline is on inferred
+  ground, the tracer's guess.
+- **But it acts on almost nothing.** 27 of the 35 leaf-off lots are
+  unchanged: only canopy clumps under 100 m2 in the open are trusted, and
+  most lots have none that change the answer. A sign test of 7 against 1
+  is p = 0.070, short of the 0.05 bar, on one seed.
+- **Widening it is worse, not better.** Trusting the detector under clumps
+  up to 300 m2, or under every clump in the open, raises the leaf-off
+  median (18.5, 19.5). Under bigger trees the detector's missed lawn costs
+  more than stage 3's false lawn.
+- **Not yet checked:** whether "looks leaf-off" is right. Only 1 of 104
+  maps carries the owner's own leaf-on/leaf-off mark (C76, leaf-on,
+  guessed right).
+- **Not adopted yet; the bar for adopting it, set now, before seeds 8 and
+  9 report:** on the leaf-off lots, pooled over seeds 7, 8 and 9, better on
+  more lots than worse with sign test p < 0.05 on `all` (the usual
+  measure), and no lot worse by more than 5 points on seen ground. It is
+  the only tree variant with a consistent lean, and safe by construction:
+  leaf-on lots are untouched.
+
 ### H126. NONE OF THE TREE VARIANTS BEATS THE PLAN: the decoder taught under trees, used only under small trees (in every season or on leaf-off photos only), and trusting stage 1 under small trees on leaf-off photos only, all 15.8% against THE PLAN's 15.7%; under those trees the taught decoder answers almost exactly as the ordinary one (S65 part 2, one seed, Modal) -- 2026-10-26
 *Workflow 14 run 40303542434: `gpu: modal` (owner: "Yes"), DINOv3-sat,
 `decoder: fused + edge + trees`, seed 7, locked 104 plus the pond maps,
@@ -10223,6 +10280,7 @@ deploy log says how many are locked and how many are waiting.
 | 2026-10-23 | 39879564306 | 104 (locked, 131u7jm) | S58 `windows: native`, `gpu: modal`: DINOv3-sat with the 26 big lots read whole at 10 cm in one pass (61-188 patches a side) on an L4 (extraction 147 s, decoders 426 + 657 s), THE PLAN, seed 7, no pond examples | 16.0% (edge refined + stage 3, span, veto) | — | **H121.** Workflow 24 run 39906929463 vs S51 (same eye squeezed): all 42 / 35 / 27, -0.1 [-0.5, +0.3]; the big 26: 17 / 5 / 4, -1.2 [-1.8, -0.2], p 0.017; run 39906931875 vs Scale-MAE: 67 / 27 / 10, -2.0; big 26 -2.8 |
 | 2026-10-23 | 39887800268 | 104 (locked, 131u7jm) | S59: S51 again over cached features (seed 7) to draw the Byron Center map | 15.5% (edge refined + stage 3, span, veto) | — | 15.5 against S51's 15.4 from the same features and seed (S54 and S52-on-DINOv3 read 15.5 too): a tenth of a point of nondeterminism, not the decimal reproduction of H26. The draw was refused by the site's edge (403 to the runner); run 3 (39907286242) read the map and the county export from the database and died on a call of mine; the picture came from workflow 43 below |
 | 2026-10-24 | 40054742999 | 1 saved map (the condo complex, drawn only) | Workflow 32 `map`, after 32f396d: release v7's live native read, pressed twice | -- | -- | **A LIVE BUG, FOUND BY THE OWNER AND FIXED:** v7's first live presses on the condo complex (40045019028, and the owner's own) came back as horizontal stripes. alpha_infer.whole unpacked every read as the eye's default 56 x 56 patches; a native read at 4096 px is 256 x 256, and patches_of keeps the last side*side tokens, so the bottom twelve rows of the grid were laid across the whole lot. Training unpacked by S // patch, so H121 and v7's weights were never affected; only the live reading of lots past 90 m on v7 (2026-10-23 23:11 to 2026-10-24 02:31 UTC). After the fix: raw mask 970x1024, lawn in 31.4% of it, row-to-row change 0.011 against column-to-column 0.010, ratio 1.07 (stripes would be > 3). Both presses succeeded (photo pieces two at a time, retried): GPU 131 s cold / 79 s warm (backbone 79 / 74 s), downloads 88 / 71 s, wall 241 / 161 s. tools/alpha_infer_test.py pins the unpacking |
+| 2026-10-26 | 40369587372 | 104 (locked, 131u7jm) + 5 not-lawn-only maps | DINOv3-sat, THE PLAN, seed 7 (S66 side A) | 15.6% (THE PLAN) | -- | **H127.** small-100-leafoff paired against THE PLAN in the same run (workflow 24 runs 40403326241, 40404063237): leaf-off lots 7 better / 1 worse / 27 level, p 0.070; seen ground 7 / 0, p 0.016. Per-lot file kept; drawing used 10.9 GB |
 | 2026-10-26 | 40303542434 | 104 (locked, 131u7jm) + 5 not-lawn-only maps | DINOv3-sat, `decoder: fused + edge + trees`, `gpu: modal` (S65 part 2) | 15.7% (THE PLAN) | -- | **H126.** Every tree variant 15.8% (taught under small trees, its leaf-off version, small-100, small-100-leafoff, colour); taught under all canopy 16.2%. Under small trees the taught decoder answers as the ordinary one (both are taught; they differ in the canopy input: correction in H126). Runner shut down drawing the second picture set again; per-lot file lost |
 | 2026-10-26 | 40263507988 | 104 (locked, 131u7jm) + 5 not-lawn-only maps | DINOv3-sat, THE PLAN, seed 7, `draw_row` small-100 (S65 part 1) | 15.6% (THE PLAN) | -- | **H125.** Under the trees S63 trusted: detector better than stage 3 on leaf-off photos (26 vs 31% wrong), worse on leaf-on (31 vs 28); its errors there mostly missed lawn; traced lawn 63-70% in every group. Runner shut down while drawing the trial row; THE PLAN's pictures published as ...-control. Earlier tries 40210560105 (runner lost) and 40237110649 (cancelled, out of time) |
 | 2026-10-25 | 40209920330 | the 10 approved lots the 1024-cell cap coarsens | Workflow 32 `grids: on`: release v7 live, each lot pressed as served and at 3072 cells, both scored on the fine grid | -- | -- | **H124.** Level or better on all 10, median 12.7 -> 12.4%, none worse; GPU the same. SERVE_GRID_MAX -> 3072 |
