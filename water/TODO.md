@@ -41,8 +41,12 @@ SPECULATION), as always.
    stations: mean error +0.1 C against NASA POWER's -1.6, winter -0.6 against
    -3.2). Shade's cooling: the shade map uses 0.2 C cooler (daily mean) per
    MJ/m2 of daily sun lost, from one study (Edmondson et al. 2016, Sci. Rep.
-   6:33708, 1.5 cm, Leicester); a measured shaded-against-open difference under
-   turf is still wanted.
+   6:33708, 1.5 cm, Leicester). The features session then measured it at 114 NOAA
+   reference stations over ten years (SHADE-FINDINGS 30): about 0.13 C cooler
+   (daily mean, 5-10 cm) per MJ/m2/day of sun lost, nearly all of it through the
+   air the sun warms; natural rain about 0 to -0.01 C per mm/day over a fortnight
+   to a month -- on turf watered by rain, not irrigation. Its scripts:
+   docs/shade-research/soil/ (fetch_yrs.py and clim.py; README).
 7. **Rain intensity in the ten-year plan too** (after 3): the typical-year plan
    runs on daily totals, so it cannot tell a cloudburst from a soak.
 
