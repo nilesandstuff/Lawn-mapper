@@ -104,7 +104,13 @@ async function start(site, inputs) {
   const weekP = again(() => thisWeek(lat, lng, { back: 60 })).catch(() => null);
   // the shade map's typical year (its own reader, lib/shade/climate.js): its growing season and its light
   const y1 = new Date().getUTCFullYear() - 1;
-  const climateP = again(() => fetch(powerUrl(lng, lat, y1 - 9, y1)).then((x) => x.json()).then((p) => typicalYear(p))).catch(() => null);
+  /* THE SHADE MAP'S OWN CLIMATE (its /api/shade/climate, through this site's Worker): the same typical year, with
+     its soil temperature IEMRE's where IEMRE answers (owner, 2026-10-26: "switch to the Iowa model as long as it
+     holds true to other locations"; the features session's 111-station test, SHADE-FINDINGS 29), so the two maps'
+     growing seasons agree. NASA POWER read here directly, as before, when that does not answer. */
+  const fromShade = () => fetch(`/api/shade/climate?lng=${lng}&lat=${lat}`).then((x) => (x.ok ? x.json() : null))
+    .then((c) => (c && Array.isArray(c.tMean) && c.tMean.length >= 365 && Array.isArray(c.ghi) ? c : null)).catch(() => null);
+  const climateP = fromShade().then((c) => c || again(() => fetch(powerUrl(lng, lat, y1 - 9, y1)).then((x) => x.json()).then((p) => ({ ...typicalYear(p), tSoilSource: 'nasa' })))).catch(() => null);
 
   const r = await runSite(site, io, pickCloud, { progress });
   if (r.error) { self.postMessage({ error: r.error, notOnAws: r.notOnAws }); return; }

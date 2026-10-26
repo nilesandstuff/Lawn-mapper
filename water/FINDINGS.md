@@ -1353,6 +1353,26 @@ So: daily means within about 1-4 C of the station; its daily swing near twice th
 shallower layer, consistent with 0-7 cm). One week in late October at two points: not enough for a season's
 verdict. Not compared: Open-Meteo, USDA SCAN.
 
+### H42. The watering season's soil is IEMRE's now, as the shade map's (water session, 2026-10-26)
+
+The owner (in the features session): "switch to the Iowa model as long as it holds true to other locations". The
+features session tested it (SHADE-FINDINGS 29: dormancy within a median 4 days of 111 U.S. reference stations'
+against NASA's 7-8; closer at 12 of 13 German stations) and moved /api/shade/climate's tSoil to IEMRE. The water
+plan did NOT read that route: it fetched NASA POWER itself (analyse.js) into its own copy of climate.js. Now it
+reads /api/shade/climate through its Worker (the same typical year, ghi, diffuse, tMean, tSoil), NASA directly only
+when that does not answer, so the two maps' growing seasons agree.
+
+On the owner's lot (the shade route's own code, run here; the water copy's growingSeason):
+
+| grass | NASA soil | IEMRE soil |
+|---|---|---|
+| cool-season | 190 days, Apr 30 - Nov 5 | 193 days, May 2 - Nov 10 |
+| warm-season | 126 days, Jun 9 - Oct 12 | 130 days, Jun 9 - Oct 16 |
+
+November's typical soil: NASA 4.0 C, IEMRE 5.3; December-February: NASA -1.1, IEMRE 0.2 -- the cold bias the
+stations showed. Both seasons end on the soil, so the end moved; the start's two days come from the route's own
+0.05-degree rounding of the point.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge
