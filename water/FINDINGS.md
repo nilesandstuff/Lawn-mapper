@@ -1373,6 +1373,63 @@ November's typical soil: NASA 4.0 C, IEMRE 5.3; December-February: NASA -1.1, IE
 stations showed. Both seasons end on the soil, so the end moved; the start's two days come from the route's own
 0.05-degree rounding of the point.
 
+### H43. Shade and the air: the air's share of the grass's use, and cooler air near trees (water session, 2026-10-26)
+
+The owner: "shade cooling soil isn't the important part for the water map... It's the effect of shade on air
+temps, and therefore the effect on evapotranspiration." The research: research-shade-air.md (a research
+agent, its sources tagged read / second-hand); the checks below are this session's own.
+
+**The floor under shade, from the source itself.** Danielson & Feldhake 1981 (Colorado WRRI Completion Report 106,
+full text read): black shade cloth on hoops about 62 cm up, open at the sides "to have minimal disturbance of air
+flow", over weighing lysimeters in an irrigated bluegrass field, Fort Collins, 1979-80. No trees, no buildings.
+ET is linear in radiation; at none "approximately 2 mm per day... the component resulting from advective energy.
+This value would of course vary with the amount of wind received." The abstract's "30%" is that floor; the same
+report also says halving the radiation cut ET about 30% (a floor nearer 40%), and lysimeters fully covered for a
+day used 42-46% of the open ones'. Fitted here from its Appendix F (39 rain-free periods, checked against the
+tables): a = 2.08 mm/d, a share of 0.36, on the authors' radiation axis (the sunlight with the hot cloth's own
+infrared added); a = 2.37, 0.41, on the sunlight passed (71, 51, 27%) -- the axis this plan's light share is on.
+Each period on its own: 0.21-0.61. The cloths could not cool the field's air: the floor is open-field air at
+open-field wind.
+
+**That floor is the air's term of Penman-Monteith.** The same weeks (18 June - 11 September) of NASA POWER's
+1981-90 Fort Collins weather, split by this plan's own equation (et.js pmParts): ET0 5.51 mm/d, the air's term 2.39
+(a share of 0.43; days 0.30-0.55) -- against the lysimeters' 2.08-2.37 mm (0.36-0.41). Climate, not the same days
+(POWER begins 1981; its cell is 50 km and reaches the mountains), but it agrees, and it is what the report says the
+floor is. At the owner's lot, 2016-25: June-August 0.26 (days 0.16-0.39), May 0.31, September 0.38. So the plan's
+fixed 0.3 is replaced by each day's own share; on a day without humidity, wind and sunshine (a forecast short of
+them) it stays 0.3.
+
+**Air under and near trees, measured** (the research agent's reading): Ziter et al. 2019 (PNAS 116:7575, Madison,
+bicycle at 1.5 m, summer afternoons about 29 C): no canopy to full lowered the air 0.7 C within 10 m, 1.3 within
+30 m, over 1.5 within 60-90; at night 0.3-0.5. Souch & Souch 1993 (Bloomington): 0.7-1.3 C under trees, early
+afternoon, cooler and more humid under every tree, no relation to leaf area. Rahman et al. 2018 (Munich): 0.5-1.8 C,
+about 1 C less at 1.5 m than in the crown. Heisler 1990: wind at 2 m 22% below the airport's with buildings alone,
+70% below at 77% tree cover. No vapour-pressure numbers under canopy were found.
+
+**One degree cooler, the vapour held:** the air's term falls about 9% on a July day here (28/16 C, 60% RH, 2 m/s;
+the low cooled 0.3 as much), ET0 about 3%.
+
+**What is built** (lib/balance.js etToday, canopyAround; et.js airShare):
+use = ET0 x Kc x heat x ((1 - s) x L + s x A); s the day's air share, L the cell's summer sunlight share (as before),
+A = 1 - perC x 1.3 C x canopy x sunny: canopy the share of ground within 30 m under crowns (lidar returns 2 m or
+more above the ground at least a tenth of a cell's), sunny = the day's sunshine against 0.75 of clear sky, capped at
+1, and only in the growing season.
+
+On the owner's lot (flown 27 November 2017, leaves off; crowns at a tenth of the returns and at a fifth agree,
+38.2 and 38.1% of the grid): open lawn has 21% canopy within 30 m at its tenth, 31% median, 54% at its ninth tenth.
+Ten May-September seasons:
+
+| cell | old | the day's own share | and the trees' cooler air |
+|---|---|---|---|
+| full sun, median cover | 17.82 in | 17.82 | 17.53 (-1.6%) |
+| full sun, 90th-percentile cover | 17.82 | 17.82 | 17.32 (-2.8%) |
+| 40% sun, median cover | 10.33 | 10.22 (-1.1%) | 9.94 (-2.8% more) |
+| 40% sun, 90th-percentile cover | 10.33 | 10.22 | 9.72 (-4.9%) |
+| 10% sun, 90th-percentile cover | 6.59 | 6.42 (-2.6%) | 5.92 (-7.8%) |
+
+Small, as the research said it would be: a few percent, smaller than the floor's own spread. The day-to-day share
+matters more on single days (a humid still day 0.16, a dry windy one 0.4) than over a season.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge
@@ -1408,8 +1465,26 @@ unlikely is the check. The soil survey's own monthly water table (lib/soil.js,
 "Wet" layers) IS in the balance: it stops drainage and makes dual-group soils
 the wetter group in those months.
 
+### S11. Shade's cooler air, and what was left out (2026-10-26, with H43)
+
+- The cooling's size (1.3 C at full cover within 30 m) is one city's summer afternoons (Ziter), applied to the
+  daily high, a third of it to the low; linear in cover, though Ziter found it grows faster above about 40%.
+- Building shade does not cool the air here: only tree crowns count, since the measurements tie it to canopy.
+- Vapour held constant under trees; Souch found the air there more humid, which would cut the use a little more.
+- LEFT OUT, the larger lever: wind. Under and among trees wind at 2 m is a fifth to two-thirds lower (Heisler), and
+  the air's term is linear in it; the weather's wind is open-ground wind. A whole-yard wind correction from the
+  neighbourhood's tree cover could move every cell's use several percent, sun and shade alike. Not built.
+- LEFT OUT: the floor against light share may be 0.41 under a cloth (H43), against the 0.26-0.43 the day's own
+  split gives here; part of the cloth's extra is its own heat (black, 50 C), which a leaf canopy at air temperature
+  gives much less of. The only lawns measured under real trees (Litvak & Pataki 2016, Los Angeles: 0.90 - 0.35 x
+  canopy cover) show shade cutting the use less than the cloth's line does -- another climate, and cover is not
+  light share.
+- What would settle it: two soil-moisture probes, one in open lawn, one in lawn shaded by a tree, through a dry
+  July week.
+
 ### S9. Shaded lawn needs less water, but less than the shade suggests
 
+(SUPERSEDED 2026-10-26 by H43: the 0.3 is now each day's own air share, and trees cool the air near them.)
 ET = full-sun ET x (0.3 + 0.7 x the share of sunlight received)
 (Danielson & Feldhake 1981): about 30% of the use comes with warm dry air,
 which shade does not stop. In lib/balance.js (shadeFactor). WIRED IN

@@ -6,12 +6,7 @@ SPECULATION), as always.
 
 ## In progress (2026-10-25)
 
-8. **Shade's effect on the air, and so on the grass's water use** (owner,
-   2026-10-26: "shade cooling soil isn't the important part for the water map...
-   It's the effect of shade on air temps, and therefore the effect on
-   evapotranspiration"). The plan's shade term holds 30% of open-sun water use as
-   carried in by warm dry air that shade does not stop (Danielson & Feldhake
-   1981); a tree's shade also cools the air beneath it. Research, then build.
+(nothing)
 
 ## Queued
 
@@ -51,6 +46,10 @@ SPECULATION), as always.
 7. **Rain intensity in the ten-year plan too** (after 3): the typical-year plan
    runs on daily totals, so it cannot tell a cloudburst from a soak.
 
+9. **Wind among trees** (found with H43, 2026-10-26): the weather's wind is open ground's; among trees it is a fifth
+   to two-thirds lower at 2 m (Heisler 1990), and the air's part of the grass's use is linear in it -- a bigger
+   lever than the trees' cooler air. A whole-yard correction from the neighbourhood's tree cover (FINDINGS S11).
+
 ## Shelved (owner, 2026-10-26: "shelve the tree thing to the todo list")
 
 - **Trees using the lawn's water**: researched (FINDINGS H40, research-trees.md),
@@ -65,3 +64,4 @@ SPECULATION), as always.
 
 - 2026-10-25: a 3D view of the ground beside the top-down one (FINDINGS H38).
 - 2026-10-25: the rate of the recent rains, hour by hour, in this week's plan (FINDINGS H39).
+- 2026-10-26: shade's effect on the air: the day's own air share, and cooler air near trees (FINDINGS H43, S11).

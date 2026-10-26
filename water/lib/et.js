@@ -32,6 +32,12 @@ export function ra(latDeg, doy) {
  * latDeg, doy, elevM.
  */
 export function penmanMonteith(d, latDeg, doy, elevM = 200) {
+  return pmParts(d, latDeg, doy, elevM).et0;
+}
+
+/** Penman-Monteith in its two parts, mm/day: `sun`, the net radiation's, and `air`, the drying power of the air
+    (the vapour pressure deficit and the wind; the second term of FAO-56 eq. 6). et0 = max(0, sun + air). */
+export function pmParts(d, latDeg, doy, elevM = 200) {
   const tmean = (d.tmax + d.tmin) / 2;
   const P = 101.3 * ((293 - 0.0065 * elevM) / 293) ** 5.26;
   const gamma = 0.000665 * P;
@@ -47,8 +53,26 @@ export function penmanMonteith(d, latDeg, doy, elevM = 200) {
   const Rnl = sigma * (((d.tmax + 273.16) ** 4 + (d.tmin + 273.16) ** 4) / 2) * (0.34 - 0.14 * Math.sqrt(Math.max(ea, 0))) * (1.35 * rel - 0.35);
   const Rn = Rns - Rnl;
   const u2 = Math.max(0.5, d.wind ?? 2);
-  const et0 = (0.408 * delta * Rn + gamma * (900 / (tmean + 273)) * u2 * (esat - ea)) / (delta + gamma * (1 + 0.34 * u2));
-  return Math.max(0, et0);
+  const den = delta + gamma * (1 + 0.34 * u2);
+  const sun = (0.408 * delta * Rn) / den, air = (gamma * (900 / (tmean + 273)) * u2 * (esat - ea)) / den;
+  return { et0: Math.max(0, sun + air), sun, air, ea, clear: Rso > 0 ? rs / Rso : 0 };
+}
+
+/**
+ * THE AIR'S SHARE OF A DAY'S ET0, and how fast it falls as the air cools (water session, 2026-10-26; FINDINGS H43).
+ * Grass in shade still uses what the air's drying power gives it (Danielson & Feldhake 1981, lysimeters under
+ * shade cloth: ET at no sun is "the component resulting from advective energy... This value would of course vary
+ * with the amount of wind received"). That share is this term of the day's own Penman-Monteith, not a constant.
+ * perC: the air term's share lost per 1 C of cooling at the afternoon high (the night low cooled `nightShare` as
+ * much), the air's water vapour held -- cooler air under and near trees is less thirsty air.
+ * -> { share, perC, clear } or null for a day without humidity, wind and sunshine (no split to make).
+ */
+export function airShare(d, latDeg, doy, elevM = 200, { nightShare = 0.3 } = {}) {
+  if (![d.tmax, d.tmin, d.rh, d.wind, d.rs].every(Number.isFinite)) return null;
+  const a = pmParts(d, latDeg, doy, elevM);
+  if (!(a.et0 > 0) || !(a.air > 0)) return { share: 0, perC: 0, clear: a.clear };
+  const b = pmParts({ ...d, ea: a.ea, tmax: d.tmax - 1, tmin: d.tmin - nightShare }, latDeg, doy, elevM);
+  return { share: Math.min(1, a.air / a.et0), perC: Math.max(0, 1 - Math.max(0, b.air) / a.air), clear: a.clear };
 }
 
 /** Hargreaves-Samani ET0, mm/day, from temperatures alone. FAO-56 eq. 52. */

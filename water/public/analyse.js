@@ -65,7 +65,7 @@ async function plan(inputs = {}) {
   const out = {
     zones: p.zones, zoneOf: p.zoneOf, kinds: p.kinds, needMm: p.needMm, soilAt: p.soilAt, multiplier: p.multiplier, rootIn: p.rootIn, needMonth: p.needMonth, wetFromWatering: p.wetFromWatering, wetAnyway: p.wetAnyway, dryShare: p.dryShare,
     roofs: p.roofs, soil: p.soil, weather: p.weather, thisWeek: p.thisWeek, years: p.years, topsoil: p.topsoil,
-    standIn: kept.standIn, seconds: (Date.now() - t0) / 1000, shaded: p.shaded, sunShare: p.sunShare,
+    standIn: kept.standIn, seconds: (Date.now() - t0) / 1000, shaded: p.shaded, treeCool: p.treeCool, sunShare: p.sunShare,
     seasonDays: kept.season ? kept.season.size : null, grass, rainFrom: kept.rainFrom, texture: p.texture,
     trouble: Object.values(kept.sources || {}).filter(Boolean),
   };

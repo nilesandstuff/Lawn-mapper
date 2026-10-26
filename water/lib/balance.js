@@ -28,7 +28,7 @@
  * Water is in mm, which on a 1 m cell is litres.
  */
 
-import { KC } from './et.js';
+import { KC, airShare, dayOfYear } from './et.js';
 import { dayIndex } from './shade/climate.js';
 
 export const PARAMS = {
@@ -72,6 +72,16 @@ export const PARAMS = {
      0.70; until the heads are mapped). The plan simulates what reaches the grass; what to put down is
      that times the multiplier. */
   duLq: 0.65,
+  /* SHADE AND THE AIR (FINDINGS H43): the air's share of ET0 on a day without the weather to split it (Danielson &
+     Feldhake 1981's figure; the owner's lot's summer averages 0.26); the most a full canopy within canopyRadiusM
+     cools a sunny afternoon (Ziter et al. 2019: 0.7 C within 10 m, 1.3 within 30, over 1.5 within 60-90); a cell
+     marked as crown when this share of its lidar returns are 2 m above the ground; a day as sunny as theirs at this
+     share of clear-sky sunshine (their sampling days, summer afternoons, about 29 C). */
+  airShare: 0.3,
+  airCoolC: 1.3,
+  canopyRadiusM: 30,
+  canopyTallShare: 0.1,
+  clearRef: 0.75,
 };
 
 /** What to put down for each mm the grass needs, sprinklers watering unevenly (PARAMS.duLq). */
@@ -82,10 +92,65 @@ export const WARM = { p: 0.5 };
 
 const HYD = (h) => String(h || 'B').trim().toUpperCase();
 
-/* Shade: turf ET is linear in the sunlight it gets, but about 30% of full-sun ET is carried in by warm
-   dry air, which shade does not stop (Danielson & Feldhake 1981, lysimeters): ET = ET_sun x (0.3 + 0.7 x
-   the share of sunlight received). `light` is that share (1 in full sun). */
-export const shadeFactor = (light) => 0.3 + 0.7 * Math.max(0, Math.min(1, light));
+/* SHADE (FINDINGS H43, 2026-10-26). Turf ET is linear in the sunlight it gets, down to what the air alone gives
+   it with no sun at all (Danielson & Feldhake 1981, lysimeters under shade cloth). That floor is the air's part
+   of the day's Penman-Monteith (et.js airShare): measured 2.1-2.5 mm/d in Fort Collins, where the equation gives
+   2.4 on the same weeks' climate; it varies by day, about 26% of a Michigan summer day's and 16-41% day to day.
+   So ET = ET_open x ((1 - s) x L + s x A): L the share of sunlight the cell gets, s the day's air share, and A
+   what is left of the air's drying power where trees have cooled it (below). `shadeFactor` is that with s the
+   default and no cooling: the factor for a day without the weather to split it. */
+export const shadeFactor = (light, airShare = PARAMS.airShare) => airShare + (1 - airShare) * Math.max(0, Math.min(1, light));
+
+/**
+ * The share of the ground within PARAMS.canopyRadiusM of each cell under tree crowns: lidar returns 2 m or more
+ * above the ground (lowspots.js perCell.tall) at least canopyTallShare of a cell's returns, buildings left out.
+ * The lidar is often flown with the leaves down (the owner's, November 2017): a bare crown still returns from its
+ * branches, and a tenth or more of the returns marks the same crowns as a half (FINDINGS H43).
+ * -> Float32Array per cell, or null without the returns.
+ */
+export function canopyAround(res, params = PARAMS) {
+  const g = res.grid, pc = res.perCell, W = g.W, H = g.H, N = W * H;
+  if (!pc?.all || !pc?.tall) return null;
+  const sat = new Float64Array((W + 1) * (H + 1)), cnt = new Float64Array((W + 1) * (H + 1));
+  for (let r = 0; r < H; r++) {
+    let rs = 0, rc = 0;
+    for (let c = 0; c < W; c++) {
+      const i = r * W + c, a = pc.all[i];
+      if (a > 0) { rc++; if (!res.wall?.[i] && pc.tall[i] / a >= params.canopyTallShare) rs++; }
+      const k = (r + 1) * (W + 1) + c + 1;
+      sat[k] = sat[k - W - 1] + rs; cnt[k] = cnt[k - W - 1] + rc;
+    }
+  }
+  // a square of the disc's area (half-side r x sqrt(pi)/2), clipped to the grid: the share of the cells seen
+  const h = Math.max(1, Math.round((params.canopyRadiusM * Math.sqrt(Math.PI)) / 2 / g.cell));
+  const out = new Float32Array(N);
+  const box = (A, r0, c0, r1, c1) => A[r1 * (W + 1) + c1] - A[r0 * (W + 1) + c1] - A[r1 * (W + 1) + c0] + A[r0 * (W + 1) + c0];
+  for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) {
+    const r0 = Math.max(0, r - h), r1 = Math.min(H, r + h + 1), c0 = Math.max(0, c - h), c1 = Math.min(W, c + h + 1);
+    const n = box(cnt, r0, c0, r1, c1);
+    out[r * W + c] = n > 0 ? box(sat, r0, c0, r1, c1) / n : 0;
+  }
+  return out;
+}
+
+/**
+ * TODAY'S USE PER CELL, as a multiple of the open lawn's (fills `out`): heat and shelter (model.etBase), the
+ * sunlight (light), and the air -- the day's own share of it, cooled near trees on a sunny day in the growing
+ * season by up to PARAMS.airCoolC at full cover within canopyRadiusM (Ziter et al. 2019, Madison: 1.3 C cooler
+ * afternoons from no canopy to full within 30 m), the vapour in it held (et.js airShare).
+ */
+export function etToday(model, part, inSeason, out) {
+  const { N, etBase, light, canopy, params } = model;
+  const s = part ? part.share : params.airShare;
+  const sunny = part ? Math.min(1, part.clear / params.clearRef) : 0;
+  const cool = canopy && inSeason && part ? part.perC * params.airCoolC * sunny : 0; // share lost at full cover
+  for (let i = 0; i < N; i++) {
+    const L = light ? Math.max(0, Math.min(1, light[i])) : 1;
+    const A = cool ? Math.max(0, 1 - cool * canopy[i]) : 1;
+    out[i] = etBase[i] * ((1 - s) * L + s * A);
+  }
+  return out;
+}
 
 /** TR-55 curve number for a cell, dual groups read as drained (first letter) unless the water table is up. */
 export function curveNumber(hydgrp, kind, wetTable, params = PARAMS) {
@@ -188,9 +253,13 @@ export function buildModel(res, { kinds, soilAt, soils, roofTo, light = null, pa
     const below = rz?.belowMmH ?? 5;
     drainDay[i] = below * 24 * (params.drainFactor[s?.drainage] ?? 0.5);
   }
-  // what the grass in each cell uses, as a multiple of the open lawn's: shade, then heat
-  const etFactor = Float32Array.from(heat, (h, i) => h * shadeFactor(light ? light[i] : 1));
-  return { g, N, kinds, soilAt, soils, roofTo, light, order, down, recv, share, nRecv, slope, pondCap, taw, raw, satRoom, drainDay, heat, etFactor, params };
+  /* what the grass in each cell uses, as a multiple of the open lawn's: etBase is the heat (and, from plan.js, a
+     deck's shelter); etFactor the day without a weather split, for the planning before a run; simulate works out
+     each day's own (etToday) */
+  const etBase = Float32Array.from(heat);
+  const canopy = canopyAround(res, params);
+  const etFactor = Float32Array.from(heat, (h, i) => h * shadeFactor(light ? light[i] : 1, params.airShare));
+  return { g, N, kinds, soilAt, soils, roofTo, light, canopy, order, down, recv, share, nRecv, slope, pondCap, taw, raw, satRoom, drainDay, heat, etBase, etFactor, params };
 }
 
 /**
@@ -208,7 +277,8 @@ export function buildModel(res, { kinds, soilAt, soils, roofTo, light = null, pa
  *    on the surface), wetDays, dryDays, seasonDays; and the end state.
  */
 export function simulate(model, days, { irrigate = null, start = null, record = null, season = null } = {}) {
-  const { N, kinds, order, recv, share, nRecv, roofTo, slope, pondCap, taw, raw, satRoom, drainDay, soils, soilAt, params, etFactor } = model;
+  const { N, kinds, order, recv, share, nRecv, roofTo, slope, pondCap, taw, raw, satRoom, drainDay, soils, soilAt, params } = model;
+  const etFactor = new Float32Array(N), lat = model.g?.lat ?? 42.5;
   const Dr = start?.Dr ? Float32Array.from(start.Dr) : new Float32Array(N);
   const grav = new Float32Array(N), pond = new Float32Array(N), film = new Float32Array(N);
   const tot = { irrigation: new Float32Array(N), et: new Float32Array(N), drained: new Float32Array(N), ranOff: new Float32Array(N), ranOn: new Float32Array(N), wetDays: new Uint16Array(N), dryDays: new Uint16Array(N), seasonDays: 0, rain: 0 };
@@ -239,7 +309,8 @@ export function simulate(model, days, { irrigate = null, start = null, record = 
     if (day.tmax <= 0) { snow += P; P = 0; } else if (snow > 0) { const melt = Math.min(snow, params.snowMeltMmPerC * Math.max(0, tmean)); snow -= melt; P += melt; }
     tot.rain += P;
     const et0 = Number.isFinite(day.et0) ? day.et0 : 0;
-    const irr = irrigate ? irrigate(d, { Dr, grav, month, inSeason, date: day.date, use: et0 * params.kc }) : null;
+    etToday(model, et0 > 0 ? airShare(day, lat, dayOfYear(day.date)) : null, inSeason, etFactor);
+    const irr = irrigate ? irrigate(d, { Dr, grav, month, inSeason, date: day.date, use: et0 * params.kc, etFactor }) : null;
 
     inflow.fill(0);
     // roofs
@@ -325,7 +396,7 @@ export function idealIrrigation(model) {
     // the root zone keeps its room for rain
     for (let i = 0; i < model.N; i++) {
       if (model.kinds[i] !== 1) continue;
-      const use = st.use * model.etFactor[i];
+      const use = st.use * (st.etFactor || model.etFactor)[i];
       const most = cap ? cap[i] : Infinity;
       if (st.Dr[i] + use > model.raw[i]) { out[i] = Math.min(st.Dr[i] + use, most); any = true; }
     }
@@ -356,7 +427,7 @@ export function zoneIrrigation(model, zoneOf, nZones, events = []) {
       const cs = cells[z];
       if (!cs.length) continue;
       let dr = 0, rw = 0, use = 0;
-      for (const i of cs) { dr += st.Dr[i]; rw += model.raw[i]; use += st.use * model.etFactor[i]; }
+      for (const i of cs) { dr += st.Dr[i]; rw += model.raw[i]; use += st.use * (st.etFactor || model.etFactor)[i]; }
       dr /= cs.length; rw /= cs.length; use /= cs.length;
       if (dr + use > rw) {
         dr = Math.min(dr + use, caps[z]); // refill to full, today's use included, or as far as a day's cycles go

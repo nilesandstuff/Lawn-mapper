@@ -6,11 +6,11 @@
 
 import assert from 'node:assert/strict';
 
-import { penmanMonteith, ra, hargreaves, dayOfYear } from '../lib/et.js';
+import { penmanMonteith, pmParts, airShare, ra, hargreaves, dayOfYear } from '../lib/et.js';
 import { hoursOf, hourly } from '../lib/weather.js';
 import { parseWkt, rootZone, boxWkt, ROOT_CM } from '../lib/soil.js';
 import { rainHours } from '../lib/weather.js';
-import { scsRunoff, cnSlope, curveNumber, buildModel, simulate, idealIrrigation, PARAMS } from '../lib/balance.js';
+import { scsRunoff, cnSlope, curveNumber, buildModel, simulate, idealIrrigation, PARAMS, canopyAround, etToday, shadeFactor } from '../lib/balance.js';
 import { roofRouting } from '../lib/gutters.js';
 import { waterPlan } from '../lib/plan.js';
 import { analyse } from '../lib/lowspots.js';
@@ -128,6 +128,40 @@ test('rain by the hour: the day\'s total keeps its amount and takes the radar\'s
   const off = (o) => o.ranOff.reduce((a, b) => a + b, 0) / N;
   assert.ok(off(burst) > 10, `the downpour sheds ${off(burst).toFixed(1)} mm a cell`);
   assert.equal(off(soak), off(daily), 'a soak is the daily total\'s runoff');
+});
+
+test('shade and the air: the day\'s own air share stays in deep shade, and trees near a cell cool it on sunny summer days', () => {
+  // Penman-Monteith in two parts that add up to it
+  const july = { tmax: 28, tmin: 16, rh: 60, wind: 2, rs: 26 };
+  const p = pmParts(july, 42.5, 196, 200);
+  assert.ok(Math.abs(p.sun + p.air - penmanMonteith(july, 42.5, 196, 200)) < 1e-9);
+  const humid = airShare(july, 42.5, 196), dry = airShare({ ...july, rh: 25, wind: 4 }, 42.5, 196);
+  assert.ok(humid.share > 0.25 && humid.share < 0.35, `${humid.share}`);
+  assert.ok(dry.share > humid.share + 0.2, 'a dry, windy day gives the air more of it');
+  assert.ok(humid.perC > 0.07 && humid.perC < 0.12, `a degree cooler, the air term about a tenth less: ${humid.perC}`);
+  assert.equal(airShare({ tmax: 28, tmin: 16 }, 42.5, 196), null, 'no humidity, wind or sunshine: no split');
+  // tree cover around each cell: a 10 x 10 m crown in a 60 x 60 m grid
+  const W = 60, H = 60, N = W * H;
+  const all = new Uint16Array(N).fill(10), tall = new Uint16Array(N);
+  for (let r = 0; r < 10; r++) for (let c = 0; c < 10; c++) tall[r * W + c] = 5;
+  const canopy = canopyAround({ grid: { W, H, cell: 1 }, perCell: { all, tall }, wall: new Uint8Array(N) }, { ...PARAMS, canopyRadiusM: 10 });
+  assert.ok(Math.abs(canopy[5 * W + 5] - 100 / 225) < 1e-6, `beside the crown: ${canopy[5 * W + 5]}`);
+  assert.equal(canopy[50 * W + 50], 0, 'far from it, none');
+  // today's factor: full sun, no trees -- the open lawn's; deep shade -- the air's share
+  const model = { N: 3, etBase: new Float32Array([1, 1, 1]), light: new Float32Array([1, 0, 1]), canopy: new Float32Array([0, 0, 1]), params: PARAMS };
+  const out = new Float32Array(3);
+  etToday(model, humid, false, out);
+  assert.ok(Math.abs(out[0] - 1) < 1e-6); assert.ok(Math.abs(out[1] - humid.share) < 1e-6);
+  assert.ok(Math.abs(out[2] - 1) < 1e-6, 'out of season the trees cool nothing (bare crowns, dormant grass)');
+  etToday(model, humid, true, out);
+  const drop = 1 - out[2];
+  assert.ok(Math.abs(drop - humid.share * humid.perC * PARAMS.airCoolC * Math.min(1, humid.clear / PARAMS.clearRef)) < 1e-6);
+  assert.ok(drop > 0.02 && drop < 0.05, `a sunny July day under full cover: ${(100 * drop).toFixed(1)}% less`);
+  etToday(model, { ...humid, clear: 0.3 }, true, out);
+  assert.ok(1 - out[2] < drop / 2, 'a dull day: less');
+  // a day without the weather to split: the old factor
+  etToday(model, null, true, out);
+  assert.ok(Math.abs(out[1] - shadeFactor(0)) < 1e-6 && out[2] === 1);
 });
 
 test('a downspout sends the roof to where it empties; two split it; none is a guess', () => {
