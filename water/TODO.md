@@ -21,6 +21,12 @@ SPECULATION), as always.
    the map: their surfaces heat differently (asphalt's albedo about 0.05-0.10
    new, concrete's 0.25-0.40: to be confirmed). Today the plan adds a flat
    estimate, up to 8% at the edge fading to nothing by 7 m (FINDINGS S8).
+   A lead from the features session (2026-10-26): Halverson & Heisler 1981, USDA
+   Forest Service Research Paper NE-481, "Soil Temperatures under Urban Trees
+   and Asphalt" (New Brunswick NJ): at 15 cm the summer maximum under asphalt was
+   34.2 C, up to 5 C over the control; no difference in winter minimums. It is
+   the soil UNDER asphalt, not the grass beside it. The features session wants
+   the numbers when found, for the shade map's soil-temperature view.
 5. **Roots shorter in summer, deeper in spring and fall.** Simulate the root
    zone's depth through the season from the growth potential (GP, the shade
    map's growing-season model): cool-season roots die back in summer heat. The
@@ -31,6 +37,12 @@ SPECULATION), as always.
    (a midday mist on the leaves), which the owner expects to matter only in
    extremes unlikely in Michigan. Research the size of the effect on soil
    temperature, then decide whether the plan should water for it.
+   Soil temperature now: IEMRE (FINDINGS H41; the features session's year at 16
+   stations: mean error +0.1 C against NASA POWER's -1.6, winter -0.6 against
+   -3.2). Shade's cooling: the shade map uses 0.2 C cooler (daily mean) per
+   MJ/m2 of daily sun lost, from one study (Edmondson et al. 2016, Sci. Rep.
+   6:33708, 1.5 cm, Leicester); a measured shaded-against-open difference under
+   turf is still wanted.
 7. **Rain intensity in the ten-year plan too** (after 3): the typical-year plan
    runs on daily totals, so it cannot tell a cloudburst from a soak.
 
