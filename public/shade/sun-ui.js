@@ -445,7 +445,7 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     $('#season-status').textContent = '';
     const f = (cc) => `${Math.round(cc * 1.8 + 32)} °F`;
     const how = se.season.soilEnd
-      ? `from the day growth potential reaches ${Math.round(SEASON_GP * 100)}% in spring (the PACE Turf model on NASA's daily air temperatures ${c.years}) to winter dormancy, the day the 5-day average soil temperature (NASA's top soil layer, about the top 10 cm) falls under ${f(SOIL_DORMANT_C[grass] ?? SOIL_DORMANT_C.cool)}; Turf Tools' season will replace this estimate`
+      ? `from the day growth potential reaches ${Math.round(SEASON_GP * 100)}% in spring (the PACE Turf model on NASA's daily air temperatures ${c.years}) to winter dormancy, the day the 5-day average soil temperature (${c.tSoilSource === 'iemre' ? "Iowa State's IEMRE soil model, 4 inches down, ten years" : "NASA's top soil layer, about the top 10 cm"}) falls under ${f(SOIL_DORMANT_C[grass] ?? SOIL_DORMANT_C.cool)}; Turf Tools' season will replace this estimate`
       : `from the day growth potential reaches ${Math.round(SEASON_GP * 100)}% in spring to the day it falls under it in autumn, on NASA's daily temperatures ${c.years} (the PACE Turf model; no soil temperatures here, so the air ends it too); Turf Tools' season will replace this estimate`;
     if (!se.stats.lawn) {
       $('#season-summary').innerHTML = `<p>In a typical year it is never warm enough here for ${g.label.toLowerCase()} grass to grow (${how}).</p>`;
@@ -631,7 +631,7 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     const depth = st.soilData.depth || 'the top soil';
     paint(values, pe.xy, (v) => [...colors[b.of(v)], ALPHA], { span: 2, smoothed: true, read: { unit: '°F', what: `soil, ${depth}, ${st.soilWhen === 'now' ? 'at' : 'over'} ${pick.words}`, dp: 0 } });
     const coolest = Number.isFinite(lo) ? toF(pick.openC) - lo : 0;
-    caption(`Soil temperature, ${depth}, ${st.soilWhen === 'now' ? 'at' : 'over'} ${pick.words}, ${where()}. Open ground: ${fF(pick.openC)}; the shadiest spot about ${Math.round(coolest)} °F cooler. Shade cools the soil by the sunlight it takes (an estimate from one study, being refined).`);
+    caption(`Soil temperature, ${depth}, ${st.soilWhen === 'now' ? 'at' : 'over'} ${pick.words}, ${where()}. Open ground: ${fF(pick.openC)}; the shadiest spot about ${Math.round(coolest)} °F cooler. Shade cools the soil by the sunlight it takes: about 0.13 °C (0.23 °F) per MJ of daily sun lost, from ten years at 114 NOAA weather stations and a study under trees; an estimate, not a measurement here.`);
     readouts();
   }
   /* The year's soil: the typical year, this year so far, the time frames shaded, today, the 5-day average and the dormancy line. */

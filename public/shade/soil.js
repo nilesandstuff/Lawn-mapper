@@ -15,18 +15,23 @@
  *
  *   T(spot) = T(open) - SOIL_SHADE_C_PER_MJ x (sunlight lost, MJ/m2/day)
  *
- * PROVISIONAL, from one measurement: Edmondson et al. (2016, Sci. Rep.
- * 6:33708; 79 loggers at 1.5 cm in Leicester, UK) found summer (May-July)
- * daily mean soil 17.2 C under grass and 14.1 C under trees and shrubs in
- * non-domestic greenspace, 3.1 C cooler. Leicester's summer days bring about
- * 17 MJ/m2 of sun and a woodland floor loses most of it (taken as 85%, about
- * 14.5 MJ), so about 0.2 C per MJ/m2/day lost. The same study found woody
- * cover slightly WARMER in winter (it holds the night's heat), which this
- * leaves out: with little sun to lose in winter the cooling is small anyway.
- * The water map session is asked for better (2026-10-26).
+ * MEASURED (shade findings 30, 2026-10-26): ten years of daily data at 114
+ * NOAA reference stations, open grass with soil sensors and a pyranometer.
+ * A sunnier fortnight or month than the station's usual for the date, with
+ * the rain held, warms the soil at 10 cm 0.12 C per MJ/m2/day of extra sun
+ * (0.15 in summer; 5 cm a little more). That is the upper bound: it lets the
+ * air warm with the sun, as the air under a tree is also cooler. Holding the
+ * air the same gives the lower bound, about 0.03: so most of the sun's hold
+ * on the soil's daily mean comes with the air it warms. A tree's shade cools
+ * the air under it (0.4 C a day in a Peruvian coffee plot, 0.6-2.5 C at
+ * midday in a Taipei park), so the upper bound is the nearer. Taken: 0.13.
+ * It agrees with the one direct comparison of soil under trees and under
+ * grass at hand, Edmondson et al. (2016): 3.1 C cooler in a Leicester
+ * summer at 1.5 cm, about 0.2 per MJ lost, nearer the surface. Left out: the
+ * same study's slightly WARMER winter soil under trees.
  */
 
-export const SOIL_SHADE_C_PER_MJ = 0.2;
+export const SOIL_SHADE_C_PER_MJ = 0.13;
 export const TRAIL_DAYS = 5;
 
 const PAR = 2.04; // mol of photosynthetic light per MJ of sunlight (climate.js PAR_MOL_PER_MJ)

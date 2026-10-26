@@ -337,10 +337,10 @@ export async function climateAt(lng, lat, { ctx = null, fetchImpl = fetch, now =
   const rl = Math.round(lng * 20) / 20, ra = Math.round(lat * 20) / 20;
   const [y0, y1] = climateYears(now);
   const cache = globalThis.caches?.default;
-  const key = new Request(`https://shade.lawnmapper.internal/climate-v2/${ra},${rl},${y0}-${y1}.json`);
+  const key = new Request(`https://shade.lawnmapper.internal/climate-v3/${ra},${rl},${y0}-${y1}.json`);
   const hit = cache && await cache.match(key);
   if (hit) return hit.json();
-  const res = await fetchImpl(powerUrl(rl, ra, y0, y1));
+  const [res, soilIem] = await Promise.all([fetchImpl(powerUrl(rl, ra, y0, y1)), iemreTypical(ra, rl, { ctx, fetchImpl, now }).catch(() => null)]);
   if (!res.ok) throw new Error(`NASA POWER: ${res.status}`);
   const power = await res.json();
   const t = typicalYear(power);
@@ -350,7 +350,13 @@ export async function climateAt(lng, lat, { ctx = null, fetchImpl = fetch, now =
     source: 'NASA POWER daily (MERRA-2, CERES SYN1deg), community AG',
     ghi: round(t.ghi, 2), ghiP10: round(t.ghiP10, 2), ghiP90: round(t.ghiP90, 2),
     diffuse: round(t.diffuse, 3), tMean: round(t.tMean, 1),
-    tSoil: t.tSoil ? round(t.tSoil, 1) : null, // the top soil layer (TSOIL1), for winter dormancy
+    /* The soil, for winter dormancy: Iowa State's IEMRE where it answers
+       (owner, 2026-10-26: "switch to the Iowa model as long as it holds true
+       to other locations"; shade findings 29: dormancy within a median 4
+       days of 111 measured U.S. stations' against NASA's 8, and closer in
+       Germany too), NASA's top layer elsewhere. */
+    tSoil: soilIem || (t.tSoil ? round(t.tSoil, 1) : null),
+    tSoilSource: soilIem ? 'iemre' : t.tSoil ? 'nasa' : null,
   };
   if (cache) {
     const put = cache.put(key, new Response(JSON.stringify(body), {
@@ -373,10 +379,10 @@ const ymd = (d) => `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(
  * daily data could not be read.
  */
 export async function weatherNow(lng, lat, typical, { ctx = null, fetchImpl = fetch, now = new Date() } = {}) {
-  const typicalTMean = Array.isArray(typical) ? typical : typical.tMean, typicalSoil = Array.isArray(typical) ? null : typical.tSoil || null;
+  const typicalTMean = Array.isArray(typical) ? typical : typical.tMean, typicalSoil = Array.isArray(typical) || typical.tSoilSource === 'iemre' ? null : typical.tSoil || null;
   const rl = Math.round(lng * 20) / 20, ra = Math.round(lat * 20) / 20, year = now.getUTCFullYear();
   const cache = globalThis.caches?.default;
-  const key = new Request(`https://shade.lawnmapper.internal/climate-now-v2/${ra},${rl},${ymd(now)}.json`);
+  const key = new Request(`https://shade.lawnmapper.internal/climate-now-v3/${ra},${rl},${ymd(now)}.json`);
   const hit = cache && await cache.match(key);
   if (hit) return hit.json();
   const u = 'https://power.larc.nasa.gov/api/temporal/daily/point?' + new URLSearchParams({ parameters: 'T2M,TSOIL1', community: 'AG', longitude: rl.toFixed(3), latitude: ra.toFixed(3), start: `${year}0101`, end: ymd(now), format: 'JSON' });
@@ -457,6 +463,28 @@ async function iemreDays(lat, lng, from, to, fetchImpl) {
   return out;
 }
 
+/**
+ * IEMRE's typical year of soil at a point: its ten whole years before `now`,
+ * daily, folded (foldYear). Kept at the edge a month. Null outside its maps.
+ * Read by the soil view and, since 2026-10-26, by the growing season's
+ * dormancy day (climateAt's tSoil; shade findings 29).
+ */
+export async function iemreTypical(ra, rl, { ctx = null, fetchImpl = fetch, now = new Date() } = {}) {
+  const cache = globalThis.caches?.default;
+  const tKey = new Request(`https://shade.lawnmapper.internal/soil-typical-v1/iemre/${ra},${rl},${now.getUTCFullYear() - 10}.json`);
+  const tHit = cache && await cache.match(tKey);
+  if (tHit) return (await tHit.json()).typical;
+  const years = Array.from({ length: 10 }, (_, i) => now.getUTCFullYear() - 10 + i);
+  const all = {};
+  for (const part of await Promise.all(years.map((y) => iemreDays(ra, rl, new Date(Date.UTC(y, 0, 1)), new Date(Date.UTC(y, 11, 31)), fetchImpl).catch(() => null)))) Object.assign(all, part || {});
+  const typical = Object.keys(all).length > 3000 ? foldYear(all) : null;
+  if (typical && cache) {
+    const put = cache.put(tKey, new Response(JSON.stringify({ typical }), { headers: { 'Content-Type': 'application/json', 'Cache-Control': `public, max-age=${30 * DAY}` } }));
+    if (ctx?.waitUntil) ctx.waitUntil(put); else await put;
+  }
+  return typical;
+}
+
 export async function soilNow(lng, lat, { ctx = null, fetchImpl = fetch, now = new Date() } = {}) {
   const rl = Math.round(lng * 20) / 20, ra = Math.round(lat * 20) / 20;
   const cache = globalThis.caches?.default;
@@ -483,17 +511,7 @@ export async function soilNow(lng, lat, { ctx = null, fetchImpl = fetch, now = n
     const last = past.slice(-120);
     const latest = past.length ? { t: past[past.length - 1][0], c: Math.round(past[past.length - 1][1] * 10) / 10 } : null;
     const trail = last.length >= 96 ? { mean: Math.round((last.reduce((s, h) => s + h[1], 0) / last.length) * 10) / 10, from: last[0][0], to: last[last.length - 1][0], hours: last.length } : null;
-    const tKey = new Request(`https://shade.lawnmapper.internal/soil-typical-v1/iemre/${ra},${rl},${now.getUTCFullYear() - 10}.json`);
-    let typical = null;
-    const tHit = cache && await cache.match(tKey);
-    if (tHit) typical = (await tHit.json()).typical;
-    else {
-      const years = Array.from({ length: 10 }, (_, i) => now.getUTCFullYear() - 10 + i);
-      const all = {};
-      for (const part of await Promise.all(years.map((y) => iemreDays(ra, rl, new Date(Date.UTC(y, 0, 1)), new Date(Date.UTC(y, 11, 31)), fetchImpl).catch(() => null)))) Object.assign(all, part || {});
-      typical = Object.keys(all).length > 3000 ? foldYear(all) : null;
-      if (typical) await keep(tKey, { typical }, 30 * DAY);
-    }
+    const typical = await iemreTypical(ra, rl, { ctx, fetchImpl, now });
     body = { source: 'iemre', domain: daily.domain, depth: 'the top 4 inches (about 10 cm)', words: "Iowa State's IEMRE soil model (hourly, current)", typical, daily, latest, trail };
   } else {
     /* NASA POWER: daily about 5 days behind, hourly about 3; the typical year is the climate route's. */
