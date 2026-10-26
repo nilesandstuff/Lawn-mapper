@@ -29,7 +29,7 @@ on:
         description: 'A different row for side B, to compare two rows (leave empty for the same row)'
         default: ''
       lots:
-        description: 'Also read only these lots: the start of each id ("lng,lat"), separated by semicolons (leave empty for none)'
+        description: 'Also read only these lots: the start of each id ("lng,lat") or the lot''s name (C110, B04), separated by semicolons (leave empty for none)'
         default: ''
 
 permissions:

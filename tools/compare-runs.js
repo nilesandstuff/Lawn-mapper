@@ -123,7 +123,8 @@ export function compare(a, b, { only = null, photo = null, photos = null, lots =
     if (only === 'benchmark' && !la.benchmark) continue;
     if (only === 'new' && la.benchmark) continue;
     if (photo && photoOf(id, la, photos) !== photo) continue;
-    if (lots && !lots.some((k) => id.startsWith(k))) continue;
+    /* By the id's start ("lng,lat") or by the lot's name (C110, B04). */
+    if (lots && !lots.some((k) => id.startsWith(k) || k === (lb.tag || la.tag))) continue;
     ds.push({ id, tag: lb.tag || la.tag, a: la.error, b: lb.error, d: lb.error - la.error });
   }
   const wins = ds.filter((x) => x.d < -TIE).length;
