@@ -9,9 +9,9 @@
  *         notOnAws: [{ workunit, ql, start, end, season }], footprints }
  *
  *   GET /api/shade/soil?lng=&lat=
- *     The soil this past year at this place (soilNow below): NASA POWER's
- *     daily top-layer soil temperature for the last 365 days and its latest
- *     hour. Cached an hour.
+ *     The soil at this place (soilNow below): its typical year, the last
+ *     365 days, the last 120 hours' average and the latest hour, from
+ *     Iowa State's IEMRE (lower 48) or NASA POWER. Cached an hour.
  *
  *   GET /api/shade/climate?lng=&lat=
  *     The typical year at this place from NASA POWER (ten years of daily
@@ -407,38 +407,111 @@ export async function weatherNow(lng, lat, typical, { ctx = null, fetchImpl = fe
   return body;
 }
 
-/**
- * THE SOIL THIS PAST YEAR at a point (the shade map's soil view, soil.js):
- * NASA POWER's top soil layer (TSOIL1, MERRA-2's first layer, about the top
- * 10 cm), daily for the last 365 days (it runs about 5 days behind) and
- * hourly for the last week (about 3 days behind), for the trailing average
- * and the latest reading. Cached an hour. Returns { daily: { 'YYYYMMDD': C },
- * latest: { t (ms), c } | null, source }.
+/*
+ * THE SOIL at a point (the shade map's soil view, public/shade/soil.js).
+ *
+ * WHERE IT COMES FROM. Iowa State's IEMRE (mesonet.agron.iastate.edu/iemre,
+ * free, no key; the lower 48 states) where it answers, NASA POWER's top
+ * soil layer elsewhere. Scored against the measured daily soil of 16 NOAA
+ * reference stations through 2025 (shade findings 28): IEMRE's daily soil
+ * at 5 cm is off by 2.1 C on average with no bias, NASA's by 2.7 C and 1.6 C
+ * too cold (3.2 C in winter, 5-6 C at two western stations).
+ *
+ * Returns { source, depth, typical: [365 C] | null (ten years folded, as
+ * climate.js typicalYear), daily: { 'YYYYMMDD': C } (the last 365 days),
+ * latest: { t (ms), c } | null, trail: { mean, from, to (ms), hours } | null
+ * (the last 120 hours, IEMRE only) }.
  */
+const IEM = 'https://mesonet.agron.iastate.edu/iemre';
+const iso = (d) => d.toISOString().slice(0, 10);
+const fToC = (f) => ((f - 32) * 5) / 9;
+
+/** Days { 'YYYYMMDD': C } -> the typical year: each day the mean of the same date +-half days over every year (as typicalYear). */
+export function foldYear(days, half = 7) {
+  const by = Array.from({ length: 365 }, () => []);
+  for (const [d, c] of Object.entries(days)) if (Number.isFinite(c)) by[dayIndexOf(d)].push(c);
+  const out = [];
+  for (let k = 0; k < 365; k++) {
+    let s = 0, n = 0;
+    for (let j = -half; j <= half; j++) for (const c of by[(k + j + 365) % 365]) { s += c; n++; }
+    out.push(n ? Math.round((s / n) * 10) / 10 : NaN);
+  }
+  return out.every(Number.isFinite) ? out : null;
+}
+const dayIndexOf = (ymdS) => {
+  const y = +ymdS.slice(0, 4), m = +ymdS.slice(4, 6) - 1, d = +ymdS.slice(6, 8);
+  const leap = (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+  const doy = Math.round((Date.UTC(y, m, d) - Date.UTC(y, 0, 1)) / 86400000);
+  return leap && doy >= 59 ? Math.max(58, doy - 1) : doy;
+};
+
+/** IEMRE's daily soil (the mean of its 4-inch high and low) over a span -> { 'YYYYMMDD': C } with its domain ('conus', 'europe') as `.domain`, or null outside its maps. */
+async function iemreDays(lat, lng, from, to, fetchImpl) {
+  const r = await fetchImpl(`${IEM}/multiday/${iso(from)}/${iso(to)}/${lat.toFixed(3)}/${lng.toFixed(3)}/json`);
+  if (!r.ok) return null;
+  const j = await r.json();
+  if (!Array.isArray(j?.data)) return null;
+  const out = {};
+  for (const d of j.data) if (Number.isFinite(d.soil4t_high_f) && Number.isFinite(d.soil4t_low_f)) out[d.date.replace(/-/g, '')] = Math.round(fToC((d.soil4t_high_f + d.soil4t_low_f) / 2) * 10) / 10;
+  Object.defineProperty(out, 'domain', { value: j.iemre_domain || null });
+  return out;
+}
+
 export async function soilNow(lng, lat, { ctx = null, fetchImpl = fetch, now = new Date() } = {}) {
   const rl = Math.round(lng * 20) / 20, ra = Math.round(lat * 20) / 20;
   const cache = globalThis.caches?.default;
-  const hourKey = now.toISOString().slice(0, 13);
-  const key = new Request(`https://shade.lawnmapper.internal/soil-v1/${ra},${rl},${hourKey}.json`);
+  const key = new Request(`https://shade.lawnmapper.internal/soil-v2/${ra},${rl},${now.toISOString().slice(0, 13)}.json`);
   const hit = cache && await cache.match(key);
   if (hit) return hit.json();
-  const start = new Date(now.getTime() - 365 * 86400000), week = new Date(now.getTime() - 8 * 86400000);
-  const q = (kind, from) => `https://power.larc.nasa.gov/api/temporal/${kind}/point?` + new URLSearchParams({ parameters: 'TSOIL1', community: 'AG', longitude: rl.toFixed(3), latitude: ra.toFixed(3), start: ymd(from), end: ymd(now), format: 'JSON', ...(kind === 'hourly' ? { 'time-standard': 'UTC' } : {}) });
-  const [d, h] = await Promise.all([fetchImpl(q('daily', start)), fetchImpl(q('hourly', week)).catch(() => null)]);
-  if (!d.ok) throw new Error(`NASA POWER: ${d.status}`);
-  const daily = {};
-  for (const [k, v] of Object.entries(observedDays(await d.json(), 'TSOIL1'))) daily[k] = Math.round(v * 10) / 10;
-  let latest = null;
-  if (h?.ok) {
-    const hours = observedDays(await h.json(), 'TSOIL1'); // keys 'YYYYMMDDHH'
-    const last = Object.keys(hours).sort().pop();
-    if (last) latest = { t: Date.UTC(+last.slice(0, 4), +last.slice(4, 6) - 1, +last.slice(6, 8), +last.slice(8, 10)), c: Math.round(hours[last] * 10) / 10 };
-  }
-  const body = { daily, latest, source: "NASA POWER's top soil layer (MERRA-2 TSOIL1, about the top 10 cm): daily, about 5 days behind; hourly, about 3 days behind" };
-  if (cache) {
-    const put = cache.put(key, new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=3600' } }));
+  const keep = async (k, body, seconds) => {
+    if (!cache) return;
+    const put = cache.put(k, new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json', 'Cache-Control': `public, max-age=${seconds}` } }));
     if (ctx?.waitUntil) ctx.waitUntil(put); else await put;
+  };
+  const yearAgo = new Date(now.getTime() - 365 * 86400000);
+  let body = null;
+  /* IEMRE: the last year's days, the last week's hours, and ten years for the typical year (kept a month). */
+  const daily = await iemreDays(ra, rl, yearAgo, now, fetchImpl).catch(() => null);
+  if (daily && Object.keys(daily).length) {
+    const hours = [];
+    await Promise.all(Array.from({ length: 7 }, (_, i) => new Date(now.getTime() - (6 - i) * 86400000)).map(async (d) => {
+      const r = await fetchImpl(`${IEM}/hourly/${iso(d)}/${ra.toFixed(3)}/${rl.toFixed(3)}/json`).catch(() => null);
+      const j = r?.ok ? await r.json().catch(() => null) : null;
+      for (const h of j?.data || []) if (Number.isFinite(h.soil4t_f) && h.valid_utc) hours.push([Date.parse(h.valid_utc), fToC(h.soil4t_f)]);
+    }));
+    const past = [...new Map(hours.filter(([t]) => t <= now.getTime()).map((h) => [h[0], h])).values()].sort((x, y) => x[0] - y[0]);
+    const last = past.slice(-120);
+    const latest = past.length ? { t: past[past.length - 1][0], c: Math.round(past[past.length - 1][1] * 10) / 10 } : null;
+    const trail = last.length >= 96 ? { mean: Math.round((last.reduce((s, h) => s + h[1], 0) / last.length) * 10) / 10, from: last[0][0], to: last[last.length - 1][0], hours: last.length } : null;
+    const tKey = new Request(`https://shade.lawnmapper.internal/soil-typical-v1/iemre/${ra},${rl},${now.getUTCFullYear() - 10}.json`);
+    let typical = null;
+    const tHit = cache && await cache.match(tKey);
+    if (tHit) typical = (await tHit.json()).typical;
+    else {
+      const years = Array.from({ length: 10 }, (_, i) => now.getUTCFullYear() - 10 + i);
+      const all = {};
+      for (const part of await Promise.all(years.map((y) => iemreDays(ra, rl, new Date(Date.UTC(y, 0, 1)), new Date(Date.UTC(y, 11, 31)), fetchImpl).catch(() => null)))) Object.assign(all, part || {});
+      typical = Object.keys(all).length > 3000 ? foldYear(all) : null;
+      if (typical) await keep(tKey, { typical }, 30 * DAY);
+    }
+    body = { source: 'iemre', domain: daily.domain, depth: 'the top 4 inches (about 10 cm)', words: "Iowa State's IEMRE soil model (hourly, current)", typical, daily, latest, trail };
+  } else {
+    /* NASA POWER: daily about 5 days behind, hourly about 3; the typical year is the climate route's. */
+    const week = new Date(now.getTime() - 8 * 86400000);
+    const q = (kind, from) => `https://power.larc.nasa.gov/api/temporal/${kind}/point?` + new URLSearchParams({ parameters: 'TSOIL1', community: 'AG', longitude: rl.toFixed(3), latitude: ra.toFixed(3), start: ymd(from), end: ymd(now), format: 'JSON', ...(kind === 'hourly' ? { 'time-standard': 'UTC' } : {}) });
+    const [d, h] = await Promise.all([fetchImpl(q('daily', yearAgo)), fetchImpl(q('hourly', week)).catch(() => null)]);
+    if (!d.ok) throw new Error(`NASA POWER: ${d.status}`);
+    const days = {};
+    for (const [k, v] of Object.entries(observedDays(await d.json(), 'TSOIL1'))) days[k] = Math.round(v * 10) / 10;
+    let latest = null;
+    if (h?.ok) {
+      const hrs = observedDays(await h.json(), 'TSOIL1'); // keys 'YYYYMMDDHH'
+      const lastH = Object.keys(hrs).sort().pop();
+      if (lastH) latest = { t: Date.UTC(+lastH.slice(0, 4), +lastH.slice(4, 6) - 1, +lastH.slice(6, 8), +lastH.slice(8, 10)), c: Math.round(hrs[lastH] * 10) / 10 };
+    }
+    body = { source: 'nasa', depth: 'the top soil layer (about 10 cm)', words: "NASA POWER's soil model (MERRA-2, about 5 days behind)", typical: null, daily: days, latest, trail: null };
   }
+  await keep(key, body, 3600);
   return body;
 }
 
