@@ -56,4 +56,43 @@ wc, w0 = corr["w"][0].numpy(), plain["w"][0].numpy()
 check("cells where the model was corrected weigh 3x", abs(wc[2, 2] - 3 * w0[2, 2]) < 1e-6 and wc[2, 2] > 0)
 check("cells it got right are unchanged", abs(wc[2, 0] - w0[2, 0]) < 1e-6 and abs(wc[2, 3] - w0[2, 3]) < 1e-6)
 check("and the lot says it was corrected", corr["corrected"] and not plain["corrected"])
+
+# S66, TAUGHT ONLY WHAT WAS TRACED (UNDER_TREES=traced): the tree model's
+# canopy over the bottom-left quarter (traced lawn, not marked) and the
+# top-right one (no lawn traced). The top-left quarter is still marked.
+can = np.zeros((16, 16), np.uint8)
+can[8:, :8] = 255
+can[:8, 8:] = 255
+Image.fromarray(can).save(os.path.join(d, "lot-mask.png"))
+td.CANOPY = d
+td.CANOPY_MODE = "lawn"
+
+
+def weights(under, traced, doubted=()):
+    td.UNDER_TREES, td.TRACED_ONLY, td.DOUBTED = under, traced, set(doubted)
+    L = td.read_lawn(d, d, "lot", shape)
+    td.UNDER_TREES, td.TRACED_ONLY, td.DOUBTED = False, False, set()
+    return L["w"][0].numpy(), L["t"][0].numpy()
+
+
+wn, _ = weights(False, False)
+check("untaught: the marks and the canopy over traced lawn carry no weight",
+      wn[:2, :2].max() == 0 and wn[2:, :2].max() == 0)
+check("untaught: canopy the tracer drew no lawn under stays weighted", wn[:2, 2:].min() == 1)
+w1, _ = weights(True, False)
+check("taught (THE PLAN): everything carries weight", w1.min() == 1)
+wt, tt = weights(True, True)
+check("traced only: the inferred marks carry no weight", wt[:2, :2].max() == 0)
+check("traced only: lawn traced under the canopy is graded, as lawn",
+      wt[2:, :2].min() == 1 and tt[2:, :2].min() == 1)
+check("traced only: canopy with no lawn traced stays a weighted zero",
+      wt[:2, 2:].min() == 1 and tt[:2, 2:].max() == 0)
+wd, _ = weights(True, True, doubted=["lot"])
+check("traced only: a doubted lot is taught its traced lawn under the canopy too",
+      wd[2:, :2].min() == 1 and wd[:2, :2].max() == 0)
+wdp, _ = weights(True, False, doubted=["lot"])
+check("taught (THE PLAN): a doubted lot is graded on seen ground only, as before",
+      wdp[2:, :2].max() == 0 and wdp[:2, :2].max() == 0)
+td.CANOPY = ""
+
 print(f"\nAll {passed} checks passed.")

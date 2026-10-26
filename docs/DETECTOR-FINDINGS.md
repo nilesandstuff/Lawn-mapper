@@ -1039,6 +1039,13 @@ lawn / missed lawn as shares of the cells):
 | leaf-on, bare | 63% | 11 / 28 | 23 / 19 | 12 / 27 |
 | leaf-on, green | 70% | 15 / 16 | 19 / 9 | 15 / 17 |
 
+**CORRECTION (2026-10-26, the same day).** "The taught decoder" in this
+entry is `preds-trees`: `UNDER_TREES=1` WITHOUT the canopy as an input.
+"The ordinary decoder" (THE PLAN's) is `UNDER_TREES=1` WITH it (H78). Both
+were taught under trees, so the rows below compare the canopy input, not
+teaching. Read "taught decoder" as "the taught decoder without the canopy
+input". No training-gap explanation was tested, because there was no gap.
+
 **Reading.**
 - **The taught decoder does not fix the missed lawn on DINOv3-sat.** Under
   these trees it answers within a point of the ordinary decoder in every
@@ -1093,9 +1100,12 @@ cell; each answer's false lawn / missed lawn as shares of the cells;
   under bare and green crowns.
 - **Something else: the detector misses lawn under trees.** Its errors
   there are mostly MISSED lawn (14% to 23%), where stage 3's are mostly
-  FALSE lawn (17% to 24%). That is what the training rule predicts
-  (S65): under canopy it has only ever been graded "not lawn". The edge
-  refiner is not switched off there (the cells keep the refined answer).
+  FALSE lawn (17% to 24%). ~~That is what the training rule predicts
+  (S65): under canopy it has only ever been graded "not lawn".~~ **Corrected
+  2026-10-26:** the decoder here is THE PLAN's, trained with `UNDER_TREES=1`
+  (see S65), so it misses lawn under trees DESPITE being graded there; the
+  cause is not a training gap. The edge refiner is not switched off there
+  (the cells keep the refined answer).
 
 **Why the whole-lot numbers barely moved (H123):** these cells are a small
 share of every lot's ground, and on the leaf-off lots the better cells are
@@ -8298,6 +8308,43 @@ is 130 sqft, so maybe the cutoff should be 100 sqft"),** on the condo,
 where grass islands between driveways run 100 to 150 sq ft. Same scope as
 above: the outline, not the scored mask.
 
+### S66. THE PLAN taught only what was traced: inferred marks left out, lawn traced under the canopy still taught (owner, 2026-10-26: "it should always be taught areas that were traced and not marked inferred") -- RUNNING
+
+**What is already true (from the code, see the S65 correction):** THE
+PLAN's decoders grade lawn traced under the tree model's canopy as lawn
+(`UNDER_TREES=1`, H78). They ALSO grade the tracer's inferred marks as
+lawn. The owner (2026-10-26): inferred marks are "leaf on 99% of the
+time", made "when the branches are just too thick to even see grass". So
+THE PLAN is taught "a green crown over lawn is lawn" from judgement calls
+the photo cannot show.
+
+**The change (`canopy: on lawn without inferred`, `UNDER_TREES=traced` in
+tools/train_decoder.py):** every THE PLAN decoder step grades lawn traced
+under the canopy as lawn, leaves the inferred marks out (no weight), and
+keeps canopy with no lawn traced under it a weighted zero, on every lot. A
+lot marked "inferred doubt" is now taught its traced lawn under the canopy
+too (THE PLAN leaves all its unseen ground out). Pinned by
+tools/under_trees_test.py and modal_plan_test.py.
+
+**The test.** Two independent free-runner runs of workflow 14, identical
+except `canopy`: DINOv3-sat, 896, windows off, locked lawns, `fused +
+edge`, seed 7, not-lawn examples on. A: `on lawn` (THE PLAN). B: `on lawn
+without inferred`. Read with workflow 24, B against A on THE PLAN's row,
+which also links the two runs' pictures on the predictions page.
+
+**The bar, set before the run.** Adopted only if B is better lot by lot
+(sign test p < 0.05) on THE PLAN's row, measured `all`, with the median
+paired change at or below 0. One seed, so a pass is a reason for two more
+seeds, not a switch. Also read: the `seen` measure (B gives up the marks'
+weight, so it should not lose on seen ground), the inferred column, and
+the under-the-trusted-trees breakdown (does B miss less lawn under leaf-off
+crowns, where the tracing is real?).
+
+**SPECULATION, not measured:** B could lose on the inferred column, since
+the marks are where the score counts lawn under green crowns and B is no
+longer taught them; that would be the cost of honest teaching, not
+necessarily a worse map.
+
 ### S65. Why trusting the detector under trees in the open did not help (owner, 2026-10-25: "Is it that we're not doing a good job of judging bare vs in leaf ... Is it that the traces under bare trees are just bad? Is something else happening, like the edge refiner is being shut off under trusted trees?") -- MEASURED 2026-10-26: H125 (part 1), H126 (part 2): not adopted
 
 **From the code, not measured:**
@@ -8305,11 +8352,14 @@ above: the outline, not the scored mask.
   every small clump, leafy or bare, so a green crown on a summer photo is
   trusted too. The Mapbox lots, mostly leaf-on, are where it lost (H123: 8 /
   8 and 9 / 17).
-- **The decoder has never been taught under trees.** With `canopy: on
-  lawn` (train_decoder.py), canopy over lawn the tracer drew carries no
-  weight, and canopy the tracer left out is graded not-lawn. Under a crown
-  the decoder has seen only "not lawn" examples; S63 trusted an answer it
-  was never trained to give.
+- ~~**The decoder has never been taught under trees.**~~ **WRONG
+  (corrected 2026-10-26).** That is the rule WITHOUT `UNDER_TREES`. THE
+  PLAN's decoders have been trained with `UNDER_TREES=1` since H78
+  (2026-10-06; workflow 14 sets it on every THE PLAN step whenever `canopy`
+  is not off): lawn traced under the canopy AND the tracer's inferred marks
+  are graded as lawn, except on the lots marked "inferred doubt", which are
+  graded on seen ground only. So the decoder in H125's breakdown was
+  already taught under trees, and still missed lawn there.
 - **The edge refiner is not switched off under trusted trees.** Those cells
   keep the refined decoder's answer; the refiner was trained under the same
   rule, so it inherits the same gap.
@@ -10173,7 +10223,7 @@ deploy log says how many are locked and how many are waiting.
 | 2026-10-23 | 39879564306 | 104 (locked, 131u7jm) | S58 `windows: native`, `gpu: modal`: DINOv3-sat with the 26 big lots read whole at 10 cm in one pass (61-188 patches a side) on an L4 (extraction 147 s, decoders 426 + 657 s), THE PLAN, seed 7, no pond examples | 16.0% (edge refined + stage 3, span, veto) | — | **H121.** Workflow 24 run 39906929463 vs S51 (same eye squeezed): all 42 / 35 / 27, -0.1 [-0.5, +0.3]; the big 26: 17 / 5 / 4, -1.2 [-1.8, -0.2], p 0.017; run 39906931875 vs Scale-MAE: 67 / 27 / 10, -2.0; big 26 -2.8 |
 | 2026-10-23 | 39887800268 | 104 (locked, 131u7jm) | S59: S51 again over cached features (seed 7) to draw the Byron Center map | 15.5% (edge refined + stage 3, span, veto) | — | 15.5 against S51's 15.4 from the same features and seed (S54 and S52-on-DINOv3 read 15.5 too): a tenth of a point of nondeterminism, not the decimal reproduction of H26. The draw was refused by the site's edge (403 to the runner); run 3 (39907286242) read the map and the county export from the database and died on a call of mine; the picture came from workflow 43 below |
 | 2026-10-24 | 40054742999 | 1 saved map (the condo complex, drawn only) | Workflow 32 `map`, after 32f396d: release v7's live native read, pressed twice | -- | -- | **A LIVE BUG, FOUND BY THE OWNER AND FIXED:** v7's first live presses on the condo complex (40045019028, and the owner's own) came back as horizontal stripes. alpha_infer.whole unpacked every read as the eye's default 56 x 56 patches; a native read at 4096 px is 256 x 256, and patches_of keeps the last side*side tokens, so the bottom twelve rows of the grid were laid across the whole lot. Training unpacked by S // patch, so H121 and v7's weights were never affected; only the live reading of lots past 90 m on v7 (2026-10-23 23:11 to 2026-10-24 02:31 UTC). After the fix: raw mask 970x1024, lawn in 31.4% of it, row-to-row change 0.011 against column-to-column 0.010, ratio 1.07 (stripes would be > 3). Both presses succeeded (photo pieces two at a time, retried): GPU 131 s cold / 79 s warm (backbone 79 / 74 s), downloads 88 / 71 s, wall 241 / 161 s. tools/alpha_infer_test.py pins the unpacking |
-| 2026-10-26 | 40303542434 | 104 (locked, 131u7jm) + 5 not-lawn-only maps | DINOv3-sat, `decoder: fused + edge + trees`, `gpu: modal` (S65 part 2) | 15.7% (THE PLAN) | -- | **H126.** Every tree variant 15.8% (taught under small trees, its leaf-off version, small-100, small-100-leafoff, colour); taught under all canopy 16.2%. Under small trees the taught decoder answers as the ordinary one. Runner shut down drawing the second picture set again; per-lot file lost |
+| 2026-10-26 | 40303542434 | 104 (locked, 131u7jm) + 5 not-lawn-only maps | DINOv3-sat, `decoder: fused + edge + trees`, `gpu: modal` (S65 part 2) | 15.7% (THE PLAN) | -- | **H126.** Every tree variant 15.8% (taught under small trees, its leaf-off version, small-100, small-100-leafoff, colour); taught under all canopy 16.2%. Under small trees the taught decoder answers as the ordinary one (both are taught; they differ in the canopy input: correction in H126). Runner shut down drawing the second picture set again; per-lot file lost |
 | 2026-10-26 | 40263507988 | 104 (locked, 131u7jm) + 5 not-lawn-only maps | DINOv3-sat, THE PLAN, seed 7, `draw_row` small-100 (S65 part 1) | 15.6% (THE PLAN) | -- | **H125.** Under the trees S63 trusted: detector better than stage 3 on leaf-off photos (26 vs 31% wrong), worse on leaf-on (31 vs 28); its errors there mostly missed lawn; traced lawn 63-70% in every group. Runner shut down while drawing the trial row; THE PLAN's pictures published as ...-control. Earlier tries 40210560105 (runner lost) and 40237110649 (cancelled, out of time) |
 | 2026-10-25 | 40209920330 | the 10 approved lots the 1024-cell cap coarsens | Workflow 32 `grids: on`: release v7 live, each lot pressed as served and at 3072 cells, both scored on the fine grid | -- | -- | **H124.** Level or better on all 10, median 12.7 -> 12.4%, none worse; GPU the same. SERVE_GRID_MAX -> 3072 |
 | 2026-10-25 | 40127014446 | 104 (locked, 131u7jm) + 5 not-lawn-only maps | DINOv3-sat, THE PLAN, seed 7, S62's settings, with S63's see-through rows small-100 and small-300 | 15.6% (THE PLAN) | -- | **H123.** small-100 15.9% (14 / 10 / 80, p 0.54), small-300 16.1% (14 / 21 / 69); inferred 13.6 -> 17.4 / 17.7. Not adopted. Workflow 24: 40147161423, 40147163108 |

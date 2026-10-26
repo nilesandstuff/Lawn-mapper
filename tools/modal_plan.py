@@ -75,12 +75,15 @@ def plan(inputs, run, send):
             # The refiner's twin: THE PLAN's decoder without the refiner in a
             # `fused + edge` run (workflow 14's "Train the decoder").
             twin = decoder.startswith("fused + edge") and canopy != "off"
+            # S66: "on lawn without inferred" teaches the traced lawn under the
+            # canopy and leaves the inferred marks out (UNDER_TREES=traced).
+            taught = "traced" if canopy == "on lawn without inferred" else "1"
             steps.append({"script": "train_decoder.py", "env": {
                 **common, "OUT": "preds",
                 "CANOPY": "canopy" if canopy != "off" else "",
                 "CANOPY_MODE": "all" if canopy == "everywhere" else "lawn",
                 "FUSE_CANOPY": "1" if (twin or canopy == "everywhere") else "0",
-                "UNDER_TREES": "1" if twin else "",
+                "UNDER_TREES": taught if twin else "",
             }})
             outs = ["preds"]
             # THE PLAN's refined decoder, and (S24, owner 2026-10-05) the two
@@ -92,7 +95,7 @@ def plan(inputs, run, send):
                 # H78: THE PLAN's decoder is taught under trees with the canopy as input.
                 steps.append({"script": "train_decoder.py", "env": {
                     **edge, "OUT": "preds-edge", "FUSE_CANOPY": "1" if canopy != "off" else "0",
-                    "UNDER_TREES": "1" if canopy != "off" else ""}})
+                    "UNDER_TREES": taught if canopy != "off" else ""}})
                 outs.append("preds-edge")
                 if decoder.startswith("fused + edge + trees"):
                     steps.append({"script": "train_decoder.py", "env": {

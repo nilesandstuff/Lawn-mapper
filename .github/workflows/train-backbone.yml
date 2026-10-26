@@ -272,10 +272,17 @@ on:
         # extraction comes back in more than one state and the head rows move
         # 2 points between states, so two RUNS cannot say what the canopy did;
         # three decoders over the same features can. About an hour more.
-        description: 'Tree canopy as unseen ground: only over lawn the tracer drew (on lawn), every canopy cell (everywhere), all three decoders over one extraction (compare), or not at all (off).'
+        #
+        # THE PLAN'S DECODERS ARE TAUGHT UNDER TREES (H78): with "on lawn",
+        # lawn traced under the canopy AND the tracer's inferred marks are
+        # graded as lawn. "on lawn without inferred" (S66, owner 2026-10-26:
+        # "it should always be taught areas that were traced and not marked
+        # inferred") grades the traced lawn under the canopy and leaves the
+        # inferred marks out (UNDER_TREES=traced in tools/train_decoder.py).
+        description: 'Tree canopy: on lawn (THE PLAN), on lawn without inferred (traced lawn under trees taught, inferred marks left out), everywhere, compare (three decoders), or off.'
         type: choice
         default: 'on lawn'
-        options: ['on lawn', 'everywhere', 'compare', 'off']
+        options: ['on lawn', 'on lawn without inferred', 'everywhere', 'compare', 'off']
       not_lawn:
         # THE OWNER'S NOT-LAWN TRACES (tinker mode, 2026-09-29), replacing the
         # public outlines (H57, H61: mostly the middle of a road or a roof,
@@ -1077,7 +1084,7 @@ jobs:
           # From H78 to this date it was the older untaught decoder, and those
           # layers mixed three changes (owner's reading, 2026-10-07).
           FUSE_CANOPY: ${{ (startsWith(inputs.decoder, 'fused + edge') && inputs.canopy != 'off' || inputs.canopy == 'everywhere') && '1' || '0' }}
-          UNDER_TREES: ${{ startsWith(inputs.decoder, 'fused + edge') && inputs.canopy != 'off' && '1' || '' }}
+          UNDER_TREES: ${{ startsWith(inputs.decoder, 'fused + edge') && inputs.canopy == 'on lawn without inferred' && 'traced' || startsWith(inputs.decoder, 'fused + edge') && inputs.canopy != 'off' && '1' || '' }}
         run: python3 tools/train_decoder.py
 
       # S19: the same decoder, same features, same folds and seed, trained
@@ -1101,7 +1108,7 @@ jobs:
           # H78 (2026-10-06): THE PLAN's decoder is taught under trees and given
           # the canopy as an input; stage 3 and the veto still follow it.
           FUSE_CANOPY: ${{ inputs.canopy != 'off' && '1' || '0' }}
-          UNDER_TREES: ${{ inputs.canopy != 'off' && '1' || '' }}
+          UNDER_TREES: ${{ inputs.canopy == 'on lawn without inferred' && 'traced' || inputs.canopy != 'off' && '1' || '' }}
           REFINE: '1'
         run: python3 tools/train_decoder.py
 
@@ -1121,7 +1128,7 @@ jobs:
           FOLDS: ${{ (inputs.lawns == 'all' || inputs.lawns == 'locked') && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
           FUSE_NAIP: naip
           FUSE_CANOPY: ${{ inputs.canopy != 'off' && '1' || '0' }}
-          UNDER_TREES: ${{ inputs.canopy != 'off' && '1' || '' }}
+          UNDER_TREES: ${{ inputs.canopy == 'on lawn without inferred' && 'traced' || inputs.canopy != 'off' && '1' || '' }}
           REFINE: '1'
           REFINE_REACH: wide
         run: python3 tools/train_decoder.py
@@ -1145,7 +1152,7 @@ jobs:
           FOLDS: ${{ (inputs.lawns == 'all' || inputs.lawns == 'locked') && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
           FUSE_NAIP: naip
           FUSE_CANOPY: ${{ inputs.canopy != 'off' && '1' || '0' }}
-          UNDER_TREES: ${{ inputs.canopy != 'off' && '1' || '' }}
+          UNDER_TREES: ${{ inputs.canopy == 'on lawn without inferred' && 'traced' || inputs.canopy != 'off' && '1' || '' }}
           REFINE: '1'
           FUSE_OVERTURE: overture
         run: python3 tools/train_decoder.py
@@ -1166,7 +1173,7 @@ jobs:
           FOLDS: ${{ (inputs.lawns == 'all' || inputs.lawns == 'locked') && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
           FUSE_NAIP: naip
           FUSE_CANOPY: ${{ inputs.canopy != 'off' && '1' || '0' }}
-          UNDER_TREES: ${{ inputs.canopy != 'off' && '1' || '' }}
+          UNDER_TREES: ${{ inputs.canopy == 'on lawn without inferred' && 'traced' || inputs.canopy != 'off' && '1' || '' }}
           REFINE: '1'
           REFINE_EDGES: '1'
         run: python3 tools/train_decoder.py
@@ -1186,7 +1193,7 @@ jobs:
           FOLDS: ${{ (inputs.lawns == 'all' || inputs.lawns == 'locked') && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
           FUSE_NAIP: naip
           FUSE_CANOPY: ${{ inputs.canopy != 'off' && '1' || '0' }}
-          UNDER_TREES: ${{ inputs.canopy != 'off' && '1' || '' }}
+          UNDER_TREES: ${{ inputs.canopy == 'on lawn without inferred' && 'traced' || inputs.canopy != 'off' && '1' || '' }}
           REFINE: '1'
           REFINE_EDGES: '1'
           REFINE_GATE: '1'
@@ -1208,7 +1215,7 @@ jobs:
           FOLDS: ${{ (inputs.lawns == 'all' || inputs.lawns == 'locked') && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
           FUSE_NAIP: naip
           FUSE_CANOPY: ${{ inputs.canopy != 'off' && '1' || '0' }}
-          UNDER_TREES: ${{ inputs.canopy != 'off' && '1' || '' }}
+          UNDER_TREES: ${{ inputs.canopy == 'on lawn without inferred' && 'traced' || inputs.canopy != 'off' && '1' || '' }}
           REFINE: '1'
           ENSEMBLE: '3'
         run: python3 tools/train_decoder.py
@@ -1231,7 +1238,7 @@ jobs:
           FUSE_LIDAR: lidar
           FUSE_NAIP: naip
           FUSE_CANOPY: ${{ inputs.canopy != 'off' && '1' || '0' }}
-          UNDER_TREES: ${{ inputs.canopy != 'off' && '1' || '' }}
+          UNDER_TREES: ${{ inputs.canopy == 'on lawn without inferred' && 'traced' || inputs.canopy != 'off' && '1' || '' }}
           REFINE: '1'
           HOLDOUT: county
           HOLDOUT_SOURCES: photos.json
@@ -1252,7 +1259,7 @@ jobs:
           FUSE_LIDAR: lidar
           FUSE_NAIP: naip
           FUSE_CANOPY: ${{ inputs.canopy != 'off' && '1' || '0' }}
-          UNDER_TREES: ${{ inputs.canopy != 'off' && '1' || '' }}
+          UNDER_TREES: ${{ inputs.canopy == 'on lawn without inferred' && 'traced' || inputs.canopy != 'off' && '1' || '' }}
           REFINE: '1'
           HOLDOUT: 'mapbox:12'
           HOLDOUT_SOURCES: photos.json
@@ -1275,7 +1282,7 @@ jobs:
           FOLDS: ${{ (inputs.lawns == 'all' || inputs.lawns == 'locked') && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
           FUSE_NAIP: naip
           FUSE_CANOPY: ${{ inputs.canopy != 'off' && '1' || '0' }}
-          UNDER_TREES: ${{ inputs.canopy != 'off' && '1' || '' }}
+          UNDER_TREES: ${{ inputs.canopy == 'on lawn without inferred' && 'traced' || inputs.canopy != 'off' && '1' || '' }}
           REFINE: '1'
           EPOCHS: '15'
         run: python3 tools/train_decoder.py
@@ -1295,7 +1302,7 @@ jobs:
           FOLDS: ${{ (inputs.lawns == 'all' || inputs.lawns == 'locked') && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
           FUSE_NAIP: naip
           FUSE_CANOPY: ${{ inputs.canopy != 'off' && '1' || '0' }}
-          UNDER_TREES: ${{ inputs.canopy != 'off' && '1' || '' }}
+          UNDER_TREES: ${{ inputs.canopy == 'on lawn without inferred' && 'traced' || inputs.canopy != 'off' && '1' || '' }}
           REFINE: '1'
           EPOCHS: '60'
         run: python3 tools/train_decoder.py
@@ -1316,7 +1323,7 @@ jobs:
           FOLDS: ${{ (inputs.lawns == 'all' || inputs.lawns == 'locked') && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
           FUSE_NAIP: naip
           FUSE_CANOPY: ${{ inputs.canopy != 'off' && '1' || '0' }}
-          UNDER_TREES: ${{ inputs.canopy != 'off' && '1' || '' }}
+          UNDER_TREES: ${{ inputs.canopy == 'on lawn without inferred' && 'traced' || inputs.canopy != 'off' && '1' || '' }}
           REFINE: '1'
           FLIPS: '0'
         run: python3 tools/train_decoder.py
@@ -1336,7 +1343,7 @@ jobs:
           FOLDS: ${{ (inputs.lawns == 'all' || inputs.lawns == 'locked') && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
           FUSE_NAIP: naip
           FUSE_CANOPY: ${{ inputs.canopy != 'off' && '1' || '0' }}
-          UNDER_TREES: ${{ inputs.canopy != 'off' && '1' || '' }}
+          UNDER_TREES: ${{ inputs.canopy == 'on lawn without inferred' && 'traced' || inputs.canopy != 'off' && '1' || '' }}
           REFINE: '1'
           HEAD: upernet
         run: python3 tools/train_decoder.py
@@ -1362,7 +1369,7 @@ jobs:
           FOLDS: ${{ (inputs.lawns == 'all' || inputs.lawns == 'locked') && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
           FUSE_NAIP: naip
           FUSE_CANOPY: ${{ inputs.canopy != 'off' && '1' || '0' }}
-          UNDER_TREES: ${{ inputs.canopy != 'off' && '1' || '' }}
+          UNDER_TREES: ${{ inputs.canopy == 'on lawn without inferred' && 'traced' || inputs.canopy != 'off' && '1' || '' }}
           REFINE: '1'
           HEAD: linear
         run: python3 tools/train_decoder.py
@@ -1382,7 +1389,7 @@ jobs:
           FOLDS: ${{ (inputs.lawns == 'all' || inputs.lawns == 'locked') && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
           FUSE_NAIP: naip
           FUSE_CANOPY: ${{ inputs.canopy != 'off' && '1' || '0' }}
-          UNDER_TREES: ${{ inputs.canopy != 'off' && '1' || '' }}
+          UNDER_TREES: ${{ inputs.canopy == 'on lawn without inferred' && 'traced' || inputs.canopy != 'off' && '1' || '' }}
           REFINE: '1'
         run: python3 tools/train_decoder.py
 
@@ -1403,7 +1410,7 @@ jobs:
           FOLDS: ${{ (inputs.lawns == 'all' || inputs.lawns == 'locked') && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
           FUSE_NAIP: naip
           FUSE_CANOPY: ${{ inputs.canopy != 'off' && '1' || '0' }}
-          UNDER_TREES: ${{ inputs.canopy != 'off' && '1' || '' }}
+          UNDER_TREES: ${{ inputs.canopy == 'on lawn without inferred' && 'traced' || inputs.canopy != 'off' && '1' || '' }}
           REFINE: '1'
         run: python3 tools/train_decoder.py
 
@@ -1423,7 +1430,7 @@ jobs:
           FOLDS: ${{ (inputs.lawns == 'all' || inputs.lawns == 'locked') && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
           FUSE_NAIP: naip
           FUSE_CANOPY: ${{ inputs.canopy != 'off' && '1' || '0' }}
-          UNDER_TREES: ${{ inputs.canopy != 'off' && '1' || '' }}
+          UNDER_TREES: ${{ inputs.canopy == 'on lawn without inferred' && 'traced' || inputs.canopy != 'off' && '1' || '' }}
           REFINE: '1'
         run: python3 tools/train_decoder.py
 
@@ -1443,7 +1450,7 @@ jobs:
           FOLDS: ${{ (inputs.lawns == 'all' || inputs.lawns == 'locked') && 'place' || (inputs.lawns == 'benchmark, 10 folds' && '10' || '') }}
           FUSE_NAIP: naip
           FUSE_CANOPY: ${{ inputs.canopy != 'off' && '1' || '0' }}
-          UNDER_TREES: ${{ inputs.canopy != 'off' && '1' || '' }}
+          UNDER_TREES: ${{ inputs.canopy == 'on lawn without inferred' && 'traced' || inputs.canopy != 'off' && '1' || '' }}
           REFINE: '1'
         run: python3 tools/train_decoder.py
 
@@ -1467,7 +1474,7 @@ jobs:
           # H78 (2026-10-06): THE PLAN's decoder is taught under trees and given
           # the canopy as an input; stage 3 and the veto still follow it.
           FUSE_CANOPY: ${{ inputs.canopy != 'off' && '1' || '0' }}
-          UNDER_TREES: ${{ inputs.canopy != 'off' && '1' || '' }}
+          UNDER_TREES: ${{ inputs.canopy == 'on lawn without inferred' && 'traced' || inputs.canopy != 'off' && '1' || '' }}
           REFINE: '1'
           CORRECTIONS_WEIGHT: '3'
         run: python3 tools/train_decoder.py
@@ -1488,7 +1495,7 @@ jobs:
           # H78 (2026-10-06): THE PLAN's decoder is taught under trees and given
           # the canopy as an input; stage 3 and the veto still follow it.
           FUSE_CANOPY: ${{ inputs.canopy != 'off' && '1' || '0' }}
-          UNDER_TREES: ${{ inputs.canopy != 'off' && '1' || '' }}
+          UNDER_TREES: ${{ inputs.canopy == 'on lawn without inferred' && 'traced' || inputs.canopy != 'off' && '1' || '' }}
           REFINE: '1'
           SKIP_EXAMPLES: '1'
           NOT_LAWN: ''

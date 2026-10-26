@@ -18,6 +18,7 @@
  * changes to.
  */
 
+import { readTwins, writeTwins, linkTwins, isRunSlug } from './run-twins.js';
 import { usageSince, usageDaily } from './usage.js';
 import { currentUser } from './auth.js';
 import { benchmarkId, coordsOfId, mapName } from './benchmark-ids.js';
@@ -1376,13 +1377,30 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
    */
   if (path === 'prediction-runs') {
     if (!env.CORPUS) return json({ error: 'No bucket' }, 404, origin);
+    /* The twins linked after the fact (worker/src/run-twins.js) ride along. */
+    const twins = await readTwins(env.CORPUS);
     try {
       const object = await env.CORPUS.get('runs/index.json');
-      if (!object) return json({ runs: [] }, 200, origin);
-      return json(await object.json(), 200, origin);
+      if (!object) return json({ runs: [], twins }, 200, origin);
+      return json({ ...(await object.json()), twins }, 200, origin);
     } catch {
-      return json({ runs: [] }, 200, origin);
+      return json({ runs: [], twins }, 200, origin);
     }
+  }
+
+  /*
+   * LINK TWO RUNS (owner, 2026-10-26): the twin picker on the predictions
+   * page keeps its choice here, for both runs. `twin` empty unlinks.
+   */
+  if (path === 'run-twin' && request.method === 'POST') {
+    if (!env.CORPUS) return json({ error: 'No bucket' }, 404, origin);
+    const body = await request.json().catch(() => ({}));
+    const run = String(body?.run || '');
+    const twin = String(body?.twin || '');
+    if (!isRunSlug(run) || (twin && !isRunSlug(twin))) return json({ error: 'Not a run' }, 400, origin);
+    const pairs = linkTwins(await readTwins(env.CORPUS), run, twin);
+    await writeTwins(env.CORPUS, pairs);
+    return json({ ok: true, twin: pairs[run] || '' }, 200, origin);
   }
 
   if (path === 'predictions') {

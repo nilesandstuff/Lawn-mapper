@@ -110,6 +110,19 @@ def check_trees():
     assert p["fetch"] == ["feats", "preds", "preds-edge", "preds-trees", "preds-trees-canopy", "preds-trees-returns"]
 
 
+def check_traced_only():
+    # S66: "on lawn without inferred" is THE PLAN with the marks left out.
+    p = plan(inputs(canopy="on lawn without inferred", decoder="fused + edge"), "r", [])
+    dec = {s["env"]["OUT"]: s["env"] for s in p["steps"] if s["script"] == "train_decoder.py"}
+    assert dec["preds-edge"]["UNDER_TREES"] == "traced" and dec["preds"]["UNDER_TREES"] == "traced", dec
+    assert dec["preds-edge"]["CANOPY_MODE"] == "lawn" and dec["preds-edge"]["FUSE_CANOPY"] == "1", dec
+    q = plan(inputs(canopy="on lawn", decoder="fused + edge"), "r", [])
+    assert all(s["env"].get("UNDER_TREES") == "1" for s in q["steps"] if s["script"] == "train_decoder.py")
+    opts = WF[True]["workflow_dispatch"]["inputs"]["canopy"]["options"] if True in WF else WF["on"]["workflow_dispatch"]["inputs"]["canopy"]["options"]
+    assert "on lawn without inferred" in opts, opts
+
+
+check_traced_only()
 check_trees()
 check_names()
 check_release()

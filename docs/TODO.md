@@ -70,6 +70,11 @@ inside of the loop".
 
 ## In progress
 
+- **THE PLAN taught only what was traced (S66, owner 2026-10-26).** Inferred
+  marks left out of training, lawn traced under trees still taught. Two
+  independent free runs, then workflow 24, which also links their pictures
+  as twins on the predictions page.
+
 - **Storm drains everywhere.** The nightly sweep (workflow 44) reads ~60
   county servers a night, and the live search runs where people look.
   NCDOT's pipes are retried tonight.

@@ -128,7 +128,7 @@ DOUBTED = _doubted()
 
 def taught_for(stem):
     """Whether this lot's unseen ground is graded (taught under trees)."""
-    return UNDER_TREES and not is_example(stem) and stem not in DOUBTED
+    return UNDER_TREES and not TRACED_ONLY and not is_example(stem) and stem not in DOUBTED
 
 
 # Folds; unset or 0 means leave-one-out (see main). "place" is grouped
@@ -180,7 +180,15 @@ DROP_OVERTURE = float(os.environ.get("DROP_OVERTURE", "0.3"))
 # tracer drew no lawn under stays not-lawn (as it already was). Not-lawn
 # example frames keep their unseen canopy. The row to read is the decoder
 # ALONE, since stage 3 replaces its answer under every canopy cell.
-UNDER_TREES = os.environ.get("UNDER_TREES") == "1"
+UNDER_TREES = os.environ.get("UNDER_TREES") in ("1", "traced")
+# TAUGHT ONLY WHAT WAS TRACED (owner, 2026-10-26: "it should always be taught
+# areas that were traced and not marked inferred"). UNDER_TREES=traced grades
+# lawn the tracer drew under the tree model's canopy, as UNDER_TREES=1 does,
+# but leaves the tracer's own inferred marks out (no weight), on every lot,
+# doubted or not. UNDER_TREES=1 grades the marks as lawn too: on leafy photos
+# they are a judgement call the photo cannot show. Canopy the tracer drew no
+# lawn under stays a weighted zero in both.
+TRACED_ONLY = os.environ.get("UNDER_TREES") == "traced"
 
 # LIDAR THAT DISAGREES WITH THE PHOTO, HIDDEN IN TRAINING (owner, 2026-10-06:
 # "filtering out bad lidar maps"). LIDAR_DISTRUST = tools/lidar_ground_check.py's
@@ -390,6 +398,7 @@ def read_lawn(feats, frames, stem, shape):
     truth = labels[:, :, 0] >= 128
     within = labels[:, :, 1] >= 128
     inferred = labels[:, :, 2] >= 128
+    marks = inferred
     cells_h, cells_w = truth.shape
 
     # THE CANOPY IS UNSEEN GROUND TOO, when the run brought the tree model's
@@ -466,7 +475,10 @@ def read_lawn(feats, frames, stem, shape):
 
     target, inside = box_targets(truth, gw, gh, cx, cy)
     allowed, _ = box_targets(within, gw, gh, cx, cy)
-    unseen, _ = box_targets(inferred, gw, gh, cx, cy)
+    # Taught only what was traced: the only unseen ground is the tracer's own
+    # marks (and, on a not-lawn example frame, its canopy as before).
+    left_out = marks if (TRACED_ONLY and not is_example(stem)) else inferred
+    unseen, _ = box_targets(left_out, gw, gh, cx, cy)
     # Graded where it is on the photograph, inside the line, and seen --
     # or, taught under trees, unseen too (not on an example frame).
     taught = taught_for(stem)
@@ -500,7 +512,7 @@ def read_lawn(feats, frames, stem, shape):
         from edge_refine import edge_cells
         photo = Image.open(os.path.join(frames, f"{stem}.png")).convert("RGB")
         L["rgb"] = np.asarray(photo.resize((cells_w, cells_h), Image.BOX))
-        fine_w = (within if taught else (within & ~inferred)).astype(np.float32)
+        fine_w = (within if taught else (within & ~left_out)).astype(np.float32)
         if wrong is not None:
             fine_w = fine_w * (1.0 + CORRECTIONS_WEIGHT * wrong)
         L["fine_t"] = torch.from_numpy(truth.astype(np.float32))[None]
@@ -807,7 +819,10 @@ def main():
               flush=True)
     if not FLIPS:
         print("NO FLIPS: every training grid as it was drawn, no flips or quarter turns", flush=True)
-    if UNDER_TREES:
+    if TRACED_ONLY:
+        print("TAUGHT ONLY WHAT WAS TRACED: lawn traced under the canopy is graded as lawn; the tracer's "
+              "inferred marks carry no weight, on every lot", flush=True)
+    elif UNDER_TREES:
         print("TAUGHT UNDER TREES: inferred lawn and canopy over traced lawn are graded as the tracer "
               "drew them (lawn), not left out", flush=True)
         doubted = [L["id"] for L in lawns if L["id"] in DOUBTED]
@@ -872,7 +887,7 @@ def main():
             # or `both`): the live server reads such a release both ways too.
             "bothScales": bool(FEATURES_WHOLE),
             "dim": dim, "refine": REFINE, "refineReach": (os.environ.get("REFINE_REACH") or "normal") if REFINE else None, "refineEdges": os.environ.get("REFINE_EDGES") == "1", "refineGate": os.environ.get("REFINE_GATE") == "1", "fuse": FUSE, "fuseCanopy": FUSE_CANOPY,
-            "underTrees": UNDER_TREES, "fuseReturns": bool(FUSE_RETURNS), "fuseIntensity": FUSE_INTENSITY, "fuseOverture": bool(FUSE_OVERTURE), "lidarDistrust": bool(LIDAR_DISTRUST), "correctionsWeight": CORRECTIONS_WEIGHT,
+            "underTrees": ("traced" if TRACED_ONLY else UNDER_TREES), "fuseReturns": bool(FUSE_RETURNS), "fuseIntensity": FUSE_INTENSITY, "fuseOverture": bool(FUSE_OVERTURE), "lidarDistrust": bool(LIDAR_DISTRUST), "correctionsWeight": CORRECTIONS_WEIGHT,
             "channels": list(CHANNELS) if FUSE else [],
             "canopyMode": CANOPY_MODE if CANOPY else None,
             "epochs": EPOCHS, "seed": SEED, "lr": LR, "weightDecay": WEIGHT_DECAY, "dropout": DROPOUT,
@@ -957,7 +972,7 @@ def main():
             "fused": ({"lidar": sum(1 for L in lawns if "lidar" in L["sources"]),
                        "naip": sum(1 for L in lawns if "naip" in L["sources"]),
                        "canopy": sum(1 for L in lawns if "canopy" in L["sources"]),
-                       "canopyInput": FUSE_CANOPY, "underTrees": UNDER_TREES, "fuseReturns": bool(FUSE_RETURNS), "fuseIntensity": FUSE_INTENSITY, "fuseOverture": bool(FUSE_OVERTURE), "lidarDistrust": bool(LIDAR_DISTRUST), "correctionsWeight": CORRECTIONS_WEIGHT,
+                       "canopyInput": FUSE_CANOPY, "underTrees": ("traced" if TRACED_ONLY else UNDER_TREES), "fuseReturns": bool(FUSE_RETURNS), "fuseIntensity": FUSE_INTENSITY, "fuseOverture": bool(FUSE_OVERTURE), "lidarDistrust": bool(LIDAR_DISTRUST), "correctionsWeight": CORRECTIONS_WEIGHT,
                        "dropLidar": DROP_LIDAR, "dropNaip": DROP_NAIP} if FUSE else None),
             "seconds": round(total),
         }, f)

@@ -104,9 +104,12 @@ export const clean = (s) => String(s)
  * here, and nothing else should be. The per-lawn entries stay in the run's own
  * index where they are only paid for when a run is opened.
  */
-export function runRow({ slug, at, title, about, settings, lawns, headline }) {
+export function runRow({ slug, at, title, about, settings, lawns, headline, ghRun }) {
   return {
     slug,
+    /* The GitHub run that drew it, so workflow 24 can link two runs' pictures
+       as twins (tools/link-runs.js). */
+    ...(ghRun ? { ghRun: String(ghRun) } : {}),
     at: (at || new Date()).toISOString(),
     /* What kind of run it was, in two or three words: "Scale-MAE 896px",
        "tree crowns". */

@@ -79,3 +79,18 @@ jobs:
           A=$(find a -name lot-results.json | paste -sd, -)
           B=$(find b -name lot-results.json | paste -sd, -)
           node tools/compare-runs.js --a "$A" --b "$B" --row "$ROW" ${ROW_B:+--row-b "$ROW_B"} --measure "$MEASURE" ${LOTS:+--lots "$LOTS"} $([ -f photos.json ] && echo --photos photos.json)
+      - name: Link the two runs' pictures as twins on the predictions page
+        # Owner, 2026-10-26: comparison runs are independent runs, "linked after
+        # the fact so I can still view them like twins". Only when each side is
+        # one run; a run that drew no pictures is reported and skipped.
+        if: ${{ always() && !contains(inputs.a_runs, ',') && !contains(inputs.b_runs, ',') }}
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CORPUS_BUCKET: lawn-mapper-corpus
+          A_RUNS: ${{ inputs.a_runs }}
+          B_RUNS: ${{ inputs.b_runs }}
+        run: |
+          [ -d node_modules ] || npm ci --silent
+          node tools/link-runs.js "$A_RUNS" "$B_RUNS"

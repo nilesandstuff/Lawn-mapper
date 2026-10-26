@@ -1653,6 +1653,7 @@ async function publishRenderings(bucket, best, lawns, using, meta = {}) {
       settings,
       lawns: entries.length,
       headline: Number(best.med.toFixed(1)),
+      ghRun: process.env.GITHUB_RUN_ID || null,
     }));
 
     console.log(`\nDrew ${put} of ${best.rows.length} lawns under "${best.cfg.name}".`);
@@ -3146,16 +3147,14 @@ async function main() {
       windowed: py ? (py.manifest.windowed ?? null) : null,
     };
     /*
-     * ITS CONTROL, DRAWN TOO (owner, 2026-10-25: "a button that changes the
-     * prediction card that's being viewed with the same lot in its twin
-     * run"). When the drawn row is not THE PLAN's, THE PLAN's row of the same
-     * run is drawn as a second folder, and each names the other as its twin,
-     * so the predictions page flips a card between the two in place.
+     * ONE PICTURE SET A RUN (owner, 2026-10-26: "It seems like we're running
+     * into issues by doing runs set up as twins... Maybe it would work better
+     * if they were done as independent runs like they have been previously,
+     * but you just link them after the fact"). The control is its own run;
+     * workflow 24 links the two folders when it compares them, or the twin
+     * picker on the predictions page does (worker/src/run-twins.js).
      */
-    const plan = findPlanRow(table);
-    const control = plan && drawn !== plan ? plan : null;
     const mainSlug = runSlug({ at: new Date(), models: [ident.model || 'detector'], suffix: ident.size ? `${ident.size}px` : '' });
-    const controlSlug = control ? `${mainSlug}-control` : null;
     /*
      * THE FEATURES ARE DONE WITH (2026-10-26). Runs 40263507988 and
      * 40303542434 lost their runner twenty minutes into the second picture
@@ -3166,14 +3165,8 @@ async function main() {
     for (const L of lawns) { L.cheap = null; L.fine = null; L.fineFull = null; L.coarse = null; L.coarseFull = null; }
     const mem = () => `${Math.round(process.memoryUsage().rss / 1e6)} MB`;
     console.log(`Memory before drawing: ${mem()}.`);
-    /* The row asked for first, so the pictures that matter land even if the
-       second set does not. */
-    await publishRenderings(bucket, drawn, lawns, using, { ...ident, slug: mainSlug, ...(control ? { twin: controlSlug, role: 'trial' } : {}) });
-    console.log(`Memory after the first picture set: ${mem()}.`);
-    if (control) {
-      await publishRenderings(bucket, control, lawns, using, { ...ident, slug: controlSlug, twin: mainSlug, role: 'control' });
-      console.log(`Memory after the control's: ${mem()}.`);
-    }
+    await publishRenderings(bucket, drawn, lawns, using, { ...ident, slug: mainSlug });
+    console.log(`Memory after drawing: ${mem()}.`);
   }
 
   /*

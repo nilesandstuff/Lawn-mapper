@@ -739,11 +739,15 @@ function withPicture(box, e, i, alt) {
  * that should still open. Losing the picker is a smaller loss than losing the
  * page.
  */
+/* The twins linked after the fact (worker/src/run-twins.js): slug -> slug. */
+let TWINS = {};
+
 async function loadRuns() {
   try {
     const res = await fetch('/api/admin/prediction-runs');
     if (!res.ok) return [];
     const body = await res.json();
+    TWINS = body?.twins && typeof body.twins === 'object' ? body.twins : {};
     return Array.isArray(body?.runs) ? body.runs : [];
   } catch {
     return [];
@@ -803,9 +807,22 @@ function fillTwinPicker(runs, current, twin) {
     if (r.slug === twin) o.selected = true;
     sel.append(o);
   }
-  sel.addEventListener('change', () => {
+  /* KEPT, NOT JUST SHOWN (owner, 2026-10-26: "link them after the fact"):
+     the choice is saved for both runs, so either one opens with the other as
+     its twin from now on. If saving fails the address bar still carries it. */
+  sel.addEventListener('change', async () => {
     const next = new URLSearchParams(location.search);
-    if (sel.value) next.set('twin', sel.value); else next.set('twin', '');
+    try {
+      const res = await fetch('/api/admin/run-twin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ run: current, twin: sel.value }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      next.delete('twin');
+    } catch {
+      next.set('twin', sel.value || '');
+    }
     location.search = next.toString();
   });
 }
@@ -912,13 +929,13 @@ function settingsLine(settings) {
    * THE TWIN RUN (owner, 2026-10-25: "when we do a comparison run like the
    * trust under trees vs don't trust under trees, ... a button that changes
    * the prediction card that's being viewed with the same lot in its twin
-   * run"). The twin is the address bar's `twin`, else the run's own record
-   * of its control (settings.twin, written by a comparison run), else none;
-   * the picker beside the run's changes it. Each card whose lot the twin
+   * run"). The twin is the address bar's `twin`, else the pair linked after
+   * the fact (by workflow 24 or this page's picker, which saves its choice),
+   * else an older run's record of its control (settings.twin), else none. Each card whose lot the twin
    * also drew gets a button that swaps the card, in place, to the twin's
    * picture and figures for the same lot, and back.
    */
-  const twinSlug = TWIN !== null ? TWIN : (data.settings?.twin || '');
+  const twinSlug = TWIN !== null ? TWIN : (TWINS[want] || data.settings?.twin || '');
   const twinEntries = new Map();
   let twinLabel = '';
   fillTwinPicker(runs, want, twinSlug);

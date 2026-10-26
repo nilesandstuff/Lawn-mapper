@@ -13,6 +13,8 @@
  * long-lived list forgetting runs that still exist.
  */
 
+import { linkTwins, isRunSlug } from '../worker/src/run-twins.js';
+import { slugsFor } from './link-runs.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
@@ -168,6 +170,31 @@ const IMAGE = patternIn('image key', /\|\| \/(\^runs.+?)\/\.test\(key\)/);
   assert.equal(kept.length, KEEP_IN_LIST);
   assert.equal(kept[0].slug, 'newest');
   assert.ok(KEEP_IN_LIST >= 100, 'a short list would forget runs somebody still wants');
+}
+
+/* ------------------------------------- twins linked after the fact */
+
+{
+  /* Owner, 2026-10-26: independent runs, linked afterwards. */
+  let pairs = linkTwins({}, 'run-a', 'run-b');
+  assert.deepEqual(pairs, { 'run-a': 'run-b', 'run-b': 'run-a' }, 'linked both ways');
+  pairs = linkTwins(pairs, 'run-a', 'run-c');
+  assert.deepEqual(pairs, { 'run-a': 'run-c', 'run-c': 'run-a' }, 'a new twin unlinks the old pair on both sides');
+  pairs = linkTwins(pairs, 'run-c', '');
+  assert.deepEqual(pairs, {}, 'an empty twin unlinks');
+  assert.deepEqual(linkTwins({}, 'run-a', 'run-a'), {}, 'a run is not its own twin');
+  assert.ok(isRunSlug('2026-10-26-0915-edt-dinov3-sat-896px') && !isRunSlug('../x') && !isRunSlug(''));
+  /* Found by the GitHub run id the row recorded; an old "-control" folder of
+     the same run is never the one picked. */
+  const runs = [
+    runRow({ slug: 'new-one', ghRun: 41 }),
+    { slug: 'old-control', ghRun: '40' },
+    runRow({ slug: 'old', ghRun: '40' }),
+    runRow({ slug: 'no-id' }),
+  ];
+  assert.equal(runs[0].ghRun, '41', 'the run id is kept as text');
+  assert.ok(!('ghRun' in runs[3]), 'a row without one says nothing');
+  assert.deepEqual(slugsFor(runs, ['40', '41', '39']), ['old', 'new-one', null]);
 }
 
 console.log('run folders: ok');
