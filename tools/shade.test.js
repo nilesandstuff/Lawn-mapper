@@ -1342,6 +1342,47 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   }
 }
 
+/* ------------------------------------------------------- soil temperature */
+{
+  const { soilFrames, trailingAverage, shadedSoil, tempBands, dayOfYmd, SOIL_SHADE_C_PER_MJ } = await import('../public/shade/soil.js');
+  /* A northern year: coldest about Jan 25, warmest about Jul 26, 0 to 24 C. */
+  const year = Array.from({ length: 365 }, (_, k) => 12 - 12 * Math.cos((2 * Math.PI * (k - 25)) / 365));
+  const f = soilFrames(year);
+  const kinds = f.map((x) => x.kind).join(',');
+  const roundYear = [0, 1, 2, 3].map((i) => [...f.slice(i), ...f.slice(0, i)].map((x) => x.kind).join(','));
+  const covered = f.reduce((n, x) => n + x.days.length, 0);
+  const warming = f.find((x) => x.kind === 'warming'), warm = f.find((x) => x.kind === 'warm');
+  check('soil frames: a northern year goes round cold, warming, warm, cooling, every day in exactly one frame, starting with the frame that holds 1 January',
+    roundYear.includes('cold,warming,warm,cooling') && f.length === 4 && covered === 365 && new Set(f.flatMap((x) => x.days)).size === 365 && f[0].days.includes(0)
+    && warming.rate > 0 && warm.days.includes(206) && f.every((x) => x.days.length >= 28), `${kinds} ${f.map((x) => `${x.start}-${x.end}`)}`);
+  check('soil frames: a place whose soil hardly swings is one frame, steady all year; no data, no frames',
+    soilFrames(year.map((v) => 20 + v / 10)).map((x) => x.kind).join() === 'steady' && soilFrames(null).length === 0 && soilFrames(year.slice(0, 300)).length === 0, '');
+  const daily = { 20261015: 10, 20261016: 11, 20261017: 12, 20261018: 13, 20261019: 14, 20261020: 15, 20261021: 16 };
+  const t = trailingAverage(daily);
+  check('soil: the 5-day average is the last five days there are; too few or too spread out, none',
+    t.mean === 14 && t.through === '20261021' && t.days.join() === '20261017,20261018,20261019,20261020,20261021'
+    && trailingAverage({ 20261001: 1, 20261021: 2 }) === null && trailingAverage({ 20261001: 1, 20261005: 1, 20261010: 1, 20261015: 1, 20261021: 1 }) === null, JSON.stringify(t));
+  /* Open ground 20 C under 40 mol a day (about 19.6 MJ); a spot getting a quarter of it has lost 30 mol, about 14.7 MJ. */
+  check('soil: shade cools the soil by the sunlight it takes; full sun is the open ground; more light is never warmer than open',
+    Math.abs(shadedSoil(20, 40, 10) - (20 - SOIL_SHADE_C_PER_MJ * 30 / 2.04)) < 1e-9 && shadedSoil(20, 40, 40) === 20 && shadedSoil(20, 40, 45) === 20, String(shadedSoil(20, 40, 10)));
+  const b = tempBands(48.2, 53.7);
+  check('soil: colour bands in whole degrees cover the range; a wide range takes wider steps',
+    b.step === 1 && b.lo === 48 && b.hi === 54 && b.of(48.2) === 0 && b.of(53.7) === b.n - 1 && tempBands(40, 80).step === 10 && dayOfYmd('20261021') === 293, JSON.stringify(b));
+  /* The route: NASA's daily and hourly soil, the latest hour picked, fill values dropped. */
+  const { soilNow } = await import('../worker/src/shade.js');
+  const urls = [];
+  const fake = async (u) => {
+    urls.push(u);
+    const hourly = u.includes('/hourly/');
+    const parameter = { TSOIL1: hourly ? { 2026102221: 15.9, 2026102222: 15.5, 2026102223: -999 } : { 20261020: 11.52, 20261021: 11.59, 20261022: -999 } };
+    return new Response(JSON.stringify({ header: { fill_value: -999 }, properties: { parameter } }), { status: 200 });
+  };
+  const sn = await soilNow(-86.2284, 43.0637, { fetchImpl: fake, now: new Date(Date.UTC(2026, 9, 26, 13)) });
+  check('soil route: the last year of daily soil and the latest hour from NASA, rounded, fill values dropped',
+    sn.daily['20261021'] === 11.6 && !('20261022' in sn.daily) && sn.latest.c === 15.5 && sn.latest.t === Date.UTC(2026, 9, 22, 22)
+    && urls.some((u) => /daily.*start=20251026/.test(u)) && urls.some((u) => u.includes('/hourly/')), JSON.stringify(sn));
+}
+
 /* ------------------------------------------------------- the shade subdomain */
 {
   const site = (await import('../shade-site/src/index.js')).default;
