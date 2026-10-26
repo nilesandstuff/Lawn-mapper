@@ -74,10 +74,6 @@ inside of the loop".
   7 better, 0 worse on seen ground. Seeds 8 and 9 are running on the free
   runner; adopted if they hold (bar in H127).
 
-- **THE PLAN taught only what was traced (S66, owner 2026-10-26).** Inferred
-  marks left out of training, lawn traced under trees still taught. Two
-  independent free runs, then workflow 24, which also links their pictures
-  as twins on the predictions page.
 
 - **Storm drains everywhere.** The nightly sweep (workflow 44) reads ~60
   county servers a night, and the live search runs where people look.
@@ -92,6 +88,11 @@ inside of the loop".
   canopy input.
 
 ## Done
+
+- 2026-10-26: inferred marks left out of training (S66) measured as worse,
+  H128 (runs 40369587372 and 40369617314, linked as twins on the
+  predictions page). Not adopted. Comparison runs are now independent and
+  linked afterwards by workflow 24 or the page's twin picker.
 
 - 2026-10-25: trusting the detector under trees in the open (S63) measured
   as not a gain, H123 (run 40127014446). Off. A narrower version (only where
