@@ -52,6 +52,19 @@ for (let i = 0; i < 30; i += 1) for (let j = 0; j < 30; j += 1) {
 assert.equal(calls.filter((c) => c.startsWith('/directions-matrix/')).length, 9);
 assert.equal(matrixBlocks(62).length, 36, 'the biggest day stays under 50 calls');
 
+// only some pairs: the rows asked for are filled, the rest left null
+calls.length = 0;
+res = await post('/api/matrix', { points: pts, sources: [3, 17], destinations: pts.map((_, i) => i) });
+const part = await res.json();
+assert.equal(part.durations[3][20], 320);
+assert.equal(part.durations[17][2], 1702);
+assert.equal(part.durations[5][6], null, 'not asked, not filled');
+assert.equal(part.durations[5][5], 0);
+assert.equal(calls.length, 3, 'two sources against 30 destinations: 3 calls of 12');
+assert.equal((await post('/api/matrix', { points: pts, sources: [1, 1] })).status, 400, 'repeats refused');
+assert.equal((await post('/api/matrix', { points: pts, sources: [30] })).status, 400, 'out of range refused');
+assert.equal((await post('/api/matrix', { points: pts, destinations: [] })).status, 400);
+
 // 30 points along a route: two calls sharing a point, legs in order, the line joined once
 res = await post('/api/route', { points: pts });
 const r = await res.json();

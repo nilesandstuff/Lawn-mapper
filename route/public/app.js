@@ -18,6 +18,7 @@
 import { addressVariants, formatMinutes, mergeStops, parseWords, sameStreet, slices } from './lib/parse.js';
 import { pathCost, solvePath } from './lib/solve.js';
 import { parseDocument, readDocument } from './lib/doc.js';
+import { elementsOf, fill, fromCache, MAX_PAIRS, prune, remember, toFetch } from './lib/cache.js';
 
 const TESSERACT = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
 const $ = (s) => document.querySelector(s);
@@ -37,6 +38,18 @@ let stops = store.get('stops', []);
 let startMode = store.get('startMode', 'end');
 let result = store.get('result', null);
 const geoCache = store.get('geo', {});
+
+/* drive times kept on this phone, 60 days from last use (lib/cache.js) */
+const drives = store.get('drives', {});
+prune(drives);
+function saveDrives() {
+  let max = MAX_PAIRS;
+  for (let k = 0; k < 5; k += 1) {
+    prune(drives, { max });
+    try { localStorage.setItem('route.drives', JSON.stringify(drives)); return; } catch { /* full: keep the newer half */ }
+    max = Math.floor(Object.keys(drives).length / 2);
+  }
+}
 
 /* ------------------------------------------------------------ status */
 function say(text, bad = false) {
@@ -404,7 +417,14 @@ async function plan() {
     sayPlan('Timing every drive…');
     const points = [start, ...found.map((f) => f.hit), end];
     const ll = (p) => [p.lng, p.lat];
-    const { durations, distances } = await call('/api/matrix', { points: points.map(ll) });
+    // the pairs this phone already knows are not asked again; the GPS start is never kept
+    const keep = points.map((_, i) => !(i === 0 && startMode === 'here'));
+    const tables = fromCache(drives, points, { keep });
+    const asks = toFetch(tables.durations);
+    for (const q of asks) fill(tables, await call('/api/matrix', { points: points.map(ll), ...q }));
+    remember(drives, points, tables.durations, tables.distances, { keep });
+    saveDrives();
+    const { durations, distances } = tables;
 
     sayPlan('Choosing the order…');
     await new Promise((r) => setTimeout(r, 30));
@@ -434,6 +454,8 @@ async function plan() {
       legs,
       geometry,
       saved: Math.max(0, listed - best),
+      reused: tables.hits,
+      fetched: elementsOf(asks),
       done: [],
     };
     store.set('result', result);
@@ -510,6 +532,7 @@ function renderResult(scroll = false) {
   const notes = [`${r.stops.length} stop${r.stops.length === 1 ? '' : 's'}, ${miles(dist)} of driving.`];
   notes.push(`Starting now, back at the shop about ${clock(Date.now() + (jobs + driveM) * 60000)}.`);
   if (r.saved >= 60) notes.push(`${mins(r.saved)} less driving than the order in the list.`);
+  if (r.fetched != null) notes.push(`Drive times: ${r.reused.toLocaleString()} reused from this phone, ${r.fetched.toLocaleString()} new from Mapbox.`);
   const area = allStops.reduce((a, s) => a + (Number(s.sqft) || 0), 0);
   if (area) notes.push(`Lawn area: ${sqft(area)} in all${allStops.some((s) => !s.sqft) ? ` (${allStops.filter((s) => !s.sqft).length} stops without one)` : ''}.`);
   const untimed = allStops.filter((s) => s.minutes == null).length;

@@ -53,25 +53,39 @@ export async function geocode(fetcher, token, q, near) {
   return { lng, lat, label: p.full_address || p.name || q, accuracy: p.match_code?.confidence || 'unknown' };
 }
 
-/** The blocks a matrix of n points is asked in: [{ ids, sources, destinations }]. */
-export function matrixBlocks(n, size = BLOCK) {
-  const groups = [];
-  for (let i = 0; i < n; i += size) groups.push(Array.from({ length: Math.min(size, n - i) }, (_, k) => i + k));
+const range = (n) => Array.from({ length: n }, (_, i) => i);
+const chunk = (xs, size) => { const out = []; for (let i = 0; i < xs.length; i += size) out.push(xs.slice(i, i + size)); return out; };
+
+/**
+ * The blocks a matrix is asked in: every source against every destination,
+ * at most 12 of each a call (so at most 24 points). With no lists, every
+ * point against every point.
+ */
+export function matrixBlocks(n, sources = range(n), destinations = range(n), size = BLOCK) {
   const blocks = [];
-  for (const a of groups) {
-    for (const b of groups) {
-      const ids = a === b ? a : [...a, ...b];
+  for (const a of chunk(sources, size)) {
+    for (const b of chunk(destinations, size)) {
+      const ids = [...new Set([...a, ...b])];
       blocks.push({ ids, from: a, to: b, sources: a.map((x) => ids.indexOf(x)), destinations: b.map((x) => ids.indexOf(x)) });
     }
   }
   return blocks;
 }
 
-export async function matrix(fetcher, token, points) {
+/** Mapbox bills a matrix by its elements: sources x destinations. */
+export const elements = (sources, destinations) => sources.length * destinations.length;
+
+/**
+ * Seconds and metres from each source to each destination, as full n x n
+ * tables (null where not asked). The page asks only for the pairs it has not
+ * kept (lib/cache.js), so a stop driven to before costs nothing again.
+ */
+export async function matrix(fetcher, token, points, sources = range(points.length), destinations = range(points.length)) {
   const n = points.length;
   const durations = Array.from({ length: n }, () => Array(n).fill(null));
   const distances = Array.from({ length: n }, () => Array(n).fill(null));
-  await inBatches(matrixBlocks(n).map((b) => async () => {
+  for (let i = 0; i < n; i += 1) { durations[i][i] = 0; distances[i][i] = 0; }
+  await inBatches(matrixBlocks(n, sources, destinations).map((b) => async () => {
     const params = new URLSearchParams({
       sources: b.sources.join(';'), destinations: b.destinations.join(';'),
       annotations: 'duration,distance', access_token: token,
@@ -84,6 +98,14 @@ export async function matrix(fetcher, token, points) {
     }));
   }));
   return { durations, distances };
+}
+
+/** Index lists for a matrix call: whole numbers in range, no repeats; null if not. */
+export function validIndexes(xs, n) {
+  if (xs == null) return range(n);
+  if (!Array.isArray(xs) || !xs.length || xs.length > n) return null;
+  if (!xs.every((x) => Number.isInteger(x) && x >= 0 && x < n) || new Set(xs).size !== xs.length) return null;
+  return xs;
 }
 
 /** Consecutive runs of at most 25 points, each starting where the last ended. */

@@ -7,7 +7,7 @@
  * never in the page:
  *
  *   GET  /api/geocode?q=&near=lng,lat   one address -> { lng, lat, label, accuracy }
- *   POST /api/matrix  { points }        -> { durations, distances }
+ *   POST /api/matrix  { points, [sources], [destinations] } -> { durations, distances }
  *   POST /api/route   { points }        -> { legs, geometry }
  *   /api/shop, /api/catalog              the shop's address and the first document (src/store.js)
  *
@@ -19,7 +19,7 @@
  * its own deploy (.github/workflows/route-deploy.yml).
  */
 
-import { geocode, matrix, route, validPoints } from './mapbox.js';
+import { geocode, matrix, matrixBlocks, route, validIndexes, validPoints } from './mapbox.js';
 import { store } from './store.js';
 
 const json = (body, status = 200) => new Response(JSON.stringify(body), {
@@ -48,7 +48,13 @@ export async function api(request, env, url, fetcher = fetch) {
     if ((url.pathname === '/api/matrix' || url.pathname === '/api/route') && request.method === 'POST') {
       const body = await request.json().catch(() => null);
       if (!validPoints(body?.points)) return json({ error: 'Between 2 and 62 points, as [lng, lat]' }, 400);
-      return json(url.pathname === '/api/matrix' ? await matrix(fetcher, token, body.points) : await route(fetcher, token, body.points));
+      if (url.pathname === '/api/route') return json(await route(fetcher, token, body.points));
+      const n = body.points.length;
+      const sources = validIndexes(body.sources, n);
+      const destinations = validIndexes(body.destinations, n);
+      if (!sources || !destinations) return json({ error: 'sources and destinations: indexes of points' }, 400);
+      if (matrixBlocks(n, sources, destinations).length > 40) return json({ error: 'Too many pairs for one call' }, 400);
+      return json(await matrix(fetcher, token, body.points, sources, destinations));
     }
   } catch (e) {
     return json({ error: String(e.message || e) }, 502);
