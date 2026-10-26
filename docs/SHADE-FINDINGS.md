@@ -1120,7 +1120,43 @@ third one before (grid.js rasterise, the lowest return with gaps filled 30
 cells deep). The water map copies ground.js back unchanged. The old rule
 stays as `ground: 'lowest'` and workflow 35's input for comparisons.
 
+### 27. NASA's soil cannot say how much the sun warms it: soil minus air against sunlight is no relation at all in three of five places (2026-10-26)
+
+For the soil temperature view (owner, 2026-10-26) the shade's cooling of
+the soil needs a rate: degrees per unit of sunlight lost. Tried first from
+data already in hand: NASA POWER daily, 2015-2025, unfrozen days (air over
+3 C), the top soil layer (TSOIL1) minus the air (T2M) against the day's
+sunlight (ALLSKY_SFC_SW_DWN, MJ/m2), daily and as 5-day means.
+
+| place | 5-day slope, C per MJ | r |
+|---|---|---|
+| Michigan lakeshore | 0.130 | 0.75 |
+| Arizona desert | 0.069 | 0.46 |
+| Texas hill country | 0.021 | 0.16 |
+| Delaware | -0.010 | -0.10 |
+| Georgia piedmont | -0.021 | -0.19 |
+
+MERRA-2's soil is the mean of a ~50 km cell, forest and town included, so
+it is the area's soil, not an open lawn's, and its response to sun is not
+a lawn's. NOT USED for the rate. The view takes its open-ground soil from
+it all the same (there is nothing better that is free and keyless), and
+says so on the page. Scratch: soil/fit.py.
+
 ## Speculation
+
+- SOIL UNDER SHADE (2026-10-26, provisional, IN USE in soil.js): 0.2 C
+  cooler, daily mean, per MJ/m2 of daily sunlight a spot loses. From one
+  study only: Edmondson et al. (2016, Sci. Rep. 6:33708), 79 loggers at
+  1.5 cm in Leicester, UK: summer (May-July) daily mean 17.2 C under grass
+  and 14.1 C under trees and shrubs in non-domestic greenspace, 3.1 C
+  apart. Leicester's summer sun (~17 MJ/m2/day) and a woodland floor
+  losing ~85% of it give the 0.2. Assumed, not measured: the 85%; that a
+  lawn in a tree's shade cools like a wooded floor (litter and no grass
+  there); that 1.5 cm carries to about 10 cm for a daily MEAN (the swing
+  shrinks with depth, the mean less so). The same study found woody cover
+  slightly WARMER in winter, left out. The water session is asked
+  (2026-10-26) for its research; the owner's own logger under a tree and
+  in the open would settle it.
 
 - Mixed-season flights (7) may be better treated as leaf-on for the
   evergreen call (no evergreens called): it would have cut the light cost

@@ -25,6 +25,7 @@ import { GRASS, dayLabel, growingSeason, periodDays, SEASON_GP, SOIL_DORMANT_C }
 import { climateZone } from './grass.js';
 import { heat, bandsFor, rasterOf, smooth, valueAt, boxStats } from './readout.js';
 import { groundLayer } from './view3d.js';
+import { soilFrames, FRAME_NAME, trailingAverage, dayOfYmd, shadedSoil, tempBands, toF, meanOver, } from './soil.js';
 
 const $ = (s) => document.querySelector(s);
 const SQFT = 10.7639;
@@ -83,14 +84,14 @@ const polysOf = (g) => (g?.type === 'Polygon' ? [g.coordinates] : g?.type === 'M
  * part of it before leaf-out, in leaf, after leaf-fall, or one day. A caption
  * over the legend says which is shown.
  */
-const WHATS = [['#w-hours', 'hours'], ['#w-dli', 'dli'], ['#w-now', 'now']];
+const WHATS = [['#w-hours', 'hours'], ['#w-dli', 'dli'], ['#w-now', 'now'], ['#w-soil', 'soil']];
 const WHENS = [['#p-season', 'season'], ['#p-before', 'beforeLeaves'], ['#p-leaf', 'inLeaf'], ['#p-after', 'afterLeaves'], ['#p-day', 'day']];
 const WHEN_LABEL = { season: 'the growing season', beforeLeaves: 'the growing season before leaf-out', inLeaf: 'the growing season in leaf', afterLeaves: 'the growing season after leaf-fall', day: 'one day' };
 
 export function startSun({ map, site, cols, box, shift, heightM, season, beforeLayer, ground = null, erased = null, erasedCubes = null, onSeason = null, onChange = null }) {
   const st = {
     erased, erasedCubes,
-    worker: null, what: 'hours', when: 'season', whenBefore: null, day: null, now: null, period: null, periodDays: [], calendar: null, seasonInfo: null, ids: 0, path: [],
+    worker: null, what: 'hours', when: 'season', soilWhen: 'last5', soilData: null, soilAsked: false, soil: null, whenBefore: null, day: null, now: null, period: null, periodDays: [], calendar: null, seasonInfo: null, ids: 0, path: [],
     grid: gridOver(box, 1, site.lat),
   };
   st.drape = ground && ground.length === st.grid.w * st.grid.h ? groundLayer('light-3d', { grid: st.grid, ground, baseZ: heightM, lat: site.lat }) : null;
@@ -189,6 +190,7 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
   const periodWords = () => `${WHEN_LABEL[st.when]} (${spanWords(st.periodDays)})`;
 
   function draw() {
+    if (st.what === 'soil') { drawSoil(); return; }
     if (st.what === 'now') {
       if (!st.now) return;
       $('#sun-legend').innerHTML = '<span class="dim">Dark = shade from the lidar at that moment</span>';
@@ -322,7 +324,7 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
   $('#t-lawn').onclick = () => {
     st.lawnOnly = !st.lawnOnly;
     $('#t-lawn').setAttribute('aria-pressed', String(st.lawnOnly));
-    if (st.what === 'now') runNow(); else draw();
+    if (st.what === 'now') runNow(); else if (st.what === 'soil') drawSoil(); else draw();
   };
   $('#sun-clear').onclick = () => { setBoxing(false); clearReadouts(); };
 
@@ -530,6 +532,141 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     svg.addEventListener('pointerleave', hide);
   }
 
+  /* ---- SOIL TEMPERATURE (soil.js): the open ground's soil from NASA, less
+     the cooling each spot's shade gives it over the days shown. ---- */
+  const fF = (c) => `${Math.round(toF(c))} °F`;
+  const ymdWords = (d) => `${MONTHS[+d.slice(4, 6) - 1]} ${+d.slice(6, 8)}`;
+  /** The days, the open ground's soil (C) and the words for what st.soilWhen picks; null while unknown. */
+  function soilPick() {
+    const frames = st.soilFrames || [];
+    const recent = st.soilData ? trailingAverage(st.soilData.daily) : null;
+    const lastDays = recent ? recent.days.map(dayOfYmd) : null;
+    if (st.soilWhen === 'now') {
+      const L = st.soilData?.latest;
+      if (!L && !recent) return null;
+      const at = L ? `${MONTHS[new Date(L.t).getUTCMonth()]} ${new Date(L.t).getUTCDate()} about ${aboutLocal(L.t, site.lng)}` : ymdWords(recent.through);
+      return { days: lastDays || [], openC: L ? L.c : st.soilData.daily[recent.through], words: `the latest reading (${at}; NASA runs about 3 days behind)`, short: 'Latest' };
+    }
+    if (st.soilWhen === 'last5') {
+      if (!recent) return null;
+      return { days: lastDays, openC: recent.mean, words: `the last 5 days NASA has (${ymdWords(recent.days[0])} to ${ymdWords(recent.through)}), averaged`, short: '5-day average' };
+    }
+    const f = frames[Number(st.soilWhen)];
+    if (!f || !st.climate?.tSoil) return null;
+    return { days: f.days, openC: f.mean, words: `${FRAME_NAME[f.kind].toLowerCase()}, ${dayLabel(f.start)} to ${dayLabel(f.end)}, in a typical year`, short: FRAME_NAME[f.kind], frame: f };
+  }
+  /** The period buttons for the soil: its time frames, then the last 5 days and now. */
+  function soilButtons() {
+    const row = $('#soil-row');
+    if (!row) return;
+    const frames = st.soilFrames || [];
+    row.innerHTML = '<span class="dim">When</span>'
+      + frames.map((f, i) => `<button type="button" class="mode" data-soil-when="${i}" title="${fF(f.from)} to ${fF(f.to)}, ${f.rate >= 0 ? 'up' : 'down'} ${Math.abs(f.rate * 1.8).toFixed(1)} °F a week">${FRAME_NAME[f.kind]} · ${dayLabel(f.start)}–${dayLabel(f.end)}</button>`).join('')
+      + '<button type="button" class="mode" data-soil-when="last5">Last 5 days</button><button type="button" class="mode" data-soil-when="now">Now</button>';
+    for (const b of row.querySelectorAll('[data-soil-when]')) b.onclick = () => { st.soilWhen = b.dataset.soilWhen; paintButtons(); runSoil(); onChange?.(); };
+    paintButtons();
+  }
+  /** Fetch the soil (once), then ask the worker for the light over the days picked. */
+  function runSoil() {
+    if (st.climate?.tSoil && !st.soilFrames) { st.soilFrames = soilFrames(st.climate.tSoil); soilButtons(); }
+    if (!st.soilAsked) {
+      st.soilAsked = true;
+      caption('Fetching the soil temperatures here…');
+      fetch(`/api/shade/soil?lng=${site.lng}&lat=${site.lat}`).then((r) => r.json()).then((d) => { if (d.error) throw new Error(d.detail || d.error); st.soilData = d; })
+        .catch((e) => { st.soilData = { daily: {}, latest: null, error: e.message }; })
+        .finally(() => { if (st.what === 'soil') runSoil(); });
+      return;
+    }
+    if (!st.soilData) return;
+    if (!st.soilFrames?.length && (st.soilWhen !== 'last5' && st.soilWhen !== 'now')) st.soilWhen = 'last5';
+    paintButtons();
+    const pick = soilPick();
+    if (!pick) { st.soil = null; drawSoil(); return; }
+    st.soilPick = pick;
+    st.soilPeriod = null;
+    if (!st.built) { caption('Building the 3D canopy…'); return; }
+    caption(`Working out the shade over ${pick.words}…`);
+    st.soilPeriodId = send({ type: 'period', days: pick.days, climate: st.climate });
+  }
+  function drawSoil() {
+    const pick = st.soilPick, pe = st.soilPeriod;
+    chartSoil();
+    if (!pick || !pe) {
+      if (st.soilData && !pick) {
+        $('#sun-legend').innerHTML = '<span class="dim">No soil temperatures.</span>';
+        caption(st.soilData.error ? `NASA's soil temperatures could not be read (${st.soilData.error}).` : 'NASA has no soil temperatures for this place.');
+      }
+      readouts();
+      return;
+    }
+    if (!pe.dli) { $('#sun-legend').innerHTML = '<span class="dim">Needs the weather.</span>'; caption('The soil view needs the sunlight here, which could not be read.'); readouts(); return; }
+    const values = Float32Array.from(pe.dli, (d) => toF(shadedSoil(pick.openC, pe.openDli, d)));
+    /* The colours span the lawn's (or lot's) own range, in whole steps of °F. */
+    const mask = st.lawnOnly && st.lawnMask ? st.lawnMask : null;
+    let lo = Infinity, hi = -Infinity;
+    for (let p = 0; p < values.length; p++) {
+      const v = values[p];
+      if (!Number.isFinite(v) || (mask && !mask[Math.floor(pe.xy[2 * p + 1]) * st.grid.w + Math.floor(pe.xy[2 * p])])) continue;
+      if (v < lo) lo = v; if (v > hi) hi = v;
+    }
+    if (!Number.isFinite(lo)) { lo = hi = toF(pick.openC); }
+    const b = tempBands(lo, hi + 0.01);
+    const colors = Array.from({ length: b.n }, (_, i) => ramp(b.n === 1 ? 1 : i / (b.n - 1)));
+    $('#sun-legend').innerHTML = `<span>${b.lo}</span><span class="ramp" style="background:${bandsCss({ colors, n: b.n })}"></span><span>${b.hi} °F</span><span class="dim">steps of ${b.step}</span>`;
+    paint(values, pe.xy, (v) => [...colors[b.of(v)], ALPHA], { span: 2, smoothed: true, read: { unit: '°F', what: `soil, about the top 10 cm, over ${pick.words}`, dp: 0 } });
+    const coolest = Number.isFinite(lo) ? toF(pick.openC) - lo : 0;
+    caption(`Soil temperature, about the top 10 cm, over ${pick.words}, ${where()}. Open ground: ${fF(pick.openC)}; the shadiest spot about ${Math.round(coolest)} °F cooler. Shade cools the soil by the sunlight it takes (an estimate from one study, being refined).`);
+    readouts();
+  }
+  /* The year's soil: the typical year, this year so far, the time frames shaded, today, the 5-day average and the dormancy line. */
+  function chartSoil() {
+    const box = $('#soil-chart');
+    if (!box) return;
+    const typ = st.climate?.tSoil;
+    if (!typ) { box.innerHTML = ''; return; }
+    const year = new Date().getUTCFullYear();
+    const seen = Object.entries(st.soilData?.daily || {}).filter(([d]) => d.slice(0, 4) === String(year)).map(([d, c]) => [dayOfYmd(d), toF(c)]).sort((a, b) => a[0] - b[0]);
+    const recent = st.soilData ? trailingAverage(st.soilData.daily) : null;
+    const grass = $('#grass').value || 'cool', dormF = toF(SOIL_DORMANT_C[grass] ?? SOIL_DORMANT_C.cool);
+    const all = [...typ.map(toF), ...seen.map((p) => p[1]), dormF];
+    const lo = Math.floor(Math.min(...all) / 10) * 10, hi = Math.ceil(Math.max(...all) / 10) * 10;
+    const W = 360, H = 180, l = 30, r = 8, t = 18, b = 22;
+    const X = (k) => l + (k / 364) * (W - l - r), Y = (v) => t + (1 - (v - lo) / (hi - lo || 1)) * (H - t - b);
+    let grid = '';
+    for (let v = lo; v <= hi; v += 10) grid += `<line x1="${l}" x2="${W - r}" y1="${Y(v)}" y2="${Y(v)}" stroke="#2c2c2c"/><text x="${l - 4}" y="${Y(v) + 3}" text-anchor="end" fill="#999" font-size="9">${v}</text>`;
+    const starts = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
+    const months = starts.map((k, i) => `<text x="${X(k + 15)}" y="${H - 8}" text-anchor="middle" fill="#999" font-size="9">${MONTHS[i][0]}</text>`).join('');
+    /* The frames: one block per run of days (two when one wraps New Year), the picked one brighter. */
+    let bands = '';
+    (st.soilFrames || []).forEach((f, i) => {
+      const on = new Set(f.days);
+      for (let k = 0; k < 365; k++) {
+        if (!on.has(k) || on.has(k - 1)) continue;
+        let e = k;
+        while (e + 1 < 365 && on.has(e + 1)) e++;
+        bands += `<rect x="${X(k)}" y="${t}" width="${Math.max(1, X(e) - X(k))}" height="${H - t - b}" fill="#fff" fill-opacity="${String(st.soilWhen) === String(i) ? 0.16 : i % 2 ? 0.03 : 0.07}"/>`;
+      }
+      const mid = f.days[Math.floor(f.days.length / 2)];
+      bands += `<text x="${X(mid)}" y="${t - 6}" text-anchor="middle" fill="#bbb" font-size="8">${FRAME_NAME[f.kind]}</text>`;
+    });
+    const line = (pts) => pts.map(([k, v], i) => `${i && pts[i - 1][0] === k - 1 ? 'L' : 'M'}${X(k).toFixed(1)},${Y(v).toFixed(1)}`).join('');
+    const todayK = dayOfYmd(new Date().toISOString().slice(0, 10).replace(/-/g, ''));
+    const avg = recent ? `<circle cx="${X(dayOfYmd(recent.through))}" cy="${Y(toF(recent.mean))}" r="4" fill="${LAWN}" stroke="#161616" stroke-width="2"/>` : '';
+    const L = st.soilData?.latest;
+    const latest = L ? `<circle cx="${X(dayOfYmd(new Date(L.t).toISOString().slice(0, 10).replace(/-/g, '')))}" cy="${Y(toF(L.c))}" r="3.5" fill="#fff" stroke="#161616" stroke-width="2"/>` : '';
+    box.innerHTML = `<div class="key"><span><i style="background:#9a9a9a"></i>Typical year</span><span><i style="background:${OPEN}"></i>This year</span><span><i style="background:${LAWN}"></i>5-day average</span><span><i style="background:#fff"></i>Latest</span></div>
+      <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Open ground's soil temperature through the year, °F, with its time frames">
+        ${bands}${grid}${months}
+        <line x1="${l}" x2="${W - r}" y1="${Y(dormF)}" y2="${Y(dormF)}" stroke="#3987e5" stroke-dasharray="3 3" stroke-opacity=".7"/>
+        <text x="${W - r}" y="${Y(dormF) - 3}" text-anchor="end" fill="#7fb0f0" font-size="8">${GRASS[grass]?.label || 'Cool-season'} dormant under ${Math.round(dormF)} °F (5-day)</text>
+        <path d="${line(typ.map((c, k) => [k, toF(c)]))}" fill="none" stroke="#9a9a9a" stroke-width="1.5"/>
+        <path d="${line(seen)}" fill="none" stroke="${OPEN}" stroke-width="2" stroke-linejoin="round"/>
+        <line x1="${X(todayK)}" x2="${X(todayK)}" y1="${t}" y2="${H - b}" stroke="#bbb" stroke-dasharray="2 2"/>
+        ${avg}${latest}
+      </svg>
+      <p class="dim">${recent ? `Last 5 days (to ${ymdWords(recent.through)}): <b>${fF(recent.mean)}</b>` : ''}${L ? `${recent ? ' · ' : ''}latest: <b>${fF(L.c)}</b>` : ''}${recent ? ` · typical for the date: ${fF(meanOver(typ, recent.days.map(dayOfYmd)))}` : ''}. Open ground, NASA's top soil layer (about 10 cm) for the area.</p>`;
+  }
+
   function build() {
     if (st.worker) st.worker.terminate();
     st.built = false;
@@ -539,13 +676,14 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     st.worker.onmessage = (ev) => {
       const m = ev.data;
       if (m.type === 'error') { status(`The light calculation stopped: ${m.message}`); reportError('light worker', m.message); }
-      else if (m.type === 'built') { st.readyWaiters.splice(0).forEach((f) => f()); st.canopy = m.canopy; status(''); st.built = true; st.kinds = m.kinds; st.calendar = m.calendar || null; st.lawnMask = m.lawnMask || null; $('#t-lawn').hidden = !st.lawnMask || st.hidden; $('#t-lawn').dataset.has = st.lawnMask ? '1' : ''; canopyNote(m); labelPeriods(); runDay(); st.monthsId = send({ type: 'months', year: new Date(dayMs()).getUTCFullYear() }); runSeason(); runPeriod(); }
+      else if (m.type === 'built') { st.readyWaiters.splice(0).forEach((f) => f()); st.canopy = m.canopy; status(''); st.built = true; st.kinds = m.kinds; st.calendar = m.calendar || null; st.lawnMask = m.lawnMask || null; $('#t-lawn').hidden = !st.lawnMask || st.hidden; $('#t-lawn').dataset.has = st.lawnMask ? '1' : ''; canopyNote(m); labelPeriods(); runDay(); st.monthsId = send({ type: 'months', year: new Date(dayMs()).getUTCFullYear() }); runSeason(); runPeriod(); st.soilPeriod = null; if (st.what === 'soil') runSoil(); }
       else if (m.type === 'day' && m.id === st.dayId) { st.day = m; status(''); summary(); if (st.what !== 'now' && st.when === 'day') draw(); }
       else if (m.type === 'now' && m.id === st.nowId) { st.now = m; if (st.what === 'now') draw(); }
       else if (m.type === 'progress' && m.what === 'season') { $('#season-status').textContent = `Tracing the sun through the year: ${m.done} of ${m.of} dates…`; if (st.when !== 'day' && st.what !== 'now' && !st.period) caption(`Tracing the sun through the year: ${m.done} of ${m.of} dates…`); }
       else if (m.type === 'progress') status(`Working out the year: ${m.done} of ${m.of} months…`);
       else if (m.type === 'season' && m.id === st.seasonId) { st.season = m; seasonSummary(); onSeason?.(m, st.climate); }
       else if (m.type === 'period' && m.id === st.periodId) { st.period = m; draw(); }
+      else if (m.type === 'period' && m.id === st.soilPeriodId) { st.soilPeriod = m; if (st.what === 'soil') drawSoil(); }
       else if (m.type === 'months' && m.id === st.monthsId) { months(m.rows); status(''); }
       else if (m.type === 'samples' && st.pending.has(m.id)) { st.pending.get(m.id)(m); st.pending.delete(m.id); }
     };
@@ -569,14 +707,19 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     for (const [id, w] of WHATS) $(id)?.setAttribute('aria-pressed', String(w === st.what));
     for (const [id, w] of WHENS) $(id)?.setAttribute('aria-pressed', String(w === st.when));
     $('#time-row').hidden = st.what !== 'now';
-    if ($('#sun-date')) $('#sun-date').hidden = st.when !== 'day';
+    if ($('#sun-date')) $('#sun-date').hidden = st.when !== 'day' || st.what === 'soil';
+    /* The soil has its own periods (its time frames, the last 5 days, now) in place of the light's. */
+    if ($('#when-row')) $('#when-row').hidden = st.what === 'soil';
+    if ($('#soil-row')) $('#soil-row').hidden = st.what !== 'soil';
+    if ($('#soil-chart')) $('#soil-chart').hidden = st.what !== 'soil';
+    for (const b of document.querySelectorAll('[data-soil-when]')) b.setAttribute('aria-pressed', String(b.dataset.soilWhen === String(st.soilWhen)));
   }
   function setWhat(w) {
     if (w === 'now' && st.when !== 'day') { st.whenBefore = st.when; st.when = 'day'; }
     if (w !== 'now' && st.what === 'now' && st.whenBefore) { st.when = st.whenBefore; st.whenBefore = null; }
     st.what = w;
     paintButtons();
-    if (w === 'now') runNow(); else if (st.when === 'day') draw(); else if (st.period) draw(); else runPeriod();
+    if (w === 'soil') runSoil(); else if (w === 'now') runNow(); else if (st.when === 'day') draw(); else if (st.period) draw(); else runPeriod();
     onChange?.();
   }
   function setWhen(w) {
@@ -593,6 +736,7 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
      climateZone); in the transition zone the visitor chooses (owner,
      2026-10-17), and the season views wait for it. */
   function grassChanged() {
+    if (st.what === 'soil') drawSoil();
     const z = st.zone;
     if ($('#zone-ask')) $('#zone-ask').hidden = !(z?.zone === 'transition' && !$('#grass').value);
     st.seasonInfo = null; st.period = null;
@@ -655,7 +799,7 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
       if (what && WHATS.some(([, w]) => w === what)) st.what = what;
       if (st.what === 'now') st.when = 'day';
       paintButtons();
-      if (st.built) { if (st.what === 'now') runNow(); else if (st.when === 'day') draw(); else runPeriod(); }
+      if (st.built) { if (st.what === 'soil') runSoil(); else if (st.what === 'now') runNow(); else if (st.when === 'day') draw(); else runPeriod(); }
     },
     /** The growing season's light, once worked out (null before): the worker's season message and the climate. */
     season: () => (st.season ? { season: st.season, climate: st.climate } : null),

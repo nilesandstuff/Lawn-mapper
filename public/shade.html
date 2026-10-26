@@ -72,7 +72,8 @@
   .legend-bar .ramp { flex: 1; max-width: 240px; height: 10px; border-radius: 5px; }
   .sun table { margin-top: 6px; }
   .sun select { font-size: 14px; padding: 5px; border-radius: 8px; border: 1px solid #555; background: #222; color: #eee; }
-  #season-chart { position: relative; max-width: 520px; }
+  #season-chart, #soil-chart { position: relative; max-width: 520px; }
+  #soil-chart svg { width: 100%; height: auto; display: block; touch-action: pan-y; }
   #season-chart svg { width: 100%; height: auto; display: block; touch-action: pan-y; }
   #season-chart .tip { position: absolute; pointer-events: none; background: #222; border: 1px solid #444; border-radius: 6px; padding: 4px 8px; font-size: 12px; white-space: nowrap; }
   .key { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: #ccc; margin: 6px 0 2px; }
@@ -219,8 +220,10 @@
           <button type="button" class="mode" id="w-hours" aria-pressed="true">Hours of sun</button>
           <button type="button" class="mode" id="w-dli" aria-pressed="false">Light (DLI)</button>
           <button type="button" class="mode" id="w-now" aria-pressed="false">Shadows at a time</button>
+          <button type="button" class="mode" id="w-soil" aria-pressed="false">Soil temperature</button>
         </div>
-        <div class="row" role="group" aria-label="Over which days">
+        <div class="row" id="soil-row" role="group" aria-label="Which soil period" hidden></div>
+        <div class="row" id="when-row" role="group" aria-label="Over which days">
           <span class="dim">Over</span>
           <button type="button" class="mode" id="p-season" aria-pressed="true">Growing season</button>
           <button type="button" class="mode" id="p-before" aria-pressed="false">Before leaf-out</button>
@@ -242,6 +245,7 @@
           <span id="sun-time-label" class="dim"></span>
         </div>
         <div class="legend-bar" id="sun-legend"></div>
+        <div id="soil-chart" hidden></div>
         <div class="row">
           <button type="button" id="sun-box">Draw a box</button>
           <button type="button" id="sun-clear">Clear</button>

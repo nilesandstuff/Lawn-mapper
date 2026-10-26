@@ -8,6 +8,11 @@
  *       { clouds: [{ name, url, year, density, epoch, confirmed, unit }],
  *         notOnAws: [{ workunit, ql, start, end, season }], footprints }
  *
+ *   GET /api/shade/soil?lng=&lat=
+ *     The soil this past year at this place (soilNow below): NASA POWER's
+ *     daily top-layer soil temperature for the last 365 days and its latest
+ *     hour. Cached an hour.
+ *
  *   GET /api/shade/climate?lng=&lat=
  *     The typical year at this place from NASA POWER (ten years of daily
  *     data folded into 365 days, public/shade/climate.js): sunlight with
@@ -137,6 +142,17 @@ export async function handleShade(request, url, env, origin, ctx, json) {
     } catch (e) {
       await logServerError(request, env, 'lidar', `The lidar index could not be read: ${e?.message || e}`, { lng, lat });
       return json({ error: 'The lidar index could not be read', detail: String(e?.message || e) }, 502, origin);
+    }
+  }
+  if (url.pathname === '/api/shade/soil' && request.method === 'GET') {
+    const lng = Number(url.searchParams.get('lng')), lat = Number(url.searchParams.get('lat'));
+    if (!Number.isFinite(lng) || !Number.isFinite(lat) || Math.abs(lat) > 85 || Math.abs(lng) > 180) return json({ error: 'lng and lat required' }, 400, origin);
+    try {
+      const res = json(await soilNow(lng, lat, { ctx }), 200, origin);
+      res.headers.set('Cache-Control', 'public, max-age=3600');
+      return res;
+    } catch (e) {
+      return json({ error: 'The soil temperatures could not be read', detail: String(e?.message || e) }, 502, origin);
     }
   }
   if (url.pathname === '/api/shade/climate' && request.method === 'GET') {
@@ -386,6 +402,41 @@ export async function weatherNow(lng, lat, typical, { ctx = null, fetchImpl = fe
   };
   if (cache) {
     const put = cache.put(key, new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json', 'Cache-Control': `public, max-age=${6 * 3600}` } }));
+    if (ctx?.waitUntil) ctx.waitUntil(put); else await put;
+  }
+  return body;
+}
+
+/**
+ * THE SOIL THIS PAST YEAR at a point (the shade map's soil view, soil.js):
+ * NASA POWER's top soil layer (TSOIL1, MERRA-2's first layer, about the top
+ * 10 cm), daily for the last 365 days (it runs about 5 days behind) and
+ * hourly for the last week (about 3 days behind), for the trailing average
+ * and the latest reading. Cached an hour. Returns { daily: { 'YYYYMMDD': C },
+ * latest: { t (ms), c } | null, source }.
+ */
+export async function soilNow(lng, lat, { ctx = null, fetchImpl = fetch, now = new Date() } = {}) {
+  const rl = Math.round(lng * 20) / 20, ra = Math.round(lat * 20) / 20;
+  const cache = globalThis.caches?.default;
+  const hourKey = now.toISOString().slice(0, 13);
+  const key = new Request(`https://shade.lawnmapper.internal/soil-v1/${ra},${rl},${hourKey}.json`);
+  const hit = cache && await cache.match(key);
+  if (hit) return hit.json();
+  const start = new Date(now.getTime() - 365 * 86400000), week = new Date(now.getTime() - 8 * 86400000);
+  const q = (kind, from) => `https://power.larc.nasa.gov/api/temporal/${kind}/point?` + new URLSearchParams({ parameters: 'TSOIL1', community: 'AG', longitude: rl.toFixed(3), latitude: ra.toFixed(3), start: ymd(from), end: ymd(now), format: 'JSON', ...(kind === 'hourly' ? { 'time-standard': 'UTC' } : {}) });
+  const [d, h] = await Promise.all([fetchImpl(q('daily', start)), fetchImpl(q('hourly', week)).catch(() => null)]);
+  if (!d.ok) throw new Error(`NASA POWER: ${d.status}`);
+  const daily = {};
+  for (const [k, v] of Object.entries(observedDays(await d.json(), 'TSOIL1'))) daily[k] = Math.round(v * 10) / 10;
+  let latest = null;
+  if (h?.ok) {
+    const hours = observedDays(await h.json(), 'TSOIL1'); // keys 'YYYYMMDDHH'
+    const last = Object.keys(hours).sort().pop();
+    if (last) latest = { t: Date.UTC(+last.slice(0, 4), +last.slice(4, 6) - 1, +last.slice(6, 8), +last.slice(8, 10)), c: Math.round(hours[last] * 10) / 10 };
+  }
+  const body = { daily, latest, source: "NASA POWER's top soil layer (MERRA-2 TSOIL1, about the top 10 cm): daily, about 5 days behind; hourly, about 3 days behind" };
+  if (cache) {
+    const put = cache.put(key, new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=3600' } }));
     if (ctx?.waitUntil) ctx.waitUntil(put); else await put;
   }
   return body;
