@@ -26,6 +26,15 @@ const cf = (list) => async (url, init = {}) => {
 };
 assert.deepEqual(await findOrMake(cf([{ id: 'x', title: 'other' }, { id: 'old1', title: 'route-planner' }]), 'acct', 'tok'), { id: 'old1', made: false });
 assert.deepEqual(await findOrMake(cf([{ id: 'x', title: 'other' }]), 'acct', 'tok'), { id: 'new1', made: true });
+// no account id given: the token's own account
+const seen = [];
+const withAccount = async (url, init = {}) => {
+  seen.push(url);
+  if (url.includes('/accounts?')) return Response.json({ success: true, result: [{ id: 'acct9' }] });
+  return Response.json({ success: true, result: [{ id: 'old1', title: 'route-planner' }] });
+};
+assert.deepEqual(await findOrMake(withAccount, '', 'tok'), { id: 'old1', made: false });
+assert.ok(seen[1].includes('/accounts/acct9/storage/kv/namespaces'));
 await assert.rejects(findOrMake(async () => Response.json({ success: false, errors: [{ message: 'no permission' }] }), 'a', 't'), /no permission/);
 
 const dir = mkdtempSync(join(tmpdir(), 'route-'));

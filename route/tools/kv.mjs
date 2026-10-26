@@ -11,7 +11,15 @@ import { appendFileSync } from 'node:fs';
 
 export const TITLE = 'route-planner';
 
+/** The account the token belongs to, when CLOUDFLARE_ACCOUNT_ID is not set (wrangler finds it the same way). */
+export async function accountFor(fetcher, token) {
+  const res = await (await fetcher('https://api.cloudflare.com/client/v4/accounts?per_page=5', { headers: { Authorization: `Bearer ${token}` } })).json();
+  if (!res.success || !res.result?.length) throw new Error(res.errors?.[0]?.message || 'the token sees no account');
+  return res.result[0].id;
+}
+
 export async function findOrMake(fetcher, account, token, title = TITLE) {
+  if (!account) account = await accountFor(fetcher, token);
   const base = `https://api.cloudflare.com/client/v4/accounts/${account}/storage/kv/namespaces`;
   const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
   for (let page = 1; page <= 10; page += 1) {
