@@ -6,11 +6,12 @@ SPECULATION), as always.
 
 ## In progress (2026-10-25)
 
-2. **Trees using the lawn's water: researched (FINDINGS H40, research-trees.md);
-   waiting on the owner's decision.** The proposal: shade as now, plus each
-   tree's root draw (its water use x the share from the turf's depth) spread
-   over a disc about twice its crown, every number uncertain about threefold. A
-   probe transect beside a maple and a spruce would settle the numbers.
+8. **Shade's effect on the air, and so on the grass's water use** (owner,
+   2026-10-26: "shade cooling soil isn't the important part for the water map...
+   It's the effect of shade on air temps, and therefore the effect on
+   evapotranspiration"). The plan's shade term holds 30% of open-sun water use as
+   carried in by warm dry air that shade does not stop (Danielson & Feldhake
+   1981); a tree's shade also cools the air beneath it. Research, then build.
 
 ## Queued
 
@@ -49,6 +50,14 @@ SPECULATION), as always.
    docs/shade-research/soil/ (fetch_yrs.py and clim.py; README).
 7. **Rain intensity in the ten-year plan too** (after 3): the typical-year plan
    runs on daily totals, so it cannot tell a cloudburst from a soak.
+
+## Shelved (owner, 2026-10-26: "shelve the tree thing to the todo list")
+
+- **Trees using the lawn's water**: researched (FINDINGS H40, research-trees.md),
+  nothing built. The proposal: shade as now, plus each tree's root draw (its
+  water use x the share from the turf's depth) spread over a disc about twice its
+  crown, every number uncertain about threefold. A soil-moisture probe transect
+  beside a maple and a spruce would settle the numbers.
 
 ## Done
 
