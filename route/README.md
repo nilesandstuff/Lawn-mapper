@@ -13,8 +13,17 @@ job list in, the fastest drive between the jobs out, ending at the shop.
    to 15 stops, iterated local search above), start and end fixed.
 4. **Totals** -- job minutes, driving, and the two together.
 
-The shop's address is never in the repository: it is typed once and kept in
-the browser, or arrives in the link as `#end=...`.
+**Documents** (`lib/doc.js`): Word `.docx`, old `.doc`, `.odt`, `.rtf`,
+`.txt`, `.csv`, read in the browser. A table is read by its header row
+(Address, Customer, Est. Time, Sq Ft...) or, without one, field by field; a
+list is read job by job from each address. Square footage is kept and
+totalled. Written before any real document was seen: the first document
+anyone opens is kept once in the Worker's KV (`/api/catalog`, readable only
+with the route session's key) so the reader can be tuned against it.
+
+The shop's address is never in the repository: the Shop button reads it from
+the Worker's KV (`/api/shop`, set with the key), or it is typed once and kept
+in the browser, or arrives in the link as `#end=...`.
 
 Its own Worker (`route-planner`), its own deploy:
 `.github/workflows/route-deploy.yml` ("R. Route planner"), which runs on any

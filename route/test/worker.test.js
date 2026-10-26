@@ -78,3 +78,44 @@ assert.equal((await api(new Request(none), {}, none, fakeMapbox)).status, 503);
 assert.equal((await call('/api/nothing')).status, 404);
 
 console.log('route worker: ok');
+
+// ------------------------------------------------ the shop and the first document (src/store.js)
+{
+  const { createHash } = await import('node:crypto');
+  const kvData = new Map();
+  const kv = {
+    get: async (k, o) => (kvData.has(k) ? (o?.type === 'stream' ? new ReadableStream({ start(c) { c.close(); } }) : kvData.get(k)) : null),
+    put: async (k, v) => { kvData.set(k, v); },
+    delete: async (k) => { kvData.delete(k); },
+  };
+  const KEY = 'test-key';
+  const e = { MAPBOX_TOKEN: 'pk.test', ROUTE: kv, ROUTE_KEY_SHA256: createHash('sha256').update(KEY).digest('hex') };
+  const hit = (path, init = {}) => {
+    const url = new URL(`https://route.example.com${path}`);
+    return api(new Request(url, init), e, url, fakeMapbox);
+  };
+  const body = (o) => ({ body: JSON.stringify(o), headers: { 'Content-Type': 'application/json' } });
+
+  assert.equal((await hit('/api/shop')).status, 404);
+  assert.equal((await hit('/api/shop', { method: 'PUT', ...body({ address: '1 Shop Rd, Town' }) })).status, 403, 'setting the shop needs the key');
+  const put = await hit('/api/shop', { method: 'PUT', body: JSON.stringify({ address: '1 Shop Rd, Town' }), headers: { 'X-Route-Key': KEY } });
+  assert.equal(put.status, 200);
+  assert.deepEqual(await (await hit('/api/shop')).json(), { address: '1 Shop Rd, Town' });
+
+  // the first document is kept; the second is not; only the key reads or deletes it
+  assert.equal((await hit('/api/catalog', { method: 'POST', ...body({ name: 'a.docx', base64: 'AAAA', parsed: [] }) })).status, 201);
+  assert.equal((await hit('/api/catalog', { method: 'POST', ...body({ name: 'b.docx', base64: 'BBBB' }) })).status, 409);
+  assert.equal((await hit('/api/catalog')).status, 403);
+  assert.equal((await hit('/api/catalog', { headers: { 'X-Route-Key': 'wrong' } })).status, 403);
+  const kept = await (await hit('/api/catalog', { headers: { 'X-Route-Key': KEY } })).json();
+  assert.equal(kept.name, 'a.docx');
+  assert.ok(kept.at);
+  assert.equal((await hit('/api/catalog', { method: 'POST', ...body({ name: 'x' }) })).status, 409);
+  assert.equal((await hit('/api/catalog', { method: 'DELETE', headers: { 'X-Route-Key': KEY } })).status, 200);
+  assert.equal((await hit('/api/catalog', { method: 'POST', ...body({ name: 'x' }) })).status, 400, 'a document needs its bytes');
+  assert.equal((await hit('/api/catalog', { method: 'POST', body: 'x'.repeat(10), headers: { 'Content-Length': String(9e6) } })).status, 413);
+  // no storage bound: refused cleanly, routing unaffected
+  const bare = new URL('https://route.example.com/api/shop');
+  assert.equal((await api(new Request(bare), { MAPBOX_TOKEN: 'pk.test' }, bare, fakeMapbox)).status, 503);
+  console.log('route store: ok');
+}

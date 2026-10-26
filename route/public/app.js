@@ -6,13 +6,18 @@
  *   3. find each on the map, ask the Worker how long every drive between
  *      them takes, pick the fastest order (lib/solve.js), draw it
  *
- * The shop's address is never in the code: it is typed once (or arrives in
- * the link as #end=...) and kept in this browser and in the page's address,
- * so a bookmark or home-screen icon carries it.
+ * The shop's address is never in the code: the Shop button asks the Worker
+ * for it (src/store.js), or it is typed once (or arrives in the link as
+ * #end=...) and kept in this browser and in the page's address.
+ *
+ * Documents (Word and the like) are read here too (lib/doc.js). The first
+ * one ever opened is sent once to the Worker to be kept, so the reader can be
+ * tuned against a real one.
  */
 
 import { addressVariants, formatMinutes, mergeStops, parseWords, sameStreet, slices } from './lib/parse.js';
 import { pathCost, solvePath } from './lib/solve.js';
+import { parseDocument, readDocument } from './lib/doc.js';
 
 const TESSERACT = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
 const $ = (s) => document.querySelector(s);
@@ -58,6 +63,23 @@ function setEnd(v, fromHash = false) {
   setEnd(fromHash || store.get('end', ''), Boolean(fromHash));
 }
 endInput.addEventListener('change', () => setEnd(endInput.value.trim()));
+
+/* the Shop button: the address the Worker keeps, never written in the code */
+async function loadShop() {
+  let shop = store.get('shop', '');
+  try {
+    const res = await fetch('/api/shop');
+    if (res.ok) { shop = (await res.json()).address || shop; store.set('shop', shop); }
+  } catch { /* offline: the last one known */ }
+  if (!shop) return;
+  const btn = $('#shopBtn');
+  btn.hidden = false;
+  btn.title = shop;
+  btn.setAttribute('aria-label', `Fill in the shop: ${shop}`);
+  btn.onclick = () => setEnd(shop);
+  if (!endInput.value.trim()) setEnd(shop);
+}
+loadShop();
 
 function showStartMode() {
   for (const b of document.querySelectorAll('[data-start]')) b.setAttribute('aria-pressed', String(b.dataset.start === startMode));
@@ -131,11 +153,71 @@ async function readScreenshots(files) {
   return mergeStops(lists);
 }
 
+/* ------------------------------------------------------------ reading documents */
+const isImage = (f) => /^image\//.test(f.type) || /\.(png|jpe?g|webp|gif|heic|bmp)$/i.test(f.name);
+
+function toBase64(bytes) {
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+
+/** The first document ever opened here goes to the Worker once, to tune the reader against. True if kept. */
+async function keepFirst(file, bytes, blocks, parsed) {
+  if (store.get('catalogued', false) || bytes.length > 5 * 1024 * 1024) return false;
+  try {
+    const res = await fetch('/api/catalog', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: file.name, type: file.type, size: bytes.length, base64: toBase64(bytes),
+        layout: parsed.layout, parsed: parsed.stops, blocks: blocks.slice(0, 400),
+        agent: navigator.userAgent,
+      }),
+    });
+    if (res.status === 201 || res.status === 409) store.set('catalogued', true);
+    return res.status === 201;
+  } catch {
+    return false;
+  }
+}
+
+let kept = false;
+async function readDocuments(files) {
+  const lists = [];
+  for (const f of files) {
+    say(`Reading ${f.name}…`);
+    const bytes = new Uint8Array(await f.arrayBuffer());
+    let blocks = [];
+    let parsed = { stops: [], layout: 'unreadable' };
+    try {
+      blocks = await readDocument(f.name, bytes);
+      parsed = parseDocument(blocks);
+    } catch (e) {
+      parsed.layout = `unreadable: ${e.message}`;
+    }
+    if (await keepFirst(f, bytes, blocks, parsed)) kept = true;
+    lists.push(parsed.stops.map(({ extra, ...s }) => s));
+  }
+  return mergeStops(lists);
+}
+
+async function readFiles(files) {
+  const images = files.filter(isImage);
+  const docs = files.filter((f) => !isImage(f));
+  const lists = [];
+  if (images.length) lists.push(await readScreenshots(images));
+  if (docs.length) lists.push(await readDocuments(docs));
+  return mergeStops(lists);
+}
+
 let nextId = Math.max(0, ...stops.map((s) => s.id || 0)) + 1;
 async function pick(files, append) {
   if (!files.length) return;
+  kept = false;
+  const what = [...files].every(isImage) ? 'picture' : 'document';
   try {
-    const found = await readScreenshots([...files]);
+    const found = await readFiles([...files]);
     const fresh = found.map((s) => ({ id: nextId++, ...s }));
     stops = append ? mergeStops([stops, fresh]) : fresh;
     store.set('stops', stops);
@@ -145,16 +227,19 @@ async function pick(files, append) {
     const timed = fresh.filter((s) => s.minutes != null).length;
     say(found.length
       ? `Found ${found.length} stop${found.length === 1 ? '' : 's'}${timed < found.length ? ` (${found.length - timed} without a time)` : ''}. Check them below.`
-      : 'No addresses found in that picture. Is it the job list?', !found.length);
+      : `No addresses found in that ${what}. Is it the job list?${kept ? ' (A private copy was kept so the reader can learn this layout.)' : ''}`, !found.length);
+    if (kept && found.length) say(`${$('#status').textContent} A private copy of this first document was kept, to tune the reader.`);
     if (found.length) $('#stopsCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (e) {
     say(e.message || String(e), true);
   }
 }
 $('#pick').addEventListener('change', (e) => { pick(e.target.files, false); e.target.value = ''; });
+$('#pickDoc').addEventListener('change', (e) => { pick(e.target.files, false); e.target.value = ''; });
 $('#pickMore').addEventListener('change', (e) => { pick(e.target.files, true); e.target.value = ''; });
 
 /* ------------------------------------------------------------ the stops, editable */
+const sqft = (n) => `${Math.round(n).toLocaleString()} sq ft`;
 function jobMinutes(list) {
   return list.reduce((a, s) => a + (Number(s.minutes) || 0), 0);
 }
@@ -168,7 +253,7 @@ function renderStops() {
       <div class="addr-fields">
         <input type="text" data-k="address" value="${esc(s.address)}" aria-label="Stop ${i + 1} address" placeholder="Street address">
         <input type="text" data-k="city" value="${esc(s.city)}" aria-label="Stop ${i + 1} city" placeholder="City">
-        ${s.name ? `<span class="who">${esc(s.name)}${s.service ? ` · ${esc(s.service)}` : ''}</span>` : ''}
+        ${s.name || s.service || s.sqft ? `<span class="who">${esc([s.name, s.service, s.sqft ? sqft(s.sqft) : ''].filter(Boolean).join(' · '))}</span>` : ''}
       </div>
       <input type="number" inputmode="numeric" min="0" max="999" data-k="minutes" value="${s.minutes ?? ''}" aria-label="Stop ${i + 1} job minutes" placeholder="min">
       <button type="button" class="x" data-remove aria-label="Remove stop ${i + 1}">×</button>
@@ -329,9 +414,9 @@ async function plan() {
       end,
       stops: order.slice(1, -1).map((i) => {
         const { stop, hit } = found[i - 1];
-        return { id: stop.id, address: stop.address, city: stop.city, name: stop.name, minutes: stop.minutes, hit };
+        return { id: stop.id, address: stop.address, city: stop.city, name: stop.name, minutes: stop.minutes, sqft: stop.sqft ?? null, hit };
       }),
-      missing: list.filter((s) => s.error).map((s) => ({ address: s.address, minutes: s.minutes })),
+      missing: list.filter((s) => s.error).map((s) => ({ address: s.address, minutes: s.minutes, sqft: s.sqft ?? null })),
       legs,
       geometry,
       saved: Math.max(0, listed - best),
@@ -410,7 +495,9 @@ function renderResult(scroll = false) {
 
   const notes = [`${r.stops.length} stop${r.stops.length === 1 ? '' : 's'}, ${miles(dist)} of driving.`];
   notes.push(`Starting now, back at the shop about ${clock(Date.now() + (jobs + driveM) * 60000)}.`);
-  if (r.saved >= 60) notes.push(`${mins(r.saved)} less driving than the order in the screenshot.`);
+  if (r.saved >= 60) notes.push(`${mins(r.saved)} less driving than the order in the list.`);
+  const area = allStops.reduce((a, s) => a + (Number(s.sqft) || 0), 0);
+  if (area) notes.push(`Lawn area: ${sqft(area)} in all${allStops.some((s) => !s.sqft) ? ` (${allStops.filter((s) => !s.sqft).length} stops without one)` : ''}.`);
   const untimed = allStops.filter((s) => s.minutes == null).length;
   const warn = [];
   if (untimed) warn.push(`${untimed} stop${untimed === 1 ? ' has' : 's have'} no job time, so the job total is short.`);
@@ -427,7 +514,7 @@ function renderResult(scroll = false) {
       <div class="body">
         <div class="addr">${esc(s.address)}</div>
         <div class="meta">${esc([s.name, s.city].filter(Boolean).join(' · '))}</div>
-        <div class="chips"><span>🚗 ${mins(leg.duration || 0)} · ${miles(leg.distance || 0)}</span>${s.minutes != null ? `<span>⏱ ${s.minutes}m job</span>` : ''}</div>
+        <div class="chips"><span>🚗 ${mins(leg.duration || 0)} · ${miles(leg.distance || 0)}</span>${s.minutes != null ? `<span>⏱ ${s.minutes}m job</span>` : ''}${s.sqft ? `<span>📐 ${sqft(s.sqft)}</span>` : ''}</div>
         ${shaky ? `<div class="found">Map's best guess: ${esc(s.hit.label)}</div>` : ''}
       </div>
       <a class="go" target="_blank" rel="noopener" href="${esc(nav(s.hit.label))}" aria-label="Directions to stop ${i + 1}">Go</a>

@@ -9,7 +9,7 @@
  *   CUSTOM_DOMAIN=lawnmap.example.com node route/tools/prepare.mjs
  */
 
-import { appendFileSync, cpSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -21,7 +21,13 @@ export function routeDomainFor(custom) {
   return parts.length >= 3 ? `route.${parts.slice(1).join('.')}` : null;
 }
 
-export function wranglerFor(domain) {
+/**
+ * The SHA-256 of the route session's key, which sets the shop's address and reads the kept document
+ * (src/store.js). The key itself is not in the repository.
+ */
+export const KEY_SHA256 = '4e3957cfaa2018eb570b9cc61fb690b2cf0c24981a6f26e25630b39ca52bde72';
+
+export function wranglerFor(domain, kvId = null) {
   return `# Written by route/tools/prepare.mjs at deploy time. Not checked in.
 name = "route-planner"
 main = "src/index.js"
@@ -31,16 +37,31 @@ compatibility_date = "2025-09-01"
 directory = "./build"
 binding = "ASSETS"
 
+[vars]
+ROUTE_KEY_SHA256 = "${KEY_SHA256}"
+
 [[routes]]
 pattern = "${domain}"
 custom_domain = true
-`;
+${kvId ? `
+# The shop's address and the first document (src/store.js); found or made by tools/kv.mjs.
+[[kv_namespaces]]
+binding = "ROUTE"
+id = "${kvId}"
+` : ''}`;
 }
 
-export function build(out = join(route, 'build')) {
+/** The page's link home: "https://nilesandstuff.com" and "nilesandstuff.com", from the route domain. */
+export function fillHome(html, domain) {
+  const home = domain ? domain.split('.').slice(1).join('.') : '';
+  return html.split('__HOME_URL__').join(home ? `https://${home}/` : '/').split('__HOME_NAME__').join(home || 'home');
+}
+
+export function build(out = join(route, 'build'), domain = null) {
   rmSync(out, { recursive: true, force: true });
   mkdirSync(out, { recursive: true });
   cpSync(join(route, 'public'), out, { recursive: true });
+  writeFileSync(join(out, 'index.html'), fillHome(readFileSync(join(out, 'index.html'), 'utf8'), domain));
   cpSync(join(route, 'lib'), join(out, 'lib'), { recursive: true });
   for (const f of ['favicon.svg', 'favicon-32.png', 'favicon.ico', 'apple-touch-icon.png']) {
     cpSync(join(route, '..', 'public', f), join(out, f));
@@ -55,8 +76,8 @@ function main() {
     console.log('No route site: CUSTOM_DOMAIN is not a subdomain.');
     process.exit(1);
   }
-  build();
-  writeFileSync(join(route, 'wrangler.toml'), wranglerFor(domain));
+  build(join(route, 'build'), domain);
+  writeFileSync(join(route, 'wrangler.toml'), wranglerFor(domain, (process.env.ROUTE_KV_ID || '').trim() || null));
   if (process.env.GITHUB_ENV) appendFileSync(process.env.GITHUB_ENV, `ROUTE_DOMAIN=${domain}\n`);
   console.log(`Route planner built for https://${domain}`);
 }

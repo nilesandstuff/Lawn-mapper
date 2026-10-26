@@ -45,6 +45,13 @@ jobs:
       - name: Tests
         run: node route/test/all.js
 
+      - name: Storage (the shop's address, the first document)
+        if: ${{ github.event_name == 'push' || inputs.task == 'deploy' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node route/tools/kv.mjs
+
       - name: Deploy the route planner
         if: ${{ github.event_name == 'push' || inputs.task == 'deploy' }}
         env:
@@ -95,6 +102,7 @@ jobs:
           echo "--------------------------------------------------------------"
           if [ "${{ github.event_name }}" = push ] || [ "${{ inputs.task }}" = deploy ]; then
             echo "Route planner: ${ROUTE_STATE:-not deployed -- see the steps above}"
+            [ -n "$ROUTE_NOTE" ] && echo "  but $ROUTE_NOTE" || true
           else
             echo "Route planner tests: ${{ job.status }}"
           fi
