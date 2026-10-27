@@ -1252,6 +1252,19 @@ soil/clim.py, clim.json.
 
 ## Speculation
 
+- FENCES (2026-10-27, IN USE, unmeasured; fences.js): drawn by the visitor
+  in step 1, as the lidar seldom sees a fence (its returns under 0.5 m are
+  ignored and a fence's few above it are not enough). The light through
+  spaced boards and a shadowbox is worked out from typical board sizes,
+  not measured. The wind porosity (0.5 spaced from the slat-fence rule
+  that open area seen face-on is close to the share of wind through,
+  Zhou et al. 2004; 0.2 shadowbox, an estimate) and the faces' solar
+  reflectance (white vinyl 0.70 to dark stain 0.15) are typical figures
+  kept for the water map. The reflected light of a pale face (a matte face,
+  rho x view factor x sun on the face) is the textbook model, not checked
+  against a light meter in front of a fence; the owner's phone could.
+  A fence the lidar did see is counted twice (its returns and the drawn
+  plane); thought small, not measured.
 - SOIL UNDER SHADE (2026-10-26): superseded by finding 30 the same day
   (0.2 from one study replaced by 0.13 from 114 stations). Still not
   measured: a lawn in a tree's shade against one in the open, at 5-10 cm.

@@ -88,9 +88,9 @@ const WHATS = [['#w-hours', 'hours'], ['#w-dli', 'dli'], ['#w-now', 'now'], ['#w
 const WHENS = [['#p-season', 'season'], ['#p-before', 'beforeLeaves'], ['#p-leaf', 'inLeaf'], ['#p-after', 'afterLeaves'], ['#p-day', 'day']];
 const WHEN_LABEL = { season: 'the growing season', beforeLeaves: 'the growing season before leaf-out', inLeaf: 'the growing season in leaf', afterLeaves: 'the growing season after leaf-fall', day: 'one day' };
 
-export function startSun({ map, site, cols, box, shift, heightM, season, beforeLayer, ground = null, erased = null, erasedCubes = null, onSeason = null, onChange = null }) {
+export function startSun({ map, site, cols, box, shift, heightM, season, beforeLayer, ground = null, erased = null, erasedCubes = null, fences = [], onSeason = null, onChange = null }) {
   const st = {
-    erased, erasedCubes,
+    erased, erasedCubes, fences,
     worker: null, what: 'hours', when: 'season', soilWhen: 'last5', soilData: null, soilAsked: false, soil: null, whenBefore: null, day: null, now: null, period: null, periodDays: [], calendar: null, seasonInfo: null, ids: 0, path: [],
     grid: gridOver(box, 1, site.lat),
   };
@@ -143,6 +143,7 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     else {
       map.addSource('light', { type: 'image', url, coordinates: corners() });
       map.addLayer({ id: 'light', type: 'raster', source: 'light', paint: { 'raster-fade-duration': 0, 'raster-resampling': 'nearest' } }, beforeLayer());
+      if (map.getLayer('fences')) map.moveLayer('fences'); // the drawn fences stay over the colors
     }
     if (!st.drape) drapeMode();
     /* Tilted, the same picture lies on the lidar's ground (view3d.js groundLayer). */
@@ -711,7 +712,7 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     for (const k of pick) c[k] = cols[k].slice(0, cols.n);
     send({
       type: 'build', cols: c, box, lat: site.lat, lng: site.lng, shift, heightM,
-      canopy: $('#sun-canopy')?.value || 'seasonal', flight: season || null, erased: st.erased || null, erasedCubes: st.erasedCubes?.length ? Int32Array.from(st.erasedCubes) : null, tMean: st.climate?.tMeanNow || st.climate?.tMean || null, tMeanTypical: st.climate?.tMeanNow ? st.climate.tMean : null,
+      canopy: $('#sun-canopy')?.value || 'seasonal', flight: season || null, erased: st.erased || null, erasedCubes: st.erasedCubes?.length ? Int32Array.from(st.erasedCubes) : null, fences: st.fences || [], tMean: st.climate?.tMeanNow || st.climate?.tMean || null, tMeanTypical: st.climate?.tMeanNow ? st.climate.tMean : null,
       /* A field-readings check (site.area: the whole track's box) draws the
          light over everything he treated -- neighbors' lots of a
          multi-property stop and the street -- not the one parcel. */
@@ -809,6 +810,8 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     setVisible(on) { st.hidden = !on; drapeMode(); if (st.boxing) setBoxing(false); },
     /** The trees step erased (or put back) columns or blocks: the model is built again without them. */
     setErased(mask, cubes = null) { st.erased = mask || null; st.erasedCubes = cubes?.length ? cubes : null; if (st.climateDone) build(); },
+    /** The fences drawn in step 1 changed: the model is built again with them. */
+    setFences(list) { st.fences = list || []; st.soilPeriod = null; if (st.climateDone) build(); },
     /** What is shown: { what, when } (kept with the map), and setting it back. */
     view: () => ({ what: st.what, when: st.when }),
     setView({ what, when } = {}) {
