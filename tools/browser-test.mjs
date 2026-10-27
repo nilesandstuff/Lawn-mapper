@@ -499,19 +499,30 @@ check('loading overlay is gone', busyVisible === false, `busy visible=${busyVisi
  * reopens the same lot instead; here the loss is made on purpose.
  */
 console.log('\n--- the map losing its graphics ---');
+/* Through the address's own steps: pick the first match, confirm the lot. */
+async function openLot(p) {
+  await p.waitForFunction(() => window.__lmRecovery?.().frame
+    || document.querySelector('#step-candidates')?.hidden === false
+    || document.querySelector('#step-confirm')?.hidden === false, null, { timeout: 90000 }).catch(() => {});
+  if (await p.locator('#step-candidates').isVisible().catch(() => false)) {
+    await p.locator('#candidate-list button').first().click();
+    await p.waitForTimeout(600);
+  }
+  if (await p.locator('[data-action=confirm]').isVisible().catch(() => false)) {
+    await p.click('[data-action=confirm]');
+  }
+  await p.waitForFunction(() => window.__lmRecovery().frame, null, { timeout: 60000 }).catch(() => {});
+}
 {
   const gp = await browser.newPage({ viewport: { width: 390, height: 844 } });
   gp.on('pageerror', (err) => errors.push(`PAGEERROR (graphics): ${err.message}`));
   await gp.goto(`${BASE}/?address=${encodeURIComponent(ADDRESS)}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
   await gp.waitForFunction(() => window.__lmRecovery !== undefined, null, { timeout: 30000 });
-  await gp.waitForFunction(() => window.__lmRecovery().frame, null, { timeout: 90000 }).catch(() => {});
-  if (await gp.locator('#step-candidates').isVisible().catch(() => false)) {
-    await gp.locator('#candidate-list button').first().click();
-    await gp.waitForFunction(() => window.__lmRecovery().frame, null, { timeout: 60000 }).catch(() => {});
-  }
+  await openLot(gp);
   const before = await gp.evaluate(() => window.__lmRecovery());
   check('a lot opened from ?address=', before.frame && Boolean(before.chosen), JSON.stringify(before));
   const lost = await gp.evaluate(() => {
+    window.__beforeLoss = true; // gone once the page has reloaded
     const c = document.querySelector('canvas.mapboxgl-canvas');
     const gl = c && (c.getContext('webgl2') || c.getContext('webgl'));
     const ext = gl && gl.getExtension('WEBGL_lose_context');
@@ -521,14 +532,10 @@ console.log('\n--- the map losing its graphics ---');
     return true;
   });
   if (lost) {
-    await gp.waitForURL((u) => /[?&](address|map)=/.test(String(u)), { timeout: 30000 }).catch(() => {});
-    await gp.waitForLoadState('domcontentloaded').catch(() => {});
-    await gp.waitForFunction(() => window.__lmRecovery && (window.__lmRecovery().frame
-      || document.querySelector('#step-candidates')?.hidden === false), null, { timeout: 90000 }).catch(() => {});
-    if (await gp.locator('#step-candidates').isVisible().catch(() => false)) {
-      await gp.locator('#candidate-list button').first().click();
-      await gp.waitForFunction(() => window.__lmRecovery().frame, null, { timeout: 60000 }).catch(() => {});
-    }
+    const reloaded = await gp.waitForFunction(() => !window.__beforeLoss && window.__lmRecovery !== undefined,
+      null, { timeout: 45000 }).then(() => true).catch(() => false);
+    check('losing the graphics reloads the page', reloaded, gp.url());
+    if (reloaded) await openLot(gp);
     const after = await gp.evaluate(() => (window.__lmRecovery ? window.__lmRecovery() : null)).catch(() => null);
     check('losing the graphics reopens the same lot on a fresh map',
       Boolean(after) && after.lost === false && after.frame && after.chosen === before.chosen,
@@ -1917,13 +1924,13 @@ console.log('\n--- saved maps ---');
 /* THE SAVED TAB IS GONE since every map moved to the dashboard (2026-10-16,
    docs/MAPS.md); clicking it stopped the run here. Kept for a deployment
    that still shows it. */
+/* The lawn this makes is what the sections below edit, so it is made either way. */
+await goTab(page, 'draw');
+await page.click('#btn-parcel-shape');
+await page.waitForTimeout(2200); // the write is debounced: a stroke is one edit
 if (!(await page.locator('#tab-saved').isVisible())) {
-  console.log('  (no Saved tab: maps live on the dashboard since 2026-10-16; skipped)');
+  console.log('  (no Saved tab: maps live on the dashboard since 2026-10-16; its checks skipped)');
 } else {
-  await goTab(page, 'draw');
-  await page.click('#btn-parcel-shape');
-  await page.waitForTimeout(2200); // the write is debounced: a stroke is one edit
-
   await goTab(page, 'saved');
   const saved = await page.evaluate(() => window.__lmSaves());
   check('a measurement is kept on its own', saved.entries.length > 0,
