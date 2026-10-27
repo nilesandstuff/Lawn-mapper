@@ -70,9 +70,10 @@ inside of the loop".
 
 ## In progress
 
-- **Trust the detector under small leaf-off trees (H127).** One seed:
-  7 better, 0 worse on seen ground. Seeds 8 and 9 are running on the free
-  runner; adopted if they hold (bar in H127).
+- **Trust the detector under small leaf-off trees (H127): owner's call.**
+  Three seeds: never worse on seen ground (7 better, 0 worse), but the
+  headline bar fails (6 / 1, p 0.125) because only seven lots change. The
+  one loss, C87, is against its inferred marks. Off until the owner says.
 
 
 - **Storm drains everywhere.** The nightly sweep (workflow 44) reads ~60

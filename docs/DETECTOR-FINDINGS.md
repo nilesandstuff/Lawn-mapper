@@ -1051,7 +1051,7 @@ the bar asked for better. Not adopted; THE PLAN keeps teaching the marks.
   and the traced lawn under bare trees taught the decoder well. One seed;
   not followed up.
 
-### H127. TRUSTING THE DETECTOR UNDER SMALL TREES ON LEAF-OFF PHOTOS, PAIRED LOT BY LOT ON ONE DECODER: of the 35 lots that look leaf-off, 7 better, 1 worse, 27 unchanged (p = 0.070); on SEEN ground 7 better, NONE worse (p = 0.016). It touches too few lots to move a median, and trusting it under bigger trees is worse (one seed; seeds 8 and 9 running) -- 2026-10-26
+### H127. TRUSTING THE DETECTOR UNDER SMALL TREES ON LEAF-OFF PHOTOS, PAIRED LOT BY LOT, THREE SEEDS: of the 35 lots that look leaf-off, 6 better, 1 worse, 28 unchanged (p = 0.125, FAILS its bar); on SEEN ground 7 better, NONE worse (p = 0.016). The one loss (C87) is all on inferred ground, the same lot in every seed. It touches too few lots to move a median, and trusting it under bigger trees is worse -- 2026-10-26, pooled 2026-10-27
 *Workflow 14 run 40369587372 (S66 side A: THE PLAN as it is), DINOv3-sat,
 896, windows off, locked 104 plus the pond maps, `fused + edge`, seed 7,
 free runner; the per-lot file was kept (the drawing fix held: 6.0 GB before
@@ -1075,6 +1075,36 @@ Most improved: C99 60.5 -> 54.9, C89 33.1 -> 30.8, B14 13.3 -> 11.9, C49
 loss); B07 and B32 by 0.4 and 0.3. **C87's loss is all on ground the
 tracer marked inferred:** on seen ground it IMPROVES, 41.4 -> 37.7, and
 C89 goes 14.0 -> 9.0, C99 65.7 -> 58.9.
+
+**POOLED OVER THREE SEEDS** (runs 40369587372, 40404246838 and
+40404285400, seeds 7, 8 and 9; workflow 24 runs 40436832404 and
+40436845119; each lot's figure is its mean over the three seeds):
+
+| the 35 leaf-off lots | better / worse / level | median wrong | sign test |
+|---|---|---|---|
+| headline (`all`) | 6 / 1 / 28 | 18.3 -> 18.1% | p 0.125 |
+| seen ground only | 7 / 0 / 28 | 15.6 -> 15.6% | **p 0.016** |
+
+Runs' THE PLAN medians 15.1, 15.6, 15.5 (with the trust: 15.1, 15.6,
+15.7). Gains: C99 64.0 -> 58.2 (seen 70.9 -> 63.1), C49 14.6 -> 11.5, C89
+32.2 -> 30.7 (seen 12.7 -> 9.0), B14, C32. The one loss: **C87 32.2 ->
+36.1 on the headline, but 38.4 -> 32.5 on seen ground** -- all of it on
+the ground the owner marked inferred there.
+
+**Against the bar set before seeds 8 and 9:** the headline sign test is p
+= 0.125, not under 0.05, so it FAILS as written; the second half (no lot
+worse by more than 5 points on seen ground) passes, with no lot worse at
+all. **Why the headline cannot pass:** only seven lots ever change, and 6
+against 1 is p = 0.125 however large the gains; only 7 against 0 would
+pass. The rule is too narrow to prove itself on this corpus by a sign
+test.
+
+**Not switched on.** It stays a decision for the owner, with this
+evidence: it never makes ground anyone could see worse, it improves seven
+leaf-off lots, and its one loss is against the inferred marks on C87 (a
+leaf-off county photo, 99% of its canopy reads bare), which the owner can
+judge by eye. Live, it would also need the photo passed to finishLot
+(public/lib/finish.js) for the leaf-off check, as the scorer does.
 
 **On a second decoder** (S66 side B, run 40369617314, trained without the
 inferred marks; workflow 24 run 40412132581), the same pairing on the 35
@@ -10332,6 +10362,7 @@ deploy log says how many are locked and how many are waiting.
 | 2026-10-23 | 39879564306 | 104 (locked, 131u7jm) | S58 `windows: native`, `gpu: modal`: DINOv3-sat with the 26 big lots read whole at 10 cm in one pass (61-188 patches a side) on an L4 (extraction 147 s, decoders 426 + 657 s), THE PLAN, seed 7, no pond examples | 16.0% (edge refined + stage 3, span, veto) | — | **H121.** Workflow 24 run 39906929463 vs S51 (same eye squeezed): all 42 / 35 / 27, -0.1 [-0.5, +0.3]; the big 26: 17 / 5 / 4, -1.2 [-1.8, -0.2], p 0.017; run 39906931875 vs Scale-MAE: 67 / 27 / 10, -2.0; big 26 -2.8 |
 | 2026-10-23 | 39887800268 | 104 (locked, 131u7jm) | S59: S51 again over cached features (seed 7) to draw the Byron Center map | 15.5% (edge refined + stage 3, span, veto) | — | 15.5 against S51's 15.4 from the same features and seed (S54 and S52-on-DINOv3 read 15.5 too): a tenth of a point of nondeterminism, not the decimal reproduction of H26. The draw was refused by the site's edge (403 to the runner); run 3 (39907286242) read the map and the county export from the database and died on a call of mine; the picture came from workflow 43 below |
 | 2026-10-24 | 40054742999 | 1 saved map (the condo complex, drawn only) | Workflow 32 `map`, after 32f396d: release v7's live native read, pressed twice | -- | -- | **A LIVE BUG, FOUND BY THE OWNER AND FIXED:** v7's first live presses on the condo complex (40045019028, and the owner's own) came back as horizontal stripes. alpha_infer.whole unpacked every read as the eye's default 56 x 56 patches; a native read at 4096 px is 256 x 256, and patches_of keeps the last side*side tokens, so the bottom twelve rows of the grid were laid across the whole lot. Training unpacked by S // patch, so H121 and v7's weights were never affected; only the live reading of lots past 90 m on v7 (2026-10-23 23:11 to 2026-10-24 02:31 UTC). After the fix: raw mask 970x1024, lawn in 31.4% of it, row-to-row change 0.011 against column-to-column 0.010, ratio 1.07 (stripes would be > 3). Both presses succeeded (photo pieces two at a time, retried): GPU 131 s cold / 79 s warm (backbone 79 / 74 s), downloads 88 / 71 s, wall 241 / 161 s. tools/alpha_infer_test.py pins the unpacking |
+| 2026-10-27 | 40404246838, 40404285400 | 104 (locked, 131u7jm) + 5 not-lawn-only maps | DINOv3-sat, THE PLAN, seeds 8 and 9 (H127) | 15.6%, 15.5% (THE PLAN) | -- | **H127 pooled** with seed 7: leaf-off lots 6 better / 1 worse, p 0.125 (fails its bar); seen 7 / 0, p 0.016. C87 the one loss, all on inferred ground. Not switched on |
 | 2026-10-26 | 40369617314 | 104 (locked, 131u7jm) + 5 not-lawn-only maps | DINOv3-sat, `canopy: on lawn without inferred`, seed 7 (S66 side B) | 16.6% (THE PLAN's row) | -- | **H128.** Against side A (workflow 24 run 40412051294): 26 better / 44 worse, p 0.041. Seen 13.8 (A 14.6), inferred 22.0 (A 13.6). Fails S66's bar. Linked to A as twins |
 | 2026-10-26 | 40369587372 | 104 (locked, 131u7jm) + 5 not-lawn-only maps | DINOv3-sat, THE PLAN, seed 7 (S66 side A) | 15.6% (THE PLAN) | -- | **H127.** small-100-leafoff paired against THE PLAN in the same run (workflow 24 runs 40403326241, 40404063237): leaf-off lots 7 better / 1 worse / 27 level, p 0.070; seen ground 7 / 0, p 0.016. Per-lot file kept; drawing used 10.9 GB |
 | 2026-10-26 | 40303542434 | 104 (locked, 131u7jm) + 5 not-lawn-only maps | DINOv3-sat, `decoder: fused + edge + trees`, `gpu: modal` (S65 part 2) | 15.7% (THE PLAN) | -- | **H126.** Every tree variant 15.8% (taught under small trees, its leaf-off version, small-100, small-100-leafoff, colour); taught under all canopy 16.2%. Under small trees the taught decoder answers as the ordinary one (both are taught; they differ in the canopy input: correction in H126). Runner shut down drawing the second picture set again; per-lot file lost |
