@@ -141,13 +141,14 @@ test('shade and the air: the day\'s own air share stays in deep shade, and trees
   assert.ok(dry.share > humid.share + 0.2, 'a dry, windy day gives the air more of it');
   assert.ok(humid.perC > 0.07 && humid.perC < 0.12, `a degree cooler, the air term about a tenth less: ${humid.perC}`);
   assert.equal(airShare({ tmax: 28, tmin: 16 }, 42.5, 196), null, 'no humidity, wind or sunshine: no split');
-  // tree cover around each cell: a 10 x 10 m crown in a 60 x 60 m grid
+  // tree cover around each cell, from the shade map's own kinds: a 10 x 10 m deciduous crown in a 60 x 60 m grid
   const W = 60, H = 60, N = W * H;
-  const all = new Uint16Array(N).fill(10), tall = new Uint16Array(N);
-  for (let r = 0; r < 10; r++) for (let c = 0; c < 10; c++) tall[r * W + c] = 5;
-  const canopy = canopyAround({ grid: { W, H, cell: 1 }, perCell: { all, tall }, wall: new Uint8Array(N) }, { ...PARAMS, canopyRadiusM: 10 });
+  const kinds = new Uint8Array(N);
+  for (let r = 0; r < 10; r++) for (let c = 0; c < 10; c++) kinds[r * W + c] = 3;
+  const canopy = canopyAround({ grid: { W, H, cell: 1 } }, kinds, { ...PARAMS, canopyRadiusM: 10 });
   assert.ok(Math.abs(canopy[5 * W + 5] - 100 / 225) < 1e-6, `beside the crown: ${canopy[5 * W + 5]}`);
   assert.equal(canopy[50 * W + 50], 0, 'far from it, none');
+  assert.equal(canopyAround({ grid: { W, H, cell: 1 } }, null), null, 'no shade map, no trees');
   // today's factor: full sun, no trees -- the open lawn's; deep shade -- the air's share
   const model = { N: 3, etBase: new Float32Array([1, 1, 1]), light: new Float32Array([1, 0, 1]), canopy: new Float32Array([0, 0, 1]), params: PARAMS };
   const out = new Float32Array(3);
@@ -182,12 +183,17 @@ test('the yard\'s wind: Heisler\'s neighbourhoods, and the day worked out again 
   const open = etToday({ ...model, windAt: new Uint8Array([0, 0]) }, p, true, new Float32Array(2));
   assert.ok(out[0] < open[0] && out[0] > 0.85 * open[0], `sun: ${out[0]} against ${open[0]}`);
   assert.ok(out[1] / out[0] < open[1] / open[0] - 0.05, 'shade falls further behind the sun');
-  // cover within the radius: buildings and crowns counted apart
-  const W = 20, H = 20, N = W * H, all = new Uint16Array(N).fill(10), tall = new Uint16Array(N), wall = new Uint8Array(N);
-  for (let i = 0; i < 100; i++) wall[i] = 1;
-  for (let i = 300; i < 400; i++) tall[i] = 9;
-  const c = coverAround({ grid: { W, H, cell: 1 }, perCell: { all, tall }, wall }, 90);
+  // cover within the radius, by the shade map's kinds: roofs and crowns (evergreen and deciduous) counted apart
+  const W = 20, H = 20, N = W * H, kinds = new Uint8Array(N), wall = new Uint8Array(N);
+  for (let i = 0; i < 100; i++) kinds[i] = 1;
+  for (let i = 300; i < 350; i++) kinds[i] = 2;
+  for (let i = 350; i < 400; i++) kinds[i] = 3;
+  const c = coverAround({ grid: { W, H, cell: 1 }, wall }, 90, kinds);
   assert.ok(Math.abs(c.built[210] - 0.25) < 1e-6 && Math.abs(c.crown[210] - 0.25) < 1e-6);
+  // without the shade map: the water map's own walls, and no crowns
+  for (let i = 0; i < 40; i++) wall[i] = 1;
+  const own = coverAround({ grid: { W, H, cell: 1 }, wall }, 90, null);
+  assert.equal(own.crown, null); assert.ok(Math.abs(own.built[210] - 0.1) < 1e-6);
 });
 
 test('the summer canopy: a leaf-off flight is known, and the trees erased on the shade map come over', () => {

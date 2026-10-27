@@ -74,8 +74,8 @@ export const PARAMS = {
   duLq: 0.65,
   /* SHADE AND THE AIR (FINDINGS H43): the air's share of ET0 on a day without the weather to split it (Danielson &
      Feldhake 1981's figure; the owner's lot's summer averages 0.26); the most a full canopy within canopyRadiusM
-     cools a sunny afternoon (Ziter et al. 2019: 0.7 C within 10 m, 1.3 within 30, over 1.5 within 60-90); a cell
-     marked as crown when this share of its lidar returns are 2 m above the ground; a day as sunny as theirs at this
+     cools a sunny afternoon (Ziter et al. 2019: 0.7 C within 10 m, 1.3 within 30, over 1.5 within 60-90), the crowns
+     the shade map's own (coverAround); a day as sunny as theirs at this
      share of clear-sky sunshine (their sampling days, summer afternoons, about 29 C). */
   airShare: 0.3,
   airCoolC: 1.3,
@@ -85,7 +85,6 @@ export const PARAMS = {
   windRadiusM: 90,
   windStep: 0.02,
   canopyRadiusM: 30,
-  canopyTallShare: 0.1,
   clearRef: 0.75,
 };
 
@@ -107,44 +106,42 @@ const HYD = (h) => String(h || 'B').trim().toUpperCase();
 export const shadeFactor = (light, airShare = PARAMS.airShare) => airShare + (1 - airShare) * Math.max(0, Math.min(1, light));
 
 /**
- * Within radiusM of each cell, the share of the ground under tree crowns and the share under buildings: crowns are
- * lidar returns 2 m or more above the ground (lowspots.js perCell.tall) at least canopyTallShare of a cell's
- * returns, buildings the walls (res.wall), each against the cells the lidar saw (the grid reaches 30 m past the
- * lot, so a wider radius is clipped to it). The lidar is often flown with the leaves down (the owner's, November
- * 2017): a bare crown still returns from its branches, and a tenth or more of the returns marks the same crowns as
- * a fifth (FINDINGS H43). -> { crown, built } Float32Arrays per cell, or null without the returns.
+ * Within radiusM of each cell, the share of the ground under tree crowns and the share under buildings, BY THE SHADE
+ * MAP'S OWN READING of every cell (owner, 2026-10-27: "you should follow the output of the shade map"): `kinds` as
+ * its light worker returns them (seasonal.js: 0 open, 1 roof, 2 evergreen, 3 deciduous), on this same grid. Without
+ * them (no shade worked out) no crowns, and the buildings are the water map's own walls. Each share is against the
+ * cells within the radius on the grid (it reaches 30 m past the lot, so a wider radius is clipped to it).
+ * -> { crown: Float32Array | null, built: Float32Array }
  */
-export function coverAround(res, radiusM, params = PARAMS) {
-  const g = res.grid, pc = res.perCell, W = g.W, H = g.H, N = W * H;
-  if (!pc?.all || !pc?.tall) return null;
+export function coverAround(res, radiusM, kinds = null) {
+  const g = res.grid, W = g.W, H = g.H, N = W * H;
   const S = (W + 1) * (H + 1);
-  const crownS = new Float64Array(S), builtS = new Float64Array(S), cnt = new Float64Array(S);
+  const crownS = new Float64Array(S), builtS = new Float64Array(S);
   for (let r = 0; r < H; r++) {
-    let rc = 0, rb = 0, rn = 0;
+    let rc = 0, rb = 0;
     for (let c = 0; c < W; c++) {
-      const i = r * W + c, a = pc.all[i];
-      if (a > 0 || res.wall?.[i]) {
-        rn++;
-        if (res.wall?.[i]) rb++; else if (pc.tall[i] / a >= params.canopyTallShare) rc++;
-      }
-      const k = (r + 1) * (W + 1) + c + 1;
-      crownS[k] = crownS[k - W - 1] + rc; builtS[k] = builtS[k - W - 1] + rb; cnt[k] = cnt[k - W - 1] + rn;
+      const i = r * W + c, k = kinds ? kinds[i] : 0;
+      if (kinds ? k === 1 : res.wall?.[i]) rb++;
+      else if (k === 2 || k === 3) rc++;
+      const j = (r + 1) * (W + 1) + c + 1;
+      crownS[j] = crownS[j - W - 1] + rc; builtS[j] = builtS[j - W - 1] + rb;
     }
   }
   // a square of the disc's area (half-side r x sqrt(pi)/2), clipped to the grid
   const h = Math.max(1, Math.round((radiusM * Math.sqrt(Math.PI)) / 2 / g.cell));
-  const crown = new Float32Array(N), built = new Float32Array(N);
+  const crown = kinds ? new Float32Array(N) : null, built = new Float32Array(N);
   const box = (A, r0, c0, r1, c1) => A[r1 * (W + 1) + c1] - A[r0 * (W + 1) + c1] - A[r1 * (W + 1) + c0] + A[r0 * (W + 1) + c0];
   for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) {
     const r0 = Math.max(0, r - h), r1 = Math.min(H, r + h + 1), c0 = Math.max(0, c - h), c1 = Math.min(W, c + h + 1);
-    const n = box(cnt, r0, c0, r1, c1);
-    if (n > 0) { crown[r * W + c] = box(crownS, r0, c0, r1, c1) / n; built[r * W + c] = box(builtS, r0, c0, r1, c1) / n; }
+    const n = (r1 - r0) * (c1 - c0);
+    if (crown) crown[r * W + c] = box(crownS, r0, c0, r1, c1) / n;
+    built[r * W + c] = box(builtS, r0, c0, r1, c1) / n;
   }
   return { crown, built };
 }
 
-/** The share of the ground within PARAMS.canopyRadiusM of each cell under tree crowns (coverAround), or null. */
-export const canopyAround = (res, params = PARAMS) => coverAround(res, params.canopyRadiusM, params)?.crown ?? null;
+/** The share of the ground within PARAMS.canopyRadiusM of each cell under the shade map's tree crowns, or null. */
+export const canopyAround = (res, kinds, params = PARAMS) => (kinds ? coverAround(res, params.canopyRadiusM, kinds).crown : null);
 
 /**
  * THE YARD'S WIND, as a share of the open wind the weather gives (NASA POWER's matches the nearest major airport's,
@@ -221,8 +218,9 @@ export function scsRunoff(w, cn) {
  * soils    [{ rz: rootZone(...), drainage, hydgrp, wetByMonth }]
  * roofTo   Int32Array per cell: where a roof cell's water lands (lib/gutters.js), -1 nowhere
  * light    Float32Array per cell (0-1, ET multiplier from shade) or null
+ * shadeKinds  Uint8Array per cell from the shade map's light worker (0 open, 1 roof, 2 evergreen, 3 deciduous) or null
  */
-export function buildModel(res, { kinds, soilAt, soils, roofTo, light = null, params = PARAMS }) {
+export function buildModel(res, { kinds, soilAt, soils, roofTo, light = null, shadeKinds = null, params = PARAMS }) {
   const g = res.grid, N = g.W * g.H;
   const { down, filled } = res.runoff;
   const order = [];
@@ -294,15 +292,15 @@ export function buildModel(res, { kinds, soilAt, soils, roofTo, light = null, pa
      deck's shelter); etFactor the day without a weather split, for the planning before a run; simulate works out
      each day's own (etToday) */
   const etBase = Float32Array.from(heat);
-  const canopy = canopyAround(res, params);
+  const canopy = canopyAround(res, shadeKinds, params);
   // the yard's wind per cell, in steps of windStep (each step's day worked out once a day in simulate)
   let winds = [1], windAt = null;
-  const wc = params.windYard ? coverAround(res, params.windRadiusM, params) : null;
+  const wc = params.windYard ? coverAround(res, params.windRadiusM, shadeKinds) : null;
   if (wc) {
     const step = params.windStep, idx = new Map();
     windAt = new Uint8Array(N); winds = [];
     for (let i = 0; i < N; i++) {
-      const f = Math.round(windShare(100 * (wc.crown[i] + wc.built[i])) / step) * step;
+      const f = Math.round(windShare(100 * ((wc.crown ? wc.crown[i] : 0) + wc.built[i])) / step) * step;
       if (!idx.has(f)) { idx.set(f, winds.length); winds.push(f); }
       windAt[i] = idx.get(f);
     }

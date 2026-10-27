@@ -77,7 +77,8 @@ function main() {
     const page = join(build, f);
     writeFileSync(page, readFileSync(page, 'utf8').split('__LAWNMAP__').join(`https://${lawnmap}`).split('__HOME__').join(`https://${home}`));
   }
-  cpSync(join(water, 'lib'), join(build, 'lib'), { recursive: true, filter: (src) => !src.endsWith('node-io.js') });
+  // dereference: lib/shade/ and lib/lib/mask.js are links to the shade map's own files (public/shade/, public/lib/): the site ships them as they are on this commit
+  cpSync(join(water, 'lib'), join(build, 'lib'), { recursive: true, dereference: true, filter: (src) => !src.endsWith('node-io.js') });
   for (const f of ['favicon.svg', 'favicon-32.png', 'favicon.ico', 'apple-touch-icon.png']) {
     cpSync(join(water, '..', 'public', f), join(build, f));
   }

@@ -1,0 +1,1 @@
+../../../public/shade/names.js

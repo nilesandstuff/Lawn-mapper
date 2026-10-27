@@ -46,7 +46,7 @@ function planWith(inputs = {}, zoneOf = null) {
   return waterPlan(r.result, {
     lawnMask: kept.lawn, paved: r.impervious ? r.impervious.paved : null, soil: kept.soil,
     topsoil: !!inputs.topsoil, downspouts: inputs.downspouts || [], gutters: inputs.gutters || [],
-    typical: kept.typical, week: kept.week, season: kept.season, light: kept.light, grass,
+    typical: kept.typical, week: kept.week, season: kept.season, light: kept.light, shadeKinds: kept.shadeKinds || null, grass,
     texture: inputs.texture || null, parcelMask: r.parcelMask || null, areas: inputs.areas || [], zoneOf,
   });
 }
@@ -195,6 +195,8 @@ function lawnLight(res, site, climate, season) {
       if (m.type === 'built') {
         if (m.w !== g.W || m.h !== g.H) { clearTimeout(timer); done(null, new Error('the shade grid is not the water grid')); return; }
         kept.lightInfo = { canopy: m.canopy, why: m.seasonsWhy || null, erased: edits.cells, season: site.cloudSeason || null };
+        // the shade map's own reading of every cell (0 open, 1 roof, 2 evergreen, 3 deciduous): its trees, for the air and the wind
+        kept.shadeKinds = m.kinds && m.kinds.length === N ? Uint8Array.from(m.kinds) : null;
         const days = [];
         for (let k = 151; k <= 242; k += 4) if (!season || season.has(k)) days.push(k);
         w.postMessage({ type: 'period', days, climate });

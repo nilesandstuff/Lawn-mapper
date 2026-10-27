@@ -67,9 +67,13 @@ SPECULATION), as always.
 16. **A simple view and an advanced view** (owner: "Simplified should just show the actionable info, advanced
     should show the reasoning.").
 
-17. **Light through leaves** (found with H44, 2026-10-27): the light share treats leaves as black; they pass much of
-    the sun's near-infrared, so under crowns the grass gets more energy than the share says. Split the share into
-    what crowns and what buildings stop, and lift the crowns' part (FINDINGS S12). Would raise the deepest shade's use.
+## Rules (owner, 2026-10-27)
+
+- **Shade is the shade map's.** "You should follow the output of the shade map. If we need to make adjustments to how
+  shade actually works, that goes through the shade map. Re use the shade map's work, for uniformity... we don't
+  want to start any tree models or shade calculations from scratch here." The water map runs the shade map's own
+  files (lib/shade/ links to public/shade/), takes its light, its trees (its kinds) and its erased trees, and asks
+  the features session for any change to them. Light through leaves (FINDINGS S12) was passed to it, 2026-10-27.
 
 ## Shelved (owner, 2026-10-26: "shelve the tree thing to the todo list")
 

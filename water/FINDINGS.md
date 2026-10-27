@@ -1475,6 +1475,15 @@ cells; the trees' cooler air, H43, in all three):
 | in leaf, erased trees gone | 0.75 | 0.80 | 0.51 | 0.35 |
 | and the yard's wind | 0.67 | 0.73 | 0.39 | 0.22 |
 
+**4. Shade is the shade map's (owner, 2026-10-27: "you should follow the output of the shade map... we don't want to
+start any tree models or shade calculations from scratch here").** The crowns for the cooler air (H43) and the yard's
+wind were the water map's own reading of the lidar (returns 2 m up); they are now the shade map's: the kinds its light
+worker returns for every cell (seasonal.js: roof, evergreen, deciduous), its roofs as the buildings. The water map's
+copies of the shade code are now links to the shade map's files (lib/shade/*.js -> public/shade/, lib/lib/mask.js ->
+public/lib/mask.js; the build copies what they point to), so the two cannot drift -- mask.js already had. On the
+owner's lawn the shade map's crowns give the same answer: cover within 90 m median 38% (35-45%), wind 0.42; the last
+table's shadiest 2% 0.23 for 0.22, the rest unchanged.
+
 The owner was right that shade used less than the map said, and most of it was the bare branches. **Measured
 outdoors in deep shade** (the research's table): 0.33-0.5 (Wilfong et al. 2024, JAWRA, lawn chambers in three
 cities), 0.61 (Litvak & Pataki 2016, Los Angeles, full tree cover), about 0.57 (Danielson & Feldhake 1981, cloth at
@@ -1519,11 +1528,12 @@ the wetter group in those months.
 
 ### S12. Where the shade numbers may now run low (2026-10-27, with H44)
 
-- **Light through leaves.** The light share is the lidar's gap fraction, leaves taken as black. Leaves pass far more
+- **Light through leaves** (the shade map's to decide: passed to the features session 2026-10-27, owner's rule that
+  shade is the shade map's). The light share is the lidar's gap fraction, leaves taken as black. Leaves pass far more
   near-infrared than visible light (absorbing about 0.2 of it against 0.8), and the near-infrared is half the
   sun's energy: under crowns (not buildings) the grass gets more of the energy that drives its water use than the
   share says -- by theory about 0.5 L^0.89 + 0.5 L^0.45 (0.46 at L 0.3; Campbell & Norman's absorptivities, the
-  research's arithmetic). Not built: the share would have to be split into what crowns and what buildings stop.
+  research's arithmetic). Not built here: a change to how shade works goes through the shade map.
   It would lift the deepest shade back toward the measured 0.33-0.6.
 - **Shelter is not only less wind.** The day is worked out again at the yard's wind with the air's temperature and
   vapour held; air in shelter is warmer and more humid, and turf transpiration there "relatively insensitive" to it

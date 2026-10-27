@@ -1,30 +1,15 @@
 /**
- * WAS THE LIDAR FLOWN IN LEAF? Copied from the shade map's public/shade/find.js (leafSeason, laserSeason; features
- * session), unchanged in what it decides, so the water map asks its light worker for the same canopy the shade map
- * draws: a leaf-off flight's crowns get their summer leaves back (light-worker.js 'seasonal').
+ * WHAT THE WATER MAP TAKES FROM THE SHADE MAP'S OWN PART AND RULES (owner, 2026-10-27: "you should follow the output
+ * of the shade map... Re use the shade map's work, for uniformity"): the flight's leaf season by the shade map's own
+ * rule (lib/shade/find.js, a link to public/shade/find.js), so the light worker is asked for the canopy the shade
+ * map draws; and the trees erased on it.
  */
+import { flightOf, leafSeason } from './shade/find.js';
 
-/** 'off' when nine tenths of the days from startMs to endMs fall in November-April or before 11 May; 'on' when a tenth or fewer do; else 'mixed'. */
-export function leafSeason(startMs, endMs) {
-  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs < startMs) return null;
-  let off = 0, n = 0;
-  for (let t = startMs; t <= endMs && n < 3660; t += 86400000, n++) {
-    const d = new Date(t), m = d.getUTCMonth() + 1;
-    if (m >= 11 || m <= 4 || (m === 5 && d.getUTCDate() <= 10)) off++;
-  }
-  const share = off / Math.max(1, n);
-  return share >= 0.9 ? 'off' : share <= 0.1 ? 'on' : 'mixed';
-}
+export { leafSeason };
 
-/** The season of the points themselves (ept.js flownOf): by each piece's own day, the span when there are none. */
-export function flightSeason(flown) {
-  if (!flown) return null;
-  if (!flown.mids?.length) return leafSeason(flown.start, flown.end);
-  let off = 0;
-  for (const m of flown.mids) if (leafSeason(m, m) === 'off') off++;
-  const share = off / flown.mids.length;
-  return share >= 0.9 ? 'off' : share <= 0.1 ? 'on' : 'mixed';
-}
+/** The season of the points themselves (ept.js flownOf), as the shade map reads it: 'off' | 'on' | 'mixed' | null. */
+export const flightSeason = (flown) => (flown ? flightOf(null, flown)?.season ?? null : null);
 
 /**
  * The cells and blocks erased on the shade map (its part: { grid: { w, h, x0, y1 }, erased, cubes }), on the

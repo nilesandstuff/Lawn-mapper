@@ -1,4 +1,11 @@
-# The shade map's lidar modules, copied unchanged
+# The shade map's modules: LINKS to its own files (since 2026-10-27)
+
+Owner, 2026-10-27: "you should follow the output of the shade map... Re use the shade map's work, for uniformity".
+Each .js here is a symbolic link to public/shade/ (lib/lib/mask.js to public/lib/mask.js), not a copy, so the water
+map always runs the shade map's code as it stands on the commit deployed (tools/prepare.mjs copies what the links
+point to into the build). Never put a file of the water map's own here; ask the features session for a change.
+
+The history of the copies they replace:
 
 From public/shade/ (the features session's shade map) at commit 64670eb on the
 default branch, 2026-10-17, for the water map's roof finder (water/lib/roofs.js),
