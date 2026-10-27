@@ -61,8 +61,10 @@ assert.ok(!isAlphaId('alpha-../../etc'));
     mask: Buffer.from('png!').toString('base64'), prob: Buffer.from('prob!').toString('base64'), version: 'v1' }));
   const withRaw = await pollAlpha(env, 'alpha-fc-1234567', 'https://lawn.example');
   assert.equal(withRaw.raw, 'https://lawn.example/api/alpha-mask?id=alpha-fc-1234567&raw=1');
-  assert.equal(put[2][0], 'alpha/masks/fc-1234567-raw.png');
-  assert.equal(Buffer.from(put[2][1]).toString(), 'prob!');
+  const rawPut = put.find(([k]) => k === 'alpha/masks/fc-1234567-raw.png');
+  assert.ok(rawPut, 'the raw picture is kept');
+  assert.equal(Buffer.from(rawPut[1]).toString(), 'prob!');
+  assert.ok(put.some(([k]) => k === 'alpha/masks/fc-1234567.json'), 'and the answer beside it');
 
   globalThis.fetch = async () => new Response(JSON.stringify({ status: 'running' }));
   assert.equal((await pollAlpha(env, 'alpha-fc-1234567', 'x')).status, 'processing');
@@ -75,6 +77,26 @@ assert.ok(!isAlphaId('alpha-../../etc'));
   const bad = await pollAlpha(env, 'alpha-fc-1234567', 'x');
   assert.equal(bad.status, 'failed');
   assert.equal(bad.detail, 'no photo');
+  globalThis.fetch = real;
+}
+
+/* A KEPT ANSWER (2026-10-27): once read, a lot is answered from R2 -- a press
+   picked up after the page died gets it even when Modal has let it go. */
+{
+  const store = new Map();
+  const env = { ...on, CORPUS: {
+    put: async (k, v) => store.set(k, typeof v === 'string' ? v : Buffer.from(v)),
+    get: async (k) => (store.has(k) ? { json: async () => JSON.parse(store.get(k)), body: store.get(k) } : null),
+  } };
+  const real = globalThis.fetch;
+  let asked = 0;
+  globalThis.fetch = async () => { asked++; return new Response(JSON.stringify({ status: 'succeeded', mask: Buffer.from('png!').toString('base64'), version: 'v2', leafOff: true })); };
+  const first = await pollAlpha(env, 'alpha-fc-7777777', 'https://lawn.example');
+  globalThis.fetch = async () => { asked++; return new Response('gone', { status: 404 }); };
+  const later = await pollAlpha(env, 'alpha-fc-7777777', 'https://lawn.example');
+  assert.equal(asked, 1, 'the model server is asked once');
+  assert.deepEqual(later, first, 'the same answer, from the bucket');
+  assert.equal(later.leafOff, true);
   globalThis.fetch = real;
 }
 

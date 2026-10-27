@@ -1035,7 +1035,7 @@ async function handleSegment(request, env, origin, ctx) {
     });
     if (got !== 'cancelled') return false;
     await handBack();
-    await markRefunded(env, usageId);
+    await markRefunded(env, usageId, 'early');
     recordLater(ctx, Promise.all(ids.map((id) => stopPrediction(env, id))));
     note('cancelled', 'cancelled before the detector answered; handed back');
     return true;
@@ -1482,7 +1482,7 @@ async function handleCancelPress(request, env, origin, ctx) {
     const row = got.row;
     if (row.job) await spendJobDetection(env, row.job, row.claimant, -row.n, row.ceiling);
     else await refund(request, env, { user, clientId: row.client_id, n: row.n, fromDaily: row.from_daily });
-    await markRefunded(env, press);
+    await markRefunded(env, press, typeof body?.reason === 'string' ? body.reason : null);
     recordLater(ctx, Promise.all((got.stop || []).map((id) => stopPrediction(env, id))));
     return json({ refunded: true, n: row.n }, 200, origin);
   }

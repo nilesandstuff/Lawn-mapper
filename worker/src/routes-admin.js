@@ -19,7 +19,7 @@
  */
 
 import { readTwins, writeTwins, linkTwins, isRunSlug } from './run-twins.js';
-import { usageSince, usageDaily } from './usage.js';
+import { usageSince, usageDaily, handedBackSince } from './usage.js';
 import { currentUser } from './auth.js';
 import { benchmarkId, coordsOfId, mapName } from './benchmark-ids.js';
 import {
@@ -229,6 +229,8 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
 
     /* Passes per day, which is the shape of the Replicate bill. */
     const daily = await usageDaily(env, daysAgo(30));
+    /* Presses handed back this week, by why (owner, 2026-10-27). */
+    const handedBack = await handedBackSince(env, daysAgo(7));
 
     return json({
       users: people.n,
@@ -246,7 +248,7 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
           corrected: corpus.row?.corrected ?? 0,
         }
         : { unavailable: corpus.why },
-      today, week, month, daily,
+      today, week, month, daily, handedBack,
       logging: loggingEnabled(env),
       feedback: feedbackEnabled(env),
     }, 200, origin);

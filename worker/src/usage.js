@@ -20,11 +20,37 @@ export async function countPress(env, { id, passes, who, model }) {
   } catch { /* not counted; never a failed detection */ }
 }
 
-export async function markRefunded(env, id) {
+/* Why a press was handed back: what the page says, from a fixed list. */
+export const REFUND_REASONS = ['cancel', 'retry', 'auto-retry', 'failed', 'timeout', 'early'];
+export const refundReason = (r) => (REFUND_REASONS.includes(r) ? r : 'failed');
+
+export async function markRefunded(env, id, reason = null) {
   if (!env?.DB || !id) return;
   try {
-    await env.DB.prepare('UPDATE detect_usage SET refunded = 1 WHERE id = ?1').bind(id).run();
-  } catch { /* as above */ }
+    await env.DB.prepare('UPDATE detect_usage SET refunded = 1, refund_reason = ?2 WHERE id = ?1')
+      .bind(id, reason ? refundReason(reason) : null).run();
+  } catch {
+    /* Before the migration added the column: the flag alone, as before. */
+    try { await env.DB.prepare('UPDATE detect_usage SET refunded = 1 WHERE id = ?1').bind(id).run(); } catch { /* as above */ }
+  }
+}
+
+/**
+ * Presses handed back since `since`, by why (owner, 2026-10-27: "I've
+ * noticed quite a lot of cancelled runs in the modal logs"). Rows from
+ * before the reason was kept count as 'unknown'.
+ */
+export async function handedBackSince(env, since) {
+  try {
+    const rows = (await env.DB.prepare(
+      `SELECT COALESCE(refund_reason, 'unknown') reason, COUNT(*) n FROM detect_usage
+        WHERE refunded = 1 AND at >= ?1 GROUP BY reason`
+    ).bind(since).all()).results || [];
+    const by = Object.fromEntries(rows.map((r) => [r.reason, r.n]));
+    return { total: rows.reduce((a, r) => a + r.n, 0), by };
+  } catch {
+    return null;
+  }
 }
 
 /**

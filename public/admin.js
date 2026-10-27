@@ -92,6 +92,12 @@ function corpusNote(c) {
   return `${n(c.withImage)} with a photo · ${n(c.corrected)} corrected`;
 }
 
+/** "cancel 2 · auto-retry 1": why presses were handed back, most first. */
+function handedBackNote(h) {
+  const by = h?.by || {};
+  return Object.entries(by).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(' · ');
+}
+
 function renderTiles(o) {
   const tiles = $('#tiles');
   tiles.innerHTML = '';
@@ -108,6 +114,9 @@ function renderTiles(o) {
     ['AI passes today', o.today?.passes, `${n(o.today?.presses)} presses`],
     ['Last 7 days', o.week?.passes, `${n(o.week?.presses)} presses`],
     ['Last 30 days', o.month?.passes, `${n(o.month?.presses)} presses`],
+    /* Handed back this week, by why (owner, 2026-10-27: "quite a lot of
+       cancelled runs in the modal logs"). */
+    ['Handed back, 7 days', o.handedBack?.total ?? null, handedBackNote(o.handedBack)],
     ['Accounts', o.users, `${n(o.sessions)} signed in`],
     ['Saved maps', o.maps, ''],
     /*

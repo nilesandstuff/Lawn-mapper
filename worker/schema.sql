@@ -962,7 +962,10 @@ CREATE TABLE IF NOT EXISTS detect_usage (
   passes    INTEGER NOT NULL,
   who       TEXT,
   model     TEXT,
-  refunded  INTEGER NOT NULL DEFAULT 0
+  refunded  INTEGER NOT NULL DEFAULT 0,
+  -- WHY IT WAS HANDED BACK (owner, 2026-10-27: "quite a lot of cancelled runs
+  -- in the modal logs"): cancel, retry, auto-retry, failed, timeout, early.
+  refund_reason TEXT
 );
 CREATE INDEX IF NOT EXISTS detect_usage_at ON detect_usage(at);
 

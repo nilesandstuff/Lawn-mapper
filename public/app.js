@@ -374,6 +374,11 @@ const diag = {
 };
 if (typeof window !== 'undefined') {
   window.__lm = diag;
+  /* The lost-graphics recovery and the kept press (2026-10-27), for the browser test. */
+  window.__lmRecovery = () => ({
+    lost: mapLost, chosen: state.chosen?.label || null, frame: Boolean(state.frame),
+    pending: readPending()?.press || null,
+  });
   /*
    * Where the corner handles are, in viewport coordinates.
    *
@@ -1404,6 +1409,118 @@ const idle = () => {
   stopDetectionTimer();
 };
 
+/* --------------------------------------- the map's graphics, taken away */
+/*
+ * THE GRAY MAP (owner, 2026-10-27: "Whenever you leave a tab for awhile, the
+ * page just shows a gray map and you've got to refresh the page"). Not the
+ * photos going stale: a phone reclaims the graphics memory of a page it is
+ * not showing, and Mapbox GL (3.9, and 3.12 measured the same) does not
+ * redraw after the browser hands it back -- in a headless test the map stayed
+ * blank, every draw call failing with "object does not belong to this
+ * context". So the page does what the refresh did, without losing anything:
+ * the map is saved (as it is after every change anyway) and the page reopens
+ * on it, or on the address if nothing is drawn yet. Only once the person is
+ * looking, and never under a press the Worker has not yet accepted (one it
+ * has is kept, and picked up after the reload).
+ */
+let mapLost = false;
+let recovering = false;
+async function recoverLostMap() {
+  if (!mapLost || recovering || document.hidden) return;
+  if (detection && !detection.accepted) return; // its finally{} calls back
+  recovering = true;
+  busy('Reloading the map…');
+  const url = new URL(location.href);
+  if (!state.job && !state.reviewingId) {
+    const entry = snapshotForSave();
+    url.searchParams.delete('map');
+    url.searchParams.delete('address');
+    if (entry && await putSave(entry)) url.searchParams.set('map', entry.id);
+    else if (state.chosen?.label) url.searchParams.set('address', state.chosen.label);
+  }
+  leavingOnPurpose = true;
+  location.replace(url.toString());
+}
+
+/* ------------------------------------------- time the page is in view */
+/*
+ * A PAGE IN THE BACKGROUND IS NOT A STUCK DETECTION (owner, 2026-10-27: "I've
+ * noticed quite a lot of cancelled runs in the modal logs"). A phone pauses a
+ * page it is not showing. Counted by the wall clock, a press left running
+ * while the person checked a text came back "stuck" (and was cancelled and
+ * sent again) or past its four minutes (and was cancelled as failed) the
+ * moment they returned -- with the detector still working, or finished.
+ * The deadlines below count only time in view; coming back restarts the
+ * quiet clock.
+ */
+let hiddenSince = document.hidden ? Date.now() : null;
+let hiddenTotal = 0;
+/** A clock that stands still while the page is out of view (ms). */
+function viewedNow() {
+  const now = Date.now();
+  return now - hiddenTotal - (hiddenSince ? now - hiddenSince : 0);
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    if (!hiddenSince) hiddenSince = Date.now();
+    return;
+  }
+  if (hiddenSince) hiddenTotal += Date.now() - hiddenSince;
+  hiddenSince = null;
+  /* Back in view: the server's line is as fresh as the next poll makes it,
+     so the quiet clock starts again rather than reading the time away. */
+  if (detection) detection.stageAt = Date.now();
+  recoverLostMap();
+  offerResume();
+});
+
+/*
+ * A DETECTION THAT OUTLIVES THE PAGE (owner, 2026-10-27: "if someone presses
+ * detect and then closes the browser, or goes to a different app on mobile
+ * and comes back later, can we make it so they still receive the
+ * detection?"). Once the Worker has accepted a press, what it answered (the
+ * ids to poll, the frame, the pieces) is kept in this browser. When the same
+ * lot is open again -- the page reloaded, the phone discarded the tab, the
+ * browser was closed -- the press is picked up where it was: polled, drawn,
+ * charged once. The detector keeps working whether or not anyone watches,
+ * and the Worker keeps each finished answer (alpha.js), so nothing is
+ * detected twice.
+ */
+const PENDING_KEY = 'lm_pending_detect';
+const PENDING_MAX_MS = 24 * 3600 * 1000;
+function savePending(p) {
+  try { localStorage.setItem(PENDING_KEY, JSON.stringify(p)); } catch { /* private window: this page only */ }
+}
+function readPending() {
+  try {
+    const p = JSON.parse(localStorage.getItem(PENDING_KEY) || 'null');
+    return p && p.press && p.data && Date.now() - p.at < PENDING_MAX_MS ? p : null;
+  } catch {
+    return null;
+  }
+}
+function clearPending(press = null) {
+  try {
+    if (!press || readPending()?.press === press) localStorage.removeItem(PENDING_KEY);
+  } catch { /* fine */ }
+}
+/** The kept press, if it is for the lot on screen now. */
+function pendingForThisLot() {
+  const p = readPending();
+  const here = state.chosen || state.frame;
+  if (!p || !here || !p.lot) return null;
+  const near = (a, b) => Math.abs(Number(a) - Number(b)) < 1e-5;
+  return near(p.lot.lng, here.lng) && near(p.lot.lat, here.lat) ? p : null;
+}
+/** Pick up a kept press for this lot, once nothing else is running. */
+function offerResume() {
+  if (detection || document.hidden || !state.frame) return;
+  const p = pendingForThisLot();
+  if (!p) return;
+  setStatus('Your detection from earlier is finishing — loading it…');
+  detect({ resume: p });
+}
+
 /* ------------------------------------------------ the detection timer */
 /*
  * HOW LONG, AND A WAY OUT (owner, 2026-09-29). A detection can take a minute
@@ -1506,6 +1623,8 @@ async function holdForSteps(run) {
 
 function startDetectionTimer(run) {
   const tick = () => {
+    /* Out of view: nothing to show and nothing to decide (see viewedNow). */
+    if (document.hidden) return;
     const secs = Math.floor((Date.now() - run.started) / 1000);
     /* The step on show, unless Cancel or Retry has put its own words up:
        the server's own line once it has one (owner, 2026-10-21: "messages
@@ -1536,7 +1655,7 @@ function startDetectionTimer(run) {
     if (quietS >= quietLimit && secs >= AUTO_RETRY_S && !run.action && run.model === 'alpha'
         && Date.now() - lastAutoRetry > 10 * 60 * 1000) {
       lastAutoRetry = Date.now();
-      giveUpOnDetection('retry', 'This one got stuck — starting it again…');
+      giveUpOnDetection('retry', 'This one got stuck — starting it again…', 'auto-retry');
       return;
     }
     if (secs >= DETECT_PATIENCE_S && !run.action) $('#busy-actions').hidden = false;
@@ -1566,13 +1685,13 @@ async function releasePress(press, reason) {
 }
 
 /** Cancel or Retry, pressed on the overlay. */
-async function giveUpOnDetection(action, note = null) {
+async function giveUpOnDetection(action, note = null, reason = action) {
   const run = detection;
   if (!run || run.action) return;
   run.action = action;
   $('#busy-actions').hidden = true;
   busy(note || (action === 'retry' ? 'Starting again…' : 'Cancelling…'));
-  const got = await releasePress(run.press, action);
+  const got = await releasePress(run.press, reason);
   if (got.finished) {
     /* It answered while the buttons were up: show it rather than bin it. */
     run.action = 'finishing';
@@ -1807,6 +1926,8 @@ async function initMap() {
 
   // One listener, for the life of the map: see watchTileErrors.
   watchTileErrors();
+  /* The phone took the map's graphics away (see recoverLostMap). */
+  map.on('webglcontextlost', () => { mapLost = true; recoverLostMap(); });
   map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right');
 
   /*
@@ -2684,6 +2805,8 @@ async function confirmLocation() {
        */
       clearNeighbours();
       aroundParcel();
+      /* A press made on this lot that the page did not live to draw. */
+      setTimeout(offerResume, 1200);
       /* THE RECORD HAS CHANGED UNDER THE JOB: the county's parcel here is
          not the one queued, and none of that size is beside it. Said plainly,
          so nobody traces the wrong property (owner, 2026-10-10). */
@@ -2707,6 +2830,7 @@ async function confirmLocation() {
           ? 'Your county has records, but not for this parcel. Trace the property line and you can still measure it.'
           : 'No county record for this address. Press "Draw the property line" and trace your boundary — detection needs it to know where your lot ends.'
       );
+      setTimeout(offerResume, 1200);
     }
 
     /*
@@ -5002,18 +5126,20 @@ function detectionRequest(frame, provider, model, points) {
   };
 }
 
-async function detect({ again = false } = {}) {
+async function detect({ again = false, resume = null } = {}) {
   if (!state.frame) return;
 
   // Developer mode can type a prompt the encoder cannot take. Stopping here
   // costs nothing; letting it through costs a prediction and an allowance slot
   // for an answer that was never going to arrive.
-  const blocked = devPromptBlocked();
+  const blocked = resume ? null : devPromptBlocked();
   if (blocked) { setStatus(blocked, 'warn'); return; }
 
-  const frame = state.frame;
-  const provider = effectiveProvider(state.provider);
-  const model = state.model;
+  /* A KEPT PRESS (offerResume) is the frame, source and method it was sent
+     with, not whatever is chosen now. */
+  const frame = resume ? resume.frame : state.frame;
+  const provider = resume ? resume.provider : effectiveProvider(state.provider);
+  const model = resume ? resume.model : state.model;
 
   /*
    * Pins, converted here rather than in the Worker.
@@ -5038,16 +5164,22 @@ async function detect({ again = false } = {}) {
    * detection -- and re-arming it for a second source quietly put hand-drawn
    * shapes and every correction at risk.
    */
-  if (!again && draw.getAll().features.length && !confirm(
+  if (resume && draw.getAll().features.length && !confirm(
+    'Your detection from earlier has finished. Show it? It replaces the shapes on the map.'
+  )) { clearPending(resume.press); setStatus(''); return; }
+  if (!resume && !again && draw.getAll().features.length && !confirm(
     'Detecting again replaces the shapes on the map, including any corrections ' +
     'you have made. Carry on?'
   )) return;
+  /* A new press replaces any kept one: its answer would draw over this one. */
+  if (!resume) clearPending();
 
   busy('Detecting your lawn…');
   $('#btn-detect').disabled = true;
   const run = {
-    press: (crypto.randomUUID && crypto.randomUUID()) || `p-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+    press: resume?.press || (crypto.randomUUID && crypto.randomUUID()) || `p-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
     abort: new AbortController(),
+    /* Now, even for a kept press: the stuck check counts from here. */
     started: Date.now(),
     action: null,
     accepted: false,
@@ -5068,7 +5200,7 @@ async function detect({ again = false } = {}) {
        of exactly the frame posted here (county-picture.js), so the picture
        and the frame the outline is laid on cannot differ -- the 1.96 m at
        Ketchum came from a picture made in this browser for an earlier frame. */
-    let data = await api('/api/segment', {
+    let data = resume ? resume.data : await api('/api/segment', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...detectionRequest(frame, provider, model, points), press: run.press }),
@@ -5085,6 +5217,14 @@ async function detect({ again = false } = {}) {
     });
 
     run.accepted = true;
+    /* Kept from here until it is drawn, cancelled or fails in view: a page
+       that dies first picks it up when the lot is open again. */
+    if (!resume) {
+      savePending({
+        press: run.press, at: Date.now(), frame, provider, model, data,
+        lot: { lng: (state.chosen || frame).lng, lat: (state.chosen || frame).lat },
+      });
+    }
     // data.frame is authoritative: the server clamps zoom and size, so the
     // frame we sent is not necessarily the frame that was rendered.
     const rendered = data.frame || frame;
@@ -5440,8 +5580,14 @@ async function detect({ again = false } = {}) {
        started (and charged) it, and a cancel left before it records the press
        is read when it does. */
     if (run.accepted || err.status === 0) {
-      const back = await releasePress(run.press, 'failed');
+      const back = await releasePress(run.press, err.timeout ? 'timeout' : 'failed');
       if (back.refunded) err.message = `${err.message} It did not count against today's detections.`;
+      /* IT HAD IN FACT FINISHED (the Worker checked with the detector): pick
+         it up rather than show an error over a trace that exists. */
+      if (back.finished && !resume && readPending()?.press === run.press) {
+        run.resumeAfter = true;
+        return;
+      }
     }
     /*
      * An account out of today's passes. 402 rather than 429 because nothing is
@@ -5615,9 +5761,13 @@ async function detect({ again = false } = {}) {
   } finally {
     idle();
     if (detection === run) detection = null;
+    /* Drawn, cancelled or failed in view: nothing left to pick up. */
+    if (!run.resumeAfter) clearPending(run.press);
     updatePromptHint();
     refreshQuota();
     if (run.action === 'retry') setTimeout(() => detect({ again: true }), 0);
+    else if (run.resumeAfter) setTimeout(offerResume, 0);
+    else setTimeout(recoverLostMap, 0);
   }
 }
 
@@ -5628,7 +5778,8 @@ async function detect({ again = false } = {}) {
  * a GPU before it can look at anything. Saying so beats a silent spinner.
  */
 async function waitForPrediction(id, frame, signal = null) {
-  const started = Date.now();
+  /* Four minutes IN VIEW: a phone that pauses the page does not use them up. */
+  const started = viewedNow();
   const DEADLINE_MS = 4 * 60 * 1000;
   const cancelled = () => {
     const e = new Error('Cancelled.');
@@ -5636,11 +5787,11 @@ async function waitForPrediction(id, frame, signal = null) {
     return e;
   };
 
-  while (Date.now() - started < DEADLINE_MS) {
+  while (viewedNow() - started < DEADLINE_MS) {
     await new Promise((r) => setTimeout(r, 2500));
     if (signal?.aborted) throw cancelled();
 
-    const secs = Math.round((Date.now() - started) / 1000);
+    const secs = Math.round((viewedNow() - started) / 1000);
     /* The overlay's own timer counts, and during a detection the steps
        (DETECT_STEPS) are the words; this speaks only when nothing else does. */
     if (!detection) {
@@ -5667,7 +5818,9 @@ async function waitForPrediction(id, frame, signal = null) {
     }
   }
 
-  throw new Error('The detector is taking unusually long. Draw the lawn by hand for now.');
+  const late = new Error('The detector is taking unusually long. Draw the lawn by hand for now.');
+  late.timeout = true;
+  throw late;
 }
 
 /**
@@ -9259,6 +9412,8 @@ function openMap(s) {
     + ` — ${Number(s.squareFeet || 0).toLocaleString()} sq ft, saved ${agoText(s.at)}.`
     + ' Correct it further, or clear it to detect again.');
   refreshQuota();
+  /* A press made on this lot that the page did not live to draw. */
+  setTimeout(offerResume, 1200);
 }
 
 /* ------------------------------------------------------------ feedback */

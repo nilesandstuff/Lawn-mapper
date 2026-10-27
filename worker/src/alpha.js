@@ -71,8 +71,29 @@ export async function startAlpha(env, { frame, parcel = null, naipAlign = null, 
  * {status, mask, detail}. On success the mask goes to R2 and the answer points
  * at /api/alpha-mask on this Worker, which the mask proxy allows.
  */
+/*
+ * EACH FINISHED ANSWER IS KEPT (owner, 2026-10-27: "if someone presses detect
+ * and then closes the browser ... can we make it so they still receive the
+ * detection? Not sure if the best way to do that would be a server side
+ * cache"). The pictures were already kept in R2 the first time the lot was
+ * read; the answer itself is kept beside them, so a press picked up later
+ * (app.js offerResume) is answered from here -- after Modal has let the
+ * call's result go, and without asking the model server again.
+ */
+const answerKey = (call) => `${MASKS}${call}.json`;
+async function keptAnswer(env, call) {
+  try {
+    const obj = await env.CORPUS?.get(answerKey(call));
+    return obj ? await obj.json() : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function pollAlpha(env, id, selfOrigin) {
   const call = id.slice(PREFIX.length);
+  const kept = await keptAnswer(env, call);
+  if (kept?.status === 'succeeded') return kept;
   const res = await fetch(`${resultUrl(env)}?id=${encodeURIComponent(call)}`, {
     headers: { authorization: `Bearer ${env.ALPHA_TOKEN}` },
     signal: AbortSignal.timeout(30000),
@@ -111,7 +132,7 @@ export async function pollAlpha(env, id, selfOrigin) {
     }
     if (!parts.canopy) parts = null;
   }
-  return {
+  const answer = {
     status: 'succeeded',
     mask: `${selfOrigin}/api/alpha-mask?id=${encodeURIComponent(id)}`,
     raw,
@@ -127,6 +148,10 @@ export async function pollAlpha(env, id, selfOrigin) {
     used: r.used || null,
     seconds: r.seconds || null,
   };
+  try {
+    await env.CORPUS.put(answerKey(call), JSON.stringify(answer), { httpMetadata: { contentType: 'application/json' } });
+  } catch { /* kept next time it is read */ }
+  return answer;
 }
 
 /** The pictures besides the mask a finished lot keeps (pollAlpha). */
@@ -145,6 +170,7 @@ export async function alphaMaskResponse(env, id, headers = {}, { raw = false, pa
 
 /** Replicate's words for where a lot has got to, for presses.js. */
 export async function alphaStatus(env, id) {
+  if ((await keptAnswer(env, id.slice(PREFIX.length)))?.status === 'succeeded') return 'succeeded';
   const res = await fetch(`${resultUrl(env)}?id=${encodeURIComponent(id.slice(PREFIX.length))}`, {
     headers: { authorization: `Bearer ${env.ALPHA_TOKEN}` },
     signal: AbortSignal.timeout(30000),

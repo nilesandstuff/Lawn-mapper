@@ -3751,6 +3751,52 @@ console.log('\n--- tinker: neighbours and merging ---');
   await tp.close();
 }
 
+/*
+ * THE GRAY MAP (owner, 2026-10-27). A phone takes a background page's graphics
+ * away and Mapbox GL does not redraw when they come back. The page saves and
+ * reopens the same lot instead; here the loss is made on purpose.
+ */
+console.log('\n--- the map losing its graphics ---');
+{
+  const gp = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  gp.on('pageerror', (err) => errors.push(`PAGEERROR (graphics): ${err.message}`));
+  await gp.goto(`${BASE}/?address=${encodeURIComponent(ADDRESS)}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await gp.waitForFunction(() => window.__lmRecovery !== undefined, null, { timeout: 30000 });
+  await gp.waitForFunction(() => window.__lmRecovery().frame, null, { timeout: 90000 }).catch(() => {});
+  if (await gp.locator('#step-candidates').isVisible().catch(() => false)) {
+    await gp.locator('#candidate-list button').first().click();
+    await gp.waitForFunction(() => window.__lmRecovery().frame, null, { timeout: 60000 }).catch(() => {});
+  }
+  const before = await gp.evaluate(() => window.__lmRecovery());
+  check('a lot opened from ?address=', before.frame && Boolean(before.chosen), JSON.stringify(before));
+  const lost = await gp.evaluate(() => {
+    const c = document.querySelector('canvas.mapboxgl-canvas');
+    const gl = c && (c.getContext('webgl2') || c.getContext('webgl'));
+    const ext = gl && gl.getExtension('WEBGL_lose_context');
+    if (!ext) return false;
+    ext.loseContext();
+    setTimeout(() => ext.restoreContext(), 500);
+    return true;
+  });
+  if (lost) {
+    await gp.waitForURL((u) => /[?&](address|map)=/.test(String(u)), { timeout: 30000 }).catch(() => {});
+    await gp.waitForLoadState('domcontentloaded').catch(() => {});
+    await gp.waitForFunction(() => window.__lmRecovery && (window.__lmRecovery().frame
+      || document.querySelector('#step-candidates')?.hidden === false), null, { timeout: 90000 }).catch(() => {});
+    if (await gp.locator('#step-candidates').isVisible().catch(() => false)) {
+      await gp.locator('#candidate-list button').first().click();
+      await gp.waitForFunction(() => window.__lmRecovery().frame, null, { timeout: 60000 }).catch(() => {});
+    }
+    const after = await gp.evaluate(() => (window.__lmRecovery ? window.__lmRecovery() : null)).catch(() => null);
+    check('losing the graphics reopens the same lot on a fresh map',
+      Boolean(after) && after.lost === false && after.frame && after.chosen === before.chosen,
+      JSON.stringify(after));
+  } else {
+    console.log('  (this browser cannot lose a WebGL context on purpose; skipped)');
+  }
+  await gp.close();
+}
+
 if (errors.some((e) => e.includes('403'))) {
   check('the map got its tiles (no 403 from Mapbox)', false,
     'the page is using a URL-restricted token on a host it does not allow — ' +

@@ -312,3 +312,6 @@ ALTER TABLE shade_errors ADD COLUMN lat REAL;
 -- (tools/water-layers.js) so GET /api/water/layers sends "Culvert" and not 2
 -- without asking the county's server for the layer's description each time.
 ALTER TABLE water_layers ADD COLUMN codebook TEXT;
+
+-- Why a press was handed back (see the column in schema.sql; 2026-10-27).
+ALTER TABLE detect_usage ADD COLUMN refund_reason TEXT;
