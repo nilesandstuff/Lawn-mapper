@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { parseAsos, windStats, nearestStations, kmBetween, TO_2M, KT } from '../lib/wind.js';
 import { fenceRadiation, heatShare, faceBeamRatio } from '../lib/fenceheat.js';
+import { attachStationHours } from '../lib/weather.js';
 import { toMerc, fromMerc } from '../lib/shade/ept.js';
 import { weps, buildingLee, buildingFront, shelterByDirection, monthlyShelter, calibrate } from '../lib/shelter.js';
 
@@ -109,6 +110,23 @@ test('each spot\'s wind: behind a house from the west, open to the east; by the 
   const mean = (fit[6].F[0] + fit[6].F[1]) / 2;
   assert.ok(Math.abs(mean - 0.4) < 0.02, `the lawn's mean is the yard's figure: ${mean}`);
   assert.ok(fit[6].F[0] < fit[6].F[1], 'and the sheltered spot stays the calmer');
+});
+
+test('the ten years\' rain by the hour: a day takes the station\'s hours in its window, scaled to its own total', () => {
+  const H = 3600000, t = (d, h) => Date.UTC(2020, 6, d, h);
+  // the station: 10 mm in one hour at 03 UTC on the 2nd (inside the PRISM day of the 2nd, which ends 12 UTC)
+  const hours = [{ utc: t(2, 3), mm: 10 }, { utc: t(5, 20), mm: 2 }];
+  const days = [
+    { date: '2020-07-02', rain: 25, src: 'power + PRISM rain' },
+    { date: '2020-07-03', rain: 8, src: 'power + PRISM rain' }, // no station rain in its window: daily total alone
+    { date: '2020-07-04', rain: 1, src: 'power + PRISM rain' }, // under 2.5 mm: left as it is
+  ];
+  const n = attachStationHours(days, hours);
+  assert.equal(n, 1);
+  assert.ok(days[0].hours && Math.abs(days[0].hours.reduce((a, b) => a + b, 0) - 25) < 0.01, 'the day keeps its total');
+  assert.equal(Math.max(...days[0].hours), 25, 'and falls in the one hour the station had it');
+  assert.equal(days[1].hours, undefined); assert.equal(days[2].hours, undefined);
+  assert.equal(attachStationHours(days, []), 0);
 });
 
 let failed = 0;

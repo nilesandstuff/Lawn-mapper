@@ -367,12 +367,14 @@ export function sprinklers(ctx) {
     ctx.title.innerHTML = step === 'intro' ? '<strong>Step 1: your sprinklers</strong>' : `<strong>Sprinklers, ${k + 1} of ${list.length}: ${STEP_TITLE[step]}</strong>`;
     P.innerHTML = BODY[step]();
     WIRE[step]?.(P);
+    P.querySelector('[data-act=finish]')?.addEventListener('click', finishSteps);
     ctx.draw();
   }
   // the step is kept with the map too, so a reload comes back to it (owner: every step saves progress)
   const go = (s) => {
     // the arcs are fitted again on the way forward (the pressure may have changed); not when coming back to them
     const back = step === 'fixes' || step === 'schedule';
+    if (s === 'schedule') irr.finished = true; // every step done once: going back now offers Finish
     step = s; irr.step = s; sel.clear(); measureAsk = false; fixPicked = null; if (s !== 'place') stopGps(); if (s === 'arcs') startArcs({ refit: !back }); if (s === 'fixes') showCover = false; if (s === 'schedule') buildSchedule(); ctx.changed(); render(); };
   /* THE ARCS, LAST: nothing of them is shown until they are fitted (owner, 2026-10-21: "don't show the arcs at
      all until the automatic adjustment completes ... when the arc is automatically detected, the manual
@@ -389,7 +391,21 @@ export function sprinklers(ctx) {
     setTimeout(() => { if (step === 'arcs') { fitAll(); arcPhase = 'ready'; changed(); render(); } ctx.busy?.('arcs', null); }, 60);
   }
   const back = () => { const list = stepsFor(irr.method); go(step === 'place' ? 'intro' : list[Math.max(0, list.indexOf(step) - 1)]); };
-  const nav = (next, { ok = true, label = 'Next' } = {}) => `<div class="tools"><button type="button" class="plain" data-act="back">Back</button><button type="button" data-act="next" ${ok ? '' : 'disabled'}>${label}</button></div>`;
+  /* FINISH (owner, 2026-10-27: "if you've completed all of the steps, and you go back to make a change, add a 'finish'
+     button to ... skip ahead to the next step that requires changes (so if you've placed a new head, you need to check
+     the arc, then you can go to the final summary) or if no other steps are required, you can go straight to the
+     summary"). A step needs a visit when a head is on no valve (zones), has no nozzle (models), or has a nozzle whose
+     arc was never fitted (arcs: a new head, or a changed nozzle). */
+  const needs = (s) => (s === 'zones' ? irr.heads.some((h) => !h.zone)
+    : s === 'models' ? irr.heads.some((h) => !h.nozzle)
+      : s === 'arcs' ? irr.heads.some((h) => h.nozzle && !h.arcSet) : false);
+  const finishTo = () => { const list = stepsFor(irr.method); return list.slice(list.indexOf(step) + 1).find((x) => x !== 'schedule' && needs(x)) || 'schedule'; };
+  const finishSteps = () => go(finishTo());
+  const nav = (next, { ok = true, label = 'Next' } = {}) => {
+    const fin = (irr.finished || irr.done) && !irr.none && step !== 'schedule' && step !== 'intro';
+    const to = fin ? finishTo() : null;
+    return `<div class="tools"><button type="button" class="plain" data-act="back">Back</button><button type="button" data-act="next" ${ok ? '' : 'disabled'}>${label}</button>${fin ? `<button type="button" data-act="finish" ${ok ? '' : 'disabled'} title="${to === 'schedule' ? 'Straight to the watering schedule' : `On to ${esc(STEP_TITLE[to])}, then the schedule`}">Finish${to === 'schedule' ? '' : ` (${esc(STEP_TITLE[to].replace(/\?$/, '').toLowerCase())} first)`}</button>` : ''}</div>`;
+  };
   const wireNav = (P, next) => {
     P.querySelector('[data-act=back]')?.addEventListener('click', back);
     P.querySelector('[data-act=next]')?.addEventListener('click', next);
@@ -444,7 +460,7 @@ export function sprinklers(ctx) {
       sched.state = 'error'; sched.error = e.message || String(e);
     }
     ctx.busy?.('schedule', null);
-    if (step === 'schedule') render(); else ctx.draw();
+    if (step === 'schedule') render(); else { ctx.draw(); ctx.scheduleIn?.(); }
   }
   /** Each valve zone's schedule (lib/schedule.js zoneSchedule), with what the page says about it. */
   function schedRows() {
@@ -462,6 +478,44 @@ export function sprinklers(ctx) {
       rows.push({ n: z.n, s: s0, pz, ft2: own.cells * sched.cellM * sched.cellM * 10.764, next });
     }
     return rows;
+  }
+  /** The schedule's tables and zone-by-zone notes (the schedule step, and the watering plan's report), or null. */
+  function scheduleBody() {
+    const rows = schedRows();
+    if (!rows.length) return null;
+      const runWords = (x) => (x.runs > 1 ? `${x.runs} runs of ${x.minutes} min, an hour apart` : `${x.minutes} min`);
+      const seasonNames = ['Spring', 'Summer', 'Fall', 'Winter'].filter((n) => rows.some((r) => r.s.seasons.some((q) => q.name === n)));
+      const often = (q) => (q.dryOnly ? 'only in a dry spell' : q.sameAll ? q.often[0].often : q.often.map((o) => `${MONTH[o.month].slice(0, 3)}: ${o.often}`).join('; '));
+      const tables = seasonNames.map((name) => {
+        const lines = rows.map((r) => { const q = r.s.seasons.find((x) => x.name === name); return q ? `<tr><td><span class="chip" style="background:${colorOf(r.n)}"></span>Zone ${r.n}</td><td>${often(q)}</td><td>${runWords(q)}</td></tr>` : ''; }).join('');
+        const ms = [...new Set(rows.flatMap((r) => r.s.seasons.find((x) => x.name === name)?.months || []))].sort((a, b) => ((a + 10) % 12) - ((b + 10) % 12));
+        return `<h3 style="margin:12px 0 0;font-size:1rem">${name} <span class="dim" style="font-weight:400">(${ms.map((m) => MONTH[m].slice(0, 3)).join(', ')})</span></h3>
+          <table class="months"><tr><th>Zone</th><th>How often</th><th>Each watering day</th></tr>${lines}</table>`;
+      }).join('');
+      const summer = rows.map((r) => r.s.seasons.find((x) => x.name === 'Summer')).filter(Boolean);
+      const dayMin = summer.reduce((s2, q) => s2 + q.total, 0);
+      const notes = rows.map((r) => {
+        const s0 = r.s, bits = [];
+        bits.push(`puts down ${s0.rateInH.toFixed(2)} in/h on about ${Math.round(r.ft2 / 10) * 10} sq ft of lawn, ${Math.round(s0.du * 100)}% even`);
+        const each = s0.seasons.length ? s0.seasons.reduce((a, q) => a + q.depthIn, 0) / s0.seasons.length : null;
+        if (each) bits.push(`each watering puts down about ${each < 0.1 ? 'under 0.1' : each.toFixed(2)} in${s0.sm > 1.05 ? `, ${Math.round((s0.sm - 1) * 100)}% more than the grass uses, so the zone's driest quarter gets enough` : ''}`);
+        if (s0.takesInH && s0.rateInH > s0.takesInH) bits.push(`faster than its slowest ground takes water in (${s0.takesInH.toFixed(2)} in/h), hence the runs an hour apart`);
+        if (s0.skipAfterIn) bits.push(`skip a watering after about ${s0.skipAfterIn.toFixed(2)} in of rain`);
+        if (s0.dry) bits.push(`in a week with no rain in ${MONTH[s0.dry.month]}: ${s0.dry.waterings} watering${s0.dry.waterings > 1 ? 's' : ''} of ${runWords(s0.dry)}`);
+        const pz = r.pz, warn = [];
+        if (pz.tooDry > 0) warn.push(`about ${Math.round(pz.tooDry * 10.76 / 10) * 10} sq ft of it still dries out between waterings, and running the whole zone longer would over-water the rest`);
+        if (pz.tooWet > 0) warn.push(`about ${Math.round(pz.tooWet * 10.76 / 10) * 10} sq ft of it gets too wet on this schedule (it takes water from a roof, paving or uphill too)`);
+        if (pz.wetAnyway > 0) warn.push(`about ${Math.round(pz.wetAnyway * 10.76 / 10) * 10} sq ft stays wet with no watering at all: drainage, not watering`);
+        const next = r.next ? `Next watering: likely <strong>${new Date(`${r.next.date}T12:00:00Z`).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric', timeZone: 'UTC' })}</strong>, ${runWords(r.next)}.` : '';
+        return `<li style="margin:6px 0"><span class="chip" style="background:${colorOf(r.n)}"></span><strong>Zone ${r.n}</strong> ${bits.join('; ')}.${next ? ` ${next}` : ''}${warn.length ? ` <span style="color:var(--warn)">Within the zone, ${warn.join('; ')}.</span>` : ''}</li>`;
+      }).join('');
+    return `${tables}
+        ${summer.length ? `<p class="dim">${dayMin > 180
+          ? `Every zone on one day would run about ${Math.round(dayMin / 60 * 2) / 2} hours. Give the zones different days instead (each keeps its own number of days a week), and where a zone runs twice, let the other zones' runs be its hour's soak: most controllers call this "cycle and soak". Water in the early morning, finishing by about 9 am where you can: less is lost to wind and heat, and the grass dries off by evening.`
+          : `A summer watering day runs about ${dayMin} minutes over all the zones: start early enough to finish by about 9 am, when less is lost to wind and heat and the grass dries off by evening.`}</p>` : ''}
+        <h3 style="margin:12px 0 0;font-size:1rem">Zone by zone</h3>
+        <ul style="padding-left:18px;margin:4px 0">${notes}</ul>
+        <p class="dim">"How often" is a typical year, rain counted: in a dry spell water more often, and after a good rain skip a watering. A controller with a rain sensor or weather adjustment does this by itself. Months not listed need no watering in a typical year. On the map each zone's colour shows the lawn it waters.</p>`;
   }
   const runsOf = (inches, s0) => { const total = (inches / s0.rateInH) * 60, runs = s0.takesInH && s0.rateInH > s0.takesInH ? Math.min(2, Math.max(1, Math.ceil(inches / s0.takesInH - 0.05))) : 1; return { runs, minutes: Math.max(1, Math.round(total / runs)), total: Math.round(total) }; };
   /** Each valve's lawn, tinted its colour, over the photo (the schedule step). */
@@ -543,7 +597,7 @@ export function sprinklers(ctx) {
       const rows = irr.zones.map((z) => {
         const hs = irr.heads.filter((x) => x.zone === z.n), rd = hs.filter((x) => (thr ? x.throwFt : x.gauge));
         const zs = s0?.zones.find((q) => q.n === z.n), shown = zs && !(zs.res.borrowed && hidesBorrowed());
-        const ps = shown ? [...zs.res.heads.values()].map((v) => v.psi) : [];
+        const ps = shown ? [...zs.res.heads.values()].map((v) => (v.water?.regulated ? v.water.nozzlePsi : v.psi)) : [];
         return `<tr><td><span class="chip" style="background:${colorOf(z.n)}"></span>Zone ${z.n} <button type="button" class="plain" data-mzone="${z.n}" style="padding:2px 6px;font-size:13px">pick a head</button></td><td>${rd.length ? `<span style="color:var(--good)">&#10003;</span> ${rd.map((x) => (thr ? `${x.throwFt.ft} ft${x.throwFt.by === 'gps' ? ' (GPS)' : ''}` : `${x.gauge.psi} psi`)).join(', ')}` : '<span style="color:var(--bad)">none yet</span>'}</td><td>${ps.length ? `${Math.round(Math.min(...ps))}${Math.round(Math.max(...ps)) !== Math.round(Math.min(...ps)) ? `-${Math.round(Math.max(...ps))}` : ''} psi${zs.res.borrowed ? ' (estimated from the other zones)' : ''}` : ''}</td></tr>`;
       }).join('');
       const missingZones = irr.zones.filter((z) => irr.heads.some((x) => x.zone === z.n && x.nozzle) && !irr.heads.some((x) => x.zone === z.n && (thr ? x.throwFt : x.gauge)));
@@ -561,7 +615,7 @@ export function sprinklers(ctx) {
           ${thr ? `<div class="tools"><span class="dim">Or with your phone:</span><button type="button" class="plain" data-act="gpshead">1. I'm standing at the head</button><button type="button" class="plain" data-act="gpsedge" ${throwGps.head && throwGps.id === h.id ? '' : 'disabled'}>2. I'm where its water stops</button></div>` : ''}
           ${sh ? `<p class="dim" style="margin:4px 0 0">${sh.measured ? 'Measured here' : 'From the readings'}: ${Math.round(sh.psi)} psi coming in${sh.water ? `; throws ${Math.round(sh.water.radiusFt)} ft, ${sh.water.gpm.toFixed(2)} gpm` : ''}.</p>` : ''}</div>` : '<p class="dim">Tap a head on the map to measure it.</p>'}
         ${measureNote ? `<p class="hint">${esc(measureNote)}</p>` : ''}
-        <table class="months"><tr><th>Zone</th><th>Measured</th><th>At its heads</th></tr>${rows}</table>
+        <table class="months"><tr><th>Zone</th><th>Measured</th><th>At its nozzles</th></tr>${rows}</table>
         <p class="dim">On the map each head keeps its zone's colour and number; the ring round it is its pressure: <span style="color:${STATUS_COLOR.ok}">&#9679;</span> in its chart's range, <span style="color:${STATUS_COLOR.low}">&#9679;</span> under it, <span style="color:${STATUS_COLOR.high}">&#9679;</span> over it. A check marks each head you measured.</p>
         <p class="dim">One reading a zone is enough; another at the zone's far end makes it better. The zone's other heads are given the reading's pressure, moved by the height between them (0.433 psi a foot, from the USGS lidar)${thr ? '; a throw is read back through the nozzle\'s chart to the pressure that throws that far' : ''}.${missing ? ` ${missing} zone${missing > 1 ? 's have' : ' has'} no reading yet.` : ''}</p>
         ${measureAsk && missing ? `<div class="card" style="border-color:var(--warn)"><p style="margin:0"><strong>Zone${missing > 1 ? 's' : ''} ${missingZones.map((z) => z.n).join(', ')} ${missing > 1 ? 'have' : 'has'} no reading.</strong> ${missing > 1 ? 'Their' : 'Its'} pressure can be estimated from the other zones' readings, moved by the height between them; but each zone has its own valve and pipe, so it is a rougher estimate than one reading of its own.</p>
@@ -668,42 +722,10 @@ export function sprinklers(ctx) {
       if (sched.state === 'waiting') return `<p class="hint">${ctx.planReady?.() ? 'The lawn map is still loading.' : 'Reading the soil survey and ten years of weather…'} The schedule follows as soon as they are in.</p>${nav('done', { ok: false, label: 'Done' })}`;
       if (sched.state === 'working' || sched.state === 'idle') return `<p class="hint"><strong>Working out each zone's watering over ten years of your weather…</strong></p>${nav('done', { ok: false, label: 'Done' })}`;
       if (sched.state === 'error') return `<p class="hint">The schedule could not be worked out: ${esc(sched.error)}.</p><div class="tools"><button type="button" data-act="schedagain">Try again</button></div>${nav('done', { label: 'Done' })}`;
-      const rows = schedRows();
-      if (!rows.length) return `<p>None of the zones waters the traced lawn, so there is nothing to schedule.</p>${nav('done', { label: 'Done' })}`;
-      const runWords = (x) => (x.runs > 1 ? `${x.runs} runs of ${x.minutes} min, an hour apart` : `${x.minutes} min`);
-      const seasonNames = ['Spring', 'Summer', 'Fall', 'Winter'].filter((n) => rows.some((r) => r.s.seasons.some((q) => q.name === n)));
-      const often = (q) => (q.dryOnly ? 'only in a dry spell' : q.sameAll ? q.often[0].often : q.often.map((o) => `${MONTH[o.month].slice(0, 3)}: ${o.often}`).join('; '));
-      const tables = seasonNames.map((name) => {
-        const lines = rows.map((r) => { const q = r.s.seasons.find((x) => x.name === name); return q ? `<tr><td><span class="chip" style="background:${colorOf(r.n)}"></span>Zone ${r.n}</td><td>${often(q)}</td><td>${runWords(q)}</td></tr>` : ''; }).join('');
-        const ms = [...new Set(rows.flatMap((r) => r.s.seasons.find((x) => x.name === name)?.months || []))].sort((a, b) => ((a + 10) % 12) - ((b + 10) % 12));
-        return `<h3 style="margin:12px 0 0;font-size:1rem">${name} <span class="dim" style="font-weight:400">(${ms.map((m) => MONTH[m].slice(0, 3)).join(', ')})</span></h3>
-          <table class="months"><tr><th>Zone</th><th>How often</th><th>Each watering day</th></tr>${lines}</table>`;
-      }).join('');
-      const summer = rows.map((r) => r.s.seasons.find((x) => x.name === 'Summer')).filter(Boolean);
-      const dayMin = summer.reduce((s2, q) => s2 + q.total, 0);
-      const notes = rows.map((r) => {
-        const s0 = r.s, bits = [];
-        bits.push(`puts down ${s0.rateInH.toFixed(2)} in/h on about ${Math.round(r.ft2 / 10) * 10} sq ft of lawn, ${Math.round(s0.du * 100)}% even`);
-        const each = s0.seasons.length ? s0.seasons.reduce((a, q) => a + q.depthIn, 0) / s0.seasons.length : null;
-        if (each) bits.push(`each watering puts down about ${each < 0.1 ? 'under 0.1' : each.toFixed(2)} in${s0.sm > 1.05 ? `, ${Math.round((s0.sm - 1) * 100)}% more than the grass uses, so the zone's driest quarter gets enough` : ''}`);
-        if (s0.takesInH && s0.rateInH > s0.takesInH) bits.push(`faster than its slowest ground takes water in (${s0.takesInH.toFixed(2)} in/h), hence the runs an hour apart`);
-        if (s0.skipAfterIn) bits.push(`skip a watering after about ${s0.skipAfterIn.toFixed(2)} in of rain`);
-        if (s0.dry) bits.push(`in a week with no rain in ${MONTH[s0.dry.month]}: ${s0.dry.waterings} watering${s0.dry.waterings > 1 ? 's' : ''} of ${runWords(s0.dry)}`);
-        const pz = r.pz, warn = [];
-        if (pz.tooDry > 0) warn.push(`about ${Math.round(pz.tooDry * 10.76 / 10) * 10} sq ft of it still dries out between waterings, and running the whole zone longer would over-water the rest`);
-        if (pz.tooWet > 0) warn.push(`about ${Math.round(pz.tooWet * 10.76 / 10) * 10} sq ft of it gets too wet on this schedule (it takes water from a roof, paving or uphill too)`);
-        if (pz.wetAnyway > 0) warn.push(`about ${Math.round(pz.wetAnyway * 10.76 / 10) * 10} sq ft stays wet with no watering at all: drainage, not watering`);
-        const next = r.next ? `Next watering: likely <strong>${new Date(`${r.next.date}T12:00:00Z`).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric', timeZone: 'UTC' })}</strong>, ${runWords(r.next)}.` : '';
-        return `<li style="margin:6px 0"><span class="chip" style="background:${colorOf(r.n)}"></span><strong>Zone ${r.n}</strong> ${bits.join('; ')}.${next ? ` ${next}` : ''}${warn.length ? ` <span style="color:var(--warn)">Within the zone, ${warn.join('; ')}.</span>` : ''}</li>`;
-      }).join('');
+      const body = scheduleBody();
+      if (!body) return `<p>None of the zones waters the traced lawn, so there is nothing to schedule.</p>${nav('done', { label: 'Done' })}`;
       return `<p class="hint">Run times for your controller, zone by zone, as the seasons go. Each is from ten years of this place's weather, the soil under each zone's lawn and how fast and how evenly that zone's heads put water down.</p>
-        ${tables}
-        ${summer.length ? `<p class="dim">${dayMin > 180
-          ? `Every zone on one day would run about ${Math.round(dayMin / 60 * 2) / 2} hours. Give the zones different days instead (each keeps its own number of days a week), and where a zone runs twice, let the other zones' runs be its hour's soak: most controllers call this "cycle and soak". Water in the early morning, finishing by about 9 am where you can: less is lost to wind and heat, and the grass dries off by evening.`
-          : `A summer watering day runs about ${dayMin} minutes over all the zones: start early enough to finish by about 9 am, when less is lost to wind and heat and the grass dries off by evening.`}</p>` : ''}
-        <h3 style="margin:12px 0 0;font-size:1rem">Zone by zone</h3>
-        <ul style="padding-left:18px;margin:4px 0">${notes}</ul>
-        <p class="dim">"How often" is a typical year, rain counted: in a dry spell water more often, and after a good rain skip a watering. A controller with a rain sensor or weather adjustment does this by itself. Months not listed need no watering in a typical year. On the map each zone's colour shows the lawn it waters.</p>
+        ${body}
         ${nav('done', { label: 'Done' })}`;
     },
 
@@ -712,7 +734,9 @@ export function sprinklers(ctx) {
       if (!s0) return `<p>Place the backflow preventer and the valve box and give the pressure first.</p>${nav('done', { ok: false })}`;
       const pick = sel.size === 1 ? head([...sel][0]) : null, ph = pick && solvedHead(pick.id);
       const zoneRows = s0.zones.map((z) => {
-        const hs = [...z.res.heads.values()], ps = hs.map((h) => h.psi);
+        // the pressure each nozzle works at: a regulated body's setting, not what comes into it (owner, 2026-10-27: a 30 psi
+        // regulated body "showing up as 35 psi")
+        const hs = [...z.res.heads.values()], ps = hs.map((h) => (h.water?.regulated ? h.water.nozzlePsi : h.psi));
         const low = hs.filter((h) => h.water?.status === 'low').length, high = hs.filter((h) => h.water?.status === 'high').length;
         return `<tr><td><span class="chip" style="background:${colorOf(z.n)}"></span>Zone ${z.n}</td><td>${z.res.gpm.toFixed(1)} gpm</td><td>${Math.round(Math.min(...ps))}–${Math.round(Math.max(...ps))} psi</td><td>${Math.round(z.res.spread * 100)}%${z.res.spread > 0.2 ? ' <strong>uneven</strong>' : ''}</td><td>${low ? `${low} low` : ''}${low && high ? ', ' : ''}${high ? `${high} high` : ''}${!low && !high ? 'all in range' : ''}</td></tr>`;
       }).join('');
@@ -727,7 +751,9 @@ export function sprinklers(ctx) {
         <tr><td>Lateral pipes and fittings</td><td>−${ws.lateral.toFixed(1)}</td></tr>
         <tr><td>Swing joint</td><td>−${ws.swing.toFixed(1)}</td></tr>
         <tr><td>${ws.flat ? 'Ground height (not yet read: taken as level)' : ws.elevation >= 0 ? 'Downhill to the head' : 'Uphill to the head'}</td><td>${ws.elevation >= 0 ? '+' : '−'}${Math.abs(ws.elevation).toFixed(1)}</td></tr>
-        <tr><td><strong>At the head</strong></td><td><strong>${ws.atHead.toFixed(1)} psi</strong></td></tr></table>
+        ${(() => { const wh = zsel.res.heads.get(ws.head)?.water; return wh?.regulated
+          ? `<tr><td>Coming into the head</td><td>${ws.atHead.toFixed(1)} psi</td></tr><tr><td><strong>At the nozzle, held by its body's regulator</strong></td><td><strong>${wh.nozzlePsi.toFixed(1)} psi</strong></td></tr>`
+          : `<tr><td><strong>At the head</strong></td><td><strong>${ws.atHead.toFixed(1)} psi</strong></td></tr>`; })()}</table>
         ${zsel.res.calibrated ? `<p class="dim">That is the model's own estimate. Your ${zsel.res.calibrated.readings} reading${zsel.res.calibrated.readings > 1 ? 's' : ''} in zone ${zsel.n} put${zsel.res.calibrated.readings > 1 ? '' : 's'} the heads ${zsel.res.calibrated.offset >= 0 ? 'higher' : 'lower'} by ${Math.abs(zsel.res.calibrated.offset).toFixed(1)} psi on average; the map and the table use your readings.</p>` : ''}` : '';
       const warn = [];
       for (const z of s0.zones) {
@@ -756,13 +782,13 @@ export function sprinklers(ctx) {
         if (Number.isFinite(pvbG) && Number.isFinite(top) && top + 0.1 > pvbG) warn.push(`The highest head is ${((top - pvbG) * FT_PER_M).toFixed(1)} ft ${top >= pvbG ? 'above' : 'below'} the ground at the backflow preventer: plumbing codes put a pressure vacuum breaker at least 12 in above the highest head.`);
       }
       return `<p class="hint">The lines are drawn as an installer most likely laid them; each head keeps its zone's colour and number, and the ring round it is its pressure: <span style="color:${STATUS_COLOR.ok}">●</span> in its chart's range, <span style="color:${STATUS_COLOR.low}">●</span> under it, <span style="color:${STATUS_COLOR.high}">●</span> over it. A check marks a head with a gauge reading. Tap a head for its numbers.</p>
-        ${ph ? `<p>${headLine(pick)}<br>${ph.psi.toFixed(1)} psi at the head${ph.measured ? ' (from your reading)' : ph.adjusted ? ' (moved by your readings in this zone)' : ''}${ph.water?.regulated ? `, ${Math.round(ph.water.nozzlePsi)} at the nozzle after its regulator` : ''}; chart ${Math.round(ph.water?.chartLo)}–${Math.round(ph.water?.chartHi)} psi.</p>
+        ${ph ? `<p>${headLine(pick)}<br>${ph.water?.regulated ? `${ph.water.nozzlePsi.toFixed(1)} psi at the nozzle: its body's regulator holds it there (${ph.psi.toFixed(1)} psi coming in${ph.measured ? ', from your reading' : ph.adjusted ? ', moved by your readings in this zone' : ''}${ph.psi < ph.water.nozzlePsi + 5.5 ? '; a regulator needs about 5 psi more coming in than its setting, so it is running a little under it' : ''})` : `${ph.psi.toFixed(1)} psi at the head${ph.measured ? ' (from your reading)' : ph.adjusted ? ' (moved by your readings in this zone)' : ''}`}; chart ${Math.round(ph.water?.chartLo)}–${Math.round(ph.water?.chartHi)} psi.</p>
           <div class="card" style="margin-top:6px"><strong>Your gauge reading</strong> at this head, with its zone running:
             <div class="tools"><input type="number" inputmode="decimal" min="0" max="200" step="0.5" data-act="gpsi" value="${pick.gauge ? pick.gauge.psi : ''}" style="width:90px;padding:8px;font-size:16px"> psi
             <select data-act="gmethod"><option value="pitot" ${pick.gauge?.method !== 'riser' ? 'selected' : ''}>pitot gauge held in the stream</option><option value="riser" ${pick.gauge?.method === 'riser' ? 'selected' : ''}>gauge on the riser, nozzle off</option></select>
             <button type="button" data-act="gsave">Save the reading</button>${pick.gauge ? '<button type="button" class="plain" data-act="gdrop">Remove it</button>' : ''}</div>
             <p class="dim">Predicted there: ${ph.model ? `${ph.model.nozzlePsi.toFixed(1)} psi at the nozzle (what a pitot reads), ${ph.model.riserPsi.toFixed(1)} in the riser with the nozzle off` : '–'}. A reading replaces the estimate for this head and moves the zone's others by the zone's average miss; it is also kept, with the prediction, to check the model.${gaugeNote ? ` <strong>${esc(gaugeNote)}</strong>` : ''}</p></div>` : '<p class="dim">Tap a head to see its numbers or enter a gauge reading for it.</p>'}
-        <table class="months"><tr><th>Zone</th><th>Flow</th><th>At the heads</th><th>Spread</th><th></th></tr>${zoneRows}</table>
+        <table class="months"><tr><th>Zone</th><th>Flow</th><th>At the nozzles</th><th>Spread</th><th></th></tr>${zoneRows}</table>
         ${sheet}
         ${warn.length ? `<ul>${warn.map((w) => `<li>${w}</li>`).join('')}</ul>` : ''}
         <p class="dim">Devices from the makers' loss charts (a typical one of its size where you don't know yours); pipe friction by Darcy-Weisbach, which irrigation research prefers for small plastic pipe, with each tee and swing joint counted; at each zone's own flow, worked out with every head's flow at the pressure it gets${ctx.elevReady?.() ? '; heights from the USGS lidar' : ''}. The routes are a likely layout, not a dig: drag a head if a line runs where it can't.</p>
@@ -1537,7 +1563,7 @@ export function sprinklers(ctx) {
       for (const h of irr.heads) {
         const sh = shownHead(h.id);
         if (!sh) continue;
-        const t = `${Math.round(sh.psi)} psi`, [x, y] = ctx.toPx(h.at), w0 = g.measureText(t).width, bx = [x - w0 / 2, y - labelUp - fs, x + w0 / 2, y - labelUp];
+        const t = sh.water?.regulated ? `${Math.round(sh.water.nozzlePsi)} psi (reg.)` : `${Math.round(sh.psi)} psi`, [x, y] = ctx.toPx(h.at), w0 = g.measureText(t).width, bx = [x - w0 / 2, y - labelUp - fs, x + w0 / 2, y - labelUp];
         if (boxes.some((d) => bx[0] < d[2] && bx[2] > d[0] && bx[1] < d[3] && bx[3] > d[1])) continue;
         boxes.push(bx);
         g.lineWidth = fs / 4; g.strokeStyle = 'rgba(0,0,0,.85)'; g.strokeText(t, x, y - labelUp); g.fillStyle = '#fff'; g.fillText(t, x, y - labelUp);
@@ -1625,7 +1651,14 @@ export function sprinklers(ctx) {
     /** The ground came in (or anything the solve reads): solve again and show it. */
     refresh() { solvedKey = ''; if ((step === 'arcs' || step === 'fixes') && arcPhase === 'waiting') startArcs({ refit: true }); if (step === 'schedule' && sched.state !== 'ready') buildSchedule(); if (step) render(); else ctx.draw(); },
     /** The watering plan came in (the soil and the weather): the schedule step can go on. */
-    planIn() { if (step === 'schedule' && sched.state !== 'ready' && sched.state !== 'working') buildSchedule(); },
+    planIn() { if ((step === 'schedule' || (irr.done && !irr.none)) && sched.state !== 'ready' && sched.state !== 'working') buildSchedule(); },
+    /** The watering by sprinkler zone, for the plan's report (owner, 2026-10-27: "Recommendations should be based on
+        sprinkler zones"): its card, a note while it is worked out, or null without mapped sprinklers. */
+    scheduleCard() {
+      if (!irr.done || irr.none || !irr.zones.length) return null;
+      if (sched.state === 'ready') { const b = scheduleBody(); return b ? `<div class="card"><h2>Watering by sprinkler zone</h2><p>Run times for your controller, zone by zone, as the seasons go: from ten years of this place's weather, the soil under each zone's lawn and how fast and how evenly that zone's heads put water down.</p>${b}</div>` : null; }
+      return `<div class="card"><h2>Watering by sprinkler zone</h2><p class="hint">Working out each zone's watering over ten years of your weather…</p></div>`;
+    },
     summary() {
       if (!cat || irr.none || !irr.done) return null;
       const s0 = solve();

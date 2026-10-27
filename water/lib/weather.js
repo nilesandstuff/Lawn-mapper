@@ -264,3 +264,24 @@ export async function thisWeek(lat, lng, { back = 14, now = new Date(), gauge = 
   const hourly = await addRainHours(days.filter((d) => d.date < (fc?.days[0]?.date ?? ymd(now))), lat, lng, { fetchFn }).catch(() => 0);
   return { days, today: fc?.days[0]?.date ?? ymd(now), hourly };
 }
+
+/**
+ * THE TEN YEARS' RAIN BY THE HOUR (FINDINGS H52): each of the typical years' rainy days (at least `minMm`) given the
+ * hourly shape of the rain at the nearest airport station in its window (a PRISM day's 24 hours ending 12:00 UTC,
+ * else the UTC day; rainHours), scaled to the day's own total. Where the station had no rain in that window (a storm
+ * that missed it) the day keeps its daily total alone. hours: [{ utc, mm }] sorted. -> the number of days shaped.
+ */
+export function attachStationHours(days, hours, { minMm = 2.5 } = {}) {
+  if (!hours?.length) return 0;
+  const first = (ms) => { let lo = 0, hi = hours.length; while (lo < hi) { const m = (lo + hi) >> 1; if (hours[m].utc < ms) lo = m + 1; else hi = m; } return lo; };
+  let n = 0;
+  for (const d of days) {
+    if (!(d.rain >= minMm) || d.hours) continue;
+    const t = Date.parse(`${d.date}T00:00:00Z`);
+    const a = first(t - 864e5), b = first(t + 2 * 864e5);
+    if (a >= b) continue;
+    const h = rainHours(d.rain, d.date, hours.slice(a, b), { prism: /PRISM/.test(d.src || '') });
+    if (h) { d.hours = h; d.peakMmH = Math.max(...h); n++; }
+  }
+  return n;
+}

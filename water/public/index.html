@@ -75,6 +75,18 @@
   #busy .spin { flex: none; width: 16px; height: 16px; margin-top: 2px; border: 2.5px solid rgba(255,255,255,.3); border-top-color: #fff; border-radius: 50%; animation: spin .8s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) { #busy .spin { animation-duration: 2.4s; } }
+  /* THE SUMMARY AS A PDF (owner, 2026-10-27): the browser's own print, saved as a PDF -- only the report and a picture of the map */
+  #print-map { display: none; }
+  @media print {
+    body { background: #fff !important; color: #000 !important; }
+    body * { visibility: hidden; }
+    #print-area, #print-area * { visibility: visible; }
+    #print-area { position: absolute; left: 0; top: 0; width: 100%; }
+    #print-map { display: block; width: 100%; max-height: 9in; object-fit: contain; margin-bottom: 12px; }
+    #print-area .card { break-inside: avoid; border-color: #999 !important; background: #fff !important; color: #000 !important; }
+    #print-area button, #print-area .no-print { display: none !important; }
+    #busy { display: none !important; }
+  }
 </style>
 </head>
 <body>
@@ -102,7 +114,7 @@
     <!-- ONE VIEW AT A TIME (owner, 2026-10-23: "Break up the different views into their respective categories,
          so that it's not just a sea of overlapping and hard to separate colors") -->
     <div class="views" role="tablist" aria-label="What the map shows">
-      <button type="button" data-view="zones" class="on">Watering zones</button>
+      <button type="button" data-view="zones" class="on">Watering areas</button>
       <button type="button" data-view="need">Water need</button>
       <button type="button" data-view="soil">Soil</button>
       <button type="button" data-view="water">Standing water</button>
@@ -141,7 +153,7 @@
     <div id="hint" class="hint"></div>
     <div id="saved" class="dim"></div>
     <div id="heads-summary"></div>
-    <div id="plan"></div>
+    <div id="print-area"><img id="print-map" alt="The map"><div id="plan"></div></div>
     <div id="hill"></div>
     <div id="report"></div>
     </div>

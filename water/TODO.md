@@ -44,24 +44,9 @@ SPECULATION), as always.
    air the sun warms; natural rain about 0 to -0.01 C per mm/day over a fortnight
    to a month -- on turf watered by rain, not irrigation. Its scripts:
    docs/shade-research/soil/ (fetch_yrs.py and clim.py; README).
-7. **Rain intensity in the ten-year plan too** (after 3): the typical-year plan
-   runs on daily totals, so it cannot tell a cloudburst from a soak.
-
 10. **The GPS jumps around** (owner, 2026-10-27: "gps is really bad, jumps around all over the place. Maybe
     augmented reality might be better?"). Placing heads by walking to them: look at averaging, the phone's
     reported accuracy, and an AR way of marking a spot (the camera and the ground plane) instead.
-11. **A "Finish" button when going back** (owner): once every step is done and a change is made on an earlier
-    one, a Finish button skips ahead to the next step the change makes necessary (a new head: check its arc),
-    then to the summary -- or straight to the summary when nothing else is needed. Otherwise, explore other
-    navigation that makes it easier to go back and forth between steps.
-12. **One kind of zone in the words** (owner: "seperate the terminology for the watering zones and sprinkler
-    zones. Its confusing to have 2 seperate types of zones. Recommendations should be based on sprinkler
-    zones."). The plan's soil-and-sun areas need another name; the recommendations go by the sprinkler zones
-    (valves).
-13. **Are pressure-regulated heads working?** (owner: "A user had a 30 psi regulated sprinkler body that was
-    showing up as 35 psi, not sure if that's actually accurate or not.") A regulated body should hold its
-    nozzle at the regulator's pressure once the supply is above it. Check the pressure model's regulator handling.
-14. **The final summary as a PDF** (owner): export the summary pages to a PDF.
 15. **Hose-end sprinklers placed by hand** (owner: "add specific recs for manually placing sprinklers. Which will
     require pressure calculations (same as the existing workflows for inground, but obviously simplified)"):
     where to set each sprinkler, how long, from the hose and the tap's pressure.
@@ -110,3 +95,8 @@ SPECULATION), as always.
 - 2026-10-27: shade through the year -- each month's light from the shade map's worker (FINDINGS H45).
 - 2026-10-27: each spot's own radiation -- near-infrared through crowns, skylight, the sky it loses heat to (FINDINGS H47, S13).
 - 2026-10-27: fences (shade, radiant heat, wind), the local wind's records, and each spot's own wind (FINDINGS H48, H49, H50, S14).
+- 2026-10-27: pressure-regulated heads -- the model was right; the map, the tables and the details now show the nozzle's pressure (FINDINGS H51).
+- 2026-10-27: one kind of zone -- the plan's parts of the lawn are "watering areas"; with sprinklers mapped, the report leads with each sprinkler zone's run times.
+- 2026-10-27: the report as a PDF -- "Save as PDF" prints the report with the map (the browser's own print).
+- 2026-10-27: Finish -- once every sprinkler step is done, going back offers Finish: on to the next step a change needs (a head on no valve, without a nozzle, or with its arc not fitted), then the schedule.
+- 2026-10-27: rain intensity in the ten-year plan, from the station's hours (FINDINGS H52).

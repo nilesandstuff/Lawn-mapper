@@ -15,14 +15,14 @@
 import { workerIo } from '/lib/browser-io.js';
 import { runSite } from '/lib/site.js';
 import { soilFor, sdaPost } from '/lib/soil.js';
-import { typicalYears, thisWeek } from '/lib/weather.js';
+import { typicalYears, thisWeek, attachStationHours } from '/lib/weather.js';
 import { waterPlan } from '/lib/plan.js';
 import { demAround, terrain, hillside } from '/lib/upslope.js';
 import { powerUrl, typicalYear, growingSeason, SEASON_GP } from '/lib/shade/climate.js';
 import { polygonsOf } from '/lib/geo.js';
 import { erasedOn } from '/lib/leaf.js';
 import { fenceRadiation } from '/lib/fenceheat.js';
-import { localWind } from '/lib/wind.js';
+import { localWind, stationRain } from '/lib/wind.js';
 import { pointsIn } from '/lib/ept.js';
 import { overtureFor } from '/lib/overture.js';
 import { obstacleGrid, nearHeights, windGrid, coverWithin } from '/lib/obstacles.js';
@@ -77,7 +77,7 @@ async function plan(inputs = {}) {
     zones: p.zones, zoneOf: p.zoneOf, kinds: p.kinds, needMm: p.needMm, soilAt: p.soilAt, multiplier: p.multiplier, rootIn: p.rootIn, needMonth: p.needMonth, wetFromWatering: p.wetFromWatering, wetAnyway: p.wetAnyway, dryShare: p.dryShare,
     roofs: p.roofs, soil: p.soil, weather: p.weather, thisWeek: p.thisWeek, years: p.years, topsoil: p.topsoil,
     standIn: kept.standIn, seconds: (Date.now() - t0) / 1000, shaded: p.shaded, lightByMonth: p.lightByMonth, ownRadiation: p.ownRadiation, fences: p.fences, treeCool: p.treeCool, yardWind: p.yardWind, windInfo: kept.windInfo || null, windJuly: kept.windMonths ? kept.windMonths[6].slice() : null, localWind: kept.wind || null, lightInfo: kept.lightInfo || null, sunShare: p.sunShare,
-    seasonDays: kept.season ? kept.season.size : null, grass, rainFrom: kept.rainFrom, texture: p.texture,
+    seasonDays: kept.season ? kept.season.size : null, grass, rainFrom: kept.rainFrom, rainShaped: kept.rainShaped || 0, rainStation: kept.rainShaped ? kept.wind.station : null, texture: p.texture,
     trouble: Object.values(kept.sources || {}).filter(Boolean),
   };
   self.postMessage({ plan: out }, [out.zoneOf.buffer, out.kinds.buffer, out.soilAt.buffer, out.needMm.buffer, out.wetFromWatering.buffer, out.wetAnyway.buffer, out.dryShare.buffer]);
@@ -172,6 +172,16 @@ async function start(site, inputs) {
   kept.typical = typ.days; kept.rainFrom = typ.rainFrom;
   kept.week = await weekP;
   kept.wind = await windP;
+  /* THE TEN YEARS' CLOUDBURSTS (to-do 7, H52): the station's hourly rain over the same ten years gives each rainy day
+     of the plan its hours, so rain falling faster than the lawn takes it runs off in the ten-year plan too. */
+  kept.rainShaped = 0;
+  try {
+    if (kept.wind?.station?.id) {
+      const yEnd = new Date().getUTCFullYear() - 1;
+      const hours = await stationRain(kept.wind.station.id, yEnd - 9, yEnd);
+      kept.rainShaped = attachStationHours(kept.typical, hours);
+    }
+  } catch { kept.rainShaped = 0; }
   kept.climate = await climateP;
   // the shade first, so the plan is shown once, with it (lib/shade/light-worker.js)
   kept.shade = site.lawn?.length ? 'failed' : 'no traced lawn';

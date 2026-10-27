@@ -1680,6 +1680,39 @@ from the NE. Use April-November as a share of open sun: the calmest tenth 0.493 
 0.848, the lawn's median 0.744 -> 0.750. A Wind view shows July's figure per spot (checked in a browser with a test
 fence: the page's own run, 55 s).
 
+### H51. Pressure-regulated heads: the model held them; the page showed the pressure coming in (water session, 2026-10-27)
+
+The owner: "A user had a 30 psi regulated sprinkler body that was showing up as 35 psi, not sure if that's actually
+accurate or not." The model (lib/hydraulics.js regulatedOut) holds a regulated body's nozzle at its setting once the
+pressure coming in is its setting plus the regulator's need (5 psi for spray bodies, Rain Bird's 1800 PRS: "below 35
+psi the pressure loss shall not exceed 6 psi"; 15 for Hunter's PRB rotors): a 30 psi body fed 35 or 50 psi -> 30 at
+the nozzle; fed 32 -> 27. The page, though, showed the pressure COMING INTO the body: the label over each head on the
+map, the zones' "at the heads" column, the measure step's table, and a head's details (which put the nozzle's 30
+second). So a 30 psi body fed 35 read "35 psi". Now all four show the nozzle's pressure for a regulated head ("30 psi
+(reg.)" on the map), the details say what comes in and when the regulator runs short of its setting, and the
+farthest head's worksheet ends "coming into the head", then "at the nozzle, held by its body's regulator".
+
+### H52. The ten-year plan's rain, hour by hour (water session, 2026-10-27)
+
+To-do 7: the typical-year plan ran on daily totals, so a cloudburst soaked in like a drizzle. Now each of the ten
+years' rainy days (2.5 mm or more) takes the hourly shape of the rain at the nearest airport station that day (IEM's
+ASOS archive, the hour's rain p01i, the same station as the wind: H48), in its window (a PRISM day's 24 hours ending
+12:00 UTC: H39), scaled to the day's own total; the hours then run off where they fall faster than the ground takes
+water (Horton's excess, as this week's plan: balance.js). Where the station had no rain in the window the day keeps
+its daily total.
+
+The owner's lot, 2016-2025: the station's 7,051 wet hours shaped 799 of the 825 rainy days; their wettest hour a
+median 0.13 in, nine in ten under 0.41, the most 1.70. On one lawn cell, flat, the ten years watered ideally:
+
+| the ground takes | runoff, share of the rain | watering over ten years |
+|---|---|---|
+| 0.14 in/h (the owner's lawn) | 13.9% -> 26.8% | 137.8 -> 145.3 in (+5.4%) |
+| 0.3 in/h | 13.9% -> 17.4% | +1.0% |
+| 0.6 in/h | 13.9% -> 14.2% | 0.0% |
+
+A station 24 km away times a storm that may have passed the lot at another hour, or missed it (the day then keeps
+its total alone): the shapes are the station's, the totals PRISM's 4 km.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge

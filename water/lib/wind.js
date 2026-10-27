@@ -118,3 +118,27 @@ export async function localWind(list, lat, lng, { fetchFn = fetch, years = 10, n
   }
   return null;
 }
+
+/**
+ * THE STATION'S RAIN BY THE HOUR, for the ten-year plan (owner's to-do 7: "the typical-year plan runs on daily totals,
+ * so it cannot tell a cloudburst from a soak"; FINDINGS H52): the same station's routine hourly reports, their
+ * hour's rain (p01i, inches, a trace as none). -> [{ utc (ms), mm }] for the wet hours, oldest first.
+ */
+export async function stationRain(id, y1, y2, fetchFn = fetch) {
+  const url = `${IEM_ASOS}?station=${encodeURIComponent(id)}&data=p01i&year1=${y1}&month1=1&day1=1&year2=${y2 + 1}&month2=1&day2=1&tz=Etc/UTC&format=onlycomma&latlon=no&missing=empty&trace=empty&report_type=3`;
+  const r = await fetchFn(url);
+  if (!r.ok) throw new Error(`IEM answered ${r.status}`);
+  const out = [];
+  let lastHour = -1;
+  for (const line of (await r.text()).split('\n')) {
+    const f = line.split(',');
+    if (f.length < 3 || f[0] === 'station') continue;
+    const t = Date.parse(`${f[1].replace(' ', 'T')}:00Z`), inch = parseFloat(f[2]);
+    if (!Number.isFinite(t)) continue;
+    const hour = Math.floor(t / 3600000);
+    if (hour === lastHour) continue;
+    lastHour = hour;
+    if (inch > 0) out.push({ utc: hour * 3600000, mm: inch * 25.4 });
+  }
+  return out;
+}
