@@ -55,7 +55,8 @@ export function pmParts(d, latDeg, doy, elevM = 200) {
   const u2 = Math.max(0.5, d.wind ?? 2);
   const den = delta + gamma * (1 + 0.34 * u2);
   const sun = (0.408 * delta * Rn) / den, air = (gamma * (900 / (tmean + 273)) * u2 * (esat - ea)) / den;
-  return { et0: Math.max(0, sun + air), sun, air, ea, clear: Rso > 0 ? rs / Rso : 0 };
+  // k: what one MJ/m2 of net radiation gives (0.408 delta / denominator), so a spot's own radiation can be put in
+  return { et0: Math.max(0, sun + air), sun, air, ea, clear: Rso > 0 ? rs / Rso : 0, k: (0.408 * delta) / den, rs, Ra, Rnl };
 }
 
 /**
@@ -76,13 +77,23 @@ export function airShare(d, latDeg, doy, elevM = 200, { nightShare = 0.3, winds 
     out.share = Math.min(1, a.air / a.et0); out.perC = Math.max(0, 1 - Math.max(0, b.air) / a.air);
   }
   /* SHELTERED WIND (FINDINGS H44): the same day at a share f of the open wind, each part against the open day's
-     ET0 -- less wind shrinks the air's part and, through the equation's denominator, lifts the sun's a little */
+     ET0 -- less wind shrinks the air's part and, through the equation's denominator, lifts the sun's a little.
+     kRel: what one MJ/m2 of a spot's own net radiation gives at that wind, against the open day's ET0 (H47). */
   if (winds && a.et0 > 0) {
-    out.sunRel = new Float32Array(winds.length); out.airRel = new Float32Array(winds.length);
+    out.sunRel = new Float32Array(winds.length); out.airRel = new Float32Array(winds.length); out.kRel = new Float32Array(winds.length);
     winds.forEach((f, k) => {
       const w = f === 1 ? a : pmParts({ ...d, ea: a.ea, wind: d.wind * f }, latDeg, doy, elevM);
-      out.sunRel[k] = w.sun / a.et0; out.airRel[k] = Math.max(0, w.air) / a.et0;
+      out.sunRel[k] = w.sun / a.et0; out.airRel[k] = Math.max(0, w.air) / a.et0; out.kRel[k] = w.k / a.et0;
     });
+  }
+  /* THE DAY'S LIGHT, for a spot's own radiation (H47): the sun's shortwave (MJ/m2), the open lawn's net longwave
+     loss, and the share of the day's sunlight that comes as skylight -- of all of it (Spitters et al. 1986's daily
+     relation to the clearness) and of its visible part, which is bluer and so more of it skylight (1.4 times the
+     whole's under a clear sky, the same under cloud: Spitters et al.'s clear-sky ratio, eased to 1 as it clouds). */
+  if (a.et0 > 0 && a.Ra > 0) {
+    const kt = a.rs / a.Ra;
+    const fd = kt < 0.07 ? 1 : kt < 0.35 ? 1 - 2.3 * (kt - 0.07) ** 2 : kt < 0.75 ? 1.33 - 1.46 * kt : 0.23;
+    out.light = { rs: a.rs, rnl: a.Rnl, fd, fdPar: Math.min(1, fd * (1 + (0.4 * (1 - fd)) / 0.77)) };
   }
   return out;
 }

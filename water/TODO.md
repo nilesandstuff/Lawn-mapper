@@ -91,7 +91,9 @@ SPECULATION), as always.
   files (lib/shade/ links to public/shade/), takes its light, its trees (its kinds) and its erased trees, and asks
   the features session for any change to them. A "light through leaves" point was passed to it on 2026-10-27 and withdrawn the same day: the shade map is
   already held to light measured under real canopy (FINDINGS S12). Read docs/SHADE-FINDINGS.md before claiming
-  anything about how the shade map works.
+  anything about how the shade map works. What the WATER map makes of the shade map's light for the grass's water
+  use -- the near and far infrared, the skylight, the night sky (owner, 2026-10-27: "this part belongs to the water
+  map") -- is the water map's (FINDINGS H47), from the shade map's output, with no shade calculation of its own.
 
 ## Shelved (owner, 2026-10-26: "shelve the tree thing to the todo list")
 
@@ -110,3 +112,4 @@ SPECULATION), as always.
 - 2026-10-26: shade's effect on the air: the day's own air share, and cooler air near trees (FINDINGS H43, S11).
 - 2026-10-27: shade again -- the trees in summer leaf, the trees erased on the shade map, the yard's wind (FINDINGS H44, S12).
 - 2026-10-27: shade through the year -- each month's light from the shade map's worker (FINDINGS H45).
+- 2026-10-27: each spot's own radiation -- near-infrared through crowns, skylight, the sky it loses heat to (FINDINGS H47, S13).

@@ -1555,6 +1555,57 @@ Why the wind does not hold spot by spot:
 So the spot behind the house is likely planned as using somewhat more water than it does, a windy corner somewhat
 less (TODO 17).
 
+### H47. A spot's own radiation: near-infrared through crowns, skylight in building shade, the sky it loses its heat to (water session, 2026-10-27)
+
+The owner: "can't we infer that by total light and referencing available research? The shade map doesn't need to make
+these specific judgements regarding infrared, so this part belongs to the water map" -- separate the near and the
+far infrared; the canopy is "solid objects with variable transparency" so "we'll have to make some averages"; and
+"tree canopies and buildings block radiant cooling at night". The research: research-infrared.md.
+
+Before, the whole radiation term of Penman-Monteith (net radiation, the sun's shortwave less the longwave lost to
+the sky) was scaled by the spot's visible-light share. Now each day, each spot (balance.js etToday, radiationModel):
+
+    net = (1 - 0.06) Rs x visible share + (1 - 0.40) Rs x near-infrared share - Rnl_open x sky view
+
+- From the shade map's own worker, with no new shade calculation: for each month, the share of the sun's BEAM and
+  of the SKY each spot sees (the same 'period' asked with all of the day's sun as beam, then all as sky: the second
+  is its sky view), with the trees and with the buildings alone (every crown column erased, as its eraser does).
+- Visible light: the shade map's, as it is (held to sensors under canopy, SHADE-FINDINGS 1, 25).
+- Near-infrared: the buildings' part as the visible; through the crowns' part a crown passing T of the visible
+  passes T^0.8 of it.
+- The day split into beam and sky by its clearness (Spitters et al. 1986), the visible part more of it sky.
+- Turf reflects 0.06 of the visible and 0.40 of the near-infrared (0.23 together in the open, FAO-56's).
+- Longwave: the open lawn's net loss, Rnl, times the spot's sky view -- trees and walls at about the air's
+  temperature give back what the grass sends them, day and night.
+- The open lawn is unchanged: the parts add back to the day's own ET0 (tested).
+
+Measured, from the research (HARD; tags in the file):
+- Under oak-hickory forest the visible share of shortwave fell from 0.49 above to 0.27 at the floor (Baldocchi et
+  al. 1984): the floor's shortwave share 1.8 times its visible share. Under beech, the near-infrared excess largest
+  in the darkest spots and flat in the gappy ones (Goodfellow & Barkham 1974). Under one urban tree, about 0.1 of
+  both (Heisler, Grant & Gao 2003): little excess.
+- Kentucky bluegrass and tall fescue reflect 3.6-10.7% at 661 nm and 44-59% at 935 nm (Bremer et al. 2011).
+- Night cooling, surface below air on clear summer nights: open pasture (90% sky) 6.7 C, closed forest (10% sky)
+  0.7 C -- the same ratio as the sky (Feldhake 2009). North of a hedge, no sun, a clear sky: net radiation at or
+  below zero all day (Stoutjesdijk 1974). Under canopy, needles and branches within 0.1 C of the air at night and
+  under cloud (Pomeroy et al. 2009).
+
+The owner's lawn (2,639 cells; the shade map's July shares: the shadiest tenth's visible light 0.18 against sky view
+0.24; the cells with building shade beside the house, beam 0.76 and sky view 0.66), use April-November as a share of
+open sun, with the wind and the cooler air:
+
+| near-infrared through crowns, T^x | lawn median | shadiest tenth | building shade (40 cells) |
+|---|---|---|---|
+| before (visible share x all radiation) | 0.730 | 0.351 | 0.693 |
+| x 1.0 (no excess) | 0.734 | 0.341 | 0.694 |
+| **x 0.8 (built)** | **0.744** | **0.361** | **0.699** |
+| x 0.7 | 0.750 | 0.374 | 0.701 |
+
+Small: +1 to +3%. The near-infrared lifts crown shade a little; the sky view cuts both ways: where a spot sees
+less sky than sun (beside a house, the owner's 40 cells) it loses less heat and uses a little more; north of a house
+(sun blocked, sky seen) it uses less -- the research's July example, 11% less (-0.38 mm) there, none of it on the
+owner's traced lawn. The page now says each spot's own warmth is counted (checked in a browser on the owner's map).
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge
@@ -1590,6 +1641,22 @@ unlikely is the check. The soil survey's own monthly water table (lib/soil.js,
 "Wet" layers) IS in the balance: it stops drainage and makes dual-group soils
 the wetter group in those months.
 
+### S13. The spot's own radiation: the averages in it (2026-10-27, with H47)
+
+- The near-infrared exponent, 0.8 (range 0.7-1.0), is inferred across forests (Campbell & Norman's turbid medium 0.5;
+  Baldocchi's floor about 0.7-0.8) and one single tree that showed almost none (Heisler et al. 2003, an abstract's
+  "about 0.1" for both). Applied to the crowns' whole visible transmission, gaps included, which the forest fits
+  partly carry; the shade map gives no share of rays that hit no leaf.
+- The sky view is the shade map's, through crowns with their visible-light transparency; leaves are nearly black to
+  longwave, so the longwave sky view is a little smaller -- the loss a little overstated under crowns.
+- Leaves and walls taken at the air's temperature: by day sunlit crowns and walls run warmer (5-15 C in sparse stands,
+  Pomeroy), at night walls and trunks stay warm -- both make the loss smaller still than SVF x Rnl. Sunlit walls are
+  the paving-and-wall heat of S8 and TODO 4.
+- The visible part's skylight share (1.4 times the whole's under a clear sky, 1 under cloud) is eased between by a
+  rule of this session's, from Spitters et al.'s clear-sky ratio.
+- What would settle it: a pyranometer beside a PAR sensor under one of the owner's crowns, and a radiometer (or the
+  dew) on open lawn against lawn north of the house on a clear night.
+
 ### S12. Where the shade numbers may now run low (2026-10-27, with H44; first point withdrawn the same day)
 
 - **Light through leaves: WITHDRAWN 2026-10-27.** This said the shade map's light share takes leaves as black. It
@@ -1599,7 +1666,7 @@ the wetter group in those months.
   the research agent's reading of canopy.js without reading SHADE-FINDINGS; the owner corrected it. What is left is
   narrower and unmeasured here: those sensors read visible light (PAR, lux), and the grass's water use goes by all
   the sun's energy, about half of it near-infrared, which leaves pass more of than visible light -- and which grass
-  also reflects more of. Whether that changes anything is the shade map's question, not built or pursued here.
+  also reflects more of. Owner, 2026-10-27: this part belongs to the water map -- built from the shade map's output, H47 and S13.
 - **Shelter is not only less wind.** The day is worked out again at the yard's wind with the air's temperature and
   vapour held; air in shelter is warmer and more humid, and turf transpiration there "relatively insensitive" to it
   (Cleugh et al. 2002). The wind's cut may be too big.

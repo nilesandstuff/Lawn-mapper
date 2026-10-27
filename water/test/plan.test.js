@@ -10,7 +10,7 @@ import { penmanMonteith, pmParts, airShare, ra, hargreaves, dayOfYear } from '..
 import { hoursOf, hourly } from '../lib/weather.js';
 import { parseWkt, rootZone, boxWkt, ROOT_CM } from '../lib/soil.js';
 import { rainHours } from '../lib/weather.js';
-import { scsRunoff, cnSlope, curveNumber, buildModel, simulate, idealIrrigation, PARAMS, canopyAround, etToday, shadeFactor, windShare, coverAround } from '../lib/balance.js';
+import { scsRunoff, cnSlope, curveNumber, buildModel, simulate, idealIrrigation, PARAMS, canopyAround, etToday, shadeFactor, windShare, coverAround, radiationModel } from '../lib/balance.js';
 import { leafSeason, flightSeason, erasedOn } from '../lib/leaf.js';
 import { roofRouting } from '../lib/gutters.js';
 import { waterPlan } from '../lib/plan.js';
@@ -204,6 +204,30 @@ test('shade through the year: each day takes its own month\'s light from the sha
   assert.ok(Math.abs(at(4) - (0.3 + 0.7 * 0.6)) < 1e-6, 'May, before the leaves fill in');
   assert.ok(Math.abs(at(8) - (0.3 + 0.7 * 0.2)) < 1e-6, 'September, the sun low under the leaves');
   assert.ok(Math.abs(at(null) - (0.3 + 0.7 * 0.4)) < 1e-6, 'no month: the summer share');
+});
+
+test('a spot\'s own radiation: near-infrared through crowns, skylight and the sky it loses heat to', () => {
+  const july = { tmax: 28, tmin: 16, rh: 60, wind: 2.3, rs: 24 };
+  const p = airShare(july, 42.9, 196, 200, { winds: [1] });
+  const one = (v) => Array.from({ length: 12 }, () => new Float32Array([v]));
+  const cell = (beam, sky, beamB, skyB) => {
+    const rad = radiationModel({ beam: one(beam), sky: one(sky), beamB: one(beamB), skyB: one(skyB) }, 1);
+    const model = { N: 1, etBase: new Float32Array([1]), light: new Float32Array([1]), canopy: null, params: PARAMS, rad };
+    return etToday(model, p, false, new Float32Array(1), 6)[0];
+  };
+  assert.ok(Math.abs(cell(1, 1, 1, 1) - 1) < 1e-6, 'the open lawn: the day\'s own ET0, as before');
+  // north of a house: no sun, most of the sky -- less than its visible share says (skylight is poor in
+  // near-infrared, and the grass still loses its heat to the sky it sees)
+  const lp = 0.5 * (1 - p.light.fdPar) * 0 + 0.5 * p.light.fdPar * 0.7 / 0.5; // its visible share
+  const old = (1 - p.share) * lp + p.share;
+  const north = cell(0, 0.7, 0, 0.7);
+  assert.ok(north < old - 0.03, `building shade: ${north.toFixed(3)} against ${old.toFixed(3)} by the visible share`);
+  // under a crown passing a quarter of the visible light: more than the visible share says (the near-infrared)
+  const crown = cell(0.25, 0.25, 1, 1), crownOld = (1 - p.share) * 0.25 + p.share;
+  assert.ok(crown > crownOld, `crown shade: ${crown.toFixed(3)} against ${crownOld.toFixed(3)}`);
+  // the leaves passing as much near-infrared as visible: no excess
+  const flat = radiationModel({ beam: one(0.25), sky: one(0.25), beamB: one(1), skyB: one(1) }, 1, { ...PARAMS, nirExp: 1 });
+  assert.ok(Math.abs(flat[0].nirB[0] - 0.25) < 1e-6);
 });
 
 test('the summer canopy: a leaf-off flight is known, and the trees erased on the shade map come over', () => {

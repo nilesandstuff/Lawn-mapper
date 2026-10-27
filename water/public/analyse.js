@@ -46,7 +46,7 @@ function planWith(inputs = {}, zoneOf = null) {
   return waterPlan(r.result, {
     lawnMask: kept.lawn, paved: r.impervious ? r.impervious.paved : null, soil: kept.soil,
     topsoil: !!inputs.topsoil, downspouts: inputs.downspouts || [], gutters: inputs.gutters || [],
-    typical: kept.typical, week: kept.week, season: kept.season, light: kept.light, lightMonths: kept.lightMonths || null, shadeKinds: kept.shadeKinds || null, grass,
+    typical: kept.typical, week: kept.week, season: kept.season, light: kept.light, lightMonths: kept.lightMonths || null, radiation: kept.radiation || null, shadeKinds: kept.shadeKinds || null, grass,
     texture: inputs.texture || null, parcelMask: r.parcelMask || null, areas: inputs.areas || [], zoneOf,
   });
 }
@@ -66,7 +66,7 @@ async function plan(inputs = {}) {
   const out = {
     zones: p.zones, zoneOf: p.zoneOf, kinds: p.kinds, needMm: p.needMm, soilAt: p.soilAt, multiplier: p.multiplier, rootIn: p.rootIn, needMonth: p.needMonth, wetFromWatering: p.wetFromWatering, wetAnyway: p.wetAnyway, dryShare: p.dryShare,
     roofs: p.roofs, soil: p.soil, weather: p.weather, thisWeek: p.thisWeek, years: p.years, topsoil: p.topsoil,
-    standIn: kept.standIn, seconds: (Date.now() - t0) / 1000, shaded: p.shaded, lightByMonth: p.lightByMonth, treeCool: p.treeCool, yardWind: p.yardWind, lightInfo: kept.lightInfo || null, sunShare: p.sunShare,
+    standIn: kept.standIn, seconds: (Date.now() - t0) / 1000, shaded: p.shaded, lightByMonth: p.lightByMonth, ownRadiation: p.ownRadiation, treeCool: p.treeCool, yardWind: p.yardWind, lightInfo: kept.lightInfo || null, sunShare: p.sunShare,
     seasonDays: kept.season ? kept.season.size : null, grass, rainFrom: kept.rainFrom, texture: p.texture,
     trouble: Object.values(kept.sources || {}).filter(Boolean),
   };
@@ -153,7 +153,7 @@ async function start(site, inputs) {
     kept.season = seasonFor(inputs.grass === 'warm' ? 'warm' : 'cool');
     site.cloudSeason = r.cloud?.season || null;
     const lit = await again(() => lawnLight(res, site, kept.climate, kept.season), 2).catch(() => null);
-    kept.light = lit?.summer || null; kept.lightMonths = lit?.months || null;
+    kept.light = lit?.summer || null; kept.lightMonths = lit?.months || null; kept.radiation = lit?.radiation || null;
     if (kept.light) kept.shade = 'ok';
   }
   kept.sources = {
@@ -187,53 +187,65 @@ async function start(site, inputs) {
 const MONTH_START = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365]; // day indices, as climate.js dayIndex
 
 function lawnLight(res, site, climate, season) {
-  return new Promise((resolve, reject) => {
-    const w = new Worker('/lib/shade/light-worker.js', { type: 'module' });
-    const g = res.grid, N = g.W * g.H;
-    const done = (v, err) => { w.terminate(); if (err) reject(err); else resolve(v); };
-    const timer = setTimeout(() => done(null, new Error('the shade took too long')), 240000);
-    let summer = null, months = null;
-    w.onerror = (e) => { clearTimeout(timer); done(null, new Error(e.message || 'the light worker stopped')); };
-    w.onmessage = ({ data: m }) => {
-      if (m.type === 'error') { clearTimeout(timer); done(null, new Error(m.message)); return; }
-      if (m.type === 'built') {
-        if (m.w !== g.W || m.h !== g.H) { clearTimeout(timer); done(null, new Error('the shade grid is not the water grid')); return; }
-        kept.lightInfo = { canopy: m.canopy, why: m.seasonsWhy || null, erased: edits.cells, blocks: edits.blocks, blocksLost: edits.blocksLost, season: site.cloudSeason || null };
-        // the shade map's own reading of every cell (0 open, 1 roof, 2 evergreen, 3 deciduous): its trees, for the air and the wind
-        kept.shadeKinds = m.kinds && m.kinds.length === N ? Uint8Array.from(m.kinds) : null;
-        // the summer first (the zones and the report go by it), then each month (the daily balance does)
-        const days = [];
-        for (let k = 151; k <= 242; k += 4) if (!season || season.has(k)) days.push(k);
-        w.postMessage({ type: 'period', days, climate });
-        return;
-      }
-      if (m.type === 'period') {
-        if (!m.dli || !(m.openDli > 0)) { clearTimeout(timer); done(null); return; }
-        const light = new Float32Array(N).fill(1);
-        for (let p = 0; p < m.dli.length; p++) {
-          const x = Math.floor(m.xy[2 * p]), y = Math.floor(m.xy[2 * p + 1]);
-          if (x >= 0 && y >= 0 && x < g.W && y < g.H) light[y * g.W + x] = Math.max(0, Math.min(1, m.dli[p] / m.openDli));
-        }
-        /* THROUGH THE YEAR (owner, 2026-10-27: "the way that shade changes throughout the year as canopy cover
-           changes and the position of the sun changes (again, the shade map does that)"): the same worker's light
-           for every third day of each month, the leaves as its calendar has them that day and the sun where it is. */
-        if (!months) { summer = light; months = []; }
-        else months.push(light);
-        if (months.length === 12) { clearTimeout(timer); done({ summer, months }); return; }
-        const mo = months.length, md = [];
-        for (let k = MONTH_START[mo] + 1; k < MONTH_START[mo + 1]; k += 3) md.push(k);
-        w.postMessage({ type: 'period', days: md, climate });
-      }
-    };
-    const pts = res.points;
-    /* THE SUMMER CANOPY (FINDINGS H44): as the shade map draws it -- a leaf-off flight's crowns given their leaves
-       back from this place's typical temperatures (light-worker.js 'seasonal'; before 2026-10-27 the water map
-       asked for the crowns as flown, bare branches on a November flight) -- and without the trees and branches
-       erased on the shade map. */
-    const edits = erasedOn(site.shadeEdits, { W: g.W, H: g.H, bbox: g.bbox });
-    w.postMessage({ type: 'build', cols: pts, box: g.bbox, lat: site.lat, lng: site.lng, shift: null, lot: polygonsOf(site.lawn), lawn: polygonsOf(site.lawn),
-      canopy: 'seasonal', flight: site.cloudSeason || null, tMean: Array.isArray(climate?.tMean) ? climate.tMean : null, erased: edits.erased, erasedCubes: edits.cubes });
-  });
+  const g = res.grid, N = g.W * g.H;
+  const w = new Worker('/lib/shade/light-worker.js', { type: 'module' });
+  // one message out, the next answer back (the worker answers in order)
+  let waiting = null;
+  w.onmessage = ({ data: m }) => { if (!waiting || m.type === 'progress') return; const k = waiting; waiting = null; if (m.type === 'error') k.reject(new Error(m.message)); else k.resolve(m); };
+  w.onerror = (e) => { if (waiting) { const k = waiting; waiting = null; k.reject(new Error(e.message || 'the light worker stopped')); } };
+  const ask = (msg) => new Promise((resolve, reject) => { waiting = { resolve, reject }; w.postMessage(msg); });
+  const perCell = (m, scale = 1) => {
+    const a = new Float32Array(N).fill(1);
+    if (!m.dli || !(m.openDli > 0)) return null;
+    for (let p = 0; p < m.dli.length; p++) {
+      const x = Math.floor(m.xy[2 * p]), y = Math.floor(m.xy[2 * p + 1]);
+      if (x >= 0 && y >= 0 && x < g.W && y < g.H) a[y * g.W + x] = Math.max(0, Math.min(1, (m.dli[p] / m.openDli) * scale));
+    }
+    return a;
+  };
+  const monthDays = (mo) => { const md = []; for (let k = MONTH_START[mo] + 1; k < MONTH_START[mo + 1]; k += 3) md.push(k); return md; };
+  // the same climate with all of the sun as beam, or all of it as sky: the share each cell gets of each (its sky view)
+  const beamOnly = { ...climate, diffuse: new Array(365).fill(0) }, skyOnly = { ...climate, diffuse: new Array(365).fill(1) };
+  const months = async (clim) => { const out = []; for (let mo = 0; mo < 12; mo++) { const a = perCell(await ask({ type: 'period', days: monthDays(mo), climate: clim })); if (!a) return null; out.push(a); } return out; };
+  const build = (erased) => ask({ type: 'build', cols: res.points, box: g.bbox, lat: site.lat, lng: site.lng, shift: null, lot: polygonsOf(site.lawn), lawn: polygonsOf(site.lawn),
+    canopy: 'seasonal', flight: site.cloudSeason || null, tMean: Array.isArray(climate?.tMean) ? climate.tMean : null, erased, erasedCubes: edits.cubes });
+  /* THE SUMMER CANOPY (FINDINGS H44): as the shade map draws it -- a leaf-off flight's crowns given their leaves
+     back from this place's typical temperatures (light-worker.js 'seasonal'; before 2026-10-27 the water map
+     asked for the crowns as flown, bare branches on a November flight) -- and without the trees and branches
+     erased on the shade map. */
+  const edits = erasedOn(site.shadeEdits, { W: g.W, H: g.H, bbox: g.bbox });
+  const work = (async () => {
+    const m = await build(edits.erased);
+    if (m.w !== g.W || m.h !== g.H) throw new Error('the shade grid is not the water grid');
+    kept.lightInfo = { canopy: m.canopy, why: m.seasonsWhy || null, erased: edits.cells, blocks: edits.blocks, blocksLost: edits.blocksLost, season: site.cloudSeason || null };
+    // the shade map's own reading of every cell (0 open, 1 roof, 2 evergreen, 3 deciduous): its trees, for the air and the wind
+    const kinds = m.kinds && m.kinds.length === N ? Uint8Array.from(m.kinds) : null;
+    kept.shadeKinds = kinds;
+    // the summer (the zones and the report go by it)
+    const days = [];
+    for (let k = 151; k <= 242; k += 4) if (!season || season.has(k)) days.push(k);
+    const summer = perCell(await ask({ type: 'period', days, climate }));
+    if (!summer) return null;
+    /* THROUGH THE YEAR (owner, 2026-10-27: "the way that shade changes throughout the year as canopy cover changes
+       and the position of the sun changes (again, the shade map does that)"): every third day of each month, the
+       leaves as its calendar has them that day and the sun where it is. */
+    const byMonth = await months(climate);
+    /* A SPOT'S OWN RADIATION (H47): of the sun's beam and of the sky, the share each cell sees, with the trees and
+       with the buildings alone (every crown column erased, as the trees step's eraser does), so the water map can
+       put the near-infrared through the crowns and count the sky the grass loses its heat to. */
+    let radiation = null;
+    if (byMonth && kinds) {
+      const beam = await months(beamOnly), sky = await months(skyOnly);
+      const noCrowns = edits.erased ? Uint8Array.from(edits.erased) : new Uint8Array(N);
+      for (let i = 0; i < N; i++) if (kinds[i] === 2 || kinds[i] === 3) noCrowns[i] = 1;
+      await build(noCrowns);
+      const beamB = await months(beamOnly), skyB = await months(skyOnly);
+      if (beam && sky && beamB && skyB) radiation = { beam, sky, beamB, skyB };
+    }
+    return { summer, months: byMonth, radiation };
+  })();
+  const timer = new Promise((_, reject) => setTimeout(() => reject(new Error('the shade took too long')), 240000));
+  return Promise.race([work, timer]).finally(() => w.terminate());
 }
 
 self.onmessage = async ({ data }) => {

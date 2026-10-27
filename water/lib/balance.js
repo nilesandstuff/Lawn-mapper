@@ -81,6 +81,14 @@ export const PARAMS = {
   airCoolC: 1.3,
   /* THE YARD'S WIND (FINDINGS H44): Heisler 1990's neighbourhoods, cover counted within windRadiusM (his inner
      band, 0-91 m; clipped to the grid, which reaches 30 m past the lot), the share rounded to windStep. */
+  /* A SPOT'S OWN RADIATION (FINDINGS H47): the visible light and the near-infrared apart. Leaves pass more of the
+     near-infrared: a crown passing a share T of the visible passes T^nirExp of it (Campbell & Norman 1998's
+     turbid medium gives 0.5; the oak-hickory floor's 1.8 times more shortwave than visible, Baldocchi et al. 1984,
+     about 0.7-0.8; one single tree, Heisler et al. 2003, about 1). Turf reflects about 0.06 of the visible, 0.40 of
+     the near-infrared (Bremer et al. 2011's bands; together FAO-56's 0.23 in the open). */
+  nirExp: 0.8,
+  albedoPar: 0.06,
+  albedoNir: 0.40,
   windYard: true,
   windRadiusM: 90,
   windStep: 0.02,
@@ -172,6 +180,22 @@ export function etToday(model, part, inSeason, out, month = null) {
   }
   const sunny = part ? Math.min(1, part.clear / params.clearRef) : 0;
   const cool = canopy && inSeason && part ? part.perC * params.airCoolC * sunny : 0; // share lost at full cover
+  /* A SPOT'S OWN RADIATION (H47): its visible and near-infrared sunlight, each through what stands over it, less
+     what the turf reflects of each, less the open lawn's longwave loss to the sky in proportion to the sky it sees
+     (trees and walls at about the air's temperature give back what the grass sends them, day and night). */
+  const R = model.rad && month !== null && part?.light && part.kRel ? model.rad[month] : null;
+  if (R) {
+    const { rs, rnl, fd, fdPar } = part.light;
+    const Bp = 0.5 * (1 - fdPar), Dp = 0.5 * fdPar, Bn = Math.max(0, 1 - fd - Bp), Dn = Math.max(0, fd - Dp);
+    const aP = (1 - params.albedoPar) * rs, aN = (1 - params.albedoNir) * rs;
+    for (let i = 0; i < N; i++) {
+      const k = at ? at[i] : 0;
+      const A = cool ? Math.max(0, 1 - cool * canopy[i]) : 1;
+      const net = aP * (Bp * R.parB[i] + Dp * R.parD[i]) + aN * (Bn * R.nirB[i] + Dn * R.nirD[i]) - rnl * R.parD[i];
+      out[i] = etBase[i] * Math.max(0, part.kRel[k] * net + airRel[k] * A);
+    }
+    return out;
+  }
   for (let i = 0; i < N; i++) {
     const k = at ? at[i] : 0;
     const L = light ? Math.max(0, Math.min(1, light[i])) : 1;
@@ -179,6 +203,26 @@ export function etToday(model, part, inSeason, out, month = null) {
     out[i] = etBase[i] * (sunRel[k] * L + airRel[k] * A);
   }
   return out;
+}
+
+/**
+ * Each month's light per cell for a spot's own radiation (H47), from the shade map's beam and sky shares with the
+ * trees (beam, sky) and with the buildings alone (beamB, skyB): the visible light as the shade map has it (it is
+ * held to light measured under canopy), the near-infrared through the crowns' part as T^nirExp (T the crowns' own
+ * visible share, beam / beamB), the buildings' part the same for both. -> [12 { parB, parD, nirB, nirD }]
+ */
+export function radiationModel({ beam, sky, beamB, skyB }, N, params = PARAMS) {
+  const x = params.nirExp, fin = (v) => (Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 1);
+  return beam.map((_, m) => {
+    const parB = new Float32Array(N), parD = new Float32Array(N), nirB = new Float32Array(N), nirD = new Float32Array(N);
+    for (let i = 0; i < N; i++) {
+      const b = fin(beam[m][i]), d = fin(sky[m][i]), bb = Math.max(b, fin(beamB[m][i])), db = Math.max(d, fin(skyB[m][i]));
+      parB[i] = b; parD[i] = d;
+      nirB[i] = bb > 1e-4 ? bb * (b / bb) ** x : 0;
+      nirD[i] = db > 1e-4 ? db * (d / db) ** x : 0;
+    }
+    return { parB, parD, nirB, nirD };
+  });
 }
 
 /** The air's part of Penman-Monteith at a share f of a 2.3 m/s summer wind, against the open wind's, 25 C (the
@@ -221,9 +265,12 @@ export function scsRunoff(w, cn) {
  * roofTo   Int32Array per cell: where a roof cell's water lands (lib/gutters.js), -1 nowhere
  * light    Float32Array per cell (0-1, ET multiplier from shade) or null
  * lightMonths  [12 Float32Array] the same share month by month (the shade map's worker: its leaves and sun that month), or null
+ * radiation  { beam, sky, beamB, skyB }: 12 Float32Arrays each, from the shade map's worker -- the share of the
+ *            sun's beam and of the sky each cell sees (the sky's share is its sky view), with the trees and with the
+ *            buildings alone -- or null (H47)
  * shadeKinds  Uint8Array per cell from the shade map's light worker (0 open, 1 roof, 2 evergreen, 3 deciduous) or null
  */
-export function buildModel(res, { kinds, soilAt, soils, roofTo, light = null, lightMonths = null, shadeKinds = null, params = PARAMS }) {
+export function buildModel(res, { kinds, soilAt, soils, roofTo, light = null, lightMonths = null, radiation = null, shadeKinds = null, params = PARAMS }) {
   const g = res.grid, N = g.W * g.H;
   const { down, filled } = res.runoff;
   const order = [];
@@ -309,6 +356,7 @@ export function buildModel(res, { kinds, soilAt, soils, roofTo, light = null, li
     }
   }
   const model = { g, N, kinds, soilAt, soils, roofTo, light, lightMonths: lightMonths?.length === 12 ? lightMonths : null, canopy, winds, windAt, order, down, recv, share, nRecv, slope, pondCap, taw, raw, satRoom, drainDay, heat, etBase, params };
+  model.rad = radiation ? radiationModel(radiation, N, params) : null;
   model.etFactor = etToday(model, null, false, new Float32Array(N));
   return model;
 }
