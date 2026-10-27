@@ -18,7 +18,7 @@ the same capture tools/train-detector.js trained on -- and polls. Both
 endpoints want `Authorization: Bearer <ALPHA_TOKEN>`; workflow 2 derives the
 token from the Modal secret and hands it to both sides.
 
-COST. A GPU (L4) only while lots are being read, plus SCALEDOWN (20) seconds idle
+COST. A GPU (L4, or an A10G when no L4 is free) only while lots are being read, plus SCALEDOWN (20) seconds idle
 after the last one, so an immediate retry does not pay the cold start
 again. Nothing runs, and nothing is billed, when nobody is detecting.
 
@@ -37,7 +37,13 @@ import time
 import modal
 
 APP = "lawn-mapper-alpha"
-GPU = os.environ.get("MODAL_GPU", "L4")
+# THE L4 FIRST, AN A10G WHEN NO L4 IS FREE (owner, 2026-10-27: "Yes add a10g
+# backup"). On 2026-10-27 Modal had no L4 for at least half an hour and every
+# press waited, then timed out. Modal takes a list and tries it in order; the
+# A10G (about $1.10 an hour against $0.80) is only used when no L4 is free.
+# MODAL_GPU may name one type, or several separated by commas.
+GPU = [g.strip() for g in os.environ.get("MODAL_GPU", "L4,A10G").split(",") if g.strip()]
+GPU = GPU[0] if len(GPU) == 1 else GPU
 # How long a GPU stays on after its last lot. Was 300 s; cut to 60 s on
 # 2026-09-30 (owner: "costs accruing faster than I'd hoped"). Most presses are
 # alone, so the idle tail was most of the bill -- roughly 300 of every ~360
