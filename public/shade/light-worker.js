@@ -7,7 +7,9 @@
  *   { type: 'build', cols, box, lat, lng, shift, heightM, lot, lawn,
  *     canopy: 'seasonal' | 'measured' | 'solid', flight: 'off'|'on'|'mixed'|null, tMean?,
  *     erased? (Uint8Array per 1 m cell: columns the visitor brushed out),
- *     erasedCubes? (indices k * nz + l of single blocks brushed out) }
+ *     erasedCubes? (indices k * nz + l of single blocks brushed out),
+ *     fences? (the drawn fences, fences.js records: upright planes in the
+ *     light, their pale faces' reflection added to the DLI) }
  *       -> { type: 'built', ..., kinds, counts, calendar }
  *   { type: 'now', t }            -> { type: 'now', T (per point), leaves }
  *   { type: 'day', dayMs }        -> { type: 'day', sunHours, beamHours, dli, openDli, leaves, ... }
@@ -38,10 +40,11 @@ import { buildCanopy, solidAtGrass } from './canopy.js';
 import { seasonalCanopy, muWithLeaves, leafCalendar } from './seasonal.js';
 import { gridOver } from './grid.js';
 import { toMerc } from './ept.js';
-import { samplePoints, skyView, sunlitNow, dayLight, beamAndHours, transmittance, groundAt } from './rays.js';
+import { samplePoints, skyView, sunlitNow, dayLight, beamAndHours, transmittance, groundAt, cellMetres } from './rays.js';
 import { sunPath, sunAt, solarNoon } from './sun.js';
 import { growingSeason, dliOn, PAR_MOL_PER_MJ } from './climate.js';
 import { rasterizePolygon } from '../lib/mask.js';
+import { cleanFences, fencesOnGrid } from './fences.js';
 
 let S = null; // the current property
 
@@ -186,6 +189,14 @@ function build(m) {
     }
   }
 
+  /* FENCES: the lengths drawn, on this grid, standing on its ground. Every
+     copy of the model (modelAt) carries them. */
+  const fences = cleanFences(m.fences);
+  if (fences.length) {
+    const toCell = ([lng, lat]) => { const [x, y] = toMerc([lng, lat]); return [(x - grid.x0) / grid.cell, (grid.y1 - y) / (grid.cellY || grid.cell)]; };
+    model.fences = fencesOnGrid(fences, toCell, (gx, gy) => groundAt(model, gx, gy), cellMetres(model));
+  }
+
   const all = new Uint8Array(grid.w * grid.h).fill(1);
   const lot = m.lot?.length ? union(m.lot, grid) : all;
   /* Inside a house (or under canopy nothing got through) there is no
@@ -212,7 +223,7 @@ function build(m) {
     seasonsWhy: seasonal ? null : m.canopy !== 'seasonal' ? null
       : !leafOffFlight ? (m.flight === 'on' ? 'the lidar was flown in leaf, so it already shows the summer canopy' : 'the flight season is unknown')
         : !calendar ? 'the typical temperatures did not load' : null,
-    kinds, counts: season?.counts || null, classified: !!season?.classified,
+    kinds, counts: season?.counts || null, classified: !!season?.classified, fences: model.fences?.length || 0,
     lawnMask: lawn, // per grid cell, 1 inside a traced lawn (null when none was traced)
     calendar: calendar && seasonal ? { out: calendar.out, full: calendar.full, halfOut: calendar.halfOut, halfFall: calendar.halfFall, bare: calendar.bare, always: !!calendar.always, never: !!calendar.never } : null,
   });

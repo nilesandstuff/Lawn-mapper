@@ -14,11 +14,17 @@
  *
  * Positions are in the model's grid cells (x east, y SOUTH, as the grid's
  * rows run) plus z in meters. Directions are [east, north, up] unit vectors.
+ *
+ * FENCES (fences.js; model.fences, the drawn lengths on the grid): a ray
+ * that crosses one below its top passes only what its boards let through
+ * at that angle, and the light a lit face throws back is added to the
+ * lawn's DLI (dayLight, beamAndHours, skyView), not to its hours of sun.
  */
 
 import { GRASS_M } from './canopy.js';
 import { clearSky, parMol } from './sun.js';
 import { mercScale } from './ept.js';
+import { throughFences, faceViews, reflectedBeam, reflectedSky } from './fences.js';
 
 const START_M = 0.1; // rays start this far above the ground
 
@@ -56,7 +62,27 @@ export function transmittance(model, gx, gy, z, dir, { stepM = 0.5, cm = cellMet
       if (tau > 7) return 0;
     }
   }
-  return Math.exp(-tau);
+  return model.fences?.length ? Math.exp(-tau) * throughFences(model.fences, gx, gy, z, dir, cm) : Math.exp(-tau);
+}
+
+/** Each fence face's share in sun along `dir` (the trees and other fences before it): from its middle, a hand's width out on the sun's side. */
+function facesLit(model, dir, cm) {
+  const segs = model.fences;
+  return segs.map((s) => {
+    const side = Math.sign(dir[0] * s.nE + dir[1] * s.nN) || 1;
+    const gx = (s.ax + s.bx) / 2 + (side * 0.08 * s.nE) / cm, gy = (s.ay + s.by) / 2 - (side * 0.08 * s.nN) / cm;
+    return transmittance(model, gx, gy, (s.footA + s.footB) / 2 + s.h / 2, dir, { cm });
+  });
+}
+const viewsCache = new WeakMap();
+/** The fence faces each point sees (fences.js faceViews), once per set of points and fences. */
+function viewsFor(model, xy, cm) {
+  if (!model.fences?.length) return null;
+  let byFences = viewsCache.get(xy);
+  if (!byFences) viewsCache.set(xy, (byFences = new WeakMap()));
+  let v = byFences.get(model.fences);
+  if (!v) byFences.set(model.fences, (v = faceViews(model.fences, xy, (gx, gy) => groundAt(model, gx, gy), cm)));
+  return v;
 }
 
 /**
@@ -129,6 +155,9 @@ export function skyView(model, xy, { dirs = skyDirections(), stepM = 0.5 } = {})
     for (const d of dirs) s += d.w * transmittance(model, gx, gy, z, d.dir, { stepM, cm });
     out[p] = s;
   }
+  /* The sky's light a pale fence face throws back, counted as more sky. */
+  const views = viewsFor(model, xy, cm);
+  if (views) for (let p = 0; p < out.length; p++) if (views[p]) out[p] += reflectedSky(views[p], model.fences);
   return out;
 }
 
@@ -170,16 +199,19 @@ export function dayLight(model, xy, path, { stepMin = 10, heightM = 0, svf = nul
     normals[p] = normalAt(model, xy[2 * p], xy[2 * p + 1], cm);
   }
   let openDli = 0;
+  const views = viewsFor(model, xy, cm);
   for (const s of path) {
     const sky = clearSky(s.elevation, heightM, s.R);
     openDli += parMol(sky.ghi, dt);
+    const lit = views ? facesLit(model, s.dir, cm) : null;
     for (let p = 0; p < n; p++) {
       const T = transmittance(model, xy[2 * p], xy[2 * p + 1], zs[p], s.dir, { stepM, cm });
       const nm = normals[p];
       const cosInc = Math.max(0, nm[0] * s.dir[0] + nm[1] * s.dir[1] + nm[2] * s.dir[2]);
       sunHours[p] += (T * dt) / 3600;
       beamHours[p] += (T * dt) / 3600;
-      dli[p] += parMol(sky.dni * cosInc * T + sky.dhi * (svf ? svf[p] : 1), dt);
+      const refl = views?.[p] ? reflectedBeam(views[p], model.fences, s.dir, (i) => lit[i]) : 0;
+      dli[p] += parMol(sky.dni * (cosInc * T + refl) + sky.dhi * (svf ? svf[p] : 1), dt);
     }
   }
   return { sunHours, beamHours, dli, openDli };
@@ -217,14 +249,18 @@ export function beamAndHours(model, xy, path, { heightM = 0, stepM = 0.5, stepMi
   }
   const hours = new Float32Array(n);
   let den = 0;
+  const views = viewsFor(model, xy, cm);
   for (const s of path) {
     const dni = clearSky(s.elevation, heightM, s.R).dni;
     den += dni * s.dir[2];
+    const lit = views ? facesLit(model, s.dir, cm) : null;
     for (let p = 0; p < n; p++) {
       const nm = normals[p];
       const cosInc = Math.max(0, nm[0] * s.dir[0] + nm[1] * s.dir[1] + nm[2] * s.dir[2]);
       const T = transmittance(model, xy[2 * p], xy[2 * p + 1], zs[p], s.dir, { stepM, cm });
       hours[p] += (T * stepMin) / 60;
+      /* A fence face's reflection adds to the light, not to the hours of sun. */
+      if (views?.[p]) num[p] += dni * reflectedBeam(views[p], model.fences, s.dir, (i) => lit[i]);
       if (cosInc <= 0) continue;
       num[p] += dni * cosInc * T;
     }

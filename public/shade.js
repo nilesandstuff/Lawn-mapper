@@ -45,6 +45,8 @@ import { traceLot, lotFeature, lotParam, parseLot, lotProblem } from './shade/tr
 import { startSteps } from './shade/steps.js';
 import { leash } from './shade/leash.js';
 import { startTrees } from './shade/trees-ui.js';
+import { cleanFences, fenceRecord } from './shade/fences.js';
+import { drawFenceLine, askFence, showFences, fenceWords } from './shade/fence-ui.js';
 import { renderGrass } from './shade/grass-ui.js';
 import { ringAreaSqM, SQM_PER_SQFT } from './lib/area.js';
 
@@ -134,8 +136,12 @@ function shadePart() {
   const grid = view.model ? gridOver(view.model.box, 1, site.lat) : null;
   const shown = view.sun?.view?.() || {};
   const data = {
-    v: 2,
+    v: 3,
     lot: traced,
+    /* The fences drawn in step 1 (fences.js records: line, heightM, style,
+       material, color, and their light, wind and surface numbers, which the
+       water map reads for its wind and heat). */
+    fences: view.fences || [],
     erased: view.trees?.erasedCells() || [],
     cubes: view.trees?.erasedCubes() || [],
     grid: grid ? { w: grid.w, h: grid.h, x0: Math.round(grid.x0 * 100) / 100, y1: Math.round(grid.y1 * 100) / 100, nz: view.trees?.nz || null } : null,
@@ -556,6 +562,9 @@ async function build(site) {
     return Number.isFinite(z0) ? cols.z[i] - z0 : 0;
   };
   const baseZ = quantile(ground, 0.5);
+  /* The fences stand on this ground when the map is tilted. */
+  view.groundFor = { grid: g, z: ground, baseZ };
+  fenceList();
 
   view.built = {
     cols, shift, pre, heightOver, baseZ, frame, fit,
@@ -648,7 +657,7 @@ function startShade() {
   }
   view.sun?.stop();
   view.sun = startSun({
-    map, site, cols: m.cols, box: m.box, shift: m.shift, heightM: m.baseZ, season: m.season, ground: m.ground, erased: mask, erasedCubes: cubes,
+    map, site, cols: m.cols, box: m.box, shift: m.shift, heightM: m.baseZ, season: m.season, ground: m.ground, erased: mask, erasedCubes: cubes, fences: view.fences || [],
     beforeLayer: () => (map.getLayer('parcel') ? 'parcel' : undefined),
     onSeason: (se, climate) => {
       if (!STEPPED) return;
@@ -702,7 +711,58 @@ async function offerLot(site, { traced = false } = {}) {
   $('#lot-trace').textContent = traced || site.parcel?.properties?.traced ? 'Trace it again' : 'Trace the line myself';
   view.steps.setNext(1, !!site.parcel);
   backLink();
-  status(site.parcel ? 'Check the property line, then go on to the trees.' : 'Trace the property line.');
+  /* The fences kept with this map, and the tools to add more. */
+  if (view.fencesFor !== site) { view.fences = cleanFences(site.map?.shade?.fences); view.fencesFor = site; }
+  $('#fences').hidden = !site.parcel;
+  fenceList();
+  status(site.parcel ? `Check the property line${view.fences.length ? '' : ', mark any solid or board fences'}, then go on to the trees.` : 'Trace the property line.');
+}
+
+/* ---------------------------------------------------------------- fences */
+
+/** The fences on the map and in step 1's list, with Edit and Remove. */
+function fenceList() {
+  const map = view.map;
+  if (!map) return;
+  showFences(map, view.fences || [], { ground: view.groundFor || null });
+  const list = $('#fence-list');
+  if (!list) return;
+  list.innerHTML = (view.fences || []).map((f, i) => `<div class="fence"><i style="background:${{ solid: '#ff8a65', spaced: '#ffd54f', shadowbox: '#ce93d8' }[f.style]}"></i><span>${esc(fenceWords(f))}</span>
+    <button type="button" data-fence-edit="${i}">Change</button><button type="button" data-fence-line="${i}">Redraw</button><button type="button" data-fence-del="${i}">Remove</button></div>`).join('')
+    || '<p class="dim">No fences marked.</p>';
+  list.querySelectorAll('[data-fence-edit]').forEach((b) => { b.onclick = () => editFence(Number(b.dataset.fenceEdit), { line: false }); });
+  list.querySelectorAll('[data-fence-line]').forEach((b) => { b.onclick = () => editFence(Number(b.dataset.fenceLine), { line: true }); });
+  list.querySelectorAll('[data-fence-del]').forEach((b) => { b.onclick = () => { view.fences.splice(Number(b.dataset.fenceDel), 1); fencesChanged(); }; });
+  $('#fence-add').disabled = (view.fences || []).length >= 40;
+}
+/** Kept with the map, and the light worked out again with them. */
+function fencesChanged() {
+  fenceList();
+  saveShadePart();
+  view.sun?.setFences?.(view.fences);
+  track('fence', `${view.fences.length} fences`);
+}
+let fenceBusy = false;
+/** Add a fence (i null) or change one: draw its line (new, or asked), then the questions. */
+async function editFence(i = null, { line = true } = {}) {
+  if (fenceBusy || !view.map) return;
+  fenceBusy = true;
+  $('#fence-add').disabled = true;
+  try {
+    const was = i === null ? null : view.fences[i];
+    const pts = line ? await drawFenceLine(view.map, { box: $('#fence-draw'), status, line: was?.line || null }) : was.line;
+    if (!pts) return;
+    const answers = await askFence($('#fence-draw'), was);
+    if (!answers) return;
+    const rec = fenceRecord({ id: was?.id || null, line: pts, ...answers });
+    if (!rec) { status('That fence could not be kept: its line is too short or its height out of range.', 'warn'); return; }
+    if (i === null) view.fences.push(rec); else view.fences[i] = rec;
+    fencesChanged();
+    status(`Fence kept: ${fenceWords(rec)}.`, 'ok');
+  } finally {
+    fenceBusy = false;
+    fenceList();
+  }
 }
 
 /** The camera's leash to the lot (or the address, while the line is traced). */
@@ -722,6 +782,7 @@ async function traceNow(site) {
   $('#toggles').hidden = true;
   $('#lot-note').innerHTML = '';
   $('#lot-trace').hidden = true;
+  $('#fences').hidden = true;
   view.steps.setNext(1, false);
   reLeash({ type: 'Feature', geometry: { type: 'Point', coordinates: [site.lng, site.lat] } });
   track('trace', 'asked');
@@ -987,6 +1048,7 @@ async function main() {
   });
   $('#t-trees')?.addEventListener('click', () => { view.trees?.setVisible(toggle('#t-trees')); });
   /* Step 1: trace the line over the county's (or again). */
+  $('#fence-add')?.addEventListener('click', () => editFence(null));
   $('#lot-trace')?.addEventListener('click', async () => {
     const site = view.site;
     if (!site || $('#go').disabled) return;

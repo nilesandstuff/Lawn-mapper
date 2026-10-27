@@ -1354,6 +1354,43 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   }
 }
 
+/* ------------------------------------------------------------- fences */
+{
+  const F = await import('../public/shade/fences.js');
+  const R = await import('../public/shade/rays.js');
+  const { sunPath } = await import('../public/shade/sun.js');
+  const deg = Math.PI / 180;
+  check('fences: a solid fence passes nothing; spaced boards half the beam straight on and less at a slant; a shadowbox nothing straight on and a little at a slant',
+    F.lightThrough('solid', 0) === 0 && F.lightThrough('spaced', 0) === 0.5 && F.lightThrough('spaced', 60 * deg) < 0.4 && F.lightThrough('spaced', 60 * deg) > 0.2
+    && F.lightThrough('shadowbox', 0) === 0 && F.lightThrough('shadowbox', 60 * deg) > 0.05 && F.skyThrough('shadowbox') < 0.1 && F.skyThrough('spaced') > 0.3, '');
+  const rec = F.fenceRecord({ line: [[-86.229, 43.0636], [-86.2285, 43.0636]], heightM: 1.83, style: 'spaced', material: 'vinyl', color: 'white' });
+  check('fences: a record carries its light, wind and surface for the water map; a short line, an unknown build or a silly height is refused; kept records are rebuilt from their fields',
+    rec.light.straight === 0.5 && rec.wind.porosity === 0.5 && rec.surface.solarReflectance === 0.7 && rec.surface.absorptance === 0.3 && Math.abs(F.fenceLengthM(rec) - 40.7) < 0.3
+    && F.fenceRecord({ line: [[0, 0]], heightM: 2, style: 'solid', material: 'wood' }) === null && F.fenceRecord({ line: rec.line, heightM: 2, style: 'chainlink', material: 'wood' }) === null
+    && F.fenceRecord({ line: rec.line, heightM: 9, style: 'solid', material: 'wood' }) === null
+    && F.cleanFences([{ ...rec, light: { straight: 0.9 } }, null, { bad: 1 }])[0].light.straight === 0.5 && F.cleanFences([{ ...rec, light: 1 }]).length === 1, JSON.stringify(rec));
+  /* A bare, flat 30 x 30 m grid at the equator (1 m cells), a 2 m solid fence along y = 15 from x = 5 to 25. */
+  const w = 30, h = 30, nz = 10;
+  const model = { grid: { cell: 1, lat: 0 }, w, h, nz, dz: 1, z0: 0, mu: new Float32Array(w * h * nz), ground: new Float32Array(w * h), top: 10 };
+  const fenced = { ...model, fences: F.fencesOnGrid([F.fenceRecord({ line: [[5, 15], [25, 15]], heightM: 2, style: 'solid', material: 'vinyl', color: 'white' })], ([x, y]) => [x, y], () => 0, 1) };
+  const sunS = [0, -Math.cos(30 * deg), Math.sin(30 * deg)];
+  const pts = Float32Array.from([15, 17, 15, 18.5, 15, 13, 2, 17]); // 2 m south of it, 3.5 m south, 2 m north, and south but past its end
+  const lit = R.sunlitNow(fenced, pts, sunS);
+  check('fences in the light: with the sun 30 degrees up in the south, a 2 m fence shades 3.46 m north of it and nothing past its end or on its sunny side',
+    lit[0] === 1 && lit[1] === 1 && lit[2] === 0 && lit[3] === 1 && R.sunlitNow(fenced, Float32Array.from([15, 12]), sunS)[0] === 0 && R.sunlitNow(fenced, Float32Array.from([15, 11.4]), sunS)[0] === 1, Array.from(lit).join());
+  const sv0 = R.skyView(model, Float32Array.from([15, 16, 15, 14])), sv1 = R.skyView(fenced, Float32Array.from([15, 16, 15, 14]));
+  check('fences in the light: a fence a metre away hides much of the sky on its side, and its white face gives some back',
+    sv1[0] < sv0[0] - 0.1 && sv1[0] > 0.5 && sv1[1] < sv0[1] - 0.1, `${sv0[0].toFixed(3)} ${sv1[0].toFixed(3)}`);
+  /* The March equinox at 40 N: the sun crosses the south, so the fence's south face is the lit one. */
+  const m40 = { ...model, grid: { cell: 1 / Math.cos(40 * deg), lat: 40 } };
+  const f40 = { ...m40, fences: F.fencesOnGrid([F.fenceRecord({ line: [[5, 15], [25, 15]], heightM: 2, style: 'solid', material: 'vinyl', color: 'white' })], ([x, y]) => [x, y], () => 0, 1) };
+  const path = sunPath(40, 0, Date.UTC(2026, 2, 20, 12), 20);
+  const p2 = Float32Array.from([15, 15.6, 15, 25]);
+  const a = R.beamAndHours(m40, p2, path), b = R.beamAndHours(f40, p2, path);
+  check('fences in the light: in front of a sunlit white fence the light rises above open ground (its reflection) while the hours of sun do not; far away nothing changes',
+    b.share[0] > a.share[0] + 0.05 && Math.abs(b.hours[0] - a.hours[0]) < 0.01 && Math.abs(b.share[1] - a.share[1]) < 1e-6, `${a.share[0].toFixed(3)} -> ${b.share[0].toFixed(3)}`);
+}
+
 /* ------------------------------------------------------- soil temperature */
 {
   const { soilFrames, trailingAverage, shadedSoil, tempBands, dayOfYmd, SOIL_SHADE_C_PER_MJ } = await import('../public/shade/soil.js');

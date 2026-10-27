@@ -73,6 +73,10 @@
   .sun table { margin-top: 6px; }
   .sun select { font-size: 14px; padding: 5px; border-radius: 8px; border: 1px solid #555; background: #222; color: #eee; }
   #season-chart, #soil-chart { position: relative; max-width: 520px; }
+  .fences h3 { margin: 14px 0 4px; font-size: 15px; }
+  .fences .fence { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0; }
+  .fences .fence i { display: inline-block; width: 18px; height: 4px; border-radius: 2px; }
+  .fences .sw, #fence-draw .sw { display: inline-block; width: 12px; height: 12px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; border: 1px solid #555; }
   #soil-chart svg { width: 100%; height: auto; display: block; touch-action: pan-y; }
   #season-chart svg { width: 100%; height: auto; display: block; touch-action: pan-y; }
   #season-chart .tip { position: absolute; pointer-events: none; background: #222; border: 1px solid #444; border-radius: 6px; padding: 4px 8px; font-size: 12px; white-space: nowrap; }
@@ -147,6 +151,13 @@
       <div class="candidates" id="candidates" hidden></div>
       <section class="sun trace" id="trace" hidden></section>
       <div id="lot-note"></div>
+      <section class="fences" id="fences" hidden>
+        <h3>Fences</h3>
+        <p class="dim">A solid or board fence is too thin for the lidar to see, so mark yours here, before the trees are built, and its shade counts: tap along it on the photo, then say how tall it is and how it is built.</p>
+        <div id="fence-list"></div>
+        <div class="row"><button type="button" id="fence-add">Add a fence</button></div>
+        <section class="sun trace" id="fence-draw" hidden></section>
+      </section>
       <div class="foot">
         <button type="button" id="lot-trace" hidden>Trace the line myself</button>
         <button type="button" class="primary" data-next disabled>Next: the trees</button>
