@@ -108,7 +108,7 @@ export async function runSite(site, io, pickCloud, { progress = () => {}, nullRu
 
   return {
     sameGridAsShade: !!kept,
-    cloud: { name: cloud.name, ql: cloud.unit?.ql ?? null, flown: flown ? new Date(flown.mid).toISOString().slice(0, 10) : null, season: flightSeason(flown), notOnAws: pick.notOnAws || [] },
+    cloud: { name: cloud.name, url: cloud.url || null, ql: cloud.unit?.ql ?? null, flown: flown ? new Date(flown.mid).toISOString().slice(0, 10) : null, season: flightSeason(flown), notOnAws: pick.notOnAws || [] },
     result: res, parcelMask, lawnMask, impervious: imp, weightedFlow: wflow,
     spots: spotRecords(res).filter((r) => !parcelMask || parcelMask[r.row * g.W + r.col] || onParcel.some((o) => o.spot.row === r.row && o.spot.col === r.col))
       .map((r) => {

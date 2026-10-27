@@ -1606,6 +1606,80 @@ less sky than sun (beside a house, the owner's 40 cells) it loses less heat and 
 (sun blocked, sky seen) it uses less -- the research's July example, 11% less (-0.38 mm) there, none of it on the
 owner's traced lawn. The page now says each spot's own warmth is counted (checked in a browser on the owner's map).
 
+### H48. The local wind: the nearest airport station's ten years (water session, 2026-10-27)
+
+The owner: "it'll be necessary to find local weather data to see how windy the area is and what the trends are in
+regards to wind speed, direction, and other stats." The Iowa Environmental Mesonet archives every US ASOS/AWOS
+station's hourly reports, free, no key, open to browsers (checked: Access-Control-Allow-Origin *). Its station list
+(AZOS, 3.6 MB worldwide) is cut by tools/stations.mjs to the 2,365 US stations with ten or more years of record
+(public/data/asos-stations.json, 144 KB, 54 KB compressed). The page takes the nearest within 80 km with a whole
+record (lib/wind.js localWind), ten years of routine hourly reports (about 87,000 rows, 3 MB, 6 s), and keeps the
+summary with the map (the water part) for half a year.
+
+The owner's nearest major station, 24 km away, 2016-2025 (87,327 hours), at 2 m over open grass (FAO-56 eq. 47):
+daytime (8-20 solar) mean 3.56 m/s (8 mph), all hours 3.07; calm (under 3 kt) 8% of the hours, 13% in August; the
+daytime wind from the west and west-south-west most of all (July: W 19%, WSW 17%), east winds in spring (March-May:
+E 11-12%); windiest February-April (daytime 4.0-4.1 m/s), calmest August (2.95); gusts, at the mast, nine in ten
+below 29 mph in July-August, 37 in winter. Year by year 2.91-3.19 m/s, a trend of -0.11 m/s a decade over these ten
+years (anemometer changes and siting can move a station's record by as much: a trend, not a finding).
+The plan uses only the DIRECTIONS (by month, the daytime wind weighted by its speed) for each spot's shelter (H50);
+the day-to-day speed stays the weather's (NASA POWER, the open-airport wind: 0.96 of this station's, H44).
+
+### H49. Fences' radiant heat on the grass (water session, 2026-10-27)
+
+The owner: "Integrate fences now. Shade, radiant heat (warming and cooling), and wind." The fences are the shade
+map's (drawn there, its part v 3, merged 2026-10-27). Their shade and a pale face's reflected sun are in the shade
+map's light, which the water map now asks with the fences (light-worker 'build' fences). What the water map adds
+(lib/fenceheat.js, on the shade map's own fencesOnGrid, faceViews, reflectedSky and sun path):
+- Cooling blocked: the sky a fence fills is sky the grass does not lose its heat to, day and night -- the shade
+  map's sky view with the fence in it, less the reflected skylight it counts as sky (rho x F x 0.5), for the
+  longwave.
+- Warming: a sunlit board (thin: one temperature both faces) runs above the air by absorptance x sun on it / h,
+  h = 2 (5.7 + 3.8 u + 4 eps sigma T^3) (McAdams' flat-plate convection, u 1.5 m/s at the fence, radiation
+  linearised: about 33 W/m2/K); the grass a face fills F of the sky of gets F x 4 eps sigma T^3 x dT more
+  longwave: 0.157 MJ per MJ the board absorbs, per unit F.
+A test fence on the owner's lawn (6 ft, solid, natural wood, 79 m east-west along the lawn's south edge; the
+shade map's worker, ten May-November seasons, use as a share of open sun):
+
+| | without | fence shade only | shade and radiant heat |
+|---|---|---|---|
+| 1 m south (its sunny side) | 0.537 | 0.522 | 0.559 |
+| 1 m north (its shaded side) | 0.575 | 0.555 | 0.591 |
+| 3 m north | 0.627 | 0.625 | 0.635 |
+| 9 m north | 0.740 | 0.739 | 0.739 |
+
+Its shade alone takes up to 4%; with its warmth and the sky it hides, the grass within a metre or two uses 2-4%
+more than without it, both sides; nothing by three heights away. Its wind is in H50.
+
+### H50. Each spot's own wind: what stands upwind of it, by direction (water session, 2026-10-27)
+
+The owner: "looking into wind so that we get true localized effects rather than broad area averages. If you have
+to pull a wider area for lidar than you currently do, do what you need to do." The research: research-wind-local.md.
+
+Built (lib/shelter.js, lib/obstacles.js):
+- A WIDER LOOK: the lidar's coarse levels (down to about 1.8 m between points: ept.js pointsIn spacingM) 150 m round
+  the grid, and Overture's building outlines there: on the owner's lot a 551 m box, 716,714 points, 511 outlines,
+  5 s. This survey classes only ground and the rest (classes 1, 2, 7), so a 4 m cell is a building under an
+  Overture outline, vegetation when 40% or more of its returns stand 1.5 m above its ground -- calibrated on the
+  shade map's own crowns over its grid: 40.4% against its 39.1%, the same call on 85% of 2,624 cells (30%: 48% and
+  87%; 50%: 30% and 78%). Within the shade map's grid its own kinds (roof, evergreen, deciduous) are used, with the
+  heights from the full-density lidar.
+- PER SPOT, PER DIRECTION: 16 directions x 3 rays, out to 150 m; fences, hedges and crowns by the USDA wind-erosion
+  model's fitted barrier curve (WEPS, Agric. Handbook 727, 2020; reproduced: 0.18/0.55/0.83 of the open wind at
+  5/10/15 heights behind a solid barrier, 0.40/0.29 at 2/5 behind one half open); houses by the Rockle zones
+  (QUIC-URB; a 6 m house 12 m across: 0.47 of the wind 3 heights behind, 0.66 at 4); a crown lifted off the ground
+  shelters nothing for 3 tree heights (Mayaud et al. 2016); the strongest shelter is taken. Leaves on and off apart
+  (the shade map's leaf calendar by month); directions weighted by the station's daytime wind (H48).
+- HELD TO HEISLER: one factor per month brings the lawn's mean to Heisler 1990's measured yard figure for the cover
+  within 90 m (now the full 90 m: H46's clipping undone), so the pattern is the obstacles' and the level is measured.
+
+The owner's lawn (2,639 cells; 1.6 s): cover within 90 m 38%, Heisler's yard 0.42. July, as a share of the open
+wind: before, 0.37-0.45 over the whole lawn; now median 0.45, the calmest tenth 0.22, the windiest tenth 0.56
+(January: 0.35 / 0.43 / 0.49, the leaves off). By direction (leaves on, the lawn's median) 0.41 from the ESE to 0.62
+from the NE. Use April-November as a share of open sun: the calmest tenth 0.493 -> 0.459, the windiest tenth 0.834 ->
+0.848, the lawn's median 0.744 -> 0.750. A Wind view shows July's figure per spot (checked in a browser with a test
+fence: the page's own run, 55 s).
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge
@@ -1640,6 +1714,23 @@ nine unlikely. No ground truth yet: a wet spring on lawns it calls likely and
 unlikely is the check. The soil survey's own monthly water table (lib/soil.js,
 "Wet" layers) IS in the balance: it stops drainage and makes dual-group soils
 the wetter group in those months.
+
+### S14. Fences' warmth and each spot's wind: the estimates in them (2026-10-27, with H49, H50)
+
+- A fence's surface reflectance is the shade map's typical value for its material and color, not measured; the
+  board's temperature is a flat-plate energy balance at 1.5 m/s with no shading of the board by trees (overstates
+  the warmth under trees); no warming of the air beside it.
+- The shelter curves are fitted on field windbreaks and wind tunnels, none on a yard: WEPS gives near-surface
+  friction velocity, the Rockle zones the wind at 2 m. No corner speed-up (none measured for a low house; Heisler's
+  isolated house 0.37-1.11 at one height); no gaps between houses funnelling the wind.
+- Crowns pass 0.2 of the wind in leaf and 0.5 bare (second-hand ranges); the wide box's vegetation taken as
+  deciduous; a crown "lifted" when its lowest standing returns are 2.5 m or more up (a leaf-off flight sees branches).
+- The calibration holds the lawn's mean to Heisler's summer yards in every month; his winter reductions were
+  smaller where trees are few (Table 3).
+- Penman-Monteith at the spot's wind, the air's temperature and vapour held: sheltered air is warmer and more humid
+  (Cleugh et al. 2002), so the cut may be too big (as S12).
+- What would settle it: a handheld anemometer at 1-2 m in the calmest and the windiest spots of the Wind view and in
+  the open, on a few windy afternoons, against the airport's wind; and a surface thermometer on a sunny fence.
 
 ### S13. The spot's own radiation: the averages in it (2026-10-27, with H47)
 

@@ -171,7 +171,7 @@ export function etToday(model, part, inSeason, out, month = null) {
   const { N, etBase, canopy, params } = model;
   // the month's own light when the shade map gave it by month (its leaves and its sun that month), else the summer's
   const light = model.lightMonths && month !== null ? model.lightMonths[month] : model.light;
-  const winds = model.winds || [1], at = model.windAt;
+  const winds = model.winds || [1], at = model.windAtMonths && month !== null ? model.windAtMonths[month] : model.windAt;
   let sunRel = part?.sunRel, airRel = part?.airRel;
   if (!sunRel) {
     const s = part ? part.share : params.airShare;
@@ -275,9 +275,10 @@ export function scsRunoff(w, cn) {
  *            sun's beam and of the sky each cell sees (the sky's share is its sky view), with the trees and with the
  *            buildings alone -- or null (H47)
  * fenceHeat  lib/fenceheat.js fenceRadiation(...): the fences' longwave (H49), or null
+ * windMonths [12 Float32Array] each cell's own wind by month, a share of the open wind (shelter.js, H50), or null
  * shadeKinds  Uint8Array per cell from the shade map's light worker (0 open, 1 roof, 2 evergreen, 3 deciduous) or null
  */
-export function buildModel(res, { kinds, soilAt, soils, roofTo, light = null, lightMonths = null, radiation = null, fenceHeat = null, shadeKinds = null, params = PARAMS }) {
+export function buildModel(res, { kinds, soilAt, soils, roofTo, light = null, lightMonths = null, radiation = null, fenceHeat = null, windMonths = null, shadeKinds = null, params = PARAMS }) {
   const g = res.grid, N = g.W * g.H;
   const { down, filled } = res.runoff;
   const order = [];
@@ -362,7 +363,22 @@ export function buildModel(res, { kinds, soilAt, soils, roofTo, light = null, li
       windAt[i] = idx.get(f);
     }
   }
-  const model = { g, N, kinds, soilAt, soils, roofTo, light, lightMonths: lightMonths?.length === 12 ? lightMonths : null, canopy, winds, windAt, order, down, recv, share, nRecv, slope, pondCap, taw, raw, satRoom, drainDay, heat, etBase, params };
+  /* EACH SPOT'S OWN WIND BY MONTH (H50), when worked out: in steps of 0.05, each month's cells pointing at them */
+  let windAtMonths = null;
+  if (windMonths?.length === 12) {
+    const idx = new Map(winds.map((f, k) => [f, k]));
+    windAtMonths = windMonths.map((a) => {
+      const at = new Uint8Array(N);
+      for (let i = 0; i < N; i++) {
+        const f = Math.max(0.05, Math.min(1, Math.round(a[i] / 0.05) * 0.05));
+        const key = Math.round(f * 100) / 100;
+        if (!idx.has(key)) { idx.set(key, winds.length); winds.push(key); }
+        at[i] = idx.get(key);
+      }
+      return at;
+    });
+  }
+  const model = { g, N, kinds, soilAt, soils, roofTo, light, lightMonths: lightMonths?.length === 12 ? lightMonths : null, canopy, winds, windAt, windAtMonths, order, down, recv, share, nRecv, slope, pondCap, taw, raw, satRoom, drainDay, heat, etBase, params };
   model.rad = radiation ? radiationModel(radiation, N, params) : null;
   model.fenceHeat = radiation && fenceHeat ? fenceHeat : null;
   model.etFactor = etToday(model, null, false, new Float32Array(N));

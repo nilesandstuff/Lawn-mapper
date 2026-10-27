@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { parseAsos, windStats, nearestStations, kmBetween, TO_2M, KT } from '../lib/wind.js';
 import { fenceRadiation, heatShare, faceBeamRatio } from '../lib/fenceheat.js';
 import { toMerc, fromMerc } from '../lib/shade/ept.js';
+import { weps, buildingLee, buildingFront, shelterByDirection, monthlyShelter, calibrate } from '../lib/shelter.js';
 
 const tests = [];
 const test = (name, fn) => tests.push([name, fn]);
@@ -66,6 +67,48 @@ test('a fence: the grass at its foot sees it, takes some sky from the longwave, 
   assert.ok(faceBeamRatio(seg, lat, lng, 0) > faceBeamRatio(seg, lat, lng, 6), 'a low winter sun lights an upright face more, per unit on the ground');
   assert.ok(heatShare() > 0.1 && heatShare() < 0.25);
   assert.equal(fenceRadiation([], { W, H, bbox, cell: 1 }, z, cells, lat, lng), null);
+});
+
+test('the shelter curves: WEPS behind a barrier by porosity, a house\'s lee and its front', () => {
+  // the USDA's fitted curve, as tabulated in its handbook's terms (the research's table)
+  assert.ok(Math.abs(weps(5, 0) - 0.18) < 0.01 && Math.abs(weps(10, 0) - 0.55) < 0.01, 'solid');
+  assert.ok(Math.abs(weps(2, 0.5) - 0.40) < 0.01 && Math.abs(weps(5, 0.5) - 0.29) < 0.01, 'half open');
+  assert.equal(weps(40, 0), 1); assert.equal(weps(-6, 0), 1);
+  assert.ok(weps(-1, 0) < 0.2, 'just upwind of a solid fence, slowed too');
+  // a 6 m house, 12 m across, 10 m deep: its cavity, then its wake
+  assert.equal(buildingLee(5, 6, 12, 10), 0.1);
+  assert.ok(Math.abs(buildingLee(18, 6, 12, 10) - 0.47) < 0.02);
+  assert.equal(buildingLee(40, 6, 12, 10), 1);
+  assert.equal(buildingFront(3, 6, 12), 0.3); assert.equal(buildingFront(15, 6, 12), 1);
+});
+
+test('each spot\'s wind: behind a house from the west, open to the east; by the month\'s rose; held to the yard\'s figure', () => {
+  // a 60 x 60 m grid, a 6 m house 12 m across in the middle; cells 9 m east and 9 m west of it
+  const W = 60, H = 60, kind = new Uint8Array(W * H), height = new Float32Array(W * H), base = new Float32Array(W * H);
+  for (let r = 24; r < 36; r++) for (let c = 25; c < 35; c++) { kind[r * W + c] = 1; height[r * W + c] = 6; }
+  const east = 30 * W + 44, west = 30 * W + 15;
+  const sd = shelterByDirection({ W, H, kind, height, base }, [east, west], W, 0, 0);
+  const W_ = 12, E_ = 4; // sectors: from the west, from the east
+  assert.ok(sd.on[0 * 16 + W_] < 0.5, `east of the house, a west wind: ${sd.on[W_]}`);
+  assert.ok(sd.on[0 * 16 + E_] > 0.9, 'east of the house, an east wind: open');
+  assert.ok(sd.on[1 * 16 + E_] < 0.5 && sd.on[1 * 16 + W_] > 0.9, 'and the other way round to the west');
+  // a fence 1.8 m tall, solid, running north-south 4 m west of a cell: from the west, sheltered
+  const open = new Uint8Array(W * H);
+  const cell = 30 * W + 10;
+  const fence = { ax: 6, ay: 20, bx: 6, by: 40, h: 1.8, style: 'solid', nE: 1, nN: 0 };
+  const sf = shelterByDirection({ W, H, kind: open, height: new Float32Array(W * H), base }, [cell], W, 0, 0, [fence]);
+  assert.ok(sf.on[W_] < 0.15, `2.2 heights behind a solid fence: ${sf.on[W_]}`);
+  assert.ok(sf.on[E_] < 0.7, 'upwind of it, a little slowed too');
+  const spaced = shelterByDirection({ W, H, kind: open, height: new Float32Array(W * H), base }, [cell], W, 0, 0, [{ ...fence, style: 'spaced' }]);
+  assert.ok(spaced.on[W_] > sf.on[W_] + 0.2, 'a spaced fence shelters less');
+  // the month: all the wind from the west -> the east cell is sheltered all month; held to a yard figure of 0.4
+  const rose = new Array(16).fill(0); rose[W_] = 1;
+  const months = monthlyShelter(sd, 2, new Array(12).fill(rose), new Array(12).fill(1));
+  assert.ok(months[6][0] < 0.5 && months[6][1] > 0.9);
+  const fit = calibrate(months, 0.4);
+  const mean = (fit[6].F[0] + fit[6].F[1]) / 2;
+  assert.ok(Math.abs(mean - 0.4) < 0.02, `the lawn's mean is the yard's figure: ${mean}`);
+  assert.ok(fit[6].F[0] < fit[6].F[1], 'and the sheltered spot stays the calmer');
 });
 
 let failed = 0;

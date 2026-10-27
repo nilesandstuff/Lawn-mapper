@@ -50,7 +50,7 @@ const DEFAULT_SOIL = { name: 'no survey soil here (a loam assumed)', drainage: '
  *   topsoil (bool), downspouts, gutters, typical (days), week ({ days, today }), light (Float32Array | null),
  *   zoneOf (Int16Array, the user's own zones, optional), params
  */
-export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, topsoil = false, downspouts = [], gutters = [], typical, week = null, light = null, lightMonths = null, radiation = null, fenceHeat = null, shadeKinds = null, season = null, grass = 'cool', texture = null, parcelMask = null, areas = [], zoneOf: userZones = null, params: given = null } = {}) {
+export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, topsoil = false, downspouts = [], gutters = [], typical, week = null, light = null, lightMonths = null, radiation = null, fenceHeat = null, windMonths = null, shadeKinds = null, season = null, grass = 'cool', texture = null, parcelMask = null, areas = [], zoneOf: userZones = null, params: given = null } = {}) {
   // warm-season turf (owner 2026-10-18): FAO-56's p 0.5 in place of cool-season's 0.4
   const params = given || (grass === 'warm' ? { ...PARAMS, ...WARM } : PARAMS);
   const g = res.grid, N = g.W * g.H;
@@ -88,7 +88,7 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
 
   // 2. roofs
   const roofs = roofRouting(g, wallNow, res.runoff.filled, { downspouts, gutters });
-  const model = buildModel(res, { kinds, soilAt, soils, roofTo: roofs.roofTo, light, lightMonths: light ? lightMonths : null, radiation: light ? radiation : null, fenceHeat: light ? fenceHeat : null, shadeKinds: light ? shadeKinds : null, params });
+  const model = buildModel(res, { kinds, soilAt, soils, roofTo: roofs.roofTo, light, lightMonths: light ? lightMonths : null, radiation: light ? radiation : null, fenceHeat: light ? fenceHeat : null, windMonths, shadeKinds: light ? shadeKinds : null, params });
   for (let i = 0; i < N; i++) if (deckCells[i]) { model.etFactor[i] *= params.deckShelter; model.etBase[i] *= params.deckShelter; }
   // the most a day's watering can put down, cell by cell (PARAMS.cyclesPerDay runs of an hour's intake),
   // as water reaching the grass: what is put down, over the scheduling multiplier

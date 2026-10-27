@@ -47,7 +47,7 @@ const touches = (a, b) => !(a[2] < b[0] || a[0] > b[2] || a[3] < b[1] || a[1] > 
  * `count(key)` answers a node's point count (async), or null when the node
  * does not exist.
  */
-export async function walk(bounds, bbox, count, { maxNodes = 600 } = {}) {
+export async function walk(bounds, bbox, count, { maxNodes = 600, maxDepth = Infinity } = {}) {
   const wanted = [];
   const stack = ['0-0-0-0'];
   while (stack.length) {
@@ -58,6 +58,7 @@ export async function walk(bounds, bbox, count, { maxNodes = 600 } = {}) {
     wanted.push({ key, count: c });
     if (wanted.length > maxNodes) throw new Error(`more than ${maxNodes} octree nodes over this box`);
     const [d, x, y, z] = key.split('-').map(Number);
+    if (d >= maxDepth) continue; // coarse enough (the wide box for the wind's obstacles)
     for (const dx of [0, 1]) for (const dy of [0, 1]) for (const dz of [0, 1]) {
       stack.push(`${d + 1}-${2 * x + dx}-${2 * y + dy}-${2 * z + dz}`);
     }
@@ -129,11 +130,14 @@ export function flownOf(times) {
  *
  * `progress(done, total)` is told as nodes arrive.
  */
-export async function pointsIn(eptJsonUrl, bbox, io, { progress = () => {}, parallel = 6 } = {}) {
+export async function pointsIn(eptJsonUrl, bbox, io, { progress = () => {}, parallel = 6, spacingM = 0, lat = 0 } = {}) {
   const base = eptJsonUrl.replace(/\/ept\.json$/, '');
   const ept = await io.getJson(`${base}/ept.json`);
   if (String(ept?.srs?.horizontal) !== '3857') throw new Error(`point cloud is EPSG:${ept?.srs?.horizontal}, not 3857`);
-  const nodes = await walk(ept.bounds, bbox, hierarchyReader(base, io.getJson));
+  /* spacingM: only the octree's levels down to about that spacing between points (each level halves it; the root's
+     is the cloud's width over its span) -- a coarse look over a wide box (the wind's obstacles, lib/obstacles.js) */
+  const maxDepth = spacingM > 0 ? Math.max(0, Math.ceil(Math.log2(((ept.bounds[3] - ept.bounds[0]) * Math.cos((lat * Math.PI) / 180)) / ept.span / spacingM))) : Infinity;
+  const nodes = await walk(ept.bounds, bbox, hierarchyReader(base, io.getJson), { maxDepth, maxNodes: 600 });
   const parts = [], times = [];
   let done = 0;
   progress(0, nodes.length);

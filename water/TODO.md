@@ -68,18 +68,10 @@ SPECULATION), as always.
 16. **A simple view and an advanced view** (owner: "Simplified should just show the actionable info, advanced
     should show the reasoning.").
 
-17. **Wind on the sheltered side of a house** (owner, 2026-10-27). The yard's wind is Heisler's neighbourhood
-    figure from the roofs and crowns within 90 m (FINDINGS H44), much the same over the whole lawn; the lawn just
-    downwind of a house (and of a hedge, a fence or a row of trees) is calmer than that, and its corners can be
-    windier. Heisler measured the "approach wind" with the house's own effect taken out, and no measured table of
-    wind behind a single house was found. Research it (wind-tunnel and field studies of a house's wake, the summer
-    wind's direction here), then a per-cell lee from the roofs (and crowns) upwind, the buildings from the shade
-    map's kinds. Also: the cover is counted only as far as the grid reaches, 30 m past the lot, not Heisler's 90 m.
-    Fences (features session, 2026-10-27): the shade part (v 3) keeps each fence's line, height, style and a wind
-    porosity (solid 0, spaced 0.5 -- Zhou et al. 2004 for slat fences --, shadowbox 0.2, an estimate): a fence's lee
-    is the same calculation as a house's. The water map already passes the fences to the light worker for their shade.
-    What is known so far: FINDINGS H46 (which effects are averaged, and why the wind's average does not hold spot
-    by spot), H44 (the wind as built), S12, and research-shade-wind.md (Brandle's windbreak curves, Heisler's houses).
+17. **Wind on the sheltered side of a house** (owner, 2026-10-27): BUILT as each spot's own wind (FINDINGS H50,
+    S14; research-wind-local.md): the lee of houses, fences, hedges and crowns by direction, the local station's
+    wind rose (H48), held to Heisler's yard figure. Left: a corner and gap speed-up (nothing measured for low
+    houses), and checking it with an anemometer in the calmest and windiest spots of the Wind view.
 18. **Cooler air, more local, especially in still air** (owner, 2026-10-27: "fine tuning cooling effect of shade to
     get more localized cooling, especially in still air"). Today the trees' cooler air is the crown cover within
     30 m on sunny days (FINDINGS H43, H46), the same at any wind. Under a crown, on a calm day, the air near the
@@ -117,3 +109,4 @@ SPECULATION), as always.
 - 2026-10-27: shade again -- the trees in summer leaf, the trees erased on the shade map, the yard's wind (FINDINGS H44, S12).
 - 2026-10-27: shade through the year -- each month's light from the shade map's worker (FINDINGS H45).
 - 2026-10-27: each spot's own radiation -- near-infrared through crowns, skylight, the sky it loses heat to (FINDINGS H47, S13).
+- 2026-10-27: fences (shade, radiant heat, wind), the local wind's records, and each spot's own wind (FINDINGS H48, H49, H50, S14).

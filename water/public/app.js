@@ -29,6 +29,7 @@ import { sprinklers } from '/heads.js';
 import { viewer3d, groundMesh } from '/view3d.js';
 import { openable } from '/lib/maps.js';
 import { KINDS as LAYER_KINDS, FIELD_WORDS, typeWords, hasCounty, askBox, compact, freshEnough, summary as layerSummary, pick as layerPick, intakesNear } from '/lib/layers.js';
+import { sectorName } from '/lib/wind.js';
 
 const $ = (s) => document.querySelector(s);
 const R = 6378137;
@@ -147,7 +148,10 @@ function toPx(frame, img, xy) {
 /* ONE VIEW AT A TIME (owner, 2026-10-23: "Break up the different views into their respective categories, so
    that it's not just a sea of overlapping and hard to separate colors. Add soil view"). Roofs (white) and paving
    (black) under every view, when wanted; each view's own colours on top, and nothing of the others'. */
-const VIEWS = ['zones', 'need', 'soil', 'water', 'drains', 'slope', 'sprinklers'];
+const VIEWS = ['zones', 'need', 'soil', 'water', 'drains', 'slope', 'wind', 'sprinklers'];
+/** The wind view's steps: each spot's July wind as a share of the open wind, calm (deep teal) to windy (pale). */
+const WIND_STEPS = [[0.25, [0, 77, 64, 200]], [0.35, [0, 121, 107, 180]], [0.45, [38, 166, 154, 160]], [0.55, [128, 203, 196, 150]], [Infinity, [224, 242, 241, 150]]];
+const WIND_WORDS = ['under a quarter of the open wind', 'a quarter to a third', 'a third to under half', 'about half', 'over half'];
 let mapView = 'zones';
 /** Soil units' colours: earthy, told apart (the soil view). */
 const SOIL_RGB = [[161, 136, 127], [255, 183, 77], [77, 182, 172], [149, 117, 205], [229, 115, 115], [174, 213, 129], [100, 181, 246], [240, 98, 146]];
@@ -203,6 +207,9 @@ function overlay(d, v, { hard = true } = {}) {
       else if (d.reported[i] === 1) rgba = [190, 200, 215, 110]; // not a lawn hollow: pavement, trees, a ditch...
       // runoff lines: weighted by what each surface sheds when the lawn is traced (m^2 of runoff-producing surface), plain area otherwise
       if (!d.wall[i] && d.flow[i] >= (d.weighted ? 60 : 250)) rgba = [34, 211, 238, 220];
+    } else if (v === 'wind' && p?.windJuly && kind === 1 && d.lawnMask?.[i]) {
+      const w = p.windJuly[i];
+      if (Number.isFinite(w)) rgba = WIND_STEPS.find(([lim]) => w < lim)[1];
     } else if (v === 'slope' && ground && (!mine || mine[i])) {
       const sl = slope[i];
       if (Number.isFinite(sl)) { const step = SLOPE_STEPS.find(([lim]) => sl < lim); if (step[1][3]) rgba = step[1]; }
@@ -408,7 +415,7 @@ const lawnRingsOf = () => (view.site?.lawn || []).flatMap((f) => (f.geometry?.ty
 let layersAsk = 0;
 /** The most the layers may take of the water part's 64 KB, after everything else in it. */
 function layerBudget() {
-  const rest = JSON.stringify({ data: { v: 1, downspouts: inputs.downspouts, gutters: inputs.gutters, areas: inputs.areas, topsoil: inputs.topsoil, grass: inputs.grass, irrigation: heads.data }, basedOn: view.site?.at }).length;
+  const rest = JSON.stringify({ data: { v: 1, downspouts: inputs.downspouts, gutters: inputs.gutters, areas: inputs.areas, topsoil: inputs.topsoil, grass: inputs.grass, irrigation: heads.data, wind: inputs.wind || null }, basedOn: view.site?.at }).length;
   return Math.max(4000, Math.min(30000, MAX_TOOL_BYTES - rest - 3000));
 }
 async function loadLayers(boxDeg, kept) {
@@ -722,7 +729,7 @@ function planReport(p) {
   if (p.trouble?.length) parts.push(`<div class="card" style="border-color:var(--warn)"><h2>Not everything answered this time</h2><ul>${p.trouble.map((t) => `<li>${esc(t)}</li>`).join('')}</ul><p class="dim">Reload the page to try again; the plan below is worked out without it.</p></div>`);
   parts.push(`<div class="card"><h2>Your watering plan: ${p.zones.length} zone${p.zones.length > 1 ? 's' : ''}</h2>
     <p>Each zone below needs a different amount, or a different rhythm, to stay between too wet and too dry. Water a zone when it says, by about the depth it says; more is wasted below the roots, less leaves it short.</p>
-    <p class="dim">Worked out day by day over ten years of this place's weather: rain and runoff in, the grass's use out, the soil's root zone in between. ${p.shaded ? ` Shade from trees and buildings is counted (the shade map's own light model${p.lightByMonth ? ', month by month: the leaves as they stand and the sun where it is each month' : ''}${p.ownRadiation ? '; and each spot\'s own warmth from it: the near-infrared that leaves let through, the skylight in a building\'s shade, and the night sky each spot loses its heat to' : ''}${p.fences?.fences ? `; the ${p.fences.fences} fence${p.fences.fences === 1 ? '' : 's'} drawn on the shade map, in the shade, as sky the grass beside ${p.fences.fences === 1 ? 'it' : 'them'} cannot lose its heat to, and warm in the sun` : ''}; the lawn's middle gets about ${Math.round(p.sunShare * 100)}% of open-sky sunlight in summer${p.lightInfo?.canopy === 'seasonal' ? ', the trees in summer leaf: the lidar was flown with the leaves off' : ''}${p.lightInfo?.erased || p.lightInfo?.blocks ? `, with the edits made on the shade map: ${[p.lightInfo.erased ? `${p.lightInfo.erased} square metres of trees taken out` : '', p.lightInfo.blocks ? `${p.lightInfo.blocks} blocks of branches trimmed` : ''].filter(Boolean).join(' and ')}` : ''}${p.lightInfo?.blocksLost ? `; <strong>the ${p.lightInfo.blocksLost} blocks of branches trimmed on the shade map could not be carried over</strong> (it was saved on another grid: open the shade map and save it again)` : ''}). Shade takes away the sun's share of the grass's use, not the share the air itself dries out, which each day's weather sets (about a quarter, on a summer day here)${p.treeCool ? '; near trees the air is cooler on sunny summer days, and dries it less' : ''}.${p.yardWind ? ` Houses and trees shelter the lawn from the wind: about ${Math.round(p.yardWind * 100)}% of the open wind the weather gives, from the cover round it (measured in yards like it), less again where the trees are thick.` : ''}` : ' The lawn is taken as in full sun until the shade is worked out.'}${p.seasonDays ? ` The watering season is the shade map's growing season here for ${p.grass === 'warm' ? 'warm' : 'cool'}-season grass, about ${p.seasonDays} days.` : ''} Grass beside paving and sunny walls is counted as using a little more (up to 8% at the edge, an estimate from published measurements).${p.grass === 'warm' ? ' Warm-season grass is let dry a little further between waterings than cool-season.' : ''} These are likely amounts, until a soak test on your lawn confirms them. Depths are what to put down: about a quarter more than the grass uses, since sprinklers water unevenly and the driest spots must get enough (a typical home system, until your heads are mapped). Roots are taken to reach ${Math.round(p.rootIn || 8)} in, and a day's watering is at most two runs with a soak between, so on slow ground it comes more often, a little at a time.${p.standIn ? ' <strong>No lawn was traced, so this plans for all the open ground</strong>: open this from a Lawn Mapper map for your lawn alone.' : ''}</p></div>`);
+    <p class="dim">Worked out day by day over ten years of this place's weather: rain and runoff in, the grass's use out, the soil's root zone in between. ${p.shaded ? ` Shade from trees and buildings is counted (the shade map's own light model${p.lightByMonth ? ', month by month: the leaves as they stand and the sun where it is each month' : ''}${p.ownRadiation ? '; and each spot\'s own warmth from it: the near-infrared that leaves let through, the skylight in a building\'s shade, and the night sky each spot loses its heat to' : ''}${p.fences?.fences ? `; the ${p.fences.fences} fence${p.fences.fences === 1 ? '' : 's'} drawn on the shade map, in the shade, as sky the grass beside ${p.fences.fences === 1 ? 'it' : 'them'} cannot lose its heat to, and warm in the sun` : ''}; the lawn's middle gets about ${Math.round(p.sunShare * 100)}% of open-sky sunlight in summer${p.lightInfo?.canopy === 'seasonal' ? ', the trees in summer leaf: the lidar was flown with the leaves off' : ''}${p.lightInfo?.erased || p.lightInfo?.blocks ? `, with the edits made on the shade map: ${[p.lightInfo.erased ? `${p.lightInfo.erased} square metres of trees taken out` : '', p.lightInfo.blocks ? `${p.lightInfo.blocks} blocks of branches trimmed` : ''].filter(Boolean).join(' and ')}` : ''}${p.lightInfo?.blocksLost ? `; <strong>the ${p.lightInfo.blocksLost} blocks of branches trimmed on the shade map could not be carried over</strong> (it was saved on another grid: open the shade map and save it again)` : ''}). Shade takes away the sun's share of the grass's use, not the share the air itself dries out, which each day's weather sets (about a quarter, on a summer day here)${p.treeCool ? '; near trees the air is cooler on sunny summer days, and dries it less' : ''}.${p.windInfo ? ` Houses, trees${p.windInfo.fences ? ', fences' : ''} and hedges shelter each spot by what stands upwind of it, from the directions the local wind blows (the Wind view): in July from ${Math.round(p.windInfo.July.calmest * 100)}% of the open wind in the calmest tenth of the lawn to ${Math.round(p.windInfo.July.median * 100)}% in the middle, the lawn as a whole held to what was measured in yards like it.` : p.yardWind ? ` Houses and trees shelter the lawn from the wind: about ${Math.round(p.yardWind * 100)}% of the open wind the weather gives, from the cover round it (measured in yards like it), less again where the trees are thick.` : ''}` : ' The lawn is taken as in full sun until the shade is worked out.'}${p.seasonDays ? ` The watering season is the shade map's growing season here for ${p.grass === 'warm' ? 'warm' : 'cool'}-season grass, about ${p.seasonDays} days.` : ''} Grass beside paving and sunny walls is counted as using a little more (up to 8% at the edge, an estimate from published measurements).${p.grass === 'warm' ? ' Warm-season grass is let dry a little further between waterings than cool-season.' : ''} These are likely amounts, until a soak test on your lawn confirms them. Depths are what to put down: about a quarter more than the grass uses, since sprinklers water unevenly and the driest spots must get enough (a typical home system, until your heads are mapped). Roots are taken to reach ${Math.round(p.rootIn || 8)} in, and a day's watering is at most two runs with a soak between, so on slow ground it comes more often, a little at a time.${p.standIn ? ' <strong>No lawn was traced, so this plans for all the open ground</strong>: open this from a Lawn Mapper map for your lawn alone.' : ''}</p></div>`);
   const week = p.thisWeek;
   /* HOW FAST THE RECENT RAINS FELL (lib/weather.js addRainHours): the radar's hours, scaled to the day's total. A
      rain faster than the lawn takes water in partly ran off, so it did less than its inches suggest. */
@@ -734,6 +741,20 @@ function planReport(p) {
     parts.push(`<div class="card"><h2>The recent rains, and how fast they fell</h2>
       <table class="months"><tr><th>Day</th><th>Rain</th><th>Most in one hour</th></tr>${rows}</table>
       <p class="dim">${Number.isFinite(f) ? `Your lawn's soil takes in about ${in2(f)} in an hour on its typical ground. ` : ''}Rain faster than that runs off before it soaks in, so a cloudburst waters the lawn less than its total says; this week's plan counts it hour by hour. The hours are the National Weather Service's radar rain (Stage IV, gauge-corrected), from the Iowa Environmental Mesonet, scaled to the day's gauge-based total (PRISM).</p></div>`);
+  }
+  /* THE WIND HERE (owner, 2026-10-27: "find local weather data to see how windy the area is and what the trends
+     are"): the nearest airport station's ten years (lib/wind.js), at 2 m over open grass. */
+  const lw = p.localWind;
+  if (lw?.stats?.byMonth) {
+    const mph = (ms) => (Number.isFinite(ms) ? Math.round(ms * 2.237 * 10) / 10 : '–');
+    const from = (b) => b.rose.map((v, k) => [v, k]).sort((a, c) => c[0] - a[0]).slice(0, 2).filter(([v]) => v > 0).map(([v, k]) => `${sectorName(k)} ${Math.round(v * 100)}%`).join(', ');
+    const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const rows = lw.stats.byMonth.map((b, m) => `<tr><td>${MON[m]}</td><td>${mph(b.dayMs)}</td><td>${Math.round((b.calm || 0) * 100)}%</td><td>${mph(b.gustP90)}</td><td>${from(b)}</td></tr>`).join('');
+    const tr = lw.stats.trendPerDecade;
+    parts.push(`<div class="card"><h2>The wind here</h2>
+      <p>From ${esc(lw.stats.prevailing !== null ? sectorName(lw.stats.prevailing) : 'no one direction')} most of all in summer; ${mph(lw.stats.all.dayMs)} mph in the daytime on average, calm ${Math.round(lw.stats.all.calm * 100)}% of the hours${Number.isFinite(tr) ? `; over these ${lw.stats.byYear.length} years ${Math.abs(tr) < 0.05 ? 'no change to speak of' : `${tr > 0 ? 'stronger' : 'lighter'} by about ${mph(Math.abs(tr))} mph a decade`}` : ''}.</p>
+      <table class="months"><tr><th>Month</th><th>Daytime mph</th><th>Calm</th><th>Gusts, mph*</th><th>Daytime wind from</th></tr>${rows}</table>
+      <p class="dim">${esc(lw.station.name)} airport, ${lw.station.km} km away, ${lw.stats.years.join('-')}: its hourly reports (the Iowa Environmental Mesonet's archive), at 2 m over open grass. *Gusts as the airport's 10 m mast reports them, in the hours it gusted: nine in ten below this. Your lawn's own wind is less: houses, trees and fences round it shelter it, each spot by what stands upwind of it.</p></div>`);
   }
   for (const z of p.zones) {
     const pk = peak(z), w = week?.zones.find((x) => x.zone === z.zone);
@@ -814,6 +835,7 @@ async function run(site) {
   inputs.grass = kept.grass === 'warm' ? 'warm' : 'cool';
   inputs.texture = ''; // the soil is the survey's (owner 2026-10-19: no override)
   inputs.layers = kept.layers && typeof kept.layers === 'object' ? kept.layers : null;
+  inputs.wind = kept.wind && typeof kept.wind === 'object' ? kept.wind : null;
   view.layers = null; view.layersRaw = null; view.layerPicked = null; view.layersError = '';
   $('#topsoil').checked = inputs.topsoil;
   $('#grass').value = inputs.grass;
@@ -833,6 +855,7 @@ async function run(site) {
       else if (data.plan) { idle('plan'); if (!view.hillIn) busy('hill', 'Reading the land round the lawn (water from uphill)…'); view.plan = data.plan; needScale(); heads.planIn?.(); $('#saved').textContent = savedNote; if (!heads.active) planReport(data.plan); legend(); draw(); }
       else if (data.planError) { idle('plan'); idle('hill'); $('#saved').textContent = `The watering plan could not be worked out: ${data.planError}`; }
       else if (data.hill) { view.hillIn = true; idle('hill'); hillReport(data.hill); }
+      else if (data.wind) { inputs.wind = data.wind; keep(); }
     };
     w.onerror = (e) => { w.terminate(); clearBusy(); reject(new Error(e.message || 'the analysis stopped')); };
   });
@@ -907,7 +930,7 @@ function keep() {
 }
 
 function saveBody() {
-  return JSON.stringify({ data: { v: 1, downspouts: inputs.downspouts, gutters: inputs.gutters, areas: inputs.areas, topsoil: inputs.topsoil, grass: inputs.grass, irrigation: heads.data, layers: inputs.layers || null }, basedOn: view.site.at });
+  return JSON.stringify({ data: { v: 1, downspouts: inputs.downspouts, gutters: inputs.gutters, areas: inputs.areas, topsoil: inputs.topsoil, grass: inputs.grass, irrigation: heads.data, layers: inputs.layers || null, wind: inputs.wind || null }, basedOn: view.site.at });
 }
 const saveUrl = () => `/api/maps/tool?id=${encodeURIComponent(view.site.mapId)}&tool=water`;
 
@@ -1147,6 +1170,12 @@ function legend() {
     SLOPE_STEPS.forEach(([, c], k) => { if (c[3]) items.push(key(`rgb(${c[0]},${c[1]},${c[2]})`, SLOPE_WORDS[k])); });
     items.push(key('#e53935', 'beside the house: falls toward it'), key('#ffb300', 'falls away, but under 6 in over 10 ft'), key('#43a047', 'falls away 6 in or more over 10 ft (the building code)'));
     info.push(`How steep the ground is, from the lidar (ground flatter than 2% is left clear). On a slope water runs off before it soaks in: the plan waters it in shorter runs. The strip along the house is its fall over the first few feet.`);
+  } else if (mapView === 'wind') {
+    const wi = view.plan?.windInfo;
+    if (view.plan?.windJuly) {
+      WIND_STEPS.forEach(([, c], k) => items.push(key(`rgb(${c[0]},${c[1]},${c[2]})`, WIND_WORDS[k])));
+      info.push(`The wind at each spot of the lawn in July, as a share of the open wind at the airport: from the houses, trees${wi?.fences ? ', fences' : ''} and hedges upwind of it, out to 150 m, each direction as often as the month's daytime wind blows from it${wi?.rose ? '' : ' (no station answered: every direction alike)'}, the trees in leaf. A calm spot dries more slowly, so it is planned to use less water. The lawn as a whole is held to what was measured in yards like it (${Math.round((wi?.yard || 0) * 100)}% of the open wind, with ${Math.round((wi?.cover || 0) * 100)}% of the ground within 90 m under roofs and trees).`);
+    } else info.push('The wind at each spot is worked out once the shade is in (it needs the trees and roofs round the lawn).');
   } else if (mapView === 'sprinklers') {
     const z = heads.summary();
     if (z) items.push(...z.map((v) => `<span><i style="background:${v.color}"></i>zone ${v.n}</span>`));

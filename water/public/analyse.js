@@ -22,6 +22,15 @@ import { powerUrl, typicalYear, growingSeason, SEASON_GP } from '/lib/shade/clim
 import { polygonsOf } from '/lib/geo.js';
 import { erasedOn } from '/lib/leaf.js';
 import { fenceRadiation } from '/lib/fenceheat.js';
+import { localWind } from '/lib/wind.js';
+import { pointsIn } from '/lib/ept.js';
+import { overtureFor } from '/lib/overture.js';
+import { obstacleGrid, nearHeights, windGrid, coverWithin } from '/lib/obstacles.js';
+import { shelterByDirection, monthlyShelter, calibrate } from '/lib/shelter.js';
+import { windShare } from '/lib/balance.js';
+import { leafCalendar } from '/lib/shade/seasonal.js';
+import { cleanFences, fencesOnGrid } from '/lib/shade/fences.js';
+import { toMerc as toMercS } from '/lib/shade/ept.js';
 
 const kept = { r: null, lawn: null, standIn: false, soil: null, typical: null, week: null, lng: null, lat: null, season: null, climate: null, light: null };
 
@@ -47,7 +56,7 @@ function planWith(inputs = {}, zoneOf = null) {
   return waterPlan(r.result, {
     lawnMask: kept.lawn, paved: r.impervious ? r.impervious.paved : null, soil: kept.soil,
     topsoil: !!inputs.topsoil, downspouts: inputs.downspouts || [], gutters: inputs.gutters || [],
-    typical: kept.typical, week: kept.week, season: kept.season, light: kept.light, lightMonths: kept.lightMonths || null, radiation: kept.radiation || null, fenceHeat: kept.fenceHeat || null, shadeKinds: kept.shadeKinds || null, grass,
+    typical: kept.typical, week: kept.week, season: kept.season, light: kept.light, lightMonths: kept.lightMonths || null, radiation: kept.radiation || null, fenceHeat: kept.fenceHeat || null, windMonths: kept.windMonths || null, shadeKinds: kept.shadeKinds || null, grass,
     texture: inputs.texture || null, parcelMask: r.parcelMask || null, areas: inputs.areas || [], zoneOf,
   });
 }
@@ -67,7 +76,7 @@ async function plan(inputs = {}) {
   const out = {
     zones: p.zones, zoneOf: p.zoneOf, kinds: p.kinds, needMm: p.needMm, soilAt: p.soilAt, multiplier: p.multiplier, rootIn: p.rootIn, needMonth: p.needMonth, wetFromWatering: p.wetFromWatering, wetAnyway: p.wetAnyway, dryShare: p.dryShare,
     roofs: p.roofs, soil: p.soil, weather: p.weather, thisWeek: p.thisWeek, years: p.years, topsoil: p.topsoil,
-    standIn: kept.standIn, seconds: (Date.now() - t0) / 1000, shaded: p.shaded, lightByMonth: p.lightByMonth, ownRadiation: p.ownRadiation, fences: p.fences, treeCool: p.treeCool, yardWind: p.yardWind, lightInfo: kept.lightInfo || null, sunShare: p.sunShare,
+    standIn: kept.standIn, seconds: (Date.now() - t0) / 1000, shaded: p.shaded, lightByMonth: p.lightByMonth, ownRadiation: p.ownRadiation, fences: p.fences, treeCool: p.treeCool, yardWind: p.yardWind, windInfo: kept.windInfo || null, windJuly: kept.windMonths ? kept.windMonths[6].slice() : null, localWind: kept.wind || null, lightInfo: kept.lightInfo || null, sunShare: p.sunShare,
     seasonDays: kept.season ? kept.season.size : null, grass, rainFrom: kept.rainFrom, texture: p.texture,
     trouble: Object.values(kept.sources || {}).filter(Boolean),
   };
@@ -104,6 +113,11 @@ async function start(site, inputs) {
   }).catch((err) => ({ units: [], error: err.message })).then((x) => x || { units: [], error: 'no answer' });
   const typicalP = again(() => typicalYears(lat, lng));
   const weekP = again(() => thisWeek(lat, lng, { back: 60 })).catch(() => null);
+  /* THE LOCAL WIND (H48): the nearest airport station's ten years, summed -- kept with the map (the water part) and
+     used as it is for half a year; otherwise fetched again, beside the lidar, and sent to the page to keep. */
+  const keptWind = inputs.wind?.stats && inputs.wind.at && Date.now() - Date.parse(inputs.wind.at) < 182 * 864e5 ? inputs.wind : null;
+  const windP = keptWind ? Promise.resolve(keptWind)
+    : fetch('/data/asos-stations.json').then((x) => x.json()).then((list) => localWind(list, lat, lng)).then((w) => { if (w) self.postMessage({ wind: w }); return w; }).catch(() => null);
   // the shade map's typical year (its own reader, lib/shade/climate.js): its growing season and its light
   const y1 = new Date().getUTCFullYear() - 1;
   /* THE SHADE MAP'S OWN CLIMATE (its /api/shade/climate, through this site's Worker): the same typical year, with
@@ -117,6 +131,17 @@ async function start(site, inputs) {
   const r = await runSite(site, io, pickCloud, { progress });
   if (r.error) { self.postMessage({ error: r.error, notOnAws: r.notOnAws }); return; }
   const res = r.result, g = res.grid;
+  /* THE WIND'S OBSTACLES, WIDE (H50): the lidar's coarse levels 150 m round the grid, and Overture's buildings there,
+     fetched beside the soil and the weather (owner: "If you have to pull a wider area for lidar than you currently
+     do, do what you need to do"). */
+  const PAD = 150;
+  const wideP = (async () => {
+    const url = site.lidar?.url || r.cloud?.url;
+    if (!url || !site.lawn?.length) return null;
+    const cm = (g.bbox[2] - g.bbox[0]) / g.W, wide = [g.bbox[0] - PAD * cm, g.bbox[1] - PAD * cm, g.bbox[2] + PAD * cm, g.bbox[3] + PAD * cm];
+    const [pts, ov] = await Promise.all([pointsIn(url, wide, io, { spacingM: 1.8, lat }), overtureFor(wide).catch(() => null)]);
+    return obstacleGrid(pts.cols, wide, lat, 4, { buildings: ov?.buildings || null });
+  })().catch(() => null);
   const reported = new Uint8Array(g.W * g.H);
   // 2: a lawn hollow (on the traced lawn, when there is one); 1: any other reported spot
   for (const s of res.spots.spots) {
@@ -146,6 +171,7 @@ async function start(site, inputs) {
   const typ = await typicalP;
   kept.typical = typ.days; kept.rainFrom = typ.rainFrom;
   kept.week = await weekP;
+  kept.wind = await windP;
   kept.climate = await climateP;
   // the shade first, so the plan is shown once, with it (lib/shade/light-worker.js)
   kept.shade = site.lawn?.length ? 'failed' : 'no traced lawn';
@@ -156,6 +182,34 @@ async function start(site, inputs) {
     const lit = await again(() => lawnLight(res, site, kept.climate, kept.season), 2).catch(() => null);
     kept.light = lit?.summer || null; kept.lightMonths = lit?.months || null; kept.radiation = lit?.radiation || null;
     // the fences' longwave on the lawn (H49): the shade map's fences, seen from each lawn cell
+    // EACH SPOT'S OWN WIND (H50): what stands upwind of it, by direction, weighted by the station's daytime wind
+    kept.windMonths = null; kept.windInfo = null;
+    try {
+      self.postMessage({ planProgress: 'Working out the wind at each spot of the lawn…' });
+      const og = await wideP;
+      const cells = []; for (let i = 0; i < kept.lawn.length; i++) if (kept.lawn[i]) cells.push(i);
+      if (cells.length && (og || kept.shadeKinds)) {
+        const gr = { W: res.grid.W, H: res.grid.H, bbox: res.grid.bbox };
+        const wg = windGrid(gr, og, nearHeights(res.points, gr, res.z), kept.shadeKinds, PAD);
+        const cm = (gr.bbox[2] - gr.bbox[0]) / gr.W;
+        const toCell = (p) => { const [mx, my] = toMercS(p); return [(mx - gr.bbox[0]) / cm + PAD, (gr.bbox[3] - my) / cm + PAD]; };
+        const fz = site.shadeEdits?.fences?.length ? fencesOnGrid(cleanFences(site.shadeEdits.fences), toCell, () => 0, 1) : [];
+        const sd = shelterByDirection(wg, cells, gr.W, PAD, PAD, fz);
+        const cal = kept.climate?.tMean ? leafCalendar(kept.climate.tMean) : null;
+        const leaf = Array.from({ length: 12 }, (_, m) => { if (!cal) return m >= 4 && m <= 9 ? 1 : 0; let a = 0; for (let k = MONTH_START[m]; k < MONTH_START[m + 1]; k++) a += cal.share(k); return a / (MONTH_START[m + 1] - MONTH_START[m]); });
+        const roses = kept.wind?.stats?.byMonth?.map((b) => b.rose) || null;
+        const months = monthlyShelter(sd, cells.length, roses, leaf);
+        let mx = 0, my = 0; for (const i of cells) { mx += i % gr.W; my += Math.floor(i / gr.W); }
+        const cover = coverWithin(wg, mx / cells.length + PAD, my / cells.length + PAD, 90);
+        const yard = windShare(100 * cover);
+        const fit = calibrate(months, yard);
+        const N = gr.W * gr.H;
+        kept.windMonths = fit.map(({ F }) => { const a = new Float32Array(N).fill(yard); cells.forEach((i, q) => { a[i] = F[q]; }); return a; });
+        const med = (a) => { const v = cells.map((i) => a[i]).sort((x, y) => x - y); return v[v.length >> 1]; };
+        const lo = (a) => { const v = cells.map((i) => a[i]).sort((x, y) => x - y); return v[Math.floor(0.1 * (v.length - 1))]; };
+        kept.windInfo = { cover, yard, wide: !!og, fences: fz.length, July: { median: med(kept.windMonths[6]), calmest: lo(kept.windMonths[6]) }, B: fit.map((f) => Math.round(f.B * 100) / 100), rose: !!roses };
+      }
+    } catch { kept.windMonths = null; kept.windInfo = null; }
     kept.fenceHeat = null;
     if (kept.radiation && site.shadeEdits?.fences?.length) {
       try {
