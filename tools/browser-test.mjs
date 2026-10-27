@@ -493,6 +493,52 @@ check('nothing but the property line needs tapping before detection',
 const busyVisible = await page.locator('#busy').isVisible();
 check('loading overlay is gone', busyVisible === false, `busy visible=${busyVisible}`);
 
+/*
+ * THE GRAY MAP (owner, 2026-10-27). A phone takes a background page's graphics
+ * away and Mapbox GL does not redraw when they come back. The page saves and
+ * reopens the same lot instead; here the loss is made on purpose.
+ */
+console.log('\n--- the map losing its graphics ---');
+{
+  const gp = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  gp.on('pageerror', (err) => errors.push(`PAGEERROR (graphics): ${err.message}`));
+  await gp.goto(`${BASE}/?address=${encodeURIComponent(ADDRESS)}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await gp.waitForFunction(() => window.__lmRecovery !== undefined, null, { timeout: 30000 });
+  await gp.waitForFunction(() => window.__lmRecovery().frame, null, { timeout: 90000 }).catch(() => {});
+  if (await gp.locator('#step-candidates').isVisible().catch(() => false)) {
+    await gp.locator('#candidate-list button').first().click();
+    await gp.waitForFunction(() => window.__lmRecovery().frame, null, { timeout: 60000 }).catch(() => {});
+  }
+  const before = await gp.evaluate(() => window.__lmRecovery());
+  check('a lot opened from ?address=', before.frame && Boolean(before.chosen), JSON.stringify(before));
+  const lost = await gp.evaluate(() => {
+    const c = document.querySelector('canvas.mapboxgl-canvas');
+    const gl = c && (c.getContext('webgl2') || c.getContext('webgl'));
+    const ext = gl && gl.getExtension('WEBGL_lose_context');
+    if (!ext) return false;
+    ext.loseContext();
+    setTimeout(() => ext.restoreContext(), 500);
+    return true;
+  });
+  if (lost) {
+    await gp.waitForURL((u) => /[?&](address|map)=/.test(String(u)), { timeout: 30000 }).catch(() => {});
+    await gp.waitForLoadState('domcontentloaded').catch(() => {});
+    await gp.waitForFunction(() => window.__lmRecovery && (window.__lmRecovery().frame
+      || document.querySelector('#step-candidates')?.hidden === false), null, { timeout: 90000 }).catch(() => {});
+    if (await gp.locator('#step-candidates').isVisible().catch(() => false)) {
+      await gp.locator('#candidate-list button').first().click();
+      await gp.waitForFunction(() => window.__lmRecovery().frame, null, { timeout: 60000 }).catch(() => {});
+    }
+    const after = await gp.evaluate(() => (window.__lmRecovery ? window.__lmRecovery() : null)).catch(() => null);
+    check('losing the graphics reopens the same lot on a fresh map',
+      Boolean(after) && after.lost === false && after.frame && after.chosen === before.chosen,
+      JSON.stringify(after));
+  } else {
+    console.log('  (this browser cannot lose a WebGL context on purpose; skipped)');
+  }
+  await gp.close();
+}
+
 /* ----------------------------------------------------------------- tips */
 /*
  * A tip that appears is not the feature. The feature is a tip that POINTS at
@@ -1868,7 +1914,12 @@ console.log('\n--- the feedback question ---');
  * making somebody decide about.
  */
 console.log('\n--- saved maps ---');
-{
+/* THE SAVED TAB IS GONE since every map moved to the dashboard (2026-10-16,
+   docs/MAPS.md); clicking it stopped the run here. Kept for a deployment
+   that still shows it. */
+if (!(await page.locator('#tab-saved').isVisible())) {
+  console.log('  (no Saved tab: maps live on the dashboard since 2026-10-16; skipped)');
+} else {
   await goTab(page, 'draw');
   await page.click('#btn-parcel-shape');
   await page.waitForTimeout(2200); // the write is debounced: a stroke is one edit
@@ -3753,52 +3804,6 @@ console.log('\n--- tinker: neighbours and merging ---');
       JSON.stringify({ provider: back.provider, stage: back.tour.stage }));
   }
   await tp.close();
-}
-
-/*
- * THE GRAY MAP (owner, 2026-10-27). A phone takes a background page's graphics
- * away and Mapbox GL does not redraw when they come back. The page saves and
- * reopens the same lot instead; here the loss is made on purpose.
- */
-console.log('\n--- the map losing its graphics ---');
-{
-  const gp = await browser.newPage({ viewport: { width: 390, height: 844 } });
-  gp.on('pageerror', (err) => errors.push(`PAGEERROR (graphics): ${err.message}`));
-  await gp.goto(`${BASE}/?address=${encodeURIComponent(ADDRESS)}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
-  await gp.waitForFunction(() => window.__lmRecovery !== undefined, null, { timeout: 30000 });
-  await gp.waitForFunction(() => window.__lmRecovery().frame, null, { timeout: 90000 }).catch(() => {});
-  if (await gp.locator('#step-candidates').isVisible().catch(() => false)) {
-    await gp.locator('#candidate-list button').first().click();
-    await gp.waitForFunction(() => window.__lmRecovery().frame, null, { timeout: 60000 }).catch(() => {});
-  }
-  const before = await gp.evaluate(() => window.__lmRecovery());
-  check('a lot opened from ?address=', before.frame && Boolean(before.chosen), JSON.stringify(before));
-  const lost = await gp.evaluate(() => {
-    const c = document.querySelector('canvas.mapboxgl-canvas');
-    const gl = c && (c.getContext('webgl2') || c.getContext('webgl'));
-    const ext = gl && gl.getExtension('WEBGL_lose_context');
-    if (!ext) return false;
-    ext.loseContext();
-    setTimeout(() => ext.restoreContext(), 500);
-    return true;
-  });
-  if (lost) {
-    await gp.waitForURL((u) => /[?&](address|map)=/.test(String(u)), { timeout: 30000 }).catch(() => {});
-    await gp.waitForLoadState('domcontentloaded').catch(() => {});
-    await gp.waitForFunction(() => window.__lmRecovery && (window.__lmRecovery().frame
-      || document.querySelector('#step-candidates')?.hidden === false), null, { timeout: 90000 }).catch(() => {});
-    if (await gp.locator('#step-candidates').isVisible().catch(() => false)) {
-      await gp.locator('#candidate-list button').first().click();
-      await gp.waitForFunction(() => window.__lmRecovery().frame, null, { timeout: 60000 }).catch(() => {});
-    }
-    const after = await gp.evaluate(() => (window.__lmRecovery ? window.__lmRecovery() : null)).catch(() => null);
-    check('losing the graphics reopens the same lot on a fresh map',
-      Boolean(after) && after.lost === false && after.frame && after.chosen === before.chosen,
-      JSON.stringify(after));
-  } else {
-    console.log('  (this browser cannot lose a WebGL context on purpose; skipped)');
-  }
-  await gp.close();
 }
 
 if (errors.some((e) => e.includes('403'))) {
