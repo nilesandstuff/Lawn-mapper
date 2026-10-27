@@ -50,7 +50,11 @@ const check = (name, ok, detail = '') => {
  * if something moves tab, this file should need one line changed, not thirty.
  */
 async function goTab(page, name) {
-  await page.click(`#tab-${name}`);
+  /* FORCED (2026-10-27): a locked tab carries aria-disabled for screen
+     readers, and newer Playwright will not click an aria-disabled button --
+     though a finger can, and the app opens the tab on its lock notice. The
+     run stopped here from some point after 2026-10-10. */
+  await page.click(`#tab-${name}`, { force: true });
   await page.waitForTimeout(150);
 }
 
