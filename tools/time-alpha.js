@@ -238,7 +238,7 @@ async function explainPatches(got, press, out) {
   console.log(`  grid ${w}x${h} at ${(mpp * 100).toFixed(1)} cm; lot ${within ? Math.round(inLot(new Uint8Array(w * h).fill(1))) : '?'} sq ft`);
   console.log('  LAWN IN THE LOT AT EACH CUT (the page\'s slider; the page then drops pieces under 100 sq ft):');
   for (const pct of [20, 30, 40, 50, 60, 70, 80]) {
-    const m = finishLot({ prob, canopy: canopyPng, roof: roofPng, voidMask: voidPng, height: null, w, h, mpp, threshold: Math.round((pct * 255) / 100) });
+    const m = finishLot({ prob, canopy: canopyPng, roof: roofPng, voidMask: voidPng, height: null, w, h, mpp, threshold: Math.round((pct * 255) / 100), leafOff: typeof got.leafOff === 'boolean' ? got.leafOff : null });
     console.log(`    ${String(pct).padStart(2)}%  ${Math.round(inLot(m)).toLocaleString('en-US').padStart(8)} sq ft${pct === 50 ? '   <- as served' : ''}`);
   }
   const report = patchReport({ probGrey, final, canopy, roof, voidMask, within, w, h, mpp });

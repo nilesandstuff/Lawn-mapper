@@ -22,7 +22,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { gridDims } from './train-detector.js';
-import { finishLot, STAGE3, SEE_THROUGH } from '../public/lib/finish.js';
+import { finishLot, STAGE3, SEE_THROUGH, seeThroughReadsPhoto, photoLooksLeafOff } from '../public/lib/finish.js';
 import { frameBbox3857 } from '../worker/src/imagery.js';
 import { metresPerPixel, lngLatToFramePx } from '../public/lib/mercator.js';
 import { rasterizePolygon } from '../public/lib/mask.js';
@@ -148,10 +148,15 @@ async function main() {
       return existsSync(f) ? PNG.sync.read(readFileSync(f)) : null;
     };
     const prob = read('prob.png');
+    const canopy = read('canopy.png');
+    const photo = seeThroughReadsPhoto() ? read('photo.png') : null;
+    /* H127: whether the photo looks leaf-off, sent with the lot so the
+       page's confidence slider re-cuts the same way without the photo. */
+    const leafOff = photoLooksLeafOff({ canopy, photo, w: input.w, h: input.h, mpp: input.mpp });
     const mask = finishLot({
-      prob, canopy: read('canopy.png'), roof: read('roof.png'), voidMask: read('void.png'),
+      prob, canopy, roof: read('roof.png'), voidMask: read('void.png'),
       height: read('height.png'), w: input.w, h: input.h, mpp: input.mpp,
-      photo: SEE_THROUGH === 'colour' ? read('photo.png') : null,
+      photo, leafOff,
     });
     const png = new PNG({ width: input.w, height: input.h });
     let lawn = 0;
@@ -168,6 +173,7 @@ async function main() {
       uncertainty: uncertaintyOf(grey, within),
       lawnCells: lawn,
       cells: mask.length,
+      leafOff,
     }));
     return;
   }

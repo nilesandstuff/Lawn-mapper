@@ -336,7 +336,8 @@ class Alpha:
         with tempfile.TemporaryDirectory() as d:
             rec = self.det.run(photo, prep, d, naip_align=payload.get("naipAlign"), sources=got["sources"])
             # The photo on the scoring grid, for stage 3's see-through canopy
-            # (tools/serve-alpha.mjs SEE_THROUGH; read only when it is 'colour').
+            # (public/lib/finish.js SEE_THROUGH: 'colour' reads its colour,
+            # 'small-100-leafoff' whether it looks leaf-off, H127).
             photo.resize((prep["w"], prep["h"]), Image.BOX).save(os.path.join(d, "photo.png"))
             rec["seconds"]["waited"] = waited
             fin = _node("finish", {"dir": d, "w": prep["w"], "h": prep["h"], "mpp": prep["mpp"],
@@ -362,6 +363,7 @@ class Alpha:
         return {
             "mask": mask, "prob": prob, "parts": parts, "w": prep["w"], "h": prep["h"], "mpp": prep["mpp"], "version": self.version,
             "uncertainty": fin.get("uncertainty"), "lawnCells": fin.get("lawnCells"),
+            "leafOff": fin.get("leafOff"),
             "used": {"lidar": rec["lidar"], "naip": rec["naip"]},
             "seconds": {**rec["seconds"], "total": round(time.time() - t0, 1)},
         }

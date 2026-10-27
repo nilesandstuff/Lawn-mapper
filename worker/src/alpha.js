@@ -117,6 +117,8 @@ export async function pollAlpha(env, id, selfOrigin) {
     raw,
     parts,
     mpp: Number.isFinite(r.mpp) ? r.mpp : null,
+    /* Whether the photo looked leaf-off (H127), for the page's re-cuts. */
+    leafOff: typeof r.leafOff === 'boolean' ? r.leafOff : null,
     detail: null,
     /* For the corpus (feedback loop 1: which release drew the outline being
        corrected) and the queue (loop 2: how unsure it was). */

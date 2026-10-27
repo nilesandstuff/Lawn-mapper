@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { gridDims, predictionMask, lidarVeto } from './train-detector.js';
 import { stage3 } from './stage3.js';
 import { STAGE3, SEE_THROUGH, finishLot, prepareFrame, uncertaintyOf, parcelMask } from './serve-alpha.mjs';
+import { photoLooksLeafOff } from '../public/lib/finish.js';
 
 const pngOf = (w, h, fill) => {
   const data = new Uint8Array(w * h * 4);
@@ -53,10 +54,10 @@ const pngOf = (w, h, fill) => {
   assert.deepEqual([...got], [...want]);
 }
 
-/* See-through canopy is off in serving until it is measured, and 'trust'
+/* See-through canopy: 'small-100-leafoff' in serving since H127, and 'trust'
    keeps stage 1's lawn under the canopy instead of clearing it. */
 {
-  assert.equal(SEE_THROUGH, 'off');
+  assert.equal(SEE_THROUGH, 'small-100-leafoff');
   const w = 64, h = 48;
   const prob = pngOf(w, h, () => 230);                                   // lawn everywhere
   const canopy = pngOf(w * 2, h * 2, (x) => (x >= 40 && x <= 82 ? 255 : 0));
@@ -65,6 +66,40 @@ const pngOf = (w, h, fill) => {
   const trusted = finishLot({ ...base, seeThrough: 'trust' });
   assert.equal(lawnAt(trusted), 1, 'trust: stage 1 stands under the canopy');
   assert.equal(trusted.reduce((a, b) => a + b, 0), w * h);
+}
+
+/* H127, LIVE: under a small clump in the open, the detector's own answer
+   stands only when the photo looks leaf-off. A bare crown here is grey (no
+   green) and a leafy one green; the server's leafOff answer decides it the
+   same way on the page, without the photo. */
+{
+  const w = 80, h = 60, mpp = 0.15;
+  /* No lawn under the clump (decoder says 30% there), lawn everywhere else. */
+  const inClump = (x, y) => x >= 30 && x < 50 && y >= 15 && y < 35;     // 3 m x 3 m: a small clump
+  const prob = pngOf(w, h, (x, y) => (inClump(x, y) ? 77 : 230));
+  /* The canopy is written at twice the grid; stage 3 would fill this
+     clump with lawn (it is ringed by lawn), so trusting the detector shows. */
+  const canopy = pngOf(w * 2, h * 2, (x, y) => (inClump(x >> 1, y >> 1) ? 255 : 0));
+  const photoOf = (grey) => {
+    const p = { width: w, height: h, data: new Uint8ClampedArray(w * h * 4) };
+    for (let i = 0; i < w * h; i++) {
+      const [r, g, b] = grey ? [120, 118, 112] : [40, 110, 35];
+      p.data[i * 4] = r; p.data[i * 4 + 1] = g; p.data[i * 4 + 2] = b; p.data[i * 4 + 3] = 255;
+    }
+    return p;
+  };
+  const base = { prob, canopy, roof: null, voidMask: null, height: null, w, h, mpp };
+  const at = (m) => m[25 * w + 40];
+  const stage3Fills = finishLot({ ...base, seeThrough: 'off' });
+  assert.equal(at(stage3Fills), 1, 'stage 3 calls the ringed clump lawn');
+  assert.equal(photoLooksLeafOff({ canopy, photo: photoOf(true), w, h, mpp }), true, 'grey crowns: leaf-off');
+  assert.equal(photoLooksLeafOff({ canopy, photo: photoOf(false), w, h, mpp }), false, 'green crowns: leaf-on');
+  assert.equal(photoLooksLeafOff({ canopy, photo: null, w, h, mpp }), null, 'no photo, no answer');
+  assert.equal(at(finishLot({ ...base, photo: photoOf(true) })), 0, 'leaf-off photo: the detector stands');
+  assert.equal(at(finishLot({ ...base, photo: photoOf(false) })), 1, 'leaf-on photo: stage 3 as before');
+  assert.equal(at(finishLot({ ...base, leafOff: true })), 0, 'the page: the server\'s leaf-off answer, no photo');
+  assert.equal(at(finishLot({ ...base, leafOff: false, photo: photoOf(true) })), 1, 'and it overrides the photo');
+  assert.equal(at(finishLot({ ...base })), 1, 'nothing to judge by: stage 3, as before');
 }
 
 /* Uncertainty: the share of cells neither clearly lawn nor clearly not. */

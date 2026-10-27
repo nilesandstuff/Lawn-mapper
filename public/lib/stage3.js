@@ -154,18 +154,21 @@ export function lawnTrees(canopy, w, h, { mpp = 0.15, maxM2 = 100 } = {}) {
  * Null for 'off'.
  */
 export const SEE_THROUGH_MODES = ['off', 'colour', 'evergreen', 'trust', 'small-100', 'small-300', 'small-100-leafoff'];
-export function seeThroughFor(mode, canopy, rgba, w, h, { mpp = 0.15, bare = null } = {}) {
+export function seeThroughFor(mode, canopy, rgba, w, h, { mpp = 0.15, bare = null, leafOff = null } = {}) {
   if (!canopy || !mode || mode === 'off') return null;
   if (mode === 'trust') return Uint8Array.from(canopy);
   const small = /^small-(\d+)(-leafoff)?$/.exec(mode);
   if (small) {
     /* '-leafoff' (S65, H125): only on a photo that looks leaf-off, where the
        detector measured better than stage 3 under these trees; on a leaf-on
-       photo stage 3 was better, so nothing is trusted. `bare` may be given
-       (the scorer has it); else it is read from the photo. */
+       photo stage 3 was better, so nothing is trusted. `leafOff` may be
+       given as the answer itself (the page re-cutting a served lot, which
+       has the server's answer and not the photo), or `bare` (the scorer has
+       it); else it is read from the photo. */
     if (small[2]) {
-      const b = bare || (rgba ? bareCanopy(canopy, rgba, w, h, { mpp }) : null);
-      if (!looksLeafOff(canopy, b)) return new Uint8Array(w * h);
+      let off = typeof leafOff === 'boolean' ? leafOff : null;
+      if (off === null) off = looksLeafOff(canopy, bare || (rgba ? bareCanopy(canopy, rgba, w, h, { mpp }) : null));
+      if (!off) return new Uint8Array(w * h);
     }
     return lawnTrees(canopy, w, h, { mpp, maxM2: Number(small[1]) });
   }

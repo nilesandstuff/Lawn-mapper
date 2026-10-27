@@ -696,6 +696,16 @@ evidence, the evidence is named. Where it does not, that is said.
        HIDDEN UNDER CANOPY, and cancel any lawn stage 3 invented over them --
        the job Virginia's land cover layer already does (E7)
 
+**A CHANGE TO STAGE 3, LIVE SINCE 2026-10-27 (owner's decision on H127:
+"overall accuracy and number of improved lots is more important than one
+lot").** On a photo that looks leaf-off (30%+ of its canopy reads bare),
+stage 1's answer stands under canopy clumps under 100 m2 in the open;
+stage 3 decides everywhere else and on every leaf-on photo
+(public/lib/finish.js SEE_THROUGH = 'small-100-leafoff'). In workflow 14's
+tables this is the row "... lidar veto, see-through small-100-leafoff";
+"THE PLAN's row" there is still stage 3 without it, so a comparison
+against the live model reads that row.
+
 **Stage 4 is narrower than "find hard surfaces", and the narrowness is the
 point.** The case it exists for is a driveway running under a tree: the camera
 cannot see it, so stage 3 will confidently pave it with grass. LiDAR is the
@@ -1099,8 +1109,12 @@ against 1 is p = 0.125 however large the gains; only 7 against 0 would
 pass. The rule is too narrow to prove itself on this corpus by a sign
 test.
 
-**Not switched on.** It stays a decision for the owner, with this
-evidence: it never makes ground anyone could see worse, it improves seven
+**SWITCHED ON 2026-10-27 by the owner** ("whichever setup you think seems
+best is what we should go with. Overall accuracy and number of improved
+lots is more important than one lot"): public/lib/finish.js SEE_THROUGH
+'small-100-leafoff'; the server works out whether the photo looks leaf-off
+and sends it with the lot, so the page's confidence slider re-cuts the
+same way. The evidence it was decided on: it never makes ground anyone could see worse, it improves seven
 leaf-off lots, and its one loss is against the inferred marks on C87 (a
 leaf-off county photo, 99% of its canopy reads bare), which the owner can
 judge by eye. Live, it would also need the photo passed to finishLot
@@ -10362,7 +10376,7 @@ deploy log says how many are locked and how many are waiting.
 | 2026-10-23 | 39879564306 | 104 (locked, 131u7jm) | S58 `windows: native`, `gpu: modal`: DINOv3-sat with the 26 big lots read whole at 10 cm in one pass (61-188 patches a side) on an L4 (extraction 147 s, decoders 426 + 657 s), THE PLAN, seed 7, no pond examples | 16.0% (edge refined + stage 3, span, veto) | — | **H121.** Workflow 24 run 39906929463 vs S51 (same eye squeezed): all 42 / 35 / 27, -0.1 [-0.5, +0.3]; the big 26: 17 / 5 / 4, -1.2 [-1.8, -0.2], p 0.017; run 39906931875 vs Scale-MAE: 67 / 27 / 10, -2.0; big 26 -2.8 |
 | 2026-10-23 | 39887800268 | 104 (locked, 131u7jm) | S59: S51 again over cached features (seed 7) to draw the Byron Center map | 15.5% (edge refined + stage 3, span, veto) | — | 15.5 against S51's 15.4 from the same features and seed (S54 and S52-on-DINOv3 read 15.5 too): a tenth of a point of nondeterminism, not the decimal reproduction of H26. The draw was refused by the site's edge (403 to the runner); run 3 (39907286242) read the map and the county export from the database and died on a call of mine; the picture came from workflow 43 below |
 | 2026-10-24 | 40054742999 | 1 saved map (the condo complex, drawn only) | Workflow 32 `map`, after 32f396d: release v7's live native read, pressed twice | -- | -- | **A LIVE BUG, FOUND BY THE OWNER AND FIXED:** v7's first live presses on the condo complex (40045019028, and the owner's own) came back as horizontal stripes. alpha_infer.whole unpacked every read as the eye's default 56 x 56 patches; a native read at 4096 px is 256 x 256, and patches_of keeps the last side*side tokens, so the bottom twelve rows of the grid were laid across the whole lot. Training unpacked by S // patch, so H121 and v7's weights were never affected; only the live reading of lots past 90 m on v7 (2026-10-23 23:11 to 2026-10-24 02:31 UTC). After the fix: raw mask 970x1024, lawn in 31.4% of it, row-to-row change 0.011 against column-to-column 0.010, ratio 1.07 (stripes would be > 3). Both presses succeeded (photo pieces two at a time, retried): GPU 131 s cold / 79 s warm (backbone 79 / 74 s), downloads 88 / 71 s, wall 241 / 161 s. tools/alpha_infer_test.py pins the unpacking |
-| 2026-10-27 | 40404246838, 40404285400 | 104 (locked, 131u7jm) + 5 not-lawn-only maps | DINOv3-sat, THE PLAN, seeds 8 and 9 (H127) | 15.6%, 15.5% (THE PLAN) | -- | **H127 pooled** with seed 7: leaf-off lots 6 better / 1 worse, p 0.125 (fails its bar); seen 7 / 0, p 0.016. C87 the one loss, all on inferred ground. Not switched on |
+| 2026-10-27 | 40404246838, 40404285400 | 104 (locked, 131u7jm) + 5 not-lawn-only maps | DINOv3-sat, THE PLAN, seeds 8 and 9 (H127) | 15.6%, 15.5% (THE PLAN) | -- | **H127 pooled** with seed 7: leaf-off lots 6 better / 1 worse, p 0.125 (fails its bar); seen 7 / 0, p 0.016. C87 the one loss, all on inferred ground. Switched on by the owner the same day |
 | 2026-10-26 | 40369617314 | 104 (locked, 131u7jm) + 5 not-lawn-only maps | DINOv3-sat, `canopy: on lawn without inferred`, seed 7 (S66 side B) | 16.6% (THE PLAN's row) | -- | **H128.** Against side A (workflow 24 run 40412051294): 26 better / 44 worse, p 0.041. Seen 13.8 (A 14.6), inferred 22.0 (A 13.6). Fails S66's bar. Linked to A as twins |
 | 2026-10-26 | 40369587372 | 104 (locked, 131u7jm) + 5 not-lawn-only maps | DINOv3-sat, THE PLAN, seed 7 (S66 side A) | 15.6% (THE PLAN) | -- | **H127.** small-100-leafoff paired against THE PLAN in the same run (workflow 24 runs 40403326241, 40404063237): leaf-off lots 7 better / 1 worse / 27 level, p 0.070; seen ground 7 / 0, p 0.016. Per-lot file kept; drawing used 10.9 GB |
 | 2026-10-26 | 40303542434 | 104 (locked, 131u7jm) + 5 not-lawn-only maps | DINOv3-sat, `decoder: fused + edge + trees`, `gpu: modal` (S65 part 2) | 15.7% (THE PLAN) | -- | **H126.** Every tree variant 15.8% (taught under small trees, its leaf-off version, small-100, small-100-leafoff, colour); taught under all canopy 16.2%. Under small trees the taught decoder answers as the ordinary one (both are taught; they differ in the canopy input: correction in H126). Runner shut down drawing the second picture set again; per-lot file lost |

@@ -70,10 +70,6 @@ inside of the loop".
 
 ## In progress
 
-- **Trust the detector under small leaf-off trees (H127): owner's call.**
-  Three seeds: never worse on seen ground (7 better, 0 worse), but the
-  headline bar fails (6 / 1, p 0.125) because only seven lots change. The
-  one loss, C87, is against its inferred marks. Off until the owner says.
 
 
 - **Storm drains everywhere.** The nightly sweep (workflow 44) reads ~60
@@ -89,6 +85,10 @@ inside of the loop".
   canopy input.
 
 ## Done
+
+- 2026-10-27: the detector's answer trusted under small trees on leaf-off
+  photos, live (H127; owner's choice). Three seeds: never worse on seen
+  ground, 6 lots better / 1 worse overall.
 
 - 2026-10-26: inferred marks left out of training (S66) measured as worse,
   H128 (runs 40369587372 and 40369617314, linked as twins on the

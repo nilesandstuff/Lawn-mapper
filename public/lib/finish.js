@@ -16,18 +16,40 @@
  * re-export them. No imports beyond public/lib: it runs in the browser.
  */
 
-import { stage3, seeThroughFor } from './stage3.js';
+import { stage3, seeThroughFor, bareCanopy, looksLeafOff } from './stage3.js';
 
 /* THE PLAN's stage 3 (H39, H60): span 8 m, reach 1 m, bridge over 180°. */
 export const STAGE3 = { spanM: 8, reachM: 1, minRing: 0.5 };
 
 /*
  * SEE-THROUGH CANOPY (owner, 2026-10-03, for leaf-off county photos):
- * 'off', 'colour' or 'trust' -- stage3.js seeThroughFor. OFF: H69 measured
- * 'colour' as no gain overall and 'trust' as worse (inferred 26 -> 43%).
- * This line is the only thing to change to switch one on.
+ * stage3.js seeThroughFor's modes. H69 measured 'colour' as no gain and
+ * 'trust' as worse (inferred 26 -> 43%).
+ *
+ * ON SINCE 2026-10-27: 'small-100-leafoff' (H127). On a photo that looks
+ * leaf-off, the detector's own answer stands under canopy clumps under
+ * 100 m2 in the open instead of stage 3's; leaf-on photos are untouched.
+ * Three seeds: never worse on seen ground (7 lots better, 0 worse), 6 / 1 on
+ * the headline. The owner chose it (2026-10-27: "overall accuracy and number
+ * of improved lots is more important than one lot").
  */
-export const SEE_THROUGH = 'off';
+export const SEE_THROUGH = 'small-100-leafoff';
+
+/** Whether this mode reads the photo (its colour, or whether it looks leaf-off). */
+export const seeThroughReadsPhoto = (mode = SEE_THROUGH) => mode === 'colour' || mode === 'evergreen' || /-leafoff$/.test(mode);
+
+/**
+ * Whether the photo looks leaf-off (stage3.js looksLeafOff: 30% or more of
+ * its canopy reads bare), worked out the way the scorer does; null without a
+ * canopy or a photo on the grid. The server sends it with the lot so the
+ * page's re-cuts decide the same way without the photo.
+ */
+export function photoLooksLeafOff({ canopy, photo, w, h, mpp }) {
+  const can = canopy ? canopyMask(canopy, w, h) : null;
+  const rgba = photo && photo.width === w && photo.height === h ? photo.data : null;
+  if (!can || !rgba) return null;
+  return looksLeafOff(can, bareCanopy(can, rgba, w, h, { mpp }));
+}
 
 /** The decoder's cut, 0-255: 128 is 50%. */
 export const LAWN_THRESHOLD = 128;
@@ -124,13 +146,15 @@ export function lidarVeto(mask, roof, voidMask) {
  */
 export function finishLot({
   prob, canopy, roof, voidMask, height, w, h, mpp, photo = null, seeThrough = SEE_THROUGH, threshold = LAWN_THRESHOLD,
+  leafOff = null,
 }) {
   let mask = predictionMask(prob, w, h, threshold);
   if (!mask) throw new Error(`prob.png is ${prob?.width}x${prob?.height}, not the ${w}x${h} grid`);
   const can = canopy ? canopyMask(canopy, w, h) : null;
-  /* The photo on the grid, only read by the 'colour' mode. */
+  /* The photo on the grid, read by 'colour' and the '-leafoff' modes;
+     `leafOff` (the server's answer) stands in for it on the page. */
   const rgba = photo && photo.width === w && photo.height === h ? photo.data : null;
-  const bare = can ? seeThroughFor(seeThrough, can, rgba, w, h, { mpp }) : null;
+  const bare = can ? seeThroughFor(seeThrough, can, rgba, w, h, { mpp, leafOff }) : null;
   if (can) mask = stage3(mask, can, w, h, { mpp, height: height ? heightMask(height, w, h) : null, bare, ...STAGE3 }).mask;
   mask = lidarVeto(mask, roof ? canopyMask(roof, w, h) : null, voidMask ? canopyMask(voidMask, w, h) : null);
   return mask;

@@ -5128,6 +5128,9 @@ async function detect({ again = false } = {}) {
             /* The canopy and lidar pictures the server finished with, for the
                confidence slider (public/lib/finish.js). */
             parts: done.parts || null, mpp: Number.isFinite(done.mpp) ? done.mpp : null,
+            /* Whether the server judged the photo leaf-off (H127), so a
+               re-cut trusts the same small trees it did. */
+            leafOff: typeof done.leafOff === 'boolean' ? done.leafOff : null,
           };
         }));
         return {
@@ -5140,7 +5143,7 @@ async function detect({ again = false } = {}) {
             ? pieces[0].image
             : stitchMasks(pieces, tiling.cols, tiling.rows),
           /* For the confidence slider: every piece, and the mask as served. */
-          pieces: pieces.map(({ col, row, raw, parts, mpp }) => ({ col, row, raw, parts, mpp })),
+          pieces: pieces.map(({ col, row, raw, parts, mpp, leafOff }) => ({ col, row, raw, parts, mpp, leafOff })),
           tiling,
         };
       }));
@@ -9942,7 +9945,7 @@ async function recutLayer(layer, pct, frame) {
     const [prob, canopy, roof, voidMask] = await piecePictures(p);
     const w = prob.width, h = prob.height;
     const mpp = p.mpp || metresPerPixel(frame, fullW);
-    const m = finishLot({ prob, canopy, roof, voidMask, height: null, w, h, mpp, threshold });
+    const m = finishLot({ prob, canopy, roof, voidMask, height: null, w, h, mpp, threshold, leafOff: p.leafOff ?? null });
     return { col: p.col, row: p.row, image: maskPicture(m, w, h) };
   }));
   return images.length === 1 ? images[0].image : stitchMasks(images, layer.tiling?.cols || 1, layer.tiling?.rows || 1);
