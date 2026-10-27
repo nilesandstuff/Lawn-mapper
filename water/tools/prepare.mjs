@@ -10,7 +10,7 @@
  *   CUSTOM_DOMAIN=lawnmap.example.com node water/tools/prepare.mjs
  */
 
-import { appendFileSync, cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, cpSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -79,6 +79,12 @@ function main() {
   }
   // dereference: lib/shade/ and lib/lib/mask.js are links to the shade map's own files (public/shade/, public/lib/): the site ships them as they are on this commit
   cpSync(join(water, 'lib'), join(build, 'lib'), { recursive: true, dereference: true, filter: (src) => !src.endsWith('node-io.js') });
+  /* EVERY module of the shade map's, not only the linked ones: a file it adds (fences.js, features session 2026-10-27)
+     is imported by its light worker at once, and a build without it would stop the water map's shade from loading.
+     (Node, for the tests, follows the links to public/shade/ and finds them there already.) */
+  for (const f of readdirSync(join(water, '..', 'public', 'shade'))) {
+    if (f.endsWith('.js')) cpSync(join(water, '..', 'public', 'shade', f), join(build, 'lib', 'shade', f));
+  }
   for (const f of ['favicon.svg', 'favicon-32.png', 'favicon.ico', 'apple-touch-icon.png']) {
     cpSync(join(water, '..', 'public', f), join(build, f));
   }

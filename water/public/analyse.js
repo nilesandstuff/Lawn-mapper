@@ -208,7 +208,9 @@ function lawnLight(res, site, climate, season) {
   const beamOnly = { ...climate, diffuse: new Array(365).fill(0) }, skyOnly = { ...climate, diffuse: new Array(365).fill(1) };
   const months = async (clim) => { const out = []; for (let mo = 0; mo < 12; mo++) { const a = perCell(await ask({ type: 'period', days: monthDays(mo), climate: clim })); if (!a) return null; out.push(a); } return out; };
   const build = (erased) => ask({ type: 'build', cols: res.points, box: g.bbox, lat: site.lat, lng: site.lng, shift: null, lot: polygonsOf(site.lawn), lawn: polygonsOf(site.lawn),
-    canopy: 'seasonal', flight: site.cloudSeason || null, tMean: Array.isArray(climate?.tMean) ? climate.tMean : null, erased, erasedCubes: edits.cubes });
+    canopy: 'seasonal', flight: site.cloudSeason || null, tMean: Array.isArray(climate?.tMean) ? climate.tMean : null, erased, erasedCubes: edits.cubes,
+    // the fences drawn on the shade map (its part, v 3): their shade too, as the shade map works it out
+    fences: site.shadeEdits?.fences?.length ? site.shadeEdits.fences : undefined });
   /* THE SUMMER CANOPY (FINDINGS H44): as the shade map draws it -- a leaf-off flight's crowns given their leaves
      back from this place's typical temperatures (light-worker.js 'seasonal'; before 2026-10-27 the water map
      asked for the crowns as flown, bare branches on a November flight) -- and without the trees and branches

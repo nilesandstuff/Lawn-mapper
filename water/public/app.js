@@ -80,7 +80,7 @@ async function siteFromMap(id) {
     // the shade map's cloud, box and shift, when it has worked on this map: the same cells as its part
     lidar: s.tools?.shade?.data?.lidar || null,
     // the trees and branches erased on the shade map: gone from the water map's shade too
-    shadeEdits: s.tools?.shade?.data?.grid ? { grid: s.tools.shade.data.grid, erased: s.tools.shade.data.erased || [], cubes: s.tools.shade.data.cubes || [] } : null,
+    shadeEdits: s.tools?.shade?.data?.grid ? { grid: s.tools.shade.data.grid, erased: s.tools.shade.data.erased || [], cubes: s.tools.shade.data.cubes || [], fences: Array.isArray(s.tools.shade.data.fences) ? s.tools.shade.data.fences : null } : null,
     mapId: id, at: s.at || null,
     // the photo the lawn was traced on (owner 2026-10-19: a county photo if one was saved, Mapbox if Mapbox)
     tracedOn: tracedOn(s),

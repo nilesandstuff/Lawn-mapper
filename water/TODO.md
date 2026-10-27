@@ -74,6 +74,9 @@ SPECULATION), as always.
     wind behind a single house was found. Research it (wind-tunnel and field studies of a house's wake, the summer
     wind's direction here), then a per-cell lee from the roofs (and crowns) upwind, the buildings from the shade
     map's kinds. Also: the cover is counted only as far as the grid reaches, 30 m past the lot, not Heisler's 90 m.
+    Fences (features session, 2026-10-27): the shade part (v 3) keeps each fence's line, height, style and a wind
+    porosity (solid 0, spaced 0.5 -- Zhou et al. 2004 for slat fences --, shadowbox 0.2, an estimate): a fence's lee
+    is the same calculation as a house's. The water map already passes the fences to the light worker for their shade.
     What is known so far: FINDINGS H46 (which effects are averaged, and why the wind's average does not hold spot
     by spot), H44 (the wind as built), S12, and research-shade-wind.md (Brandle's windbreak curves, Heisler's houses).
 18. **Cooler air, more local, especially in still air** (owner, 2026-10-27: "fine tuning cooling effect of shade to
