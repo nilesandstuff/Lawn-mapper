@@ -1141,6 +1141,18 @@ kbd {
 }
 .merge-parcel:hover { background: rgba(20, 20, 20, 0.9); }
 
+/* Each lawn area's size, inside it (app.js drawSizeLabels). Subtle: the
+   photograph is what is being read, the label is a note on it. */
+.size-labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 1; }
+.size-label {
+  position: absolute; left: 0; top: 0;
+  font: 600 11px/1 system-ui, sans-serif;
+  color: rgba(255, 255, 255, 0.92);
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.9), 0 0 5px rgba(0, 0, 0, 0.7);
+  white-space: nowrap;
+  padding: 2px 3px;
+}
+
 /* NAIP lined up with Mapbox: a small panel over the top of the map. */
 /*
  * COLLAPSED: one small button under the Layers button (owner, 2026-10-01).

@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lawn sections | Lawn Mapper</title>
+<!--
+  THE LAWN SECTIONS TOOL (owner, 2026-10-27: "Let's add the lawn slice
+  tool", its own tool on the dashboard). Opened on a saved map
+  (?map=<id>), it splits the lawn into named sections that always add up
+  to the whole, and keeps them as its own part of the map (docs/MAPS.md).
+  The cuts are public/lib/sections.js; the size labels are shared with the
+  editor (public/lib/size-label.js).
+-->
+<meta name="robots" content="noindex">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#2f7d32">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.css" rel="stylesheet">
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #111; color: #eee; font: 14px/1.4 system-ui, -apple-system, sans-serif; overscroll-behavior: none; }
+  .app { position: fixed; inset: 0; display: flex; flex-direction: column; }
+  .bar { display: flex; gap: 8px; align-items: center; padding: 6px 10px; background: #1c1c1c; padding-top: max(6px, env(safe-area-inset-top)); }
+  .bar a { color: #9ccc65; text-decoration: none; white-space: nowrap; }
+  .bar .title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+  .bar .total { white-space: nowrap; font-variant-numeric: tabular-nums; color: #c5e1a5; }
+  .main { position: relative; flex: 1; min-height: 0; }
+  #map { position: absolute; inset: 0; }
+  #map.drawing { touch-action: none; }
+  #labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+  .lab { position: absolute; transform: translate(-50%, -50%); text-align: center; white-space: nowrap; font-size: 12px; line-height: 1.15; color: #fff;
+         text-shadow: 0 0 3px #000, 0 0 3px #000, 0 0 6px #000; font-weight: 600; }
+  .lab b { display: block; font-size: 13px; }
+  .hint { pointer-events: none; position: absolute; left: 8px; right: 8px; top: 8px; padding: 6px 10px; border-radius: 8px; background: rgba(20, 20, 20, .88); font-size: 13px; }
+  .hint:empty { display: none; }
+  .hint.warn { color: #ffb74d; }
+  .tools { display: flex; gap: 6px; padding: 6px 8px; background: #1c1c1c; overflow-x: auto; border-top: 1px solid #333; }
+  .tools button { flex: 1 0 auto; }
+  button { min-height: 40px; padding: 0 12px; border-radius: 8px; border: 1px solid #555; background: #262626; color: #eee; font-size: 14px; }
+  button[aria-pressed="true"] { background: #2e7d32; border-color: #66bb6a; }
+  button.primary { background: #2e7d32; border-color: #2e7d32; }
+  button:disabled { opacity: .4; }
+  /* A fixed height: a list that grew with each cut would shrink the map and
+     slide the lawn under the tools. */
+  .panel { height: 30vh; box-sizing: border-box; overflow: auto; padding: 6px 10px; padding-bottom: max(10px, env(safe-area-inset-bottom)); background: #161616; border-top: 1px solid #333; }
+  .row { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid #222; }
+  .row.on { background: #23301f; }
+  .sw { width: 16px; height: 16px; border-radius: 4px; flex: none; border: 1px solid #0006; }
+  .row input { flex: 1; min-width: 0; font-size: 16px; padding: 6px 8px; border-radius: 8px; border: 1px solid #444; background: #222; color: #eee; }
+  .row .size { width: 6.5em; text-align: right; font-variant-numeric: tabular-nums; color: #ccc; }
+  .note { color: #999; font-size: 12px; margin: 6px 0; }
+  .msg { padding: 24px 16px; max-width: 520px; margin: 0 auto; }
+  .msg a { color: #9ccc65; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="bar">
+    <a id="back" href="/" aria-label="Back to your maps">&#8592; Maps</a>
+    <span class="title" id="title">Lawn sections</span>
+    <span class="total" id="total"></span>
+  </div>
+  <div class="main">
+    <div id="map"></div>
+    <div id="labels"></div>
+    <div class="hint" id="hint"></div>
+    <div class="msg" id="msg" hidden></div>
+  </div>
+  <div class="tools" id="tools" hidden>
+    <button data-tool="move" aria-pressed="true">Move</button>
+    <button data-tool="slice" aria-pressed="false">Slice</button>
+    <button data-tool="draw" aria-pressed="false">Free draw</button>
+    <button data-tool="square" aria-pressed="false">Square</button>
+    <button data-tool="shape" aria-pressed="false">Shape</button>
+    <button data-tool="join" aria-pressed="false">Join</button>
+    <button id="shape-done" class="primary" hidden>Cut shape</button>
+    <button id="undo" disabled>Undo</button>
+  </div>
+  <div class="panel" id="panel" hidden>
+    <div id="list"></div>
+    <p class="note" id="saved"></p>
+  </div>
+</div>
+<script defer src="/lib/vendor/polygon-clipping.umd.min.js"></script>
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.js"></script>
+<script type="module" src="/sections.js"></script>
+</body>
+</html>

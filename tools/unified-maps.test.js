@@ -59,6 +59,9 @@ check('safeNext lets a sign-in land on the home dashboard, and nowhere else',
     t.some((x) => x.id === 'water') && toolsFor('lawnmap.nilesandstuff.com', { admin: true }).some((x) => x.id === 'water'));
   check('the water map carries its experimental note',
     /highly experimental and early in development/i.test(t.find((x) => x.id === 'water').note || ''));
+  check('the lawn sections tool opens on lawnmap and needs the lawn',
+    t.find((x) => x.id === 'sections')?.url === 'https://lawnmap.nilesandstuff.com/sections?map={id}'
+    && t.find((x) => x.id === 'sections').needs.join() === 'lawn');
   check('every tool a tool needs is a tool', TOOLS.every((x) => x.needs.every((n) => TOOLS.some((y) => y.id === n))));
 }
 

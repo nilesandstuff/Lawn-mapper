@@ -7,48 +7,7 @@ this file only points there.
 
 ## Asked for, not started
 
-### 1. Each area labelled with its size (owner, 2026-10-24)
-
-Subtle text in the middle of each lawn area with its size, written like
-**"1.1 k sqft"**.
-
-- Format: under 1,000 as is ("850 sqft"); from 1,000 one decimal in
-  thousands ("1.1 k sqft"); from 10,000 whole thousands ("12 k sqft").
-- Placed inside the shape, not at its centre point, which can fall outside
-  an L-shaped or ring-shaped area. `placeInside` in public/lib/frontage.js
-  already finds such a spot.
-- Moves and updates as the shape is edited; hidden on areas too small to
-  hold the text.
-- Where: the lawn editor first; the sections tool (item 2) would use the
-  same labels.
-
-### 2. Measure lawn sections: front, back, side (owner, 2026-10-24)
-
-A tool opened from the dashboard that loads a saved map in a simplified
-viewer. It has the same general look as the main editor, trimmed down, for
-splitting the lawn into named sections and reading each one's size.
-
-- **Tools:**
-  - **Slice:** draw a straight line through an area to cut it in two.
-  - **Free draw:** cut along a hand-drawn line.
-  - **Square:** drag a rectangle to cut out the part of the lawn inside it.
-  - **Shape:** place points to make a polygon that cuts its area out of
-    the existing sections.
-- **Borders of zero thickness.** The cut pieces share their borders
-  exactly, so the sections always add up to the lawn's total: no square
-  foot lost or added. A test should check that the sum equals the whole.
-- **Each section shaded differently,** with its size label (item 1), and
-  ideally a name (front, back, side...).
-- **Saved with the map** as the tool's own part (POST /api/maps/tool,
-  docs/MAPS.md), like the other tools.
-- **Open question (owner):** a tool of its own on the dashboard, or folded
-  into the lawn mapper. Undecided.
-- **Related:** the existing "Calibrate product usage by area" tool (slices)
-  cuts the lawn into equal pieces automatically for spreader calibration.
-  The sections tool is user-drawn and different, but the two could share
-  the cutting code.
-
-### 3. Research: sections cut automatically from words (owner, 2026-10-24)
+### 1. Research: sections cut automatically from words (owner, 2026-10-24)
 
 Find a lightweight way to cut a lawn into sections from a word prompt:
 "front yard", "back yard", "side yard". The test case is the Byron Center
@@ -63,7 +22,7 @@ inside of the loop".
   away from it. That needs no model and may be the stronger answer.
 - "Inside the loop" needs the road network as a shape: which side of a
   ring road a section sits on.
-- Output feeds item 2: the auto-cut sections become ordinary sections the
+- Output feeds the sections tool (public/sections.html): the auto-cut sections become ordinary sections the
   owner can adjust.
 - Research first, with a recommendation and cost (free runner only unless
   the owner approves Modal). Nothing is built before the owner chooses.
@@ -85,6 +44,18 @@ inside of the loop".
   canopy input.
 
 ## Done
+
+- 2026-10-27: the lawn sections tool, its own card on the dashboard
+  ("Lawn sections", /sections?map=<id>). Slice, free draw, square, shape
+  and join; borders of zero thickness, so the sections always add up to
+  the lawn (tools/sections.test.js checks every cut). Each section
+  shaded, named and sized, kept as the map's `sections` part. A lawn
+  redrawn later is fitted to: sections trimmed, new lawn made a section.
+
+- 2026-10-27: each lawn area in the editor labelled with its size
+  ("1.1 k sqft"), inside the shape, following a dragged corner, hidden on
+  shapes too small to hold it. Shared with the sections tool
+  (public/lib/size-label.js).
 
 - 2026-10-27: the detector's answer trusted under small trees on leaf-off
   photos, live (H127; owner's choice). Three seeds: never worse on seen

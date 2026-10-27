@@ -34,6 +34,7 @@ The contract every tool builds against (owner, 2026-10-16). The core session own
 |---|---|---|---|
 | lawn | Lawn Mapper | none | `https://lawnmap.<home>/?map={id}` |
 | slices | Calibrate product usage by area | lawn | `https://lawnmap.<home>/?map={id}&tool=slices` |
+| sections | Lawn sections (2026-10-27) | lawn | `https://lawnmap.<home>/sections?map={id}` |
 | shade | Shade analyzer | none (the map's address and property line) | `https://shade.<home>/?map={id}` (its own address since 2026-10-18; lawnmap's /shade redirects there) |
 | water | Water map (everyone, since 2026-10-23) | shade | `https://water.<home>/?map={id}` |
 
@@ -64,6 +65,7 @@ Only what it needs to pick up where the person left off. Derived numbers that ca
 
 - **shade**: a traced property line (when the county had none), the erased tree cells, and the settings the person chose.
 - **slices**: the piece size and application width.
+- **sections**: `{ v: 1, sections: [{ id, name, poly }], at }`, each section's MultiPolygon in [lng, lat] to about a millimetre. They are fitted to the lawn again on opening, so a lawn redrawn since still adds up (public/lib/sections.js).
 - **water**: the soak test, a gauge or controller total, the zones.
 
 ## Status, worked out on the dashboard

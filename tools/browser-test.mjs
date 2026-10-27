@@ -2189,6 +2189,17 @@ if (corner) {
     Math.abs(dragged.point.sqft - corner.sqft) > 1,
     `moved ${Math.abs(dragged.point.sqft - corner.sqft).toFixed(1)} sq ft`);
 
+  /* Each area labelled with its size, inside it (owner, 2026-10-24). */
+  const labels = await page.evaluate(async () => {
+    await new Promise((r) => setTimeout(r, 300));
+    const box = document.querySelector('#map').getBoundingClientRect();
+    return [...document.querySelectorAll('.size-label')]
+      .filter((el) => el.style.display !== 'none')
+      .map((el) => { const r = el.getBoundingClientRect(); return { text: el.textContent, inMap: r.left >= box.left && r.right <= box.right && r.top >= box.top && r.bottom <= box.bottom }; });
+  });
+  check('the lawn is labelled with its size', labels.some((l) => /^\d+(\.\d)? (k )?sqft$/.test(l.text) && l.inMap),
+    JSON.stringify(labels));
+
   const counts = await page.evaluate(() => window.__lmPoints?.()[0]?.count ?? null);
   const afterDelete = await page.evaluate(async () => {
     document.querySelector('#btn-point-delete').click();

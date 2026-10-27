@@ -52,6 +52,11 @@ export const TOOLS = [
     needs: [], url: 'https://{lawnmap}/?map={id}' },
   { id: 'slices', name: 'Calibrate product usage by area', blurb: 'Split the lawn into measured pieces to check a spreader or sprayer against the bag.',
     needs: ['lawn'], url: 'https://{lawnmap}/?map={id}&tool=slices' },
+  /* Lawn sections (owner, 2026-10-27: "Let's add the lawn slice tool", its
+     own tool on the dashboard): the lawn cut into named sections that add
+     up to the whole. public/sections.html. */
+  { id: 'sections', name: 'Lawn sections', blurb: 'Cut the lawn into named sections (front, back, side), each with its size.',
+    needs: ['lawn'], url: 'https://{lawnmap}/sections?map={id}' },
   { id: 'shade', name: 'Shade analyzer', blurb: 'The trees around the lawn in 3D from lidar, and the sun and shade through the year.',
     needs: [], url: 'https://{shade}?map={id}', entry: 'https://{shade}' },
   { id: 'water', name: 'Water map', blurb: 'Where rain and irrigation go on this lawn, and how much to water.',

@@ -27,6 +27,7 @@ import {
 import { afterStroke, restoreAway } from './lib/stitch.js';
 import { strokeOnShapes } from './lib/brush-vector.js';
 import { extendToRoads, mergeButtonPoint, mergeRings, placeInside } from './lib/frontage.js';
+import { sizeLabel, labelSpot } from './lib/size-label.js';
 import { movedCorners } from './lib/align.js';
 import { sharpTiles } from './lib/sharp-tiles.js';
 import { alignFromRegistration } from './lib/register.js';
@@ -1984,6 +1985,8 @@ async function initMap() {
   for (const evt of ['draw.create', 'draw.update', 'draw.delete']) {
     map.on(evt, refreshMeasurement);
   }
+  // Each area's size inside it, following a corner as it is dragged.
+  for (const evt of ['draw.render', 'move', 'resize']) map.on(evt, placeSizeLabels);
 
   // A polygon drawn while "Draw the property line" is armed becomes the
   // boundary rather than a patch of lawn.
@@ -12957,6 +12960,71 @@ const onMarker = (e) => Boolean(e?.target?.closest?.('.mapboxgl-marker'));
  * room for "Merge this parcel" tries "Merge"; too little for that, hidden.
  */
 let placeQueued = false;
+/*
+ * EACH AREA LABELLED WITH ITS SIZE (owner, 2026-10-24, docs/TODO.md item 1):
+ * subtle text inside every lawn shape, "1.1 k sqft". The wording and the
+ * spot are lib/size-label.js, shared with the sections tool. A label sits
+ * wholly inside its shape (placeInside), never at a centre point that can
+ * fall outside an L, and is left off a shape too small to hold it.
+ *
+ * Re-placed on every Draw render, so it follows a dragged corner. Finding a
+ * spot can walk rings of candidates, so the spot is kept, in lng/lat, per
+ * shape and zoom, and a pan only projects it again.
+ */
+const sizeSpots = new Map();
+let sizeLabelsQueued = false;
+function placeSizeLabels() {
+  if (sizeLabelsQueued || !map || !draw) return;
+  sizeLabelsQueued = true;
+  requestAnimationFrame(() => {
+    sizeLabelsQueued = false;
+    try { drawSizeLabels(); } catch { /* a label is never worth breaking the editor for */ }
+  });
+}
+
+function drawSizeLabels() {
+  const host = map.getContainer();
+  let box = host.querySelector('.size-labels');
+  if (!box) {
+    box = document.createElement('div');
+    box.className = 'size-labels';
+    box.setAttribute('aria-hidden', 'true');
+    host.appendChild(box);
+  }
+  /* Not over the calibration pieces, which carry their own sizes, nor while
+     a saved map is being reviewed from the console. */
+  const shapes = state.plan || state.reviewingId ? [] : draw.getAll().features.filter((f) => outerRing(f));
+  const zoom = Math.round(map.getZoom() * 4);
+  const seen = new Set();
+  const w0 = host.clientWidth; const h0 = host.clientHeight;
+  const els = [...box.children];
+  let n = 0;
+  for (const f of shapes) {
+    const rings = f.geometry.coordinates;
+    const text = sizeLabel(measure(f.geometry).squareFeetRaw);
+    const key = `${f.id}|${zoom}|${rings[0].length}|${rings[0][0]}|${rings[0][Math.floor(rings[0].length / 2)]}|${text}`;
+    seen.add(key);
+    const el = els[n] || box.appendChild(document.createElement('div'));
+    el.className = 'size-label';
+    if (el.textContent !== text) el.textContent = text;
+    let spot = sizeSpots.get(key);
+    if (spot === undefined) {
+      const px = rings.map((r) => r.map((ll) => { const p = map.project(ll); return [p.x, p.y]; }));
+      const at = labelSpot(px, el.offsetWidth || text.length * 7, el.offsetHeight || 16);
+      spot = at ? map.unproject(at) : null;
+      sizeSpots.set(key, spot);
+    }
+    n++;
+    if (!spot) { el.style.display = 'none'; continue; }
+    const p = map.project(spot);
+    if (p.x < 0 || p.y < 0 || p.x > w0 || p.y > h0) { el.style.display = 'none'; continue; }
+    el.style.display = '';
+    el.style.transform = `translate(${Math.round(p.x)}px, ${Math.round(p.y)}px) translate(-50%, -50%)`;
+  }
+  for (const el of els.slice(n)) el.remove();
+  for (const k of sizeSpots.keys()) if (!seen.has(k)) sizeSpots.delete(k);
+}
+
 function placeMergeButtons() {
   if (placeQueued) return;
   placeQueued = true;
@@ -13807,6 +13875,7 @@ function runSegments() {
   const plan = planSegments({ rings, targetSqFt: segSize(), widthFt: segWidth() });
   state.plan = plan;
   keepToolPart('slices', { size: segSize(), width: segWidth() });
+  placeSizeLabels(); // the pieces carry their own sizes: the lawn's step aside
 
   map.getSource('segments').setData({
     type: 'FeatureCollection',
@@ -13910,6 +13979,7 @@ function renderSegmentList(plan) {
  * the person just did with one about the bookkeeping behind it.
  */
 function clearSegments({ quiet = false } = {}) {
+  placeSizeLabels(); // the lawn's own labels come back with the pieces gone
   state.plan = null;
   // Guarded because this runs from refreshMeasurement, which can fire before
   // the map's sources exist -- restoring a save sets shapes up first.
