@@ -101,6 +101,7 @@ So morphology lowers ET only where shade thins the cover, which means deep tree 
 - **Hutchison & Matt 1977**, *Ecol. Monogr.* 47:185 [read]: "leaves transmit green and near infrared wavelengths preferentially", so much of the light inside a summer forest is not used in photosynthesis. No split was given.
 - **Leaf absorptivity:** about 0.8 for PAR, 0.2 for NIR and 0.5 for total solar (Campbell & Norman 1998) [2nd]. Under Beer's law with extinction K·√a, NIR transmission ≈ (PAR transmission)^0.5.
 - **The tool's L** (lib/shade/canopy.js) is a lidar **gap fraction**: leaves are treated as black and scattered light is ignored. Under crowns, the shortwave reaching the grass therefore exceeds L. Under buildings it does not.
+  - **CORRECTION (water session, 2026-10-27):** wrong as a reading of the shade map's output. Its light is held to NEON's ground PAR sensors under full summer canopy (within about a point at hardwood sites) and the owner's phone readings (docs/SHADE-FINDINGS.md 1, 25), so light through and round the leaves is in it. Only the visible-versus-near-infrared question is left, unmeasured; the NIR column below should not be used.
 
 ## SPECULATION
 

@@ -1535,15 +1535,16 @@ unlikely is the check. The soil survey's own monthly water table (lib/soil.js,
 "Wet" layers) IS in the balance: it stops drainage and makes dual-group soils
 the wetter group in those months.
 
-### S12. Where the shade numbers may now run low (2026-10-27, with H44)
+### S12. Where the shade numbers may now run low (2026-10-27, with H44; first point withdrawn the same day)
 
-- **Light through leaves** (the shade map's to decide: passed to the features session 2026-10-27, owner's rule that
-  shade is the shade map's). The light share is the lidar's gap fraction, leaves taken as black. Leaves pass far more
-  near-infrared than visible light (absorbing about 0.2 of it against 0.8), and the near-infrared is half the
-  sun's energy: under crowns (not buildings) the grass gets more of the energy that drives its water use than the
-  share says -- by theory about 0.5 L^0.89 + 0.5 L^0.45 (0.46 at L 0.3; Campbell & Norman's absorptivities, the
-  research's arithmetic). Not built here: a change to how shade works goes through the shade map.
-  It would lift the deepest shade back toward the measured 0.33-0.6.
+- **Light through leaves: WITHDRAWN 2026-10-27.** This said the shade map's light share takes leaves as black. It
+  does not, in what it gives: it is held to measured light under real canopy -- NEON's ground PAR line sensors under
+  full summer leaf, within about a point at the hardwood sites (SHADE-FINDINGS 1), and the owner's phone readings on
+  the lot (SHADE-FINDINGS 25) -- so light coming through and round the leaves is in it. The water session repeated
+  the research agent's reading of canopy.js without reading SHADE-FINDINGS; the owner corrected it. What is left is
+  narrower and unmeasured here: those sensors read visible light (PAR, lux), and the grass's water use goes by all
+  the sun's energy, about half of it near-infrared, which leaves pass more of than visible light -- and which grass
+  also reflects more of. Whether that changes anything is the shade map's question, not built or pursued here.
 - **Shelter is not only less wind.** The day is worked out again at the yard's wind with the air's temperature and
   vapour held; air in shelter is warmer and more humid, and turf transpiration there "relatively insensitive" to it
   (Cleugh et al. 2002). The wind's cut may be too big.

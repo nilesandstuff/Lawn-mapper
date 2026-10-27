@@ -73,7 +73,9 @@ SPECULATION), as always.
   shade actually works, that goes through the shade map. Re use the shade map's work, for uniformity... we don't
   want to start any tree models or shade calculations from scratch here." The water map runs the shade map's own
   files (lib/shade/ links to public/shade/), takes its light, its trees (its kinds) and its erased trees, and asks
-  the features session for any change to them. Light through leaves (FINDINGS S12) was passed to it, 2026-10-27.
+  the features session for any change to them. A "light through leaves" point was passed to it on 2026-10-27 and withdrawn the same day: the shade map is
+  already held to light measured under real canopy (FINDINGS S12). Read docs/SHADE-FINDINGS.md before claiming
+  anything about how the shade map works.
 
 ## Shelved (owner, 2026-10-26: "shelve the tree thing to the todo list")
 
