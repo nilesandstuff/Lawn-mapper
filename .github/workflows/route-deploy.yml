@@ -96,6 +96,13 @@ jobs:
           done
           echo "ROUTE_STATE=${ROUTE_STATE} (but not answering yet: a new custom domain can take a few minutes)" >> "$GITHUB_ENV"
 
+      - name: Email inbox (route sheets by email)
+        if: ${{ github.event_name == 'push' || inputs.task == 'deploy' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node route/tools/email.mjs
+
       - name: The answer
         if: always()
         run: |
@@ -103,6 +110,7 @@ jobs:
           if [ "${{ github.event_name }}" = push ] || [ "${{ inputs.task }}" = deploy ]; then
             echo "Route planner: ${ROUTE_STATE:-not deployed -- see the steps above}"
             [ -n "$ROUTE_NOTE" ] && echo "  but $ROUTE_NOTE" || true
+            [ -n "$ROUTE_EMAIL" ] && echo "$ROUTE_EMAIL" || true
           else
             echo "Route planner tests: ${{ job.status }}"
           fi

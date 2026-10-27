@@ -10,6 +10,8 @@
  *   POST /api/matrix  { points, [sources], [destinations] } -> { durations, distances }
  *   POST /api/route   { points }        -> { legs, geometry }
  *   /api/shop, /api/catalog              the shop's address and the first document (src/store.js)
+ *   /api/inbox, /api/inbox/<id>          route sheets that arrived by email (src/inbox.js), with the inbox key
+ *   email()                              where Email Routing delivers them
  *   GET  /api/usage                      this month's Mapbox use against the free allowance (src/usage.js);
  *                                        every Mapbox call above is counted there first, and refused past the cap
  *
@@ -24,6 +26,7 @@
 import { geocode, matrix, matrixBlocks, route, validIndexes, validPoints } from './mapbox.js';
 import { store, keyed } from './store.js';
 import { LimitError, meter, report } from './usage.js';
+import { inbox, receive } from './inbox.js';
 
 const json = (body, status = 200) => new Response(JSON.stringify(body), {
   status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
@@ -38,6 +41,7 @@ export function foreign(request, url) {
 export async function api(request, env, url, fetcher = fetch) {
   if (foreign(request, url)) return json({ error: 'Not from this site' }, 403);
   if (url.pathname === '/api/shop' || url.pathname === '/api/catalog') return store(request, env, url);
+  if (url.pathname === '/api/inbox' || url.pathname.startsWith('/api/inbox/')) return inbox(request, env, url);
   if (url.pathname === '/api/usage') {
     if (request.method === 'GET') return json(await report(env).catch(() => ({ counting: false })));
     // the key may add use the meter did not see (testing before it existed): never refused, never less
@@ -82,5 +86,9 @@ export default {
     const url = new URL(request.url);
     if (url.pathname.startsWith('/api/')) return api(request, env, url);
     return env.ASSETS.fetch(request);
+  },
+  // route sheets by email: Cloudflare Email Routing sends the planner's address here (src/inbox.js)
+  async email(message, env) {
+    await receive(message, env);
   },
 };

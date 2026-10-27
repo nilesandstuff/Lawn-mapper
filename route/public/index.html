@@ -129,6 +129,13 @@
   .usage.out b { color: var(--bad); }
   .usage ul { margin: 8px 0 0; padding-left: 18px; }
   .usage li { margin-top: 2px; }
+  .addr-pill { overflow-wrap: anywhere; color: var(--ink); }
+  .inbox { list-style: none; margin: 0; padding: 0; }
+  .inbox li { display: flex; gap: 10px; align-items: center; justify-content: space-between; padding: 8px 0; border-top: 1px solid var(--line); }
+  .inbox li:first-child { border-top: 0; }
+  .inbox .meta { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+  .inbox .new { font-size: 11px; font-weight: 700; color: var(--accent-ink); background: var(--accent); border-radius: 999px; padding: 1px 7px; }
+  #inboxCopy { min-height: 32px; padding: 4px 10px; display: inline-flex; vertical-align: middle; }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -162,12 +169,20 @@
     <p class="hint">Pick one long screenshot or several; jobs that show up in more than one are counted once.</p>
     <div class="row-btns pickers">
       <label class="btn primary" for="pick">Screenshots</label>
-      <label class="btn" for="pickDoc">Word document</label>
+      <label class="btn" for="pickDoc">PDF, Excel, Word</label>
     </div>
     <input id="pick" type="file" accept="image/*" multiple hidden>
-    <input id="pickDoc" type="file" accept=".docx,.doc,.odt,.rtf,.txt,.csv,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword,application/vnd.oasis.opendocument.text,application/rtf,text/plain,text/csv" multiple hidden>
+    <input id="pickDoc" type="file" accept=".pdf,.xlsx,.xlsm,.xls,.docx,.doc,.odt,.rtf,.txt,.csv,.html,.htm,.eml,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword,application/vnd.oasis.opendocument.text,application/rtf,text/plain,text/csv,text/html,message/rfc822" multiple hidden>
     <progress id="progress" max="1" value="0" hidden></progress>
     <p id="status" class="status" role="status"></p>
+  </section>
+
+  <section class="card" id="inboxCard" hidden aria-labelledby="inboxH">
+    <h2 id="inboxH">Emailed route sheets</h2>
+    <p class="hint">Email or forward a route sheet (PDF, Excel, Word, or one in the email itself) to
+      <b id="inboxAddress" class="addr-pill"></b> <button type="button" class="btn small" id="inboxCopy">Copy</button></p>
+    <ul class="inbox" id="inboxList"></ul>
+    <div class="row-btns"><button type="button" class="btn small" id="inboxRefresh">Check for new</button></div>
   </section>
 
   <section class="card" id="stopsCard" hidden aria-labelledby="stopsH">
@@ -179,7 +194,7 @@
     <div class="row-btns">
       <button type="button" class="btn small" id="addStop">+ Add stop</button>
       <label class="btn small" for="pickMore">+ Add more</label>
-      <input id="pickMore" type="file" accept="image/*,.docx,.doc,.odt,.rtf,.txt,.csv,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword,application/vnd.oasis.opendocument.text,application/rtf,text/plain,text/csv" multiple hidden>
+      <input id="pickMore" type="file" accept="image/*,.pdf,.xlsx,.xlsm,.xls,.docx,.doc,.odt,.rtf,.txt,.csv,.html,.htm,.eml,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword,application/vnd.oasis.opendocument.text,application/rtf,text/plain,text/csv,text/html,message/rfc822" multiple hidden>
       <button type="button" class="btn small" id="clear">Clear</button>
     </div>
     </details>
@@ -210,7 +225,7 @@
     </div>
   </section>
 
-  <footer>Screenshots and documents are read on this phone. The one exception: the first document anyone opens here is kept once, privately, to tune the reader. Map © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>; routing by Mapbox.</footer>
+  <footer>Screenshots and documents are read on this phone. Kept elsewhere only: emailed route sheets, in a private inbox for up to 14 days, and the first document anyone opens here, once, to tune the reader. Map © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>; routing by Mapbox.</footer>
 </main>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script type="module" src="/app.js"></script>

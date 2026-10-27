@@ -2,7 +2,7 @@
 // every name and address made up. Replace with the real layout once the first document is in.
 import assert from 'node:assert/strict';
 import { deflateRawSync } from 'node:zlib';
-import { docText, headerKind, isAddress, kindOf, parseDocument, readDocument, readDuration, readSqft, splitAddress, xmlBlocks } from '../lib/doc.js';
+import { docText, headerKind, htmlBlocks, isAddress, kindOf, parseDocument, pdfBlocks, readDocument, readDuration, readSqft, splitAddress, xmlBlocks } from '../lib/doc.js';
 
 /** A zip, as Word writes one (deflated) or stored. */
 function zip(files, deflate = true) {
@@ -122,6 +122,72 @@ assert.match(docText(bin), /Pat Doe\t3581 Maple Ct SW\t20 min/);
 r = await read('old.doc', new Uint8Array(bin));
 assert.deepEqual(r.stops.map((s) => [s.name, s.address, s.minutes]), [['Pat Doe', '3581 Maple Ct SW', 20]]);
 
+// 10. Excel (.xlsx): the Dispatch Board's export. Shared strings, an inline string, numbers,
+// a time kept as a fraction of a day, a blank cell skipped by reference
+const xlsx = zip({
+  'xl/workbook.xml': '<workbook><sheets><sheet name="Dispatch" sheetId="1" r:id="rId1"/></sheets></workbook>',
+  'xl/_rels/workbook.xml.rels': '<Relationships><Relationship Id="rId1" Type="worksheet" Target="worksheets/sheet1.xml"/></Relationships>',
+  'xl/sharedStrings.xml': '<sst><si><t>Customer</t></si><si><t>Address</t></si><si><t>City</t></si><si><t>Est. Time</t></si><si><t>Turf Sq Ft</t></si><si><t>Pat Doe</t></si><si><r><t>3581 Maple </t></r><r><t>Ct SW</t></r></si><si><t>Fairview</t></si><si><t>Sam &amp; Lee Roe</t></si></sst>',
+  'xl/worksheets/sheet1.xml': `<worksheet><sheetData>
+    <row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c><c r="C1" t="s"><v>2</v></c><c r="D1" t="s"><v>3</v></c><c r="E1" t="s"><v>4</v></c></row>
+    <row r="2"><c r="A2" t="s"><v>5</v></c><c r="B2" t="s"><v>6</v></c><c r="C2" t="s"><v>7</v></c><c r="D2" s="3"><v>1.3888888888888889E-2</v></c><c r="E2"><v>8500</v></c></row>
+    <row r="3"><c r="A3" t="s"><v>8</v></c><c r="B3" t="inlineStr"><is><t>4644 Oak Hollow Dr SW</t></is></c><c r="D3"><v>25</v></c><c r="E3"><v>11200</v></c></row>
+  </sheetData></worksheet>`,
+});
+assert.equal(kindOf('Dispatch Board.xlsx', xlsx), 'xlsx');
+assert.equal(kindOf('noname', xlsx), 'zip');
+r = await read('Dispatch Board.xlsx', xlsx);
+assert.deepEqual(r.stops.map((s) => [s.name, s.address, s.city, s.minutes, s.sqft]), [
+  ['Pat Doe', '3581 Maple Ct SW', 'Fairview', 20, 8500],
+  ['Sam & Lee Roe', '4644 Oak Hollow Dr SW', '', 25, 11200],
+]);
+assert.equal((await read('noname', xlsx)).stops.length, 2, 'known by its insides');
+await assert.rejects(readDocument('old.xls', new Uint8Array([0xd0, 0xcf, 0x11, 0xe0])), /save it as \.xlsx/);
+
+// 11. an emailed route sheet's HTML body: a table with a header, entities, nested formatting
+r = parseDocument(htmlBlocks(`<html><head><style>td{color:red}</style></head><body>
+  <p>Route Sheet&nbsp;&ndash; Tuesday</p>
+  <table border="1"><thead><tr><th>Stop</th><th>Client</th><th>Service Address</th><th>Est. Time</th><th>Sq. Ft.</th></tr></thead>
+  <tbody><tr><td>1</td><td><b>Pat Doe</b></td><td>3581 Maple Ct SW<br>Fairview, MI 49315</td><td>20 min</td><td>8,500</td></tr>
+  <tr><td>2</td><td>Sam Roe</td><td>4644 Oak Hollow Dr SW<br/>Fairview, MI 49315</td><td>0:25</td><td>11,200</td></tr></tbody></table>
+  <p>Notes: gate code 1234</p></body></html>`));
+assert.deepEqual(r.stops.map((s) => [s.name, s.address, s.city, s.minutes, s.sqft]), [
+  ['Pat Doe', '3581 Maple Ct SW', 'Fairview', 20, 8500],
+  ['Sam Roe', '4644 Oak Hollow Dr SW', 'Fairview', 25, 11200],
+]);
+// and as a list of stops, one block each
+r = parseDocument(htmlBlocks('<div>3581 Maple Ct SW, Fairview</div><div>Pat Doe &bull; 20 min &bull; 8,500 sq ft</div><div>2531 Willow, Fairview</div><div>Kim Low &bull; 30 min</div>'));
+assert.deepEqual(r.stops.map((s) => [s.address, s.name, s.minutes, s.sqft]), [['3581 Maple Ct SW', 'Pat Doe', 20, 8500], ['2531 Willow', 'Kim Low', 30, null]]);
+
+// 12. a PDF's words, as pdf.js gives them (y up): a table with a header, an address wrapped onto a
+// second line, the header repeated on page 2; then a page with no header, read line by line
+const word = (text, x, y, size = 10) => ({ text, x, y, w: text.length * size * 0.5, h: size });
+const rowAt = (y, cells) => cells.flatMap(([x, t]) => t.split(' ').reduce((a, w) => { a.out.push(word(w, a.x, y)); a.x += (w.length + 1) * 5; return a; }, { x, out: [] }).out);
+const head = (y) => rowAt(y, [[40, 'Client'], [160, 'Address'], [360, 'Est. Time'], [440, 'Sq Ft'], [500, 'Phone']]);
+const page1 = [
+  word('Route Sheet - Crew 2', 40, 760, 14),
+  ...head(720),
+  ...rowAt(700, [[40, 'Pat Doe'], [160, '3581 Maple Ct SW'], [360, '20 min'], [440, '8,500'], [500, '616-555-0101']]),
+  ...rowAt(688, [[160, 'Fairview, MI 49315']]),
+  ...rowAt(670, [[40, 'Sam Roe'], [160, '4644 Oak Hollow Dr SW'], [360, '22 min'], [440, '11,200'], [500, '616-555-0102']]),
+];
+const page2 = [...head(720), ...rowAt(700, [[40, 'Kim Low'], [160, '2531 Willow Dr'], [360, '30 min'], [440, '7,000'], [500, '']])];
+const page3 = [...rowAt(700, [[40, '1.'], [60, '2433 Cedar Ridge Dr SW, Fairview']]), ...rowAt(688, [[60, 'Riley Ives'], [300, '15 min'], [380, '6,000 sq ft']])];
+const blocks = pdfBlocks([page1, page2, page3]);
+assert.equal(blocks.filter((b) => b.type === 'table').length, 1, 'one table across the page break');
+r = parseDocument(blocks);
+assert.deepEqual(r.stops.map((s) => [s.name, s.address, s.city, s.minutes, s.sqft]), [
+  ['Pat Doe', '3581 Maple Ct SW', 'Fairview', 20, 8500],
+  ['Sam Roe', '4644 Oak Hollow Dr SW', '', 22, 11200],
+  ['Kim Low', '2531 Willow Dr', '', 30, 7000],
+  ['Riley Ives', '2433 Cedar Ridge Dr SW', 'Fairview', 15, 6000],
+]);
+// readDocument passes a PDF to the page's reader
+r = parseDocument(await readDocument('Route Sheet.pdf', new TextEncoder().encode('%PDF-1.4'), { pdfText: async () => [page1] }));
+assert.equal(r.stops.length, 2);
+await assert.rejects(readDocument('x.pdf', new TextEncoder().encode('%PDF-1.4')), /PDF reader/);
+assert.equal(kindOf('mystery', new TextEncoder().encode('%PDF-1.7')), 'pdf');
+
 // the pieces
 assert.equal(readDuration('20 min'), 20);
 assert.equal(readDuration('1 hr 15 min'), 75);
@@ -131,6 +197,8 @@ assert.equal(readDuration('8:30 AM'), null);
 assert.equal(readDuration('20'), null);
 assert.equal(readDuration('20', 'minutes'), 20);
 assert.equal(readDuration('0.5', 'hours'), 30);
+assert.equal(readDuration('0.25', 'hours'), 15, 'hours stay hours');
+assert.equal(readDuration('0.0208333', 'minutes'), 30, 'a day fraction in a time column');
 assert.equal(readDuration('20 mi'), null);
 assert.equal(readSqft('8,500 sq ft'), 8500);
 assert.equal(readSqft('8.5k sqft'), 8500);
@@ -148,7 +216,10 @@ assert.equal(headerKind('Time Window'), null);
 assert.equal(headerKind('Lawn Size'), 'sqft');
 assert.equal(headerKind('Service Address'), 'address');
 assert.equal(headerKind('Customer Name'), 'name');
+assert.equal(headerKind('15 min'), null);
+assert.equal(headerKind('6,000 sq ft'), null);
+assert.equal(headerKind('Address 2'), 'address');
 assert.deepEqual(xmlBlocks('<w:p><w:r><w:t>A &amp; B</w:t></w:r><w:r><w:br/><w:t>C</w:t></w:r></w:p>'), [{ type: 'p', text: 'A & B\nC' }]);
 await assert.rejects(readDocument('x.docx', new Uint8Array([1, 2, 3])), /zip/);
 
-console.log('route documents: ok (9 guessed layouts)');
+console.log('route documents: ok (12 guessed layouts: Word, Excel, PDF, email HTML...)');

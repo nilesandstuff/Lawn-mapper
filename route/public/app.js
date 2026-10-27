@@ -17,10 +17,13 @@
 
 import { addressVariants, formatMinutes, mergeStops, parseWords, sameStreet, slices } from './lib/parse.js';
 import { pathCost, solvePath } from './lib/solve.js';
-import { parseDocument, readDocument } from './lib/doc.js';
+import { kindOf, parseDocument, readDocument } from './lib/doc.js';
+import { parseMail } from './lib/mail.js';
 import { elementsOf, fill, fromCache, MAX_PAIRS, prune, remember, toFetch } from './lib/cache.js';
 
 const TESSERACT = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+const PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+const PDFJS_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
@@ -63,6 +66,13 @@ function sayPlan(text, bad = false) {
 }
 
 /* ------------------------------------------------------------ where */
+/* the inbox key: arrives once in the link (#inbox=...), kept on this phone, never left in the address bar */
+let inboxKey = store.get('inboxKey', '');
+{
+  const k = new URLSearchParams(location.hash.slice(1)).get('inbox');
+  if (k) { inboxKey = k; store.set('inboxKey', k); }
+}
+
 const endInput = $('#end');
 function setEnd(v, fromHash = false) {
   endInput.value = v;
@@ -216,7 +226,34 @@ async function keepFirst(file, bytes, blocks, parsed) {
   }
 }
 
+/** A PDF's words with their positions, by pdf.js (loaded the first time one is opened). */
+async function pdfText(bytes) {
+  if (!window.pdfjsLib) await loadScript(PDFJS);
+  window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER;
+  const doc = await window.pdfjsLib.getDocument({ data: bytes.slice() }).promise;
+  const pages = [];
+  for (let i = 1; i <= Math.min(doc.numPages, 80); i += 1) {
+    const content = await (await doc.getPage(i)).getTextContent();
+    pages.push(content.items.filter((it) => it.str && it.str.trim()).map((it) => ({
+      text: it.str, x: it.transform[4], y: it.transform[5], w: it.width, h: it.height || Math.hypot(it.transform[2], it.transform[3]),
+    })));
+  }
+  return pages;
+}
+
+const asFile = (name, type, bytes) => new File([bytes], name, { type: type || '' });
+
+/** An email's stops: from its attachments (documents and screenshots), else its body. */
+async function readMail(mail) {
+  const files = mail.attachments.map((a) => asFile(a.name, a.type, a.bytes));
+  let found = files.length ? await readFiles(files) : [];
+  if (!found.length && mail.html) found = await readDocuments([asFile('email.html', 'text/html', new TextEncoder().encode(mail.html))]);
+  if (!found.length && mail.text) found = await readDocuments([asFile('email.txt', 'text/plain', new TextEncoder().encode(mail.text))]);
+  return found;
+}
+
 let kept = false;
+let docError = '';
 let repeats = 0;
 /** mergeStops, counting the repeats it drops (jobs seen twice with the same time). */
 function merge(lists) {
@@ -229,13 +266,15 @@ async function readDocuments(files) {
   for (const f of files) {
     say(`Reading ${f.name}…`);
     const bytes = new Uint8Array(await f.arrayBuffer());
+    if (kindOf(f.name, bytes) === 'eml') { lists.push(await readMail(parseMail(bytes))); continue; }
     let blocks = [];
     let parsed = { stops: [], layout: 'unreadable' };
     try {
-      blocks = await readDocument(f.name, bytes);
+      blocks = await readDocument(f.name, bytes, { pdfText });
       parsed = parseDocument(blocks);
     } catch (e) {
       parsed.layout = `unreadable: ${e.message}`;
+      docError = e.message;
     }
     if (await keepFirst(f, bytes, blocks, parsed)) kept = true;
     lists.push(parsed.stops.map(({ extra, ...s }) => s));
@@ -255,11 +294,17 @@ async function readFiles(files) {
 let nextId = Math.max(0, ...stops.map((s) => s.id || 0)) + 1;
 async function pick(files, append) {
   if (!files.length) return;
+  const what = [...files].every(isImage) ? 'picture' : 'document';
+  return load(() => readFiles([...files]), { append, what });
+}
+
+/** Read stops (by reader) into the list, and say what happened. source: where they came from, for the message. */
+async function load(reader, { append = false, what = 'document', source = '' } = {}) {
   kept = false;
   repeats = 0;
-  const what = [...files].every(isImage) ? 'picture' : 'document';
+  docError = '';
   try {
-    const found = await readFiles([...files]);
+    const found = await reader();
     const fresh = found.map((s) => ({ id: nextId++, ...s }));
     const before = append ? stops.length : 0;
     stops = append ? merge([stops, fresh]) : fresh;
@@ -274,8 +319,9 @@ async function pick(files, append) {
     say(found.length
       ? append
         ? `${added ? `Added ${plural(added, 'stop')}` : 'Nothing new'}: ${stops.length} in all.${removed} Check them below.`
-        : `Found ${plural(found.length, 'stop')}${timed < found.length ? ` (${found.length - timed} without a time)` : ''}.${removed} Check them below.`
-      : `No addresses found in that ${what}. Is it the job list?${kept ? ' (A private copy was kept so the reader can learn this layout.)' : ''}`, !found.length);
+        : `Found ${plural(found.length, 'stop')}${source ? ` in ${source}` : ''}${timed < found.length ? ` (${found.length - timed} without a time)` : ''}.${removed} Check them below.`
+      : docError && !kept ? docError : `No addresses found in ${source || `that ${what}`}. Is it the job list?${kept ? ' (A private copy was kept so the reader can learn this layout.)' : ''}`, !found.length);
+    return found.length;
     if (kept && found.length) say(`${$('#status').textContent} A private copy of this first document was kept, to tune the reader.`);
     if (found.length) $('#stopsCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (e) {
@@ -285,6 +331,70 @@ async function pick(files, append) {
 $('#pick').addEventListener('change', (e) => { pick(e.target.files, false); e.target.value = ''; });
 $('#pickDoc').addEventListener('change', (e) => { pick(e.target.files, false); e.target.value = ''; });
 $('#pickMore').addEventListener('change', (e) => { pick(e.target.files, true); e.target.value = ''; });
+
+/* ------------------------------------------------------------ route sheets by email (src/inbox.js) */
+const b64bytes = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+const when = (iso) => new Date(iso).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+
+async function inboxCall(path, init = {}) {
+  const res = await fetch(path, { ...init, headers: { ...(init.headers || {}), 'X-Inbox-Key': inboxKey } });
+  if (!res.ok) throw Object.assign(new Error(res.status === 403 ? "This phone's inbox key isn't accepted." : `The inbox said ${res.status}`), { status: res.status });
+  return res.json();
+}
+
+async function loadMessage(m) {
+  say(`Opening "${m.subject || 'the email'}"…`);
+  const rec = await inboxCall(`/api/inbox/${m.id}`);
+  const seen = new Set(store.get('inboxSeen', []));
+  seen.add(m.id);
+  store.set('inboxSeen', [...seen].slice(-50));
+  const mail = { ...rec, attachments: (rec.attachments || []).map((a) => ({ ...a, bytes: b64bytes(a.base64) })) };
+  const n = await load(() => readMail(mail), { source: `the email from ${when(rec.at)}` });
+  if (!n && rec.text) say(`No stops in that email. It says: ${rec.text.replace(/\s+/g, ' ').slice(0, 300)}`, true);
+  renderInbox();
+}
+
+let inboxBox = null;
+function renderInbox() {
+  const card = $('#inboxCard');
+  if (!inboxBox) { card.hidden = true; return; }
+  card.hidden = false;
+  const seen = new Set(store.get('inboxSeen', []));
+  $('#inboxAddress').textContent = inboxBox.address || 'not set up yet';
+  $('#inboxCopy').hidden = !inboxBox.address;
+  $('#inboxList').innerHTML = inboxBox.messages.length
+    ? inboxBox.messages.slice(0, 8).map((m, i) => `<li>
+        <div><b>${esc(m.subject || '(no subject)')}</b>${seen.has(m.id) ? '' : ' <span class="new">new</span>'}
+        <div class="meta">${esc(when(m.at))} · ${esc(String(m.from || '').replace(/<.*>/, '').trim() || m.from)}${m.files?.length ? ` · ${esc(m.files.join(', '))}` : ''}</div></div>
+        <button type="button" class="btn small" data-msg="${i}">Load</button></li>`).join('')
+    : `<li class="meta">Nothing yet. Emails are kept ${inboxBox.keepDays} days.</li>`;
+}
+
+/** The inbox, and the newest route sheet loaded by itself if this phone has not seen it. */
+async function loadInbox() {
+  if (!inboxKey) return;
+  try {
+    inboxBox = await inboxCall('/api/inbox');
+  } catch (e) {
+    inboxBox = { address: '', messages: [], keepDays: 14 };
+    renderInbox();
+    $('#inboxList').innerHTML = `<li class="meta">${esc(e.message)}</li>`;
+    return;
+  }
+  renderInbox();
+  const newest = inboxBox.messages[0];
+  const seen = store.get('inboxSeen', []);
+  if (newest && !seen.includes(newest.id) && Date.now() - Date.parse(newest.at) < 20 * 3600000) await loadMessage(newest);
+}
+
+$('#inboxList').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-msg]');
+  if (b && inboxBox) loadMessage(inboxBox.messages[Number(b.dataset.msg)]);
+});
+$('#inboxCopy').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText(inboxBox.address); $('#inboxCopy').textContent = 'Copied'; } catch { /* the address is on screen */ }
+});
+$('#inboxRefresh').addEventListener('click', () => loadInbox());
 
 /* ------------------------------------------------------------ the stops, editable */
 const sqft = (n) => `${Math.round(n).toLocaleString()} sq ft`;
@@ -605,3 +715,4 @@ $('#legs').addEventListener('click', (e) => {
 renderStops();
 renderResult();
 if (result) $('#stopsBox').open = false;
+loadInbox();
