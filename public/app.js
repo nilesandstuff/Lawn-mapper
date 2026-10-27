@@ -5778,9 +5778,12 @@ async function detect({ again = false, resume = null } = {}) {
  * a GPU before it can look at anything. Saying so beats a silent spinner.
  */
 async function waitForPrediction(id, frame, signal = null) {
-  /* Four minutes IN VIEW: a phone that pauses the page does not use them up. */
+  /* Four minutes IN VIEW: a phone that pauses the page does not use them up.
+     NINE for the trained model (2026-10-27): its server gives a lot ten
+     minutes, says what it is waiting on (a GPU, when the provider has none
+     free), and a lot it is still working on is not one to give up on. */
   const started = viewedNow();
-  const DEADLINE_MS = 4 * 60 * 1000;
+  const DEADLINE_MS = (String(id).startsWith('alpha-') ? 9 : 4) * 60 * 1000;
   const cancelled = () => {
     const e = new Error('Cancelled.');
     e.cancelled = true;

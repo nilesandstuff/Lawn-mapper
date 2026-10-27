@@ -317,6 +317,8 @@ class Alpha:
     def detect(self, payload):
         from PIL import Image
         t0 = time.time()
+        # The GPU has started: `lot` stops counting the wait for one.
+        _note(payload.get("progressKey"), "Reading the lot through the model")
         frame = payload["frame"]
         # The CPU machine's downloads, already finished when `lot` called
         # this (see `lot`); read here otherwise
@@ -408,9 +410,39 @@ def lot(body):
         if "Deserialization failed" not in str(e):
             print(f"gather failed, the GPU will read it: {e}", flush=True)
     downloads = round(time.time() - t0, 1)
-    _note(key, "Waking the GPU and reading the lot through the model", downloads=downloads)
-    out = Alpha().detect.remote({**body, "gather": got.object_id})
+    waking = "Waking the GPU and reading the lot through the model"
+    _note(key, waking, downloads=downloads)
+    # WAITING FOR A GPU, SAID SO (owner, 2026-10-27: "a couple detections time
+    # out completely"). On 2026-10-27 18:25-18:40 UTC Modal had no L4 free
+    # ("waiting to be scheduled on a GPU_L4 worker ... acquiring more
+    # capacity") and the app, hearing nothing new, gave up on each press.
+    # While the GPU has not started (detect writes its own line when it does),
+    # the line says how long it has been waiting, so the app shows it and
+    # does not take a long queue for a stuck press.
+    import threading
+    stop = threading.Event()
+    asked = time.time()
+
+    def heartbeat():
+        while not stop.wait(15):
+            try:
+                if (progress.get(key) or {}).get("stage", "").startswith(("Waking the GPU", "Waiting for a GPU")):
+                    waited = int(time.time() - asked)
+                    if waited >= 45:
+                        _note(key, f"Waiting for a GPU to come free -- the GPU provider is busy right now "
+                                   f"({waited // 60}:{waited % 60:02d})", downloads=downloads)
+                else:
+                    return
+            except Exception:  # noqa: BLE001 - a courtesy, never fatal
+                return
+
+    threading.Thread(target=heartbeat, daemon=True).start()
+    try:
+        out = Alpha().detect.remote({**body, "gather": got.object_id})
+    finally:
+        stop.set()
     out.setdefault("seconds", {})["downloads"] = downloads
+    out["seconds"]["gpuWait"] = round(time.time() - asked, 1)
     _note(key, "Done", downloads=downloads)
     return out
 
