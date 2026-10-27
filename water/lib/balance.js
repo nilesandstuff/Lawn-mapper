@@ -79,6 +79,11 @@ export const PARAMS = {
      share of clear-sky sunshine (their sampling days, summer afternoons, about 29 C). */
   airShare: 0.3,
   airCoolC: 1.3,
+  /* THE YARD'S WIND (FINDINGS H44): Heisler 1990's neighbourhoods, cover counted within windRadiusM (his inner
+     band, 0-91 m; clipped to the grid, which reaches 30 m past the lot), the share rounded to windStep. */
+  windYard: true,
+  windRadiusM: 90,
+  windStep: 0.02,
   canopyRadiusM: 30,
   canopyTallShare: 0.1,
   clearRef: 0.75,
@@ -102,54 +107,86 @@ const HYD = (h) => String(h || 'B').trim().toUpperCase();
 export const shadeFactor = (light, airShare = PARAMS.airShare) => airShare + (1 - airShare) * Math.max(0, Math.min(1, light));
 
 /**
- * The share of the ground within PARAMS.canopyRadiusM of each cell under tree crowns: lidar returns 2 m or more
- * above the ground (lowspots.js perCell.tall) at least canopyTallShare of a cell's returns, buildings left out.
- * The lidar is often flown with the leaves down (the owner's, November 2017): a bare crown still returns from its
- * branches, and a tenth or more of the returns marks the same crowns as a half (FINDINGS H43).
- * -> Float32Array per cell, or null without the returns.
+ * Within radiusM of each cell, the share of the ground under tree crowns and the share under buildings: crowns are
+ * lidar returns 2 m or more above the ground (lowspots.js perCell.tall) at least canopyTallShare of a cell's
+ * returns, buildings the walls (res.wall), each against the cells the lidar saw (the grid reaches 30 m past the
+ * lot, so a wider radius is clipped to it). The lidar is often flown with the leaves down (the owner's, November
+ * 2017): a bare crown still returns from its branches, and a tenth or more of the returns marks the same crowns as
+ * a fifth (FINDINGS H43). -> { crown, built } Float32Arrays per cell, or null without the returns.
  */
-export function canopyAround(res, params = PARAMS) {
+export function coverAround(res, radiusM, params = PARAMS) {
   const g = res.grid, pc = res.perCell, W = g.W, H = g.H, N = W * H;
   if (!pc?.all || !pc?.tall) return null;
-  const sat = new Float64Array((W + 1) * (H + 1)), cnt = new Float64Array((W + 1) * (H + 1));
+  const S = (W + 1) * (H + 1);
+  const crownS = new Float64Array(S), builtS = new Float64Array(S), cnt = new Float64Array(S);
   for (let r = 0; r < H; r++) {
-    let rs = 0, rc = 0;
+    let rc = 0, rb = 0, rn = 0;
     for (let c = 0; c < W; c++) {
       const i = r * W + c, a = pc.all[i];
-      if (a > 0) { rc++; if (!res.wall?.[i] && pc.tall[i] / a >= params.canopyTallShare) rs++; }
+      if (a > 0 || res.wall?.[i]) {
+        rn++;
+        if (res.wall?.[i]) rb++; else if (pc.tall[i] / a >= params.canopyTallShare) rc++;
+      }
       const k = (r + 1) * (W + 1) + c + 1;
-      sat[k] = sat[k - W - 1] + rs; cnt[k] = cnt[k - W - 1] + rc;
+      crownS[k] = crownS[k - W - 1] + rc; builtS[k] = builtS[k - W - 1] + rb; cnt[k] = cnt[k - W - 1] + rn;
     }
   }
-  // a square of the disc's area (half-side r x sqrt(pi)/2), clipped to the grid: the share of the cells seen
-  const h = Math.max(1, Math.round((params.canopyRadiusM * Math.sqrt(Math.PI)) / 2 / g.cell));
-  const out = new Float32Array(N);
+  // a square of the disc's area (half-side r x sqrt(pi)/2), clipped to the grid
+  const h = Math.max(1, Math.round((radiusM * Math.sqrt(Math.PI)) / 2 / g.cell));
+  const crown = new Float32Array(N), built = new Float32Array(N);
   const box = (A, r0, c0, r1, c1) => A[r1 * (W + 1) + c1] - A[r0 * (W + 1) + c1] - A[r1 * (W + 1) + c0] + A[r0 * (W + 1) + c0];
   for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) {
     const r0 = Math.max(0, r - h), r1 = Math.min(H, r + h + 1), c0 = Math.max(0, c - h), c1 = Math.min(W, c + h + 1);
     const n = box(cnt, r0, c0, r1, c1);
-    out[r * W + c] = n > 0 ? box(sat, r0, c0, r1, c1) / n : 0;
+    if (n > 0) { crown[r * W + c] = box(crownS, r0, c0, r1, c1) / n; built[r * W + c] = box(builtS, r0, c0, r1, c1) / n; }
+  }
+  return { crown, built };
+}
+
+/** The share of the ground within PARAMS.canopyRadiusM of each cell under tree crowns (coverAround), or null. */
+export const canopyAround = (res, params = PARAMS) => coverAround(res, params.canopyRadiusM, params)?.crown ?? null;
+
+/**
+ * THE YARD'S WIND, as a share of the open wind the weather gives (NASA POWER's matches the nearest major airport's,
+ * FINDINGS H44): Heisler 1990 (ASHRAE Trans. 96(1), 15 houses, 2 m against the airport's 2 m, summer): the wind is
+ * cut 100x / (24 + 1.1x) percent, x the percent of the ground within about 90 m under buildings and tree crowns
+ * (buildings alone, 22%; 77% tree cover, 70%). x is held to the 0-90% his neighbourhoods spanned.
+ */
+export const windShare = (coverPct) => { const x = Math.max(0, Math.min(90, coverPct)); return 1 - x / (24 + 1.1 * x); };
+
+/**
+ * TODAY'S USE PER CELL, as a multiple of the open lawn's (fills `out`): heat and shelter (model.etBase), the
+ * sunlight (light), the yard's wind (model.windAt, an index into model.winds), and the air -- the day's own share of
+ * it, cooled near trees on a sunny day in the growing season by up to PARAMS.airCoolC at full cover within
+ * canopyRadiusM (Ziter et al. 2019, Madison: 1.3 C cooler afternoons from no canopy to full within 30 m), the vapour
+ * in it held (et.js airShare). part: airShare(day, ..., { winds: model.winds }), or null for a day without the
+ * weather to split (then the default share, and the air's part cut by the wind as on a typical summer day).
+ */
+export function etToday(model, part, inSeason, out) {
+  const { N, etBase, light, canopy, params } = model;
+  const winds = model.winds || [1], at = model.windAt;
+  let sunRel = part?.sunRel, airRel = part?.airRel;
+  if (!sunRel) {
+    const s = part ? part.share : params.airShare;
+    sunRel = winds.map(() => 1 - s);
+    airRel = winds.map((f) => s * calmAir(f));
+  }
+  const sunny = part ? Math.min(1, part.clear / params.clearRef) : 0;
+  const cool = canopy && inSeason && part ? part.perC * params.airCoolC * sunny : 0; // share lost at full cover
+  for (let i = 0; i < N; i++) {
+    const k = at ? at[i] : 0;
+    const L = light ? Math.max(0, Math.min(1, light[i])) : 1;
+    const A = cool ? Math.max(0, 1 - cool * canopy[i]) : 1;
+    out[i] = etBase[i] * (sunRel[k] * L + airRel[k] * A);
   }
   return out;
 }
 
-/**
- * TODAY'S USE PER CELL, as a multiple of the open lawn's (fills `out`): heat and shelter (model.etBase), the
- * sunlight (light), and the air -- the day's own share of it, cooled near trees on a sunny day in the growing
- * season by up to PARAMS.airCoolC at full cover within canopyRadiusM (Ziter et al. 2019, Madison: 1.3 C cooler
- * afternoons from no canopy to full within 30 m), the vapour in it held (et.js airShare).
- */
-export function etToday(model, part, inSeason, out) {
-  const { N, etBase, light, canopy, params } = model;
-  const s = part ? part.share : params.airShare;
-  const sunny = part ? Math.min(1, part.clear / params.clearRef) : 0;
-  const cool = canopy && inSeason && part ? part.perC * params.airCoolC * sunny : 0; // share lost at full cover
-  for (let i = 0; i < N; i++) {
-    const L = light ? Math.max(0, Math.min(1, light[i])) : 1;
-    const A = cool ? Math.max(0, 1 - cool * canopy[i]) : 1;
-    out[i] = etBase[i] * ((1 - s) * L + s * A);
-  }
-  return out;
+/** The air's part of Penman-Monteith at a share f of a 2.3 m/s summer wind, against the open wind's, 25 C (the
+    term is u / (delta + gamma (1 + 0.34 u))): for a day without the weather to recompute it. */
+function calmAir(f) {
+  const d = 0.189, gm = 0.0665, u = 2.3, uf = Math.max(0.5, u * f);
+  return (uf / (d + gm * (1 + 0.34 * uf))) / (u / (d + gm * (1 + 0.34 * u)));
 }
 
 /** TR-55 curve number for a cell, dual groups read as drained (first letter) unless the water table is up. */
@@ -258,8 +295,21 @@ export function buildModel(res, { kinds, soilAt, soils, roofTo, light = null, pa
      each day's own (etToday) */
   const etBase = Float32Array.from(heat);
   const canopy = canopyAround(res, params);
-  const etFactor = Float32Array.from(heat, (h, i) => h * shadeFactor(light ? light[i] : 1, params.airShare));
-  return { g, N, kinds, soilAt, soils, roofTo, light, canopy, order, down, recv, share, nRecv, slope, pondCap, taw, raw, satRoom, drainDay, heat, etBase, etFactor, params };
+  // the yard's wind per cell, in steps of windStep (each step's day worked out once a day in simulate)
+  let winds = [1], windAt = null;
+  const wc = params.windYard ? coverAround(res, params.windRadiusM, params) : null;
+  if (wc) {
+    const step = params.windStep, idx = new Map();
+    windAt = new Uint8Array(N); winds = [];
+    for (let i = 0; i < N; i++) {
+      const f = Math.round(windShare(100 * (wc.crown[i] + wc.built[i])) / step) * step;
+      if (!idx.has(f)) { idx.set(f, winds.length); winds.push(f); }
+      windAt[i] = idx.get(f);
+    }
+  }
+  const model = { g, N, kinds, soilAt, soils, roofTo, light, canopy, winds, windAt, order, down, recv, share, nRecv, slope, pondCap, taw, raw, satRoom, drainDay, heat, etBase, params };
+  model.etFactor = etToday(model, null, false, new Float32Array(N));
+  return model;
 }
 
 /**
@@ -309,7 +359,7 @@ export function simulate(model, days, { irrigate = null, start = null, record = 
     if (day.tmax <= 0) { snow += P; P = 0; } else if (snow > 0) { const melt = Math.min(snow, params.snowMeltMmPerC * Math.max(0, tmean)); snow -= melt; P += melt; }
     tot.rain += P;
     const et0 = Number.isFinite(day.et0) ? day.et0 : 0;
-    etToday(model, et0 > 0 ? airShare(day, lat, dayOfYear(day.date)) : null, inSeason, etFactor);
+    etToday(model, et0 > 0 ? airShare(day, lat, dayOfYear(day.date), 200, { winds: model.winds }) : null, inSeason, etFactor);
     const irr = irrigate ? irrigate(d, { Dr, grav, month, inSeason, date: day.date, use: et0 * params.kc, etFactor }) : null;
 
     inflow.fill(0);

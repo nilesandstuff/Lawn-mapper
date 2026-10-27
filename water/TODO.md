@@ -6,11 +6,7 @@ SPECULATION), as always.
 
 ## In progress (2026-10-27)
 
-9. **Shade: the grass uses much less, the owner finds; and wind** (owner, 2026-10-27: "it really seems like
-   grass in shade uses much less water than that, let's keep digging in, I'm sure wind is part of it, so yes
-   let's deal with that"). The plan has a cell at a fifth of the sun using about 0.41 of the open lawn's
-   (FINDINGS H43). Wind among trees is a fifth to two-thirds lower at 2 m (Heisler 1990), and the weather's wind
-   is open ground's. Research the wind and the measured shade studies, then build.
+(nothing)
 
 ## Queued
 
@@ -71,6 +67,10 @@ SPECULATION), as always.
 16. **A simple view and an advanced view** (owner: "Simplified should just show the actionable info, advanced
     should show the reasoning.").
 
+17. **Light through leaves** (found with H44, 2026-10-27): the light share treats leaves as black; they pass much of
+    the sun's near-infrared, so under crowns the grass gets more energy than the share says. Split the share into
+    what crowns and what buildings stop, and lift the crowns' part (FINDINGS S12). Would raise the deepest shade's use.
+
 ## Shelved (owner, 2026-10-26: "shelve the tree thing to the todo list")
 
 - **Trees using the lawn's water**: researched (FINDINGS H40, research-trees.md),
@@ -86,3 +86,4 @@ SPECULATION), as always.
 - 2026-10-25: a 3D view of the ground beside the top-down one (FINDINGS H38).
 - 2026-10-25: the rate of the recent rains, hour by hour, in this week's plan (FINDINGS H39).
 - 2026-10-26: shade's effect on the air: the day's own air share, and cooler air near trees (FINDINGS H43, S11).
+- 2026-10-27: shade again -- the trees in summer leaf, the trees erased on the shade map, the yard's wind (FINDINGS H44, S12).

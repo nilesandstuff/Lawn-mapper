@@ -225,7 +225,7 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
     })(),
     texture: texture || null,
     soil: units.map((u) => ({ name: u.name, chosen: u.chosen || null, share: u.share ?? null, layers: layersOf(u.profile), intakeInH: (() => { const r = rootZone(u.profile); return r?.topKsatMmH ? r.topKsatMmH / 25.4 : null; })(), drainage: u.drainage, hydgrp: u.hydgrp, wtMinCm: u.wtMinCm ?? null, wetByMonth: u.wetByMonth, assumed: !!u.assumed, tawMm: rootZone(u.profile)?.tawMm ?? null, tawTopsoilMm: rootZone(u.profile, { topsoil: true })?.tawMm ?? null })),
-    years, topsoil, grass, thisWeek, shaded: !!light, treeCool: !!model.canopy,
+    years, topsoil, grass, thisWeek, shaded: !!light, treeCool: !!model.canopy, yardWind: model.windAt ? (() => { const v = []; for (let i = 0; i < N; i++) if (kinds[i] === KIND.lawn) v.push(model.winds[model.windAt[i]]); return v.length ? med(v) : null; })() : null,
     sunShare: light ? (() => { const v = []; for (let i = 0; i < N; i++) if (kinds[i] === KIND.lawn) v.push(light[i]); return med(v); })() : null,
     weather: wx,
   };

@@ -67,12 +67,24 @@ export function pmParts(d, latDeg, doy, elevM = 200) {
  * much), the air's water vapour held -- cooler air under and near trees is less thirsty air.
  * -> { share, perC, clear } or null for a day without humidity, wind and sunshine (no split to make).
  */
-export function airShare(d, latDeg, doy, elevM = 200, { nightShare = 0.3 } = {}) {
+export function airShare(d, latDeg, doy, elevM = 200, { nightShare = 0.3, winds = null } = {}) {
   if (![d.tmax, d.tmin, d.rh, d.wind, d.rs].every(Number.isFinite)) return null;
   const a = pmParts(d, latDeg, doy, elevM);
-  if (!(a.et0 > 0) || !(a.air > 0)) return { share: 0, perC: 0, clear: a.clear };
-  const b = pmParts({ ...d, ea: a.ea, tmax: d.tmax - 1, tmin: d.tmin - nightShare }, latDeg, doy, elevM);
-  return { share: Math.min(1, a.air / a.et0), perC: Math.max(0, 1 - Math.max(0, b.air) / a.air), clear: a.clear };
+  const out = { share: 0, perC: 0, clear: a.clear, sunRel: null, airRel: null };
+  if (a.et0 > 0 && a.air > 0) {
+    const b = pmParts({ ...d, ea: a.ea, tmax: d.tmax - 1, tmin: d.tmin - nightShare }, latDeg, doy, elevM);
+    out.share = Math.min(1, a.air / a.et0); out.perC = Math.max(0, 1 - Math.max(0, b.air) / a.air);
+  }
+  /* SHELTERED WIND (FINDINGS H44): the same day at a share f of the open wind, each part against the open day's
+     ET0 -- less wind shrinks the air's part and, through the equation's denominator, lifts the sun's a little */
+  if (winds && a.et0 > 0) {
+    out.sunRel = new Float32Array(winds.length); out.airRel = new Float32Array(winds.length);
+    winds.forEach((f, k) => {
+      const w = f === 1 ? a : pmParts({ ...d, ea: a.ea, wind: d.wind * f }, latDeg, doy, elevM);
+      out.sunRel[k] = w.sun / a.et0; out.airRel[k] = Math.max(0, w.air) / a.et0;
+    });
+  }
+  return out;
 }
 
 /** Hargreaves-Samani ET0, mm/day, from temperatures alone. FAO-56 eq. 52. */

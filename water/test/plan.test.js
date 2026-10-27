@@ -10,7 +10,8 @@ import { penmanMonteith, pmParts, airShare, ra, hargreaves, dayOfYear } from '..
 import { hoursOf, hourly } from '../lib/weather.js';
 import { parseWkt, rootZone, boxWkt, ROOT_CM } from '../lib/soil.js';
 import { rainHours } from '../lib/weather.js';
-import { scsRunoff, cnSlope, curveNumber, buildModel, simulate, idealIrrigation, PARAMS, canopyAround, etToday, shadeFactor } from '../lib/balance.js';
+import { scsRunoff, cnSlope, curveNumber, buildModel, simulate, idealIrrigation, PARAMS, canopyAround, etToday, shadeFactor, windShare, coverAround } from '../lib/balance.js';
+import { leafSeason, flightSeason, erasedOn } from '../lib/leaf.js';
 import { roofRouting } from '../lib/gutters.js';
 import { waterPlan } from '../lib/plan.js';
 import { analyse } from '../lib/lowspots.js';
@@ -162,6 +163,46 @@ test('shade and the air: the day\'s own air share stays in deep shade, and trees
   // a day without the weather to split: the old factor
   etToday(model, null, true, out);
   assert.ok(Math.abs(out[1] - shadeFactor(0)) < 1e-6 && out[2] === 1);
+});
+
+test('the yard\'s wind: Heisler\'s neighbourhoods, and the day worked out again at it', () => {
+  assert.equal(windShare(0), 1);
+  assert.ok(Math.abs(windShare(9) - 0.73) < 0.02, `buildings alone, about 22% less: ${windShare(9)}`);
+  assert.ok(Math.abs(windShare(86) - 0.30) < 0.04, `77% trees and 9% buildings, about 70% less (his curve, within its scatter): ${windShare(86)}`);
+  assert.equal(windShare(150), windShare(90), 'held to the cover he measured');
+  const july = { tmax: 28, tmin: 16, rh: 60, wind: 2.3, rs: 24 };
+  const p = airShare(july, 42.9, 196, 200, { winds: [1, 0.4] });
+  assert.ok(Math.abs(p.sunRel[0] + p.airRel[0] - 1) < 1e-6, 'at the open wind, the open day');
+  assert.ok(p.airRel[1] < 0.6 * p.airRel[0], 'less wind, much less from the air');
+  assert.ok(p.sunRel[1] > p.sunRel[0], 'and a little more from the sun');
+  // in deep shade the wind matters most: a cell at a fifth of the sun
+  const model = { N: 2, etBase: new Float32Array([1, 1]), light: new Float32Array([1, 0.2]), canopy: null, params: PARAMS, winds: [1, 0.4], windAt: new Uint8Array([1, 1]) };
+  const out = new Float32Array(2);
+  etToday(model, p, true, out);
+  const open = etToday({ ...model, windAt: new Uint8Array([0, 0]) }, p, true, new Float32Array(2));
+  assert.ok(out[0] < open[0] && out[0] > 0.85 * open[0], `sun: ${out[0]} against ${open[0]}`);
+  assert.ok(out[1] / out[0] < open[1] / open[0] - 0.05, 'shade falls further behind the sun');
+  // cover within the radius: buildings and crowns counted apart
+  const W = 20, H = 20, N = W * H, all = new Uint16Array(N).fill(10), tall = new Uint16Array(N), wall = new Uint8Array(N);
+  for (let i = 0; i < 100; i++) wall[i] = 1;
+  for (let i = 300; i < 400; i++) tall[i] = 9;
+  const c = coverAround({ grid: { W, H, cell: 1 }, perCell: { all, tall }, wall }, 90);
+  assert.ok(Math.abs(c.built[210] - 0.25) < 1e-6 && Math.abs(c.crown[210] - 0.25) < 1e-6);
+});
+
+test('the summer canopy: a leaf-off flight is known, and the trees erased on the shade map come over', () => {
+  const t = (s) => Date.parse(s);
+  assert.equal(leafSeason(t('2017-11-20'), t('2017-11-30')), 'off');
+  assert.equal(leafSeason(t('2019-07-01'), t('2019-07-20')), 'on');
+  assert.equal(flightSeason({ start: 0, end: 0, mids: [t('2017-11-27'), t('2017-11-28')] }), 'off');
+  assert.equal(flightSeason(null), null);
+  const bbox = [1000, 2000, 1010, 2010];
+  const same = erasedOn({ grid: { w: 10, h: 10, x0: 1000, y1: 2010, nz: 5 }, erased: [3, 3, 57], cubes: [42] }, { W: 10, H: 10, bbox });
+  assert.equal(same.cells, 2); assert.equal(same.erased[57], 1); assert.deepEqual([...same.cubes], [42]);
+  // another grid: by position, a cell over; the blocks left out
+  const moved = erasedOn({ grid: { w: 12, h: 12, x0: 999, y1: 2011, cell: 1 }, erased: [13 + 1] }, { W: 10, H: 10, bbox });
+  assert.equal(moved.cells, 1); assert.equal(moved.erased[1], 1); assert.equal(moved.cubes, null);
+  assert.equal(erasedOn(null, { W: 10, H: 10, bbox }).erased, null);
 });
 
 test('a downspout sends the roof to where it empties; two split it; none is a guess', () => {

@@ -1430,6 +1430,58 @@ Ten May-September seasons:
 Small, as the research said it would be: a few percent, smaller than the floor's own spread. The day-to-day share
 matters more on single days (a humid still day 0.16, a dry windy one 0.4) than over a season.
 
+### H44. Shade, again: the trees in summer leaf, the erased trees, and the yard's wind (water session, 2026-10-27)
+
+The owner: "it really seems like grass in shade uses much less water than that, let's keep digging in, I'm sure
+wind is part of it, so yes let's deal with that." The research: research-shade-wind.md (a research agent; its
+sources tagged read / second-hand / trade press). Two things were found wrong in the water map itself, and one
+measured effect added.
+
+**1. The water map drew the summer shade from bare branches (a bug, fixed).** It asked the shade map's light worker
+for the canopy "as measured" with no flight season (analyse.js, since 2026-10-18), so a leaf-off flight's
+deciduous crowns stood bare all summer. The shade map asks for 'seasonal' with the flight's season and the typical
+temperatures, and gets the leaves back. The water map now asks the same (lib/leaf.js: the shade map's leafSeason,
+copied). The owner's lot (flown 27 November 2017, 'off'), the lawn's summer daylight share, the same worker run in
+node:
+
+| | median | shadiest quarter | shadiest tenth | lawn under 0.3 |
+|---|---|---|---|---|
+| as flown (bare) | 0.84 | 0.72 | 0.58 | 1% |
+| in leaf | 0.73 | 0.51 | 0.31 | 10% |
+| in leaf, erased trees gone | 0.74 | 0.52 | 0.32 | 9% |
+
+**2. The trees erased on the shade map stood in the water map (fixed).** The shade part keeps the erased cells
+and blocks (docs/MAPS.md); the water map ignored them. With the shade map's lidar saved, the water grid is the
+shade map's own (site.js), so they carry over cell for cell: 213 of 213 cells and 42 blocks on the owner's map.
+On another grid they go by position, without the blocks.
+
+**3. The yard's wind (measured, added).** The weather's wind is open ground's: NASA POWER's WS2M against the
+nearest major airport station's 10 m wind brought to 2 m (FAO-56 eq. 47), June-August 2022-25, 368 days: 2.31
+against 2.41 m/s (0.96; correlation 0.92). A small airfield nearer the lot read 1.72 (92 days). Heisler 1990
+(ASHRAE Trans. 96(1):1389, read in full: 2 m wind at 15 houses in State College PA against the airport's 2 m,
+summer and winter days): buildings alone cut it 22%, 77% tree cover 70% in summer; his curve through the summer
+means, reduction = 100x / (24 + 1.1x) percent, x = buildings' + tree crowns' percent of the ground within 0-91 m.
+Each cell's x is counted from the lidar within 90 m (clipped to the grid, 30 m past the lot); each day's
+Penman-Monteith is worked out again at that wind (et.js airShare winds; balance.js windShare, etToday). The
+owner's lawn: 38% cover (30-53%), wind 0.42 of open (0.47-0.36). On the same July day less wind shrinks the air's
+term and lifts the sun's a little (the equation's denominator).
+
+**Together, the owner's lawn, ten May-September seasons, as a share of open full sun at open wind** (2,633 lawn
+cells; the trees' cooler air, H43, in all three):
+
+| | lawn mean | median | shadiest tenth | shadiest 2% |
+|---|---|---|---|---|
+| before (bare crowns, open wind) | 0.84 | 0.87 | 0.69 | 0.56 |
+| in leaf, erased trees gone | 0.75 | 0.80 | 0.51 | 0.35 |
+| and the yard's wind | 0.67 | 0.73 | 0.39 | 0.22 |
+
+The owner was right that shade used less than the map said, and most of it was the bare branches. **Measured
+outdoors in deep shade** (the research's table): 0.33-0.5 (Wilfong et al. 2024, JAWRA, lawn chambers in three
+cities), 0.61 (Litvak & Pataki 2016, Los Angeles, full tree cover), about 0.57 (Danielson & Feldhake 1981, cloth at
+27% sun), 0.45-0.63 (Cheary et al., warm-season grasses under cloth, trade press); tall fescue in a greenhouse
+under 55% cloth 0.87 (Duan & Fontanier 2022). The shadiest tenth (0.39) is inside that; the shadiest 2% (0.22) is
+below it -- see S12.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge
@@ -1464,6 +1516,26 @@ nine unlikely. No ground truth yet: a wet spring on lawns it calls likely and
 unlikely is the check. The soil survey's own monthly water table (lib/soil.js,
 "Wet" layers) IS in the balance: it stops drainage and makes dual-group soils
 the wetter group in those months.
+
+### S12. Where the shade numbers may now run low (2026-10-27, with H44)
+
+- **Light through leaves.** The light share is the lidar's gap fraction, leaves taken as black. Leaves pass far more
+  near-infrared than visible light (absorbing about 0.2 of it against 0.8), and the near-infrared is half the
+  sun's energy: under crowns (not buildings) the grass gets more of the energy that drives its water use than the
+  share says -- by theory about 0.5 L^0.89 + 0.5 L^0.45 (0.46 at L 0.3; Campbell & Norman's absorptivities, the
+  research's arithmetic). Not built: the share would have to be split into what crowns and what buildings stop.
+  It would lift the deepest shade back toward the measured 0.33-0.6.
+- **Shelter is not only less wind.** The day is worked out again at the yard's wind with the air's temperature and
+  vapour held; air in shelter is warmer and more humid, and turf transpiration there "relatively insensitive" to it
+  (Cleugh et al. 2002). The wind's cut may be too big.
+- Heisler's curve is neighbourhood-scale (15 houses, residuals up to 40 points); it is applied per cell from a 90 m
+  disc, which mostly smooths it to the yard's. No per-crown shelter term (under a single high crown the wind
+  squeezes through: Mayaud et al. 2016).
+- No lower Kc for shade-thinned turf: grass grown in shade used what grass grown in sun did while it covered the
+  ground (Feldhake, Butler & Danielson 1985, abstract); tall fescue at a tenth of full light under trees had 60%
+  fewer tillers (Gardner, trade press).
+- What would settle it: the soil-moisture pair of S11 (open lawn, lawn under a tree, a dry July week), and a
+  handheld anemometer in the yard against the airport's wind.
 
 ### S11. Shade's cooler air, and what was left out (2026-10-26, with H43)
 

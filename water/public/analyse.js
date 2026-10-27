@@ -20,6 +20,7 @@ import { waterPlan } from '/lib/plan.js';
 import { demAround, terrain, hillside } from '/lib/upslope.js';
 import { powerUrl, typicalYear, growingSeason, SEASON_GP } from '/lib/shade/climate.js';
 import { polygonsOf } from '/lib/geo.js';
+import { erasedOn } from '/lib/leaf.js';
 
 const kept = { r: null, lawn: null, standIn: false, soil: null, typical: null, week: null, lng: null, lat: null, season: null, climate: null, light: null };
 
@@ -65,7 +66,7 @@ async function plan(inputs = {}) {
   const out = {
     zones: p.zones, zoneOf: p.zoneOf, kinds: p.kinds, needMm: p.needMm, soilAt: p.soilAt, multiplier: p.multiplier, rootIn: p.rootIn, needMonth: p.needMonth, wetFromWatering: p.wetFromWatering, wetAnyway: p.wetAnyway, dryShare: p.dryShare,
     roofs: p.roofs, soil: p.soil, weather: p.weather, thisWeek: p.thisWeek, years: p.years, topsoil: p.topsoil,
-    standIn: kept.standIn, seconds: (Date.now() - t0) / 1000, shaded: p.shaded, treeCool: p.treeCool, sunShare: p.sunShare,
+    standIn: kept.standIn, seconds: (Date.now() - t0) / 1000, shaded: p.shaded, treeCool: p.treeCool, yardWind: p.yardWind, lightInfo: kept.lightInfo || null, sunShare: p.sunShare,
     seasonDays: kept.season ? kept.season.size : null, grass, rainFrom: kept.rainFrom, texture: p.texture,
     trouble: Object.values(kept.sources || {}).filter(Boolean),
   };
@@ -150,6 +151,7 @@ async function start(site, inputs) {
   if (site.lawn?.length && kept.climate && typeof Worker !== 'undefined') {
     self.postMessage({ planProgress: 'Working out the shade on the lawn…' });
     kept.season = seasonFor(inputs.grass === 'warm' ? 'warm' : 'cool');
+    site.cloudSeason = r.cloud?.season || null;
     kept.light = await again(() => lawnLight(res, site, kept.climate, kept.season), 2).catch(() => null);
     if (kept.light) kept.shade = 'ok';
   }
@@ -192,6 +194,7 @@ function lawnLight(res, site, climate, season) {
       if (m.type === 'error') { clearTimeout(timer); done(null, new Error(m.message)); return; }
       if (m.type === 'built') {
         if (m.w !== g.W || m.h !== g.H) { clearTimeout(timer); done(null, new Error('the shade grid is not the water grid')); return; }
+        kept.lightInfo = { canopy: m.canopy, why: m.seasonsWhy || null, erased: edits.cells, season: site.cloudSeason || null };
         const days = [];
         for (let k = 151; k <= 242; k += 4) if (!season || season.has(k)) days.push(k);
         w.postMessage({ type: 'period', days, climate });
@@ -209,7 +212,13 @@ function lawnLight(res, site, climate, season) {
       }
     };
     const pts = res.points;
-    w.postMessage({ type: 'build', cols: pts, box: g.bbox, lat: site.lat, lng: site.lng, shift: null, lot: polygonsOf(site.lawn), lawn: polygonsOf(site.lawn), canopy: 'measured', flight: null });
+    /* THE SUMMER CANOPY (FINDINGS H44): as the shade map draws it -- a leaf-off flight's crowns given their leaves
+       back from this place's typical temperatures (light-worker.js 'seasonal'; before 2026-10-27 the water map
+       asked for the crowns as flown, bare branches on a November flight) -- and without the trees and branches
+       erased on the shade map. */
+    const edits = erasedOn(site.shadeEdits, { W: g.W, H: g.H, bbox: g.bbox });
+    w.postMessage({ type: 'build', cols: pts, box: g.bbox, lat: site.lat, lng: site.lng, shift: null, lot: polygonsOf(site.lawn), lawn: polygonsOf(site.lawn),
+      canopy: 'seasonal', flight: site.cloudSeason || null, tMean: Array.isArray(climate?.tMean) ? climate.tMean : null, erased: edits.erased, erasedCubes: edits.cubes });
   });
 }
 
