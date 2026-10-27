@@ -50,7 +50,7 @@ const DEFAULT_SOIL = { name: 'no survey soil here (a loam assumed)', drainage: '
  *   topsoil (bool), downspouts, gutters, typical (days), week ({ days, today }), light (Float32Array | null),
  *   zoneOf (Int16Array, the user's own zones, optional), params
  */
-export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, topsoil = false, downspouts = [], gutters = [], typical, week = null, light = null, shadeKinds = null, season = null, grass = 'cool', texture = null, parcelMask = null, areas = [], zoneOf: userZones = null, params: given = null } = {}) {
+export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, topsoil = false, downspouts = [], gutters = [], typical, week = null, light = null, lightMonths = null, shadeKinds = null, season = null, grass = 'cool', texture = null, parcelMask = null, areas = [], zoneOf: userZones = null, params: given = null } = {}) {
   // warm-season turf (owner 2026-10-18): FAO-56's p 0.5 in place of cool-season's 0.4
   const params = given || (grass === 'warm' ? { ...PARAMS, ...WARM } : PARAMS);
   const g = res.grid, N = g.W * g.H;
@@ -88,7 +88,7 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
 
   // 2. roofs
   const roofs = roofRouting(g, wallNow, res.runoff.filled, { downspouts, gutters });
-  const model = buildModel(res, { kinds, soilAt, soils, roofTo: roofs.roofTo, light, shadeKinds: light ? shadeKinds : null, params });
+  const model = buildModel(res, { kinds, soilAt, soils, roofTo: roofs.roofTo, light, lightMonths: light ? lightMonths : null, shadeKinds: light ? shadeKinds : null, params });
   for (let i = 0; i < N; i++) if (deckCells[i]) { model.etFactor[i] *= params.deckShelter; model.etBase[i] *= params.deckShelter; }
   // the most a day's watering can put down, cell by cell (PARAMS.cyclesPerDay runs of an hour's intake),
   // as water reaching the grass: what is put down, over the scheduling multiplier
@@ -225,7 +225,7 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
     })(),
     texture: texture || null,
     soil: units.map((u) => ({ name: u.name, chosen: u.chosen || null, share: u.share ?? null, layers: layersOf(u.profile), intakeInH: (() => { const r = rootZone(u.profile); return r?.topKsatMmH ? r.topKsatMmH / 25.4 : null; })(), drainage: u.drainage, hydgrp: u.hydgrp, wtMinCm: u.wtMinCm ?? null, wetByMonth: u.wetByMonth, assumed: !!u.assumed, tawMm: rootZone(u.profile)?.tawMm ?? null, tawTopsoilMm: rootZone(u.profile, { topsoil: true })?.tawMm ?? null })),
-    years, topsoil, grass, thisWeek, shaded: !!light, treeCool: !!model.canopy, yardWind: model.windAt ? (() => { const v = []; for (let i = 0; i < N; i++) if (kinds[i] === KIND.lawn) v.push(model.winds[model.windAt[i]]); return v.length ? med(v) : null; })() : null,
+    years, topsoil, grass, thisWeek, shaded: !!light, lightByMonth: !!model.lightMonths, treeCool: !!model.canopy, yardWind: model.windAt ? (() => { const v = []; for (let i = 0; i < N; i++) if (kinds[i] === KIND.lawn) v.push(model.winds[model.windAt[i]]); return v.length ? med(v) : null; })() : null,
     sunShare: light ? (() => { const v = []; for (let i = 0; i < N; i++) if (kinds[i] === KIND.lawn) v.push(light[i]); return med(v); })() : null,
     weather: wx,
   };

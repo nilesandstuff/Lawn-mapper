@@ -1509,6 +1509,28 @@ cities), 0.61 (Litvak & Pataki 2016, Los Angeles, full tree cover), about 0.57 (
 under 55% cloth 0.87 (Duan & Fontanier 2022). The shadiest tenth (0.39) is inside that; the shadiest 2% (0.22) is
 below it -- see S12.
 
+### H45. Shade through the year, as the shade map works it out (water session, 2026-10-27)
+
+The owner: "Are we correctly factoring in the way that shade changes throughout the year as canopy cover changes and
+the position of the sun changes (again, the shade map does that)". We were not: the water map asked the shade map's
+light worker for one share per cell, June-August, and used it every day of the season. It now asks the same worker
+for every third day of each month as well ('period'; the leaves as its calendar has them that day, the sun where it
+is), and each day of the balance takes its month's share (balance.js etToday). The summer share stays for the zones
+and the report. Twelve more periods: about 2 s in node on the owner's map.
+
+The owner's lawn (2,633 cells; the shade map's calendar there: leaves out from day 131, full by 166, half fallen by
+288, bare by 302), light as a share of open sky:
+
+| | Apr | May | Jun | Jul | Aug | Sep | Oct | Nov | the summer share, used before |
+|---|---|---|---|---|---|---|---|---|---|
+| lawn median | 0.83 | 0.81 | 0.75 | 0.74 | 0.73 | 0.71 | 0.71 | 0.74 | 0.74 |
+| shadiest tenth | 0.55 | 0.52 | 0.34 | 0.32 | 0.28 | 0.24 | 0.32 | 0.50 | 0.32 |
+
+Water use of the tenth shadiest in summer, ten seasons, as a share of open sun (with the yard's wind and the trees'
+cooler air): April 0.34 -> 0.55, May 0.30 -> 0.47, June-September unchanged within 0.02, October 0.37 -> 0.43,
+November 0.43 -> 0.55; April-November 0.30 -> 0.35. The lawn's median moves 0.72 -> 0.73. The shady parts dry
+faster in spring and fall than the summer share said.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge

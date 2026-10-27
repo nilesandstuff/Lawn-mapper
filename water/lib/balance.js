@@ -153,14 +153,16 @@ export const windShare = (coverPct) => { const x = Math.max(0, Math.min(90, cove
 
 /**
  * TODAY'S USE PER CELL, as a multiple of the open lawn's (fills `out`): heat and shelter (model.etBase), the
- * sunlight (light), the yard's wind (model.windAt, an index into model.winds), and the air -- the day's own share of
+ * sunlight (light, or lightMonths[month]), the yard's wind (model.windAt, an index into model.winds), and the air -- the day's own share of
  * it, cooled near trees on a sunny day in the growing season by up to PARAMS.airCoolC at full cover within
  * canopyRadiusM (Ziter et al. 2019, Madison: 1.3 C cooler afternoons from no canopy to full within 30 m), the vapour
  * in it held (et.js airShare). part: airShare(day, ..., { winds: model.winds }), or null for a day without the
  * weather to split (then the default share, and the air's part cut by the wind as on a typical summer day).
  */
-export function etToday(model, part, inSeason, out) {
-  const { N, etBase, light, canopy, params } = model;
+export function etToday(model, part, inSeason, out, month = null) {
+  const { N, etBase, canopy, params } = model;
+  // the month's own light when the shade map gave it by month (its leaves and its sun that month), else the summer's
+  const light = model.lightMonths && month !== null ? model.lightMonths[month] : model.light;
   const winds = model.winds || [1], at = model.windAt;
   let sunRel = part?.sunRel, airRel = part?.airRel;
   if (!sunRel) {
@@ -218,9 +220,10 @@ export function scsRunoff(w, cn) {
  * soils    [{ rz: rootZone(...), drainage, hydgrp, wetByMonth }]
  * roofTo   Int32Array per cell: where a roof cell's water lands (lib/gutters.js), -1 nowhere
  * light    Float32Array per cell (0-1, ET multiplier from shade) or null
+ * lightMonths  [12 Float32Array] the same share month by month (the shade map's worker: its leaves and sun that month), or null
  * shadeKinds  Uint8Array per cell from the shade map's light worker (0 open, 1 roof, 2 evergreen, 3 deciduous) or null
  */
-export function buildModel(res, { kinds, soilAt, soils, roofTo, light = null, shadeKinds = null, params = PARAMS }) {
+export function buildModel(res, { kinds, soilAt, soils, roofTo, light = null, lightMonths = null, shadeKinds = null, params = PARAMS }) {
   const g = res.grid, N = g.W * g.H;
   const { down, filled } = res.runoff;
   const order = [];
@@ -305,7 +308,7 @@ export function buildModel(res, { kinds, soilAt, soils, roofTo, light = null, sh
       windAt[i] = idx.get(f);
     }
   }
-  const model = { g, N, kinds, soilAt, soils, roofTo, light, canopy, winds, windAt, order, down, recv, share, nRecv, slope, pondCap, taw, raw, satRoom, drainDay, heat, etBase, params };
+  const model = { g, N, kinds, soilAt, soils, roofTo, light, lightMonths: lightMonths?.length === 12 ? lightMonths : null, canopy, winds, windAt, order, down, recv, share, nRecv, slope, pondCap, taw, raw, satRoom, drainDay, heat, etBase, params };
   model.etFactor = etToday(model, null, false, new Float32Array(N));
   return model;
 }
@@ -357,7 +360,7 @@ export function simulate(model, days, { irrigate = null, start = null, record = 
     if (day.tmax <= 0) { snow += P; P = 0; } else if (snow > 0) { const melt = Math.min(snow, params.snowMeltMmPerC * Math.max(0, tmean)); snow -= melt; P += melt; }
     tot.rain += P;
     const et0 = Number.isFinite(day.et0) ? day.et0 : 0;
-    etToday(model, et0 > 0 ? airShare(day, lat, dayOfYear(day.date), 200, { winds: model.winds }) : null, inSeason, etFactor);
+    etToday(model, et0 > 0 ? airShare(day, lat, dayOfYear(day.date), 200, { winds: model.winds }) : null, inSeason, etFactor, month);
     const irr = irrigate ? irrigate(d, { Dr, grav, month, inSeason, date: day.date, use: et0 * params.kc, etFactor }) : null;
 
     inflow.fill(0);

@@ -46,7 +46,7 @@ function planWith(inputs = {}, zoneOf = null) {
   return waterPlan(r.result, {
     lawnMask: kept.lawn, paved: r.impervious ? r.impervious.paved : null, soil: kept.soil,
     topsoil: !!inputs.topsoil, downspouts: inputs.downspouts || [], gutters: inputs.gutters || [],
-    typical: kept.typical, week: kept.week, season: kept.season, light: kept.light, shadeKinds: kept.shadeKinds || null, grass,
+    typical: kept.typical, week: kept.week, season: kept.season, light: kept.light, lightMonths: kept.lightMonths || null, shadeKinds: kept.shadeKinds || null, grass,
     texture: inputs.texture || null, parcelMask: r.parcelMask || null, areas: inputs.areas || [], zoneOf,
   });
 }
@@ -66,7 +66,7 @@ async function plan(inputs = {}) {
   const out = {
     zones: p.zones, zoneOf: p.zoneOf, kinds: p.kinds, needMm: p.needMm, soilAt: p.soilAt, multiplier: p.multiplier, rootIn: p.rootIn, needMonth: p.needMonth, wetFromWatering: p.wetFromWatering, wetAnyway: p.wetAnyway, dryShare: p.dryShare,
     roofs: p.roofs, soil: p.soil, weather: p.weather, thisWeek: p.thisWeek, years: p.years, topsoil: p.topsoil,
-    standIn: kept.standIn, seconds: (Date.now() - t0) / 1000, shaded: p.shaded, treeCool: p.treeCool, yardWind: p.yardWind, lightInfo: kept.lightInfo || null, sunShare: p.sunShare,
+    standIn: kept.standIn, seconds: (Date.now() - t0) / 1000, shaded: p.shaded, lightByMonth: p.lightByMonth, treeCool: p.treeCool, yardWind: p.yardWind, lightInfo: kept.lightInfo || null, sunShare: p.sunShare,
     seasonDays: kept.season ? kept.season.size : null, grass, rainFrom: kept.rainFrom, texture: p.texture,
     trouble: Object.values(kept.sources || {}).filter(Boolean),
   };
@@ -152,7 +152,8 @@ async function start(site, inputs) {
     self.postMessage({ planProgress: 'Working out the shade on the lawn…' });
     kept.season = seasonFor(inputs.grass === 'warm' ? 'warm' : 'cool');
     site.cloudSeason = r.cloud?.season || null;
-    kept.light = await again(() => lawnLight(res, site, kept.climate, kept.season), 2).catch(() => null);
+    const lit = await again(() => lawnLight(res, site, kept.climate, kept.season), 2).catch(() => null);
+    kept.light = lit?.summer || null; kept.lightMonths = lit?.months || null;
     if (kept.light) kept.shade = 'ok';
   }
   kept.sources = {
@@ -183,12 +184,15 @@ async function start(site, inputs) {
  * days in it, every 4th), from the shade map's light worker (lib/shade/light-worker.js, copied
  * unchanged): its daily light integral against the open sky's, with NASA's clouds.
  */
+const MONTH_START = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365]; // day indices, as climate.js dayIndex
+
 function lawnLight(res, site, climate, season) {
   return new Promise((resolve, reject) => {
     const w = new Worker('/lib/shade/light-worker.js', { type: 'module' });
     const g = res.grid, N = g.W * g.H;
     const done = (v, err) => { w.terminate(); if (err) reject(err); else resolve(v); };
     const timer = setTimeout(() => done(null, new Error('the shade took too long')), 240000);
+    let summer = null, months = null;
     w.onerror = (e) => { clearTimeout(timer); done(null, new Error(e.message || 'the light worker stopped')); };
     w.onmessage = ({ data: m }) => {
       if (m.type === 'error') { clearTimeout(timer); done(null, new Error(m.message)); return; }
@@ -197,20 +201,28 @@ function lawnLight(res, site, climate, season) {
         kept.lightInfo = { canopy: m.canopy, why: m.seasonsWhy || null, erased: edits.cells, blocks: edits.blocks, blocksLost: edits.blocksLost, season: site.cloudSeason || null };
         // the shade map's own reading of every cell (0 open, 1 roof, 2 evergreen, 3 deciduous): its trees, for the air and the wind
         kept.shadeKinds = m.kinds && m.kinds.length === N ? Uint8Array.from(m.kinds) : null;
+        // the summer first (the zones and the report go by it), then each month (the daily balance does)
         const days = [];
         for (let k = 151; k <= 242; k += 4) if (!season || season.has(k)) days.push(k);
         w.postMessage({ type: 'period', days, climate });
         return;
       }
       if (m.type === 'period') {
-        clearTimeout(timer);
-        if (!m.dli || !(m.openDli > 0)) { done(null); return; }
+        if (!m.dli || !(m.openDli > 0)) { clearTimeout(timer); done(null); return; }
         const light = new Float32Array(N).fill(1);
         for (let p = 0; p < m.dli.length; p++) {
           const x = Math.floor(m.xy[2 * p]), y = Math.floor(m.xy[2 * p + 1]);
           if (x >= 0 && y >= 0 && x < g.W && y < g.H) light[y * g.W + x] = Math.max(0, Math.min(1, m.dli[p] / m.openDli));
         }
-        done(light);
+        /* THROUGH THE YEAR (owner, 2026-10-27: "the way that shade changes throughout the year as canopy cover
+           changes and the position of the sun changes (again, the shade map does that)"): the same worker's light
+           for every third day of each month, the leaves as its calendar has them that day and the sun where it is. */
+        if (!months) { summer = light; months = []; }
+        else months.push(light);
+        if (months.length === 12) { clearTimeout(timer); done({ summer, months }); return; }
+        const mo = months.length, md = [];
+        for (let k = MONTH_START[mo] + 1; k < MONTH_START[mo + 1]; k += 3) md.push(k);
+        w.postMessage({ type: 'period', days: md, climate });
       }
     };
     const pts = res.points;

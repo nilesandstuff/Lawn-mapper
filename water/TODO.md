@@ -93,3 +93,4 @@ SPECULATION), as always.
 - 2026-10-25: the rate of the recent rains, hour by hour, in this week's plan (FINDINGS H39).
 - 2026-10-26: shade's effect on the air: the day's own air share, and cooler air near trees (FINDINGS H43, S11).
 - 2026-10-27: shade again -- the trees in summer leaf, the trees erased on the shade map, the yard's wind (FINDINGS H44, S12).
+- 2026-10-27: shade through the year -- each month's light from the shade map's worker (FINDINGS H45).

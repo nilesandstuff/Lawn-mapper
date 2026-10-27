@@ -196,6 +196,16 @@ test('the yard\'s wind: Heisler\'s neighbourhoods, and the day worked out again 
   assert.equal(own.crown, null); assert.ok(Math.abs(own.built[210] - 0.1) < 1e-6);
 });
 
+test('shade through the year: each day takes its own month\'s light from the shade map', () => {
+  const months = Array.from({ length: 12 }, (_, m) => new Float32Array([m === 4 ? 0.6 : m === 8 ? 0.2 : 0.4]));
+  const model = { N: 1, etBase: new Float32Array([1]), light: new Float32Array([0.4]), lightMonths: months, canopy: null, params: PARAMS };
+  const part = { share: 0.3, perC: 0, clear: 0.8, sunRel: null, airRel: null };
+  const at = (m) => etToday(model, part, true, new Float32Array(1), m)[0];
+  assert.ok(Math.abs(at(4) - (0.3 + 0.7 * 0.6)) < 1e-6, 'May, before the leaves fill in');
+  assert.ok(Math.abs(at(8) - (0.3 + 0.7 * 0.2)) < 1e-6, 'September, the sun low under the leaves');
+  assert.ok(Math.abs(at(null) - (0.3 + 0.7 * 0.4)) < 1e-6, 'no month: the summer share');
+});
+
 test('the summer canopy: a leaf-off flight is known, and the trees erased on the shade map come over', () => {
   const t = (s) => Date.parse(s);
   assert.equal(leafSeason(t('2017-11-20'), t('2017-11-30')), 'off');
