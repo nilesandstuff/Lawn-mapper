@@ -1493,6 +1493,15 @@ public/lib/mask.js; the build copies what they point to), so the two cannot drif
 owner's lawn the shade map's crowns give the same answer: cover within 90 m median 38% (35-45%), wind 0.42; the last
 table's shadiest 2% 0.23 for 0.22, the rest unchanged.
 
+**5. Buildings count in both (checked 2026-10-27; owner: "is building shade also cutting water usage due to shade and
+wind, because it should be").** The shade map's light worker run on the owner's lawn with every tree column erased
+(its own kinds 2 and 3), so only roofs shade: buildings alone take 15% or more of the summer light from 824 of 2,639
+lawn cells (31%), down to 0.26 of open sky at the most; those cells' mean light 0.71, and their water use 0.77 of
+open sun at open wind (no trees: no cooler air, wind from the roofs alone). The wind's cover counts the shade map's
+roofs with its crowns: roofs a median 5% of the ground within 90 m (wind 0.83 from them alone), crowns 34% (0.42
+together). Not in it: the lee of a house, sheltered more than its 5% of a 90 m disc says (no measured table of wind
+behind a house was found, S12), and cooler air from building shade (H43 counts only crowns, as the measurements did).
+
 The owner was right that shade used less than the map said, and most of it was the bare branches. **Measured
 outdoors in deep shade** (the research's table): 0.33-0.5 (Wilfong et al. 2024, JAWRA, lawn chambers in three
 cities), 0.61 (Litvak & Pataki 2016, Los Angeles, full tree cover), about 0.57 (Danielson & Feldhake 1981, cloth at
