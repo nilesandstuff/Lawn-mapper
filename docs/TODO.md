@@ -45,6 +45,10 @@ inside of the loop".
 
 ## Done
 
+- 2026-10-27: the saved lawn picture frames the whole property line and
+  every lawn shape with a margin, with the caption bar below the map, and
+  is named for the house number and street (01db59c; browser test 40603419208).
+
 - 2026-10-27: the lawn sections tool, its own card on the dashboard
   ("Lawn sections", /sections?map=<id>). Slice, free draw, square, shape
   and join; borders of zero thickness, so the sections always add up to
