@@ -13,7 +13,8 @@ SPECULATION), as always.
 4. **Heat from paving into the grass beside it.** Research how concrete and
    blacktop spread heat to the grass next to them and how that raises its water
    use, then apply it day by day by the sun's strength and the shade over the
-   paving (the shade map's light). Needs blacktop told apart from concrete on
+   paving (the shade map's light). Fences, too (the shade part, v 3): each keeps its surface's solar reflectance
+   and emissivity (typical values, not measured). Needs blacktop told apart from concrete on
    the map: their surfaces heat differently (asphalt's albedo about 0.05-0.10
    new, concrete's 0.25-0.40: to be confirmed). Today the plan adds a flat
    estimate, up to 8% at the edge fading to nothing by 7 m (FINDINGS S8).
