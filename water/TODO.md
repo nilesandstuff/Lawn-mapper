@@ -4,9 +4,13 @@ The owner's queued work, in the order asked. Each item names what is to be found
 out before anything is built; findings go in FINDINGS.md (HARD apart from
 SPECULATION), as always.
 
-## In progress (2026-10-25)
+## In progress (2026-10-27)
 
-(nothing)
+9. **Shade: the grass uses much less, the owner finds; and wind** (owner, 2026-10-27: "it really seems like
+   grass in shade uses much less water than that, let's keep digging in, I'm sure wind is part of it, so yes
+   let's deal with that"). The plan has a cell at a fifth of the sun using about 0.41 of the open lawn's
+   (FINDINGS H43). Wind among trees is a fifth to two-thirds lower at 2 m (Heisler 1990), and the weather's wind
+   is open ground's. Research the wind and the measured shade studies, then build.
 
 ## Queued
 
@@ -46,9 +50,26 @@ SPECULATION), as always.
 7. **Rain intensity in the ten-year plan too** (after 3): the typical-year plan
    runs on daily totals, so it cannot tell a cloudburst from a soak.
 
-9. **Wind among trees** (found with H43, 2026-10-26): the weather's wind is open ground's; among trees it is a fifth
-   to two-thirds lower at 2 m (Heisler 1990), and the air's part of the grass's use is linear in it -- a bigger
-   lever than the trees' cooler air. A whole-yard correction from the neighbourhood's tree cover (FINDINGS S11).
+10. **The GPS jumps around** (owner, 2026-10-27: "gps is really bad, jumps around all over the place. Maybe
+    augmented reality might be better?"). Placing heads by walking to them: look at averaging, the phone's
+    reported accuracy, and an AR way of marking a spot (the camera and the ground plane) instead.
+11. **A "Finish" button when going back** (owner): once every step is done and a change is made on an earlier
+    one, a Finish button skips ahead to the next step the change makes necessary (a new head: check its arc),
+    then to the summary -- or straight to the summary when nothing else is needed. Otherwise, explore other
+    navigation that makes it easier to go back and forth between steps.
+12. **One kind of zone in the words** (owner: "seperate the terminology for the watering zones and sprinkler
+    zones. Its confusing to have 2 seperate types of zones. Recommendations should be based on sprinkler
+    zones."). The plan's soil-and-sun areas need another name; the recommendations go by the sprinkler zones
+    (valves).
+13. **Are pressure-regulated heads working?** (owner: "A user had a 30 psi regulated sprinkler body that was
+    showing up as 35 psi, not sure if that's actually accurate or not.") A regulated body should hold its
+    nozzle at the regulator's pressure once the supply is above it. Check the pressure model's regulator handling.
+14. **The final summary as a PDF** (owner): export the summary pages to a PDF.
+15. **Hose-end sprinklers placed by hand** (owner: "add specific recs for manually placing sprinklers. Which will
+    require pressure calculations (same as the existing workflows for inground, but obviously simplified)"):
+    where to set each sprinkler, how long, from the hose and the tap's pressure.
+16. **A simple view and an advanced view** (owner: "Simplified should just show the actionable info, advanced
+    should show the reasoning.").
 
 ## Shelved (owner, 2026-10-26: "shelve the tree thing to the todo list")
 
