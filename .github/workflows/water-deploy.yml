@@ -62,7 +62,7 @@ jobs:
           node water/test/site.test.js
           node water/test/plan.test.js
           node water/test/heads.test.js
-          node water/test/hydraulics.test.js && node water/test/layout.test.js && node water/test/measured.test.js && node water/test/advice.test.js && node water/test/layers.test.js && node water/test/view3d.test.js
+          node water/test/hydraulics.test.js && node water/test/layout.test.js && node water/test/measured.test.js && node water/test/advice.test.js && node water/test/layers.test.js && node water/test/view3d.test.js && node water/test/wind.test.js
 
       - name: The water database (gauge readings)
         if: ${{ inputs.task == 'deploy' }}

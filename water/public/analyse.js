@@ -21,6 +21,7 @@ import { demAround, terrain, hillside } from '/lib/upslope.js';
 import { powerUrl, typicalYear, growingSeason, SEASON_GP } from '/lib/shade/climate.js';
 import { polygonsOf } from '/lib/geo.js';
 import { erasedOn } from '/lib/leaf.js';
+import { fenceRadiation } from '/lib/fenceheat.js';
 
 const kept = { r: null, lawn: null, standIn: false, soil: null, typical: null, week: null, lng: null, lat: null, season: null, climate: null, light: null };
 
@@ -46,7 +47,7 @@ function planWith(inputs = {}, zoneOf = null) {
   return waterPlan(r.result, {
     lawnMask: kept.lawn, paved: r.impervious ? r.impervious.paved : null, soil: kept.soil,
     topsoil: !!inputs.topsoil, downspouts: inputs.downspouts || [], gutters: inputs.gutters || [],
-    typical: kept.typical, week: kept.week, season: kept.season, light: kept.light, lightMonths: kept.lightMonths || null, radiation: kept.radiation || null, shadeKinds: kept.shadeKinds || null, grass,
+    typical: kept.typical, week: kept.week, season: kept.season, light: kept.light, lightMonths: kept.lightMonths || null, radiation: kept.radiation || null, fenceHeat: kept.fenceHeat || null, shadeKinds: kept.shadeKinds || null, grass,
     texture: inputs.texture || null, parcelMask: r.parcelMask || null, areas: inputs.areas || [], zoneOf,
   });
 }
@@ -66,7 +67,7 @@ async function plan(inputs = {}) {
   const out = {
     zones: p.zones, zoneOf: p.zoneOf, kinds: p.kinds, needMm: p.needMm, soilAt: p.soilAt, multiplier: p.multiplier, rootIn: p.rootIn, needMonth: p.needMonth, wetFromWatering: p.wetFromWatering, wetAnyway: p.wetAnyway, dryShare: p.dryShare,
     roofs: p.roofs, soil: p.soil, weather: p.weather, thisWeek: p.thisWeek, years: p.years, topsoil: p.topsoil,
-    standIn: kept.standIn, seconds: (Date.now() - t0) / 1000, shaded: p.shaded, lightByMonth: p.lightByMonth, ownRadiation: p.ownRadiation, treeCool: p.treeCool, yardWind: p.yardWind, lightInfo: kept.lightInfo || null, sunShare: p.sunShare,
+    standIn: kept.standIn, seconds: (Date.now() - t0) / 1000, shaded: p.shaded, lightByMonth: p.lightByMonth, ownRadiation: p.ownRadiation, fences: p.fences, treeCool: p.treeCool, yardWind: p.yardWind, lightInfo: kept.lightInfo || null, sunShare: p.sunShare,
     seasonDays: kept.season ? kept.season.size : null, grass, rainFrom: kept.rainFrom, texture: p.texture,
     trouble: Object.values(kept.sources || {}).filter(Boolean),
   };
@@ -154,6 +155,14 @@ async function start(site, inputs) {
     site.cloudSeason = r.cloud?.season || null;
     const lit = await again(() => lawnLight(res, site, kept.climate, kept.season), 2).catch(() => null);
     kept.light = lit?.summer || null; kept.lightMonths = lit?.months || null; kept.radiation = lit?.radiation || null;
+    // the fences' longwave on the lawn (H49): the shade map's fences, seen from each lawn cell
+    kept.fenceHeat = null;
+    if (kept.radiation && site.shadeEdits?.fences?.length) {
+      try {
+        const cells = []; for (let i = 0; i < kept.lawn.length; i++) if (kept.lawn[i]) cells.push(i);
+        kept.fenceHeat = fenceRadiation(site.shadeEdits.fences, { W: res.grid.W, H: res.grid.H, bbox: res.grid.bbox, cell: 1 }, res.z, cells, lat, lng);
+      } catch { kept.fenceHeat = null; }
+    }
     if (kept.light) kept.shade = 'ok';
   }
   kept.sources = {
@@ -219,7 +228,7 @@ function lawnLight(res, site, climate, season) {
   const work = (async () => {
     const m = await build(edits.erased);
     if (m.w !== g.W || m.h !== g.H) throw new Error('the shade grid is not the water grid');
-    kept.lightInfo = { canopy: m.canopy, why: m.seasonsWhy || null, erased: edits.cells, blocks: edits.blocks, blocksLost: edits.blocksLost, season: site.cloudSeason || null };
+    kept.lightInfo = { canopy: m.canopy, why: m.seasonsWhy || null, fences: m.fences || 0, erased: edits.cells, blocks: edits.blocks, blocksLost: edits.blocksLost, season: site.cloudSeason || null };
     // the shade map's own reading of every cell (0 open, 1 roof, 2 evergreen, 3 deciduous): its trees, for the air and the wind
     const kinds = m.kinds && m.kinds.length === N ? Uint8Array.from(m.kinds) : null;
     kept.shadeKinds = kinds;

@@ -188,10 +188,16 @@ export function etToday(model, part, inSeason, out, month = null) {
     const { rs, rnl, fd, fdPar } = part.light;
     const Bp = 0.5 * (1 - fdPar), Dp = 0.5 * fdPar, Bn = Math.max(0, 1 - fd - Bp), Dn = Math.max(0, fd - Dp);
     const aP = (1 - params.albedoPar) * rs, aN = (1 - params.albedoNir) * rs;
+    /* FENCES (H49): the sky a fence fills, less its reflected skylight (counted as sky in the shade map's light), is
+       sky the grass does not lose its heat to; a sunlit board, warmer than the air, gives the grass more. */
+    const FH = model.fenceHeat, fb = FH ? FH.beam[month] : null, fRefl = FH ? FH.reflSky : null, fSky = FH ? FH.sky : null;
+    const beamMJ = rs * (1 - fd), skyMJ = rs * fd;
     for (let i = 0; i < N; i++) {
       const k = at ? at[i] : 0;
       const A = cool ? Math.max(0, 1 - cool * canopy[i]) : 1;
-      const net = aP * (Bp * R.parB[i] + Dp * R.parD[i]) + aN * (Bn * R.nirB[i] + Dn * R.nirD[i]) - rnl * R.parD[i];
+      const lwSky = FH ? Math.max(0, R.parD[i] - fRefl[i]) : R.parD[i];
+      const warm = FH ? beamMJ * fb[i] + skyMJ * fSky[i] : 0;
+      const net = aP * (Bp * R.parB[i] + Dp * R.parD[i]) + aN * (Bn * R.nirB[i] + Dn * R.nirD[i]) - rnl * lwSky + warm;
       out[i] = etBase[i] * Math.max(0, part.kRel[k] * net + airRel[k] * A);
     }
     return out;
@@ -268,9 +274,10 @@ export function scsRunoff(w, cn) {
  * radiation  { beam, sky, beamB, skyB }: 12 Float32Arrays each, from the shade map's worker -- the share of the
  *            sun's beam and of the sky each cell sees (the sky's share is its sky view), with the trees and with the
  *            buildings alone -- or null (H47)
+ * fenceHeat  lib/fenceheat.js fenceRadiation(...): the fences' longwave (H49), or null
  * shadeKinds  Uint8Array per cell from the shade map's light worker (0 open, 1 roof, 2 evergreen, 3 deciduous) or null
  */
-export function buildModel(res, { kinds, soilAt, soils, roofTo, light = null, lightMonths = null, radiation = null, shadeKinds = null, params = PARAMS }) {
+export function buildModel(res, { kinds, soilAt, soils, roofTo, light = null, lightMonths = null, radiation = null, fenceHeat = null, shadeKinds = null, params = PARAMS }) {
   const g = res.grid, N = g.W * g.H;
   const { down, filled } = res.runoff;
   const order = [];
@@ -357,6 +364,7 @@ export function buildModel(res, { kinds, soilAt, soils, roofTo, light = null, li
   }
   const model = { g, N, kinds, soilAt, soils, roofTo, light, lightMonths: lightMonths?.length === 12 ? lightMonths : null, canopy, winds, windAt, order, down, recv, share, nRecv, slope, pondCap, taw, raw, satRoom, drainDay, heat, etBase, params };
   model.rad = radiation ? radiationModel(radiation, N, params) : null;
+  model.fenceHeat = radiation && fenceHeat ? fenceHeat : null;
   model.etFactor = etToday(model, null, false, new Float32Array(N));
   return model;
 }
