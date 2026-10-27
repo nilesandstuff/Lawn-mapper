@@ -67,6 +67,14 @@ SPECULATION), as always.
 16. **A simple view and an advanced view** (owner: "Simplified should just show the actionable info, advanced
     should show the reasoning.").
 
+17. **Wind on the sheltered side of a house** (owner, 2026-10-27). The yard's wind is Heisler's neighbourhood
+    figure from the roofs and crowns within 90 m (FINDINGS H44), much the same over the whole lawn; the lawn just
+    downwind of a house (and of a hedge, a fence or a row of trees) is calmer than that, and its corners can be
+    windier. Heisler measured the "approach wind" with the house's own effect taken out, and no measured table of
+    wind behind a single house was found. Research it (wind-tunnel and field studies of a house's wake, the summer
+    wind's direction here), then a per-cell lee from the roofs (and crowns) upwind, the buildings from the shade
+    map's kinds. Also: the cover is counted only as far as the grid reaches, 30 m past the lot, not Heisler's 90 m.
+
 ## Rules (owner, 2026-10-27)
 
 - **Shade is the shade map's.** "You should follow the output of the shade map. If we need to make adjustments to how
