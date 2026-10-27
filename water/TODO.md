@@ -74,6 +74,14 @@ SPECULATION), as always.
     wind behind a single house was found. Research it (wind-tunnel and field studies of a house's wake, the summer
     wind's direction here), then a per-cell lee from the roofs (and crowns) upwind, the buildings from the shade
     map's kinds. Also: the cover is counted only as far as the grid reaches, 30 m past the lot, not Heisler's 90 m.
+    What is known so far: FINDINGS H46 (which effects are averaged, and why the wind's average does not hold spot
+    by spot), H44 (the wind as built), S12, and research-shade-wind.md (Brandle's windbreak curves, Heisler's houses).
+18. **Cooler air, more local, especially in still air** (owner, 2026-10-27: "fine tuning cooling effect of shade to
+    get more localized cooling, especially in still air"). Today the trees' cooler air is the crown cover within
+    30 m on sunny days (FINDINGS H43, H46), the same at any wind. Under a crown, on a calm day, the air near the
+    grass may be cooler than the 30 m figure says (Souch & Souch 1993: 0.7-1.3 C under single trees, early
+    afternoon); in wind it mixes away. Research how the cooling under and beside a crown depends on the wind, then
+    tie it to each spot's own shade and the day's wind.
 
 ## Rules (owner, 2026-10-27)
 

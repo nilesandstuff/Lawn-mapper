@@ -1531,6 +1531,30 @@ cooler air): April 0.34 -> 0.55, May 0.30 -> 0.47, June-September unchanged with
 November 0.43 -> 0.55; April-November 0.30 -> 0.35. The lawn's median moves 0.72 -> 0.73. The shady parts dry
 faster in spring and fall than the summer share said.
 
+### H46. Which effects are worked out spot by spot, which are averaged over an area, and whether the averages hold (water session, 2026-10-27)
+
+The owner: "out of all of the effects of shade on cooling and canopy/building wind blocking, which effects are
+averaged over a larger area, and do those averages reflect reality?" Measured on the owner's lawn (2,639 cells of the
+shade map's grid, 251 x 172 m):
+
+| effect | worked out over | spread over the lawn | does it reflect reality |
+|---|---|---|---|
+| sunlight (trees, buildings) | each half-metre point, month by month: the shade map's light worker (H45) | shadiest tenth 0.24 (Sep) to 0.55 (Apr) of open sky | yes, spot by spot: the shade map is held to light sensors under canopy and the owner's phone readings (SHADE-FINDINGS 1, 25) |
+| cooler air near trees (H43) | the shade map's crowns within 30 m (a square of the 30 m disc's area) | crown cover 0.15-0.48; cut in the grass's use 1.6-2.8% in sun, more in shade | reasonably, for the air: it mixes, and Ziter et al. 2019 measured the 1.3 C at this 30 m scale; under single crowns Souch & Souch 1993 found a like 0.7-1.3 C. Not the still-air pocket under one crown (TODO 18) |
+| the yard's wind (H44) | roofs and crowns within 90 m (Heisler 1990's 0-91 m band) | 0.37-0.45 of open wind: nearly one figure for the whole lawn | as a yard average, roughly; spot by spot, no -- see below |
+
+Why the wind does not hold spot by spot:
+- The lee of a house, a hedge, a fence or a tree row is calmer than the yard's figure (a solid fence: about a quarter
+  of open wind out to 5 heights, Brandle et al. 2009), and corners and the sides of a house can be windier (Heisler's
+  isolated house: 0.37-1.11 of the approach wind at one height away). Heisler's "approach wind" had each house's own
+  effect taken out, so his curve gives the yard and not the spot.
+- The 90 m window (161 m square) is clipped to the grid, which reaches only 30 m past the lot: for every lawn cell it
+  is the lot and 30 m round it, not the neighbourhood -- the owner's 34% crown cover is what is in view.
+- Heisler counted the cover upwind; the water map counts it in every direction.
+- Heisler's curve itself scatters: residuals up to 40 points, R2 0.73-0.82.
+So the spot behind the house is likely planned as using somewhat more water than it does, a windy corner somewhat
+less (TODO 17).
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge
