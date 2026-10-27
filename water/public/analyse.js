@@ -194,7 +194,7 @@ function lawnLight(res, site, climate, season) {
       if (m.type === 'error') { clearTimeout(timer); done(null, new Error(m.message)); return; }
       if (m.type === 'built') {
         if (m.w !== g.W || m.h !== g.H) { clearTimeout(timer); done(null, new Error('the shade grid is not the water grid')); return; }
-        kept.lightInfo = { canopy: m.canopy, why: m.seasonsWhy || null, erased: edits.cells, season: site.cloudSeason || null };
+        kept.lightInfo = { canopy: m.canopy, why: m.seasonsWhy || null, erased: edits.cells, blocks: edits.blocks, blocksLost: edits.blocksLost, season: site.cloudSeason || null };
         // the shade map's own reading of every cell (0 open, 1 roof, 2 evergreen, 3 deciduous): its trees, for the air and the wind
         kept.shadeKinds = m.kinds && m.kinds.length === N ? Uint8Array.from(m.kinds) : null;
         const days = [];

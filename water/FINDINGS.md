@@ -1453,7 +1453,16 @@ node:
 **2. The trees erased on the shade map stood in the water map (fixed).** The shade part keeps the erased cells
 and blocks (docs/MAPS.md); the water map ignored them. With the shade map's lidar saved, the water grid is the
 shade map's own (site.js), so they carry over cell for cell: 213 of 213 cells and 42 blocks on the owner's map.
-On another grid they go by position, without the blocks.
+On another grid they go by position, without the blocks
+(and the page says the blocks could not come over).
+
+CHECKED 2026-10-27 (owner: "when a user erases tree cells due to trimming back branches in real life, that gets
+saved to the unified save file. We need to make sure the water map is using those edits"). The blocks are the
+branch brush's: single cubes of the shade map's 3D canopy, by index (column x 31 layers + layer). The water map's
+own model of the same points on the same grid: 251 x 172 x 31 layers, as saved. All 42 saved blocks fall on cubes
+holding canopy, where only 48 of the 961 cubes in their 31 columns do (5%; by chance 42 of 42 would be about
+1e-55). With the whole-tree cells erased, adding the blocks lightens 43 lawn cells by a point of summer light or
+more, 12 by five or more, the most by 33 points; none darker. The page now names both edits.
 
 **3. The yard's wind (measured, added).** The weather's wind is open ground's: NASA POWER's WS2M against the
 nearest major airport station's 10 m wind brought to 2 m (FAO-56 eq. 47), June-August 2022-25, 368 days: 2.31

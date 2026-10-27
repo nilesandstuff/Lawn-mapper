@@ -208,6 +208,9 @@ test('the summer canopy: a leaf-off flight is known, and the trees erased on the
   // another grid: by position, a cell over; the blocks left out
   const moved = erasedOn({ grid: { w: 12, h: 12, x0: 999, y1: 2011, cell: 1 }, erased: [13 + 1] }, { W: 10, H: 10, bbox });
   assert.equal(moved.cells, 1); assert.equal(moved.erased[1], 1); assert.equal(moved.cubes, null);
+  assert.equal(same.blocks, 1); assert.equal(same.blocksLost, 0);
+  const lost = erasedOn({ grid: { w: 12, h: 12, x0: 999, y1: 2011, cell: 1 }, erased: [], cubes: [5, 6] }, { W: 10, H: 10, bbox });
+  assert.equal(lost.blocksLost, 2, 'trimmed branches that cannot come over are counted, to be said');
   assert.equal(erasedOn(null, { W: 10, H: 10, bbox }).erased, null);
 });
 

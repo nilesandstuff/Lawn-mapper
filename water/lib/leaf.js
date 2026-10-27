@@ -16,10 +16,10 @@ export const flightSeason = (flown) => (flown ? flightOf(null, flown)?.season ??
  * water map's grid ({ W, H, bbox }). The water grid is the shade map's own when it has worked on the map (site.js
  * uses its box): then they are the same cells and the same blocks. Otherwise each erased cell goes by its middle
  * to the water cell under it, and the blocks are left out (their layers belong to the other grid).
- * -> { erased: Uint8Array(W*H) | null, cubes: Int32Array | null, cells: number }
+ * -> { erased: Uint8Array(W*H) | null, cubes: Int32Array | null, cells, blocks, blocksLost }
  */
 export function erasedOn(edits, g) {
-  if (!edits?.grid || !Array.isArray(edits.erased) || !g?.bbox) return { erased: null, cubes: null, cells: 0 };
+  if (!edits?.grid || !Array.isArray(edits.erased) || !g?.bbox) return { erased: null, cubes: null, cells: 0, blocks: 0, blocksLost: 0 };
   const { w, h, x0, y1 } = edits.grid;
   const N = g.W * g.H, out = new Uint8Array(N);
   const cellW = (g.bbox[2] - g.bbox[0]) / g.W;
@@ -35,6 +35,8 @@ export function erasedOn(edits, g) {
       if (cc >= 0 && rr >= 0 && cc < g.W && rr < g.H && !out[rr * g.W + cc]) { out[rr * g.W + cc] = 1; cells++; }
     }
   }
-  const cubes = same && Array.isArray(edits.cubes) && edits.cubes.length ? Int32Array.from(edits.cubes) : null;
-  return { erased: cells ? out : null, cubes, cells };
+  const asked = Array.isArray(edits.cubes) ? edits.cubes.length : 0;
+  const cubes = same && asked ? Int32Array.from(edits.cubes) : null;
+  // blocksLost: trimmed branches that could not come over (another grid), said on the page
+  return { erased: cells ? out : null, cubes, cells, blocks: cubes ? cubes.length : 0, blocksLost: cubes ? 0 : asked };
 }
