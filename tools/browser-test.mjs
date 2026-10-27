@@ -3638,7 +3638,11 @@ console.log('\n--- tinker: neighbours and merging ---');
       }
       return chain.join(' < ');
     }, [shown[0].x, shown[0].y]);
-    check('nothing sits on top of the merge button', /merge-parcel/.test(under), under);
+    /* What the cover says, when it is the busy overlay (2026-10-27: it was,
+       the first time this section ran since 2026-10-10). */
+    const cover = await tp.evaluate(() => (document.querySelector('#busy')?.hidden === false
+      ? `busy: "${document.querySelector('#busy-text')?.textContent || ''}"` : ''));
+    check('nothing sits on top of the merge button', /merge-parcel/.test(under), `${under} ${cover}`);
     await tp.touchscreen.tap(shown[0].x, shown[0].y);
     await tp.waitForTimeout(800);
     const after = await tp.evaluate(() => window.__lmNeighbours());
