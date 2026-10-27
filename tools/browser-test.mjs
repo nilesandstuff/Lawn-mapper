@@ -3630,6 +3630,9 @@ console.log('\n--- tinker: neighbours and merging ---');
   check('every button shown sits wholly inside its own parcel',
     shown.length > 0 && shown.every((b) => b.inside), JSON.stringify(shown.map((b) => [b.label, b.inside])));
   if (shown.length) {
+    /* The lot's photo can still be loading under its overlay a few seconds in
+       (2026-10-27: covered here once, clear on the next run); a person waits. */
+    await tp.waitForFunction(() => document.querySelector('#busy')?.hidden !== false, null, { timeout: 30000 }).catch(() => {});
     // What is actually under the finger there: the button, or something on top of it.
     const under = await tp.evaluate(([x, y]) => {
       const chain = [];
