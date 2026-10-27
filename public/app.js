@@ -28,6 +28,7 @@ import { afterStroke, restoreAway } from './lib/stitch.js';
 import { strokeOnShapes } from './lib/brush-vector.js';
 import { extendToRoads, mergeButtonPoint, mergeRings, placeInside } from './lib/frontage.js';
 import { sizeLabel, labelSpot } from './lib/size-label.js';
+import { fileNameFor } from './lib/file-name.js';
 import { movedCorners } from './lib/align.js';
 import { sharpTiles } from './lib/sharp-tiles.js';
 import { alignFromRegistration } from './lib/register.js';
@@ -14098,10 +14099,62 @@ function setQuotaBadge(badge, long, short) {
 
 /* --------------------------------------------------------------- exports */
 
+/*
+ * THE WHOLE PROPERTY IN THE PICTURE (owner, 2026-10-27): "include the whole
+ * property in frame with a little padding (make sure the info bar isn't
+ * cutting off lawn)". The picture used to be whatever the screen showed, so
+ * a lot zoomed in or panned left lawn out of it, or running into the caption
+ * bar at its foot. Now the camera is moved, for the moment of the capture,
+ * to the property line and every lawn shape with a margin all round, and put
+ * back after. The caption bar is drawn below the map, never over it.
+ */
+async function frameWholeProperty() {
+  const pts = [];
+  for (const poly of polygonRings(state.parcel)) pts.push(...poly[0]);
+  for (const f of draw.getAll().features) for (const poly of polygonRings(f)) pts.push(...poly[0]);
+  if (!pts.length) return null;
+  const xs = pts.map((p) => p[0]);
+  const ys = pts.map((p) => p[1]);
+  const box = map.getContainer();
+  const pad = Math.max(24, Math.round(Math.min(box.clientWidth, box.clientHeight) * 0.07));
+  const cam = map.cameraForBounds([[Math.min(...xs), Math.min(...ys)], [Math.max(...xs), Math.max(...ys)]],
+    { padding: pad, maxZoom: 21, bearing: map.getBearing() });
+  if (!cam) return null;
+  const before = { center: map.getCenter(), zoom: map.getZoom(), bearing: map.getBearing(), pitch: map.getPitch() };
+  map.jumpTo({ ...cam, pitch: 0 });
+  // Every tile drawn at the new zoom, or as much as arrives in a few seconds.
+  await new Promise((done) => {
+    const t = setTimeout(done, 5000);
+    map.once('idle', () => { clearTimeout(t); done(); });
+    map.triggerRepaint();
+  });
+  // For the browser test: where the property sat in the picture.
+  const px = pts.map((p) => map.project(p));
+  window.__lmLastExport = {
+    w: box.clientWidth, h: box.clientHeight, pad,
+    box: [Math.min(...px.map((p) => p.x)), Math.min(...px.map((p) => p.y)), Math.max(...px.map((p) => p.x)), Math.max(...px.map((p) => p.y))],
+  };
+  return before;
+}
+
 /** Composite the map canvas with a caption bar into a downloadable PNG. */
-function exportPng() {
+async function exportPng() {
+  let before = null;
+  try { before = await frameWholeProperty(); } catch { before = null; }
+  try { capturePng(); } finally {
+    if (before) {
+      map.jumpTo(before);
+      if (window.__lmLastExport) window.__lmLastExport.putBack = map.getCenter().distanceTo(before.center) < 0.05;
+    }
+  }
+}
+
+function capturePng() {
   const src = map.getCanvas();
-  const barH = 84;
+  // The bar and its text grow together: a fixed 84 px bar under text scaled
+  // to a wide screen's canvas cut the text off at the picture's foot.
+  const scale = src.width / 900;
+  const barH = Math.round(84 * scale);
   const canvas = document.createElement('canvas');
   canvas.width = src.width;
   canvas.height = src.height + barH;
@@ -14113,7 +14166,6 @@ function exportPng() {
   ctx.fillRect(0, src.height, canvas.width, barH);
 
   const m = measureLawn(draw.getAll());
-  const scale = src.width / 900;
   ctx.fillStyle = '#fff';
   ctx.font = `700 ${Math.round(30 * scale)}px system-ui, sans-serif`;
   ctx.fillText(`${m.squareFeet.toLocaleString()} sq ft`, 22 * scale, src.height + 38 * scale);
@@ -14126,7 +14178,7 @@ function exportPng() {
   );
 
   const link = document.createElement('a');
-  link.download = 'lawn-measurement.png';
+  link.download = fileNameFor(state.chosen?.label);
   link.href = canvas.toDataURL('image/png');
   link.click();
 }

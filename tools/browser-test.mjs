@@ -2200,6 +2200,22 @@ if (corner) {
   check('the lawn is labelled with its size', labels.some((l) => /^\d+(\.\d)? (k )?sqft$/.test(l.text) && l.inMap),
     JSON.stringify(labels));
 
+  /* The saved picture (owner, 2026-10-27): the whole property in frame with
+     a margin, named for the house number and street, and the view put back. */
+  {
+    const [download] = await Promise.all([
+      page.waitForEvent('download', { timeout: 20000 }).catch(() => null),
+      page.evaluate(() => document.querySelector('#btn-png').click()),
+    ]);
+    const name = download?.suggestedFilename() || '';
+    check('the saved picture is named for the house number and street', /^\d+ [^,]+\.png$/.test(name), name);
+    const shot = await page.evaluate(() => window.__lmLastExport || null);
+    check('the whole property is in the picture, clear of its edges',
+      !!shot && shot.box[0] >= 1 && shot.box[1] >= 1 && shot.box[2] <= shot.w - 1 && shot.box[3] <= shot.h - 1,
+      JSON.stringify(shot));
+    check('and the map is put back where it was', shot?.putBack === true, JSON.stringify(shot?.putBack));
+  }
+
   const counts = await page.evaluate(() => window.__lmPoints?.()[0]?.count ?? null);
   const afterDelete = await page.evaluate(async () => {
     document.querySelector('#btn-point-delete').click();
