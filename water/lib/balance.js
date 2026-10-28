@@ -564,11 +564,12 @@ export function idealIrrigation(model) {
     for (let i = 0; i < model.N; i++) {
       if (model.kinds[i] !== 1) continue;
       const most = cap ? cap[i] : Infinity;
-      if (mode === 'dormancy') { if (d - st.lastWet[i] >= survival.days) { out[i] = Math.min(survival.mm, most); st.lastWet[i] = d; any = true; } continue; } // (the watering counts, even cut by the day's cap)
+      if (mode === 'dormancy') { if (d - st.lastWet[i] >= survival.days) { out[i] = survival.mm; st.lastWet[i] = d; any = true; } continue; } // the survival watering whole, once in three weeks, whatever the day's soak cap
       const use = st.use * (st.etFactor || model.etFactor)[i];
       if (Dv) {
+        // the normal schedule's day and amount (the day's cap included, so the days stay the normal ones), refill of it
         const v = Math.max(0, Dv[i] - lastRain) + use;
-        if (v > model.raw[i]) { out[i] = Math.min(v * refill, most); Dv[i] = 0; any = true; } else Dv[i] = v;
+        if (v > model.raw[i]) { const full = Math.min(v, most); out[i] = full * refill; Dv[i] = v - full; any = true; } else Dv[i] = v;
         continue;
       }
       if (st.Dr[i] + use > model.raw[i]) { out[i] = Math.min(st.Dr[i] + use, most); any = true; }
@@ -606,7 +607,7 @@ export function zoneIrrigation(model, zoneOf, nZones, events = []) {
       if (mode === 'dormancy') {
         // the zone's lawn has gone survival.days without survival.mm: that much, the zone as one
         let since = 0; for (const i of cs) since += d - st.lastWet[i]; since /= cs.length;
-        if (since >= survival.days) { const mm = Math.min(survival.mm, caps[z]); for (const i of cs) { out[i] = mm; st.lastWet[i] = d; } events.push({ d, zone: z, mm }); any = true; }
+        if (since >= survival.days) { const mm = survival.mm; for (const i of cs) { out[i] = mm; st.lastWet[i] = d; } events.push({ d, zone: z, mm }); any = true; }
         continue;
       }
       let dr = 0, rw = 0, use = 0;
@@ -615,7 +616,7 @@ export function zoneIrrigation(model, zoneOf, nZones, events = []) {
       let mm = 0;
       if (Dv) {
         const v = Math.max(0, Dv[z] - lastRain) + use;
-        if (v > rw) { mm = Math.min(v * refill, caps[z]); Dv[z] = 0; } else Dv[z] = v;
+        if (v > rw) { const full = Math.min(v, caps[z]); mm = full * refill; Dv[z] = v - full; } else Dv[z] = v;
       } else if (dr + use > rw) mm = Math.min(dr + use, caps[z]); // refill to full, today's use included, or as far as a day's cycles go
       if (mm > 0) {
         for (const i of cs) out[i] = mm;
