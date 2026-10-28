@@ -9,7 +9,7 @@ a whole source at once.
 import numpy as np
 
 from fuse_layers import (CHANNELS, INTENSITY_CHANNELS, LIDAR, NAIP, RETURN_CHANNELS, RETURN_LIDAR, drop_sources, extra_channels,
-                         frame_rank, intensity_index, ndvi_from_png)
+                         frame_rank, intensity_index, ndvi_from_png, shift_layer)
 
 passed = 0
 
@@ -119,3 +119,13 @@ check("told the returns are off, their slots are left alone even without the lin
       np.array_equal(drop_sources(eo, np.random.default_rng(5), 1.0, 0.0, more_lidar=(i, f), with_returns=False)[o:o + 2], eo[o:o + 2]))
 
 print(f"\nAll {passed} checks passed.")
+
+# The shift (S67): a layer moved whole cells, its edge carried along.
+m = np.arange(16, dtype=np.float32).reshape(4, 4)
+check("a shift east moves the columns and repeats the west edge", np.array_equal(shift_layer(m, 1, 0)[0], [0, 0, 1, 2]))
+check("a shift south moves the rows down", np.array_equal(shift_layer(m, 0, 1)[1], m[0]) and np.array_equal(shift_layer(m, 0, 1)[0], m[0]))
+check("a fill value fills the uncovered edge", shift_layer(m, -1, 0, fill=-1)[0, 3] == -1 and shift_layer(m, -1, 0, fill=-1)[0, 0] == 1)
+check("no shift is a copy", np.array_equal(shift_layer(m, 0.2, -0.3), m))
+b = np.zeros((4, 4), bool); b[1, 1] = True
+check("a boolean layer shifts too", shift_layer(b, 1, 1, fill=False)[2, 2] and not shift_layer(b, 1, 1, fill=False)[1, 1])
+print(f"all {passed} fuse checks passed")

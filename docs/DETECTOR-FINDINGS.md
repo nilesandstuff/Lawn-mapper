@@ -8461,6 +8461,66 @@ is 130 sqft, so maybe the cutoff should be 100 sqft"),** on the condo,
 where grass islands between driveways run 100 to 150 sq ft. Same scope as
 above: the outline, not the scored mask.
 
+### S67. Does NAIP's NDVI matter, is its alignment right, and should the decoder be told the fused layers are only "about here"? (owner, 2026-10-28) -- IN FLIGHT, four Modal runs
+
+**The owner's question.** "We put a lot of effort into making sure that
+lidar aligns with imagery, but we didn't ask how well the NDVI is aligning
+with imagery and lidar... that alignment is very hidden from my eyes." And:
+the fused layers are given to the decoder as "the 100% truth of how these
+fit together, which is almost certainly not always the case perfectly";
+could the detector line them up itself?
+
+**What is established (read from the code, 2026-10-28).**
+- NAIP is lined up with the photograph by edge correlation (tools/
+  naip_align.py: slide up to 6 m, scale up to 1.5%, kept only when the edge
+  match clearly improves; an editor-set alignment wins). The pipeline and the
+  live server share the routine. Its effect on any score was never measured
+  (the 2026-09-27 note above). Nothing lines NDVI up with the lidar directly;
+  each is lined up with the photo on its own, the lidar's ground to half a
+  metre (H103, H108).
+- DINOv3 never sees the fused layers: it reads the RGB photograph and gives
+  1,024 numbers a patch; the fused numbers (lidar height, ground share,
+  returns, NDVI, canopy share, the ground brightness, a flag a source) are
+  appended to those per patch and the decoder learns to use them. Each
+  raster is area-averaged onto the patch grid by the labels' own code
+  (decoder_grid.box_targets), so it lies on the labels by construction.
+- The trust order is imposed only by modality dropout (lidar hidden 30% of
+  steps, NAIP 20%, the photo never; the lidar always on distrusted lots) and
+  by 1,024 photo numbers against 9 fused ones.
+- NDVI was never shown to help on its own: H48 found fused inputs as a whole
+  did not move THE PLAN's row, and no run has trained without NDVI alone.
+
+**Why a learned alignment is not the move (SPECULATION, reasoned, not
+measured).** A spatial transformer or cross-attention over the other views
+could learn the registration, but with 104 lots, a frozen backbone and NAIP
+at 1 m a pixel against 1.4 m patches, it would find the shift less well
+than the edge matcher does, and could align no better than a metre, which
+is within a patch. The cheap half of the idea is to stop telling the
+decoder the layers are exact: jitter them in training. The decoder already
+has 3x3 context, so a "look around" window adds little on its own.
+
+**The trials (workflow 14 `naip_trial`, `gpu: modal`, THE PLAN's settings:
+dinov3-sat, fused + edge, canopy on lawn, locked 104 + 5 pond maps, seed 7,
+every lot squeezed to 896, lidar_align saved), paired by workflow 24 against
+a fresh baseline from the same code and seed:**
+1. **Baseline**, `cache: rebuild`, so NAIP is read fresh and the alignment
+   pictures are published (branch pictures/naip-align-<run number>).
+2. **Without NDVI**: the naip folder emptied, so no lot has it, trained or
+   scored. Tells whether NDVI contributes anything.
+3. **NDVI shifted 2 m at scoring**, in a direction fixed per lot, trained on
+   it unmoved. Tells how much a misaligned NDVI costs the decoder as it is.
+4. **Jittered 1.5 m**: on half the training steps the lidar and NAIP rasters
+   are moved 0.75-1.5 m a random way before the patch grid; scored unmoved.
+   A decoder that knows the layers are only "about here".
+
+**The bar.** A trial is a finding when workflow 24's pairing against the
+baseline shows a sign-test p under 0.05 on the 104 lots, or a median move of
+half a point; otherwise it is "no difference seen with one seed". Readings:
+if (2) is no worse than the baseline, NDVI does nothing and (3) is moot; if
+(2) is worse and (3) is worse, the alignment matters and (4) is the fix to
+read; if (4) beats the baseline it is adopted into THE PLAN's row as a
+training default and the live release retrained with it.
+
 ### S66. THE PLAN taught only what was traced: inferred marks left out, lawn traced under the canopy still taught (owner, 2026-10-26: "it should always be taught areas that were traced and not marked inferred") -- MEASURED 2026-10-26: H128, worse, not adopted
 
 **What is already true (from the code, see the S65 correction):** THE

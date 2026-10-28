@@ -456,6 +456,19 @@ on:
         type: choice
         default: 'saved'
         options: ['saved', 'off', 'fit']
+      naip_trial:
+        # S67 (owner, 2026-10-28). The fused layers are told to lie exactly
+        # where we put them, which they do not always. Three trials against
+        # THE PLAN, each one run: without NDVI (the naip folder emptied, so no
+        # lot has it, trained or scored); NDVI shifted 2 m at scoring only
+        # (how much a misaligned NDVI costs the decoder as trained); and the
+        # lidar and NAIP jittered by up to 1.5 m on half the training steps
+        # (a decoder that knows they are "about here"). tools/train_decoder.py
+        # FUSE_JITTER_M / NAIP_SHIFT_M; tools/modal_plan.py for the GPU path.
+        description: 'S67: off, without NDVI, NDVI shifted 2 m at test, or the lidar and NAIP jittered 1.5 m in training'
+        required: false
+        default: 'off'
+        options: ['off', 'without NDVI', 'NDVI shifted 2 m at test', 'jittered 1.5 m']
       about:
         # WHAT THIS RUN IS FOR, kept with the pictures for ever.
         #
@@ -831,11 +844,38 @@ jobs:
       # exportImage each, about a metre a pixel), for the decoder to read as
       # NDVI beside the lidar and the canopy. See tools/naip_bands.py.
       - name: Read NAIP's near-infrared over the frames
+        id: naip
         if: ${{ startsWith(inputs.decoder, 'fused') && inputs.canopy != 'off' && steps.prep.outputs.cache-hit != 'true' }}
         env:
           FRAMES: frames
           OUT: naip
         run: python3 tools/naip_bands.py
+
+      # THE ALIGNMENT, WHERE A PHONE CAN SEE IT (owner, 2026-10-28): one
+      # picture a frame, NAIP's NDVI over the photograph as fetched and as
+      # lined up, pushed to a branch of PNGs like workflow 40's roof fit. Only
+      # when NAIP was read fresh (`cache: rebuild`, or the frames changed).
+      - name: Publish the NAIP alignment pictures
+        if: ${{ steps.naip.outcome == 'success' }}
+        run: |
+          set -e
+          b="pictures/naip-align-${{ github.run_number }}"
+          d=$(mktemp -d)
+          cp -r naip/pictures "$d/" 2>/dev/null || { echo "no pictures"; exit 0; }
+          cp naip/naip-align.json "$d/" 2>/dev/null || true
+          git -C "$d" init -q -b "$b"
+          git -C "$d" -c user.name=actions -c user.email=actions@users.noreply.github.com add -A
+          git -C "$d" -c user.name=actions -c user.email=actions@users.noreply.github.com commit -qm "NAIP alignment pictures from run ${{ github.run_id }}"
+          git -C "$d" push -q --force "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" "HEAD:refs/heads/$b"
+          echo "NAIP ALIGNMENT PICTURES: https://github.com/${{ github.repository }}/tree/$b/pictures"
+
+      # S67's "without NDVI": no lot has NAIP, trained or scored. The folder
+      # is emptied, not left out, so every path that reads it finds nothing.
+      - name: Leave NDVI out (naip_trial)
+        if: ${{ inputs.naip_trial == 'without NDVI' }}
+        run: |
+          rm -rf naip && mkdir -p naip
+          echo "S67: the naip folder is empty; every lot reads as having no NAIP."
 
       # THE PAVED CENTRELINES over every frame (the `overture` input): one
       # channel at 0.5 m, read live from Overture's public tiles. Not cached: a
@@ -934,6 +974,7 @@ jobs:
           # Read by modal_plan.py as the input ('on'/'off'), not as the '1' the
           # training job's own NOT_LAWN is; the plan sets each decoder's.
           NOT_LAWN: ${{ inputs.not_lawn }}
+          NAIP_TRIAL: ${{ inputs.naip_trial }}
           OUT: gpu-plan.json
         run: |
           python3 tools/modal_plan.py
@@ -1016,6 +1057,10 @@ jobs:
       PIP_RETRIES: '10'
       # Every decoder reads the not-lawn traces the dump wrote, when asked.
       NOT_LAWN: ${{ inputs.not_lawn == 'on' && '1' || '' }}
+      # S67's trials, for every decoder of the run (tools/modal_plan.py does
+      # the same for the GPU path).
+      NAIP_SHIFT_M: ${{ inputs.naip_trial == 'NDVI shifted 2 m at test' && '2' || '' }}
+      FUSE_JITTER_M: ${{ inputs.naip_trial == 'jittered 1.5 m' && '1.5' || '' }}
     steps:
       - uses: actions/checkout@v5
 

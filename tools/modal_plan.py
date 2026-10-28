@@ -127,6 +127,17 @@ def plan(inputs, run, send):
         for step in steps:
             if step["script"] == "train_decoder.py":
                 step["env"]["NOT_LAWN"] = "1"
+    # S67's trials (the `naip_trial` input): the same two numbers the training
+    # job's own environment carries on the CPU path. "without NDVI" needs no
+    # number here: the extract job empties the naip folder before it is sent.
+    trial = inputs.get("naip_trial") or ""
+    for step in steps:
+        if step["script"] != "train_decoder.py":
+            continue
+        if trial == "NDVI shifted 2 m at test":
+            step["env"]["NAIP_SHIFT_M"] = "2"
+        elif trial == "jittered 1.5 m":
+            step["env"]["FUSE_JITTER_M"] = "1.5"
 
     return {
         "run": run,
@@ -139,7 +150,7 @@ def plan(inputs, run, send):
 
 def main():
     e = os.environ
-    inputs = {k: e.get(k.upper(), "") for k in ("windows", "canopy", "decoder", "seed", "lawns", "model", "size", "release", "distrust_lidar", "edge_reach", "refiner_trial", "release_epochs", "hf_token", "not_lawn")}
+    inputs = {k: e.get(k.upper(), "") for k in ("windows", "canopy", "decoder", "seed", "lawns", "model", "size", "release", "distrust_lidar", "edge_reach", "refiner_trial", "release_epochs", "hf_token", "not_lawn", "naip_trial")}
     p = plan(inputs, e["RUN"], (e.get("SEND") or "").split(","))
     # A release records where it came from; Modal's container has no GitHub
     # environment of its own, so the two names are carried across here.

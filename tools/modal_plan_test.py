@@ -129,3 +129,16 @@ check_release()
 check_not_lawn()
 check_values()
 print("modal plan: ok")
+
+def check_naip_trial():
+    """S67's trials reach every decoder on the GPU path, and nothing else changes."""
+    base = plan(inputs(canopy="on lawn", decoder="fused + edge"), "r", [])
+    shift = plan(inputs(canopy="on lawn", decoder="fused + edge", naip_trial="NDVI shifted 2 m at test"), "r", [])
+    jit = plan(inputs(canopy="on lawn", decoder="fused + edge", naip_trial="jittered 1.5 m"), "r", [])
+    none = plan(inputs(canopy="on lawn", decoder="fused + edge", naip_trial="without NDVI"), "r", [])
+    dec = lambda p: [s["env"] for s in p["steps"] if s["script"] == "train_decoder.py"]
+    assert all(e.get("NAIP_SHIFT_M") == "2" and "FUSE_JITTER_M" not in e for e in dec(shift)), dec(shift)
+    assert all(e.get("FUSE_JITTER_M") == "1.5" and "NAIP_SHIFT_M" not in e for e in dec(jit)), dec(jit)
+    assert dec(none) == dec(base), "without NDVI is the extract job's doing, not the plan's"
+    assert all("NAIP_SHIFT_M" not in e and "FUSE_JITTER_M" not in e for e in dec(base))
+check_naip_trial()

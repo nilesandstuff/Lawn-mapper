@@ -57,6 +57,7 @@ channels is nearly all of it, and batching lawns did not change it.
 """
 
 import json
+import math
 import os
 import sys
 import time
@@ -227,6 +228,17 @@ def distrusted(stem):
 # it is stale, and has met "no lidar here" before it meets it on a lot.
 DROP_LIDAR = float(os.environ.get("DROP_LIDAR", "0.3"))
 DROP_NAIP = float(os.environ.get("DROP_NAIP", "0.2"))
+# S67 (owner, 2026-10-28: the fused layers are told to be exactly where we
+# put them, "which is almost certainly not always the case"). Two trials:
+#   FUSE_JITTER_M  in TRAINING, half the steps, the lidar and NAIP rasters
+#                  are moved a random way by up to this many metres before
+#                  they reach the patch grid, so the decoder learns they are
+#                  "about here", not exactly here.
+#   NAIP_SHIFT_M   at SCORING only, NAIP's NDVI is moved this many metres in
+#                  a direction fixed per lot: how much a misaligned NDVI
+#                  costs the decoder as trained.
+FUSE_JITTER_M = float(os.environ.get("FUSE_JITTER_M", "0") or 0)
+NAIP_SHIFT_M = float(os.environ.get("NAIP_SHIFT_M", "0") or 0)
 # BOTH SCALES (workflow 14 `windows: both`, 2026-09-28): FEATURES are the
 # 6 cm blocks, and FEATURES_WHOLE the same lots squeezed whole into one pass.
 # H55: the blocks and the whole-lot read are each far better on DIFFERENT
@@ -438,6 +450,8 @@ def read_lawn(feats, frames, stem, shape):
 
     extra = None
     sources = []
+    rasters = None
+    naip_test = None
     if FUSE:
         from fuse_layers import extra_channels, ndvi_from_png
         lidar = None
@@ -472,6 +486,23 @@ def read_lawn(feats, frames, stem, shape):
                                returns=returns, with_returns=bool(FUSE_RETURNS), with_intensity=FUSE_INTENSITY,
                                overture=ov_in, with_overture=bool(FUSE_OVERTURE))
         grid = np.concatenate([grid, extra.transpose(1, 2, 0)], axis=2)
+        # The small rasters kept for the jitter (S67), and the test-time shift
+        # of NDVI worked out once. Ground metres a cell: the frames are in
+        # Mercator metres, the NAIP at 1 m a pixel and the lidar at 2 m a
+        # cell of those, so a ground metre is 1 / cos(lat) of them.
+        if FUSE_JITTER_M or NAIP_SHIFT_M:
+            lat = lat_of_stem(stem)
+            per_ground = 1.0 / max(0.2, math.cos(math.radians(lat)))
+            rasters = {"lidar": lidar, "ndvi": ndvi, "valid": valid, "naip_px": per_ground / 1.0, "lidar_px": per_ground / 2.0,
+                       "grid": (gw, gh, cx, cy)}
+        if NAIP_SHIFT_M and ndvi is not None:
+            from fuse_layers import NAIP as NAIP_IDX, shift_layer
+            ang = np.random.default_rng(abs(hash(stem)) % (2 ** 32)).uniform(0, 2 * math.pi)
+            px = NAIP_SHIFT_M * rasters["naip_px"]
+            ndvi_t = shift_layer(ndvi, px * math.cos(ang), -px * math.sin(ang))
+            valid_t = shift_layer(valid, px * math.cos(ang), -px * math.sin(ang), fill=False)
+            e_t = extra_channels(gw, gh, cx, cy, ndvi=ndvi_t, ndvi_valid=valid_t)
+            naip_test = np.stack([e_t[NAIP_IDX[0]], e_t[NAIP_IDX[1]]])
 
     target, inside = box_targets(truth, gw, gh, cx, cy)
     allowed, _ = box_targets(within, gw, gh, cx, cy)
@@ -494,6 +525,8 @@ def read_lawn(feats, frames, stem, shape):
 
     L = {
         "id": stem,
+        "rasters": rasters,
+        "naip_test": torch.from_numpy(naip_test) if naip_test is not None else None,
         "x": torch.from_numpy(np.ascontiguousarray(grid.transpose(2, 0, 1))),  # (dim, gh, gw)
         "t": torch.from_numpy(target)[None],
         "w": torch.from_numpy(weight)[None],
@@ -578,14 +611,61 @@ def dihedral(x, t, w, k, flip):
     return x, t, w
 
 
-def with_dropout(x, rng, distrust=False):
+def fused_count():
+    """How many fused numbers a patch this run carries (the last rows of x)."""
+    from fuse_layers import CHANNELS, RETURN_CHANNELS, INTENSITY_CHANNELS, OVERTURE_CHANNELS
+    return (len(CHANNELS) + (len(RETURN_CHANNELS) if FUSE_RETURNS else 0) + (len(INTENSITY_CHANNELS) if FUSE_INTENSITY else 0)
+            + (len(OVERTURE_CHANNELS) if FUSE_OVERTURE else 0))
+
+
+def lat_of_stem(stem):
+    """The latitude in a 'lng,lat:...' id, or 43 when it is not one."""
+    try:
+        return float(stem.split(":")[0].split(",")[1])
+    except (IndexError, ValueError):
+        return 43.0
+
+
+def jittered(x, rng, L):
+    """The lidar and NAIP numbers of x read again from their rasters moved a
+    random way by up to FUSE_JITTER_M (S67). The canopy, the returns and the
+    Overture lines stay as they are."""
+    r = L.get("rasters")
+    if not r or (r["lidar"] is None and r["ndvi"] is None):
+        return x
+    from fuse_layers import LIDAR, NAIP, extra_channels, intensity_index, shift_layer
+    ang = rng.uniform(0, 2 * math.pi)
+    d = FUSE_JITTER_M * (0.5 + 0.5 * rng.random())
+    ex, ey = d * math.cos(ang), -d * math.sin(ang)  # +x east, +y down the rows (south)
+    lidar = None
+    if r["lidar"] is not None:
+        f = r["lidar_px"]
+        lidar = {k: shift_layer(v, ex * f, ey * f) for k, v in r["lidar"].items()}
+    ndvi = valid = None
+    if r["ndvi"] is not None:
+        f = r["naip_px"]
+        ndvi = shift_layer(r["ndvi"], ex * f, ey * f)
+        valid = shift_layer(r["valid"], ex * f, ey * f, fill=False)
+    gw, gh, cx, cy = r["grid"]
+    e = extra_channels(gw, gh, cx, cy, lidar=lidar, ndvi=ndvi, ndvi_valid=valid, with_intensity=FUSE_INTENSITY,
+                       with_returns=bool(FUSE_RETURNS), with_overture=bool(FUSE_OVERTURE))
+    k = fused_count()
+    rows = list(LIDAR) + list(NAIP) + (list(intensity_index(bool(FUSE_RETURNS))) if FUSE_INTENSITY else [])
+    out = x.clone()
+    for i in rows:
+        out[-k + i] = torch.from_numpy(e[i])
+    return out
+
+
+def with_dropout(x, rng, distrust=False, L=None):
     """The lawn's patches, with a fused source hidden now and then (FUSE only),
     and the lidar always hidden on a lot whose lidar disagrees with its photo."""
     if not FUSE:
         return x
-    from fuse_layers import CHANNELS, RETURN_CHANNELS, INTENSITY_CHANNELS, OVERTURE_CHANNELS, drop_sources, intensity_index, overture_index
-    k = (len(CHANNELS) + (len(RETURN_CHANNELS) if FUSE_RETURNS else 0) + (len(INTENSITY_CHANNELS) if FUSE_INTENSITY else 0)
-         + (len(OVERTURE_CHANNELS) if FUSE_OVERTURE else 0))
+    from fuse_layers import OVERTURE_CHANNELS, drop_sources, intensity_index, overture_index
+    if FUSE_JITTER_M and L is not None and rng.random() < 0.5:
+        x = jittered(x, rng, L)
+    k = fused_count()
     more = intensity_index(bool(FUSE_RETURNS)) if FUSE_INTENSITY else ()
     o = overture_index(bool(FUSE_RETURNS), FUSE_INTENSITY)
     ov = tuple(range(o, o + len(OVERTURE_CHANNELS))) if FUSE_OVERTURE else ()
@@ -688,7 +768,7 @@ def train_one(train, dim, seed):
         rng.shuffle(batches)
         loss_sum, w_sum = 0.0, 0.0
         for batch in batches:
-            x = torch.stack([with_dropout(train[i]["x"], rng, train[i].get("distrust")) for i in batch]).to(DEVICE)
+            x = torch.stack([with_dropout(train[i]["x"], rng, train[i].get("distrust"), train[i]) for i in batch]).to(DEVICE)
             x = (x - mean) / sd
             t = torch.stack([train[i]["t"] for i in batch]).to(DEVICE)
             w = torch.stack([train[i]["w"] for i in batch]).to(DEVICE)
@@ -723,7 +803,15 @@ def answer(model, mean, sd, L):
     w, h = L["cells"]
     refiner = getattr(model, "refiner", None)
     with torch.no_grad():
-        x = (L["x"].to(DEVICE) - mean) / sd
+        x = L["x"]
+        if L.get("naip_test") is not None:
+            # NAIP_SHIFT_M (S67): scored with its NDVI moved, trained on it as it is.
+            from fuse_layers import NAIP
+            k = fused_count()
+            x = x.clone()
+            x[-k + NAIP[0]] = L["naip_test"][0]
+            x[-k + NAIP[1]] = L["naip_test"][1]
+        x = (x.to(DEVICE) - mean) / sd
         if refiner is None:
             prob = torch.sigmoid(model(x[None])[0, 0]).cpu().numpy()
             return to_photo(prob, w, h, *L["cover"])
@@ -795,6 +883,13 @@ def main():
         print(f"FUSED INPUTS: {len(CHANNELS)} more numbers a patch ({', '.join(CHANNELS)}); "
               f"lidar on {n_l}, NAIP on {n_n}, tree canopy on {n_c} of {len(lawns)} lawns; "
               f"dropout lidar {DROP_LIDAR:g}, NAIP {DROP_NAIP:g}", flush=True)
+        if FUSE_JITTER_M:
+            print(f"JITTERED (S67): on half the training steps the lidar and NAIP rasters are moved a random way "
+                  f"by {FUSE_JITTER_M / 2:g}-{FUSE_JITTER_M:g} m before the patch grid; scored unmoved", flush=True)
+        if NAIP_SHIFT_M:
+            n_s = sum(1 for L in lawns if L.get("naip_test") is not None)
+            print(f"NDVI SHIFTED AT SCORING (S67): each held-out lot's NDVI moved {NAIP_SHIFT_M:g} m in a direction fixed "
+                  f"per lot, on {n_s} lots with NAIP; trained on it unmoved", flush=True)
         if FUSE_RETURNS:
             n_r = sum(1 for L in lawns if "returns" in L["sources"])
             print(f"LIDAR BY RETURN: 4 more numbers a patch (penetration, multi, spread, has_returns) "
@@ -888,6 +983,7 @@ def main():
             "bothScales": bool(FEATURES_WHOLE),
             "dim": dim, "refine": REFINE, "refineReach": (os.environ.get("REFINE_REACH") or "normal") if REFINE else None, "refineEdges": os.environ.get("REFINE_EDGES") == "1", "refineGate": os.environ.get("REFINE_GATE") == "1", "fuse": FUSE, "fuseCanopy": FUSE_CANOPY,
             "underTrees": ("traced" if TRACED_ONLY else UNDER_TREES), "fuseReturns": bool(FUSE_RETURNS), "fuseIntensity": FUSE_INTENSITY, "fuseOverture": bool(FUSE_OVERTURE), "lidarDistrust": bool(LIDAR_DISTRUST), "correctionsWeight": CORRECTIONS_WEIGHT,
+            "fuseJitterM": FUSE_JITTER_M, "naipShiftM": NAIP_SHIFT_M,
             "channels": list(CHANNELS) if FUSE else [],
             "canopyMode": CANOPY_MODE if CANOPY else None,
             "epochs": EPOCHS, "seed": SEED, "lr": LR, "weightDecay": WEIGHT_DECAY, "dropout": DROPOUT,

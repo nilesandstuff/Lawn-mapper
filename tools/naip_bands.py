@@ -78,7 +78,7 @@ def grey(arr, naip=False):
     return 0.299 * a[..., 0] + 0.587 * a[..., 1] + 0.114 * a[..., 2]
 
 
-def naip_for(box, photo=None, stored=None):
+def naip_for(box, photo=None, stored=None, keep_raw=False):
     """NAIP (bands 3,0,1 -> near-infrared, red, green) over one frame, lined up
     with its photograph.
 
@@ -118,8 +118,53 @@ def naip_for(box, photo=None, stored=None):
             how = f"auto, left alone (edges {r['ncc0']:.2f})"
     moved = resample(arr, dx, dy, sc, offset=(pad, pad), out_shape=(h, w))
     out = np.clip(np.round(moved), 0, 255).astype(np.uint8)
+    raw = np.clip(np.round(arr[pad:pad + h, pad:pad + w]), 0, 255).astype(np.uint8) if keep_raw else None
     east, north = dx * ground, -dy * ground
-    return out, {"east": round(east, 2), "north": round(north, 2), "scale": sc, "how": how}
+    rec = {"east": round(east, 2), "north": round(north, 2), "scale": sc, "how": how}
+    if keep_raw:
+        rec["_raw"] = raw
+    return out, rec
+
+
+# THE ALIGNMENT, VISIBLE (owner, 2026-10-28: "that alignment is very hidden
+# from my eyes"). One picture a frame, two panels: the photograph with NDVI
+# tinted over it as NAIP came (left) and as it was lined up (right), the move
+# written on it. Green where NDVI says vegetation, magenta where it says
+# bare: a roof or a road under green, or grass under magenta, is a NAIP that
+# is off. Published by workflow 14 to a pictures branch.
+PICTURE_W = 640
+
+
+def picture(photo, raw, moved, rec, lawn_id):
+    from PIL import Image, ImageDraw
+    from fuse_layers import ndvi_from_png
+
+    w = PICTURE_W
+    h = max(8, round(photo.height * w / photo.width))
+    base = np.asarray(photo.convert("RGB").resize((w, h), Image.BOX), dtype=np.float32)
+
+    def tinted(naip):
+        ndvi, valid = ndvi_from_png(naip)
+        n = np.asarray(Image.fromarray(((ndvi + 1) * 127.5).astype(np.uint8)).resize((w, h), Image.BILINEAR), dtype=np.float32) / 127.5 - 1
+        v = np.asarray(Image.fromarray(valid.astype(np.uint8) * 255).resize((w, h), Image.NEAREST)) >= 128
+        img = base.copy()
+        green = (n > 0.35) & v
+        bare = (n < 0.12) & v
+        img[green] = img[green] * 0.55 + np.array([40, 220, 60]) * 0.45
+        img[bare] = img[bare] * 0.7 + np.array([220, 40, 200]) * 0.3
+        return img
+
+    left = tinted(raw)
+    right = tinted(moved)
+    gap = 6
+    sheet = np.full((h + 22, 2 * w + gap, 3), 20, np.float32)
+    sheet[22:, :w] = left
+    sheet[22:, w + gap:] = right
+    im = Image.fromarray(np.clip(sheet, 0, 255).astype(np.uint8))
+    d = ImageDraw.Draw(im)
+    d.text((4, 4), f"{lawn_id[:34]}  NAIP as fetched", fill=(255, 255, 255))
+    d.text((w + gap + 4, 4), f"lined up: {rec['east']:+.1f} m E, {rec['north']:+.1f} m N, scale {rec['scale']:.3f}  ({rec['how']})", fill=(255, 255, 255))
+    return im
 
 
 def main():
@@ -129,6 +174,7 @@ def main():
     frames = Path(os.environ.get("FRAMES", "frames"))
     out = Path(os.environ.get("OUT", "naip"))
     out.mkdir(parents=True, exist_ok=True)
+    (out / "pictures").mkdir(exist_ok=True)
     scale = json.loads((frames / "scale.json").read_text())
     boxes = scale.get("boxes") or {}
     stored = scale.get("naipAlign") or {}
@@ -142,11 +188,17 @@ def main():
         photo_path = frames / f"{lawn_id}.png"
         photo = Image.open(photo_path).convert("RGB") if photo_path.exists() else None
         try:
-            moved, rec = naip_for(boxes[lawn_id], photo=photo, stored=stored.get(lawn_id))
+            moved, rec = naip_for(boxes[lawn_id], photo=photo, stored=stored.get(lawn_id), keep_raw=photo is not None)
         except Exception as e:  # noqa: BLE001 - one frame failing is reported, not fatal
             print(f"  {lawn_id[:40]:40} no NAIP: {str(e)[:80]}")
             continue
         Image.fromarray(moved).save(out / f"{lawn_id}-naip.png")
+        raw = rec.pop("_raw", None)
+        if photo is not None and raw is not None:
+            try:
+                picture(photo, raw, moved, rec, lawn_id).save(out / "pictures" / f"{lawn_id}.png")
+            except Exception as e:  # noqa: BLE001 - a picture is for looking at, never the run
+                print(f"  {lawn_id[:40]:40} no picture: {str(e)[:80]}")
         record[lawn_id] = rec
         print(f"  {lawn_id[:40]:40} NAIP moved {rec['east']:+5.1f} m east, {rec['north']:+5.1f} m north, "
               f"scale {rec['scale']:.3f} -- {rec['how']}")

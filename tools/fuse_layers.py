@@ -153,6 +153,30 @@ def extra_channels(grid_w, grid_h, cover_x, cover_y, lidar=None, ndvi=None, ndvi
     return out
 
 
+def shift_layer(a, dx, dy, fill=None):
+    """A raster moved by (dx, dy) whole cells (+dx east, +dy south, rows from
+    the north down), the uncovered edge filled with `fill` (the edge's own
+    values when None). For the jitter and shift trials (S67): a layer that is
+    "about here" rather than exactly here."""
+    a = np.asarray(a)
+    dx = int(round(dx))
+    dy = int(round(dy))
+    if not dx and not dy:
+        return a.copy()
+    h, w = a.shape[:2]
+    out = np.empty_like(a)
+    if fill is None:
+        ys = np.clip(np.arange(h) - dy, 0, h - 1)
+        xs = np.clip(np.arange(w) - dx, 0, w - 1)
+        return a[np.ix_(ys, xs)] if a.ndim == 2 else a[ys][:, xs]
+    out[...] = fill
+    sy0, sy1 = max(0, dy), min(h, h + dy)
+    sx0, sx1 = max(0, dx), min(w, w + dx)
+    if sy1 > sy0 and sx1 > sx0:
+        out[sy0:sy1, sx0:sx1] = a[sy0 - dy:sy1 - dy, sx0 - dx:sx1 - dx]
+    return out
+
+
 def drop_sources(extra, rng, p_lidar, p_naip, more_lidar=(), overture=(), p_overture=0.0, with_returns=None):
     """Modality dropout: zero a whole source's channels, flag included, as a missing one reads.
     `more_lidar`: channels from the same flight placed elsewhere (the intensity).
