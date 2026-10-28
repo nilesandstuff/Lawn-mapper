@@ -51,6 +51,15 @@ async function isAdmin() {
  * to /api/admin/yard-marks.
  */
 async function openLot(id) {
+  if (id === 'next') {
+    // The one-tap way in: the newest lot nobody has marked yet.
+    const list = await fetch('/api/admin/yard-lots', { credentials: 'same-origin' });
+    if (!list.ok) return null;
+    const next = ((await list.json()).lots || []).find((l) => !l.mark);
+    if (!next) return null;
+    location.replace(`/sections?lot=${encodeURIComponent(next.id)}`);
+    return new Promise(() => {}); // the page is leaving
+  }
   const res = await fetch(`/api/admin/yard-lot?id=${encodeURIComponent(id)}`, { credentials: 'same-origin' });
   if (!res.ok) return null;
   const { lot, mark } = await res.json();

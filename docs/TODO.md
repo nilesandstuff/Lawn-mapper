@@ -17,7 +17,7 @@ side street; a side piece walled off from the back by a driveway or patio
 goes with the front. The owner's two corner-lot drawings both fit it.
 
 Built as a prototype, admin only: the "Auto front" button in the sections
-tool, and the check: /sections?lot=<corpus id> opens a corpus lot with the
+tool, and the check: /sections?lot=next (or ?lot=<corpus id>) opens a corpus lot with the
 proposal and a Right / Wrong / Skip bar (marks in the corpus bucket,
 yards/marks.json; /api/admin/yard-lots lists the lots and the tally).
 
