@@ -1805,7 +1805,26 @@ loses to the day's drainage; with rain every 17 days deficit needs 0.66 of norma
 of each rain. The report says which mode is on, and in deficit and dormancy no longer calls the lawn's drying
 between waterings a problem: it is the plan.
 
-**The owner's lawn** (the live map, 2026-10-28): see the browser check below once run. [measured values go here]
+**The owner's lawn** (the page on the owner's map with its five sprinkler zones, local build, 2026-10-28). The
+day's soak cap binds every watering there (0.14 in/h ground, two cycles a day: 7.2 mm on the grass each time, 0.35
+in from the zone's heads at their 56% unevenness margin), which is why the first cut of deficit went wrong: with
+its own depletion emptied at each watering as if the whole amount had gone down, it watered far less often than
+normal and came out near 40% of it; it now keeps what the cap left, as normal does, so the days are normal's and
+the amount three quarters. Measured after that fix:
+
+| | normal | deficit | dormancy |
+|---|---|---|---|
+| zone 1 in July | 2 days a week, 2 runs of 41 min | 2 days a week, 2 runs of 31 min | only in a dry spell, 2 runs of 92 min |
+| the thirstiest area, July | 10 waterings of 7.2 mm = 72 mm | 9 of 5.4 mm = 49 mm | none in a typical July |
+| a July week with no rain | 0.95 in over 3 waterings | 0.65 in over 3 | 0.5 in once in 21 days |
+| watering areas | 4 | 3 | 1 |
+
+Deficit's July is 0.68 of normal's (the drier soil keeps more of July's rain, as in the test). Dormancy waters once
+in June and otherwise only in a dry spell: in a typical year here a rain of half an inch or more comes inside every
+three weeks of the season, so the survival watering is rarely due; each is the whole half inch (0.78 in from the
+heads, 2 runs of about 90-110 min), not cut by the day's cap. The sprinkler-zone schedule had to be made to
+follow the mode at all: it was keyed on the heads and the pressure solve alone and kept the old run times through a
+mode change (the same was true of a change of grasses).
 
 ### H55. Dew: measured elsewhere, not in the rain the tool reads, and not added (water session, 2026-10-28)
 
