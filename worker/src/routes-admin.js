@@ -19,6 +19,7 @@
  */
 
 import { readTwins, writeTwins, linkTwins, isRunSlug } from './run-twins.js';
+import { readMarks, writeMarks, setMark, tally, VERDICTS } from './yard-marks.js';
 import { usageSince, usageDaily, handedBackSince } from './usage.js';
 import { currentUser } from './auth.js';
 import { benchmarkId, coordsOfId, mapName } from './benchmark-ids.js';
@@ -1403,6 +1404,62 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
     const pairs = linkTwins(await readTwins(env.CORPUS), run, twin);
     await writeTwins(env.CORPUS, pairs);
     return json({ ok: true, twin: pairs[run] || '' }, 200, origin);
+  }
+
+  /*
+   * THE AUTO-FRONT CHECK (owner, 2026-10-28; worker/src/yard-marks.js). The
+   * sections tool opens a corpus lot (?lot=<id>) and proposes front, back
+   * and sides from the address; the owner marks it right or wrong here.
+   *
+   *   yard-lots        the approved lots with a county parcel, newest first,
+   *                    each with its mark if any, and the tally
+   *   yard-lot?id=     one lot: its lawn, its parcel (whose county record
+   *                    carries the street address) and its point
+   *   yard-marks       GET the marks and the tally; POST { id, verdict, note, info }
+   */
+  if (path === 'yard-lots') {
+    const rows = (await env.DB.prepare(
+      `SELECT id, lng, lat, county, parcel FROM corpus
+        WHERE status = 'approved' AND parcel IS NOT NULL AND (parcel_source IS NULL OR parcel_source != 'hand')
+        ORDER BY at DESC LIMIT 400`
+    ).all()).results || [];
+    const marks = env.CORPUS ? await readMarks(env.CORPUS) : {};
+    const lots = rows.map((r) => {
+      let street = null;
+      try { street = JSON.parse(r.parcel)?.properties?.address || null; } catch { street = null; }
+      return { id: r.id, lng: r.lng, lat: r.lat, county: r.county || null, address: street, mark: marks[r.id]?.verdict || null };
+    });
+    return json({ lots, tally: tally(marks) }, 200, origin);
+  }
+
+  if (path === 'yard-lot') {
+    const id = url.searchParams.get('id') || '';
+    const r = await env.DB.prepare('SELECT id, lng, lat, county, frame, parcel, shapes FROM corpus WHERE id = ?1').bind(id).first();
+    if (!r) return json({ error: 'No such lot' }, 404, origin);
+    let parcel = null; let shapes = []; let frame = null;
+    try { parcel = r.parcel ? JSON.parse(r.parcel) : null; } catch { parcel = null; }
+    try { shapes = JSON.parse(r.shapes || '[]'); } catch { shapes = []; }
+    try { frame = r.frame ? JSON.parse(r.frame) : null; } catch { frame = null; }
+    const marks = env.CORPUS ? await readMarks(env.CORPUS) : {};
+    return json({
+      lot: { id: r.id, lng: r.lng, lat: r.lat, county: r.county || null, address: parcel?.properties?.address || null, parcel, shapes, frame },
+      mark: marks[r.id] || null,
+    }, 200, origin);
+  }
+
+  if (path === 'yard-marks') {
+    if (!env.CORPUS) return json({ error: 'No bucket' }, 404, origin);
+    if (request.method === 'POST') {
+      const body = await request.json().catch(() => ({}));
+      const id = String(body?.id || '');
+      const verdict = String(body?.verdict || '');
+      if (!id || (verdict && !VERDICTS.has(verdict))) return json({ error: 'Need a lot and a verdict' }, 400, origin);
+      const marks = setMark(await readMarks(env.CORPUS), id, verdict, { note: body?.note, info: body?.info });
+      await writeMarks(env.CORPUS, marks);
+      return json({ ok: true, tally: tally(marks) }, 200, origin);
+    }
+    const marks = await readMarks(env.CORPUS);
+    return json({ marks, tally: tally(marks) }, 200, origin);
   }
 
   if (path === 'predictions') {

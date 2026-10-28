@@ -12,6 +12,8 @@ import {
   sectionSqFt, totalSqFt, sectionsPart, sectionsFromPart,
 } from './lib/sections.js';
 import { sizeLabel, labelSpot } from './lib/size-label.js';
+import { autoYards } from './lib/yards.js';
+import { themeIn } from './lib/overture.js';
 
 const $ = (s) => document.querySelector(s);
 const clip = window.polygonClipping;
@@ -19,7 +21,7 @@ const HOME = (() => { const h = location.hostname; return /workers\.dev$|localho
 const COLORS = ['#ffb300', '#29b6f6', '#ec407a', '#9ccc65', '#ab47bc', '#ff7043', '#26a69a', '#d4e157', '#5c6bc0', '#8d6e63'];
 const colorOf = (s) => COLORS[(s.id - 1) % COLORS.length];
 
-const view = { map: null, record: null, sections: [], undo: [], tool: 'move', selected: null, joinFirst: null, shapePts: [], stroke: null };
+const view = { map: null, record: null, sections: [], undo: [], tool: 'move', selected: null, joinFirst: null, shapePts: [], stroke: null, admin: false, lot: null, auto: null };
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function hint(text, warn = false) { const h = $('#hint'); h.textContent = text || ''; h.classList.toggle('warn', !!warn); }
@@ -34,15 +36,47 @@ async function openMap(id) {
   return (await res.json()).map || null;
 }
 
+/** Signed in as an admin? The auto-front prototype and the corpus check show only then. */
+async function isAdmin() {
+  try {
+    const res = await fetch('/api/auth/me', { credentials: 'same-origin' });
+    return res.ok && Boolean((await res.json())?.user?.admin);
+  } catch { return false; }
+}
+
+/**
+ * A CORPUS LOT FOR THE AUTO-FRONT CHECK (admin; owner, 2026-10-28). Opened
+ * with ?lot=<id>: its lawn and its county parcel, whose record carries the
+ * street address the rule reads. Nothing is saved for it; the verdict goes
+ * to /api/admin/yard-marks.
+ */
+async function openLot(id) {
+  const res = await fetch(`/api/admin/yard-lot?id=${encodeURIComponent(id)}`, { credentials: 'same-origin' });
+  if (!res.ok) return null;
+  const { lot, mark } = await res.json();
+  if (!lot) return null;
+  view.lot = { id: lot.id, mark };
+  return { id: null, address: lot.address || `${lot.lat?.toFixed(5)}, ${lot.lng?.toFixed(5)}`, lng: lot.lng, lat: lot.lat, parcel: lot.parcel, shapes: lot.shapes || [], tools: {} };
+}
+
 async function start() {
-  const id = new URLSearchParams(location.search).get('map');
+  const params = new URLSearchParams(location.search);
+  const id = params.get('map');
+  const lotId = params.get('lot');
   const dash = HOME ? `https://${HOME}/dashboard` : '/';
   $('#back').href = id && HOME ? `${dash}?map=${encodeURIComponent(id)}` : dash;
   if (!clip) { stop('<p>The page did not load fully. Reload it.</p>'); return; }
-  if (!id) { stop(`<p>Open a map from <a href="${dash}">your maps</a> to split its lawn into sections.</p>`); return; }
+  if (!id && !lotId) { stop(`<p>Open a map from <a href="${dash}">your maps</a> to split its lawn into sections.</p>`); return; }
+  view.admin = await isAdmin();
   let record;
-  try { record = await openMap(id); } catch (e) { stop(`<p>${esc(e.message)}</p>`); return; }
-  if (!record) { stop(`<p>That map is not one of yours. <a href="${dash}">Your maps</a></p>`); return; }
+  if (lotId) {
+    if (!view.admin) { stop(`<p>That is not one of your maps. <a href="${dash}">Your maps</a></p>`); return; }
+    try { record = await openLot(lotId); } catch (e) { stop(`<p>${esc(e.message)}</p>`); return; }
+    if (!record) { stop('<p>No such lot in the corpus.</p>'); return; }
+  } else {
+    try { record = await openMap(id); } catch (e) { stop(`<p>${esc(e.message)}</p>`); return; }
+    if (!record) { stop(`<p>That map is not one of yours. <a href="${dash}">Your maps</a></p>`); return; }
+  }
   const shapes = (record.shapes || []).filter((f) => f?.geometry);
   if (!shapes.length) {
     stop(`<p>This map has no lawn yet. Measure it in the <a href="/?map=${encodeURIComponent(id)}">Lawn Mapper</a> first, then come back.</p>`);
@@ -71,9 +105,123 @@ async function start() {
   view.map.resize();
   render();
   fitView();
+  $('#auto').hidden = !view.admin;
+  if (view.lot) {
+    $('#review').hidden = false;
+    reviewBar();
+    await autoFront();
+    return;
+  }
   if (stale) { save(); hint('The lawn was changed since these sections were made. They have been fitted to it: check them.'); }
   else if (!kept) hint('Pick a tool below to cut the lawn into sections. They always add up to the whole lawn.');
 }
+
+/* ------------------------------------------------------------- auto front */
+
+const toMerc = ([lng, lat]) => [(lng * Math.PI / 180) * 6378137, Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI / 180) / 2)) * 6378137];
+
+/** Overture's roads (with their names) and building outlines over the lot, read once. */
+async function streetsAndBuildings() {
+  if (view.auto) return view.auto;
+  const pts = [];
+  const ring = view.record.parcel?.geometry?.coordinates?.[0] || view.record.parcel?.coordinates?.[0] || [];
+  for (const p of ring) pts.push(toMerc(p));
+  for (const s of view.sections) for (const poly of s.poly) for (const p of poly[0]) pts.push(toMerc(p));
+  if (!pts.length) throw new Error('Nothing to look around.');
+  const xs = pts.map((p) => p[0]); const ys = pts.map((p) => p[1]);
+  const pad = 120; // far enough to catch the street on every side, and the corner
+  const bbox = [Math.min(...xs) - pad, Math.min(...ys) - pad, Math.max(...xs) + pad, Math.max(...ys) + pad];
+  const [tr, bl] = await Promise.all([themeIn('transportation', bbox), themeIn('buildings', bbox)]);
+  const roads = tr.filter((f) => f.type === 2 && (f.props.subtype === 'road' || !f.props.subtype)).map((f) => {
+    let name = f.props['@name'] || null;
+    if (!name && f.props.names) { try { name = JSON.parse(f.props.names)?.primary || null; } catch { name = null; } }
+    return { name, cls: f.props.class || 'unknown', sub: f.props.subclass || null, lines: f.parts };
+  });
+  const buildings = bl.filter((f) => f.type === 3 && f.layer === 'building').map((f) => f.parts);
+  view.auto = { roads, buildings };
+  return view.auto;
+}
+
+/**
+ * FRONT, BACK AND SIDES FROM THE ADDRESS (owner, 2026-10-28; lib/yards.js).
+ * Replaces the sections with the rule's proposal, as one Undo. The house
+ * outline it read is drawn, so a wrong answer can be seen for what it is.
+ */
+async function autoFront() {
+  const btn = $('#auto');
+  btn.disabled = true;
+  hint('Reading the streets and the building outline...');
+  let data;
+  try { data = await streetsAndBuildings(); } catch (e) { hint(`The streets could not be read: ${e.message}`, true); btn.disabled = false; return; }
+  const lawn = view.shapes;
+  const r = autoYards(clip, { parcel: view.record.parcel, buildings: data.buildings, roads: data.roads, address: view.record.address, lawn });
+  btn.disabled = false;
+  if (r.error) { view.lastAuto = { error: r.error }; hint(r.error, true); return; }
+  // Only the house it chose is drawn: the one with the most of itself on the lot.
+  drawBuildings(data.buildings);
+  view.lastAuto = r.info;
+  let id = 1;
+  const sections = r.sections.map((s) => ({ id: id++, name: s.name, poly: s.poly }));
+  const i = r.info;
+  const where = `${i.matched ? 'faces' : 'nearest street,'} ${i.street}, ${i.facing}`;
+  const extra = i.facesCorner ? ', set to the corner' : i.cornerStrip ? `, corner lot with ${i.sideStreet}` : i.sideStreet ? `, ${i.sideStreet} near` : '';
+  apply({ sections }, `Auto front: ${where}${extra}. Check it, then fix anything by hand.`);
+}
+
+function drawBuildings(buildings) {
+  const map = view.map;
+  const data = { type: 'FeatureCollection', features: buildings.map((rings) => ({ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: rings } })) };
+  if (map.getSource('buildings')) map.getSource('buildings').setData(data);
+  else {
+    map.addSource('buildings', { type: 'geojson', data });
+    map.addLayer({ id: 'buildings', type: 'line', source: 'buildings', paint: { 'line-color': '#fff', 'line-width': 1.5, 'line-opacity': 0.8 } }, 'draft-fill');
+  }
+}
+
+$('#auto').addEventListener('click', () => { if (view.map) autoFront(); });
+
+/* ------------------------------------------------------------- the check */
+
+function reviewBar() {
+  const m = view.lot?.mark;
+  $('#tally').textContent = m ? `Marked ${m.verdict}` : '';
+  fetch('/api/admin/yard-marks', { credentials: 'same-origin' }).then((r) => (r.ok ? r.json() : null)).then((d) => {
+    if (!d) return;
+    const t = d.tally;
+    $('#tally').textContent = `${t.right} right, ${t.wrong} wrong${t.skip ? `, ${t.skip} skipped` : ''}${t.pctRight !== null ? ` (${t.pctRight}% right)` : ''}${m ? ` · this one: ${m.verdict}` : ''}`;
+  }).catch(() => {});
+}
+
+async function mark(verdict) {
+  if (!view.lot) return;
+  let note = '';
+  if (verdict === 'wrong') note = window.prompt('What went wrong? (optional)', '') || '';
+  const res = await fetch('/api/admin/yard-marks', {
+    method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: view.lot.id, verdict, note, info: view.lastAuto || null }),
+  });
+  if (!res.ok) { hint(`The mark was not kept (${res.status}).`, true); return; }
+  view.lot.mark = { verdict };
+  reviewBar();
+  await nextLot();
+}
+
+/** The newest corpus lot not yet marked, after this one. */
+async function nextLot() {
+  const res = await fetch('/api/admin/yard-lots', { credentials: 'same-origin' });
+  if (!res.ok) return;
+  const { lots } = await res.json();
+  const at = lots.findIndex((l) => l.id === view.lot.id);
+  const after = [...lots.slice(at + 1), ...lots.slice(0, Math.max(0, at))];
+  const next = after.find((l) => !l.mark);
+  if (!next) { hint('Every lot with a county parcel has been marked.'); return; }
+  location.href = `/sections?lot=${encodeURIComponent(next.id)}`;
+}
+
+$('#mark-right').addEventListener('click', () => mark('right'));
+$('#mark-wrong').addEventListener('click', () => mark('wrong'));
+$('#mark-skip').addEventListener('click', () => mark('skip'));
+$('#next-lot').addEventListener('click', () => nextLot());
 
 /* ------------------------------------------------------------- the map */
 

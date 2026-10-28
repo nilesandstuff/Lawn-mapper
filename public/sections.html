@@ -43,6 +43,9 @@
   button:disabled { opacity: .4; }
   /* A fixed height: a list that grew with each cut would shrink the map and
      slide the lawn under the tools. */
+  .review { border-top: 1px solid #333; align-items: center; }
+  .review .tally { flex: 1 0 auto; font-size: 13px; color: #c5e1a5; white-space: nowrap; }
+  .review button { flex: 0 0 auto; }
   .panel { height: 30vh; box-sizing: border-box; overflow: auto; padding: 6px 10px; padding-bottom: max(10px, env(safe-area-inset-bottom)); background: #161616; border-top: 1px solid #333; }
   .row { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid #222; }
   .row.on { background: #23301f; }
@@ -77,6 +80,15 @@
     <button data-tool="join" aria-pressed="false">Join</button>
     <button id="shape-done" class="primary" hidden>Cut shape</button>
     <button id="undo" disabled>Undo</button>
+    <button id="auto" hidden title="Front, back and sides from the address">Auto front</button>
+  </div>
+  <!-- The auto-front check (admin, owner 2026-10-28): a corpus lot opened with ?lot=, marked right or wrong. -->
+  <div class="tools review" id="review" hidden>
+    <span class="tally" id="tally"></span>
+    <button id="mark-right">Right</button>
+    <button id="mark-wrong">Wrong</button>
+    <button id="mark-skip">Skip</button>
+    <button id="next-lot" class="primary">Next lot</button>
   </div>
   <div class="panel" id="panel" hidden>
     <div id="list"></div>

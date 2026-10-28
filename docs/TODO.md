@@ -7,7 +7,26 @@ this file only points there.
 
 ## Asked for, not started
 
-### 1. Research: sections cut automatically from words (owner, 2026-10-24)
+### 1. Sections cut automatically: the auto-front check (owner, 2026-10-24; rule agreed 2026-10-28)
+
+The rule (public/lib/yards.js): the house faces the street in its address;
+a rectangle fitted to the building outline gives the facade; the building's
+own stepped front and back edges, carried out to the lot lines, bound the
+front and the back; a corner lot's side yard runs the full depth along the
+side street; a side piece walled off from the back by a driveway or patio
+goes with the front. The owner's two corner-lot drawings both fit it.
+
+Built as a prototype, admin only: the "Auto front" button in the sections
+tool, and the check: /sections?lot=<corpus id> opens a corpus lot with the
+proposal and a Right / Wrong / Skip bar (marks in the corpus bucket,
+yards/marks.json; /api/admin/yard-lots lists the lots and the tally).
+
+- The owner marks about 20 lots, corner lots included. Then: fix what the
+  wrong ones show, or open the button to everyone.
+- Open questions: condo loops (does Overture name the loop road?); a house
+  addressed on one street with its door on the other.
+
+### 2. Research: sections cut automatically from words (owner, 2026-10-24)
 
 Find a lightweight way to cut a lawn into sections from a word prompt:
 "front yard", "back yard", "side yard". The test case is the Byron Center
