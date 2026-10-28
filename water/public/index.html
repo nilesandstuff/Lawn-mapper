@@ -89,6 +89,9 @@
   }
   #species .species-group { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 4px 0 8px; align-items: center; }
   #species .species-group strong { width: 100%; }
+  #mode { border: 1px solid var(--line, #ccc); border-radius: 8px; padding: 6px 10px; margin: 8px 0 }
+  #mode legend { font-weight: 600; padding: 0 4px }
+  #mode .toggle { display: block; margin: 4px 0 }
 </style>
 </head>
 <body>
@@ -154,6 +157,11 @@
     </div>
     <div id="hint" class="hint"></div>
     <div id="saved" class="dim"></div>
+    <fieldset id="mode" class="mode"><legend>How much to water</legend>
+      <label class="toggle"><input type="radio" name="mode" value="normal" checked> <strong>Normal:</strong> replace 100% of the water the grass uses. High quality and high maintenance.</label>
+      <label class="toggle"><input type="radio" name="mode" value="deficit"> <strong>Deficit:</strong> water just enough to avoid stress. Moderate maintenance.</label>
+      <label class="toggle"><input type="radio" name="mode" value="dormancy"> <strong>Dormancy:</strong> water just enough to keep the grass alive. Low maintenance.</label>
+    </fieldset>
     <div id="heads-summary"></div>
     <div id="print-area"><img id="print-map" alt="The map"><div id="plan"></div></div>
     <div id="hill"></div>

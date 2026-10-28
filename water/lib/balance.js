@@ -72,6 +72,16 @@ export const PARAMS = {
      0.70; until the heads are mapped). The plan simulates what reaches the grass; what to put down is
      that times the multiplier. */
   duLq: 0.65,
+  /* HOW MUCH TO WATER (owner, 2026-10-28; FINDINGS H54): normal replaces all the grass uses (refill 1); deficit
+     "just enough to avoid stress" puts back refill x the depletion -- cool-season turf keeps acceptable quality at
+     71-95% of reference ET (tall fescue) and 81-110% (bluegrass) in NTEP's 2018-20 deficit trial, bluegrass at
+     77% of maximum ET on Colorado's lysimeters (Danielson & Feldhake 1981), so three quarters (warm-season two
+     thirds, WARM) on the normal schedule's days, the soil let into the stress zone where Ks cuts the grass's use
+     to match (idealIrrigation); dormancy "just enough to keep grass alive" waters survival.mm after survival.days without that
+     much rain or watering (Michigan State E3180: about 1/2 in every 2-3 weeks keeps dormant plants alive). */
+  mode: 'normal',
+  refill: 1,
+  survival: { mm: 12.7, days: 21 },
   /* SHADE AND THE AIR (FINDINGS H43): the air's share of ET0 on a day without the weather to split it (Danielson &
      Feldhake 1981's figure; the owner's lot's summer averages 0.26); the most a full canopy within canopyRadiusM
      cools a sunny afternoon (Ziter et al. 2019: 0.7 C within 10 m, 1.3 within 30, over 1.5 within 60-90), the crowns
@@ -100,7 +110,10 @@ export const PARAMS = {
 export const schedulingMultiplier = (params = PARAMS) => 1 / (0.4 + 0.6 * params.duLq);
 
 /** Warm-season turf (owner 2026-10-18: "warm season should be an option"): FAO-56 Table 22's p 0.5. */
-export const WARM = { p: 0.5 };
+export const WARM = { p: 0.5, deficitRefill: 0.65 };
+export const DEFICIT_REFILL = 0.75;
+/** The parameters for a watering mode: 'normal' | 'deficit' | 'dormancy'. */
+export const withMode = (params, mode) => ({ ...params, mode: mode === 'deficit' || mode === 'dormancy' ? mode : 'normal', refill: mode === 'deficit' ? params.deficitRefill ?? DEFICIT_REFILL : 1 });
 
 const HYD = (h) => String(h || 'B').trim().toUpperCase();
 
@@ -413,6 +426,7 @@ export function simulate(model, days, { irrigate = null, start = null, record = 
   const inflow = new Float32Array(N);
   const cn = new Float32Array(N);
   let snow = 0, lastMonth = -1, rootNow = 1;
+  const lastWet = new Int32Array(N).fill(-9999); // the last day a cell got PARAMS.survival.mm or more (rain or watering), for dormancy watering
   const temps = [];
   for (let d = 0; d < days.length; d++) {
     const day = days[d];
@@ -453,7 +467,7 @@ export function simulate(model, days, { irrigate = null, start = null, record = 
     tot.rain += P;
     const et0 = Number.isFinite(day.et0) ? day.et0 : 0;
     etToday(model, et0 > 0 ? airShare(day, lat, dayOfYear(day.date), 200, { winds: model.winds }) : null, inSeason, etFactor, month);
-    const irr = irrigate ? irrigate(d, { Dr, grav, month, inSeason, date: day.date, use: et0 * params.kc, etFactor }) : null;
+    const irr = irrigate ? irrigate(d, { Dr, grav, month, inSeason, date: day.date, use: et0 * params.kc, etFactor, lastWet, rain: P }) : null;
 
     inflow.fill(0);
     // roofs
@@ -465,6 +479,7 @@ export function simulate(model, days, { irrigate = null, start = null, record = 
       if (add) tot.irrigation[i] += add;
       tot.ranOn[i] += inflow[i];
       let w = P + inflow[i] + pond[i];
+      if (w + add >= params.survival.mm - 1e-3) lastWet[i] = d; // (Float32 of the amount applied)
       pond[i] = 0;
       let q;
       if (kinds[i] === 3) {
@@ -532,8 +547,15 @@ export function simulate(model, days, { irrigate = null, start = null, record = 
 export function idealIrrigation(model) {
   const out = new Float32Array(model.N);
   const cap = model.dayCapMm;
+  const { mode, refill, survival } = model.params;
+  /* DEFICIT (PARAMS.mode): the normal schedule's days, refill x the normal amount. The schedule is kept on an
+     unstressed depletion of its own (Dv: use in, rain out, emptied at each watering as if it had been filled),
+     because the real one is let into the stress zone on purpose: there the balance's Ks (simulate) cuts the
+     grass's actual use until it matches what it is given, about refill x its full use -- the deficit. */
+  const Dv = mode === 'deficit' ? new Float32Array(model.N) : null;
+  let lastRain = 0;
   return (d, st) => {
-    if (!st.inSeason) return null;
+    if (!st.inSeason) { lastRain = 0; return null; }
     let any = false;
     out.fill(0);
     // watered the morning the day's use would take it past the readily available water, back to full -- or
@@ -541,10 +563,17 @@ export function idealIrrigation(model) {
     // the root zone keeps its room for rain
     for (let i = 0; i < model.N; i++) {
       if (model.kinds[i] !== 1) continue;
-      const use = st.use * (st.etFactor || model.etFactor)[i];
       const most = cap ? cap[i] : Infinity;
+      if (mode === 'dormancy') { if (d - st.lastWet[i] >= survival.days) { out[i] = Math.min(survival.mm, most); any = true; } continue; }
+      const use = st.use * (st.etFactor || model.etFactor)[i];
+      if (Dv) {
+        const v = Math.max(0, Dv[i] - lastRain) + use;
+        if (v > model.raw[i]) { out[i] = Math.min(v * refill, most); Dv[i] = 0; any = true; } else Dv[i] = v;
+        continue;
+      }
       if (st.Dr[i] + use > model.raw[i]) { out[i] = Math.min(st.Dr[i] + use, most); any = true; }
     }
+    lastRain = st.rain || 0;
     return any ? out : null;
   };
 }
@@ -564,23 +593,37 @@ export function zoneIrrigation(model, zoneOf, nZones, events = []) {
     const v = cs.map((i) => model.dayCapMm[i]).sort((a, b) => a - b);
     return v[Math.floor(0.1 * (v.length - 1))];
   });
+  const { mode, refill, survival } = model.params;
+  const Dv = mode === 'deficit' ? new Float32Array(nZones) : null; // deficit: the zone's unstressed depletion, as in idealIrrigation
+  let lastRain = 0;
   return (d, st) => {
-    if (!st.inSeason) return null;
+    if (!st.inSeason) { lastRain = 0; return null; }
     let any = false;
     out.fill(0);
     for (let z = 0; z < nZones; z++) {
       const cs = cells[z];
       if (!cs.length) continue;
+      if (mode === 'dormancy') {
+        // the zone's lawn has gone survival.days without survival.mm: that much, the zone as one
+        let since = 0; for (const i of cs) since += d - st.lastWet[i]; since /= cs.length;
+        if (since >= survival.days) { const mm = Math.min(survival.mm, caps[z]); for (const i of cs) out[i] = mm; events.push({ d, zone: z, mm }); any = true; }
+        continue;
+      }
       let dr = 0, rw = 0, use = 0;
       for (const i of cs) { dr += st.Dr[i]; rw += model.raw[i]; use += st.use * (st.etFactor || model.etFactor)[i]; }
       dr /= cs.length; rw /= cs.length; use /= cs.length;
-      if (dr + use > rw) {
-        dr = Math.min(dr + use, caps[z]); // refill to full, today's use included, or as far as a day's cycles go
-        for (const i of cs) out[i] = dr;
-        events.push({ d, zone: z, mm: dr });
+      let mm = 0;
+      if (Dv) {
+        const v = Math.max(0, Dv[z] - lastRain) + use;
+        if (v > rw) { mm = Math.min(v * refill, caps[z]); Dv[z] = 0; } else Dv[z] = v;
+      } else if (dr + use > rw) mm = Math.min(dr + use, caps[z]); // refill to full, today's use included, or as far as a day's cycles go
+      if (mm > 0) {
+        for (const i of cs) out[i] = mm;
+        events.push({ d, zone: z, mm });
         any = true;
       }
     }
+    lastRain = st.rain || 0;
     return any ? out : null;
   };
 }

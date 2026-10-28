@@ -1772,6 +1772,79 @@ Over the whole parcel as lawn, the year's watering 10.5 in at the fixed 8 in -> 
 own soil (+19%), 9.4 for tall fescue (-11%), 11.3 for the three-grass mix. Checked in a browser on the owner's
 map: the checklist, the re-plan on a change (59 s), the sentence on the report, the species saved (11.6 KB part).
 
+### H54. How much to water: normal, deficit or dormancy (water session, 2026-10-28)
+
+The owner: "Show the normal values by default, and present the choices to switch to deficit or dormancy watering.
+Just before asking if the user has irrigation. Describe them like this: Normal: replace 100% of the grass that water
+uses. High quality and high maintenance. Deficit: water just enough to avoid stress. Moderate maintenance. Dormancy:
+water just enough to keep grass alive. Low maintenance." The choice sits on the page just above the sprinklers card
+and again on the sprinklers' first step, is kept with the map (`mode`), and re-plans (lib/balance.js PARAMS.mode,
+withMode; lib/plan.js `mode`).
+
+**What the literature gives for the two lower levels:**
+
+- Deficit. NTEP's 2018-20 deficit-irrigation trial (national, three years): tall fescue kept acceptable quality at
+  **71-95% of reference ET** and Kentucky bluegrass at **81-110%**, the span across cultivars. Colorado's weighing
+  lysimeters: bluegrass acceptable at **77% of its maximum ET** (Danielson & Feldhake 1981, the same source as
+  H43's turf ET). The tool takes **three quarters** of full water for cool-season turf and two thirds for
+  warm-season (which keeps quality at a lower share in every deficit trial found; the figure is the usual
+  extension rule of thumb, not a measured one -- S16).
+- Dormancy. Michigan State's E3180 (Frank, "Irrigation practices for home lawns"): a dormant lawn survives on
+  **about half an inch every two to three weeks**, enough to keep the crowns alive without greening up; Nebraska
+  and Kansas extension say a quarter to half an inch every two to four weeks, Iowa State 1.5 in in two weeks. The
+  tool waters **0.5 in once 21 days have passed** without that much rain or watering, the watering areas or
+  sprinkler zones as one.
+
+**How the balance does it.** Normal is as before: watered back to full the morning the day's use would pass the
+readily available water. Deficit keeps the normal schedule's days on an unstressed depletion of its own (use in,
+rain out, emptied at each watering as if filled) and applies three quarters of what normal would; the real root
+zone is let past the readily available water into the stress zone, where the balance's Ks (FAO-56 chapter 8) cuts
+the grass's actual use until it matches what it is given. On a dry one-cell summer (roots.test.js) the grass's use
+comes out at 0.78 of its full use and the water given at 0.64 of normal's, the gap being what normal watering
+loses to the day's drainage; with rain every 17 days deficit needs 0.66 of normal, its drier soil keeping more
+of each rain. The report says which mode is on, and in deficit and dormancy no longer calls the lawn's drying
+between waterings a problem: it is the plan.
+
+**The owner's lawn** (the live map, 2026-10-28): see the browser check below once run. [measured values go here]
+
+### H55. Dew: measured elsewhere, not in the rain the tool reads, and not added (water session, 2026-10-28)
+
+The owner asked whether dew counts: "I'm not sure if dew counts in rain gauges... often the dew on grass comes from
+humidity in its own microclimate... some turf areas, especially areas in shade, still have really moist soil because
+we're smashing dew points every night." A research pass (research-dew.md, sources tagged read / second-hand):
+
+- **How much.** Twelve years of micro-lysimeters on Dutch grassland: **37 +/- 8 mm of dew a year** against 820 mm of
+  rain, 250 dew nights, **about 0.15 mm a dew night**, 3.1 mm a month through the year (Jacobs, Heusinkveld &
+  Berkowicz 2006). German weighing lysimeters: 27-32 mm a year, at most 0.5-0.6 mm a night (Xiao et al. 2009).
+  Eleven US grasslands on NEON's radiometers: dew on 15-95% of growing-season nights, rising with night humidity
+  above about 75% RH, almost only in wind under 4 m/s, **0.14 +/- 0.12 mm a night** (Ritter, Berkelhammer &
+  Beysens 2019). The ceiling is physics: dewfall rates at most 0.05-0.06 mm/h (Monteith 1957; Garratt & Segal
+  1988), 0.4-0.5 mm for a long night. No Michigan or Great Lakes dew measurement exists in anything found.
+- **Rain gauges do not count it.** The NWS cooperative observer's instructions: "Condensation from fog/dew and
+  frost does not count as precip" (enter 0.00 or a trace). PRISM's daily rain, which the tool reads, is built from
+  those gauges, so **dew is not in the tool's rain**. Weighing lysimeters do weigh it, so turf ET measured that way
+  (H43's figures) is already net of dew.
+- **Where it goes.** Every source treats dew on grass as evaporating off the blades by mid-morning (up to six hours
+  after sunrise in shade): it is not a gain to the soil but a cut in that morning's draw on it. FAO-56's daily ET0
+  already debits the whole night's longwave loss (Rnl from Tmax and Tmin) from the day's energy and has no dew
+  term; 0.15 mm of condensation releases 0.37 MJ/m2 against a clear July night's 3-5 MJ/m2 of loss, so a dew term
+  on top of it would partly double count.
+- **Dew is largest in the open, not in shade.** Grass that sees the whole sky cools fastest and gathers the most
+  dew; it falls with sky view (Richards & Oke 2002; Price & Clark 2014: open canopies in one field got up to twice
+  the dew of closed ones), and under crowns there is less of it, lasting longer where the morning sun does not
+  reach (H47's Stoutjesdijk hedge). So the moist shaded soil after a dry spell is not dew's doing: it is the shade's
+  lower radiation (H45, H47), smaller sky loss, less wind (H44, H50) and cooler, wetter air (H43), all in the
+  balance already and putting the shadiest tenth at about a third of open use; the humid spell lowers every cell's
+  use through the air term (et.js pmParts).
+
+**Size for a lawn here:** at 3.1 mm a month, a May-September season is 12-18 mm of dew against about 450 mm of
+open-lawn use (H43): 3-4%, one or two days of ET, and most of it already inside the daily ET0. NOT ADDED. If it is
+ever wanted, the defensible form is a cap on the next morning's use per cell (dew = min(0.15 mm, 8 h x 0.06 mm/h x
+sky view x a humidity factor x a wind factor)), about 10-15 mm a season on open cells and 3-5 mm on the shadiest,
+smaller than H44's wind correction and inside PRISM's day-to-day noise. What would settle it on this lawn: a
+blotting-paper or balance dew reading on the open lawn against the lawn north of the house on one clear calm night
+(H47's to-do), and a soil probe in both spots that afternoon.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge
@@ -1806,6 +1879,20 @@ nine unlikely. No ground truth yet: a wet spring on lawns it calls likely and
 unlikely is the check. The soil survey's own monthly water table (lib/soil.js,
 "Wet" layers) IS in the balance: it stops drainage and makes dual-group soils
 the wetter group in those months.
+
+### S16. The two lower watering levels: what is estimated in them (2026-10-28, with H54)
+
+- Three quarters of full water for deficit is the middle of NTEP's acceptable span for tall fescue (71-95% of ET0)
+  and under bluegrass's (81-110%); the single figure for every cool-season species is a choice, and the per-species
+  Kc table the owner holds (not yet in) may move it. Two thirds for warm-season turf is extension's rule of thumb,
+  not a trial figure found.
+- The deficit schedule applies the normal days and three quarters of the amount; the grass's actual use then
+  follows FAO-56's linear Ks between the readily available water and the wilting point, which is the model's
+  stress curve, not a turf measurement. A deficit trial's grass is also cut higher and fertilised less; the tool
+  changes nothing else.
+- Dormancy's half inch every three weeks is Michigan State's rule; the lower bound of the other extension rules is
+  half of that, the upper (Iowa) three times. The tool counts rain of half an inch or more as a wetting; a run of
+  smaller rains that together would keep the crowns alive does not reset the count.
 
 ### S15. The roots: what is estimated in them (2026-10-28, with H53)
 

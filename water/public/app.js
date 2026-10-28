@@ -35,7 +35,7 @@ import { SPECIES, groupOf } from '/lib/roots.js';
 const $ = (s) => document.querySelector(s);
 const R = 6378137;
 const view = { photo: null, data: null, frame: null, site: null, plan: null };
-const inputs = { downspouts: [], gutters: [], areas: [], topsoil: false, grass: 'cool', species: [], texture: '' };
+const inputs = { downspouts: [], gutters: [], areas: [], topsoil: false, grass: 'cool', species: [], mode: 'normal', texture: '' };
 let mode = null, pending = null; // 'from' | 'to' (a downspout) | 'gutter' | 'area'
 const added = []; // what was entered, in order, for Undo: 'spout' | 'gutter' | 'area'
 const AREA_COLOR = { deck: '#a1887f', pavers: '#bf360c', solid: '#212121', roof: '#fafafa', lawn: '#69f0ae', bed: '#6d4c41' };
@@ -416,7 +416,7 @@ const lawnRingsOf = () => (view.site?.lawn || []).flatMap((f) => (f.geometry?.ty
 let layersAsk = 0;
 /** The most the layers may take of the water part's 64 KB, after everything else in it. */
 function layerBudget() {
-  const rest = JSON.stringify({ data: { v: 1, downspouts: inputs.downspouts, gutters: inputs.gutters, areas: inputs.areas, topsoil: inputs.topsoil, grass: inputs.grass, species: inputs.species, irrigation: heads.data, wind: inputs.wind || null }, basedOn: view.site?.at }).length;
+  const rest = JSON.stringify({ data: { v: 1, downspouts: inputs.downspouts, gutters: inputs.gutters, areas: inputs.areas, topsoil: inputs.topsoil, grass: inputs.grass, species: inputs.species, mode: inputs.mode, irrigation: heads.data, wind: inputs.wind || null }, basedOn: view.site?.at }).length;
   return Math.max(4000, Math.min(30000, MAX_TOOL_BYTES - rest - 3000));
 }
 async function loadLayers(boxDeg, kept) {
@@ -607,6 +607,7 @@ const heads = sprinklers({
     return [pts.reduce((a, p) => a + p[0], 0) / pts.length, pts.reduce((a, p) => a + p[1], 0) / pts.length];
   },
   changed: () => keep(),
+  get mode() { return inputs.mode; }, setMode: (m) => setWateringMode(m),
   busy: (key, text) => busy(key, text),
   finish: () => { $('#result').classList.remove('heads-on'); legend(); draw(); headsCard(); if (view.data) report(view.data, view.site); if (view.plan) planReport(view.plan); },
 });
@@ -737,7 +738,9 @@ function planReport(p) {
   parts.push('<div class="tools no-print" style="margin:0 0 8px"><button type="button" id="save-pdf">Save as PDF</button></div>');
   const sprinklerCard = heads.scheduleCard?.();
   if (sprinklerCard) parts.push(sprinklerCard);
-  parts.push(`<div class="card"><h2>${sprinklerCard ? 'What each part of the lawn needs' : 'Your watering plan'}: ${p.zones.length} watering area${p.zones.length > 1 ? 's' : ''}</h2>
+  const modeWords = p.mode === 'deficit' ? `<p><strong>Deficit watering:</strong> each watering puts back about ${Math.round((p.refill || 0.75) * 100)}% of what the grass has used, enough to avoid stress at moderate maintenance (${p.grass === 'warm' ? 'warm-season turf keeps acceptable quality at about two thirds of its full water' : 'cool-season turf kept acceptable quality at 71-95% of reference ET for tall fescue and 81-110% for bluegrass in a three-year trial, bluegrass at 77% of its maximum on lysimeters'}). Switch to Normal above for the full amount.</p>`
+    : p.mode === 'dormancy' ? `<p><strong>Dormancy watering:</strong> just enough to keep the grass alive, not green -- about ${(p.survival?.mm / 25.4 || 0.5).toFixed(1)} in once ${p.survival?.days || 21} days have passed without that much rain or watering (Michigan State's rule for a dormant lawn: half an inch every two to three weeks keeps the crowns alive). Switch to Normal or Deficit above to keep it green.</p>` : '';
+  parts.push(`<div class="card"><h2>${sprinklerCard ? 'What each part of the lawn needs' : 'Your watering plan'}: ${p.zones.length} watering area${p.zones.length > 1 ? 's' : ''}</h2>${modeWords}
     <p>${sprinklerCard ? 'The parts of the lawn below differ in what they need: their soil, slope, sun and the water that runs onto them. The sprinkler zones&rsquo; run times above are worked out from them.' : 'Each watering area below needs a different amount, or a different rhythm, to stay between too wet and too dry. Water an area when it says, by about the depth it says; more is wasted below the roots, less leaves it short. Map your sprinklers (<em>Your sprinklers</em>) for run times by sprinkler zone.'}</p>
     <p class="dim">Worked out day by day over ten years of this place's weather: rain and runoff in, the grass's use out, the soil's root zone in between.${p.rainShaped ? ` Its ${p.rainShaped} rainy days each fall hour by hour as the rain fell at ${esc(p.rainStation?.name || 'the nearest')} airport that day, so a cloudburst faster than the lawn takes water runs off.` : ''} ${p.shaded ? ` Shade from trees and buildings is counted (the shade map's own light model${p.lightByMonth ? ', month by month: the leaves as they stand and the sun where it is each month' : ''}${p.ownRadiation ? '; and each spot\'s own warmth from it: the near-infrared that leaves let through, the skylight in a building\'s shade, and the night sky each spot loses its heat to' : ''}${p.fences?.fences ? `; the ${p.fences.fences} fence${p.fences.fences === 1 ? '' : 's'} drawn on the shade map, in the shade, as sky the grass beside ${p.fences.fences === 1 ? 'it' : 'them'} cannot lose its heat to, and warm in the sun` : ''}; the lawn's middle gets about ${Math.round(p.sunShare * 100)}% of open-sky sunlight in summer${p.lightInfo?.canopy === 'seasonal' ? ', the trees in summer leaf: the lidar was flown with the leaves off' : ''}${p.lightInfo?.erased || p.lightInfo?.blocks ? `, with the edits made on the shade map: ${[p.lightInfo.erased ? `${p.lightInfo.erased} square metres of trees taken out` : '', p.lightInfo.blocks ? `${p.lightInfo.blocks} blocks of branches trimmed` : ''].filter(Boolean).join(' and ')}` : ''}${p.lightInfo?.blocksLost ? `; <strong>the ${p.lightInfo.blocksLost} blocks of branches trimmed on the shade map could not be carried over</strong> (it was saved on another grid: open the shade map and save it again)` : ''}). Shade takes away the sun's share of the grass's use, not the share the air itself dries out, which each day's weather sets (about a quarter, on a summer day here)${p.treeCool ? '; near trees the air is cooler on sunny summer days, and dries it less' : ''}.${p.windInfo ? ` Houses, trees${p.windInfo.fences ? ', fences' : ''} and hedges shelter each spot by what stands upwind of it, from the directions the local wind blows (the Wind view): in July from ${Math.round(p.windInfo.July.calmest * 100)}% of the open wind in the calmest tenth of the lawn to ${Math.round(p.windInfo.July.median * 100)}% in the middle, the lawn as a whole held to what was measured in yards like it.` : p.yardWind ? ` Houses and trees shelter the lawn from the wind: about ${Math.round(p.yardWind * 100)}% of the open wind the weather gives, from the cover round it (measured in yards like it), less again where the trees are thick.` : ''}` : ' The lawn is taken as in full sun until the shade is worked out.'}${p.seasonDays ? ` The watering season is the shade map's growing season here for ${p.grass === 'warm' ? 'warm' : 'cool'}-season grass, about ${p.seasonDays} days.` : ''} Grass beside paving and sunny walls is counted as using a little more (up to 8% at the edge, an estimate from published measurements).${p.grass === 'warm' ? ' Warm-season grass is let dry a little further between waterings than cool-season.' : ''} These are likely amounts, until a soak test on your lawn confirms them. Depths are what to put down: about a quarter more than the grass uses, since sprinklers water unevenly and the driest spots must get enough (a typical home system, until your heads are mapped). ${rootWords(p)} A day's watering is at most two runs with a soak between, so on slow ground it comes more often, a little at a time.${p.standIn ? ' <strong>No lawn was traced, so this plans for all the open ground</strong>: open this from a Lawn Mapper map for your lawn alone.' : ''}</p></div>`);
   const week = p.thisWeek;
@@ -778,7 +781,7 @@ function planReport(p) {
     const problems = [];
     if (z.wetAnyway > 0) problems.push(`About <strong>${sqft(z.wetAnyway)} sq ft</strong> stays wet even with no watering at all: likely a drainage matter, not a watering one.`);
     if (z.tooWet > 0) problems.push(`About <strong>${sqft(z.tooWet)} sq ft</strong> gets too wet when the area is watered as a whole: it also takes water from uphill, a roof or paving. Watering it less, or moving a downspout, would likely help.`);
-    if (z.tooDry > 0) problems.push(`About <strong>${sqft(z.tooDry)} sq ft</strong> still dries out between waterings: it holds less, or loses more, than the rest.`);
+    if (z.tooDry > 0 && p.mode === 'normal') problems.push(`About <strong>${sqft(z.tooDry)} sq ft</strong> still dries out between waterings: it holds less, or loses more, than the rest.`);
     parts.push(`<div class="card"><h2>${chip(z.zone)}Area ${z.zone + 1} · ${sqft(z.m2)} sq ft</h2>
       <p class="big">${pk.waterings ? `About ${inch(pk.mmEach)} in each time; in ${MONTH[pk.month]}, ${howOften(pk).replace(/ \(.*$/, '')}.` : 'Rain likely covers it in a typical year.'}</p>
       ${z.dryWeek ? `<p>In a ${MONTH[z.dryWeek.month]} week with no rain: about <strong>${inch(z.dryWeek.mm)} in</strong>, over ${z.dryWeek.waterings} watering${z.dryWeek.waterings > 1 ? 's' : ''}. Skip one for each ${inch(z.dryWeek.each)} in or so of rain.</p>` : ''}
@@ -866,6 +869,8 @@ async function run(site) {
   inputs.wind = kept.wind && typeof kept.wind === 'object' ? kept.wind : null;
   view.layers = null; view.layersRaw = null; view.layerPicked = null; view.layersError = '';
   $('#topsoil').checked = inputs.topsoil;
+  inputs.mode = ['normal', 'deficit', 'dormancy'].includes(kept.mode) ? kept.mode : 'normal';
+  modeBoxes();
   speciesBoxes();
   setMode(null);
   status(`Reading the survey for ${site.label}…`);
@@ -958,7 +963,7 @@ function keep() {
 }
 
 function saveBody() {
-  return JSON.stringify({ data: { v: 1, downspouts: inputs.downspouts, gutters: inputs.gutters, areas: inputs.areas, topsoil: inputs.topsoil, grass: inputs.grass, species: inputs.species, irrigation: heads.data, layers: inputs.layers || null, wind: inputs.wind || null }, basedOn: view.site.at });
+  return JSON.stringify({ data: { v: 1, downspouts: inputs.downspouts, gutters: inputs.gutters, areas: inputs.areas, topsoil: inputs.topsoil, grass: inputs.grass, species: inputs.species, mode: inputs.mode, irrigation: heads.data, layers: inputs.layers || null, wind: inputs.wind || null }, basedOn: view.site.at });
 }
 const saveUrl = () => `/api/maps/tool?id=${encodeURIComponent(view.site.mapId)}&tool=water`;
 
@@ -1114,6 +1119,16 @@ $('#clear').addEventListener('click', () => {
   inputs.downspouts = []; inputs.gutters = []; inputs.areas = []; added.length = 0; setMode(null); changed();
 });
 $('#topsoil').addEventListener('change', () => { inputs.topsoil = $('#topsoil').checked; changed(); });
+/* HOW MUCH TO WATER (owner, 2026-10-28: normal, deficit or dormancy, "just before asking if the user has irrigation"):
+   the same choice sits on the page and on the sprinklers' first step; it is kept with the map and re-plans. */
+function modeBoxes() {
+  document.querySelectorAll('#mode input[name=mode]').forEach((el) => { el.checked = el.value === inputs.mode; });
+}
+function setWateringMode(m) {
+  if (!['normal', 'deficit', 'dormancy'].includes(m) || m === inputs.mode) return;
+  inputs.mode = m; modeBoxes(); changed();
+}
+document.querySelectorAll('#mode input[name=mode]').forEach((el) => el.addEventListener('change', () => setWateringMode(el.value)));
 /* THE GRASSES (owner, 2026-10-28: "users will need to check boxes to indicate their planted species"): the species
    checked set the roots' working depth and their season's rise and fall (lib/roots.js); the group (cool- or
    warm-season) follows the species, the one with more of them. */

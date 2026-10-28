@@ -535,7 +535,9 @@ export function sprinklers(ctx) {
   }
 
   const BODY = {
-    intro: () => `<p>Before the watering plan: where your sprinkler heads are, which valve each is on, and what heads and nozzles they are. With them the plan can say how long to run each zone, not just how much water it needs.</p>
+    intro: () => `<p><strong>How much to water?</strong></p>
+      ${[['normal', 'Normal', 'replace 100% of the water the grass uses. High quality and high maintenance.'], ['deficit', 'Deficit', 'water just enough to avoid stress. Moderate maintenance.'], ['dormancy', 'Dormancy', 'water just enough to keep the grass alive. Low maintenance.']].map(([v, name, words]) => `<label class="toggle" style="display:block;margin:4px 0"><input type="radio" name="hmode" value="${v}" ${(ctx.mode || 'normal') === v ? 'checked' : ''}> <strong>${name}:</strong> ${words}</label>`).join('')}
+      <p style="margin-top:12px">Before the watering plan: where your sprinkler heads are, which valve each is on, and what heads and nozzles they are. With them the plan can say how long to run each zone, not just how much water it needs.</p>
       <div class="tools"><button type="button" data-act="start">Map my sprinklers</button><button type="button" class="plain" data-act="none">I don't have an in-ground system</button></div>`,
 
     place: () => `<div class="tools"><label class="toggle"><input type="radio" name="pm" value="tap" ${placeMode === 'tap' ? 'checked' : ''}> Tap on the photo</label><label class="toggle"><input type="radio" name="pm" value="gps" ${placeMode === 'gps' ? 'checked' : ''}> Walk the lawn with GPS</label></div>
@@ -975,6 +977,7 @@ export function sprinklers(ctx) {
 
   const WIRE = {
     intro: (P) => {
+      P.querySelectorAll('input[name=hmode]').forEach((el) => el.addEventListener('change', () => ctx.setMode?.(el.value)));
       P.querySelector('[data-act=start]').addEventListener('click', () => go('place'));
       P.querySelector('[data-act=none]').addEventListener('click', () => { irr.none = true; irr.done = true; changed(); finish(); });
     },

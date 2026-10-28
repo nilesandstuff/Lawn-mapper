@@ -24,7 +24,7 @@ import { workingCm, speciesOf, groupOf, typicalRoots, attachRootRatio, rootsByMo
 import { dayIndex } from './shade/climate.js';
 import { maskOf } from './geo.js';
 import { roofRouting } from './gutters.js';
-import { buildModel, simulate, idealIrrigation, zoneIrrigation, schedulingMultiplier, PARAMS, WARM } from './balance.js';
+import { buildModel, simulate, idealIrrigation, zoneIrrigation, schedulingMultiplier, PARAMS, WARM, withMode } from './balance.js';
 import { drawZones } from './zones.js';
 
 export const KIND = { other: 0, lawn: 1, roof: 2, paved: 3, pavers: 4 };
@@ -52,9 +52,9 @@ const DEFAULT_SOIL = { name: 'no survey soil here (a loam assumed)', drainage: '
  *   topsoil (bool), downspouts, gutters, typical (days), week ({ days, today }), light (Float32Array | null),
  *   zoneOf (Int16Array, the user's own zones, optional), params
  */
-export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, topsoil = false, downspouts = [], gutters = [], typical, week = null, light = null, lightMonths = null, radiation = null, fenceHeat = null, windMonths = null, shadeKinds = null, season = null, grass = 'cool', species = null, soilTemp = null, texture = null, parcelMask = null, areas = [], zoneOf: userZones = null, params: given = null } = {}) {
+export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, topsoil = false, downspouts = [], gutters = [], typical, week = null, light = null, lightMonths = null, radiation = null, fenceHeat = null, windMonths = null, shadeKinds = null, season = null, grass = 'cool', species = null, soilTemp = null, mode = 'normal', texture = null, parcelMask = null, areas = [], zoneOf: userZones = null, params: given = null } = {}) {
   // warm-season turf (owner 2026-10-18): FAO-56's p 0.5 in place of cool-season's 0.4
-  const params = given || (grass === 'warm' ? { ...PARAMS, ...WARM } : PARAMS);
+  const params = withMode(given || (grass === 'warm' ? { ...PARAMS, ...WARM } : PARAMS), mode);
   const g = res.grid, N = g.W * g.H;
   // 1. what each cell is
   const kinds = new Uint8Array(N);
@@ -227,6 +227,7 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
   }
   return {
     multiplier: SM, rootIn: rootCm / 2.54,
+    mode: params.mode, refill: params.refill, survival: params.survival,
     roots: { species: ids.map((id) => ({ id, name: SPECIES[id].name, workingIn: SPECIES[id].workingIn, general: !!SPECIES[id].general })), workingIn: Math.round((rootCm / 2.54) * 10) / 10, typical: rootsTyp, ownDays: rootOwnDays, ofDays: typical.length },
     zones: out, zoneOf: zones.zoneOf, userZones: !!zones.user, kinds, needMm,
     // each cell's soil, as the index of its unit in soil below (the soil view)
