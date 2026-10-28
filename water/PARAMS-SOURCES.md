@@ -87,6 +87,9 @@ the cell where the downspout discharges.
 ## 2. Turf: root zone, MAD, application limits
 
 ### 2a. Root depth
+
+*Since 2026-10-28 the root depth is by species and by season: lib/roots.js, FINDINGS H53 and S15, research-roots-brief.md and research-roots-ryegrass.md. The table below is the first pass.*
+
 | Source | Cool-season | Warm-season |
 |---|---|---|
 | FAO-56 (Allen et al. 1998) Table 22, *maximum* effective rooting depth Zr [read] http://www.fao.org/4/x0490e/x0490e0e.htm | **0.5–1.0 m** (bluegrass, ryegrass, fescue) | **0.5–1.0 m** (bermuda, buffalo, St Augustine) |

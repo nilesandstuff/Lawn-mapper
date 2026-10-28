@@ -24,10 +24,6 @@ SPECULATION), as always.
    34.2 C, up to 5 C over the control; no difference in winter minimums. It is
    the soil UNDER asphalt, not the grass beside it. The features session wants
    the numbers when found, for the shade map's soil-temperature view.
-5. **Roots shorter in summer, deeper in spring and fall.** Simulate the root
-   zone's depth through the season from the growth potential (GP, the shade
-   map's growing-season model): cool-season roots die back in summer heat. The
-   plan holds roots at a fixed depth today.
 6. **Cooling the soil with water.** An area may not need water for its own sake,
    but if its soil gets too hot, water could prevent heat stress by cooling it:
    from the water's own temperature and from evaporation. Not syringing
@@ -100,3 +96,4 @@ SPECULATION), as always.
 - 2026-10-27: the report as a PDF -- "Save as PDF" prints the report with the map (the browser's own print).
 - 2026-10-27: Finish -- once every sprinkler step is done, going back offers Finish: on to the next step a change needs (a head on no valve, without a nozzle, or with its arc not fitted), then the schedule.
 - 2026-10-27: rain intensity in the ten-year plan, from the station's hours (FINDINGS H52).
+- 2026-10-28: the roots by species (a checklist) and through the season from the soil's warmth, each year its own (FINDINGS H53, S15; research-roots-brief.md, research-roots-ryegrass.md).

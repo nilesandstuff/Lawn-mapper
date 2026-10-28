@@ -337,11 +337,16 @@ export function buildModel(res, { kinds, soilAt, soils, roofTo, light = null, li
   }
 
   const taw = new Float32Array(N), raw = new Float32Array(N), satRoom = new Float32Array(N), drainDay = new Float32Array(N);
+  /* THE ROOTS THROUGH THE SEASON (lib/roots.js, H53): each soil's available water by root depth, cm by cm to its
+     working depth (soils[k].tawByCm, from plan.js), so a day's shallower roots draw on less; the working values are
+     kept to restore at a run's end. */
+  const rootCm = new Float32Array(N);
   for (let i = 0; i < N; i++) {
     const s = soils[soilAt[i]] || soils[0];
     const rz = s?.rz;
     const t = rz?.tawMm ?? 20;
     taw[i] = t; raw[i] = params.p * t;
+    rootCm[i] = rz?.rootCm ?? 15;
     satRoom[i] = params.satRoomFrac * (rz?.rootCm ?? 15) * 10;
     const below = rz?.belowMmH ?? 5;
     drainDay[i] = below * 24 * (params.drainFactor[s?.drainage] ?? 0.5);
@@ -378,7 +383,7 @@ export function buildModel(res, { kinds, soilAt, soils, roofTo, light = null, li
       return at;
     });
   }
-  const model = { g, N, kinds, soilAt, soils, roofTo, light, lightMonths: lightMonths?.length === 12 ? lightMonths : null, canopy, winds, windAt, windAtMonths, order, down, recv, share, nRecv, slope, pondCap, taw, raw, satRoom, drainDay, heat, etBase, params };
+  const model = { g, N, kinds, soilAt, soils, roofTo, light, lightMonths: lightMonths?.length === 12 ? lightMonths : null, canopy, winds, windAt, windAtMonths, order, down, recv, share, nRecv, slope, pondCap, taw, raw, satRoom, drainDay, rootCm, tawFull: Float32Array.from(taw), heat, etBase, params };
   model.rad = radiation ? radiationModel(radiation, N, params) : null;
   model.fenceHeat = radiation && fenceHeat ? fenceHeat : null;
   model.etFactor = etToday(model, null, false, new Float32Array(N));
@@ -407,13 +412,28 @@ export function simulate(model, days, { irrigate = null, start = null, record = 
   const tot = { irrigation: new Float32Array(N), et: new Float32Array(N), drained: new Float32Array(N), ranOff: new Float32Array(N), ranOn: new Float32Array(N), wetDays: new Uint16Array(N), dryDays: new Uint16Array(N), seasonDays: 0, rain: 0 };
   const inflow = new Float32Array(N);
   const cn = new Float32Array(N);
-  let snow = 0, lastMonth = -1;
+  let snow = 0, lastMonth = -1, rootNow = 1;
   const temps = [];
   for (let d = 0; d < days.length; d++) {
     const day = days[d];
     const month = Number(day.date.slice(5, 7)) - 1;
     const tmean = (day.tmax + day.tmin) / 2;
     temps.push(tmean); if (temps.length > 7) temps.shift();
+    /* THE DAY'S ROOT ZONE (H53): the day's own share of the working depth (roots.js attachRootRatio), else the typical
+       year's by day of year, else the working depth. When it moves, each lawn cell's available water follows its
+       soil's table, its depletion scaled with it (the water content taken as even down the profile). */
+    const rr = Number.isFinite(day.rootRatio) ? day.rootRatio : model.rootTypical ? model.rootTypical[dayIndex(day.date.replace(/-/g, ''))] : 1;
+    if (Math.abs(rr - rootNow) >= 0.01) {
+      rootNow = rr;
+      for (let i = 0; i < N; i++) {
+        if (kinds[i] === 2 || kinds[i] === 3) continue;
+        const s = soils[soilAt[i]] || soils[0], tbl = s?.tawByCm;
+        const cm = Math.max(1, Math.round(model.rootCm[i] * rr));
+        const t = tbl && tbl[Math.min(cm, tbl.length - 1)] > 0 ? tbl[Math.min(cm, tbl.length - 1)] : model.tawFull[i] * rr;
+        if (taw[i] > 0) Dr[i] *= t / taw[i];
+        taw[i] = t; raw[i] = params.p * t; satRoom[i] = params.satRoomFrac * cm * 10;
+      }
+    }
     const inSeason = season ? season.has(dayIndex(day.date.replace(/-/g, ''))) : temps.reduce((s, v) => s + v, 0) / temps.length >= params.seasonC;
     if (month !== lastMonth) { // curve numbers and drainage follow the month's water table
       for (let i = 0; i < N; i++) {
@@ -500,6 +520,8 @@ export function simulate(model, days, { irrigate = null, start = null, record = 
     if (inSeason) tot.seasonDays++;
     if (record) record(d, { Dr, grav, pond, month, inSeason, date: day.date });
   }
+  // back to the working root zone, for what reads the model after the run (the zones' depths)
+  if (rootNow !== 1) for (let i = 0; i < N; i++) { const t = model.tawFull[i]; if (taw[i] > 0) Dr[i] *= t / taw[i]; taw[i] = t; raw[i] = params.p * t; satRoom[i] = params.satRoomFrac * model.rootCm[i] * 10; }
   return { ...tot, end: { Dr, grav, pond, film, snow } };
 }
 

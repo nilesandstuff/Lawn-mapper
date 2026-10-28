@@ -87,6 +87,8 @@
     #print-area button, #print-area .no-print { display: none !important; }
     #busy { display: none !important; }
   }
+  #species .species-group { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 4px 0 8px; align-items: center; }
+  #species .species-group strong { width: 100%; }
 </style>
 </head>
 <body>
@@ -148,7 +150,7 @@
     </div>
     <div class="tools">
       <label class="toggle"><input type="checkbox" id="topsoil"> My lawn has about 4 in of loamy topsoil over the native soil</label>
-      <label class="toggle">Grass: <select id="grass"><option value="cool">cool-season (bluegrass, fescue, rye)</option><option value="warm">warm-season (bermuda, zoysia, St. Augustine)</option></select></label>
+      <details class="toggle" id="species-details"><summary>Which grasses are planted</summary><div id="species"></div></details>
     </div>
     <div id="hint" class="hint"></div>
     <div id="saved" class="dim"></div>

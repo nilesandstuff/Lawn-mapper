@@ -15,7 +15,7 @@
 import { workerIo } from '/lib/browser-io.js';
 import { runSite } from '/lib/site.js';
 import { soilFor, sdaPost } from '/lib/soil.js';
-import { typicalYears, thisWeek, attachStationHours } from '/lib/weather.js';
+import { typicalYears, thisWeek, attachStationHours, soilDaysOver } from '/lib/weather.js';
 import { waterPlan } from '/lib/plan.js';
 import { demAround, terrain, hillside } from '/lib/upslope.js';
 import { powerUrl, typicalYear, growingSeason, SEASON_GP } from '/lib/shade/climate.js';
@@ -56,7 +56,7 @@ function planWith(inputs = {}, zoneOf = null) {
   return waterPlan(r.result, {
     lawnMask: kept.lawn, paved: r.impervious ? r.impervious.paved : null, soil: kept.soil,
     topsoil: !!inputs.topsoil, downspouts: inputs.downspouts || [], gutters: inputs.gutters || [],
-    typical: kept.typical, week: kept.week, season: kept.season, light: kept.light, lightMonths: kept.lightMonths || null, radiation: kept.radiation || null, fenceHeat: kept.fenceHeat || null, windMonths: kept.windMonths || null, shadeKinds: kept.shadeKinds || null, grass,
+    typical: kept.typical, week: kept.week, season: kept.season, species: inputs.species || null, soilTemp: { byDate: kept.soilDays || null, typical: kept.climate?.tSoil || null }, light: kept.light, lightMonths: kept.lightMonths || null, radiation: kept.radiation || null, fenceHeat: kept.fenceHeat || null, windMonths: kept.windMonths || null, shadeKinds: kept.shadeKinds || null, grass,
     texture: inputs.texture || null, parcelMask: r.parcelMask || null, areas: inputs.areas || [], zoneOf,
   });
 }
@@ -77,7 +77,7 @@ async function plan(inputs = {}) {
     zones: p.zones, zoneOf: p.zoneOf, kinds: p.kinds, needMm: p.needMm, soilAt: p.soilAt, multiplier: p.multiplier, rootIn: p.rootIn, needMonth: p.needMonth, wetFromWatering: p.wetFromWatering, wetAnyway: p.wetAnyway, dryShare: p.dryShare,
     roofs: p.roofs, soil: p.soil, weather: p.weather, thisWeek: p.thisWeek, years: p.years, topsoil: p.topsoil,
     standIn: kept.standIn, seconds: (Date.now() - t0) / 1000, shaded: p.shaded, lightByMonth: p.lightByMonth, ownRadiation: p.ownRadiation, fences: p.fences, treeCool: p.treeCool, yardWind: p.yardWind, windInfo: kept.windInfo || null, windJuly: kept.windMonths ? kept.windMonths[6].slice() : null, localWind: kept.wind || null, lightInfo: kept.lightInfo || null, sunShare: p.sunShare,
-    seasonDays: kept.season ? kept.season.size : null, grass, rainFrom: kept.rainFrom, rainShaped: kept.rainShaped || 0, rainStation: kept.rainShaped ? kept.wind.station : null, texture: p.texture,
+    seasonDays: kept.season ? kept.season.size : null, grass, roots: p.roots, rainFrom: kept.rainFrom, rainShaped: kept.rainShaped || 0, rainStation: kept.rainShaped ? kept.wind.station : null, texture: p.texture,
     trouble: Object.values(kept.sources || {}).filter(Boolean),
   };
   self.postMessage({ plan: out }, [out.zoneOf.buffer, out.kinds.buffer, out.soilAt.buffer, out.needMm.buffer, out.wetFromWatering.buffer, out.wetAnyway.buffer, out.dryShare.buffer]);
@@ -113,6 +113,10 @@ async function start(site, inputs) {
   }).catch((err) => ({ units: [], error: err.message })).then((x) => x || { units: [], error: 'no answer' });
   const typicalP = again(() => typicalYears(lat, lng));
   const weekP = again(() => thisWeek(lat, lng, { back: 60 })).catch(() => null);
+  /* THE SOIL'S TEMPERATURE DAY BY DAY (H53): IEMRE's 4-inch soil (a modelled 0-7 cm layer) for each of the plan's ten years and this one, for
+     the roots' rise and fall; kept with the map (the water part) for a season. */
+  const yNow = new Date().getUTCFullYear();
+  const soilTempP = soilDaysOver(lat, lng, yNow - 10, yNow).then((m) => (m.size ? m : null)).catch(() => null);
   /* THE LOCAL WIND (H48): the nearest airport station's ten years, summed -- kept with the map (the water part) and
      used as it is for half a year; otherwise fetched again, beside the lidar, and sent to the page to keep. */
   const keptWind = inputs.wind?.stats && inputs.wind.at && Date.now() - Date.parse(inputs.wind.at) < 182 * 864e5 ? inputs.wind : null;
@@ -172,6 +176,7 @@ async function start(site, inputs) {
   kept.typical = typ.days; kept.rainFrom = typ.rainFrom;
   kept.week = await weekP;
   kept.wind = await windP;
+  kept.soilDays = await soilTempP;
   /* THE TEN YEARS' CLOUDBURSTS (to-do 7, H52): the station's hourly rain over the same ten years gives each rainy day
      of the plan its hours, so rain falling faster than the lawn takes it runs off in the ten-year plan too. */
   kept.rainShaped = 0;

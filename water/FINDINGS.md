@@ -1713,6 +1713,65 @@ median 0.13 in, nine in ten under 0.41, the most 1.70. On one lawn cell, flat, t
 A station 24 km away times a storm that may have passed the lot at another hour, or missed it (the day then keeps
 its total alone): the shapes are the station's, the totals PRISM's 4 km.
 
+### H53. The roots: by species, and through the season from the soil's warmth (water session, 2026-10-28)
+
+The owner: "tackle the seasonal root adjustments, and add species specific root depths... generalized for cool
+season, and separately for warm season, since species data lacks... users will need to check boxes to indicate their
+planted species. When multiple species are planted, pick the average root depths (but choose the most generous
+reasonable working depths per species)." The owner's brief (research-roots-brief.md, from another session's three
+literature passes) and a second pass on its gaps (research-roots-ryegrass.md).
+
+**Depth, by species** (lib/roots.js SPECIES; the plan's root zone was one 8 in for every lawn since 2026-10-20):
+
+| species | working depth | from |
+|---|---|---|
+| Kentucky bluegrass | 8 in | 95% of its root mass in the top 5 in at fairway height, active roots to 12-18 in (Sprague 1932; Sheffer et al. 1987); extension's 6-8 in (K-State, UC) at its top |
+| perennial ryegrass | 8 in | the deepest roots of five cool-season grasses in April (13 in, Koski 1983, Ohio State rhizotron), but a mean root life of 46 days (Gibbs & Reid 1992), so the season's model takes them down by summer |
+| tall fescue | 12 in | two thirds of its root length in the top 12 in, useful roots to 30 (Wu 1985); 10 in in the Irrigation Association's test lawns |
+| fine fescues | 8 in (general) | hard fescue rooted deepest in Sprague's trial; no data for the rest |
+| bentgrass | 6 in | 93% of its root mass in the top 3 in at a green's cut (Sprague 1932) |
+| bermudagrass | 12 in | the densest roots at 8-24 in of seven grasses (Carrow 1996); 8-9 in in the IA's test lawns |
+| zoysiagrass, St. Augustinegrass | 8 in | shallower than bermuda; St. Augustine 75-87% of its roots in the top 6 in |
+| bahiagrass, buffalograss | 12 in | 76% and 62% of their roots in the top 12 in |
+| centipedegrass | 10 in (general) | no depth data |
+| a cool-season lawn, not sure | 8 in | extension's 6-8 in |
+| a warm-season lawn, not sure | 10 in | the IA's 8-9 in, UC's "some warm-season deeper" |
+
+Species checked on the page (a checklist, saved with the map) are averaged (bluegrass and tall fescue: 10 in);
+the group (cool or warm: the growing season, Kc, the depletion allowed) follows the majority of them.
+
+**The season.** The brief's two-part model: production P(T) (Yin's beta function between a base, an optimum and a
+maximum soil temperature) and a daily standing-root index R with heat-driven loss, R(t) = R(t-1) + g P(T) - m(T)
+R(t-1), m = m0 + k max(0, T - Tcrit); fitted on creeping bentgrass (chamber and green data), threshold estimates
+for bluegrass (the cool-season group) and bermudagrass (warm), and now ryegrass from its measured root lives.
+The root zone is the working depth times the index, never under 0.4 of it. Driven by IEMRE's daily "4-inch" soil
+temperature -- ERA5-Land's modelled 0-7 cm layer, the layer most of a lawn's roots are in -- for each of the
+plan's ten years and this one (lib/weather.js soilDaysOver: eleven requests, about a second each, open to
+browsers; all of 2016-2025 answered at the owner's lot), the typical year's from the shade map's climate route.
+Each day of the balance then draws on that day's root zone (balance.js simulate; the depletion scaled with it).
+
+Two of this session's own choices in it (S15): the baseline turnover eases with cold soil as production does, and
+the loss term goes by the day's HIGH soil temperature (production by its mean). Without the first, a Michigan
+winter near 0 C halved the index by March and the year peaked in October, against the brief's own table (roots
+alive at 70-90% through winter, the peak in late spring); without the second, a Great Lakes summer never reached
+the loss zone (the mean of the layer crosses 25 C on about 20 days a summer at the owner's lot, its high on 80-100)
+and the late-summer low the brief and the Rhode Island cores (Stetson & Sullivan 1997) describe did not appear.
+
+The owner's lot, ten actual years, the root zone by month, inches:
+
+| | Jan | Mar | May | Jun | Jul | Aug | Sep | Oct | Nov |
+|---|---|---|---|---|---|---|---|---|---|
+| bluegrass (8 in) | 6.2 | 6.2 | 6.8 | 6.8 | 6.1 | 5.4 | 5.3 | 5.6 | 6.0 |
+| tall fescue (12 in) | 9.2 | 9.4 | 10.2 | 10.2 | 9.1 | 8.1 | 8.0 | 8.5 | 9.0 |
+| bluegrass + ryegrass + tall fescue (9.3 in) | 7.5 | 7.6 | 8.3 | 8.0 | 6.8 | 5.8 | 5.9 | 6.5 | 7.2 |
+
+Late summer about 80% of the June peak for bluegrass (the brief's lawn estimate: 50-75%); ryegrass alone 8 in in
+spring to 4.9 in August on the typical year. The plan on the owner's lawn: the slow ground caps each watering at
+about 0.3 in whatever the roots, so the roots show as frequency -- one more watering in August and in September.
+Over the whole parcel as lawn, the year's watering 10.5 in at the fixed 8 in -> 12.5 for bluegrass by each year's
+own soil (+19%), 9.4 for tall fescue (-11%), 11.3 for the three-grass mix. Checked in a browser on the owner's
+map: the checklist, the re-plan on a change (59 s), the sentence on the report, the species saved (11.6 KB part).
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge
@@ -1747,6 +1806,30 @@ nine unlikely. No ground truth yet: a wet spring on lawns it calls likely and
 unlikely is the check. The soil survey's own monthly water table (lib/soil.js,
 "Wet" layers) IS in the balance: it stops drainage and makes dual-group soils
 the wetter group in those months.
+
+### S15. The roots: what is estimated in them (2026-10-28, with H53)
+
+- No monthly root dataset exists at lawn height in a cool-humid climate (the brief and the second pass agree):
+  the bluegrass, bermudagrass and ryegrass parameters are thresholds and measured root lives, not fitted curves;
+  the Rhode Island cores (Stetson & Sullivan 1997) say "heavy in spring, ceased at the start of summer, resumed in
+  fall" with no numbers. The brief's lawn column (late summer 50-75% of the peak) is its own estimate.
+- The two adjustments to the brief's model are this session's (cold soil easing the turnover; the loss by the
+  day's high); the mapping of the standing-root index to the ROOT ZONE (depth = working depth x index, floor 0.4)
+  is this session's too -- the index is root mass or length, and the top 7.5 cm keeps most of it whatever the
+  season, so the zone likely falls less than the index. Crookston's modelled 12 -> 7 in with less frequent
+  watering and K-State's midsummer "3/4 in twice a week" for tall fescue point the same way.
+- IEMRE's "4-inch" soil is ERA5-Land's modelled 0-7 cm layer, not a probe; the model's thresholds come from 5 cm
+  (Fagerness) and 10 cm (Schlossberg) data. The offset of 3.3 C (high over mean) for series with means only is the
+  owner's lot's median.
+- Ryegrass: Tb 2, To 16, Tm 35, g = m0 0.015, k 0.004, Tcrit 24 (research-roots-ryegrass.md): the lives are
+  measured (46 days mean in pasture; summer roots about 60, autumn 180), the temperatures inferred from bluegrass's
+  and its lesser heat tolerance (Wehner & Watschke 1981). No chamber series of ryegrass root growth against soil
+  temperature was found.
+- The warm-season spring root decline (the index to 0.2, no growth for three weeks after green-up following a cold
+  winter) is the brief's event, tied here to the growing season's first day; its trigger temperature is unverified.
+- Moisture, nitrogen, mowing height and compaction are not in the model (compaction alone: -60% of bluegrass roots
+  at 7.5-15 cm, Dest et al. 2017). What would settle it: cup-cutter cores (0-7.5, 7.5-15, 15-30 cm) every three or
+  four weeks April-November on the owner's lawn, with a soil thermometer at 4 in.
 
 ### S14. Fences' warmth and each spot's wind: the estimates in them (2026-10-27, with H49, H50)
 

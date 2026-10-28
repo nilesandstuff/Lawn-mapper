@@ -285,3 +285,29 @@ export function attachStationHours(days, hours, { minMm = 2.5 } = {}) {
   }
   return n;
 }
+
+/* ---------------------------------------------------------- SOIL TEMPERATURE BY DAY */
+
+/** IEMRE's daily reanalysis over a span: the day's 10 cm (4 in) soil temperature, [the mean of its high and low, the high], C.
+    -> Map 'YYYY-MM-DD' -> [mean, high] (days without one left out). One request a year (about a second). */
+export async function iemreSoilDays(lat, lng, from, to, fetchFn = fetch) {
+  const res = await fetchFn(`https://mesonet.agron.iastate.edu/iemre/multiday/${from}/${to}/${lat.toFixed(4)}/${lng.toFixed(4)}/json`);
+  if (!res.ok) throw new Error(`IEMRE answered ${res.status}`);
+  const out = new Map();
+  for (const r of (await res.json()).data || []) {
+    const hi = r.soil4t_high_f, lo = r.soil4t_low_f;
+    if (Number.isFinite(hi) && Number.isFinite(lo) && r.date) out.set(r.date, [(((hi + lo) / 2 - 32) * 5) / 9, ((hi - 32) * 5) / 9]);
+  }
+  return out;
+}
+
+/** The soil temperature, day by day, over whole years y0..y1 (each year asked for on its own, four at a time;
+    a year that does not answer is left out). -> Map 'YYYY-MM-DD' -> [mean, high] C */
+export async function soilDaysOver(lat, lng, y0, y1, fetchFn = fetch) {
+  const out = new Map();
+  const years = []; for (let y = y0; y <= y1; y++) years.push(y);
+  for (let k = 0; k < years.length; k += 4) {
+    await Promise.all(years.slice(k, k + 4).map((y) => iemreSoilDays(lat, lng, `${y}-01-01`, `${y}-12-31`, fetchFn).then((m) => { for (const [d, v] of m) out.set(d, v); }).catch(() => {})));
+  }
+  return out;
+}

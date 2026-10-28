@@ -20,6 +20,8 @@
  */
 
 import { rootZone, maxSprinklerRate, withTexture, layersOf } from './soil.js';
+import { workingCm, speciesOf, groupOf, typicalRoots, attachRootRatio, rootsByMonth, SPECIES } from './roots.js';
+import { dayIndex } from './shade/climate.js';
 import { maskOf } from './geo.js';
 import { roofRouting } from './gutters.js';
 import { buildModel, simulate, idealIrrigation, zoneIrrigation, schedulingMultiplier, PARAMS, WARM } from './balance.js';
@@ -50,7 +52,7 @@ const DEFAULT_SOIL = { name: 'no survey soil here (a loam assumed)', drainage: '
  *   topsoil (bool), downspouts, gutters, typical (days), week ({ days, today }), light (Float32Array | null),
  *   zoneOf (Int16Array, the user's own zones, optional), params
  */
-export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, topsoil = false, downspouts = [], gutters = [], typical, week = null, light = null, lightMonths = null, radiation = null, fenceHeat = null, windMonths = null, shadeKinds = null, season = null, grass = 'cool', texture = null, parcelMask = null, areas = [], zoneOf: userZones = null, params: given = null } = {}) {
+export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, topsoil = false, downspouts = [], gutters = [], typical, week = null, light = null, lightMonths = null, radiation = null, fenceHeat = null, windMonths = null, shadeKinds = null, season = null, grass = 'cool', species = null, soilTemp = null, texture = null, parcelMask = null, areas = [], zoneOf: userZones = null, params: given = null } = {}) {
   // warm-season turf (owner 2026-10-18): FAO-56's p 0.5 in place of cool-season's 0.4
   const params = given || (grass === 'warm' ? { ...PARAMS, ...WARM } : PARAMS);
   const g = res.grid, N = g.W * g.H;
@@ -73,10 +75,14 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
   }
   const wallNow = Uint8Array.from(kinds, (k) => (k === KIND.roof ? 1 : 0));
   const units = (soil.units.length ? soil.units : [DEFAULT_SOIL]).map((u) => (texture ? withTexture(u, texture) : u));
+  /* THE ROOTS (H53): the working depth from the species checked (the group's general figure with none), and each
+     soil's available water cm by cm down to it, for the day's shallower roots (balance.js simulate). */
+  const ids = speciesOf(species, grass), rootCm = workingCm(species, grass);
   const soils = [];
+  const tableFor = (profile, topsoil) => { const t = new Float32Array(Math.ceil(rootCm) + 1); for (let cm = 1; cm < t.length; cm++) t[cm] = rootZone(profile, { rootCm: cm, topsoil })?.tawMm ?? 0; return t; };
   for (const u of units) {
-    soils.push({ unit: u, rz: rootZone(u.profile), drainage: u.drainage, hydgrp: u.hydgrp, wetByMonth: u.wetByMonth });
-    soils.push({ unit: u, rz: rootZone(u.profile, { topsoil: true }), drainage: u.drainage, hydgrp: u.hydgrp, wetByMonth: u.wetByMonth, topsoil: true });
+    soils.push({ unit: u, rz: rootZone(u.profile, { rootCm }), tawByCm: tableFor(u.profile, false), drainage: u.drainage, hydgrp: u.hydgrp, wetByMonth: u.wetByMonth });
+    soils.push({ unit: u, rz: rootZone(u.profile, { rootCm, topsoil: true }), tawByCm: tableFor(u.profile, true), drainage: u.drainage, hydgrp: u.hydgrp, wetByMonth: u.wetByMonth, topsoil: true });
   }
   const soilAt = new Int16Array(N).fill(0);
   units.forEach((u, k) => {
@@ -90,6 +96,19 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
   const roofs = roofRouting(g, wallNow, res.runoff.filled, { downspouts, gutters });
   const model = buildModel(res, { kinds, soilAt, soils, roofTo: roofs.roofTo, light, lightMonths: light ? lightMonths : null, radiation: light ? radiation : null, fenceHeat: light ? fenceHeat : null, windMonths, shadeKinds: light ? shadeKinds : null, params });
   for (let i = 0; i < N; i++) if (deckCells[i]) { model.etFactor[i] *= params.deckShelter; model.etBase[i] *= params.deckShelter; }
+  /* The roots through the season: each day of the ten years (and of this week) takes its root-zone share from the
+     10 cm soil temperature -- the day's own where IEMRE gave it, else the typical year's (roots.js). The warm-season
+     spring decline is tied to the growing season's first day after a cold winter. */
+  const greenUp = grass === 'warm' && season && season.size && season.size < 360 ? Math.min(...season) : null;
+  const tTyp = soilTemp?.typical?.length === 365 ? soilTemp.typical : null;
+  let rootsTyp = tTyp ? typicalRoots(tTyp, species, grass, { greenUp }) : null;
+  let rootOwnDays = 0;
+  if (tTyp || soilTemp?.byDate) {
+    rootOwnDays = attachRootRatio(typical, { soilByDate: soilTemp?.byDate || null, typical: tTyp, ids: species, group: grass, greenUp, dayIndex });
+    // the roots by month from the years themselves, when most days had their own soil temperature
+    if (rootOwnDays > typical.length / 2) rootsTyp = rootsByMonth(typical, rootCm, dayIndex) || rootsTyp;
+    if (week?.days?.length) attachRootRatio(week.days, { soilByDate: soilTemp?.byDate || null, typical: tTyp, ids: species, group: grass, greenUp, dayIndex });
+  }
   // the most a day's watering can put down, cell by cell (PARAMS.cyclesPerDay runs of an hour's intake),
   // as water reaching the grass: what is put down, over the scheduling multiplier
   const SM = schedulingMultiplier(params);
@@ -207,7 +226,8 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
     wetAnyway[i] = rainOnly.wetDays[i] / Math.max(1, rainOnly.seasonDays);
   }
   return {
-    multiplier: SM, rootIn: (soils[0]?.rz?.rootCm ?? 20.32) / 2.54,
+    multiplier: SM, rootIn: rootCm / 2.54,
+    roots: { species: ids.map((id) => ({ id, name: SPECIES[id].name, workingIn: SPECIES[id].workingIn, general: !!SPECIES[id].general })), workingIn: Math.round((rootCm / 2.54) * 10) / 10, typical: rootsTyp, ownDays: rootOwnDays, ofDays: typical.length },
     zones: out, zoneOf: zones.zoneOf, userZones: !!zones.user, kinds, needMm,
     // each cell's soil, as the index of its unit in soil below (the soil view)
     soilAt: Int16Array.from(soilAt, (v) => v >> 1), needMonth: pm, wetShare, dryShare, wetFromWatering, wetAnyway,
