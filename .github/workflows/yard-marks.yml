@@ -1,0 +1,47 @@
+name: 46. Read the auto-front marks
+
+# The owner's verdicts on the auto-front check (sections tool, ?lot=next;
+# worker/src/yard-marks.js), printed at the end of the log so the core
+# session can read them without a cookie. FREE and read-only: one object out
+# of the corpus bucket.
+#
+# Street names are masked in the log (a street a lot faces is part of an
+# address); the lot ids are the corpus's own "lng,lat" keys.
+on:
+  workflow_dispatch:
+
+jobs:
+  read:
+    name: Print the marks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+
+      - name: Fetch the marks
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npx wrangler r2 object get lawn-mapper-corpus/yards/marks.json --file marks.json --remote \
+            || { echo "No marks file yet (nothing marked, or the bucket is not reachable)."; echo '{"marks":{}}' > marks.json; }
+
+      - name: The marks
+        run: |
+          node -e '
+            const { marks = {} } = JSON.parse(require("fs").readFileSync("marks.json", "utf8"));
+            const mask = (s) => String(s || "").replace(/\b\d{1,6}\s+[A-Za-z][^,;.]*/g, "[address]");
+            const rows = Object.entries(marks).sort((a, b) => String(a[1].at).localeCompare(String(b[1].at)));
+            const t = { right: 0, wrong: 0, skip: 0 };
+            for (const [, m] of rows) t[m.verdict] = (t[m.verdict] || 0) + 1;
+            console.log(`\n${rows.length} marks: ${t.right} right, ${t.wrong} wrong, ${t.skip} skipped\n`);
+            for (const [id, m] of rows) {
+              const i = m.info || {};
+              const how = i.error ? `error: ${i.error}` : `${i.matched ? "matched" : "nearest street"}, faces ${i.facing}${i.facesCorner ? ", set to the corner" : ""}${i.cornerStrip ? ", corner strip" : i.sideStreet ? ", side street near" : ""}, house ${i.houseSqM} m2`;
+              console.log(`${m.verdict.toUpperCase().padEnd(6)} ${id}  ${how}${m.note ? `\n       note: ${mask(m.note)}` : ""}`);
+            }
+          '
