@@ -443,7 +443,8 @@ export function sprinklers(ctx) {
   async function buildSchedule() {
     const G = ctx.analysisGrid?.();
     if (!G || !ctx.planReady?.() || !cat || !solve()) { sched.state = 'waiting'; if (step === 'schedule') render(); return; }
-    const key = solvedKey + JSON.stringify(irr.heads.map((h) => [h.dir, h.arc, h.throw, h.zone]));
+    // the heads' geometry, the pressure solve, and what the plan was asked (the watering mode, the grasses, the areas): any change to those is a new schedule
+    const key = solvedKey + JSON.stringify(irr.heads.map((h) => [h.dir, h.arc, h.throw, h.zone])) + (ctx.planKey?.() || '');
     if (key === sched.key && (sched.state === 'ready' || sched.state === 'working')) return;
     sched = { key, state: 'working', plan: null, vz: null, error: '' };
     ctx.busy?.('schedule', "Working out each zone's watering over ten years of your weather…");
@@ -1654,7 +1655,7 @@ export function sprinklers(ctx) {
     /** The ground came in (or anything the solve reads): solve again and show it. */
     refresh() { solvedKey = ''; if ((step === 'arcs' || step === 'fixes') && arcPhase === 'waiting') startArcs({ refit: true }); if (step === 'schedule' && sched.state !== 'ready') buildSchedule(); if (step) render(); else ctx.draw(); },
     /** The watering plan came in (the soil and the weather): the schedule step can go on. */
-    planIn() { if ((step === 'schedule' || (irr.done && !irr.none)) && sched.state !== 'ready' && sched.state !== 'working') buildSchedule(); },
+    planIn() { if (step === 'schedule' || (irr.done && !irr.none)) buildSchedule(); }, // (nothing happens when the schedule's key is unchanged)
     /** The watering by sprinkler zone, for the plan's report (owner, 2026-10-27: "Recommendations should be based on
         sprinkler zones"): its card, a note while it is worked out, or null without mapped sprinklers. */
     scheduleCard() {

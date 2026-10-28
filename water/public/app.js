@@ -608,6 +608,7 @@ const heads = sprinklers({
   },
   changed: () => keep(),
   get mode() { return inputs.mode; }, setMode: (m) => setWateringMode(m),
+  planKey: () => JSON.stringify([inputs.mode, inputs.species, inputs.grass, inputs.topsoil, inputs.areas, inputs.downspouts, inputs.gutters]),
   busy: (key, text) => busy(key, text),
   finish: () => { $('#result').classList.remove('heads-on'); legend(); draw(); headsCard(); if (view.data) report(view.data, view.site); if (view.plan) planReport(view.plan); },
 });
