@@ -1413,8 +1413,8 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
    *
    *   yard-lots        the approved lots with a county parcel, newest first,
    *                    each with its mark if any, and the tally
-   *   yard-lot?id=     one lot: its lawn, its parcel (whose county record
-   *                    carries the street address) and its point
+   *   yard-lot?id=     one lot: its lawn, its parcel, its point, and its
+   *                    street from a reverse lookup of the point (not kept)
    *   yard-marks       GET the marks and the tally; POST { id, verdict, note, info }
    */
   if (path === 'yard-lots') {
@@ -1424,11 +1424,7 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
         ORDER BY at DESC LIMIT 400`
     ).all()).results || [];
     const marks = env.CORPUS ? await readMarks(env.CORPUS) : {};
-    const lots = rows.map((r) => {
-      let street = null;
-      try { street = JSON.parse(r.parcel)?.properties?.address || null; } catch { street = null; }
-      return { id: r.id, lng: r.lng, lat: r.lat, county: r.county || null, address: street, mark: marks[r.id]?.verdict || null };
-    });
+    const lots = rows.map((r) => ({ id: r.id, lng: r.lng, lat: r.lat, county: r.county || null, mark: marks[r.id]?.verdict || null }));
     return json({ lots, tally: tally(marks) }, 200, origin);
   }
 
@@ -1441,8 +1437,23 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
     try { shapes = JSON.parse(r.shapes || '[]'); } catch { shapes = []; }
     try { frame = r.frame ? JSON.parse(r.frame) : null; } catch { frame = null; }
     const marks = env.CORPUS ? await readMarks(env.CORPUS) : {};
+    /* THE STREET. The corpus keeps no address, deliberately (see the
+       candidates route), so the auto-front check looks the lot's point up
+       at the moment it is asked for, answers the street name alone, and
+       keeps nothing. A failed lookup is a lot with no street: the rule then
+       takes the nearest road, or says it cannot tell on a corner. */
+    let street = null;
+    const token = env.MAPBOX_SERVER_TOKEN || env.MAPBOX_TOKEN;
+    if (token && Number.isFinite(r.lng) && Number.isFinite(r.lat)) {
+      try {
+        const q = new URLSearchParams({ longitude: String(r.lng), latitude: String(r.lat), access_token: token, types: 'address', limit: '1' });
+        const res = await fetch(`https://api.mapbox.com/search/geocode/v6/reverse?${q}`, { signal: AbortSignal.timeout(6000) });
+        const f = res.ok ? (await res.json())?.features?.[0] : null;
+        street = f?.properties?.context?.street?.name || f?.properties?.context?.address?.street_name || null;
+      } catch { street = null; }
+    }
     return json({
-      lot: { id: r.id, lng: r.lng, lat: r.lat, county: r.county || null, address: parcel?.properties?.address || null, parcel, shapes, frame },
+      lot: { id: r.id, lng: r.lng, lat: r.lat, county: r.county || null, street, parcel, shapes, frame },
       mark: marks[r.id] || null,
     }, 200, origin);
   }

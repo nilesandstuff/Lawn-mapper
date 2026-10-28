@@ -65,7 +65,8 @@ async function openLot(id) {
   const { lot, mark } = await res.json();
   if (!lot) return null;
   view.lot = { id: lot.id, mark };
-  return { id: null, address: lot.address || `${lot.lat?.toFixed(5)}, ${lot.lng?.toFixed(5)}`, lng: lot.lng, lat: lot.lat, parcel: lot.parcel, shapes: lot.shapes || [], tools: {} };
+  // The corpus keeps no address (deliberately); the street comes from a lookup of the lot's point, and is never kept.
+  return { id: null, address: `Corpus lot${lot.county ? `, ${lot.county}` : ''}`, street: lot.street || null, lng: lot.lng, lat: lot.lat, parcel: lot.parcel, shapes: lot.shapes || [], tools: {} };
 }
 
 async function start() {
@@ -115,6 +116,7 @@ async function start() {
   render();
   fitView();
   $('#auto').hidden = !view.admin;
+  $('#auto-sides-label').hidden = !view.admin;
   if (view.lot) {
     $('#review').hidden = false;
     reviewBar();
@@ -163,9 +165,14 @@ async function autoFront() {
   let data;
   try { data = await streetsAndBuildings(); } catch (e) { hint(`The streets could not be read: ${e.message}`, true); btn.disabled = false; return; }
   const lawn = view.shapes;
-  const r = autoYards(clip, { parcel: view.record.parcel, buildings: data.buildings, roads: data.roads, address: view.record.address, lawn });
+  const sides = $('#auto-sides').checked;
+  const r = autoYards(clip, {
+    parcel: view.record.parcel, buildings: data.buildings, roads: data.roads, lawn, sides,
+    address: view.record.address, street: view.record.street || null,
+    point: Number.isFinite(view.record.lng) && Number.isFinite(view.record.lat) ? [view.record.lng, view.record.lat] : null,
+  });
   btn.disabled = false;
-  if (r.error) { view.lastAuto = { error: r.error }; hint(r.error, true); return; }
+  if (r.error) { view.lastAuto = { ...(r.info || {}), error: r.error, unclear: Boolean(r.unclear) }; if (data.buildings.length) drawBuildings(data.buildings); hint(r.error, true); return; }
   // Only the house it chose is drawn: the one with the most of itself on the lot.
   drawBuildings(data.buildings);
   view.lastAuto = r.info;
@@ -173,7 +180,7 @@ async function autoFront() {
   const sections = r.sections.map((s) => ({ id: id++, name: s.name, poly: s.poly }));
   const i = r.info;
   const where = `${i.matched ? 'faces' : 'nearest street,'} ${i.street}, ${i.facing}`;
-  const extra = i.facesCorner ? ', set to the corner' : i.cornerStrip ? `, corner lot with ${i.sideStreet}` : i.sideStreet ? `, ${i.sideStreet} near` : '';
+  const extra = (i.facesCorner ? ', set to the corner' : i.cornerStrip ? `, corner lot with ${i.sideStreet}` : i.sideStreet ? `, ${i.sideStreet} near` : '') + (i.pinched ? `, ${i.pinched} pinch${i.pinched > 1 ? 'es' : ''}` : '') + (i.otherBuilding ? ', another building on the lot' : '');
   apply({ sections }, `Auto front: ${where}${extra}. Check it, then fix anything by hand.`);
 }
 
@@ -188,6 +195,7 @@ function drawBuildings(buildings) {
 }
 
 $('#auto').addEventListener('click', () => { if (view.map) autoFront(); });
+$('#auto-sides').addEventListener('change', () => { if (view.map && view.lastAuto) autoFront(); });
 
 /* ------------------------------------------------------------- the check */
 

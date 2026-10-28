@@ -41,7 +41,7 @@ jobs:
             console.log(`\n${rows.length} marks: ${t.right} right, ${t.wrong} wrong, ${t.skip} skipped\n`);
             for (const [id, m] of rows) {
               const i = m.info || {};
-              const how = i.error ? `error: ${i.error}` : `${i.matched ? "matched" : "nearest street"}, faces ${i.facing}${i.facesCorner ? ", set to the corner" : ""}${i.cornerStrip ? ", corner strip" : i.sideStreet ? ", side street near" : ""}, house ${i.houseSqM} m2`;
+              const how = i.error ? `${i.unclear ? "unclear" : "error"}: ${mask(i.error)}` : `${i.matched ? "matched" : i.hadStreet ? "street not found, nearest" : "no street, nearest"}, faces ${i.facing}${i.facesCorner ? ", set to the corner" : ""}${i.cornerStrip ? ", corner strip" : i.sideStreet ? ", side street near" : ""}${i.sides ? ", sides kept" : ""}${i.pinched ? `, ${i.pinched} pinch` : ""}${i.otherBuilding ? ", another building" : ""}, house ${i.houseSqM} m2`;
               console.log(`${m.verdict.toUpperCase().padEnd(6)} ${id}  ${how}${m.note ? `\n       note: ${mask(m.note)}` : ""}`);
             }
           '

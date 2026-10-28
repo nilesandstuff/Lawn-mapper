@@ -19,12 +19,27 @@ goes with the front. The owner's two corner-lot drawings both fit it.
 Built as a prototype, admin only: the "Auto front" button in the sections
 tool, and the check: /sections?lot=next (or ?lot=<corpus id>) opens a corpus lot with the
 proposal and a Right / Wrong / Skip bar (marks in the corpus bucket,
-yards/marks.json; /api/admin/yard-lots lists the lots and the tally).
+yards/marks.json; /api/admin/yard-lots lists the lots and the tally;
+workflow 46 prints the marks).
 
-- The owner marks about 20 lots, corner lots included. Then: fix what the
-  wrong ones show, or open the button to everyone.
-- Open questions: condo loops (does Overture name the loop road?); a house
-  addressed on one street with its door on the other.
+After the first 12 marks (6 right, 5 wrong, 1 skipped; all by the nearest
+street, because the corpus keeps no address) the owner's second round of
+rules, 2026-10-28, now in the code:
+- Sides are optional ("Keep sides"). By default a side goes with the
+  front when nothing restricts it; a barrier (ground that is not lawn, or
+  a sudden pinch to under 3 ft) cuts it off: cut from the back it goes
+  with the front, cut from the front with the back, cut from both it is
+  secluded, and secluded is back.
+- No clear answer, no answer: two sides facing the street equally with
+  no corner; a house not facing its street; a building straddling the
+  lot line; no road named like the address on a lot with two streets.
+- The lot's street comes from a reverse lookup of its point (answered,
+  never kept); the house is the building nearest the map's point.
+- Fences across grass are still invisible: the trace does not stop at
+  them. One wrong mark (a fenced-in strip behind the house) stays wrong.
+
+Next: the owner marks another round. Then open the button to everyone or
+not.
 
 ### 2. Research: sections cut automatically from words (owner, 2026-10-24)
 

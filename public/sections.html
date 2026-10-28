@@ -43,6 +43,8 @@
   button:disabled { opacity: .4; }
   /* A fixed height: a list that grew with each cut would shrink the map and
      slide the lawn under the tools. */
+  .check { display: inline-flex; align-items: center; gap: 6px; padding: 0 8px; font-size: 13px; white-space: nowrap; color: #ccc; }
+  .check input { width: 18px; height: 18px; }
   .review { border-top: 1px solid #333; align-items: center; }
   .review .tally { flex: 1 0 auto; font-size: 13px; color: #c5e1a5; white-space: nowrap; }
   .review button { flex: 0 0 auto; }
@@ -80,7 +82,8 @@
     <button data-tool="join" aria-pressed="false">Join</button>
     <button id="shape-done" class="primary" hidden>Cut shape</button>
     <button id="undo" disabled>Undo</button>
-    <button id="auto" hidden title="Front, back and sides from the address">Auto front</button>
+    <button id="auto" hidden title="Front and back from the address">Auto front</button>
+    <label id="auto-sides-label" class="check" hidden><input type="checkbox" id="auto-sides"> Keep sides</label>
   </div>
   <!-- The auto-front check (admin, owner 2026-10-28): a corpus lot opened with ?lot=, marked right or wrong. -->
   <div class="tools review" id="review" hidden>
