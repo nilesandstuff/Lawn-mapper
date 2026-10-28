@@ -506,6 +506,11 @@ jobs:
   extract:
     name: Extract with PyTorch
     runs-on: ubuntu-latest
+    # The NAIP alignment pictures are pushed to a branch (S67), which the
+    # job's token may only do with this. Without it the push was refused and
+    # took the whole extract job down with it (runs 260 and 261, 2026-10-28).
+    permissions:
+      contents: write
     # Generous rather than tight. 1280px is roughly 70 minutes of extraction on
     # a CPU plus the scoring, and a cap that cut that off would waste the whole
     # run at the last step. Three hours is still far short of the six-hour
@@ -857,6 +862,8 @@ jobs:
       # when NAIP was read fresh (`cache: rebuild`, or the frames changed).
       - name: Publish the NAIP alignment pictures
         if: ${{ steps.naip.outcome == 'success' }}
+        # Pictures are for looking at: a push that fails must never end a run.
+        continue-on-error: true
         run: |
           set -e
           b="pictures/naip-align-${{ github.run_number }}"
