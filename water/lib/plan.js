@@ -165,9 +165,12 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
        zone's sun and heat) times the scheduling multiplier, in waterings of what a day's cycles allow. The
        figure to set a controller by; rain skips waterings (the typical month above counts it). */
     const each = (peak.mmEach || med(cells.map((i) => Math.min(model.raw[i], model.dayCapMm[i]))) * SM);
-    const dryMm = (wx[peak.month].grassUseMm / DAYS_IN[peak.month]) * 7 * med(cells.map((i) => model.etFactor[i])) * SM;
+    const dryMm = (wx[peak.month].grassUseMm / DAYS_IN[peak.month]) * 7 * med(cells.map((i) => model.etFactor[i])) * SM * (params.mode === 'deficit' ? params.refill : 1);
+    // dormancy (H54): a dry spell gets the survival watering once in survival.days, not the week's use
+    const dryWeek = params.mode === 'dormancy' ? { month: peak.month, mm: params.survival.mm * SM, each: params.survival.mm * SM, waterings: 1, everyDays: params.survival.days }
+      : { month: peak.month, mm: dryMm, each, waterings: Math.max(1, Math.round(dryMm / Math.max(0.1, each))) };
     out.push({
-      dryWeek: { month: peak.month, mm: dryMm, each, waterings: Math.max(1, Math.round(dryMm / Math.max(0.1, each))) },
+      dryWeek,
       takesInPerH: takes, cycles: { spray: cyclesFor(1.5), rotor: cyclesFor(0.5) },
       zone: z, m2: cells.length * g.cell * g.cell,
       depthMm: med(cells.map((i) => Math.min(model.raw[i], model.dayCapMm[i]))) * SM,

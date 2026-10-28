@@ -502,9 +502,9 @@ export function sprinklers(ctx) {
         if (each) bits.push(`each watering puts down about ${each < 0.1 ? 'under 0.1' : each.toFixed(2)} in${s0.sm > 1.05 ? `, ${Math.round((s0.sm - 1) * 100)}% more than the grass uses, so the zone's driest quarter gets enough` : ''}`);
         if (s0.takesInH && s0.rateInH > s0.takesInH) bits.push(`faster than its slowest ground takes water in (${s0.takesInH.toFixed(2)} in/h), hence the runs an hour apart`);
         if (s0.skipAfterIn) bits.push(`skip a watering after about ${s0.skipAfterIn.toFixed(2)} in of rain`);
-        if (s0.dry) bits.push(`in a week with no rain in ${MONTH[s0.dry.month]}: ${s0.dry.waterings} watering${s0.dry.waterings > 1 ? 's' : ''} of ${runWords(s0.dry)}`);
+        if (s0.dry) bits.push(r.pz.dryWeek?.everyDays ? `in a dry spell: one watering of ${runWords(s0.dry)} every ${r.pz.dryWeek.everyDays} days, enough to keep the grass alive` : `in a week with no rain in ${MONTH[s0.dry.month]}: ${s0.dry.waterings} watering${s0.dry.waterings > 1 ? 's' : ''} of ${runWords(s0.dry)}`);
         const pz = r.pz, warn = [];
-        if (pz.tooDry > 0) warn.push(`about ${Math.round(pz.tooDry * 10.76 / 10) * 10} sq ft of it still dries out between waterings, and running the whole zone longer would over-water the rest`);
+        if (pz.tooDry > 0 && (ctx.mode || 'normal') === 'normal') warn.push(`about ${Math.round(pz.tooDry * 10.76 / 10) * 10} sq ft of it still dries out between waterings, and running the whole zone longer would over-water the rest`);
         if (pz.tooWet > 0) warn.push(`about ${Math.round(pz.tooWet * 10.76 / 10) * 10} sq ft of it gets too wet on this schedule (it takes water from a roof, paving or uphill too)`);
         if (pz.wetAnyway > 0) warn.push(`about ${Math.round(pz.wetAnyway * 10.76 / 10) * 10} sq ft stays wet with no watering at all: drainage, not watering`);
         const next = r.next ? `Next watering: likely <strong>${new Date(`${r.next.date}T12:00:00Z`).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric', timeZone: 'UTC' })}</strong>, ${runWords(r.next)}.` : '';

@@ -564,7 +564,7 @@ export function idealIrrigation(model) {
     for (let i = 0; i < model.N; i++) {
       if (model.kinds[i] !== 1) continue;
       const most = cap ? cap[i] : Infinity;
-      if (mode === 'dormancy') { if (d - st.lastWet[i] >= survival.days) { out[i] = Math.min(survival.mm, most); any = true; } continue; }
+      if (mode === 'dormancy') { if (d - st.lastWet[i] >= survival.days) { out[i] = Math.min(survival.mm, most); st.lastWet[i] = d; any = true; } continue; } // (the watering counts, even cut by the day's cap)
       const use = st.use * (st.etFactor || model.etFactor)[i];
       if (Dv) {
         const v = Math.max(0, Dv[i] - lastRain) + use;
@@ -606,7 +606,7 @@ export function zoneIrrigation(model, zoneOf, nZones, events = []) {
       if (mode === 'dormancy') {
         // the zone's lawn has gone survival.days without survival.mm: that much, the zone as one
         let since = 0; for (const i of cs) since += d - st.lastWet[i]; since /= cs.length;
-        if (since >= survival.days) { const mm = Math.min(survival.mm, caps[z]); for (const i of cs) out[i] = mm; events.push({ d, zone: z, mm }); any = true; }
+        if (since >= survival.days) { const mm = Math.min(survival.mm, caps[z]); for (const i of cs) { out[i] = mm; st.lastWet[i] = d; } events.push({ d, zone: z, mm }); any = true; }
         continue;
       }
       let dr = 0, rw = 0, use = 0;
