@@ -869,6 +869,7 @@ async function run(site) {
   inputs.wind = kept.wind && typeof kept.wind === 'object' ? kept.wind : null;
   view.layers = null; view.layersRaw = null; view.layerPicked = null; view.layersError = '';
   $('#topsoil').checked = inputs.topsoil;
+  restored = false;
   inputs.mode = ['normal', 'deficit', 'dormancy'].includes(kept.mode) ? kept.mode : 'normal';
   modeBoxes();
   speciesBoxes();
@@ -906,6 +907,7 @@ async function run(site) {
   if (!view.photo) { $('#show-photo').checked = false; view.photo = { width: 1280, height: 1280 }; view.photoName = 'no photo (it would not load)'; }
   $('#result').hidden = false;
   const asking = await heads.open(kept.irrigation);
+  restoredNow();
   $('#result').classList.toggle('heads-on', asking);
   headsCard();
   draw();
@@ -944,6 +946,11 @@ function changed() {
    is written a moment after the last change; a save that fails is tried again until it lands; one that is
    still waiting when the page is closed or put away is sent with keepalive, so it outlives the page. */
 let dirty = false, saving = null, retryTimer = null;
+/* NOT BEFORE THE MAP'S OWN PART IS BACK (found 2026-10-28): the drains and water (loadLayers) can land, and ask
+   to be kept, before the sprinklers have been restored from the map (heads.open, after the photo); a save then
+   would carry an empty sprinkler map over the real one. A change asked for before that waits for it. */
+let restored = false;
+function restoredNow() { restored = true; if (dirty) save(); }
 const MAX_TOOL_BYTES = 64 * 1024; // the unified save's limit for one tool's part
 
 function showSaved(note) {
@@ -969,7 +976,7 @@ const saveUrl = () => `/api/maps/tool?id=${encodeURIComponent(view.site.mapId)}&
 
 async function save() {
   clearTimeout(saveTimer); saveTimer = null;
-  if (!dirty || !view.site?.mapId) return;
+  if (!dirty || !view.site?.mapId || !restored) return;
   if (saving) { await saving; return save(); } // one at a time: a change made meanwhile goes in the next
   dirty = false;
   let body = saveBody();
@@ -996,7 +1003,7 @@ async function save() {
 
 // closing the page, or a phone putting it away, with a change not yet sent: send it now, outliving the page
 function flush() {
-  if (!dirty || !view.site?.mapId) return;
+  if (!dirty || !view.site?.mapId || !restored) return;
   const body = saveBody();
   if (body.length > MAX_TOOL_BYTES) return;
   try { fetch(saveUrl(), { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body, keepalive: true }); dirty = false; } catch { /* the next visit's save will try */ }
