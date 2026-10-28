@@ -210,5 +210,48 @@ check('no road is an error', !!autoYards(clip, lot({ roads: [] })).error);
   check('a rectangle fits a rectangle', box && near(box.area, 40, 0.01) && near(box.centre[0], 5, 0.01) && near(box.centre[1], 2, 0.01), JSON.stringify(box));
 }
 
+/* A fence from the shade map is a barrier: across the east side, it cuts the side in two. */
+{
+  const fence = ll([[21, 17], [30, 17]]);
+  const r = autoYards(clip, lot({ lawn: lawnOf([]), fences: [fence] }));
+  check('a fence across a side cuts it: the near part front, the far part back', !r.error && near(area(r, 'Front'), 360 + 90 + 45, 2) && near(area(r, 'Back'), 540 + 45, 2), sizes(r));
+  if (!r.error) check('the fence gap is given back: the sections add up', near(sum(r), 1080, 0.5), sum(r).toFixed(1));
+  const r2 = autoYards(clip, lot({ lawn: lawnOf([]), fences: [fence], sides: true }));
+  check('with sides kept the fence still leaves one side section of two pieces', !r2.error && near(area(r2, 'Side (east)'), 90, 1) && near(sum(r2), 1080, 0.5), sizes(r2));
+}
+
+/* A COMPLEX: six buildings round a loop road on one lot. */
+{
+  const big = polyM(rectM(0, 0, 160, 120));
+  const loop = { name: null, cls: 'residential', width: 6, lines: [ll([[40, 30], [120, 30], [120, 90], [40, 90], [40, 30]])] };
+  const spec = { A: rectM(70, 39, 90, 51), B: rectM(70, 69, 90, 81), C: rectM(48, 52, 62, 68), D: rectM(70, 9, 90, 21), E: rectM(70, 99, 90, 111), F: rectM(128, 52, 142, 68) };
+  const bldgs = Object.values(spec).map((pts) => [ringLL(pts)]);
+  const bands = [[40, 27, 120, 33], [40, 87, 120, 93], [37, 27, 43, 93], [117, 27, 123, 93]].map((b) => [[ringLL(rectM(...b))]]);
+  const lawn = clip.difference([[ringLL(rectM(0, 0, 160, 120))]], ...bldgs.map((b) => [b]), ...bands).map((poly) => ({ type: 'Polygon', coordinates: poly }));
+  const lawnSqM = lawn.reduce((t, f) => t + geometryAreaSqM(f), 0);
+  const r = autoYards(clip, { parcel: big, buildings: bldgs, roads: [loop], address: null, lawn });
+  check('six buildings round a loop are a complex', !r.error && r.info.complex && r.info.buildings === 6 && r.info.grouping === 'loop', r.error || JSON.stringify(r.info));
+  if (!r.error) {
+    const n = names(r);
+    check('the sections are front and back, inside and outside the loop', /Front \(inside the loop\)/.test(n) && /Back \(inside the loop\)/.test(n) && /Front \(outside the loop\)/.test(n) && /Back \(outside the loop\)/.test(n), n);
+    check('in front of an inner building is front, inside', inside(by(r, 'Front (inside the loop)').poly, [80, 36]) && inside(by(r, 'Back (inside the loop)').poly, [80, 56]));
+    check('in front of an outer building is front, outside', inside(by(r, 'Front (outside the loop)').poly, [80, 24]) && inside(by(r, 'Front (outside the loop)').poly, [125, 60]));
+    check('far from every building is common', !!by(r, 'Common') && inside(by(r, 'Common').poly, [5, 5]), n);
+    check('a complex adds up to its lawn within a cell\'s worth', Math.abs(sum(r) - lawnSqM) / lawnSqM < 0.01, `${sum(r).toFixed(0)} vs ${lawnSqM.toFixed(0)}`);
+    const overlap = (() => { const t = r.sections.map((s) => s.poly); let o = 0; for (let i = 0; i < t.length; i++) for (let j = i + 1; j < t.length; j++) { try { o += sqm(clip.intersection(t[i], t[j])); } catch { o += 1e9; } } return o; })();
+    check('no section overlaps another', overlap < 0.01 * lawnSqM, `overlap ${overlap.toFixed(1)} m2`);
+  }
+  /* Two roads straight through: three blocks, numbered. */
+  const roads3 = [{ name: null, cls: 'residential', width: 6, lines: [ll([[50, -10], [50, 130]])] }, { name: null, cls: 'residential', width: 6, lines: [ll([[110, -10], [110, 130]])] }];
+  const spec3 = { A: rectM(15, 40, 35, 52), B: rectM(15, 70, 35, 82), C: rectM(70, 40, 90, 52), D: rectM(70, 70, 90, 82), E: rectM(125, 40, 145, 52), F: rectM(125, 70, 145, 82) };
+  const bldgs3 = Object.values(spec3).map((pts) => [ringLL(pts)]);
+  const lawn3 = clip.difference([[ringLL(rectM(0, 0, 160, 120))]], ...bldgs3.map((b) => [b]), [[ringLL(rectM(47, 0, 53, 120))]], [[ringLL(rectM(107, 0, 113, 120))]]).map((poly) => ({ type: 'Polygon', coordinates: poly }));
+  const r3 = autoYards(clip, { parcel: big, buildings: bldgs3, roads: roads3, address: null, lawn: lawn3 });
+  check('two roads through a lot make three numbered blocks', !r3.error && r3.info.grouping === '3 blocks' && /Front \(block 1\)/.test(names(r3)) && /block 3/.test(names(r3)), r3.error || `${JSON.stringify(r3.info)} ${names(r3)}`);
+  /* Buildings but no road inside: no clear answer. */
+  const r4 = autoYards(clip, { parcel: big, buildings: bldgs, roads: [road('Example Street', [[-60, -8], [200, -8]])], address: null, lawn });
+  check('a complex with no road inside is no clear answer', r4.unclear && /no road inside/.test(r4.error), r4.error);
+}
+
 console.log(failures ? `\n${failures} check(s) failed` : '\nall yards checks passed');
 process.exit(failures ? 1 : 0);

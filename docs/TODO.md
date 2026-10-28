@@ -38,8 +38,23 @@ rules, 2026-10-28, now in the code:
 - Fences across grass are still invisible: the trace does not stop at
   them. One wrong mark (a fenced-in strip behind the house) stays wrong.
 
-Next: the owner marks another round. Then open the button to everyone or
-not.
+Complex mode (owner, 2026-10-28: the Byron Center condos, "the front
+yards in the inner edge of the loop are X square foot in total"): three or
+more buildings on one lot with a road inside it. Every building is a house
+facing the nearest point of the inside road (no address needed; the loop
+has no name in the data); the ground is divided by nearest building, each
+share cut by that building's lines; the roads cut the lot into blocks, and
+the sections are grouped by block: "inside the loop" / "outside the loop"
+when one block is enclosed by the other, else "block 1, 2, ...". Lawn more
+than 30 m from any building is "Common". Worked on a grid, not with the
+clipper; the sections are traced off it and trimmed to the lawn.
+
+Fences drawn on the shade map (tools.shade.data.fences, read by the water
+map too) are read when the map has them: each is a 30 cm gap for the
+working, given back to the section beside it after.
+
+Next: the owner marks another round, and tries the condo map. Then open
+the button to everyone or not.
 
 ### 2. Research: sections cut automatically from words (owner, 2026-10-24)
 

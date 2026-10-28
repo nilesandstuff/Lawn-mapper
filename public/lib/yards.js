@@ -416,13 +416,27 @@ function splitAtNecks(clip, piece, g) {
  * MultiPolygon in [lng, lat]; { error, unclear: true, info } when there is
  * no clear answer; { error } when the data is not there.
  */
-export function autoYards(clip, { parcel, buildings, roads, address, street, point, lawn, sides = false }) {
+export function autoYards(clip, { parcel, buildings, roads, address, street, point, lawn, fences = [], sides = false }) {
   const parcelRing = ringOf(parcel);
   if (!parcelRing) return { error: 'This map has no property line. Draw or find one in the Lawn Mapper first.' };
   const frame = makeFrame(centroid(parcelRing));
   const P = [openRing(parcelRing).map((q) => snap(frame.toXY(q)))];
   P[0].push(P[0][0]);
   const at = point && Number.isFinite(point[0]) && Number.isFinite(point[1]) ? frame.toXY(point) : null;
+
+  /* THE LAWN, and the fences cut through it (owner, 2026-10-28: "most lawn
+     traces go right through fences"): each fence from the shade map is a
+     30 cm gap in the lawn for the working, and the gap is given back to
+     the section beside it at the end, so the sections still add up. */
+  const lawnM = lawnPolys(lawn).map((poly) => poly.map((r) => r.map((q) => snap(frame.toXY(q)))));
+  if (!lawnM.length) return { error: 'This map has no lawn yet.' };
+  let original;
+  try { original = clip.union(...lawnM.map((p) => [p])); } catch { return { error: 'The lawn shapes could not be read.' }; }
+  const fenceM = (fences || []).map((line) => (line || []).filter((q) => Array.isArray(q) && Number.isFinite(q[0])).map((q) => snap(frame.toXY(q)))).filter((l) => l.length >= 2);
+  let whole = original;
+  for (const line of fenceM) for (let i = 1; i < line.length; i++) {
+    try { whole = clip.difference(whole, bandOf(line[i - 1], line[i], FENCE_M / 2)); } catch { /* a fence that will not cut is a fence not seen */ }
+  }
 
   /* THE HOUSE. Every building mostly on the lot is a candidate; the one
      nearest the map's point wins (the point is the address, and a barn
@@ -442,6 +456,15 @@ export function autoYards(clip, { parcel, buildings, roads, address, street, poi
   }
   if (!candidates.length) return { error: 'No building outline was found on this lot, so there is no house to work the front out from.' };
   const onLot = candidates.filter((c) => c.share >= 0.5);
+
+  /* A COMPLEX (owner, 2026-10-28: the condo loop): several buildings on
+     one lot, and a road inside it. Every building is a house, and the
+     fronts are grouped by the blocks the roads make. */
+  const largest = Math.max(...onLot.map((c) => c.area), 0);
+  const bigOnes = onLot.filter((c) => c.area >= Math.max(150, 0.3 * largest));
+  if (bigOnes.length >= 3) {
+    return complexYards(clip, { frame, P, buildings: bigOnes, roads, original, whole, fenceM, sides });
+  }
   let chosen;
   if (!onLot.length) chosen = candidates.sort((a, b) => b.inside - a.inside)[0];
   else if (at) chosen = onLot.sort((a, b) => len(sub(a.box.centre, at)) - len(sub(b.box.centre, at)))[0];
@@ -538,10 +561,6 @@ export function autoYards(clip, { parcel, buildings, roads, address, street, poi
   info.cornerStrip = Boolean(cornerStrip);
 
   /* THE LAWN, CUT into pieces, each one polygon with a region. */
-  const lawnM = lawnPolys(lawn).map((poly) => poly.map((r) => r.map((q) => snap(frame.toXY(q)))));
-  if (!lawnM.length) return { error: 'This map has no lawn yet.' };
-  let whole;
-  try { whole = clip.union(...lawnM.map((p) => [p])); } catch { return { error: 'The lawn shapes could not be read.' }; }
   let pieces = [];
   for (const p of clip.intersection(whole, frontRegion)) pieces.push({ poly: p, region: 'front', area: polyArea(p) });
   for (const p of clip.intersection(whole, backRegion)) pieces.push({ poly: p, region: 'back', area: polyArea(p) });
@@ -635,6 +654,9 @@ export function autoYards(clip, { parcel, buildings, roads, address, street, poi
     }
   }
 
+  /* THE FENCE GAPS, given back to the piece beside each. */
+  if (fenceM.length) giveBack(clip, g, pieces, original);
+
   /* THE SECTIONS. */
   const toLL = (multi) => multi.map((poly) => poly.map((r) => r.map(frame.toLngLat)));
   const of = (region) => pieces.filter((p) => p.region === region).map((p) => p.poly);
@@ -647,6 +669,350 @@ export function autoYards(clip, { parcel, buildings, roads, address, street, poi
     for (const p of pieces.filter((x) => x.region === 'side')) (dot(centroid(p.poly[0]), L) < dot(centre, L) ? left : right).push(p.poly);
     if (left.length) out.push({ name: `Side (${compassOf(mul(L, -1))})`, poly: toLL(left) });
     if (right.length) out.push({ name: `Side (${compassOf(L)})`, poly: toLL(right) });
+  }
+  return { sections: out, info };
+}
+
+/* ------------------------------------------------------------------ fences */
+
+/** A fence is this wide a gap in the lawn, for the working. */
+export const FENCE_M = 0.3;
+
+/** A rectangle of half-width `hw` along the segment ab. */
+function bandOf(a, b, hw) {
+  const d = unit(sub(b, a)); const n = mul(perp(d), hw);
+  const ring = [add(a, n), add(b, n), sub(b, n), sub(a, n)].map(snap);
+  ring.push(ring[0]);
+  return [ring];
+}
+
+/**
+ * What the working left out of the lawn (the fence gaps, the grid's edge)
+ * goes to the piece it shares the longest seam with, so the sections add
+ * up to the lawn again. Pieces are changed in place.
+ */
+function giveBack(clip, g, pieces, original) {
+  let covered;
+  try { covered = clip.union(...pieces.map((p) => [p.poly])); } catch { return; }
+  let left;
+  try { left = clip.difference(original, covered); } catch { return; }
+  for (const sliver of left) {
+    const m = g.raster(sliver);
+    let best = null; let most = 0;
+    for (const p of pieces) {
+      if (!p.mask) p.mask = g.raster(p.poly);
+      const n = g.seam(m, p.mask);
+      if (n > most) { most = n; best = p; }
+    }
+    if (!best) best = pieces.sort((a, b) => b.area - a.area)[0];
+    if (!best) return;
+    try {
+      const u = clip.union([best.poly], [sliver]);
+      if (u.length === 1) { best.poly = u[0]; best.area = polyArea(u[0]); best.mask = null; }
+    } catch { /* left out: the page fits what it gets to the lawn */ }
+  }
+}
+
+/* ---------------------------------------------------------------- a complex */
+
+/*
+ * A COMPLEX IS WORKED ON THE GRID. Fifteen buildings, a loop road and a
+ * lawn of two acres is a hundred exact cuts too many for the clipper; a
+ * grid of 10 to 30 cm cells answers every question here with a flood or a
+ * pass, and the sections are traced off it along the cell edges at the
+ * end, so they tile exactly, then trimmed to the lawn.
+ */
+
+/** Paint the cells within `hw` of segment ab. */
+function paintSegment(mask, g, a, b, hw) {
+  const [ax, ay] = g.project(a); const [bx, by] = g.project(b);
+  const half = hw / g.cell;
+  const x0 = Math.max(0, Math.floor(Math.min(ax, bx) - half - 1)); const x1 = Math.min(g.W - 1, Math.ceil(Math.max(ax, bx) + half + 1));
+  const y0 = Math.max(0, Math.floor(Math.min(ay, by) - half - 1)); const y1 = Math.min(g.H - 1, Math.ceil(Math.max(ay, by) + half + 1));
+  const dx = bx - ax; const dy = by - ay; const L = dx * dx + dy * dy;
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+    const px = x + 0.5; const py = y + 0.5;
+    const t = L ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / L)) : 0;
+    if (Math.hypot(px - ax - t * dx, py - ay - t * dy) <= half) mask[y * g.W + x] = 1;
+  }
+}
+
+/**
+ * Nearest seed for every cell (a 3-4 chamfer transform carrying labels):
+ * which building each bit of ground belongs to, and how far it is.
+ */
+function nearestSeed(seeds, W, H) {
+  const dist = new Float32Array(W * H).fill(Infinity);
+  const label = new Int32Array(W * H);
+  for (let i = 0; i < seeds.length; i++) if (seeds[i]) { dist[i] = 0; label[i] = seeds[i]; }
+  const relax = (i, j, w) => { if (dist[j] + w < dist[i]) { dist[i] = dist[j] + w; label[i] = label[j]; } };
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = y * W + x;
+    if (x > 0) relax(i, i - 1, 3);
+    if (y > 0) { relax(i, i - W, 3); if (x > 0) relax(i, i - W - 1, 4); if (x < W - 1) relax(i, i - W + 1, 4); }
+  }
+  for (let y = H - 1; y >= 0; y--) for (let x = W - 1; x >= 0; x--) {
+    const i = y * W + x;
+    if (x < W - 1) relax(i, i + 1, 3);
+    if (y < H - 1) { relax(i, i + W, 3); if (x < W - 1) relax(i, i + W + 1, 4); if (x > 0) relax(i, i + W - 1, 4); }
+  }
+  for (let i = 0; i < dist.length; i++) dist[i] /= 3;
+  return { dist, label };
+}
+
+/**
+ * The outline of a set of cells along the cell edges, as rings in cell
+ * corner coordinates: outer rings anticlockwise, holes clockwise, each hole
+ * filed under the smallest outer ring round it. Sections traced this way
+ * tile exactly, which the clipper's unions never quite do.
+ */
+function outlineRings(mask, W, H) {
+  const at = (x, y) => (x >= 0 && y >= 0 && x < W && y < H ? mask[y * W + x] : 0);
+  const starts = new Map(); // "x,y" -> [[x2, y2], ...] edges leaving this corner
+  const push = (x1, y1, x2, y2) => { const k = `${x1},${y1}`; if (!starts.has(k)) starts.set(k, []); starts.get(k).push([x2, y2]); };
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    if (!mask[y * W + x]) continue;
+    if (!at(x, y - 1)) push(x, y, x + 1, y);
+    if (!at(x + 1, y)) push(x + 1, y, x + 1, y + 1);
+    if (!at(x, y + 1)) push(x + 1, y + 1, x, y + 1);
+    if (!at(x - 1, y)) push(x, y + 1, x, y);
+  }
+  const rings = [];
+  for (const [k, outs] of starts) {
+    while (outs.length) {
+      const [sx, sy] = k.split(',').map(Number);
+      const ring = [[sx, sy]];
+      let [cx, cy] = outs.pop();
+      let dx = cx - sx; let dy = cy - sy;
+      let guard = 0;
+      while ((cx !== sx || cy !== sy) && guard++ < 4 * W * H) {
+        ring.push([cx, cy]);
+        const list = starts.get(`${cx},${cy}`);
+        if (!list || !list.length) break;
+        // At a corner where two cells touch only diagonally, turn right: the
+        // rings then never touch themselves.
+        let pick = 0;
+        if (list.length > 1) {
+          let bestTurn = -Infinity;
+          list.forEach(([nx, ny], i) => { const turn = -(dx * (ny - cy) - dy * (nx - cx)); if (turn > bestTurn) { bestTurn = turn; pick = i; } });
+        }
+        const [nx, ny] = list.splice(pick, 1)[0];
+        dx = nx - cx; dy = ny - cy; cx = nx; cy = ny;
+      }
+      if (ring.length >= 4) { ring.push([sx, sy]); rings.push(ring); }
+    }
+  }
+  const area = (r) => { let a = 0; for (let i = 0; i + 1 < r.length; i++) a += r[i][0] * r[i + 1][1] - r[i + 1][0] * r[i][1]; return a / 2; };
+  const outers = []; const holes = [];
+  for (const r of rings) (area(r) > 0 ? outers : holes).push(r);
+  outers.sort((a, b) => area(a) - area(b));
+  const polys = outers.map((r) => [r]);
+  const insideRing = (r, [x, y]) => { let c = false; for (let i = 0, j = r.length - 1; i < r.length; j = i++) { const [xi, yi] = r[i]; const [xj, yj] = r[j]; if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c; } return c; };
+  for (const h of holes) {
+    const pt = [h[0][0] + 0.5, h[0][1] + 0.5]; // just inside the hole's first edge... a corner is on the line
+    const probe = [(h[0][0] + h[1][0]) / 2 + (h[1][1] - h[0][1]) * 0.5, (h[0][1] + h[1][1]) / 2 - (h[1][0] - h[0][0]) * 0.5];
+    const k = outers.findIndex((o) => insideRing(o, probe) || insideRing(o, pt));
+    if (k >= 0) polys[k].push(h);
+  }
+  return polys;
+}
+
+/** A lawn cell's class under one building's lines, in that building's frame. */
+function classOf(b, l, f) {
+  if (l <= b.Lmin) return f > b.frontLeft ? 'front' : f < b.backLeft ? 'back' : 'side';
+  if (l >= b.Lmax) return f > b.frontRight ? 'front' : f < b.backRight ? 'back' : 'side';
+  const k = Math.min(b.steps - 1, Math.max(0, Math.floor(((l - b.Lmin) / (b.Lmax - b.Lmin)) * b.steps)));
+  return f > b.frontAt[k] ? 'front' : f < b.backAt[k] ? 'back' : 'side';
+}
+
+function complexYards(clip, { frame, P, buildings, roads, original, whole, fenceM, sides }) {
+  const info = { complex: true, buildings: buildings.length, sides: Boolean(sides) };
+  const unclear = (why) => ({ error: `No clear answer: ${why}`, unclear: true, info: { ...info, unclear: why } });
+
+  /* THE ROADS INSIDE THE LOT: the ones a good length of runs within it. */
+  const insideP = (q) => { let c = false; const r = P[0]; for (let i = 0, j = r.length - 1; i < r.length; j = i++) { const [xi, yi] = r[i]; const [xj, yj] = r[j]; if ((yi > q[1]) !== (yj > q[1]) && q[0] < ((xj - xi) * (q[1] - yi)) / (yj - yi) + xi) c = !c; } return c; };
+  const internal = [];
+  for (const r of roads || []) {
+    if (['footway', 'sidewalk', 'crosswalk', 'path', 'steps', 'cycleway', 'driveway', 'parking_aisle'].includes(r.sub || r.cls)) continue;
+    const lines = r.lines.map((line) => line.map(frame.toXY));
+    let within = 0;
+    for (const line of lines) for (let i = 1; i < line.length; i++) {
+      const a = line[i - 1]; const b = line[i]; const L = len(sub(b, a)); const n = Math.max(1, Math.ceil(L / 2));
+      for (let k = 0; k < n; k++) if (insideP(add(a, mul(sub(b, a), (k + 0.5) / n)))) within += L / n;
+    }
+    if (within >= 25) internal.push({ name: r.name || null, cls: r.cls, lines, width: r.width || 6, within });
+  }
+  if (!internal.length) return unclear('this lot has several buildings but no road inside it for them to face.');
+  info.roads = internal.length;
+  const roadLines = internal.flatMap((r) => r.lines);
+
+  /* THE GRID. */
+  let bx0 = Infinity; let by0 = Infinity; let bx1 = -Infinity; let by1 = -Infinity;
+  for (const [x, y] of P[0]) { if (x < bx0) bx0 = x; if (x > bx1) bx1 = x; if (y < by0) by0 = y; if (y > by1) by1 = y; }
+  for (const poly of original) for (const [x, y] of poly[0]) { if (x < bx0) bx0 = x; if (x > bx1) bx1 = x; if (y < by0) by0 = y; if (y > by1) by1 = y; }
+  const g = gridFor(original, [bx0, by0, bx1, by1]);
+  const N = g.W * g.H;
+  const parcelMask = g.raster(P);
+  const lawnMask = g.rasterAll(whole);
+  const roadMask = new Uint8Array(N);
+  for (const r of internal) for (const line of r.lines) for (let i = 1; i < line.length; i++) paintSegment(roadMask, g, line[i - 1], line[i], r.width / 2);
+  /* A loop whose two ends stop short of each other, or of the lot's edge,
+     is closed: an end within 20 m of another road or of the edge gets a
+     band to it, so the inside of the loop is a block of its own. */
+  const edge = [P[0]];
+  for (const r of internal) for (const line of r.lines) for (const end of [line[0], line[line.length - 1]]) {
+    if (!insideP(end)) continue;
+    let best = null;
+    for (const o of roadLines) { if (o === line) continue; const n = nearestOn([o], end); if (n && (!best || n.d < best.d)) best = n; }
+    const e = nearestOn(edge, end); if (e && (!best || e.d < best.d)) best = e;
+    if (best && best.d > 0.5 && best.d <= 20) paintSegment(roadMask, g, end, best.at, 2);
+  }
+
+  /* THE BLOCKS the roads make. */
+  const ground = new Uint8Array(N);
+  for (let i = 0; i < N; i++) if (parcelMask[i] && !roadMask[i]) ground[i] = 1;
+  const { labels: blockOf, sizes: blockSizes } = labelComponents(ground, g.W, g.H);
+  const touchesEdge = new Uint8Array(blockSizes.length);
+  for (let y = 0; y < g.H; y++) for (let x = 0; x < g.W; x++) {
+    const i = y * g.W + x; const id = blockOf[i];
+    if (!id) continue;
+    if (x === 0 || y === 0 || x === g.W - 1 || y === g.H - 1 || !parcelMask[i - 1] || !parcelMask[i + 1] || !parcelMask[i - g.W] || !parcelMask[i + g.W]) touchesEdge[id] = 1;
+  }
+
+  /* THE BUILDINGS: each one's frame, its lines, its block. */
+  const seeds = new Uint8Array(N);
+  const houses = [];
+  buildings.forEach((c, k) => {
+    const id = k + 1;
+    const m = g.rasterAll([c.rings]);
+    const blocks = new Map();
+    for (let i = 0; i < N; i++) if (m[i]) { seeds[i] = id; if (blockOf[i]) blocks.set(blockOf[i], (blocks.get(blockOf[i]) || 0) + 1); }
+    const block = [...blocks.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || 0;
+    const centre = c.box.centre;
+    const near = nearestOn(roadLines, centre);
+    const toStreet = unit(sub(near.at, centre));
+    const normals = [c.box.u, mul(c.box.u, -1), c.box.v, mul(c.box.v, -1)];
+    const scored = normals.map((n) => ({ n, s: dot(n, toStreet) })).sort((a, b) => b.s - a.s);
+    const h = { id, block, area: c.area, centre, clear: scored[0].s - scored[1].s >= 0.25 && scored[0].s >= 0.5 };
+    if (h.clear) {
+      const F = scored[0].n; const L = perp(F);
+      const verts = c.rings.flatMap((r) => openRing(r));
+      const fv = verts.map((p) => dot(p, F)); const lv = verts.map((p) => dot(p, L));
+      h.F = F; h.L = L;
+      h.Lmin = Math.min(...lv); h.Lmax = Math.max(...lv);
+      const TOL = Math.max(1.5, (h.Lmax - h.Lmin) * 0.08);
+      const atLeft = fv.filter((f, i) => lv[i] <= h.Lmin + TOL); const atRight = fv.filter((f, i) => lv[i] >= h.Lmax - TOL);
+      h.frontLeft = Math.max(...atLeft); h.backLeft = Math.min(...atLeft); h.frontRight = Math.max(...atRight); h.backRight = Math.min(...atRight);
+      // The silhouettes, sampled across the building's width.
+      const sil = silhouette(c.rings, L, F);
+      const silB = silhouette(c.rings, perp(mul(F, -1)), mul(F, -1));
+      h.steps = Math.max(2, Math.ceil((h.Lmax - h.Lmin) / g.cell));
+      h.frontAt = new Float32Array(h.steps); h.backAt = new Float32Array(h.steps);
+      const sample = (pts, l) => { let best = null; for (let i = 0; i + 1 < pts.length; i += 2) { const [l0, f0] = pts[i]; const [l1, f1] = pts[i + 1]; if (l >= l0 - 1e-9 && l <= l1 + 1e-9) { const t = l1 > l0 ? (l - l0) / (l1 - l0) : 0; best = f0 + t * (f1 - f0); } } return best; };
+      for (let k = 0; k < h.steps; k++) {
+        const l = h.Lmin + ((k + 0.5) / h.steps) * (h.Lmax - h.Lmin);
+        const fr = sample(sil, l); const bk = sample(silB, -l);
+        h.frontAt[k] = fr === null ? Math.max(h.frontLeft, h.frontRight) : fr;
+        h.backAt[k] = bk === null ? Math.min(h.backLeft, h.backRight) : -bk;
+      }
+    }
+    houses.push(h);
+  });
+  info.unclearBuildings = houses.filter((h) => !h.clear).length;
+
+  /* WHOSE GROUND: the nearest building, up to 30 m; further is common. */
+  const { dist, label: owner } = nearestSeed(seeds, g.W, g.H);
+  const COMMON_M = 30;
+
+  /* THE BLOCK NAMES. Two blocks with buildings, one of them enclosed, is a
+     loop: "inside the loop" and "outside the loop". Otherwise blocks are
+     numbered, the one with most buildings first. */
+  const withHouses = [...new Set(houses.map((h) => h.block).filter(Boolean))];
+  const nameOf = new Map();
+  const enclosed = withHouses.filter((b) => !touchesEdge[b]);
+  if (withHouses.length === 2 && enclosed.length === 1) {
+    nameOf.set(enclosed[0], 'inside the loop');
+    nameOf.set(withHouses.find((b) => b !== enclosed[0]), 'outside the loop');
+    info.grouping = 'loop';
+  } else if (withHouses.length <= 1) {
+    info.grouping = 'one block';
+  } else {
+    const count = new Map(); for (const h of houses) count.set(h.block, (count.get(h.block) || 0) + 1);
+    withHouses.sort((a, b) => (count.get(b) || 0) - (count.get(a) || 0)).forEach((b, i) => nameOf.set(b, `block ${i + 1}`));
+    info.grouping = `${withHouses.length} blocks`;
+  }
+  info.blocks = withHouses.length;
+
+  /* EVERY LAWN CELL'S CLASS: 1 front, 2 back, 3 side, 4 common, 5 unclear. */
+  const cls = new Uint8Array(N);
+  const byHouse = houses.map(() => null);
+  for (let y = 0; y < g.H; y++) for (let x = 0; x < g.W; x++) {
+    const i = y * g.W + x;
+    if (!lawnMask[i]) continue;
+    const id = owner[i];
+    if (!id || dist[i] * g.cell > COMMON_M) { cls[i] = 4; continue; }
+    const h = houses[id - 1];
+    if (!h.clear) { cls[i] = 5; continue; }
+    const q = g.unproject([x + 0.5, y + 0.5]);
+    const l = dot(q, h.L); const f = dot(q, h.F);
+    const c = classOf(h, l, f);
+    cls[i] = c === 'front' ? 1 : c === 'back' ? 2 : 3;
+  }
+
+  /* THE SIDES, lumped: each run of side cells goes with the front if it is
+     joined to front cells through lawn wide enough to walk, else the back. */
+  if (!sides) {
+    const opened = g.open(lawnMask);
+    const sideMask = new Uint8Array(N); const frontCells = new Uint8Array(N); const backCells = new Uint8Array(N);
+    for (let i = 0; i < N; i++) { if (cls[i] === 3) sideMask[i] = 1; else if (cls[i] === 1 && opened[i]) frontCells[i] = 1; else if (cls[i] === 2 && opened[i]) backCells[i] = 1; }
+    const { labels: sl, sizes: ss } = labelComponents(sideMask, g.W, g.H);
+    const need = Math.max(3, PINCH_M / g.cell);
+    for (let id = 1; id < ss.length; id++) {
+      const m = new Uint8Array(N);
+      for (let i = 0; i < N; i++) if (sl[i] === id && opened[i]) m[i] = 1;
+      const to = g.seamLength(m, frontCells) >= need ? 1 : g.seamLength(m, backCells) >= need ? 2 : 2;
+      for (let i = 0; i < N; i++) if (sl[i] === id) cls[i] = to;
+    }
+  }
+
+  /* THE SECTIONS, one per class and block, traced off the grid. */
+  const keyOf = (i) => {
+    const c = cls[i];
+    if (c === 4) return 'Common';
+    if (c === 5) return 'Unclear';
+    const h = houses[owner[i] - 1];
+    const where = nameOf.get(h.block);
+    const name = c === 1 ? 'Front' : c === 2 ? 'Back' : 'Side';
+    return where ? `${name} (${where})` : name;
+  };
+  const masks = new Map();
+  for (let i = 0; i < N; i++) {
+    if (!lawnMask[i] || !cls[i]) continue;
+    const k = keyOf(i);
+    if (!masks.has(k)) masks.set(k, new Uint8Array(N));
+    masks.get(k)[i] = 1;
+  }
+  // Each section grown one cell outward where nothing else claims the ground, so the trim to the lawn leaves no slivers.
+  const claimed = new Uint8Array(N);
+  for (const m of masks.values()) for (let i = 0; i < N; i++) if (m[i]) claimed[i] = 1;
+  for (const m of masks.values()) {
+    const grow = [];
+    for (let y = 1; y < g.H - 1; y++) for (let x = 1; x < g.W - 1; x++) {
+      const i = y * g.W + x;
+      if (claimed[i]) continue;
+      if (m[i - 1] || m[i + 1] || m[i - g.W] || m[i + g.W]) grow.push(i);
+    }
+    for (const i of grow) { m[i] = 1; claimed[i] = 1; }
+  }
+  const toLL = (multi) => multi.map((poly) => poly.map((r) => r.map(frame.toLngLat)));
+  const order = ['Front', 'Back', 'Side', 'Common', 'Unclear'];
+  const keys = [...masks.keys()].sort((a, b) => order.findIndex((o) => a.startsWith(o)) - order.findIndex((o) => b.startsWith(o)) || a.localeCompare(b));
+  const out = [];
+  for (const k of keys) {
+    const polys = outlineRings(masks.get(k), g.W, g.H).map((poly) => poly.map((r) => r.map(([x, y]) => snap(g.unproject([x, y])))));
+    let trimmed;
+    try { trimmed = clip.intersection(polys, original); } catch { trimmed = polys; }
+    if (trimmed.length) out.push({ name: k, poly: toLL(trimmed) });
   }
   return { sections: out, info };
 }

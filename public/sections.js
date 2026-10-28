@@ -13,7 +13,7 @@ import {
 } from './lib/sections.js';
 import { sizeLabel, labelSpot } from './lib/size-label.js';
 import { autoYards } from './lib/yards.js';
-import { themeIn } from './lib/overture.js';
+import { themeIn, WIDTH } from './lib/overture.js';
 
 const $ = (s) => document.querySelector(s);
 const clip = window.polygonClipping;
@@ -146,7 +146,8 @@ async function streetsAndBuildings() {
   const roads = tr.filter((f) => f.type === 2 && (f.props.subtype === 'road' || !f.props.subtype)).map((f) => {
     let name = f.props['@name'] || null;
     if (!name && f.props.names) { try { name = JSON.parse(f.props.names)?.primary || null; } catch { name = null; } }
-    return { name, cls: f.props.class || 'unknown', sub: f.props.subclass || null, lines: f.parts };
+    const cls = f.props.class || 'unknown'; const sub = f.props.subclass || null;
+    return { name, cls, sub, width: WIDTH[sub] ?? WIDTH[cls] ?? WIDTH.unknown, lines: f.parts };
   });
   const buildings = bl.filter((f) => f.type === 3 && f.layer === 'building').map((f) => f.parts);
   view.auto = { roads, buildings };
@@ -166,8 +167,15 @@ async function autoFront() {
   try { data = await streetsAndBuildings(); } catch (e) { hint(`The streets could not be read: ${e.message}`, true); btn.disabled = false; return; }
   const lawn = view.shapes;
   const sides = $('#auto-sides').checked;
+  /* The fences people drew on the shade map (and the water map reads the
+     same ones): barriers the lawn trace runs straight through. Read when the
+     map has them; the tool does not need them. */
+  const fences = [];
+  for (const part of [view.record.tools?.shade?.data, view.record.tools?.water?.data]) {
+    for (const f of part?.fences || []) if (Array.isArray(f?.line) && f.line.length >= 2) fences.push(f.line);
+  }
   const r = autoYards(clip, {
-    parcel: view.record.parcel, buildings: data.buildings, roads: data.roads, lawn, sides,
+    parcel: view.record.parcel, buildings: data.buildings, roads: data.roads, lawn, sides, fences,
     address: view.record.address, street: view.record.street || null,
     point: Number.isFinite(view.record.lng) && Number.isFinite(view.record.lat) ? [view.record.lng, view.record.lat] : null,
   });
@@ -179,8 +187,13 @@ async function autoFront() {
   let id = 1;
   const sections = r.sections.map((s) => ({ id: id++, name: s.name, poly: s.poly }));
   const i = r.info;
+  if (i.complex) {
+    const how = i.grouping === 'loop' ? 'grouped inside and outside the loop' : i.grouping === 'one block' ? 'one block' : `grouped by ${i.grouping}`;
+    apply({ sections }, `Auto front: a complex of ${i.buildings} buildings on ${i.roads} road${i.roads > 1 ? 's' : ''} inside the lot, ${how}${i.unclearBuildings ? `; ${i.unclearBuildings} building${i.unclearBuildings > 1 ? 's' : ''} unclear` : ''}${fences.length ? `; ${fences.length} fence${fences.length > 1 ? 's' : ''} read` : ''}. Check it, then fix anything by hand.`);
+    return;
+  }
   const where = `${i.matched ? 'faces' : 'nearest street,'} ${i.street}, ${i.facing}`;
-  const extra = (i.facesCorner ? ', set to the corner' : i.cornerStrip ? `, corner lot with ${i.sideStreet}` : i.sideStreet ? `, ${i.sideStreet} near` : '') + (i.pinched ? `, ${i.pinched} pinch${i.pinched > 1 ? 'es' : ''}` : '') + (i.otherBuilding ? ', another building on the lot' : '');
+  const extra = (i.facesCorner ? ', set to the corner' : i.cornerStrip ? `, corner lot with ${i.sideStreet}` : i.sideStreet ? `, ${i.sideStreet} near` : '') + (i.pinched ? `, ${i.pinched} pinch${i.pinched > 1 ? 'es' : ''}` : '') + (i.otherBuilding ? ', another building on the lot' : '') + (fences.length ? `, ${fences.length} fence${fences.length > 1 ? 's' : ''} read` : '');
   apply({ sections }, `Auto front: ${where}${extra}. Check it, then fix anything by hand.`);
 }
 
