@@ -492,7 +492,7 @@ async function build(site) {
   const lotDensity = (c) => { let n = 0; for (let i = 0; i < c.n; i++) if (c.x[i] >= lx0 && c.x[i] <= lx1 && c.y[i] >= ly0 && c.y[i] <= ly1) n++; return n / lotM2; };
   const MIN_DENSITY = 0.5;
   if (keptUsed && lotDensity(cols) < MIN_DENSITY) { keptUsed = false; cols = null; cloud = null; flown = null; box = null; }
-  const holes = [];
+  const holes = [], failed = [];
   const m = MARGIN_M / k;
   if (!keptUsed) box = [Math.min(lx0 - m, fBox[0]), Math.min(ly0 - m, fBox[1]), Math.max(lx1 + m, fBox[2]), Math.max(ly1 + m, fBox[3])];
 
@@ -505,12 +505,15 @@ async function build(site) {
       holes.push({ name: c.name, dens });
       report.push(`<p class="warn">${esc(c.name)} has ${dens < 0.05 ? 'almost no' : `only ${dens.toFixed(2)} a square meter of`} points over this lot (a hole in the survey); tried the next.</p>`);
     } catch (e) {
+      failed.push({ name: c.name, why: e.message });
       report.push(`<p class="warn">${esc(c.name)} could not be read (${esc(e.message)}); tried the next.</p>`);
     }
   }
   if (!cols) {
     const hole = holes.length ? `The lidar USGS publishes here has a hole over this property: ${holes.map((h) => `${esc(h.name)} has ${h.dens < 0.05 ? 'almost no points' : `${h.dens.toFixed(2)} points a square meter`}`).join('; ')} over the lot, where a survey has 2 to 20 or more. Without them the trees and buildings cannot be seen, so the shade cannot be worked out.` : 'None of the lidar over this point had points here, so the trees and buildings cannot be seen.';
-    const later = notOnAws.length ? ` USGS has flown it again (${notOnAws.map((u) => `${esc(u.workunit)}, ${esc(u.ql || '?')}, flown to ${u.end ? new Date(u.end).toISOString().slice(0, 7) : '?'}`).join('; ')}), but that survey is not yet in the public cloud store this map reads; once it is, the trees will show here.` : '';
+    /* A survey that could not be read (most often the newer one still being fetched onto the server the first time). */
+    const unread = failed.length ? ` ${failed.map((f) => `${esc(f.name)} could not be read: ${esc(f.why)}.`).join(' ')}` : '';
+    const later = unread + (notOnAws.length ? ` USGS has flown it again (${notOnAws.map((u) => `${esc(u.workunit)}, ${esc(u.ql || '?')}, flown to ${u.end ? new Date(u.end).toISOString().slice(0, 7) : '?'}`).join('; ')}), but that survey is not yet in the public cloud store this map reads; once it is, the trees will show here.` : '');
     track('no-lidar', holes.length ? `hole in ${holes.map((h) => h.name).join(', ')}${notOnAws.length ? '; newer not in the store' : ''}` : 'no points');
     status(hole + later, 'bad');
     $('#report').innerHTML = report.join('') + `<p class="warn">${hole}${later}</p>`;
