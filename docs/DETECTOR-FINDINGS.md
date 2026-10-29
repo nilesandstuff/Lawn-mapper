@@ -8651,6 +8651,48 @@ is 130 sqft, so maybe the cutoff should be 100 sqft"),** on the condo,
 where grass islands between driveways run 100 to 150 sq ft. Same scope as
 above: the outline, not the scored mask.
 
+### S68. Should a live press read LEAF-ON lidar, when the decoder has seen little? (owner, 2026-10-29) -- OPEN, the owner's decision
+
+**The owner's question.** Ketchum's older survey (Southern Idaho 2018) has a
+hole over the lot; the newest (Southern Gaps 2023-24) was flown in two
+summer passes, 2023-09-16 and 2024-08-24 (the features session's shade
+finding 32). Under a leafy crown fewer pulses reach the ground and they
+come back dimmer, so the decoder could read a summer crown the way it has
+learned to read an evergreen one in winter. Should a live press drop the
+lidar there, drop leaf-on lidar everywhere until training has some, or
+should training drop it too?
+
+**Measured (2026-10-29, USGS's collection dates from WESM, the 3DEP index,
+for every flight in tools/locked-lidar-plan.json, judged by
+tools/lidar-season.js: leaf-off when nine days in ten of the collection
+fall between 1 November and 10 May).** Of the 101 locked lots with lidar:
+**72 leaf-off, 27 mixed** (a collection window spanning both seasons; each
+lot's own day is not recorded in training), **2 leaf-on** (CO_DRCOG_2_2020,
+26 May to 12 June). And among the counties live users come from, H72 found
+the newest lidar leaf-on in 25 of 111 and mixed in 31.
+
+**What lidar does in a press, and which parts leaf-on touches (from the
+code, not measured):**
+- the decoder's fused inputs: height, ground share, returns, ground
+  brightness (H97). Ground share and brightness under a broadleaf crown are
+  exactly what a summer flight changes;
+- stage 3's woods rule reads canopy height, which a summer flight measures
+  as well or better;
+- the veto (roof and void are not lawn): a roof is a roof in any season,
+  and a leafy crown still returns pulses, so it is not void.
+- The decoder was trained with the lidar hidden on 30% of steps, so a press
+  without lidar is a case it knows. H50 found the fused inputs worth
+  nothing on 55 lots; H97 found the brightness worth 0.2 points.
+
+**SPECULATION, not measured.** The risk is confined to the decoder's
+under-crown inputs, and two leaf-on lots cannot measure it. A middle course
+-- on a leaf-on flight, hide the lidar from the decoder as its training
+dropout does, and keep the veto and the woods rule -- removes that risk at
+the cost of at most H97's 0.2 points, and keeps roofs and voids at Ketchum.
+Dropping leaf-on lidar from training would remove the 2 lots and an unknown
+share of the 27 mixed ones, and teach the model less about a quarter of the
+country it serves.
+
 ### S67. Does NAIP's NDVI matter, is its alignment right, and should the decoder be told the fused layers are only "about here"? (owner, 2026-10-28) -- MEASURED 2026-10-29: H129 (without NDVI, level), H130 (shifted 2 m, level), H131 (jittered, not adopted); CLOSED
 
 **The owner's question.** "We put a lot of effort into making sure that
