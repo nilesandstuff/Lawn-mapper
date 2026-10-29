@@ -34,8 +34,9 @@ export const BANDS = [
 ];
 const MIN_MU = 0.01; // a cube passing over 99% a meter is drawn as air
 /* Dark and apart from each other, to stand out on a sunny photo (owner, 2026-10-14: "I can hardly see any of them"). */
-export const KIND_COLOR = { roof: '#424242', evergreen: '#0d3b8c', deciduous: '#1b6e20', filled: '#7a5c00', other: '#1b6e20' };
-export const KIND_NAME = { roof: 'building (or a crown nothing got through)', evergreen: 'evergreen: as the laser saw it, all year', deciduous: 'deciduous', filled: 'deciduous, leaves filled in where the laser found a gap', other: 'not sorted (a leaf-on flight)' };
+/* Buildings black (owner, 2026-10-29), apart from every tree. */
+export const KIND_COLOR = { roof: '#0a0a0a', evergreen: '#0d3b8c', deciduous: '#1b6e20', filled: '#7a5c00', other: '#1b6e20' };
+export const KIND_NAME = { roof: 'building (or a crown nothing got through)', evergreen: 'evergreen: as the laser saw it, all year', deciduous: 'deciduous', filled: 'deciduous, leaves filled in where the laser found a gap', other: 'tree, in leaf as the laser saw it (no leaves added)' };
 
 /** 0-based day of the year, 29 Feb folded onto 28 Feb (as the light worker). */
 export function dayOfYear(ms) {
@@ -47,12 +48,12 @@ export function dayOfYear(ms) {
 
 /** What the model took a column for. */
 export function kindOf(season, k, leafy) {
-  const v = season?.classified ? season.kind[k] : -1;
-  if (v === 1) return 'roof';
+  if (season?.kind?.[k] === 1) return 'roof'; // on every flight
+  if (!season?.classified || season.inLeaf?.[k]) return 'other'; // in leaf as flown: not sorted, no leaves added
+  const v = season.kind[k];
   if (v === 2) return 'evergreen';
   if (v === 3) return 'deciduous';
-  if (leafy) return 'filled';
-  return v === -1 ? 'other' : 'deciduous';
+  return leafy ? 'filled' : 'deciduous';
 }
 
 /**
@@ -183,7 +184,7 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
   const CUBE_ID = 1 << 30; // single-cube features live above the runs' ids
   const bandOf = (m) => BANDS.findIndex((b) => m < b.below);
   function draw() {
-    const runs = treeRuns(model, muNow(), leafOff ? season : null, { roofs: st.roofs, cutBelow: st.cut }).filter((r) => !er?.mask[r.k]);
+    const runs = treeRuns(model, muNow(), season, { roofs: st.roofs, cutBelow: st.cut }).filter((r) => !er?.mask[r.k]);
     byCell.clear();
     removed.forEach((s) => s.clear());
     let lastK = -1, idx = 0;
@@ -211,9 +212,14 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
     });
     for (const [id, on] of [['#tr-today', st.leaves !== null && st.leaves === today], ['#tr-full', st.leaves === 1], ['#tr-bare', st.leaves === 0]]) $(id).setAttribute('aria-pressed', String(on));
     const c = season.counts || {};
+    const asFlown = season.inLeafColumns || 0;
+    const columns = c.evergreen == null ? ''
+      : season.classified
+        ? ` Columns: ${(c.deciduous || 0) - asFlown} deciduous, ${c.evergreen || 0} evergreen, ${asFlown ? `${asFlown} in leaf as flown, ` : ''}${c.roof || 0} building.`
+        : ` Columns: ${c.deciduous || 0} tree, ${c.roof || 0} building.`;
     say(`${runs.length.toLocaleString()} pieces drawn. ${leafOff
-      ? `The lidar was flown with the leaves off${flownTo ? ` (to ${flownTo})` : ''}; ${st.leaves === 0 ? 'drawn bare, as flown' : `deciduous crowns drawn with ${Math.round(100 * st.leaves)}% of their summer leaves`}.`
-      : flight === 'on' ? 'The lidar was flown in leaf: drawn as flown.' : 'The flight season is unknown: drawn as flown.'}${c.evergreen != null ? ` Columns: ${c.deciduous || 0} deciduous, ${c.evergreen || 0} evergreen, ${c.roof || 0} building.` : ''}`);
+      ? `${flight === 'mixed' ? 'Part of the lidar here was flown with the leaves off and part in leaf; leaves are added only where the laser saw bare branches' : 'The lidar was flown with the leaves off'}${flownTo ? ` (to ${flownTo})` : ''}; ${st.leaves === 0 ? 'drawn bare, as flown' : `deciduous crowns drawn with ${Math.round(100 * st.leaves)}% of their summer leaves`}.`
+      : flight === 'on' ? 'The lidar was flown in leaf: drawn as flown, no leaves added.' : 'The flight season is unknown: drawn as flown.'}${columns}`);
     eraseNote();
   }
 
@@ -231,7 +237,7 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
   const applySolid = () => { ids.forEach((id, i) => { if (map.getLayer(id)) map.setPaintProperty(id, 'fill-extrusion-opacity', Math.min(1, bandAt(i).opacity * solid())); }); };
   try { const v = localStorage.getItem('lawnmapper.shade.treesSolid'); if (v) $('#tr-solid').value = v; } catch { /* not kept */ }
   $('#tr-solid').oninput = () => { applySolid(); try { localStorage.setItem('lawnmapper.shade.treesSolid', $('#tr-solid').value); } catch { /* not kept */ } };
-  $('#tr-legend').innerHTML = Object.entries(KIND_COLOR).filter(([k]) => leafOff || k === 'other' || k === 'roof')
+  $('#tr-legend').innerHTML = Object.entries(KIND_COLOR).filter(([k]) => (leafOff ? k !== 'other' || season.inLeafColumns > 0 : k === 'other' || k === 'roof'))
     .map(([k, c]) => `<span class="sw" style="background:${c}"></span>${KIND_NAME[k]}`).join('<br>')
     + `<br><span class="dim">Faint to solid: ${BANDS.map((b) => b.name).join('; ')}.</span>`;
 
@@ -247,7 +253,7 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
     const runs = treeRuns({ ...model, w: 1, h: 1, ground: [model.ground[k]] }, mu.subarray(k * model.nz, (k + 1) * model.nz), null, { roofs: true });
     let leafy = false;
     for (let l = 0; l < model.nz && !leafy; l++) if (season.muOn[k * model.nz + l] > season.muOff[k * model.nz + l]) leafy = true;
-    const kind = kindOf(leafOff ? season : null, k, leafy);
+    const kind = kindOf(season, k, leafy);
     const pass = overhead(model, mu, k);
     const f1 = (v) => (Number.isFinite(v) ? v.toFixed(1) : '—');
     $('#tr-read').innerHTML = !runs.length
@@ -356,7 +362,7 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
     return [(mx - grid.x0) / grid.cell, (grid.y1 - my) / (grid.cellY || grid.cell), fc.position.toAltitude()];
   };
   /* A block as drawn: its layer at a height over the flat map, and whether it is there to be hit. */
-  const isRoof = (k) => !!(leafOff && season?.classified && season.kind[k] === 1);
+  const isRoof = (k) => season?.kind?.[k] === 1;
   const cubeAt = (k, z) => {
     const l = Math.floor((z - lift(k) + model.ground[k] - model.z0) / model.dz);
     return l >= 0 && l < model.nz ? l : -1;

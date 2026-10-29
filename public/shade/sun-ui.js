@@ -375,7 +375,7 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     const c = m.counts, total = c ? c.evergreen + c.deciduous : 0;
     const how = 'tree by tree: evergreen when its crown let less than a fifth of the overhead sun through in winter (an evergreen still has its needles when the laser flies, so it needs no summer leaves) and is not a broad, flat-topped dome (an open-grown oak or maple, which can hold its dead leaves into a late-autumn flight). Checked on 177 hand-labelled trees: an evergreen called deciduous comes out about twice too dark under it in summer, so the rule leans that way rather than leave a broadleaf bare, nine times too bright';
     const split = c && m.classified && total
-      ? ` Of the tree cover here, ${Math.round((100 * c.evergreen) / total)}% reads as evergreen and ${Math.round((100 * c.deciduous) / total)}% as deciduous, ${how}. A tree so dense that nothing got through (a big spruce) is solid all year, told from a roof by its rough top. The "Trees" view shows which is which. It matters from leaf-out to leaf-fall: a deciduous tree called evergreen gets no summer leaves.`
+      ? ` Of the tree cover here, ${Math.round((100 * c.evergreen) / total)}% reads as evergreen and ${Math.round((100 * (c.deciduous - (m.inLeafColumns || 0))) / total)}% as deciduous, ${how}.${m.inLeafColumns ? ` The other ${Math.round((100 * m.inLeafColumns) / total)}% was flown in leaf (part of this lot's lidar is a summer pass): it already shows its summer leaves, so none are added and it is held as flown all year.` : ''} A tree so dense that nothing got through (a big spruce) is solid all year, told from a roof by its rough top. The "Trees" view shows which is which. It matters from leaf-out to leaf-fall: a deciduous tree called evergreen gets no summer leaves.`
       : '';
     let text;
     if (m.canopy === 'seasonal') {
@@ -707,9 +707,9 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     };
     status('Building the 3D canopy and the sky over every half meter…');
     caption('Building the 3D canopy…');
-    const pick = ['x', 'y', 'z', 'intensity', 'ret', 'nret', 'cls'];
+    const pick = ['x', 'y', 'z', 'intensity', 'ret', 'nret', 'cls', 'leaf'];
     const c = { n: cols.n };
-    for (const k of pick) c[k] = cols[k].slice(0, cols.n);
+    for (const k of pick) if (cols[k]) c[k] = cols[k].slice(0, cols.n);
     send({
       type: 'build', cols: c, box, lat: site.lat, lng: site.lng, shift, heightM,
       canopy: $('#sun-canopy')?.value || 'seasonal', flight: season || null, erased: st.erased || null, erasedCubes: st.erasedCubes?.length ? Int32Array.from(st.erasedCubes) : null, fences: st.fences || [], tMean: st.climate?.tMeanNow || st.climate?.tMean || null, tMeanTypical: st.climate?.tMeanNow ? st.climate.tMean : null,

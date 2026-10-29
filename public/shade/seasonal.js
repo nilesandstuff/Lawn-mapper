@@ -196,7 +196,11 @@ export const LEAF_FALL_DAYS = 28;
  *
  * Returns { kind (Uint8 per column: 0 open, 1 roof, 2 evergreen, 3 deciduous),
  *           clumps: [{ n, base, top, depth, evergreenShare }],
- *           clumpOf, muOn (per cube), muOff, counts (columns of each kind) }.
+ *           clumpOf, muOn (per cube), muOff, counts (columns of each kind),
+ *           inLeaf (Uint8 per column: 1 where most crown returns were fired
+ *           in leaf; those take no leaves), inLeafColumns }.
+ * Roofs are found on every flight; `classify` (a leaf-off or mixed flight)
+ * adds the evergreen/deciduous split.
  */
 export function seasonalCanopy(cols, model, { shift = null, classify = true, fill = {} } = {}) {
   /* How the summer leaves are filled in (tools/shade-check-leafon.js scores
@@ -207,6 +211,9 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true, fil
   const above = new Uint16Array(N), multiAbove = new Uint16Array(N), lastGround = new Uint16Array(N);
   const heights = []; // [column, height over ground] of every crown return, for clump depths
   const zLo = new Float32Array(N).fill(Infinity), zHi = new Float32Array(N).fill(-Infinity);
+  /* Crown returns per column fired in leaf and with the leaves off, by each
+     point's own day (las.js leafOfMs; passes.js). */
+  const onRet = cols.leaf ? new Uint16Array(N) : null, offRet = cols.leaf ? new Uint16Array(N) : null;
   for (let i = 0; i < cols.n; i++) {
     if (NOISE.has(cols.cls[i])) continue;
     const k = cellOf(grid, cols.x[i], cols.y[i], shift);
@@ -219,8 +226,17 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true, fil
       heights.push(k, over);
       if (cols.z[i] < zLo[k]) zLo[k] = cols.z[i];
       if (cols.z[i] > zHi[k]) zHi[k] = cols.z[i];
+      if (onRet) { if (cols.leaf[i] === 2) onRet[k]++; else if (cols.leaf[i] === 1) offRet[k]++; }
     }
   }
+  /* IN LEAF AS FLOWN (owner, 2026-10-29: "fully in-leaf canopies are treated
+     as such and not given extra leaves"): a column most of whose crown
+     returns were fired in leaf already shows its summer canopy. It takes no
+     leaves, is not grown into, and is not sorted evergreen or deciduous by
+     how dense it was (a maple in July is as dense as a spruce). On a whole
+     leaf-on flight that is every crown; on a 'mixed' lot, the in-leaf side. */
+  const inLeaf = new Uint8Array(N);
+  if (onRet) for (let k = 0; k < N; k++) if (onRet[k] > offRet[k]) inLeaf[k] = 1;
   const kind = new Uint8Array(N);
   for (let k = 0; k < N; k++) {
     if (!above[k]) continue;
@@ -263,7 +279,9 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true, fil
     /* And a speck under 4 m2 is no building: a column or two of a dense crown
        where, by chance, no pulse reached the ground. */
     const tree = (a > 0 && m / a >= SOLID_TREE_SPLIT) || patch.length < SOLID_SPECK_M2 || (patch.length < SOLID_TREE_MAX_M2 && rough >= SOLID_TREE_ROUGH_M);
-    if (classify && tree) for (const k of patch) kind[k] = 5;
+    /* On every flight: a building is a building whether the trees were in
+       leaf or not (owner, 2026-10-29: buildings drawn black). */
+    if (tree) for (const k of patch) kind[k] = 5;
   }
   /* Eaves: a pulse that lands half on a roof edge and half on the ground
      splits like a tree's (the core's lidar-trees notes), so a ring of
@@ -280,7 +298,9 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true, fil
     }
   }
   for (let k = 0; k < N; k++) if (kind[k] === 4) kind[k] = 1;
-  for (let k = 0; k < N; k++) if (kind[k] === 5) kind[k] = 2;
+  /* A solid tree: evergreen on a leaf-off flight (that dense with the
+     leaves off); unsorted (3, held as flown) when it was in leaf. */
+  for (let k = 0; k < N; k++) if (kind[k] === 5) kind[k] = classify && !inLeaf[k] ? 2 : 3;
   /* Clumps of crown columns. */
   const clumpOf = new Int32Array(N).fill(-1);
   const clumps = [];
@@ -320,7 +340,7 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true, fil
     const { lab, crowns } = crownsOf(cols, model, { shift, top, dropAt: DOME_RING_M });
     const ts = crowns.map(() => []);
     for (let k = 0; k < N; k++) {
-      if (lab[k] < 0 || (kind[k] !== 2 && kind[k] !== 3)) continue;
+      if (lab[k] < 0 || inLeaf[k] || (kind[k] !== 2 && kind[k] !== 3)) continue;
       let tau = 0;
       const g = ground[k] + 0.1;
       for (let l = 0; l < nz; l++) if (z0 + (l + 0.5) * dz > g) tau += mu[k * nz + l] * dz;
@@ -332,7 +352,7 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true, fil
       if (c.R >= DOME_MIN_R_M && c.drop < DOME_DROP_M) { domed += t.length; return 3; }
       return 2;
     });
-    for (let k = 0; k < N; k++) if ((kind[k] === 2 || kind[k] === 3) && lab[k] >= 0) kind[k] = call[lab[k]];
+    for (let k = 0; k < N; k++) if ((kind[k] === 2 || kind[k] === 3) && lab[k] >= 0 && !inLeaf[k]) kind[k] = call[lab[k]];
   }
   for (let k = 0; k < N; k++) if (kind[k] === 2) ever++;
   for (const c of clumps) c.evergreenShare = 0;
@@ -357,7 +377,7 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true, fil
      takes the tallest crown neighbor's clump and height over its ground. */
   /* Only deciduous crowns take leaves (see 3), so only they are grown,
      filled and given leaf; evergreens and buildings stay as measured. */
-  const isCrown = (j) => kind[j] === 3;
+  const isCrown = (j) => kind[j] === 3 && !inLeaf[j];
   const grown = new Uint8Array(N);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     let hit = 0;
@@ -375,7 +395,7 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true, fil
       if (xx >= 0 && yy >= 0 && xx < w && yy < h && !grown[yy * w + xx]) { all = 0; break; }
     }
     const k = y * w + x;
-    footprint[k] = (all || isCrown(k)) && kind[k] !== 1 && kind[k] !== 2 ? 1 : 0;
+    footprint[k] = (all || isCrown(k)) && kind[k] !== 1 && kind[k] !== 2 && !inLeaf[k] ? 1 : 0;
   }
   /* Leaf-off crown returns per cube, for leaves where the branches are, and
      each column's lowest one (both over the 5 x 5 around it). */
@@ -559,7 +579,9 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true, fil
   }
   const counts = { roof: 0, evergreen: ever, deciduous: 0, domed };
   for (let k = 0; k < N; k++) { if (kind[k] === 1) counts.roof++; else if (kind[k] === 3) counts.deciduous++; }
-  return { kind, clumps, clumpOf, muOn, muOff: mu, counts, classified: classify, leafyColumns: leafy, unfilled };
+  let inLeafColumns = 0;
+  for (let k = 0; k < N; k++) if (inLeaf[k] && kind[k] === 3) inLeafColumns++;
+  return { kind, clumps, clumpOf, muOn, muOff: mu, counts, classified: classify, leafyColumns: leafy, unfilled, inLeaf, inLeafColumns };
 }
 
 /** The extinction coefficients with a share `f` (0 bare .. 1 in full leaf) of deciduous leaves out. */

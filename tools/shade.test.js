@@ -3,7 +3,9 @@
  *
  *   node tools/shade.test.js
  */
-import { lasHeader, makeColumns, readRecord, gpsTimes, gpsMs } from '../public/shade/las.js';
+import { lasHeader, makeColumns, readRecord, gpsTimes, gpsMs, leafOfMs, LEAF_OFF, LEAF_ON } from '../public/shade/las.js';
+import { onePass } from '../public/shade/passes.js';
+import { kindOf as kindOfTrees } from '../public/shade/trees-ui.js';
 import { nodeBox, walk, hierarchyReader, pointsIn, toMerc, fromMerc, mercScale, flownOf } from '../public/shade/ept.js';
 import { nad83Correction } from '../public/shade/datum.js';
 import { rankClouds, leafSeason, nameYear, flightOf } from '../public/shade/find.js';
@@ -601,6 +603,29 @@ check('the color ramp runs dark to bright and clamps', ramp(-1).join() === '0,0,
   const unclassified = seasonalCanopy(cols, model, { classify: false });
   check('seasons: without classification (a leaf-on flight) nothing is called evergreen',
     unclassified.kind[at(15, 15)] === 3 && unclassified.counts.evergreen === 0);
+  check('seasons: on a leaf-on flight a building is still a building, and a crown nothing got through is a tree, not a building',
+    unclassified.kind[at(35, 45)] === 1 && unclassified.kind[at(50, 45)] === 3 && kindOfTrees(unclassified, at(35, 45), false) === 'roof' && kindOfTrees(unclassified, at(50, 45), false) === 'other',
+    `${unclassified.kind[at(35, 45)]} ${unclassified.kind[at(50, 45)]}`);
+  /* PASSES (owner, 2026-10-29): the east half flown in leaf, the west half bare. */
+  const dated = (east, west) => {
+    const c = makeColumns(cols.n);
+    for (const key of ['x', 'y', 'z', 'intensity', 'ret', 'nret', 'cls']) c[key].set(cols[key]);
+    for (let i = 0; i < cols.n; i++) c.leaf[i] = cols.x[i] * k > 30 ? east : west;
+    return c;
+  };
+  const half = dated(LEAF_ON, LEAF_OFF), hs = seasonalCanopy(half, buildCanopy(half, grid));
+  const hT = (mu, e, n) => transmittance({ ...model, mu }, e, 60 - n, 100.1, [0, 0, 1]);
+  check('seasons: a crown the laser saw in leaf takes no leaves (it already shows them); one it saw bare still does',
+    hs.inLeaf[at(45, 15)] === 1 && near(hT(hs.muOn, 45, 15), hT(hs.muOff, 45, 15), 1e-9) && hT(hs.muOn, 45, 15) > 0.5
+      && hs.inLeaf[at(15, 45)] === 0 && hT(hs.muOn, 15, 45) < hT(hs.muOff, 15, 45) - 0.05,
+    `in leaf ${hT(hs.muOn, 45, 15).toFixed(2)} vs ${hT(hs.muOff, 45, 15).toFixed(2)}; bare tangle ${hT(hs.muOn, 15, 45).toFixed(2)} vs ${hT(hs.muOff, 15, 45).toFixed(2)}`);
+  check('seasons: and is neither evergreen nor deciduous, but in leaf as flown; the bare half is sorted as before; the roof stays a roof',
+    kindOfTrees(hs, at(45, 15), false) === 'other' && hs.kind[at(15, 15)] === 2 && hs.kind[at(35, 45)] === 1 && hs.inLeafColumns > 0,
+    `${kindOfTrees(hs, at(45, 15), false)} ${hs.kind[at(15, 15)]}`);
+  const allOn = dated(LEAF_ON, LEAF_ON), as = seasonalCanopy(allOn, buildCanopy(allOn, grid));
+  let added = 0;
+  for (let i = 0; i < as.muOn.length; i++) if (as.muOn[i] !== as.muOff[i]) added++;
+  check('seasons: a lot flown wholly in leaf gets no leaves added anywhere', added === 0, `${added} cubes changed`);
 
   /* A typical year: -5 C in mid-January to 23 C in mid-July. */
   const tMean = Array.from({ length: 365 }, (_, d) => 9 - 14 * Math.cos(((d - 14) / 365) * 2 * Math.PI));
@@ -1550,6 +1575,37 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   const season = growingSeason(year(-8, 22), 'cool');
   const w = plantingWindow(season, 'cool');
   check('grass: cool-season planting is six to eight weeks before growth stops; warm-season early in its season; all year says so', /six to eight weeks before growth stops around/.test(w) && /early in the growing season/.test(plantingWindow(growingSeason(year(8, 29), 'warm'), 'warm')) && /late summer/.test(plantingWindow({ allYear: true, days: [] }, 'cool')) && plantingWindow({ days: [], start: null }, 'cool') === null, w);
+}
+
+/* ONE LEAF STATE PER LOT (passes.js; owner, 2026-10-29). */
+{
+  check('passes: a point fired 9 May or in November is leaf-off; 11 May, July and an undated one are not',
+    leafOfMs(Date.UTC(2024, 4, 9)) === LEAF_OFF && leafOfMs(Date.UTC(2023, 10, 2)) === LEAF_OFF && leafOfMs(Date.UTC(2024, 4, 11)) === LEAF_ON && leafOfMs(Date.UTC(2023, 6, 1)) === LEAF_ON && leafOfMs(NaN) === 0);
+  /* A 20 x 20 lot, a point every half meter from pass A; pass B over all of it, or only its east half. */
+  const lotOf = (bOver, aLeaf, bLeaf) => {
+    const xs = [];
+    for (let x = 0.25; x < 20; x += 0.5) for (let y = 0.25; y < 20; y += 0.5) {
+      xs.push([x, y, aLeaf]);
+      if (x >= 20 - bOver) xs.push([x + 0.1, y, bLeaf]);
+    }
+    const c = makeColumns(xs.length);
+    xs.forEach(([x, y, l], i) => { c.x[i] = x; c.y[i] = y; c.leaf[i] = l; });
+    return c;
+  };
+  const one = onePass(lotOf(0, LEAF_ON, LEAF_OFF), [0, 0, 20, 20]);
+  check('passes: a lot flown wholly in leaf is in leaf, and nothing is dropped', one.season === 'on' && one.dropped === 0 && one.cols.n === 1600);
+  const seam = onePass(lotOf(10, LEAF_ON, LEAF_OFF), [0, 0, 20, 20]);
+  check('passes: a summer pass over the whole lot and a spring pass over half: the summer one alone, the spring points left out',
+    seam.season === 'on' && seam.dropped === 800 && seam.cols.n === 1600 && [...seam.cols.leaf].every((v) => v === LEAF_ON), `${seam.season} dropped ${seam.dropped}`);
+  /* Two passes that each cover only half the lot: nothing to drop. */
+  const xs = [];
+  for (let x = 0.25; x < 20; x += 0.5) for (let y = 0.25; y < 20; y += 0.5) xs.push([x, y, x < 10 ? LEAF_OFF : LEAF_ON]);
+  const split = makeColumns(xs.length);
+  xs.forEach(([x, y, l], i) => { split.x[i] = x; split.y[i] = y; split.leaf[i] = l; });
+  const mixed = onePass(split, [0, 0, 20, 20]);
+  check('passes: a lot half flown bare and half in leaf, neither covering it, is mixed and keeps every point', mixed.season === 'mixed' && mixed.cols === split && mixed.off === 800 && mixed.on === 800, `${mixed.season} cover ${mixed.cover}`);
+  const undated = makeColumns(10);
+  check('passes: points that keep no date leave the season to the flight\'s dates', onePass(undated, [0, 0, 20, 20]).season === null);
 }
 
 if (failures) { console.log(`\n${failures} check(s) FAILED.`); process.exit(1); }

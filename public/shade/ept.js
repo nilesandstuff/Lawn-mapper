@@ -15,7 +15,7 @@
  * walk and the cropping are tested without one.
  */
 
-import { lasHeader, makeColumns, readRecord, concatColumns, gpsTimes } from './las.js';
+import { lasHeader, makeColumns, readRecord, concatColumns, gpsTimes, gpsMs, leafOfMs } from './las.js';
 
 const R = 6378137;
 
@@ -93,11 +93,23 @@ export function cropRecords(header, points, bbox) {
   const L = header.recordLength;
   const n = Math.floor(points.byteLength / L);
   const all = makeColumns(n);
+  /* Each kept point's leaf state from its own GPS day (las.js leafOfMs),
+     worked out once per day of the flight. */
+  const at = header.gpsAt, byDay = new Map();
   let k = 0;
   for (let i = 0; i < n; i++) {
     readRecord(dv, i * L, header.format, header, all, k);
     const x = all.x[k], y = all.y[k];
-    if (x >= bbox[0] && x < bbox[2] && y >= bbox[1] && y < bbox[3]) k++;
+    if (x >= bbox[0] && x < bbox[2] && y >= bbox[1] && y < bbox[3]) {
+      if (at >= 0) {
+        const ms = gpsMs(dv.getFloat64(i * L + at, true));
+        const day = Number.isFinite(ms) ? Math.floor(ms / 864e5) : -1;
+        let v = byDay.get(day);
+        if (v === undefined) { v = leafOfMs(ms); byDay.set(day, v); }
+        all.leaf[k] = v;
+      }
+      k++;
+    }
   }
   all.n = k;
   return all;

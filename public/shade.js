@@ -30,6 +30,7 @@
 
 import { pointsIn, toMerc, fromMerc, mercScale } from './shade/ept.js';
 import { flightOf } from './shade/find.js';
+import { onePass } from './shade/passes.js';
 import { lazDecoder, browserFactory } from './shade/laz.js';
 import { nad83Correction } from './shade/datum.js';
 import { alignToPhoto } from './shade/align.js';
@@ -520,6 +521,11 @@ async function build(site) {
     return;
   }
 
+  /* One leaf state over the lot where the lidar allows it (passes.js): a
+     survey's passes can be months apart, one in leaf and one not. */
+  const passes = onePass(cols, [lx0, ly0, lx1, ly1], k);
+  cols = passes.cols;
+
   /* Density over the lot itself. */
   const inLot = Math.round(lotDensity(cols) * lotM2);
 
@@ -606,7 +612,13 @@ async function build(site) {
 
   /* The report. The flight's dates and season from the points' own clock
      (find.js flightOf), the catalogue's when the files keep no time. */
-  const u = flightOf(cloud.unit, flown);
+  const u0 = flightOf(cloud.unit, flown);
+  /* The points' own days over the lot decide the season (passes.js). */
+  const u = u0 && passes.season ? { ...u0, season: passes.season, source: 'laser', agree: u0.catalogue ? u0.catalogue.season === passes.season : u0.agree } : u0;
+  const passWords = !passes.season || (!passes.dropped && passes.season !== 'mixed') ? ''
+    : passes.season === 'mixed'
+      ? `<tr><td>Leaves</td><td class="warn">Part of this lot was flown with the leaves off (${passes.off.toLocaleString()} points) and part in leaf (${passes.on.toLocaleString()}), and neither pass covers it alone. Each square meter is judged by its own returns: leaves are added only where the laser saw bare branches, never on top of a canopy it saw in leaf.</td></tr>`
+      : `<tr><td>Leaves</td><td>Two passes over this lot, ${passes.off.toLocaleString()} points with the leaves off and ${passes.on.toLocaleString()} in leaf. The ${passes.season === 'on' ? 'in-leaf' : 'leaf-off'} pass covers the lot alone, so the other's ${passes.dropped.toLocaleString()} points are left out: no canopy here is part summer leaves and part bare branches.</td></tr>`;
   const day = (ms) => (ms ? new Date(ms).toISOString().slice(0, 10) : '?');
   const seasonWord = (s) => (s === 'off' ? '<span class="warn">leaf-off</span>' : s === 'on' ? 'leaf-on' : s === 'mixed' ? '<span class="warn">part leaf-off</span>' : 'season unknown');
   report.unshift(`
@@ -614,6 +626,7 @@ async function build(site) {
     <table>
       <tr><td>Cloud</td><td>${esc(cloud.name)}${cloud.confirmed ? '' : ' <span class="warn">(box match only: USGS did not confirm it flew this point)</span>'}</td></tr>
       ${u ? `<tr><td>Flown</td><td>${day(u.start)}${day(u.end) !== day(u.start) ? ` to ${day(u.end)}` : ''}, ${esc(u.ql || '?')}, ${seasonWord(u.season)} <span class="dim">${u.source === 'laser' ? 'by the laser\'s own clock' : 'by the USGS catalogue'}${u.catalogue && !u.agree ? `; the catalogue says ${day(u.catalogue.start)} to ${day(u.catalogue.end)}, ${u.catalogue.season || '?'} — the clock wins` : ''}</span></td></tr>` : '<tr><td>Flown</td><td class="warn">unknown: the files keep no time and the USGS catalogue did not answer; the trees are drawn as the laser saw them</td></tr>'}
+      ${passWords}
       <tr><td>Points</td><td>${cols.n.toLocaleString()} within ${MARGIN_M} m of the lot; ${(inLot / lotM2).toFixed(1)} a square meter over the lot</td></tr>
       ${notOnAws.length ? `<tr><td>Also flown</td><td class="warn">${notOnAws.map((x) => `${esc(x.workunit)} (${day(x.end)}, ${esc(x.ql || '?')})`).join('; ')} — not in the public cloud store, so not read</td></tr>` : ''}
     </table>

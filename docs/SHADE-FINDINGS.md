@@ -1278,6 +1278,38 @@ area waits while the server fetches the tiles (about five minutes for two
 at rockyweb's pace); the page names the newer survey as still being
 fetched if it gives up first. Scratch: ketchum/density.py.
 
+### 32. Ketchum's gap survey is two summer passes over the lot, and a survey's leaf state is now read point by point (2026-10-29)
+
+The owner asked whether Ketchum's lidar was flown in leaf, whether a newer
+pass is leaf-off, and whether a partly in-leaf flight is handled. The crop
+over the lot from finding 31, read point by point (each record's GPS time;
+scratch ketchum/dates.py): 697,678 points, 577,922 fired on 2023-09-16 and
+119,756 on 2024-08-24. Both in leaf; no leaf-off pass over this lot. The
+work unit's span (2023-09 to 2024-08) alone reads 'mixed'.
+
+What the page did before: one median time per piece (a tile crop is ONE
+piece), so a crop half spring and half summer was judged by its median;
+'mixed' was treated as leaf-off, so a canopy the laser saw in leaf could
+take summer leaves on top. Leaf-on flights were never given leaves (light
+worker: seasons only for 'off' and 'mixed').
+
+FIXED: every point is dated by its own GPS day (las.js leafOfMs, the same
+1 Nov - 10 May rule as leafSeason). Over the lot (passes.js onePass): one
+state, that state; both, with the larger pass alone holding a point in 95%
+or more of the lot's 2 m squares, the other pass's points are left out;
+otherwise 'mixed', and seasonal.js judges each column by its crown returns:
+a column mostly fired in leaf takes no leaves, is not grown into, and is
+not sorted evergreen or deciduous. Roofs and the solid-tree rule (1b) now
+run on every flight, so buildings are found (and drawn black, owner's
+choice) on leaf-on flights too. Checked locally: the Ketchum lot reads
+'on', 1,977 building columns black, the trees green as flown; a Kent County
+leaf-off lot unchanged in kind (2,198 deciduous, 181 evergreen, 6,215
+building columns).
+
+NOT DONE: a deciduous tree on a leaf-on flight keeps its summer leaves all
+year (too dark before leaf-out and after leaf-fall). Taking them off needs
+a leaf-off density the flight never measured.
+
 ## Speculation
 
 - FENCES (2026-10-27, IN USE, unmeasured; fences.js): drawn by the visitor

@@ -223,7 +223,7 @@ function build(m) {
     seasonsWhy: seasonal ? null : m.canopy !== 'seasonal' ? null
       : !leafOffFlight ? (m.flight === 'on' ? 'the lidar was flown in leaf, so it already shows the summer canopy' : 'the flight season is unknown')
         : !calendar ? 'the typical temperatures did not load' : null,
-    kinds, counts: season?.counts || null, classified: !!season?.classified, fences: model.fences?.length || 0,
+    kinds, counts: season?.counts || null, classified: !!season?.classified, inLeafColumns: season?.inLeafColumns || 0, fences: model.fences?.length || 0,
     lawnMask: lawn, // per grid cell, 1 inside a traced lawn (null when none was traced)
     calendar: calendar && seasonal ? { out: calendar.out, full: calendar.full, halfOut: calendar.halfOut, halfFall: calendar.halfFall, bare: calendar.bare, always: !!calendar.always, never: !!calendar.never } : null,
   });
