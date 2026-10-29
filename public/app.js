@@ -4244,6 +4244,7 @@ function beginDrag(clientX, clientY) {
    */
   const rect = map.getCanvasContainer().getBoundingClientRect();
   const corner = map.project(openRing(hit.ring)[hit.index]);
+  const c = map.getCenter();
   drag = {
     ...hit,
     startX: clientX,
@@ -4251,6 +4252,8 @@ function beginDrag(clientX, clientY) {
     moved: false,
     offsetX: corner.x - (clientX - rect.left),
     offsetY: corner.y - (clientY - rect.top),
+    // Where the map stood at the press, to put it back when the corner takes the drag (updateDrag).
+    centerAtPress: [c.lng, c.lat],
   };
   diag.dragGrabbed++;
   return true;
@@ -4273,6 +4276,34 @@ function updateDrag(clientX, clientY) {
     // Select it on the first real movement, so the panel shows what is moving.
     selectVertex({ ringId: drag.ringId, ring: drag.ring, index: drag.index });
     holdMapStill();
+    /*
+     * THE MAP GOES BACK TO WHERE IT STOOD AT THE PRESS (a user, 2026-10-29,
+     * on Firefox: the map "kept wanting to pan instead of move the dots").
+     * Mapbox hears mousemove on the document ahead of us, so by the time the
+     * pointer has travelled the 4 px above it has already panned the map by
+     * the first move -- a few pixels from a careful hand, tens from a quick
+     * one, and Firefox hands over the first move of a drag coalesced, so
+     * there it was the whole first stretch. Switching dragPan off earlier is
+     * not the answer: off at the press, before or after Mapbox's own
+     * handler, Mapbox later dropped a placed point in the polygon tool (the
+     * browser test caught it on the live site). So the pan is left to start
+     * and stop as it always has, and the map is simply put back.
+     */
+    if (!gestureIsTouch && drag.centerAtPress) {
+      const d = drag;
+      const restore = () => {
+        if (drag !== d) return;
+        const now = map.getCenter();
+        if (Math.abs(now.lng - d.centerAtPress[0]) > 1e-9 || Math.abs(now.lat - d.centerAtPress[1]) > 1e-9) {
+          map.jumpTo({ center: d.centerAtPress });
+        }
+      };
+      // Mapbox applies a handler's pan on its next render frame, not in the
+      // event, so the move it fires then is when there is something to undo.
+      restore();
+      map.once('move', restore);
+      d.restore = restore;
+    }
   }
 
   const rect = map.getCanvasContainer().getBoundingClientRect();
@@ -4296,6 +4327,7 @@ function endDrag() {
     return painted;
   }
   const moved = Boolean(drag?.moved);
+  if (drag?.restore) map.off('move', drag.restore); // a press whose pan never landed leaves no listener behind
   if (moved) {
     endHistoryGroup();
     map.dragPan.enable();
