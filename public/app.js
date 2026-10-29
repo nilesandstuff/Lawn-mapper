@@ -14144,7 +14144,14 @@ async function exportPng() {
   try { capturePng(); } finally {
     if (before) {
       map.jumpTo(before);
-      if (window.__lmLastExport) window.__lmLastExport.putBack = map.getCenter().distanceTo(before.center) < 0.05;
+      /* Compared coordinate by coordinate: LngLat.distanceTo goes through
+         acos, which gives ~9 cm for two IDENTICAL points when the rounding
+         falls one way (2026-10-29: the browser test read "not put back" with
+         the centres equal to the last digit). 1e-7 degrees is about a centimetre. */
+      if (window.__lmLastExport) {
+        const c = map.getCenter();
+        window.__lmLastExport.putBack = Math.abs(c.lng - before.center.lng) < 1e-7 && Math.abs(c.lat - before.center.lat) < 1e-7;
+      }
     }
   }
 }
