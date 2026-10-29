@@ -478,6 +478,19 @@ async function build(site) {
   const frame = alignFrame(site, bounds);
   const fBox = gridBox(gridForFrame(frame, 1, 1));
   const [lx0, ly0] = toMerc([bounds[0], bounds[1]]), [lx1, ly1] = toMerc([bounds[2], bounds[3]]);
+  /* Points a square meter over the lot itself. A HOLE IN THE SURVEY (a user's
+     report, 2026-10-29: "unable to identify any trees" in Ketchum, Idaho):
+     USGS's index matches a survey by its box, and a survey can have a hole
+     where it was never flown -- there, Southern Idaho 2018 had about 0.05 a
+     square meter over the lot and 20 a block away. Under USGS's lowest grade
+     (QL3, 0.5 a square meter) the survey is taken as not covering the lot:
+     the next one is tried, and with none the page says so instead of
+     building an empty model. */
+  const lotM2 = Math.max(1, (lx1 - lx0) * (ly1 - ly0) * k * k);
+  const lotDensity = (c) => { let n = 0; for (let i = 0; i < c.n; i++) if (c.x[i] >= lx0 && c.x[i] <= lx1 && c.y[i] >= ly0 && c.y[i] <= ly1) n++; return n / lotM2; };
+  const MIN_DENSITY = 0.5;
+  if (keptUsed && lotDensity(cols) < MIN_DENSITY) { keptUsed = false; cols = null; cloud = null; flown = null; box = null; }
+  const holes = [];
   const m = MARGIN_M / k;
   if (!keptUsed) box = [Math.min(lx0 - m, fBox[0]), Math.min(ly0 - m, fBox[1]), Math.max(lx1 + m, fBox[2]), Math.max(ly1 + m, fBox[3])];
 
@@ -485,18 +498,25 @@ async function build(site) {
     status(`Reading ${c.name}…`);
     try {
       const got = await pointsIn(c.url, box, io, { progress: (d, t) => status(`Reading ${c.name}: ${d} of ${t} pieces…`) });
-      if (got.cols.n > 500) { cloud = c; cols = got.cols; flown = got.flown; break; }
-      report.push(`<p class="warn">${esc(c.name)} has no points here; tried the next.</p>`);
+      const dens = got.cols.n ? lotDensity(got.cols) : 0;
+      if (got.cols.n > 500 && dens >= MIN_DENSITY) { cloud = c; cols = got.cols; flown = got.flown; break; }
+      holes.push({ name: c.name, dens });
+      report.push(`<p class="warn">${esc(c.name)} has ${dens < 0.05 ? 'almost no' : `only ${dens.toFixed(2)} a square meter of`} points over this lot (a hole in the survey); tried the next.</p>`);
     } catch (e) {
       report.push(`<p class="warn">${esc(c.name)} could not be read (${esc(e.message)}); tried the next.</p>`);
     }
   }
-  if (!cols) { status('None of the clouds over this point had points here.', 'bad'); $('#report').innerHTML = report.join(''); return; }
+  if (!cols) {
+    const hole = holes.length ? `The lidar USGS publishes here has a hole over this property: ${holes.map((h) => `${esc(h.name)} has ${h.dens < 0.05 ? 'almost no points' : `${h.dens.toFixed(2)} points a square meter`}`).join('; ')} over the lot, where a survey has 2 to 20 or more. Without them the trees and buildings cannot be seen, so the shade cannot be worked out.` : 'None of the lidar over this point had points here, so the trees and buildings cannot be seen.';
+    const later = notOnAws.length ? ` USGS has flown it again (${notOnAws.map((u) => `${esc(u.workunit)}, ${esc(u.ql || '?')}, flown to ${u.end ? new Date(u.end).toISOString().slice(0, 7) : '?'}`).join('; ')}), but that survey is not yet in the public cloud store this map reads; once it is, the trees will show here.` : '';
+    track('no-lidar', holes.length ? `hole in ${holes.map((h) => h.name).join(', ')}${notOnAws.length ? '; newer not in the store' : ''}` : 'no points');
+    status(hole + later, 'bad');
+    $('#report').innerHTML = report.join('') + `<p class="warn">${hole}${later}</p>`;
+    return;
+  }
 
   /* Density over the lot itself. */
-  let inLot = 0;
-  for (let i = 0; i < cols.n; i++) if (cols.x[i] >= lx0 && cols.x[i] <= lx1 && cols.y[i] >= ly0 && cols.y[i] <= ly1) inLot++;
-  const lotM2 = Math.max(1, (lx1 - lx0) * (ly1 - ly0) * k * k);
+  const inLot = Math.round(lotDensity(cols) * lotM2);
 
   status(keptUsed ? 'Lining it up as kept with this map…' : 'Moving it onto the map\'s datum, then checking against the photo…');
   const datum = nad83Correction(site.lat, site.lng, cloud.epoch);
