@@ -182,6 +182,13 @@ def _gather_here(payload):
                                 cache_dir="/models/lidar-cache")
 
 
+# WHO IS FETCHING WHICH TILE (lidar_tiles below): a page asks every few
+# seconds while the server fetches; the first ask starts the fetch and the
+# rest only wait, unless the last start is twenty minutes old.
+fetching = modal.Dict.from_name("lawn-lidar-tiles-fetching", create_if_missing=True)
+FETCH_AGAIN_S = 1200
+
+
 @app.function(image=cpu_image, volumes={TILE_DIR: tiles}, timeout=3600, cpu=1.0, memory=2048)
 def fetch_tiles(urls):
     """USGS's tiles of a newer flight onto the volume, for the next lot there.
@@ -197,18 +204,21 @@ def fetch_tiles(urls):
         if path.exists():
             continue
         t0 = time.time()
-        lidar_sources.fetch_ranged(url, path)
+        try:
+            lidar_sources.fetch_ranged(url, path)
+        except Exception as e:  # noqa: BLE001 - said, and the note cleared so the next ask tries again at once
+            print(f"tile {path.name}: NOT fetched ({str(e)[:160]})", flush=True)
+            try:
+                del fetching[path.name]
+            except Exception:  # noqa: BLE001
+                pass
+            continue
         tiles.commit()
         got += 1
         print(f"tile {path.name}: {path.stat().st_size / 1e6:.0f} MB in {time.time() - t0:.0f}s", flush=True)
     return got
 
 
-# WHO IS FETCHING WHICH TILE (lidar_tiles below): a page asks every few
-# seconds while the server fetches; the first ask starts the fetch and the
-# rest only wait, unless the last start is twenty minutes old.
-fetching = modal.Dict.from_name("lawn-lidar-tiles-fetching", create_if_missing=True)
-FETCH_AGAIN_S = 1200
 TILE_NAME = re.compile(r"^https://rockyweb\.usgs\.gov/vdelivery/Datasets/Staged/Elevation/LPC/Projects/[A-Za-z0-9_./-]+\.laz$")
 
 
