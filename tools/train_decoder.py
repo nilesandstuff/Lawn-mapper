@@ -577,6 +577,7 @@ def crop_to_graded(L, margin=CROP_MARGIN):
     out = dict(L)
     for k in ("x", "t", "w"):
         out[k] = L[k][:, y0:y1, x0:x1].contiguous()
+    out["crop"] = (y0, y1, x0, x1)  # the jitter (S67) rebuilds the whole grid and cuts it the same way
     return out
 
 
@@ -651,9 +652,13 @@ def jittered(x, rng, L):
                        with_returns=bool(FUSE_RETURNS), with_overture=bool(FUSE_OVERTURE))
     k = fused_count()
     rows = list(LIDAR) + list(NAIP) + (list(intensity_index(bool(FUSE_RETURNS))) if FUSE_INTENSITY else [])
+    # An example frame is cut to its graded cells (crop_to_graded) after the
+    # rasters were kept whole: cut the rebuilt rows the same way. S67's first
+    # jittered run died on exactly this ([40, 54] against [56, 56]).
+    y0, y1, x0, x1 = L.get("crop") or (0, e.shape[1], 0, e.shape[2])
     out = x.clone()
     for i in rows:
-        out[-k + i] = torch.from_numpy(e[i])
+        out[-k + i] = torch.from_numpy(np.ascontiguousarray(e[i][y0:y1, x0:x1]))
     return out
 
 

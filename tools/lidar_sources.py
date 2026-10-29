@@ -143,7 +143,29 @@ def vertical_factor(wkt):
     return 1.0
 
 
-def fetch_ranged(url, path, parts=16, timeout=120, tries=4):
+# RATE-LIMITED (2026-10-29): rockyweb answered 429 Too Many Requests to the
+# 16-way download on all 18 tile lots of three runs in a row (S67, runs 266,
+# 267, 268), the HEAD included, while one connection at a time was served.
+# Fewer ranges at once, and a 429 is waited out (Retry-After when given, else
+# a wait that doubles from 15 s) rather than counted as a failure.
+RANGE_PARTS = 6
+RATE_WAIT_S = 15
+RATE_TRIES = 7
+
+
+def _wait_for(e, attempt):
+    """How long to wait after `e` on `attempt`: a 429's Retry-After, a doubling wait for a 429 without one, 5 s steps otherwise."""
+    import urllib.error
+    if isinstance(e, urllib.error.HTTPError) and e.code == 429:
+        try:
+            ra = float(e.headers.get("Retry-After") or 0)
+        except (TypeError, ValueError):
+            ra = 0
+        return min(180, max(ra, RATE_WAIT_S * 2 ** attempt))
+    return 5 * (attempt + 1)
+
+
+def fetch_ranged(url, path, parts=RANGE_PARTS, timeout=120, tries=RATE_TRIES):
     """A whole file in `parts` parallel byte ranges (rockyweb gives one connection ~0.2 MB/s).
     The folder is made if it is not there: the first release run on this reader
     lost 12 of 18 tile frames to a missing folder (2026-10-13)."""
@@ -159,10 +181,10 @@ def fetch_ranged(url, path, parts=16, timeout=120, tries=4):
             with urllib.request.urlopen(req, timeout=timeout) as r:
                 size = int(r.headers["Content-Length"])
             break
-        except Exception:  # noqa: BLE001 - retried, then raised
+        except Exception as e:  # noqa: BLE001 - retried, then raised
             if attempt == tries - 1:
                 raise
-            time.sleep(5 * (attempt + 1))
+            time.sleep(_wait_for(e, attempt))
     step = max(1, math.ceil(size / parts))
     ranges = [(s, min(size, s + step) - 1) for s in range(0, size, step)]
     tmp = path.with_suffix(".part")
@@ -176,10 +198,10 @@ def fetch_ranged(url, path, parts=16, timeout=120, tries=4):
                 if len(data) != rng[1] - rng[0] + 1:
                     raise IOError(f"short range {len(data)}")
                 return rng[0], data
-            except Exception:  # noqa: BLE001 - retried, then raised
+            except Exception as e:  # noqa: BLE001 - retried, then raised
                 if attempt == tries - 1:
                     raise
-                time.sleep(5 * (attempt + 1))
+                time.sleep(_wait_for(e, attempt))
         return None
 
     with open(tmp, "wb") as f:
