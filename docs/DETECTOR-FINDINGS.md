@@ -1016,6 +1016,85 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H130. A 2 m NDVI MISALIGNMENT AT SCORING COSTS NOTHING: with NAIP's near-infrared moved a fixed 2 m per lot at test, THE PLAN answers 98 of 104 lots identically (2 better, 4 worse, p = 0.69; median 15.6 -> 15.7%) (S67 trial 3, one seed, Modal) -- 2026-10-29
+*Workflow 14 run 40772688314 (`naip_trial: NDVI shifted 2 m at test`,
+`NAIP_SHIFT_M=2`: trained on NDVI unmoved, scored with it slid 2 m in a
+direction fixed per lot) against the fresh baseline 40795508816
+(`cache: rebuild`), both THE PLAN's settings on Modal, seed 7. Workflow
+24 run 40822016262 on THE PLAN's row, measured `all`.*
+
+| | all 104 | the 86 lots whose lidar was unaffected (below) | county-photo 31 | Mapbox 73 |
+|---|---|---|---|---|
+| better / worse / level | 2 / 4 / 98 | 2 / 3 / 81 | 1 / 3 / 27 | 1 / 1 / 71 |
+| paired change | +0.0 [+0.0, +0.0] | +0.0 | +0.0 | +0.0 |
+| sign test p | 0.69 | 1.0 | 0.63 | 1.0 |
+
+Largest moves: C94 57.9 -> 59.0, C74 21.4 -> 22.2, C19 36.8 -> 36.1.
+Nothing else moved more than half a point.
+
+**Against S67's bar: no difference seen** (p = 0.69, paired median 0.0).
+A 2 m error in NAIP's placement, bigger than the alignment's median move
+of 0.8 m on these 109 frames (largest 7.9 m, the pictures on branches
+pictures/naip-align-266 and -268), changes the map on six lots and the
+median by a tenth of a point. Read with H129: the decoder barely reads
+NDVI, so where NDVI sits cannot be costing the score. The owner's worry
+that the NDVI alignment is "very hidden" stands as a fact about the
+pipeline, not as a loss in the measurement.
+
+**The 18 lots left out of the second column** (C47 C43 C57 C81 C79 C24
+C23 B25 B26 C51 C30 C29 B19 B21 B20 C102 C39 C76): their newest lidar is
+tile-only on rockyweb, which answered the 16-way download with 429 in
+every S67 run, so they read the older octrees instead. The same lidar on
+both sides of each pairing, so the pairing is fair, but it is not THE
+PLAN's lidar for them; 1b81cad and ed0b771 fix the download for later runs.
+
+### H129. NAIP'S NDVI IS NOT DOING MEASURABLE WORK: THE PLAN trained and scored with no near-infrared at all is level with the baseline lot by lot (19 better, 24 worse, 61 level, paired change +0.0, p = 0.54); the headline median 15.6 -> 16.1% is two lots crossing the middle, and on the 86 lots with their own lidar it goes the other way, 14.6 -> 14.3 (S67 trial 2, one seed, Modal) -- 2026-10-29
+*Workflow 14 run 40771958938 (`naip_trial: without NDVI`: the naip folder
+emptied after the read, so no lot has NDVI, trained or scored) against the
+fresh baseline 40795508816, both THE PLAN's settings on Modal, seed 7.
+Workflow 24 run 40822013077 on THE PLAN's row, measured `all`. The two
+runs' pictures are linked as twins on the predictions page
+(2026-10-28-2321-edt and 2026-10-29-0005-edt).*
+
+| | all 104 | the 86 lots (H130's note) | county-photo 31 | Mapbox 73 |
+|---|---|---|---|---|
+| better / worse / level | 19 / 24 / 61 | 16 / 17 / 53 | 7 / 9 / 15 | 12 / 15 / 46 |
+| median | 15.6 -> 16.1 | 14.6 -> 14.3 | 18.3 -> 18.4 | 14.6 -> 14.6 |
+| paired change | +0.0 [-0.1, +0.1] | -0.0 [-0.1, +0.1] | +0.0 [-0.3, +0.4] | +0.0 [-0.1, +0.1] |
+| sign test p | 0.54 | 1.0 | 0.80 | 0.70 |
+
+Table rows of the run itself: the pretrained eye, decoder 17.5% (baseline
+17.7), edge refined 16.5 (16.4), THE PLAN 16.1 (15.6). Lots that moved:
+C49 22.6 -> 40.1 and C47 8.5 -> 13.5 worse without NDVI, C78 43.7 ->
+39.8 and C46 53.4 -> 51.1 better; C29 (302 -> 336%) is the lot whose
+traced lawn is a sliver, so its percentages mean little.
+
+**Against S67's bar: no difference seen with one seed.** The sign test
+is far from 0.05 and the paired median change is 0.0. The bar's other
+clause, "a median move of half a point", is met by the headline medians
+(15.6 -> 16.1) and contradicted by the 86-lot medians (14.6 -> 14.3) and
+by the paired change; with 61 lots answering identically, that half
+point is which two lots sit at the middle, not a shift of the
+distribution. Recorded as level, not as worse.
+
+**Reading (the owner's question answered in part).**
+- Taking NDVI away entirely changes the answer on 43 of 104 lots and the
+  score on none of them in a direction the others share. H48 found the
+  fused inputs as a whole did not move THE PLAN's row; this is the first
+  run to take NDVI out alone, and it says the same of NDVI by itself.
+- So S67's readings go: (2) no worse than the baseline, so NDVI does
+  nothing and (3) is moot -- and (3), run anyway, agrees (H130). Trial
+  (4), the 1.5 m jitter, is worth reading only for what it does to the
+  lidar's layers, which the decoder does use (H48's ablations, H103).
+- One seed on each side. Two seeds that both land level would be the
+  usual next step; given H48 and H130 pointing the same way it is not
+  queued.
+- SPECULATION, not measured: NDVI's 1 m pixels area-averaged onto 1.4 m
+  patches carry little the photo's own green does not, on lots where the
+  photo is a leaf-on summer flight; a leaf-off photo with a summer NAIP
+  is where NDVI could add, and the per-photo split above (county 7 / 9,
+  Mapbox 12 / 15) does not show it.
+
 ### H128. TAUGHT ONLY WHAT WAS TRACED (inferred marks left out of training) IS WORSE THAN THE PLAN: 26 lots better, 44 worse (sign test p = 0.041), median 15.6 -> 16.6%; better on seen ground, much worse on inferred ground, and it misses far more lawn under leafy crowns (S66, one seed) -- 2026-10-26
 *Workflow 14 runs 40369587372 (A, `canopy: on lawn`, THE PLAN) and
 40369617314 (B, `canopy: on lawn without inferred`), otherwise identical:
@@ -8491,7 +8570,7 @@ is 130 sqft, so maybe the cutoff should be 100 sqft"),** on the condo,
 where grass islands between driveways run 100 to 150 sq ft. Same scope as
 above: the outline, not the scored mask.
 
-### S67. Does NAIP's NDVI matter, is its alignment right, and should the decoder be told the fused layers are only "about here"? (owner, 2026-10-28) -- IN FLIGHT, four Modal runs
+### S67. Does NAIP's NDVI matter, is its alignment right, and should the decoder be told the fused layers are only "about here"? (owner, 2026-10-28) -- MEASURED 2026-10-29: H129 (without NDVI, level), H130 (shifted 2 m, level); trial 4 (jittered) IN FLIGHT, run 40808233030
 
 **The owner's question.** "We put a lot of effort into making sure that
 lidar aligns with imagery, but we didn't ask how well the NDVI is aligning
@@ -10466,6 +10545,10 @@ deploy log says how many are locked and how many are waiting.
 | 2026-10-23 | 39879564306 | 104 (locked, 131u7jm) | S58 `windows: native`, `gpu: modal`: DINOv3-sat with the 26 big lots read whole at 10 cm in one pass (61-188 patches a side) on an L4 (extraction 147 s, decoders 426 + 657 s), THE PLAN, seed 7, no pond examples | 16.0% (edge refined + stage 3, span, veto) | — | **H121.** Workflow 24 run 39906929463 vs S51 (same eye squeezed): all 42 / 35 / 27, -0.1 [-0.5, +0.3]; the big 26: 17 / 5 / 4, -1.2 [-1.8, -0.2], p 0.017; run 39906931875 vs Scale-MAE: 67 / 27 / 10, -2.0; big 26 -2.8 |
 | 2026-10-23 | 39887800268 | 104 (locked, 131u7jm) | S59: S51 again over cached features (seed 7) to draw the Byron Center map | 15.5% (edge refined + stage 3, span, veto) | — | 15.5 against S51's 15.4 from the same features and seed (S54 and S52-on-DINOv3 read 15.5 too): a tenth of a point of nondeterminism, not the decimal reproduction of H26. The draw was refused by the site's edge (403 to the runner); run 3 (39907286242) read the map and the county export from the database and died on a call of mine; the picture came from workflow 43 below |
 | 2026-10-24 | 40054742999 | 1 saved map (the condo complex, drawn only) | Workflow 32 `map`, after 32f396d: release v7's live native read, pressed twice | -- | -- | **A LIVE BUG, FOUND BY THE OWNER AND FIXED:** v7's first live presses on the condo complex (40045019028, and the owner's own) came back as horizontal stripes. alpha_infer.whole unpacked every read as the eye's default 56 x 56 patches; a native read at 4096 px is 256 x 256, and patches_of keeps the last side*side tokens, so the bottom twelve rows of the grid were laid across the whole lot. Training unpacked by S // patch, so H121 and v7's weights were never affected; only the live reading of lots past 90 m on v7 (2026-10-23 23:11 to 2026-10-24 02:31 UTC). After the fix: raw mask 970x1024, lawn in 31.4% of it, row-to-row change 0.011 against column-to-column 0.010, ratio 1.07 (stripes would be > 3). Both presses succeeded (photo pieces two at a time, retried): GPU 131 s cold / 79 s warm (backbone 79 / 74 s), downloads 88 / 71 s, wall 241 / 161 s. tools/alpha_infer_test.py pins the unpacking |
+| 2026-10-28 | 40795508816 | 104 (locked, 131u7jm) + 5 not-lawn-only maps | DINOv3-sat, THE PLAN, seed 7, `gpu: modal`, `cache: rebuild` (S67 trial 1, the baseline) | 15.6% (THE PLAN); edge refined 16.4% | -- | **Side A of H129 and H130.** NAIP lined up with the photo on 109 of 109 frames, median move 0.8 m, largest 7.9 m; pictures on branch pictures/naip-align-268. The 18 tile-only lots read the older octrees (rockyweb 429 on the 16-way download; fixed after, 1b81cad, ed0b771). Extraction 1 h 57 on the free runner plus Modal, decoders 38 min, scoring 1 h |
+| 2026-10-28 | 40771958938 | 104 (locked, 131u7jm) + 5 not-lawn-only maps | DINOv3-sat, THE PLAN, seed 7, `gpu: modal`, `naip_trial: without NDVI` (S67 trial 2) | 16.1% (THE PLAN); edge refined 16.5% | -- | **H129.** Against the baseline (workflow 24 run 40822013077): 19 / 24 / 61, paired +0.0, p 0.54; the 86 lots 16 / 17 / 53, p 1.0. Waited 1 h 38 for an L4 at the canopy step and 2 h 51 at the decoders; pictures on branch pictures/naip-align-265. The trials' first launches (runs 260, 261) died on the pictures push before any training (fixed 3970cfa) |
+| 2026-10-28 | 40772688314 | 104 (locked, 131u7jm) + 5 not-lawn-only maps | DINOv3-sat, THE PLAN, seed 7, `gpu: modal`, `naip_trial: NDVI shifted 2 m at test` (S67 trial 3) | 15.7% (THE PLAN); edge refined 16.7% | -- | **H130.** Against the baseline (workflow 24 run 40822016262): 2 / 4 / 98, p 0.69. Pictures on branch pictures/naip-align-266 |
+| 2026-10-28 | 40772695713, then 40808233030 | 104 (locked, 131u7jm) + 5 not-lawn-only maps | DINOv3-sat, THE PLAN, seed 7, `gpu: modal`, `naip_trial: jittered 1.5 m` (S67 trial 4) | -- | -- | The first run died 17 s into training: crop_to_graded cuts the pond maps' frames to their graded cells and the jitter rebuilt the fused rows over the whole grid ([56, 56] against [40, 54]); fixed in ed0b771 (the crop recorded, the rows cut the same way). Relaunched as 40808233030 on the fixed code, in flight; H131 when scored |
 | 2026-10-27 | 40404246838, 40404285400 | 104 (locked, 131u7jm) + 5 not-lawn-only maps | DINOv3-sat, THE PLAN, seeds 8 and 9 (H127) | 15.6%, 15.5% (THE PLAN) | -- | **H127 pooled** with seed 7: leaf-off lots 6 better / 1 worse, p 0.125 (fails its bar); seen 7 / 0, p 0.016. C87 the one loss, all on inferred ground. Switched on by the owner the same day |
 | 2026-10-26 | 40369617314 | 104 (locked, 131u7jm) + 5 not-lawn-only maps | DINOv3-sat, `canopy: on lawn without inferred`, seed 7 (S66 side B) | 16.6% (THE PLAN's row) | -- | **H128.** Against side A (workflow 24 run 40412051294): 26 better / 44 worse, p 0.041. Seen 13.8 (A 14.6), inferred 22.0 (A 13.6). Fails S66's bar. Linked to A as twins |
 | 2026-10-26 | 40369587372 | 104 (locked, 131u7jm) + 5 not-lawn-only maps | DINOv3-sat, THE PLAN, seed 7 (S66 side A) | 15.6% (THE PLAN) | -- | **H127.** small-100-leafoff paired against THE PLAN in the same run (workflow 24 runs 40403326241, 40404063237): leaf-off lots 7 better / 1 worse / 27 level, p 0.070; seen ground 7 / 0, p 0.016. Per-lot file kept; drawing used 10.9 GB |
