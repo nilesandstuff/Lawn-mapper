@@ -12,3 +12,6 @@ home/wrangler.toml
 shade-site/build/
 shade-site/wrangler.toml
 tools/find-report.json
+
+# The browser test's screenshot (tools/browser-test.mjs), uploaded by the workflow, never committed
+browser-test.png
