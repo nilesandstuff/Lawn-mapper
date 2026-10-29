@@ -208,6 +208,40 @@ GATHER_TIMEOUT_S = PRESS_TILE_WAIT_S + 600  # the wait, then the read, NAIP and 
 WAIT_STEP_S = 5
 
 
+NOTE_EVERY_S = 60
+
+
+class _Holding:
+    """The note that this machine is fetching `name`, rewritten every
+    NOTE_EVERY_S while it does: a download that waits out USGS's 429s for half
+    an hour must not look abandoned after FETCH_AGAIN_S, or a second machine
+    starts the same tile beside it and doubles the crowd USGS refuses."""
+
+    def __init__(self, name):
+        import threading
+        self.name, self.stop = name, threading.Event()
+
+    def _beat(self):
+        while not self.stop.wait(NOTE_EVERY_S):
+            try:
+                fetching[self.name] = time.time()
+            except Exception:  # noqa: BLE001 - a note that fails to write is only a note
+                pass
+
+    def __enter__(self):
+        import threading
+        try:
+            fetching[self.name] = time.time()
+        except Exception:  # noqa: BLE001
+            pass
+        threading.Thread(target=self._beat, daemon=True).start()
+        return self
+
+    def __exit__(self, *exc):
+        self.stop.set()
+        return False
+
+
 def _tile_words(shown, now=None):
     """The press's line while USGS's tiles download: how much, and how long."""
     now = now or time.time()
@@ -289,10 +323,6 @@ def _fetch_or_wait(urls, say=lambda words: None, wait_s=FETCH_AGAIN_S, fetch_aft
                 return True
             if not fetch_after_wait or (deadline and time.time() >= deadline):
                 return False
-        try:
-            fetching[name] = time.time()
-        except Exception:  # noqa: BLE001 - a note that fails to write is only a note
-            pass
         t0 = time.time()
         shown[name] = {"done": 0, "size": 0, "t0": t0}
 
@@ -305,7 +335,10 @@ def _fetch_or_wait(urls, say=lambda words: None, wait_s=FETCH_AGAIN_S, fetch_aft
             tell()
 
         try:
-            lidar_sources.fetch_ranged(url, path, progress=progress)
+            # A press's 429s are waited out only to its deadline; a warm-up's for
+            # RATE_PATIENCE_S (run 271: seven tries gave up on 6 of 20 tiles).
+            with _Holding(name):
+                lidar_sources.fetch_ranged(url, path, progress=progress, patient_until=deadline)
             with commit_lock:
                 tiles.commit()
             print(f"tile {name}: {path.stat().st_size / 1e6:.0f} MB in {time.time() - t0:.0f}s", flush=True)
@@ -326,7 +359,9 @@ def _fetch_or_wait(urls, say=lambda words: None, wait_s=FETCH_AGAIN_S, fetch_aft
     return [u for u, good in zip(urls, ok) if not good]
 
 
-@app.function(image=cpu_image, volumes={TILE_DIR: tiles}, timeout=3600, cpu=1.0, memory=2048)
+# 5400 s: each tile may now wait out USGS's 429s for RATE_PATIENCE_S (30 min)
+# and then download for twenty more (run 271: 324 MB took 1296 s).
+@app.function(image=cpu_image, volumes={TILE_DIR: tiles}, timeout=5400, cpu=1.0, memory=2048)
 def fetch_tiles(urls):
     """USGS's tiles of a newer flight onto the volume, for the next lot there.
     Each is written under a temporary name and renamed when whole, so a reader
@@ -342,7 +377,8 @@ def fetch_tiles(urls):
             continue
         t0 = time.time()
         try:
-            lidar_sources.fetch_ranged(url, path)
+            with _Holding(path.name):
+                lidar_sources.fetch_ranged(url, path)
         except Exception as e:  # noqa: BLE001 - said, and the note cleared so the next ask tries again at once
             print(f"tile {path.name}: NOT fetched ({str(e)[:160]})", flush=True)
             try:
@@ -422,7 +458,7 @@ def crop_tiles(urls, box, spacing=0.0):
 # crop_tiles and the detector's gather both read from. Minutes, once; nobody
 # waits on it.
 warming = modal.Dict.from_name("lawn-lidar-warming", create_if_missing=True)
-WARM_PARALLEL = 2  # tiles fetched side by side; each is already 4 ranges, and rockyweb refuses a crowd
+WARM_PARALLEL = 2  # tiles fetched side by side; each is already RANGE_PARTS ranges, and rockyweb refuses a crowd
 
 
 @app.function(image=cpu_image, volumes={TILE_DIR: tiles}, timeout=3600, cpu=2.0, memory=4096)

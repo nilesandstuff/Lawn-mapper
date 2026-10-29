@@ -265,7 +265,8 @@ def gather_sources(photo, prep, naip_align=None, progress=None, cache_dir=None, 
                 for i, u in enumerate(pending):
                     say(f"Fetching USGS's newest lidar survey over this lot (tile {i + 1} of {len(pending)}"
                         + (f", {mb:.0f} MB in all" if mb else "") + "): the first lot in an area takes a minute or two")
-                    lidar_sources.fetch_ranged(u, Path(tile_dir) / u.rsplit("/", 1)[-1])
+                    lidar_sources.fetch_ranged(u, Path(tile_dir) / u.rsplit("/", 1)[-1],
+                                               patient_until=time.time() + 300)  # a person is waiting: not half an hour
                 out["rec"]["tilesFetched"] = len(pending)
                 pending = []
             except Exception as e:  # noqa: BLE001 - the octree now, the tiles next time

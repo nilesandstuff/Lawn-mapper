@@ -143,6 +143,77 @@ def check_ranged_download_makes_its_folder():
     print("download: the folder is made, seven ranges land in order, no half file left, progress told")
 
 
+def check_ranged_download_waits_and_resumes():
+    """Run 271 (2026-10-29): rockyweb's 429s ended 6 of 20 tiles after seven
+    tries, and a broken range began again from its first byte. A 429 is now
+    waited out (no try spent) until patient_until, and a range cut short
+    carries on from the byte it reached."""
+    import http.server
+    import tempfile
+    import threading
+    import time
+    import urllib.error
+    from pathlib import Path
+    body = bytes(range(256)) * 1600  # 409,600 bytes
+    asked = []
+    state = {"refuse": 9, "cut": 1, "always": False}
+
+    class H(http.server.BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.0"
+
+        def log_message(self, *a):
+            pass
+
+        def do_HEAD(self):
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+
+        def do_GET(self):
+            a, b = self.headers["Range"].split("=")[1].split("-")
+            asked.append(int(a))
+            if state["always"] or state["refuse"] > 0:
+                state["refuse"] -= 1
+                self.send_response(429)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            chunk = body[int(a):int(b) + 1]
+            self.send_response(206)
+            self.send_header("Content-Length", str(len(chunk)))
+            self.end_headers()
+            if state["cut"] > 0 and len(chunk) > 300000:
+                state["cut"] -= 1
+                self.wfile.write(chunk[:200000])  # the connection drops part way
+                return
+            self.wfile.write(chunk)
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    keep = (t.RATE_WAIT_S, t.RANGE_STAGGER_S, t.ERROR_WAIT_S)
+    t.RATE_WAIT_S, t.RANGE_STAGGER_S, t.ERROR_WAIT_S = 0.001, 0.0, 0.001
+    url = f"http://127.0.0.1:{srv.server_port}/tile.laz"
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            out = t.fetch_ranged(url, Path(d) / "tile.laz", parts=1, patient_until=time.time() + 30)
+            assert out.read_bytes() == body, "whole and in order after nine 429s and a break"
+            assert asked.count(0) == 10, f"nine refusals did not spend the seven tries: {asked}"
+            resumed = [a for a in asked if a != 0]
+            assert resumed and 0 < resumed[0] <= 200000, f"carried on from the byte it reached: {asked}"
+            state["always"] = True
+            t0 = time.time()
+            try:
+                t.fetch_ranged(url, Path(d) / "never.laz", parts=1, patient_until=time.time() + 0.5)
+                raise AssertionError("refused for ever, it should give up")
+            except urllib.error.HTTPError as e:
+                assert e.code == 429
+            assert time.time() - t0 < 5, "and gives up at patient_until"
+            assert not (Path(d) / "never.laz").exists()
+    finally:
+        t.RATE_WAIT_S, t.RANGE_STAGGER_S, t.ERROR_WAIT_S = keep
+        srv.shutdown()
+    print("download: 429s waited out without spending tries, a broken range carried on, given up at patient_until")
+
+
 def check_raw_points_cache():
     """The raw points saved once are read back for the same key and re-read for another."""
     import tempfile
@@ -290,6 +361,7 @@ if __name__ == "__main__":
     check_units()
     check_one_read()
     check_ranged_download_makes_its_folder()
+    check_ranged_download_waits_and_resumes()
     check_raw_points_cache()
     check_tile_crop_for_the_pages()
     check_areas_and_the_server_crop()

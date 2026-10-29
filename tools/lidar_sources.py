@@ -148,49 +148,90 @@ def vertical_factor(wkt):
 # 267, 268), the HEAD included, while one connection at a time was served.
 # Fewer ranges at once, and a 429 is waited out (Retry-After when given, else
 # a wait that doubles from 15 s) rather than counted as a failure.
-RANGE_PARTS = 4
+#
+# STILL REFUSED AT FOUR (run 271, 2026-10-29): through the model server, 6 of
+# the 20 tiles it was asked for ended "HTTP Error 429" after seven tries
+# (about ten minutes), four of them the only tile being fetched; each threw
+# away every range already in hand. And four ranges bought no speed: the
+# fourteen that arrived came at 0.05 to 0.43 MB/s for the whole tile, the
+# same as the one connection (~0.2 to 0.36) measured before. So: two ranges;
+# a range that breaks carries on from the byte it reached; and a 429 is
+# waited out until `patient_until` (RATE_PATIENCE_S from the start unless
+# the caller says), not for seven tries. Other errors still have seven.
+RANGE_PARTS = 2
 RANGE_STAGGER_S = 0.5  # the ranges start half a second apart: the refusal page refreshes after one second, a per-second limit
 RATE_WAIT_S = 15
+RATE_WAIT_MAX_S = 180
 RATE_TRIES = 7
+RATE_PATIENCE_S = 1800
+ERROR_WAIT_S = 5
 PROGRESS_EVERY_S = 3
 
 
-def _wait_for(e, attempt):
-    """How long to wait after `e` on `attempt`: a 429's Retry-After, a doubling wait for a 429 without one, 5 s steps otherwise."""
+def _refused(e):
     import urllib.error
-    if isinstance(e, urllib.error.HTTPError) and e.code == 429:
+    return isinstance(e, urllib.error.HTTPError) and e.code == 429
+
+
+def _wait_for(e, attempt):
+    """How long to wait after `e` on `attempt`: a 429's Retry-After, a doubling wait for a 429 without one, ERROR_WAIT_S steps otherwise."""
+    if _refused(e):
         try:
             ra = float(e.headers.get("Retry-After") or 0)
         except (TypeError, ValueError):
             ra = 0
-        return min(180, max(ra, RATE_WAIT_S * 2 ** attempt))
-    return 5 * (attempt + 1)
+        return min(RATE_WAIT_MAX_S, max(ra, RATE_WAIT_S * 2 ** min(attempt, 12)))
+    return ERROR_WAIT_S * (attempt + 1)
 
 
-def fetch_ranged(url, path, parts=RANGE_PARTS, timeout=120, tries=RATE_TRIES, progress=None):
-    """A whole file in `parts` parallel byte ranges (rockyweb gives one connection ~0.2 MB/s).
+class _Patience:
+    """One request's retries: a 429 waits until `until` without spending a
+    try (it is USGS asking us to slow down, not a fault); anything else has
+    `tries`. `again(e)` sleeps and returns, or raises `e` when out."""
+
+    def __init__(self, tries, until):
+        self.tries, self.until, self.errors, self.refusals = tries, until, 0, 0
+
+    def again(self, e):
+        import time
+        if _refused(e):
+            wait = _wait_for(e, self.refusals)
+            self.refusals += 1
+            if time.time() + wait > self.until:
+                raise e
+        else:
+            self.errors += 1
+            if self.errors >= self.tries:
+                raise e
+            wait = _wait_for(e, self.errors - 1)
+        time.sleep(wait)
+
+
+def fetch_ranged(url, path, parts=RANGE_PARTS, timeout=120, tries=RATE_TRIES, progress=None, patient_until=None):
+    """A whole file in `parts` parallel byte ranges.
     The folder is made if it is not there: the first release run on this reader
     lost 12 of 18 tile frames to a missing folder (2026-10-13).
     `progress(done_bytes, size_bytes)` is told as the bytes arrive, about
     every PROGRESS_EVERY_S, so a person waiting on a press can be told how far
-    the download has got (tools/modal_serve.py)."""
+    the download has got (tools/modal_serve.py). A range cut short carries on
+    from where it stopped; USGS's 429s are waited out until `patient_until`
+    (a time.time(); default RATE_PATIENCE_S from now)."""
     import threading
     import time
     path = Path(path)
     if path.exists() and path.stat().st_size > 0:
         return path
     path.parent.mkdir(parents=True, exist_ok=True)
+    until = patient_until if patient_until is not None else time.time() + RATE_PATIENCE_S
     size = None
-    for attempt in range(tries):  # rockyweb times out now and then; the HEAD is retried as the ranges are
+    head = _Patience(tries, until)
+    while size is None:  # rockyweb times out now and then; the HEAD is retried as the ranges are
         try:
             req = urllib.request.Request(url, method="HEAD")
             with urllib.request.urlopen(req, timeout=timeout) as r:
                 size = int(r.headers["Content-Length"])
-            break
         except Exception as e:  # noqa: BLE001 - retried, then raised
-            if attempt == tries - 1:
-                raise
-            time.sleep(_wait_for(e, attempt))
+            head.again(e)
     step = max(1, math.ceil(size / parts))
     ranges = [(s, min(size, s + step) - 1) for s in range(0, size, step)]
     tmp = path.with_suffix(".part")
@@ -216,28 +257,28 @@ def fetch_ranged(url, path, parts=RANGE_PARTS, timeout=120, tries=RATE_TRIES, pr
 
     def get(rng):
         time.sleep(RANGE_STAGGER_S * (ranges.index(rng) % parts))
-        for attempt in range(tries):
-            got = 0
+        buf = bytearray()
+        want = rng[1] - rng[0] + 1
+        patience = _Patience(tries, until)
+        while len(buf) < want:
+            start = rng[0] + len(buf)
             try:
-                q = urllib.request.Request(url, headers={"Range": f"bytes={rng[0]}-{rng[1]}"})
-                buf = bytearray()
+                q = urllib.request.Request(url, headers={"Range": f"bytes={start}-{rng[1]}"})
                 with urllib.request.urlopen(q, timeout=timeout) as r:
+                    if getattr(r, "status", 206) != 206 and not (start == 0 and rng[1] == size - 1):
+                        raise IOError(f"range ignored (HTTP {r.status})")
                     while True:
-                        b = r.read(1 << 20)
+                        b = r.read(1 << 16)  # small reads: a break loses at most this much
                         if not b:
                             break
+                        b = b[:want - len(buf)]
                         buf += b
-                        got += len(b)
                         tell(len(b))
-                if len(buf) != rng[1] - rng[0] + 1:
-                    raise IOError(f"short range {len(buf)}")
-                return rng[0], bytes(buf)
-            except Exception as e:  # noqa: BLE001 - retried, then raised
-                tell(-got)  # what this try brought is fetched again
-                if attempt == tries - 1:
-                    raise
-                time.sleep(_wait_for(e, attempt))
-        return None
+                if len(buf) < want:
+                    raise IOError(f"short range {len(buf)} of {want}")
+            except Exception as e:  # noqa: BLE001 - carried on from len(buf), then raised
+                patience.again(e)
+        return rng[0], bytes(buf)
 
     with open(tmp, "wb") as f:
         f.truncate(size)
