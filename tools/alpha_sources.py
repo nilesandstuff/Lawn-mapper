@@ -156,7 +156,13 @@ def _lidar_cache_file(cache_dir, prep, local):
     return Path(cache_dir) / f"{hashlib.sha1(key.encode()).hexdigest()}.npz"
 
 
-def _lidar_cached(path, max_age_s=7 * 86400):
+# A MONTH (owner, 2026-10-29: "Let's make the cache last a month"): a frame's
+# lidar layers are kept on the volume for thirty days, so a lot pressed again
+# within the month reads nothing from USGS.
+LIDAR_CACHE_DAYS = 30
+
+
+def _lidar_cached(path, max_age_s=LIDAR_CACHE_DAYS * 86400):
     """The (layers, masks) saved for this frame, or None."""
     try:
         if not path or not path.exists() or time.time() - path.stat().st_mtime > max_age_s:
@@ -190,7 +196,7 @@ def gather_sources(photo, prep, naip_align=None, progress=None, cache_dir=None, 
         seconds     {lidar, naip}
 
     `progress(stage)` is told each step as it starts (the model server shows
-    it to the app). `cache_dir` keeps each frame's lidar layers for a week,
+    it to the app). `cache_dir` keeps each frame's lidar layers for a month (LIDAR_CACHE_DAYS),
     so a press sent again for the same lot (the app restarting one, or a
     person pressing twice) reads nothing from USGS: on a 10-acre lot the
     lidar alone was three minutes (owner, 2026-10-21).
