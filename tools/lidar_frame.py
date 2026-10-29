@@ -478,6 +478,7 @@ def points_over(base, bbox, limit_nodes=400):
     if len(nodes) > limit_nodes:
         raise RuntimeError(f"{len(nodes)} nodes over one frame; refusing to download a county")
     parts = []
+    gps = []
     nbytes = 0
     for key in nodes:
         raw = fetch(f"{base}/ept-data/{key}.laz")
@@ -491,9 +492,12 @@ def points_over(base, bbox, limit_nodes=400):
                 np.asarray(las.intensity)[m].astype(np.float64),
                 np.asarray(las.classification)[m].astype(np.float64),
             ]))
+            if "gps_time" in las.point_format.dimension_names:
+                gps.append(np.asarray(las.gps_time)[m].astype(np.float64))
     pts = np.vstack(parts) if parts else np.zeros((0, 5))
+    share, dated = lidar_sources.leaf_on_share(np.concatenate(gps) if gps else None)
     return pts, {"nodes": len(nodes), "mb": nbytes / 1e6, "points": int(len(pts)),
-                 "ept_points": ept.get("points")}
+                 "ept_points": ept.get("points"), "leafOnShare": share, "dated": dated}
 
 
 def lidar_for(url, bbox, cell=2.0, epoch=None, tiles=None):
@@ -504,12 +508,16 @@ def lidar_for(url, bbox, cell=2.0, epoch=None, tiles=None):
     flight, read instead when given; `epoch`, the flight's, for the datum move
     (lidar_sources.py, as training reads it)."""
     base = (url or "").rsplit("/", 1)[0]
-    pts, _ = lidar_sources.read_points(lambda b: points_over(base, b), bbox,
-                                       epoch if epoch else lidar_sources.DEFAULT_EPOCH, tiles=tiles)
+    pts, info = lidar_sources.read_points(lambda b: points_over(base, b), bbox,
+                                          epoch if epoch else lidar_sources.DEFAULT_EPOCH, tiles=tiles)
     raster = rasterise(pts, bbox, cell)
     if float((raster["n_all"] > 0).mean()) < MIN_COVERED:
         return None
     layers = layers_from(raster, cell)
+    # The share of the frame's dated points flown in leaf (S68), NaN when
+    # none could be dated; kept with the layers, so a cached read has it too.
+    share = info.get("leafOnShare")
+    layers["leaf_on_share"] = np.array(np.nan if share is None else share, dtype=np.float64)
     return layers, masks_from(raster, layers)
 
 

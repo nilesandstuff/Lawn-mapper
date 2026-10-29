@@ -8651,7 +8651,7 @@ is 130 sqft, so maybe the cutoff should be 100 sqft"),** on the condo,
 where grass islands between driveways run 100 to 150 sq ft. Same scope as
 above: the outline, not the scored mask.
 
-### S68. Should a live press read LEAF-ON lidar, when the decoder has seen little? (owner, 2026-10-29) -- OPEN, the owner's decision
+### S68. Should a live press read LEAF-ON lidar, when the decoder has seen little? (owner, 2026-10-29) -- DECIDED 2026-10-29 by the owner ("I agree with your judgements about leaf on lidar"): the middle course, live only; training unchanged
 
 **The owner's question.** Ketchum's older survey (Southern Idaho 2018) has a
 hole over the lot; the newest (Southern Gaps 2023-24) was flown in two
@@ -8692,6 +8692,17 @@ the cost of at most H97's 0.2 points, and keeps roofs and voids at Ketchum.
 Dropping leaf-on lidar from training would remove the 2 lots and an unknown
 share of the 27 mixed ones, and teach the model less about a quarter of the
 country it serves.
+
+**What was built (2026-10-29, a decision, not a measurement).** Every read
+dates its points by their own GPS day, as the shade map does
+(lidar_sources.leaf_on_share). When half or more of the frame's dated points
+were flown in leaf (alpha_sources.LEAF_ON_SHARE), the live press gives the
+decoder no lidar -- all its lidar channels zero, flag and brightness
+included, exactly as training's dropout shows a lot -- and keeps the veto's
+roof and void and stage 3's heights. The press says so on its line, and its
+record carries lidarLeafOnShare and lidarToDecoder. Training keeps every
+lot's lidar as before. Ketchum's lot reads the 2023-24 survey for roofs,
+holes and heights, and the decoder reads it as a lot without lidar.
 
 ### S67. Does NAIP's NDVI matter, is its alignment right, and should the decoder be told the fused layers are only "about here"? (owner, 2026-10-28) -- MEASURED 2026-10-29: H129 (without NDVI, level), H130 (shifted 2 m, level), H131 (jittered, not adopted); CLOSED
 

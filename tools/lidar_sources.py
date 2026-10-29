@@ -307,12 +307,16 @@ def tile_records(path, bbox3857):
     return {k: (v[keep] if v is not None else None) for k, v in rec.items()}
 
 
-def tile_points(path, bbox3857):
-    """Points of one tile inside bbox (Web Mercator), as (x, y, z m, intensity, class)."""
-    r = tile_records(path, bbox3857)
+def _points_of(r):
+    """tile_records' arrays as (x, y, z m, intensity, class) rows."""
     if not len(r["x"]):
         return np.zeros((0, 5))
     return np.column_stack([r["x"], r["y"], r["z"], r["intensity"].astype(np.float64), r["cls"].astype(np.float64)])
+
+
+def tile_points(path, bbox3857):
+    """Points of one tile inside bbox (Web Mercator), as (x, y, z m, intensity, class)."""
+    return _points_of(tile_records(path, bbox3857))
 
 
 def thin_records(rec, spacing_merc):
@@ -478,6 +482,44 @@ def crop_from_server(urls, box, out_dir, app=SERVER_APP, say=print):
     return out
 
 
+# ------------------------------------------------------------- the season
+
+# WHETHER THE LIDAR WAS FLOWN IN LEAF, POINT BY POINT (owner, 2026-10-29,
+# S68: on a leaf-on flight a live press hides the lidar from the decoder,
+# which has seen little summer lidar, and keeps the veto and the woods rule).
+# Each point is dated by its own GPS time exactly as the shade map does
+# (public/shade/las.js gpsMs and leafOfMs): by the value, not the header's
+# bit -- under a week is time-of-week and says nothing of the date; up to
+# 2001's raw count it is adjusted standard time (less 1e9); above, raw. A day
+# from 1 November to 10 May is leaf-off, the rest in leaf. USGS's own
+# collection window would call Ketchum's summer-and-summer survey "mixed".
+GPS_EPOCH_UNIX = 315964800        # 1980-01-06
+GPS_WEEK_S = 604800
+RAW_GPS_2001_S = 6.6e8
+LEAF_SAMPLE = 5000
+
+
+def leaf_on_share(gps):
+    """(share of dated points flown in leaf, how many were dated) from GPS
+    times; (None, 0) when none can be dated."""
+    if gps is None:
+        return None, 0
+    g = np.asarray(gps, dtype=np.float64)
+    if len(g) > LEAF_SAMPLE:
+        g = g[np.linspace(0, len(g) - 1, LEAF_SAMPLE).astype(np.int64)]
+    g = g[np.isfinite(g) & (np.abs(g) >= GPS_WEEK_S)]
+    unix = GPS_EPOCH_UNIX + np.where(g >= RAW_GPS_2001_S, g, g + 1e9)
+    import time as _time
+    unix = unix[(unix > 788918400) & (unix < _time.time() + 366 * 86400)]   # 1995 to a year ahead
+    if not len(unix):
+        return None, 0
+    day = unix.astype("datetime64[s]").astype("datetime64[D]")
+    month = (day.astype("datetime64[M]").astype(np.int64) % 12) + 1
+    dom = (day - day.astype("datetime64[M]")).astype(np.int64) + 1
+    off = (month >= 11) | (month <= 4) | ((month == 5) & (dom <= 10))
+    return float((~off).mean()), int(len(unix))
+
+
 # ------------------------------------------------------------- one read
 
 NOISE = (7, 18)
@@ -547,16 +589,22 @@ def read_points(read_octree, bbox, epoch, tiles=None, tile_dir=None, extra_m=Non
     if pts is None:
         if tiles and server_crop is not None and all(str(t).startswith("http") for t in tiles):
             path = Path(server_crop(list(tiles), wide))
-            pts = tile_points(path, wide)
+            r = tile_records(path, wide)
+            pts = _points_of(r)
             info = {"nodes": len(tiles), "tiles": True, "mb": path.stat().st_size / 1e6, "via": "server"}
+            info["leafOnShare"], info["dated"] = leaf_on_share(r["gps"])
         elif tiles:
-            parts, mb = [], 0.0
+            parts, gps, mb = [], [], 0.0
             for t in tiles:
                 path = Path(t) if not str(t).startswith("http") else fetch_ranged(t, Path(tile_dir) / str(t).rsplit("/", 1)[-1])
                 mb += path.stat().st_size / 1e6
-                parts.append(tile_points(path, wide))
+                r = tile_records(path, wide)
+                parts.append(_points_of(r))
+                if r["gps"] is not None:
+                    gps.append(r["gps"])
             pts = np.vstack(parts) if parts else np.zeros((0, 5))
             info = {"nodes": len(tiles), "tiles": True, "mb": mb}
+            info["leafOnShare"], info["dated"] = leaf_on_share(np.concatenate(gps) if gps else None)
         else:
             pts, info = read_octree(wide)
             info = dict(info)

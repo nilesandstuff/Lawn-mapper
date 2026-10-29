@@ -76,6 +76,16 @@ INLINE_TILES_MB = 400
 NAIP_TIMEOUT_S = 20
 NAIP_WAIT_S = 40
 
+# LEAF-ON LIDAR (owner, 2026-10-29, S68: "I agree with your judgements about
+# leaf on lidar"). When at least this share of the frame's dated points was
+# flown in leaf, the decoder is not given the lidar -- exactly as its training
+# hides it on 30% of steps -- because under a leafy crown fewer pulses reach
+# the ground and they come back dimmer, which the decoder has seen on 2 of 101
+# training lots. The lidar's roofs and empty ground (the veto) and its tree
+# heights (stage 3's woods rule) are kept: a summer flight measures those as
+# well as a winter one.
+LEAF_ON_SHARE = 0.5
+
 
 def stitch_tiles(tiles, cols, rows):
     """One photograph from its tiles: (col, row, PIL image) pasted at
@@ -140,8 +150,9 @@ def _lidar_cache_file(cache_dir, prep, local):
     if not cache_dir:
         return None
     import hashlib
+    # v2 (2026-10-29): the layers carry the share flown in leaf (S68).
     key = json.dumps({"bbox": [round(float(v), 2) for v in prep["bbox"]], "url": prep.get("lidarUrl"),
-                      "epoch": prep.get("lidarEpoch"), "tiles": sorted(local or [])}, sort_keys=True)
+                      "epoch": prep.get("lidarEpoch"), "tiles": sorted(local or []), "v": 2}, sort_keys=True)
     return Path(cache_dir) / f"{hashlib.sha1(key.encode()).hexdigest()}.npz"
 
 
@@ -297,6 +308,12 @@ def gather_sources(photo, prep, naip_align=None, progress=None, cache_dir=None, 
                     _lidar_save(cache_file, got)
                 layers, masks = got
                 out["lidar"] = {k: layers[k] for k in ("height", "n_ground", "n_all", "intensity")}
+                share = float(np.asarray(layers.get("leaf_on_share", np.nan)))
+                if np.isfinite(share):
+                    out["rec"]["lidarLeafOnShare"] = round(share, 3)
+                    if share >= LEAF_ON_SHARE:
+                        out["rec"]["lidarLeafOn"] = True
+                        say("This lot's lidar was flown in leaf: it is used for roofs and tree heights, not read by the model")
                 out["height_png"] = lidar_frame.height_png(layers["height"])
                 out["roof"] = np.asarray(masks["roof"], dtype=bool)
                 out["void"] = np.asarray(masks["void"], dtype=bool)

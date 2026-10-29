@@ -259,6 +259,31 @@ def check_areas_and_the_server_crop():
     print("areas: cut once, found by box, read back in metres; read_points takes the server's crop")
 
 
+def check_leaf_season():
+    """Each point dated by its own GPS time, as the shade map dates it (S68)."""
+    import calendar
+    def adj(y, m, d):  # adjusted standard GPS time for a UTC day
+        return calendar.timegm((y, m, d, 12, 0, 0)) - t.GPS_EPOCH_UNIX - 1e9
+    summer = [adj(2023, 9, 16)] * 30 + [adj(2024, 8, 24)] * 30
+    assert t.leaf_on_share(summer) == (1.0, 60), t.leaf_on_share(summer)
+    winter = [adj(2018, 1, 14)] * 10 + [adj(2018, 5, 10)] * 10
+    assert t.leaf_on_share(winter) == (0.0, 20), "1 November to 10 May is leaf-off"
+    share, n = t.leaf_on_share([adj(2020, 5, 11)] * 3 + [adj(2020, 4, 30)])
+    assert (share, n) == (0.75, 4), "11 May is in leaf"
+    assert t.leaf_on_share([100.0, 5000.0]) == (None, 0), "time-of-week says nothing of the date"
+    assert t.leaf_on_share(None) == (None, 0)
+    raw = calendar.timegm((2010, 7, 1, 0, 0, 0)) - t.GPS_EPOCH_UNIX   # raw standard time, above 2001's count
+    assert t.leaf_on_share([raw]) == (1.0, 1), "raw standard time read as such"
+    import tempfile
+    from pathlib import Path
+    with tempfile.TemporaryDirectory() as d:
+        tile = Path(d) / "USGS_LPC_X_1_2.laz"
+        _synthetic_tile(tile, n=500)                     # GPS 2.0e8: January 2018, leaf-off
+        _, info = t.read_points(None, (-9_799_950.0, 5_120_050.0, -9_799_850.0, 5_120_150.0), 2020.5, tiles=[str(tile)])
+        assert info["leafOnShare"] == 0.0 and info["dated"] > 0, info
+    print("leaf season: points dated by their own GPS day, 1 November to 10 May leaf-off; a read says its share in leaf")
+
+
 if __name__ == "__main__":
     check_datum_matches_the_shade_map()
     check_mercator_shift()
@@ -268,4 +293,5 @@ if __name__ == "__main__":
     check_raw_points_cache()
     check_tile_crop_for_the_pages()
     check_areas_and_the_server_crop()
+    check_leaf_season()
     print("lidar sources: ok")

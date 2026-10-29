@@ -168,6 +168,27 @@ def _naip_beside_lidar():
 _naip_beside_lidar()
 
 
+# A LEAF-ON READ IS FLAGGED (S68); a leaf-off or undated one is not.
+def _leaf_flag():
+    import alpha_sources
+    import lidar_frame
+    import naip_bands
+    real_for, real_naip = lidar_frame.lidar_for, naip_bands.naip_for
+    naip_bands.naip_for = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("no NAIP in a test"))
+    z = lambda: __import__("numpy").zeros((4, 4))  # noqa: E731
+    try:
+        for share, want in ((0.9, True), (0.1, None), (float("nan"), None)):
+            layers = {"height": z(), "n_ground": z(), "n_all": z(), "intensity": z(), "leaf_on_share": __import__("numpy").array(share)}
+            masks = {"roof": z().astype(bool), "void": z().astype(bool)}
+            lidar_frame.lidar_for = lambda *a, **k: (layers, masks)
+            out = alpha_sources.gather_sources(Image.new("RGB", (8, 8)), {"bbox": [0.0, 0.0, 10.0, 10.0], "lidarUrl": "https://x/ept.json"})
+            check(f"a read {share} in leaf is {'flagged' if want else 'not flagged'} leaf-on", out["rec"].get("lidarLeafOn") is want and out["lidar"] is not None)
+    finally:
+        lidar_frame.lidar_for, naip_bands.naip_for = real_for, real_naip
+
+
+_leaf_flag()
+
 print("alpha_sources: ok" if ok else "alpha_sources: FAILED")
 sys.exit(0 if ok else 1)
 

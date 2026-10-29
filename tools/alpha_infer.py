@@ -47,6 +47,13 @@ def _tree_module():
     return mod
 
 
+
+def lidar_for_decoder(rec, lidar):
+    """The lidar the decoder reads: none on a leaf-on flight (S68,
+    alpha_sources.LEAF_ON_SHARE), as its training's dropout shows a lot
+    without it; the veto and stage 3 keep reading the flight either way."""
+    return None if rec.get("lidarLeafOn") else lidar
+
 class Release:
     """The saved decoder (+ edge refiner) and the standardiser it was trained with."""
 
@@ -274,7 +281,12 @@ class Detector:
             if meta.get("fuse"):
                 fuse_can = can if meta.get("fuseCanopy") else None
                 # The lidar's ground brightness (S38) only for a release trained with it.
-                extra = extra_channels(gw, gh, cover[0], cover[1], lidar=lidar, ndvi=ndvi, ndvi_valid=valid, canopy=fuse_can,
+                # A leaf-on flight (S68, alpha_sources.LEAF_ON_SHARE): the decoder
+                # reads it as no lidar, as its training dropout shows it; the
+                # veto and stage 3 still read height/roof/void.png above.
+                to_decoder = lidar_for_decoder(rec, lidar)
+                rec["lidarToDecoder"] = to_decoder is not None
+                extra = extra_channels(gw, gh, cover[0], cover[1], lidar=to_decoder, ndvi=ndvi, ndvi_valid=valid, canopy=fuse_can,
                                        with_intensity=bool(meta.get("fuseIntensity")))
                 x = np.concatenate([grid, extra.transpose(1, 2, 0)], axis=2)
             cells_w, cells_h = int(prep["w"]), int(prep["h"])

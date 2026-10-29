@@ -47,5 +47,13 @@ for size in (896, 4096):
           grid[0, 0, 0] == 0 and grid[n - 1, n - 1, 1] == n - 1 and grid[n // 2, 3, 0] == n // 2 and grid[n // 2, 3, 1] == 3,
           f"{grid[0, 0]} {grid[n - 1, n - 1]} {grid[n // 2, 3]}")
 
+# LEAF-ON LIDAR (S68): the decoder gets none, and the fused channels read exactly as training's dropout makes them.
+from fuse_layers import extra_channels  # noqa: E402
+lid = {"height": np.full((8, 8), 12.0), "n_ground": np.ones((8, 8)), "n_all": np.full((8, 8), 4.0), "intensity": np.full((8, 8), 300.0)}
+check("a leaf-off or undated flight goes to the decoder", alpha_infer.lidar_for_decoder({}, lid) is lid and alpha_infer.lidar_for_decoder({"lidarLeafOn": False}, lid) is lid)
+check("a leaf-on flight does not", alpha_infer.lidar_for_decoder({"lidarLeafOn": True}, lid) is None)
+hid = extra_channels(4, 4, (0, 8), (0, 8), lidar=alpha_infer.lidar_for_decoder({"lidarLeafOn": True}, lid), with_intensity=True)
+check("and its channels, flag and brightness included, are all zero, as a lot without lidar reads", float(np.abs(hid).sum()) == 0.0)
+
 print("alpha_infer: ok" if ok else "alpha_infer: FAILED")
 sys.exit(0 if ok else 1)
