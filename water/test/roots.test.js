@@ -3,9 +3,9 @@
  *   node water/test/roots.test.js
  */
 import assert from 'node:assert/strict';
-import { SPECIES, ROOT_MODELS, production, standingIndex, speciesOf, groupOf, workingCm, rootSeries, typicalRoots, attachRootRatio, DEPTH_FLOOR } from '../lib/roots.js';
+import { SPECIES, ROOT_MODELS, KC, kcOf, kcFor, production, standingIndex, speciesOf, groupOf, workingCm, rootSeries, typicalRoots, attachRootRatio, DEPTH_FLOOR } from '../lib/roots.js';
 import { dayIndex } from '../lib/shade/climate.js';
-import { buildModel, simulate, idealIrrigation, zoneIrrigation, PARAMS, withMode, DEFICIT_REFILL } from '../lib/balance.js';
+import { buildModel, simulate, idealIrrigation, zoneIrrigation, PARAMS, withMode } from '../lib/balance.js';
 import { rootZone } from '../lib/soil.js';
 
 const tests = [];
@@ -76,36 +76,34 @@ test('the balance follows the day\'s roots: shallower roots hold less water, and
   assert.ok(Math.abs(model.taw[0] - full) < 1e-6 && Math.abs(model.raw[0] - PARAMS.p * full) < 1e-6, 'restored after the run');
 });
 
-test('how much to water: deficit gives about three quarters of normal on the same days, dormancy half an inch every three weeks', () => {
+test('how much to water: the owner\'s Kc table by species and level, the middle of each range averaged; the balance follows it', () => {
+  assert.equal(Object.keys(KC).length, 8);
+  for (const r of Object.values(KC)) for (const lvl of ['normal', 'deficit', 'dormancy']) assert.ok(r[lvl][0] <= r[lvl][1] && r.normal[0] >= r.deficit[0] && r.deficit[0] >= r.dormancy[0]);
+  assert.deepEqual(kcOf('kbg').dormancy, [0.5, 0.5], 'bluegrass: one dormancy figure');
+  const near = (a, b) => Math.abs(a - b) < 1e-9;
+  assert.ok(near(kcFor(['kbg'], 'cool', 'normal').kc, 0.9) && near(kcFor(['kbg'], 'cool', 'deficit').kc, 0.725) && near(kcFor(['kbg'], 'cool', 'dormancy').kc, 0.5));
+  assert.ok(near(kcFor(['kbg', 'fine'], 'cool', 'normal').kc, (0.9 + 0.75) / 2), 'two species: their middles averaged');
+  assert.ok(near(kcFor([], 'warm', 'normal').kc, (0.725 + 0.675 + 0.775 + 0.625) / 4), 'not sure which: the group\'s species averaged');
+  assert.ok(kcFor(['bent'], 'cool').parts[0].general && near(kcFor(['bent'], 'cool').kc, kcFor([], 'cool').kc), 'bentgrass is not in the table: the cool-season figure');
+  assert.equal(kcFor(['kbg'], 'cool', 'bogus').mode, 'normal');
+  assert.ok(near(kcFor(['kbg'], 'cool', 'deficit').normalKc, 0.9));
+  // the balance: a dry summer's watering falls with the coefficient
   const profile = { horizons: [{ topCm: 0, bottomCm: 50, awc: 0.15, ksatUmS: 5, sand: 40, clay: 20 }] };
   const soils = [{ rz: rootZone(profile, { rootCm: 20 }), drainage: 'Well drained', hydgrp: 'B', wetByMonth: new Array(12).fill(null) }];
   const res = { grid: { W: 1, H: 1, cell: 1 }, z: new Float32Array(1), runoff: { down: new Int32Array([-1]), filled: new Float32Array(1) }, spots: { spots: [], depth: new Float32Array(1) } };
-  const days = Array.from({ length: 120 }, (_, d) => ({ date: `2024-${String(5 + Math.floor(d / 30)).padStart(2, '0')}-${String((d % 30) + 1).padStart(2, '0')}`, tmax: 28, tmin: 16, rain: d % 17 === 0 ? 8 : 0, et0: 5 }));
-  const run = (mode, zones = false) => {
-    const model = buildModel(res, { kinds: new Uint8Array([1]), soilAt: new Int16Array(1), soils, roofTo: new Int32Array([-1]), params: withMode(PARAMS, mode) });
+  const days = Array.from({ length: 120 }, (_, d) => ({ date: `2024-${String(5 + Math.floor(d / 30)).padStart(2, '0')}-${String((d % 30) + 1).padStart(2, '0')}`, tmax: 28, tmin: 16, rain: 0, et0: 5 }));
+  const run = (mode) => {
+    const model = buildModel(res, { kinds: new Uint8Array([1]), soilAt: new Int16Array(1), soils, roofTo: new Int32Array([-1]), params: withMode(PARAMS, mode, kcFor(['kbg'], 'cool', mode).kc) });
     const events = [];
-    const irrigate = zones ? zoneIrrigation(model, new Int32Array([0]), 1, events) : idealIrrigation(model);
-    const tot = simulate(model, days, { irrigate });
-    return { mm: tot.irrigation[0], et: tot.et ? tot.et[0] : null, dry: tot.dryDays[0], events };
+    const tot = simulate(model, days, { irrigate: zoneIrrigation(model, new Int32Array([0]), 1, events) });
+    return { mm: tot.irrigation[0], events, kc: model.params.kc };
   };
-  const normal = run('normal'), deficit = run('deficit'), dormancy = run('dormancy');
-  assert.ok(normal.mm > 300, `a normal summer waters plenty: ${normal.mm}`);
-  const share = deficit.mm / normal.mm;
-  assert.ok(share > 0.55 && share < DEFICIT_REFILL + 0.05, `deficit well under normal (its drier soil also keeps more of the rain): ${share.toFixed(2)}`);
-  assert.ok(deficit.dry > normal.dry, 'deficit lets the grass into the stress zone, by design');
-  // without rain the share is the refill itself
-  for (const day of days) day.rain = 0;
-  const a = run('normal'), b = run('deficit');
-  assert.ok(Math.abs(b.et / a.et - DEFICIT_REFILL) < 0.06, `no rain: the grass uses ${(b.et / a.et).toFixed(2)} of its full water (Ks)`);
-  assert.ok(b.mm / a.mm < DEFICIT_REFILL + 0.05, `and is given less than that share of normal's watering: ${(b.mm / a.mm).toFixed(2)}`);
-  for (const [k, day] of days.entries()) day.rain = k % 17 === 0 ? 8 : 0;
-  assert.ok(dormancy.mm < 0.35 * normal.mm, `dormancy a fraction of normal: ${dormancy.mm} vs ${normal.mm}`);
-  const dz = run('dormancy', true);
-  assert.ok(dz.events.length >= 4 && dz.events.length <= 6, `about every three weeks over four months: ${dz.events.length}`);
-  assert.ok(dz.events.every((e) => Math.abs(e.mm - PARAMS.survival.mm) < 1e-6), 'half an inch each');
-  const gaps = dz.events.slice(1).map((e, k) => e.d - dz.events[k].d);
-  assert.ok(gaps.every((g) => g >= PARAMS.survival.days), `never sooner than ${PARAMS.survival.days} days: ${gaps}`);
-  assert.equal(withMode(PARAMS, 'bogus').mode, 'normal');
+  const n = run('normal'), d = run('deficit'), z = run('dormancy');
+  assert.ok(n.mm > 300, `a normal summer waters plenty: ${n.mm}`);
+  assert.ok(Math.abs(d.mm / n.mm - 0.725 / 0.9) < 0.08, `deficit at about the coefficients' ratio: ${(d.mm / n.mm).toFixed(2)}`);
+  assert.ok(Math.abs(z.mm / n.mm - 0.5 / 0.9) < 0.08, `dormancy likewise: ${(z.mm / n.mm).toFixed(2)}`);
+  assert.ok(z.events.length < d.events.length && d.events.length < n.events.length, 'fewer waterings, the same depth each');
+  assert.equal(withMode(PARAMS, 'bogus').mode, 'normal'); assert.equal(withMode(PARAMS, 'deficit').kc, PARAMS.kc, 'no coefficient given: the default stays');
 });
 
 let failed = 0;

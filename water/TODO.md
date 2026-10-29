@@ -10,12 +10,6 @@ SPECULATION), as always.
 
 ## Queued
 
-19. **Per-species crop coefficients (Kc).** The owner holds a per-species Kc table (2026-10-28: "For now, just use
-    the average of the range given but save this table in case we need to come back to that"); it has not reached
-    this session yet. When it does: the table into lib/roots.js SPECIES (the ranges kept), the plan's Kc the
-    midpoint of each checked species' range averaged over them in place of the one 0.8 (PARAMS.kc), and the
-    deficit share (H54) revisited against it.
-
 4. **Heat from paving into the grass beside it.** Research how concrete and
    blacktop spread heat to the grass next to them and how that raises its water
    use, then apply it day by day by the sun's strength and the shade over the
@@ -104,4 +98,5 @@ SPECULATION), as always.
 - 2026-10-27: rain intensity in the ten-year plan, from the station's hours (FINDINGS H52).
 - 2026-10-28: the roots by species (a checklist) and through the season from the soil's warmth, each year its own (FINDINGS H53, S15; research-roots-brief.md, research-roots-ryegrass.md).
 - 2026-10-28: how much to water -- normal, deficit or dormancy, chosen just before the sprinklers question and kept with the map (FINDINGS H54, S16).
+- 2026-10-29: the owner's per-species crop coefficients (kc-table.md) in: each level's Kc is the middle of the species' range, averaged over the grasses checked (FINDINGS H54).
 - 2026-10-28: dew, looked into and not added: rain gauges leave it out, it evaporates off the blades, and it is largest in the open, not in shade (FINDINGS H55; research-dew.md).

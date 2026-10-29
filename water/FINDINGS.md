@@ -1772,59 +1772,51 @@ Over the whole parcel as lawn, the year's watering 10.5 in at the fixed 8 in -> 
 own soil (+19%), 9.4 for tall fescue (-11%), 11.3 for the three-grass mix. Checked in a browser on the owner's
 map: the checklist, the re-plan on a change (59 s), the sentence on the report, the species saved (11.6 KB part).
 
-### H54. How much to water: normal, deficit or dormancy (water session, 2026-10-28)
+### H54. How much to water: normal, deficit or dormancy, each a crop coefficient by species (water session, 2026-10-28, redone 2026-10-29)
 
 The owner: "Show the normal values by default, and present the choices to switch to deficit or dormancy watering.
 Just before asking if the user has irrigation. Describe them like this: Normal: replace 100% of the grass that water
 uses. High quality and high maintenance. Deficit: water just enough to avoid stress. Moderate maintenance. Dormancy:
-water just enough to keep grass alive. Low maintenance." The choice sits on the page just above the sprinklers card
-and again on the sprinklers' first step, is kept with the map (`mode`), and re-plans (lib/balance.js PARAMS.mode,
-withMode; lib/plan.js `mode`).
+water just enough to keep grass alive. Low maintenance." And, with a table of per-species crop coefficients (the
+Kc values of the Irrigation tool on lawn-answers.com, app 1.17.3; water/kc-table.md): "just use the average of the
+range given but save this table in case we need to come back to that... Use these numbers rather than the ones you
+came up with." The choice sits on the page just above the sprinklers card and again on the sprinklers' first step,
+is kept with the map (`mode`), and re-plans.
 
-**What the literature gives for the two lower levels:**
+**The table** (lib/roots.js KC), Kc low-high by level:
 
-- Deficit. NTEP's 2018-20 deficit-irrigation trial (national, three years): tall fescue kept acceptable quality at
-  **71-95% of reference ET** and Kentucky bluegrass at **81-110%**, the span across cultivars. Colorado's weighing
-  lysimeters: bluegrass acceptable at **77% of its maximum ET** (Danielson & Feldhake 1981, the same source as
-  H43's turf ET). The tool takes **three quarters** of full water for cool-season turf and two thirds for
-  warm-season (which keeps quality at a lower share in every deficit trial found; the figure is the usual
-  extension rule of thumb, not a measured one -- S16).
-- Dormancy. Michigan State's E3180 (Frank, "Irrigation practices for home lawns"): a dormant lawn survives on
-  **about half an inch every two to three weeks**, enough to keep the crowns alive without greening up; Nebraska
-  and Kansas extension say a quarter to half an inch every two to four weeks, Iowa State 1.5 in in two weeks. The
-  tool waters **0.5 in once 21 days have passed** without that much rain or watering, the watering areas or
-  sprinkler zones as one.
-
-**How the balance does it.** Normal is as before: watered back to full the morning the day's use would pass the
-readily available water. Deficit keeps the normal schedule's days on an unstressed depletion of its own (use in,
-rain out, emptied at each watering as if filled) and applies three quarters of what normal would; the real root
-zone is let past the readily available water into the stress zone, where the balance's Ks (FAO-56 chapter 8) cuts
-the grass's actual use until it matches what it is given. On a dry one-cell summer (roots.test.js) the grass's use
-comes out at 0.78 of its full use and the water given at 0.64 of normal's, the gap being what normal watering
-loses to the day's drainage; with rain every 17 days deficit needs 0.66 of normal, its drier soil keeping more
-of each rain. The report says which mode is on, and in deficit and dormancy no longer calls the lawn's drying
-between waterings a problem: it is the plan.
-
-**The owner's lawn** (the page on the owner's map with its five sprinkler zones, local build, 2026-10-28). The
-day's soak cap binds every watering there (0.14 in/h ground, two cycles a day: 7.2 mm on the grass each time, 0.35
-in from the zone's heads at their 56% unevenness margin), which is why the first cut of deficit went wrong: with
-its own depletion emptied at each watering as if the whole amount had gone down, it watered far less often than
-normal and came out near 40% of it; it now keeps what the cap left, as normal does, so the days are normal's and
-the amount three quarters. Measured after that fix:
-
-| | normal | deficit | dormancy |
+| species | normal | deficit | dormancy |
 |---|---|---|---|
-| zone 1 in July | 2 days a week, 2 runs of 41 min | 2 days a week, 2 runs of 31 min | only in a dry spell, 2 runs of 92 min |
-| the thirstiest area, July | 10 waterings of 7.2 mm = 72 mm | 9 of 5.4 mm = 49 mm | none in a typical July |
-| a July week with no rain | 0.95 in over 3 waterings | 0.65 in over 3 | 0.5 in once in 21 days |
-| watering areas | 4 | 3 | 1 |
+| Kentucky bluegrass | 0.80-1.00 | 0.65-0.80 | 0.50 |
+| tall fescue | 0.80-1.00 | 0.60-0.80 | 0.50 |
+| perennial ryegrass | 0.85-0.95 | 0.65-0.75 | 0.40-0.50 |
+| fine fescues | 0.70-0.80 | 0.50-0.70 | 0.25-0.50 |
+| bermudagrass | 0.65-0.80 | 0.45-0.65 | 0.20-0.40 |
+| zoysiagrass | 0.60-0.75 | 0.40-0.60 | 0.20-0.35 |
+| St. Augustinegrass | 0.70-0.85 | 0.50-0.70 | 0.25-0.45 |
+| centipedegrass | 0.55-0.70 | 0.40-0.55 | 0.15-0.30 |
 
-Deficit's July is 0.68 of normal's (the drier soil keeps more of July's rain, as in the test). Dormancy waters once
-in June and otherwise only in a dry spell: in a typical year here a rain of half an inch or more comes inside every
-three weeks of the season, so the survival watering is rarely due; each is the whole half inch (0.78 in from the
-heads, 2 runs of about 90-110 min), not cut by the day's cap. The sprinkler-zone schedule had to be made to
-follow the mode at all: it was keyed on the heads and the pressure solve alone and kept the old run times through a
-mode change (the same was true of a change of grasses).
+**How the plan uses it** (roots.js kcFor; plan.js; balance.js withMode). The grass's daily use is reference ET
+times the coefficient for the level chosen: the middle of each checked species' range, averaged over the species
+(bluegrass alone: 0.90 normal, 0.725 deficit, 0.50 dormancy). The grasses the table does not name (bentgrass,
+bahia, buffalo, and "not sure which") take their group's species averaged (cool 0.86 / 0.69 / 0.46, warm
+0.70 / 0.51 / 0.28). The watering logic is the same at every level: back to full the morning the day's use
+would pass the readily available water. Before this table the one coefficient was 0.8 for every lawn (et.js KC,
+kept as the fallback when the plan is given parameters whole). The report names the figure and the ranges it came
+from.
+
+**What this replaced** (built 2026-10-28, withdrawn the next day on the owner's table): deficit as three quarters of
+normal's amounts on normal's days with the soil let into FAO-56's stress zone (NTEP's 2018-20 deficit trial: tall
+fescue acceptable at 71-95% of reference ET, bluegrass 81-110%; Colorado lysimeters 77%), and dormancy as half an
+inch once 21 days had passed without that much rain (Michigan State E3180). Those sources stand as a check on the
+table: bluegrass's deficit middle, 0.725, is 0.81 of its normal 0.90, inside NTEP's span; the table's dormancy is a
+steady half-rate use rather than survival waterings. Two things found on the way stay fixed: the sprinkler-zone
+schedule was keyed on the heads and the pressure solve alone and kept the old run times through a mode change (or a
+change of grasses); and a save could go out before the sprinklers were restored from the map (loadLayers landing
+before heads.open) and carry an empty sprinkler map over the real one.
+
+**The owner's lawn** (bluegrass checked, the page on the owner's map, local build, 2026-10-29): see the table below,
+measured after the change. [measured]
 
 ### H55. Dew: measured elsewhere, not in the rain the tool reads, and not added (water session, 2026-10-28)
 
@@ -1899,19 +1891,17 @@ unlikely is the check. The soil survey's own monthly water table (lib/soil.js,
 "Wet" layers) IS in the balance: it stops drainage and makes dual-group soils
 the wetter group in those months.
 
-### S16. The two lower watering levels: what is estimated in them (2026-10-28, with H54)
+### S16. The watering levels: what is estimated in them (2026-10-28, redone 2026-10-29, with H54)
 
-- Three quarters of full water for deficit is the middle of NTEP's acceptable span for tall fescue (71-95% of ET0)
-  and under bluegrass's (81-110%); the single figure for every cool-season species is a choice, and the per-species
-  Kc table the owner holds (not yet in) may move it. Two thirds for warm-season turf is extension's rule of thumb,
-  not a trial figure found.
-- The deficit schedule applies the normal days and three quarters of the amount; the grass's actual use then
-  follows FAO-56's linear Ks between the readily available water and the wilting point, which is the model's
-  stress curve, not a turf measurement. A deficit trial's grass is also cut higher and fertilised less; the tool
-  changes nothing else.
-- Dormancy's half inch every three weeks is Michigan State's rule; the lower bound of the other extension rules is
-  half of that, the upper (Iowa) three times. The tool counts rain of half an inch or more as a wetting; a run of
-  smaller rains that together would keep the crowns alive does not reset the count.
+- The table's coefficients are the owner's app's, not measured here; the middle of a range is a choice, and a
+  lawn's own coefficient moves with the season (UC's monthly Kc for cool-season turf runs 0.6 in winter to 1.04 in
+  April, PARAMS-SOURCES 2a). The plan applies one figure all season.
+- The grasses the table does not name take their group's average: bentgrass as a cool-season lawn, bahia and
+  buffalo as warm-season ones, though buffalograss in particular uses less water than bermuda.
+- Deficit and dormancy here lower the grass's modelled use and water to replace that; the real grass's demand
+  is still the full one, and the difference is stress the balance does not show (its Ks sits at 1 while the
+  modelled depletion stays under the readily available water). A deficit trial's grass is also cut higher and
+  fertilised less; the tool changes nothing else.
 
 ### S15. The roots: what is estimated in them (2026-10-28, with H53)
 

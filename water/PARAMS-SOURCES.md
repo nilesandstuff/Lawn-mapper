@@ -104,6 +104,11 @@ values for an established lawn are **0.15–0.30 m**. On a 4-inch (100 mm) impor
 compacted native soil, the effective depth may be ~0.10–0.20 m. I found no measurement for
 that case; it is my inference.
 
+**In the tool since 2026-10-29:** the crop coefficient is the owner's per-species table (water/kc-table.md, from the
+lawn-answers.com Irrigation tool, app 1.17.3), the middle of the range for the level chosen (normal, deficit,
+dormancy) averaged over the species checked (lib/roots.js KC, kcFor; FINDINGS H54). The 0.8 above stays as the
+fallback when no species is known to the balance.
+
 ### 2b. MAD / FAO p
 | Source | Cool | Warm |
 |---|---|---|

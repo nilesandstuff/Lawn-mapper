@@ -44,6 +44,43 @@ export const SPECIES = {
 };
 export const GENERAL = { cool: 'coolMix', warm: 'warmMix' };
 
+/* THE CROP COEFFICIENTS, BY SPECIES AND WATERING LEVEL (the owner's table, 2026-10-28: the Kc values used by the
+   Irrigation tool on lawn-answers.com, app 1.17.3, "use these numbers rather than the ones you came up with";
+   water/kc-table.md keeps it whole). Each is a range [low, high]; the plan takes the middle of the range for the
+   level chosen, averaged over the species checked. Tall fescue and bluegrass have one dormancy figure. The grasses
+   the table does not name (bentgrass, bahia, buffalo, "not sure which") take their group's figures, averaged. */
+export const KC = {
+  bermuda: { normal: [0.65, 0.80], deficit: [0.45, 0.65], dormancy: [0.20, 0.40] },
+  zoysia: { normal: [0.60, 0.75], deficit: [0.40, 0.60], dormancy: [0.20, 0.35] },
+  staug: { normal: [0.70, 0.85], deficit: [0.50, 0.70], dormancy: [0.25, 0.45] },
+  centipede: { normal: [0.55, 0.70], deficit: [0.40, 0.55], dormancy: [0.15, 0.30] },
+  fine: { normal: [0.70, 0.80], deficit: [0.50, 0.70], dormancy: [0.25, 0.50] },
+  tf: { normal: [0.80, 1.00], deficit: [0.60, 0.80], dormancy: [0.50, 0.50] },
+  kbg: { normal: [0.80, 1.00], deficit: [0.65, 0.80], dormancy: [0.50, 0.50] },
+  rye: { normal: [0.85, 0.95], deficit: [0.65, 0.75], dormancy: [0.40, 0.50] },
+};
+export const MODES = ['normal', 'deficit', 'dormancy'];
+const mid = ([lo, hi]) => (lo + hi) / 2;
+/** The table's figures for a species, or its group's (the table's species of that group, averaged) when the table does not name it. */
+export function kcOf(id) {
+  if (KC[id]) return { id, ...KC[id], general: false };
+  const group = SPECIES[id]?.group || 'cool';
+  const rows = Object.keys(KC).filter((k) => SPECIES[k].group === group).map((k) => KC[k]);
+  const span = (m) => [Math.min(...rows.map((r) => r[m][0])), Math.max(...rows.map((r) => r[m][1]))];
+  const avg = (m) => rows.reduce((a, r) => a + mid(r[m]), 0) / rows.length;
+  // the group's figure: the middle of each species' range, averaged; shown with the group's whole span
+  return { id, normal: span('normal'), deficit: span('deficit'), dormancy: span('dormancy'), mean: { normal: avg('normal'), deficit: avg('deficit'), dormancy: avg('dormancy') }, general: true };
+}
+/** The coefficient the plan uses: the middle of each checked species' range for the level, averaged; with normal's beside it. */
+export function kcFor(species, group = 'cool', mode = 'normal') {
+  const m = MODES.includes(mode) ? mode : 'normal';
+  const ids = speciesOf(species, group);
+  const rows = ids.map(kcOf);
+  const one = (r, lvl) => (r.general ? r.mean[lvl] : mid(r[lvl]));
+  const avg = (lvl) => rows.reduce((a, r) => a + one(r, lvl), 0) / rows.length;
+  return { mode: m, kc: avg(m), normalKc: avg('normal'), parts: rows.map((r) => ({ id: r.id, name: SPECIES[r.id].name, range: r[m], normalRange: r.normal, general: r.general })) };
+}
+
 /** The brief's model parameters: production (Tb, To, Tm, C) and the daily balance (g, m0, k per day, Tcrit C). */
 export const ROOT_MODELS = {
   cool: { Tb: 1, To: 18, Tm: 35, g: 0.005, m0: 0.005, k: 0.002, Tcrit: 25, highOffset: 3.3, basis: 'Kentucky bluegrass: cell division just above 0 C, peak root weight at 21 C in a chamber, growth ceasing about 32 C (Bogart 1972); loss above 25 C (Beard); perennial roots: a 200-day life (the brief\'s estimate)' },

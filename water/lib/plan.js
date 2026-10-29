@@ -20,7 +20,7 @@
  */
 
 import { rootZone, maxSprinklerRate, withTexture, layersOf } from './soil.js';
-import { workingCm, speciesOf, groupOf, typicalRoots, attachRootRatio, rootsByMonth, SPECIES } from './roots.js';
+import { workingCm, speciesOf, groupOf, typicalRoots, attachRootRatio, rootsByMonth, kcFor, SPECIES } from './roots.js';
 import { dayIndex } from './shade/climate.js';
 import { maskOf } from './geo.js';
 import { roofRouting } from './gutters.js';
@@ -54,7 +54,9 @@ const DEFAULT_SOIL = { name: 'no survey soil here (a loam assumed)', drainage: '
  */
 export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, topsoil = false, downspouts = [], gutters = [], typical, week = null, light = null, lightMonths = null, radiation = null, fenceHeat = null, windMonths = null, shadeKinds = null, season = null, grass = 'cool', species = null, soilTemp = null, mode = 'normal', texture = null, parcelMask = null, areas = [], zoneOf: userZones = null, params: given = null } = {}) {
   // warm-season turf (owner 2026-10-18): FAO-56's p 0.5 in place of cool-season's 0.4
-  const params = withMode(given || (grass === 'warm' ? { ...PARAMS, ...WARM } : PARAMS), mode);
+  // the level's crop coefficient from the owner's table by species (roots.js kcFor; FINDINGS H54), unless params were given whole
+  const kc = kcFor(species, grass, mode);
+  const params = withMode(given || (grass === 'warm' ? { ...PARAMS, ...WARM } : PARAMS), mode, given ? null : kc.kc);
   const g = res.grid, N = g.W * g.H;
   // 1. what each cell is
   const kinds = new Uint8Array(N);
@@ -165,12 +167,9 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
        zone's sun and heat) times the scheduling multiplier, in waterings of what a day's cycles allow. The
        figure to set a controller by; rain skips waterings (the typical month above counts it). */
     const each = (peak.mmEach || med(cells.map((i) => Math.min(model.raw[i], model.dayCapMm[i]))) * SM);
-    const dryMm = (wx[peak.month].grassUseMm / DAYS_IN[peak.month]) * 7 * med(cells.map((i) => model.etFactor[i])) * SM * (params.mode === 'deficit' ? params.refill : 1);
-    // dormancy (H54): a dry spell gets the survival watering once in survival.days, not the week's use
-    const dryWeek = params.mode === 'dormancy' ? { month: peak.month, mm: params.survival.mm * SM, each: params.survival.mm * SM, waterings: 1, everyDays: params.survival.days }
-      : { month: peak.month, mm: dryMm, each, waterings: Math.max(1, Math.round(dryMm / Math.max(0.1, each))) };
+    const dryMm = (wx[peak.month].grassUseMm / DAYS_IN[peak.month]) * 7 * med(cells.map((i) => model.etFactor[i])) * SM;
     out.push({
-      dryWeek,
+      dryWeek: { month: peak.month, mm: dryMm, each, waterings: Math.max(1, Math.round(dryMm / Math.max(0.1, each))) },
       takesInPerH: takes, cycles: { spray: cyclesFor(1.5), rotor: cyclesFor(0.5) },
       zone: z, m2: cells.length * g.cell * g.cell,
       depthMm: med(cells.map((i) => Math.min(model.raw[i], model.dayCapMm[i]))) * SM,
@@ -230,7 +229,7 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
   }
   return {
     multiplier: SM, rootIn: rootCm / 2.54,
-    mode: params.mode, refill: params.refill, survival: params.survival,
+    mode: params.mode, kc: { ...kc, used: params.kc },
     roots: { species: ids.map((id) => ({ id, name: SPECIES[id].name, workingIn: SPECIES[id].workingIn, general: !!SPECIES[id].general })), workingIn: Math.round((rootCm / 2.54) * 10) / 10, typical: rootsTyp, ownDays: rootOwnDays, ofDays: typical.length },
     zones: out, zoneOf: zones.zoneOf, userZones: !!zones.user, kinds, needMm,
     // each cell's soil, as the index of its unit in soil below (the soil view)
