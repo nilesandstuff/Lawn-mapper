@@ -518,18 +518,12 @@ export function simulate(model, days, { irrigate = null, start = null, record = 
       if (k === 2) continue;
       if (k === 3) { film[i] = Math.max(0, film[i] - et0); continue; }
       const etc = et0 * params.kc * etFactor[i];
-      /* Gravity water drains first, then the roots draw -- except on a day the cell was watered (owner, 2026-10-29:
-         "let the grass draw before drainage on that day", FINDINGS H61): a watering puts back the depletion and the
-         day's use, so the day's use sits above field capacity in the morning and the grass draws it through the day,
-         before the drainage takes its share. */
-      const watered = irr ? irr[i] > 0 : false;
-      const drain = () => {
-        if (grav[i] <= 0) return;
+      // gravity water drains first, then the roots draw
+      if (grav[i] > 0) {
         const rate = model.blocked[i] ? drainDay[i] * 0.05 : drainDay[i];
         const out = Math.min(grav[i] * params.drainShareMax, rate, grav[i]);
         grav[i] -= out; tot.drained[i] += out;
-      };
-      if (!watered) drain();
+      }
       let use = etc;
       if (pond[i] > 0) { const e = Math.min(pond[i], use); pond[i] -= e; use -= e; tot.et[i] += e; }
       if (grav[i] > 0) { const e = Math.min(grav[i], use); grav[i] -= e; use -= e; tot.et[i] += e; }
@@ -539,7 +533,6 @@ export function simulate(model, days, { irrigate = null, start = null, record = 
         const e = Math.min(use * ks, taw[i] - Dr[i]);
         Dr[i] += e; tot.et[i] += e;
       }
-      if (watered) drain();
       if (inSeason) {
         if (grav[i] >= params.wetSat * satRoom[i] || pond[i] > 0) tot.wetDays[i]++;
         if (Dr[i] > raw[i]) tot.dryDays[i]++;
