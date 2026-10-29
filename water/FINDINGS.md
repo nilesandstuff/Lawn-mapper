@@ -1650,6 +1650,8 @@ shade map's worker, ten May-November seasons, use as a share of open sun):
 
 Its shade alone takes up to 4%; with its warmth and the sky it hides, the grass within a metre or two uses 2-4%
 more than without it, both sides; nothing by three heights away. Its wind is in H50.
+CHECKED 2026-10-29 (H58 point 1): true at midsummer in the open, false in spring and fall; the board's one
+temperature and its full sun under trees overstate the shady side's warmth, most of all on this tree-shaded edge.
 
 ### H50. Each spot's own wind: what stands upwind of it, by direction (water session, 2026-10-27)
 
@@ -1881,6 +1883,119 @@ cropRecords, as the shade map's), the `leaf` column through joining and filterin
 onePass (lib/shade/passes.js, linked like its other modules) run on the analysis box before the build, with the
 report saying when the lot was flown in leaf or in two passes. Without a GPS time nothing changes. A test of the
 reader against the pass rule (plan.test.js). The owner's lot (local build, 2026-10-29): all 125,677 points over the analysis box dated leaf-off, one pass, nothing dropped, no column in leaf; the lawn's middle at 74% of open-sky summer light, as before the change.
+
+### H57. Deficit and dormancy show their stress (water session, 2026-10-29)
+
+The owner: "deficit watering is meant to be somewhat stressful." Since H54 the lower levels lowered the grass's
+modelled use itself, so the balance showed no stress at all. Now the schedule waters for the level's coefficient on a
+depletion of its own (lib/balance.js: idealIrrigation and zoneIrrigation keep Dv -- the level's use in, the rain that
+soaked in the day before out, emptied at each watering), while the grass draws at its own, normal's, coefficient: the
+gap runs the root zone past its readily available water, where FAO-56's Ks cuts the grass's use. Counted per cell
+over the season: the grass's use against its full use, the days past the readily available water, and the days badly
+short (past halfway to the wilting point, Ks under one half). The report gives them against rain alone; the map's
+yellow marks at a lower level only the spots drier than the rest of the lawn; each sprinkler zone's note gives its
+days. A one-cell test (roots.test.js, no rain, bluegrass): normal waters 645 mm for the grass's 540 and is never short;
+deficit waters 435 (0.81 of the grass's use, the coefficients' 0.725 / 0.9), the grass gets 0.83 of its use; dormancy
+300 (0.56), less again, badly short far more often.
+
+**The owner's lawn** (no grass checked, cool-season average: normal 0.86, deficit 0.68, dormancy 0.46; ten seasons,
+the lawn's middle cell; local build, 2026-10-29):
+
+| | the grass gets of its full use | days past the readily available water | badly short |
+|---|---|---|---|
+| deficit | 96% | 53 | 1 |
+| dormancy | 88% | 70 | 20 |
+| rain alone | 84% | -- | 28 |
+
+Rain does most of the work here: without a drop of watering the grass gets 84% of what it would use in a typical
+season, so deficit's watering is spent on the dry spells and keeps it out of serious stress (one bad day a season
+against 28), and dormancy's saves only 8 of the 28. By sprinkler zone, deficit: 64, 58, 63, 25 and 6 days past the
+readily available water (zone 5, the shadiest, barely).
+
+### H58. Sanity checks of the water map's surprises (water session, 2026-10-29)
+
+The owner: "find some interesting and unexpected things that the water map (and the associated research) reveals.
+Then do a sanity check on those things... you previously pointed out that the shade of a fence isn't enough to
+overpower the radiant heat from a fence... we're not treating fences as perfect black bodies, right?"
+
+**1. A fence warms the grass near it more than it shades it (H49): true in midsummer, false in spring and fall, and the
+model's board is too simple.** Worked out for a 6 ft solid natural-wood fence (reflectance 0.4) running east-west in
+the open at 43 N, clear days, the grass 1 m away (tools/fence-day.mjs; the shade map's sun path and clear sky):
+
+| clear day, 1 m north (its shady side) | Apr 15 | May 15 | Jul 15 | Aug 15 | Sep 15 |
+|---|---|---|---|---|---|
+| sun lost to the fence's shade, MJ/m2 | 11.6 | 0.0 | 0.0 | 4.8 | 13.1 |
+| the fence's warmth, the model now | 0.50 | 0.48 | 0.48 | 0.49 | 0.53 |
+| the fence's warmth, two faces | 0.34 | 0.39 | 0.41 | 0.36 | 0.33 |
+| sky hidden: less heat lost, day and night | 1.15 | 1.15 | 1.15 | 1.15 | 1.15 |
+
+- Geometry, not heat, is the surprise: from mid-May to late July the sun at noon is 66-70 degrees up and a 6 ft east-west
+  fence's noon shadow reaches only 0.7 m north; morning and evening the sun is north of east and west and the shadow
+  falls on the SOUTH side (0.6-0.9 MJ lost there). So at midsummer the north side loses no sun at all and gains about
+  1.7 MJ (warmth, reflected sun off the board's lit north face in the morning and evening, and the sky it hides): about
+  9% of its net radiation. From mid-August the noon shadow passes 1 m and the shade wins by ten to one.
+- Not black bodies. Sunlight: the board absorbs 1 - reflectance (the shade map's figure for the material and colour,
+  0.6 for natural wood) and the rest is thrown back to the side the sun is on (the shade map's reflectedBeam, a matte
+  face: rho x view factor x the sun on it) -- the owner's "reflected to the side that light hits", as built. Far
+  infrared: emissivity 0.9, which is what wood and paint are (0.85-0.95); near-black in the far infrared is real.
+- Convection, yes: per face the air carries off 11.4 W/m2/K (McAdams at 1.5 m/s) against 5.4 radiated, so about two
+  thirds of what the board absorbs rises away in the air and is not counted on the grass.
+- WRONG 1, one temperature for both faces. Wood is an insulator (19 mm, 6.3 W/m2/K through it against 16.8 off each
+  face): the sunlit face runs 15-20 C over the air, the back 8 C. The model splits the heat evenly, so it gives the
+  shady side 20-60% too much (more in spring and fall, when only one face is lit) and the sunny side 10-40% too little.
+  The total is right. (A metal panel is one temperature; vinyl, hollow, is closer to wood.)
+- WRONG 2, the board always in full sun. fenceheat.js lights the board by the open sky's beam whatever stands over it;
+  the shade map knows when trees shade it (reflectedBeam takes a lit test). H49's test fence ran along the owner's
+  tree-shaded south edge, where the grass 1 m north used 0.575 of open sun before any fence: there the warmth is
+  overstated, and that is why H49 found the fence's own shade "only 4%" and its warmth winning on both sides.
+- Proposed (not built, the owner to decide): each face its own temperature (the grass sees the face on its side), and
+  the board's sun through the trees at the fence (the shade map's beam share with the trees over the buildings-only
+  one, beam / beamB, along the fence's cells). Expected: little change on an open lot in July, the shady side's
+  spring and fall water use lower, the owner's tree-shaded edge lower on both sides.
+
+**2. Deep shade has a floor: the air dries grass with no sun at all (H43).** The air's term of Penman-Monteith is about
+a quarter of a summer day's reference ET here (0.26, days 0.16-0.39), so the shadiest grass at open wind still uses
+about a third of open grass's. Checked: Danielson & Feldhake's lysimeters fully covered for a day used 42-46% of the
+open ones'; outdoor deep shade measures 0.33-0.6 (H44). Holds. But with the yard's wind on top the shadiest 2% of the
+owner's lawn comes out at 0.22, below every measurement (S12): plausible physics (less wind shrinks the air's term
+too), unmeasured; treat as the low end.
+
+**3. The shady lawn dries fastest in spring and fall (H45).** With the leaves off, the shadiest tenth gets 0.55 of open
+light in April against 0.28 in August, and uses 0.55 of open grass's water in April against about 0.3 in summer.
+Holds: it is the shade map's own leaf calendar and sun, and it is why a shady zone needs water in May before a sunny
+one would expect it to.
+
+**4. A cloudburst waters a clay lawn less than its total (H52).** On ground taking 0.14 in an hour, timing each rainy
+day by the airport's hours doubles the share of rain that runs off (14% to 27%) and adds 5% to ten years' watering;
+on 0.6 in/h ground it changes nothing. Holds, and likely understates: an hour's mean hides the minutes that run off
+hardest, and the station's storm is 24 km away.
+
+**5. Rain covers most of a Michigan lawn (H57).** With no watering at all the owner's grass gets 84% of its full use in
+a typical season. Plausible: May-September rain here is about 15-17 in against about 20 in of grass use, most of it
+caught on a lawn that is dry when it falls.
+
+**6. The deficit level saves more than its coefficient (H54, H57).** At 0.68 against 0.86 (0.79) July's watering fell to
+0.70: the drier soil catches more of the rain. Holds; it is the known effect of deficit irrigation on effective rainfall.
+
+**7. Dew is largest in the open, not in shade (H55).** Holds (sky view sets it; measured in Vancouver and at
+Cardington). The moist shaded soil is the shade's lower use, not dew.
+
+**8. FAILS: the reference ET reads 15-20% above Michigan's own network (H21, deferred since 2026-10-19).** The plan's
+June and July reference (NASA POWER's weather, FAO-56) is 5.1 and 5.4 in against MSU Enviroweather's station-based
+4.0-4.4 and 4.4-4.8. Studies comparing POWER with ground stations find its solar radiation overestimated in most
+climates, which pushes Penman-Monteith up (Rosa et al. 2023, 21 Brazilian stations; Portugal and Sicily
+comparisons). With the owner's coefficients now 0.86 for an unknown cool-season lawn (0.90 bluegrass) where it was
+0.8, the plan's normal water use sits about 20% above what the local stations' reference would give. This is the
+largest single error left in the plan. A fix: scale POWER's sunshine (or its ET0) by month to the nearest
+Enviroweather or other ASCE station over the same days.
+
+**9. SUSPECT: normal watering loses a fifth of itself to drainage where the soak cap does not bind.** A watering puts
+back the depletion and the day's use ("back to full, today's use included"), so the day's use sits above field
+capacity, and the day drains 60% of gravity water before the grass draws (balance.js simulate). One cell, loam, no
+rain, no cap: 645 mm watered for 540 used, 105 drained. On the owner's clay every watering is capped at 7.2 mm and
+nothing drains, so his plan is untouched; on a loam or sand lawn the normal plan likely asks 10-20% more than the
+grass uses. A fix would let the grass and the drainage draw on the day's gravity water together (or water to field
+capacity only).
 
 ## SPECULATION
 
