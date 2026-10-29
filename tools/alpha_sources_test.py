@@ -116,7 +116,13 @@ def _tiles_and_area():
         os.environ.pop("LIDAR_TILE_DIR", None)
 
 
-_tiles_and_area()
+# The lidar reader (laspy) is installed later in workflow 14 than the window
+# check that first runs this file; the second run, beside lidar_test.py, has it.
+try:
+    import laspy  # noqa: F401
+    _tiles_and_area()
+except ImportError:
+    print("SKIP  tiles and areas: no laspy here (workflow 14 runs this file again once the lidar reader is in)")
 
 
 # NAIP BESIDE THE LIDAR, AND SKIPPED WHEN LATE (owner, 2026-10-29).

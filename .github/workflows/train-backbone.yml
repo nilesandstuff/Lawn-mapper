@@ -739,6 +739,7 @@ jobs:
         run: |
           python3 canopy_test.py
           python3 lidar_test.py
+          python3 alpha_sources_test.py
           python3 crowns_lidar_test.py
           python3 fuse_test.py
           python3 folds_test.py
