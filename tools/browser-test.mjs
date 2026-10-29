@@ -3280,7 +3280,19 @@ await page.waitForTimeout(300);
     await page.mouse.click(Math.round(mb.x + mb.width * fx), Math.round(mb.y + mb.height * fy));
     await page.waitForTimeout(150);
   }
+  /*
+   * HOW MANY POINTS THOSE THREE TAPS PLACED IS READ, NOT ASSUMED. A tap
+   * outside the lot is pulled onto the nearest edge (snapTargets), and a tap
+   * squarely on a point already placed is ignored rather than stacked
+   * (placePoint) -- both by design. So where the map happens to sit, the
+   * first tap can land exactly where the second one falls and the second
+   * places nothing: 2 corners, not 3, and nothing wrong. Seen on the live
+   * site and in CI (2026-10-29), where this check read "Undo lost a point"
+   * for weeks of a tap that was never placed. What the X and Undo owe is
+   * every point that WAS placed.
+   */
   const shapesBefore = await page.evaluate(() => window.__lmShapeCount());
+  const placed = await page.evaluate(() => window.__lmDraft().corners);
   await page.click('#tool-cancel');
   await page.waitForTimeout(300);
   const gone = await page.evaluate(() => window.__lmDraft());
@@ -3288,8 +3300,9 @@ await page.waitForTimeout(300);
   await page.click('#btn-undo');
   await page.waitForTimeout(300);
   const back = await page.evaluate(() => window.__lmDraft());
-  check('and Undo brings it back with every point', back.mode === 'draw_polygon' && back.corners === 3,
-    JSON.stringify(back));
+  check('and Undo brings it back with every point',
+    back.mode === 'draw_polygon' && placed >= 2 && back.corners === placed,
+    `${placed} placed by 3 taps, ${back.corners} back: ${JSON.stringify(back)}`);
   await page.click('#tool-cancel');
   await page.waitForTimeout(300);
   check('and cancelling adds no shape to the lawn',
