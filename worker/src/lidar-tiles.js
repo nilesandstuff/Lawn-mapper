@@ -64,6 +64,38 @@ const sortedQuery = (url) => {
   return p.toString();
 };
 
+/*
+ * THE CUTS, KEPT IN R2 FOR SIX MONTHS (owner, 2026-10-29: "storing the cuts on
+ * cloudflare for a very long time, but not permanently, is a good idea. Maybe
+ * 6 months"). Every cut the model server makes for a page is written under
+ * lidar-cuts/ in the corpus bucket, keyed by the request; the next page to ask
+ * for the same box -- the same person reopening a map, the water map after the
+ * shade map, anyone in any city -- is answered from R2 without the model
+ * server or its cold start. The edge cache stays in front (a week, per
+ * Cloudflare location). The bucket's lifecycle rule (deploy.yml) deletes a cut
+ * after CUT_DAYS; the age check here covers the gap until it runs.
+ */
+export const CUT_PREFIX = 'lidar-cuts/';
+export const CUT_DAYS = 180;
+
+export async function cutKey(url) {
+  const bytes = new TextEncoder().encode(sortedQuery(url));
+  const hash = await crypto.subtle.digest('SHA-256', bytes);
+  return CUT_PREFIX + [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, '0')).join('') + '.laz';
+}
+
+async function keptCut(env, key, now = Date.now()) {
+  if (!env?.CORPUS) return null;
+  try {
+    const obj = await env.CORPUS.get(key);
+    if (!obj) return null;
+    if (obj.uploaded && now - new Date(obj.uploaded).getTime() > CUT_DAYS * 86400000) return null;
+    return obj;
+  } catch {
+    return null;
+  }
+}
+
 export async function handleLidarTiles(request, url, env, origin, ctx, json, { fetchImpl = fetch } = {}) {
   if (request.method !== 'GET') return json({ error: 'GET only' }, 405, origin);
   const tiles = tilesOf(url.searchParams);
@@ -87,6 +119,26 @@ export async function handleLidarTiles(request, url, env, origin, ctx, json, { f
     } catch { /* read it from the server */ }
   }
 
+  const finish = (bytes, from) => {
+    const headers = new Headers(corsHeaders); // the CORS lines; its JSON content type is replaced below
+    headers.set('Content-Type', 'application/vnd.laszip');
+    headers.set('Cache-Control', 'public, max-age=604800');
+    headers.set('X-Lidar-Tiles', String(tiles.length));
+    headers.set('X-Lidar-Cut', from);
+    const out = new Response(bytes, { status: 200, headers });
+    if (cache) {
+      try {
+        const put = cache.put(key, out.clone());
+        if (ctx?.waitUntil) ctx.waitUntil(put);
+      } catch { /* kept next time */ }
+    }
+    return out;
+  };
+
+  const rKey = await cutKey(url);
+  const kept = await keptCut(env, rKey);
+  if (kept) return finish(await kept.arrayBuffer(), 'r2');
+
   const q = new URLSearchParams({ tiles: tiles.join(','), box: box.join(','), ...(spacing > 0 ? { spacing: String(spacing) } : {}) });
   let res;
   try {
@@ -106,16 +158,14 @@ export async function handleLidarTiles(request, url, env, origin, ctx, json, { f
     return json({ error: `The lidar tile reader answered ${res.status}`, detail }, 502, origin);
   }
   const bytes = await res.arrayBuffer();
-  const headers = new Headers(corsHeaders); // the CORS lines; its JSON content type is replaced below
-  headers.set('Content-Type', 'application/vnd.laszip');
-  headers.set('Cache-Control', 'public, max-age=604800');
-  headers.set('X-Lidar-Tiles', String(tiles.length));
-  const out = new Response(bytes, { status: 200, headers });
-  if (cache) {
+  if (env?.CORPUS) {
     try {
-      const put = cache.put(key, out.clone());
-      if (ctx?.waitUntil) ctx.waitUntil(put); else await put;
+      const put = env.CORPUS.put(rKey, bytes, {
+        httpMetadata: { contentType: 'application/vnd.laszip' },
+        customMetadata: { tiles: tiles.map((t) => t.split('/').pop()).join(','), box: box.join(','), spacing: String(spacing) },
+      });
+      if (ctx?.waitUntil) ctx.waitUntil(put.catch(() => {})); else await put;
     } catch { /* kept next time */ }
   }
-  return out;
+  return finish(bytes, 'server');
 }

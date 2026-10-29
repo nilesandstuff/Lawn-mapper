@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import {
   YEAR_MS, tileSets, tileClouds, withTiles, parseBox, tilesOf, tilesQuery, tnmUrl, pickNewest, areaAround, AREA_HALF_M,
 } from '../public/lib/lidar-tiles.js';
-import { addTileClouds, handleLidarTiles, tilesUrl, tilesEnabled } from '../worker/src/lidar-tiles.js';
+import { addTileClouds, handleLidarTiles, tilesUrl, tilesEnabled, cutKey, CUT_PREFIX, CUT_DAYS } from '../worker/src/lidar-tiles.js';
 import { warmUrl, warmLidar, handleLidarWarm } from '../worker/src/lidar-warm.js';
 import { pointsFromServer, pointsIn } from '../public/shade/ept.js';
 import { pointsIn as waterPointsIn } from '../water/lib/ept.js';
@@ -126,6 +126,34 @@ const wesm = { features: [{ attributes: { workunit: gaps.workunit, project: gaps
     && r.headers.get('Content-Type') === 'application/vnd.laszip' && r.headers.get('Cache-Control')?.includes('604800') && r.headers.get('Access-Control-Allow-Origin') === 'https://lawn.example' && r.headers.get('X-Lidar-Tiles') === '2');
   r = await handleLidarTiles(req, route(good), env, 'https://lawn.example', null, json, { fetchImpl: async () => new Response('boom', { status: 500 }) });
   check('a server error is 502 with its words', r.status === 502 && (await r.json()).detail === 'boom');
+
+  /* THE CUTS KEPT IN R2 FOR SIX MONTHS (owner, 2026-10-29). */
+  const store = new Map();
+  const corpus = {
+    get: async (k) => {
+      const v = store.get(k);
+      return v ? { uploaded: v.uploaded, arrayBuffer: async () => v.bytes } : null;
+    },
+    put: async (k, bytes, opts) => { store.set(k, { bytes, opts, uploaded: new Date() }); },
+  };
+  const kept = { ...env, CORPUS: corpus };
+  let asked = 0;
+  const server = async () => { asked++; return new Response(laz, { status: 200 }); };
+  r = await handleLidarTiles(req, route(good), kept, 'https://lawn.example', null, json, { fetchImpl: server });
+  const k = await cutKey(route(good));
+  check('a new cut is asked of the server once and kept under lidar-cuts/', asked === 1 && store.has(k) && k.startsWith(CUT_PREFIX) && r.headers.get('X-Lidar-Cut') === 'server'
+    && store.get(k).opts.httpMetadata.contentType === 'application/vnd.laszip');
+  r = await handleLidarTiles(req, route(good), kept, 'https://lawn.example', null, json, { fetchImpl: server });
+  const again = new Uint8Array(await r.arrayBuffer());
+  check('the same box again comes from R2, the server not asked', asked === 1 && r.status === 200 && again.length === laz.length && r.headers.get('X-Lidar-Cut') === 'r2'
+    && r.headers.get('Access-Control-Allow-Origin') === 'https://lawn.example');
+  const shuffled = `box=-12733000,5415000,-12732900,5415100&tiles=${encodeURIComponent(`${base}a.laz,${base}b.laz`)}`;
+  check('the order of the question does not make a new cut', (await cutKey(route(shuffled))) === k);
+  store.get(k).uploaded = new Date(Date.now() - (CUT_DAYS + 1) * 86400000);
+  await handleLidarTiles(req, route(good), kept, 'https://lawn.example', null, json, { fetchImpl: server });
+  check(`a cut older than ${CUT_DAYS} days is cut afresh`, asked === 2);
+  r = await handleLidarTiles(req, route(`${good}&spacing=1.8`), { ...kept, CORPUS: { get: async () => { throw new Error('R2 down'); }, put: async () => { throw new Error('R2 down'); } } }, 'https://lawn.example', null, json, { fetchImpl: server });
+  check('R2 failing never fails the page: the server answers', r.status === 200 && asked === 3);
 }
 
 /* ------------------------------------------------- the pages' reader hook */

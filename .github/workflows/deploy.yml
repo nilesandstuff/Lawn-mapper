@@ -107,6 +107,22 @@ jobs:
       # modules were 900 KB of unminified source fetched in a waterfall on
       # every phone. One file now, about a third the size; the modules under
       # public/lib stay as they are for the shade map and the tests.
+      # THE PAGES' LIDAR CUTS, SIX MONTHS (owner, 2026-10-29: "storing the cuts
+      # on cloudflare for a very long time, but not permanently ... Maybe 6
+      # months"). worker/src/lidar-tiles.js keeps each cut under lidar-cuts/ in
+      # the corpus bucket; this rule has R2 delete them after 180 days. Added
+      # once; a deploy that finds it already there leaves it alone.
+      - name: Keep the lidar cuts six months
+        continue-on-error: true
+        run: |
+          if npx wrangler r2 bucket lifecycle list lawn-mapper-corpus 2>/dev/null | grep -q 'lidar-cuts-180d'; then
+            echo "LIDAR_CUTS=kept six months (rule already in place)" >> "$GITHUB_ENV"
+          elif npx wrangler r2 bucket lifecycle add lawn-mapper-corpus lidar-cuts-180d lidar-cuts/ --expire-days 180 --force; then
+            echo "LIDAR_CUTS=kept six months (rule added)" >> "$GITHUB_ENV"
+          else
+            echo "LIDAR_CUTS=kept until removed -- the six-month rule could not be added; see this step" >> "$GITHUB_ENV"
+          fi
+
       - name: Bundle and minify the app
         run: |
           npx esbuild public/app.js --bundle --minify --format=esm --target=es2022 --log-level=warning --outfile=app.bundle.js
@@ -482,6 +498,7 @@ jobs:
           echo "HTTPS only: ${HTTPS_STATE:-not checked -- see \"Send http to https\" above}"
           echo "Home page: ${HOME_STATE:-not built -- see \"The home page\" above}"
           echo "Shade map: ${SHADE_STATE:-not built -- see \"The shade subdomain\" above}"
+          echo "Lidar cuts for the shade and water maps: ${LIDAR_CUTS:-not checked}"
           # A database change that did not land is the quietest failure this
           # project has had: six deploys reported success while a column was
           # missing and a feature reported itself switched off. It gets said
