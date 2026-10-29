@@ -214,6 +214,10 @@ function siteFromSave(s) {
  * lined up on that photo's ground.
  */
 async function siteFromAddress(r) {
+  /* Start the lidar's download now (core session, 2026-10-29: /api/lidar/warm):
+     a survey published only as USGS tiles takes minutes to fetch the first
+     time, and the person spends them checking the property line. Not waited on. */
+  fetch(`/api/lidar/warm?lng=${r.lng}&lat=${r.lat}`).catch(() => {});
   const where = new URLSearchParams({ lng: r.lng, lat: r.lat });
   if (r.county) where.set('county', r.county);
   if (r.state) where.set('state', r.state);
