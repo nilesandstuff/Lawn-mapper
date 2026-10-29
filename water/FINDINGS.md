@@ -1990,7 +1990,7 @@ comparisons). With the owner's coefficients now 0.86 for an unknown cool-season 
 largest single error left in the plan. A fix: scale POWER's sunshine (or its ET0) by month to the nearest
 Enviroweather or other ASCE station over the same days.
 
-**9. SUSPECT: normal watering loses a fifth of itself to drainage where the soak cap does not bind.** A watering puts
+**9. KEPT AS IS (owner, 2026-10-29: "watering happens in the morning, so the most draw will actually happen after drainage (as long as we're actually factoring in drainage rates... areas can be over 100% in real life if there's nowhere for the overflow to go)"; they are: each cell drains at the rate of the layer under its roots by its drainage class, at most 60% of its gravity water a day, holds up to a tenth of its depth above field capacity before it ponds, and drains at 5% over a shallow water table). Was: normal watering loses a fifth of itself to drainage where the soak cap does not bind.** A watering puts
 back the depletion and the day's use ("back to full, today's use included"), so the day's use sits above field
 capacity, and the day drains 60% of gravity water before the grass draws (balance.js simulate). One cell, loam, no
 rain, no cap: 645 mm watered for 540 used, 105 drained. On the owner's clay every watering is capped at 7.2 mm and

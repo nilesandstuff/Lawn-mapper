@@ -11,8 +11,8 @@ SPECULATION), as always.
 ## Queued
 
 20. **From the sanity checks (FINDINGS H58), for the owner to decide:** (a) the reference ET 15-20% above Michigan's
-    stations: NOT POWER's sunlight (H60, no correction); next, find out Enviroweather's own method and data; (b) fences: DONE 2026-10-29 (H59); (c) normal watering's drainage where the soak cap
-    does not bind: let the grass and the drainage share the day's gravity water.
+    stations: NOT POWER's sunlight (H60, no correction); next, find out Enviroweather's own method and data; (b) fences: DONE 2026-10-29 (H59); (c) normal watering's drainage: KEPT AS IS (owner,
+    2026-10-29: morning watering drains before the day's draw; drainage rates are per soil; H58 point 9).
 
 4. **Heat from paving into the grass beside it.** Research how concrete and
    blacktop spread heat to the grass next to them and how that raises its water
