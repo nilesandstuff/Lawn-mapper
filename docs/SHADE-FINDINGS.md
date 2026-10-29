@@ -1267,8 +1267,16 @@ FIXED: a cloud must have at least 0.5 points a square meter over the lot
 (USGS's lowest grade, QL3) to be used; otherwise the next is tried, and
 with none the page says the survey has a hole here and names any newer
 survey not yet in the store, instead of building an empty model.
-Not done: reading rockyweb tiles (too large for a phone; would need a
-server-side crop). Scratch: ketchum/density.py.
+CLOSED the same day: the core session's tile reader (the model server crops
+USGS's LAZ tiles to the box; /api/lidar/tiles; public/shade/ept.js
+pointsFromServer; docs/CORE-TO-FEATURES.md 2026-10-29) lists
+ID_SouthernGaps_2_D23 ahead of the 2018 octree there. Rechecked live at
+03:45 UTC: 696,981 points in the box (classes 1, 2, 7, 18), flown to
+2024-08-23, 29,923 pieces drawn, the tallest 18 m, the house and the trees
+round the lot standing where the photo has them. The first visitor in an
+area waits while the server fetches the tiles (about five minutes for two
+at rockyweb's pace); the page names the newer survey as still being
+fetched if it gives up first. Scratch: ketchum/density.py.
 
 ## Speculation
 
