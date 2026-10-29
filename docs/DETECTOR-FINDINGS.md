@@ -1103,7 +1103,7 @@ C23 B25 B26 C51 C30 C29 B19 B21 B20 C102 C39 C76): their newest lidar is
 tile-only on rockyweb, which answered the 16-way download with 429 in
 every S67 run, so they read the older octrees instead. The same lidar on
 both sides of each pairing, so the pairing is fair, but it is not THE
-PLAN's lidar for them; 1b81cad and ed0b771 fix the download for later runs.
+PLAN's lidar for them. The 429 backoff (1b81cad) did not fix it: in run 269 rockyweb stalled the runner instead and 15 of the 18 still fell back. Since 2026-10-29 training reads them through the model server (LIDAR_TILES_VIA=modal, lidar_sources.crop_from_server).
 
 ### H129. NAIP'S NDVI IS NOT DOING MEASURABLE WORK: THE PLAN trained and scored with no near-infrared at all is level with the baseline lot by lot (19 better, 24 worse, 61 level, paired change +0.0, p = 0.54); the headline median 15.6 -> 16.1% is two lots crossing the middle, and on the 86 lots with their own lidar it goes the other way, 14.6 -> 14.3 (S67 trial 2, one seed, Modal) -- 2026-10-29
 *Workflow 14 run 40771958938 (`naip_trial: without NDVI`: the naip folder
@@ -1151,6 +1151,30 @@ distribution. Recorded as level, not as worse.
   photo is a leaf-on summer flight; a leaf-off photo with a summer NAIP
   is where NDVI could add, and the per-photo split above (county 7 / 9,
   Mapbox 12 / 15) does not show it.
+
+**What NDVI costs a live press (measured 2026-10-29, from a cloud
+container, not from Modal; tools/naip_bands.py's own fetch and alignment
+over corpus points).** No GPU time: NDVI is one of the nine fused numbers
+appended to the eye's 1,024 a patch. On the CPU machine that gathers a
+lot's downloads it is one exportImage from USGS's NAIP service and an
+edge-correlation search:
+
+| lot | fetch, median (max) | alignment |
+|---|---|---|
+| 60 m | 5.3 s (11.1) | 0.4 s |
+| 120 m | 5.5 s (8.9) | 1.0 s |
+| 275 m | 2.4 s (9.1) | 3.9 s |
+
+It runs after the lidar, not beside it (tools/alpha_sources.py
+gather_sources), so these seconds add to every press's wait. Workflow 32
+once saw 103 s on a 275 m county-photo lot (the note in alpha_sources.py);
+four presses here never came near that.
+
+**A correction to how H129 is easily read.** The in-shade column that
+looked better in S67 belongs to the JITTERED run (H131: 15.2 against the
+baseline's 16.6), not to NDVI. Without NDVI (this run) the in-shade
+column was 16.1 against the baseline's 16.6: taking NDVI away did not hurt
+shade either.
 
 ### H128. TAUGHT ONLY WHAT WAS TRACED (inferred marks left out of training) IS WORSE THAN THE PLAN: 26 lots better, 44 worse (sign test p = 0.041), median 15.6 -> 16.6%; better on seen ground, much worse on inferred ground, and it misses far more lawn under leafy crowns (S66, one seed) -- 2026-10-26
 *Workflow 14 runs 40369587372 (A, `canopy: on lawn`, THE PLAN) and
