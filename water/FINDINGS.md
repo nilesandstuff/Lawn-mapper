@@ -1815,8 +1815,20 @@ schedule was keyed on the heads and the pressure solve alone and kept the old ru
 change of grasses); and a save could go out before the sprinklers were restored from the map (loadLayers landing
 before heads.open) and carry an empty sprinkler map over the real one.
 
-**The owner's lawn** (bluegrass checked, the page on the owner's map, local build, 2026-10-29): see the table below,
-measured after the change. [measured]
+**The owner's lawn** (the page on the owner's map, local build, 2026-10-29; no grass checked on that saved map, so
+the cool-season average: 0.86 normal, 0.68 deficit, 0.46 dormancy). Every watering there is the day's soak cap, 7.2
+mm on the grass (0.35 in from the heads, 2 runs of 41 min on zone 1), at every level; the levels differ in how often:
+
+| | normal (0.86) | deficit (0.68) | dormancy (0.46) |
+|---|---|---|---|
+| zone 1 in July | 2 days a week | 1 day a week | every 16 days |
+| the thirstiest area, July | 10 waterings, 72 mm | 7 waterings, 50 mm | 1 watering, 7 mm |
+| a July week with no rain | 0.95 in over 3 waterings | 0.80 in over 3 | (June) 0.45 in over 2 |
+| watering areas | 3 | 3 | 1 |
+
+Deficit's July is 0.70 of normal's for a coefficient 0.79 of it: at the lower rate the soil has more room, and more of
+July's rain stays. At the dormancy rate a typical July's rain nearly covers the lawn (one watering); the ten-year
+range still has dry Julys that want more, which the "how often" column's range shows.
 
 ### H55. Dew: measured elsewhere, not in the rain the tool reads, and not added (water session, 2026-10-28)
 

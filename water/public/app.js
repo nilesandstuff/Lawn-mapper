@@ -744,7 +744,7 @@ function planReport(p) {
   const kcWords = (() => {
     const k = p.kc; if (!k) return '';
     const f = (v) => v.toFixed(2), rng = ([lo, hi]) => (lo === hi ? f(lo) : `${f(lo)}-${f(hi)}`);
-    const parts = k.parts.map((q) => `${q.name}${q.general ? ' (not in the table: its group\'s figures)' : ''} ${rng(q.range)}`).join('; ');
+    const parts = k.parts.map((q) => (q.general ? `${q.name.toLowerCase().replace(/^a /, '')}: the table does not name it, so its ${SPECIES[q.id]?.group === 'warm' ? 'warm' : 'cool'}-season grasses averaged, ${rng(q.range)} across them` : `${q.name} ${rng(q.range)}`)).join('; ');
     const level = p.mode === 'deficit' ? `<strong>Deficit watering:</strong> water just enough to avoid stress, at moderate maintenance. The grass's use is taken at <strong>${f(k.used)}</strong> times reference ET instead of normal's ${f(k.normalKc)}`
       : p.mode === 'dormancy' ? `<strong>Dormancy watering:</strong> water just enough to keep the grass alive, not green, at low maintenance. The grass's use is taken at <strong>${f(k.used)}</strong> times reference ET instead of normal's ${f(k.normalKc)}`
       : `<strong>Normal watering:</strong> replace all the water the grass uses, taken at <strong>${f(k.used)}</strong> times reference ET`;
