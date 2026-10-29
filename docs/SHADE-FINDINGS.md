@@ -1250,6 +1250,26 @@ is wide (IQR 0.02-0.22). Left out: the trees' slightly warmer winter soil
 (Edmondson), and any change of soil moisture under trees. Scratch:
 soil/clim.py, clim.json.
 
+### 31. A survey can have a hole: Southern Idaho 2018 has none of its 20 points a square meter over part of Ketchum, and the page built an empty model there (2026-10-29)
+
+A user reported the shade map "unable to identify any trees" at an address
+in Ketchum, Idaho. The page built from ID_SouthernID_13_2018, the only cloud
+on AWS there: 1,190 points over the whole 2.6 ha box, about 0.05 a square
+meter over the lot, then "The trees are built" and 41 pieces. Its
+hierarchy, mapped in 76 m cells round the lot, shows a hole some kilometers
+across with the lot inside it, about 100-150 m from where the survey's 20 a
+square meter resume. USGS's index matches the cloud by its box only
+(unconfirmed); the work unit that flew the point is ID_SouthernGaps_2_D23
+(QL1, 2023-24), made to fill such gaps, and not in the public EPT store
+(its LAZ tiles are on rockyweb, about 92 MB each).
+
+FIXED: a cloud must have at least 0.5 points a square meter over the lot
+(USGS's lowest grade, QL3) to be used; otherwise the next is tried, and
+with none the page says the survey has a hole here and names any newer
+survey not yet in the store, instead of building an empty model.
+Not done: reading rockyweb tiles (too large for a phone; would need a
+server-side crop). Scratch: ketchum/density.py.
+
 ## Speculation
 
 - FENCES (2026-10-27, IN USE, unmeasured; fences.js): drawn by the visitor
