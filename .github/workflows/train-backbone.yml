@@ -311,7 +311,13 @@ on:
         # Each is saved under a key made of exactly those, so a run that
         # changes only the decoder, the seed or the scorer skips straight to
         # training. 'rebuild' ignores what is saved (e.g. after 3DEP or NAIP
-        # themselves change) and saves afresh. Free runner only.
+        # themselves change) and saves afresh. ON MODAL TOO since 2026-10-29
+        # (owner: "absolutely worth fixing"): a Modal run restores and saves
+        # the canopy, lidar and NAIP under its own key (the canopy is the
+        # GPU's), and shares the raw lidar points, which are USGS's bytes
+        # whoever reads them. Every S67 run rebuilt all three for an hour
+        # because the cache steps were wired to the CPU path alone. The
+        # features are never cached for Modal: they are made and used there.
         description: 'Reuse saved canopy / lidar / NAIP / features when nothing they depend on changed'
         type: choice
         default: 'use'
@@ -676,7 +682,6 @@ jobs:
       # cache can never hand back work done on a different corpus.
       - name: Fingerprint the frames for the cache
         id: frames
-        if: ${{ inputs.gpu != 'modal' }}
         run: |
           # Not-lawn traces (<id>-notlawn.png) and the live model's outlines
           # (<id>-detected.png, S21) are left out: only the decoder
@@ -691,7 +696,7 @@ jobs:
 
       - name: Reuse the canopy, lidar and NAIP if saved
         id: prep
-        if: ${{ inputs.gpu != 'modal' && inputs.cache == 'use' && inputs.canopy != 'off' }}
+        if: ${{ inputs.cache == 'use' && inputs.canopy != 'off' }}
         uses: actions/cache/restore@v4
         with:
           path: |
@@ -699,7 +704,7 @@ jobs:
             lidar
             lidar-plan.json
             naip
-          key: prep-v1-${{ steps.frames.outputs.fp }}-fused${{ startsWith(inputs.decoder, 'fused') }}-align${{ inputs.lidar_align }}-${{ hashFiles('tools/locked-lidar-shifts.json') }}-${{ hashFiles('tools/tree-canopy.py', 'tools/clumps.py', 'tools/lidar-plan.js', 'tools/lidar-cover.js', 'tools/lidar-newest.js', 'tools/lidar_frame.py', 'tools/lidar_sources.py', 'tools/naip_bands.py', 'tools/naip_align.py', 'tools/requirements-trees.txt', 'tools/requirements-lidar.txt') }}
+          key: prep-v1-${{ steps.frames.outputs.fp }}-fused${{ startsWith(inputs.decoder, 'fused') }}-align${{ inputs.lidar_align }}-${{ hashFiles('tools/locked-lidar-shifts.json') }}-${{ hashFiles('tools/tree-canopy.py', 'tools/clumps.py', 'tools/lidar-plan.js', 'tools/lidar-cover.js', 'tools/lidar-newest.js', 'tools/lidar_frame.py', 'tools/lidar_sources.py', 'tools/naip_bands.py', 'tools/naip_align.py', 'tools/requirements-trees.txt', 'tools/requirements-lidar.txt') }}${{ inputs.gpu == 'modal' && '-modal' || '' }}
 
       # THE RAW POINTS (2026-10-21): every frame's points as USGS sent them,
       # saved under the frames and the saved plan alone, so a change to the
@@ -707,7 +712,7 @@ jobs:
       # keyed on that code and misses whenever it changes).
       - name: Reuse the lidar's raw points if saved
         id: points
-        if: ${{ inputs.gpu != 'modal' && inputs.cache == 'use' && inputs.canopy != 'off' }}
+        if: ${{ inputs.cache == 'use' && inputs.canopy != 'off' }}
         uses: actions/cache/restore@v4
         with:
           path: lidar-points
@@ -753,9 +758,11 @@ jobs:
         run: python3 tools/tree-canopy.py
 
       # The same script on Modal's GPU. The frames go up once, here, and stay
-      # in this run's folder on the volume for the backbone below.
+      # in this run's folder on the volume for the backbone below. Skipped
+      # when the canopy came out of the cache: the backbone step then sends
+      # the frames and the canopy itself (SEND below).
       - name: Find the canopy on Modal's GPU
-        if: ${{ inputs.canopy != 'off' && inputs.gpu == 'modal' }}
+        if: ${{ inputs.canopy != 'off' && inputs.gpu == 'modal' && steps.prep.outputs.cache-hit != 'true' }}
         env:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
@@ -839,7 +846,7 @@ jobs:
           echo "Raw points kept for $(ls lidar-points 2>/dev/null | wc -l) frames ($(du -sh lidar-points 2>/dev/null | cut -f1))."
 
       - name: Save the lidar's raw points for the next run
-        if: ${{ inputs.gpu != 'modal' && inputs.canopy != 'off' && steps.prep.outputs.cache-hit != 'true' && steps.points.outputs.cache-hit != 'true' }}
+        if: ${{ inputs.canopy != 'off' && steps.prep.outputs.cache-hit != 'true' && steps.points.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v4
         with:
           path: lidar-points
@@ -964,7 +971,10 @@ jobs:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
           RUN: gh-${{ github.run_id }}-${{ github.run_attempt }}
-          SEND: ${{ inputs.canopy == 'off' && 'frames' || '' }},lidar,naip,inferred-doubt.json${{ inputs.decoder == 'fused + edge + trees + returns' && ',tree-lidar' || '' }}
+          # The frames went up with the canopy step unless that was skipped
+          # (canopy off, or the canopy restored from the cache); then they go
+          # here, with the cached canopy beside them. Empty pieces are dropped.
+          SEND: ${{ (inputs.canopy == 'off' || steps.prep.outputs.cache-hit == 'true') && 'frames' || '' }},${{ inputs.canopy != 'off' && steps.prep.outputs.cache-hit == 'true' && 'canopy' || '' }},lidar,naip,inferred-doubt.json${{ inputs.decoder == 'fused + edge + trees + returns' && ',tree-lidar' || '' }}
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           WINDOWS: ${{ inputs.windows }}
           CANOPY: ${{ inputs.canopy }}
@@ -1004,9 +1014,13 @@ jobs:
           path: release/
 
       # Saved BEFORE the handoff below moves the folders into the tar. Only
-      # what was computed this run is saved; a hit is left as it was.
+      # what was computed this run is saved; a hit is left as it was. Not
+      # after "without NDVI", whose naip folder was emptied above: the next
+      # run would restore no NDVI and never know. The other S67 trials move
+      # nothing in these folders (the shift and the jitter are applied in
+      # train_decoder.py), so what they computed is good for any run.
       - name: Save the canopy, lidar and NAIP for later runs
-        if: ${{ inputs.gpu != 'modal' && inputs.canopy != 'off' && steps.prep.outputs.cache-hit != 'true' }}
+        if: ${{ inputs.canopy != 'off' && steps.prep.outputs.cache-hit != 'true' && inputs.naip_trial != 'without NDVI' }}
         uses: actions/cache/save@v4
         with:
           path: |
@@ -1014,7 +1028,7 @@ jobs:
             lidar
             lidar-plan.json
             naip
-          key: prep-v1-${{ steps.frames.outputs.fp }}-fused${{ startsWith(inputs.decoder, 'fused') }}-align${{ inputs.lidar_align }}-${{ hashFiles('tools/locked-lidar-shifts.json') }}-${{ hashFiles('tools/tree-canopy.py', 'tools/clumps.py', 'tools/lidar-plan.js', 'tools/lidar-cover.js', 'tools/lidar-newest.js', 'tools/lidar_frame.py', 'tools/lidar_sources.py', 'tools/naip_bands.py', 'tools/naip_align.py', 'tools/requirements-trees.txt', 'tools/requirements-lidar.txt') }}
+          key: prep-v1-${{ steps.frames.outputs.fp }}-fused${{ startsWith(inputs.decoder, 'fused') }}-align${{ inputs.lidar_align }}-${{ hashFiles('tools/locked-lidar-shifts.json') }}-${{ hashFiles('tools/tree-canopy.py', 'tools/clumps.py', 'tools/lidar-plan.js', 'tools/lidar-cover.js', 'tools/lidar-newest.js', 'tools/lidar_frame.py', 'tools/lidar_sources.py', 'tools/naip_bands.py', 'tools/naip_align.py', 'tools/requirements-trees.txt', 'tools/requirements-lidar.txt') }}${{ inputs.gpu == 'modal' && '-modal' || '' }}
 
       - name: Save the backbone's features for later runs
         if: ${{ inputs.gpu != 'modal' && steps.feats.outputs.cache-hit != 'true' }}
