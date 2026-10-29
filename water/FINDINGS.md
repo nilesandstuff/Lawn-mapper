@@ -1880,7 +1880,7 @@ judged the canopy differently. Ported the same day: each kept point's state from
 cropRecords, as the shade map's), the `leaf` column through joining and filtering, and the shade map's own
 onePass (lib/shade/passes.js, linked like its other modules) run on the analysis box before the build, with the
 report saying when the lot was flown in leaf or in two passes. Without a GPS time nothing changes. A test of the
-reader against the pass rule (plan.test.js). The owner's lot: [drive].
+reader against the pass rule (plan.test.js). The owner's lot (local build, 2026-10-29): all 125,677 points over the analysis box dated leaf-off, one pass, nothing dropped, no column in leaf; the lawn's middle at 74% of open-sky summer light, as before the change.
 
 ## SPECULATION
 
