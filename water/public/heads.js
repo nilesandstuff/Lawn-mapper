@@ -504,6 +504,7 @@ export function sprinklers(ctx) {
         if (s0.skipAfterIn) bits.push(`skip a watering after about ${s0.skipAfterIn.toFixed(2)} in of rain`);
         if (s0.dry) bits.push(`in a week with no rain in ${MONTH[s0.dry.month]}: ${s0.dry.waterings} watering${s0.dry.waterings > 1 ? 's' : ''} of ${runWords(s0.dry)}`);
         const pz = r.pz, warn = [];
+        if ((ctx.mode || 'normal') !== 'normal' && Number.isFinite(pz.dryShare) && sched.plan?.seasonDays) warn.push(`its grass goes short of water on about ${Math.round(pz.dryShare * sched.plan.seasonDays)} days of a typical season, as the ${ctx.mode} level means it to`);
         if (pz.tooDry > 0 && (ctx.mode || 'normal') === 'normal') warn.push(`about ${Math.round(pz.tooDry * 10.76 / 10) * 10} sq ft of it still dries out between waterings, and running the whole zone longer would over-water the rest`);
         if (pz.tooWet > 0) warn.push(`about ${Math.round(pz.tooWet * 10.76 / 10) * 10} sq ft of it gets too wet on this schedule (it takes water from a roof, paving or uphill too)`);
         if (pz.wetAnyway > 0) warn.push(`about ${Math.round(pz.wetAnyway * 10.76 / 10) * 10} sq ft stays wet with no watering at all: drainage, not watering`);

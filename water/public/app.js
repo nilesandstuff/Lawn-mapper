@@ -196,7 +196,7 @@ function overlay(d, v, { hard = true } = {}) {
       rgba = [...ZONE_RGB[p.zoneOf[i] % ZONE_RGB.length], 105];
       if (p.wetAnyway[i] >= 0.1) rgba = [13, 71, 161, 200];
       else if (p.wetFromWatering[i] >= 0.05) rgba = [255, 23, 68, 200];
-      else if (p.dryShare[i] > 0.1) rgba = [255, 214, 0, 190];
+      else if (p.dryShare[i] > (p.mode !== 'normal' && p.stress ? p.stress.planned : 0) + 0.1) rgba = [255, 214, 0, 190]; // at a lower level: drier than the rest of the lawn, not merely short as planned
     } else if (v === 'need' && p && view.need && Number.isFinite(p.needMm[i])) {
       // each square metre's own need in the thirstiest month, light (little) to dark (much)
       const t = Math.max(0, Math.min(1, (p.needMm[i] - view.need.lo) / Math.max(1, view.need.hi - view.need.lo)));
@@ -745,10 +745,12 @@ function planReport(p) {
     const k = p.kc; if (!k) return '';
     const f = (v) => v.toFixed(2), rng = ([lo, hi]) => (lo === hi ? f(lo) : `${f(lo)}-${f(hi)}`);
     const parts = k.parts.map((q) => (q.general ? `${q.name.toLowerCase().replace(/^a /, '')}: the table does not name it, so its ${SPECIES[q.id]?.group === 'warm' ? 'warm' : 'cool'}-season grasses averaged, ${rng(q.range)} across them` : `${q.name} ${rng(q.range)}`)).join('; ');
-    const level = p.mode === 'deficit' ? `<strong>Deficit watering:</strong> water just enough to avoid stress, at moderate maintenance. The grass's use is taken at <strong>${f(k.used)}</strong> times reference ET instead of normal's ${f(k.normalKc)}`
-      : p.mode === 'dormancy' ? `<strong>Dormancy watering:</strong> water just enough to keep the grass alive, not green, at low maintenance. The grass's use is taken at <strong>${f(k.used)}</strong> times reference ET instead of normal's ${f(k.normalKc)}`
-      : `<strong>Normal watering:</strong> replace all the water the grass uses, taken at <strong>${f(k.used)}</strong> times reference ET`;
-    return `<p>${level} (${parts}: the middle of each range${k.parts.length > 1 ? ', averaged' : ''}). ${p.mode === 'normal' ? 'Deficit or dormancy above waters less.' : 'Normal above waters the full amount.'}</p>`;
+    const st = p.stress, days = (sh) => Math.round(sh * (st?.seasonDays || 0));
+    const short = st && p.mode !== 'normal' ? ` The grass still draws at its own ${f(k.grass)}, so it goes short of water, by design: through a typical season it gets about <strong>${Math.round(st.useShare * 100)}%</strong> of the water it would use, past its readily available water on about ${days(st.planned)} days and badly short (more than halfway to wilting) on about <strong>${days(st.severe)}</strong>; with rain alone, ${Math.round(st.rainAloneUseShare * 100)}% and ${days(st.rainAloneSevere)} badly short days${p.mode === 'dormancy' ? '. It browns and goes dormant in the dry spells and greens up again after rain.' : '. It slows, dulls and shows footprints in the dry spells, without going dormant.'}` : '';
+    const level = p.mode === 'deficit' ? `<strong>Deficit watering:</strong> water just enough to avoid serious stress, at moderate maintenance. Each watering replaces <strong>${f(k.used)}</strong> times reference ET instead of normal's ${f(k.normalKc)}.${short}`
+      : p.mode === 'dormancy' ? `<strong>Dormancy watering:</strong> water just enough to keep the grass alive, not green, at low maintenance. Each watering replaces <strong>${f(k.used)}</strong> times reference ET instead of normal's ${f(k.normalKc)}.${short}`
+      : `<strong>Normal watering:</strong> replace all the water the grass uses, taken at <strong>${f(k.used)}</strong> times reference ET.`;
+    return `<p>${level} (The coefficients: ${parts}; the middle of each range${k.parts.length > 1 ? ', averaged' : ''}.) ${p.mode === 'normal' ? 'Deficit or dormancy above waters less.' : 'Normal above waters the full amount.'}</p>`;
   })();
   parts.push(`<div class="card"><h2>${sprinklerCard ? 'What each part of the lawn needs' : 'Your watering plan'}: ${p.zones.length} watering area${p.zones.length > 1 ? 's' : ''}</h2>${kcWords}
     <p>${sprinklerCard ? 'The parts of the lawn below differ in what they need: their soil, slope, sun and the water that runs onto them. The sprinkler zones&rsquo; run times above are worked out from them.' : 'Each watering area below needs a different amount, or a different rhythm, to stay between too wet and too dry. Water an area when it says, by about the depth it says; more is wasted below the roots, less leaves it short. Map your sprinklers (<em>Your sprinklers</em>) for run times by sprinkler zone.'}</p>
@@ -791,6 +793,7 @@ function planReport(p) {
     const problems = [];
     if (z.wetAnyway > 0) problems.push(`About <strong>${sqft(z.wetAnyway)} sq ft</strong> stays wet even with no watering at all: likely a drainage matter, not a watering one.`);
     if (z.tooWet > 0) problems.push(`About <strong>${sqft(z.tooWet)} sq ft</strong> gets too wet when the area is watered as a whole: it also takes water from uphill, a roof or paving. Watering it less, or moving a downspout, would likely help.`);
+    if (p.mode !== 'normal' && p.stress && z.dryShare > p.stress.planned + 0.1) problems.push(`This area goes short of water more than the rest of the lawn: on about <strong>${Math.round(z.dryShare * p.stress.seasonDays)} days</strong> of a typical season.`);
     if (z.tooDry > 0 && p.mode === 'normal') problems.push(`About <strong>${sqft(z.tooDry)} sq ft</strong> still dries out between waterings: it holds less, or loses more, than the rest.`);
     parts.push(`<div class="card"><h2>${chip(z.zone)}Area ${z.zone + 1} · ${sqft(z.m2)} sq ft</h2>
       <p class="big">${pk.waterings ? `About ${inch(pk.mmEach)} in each time; in ${MONTH[pk.month]}, ${howOften(pk).replace(/ \(.*$/, '')}.` : 'Rain likely covers it in a typical year.'}</p>
@@ -1213,7 +1216,7 @@ function legend() {
   if ($('#show-hard').checked) base.push(key('#111', 'paving', true), key('#fff', 'roof', true));
   if (mapView === 'zones') {
     if (p?.zones?.length) items.push(...p.zones.map((z) => `<span>${chip(z.zone)}area ${z.zone + 1}</span>`));
-    items.push(key('#ff1744', 'too wet if watered with its area'), key('#0d47a1', 'wet even without watering'), key('#ffd600', 'still dries out'));
+    items.push(key('#ff1744', 'too wet if watered with its area'), key('#0d47a1', 'wet even without watering'), key('#ffd600', view.plan?.mode && view.plan.mode !== 'normal' ? 'short of water more than the rest' : 'still dries out'));
     info.push('Watering areas: parts of the lawn that need the same watering, from the plan below: their soil, slope, sun and the water that runs onto them. They are not your sprinkler zones (your valves), which are under <em>Sprinklers</em>.');
   } else if (mapView === 'need') {
     if (view.need) items.push(`<span><i style="background:linear-gradient(90deg,#e3f2fd,#0d47a1);width:48px"></i>${inch(view.need.lo)} to ${inch(view.need.hi)} in of watering in a typical ${MONTH[p.needMonth ?? 6]}, square by square</span>`);

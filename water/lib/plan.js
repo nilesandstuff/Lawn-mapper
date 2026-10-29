@@ -56,7 +56,8 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
   // warm-season turf (owner 2026-10-18): FAO-56's p 0.5 in place of cool-season's 0.4
   // the level's crop coefficient from the owner's table by species (roots.js kcFor; FINDINGS H54), unless params were given whole
   const kc = kcFor(species, grass, mode);
-  const params = withMode(given || (grass === 'warm' ? { ...PARAMS, ...WARM } : PARAMS), mode, given ? null : kc.kc);
+  // the schedule waters for the level's coefficient; the grass draws at its own (normal's), so a lower level shows its stress
+  const params = withMode(given || (grass === 'warm' ? { ...PARAMS, ...WARM } : PARAMS), mode, given ? null : kc.kc, given ? null : kc.normalKc);
   const g = res.grid, N = g.W * g.H;
   // 1. what each cell is
   const kinds = new Uint8Array(N);
@@ -229,7 +230,15 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
   }
   return {
     multiplier: SM, rootIn: rootCm / 2.54,
-    mode: params.mode, kc: { ...kc, used: params.kc },
+    mode: params.mode, kc: { ...kc, used: params.scheduleKc ?? params.kc, grass: params.kc },
+    /* THE GRASS SHORT OF WATER (owner, 2026-10-29): the lawn's middle cell's share of the season's days past the
+       readily available water, as planned and with rain alone, and the days themselves. */
+    stress: (() => {
+      const lawnCells = []; for (let i = 0; i < N; i++) if (kinds[i] === KIND.lawn && zones.zoneOf[i] >= 0) lawnCells.push(i);
+      const sd = Math.max(1, planned.seasonDays / years), sh = (t, a = t.dryDays) => med(lawnCells.map((i) => a[i] / Math.max(1, t.seasonDays)));
+      const use = (t) => med(lawnCells.map((i) => (t.etFull[i] > 0 ? t.etSeason[i] / t.etFull[i] : 1)));
+      return { planned: sh(planned), severe: sh(planned, planned.severeDays), rainAlone: sh(rainOnly), rainAloneSevere: sh(rainOnly, rainOnly.severeDays), useShare: use(planned), rainAloneUseShare: use(rainOnly), seasonDays: Math.round(sd) };
+    })(),
     roots: { species: ids.map((id) => ({ id, name: SPECIES[id].name, workingIn: SPECIES[id].workingIn, general: !!SPECIES[id].general })), workingIn: Math.round((rootCm / 2.54) * 10) / 10, typical: rootsTyp, ownDays: rootOwnDays, ofDays: typical.length },
     zones: out, zoneOf: zones.zoneOf, userZones: !!zones.user, kinds, needMm,
     // each cell's soil, as the index of its unit in soil below (the soil view)
@@ -264,5 +273,5 @@ export function monthly(days, years, params = PARAMS) {
     rain[m][y] += d.rain || 0; et[m][y] += d.et0 || 0;
   }
   // the reference (clipped, well-watered grass: what Enviroweather calls Potential ET) and the grass's own use
-  return rain.map((r, m) => ({ month: m, rainMm: med(r), referenceMm: med(et[m]), grassUseMm: med(et[m]) * params.kc }));
+  return rain.map((r, m) => ({ month: m, rainMm: med(r), referenceMm: med(et[m]), grassUseMm: med(et[m]) * (params.scheduleKc ?? params.kc) })); // what the watering replaces, at the level's coefficient
 }

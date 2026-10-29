@@ -106,8 +106,18 @@ export const schedulingMultiplier = (params = PARAMS) => 1 / (0.4 + 0.6 * params
 
 /** Warm-season turf (owner 2026-10-18: "warm season should be an option"): FAO-56 Table 22's p 0.5. */
 export const WARM = { p: 0.5 };
-/** The parameters for a watering level: 'normal' | 'deficit' | 'dormancy', with its crop coefficient (roots.js kcFor). */
-export const withMode = (params, mode, kc = null) => ({ ...params, mode: mode === 'deficit' || mode === 'dormancy' ? mode : 'normal', kc: Number.isFinite(kc) ? kc : params.kc });
+/**
+ * The parameters for a watering level: 'normal' | 'deficit' | 'dormancy'. `scheduleKc` is the level's coefficient
+ * (roots.js kcFor), what the watering replaces; `useKc` the grass's own at full growth (normal's), what it draws.
+ * Apart (owner, 2026-10-29: "deficit watering is meant to be somewhat stressful"), the balance runs the grass at
+ * its own use while the schedule waters for the level's, and the gap shows as days short of water (Ks < 1).
+ */
+export const withMode = (params, mode, scheduleKc = null, useKc = null) => {
+  const sk = Number.isFinite(scheduleKc) ? scheduleKc : params.scheduleKc ?? params.kc;
+  return { ...params, mode: mode === 'deficit' || mode === 'dormancy' ? mode : 'normal', kc: Number.isFinite(useKc) ? useKc : Number.isFinite(scheduleKc) ? scheduleKc : params.kc, scheduleKc: sk };
+};
+/** True when the schedule waters for less than the grass uses (a deficit or dormancy level). */
+const scheduledShort = (params) => Number.isFinite(params.scheduleKc) && params.scheduleKc < params.kc - 1e-9;
 
 const HYD = (h) => String(h || 'B').trim().toUpperCase();
 
@@ -416,9 +426,10 @@ export function simulate(model, days, { irrigate = null, start = null, record = 
   const etFactor = new Float32Array(N), lat = model.g?.lat ?? 42.5;
   const Dr = start?.Dr ? Float32Array.from(start.Dr) : new Float32Array(N);
   const grav = new Float32Array(N), pond = new Float32Array(N), film = new Float32Array(N);
-  const tot = { irrigation: new Float32Array(N), et: new Float32Array(N), drained: new Float32Array(N), ranOff: new Float32Array(N), ranOn: new Float32Array(N), wetDays: new Uint16Array(N), dryDays: new Uint16Array(N), seasonDays: 0, rain: 0 };
+  const tot = { irrigation: new Float32Array(N), et: new Float32Array(N), drained: new Float32Array(N), ranOff: new Float32Array(N), ranOn: new Float32Array(N), wetDays: new Uint16Array(N), dryDays: new Uint16Array(N), severeDays: new Uint16Array(N), etSeason: new Float32Array(N), etFull: new Float32Array(N), seasonDays: 0, rain: 0 };
   const inflow = new Float32Array(N);
   const cn = new Float32Array(N);
+  const soaked = new Float32Array(N); // what rain and run-on put into each root zone the day before (not the watering), for a schedule kept apart
   let snow = 0, lastMonth = -1, rootNow = 1;
   const temps = [];
   for (let d = 0; d < days.length; d++) {
@@ -460,7 +471,8 @@ export function simulate(model, days, { irrigate = null, start = null, record = 
     tot.rain += P;
     const et0 = Number.isFinite(day.et0) ? day.et0 : 0;
     etToday(model, et0 > 0 ? airShare(day, lat, dayOfYear(day.date), 200, { winds: model.winds }) : null, inSeason, etFactor, month);
-    const irr = irrigate ? irrigate(d, { Dr, grav, month, inSeason, date: day.date, use: et0 * params.kc, etFactor, rain: P }) : null;
+    const irr = irrigate ? irrigate(d, { Dr, grav, month, inSeason, date: day.date, use: et0 * (params.scheduleKc ?? params.kc), etFactor, rain: P, soaked }) : null;
+    soaked.fill(0);
 
     inflow.fill(0);
     // roofs
@@ -494,6 +506,7 @@ export function simulate(model, days, { irrigate = null, start = null, record = 
         const room = Dr[i] + (satRoom[i] - grav[i]);
         if (inf > room) { q += inf - room; inf = room; }
         Dr[i] -= inf;
+        soaked[i] = Math.max(0, inf - add);
         if (Dr[i] < 0) { grav[i] += -Dr[i]; Dr[i] = 0; }
         if (q > 0 && pondCap[i] > 0) { const hold = Math.min(q, pondCap[i]); pond[i] = hold; q -= hold; }
       }
@@ -514,6 +527,7 @@ export function simulate(model, days, { irrigate = null, start = null, record = 
       let use = etc;
       if (pond[i] > 0) { const e = Math.min(pond[i], use); pond[i] -= e; use -= e; tot.et[i] += e; }
       if (grav[i] > 0) { const e = Math.min(grav[i], use); grav[i] -= e; use -= e; tot.et[i] += e; }
+      const before = tot.et[i] - (etc - use);
       if (use > 0) {
         const ks = Dr[i] <= raw[i] ? 1 : Math.max(0, (taw[i] - Dr[i]) / Math.max(1e-6, taw[i] - raw[i]));
         const e = Math.min(use * ks, taw[i] - Dr[i]);
@@ -522,6 +536,10 @@ export function simulate(model, days, { irrigate = null, start = null, record = 
       if (inSeason) {
         if (grav[i] >= params.wetSat * satRoom[i] || pond[i] > 0) tot.wetDays[i]++;
         if (Dr[i] > raw[i]) tot.dryDays[i]++;
+        // SEVERE: past halfway from the readily available water to the wilting point (FAO-56's Ks under one half)
+        if (Dr[i] > raw[i] + 0.5 * (taw[i] - raw[i])) tot.severeDays[i]++;
+        // the grass's use against what it would use with water to spare: how short it is held
+        tot.etFull[i] += etc; tot.etSeason[i] += tot.et[i] - before;
       }
     }
     if (inSeason) tot.seasonDays++;
@@ -539,6 +557,10 @@ export function simulate(model, days, { irrigate = null, start = null, record = 
 export function idealIrrigation(model) {
   const out = new Float32Array(model.N);
   const cap = model.dayCapMm;
+  /* A SCHEDULE KEPT APART (deficit, dormancy): its own depletion, Dv -- the level's use in, the rain that soaked in
+     out, emptied by each watering -- so it waters as a lawn using the level's coefficient would want, while the
+     real root zone, drawn at the grass's own use, runs into the stress zone. */
+  const Dv = scheduledShort(model.params) ? new Float32Array(model.N) : null;
   return (d, st) => {
     if (!st.inSeason) return null;
     let any = false;
@@ -548,8 +570,13 @@ export function idealIrrigation(model) {
     // the root zone keeps its room for rain
     for (let i = 0; i < model.N; i++) {
       if (model.kinds[i] !== 1) continue;
-      const use = st.use * (st.etFactor || model.etFactor)[i];
-      if (st.Dr[i] + use > model.raw[i]) { out[i] = Math.min(st.Dr[i] + use, cap ? cap[i] : Infinity); any = true; }
+      const use = st.use * (st.etFactor || model.etFactor)[i], most = cap ? cap[i] : Infinity;
+      if (Dv) {
+        const v = Math.max(0, Dv[i] - (st.soaked ? st.soaked[i] : 0)) + use;
+        if (v > model.raw[i]) { out[i] = Math.min(v, most); Dv[i] = v - out[i]; any = true; } else Dv[i] = v;
+        continue;
+      }
+      if (st.Dr[i] + use > model.raw[i]) { out[i] = Math.min(st.Dr[i] + use, most); any = true; }
     }
     return any ? out : null;
   };
@@ -570,6 +597,7 @@ export function zoneIrrigation(model, zoneOf, nZones, events = []) {
     const v = cs.map((i) => model.dayCapMm[i]).sort((a, b) => a - b);
     return v[Math.floor(0.1 * (v.length - 1))];
   });
+  const Dv = scheduledShort(model.params) ? new Float32Array(nZones) : null; // a schedule kept apart, as in idealIrrigation
   return (d, st) => {
     if (!st.inSeason) return null;
     let any = false;
@@ -577,11 +605,13 @@ export function zoneIrrigation(model, zoneOf, nZones, events = []) {
     for (let z = 0; z < nZones; z++) {
       const cs = cells[z];
       if (!cs.length) continue;
-      let dr = 0, rw = 0, use = 0;
-      for (const i of cs) { dr += st.Dr[i]; rw += model.raw[i]; use += st.use * (st.etFactor || model.etFactor)[i]; }
-      dr /= cs.length; rw /= cs.length; use /= cs.length;
+      let dr = 0, rw = 0, use = 0, wet = 0;
+      for (const i of cs) { dr += st.Dr[i]; rw += model.raw[i]; use += st.use * (st.etFactor || model.etFactor)[i]; if (st.soaked) wet += st.soaked[i]; }
+      dr /= cs.length; rw /= cs.length; use /= cs.length; wet /= cs.length;
+      if (Dv) { dr = Math.max(0, Dv[z] - wet); Dv[z] = dr + use; }
       if (dr + use > rw) {
         dr = Math.min(dr + use, caps[z]); // refill to full, today's use included, or as far as a day's cycles go
+        if (Dv) Dv[z] -= dr;
         for (const i of cs) out[i] = dr;
         events.push({ d, zone: z, mm: dr });
         any = true;
