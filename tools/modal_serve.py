@@ -172,14 +172,14 @@ def _prepare(body):
         return out
 
 
-def _gather_here(payload):
+def _gather_here(payload, tile_fetch=None):
     """alpha_sources.gather with this machine's copy of the scorer's `prepare`."""
     if f"{REPO}/tools" not in sys.path:
         sys.path.insert(0, f"{REPO}/tools")
     import alpha_sources
     key = payload.get("progressKey")
     return alpha_sources.gather(payload, _prepare, progress=lambda stage, **more: _note(key, stage, **more),
-                                cache_dir="/models/lidar-cache")
+                                cache_dir="/models/lidar-cache", tile_fetch=tile_fetch)
 
 
 # WHO IS FETCHING WHICH TILE (lidar_tiles below): a page asks every few
@@ -187,6 +187,73 @@ def _gather_here(payload):
 # rest only wait, unless the last start is twenty minutes old.
 fetching = modal.Dict.from_name("lawn-lidar-tiles-fetching", create_if_missing=True)
 FETCH_AGAIN_S = 1200
+# ONE DOWNLOAD A TILE, WHOEVER ASKS (2026-10-29). The address's warm-up
+# (lidar_warm), a shade or water page (lidar_tiles) and the detector's press
+# (gather) can all want the same tile within a minute of each other; rockyweb
+# serves one machine slowly and refuses a crowd. The first to ask writes the
+# note above and fetches; the others wait for the file to appear on the
+# volume. The detector waits at most DETECT_WAIT_S, then reads the older
+# octree for this press rather than holding the person up.
+DETECT_WAIT_S = 180  # the GPU waits 300 s for these downloads (detect); the read and NAIP come after
+WAIT_STEP_S = 10
+
+
+def _fetch_or_wait(urls, say=lambda words: None, wait_s=FETCH_AGAIN_S, fetch_after_wait=True):
+    """Every one of these tiles onto the volume: fetched here, or -- when
+    another machine is fetching it right now -- waited for. Returns the urls
+    still missing (a fetch that failed, or a wait that ran out)."""
+    if f"{REPO}/tools" not in sys.path:
+        sys.path.insert(0, f"{REPO}/tools")
+    import lidar_sources
+    from pathlib import Path
+    missing = []
+    for i, url in enumerate(urls):
+        name = url.rsplit("/", 1)[-1]
+        path = Path(TILE_DIR) / name
+        whole = lambda: path.exists() and path.stat().st_size > 0  # noqa: E731
+        if whole():
+            continue
+        try:
+            started = fetching.get(name)
+        except Exception:  # noqa: BLE001
+            started = None
+        if started and time.time() - float(started) < FETCH_AGAIN_S:
+            say(f"Waiting for USGS's newest lidar survey over this lot (tile {i + 1} of {len(urls)}): it is being fetched already")
+            until = min(time.time() + wait_s, float(started) + FETCH_AGAIN_S)
+            while time.time() < until and not whole():
+                time.sleep(WAIT_STEP_S)
+                try:
+                    tiles.reload()
+                except Exception:  # noqa: BLE001 - a file open on another lot: look again next time round
+                    pass
+                try:
+                    if not fetching.get(name):  # the other fetch failed and cleared its note
+                        break
+                except Exception:  # noqa: BLE001
+                    pass
+            if whole():
+                continue
+            if not fetch_after_wait:
+                missing.append(url)
+                continue
+        try:
+            fetching[name] = time.time()
+        except Exception:  # noqa: BLE001 - a note that fails to write is only a note
+            pass
+        say(f"Fetching USGS's newest lidar survey over this lot (tile {i + 1} of {len(urls)}): the first lot in an area takes a few minutes")
+        t0 = time.time()
+        try:
+            lidar_sources.fetch_ranged(url, path)
+            tiles.commit()
+            print(f"tile {name}: {path.stat().st_size / 1e6:.0f} MB in {time.time() - t0:.0f}s", flush=True)
+        except Exception as e:  # noqa: BLE001 - said, and the note cleared so the next ask tries again at once
+            print(f"tile {name}: NOT fetched ({str(e)[:160]})", flush=True)
+            try:
+                del fetching[name]
+            except Exception:  # noqa: BLE001
+                pass
+            missing.append(url)
+    return missing
 
 
 @app.function(image=cpu_image, volumes={TILE_DIR: tiles}, timeout=3600, cpu=1.0, memory=2048)
@@ -219,6 +286,29 @@ def fetch_tiles(urls):
     return got
 
 
+def _ask_fetch(urls):
+    """fetch_tiles started for the tiles nobody has asked for in the last
+    twenty minutes, each noted as asked; the rest are already on their way.
+    Returns the urls asked for."""
+    now = time.time()
+    ask = []
+    for u in urls:
+        name = u.rsplit("/", 1)[-1]
+        try:
+            started = fetching.get(name)
+        except Exception:  # noqa: BLE001
+            started = None
+        if not started or now - float(started) > FETCH_AGAIN_S:
+            try:
+                fetching[name] = now
+            except Exception:  # noqa: BLE001 - a note that fails to write is only a note
+                pass
+            ask.append(u)
+    if ask:
+        fetch_tiles.spawn(ask)
+    return ask
+
+
 TILE_NAME = re.compile(r"^https://rockyweb\.usgs\.gov/vdelivery/Datasets/Staged/Elevation/LPC/Projects/[A-Za-z0-9_./-]+\.laz$")
 
 
@@ -236,14 +326,53 @@ def crop_tiles(urls, box, spacing=0.0):
         tiles.reload()
     except Exception:  # noqa: BLE001 - read what is here
         pass
+    t0 = time.time()
+    # The address's area, when one was kept that holds this box: a few MB to
+    # read instead of whole tiles (lidar_warm, lidar_sources.write_area).
+    area = lidar_sources.area_covering(TILE_DIR, urls, box)
+    if area:
+        laz = lidar_sources.crop_tiles_laz([str(area)], box, spacing_m=spacing)
+        print(f"crop over {box[2] - box[0]:.0f} x {box[3] - box[1]:.0f} m from the kept area {area.name}: {len(laz) / 1e6:.1f} MB in {time.time() - t0:.1f}s", flush=True)
+        return {"laz": laz, "from": "area"}
     paths = [Path(TILE_DIR) / u.rsplit("/", 1)[-1] for u in urls]
     missing = [u for u, p in zip(urls, paths) if not (p.exists() and p.stat().st_size > 0)]
     if missing:
         return {"missing": missing}
-    t0 = time.time()
     laz = lidar_sources.crop_tiles_laz([str(p) for p in paths], box, spacing_m=spacing)
     print(f"crop of {len(paths)} tiles over {box[2] - box[0]:.0f} x {box[3] - box[1]:.0f} m: {len(laz) / 1e6:.1f} MB in {time.time() - t0:.0f}s", flush=True)
-    return {"laz": laz}
+    return {"laz": laz, "from": "tiles"}
+
+
+# THE ADDRESS'S WARM-UP (owner, 2026-10-29: "when a user enters an address
+# into lawn map: we should initiate the download, crop it to the sizes needed
+# by the shade map and water map, save it to a cache so it's available to the
+# shade map, water map, and ai detector"). Started by lidar_warm below when an
+# address is confirmed (worker/src/lidar-tiles.js warmLidar): the tiles onto
+# the volume, then the square round the address cut once as an area, which
+# crop_tiles and the detector's gather both read from. Minutes, once; nobody
+# waits on it.
+warming = modal.Dict.from_name("lawn-lidar-warming", create_if_missing=True)
+
+
+@app.function(image=cpu_image, volumes={TILE_DIR: tiles}, timeout=3600, cpu=2.0, memory=4096)
+def warm_area(urls, box):
+    if f"{REPO}/tools" not in sys.path:
+        sys.path.insert(0, f"{REPO}/tools")
+    import lidar_sources
+    try:
+        tiles.reload()
+    except Exception:  # noqa: BLE001 - read what is here
+        pass
+    if lidar_sources.area_covering(TILE_DIR, urls, box):
+        return {"area": "kept already"}
+    missing = _fetch_or_wait(urls, say=lambda words: print(words, flush=True))
+    if missing:
+        return {"missing": [u.rsplit("/", 1)[-1] for u in missing]}
+    t0 = time.time()
+    path = lidar_sources.write_area(TILE_DIR, urls, box)
+    tiles.commit()
+    print(f"area {path.parent.name}/{path.name}: {path.stat().st_size / 1e6:.1f} MB in {time.time() - t0:.0f}s", flush=True)
+    return {"area": path.name}
 
 
 def _gather_with_tiles(payload):
@@ -254,7 +383,8 @@ def _gather_with_tiles(payload):
         tiles.reload()  # tiles fetched since this machine started
     except Exception:  # noqa: BLE001 - files open on another lot: read what is here
         pass
-    got = _gather_here(payload)
+    got = _gather_here(payload, tile_fetch=lambda urls, say: _fetch_or_wait(
+        urls, say=lambda words: say(words), wait_s=DETECT_WAIT_S, fetch_after_wait=False))
     rec = (got.get("sources") or {}).get("rec", {})
     if rec.get("tilesFetched"):
         try:
@@ -264,7 +394,7 @@ def _gather_with_tiles(payload):
     pending = rec.get("tilesPending")
     if pending:
         try:
-            fetch_tiles.spawn(pending)
+            _ask_fetch(pending)  # not again for a tile another machine is fetching now
         except Exception as e:  # noqa: BLE001 - next lot asks again
             print(f"tiles not asked for: {e}", flush=True)
     return got
@@ -581,21 +711,41 @@ def lidar_tiles(request: "Request", tiles: str, box: str, spacing: float = 0.0):
         raise HTTPException(status_code=400, detail="box: w,s,e,n in Web Mercator metres, at most 1.5 km across")
     out = crop_tiles.remote(urls, bbox, float(spacing or 0.0))
     if out.get("missing"):
-        now = time.time()
-        ask = []
-        for u in out["missing"]:
-            name = u.rsplit("/", 1)[-1]
-            try:
-                started = fetching.get(name)
-            except Exception:  # noqa: BLE001
-                started = None
-            if not started or now - float(started) > FETCH_AGAIN_S:
-                try:
-                    fetching[name] = now
-                except Exception:  # noqa: BLE001 - a note that fails to write is only a note
-                    pass
-                ask.append(u)
-        if ask:
-            fetch_tiles.spawn(ask)
+        ask = _ask_fetch(out["missing"])
         return JSONResponse({"status": "fetching", "missing": [u.rsplit("/", 1)[-1] for u in out["missing"]], "started": bool(ask)}, status_code=202)
     return Response(content=out["laz"], media_type="application/vnd.laszip", headers={"Cache-Control": "public, max-age=604800"})
+
+
+@app.function(image=web_image, secrets=[auth], timeout=60)
+@modal.fastapi_endpoint(method="GET")
+def lidar_warm(request: "Request", tiles: str, box: str):
+    """?tiles=<rockyweb urls>&box=w,s,e,n: start the address's warm-up
+    (warm_area) unless one for the same tiles and box started in the last
+    twenty minutes. Answers at once; nothing waits on it."""
+    import hashlib
+    if not _authorised(request.headers.get("authorization", "")):
+        raise HTTPException(status_code=401, detail="not authorised")
+    urls = [u for u in str(tiles or "").split(",") if u]
+    if not urls or len(urls) > 12 or not all(TILE_NAME.match(u) for u in urls):
+        raise HTTPException(status_code=400, detail="tiles: 1 to 12 of USGS's rockyweb LAZ urls")
+    try:
+        bbox = [float(v) for v in str(box).split(",")]
+        assert len(bbox) == 4 and bbox[0] < bbox[2] and bbox[1] < bbox[3]
+        assert bbox[2] - bbox[0] <= 1500 and bbox[3] - bbox[1] <= 1500
+    except Exception:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail="box: w,s,e,n in Web Mercator metres, at most 1.5 km across")
+    names = sorted(u.rsplit("/", 1)[-1] for u in urls)
+    key = hashlib.sha1(("|".join(names) + "|" + ",".join(str(round(v)) for v in bbox)).encode()).hexdigest()[:24]
+    now = time.time()
+    try:
+        last = warming.get(key)
+    except Exception:  # noqa: BLE001
+        last = None
+    if last and now - float(last) < FETCH_AGAIN_S:
+        return {"status": "warming", "started": False}
+    try:
+        warming[key] = now
+    except Exception:  # noqa: BLE001 - a note that fails to write is only a note
+        pass
+    warm_area.spawn(urls, bbox)
+    return {"status": "warming", "started": True}

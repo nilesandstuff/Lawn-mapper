@@ -6,9 +6,10 @@
  */
 import { readFileSync } from 'node:fs';
 import {
-  YEAR_MS, tileSets, tileClouds, withTiles, parseBox, tilesOf, tilesQuery, tnmUrl, pickNewest,
+  YEAR_MS, tileSets, tileClouds, withTiles, parseBox, tilesOf, tilesQuery, tnmUrl, pickNewest, areaAround, AREA_HALF_M,
 } from '../public/lib/lidar-tiles.js';
 import { addTileClouds, handleLidarTiles, tilesUrl, tilesEnabled } from '../worker/src/lidar-tiles.js';
+import { warmUrl, warmLidar, handleLidarWarm } from '../worker/src/lidar-warm.js';
 import { pointsFromServer, pointsIn } from '../public/shade/ept.js';
 import { pointsIn as waterPointsIn } from '../water/lib/ept.js';
 import { nodeIo } from '../water/lib/node-io.js';
@@ -165,6 +166,38 @@ const wesm = { features: [{ attributes: { workunit: gaps.workunit, project: gaps
   const octIo = { ...io, getJson: async () => { walked = true; throw new Error('stop here'); } };
   await pointsIn('https://s3/ept.json', box, octIo).catch(() => {});
   check('an ept.json still walks the octree', walked);
+}
+
+/* THE ADDRESS'S WARM-UP (2026-10-29): asked of the server only for a tile flight, with the area round the point. */
+{
+  const [w, s, e, n] = areaAround(-114.38468, 43.71751);
+  const k = Math.cos((43.71751 * Math.PI) / 180);
+  check('the area is AREA_HALF_M ground metres each way', Math.abs((e - w) * k - 2 * AREA_HALF_M) < 0.01 && Math.abs((n - s) * k - 2 * AREA_HALF_M) < 0.01 && e - w <= 1500, `${((e - w) * k).toFixed(2)} m`);
+  const env = { ALPHA_URL: 'https://ws--lawn-mapper-alpha-start.modal.run', ALPHA_TOKEN: 't' };
+  check('the warm endpoint sits beside the tile one', warmUrl(env) === 'https://ws--lawn-mapper-alpha-lidar-warm.modal.run', warmUrl(env));
+  check('and an explicit one wins', warmUrl({ ...env, ALPHA_WARM_URL: 'https://x.modal.run' }) === 'https://x.modal.run');
+  const tiles = ['https://rockyweb.usgs.gov/vdelivery/Datasets/Staged/Elevation/LPC/Projects/A/LAZ/USGS_LPC_A_1.laz', 'https://rockyweb.usgs.gov/vdelivery/Datasets/Staged/Elevation/LPC/Projects/A/LAZ/USGS_LPC_A_2.laz'];
+  const sent = [];
+  const fetchImpl = async (u, init) => { sent.push({ u: String(u), auth: init?.headers?.authorization }); return new Response(JSON.stringify({ status: 'warming', started: true }), { status: 200 }); };
+  const tileFirst = async () => ({ clouds: [{ kind: 'tiles', name: 'ID_SouthernGaps_2_D23', tiles, mb: 126 }, { kind: 'ept', name: 'old' }] });
+  const got = await warmLidar(-114.38468, 43.71751, env, { fetchImpl, find: tileFirst });
+  const q = sent[0] ? new URL(sent[0].u).searchParams : null;
+  check('a tile flight first is warmed: its tiles and the area, with the token', got.warmed && sent.length === 1 && q.get('tiles') === tiles.join(',') && q.get('box').split(',').length === 4 && sent[0].auth === 'Bearer t', JSON.stringify(got));
+  sent.length = 0;
+  const octreeFirst = async () => ({ clouds: [{ kind: 'ept', name: 'new octree' }, { kind: 'tiles', tiles, name: 'older tiles' }] });
+  const no = await warmLidar(-114.38, 43.72, env, { fetchImpl, find: octreeFirst });
+  check('nothing is asked when the newest flight is an octree', !no.warmed && sent.length === 0 && /octree/.test(no.why));
+  const none = await warmLidar(-114.38, 43.72, {}, { fetchImpl, find: tileFirst });
+  check('nor without a model server', !none.warmed && sent.length === 0);
+  const json = (b, st) => new Response(JSON.stringify(b), { status: st });
+  const bad = await handleLidarWarm(new Request('https://x/api/lidar/warm?lng=abc&lat=1'), new URL('https://x/api/lidar/warm?lng=abc&lat=1'), env, '*', null, json, { fetchImpl, find: tileFirst });
+  check('a point that is not one is refused', bad.status === 400);
+  const waits = [];
+  const ctx = { waitUntil: (p) => waits.push(p) };
+  const u = new URL('https://x/api/lidar/warm?lng=-114.38468&lat=43.71751');
+  const quick = await handleLidarWarm(new Request(u), u, env, '*', ctx, json, { fetchImpl, find: tileFirst });
+  await Promise.all(waits);
+  check('the app is answered at once and the warm-up runs after', quick.status === 202 && waits.length === 1 && sent.length === 1);
 }
 
 if (failed) { console.log(`\n${failed} check(s) FAILED`); process.exit(1); }

@@ -213,6 +213,41 @@ def check_tile_crop_for_the_pages():
     print("tile crop for the pages: records in metres, LAZ 1.4 pf6 round trip, time and classes kept, thinning, empty box")
 
 
+def check_areas_and_the_server_crop():
+    """An address's area is cut once and found again by box; a crop read back
+    gives the same points as the tile; read_points takes a server crop."""
+    import tempfile
+    from pathlib import Path
+    with tempfile.TemporaryDirectory() as d:
+        url = "https://rockyweb.usgs.gov/vdelivery/Datasets/Staged/Elevation/LPC/Projects/X/LAZ/USGS_LPC_X_1_2.laz"
+        tile = Path(d) / "USGS_LPC_X_1_2.laz"
+        _synthetic_tile(tile, n=2000)
+        area_box = (-9_799_990.0, 5_120_010.0, -9_799_810.0, 5_120_190.0)
+        inner = (-9_799_950.0, 5_120_050.0, -9_799_850.0, 5_120_150.0)
+        assert t.area_covering(d, [url], inner) is None, "nothing kept yet"
+        a = t.write_area(d, [url], area_box)
+        assert a.name.endswith(t.CROP_SUFFIX) and t.area_box_of(a) == [-9799990.0, 5120010.0, -9799810.0, 5120190.0], a.name
+        assert t.area_covering(d, [url], inner) == a, "found for a box inside it"
+        assert t.area_covering(d, [url.replace("1_2", "1_3")], inner) is None, "not for other tiles"
+        assert t.area_covering(d, [url], (inner[0] - 100, inner[1], inner[2], inner[3])) is None, "not for a box reaching outside it"
+        from_tile = t.tile_records(tile, inner)
+        from_area = t.tile_records(a, inner)
+        assert abs(len(from_area["x"]) - len(from_tile["x"])) <= 2, f"{len(from_area['x'])} from the area, {len(from_tile['x'])} from the tile"
+        assert abs(float(np.median(from_area["z"])) - float(np.median(from_tile["z"]))) < 0.5, "z already metres in a crop, not scaled again"
+        assert t.write_area(d, [url], area_box) == a, "a second ask finds the one kept"
+
+        asked = []
+
+        def crop(urls, box):
+            asked.append(box)
+            return t.write_area(d, urls, box)
+        pts, info = t.read_points(lambda b: (_ for _ in ()).throw(AssertionError("no octree")), inner, 2020.5, tiles=[url], server_crop=crop)
+        direct, _ = t.read_points(None, inner, 2020.5, tiles=[str(tile)])
+        assert info.get("via") == "server" and len(asked) == 1, "tiles by URL go through the crop"
+        assert abs(len(pts) - len(direct)) <= 2, f"{len(pts)} through the server, {len(direct)} from the tile"
+    print("areas: cut once, found by box, read back in metres; read_points takes the server's crop")
+
+
 if __name__ == "__main__":
     check_datum_matches_the_shade_map()
     check_mercator_shift()
@@ -221,4 +256,5 @@ if __name__ == "__main__":
     check_ranged_download_makes_its_folder()
     check_raw_points_cache()
     check_tile_crop_for_the_pages()
+    check_areas_and_the_server_crop()
     print("lidar sources: ok")

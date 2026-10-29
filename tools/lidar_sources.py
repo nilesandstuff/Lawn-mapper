@@ -216,10 +216,14 @@ def fetch_ranged(url, path, parts=RANGE_PARTS, timeout=120, tries=RATE_TRIES):
     return path
 
 
-def _tile_crs(f):
-    """The tile's CRS (rasterio) and metres per unit of z, from its WKT."""
+def _tile_crs(f, path=None):
+    """The tile's CRS (rasterio) and metres per unit of z, from its WKT. One of
+    our own crops (CROP_SUFFIX, written by records_laz) carries none: it is
+    Web Mercator metres by construction, and named so."""
     from rasterio.crs import CRS
     wkt = wkt_of(f.header)
+    if not wkt and path is not None and str(path).endswith(CROP_SUFFIX):
+        return CRS.from_epsg(3857), 1.0
     if not wkt:
         raise RuntimeError("tile carries no WKT; refusing to guess its coordinates")
     return CRS.from_wkt(wkt), vertical_factor(wkt)
@@ -236,7 +240,7 @@ def tile_records(path, bbox3857):
     import laspy
     from rasterio.warp import transform
     with laspy.open(str(path)) as f:
-        crs, zf = _tile_crs(f)
+        crs, zf = _tile_crs(f, path)
         # The frame in the tile's own coordinates (corners and edge midpoints, a margin for the bend).
         bx = [bbox3857[0], bbox3857[2], bbox3857[0], bbox3857[2], (bbox3857[0] + bbox3857[2]) / 2, (bbox3857[0] + bbox3857[2]) / 2]
         by = [bbox3857[1], bbox3857[1], bbox3857[3], bbox3857[3], bbox3857[1], bbox3857[3]]
@@ -336,6 +340,111 @@ def crop_tiles_laz(paths, bbox3857, spacing_m=0.0):
     return records_laz(rec)
 
 
+# ------------------------------------------------------------- the areas
+
+# ONE CROP AN ADDRESS, KEPT ON THE SERVER'S VOLUME (owner, 2026-10-29: "when a
+# user enters an address into lawn map: we should initiate the download, crop
+# it to the sizes needed by the shade map and water map, save it to a cache so
+# it's available to the shade map, water map, and ai detector").
+#
+# USGS's tiles are 1.5 km squares of 30-130 MB; a lot needs a few hundred
+# metres of one or two. The model server fetches the tiles once (they stay on
+# its volume), then cuts the square around the address at full density into
+# areas/<the tiles' key>/<w>_<s>_<e>_<n>.3857.laz. Every later read whose box
+# lies inside an area -- the shade map's (full density), the water map's
+# (thinned to 1.8 m), the detector's frame -- is cut from that small file
+# instead of decompressing whole tiles. The name carries the box, so finding
+# one needs no index and two writers cannot corrupt one (each writes its own
+# .part and renames it).
+CROP_SUFFIX = ".3857.laz"
+AREA_DIR = "areas"
+
+
+def tiles_key(urls):
+    """A short, stable name for a set of tiles, whatever order they come in."""
+    import hashlib
+    names = sorted(str(u).rsplit("/", 1)[-1] for u in urls)
+    return hashlib.sha1("|".join(names).encode()).hexdigest()[:16]
+
+
+def _box_name(box):
+    return "_".join(str(int(v)) for v in box)
+
+
+def area_box_of(path):
+    """The box an area file covers, from its name; None for any other file."""
+    name = Path(path).name
+    if not name.endswith(CROP_SUFFIX):
+        return None
+    try:
+        b = [float(v) for v in name[: -len(CROP_SUFFIX)].split("_")]
+    except ValueError:
+        return None
+    return b if len(b) == 4 and b[0] < b[2] and b[1] < b[3] else None
+
+
+def area_covering(tile_dir, urls, box):
+    """The smallest kept area of these tiles that holds `box`, or None."""
+    d = Path(tile_dir) / AREA_DIR / tiles_key(urls)
+    if not d.is_dir():
+        return None
+    best, best_m2 = None, None
+    for p in d.glob("*" + CROP_SUFFIX):
+        b = area_box_of(p)
+        if b and b[0] <= box[0] and b[1] <= box[1] and b[2] >= box[2] and b[3] >= box[3] and p.stat().st_size > 0:
+            m2 = (b[2] - b[0]) * (b[3] - b[1])
+            if best is None or m2 < best_m2:
+                best, best_m2 = p, m2
+    return best
+
+
+def write_area(tile_dir, urls, box):
+    """Cut the tiles (already in tile_dir) to `box`, rounded out to whole
+    metres, at full density, and keep it as an area. Returns its path."""
+    box = [math.floor(box[0]), math.floor(box[1]), math.ceil(box[2]), math.ceil(box[3])]
+    out = Path(tile_dir) / AREA_DIR / tiles_key(urls) / (_box_name(box) + CROP_SUFFIX)
+    if out.exists() and out.stat().st_size > 0:
+        return out
+    out.parent.mkdir(parents=True, exist_ok=True)
+    paths = [str(Path(tile_dir) / str(u).rsplit("/", 1)[-1]) for u in urls]
+    tmp = out.with_name(out.name + ".part")
+    tmp.write_bytes(crop_tiles_laz(paths, box))
+    tmp.rename(out)
+    return out
+
+
+# THROUGH THE MODEL SERVER (owner, 2026-10-29: "yes do it"). The training
+# runner's own downloads from rockyweb were refused (429) or stalled on 15 of
+# the 18 tile lots in every S67 run, so they read older flights. The model
+# server's network is served; its volume keeps every tile it has fetched, for
+# the live site too. So the runner asks the server for its frame's crop
+# (crop_tiles, a few MB) and has the server fetch whatever tiles are missing
+# (fetch_tiles) -- once, ever.
+SERVER_APP = "lawn-mapper-alpha"
+
+
+def crop_from_server(urls, box, out_dir, app=SERVER_APP, say=print):
+    """The points of these tiles inside `box`, cut by the model server, kept in
+    out_dir as one of our crops. Raises when the server cannot fetch them."""
+    out = Path(out_dir) / f"{tiles_key(urls)}-{_box_name([math.floor(box[0]), math.floor(box[1]), math.ceil(box[2]), math.ceil(box[3])])}{CROP_SUFFIX}"
+    if out.exists() and out.stat().st_size > 0:
+        return out
+    import modal
+    crop = modal.Function.from_name(app, "crop_tiles")
+    got = crop.remote(list(urls), list(box), 0.0)
+    if got.get("missing"):
+        say(f"    the server is fetching {len(got['missing'])} tile(s) from USGS (once; kept on its volume)")
+        modal.Function.from_name(app, "fetch_tiles").remote(list(got["missing"]))
+        got = crop.remote(list(urls), list(box), 0.0)
+    if got.get("missing"):
+        raise RuntimeError(f"the model server could not fetch {len(got['missing'])} tile(s)")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    tmp = out.with_name(out.name + ".part")
+    tmp.write_bytes(got["laz"])
+    tmp.rename(out)
+    return out
+
+
 # ------------------------------------------------------------- one read
 
 NOISE = (7, 18)
@@ -378,7 +487,7 @@ def raw_cached(raw_cache, key):
         return None, None
 
 
-def read_points(read_octree, bbox, epoch, tiles=None, tile_dir=None, extra_m=None, raw_cache=None, key=None):
+def read_points(read_octree, bbox, epoch, tiles=None, tile_dir=None, extra_m=None, raw_cache=None, key=None, server_crop=None):
     """
     One frame's points, (x, y, z, intensity, class) in Web Mercator, with
     noise dropped and the datum move applied. From `tiles` (paths or URLs;
@@ -395,12 +504,19 @@ def read_points(read_octree, bbox, epoch, tiles=None, tile_dir=None, extra_m=Non
     between runs (owner, 2026-10-21: "shouldn't we just be caching
     everything related to the training corpus anyways?"). A different key
     reads afresh and overwrites.
+    `server_crop(urls, box)`, when given, cuts tiles named by URL to the box and
+    returns the path of the crop (crop_from_server): the training runner's
+    way to the newest flight without downloading whole tiles itself.
     Returns (points, info) with the keys lidar_frame.main() records.
     """
     wide = grow(bbox, 5)
     pts, info = raw_cached(raw_cache, key)
     if pts is None:
-        if tiles:
+        if tiles and server_crop is not None and all(str(t).startswith("http") for t in tiles):
+            path = Path(server_crop(list(tiles), wide))
+            pts = tile_points(path, wide)
+            info = {"nodes": len(tiles), "tiles": True, "mb": path.stat().st_size / 1e6, "via": "server"}
+        elif tiles:
             parts, mb = [], 0.0
             for t in tiles:
                 path = Path(t) if not str(t).startswith("http") else fetch_ranged(t, Path(tile_dir) / str(t).rsplit("/", 1)[-1])

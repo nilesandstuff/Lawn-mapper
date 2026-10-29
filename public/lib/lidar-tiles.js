@@ -79,7 +79,30 @@ export function pickNewest(octrees, sets) {
 }
 
 /** The TNM API's query for the LAZ tiles within `halfM` metres of a point. */
-export function tnmUrl(lng, lat, halfM = 250) {
+/*
+ * THE ADDRESS'S AREA (owner, 2026-10-29: "when a user enters an address into
+ * lawn map: we should initiate the download, crop it to the sizes needed by
+ * the shade map and water map, save it to a cache"). The square the model
+ * server cuts from USGS's tiles once an address is confirmed (WARM_ROUTE ->
+ * tools/modal_serve.py warm_area), at full density: AREA_HALF_M ground metres
+ * each way, the same square tnmUrl asks USGS's index about, so the tiles
+ * named cover it. The shade map's box (the lot and its margin), the water
+ * map's (thinned) and the detector's frame are then cut from it in a second
+ * or two instead of from whole tiles.
+ */
+export const AREA_HALF_M = 250;
+export const WARM_ROUTE = '/api/lidar/warm';
+
+/** The area round a point, [w, s, e, n] in Web Mercator metres. */
+export function areaAround(lng, lat, halfM = AREA_HALF_M) {
+  const R = 6378137;
+  const x = R * (lng * Math.PI) / 180;
+  const y = R * Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360));
+  const h = halfM / Math.cos((lat * Math.PI) / 180);
+  return [x - h, y - h, x + h, y + h];
+}
+
+export function tnmUrl(lng, lat, halfM = AREA_HALF_M) {
   const dLat = halfM / 111320;
   const dLng = halfM / (111320 * Math.cos((lat * Math.PI) / 180));
   const bbox = [lng - dLng, lat - dLat, lng + dLng, lat + dLat].map((v) => v.toFixed(5)).join(',');

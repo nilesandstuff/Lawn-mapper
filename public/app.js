@@ -2718,6 +2718,12 @@ async function confirmLocation() {
      * separate "fifty people asked" from "one person asked fifty times" --
      * opposite findings that a hit count alone cannot tell apart.
      */
+    /* The newest lidar over the address, started now (owner, 2026-10-29):
+       when it is a flight USGS has only as LAZ tiles, the model server fetches
+       them and cuts the area round the address while the person works here,
+       so the shade map, the water map and the detector find it ready. Not
+       waited on; a failure only means the first of those waits instead. */
+    fetch(`/api/lidar/warm?${new URLSearchParams({ lng, lat })}`).catch(() => {});
     const where = new URLSearchParams({ lng, lat });
     if (state.chosen.county) where.set('county', state.chosen.county);
     if (state.chosen.state) where.set('state', state.chosen.state);

@@ -423,6 +423,10 @@ jobs:
           tilesurl=$(python3 -c "import modal; print(modal.Function.from_name('lawn-mapper-alpha', 'lidar_tiles').get_web_url() or '')" 2>/dev/null || true)
           [ -n "$tilesurl" ] || tilesurl=$(grep -o 'https://[^ ]*-lidar-tiles\.modal\.run' modal-deploy.log | head -1)
           if [ -n "$tilesurl" ]; then printf '%s' "$tilesurl" | npx wrangler secret put ALPHA_TILES_URL; fi
+          # The address's warm-up (worker/src/lidar-warm.js; 2026-10-29): the tiles fetched and the area cut once an address is confirmed.
+          warmurl=$(python3 -c "import modal; print(modal.Function.from_name('lawn-mapper-alpha', 'lidar_warm').get_web_url() or '')" 2>/dev/null || true)
+          [ -n "$warmurl" ] || warmurl=$(grep -o 'https://[^ ]*-lidar-warm\.modal\.run' modal-deploy.log | head -1)
+          if [ -n "$warmurl" ]; then printf '%s' "$warmurl" | npx wrangler secret put ALPHA_WARM_URL; fi
           printf '%s' "$token" | npx wrangler secret put ALPHA_TOKEN
           modal volume get --force lawn-mapper-models alpha/release.json release.json >/dev/null 2>&1 || true
           when=$(python3 -c "import json;m=json.load(open('release.json'));print(m.get('trainedAt','?')+', '+str(m.get('lawns','?'))+' lots')" 2>/dev/null || echo "date unknown")

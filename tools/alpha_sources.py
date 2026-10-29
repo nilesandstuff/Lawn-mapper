@@ -155,7 +155,7 @@ def _lidar_save(path, got):
         pass
 
 
-def gather_sources(photo, prep, naip_align=None, progress=None, cache_dir=None):
+def gather_sources(photo, prep, naip_align=None, progress=None, cache_dir=None, tile_fetch=None):
     """Lidar and NAIP for one lot. Returns plain arrays and a record:
 
         lidar       {height, n_ground, n_all, intensity} on lidar_frame's 2 m grid, or None
@@ -170,6 +170,10 @@ def gather_sources(photo, prep, naip_align=None, progress=None, cache_dir=None):
     so a press sent again for the same lot (the app restarting one, or a
     person pressing twice) reads nothing from USGS: on a 10-acre lot the
     lidar alone was three minutes (owner, 2026-10-21).
+    `tile_fetch(urls, say)`, when given, puts missing tiles on the volume --
+    fetching them, or waiting for the machine already fetching them (the
+    address's warm-up, tools/modal_serve.py _fetch_or_wait) -- and returns the
+    urls still missing; without it they are fetched here, one by one.
     """
     import lidar_frame
     import naip_bands
@@ -195,7 +199,14 @@ def gather_sources(photo, prep, naip_align=None, progress=None, cache_dir=None):
         # flight too, not the older octree -- which over part of Ketchum had a
         # hole and nothing at all. A big set is still read next time.
         mb = prep.get("lidarTilesMb")
-        if pending and (mb is None or mb <= INLINE_TILES_MB):
+        if pending and (mb is None or mb <= INLINE_TILES_MB) and tile_fetch is not None:
+            still = tile_fetch(pending, lambda words: say(words))
+            if len(still) < len(pending):
+                out["rec"]["tilesFetched"] = len(pending) - len(still)
+            if still:
+                out["rec"]["tilesError"] = f"{len(still)} tile(s) not on the volume yet"
+            pending = still
+        elif pending and (mb is None or mb <= INLINE_TILES_MB):
             import lidar_sources
             try:
                 for i, u in enumerate(pending):
@@ -210,6 +221,19 @@ def gather_sources(photo, prep, naip_align=None, progress=None, cache_dir=None):
             local = [str(p) for p in paths]
         else:
             out["rec"]["tilesPending"] = pending
+    # THE ADDRESS'S AREA (tools/modal_serve.py warm_area), when one holds this
+    # frame: the same points as the tiles, cut once already, so the read is of
+    # a few MB instead of whole tiles. The layers' cache stays keyed on the
+    # tiles themselves.
+    read_from = local
+    if local:
+        import lidar_sources
+        try:
+            area = lidar_sources.area_covering(tile_dir, tiles, lidar_sources.grow(prep["bbox"], 5))
+        except Exception:  # noqa: BLE001 - the tiles, as before
+            area = None
+        if area:
+            read_from = [str(area)]
 
     if prep.get("lidarUrl") or local:
         t0 = time.time()
@@ -225,8 +249,8 @@ def gather_sources(photo, prep, naip_align=None, progress=None, cache_dir=None):
                     + (" (a big lot: this is the slow part)" if span > 200 else ""))
             if got is None and local:
                 try:
-                    got = lidar_frame.lidar_for(None, prep["bbox"], epoch=prep.get("lidarTilesEpoch"), tiles=local)
-                    out["rec"]["lidarSource"] = "tiles"
+                    got = lidar_frame.lidar_for(None, prep["bbox"], epoch=prep.get("lidarTilesEpoch"), tiles=read_from)
+                    out["rec"]["lidarSource"] = "area" if read_from is not local else "tiles"
                 except Exception as e:  # noqa: BLE001 - the octree is still there
                     out["rec"]["tilesError"] = str(e)[:200]
             if got is None and prep.get("lidarUrl"):
@@ -259,7 +283,7 @@ def gather_sources(photo, prep, naip_align=None, progress=None, cache_dir=None):
     return out
 
 
-def gather(payload, prepare, progress=None, cache_dir=None):
+def gather(payload, prepare, progress=None, cache_dir=None, tile_fetch=None):
     """Everything a lot needs before the GPU: where it is (`prepare`, the
     scorer's own grid via serve-alpha.mjs), the photograph, and its sources."""
     t0 = time.time()
@@ -270,6 +294,6 @@ def gather(payload, prepare, progress=None, cache_dir=None):
     say("Fetching the aerial photograph of your lot")
     photo_bytes = fetch_press_photo(payload, say)
     photo = Image.open(io.BytesIO(photo_bytes)).convert("RGB")
-    sources = gather_sources(photo, prep, payload.get("naipAlign"), progress=progress, cache_dir=cache_dir)
+    sources = gather_sources(photo, prep, payload.get("naipAlign"), progress=progress, cache_dir=cache_dir, tile_fetch=tile_fetch)
     sources["seconds"]["gather"] = round(time.time() - t0, 1)
     return {"prep": prep, "photo": photo_bytes, "sources": sources}

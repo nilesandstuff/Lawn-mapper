@@ -2,6 +2,7 @@
 
     python3 alpha_sources_test.py
 """
+import os
 import sys
 
 from PIL import Image
@@ -75,5 +76,49 @@ except RuntimeError as e:
 check("a PNG and a JPEG look like pictures, an error page does not",
       _looks_like_image(png) and _looks_like_image(b"\xff\xd8\xff\xe0rest") and not _looks_like_image(b"<html>"))
 
+# THE TILES AND THE ADDRESS'S AREA (2026-10-29): a press waits on the fetch the
+# warm-up started instead of downloading again, and reads the kept area when it
+# holds the frame.
+def _tiles_and_area():
+    import tempfile
+    from pathlib import Path
+    import alpha_sources
+    import lidar_frame
+    import lidar_sources
+    import naip_bands
+    import lidar_sources_test as lt
+    read, asked = [], []
+    real_for, real_naip = lidar_frame.lidar_for, naip_bands.naip_for
+    lidar_frame.lidar_for = lambda url, bbox, epoch=None, tiles=None: read.append(list(tiles or [])) or None
+    naip_bands.naip_for = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("no NAIP in a test"))
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            os.environ["LIDAR_TILE_DIR"] = d
+            url = "https://rockyweb.usgs.gov/vdelivery/Datasets/Staged/Elevation/LPC/Projects/X/LAZ/USGS_LPC_X_1_2.laz"
+            prep = {"bbox": [-9_799_950.0, 5_120_050.0, -9_799_850.0, 5_120_150.0], "lidarTiles": [url], "lidarTilesMb": 1}
+
+            def fetch(urls, say):
+                asked.append(list(urls))
+                return list(urls)                       # still being fetched elsewhere: not there yet
+            out = alpha_sources.gather_sources(Image.new("RGB", (8, 8)), prep, tile_fetch=fetch)
+            check("a missing tile goes to the shared fetch, not a second download", asked == [[url]])
+            check("and the press reads on without it, saying so", out["rec"].get("tilesPending") == [url] and not read)
+
+            lt._synthetic_tile(Path(d) / "USGS_LPC_X_1_2.laz", n=2000)
+            alpha_sources.gather_sources(Image.new("RGB", (8, 8)), prep, tile_fetch=fetch)
+            check("a tile on the volume is read whole when no area holds the frame", read[-1] == [str(Path(d) / "USGS_LPC_X_1_2.laz")])
+
+            area = lidar_sources.write_area(d, [url], (-9_799_990.0, 5_120_010.0, -9_799_810.0, 5_120_190.0))
+            out = alpha_sources.gather_sources(Image.new("RGB", (8, 8)), prep, tile_fetch=fetch)
+            check("the address's area is read when it holds the frame", read[-1] == [str(area)] and out["rec"].get("lidarSource") == "area")
+    finally:
+        lidar_frame.lidar_for, naip_bands.naip_for = real_for, real_naip
+        os.environ.pop("LIDAR_TILE_DIR", None)
+
+
+_tiles_and_area()
+
+
 print("alpha_sources: ok" if ok else "alpha_sources: FAILED")
 sys.exit(0 if ok else 1)
+
