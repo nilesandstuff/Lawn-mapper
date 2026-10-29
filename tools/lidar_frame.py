@@ -546,6 +546,15 @@ def main():
     # keyed by the flight it came from, saved by workflow 14 under the frames'
     # fingerprint and the saved plan, so a code change here re-reads nothing.
     points_cache = os.environ.get("POINTS_CACHE", "")
+    # USGS'S TILES THROUGH THE MODEL SERVER (LIDAR_TILES_VIA=modal, owner
+    # 2026-10-29): the frame's crop is cut on the server, which fetches any
+    # tile it lacks onto its volume once; rockyweb refused or stalled this
+    # runner's own downloads on 15 of 18 tile lots in every S67 run.
+    server_crop = None
+    if os.environ.get("LIDAR_TILES_VIA") == "modal":
+        tile_dir = os.environ.get("TILE_DIR", "lidar-tiles")
+        server_crop = lambda urls, box: lidar_sources.crop_from_server(  # noqa: E731
+            urls, box, tile_dir, say=lambda words: print(words, flush=True))
     shifts_file = os.environ.get("LIDAR_SHIFTS", "")
     if shifts_file and Path(shifts_file).exists():
         shifts = (json.loads(Path(shifts_file).read_text()) or {}).get("shifts") or {}
@@ -591,10 +600,15 @@ def main():
                 extra = shifts.get(lawn_id)
                 extra_m = (extra["east"], extra["north"]) if extra else None
                 cache_file = (Path(points_cache) / f"{lawn_id}.npz") if points_cache else None
+                # The frame's box is in the key: these files are banked per
+                # lot in R2 (tools/bank.js), where a re-drawn frame must read
+                # afresh rather than find the old frame's points.
+                where = ",".join(f"{v:.2f}" for v in bbox)
                 pts, got = lidar_sources.read_points(lambda b: points_over(base, b), bbox, lidar_sources.epoch_of(p),
                                                      tiles=p.get("tiles"), tile_dir=os.environ.get("TILE_DIR", "lidar-tiles"),
                                                      extra_m=extra_m, raw_cache=cache_file,
-                                                     key=f"{p.get('name')}|{','.join(p.get('tiles') or [])}")
+                                                     key=f"{p.get('name')}|{','.join(p.get('tiles') or [])}|{where}",
+                                                     server_crop=server_crop)
             except Exception as e:  # noqa: BLE001 - USGS's tiles failed: the newest octree, as the live server falls back
                 if not (p.get("tiles") and p.get("octreeUrl")):
                     raise
@@ -602,7 +616,7 @@ def main():
                 o_base = p["octreeUrl"].rsplit("/", 1)[0]
                 pts, got = lidar_sources.read_points(lambda b: points_over(o_base, b), bbox,
                                                      p.get("octreeEpoch") or lidar_sources.DEFAULT_EPOCH, extra_m=extra_m,
-                                                     raw_cache=cache_file, key=f"{p.get('octreeName')}|")
+                                                     raw_cache=cache_file, key=f"{p.get('octreeName')}||{where}")
                 got = dict(got, fellBack=True)
         except Exception as e:  # noqa: BLE001 - one lawn's failure is reported, not fatal
             print(f"  {label} FAILED: {str(e)[:70]}")

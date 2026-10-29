@@ -78,7 +78,7 @@ def grey(arr, naip=False):
     return 0.299 * a[..., 0] + 0.587 * a[..., 1] + 0.114 * a[..., 2]
 
 
-def naip_for(box, photo=None, stored=None, keep_raw=False):
+def naip_for(box, photo=None, stored=None, keep_raw=False, raw_file=None):
     """NAIP (bands 3,0,1 -> near-infrared, red, green) over one frame, lined up
     with its photograph.
 
@@ -87,6 +87,10 @@ def naip_for(box, photo=None, stored=None, keep_raw=False):
     scale}, which wins. Returns (uint8 h x w x 3 array, record). Raises when
     NAIP cannot be read. Shared by main() and the live server
     (tools/alpha_infer.py), so a lot served is read exactly as a lot trained.
+    `raw_file`, a .png path: USGS's answer for this box, kept beside a .json
+    naming the box (training's bank, NAIP_RAW in main): read from there when
+    the box is the same, fetched and kept when not -- so a map trains on the
+    NAIP it was first read with, whatever USGS publishes later.
     """
     from PIL import Image
     from naip_align import align_images, resample
@@ -96,7 +100,22 @@ def naip_for(box, photo=None, stored=None, keep_raw=False):
     cell = (box[2] - box[0]) / w            # Mercator metres a pixel
     pad = int(math.ceil(MARGIN_M / cell))
     big = [box[0] - pad * cell, box[1] - pad * cell, box[2] + pad * cell, box[3] + pad * cell]
-    img = Image.open(io.BytesIO(fetch(export_url(big)))).convert("RGB")
+    blob = None
+    meta = Path(raw_file).with_suffix(".json") if raw_file else None
+    want = [round(float(v), 2) for v in big]
+    if raw_file and Path(raw_file).exists() and meta.exists():
+        try:
+            if json.loads(meta.read_text()).get("box") == want:
+                blob = Path(raw_file).read_bytes()
+        except (OSError, ValueError):
+            blob = None
+    if blob is None:
+        blob = fetch(export_url(big))
+        if raw_file:
+            Path(raw_file).parent.mkdir(parents=True, exist_ok=True)
+            Path(raw_file).write_bytes(blob)
+            meta.write_text(json.dumps({"box": want, "fetched": time.strftime("%Y-%m-%d", time.gmtime())}))
+    img = Image.open(io.BytesIO(blob)).convert("RGB")
     arr = np.asarray(img.resize((w + 2 * pad, h + 2 * pad), Image.BILINEAR), dtype=np.float32)
     ground = cell * math.cos(math.radians(lat_of(box)))   # ground metres a pixel
 
@@ -178,6 +197,11 @@ def main():
     scale = json.loads((frames / "scale.json").read_text())
     boxes = scale.get("boxes") or {}
     stored = scale.get("naipAlign") or {}
+    # THE BANK (owner, 2026-10-29: "cache bank everything for the training
+    # maps, we don't need to be redownloading layers"): USGS's NAIP answer for
+    # each frame, kept in NAIP_RAW and in R2 by workflow 14 (tools/bank.js).
+    raw_dir = os.environ.get("NAIP_RAW", "")
+    banked = 0
     if not boxes:
         print("scale.json carries no frame boxes.")
         return 1
@@ -188,7 +212,11 @@ def main():
         photo_path = frames / f"{lawn_id}.png"
         photo = Image.open(photo_path).convert("RGB") if photo_path.exists() else None
         try:
-            moved, rec = naip_for(boxes[lawn_id], photo=photo, stored=stored.get(lawn_id), keep_raw=photo is not None)
+            raw_file = Path(raw_dir) / f"{lawn_id}.png" if raw_dir else None
+            had = bool(raw_file and raw_file.exists())
+            moved, rec = naip_for(boxes[lawn_id], photo=photo, stored=stored.get(lawn_id), keep_raw=photo is not None,
+                                  raw_file=raw_file)
+            banked += had and raw_file.stat().st_mtime < t0
         except Exception as e:  # noqa: BLE001 - one frame failing is reported, not fatal
             print(f"  {lawn_id[:40]:40} no NAIP: {str(e)[:80]}")
             continue
@@ -208,6 +236,8 @@ def main():
     if shifts:
         print(f"NAIP lined up with the photograph on {got} of {len(boxes)} frames in {time.time() - t0:.0f} s; "
               f"median move {sorted(shifts)[len(shifts) // 2]:.1f} m, largest {max(shifts):.1f} m.")
+    if raw_dir:
+        print(f"NAIP read from the bank for {banked} of {got} frames; the rest fetched from USGS and kept.")
     return 0
 
 

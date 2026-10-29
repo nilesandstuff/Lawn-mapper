@@ -744,8 +744,10 @@ jobs:
           python3 folds_test.py
           python3 naip_align_test.py
 
+      # On every run that reads lidar too: the tiles come through the model
+      # server (LIDAR_TILES_VIA below), whichever machine trains.
       - name: Install the Modal client
-        if: ${{ inputs.gpu == 'modal' }}
+        if: ${{ inputs.gpu == 'modal' || inputs.canopy != 'off' }}
         run: pip install modal
 
       - name: Find the canopy
@@ -826,6 +828,24 @@ jobs:
           node tools/lidar-roof-fit.test.js
           node tools/lidar-roof-fit.js | tail -40
 
+      # THE BANK (owner, 2026-10-29: "cache bank everything for the training
+      # maps, we don't need to be redownloading layers ... especially since they
+      # could change"): each lot's raw points as first read, kept in R2 under
+      # bank/lidar-points (tools/bank.js), so a run reads USGS only for a lot
+      # it has never seen or whose frame or flight changed.
+      - name: Restore the banked lidar points
+        if: ${{ inputs.canopy != 'off' && steps.prep.outputs.cache-hit != 'true' }}
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CORPUS_BUCKET: lawn-mapper-corpus
+        run: node tools/bank.js restore lidar-points lidar-points frames/scale.json
+
+      # USGS's tile-only flights through the model server (owner, 2026-10-29:
+      # "yes do it"): this runner's own downloads from rockyweb were refused
+      # or stalled on 15 of the 18 tile lots in every S67 run. The server cuts
+      # each frame's crop and fetches a tile it lacks onto its volume, once.
       - name: Read the lidar over the frames
         if: ${{ inputs.canopy != 'off' && steps.prep.outputs.cache-hit != 'true' }}
         env:
@@ -835,6 +855,9 @@ jobs:
           OUT: lidar
           TILE_DIR: lidar-tiles
           POINTS_CACHE: lidar-points
+          LIDAR_TILES_VIA: modal
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
           LIDAR_SHIFTS: ${{ inputs.lidar_align == 'fit' && 'lidar-fit/lidar-shifts.json' || (inputs.lidar_align == 'saved' && 'tools/locked-lidar-shifts.json' || '') }}
           # NAIP-CHM (E9, H41) is no longer read (owner, 2026-09-29): its
           # only uses were the shelved "lidar ∩ NAIP canopy" row and a
@@ -844,6 +867,15 @@ jobs:
           python3 tools/lidar_frame.py
           rm -rf lidar-tiles
           echo "Raw points kept for $(ls lidar-points 2>/dev/null | wc -l) frames ($(du -sh lidar-points 2>/dev/null | cut -f1))."
+
+      - name: Bank the lidar points
+        if: ${{ inputs.canopy != 'off' && steps.prep.outputs.cache-hit != 'true' }}
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CORPUS_BUCKET: lawn-mapper-corpus
+        run: node tools/bank.js save lidar-points lidar-points
 
       - name: Save the lidar's raw points for the next run
         if: ${{ inputs.canopy != 'off' && steps.prep.outputs.cache-hit != 'true' && steps.points.outputs.cache-hit != 'true' }}
@@ -855,13 +887,35 @@ jobs:
       # S11, the fused inputs: NAIP's near-infrared over every frame (one
       # exportImage each, about a metre a pixel), for the decoder to read as
       # NDVI beside the lidar and the canopy. See tools/naip_bands.py.
+      # NAIP banked like the lidar (tools/bank.js): USGS's answer for each
+      # frame as first read, so a map keeps the NAIP it was trained with when
+      # USGS publishes a newer flight.
+      - name: Restore the banked NAIP
+        if: ${{ startsWith(inputs.decoder, 'fused') && inputs.canopy != 'off' && steps.prep.outputs.cache-hit != 'true' }}
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CORPUS_BUCKET: lawn-mapper-corpus
+        run: node tools/bank.js restore naip-raw naip-raw frames/scale.json
+
       - name: Read NAIP's near-infrared over the frames
         id: naip
         if: ${{ startsWith(inputs.decoder, 'fused') && inputs.canopy != 'off' && steps.prep.outputs.cache-hit != 'true' }}
         env:
           FRAMES: frames
           OUT: naip
+          NAIP_RAW: naip-raw
         run: python3 tools/naip_bands.py
+
+      - name: Bank the NAIP
+        if: ${{ steps.naip.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CORPUS_BUCKET: lawn-mapper-corpus
+        run: node tools/bank.js save naip-raw naip-raw
 
       # THE ALIGNMENT, WHERE A PHONE CAN SEE IT (owner, 2026-10-28): one
       # picture a frame, NAIP's NDVI over the photograph as fetched and as
