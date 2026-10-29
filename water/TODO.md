@@ -11,7 +11,7 @@ SPECULATION), as always.
 ## Queued
 
 20. **From the sanity checks (FINDINGS H58), for the owner to decide:** (a) the reference ET 15-20% above Michigan's
-    stations: scale POWER's sunshine or ET0 by month to a local ASCE station; (b) fences: DONE 2026-10-29 (H59); (c) normal watering's drainage where the soak cap
+    stations: NOT POWER's sunlight (H60, no correction); next, find out Enviroweather's own method and data; (b) fences: DONE 2026-10-29 (H59); (c) normal watering's drainage where the soak cap
     does not bind: let the grass and the drainage share the day's gravity water.
 
 4. **Heat from paving into the grass beside it.** Research how concrete and

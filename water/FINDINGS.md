@@ -1981,7 +1981,7 @@ caught on a lawn that is dry when it falls.
 **7. Dew is largest in the open, not in shade (H55).** Holds (sky view sets it; measured in Vancouver and at
 Cardington). The moist shaded soil is the shade's lower use, not dew.
 
-**8. FAILS: the reference ET reads 15-20% above Michigan's own network (H21, deferred since 2026-10-19).** The plan's
+**8. OPEN (cause withdrawn by H60: POWER's sunlight is not high): the reference ET reads 15-20% above Michigan's own network (H21, deferred since 2026-10-19).** The plan's
 June and July reference (NASA POWER's weather, FAO-56) is 5.1 and 5.4 in against MSU Enviroweather's station-based
 4.0-4.4 and 4.4-4.8. Studies comparing POWER with ground stations find its solar radiation overestimated in most
 climates, which pushes Penman-Monteith up (Rosa et al. 2023, 21 Brazilian stations; Portugal and Sicily
@@ -2028,6 +2028,25 @@ The trees there let 0.22 (September) to 0.56 (winter) of the beam reach the boar
 about even on its shaded side (+0.3% against +2.8% before) and +1.9% on its sunny side (+4.1% before). Two faces alone
 moves a season's total little on this east-west fence, because from May to July both faces see the sun (H58); it
 matters on the shaded side in spring and fall, and on fences running north-south or standing in the open.
+
+### H60. NASA POWER's sunlight is not biased high; the gap to Enviroweather is not POWER's (water session, 2026-10-29)
+
+The owner: "if you're sure that nasa power overestimates light, can you apply an offset that corrects that? Be really
+sure... find out if there's regional trends." Measured (research-power-sunlight.md; 115 Climate Reference Network
+stations and 7 SURFRAD research radiometers, April-October 2018-2024; the Michigan and Great Lakes figures and the
+latitude fit re-checked by this session from the per-station table):
+- POWER against SURFRAD: 0.991 pooled, 0.975-1.007 by site, 0.984-0.999 by month. Not high.
+- POWER reads 8% above the Reference Network (1.080, Great Lakes 1.063, Gaylord 1.086, Chatham 1.078), but where the
+  two networks stand together the Reference Network reads 0.944 of SURFRAD, lower each year since 2022: allowing for
+  it, POWER is about +2% (Great Lakes +0.3%), the size of the scatter between stations sharing one POWER cell.
+- No regional trend: against latitude R2 0.05 (-0.002 per degree), longitude 0.00, elevation 0.03, East/West 0.002.
+- In Michigan, POWER's ET0 comes out 4-8% BELOW the stations' own inputs in June-July: its humidity about 7 points
+  high (-6 to -7 points of ET0) and its daily high cool (-1 to -3) outweigh its sunlight (+1).
+- FAO-56 on the nearest stations' measured weather gives 4.8-5.9 in in June and 4.7-5.7 in July: at or above the
+  app's 5.09 / 5.39, and above Enviroweather's 4.0-4.4 / 4.4-4.8.
+So NO correction is applied to POWER's sunlight. The 15-20% gap of H21 lies between FAO-56 on measured weather and
+Enviroweather's figure, a matter of Enviroweather's method (unknown here), not of NASA's data. H58 point 8's "POWER's
+sunshine" is withdrawn as the cause.
 
 ## SPECULATION
 
