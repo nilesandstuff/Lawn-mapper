@@ -157,6 +157,62 @@ def check_raw_points_cache():
     print("raw points cache: saved once, read back by key, re-read for another flight, moves applied on top")
 
 
+def _synthetic_tile(path, n=400, seed=1):
+    """A LAZ tile in a state-plane CRS (US survey feet, as USGS delivers), with GPS time."""
+    import laspy
+    from laspy.vlrs.known import WktCoordinateSystemVlr
+    rng = np.random.default_rng(seed)
+    # Web Mercator points round a box, then into the tile's own CRS (Illinois East ftUS) via rasterio
+    from rasterio.warp import transform
+    mx = rng.uniform(-9_800_000, -9_799_800, n)
+    my = rng.uniform(5_120_000, 5_120_200, n)
+    crs = IL_WKT
+    tx, ty = transform("EPSG:3857", crs, mx.tolist(), my.tolist())
+    header = laspy.LasHeader(point_format=6, version="1.4")
+    header.scales = np.array([0.01, 0.01, 0.01])
+    header.offsets = np.array([np.floor(min(tx)), np.floor(min(ty)), 0.0])
+    header.vlrs.append(WktCoordinateSystemVlr(IL_WKT))
+    las = laspy.LasData(header)
+    las.x, las.y = np.asarray(tx), np.asarray(ty)
+    las.z = rng.uniform(600, 700, n)  # feet
+    las.intensity = rng.integers(0, 5000, n).astype(np.uint16)
+    las.return_number = rng.integers(1, 4, n).astype(np.uint8)
+    las.number_of_returns = np.full(n, 3, dtype=np.uint8)
+    las.classification = rng.choice([1, 2, 5, 6, 7], n).astype(np.uint8)
+    las.gps_time = np.linspace(2.0e8, 2.0e8 + 60, n)
+    las.write(str(path), do_compress=True)
+    return mx, my
+
+
+def check_tile_crop_for_the_pages():
+    """crop_tiles_laz: the tiles' points inside the box, in Web Mercator metres, as a LAZ a page decodes; thinning keeps one a cell."""
+    import io
+    import tempfile
+    from pathlib import Path
+    import laspy
+    with tempfile.TemporaryDirectory() as d:
+        tile = Path(d) / "USGS_LPC_X_1_2.laz"
+        mx, my = _synthetic_tile(tile)
+        box = (-9_799_950.0, 5_120_050.0, -9_799_850.0, 5_120_150.0)
+        inside = int(((mx >= box[0]) & (mx <= box[2]) & (my >= box[1]) & (my <= box[3])).sum())
+        rec = t.tile_records(tile, box)
+        assert abs(len(rec["x"]) - inside) <= 2, f"{len(rec['x'])} records for {inside} points inside"
+        assert rec["gps"] is not None and rec["ret"].max() <= 3 and rec["nret"].min() == 3, "returns and time carried"
+        assert 180 < float(np.median(rec["z"])) < 215, f"z in metres, not feet: median {np.median(rec['z']):.1f}"
+        laz = t.crop_tiles_laz([tile], box)
+        got = laspy.read(io.BytesIO(laz))
+        assert len(got.points) == len(rec["x"]), "every record written"
+        assert got.header.point_format.id == 6 and got.header.version.minor == 4, "LAS 1.4, point format 6, as an octree node"
+        assert np.allclose(np.asarray(got.x), rec["x"], atol=0.011) and np.allclose(np.asarray(got.y), rec["y"], atol=0.011), "Web Mercator metres to the centimetre"
+        assert np.allclose(np.asarray(got.gps_time), rec["gps"]), "the flight's clock kept (the pages read the season from it)"
+        assert set(np.unique(np.asarray(got.classification))) <= {1, 2, 5, 6, 7}, "classes kept, noise included: the pages drop their own"
+        thin = laspy.read(io.BytesIO(t.crop_tiles_laz([tile], box, spacing_m=10.0)))
+        assert 0 < len(thin.points) < len(got.points), f"thinned: {len(thin.points)} of {len(got.points)}"
+        empty = laspy.read(io.BytesIO(t.crop_tiles_laz([tile], (0.0, 0.0, 10.0, 10.0))))
+        assert len(empty.points) == 0, "a box with nothing in it is an empty LAZ, not an error"
+    print("tile crop for the pages: records in metres, LAZ 1.4 pf6 round trip, time and classes kept, thinning, empty box")
+
+
 if __name__ == "__main__":
     check_datum_matches_the_shade_map()
     check_mercator_shift()
@@ -164,4 +220,5 @@ if __name__ == "__main__":
     check_one_read()
     check_ranged_download_makes_its_folder()
     check_raw_points_cache()
+    check_tile_crop_for_the_pages()
     print("lidar sources: ok")

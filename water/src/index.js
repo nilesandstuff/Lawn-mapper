@@ -31,7 +31,8 @@
 
 import { readings } from './readings.js';
 
-export const PROXIED = ['/api/geocode', '/api/parcel', '/api/imagery', '/api/county-imagery', '/api/shade/lidar', '/api/water/layers', '/api/shade/climate'];
+export const PROXIED = ['/api/geocode', '/api/parcel', '/api/imagery', '/api/county-imagery', '/api/shade/lidar', '/api/water/layers', '/api/shade/climate',
+  '/api/lidar/tiles']; // USGS's tile-only lidar, cropped by Lawn Mapper's model server (core session, 2026-10-29)
 
 /** The account routes, as home/src/index.js FORWARDED names them. */
 export const ACCOUNT = (p) => p === '/api/maps' || p.startsWith('/api/maps/') || p === '/api/tools' || p.startsWith('/api/auth/');

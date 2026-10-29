@@ -360,6 +360,8 @@ async function getBytes(url) {
 }
 
 const io = { getJson, getBytes, decompress: lazDecoder(() => browserFactory()) };
+/* A flight USGS has published only as LAZ tiles (public/lib/lidar-tiles.js): the server is fetching them, a minute or two the first time. */
+const fetchingWords = (name, mb) => `Fetching ${name} onto the server (USGS's newest survey here, not yet in the public cloud store${mb ? `, ${mb} MB` : ''}): a minute or two the first time…`;
 
 /** A photo of a frame (Mapbox, or a county service by id), as RGBA pixels. Same origin, so readable. */
 async function photoOf(frame, provider = 'mapbox', svc = null) {
@@ -459,7 +461,7 @@ async function build(site) {
   if (kept?.url && Array.isArray(kept.box) && kept.box.length === 4 && Array.isArray(kept.shift) && kept.shift.length === 2 && !site.area) {
     status(`Reading ${kept.name || 'the lidar kept with this map'}…`);
     try {
-      const got = await pointsIn(kept.url, kept.box, io, { progress: (d, tot) => status(`Reading ${kept.name || 'the kept lidar'}: ${d} of ${tot} pieces…`) });
+      const got = await pointsIn(kept.url, kept.box, io, { progress: (d, tot, more) => status(more?.fetching ? fetchingWords(kept.name || 'the kept lidar', kept.mb) : `Reading ${kept.name || 'the kept lidar'}: ${d} of ${tot} pieces…`) });
       if (got.cols.n > 500) {
         cloud = clouds.find((c) => c.url === kept.url) || { url: kept.url, name: kept.name || 'the cloud kept with this map', epoch: kept.epoch || 2018, unit: null, confirmed: false };
         cols = got.cols; flown = got.flown; box = kept.box; keptUsed = true;
@@ -497,7 +499,7 @@ async function build(site) {
   for (const c of keptUsed ? [] : clouds.slice(0, 3)) {
     status(`Reading ${c.name}…`);
     try {
-      const got = await pointsIn(c.url, box, io, { progress: (d, t) => status(`Reading ${c.name}: ${d} of ${t} pieces…`) });
+      const got = await pointsIn(c.url, box, io, { progress: (d, t, more) => status(more?.fetching ? fetchingWords(c.name, c.mb) : `Reading ${c.name}: ${d} of ${t} pieces…`) });
       const dens = got.cols.n ? lotDensity(got.cols) : 0;
       if (got.cols.n > 500 && dens >= MIN_DENSITY) { cloud = c; cols = got.cols; flown = got.flown; break; }
       holes.push({ name: c.name, dens });

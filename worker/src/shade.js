@@ -31,6 +31,7 @@
  */
 
 import { rankClouds, wesmUrl } from '../../public/shade/find.js';
+import { addTileClouds } from './lidar-tiles.js'; // USGS's tile-only flights as clouds (core session, 2026-10-29)
 import { EPT_BASE } from '../../public/shade/names.js';
 import { powerUrl, typicalYear, observedDays, nwsDailyMeans, yearAsItIs } from '../../public/shade/climate.js';
 import { fromPush, perSecond, posePerSecond, baroPerSecond } from '../../public/shade/truth.js';
@@ -124,7 +125,10 @@ export async function lidarAt(lng, lat, { ctx = null, fetchImpl = fetch } = {}) 
     fetchImpl(wesmUrl(lng, lat)).then((r) => (r.ok ? r.json() : null)).catch(() => null),
   ]);
   const over = entries.filter((e) => covers(e, lng, lat)).map(({ polys, ...rest }) => rest);
-  const { clouds, notOnAws } = rankClouds({ projects: over }, wesm, lng, lat);
+  /* A flight USGS has published only as LAZ tiles is offered too, read through
+     /api/lidar/tiles (worker/src/lidar-tiles.js); asked for only when the index
+     names a flight no octree carries. */
+  const { clouds, notOnAws } = await addTileClouds(rankClouds({ projects: over }, wesm, lng, lat), wesm, lng, lat, { fetchImpl });
   return { clouds, notOnAws, wesm: !!wesm, footprints: entries.length };
 }
 

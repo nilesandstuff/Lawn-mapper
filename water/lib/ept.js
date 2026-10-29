@@ -121,6 +121,41 @@ export function flownOf(times) {
 }
 
 /**
+ * A FLIGHT THAT IS ONLY LAZ TILES (core session, 2026-10-29): the cloud's url
+ * is the Worker's /api/lidar/tiles route (public/lib/lidar-tiles.js) rather
+ * than an ept.json. The model server crops USGS's tiles to the box and
+ * answers one small LAZ, read here as an octree node is; while it fetches
+ * the tiles onto its volume the first time it answers 202, and this asks
+ * again every few seconds (`progress(0, 0, { fetching })` meanwhile).
+ */
+export async function pointsFromServer(url, bbox, io, { progress = () => {}, spacingM = 0, fetchImpl = (u, i) => globalThis.fetch(u, i), waitMs = 5000, tries = 72 } = {}) {
+  const box = bbox.map((v) => Number(v).toFixed(2)).join(',');
+  const q = `${url}${url.includes('?') ? '&' : '?'}box=${box}${spacingM > 0 ? `&spacing=${Number(spacingM)}` : ''}`;
+  let raw = null;
+  for (let i = 0; i < tries && !raw; i++) {
+    const res = await fetchImpl(q);
+    if (res.status === 202) {
+      const fetching = await res.json().catch(() => ({}));
+      progress(0, 0, { fetching });
+      await new Promise((r) => setTimeout(r, waitMs));
+      continue;
+    }
+    if (!res.ok) {
+      const detail = await res.json().catch(() => null);
+      throw new Error(detail?.error || `${res.status} from the lidar tile reader`);
+    }
+    raw = await res.arrayBuffer();
+  }
+  if (!raw) throw new Error('the newer survey is still being fetched onto the server; try again in a few minutes');
+  const { header, points } = await io.decompress(raw);
+  const cols = cropRecords(header, points, bbox);
+  const t = gpsTimes(header, points);
+  const flown = t ? flownOf([t[0], t[t.length >> 1], t[t.length - 1]]) : null;
+  progress(1, 1);
+  return { ept: { srs: { horizontal: '3857' }, tiles: true }, nodes: 1, cols, flown };
+}
+
+/**
  * Every point of one octree inside bbox (EPSG:3857), as columns, and when
  * the laser passed (`flown`, from the points' own GPS clock; null when the
  * files keep no usable time).
@@ -131,6 +166,7 @@ export function flownOf(times) {
  * `progress(done, total)` is told as nodes arrive.
  */
 export async function pointsIn(eptJsonUrl, bbox, io, { progress = () => {}, parallel = 6, spacingM = 0, lat = 0 } = {}) {
+  if (!/\/ept\.json$/.test(eptJsonUrl)) return pointsFromServer(eptJsonUrl, bbox, io, { progress, spacingM: spacingM });
   const base = eptJsonUrl.replace(/\/ept\.json$/, '');
   const ept = await io.getJson(`${base}/ept.json`);
   if (String(ept?.srs?.horizontal) !== '3857') throw new Error(`point cloud is EPSG:${ept?.srs?.horizontal}, not 3857`);

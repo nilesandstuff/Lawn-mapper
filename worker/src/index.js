@@ -55,6 +55,7 @@ import { handleMaps, isMapsPath } from './routes-maps.js';
 import { handleAdmin, isAdminPath } from './routes-admin.js';
 import { handleJobs, spendJobDetection, jobDetection } from './routes-jobs.js';
 import { handleShade, isShadePath, isShadePage, shadePage } from './shade.js';
+import { handleLidarTiles } from './lidar-tiles.js';
 import { handleWaterLayers } from './water-layers.js';
 import { discoverWaterAt } from './water-find.js';
 import { accountsEnabled, publicUser } from './db.js';
@@ -1551,6 +1552,9 @@ async function handle(request, env, ctx) {
 
       /* Storm drains, water bodies, wetlands and flood zones over a box, for the water map (worker/src/water-layers.js). */
       if (url.pathname === '/api/water/layers') return await handleWaterLayers(request, url, env, origin, ctx, json);
+
+      /* USGS's tile-only lidar, cropped by the model server for the shade and water maps (worker/src/lidar-tiles.js, 2026-10-29). */
+      if (url.pathname === '/api/lidar/tiles') return await handleLidarTiles(request, url, env, origin, ctx, json);
 
       /* The shade map (features session; worker/src/shade.js); its pages moved to shade.<home> (2026-10-18). */
       if (isShadePath(url.pathname)) return await handleShade(request, url, env, origin, ctx, json);

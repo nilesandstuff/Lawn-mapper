@@ -2590,6 +2590,36 @@ are no worse than each alone.
 
 ### H96. The newest USGS flight, read from its LAZ tiles where AWS lags, makes the 20 lots it changes better: 10 better / 1 worse / 9 level, -0.6 points [95% -2.2 to -0.1], sign test p = 0.012; the rest unmoved -- 2026-10-13
 
+**2026-10-29, EVERYWHERE (a code fact, not a measurement).** The owner,
+after the shade map found no trees on a lot in Ketchum, Idaho: "make sure
+we're pulling the newest and most up to date lidar everywhere." What was
+true until then: only the detector's pipeline read the tile-only flights
+(this finding); the shade and water maps walked the AWS octrees alone and
+listed a newer tile-only flight as "not in the public store"; and the
+detector's OWN FIRST PRESS on a lot whose newest flight is tiles read the
+older octree while the tiles were fetched for next time. At the Ketchum
+lot the only octree, ID_SouthernID_13_2018, has a hole a few kilometres
+across (about 0.05 points a square metre over the lot against 20 a block
+away) and USGS's index does not even list it at the point; the flight that
+filled the hole, ID_SouthernGaps_2_D23 (QL1, 2023-09 to 2024-08), is 11
+tiles of 1-130 MB on rockyweb. Now: (a) the model server crops those tiles
+to a box and answers one small LAZ (`lidar_tiles` in tools/modal_serve.py,
+`crop_tiles_laz` in tools/lidar_sources.py), fetching the tiles onto its
+volume the first time; the Worker's /api/lidar/tiles proxies it and keeps a
+finished crop at the edge a week; /api/shade/lidar lists such a flight as
+a cloud with that route for its url, and both pages' `pointsIn` read it as
+they read an octree node (the hook is in public/shade/ept.js and
+water/lib/ept.js; the shared logic in public/lib/lidar-tiles.js). The
+ordering rule is this finding's: tiles before the octrees when over a
+year newer than the newest confirmed one, else right after them, so a hole
+in an octree falls through to the tiles. (b) The server fetches a pending
+tile set of up to 400 MB BEFORE a first press's read (tools/
+alpha_sources.py, INLINE_TILES_MB), so the first lot in an area reads the
+newest flight too; a bigger set is still fetched for next time. Nothing in
+training changed. Not measured: how long the first press in such an area
+takes (a 130 MB tile is under a minute in 16 ranges); how many lots the
+shade map's change reaches (every `notOnAws` it ever listed).
+
 Workflow 14 `lidar_trial: newest` (H94's trial), runs 38391749566 /
 38391752071 / 38391755931 (seeds 7 / 8 / 9) against THE PLAN's baseline
 38384350059 / 38384353539 / 38388587980, `lawns: locked` (104, `131u7jm`),

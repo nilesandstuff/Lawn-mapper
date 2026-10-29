@@ -129,6 +129,7 @@ async function main() {
       if (e?.source === 'tiles') {
         out.lidarTiles = e.tiles;
         out.lidarTilesEpoch = e.epoch;
+        out.lidarTilesMb = e.mb ?? null; // the server fetches them before the first read when modest (alpha_sources.py)
         out.lidarUrl = e.octreeUrl || out.lidarUrl;
         out.lidarEpoch = e.octreeEpoch ?? null;
       } else if (e?.url) {

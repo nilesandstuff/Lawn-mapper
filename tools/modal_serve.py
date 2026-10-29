@@ -28,6 +28,7 @@ again. Nothing runs, and nothing is billed, when nobody is detecting.
 import base64
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -203,6 +204,38 @@ def fetch_tiles(urls):
     return got
 
 
+# WHO IS FETCHING WHICH TILE (lidar_tiles below): a page asks every few
+# seconds while the server fetches; the first ask starts the fetch and the
+# rest only wait, unless the last start is twenty minutes old.
+fetching = modal.Dict.from_name("lawn-lidar-tiles-fetching", create_if_missing=True)
+FETCH_AGAIN_S = 1200
+TILE_NAME = re.compile(r"^https://rockyweb\.usgs\.gov/vdelivery/Datasets/Staged/Elevation/LPC/Projects/[A-Za-z0-9_./-]+\.laz$")
+
+
+@app.function(image=cpu_image, volumes={TILE_DIR: tiles}, timeout=600, cpu=2.0, memory=4096, scaledown_window=120)
+@modal.concurrent(max_inputs=4)
+def crop_tiles(urls, box, spacing=0.0):
+    """THE PAGES' CROP (public/lib/lidar-tiles.js, 2026-10-29): the points of
+    these tiles inside `box` (Web Mercator) as one LAZ, from the volume --
+    or the names of the tiles not on it yet."""
+    if f"{REPO}/tools" not in sys.path:
+        sys.path.insert(0, f"{REPO}/tools")
+    import lidar_sources
+    from pathlib import Path
+    try:
+        tiles.reload()
+    except Exception:  # noqa: BLE001 - read what is here
+        pass
+    paths = [Path(TILE_DIR) / u.rsplit("/", 1)[-1] for u in urls]
+    missing = [u for u, p in zip(urls, paths) if not (p.exists() and p.stat().st_size > 0)]
+    if missing:
+        return {"missing": missing}
+    t0 = time.time()
+    laz = lidar_sources.crop_tiles_laz([str(p) for p in paths], box, spacing_m=spacing)
+    print(f"crop of {len(paths)} tiles over {box[2] - box[0]:.0f} x {box[3] - box[1]:.0f} m: {len(laz) / 1e6:.1f} MB in {time.time() - t0:.0f}s", flush=True)
+    return {"laz": laz}
+
+
 def _gather_with_tiles(payload):
     """The downloads, reading USGS's tiles from the volume when they are
     there, and asking for them in the background when they are not."""
@@ -212,7 +245,13 @@ def _gather_with_tiles(payload):
     except Exception:  # noqa: BLE001 - files open on another lot: read what is here
         pass
     got = _gather_here(payload)
-    pending = (got.get("sources") or {}).get("rec", {}).get("tilesPending")
+    rec = (got.get("sources") or {}).get("rec", {})
+    if rec.get("tilesFetched"):
+        try:
+            tiles.commit()  # fetched before this lot's read (alpha_sources.py): kept for the next
+        except Exception as e:  # noqa: BLE001 - the next lot fetches again
+            print(f"tiles not committed: {e}", flush=True)
+    pending = rec.get("tilesPending")
     if pending:
         try:
             fetch_tiles.spawn(pending)
@@ -242,7 +281,7 @@ def _note(key, stage, **more):
         pass
 
 
-@app.function(image=cpu_image, volumes={"/models": models, TILE_DIR: tiles}, timeout=300, cpu=1.0, memory=2048,
+@app.function(image=cpu_image, volumes={"/models": models, TILE_DIR: tiles}, timeout=900, cpu=1.0, memory=2048,
               # A CPU machine costs a few cents an hour, so it can wait longer
               # for the next lot than the GPU does.
               scaledown_window=300)
@@ -333,7 +372,7 @@ class Alpha:
         got = None
         if payload.get("gather"):
             try:
-                got = modal.FunctionCall.from_id(payload["gather"]).get(timeout=240)
+                got = modal.FunctionCall.from_id(payload["gather"]).get(timeout=300)
             except Exception as e:  # noqa: BLE001
                 print(f"gather failed, reading here: {e}", flush=True)
         if got is None:
@@ -407,7 +446,9 @@ def lot(body):
     _note(key, "Fetching the aerial photograph, the lidar and the near-infrared imagery")
     got = gather.spawn(body)
     try:
-        got.get(timeout=240)
+        # Up to eight minutes: a first lot in an area may fetch USGS's newest
+        # tiles first (alpha_sources.py, INLINE_TILES_MB); most lots take 15-120 s.
+        got.get(timeout=480)
     except Exception as e:  # noqa: BLE001 - detect reads the lot itself, as before
         # This machine has no numpy (web_image), so a gather that FINISHED
         # cannot be unpacked here -- and need not be: the GPU fetches it by id.
@@ -507,3 +548,44 @@ def cancel(id: str, request: "Request"):
     except Exception:  # noqa: BLE001 - already finished or unknown: nothing to stop
         return {"cancelled": False}
     return {"cancelled": True}
+
+
+@app.function(image=web_image, secrets=[auth], timeout=300)
+@modal.fastapi_endpoint(method="GET")
+def lidar_tiles(request: "Request", tiles: str, box: str, spacing: float = 0.0):
+    """USGS'S TILE-ONLY LIDAR FOR THE PAGES (worker/src/lidar-tiles.js proxies
+    this): ?tiles=<rockyweb urls>&box=w,s,e,n[&spacing=m] -> the tiles'
+    points inside the box as one LAZ; 202 {status: fetching} while the tiles
+    are fetched onto the volume the first time (fetch_tiles, started here)."""
+    from fastapi.responses import JSONResponse, Response
+    if not _authorised(request.headers.get("authorization", "")):
+        raise HTTPException(status_code=401, detail="not authorised")
+    urls = [u for u in str(tiles or "").split(",") if u]
+    if not urls or len(urls) > 12 or not all(TILE_NAME.match(u) for u in urls):
+        raise HTTPException(status_code=400, detail="tiles: 1 to 12 of USGS's rockyweb LAZ urls")
+    try:
+        bbox = [float(v) for v in str(box).split(",")]
+        assert len(bbox) == 4 and bbox[0] < bbox[2] and bbox[1] < bbox[3]
+        assert bbox[2] - bbox[0] <= 1500 and bbox[3] - bbox[1] <= 1500
+    except Exception:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail="box: w,s,e,n in Web Mercator metres, at most 1.5 km across")
+    out = crop_tiles.remote(urls, bbox, float(spacing or 0.0))
+    if out.get("missing"):
+        now = time.time()
+        ask = []
+        for u in out["missing"]:
+            name = u.rsplit("/", 1)[-1]
+            try:
+                started = fetching.get(name)
+            except Exception:  # noqa: BLE001
+                started = None
+            if not started or now - float(started) > FETCH_AGAIN_S:
+                try:
+                    fetching[name] = now
+                except Exception:  # noqa: BLE001 - a note that fails to write is only a note
+                    pass
+                ask.append(u)
+        if ask:
+            fetch_tiles.spawn(ask)
+        return JSONResponse({"status": "fetching", "missing": [u.rsplit("/", 1)[-1] for u in out["missing"]], "started": bool(ask)}, status_code=202)
+    return Response(content=out["laz"], media_type="application/vnd.laszip", headers={"Cache-Control": "public, max-age=604800"})

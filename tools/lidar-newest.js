@@ -40,13 +40,12 @@ import { join } from 'node:path';
 import { FOOTPRINTS, fetchFootprints, covers, densityPerSqM, flownYear } from './lidar-cover.js';
 import { fromMercator } from './lidar-plan.js';
 import { WESM } from './lidar-season.js';
+/* The tile logic is shared with the Worker and the pages (public/lib/lidar-tiles.js, 2026-10-29). */
+import { TNM, YEAR_MS, norm, unitFolder, tileSets, pickNewest } from '../public/lib/lidar-tiles.js';
 
-const TNM = 'https://tnmaccess.nationalmap.gov/api/v1/products';
-const YEAR_MS = 365.25 * 86400000;
+export { YEAR_MS, norm, unitFolder, tileSets, pickNewest };
 
 /* ------------------------------------------------------------ pure parts */
-
-export const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
 const decimalYear = (ms) => 1970 + ms / YEAR_MS;
 
@@ -79,45 +78,6 @@ export function dateOctree(o, units) {
     epoch: unit?.epoch ?? (y ? y + 0.5 : null),
     dated: unit ? 'wesm' : (y ? 'name' : 'none'),
   };
-}
-
-/** The work unit folder of a rockyweb LAZ url: .../Projects/<project>/<unit>/LAZ/<file>. */
-export function unitFolder(url) {
-  const parts = String(url || '').split('/');
-  const i = parts.lastIndexOf('LAZ');
-  return i > 0 ? parts[i - 1] : null;
-}
-
-/**
- * USGS's published tile collections over a frame that no octree carries:
- * [{ unit, end, epoch, tiles: [url], mb }]. `items` is the TNM API's list.
- */
-export function tileSets(items, units, octreeUnits) {
-  const onAws = new Set(octreeUnits.filter(Boolean).map(norm));
-  const sets = new Map();
-  for (const it of items || []) {
-    const url = it.downloadLazURL || (/\.laz$/i.test(it.downloadURL || '') ? it.downloadURL : null);
-    if (!url) continue;
-    const folder = unitFolder(url);
-    const unit = units.find((u) => norm(u.workunit) === norm(folder))
-      || units.find((u) => norm(folder).includes(norm(u.workunit)) && norm(u.workunit));
-    if (!unit || unit.end === null || onAws.has(norm(unit.workunit)) || /legacy/i.test(unit.project || '')) continue;
-    const s = sets.get(unit.workunit) || { unit: unit.workunit, end: unit.end, epoch: unit.epoch, tiles: [], mb: 0 };
-    if (!s.tiles.includes(url)) {
-      s.tiles.push(url);
-      s.mb += (Number(it.sizeInBytes) || 0) / 1e6;
-    }
-    sets.set(unit.workunit, s);
-  }
-  return [...sets.values()];
-}
-
-/** The newest: an octree by date (density breaks a tie), tiles only when over a year newer. */
-export function pickNewest(octrees, sets) {
-  const best = octrees.slice().sort((a, b) => ((b.end ?? -Infinity) - (a.end ?? -Infinity)) || ((b.density || 0) - (a.density || 0)))[0] || null;
-  const tiles = sets.slice().sort((a, b) => b.end - a.end)[0] || null;
-  if (tiles && (!best || best.end === null || tiles.end - best.end > YEAR_MS)) return { kind: 'tiles', ...tiles };
-  return best ? { kind: 'octree', ...best } : null;
 }
 
 const year = (ms) => (ms === null || ms === undefined ? null : new Date(ms).getUTCFullYear());

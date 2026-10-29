@@ -192,38 +192,124 @@ def fetch_ranged(url, path, parts=16, timeout=120, tries=4):
     return path
 
 
-def tile_points(path, bbox3857):
-    """Points of one tile inside bbox (Web Mercator), as (x, y, z m, intensity, class)."""
-    import laspy
+def _tile_crs(f):
+    """The tile's CRS (rasterio) and metres per unit of z, from its WKT."""
     from rasterio.crs import CRS
+    wkt = wkt_of(f.header)
+    if not wkt:
+        raise RuntimeError("tile carries no WKT; refusing to guess its coordinates")
+    return CRS.from_wkt(wkt), vertical_factor(wkt)
+
+
+def tile_records(path, bbox3857):
+    """
+    The records of one tile inside bbox (Web Mercator), as a dict of arrays:
+    x, y (3857 metres), z (metres), intensity, ret, nret, cls, gps (None when
+    the format keeps no time). Everything a page's reader gets from an octree
+    node (public/shade/las.js makeColumns), so a crop of tiles can stand in
+    for one (crop_tiles_laz).
+    """
+    import laspy
     from rasterio.warp import transform
     with laspy.open(str(path)) as f:
-        wkt = wkt_of(f.header)
-        if not wkt:
-            raise RuntimeError(f"{Path(path).name} carries no WKT; refusing to guess its coordinates")
-        crs = CRS.from_wkt(wkt)
-        zf = vertical_factor(wkt)
+        crs, zf = _tile_crs(f)
         # The frame in the tile's own coordinates (corners and edge midpoints, a margin for the bend).
         bx = [bbox3857[0], bbox3857[2], bbox3857[0], bbox3857[2], (bbox3857[0] + bbox3857[2]) / 2, (bbox3857[0] + bbox3857[2]) / 2]
         by = [bbox3857[1], bbox3857[1], bbox3857[3], bbox3857[3], bbox3857[1], bbox3857[3]]
         nx, ny = transform("EPSG:3857", crs, bx, by)
         pad = 0.02 * max(max(nx) - min(nx), max(ny) - min(ny)) + 10
         lo_x, hi_x, lo_y, hi_y = min(nx) - pad, max(nx) + pad, min(ny) - pad, max(ny) + pad
-        parts = []
+        has_gps = "gps_time" in f.header.point_format.dimension_names
+        parts = {k: [] for k in ("x", "y", "z", "intensity", "ret", "nret", "cls", "gps")}
         for chunk in f.chunk_iterator(2_000_000):
             x, y = np.asarray(chunk.x), np.asarray(chunk.y)
             m = (x >= lo_x) & (x <= hi_x) & (y >= lo_y) & (y <= hi_y)
-            if m.any():
-                parts.append(np.column_stack([x[m], y[m], np.asarray(chunk.z)[m] * zf,
-                                              np.asarray(chunk.intensity)[m].astype(np.float64),
-                                              np.asarray(chunk.classification)[m].astype(np.float64)]))
-    if not parts:
+            if not m.any():
+                continue
+            parts["x"].append(x[m])
+            parts["y"].append(y[m])
+            parts["z"].append(np.asarray(chunk.z)[m] * zf)
+            parts["intensity"].append(np.asarray(chunk.intensity)[m].astype(np.uint16))
+            parts["ret"].append(np.asarray(chunk.return_number)[m].astype(np.uint8))
+            parts["nret"].append(np.asarray(chunk.number_of_returns)[m].astype(np.uint8))
+            parts["cls"].append(np.asarray(chunk.classification)[m].astype(np.uint8))
+            if has_gps:
+                parts["gps"].append(np.asarray(chunk.gps_time)[m].astype(np.float64))
+    if not parts["x"]:
+        return {k: np.zeros(0, dtype=np.float64 if k in ("x", "y", "z", "gps") else np.uint16) for k in parts if k != "gps" or has_gps} | {"gps": None if not has_gps else np.zeros(0)}
+    rec = {k: np.concatenate(v) for k, v in parts.items() if v}
+    if not has_gps:
+        rec["gps"] = None
+    mx, my = transform(crs, "EPSG:3857", rec["x"].tolist(), rec["y"].tolist())
+    rec["x"], rec["y"] = np.asarray(mx, dtype=np.float64), np.asarray(my, dtype=np.float64)
+    keep = (rec["x"] >= bbox3857[0]) & (rec["x"] <= bbox3857[2]) & (rec["y"] >= bbox3857[1]) & (rec["y"] <= bbox3857[3])
+    return {k: (v[keep] if v is not None else None) for k, v in rec.items()}
+
+
+def tile_points(path, bbox3857):
+    """Points of one tile inside bbox (Web Mercator), as (x, y, z m, intensity, class)."""
+    r = tile_records(path, bbox3857)
+    if not len(r["x"]):
         return np.zeros((0, 5))
-    pts = np.vstack(parts)
-    mx, my = transform(crs, "EPSG:3857", pts[:, 0].tolist(), pts[:, 1].tolist())
-    pts[:, 0], pts[:, 1] = mx, my
-    keep = (pts[:, 0] >= bbox3857[0]) & (pts[:, 0] <= bbox3857[2]) & (pts[:, 1] >= bbox3857[1]) & (pts[:, 1] <= bbox3857[3])
-    return pts[keep]
+    return np.column_stack([r["x"], r["y"], r["z"], r["intensity"].astype(np.float64), r["cls"].astype(np.float64)])
+
+
+def thin_records(rec, spacing_merc):
+    """At most one record per spacing x spacing cell (the first met), as an octree's coarse levels give a few points a cell."""
+    if not spacing_merc or spacing_merc <= 0 or not len(rec["x"]):
+        return rec
+    ix = np.floor(rec["x"] / spacing_merc).astype(np.int64)
+    iy = np.floor(rec["y"] / spacing_merc).astype(np.int64)
+    _, first = np.unique(ix * 4_000_003 + iy, return_index=True)
+    first.sort()
+    return {k: (v[first] if v is not None else None) for k, v in rec.items()}
+
+
+def records_laz(rec):
+    """One LAZ (LAS 1.4, point format 6, EPSG:3857 metres, 1 cm) of the records, as bytes: what a page's reader decodes."""
+    import io
+    import laspy
+    n = int(len(rec["x"]))
+    header = laspy.LasHeader(point_format=6, version="1.4")
+    header.scales = np.array([0.01, 0.01, 0.01])
+    header.offsets = np.array([math.floor(float(rec["x"].min())) if n else 0.0,
+                               math.floor(float(rec["y"].min())) if n else 0.0,
+                               math.floor(float(rec["z"].min())) if n else 0.0])
+    las = laspy.LasData(header)
+    las.x = rec["x"]
+    las.y = rec["y"]
+    las.z = rec["z"]
+    las.intensity = np.asarray(rec["intensity"], dtype=np.uint16)
+    las.return_number = np.clip(np.asarray(rec["ret"], dtype=np.uint8), 0, 15)
+    las.number_of_returns = np.clip(np.asarray(rec["nret"], dtype=np.uint8), 0, 15)
+    las.classification = np.asarray(rec["cls"], dtype=np.uint8)
+    las.gps_time = np.asarray(rec["gps"], dtype=np.float64) if rec.get("gps") is not None else np.zeros(n)
+    buf = io.BytesIO()
+    las.write(buf, do_compress=True)
+    return buf.getvalue()
+
+
+def crop_tiles_laz(paths, bbox3857, spacing_m=0.0):
+    """
+    THE PAGES' READ OF A TILE-ONLY FLIGHT (public/lib/lidar-tiles.js,
+    2026-10-29): the points of these tiles inside bbox, raw -- no datum move,
+    no noise drop, the pages do their own as they do for an octree -- as one
+    LAZ. `spacing_m`, ground metres, thins to about one point per cell (the
+    water map's wide look round a lot).
+    """
+    recs = [tile_records(p, bbox3857) for p in paths]
+    recs = [r for r in recs if len(r["x"])]
+    if not recs:
+        rec = {"x": np.zeros(0), "y": np.zeros(0), "z": np.zeros(0), "intensity": np.zeros(0, np.uint16),
+               "ret": np.zeros(0, np.uint8), "nret": np.zeros(0, np.uint8), "cls": np.zeros(0, np.uint8), "gps": None}
+    else:
+        gps = None if any(r["gps"] is None for r in recs) else np.concatenate([r["gps"] for r in recs])
+        rec = {k: np.concatenate([r[k] for r in recs]) for k in ("x", "y", "z", "intensity", "ret", "nret", "cls")}
+        rec["gps"] = gps
+    if spacing_m and spacing_m > 0:
+        _, lat = merc_to_lnglat((bbox3857[0] + bbox3857[2]) / 2, (bbox3857[1] + bbox3857[3]) / 2)
+        rec = thin_records(rec, float(spacing_m) / math.cos(math.radians(lat)))
+    return records_laz(rec)
 
 
 # ------------------------------------------------------------- one read

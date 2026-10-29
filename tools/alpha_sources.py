@@ -60,6 +60,10 @@ def fetch_photo(url, tries=3, pause_s=2.0, opener=None):
     raise RuntimeError(f"the photograph could not be fetched after {tries} tries: {last}")
 
 
+# Tiles up to this many MB are fetched before the first read (16 ranges at once: a 130 MB tile in under a minute).
+INLINE_TILES_MB = 400
+
+
 def stitch_tiles(tiles, cols, rows):
     """One photograph from its tiles: (col, row, PIL image) pasted at
     (col * px, row * px). The tiles abut exactly because the Worker split the
@@ -184,10 +188,28 @@ def gather_sources(photo, prep, naip_align=None, progress=None, cache_dir=None):
     local = None
     if tiles and tile_dir:
         paths = [Path(tile_dir) / u.rsplit("/", 1)[-1] for u in tiles]
-        if all(p.exists() for p in paths):
+        pending = [u for u, p in zip(tiles, paths) if not p.exists()]
+        # THE FIRST LOT IN AN AREA (owner, 2026-10-29: "make sure we're pulling
+        # the newest and most up to date lidar everywhere"): the tiles are
+        # fetched NOW when they are modest, so the first press reads the newest
+        # flight too, not the older octree -- which over part of Ketchum had a
+        # hole and nothing at all. A big set is still read next time.
+        mb = prep.get("lidarTilesMb")
+        if pending and (mb is None or mb <= INLINE_TILES_MB):
+            import lidar_sources
+            try:
+                for i, u in enumerate(pending):
+                    say(f"Fetching USGS's newest lidar survey over this lot (tile {i + 1} of {len(pending)}"
+                        + (f", {mb:.0f} MB in all" if mb else "") + "): the first lot in an area takes a minute or two")
+                    lidar_sources.fetch_ranged(u, Path(tile_dir) / u.rsplit("/", 1)[-1])
+                out["rec"]["tilesFetched"] = len(pending)
+                pending = []
+            except Exception as e:  # noqa: BLE001 - the octree now, the tiles next time
+                out["rec"]["tilesError"] = str(e)[:200]
+        if not pending:
             local = [str(p) for p in paths]
         else:
-            out["rec"]["tilesPending"] = [u for u, p in zip(tiles, paths) if not p.exists()]
+            out["rec"]["tilesPending"] = pending
 
     if prep.get("lidarUrl") or local:
         t0 = time.time()

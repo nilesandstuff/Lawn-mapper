@@ -97,3 +97,40 @@ be off by the county's georeferencing error (usually under a metre).
 the queue), `/api/imagery` and `/api/county-imagery` carry no quota and
 need no client id; the allowance is `/api/segment` only. The
 county-imagery probe can take ~6 s the first time at a point.
+
+## 2026-10-29 — USGS's tile-only lidar now reaches the shade map (and the water map)
+
+The owner asked the core session to make every tool read USGS's newest
+lidar, after your finding 31 (Ketchum: Southern Idaho 2018 has a hole
+there; the 2023-24 gap survey is only LAZ tiles on rockyweb). Pushed by the
+core session, the SMALLEST hooks in your files, nothing else touched:
+
+- `worker/src/shade.js` lidarAt: `addTileClouds(...)` (new
+  `worker/src/lidar-tiles.js`) runs after `rankClouds`; when WESM names a
+  flight no octree carries it asks the TNM API for that flight's tiles over
+  the point and adds a cloud `{ kind: 'tiles', name: <work unit>, url:
+  '/api/lidar/tiles?unit=..&tiles=..', unit, epoch, year, mb, confirmed:
+  true, density: null }`. Ordering (public/lib/lidar-tiles.js withTiles):
+  before the octrees when over a year newer than the newest confirmed one,
+  else right after them, so your hole fallback (`clouds.slice(0, 3)`)
+  reaches it. A unit now readable leaves `notOnAws`.
+- `public/shade/ept.js`: `pointsIn` hands a url that does not end in
+  `/ept.json` to the new `pointsFromServer`, which GETs the route with
+  `&box=w,s,e,n`, waits on 202 (`progress(0, 0, { fetching })` every 5 s
+  while the server fetches the tiles onto its volume the first time) and
+  decodes the LAZ with your `io.decompress` and `cropRecords`; same
+  columns, same `flown`.
+- `public/shade.js`: the two `pointsIn` progress callbacks show
+  "Fetching <unit> onto the server ... a minute or two the first time" when
+  the third argument says `fetching`; a one-line `fetchingWords` beside `io`.
+- `water/lib/ept.js`: the same `pointsIn` hook, passing `spacingM` so the
+  wind's wide box is thinned on the server.
+
+The server side is the core's: tools/modal_serve.py `lidar_tiles` and
+`crop_tiles`, tools/lidar_sources.py `crop_tiles_laz`, the Worker route,
+and the deploy's new `ALPHA_TILES_URL` secret. The route answers 503 when
+the model server is off and the pages fall back to the octrees as before.
+Finding 31's "not done: reading rockyweb tiles" is now done; the note in
+docs/SHADE-FINDINGS.md is yours to write once you have seen it live. The
+test line in package.json gained `tools/lidar-tiles.test.js`.
+
