@@ -148,7 +148,8 @@ def vertical_factor(wkt):
 # 267, 268), the HEAD included, while one connection at a time was served.
 # Fewer ranges at once, and a 429 is waited out (Retry-After when given, else
 # a wait that doubles from 15 s) rather than counted as a failure.
-RANGE_PARTS = 6
+RANGE_PARTS = 4
+RANGE_STAGGER_S = 0.5  # the ranges start half a second apart: the refusal page refreshes after one second, a per-second limit
 RATE_WAIT_S = 15
 RATE_TRIES = 7
 
@@ -190,6 +191,7 @@ def fetch_ranged(url, path, parts=RANGE_PARTS, timeout=120, tries=RATE_TRIES):
     tmp = path.with_suffix(".part")
 
     def get(rng):
+        time.sleep(RANGE_STAGGER_S * (ranges.index(rng) % parts))
         for attempt in range(tries):
             try:
                 q = urllib.request.Request(url, headers={"Range": f"bytes={rng[0]}-{rng[1]}"})
