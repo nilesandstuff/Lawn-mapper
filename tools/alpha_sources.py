@@ -60,8 +60,21 @@ def fetch_photo(url, tries=3, pause_s=2.0, opener=None):
     raise RuntimeError(f"the photograph could not be fetched after {tries} tries: {last}")
 
 
-# Tiles up to this many MB are fetched before the first read (16 ranges at once: a 130 MB tile in under a minute).
+# Tiles up to this many MB are fetched (or waited for) before a press reads
+# the lidar; a bigger set is read as the older octree this time and fetched
+# for the next. rockyweb gives about 0.2-0.4 MB/s a tile (the live server's
+# logs, 2026-10-29: 92 MB in 255 s, 34 MB in 202 s).
 INLINE_TILES_MB = 400
+
+# NAIP ON A LIVE PRESS (owner, 2026-10-29: "if ndvi doesn't respond or times
+# out, skip it for a live detection"). Read beside the lidar, not after it,
+# so its 2-11 s download (H129's note) hides behind the lidar's read; one try
+# of NAIP_TIMEOUT_S, and the press waits for it at most NAIP_WAIT_S from the
+# start of the downloads before going on without it -- as the decoder was
+# trained to (NAIP hidden on a fifth of its steps). Training is untouched: it
+# reads NAIP through naip_bands.main, which waits and retries.
+NAIP_TIMEOUT_S = 20
+NAIP_WAIT_S = 40
 
 
 def stitch_tiles(tiles, cols, rows):
@@ -183,6 +196,23 @@ def gather_sources(photo, prep, naip_align=None, progress=None, cache_dir=None, 
     out = {"lidar": None, "height_png": None, "roof": None, "void": None, "naip": None,
            "rec": {"lidar": False, "naip": False}, "seconds": {}}
 
+    # NAIP first, on its own thread: it runs while the lidar is read below.
+    import threading
+    naip_got = {}
+    naip_t0 = time.time()
+
+    def read_naip():
+        try:
+            naip, _ = naip_bands.naip_for(prep["bbox"], photo=photo, stored=naip_align,
+                                          timeout=NAIP_TIMEOUT_S, tries=1)
+            naip_got["naip"] = np.asarray(naip)
+        except Exception as e:  # noqa: BLE001 - served without it, as trained
+            naip_got["error"] = str(e)[:200]
+        naip_got["seconds"] = round(time.time() - naip_t0, 1)
+
+    naip_thread = threading.Thread(target=read_naip, daemon=True)
+    naip_thread.start()
+
     # THE NEWEST FLIGHT (H96): when it is only USGS's LAZ tiles, they are read
     # from the server's volume (LIDAR_TILE_DIR) once they are there; until
     # then the newest octree is, and the tiles are named for the server to
@@ -200,12 +230,18 @@ def gather_sources(photo, prep, naip_align=None, progress=None, cache_dir=None, 
         # hole and nothing at all. A big set is still read next time.
         mb = prep.get("lidarTilesMb")
         if pending and (mb is None or mb <= INLINE_TILES_MB) and tile_fetch is not None:
+            t_wait = time.time()
             still = tile_fetch(pending, lambda words: say(words))
+            out["seconds"]["tilesWait"] = round(time.time() - t_wait, 1)
             if len(still) < len(pending):
                 out["rec"]["tilesFetched"] = len(pending) - len(still)
+                say("USGS's newest lidar survey is in: cutting it to this lot")
             if still:
                 out["rec"]["tilesError"] = f"{len(still)} tile(s) not on the volume yet"
+                say("USGS's newest lidar survey is still downloading: this press reads the older survey, the next one the new")
             pending = still
+        elif pending and mb is not None and mb > INLINE_TILES_MB:
+            say(f"USGS's newest lidar survey here is {mb:.0f} MB: it downloads for the next press, and this one reads the older survey")
         elif pending and (mb is None or mb <= INLINE_TILES_MB):
             import lidar_sources
             try:
@@ -269,17 +305,21 @@ def gather_sources(photo, prep, naip_align=None, progress=None, cache_dir=None, 
             out["rec"]["lidarError"] = str(e)[:200]
         out["seconds"]["lidar"] = round(time.time() - t0, 1)
 
-    t0 = time.time()
-    span = max(prep["bbox"][2] - prep["bbox"][0], prep["bbox"][3] - prep["bbox"][1])
-    # The slow step on a big lot (workflow 32, 2026-10-22: 103 s of a 275 m
-    # lot's 116 s of downloads was this; the lidar was 10 s).
-    say("Aligning the near-infrared imagery" + (f" over {span:.0f} m of ground (a big lot: this takes a minute or two)" if span > 200 else ""))
-    try:
-        naip, _ = naip_bands.naip_for(prep["bbox"], photo=photo, stored=naip_align)
-        out["naip"] = np.asarray(naip)
-    except Exception as e:  # noqa: BLE001 - served without it, as trained
-        out["rec"]["naipError"] = str(e)[:200]
-    out["seconds"]["naip"] = round(time.time() - t0, 1)
+    # The near-infrared, started before the lidar: usually done by now.
+    if naip_thread.is_alive():
+        say("Aligning the near-infrared imagery")
+    naip_thread.join(timeout=max(0.0, NAIP_WAIT_S - (time.time() - naip_t0)))
+    if naip_thread.is_alive():
+        out["rec"]["naipError"] = f"USGS's NAIP service did not answer within {NAIP_WAIT_S} s; read without the near-infrared"
+        out["rec"]["naipSkipped"] = True
+        out["seconds"]["naip"] = round(time.time() - naip_t0, 1)
+    else:
+        if "naip" in naip_got:
+            out["naip"] = naip_got["naip"]
+        if naip_got.get("error"):
+            out["rec"]["naipError"] = naip_got["error"]
+            out["rec"]["naipSkipped"] = True
+        out["seconds"]["naip"] = naip_got.get("seconds")
     return out
 
 

@@ -42,10 +42,10 @@ def export_url(bbox, cell=CELL_M):
     return f"{ROOT}/exportImage?{urllib.parse.urlencode(q)}"
 
 
-def fetch(url, tries=3):
+def fetch(url, tries=3, timeout=60):
     for attempt in range(tries):
         try:
-            with urllib.request.urlopen(url, timeout=60) as r:
+            with urllib.request.urlopen(url, timeout=timeout) as r:
                 return r.read()
         except OSError:
             if attempt == tries - 1:
@@ -78,7 +78,7 @@ def grey(arr, naip=False):
     return 0.299 * a[..., 0] + 0.587 * a[..., 1] + 0.114 * a[..., 2]
 
 
-def naip_for(box, photo=None, stored=None, keep_raw=False, raw_file=None):
+def naip_for(box, photo=None, stored=None, keep_raw=False, raw_file=None, timeout=60, tries=3):
     """NAIP (bands 3,0,1 -> near-infrared, red, green) over one frame, lined up
     with its photograph.
 
@@ -91,6 +91,8 @@ def naip_for(box, photo=None, stored=None, keep_raw=False, raw_file=None):
     naming the box (training's bank, NAIP_RAW in main): read from there when
     the box is the same, fetched and kept when not -- so a map trains on the
     NAIP it was first read with, whatever USGS publishes later.
+    `timeout` and `tries` bound the download: training waits for it, a live
+    press does not (tools/alpha_sources.py NAIP_TIMEOUT_S).
     """
     from PIL import Image
     from naip_align import align_images, resample
@@ -110,7 +112,7 @@ def naip_for(box, photo=None, stored=None, keep_raw=False, raw_file=None):
         except (OSError, ValueError):
             blob = None
     if blob is None:
-        blob = fetch(export_url(big))
+        blob = fetch(export_url(big), tries=tries, timeout=timeout)
         if raw_file:
             Path(raw_file).parent.mkdir(parents=True, exist_ok=True)
             Path(raw_file).write_bytes(blob)

@@ -192,19 +192,51 @@ FETCH_AGAIN_S = 1200
 # (gather) can all want the same tile within a minute of each other; rockyweb
 # serves one machine slowly and refuses a crowd. The first to ask writes the
 # note above and fetches; the others wait for the file to appear on the
-# volume. The detector waits at most DETECT_WAIT_S, then reads the older
-# octree for this press rather than holding the person up.
-DETECT_WAIT_S = 180  # the GPU waits 300 s for these downloads (detect); the read and NAIP come after
-WAIT_STEP_S = 10
+# volume, reading how far it has got from tile_progress.
+#
+# A PRESS WAITS FOR THE NEWEST LIDAR, AND SAYS SO (owner, 2026-10-29: "if a
+# lidar tile download is still pending when the user presses detect, add an
+# intermediate waiting step until the lidar arrives and is cropped. We don't
+# need to warm up the machine while it's waiting for a slow download, and the
+# user should be made aware that the tile download is adding extra wait
+# time"). The gather waits up to PRESS_TILE_WAIT_S, saying the MB and the
+# minutes left on the press's line; the GPU is asked for only after the
+# gather (`lot`), so nothing is billed for the wait but this CPU machine.
+tile_progress = modal.Dict.from_name("lawn-lidar-tiles-progress", create_if_missing=True)
+PRESS_TILE_WAIT_S = 900
+GATHER_TIMEOUT_S = PRESS_TILE_WAIT_S + 600  # the wait, then the read, NAIP and the photo
+WAIT_STEP_S = 5
 
 
-def _fetch_or_wait(urls, say=lambda words: None, wait_s=FETCH_AGAIN_S, fetch_after_wait=True, parallel=1):
+def _tile_words(shown, now=None):
+    """The press's line while USGS's tiles download: how much, and how long."""
+    now = now or time.time()
+    size = sum(v["size"] for v in shown.values() if v.get("size"))
+    done = sum(min(v.get("done", 0), v.get("size") or 0) for v in shown.values() if v.get("size"))
+    lefts = []
+    for v in shown.values():
+        if v.get("size") and v.get("done") and now > v.get("t0", now):
+            rate = v["done"] / (now - v["t0"])
+            if rate > 0:
+                lefts.append((v["size"] - v["done"]) / rate)
+    head = "Downloading USGS's newest lidar survey of this lot"
+    if size:
+        head += f": {done / 1e6:.0f} of {size / 1e6:.0f} MB"
+        if lefts:
+            m = max(lefts) / 60
+            head += ", under a minute left" if m < 1 else f", about {m:.0f} minute{'s' if m >= 1.5 else ''} left"
+    return head + ". USGS offers it only as large files, so the first lot in an area waits for it once"
+
+
+def _fetch_or_wait(urls, say=lambda words: None, wait_s=FETCH_AGAIN_S, fetch_after_wait=True, parallel=1, deadline=None):
     """Every one of these tiles onto the volume: fetched here, or -- when
     another machine is fetching it right now -- waited for. Returns the urls
     still missing (a fetch that failed, or a wait that ran out). `parallel`
     tiles at a time: the live server's logs (2026-10-29) show Ketchum's two
     tiles fetched one after the other, 92 MB in 255 s then 34 MB in 202 s,
-    when side by side the pair takes about as long as the larger one."""
+    when side by side the pair takes about as long as the larger one.
+    `deadline` (a time.time()) ends any waiting and stops a new fetch from
+    starting; a fetch already under way runs to its end."""
     if f"{REPO}/tools" not in sys.path:
         sys.path.insert(0, f"{REPO}/tools")
     import concurrent.futures
@@ -212,6 +244,15 @@ def _fetch_or_wait(urls, say=lambda words: None, wait_s=FETCH_AGAIN_S, fetch_aft
     import lidar_sources
     from pathlib import Path
     commit_lock = threading.Lock()
+    shown = {}  # name -> {done, size, t0}: what the press's line is made of
+    say_lock = threading.Lock()
+
+    def tell():
+        with say_lock:
+            try:
+                say(_tile_words(shown))
+            except Exception:  # noqa: BLE001 - a courtesy, never the download
+                pass
 
     def one(i, url):
         name = url.rsplit("/", 1)[-1]
@@ -224,9 +265,16 @@ def _fetch_or_wait(urls, say=lambda words: None, wait_s=FETCH_AGAIN_S, fetch_aft
         except Exception:  # noqa: BLE001
             started = None
         if started and time.time() - float(started) < FETCH_AGAIN_S:
-            say(f"Waiting for USGS's newest lidar survey over this lot (tile {i + 1} of {len(urls)}): it is being fetched already")
-            until = min(time.time() + wait_s, float(started) + FETCH_AGAIN_S)
+            shown[name] = {"done": 0, "size": 0, "t0": float(started)}
+            until = min(time.time() + wait_s, float(started) + FETCH_AGAIN_S, deadline or float("inf"))
             while time.time() < until and not whole():
+                try:
+                    p = tile_progress.get(name)
+                    if p:
+                        shown[name] = {"done": p.get("done", 0), "size": p.get("size", 0), "t0": p.get("t0", float(started))}
+                except Exception:  # noqa: BLE001
+                    pass
+                tell()
                 time.sleep(WAIT_STEP_S)
                 try:
                     tiles.reload()
@@ -239,16 +287,25 @@ def _fetch_or_wait(urls, say=lambda words: None, wait_s=FETCH_AGAIN_S, fetch_aft
                     pass
             if whole():
                 return True
-            if not fetch_after_wait:
+            if not fetch_after_wait or (deadline and time.time() >= deadline):
                 return False
         try:
             fetching[name] = time.time()
         except Exception:  # noqa: BLE001 - a note that fails to write is only a note
             pass
-        say(f"Fetching USGS's newest lidar survey over this lot (tile {i + 1} of {len(urls)}): the first lot in an area takes a few minutes")
         t0 = time.time()
+        shown[name] = {"done": 0, "size": 0, "t0": t0}
+
+        def progress(done, size):
+            shown[name] = {"done": done, "size": size, "t0": t0}
+            try:
+                tile_progress[name] = {"done": done, "size": size, "t0": t0, "at": time.time()}
+            except Exception:  # noqa: BLE001 - a note that fails to write is only a note
+                pass
+            tell()
+
         try:
-            lidar_sources.fetch_ranged(url, path)
+            lidar_sources.fetch_ranged(url, path, progress=progress)
             with commit_lock:
                 tiles.commit()
             print(f"tile {name}: {path.stat().st_size / 1e6:.0f} MB in {time.time() - t0:.0f}s", flush=True)
@@ -398,7 +455,8 @@ def _gather_with_tiles(payload):
     except Exception:  # noqa: BLE001 - files open on another lot: read what is here
         pass
     got = _gather_here(payload, tile_fetch=lambda urls, say: _fetch_or_wait(
-        urls, say=lambda words: say(words), wait_s=DETECT_WAIT_S, fetch_after_wait=False))
+        urls, say=lambda words: say(words), wait_s=PRESS_TILE_WAIT_S, fetch_after_wait=True,
+        parallel=2, deadline=time.time() + PRESS_TILE_WAIT_S))
     rec = (got.get("sources") or {}).get("rec", {})
     if rec.get("tilesFetched"):
         try:
@@ -435,7 +493,7 @@ def _note(key, stage, **more):
         pass
 
 
-@app.function(image=cpu_image, volumes={"/models": models, TILE_DIR: tiles}, timeout=900, cpu=1.0, memory=2048,
+@app.function(image=cpu_image, volumes={"/models": models, TILE_DIR: tiles}, timeout=GATHER_TIMEOUT_S, cpu=1.0, memory=2048,
               # A CPU machine costs a few cents an hour, so it can wait longer
               # for the next lot than the GPU does.
               scaledown_window=300)
@@ -579,7 +637,7 @@ with web_image.imports():
     from fastapi import HTTPException, Request  # noqa: F401 - resolved in the container
 
 
-@app.function(image=web_image, timeout=600, cpu=0.25, memory=512, scaledown_window=300)
+@app.function(image=web_image, timeout=GATHER_TIMEOUT_S + 600, cpu=0.25, memory=512, scaledown_window=300)
 # It only waits -- on the downloads, then on the GPU -- so one small machine
 # can hold many lots at once.
 @modal.concurrent(max_inputs=32)
@@ -600,9 +658,11 @@ def lot(body):
     _note(key, "Fetching the aerial photograph, the lidar and the near-infrared imagery")
     got = gather.spawn(body)
     try:
-        # Up to eight minutes: a first lot in an area may fetch USGS's newest
-        # tiles first (alpha_sources.py, INLINE_TILES_MB); most lots take 15-120 s.
-        got.get(timeout=480)
+        # As long as the gather may take: a first lot in an area waits for
+        # USGS's newest tiles (PRESS_TILE_WAIT_S); most lots take 15-120 s.
+        # Waiting here, on this small machine, is what keeps the GPU unasked
+        # until the lidar is in hand.
+        got.get(timeout=GATHER_TIMEOUT_S)
     except Exception as e:  # noqa: BLE001 - detect reads the lot itself, as before
         # This machine has no numpy (web_image), so a gather that FINISHED
         # cannot be unpacked here -- and need not be: the GPU fetches it by id.

@@ -1553,6 +1553,10 @@ const AUTO_RETRY_S = 100;
 /* On a big lot one stage (the near-infrared alignment) can honestly run
    two minutes without a word, so quiet means longer there. */
 const AUTO_RETRY_BIG_S = 300;
+/* The model server's line while USGS's newest lidar downloads for a press
+   (tools/modal_serve.py _tile_words), and how long such a press is given. */
+const LIDAR_DOWNLOAD = /newest lidar survey/i;
+const LIDAR_DEADLINE_MS = 25 * 60 * 1000;
 let lastAutoRetry = 0;
 
 /*
@@ -1639,8 +1643,13 @@ function startDetectionTimer(run) {
     /* A big lot, once any stage line has said so: its near-infrared
        alignment alone ran 103 s on a 275 m lot (workflow 32, 2026-10-22). */
     if (/big lot/.test(run.stage || '')) run.big = true;
+    /* USGS's newest lidar downloading for this press: the wait it adds is
+       said, here and on the line above (owner, 2026-10-29). */
+    if (LIDAR_DOWNLOAD.test(run.stage || '')) run.lidarWait = true;
     const big = Boolean(run.big);
-    $('#busy-timer').textContent = big
+    $('#busy-timer').textContent = run.lidarWait
+      ? `${clock} · the lidar download adds a few minutes, once per area`
+      : big
       ? `${clock} · a lot this size takes a few minutes`
       : secs < 60
         ? `${clock} · usually takes less than 60 seconds`
@@ -1653,7 +1662,7 @@ function startDetectionTimer(run) {
        to be resent several times"). */
     const quietSince = run.stage ? run.stageAt : run.started;
     const quietS = (Date.now() - quietSince) / 1000;
-    const quietLimit = big ? AUTO_RETRY_BIG_S : AUTO_RETRY_S;
+    const quietLimit = big || run.lidarWait ? AUTO_RETRY_BIG_S : AUTO_RETRY_S;
     if (quietS >= quietLimit && secs >= AUTO_RETRY_S && !run.action && run.model === 'alpha'
         && Date.now() - lastAutoRetry > 10 * 60 * 1000) {
       lastAutoRetry = Date.now();
@@ -5826,13 +5835,22 @@ async function waitForPrediction(id, frame, signal = null) {
      free), and a lot it is still working on is not one to give up on. */
   const started = viewedNow();
   const DEADLINE_MS = (String(id).startsWith('alpha-') ? 9 : 4) * 60 * 1000;
+  /* WHILE USGS'S NEWEST LIDAR DOWNLOADS (owner, 2026-10-29): the server says
+     so on the press's line, with the MB and the minutes left, and may wait up
+     to fifteen minutes for it before the lot is read -- so a press that has
+     said so is given twenty-five. */
+  let lidarWait = false;
+  const deadline = () => {
+    if (!lidarWait && LIDAR_DOWNLOAD.test(detection?.stage || '')) lidarWait = true;
+    return lidarWait ? LIDAR_DEADLINE_MS : DEADLINE_MS;
+  };
   const cancelled = () => {
     const e = new Error('Cancelled.');
     e.cancelled = true;
     return e;
   };
 
-  while (viewedNow() - started < DEADLINE_MS) {
+  while (viewedNow() - started < deadline()) {
     await new Promise((r) => setTimeout(r, 2500));
     if (signal?.aborted) throw cancelled();
 

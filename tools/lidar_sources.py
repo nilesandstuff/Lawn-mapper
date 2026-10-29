@@ -152,6 +152,7 @@ RANGE_PARTS = 4
 RANGE_STAGGER_S = 0.5  # the ranges start half a second apart: the refusal page refreshes after one second, a per-second limit
 RATE_WAIT_S = 15
 RATE_TRIES = 7
+PROGRESS_EVERY_S = 3
 
 
 def _wait_for(e, attempt):
@@ -166,10 +167,14 @@ def _wait_for(e, attempt):
     return 5 * (attempt + 1)
 
 
-def fetch_ranged(url, path, parts=RANGE_PARTS, timeout=120, tries=RATE_TRIES):
+def fetch_ranged(url, path, parts=RANGE_PARTS, timeout=120, tries=RATE_TRIES, progress=None):
     """A whole file in `parts` parallel byte ranges (rockyweb gives one connection ~0.2 MB/s).
     The folder is made if it is not there: the first release run on this reader
-    lost 12 of 18 tile frames to a missing folder (2026-10-13)."""
+    lost 12 of 18 tile frames to a missing folder (2026-10-13).
+    `progress(done_bytes, size_bytes)` is told as the bytes arrive, about
+    every PROGRESS_EVERY_S, so a person waiting on a press can be told how far
+    the download has got (tools/modal_serve.py)."""
+    import threading
     import time
     path = Path(path)
     if path.exists() and path.stat().st_size > 0:
@@ -189,18 +194,46 @@ def fetch_ranged(url, path, parts=RANGE_PARTS, timeout=120, tries=RATE_TRIES):
     step = max(1, math.ceil(size / parts))
     ranges = [(s, min(size, s + step) - 1) for s in range(0, size, step)]
     tmp = path.with_suffix(".part")
+    lock = threading.Lock()
+    done = [0, 0.0]  # bytes in hand, when progress was last told
+
+    def tell(n, force=False):
+        if progress is None:
+            return
+        with lock:
+            done[0] += n
+            now = time.time()
+            if not force and now - done[1] < PROGRESS_EVERY_S:
+                return
+            done[1] = now
+            got = done[0]
+        try:
+            progress(got, size)
+        except Exception:  # noqa: BLE001 - a courtesy, never the download
+            pass
+
+    tell(0, force=True)
 
     def get(rng):
         time.sleep(RANGE_STAGGER_S * (ranges.index(rng) % parts))
         for attempt in range(tries):
+            got = 0
             try:
                 q = urllib.request.Request(url, headers={"Range": f"bytes={rng[0]}-{rng[1]}"})
+                buf = bytearray()
                 with urllib.request.urlopen(q, timeout=timeout) as r:
-                    data = r.read()
-                if len(data) != rng[1] - rng[0] + 1:
-                    raise IOError(f"short range {len(data)}")
-                return rng[0], data
+                    while True:
+                        b = r.read(1 << 20)
+                        if not b:
+                            break
+                        buf += b
+                        got += len(b)
+                        tell(len(b))
+                if len(buf) != rng[1] - rng[0] + 1:
+                    raise IOError(f"short range {len(buf)}")
+                return rng[0], bytes(buf)
             except Exception as e:  # noqa: BLE001 - retried, then raised
+                tell(-got)  # what this try brought is fetched again
                 if attempt == tries - 1:
                     raise
                 time.sleep(_wait_for(e, attempt))

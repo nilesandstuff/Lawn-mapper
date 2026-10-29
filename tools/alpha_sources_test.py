@@ -119,6 +119,49 @@ def _tiles_and_area():
 _tiles_and_area()
 
 
+# NAIP BESIDE THE LIDAR, AND SKIPPED WHEN LATE (owner, 2026-10-29).
+def _naip_beside_lidar():
+    import time as _t
+    import alpha_sources
+    import lidar_frame
+    import naip_bands
+    real_for, real_naip, real_wait = lidar_frame.lidar_for, naip_bands.naip_for, alpha_sources.NAIP_WAIT_S
+    try:
+        lidar_frame.lidar_for = lambda *a, **k: _t.sleep(0.4)
+        prep = {"bbox": [0.0, 0.0, 100.0, 100.0], "lidarUrl": "https://x/ept.json"}
+        import numpy as _np
+
+        def quick(*a, **k):
+            _t.sleep(0.4)
+            return _np.zeros((4, 4, 3), dtype=_np.uint8), {}
+        naip_bands.naip_for = quick
+        t0 = _t.time()
+        out = alpha_sources.gather_sources(Image.new("RGB", (8, 8)), prep)
+        took = _t.time() - t0
+        check("NAIP is read while the lidar is, not after it", out["naip"] is not None and took < 0.75)
+
+        def slow(*a, **k):
+            _t.sleep(2.0)
+            return _np.zeros((4, 4, 3), dtype=_np.uint8), {}
+        naip_bands.naip_for = slow
+        alpha_sources.NAIP_WAIT_S = 0.6
+        t0 = _t.time()
+        out = alpha_sources.gather_sources(Image.new("RGB", (8, 8)), prep)
+        took = _t.time() - t0
+        check("a NAIP that does not answer in time is skipped, and the press goes on", out["naip"] is None and out["rec"].get("naipSkipped") and took < 1.2)
+
+        def refused(*a, **k):
+            raise OSError("timed out")
+        naip_bands.naip_for = refused
+        out = alpha_sources.gather_sources(Image.new("RGB", (8, 8)), prep)
+        check("and one that fails is skipped the same way", out["naip"] is None and out["rec"].get("naipSkipped"))
+    finally:
+        lidar_frame.lidar_for, naip_bands.naip_for, alpha_sources.NAIP_WAIT_S = real_for, real_naip, real_wait
+
+
+_naip_beside_lidar()
+
+
 print("alpha_sources: ok" if ok else "alpha_sources: FAILED")
 sys.exit(0 if ok else 1)
 

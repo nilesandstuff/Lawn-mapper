@@ -127,9 +127,20 @@ def check_ranged_download_makes_its_folder():
             got = t.fetch_ranged(f"http://127.0.0.1:{srv.server_port}/tile.laz", out, parts=7)
             assert got == out and out.read_bytes() == body, "every range in its place"
             assert not out.with_suffix(".part").exists()
+            told = []
+            every = t.PROGRESS_EVERY_S
+            t.PROGRESS_EVERY_S = 0
+            try:
+                t.fetch_ranged(f"http://127.0.0.1:{srv.server_port}/tile.laz", Path(d) / "again.laz", parts=3,
+                               progress=lambda done, size: told.append((done, size)))
+            finally:
+                t.PROGRESS_EVERY_S = every
+            assert told[0] == (0, len(body)), f"told the size first: {told[:2]}"
+            assert told[-1] == (len(body), len(body)), f"and the whole at the end: {told[-1]}"
+            assert all(a[0] <= b[0] for a, b in zip(told, told[1:])), "never going backwards on a good download"
     finally:
         srv.shutdown()
-    print("download: the folder is made, seven ranges land in order, no half file left")
+    print("download: the folder is made, seven ranges land in order, no half file left, progress told")
 
 
 def check_raw_points_cache():
