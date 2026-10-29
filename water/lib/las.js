@@ -53,6 +53,18 @@ export function gpsMs(g) {
 }
 
 /**
+ * EACH POINT'S LEAF STATE (the shade map's las.js, 0e10807, 2026-10-29; owner: "If the lidar was flown partially
+ * in leaf, that's a bigger problem"): by the day its own pulse was fired, as find.js leafSeason judges a day --
+ * 1 November to 10 May leaf-off, the rest in leaf. 0 when the record keeps no usable date.
+ */
+export const LEAF_UNKNOWN = 0, LEAF_OFF = 1, LEAF_ON = 2;
+export function leafOfMs(ms) {
+  if (!Number.isFinite(ms)) return LEAF_UNKNOWN;
+  const d = new Date(ms), m = d.getUTCMonth() + 1;
+  return m >= 11 || m <= 4 || (m === 5 && d.getUTCDate() <= 10) ? LEAF_OFF : LEAF_ON;
+}
+
+/**
  * WHEN THE LASER PASSED: the GPS times of a node's records, sampled (about
  * `want` of them), as sorted ms since 1970 -- or null when the file keeps no
  * usable time. The points' own clock: the catalogue's flight dates were
@@ -72,6 +84,9 @@ export function gpsTimes(h, points, want = 400) {
   return out.length ? out.sort((a, b) => a - b) : null;
 }
 
+/** The per-point arrays of a set of columns. */
+export const COLUMN_KEYS = ['x', 'y', 'z', 'intensity', 'ret', 'nret', 'cls', 'leaf'];
+
 /** Empty columns for n points. */
 export function makeColumns(n) {
   return {
@@ -79,6 +94,7 @@ export function makeColumns(n) {
     x: new Float64Array(n), y: new Float64Array(n), z: new Float32Array(n),
     intensity: new Uint16Array(n), ret: new Uint8Array(n), nret: new Uint8Array(n),
     cls: new Uint8Array(n),
+    leaf: new Uint8Array(n), // LEAF_OFF / LEAF_ON by the point's own GPS day, 0 unknown
   };
 }
 
@@ -110,7 +126,7 @@ export function concatColumns(parts) {
   const out = makeColumns(n);
   let k = 0;
   for (const p of parts) {
-    for (const key of ['x', 'y', 'z', 'intensity', 'ret', 'nret', 'cls']) out[key].set(p[key].subarray(0, p.n), k);
+    for (const key of COLUMN_KEYS) if (p[key]) out[key].set(p[key].subarray(0, p.n), k);
     k += p.n;
   }
   return out;
@@ -122,7 +138,8 @@ export function filterColumns(cols, keep) {
   const idx = new Uint32Array(cols.n);
   for (let i = 0; i < cols.n; i++) if (keep(i)) idx[n++] = i;
   const out = makeColumns(n);
-  for (const key of ['x', 'y', 'z', 'intensity', 'ret', 'nret', 'cls']) {
+  for (const key of COLUMN_KEYS) {
+    if (!cols[key]) continue;
     for (let j = 0; j < n; j++) out[key][j] = cols[key][idx[j]];
   }
   return out;

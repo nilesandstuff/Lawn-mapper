@@ -19,6 +19,7 @@ import { typicalYears, thisWeek, attachStationHours, soilDaysOver } from '/lib/w
 import { waterPlan } from '/lib/plan.js';
 import { demAround, terrain, hillside } from '/lib/upslope.js';
 import { powerUrl, typicalYear, growingSeason, SEASON_GP } from '/lib/shade/climate.js';
+import { onePass } from '/lib/shade/passes.js';
 import { polygonsOf } from '/lib/geo.js';
 import { erasedOn } from '/lib/leaf.js';
 import { fenceRadiation } from '/lib/fenceheat.js';
@@ -285,7 +286,12 @@ function lawnLight(res, site, climate, season) {
   // the same climate with all of the sun as beam, or all of it as sky: the share each cell gets of each (its sky view)
   const beamOnly = { ...climate, diffuse: new Array(365).fill(0) }, skyOnly = { ...climate, diffuse: new Array(365).fill(1) };
   const months = async (clim) => { const out = []; for (let mo = 0; mo < 12; mo++) { const a = perCell(await ask({ type: 'period', days: monthDays(mo), climate: clim })); if (!a) return null; out.push(a); } return out; };
-  const build = (erased) => ask({ type: 'build', cols: res.points, box: g.bbox, lat: site.lat, lng: site.lng, shift: null, lot: polygonsOf(site.lawn), lawn: polygonsOf(site.lawn),
+  /* ONE LEAF STATE OVER THE LOT (the shade map's passes.js, 2026-10-29): a survey's passes can be months apart, one
+     in leaf and one not; each point carries its day (lib/las.js leafOfMs, set in ept.js cropRecords). Over the
+     analysis box, one state wins where the larger pass alone covers it, and the other pass's points are left out;
+     otherwise 'mixed' and the canopy judges column by column. The same call the shade page makes, on the same points. */
+  const passes = onePass(res.points, g.bbox, Math.cos((site.lat * Math.PI) / 180));
+  const build = (erased) => ask({ type: 'build', cols: passes.cols, box: g.bbox, lat: site.lat, lng: site.lng, shift: null, lot: polygonsOf(site.lawn), lawn: polygonsOf(site.lawn),
     canopy: 'seasonal', flight: site.cloudSeason || null, tMean: Array.isArray(climate?.tMean) ? climate.tMean : null, erased, erasedCubes: edits.cubes,
     // the fences drawn on the shade map (its part, v 3): their shade too, as the shade map works it out
     fences: site.shadeEdits?.fences?.length ? site.shadeEdits.fences : undefined });
@@ -297,7 +303,7 @@ function lawnLight(res, site, climate, season) {
   const work = (async () => {
     const m = await build(edits.erased);
     if (m.w !== g.W || m.h !== g.H) throw new Error('the shade grid is not the water grid');
-    kept.lightInfo = { canopy: m.canopy, why: m.seasonsWhy || null, fences: m.fences || 0, erased: edits.cells, blocks: edits.blocks, blocksLost: edits.blocksLost, season: site.cloudSeason || null };
+    kept.lightInfo = { canopy: m.canopy, why: m.seasonsWhy || null, fences: m.fences || 0, erased: edits.cells, blocks: edits.blocks, blocksLost: edits.blocksLost, season: site.cloudSeason || null, inLeafColumns: m.inLeafColumns || 0, passes: { season: passes.season, off: passes.off, on: passes.on, dropped: passes.dropped } };
     // the shade map's own reading of every cell (0 open, 1 roof, 2 evergreen, 3 deciduous): its trees, for the air and the wind
     const kinds = m.kinds && m.kinds.length === N ? Uint8Array.from(m.kinds) : null;
     kept.shadeKinds = kinds;

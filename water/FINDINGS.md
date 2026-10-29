@@ -1868,6 +1868,20 @@ smaller than H44's wind correction and inside PRISM's day-to-day noise. What wou
 blotting-paper or balance dew reading on the open lawn against the lawn north of the house on one clear calm night
 (H47's to-do), and a soil probe in both spots that afternoon.
 
+### H56. The lidar's leaf state, point by point, read as the shade map reads it (water session, 2026-10-29)
+
+The shade map (features session, 0e10807, SHADE-FINDINGS 32) now dates every lidar point by its own GPS day and
+reads the lot's leaf state from the points: all one state, that state; two passes where the larger alone covers
+the lot, that state and the other pass's points left out; otherwise 'mixed', each column judged by its own crown
+returns, and a crown the laser saw in leaf takes no leaves. Buildings are found on every flight. The water map
+builds the light worker's columns from its own lidar reader (lib/las.js, lib/ept.js, copies of the shade map's),
+which until now carried no leaf state, so on a lot flown in leaf, or in two passes, the two maps would have
+judged the canopy differently. Ported the same day: each kept point's state from its GPS day (lib/ept.js
+cropRecords, as the shade map's), the `leaf` column through joining and filtering, and the shade map's own
+onePass (lib/shade/passes.js, linked like its other modules) run on the analysis box before the build, with the
+report saying when the lot was flown in leaf or in two passes. Without a GPS time nothing changes. A test of the
+reader against the pass rule (plan.test.js). The owner's lot: [drive].
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge

@@ -12,6 +12,9 @@ import { parseWkt, rootZone, boxWkt, ROOT_CM } from '../lib/soil.js';
 import { rainHours } from '../lib/weather.js';
 import { scsRunoff, cnSlope, curveNumber, buildModel, simulate, idealIrrigation, PARAMS, canopyAround, etToday, shadeFactor, windShare, coverAround, radiationModel } from '../lib/balance.js';
 import { leafSeason, flightSeason, erasedOn } from '../lib/leaf.js';
+import { cropRecords } from '../lib/ept.js';
+import { makeColumns, concatColumns, filterColumns, LEAF_OFF, LEAF_ON } from '../lib/las.js';
+import { onePass } from '../lib/shade/passes.js';
 import { roofRouting } from '../lib/gutters.js';
 import { waterPlan } from '../lib/plan.js';
 import { analyse } from '../lib/lowspots.js';
@@ -449,6 +452,30 @@ test('at most two soak cycles a day: on slow clay a watering is smaller and come
   // what is put down covers the grass's use, sprinklers watering unevenly: more than the month's use less its rain
   const use = 31 * 5 * 0.8, rain = 12 * 1;
   assert.ok(jul(b).mmMonth > use - rain, `${jul(b).mmMonth.toFixed(0)} mm put down against ${use - rain} mm used`);
+});
+
+test('each lidar point carries its leaf state from its own GPS day, and the shade map\'s one-pass rule reads the water map\'s columns', () => {
+  // format-1 records: x y z int32, intensity u16, returns, class, ..., GPS double at 20; adjusted standard GPS time
+  const L = 28, gps = (ms) => (ms - Date.UTC(1980, 0, 6)) / 1000 - 1e9;
+  const header = { recordLength: L, format: 1, scale: [0.01, 0.01, 0.01], offset: [0, 0, 0], gpsAt: 20 };
+  const pts = [];
+  for (let x = 0.25; x < 20; x += 0.5) for (let y = 0.25; y < 20; y += 0.5) { pts.push([x, y, Date.UTC(2024, 7, 12)]); if (x >= 10) pts.push([x + 0.1, y, Date.UTC(2023, 2, 20)]); }
+  pts.push([50, 50, Date.UTC(2024, 7, 12)]); // outside the box
+  const buf = new ArrayBuffer(pts.length * L), dv = new DataView(buf);
+  pts.forEach(([x, y, ms], i) => { dv.setInt32(i * L, Math.round(x * 100), true); dv.setInt32(i * L + 4, Math.round(y * 100), true); dv.setInt32(i * L + 8, 100, true); dv.setUint8(i * L + 14, 0x09); dv.setFloat64(i * L + 20, gps(ms), true); });
+  const cols = cropRecords(header, new Uint8Array(buf), [0, 0, 20, 20]);
+  assert.equal(cols.n, 2400);
+  let on = 0, off = 0; for (let i = 0; i < cols.n; i++) { if (cols.leaf[i] === LEAF_ON) on++; else if (cols.leaf[i] === LEAF_OFF) off++; }
+  assert.equal(on, 1600); assert.equal(off, 800);
+  const joined = concatColumns([cols, filterColumns(cols, (i) => cols.leaf[i] === LEAF_OFF)]);
+  assert.equal(joined.n, 3200); assert.equal(joined.leaf[3199], LEAF_OFF, 'leaf survives joining and filtering');
+  // the August pass covers the box alone: the March points are left out, as on the shade map
+  const one = onePass(cols, [0, 0, 20, 20], 1);
+  assert.equal(one.season, 'on'); assert.equal(one.dropped, 800); assert.equal(one.cols.n, 1600);
+  // records without a GPS time keep no state, and the rule leaves the season to the flight's dates
+  const bare = cropRecords({ ...header, format: 0, recordLength: 20, gpsAt: -1 }, new Uint8Array(buf, 0, 20 * 40), [0, 0, 20, 20]);
+  assert.ok([...bare.leaf].every((v) => v === 0)); assert.equal(onePass(bare, [0, 0, 20, 20], 1).season, null);
+  assert.equal(makeColumns(3).leaf.length, 3);
 });
 
 let failed = 0;

@@ -98,5 +98,6 @@ SPECULATION), as always.
 - 2026-10-27: rain intensity in the ten-year plan, from the station's hours (FINDINGS H52).
 - 2026-10-28: the roots by species (a checklist) and through the season from the soil's warmth, each year its own (FINDINGS H53, S15; research-roots-brief.md, research-roots-ryegrass.md).
 - 2026-10-28: how much to water -- normal, deficit or dormancy, chosen just before the sprinklers question and kept with the map (FINDINGS H54, S16).
+- 2026-10-29: the lidar's leaf state point by point, as the shade map now reads it, in the water map's own reader (FINDINGS H56).
 - 2026-10-29: the owner's per-species crop coefficients (kc-table.md) in: each level's Kc is the middle of the species' range, averaged over the grasses checked (FINDINGS H54).
 - 2026-10-28: dew, looked into and not added: rain gauges leave it out, it evaporates off the blades, and it is largest in the open, not in shade (FINDINGS H55; research-dew.md).
