@@ -198,21 +198,27 @@ DETECT_WAIT_S = 180  # the GPU waits 300 s for these downloads (detect); the rea
 WAIT_STEP_S = 10
 
 
-def _fetch_or_wait(urls, say=lambda words: None, wait_s=FETCH_AGAIN_S, fetch_after_wait=True):
+def _fetch_or_wait(urls, say=lambda words: None, wait_s=FETCH_AGAIN_S, fetch_after_wait=True, parallel=1):
     """Every one of these tiles onto the volume: fetched here, or -- when
     another machine is fetching it right now -- waited for. Returns the urls
-    still missing (a fetch that failed, or a wait that ran out)."""
+    still missing (a fetch that failed, or a wait that ran out). `parallel`
+    tiles at a time: the live server's logs (2026-10-29) show Ketchum's two
+    tiles fetched one after the other, 92 MB in 255 s then 34 MB in 202 s,
+    when side by side the pair takes about as long as the larger one."""
     if f"{REPO}/tools" not in sys.path:
         sys.path.insert(0, f"{REPO}/tools")
+    import concurrent.futures
+    import threading
     import lidar_sources
     from pathlib import Path
-    missing = []
-    for i, url in enumerate(urls):
+    commit_lock = threading.Lock()
+
+    def one(i, url):
         name = url.rsplit("/", 1)[-1]
         path = Path(TILE_DIR) / name
         whole = lambda: path.exists() and path.stat().st_size > 0  # noqa: E731
         if whole():
-            continue
+            return True
         try:
             started = fetching.get(name)
         except Exception:  # noqa: BLE001
@@ -232,10 +238,9 @@ def _fetch_or_wait(urls, say=lambda words: None, wait_s=FETCH_AGAIN_S, fetch_aft
                 except Exception:  # noqa: BLE001
                     pass
             if whole():
-                continue
+                return True
             if not fetch_after_wait:
-                missing.append(url)
-                continue
+                return False
         try:
             fetching[name] = time.time()
         except Exception:  # noqa: BLE001 - a note that fails to write is only a note
@@ -244,16 +249,24 @@ def _fetch_or_wait(urls, say=lambda words: None, wait_s=FETCH_AGAIN_S, fetch_aft
         t0 = time.time()
         try:
             lidar_sources.fetch_ranged(url, path)
-            tiles.commit()
+            with commit_lock:
+                tiles.commit()
             print(f"tile {name}: {path.stat().st_size / 1e6:.0f} MB in {time.time() - t0:.0f}s", flush=True)
+            return True
         except Exception as e:  # noqa: BLE001 - said, and the note cleared so the next ask tries again at once
             print(f"tile {name}: NOT fetched ({str(e)[:160]})", flush=True)
             try:
                 del fetching[name]
             except Exception:  # noqa: BLE001
                 pass
-            missing.append(url)
-    return missing
+            return False
+
+    if parallel > 1 and len(urls) > 1:
+        with concurrent.futures.ThreadPoolExecutor(min(parallel, len(urls))) as ex:
+            ok = list(ex.map(lambda iu: one(*iu), enumerate(urls)))
+    else:
+        ok = [one(i, u) for i, u in enumerate(urls)]
+    return [u for u, good in zip(urls, ok) if not good]
 
 
 @app.function(image=cpu_image, volumes={TILE_DIR: tiles}, timeout=3600, cpu=1.0, memory=2048)
@@ -352,6 +365,7 @@ def crop_tiles(urls, box, spacing=0.0):
 # crop_tiles and the detector's gather both read from. Minutes, once; nobody
 # waits on it.
 warming = modal.Dict.from_name("lawn-lidar-warming", create_if_missing=True)
+WARM_PARALLEL = 2  # tiles fetched side by side; each is already 4 ranges, and rockyweb refuses a crowd
 
 
 @app.function(image=cpu_image, volumes={TILE_DIR: tiles}, timeout=3600, cpu=2.0, memory=4096)
@@ -365,7 +379,7 @@ def warm_area(urls, box):
         pass
     if lidar_sources.area_covering(TILE_DIR, urls, box):
         return {"area": "kept already"}
-    missing = _fetch_or_wait(urls, say=lambda words: print(words, flush=True))
+    missing = _fetch_or_wait(urls, say=lambda words: print(words, flush=True), parallel=WARM_PARALLEL)
     if missing:
         return {"missing": [u.rsplit("/", 1)[-1] for u in missing]}
     t0 = time.time()
