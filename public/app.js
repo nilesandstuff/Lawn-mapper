@@ -4298,9 +4298,10 @@ function endDrag() {
   const moved = Boolean(drag?.moved);
   if (moved) {
     endHistoryGroup();
-    map.dragPan.enable();
     setStatus('Corner moved.');
   }
+  // The pan comes back whether the corner moved or the press was only a click (a mouse holds it from the press).
+  if (moved || drag?.held) map.dragPan.enable();
   drag = null;
   return moved;
 }
@@ -4309,7 +4310,20 @@ function onMouseDown(e) {
   if (e.button !== 0 || onMarker(e)) return;
   gestureIsTouch = false;
   beginPanHold(e.clientX, e.clientY);
-  beginDrag(e.clientX, e.clientY);
+  /*
+   * A MOUSE PRESS ON A CORNER TAKES THE MAP AT ONCE (a user, 2026-10-29, on
+   * Firefox: the map "kept wanting to pan instead of move the dots"). The
+   * touch path claims a grabbed corner from its first move; the mouse path
+   * used to switch dragPan off only once the pointer had travelled 4 px, and
+   * Mapbox, listening for mousemove on the document ahead of us, had by then
+   * begun a pan of its own and did not always let go. Switching it off at the
+   * press costs nothing: a press that never moves is still a click, and
+   * endDrag puts the pan back either way.
+   */
+  if (beginDrag(e.clientX, e.clientY) && drag) {
+    holdMapStill();
+    drag.held = true;
+  }
 }
 
 function onMouseMove(e) {
