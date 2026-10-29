@@ -230,7 +230,7 @@ async function start(site, inputs) {
     if (kept.radiation && site.shadeEdits?.fences?.length) {
       try {
         const cells = []; for (let i = 0; i < kept.lawn.length; i++) if (kept.lawn[i]) cells.push(i);
-        kept.fenceHeat = fenceRadiation(site.shadeEdits.fences, { W: res.grid.W, H: res.grid.H, bbox: res.grid.bbox, cell: 1 }, res.z, cells, lat, lng);
+        kept.fenceHeat = fenceRadiation(site.shadeEdits.fences, { W: res.grid.W, H: res.grid.H, bbox: res.grid.bbox, cell: 1 }, res.z, cells, lat, lng, undefined, kept.radiation);
       } catch { kept.fenceHeat = null; }
     }
     if (kept.light) kept.shade = 'ok';

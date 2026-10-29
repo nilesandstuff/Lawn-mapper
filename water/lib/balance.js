@@ -207,7 +207,7 @@ export function etToday(model, part, inSeason, out, month = null) {
     const aP = (1 - params.albedoPar) * rs, aN = (1 - params.albedoNir) * rs;
     /* FENCES (H49): the sky a fence fills, less its reflected skylight (counted as sky in the shade map's light), is
        sky the grass does not lose its heat to; a sunlit board, warmer than the air, gives the grass more. */
-    const FH = model.fenceHeat, fb = FH ? FH.beam[month] : null, fRefl = FH ? FH.reflSky : null, fSky = FH ? FH.sky : null;
+    const FH = model.fenceHeat, fb = FH ? FH.beam[month] : null, fRefl = FH ? FH.reflSky : null, fSky = FH ? (FH.skyM ? FH.skyM[month] : FH.sky) : null;
     const beamMJ = rs * (1 - fd), skyMJ = rs * fd;
     for (let i = 0; i < N; i++) {
       const k = at ? at[i] : 0;

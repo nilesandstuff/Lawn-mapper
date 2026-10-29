@@ -1651,7 +1651,8 @@ shade map's worker, ten May-November seasons, use as a share of open sun):
 Its shade alone takes up to 4%; with its warmth and the sky it hides, the grass within a metre or two uses 2-4%
 more than without it, both sides; nothing by three heights away. Its wind is in H50.
 CHECKED 2026-10-29 (H58 point 1): true at midsummer in the open, false in spring and fall; the board's one
-temperature and its full sun under trees overstate the shady side's warmth, most of all on this tree-shaded edge.
+temperature and its full sun under trees overstate the shady side's warmth, most of all on this tree-shaded edge. Both fixed
+(H59): with them this fence is about even on its shaded side and +1.9% on its sunny side.
 
 ### H50. Each spot's own wind: what stands upwind of it, by direction (water session, 2026-10-27)
 
@@ -1996,6 +1997,37 @@ rain, no cap: 645 mm watered for 540 used, 105 drained. On the owner's clay ever
 nothing drains, so his plan is untouched; on a loam or sand lawn the normal plan likely asks 10-20% more than the
 grass uses. A fix would let the grass and the drainage draw on the day's gravity water together (or water to field
 capacity only).
+
+### H59. The fence's two faces, and its sun through the trees (water session, 2026-10-29)
+
+The owner, on H58 point 1: "good catch on the shady side running too warm and ignoring shade, fix both of those."
+lib/fenceheat.js now:
+- Gives each face its own temperature. Per face h = 5.7 + 3.8 u + 4 eps sigma T^3 (16.8 W/m2/K at 1.5 m/s), the board's
+  conductance K face to face (a 19 mm wood board 6.3 W/m2/K; a hollow vinyl panel about 5, two 2.5 mm walls round a
+  25 mm air space); a face's warmth from what it absorbs (S1) and the far face absorbs (S2):
+  x1 = (S1 (h + K) + S2 K) / (h (h + 2K)). The grass sees the face on its side (the shade map's faceViews gives the
+  side). The two faces' mean is the old one-temperature board, so the fence's total heat is unchanged; only its
+  split moves, toward the lit face.
+- Lights the board through the trees: per length and month, the shade map's beam with the trees over its beam with
+  the buildings alone (both with the fence in, so its own shade cancels), summed over the lawn 1.5-2.5 m either side
+  of it; the same for the sky. 1 where no lawn lies beside it.
+Tests (wind.test.js): the lit face's share 2.5 times the far face's or more; in September the grass 1 m south of an
+east-west fence warmed more than twice the grass 1 m north; the beam at 30% under trees cuts the board's sun to 30%.
+
+**The owner's lawn, H49's test fence again** (6 ft solid natural wood, 79 m east-west along the tree-shaded south
+edge; ten April-November seasons, use as a share of open sun; the shade map's worker in node):
+
+| | without | its shade only | heat as before | two faces | and the trees over the board |
+|---|---|---|---|---|---|
+| 1 m south (sunny side) | 0.537 | 0.522 | 0.559 | 0.563 | 0.547 |
+| 1 m north (shaded side) | 0.575 | 0.555 | 0.591 | 0.588 | 0.577 |
+| 2 m north | 0.620 | 0.614 | 0.632 | 0.630 | 0.624 |
+| 3 m north | 0.627 | 0.625 | 0.635 | 0.634 | 0.631 |
+
+The trees there let 0.22 (September) to 0.56 (winter) of the beam reach the board. Corrected, the fence comes out
+about even on its shaded side (+0.3% against +2.8% before) and +1.9% on its sunny side (+4.1% before). Two faces alone
+moves a season's total little on this east-west fence, because from May to July both faces see the sun (H58); it
+matters on the shaded side in spring and fall, and on fences running north-south or standing in the open.
 
 ## SPECULATION
 

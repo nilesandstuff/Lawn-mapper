@@ -4,7 +4,7 @@
  */
 import assert from 'node:assert/strict';
 import { parseAsos, windStats, nearestStations, kmBetween, TO_2M, KT } from '../lib/wind.js';
-import { fenceRadiation, heatShare, faceBeamRatio } from '../lib/fenceheat.js';
+import { fenceRadiation, heatShare, faceBeamRatio, faceBeamSides, faceShares } from '../lib/fenceheat.js';
 import { attachStationHours } from '../lib/weather.js';
 import { toMerc, fromMerc } from '../lib/shade/ept.js';
 import { weps, buildingLee, buildingFront, shelterByDirection, monthlyShelter, calibrate } from '../lib/shelter.js';
@@ -68,6 +68,23 @@ test('a fence: the grass at its foot sees it, takes some sky from the longwave, 
   assert.ok(faceBeamRatio(seg, lat, lng, 0) > faceBeamRatio(seg, lat, lng, 6), 'a low winter sun lights an upright face more, per unit on the ground');
   assert.ok(heatShare() > 0.1 && heatShare() < 0.25);
   assert.equal(fenceRadiation([], { W, H, bbox, cell: 1 }, z, cells, lat, lng), null);
+  // TWO FACES (FINDINGS H59): a wood board passes less heat face to face than each face sheds, so the lit face runs
+  // warmer than the back; the mean of the two is the one-temperature board's share
+  const fs = faceShares('wood');
+  assert.ok(fs.seen > 2.5 * fs.far && Math.abs((fs.seen + fs.far) / 2 - heatShare()) < 1e-9, `${fs.seen} ${fs.far}`);
+  // September: the sun is south of the fence all day; the grass 1 m south (sunny side) is warmed more than 1 m north
+  const [pos, neg] = faceBeamSides({ nE: 0, nN: 1 }, lat, lng, 8);
+  assert.ok(neg > 5 * pos, 'in September the south face takes the sun');
+  const south = at(0, -1.5), north = at(0, 1.5);
+  assert.ok(fr.beam[8][south] > 2 * fr.beam[8][north], `sunny side ${fr.beam[8][south]} against shady ${fr.beam[8][north]}`);
+  // THROUGH THE TREES: the shade map's light beside the fence at 30% of the buildings-only light, the board's sun with it
+  const one = () => Array.from({ length: 12 }, () => new Float32Array(W * H).fill(1));
+  const rad = { beam: one(), sky: one(), beamB: one(), skyB: one() };
+  for (let m = 0; m < 12; m++) rad.beam[m].fill(0.3);
+  const shaded = fenceRadiation([fence], { W, H, bbox, cell: 1 }, z, cells, lat, lng, undefined, rad);
+  assert.ok(Math.abs(shaded.beam[6][south] / fr.beam[6][south] - 0.3) < 0.01, `under trees: ${shaded.beam[6][south] / fr.beam[6][south]}`);
+  assert.ok(Math.abs(shaded.skyM[6][south] - fr.skyM[6][south]) < 1e-9, 'the sky untouched where only the beam was cut');
+  assert.equal(shaded.treeLit[0].beam[6], 0.3);
 });
 
 test('the shelter curves: WEPS behind a barrier by porosity, a house\'s lee and its front', () => {
