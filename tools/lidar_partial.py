@@ -274,10 +274,18 @@ def tile_info(src):
     ct_off = struct.unpack_from("<q", head, off)[0]
     if not (off + 8 < ct_off < size):
         raise Unsupported("no chunk table")
-    tail = src.get(ct_off, size - 1)
+    # The extended records (where many USGS tiles keep their WKT) lie at the
+    # end too; usually after the chunk table, so already in the tail.
+    n_evlr = int(getattr(header, "number_of_evlrs", 0) or 0)
+    evlr_at = int(getattr(header, "start_of_first_evlr", 0) or 0)
+    lo = min(ct_off, evlr_at) if n_evlr and off < evlr_at < size else ct_off
+    tail = src.get(lo, size - 1)
     sp = Sparse(size)
     sp.add(0, head)
-    sp.add(ct_off, tail)
+    sp.add(lo, tail)
+    if n_evlr and off < evlr_at < size:
+        from laspy.vlrs.vlrlist import VLRList
+        header.evlrs = VLRList.read_from(io.BytesIO(tail[evlr_at - lo:]), n_evlr, extended=True)
     sp.seek(off)
     table = [tuple(int(v) for v in e) for e in lazrs.read_chunk_table(sp, lazrs.LazVlr(vlr_raw))]
     # A fixed-size table says 50,000 for the last chunk too; it holds what is left.
@@ -290,22 +298,24 @@ def tile_info(src):
     starts = [off + 8]
     for _, nbytes in table:
         starts.append(starts[-1] + nbytes)
-    if starts[-1] != ct_off:
+    if starts[-1] != ct_off:  # (the chunk table follows the last chunk)
         raise Unsupported("the chunk table does not add up to the file")
     return {"size": size, "header": header, "vlr": vlr_raw, "off": off, "table": table,
             "starts": starts, "sparse": sp, "psize": header.point_format.size}
 
 
 def first_points(info, raws):
-    """x, y (the tile's units) and point source id of each chunk's raw first point."""
+    """x, y (the tile's units), point source id and GPS time of each chunk's raw first point."""
     h = info["header"]
-    xs, ys, srcs = [], [], []
+    xs, ys, srcs, gps = [], [], [], []
     for d in raws:
         x, y = struct.unpack_from("<ii", d, 0)
-        srcs.append(struct.unpack_from("<H", d, 22)[0])
+        srcs.append(struct.unpack_from("<H", d, 20)[0])  # point source id: after X Y Z, intensity, 4 bytes of flags and class, scan angle
+        gps.append(struct.unpack_from("<d", d, 22)[0])
         xs.append(x * h.scales[0] + h.offsets[0])
         ys.append(y * h.scales[1] + h.offsets[1])
     xs, ys = np.array(xs), np.array(ys)
+    info["gps"] = np.array(gps)
     pad = 0.01 * max(h.maxs[0] - h.mins[0], h.maxs[1] - h.mins[1]) + 1
     inside = (xs >= h.mins[0] - pad) & (xs <= h.maxs[0] + pad) & (ys >= h.mins[1] - pad) & (ys <= h.maxs[1] + pad)
     if not inside.all():
@@ -315,7 +325,35 @@ def first_points(info, raws):
 
 # ------------------------------------------------------------------ choosing
 
-def select_chunks(xs, ys, srcs, box, unit_m=1.0):
+TURN_S = 5.0      # a gap in the plane's clock this long between two chunks is a turn: a new flight line
+TURN_TIMES = 20   # ...or this many times the line's usual gap
+
+
+def lines_of(srcs, gps=None):
+    """
+    Runs of chunks flown in one pass, as (first, last). A new pass starts where
+    the point source id changes, and -- because some projects give a whole
+    flight one id (USGS's Arkansas 2024 tiles: 45 throughout) -- where the GPS
+    time between two chunks' first points jumps (the turn at the end of a
+    line, a minute or more) or runs backwards.
+    """
+    n = len(srcs)
+    if n == 0:
+        return []
+    cut = np.zeros(n, dtype=bool)
+    cut[0] = True
+    cut[1:] |= np.asarray(srcs[1:]) != np.asarray(srcs[:-1])
+    if gps is not None and len(gps) == n and n > 1:
+        g = np.asarray(gps, dtype=float)
+        dg = np.diff(g)
+        pos = dg[(dg > 0) & np.isfinite(dg)]
+        usual = float(np.median(pos)) if len(pos) else 0.0
+        cut[1:] |= ~np.isfinite(dg) | (dg < 0) | (dg > max(TURN_S, TURN_TIMES * usual))
+    starts = np.flatnonzero(cut).tolist() + [n]
+    return [(starts[i], starts[i + 1] - 1) for i in range(len(starts) - 1)]
+
+
+def select_chunks(xs, ys, srcs, box, unit_m=1.0, gps=None):
     """
     The chunks whose strip can reach `box` ([x0, y0, x1, y1] in the tile's
     units). A flight line is a run of chunks opening on the same point source
@@ -331,13 +369,7 @@ def select_chunks(xs, ys, srcs, box, unit_m=1.0):
         return [], None
     m_abs = ABS_MARGIN_M / unit_m
     corners = np.array([[box[0], box[1]], [box[2], box[1]], [box[0], box[3]], [box[2], box[3]]], dtype=float)
-    groups, k = [], 0
-    while k < n:
-        j = k
-        while j + 1 < n and srcs[j + 1] == srcs[k]:
-            j += 1
-        groups.append((k, j))
-        k = j + 1
+    groups = lines_of(srcs, gps)
     pick = set()
     widest, short = 0.0, []
     for g0, g1 in groups:
@@ -455,7 +487,7 @@ def read_box(src, box3857, crs_of_header, say=lambda words: None):
     psize = info["psize"]
     raws = src.get_many([(info["starts"][k], info["starts"][k] + psize - 1) for k in range(n)])
     xs, ys, srcs = first_points(info, raws)
-    picked, why = select_chunks(xs, ys, srcs, nbox, unit_m=unit_m)
+    picked, why = select_chunks(xs, ys, srcs, nbox, unit_m=unit_m, gps=info.get("gps"))
     if why:
         raise Unsupported(why)
     need = sum(info["table"][k][1] for k in picked)

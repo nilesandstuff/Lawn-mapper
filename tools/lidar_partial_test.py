@@ -26,7 +26,7 @@ UTM_WKT = ('PROJCS["NAD83(2011) / UTM zone 15N",GEOGCS["NAD83(2011)",DATUM["NAD8
 X0, Y0 = 544000.0, 4028000.0   # the tile's south-west corner, 1 km a side
 
 
-def flight_tile(path, per_line=1_200_000, lines=4, seed=3, cross=False):
+def flight_tile(path, per_line=1_200_000, lines=4, seed=3, cross=False, wkt_in_evlr=False, one_id=False):
     """A 1 km tile flown in `lines` north-south passes 350 m wide (overlapping), stored in flight order.
     1.2 million points a line makes each 50,000-point chunk about 40 m of it, as on USGS's tiles."""
     import laspy
@@ -41,18 +41,21 @@ def flight_tile(path, per_line=1_200_000, lines=4, seed=3, cross=False):
             y = y[::-1]
         x = centre + rng.uniform(-175, 175, per_line)
         keep = (x >= X0) & (x < X0 + 1000)
-        xs.append(x[keep]); ys.append(Y0 + y[keep]); src.append(np.full(keep.sum(), 100 + i))
-        gps.append(t + np.arange(keep.sum()) * 1e-4); t += 1000
+        xs.append(x[keep]); ys.append(Y0 + y[keep]); src.append(np.full(keep.sum(), 45 if one_id else 100 + i))
+        gps.append(t + np.cumsum(rng.uniform(0.5e-5, 1.5e-5, keep.sum()))); t += 1000.123
     if cross:  # one short cross line at the end, east-west, a few chunks long
         n = 400_000
         x = X0 + np.sort(rng.uniform(0, 1000, n)); y = Y0 + 600 + rng.uniform(-150, 150, n)
-        xs.append(x); ys.append(y); src.append(np.full(n, 900)); gps.append(t + np.arange(n) * 1e-4)
+        xs.append(x); ys.append(y); src.append(np.full(n, 900)); gps.append(t + np.cumsum(rng.uniform(0.5e-5, 1.5e-5, n)))
     x, y, sid, g = (np.concatenate(v) for v in (xs, ys, src, gps))
     n = len(x)
     header = laspy.LasHeader(point_format=6, version="1.4")
     header.scales = np.array([0.01, 0.01, 0.01])
     header.offsets = np.array([X0, Y0, 0.0])
-    header.vlrs.append(WktCoordinateSystemVlr(UTM_WKT))
+    if wkt_in_evlr:  # as many USGS tiles keep it: an extended record after the points
+        header.evlrs = laspy.vlrs.vlrlist.VLRList([WktCoordinateSystemVlr(UTM_WKT)])
+    else:
+        header.vlrs.append(WktCoordinateSystemVlr(UTM_WKT))
     las = laspy.LasData(header)
     las.x, las.y = x, y
     las.z = 200 + rng.uniform(0, 30, n)
@@ -104,6 +107,54 @@ def check_parts_match_the_whole():
         assert max(small) < 0.6, f"a small box read {max(small):.0%} of the tile"
         print(f"partial read: {len(boxes)} boxes, identical to the whole tile ({n:,} points); "
               f"share read {min(shares):.0%}-{max(shares):.0%}, small boxes at most {max(small):.0%}")
+
+
+def check_first_points_fields():
+    """Each chunk's raw first point: its x, y and point source id are the decoded first point's (2026-10-30: the id was read from the time's bytes)."""
+    import laspy
+    with tempfile.TemporaryDirectory() as d:
+        tile = Path(d) / "USGS_LPC_TEST_6.laz"
+        flight_tile(tile, per_line=400_000, wkt_in_evlr=True)
+        src = p.FileSource(tile)
+        info = p.tile_info(src)
+        assert s.wkt_of(info["header"]), "the WKT in an extended record is found"
+        n = len(info["table"])
+        raws = src.get_many([(info["starts"][k], info["starts"][k] + info["psize"] - 1) for k in range(n)])
+        xs, ys, srcs = p.first_points(info, raws)
+        las = laspy.read(str(tile))
+        idx = np.cumsum([0] + [c for c, _ in info["table"][:-1]])
+        assert np.allclose(xs, np.asarray(las.x)[idx]) and np.allclose(ys, np.asarray(las.y)[idx]), "x, y"
+        assert np.array_equal(srcs, np.asarray(las.point_source_id)[idx]), f"source ids {srcs[:6]} against {np.asarray(las.point_source_id)[idx][:6]}"
+        assert set(srcs.tolist()) == {100, 101, 102, 103}, set(srcs.tolist())
+        box = merc_box(X0 + 500, Y0 + 500, 60)
+        part = p.read_box(src, box, crs_of_header)
+        same, words = p.same_records(part, s.tile_records(tile, box))
+        assert same, words
+    print("first points: x, y and flight line read from each chunk's raw first point; a WKT kept at the end is found")
+
+
+def check_one_id_for_every_line():
+    """A flight that gives every line one source id (USGS's Arkansas 2024): lines told apart by the turns in the GPS time."""
+    with tempfile.TemporaryDirectory() as d:
+        tile = Path(d) / "USGS_LPC_TEST_7.laz"
+        flight_tile(tile, one_id=True)
+        src = p.FileSource(tile)
+        info = p.tile_info(src)
+        n = len(info["table"])
+        raws = src.get_many([(info["starts"][k], info["starts"][k] + info["psize"] - 1) for k in range(n)])
+        _, _, srcs = p.first_points(info, raws)
+        assert set(srcs.tolist()) == {45}
+        lines = p.lines_of(srcs, info["gps"])
+        assert len(lines) in (4, 5, 6, 7, 8), f"{len(lines)} lines found: {lines}"
+        shares = []
+        for cx, cy in ((X0 + 125, Y0 + 500), (X0 + 875, Y0 + 300), (X0 + 500, Y0 + 900)):
+            box = merc_box(cx, cy, 60)
+            part = p.read_box(p.FileSource(tile), box, crs_of_header)
+            same, words = p.same_records(part, s.tile_records(tile, box))
+            assert same, f"one id, box at ({cx - X0:.0f}, {cy - Y0:.0f}): {words}"
+            shares.append(part["stats"]["share"])
+        assert max(shares) < 0.45, f"lines not told apart: {shares}"
+    print(f"one source id for every line: {len(lines)} lines found by the turns; small boxes read {max(shares):.0%} at most, the same points")
 
 
 def check_a_short_cross_line():
@@ -276,6 +327,8 @@ def check_multipart_parsing():
 if __name__ == "__main__":
     check_multipart_parsing()
     check_selection_rules()
+    check_first_points_fields()
+    check_one_id_for_every_line()
     check_parts_match_the_whole()
     check_a_short_cross_line()
     check_whole_box_is_refused()
