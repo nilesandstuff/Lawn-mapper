@@ -1,0 +1,44 @@
+name: 47. Check the partial lidar download
+
+# Proves tools/lidar_partial.py before the live server uses it (owner,
+# 2026-10-30: "make sure it works well before putting it on the live site").
+# Runs on Modal's CPUs in an app of its own (lawn-mapper-lidar-check), never
+# the live server's: every tile already on the server's volume read in part
+# and compared point for point with the whole tile, and real requests to
+# USGS's rockyweb for two tiles not on it. Costs a few cents of CPU, no GPU.
+on:
+  workflow_dispatch:
+    inputs:
+      what:
+        description: 'simulate (tiles on the volume), live (rockyweb), or both'
+        type: choice
+        default: 'both'
+        options: ['both', 'simulate', 'live']
+      per_tile:
+        description: 'Boxes per tile in the simulation'
+        default: '8'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: The partial download's own tests
+        run: |
+          pip install --quiet numpy laspy lazrs rasterio
+          python3 tools/lidar_partial_test.py
+      - name: On Modal, against the real tiles
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: |
+          set -o pipefail
+          pip install --quiet modal
+          modal run tools/lidar_partial_check.py --what "${{ inputs.what }}" --per-tile "${{ inputs.per_tile }}" 2>&1 | tee check.log
+          echo
+          echo "================ THE CHECK ================"
+          grep -E "SIMULATE|LIVE|compared|whole download|box \+-|requests per|FAIL|CHECK|^  \{" check.log || true
