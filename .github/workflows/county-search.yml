@@ -101,7 +101,16 @@ jobs:
         if: steps.commit.outputs.pushed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh workflow run deploy.yml --ref "$GITHUB_REF_NAME" -f confirm=deploy
+        # Asked up to four times: on 2026-10-30 GitHub answered the one ask
+        # "HTTP 502: Server Error" and the night's parcel lines sat undeployed.
+        run: |
+          for wait in 0 15 60 180; do
+            sleep "$wait"
+            if gh workflow run deploy.yml --ref "$GITHUB_REF_NAME" -f confirm=deploy; then exit 0; fi
+            echo "GitHub did not take the deploy request; asking again."
+          done
+          echo "::error::GitHub refused the deploy request four times; the registry is pushed and the next deploy carries it."
+          exit 1
 
       - name: Record the parcel results
         if: always() && steps.find.outcome == 'success'

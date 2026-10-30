@@ -212,4 +212,12 @@ jobs:
         if: inputs.asked_by != '' && steps.commit.outputs.pushed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh workflow run deploy.yml --ref "$GITHUB_REF_NAME" -f confirm=deploy
+        # Asked up to four times, as in county-search.yml (GitHub's 502 of 2026-10-30).
+        run: |
+          for wait in 0 15 60 180; do
+            sleep "$wait"
+            if gh workflow run deploy.yml --ref "$GITHUB_REF_NAME" -f confirm=deploy; then exit 0; fi
+            echo "GitHub did not take the deploy request; asking again."
+          done
+          echo "::error::GitHub refused the deploy request four times; the registry is pushed and the next deploy carries it."
+          exit 1
