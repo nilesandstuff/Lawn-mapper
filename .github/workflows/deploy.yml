@@ -395,6 +395,15 @@ jobs:
             echo "ALPHA_STATE=off -- no release on Modal yet (run workflow 14 with release: alpha, then this again)" >> "$GITHUB_ENV"
             exit 0
           fi
+          # THE SERVER'S OWN TESTS FIRST (2026-10-30): the model server is Python
+          # that `npm test` never ran. A red one leaves the running server as it is.
+          pip install --quiet numpy pillow scipy scikit-image "laspy[lazrs]" rasterio
+          if ! (cd tools && python3 lidar_partial_test.py && python3 lidar_sources_test.py && python3 alpha_sources_test.py) > server-tests.log 2>&1; then
+            tail -40 server-tests.log
+            echo "ALPHA_STATE=ON, but NOT redeployed -- the model server's Python tests failed (see \"Serve the trained model\"); the server already running is unchanged" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          grep -E "^(lidar partial|lidar sources|alpha_sources): ok" server-tests.log || true
           # One shared secret between the Worker and the server, derived from
           # the Modal secret already here so there is nothing new to set up.
           token=$(printf '%s:alpha' "$MODAL_TOKEN_SECRET" | sha256sum | cut -d' ' -f1)

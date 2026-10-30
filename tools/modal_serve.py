@@ -172,14 +172,14 @@ def _prepare(body):
         return out
 
 
-def _gather_here(payload, tile_fetch=None):
+def _gather_here(payload, tile_fetch=None, area_fetch=None):
     """alpha_sources.gather with this machine's copy of the scorer's `prepare`."""
     if f"{REPO}/tools" not in sys.path:
         sys.path.insert(0, f"{REPO}/tools")
     import alpha_sources
     key = payload.get("progressKey")
     return alpha_sources.gather(payload, _prepare, progress=lambda stage, **more: _note(key, stage, **more),
-                                cache_dir="/models/lidar-cache", tile_fetch=tile_fetch)
+                                cache_dir="/models/lidar-cache", tile_fetch=tile_fetch, area_fetch=area_fetch)
 
 
 # WHO IS FETCHING WHICH TILE (lidar_tiles below): a page asks every few
@@ -361,15 +361,25 @@ def _fetch_or_wait(urls, say=lambda words: None, wait_s=FETCH_AGAIN_S, fetch_aft
 
 # 5400 s: each tile may now wait out USGS's 429s for RATE_PATIENCE_S (30 min)
 # and then download for twenty more (run 271: 324 MB took 1296 s).
-@app.function(image=cpu_image, volumes={TILE_DIR: tiles}, timeout=5400, cpu=1.0, memory=2048)
-def fetch_tiles(urls):
+@app.function(image=cpu_image, volumes={TILE_DIR: tiles}, timeout=5400, cpu=1.0, memory=4096)
+def fetch_tiles(urls, box=None, area_urls=None):
     """USGS's tiles of a newer flight onto the volume, for the next lot there.
     Each is written under a temporary name and renamed when whole, so a reader
-    never meets half a file; two lots asking at once fetch it twice, harmlessly."""
+    never meets half a file; two lots asking at once fetch it twice, harmlessly.
+    With `box` (Web Mercator; area_urls: every tile the asker reads, of which
+    `urls` are the missing ones), the square round it is first cut from the
+    chunks of the files under it and kept as an area (lidar_partial.py), and
+    the whole tiles are fetched by another call in the background; answers
+    as soon as the area is kept."""
     if f"{REPO}/tools" not in sys.path:
         sys.path.insert(0, f"{REPO}/tools")
     import lidar_sources
     from pathlib import Path
+    if box is not None:
+        part = _part_area(area_urls or urls, box)
+        if part is not None:
+            fetch_tiles.spawn(urls)
+            return {"area": part.name}
     got = 0
     for url in urls:
         path = Path(TILE_DIR) / url.rsplit("/", 1)[-1]
@@ -392,10 +402,10 @@ def fetch_tiles(urls):
     return got
 
 
-def _ask_fetch(urls):
+def _ask_fetch(urls, box=None, area_urls=None):
     """fetch_tiles started for the tiles nobody has asked for in the last
     twenty minutes, each noted as asked; the rest are already on their way.
-    Returns the urls asked for."""
+    With `box`, the part under it first (fetch_tiles). Returns the urls asked for."""
     now = time.time()
     ask = []
     for u in urls:
@@ -411,8 +421,37 @@ def _ask_fetch(urls):
                 pass
             ask.append(u)
     if ask:
-        fetch_tiles.spawn(ask)
+        fetch_tiles.spawn(ask, box, area_urls)
     return ask
+
+
+def _part_area(urls, box, say=lambda words: print(words, flush=True), patient_until=None):
+    """The square round `box` (lidar_sources.PARTIAL_HALF_M each way, grown to
+    hold it) kept as an area of these tiles, from the parts of the missing
+    files under it; committed to the volume. -> its path, or None (read the
+    tiles whole). A part already kept is found, not read again."""
+    if f"{REPO}/tools" not in sys.path:
+        sys.path.insert(0, f"{REPO}/tools")
+    import lidar_sources
+    try:
+        tiles.reload()
+    except Exception:  # noqa: BLE001 - read what is here
+        pass
+    try:
+        found = lidar_sources.area_covering(TILE_DIR, urls, box)
+        if found:
+            return found
+        t0 = time.time()
+        path = lidar_sources.write_partial_area(TILE_DIR, urls, lidar_sources.square_round(box, lidar_sources.PARTIAL_HALF_M),
+                                                say=say, patient_until=patient_until)
+    except Exception as e:  # noqa: BLE001 - the whole tiles, as before
+        print(f"part of the tiles not read ({type(e).__name__}: {str(e)[:160]}); the whole tiles instead", flush=True)
+        return None
+    if path is None:
+        return None
+    tiles.commit()
+    print(f"part area {path.parent.name}/{path.name}: {path.stat().st_size / 1e6:.1f} MB in {time.time() - t0:.0f}s", flush=True)
+    return path
 
 
 TILE_NAME = re.compile(r"^https://rockyweb\.usgs\.gov/vdelivery/Datasets/Staged/Elevation/LPC/Projects/[A-Za-z0-9_./-]+\.laz$")
@@ -472,6 +511,12 @@ def warm_area(urls, box):
         pass
     if lidar_sources.area_covering(TILE_DIR, urls, box):
         return {"area": "kept already"}
+    # The part round the address first (the shade map, the water map's lawn
+    # and the detector read inside it), then the whole tiles and the wide area.
+    from pathlib import Path
+    if any(not (Path(TILE_DIR) / u.rsplit("/", 1)[-1]).exists() for u in urls):
+        cx, cy = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
+        _part_area(urls, [cx - 1, cy - 1, cx + 1, cy + 1])
     missing = _fetch_or_wait(urls, say=lambda words: print(words, flush=True), parallel=WARM_PARALLEL)
     if missing:
         return {"missing": [u.rsplit("/", 1)[-1] for u in missing]}
@@ -490,9 +535,21 @@ def _gather_with_tiles(payload):
         tiles.reload()  # tiles fetched since this machine started
     except Exception:  # noqa: BLE001 - files open on another lot: read what is here
         pass
+    deadline = time.time() + PRESS_TILE_WAIT_S
+
+    def area_fetch(urls, box, say):
+        if f"{REPO}/tools" not in sys.path:
+            sys.path.insert(0, f"{REPO}/tools")
+        import lidar_sources
+        if not lidar_sources.PARTIAL_ON:
+            return None
+        say("Downloading the part of USGS's newest lidar survey under this lot. USGS offers it only as large files; "
+            "this reads just the part needed, once per area")
+        return _part_area(urls, box, patient_until=deadline)
+
     got = _gather_here(payload, tile_fetch=lambda urls, say: _fetch_or_wait(
         urls, say=lambda words: say(words), wait_s=PRESS_TILE_WAIT_S, fetch_after_wait=True,
-        parallel=2, deadline=time.time() + PRESS_TILE_WAIT_S))
+        parallel=2, deadline=deadline), area_fetch=area_fetch)
     rec = (got.get("sources") or {}).get("rec", {})
     if rec.get("tilesFetched"):
         try:
@@ -821,7 +878,7 @@ def lidar_tiles(request: "Request", tiles: str, box: str, spacing: float = 0.0):
         raise HTTPException(status_code=400, detail="box: w,s,e,n in Web Mercator metres, at most 1.5 km across")
     out = crop_tiles.remote(urls, bbox, float(spacing or 0.0))
     if out.get("missing"):
-        ask = _ask_fetch(out["missing"])
+        ask = _ask_fetch(out["missing"], bbox, urls)
         return JSONResponse({"status": "fetching", "missing": [u.rsplit("/", 1)[-1] for u in out["missing"]], "started": bool(ask)}, status_code=202)
     return Response(content=out["laz"], media_type="application/vnd.laszip", headers={"Cache-Control": "public, max-age=604800"})
 

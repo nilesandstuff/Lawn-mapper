@@ -104,6 +104,22 @@ def _tiles_and_area():
             check("a missing tile goes to the shared fetch, not a second download", asked == [[url]])
             check("and the press reads on without it, saying so", out["rec"].get("tilesPending") == [url] and not read)
 
+            # ONLY THE PART UNDER THE LOT (2026-10-30): asked first, read when it comes, the whole tile left pending.
+            parted = []
+            part_file = str(Path(d) / "part.3857.laz")
+            out = alpha_sources.gather_sources(Image.new("RGB", (8, 8)), prep, tile_fetch=fetch,
+                                               area_fetch=lambda tiles, box, say: parted.append((list(tiles), box)) or part_file)
+            check("a missing tile's part under the frame is asked for first, with the frame grown 5 m",
+                  parted and parted[0][0] == [url] and abs(parted[0][1][0] - (prep["bbox"][0] - 5)) < 1e-6)
+            check("and read, without waiting on the whole tile",
+                  read and read[-1] == [part_file] and len(asked) == 1 and out["rec"].get("tilesPart")
+                  and out["rec"].get("lidarSource") == "area" and out["rec"].get("tilesPending") == [url])
+            read.clear()
+            out = alpha_sources.gather_sources(Image.new("RGB", (8, 8)), prep, tile_fetch=fetch,
+                                               area_fetch=lambda tiles, box, say: None)
+            check("a part that cannot be read leaves the press to the whole tile, as before",
+                  len(asked) == 2 and not read and out["rec"].get("tilesPending") == [url] and not out["rec"].get("tilesPart"))
+
             lt._synthetic_tile(Path(d) / "USGS_LPC_X_1_2.laz", n=2000)
             alpha_sources.gather_sources(Image.new("RGB", (8, 8)), prep, tile_fetch=fetch)
             check("a tile on the volume is read whole when no area holds the frame", read[-1] == [str(Path(d) / "USGS_LPC_X_1_2.laz")])

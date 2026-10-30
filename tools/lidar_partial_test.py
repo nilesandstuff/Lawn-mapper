@@ -219,6 +219,47 @@ def check_over_http():
     print("over http: multi-range parsed, the same points; a server without it refused (the whole tile instead)")
 
 
+def check_partial_area():
+    """lidar_sources.write_partial_area over http: the same area, point for point, as one cut from the whole tile."""
+    import laspy
+    with tempfile.TemporaryDirectory() as d:
+        whole_dir, part_dir = Path(d) / "whole", Path(d) / "part"
+        whole_dir.mkdir(); part_dir.mkdir()
+        tile = whole_dir / "USGS_LPC_TEST_5.laz"
+        flight_tile(tile, per_line=800_000)
+        _Ranges.body, _Ranges.multi = tile.read_bytes(), True
+        srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _Ranges)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        url = f"http://127.0.0.1:{srv.server_port}/USGS_LPC_TEST_5.laz"
+        try:
+            box = merc_box(X0 + 420, Y0 + 610, 2)
+            # This fake tile's lines overlap more than USGS's (four 350 m swaths in 1 km), so a smaller
+            # square than the live one; the real tiles' shares are workflow 47's to measure.
+            sq = s.square_round(box, 80)
+            said = []
+            assert s.write_partial_area(str(part_dir), [url], sq) is None or s.PARTIAL_ON, "switched off: nothing read"
+            on, s.PARTIAL_ON = s.PARTIAL_ON, True
+            try:
+                a = s.write_partial_area(str(part_dir), [url], sq, say=said.append)
+            finally:
+                s.PARTIAL_ON = on
+            b = s.write_area(str(whole_dir), [url], sq)
+            assert a is not None and a.name == b.name, f"{a} against {b}"
+            assert not (part_dir / tile.name).exists(), "the whole tile was not downloaded"
+            def recs(path):
+                las = laspy.read(str(path))
+                return {"x": np.asarray(las.x), "y": np.asarray(las.y), "z": np.asarray(las.z), "intensity": np.asarray(las.intensity),
+                        "ret": np.asarray(las.return_number), "nret": np.asarray(las.number_of_returns),
+                        "cls": np.asarray(las.classification), "gps": np.asarray(las.gps_time)}
+            same, words = p.same_records(recs(a), recs(b))
+            assert same, f"partial area: {words}"
+            assert s.area_covering(str(part_dir), [url], box) == a, "and found as an area"
+            assert any("MB read" in w for w in said), said
+        finally:
+            srv.shutdown()
+    print(f"partial area: a square round a lot, the same points as from the whole tile ({said[-1].split(': ', 1)[1]})")
+
+
 def check_multipart_parsing():
     body = (b"--B\r\nContent-Range: bytes 0-3/100\r\n\r\nabcd\r\n--B\r\nContent-Range: bytes 10-11/100\r\n\r\nxy\r\n--B--\r\n")
     parts = p.parse_multipart(body, 'multipart/byteranges; boundary="B"')
@@ -239,4 +280,5 @@ if __name__ == "__main__":
     check_a_short_cross_line()
     check_whole_box_is_refused()
     check_over_http()
+    check_partial_area()
     print("lidar partial: ok")

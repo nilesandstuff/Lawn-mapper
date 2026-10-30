@@ -403,7 +403,11 @@ def crop_tiles_laz(paths, bbox3857, spacing_m=0.0):
     LAZ. `spacing_m`, ground metres, thins to about one point per cell (the
     water map's wide look round a lot).
     """
-    recs = [tile_records(p, bbox3857) for p in paths]
+    return _laz_of([tile_records(p, bbox3857) for p in paths], bbox3857, spacing_m)
+
+
+def _laz_of(recs, bbox3857, spacing_m=0.0):
+    """Records of one or more tiles inside bbox3857 as one LAZ, thinned to `spacing_m` ground metres if asked."""
     recs = [r for r in recs if len(r["x"])]
     if not recs:
         rec = {"x": np.zeros(0), "y": np.zeros(0), "z": np.zeros(0), "intensity": np.zeros(0, np.uint16),
@@ -491,6 +495,70 @@ def write_area(tile_dir, urls, box):
     return out
 
 
+# THE FIRST AREA FROM PART OF EACH TILE (owner, 2026-10-30: "Yes build the
+# partial download"; tools/lidar_partial.py). Until a tile is on the volume
+# whole, the square round the address -- PARTIAL_HALF_M each way, what the
+# shade map (the lot and 50 m), the water map's lawn (the shade map's box)
+# and the detector's frame read -- is cut from the chunks of the file that
+# lie under it, a fraction of the download. The same points as the whole
+# tile's (workflow 47 proves it on every tile on the volume), kept as an
+# ordinary area; the whole tile follows in the background for everything
+# wider (the water map's wind, 150 m round the lot) and for the neighbours.
+PARTIAL_HALF_M = 150
+# OFF until workflow 47 has proved it on the real tiles and on rockyweb: with
+# it off, write_partial_area answers None and every caller fetches the tiles
+# whole, exactly as before.
+PARTIAL_ON = False
+
+
+def square_round(box, half_m):
+    """The square of `half_m` ground metres each way round box's centre, grown to hold box (Web Mercator)."""
+    cx, cy = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
+    _, lat = merc_to_lnglat(cx, cy)
+    k = half_m / math.cos(math.radians(lat))
+    return [min(box[0], cx - k), min(box[1], cy - k), max(box[2], cx + k), max(box[3], cy + k)]
+
+
+def write_partial_area(tile_dir, urls, box, say=print, patient_until=None):
+    """
+    `box` (rounded out to whole metres) kept as an area of these tiles: read
+    from the volume where a tile is there whole, from the chunks of its file
+    over the box where it is not (lidar_partial.read_box). Returns the area's
+    path, or None when any missing tile cannot be read in part (the caller
+    fetches it whole, as before).
+    """
+    import types
+    import lidar_partial
+    box = [math.floor(box[0]), math.floor(box[1]), math.ceil(box[2]), math.ceil(box[3])]
+    out = Path(tile_dir) / AREA_DIR / tiles_key(urls) / (_box_name(box) + CROP_SUFFIX)
+    if out.exists() and out.stat().st_size > 0:
+        return out
+    if not PARTIAL_ON:
+        return None
+    crs_of = lambda h: _tile_crs(types.SimpleNamespace(header=h))  # noqa: E731
+    recs = []
+    for u in urls:
+        path = Path(tile_dir) / str(u).rsplit("/", 1)[-1]
+        if path.exists() and path.stat().st_size > 0:
+            recs.append(tile_records(path, box))
+            continue
+        try:
+            rec = lidar_partial.read_box(lidar_partial.HttpSource(u, patient_until=patient_until), box, crs_of,
+                                         say=lambda words, n=path.name: say(f"{n}: {words}"))
+        except lidar_partial.Unsupported as e:
+            say(f"{path.name}: not read in part ({e}); the whole tile instead")
+            return None
+        st = rec.pop("stats")
+        say(f"{path.name}: {st['bytesRead'] / 1e6:.1f} of {st['fileBytes'] / 1e6:.0f} MB read ({st['chunksRead']} of "
+            f"{st['chunks']} chunks, {st['requests']} requests) in {st['seconds']:.0f}s")
+        recs.append(rec)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    tmp = out.with_name(out.name + ".part")
+    tmp.write_bytes(_laz_of(recs, box))
+    tmp.rename(out)
+    return out
+
+
 # THROUGH THE MODEL SERVER (owner, 2026-10-29: "yes do it"). The training
 # runner's own downloads from rockyweb were refused (429) or stalled on 15 of
 # the 18 tile lots in every S67 run, so they read older flights. The model
@@ -512,7 +580,12 @@ def crop_from_server(urls, box, out_dir, app=SERVER_APP, say=print):
     got = crop.remote(list(urls), list(box), 0.0)
     if got.get("missing"):
         say(f"    the server is fetching {len(got['missing'])} tile(s) from USGS (once; kept on its volume)")
-        modal.Function.from_name(app, "fetch_tiles").remote(list(got["missing"]))
+        # The part under this frame first (lidar_partial.py); the whole tiles follow on the server.
+        fetch = modal.Function.from_name(app, "fetch_tiles")
+        try:
+            fetch.remote(list(got["missing"]), list(box), list(urls))
+        except TypeError:  # a server deployed before fetch_tiles took a box
+            fetch.remote(list(got["missing"]))
         got = crop.remote(list(urls), list(box), 0.0)
     if got.get("missing"):
         raise RuntimeError(f"the model server could not fetch {len(got['missing'])} tile(s)")

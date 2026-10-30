@@ -185,7 +185,7 @@ def _lidar_save(path, got):
         pass
 
 
-def gather_sources(photo, prep, naip_align=None, progress=None, cache_dir=None, tile_fetch=None):
+def gather_sources(photo, prep, naip_align=None, progress=None, cache_dir=None, tile_fetch=None, area_fetch=None):
     """Lidar and NAIP for one lot. Returns plain arrays and a record:
 
         lidar       {height, n_ground, n_all, intensity} on lidar_frame's 2 m grid, or None
@@ -204,6 +204,9 @@ def gather_sources(photo, prep, naip_align=None, progress=None, cache_dir=None, 
     fetching them, or waiting for the machine already fetching them (the
     address's warm-up, tools/modal_serve.py _fetch_or_wait) -- and returns the
     urls still missing; without it they are fetched here, one by one.
+    `area_fetch(tiles, box, say)`, when given, is asked first: the frame's
+    points cut from the parts of the missing tiles' files under it
+    (lidar_sources.write_partial_area) -> an area's path, or None.
     """
     import lidar_frame
     import naip_bands
@@ -237,15 +240,40 @@ def gather_sources(photo, prep, naip_align=None, progress=None, cache_dir=None, 
     tiles = prep.get("lidarTiles") or []
     tile_dir = os.environ.get("LIDAR_TILE_DIR")
     local = None
+    part_area = None
     if tiles and tile_dir:
         paths = [Path(tile_dir) / u.rsplit("/", 1)[-1] for u in tiles]
         pending = [u for u, p in zip(tiles, paths) if not p.exists()]
+        mb = prep.get("lidarTilesMb")
+        # ONLY THE PART OF THE TILES UNDER THIS LOT (owner, 2026-10-30): an area
+        # kept already (the address's warm-up), or cut now from the chunks of
+        # the files over the frame -- a fraction of the download, the same
+        # points. The whole tiles follow in the background (tilesPending).
+        if pending:
+            import lidar_sources
+            frame_box = lidar_sources.grow(prep["bbox"], 5)
+            try:
+                part_area = lidar_sources.area_covering(tile_dir, tiles, frame_box)
+            except Exception:  # noqa: BLE001 - none, then
+                part_area = None
+            if part_area is None and area_fetch is not None:  # a part costs a fraction, whatever the tiles weigh
+                t_part = time.time()
+                try:
+                    part_area = area_fetch(tiles, frame_box, lambda words: say(words))
+                except Exception as e:  # noqa: BLE001 - the whole tiles, as before
+                    out["rec"]["tilesPartError"] = str(e)[:200]
+                    part_area = None
+                out["seconds"]["tilesPart"] = round(time.time() - t_part, 1)
+            if part_area is not None:
+                out["rec"]["tilesPart"] = True
+                out["rec"]["tilesPending"] = pending
+                local = [str(p) for p in paths]
+                pending = []
         # THE FIRST LOT IN AN AREA (owner, 2026-10-29: "make sure we're pulling
         # the newest and most up to date lidar everywhere"): the tiles are
         # fetched NOW when they are modest, so the first press reads the newest
         # flight too, not the older octree -- which over part of Ketchum had a
         # hole and nothing at all. A big set is still read next time.
-        mb = prep.get("lidarTilesMb")
         if pending and (mb is None or mb <= INLINE_TILES_MB) and tile_fetch is not None:
             t_wait = time.time()
             still = tile_fetch(pending, lambda words: say(words))
@@ -271,7 +299,9 @@ def gather_sources(photo, prep, naip_align=None, progress=None, cache_dir=None, 
                 pending = []
             except Exception as e:  # noqa: BLE001 - the octree now, the tiles next time
                 out["rec"]["tilesError"] = str(e)[:200]
-        if not pending:
+        if part_area is not None:
+            pass  # read from the area below; the whole tiles are pending
+        elif not pending:
             local = [str(p) for p in paths]
         else:
             out["rec"]["tilesPending"] = pending
@@ -279,8 +309,8 @@ def gather_sources(photo, prep, naip_align=None, progress=None, cache_dir=None, 
     # frame: the same points as the tiles, cut once already, so the read is of
     # a few MB instead of whole tiles. The layers' cache stays keyed on the
     # tiles themselves.
-    read_from = local
-    if local:
+    read_from = [str(part_area)] if part_area is not None else local
+    if local and part_area is None:
         import lidar_sources
         try:
             area = lidar_sources.area_covering(tile_dir, tiles, lidar_sources.grow(prep["bbox"], 5))
@@ -347,7 +377,7 @@ def gather_sources(photo, prep, naip_align=None, progress=None, cache_dir=None, 
     return out
 
 
-def gather(payload, prepare, progress=None, cache_dir=None, tile_fetch=None):
+def gather(payload, prepare, progress=None, cache_dir=None, tile_fetch=None, area_fetch=None):
     """Everything a lot needs before the GPU: where it is (`prepare`, the
     scorer's own grid via serve-alpha.mjs), the photograph, and its sources."""
     t0 = time.time()
@@ -358,6 +388,7 @@ def gather(payload, prepare, progress=None, cache_dir=None, tile_fetch=None):
     say("Fetching the aerial photograph of your lot")
     photo_bytes = fetch_press_photo(payload, say)
     photo = Image.open(io.BytesIO(photo_bytes)).convert("RGB")
-    sources = gather_sources(photo, prep, payload.get("naipAlign"), progress=progress, cache_dir=cache_dir, tile_fetch=tile_fetch)
+    sources = gather_sources(photo, prep, payload.get("naipAlign"), progress=progress, cache_dir=cache_dir, tile_fetch=tile_fetch,
+                               area_fetch=area_fetch)
     sources["seconds"]["gather"] = round(time.time() - t0, 1)
     return {"prep": prep, "photo": photo_bytes, "sources": sources}
