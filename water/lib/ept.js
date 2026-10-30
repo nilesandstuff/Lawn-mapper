@@ -177,8 +177,9 @@ export async function pointsFromServer(url, bbox, io, { progress = () => {}, spa
  *
  * `progress(done, total)` is told as nodes arrive.
  */
-export async function pointsIn(eptJsonUrl, bbox, io, { progress = () => {}, parallel = 6, spacingM = 0, lat = 0 } = {}) {
-  if (!/\/ept\.json$/.test(eptJsonUrl)) return pointsFromServer(eptJsonUrl, bbox, io, { progress, spacingM: spacingM });
+export async function pointsIn(eptJsonUrl, bbox, io, { progress = () => {}, parallel = 6, spacingM = 0, lat = 0, tries = undefined } = {}) {
+  // `tries`: how many 5 s waits a tile-only flight's server read may take (72, six minutes, unless told fewer)
+  if (!/\/ept\.json$/.test(eptJsonUrl)) return pointsFromServer(eptJsonUrl, bbox, io, { progress, spacingM: spacingM, ...(tries ? { tries } : {}) });
   const base = eptJsonUrl.replace(/\/ept\.json$/, '');
   const ept = await io.getJson(`${base}/ept.json`);
   if (String(ept?.srs?.horizontal) !== '3857') throw new Error(`point cloud is EPSG:${ept?.srs?.horizontal}, not 3857`);

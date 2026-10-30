@@ -144,7 +144,8 @@ async function start(site, inputs) {
     const url = site.lidar?.url || r.cloud?.url;
     if (!url || !site.lawn?.length) return null;
     const cm = (g.bbox[2] - g.bbox[0]) / g.W, wide = [g.bbox[0] - PAD * cm, g.bbox[1] - PAD * cm, g.bbox[2] + PAD * cm, g.bbox[3] + PAD * cm];
-    const [pts, ov] = await Promise.all([pointsIn(url, wide, io, { spacingM: 1.8, lat }), overtureFor(wide).catch(() => null)]);
+    // a tile-only flight not yet on the server: a minute's wait at most, then the wind goes without the wide box (it has the shade map's grid)
+    const [pts, ov] = await Promise.all([pointsIn(url, wide, io, { spacingM: 1.8, lat, tries: 12 }), overtureFor(wide).catch(() => null)]);
     return obstacleGrid(pts.cols, wide, lat, 4, { buildings: ov?.buildings || null });
   })().catch(() => null);
   const reported = new Uint8Array(g.W * g.H);
