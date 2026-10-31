@@ -517,10 +517,10 @@ def write_area(tile_dir, urls, box):
 # ordinary area; the whole tile follows in the background for everything
 # wider (the water map's wind, 150 m round the lot) and for the neighbours.
 PARTIAL_HALF_M = 150
-# OFF until workflow 47 has proved it on the real tiles and on rockyweb: with
-# it off, write_partial_area answers None and every caller fetches the tiles
-# whole, exactly as before.
-PARTIAL_ON = False
+# ON since 2026-10-31, after workflow 47 proved it on the real tiles and on
+# rockyweb (DETECTOR-FINDINGS H132). False makes write_partial_area answer
+# None, and every caller fetches the tiles whole as before.
+PARTIAL_ON = True
 
 
 def square_round(box, half_m):

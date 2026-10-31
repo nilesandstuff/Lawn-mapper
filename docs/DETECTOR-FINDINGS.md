@@ -1016,6 +1016,66 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H132. A USGS PLAIN LAZ TILE CAN BE READ IN PART, POINT FOR POINT: the chunks of the file under a box (found from each chunk's uncompressed first point) give exactly the points the whole tile gives, on 136 boxes over 25 real tiles; for the square 150 m round an address that is a median 38% of the file, and live from rockyweb it took 22-49% of the whole download's time on the four tiles where a part was chosen -- 2026-10-31
+
+Not a detector result: how the model server gets USGS's newest lidar where
+it is published only as plain tiles (no AWS octree). Measured by workflow 47
+(tools/lidar_partial_check.py, an app of its own on Modal's CPUs), runs
+41138685402 (failed, below), 41143823149, 41149653758 and 41154084530.
+
+What a tile is (USGS_LPC_AR_Western_B24_15SUA950220.laz, read 2026-10-30):
+plain LAZ 1.4 (LASzip compressor 3, point format 6), no COPC record and no
+index, 13.7 million points in 274 chunks of 50,000 listed in a chunk table at
+the end. Chunks follow the flight lines: each a strip ~450 m wide and 25-40 m
+along the line. Each chunk opens with its first point stored raw, so 30 bytes
+say where it is. USGS's Lidar Base Specification asks only for LAZ 1.4 tiles;
+nothing requires COPC or an index.
+
+Point for point (simulation, every tile on the server's volume, 8 random
+boxes each, the partial reader against tile_records on the whole file):
+run 4, 136 boxes identical, 0 different, 0 errors; 64 boxes left to the whole
+download by rule (the box needs over 70% of the file, or no flight line long
+enough to measure). Share of the file read, median (range):
+
+| box round the point | share read |
+|---|---|
+| +-100 m | 29% (10-69%) |
+| +-150 m | 38% (15-66%) |
+| +-200 m | 48% (20-68%) |
+| +-250 m | 58% (25-70%) |
+
+Live, from Modal's network, the square +-150 m round a corpus lot:
+
+| tile | part | whole (when measured) |
+|---|---|---|
+| MD_Central_Processing_D24_228NW11 | 36.7 of 210 MB, 198 s | 897 s |
+| MD_4County_D24_18suj380900 | 28.7 of 55.5 MB, 413 s | 1551 s |
+| PA_17County_D24_17TNE586489 | 54.1 of 139 MB, 242 s | 611 s |
+| PA_17County_D24_18TVK489443 | 44.0 of 101.6 MB, 215 s | 443 s |
+| NJ_NE6County_B23_K10A4 | box needs 72%: whole | -- |
+| GA_Central_2019_B19_e1100n1294 | saves only 16 of 31 MB: whole | 133 s |
+
+Each live part also matched the whole tile point for point. rockyweb
+answers multi-range requests; it gives one connection ~0.1 MB/s and refuses
+bursts (HTTP 429) -- 4 to 7 refusals and 10-128 s of waiting per read.
+
+What the runs taught (each fixed before the next): the point source id is at
+byte 20 of a format-6 point, not 22 (run 1 read the GPS time's bytes and fell
+back everywhere -- the fake test tiles hid it); some tiles keep their WKT in
+an extended record at the end; Arkansas 2024 gives every flight line one
+source id (45), so lines are also split where the GPS time jumps at a turn;
+14-30 requests a read cost more than the bytes saved (run 2: 840 s for 33 MB),
+so the chunks come in one multi-range request over two connections, requests
+a second apart, a 429 waited out from 2 s.
+
+Switched on 2026-10-31 (lidar_sources.PARTIAL_ON, PARTIAL_HALF_M 150): the
+address's warm-up, a page's first ask and the detector's press keep the part
+as an area first; the whole tile follows in the background for the water
+map's wider wind box and the neighbours. Two caveats: the whole-file times
+above were measured on other runs, minutes to hours apart, and rockyweb's
+speed varies 3x through a day; and a box over most of a tile, or a small
+tile, still waits for the whole file.
+
 ### H131. JITTERING THE FUSED LAYERS IN TRAINING (lidar and NAIP moved 0.75-1.5 m on half the steps) DOES NOT BEAT THE PLAN: 40 lots better, 31 worse, 33 level (p = 0.34), paired change 0.0, and the headline median worse, 15.6 -> 16.4%, because the lots it loses it loses by 7-10 points; not adopted (S67 trial 4, one seed, Modal) -- 2026-10-29
 *Workflow 14 run 40808233030 (`naip_trial: jittered 1.5 m`,
 `FUSE_JITTER_M=1.5`: on half the training steps the lidar and NAIP

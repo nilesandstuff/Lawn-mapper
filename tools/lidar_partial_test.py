@@ -294,8 +294,9 @@ def check_partial_area():
             sq = s.square_round(box, 80)
             said = []
             floor, p.MIN_SAVING = p.MIN_SAVING, 0  # a 20 MB test tile
-            assert s.write_partial_area(str(part_dir), [url], sq) is None or s.PARTIAL_ON, "switched off: nothing read"
-            on, s.PARTIAL_ON = s.PARTIAL_ON, True
+            on, s.PARTIAL_ON = s.PARTIAL_ON, False
+            assert s.write_partial_area(str(part_dir), [url], sq) is None, "switched off: nothing read"
+            s.PARTIAL_ON = True
             try:
                 a = s.write_partial_area(str(part_dir), [url], sq, say=said.append)
             finally:
