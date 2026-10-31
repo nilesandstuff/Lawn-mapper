@@ -2153,6 +2153,34 @@ jittered by up to 3 cm): two references 91 m apart on the owner's lawn, two chec
 4-12 mm from its true place; test/ar-align.test.js (5) and the gate in site.test.js. That proves the arithmetic and the
 page, nothing about a phone on grass: how close it lands outdoors is S20 until the owner's first walk.
 
+### H65. The first walk with AR: drift, not the arithmetic; re-marking as you go (water session, 2026-10-31)
+
+The owner walked their lawn with the H64 page (Galaxy S21 Ultra, Chrome), two references and three check points, all on
+the east (front) side of the house: "accuracy was not terrible in the front yard, not great, but reasonable. I went
+into the backyard though, and it was like 20 feet off... when I returned to the front, it was even more off than it
+was when I first hit the checkpoints" -- a head placed on C1 landed on the driveway 6-8 ft away. "I think turning
+around and walking long distances throws it off. Its difficult to turn 90 degrees or more without doing it kinda
+quickly." Heads placed in the back landed on and beside the house. The shape of it (good where the references were,
+worst far from them in walking, worse again on returning) is ARCore's frame drifting with the walk, not the fit:
+the fit was exact for the two references, and a fixed fit cannot be right in the front at first and wrong there later.
+(The yard falls about 6 ft from front to back; that does not move a level reading by feet -- S21.)
+Changed (lib/ar-align.js fitAt; public/ar.js):
+- References can be marked again any number of times (tap one on the small map, then Mark; with everything marked, the
+  next is the reference nearest the phone). The page keeps how far the phone has walked; each moment, each head and
+  each check point is lined up by the reference marks the shortest walk from it, before or after, weighted
+  1 / (1 + (d / 12 m)^2). Losing tracking adds 10 m to the walk; ARCore resetting its frame adds 1000 m (what came
+  before counts for nothing). The HUD asks for a reference after 20 m (66 ft) without one.
+- Each mark and head is an ARCore anchor where Chrome grants them, so ARCore's own map corrections move it; how far
+  each anchor moved is in the copied results.
+- Warnings: aiming at ground over 3.5 m (11 ft) away, turning faster than 90 degrees a second (the heading read from the
+  camera and the phone's top edge together, so it holds when aimed straight down), lost tracking.
+- The setup map zooms (pinch, +/-, wheel; drag to move round); the buttons sit a quarter of the way up the screen,
+  clear of Chrome's full-screen notice along the bottom (the owner's screenshot), with a button to move them down.
+Tested with a fake AR frame drifting 3 cm sideways and 0.05 degrees per metre walked (harsher than ARCore is said to
+be): a back check 115 m into the walk 18 ft 5 in off before a back reference was marked, 1 ft 6 in after; the front
+check on returning 33 ft off, 1 ft 1 in after re-marking R1; a head placed in the back 0.41-0.46 m off and unmoved by
+the later front marks. test/ar-align.test.js (7). How it does on grass: the owner's next walk.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge
@@ -2190,6 +2218,21 @@ the wetter group in those months.
 
 
 
+
+### S21. Why the back went wrong, and what else could fix the frame (2026-10-31, with H65)
+
+- Slope: ARCore finds level planes; on a 6 ft fall across the lawn, the plane under the crosshair can sit a few inches
+  off the true ground where the crosshair lands. The level error that makes is that height error divided by the tangent
+  of the angle the phone looks down: about 1.6 times it at 8 ft ahead with the phone at chest height, 5 times at 25 ft.
+  Inches, not 20 ft; it is why the page asks for aim within about 10 ft.
+- Drift: often quoted near 1% of the distance walked, more with fast turns, plain grass and changing light. The owner's
+  20 ft is more than 1% of any walk on one lawn, so probably a relocalisation jump or a lost-tracking spell; the page
+  now counts both (copied results), which will say.
+- Fixes not built: (a) references along straight edges (any spot on a driveway or sidewalk edge pins the frame across
+  that edge), so a correction is possible almost anywhere along paving; (b) reference corners taken from the lidar (a
+  shed's or house's footprint where its walls meet the ground: lidar is measured straight down, with none of the
+  photo's lean on tall things; paving corners on the photo have no lean either, being on the ground); (c) ARCore's
+  Geospatial API (Street View-based positioning) is native-app only, not in Chrome's WebXR.
 
 ### S20. How close AR placing will be on a real lawn (2026-10-31, with H64)
 

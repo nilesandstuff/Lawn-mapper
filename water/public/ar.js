@@ -1,15 +1,21 @@
 /**
  * PLACING HEADS IN AR: THE ADMIN TEST PAGE (owner, 2026-10-31: "make an AR tool that you walk the lawn with and point a
  * cursor at the head, tap place, and it puts a pin there... initially test it on a seperate admin only page to be sure
- * it's actually usable before shipping it"; FINDINGS H64).
+ * it's actually usable before shipping it"; FINDINGS H64, H65).
  *
  * WebXR's immersive-ar session (Chrome on Android, ARCore) with hit-test: the crosshair's ray meets the ground the phone
- * has found, to a few centimetres. References marked both on the saved map's photo and in AR line the two up
- * (lib/ar-align.js: a turn and a shift, least squares); then each Place head is a pin on the map. Check points, marked
- * on both but left out of the fit, say how far off a placed head lands. Nothing here writes to the map: the points and
- * pins are kept on this phone (per map) and the results copied by hand.
+ * has found. References marked both on the saved map's photo and in AR line the two up (lib/ar-align.js: a turn and a
+ * shift, least squares); then each Place head is a pin on the map. Check points, marked on both but left out of the
+ * fit, say how far off a placed head lands.
+ *
+ * The phone's frame drifts as it walks and turns (the owner's first walk: reasonable in the front, 20 ft off in the
+ * back, worse again on coming back). So references can be marked again and again as they are passed; every mark keeps
+ * how far the phone had walked when it was made, and each moment is lined up by the marks the shortest walk away
+ * (fitAt). Each mark is also an ARCore anchor where the phone supports them, so ARCore's own corrections move it.
+ *
+ * Nothing here writes to the map: the points and pins are kept on this phone (per map) and the results copied by hand.
  */
-import { toLocal, fromLocal, arLevel, fitRigid, apply, headingOf, baseline } from '/lib/ar-align.js';
+import { toLocal, fromLocal, arLevel, fitAt, apply, headingOf, baseline } from '/lib/ar-align.js';
 import { tracedOn, lineUpAt } from '/lib/shade/traced.js';
 import { openable } from '/lib/maps.js';
 
@@ -17,6 +23,13 @@ const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const FT = 3.28084;
 const ftIn = (m) => { const inch = Math.round(m * FT * 12); return inch < 12 ? `${inch} in` : `${Math.floor(inch / 12)} ft ${inch % 12} in`; };
+const ft = (m) => `${Math.round(m * FT)} ft`;
+
+const AIM_FAR = 3.5;      // m: aiming farther than this, the ground's height error grows into the reading (H65)
+const WALK_REMARK = 20;   // m walked since the last reference mark: ask for one
+const LOSS_WALK = 10;     // m added to the walk when tracking is lost: what came before counts for less
+const RESET_WALK = 1000;  // m added when ARCore says its frame jumped: what came before counts for nothing
+const FAST_TURN = 90;     // degrees a second
 
 /* ---------------------------------------------------------------- the map */
 
@@ -27,7 +40,7 @@ const worldSize = (zoom) => 512 * 2 ** zoom;
 const mercToWorld = ([x, y], zoom) => [((x + Math.PI * R) / (2 * Math.PI * R)) * worldSize(zoom), ((Math.PI * R - y) / (2 * Math.PI * R)) * worldSize(zoom)];
 const worldToMerc = ([wx, wy], zoom) => [(wx / worldSize(zoom)) * 2 * Math.PI * R - Math.PI * R, Math.PI * R - (wy / worldSize(zoom)) * 2 * Math.PI * R];
 
-const st = { site: null, origin: null, frame: null, photo: null, shift: [0, 0], heads: [], lawn: [], points: [], pins: [], adding: 'ref', key: null, T: null, session: 0 };
+const st = { site: null, origin: null, frame: null, photo: null, shift: [0, 0], heads: [], lawn: [], points: [], pins: [], adding: 'ref', key: null, T: null, session: 0, view: { s: 1, ox: 0, oy: 0 }, events: [] };
 
 function frameFor(bbox, lat) {
   const k = Math.cos(lat * Math.PI / 180);
@@ -57,130 +70,198 @@ async function savedPhoto(frame, traced) {
   }
   return { photo: await photoOf(frame).catch(() => null), shift: [0, 0] };
 }
-// map metres (east, north of the map's point) <-> pixels on the photo canvas
+const photoW = () => (st.photo ? st.photo.width : 1280), photoH = () => (st.photo ? st.photo.height : 1280);
+// map metres (east, north of the map's point) <-> pixels on the photo
 function toPx([e, n]) {
-  const f = st.frame, w = st.photo ? st.photo.width : 1280, h = st.photo ? st.photo.height : 1280;
+  const f = st.frame, w = photoW(), h = photoH();
   const c = mercToWorld(toMerc([f.lng, f.lat]), f.zoom), p = mercToWorld(toMerc(fromLocal(st.origin, [e, n])), f.zoom), s = w / f.size;
   return [(p[0] - c[0]) * s + w / 2 + st.shift[0], (p[1] - c[1]) * s + h / 2 + st.shift[1]];
 }
 function fromPx([x, y]) {
-  const f = st.frame, w = st.photo ? st.photo.width : 1280, h = st.photo ? st.photo.height : 1280, s = w / f.size;
+  const f = st.frame, w = photoW(), h = photoH(), s = w / f.size;
   const c = mercToWorld(toMerc([f.lng, f.lat]), f.zoom);
   const wx = (x - w / 2 - st.shift[0]) / s + c[0], wy = (y - h / 2 - st.shift[1]) / s + c[1];
   return toLocal(st.origin, fromMerc(worldToMerc([wx, wy], f.zoom)));
 }
 
+/* --------------------------------------------- marks, the walk and the fit */
+
+const marked = (p) => p.marks?.length > 0;
+const lastMark = (p) => (marked(p) ? p.marks[p.marks.length - 1] : null);
+/** Every reference mark this session, as fitAt wants them. */
+const refMarks = () => st.points.filter((p) => p.kind === 'ref').flatMap((p) => (p.marks || []).map((m) => ({ ar: arLevel(m.ar), map: p.map, odo: m.odo, p, m })));
+const fitFor = (odo) => fitAt(refMarks(), odo);
+// a pin placed in this AR session is lined up by the marks the shortest walk from it (made before or after); one from
+// an earlier session keeps where it was put
+function pinMap(p) {
+  if (p.ar && p.session === st.session) { const T = fitFor(p.odo); if (T) return apply(T, arLevel(p.ar)); }
+  return p.map || null;
+}
+/** A check point's latest mark: where it landed and how far off. */
+function checkLanding(p) {
+  const m = lastMark(p); if (!m) return null;
+  const T = fitFor(m.odo); if (!T) return null;
+  const at = apply(T, arLevel(m.ar));
+  const nearest = Math.min(...refMarks().map((r) => Math.abs(r.odo - m.odo)));
+  return { at, error: Math.hypot(at[0] - p.map[0], at[1] - p.map[1]), walked: nearest, dist: m.dist };
+}
+const walkedSinceRef = () => { const r = refMarks(); return r.length && xr ? Math.min(...r.map((q) => xr.odo - q.odo)) : null; };
+
+/* ---------------------------------------------------------------- drawing */
+
 function drawMarks(ctx, P, r) {
-  // the lawn's outline
   ctx.lineWidth = Math.max(1.5, r / 3); ctx.strokeStyle = 'rgba(255,255,255,.85)';
   for (const ring of st.lawn) { ctx.beginPath(); ring.forEach((p, i) => { const [x, y] = P(p); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); }); ctx.closePath(); ctx.stroke(); }
-  // the heads already on the map
-  for (const h of st.heads) { const [x, y] = P(h.map); ctx.beginPath(); ctx.arc(x, y, r * 0.7, 0, 2 * Math.PI); ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.fill(); ctx.strokeStyle = '#333'; ctx.lineWidth = 1; ctx.stroke(); }
-  // references and check points: filled once marked in AR; a check's AR landing joined to it
+  for (const h of st.heads) { const [x, y] = P(h.map); ctx.beginPath(); ctx.arc(x, y, r * 0.7, 0, 2 * Math.PI); ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.fill(); ctx.strokeStyle = '#333'; ctx.lineWidth = r / 8; ctx.stroke(); }
   st.points.forEach((pt) => {
     const [x, y] = P(pt.map), col = pt.kind === 'ref' ? cssVar('--ref') : cssVar('--check');
-    if (pt.kind === 'check' && pt.ar && st.T) { const [ax, ay] = P(apply(st.T, arLevel(pt.ar))); ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(ax, ay); ctx.stroke(); ctx.beginPath(); ctx.arc(ax, ay, r * 0.5, 0, 2 * Math.PI); ctx.fillStyle = col; ctx.fill(); }
-    ctx.beginPath(); ctx.rect(x - r, y - r, 2 * r, 2 * r); ctx.lineWidth = 2.5; ctx.strokeStyle = col; ctx.stroke();
-    if (pt.ar) { ctx.fillStyle = col; ctx.fill(); }
-    ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.round(r * 1.6)}px system-ui`; ctx.strokeStyle = '#000'; ctx.lineWidth = 3; ctx.strokeText(pt.name, x + r * 1.3, y - r * 0.6); ctx.fillText(pt.name, x + r * 1.3, y - r * 0.6);
+    if (pt.kind === 'check') { const l = checkLanding(pt); if (l) { const [ax, ay] = P(l.at); ctx.strokeStyle = col; ctx.lineWidth = r / 4; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(ax, ay); ctx.stroke(); ctx.beginPath(); ctx.arc(ax, ay, r * 0.5, 0, 2 * Math.PI); ctx.fillStyle = col; ctx.fill(); } }
+    ctx.beginPath(); ctx.rect(x - r, y - r, 2 * r, 2 * r); ctx.lineWidth = r / 3.5; ctx.strokeStyle = col; ctx.stroke();
+    if (marked(pt)) { ctx.fillStyle = col; ctx.fill(); }
+    ctx.fillStyle = '#fff'; ctx.font = `bold ${r * 1.6}px system-ui`; ctx.strokeStyle = '#000'; ctx.lineWidth = r / 3; ctx.strokeText(pt.name, x + r * 1.3, y - r * 0.6); ctx.fillText(pt.name, x + r * 1.3, y - r * 0.6);
   });
-  // the heads placed in AR
-  for (const pin of st.pins) { const m = pinMap(pin); if (!m) continue; const [x, y] = P(m); ctx.beginPath(); ctx.arc(x, y, r * 0.8, 0, 2 * Math.PI); ctx.fillStyle = cssVar('--pin'); ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = '#fff'; ctx.stroke(); }
+  for (const pin of st.pins) { const m = pinMap(pin); if (!m) continue; const [x, y] = P(m); ctx.beginPath(); ctx.arc(x, y, r * 0.8, 0, 2 * Math.PI); ctx.fillStyle = cssVar('--pin'); ctx.fill(); ctx.lineWidth = r / 4; ctx.strokeStyle = '#fff'; ctx.stroke(); }
 }
 const cssVar = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim() || '#f00';
 
+/* The setup map, zoomable (owner, 2026-10-31: "placing the reference points and check points was difficult on such a
+   small map that couldn't be zoomed in any further"). view: canvas px = photo px * s + (ox, oy). */
+const BASE_R = () => Math.max(6, photoW() / 120);
 function drawMap() {
-  const cv = $('#map'), w = st.photo ? st.photo.width : 1280, h = st.photo ? st.photo.height : 1280;
-  cv.width = w; cv.height = h;
+  const cv = $('#map'), w = photoW(), h = photoH(), v = st.view;
+  if (cv.width !== w) cv.width = w;
+  if (cv.height !== h) cv.height = h;
   const ctx = cv.getContext('2d');
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = '#2a332f'; ctx.fillRect(0, 0, w, h);
+  ctx.setTransform(v.s, 0, 0, v.s, v.ox, v.oy);
   if (st.photo) ctx.drawImage(st.photo, st.shift[0], st.shift[1]);
-  drawMarks(ctx, toPx, Math.max(6, w / 120));
+  // marks keep their size on the screen as it zooms, up to a point
+  drawMarks(ctx, toPx, BASE_R() / Math.sqrt(v.s));
+}
+function clampView() {
+  const v = st.view, w = photoW(), h = photoH();
+  v.s = Math.max(1, Math.min(8, v.s));
+  v.ox = Math.min(0, Math.max(w - w * v.s, v.ox)); v.oy = Math.min(0, Math.max(h - h * v.s, v.oy));
+}
+function zoomAt(k, [cx, cy]) {
+  const v = st.view, bx = (cx - v.ox) / v.s, by = (cy - v.oy) / v.s;
+  v.s *= k; v.s = Math.max(1, Math.min(8, v.s));
+  v.ox = cx - bx * v.s; v.oy = cy - by * v.s;
+  clampView(); drawMap();
 }
 
 /* ------------------------------------------------------- points and pins */
 
-const save = () => { try { localStorage.setItem(st.key, JSON.stringify({ points: st.points.map(({ ar, ...p }) => p), pins: st.pins.map((p) => ({ map: pinMap(p), at: p.at })) })); } catch { /* this phone only */ } };
-const load = () => { try { const j = JSON.parse(localStorage.getItem(st.key) || 'null'); if (j) { st.points = (j.points || []).map((p) => ({ ...p, ar: null })); st.pins = (j.pins || []).filter((p) => p.map).map((p) => ({ map: p.map, at: p.at })); } } catch { /* fresh */ } };
+const save = () => { try { localStorage.setItem(st.key, JSON.stringify({ points: st.points.map(({ marks, residual, ...p }) => p), pins: st.pins.map((p) => ({ map: pinMap(p), at: p.at })) })); } catch { /* this phone only */ } };
+const load = () => { try { const j = JSON.parse(localStorage.getItem(st.key) || 'null'); if (j) { st.points = (j.points || []).map((p) => ({ ...p, ar: undefined, marks: [] })); st.pins = (j.pins || []).filter((p) => p.map).map((p) => ({ map: p.map, at: p.at })); } } catch { /* fresh */ } };
 const nextName = (kind) => { const pre = kind === 'ref' ? 'R' : 'C'; let k = 1; while (st.points.some((p) => p.name === `${pre}${k}`)) k++; return `${pre}${k}`; };
-// a pin placed in this AR session moves with every better fit; one from an earlier session keeps where it was put
-const pinMap = (p) => (p.ar && p.session === st.session && st.T ? apply(st.T, arLevel(p.ar)) : p.map || null);
 
 function refit() {
-  const pairs = st.points.filter((p) => p.kind === 'ref' && p.ar).map((p) => ({ ar: arLevel(p.ar), map: p.map, p }));
-  st.T = fitRigid(pairs);
-  if (st.T) pairs.forEach((q, i) => { q.p.residual = st.T.residuals[i]; });
-  st.baseline = baseline(pairs);
+  st.T = xr ? fitFor(xr.odo) : null;
+  st.baseline = baseline(st.points.filter((p) => p.kind === 'ref' && marked(p)).map((p) => ({ map: p.map })));
 }
 
 function listPoints() {
-  $('#points').innerHTML = st.points.map((p) => `<li><span class="${p.kind}">${esc(p.name)}</span> ${p.kind === 'ref' ? 'reference' : 'check point'}${p.head ? ` (mapped head ${esc(p.head)})` : ''}${p.ar ? ' — marked in AR' : ''}</li>`).join('');
+  $('#points').innerHTML = st.points.map((p) => `<li><span class="${p.kind}">${esc(p.name)}</span> ${p.kind === 'ref' ? 'reference' : 'check point'}${p.head ? ` (mapped head ${esc(p.head)})` : ''}${marked(p) ? ` — marked in AR${p.marks.length > 1 ? ` ${p.marks.length} times` : ''}` : ''}</li>`).join('');
   const refs = st.points.filter((p) => p.kind === 'ref').length;
   $('#start').disabled = !st.xr || refs < 2;
   $('#xr-why').textContent = !st.xr ? st.xrWhy || '' : refs < 2 ? 'Add at least two references first.' : '';
 }
 
 function results() {
-  const refs = st.points.filter((p) => p.kind === 'ref' && p.ar), checks = st.points.filter((p) => p.kind === 'check' && p.ar && st.T);
-  const errs = checks.map((p) => { const [e, n] = apply(st.T, arLevel(p.ar)); return Math.hypot(e - p.map[0], n - p.map[1]); });
-  checks.forEach((p, i) => { p.error = errs[i]; });
+  const refs = st.points.filter((p) => p.kind === 'ref' && marked(p));
+  const checks = st.points.filter((p) => p.kind === 'check').map((p) => ({ p, l: checkLanding(p) })).filter((c) => c.l);
+  const errs = checks.map((c) => c.l.error).sort((a, b) => a - b);
   const pinsNow = st.pins.filter((p) => pinMap(p)).length;
+  const nMarks = refMarks().length;
   const rows = [
-    ...refs.map((p) => `<tr><td class="ref">${esc(p.name)}</td><td>reference</td><td>${st.T ? `fits to ${ftIn(p.residual || 0)}` : '—'}</td></tr>`),
-    ...checks.map((p) => `<tr><td class="check">${esc(p.name)}</td><td>check point</td><td><strong>${ftIn(p.error)} off</strong></td></tr>`),
+    ...refs.map((p) => `<tr><td class="ref">${esc(p.name)}</td><td>reference</td><td>marked ${p.marks.length === 1 ? 'once' : `${p.marks.length} times`}</td></tr>`),
+    ...checks.map(({ p, l }) => `<tr><td class="check">${esc(p.name)}</td><td>check point</td><td><strong>${ftIn(l.error)} off</strong> <span class="dim">(${ft(l.walked)} walked from a reference mark; aimed from ${ft(l.dist)})</span></td></tr>`),
   ];
-  const sorted = [...errs].sort((a, b) => a - b);
+  const x = xr?.stats || st.lastStats;
   $('#results').innerHTML = refs.length || pinsNow ? `<div class="card"><strong>Results</strong>
-    ${st.T ? `<p>Lined up on ${refs.length} references ${ftIn(st.baseline || 0)} apart at the widest: ${refs.length > 2 ? `they fit to ${ftIn(st.T.rms)} on average` : 'two always fit each other, so only a third reference or a check point says how close it is'}; AR's distances against the map's: ${(st.T.scale * 100).toFixed(1)}%.</p>` : '<p>Not lined up yet: mark two references in AR.</p>'}
-    ${checks.length ? `<p><strong>Check points: ${ftIn(sorted[sorted.length >> 1])} off at the middle, ${ftIn(sorted[sorted.length - 1])} at the worst</strong> (${checks.length}).</p>` : ''}
-    ${rows.length ? `<table><tr><th></th><th></th><th></th></tr>${rows.join('')}</table>` : ''}
+    <p>${refs.length >= 2 ? `${refs.length} references, ${nMarks} marks, ${ftIn(st.baseline || 0)} apart at the widest.` : 'Not lined up yet: mark two references in AR.'}${x ? ` Walked ${ft(x.walked)}; lost its place ${x.losses} time${x.losses === 1 ? '' : 's'}${x.resets ? `; its frame jumped ${x.resets} time${x.resets === 1 ? '' : 's'}` : ''}; ${x.fastTurns} fast turn${x.fastTurns === 1 ? '' : 's'}.` : ''}</p>
+    ${checks.length ? `<p><strong>Check points: ${ftIn(errs[errs.length >> 1])} off at the middle, ${ftIn(errs[errs.length - 1])} at the worst</strong> (${checks.length}).</p>` : ''}
+    ${rows.length ? `<table>${rows.join('')}</table>` : ''}
     <p>${pinsNow} head${pinsNow === 1 ? '' : 's'} placed (red on the map).</p>
     <div class="tools"><button type="button" id="copy">Copy results</button></div></div>` : '';
   $('#copy')?.addEventListener('click', async () => {
     const out = {
-      page: 'water AR test', when: new Date().toISOString(), device: navigator.userAgent,
-      fit: st.T ? { references: refs.length, baselineM: +(st.baseline || 0).toFixed(2), rmsM: +st.T.rms.toFixed(3), scale: +st.T.scale.toFixed(4) } : null,
-      references: refs.map((p) => ({ name: p.name, residualM: +(p.residual || 0).toFixed(3) })),
-      checks: checks.map((p) => ({ name: p.name, errorM: +p.error.toFixed(3), head: !!p.head })),
-      headsPlaced: pinsNow, events: st.events.slice(-40),
+      page: 'water AR test v2', when: new Date().toISOString(), device: navigator.userAgent, stats: x ? { walkedM: +x.walked.toFixed(1), losses: x.losses, resets: x.resets, fastTurns: x.fastTurns } : null,
+      references: refs.map((p) => ({ name: p.name, marks: p.marks.map((m) => ({ walkedM: +m.odo.toFixed(1), aimM: +m.dist.toFixed(2), anchorMovedM: m.anchorMoved != null ? +m.anchorMoved.toFixed(3) : null })) })),
+      checks: checks.map(({ p, l }) => ({ name: p.name, errorM: +l.error.toFixed(3), fromRefMarkM: +l.walked.toFixed(1), aimM: +l.dist.toFixed(2), head: !!p.head })),
+      headsPlaced: pinsNow, events: st.events.slice(-60),
     };
     try { await navigator.clipboard.writeText(JSON.stringify(out, null, 1)); $('#copy').textContent = 'Copied'; } catch { $('#copy').textContent = 'Could not copy'; }
   });
 }
 
-/* ------------------------------------------------- tapping and dragging */
+/* ------------------------------------------- tapping, dragging, zooming */
 
 function canvasXY(ev) {
   const cv = $('#map'), r = cv.getBoundingClientRect();
   return [((ev.clientX - r.left) / r.width) * cv.width, ((ev.clientY - r.top) / r.height) * cv.height];
 }
+const toBase = ([x, y]) => [(x - st.view.ox) / st.view.s, (y - st.view.oy) / st.view.s];
 function wireMap() {
-  const cv = $('#map');
-  let drag = null, downAt = null;
+  const cv = $('#map'), ptrs = new Map();
+  let drag = null, downAt = null, pan = null, pinch = null, moved = false;
+  const hitR = () => Math.max(14, cv.width / 50) / st.view.s; // in photo px
   cv.addEventListener('pointerdown', (ev) => {
-    const xy = canvasXY(ev), near = (m) => { const [x, y] = toPx(m); return Math.hypot(x - xy[0], y - xy[1]); };
-    const r = Math.max(14, cv.width / 50);
-    const hit = st.points.find((p) => near(p.map) < r * 1.4);
-    downAt = xy;
-    if (hit) { drag = hit; cv.setPointerCapture(ev.pointerId); }
+    cv.setPointerCapture(ev.pointerId);
+    ptrs.set(ev.pointerId, canvasXY(ev));
+    if (ptrs.size === 2) {
+      const [a, b] = [...ptrs.values()];
+      pinch = { d0: Math.hypot(a[0] - b[0], a[1] - b[1]) || 1, s0: st.view.s, base: toBase([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]) };
+      if (drag) { drag = null; save(); listPoints(); }
+      pan = null; downAt = null; return;
+    }
+    if (ptrs.size > 2) return;
+    const xy = canvasXY(ev), b = toBase(xy);
+    const hit = st.points.find((p) => { const [x, y] = toPx(p.map); return Math.hypot(x - b[0], y - b[1]) < hitR() * 1.4; });
+    downAt = xy; moved = false;
+    if (hit) drag = hit; else pan = { x: xy[0], y: xy[1], ox: st.view.ox, oy: st.view.oy };
   });
   cv.addEventListener('pointermove', (ev) => {
-    if (!drag) return;
-    drag.map = fromPx(canvasXY(ev)); drag.head = null; drag.ar = null; drawMap();
-  });
-  cv.addEventListener('pointercancel', () => { if (drag) { drag = null; save(); listPoints(); drawMap(); } downAt = null; });
-  cv.addEventListener('pointerup', (ev) => {
+    if (!ptrs.has(ev.pointerId)) return;
+    ptrs.set(ev.pointerId, canvasXY(ev));
+    if (pinch && ptrs.size >= 2) {
+      const [a, b] = [...ptrs.values()], mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      st.view.s = Math.max(1, Math.min(8, pinch.s0 * Math.hypot(a[0] - b[0], a[1] - b[1]) / pinch.d0));
+      st.view.ox = mid[0] - pinch.base[0] * st.view.s; st.view.oy = mid[1] - pinch.base[1] * st.view.s;
+      clampView(); drawMap(); return;
+    }
     const xy = canvasXY(ev);
-    if (drag) { drag = null; save(); listPoints(); drawMap(); return; }
-    if (!downAt || Math.hypot(xy[0] - downAt[0], xy[1] - downAt[1]) > 12) return;
-    // a tap: snap to a mapped head within reach, else where it fell
-    const r = Math.max(14, cv.width / 50);
-    let map = fromPx(xy), head = null;
-    const near = st.heads.map((h) => ({ h, d: Math.hypot(toPx(h.map)[0] - xy[0], toPx(h.map)[1] - xy[1]) })).sort((a, b) => a.d - b.d)[0];
-    if (near && near.d < r * 1.5) { map = [...near.h.map]; head = near.h.label; }
-    st.points.push({ id: `${Date.now()}`, kind: st.adding, name: nextName(st.adding), map, head, ar: null });
-    save(); listPoints(); drawMap();
+    if (downAt && Math.hypot(xy[0] - downAt[0], xy[1] - downAt[1]) > 12) moved = true;
+    if (drag && moved) { drag.map = fromPx(toBase(xy)); drag.head = null; drag.marks = []; drawMap(); }
+    else if (pan && moved) { st.view.ox = pan.ox + xy[0] - pan.x; st.view.oy = pan.oy + xy[1] - pan.y; clampView(); drawMap(); }
   });
+  const up = (ev, cancelled) => {
+    ptrs.delete(ev.pointerId);
+    if (pinch) { if (ptrs.size < 2) pinch = null; downAt = null; drag = null; pan = null; return; }
+    const xy = canvasXY(ev);
+    if (drag && moved) { drag = null; save(); listPoints(); drawMap(); return; }
+    const tap = !cancelled && downAt && !moved;
+    drag = null; pan = null; downAt = null;
+    if (!tap) return;
+    // a tap: snap to a mapped head within reach, else where it fell
+    const b = toBase(xy);
+    let map = fromPx(b), head = null;
+    const near = st.heads.map((h) => ({ h, d: Math.hypot(toPx(h.map)[0] - b[0], toPx(h.map)[1] - b[1]) })).sort((p, q) => p.d - q.d)[0];
+    if (near && near.d < hitR() * 1.5) { map = [...near.h.map]; head = near.h.label; }
+    // a tap on an existing point does nothing (it was a press to drag it)
+    if (st.points.some((p) => { const [x, y] = toPx(p.map); return Math.hypot(x - b[0], y - b[1]) < hitR() * 1.4; })) return;
+    st.points.push({ id: `${Date.now()}`, kind: st.adding, name: nextName(st.adding), map, head, marks: [] });
+    save(); listPoints(); drawMap();
+  };
+  cv.addEventListener('pointerup', (ev) => up(ev, false));
+  cv.addEventListener('pointercancel', (ev) => up(ev, true));
+  cv.addEventListener('wheel', (ev) => { ev.preventDefault(); zoomAt(ev.deltaY < 0 ? 1.25 : 0.8, canvasXY(ev)); }, { passive: false });
+  const mid = () => [cv.width / 2, cv.height / 2];
+  $('#zin').addEventListener('click', () => zoomAt(1.6, mid()));
+  $('#zout').addEventListener('click', () => zoomAt(1 / 1.6, mid()));
+  $('#zfit').addEventListener('click', () => { st.view = { s: 1, ox: 0, oy: 0 }; drawMap(); });
   document.querySelectorAll('[data-add]').forEach((b) => b.addEventListener('click', () => {
     st.adding = b.dataset.add;
     document.querySelectorAll('[data-add]').forEach((x) => { x.classList.toggle('on', x === b); x.classList.toggle('plain', x !== b); });
@@ -191,8 +272,7 @@ function wireMap() {
 
 /* -------------------------------------------------------------- the AR */
 
-st.events = [];
-const log = (what) => { st.events.push({ t: Math.round(performance.now()), what }); };
+const log = (what) => { st.events.push({ t: Math.round(performance.now()), walkedM: xr ? +xr.odo.toFixed(1) : null, what }); };
 
 async function checkXR() {
   st.xr = false;
@@ -202,19 +282,25 @@ async function checkXR() {
   if (!st.xr) st.xrWhy = "This phone's browser says it cannot run AR. In Chrome on Android, install or update Google Play Services for AR.";
 }
 
-let xr = null; // { session, gl, ref, viewer, hits, cur, pose, target }
+let xr = null;
+/** What to mark next: an unmarked reference, then an unmarked check point, then the reference nearest the phone again. */
 function nextTarget() {
-  const want = st.points.filter((p) => !p.ar);
-  return want.find((p) => p.kind === 'ref') || want[0] || null;
+  const want = st.points.filter((p) => !marked(p));
+  const first = want.find((p) => p.kind === 'ref') || want[0];
+  if (first) return first;
+  const me = myMap();
+  const refs = st.points.filter((p) => p.kind === 'ref');
+  return me ? refs.sort((a, b) => Math.hypot(a.map[0] - me[0], a.map[1] - me[1]) - Math.hypot(b.map[0] - me[0], b.map[1] - me[1]))[0] : refs[0] || null;
 }
-function flash(text) { const f = $('#flash'); f.textContent = text; f.classList.add('show'); clearTimeout(flash.t); flash.t = setTimeout(() => f.classList.remove('show'), 1600); }
+const myMap = () => (st.T && xr?.pose ? apply(st.T, arLevel(xr.pose.transform.position)) : null);
+function flash(text) { const f = $('#flash'); f.textContent = text; f.classList.add('show'); clearTimeout(flash.t); flash.t = setTimeout(() => f.classList.remove('show'), 1800); }
 
 async function startAR() {
   const overlay = $('#overlay');
   overlay.hidden = false; document.body.classList.add('in-ar');
   let session;
   try {
-    session = await navigator.xr.requestSession('immersive-ar', { requiredFeatures: ['hit-test'], optionalFeatures: ['dom-overlay', 'local-floor'], domOverlay: { root: overlay } });
+    session = await navigator.xr.requestSession('immersive-ar', { requiredFeatures: ['hit-test'], optionalFeatures: ['dom-overlay', 'anchors'], domOverlay: { root: overlay } });
   } catch (e) {
     overlay.hidden = true; document.body.classList.remove('in-ar'); $('#xr-why').textContent = `AR would not start: ${e.message}`; log(`start failed: ${e.message}`); return;
   }
@@ -231,7 +317,7 @@ async function startAR() {
 async function setUp(session, overlay) {
   st.session = Date.now();
   // a new session has a new frame of its own: marks from an earlier one no longer line up
-  for (const p of st.points) { p.ar = null; p.residual = null; }
+  for (const p of st.points) p.marks = [];
   st.T = null;
   const cv = document.createElement('canvas');
   const gl = cv.getContext('webgl', { xrCompatible: true, alpha: true });
@@ -241,9 +327,14 @@ async function setUp(session, overlay) {
   const viewer = await session.requestReferenceSpace('viewer');
   let hits;
   try { hits = await session.requestHitTestSource({ space: viewer, entityTypes: ['plane', 'point'] }); } catch { hits = await session.requestHitTestSource({ space: viewer }); }
-  xr = { session, gl, ref, viewer, hits, cur: null, pose: null, target: nextTarget(), lastHud: 0, stack: [] };
-  log(`AR started; dom overlay ${session.domOverlayState?.type || 'none'}`);
-  session.addEventListener('end', () => { log('AR ended'); xr = null; overlay.hidden = true; document.body.classList.remove('in-ar'); save(); listPoints(); drawMap(); results(); });
+  xr = { session, gl, ref, viewer, hits, cur: null, hit: null, pose: null, lastHud: 0, stack: [], odo: 0, lastPos: null, tracking: true, yaw: null, yawT: 0, turn: 0, fast: false,
+    anchors: typeof XRHitTestResult !== 'undefined' && 'createAnchor' in XRHitTestResult.prototype && (!session.enabledFeatures || session.enabledFeatures.includes('anchors')),
+    stats: { walked: 0, losses: 0, resets: 0, fastTurns: 0 } };
+  xr.target = nextTarget();
+  log(`AR started; dom overlay ${session.domOverlayState?.type || 'none'}; anchors ${xr.anchors ? 'yes' : 'no'}`);
+  // ARCore's frame jumped (it relocalised): marks before the jump no longer line up with anything after it
+  ref.addEventListener?.('reset', () => { if (!xr) return; xr.odo += RESET_WALK; xr.stats.resets++; xr.lastPos = null; log('frame reset'); flash('The AR jumped: mark a reference again'); refit(); });
+  session.addEventListener('end', () => { log('AR ended'); st.lastStats = xr?.stats; xr = null; overlay.hidden = true; document.body.classList.remove('in-ar'); save(); listPoints(); drawMap(); results(); });
   // taps on the overlay's buttons are not AR "select"s
   overlay.addEventListener('beforexrselect', (ev) => ev.preventDefault());
   session.requestAnimationFrame(onFrame);
@@ -258,39 +349,101 @@ function onFrame(t, frame) {
   xr.gl.clearColor(0, 0, 0, 0); xr.gl.clear(xr.gl.COLOR_BUFFER_BIT | xr.gl.DEPTH_BUFFER_BIT);
   const pose = frame.getViewerPose(xr.ref);
   xr.pose = pose || null;
-  const tracking = pose && !pose.emulatedPosition;
+  const tracking = !!pose && !pose.emulatedPosition;
+  if (xr.tracking && !tracking && pose) { xr.stats.losses++; xr.odo += LOSS_WALK; log('lost its place'); }
+  if (!xr.tracking && tracking) { xr.lastPos = null; log('found its place'); }
+  xr.tracking = tracking;
+  if (tracking) {
+    // the walk: the phone's movement on the level, ignoring jitter under 5 cm
+    const p = pose.transform.position;
+    if (!xr.lastPos) xr.lastPos = { x: p.x, z: p.z };
+    const d = Math.hypot(p.x - xr.lastPos.x, p.z - xr.lastPos.z);
+    if (d > 0.05) { xr.odo += d; xr.stats.walked += d; xr.lastPos = { x: p.x, z: p.z }; }
+    // how fast it is turning, smoothed
+    const yaw = yawOf(pose.transform.orientation);
+    if (xr.yaw != null && t > xr.yawT) {
+      let dy = Math.abs(yaw - xr.yaw); if (dy > 180) dy = 360 - dy;
+      xr.turn = 0.8 * xr.turn + 0.2 * (dy / ((t - xr.yawT) / 1000));
+      const fast = xr.turn > FAST_TURN;
+      if (fast && !xr.fast) { xr.stats.fastTurns++; log('fast turn'); }
+      xr.fast = fast;
+    }
+    xr.yaw = yaw; xr.yawT = t;
+  }
   const res = tracking ? frame.getHitTestResults(xr.hits) : [];
-  const hp = res.length ? res[0].getPose(xr.ref) : null;
+  xr.hit = res[0] || null;
+  const hp = xr.hit ? xr.hit.getPose(xr.ref) : null;
   xr.cur = hp ? { x: hp.transform.position.x, y: hp.transform.position.y, z: hp.transform.position.z } : null;
   $('#cross').classList.toggle('hit', !!xr.cur);
-  if (t - xr.lastHud > 120) { xr.lastHud = t; hud(tracking); }
+  if (t - xr.lastHud > 150) {
+    xr.lastHud = t;
+    followAnchors(frame);
+    refit();
+    hud(tracking);
+  }
+}
+
+/** The phone's turn on the level, degrees, from where the camera looks plus where the phone's top edge points: aimed
+ * straight down, the camera's own heading is noise, but the top edge then points the way the phone faces. */
+function yawOf(q) {
+  const rot = ([vx, vy, vz]) => { // v + 2w(q x v) + 2 q x (q x v)
+    const cx = q.y * vz - q.z * vy, cy = q.z * vx - q.x * vz, cz = q.x * vy - q.y * vx;
+    return [vx + 2 * (q.w * cx + q.y * cz - q.z * cy), vy + 2 * (q.w * cy + q.z * cx - q.x * cz), vz + 2 * (q.w * cz + q.x * cy - q.y * cx)];
+  };
+  const f = rot([0, 0, -1]), u = rot([0, 1, 0]);
+  return (Math.atan2(f[0] + u[0], -(f[2] + u[2])) * 180) / Math.PI;
+}
+
+/** ARCore moves an anchor as it corrects its map: the mark moves with it. */
+function followAnchors(frame) {
+  if (!xr.anchors || !frame.trackedAnchors) return;
+  const all = [...st.points.flatMap((p) => p.marks || []), ...st.pins.filter((p) => p.session === st.session)];
+  for (const m of all) {
+    if (!m.anchor || !frame.trackedAnchors.has(m.anchor)) continue;
+    const ap = frame.getPose(m.anchor.anchorSpace, xr.ref);
+    if (!ap) continue;
+    const q = ap.transform.position;
+    m.ar = { x: q.x, y: q.y, z: q.z };
+    m.anchorMoved = Math.hypot(q.x - m.raw.x, q.z - m.raw.z);
+  }
+}
+async function anchorFor(m) {
+  if (!xr?.anchors || !xr.hit) return;
+  try { m.anchor = await xr.hit.createAnchor(); } catch { /* the mark keeps its first reading */ }
 }
 
 function hud(tracking) {
   const p = xr.pose?.transform.position;
   const dist = xr.cur && p ? Math.hypot(xr.cur.x - p.x, xr.cur.z - p.z) : null;
-  const refs = st.points.filter((q) => q.kind === 'ref' && q.ar).length;
+  const nRefs = st.points.filter((q) => q.kind === 'ref' && marked(q)).length;
   const lines = [];
-  lines.push(!xr.pose ? 'Starting the camera…' : !tracking ? '<strong>Lost its place</strong>: hold still, aim at textured ground' : xr.cur ? `Ground ${ftIn(dist)} ahead` : 'Looking for the ground: sweep the phone slowly over it');
-  if (st.T) lines.push(`Lined up on ${refs} references${refs > 2 ? ` (fit ${ftIn(st.T.rms)})` : ''}${st.baseline < 5 ? ' — <strong>references too close together</strong>' : ''}`);
-  else lines.push(`Mark ${2 - refs} more reference${2 - refs === 1 ? '' : 's'} to line up`);
-  const t = xr.target;
-  if (t) lines.push(`Next: <strong>${esc(t.name)}</strong> (${t.kind === 'ref' ? 'reference' : 'check point'}${t.head ? `, head ${esc(t.head)}` : ''}) — tap another on the small map to choose it`);
+  if (!xr.pose) lines.push('Starting the camera…');
+  else if (!tracking) lines.push('<strong class="warn">Lost its place</strong>: hold still, aim at the ground nearby');
+  else if (!xr.cur) lines.push('Looking for the ground: sweep the phone slowly over it');
+  else lines.push(dist > AIM_FAR ? `<span class="warn">Ground ${ft(dist)} ahead: come within 10 ft</span>` : `Ground ${ft(dist)} ahead`);
+  if (xr.fast) lines.push('<strong class="warn">Turning fast: slow down</strong>');
+  if (nRefs >= 2 && st.T) {
+    const w = walkedSinceRef();
+    lines.push(w > WALK_REMARK ? `<strong class="warn">Mark a reference again</strong> (${ft(w)} walked since the last mark)` : `Lined up (${refMarks().length} marks; ${ft(w || 0)} since the last)${st.baseline < 5 ? ' — <strong class="warn">references too close together</strong>' : ''}`);
+  } else lines.push(`Mark ${2 - nRefs} more reference${2 - nRefs === 1 ? '' : 's'} to line up`);
+  const tg = xr.target;
+  if (tg) lines.push(`Next: <strong>${esc(tg.name)}</strong> (${tg.kind === 'ref' ? 'reference' : 'check point'}${tg.head ? `, head ${esc(tg.head)}` : ''}${marked(tg) ? ', again' : ''}) — tap another on the small map`);
   $('#hud').innerHTML = lines.join('<br>');
+  updateBar();
   drawMini();
 }
 
 function drawMini() {
   const cv = $('#mini'), ctx = cv.getContext('2d'), W = cv.width;
   ctx.clearRect(0, 0, W, W);
-  // centred on the phone once lined up, else on the points; about 30 m across
   let c = st.points.length ? [st.points.reduce((a, p) => a + p.map[0], 0) / st.points.length, st.points.reduce((a, p) => a + p.map[1], 0) / st.points.length] : [0, 0];
-  const me = st.T && xr?.pose ? apply(st.T, arLevel(xr.pose.transform.position)) : null;
+  const me = myMap();
   if (me) c = me;
   const span = 30, k = W / span;
   const P = ([e, n]) => [W / 2 + (e - c[0]) * k, W / 2 - (n - c[1]) * k];
-  st.miniP = P; st.miniC = c; st.miniK = k;
+  st.miniP = P;
   drawMarks(ctx, P, 9);
+  if (xr?.target) { const [x, y] = P(xr.target.map); ctx.strokeStyle = '#4cff9a'; ctx.lineWidth = 3; ctx.strokeRect(x - 15, y - 15, 30, 30); }
   if (me) {
     const h = (headingOf(st.T, xr.pose.transform.orientation) * Math.PI) / 180;
     const [x, y] = P(me);
@@ -301,7 +454,7 @@ function drawMini() {
 
 function updateBar() {
   const t = xr?.target;
-  $('#mark').textContent = t ? `Mark ${t.name}` : 'All marked';
+  $('#mark').textContent = t ? `Mark ${t.name}${marked(t) ? ' again' : ''}` : 'Mark';
   $('#mark').disabled = !t;
   $('#place').disabled = !st.T;
 }
@@ -309,45 +462,54 @@ function updateBar() {
 function wireAR() {
   $('#start').addEventListener('click', startAR);
   $('#exit').addEventListener('click', () => xr?.session.end());
+  const low = () => { try { return localStorage.getItem('ar-bar') === 'low'; } catch { return false; } };
+  $('#overlay').classList.toggle('bar-low', low());
+  $('#move').addEventListener('click', () => { const o = $('#overlay'); o.classList.toggle('bar-low'); try { localStorage.setItem('ar-bar', o.classList.contains('bar-low') ? 'low' : 'high'); } catch { /* this time only */ } });
   $('#mark').addEventListener('click', () => {
     if (!xr?.target) return;
     if (!xr.cur) { flash('No ground under the crosshair'); return; }
-    const t = xr.target;
-    xr.stack.push({ type: 'mark', p: t, prev: t.ar });
-    t.ar = { ...xr.cur };
-    log(`marked ${t.name}`);
+    const t = xr.target, p = xr.pose.transform.position;
+    const m = { ar: { ...xr.cur }, raw: { ...xr.cur }, odo: xr.odo, dist: Math.hypot(xr.cur.x - p.x, xr.cur.z - p.z), at: Date.now() };
+    if (t.kind === 'check') t.marks = [m]; else t.marks.push(m);
+    anchorFor(m);
+    xr.stack.push({ type: 'mark', p: t, m });
+    log(`marked ${t.name} from ${m.dist.toFixed(1)} m`);
     refit();
     navigator.vibrate?.(30);
-    if (t.kind === 'check' && st.T) { const [e, n] = apply(st.T, arLevel(t.ar)); flash(`${t.name}: ${ftIn(Math.hypot(e - t.map[0], n - t.map[1]))} off`); } else flash(`${t.name} marked`);
+    const far = m.dist > AIM_FAR ? ` (from ${ft(m.dist)}: closer is better)` : '';
+    if (t.kind === 'check') { const l = checkLanding(t); flash(l ? `${t.name}: ${ftIn(l.error)} off${far}` : `${t.name} marked${far}`); } else flash(`${t.name} marked${far}`);
     xr.target = nextTarget();
-    updateBar(); results();
+    updateBar(); results(); listPoints();
   });
   $('#place').addEventListener('click', () => {
     if (!st.T) return;
     if (!xr.cur) { flash('No ground under the crosshair'); return; }
-    const pin = { ar: { ...xr.cur }, session: st.session, at: Date.now() };
+    const p = xr.pose.transform.position;
+    const pin = { ar: { ...xr.cur }, raw: { ...xr.cur }, odo: xr.odo, dist: Math.hypot(xr.cur.x - p.x, xr.cur.z - p.z), session: st.session, at: Date.now() };
     pin.map = apply(st.T, arLevel(pin.ar));
+    anchorFor(pin);
     st.pins.push(pin);
     xr.stack.push({ type: 'pin', pin });
-    log('placed a head');
+    log(`placed a head from ${pin.dist.toFixed(1)} m`);
     navigator.vibrate?.(30);
-    flash(`Head ${st.pins.length} placed`);
+    flash(`Head ${st.pins.length} placed${pin.dist > AIM_FAR ? ` (from ${ft(pin.dist)}: closer is better)` : ''}`);
     save(); results();
   });
   $('#undo').addEventListener('click', () => {
     const a = xr?.stack.pop();
     if (!a) return;
-    if (a.type === 'mark') { a.p.ar = a.prev; refit(); xr.target = a.p; } else st.pins = st.pins.filter((p) => p !== a.pin);
+    if (a.type === 'mark') { a.p.marks = a.p.marks.filter((m) => m !== a.m); a.m.anchor?.delete?.(); xr.target = a.p; } else { st.pins = st.pins.filter((p) => p !== a.pin); a.pin.anchor?.delete?.(); }
+    refit();
     log('undo');
-    updateBar(); save(); results();
+    updateBar(); save(); results(); listPoints();
   });
-  // choose the next point to mark by tapping it on the small map
+  // choose what to mark next (or mark again) by tapping it on the small map
   $('#mini').addEventListener('click', (ev) => {
     if (!xr || !st.miniP) return;
     const cv = $('#mini'), r = cv.getBoundingClientRect();
     const xy = [((ev.clientX - r.left) / r.width) * cv.width, ((ev.clientY - r.top) / r.height) * cv.height];
     const near = st.points.map((p) => ({ p, d: Math.hypot(st.miniP(p.map)[0] - xy[0], st.miniP(p.map)[1] - xy[1]) })).sort((a, b) => a.d - b.d)[0];
-    if (near && near.d < 40) { xr.target = near.p; updateBar(); hud(true); }
+    if (near && near.d < 60) { xr.target = near.p; updateBar(); hud(xr.tracking); }
   });
 }
 
@@ -381,7 +543,7 @@ async function open() {
   $('#status').textContent = 'Fetching the photo…';
   const ph = await savedPhoto(st.frame, tracedOn(m));
   st.photo = ph.photo; st.shift = ph.shift;
-  $('#status').textContent = `${esc(m.address || 'Your map')}: ${st.heads.length} mapped head${st.heads.length === 1 ? '' : 's'}${st.photo ? '' : ' (the photo would not load: the lawn outline only)'}.`;
+  $('#status').textContent = `${m.address || 'Your map'}: ${st.heads.length} mapped head${st.heads.length === 1 ? '' : 's'}${st.photo ? '' : ' (the photo would not load: the lawn outline only)'}.`;
   load();
   $('#setup').hidden = false;
   await checkXR();

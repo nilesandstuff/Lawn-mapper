@@ -63,7 +63,9 @@ SPECULATION), as always.
     simple offset couldn't fix." Asked how feasible an AR tool would be (point a cursor at a head, tap, a pin), first on
     a separate admin-only page. Feasibility answered 2026-10-31; the admin test page built the same day
     (water.<home>/ar?map=<id>, FINDINGS H64): references marked on the photo and in AR line the two up, then each
-    head is a pin; check points say how far off. Waiting on the owner's first walk; not in the water map yet.
+    head is a pin; check points say how far off. First walk 2026-10-31: fine in front, ~20 ft off in the back (drift);
+    re-marking references as you walk, anchors and warnings added (H65). Next walk pending. Not built yet, asked:
+    edge references along paving, reference corners from the lidar (S21).
 15. **Hose-end sprinklers placed by hand** (owner: "add specific recs for manually placing sprinklers. Which will
     require pressure calculations (same as the existing workflows for inground, but obviously simplified)"):
     where to set each sprinkler, how long, from the hose and the tap's pressure.

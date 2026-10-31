@@ -28,29 +28,44 @@ export function fromLocal(origin, [e, n]) {
 export const arLevel = (p) => [p.x, -p.z];
 
 /**
- * pairs: [{ ar: [u, v], map: [e, n] }] (at least 2). -> { theta (radians, AR to map), tx, ty, scale (the spreads'
- * ratio: 1 if AR and the map agree on distance), residuals: [m per pair], rms } or null with fewer than 2 or all at
- * one spot.
+ * pairs: [{ ar: [u, v], map: [e, n], w? }] (at least 2; w a weight, 1 if left out). -> { theta (radians, AR to map),
+ * tx, ty, scale (the spreads' ratio: 1 if AR and the map agree on distance), residuals: [m per pair], rms (weighted) }
+ * or null with fewer than 2, or all at one spot.
  */
 export function fitRigid(pairs) {
   if (!pairs || pairs.length < 2) return null;
-  const n = pairs.length;
-  let au = 0, av = 0, be = 0, bn = 0;
-  for (const { ar, map } of pairs) { au += ar[0]; av += ar[1]; be += map[0]; bn += map[1]; }
-  au /= n; av /= n; be /= n; bn /= n;
+  const n = pairs.length, wOf = (p) => (Number.isFinite(p.w) && p.w > 0 ? p.w : 1);
+  let W = 0, au = 0, av = 0, be = 0, bn = 0;
+  for (const p of pairs) { const w = wOf(p); W += w; au += w * p.ar[0]; av += w * p.ar[1]; be += w * p.map[0]; bn += w * p.map[1]; }
+  au /= W; av /= W; be /= W; bn /= W;
   let sxx = 0, sxy = 0, sa = 0, sb = 0;
-  for (const { ar, map } of pairs) {
-    const ax = ar[0] - au, ay = ar[1] - av, bx = map[0] - be, by = map[1] - bn;
-    sxx += ax * bx + ay * by; sxy += ax * by - ay * bx;
-    sa += ax * ax + ay * ay; sb += bx * bx + by * by;
+  for (const p of pairs) {
+    const w = wOf(p), ax = p.ar[0] - au, ay = p.ar[1] - av, bx = p.map[0] - be, by = p.map[1] - bn;
+    sxx += w * (ax * bx + ay * by); sxy += w * (ax * by - ay * bx);
+    sa += w * (ax * ax + ay * ay); sb += w * (bx * bx + by * by);
   }
-  if (sa < 1e-6 || sb < 1e-6) return null;
+  if (sa < 1e-6 * W || sb < 1e-6 * W) return null;
   const theta = Math.atan2(sxy, sxx), c = Math.cos(theta), s = Math.sin(theta);
   const tx = be - (c * au - s * av), ty = bn - (s * au + c * av);
   const T = { theta, tx, ty, scale: Math.sqrt(sb / sa) };
   T.residuals = pairs.map(({ ar, map }) => { const [e, nn] = apply(T, ar); return Math.hypot(e - map[0], nn - map[1]); });
-  T.rms = Math.sqrt(T.residuals.reduce((a, r) => a + r * r, 0) / n);
+  T.rms = Math.sqrt(pairs.reduce((a, p, i) => a + wOf(p) * T.residuals[i] ** 2, 0) / W);
+  T.n = n;
   return T;
+}
+
+/**
+ * THE PHONE'S DRIFT (owner's first walk, 2026-10-31: about right in the front yard, 20 ft off in the back, worse again
+ * back in the front). ARCore's frame wanders as the phone walks and turns, so a reference marked 100 ft of walking ago
+ * says less about where the phone is now than one marked a moment ago. Each reference mark is weighted by how far the
+ * phone walked between it and the moment in question (before or after): 1 / (1 + (d / L)^2), L metres.
+ */
+export const DRIFT_L = 12;
+export const walkWeight = (d, L = DRIFT_L) => 1 / (1 + (Math.abs(d) / L) ** 2);
+
+/** The fit for the moment the phone had walked `odo` metres: marks [{ ar: [u, v], map, odo }]. */
+export function fitAt(marks, odo, L = DRIFT_L) {
+  return fitRigid(marks.map((m) => ({ ar: m.ar, map: m.map, w: walkWeight(odo - m.odo, L) })));
 }
 
 /** AR (u, v) -> map (e, n). */

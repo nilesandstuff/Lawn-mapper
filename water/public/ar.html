@@ -23,6 +23,8 @@
   button:disabled { opacity: .45; cursor: default; }
   #mapwrap { position: relative; width: 100%; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: #2a332f; touch-action: none; }
   #map { display: block; width: 100%; height: auto; }
+  #zoom { position: absolute; right: 8px; top: 8px; display: flex; flex-direction: column; gap: 6px; }
+  #zoom button { width: 42px; height: 42px; padding: 0; font-size: 22px; line-height: 1; background: rgba(0,0,0,.6); border: 1px solid rgba(255,255,255,.5); }
   ol#points { padding-left: 22px; margin: 6px 0; }
   ol#points li { margin: 4px 0; }
   .ref { color: var(--ref); font-weight: 600; } .check { color: var(--check); font-weight: 600; } .pinc { color: var(--pin); font-weight: 600; }
@@ -39,13 +41,18 @@
   #cross::after { top: 50%; left: -12px; right: -12px; height: 2px; margin-top: -1px; }
   #cross.hit { border-color: #4cff9a; }
   #cross.hit::before, #cross.hit::after { background: #4cff9a; }
-  #hud { position: absolute; left: 8px; right: 8px; top: calc(8px + env(safe-area-inset-top)); background: rgba(0,0,0,.55); border-radius: 8px; padding: 8px 10px; line-height: 1.35; }
-  #mini { position: absolute; right: 8px; bottom: calc(86px + env(safe-area-inset-bottom)); width: 42vw; max-width: 260px; aspect-ratio: 1; background: rgba(0,0,0,.5); border-radius: 8px; touch-action: none; }
-  #bar { position: absolute; left: 8px; right: 8px; bottom: calc(10px + env(safe-area-inset-bottom)); display: flex; gap: 8px; }
+  #hud { align-self: stretch; background: rgba(0,0,0,.55); border-radius: 8px; padding: 8px 10px; line-height: 1.35; }
+  #top { position: absolute; left: 8px; right: 8px; top: calc(8px + env(safe-area-inset-top)); display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+  #mini { width: 36vw; max-width: 220px; aspect-ratio: 1; background: rgba(0,0,0,.5); border-radius: 8px; touch-action: none; }
+  /* raised off the bottom by default: Chrome's "you're in full screen" notice sits there for the first minute */
+  #bar { position: absolute; left: 8px; right: 8px; bottom: 24vh; display: flex; gap: 8px; }
+  #overlay.bar-low #bar { bottom: calc(10px + env(safe-area-inset-bottom)); }
+  #bar #move { flex: 0 0 auto; background: rgba(0,0,0,.6); border: 1px solid rgba(255,255,255,.4); }
+  #hud .warn { color: #ffcf6e; }
   #bar button { flex: 1; padding: 14px 6px; font-size: 15px; }
   #bar #exit { flex: 0 0 auto; background: rgba(0,0,0,.6); border: 1px solid rgba(255,255,255,.4); }
   #bar #undo { flex: 0 0 auto; background: rgba(0,0,0,.6); border: 1px solid rgba(255,255,255,.4); }
-  #flash { position: absolute; left: 50%; top: 58%; transform: translateX(-50%); background: rgba(0,0,0,.7); padding: 6px 12px; border-radius: 8px; opacity: 0; transition: opacity .2s; white-space: nowrap; }
+  #flash { position: absolute; left: 50%; top: 54%; transform: translateX(-50%); background: rgba(0,0,0,.7); padding: 6px 12px; border-radius: 8px; opacity: 0; transition: opacity .2s; white-space: nowrap; }
   #flash.show { opacity: 1; }
 </style>
 </head>
@@ -58,18 +65,19 @@
   <div id="setup" hidden>
     <div class="card">
       <strong>1. Before you go outside: points you can find on the ground and on this photo.</strong>
-      <p class="dim" style="margin:6px 0 0">Choose <span class="ref">references</span> (at least two, 30 ft or more apart: house or patio corners at ground level, a driveway corner, a head already mapped) and, to measure accuracy, a few <span class="check">check points</span> (other corners or heads). Tap the photo to add one; tap near a mapped head to use it; drag a point to move it.</p>
+      <p class="dim" style="margin:6px 0 0">Choose <span class="ref">references</span> all round the lawn, the back as well as the front, so there is always one within a short walk (corners of a patio, driveway, sidewalk or shed where they meet the ground, a head already mapped; a house's roof edge leans on the photo, so its corner on the ground may not be where the roof shows it) and, to measure accuracy, a few <span class="check">check points</span> (other corners or heads). Tap the photo to add one; tap near a mapped head to use it; drag a point to move it.</p>
       <div class="tools">
         <button type="button" data-add="ref" class="on">Add references</button>
         <button type="button" data-add="check" class="plain">Add check points</button>
         <button type="button" id="undo-point" class="plain">Remove the last</button>
       </div>
     </div>
-    <div id="mapwrap"><canvas id="map"></canvas></div>
+    <div id="mapwrap"><canvas id="map"></canvas><div id="zoom"><button type="button" id="zin" aria-label="Zoom in">+</button><button type="button" id="zout" aria-label="Zoom out">&minus;</button><button type="button" id="zfit" aria-label="Show it all">&#x2922;</button></div></div>
+    <p class="dim" style="margin:4px 0 0">Pinch or use + to zoom; drag the photo to move round it once zoomed.</p>
     <ol id="points"></ol>
     <div class="card">
       <strong>2. Outside, in AR.</strong>
-      <p class="dim" style="margin:6px 0 0">Stand back from a reference, aim the crosshair at it where it meets the ground (it turns green on the ground), and tap Mark. After two references the map is lined up: aim at each sprinkler head and tap Place head. Mark the check points too, any time: the page says how far off each lands. Move slowly; if the camera is covered or swung fast, the AR loses its place: mark two references again.</p>
+      <p class="dim" style="margin:6px 0 0">Stand close to a reference (within about 10 ft), aim the crosshair at it where it meets the ground (it turns green on the ground), and tap Mark. After two references the map is lined up: aim at each sprinkler head from close by and tap Place head. The phone drifts as you walk and turn, so whenever you pass a reference, mark it again (tap it on the small map, then Mark): the page trusts the marks made the shortest walk away. Turn slowly. Mark the check points too: the page says how far off each lands.</p>
       <div class="tools"><button type="button" id="start" disabled>Start AR</button><button type="button" id="clear-pins" class="plain">Clear placed heads</button></div>
       <p id="xr-why" class="dim"></p>
     </div>
@@ -78,10 +86,10 @@
 </main>
 <div id="overlay" hidden>
   <div id="cross"></div>
-  <div id="hud">Starting…</div>
-  <canvas id="mini" width="520" height="520"></canvas>
+  <div id="top"><div id="hud">Starting…</div><canvas id="mini" width="520" height="520"></canvas></div>
   <div id="flash"></div>
   <div id="bar">
+    <button type="button" id="move" aria-label="Move the buttons up or down">&#x21C5;</button>
     <button type="button" id="undo">Undo</button>
     <button type="button" id="mark">Mark</button>
     <button type="button" id="place" disabled>Place head</button>
