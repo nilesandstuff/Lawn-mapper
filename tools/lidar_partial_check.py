@@ -149,6 +149,8 @@ def live_one(url, lng, lat, half=150, keep_whole=True):
 LIVE = [
     # Tiles USGS refused the model server on 2026-10-29 (run 271); each round a corpus lot. The first two
     # have been on the volume since workflow 47's second run (compared there), the last two are not.
+    ("https://rockyweb.usgs.gov/vdelivery/Datasets/Staged/Elevation/LPC/Projects/MD_4County_D24/MD_4County_2_D24/LAZ/USGS_LPC_MD_4County_D24_18suj380900.laz", -76.88650, 39.64553),
+    ("https://rockyweb.usgs.gov/vdelivery/Datasets/Staged/Elevation/LPC/Projects/PA_17County_D24/PA_17Co_5_D24/LAZ/USGS_LPC_PA_17County_D24_18TVK489443.laz", -75.12517, 40.14428),
     ("https://rockyweb.usgs.gov/vdelivery/Datasets/Staged/Elevation/LPC/Projects/NJ_NE6County_B23/NJ_NE6Co_2_B23/LAZ/USGS_LPC_NJ_NE6County_B23_K10A4.laz", -74.07922, 40.37016),
     ("https://rockyweb.usgs.gov/vdelivery/Datasets/Staged/Elevation/LPC/Projects/PA_17County_D24/PA_17Co_1_D24/LAZ/USGS_LPC_PA_17County_D24_17TNE586489.laz", -79.98066, 40.55172),
     ("https://rockyweb.usgs.gov/vdelivery/Datasets/Staged/Elevation/LPC/Projects/MD_Central_Processing_D24/MD_Central_Processing_3_D24/LAZ/USGS_LPC_MD_Central_Processing_D24_228NW11.laz", -77.23724, 39.19168),

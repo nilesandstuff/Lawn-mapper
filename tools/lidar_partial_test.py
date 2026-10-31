@@ -254,14 +254,19 @@ def check_over_http():
         try:
             box = merc_box(X0 + 600, Y0 + 300, 50)
             _Ranges.multi, _Ranges.asked = True, []
-            part = p.read_box(p.HttpSource(url), box, crs_of_header)
+            hs = p.HttpSource(url)
+            hs.min_saving = 0  # a 20 MB test tile
+            part = p.read_box(hs, box, crs_of_header)
+            assert hs.connections == 2
             same, words = p.same_records(part, s.tile_records(tile, box))
             assert same, f"over http: {words}"
             assert any("," in a for a in _Ranges.asked), "the first points were asked for in one request"
             assert part["stats"]["bytesRead"] < 0.6 * len(_Ranges.body)
             _Ranges.multi = False
             try:
-                p.read_box(p.HttpSource(url), box, crs_of_header)
+                hs = p.HttpSource(url)
+                hs.min_saving = 0
+                p.read_box(hs, box, crs_of_header)
                 raise AssertionError("a server without multi-range should be refused")
             except p.Unsupported as e:
                 assert "multi-range" in str(e), str(e)
@@ -288,12 +293,14 @@ def check_partial_area():
             # square than the live one; the real tiles' shares are workflow 47's to measure.
             sq = s.square_round(box, 80)
             said = []
+            floor, p.MIN_SAVING = p.MIN_SAVING, 0  # a 20 MB test tile
             assert s.write_partial_area(str(part_dir), [url], sq) is None or s.PARTIAL_ON, "switched off: nothing read"
             on, s.PARTIAL_ON = s.PARTIAL_ON, True
             try:
                 a = s.write_partial_area(str(part_dir), [url], sq, say=said.append)
             finally:
                 s.PARTIAL_ON = on
+                p.MIN_SAVING = floor
             b = s.write_area(str(whole_dir), [url], sq)
             assert a is not None and a.name == b.name, f"{a} against {b}"
             assert not (part_dir / tile.name).exists(), "the whole tile was not downloaded"

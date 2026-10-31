@@ -47,6 +47,7 @@ MIN_GROUP = 3                 # chunks of one flight line needed to know its swa
 SWATH_MARGIN = 0.15           # the swath's width, and this share again, and...
 ABS_MARGIN_M = 20.0           # ...this much ground, either side
 MAX_ROUNDS = 60
+MIN_SAVING = 20e6             # a part saving less than this of the file is not worth its extra requests: the whole tile
 END_PAD = 1                   # chunks added beyond each end of a run, so the check below rarely needs another request
 GAP_S = 1.0                   # at least this long between two requests (rockyweb refuses bursts)
 FIRST_WAIT_S = 2.0            # a 429 is waited out from this, doubling (lidar_sources' 15 s is for whole files)
@@ -65,6 +66,7 @@ class FileSource:
         self.path = str(path)
         import os
         self._size = os.path.getsize(self.path)
+        self.min_saving = 0  # the check measures shares on every tile; the live floor is HttpSource's
         self.requests = 0
         self.bytes = 0
 
@@ -141,6 +143,8 @@ class HttpSource:
                                                          first_wait=FIRST_WAIT_S, on_wait=noted)
         self._size = None
         self._last = 0.0
+        self._lock = __import__("threading").Lock()
+        self.connections = 2
         self.requests = 0
         self.bytes = 0
 
@@ -149,10 +153,11 @@ class HttpSource:
         p = self._patience()
         while True:
             try:
-                gap = self._last + GAP_S - time.time()
-                if gap > 0:
-                    time.sleep(gap)
-                self._last = time.time()
+                with self._lock:
+                    gap = self._last + GAP_S - time.time()
+                    if gap > 0:
+                        time.sleep(gap)
+                    self._last = time.time()
                 self.requests += 1
                 return urllib.request.urlopen(q, timeout=self.timeout)
             except Exception as e:  # noqa: BLE001 - waited out, then raised
@@ -476,13 +481,47 @@ def _fetch_runs(src, info, runs, have):
     if not want:
         return
     ranges = [(info["starts"][r0], info["starts"][r1 + 1] - 1) for r0, r1 in want]
-    if len(ranges) == 1:
-        datas = [src.get(*ranges[0])]
-    else:
+
+    def fetch(rs):
+        if len(rs) == 1:
+            return [src.get(*rs[0])]
         try:
-            datas = src.get_many(ranges)
+            return src.get_many(rs)
         except Unsupported:
-            datas = [src.get(a, b) for a, b in ranges]
+            return [src.get(a, b) for a, b in rs]
+
+    # Two connections, as the whole download uses (rockyweb gives each about
+    # 0.1 MB/s; workflow 47, 2026-10-31): the ranges split in two halves by bytes,
+    # a range longer than half cut in two.
+    ways = getattr(src, "connections", 1)
+    total = sum(b - a + 1 for a, b in ranges)
+    if ways >= 2 and total > 2 * (1 << 20):
+        half = total / 2
+        parts, acc, cut = [[], []], 0, False
+        for a, b in ranges:
+            if not cut and acc + (b - a + 1) > half:
+                m = a + int(half - acc)
+                if m > a:
+                    parts[0].append((a, m - 1))
+                parts[1].append((m, b))
+                cut = True
+            else:
+                parts[1 if cut else 0].append((a, b))
+            acc += b - a + 1
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(2) as ex:
+            got = list(ex.map(fetch, [q for q in parts if q]))
+        pieces = [(a, d) for q, ds in zip([q for q in parts if q], got) for (a, _), d in zip(q, ds)]
+        joined = {}
+        for a, d in sorted(pieces):  # a range cut in two, put back together
+            prev = next((k for k in joined if k + len(joined[k]) == a), None)
+            if prev is not None:
+                joined[prev] = joined[prev] + d
+            else:
+                joined[a] = d
+        datas = [joined[a] for a, _ in ranges]
+    else:
+        datas = fetch(ranges)
     for (a, _), d, (r0, r1) in zip(ranges, datas, want):
         info["sparse"].add(a, d)
         have.update(range(r0, r1 + 1))
@@ -525,6 +564,8 @@ def read_box(src, box3857, crs_of_header, say=lambda words: None):
     need = sum(info["table"][k][1] for k in picked)
     if need > MAX_SHARE * info["size"]:
         raise Unsupported(f"the box needs {need / info['size']:.0%} of the tile")
+    if info["size"] - need < getattr(src, "min_saving", MIN_SAVING):
+        raise Unsupported(f"a part saves only {(info['size'] - need) / 1e6:.0f} MB of {info['size'] / 1e6:.0f}")
     runs = runs_of(picked)
     say(f"reading {len(picked)} of {n} chunks ({need / 1e6:.1f} of {info['size'] / 1e6:.0f} MB)")
     _fetch_runs(src, info, runs, have)
