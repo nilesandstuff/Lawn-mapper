@@ -90,6 +90,37 @@ def simulate_one(name, per_tile=8):
     return rows
 
 
+@app.function(image=image, volumes={"/tiles": tiles}, timeout=900, cpu=1.0, memory=2048)
+def lines_one(name):
+    """How the reader splits one tile into flight lines: chunks, lines, and each line's length and swath."""
+    import numpy as np
+    p, s, crs_of = _tools()
+    src = p.FileSource(f"/tiles/{name}")
+    info = p.tile_info(src)
+    n = len(info["table"])
+    raws = src.get_many([(info["starts"][k], info["starts"][k] + info["psize"] - 1) for k in range(n)])
+    xs, ys, srcs = p.first_points(info, raws)
+    g = info["gps"]
+    dg = np.diff(g)
+    lines = p.lines_of(srcs, g)
+    out = {"tile": name, "chunks": n, "ids": len(set(srcs.tolist())), "lines": len(lines),
+           "gpsStepMedian": round(float(np.median(dg[dg > 0])) if (dg > 0).any() else 0, 3),
+           "gpsJumps": [round(float(v), 1) for v in sorted(dg)[-8:]], "gpsBackwards": int((dg < 0).sum())}
+    rows = []
+    for a, b in lines[:40]:
+        P = np.column_stack([xs[a:b + 1], ys[a:b + 1]])
+        if b - a + 1 >= 3:
+            c0 = P.mean(axis=0)
+            _, _, vt = np.linalg.svd(P - c0, full_matrices=False)
+            along = (P - c0) @ vt[0]
+            across = (P - c0) @ np.array([-vt[0][1], vt[0][0]])
+            rows.append([a, b, round(float(np.ptp(along))), round(float(np.ptp(across)))])
+        else:
+            rows.append([a, b, None, None])
+    out["lineRows (first, last, along, across)"] = rows
+    return out
+
+
 @app.function(image=image, volumes={"/tiles": tiles}, timeout=600)
 def tile_names():
     import os as _os
@@ -192,6 +223,10 @@ def main(what: str = "both", per_tile: int = 8, max_tiles: int = 60):
         if rq:
             print(f"  requests per read: median {statistics.median(rq)}, most {max(rq)}")
         report["simulate"] = {"compared": len(compared), "different": len(wrong), "errors": len(errors), "unsupported": len(unsup)}
+    if what == "lines":
+        for name in [n for n in tile_names.remote() if "AR_Western" in n or "MD_Central" in n][:4]:
+            print("LINES " + json.dumps(lines_one.remote(name)))
+        return
     if what in ("live", "both"):
         print("LIVE: rockyweb from Modal's network")
         for url, lng, lat in LIVE:

@@ -13,7 +13,7 @@ on:
         description: 'simulate (tiles on the volume), live (rockyweb), or both'
         type: choice
         default: 'both'
-        options: ['both', 'simulate', 'live']
+        options: ['both', 'simulate', 'live', 'lines']
       per_tile:
         description: 'Boxes per tile in the simulation'
         default: '8'
@@ -41,4 +41,4 @@ jobs:
           modal run tools/lidar_partial_check.py --what "${{ inputs.what }}" --per-tile "${{ inputs.per_tile }}" 2>&1 | tee check.log
           echo
           echo "================ THE CHECK ================"
-          grep -E "SIMULATE|LIVE|compared|whole download|box \+-|requests per|FAIL|CHECK|^  \{" check.log || true
+          grep -E "LINES|SIMULATE|LIVE|compared|whole download|box \+-|requests per|FAIL|CHECK|^  \{" check.log || true
