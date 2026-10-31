@@ -47,6 +47,9 @@ MIN_GROUP = 3                 # chunks of one flight line needed to know its swa
 SWATH_MARGIN = 0.15           # the swath's width, and this share again, and...
 ABS_MARGIN_M = 20.0           # ...this much ground, either side
 MAX_ROUNDS = 60
+END_PAD = 1                   # chunks added beyond each end of a run, so the check below rarely needs another request
+GAP_S = 1.0                   # at least this long between two requests (rockyweb refuses bursts)
+FIRST_WAIT_S = 2.0            # a 429 is waited out from this, doubling (lidar_sources' 15 s is for whole files)
 
 
 class Unsupported(Exception):
@@ -129,8 +132,15 @@ class HttpSource:
         import lidar_sources
         self.url, self.timeout = url, timeout
         self.until = patient_until if patient_until is not None else time.time() + lidar_sources.RATE_PATIENCE_S
-        self._patience = lambda: lidar_sources._Patience(lidar_sources.RATE_TRIES, self.until)
+        self.refused, self.waited = 0, 0.0
+
+        def noted(wait, refused):
+            self.waited += wait
+            self.refused += int(refused)
+        self._patience = lambda: lidar_sources._Patience(lidar_sources.RATE_TRIES, self.until,
+                                                         first_wait=FIRST_WAIT_S, on_wait=noted)
         self._size = None
+        self._last = 0.0
         self.requests = 0
         self.bytes = 0
 
@@ -139,6 +149,10 @@ class HttpSource:
         p = self._patience()
         while True:
             try:
+                gap = self._last + GAP_S - time.time()
+                if gap > 0:
+                    time.sleep(gap)
+                self._last = time.time()
                 self.requests += 1
                 return urllib.request.urlopen(q, timeout=self.timeout)
             except Exception as e:  # noqa: BLE001 - waited out, then raised
@@ -194,7 +208,8 @@ class HttpSource:
                             break
                         cr = r.headers.get("Content-Range") or ""
                         m = re.match(r"bytes (\d+)-(\d+)/", cr)
-                        if r.status == 206 and m and int(m.group(2)) - int(m.group(1)) < (1 << 20):
+                        want = sum(b - a + 1 for a, b in batch)
+                        if r.status == 206 and m and int(m.group(2)) - int(m.group(1)) < max(1 << 20, 2 * want):
                             body = r.read()  # all of them merged into one small range
                             self.bytes += len(body)
                             out += pick_ranges({(int(m.group(1)), int(m.group(2))): body}, batch)
@@ -451,14 +466,26 @@ def _decode(info, k):
 
 
 def _fetch_runs(src, info, runs, have):
+    """The chunks of these runs not yet fetched, in as few requests as the server allows: one
+    multi-range request for all of them (a run of neighbours is one range), else one per run."""
+    want = []
     for k0, k1 in runs:
         ks = [k for k in range(k0, k1 + 1) if k not in have]
-        if not ks:
-            continue
         for r0, r1 in runs_of(ks, gap=0):
-            a, b = info["starts"][r0], info["starts"][r1 + 1] - 1
-            info["sparse"].add(a, src.get(a, b))
-            have.update(range(r0, r1 + 1))
+            want.append((r0, r1))
+    if not want:
+        return
+    ranges = [(info["starts"][r0], info["starts"][r1 + 1] - 1) for r0, r1 in want]
+    if len(ranges) == 1:
+        datas = [src.get(*ranges[0])]
+    else:
+        try:
+            datas = src.get_many(ranges)
+        except Unsupported:
+            datas = [src.get(a, b) for a, b in ranges]
+    for (a, _), d, (r0, r1) in zip(ranges, datas, want):
+        info["sparse"].add(a, d)
+        have.update(range(r0, r1 + 1))
 
 
 def read_box(src, box3857, crs_of_header, say=lambda words: None):
@@ -494,6 +521,10 @@ def read_box(src, box3857, crs_of_header, say=lambda words: None):
     if need > MAX_SHARE * info["size"]:
         raise Unsupported(f"the box needs {need / info['size']:.0%} of the tile")
     have = set()
+    picked = sorted({j for k in picked for j in range(max(0, k - END_PAD), min(n, k + END_PAD + 1))})
+    need = sum(info["table"][k][1] for k in picked)
+    if need > MAX_SHARE * info["size"]:
+        raise Unsupported(f"the box needs {need / info['size']:.0%} of the tile")
     runs = runs_of(picked)
     say(f"reading {len(picked)} of {n} chunks ({need / 1e6:.1f} of {info['size'] / 1e6:.0f} MB)")
     _fetch_runs(src, info, runs, have)
@@ -542,7 +573,8 @@ def read_box(src, box3857, crs_of_header, say=lambda words: None):
             parts["gps"].append(np.asarray(r.gps_time)[m].astype(np.float64))
     stats = {"chunks": n, "chunksRead": len(have), "chunksPicked": len(picked), "bytesRead": got,
              "fileBytes": info["size"], "share": round(got / info["size"], 4),
-             "requests": src.requests, "seconds": round(time.time() - t0, 1)}
+             "requests": src.requests, "seconds": round(time.time() - t0, 1),
+             "refused": getattr(src, "refused", 0), "waitedS": round(getattr(src, "waited", 0.0), 1)}
     if not parts["x"]:
         rec = {k: np.zeros(0, dtype=np.float64 if k in ("x", "y", "z", "gps") else np.uint16) for k in parts}
         rec["gps"] = np.zeros(0) if has_gps else None

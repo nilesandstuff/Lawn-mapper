@@ -189,13 +189,16 @@ class _Patience:
     try (it is USGS asking us to slow down, not a fault); anything else has
     `tries`. `again(e)` sleeps and returns, or raises `e` when out."""
 
-    def __init__(self, tries, until):
+    def __init__(self, tries, until, first_wait=None, on_wait=None):
         self.tries, self.until, self.errors, self.refusals = tries, until, 0, 0
+        self.first_wait, self.on_wait = first_wait, on_wait
 
     def again(self, e):
         import time
         if _refused(e):
             wait = _wait_for(e, self.refusals)
+            if self.first_wait is not None:  # a reader of small ranges: from a few seconds, not RATE_WAIT_S
+                wait = min(wait, max(self.first_wait * 2 ** self.refusals, _retry_after(e)))
             self.refusals += 1
             if time.time() + wait > self.until:
                 raise e
@@ -204,7 +207,16 @@ class _Patience:
             if self.errors >= self.tries:
                 raise e
             wait = _wait_for(e, self.errors - 1)
+        if self.on_wait:
+            self.on_wait(wait, _refused(e))
         time.sleep(wait)
+
+
+def _retry_after(e):
+    try:
+        return float(e.headers.get("Retry-After") or 0)
+    except (AttributeError, TypeError, ValueError):
+        return 0.0
 
 
 def fetch_ranged(url, path, parts=RANGE_PARTS, timeout=120, tries=RATE_TRIES, progress=None, patient_until=None):
