@@ -16,7 +16,7 @@ def step(label, fn):
     try:
         print(f"{label}: {hide(fn())}")
     except botocore.exceptions.ClientError as e:
-        print(f"{label}: refused ({e.response['Error']['Code']}) {hide(e.response['Error'].get('Message', ''))[:200]}")
+        print(f"{label}: refused ({e.response['Error']['Code']}) {hide(e.response['Error'].get('Message', ''))[:600]}")
     except Exception as e:  # noqa: BLE001
         print(f"{label}: could not ask ({type(e).__name__}: {hide(e)[:160]})")
 
@@ -34,7 +34,28 @@ step("GROUPS", lambda: [g["GroupName"] for g in iam.list_groups_for_user(UserNam
 step("ACCESS KEYS (status, created)", lambda: [(k["Status"], str(k["CreateDate"])[:19]) for k in iam.list_access_keys(UserName=user)["AccessKeyMetadata"]])
 step("ACCOUNT SUMMARY (users, policies, MFA)", lambda: {k: v for k, v in iam.get_account_summary()["SummaryMap"].items()
                                                         if k in ("Users", "Policies", "AccountMFAEnabled", "Roles")})
-step("ORGANIZATION", lambda: boto3.client("organizations").describe_organization()["Organization"].get("FeatureSet"))
+def org():
+    o = boto3.client("organizations").describe_organization()["Organization"]
+    me = sts.get_caller_identity()["Account"]
+    return {"featureSet": o.get("FeatureSet"), "id": o.get("Id"),
+            "thisAccountIsTheManagementAccount": o.get("MasterAccountId") == me,
+            "managementEmailDomain": (o.get("MasterAccountEmail") or "").split("@")[-1]}
+
+
+step("ORGANIZATION", org)
+
+
+def scps():
+    c = boto3.client("organizations")
+    me = sts.get_caller_identity()["Account"]
+    out = []
+    for p in c.list_policies_for_target(TargetId=me, Filter="SERVICE_CONTROL_POLICY")["Policies"]:
+        d = c.describe_policy(PolicyId=p["Id"])["Policy"]
+        out.append({"name": p["Name"], "id": p["Id"], "awsManaged": p.get("AwsManaged"), "content": d.get("Content", "")[:1500]})
+    return out
+
+
+step("SERVICE CONTROL POLICIES ON THIS ACCOUNT", scps)
 
 
 def plan():
