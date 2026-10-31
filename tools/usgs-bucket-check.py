@@ -143,4 +143,9 @@ def main():
 if __name__ == "__main__":
     if not os.environ.get("AWS_ACCESS_KEY_ID"):
         sys.exit("No AWS_ACCESS_KEY_ID secret")
-    main()
+    import botocore
+    try:
+        main()
+    except botocore.exceptions.ClientError as e:
+        print(f"STOPPED: {e.response['Error']['Code']} on {e.operation_name}")
+        print(f"BILLED TO THE ACCOUNT: {REQ['n']} requests, {REQ['bytes'] / 1e6:.1f} MB")
