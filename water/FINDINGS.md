@@ -2166,8 +2166,9 @@ the fit was exact for the two references, and a fixed fit cannot be right in the
 The first walk's copied results (old page, before the changes below): R1 and R2 31.3 m apart on the photo, AR measuring
 them 4.4% shorter (scale 1.0436), so each reference sat 0.65 m from fitting within 27 s of walking; check points C1
 2.21 m, C2 1.53 m, C3 2.73 m off, all in the front, marked 2-4 minutes after the references. So the references
-themselves disagreed by 1.3 m before any long walk: a reference misplaced on the unzoomable photo (R2 is at a tree,
-whose top the photo shows), a far aim on the slope, or AR's own scale -- two references cannot say which. The page now
+themselves disagreed by 1.3 m before any long walk: a reference misplaced on the unzoomable photo, a far aim on the slope, or AR's own scale -- two references cannot
+say which. (Corrected: an earlier line here said R2 was at a tree; the owner placed every point on the ground, and every
+reference, check point and head is to be taken as on the ground.) The page now
 tests each reference against the others (where its mark lands when the rest line it up) and reports AR's distances
 against the photo's (S21).
 (The yard falls about 6 ft from front to back; that does not move a level reading by feet -- S21.)
@@ -2187,6 +2188,38 @@ Tested with a fake AR frame drifting 3 cm sideways and 0.05 degrees per metre wa
 be): a back check 115 m into the walk 18 ft 5 in off before a back reference was marked, 1 ft 6 in after; the front
 check on returning 33 ft off, 1 ft 1 in after re-marking R1; a head placed in the back 0.41-0.46 m off and unmoved by
 the later front marks. test/ar-align.test.js (7). How it does on grass: the owner's next walk.
+
+### H66. The second walk: AR measures about 4% short; the walk count was hand sway (water session, 2026-10-31)
+
+The owner's second walk (the H65 page; Galaxy S21 Ultra, Chrome): three references R1-R3 each marked from 1.4-1.6 m,
+R3 marked again at the end; five check points; one head placed seven times (the mapped heads beside it, placed by hand
+earlier, are off and were ignored). Copied results:
+- AR measured the references 3.6% shorter than the photo (scale 1.0359); the first walk 4.4% (1.0436). Every reference,
+  tested against the other two, landed 1.7-2.0 m from its place: about equally, the mark of a scale error rather than
+  one misplaced point (3.6% of the 30-70 m between them is 1.1-2.5 m).
+- Check points: C4 0.01 m, C5 0.70 m, C1 1.23 m, C2 1.47 m, C3 2.56 m (C3 the farthest in the walk from a reference
+  mark). No tracking lost, no frame resets, five fast turns.
+- Anchors moved 0.19-0.67 m from where they were made: ARCore's own corrections are that large.
+- The walk counted 508 m in ten minutes: the hand's sway counted as walking (every 5 cm move), so older marks lost their
+  weight far too fast.
+- The seven placings of one head were not in the copy (only a count). They are kept on the phone; the copy now gives
+  each head's position relative to the latest walk's heads (no coordinates), so copying again shows the spread.
+Changed (lib/ar-align.js fitDrift, pairScale; public/ar.js):
+- The walk counts moves of 0.5 m or more. Old marks fall off as 1 / (1 + (d / 12 m)^4).
+- AR's scale is measured between references marked one after the other (a nearly straight walk between them, 8 m or
+  more apart), kept per phone over the last six walks, and held in the fit. Fitting it freely in the alignment was
+  tried and soaked up drift (a fake 4% short AR with 0.9%-a-metre drift: check point 3 ft 8 in off became 10 ft 4 in).
+- The turn comes from pairs of marks made one after the other (two references, or one edge twice a few steps apart),
+  the shift from the marks nearest in the walk (fitDrift): a slide of the frame no longer reads as a turn of the lawn.
+  A unit test: after a 1.7 m slide, one fresh reference puts a head 60 m away 0.11 m off, against 0.8 m and more for
+  one rigid fit.
+- Edges: two taps along a straight edge on the ground on the photo (driveway, sidewalk, patio, drawn on the photo's
+  edge, not the lawn outline, which is a little fuzzy); in AR any spot along it is marked, and the fit keeps the mark
+  on the line (across it only); an edge counts half a point.
+- The setup no longer snaps to mapped heads (they can be off).
+Fake-AR drive (AR 4% short): with no drift every check point within an inch and the scale found at 4.0%; with a steady
+0.9%-a-metre slide the check points 1-5 ft off, bounded by the walk since the last reference and by that slide's bias
+on the scale (5.4%). The test drift pushes one way always; a phone's wanders. The next walk says which this phone is.
 
 ## SPECULATION
 
@@ -2235,11 +2268,9 @@ the wetter group in those months.
 - Drift: often quoted near 1% of the distance walked, more with fast turns, plain grass and changing light. The owner's
   20 ft is more than 1% of any walk on one lawn, so probably a relocalisation jump or a lost-tracking spell; the page
   now counts both (copied results), which will say.
-- AR's scale: 4.4% short over 31 m on the first walk. If several references keep showing AR short by the same share,
-  the fit could take a scale as well as a turn and a shift (with three or more well spread); one walk is not enough to
-  say ARCore's scale is off rather than a reference.
-- Fixes not built: (a) references along straight edges (any spot on a driveway or sidewalk edge pins the frame across
-  that edge), so a correction is possible almost anywhere along paving; (b) reference corners taken from the lidar (a
+- AR's scale: 4.4% and 3.6% short on two walks. Now measured and held (H66); whether it is this phone's camera or the
+  photo's scale is not known (the photo's own scale has not been checked against a tape on the ground).
+- Fixes not built: (a) edges -- built (H66); (b) reference corners taken from the lidar (a
   shed's or house's footprint where its walls meet the ground: lidar is measured straight down, with none of the
   photo's lean on tall things; paving corners on the photo have no lean either, being on the ground); (c) ARCore's
   Geospatial API (Street View-based positioning) is native-app only, not in Chrome's WebXR.

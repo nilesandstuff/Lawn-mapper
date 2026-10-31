@@ -64,8 +64,8 @@ SPECULATION), as always.
     a separate admin-only page. Feasibility answered 2026-10-31; the admin test page built the same day
     (water.<home>/ar?map=<id>, FINDINGS H64): references marked on the photo and in AR line the two up, then each
     head is a pin; check points say how far off. First walk 2026-10-31: fine in front, ~20 ft off in the back (drift);
-    re-marking references as you walk, anchors and warnings added (H65). Next walk pending. Not built yet, asked:
-    edge references along paving, reference corners from the lidar (S21).
+    re-marking references as you walk, anchors and warnings added (H65). Second walk: AR ~4% short, sway counted as
+    walking; scale held, slide-aware fit, edges, head spread in the copy (H66). Not built: corners from the lidar (S21).
 15. **Hose-end sprinklers placed by hand** (owner: "add specific recs for manually placing sprinklers. Which will
     require pressure calculations (same as the existing workflows for inground, but obviously simplified)"):
     where to set each sprinkler, how long, from the hose and the tap's pressure.

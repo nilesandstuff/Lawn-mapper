@@ -3,7 +3,7 @@
  *   node water/test/ar-align.test.js
  */
 import assert from 'node:assert/strict';
-import { toLocal, fromLocal, arLevel, fitRigid, apply, headingOf, baseline, fitAt, walkWeight } from '../lib/ar-align.js';
+import { toLocal, fromLocal, arLevel, fitRigid, apply, headingOf, baseline, fitAt, walkWeight, fitMixed, fitMixedAt, edgeOff, pairScale, fitDrift } from '../lib/ar-align.js';
 
 const tests = [];
 const test = (name, fn) => tests.push([name, fn]);
@@ -88,6 +88,88 @@ test('after a long walk the phone has drifted: marks made since then win, and th
   const early = [3, 1], g = apply(fitAt(marks, 2), truthAR(early));
   assert.ok(Math.hypot(g[0] - early[0], g[1] - early[1]) < 0.5);
   assert.equal(walkWeight(0), 1); assert.ok(walkWeight(12) === 0.5 && walkWeight(-12) === 0.5);
+});
+
+test('an AR that measures 4% short: holding scale at 1 leaves every reference about equally off; fitting it puts them right', () => {
+  const K = 0.96; // AR reads 96% of the true distance
+  const refs = [[0, 0], [30, 4], [12, 40], [-8, 22]];
+  const pairs = refs.map((m) => { const a = m[0] - SH[0], b = m[1] - SH[1]; return { kind: 'pt', map: m, ar: [K * (Math.cos(-TH) * a - Math.sin(-TH) * b), K * (Math.sin(-TH) * a + Math.cos(-TH) * b)] }; });
+  const rigid = fitMixed(pairs), sim = fitMixed(pairs, { scale: 'fit' });
+  assert.ok(Math.min(...rigid.residuals) > 0.3, `${rigid.residuals}`);
+  assert.ok(sim.rms < 1e-6 && Math.abs(sim.s - 1 / K) < 1e-6, `${sim.rms} ${sim.s}`);
+  // a known scale held fixed does as well
+  assert.ok(fitMixed(pairs, { scale: 1 / K }).rms < 1e-6);
+  assert.ok(Math.abs(rigid.scale - 1 / K) < 1e-6, 'the points-only spread ratio still reports it');
+});
+
+test('edges: a mark anywhere along a driveway edge pulls the fit onto the line, not onto one spot', () => {
+  const toAR = (m) => { const a = m[0] - SH[0], b = m[1] - SH[1]; return [Math.cos(-TH) * a - Math.sin(-TH) * b, Math.sin(-TH) * a + Math.cos(-TH) * b]; };
+  // two references marked with errors that turn the fit; a long edge far off fixes the turn
+  const pts = [{ kind: 'pt', map: [0, 0], ar: toAR([0, 0.3]) }, { kind: 'pt', map: [10, 0], ar: toAR([10, -0.3]) }];
+  const edge = { a: [0, 40], b: [30, 40] };
+  const edgeMarks = [[3, 40], [17, 40], [26, 40]].map((m) => ({ kind: 'edge', ...edge, ar: toAR(m), w: 0.5 }));
+  const head = [20, 35], seen = toAR(head);
+  const off = (T) => { const g = apply(T, seen); return Math.hypot(g[0] - head[0], g[1] - head[1]); };
+  const without = fitMixed(pts), withEdges = fitMixed([...pts, ...edgeMarks]);
+  assert.ok(off(withEdges) < off(without), `${off(withEdges)} vs ${off(without)}`);
+  assert.ok(withEdges.residuals.slice(2).every((r) => r < 0.3));
+  assert.ok(Math.abs(edgeOff(edge, [5, 41.5]) - 1.5) < 1e-9);
+  // a mark on the line, wherever along it, has no residual
+  const T = fitMixed([{ kind: 'pt', map: [0, 0], ar: toAR([0, 0]) }, { kind: 'pt', map: [10, 0], ar: toAR([10, 0]) }, { kind: 'edge', ...edge, ar: toAR([123, 40]) }]);
+  assert.ok(T.residuals[2] < 1e-6);
+});
+
+test('mixed fits weighted by the walk, and too little to fit', () => {
+  assert.equal(fitMixed([{ kind: 'pt', map: [0, 0], ar: [0, 0] }, { kind: 'edge', a: [0, 5], b: [5, 5], ar: [0, 5] }]), null);
+  const cons = [{ kind: 'pt', map: [0, 0], ar: [0, 0], odo: 0 }, { kind: 'pt', map: [10, 0], ar: [10, 0], odo: 0 }];
+  const T = fitMixedAt(cons, 50);
+  assert.ok(Math.abs(T.theta) < 1e-9 && T.rms < 1e-9);
+});
+
+test("the phone's scale from references marked one after the other, not across a long walk", () => {
+  const K = 0.96, toAR = (m, slide = 0) => [K * m[0] + slide, K * m[1]];
+  const marks = [
+    { id: 'R1', map: [0, 0], ar: toAR([0, 0]), odo: 0 },
+    { id: 'R2', map: [30, 0], ar: toAR([30, 0]), odo: 32 },
+    { id: 'R3', map: [30, 40], ar: toAR([30, 40], 3), odo: 300 }, // after a long walk, 3 m of drift
+    { id: 'R1', map: [0, 0], ar: toAR([0, 0], 3.1), odo: 352 },
+  ];
+  const sc = pairScale(marks);
+  assert.ok(sc && Math.abs(sc.k - 1 / K) < 0.01, JSON.stringify(sc));
+  assert.equal(sc.n, 2); // R1-R2 at the start; R3-R1 at the end (R2-R3 and the rest are a long walk apart)
+  assert.equal(pairScale([{ id: 'a', map: [0, 0], ar: [0, 0], odo: 0 }, { id: 'b', map: [3, 0], ar: [3, 0], odo: 3 }]), null);
+});
+
+test('a slide is not a turn: after a long walk one fresh reference puts heads right across the lawn', () => {
+  const toAR = (m, slide) => { const a = m[0] - SH[0], b = m[1] - SH[1]; return [Math.cos(-TH) * a - Math.sin(-TH) * b + slide[0], Math.sin(-TH) * a + Math.cos(-TH) * b + slide[1]]; };
+  const S0 = [0, 0], S1 = [1.4, -0.9]; // the frame has slid 1.7 m by the end
+  const cons = [
+    { kind: 'pt', id: 'R1', map: [0, 0], ar: toAR([0, 0], S0), odo: 0 },
+    { kind: 'pt', id: 'R2', map: [30, 0], ar: toAR([30, 0], S0), odo: 33 },
+    { kind: 'pt', id: 'R3', map: [10, 60], ar: toAR([10, 60], S1), odo: 200 },
+  ];
+  const head = [35, 10], seen = toAR(head, S1); // placed 40 m on from R3, 60 m from it
+  const off = (T) => { const g = apply(T, seen); return Math.hypot(g[0] - head[0], g[1] - head[1]); };
+  const rigid = fitMixedAt(cons, 240), drift = fitDrift(cons, 240);
+  assert.equal(drift.turnFrom, 'pairs');
+  assert.ok(off(drift) < 0.2, `slide-aware ${off(drift).toFixed(2)} m`);
+  assert.ok(off(rigid) > 0.8, `one rigid fit ${off(rigid).toFixed(2)} m`);
+});
+
+test('an edge marked twice a few steps apart gives the turn; marked once, only the position across it', () => {
+  const toAR = (m) => { const a = m[0] - SH[0], b = m[1] - SH[1]; return [Math.cos(-TH) * a - Math.sin(-TH) * b, Math.sin(-TH) * a + Math.cos(-TH) * b]; };
+  const edge = { a: [0, 40], b: [30, 40] };
+  // two references marked far apart in the walk (no pair), so only the edge can give the turn
+  const cons = [
+    { kind: 'pt', id: 'R1', map: [0, 0], ar: toAR([0, 0.4]), odo: 0 },
+    { kind: 'pt', id: 'R2', map: [10, 0], ar: toAR([10, -0.4]), odo: 500 },
+    { kind: 'edge', id: 'E1', ...edge, ar: toAR([5, 40]), odo: 600, w: 0.5 },
+    { kind: 'edge', id: 'E1', ...edge, ar: toAR([20, 40]), odo: 616, w: 0.5 },
+  ];
+  const T = fitDrift(cons, 620);
+  assert.equal(T.turnFrom, 'pairs');
+  assert.ok(Math.abs(Math.atan2(Math.sin(T.theta - TH), Math.cos(T.theta - TH))) < 1e-6, `${T.theta} ${TH}`);
+  assert.ok(T.residuals[2] < 0.02 && T.residuals[3] < 0.02, `${T.residuals}`);
 });
 
 for (const [name, fn] of tests) {

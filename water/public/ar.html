@@ -6,9 +6,9 @@
 <meta name="robots" content="noindex">
 <title>AR Head Placing</title>
 <style>
-  :root { --bg: #f6f8f7; --fg: #17201c; --dim: #5b6b63; --card: #ffffff; --line: #d7dfdb; --accent: #1b7f4b; --warn: #b4561a; --ref: #1565c0; --check: #8e24aa; --pin: #e53935; }
-  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #101614; --fg: #e6ece9; --dim: #9aa9a2; --card: #18201d; --line: #2c3833; --accent: #4cc38a; --warn: #f0a060; --ref: #64b5f6; --check: #ce93d8; --pin: #ff6f60; } }
-  :root[data-theme="dark"] { --bg: #101614; --fg: #e6ece9; --dim: #9aa9a2; --card: #18201d; --line: #2c3833; --accent: #4cc38a; --warn: #f0a060; --ref: #64b5f6; --check: #ce93d8; --pin: #ff6f60; }
+  :root { --bg: #f6f8f7; --fg: #17201c; --dim: #5b6b63; --card: #ffffff; --line: #d7dfdb; --accent: #1b7f4b; --warn: #b4561a; --ref: #1565c0; --check: #8e24aa; --pin: #e53935; --edge: #ef6c00; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #101614; --fg: #e6ece9; --dim: #9aa9a2; --card: #18201d; --line: #2c3833; --accent: #4cc38a; --warn: #f0a060; --ref: #64b5f6; --check: #ce93d8; --pin: #ff6f60; --edge: #ffa726; } }
+  :root[data-theme="dark"] { --bg: #101614; --fg: #e6ece9; --dim: #9aa9a2; --card: #18201d; --line: #2c3833; --accent: #4cc38a; --warn: #f0a060; --ref: #64b5f6; --check: #ce93d8; --pin: #ff6f60; --edge: #ffa726; }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
   main { max-width: 760px; margin: 0 auto; padding: 16px; }
@@ -27,7 +27,7 @@
   #zoom button { width: 42px; height: 42px; padding: 0; font-size: 22px; line-height: 1; background: rgba(0,0,0,.6); border: 1px solid rgba(255,255,255,.5); }
   ol#points { padding-left: 22px; margin: 6px 0; }
   ol#points li { margin: 4px 0; }
-  .ref { color: var(--ref); font-weight: 600; } .check { color: var(--check); font-weight: 600; } .pinc { color: var(--pin); font-weight: 600; }
+  .ref { color: var(--ref); font-weight: 600; } .check { color: var(--check); font-weight: 600; } .pinc { color: var(--pin); font-weight: 600; } .edgec { color: var(--edge); font-weight: 600; }
   table { border-collapse: collapse; width: 100%; font-size: .95rem; }
   td, th { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); }
   a { color: var(--accent); }
@@ -65,9 +65,10 @@
   <div id="setup" hidden>
     <div class="card">
       <strong>1. Before you go outside: points you can find on the ground and on this photo.</strong>
-      <p class="dim" style="margin:6px 0 0">Choose <span class="ref">references</span> all round the lawn, the back as well as the front, so there is always one within a short walk (corners of a patio, driveway, sidewalk or shed where they meet the ground, a head already mapped; a house's roof edge leans on the photo, so its corner on the ground may not be where the roof shows it) and, to measure accuracy, a few <span class="check">check points</span> (other corners or heads). Tap the photo to add one; tap near a mapped head to use it; drag a point to move it.</p>
+      <p class="dim" style="margin:6px 0 0">Choose <span class="ref">references</span> all round the lawn, the back as well as the front, so there is always one within a short walk (corners of a patio, driveway, sidewalk or shed where they meet the ground; a house's roof edge leans on the photo, so its corner on the ground may not be where the roof shows it) and, to measure accuracy, a few <span class="check">check points</span> (other corners, or heads you can find). Tap the photo to add one; drag a point to move it. <span class="edgec">Edges</span> are straight edges on the ground you will walk past (a driveway's, a sidewalk's, a patio's): tap one end, then the other, on the edge as the photo shows it, not on the lawn outline, which can be a little off. In AR, any spot along an edge can be marked, so you can line up again almost anywhere along the paving. Mapped heads are not used: they can be off.</p>
       <div class="tools">
         <button type="button" data-add="ref" class="on">Add references</button>
+        <button type="button" data-add="edge" class="plain">Add edges</button>
         <button type="button" data-add="check" class="plain">Add check points</button>
         <button type="button" id="undo-point" class="plain">Remove the last</button>
       </div>
@@ -77,7 +78,7 @@
     <ol id="points"></ol>
     <div class="card">
       <strong>2. Outside, in AR.</strong>
-      <p class="dim" style="margin:6px 0 0">Stand close to a reference (within about 10 ft), aim the crosshair at it where it meets the ground (it turns green on the ground), and tap Mark. After two references the map is lined up: aim at each sprinkler head from close by and tap Place head. The phone drifts as you walk and turn, so whenever you pass a reference, mark it again (tap it on the small map, then Mark): the page trusts the marks made the shortest walk away. Turn slowly. Mark the check points too: the page says how far off each lands.</p>
+      <p class="dim" style="margin:6px 0 0">Stand close to a reference (within about 10 ft), aim the crosshair at it where it meets the ground (it turns green on the ground), and tap Mark. After two references the map is lined up: aim at each sprinkler head from close by and tap Place head. The phone drifts as you walk and turn, so whenever you pass a reference or an edge, mark it again (tap it on the small map, then Mark; an edge at any spot along it): the page trusts the marks made the shortest walk away. Turn slowly. Mark the check points too: the page says how far off each lands.</p>
       <div class="tools"><button type="button" id="start" disabled>Start AR</button><button type="button" id="clear-pins" class="plain">Clear placed heads</button></div>
       <p id="xr-why" class="dim"></p>
     </div>

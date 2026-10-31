@@ -11,11 +11,14 @@
  * The phone's frame drifts as it walks and turns (the owner's first walk: reasonable in the front, 20 ft off in the
  * back, worse again on coming back). So references can be marked again and again as they are passed; every mark keeps
  * how far the phone had walked when it was made, and each moment is lined up by the marks the shortest walk away
- * (fitAt). Each mark is also an ARCore anchor where the phone supports them, so ARCore's own corrections move it.
+ * (fitMixedAt). Edges (a driveway's or sidewalk's edge drawn on the photo) can be marked at any spot along them; AR's
+ * scale is measured between references marked one after the other and held in the fit (this phone's AR measured
+ * 3.6-4.4% short, H66; fitting it freely soaked up drift). Each mark is
+ * also an ARCore anchor where the phone supports them, so ARCore's own corrections move it.
  *
  * Nothing here writes to the map: the points and pins are kept on this phone (per map) and the results copied by hand.
  */
-import { toLocal, fromLocal, arLevel, fitAt, apply, headingOf, baseline } from '/lib/ar-align.js';
+import { toLocal, fromLocal, arLevel, fitDrift, apply, headingOf, baseline, edgeOff, pairScale } from '/lib/ar-align.js';
 import { tracedOn, lineUpAt } from '/lib/shade/traced.js';
 import { openable } from '/lib/maps.js';
 
@@ -30,6 +33,9 @@ const WALK_REMARK = 20;   // m walked since the last reference mark: ask for one
 const LOSS_WALK = 10;     // m added to the walk when tracking is lost: what came before counts for less
 const RESET_WALK = 1000;  // m added when ARCore says its frame jumped: what came before counts for nothing
 const FAST_TURN = 90;     // degrees a second
+const STEP = 0.5;         // m: the walk counts moves this long, so the hand's sway is not walking (H66: 508 m counted)
+const EDGE_W = 0.5;       // an edge mark counts half a point: the photo's edge is less sharp than a corner
+const SCALE_OK = [0.9, 1.1];
 
 /* ---------------------------------------------------------------- the map */
 
@@ -88,9 +94,28 @@ function fromPx([x, y]) {
 
 const marked = (p) => p.marks?.length > 0;
 const lastMark = (p) => (marked(p) ? p.marks[p.marks.length - 1] : null);
-/** Every reference mark this session, as fitAt wants them. */
-const refMarks = () => st.points.filter((p) => p.kind === 'ref').flatMap((p) => (p.marks || []).map((m) => ({ ar: arLevel(m.ar), map: p.map, odo: m.odo, p, m })));
-const fitFor = (odo) => fitAt(refMarks(), odo);
+/** Every reference and edge mark this session, as fitMixedAt wants them. */
+const cons = () => st.points.filter((p) => p.kind === 'ref' || p.kind === 'edge').flatMap((p) => (p.marks || []).map((m) => (p.kind === 'edge'
+  ? { kind: 'edge', id: p.id, ar: arLevel(m.ar), a: p.a, b: p.b, odo: m.odo, w: EDGE_W, p, m }
+  : { kind: 'pt', id: p.id, ar: arLevel(m.ar), map: p.map, odo: m.odo, p, m })));
+const refMarks = () => cons().filter((c) => c.kind === 'pt');
+/** This phone's AR scales from earlier walks (photo distance / AR distance), latest last. */
+function learnedScales() {
+  try { return JSON.parse(localStorage.getItem('ar-scales') || '[]').filter(Number.isFinite); } catch { return []; }
+}
+/** This walk's scale: between references marked one after the other (lib/ar-align.js pairScale). */
+const sessionScale = () => pairScale(refMarks().map((r) => ({ ar: r.ar, map: r.map, odo: r.odo, id: r.p.id })));
+const median = (v) => { const w = [...v].sort((a, b) => a - b); return w.length % 2 ? w[w.length >> 1] : (w[w.length / 2 - 1] + w[w.length / 2]) / 2; };
+/** The scale the fit holds: this walk's pairs (up to three votes) with the earlier walks', or 1 with none; 0.9-1.1 only. */
+function learnedScale() {
+  const sc = sessionScale(), votes = [...learnedScales(), ...(sc ? Array(Math.min(sc.n, 3)).fill(sc.k) : [])];
+  const k = votes.length ? median(votes) : 1;
+  return k >= SCALE_OK[0] && k <= SCALE_OK[1] ? k : 1;
+}
+const distinctRefs = (list) => new Set(list.filter((c) => c.kind === 'pt').map((c) => c.p)).size;
+/** The fit for a moment of the walk: the turn from pairs, the shift from what is near, the phone's scale held (fitDrift). */
+const fitWith = (list, odo) => fitDrift(list, odo, { scale: learnedScale() });
+const fitFor = (odo) => fitWith(cons(), odo);
 // a pin placed in this AR session is lined up by the marks the shortest walk from it (made before or after); one from
 // an earlier session keeps where it was put
 function pinMap(p) {
@@ -102,7 +127,7 @@ function checkLanding(p) {
   const m = lastMark(p); if (!m) return null;
   const T = fitFor(m.odo); if (!T) return null;
   const at = apply(T, arLevel(m.ar));
-  const nearest = Math.min(...refMarks().map((r) => Math.abs(r.odo - m.odo)));
+  const nearest = Math.min(...cons().map((r) => Math.abs(r.odo - m.odo)));
   return { at, error: Math.hypot(at[0] - p.map[0], at[1] - p.map[1]), walked: nearest, dist: m.dist };
 }
 /**
@@ -112,15 +137,22 @@ function checkLanding(p) {
  */
 function leftOut(p) {
   const m = lastMark(p); if (!m) return null;
-  const others = refMarks().filter((r) => r.p !== p);
-  if (new Set(others.map((r) => r.p)).size < 2) return null;
-  const T = fitAt(others, m.odo); if (!T) return null;
+  const others = cons().filter((r) => r.p !== p);
+  if (distinctRefs(others) < 2) return null;
+  const T = fitWith(others, m.odo); if (!T) return null;
   const at = apply(T, arLevel(m.ar));
   return Math.hypot(at[0] - p.map[0], at[1] - p.map[1]);
 }
 /** AR's distances against the photo's, between the references: 1 if they agree. */
-const scaleNow = () => { const all = refMarks(); if (!all.length) return null; const T = fitFor(Math.max(...all.map((r) => r.odo))); return T ? T.scale : null; };
-const walkedSinceRef = () => { const r = refMarks(); return r.length && xr ? Math.min(...r.map((q) => xr.odo - q.odo)) : null; };
+/** AR's distances against the photo's: { k held (photo / AR), walk: this walk's pairs or null, earlier: walks kept }. */
+const scaleNow = () => ({ k: learnedScale(), walk: sessionScale(), earlier: learnedScales().length });
+/** How far an edge's latest mark lands from its line, metres. */
+function edgeLanding(p) {
+  const m = lastMark(p); if (!m) return null;
+  const T = fitFor(m.odo); if (!T) return null;
+  return edgeOff(p, apply(T, arLevel(m.ar)));
+}
+const walkedSinceRef = () => { const r = cons(); return r.length && xr ? Math.min(...r.map((q) => xr.odo - q.odo)) : null; };
 
 /* ---------------------------------------------------------------- drawing */
 
@@ -128,7 +160,16 @@ function drawMarks(ctx, P, r) {
   ctx.lineWidth = Math.max(1.5, r / 3); ctx.strokeStyle = 'rgba(255,255,255,.85)';
   for (const ring of st.lawn) { ctx.beginPath(); ring.forEach((p, i) => { const [x, y] = P(p); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); }); ctx.closePath(); ctx.stroke(); }
   for (const h of st.heads) { const [x, y] = P(h.map); ctx.beginPath(); ctx.arc(x, y, r * 0.7, 0, 2 * Math.PI); ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.fill(); ctx.strokeStyle = '#333'; ctx.lineWidth = r / 8; ctx.stroke(); }
-  st.points.forEach((pt) => {
+  st.points.filter((pt) => pt.kind === 'edge').forEach((pt) => {
+    const [ax, ay] = P(pt.a), [bx, by] = P(pt.b), col = cssVar('--edge');
+    ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.lineWidth = r * 0.9; ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+    ctx.strokeStyle = col; ctx.lineWidth = marked(pt) ? r * 0.6 : r * 0.35; ctx.setLineDash(marked(pt) ? [] : [r, r * 0.6]); ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke(); ctx.setLineDash([]);
+    for (const [x, y] of [[ax, ay], [bx, by]]) { ctx.beginPath(); ctx.arc(x, y, r * 0.55, 0, 2 * Math.PI); ctx.fillStyle = col; ctx.fill(); }
+    const [mx, my] = P(pt.map);
+    ctx.fillStyle = '#fff'; ctx.font = `bold ${r * 1.6}px system-ui`; ctx.strokeStyle = '#000'; ctx.lineWidth = r / 3; ctx.strokeText(pt.name, mx + r, my - r); ctx.fillText(pt.name, mx + r, my - r);
+  });
+  if (st.pendingEdge) { const [x, y] = P(st.pendingEdge); ctx.beginPath(); ctx.arc(x, y, r * 0.7, 0, 2 * Math.PI); ctx.fillStyle = cssVar('--edge'); ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = r / 4; ctx.stroke(); }
+  st.points.filter((pt) => pt.kind !== 'edge').forEach((pt) => {
     const [x, y] = P(pt.map), col = pt.kind === 'ref' ? cssVar('--ref') : cssVar('--check');
     if (pt.kind === 'check') { const l = checkLanding(pt); if (l) { const [ax, ay] = P(l.at); ctx.strokeStyle = col; ctx.lineWidth = r / 4; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(ax, ay); ctx.stroke(); ctx.beginPath(); ctx.arc(ax, ay, r * 0.5, 0, 2 * Math.PI); ctx.fillStyle = col; ctx.fill(); } }
     ctx.beginPath(); ctx.rect(x - r, y - r, 2 * r, 2 * r); ctx.lineWidth = r / 3.5; ctx.strokeStyle = col; ctx.stroke();
@@ -168,9 +209,9 @@ function zoomAt(k, [cx, cy]) {
 
 /* ------------------------------------------------------- points and pins */
 
-const save = () => { try { localStorage.setItem(st.key, JSON.stringify({ points: st.points.map(({ marks, residual, ...p }) => p), pins: st.pins.map((p) => ({ map: pinMap(p), at: p.at })) })); } catch { /* this phone only */ } };
-const load = () => { try { const j = JSON.parse(localStorage.getItem(st.key) || 'null'); if (j) { st.points = (j.points || []).map((p) => ({ ...p, ar: undefined, marks: [] })); st.pins = (j.pins || []).filter((p) => p.map).map((p) => ({ map: p.map, at: p.at })); } } catch { /* fresh */ } };
-const nextName = (kind) => { const pre = kind === 'ref' ? 'R' : 'C'; let k = 1; while (st.points.some((p) => p.name === `${pre}${k}`)) k++; return `${pre}${k}`; };
+const save = () => { try { localStorage.setItem(st.key, JSON.stringify({ points: st.points.map(({ marks, residual, ...p }) => p), pins: st.pins.map((p) => ({ map: pinMap(p), at: p.at, aim: p.aim ?? p.dist ?? null, walked: p.walked ?? p.odo ?? null, fromRef: p.fromRef ?? null })) })); } catch { /* this phone only */ } };
+const load = () => { try { const j = JSON.parse(localStorage.getItem(st.key) || 'null'); if (j) { st.points = (j.points || []).map((p) => ({ ...p, ar: undefined, marks: [] })); st.pins = (j.pins || []).filter((p) => p.map).map((p) => ({ map: p.map, at: p.at, aim: p.aim, walked: p.walked, fromRef: p.fromRef })); } } catch { /* fresh */ } };
+const nextName = (kind) => { const pre = kind === 'ref' ? 'R' : kind === 'edge' ? 'E' : 'C'; let k = 1; while (st.points.some((p) => p.name === `${pre}${k}`)) k++; return `${pre}${k}`; };
 
 function refit() {
   st.T = xr ? fitFor(xr.odo) : null;
@@ -178,10 +219,28 @@ function refit() {
 }
 
 function listPoints() {
-  $('#points').innerHTML = st.points.map((p) => `<li><span class="${p.kind}">${esc(p.name)}</span> ${p.kind === 'ref' ? 'reference' : 'check point'}${p.head ? ` (mapped head ${esc(p.head)})` : ''}${marked(p) ? ` — marked in AR${p.marks.length > 1 ? ` ${p.marks.length} times` : ''}` : ''}</li>`).join('');
+  $('#points').innerHTML = st.points.map((p) => `<li><span class="${p.kind === 'edge' ? 'edgec' : p.kind}">${esc(p.name)}</span> ${p.kind === 'ref' ? 'reference' : p.kind === 'edge' ? `edge, ${ft(Math.hypot(p.b[0] - p.a[0], p.b[1] - p.a[1]))} long` : 'check point'}${marked(p) ? ` — marked in AR${p.marks.length > 1 ? ` ${p.marks.length} times` : ''}` : ''}</li>`).join('');
+  if (st.pendingEdge) $('#points').innerHTML += '<li class="dim">Tap the other end of the edge.</li>';
   const refs = st.points.filter((p) => p.kind === 'ref').length;
   $('#start').disabled = !st.xr || refs < 2;
   $('#xr-why').textContent = !st.xr ? st.xrWhy || '' : refs < 2 ? 'Add at least two references first.' : '';
+}
+
+/**
+ * The placed heads, each as metres east and north of the middle of the latest walk's heads (no coordinates): the owner
+ * placed one head again and again on the second walk, so their spread is how repeatable a placing is.
+ */
+function headsRelative() {
+  const all = st.pins.map((p) => ({ p, m: pinMap(p) })).filter((x) => x.m);
+  if (!all.length) return null;
+  const latest = Math.max(...all.map((x) => x.p.at || 0));
+  const walk = all.filter((x) => (x.p.at || 0) >= latest - 45 * 60 * 1000);
+  const c = [walk.reduce((a, x) => a + x.m[0], 0) / walk.length, walk.reduce((a, x) => a + x.m[1], 0) / walk.length];
+  const d = walk.map((x) => Math.hypot(x.m[0] - c[0], x.m[1] - c[1]));
+  return {
+    latestWalk: { n: walk.length, rmsFromMiddleM: +Math.sqrt(d.reduce((a, v) => a + v * v, 0) / d.length).toFixed(3), farthestM: +Math.max(...d).toFixed(3) },
+    each: all.map((x) => ({ when: x.p.at ? new Date(x.p.at).toISOString().slice(11, 19) : null, eM: +(x.m[0] - c[0]).toFixed(2), nM: +(x.m[1] - c[1]).toFixed(2), aimM: x.p.aim != null ? +x.p.aim.toFixed(2) : null, walkedM: x.p.walked != null ? +x.p.walked.toFixed(1) : null, fromRefMarkM: x.p.fromRef != null ? +x.p.fromRef.toFixed(1) : null })),
+  };
 }
 
 function results() {
@@ -190,13 +249,15 @@ function results() {
   const errs = checks.map((c) => c.l.error).sort((a, b) => a - b);
   const pinsNow = st.pins.filter((p) => pinMap(p)).length;
   const nMarks = refMarks().length;
+  const edges = st.points.filter((p) => p.kind === 'edge' && marked(p));
   const rows = [
     ...refs.map((p) => { const lo = leftOut(p); return `<tr><td class="ref">${esc(p.name)}</td><td>reference</td><td>marked ${p.marks.length === 1 ? 'once' : `${p.marks.length} times`}${lo != null ? `; <strong>${ftIn(lo)}</strong> from its place when the others line it up` : ''}</td></tr>`; }),
+    ...edges.map((p) => { const off = edgeLanding(p); return `<tr><td class="edgec">${esc(p.name)}</td><td>edge</td><td>marked ${p.marks.length === 1 ? 'once' : `${p.marks.length} times`}${off != null ? `; the latest ${ftIn(off)} from its line` : ''}</td></tr>`; }),
     ...checks.map(({ p, l }) => `<tr><td class="check">${esc(p.name)}</td><td>check point</td><td><strong>${ftIn(l.error)} off</strong> <span class="dim">(${ft(l.walked)} walked from a reference mark; aimed from ${ft(l.dist)})</span></td></tr>`),
   ];
   const x = xr?.stats || st.lastStats;
   $('#results').innerHTML = refs.length || pinsNow ? `<div class="card"><strong>Results</strong>
-    <p>${refs.length >= 2 ? `${refs.length} references, ${nMarks} marks, ${ftIn(st.baseline || 0)} apart at the widest. ${(() => { const k = scaleNow(); return k ? `AR measured the distances between them ${Math.abs(1 - 1 / k) < 0.005 ? 'the same as the photo' : `${(Math.abs(1 - 1 / k) * 100).toFixed(1)}% ${k > 1 ? 'shorter' : 'longer'} than the photo`}.` : ''; })()}${refs.length === 2 ? ' With two references nothing says which one is off; a third does.' : ' The reference that lands farthest from its place is most likely the one placed or aimed wrong (check where it is on the photo); with only three, one bad reference makes the others look off too, so four or more show it plainly.'}` : 'Not lined up yet: mark two references in AR.'}${x ? ` Walked ${ft(x.walked)}; lost its place ${x.losses} time${x.losses === 1 ? '' : 's'}${x.resets ? `; its frame jumped ${x.resets} time${x.resets === 1 ? '' : 's'}` : ''}; ${x.fastTurns} fast turn${x.fastTurns === 1 ? '' : 's'}.` : ''}</p>
+    <p>${refs.length >= 2 ? `${refs.length} references, ${nMarks} marks, ${ftIn(st.baseline || 0)} apart at the widest. ${(() => { const sc = scaleNow(), pc = (k) => `${(Math.abs(1 - 1 / k) * 100).toFixed(1)}% ${k > 1 ? 'shorter' : 'longer'}`; if (!sc.walk && !sc.earlier) return 'AR\'s scale is not measured yet: mark two references 25 ft or more apart one after the other.'; return `AR measures distances ${pc(sc.k)} than the photo (${sc.walk ? `${sc.walk.n} pair${sc.walk.n === 1 ? '' : 's'} of references marked one after the other this walk: ${pc(sc.walk.k)}` : 'none this walk'}${sc.earlier ? `; ${sc.earlier} earlier walk${sc.earlier === 1 ? '' : 's'}` : ''}); the fit corrects for it.`; })()}${refs.length === 2 ? ' With two references nothing says which one is off; a third does.' : ' The reference that lands farthest from its place is most likely the one placed or aimed wrong (check where it is on the photo); with only three, one bad reference makes the others look off too, so four or more show it plainly.'}` : 'Not lined up yet: mark two references in AR.'}${x ? ` Walked ${ft(x.walked)}; lost its place ${x.losses} time${x.losses === 1 ? '' : 's'}${x.resets ? `; its frame jumped ${x.resets} time${x.resets === 1 ? '' : 's'}` : ''}; ${x.fastTurns} fast turn${x.fastTurns === 1 ? '' : 's'}.` : ''}</p>
     ${checks.length ? `<p><strong>Check points: ${ftIn(errs[errs.length >> 1])} off at the middle, ${ftIn(errs[errs.length - 1])} at the worst</strong> (${checks.length}).</p>` : ''}
     ${rows.length ? `<table>${rows.join('')}</table>` : ''}
     <p>${pinsNow} head${pinsNow === 1 ? '' : 's'} placed (red on the map).</p>
@@ -204,10 +265,11 @@ function results() {
   $('#copy')?.addEventListener('click', async () => {
     const out = {
       page: 'water AR test v2', when: new Date().toISOString(), device: navigator.userAgent, stats: x ? { walkedM: +x.walked.toFixed(1), losses: x.losses, resets: x.resets, fastTurns: x.fastTurns } : null,
-      scale: scaleNow() != null ? +scaleNow().toFixed(4) : null,
+      scale: { heldPhotoOverAR: +scaleNow().k.toFixed(4), thisWalk: scaleNow().walk ? { k: +scaleNow().walk.k.toFixed(4), pairs: scaleNow().walk.n } : null, earlierWalks: learnedScales() },
+      edges: edges.map((p) => ({ name: p.name, lengthM: +Math.hypot(p.b[0] - p.a[0], p.b[1] - p.a[1]).toFixed(1), marks: p.marks.length, latestOffM: edgeLanding(p) != null ? +edgeLanding(p).toFixed(3) : null })),
       references: refs.map((p) => ({ name: p.name, leftOutM: leftOut(p) != null ? +leftOut(p).toFixed(3) : null, marks: p.marks.map((m) => ({ walkedM: +m.odo.toFixed(1), aimM: +m.dist.toFixed(2), anchorMovedM: m.anchorMoved != null ? +m.anchorMoved.toFixed(3) : null })) })),
-      checks: checks.map(({ p, l }) => ({ name: p.name, errorM: +l.error.toFixed(3), fromRefMarkM: +l.walked.toFixed(1), aimM: +l.dist.toFixed(2), head: !!p.head })),
-      headsPlaced: pinsNow, events: st.events.slice(-60),
+      checks: checks.map(({ p, l }) => ({ name: p.name, errorM: +l.error.toFixed(3), fromRefMarkM: +l.walked.toFixed(1), aimM: +l.dist.toFixed(2) })),
+      headsPlaced: pinsNow, heads: headsRelative(), events: st.events.slice(-60),
     };
     try { await navigator.clipboard.writeText(JSON.stringify(out, null, 1)); $('#copy').textContent = 'Copied'; } catch { $('#copy').textContent = 'Could not copy'; }
   });
@@ -224,6 +286,14 @@ function wireMap() {
   const cv = $('#map'), ptrs = new Map();
   let drag = null, downAt = null, pan = null, pinch = null, moved = false;
   const hitR = () => Math.max(14, cv.width / 50) / st.view.s; // in photo px
+  // what a press lands on: a point, or one end of an edge
+  const hitAt = (b) => {
+    const near = (m) => { const [x, y] = toPx(m); return Math.hypot(x - b[0], y - b[1]) < hitR() * 1.4; };
+    for (const p of st.points) {
+      if (p.kind === 'edge') { if (near(p.a)) return { p, end: 'a' }; if (near(p.b)) return { p, end: 'b' }; } else if (near(p.map)) return { p };
+    }
+    return null;
+  };
   cv.addEventListener('pointerdown', (ev) => {
     cv.setPointerCapture(ev.pointerId);
     ptrs.set(ev.pointerId, canvasXY(ev));
@@ -235,7 +305,7 @@ function wireMap() {
     }
     if (ptrs.size > 2) return;
     const xy = canvasXY(ev), b = toBase(xy);
-    const hit = st.points.find((p) => { const [x, y] = toPx(p.map); return Math.hypot(x - b[0], y - b[1]) < hitR() * 1.4; });
+    const hit = hitAt(b);
     downAt = xy; moved = false;
     if (hit) drag = hit; else pan = { x: xy[0], y: xy[1], ox: st.view.ox, oy: st.view.oy };
   });
@@ -250,7 +320,11 @@ function wireMap() {
     }
     const xy = canvasXY(ev);
     if (downAt && Math.hypot(xy[0] - downAt[0], xy[1] - downAt[1]) > 12) moved = true;
-    if (drag && moved) { drag.map = fromPx(toBase(xy)); drag.head = null; drag.marks = []; drawMap(); }
+    if (drag && moved) {
+      const at = fromPx(toBase(xy)), p = drag.p;
+      if (drag.end) { p[drag.end] = at; p.map = [(p.a[0] + p.b[0]) / 2, (p.a[1] + p.b[1]) / 2]; } else p.map = at;
+      p.marks = []; drawMap();
+    }
     else if (pan && moved) { st.view.ox = pan.ox + xy[0] - pan.x; st.view.oy = pan.oy + xy[1] - pan.y; clampView(); drawMap(); }
   });
   const up = (ev, cancelled) => {
@@ -261,14 +335,16 @@ function wireMap() {
     const tap = !cancelled && downAt && !moved;
     drag = null; pan = null; downAt = null;
     if (!tap) return;
-    // a tap: snap to a mapped head within reach, else where it fell
-    const b = toBase(xy);
-    let map = fromPx(b), head = null;
-    const near = st.heads.map((h) => ({ h, d: Math.hypot(toPx(h.map)[0] - b[0], toPx(h.map)[1] - b[1]) })).sort((p, q) => p.d - q.d)[0];
-    if (near && near.d < hitR() * 1.5) { map = [...near.h.map]; head = near.h.label; }
-    // a tap on an existing point does nothing (it was a press to drag it)
-    if (st.points.some((p) => { const [x, y] = toPx(p.map); return Math.hypot(x - b[0], y - b[1]) < hitR() * 1.4; })) return;
-    st.points.push({ id: `${Date.now()}`, kind: st.adding, name: nextName(st.adding), map, head, marks: [] });
+    // a tap: a point where it fell (the mapped heads are not snapped to: they can be off -- owner, 2026-10-31)
+    const b = toBase(xy), map = fromPx(b);
+    if (hitAt(b)) return; // a press on an existing point or edge end was to drag it
+    if (st.adding === 'edge') {
+      // an edge: two taps along a straight edge on the ground (a driveway's, a sidewalk's, a patio's)
+      if (!st.pendingEdge) { st.pendingEdge = map; drawMap(); listPoints(); return; }
+      const a = st.pendingEdge; st.pendingEdge = null;
+      if (Math.hypot(map[0] - a[0], map[1] - a[1]) < 1) { drawMap(); listPoints(); return; }
+      st.points.push({ id: `${Date.now()}`, kind: 'edge', name: nextName('edge'), a, b: map, map: [(a[0] + map[0]) / 2, (a[1] + map[1]) / 2], marks: [] });
+    } else st.points.push({ id: `${Date.now()}`, kind: st.adding, name: nextName(st.adding), map, marks: [] });
     save(); listPoints(); drawMap();
   };
   cv.addEventListener('pointerup', (ev) => up(ev, false));
@@ -279,10 +355,10 @@ function wireMap() {
   $('#zout').addEventListener('click', () => zoomAt(1 / 1.6, mid()));
   $('#zfit').addEventListener('click', () => { st.view = { s: 1, ox: 0, oy: 0 }; drawMap(); });
   document.querySelectorAll('[data-add]').forEach((b) => b.addEventListener('click', () => {
-    st.adding = b.dataset.add;
+    st.adding = b.dataset.add; st.pendingEdge = null; drawMap();
     document.querySelectorAll('[data-add]').forEach((x) => { x.classList.toggle('on', x === b); x.classList.toggle('plain', x !== b); });
   }));
-  $('#undo-point').addEventListener('click', () => { st.points.pop(); save(); listPoints(); drawMap(); });
+  $('#undo-point').addEventListener('click', () => { if (st.pendingEdge) st.pendingEdge = null; else st.points.pop(); save(); listPoints(); drawMap(); });
   $('#clear-pins').addEventListener('click', () => { st.pins = []; save(); drawMap(); results(); });
 }
 
@@ -299,17 +375,26 @@ async function checkXR() {
 }
 
 let xr = null;
-/** What to mark next: an unmarked reference, then an unmarked check point, then the reference nearest the phone again. */
+/** What to mark next: an unmarked reference, then an unmarked check point or edge, then the reference or edge nearest the phone. */
 function nextTarget() {
   const want = st.points.filter((p) => !marked(p));
   const first = want.find((p) => p.kind === 'ref') || want[0];
   if (first) return first;
   const me = myMap();
-  const refs = st.points.filter((p) => p.kind === 'ref');
-  return me ? refs.sort((a, b) => Math.hypot(a.map[0] - me[0], a.map[1] - me[1]) - Math.hypot(b.map[0] - me[0], b.map[1] - me[1]))[0] : refs[0] || null;
+  const refs = st.points.filter((p) => p.kind === 'ref' || p.kind === 'edge');
+  const away = (p) => (p.kind === 'edge' ? segDist(p, me) : Math.hypot(p.map[0] - me[0], p.map[1] - me[1]));
+  return me ? refs.sort((a, b) => away(a) - away(b))[0] : refs[0] || null;
 }
+const segDist = (e, q) => { const dx = e.b[0] - e.a[0], dy = e.b[1] - e.a[1], t = Math.max(0, Math.min(1, ((q[0] - e.a[0]) * dx + (q[1] - e.a[1]) * dy) / (dx * dx + dy * dy || 1))); return Math.hypot(e.a[0] + dx * t - q[0], e.a[1] + dy * t - q[1]); };
 const myMap = () => (st.T && xr?.pose ? apply(st.T, arLevel(xr.pose.transform.position)) : null);
 function flash(text) { const f = $('#flash'); f.textContent = text; f.classList.add('show'); clearTimeout(flash.t); flash.t = setTimeout(() => f.classList.remove('show'), 1800); }
+
+/** After a walk, keep its scale for this phone (the last six walks), when references were marked one after the other. */
+function learnScale() {
+  const sc = sessionScale();
+  if (!sc || sc.k < SCALE_OK[0] || sc.k > SCALE_OK[1]) return;
+  try { const v = learnedScales(); v.push(+sc.k.toFixed(4)); localStorage.setItem('ar-scales', JSON.stringify(v.slice(-6))); log(`kept this phone's scale ${sc.k.toFixed(4)}`); } catch { /* not kept */ }
+}
 
 async function startAR() {
   const overlay = $('#overlay');
@@ -350,7 +435,7 @@ async function setUp(session, overlay) {
   log(`AR started; dom overlay ${session.domOverlayState?.type || 'none'}; anchors ${xr.anchors ? 'yes' : 'no'}`);
   // ARCore's frame jumped (it relocalised): marks before the jump no longer line up with anything after it
   ref.addEventListener?.('reset', () => { if (!xr) return; xr.odo += RESET_WALK; xr.stats.resets++; xr.lastPos = null; log('frame reset'); flash('The AR jumped: mark a reference again'); refit(); });
-  session.addEventListener('end', () => { log('AR ended'); st.lastStats = xr?.stats; xr = null; overlay.hidden = true; document.body.classList.remove('in-ar'); save(); listPoints(); drawMap(); results(); });
+  session.addEventListener('end', () => { log('AR ended'); st.lastStats = xr?.stats; learnScale(); xr = null; overlay.hidden = true; document.body.classList.remove('in-ar'); save(); listPoints(); drawMap(); results(); });
   // taps on the overlay's buttons are not AR "select"s
   overlay.addEventListener('beforexrselect', (ev) => ev.preventDefault());
   session.requestAnimationFrame(onFrame);
@@ -370,11 +455,11 @@ function onFrame(t, frame) {
   if (!xr.tracking && tracking) { xr.lastPos = null; log('found its place'); }
   xr.tracking = tracking;
   if (tracking) {
-    // the walk: the phone's movement on the level, ignoring jitter under 5 cm
+    // the walk: the phone's movement on the level, in steps of half a metre or more (the hand's sway is not walking)
     const p = pose.transform.position;
     if (!xr.lastPos) xr.lastPos = { x: p.x, z: p.z };
     const d = Math.hypot(p.x - xr.lastPos.x, p.z - xr.lastPos.z);
-    if (d > 0.05) { xr.odo += d; xr.stats.walked += d; xr.lastPos = { x: p.x, z: p.z }; }
+    if (d > STEP) { xr.odo += d; xr.stats.walked += d; xr.lastPos = { x: p.x, z: p.z }; }
     // how fast it is turning, smoothed
     const yaw = yawOf(pose.transform.orientation);
     if (xr.yaw != null && t > xr.yawT) {
@@ -440,10 +525,10 @@ function hud(tracking) {
   if (xr.fast) lines.push('<strong class="warn">Turning fast: slow down</strong>');
   if (nRefs >= 2 && st.T) {
     const w = walkedSinceRef();
-    lines.push(w > WALK_REMARK ? `<strong class="warn">Mark a reference again</strong> (${ft(w)} walked since the last mark)` : `Lined up (${refMarks().length} marks; ${ft(w || 0)} since the last)${st.baseline < 5 ? ' — <strong class="warn">references too close together</strong>' : ''}`);
+    lines.push(w > WALK_REMARK ? `<strong class="warn">Mark a reference or edge</strong> (${ft(w)} walked since the last mark; two one after the other, or an edge twice a few steps apart, also set the turn)` : `Lined up (${cons().length} marks; ${ft(w || 0)} since the last)${st.baseline < 5 ? ' — <strong class="warn">references too close together</strong>' : ''}`);
   } else lines.push(`Mark ${2 - nRefs} more reference${2 - nRefs === 1 ? '' : 's'} to line up`);
   const tg = xr.target;
-  if (tg) lines.push(`Next: <strong>${esc(tg.name)}</strong> (${tg.kind === 'ref' ? 'reference' : 'check point'}${tg.head ? `, head ${esc(tg.head)}` : ''}${marked(tg) ? ', again' : ''}) — tap another on the small map`);
+  if (tg) lines.push(`Next: <strong>${esc(tg.name)}</strong> (${tg.kind === 'ref' ? 'reference' : tg.kind === 'edge' ? 'edge: aim at any spot along it' : 'check point'}${marked(tg) ? ', again' : ''}) — tap another on the small map`);
   $('#hud').innerHTML = lines.join('<br>');
   updateBar();
   drawMini();
@@ -493,7 +578,7 @@ function wireAR() {
     refit();
     navigator.vibrate?.(30);
     const far = m.dist > AIM_FAR ? ` (from ${ft(m.dist)}: closer is better)` : '';
-    if (t.kind === 'check') { const l = checkLanding(t); flash(l ? `${t.name}: ${ftIn(l.error)} off${far}` : `${t.name} marked${far}`); } else flash(`${t.name} marked${far}`);
+    if (t.kind === 'check') { const l = checkLanding(t); flash(l ? `${t.name}: ${ftIn(l.error)} off${far}` : `${t.name} marked${far}`); } else if (t.kind === 'edge') { const off = edgeLanding(t); flash(`${t.name} marked${off != null ? `, ${ftIn(off)} from its line` : ''}${far}`); } else flash(`${t.name} marked${far}`);
     xr.target = nextTarget();
     updateBar(); results(); listPoints();
   });
@@ -502,6 +587,7 @@ function wireAR() {
     if (!xr.cur) { flash('No ground under the crosshair'); return; }
     const p = xr.pose.transform.position;
     const pin = { ar: { ...xr.cur }, raw: { ...xr.cur }, odo: xr.odo, dist: Math.hypot(xr.cur.x - p.x, xr.cur.z - p.z), session: st.session, at: Date.now() };
+    pin.aim = pin.dist; pin.walked = pin.odo; pin.fromRef = walkedSinceRef();
     pin.map = apply(st.T, arLevel(pin.ar));
     anchorFor(pin);
     st.pins.push(pin);
