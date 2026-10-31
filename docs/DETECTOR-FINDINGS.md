@@ -1016,6 +1016,27 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H133. USGS'S REQUESTER-PAYS BUCKET (s3://usgs-lidar) HOLDS THE TILE-ONLY FLIGHTS AT THE SAME PATHS AS ROCKYWEB, AND SERVES A 70 MB TILE IN 1.1 s (62 MB/s, against rockyweb's 0.07-0.4) -- 2026-10-31
+
+Not a detector result: where the newest lidar can come from. Workflow 48
+(tools/usgs-bucket-check.py), run 41240458980, with a read-only key on the
+owner's own AWS account (a first account, set up by AWS's new sign-up as a
+member of an Organization, had S3 denied by a service control policy
+p-t2yoxpox; a second, plain account works).
+
+- The bucket has one top folder, Projects/, with 1815 project folders,
+  laid out exactly as rockyweb's .../Elevation/LPC/Projects/<project>/
+  <work unit>/LAZ/<file>.laz: USGS_LPC_AR_Western_B24_15SUA950220.laz is at
+  Projects/AR_Western_B24/AR_Western_1_B24/LAZ/, 51.4 MB, the same size.
+- Every tile-only project the training lots and Ketchum read is there:
+  AR_Western_B24, PA_17County_D24, MD_4County_D24, MD_Central_Processing_D24,
+  NJ_NE6County_B23, ID_SouthernGaps_D23, GA_Central_2019_B19,
+  UT_2023SaltLakeCo_C24, KY_CentralEast_A23, IL_19County_D24, WI_5County_B24
+  (thousands of LAZ each). Not yet checked: projects newer than these.
+- One tile, USGS_LPC_AR_Western_B24_15SVA670170.laz, 70.5 MB in 1.1 s from a
+  GitHub runner. The run cost $0.0066 (58 requests, 70.5 MB at about
+  $0.09/GB leaving AWS); from inside AWS it would be about a fifth of that.
+
 ### H132. A USGS PLAIN LAZ TILE CAN BE READ IN PART, POINT FOR POINT: the chunks of the file under a box (found from each chunk's uncompressed first point) give exactly the points the whole tile gives, on 136 boxes over 25 real tiles; for the square 150 m round an address that is a median 38% of the file, and live from rockyweb it took 22-49% of the whole download's time on the four tiles where a part was chosen -- 2026-10-31
 
 Not a detector result: how the model server gets USGS's newest lidar where
