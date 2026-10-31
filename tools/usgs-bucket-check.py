@@ -50,13 +50,20 @@ def ls(prefix, delimiter="/", limit_pages=20):
             return folders, objects, bool(token)
 
 
+def _why(e):
+    """AWS's own words for a refusal, with the account number hidden (these logs can be read by others)."""
+    msg = e.response.get("Error", {}).get("Message", "") or ""
+    return re.sub(r"\d{12}", "<account>", msg)[:300]
+
+
 def diagnose():
     """Where a refusal comes from: the key, our permissions, or the bucket. Prints no secret, no account number."""
     import botocore
     sts = boto3.client("sts", region_name="us-west-2")
     try:
         who = sts.get_caller_identity()["Arn"]
-        print(f"KEY: works, as {who.rsplit('/', 1)[-1]}")
+        kind = who.split(":")[-1].split("/")[0]
+        print(f"KEY: works, as {kind} {who.rsplit('/', 1)[-1]}")
     except botocore.exceptions.ClientError as e:
         print(f"KEY: refused ({e.response['Error']['Code']}): the key itself is wrong or inactive")
         return False
@@ -65,7 +72,7 @@ def diagnose():
         REQ["n"] += 1
         print("PERMISSION: this key can list a public bucket (S3 read access is attached)")
     except botocore.exceptions.ClientError as e:
-        print(f"PERMISSION: cannot list even the free bucket ({e.response['Error']['Code']}): AmazonS3ReadOnlyAccess is not attached to this user")
+        print(f"PERMISSION: cannot list even the free bucket ({e.response['Error']['Code']}): {_why(e)}")
     ok = False
     for prefix in ("", "Projects/", "AR_Western_B24/", "AR_Western_1_B24/"):
         try:
@@ -75,7 +82,7 @@ def diagnose():
                   f"{[c['Prefix'] for c in r.get('CommonPrefixes', [])][:5]} {[o['Key'] for o in r.get('Contents', [])][:3]}")
             ok = True
         except botocore.exceptions.ClientError as e:
-            print(f"LIST usgs-lidar '{prefix}': {e.response['Error']['Code']}")
+            print(f"LIST usgs-lidar '{prefix}': {e.response['Error']['Code']} -- {_why(e)}")
     tile = "USGS_LPC_AR_Western_B24_15SUA950220.laz"
     for key in (f"Projects/AR_Western_B24/AR_Western_1_B24/LAZ/{tile}", f"AR_Western_B24/AR_Western_1_B24/LAZ/{tile}",
                 f"AR_Western_1_B24/LAZ/{tile}", f"AR_Western_1_B24/{tile}", f"AR_Western_B24/{tile}"):
