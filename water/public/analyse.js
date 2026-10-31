@@ -17,7 +17,8 @@ import { runSite } from '/lib/site.js';
 import { soilFor, sdaPost } from '/lib/soil.js';
 import { typicalYears, thisWeek, attachStationHours, soilDaysOver } from '/lib/weather.js';
 import { waterPlan } from '/lib/plan.js';
-import { demAround, terrain, hillside } from '/lib/upslope.js';
+import { demAround, terrain, hillside, RADIUS_M } from '/lib/upslope.js';
+import { placeSoils, twiForGrid } from '/lib/soilplace.js';
 import { powerUrl, typicalYear, growingSeason, SEASON_GP } from '/lib/shade/climate.js';
 import { onePass } from '/lib/shade/passes.js';
 import { polygonsOf } from '/lib/geo.js';
@@ -55,7 +56,7 @@ function planWith(inputs = {}, zoneOf = null) {
   const grass = inputs.grass === 'warm' ? 'warm' : 'cool';
   kept.season = seasonFor(grass);
   return waterPlan(r.result, {
-    lawnMask: kept.lawn, paved: r.impervious ? r.impervious.paved : null, soil: kept.soil,
+    lawnMask: kept.lawn, paved: r.impervious ? r.impervious.paved : null, soil: kept.soil, placement: kept.placement || null,
     topsoil: !!inputs.topsoil, downspouts: inputs.downspouts || [], gutters: inputs.gutters || [],
     typical: kept.typical, week: kept.week, season: kept.season, species: inputs.species || null, mode: inputs.mode || 'normal', soilTemp: { byDate: kept.soilDays || null, typical: kept.climate?.tSoil || null }, light: kept.light, lightMonths: kept.lightMonths || null, radiation: kept.radiation || null, fenceHeat: kept.fenceHeat || null, windMonths: kept.windMonths || null, shadeKinds: kept.shadeKinds || null, grass,
     texture: inputs.texture || null, parcelMask: r.parcelMask || null, areas: inputs.areas || [], zoneOf,
@@ -112,6 +113,13 @@ async function start(site, inputs) {
     const d = 120 / 111320, e = d / Math.cos((lat * Math.PI) / 180);
     return soilFor([lng - e, lat - d, lng + e, lat + d], (q) => sdaPost(q)).then((x) => (x.units.length ? x : null));
   }).catch((err) => ({ units: [], error: err.message })).then((x) => x || { units: [], error: 'no answer' });
+  /* EACH SOIL IN ITS OWN PLACE (H62): the USGS 10 m ground and the survey's map over the same window (600 m round),
+     fetched now beside the lidar; the hillside reading after the plan uses the same ground. */
+  const demP = again(() => demAround(lng, lat)).catch(() => null);
+  const soilWinP = again(() => {
+    const d = RADIUS_M / 111320, e = d / Math.cos((lat * Math.PI) / 180);
+    return soilFor([lng - e, lat - d, lng + e, lat + d], (q) => sdaPost(q));
+  }).catch(() => null);
   const typicalP = again(() => typicalYears(lat, lng));
   const weekP = again(() => thisWeek(lat, lng, { back: 60 })).catch(() => null);
   /* THE SOIL'S TEMPERATURE DAY BY DAY (H53): IEMRE's 4-inch soil (a modelled 0-7 cm layer) for each of the plan's ten years and this one, for
@@ -174,6 +182,15 @@ async function start(site, inputs) {
   kept.r = r; kept.lng = lng; kept.lat = lat;
   kept.lawn = r.lawnMask || standInLawn(res); kept.standIn = !r.lawnMask;
   kept.soil = await soilP;
+  kept.placement = null;
+  try {
+    const [dem, win] = await Promise.all([demP, soilWinP]);
+    if (dem && win?.units?.length && kept.soil.units?.length) {
+      kept.dem = { dem, t: terrain(dem) };
+      const pl = placeSoils(kept.soil.units, win.units, dem, kept.dem.t);
+      if (pl.byUnit.size) kept.placement = { byUnit: pl.byUnit, twi: twiForGrid(dem, pl.twi, res.grid) };
+    }
+  } catch { kept.placement = null; }
   const typ = await typicalP;
   kept.typical = typ.days; kept.rainFrom = typ.rainFrom;
   kept.week = await weekP;
@@ -252,8 +269,8 @@ async function start(site, inputs) {
     const g = res.grid;
     for (let r0 = 0; r0 < g.H; r0 += 3) for (let c0 = 0; c0 < g.W; c0 += 3) if (kept.lawn[r0 * g.W + c0]) pts.push(res.lngLat(r0 + 0.5, c0 + 0.5));
     if (!pts.length) pts.push([lng, lat]);
-    const dem = await demAround(lng, lat);
-    self.postMessage({ hill: hillside(dem, terrain(dem), pts) });
+    const dem = kept.dem?.dem || await demAround(lng, lat);
+    self.postMessage({ hill: hillside(dem, kept.dem?.t || terrain(dem), pts) });
   } catch (e) {
     self.postMessage({ hill: { error: e.message || String(e) } });
   }

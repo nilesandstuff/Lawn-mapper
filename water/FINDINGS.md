@@ -2067,7 +2067,37 @@ agent; re-checked by this session where marked there). Tested:
 - The water map's balance reads the soil survey's MAIN component's wet layers: at Hudsonville (Spinks 50%, none listed)
   it sees no water table, where Fern (25%) lists 54 cm. Central Grand Rapids and Rockford fall on "Urban land" units
   with no water table at all.
-NOT BUILT: which of these to use is for the owner (S17, TODO 21).
+Owner, 2026-10-31: read the soil as finely as possible (built: H62); well records only if they are available in most
+places (they are not: Wellogic is Michigan's, USGS's national levels near the lots are single readings from 1950-74),
+so no wells; more on streams and flood plains (H63).
+
+### H62. Each soil of a map unit in its own place (water session, 2026-10-31)
+
+The owner: "if we're not reading the soil as granularly as possible, we should." The soil survey maps units, each a
+mix of named soils by percentage with no map of which lies where (Spinks-Fern complex: Spinks 50%, well drained, no
+water table; Fern 25%, somewhat poorly drained, wet from 54 cm; minor soils). The balance took the unit's main soil
+for all of it, so a lawn on such a unit never saw Fern's water table. Now (lib/soilplace.js) each unit's described
+soils are placed by the topographic wetness index of the USGS 3DEP 10 m ground 600 m round the lot -- the hillside
+reading's own ground, now fetched beside the lidar: across the unit's own ground in that window, the driest soil (by
+drainage class, then its water table) takes the driest share of the cells, and so on, each its percentage in the
+survey; each lawn cell takes the soil its wetness falls to, with that soil's own layers, intake, hydrologic group,
+drainage and month-by-month water table in the balance. Where the survey maps "Urban land" (no soil described) the
+nearest unit in the window with soils lends them, placed the same way. Without the 10 m ground or the window's soil
+map, the main soil as before. The soil reader now keeps every soil's own water table, minor soils included (it read
+the major soils' only). The soil card lists each placed soil with its share of the lawn.
+
+Tests (soilplace.test.js, plan.test.js): on made-up ground a 25% wet soil takes 25% of the unit, along the valley; a
+unit's two soils get their own cells, water table and water holding in the plan; urban land borrows its neighbour's.
+
+**On real ground** (live survey and 10 m ground; 120 m circles at public points):
+
+| | before (the main soil) | placed |
+|---|---|---|
+| the owner's lawn: Filer loam, 2-6% (Filer 90%, Capac 6% wet from 15 cm, Parkhill 2% wet from the surface) | Filer | Filer, all of it: none of the lawn lies in the unit's wettest 8% across the window |
+| Hudsonville area (42.87, -85.86): Spinks-Fern and Brems-Spinks complexes | Spinks; Brems | Spinks 37%, Fern 17%, Brems 20%, Tekenink 13%, Covert 5%, Thetford 3%, Capac 3% |
+| 42.90, -85.80: Boyer loamy sand with a gravel pit unit | Boyer; the pit unit with no soil | Boyer 98%, Spinks 2%; the pit borrows Boyer's soils |
+
+Not checked against a soil pit on a lawn (S18).
 
 ## SPECULATION
 
@@ -2104,6 +2134,18 @@ unlikely is the check. The soil survey's own monthly water table (lib/soil.js,
 "Wet" layers) IS in the balance: it stops drainage and makes dual-group soils
 the wetter group in those months.
 
+
+
+### S18. Placing a unit's soils by wetness (2026-10-31, with H62)
+
+- The survey's soils are placed by one index (wetness, ln(a / tan b) on 10 m ground); the survey's own descriptions
+  also use slope and landform position (summit, footslope, depression), parent material and erosion, not used here.
+- Ranking by drainage class assumes the wetter soil holds the wetter ground; a soil wet because of a perched layer
+  over till can sit on a rise. Equal shares are kept unit-wide across the 1.2 km window, so a lot entirely on a knoll
+  gets none of the wet soil, which is the point, but a lot whose unit barely enters the window is placed by the
+  window's wetness as a whole.
+- 10 m ground: each soil's patch is at least about 10 m across; finer swales are the lot's own lidar's (the low spots).
+- Urban land borrows the nearest unit's soils: a guess that a lawn on fill is like the soils round it.
 
 ### S17. The water table under a lawn: how the sources might be used (2026-10-31, with H61)
 

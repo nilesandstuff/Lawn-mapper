@@ -478,6 +478,28 @@ test('each lidar point carries its leaf state from its own GPS day, and the shad
   assert.equal(makeColumns(3).leaf.length, 3);
 });
 
+test('each soil in its own place: a placement gives each of a unit\'s soils its own cells, layers and water table in the plan', () => {
+  const res = lot({ roofs: [] });
+  const g = res.grid, N = g.W * g.H;
+  const lawn = new Uint8Array(N).fill(1);
+  const comp = (name, pct, drainage, awc, wet) => ({ name, pct, drainage, hydgrp: 'B', soil: true, share: pct / 100, profile: { name, horizons: [{ topCm: 0, bottomCm: 150, awc, ksatUmS: 3.7 }] }, wetByMonth: new Array(12).fill(wet) });
+  const unit = { ...loam, mukey: 'u1', name: 'Spinks-Fern complex', polygons: [] };
+  const corner = (x, y) => fromMerc([g.bbox[0] + x / g.k, g.bbox[1] + y / g.k]);
+  unit.polygons = [[[corner(0, 0), corner(40, 0), corner(40, 40), corner(0, 40), corner(0, 0)]]];
+  const twi = new Float32Array(N); for (let i = 0; i < N; i++) twi[i] = (i % g.W) < g.W / 2 ? 5 : 9; // the west half dry, the east wet
+  const placement = { byUnit: new Map([['u1', { comps: [comp('Spinks', 75, 'Well drained', 0.08, null), comp('Fern', 25, 'Somewhat poorly drained', 0.18, 54)], cuts: [7], borrowed: null }]]), twi };
+  const days = summer(120);
+  const plan = waterPlan(res, { lawnMask: lawn, soil: { units: [unit] }, typical: days, placement });
+  assert.equal(plan.soil.length, 2, plan.soil.map((x) => x.name).join(' | '));
+  assert.ok(/Fern/.test(plan.soil[1].name) && plan.soil[1].wtMinCm === 54 && plan.soil[0].wtMinCm === null);
+  const west = plan.soilAt[Math.floor(g.H / 2) * g.W + 2], east = plan.soilAt[Math.floor(g.H / 2) * g.W + g.W - 3];
+  assert.equal(west, 0); assert.equal(east, 1);
+  assert.ok(plan.soil[1].tawMm > plan.soil[0].tawMm, 'Fern holds more water than the sandy Spinks');
+  // without a placement: the unit as one, as before
+  const one = waterPlan(res, { lawnMask: lawn, soil: { units: [unit] }, typical: days });
+  assert.equal(one.soil.length, 1);
+});
+
 let failed = 0;
 for (const [name, fn] of tests) {
   try { await fn(); console.log(`ok  ${name}`); } catch (e) { failed++; console.log(`FAIL ${name}\n     ${e.stack.split('\n').slice(0, 3).join('\n     ')}`); }

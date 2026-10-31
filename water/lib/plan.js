@@ -21,6 +21,7 @@
 
 import { rootZone, maxSprinklerRate, withTexture, layersOf } from './soil.js';
 import { workingCm, speciesOf, groupOf, typicalRoots, attachRootRatio, rootsByMonth, kcFor, SPECIES } from './roots.js';
+import { soilIndex } from './soilplace.js';
 import { dayIndex } from './shade/climate.js';
 import { maskOf } from './geo.js';
 import { roofRouting } from './gutters.js';
@@ -52,7 +53,7 @@ const DEFAULT_SOIL = { name: 'no survey soil here (a loam assumed)', drainage: '
  *   topsoil (bool), downspouts, gutters, typical (days), week ({ days, today }), light (Float32Array | null),
  *   zoneOf (Int16Array, the user's own zones, optional), params
  */
-export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, topsoil = false, downspouts = [], gutters = [], typical, week = null, light = null, lightMonths = null, radiation = null, fenceHeat = null, windMonths = null, shadeKinds = null, season = null, grass = 'cool', species = null, soilTemp = null, mode = 'normal', texture = null, parcelMask = null, areas = [], zoneOf: userZones = null, params: given = null } = {}) {
+export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, topsoil = false, downspouts = [], gutters = [], typical, week = null, light = null, lightMonths = null, radiation = null, fenceHeat = null, windMonths = null, shadeKinds = null, season = null, grass = 'cool', species = null, soilTemp = null, mode = 'normal', placement = null, texture = null, parcelMask = null, areas = [], zoneOf: userZones = null, params: given = null } = {}) {
   // warm-season turf (owner 2026-10-18): FAO-56's p 0.5 in place of cool-season's 0.4
   // the level's crop coefficient from the owner's table by species (roots.js kcFor; FINDINGS H54), unless params were given whole
   const kc = kcFor(species, grass, mode);
@@ -81,18 +82,35 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
   /* THE ROOTS (H53): the working depth from the species checked (the group's general figure with none), and each
      soil's available water cm by cm down to it, for the day's shallower roots (balance.js simulate). */
   const ids = speciesOf(species, grass), rootCm = workingCm(species, grass);
+  /* EACH SOIL IN ITS OWN PLACE (H62): with a placement (soilplace.js), each unit's soils become their own entries --
+     their own layers, group, drainage and water table -- and each cell takes the one its wetness index falls to;
+     without one, the unit's main soil as before. `placed` is what the soil view and card list. */
+  const placed = [], soilAt = new Int16Array(N).fill(0);
+  const pct = (v) => Math.round(v * 100);
+  units.forEach((u) => {
+    const P = placement?.byUnit?.get(u.mukey);
+    const m = u.polygons?.length ? maskOf(g, u.polygons.map((coordinates) => ({ type: 'Polygon', coordinates }))) : null;
+    if (!P) {
+      const k = placed.push(u) - 1;
+      if (m) for (let i = 0; i < N; i++) if (m[i]) soilAt[i] = 2 * k;
+      return;
+    }
+    const idx = P.comps.map((c, j) => placed.push({
+      mukey: u.mukey, share: null, polygons: null, chosen: u.chosen || null,
+      name: P.borrowed ? `${c.name} (${pct(c.share)}% of ${P.borrowed}, the nearest mapped soil: the survey maps this ground as ${u.name || 'urban land'})`
+        : P.comps.length > 1 ? `${c.name} (${pct(c.share)}% of ${u.name}; ${j === 0 ? 'its driest ground' : j === P.comps.length - 1 ? 'its wettest ground' : 'between'})` : u.name,
+      drainage: c.drainage || u.drainage, hydgrp: c.hydgrp || u.hydgrp, slope: c.slope ?? u.slope, profile: c.profile, wetByMonth: c.wetByMonth || u.wetByMonth,
+      component: c.name, placedBy: P.cuts.length ? 'wetness' : 'only soil', borrowed: P.borrowed,
+      wtMinCm: (() => { const v = (c.wetByMonth || []).filter(Number.isFinite); return v.length ? Math.min(...v) : null; })(),
+    }) - 1);
+    if (m) for (let i = 0; i < N; i++) if (m[i]) soilAt[i] = 2 * idx[soilIndex(P, placement.twi ? placement.twi[i] : NaN)];
+  });
   const soils = [];
   const tableFor = (profile, topsoil) => { const t = new Float32Array(Math.ceil(rootCm) + 1); for (let cm = 1; cm < t.length; cm++) t[cm] = rootZone(profile, { rootCm: cm, topsoil })?.tawMm ?? 0; return t; };
-  for (const u of units) {
+  for (const u of placed) {
     soils.push({ unit: u, rz: rootZone(u.profile, { rootCm }), tawByCm: tableFor(u.profile, false), drainage: u.drainage, hydgrp: u.hydgrp, wetByMonth: u.wetByMonth });
     soils.push({ unit: u, rz: rootZone(u.profile, { rootCm, topsoil: true }), tawByCm: tableFor(u.profile, true), drainage: u.drainage, hydgrp: u.hydgrp, wetByMonth: u.wetByMonth, topsoil: true });
   }
-  const soilAt = new Int16Array(N).fill(0);
-  units.forEach((u, k) => {
-    if (!u.polygons?.length) return;
-    const m = maskOf(g, u.polygons.map((coordinates) => ({ type: 'Polygon', coordinates })));
-    for (let i = 0; i < N; i++) if (m[i]) soilAt[i] = 2 * k;
-  });
   if (topsoil) for (let i = 0; i < N; i++) if (kinds[i] === KIND.lawn) soilAt[i] += 1;
 
   // 2. roofs
@@ -256,7 +274,7 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
       return { pieces: onLot.length, guessed: onLot.filter((p) => p.guessed).length, unusedDownspouts: roofs.unused, allPieces: roofs.pieces.length };
     })(),
     texture: texture || null,
-    soil: units.map((u) => ({ name: u.name, chosen: u.chosen || null, share: u.share ?? null, layers: layersOf(u.profile), intakeInH: (() => { const r = rootZone(u.profile); return r?.topKsatMmH ? r.topKsatMmH / 25.4 : null; })(), drainage: u.drainage, hydgrp: u.hydgrp, wtMinCm: u.wtMinCm ?? null, wetByMonth: u.wetByMonth, assumed: !!u.assumed, tawMm: rootZone(u.profile)?.tawMm ?? null, tawTopsoilMm: rootZone(u.profile, { topsoil: true })?.tawMm ?? null })),
+    soil: placed.map((u) => ({ name: u.name, component: u.component || null, borrowed: u.borrowed || null, chosen: u.chosen || null, share: u.share ?? null, layers: layersOf(u.profile), intakeInH: (() => { const r = rootZone(u.profile); return r?.topKsatMmH ? r.topKsatMmH / 25.4 : null; })(), drainage: u.drainage, hydgrp: u.hydgrp, wtMinCm: u.wtMinCm ?? null, wetByMonth: u.wetByMonth, assumed: !!u.assumed, tawMm: rootZone(u.profile)?.tawMm ?? null, tawTopsoilMm: rootZone(u.profile, { topsoil: true })?.tawMm ?? null })),
     years, topsoil, grass, thisWeek, shaded: !!light, lightByMonth: !!model.lightMonths, ownRadiation: !!model.rad, fences: model.fenceHeat ? { fences: model.fenceHeat.fences, seen: model.fenceHeat.seen } : null, treeCool: !!model.canopy, yardWind: model.windAt ? (() => { const v = []; for (let i = 0; i < N; i++) if (kinds[i] === KIND.lawn) v.push(model.winds[model.windAt[i]]); return v.length ? med(v) : null; })() : null,
     sunShare: light ? (() => { const v = []; for (let i = 0; i < N; i++) if (kinds[i] === KIND.lawn) v.push(light[i]); return med(v); })() : null,
     weather: wx,

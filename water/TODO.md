@@ -108,6 +108,7 @@ SPECULATION), as always.
 - 2026-10-27: rain intensity in the ten-year plan, from the station's hours (FINDINGS H52).
 - 2026-10-28: the roots by species (a checklist) and through the season from the soil's warmth, each year its own (FINDINGS H53, S15; research-roots-brief.md, research-roots-ryegrass.md).
 - 2026-10-28: how much to water -- normal, deficit or dormancy, chosen just before the sprinklers question and kept with the map (FINDINGS H54, S16).
+- 2026-10-31: each soil of a map unit in its own place, by the lie of the land; urban land borrows its neighbour's (FINDINGS H62, S18).
 - 2026-10-29: fences: each face its own temperature, the board lit through the trees (FINDINGS H59).
 - 2026-10-29: deficit and dormancy show their stress: the grass draws at its own coefficient while the schedule waters for the level's (FINDINGS H57).
 - 2026-10-29: the lidar's leaf state point by point, as the shade map now reads it, in the water map's own reader (FINDINGS H56).
