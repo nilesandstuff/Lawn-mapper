@@ -107,6 +107,10 @@ def _bake_weights():
 
 
 auth = modal.Secret.from_name("lawn-alpha-auth")
+# The owner's read-only key for USGS's requester-pays bucket (H133), written by
+# workflow 2 from the AWS_* repository secrets as USGS_S3_KEY_ID / USGS_S3_SECRET
+# (empty without them: the tiles then come from rockyweb, lidar_sources.fetch_ranged).
+usgs_s3 = modal.Secret.from_name("lawn-usgs-s3")
 
 gpu_image = (
     modal.Image.debian_slim(python_version="3.12")
@@ -134,7 +138,7 @@ cpu_image = (
     .apt_install("curl", "ca-certificates")
     .run_commands("curl -fsSL https://deb.nodesource.com/setup_22.x | bash -", "apt-get install -y nodejs")
     # rasterio: the CRS of USGS's tiles, to Web Mercator (tools/lidar_sources.py).
-    .pip_install("numpy", "pillow", "scipy", "scikit-image", "laspy[lazrs]", "rasterio")
+    .pip_install("numpy", "pillow", "scipy", "scikit-image", "laspy[lazrs]", "rasterio", "boto3")
     .run_commands(f"mkdir -p {REPO} && cd {REPO} && echo '{{\"type\": \"module\", \"private\": true}}' > package.json"
                   " && npm install pngjs@7 >/dev/null")
     .add_local_dir(os.path.join(ROOT, "tools"), f"{REPO}/tools",
@@ -361,7 +365,7 @@ def _fetch_or_wait(urls, say=lambda words: None, wait_s=FETCH_AGAIN_S, fetch_aft
 
 # 5400 s: each tile may now wait out USGS's 429s for RATE_PATIENCE_S (30 min)
 # and then download for twenty more (run 271: 324 MB took 1296 s).
-@app.function(image=cpu_image, volumes={TILE_DIR: tiles}, timeout=5400, cpu=1.0, memory=4096)
+@app.function(image=cpu_image, volumes={TILE_DIR: tiles}, timeout=5400, cpu=1.0, memory=4096, secrets=[usgs_s3])
 def fetch_tiles(urls, box=None, area_urls=None):
     """USGS's tiles of a newer flight onto the volume, for the next lot there.
     Each is written under a temporary name and renamed when whole, so a reader
@@ -504,7 +508,7 @@ warming = modal.Dict.from_name("lawn-lidar-warming", create_if_missing=True)
 WARM_PARALLEL = 2  # tiles fetched side by side; each is already RANGE_PARTS ranges, and rockyweb refuses a crowd
 
 
-@app.function(image=cpu_image, volumes={TILE_DIR: tiles}, timeout=3600, cpu=2.0, memory=4096)
+@app.function(image=cpu_image, volumes={TILE_DIR: tiles}, timeout=3600, cpu=2.0, memory=4096, secrets=[usgs_s3])
 def warm_area(urls, box):
     if f"{REPO}/tools" not in sys.path:
         sys.path.insert(0, f"{REPO}/tools")
@@ -590,7 +594,7 @@ def _note(key, stage, **more):
         pass
 
 
-@app.function(image=cpu_image, volumes={"/models": models, TILE_DIR: tiles}, timeout=GATHER_TIMEOUT_S, cpu=1.0, memory=2048,
+@app.function(image=cpu_image, volumes={"/models": models, TILE_DIR: tiles}, timeout=GATHER_TIMEOUT_S, cpu=1.0, memory=2048, secrets=[usgs_s3],
               # A CPU machine costs a few cents an hour, so it can wait longer
               # for the next lot than the GPU does.
               scaledown_window=300)

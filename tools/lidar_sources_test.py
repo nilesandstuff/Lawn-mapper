@@ -214,6 +214,76 @@ def check_ranged_download_waits_and_resumes():
     print("download: 429s waited out without spending tries, a broken range carried on, given up at patient_until")
 
 
+def check_s3_first():
+    """H133: a rockyweb tile is taken from USGS's S3 bucket when a key is set, and from rockyweb when the bucket fails."""
+    import http.server
+    import tempfile
+    import threading
+    from pathlib import Path
+    body = bytes(range(256)) * 300
+
+    class FakeS3:
+        def __init__(self, fail=False):
+            self.fail, self.asked = fail, []
+
+        def head_object(self, Bucket, Key, RequestPayer):
+            self.asked.append(("head", Bucket, Key, RequestPayer))
+            if self.fail:
+                raise RuntimeError("AccessDenied")
+            return {"ContentLength": len(body)}
+
+        def download_file(self, Bucket, Key, Filename, ExtraArgs, Callback):
+            self.asked.append(("get", Bucket, Key, ExtraArgs))
+            Path(Filename).write_bytes(body)
+            Callback(len(body))
+
+    url = t.ROCKYWEB_LPC + "Projects/AR_Western_B24/AR_Western_1_B24/LAZ/USGS_LPC_AR_Western_B24_15SUA950220.laz"
+    assert t.s3_key_of(url) == "Projects/AR_Western_B24/AR_Western_1_B24/LAZ/USGS_LPC_AR_Western_B24_15SUA950220.laz"
+    assert t.s3_key_of("https://example.com/x.laz") is None and t.s3_key_of(t.ROCKYWEB_LPC + "Projects/../x.laz") is None
+    keep_client, keep_prefix = t._s3_client_for_tests, t.ROCKYWEB_LPC
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            fake = FakeS3()
+            t._s3_client_for_tests = fake
+            told = []
+            got = t.fetch_ranged(url, Path(d) / "a.laz", progress=lambda done, size: told.append((done, size)))
+            assert got.read_bytes() == body, "the bucket's bytes"
+            assert ("get", "usgs-lidar", t.s3_key_of(url), {"RequestPayer": "requester"}) in fake.asked, fake.asked
+            assert told[-1] == (len(body), len(body)) and not list(Path(d).glob("*.s3part"))
+            assert t.s3_size(url) == len(body)
+
+            class H(http.server.BaseHTTPRequestHandler):
+                def log_message(self, *a):
+                    pass
+
+                def do_HEAD(self):
+                    self.send_response(200)
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+
+                def do_GET(self):
+                    a, b = self.headers["Range"].split("=")[1].split("-")
+                    chunk = body[int(a):int(b) + 1]
+                    self.send_response(206)
+                    self.send_header("Content-Length", str(len(chunk)))
+                    self.end_headers()
+                    self.wfile.write(chunk)
+            srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+            threading.Thread(target=srv.serve_forever, daemon=True).start()
+            try:
+                t.ROCKYWEB_LPC = f"http://127.0.0.1:{srv.server_port}/"
+                t._s3_client_for_tests = FakeS3(fail=True)
+                local = t.ROCKYWEB_LPC + "Projects/X/Y/LAZ/t.laz"
+                got = t.fetch_ranged(local, Path(d) / "b.laz")
+                assert got.read_bytes() == body, "rockyweb when the bucket refuses"
+                assert t.s3_size(local) is None
+            finally:
+                srv.shutdown()
+    finally:
+        t._s3_client_for_tests, t.ROCKYWEB_LPC = keep_client, keep_prefix
+    print("S3 first: a rockyweb tile from USGS's bucket (requester pays), rockyweb when the bucket refuses")
+
+
 def check_raw_points_cache():
     """The raw points saved once are read back for the same key and re-read for another."""
     import tempfile
@@ -362,6 +432,7 @@ if __name__ == "__main__":
     check_one_read()
     check_ranged_download_makes_its_folder()
     check_ranged_download_waits_and_resumes()
+    check_s3_first()
     check_raw_points_cache()
     check_tile_crop_for_the_pages()
     check_areas_and_the_server_crop()

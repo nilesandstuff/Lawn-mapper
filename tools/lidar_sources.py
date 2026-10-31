@@ -30,6 +30,7 @@ on the live server (lidar_frame.lidar_for) alike, so the two cannot drift:
 
 import concurrent.futures
 import json
+import os
 import math
 import re
 import urllib.request
@@ -219,6 +220,89 @@ def _retry_after(e):
         return 0.0
 
 
+# USGS'S REQUESTER-PAYS BUCKET FIRST (owner, 2026-10-31: "Yes please do";
+# H133). s3://usgs-lidar holds the tile-only flights at rockyweb's own paths
+# after .../Elevation/LPC/, and served a 70 MB tile in 1.1 s where rockyweb
+# takes 5-25 minutes. Requests are billed to the owner's AWS account (about
+# $0.09 a GB leaving AWS: half a cent a tile, once). The read-only key comes
+# as USGS_S3_KEY_ID / USGS_S3_SECRET (the Modal secret lawn-usgs-s3, written
+# by workflow 2), named so that no other library picks it up by itself.
+# Without them, or when a tile is not in the bucket, rockyweb as before.
+S3_BUCKET = "usgs-lidar"
+S3_REGION = "us-west-2"
+ROCKYWEB_LPC = "https://rockyweb.usgs.gov/vdelivery/Datasets/Staged/Elevation/LPC/"
+_s3_client_for_tests = None
+
+
+def s3_key_of(url):
+    """The bucket key of a rockyweb LPC tile (Projects/<project>/<unit>/LAZ/<file>.laz), or None."""
+    u = str(url or "")
+    if not u.startswith(ROCKYWEB_LPC) or not u.lower().endswith(".laz"):
+        return None
+    rest = u[len(ROCKYWEB_LPC):]
+    return rest if rest.startswith("Projects/") and ".." not in rest else None
+
+
+def s3_ready():
+    return _s3_client_for_tests is not None or bool(os.environ.get("USGS_S3_KEY_ID") and os.environ.get("USGS_S3_SECRET"))
+
+
+def _s3():
+    if _s3_client_for_tests is not None:
+        return _s3_client_for_tests
+    import boto3
+    from botocore.config import Config
+    return boto3.client("s3", region_name=S3_REGION, aws_access_key_id=os.environ["USGS_S3_KEY_ID"],
+                        aws_secret_access_key=os.environ["USGS_S3_SECRET"],
+                        config=Config(retries={"max_attempts": 5, "mode": "standard"}))
+
+
+def s3_size(url):
+    """The tile's size in the bucket, or None (not there, no key, or refused)."""
+    key = s3_key_of(url)
+    if not key or not s3_ready():
+        return None
+    try:
+        return int(_s3().head_object(Bucket=S3_BUCKET, Key=key, RequestPayer="requester")["ContentLength"])
+    except Exception:  # noqa: BLE001 - not there, or not allowed: rockyweb
+        return None
+
+
+def fetch_from_s3(url, path, progress=None):
+    """The whole tile from the bucket into `path` (a temporary name, renamed
+    when complete and the right size). Raises when it cannot."""
+    import time
+    key = s3_key_of(url)
+    if not key:
+        raise ValueError("not a rockyweb LPC tile")
+    c = _s3()
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    size = int(c.head_object(Bucket=S3_BUCKET, Key=key, RequestPayer="requester")["ContentLength"])
+    tmp = path.with_suffix(".s3part")
+    state = {"done": 0, "told": 0.0}
+
+    def tick(n):
+        state["done"] += n
+        if progress and time.time() - state["told"] >= PROGRESS_EVERY_S:
+            state["told"] = time.time()
+            try:
+                progress(state["done"], size)
+            except Exception:  # noqa: BLE001 - a courtesy, never the download
+                pass
+    if progress:
+        progress(0, size)
+    c.download_file(S3_BUCKET, key, str(tmp), ExtraArgs={"RequestPayer": "requester"}, Callback=tick)
+    got = tmp.stat().st_size
+    if got != size:
+        tmp.unlink(missing_ok=True)
+        raise IOError(f"{got} of {size} bytes from the bucket")
+    tmp.rename(path)
+    if progress:
+        progress(size, size)
+    return path
+
+
 def fetch_ranged(url, path, parts=RANGE_PARTS, timeout=120, tries=RATE_TRIES, progress=None, patient_until=None):
     """A whole file in `parts` parallel byte ranges.
     The folder is made if it is not there: the first release run on this reader
@@ -234,6 +318,14 @@ def fetch_ranged(url, path, parts=RANGE_PARTS, timeout=120, tries=RATE_TRIES, pr
     if path.exists() and path.stat().st_size > 0:
         return path
     path.parent.mkdir(parents=True, exist_ok=True)
+    if s3_ready() and s3_key_of(url):
+        t0 = time.time()
+        try:
+            fetch_from_s3(url, path, progress=progress)
+            print(f"{path.name}: {path.stat().st_size / 1e6:.0f} MB from USGS's S3 bucket in {time.time() - t0:.1f}s", flush=True)
+            return path
+        except Exception as e:  # noqa: BLE001 - rockyweb, as before
+            print(f"{path.name}: not from USGS's S3 bucket ({type(e).__name__}: {str(e)[:120]}); rockyweb instead", flush=True)
     until = patient_until if patient_until is not None else time.time() + RATE_PATIENCE_S
     size = None
     head = _Patience(tries, until)
@@ -547,6 +639,10 @@ def write_partial_area(tile_dir, urls, box, say=print, patient_until=None):
     if out.exists() and out.stat().st_size > 0:
         return out
     if not PARTIAL_ON:
+        return None
+    missing = [u for u in urls if not ((Path(tile_dir) / str(u).rsplit("/", 1)[-1]).exists())]
+    if missing and s3_ready() and all(s3_size(u) for u in missing):
+        say(f"{len(missing)} tile(s) in USGS's S3 bucket: the whole tile in seconds, no part needed")
         return None
     crs_of = lambda h: _tile_crs(types.SimpleNamespace(header=h))  # noqa: E731
     recs = []

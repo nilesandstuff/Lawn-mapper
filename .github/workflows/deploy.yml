@@ -384,6 +384,8 @@ jobs:
           MAPBOX_TOKEN: ${{ secrets.MAPBOX_TOKEN }}
           MAPBOX_SERVER_TOKEN: ${{ secrets.MAPBOX_SERVER_TOKEN }}
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          USGS_S3_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          USGS_S3_SECRET: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         run: |
           if [ -z "$MODAL_TOKEN_ID" ] || [ -z "$MODAL_TOKEN_SECRET" ]; then
             echo "ALPHA_STATE=off -- no MODAL_TOKEN_ID / MODAL_TOKEN_SECRET secrets" >> "$GITHUB_ENV"
@@ -410,6 +412,14 @@ jobs:
           # The hub token beside it (H114): a release on DINOv3's gated eye
           # needs the server to open the weights; empty when not set.
           modal secret create lawn-alpha-auth "ALPHA_TOKEN=$token" "HF_TOKEN=${HF_TOKEN:-}" --force >/dev/null
+          # USGS's requester-pays lidar bucket (H133): the owner's read-only AWS
+          # key, under names no other library reads; empty means rockyweb only.
+          modal secret create lawn-usgs-s3 "USGS_S3_KEY_ID=${USGS_S3_KEY_ID:-}" "USGS_S3_SECRET=${USGS_S3_SECRET:-}" --force >/dev/null
+          if [ -n "$USGS_S3_KEY_ID" ]; then
+            echo "USGS_TILES=from USGS's S3 bucket first (requester pays, the owner's AWS key), rockyweb if not there" >> "$GITHUB_ENV"
+          else
+            echo "USGS_TILES=rockyweb only -- no AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY secrets" >> "$GITHUB_ENV"
+          fi
           # ONLY WHEN THE SERVER CHANGED (owner, 2026-10-08: "I definitely
           # don't want to be sending a warm press after update to the
           # cloudflare site"). Every `modal deploy` is a new version of the
@@ -504,6 +514,7 @@ jobs:
           fi
           echo "Trained model (alpha release): ${ALPHA_STATE:-off -- the step that serves it did not finish; see \"Serve the trained model\" above}"
           if [ -n "$ALPHA_WARM" ]; then echo "Model server: $ALPHA_WARM"; fi
+          if [ -n "$USGS_TILES" ]; then echo "USGS lidar tiles: $USGS_TILES"; fi
           echo "HTTPS only: ${HTTPS_STATE:-not checked -- see \"Send http to https\" above}"
           echo "Home page: ${HOME_STATE:-not built -- see \"The home page\" above}"
           echo "Shade map: ${SHADE_STATE:-not built -- see \"The shade subdomain\" above}"

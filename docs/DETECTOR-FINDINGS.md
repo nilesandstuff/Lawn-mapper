@@ -1037,6 +1037,12 @@ p-t2yoxpox; a second, plain account works).
   GitHub runner. The run cost $0.0066 (58 requests, 70.5 MB at about
   $0.09/GB leaving AWS); from inside AWS it would be about a fifth of that.
 
+Switched on 2026-10-31 on the owner's word ("Yes please do"): the model
+server's tile download (lidar_sources.fetch_ranged) asks the bucket first,
+with the owner's read-only key as the Modal secret lawn-usgs-s3, and a tile
+in the bucket skips the partial read (H132); not there, or refused, it is
+rockyweb as before.
+
 ### H132. A USGS PLAIN LAZ TILE CAN BE READ IN PART, POINT FOR POINT: the chunks of the file under a box (found from each chunk's uncompressed first point) give exactly the points the whole tile gives, on 136 boxes over 25 real tiles; for the square 150 m round an address that is a median 38% of the file, and live from rockyweb it took 22-49% of the whole download's time on the four tiles where a part was chosen -- 2026-10-31
 
 Not a detector result: how the model server gets USGS's newest lidar where
