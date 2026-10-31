@@ -10,6 +10,10 @@ SPECULATION), as always.
 
 ## Queued
 
+22. **Nearby stream levels through the year** (owner, 2026-10-31): for a lawn on or near a flood plain, the nearest
+    stream gauge's water level by month (USGS's water data API, free and keyless, national), against the lawn's own
+    ground: how high the stream, and the water table beside it, rises in spring. Beside the streams card (H63).
+
 21. **The water table under the lawn** (partly done 2026-10-31: soils placed, H62; streams and flood maps, H63; wells
     dropped, not available in most places. Still open: a stream gauge's yearly level for flood-plain lawns) (owner, 2026-10-31: "a big missing piece of the puzzle"; FINDINGS H61, S17,
     research-groundwater.md). Researched, not built. For the owner to choose: the soil survey read by component share
@@ -54,6 +58,10 @@ SPECULATION), as always.
 10. **The GPS jumps around** (owner, 2026-10-27: "gps is really bad, jumps around all over the place. Maybe
     augmented reality might be better?"). Placing heads by walking to them: look at averaging, the phone's
     reported accuracy, and an AR way of marking a spot (the camera and the ground plane) instead.
+    Owner, 2026-10-31, on a Galaxy S21 Ultra: "I can calibrate, walk 25 feet, and then the dot is still 10 feet away.
+    Then I walk around some more and the dot is just all over the place... Drifting in different directions that a
+    simple offset couldn't fix." Asked how feasible an AR tool would be (point a cursor at a head, tap, a pin), first on
+    a separate admin-only page. Feasibility answered 2026-10-31; not built.
 15. **Hose-end sprinklers placed by hand** (owner: "add specific recs for manually placing sprinklers. Which will
     require pressure calculations (same as the existing workflows for inground, but obviously simplified)"):
     where to set each sprinkler, how long, from the hose and the tap's pressure.
