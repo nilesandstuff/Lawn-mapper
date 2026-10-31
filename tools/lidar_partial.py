@@ -41,7 +41,8 @@ import numpy as np
 
 HEAD_BYTES = 65536
 RANGES_PER_ASK = 300          # first points asked for in one multi-range request
-MAX_SHARE = 0.7               # needing more of the file than this: fetch it whole
+MAX_SHARE = 0.5               # needing more of the file than this: fetch it whole (an Arkansas tile, 62% for a
+                              # 164 m box, took 756 s in part against ~290 s whole for its neighbour; H132)
 MERGE_GAP = 2                 # chunks between two runs fetched anyway, to save a request
 MIN_GROUP = 3                 # chunks of one flight line needed to know its swath
 SWATH_MARGIN = 0.15           # the swath's width, and this share again, and...

@@ -1073,7 +1073,16 @@ Switched on 2026-10-31 (lidar_sources.PARTIAL_ON): the address's warm-up
 press (their own box grown 20 m, PART_MARGIN_M) keep the part as an area
 first -- first switched on with a 300 m square round every ask, which on the
 live test (an Arkansas tile, 15SUA960220) needed 73% of the file and fell
-back to the whole download, 66 MB in 286 s; the whole tile follows in the background for the water
+back to the whole download, 66 MB in 286 s; then, with the box grown
+only 20 m, its eastern neighbour 15SUA970220 (a 164 m box) read 210 of 346
+chunks, 45.6 of 73 MB, and took 756 s, the first three requests alone about
+7 minutes of refusals -- slower than the whole file. Workflow 47's 'lines'
+look showed why: Arkansas 2024 is in flight order but its passes are 450-710
+m across on a 1 km tile, so any lot lies under several whole-width strips;
+Maryland's Central Processing tiles are sorted by place instead (343 of 694
+chunks step backwards in time), so a box needs few chunks (17%). So a part
+is now taken only when it needs at most half the file (MAX_SHARE 0.5, was
+0.7), and saves at least 20 MB; the whole tile follows in the background for the water
 map's wider wind box and the neighbours. Two caveats: the whole-file times
 above were measured on other runs, minutes to hours apart, and rockyweb's
 speed varies 3x through a day; and a box over most of a tile, or a small

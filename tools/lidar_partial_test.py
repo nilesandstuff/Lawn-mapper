@@ -24,6 +24,10 @@ UTM_WKT = ('PROJCS["NAD83(2011) / UTM zone 15N",GEOGCS["NAD83(2011)",DATUM["NAD8
            'PARAMETER["scale_factor",0.9996],PARAMETER["false_easting",500000],PARAMETER["false_northing",0],'
            'UNIT["metre",1],AXIS["Easting",EAST],AXIS["Northing",NORTH],AUTHORITY["EPSG","6344"]]')
 X0, Y0 = 544000.0, 4028000.0   # the tile's south-west corner, 1 km a side
+LIVE_MAX_SHARE = p.MAX_SHARE
+# These checks are of correctness, not of when a part is worth it: the small fake
+# tiles have few chunks a line, so the share cut-off is lifted (and tested on its own).
+p.MAX_SHARE = 0.9
 
 
 def flight_tile(path, per_line=1_200_000, lines=4, seed=3, cross=False, wkt_in_evlr=False, one_id=False):
@@ -180,6 +184,14 @@ def check_whole_box_is_refused():
             raise AssertionError("a box over the whole tile should be refused")
         except p.Unsupported as e:
             assert "of the tile" in str(e), str(e)
+        keep, p.MAX_SHARE = p.MAX_SHARE, LIVE_MAX_SHARE
+        try:
+            p.read_box(p.FileSource(tile), merc_box(X0 + 500, Y0 + 500, 250), crs_of_header)
+            raise AssertionError("a box needing over half the tile should be left to the whole download")
+        except p.Unsupported as e:
+            assert "of the tile" in str(e), str(e)
+        finally:
+            p.MAX_SHARE = keep
     print("partial read: a box over most of the tile is left to the whole download")
 
 
