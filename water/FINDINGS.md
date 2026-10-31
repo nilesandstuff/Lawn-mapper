@@ -2276,6 +2276,26 @@ the wetter group in those months.
 
 
 
+### S22. A passive "you are here": matching what the phone senses to the lidar (2026-10-31, owner's idea)
+
+The owner: "This ar thing only works if its easy and faster than just manually placing the dots... compare the visual
+results of the lidar with the camera input to provide an accurate 'you are here'" (and the lawn traces may be used).
+Nothing below is built or measured; the AR page now asks Chrome for the phone's depth, camera picture and found surfaces
+and reports which it grants (the copy's "sensors"), to learn which of these is open to a web page on this phone.
+What could be matched, most promising first:
+- Walls: the house's (and a shed's) walls from the lidar's building points, measured straight down, so without the
+  photo's lean, against the walls the phone sees (its depth picture, ARCore's 0.5-8 m, or the crosshair landing on a
+  wall). Two walls at an angle fix both the position and the turn. Needs the depth picture or wall hits.
+- The ground's shape: the lidar's 1 m ground against the ground heights the crosshair finds as the owner walks (the
+  owner's lawn falls about 6 ft); it pins the position along the slope, not across it. Needs nothing more than now.
+- The lawn's edge: grass or not under the crosshair (the camera picture's colour there) against the lawn trace and
+  paving; many crossings average out the trace's fuzz. Needs the camera picture.
+- Trees: trunks from the shade map's trees against what the depth picture sees.
+A filter would start from a rough guess (GPS and compass, or one tap) and tighten as these come in, so that placing a
+head is walk, aim, tap. The skyline (roof and trees against the sky, against the lidar's heights) is also distinctive,
+but needs the camera pointed up; left out. What accuracy any of this reaches is unknown until the sensor check says
+what the phone gives.
+
 ### S21. Why the back went wrong, and what else could fix the frame (2026-10-31, with H65)
 
 - Slope: ARCore finds level planes; on a 6 ft fall across the lawn, the plane under the crosshair can sit a few inches

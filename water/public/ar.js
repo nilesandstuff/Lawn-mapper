@@ -269,11 +269,12 @@ function results() {
     <p>${refs.length >= 2 ? `${refs.length} references, ${nMarks} marks, ${ftIn(st.baseline || 0)} apart at the widest. ${(() => { const sc = scaleNow(), pc = (k) => `${(Math.abs(1 - 1 / k) * 100).toFixed(1)}% ${k > 1 ? 'shorter' : 'longer'}`; if (!sc.walk && !sc.earlier) return 'AR\'s scale is not measured yet: mark two references 25 ft or more apart one after the other.'; return `AR measures distances ${pc(sc.k)} than the photo (${sc.walk ? `${sc.walk.n} pair${sc.walk.n === 1 ? '' : 's'} of references marked one after the other this walk: ${pc(sc.walk.k)}` : 'none this walk'}${sc.earlier ? `; ${sc.earlier} earlier walk${sc.earlier === 1 ? '' : 's'}` : ''}); the fit corrects for it.`; })()}${refs.length === 2 ? ' With two references nothing says which one is off; a third does.' : ' The reference that lands farthest from its place is most likely the one placed or aimed wrong (check where it is on the photo); with only three, one bad reference makes the others look off too, so four or more show it plainly.'}` : 'Not lined up yet: mark two references in AR.'}${x ? ` Walked ${ft(x.walked)}; lost its place ${x.losses} time${x.losses === 1 ? '' : 's'}${x.resets ? `; its frame jumped ${x.resets} time${x.resets === 1 ? '' : 's'}` : ''}; ${x.fastTurns} fast turn${x.fastTurns === 1 ? '' : 's'}.` : ''}</p>
     ${checks.length ? `<p><strong>Check points: ${ftIn(errs[errs.length >> 1])} off at the middle, ${ftIn(errs[errs.length - 1])} at the worst</strong> (${checks.length}).</p>` : ''}
     ${rows.length ? `<table>${rows.join('')}</table>` : ''}
+    ${(() => { const z = xr ? senseSummary(xr.sense) : st.lastSense; if (!z) return ''; const yes = (v) => (v && v !== 'not given' ? 'yes' : 'no'); return `<p class="dim">This phone's sensors: depth ${yes(z.depth)}, camera picture ${yes(z.camera)}, surfaces ${yes(z.surfacesFound)}; the crosshair on walls ${z.crosshairOn.wall} times${z.groundHeights ? `; the ground's height varied ${ft(z.groundHeights.spanM)} over ${ft(z.groundHeights.overWalkM)} walked` : ''}.</p>`; })()}
     <p>${pinsNow} head${pinsNow === 1 ? '' : 's'} placed (red on the map).</p>
     <div class="tools"><button type="button" id="copy">Copy results</button></div></div>` : '';
   $('#copy')?.addEventListener('click', async () => {
     const out = {
-      page: 'water AR test v2', when: new Date().toISOString(), device: navigator.userAgent, stats: x ? { walkedM: +x.walked.toFixed(1), losses: x.losses, resets: x.resets, fastTurns: x.fastTurns } : null,
+      page: 'water AR test v3', when: new Date().toISOString(), device: navigator.userAgent, sensors: xr ? senseSummary(xr.sense) : st.lastSense || null, stats: x ? { walkedM: +x.walked.toFixed(1), losses: x.losses, resets: x.resets, fastTurns: x.fastTurns } : null,
       scale: { heldPhotoOverAR: +scaleNow().k.toFixed(4), thisWalk: scaleNow().walk ? { k: +scaleNow().walk.k.toFixed(4), pairs: scaleNow().walk.n } : null, earlierWalks: learnedScales() },
       edges: edges.map((p) => ({ name: p.name, lengthM: +Math.hypot(p.b[0] - p.a[0], p.b[1] - p.a[1]).toFixed(1), marks: p.marks.length, latestOffM: edgeLanding(p) != null ? +edgeLanding(p).toFixed(3) : null })),
       references: refs.map((p) => ({ name: p.name, leftOutM: leftOut(p) != null ? +leftOut(p).toFixed(3) : null, marks: p.marks.map((m) => ({ walkedM: +m.odo.toFixed(1), aimM: +m.dist.toFixed(2), anchorMovedM: m.anchorMoved != null ? +m.anchorMoved.toFixed(3) : null, anchorJumpedM: m.anchorJumped ?? null })) })),
@@ -410,7 +411,16 @@ async function startAR() {
   overlay.hidden = false; document.body.classList.add('in-ar');
   let session;
   try {
-    session = await navigator.xr.requestSession('immersive-ar', { requiredFeatures: ['hit-test'], optionalFeatures: ['dom-overlay', 'anchors'], domOverlay: { root: overlay } });
+    // THE SENSOR CHECK (owner, 2026-10-31: "compare the visual results of the lidar with the camera input to provide an
+    // accurate 'you are here'"): ask for the phone's depth, its camera picture and the surfaces it finds, as well, to
+    // learn which of them Chrome gives this phone. Refused, the session starts as before.
+    try {
+      session = await navigator.xr.requestSession('immersive-ar', { requiredFeatures: ['hit-test'], optionalFeatures: ['dom-overlay', 'anchors', 'depth-sensing', 'camera-access', 'plane-detection'], domOverlay: { root: overlay },
+        depthSensing: { usagePreference: ['cpu-optimized'], dataFormatPreference: ['luminance-alpha', 'float32'] } });
+    } catch (e) {
+      log(`the extra sensors were refused: ${e.message}`);
+      session = await navigator.xr.requestSession('immersive-ar', { requiredFeatures: ['hit-test'], optionalFeatures: ['dom-overlay', 'anchors'], domOverlay: { root: overlay } });
+    }
   } catch (e) {
     overlay.hidden = true; document.body.classList.remove('in-ar'); $('#xr-why').textContent = `AR would not start: ${e.message}`; log(`start failed: ${e.message}`); return;
   }
@@ -441,10 +451,11 @@ async function setUp(session, overlay) {
     anchors: typeof XRHitTestResult !== 'undefined' && 'createAnchor' in XRHitTestResult.prototype && (!session.enabledFeatures || session.enabledFeatures.includes('anchors')),
     stats: { walked: 0, losses: 0, resets: 0, fastTurns: 0 } };
   xr.target = nextTarget();
+  xr.sense = senseStart(session, gl);
   log(`AR started; dom overlay ${session.domOverlayState?.type || 'none'}; anchors ${xr.anchors ? 'yes' : 'no'}`);
   // ARCore's frame jumped (it relocalised): marks before the jump no longer line up with anything after it
   ref.addEventListener?.('reset', () => { if (!xr) return; xr.odo += RESET_WALK; xr.stats.resets++; xr.lastPos = null; log('frame reset'); flash('The AR jumped: mark a reference again'); refit(); });
-  session.addEventListener('end', () => { log('AR ended'); st.lastStats = xr?.stats; learnScale(); xr = null; overlay.hidden = true; document.body.classList.remove('in-ar'); save(); listPoints(); drawMap(); results(); });
+  session.addEventListener('end', () => { log('AR ended'); st.lastStats = xr?.stats; st.lastSense = senseSummary(xr?.sense); learnScale(); xr = null; overlay.hidden = true; document.body.classList.remove('in-ar'); save(); listPoints(); drawMap(); results(); });
   // taps on the overlay's buttons are not AR "select"s
   overlay.addEventListener('beforexrselect', (ev) => ev.preventDefault());
   session.requestAnimationFrame(onFrame);
@@ -459,6 +470,8 @@ function onFrame(t, frame) {
   xr.gl.clearColor(0, 0, 0, 0); xr.gl.clear(xr.gl.COLOR_BUFFER_BIT | xr.gl.DEPTH_BUFFER_BIT);
   const pose = frame.getViewerPose(xr.ref);
   xr.pose = pose || null;
+  if (pose && t - (xr.sense.last || 0) > 500) { xr.sense.last = t; try { senseFrame(frame, pose); } catch (e) { xr.sense.err = e.message; } }
+  xr.gl.bindFramebuffer(xr.gl.FRAMEBUFFER, layer.framebuffer);
   const tracking = !!pose && !pose.emulatedPosition;
   if (xr.tracking && !tracking && pose) { xr.stats.losses++; xr.odo += LOSS_WALK; log('lost its place'); }
   if (!xr.tracking && tracking) { xr.lastPos = null; log('found its place'); }
@@ -491,6 +504,79 @@ function onFrame(t, frame) {
     refit();
     hud(tracking);
   }
+}
+
+/* ------------------------------------------------- what the phone can sense */
+
+/** Which sensors Chrome granted, and counters for what each gives (the copy's "sensors"). */
+function senseStart(session, gl) {
+  const granted = session.enabledFeatures ? [...session.enabledFeatures] : null;
+  const has = (f) => (granted ? granted.includes(f) : false);
+  let binding = null, fb = null;
+  if (has('camera-access') && typeof XRWebGLBinding !== 'undefined') { try { binding = new XRWebGLBinding(session, gl); fb = gl.createFramebuffer(); } catch { /* no picture */ } }
+  return { granted, binding, fb, depth: { tries: 0, got: 0, centre: [], far: 0, near: Infinity }, camera: { tries: 0, got: 0, size: null, colours: [] },
+    planes: { horizontal: 0, vertical: 0, most: 0 }, hits: { ground: 0, wall: 0, other: 0 }, ground: [], err: null, last: 0 };
+}
+
+/** Twice a second: the depth at the middle of the picture, the picture's colour there, the surfaces found, what the
+ * crosshair is on (ground or wall, from the hit's surface direction), and the ground's height every metre walked. */
+function senseFrame(frame, pose) {
+  const S = xr.sense, view = pose.views?.[0];
+  if (view && typeof frame.getDepthInformation === 'function' && S.granted?.includes('depth-sensing')) {
+    S.depth.tries++;
+    let d = null; try { d = frame.getDepthInformation(view); } catch { d = null; }
+    if (d) {
+      S.depth.got++;
+      const c = d.getDepthInMeters(0.5, 0.5); if (c > 0) S.depth.centre.push(+c.toFixed(2));
+      for (let i = 1; i < 6; i++) for (let j = 1; j < 6; j++) { const z = d.getDepthInMeters(i / 6, j / 6); if (z > 0) { S.depth.far = Math.max(S.depth.far, z); S.depth.near = Math.min(S.depth.near, z); } }
+      if (S.depth.centre.length > 40) S.depth.centre.shift();
+    }
+  }
+  if (view?.camera && S.binding) {
+    S.camera.tries++;
+    const gl = xr.gl, tex = S.binding.getCameraImage(view.camera);
+    if (tex) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, S.fb);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+      if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE) {
+        const w = view.camera.width, h = view.camera.height, px = new Uint8Array(16 * 16 * 4);
+        gl.readPixels((w >> 1) - 8, (h >> 1) - 8, 16, 16, gl.RGBA, gl.UNSIGNED_BYTE, px);
+        let r = 0, g = 0, b = 0; for (let i = 0; i < px.length; i += 4) { r += px[i]; g += px[i + 1]; b += px[i + 2]; }
+        S.camera.got++; S.camera.size = [w, h];
+        S.camera.colours.push([Math.round(r / 256), Math.round(g / 256), Math.round(b / 256)]);
+        if (S.camera.colours.length > 20) S.camera.colours.shift();
+      }
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, null, 0);
+    }
+  }
+  if (frame.detectedPlanes) {
+    let hz = 0, vt = 0; frame.detectedPlanes.forEach((p) => { if (p.orientation === 'vertical') vt++; else hz++; });
+    S.planes.horizontal = Math.max(S.planes.horizontal, hz); S.planes.vertical = Math.max(S.planes.vertical, vt); S.planes.most = Math.max(S.planes.most, hz + vt);
+  }
+  if (xr.hit) {
+    const q = xr.hit.getPose(xr.ref)?.transform.orientation;
+    if (q) {
+      const ny = 1 - 2 * (q.x * q.x + q.z * q.z); // the surface's normal (the hit's y axis), its upward part
+      if (ny > 0.8) S.hits.ground++; else if (ny < 0.35) S.hits.wall++; else S.hits.other++;
+      // the ground's height every metre walked, in AR's own level frame (no place on Earth): does AR see the slope?
+      if (ny > 0.8 && xr.cur && (!S.ground.length || xr.odo - S.ground[S.ground.length - 1].odo >= 1)) S.ground.push({ odo: xr.odo, y: xr.cur.y });
+    }
+  }
+}
+
+function senseSummary(S) {
+  if (!S) return null;
+  const med = (v) => (v.length ? [...v].sort((a, b) => a - b)[v.length >> 1] : null);
+  const ys = S.ground.map((g) => g.y);
+  return {
+    granted: S.granted,
+    depth: S.depth.tries ? { framesWithDepth: `${S.depth.got}/${S.depth.tries}`, middleM: med(S.depth.centre), nearestM: Number.isFinite(S.depth.near) ? +S.depth.near.toFixed(2) : null, farthestM: +S.depth.far.toFixed(2) } : 'not given',
+    camera: S.camera.tries ? { framesRead: `${S.camera.got}/${S.camera.tries}`, size: S.camera.size, recentMiddleColours: S.camera.colours.slice(-8) } : 'not given',
+    surfacesFound: S.planes.most ? S.planes : 'not given',
+    crosshairOn: S.hits,
+    groundHeights: ys.length > 1 ? { samples: ys.length, spanM: +(Math.max(...ys) - Math.min(...ys)).toFixed(2), overWalkM: +(S.ground[S.ground.length - 1].odo - S.ground[0].odo).toFixed(1) } : null,
+    error: S.err,
+  };
 }
 
 /** The phone's turn on the level, degrees, from where the camera looks plus where the phone's top edge points: aimed
