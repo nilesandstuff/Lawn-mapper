@@ -425,11 +425,14 @@ def _ask_fetch(urls, box=None, area_urls=None):
     return ask
 
 
-def _part_area(urls, box, say=lambda words: print(words, flush=True), patient_until=None):
-    """The square round `box` (lidar_sources.PARTIAL_HALF_M each way, grown to
-    hold it) kept as an area of these tiles, from the parts of the missing
-    files under it; committed to the volume. -> its path, or None (read the
-    tiles whole). A part already kept is found, not read again."""
+def _part_area(urls, box, say=lambda words: print(words, flush=True), patient_until=None, square=False):
+    """`box` grown by lidar_sources.PART_MARGIN_M -- or, with `square` (the
+    address's warm-up, which knows only a point), the square of
+    PARTIAL_HALF_M each way round it -- kept as an area of these tiles, from
+    the parts of the missing files under it; committed to the volume. -> its
+    path, or None (read the tiles whole). A part already kept is found, not
+    read again. (A 300 m square round every ask needed 73% of an Arkansas
+    tile, 2026-10-31, and so fell back to the whole file.)"""
     if f"{REPO}/tools" not in sys.path:
         sys.path.insert(0, f"{REPO}/tools")
     import lidar_sources
@@ -442,8 +445,9 @@ def _part_area(urls, box, say=lambda words: print(words, flush=True), patient_un
         if found:
             return found
         t0 = time.time()
-        path = lidar_sources.write_partial_area(TILE_DIR, urls, lidar_sources.square_round(box, lidar_sources.PARTIAL_HALF_M),
-                                                say=say, patient_until=patient_until)
+        want = (lidar_sources.square_round(box, lidar_sources.PARTIAL_HALF_M) if square
+                else lidar_sources.grow(box, lidar_sources.PART_MARGIN_M))
+        path = lidar_sources.write_partial_area(TILE_DIR, urls, want, say=say, patient_until=patient_until)
     except Exception as e:  # noqa: BLE001 - the whole tiles, as before
         print(f"part of the tiles not read ({type(e).__name__}: {str(e)[:160]}); the whole tiles instead", flush=True)
         return None
@@ -516,7 +520,7 @@ def warm_area(urls, box):
     from pathlib import Path
     if any(not (Path(TILE_DIR) / u.rsplit("/", 1)[-1]).exists() for u in urls):
         cx, cy = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
-        _part_area(urls, [cx - 1, cy - 1, cx + 1, cy + 1])
+        _part_area(urls, [cx - 1, cy - 1, cx + 1, cy + 1], square=True)
     missing = _fetch_or_wait(urls, say=lambda words: print(words, flush=True), parallel=WARM_PARALLEL)
     if missing:
         return {"missing": [u.rsplit("/", 1)[-1] for u in missing]}

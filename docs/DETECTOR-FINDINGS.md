@@ -1068,9 +1068,12 @@ source id (45), so lines are also split where the GPS time jumps at a turn;
 so the chunks come in one multi-range request over two connections, requests
 a second apart, a 429 waited out from 2 s.
 
-Switched on 2026-10-31 (lidar_sources.PARTIAL_ON, PARTIAL_HALF_M 150): the
-address's warm-up, a page's first ask and the detector's press keep the part
-as an area first; the whole tile follows in the background for the water
+Switched on 2026-10-31 (lidar_sources.PARTIAL_ON): the address's warm-up
+(the square +-100 m, PARTIAL_HALF_M), a page's first ask and the detector's
+press (their own box grown 20 m, PART_MARGIN_M) keep the part as an area
+first -- first switched on with a 300 m square round every ask, which on the
+live test (an Arkansas tile, 15SUA960220) needed 73% of the file and fell
+back to the whole download, 66 MB in 286 s; the whole tile follows in the background for the water
 map's wider wind box and the neighbours. Two caveats: the whole-file times
 above were measured on other runs, minutes to hours apart, and rockyweb's
 speed varies 3x through a day; and a box over most of a tile, or a small

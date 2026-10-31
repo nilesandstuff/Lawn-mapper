@@ -516,7 +516,8 @@ def write_area(tile_dir, urls, box):
 # tile's (workflow 47 proves it on every tile on the volume), kept as an
 # ordinary area; the whole tile follows in the background for everything
 # wider (the water map's wind, 150 m round the lot) and for the neighbours.
-PARTIAL_HALF_M = 150
+PARTIAL_HALF_M = 100   # the warm-up's square, which knows only the address (+-100 m: a median 29% of the file, H132)
+PART_MARGIN_M = 20     # a page's or a press's own box, grown this much, when it asks first
 # ON since 2026-10-31, after workflow 47 proved it on the real tiles and on
 # rockyweb (DETECTOR-FINDINGS H132). False makes write_partial_area answer
 # None, and every caller fetches the tiles whole as before.
