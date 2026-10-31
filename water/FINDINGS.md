@@ -2048,6 +2048,27 @@ So NO correction is applied to POWER's sunlight. The 15-20% gap of H21 lies betw
 Enviroweather's figure, a matter of Enviroweather's method (unknown here), not of NASA's data. H58 point 8's "POWER's
 sunshine" is withdrawn as the cause.
 
+### H61. Groundwater sources: 3DHP has none; Michigan's own records and maps do (water session, 2026-10-31)
+
+The owner: "Look into the potential to use 3dhp for ground water/water table data. And see if there's any older
+programs that may also be of use. That's a big missing piece of the puzzle." research-groundwater.md (a research
+agent; re-checked by this session where marked there). Tested:
+- 3DHP holds no groundwater or water-table field, and no lidar-derived lines in Michigan yet (10 lidar-derived work
+  units nationally, none over the test points; Kent and Ottawa get the old NHD lines with zero heights). Michigan is
+  funded to finish by 2028.
+- Wellogic (EGLE) has 1.18 million well records with a static level at drilling, browser-readable: 66 within 2 km of
+  Hudsonville, median 3.7 m, a tenth within 1.2 m, 18 within 2 m (re-checked); 267 near Rockford, median 18 m; 4 in
+  central Grand Rapids. It also serves owners' names and addresses, which the tool must never ask for.
+- EGLE's regional water-table contours (Kent 2021; Ottawa from GWIM 2005), EGLE's 17 Allegan monitoring wells (daily
+  since 2023, 16-45 km from the test points), and three national models (Ma et al. 2026 30 m, Zell & Sanford 2020 250
+  m, Fan 2017 about 1 km monthly) all answer, at a point or by download.
+- At Hudsonville the sources disagree by metres: soil survey 0.54 m, contours 2.7, wells 3.7, Zell 4.0, Fan 4.15, Ma
+  4.85. Shallow unconfined wells swing only 0.3-1.2 m month to month, shallowest March-June.
+- The water map's balance reads the soil survey's MAIN component's wet layers: at Hudsonville (Spinks 50%, none listed)
+  it sees no water table, where Fern (25%) lists 54 cm. Central Grand Rapids and Rockford fall on "Urban land" units
+  with no water table at all.
+NOT BUILT: which of these to use is for the owner (S17, TODO 21).
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge
@@ -2082,6 +2103,16 @@ nine unlikely. No ground truth yet: a wet spring on lawns it calls likely and
 unlikely is the check. The soil survey's own monthly water table (lib/soil.js,
 "Wet" layers) IS in the balance: it stops drainage and makes dual-group soils
 the wetter group in those months.
+
+
+### S17. The water table under a lawn: how the sources might be used (2026-10-31, with H61)
+
+None is checked against a real water table at a lawn. The research's order: (1) the soil survey stays in the balance,
+read by component share rather than the main soil alone, with a fallback on Urban land; (2) Wellogic's drift wells
+within 1-2 km as a page note and check; (3) a regional water-table height (EGLE contours, Ma 30 m elsewhere) less the
+lot's lidar ground, as a flag only where another source agrees; (4) the measured seasonal swing (0.3-1.2 m, highest
+March-June) as a constant; (5) NHDPlus HR perennial streams as a second target for the hillside reading. A check that
+would settle much: a soil probe or a hand auger to the water table at a few lawns in April and August.
 
 ### S16. The watering levels: what is estimated in them (2026-10-28, redone 2026-10-29, with H54)
 

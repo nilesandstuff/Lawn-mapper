@@ -10,6 +10,12 @@ SPECULATION), as always.
 
 ## Queued
 
+21. **The water table under the lawn** (owner, 2026-10-31: "a big missing piece of the puzzle"; FINDINGS H61, S17,
+    research-groundwater.md). Researched, not built. For the owner to choose: the soil survey read by component share
+    (and a fallback on Urban land); Wellogic's drift wells within 1-2 km as a page note and check (never its owner
+    fields); EGLE's water-table contours or the Ma 30 m model less the lot's lidar ground as a flag; the measured
+    seasonal swing; NHDPlus HR perennial streams for the hillside reading. 3DHP: nothing yet; recheck about 2028.
+
 20. **From the sanity checks (FINDINGS H58), for the owner to decide:** (a) the reference ET 15-20% above Michigan's
     stations: NOT POWER's sunlight (H60, no correction); next, find out Enviroweather's own method and data; (b) fences: DONE 2026-10-29 (H59); (c) normal watering's drainage: KEPT AS IS (owner,
     2026-10-29: morning watering drains before the day's draw; drainage rates are per soil; H58 point 9).
