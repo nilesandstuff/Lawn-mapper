@@ -1,0 +1,25 @@
+name: 48. What is in USGS's requester-pays lidar bucket
+
+# The owner's read-only AWS key (secrets AWS_ACCESS_KEY_ID and
+# AWS_SECRET_ACCESS_KEY, 2026-10-31) against s3://usgs-lidar, where requests
+# are billed to that account: lists the folders, looks for the projects we
+# fetch slowly from rockyweb, times one tile. Under a cent.
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Look in the bucket
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          pip install --quiet boto3
+          python3 tools/usgs-bucket-check.py
