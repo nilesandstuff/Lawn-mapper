@@ -85,6 +85,14 @@ export default {
       out.headers.set('Cache-Control', 'private, no-store');
       return out;
     }
+    // the AR head-placing test (public/ar.html; FINDINGS H64): the admin only, whether or not the site is open
+    if (url.pathname === '/ar' || url.pathname === '/ar.html' || url.pathname === '/ar.js') {
+      if (!(await isAdmin(request, env))) return url.pathname === '/ar.js' ? notFound() : notOpenYet(env.LAWNMAP_HOST?.split('.').slice(1).join('.'));
+      const res = await env.ASSETS.fetch(new Request(new URL(url.pathname === '/ar.js' ? '/ar.js' : '/ar.html', url), request));
+      const out = new Response(res.body, res);
+      out.headers.set('Cache-Control', 'private, no-store');
+      return out;
+    }
     // the national stream map, fetched and kept at the edge by this site (src/streams.js)
     if (url.pathname === '/api/water/streams') return handleStreams(request, url, ctx);
     const kept = await readings(request, env, url, { isAdmin });

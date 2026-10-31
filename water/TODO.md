@@ -61,7 +61,9 @@ SPECULATION), as always.
     Owner, 2026-10-31, on a Galaxy S21 Ultra: "I can calibrate, walk 25 feet, and then the dot is still 10 feet away.
     Then I walk around some more and the dot is just all over the place... Drifting in different directions that a
     simple offset couldn't fix." Asked how feasible an AR tool would be (point a cursor at a head, tap, a pin), first on
-    a separate admin-only page. Feasibility answered 2026-10-31; not built.
+    a separate admin-only page. Feasibility answered 2026-10-31; the admin test page built the same day
+    (water.<home>/ar?map=<id>, FINDINGS H64): references marked on the photo and in AR line the two up, then each
+    head is a pin; check points say how far off. Waiting on the owner's first walk; not in the water map yet.
 15. **Hose-end sprinklers placed by hand** (owner: "add specific recs for manually placing sprinklers. Which will
     require pressure calculations (same as the existing workflows for inground, but obviously simplified)"):
     where to set each sprinkler, how long, from the hose and the tap's pressure.

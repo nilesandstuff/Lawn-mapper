@@ -2130,6 +2130,29 @@ section within 150 m or an A or 0.2% zone over the lawn).
 Not in the balance (S19). Not built yet: a stream gauge's level through the year (USGS's water data API answers
 without a key) for lawns on a flood plain.
 
+### H64. Placing heads in AR: the admin test page is built; not yet tried on a lawn (water session, 2026-10-31)
+
+The owner, on a Galaxy S21 Ultra: after calibrating, "walk 25 feet, and then the dot is still 10 feet away... Drifting
+in different directions that a simple offset couldn't fix" -- the GPS wanders by metres, which no one offset can
+correct (TODO 10). Their idea: walk the lawn, point a crosshair at each head, tap, and a pin goes on the map. Built as
+an admin-only page first, as they asked (water.<home>/ar?map=<id>; src/index.js turns away anyone else, even with the
+site open):
+- Chrome on Android's WebXR "immersive-ar" session (ARCore): hit-test says where the crosshair's ray meets the ground
+  ARCore has found, in metres, in a level frame of its own (origin where the session began, heading wherever the phone
+  pointed). No GPS at all.
+- That frame is lined up with the map by references marked twice: tapped on the saved map's photo before going out,
+  then aimed at and marked in AR (house or patio corners at ground level, a driveway corner, a mapped head). A turn and
+  a shift, least squares over every reference (lib/ar-align.js, 2D Kabsch); AR's own scale is kept, and its ratio to
+  the map's is reported as a check. Then each Place head is a pin on the map.
+- Check points, marked on both but left out of the fit, measure the whole chain (photo, map tracing, AR); their errors
+  are the page's result, with "Copy results" (no map id, address or coordinates in it).
+- A new AR session forgets earlier marks (its frame is new); points and pins are kept on the phone per map; nothing is
+  written to the map yet.
+Tested in headless Chromium with a fake AR session (turned 40 degrees and shifted, the crosshair's ground point
+jittered by up to 3 cm): two references 91 m apart on the owner's lawn, two check points 0-1 in off, a placed head
+4-12 mm from its true place; test/ar-align.test.js (5) and the gate in site.test.js. That proves the arithmetic and the
+page, nothing about a phone on grass: how close it lands outdoors is S20 until the owner's first walk.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge
@@ -2167,6 +2190,16 @@ the wetter group in those months.
 
 
 
+
+### S20. How close AR placing will be on a real lawn (2026-10-31, with H64)
+
+- Unmeasured. Expected from what ARCore is known for, not from a test here: the ground point to a few centimetres when
+  the crosshair is a few metres off, worse at a grazing angle (a head 10 m away is seen nearly edge-on); its frame drifts
+  as the phone walks, often quoted as about 1% of the distance, more over plain lawn with little texture. So a third
+  reference far from the first two, and re-marking after a long walk, may matter more than the fit's arithmetic.
+- The references' own error on the photo (a roof edge drawn where a wall meets the ground; the photo's lean on a tall
+  house) goes straight into every pin. Ground-level corners and mapped heads should be better references than a house.
+- Check points answer all of this; what the owner reads on the page after a walk replaces this entry.
 
 ### S19. Streams and flood maps as groundwater evidence (2026-10-31, with H63)
 

@@ -98,6 +98,11 @@ test('admin only fails closed, and opens when ADMIN_ONLY is not "1"', async () =
   assert.equal(await isAdmin(new Request('https://w/', { headers: { Cookie: 'admin' } }), { LAWNMAP_HOST: 'x' }), false);
   assert.equal((await get('/', 'lm_session=admin', env('down'))).status, 404);
   assert.equal((await get('/', '', env('up', { ADMIN_ONLY: '0' }))).status, 200);
+  // the AR test page stays the admin's even with the site open (FINDINGS H64)
+  const open = env('up', { ADMIN_ONLY: '0' });
+  for (const p of ['/ar', '/ar.html', '/ar.js']) assert.equal((await get(p, '', open)).status, 404, p);
+  assert.equal((await get('/ar', 'lm_session=admin', open)).status, 200);
+  assert.match((await get('/ar', 'lm_session=admin', open)).headers.get('Cache-Control'), /no-store/);
   // open to everyone since 2026-10-23; the gate is still there to close it again
   assert.match(wranglerFor('water.example.com', 'lawnmap.example.com'), /ADMIN_ONLY = "0"/);
   assert.match(wranglerFor('water.example.com', 'lawnmap.example.com', true), /ADMIN_ONLY = "1"/);
