@@ -293,6 +293,16 @@ async function start(site, inputs) {
         return Number.isFinite(lo) ? lo : null;
       } : null;
       const reading = streams || flood ? streamReading({ streams: streams || [], flood, lawn, waterAt }) : null;
+      // a stream beyond the 10 m window: its water from USGS's point elevation service (1 m where it has it)
+      for (const k of ['perennial', 'nearest']) {
+        const st = reading?.[k];
+        if (!st || Number.isFinite(st.waterM) || !st.at) continue;
+        try {
+          const j = await (await fetch(`https://epqs.nationalmap.gov/v1/json?x=${st.at[0]}&y=${st.at[1]}&units=Meters&wkid=4326`, { signal: AbortSignal.timeout(20000) })).json();
+          const v = Number(j?.value);
+          if (Number.isFinite(v) && v > -500) { st.waterM = v; st.aboveM = reading.lawnM - v; st.waterFrom = 'point'; }
+        } catch { /* left without */ }
+      }
       self.postMessage({ streams: reading ? { ...reading, streamsOk: !!streams, floodOk: !!flood } : { error: 'neither the national stream map nor FEMA\'s flood map answered' } });
     }
   } catch (e) {

@@ -48,6 +48,9 @@ test('FEMA: the zones over the lawn by share, and the 1% flood water from the ne
   // with the other stream gone, the two sections on the lawn's reach, by distance: 200.1
   const r2 = streamReading({ streams: [], flood: { ...flood, levels: flood.levels.slice(1) }, lawn });
   assert.ok(Math.abs(r2.flood.m - 200.1) < 1e-6, `${r2.flood.m}`);
+  // a lawn in zone X with the river's sections 500 m off: no flood level quoted for it
+  const far = streamReading({ streams: [], flood: { zones: [{ zone: 'X', subtype: 'AREA OF MINIMAL FLOOD HAZARD', rings: [ring(-60, -60, 60, 60)] }], levels: [{ m: 190, line: [at(500, -60), at(500, 60)], from: 'cross-section' }, { m: 190.3, line: [at(520, -60), at(520, 60)], from: 'cross-section' }] }, lawn });
+  assert.equal(far.flood, null);
   assert.ok(r2.flood.depthShare > 0.4 && r2.flood.depthShare < 0.7 && Math.abs(r2.flood.maxDepthM - 0.6) < 1e-6, `${r2.flood.depthShare} ${r2.flood.maxDepthM}`);
 });
 

@@ -2122,6 +2122,11 @@ Tested on 30 m circles at public points (ground from the 10 m model, not lidar):
 | Hudsonville area | unnamed, 176 m | 14.4 ft | X (minimal) | 626.8 ft, from sections 7 and 12 m away | 9.3 ft at its lowest |
 | Rockford area | (stream map timed out: now cached in the Worker) | -- | X (minimal) | 694.6 ft, sections 39 and 52 m away | 3.7 ft at its lowest |
 
+The owner's lawn (local build, its lidar): the Rogue River, 0.38 mi away and draining 650 km2, the nearest perennial
+stream; the lawn's middle about 153 ft above its water (the river lies past the 10 m window, so its water is read from
+USGS's point elevation service, 1 m there); an unnamed ditch 690 ft away, 24 ft below the lawn; FEMA zone X, so no
+flood level is quoted (the river's sections lie 590 m off and 139 ft below: shown only in or by the flood plain, a
+section within 150 m or an A or 0.2% zone over the lawn).
 Not in the balance (S19). Not built yet: a stream gauge's level through the year (USGS's water data API answers
 without a key) for lawns on a flood plain.
 

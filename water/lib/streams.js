@@ -105,7 +105,7 @@ export function streamReading({ streams = [], flood = null, lawn, waterAt }) {
     if (!s) return null;
     const { d, at } = nearestOnLine(s.line, mid, dist, lat);
     const waterM = waterAt ? waterAt(at) : null;
-    return { name: s.name, kind: s.kind, km2: s.km2, distM: Math.round(d), waterM: Number.isFinite(waterM) ? waterM : null, aboveM: Number.isFinite(waterM) && Number.isFinite(median) ? median - waterM : null };
+    return { name: s.name, kind: s.kind, km2: s.km2, distM: Math.round(d), at, waterM: Number.isFinite(waterM) ? waterM : null, aboveM: Number.isFinite(waterM) && Number.isFinite(median) ? median - waterM : null };
   };
   const byDist = streams.map((s) => ({ s, d: nearestOnLine(s.line, mid, dist, lat).d })).sort((a, b) => a.d - b.d);
   const perennial = byDist.find((x) => x.s.kind === 'perennial' || /^river/.test(x.s.kind));
@@ -123,12 +123,15 @@ export function streamReading({ streams = [], flood = null, lawn, waterAt }) {
     let m = null, from = null;
     // the nearest level, and the next nearest on the same reach (within 2 m of it: two streams' sections can both be near)
     const b2 = lv.length >= 2 ? lv.slice(1).find((l) => Math.abs(l.m - lv[0].m) <= 2) : null;
-    if (b2) { const a = lv[0], b = b2; m = (a.m * b.d + b.m * a.d) / (a.d + b.d || 1); from = `${a.from === b.from ? `${a.from}s` : `${a.from} and ${b.from}`} ${Math.round(a.d)} and ${Math.round(b.d)} m away`; }
-    else if (lv.length >= 1) { m = lv[0].m; from = `a ${lv[0].from} ${Math.round(lv[0].d)} m away`; }
-    else { const st = flood.zones.find((f) => Number.isFinite(f.staticM)); if (st) { m = st.staticM; from = 'the zone\'s own flood elevation'; } }
-    if (Number.isFinite(m)) {
+    let near = lv.length ? lv[0].d : null;
+    if (b2) { const a = lv[0], b = b2; m = (a.m * b.d + b.m * a.d) / (a.d + b.d || 1); from = a.from === b.from ? `${a.from}s` : `${a.from} and ${b.from}`; }
+    else if (lv.length >= 1) { m = lv[0].m; from = lv[0].from; }
+    else { const st = flood.zones.find((f) => Number.isFinite(f.staticM)); if (st) { m = st.staticM; from = 'the zone\'s own flood elevation'; near = 0; } }
+    // only for a lawn in or by the flood plain: in an A or 0.2% zone, or a section within 150 m
+    const byPlain = out.zones.some((z) => z.zone && (/^A|^V/.test(z.zone) || /0\.2/.test(z.subtype || ''))) || (near !== null && near <= 150);
+    if (Number.isFinite(m) && byPlain) {
       const under = zs.filter((z) => z < m);
-      out.flood = { m, from, depthShare: under.length / zs.length, maxDepthM: under.length ? m - lowest : 0, lowestAboveM: lowest - m, datum: lv[0]?.datum || null };
+      out.flood = { m, from, nearM: near, depthShare: under.length / zs.length, maxDepthM: under.length ? m - lowest : 0, lowestAboveM: lowest - m, datum: lv[0]?.datum || null };
     }
   }
   return out;
