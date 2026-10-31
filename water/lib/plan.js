@@ -98,7 +98,7 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
     const idx = P.comps.map((c, j) => placed.push({
       mukey: u.mukey, share: null, polygons: null, chosen: u.chosen || null,
       name: P.borrowed ? `${c.name} (${pct(c.share)}% of ${P.borrowed}, the nearest mapped soil: the survey maps this ground as ${u.name || 'urban land'})`
-        : P.comps.length > 1 ? `${c.name} (${pct(c.share)}% of ${u.name}; ${j === 0 ? 'its driest ground' : j === P.comps.length - 1 ? 'its wettest ground' : 'between'})` : u.name,
+        : P.comps.length > 1 ? `${c.name} (${pct(c.share)}% of ${u.name}${c.drainage && c.drainage !== P.comps[0].drainage ? ', in its wetter ground' : ''})` : u.name,
       drainage: c.drainage || u.drainage, hydgrp: c.hydgrp || u.hydgrp, slope: c.slope ?? u.slope, profile: c.profile, wetByMonth: c.wetByMonth || u.wetByMonth,
       component: c.name, placedBy: P.cuts.length ? 'wetness' : 'only soil', borrowed: P.borrowed,
       wtMinCm: (() => { const v = (c.wetByMonth || []).filter(Number.isFinite); return v.length ? Math.min(...v) : null; })(),

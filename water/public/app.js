@@ -859,6 +859,27 @@ function hillReport(h) {
     <p class="dim">From the USGS 10 m ground model round the lawn. A first reading, not yet checked against real lawns; the soil survey's own water table, where it has one, is in the soil card above.</p></div>`;
 }
 
+/* STREAMS AND THE FLOOD PLAIN (owner, 2026-10-31; FINDINGS H63): the nearest streams and their water's height, and
+   FEMA's flood zones and 1% flood water against the lawn's own lidar ground. */
+function streamsReport(r) {
+  if (r.error) { $('#streams').innerHTML = `<p class="dim">The streams and the flood map could not be read (${esc(r.error)}).</p>`; return; }
+  const ft = (m) => Math.round(m * 3.28084), dist = (m) => (m < 400 ? `${Math.round(m * 3.28084 / 10) * 10} ft` : `${(m / 1609.34).toFixed(m < 1609 ? 2 : 1)} mi`);
+  const named = (s) => (s.name ? s.name : s.kind === 'perennial' ? 'a stream that flows all year' : `an unnamed ${s.kind}`);
+  const lines = [];
+  const p = r.perennial, n = r.nearest;
+  if (p) {
+    lines.push(`<p><strong>The nearest stream that flows all year</strong>: ${esc(named(p))}, ${dist(p.distM)} away${p.km2 ? `, draining ${p.km2 < 10 ? p.km2.toFixed(1) : Math.round(p.km2)} km\u00b2` : ''}.${Number.isFinite(p.aboveM) ? ` The middle of the lawn stands about <strong>${ft(p.aboveM)} ft above its water</strong>. A stream that flows all year runs at the water table, so the water table under the lawn is no deeper than that, and usually shallower under rising ground.${p.aboveM < 1.5 && p.distM < 150 ? ' That close and that low, it is likely within reach of the roots in spring.' : ''}` : ''}</p>`);
+  } else if (r.streamsOk) lines.push('<p>No stream that flows all year within about two thirds of a mile.</p>');
+  if (n && (!p || n.distM < p.distM - 20)) lines.push(`<p>Nearer: ${esc(named(n))}${n.kind !== 'perennial' && n.name ? ` (${n.kind})` : ''}, ${dist(n.distM)} away${Number.isFinite(n.aboveM) ? `, about ${ft(Math.abs(n.aboveM))} ft ${n.aboveM >= 0 ? 'below' : 'above'} the lawn` : ''}. ${/intermittent/.test(n.kind) ? 'It runs in wet seasons only.' : /ditch/.test(n.kind) ? 'A dug channel: it carries water away and can lower the water table near it.' : ''}</p>`);
+  if (r.floodOk) {
+    const zoneWords = (z) => (!z.zone ? 'outside every mapped flood zone' : /^A/.test(z.zone) ? `in the 1%-chance (100-year) flood plain (zone ${z.zone})` : z.zone === 'X' && /0\.2/.test(z.subtype || '') ? 'in the 0.2%-chance (500-year) flood plain' : z.zone === 'X' ? 'in an area of minimal flood hazard (zone X)' : z.zone === 'D' ? `in an area whose flood hazard is not determined${z.subtype ? ` (${esc(z.subtype.toLowerCase())})` : ''}` : `in zone ${esc(z.zone)}`);
+    const zs = r.zones.filter((z) => z.share >= 0.01);
+    lines.push(`<p><strong>FEMA's flood map</strong>: ${zs.length ? zs.map((z) => `${zs.length > 1 ? `${Math.round(z.share * 100)}% of the lawn ` : 'the lawn is '}${zoneWords(z)}`).join('; ') : 'no flood map here'}.${r.flood ? (r.flood.depthShare > 0 ? ` The 1% flood's water here stands about ${ft(r.flood.m)} ft above sea level (from FEMA's ${esc(r.flood.from)}): <strong>${Math.round(r.flood.depthShare * 100)}% of the lawn lies under it</strong>, up to about ${ft(r.flood.maxDepthM)} ft deep.` : ` The 1% flood's water here stands about ${ft(r.flood.m)} ft above sea level (from FEMA's ${esc(r.flood.from)}); the lawn's lowest point is about ${ft(r.flood.lowestAboveM)} ft above it.`) : ''}</p>`);
+  }
+  $('#streams').innerHTML = lines.length ? `<div class="card"><h2>Streams and the flood plain</h2>${lines.join('')}
+    <p class="dim">The streams from the USGS national stream map (NHDPlus HR), their water's height from the USGS 10 m ground; the flood zones and the 1% flood's water from FEMA's National Flood Hazard Layer; the lawn's height from its own lidar. On this page only: not used in the watering plan.</p></div>` : '';
+}
+
 /* ----------------------------------------------------------------- flow */
 
 let running = null;
@@ -868,7 +889,7 @@ async function run(site) {
   running?.terminate();
   view.site = site; view.data = null; view.plan = null;
   zoom.s = 1; zoom.tx = 0; zoom.ty = 0; $('#view').style.transform = '';
-  $('#result').hidden = true; $('#plan').innerHTML = ''; $('#hill').innerHTML = '';
+  $('#result').hidden = true; $('#plan').innerHTML = ''; $('#hill').innerHTML = ''; $('#streams').innerHTML = '';
   const kept = site.water || {};
   inputs.downspouts = Array.isArray(kept.downspouts) ? kept.downspouts : [];
   inputs.gutters = Array.isArray(kept.gutters) ? kept.gutters : [];
@@ -902,6 +923,7 @@ async function run(site) {
       else if (data.plan) { idle('plan'); if (!view.hillIn) busy('hill', 'Reading the land round the lawn (water from uphill)…'); view.plan = data.plan; needScale(); heads.planIn?.(); $('#saved').textContent = savedNote; if (!heads.active) planReport(data.plan); legend(); draw(); }
       else if (data.planError) { idle('plan'); idle('hill'); $('#saved').textContent = `The watering plan could not be worked out: ${data.planError}`; }
       else if (data.hill) { view.hillIn = true; idle('hill'); hillReport(data.hill); }
+      else if (data.streams) { streamsReport(data.streams); }
       else if (data.wind) { inputs.wind = data.wind; keep(); }
     };
     w.onerror = (e) => { w.terminate(); clearBusy(); reject(new Error(e.message || 'the analysis stopped')); };

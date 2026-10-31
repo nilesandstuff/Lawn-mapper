@@ -2099,6 +2099,32 @@ unit's two soils get their own cells, water table and water holding in the plan;
 
 Not checked against a soil pit on a lawn (S18).
 
+### H63. Streams and the flood plain against the lawn's own ground (water session, 2026-10-31)
+
+The owner: "I do think we need more data about streams and flood plains. It seems like there should be more data about
+elevation regarding ground water, but I don't know where we'd find that." Where groundwater meets the surface its
+height IS measured: a stream that flows all year runs at the water table, and under rising ground beside it the water
+table stands at or above the stream's level. So the lawn's height above the nearest perennial stream's water is an
+upper bound on the depth to the water table there. Built (lib/streams.js; a card "Streams and the flood plain", on the
+page only, after the hillside reading):
+- The streams within 1 km from USGS NHDPlus HR (perennial, intermittent, ditch or canal; name; land drained), through
+  the water site's own Worker (src/streams.js: asked up to three times, kept at the edge 30 days -- the service timed out
+  at Rockford and Grand Rapids). The nearest stream's water from the USGS 10 m ground (its lowest within 15-20 m of the
+  stream's nearest point); the lawn's height from its own lidar (median of its cells).
+- FEMA's National Flood Hazard Layer (open to browsers): the zones over the lawn by share of its cells, and on studied
+  streams the 1%-chance flood's water elevation (cross-sections and base flood elevation lines, NAVD88 like the lidar),
+  between the nearest and the next nearest within 2 m of it (two streams' sections can both lie near: Hudsonville has
+  613 and 640 ft sections within 1 km); the share of the lawn under it and the depth.
+Tested on 30 m circles at public points (ground from the 10 m model, not lidar):
+
+| | the nearest perennial stream | the lawn above its water | FEMA zone | the 1% flood's water | the lawn above it |
+|---|---|---|---|---|---|
+| Hudsonville area | unnamed, 176 m | 14.4 ft | X (minimal) | 626.8 ft, from sections 7 and 12 m away | 9.3 ft at its lowest |
+| Rockford area | (stream map timed out: now cached in the Worker) | -- | X (minimal) | 694.6 ft, sections 39 and 52 m away | 3.7 ft at its lowest |
+
+Not in the balance (S19). Not built yet: a stream gauge's level through the year (USGS's water data API answers
+without a key) for lawns on a flood plain.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge
@@ -2135,6 +2161,18 @@ unlikely is the check. The soil survey's own monthly water table (lib/soil.js,
 the wetter group in those months.
 
 
+
+
+### S19. Streams and flood maps as groundwater evidence (2026-10-31, with H63)
+
+- The height above a perennial stream bounds the water table's depth from above only; under a hillside the water table
+  rises with the ground, so a lawn 4 m above a creek 200 m away may have its water table 1 m down or 4 m down.
+- The stream's water from 10 m ground: a hydro-flattened river carries its surface; a small creek's 10 m cell mixes bank
+  and channel, about half a metre either way.
+- FEMA's 1% flood water is a modelled flood level, not the water table; where it lies over the lawn, the soil is
+  waterlogged in a flood year, which the plan does not model.
+- A ditch can hold the water table down near it; an intermittent stream marks where it reaches the surface in wet
+  seasons only. The card says so; nothing is computed from them.
 
 ### S18. Placing a unit's soils by wetness (2026-10-31, with H62)
 

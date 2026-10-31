@@ -10,7 +10,8 @@ SPECULATION), as always.
 
 ## Queued
 
-21. **The water table under the lawn** (owner, 2026-10-31: "a big missing piece of the puzzle"; FINDINGS H61, S17,
+21. **The water table under the lawn** (partly done 2026-10-31: soils placed, H62; streams and flood maps, H63; wells
+    dropped, not available in most places. Still open: a stream gauge's yearly level for flood-plain lawns) (owner, 2026-10-31: "a big missing piece of the puzzle"; FINDINGS H61, S17,
     research-groundwater.md). Researched, not built. For the owner to choose: the soil survey read by component share
     (and a fallback on Urban land); Wellogic's drift wells within 1-2 km as a page note and check (never its owner
     fields); EGLE's water-table contours or the Ma 30 m model less the lot's lidar ground as a flag; the measured
@@ -108,6 +109,7 @@ SPECULATION), as always.
 - 2026-10-27: rain intensity in the ten-year plan, from the station's hours (FINDINGS H52).
 - 2026-10-28: the roots by species (a checklist) and through the season from the soil's warmth, each year its own (FINDINGS H53, S15; research-roots-brief.md, research-roots-ryegrass.md).
 - 2026-10-28: how much to water -- normal, deficit or dormancy, chosen just before the sprinklers question and kept with the map (FINDINGS H54, S16).
+- 2026-10-31: streams and the flood plain: the nearest streams and the lawn's height above their water, FEMA's zones and 1% flood water against the lawn's own ground (FINDINGS H63, S19).
 - 2026-10-31: each soil of a map unit in its own place, by the lie of the land; urban land borrows its neighbour's (FINDINGS H62, S18).
 - 2026-10-29: fences: each face its own temperature, the board lit through the trees (FINDINGS H59).
 - 2026-10-29: deficit and dormancy show their stress: the grass draws at its own coefficient while the schedule waters for the level's (FINDINGS H57).

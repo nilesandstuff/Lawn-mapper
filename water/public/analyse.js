@@ -19,6 +19,7 @@ import { typicalYears, thisWeek, attachStationHours, soilDaysOver } from '/lib/w
 import { waterPlan } from '/lib/plan.js';
 import { demAround, terrain, hillside, RADIUS_M } from '/lib/upslope.js';
 import { placeSoils, twiForGrid } from '/lib/soilplace.js';
+import { streamsNear, floodNear, streamReading } from '/lib/streams.js';
 import { powerUrl, typicalYear, growingSeason, SEASON_GP } from '/lib/shade/climate.js';
 import { onePass } from '/lib/shade/passes.js';
 import { polygonsOf } from '/lib/geo.js';
@@ -273,6 +274,29 @@ async function start(site, inputs) {
     self.postMessage({ hill: hillside(dem, kept.dem?.t || terrain(dem), pts) });
   } catch (e) {
     self.postMessage({ hill: { error: e.message || String(e) } });
+  }
+  /* STREAMS AND THE FLOOD PLAIN (H63): the streams within a kilometre (NHDPlus HR) and FEMA's flood map, against the
+     lawn's own lidar ground; the streams' water from the 10 m ground. After the plan; on the page only. */
+  try {
+    const g = res.grid, lawn = [];
+    for (let i = 0; i < kept.lawn.length; i++) if (kept.lawn[i] && Number.isFinite(res.z[i])) lawn.push({ p: res.lngLat(Math.floor(i / g.W) + 0.5, (i % g.W) + 0.5), z: res.z[i] });
+    if (lawn.length) {
+      const xs = lawn.map((c) => c.p[0]), ys = lawn.map((c) => c.p[1]);
+      const box = [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+      const [streams, flood] = await Promise.all([again(() => streamsNear(lng, lat, { via: '/api/water/streams' })).catch(() => null), again(() => floodNear(lng, lat, box)).catch(() => null)]);
+      const dem = kept.dem?.dem || null;
+      const waterAt = dem ? ([x0, y0]) => {
+        const [mx, my] = toMercS([x0, y0]), cs = (dem.bbox[2] - dem.bbox[0]) / dem.W;
+        const c = Math.floor((mx - dem.bbox[0]) / cs), r = Math.floor((dem.bbox[3] - my) / cs);
+        let lo = Infinity;
+        for (let dr = -2; dr <= 2; dr++) for (let dc = -2; dc <= 2; dc++) { const rr = r + dr, cc = c + dc; if (rr < 0 || cc < 0 || rr >= dem.H || cc >= dem.W || dr * dr + dc * dc > 4) continue; const v = dem.z[rr * dem.W + cc]; if (Number.isFinite(v) && v < lo) lo = v; }
+        return Number.isFinite(lo) ? lo : null;
+      } : null;
+      const reading = streams || flood ? streamReading({ streams: streams || [], flood, lawn, waterAt }) : null;
+      self.postMessage({ streams: reading ? { ...reading, streamsOk: !!streams, floodOk: !!flood } : { error: 'neither the national stream map nor FEMA\'s flood map answered' } });
+    }
+  } catch (e) {
+    self.postMessage({ streams: { error: e.message || String(e) } });
   }
 }
 

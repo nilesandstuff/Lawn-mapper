@@ -30,6 +30,7 @@
  */
 
 import { readings } from './readings.js';
+import { handleStreams } from './streams.js';
 
 export const PROXIED = ['/api/geocode', '/api/parcel', '/api/imagery', '/api/county-imagery', '/api/shade/lidar', '/api/water/layers', '/api/shade/climate',
   '/api/lidar/tiles']; // USGS's tile-only lidar, cropped by Lawn Mapper's model server (core session, 2026-10-29)
@@ -70,7 +71,7 @@ export function notOpenYet(home) {
 const notFound = () => new Response(JSON.stringify({ error: 'Not found' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const signIn = url.pathname.startsWith('/api/auth/');
     if (env.ADMIN_ONLY === '1' && !signIn && !(await isAdmin(request, env))) {
@@ -84,6 +85,8 @@ export default {
       out.headers.set('Cache-Control', 'private, no-store');
       return out;
     }
+    // the national stream map, fetched and kept at the edge by this site (src/streams.js)
+    if (url.pathname === '/api/water/streams') return handleStreams(request, url, ctx);
     const kept = await readings(request, env, url, { isAdmin });
     if (kept) return kept;
     if (!url.pathname.startsWith('/api/')) {
