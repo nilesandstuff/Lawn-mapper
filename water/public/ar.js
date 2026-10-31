@@ -105,6 +105,21 @@ function checkLanding(p) {
   const nearest = Math.min(...refMarks().map((r) => Math.abs(r.odo - m.odo)));
   return { at, error: Math.hypot(at[0] - p.map[0], at[1] - p.map[1]), walked: nearest, dist: m.dist };
 }
+/**
+ * Each reference tested against the others (owner's first walk: two references 31 m apart that AR measured 4% short,
+ * so each was 0.65 m from fitting and nothing said which was wrong). Its latest mark, lined up by every other
+ * reference's marks: how far from its place on the photo it lands. With three or more, the odd one out shows.
+ */
+function leftOut(p) {
+  const m = lastMark(p); if (!m) return null;
+  const others = refMarks().filter((r) => r.p !== p);
+  if (new Set(others.map((r) => r.p)).size < 2) return null;
+  const T = fitAt(others, m.odo); if (!T) return null;
+  const at = apply(T, arLevel(m.ar));
+  return Math.hypot(at[0] - p.map[0], at[1] - p.map[1]);
+}
+/** AR's distances against the photo's, between the references: 1 if they agree. */
+const scaleNow = () => { const all = refMarks(); if (!all.length) return null; const T = fitFor(Math.max(...all.map((r) => r.odo))); return T ? T.scale : null; };
 const walkedSinceRef = () => { const r = refMarks(); return r.length && xr ? Math.min(...r.map((q) => xr.odo - q.odo)) : null; };
 
 /* ---------------------------------------------------------------- drawing */
@@ -176,12 +191,12 @@ function results() {
   const pinsNow = st.pins.filter((p) => pinMap(p)).length;
   const nMarks = refMarks().length;
   const rows = [
-    ...refs.map((p) => `<tr><td class="ref">${esc(p.name)}</td><td>reference</td><td>marked ${p.marks.length === 1 ? 'once' : `${p.marks.length} times`}</td></tr>`),
+    ...refs.map((p) => { const lo = leftOut(p); return `<tr><td class="ref">${esc(p.name)}</td><td>reference</td><td>marked ${p.marks.length === 1 ? 'once' : `${p.marks.length} times`}${lo != null ? `; <strong>${ftIn(lo)}</strong> from its place when the others line it up` : ''}</td></tr>`; }),
     ...checks.map(({ p, l }) => `<tr><td class="check">${esc(p.name)}</td><td>check point</td><td><strong>${ftIn(l.error)} off</strong> <span class="dim">(${ft(l.walked)} walked from a reference mark; aimed from ${ft(l.dist)})</span></td></tr>`),
   ];
   const x = xr?.stats || st.lastStats;
   $('#results').innerHTML = refs.length || pinsNow ? `<div class="card"><strong>Results</strong>
-    <p>${refs.length >= 2 ? `${refs.length} references, ${nMarks} marks, ${ftIn(st.baseline || 0)} apart at the widest.` : 'Not lined up yet: mark two references in AR.'}${x ? ` Walked ${ft(x.walked)}; lost its place ${x.losses} time${x.losses === 1 ? '' : 's'}${x.resets ? `; its frame jumped ${x.resets} time${x.resets === 1 ? '' : 's'}` : ''}; ${x.fastTurns} fast turn${x.fastTurns === 1 ? '' : 's'}.` : ''}</p>
+    <p>${refs.length >= 2 ? `${refs.length} references, ${nMarks} marks, ${ftIn(st.baseline || 0)} apart at the widest. ${(() => { const k = scaleNow(); return k ? `AR measured the distances between them ${Math.abs(1 - 1 / k) < 0.005 ? 'the same as the photo' : `${(Math.abs(1 - 1 / k) * 100).toFixed(1)}% ${k > 1 ? 'shorter' : 'longer'} than the photo`}.` : ''; })()}${refs.length === 2 ? ' With two references nothing says which one is off; a third does.' : ' The reference that lands farthest from its place is most likely the one placed or aimed wrong (check where it is on the photo); with only three, one bad reference makes the others look off too, so four or more show it plainly.'}` : 'Not lined up yet: mark two references in AR.'}${x ? ` Walked ${ft(x.walked)}; lost its place ${x.losses} time${x.losses === 1 ? '' : 's'}${x.resets ? `; its frame jumped ${x.resets} time${x.resets === 1 ? '' : 's'}` : ''}; ${x.fastTurns} fast turn${x.fastTurns === 1 ? '' : 's'}.` : ''}</p>
     ${checks.length ? `<p><strong>Check points: ${ftIn(errs[errs.length >> 1])} off at the middle, ${ftIn(errs[errs.length - 1])} at the worst</strong> (${checks.length}).</p>` : ''}
     ${rows.length ? `<table>${rows.join('')}</table>` : ''}
     <p>${pinsNow} head${pinsNow === 1 ? '' : 's'} placed (red on the map).</p>
@@ -189,7 +204,8 @@ function results() {
   $('#copy')?.addEventListener('click', async () => {
     const out = {
       page: 'water AR test v2', when: new Date().toISOString(), device: navigator.userAgent, stats: x ? { walkedM: +x.walked.toFixed(1), losses: x.losses, resets: x.resets, fastTurns: x.fastTurns } : null,
-      references: refs.map((p) => ({ name: p.name, marks: p.marks.map((m) => ({ walkedM: +m.odo.toFixed(1), aimM: +m.dist.toFixed(2), anchorMovedM: m.anchorMoved != null ? +m.anchorMoved.toFixed(3) : null })) })),
+      scale: scaleNow() != null ? +scaleNow().toFixed(4) : null,
+      references: refs.map((p) => ({ name: p.name, leftOutM: leftOut(p) != null ? +leftOut(p).toFixed(3) : null, marks: p.marks.map((m) => ({ walkedM: +m.odo.toFixed(1), aimM: +m.dist.toFixed(2), anchorMovedM: m.anchorMoved != null ? +m.anchorMoved.toFixed(3) : null })) })),
       checks: checks.map(({ p, l }) => ({ name: p.name, errorM: +l.error.toFixed(3), fromRefMarkM: +l.walked.toFixed(1), aimM: +l.dist.toFixed(2), head: !!p.head })),
       headsPlaced: pinsNow, events: st.events.slice(-60),
     };

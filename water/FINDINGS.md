@@ -2163,6 +2163,13 @@ around and walking long distances throws it off. Its difficult to turn 90 degree
 quickly." Heads placed in the back landed on and beside the house. The shape of it (good where the references were,
 worst far from them in walking, worse again on returning) is ARCore's frame drifting with the walk, not the fit:
 the fit was exact for the two references, and a fixed fit cannot be right in the front at first and wrong there later.
+The first walk's copied results (old page, before the changes below): R1 and R2 31.3 m apart on the photo, AR measuring
+them 4.4% shorter (scale 1.0436), so each reference sat 0.65 m from fitting within 27 s of walking; check points C1
+2.21 m, C2 1.53 m, C3 2.73 m off, all in the front, marked 2-4 minutes after the references. So the references
+themselves disagreed by 1.3 m before any long walk: a reference misplaced on the unzoomable photo (R2 is at a tree,
+whose top the photo shows), a far aim on the slope, or AR's own scale -- two references cannot say which. The page now
+tests each reference against the others (where its mark lands when the rest line it up) and reports AR's distances
+against the photo's (S21).
 (The yard falls about 6 ft from front to back; that does not move a level reading by feet -- S21.)
 Changed (lib/ar-align.js fitAt; public/ar.js):
 - References can be marked again any number of times (tap one on the small map, then Mark; with everything marked, the
@@ -2228,6 +2235,9 @@ the wetter group in those months.
 - Drift: often quoted near 1% of the distance walked, more with fast turns, plain grass and changing light. The owner's
   20 ft is more than 1% of any walk on one lawn, so probably a relocalisation jump or a lost-tracking spell; the page
   now counts both (copied results), which will say.
+- AR's scale: 4.4% short over 31 m on the first walk. If several references keep showing AR short by the same share,
+  the fit could take a scale as well as a turn and a shift (with three or more well spread); one walk is not enough to
+  say ARCore's scale is off rather than a reference.
 - Fixes not built: (a) references along straight edges (any spot on a driveway or sidewalk edge pins the frame across
   that edge), so a correction is possible almost anywhere along paving; (b) reference corners taken from the lidar (a
   shed's or house's footprint where its walls meet the ground: lidar is measured straight down, with none of the
