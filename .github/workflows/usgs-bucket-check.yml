@@ -21,5 +21,8 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         run: |
-          pip install --quiet boto3
+          pip install --quiet --upgrade boto3
+          echo "================ THE ACCOUNT (read-only) ================"
+          python3 tools/aws-account-audit.py || true
+          echo "================ THE BUCKET ================"
           python3 tools/usgs-bucket-check.py
