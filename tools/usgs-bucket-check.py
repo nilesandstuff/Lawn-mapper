@@ -50,7 +50,51 @@ def ls(prefix, delimiter="/", limit_pages=20):
             return folders, objects, bool(token)
 
 
+def diagnose():
+    """Where a refusal comes from: the key, our permissions, or the bucket. Prints no secret, no account number."""
+    import botocore
+    sts = boto3.client("sts", region_name="us-west-2")
+    try:
+        who = sts.get_caller_identity()["Arn"]
+        print(f"KEY: works, as {who.rsplit('/', 1)[-1]}")
+    except botocore.exceptions.ClientError as e:
+        print(f"KEY: refused ({e.response['Error']['Code']}): the key itself is wrong or inactive")
+        return False
+    try:
+        s3.list_objects_v2(Bucket="usgs-lidar-public", MaxKeys=2)
+        REQ["n"] += 1
+        print("PERMISSION: this key can list a public bucket (S3 read access is attached)")
+    except botocore.exceptions.ClientError as e:
+        print(f"PERMISSION: cannot list even the free bucket ({e.response['Error']['Code']}): AmazonS3ReadOnlyAccess is not attached to this user")
+    ok = False
+    for prefix in ("", "Projects/", "AR_Western_B24/", "AR_Western_1_B24/"):
+        try:
+            r = s3.list_objects_v2(Bucket=BUCKET, Prefix=prefix, Delimiter="/", MaxKeys=5, RequestPayer="requester")
+            REQ["n"] += 1
+            print(f"LIST usgs-lidar '{prefix}': allowed, {r.get('KeyCount', 0)} entries: "
+                  f"{[c['Prefix'] for c in r.get('CommonPrefixes', [])][:5]} {[o['Key'] for o in r.get('Contents', [])][:3]}")
+            ok = True
+        except botocore.exceptions.ClientError as e:
+            print(f"LIST usgs-lidar '{prefix}': {e.response['Error']['Code']}")
+    tile = "USGS_LPC_AR_Western_B24_15SUA950220.laz"
+    for key in (f"Projects/AR_Western_B24/AR_Western_1_B24/LAZ/{tile}", f"AR_Western_B24/AR_Western_1_B24/LAZ/{tile}",
+                f"AR_Western_1_B24/LAZ/{tile}", f"AR_Western_1_B24/{tile}", f"AR_Western_B24/{tile}"):
+        try:
+            r = s3.head_object(Bucket=BUCKET, Key=key, RequestPayer="requester")
+            REQ["n"] += 1
+            print(f"FILE {key}: THERE, {r['ContentLength'] / 1e6:.1f} MB")
+            ok = True
+        except botocore.exceptions.ClientError as e:
+            print(f"FILE {key}: {e.response['Error']['Code']}")
+    return ok
+
+
 def main():
+    if not diagnose():
+        print("Nothing in usgs-lidar could be listed or found; see above.")
+        cost = REQ["n"] * 0.005 / 1000
+        print(f"\nBILLED TO THE ACCOUNT: {REQ['n']} requests, about ${cost:.4f}")
+        return
     top, objs, more = ls("")
     print(f"TOP LEVEL: {len(top)} folders{' (more not listed)' if more else ''}, {len(objs)} files")
     print("  " + " ".join(top[:40]) + (" ..." if len(top) > 40 else ""))
