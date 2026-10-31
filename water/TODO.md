@@ -66,6 +66,7 @@ SPECULATION), as always.
     head is a pin; check points say how far off. First walk 2026-10-31: fine in front, ~20 ft off in the back (drift);
     re-marking references as you walk, anchors and warnings added (H65). Second walk: AR ~4% short, sway counted as
     walking; scale held, slide-aware fit, edges, head spread in the copy (H66). Not built: corners from the lidar (S21).
+    One head placed seven times: ~0.5 m from close by; one anchor jump of 21 m now ignored; far placing confirmed (H67).
 15. **Hose-end sprinklers placed by hand** (owner: "add specific recs for manually placing sprinklers. Which will
     require pressure calculations (same as the existing workflows for inground, but obviously simplified)"):
     where to set each sprinkler, how long, from the hose and the tap's pressure.

@@ -36,6 +36,8 @@ const FAST_TURN = 90;     // degrees a second
 const STEP = 0.5;         // m: the walk counts moves this long, so the hand's sway is not walking (H66: 508 m counted)
 const EDGE_W = 0.5;       // an edge mark counts half a point: the photo's edge is less sharp than a corner
 const SCALE_OK = [0.9, 1.1];
+const ANCHOR_MAX = 1.5;   // m: an anchor moved farther than this jumped (H67: one moved a head 21 m); its first reading is kept
+const FAR_AGAIN = 3000;   // ms: placing from farther than AIM_FAR takes a second tap within this
 
 /* ---------------------------------------------------------------- the map */
 
@@ -209,8 +211,15 @@ function zoomAt(k, [cx, cy]) {
 
 /* ------------------------------------------------------- points and pins */
 
-const save = () => { try { localStorage.setItem(st.key, JSON.stringify({ points: st.points.map(({ marks, residual, ...p }) => p), pins: st.pins.map((p) => ({ map: pinMap(p), at: p.at, aim: p.aim ?? p.dist ?? null, walked: p.walked ?? p.odo ?? null, fromRef: p.fromRef ?? null })) })); } catch { /* this phone only */ } };
-const load = () => { try { const j = JSON.parse(localStorage.getItem(st.key) || 'null'); if (j) { st.points = (j.points || []).map((p) => ({ ...p, ar: undefined, marks: [] })); st.pins = (j.pins || []).filter((p) => p.map).map((p) => ({ map: p.map, at: p.at, aim: p.aim, walked: p.walked, fromRef: p.fromRef })); } } catch { /* fresh */ } };
+const save = () => { try { localStorage.setItem(st.key, JSON.stringify({ points: st.points.map(({ marks, residual, ...p }) => p), pins: st.pins.map((p) => ({ map: pinMap(p), at: p.at, aim: p.aim ?? p.dist ?? null, walked: p.walked ?? p.odo ?? null, fromRef: p.fromRef ?? null, anchorShift: anchorShift(p), anchorJumped: p.anchorJumped ?? null })) })); } catch { /* this phone only */ } };
+const load = () => { try { const j = JSON.parse(localStorage.getItem(st.key) || 'null'); if (j) { st.points = (j.points || []).map((p) => ({ ...p, ar: undefined, marks: [] })); st.pins = (j.pins || []).filter((p) => p.map).map((p) => ({ map: p.map, at: p.at, aim: p.aim, walked: p.walked, fromRef: p.fromRef, savedShift: p.anchorShift, anchorJumped: p.anchorJumped })); } } catch { /* fresh */ } };
+/** How far a head's anchor has carried it on the map from where it was placed, m (this walk's heads; else as saved). */
+function anchorShift(p) {
+  if (!(p.ar && p.raw && p.session === st.session)) return p.savedShift ?? null;
+  const T = fitFor(p.odo); if (!T) return null;
+  const a = apply(T, arLevel(p.ar)), b = apply(T, arLevel(p.raw));
+  return Math.hypot(a[0] - b[0], a[1] - b[1]);
+}
 const nextName = (kind) => { const pre = kind === 'ref' ? 'R' : kind === 'edge' ? 'E' : 'C'; let k = 1; while (st.points.some((p) => p.name === `${pre}${k}`)) k++; return `${pre}${k}`; };
 
 function refit() {
@@ -239,7 +248,7 @@ function headsRelative() {
   const d = walk.map((x) => Math.hypot(x.m[0] - c[0], x.m[1] - c[1]));
   return {
     latestWalk: { n: walk.length, rmsFromMiddleM: +Math.sqrt(d.reduce((a, v) => a + v * v, 0) / d.length).toFixed(3), farthestM: +Math.max(...d).toFixed(3) },
-    each: all.map((x) => ({ when: x.p.at ? new Date(x.p.at).toISOString().slice(11, 19) : null, eM: +(x.m[0] - c[0]).toFixed(2), nM: +(x.m[1] - c[1]).toFixed(2), aimM: x.p.aim != null ? +x.p.aim.toFixed(2) : null, walkedM: x.p.walked != null ? +x.p.walked.toFixed(1) : null, fromRefMarkM: x.p.fromRef != null ? +x.p.fromRef.toFixed(1) : null })),
+    each: all.map((x) => ({ when: x.p.at ? new Date(x.p.at).toISOString().slice(11, 19) : null, eM: +(x.m[0] - c[0]).toFixed(2), nM: +(x.m[1] - c[1]).toFixed(2), aimM: x.p.aim != null ? +x.p.aim.toFixed(2) : null, walkedM: x.p.walked != null ? +x.p.walked.toFixed(1) : null, fromRefMarkM: x.p.fromRef != null ? +x.p.fromRef.toFixed(1) : null, anchorShiftM: anchorShift(x.p) != null ? +anchorShift(x.p).toFixed(2) : null, anchorJumpedM: x.p.anchorJumped ?? null })),
   };
 }
 
@@ -267,7 +276,7 @@ function results() {
       page: 'water AR test v2', when: new Date().toISOString(), device: navigator.userAgent, stats: x ? { walkedM: +x.walked.toFixed(1), losses: x.losses, resets: x.resets, fastTurns: x.fastTurns } : null,
       scale: { heldPhotoOverAR: +scaleNow().k.toFixed(4), thisWalk: scaleNow().walk ? { k: +scaleNow().walk.k.toFixed(4), pairs: scaleNow().walk.n } : null, earlierWalks: learnedScales() },
       edges: edges.map((p) => ({ name: p.name, lengthM: +Math.hypot(p.b[0] - p.a[0], p.b[1] - p.a[1]).toFixed(1), marks: p.marks.length, latestOffM: edgeLanding(p) != null ? +edgeLanding(p).toFixed(3) : null })),
-      references: refs.map((p) => ({ name: p.name, leftOutM: leftOut(p) != null ? +leftOut(p).toFixed(3) : null, marks: p.marks.map((m) => ({ walkedM: +m.odo.toFixed(1), aimM: +m.dist.toFixed(2), anchorMovedM: m.anchorMoved != null ? +m.anchorMoved.toFixed(3) : null })) })),
+      references: refs.map((p) => ({ name: p.name, leftOutM: leftOut(p) != null ? +leftOut(p).toFixed(3) : null, marks: p.marks.map((m) => ({ walkedM: +m.odo.toFixed(1), aimM: +m.dist.toFixed(2), anchorMovedM: m.anchorMoved != null ? +m.anchorMoved.toFixed(3) : null, anchorJumpedM: m.anchorJumped ?? null })) })),
       checks: checks.map(({ p, l }) => ({ name: p.name, errorM: +l.error.toFixed(3), fromRefMarkM: +l.walked.toFixed(1), aimM: +l.dist.toFixed(2) })),
       headsPlaced: pinsNow, heads: headsRelative(), events: st.events.slice(-60),
     };
@@ -503,9 +512,16 @@ function followAnchors(frame) {
     if (!m.anchor || !frame.trackedAnchors.has(m.anchor)) continue;
     const ap = frame.getPose(m.anchor.anchorSpace, xr.ref);
     if (!ap) continue;
-    const q = ap.transform.position;
+    const q = ap.transform.position, moved = Math.hypot(q.x - m.raw.x, q.z - m.raw.z);
+    if (moved > ANCHOR_MAX) {
+      // ARCore's corrections are tenths of a metre (H66); metres is an anchor carried off (a plane merged or
+      // re-found elsewhere): keep the reading as it was made
+      if (!m.anchorJumped) { m.anchorJumped = +moved.toFixed(1); log(`an anchor jumped ${moved.toFixed(1)} m: ignored`); }
+      m.ar = { ...m.raw };
+      continue;
+    }
     m.ar = { x: q.x, y: q.y, z: q.z };
-    m.anchorMoved = Math.hypot(q.x - m.raw.x, q.z - m.raw.z);
+    m.anchorMoved = moved;
   }
 }
 async function anchorFor(m) {
@@ -582,10 +598,15 @@ function wireAR() {
     xr.target = nextTarget();
     updateBar(); results(); listPoints();
   });
+  let farAt = 0;
   $('#place').addEventListener('click', () => {
     if (!st.T) return;
     if (!xr.cur) { flash('No ground under the crosshair'); return; }
     const p = xr.pose.transform.position;
+    // from far off a head lands feet away (H67: 7 ft from 14 ft away): ask once more
+    const far = Math.hypot(xr.cur.x - p.x, xr.cur.z - p.z);
+    if (far > AIM_FAR && Date.now() - farAt > FAR_AGAIN) { farAt = Date.now(); flash(`${ft(far)} away: come closer, or tap again to place it anyway`); return; }
+    farAt = 0;
     const pin = { ar: { ...xr.cur }, raw: { ...xr.cur }, odo: xr.odo, dist: Math.hypot(xr.cur.x - p.x, xr.cur.z - p.z), session: st.session, at: Date.now() };
     pin.aim = pin.dist; pin.walked = pin.odo; pin.fromRef = walkedSinceRef();
     pin.map = apply(st.T, arLevel(pin.ar));

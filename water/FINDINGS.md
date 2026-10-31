@@ -2221,6 +2221,23 @@ Fake-AR drive (AR 4% short): with no drift every check point within an inch and 
 0.9%-a-metre slide the check points 1-5 ft off, bounded by the walk since the last reference and by that slide's bias
 on the scale (5.4%). The test drift pushes one way always; a phone's wanders. The next walk says which this phone is.
 
+### H67. One head placed seven times: half a metre from close by; one anchor carried a head 21 m (water session, 2026-10-31)
+
+The second walk's seven placings of one head (copied again afterwards with the H66 page; positions relative to the
+seven's middle, the walk's events matched by time):
+- The last four, aimed from 0.4-2.6 m within 37 s after R3 was marked again: within about 0.45 m of each other.
+- The first, placed about 5 minutes and much walking earlier (before R3 was marked again): within about 0.5 m of them.
+- One aimed from 4.2 m: 2.2 m south of the group.
+- One aimed from 0.7 m: 21 m off. Not the fit: check point C2, marked seconds later with the same marks around it, was
+  1.5 m off. The only thing that moves a placed head is its ARCore anchor (a head followed its anchor), so ARCore carried
+  that anchor about 20 m -- most likely the plane it was made on was merged or re-found elsewhere. The references'
+  anchors moved 0.19-0.67 m that walk.
+How close those placings were to the head itself is not measured (the mapped head beside it is known to be off).
+Changed (public/ar.js): an anchor that moves more than 1.5 m is ignored (the reading as made is kept, and the copy says
+so); placing a head from farther than 3.5 m takes a second tap within 3 s; the copy gives each head's anchor shift.
+Fake-AR drive: an anchor moved 20 m left its head where it was placed and logged the jump; one moved 0.3 m moved its head
+0.31 m; from 16 ft the first tap only warned.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge
