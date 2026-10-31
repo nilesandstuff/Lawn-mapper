@@ -72,7 +72,8 @@ const lawnmap = (who) => ({
 });
 const env = (who, extra = {}) => ({
   LAWNMAP: lawnmap(who), LAWNMAP_HOST: 'lawnmap.example.com', ADMIN_ONLY: '1',
-  ASSETS: { fetch: async () => new Response('<html>page</html>', { headers: { 'Content-Type': 'text/html' } }) }, ...extra,
+  // like Cloudflare's assets (html_handling auto-trailing-slash): /x.html is a 307 to /x, which serves x.html
+  ASSETS: { fetch: async (r) => { const u = new URL(r.url ?? r); return u.pathname.endsWith('.html') ? new Response(null, { status: 307, headers: { Location: u.pathname.replace(/(index)?\.html$/, '') } }) : new Response('<html>page</html>', { headers: { 'Content-Type': 'text/html' } }); } }, ...extra,
 });
 const get = (path, cookie = '', e = env()) => worker.fetch(new Request(`https://water.example.com${path}`, { headers: { Cookie: cookie } }), e);
 
@@ -102,6 +103,9 @@ test('admin only fails closed, and opens when ADMIN_ONLY is not "1"', async () =
   const open = env('up', { ADMIN_ONLY: '0' });
   for (const p of ['/ar', '/ar.html', '/ar.js']) assert.equal((await get(p, '', open)).status, 404, p);
   assert.equal((await get('/ar', 'lm_session=admin', open)).status, 200);
+  assert.equal((await get('/ar.html', 'lm_session=admin', open)).status, 200);
+  assert.equal((await get('/admin', 'lm_session=admin', open)).status, 200);
+  assert.equal((await get('/admin.html', 'lm_session=admin', open)).status, 200);
   assert.match((await get('/ar', 'lm_session=admin', open)).headers.get('Cache-Control'), /no-store/);
   // open to everyone since 2026-10-23; the gate is still there to close it again
   assert.match(wranglerFor('water.example.com', 'lawnmap.example.com'), /ADMIN_ONLY = "0"/);

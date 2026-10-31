@@ -80,7 +80,8 @@ export default {
     // the water tool's admin page: the admin only, whether or not the site is open (src/readings.js)
     if (url.pathname === '/admin' || url.pathname === '/admin.html') {
       if (!(await isAdmin(request, env))) return notOpenYet(env.LAWNMAP_HOST?.split('.').slice(1).join('.'));
-      const res = await env.ASSETS.fetch(new Request(new URL('/admin.html', url), request));
+      // ask for /admin, not /admin.html: Cloudflare answers /admin.html with a redirect to /admin, and the visitor loops
+      const res = await env.ASSETS.fetch(new Request(new URL('/admin', url), request));
       const out = new Response(res.body, res);
       out.headers.set('Cache-Control', 'private, no-store');
       return out;
@@ -88,7 +89,7 @@ export default {
     // the AR head-placing test (public/ar.html; FINDINGS H64): the admin only, whether or not the site is open
     if (url.pathname === '/ar' || url.pathname === '/ar.html' || url.pathname === '/ar.js') {
       if (!(await isAdmin(request, env))) return url.pathname === '/ar.js' ? notFound() : notOpenYet(env.LAWNMAP_HOST?.split('.').slice(1).join('.'));
-      const res = await env.ASSETS.fetch(new Request(new URL(url.pathname === '/ar.js' ? '/ar.js' : '/ar.html', url), request));
+      const res = await env.ASSETS.fetch(new Request(new URL(url.pathname === '/ar.js' ? '/ar.js' : '/ar', url), request));
       const out = new Response(res.body, res);
       out.headers.set('Cache-Control', 'private, no-store');
       return out;
