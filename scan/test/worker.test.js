@@ -49,4 +49,67 @@ const url = (p) => new URL(`https://scan.example.com${p}`);
   r = await get(open, '/api/nothing');
   assert.equal(r.status, 404);
 }
+// the walks kept on the site: the admin posts, lists, reads one, deletes; nothing with coordinates is kept
+{
+  const { cleanWalk, walks } = await import('../src/walks.js');
+  assert.equal(cleanWalk(null).error, 'no walk');
+  assert.equal(cleanWalk({ id: 'x y', engine: 'webxr' }).error, 'a walk needs an id');
+  assert.equal(cleanWalk({ id: '1', engine: 'arkit' }).error, 'engine must be webxr or 8thwall');
+  assert.match(cleanWalk({ id: '1', engine: 'webxr', pins: [{ lat: 42 }] }).error, /no coordinates/);
+  const ok = cleanWalk({ id: '1793573191838', engine: 'webxr', when: '2026-11-01T22:46:31.838Z', phone: 'Mozilla/5.0', stats: { walkedM: 276.9 } });
+  assert.equal(ok.row.at, Date.parse('2026-11-01T22:46:31.838Z'));
+  assert.equal(ok.row.engine, 'webxr');
+  // a fake D1
+  const rows = new Map();
+  const DB = { prepare: (sql) => ({ bind: (...v) => ({
+    run: async () => { if (/INSERT/.test(sql)) rows.set(v[0], { id: v[0], at: v[1], engine: v[2], phone: v[3], json: v[4] }); if (/DELETE/.test(sql)) rows.delete(v[0]); return {}; },
+    first: async () => rows.get(v[0]) || null,
+    all: async () => ({ results: [...rows.values()].sort((a, b) => b.at - a.at) }),
+  }), all: async () => ({ results: [...rows.values()].sort((a, b) => b.at - a.at) }) }) };
+  const lawnmap = (who) => ({ fetch: async () => new Response(JSON.stringify({ user: { admin: who === 'admin' } }), { headers: { 'Content-Type': 'application/json' } }) });
+  const env = (who, db = DB) => ({ ADMIN_ONLY: '1', LAWNMAP_HOST: 'lawnmap.example.com', LAWNMAP: lawnmap(who), DB: db });
+  const call = (e, method, q = '', body = null) => walks(new Request(`https://scan.example.com/api/scan/walks${q}`, { method, headers: { Cookie: 'lm_session=x', 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined }), e, new URL(`https://scan.example.com/api/scan/walks${q}`), { isAdmin });
+  assert.equal(await walks(new Request('https://scan.example.com/api/other'), env('admin'), new URL('https://scan.example.com/api/other'), { isAdmin }), null, 'not its route');
+  let r = await call(env('user'), 'GET');
+  assert.equal(r.status, 404, 'not the admin: nothing');
+  r = await call(env('admin', undefined), 'GET');
+  assert.equal(r.status, 200);
+  r = await call({ ...env('admin'), DB: undefined }, 'GET');
+  assert.equal(r.status, 503, 'no database: says so');
+  r = await call(env('admin'), 'POST', '', { id: 'w1', engine: 'webxr', when: '2026-11-01T22:00:00Z', pins: [] });
+  assert.equal(r.status, 200);
+  r = await call(env('admin'), 'POST', '', { id: 'w2', engine: '8thwall', when: '2026-11-01T23:00:00Z', pins: [{ name: 'P1' }] });
+  assert.equal(r.status, 200);
+  r = await call(env('admin'), 'POST', '', { id: 'w1', engine: 'webxr', when: '2026-11-01T22:00:00Z', measures: [{ tapedM: 10 }] });
+  assert.equal(r.status, 200, 'posting again replaces');
+  r = await call(env('admin'), 'GET');
+  const list = (await r.json()).walks;
+  assert.equal(list.length, 2);
+  assert.equal(list[0].id, 'w2', 'newest first');
+  assert.equal(list[1].summary.measures[0].tapedM, 10, 'the replacement is what is kept');
+  r = await call(env('admin'), 'GET', '?id=w2');
+  assert.equal((await r.json()).pins[0].name, 'P1');
+  r = await call(env('admin'), 'GET', '?id=nope');
+  assert.equal(r.status, 404);
+  r = await call(env('admin'), 'POST', '', { id: 'w3', engine: 'webxr', pins: [{ at: { lng: 1 } }] });
+  assert.equal(r.status, 400, 'coordinates refused');
+  r = await call(env('admin'), 'DELETE', '?id=w1');
+  assert.equal(r.status, 200);
+  assert.equal(rows.size, 1);
+  // through the Worker: the route answers before the static page would
+  const full = { ...env('admin'), ASSETS: { fetch: async () => new Response('page') } };
+  r = await worker.fetch(new Request('https://scan.example.com/api/scan/walks', { headers: { Cookie: 'lm_session=x' } }), full);
+  assert.equal(r.status, 200);
+  assert.equal((await r.json()).walks.length, 1);
+}
+// scan/tools/walks.mjs: the one-line headline and wrangler's JSON rows
+{
+  const { headline, rowsOf } = await import('../tools/walks.mjs');
+  const h = headline({ engine: 'webxr', when: '2026-11-01T22:46:31.838Z', seconds: 487, stats: { walkedM: 276.9, losses: 0, resets: 0, fastTurns: 93 }, pins: [{ name: 'P2', anchored: true, checks: [{ offLevelM: 0.239, offAnchorLevelM: 0.1, walkedSinceM: 149.16 }] }, { name: 'P3', checks: [] }], measures: [{ shortBy: 0.04 }] });
+  assert.match(h, /webxr 2026-11-01T22:46:31.838Z 8 min, walked 908 ft, losses 0, resets 0, fast turns 93/);
+  assert.match(h, /P2\*:9 in\/4 in@149m P3:-/);
+  assert.match(h, /tape: 4.0% short/);
+  assert.deepEqual(rowsOf('Banner\n[{"results":[{"id":"a"}],"success":true}]\n'), [{ id: 'a' }]);
+  assert.deepEqual(rowsOf('nothing'), []);
+}
 console.log('worker: ok');

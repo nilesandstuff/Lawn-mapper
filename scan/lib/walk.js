@@ -18,7 +18,7 @@
 import { level, levelDist, dist3, yawOf, turnBetween } from './frames.js';
 
 export const STEP = 0.5;        // m: a move this long counts as walking
-export const FAST_TURN = 90;    // degrees a second
+export const FAST_TURN = 150;   // degrees a second (90 counted ordinary looking round, 93 times in one walk: SCAN-H1)
 export const LOSS_WALK = 10;    // m added to the walk when tracking is lost (what came before counts for less, later)
 export const RESET_WALK = 1000; // m added when the engine says its frame jumped
 export const AIM_FAR = 3.5;     // m: aiming from farther than this is worth a warning (water H65-H67)
@@ -72,19 +72,38 @@ export function step(w, { t, pos, quat, tracking, reset = false, points = 0 }) {
 }
 
 /** A pin where the crosshair met the ground. hit: { position, type, distance }. */
+/**
+ * A pin where the crosshair met the ground. hit: { position, type, distance, plane? } -- `plane` is where the
+ * engine's plane hit test put the same crosshair when the depth picture was used instead (SCAN-H1: a plane found
+ * in the front yard reached under the back yard, 6 ft lower, and pins went "several feet under ground").
+ */
 export function dropPin(w, hit, name = null) {
-  const pin = { id: `${w.pins.length + 1}`, name: name || `P${w.pins.length + 1}`, at: hit.position, type: hit.type || null, aim: hit.distance ?? null, odo: w.odo, t: Date.now() - w.startedAt, checks: [] };
+  const pin = { id: `${w.pins.length + 1}`, name: name || `P${w.pins.length + 1}`, at: hit.position, type: hit.type || null, aim: hit.distance ?? null, odo: w.odo, t: Date.now() - w.startedAt, checks: [],
+    planeOffY: hit.plane ? hit.plane.y - hit.position.y : null, planeOffLevel: hit.plane ? levelDist(hit.plane, hit.position) : null, anchorAt: null };
   w.pins.push(pin);
-  log(w, `pin ${pin.name} dropped`, { aimM: pin.aim != null ? +pin.aim.toFixed(2) : null });
+  log(w, `pin ${pin.name} dropped`, { aimM: pin.aim != null ? +pin.aim.toFixed(2) : null, by: pin.type, planeOffYM: pin.planeOffY != null ? +pin.planeOffY.toFixed(2) : null });
   return pin;
 }
 
-/** Aiming at the spot a pin was dropped on and tapping: how far the pin has moved from the spot since. */
+export const ANCHOR_MAX = 1.5; // m: an anchor carried farther than this from where it was made has jumped (water H67: one moved 21 m)
+
+/** Where a pin is now: its anchor's place while the anchor has moved less than ANCHOR_MAX, else as placed. */
+export function pinNow(pin) {
+  if (!pin.anchorAt) return pin.at;
+  return levelDist(pin.anchorAt, pin.at) > ANCHOR_MAX ? pin.at : pin.anchorAt;
+}
+
+/**
+ * Aiming at the spot a pin was dropped on and tapping: how far the pin has moved from the spot since -- as placed
+ * (offLevelM) and as its anchor carries it (offAnchorLevelM), so a walk says whether anchors help.
+ */
 export function checkPin(w, pin, hit) {
   const off = dist3(pin.at, hit.position), offLevel = levelDist(pin.at, hit.position);
-  const c = { offM: off, offLevelM: offLevel, aim: hit.distance ?? null, walkedSinceM: w.odo - pin.odo, t: Date.now() - w.startedAt };
+  const now = pinNow(pin);
+  const c = { offM: off, offLevelM: offLevel, offAnchorLevelM: pin.anchorAt ? levelDist(now, hit.position) : null, anchorMovedM: pin.anchorAt ? levelDist(pin.anchorAt, pin.at) : null,
+    aim: hit.distance ?? null, by: hit.type || null, walkedSinceM: w.odo - pin.odo, t: Date.now() - w.startedAt };
   pin.checks.push(c);
-  log(w, `pin ${pin.name} checked`, { offM: +off.toFixed(3), walkedSinceM: +c.walkedSinceM.toFixed(1) });
+  log(w, `pin ${pin.name} checked`, { offM: +off.toFixed(3), offAnchorM: c.offAnchorLevelM != null ? +c.offAnchorLevelM.toFixed(3) : null, walkedSinceM: +c.walkedSinceM.toFixed(1) });
   return c;
 }
 
@@ -122,7 +141,8 @@ export function summary(w, extra = {}) {
     page: 'yard AR test v1', engine: w.engine, phone: w.phone, when: new Date(w.startedAt).toISOString(), seconds: Math.round(((w.endedAt || Date.now()) - w.startedAt) / 1000),
     stats: { walkedM: +w.stats.walked.toFixed(1), losses: w.stats.losses, resets: w.stats.resets, fastTurns: w.stats.fastTurns, frames: w.stats.frames, trackedShare: w.stats.frames ? +(w.stats.trackedFrames / w.stats.frames).toFixed(3) : null, limitedS: Math.round(w.stats.limitedMs / 1000) },
     points: { ...w.points, perTrackedFrame: w.stats.trackedFrames ? +(w.points.seen / w.stats.trackedFrames).toFixed(1) : null },
-    pins: w.pins.map((p) => ({ name: p.name, type: p.type, aimM: r2(p.aim), checks: p.checks.map((c) => ({ offM: r3(c.offM), offLevelM: r3(c.offLevelM), aimM: r2(c.aim), walkedSinceM: r2(c.walkedSinceM) })) })),
+    pins: w.pins.map((p) => ({ name: p.name, type: p.type, aimM: r2(p.aim), planeOffYM: r2(p.planeOffY), planeOffLevelM: r2(p.planeOffLevel), anchored: !!p.anchorAt,
+      checks: p.checks.map((c) => ({ offM: r3(c.offM), offLevelM: r3(c.offLevelM), offAnchorLevelM: r3(c.offAnchorLevelM), anchorMovedM: r3(c.anchorMovedM), by: c.by, aimM: r2(c.aim), walkedSinceM: r2(c.walkedSinceM) })) })),
     measures: w.measures.map((m) => ({ metres: r3(m.m), metres3d: r3(m.m3), tapedM: m.taped, shortBy: m.taped ? r3(1 - m.m / m.taped) : null, aimAM: r2(m.aimA), aimBM: r2(m.aimB), walkedBetweenM: r2(m.walkedBetweenM) })),
     events: w.events.slice(-80),
     ...extra,

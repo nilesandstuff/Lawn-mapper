@@ -1,6 +1,6 @@
 // scan/lib/walk.js: a walk's bookkeeping. node scan/test/walk.test.js
 import assert from 'node:assert/strict';
-import { newWalk, step, dropPin, checkPin, measure, tapeFor, undo, far, summary, STEP, LOSS_WALK, RESET_WALK } from '../lib/walk.js';
+import { newWalk, step, dropPin, checkPin, measure, tapeFor, undo, far, summary, pinNow, STEP, LOSS_WALK, RESET_WALK, ANCHOR_MAX } from '../lib/walk.js';
 
 const near = (a, b, eps, msg) => assert.ok(Math.abs(a - b) <= eps, `${msg}: ${a} vs ${b}`);
 const Q = { x: 0, y: 0, z: 0, w: 1 };
@@ -77,6 +77,28 @@ const at = (x, z, y = 1.5) => ({ x, y, z });
   assert.equal(w.pins.length, 0);
   assert.equal(undo(w), null);
 }
+// a pin by depth keeps the plane's disagreement; its anchor carries it, unless the anchor jumps
+{
+  const w = newWalk({ engine: 'webxr' });
+  step(w, { t: 0, pos: at(0, 0), quat: Q, tracking: 'normal' });
+  const p = dropPin(w, { position: { x: 0, y: -0.2, z: -2 }, type: 'DEPTH', distance: 2.6, plane: { x: 0, y: 1.6, z: -2.3 } });
+  near(p.planeOffY, 1.8, 1e-9, 'the plane sat 1.8 m above the ground the depth saw');
+  near(p.planeOffLevel, 0.3, 1e-9, 'and 0.3 m off on the level');
+  assert.equal(pinNow(p), p.at, 'no anchor: as placed');
+  p.anchorAt = { x: 0.4, y: -0.2, z: -2 };
+  assert.equal(pinNow(p), p.anchorAt, 'the anchor carries it');
+  const c = checkPin(w, p, { position: { x: 0.4, y: -0.2, z: -2.05 }, type: 'DEPTH', distance: 1.2 });
+  near(c.offLevelM, Math.hypot(0.4, 0.05), 1e-9, 'as placed');
+  near(c.offAnchorLevelM, 0.05, 1e-9, 'as anchored');
+  near(c.anchorMovedM, 0.4, 1e-9, 'the anchor moved 0.4 m');
+  assert.equal(c.by, 'DEPTH');
+  p.anchorAt = { x: ANCHOR_MAX + 1, y: -0.2, z: -2 };
+  assert.equal(pinNow(p), p.at, 'an anchor that jumped is ignored');
+  const s = summary(w);
+  assert.equal(s.pins[0].planeOffYM, 1.8);
+  assert.equal(s.pins[0].anchored, true);
+  assert.equal(s.pins[0].checks[0].offAnchorLevelM, 0.05);
+}
 // the copy holds distances and counts, never a position
 {
   const w = newWalk({ engine: '8thwall', phone: 'test' });
@@ -87,7 +109,7 @@ const at = (x, z, y = 1.5) => ({ x, y, z });
   measure(w, { position: { x: 0, y: 0, z: 0 }, distance: 1 }); measure(w, { position: { x: 5, y: 0, z: 0 }, distance: 1 });
   const s = summary(w, { features: ['slam'] });
   const text = JSON.stringify(s);
-  assert.ok(!/"at"|"position"|"x":|"lng"|"lat"/.test(text), `no positions in the copy: ${text.slice(0, 200)}`);
+  assert.ok(!/"at"|"position"|"x":|"lng"|"lat"|"anchorAt"|"plane"/.test(text), `no positions in the copy: ${text.slice(0, 200)}`);
   assert.equal(s.pins[0].checks[0].offLevelM, 0.1);
   assert.equal(s.measures[0].metres, 5);
   assert.equal(s.points.maxAtOnce, 120);

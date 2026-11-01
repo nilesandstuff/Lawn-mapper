@@ -31,7 +31,7 @@ export function scanDomainFor(custom) {
   return parts.length >= 3 ? `scan.${parts.slice(1).join('.')}` : null;
 }
 
-export function wranglerFor(domain, lawnmap, adminOnly = true) {
+export function wranglerFor(domain, lawnmap, adminOnly = true, d1Id = null) {
   return `# Written by scan/tools/prepare.mjs at deploy time. Not checked in.
 name = "lawn-scan"
 main = "src/index.js"
@@ -58,7 +58,13 @@ ADMIN_ONLY = "${adminOnly ? '1' : '0'}"
 [[routes]]
 pattern = "${domain}"
 custom_domain = true
-`;
+${d1Id ? `
+# The tool's own database (scan/schema.sql): the walks' results, so nobody copies and pastes them.
+[[d1_databases]]
+binding = "DB"
+database_name = "lawn-scan"
+database_id = "${d1Id}"
+` : ''}`;
 }
 
 /** The engine's dist/ in node_modules, or null. */
@@ -94,7 +100,7 @@ function main() {
     engine = `8th Wall engine binary ${ENGINE_VERSION} at /vendor/xr/`;
   }
   writeFileSync(join(build, 'robots.txt'), 'User-agent: *\nDisallow: /\n');
-  writeFileSync(join(scan, 'wrangler.toml'), wranglerFor(domain, lawnmap, true));
+  writeFileSync(join(scan, 'wrangler.toml'), wranglerFor(domain, lawnmap, true, (process.env.SCAN_D1_ID || '').trim() || null));
   env(`SCAN_DOMAIN=${domain}`);
   env(`SCAN_ENGINE=${engine}`);
   console.log(`Scan site built for https://${domain} (accounts via https://${lawnmap}); ${engine}.`);

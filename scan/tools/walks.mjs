@@ -1,0 +1,49 @@
+/**
+ * Print the walks kept on the site (scan/src/walks.js) to the workflow's log, newest first, so the session
+ * reads them there and nobody copies and pastes (owner, 2026-11-01). Each walk: one line of what it measured,
+ * then its JSON with the event list cut to the last 30. Distances and counts only, as kept.
+ *
+ *   node scan/tools/walks.mjs            the last 12
+ *   N=3 node scan/tools/walks.mjs        the last 3
+ */
+import { execFileSync } from 'node:child_process';
+import { DB_NAME, parseList } from './d1.mjs';
+
+const FT = 3.28084;
+const ftIn = (m) => { const inch = Math.round(m * FT * 12); return inch < 12 ? `${inch} in` : `${Math.floor(inch / 12)} ft ${inch % 12} in`; };
+
+/** One line per walk: engine, when, the walk, the pins' checks. */
+export function headline(s) {
+  const x = s.stats || {};
+  const pins = (s.pins || []).map((p) => `${p.name}${p.anchored ? '*' : ''}:${(p.checks || []).map((c) => `${ftIn(c.offLevelM)}${c.offAnchorLevelM != null ? `/${ftIn(c.offAnchorLevelM)}` : ''}@${Math.round(c.walkedSinceM || 0)}m`).join(',') || '-'}`).join(' ');
+  const tapes = (s.measures || []).filter((m) => m.shortBy != null).map((m) => `${(m.shortBy * 100).toFixed(1)}% short`).join(' ');
+  return `${s.engine} ${s.when} ${Math.round((s.seconds || 0) / 60)} min, walked ${Math.round((x.walkedM || 0) * FT)} ft, losses ${x.losses}, resets ${x.resets}, fast turns ${x.fastTurns}${s.failed ? `, DID NOT START: ${s.failed}` : ''} | pins (as placed/anchored @ m walked since): ${pins || 'none'}${tapes ? ` | tape: ${tapes}` : ''}`;
+}
+
+/** The rows out of `wrangler d1 execute --json`. */
+export function rowsOf(stdout) {
+  const out = parseList(stdout);
+  return out?.[0]?.results || [];
+}
+
+function main() {
+  const n = Math.max(1, Math.min(50, Number(process.env.N) || 12));
+  let stdout;
+  try {
+    stdout = execFileSync('npx', ['wrangler', 'd1', 'execute', DB_NAME, '--remote', '--json', `--command=SELECT id, at, engine, phone, json FROM walks ORDER BY at DESC LIMIT ${n}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  } catch (err) {
+    console.log(`Could not read the walks (${String(err.stderr || err.message).split('\n')[0]}).`);
+    process.exit(1);
+  }
+  const rows = rowsOf(stdout);
+  console.log(`${rows.length} walk${rows.length === 1 ? '' : 's'} kept on the site (newest first).`);
+  for (const r of rows) {
+    let s = null; try { s = JSON.parse(r.json); } catch { /* raw */ }
+    console.log('\n==============================================================');
+    if (!s) { console.log(`${r.id}: unreadable JSON`); continue; }
+    console.log(headline(s));
+    console.log(JSON.stringify({ ...s, events: (s.events || []).slice(-30) }, null, 1));
+  }
+}
+
+if (process.argv[1] && process.argv[1].endsWith('walks.mjs')) main();

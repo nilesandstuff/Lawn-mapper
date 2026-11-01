@@ -1,6 +1,6 @@
 // scan/lib/frames.js: frames and matrices for the yard AR tool. node scan/test/frames.test.js
 import assert from 'node:assert/strict';
-import { toLocal, fromLocal, level, levelDist, yawOf, turnBetween, matFromPose, invertRigid, multiply, transform, cameraOf } from '../lib/frames.js';
+import { toLocal, fromLocal, level, levelDist, yawOf, turnBetween, matFromPose, invertRigid, multiply, transform, cameraOf, unproject } from '../lib/frames.js';
 
 const near = (a, b, eps, msg) => assert.ok(Math.abs(a - b) <= eps, `${msg}: ${a} vs ${b}`);
 const O = [-85.70712, 42.83547];
@@ -41,5 +41,26 @@ const O = [-85.70712, 42.83547];
   const V0 = invertRigid(matFromPose({ x: 0, y: 0, z: 0, w: 1 }, { x: 0, y: 1.5, z: 0 }));
   const ahead = transform(V0, { x: 0, y: 1.5, z: -1 });
   near(ahead.z, -1, 1e-9, 'ahead is -z'); near(ahead.y, 0, 1e-9, 'level');
+}
+// the depth picture's centre pixel at z metres is z metres straight ahead of the camera, wherever it stands and looks
+{
+  const f = 1 / Math.tan((60 * Math.PI) / 360), aspect = 9 / 16;
+  const P = new Float32Array([f / aspect, 0, 0, 0, 0, f, 0, 0, 0, 0, -1.0002, -1, 0, 0, -0.02, 0]); // a symmetric perspective
+  const M = matFromPose({ x: 0, y: 0, z: 0, w: 1 }, { x: 3, y: 1.4, z: -2 });
+  const p = unproject(0.5, 0.5, 2.5, P, M);
+  near(p.x, 3, 1e-6, 'x'); near(p.y, 1.4, 1e-6, 'y'); near(p.z, -4.5, 1e-6, 'z: 2.5 m ahead');
+  // the top-right corner of the picture, at the same depth, is up and to the right by the half-angles
+  const q = unproject(1, 0, 2, P, M);
+  near(q.y - 1.4, 2 * Math.tan((60 * Math.PI) / 360), 1e-6, 'up by the half-angle');
+  near(q.x - 3, (2 * Math.tan((60 * Math.PI) / 360)) * aspect, 1e-6, 'right by the half-angle times the aspect');
+  // a principal point off centre (P[8], P[9]) shifts the ray the way the projection says
+  const P2 = Float32Array.from(P); P2[8] = 0.1;
+  const r = unproject(0.5, 0.5, 2, P2, M);
+  near(r.x - 3, (2 * 0.1) / P[0], 1e-9, 'offset principal point');
+  // a camera turned a quarter left looks down -x: the centre pixel lands there
+  const s = Math.SQRT1_2;
+  const ML = matFromPose({ x: 0, y: s, z: 0, w: s }, { x: 0, y: 1.5, z: 0 });
+  const l = unproject(0.5, 0.5, 3, P, ML);
+  near(l.x, -3, 1e-6, 'turned left: -x'); near(l.z, 0, 1e-6, 'turned left: z');
 }
 console.log('frames: ok');

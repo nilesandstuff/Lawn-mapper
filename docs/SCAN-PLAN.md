@@ -369,14 +369,15 @@ between them.
 Each phase stays admin-only until its test passes on a real yard, and its
 result goes in the Findings.
 
-1. **Tracking on both phones.** scan/ folder, Worker, deploy workflow, R2 via
-   CI, the dashboard entry (admin). track.js with both engines. A bare page:
-   camera, crosshair, hit-test dot, a pin you can drop.
-   *Done when:* on the owner's lot, 8th Wall tracks in iPhone Safari, WebXR
-   tracks on the S21 (and 8th Wall there too, for comparison); a pin dropped
-   on a spot, walked away from 20 m and back, is still on the spot. The
-   distance between two taped marks 10 m apart reads within 2% on each
-   engine. If 8th Wall fails on iPhone: try Mozilla's WebXR Viewer and report.
+1. **Tracking on both phones.** scan/ folder, Worker, deploy workflow, the
+   dashboard entry (admin). track.js with both engines. A bare page: camera,
+   crosshair, hit-test dot, a pin you can drop. Built 2026-11-01; the first
+   walk is SCAN-H1.
+   *Done when:* on the owner's lot, WebXR on the S21 keeps a pin dropped on a
+   spot, walked away from 20 m and back, within about a foot of the spot, and
+   two taped marks 10 m apart read within 2%. The iPhone side waits: the
+   owner has no iPhone and will rarely have one, so 8th Wall is kept working
+   on Android for the day one is at hand, and is not a gate.
 2. **Locate.** Two references from the lidar's house corners, the 3DEP match
    on both phones, the fix's confidence on screen, check points.
    *Done when:* five check points spread over the lot (taped from house
@@ -413,6 +414,51 @@ None blocking phase 1. Later:
 
 ## Findings
 
-None yet. Record each measured result here: HARD (measured, with the yard
-named only as "the owner's lot" or by its lng,lat map id, never an address)
-apart from SPECULATION.
+HARD findings are measured, with the yard named only as "the owner's lot",
+never an address. SPECULATION is kept apart and labelled.
+
+### SCAN-H1. The first walk: WebXR on the S21 holds to about half a metre; planes put pins underground; one swing cost 3 m (2026-11-01)
+
+The owner's lot, 8 minutes, 277 m walked, Chrome 156 on the Galaxy S21, Chrome's
+WebXR (ARCore), at dusk with cloud coming in ("significantly darker outside by
+the end"). The phone granted depth-sensing, camera-access, plane-detection,
+anchors and dom-overlay. No tracking lost, no frame reset, 99.8% of frames
+tracked. Pins were placed from 1.5-2.9 m. Measured (the page's copy, held in
+the chat):
+- **Drift when nothing went wrong:** P2 0.24 and 0.29 m off after 149 m walked;
+  P6 0.10, 0.30, 0.35, 0.58 m after 1.5, 3, 68 and 80 m. About 0.5% of the
+  distance walked, for comparison with the water page's 1% (water S20).
+- **P1, 0.62-0.90 m off on every check, not growing** (six checks from 60 to
+  149 m walked): a constant offset, and its 3D error (0.85-1.20 m) was larger
+  than its level error, so the ground height was wrong when it was dropped,
+  not the tracking since.
+- **P4 and P5, 3.0 m off after 152 m,** both checked right after a burst of
+  turns at 100-458 degrees a second (the copy's last fifty events). The owner:
+  "one movement knocked the backyard pretty far out of alignment". ARCore
+  reported no reset and no loss: it moved its map by about 3 m silently. The
+  pins were not anchored, so nothing moved with it.
+- **The ground:** the owner: "Some pins were placed several feet under ground,
+  or 6 inches above it. (Note that my backyard sits about 6 feet lower than
+  much of the front)". The page's hit test accepted planes, and ARCore
+  stretches a found plane past where it saw it, so the front yard's plane
+  reached under the back yard.
+- The fast-turn alarm at 90 degrees a second fired 93 times, mostly ordinary
+  looking round: too low.
+- **8th Wall on the S21:** the owner did not use it: "the view on the 8th wall
+  was very messed up. It was like a weird stabilized fisheye that had super
+  poor resolution". The owner has no iPhone and will rarely have one.
+
+Changed for the second walk (same day): the ground under the crosshair comes
+from the depth picture first and the plane only as a comparison, both kept;
+each pin gets an ARCore anchor and its checks say how far off it is as placed
+and as anchored (an anchor moved more than 1.5 m is ignored, water H67); the
+alarm at 150 degrees a second; walks saved to the site's own database and
+printed by the workflow's `walks` task; the 8th Wall canvas sized to the
+screen before the engine starts (SPECULATION: the blur and distortion were
+the default 300 x 150 drawing buffer stretched by its style).
+
+SPECULATION from the same walk: anchors would have carried P4 and P5 with
+ARCore's 3 m correction (ARCore moves anchors with its map; the water page's
+anchors moved 0.19-0.67 m on ordinary walks, water H66) -- to be measured by
+the as-anchored checks. The P1 offset came from a plane hit 0.5-0.6 m off in
+height at a 2.7 m aim. Dusk may have cost accuracy; no daylight walk yet.

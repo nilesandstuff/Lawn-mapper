@@ -21,12 +21,22 @@
  *
  * Every frame the page gets:
  *   { t, pose: { position, quaternion } | null, tracking: 'normal' | 'limited' | 'lost',
- *     reset, hit: { position, type, distance } | null, points, gl, framebuffer, viewport, view, proj }
+ *     reset, hit: { position, type, distance, plane? } | null, points, gl, framebuffer, viewport, view, proj }
+ *
+ * THE GROUND UNDER THE CROSSHAIR, on WebXR, comes from the phone's depth picture first (type 'DEPTH': the
+ * distance the camera measures to what the crosshair is on, SCAN-H1) and from the engine's hit test only when
+ * there is no depth (type 'SURFACE'). The hit test accepts planes, and ARCore stretches a plane far past where
+ * it saw it: on the owner's first walk the front yard's plane reached under the back yard, 6 ft lower, and pins
+ * went "several feet under ground". With depth, the plane's answer rides along as `plane` for comparison.
+ *
+ * ANCHORS (WebXR): tracker.anchor(position) asks the engine to hold a point; tracker.anchorAt(a) is where the
+ * engine now says it is. ARCore moves anchors when it corrects its map, which is what carried two pins 3 m on
+ * the first walk; whether anchors would have followed is what the second walk measures.
  *
  * The pure helpers (rankHits, trackingOf8w, engineChoice) are exported for
  * Node's tests; nothing touches the DOM until start() is called.
  */
-import { dist3, matFromPose, invertRigid } from './frames.js';
+import { dist3, matFromPose, invertRigid, unproject } from './frames.js';
 
 export const CROSS = { x: 0.5, y: 0.5 };
 const HIT_NEAR = 0.3, HIT_FAR = 20; // m: a hit closer or farther is noise
@@ -114,11 +124,14 @@ async function startWebXR({ overlay, onFrame, onEvent }) {
   const viewer = await session.requestReferenceSpace('viewer');
   let hits;
   try { hits = await session.requestHitTestSource({ space: viewer, entityTypes: ['plane', 'point'] }); } catch { hits = await session.requestHitTestSource({ space: viewer }); }
+  const features = session.enabledFeatures ? [...session.enabledFeatures] : null;
   let reset = false, live = true;
+  const hasDepth = !!features?.includes('depth-sensing') && typeof XRFrame !== 'undefined' && 'getDepthInformation' in XRFrame.prototype;
+  const anchorsOn = !!features?.includes('anchors') && typeof XRFrame !== 'undefined' && 'createAnchor' in XRFrame.prototype;
+  const anchorQueue = [], anchorPos = new Map();
   ref.addEventListener?.('reset', () => { reset = true; });
   session.addEventListener('end', () => { live = false; onEvent?.({ type: 'end' }); });
   overlay?.addEventListener('beforexrselect', (ev) => ev.preventDefault());
-  const features = session.enabledFeatures ? [...session.enabledFeatures] : null;
   const frame = (t, xrFrame) => {
     if (!live) return;
     session.requestAnimationFrame(frame);
@@ -127,19 +140,45 @@ async function startWebXR({ overlay, onFrame, onEvent }) {
     gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     const pose = xrFrame.getViewerPose(ref);
     const tracking = !pose ? 'lost' : pose.emulatedPosition ? 'limited' : 'normal';
-    let hit = null;
+    const view = pose?.views[0] || null;
+    let hit = null, plane = null;
     if (pose) {
+      const c = pose.transform.position;
       const rs = xrFrame.getHitTestResults(hits);
       if (rs.length) {
         const hp = rs[0].getPose(ref);
         if (hp) {
-          const p = hp.transform.position, c = pose.transform.position;
-          const d = dist3(p, c);
-          if (d >= HIT_NEAR && d <= HIT_FAR) hit = { position: { x: p.x, y: p.y, z: p.z }, type: 'SURFACE', distance: d };
+          const p = hp.transform.position, d = dist3(p, c);
+          if (d >= HIT_NEAR && d <= HIT_FAR) plane = { position: { x: p.x, y: p.y, z: p.z }, type: 'SURFACE', distance: d };
+        }
+      }
+      if (hasDepth && view) {
+        try {
+          const di = xrFrame.getDepthInformation(view);
+          const z = di ? di.getDepthInMeters(CROSS.x, CROSS.y) : 0;
+          if (z >= HIT_NEAR && z <= HIT_FAR) {
+            const p = unproject(CROSS.x, CROSS.y, z, view.projectionMatrix, view.transform.matrix);
+            hit = { position: p, type: 'DEPTH', distance: dist3(p, c), plane: plane?.position || null };
+          }
+        } catch { /* no depth this frame */ }
+      }
+      if (!hit && plane) hit = { ...plane, plane: null };
+      // anchors asked for since the last frame, and where the engine now puts the ones it holds
+      while (anchorQueue.length) {
+        const q = anchorQueue.shift();
+        if (!anchorsOn) { q.resolve(null); continue; }
+        try {
+          xrFrame.createAnchor(new XRRigidTransform(q.position), ref).then((a) => { anchorPos.set(a, { ...q.position }); q.resolve(a); }, () => q.resolve(null));
+        } catch { q.resolve(null); }
+      }
+      if (xrFrame.trackedAnchors) {
+        for (const a of anchorPos.keys()) {
+          if (!xrFrame.trackedAnchors.has(a)) continue;
+          const ap = xrFrame.getPose(a.anchorSpace, ref);
+          if (ap) { const q = ap.transform.position; anchorPos.set(a, { x: q.x, y: q.y, z: q.z }); }
         }
       }
     }
-    const view = pose?.views[0] || null;
     const vp = view ? layer.getViewport(view) : null;
     const p = pose?.transform.position, q = pose?.transform.orientation;
     onFrame({
@@ -151,7 +190,11 @@ async function startWebXR({ overlay, onFrame, onEvent }) {
     reset = false;
   };
   session.requestAnimationFrame(frame);
-  return { engine: 'webxr', features, stop: () => session.end().catch(() => {}) };
+  return {
+    engine: 'webxr', features, depth: hasDepth, anchors: anchorsOn, stop: () => session.end().catch(() => {}),
+    anchor: (position) => new Promise((resolve) => { if (!anchorsOn || !live) resolve(null); else anchorQueue.push({ position: { x: position.x, y: position.y, z: position.z }, resolve }); }),
+    anchorAt: (a) => anchorPos.get(a) || null,
+  };
 }
 
 /* ------------------------------------------------------------- 8th Wall */
@@ -191,13 +234,19 @@ async function start8thWall({ canvas, onFrame, onEvent, eightWallUrl }) {
     // the engine hands a listener { name, detail }; older builds the detail itself
     listeners: [{ event: 'reality.trackingstatus', process: (ev) => { const d = ev?.detail || ev; status = { status: d?.status, reason: d?.reason }; onEvent?.({ type: 'tracking', ...status }); } }],
   };
+  // the canvas's drawing buffer at the screen's size before the engine starts: left at the default 300 x 150 and
+  // stretched by its style, the camera came out as a blurred, distorted picture (the owner, 2026-11-01)
+  const size = () => { const r = Math.min(window.devicePixelRatio || 1, 2); canvas.width = Math.round(window.innerWidth * r); canvas.height = Math.round(window.innerHeight * r); };
+  size();
+  window.addEventListener('resize', size);
   XR8.clearCameraPipelineModules();
   XR8.addCameraPipelineModule(XR8.GlTextureRenderer.pipelineModule());
   XR8.addCameraPipelineModule(XR8.XrController.pipelineModule());
   XR8.addCameraPipelineModule(mod);
   XR8.run({ canvas, allowedDevices: XR8.XrConfig.device().MOBILE });
   return {
-    engine: '8thwall', features: ['slam', 'world-points'],
-    stop: () => { live = false; try { XR8.stop(); XR8.clearCameraPipelineModules(); } catch { /* already */ } onEvent?.({ type: 'end' }); },
+    engine: '8thwall', features: ['slam', 'world-points'], depth: false, anchors: false,
+    anchor: async () => null, anchorAt: () => null,
+    stop: () => { live = false; window.removeEventListener('resize', size); try { XR8.stop(); XR8.clearCameraPipelineModules(); } catch { /* already */ } onEvent?.({ type: 'end' }); },
   };
 }

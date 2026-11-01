@@ -1,0 +1,3 @@
+-- ALTERs for tables that have already shipped (CLAUDE.md: "Schema changes need two edits, not one").
+-- One statement per line, each tried on its own; one that has already been applied fails harmlessly.
+-- None yet.

@@ -95,6 +95,17 @@ export function transform(m, p) {
   return { x: x / w, y: y / w, z: z / w };
 }
 
+/**
+ * A screen point (x, y in 0..1, y down, as hit tests and depth pictures count) at depth z metres along the view,
+ * through the projection P and the camera's pose matrix M, to the world. The depth picture gives z; this gives
+ * the point on the ground the crosshair is on.
+ */
+export function unproject(x, y, z, P, M) {
+  const xn = 2 * x - 1, yn = 1 - 2 * y;
+  const X = (z * (xn + P[8])) / P[0], Y = (z * (yn + P[9])) / P[5];
+  return transform(M, { x: X, y: Y, z: -z });
+}
+
 /** The camera's position out of a view matrix (the inverse's shift). */
 export function cameraOf(view) {
   const inv = invertRigid(view);

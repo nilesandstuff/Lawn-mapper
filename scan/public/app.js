@@ -11,7 +11,7 @@
  * No map is read or written yet: phase 2 lines the session up with the lidar.
  */
 import { detect, start, engineChoice, load8thWall } from '/lib/track.js';
-import { newWalk, step, dropPin, checkPin, measure, tapeFor, undo, far, summary, AIM_FAR } from '/lib/walk.js';
+import { newWalk, step, dropPin, checkPin, measure, tapeFor, undo, far, summary, pinNow } from '/lib/walk.js';
 import { makeDrawer } from '/lib/draw.js';
 import { levelDist } from '/lib/frames.js';
 
@@ -21,7 +21,7 @@ const FT = 3.28084;
 const ftIn = (m) => { const inch = Math.round(m * FT * 12); return inch < 12 ? `${inch} in` : `${Math.floor(inch / 12)} ft ${inch % 12} in`; };
 const ENGINE_URL = '/vendor/xr/xr.js';
 const NAME = { webxr: "Chrome's AR (WebXR)", '8thwall': '8th Wall' };
-const COLOR = { dot: [0.3, 1, 0.6, 0.9], pin: [0.9, 0.22, 0.2, 0.95], mark: [0.35, 0.6, 1, 0.95] };
+const COLOR = { dot: [0.3, 1, 0.6, 0.9], dotPlane: [1, 0.8, 0.2, 0.9], pin: [0.9, 0.22, 0.2, 0.95], placed: [0.9, 0.22, 0.2, 0.45], mark: [0.35, 0.6, 1, 0.95] };
 const FAR_AGAIN = 3000; // ms: a drop from farther than AIM_FAR takes a second tap within this
 
 const st = { caps: null, has8w: false, walk: null, tracker: null, drawer: null, frame: null, hudAt: 0, farAt: 0, errors: [], map: new URLSearchParams(location.search).get('map') };
@@ -101,9 +101,15 @@ function onFrame(f) {
   if (f.gl && f.view && f.proj) {
     try {
       if (!st.drawer || st.drawer.gl !== f.gl) st.drawer = { gl: f.gl, d: makeDrawer(f.gl) };
-      const items = st.walk.pins.map((p) => ({ kind: 'pin', at: p.at, color: COLOR.pin }));
+      const items = [];
+      for (const p of st.walk.pins) {
+        if (p.anchor) { const a = st.tracker?.anchorAt(p.anchor); if (a) p.anchorAt = a; }
+        const now = pinNow(p);
+        items.push({ kind: 'pin', at: now, color: COLOR.pin });
+        if (now !== p.at) items.push({ kind: 'mark', at: p.at, color: COLOR.placed }); // where it was placed, faint, when the anchor has moved it
+      }
       if (st.walk.pendingMeasure) items.push({ kind: 'mark', at: st.walk.pendingMeasure.a, color: COLOR.mark });
-      if (f.hit) items.push({ kind: 'dot', at: f.hit.position, color: COLOR.dot });
+      if (f.hit) items.push({ kind: 'dot', at: f.hit.position, color: f.hit.type === 'DEPTH' ? COLOR.dot : COLOR.dotPlane });
       st.drawer.d.draw({ view: f.view, proj: f.proj, viewport: f.viewport, framebuffer: f.framebuffer, items });
     } catch (e) { if (!st.drawErr) { st.drawErr = true; log(`draw: ${e.message}`); } }
   }
@@ -114,7 +120,7 @@ function onFrame(f) {
 function hud(f) {
   const w = st.walk;
   const tr = f.tracking === 'normal' ? '<span class="ok">tracking</span>' : f.tracking === 'limited' ? '<span class="warn">tracking limited</span>' : '<span class="bad">no tracking yet: move the phone slowly over the ground</span>';
-  const aim = f.hit ? `aim ${ftIn(f.hit.distance)}${far(f.hit) ? ' <span class="warn">(far: step closer)</span>' : ''}` : 'no ground under the crosshair';
+  const aim = f.hit ? `aim ${ftIn(f.hit.distance)} <span class="dim">(${f.hit.type === 'DEPTH' ? 'by depth' : 'by plane'})</span>${far(f.hit) ? ' <span class="warn">(far: step closer)</span>' : ''}` : 'no ground under the crosshair';
   const pts = f.points ? ` · ${f.points} pts` : '';
   const last = st.errors.length && Date.now() - st.errors[st.errors.length - 1].t < 6000 && /engine|start/.test(st.errors[st.errors.length - 1].what) ? `<br><span class="bad">${esc(st.errors[st.errors.length - 1].what)}</span>` : '';
   $('#hud').innerHTML = `${NAME[w.engine]} · ${tr} · walked ${Math.round(w.stats.walked * FT)} ft${pts}<br>${aim} · ${w.pins.length} pin${w.pins.length === 1 ? '' : 's'}${w.pendingMeasure ? ' · <span class="warn">now aim at the second mark</span>' : ''}${last}`;
@@ -133,14 +139,15 @@ function wire() {
     const f = st.frame; if (!f?.hit) return;
     if (far(f.hit) && Date.now() - st.farAt > FAR_AGAIN) { st.farAt = Date.now(); flash(`Aiming from ${ftIn(f.hit.distance)}: step closer, or tap again to drop it anyway`); return; }
     const p = dropPin(st.walk, f.hit);
-    flash(`Pin ${p.name} dropped (aimed from ${ftIn(p.aim || 0)})`);
+    flash(`Pin ${p.name} dropped (aimed from ${ftIn(p.aim || 0)}, ${p.type === 'DEPTH' ? 'ground by depth' : 'ground by plane'})`);
+    if (st.tracker?.anchor) st.tracker.anchor(p.at).then((a) => { if (a && st.walk && st.walk.pins.includes(p)) { p.anchor = a; p.anchorAt = st.tracker?.anchorAt(a) || { ...p.at }; } });
   });
   $('#check').addEventListener('click', () => {
     const f = st.frame; if (!f?.hit || !st.walk.pins.length) return;
     const p = nearestPin(f.hit);
     if (!p) { flash('No pin within 20 ft of the crosshair'); return; }
     const c = checkPin(st.walk, p, f.hit);
-    flash(`Pin ${p.name} is ${ftIn(c.offLevelM)} from the spot (${ftIn(c.walkedSinceM)} walked since)`);
+    flash(`Pin ${p.name}: ${ftIn(c.offLevelM)} off as placed${c.offAnchorLevelM != null ? `, ${ftIn(c.offAnchorLevelM)} as anchored` : ''} (${ftIn(c.walkedSinceM)} walked since)`);
   });
   $('#measure').addEventListener('click', () => {
     const f = st.frame; if (!f?.hit) return;
@@ -166,8 +173,22 @@ function finish() {
   $('#overlay').hidden = true; document.body.classList.remove('in-ar');
   const s = summary(w, { features: w.features || null, failed: w.failed || null, errors: st.errors.map((e) => e.what).slice(-20) });
   s.id = `${w.startedAt}`;
-  // the measures keep their walk-side records so a taped distance typed later can be scored
+  s.saved = null;
   const list = kept(); list.push(s); keep(list);
+  renderResults(s.id);
+  post(s);
+}
+
+/** A walk to the site's own database (scan/src/walks.js), so nobody copies and pastes; failing that it stays on this phone. */
+async function post(s) {
+  let saved = false, why = '';
+  try {
+    const res = await fetch('/api/scan/walks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(s) });
+    saved = res.ok;
+    if (!res.ok) why = (await res.json().catch(() => ({})))?.error || `${res.status}`;
+  } catch (e) { why = e.message; }
+  const all = kept(), mine = all.find((x) => x.id === s.id);
+  if (mine) { mine.saved = saved; mine.savedWhy = saved ? null : why; keep(all); }
   renderResults(s.id);
 }
 
@@ -188,19 +209,20 @@ function renderResults(focus = null) {
     const metres = Number(inp.value) / FT;
     const r = tapeFor({ m: m.metres }, metres);
     m.tapedM = metres > 0 ? +metres.toFixed(3) : null; m.shortBy = r ? +r.shortBy.toFixed(4) : null;
-    keep(all); renderResults(id);
+    keep(all); renderResults(id); post(s);
   }));
 }
 
 function walkCard(s, open) {
   const pc = (v) => `${(Math.abs(v) * 100).toFixed(1)}% ${v > 0 ? 'short' : 'long'}`;
-  const pins = s.pins.map((p) => `<tr><td>${esc(p.name)}</td><td>${p.aimM != null ? ftIn(p.aimM) : '?'}</td><td>${p.checks.length ? p.checks.map((c) => `<strong>${ftIn(c.offLevelM)}</strong> after ${ftIn(c.walkedSinceM)}`).join('<br>') : '<span class="dim">not checked</span>'}</td></tr>`).join('');
+  const pins = s.pins.map((p) => `<tr><td>${esc(p.name)}${p.anchored ? '*' : ''}<br><span class="dim">${p.type === 'DEPTH' ? 'depth' : 'plane'}${p.planeOffYM != null ? `; plane ${ftIn(Math.abs(p.planeOffYM))} ${p.planeOffYM > 0 ? 'above' : 'below'}` : ''}</span></td><td>${p.aimM != null ? ftIn(p.aimM) : '?'}</td><td>${p.checks.length ? p.checks.map((c) => `<strong>${ftIn(c.offLevelM)}</strong>${c.offAnchorLevelM != null ? ` / <strong>${ftIn(c.offAnchorLevelM)}</strong>*` : ''} after ${ftIn(c.walkedSinceM)}`).join('<br>') : '<span class="dim">not checked</span>'}</td></tr>`).join('');
   const measures = s.measures.map((m, i) => `<tr><td>${ftIn(m.metres)} <span class="dim">(${m.metres} m)</span></td><td>tape <input type="number" step="0.1" min="0" inputmode="decimal" data-tape="${esc(s.id)}:${i}" value="${m.tapedM ? (m.tapedM * FT).toFixed(1) : ''}" aria-label="What the tape said, feet"> ft</td><td>${m.shortBy != null ? `<strong>${pc(m.shortBy)}</strong>` : ''}</td></tr>`).join('');
   const x = s.stats;
   return `<details class="card"${open ? ' open' : ''}><summary><strong>${esc(NAME[s.engine] || s.engine)}</strong> · ${new Date(s.when).toLocaleString()} · ${Math.round(s.seconds / 60)} min${s.failed ? ' · <span class="warn">did not start</span>' : ''}</summary>
     ${s.failed ? `<p class="warn">${esc(s.failed)}</p>` : ''}
     <p>Walked ${Math.round(x.walkedM * FT)} ft; lost its place ${x.losses} time${x.losses === 1 ? '' : 's'}; ${x.resets} jump${x.resets === 1 ? '' : 's'}; ${x.fastTurns} fast turn${x.fastTurns === 1 ? '' : 's'}; tracked ${x.trackedShare != null ? Math.round(x.trackedShare * 100) : '?'}% of frames${s.points?.maxAtOnce ? `; up to ${s.points.maxAtOnce} points seen at once` : ''}.</p>
-    ${pins ? `<table><tr><th>Pin</th><th>Aimed from</th><th>Off its spot when checked</th></tr>${pins}</table>` : '<p class="dim">No pins.</p>'}
+    <p class="dim">${s.saved === true ? 'Saved to the site.' : s.saved === false ? `On this phone only (not saved: ${esc(s.savedWhy || '?')}).` : 'Saving…'}</p>
+    ${pins ? `<table><tr><th>Pin</th><th>Aimed from</th><th>Off its spot when checked (as placed / *anchored)</th></tr>${pins}</table>` : '<p class="dim">No pins.</p>'}
     ${measures ? `<table style="margin-top:8px"><tr><th>Measured</th><th>Tape</th><th>Error</th></tr>${measures}</table>` : ''}
     ${s.errors?.length ? `<details><summary class="dim">Engine messages (${s.errors.length})</summary><pre>${esc(s.errors.join('\n'))}</pre></details>` : ''}
     <div class="tools"><button type="button" data-copy="${esc(s.id)}">Copy results</button><button type="button" class="plain" data-forget="${esc(s.id)}">Forget this walk</button></div>
