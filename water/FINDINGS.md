@@ -2287,6 +2287,50 @@ Why the map shows nothing: the balance takes the water table from the soil surve
 Glendora has none in July-October; and it treats a water table only as stopping drainage, never as supplying water
 upward. A lawn fed from below cannot appear. What feeds it is SPECULATION (S23).
 
+### H70. The water table under each square metre, water rising from it, and seeps: built and checked against wells (water session, 2026-11-01)
+
+The owner: "Yes build all 3. We're really trying to make this as true to life as possible" -- the height above the
+nearest water, water rising from a shallow water table into the roots, and seeps (after the wet lawn of H69).
+Measured first (scratchpad; Wellogic static levels as a check only, never an input -- they are Michigan's alone):
+- 11 public areas in Kent and Ottawa (Hudsonville, Rockford, central Grand Rapids, Byron Center, Kentwood, Lowell,
+  Cedar Springs, Allendale, Sparta, Caledonia, Grandville), 1.5 km round each: the 3DEP 10 m ground, NHDPlus HR streams
+  and waterbodies, NWI wetlands (outlines simplified to about 3 m -- the service answers 500 to full outlines for a
+  hundred wetlands), and shallow wells (60 ft deep or less, not flowing, a static level 0-100 ft): 227-241 wells.
+- Height above the nearest water down the flow path (HAND) against the measured depth to water: rank correlation 0.56-
+  0.59 (the wetness index the map used before: 0.01-0.02). Best fits: depth = 2.4 + 0.48 x HAND (MAE 1.74 m, 43% within
+  1 m) and 2.25 x HAND^0.50; a constant does MAE 2.18-2.23 m, 28-31% within 1 m. The national stream lines sit 10-30 m
+  off the 10 m ground's groove, so the water is burned 5 m into the ground for the routing (the wet lawn's path ran
+  174 cells past Buck Creek without touching it).
+- The water level round each point instead (the mapped water within 1 km, inverse-distance weighted): depth = 2.4 +
+  0.52 x (height above it), MAE 1.71 m, 47% within 1 m; the same information, but it also sees a pond to the side,
+  which a flow path does not.
+- Both say the water table rises about half as fast as the ground (0.48-0.52 m a metre). Both put it about 2.4 m
+  deeper than that even at the water: the drillers' level in a well screened 10-18 m down, deeper than the water table
+  near the surface where water soaks down. So the RATE is taken, not the depth.
+Built (lib/groundwater.js; analyse.js fetches the water beside the lidar, through src/streams.js's cached route, now
+with &layer=bodies and &layer=wetlands; plan.js; balance.js; a card and a "Water table" map view):
+- The water: NHD perennial streams and rivers, lakes and ponds, NWI lakes, rivers, open-water ponds and wetlands
+  flooded most of the year hold it all year; NWI seasonal wetlands, intermittent streams, ditches and canals (county
+  drains can run dry in late summer) in the wet half; the ground's own channels for the routing only.
+- Each lawn square metre: the water levels round it (all of it; the permanent alone); its April depth half its lidar
+  height above the first, or the soil survey's listed depth if shallower; each month 0.75 m deeper by a cosine from
+  April to October (shallow wells swing 0.3-1.2 m, H61), but never past half its height above the permanent water;
+  any month the survey lists shallower, the survey.
+- The balance: that depth sets the month's drainage block (it was the survey's alone), and each day water rises into
+  the roots by FAO AquaCrop's capillary rise for the slowest soil layer between them and the water table
+  (research-caprise.md: CR = exp((ln z - b)/a), four soil classes by Ksat, clamped to each class's range, clay's to 35
+  mm/day), no more than refills them, shutting off as they wet (1 - w^16), none on a draining day. A water table in
+  the roots fills them; one within 5 cm of the surface keeps them soaked (a seep). The schedule waters less there.
+- The wet lawn of H69 (scratchpad; its valley floor, Glendora): the water table 6 in down November-June and only
+  2.5-3 ft in September-October (the pond and the water round it hold it up), able to lift 7-13 mm a day into 6 in
+  roots in October against the grass's 1-1.5 mm: kept wet from below whatever the rain. Without the survey's wet
+  listing it comes out nearly the same. On the raised edge above it: 4-6.5 ft, 0.4 mm a day.
+- The owner's lot (local build, live sources): about 12 ft down at the highest, deeper than 13 ft most months; the
+  nearest year-round water 411 m away; under 1 mm a year lifted.
+- tests: test/groundwater.test.js (6: NWI codes; the water on a made-up ground and the height above it; the levels; the
+  months; AquaCrop against the research note's table; in the plan, a lawn over a 40 cm table lifted water and less
+  short of it).
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge
@@ -2325,6 +2369,18 @@ the wetter group in those months.
 
 
 
+### S24. What the water-table model leaves out (2026-11-01, with H70)
+
+- The half-rate and the 0.75 m swing are Kent and Ottawa's glacial drift; a clay till or bedrock country may keep the
+  water table higher (or perched) or swing it more. Wells elsewhere would say.
+- A stormwater pond can be lined or perched above the water table; the model takes every mapped pond as the water
+  table's level.
+- A seep is found only where the model puts the water table at the surface: water coming out at the foot of a slope
+  from a perched layer above the water table (clay under sand) is not modelled; nor are sump pumps emptying onto lawns.
+- AquaCrop's rise is for crops; under turf, with its thatch and dense shallow roots, it has not been measured here.
+- The wells' 2.4 m offset is read as the drillers' deeper heads; part of it may be the houses standing on higher spots
+  than the 10 m cell's average.
+
 ### S23. What keeps that lawn wet (2026-11-01, with H69)
 
 Most likely, in some mix: (1) a groundwater discharge zone -- the valley floor of Buck Creek, where groundwater from
@@ -2334,8 +2390,7 @@ breaks from the raised edge to the flat, water moving sideways through sand come
 back yards along the same edge (as the owner saw); (3) sump pumps -- houses on ground like this run their footing-drain
 sumps all season, and many discharge onto the back lawn, carrying the groundwater to the surface. Not wet from rain:
 the month's surplus was small. A hole dug or augered 2 ft and left an hour shows the water table where water stands in
-it. Map additions this suggests (none built): the height above the nearest water along the flow path (HAND) from the
-lidar, for every lawn; water rising from a shallow water table into the root zone in the balance; seeps at slope feet.
+it. Built since: the water table, water rising from it, and seeps where it reaches the surface (H70).
 
 ### S22. A passive "you are here": matching what the phone senses to the lidar (2026-10-31, owner's idea)
 

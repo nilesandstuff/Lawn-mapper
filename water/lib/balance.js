@@ -30,6 +30,7 @@
 
 import { KC, airShare, dayOfYear } from './et.js';
 import { dayIndex } from './shade/climate.js';
+import { capRise } from './groundwater.js';
 
 export const PARAMS = {
   kc: KC,                 // the grass coefficient when no species is known (et.js, 0.8); the plan sets it by species and level (roots.js kcFor)
@@ -48,6 +49,7 @@ export const PARAMS = {
     'Somewhat poorly drained': 0.25, 'Poorly drained': 0.1, 'Very poorly drained': 0.05,
   },
   tableBlockCm: 30,       // a water table within this far below the roots stops them draining
+  seepCm: 5,              // a water table this near the surface keeps the ground soaked (a seep; H70)
   wetSat: 0.5,            // a WET day: the root zone at least this far from field capacity to saturation, or water standing
   snowMeltMmPerC: 3.5,    // degree-day melt
   seasonC: 10,            // growing season: the week's mean temperature at or above this
@@ -426,7 +428,7 @@ export function simulate(model, days, { irrigate = null, start = null, record = 
   const etFactor = new Float32Array(N), lat = model.g?.lat ?? 42.5;
   const Dr = start?.Dr ? Float32Array.from(start.Dr) : new Float32Array(N);
   const grav = new Float32Array(N), pond = new Float32Array(N), film = new Float32Array(N);
-  const tot = { irrigation: new Float32Array(N), et: new Float32Array(N), drained: new Float32Array(N), ranOff: new Float32Array(N), ranOn: new Float32Array(N), wetDays: new Uint16Array(N), dryDays: new Uint16Array(N), severeDays: new Uint16Array(N), etSeason: new Float32Array(N), etFull: new Float32Array(N), seasonDays: 0, rain: 0 };
+  const tot = { rose: new Float32Array(N), irrigation: new Float32Array(N), et: new Float32Array(N), drained: new Float32Array(N), ranOff: new Float32Array(N), ranOn: new Float32Array(N), wetDays: new Uint16Array(N), dryDays: new Uint16Array(N), severeDays: new Uint16Array(N), etSeason: new Float32Array(N), etFull: new Float32Array(N), seasonDays: 0, rain: 0 };
   const inflow = new Float32Array(N);
   const cn = new Float32Array(N);
   const soaked = new Float32Array(N); // what rain and run-on put into each root zone the day before (not the watering), for a schedule kept apart
@@ -456,7 +458,9 @@ export function simulate(model, days, { irrigate = null, start = null, record = 
     if (month !== lastMonth) { // curve numbers and drainage follow the month's water table
       for (let i = 0; i < N; i++) {
         const s = soils[soilAt[i]] || soils[0];
-        const wt = s?.wetByMonth?.[month];
+        // the water table's depth this month: the groundwater model's where it has one (H70), else the soil survey's
+        const wtm = model.wtCm ? model.wtCm[i * 12 + month] : NaN;
+        const wt = Number.isFinite(wtm) ? wtm : s?.wetByMonth?.[month];
         const wetTable = wt !== null && wt !== undefined && wt <= (s?.rz?.rootCm ?? 15) + params.tableBlockCm;
         const kind = kinds[i] === 1 ? 'lawn' : kinds[i] === 3 ? 'paved' : kinds[i] === 4 ? 'pavers' : 'other';
         cn[i] = kinds[i] === 2 ? 99 : cnSlope(curveNumber(s?.hydgrp, kind, wetTable, params), slope[i]);
@@ -532,6 +536,25 @@ export function simulate(model, days, { irrigate = null, start = null, record = 
         const ks = Dr[i] <= raw[i] ? 1 : Math.max(0, (taw[i] - Dr[i]) / Math.max(1e-6, taw[i] - raw[i]));
         const e = Math.min(use * ks, taw[i] - Dr[i]);
         Dr[i] += e; tot.et[i] += e;
+      }
+      /* WATER RISING FROM THE WATER TABLE (H70; research-caprise.md): AquaCrop's capillary rise from a table z below
+         the roots, CR = exp((ln z - b) / a) for the soil between, no more than refills the roots, shutting off as they
+         wet (1 - w^16), falling to nothing as they dry past half (the soil too dry to pass it on), none on a day they
+         drain. A table in the roots fills them; one at the surface (a seep) keeps them soaked. */
+      if (model.wtCm) {
+        const wt = model.wtCm[i * 12 + month];
+        if (Number.isFinite(wt)) {
+          const zb = (wt - model.rootCm[i] * rootNow) / 100;
+          if (zb <= 0) {
+            if (Dr[i] > 0) { tot.rose[i] += Dr[i]; Dr[i] = 0; }
+            if (wt <= params.seepCm && grav[i] < satRoom[i]) grav[i] = satRoom[i];
+          } else if (grav[i] <= 0 && Dr[i] > 0) {
+            const w = 1 - Dr[i] / Math.max(1e-6, taw[i]);
+            const dry = Dr[i] > 0.5 * taw[i] ? Math.max(0, (taw[i] - Dr[i]) / (0.5 * taw[i])) : 1;
+            const cr = Math.min(Dr[i], capRise(model.crCls[i], model.crK[i], zb) * (1 - w ** 16) * dry);
+            Dr[i] -= cr; tot.rose[i] += cr;
+          }
+        }
       }
       if (inSeason) {
         if (grav[i] >= params.wetSat * satRoom[i] || pond[i] > 0) tot.wetDays[i]++;

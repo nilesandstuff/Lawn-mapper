@@ -19,7 +19,8 @@
  *      when to water next and how much.
  */
 
-import { rootZone, maxSprinklerRate, withTexture, layersOf } from './soil.js';
+import { rootZone, maxSprinklerRate, withTexture, layersOf, textureClass } from './soil.js';
+import { tableDepths, subsoilOf } from './groundwater.js';
 import { workingCm, speciesOf, groupOf, typicalRoots, attachRootRatio, rootsByMonth, kcFor, SPECIES } from './roots.js';
 import { soilIndex } from './soilplace.js';
 import { dayIndex } from './shade/climate.js';
@@ -53,7 +54,7 @@ const DEFAULT_SOIL = { name: 'no survey soil here (a loam assumed)', drainage: '
  *   topsoil (bool), downspouts, gutters, typical (days), week ({ days, today }), light (Float32Array | null),
  *   zoneOf (Int16Array, the user's own zones, optional), params
  */
-export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, topsoil = false, downspouts = [], gutters = [], typical, week = null, light = null, lightMonths = null, radiation = null, fenceHeat = null, windMonths = null, shadeKinds = null, season = null, grass = 'cool', species = null, soilTemp = null, mode = 'normal', placement = null, texture = null, parcelMask = null, areas = [], zoneOf: userZones = null, params: given = null } = {}) {
+export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, topsoil = false, downspouts = [], gutters = [], typical, week = null, light = null, lightMonths = null, radiation = null, fenceHeat = null, windMonths = null, shadeKinds = null, season = null, grass = 'cool', species = null, soilTemp = null, mode = 'normal', placement = null, texture = null, parcelMask = null, areas = [], zoneOf: userZones = null, groundwater = null, params: given = null } = {}) {
   // warm-season turf (owner 2026-10-18): FAO-56's p 0.5 in place of cool-season's 0.4
   // the level's crop coefficient from the owner's table by species (roots.js kcFor; FINDINGS H54), unless params were given whole
   const kc = kcFor(species, grass, mode);
@@ -138,6 +139,18 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
   model.intakeMmH = new Float32Array(N).fill(Infinity);
   for (let i = 0; i < N; i++) if (kinds[i] === KIND.lawn || kinds[i] === KIND.other) model.intakeMmH[i] = maxSprinklerRate(soils[soilAt[i]].rz, model.slope[i]).inPerH * 25.4;
   for (let i = 0; i < N; i++) if (kinds[i] === KIND.lawn) model.dayCapMm[i] = (params.cyclesPerDay * maxSprinklerRate(soils[soilAt[i]].rz, model.slope[i]).inPerH * 25.4) / SM;
+  /* THE WATER TABLE UNDER EACH SQUARE METRE (H70; lib/groundwater.js): from the water levels round the lawn (ponds,
+     streams, wetlands within a kilometre), the cell's own lidar ground, and its soil's wet layers; and the soil
+     between its roots and the water table, for the water rising from it. Without the water maps, the survey alone. */
+  if (groundwater?.levelAny) {
+    model.wtCm = new Float32Array(N * 12).fill(NaN); model.crCls = new Uint8Array(N).fill(2); model.crK = new Float32Array(N).fill(100);
+    const sub = soils.map((s) => subsoilOf(s.unit.profile, rootCm, 200, textureClass));
+    for (let i = 0; i < N; i++) {
+      if (kinds[i] !== KIND.lawn || !Number.isFinite(res.z[i])) continue;
+      model.wtCm.set(tableDepths(res.z[i], { any: groundwater.levelAny[i], perm: groundwater.levelPerm[i] }, soils[soilAt[i]].wetByMonth), i * 12);
+      model.crCls[i] = sub[soilAt[i]].cls; model.crK[i] = sub[soilAt[i]].ksatMmDay;
+    }
+  }
 
   const years = Math.max(1, new Set(typical.map((d) => d.date.slice(0, 4))).size); // distinct years (a test may give summers only)
   // 3. the ideal, cell by cell
@@ -246,7 +259,28 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
     wetFromWatering[i] = (planned.wetDays[i] - rainOnly.wetDays[i]) / Math.max(1, planned.seasonDays);
     wetAnyway[i] = rainOnly.wetDays[i] / Math.max(1, rainOnly.seasonDays);
   }
+  /* What the water table does under the lawn (H70): its depth month by month at the lawn's middle, the share of the
+     lawn it reaches within a foot of the surface in summer, where it stands at the surface (seeps), and the water it
+     lifts into the roots over a season, with rain alone and as watered. */
+  const groundwaterOut = (() => {
+    if (!model.wtCm) return null;
+    const cells = []; for (let i = 0; i < N; i++) if (kinds[i] === KIND.lawn && Number.isFinite(res.z[i])) cells.push(i);
+    if (!cells.length) return null;
+    const byMonth = Array.from({ length: 12 }, (_, m) => { const v = cells.map((i) => model.wtCm[i * 12 + m]); const fin = v.filter(Number.isFinite); return fin.length > cells.length / 2 ? med(fin) : null; });
+    const summer = [6, 7, 8];
+    const share = (f) => cells.filter((i) => summer.every((m) => f(model.wtCm[i * 12 + m]))).length / cells.length;
+    const seepCells = cells.filter((i) => [4, 5, 6, 7, 8].every((m) => model.wtCm[i * 12 + m] <= params.seepCm));
+    const late = new Float32Array(N).fill(NaN), riseMm = new Float32Array(N).fill(NaN);
+    for (const i of cells) { late[i] = model.wtCm[i * 12 + 8]; riseMm[i] = rainOnly.rose[i] / years; }
+    return {
+      byMonthCm: byMonth, withinFootSummer: share((d) => d <= 30.48), withinTwoFeetSummer: share((d) => d <= 60.96), seepShare: seepCells.length / cells.length,
+      riseRainAloneMm: med(cells.map((i) => rainOnly.rose[i] / years)), risePlannedMm: med(cells.map((i) => planned.rose[i] / years)),
+      riseMostMm: Math.max(...cells.map((i) => rainOnly.rose[i] / years)),
+      late, riseMm, summary: groundwater.summary || null,
+    };
+  })();
   return {
+    groundwater: groundwaterOut,
     multiplier: SM, rootIn: rootCm / 2.54,
     mode: params.mode, kc: { ...kc, used: params.scheduleKc ?? params.kc, grass: params.kc },
     /* THE GRASS SHORT OF WATER (owner, 2026-10-29): the lawn's middle cell's share of the season's days past the

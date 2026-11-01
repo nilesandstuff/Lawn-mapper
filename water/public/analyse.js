@@ -19,7 +19,8 @@ import { typicalYears, thisWeek, attachStationHours, soilDaysOver } from '/lib/w
 import { waterPlan } from '/lib/plan.js';
 import { demAround, terrain, hillside, RADIUS_M } from '/lib/upslope.js';
 import { placeSoils, twiForGrid } from '/lib/soilplace.js';
-import { streamsNear, floodNear, streamReading } from '/lib/streams.js';
+import { streamsNear, floodNear, streamReading, waterNear } from '/lib/streams.js';
+import { waterOnGround, waterLevels, burnedTerrain, handGrid, demCell } from '/lib/groundwater.js';
 import { powerUrl, typicalYear, growingSeason, SEASON_GP } from '/lib/shade/climate.js';
 import { onePass } from '/lib/shade/passes.js';
 import { polygonsOf } from '/lib/geo.js';
@@ -60,7 +61,7 @@ function planWith(inputs = {}, zoneOf = null) {
     lawnMask: kept.lawn, paved: r.impervious ? r.impervious.paved : null, soil: kept.soil, placement: kept.placement || null,
     topsoil: !!inputs.topsoil, downspouts: inputs.downspouts || [], gutters: inputs.gutters || [],
     typical: kept.typical, week: kept.week, season: kept.season, species: inputs.species || null, mode: inputs.mode || 'normal', soilTemp: { byDate: kept.soilDays || null, typical: kept.climate?.tSoil || null }, light: kept.light, lightMonths: kept.lightMonths || null, radiation: kept.radiation || null, fenceHeat: kept.fenceHeat || null, windMonths: kept.windMonths || null, shadeKinds: kept.shadeKinds || null, grass,
-    texture: inputs.texture || null, parcelMask: r.parcelMask || null, areas: inputs.areas || [], zoneOf,
+    texture: inputs.texture || null, parcelMask: r.parcelMask || null, areas: inputs.areas || [], zoneOf, groundwater: kept.groundwater || null,
   });
 }
 
@@ -81,7 +82,7 @@ async function plan(inputs = {}) {
     roofs: p.roofs, soil: p.soil, weather: p.weather, thisWeek: p.thisWeek, years: p.years, topsoil: p.topsoil,
     standIn: kept.standIn, seconds: (Date.now() - t0) / 1000, shaded: p.shaded, lightByMonth: p.lightByMonth, ownRadiation: p.ownRadiation, fences: p.fences, treeCool: p.treeCool, yardWind: p.yardWind, windInfo: kept.windInfo || null, windJuly: kept.windMonths ? kept.windMonths[6].slice() : null, localWind: kept.wind || null, lightInfo: kept.lightInfo || null, sunShare: p.sunShare,
     seasonDays: kept.season ? kept.season.size : null, grass, roots: p.roots, mode: p.mode, kc: p.kc, stress: p.stress, rainFrom: kept.rainFrom, rainShaped: kept.rainShaped || 0, rainStation: kept.rainShaped ? kept.wind.station : null, texture: p.texture,
-    trouble: Object.values(kept.sources || {}).filter(Boolean),
+    trouble: Object.values(kept.sources || {}).filter(Boolean), groundwater: p.groundwater,
   };
   self.postMessage({ plan: out }, [out.zoneOf.buffer, out.kinds.buffer, out.soilAt.buffer, out.needMm.buffer, out.wetFromWatering.buffer, out.wetAnyway.buffer, out.dryShare.buffer]);
 }
@@ -117,6 +118,9 @@ async function start(site, inputs) {
   /* EACH SOIL IN ITS OWN PLACE (H62): the USGS 10 m ground and the survey's map over the same window (600 m round),
      fetched now beside the lidar; the hillside reading after the plan uses the same ground. */
   const demP = again(() => demAround(lng, lat)).catch(() => null);
+  /* THE WATER ROUND THE LAWN (H70): streams, lakes and ponds (NHDPlus HR) and wetlands (NWI) within 900 m, through this
+     site's cached route, for the water table under the lawn -- fetched now, beside the lidar, for the plan. */
+  const waterP = again(() => Promise.all([streamsNear(lng, lat, { via: '/api/water/streams', radiusM: 900 }), waterNear(lng, lat, { via: '/api/water/streams', radiusM: 900 })]), 2).catch((e) => ({ error: e.message || String(e) }));
   const soilWinP = again(() => {
     const d = RADIUS_M / 111320, e = d / Math.cos((lat * Math.PI) / 180);
     return soilFor([lng - e, lat - d, lng + e, lat + d], (q) => sdaPost(q));
@@ -186,12 +190,44 @@ async function start(site, inputs) {
   kept.placement = null;
   try {
     const [dem, win] = await Promise.all([demP, soilWinP]);
+    if (dem) kept.dem = { dem, t: terrain(dem) };
     if (dem && win?.units?.length && kept.soil.units?.length) {
-      kept.dem = { dem, t: terrain(dem) };
       const pl = placeSoils(kept.soil.units, win.units, dem, kept.dem.t);
       if (pl.byUnit.size) kept.placement = { byUnit: pl.byUnit, twi: twiForGrid(dem, pl.twi, res.grid) };
     }
   } catch { kept.placement = null; }
+  /* THE WATER TABLE UNDER THE LAWN (H70; lib/groundwater.js): the water levels round each lawn cell (the mapped water
+     within a kilometre, inverse-distance weighted, all of it and the permanent alone), and the lawn's height above the
+     nearest water down the flow path (the mapped water burned into the 10 m ground), for the plan and the page. */
+  kept.groundwater = null;
+  try {
+    const wat = await waterP;
+    if (wat?.error) throw new Error(`the national water maps did not answer (${wat.error})`);
+    if (kept.dem && wat) {
+      const { dem, t } = kept.dem, [streams, near] = wat;
+      const hold = waterOnGround(dem, t, { streams, bodies: near.bodies, wetlands: near.wetlands });
+      const g = res.grid, N = g.W * g.H, at = new Int32Array(N).fill(-1), cells = new Set();
+      for (let i = 0; i < N; i++) if (kept.lawn[i]) { const [x, y] = g.toMerc(i % g.W, Math.floor(i / g.W)); const j = demCell(dem, x, y); at[i] = j; if (j >= 0) cells.add(j); }
+      const lv = waterLevels(dem, hold, cells);
+      const levelAny = new Float32Array(N).fill(NaN), levelPerm = new Float32Array(N).fill(NaN);
+      for (let i = 0; i < N; i++) if (at[i] >= 0) { const v = lv.get(at[i]); levelAny[i] = v.any; levelPerm[i] = v.perm; }
+      const hg = handGrid(dem, burnedTerrain(dem, hold, terrain), hold);
+      const mid = (arr) => { const v = [...cells].map((j) => arr[j]).filter(Number.isFinite).sort((a, b) => a - b); return v.length ? v[v.length >> 1] : null; };
+      // the nearest water of each kind to the lawn's cells, straight-line, and what it is
+      const lawnCells = [...cells], cs = dem.cell;
+      const nearest = (want) => { let best = null; for (let k = 0; k < hold.length; k++) { if (!want(hold[k])) continue; const kr = Math.floor(k / dem.W), kc = k % dem.W; for (const j of lawnCells) { const d = Math.hypot(kr - Math.floor(j / dem.W), kc - (j % dem.W)) * cs; if (!best || d < best.m) best = { m: d, level: dem.z[k] }; } } return best; };
+      const wetlandAtLawn = lawnCells.filter((j) => hold[j] === 1 || hold[j] === 2).length / Math.max(1, lawnCells.length);
+      kept.groundwater = {
+        levelAny, levelPerm,
+        summary: {
+          handPermM: mid(hg.perm.h), handAnyM: mid(hg.wet.h), permanent: nearest((h) => h === 1), seasonal: nearest((h) => h === 1 || h === 2),
+          ponds: near.bodies.length, wetlands: near.wetlands.length, streams: streams.length, wetlandAtLawn,
+          wetlandKinds: [...new Set(near.wetlands.map((w) => w.code))].slice(0, 12),
+        },
+      };
+    }
+  } catch (e) { kept.groundwater = null; self.postMessage({ groundwaterError: e.message || String(e) }); }
+  if (!kept.groundwater && !kept.dem) self.postMessage({ groundwaterError: 'the USGS 10 m ground did not answer' });
   const typ = await typicalP;
   kept.typical = typ.days; kept.rainFrom = typ.rainFrom;
   kept.week = await weekP;

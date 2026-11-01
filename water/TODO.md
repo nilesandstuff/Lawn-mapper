@@ -108,6 +108,10 @@ SPECULATION), as always.
 
 ## Done
 
+- **The water table under each square metre** (owner, 2026-11-01: "build all 3... as true to life as possible"):
+  the height above the nearest water, water rising into the roots, seeps; calibrated on 227 wells (H70). Open:
+  perched seeps at slope feet and sump discharge (S24).
+
 (moved here with the date and the FINDINGS entry when finished)
 
 - 2026-10-25: a 3D view of the ground beside the top-down one (FINDINGS H38).

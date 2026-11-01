@@ -149,7 +149,10 @@ function toPx(frame, img, xy) {
 /* ONE VIEW AT A TIME (owner, 2026-10-23: "Break up the different views into their respective categories, so
    that it's not just a sea of overlapping and hard to separate colors. Add soil view"). Roofs (white) and paving
    (black) under every view, when wanted; each view's own colours on top, and nothing of the others'. */
-const VIEWS = ['zones', 'need', 'soil', 'water', 'drains', 'slope', 'wind', 'sprinklers'];
+const VIEWS = ['zones', 'need', 'soil', 'water', 'table', 'drains', 'slope', 'wind', 'sprinklers'];
+/** The water table view's steps: its depth in September, at the surface (a seep) to over 4 ft (H70). cm. */
+const TABLE_STEPS = [[5, [13, 71, 161, 225]], [30.48, [30, 136, 229, 205]], [60.96, [100, 181, 246, 185]], [121.92, [187, 222, 251, 160]]];
+const TABLE_WORDS = ['at the surface: a seep, wet in any weather', 'within 1 ft', '1 to 2 ft down', '2 to 4 ft down'];
 /** The wind view's steps: each spot's July wind as a share of the open wind, calm (deep teal) to windy (pale). */
 const WIND_STEPS = [[0.25, [0, 77, 64, 200]], [0.35, [0, 121, 107, 180]], [0.45, [38, 166, 154, 160]], [0.55, [128, 203, 196, 150]], [Infinity, [224, 242, 241, 150]]];
 const WIND_WORDS = ['under a quarter of the open wind', 'a quarter to a third', 'a third to under half', 'about half', 'over half'];
@@ -208,6 +211,9 @@ function overlay(d, v, { hard = true } = {}) {
       else if (d.reported[i] === 1) rgba = [190, 200, 215, 110]; // not a lawn hollow: pavement, trees, a ditch...
       // runoff lines: weighted by what each surface sheds when the lawn is traced (m^2 of runoff-producing surface), plain area otherwise
       if (!d.wall[i] && d.flow[i] >= (d.weighted ? 60 : 250)) rgba = [34, 211, 238, 220];
+    } else if (v === 'table' && p?.groundwater?.late && kind === 1) {
+      const cm = p.groundwater.late[i];
+      if (Number.isFinite(cm)) { const step = TABLE_STEPS.find(([lim]) => cm <= lim); if (step) rgba = step[1]; }
     } else if (v === 'wind' && p?.windJuly && kind === 1 && d.lawnMask?.[i]) {
       const w = p.windJuly[i];
       if (Number.isFinite(w)) rgba = WIND_STEPS.find(([lim]) => w < lim)[1];
@@ -729,6 +735,7 @@ function soakAdvice(takes, mm) {
 function planReport(p) {
   const parts = [];
   legend();
+  groundwaterReport(p);
   if (!p.zones.length) { $('#plan').innerHTML = '<div class="card"><h2>No lawn to plan for</h2><p class="dim">Trace the lawn in Lawn Mapper and open the map from your dashboard.</p></div>'; return; }
   const peak = (z) => z.months.reduce((a, b) => ((b.mmMonth || 0) > (a.mmMonth || 0) ? b : a), z.months[0]);
   if (p.trouble?.length) parts.push(`<div class="card" style="border-color:var(--warn)"><h2>Not everything answered this time</h2><ul>${p.trouble.map((t) => `<li>${esc(t)}</li>`).join('')}</ul><p class="dim">Reload the page to try again; the plan below is worked out without it.</p></div>`);
@@ -855,8 +862,36 @@ function hillReport(h) {
   if (h.handM !== null) why.push(`its middle is about ${Math.round(h.handM * 3.28)} ft above the nearest natural drainage line${h.channelM !== null ? `, ${Math.round(h.channelM * 3.28).toLocaleString()} ft away` : ''}`);
   $('#hill').innerHTML = `<div class="card"><h2>${head}</h2>
     <p>${why.join('; ').replace(/^./, (c) => c.toUpperCase())}.</p>
-    <p>${h.level === 'likely' ? 'Ground water from the land above can keep the soil under this lawn wetter than rain alone would, most in spring. Water less than the plan says until a soak test or a soil probe shows the ground drying, and watch for spots that stay soft.' : h.level === 'possible' ? 'Some ground water from the land above may reach the lawn in a wet spring. The plan does not count it yet.' : 'The plan needs no allowance for it.'}</p>
+    <p>${h.level === 'likely' ? 'Ground water from the land above can keep the soil under this lawn wetter than rain alone would, most in spring. The plan counts the water table it keeps up under the lawn (the groundwater card); watch for spots that stay soft all the same.' : h.level === 'possible' ? 'Some ground water from the land above may reach the lawn in a wet spring; the groundwater card says how near the water table comes.' : 'The plan needs no allowance for it.'}</p>
     <p class="dim">From the USGS 10 m ground model round the lawn. A first reading, not yet checked against real lawns; the soil survey's own water table, where it has one, is in the soil card above.</p></div>`;
+}
+
+/* THE WATER TABLE UNDER THE LAWN (owner, 2026-11-01: "We're really trying to make this as true to life as possible";
+   FINDINGS H70): how deep it is month by month, where it reaches the surface, and the water it lifts into the roots,
+   which the plan counts. */
+function groundwaterReport(p) {
+  const el = $('#groundwater'); if (!el) return;
+  const g = p?.groundwater;
+  if (!g) { el.innerHTML = view.groundwaterError ? `<p class="dim">The water table could not be worked out (${esc(view.groundwaterError)}): the plan uses the soil survey's own wet layers.</p>` : ''; return; }
+  const depth = (cm) => (cm === null || cm === undefined ? 'deeper than 13 ft' : cm < 5 ? 'at the surface' : cm < 30.48 ? `${Math.round(cm / 2.54)} in down` : `${(cm / 30.48).toFixed(cm < 152 ? 1 : 0)} ft down`);
+  const inch = (mm) => (mm / 25.4 < 1 ? (mm / 25.4).toFixed(1) : Math.round(mm / 25.4));
+  const pc = (v) => `${Math.round(v * 100)}%`, s = g.summary || {};
+  const away = (m) => (m < 400 ? `${Math.round((m * 3.28084) / 10) * 10} ft` : `${(m / 1609.34).toFixed(2)} mi`);
+  const lines = [];
+  lines.push(`<p>Under the lawn's middle the water table is about <strong>${depth(g.byMonthCm[3])} in April</strong>, at its highest, and <strong>${depth(g.byMonthCm[8])} in September</strong>, at its lowest.</p>`);
+  if (g.seepShare >= 0.01) lines.push(`<p><strong>On ${pc(g.seepShare)} of the lawn it stands at the surface right through the summer</strong>: ground fed from below, a seep, wet whatever the weather. The plan waters none of it.</p>`);
+  if (g.withinFootSummer >= 0.01) lines.push(`<p>In July to September it stays within a foot of the surface under ${pc(g.withinFootSummer)} of the lawn${g.withinTwoFeetSummer > g.withinFootSummer + 0.01 ? `, within 2 ft under ${pc(g.withinTwoFeetSummer)}` : ''}.</p>`);
+  else if (g.withinTwoFeetSummer >= 0.01) lines.push(`<p>In July to September it stays within 2 ft of the surface under ${pc(g.withinTwoFeetSummer)} of the lawn.</p>`);
+  if (g.riseMostMm >= 2.5) lines.push(`<p>It lifts water up into the roots: about <strong>${inch(g.riseRainAloneMm)} in a year</strong> at the lawn's middle with rain alone, up to ${inch(g.riseMostMm)} in where it is nearest. The plan counts it, so those parts are watered less.</p>`);
+  else lines.push('<p>It is too deep to lift any water worth counting up into the roots: the lawn lives on rain and watering.</p>');
+  const near = [];
+  if (s.permanent) near.push(`the nearest water that lasts all year (a pond, lake or creek on the national maps) is ${away(s.permanent.m)} away`);
+  if (s.seasonal && (!s.permanent || s.seasonal.m < s.permanent.m - 20)) near.push(`nearer, wet-season water (a wetland, ditch or intermittent stream) ${away(s.seasonal.m)} away`);
+  if (Number.isFinite(s.handAnyM)) near.push(`downhill, the lawn's middle is about ${Math.round(s.handAnyM * 3.28084)} ft above the first water it drains to`);
+  if (s.wetlandAtLawn >= 0.05) near.push(`${pc(s.wetlandAtLawn)} of the lawn lies in a mapped wetland`);
+  if (near.length) lines.push(`<p>${near.join('; ').replace(/^./, (c) => c.toUpperCase())}.</p>`);
+  el.innerHTML = `<div class="card"><h2>The water table under the lawn</h2>${lines.join('')}
+    <p class="dim">The water table meets the ground at ponds, streams and wetlands; between them it rises about half as fast as the ground (measured on 227 shallow wells in Kent and Ottawa counties), and sinks about 2.5 ft from spring to autumn except where year-round water holds it up. The water from the USGS stream map and the national wetlands inventory, the ground from the lawn's lidar, the soil survey's own wet layers where they are shallower; the water lifted by FAO's AquaCrop method for the soil under the roots. A model: a hole dug 2 ft and left an hour shows the water table where water stands in it. See the Water table view.</p></div>`;
 }
 
 /* STREAMS AND THE FLOOD PLAIN (owner, 2026-10-31; FINDINGS H63): the nearest streams and their water's height, and
@@ -889,7 +924,7 @@ async function run(site) {
   running?.terminate();
   view.site = site; view.data = null; view.plan = null;
   zoom.s = 1; zoom.tx = 0; zoom.ty = 0; $('#view').style.transform = '';
-  $('#result').hidden = true; $('#plan').innerHTML = ''; $('#hill').innerHTML = ''; $('#streams').innerHTML = '';
+  $('#result').hidden = true; $('#plan').innerHTML = ''; $('#hill').innerHTML = ''; $('#streams').innerHTML = ''; if ($('#groundwater')) $('#groundwater').innerHTML = '';
   const kept = site.water || {};
   inputs.downspouts = Array.isArray(kept.downspouts) ? kept.downspouts : [];
   inputs.gutters = Array.isArray(kept.gutters) ? kept.gutters : [];
@@ -920,6 +955,7 @@ async function run(site) {
       else if (data.done) resolve(data.done);
       else if (data.planProgress) { $('#saved').textContent = data.planProgress; busy('plan', data.planProgress); }
       else if (data.valvePlan) { const w = valveAsk.waiting.get(data.valvePlan.id); valveAsk.waiting.delete(data.valvePlan.id); if (w) { if (data.valvePlan.error) w.reject(new Error(data.valvePlan.error)); else w.resolve(data.valvePlan); } }
+      else if (data.groundwaterError) { view.groundwaterError = data.groundwaterError; }
       else if (data.plan) { idle('plan'); if (!view.hillIn) busy('hill', 'Reading the land round the lawn (water from uphill)…'); view.plan = data.plan; needScale(); heads.planIn?.(); $('#saved').textContent = savedNote; if (!heads.active) planReport(data.plan); legend(); draw(); }
       else if (data.planError) { idle('plan'); idle('hill'); $('#saved').textContent = `The watering plan could not be worked out: ${data.planError}`; }
       else if (data.hill) { view.hillIn = true; idle('hill'); hillReport(data.hill); }
@@ -1265,6 +1301,9 @@ function legend() {
       info.push(`<ul>${lines.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>`);
       info.push(`Tap a drain, a pipe or an area for its details. From ${L.sources.length ? esc(L.sources.join(', ')) : 'the national maps'}: the county's own storm sewer where it publishes one, and USGS water, the national wetlands inventory and FEMA flood zones everywhere; drawn as the sources place them.${L.failed?.length ? ` Not answering this time: ${esc(L.failed.join(', '))}.` : ''}${L.trimmed ? ' The farthest of the less useful pieces were left out to keep the map small.' : ''}`);
     } else info.push(view.layersError ? `Not here: ${esc(view.layersError)}.` : 'Asking the county and the national maps for drains and water here…');
+  } else if (mapView === 'table') {
+    TABLE_STEPS.forEach(([, c], k) => items.push(key(`rgb(${c[0]},${c[1]},${c[2]})`, TABLE_WORDS[k])));
+    info.push(p?.groundwater ? 'How deep the water table is under each part of the lawn in September, when it is lowest (deeper than 4 ft is left clear). From the water round the lawn on the national maps (ponds, streams, wetlands), the lawn\'s own lidar ground and the soil survey: the groundwater card below says how.' : 'The water table needs the national water maps, which did not answer this time.');
   } else if (mapView === 'slope') {
     SLOPE_STEPS.forEach(([, c], k) => { if (c[3]) items.push(key(`rgb(${c[0]},${c[1]},${c[2]})`, SLOPE_WORDS[k])); });
     items.push(key('#e53935', 'beside the house: falls toward it'), key('#ffb300', 'falls away, but under 6 in over 10 ft'), key('#43a047', 'falls away 6 in or more over 10 ft (the building code)'));

@@ -54,6 +54,22 @@ export async function streamsNear(lng, lat, { radiusM = 1000, fetchFn = fetch, v
   return fs.map((f) => ({ name: f.attributes.gnis_name || null, kind: streamKind(f.attributes.fcode), km2: f.attributes.totdasqkm ?? null, line: (f.geometry?.paths || []).flat() })).filter((s) => s.line.length);
 }
 
+/**
+ * Lakes and ponds (NHD) and wetlands (NWI) within radiusM, for the water table (lib/groundwater.js): through the water
+ * site's cached route (`via`) or the services themselves. -> { bodies: [{ fcode, rings }], wetlands: [{ code, rings }] }
+ */
+export async function waterNear(lng, lat, { radiusM = 900, fetchFn = fetch, via = null } = {}) {
+  const viaGet = async (layer) => { const res = await fetchFn(`${via}?lng=${lng}&lat=${lat}&r=${radiusM}&layer=${layer}`, { signal: AbortSignal.timeout(90000) }); const j = await res.json(); if (!res.ok || j.error) throw new Error(j.error || `${res.status}`); return j.features || []; };
+  const [b, w] = await Promise.all([
+    via ? viaGet('bodies') : arcgis(`${NHD.replace(/\/3\/query$/, '/9/query')}`, { ...around(lng, lat, radiusM), outFields: 'fcode', returnGeometry: 'true' }, fetchFn),
+    via ? viaGet('wetlands') : arcgis('https://fwspublicservices.wim.usgs.gov/wetlandsmapservice/rest/services/Wetlands/MapServer/0/query', { ...around(lng, lat, radiusM), outFields: 'ATTRIBUTE', returnGeometry: 'true', maxAllowableOffset: '0.00003', geometryPrecision: '6' }, fetchFn),
+  ]);
+  return {
+    bodies: b.map((f) => ({ fcode: f.attributes.fcode, name: f.attributes.gnis_name || null, rings: f.geometry?.rings || [] })),
+    wetlands: w.map((f) => ({ code: f.attributes.ATTRIBUTE, rings: f.geometry?.rings || [] })),
+  };
+}
+
 /** FEMA's flood zones over the box [w, s, e, n] and the 1% flood elevations within `radiusM` of the point. */
 export async function floodNear(lng, lat, box, { radiusM = 1000, fetchFn = fetch } = {}) {
   const env = { geometry: box.join(','), geometryType: 'esriGeometryEnvelope', inSR: '4326', outSR: '4326', spatialRel: 'esriSpatialRelIntersects' };
