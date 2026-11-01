@@ -24,7 +24,8 @@ jobs:
   deploy:
     name: Deploy to Cloudflare
     runs-on: ubuntu-latest
-    # A wrangler call hung for 17 minutes on 2026-11-01 (deploy 485, cancelled by hand); without this a hang sits for six hours.
+    # Without this a hang would sit for GitHub's six hours. (Deploy 485 on 2026-11-01 was cancelled by hand in the belief
+    # it had hung; it had not -- the session's clock was wrong -- but the limit is worth having.)
     timeout-minutes: 45
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
