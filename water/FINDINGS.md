@@ -2268,6 +2268,25 @@ the other?" -- and it has to be "easy and faster than just manually placing the 
 Not known: how it does with a real depth picture on grass -- the depth's noise at 5-8 m, things the 2016 lidar does not
 have (new fences, cars, people), and leaves on trees flown bare. Check points will say.
 
+### H69. A lawn wet weeks after rain in a dry month: groundwater, and why the map does not show it (water session, 2026-11-01)
+
+The owner, of a customer's lawn in Kent County (address kept out of the repository) and several neighbours east of it
+on the same side of the road: the back lawn "really really wet" in late October, a dry month, no watering all month,
+weeks after the last rain; the water map's balance showing only a small surplus. Read from the free sources (this
+session, scratchpad; the geocoder matched the street, so the point may be a few lots off):
+- Soil survey: Glendora loamy sand at the point -- poorly drained, hydric, a flood-plain soil, a water table at 15 cm
+  November-June and NONE listed July-October; round it Ceresco (46 cm, Sep-May) and Cohoctah (15 cm), flood-plain soils.
+- Water: an NHD ditch or canal about 20 m away; a 7.5-acre excavated pond (NWI PUBHx) about 100 m; a 20-acre emergent
+  wetland about 340 m; Buck Creek (perennial) 640 m.
+- Kent County's regional water-table contours: 700 ft at 190 m, 690 ft at 330 m, rising to 730 ft within 1.4 km.
+- Wellogic: 175 records within 1.5 km; shallow drift wells 250-450 m off found water 1-9 ft down when drilled
+  (ground 691-702 ft).
+- Lidar (Kent 2016, 2 m ground): the point at 704 ft on a raised edge; the ground falls 6-8 ft within 40-60 m to the
+  east, south-east and south, onto a valley floor at 696-697 ft; the pond's edge at about 688 ft, 87 m away.
+Why the map shows nothing: the balance takes the water table from the soil survey's monthly calendar, which for
+Glendora has none in July-October; and it treats a water table only as stopping drainage, never as supplying water
+upward. A lawn fed from below cannot appear. What feeds it is SPECULATION (S23).
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge
@@ -2305,6 +2324,18 @@ the wetter group in those months.
 
 
 
+
+### S23. What keeps that lawn wet (2026-11-01, with H69)
+
+Most likely, in some mix: (1) a groundwater discharge zone -- the valley floor of Buck Creek, where groundwater from
+the higher outwash to the west and north (the contours' rise) comes up near the surface, held there by the pond, the
+ditch and the creek, on a timescale of months, not days; (2) seepage at the foot of the slope -- where the ground
+breaks from the raised edge to the flat, water moving sideways through sand comes out, which would wet a row of
+back yards along the same edge (as the owner saw); (3) sump pumps -- houses on ground like this run their footing-drain
+sumps all season, and many discharge onto the back lawn, carrying the groundwater to the surface. Not wet from rain:
+the month's surplus was small. A hole dug or augered 2 ft and left an hour shows the water table where water stands in
+it. Map additions this suggests (none built): the height above the nearest water along the flow path (HAND) from the
+lidar, for every lawn; water rising from a shallow water table into the root zone in the balance; seeps at slope feet.
 
 ### S22. A passive "you are here": matching what the phone senses to the lidar (2026-10-31, owner's idea)
 
