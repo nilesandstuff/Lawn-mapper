@@ -15,24 +15,57 @@ session tool). This file is the build spec. Keep it current as phases land, and
 record measured results in a "Findings" section at the bottom, HARD apart from
 SPECULATION, the same way docs/DETECTOR-FINDINGS.md does.
 
+
+The owner, after the first draft (2026-11-01), setting the priority:
+
+> "at the core of this, the original intended use is as a way to place
+> sprinkler heads on the lawn. Because A. Placing dots on a map is tricky, a
+> sprinkler in the middle of a lawn is just not visible from aerial imagery. B.
+> We tried GPS, walk the lawn and press "place a sprinkler here" but that was
+> terribly inaccurate. So... The ability to walk the lawn, point to the
+> sprinkler with the cursor and tap "add a head here" is really the original
+> point. Everything beyond that is a bonus, but a potentially huge bonus that
+> be be smoothest if it could all work in one session of walking the lawn (so
+> not record > wait to upload and process > walk again and aim at gutters and
+> sprinklers)"
+
 ## 1. The short version
 
-- **Scan once, then place things on the scan.** The phone films the yard. The
-  film becomes a 3D model (a Gaussian splat plus a point cloud). The model is
-  lined up with our lidar, the aerial photo and the property line, so every
-  point in it has a real map position. Heads, gutters and fences are then placed
-  by tapping them **in the 3D model**, not by aiming a phone in live AR.
-- That removes the problem the water session hit (H65-H67 in water/FINDINGS.md):
-  ARCore's frame drifts as you walk, about 1-4% of the distance, and an anchor
-  once jumped 21 m. A tap on a scan has no walk and no drift.
-- It works on iPhone. iPhone browsers have no WebXR, so live AR on iPhone is
-  hard. Filming and viewing a 3D model work in every phone browser.
-- Live AR comes last, and uses the scan as its reference instead of the 2016
-  lidar (which was too thin for the H68 lidar match: about 3 points a square
-  metre on the owner's lot).
-- Niantic's cloud (VPS) is not usable from a browser and charges per call. We
-  use Niantic's **file format** (SPZ) and their free **Scaniverse** app as one
-  way in, not their cloud.
+- **One walk.** Walk the lawn with the phone's camera on, a crosshair in the
+  middle of the screen. Put the crosshair on a head and tap "add a head here".
+  Same for a downspout's foot, a valve box, a fence end. Tap "Finish" at the
+  end. There is no second walk.
+- **The walk is the scan.** While you walk, the page keeps a picture every
+  half metre or so, with the phone's motion readings and GPS. Each tap is saved
+  as "this pixel in this picture", not just as a map position.
+- **Finish corrects the whole walk at once.** The pictures are pieced into a
+  3D model of the yard (the same way photo-scanning apps work). That fixes the
+  drift that wrecked the water session's AR walks, because the model is solved
+  as a whole: walking back past the start or past the house ties the ends
+  together. The model is then lined up with the house and ground from our
+  lidar and the aerial photo, automatically, with no dots to tap on a photo.
+  Every tap is then re-computed from its corrected picture. Target: 1-3 minutes
+  of waiting after Finish, standing still.
+- **Why the old attempts failed, and what this changes:**
+  - GPS: phone GPS is 3-10 m off under trees and near houses. Here GPS is
+    only a rough start; the house sets the position.
+  - The AR page (water H65-H67): two errors stacked. ARCore drifted with the
+    walk (check points 0.01-2.56 m off, scale 3.6-4.4% short, one anchor moved
+    21 m), and the reference dots tapped on the aerial photo disagreed with
+    each other by up to 1.3 m. Solving the whole walk afterwards removes most
+    of the first; matching the house's 3D shape instead of dots on a photo
+    removes the second.
+- **Both phones, one page.** Android Chrome shows each head live as you tap
+  (ARCore), and Finish then corrects it. iPhone Safari has no AR in the
+  browser, so the page records and the heads appear after Finish. Same walk,
+  same result.
+- **The bonuses come from the same pictures:** fences, tree trunks, fine ground
+  heights, the lawn's edge, gutters (from the roof edge the lidar already has,
+  plus the downspouts you tapped), and a 3D splat to look at later. None of them
+  needs another walk.
+- Niantic's location service (VPS) is native-app only and paid per call, so it
+  is not used. Scaniverse files can still be imported as a bonus, not as the
+  main path.
 
 ## 2. What the research found
 
@@ -117,77 +150,97 @@ SPECULATION, the same way docs/DETECTOR-FINDINGS.md does.
 
 ## 3. The design
 
-### 3.1 One idea: the scan is the twin, the lidar is the anchor
+### 3.1 The walk (public page: scan.<home>/walk?map=<id>)
 
 ```
- phone film / Scaniverse file
-            |
-            v
-   3D model in its own frame          (scale roughly right, position unknown)
-            |
-            |  line up against: lidar ground and standing shapes (shade's
-            |  cloud with its photo shift), the aerial photo, phone GPS
-            v
-   3D model in map coordinates        (EPSG:3857 x,y + metres z, the shade frame)
-            |
-   +--------+---------+-----------+------------+
-   v        v         v           v            v
- place    trees     fences     fine ground   lawn inside
- heads,   (trunks,  (lines +   (10-20 cm      the property
- gutters  crowns)   heights)   heights)       line
+ WALK (phone)                                FINISH (server, 1-3 min)
+ ------------------------------------       ---------------------------------
+ camera + crosshair                          1. solve the walk: picture
+ keep a picture every ~0.5 m or 10 deg          positions + a 3D point cloud,
+   (1280 px JPEG, ~150 KB)                      drift tied out (bundle
+ + time, GPS, compass, motion sensor            adjustment, loop closure)
+ + Android: ARCore pose per picture          2. each tap: its pixel, seen in
+ tap "head here" -> picture + crosshair         the pictures around it, gives
+   pixel (+ Android: ARCore hit point)          the head's 3D point
+ pictures upload in the background           3. line the model up with the
+   as you walk                                  house and ground from lidar,
+ the server starts solving before               checked against the photo
+   you finish                                4. heads, downspouts etc. on the
+                                                map; you confirm or nudge
 ```
 
-Why the line-up works where H68 struggled: H68 matched a noisy 8 m depth
-picture from one spot against thin 2016 lidar, live. Here a whole yard's model
-(tens of metres of house walls, fences, trees and ground) is matched against the
-lidar once, offline, with no time limit, plus the aerial photo as a second
-check. The house alone is a large, rigid, unmistakable shape.
+- **Tapping a head.** The crosshair pixel in the picture at the tap. To make
+  the head's 3D point solid, the page asks for a short sideways step or sway
+  (about 30 cm, a second or two) with the head still near the crosshair; the
+  page follows the head's little patch of image across those pictures (image
+  tracking), so the head is seen from several spots and its position is fixed
+  by those sight lines meeting, not by where a guessed ground plane is.
+  Fallback: the sight line meets the solved ground.
+- **Live pins (Android).** ARCore's hit-test places the pin at once so you can
+  see you got it. That pin is a preview; Finish replaces it. A tap is never lost
+  if ARCore loses tracking, because it is kept as picture + pixel.
+- **iPhone.** The camera through the browser (getUserMedia) plus the motion
+  and compass readings (DeviceMotionEvent and DeviceOrientationEvent, after the
+  permission prompt iOS requires). No live pins, but a dot appears where GPS
+  roughly places the tap, and a tick confirms it was saved. Optional later:
+  live pins through 8th Wall's SLAM binary (2.1).
+- **Coaching on screen** (from the water session's lessons): "walk slowly",
+  "turn slower" (over 90 degrees a second blurs pictures), "go back past the
+  house corner before finishing" (ties the walk's ends together), "keep the
+  house in view now and then" (the house sets the position), "too dark".
+- **Gutters without aiming in the air.** Tap each downspout where it meets the
+  ground. The gutters themselves are taken from the roof edge, which the lidar
+  already has (the water map's roof rule) and the pictures confirm.
+- **No signal?** Pictures queue on the phone (IndexedDB) and upload when they
+  can; Finish then waits for them. A walk is about 300-600 pictures, 45-90 MB.
 
-What "accurate" means here: consistent with our own map (the photo, the lawn
-trace and the lidar after shade's shift), not survey truth. 3DEP's own position
-is good to well under a metre; the scan inherits that, while distances inside
-the scan are good to centimetres.
+### 3.2 Solving the walk (lib/solve on the server)
 
-### 3.2 The line-up, step by step (lib/georef.js)
+1. **Picture positions.** Feature points in each picture, matched only to the
+   pictures taken near it in time and, on Android, near it by ARCore's pose
+   (far fewer pairs than matching everything with everything). Matches to
+   pictures from much earlier in the walk are the "loop closures" that remove
+   drift. Then bundle adjustment: all picture positions and all 3D points
+   solved together. Tools: GLOMAP or COLMAP (open source), on CPU.
+2. **Starting guesses.** Android: ARCore's poses (good locally, so the solve is
+   fast). iPhone: built from the pictures alone; motion readings give "down"
+   and the compass gives a rough heading.
+3. **Incremental.** The server solves batches as pictures arrive, so at Finish
+   only the last stretch and one final adjustment are left.
+4. **Each tap.** Triangulated from the tracked head patch (3.1), or the sight
+   line meets the solved ground.
 
-1. **Level.** Gravity from the phone's motion sensor during filming, else the
-   largest flat patch near the camera path (the lawn) as "down".
-2. **Scale.** Scaniverse files are metric. Our own captures get scale from
-   Android's ARCore track when present, else from GPS distances (rough), then
-   the lidar fit solves it (a 7-number fit: turn, shift, scale). H66 found ARCore
-   about 4% short on the owner's phone, so scale is always re-solved, never
-   trusted.
-3. **Rough place.** Phone GPS at filming (5-10 m) and compass give a start. For
-   an imported file with no GPS, the user drags the model onto the photo once.
-4. **Fine place, 2.5D.** Rasterise both the model and the lidar at 0.25 m into
-   (a) bare ground height and (b) "standing" cells 0.25-2.5 m up (walls, fences,
-   trunks, shrubs). Search turn and shift for the best overlap. This is the
-   water session's H68 search (water/lib/ar-lidar.js); copy it, name the source
-   in the file header, and keep the H68 rules (a fix only when most standing
-   cells land and no clearly different place fits within 25%).
-5. **Photo check.** Render the model straight down in colour at the aerial
-   photo's resolution and cross-correlate with the photo (as shade/align.js
-   does for the lidar). It must agree with step 4 within about a metre, or the
-   line-up is refused and the user is asked to drag it.
-6. **Refine.** Point-to-plane ICP on the house walls and the ground, weighted
-   to trust walls (no lean, no growth) over trees.
-7. **Report.** Save the transform and its residuals. Show the user the model
-   over the photo with the property line, so a bad line-up is visible at a
-   glance.
+### 3.3 Lining the walk up with the map (lib/georef.js)
 
-### 3.3 Placing things on the twin (lib/place.js)
+1. **Level.** "Down" from the motion sensor; check it against the solved lawn
+   being nearly flat.
+2. **Scale.** Pictures alone do not know metres. Scale comes from ARCore
+   (Android; known to run about 4% short on the owner's phone, H66) or GPS
+   (rough), and is then solved in the lidar fit (turn, shift, scale: 7
+   numbers). Never trusted from the phone alone.
+3. **Rough place.** GPS across the whole walk (many fixes average out much
+   better than one) and the compass.
+4. **Fine place.** Grid the walk's points and the lidar at 0.25 m into bare
+   ground height and "standing" cells 0.25-2.5 m up (house walls, fences,
+   trunks). Search turn, shift and scale for the best overlap. This is the
+   water session's H68 search (water/lib/ar-lidar.js), copied with its source
+   named, but fed with the whole walk instead of 8 m around one spot: H68's
+   simulation fixed only 39% of single spots, mostly because one spot is "too
+   far from anything standing"; a whole walk always includes the house.
+5. **Photo check.** The walk's ground rendered top-down in colour against the
+   aerial photo (as shade/align.js does). Must agree within about a metre, or
+   the page asks the user to drag the result into place once.
+6. **Refine.** Point-to-plane ICP on house walls and ground, trusting walls
+   (no lean, no growth) over trees.
+7. **Show it.** The heads and the walk's outline over the photo with the
+   property line, with "Looks right" and "Nudge" buttons.
+8. **Fallback for thin lidar.** If a lot's lidar has no usable house walls,
+   reference dots as the water page has them today, but marked in the scan's
+   pictures (house corners, driveway edges), with no live drift to fight.
 
-- The 3D view (Spark on three.js) shows the splat. A tap casts a ray into the
-  model's points and returns the hit in map coordinates.
-- Kinds of placement, each a small record: sprinkler head (a point on the
-  ground), gutter (a polyline along a roof edge, with its height), downspout (a
-  point at the wall foot plus where it drains), fence (a polyline with a height,
-  snapped to the fence the scan shows), tree trunk (a point plus a diameter).
-- **Photo fix** (phase 5, any phone, no AR): stand in the yard, take one photo
-  of a sprinkler head, tap the head in the photo. The photo is matched to the
-  scan's own film frames (whose positions are known), which gives where the
-  phone was; the tap becomes a ray into the model. No walking, no drift, works
-  on iPhone.
+What "accurate" means: consistent with our map (the photo, the lawn trace, the
+lidar after shade's shift). Heads should land within 0.3 m of a tape-measured
+position (the done test, section 4).
 
 ### 3.4 What the scan can refine
 
@@ -195,7 +248,7 @@ the scan are good to centimetres.
 |---|---|---|---|
 | Trees | trunk position and width; crown edge seen from below; lowest branches | crown top and leaf density (phones cannot see the top of a tall tree) | shade map |
 | Fences | line, height, gaps, gates | nothing | shade map (light, wind), water map (wind) |
-| Ground | 10-20 cm heights where filmed | everything outside the film | water map (puddles, flow) |
+| Ground | 10-20 cm heights where walked | everything outside the walk | water map (puddles, flow) |
 | Lawn | grass vs not-grass on the ground, inside the property line | nothing | lawn mapper |
 | Heads, gutters | positions in map coordinates | nothing | water map |
 
@@ -218,130 +271,153 @@ filmed, which is the honest limit: a scan sees what was walked.
 - **Shared library: `scan/lib/*.js`**, plain ES modules with no build step,
   served at `https://scan.<home>/lib/<file>.js` with CORS so the shade map,
   the water map and the lawn mapper can import them:
-  - `georef.js` the line-up (3.2)
+  - `walk.js` the walk page's capture: pictures by distance and turn, sensor
+    readings, taps as picture + pixel, the upload queue
+  - `track.js` following a tapped head's patch across nearby pictures
+  - `georef.js` the line-up (3.3)
   - `frames.js` conversions: model frame, EPSG:3857, lng/lat, local east-north
     metres (match water/lib/ar-align.js toLocal/fromLocal and shade/ept.js)
   - `view.js` the 3D viewer (three.js + Spark, vendored under scan/vendor/ with
     exact versions)
-  - `place.js` tap-to-place and the placement records
+  - `place.js` the placement records (head, downspout, valve box, fence end)
+    and tap-to-place on the 3D view for edits after the walk
   - `extract.js` trees, fences, fine ground, lawn from a lined-up model
   - `scanfile.js` read PLY and SPZ; write SPZ
 - **The map record:** the scan tool writes only `tools.scan.data`: the list of
-  scans (id, date, transform, residuals, area covered), and the extracted and
-  placed features, kept small (under 64 KB). The big files (the SPZ, the
-  top-down images, the fine ground grid) live in R2 under the owner's key and
+  walks (id, date, transform, residuals, area covered), the placed heads and
+  other taps, and the extracted features, kept small (under 64 KB). The big
+  files (the pictures until solved, the point cloud, the SPZ, the top-down
+  images, the fine ground grid) live in R2 under the owner's key and
   are fetched through the scan Worker, which checks the owner.
 - **Each other tool keeps its own part.** The water map reads
   `tools.scan.data.heads` and `.gutters` and offers "use the scan's heads"; the
   shade map reads `.trees` and `.fences` the same way; the lawn mapper reads
   `.lawn`. The scan tool never writes another tool's part. Those buttons live in
-  each tool's own code, so they are asked of the session that owns it (3.7).
+  each tool's own code, so they are asked of the session that owns it (3.8).
 - **Dashboard entry** in worker/src/unified.js TOOLS (core-owned, so ours):
   `{ id: 'scan', name: 'Yard scan', needs: [], url: 'https://scan.{home}/?map={id}', note: 'Experimental.' }`,
-  admin-only (`admin: true`) until phase 3 is measured on real yards.
+  admin-only (`admin: true`) until phase 3's test passes on real yards. The
+  walk page is also linked from the water map's heads card (asked of the water
+  session).
 
-### 3.6 Getting the 3D model: three ways in
+### 3.6 Where Finish runs, and what it costs
 
-| Way in | Phones | Cost | Quality | When |
-|---|---|---|---|---|
-| **A. Import a Scaniverse (or Polycam, Luma) PLY/SPZ** | iPhone (Scaniverse); any app that exports PLY | free | best (on-device training) | phase 1 |
-| **B. Film in our page, build on GitHub Actions** | any phone browser | free (CPU runner, 20-60 min a scan) | point cloud, then a splat if a GPU is used | phase 4 |
-| **C. Film in our page, build on Modal GPU** | any phone browser | paid, roughly $0.10-0.50 a scan (estimate, to be measured) | splat in minutes | phase 4, **only if the owner approves** |
+One walk with a 1-3 minute wait rules out GitHub Actions as the solver (a job
+takes a minute or more just to start, and a workflow is not built to answer a
+web page). Choices:
 
-- Our own capture (B, C): the page records video at 1-2 frames a second kept,
-  with GPS, compass and motion readings timestamped beside each frame, and on
-  Android the ARCore pose per frame when WebXR is available (better scale and a
-  head start for the 3D build). Frames go to R2 in the background as the user
-  walks.
-- The build: GLOMAP or COLMAP for camera positions and a sparse cloud (CPU is
-  fine), then OpenMVS for a dense cloud on CPU (B), or a splat trainer (gsplat
-  or Brush) on a GPU (C). Film frames are deleted after the build; the SPZ and
-  derived files are kept.
-- The site already runs paid work on Modal (the model server). B is the free
-  default per CLAUDE.md; C needs the owner's yes with a measured cost first.
+| Where | Wait after Finish | Cost | Notes |
+|---|---|---|---|
+| **Modal CPU** (the model server's account, a new function) | 1-3 min (estimate) | roughly 2-5 cents a walk (estimate: 4-8 CPUs for 5-10 minutes in total) | the site already runs lidar fetches there; **needs the owner's yes** |
+| **Modal GPU** for the 3D splat (bonus only) | +5-10 min, in the background, after the heads are shown | roughly 10-50 cents a walk (estimate) | not needed for heads; **needs the owner's yes** |
+| **On the phone** (WebAssembly solver) | unknown, likely several minutes, phone gets hot | free | a much bigger build; an experiment for later |
 
-### 3.7 The other sessions
+Every estimate is to be measured on real walks before anything is switched on
+for users, and reported back with the real figure.
 
-- **Water session.** Its AR page (H64-H68) is the closest thing to this tool.
-  Proposal to send them: the scan tool becomes the place where heads and gutters
-  are placed on a twin; their AR page can later use the scan as its reference
-  instead of the lidar (phase 6), through `scan/lib/georef.js`. Their heads and
-  gutters stay in `tools.water.data`; they add a "use the scan's heads" import.
-  Ask, do not assume: they own water/.
+### 3.7 Importing a ready-made scan (bonus)
+
+A Scaniverse (or Polycam, Luma) PLY or SPZ can be uploaded and lined up with
+steps 3.3.3-3.3.7, for people who already have one. Scaniverse builds splats
+free on an iPhone. This is not the main path: those apps do not let you tap
+heads during the scan.
+
+### 3.8 The other sessions
+
+- **Water session.** Its AR page (H64-H68) is this tool's ancestor, and the
+  owner has asked the core session to lead this work. Tell them early so the
+  work is not done twice, and ask (they own water/): the walk page becomes the
+  way heads are placed; their AR page's lessons (walk weighting, the phone's
+  scale, anchor jumps, the H68 lidar search) are carried into scan/lib with
+  the source named; heads stay in `tools.water.data` after a "use the scan's
+  heads" import on the water map, which they build. Their walk logs from H65-
+  H67 are the best test data for the solver, if they kept them.
 - **Features session (shade).** Ask for: reading `tools.scan.data.trees` and
   `.fences` into the shade model, and later loading the scan's fine ground. They
   own public/shade*.
 - Both are messaged by a one-time scheduled Routine into their session (see
   CLAUDE.md). This plan is the thing to point them at.
 
-### 3.8 Privacy and security
+### 3.9 Privacy and security
 
-- A scan is film of someone's yard and house. It is private to its owner:
+- A walk is pictures of someone's yard and house. It is private to its owner:
   R2 keys by owner, served only to that owner, never public, never in the
   repository, never used for training without an explicit opt-in.
-- People or faces caught on film: the 3D model blurs them away in practice, but
-  the film frames do not, which is one more reason to delete frames after the
-  build.
-- GPS from filming is used for the line-up and then kept only as the
+- People or faces caught in the pictures: the 3D model blurs them away in
+  practice, but the pictures do not, which is one more reason to delete the
+  pictures once the walk is solved (kept 7 days at most, for re-solving).
+- GPS from the walk is used for the line-up and then kept only as the
   transform. No addresses in the repository, logs or findings (CLAUDE.md).
-- File upload limits and type checks on import (a PLY or SPZ, a size cap, parsed
-  in a worker, never executed).
+- Upload limits and type checks: pictures are JPEG with a size cap per walk;
+  imported scans are a PLY or SPZ with a size cap, parsed in a worker, never
+  executed.
+
 
 ## 4. Phases, each with a done test
 
-Each phase ships behind admin-only until its done test passes on a real yard,
-and its result goes in the Findings below.
+Heads come first; every bonus waits until heads pass their test. Each phase is
+admin-only until its test passes on a real yard, and its result goes in the
+Findings below.
 
-1. **Import, view, line up (Way A).** scan/ folder and Worker, its deploy
-   workflow, the R2 bucket via CI, the dashboard entry (admin). Upload a
-   Scaniverse SPZ/PLY; view it in Spark; drag it roughly onto the photo; the
-   2.5D fit, photo check and ICP place it. Save the transform.
-   *Done when:* on the owner's lot, house corners in the model land within
-   0.5 m of the same corners in the lidar after shade's shift, and the photo
-   check agrees.
-2. **Place on the twin.** Tap to place heads, gutters, downspouts, fences,
-   trunks; save them in `tools.scan.data`; show them on the photo.
-   *Done when:* five heads placed in the model, then measured in the yard with
-   a tape from two house corners, are within 0.3 m.
-3. **Extract.** Trunks and crown edges, fences, fine ground, lawn inside the
-   property line, each with a confidence. Offer them to the other tools (ask
-   their sessions first, 3.7).
-   *Done when:* the lawn from the scan agrees with the owner's own trace on
-   their lot to within 5% of area; fences match what the owner draws by hand.
-4. **Our own capture (Way B, then C if approved).** The filming page, upload,
-   the GitHub Actions build, and import of the result into phase 1.
-   *Done when:* a scan filmed in the browser on an iPhone and on the S21 both
-   pass phase 1's test.
-5. **Photo fix.** One photo plus a tap places a head without AR.
-   *Done when:* within 0.3 m of the tape-measured position, on both phones.
-6. **Live AR on the twin (optional).** Android Chrome: WebXR plus re-fixing
-   against the scan every few seconds (render the splat from ARCore's pose
-   guess and compare with the camera picture). iPhone: only if the owner wants
-   live AR there, via the 8th Wall binary SLAM, knowing its license and
-   maintenance risk (2.1).
-   *Done when:* check points stay within 0.3 m over a full walk of the yard
-   (H66 measured 0.01-2.56 m with the reference-point method).
+1. **The walk page.** scan/ folder, its Worker and deploy workflow, the R2
+   bucket made by CI, the dashboard entry (admin). Camera, crosshair, pictures
+   kept by distance and turn, sensor readings, taps saved as picture + pixel,
+   background upload with an offline queue. Android: ARCore poses and live
+   pins. Both phones.
+   *Done when:* a walk on the owner's lot from the iPhone and the S21 arrives
+   in R2 complete, every tap with its picture.
+2. **Solve the walk.** The solver as a Modal function (after the owner's yes,
+   section 5), run on walk 1's pictures; head points by tracking and
+   triangulation.
+   *Done when:* the walk's own model, with no map yet, puts heads at the
+   right distances from each other: taped head-to-head distances within
+   0.15 m.
+3. **Line it up and save.** georef.js (3.3), the confirm screen, heads saved
+   in `tools.scan.data.heads`; the water map's "use the scan's heads" (asked of
+   the water session).
+   *Done when:* heads on the map are within 0.3 m of their tape-measured spots
+   (taped from two house corners), on both phones. For comparison, H66's check
+   points were 0.01-2.56 m off.
+4. **Make it smooth.** Incremental solving during the walk so Finish takes
+   1-3 minutes; coaching messages; downspouts, valve boxes, fence ends as tap
+   kinds; gutters from the roof edge.
+   *Done when:* Finish to heads-on-map is under 3 minutes for a 10-minute walk.
+5. **Bonuses from the same walk.** Fences, trunks and crown edges, fine
+   ground, the lawn inside the property line (3.4); the splat for viewing (GPU,
+   only with the owner's yes); Scaniverse import (3.7). Offered to the other
+   tools through their own import buttons, asked of their sessions.
+   *Done when:* the scan's lawn agrees with the owner's trace within 5% of
+   area where the walk covered it; fences match what the owner draws by hand.
+6. **Optional: live pins on iPhone** (8th Wall's SLAM binary), and on Android
+   live correction during the walk against the solved model, so live pins are
+   already right. Only if phases 1-4 leave a reason for it.
 
 ## 5. Decisions for the owner
 
-1. **Capture first:** start with Scaniverse import (free, iPhone) before
-   building our own filming page? Recommended: yes. It proves the line-up and
-   placing on real data before any capture or build work.
-2. **Paid GPU for building splats (Way C):** not needed until phase 4; the
-   free CPU build comes first. A measured cost will be brought back before any
-   Modal use.
-3. **Live AR on iPhone (phase 6):** only via 8th Wall's closed SLAM binary.
-   Recommended: decide after phase 5, which may make it unnecessary.
+1. **Modal CPU for Finish** (phase 2): a few cents a walk, estimated, with a
+   1-3 minute wait. Without it, the free choice is solving on the phone, a much
+   bigger build with an unknown wait. Recommended: yes, with the real cost
+   measured on the first walks and reported before anyone else uses it.
+2. **Modal GPU for the 3D splat** (phase 5): not needed for heads. Decide
+   later with a measured cost.
+3. **Live pins on iPhone** (phase 6): decide after phase 4.
 
 ## 6. Open questions to settle by measuring, not arguing
 
 - How well a scan's ground lines up with 3DEP ground under grass (lidar ground
   is the soil; the scan's is the grass top, a few cm higher).
-- Whether one film per yard is practical (a typical walk is 3-10 minutes;
+- Whether one walk per yard is practical (a typical walk is 3-10 minutes;
   Scaniverse suggests phone scans up to about 500 square metres, so a large yard
   may need two scans merged).
 - How old lidar (the owner's county is 2016) affects the line-up where the
   yard has changed (new fence, removed tree). The house should carry it.
+- Whether a head, a few centimetres tall and often sunk in grass, can be
+  followed across pictures reliably (3.1), or whether the sight line meeting
+  the solved ground is the better fix. Test both on the first walks.
+- Whether a lawn walk, mostly grass with few features, solves without gaps.
+  The coaching ("keep the house in view now and then") is the guess at a fix;
+  the first walks will say. Plain grass is also where ARCore drifted most
+  (water S20).
 
 ## Findings
 
