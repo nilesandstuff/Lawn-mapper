@@ -37,6 +37,7 @@ The contract every tool builds against (owner, 2026-10-16). The core session own
 | sections | Lawn sections (2026-10-27) | lawn | `https://lawnmap.<home>/sections?map={id}` |
 | shade | Shade analyzer | none (the map's address and property line) | `https://shade.<home>/?map={id}` (its own address since 2026-10-18; lawnmap's /shade redirects there) |
 | water | Water map (everyone, since 2026-10-23) | shade | `https://water.<home>/?map={id}` |
+| scan | Yard AR (2026-11-01; **admin only** while docs/SCAN-PLAN.md phase 1 is measured) | shade | `https://scan.<home>/?map={id}` |
 
 A new tool is added to `TOOLS` by the core session, on request.
 
@@ -67,7 +68,8 @@ Only what it needs to pick up where the person left off. Derived numbers that ca
 - **slices**: the piece size and application width.
 - **sections**: `{ v: 1, sections: [{ id, name, poly }], at }`, each section's MultiPolygon in [lng, lat] to about a millimetre. They are fitted to the lawn again on opening, so a lawn redrawn since still adds up (public/lib/sections.js).
 - **water**: the soak test, a gauge or controller total, the zones.
+- **scan**: nothing yet. From phase 3 (docs/SCAN-PLAN.md): the taps placed in AR (heads, downspouts, fence ends, trunks, each `[lng, lat]` with a confidence), the reference points and the walks. The water map will import the heads into its own part; the scan tool never writes another tool's part.
 
 ## Status, worked out on the dashboard
 
-For each tool (home/public/dashboard.js `toolState`): done when it has a part written after every tool it needs last changed (for `lawn`, the map's own `at`, once it has a lawn); needs an update when one of them changed after it; ready when every tool it needs is done and it has no part yet; locked when one is not done. A tool marked `soon` in `TOOLS` shows as coming soon. A tool's `note` is printed on its card (the water map: "Highly experimental and early in development.", owner 2026-10-23). A tool marked `admin` is still being built: `/api/tools` lists it only for an admin account, so nobody else sees it at all (the water map was, owner 2026-10-16, until it opened to everyone on 2026-10-23; none is marked now).
+For each tool (home/public/dashboard.js `toolState`): done when it has a part written after every tool it needs last changed (for `lawn`, the map's own `at`, once it has a lawn); needs an update when one of them changed after it; ready when every tool it needs is done and it has no part yet; locked when one is not done. A tool marked `soon` in `TOOLS` shows as coming soon. A tool's `note` is printed on its card (the water map: "Highly experimental and early in development.", owner 2026-10-23). A tool marked `admin` is still being built: `/api/tools` lists it only for an admin account, so nobody else sees it at all (the water map was, owner 2026-10-16, until it opened to everyone on 2026-10-23; the yard AR tool is, since 2026-11-01).

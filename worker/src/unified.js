@@ -63,6 +63,11 @@ export const TOOLS = [
     needs: ['shade'], url: 'https://water.{home}/?map={id}',
     /* Shown on the card under the blurb (owner, 2026-10-23). */
     note: 'Highly experimental and early in development.' },
+  /* The yard AR tool (owner, 2026-11-01; docs/SCAN-PLAN.md): walk the lawn, aim at a sprinkler head, tap. Its own
+     Worker at scan.<home> (scan/). ADMIN ONLY while phase 1, the tracking test on both phones, is measured. It needs
+     the shade map because that is where the lot's lidar and its photo line-up come from (phase 2). */
+  { id: 'scan', name: 'Yard AR', blurb: 'Walk the lawn with the camera on: place sprinkler heads where you see them, and later see the shade and water results on the real lawn.',
+    needs: ['shade'], url: 'https://scan.{home}/?map={id}', note: 'Experimental: a tracking test, on the admin account only.', admin: true },
 ];
 const TOOL_IDS = new Set(TOOLS.map((t) => t.id));
 export const isTool = (id) => TOOL_IDS.has(id) && id !== 'lawn';
@@ -102,8 +107,9 @@ export function hostsOf(host) {
  * The tools as one asker sees them. A tool marked `admin` is still being built
  * and is listed only for an admin account (owner, 2026-10-16: the water map,
  * "for the admin account only at this point"); everyone else never sees it.
- * None is marked now: the water map opened to everyone on 2026-10-23 (owner,
- * to the water session: "Make the water map accessible to everyone now").
+ * The water map was, until it opened to everyone on 2026-10-23 (owner, to
+ * the water session: "Make the water map accessible to everyone now"); the
+ * yard AR tool is, since 2026-11-01 (docs/SCAN-PLAN.md phase 1).
  */
 export function toolsFor(host, { admin = false } = {}) {
   const { home, lawnmap, shade } = hostsOf(host);

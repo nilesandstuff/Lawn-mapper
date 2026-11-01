@@ -1,0 +1,101 @@
+name: S. Yard AR tool
+
+# The yard AR tool (core session, docs/SCAN-PLAN.md): its own folder (scan/),
+# its own tests and its own Worker at scan.<home domain>. Nothing here touches
+# Lawn Mapper, the shade map, the water map or the home page.
+#
+# FREE. The GitHub runner and Cloudflare's free Worker. The 8th Wall engine
+# binary is installed from npm at deploy time (pinned in scan/tools/prepare.mjs)
+# and copied into the site as it is, notice and LICENSE included.
+#
+#   tests     the scan tests (Node, no phone needed)
+#   deploy    the tests, then the site to scan.<home domain> (the domain
+#             derived from vars.CUSTOM_DOMAIN, as the water tool's is).
+#             ADMIN ONLY until docs/SCAN-PLAN.md phase 3 passes.
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: 'What to run'
+        required: true
+        default: tests
+        type: choice
+        options: [tests, deploy]
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - run: npm ci --no-audit --no-fund
+
+      - name: Tests
+        run: |
+          node scan/test/frames.test.js
+          node scan/test/walk.test.js
+          node scan/test/track.test.js
+          node scan/test/worker.test.js
+          node scan/test/prepare.test.js
+
+      - name: The 8th Wall engine binary (pinned)
+        if: ${{ inputs.task == 'deploy' }}
+        run: |
+          v=$(node -e "import('./scan/tools/prepare.mjs').then(m => console.log(m.ENGINE_VERSION))")
+          npm install --no-save --no-audit --no-fund "@8thwall/engine-binary@$v"
+          ls -la node_modules/@8thwall/engine-binary/dist | head
+          head -c 400 node_modules/@8thwall/engine-binary/dist/xr.js; echo
+
+      - name: Deploy the scan site
+        if: ${{ inputs.task == 'deploy' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CUSTOM_DOMAIN: ${{ vars.CUSTOM_DOMAIN }}
+        run: |
+          node scan/tools/prepare.mjs
+          if npx wrangler deploy --config scan/wrangler.toml > scan-deploy.log 2>&1; then
+            tail -8 scan-deploy.log
+            d=$(sed -n 's/^pattern = "\(.*\)"$/\1/p' scan/wrangler.toml)
+            who=$(grep -q 'ADMIN_ONLY = "1"' scan/wrangler.toml && echo "admin only" || echo "open to everyone")
+            echo "SCAN_STATE=live ($who) at https://$d" >> "$GITHUB_ENV"
+          else
+            tail -30 scan-deploy.log
+            echo "SCAN_STATE=did not deploy -- see the step above" >> "$GITHUB_ENV"
+            exit 1
+          fi
+
+      - name: Is it answering
+        if: ${{ inputs.task == 'deploy' }}
+        run: |
+          d=$(sed -n 's/^pattern = "\(.*\)"$/\1/p' scan/wrangler.toml)
+          for i in 1 2 3 4 5 6; do
+            body=$(curl -s "https://$d/" || true)
+            code=$(curl -s -o /dev/null -w '%{http_code}' "https://$d/" || true)
+            if echo "$body" | grep -q "isn't open yet"; then echo "answering, admin only (signed out: not open yet)"; exit 0; fi
+            if [ "$code" = 200 ]; then echo "answering, open to everyone"; exit 0; fi
+            if [ "$code" = 403 ]; then
+              echo "SCAN_STATE=${SCAN_STATE} (the zone answers GitHub's runner 403, so it can't be checked from here)" >> "$GITHUB_ENV"
+              exit 0
+            fi
+            echo "page $code -- waiting for the new domain"; sleep 20
+          done
+          echo "SCAN_STATE=${SCAN_STATE} (but not answering yet: a new custom domain can take a few minutes)" >> "$GITHUB_ENV"
+
+      - name: The answer
+        if: always()
+        run: |
+          echo "--------------------------------------------------------------"
+          case "${{ inputs.task }}" in
+            deploy)
+              echo "Scan site: ${SCAN_STATE:-not deployed -- see the steps above}"
+              echo "Engine: ${SCAN_ENGINE:-unknown}"
+              echo "Open it from the dashboard's Yard AR card (admin account), on each phone." ;;
+            *) echo "Scan tests: ${{ job.status }}" ;;
+          esac

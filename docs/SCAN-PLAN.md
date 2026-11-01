@@ -52,6 +52,29 @@ And on the water session's first AR walks:
 So the water session's H65-H67 results are **measured outcomes of one early
 page**, not proof of what limits phone AR. Their causes are SPECULATION here.
 
+And on references, lidar and what to trust (2026-11-01, after the live-first
+draft):
+
+> "I do like the idea of prescriped reference points, but they should probably
+> be driveway corners instead. Because lidar may underestimate the location of
+> walls because of eaves, front door entrance arches, porches, etc."
+>
+> "we also need to keep that point in mind when using lidar points as
+> references... Don't trust what's under anything that the lidar can't see the
+> ground at. Trees should be a good reference as long as we have a way to error
+> correct for the fact that trees grow or may be cut down since the lidar was
+> taken, roofs too, and driveways would be great. Maybe prompt the user to look
+> up if the fix is getting lost. All in all, i think slam should hopefully take
+> some of the burden off of that."
+>
+> "to be clear, i want to make use of the Niantic innovations (like the gaussian
+> splats and slam) because they seem very promising."
+
+So: driveway and paving corners first; nothing under a roof or a crown is
+trusted as a reference; trees and roofs are matched with an allowance for
+change since the flight; and Niantic's SLAM (8th Wall) and Gaussian splats
+(SPZ, Scaniverse, the splat viewer) are to be used where they fit.
+
 ## 1. The short version
 
 - **One live AR page for both phones.** Open it on the lawn, the camera shows
@@ -185,11 +208,25 @@ page**, not proof of what limits phone AR. Their causes are SPECULATION here.
 
 - The interface gives: the camera pose each frame in the session's own frame
   (metres, y up), a hit test at the crosshair (the ground, or the nearest
-  surface), the 3D points around the phone (depth on Android, feature points on
-  iPhone), tracking state (good, limited, lost, reset), and the camera picture.
-- Rendering is three.js on top of either engine.
+  surface), the 3D points around the phone (depth on Android, world points on
+  iPhone), tracking state (good, limited, lost, reset), and the GL context and
+  matrices to draw with.
+- Rendering: phase 1 draws its dot and pins in plain WebGL (scan/lib/draw.js)
+  so the bare test has no library to load; three.js comes in with the viewer
+  (phase 4), where layers and splats need it.
 - Phase 1 also runs 8th Wall on the Android phone, to compare the two engines
   on the same lawn.
+- **The 8th Wall binary, as built (read 2026-11-01):** it is served from our
+  own site (scan/tools/prepare.mjs copies @8thwall/engine-binary 1.0.0's
+  dist/ unchanged at deploy time; never committed). It still looks for an
+  "appKey" on its script tag and falls back to the script's address when
+  there is none; its own text calls this "standalone mode", in which the
+  platform token (VPS and the rest) "is not available". World tracking should
+  run without a key or a server; the first phone test says. Its license
+  (section 1.2) forbids use in a product "offered for a fee" whose value
+  "derives, entirely or substantially" from the engine; Lawn Mapper's paid
+  maps are the maps, and the AR page is one view of them, so this is within
+  it, but it is a line to remember if the AR tool were ever sold on its own.
 
 ### 3.2 Where am I on the map (lib/locate.js)
 
@@ -197,12 +234,16 @@ Two frames: the session's (where the phone started) and the map's (EPSG:3857
 metres, the shade frame). The fix is the turn, shift and, if measured, scale
 between them.
 
-1. **Two references to start.** The page offers candidates from the lidar:
-   house corners from the roof outline (pulled in for the eaves, as the water
-   map's roof rule does), plus driveway or patio corners the user picks on the
-   photo if the house is not handy. The user aims at each and taps. Two points
-   give the turn and the shift. Scale comes from the tracking engine; with a
-   third point it is checked, and the page reports it.
+1. **Two references to start.** The page offers candidates, in this order
+   (the owner, 2026-11-01): driveway, sidewalk and patio corners, taken from
+   the paving the lidar and the photo agree on (the lidar sees the ground
+   there, so the corner is where it says); then a fence post or a shed
+   corner; and only when none of those is handy, a house corner, which the
+   lidar places by the roof and so may sit outside the wall by an eave,
+   porch or arch. Each candidate is drawn in the AR view to aim at, and can
+   be dragged on the photo if it is off. The user aims at each and taps. Two
+   points give the turn and the shift. Scale comes from the tracking engine;
+   with a third point it is checked, and the page reports it.
 2. **Keeping the fix with 3DEP.** Every 1-2 s, the last stretch of what the
    phone has seen (points 0.25-2.5 m above the ground: walls, fences, trunks,
    shrubs; and the ground's own shape) is gridded and searched against the
@@ -210,8 +251,20 @@ between them.
    only when most of the points land and no clearly different fit is nearly as
    good (the H68 rules). It is applied smoothly so pins do not jump.
    Android: the depth picture (H68's code, carried over). iPhone: 8th Wall's
-   feature points, collected by hit tests over a grid of screen points each
-   frame. Whether feature points are dense enough is a phase 2 question.
+   world points (`enableWorldPoints`, phase 1 counts them). Whether they are
+   dense enough is a phase 2 question.
+   **What the lidar is trusted for** (the owner, 2026-11-01): only cells where
+   the lidar saw the ground. Under a roof overhang or a tree crown the ground
+   is interpolated, so a wall foot or a trunk there is a weak match, never a
+   reference. Paving, fences, sheds and the house's roof edge seen from below
+   are strong. Trees and roofs are matched with an allowance for change since
+   the flight (a crown may be wider or gone, a roof replaced): a standing
+   point that lands near nothing costs little, and a lidar feature with
+   nothing near it in the walk is not held against the fix.
+   **Look up.** When the fix is slipping and the ground around the phone is
+   plain grass, the page says "look up": roof edges and crowns against the
+   sky are the lidar's strongest features and the phone's clearest ones. SLAM
+   itself carries the fix between matches, so the match need not be constant.
 3. **References any time.** "Mark a reference" stays on screen; each new
    one improves the fit. A reference far back in the walk counts for less, so
    an old error does not hold the fix (the water page's walk weighting is the
