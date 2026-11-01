@@ -68,7 +68,7 @@ SPECULATION), as always.
     walking; scale held, slide-aware fit, edges, head spread in the copy (H66). Not built: corners from the lidar (S21).
     One head placed seven times: ~0.5 m from close by; one anchor jump of 21 m now ignored; far placing confirmed (H67).
     Owner: it must be easier and faster than placing dots by hand: a passive "you are here" from the lidar and the
-    camera (S22). The page now reports which sensors Chrome gives the phone; the owner's next walk tells what is possible.
+    camera (S22). Chrome gives the depth on the owner's phone; matching it to the lidar is built (H68): next walk.
 15. **Hose-end sprinklers placed by hand** (owner: "add specific recs for manually placing sprinklers. Which will
     require pressure calculations (same as the existing workflows for inground, but obviously simplified)"):
     where to set each sprinkler, how long, from the hose and the tap's pressure.

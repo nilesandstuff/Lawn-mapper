@@ -2238,6 +2238,36 @@ so); placing a head from farther than 3.5 m takes a second tap within 3 s; the c
 Fake-AR drive: an anchor moved 20 m left its head where it was placed and logged the jump; one moved 0.3 m moved its head
 0.31 m; from 16 ft the first tap only warned.
 
+### H68. "You are here" from the lidar: Chrome gives the depth; built; on the owner's lot in simulation (water session, 2026-11-01)
+
+The owner: "arcore builds a 3d space using the camera right? And thanks to 3dep, imagery, and lawn traces, we have a
+virtual 3d map of lawns... So can we compare features of the arcore space with our own 3d map to place one on top of
+the other?" -- and it has to be "easy and faster than just manually placing the dots".
+- The sensor check (the owner's phone, Chrome 156, indoors, 2026-11-01): Chrome granted depth-sensing (52 of 53
+  frames with a depth picture, 0.32-3.31 m in a room), camera-access (every frame read, 864 x 1920), plane-detection,
+  anchors. The phone has no lidar sensor: ARCore's depth is from the camera's motion.
+- Built (lib/ar-lidar.js; public/ar-lidar-worker.js; public/ar.js): the lot's 3DEP cloud (the shade map's kept cloud
+  and shift) gridded at 0.25 m in a worker: the bare ground, and what stands at chest height (lidar points 0.25-2.5 m
+  above the ground, and the house's walls: its roof found by the water map's own rule -- tall, no ground return, 80%
+  single echoes -- pulled in 0.5 m for the eaves, its outline). In AR, the depth picture four times a second as points
+  round the phone (to 8 m), kept on a 0.2 m grid, sorted into ground and standing (0.4-2.4 m up). Every 1.5 s the
+  last 25 m of the walk's points go to the worker, which searches turn and shift (from GPS with any turn at first, then
+  from the last fix) for where the standing points land on the solid cells and the ground follows the lidar's shape;
+  truncated costs; a fix only when at least half the standing points land and no clearly different place fits within
+  25%. A fix stands for 20 m of the walk; heads and check points use the fix nearest them in the walk. References are
+  optional; the phone's scale held as before.
+- The owner's cloud (Kent County 2016) is thin: 28,692 points over the lawn and 20 m round it, about 3 a square metre,
+  classed only ground, unclassified and noise (no buildings, no trees) -- which is why the roof rule was needed.
+- Simulated on the owner's lot (scratchpad only; optimistic: every solid cell within reach seen, no occlusion, the lidar
+  as the world; the phone's frame turned at random, 4% short, GPS 8 m off): from 80 random spots on the lawn, each a
+  6 m walk, reach 8 m and 30 standing points wanted: 39% fixed, every fix within 2 cm, none wrong; the rest too far
+  from anything standing (48) or ambiguous (1). With 6 m reach 33%.
+- tests: test/ar-lidar.test.js (7; a made-up lot: from a GPS guess 8 m off and any turn, 15 cm or better; a straight
+  fence alone refused). In the browser (fake depth): the cloud read and gridded in 2 s; a fix asked and answered
+  (refused: a fake wall round the phone fits nowhere in particular).
+Not known: how it does with a real depth picture on grass -- the depth's noise at 5-8 m, things the 2016 lidar does not
+have (new fences, cars, people), and leaves on trees flown bare. Check points will say.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge
@@ -2280,8 +2310,7 @@ the wetter group in those months.
 
 The owner: "This ar thing only works if its easy and faster than just manually placing the dots... compare the visual
 results of the lidar with the camera input to provide an accurate 'you are here'" (and the lawn traces may be used).
-Nothing below is built or measured; the AR page now asks Chrome for the phone's depth, camera picture and found surfaces
-and reports which it grants (the copy's "sensors"), to learn which of these is open to a web page on this phone.
+The depth picture was granted and the wall, fence and ground matching is built (H68); the rest below is not.
 What could be matched, most promising first:
 - Walls: the house's (and a shed's) walls from the lidar's building points, measured straight down, so without the
   photo's lean, against the walls the phone sees (its depth picture, ARCore's 0.5-8 m, or the crosshair landing on a

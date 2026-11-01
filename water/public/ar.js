@@ -20,6 +20,7 @@
  */
 import { toLocal, fromLocal, arLevel, fitDrift, apply, headingOf, baseline, edgeOff, pairScale } from '/lib/ar-align.js';
 import { tracedOn, lineUpAt } from '/lib/shade/traced.js';
+import { unproject } from '/lib/ar-lidar.js';
 import { openable } from '/lib/maps.js';
 
 const $ = (s) => document.querySelector(s);
@@ -117,7 +118,93 @@ function learnedScale() {
 const distinctRefs = (list) => new Set(list.filter((c) => c.kind === 'pt').map((c) => c.p)).size;
 /** The fit for a moment of the walk: the turn from pairs, the shift from what is near, the phone's scale held (fitDrift). */
 const fitWith = (list, odo) => fitDrift(list, odo, { scale: learnedScale() });
-const fitFor = (odo) => fitWith(cons(), odo);
+const refFit = (odo) => fitWith(cons(), odo);
+/** The fit for a moment: the lidar's fix nearest it in the walk, within FIX_REACH; else the references' (H68). */
+const fitFor = (odo) => { const f = nearestFix(odo); return f && Math.abs(f.odo - odo) <= FIX_REACH ? f.T : refFit(odo); };
+
+/* ----------------------------------------------- "you are here" from the lidar (H68) */
+
+const FIX_REACH = 20;  // m of walk a lidar fix stands for
+const VOX = 0.2;       // m: the phone's depth points kept one to a cell this size
+const LID = { worker: null, ready: null, error: null, progress: '', fixes: [], pending: false, last: null, asks: 0, id: 0, gps: null, why: null };
+const nearestFix = (odo) => LID.fixes.reduce((b, f) => (!b || Math.abs(f.odo - odo) < Math.abs(b.odo - odo) ? f : b), null);
+const thinTo = (a, m) => (a.length <= m ? a : a.filter((_, i) => i % Math.ceil(a.length / m) === 0));
+
+/** Read the lot's lidar in the worker (public/ar-lidar-worker.js): the lawn and 20 m round it. */
+function startLidar(m) {
+  try {
+    const w = new Worker('/ar-lidar-worker.js', { type: 'module' });
+    LID.worker = w;
+    const pts = st.lawn.flat(), es = pts.map((p) => p[0]), ns = pts.map((p) => p[1]);
+    const box = pts.length ? [Math.min(...es) - 20, Math.min(...ns) - 20, Math.max(...es) + 20, Math.max(...ns) + 20] : [-60, -60, 60, 60];
+    w.onmessage = ({ data }) => {
+      if (data.progress) { LID.progress = data.progress; showLidar(); }
+      if (data.ready) { LID.ready = data.ready; log(`lidar read: ${data.ready.points} points`); showLidar(); listPoints(); }
+      if (data.error) { LID.error = data.error; log(`lidar: ${data.error}`); showLidar(); listPoints(); }
+      if (data.fix) onFix(data.fix, data.id);
+    };
+    w.onerror = (e) => { LID.error = e.message || 'the lidar reader failed'; showLidar(); listPoints(); };
+    w.postMessage({ load: { origin: st.origin, box, lidar: m.tools?.shade?.data?.lidar || null } });
+  } catch (e) { LID.error = e.message; showLidar(); }
+}
+function showLidar() {
+  const el = $('#lidar'); if (!el) return;
+  el.textContent = LID.error ? `The lidar could not be read (${LID.error}): references only.`
+    : LID.ready ? `Lidar ready (${LID.ready.points.toLocaleString()} points). In AR the page works out where you are from what the camera sees: look round at the house, fences, bushes and trees as you walk. References are optional; check points still measure how close it is.`
+      : LID.progress || 'Reading the lidar…';
+}
+
+/** Four times a second: the depth picture as points round the phone (to 8 m, ARCore's reach), on the ground or standing (0.4-2.4 m up). */
+function collectDepth(frame, pose) {
+  if (!xr.sense?.granted?.includes('depth-sensing')) return;
+  const view = pose.views?.[0]; if (!view || typeof frame.getDepthInformation !== 'function') return;
+  let d = null; try { d = frame.getDepthInformation(view); } catch { d = null; }
+  if (!d) return;
+  const P = view.projectionMatrix, M = view.transform.matrix;
+  const gy = xr.groundY ?? pose.transform.position.y - 1.35;
+  for (let i = 0; i < 16; i++) for (let j = 0; j < 28; j++) {
+    const x = (i + 0.5) / 16, y = (j + 0.5) / 28, z = d.getDepthInMeters(x, y);
+    if (!(z > 0.4 && z < 8)) continue;
+    const [X, Y, Z] = unproject(x, y, z, P, M);
+    const h = Y - gy, cls = Math.abs(h) < 0.2 ? 'g' : h > 0.4 && h < 2.4 ? 's' : null;
+    if (!cls) continue;
+    xr.cloud.set(`${Math.floor(X / VOX)},${Math.floor(Z / VOX)},${cls}`, { u: X, v: -Z, y: Y, odo: xr.odo, cls });
+  }
+  if (xr.cloud.size > 8000) for (const [k, p] of xr.cloud) if (p.odo < xr.odo - 40) xr.cloud.delete(k);
+}
+
+/** Every 1.5 s: the last 25 m of the walk's points to the worker, from the last fix, the references, or GPS. */
+function maybeRegister() {
+  if (!LID.ready || LID.pending || !xr?.tracking || Date.now() - (LID.lastAsk || 0) < 1500) return;
+  const recent = [...xr.cloud.values()].filter((p) => p.odo > xr.odo - 25);
+  const stand = recent.filter((p) => p.cls === 's').map((p) => [p.u, p.v]), ground = recent.filter((p) => p.cls === 'g').map((p) => [p.u, p.v, p.y]);
+  if (stand.length < 30) { LID.why = `the camera has ${stand.length} points on walls, fences, bushes or trunks within 25 ft (30 wanted): look round at them`; return; }
+  const last = nearestFix(xr.odo);
+  let prior = null;
+  if (last && Math.abs(last.odo - xr.odo) < FIX_REACH) prior = { T: last.T, searchM: 1.5, searchDeg: 6 };
+  else {
+    const ref = refFit(xr.odo);
+    if (ref) prior = { T: ref, searchM: 4, searchDeg: 15 };
+    else if (LID.gps && Date.now() - LID.gps.t < 30000) prior = { at: LID.gps.at, phone: LID.gps.phone, radiusM: Math.max(6, Math.min(20, LID.gps.acc * 1.5)) };
+  }
+  if (!prior) { LID.why = 'waiting for GPS (or two references) to start from'; return; }
+  LID.pending = true; LID.lastAsk = Date.now(); LID.asks++;
+  const id = ++LID.id; LID.asked = { id, odo: xr.odo, from: prior.T ? (last && prior.T === last.T ? 'the last fix' : 'the references') : 'GPS' };
+  LID.worker.postMessage({ register: { id, stand: thinTo(stand, 600), ground: thinTo(ground, 300), prior, s: learnedScale() } });
+}
+function onFix(fix, id) {
+  LID.pending = false;
+  if (!LID.asked || LID.asked.id !== id) return;
+  LID.last = { ok: fix.ok, why: fix.why || null, hits: fix.hits ?? null, runnerUp: fix.runnerUp || null, from: LID.asked.from };
+  if (fix.ok) {
+    const first = !LID.fixes.length;
+    LID.fixes.push({ T: fix.T, odo: LID.asked.odo, hits: fix.hits, at: Date.now() });
+    if (LID.fixes.length > 300) LID.fixes.shift();
+    LID.why = null;
+    if (first) { log(`first lidar fix from ${LID.asked.from}: ${Math.round(fix.hits * 100)}% on the lidar`); navigator.vibrate?.([30, 60, 30]); flash('Found where you are'); }
+    refit();
+  } else LID.why = fix.why;
+}
 // a pin placed in this AR session is lined up by the marks the shortest walk from it (made before or after); one from
 // an earlier session keeps where it was put
 function pinMap(p) {
@@ -231,8 +318,8 @@ function listPoints() {
   $('#points').innerHTML = st.points.map((p) => `<li><span class="${p.kind === 'edge' ? 'edgec' : p.kind}">${esc(p.name)}</span> ${p.kind === 'ref' ? 'reference' : p.kind === 'edge' ? `edge, ${ft(Math.hypot(p.b[0] - p.a[0], p.b[1] - p.a[1]))} long` : 'check point'}${marked(p) ? ` — marked in AR${p.marks.length > 1 ? ` ${p.marks.length} times` : ''}` : ''}</li>`).join('');
   if (st.pendingEdge) $('#points').innerHTML += '<li class="dim">Tap the other end of the edge.</li>';
   const refs = st.points.filter((p) => p.kind === 'ref').length;
-  $('#start').disabled = !st.xr || refs < 2;
-  $('#xr-why').textContent = !st.xr ? st.xrWhy || '' : refs < 2 ? 'Add at least two references first.' : '';
+  $('#start').disabled = !st.xr || (refs < 2 && !LID.ready);
+  $('#xr-why').textContent = !st.xr ? st.xrWhy || '' : refs < 2 && !LID.ready ? (LID.error ? 'Add at least two references first (the lidar could not be read).' : 'Reading the lidar (or add two references)…') : '';
 }
 
 /**
@@ -274,7 +361,7 @@ function results() {
     <div class="tools"><button type="button" id="copy">Copy results</button></div></div>` : '';
   $('#copy')?.addEventListener('click', async () => {
     const out = {
-      page: 'water AR test v3', when: new Date().toISOString(), device: navigator.userAgent, sensors: xr ? senseSummary(xr.sense) : st.lastSense || null, stats: x ? { walkedM: +x.walked.toFixed(1), losses: x.losses, resets: x.resets, fastTurns: x.fastTurns } : null,
+      page: 'water AR test v4', lidar: { read: LID.ready ? { points: LID.ready.points, solidCells: LID.ready.solid, cloud: LID.ready.cloud, shift: LID.ready.shift } : LID.error || null, asks: LID.asks, fixes: LID.fixes.length, last: LID.last, depthPointsKept: xr?.cloud?.size ?? null }, when: new Date().toISOString(), device: navigator.userAgent, sensors: xr ? senseSummary(xr.sense) : st.lastSense || null, stats: x ? { walkedM: +x.walked.toFixed(1), losses: x.losses, resets: x.resets, fastTurns: x.fastTurns } : null,
       scale: { heldPhotoOverAR: +scaleNow().k.toFixed(4), thisWalk: scaleNow().walk ? { k: +scaleNow().walk.k.toFixed(4), pairs: scaleNow().walk.n } : null, earlierWalks: learnedScales() },
       edges: edges.map((p) => ({ name: p.name, lengthM: +Math.hypot(p.b[0] - p.a[0], p.b[1] - p.a[1]).toFixed(1), marks: p.marks.length, latestOffM: edgeLanding(p) != null ? +edgeLanding(p).toFixed(3) : null })),
       references: refs.map((p) => ({ name: p.name, leftOutM: leftOut(p) != null ? +leftOut(p).toFixed(3) : null, marks: p.marks.map((m) => ({ walkedM: +m.odo.toFixed(1), aimM: +m.dist.toFixed(2), anchorMovedM: m.anchorMoved != null ? +m.anchorMoved.toFixed(3) : null, anchorJumpedM: m.anchorJumped ?? null })) })),
@@ -452,10 +539,14 @@ async function setUp(session, overlay) {
     stats: { walked: 0, losses: 0, resets: 0, fastTurns: 0 } };
   xr.target = nextTarget();
   xr.sense = senseStart(session, gl);
+  xr.cloud = new Map(); xr.groundY = null;
+  LID.fixes = []; LID.last = null; LID.why = null; LID.pending = false; LID.gps = null;
+  // GPS only to start the search from (metres off is fine); kept in memory, never copied
+  try { LID.watch = navigator.geolocation?.watchPosition((pos) => { if (!xr?.pose) return; const p = xr.pose.transform.position; LID.gps = { at: toLocal(st.origin, [pos.coords.longitude, pos.coords.latitude]), acc: pos.coords.accuracy, phone: [p.x, -p.z], t: Date.now() }; }, () => {}, { enableHighAccuracy: true, maximumAge: 2000 }); } catch { /* no GPS */ }
   log(`AR started; dom overlay ${session.domOverlayState?.type || 'none'}; anchors ${xr.anchors ? 'yes' : 'no'}`);
   // ARCore's frame jumped (it relocalised): marks before the jump no longer line up with anything after it
   ref.addEventListener?.('reset', () => { if (!xr) return; xr.odo += RESET_WALK; xr.stats.resets++; xr.lastPos = null; log('frame reset'); flash('The AR jumped: mark a reference again'); refit(); });
-  session.addEventListener('end', () => { log('AR ended'); st.lastStats = xr?.stats; st.lastSense = senseSummary(xr?.sense); learnScale(); xr = null; overlay.hidden = true; document.body.classList.remove('in-ar'); save(); listPoints(); drawMap(); results(); });
+  session.addEventListener('end', () => { try { if (LID.watch != null) navigator.geolocation.clearWatch(LID.watch); } catch { /* none */ } log('AR ended'); st.lastStats = xr?.stats; st.lastSense = senseSummary(xr?.sense); learnScale(); xr = null; overlay.hidden = true; document.body.classList.remove('in-ar'); save(); listPoints(); drawMap(); results(); });
   // taps on the overlay's buttons are not AR "select"s
   overlay.addEventListener('beforexrselect', (ev) => ev.preventDefault());
   session.requestAnimationFrame(onFrame);
@@ -471,6 +562,7 @@ function onFrame(t, frame) {
   const pose = frame.getViewerPose(xr.ref);
   xr.pose = pose || null;
   if (pose && t - (xr.sense.last || 0) > 500) { xr.sense.last = t; try { senseFrame(frame, pose); } catch (e) { xr.sense.err = e.message; } }
+  if (pose && !pose.emulatedPosition && t - (xr.cloudT || 0) > 250) { xr.cloudT = t; try { collectDepth(frame, pose); } catch (e) { xr.cloudErr = e.message; } }
   xr.gl.bindFramebuffer(xr.gl.FRAMEBUFFER, layer.framebuffer);
   const tracking = !!pose && !pose.emulatedPosition;
   if (xr.tracking && !tracking && pose) { xr.stats.losses++; xr.odo += LOSS_WALK; log('lost its place'); }
@@ -502,6 +594,7 @@ function onFrame(t, frame) {
     xr.lastHud = t;
     followAnchors(frame);
     refit();
+    maybeRegister();
     hud(tracking);
   }
 }
@@ -557,7 +650,7 @@ function senseFrame(frame, pose) {
     const q = xr.hit.getPose(xr.ref)?.transform.orientation;
     if (q) {
       const ny = 1 - 2 * (q.x * q.x + q.z * q.z); // the surface's normal (the hit's y axis), its upward part
-      if (ny > 0.8) S.hits.ground++; else if (ny < 0.35) S.hits.wall++; else S.hits.other++;
+      if (ny > 0.8) { S.hits.ground++; if (xr.cur) xr.groundY = xr.groundY == null ? xr.cur.y : 0.8 * xr.groundY + 0.2 * xr.cur.y; } else if (ny < 0.35) S.hits.wall++; else S.hits.other++;
       // the ground's height every metre walked, in AR's own level frame (no place on Earth): does AR see the slope?
       if (ny > 0.8 && xr.cur && (!S.ground.length || xr.odo - S.ground[S.ground.length - 1].odo >= 1)) S.ground.push({ odo: xr.odo, y: xr.cur.y });
     }
@@ -625,7 +718,11 @@ function hud(tracking) {
   else if (!xr.cur) lines.push('Looking for the ground: sweep the phone slowly over it');
   else lines.push(dist > AIM_FAR ? `<span class="warn">Ground ${ft(dist)} ahead: come within 10 ft</span>` : `Ground ${ft(dist)} ahead`);
   if (xr.fast) lines.push('<strong class="warn">Turning fast: slow down</strong>');
-  if (nRefs >= 2 && st.T) {
+  if (LID.ready) {
+    const f = xr ? nearestFix(xr.odo) : null, on = f && Math.abs(f.odo - xr.odo) <= FIX_REACH;
+    lines.push(on ? `<strong>You are here</strong> (lidar: ${Math.round(f.hits * 100)}% of what the camera sees lines up${LID.why ? '; holding the last fix' : ''})` : `<span class="warn">Finding where you are</span>: ${esc(LID.why || 'looking…')}`);
+  }
+  if (LID.ready && !nRefs) { /* references optional */ } else if (nRefs >= 2 && st.T) {
     const w = walkedSinceRef();
     lines.push(w > WALK_REMARK ? `<strong class="warn">Mark a reference or edge</strong> (${ft(w)} walked since the last mark; two one after the other, or an edge twice a few steps apart, also set the turn)` : `Lined up (${cons().length} marks; ${ft(w || 0)} since the last)${st.baseline < 5 ? ' — <strong class="warn">references too close together</strong>' : ''}`);
   } else lines.push(`Mark ${2 - nRefs} more reference${2 - nRefs === 1 ? '' : 's'} to line up`);
@@ -755,6 +852,7 @@ async function open() {
   $('#status').textContent = `${m.address || 'Your map'}: ${st.heads.length} mapped head${st.heads.length === 1 ? '' : 's'}${st.photo ? '' : ' (the photo would not load: the lawn outline only)'}.`;
   load();
   $('#setup').hidden = false;
+  startLidar(m);
   await checkXR();
   wireMap(); wireAR(); listPoints(); drawMap(); results();
 }
