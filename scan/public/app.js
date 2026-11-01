@@ -83,6 +83,7 @@ function onEvent(ev) {
   if (!st.walk) return;
   if (ev.type === 'error') { log(`engine: ${ev.message}`); flash(`Engine: ${ev.message}`.slice(0, 80)); }
   if (ev.type === 'camera') log(`camera ${ev.status}`);
+  if (ev.type === 'motion') log(`motion sensors ${ev.status}`);
   if (ev.type === 'tracking') log(`tracking ${ev.status} ${ev.reason || ''}`.trim());
   if (ev.type === 'end') finish();
 }

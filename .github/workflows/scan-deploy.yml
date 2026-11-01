@@ -47,7 +47,8 @@ jobs:
       - name: The 8th Wall engine binary (pinned)
         if: ${{ inputs.task == 'deploy' }}
         run: |
-          v=$(node -e "import('./scan/tools/prepare.mjs').then(m => console.log(m.ENGINE_VERSION))")
+          v=$(sed -n "s/^export const ENGINE_VERSION = '\(.*\)';/\1/p" scan/tools/prepare.mjs)
+          echo "engine version $v" 
           npm install --no-save --no-audit --no-fund "@8thwall/engine-binary@$v"
           ls -la node_modules/@8thwall/engine-binary/dist | head
           head -c 400 node_modules/@8thwall/engine-binary/dist/xr.js; echo

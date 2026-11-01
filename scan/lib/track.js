@@ -157,9 +157,10 @@ async function startWebXR({ overlay, onFrame, onEvent }) {
 /* ------------------------------------------------------------- 8th Wall */
 
 async function start8thWall({ canvas, onFrame, onEvent, eightWallUrl }) {
+  // iPhone grants the motion sensors only from a tap, and a tap's grace does not outlast a 7 MB download: ask first,
+  // then load the engine (which may ask again; a second ask answers at once)
+  try { if (typeof DeviceMotionEvent !== 'undefined' && DeviceMotionEvent.requestPermission) { const r = await DeviceMotionEvent.requestPermission(); onEvent?.({ type: 'motion', status: r }); } } catch (e) { onEvent?.({ type: 'motion', status: `refused: ${e.message}` }); }
   const XR8 = await load8thWall(eightWallUrl);
-  // iPhone asks for the motion sensors from a tap; the engine may ask again, which is fine
-  try { if (typeof DeviceMotionEvent !== 'undefined' && DeviceMotionEvent.requestPermission) await DeviceMotionEvent.requestPermission(); } catch { /* the engine will say */ }
   XR8.XrController.configure({ scale: 'absolute', enableWorldPoints: true });
   let gl = null, reality = null, status = { status: 'LIMITED', reason: 'INITIALIZING' }, live = true, lastT = 0;
   const mod = {
@@ -187,7 +188,8 @@ async function start8thWall({ canvas, onFrame, onEvent, eightWallUrl }) {
     },
     onException: (e) => onEvent?.({ type: 'error', message: String(e?.message || e) }),
     onCameraStatusChange: ({ status: s }) => onEvent?.({ type: 'camera', status: s }),
-    listeners: [{ event: 'reality.trackingstatus', process: (d) => { status = { status: d?.status, reason: d?.reason }; onEvent?.({ type: 'tracking', ...status }); } }],
+    // the engine hands a listener { name, detail }; older builds the detail itself
+    listeners: [{ event: 'reality.trackingstatus', process: (ev) => { const d = ev?.detail || ev; status = { status: d?.status, reason: d?.reason }; onEvent?.({ type: 'tracking', ...status }); } }],
   };
   XR8.clearCameraPipelineModules();
   XR8.addCameraPipelineModule(XR8.GlTextureRenderer.pipelineModule());
