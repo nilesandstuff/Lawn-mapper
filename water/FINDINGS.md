@@ -2331,6 +2331,30 @@ with &layer=bodies and &layer=wetlands; plan.js; balance.js; a card and a "Water
   months; AquaCrop against the research note's table; in the plan, a lawn over a 40 cm table lifted water and less
   short of it).
 
+### H71. Water perched on a slow layer: what the soil survey holds for it (water session, 2026-11-01)
+
+The owner: apply the surface's pool-or-flow-downhill rule to the layers below -- where water drains through one layer
+faster than the next accepts it, it builds up on the boundary and flows downhill along it -- and estimate the slow
+layer's shape across the lot (clay 6 ft down at the top of a hill, 2 ft at the bottom). Researched first
+(research-perched.md, a research agent; live Soil Data Access queries by it):
+- Kent County's soil survey has NO restrictive-layer rows (corestrictions); Ottawa has 8. In West Michigan a slow
+  layer has to be read from the horizons' own conductivity.
+- Of the 107 distinct major soils of Kent and Ottawa, 27 drop at least tenfold in Ksat from one horizon to the next, 11
+  of them to 1 um/s or less (NRCS "moderately low" or slower).
+- No SSURGO table says whether a water table is perched or apparent (cosoilmoist has depths and Dry/Moist/Wet/Frozen
+  only); the Official Series Description text does (Allendale: "The water tends to perch at the interface between the
+  sandy and clayey materials"), readable from NRCS's public repository.
+- Wellogic's logs are too coarse for a layer 1-2 m down: the first logged interval is a median 15-20 ft thick, and
+  drillers call loam till "clay" (round Allendale the median log puts clay at 15 ft where the survey says 86 cm).
+- The published method that fits a daily 1 m grid: a layered bucket with the perched water routed cell to cell along
+  the top of the slow layer (the Soil Moisture Routing model, Frankenberger et al. 1999, built for soils over
+  fragipans), solved as a linear reservoir (stable at any step); Boussinesq and HYDRUS as the checks, not the model.
+- Lateral travel above a slow layer on lawn slopes (1-8%), by Jackson's travel-distance formula on West Michigan soils:
+  under 1 m for most, 1-3 m for a sandy loam over clay, 2-17 m for sand over clay (8-66 m with hillslope conductivity
+  4 x the survey's). Seventeen published hillslopes: about 1 m to a few hundred, most under 25-50 m. On most lawns
+  perched water pools in place and leaks down; sand over clay moves it far.
+Not built yet: waiting on the owner's go.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge
