@@ -79,7 +79,7 @@ async function loadMap(id) {
   st.parcel = ringsOf(m.parcel ? [m.parcel] : []).map((r) => r.map((p) => toLocal(st.origin, p)));
   const pts = [...st.lawn.flat(), ...st.parcel.flat()];
   st.frame = frameFor(bboxOf(st.origin, pts, 12), m.lat);
-  loadPoints(); loadPins();
+  loadPoints(); loadPins(); listPoints();
   $('#setup').hidden = false;
   $('#mapnote').textContent = `Map opened${m.squareFeet ? ` (${Math.round(m.squareFeet).toLocaleString()} sq ft of lawn)` : ''}.`;
   drawMap();
