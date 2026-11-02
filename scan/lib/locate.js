@@ -19,6 +19,11 @@ export const RECENT_M = 25;    // m of walk whose points go into a match
 export const KEEP_M = 40;      // m of walk after which old points are dropped
 export const MIN_STAND = 30;   // standing points a match wants (lidar.js register's minStand)
 export const ASK_EVERY_MS = 1500;
+/* THE REFERENCES ARE THE JUDGE (SCAN-H2, 2026-11-02: a lidar fix with 52-71% of points landing put a check point 8.9 m
+   off while two cleanly marked references were to hand). A fix that puts the phone more than REF_TOL_M or turns it
+   more than REF_TOL_DEG from where the references' fit puts it is refused; with no references at all a fix needs
+   MIN_HITS_ALONE of its points landing. */
+export const REF_TOL_M = 2, REF_TOL_DEG = 10, MIN_HITS_ALONE = 0.65;
 const BANDS = { groundTol: 0.2, standLow: 0.4, standHigh: 2.4, near: 0.4, far: 8 };
 
 export function newLocate({ scale = 1 } = {}) {
@@ -97,8 +102,8 @@ export function priorFor(L, odo, now = Date.now()) {
   return null;
 }
 
-/** Is it time to ask, and with what? -> { id, stand, ground, prior, s } or { why } */
-export function nextAsk(L, odo, now = Date.now()) {
+/** Is it time to ask, and with what? pos: the camera's session position now. -> { id, stand, ground, prior, s } or { why } */
+export function nextAsk(L, odo, now = Date.now(), pos = null) {
   if (L.pending) return { why: 'a match is running' };
   if (now - L.lastAsk < ASK_EVERY_MS) return { why: 'too soon' };
   const { stand, ground } = recent(L, odo);
@@ -106,20 +111,33 @@ export function nextAsk(L, odo, now = Date.now()) {
   const prior = priorFor(L, odo, now);
   if (!prior) return { why: 'waiting for GPS (or two references) to start from' };
   const id = L.nextId++;
-  L.pending = { id, odo, from: prior.from, at: now };
+  L.pending = { id, odo, from: prior.from, at: now, phone: pos ? level(pos) : null, refs: refFit(L, odo) };
   L.lastAsk = now; L.asks++;
   return { id, stand: thin(stand, 600), ground: thin(ground, 300), prior, s: L.scale };
 }
 export const thin = (a, m) => (a.length <= m ? a : a.filter((_, i) => i % Math.ceil(a.length / m) === 0));
 
+/** How far two fits disagree: where each puts the phone (m) and their turns (degrees). */
+export function disagreement(Ta, Tb, phone) {
+  const pa = apply(Ta, phone), pb = apply(Tb, phone);
+  const deg = Math.abs(((((Ta.theta - Tb.theta) * 180) / Math.PI + 540) % 360) - 180);
+  return { m: Math.hypot(pa[0] - pb[0], pa[1] - pb[1]), deg };
+}
+
 /** A match's answer. -> the fix added, or null when refused (the reason counted). */
 export function answer(L, fix, id) {
   if (!L.pending || L.pending.id !== id) return null;
-  const { odo, from } = L.pending;
+  const { odo, from, phone, refs } = L.pending;
   L.pending = null;
-  L.last = { ok: !!fix?.ok, why: fix?.why || null, hits: fix?.hits ?? null, from, odo };
-  if (!fix?.ok) { const k = (fix?.why || 'unknown').replace(/\d+/g, '#'); L.refused[k] = (L.refused[k] || 0) + 1; return null; }
-  const f = { T: fix.T, odo, hits: fix.hits, cost: fix.cost, from, runnerUp: fix.runnerUp || null };
+  const refuse = (why) => { L.last = { ok: false, why, hits: fix?.hits ?? null, from, odo }; const k = why.replace(/\d+(\.\d+)?/g, '#'); L.refused[k] = (L.refused[k] || 0) + 1; return null; };
+  if (!fix?.ok) return refuse(fix?.why || 'unknown');
+  let agree = null;
+  if (refs && phone) {
+    agree = disagreement(fix.T, refs, phone);
+    if (agree.m > REF_TOL_M || agree.deg > REF_TOL_DEG) return refuse(`disagrees with the references by ${agree.m.toFixed(1)} m and ${agree.deg.toFixed(0)} degrees`);
+  } else if ((fix.hits ?? 0) < MIN_HITS_ALONE) return refuse(`only ${Math.round((fix.hits ?? 0) * 100)}% landed and no references to check it against`);
+  L.last = { ok: true, why: null, hits: fix.hits ?? null, from, odo };
+  const f = { T: fix.T, odo, hits: fix.hits, cost: fix.cost, from, runnerUp: fix.runnerUp || null, agreeM: agree ? +agree.m.toFixed(2) : null, agreeDeg: agree ? +agree.deg.toFixed(1) : null };
   L.fixes.push(f);
   if (L.fixes.length > 300) L.fixes.shift();
   return f;
@@ -140,12 +158,25 @@ export function sessionOf(L, map, odo, y = null) {
   return { x: u, y: y ?? L.groundY ?? 0, z: -v };
 }
 
-/** A check point aimed at: how far the fit puts the crosshair from the check's place on the map. */
+/** A check point aimed at: how far the fit puts the crosshair from the check's place on the map, and what each source alone would say. */
 export function checkError(L, check, hit, odo) {
   const m = mapOf(L, hit.position, odo);
   if (!m) return null;
-  const f = nearestFix(L, odo);
-  return { errorM: Math.hypot(m[0] - check.map[0], m[1] - check.map[1]), by: fitSource(L, odo), walkedSinceFixM: f ? Math.abs(odo - f.odo) : null, aim: hit.distance ?? null };
+  const f = nearestFix(L, odo), r = refFit(L, odo), u = level(hit.position);
+  const off = (T) => { if (!T) return null; const q = apply(T, u); return Math.hypot(q[0] - check.map[0], q[1] - check.map[1]); };
+  return { errorM: Math.hypot(m[0] - check.map[0], m[1] - check.map[1]), by: fitSource(L, odo), errorFixM: f && Math.abs(odo - f.odo) <= FIX_REACH ? off(f.T) : null, errorRefsM: off(r), walkedSinceFixM: f ? Math.abs(odo - f.odo) : null, aim: hit.distance ?? null };
+}
+
+/** A session position's distance to the nearest named map point, by the fit used and by the references alone: { name, m, byRefsM } or null. */
+export function nearestNamed(L, pos, odo, points) {
+  const m = mapOf(L, pos, odo);
+  if (!m || !points?.length) return null;
+  let best = null;
+  for (const p of points) { const d = Math.hypot(m[0] - p.map[0], m[1] - p.map[1]); if (!best || d < best.m) best = { name: p.name, m: d, p }; }
+  const r = refFit(L, odo);
+  let byRefsM = null;
+  if (r) { const q = apply(r, level(pos)); byRefsM = Math.hypot(q[0] - best.p.map[0], q[1] - best.p.map[1]); }
+  return { name: best.name, m: best.m, byRefsM };
 }
 
 /** The distance between two marks of one reference, as the session saw them: how far the frame slid between (level). */
@@ -165,7 +196,7 @@ export function summaryOf(L) {
   return {
     marks: L.marks.length, references: new Set(refMarks(L).map((m) => m.id)).size,
     fixes: L.fixes.length, asks: L.asks, refused: L.refused,
-    fixHits: L.fixes.map((f) => +(f.hits || 0).toFixed(2)), fixFrom: L.fixes.reduce((a, f) => { a[f.from] = (a[f.from] || 0) + 1; return a; }, {}),
+    fixHits: L.fixes.map((f) => +(f.hits || 0).toFixed(2)), fixAgreeM: L.fixes.map((f) => f.agreeM), fixFrom: L.fixes.reduce((a, f) => { a[f.from] = (a[f.from] || 0) + 1; return a; }, {}),
     cloud: L.cloud.size, scale: L.scale,
   };
 }

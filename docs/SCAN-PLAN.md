@@ -462,7 +462,41 @@ printed by the workflow's `walks` task; the 8th Wall canvas sized to the
 screen before the engine starts (SPECULATION: the blur and distortion were
 the default 300 x 150 drawing buffer stretched by its style).
 
-SPECULATION from the same walk: anchors would have carried P4 and P5 with
+### SCAN-H2. The second walk: references mark cleanly; the lidar match locks wrongly and overrides them (2026-11-02)
+
+The owner's lot, 5 minutes, 276 m walked, the S21, WebXR, dusk again ("thanks
+to day light savings, it's once again getting dark"). The lidar read 224,382
+points and 9,739 solid cells, lined up by the shade map's shift. Measured
+(the walk saved to the site; workflow S, task `walks`):
+- **References:** R1 marked three times, R2 twice, from 2.5-2.9 m. With only
+  two, nothing says how far each was off (leaving one out leaves one).
+- **The lidar match:** 207 asks, 5 fixes. Refused 198 times for too few
+  points landing and 4 times for two places fitting alike. The five that
+  passed landed 52, 52, 59, 60 and 71% of points, barely over the 50% bar.
+- **The one check point, C1: 8.87 m off, by a lidar fix 4 m of walk old**
+  (three fixes before it). A confident wrong lock, which the page preferred
+  to the references. The owner also dropped the last pin where C1 is and the
+  one before where R1 is; their map positions stayed on the phone, so the
+  copy cannot say how far off they were (fixed below).
+- Pins: all six by depth, from 2.0-3.0 m, the plane's answer within 0.02-0.2 m
+  in height (no stretched plane this time). Anchored, but not checked.
+- The fast-turn alarm at 150 degrees a second fired 4 times.
+
+Changed (same day): a lidar fix that puts the phone more than 2 m or 10
+degrees from where the references' fit puts it is refused and counted
+("disagrees with the references by X m"); with no references a fix needs 65%
+landing; every check point records its error by the fix and by the references
+alone; every pin records its distance to the nearest reference or check point
+(a distance, no position); the pin button says "Check pin", since "Mark" is
+right for a check point too.
+
+SPECULATION: the wrong locks come from the GPS-seeded first fix (any turn,
+up to 20 m round a GPS point) on a yard whose fences and walls repeat; once
+wrong, the "from the last fix" searches stay wrong. A 50% landing bar from
+the water session's simulation is too low for a real yard with cars, people
+and new fences; what the right bar is, the agreeing fixes will say.
+
+SPECULATION from the first walk: anchors would have carried P4 and P5 with
 ARCore's 3 m correction (ARCore moves anchors with its map; the water page's
 anchors moved 0.19-0.67 m on ordinary walks, water H66) -- to be measured by
 the as-anchored checks. The P1 offset came from a plane hit 0.5-0.6 m off in

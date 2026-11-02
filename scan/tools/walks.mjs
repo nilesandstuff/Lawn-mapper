@@ -17,7 +17,9 @@ export function headline(s) {
   const x = s.stats || {};
   const pins = (s.pins || []).map((p) => `${p.name}${p.anchored ? '*' : ''}:${(p.checks || []).map((c) => `${ftIn(c.offLevelM)}${c.offAnchorLevelM != null ? `/${ftIn(c.offAnchorLevelM)}` : ''}@${Math.round(c.walkedSinceM || 0)}m`).join(',') || '-'}`).join(' ');
   const tapes = (s.measures || []).filter((m) => m.shortBy != null).map((m) => `${(m.shortBy * 100).toFixed(1)}% short`).join(' ');
-  return `${s.engine} ${s.when} ${Math.round((s.seconds || 0) / 60)} min, walked ${Math.round((x.walkedM || 0) * FT)} ft, losses ${x.losses}, resets ${x.resets}, fast turns ${x.fastTurns}${s.failed ? `, DID NOT START: ${s.failed}` : ''} | pins (as placed/anchored @ m walked since): ${pins || 'none'}${tapes ? ` | tape: ${tapes}` : ''}`;
+  const checks = (s.checks || []).map((c) => `${c.name}:${ftIn(c.errorM)} by ${c.by}${c.errorRefsM != null ? ` (refs ${ftIn(c.errorRefsM)})` : ''}`).join(' ');
+  const fx = s.fix ? ` | fixes ${s.fix.fixes}/${s.fix.asks}` : '';
+  return `${s.engine} ${s.when} ${Math.round((s.seconds || 0) / 60)} min, walked ${Math.round((x.walkedM || 0) * FT)} ft, losses ${x.losses}, resets ${x.resets}, fast turns ${x.fastTurns}${s.failed ? `, DID NOT START: ${s.failed}` : ''} | pins (as placed/anchored @ m walked since): ${pins || 'none'}${tapes ? ` | tape: ${tapes}` : ''}${checks ? ` | checks: ${checks}` : ''}${fx}`;
 }
 
 /** The rows out of `wrangler d1 execute --json`. */

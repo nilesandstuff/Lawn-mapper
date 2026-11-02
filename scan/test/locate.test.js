@@ -1,6 +1,6 @@
 // scan/lib/locate.js: the fix's bookkeeping. node scan/test/locate.test.js
 import assert from 'node:assert/strict';
-import { newLocate, mark, refFit, noteGround, addDepth, recent, nextAsk, answer, fitFor, fitSource, priorFor, mapOf, sessionOf, checkError, status, summaryOf, FIX_REACH, MIN_STAND } from '../lib/locate.js';
+import { newLocate, mark, refFit, noteGround, addDepth, recent, nextAsk, answer, fitFor, fitSource, priorFor, mapOf, sessionOf, checkError, nearestNamed, disagreement, status, summaryOf, FIX_REACH, MIN_STAND, REF_TOL_M } from '../lib/locate.js';
 
 const near = (a, b, eps, msg) => assert.ok(Math.abs(a - b) <= eps, `${msg}: ${a} vs ${b}`);
 const TH = (30 * Math.PI) / 180, SH = [5, 5];
@@ -52,7 +52,10 @@ const hitAt = (map, y = 0) => { const [u, v] = toAR(map); return { position: { x
   assert.deepEqual(L.refused, { 'only #% of what the phone sees lands on the lidar': 1 });
   assert.match(nextAsk(L, 10, 6200).why, /too soon/);
   const ask2 = nextAsk(L, 10, 9000);
-  const f = answer(L, { ok: true, T: { theta: TH, tx: SH[0], ty: SH[1], s: 1 }, hits: 0.8, cost: 0.01 }, ask2.id);
+  assert.equal(answer(L, { ok: true, T: { theta: TH, tx: SH[0], ty: SH[1], s: 1 }, hits: 0.55, cost: 0.01 }, ask2.id), null, 'no references and barely over the bar: refused');
+  assert.ok(Object.keys(L.refused).some((k) => /no references to check it against/.test(k)));
+  const ask3 = nextAsk(L, 10, 12000);
+  const f = answer(L, { ok: true, T: { theta: TH, tx: SH[0], ty: SH[1], s: 1 }, hits: 0.8, cost: 0.01 }, ask3.id);
   assert.ok(f && L.fixes.length === 1);
   assert.equal(fitSource(L, 10), 'fix');
   assert.equal(fitSource(L, 10 + FIX_REACH + 1), null, 'a fix stands for FIX_REACH metres');
@@ -60,11 +63,41 @@ const hitAt = (map, y = 0) => { const [u, v] = toAR(map); return { position: { x
   assert.equal(priorFor(L, 12).searchM, 1.5);
   assert.match(status(L, 12), /lidar fix, 2 m ago, 80% landed/);
   const sum = summaryOf(L);
-  assert.equal(sum.fixes, 1); assert.equal(sum.asks, 2); assert.deepEqual(sum.fixFrom, { GPS: 1 });
+  assert.equal(sum.fixes, 1); assert.equal(sum.asks, 3); assert.deepEqual(sum.fixFrom, { GPS: 1 });
   assert.ok(!JSON.stringify(sum).includes('"at"'), 'no positions in the copy');
   // too few standing points: the ask explains
   const L2 = newLocate(); noteGround(L2, 0); L2.gps = { at: [0, 0], phone: [0, 0], acc: 5, t: 0 };
   addDepth(L2, [{ x: 1, y: 1.2, z: -1 }], 0);
   assert.match(nextAsk(L2, 0, 10000).why, new RegExp(`1 points .* \\(${MIN_STAND} wanted\\)`));
+}
+// the references are the judge: a fix that disagrees with them is refused; one that agrees is kept with its agreement
+{
+  const L = newLocate(); noteGround(L, 0);
+  mark(L, { id: 'r1', kind: 'ref', map: [0, 0] }, hitAt([0, 0]), 0);
+  mark(L, { id: 'r2', kind: 'ref', map: [12, 4] }, hitAt([12, 4]), 10);
+  for (let i = 0; i < 50; i++) addDepth(L, [{ x: 2 + i * 0.25, y: 1.2, z: -4 }], 10);
+  const me = hitAt([3, 3]).position;
+  const ask = nextAsk(L, 10, 20000, me);
+  assert.equal(ask.prior.from, 'the references');
+  const wrong = { theta: TH, tx: SH[0] + 8, ty: SH[1] + 3, s: 1 };
+  assert.equal(answer(L, { ok: true, T: wrong, hits: 0.7 }, ask.id), null, 'a fix 8.5 m from the references is refused');
+  assert.ok(Object.keys(L.refused).some((k) => /disagrees with the references by # m/.test(k)), JSON.stringify(L.refused));
+  assert.equal(fitSource(L, 10), 'refs', 'the references still rule');
+  const ask2 = nextAsk(L, 10, 30000, me);
+  const close = { theta: TH + 0.01, tx: SH[0] + 0.3, ty: SH[1] - 0.2, s: 1 };
+  const f = answer(L, { ok: true, T: close, hits: 0.55 }, ask2.id);
+  assert.ok(f, 'a fix that agrees is kept, whatever its score');
+  assert.ok(f.agreeM < REF_TOL_M && f.agreeM > 0.3, `agreement kept: ${f.agreeM}`);
+  const d = disagreement(wrong, close, [0, 0]);
+  assert.ok(d.m > 8 && d.deg < 1, 'disagreement measured where the phone is');
+  // a check reports both numbers
+  const c = checkError(L, { id: 'c1', kind: 'check', map: [20, 20] }, hitAt([20, 20]), 11);
+  assert.equal(c.by, 'fix');
+  assert.ok(c.errorFixM > 0.05 && c.errorFixM < 1, `by the fix: ${c.errorFixM}`);
+  near(c.errorRefsM, 0, 1e-9, 'by the references: true');
+  // a pin's nearest named point
+  const n = nearestNamed(L, hitAt([20.5, 20]).position, 11, [{ name: 'C1', map: [20, 20] }, { name: 'R1', map: [0, 0] }]);
+  assert.equal(n.name, 'C1'); near(n.byRefsM, 0.5, 1e-9, 'by the references'); assert.ok(n.m < 1.5);
+  assert.equal(nearestNamed(L, me, 11, []), null);
 }
 console.log('locate: ok');

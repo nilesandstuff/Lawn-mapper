@@ -13,7 +13,7 @@ import { newWalk, step, dropPin, checkPin, measure, tapeFor, undo, far, summary,
 import { makeDrawer } from '/lib/draw.js';
 import { levelDist, toLocal } from '/lib/frames.js';
 import { frameFor, bboxOf, toPx, fromPx, ringsOf } from '/lib/photo.js';
-import { newLocate, mark, noteGround, addDepth, nextAsk, answer, fitFor, mapOf, sessionOf, checkError, status as fixStatus, summaryOf, nearestFix } from '/lib/locate.js';
+import { newLocate, mark, noteGround, addDepth, nextAsk, answer, fitFor, mapOf, sessionOf, checkError, nearestNamed, status as fixStatus, summaryOf } from '/lib/locate.js';
 import { leftOut } from '/lib/align.js';
 
 const $ = (s) => document.querySelector(s);
@@ -280,7 +280,7 @@ function onFrame(f) {
     addDepth(L, pts, odo, f.pose.position.y);
   }
   if (st.lid.ready && st.lid.worker && f.tracking === 'normal') {
-    const ask = nextAsk(L, odo);
+    const ask = nextAsk(L, odo, Date.now(), f.pose?.position || null);
     if (ask.id) st.lid.worker.postMessage({ register: { id: ask.id, stand: ask.stand, ground: ask.ground, prior: ask.prior, s: ask.s } });
     else if (ask.why && !/too soon|running/.test(ask.why)) L.why = ask.why;
   }
@@ -345,7 +345,7 @@ function wire() {
     if (target.kind === 'check') {
       const c = checkError(st.L, target, f.hit, odo);
       mark(st.L, target, f.hit, odo);
-      if (c) { st.walk.checks.push({ name: target.name, errorM: c.errorM, by: c.by, walkedSinceFixM: c.walkedSinceFixM, aimM: c.aim, walkedM: odo, marksBefore: st.L.marks.length - 1, fixesBefore: st.L.fixes.length }); flash(`${target.name}: ${ftIn(c.errorM)} off (${c.by === 'fix' ? 'lidar fix' : 'references'})`); } else flash(`${target.name} marked; not placed yet, so no error to give`);
+      if (c) { st.walk.checks.push({ name: target.name, errorM: c.errorM, by: c.by, errorFixM: c.errorFixM, errorRefsM: c.errorRefsM, walkedSinceFixM: c.walkedSinceFixM, aimM: c.aim, walkedM: odo, marksBefore: st.L.marks.length - 1, fixesBefore: st.L.fixes.length }); flash(`${target.name}: ${ftIn(c.errorM)} off (${c.by === 'fix' ? 'lidar fix' : 'references'}${c.errorRefsM != null && c.by === 'fix' ? `; ${ftIn(c.errorRefsM)} by the references alone` : ''})`); } else flash(`${target.name} marked; not placed yet, so no error to give`);
     } else {
       mark(st.L, target, f.hit, odo);
       const n = new Set(st.L.marks.filter((m) => m.kind === 'ref').map((m) => m.id)).size;
@@ -377,13 +377,19 @@ function finish() {
   st.gpsWatch = null;
   // the pins' map positions, by the fit at the moment each was dropped: kept on this phone, drawn on the photo (phase 3 writes them to the map)
   if (L && st.origin) {
-    for (const p of w.pins) { const m = mapOf(L, pinNow(p), p.odo); if (m) st.pins.push({ name: `${p.name}`, map: m, at: w.startedAt }); }
+    for (const p of w.pins) {
+      const m = mapOf(L, pinNow(p), p.odo);
+      if (m) st.pins.push({ name: `${p.name}`, map: m, at: w.startedAt });
+      // how far the pin is from the nearest reference or check point (the owner says which it was dropped on): distances only
+      p.nearest = nearestNamed(L, pinNow(p), p.odo, st.points);
+    }
     savePins();
   }
   const refs = st.points.filter((p) => p.kind === 'ref').map((p) => ({ name: p.name, marks: L ? L.marks.filter((m) => m.id === p.id).length : 0, leftOutM: L ? r3(leftOut(L.marks.filter((m) => m.kind === 'ref'), p.id)) : null }));
   const s = summary(w, {
     page: 'yard AR test v2', features: w.features || null, failed: w.failed || null, errors: st.errors.map((e) => e.what).slice(-30),
-    references: refs, checks: (w.checks || []).map((c) => ({ ...c, errorM: r3(c.errorM), walkedSinceFixM: r2(c.walkedSinceFixM), aimM: r2(c.aimM), walkedM: r2(c.walkedM) })),
+    references: refs, checks: (w.checks || []).map((c) => ({ ...c, errorM: r3(c.errorM), errorFixM: r3(c.errorFixM), errorRefsM: r3(c.errorRefsM), walkedSinceFixM: r2(c.walkedSinceFixM), aimM: r2(c.aimM), walkedM: r2(c.walkedM) })),
+    pinsNear: w.pins.map((p) => ({ name: p.name, nearest: p.nearest ? { name: p.nearest.name, m: r2(p.nearest.m), byRefsM: r2(p.nearest.byRefsM) } : null })),
     fix: L ? summaryOf(L) : null, lidar: st.lid.ready ? { points: st.lid.ready.points, solid: st.lid.ready.solid, shift: st.lid.ready.shift } : st.lid.error ? { error: st.lid.error } : null,
   });
   s.id = `${w.startedAt}`; s.saved = null;
@@ -433,7 +439,8 @@ function walkCard(s, open) {
   const pc = (v) => `${(Math.abs(v) * 100).toFixed(1)}% ${v > 0 ? 'short' : 'long'}`;
   const pins = s.pins.map((p) => `<tr><td>${esc(p.name)}${p.anchored ? '*' : ''}<br><span class="dim">${p.type === 'DEPTH' ? 'depth' : 'plane'}${p.planeOffYM != null ? `; plane ${ftIn(Math.abs(p.planeOffYM))} ${p.planeOffYM > 0 ? 'above' : 'below'}` : ''}</span></td><td>${p.aimM != null ? ftIn(p.aimM) : '?'}</td><td>${p.checks.length ? p.checks.map((c) => `<strong>${ftIn(c.offLevelM)}</strong>${c.offAnchorLevelM != null ? ` / <strong>${ftIn(c.offAnchorLevelM)}</strong>*` : ''} after ${ftIn(c.walkedSinceM)}`).join('<br>') : '<span class="dim">not checked</span>'}</td></tr>`).join('');
   const measures = s.measures.map((m, i) => `<tr><td>${ftIn(m.metres)} <span class="dim">(${m.metres} m)</span></td><td>tape <input type="number" step="0.1" min="0" inputmode="decimal" data-tape="${esc(s.id)}:${i}" value="${m.tapedM ? (m.tapedM * FT).toFixed(1) : ''}" aria-label="What the tape said, feet"> ft</td><td>${m.shortBy != null ? `<strong>${pc(m.shortBy)}</strong>` : ''}</td></tr>`).join('');
-  const checks = (s.checks || []).map((c) => `<tr><td>${esc(c.name)}</td><td><strong>${ftIn(c.errorM)}</strong> off</td><td class="dim">${c.by === 'fix' ? `lidar fix, ${ftIn(c.walkedSinceFixM || 0)} of walk before` : 'references'}; aimed from ${c.aimM != null ? ftIn(c.aimM) : '?'}</td></tr>`).join('');
+  const checks = (s.checks || []).map((c) => `<tr><td>${esc(c.name)}</td><td><strong>${ftIn(c.errorM)}</strong> off</td><td class="dim">${c.by === 'fix' ? `lidar fix, ${ftIn(c.walkedSinceFixM || 0)} of walk before` : 'references'}${c.errorRefsM != null && c.by === 'fix' ? `; by the references alone ${ftIn(c.errorRefsM)}` : ''}; aimed from ${c.aimM != null ? ftIn(c.aimM) : '?'}</td></tr>`).join('');
+  const near = (s.pinsNear || []).filter((p) => p.nearest).map((p) => `${esc(p.name)} is ${ftIn(p.nearest.m)} from ${esc(p.nearest.name)}${p.nearest.byRefsM != null ? ` (${ftIn(p.nearest.byRefsM)} by the references alone)` : ''}`).join('; ');
   const refs = (s.references || []).filter((r) => r.marks).map((r) => `${esc(r.name)} marked ${r.marks === 1 ? 'once' : `${r.marks} times`}${r.leftOutM != null ? ` (<strong>${ftIn(r.leftOutM)}</strong> off when the others line it up)` : ''}`).join('; ');
   const fx = s.fix;
   const x = s.stats;
@@ -443,6 +450,7 @@ function walkCard(s, open) {
     <p>Walked ${Math.round(x.walkedM * FT)} ft; lost its place ${x.losses} time${x.losses === 1 ? '' : 's'}; ${x.resets} jump${x.resets === 1 ? '' : 's'}; ${x.fastTurns} fast turn${x.fastTurns === 1 ? '' : 's'}; tracked ${x.trackedShare != null ? Math.round(x.trackedShare * 100) : '?'}% of frames${s.points?.maxAtOnce ? `; up to ${s.points.maxAtOnce} points seen at once` : ''}.</p>
     ${fx ? `<p><strong>Where you were:</strong> ${fx.fixes} lidar fix${fx.fixes === 1 ? '' : 'es'} from ${fx.asks} tries${fx.fixes ? ` (${Math.round(100 * fx.fixHits.reduce((a, b) => a + b, 0) / fx.fixHits.length)}% of points landed on average)` : ''}; ${fx.references} reference${fx.references === 1 ? '' : 's'}, ${fx.marks} marks. ${Object.keys(fx.refused || {}).length ? `Refused: ${esc(Object.entries(fx.refused).map(([k, v]) => `${k} (${v})`).join('; '))}.` : ''}${s.lidar?.error ? ` <span class="warn">Lidar: ${esc(s.lidar.error)}</span>` : s.lidar ? ` Lidar: ${s.lidar.points.toLocaleString()} points, ${s.lidar.solid.toLocaleString()} solid cells.` : ''}</p>` : ''}
     ${refs ? `<p class="dim">References: ${refs}.</p>` : ''}
+    ${near ? `<p class="dim">Pins on the map: ${near}.</p>` : ''}
     ${checks ? `<table><tr><th>Check point</th><th>On the map</th><th>By</th></tr>${checks}</table>` : ''}
     ${pins ? `<table style="margin-top:8px"><tr><th>Pin</th><th>Aimed from</th><th>Off its spot when checked (as placed / *anchored)</th></tr>${pins}</table>` : '<p class="dim">No pins.</p>'}
     ${measures ? `<table style="margin-top:8px"><tr><th>Measured</th><th>Tape</th><th>Error</th></tr>${measures}</table>` : ''}
