@@ -120,7 +120,9 @@ FAO-56 single-coefficient root-zone balance, run daily per 1 m cell [1]: depleti
 <p>One coefficient applies all season. There is no month-by-month curve, and mowing height, fertilizer and thinning in shade are not modeled.</p>
 <h3>Roots</h3>
 <p>Each species has a working root depth, averaged over the species ticked: Kentucky bluegrass and perennial ryegrass 8 in, tall fescue and bermudagrass 12 in, with sources in the research notes behind the tool (for example K-State's MF-2803 gives 6 to 8 in for bluegrass [31]).</p>
-<p>Roots are not the same depth all year. The model grows and loses roots day by day with the soil temperature 4 in down, following the finding that a 5-day running mean of soil temperature explained most of the variation in bentgrass roots [18]. The depth never drops below 40% of the working depth. On the developer's lawn this gives bluegrass about 6.8 in of roots in May and June and about 5.3 in by September. Only the bentgrass curve is fitted to measured data. The others are estimates held to published temperature limits.</p>
+<p>Roots are not the same depth all year. The model grows and loses roots day by day with the soil temperature 4 in down, following the finding that a 5-day running mean of soil temperature explained most of the variation in bentgrass roots [18]. The depth never drops below 40% of the working depth.</p>
+<p>Roots run on the soil's temperature, not the leaves'. Cool-season roots keep growing slowly whenever the soil is above freezing, even while the grass is dormant and barely making food. Kentucky bluegrass root cells keep dividing just above 0 &deg;C (Bogart's work at Michigan State), and perennial ryegrass has been found making new roots in every month of the year. So the model starts bluegrass root growth at about 1 &deg;C (34 &deg;F) soil, reaching about 40% of its peak rate at 5 &deg;C (41 &deg;F), and ryegrass at 2 &deg;C. Root loss slows in cold soil as well, so roots hold through the winter and the lawn starts spring with them. Warm-season grasses are different: their roots barely grow below about 10 &deg;C (50 &deg;F) soil, and after green-up in spring the old roots die back and new ones take about three weeks to start, which the model follows.</p>
+<p>On the developer's lawn this gives bluegrass about 6.8 in of roots in May and June and about 5.3 in by September. Only the bentgrass curve is fitted to measured data. The others are estimates held to published temperature limits.</p>
 <p>The water the roots can use is counted layer by layer, down to that day's depth. A dense or sandy layer within the root zone changes the count. Layers that physically stop roots are not yet modeled.</p>
 <h3>The growing season</h3>
 <p>Watering is planned only in the growing season. It starts on the first spring day the grass's growth potential reaches 20% (Gelernter and Stowell's temperature curve [17]) and ends when the 5-day mean soil temperature falls below 7 &deg;C (cool-season) or 13 &deg;C (warm-season).</p>
@@ -261,6 +263,7 @@ Curve numbers: open space in good condition, groups A/B/C/D 39/61/74/80; other g
 
 <h2 id="log">Change log</h2>
 <ul class="meta" style="font-size:.9rem">
+  <li><strong>2 November 2026, later.</strong> Section 4: how roots grow in cold soil while the grass is dormant (the model was already doing this; the paper now says so).</li>
   <li><strong>2 November 2026.</strong> First version. Describes the model with the water table (built 1 November), water held up by slow layers, topsoil over sand (2 November), and the start of field moisture readings.</li>
 </ul>
 </main>
