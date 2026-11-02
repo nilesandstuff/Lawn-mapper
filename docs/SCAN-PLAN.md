@@ -464,10 +464,14 @@ the default 300 x 150 drawing buffer stretched by its style).
 
 ### SCAN-H2. The second walk: references mark cleanly; the lidar match locks wrongly and overrides them (2026-11-02)
 
-The owner's lot, 5 minutes, 276 m walked, the S21, WebXR, dusk again ("thanks
-to day light savings, it's once again getting dark"). The lidar read 224,382
-points and 9,739 solid cells, lined up by the shade map's shift. Measured
-(the walk saved to the site; workflow S, task `walks`):
+NOT the owner's lot: the lawn at the owner's workplace (the owner, after the
+fact: "this was not the same property as the ones over the weekend"), a
+different county survey from SCAN-H1's. 5 minutes, 276 m walked, the S21,
+WebXR, dusk again ("thanks to day light savings, it's once again getting
+dark"). The lidar there read 224,382 points and 9,739 solid cells, lined up
+by the shade map's shift; what the owner's home lot gives is not yet
+measured by this page. Measured (the walk saved to the site; workflow S,
+task `walks`):
 - **References:** R1 marked three times, R2 twice, from 2.5-2.9 m. With only
   two, nothing says how far each was off (leaving one out leaves one).
 - **The lidar match:** 207 asks, 5 fixes. Refused 198 times for too few
