@@ -71,9 +71,10 @@ async function main() {
 
 async function loadMap(id) {
   const res = await fetch(`/api/maps/one?id=${encodeURIComponent(id)}`, { credentials: 'same-origin' });
-  if (!res.ok) throw new Error(`${res.status}`);
-  const m = await res.json();
-  if (!Number.isFinite(m.lng) || !Number.isFinite(m.lat)) throw new Error('no point');
+  const j = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(j?.error || `${res.status}`);
+  const m = j?.map || j; // docs/MAPS.md: the answer is { map }
+  if (!m || !Number.isFinite(m.lng) || !Number.isFinite(m.lat)) throw new Error('no point');
   st.site = m; st.origin = [m.lng, m.lat];
   st.lawn = ringsOf(m.shapes || []).map((r) => r.map((p) => toLocal(st.origin, p)));
   st.parcel = ringsOf(m.parcel ? [m.parcel] : []).map((r) => r.map((p) => toLocal(st.origin, p)));
