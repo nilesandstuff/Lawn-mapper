@@ -1,4 +1,5 @@
 <!-- The owner's per-species crop coefficients, received 2026-10-28 (a .docx; the tables as extracted). lib/roots.js KC carries them; FINDINGS H54. -->
+<!-- WHERE THEY CAME FROM (owner, 2026-11-02): the owner compiled these: a weighted average of values from various studies, weighted to apply to residential turf, and supplied them to the lawn-answers.com Irrigation tool, not the other way round. The studies' citations have been lost. -->
 # Turfgrass Crop Coefficients (Kc) --- Irrigation Tool Reference
 
 Source: Kc values currently used in the Irrigation tool on

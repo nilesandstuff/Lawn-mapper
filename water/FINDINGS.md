@@ -1788,7 +1788,8 @@ uses. High quality and high maintenance. Deficit: water just enough to avoid str
 water just enough to keep grass alive. Low maintenance." And, with a table of per-species crop coefficients (the
 Kc values of the Irrigation tool on lawn-answers.com, app 1.17.3; water/kc-table.md): "just use the average of the
 range given but save this table in case we need to come back to that... Use these numbers rather than the ones you
-came up with." The choice sits on the page just above the sprinklers card and again on the sprinklers' first step,
+came up with." (Their origin, owner 2026-11-02: the owner's own weighted average of various studies, weighted to
+apply to residential turf, which the owner supplied to that tool; the studies' citations have been lost.) The choice sits on the page just above the sprinklers card and again on the sprinklers' first step,
 is kept with the map (`mode`), and re-plans.
 
 **The table** (lib/roots.js KC), Kc low-high by level:
