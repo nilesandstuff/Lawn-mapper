@@ -2355,6 +2355,29 @@ layer's shape across the lot (clay 6 ft down at the top of a hill, 2 ft at the b
   perched water pools in place and leaks down; sand over clay moves it far.
 Not built yet: waiting on the owner's go.
 
+### H72. Build-up at a layer boundary, and fine soil over coarse: what the survey holds (water session, 2026-11-02)
+
+The owner: minerals and organic matter that collect where a fast layer sits on a slow one slow the water further --
+does the survey hold it? And: does a slow layer under flat ground keep the soil saturated for long? (It does, in the
+H71 design: on flat ground the perched water leaves only down through the slow layer and up through the grass.)
+Researched (research-interface.md, a research agent; live Soil Data Access queries of Kent MI081 and Ottawa MI139):
+- The survey names these layers: horizon suffixes (chdesgnsuffix: t clay, h organic matter, s iron and aluminium, m
+  cemented, x fragipan), numeral prefixes for a change of material (2Bt), and "E and Bt" / "E&Bt" for clay bands
+  (lamellae). About half the mapped area of both counties (Kent 49%, Ottawa 46%) has only unnamed H1/H2/H3 horizons.
+- Where a band is genuinely slow the survey already gives it its own low Ksat; where it does not, it mostly does not
+  matter. Ksat of the horizon above over the named one: clay bands (n 67) never 10 x (at most 6 x); Bs/Bhs without
+  cementing (78) equal in 97%; cemented ortstein (Bhsm, 4) 10 x or more in 3 of 4 (Saugatuck 0.5 under 50 um/s); B/E,
+  E/B (74) a median 2.5 x. At the 80 changes of material Ksat drops 10 x or more at 29.
+- Measured: ortstein 0.0085-1.42 um/s in place (Florida, 13 tests); Michigan's Saugatuck ortstein 10-30 cm thick over
+  75-100% of each profile (Mokma et al. 1990). No measured Ksat found for iron crusts (placic), clay bands or clay skins.
+- Kent has no restrictive-layer rows; Ottawa's include Ortstein (Saugatuck, Jebavy), one of which gives the cemented
+  horizon the sand's 282 um/s.
+- Fine over coarse (a capillary barrier): by the class-average water curves, every finer class over sand or loamy sand
+  breaks through at only 10-18 cm of suction; 10-20 cm of loam over sand holds about 22-40 mm more than the survey's
+  field capacity, roughly doubling that topsoil's available water. Native cases in the two counties sit 76-109 cm down
+  (2-3% of the area strictly, 7-10% loosely); a lawn's own topsoil or sod over sand is in no dataset.
+Not built yet: waiting on the owner's go.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge
