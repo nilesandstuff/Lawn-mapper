@@ -109,6 +109,28 @@ test('watered the day before it would stress, a lawn cell never passes its readi
   assert.ok(Math.min(...without.dryDays) > 30, 'rain alone leaves it dry for weeks');
 });
 
+test('the stress line moves: lower after a hot week, higher on sand, lower on clay (FAO-56 p adjustments)', () => {
+  const res = lot({ roofs: [] });
+  const N = res.grid.W * res.grid.H, i = (N >> 1) + 3;
+  const make = (sand, clay) => buildModel(res, { kinds: new Uint8Array(N).fill(1), soilAt: new Int16Array(N), soils: [{ rz: { ...rootZone(loam.profile), texture: { sand, clay } }, drainage: loam.drainage, hydgrp: loam.hydgrp, wetByMonth: loam.wetByMonth }], roofTo: new Int32Array(N).fill(-1) });
+  const week = (et0) => Array.from({ length: 10 }, (_, d) => ({ date: `2024-07-${String(d + 1).padStart(2, '0')}`, tmax: 30, tmin: 18, rain: 0, et0 }));
+  const pOn = (m, days) => { let p = null; simulate(m, days, { record: () => { p = m.raw[i] / m.taw[i]; } }); return p; };
+  const loamy = make(40, 20), f = loamy.etFactor[i], kc = PARAMS.kc;
+  // a week at 5 mm of grass use is FAO-56's reference point: 0.4 itself
+  assert.ok(Math.abs(pOn(loamy, week(5 / (kc * f))) - 0.4) < 1e-6);
+  const hot = pOn(loamy, week(7 / (kc * f))), mild = pOn(loamy, week(2.5 / (kc * f)));
+  assert.ok(Math.abs(hot - (0.4 - 0.08)) < 1e-6, `hot week ${hot}`);
+  assert.ok(Math.abs(mild - (0.4 + 0.1)) < 1e-6, `mild week ${mild}`);
+  // sands 7.5% higher, clays 7.5% lower, at the same week
+  assert.ok(Math.abs(pOn(make(90, 3), week(5 / (kc * f))) - 0.43) < 1e-6);
+  assert.ok(Math.abs(pOn(make(20, 55), week(5 / (kc * f))) - 0.37) < 1e-6);
+  // after a run the typical line comes back (the zones' depths read it)
+  assert.ok(Math.abs(loamy.raw[i] / loamy.taw[i] - 0.4) < 1e-6);
+  // switched off: 0.4 every day
+  const off = buildModel(res, { kinds: new Uint8Array(N).fill(1), soilAt: new Int16Array(N), soils: [{ rz: rootZone(loam.profile), drainage: loam.drainage, hydgrp: loam.hydgrp }], roofTo: new Int32Array(N).fill(-1), params: { ...PARAMS, pAdjust: false } });
+  assert.ok(Math.abs(pOn(off, week(9)) - 0.4) < 1e-6);
+});
+
 test('rain by the hour: the day\'s total keeps its amount and takes the radar\'s timing; a downpour runs off where a soak does not', () => {
   // PRISM's day ends at 12:00 UTC: 20 mm falling 03:00-05:00 UTC on the 2nd belongs to the 2nd's window
   const t = (d, h) => Date.parse(`2026-07-0${d}T${String(h).padStart(2, '0')}:00:00Z`);

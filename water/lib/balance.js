@@ -32,10 +32,18 @@ import { KC, airShare, dayOfYear } from './et.js';
 import { dayIndex } from './shade/climate.js';
 import { capRise } from './groundwater.js';
 import { perchedDay } from './perched.js';
+import { textureClass } from './soil.js';
 
 export const PARAMS = {
   kc: KC,                 // the grass coefficient when no species is known (et.js, 0.8); the plan sets it by species and level (roots.js kcFor)
   p: 0.4,                 // FAO-56 Table 22 depletion fraction before stress: cool-season turf 0.4 (warm-season 0.5)
+  /* THE STRESS LINE MOVES (owner, 2026-11-02: "Yes" to FAO-56's adjustments). FAO-56 (ch. 8, Table 22's note):
+     p = p_table + 0.04 (5 - ETc), ETc mm/day, held to 0.1-0.8 -- in hot weather the drying soil cannot pass water
+     to the roots as fast as the grass draws, so stress comes with more water left -- and 5-10% lower in clays,
+     5-10% higher in sands (taken 7.5%, on the root zone's top layer's texture). ETc is the past week's mean
+     reference ET times the grass's own coefficient and the square's own factor (shade, wind, heat). */
+  pAdjust: true,
+  pTexture: { sand: 1.075, 'loamy sand': 1.075, clay: 0.925, 'silty clay': 0.925, 'sandy clay': 0.925 },
   roofLossMm: 0.5,        // a roof's first wetting, per rain day (first flush 10 gal per 1,000 sq ft = 0.41 mm, Texas manual)
   paveStoreMm: 1.0,       // concrete / blacktop film that does not run off and evaporates (measured 0.4-1 mm, Zhou 2021; ASCE 1992 table 1.3-2.5)
   cnLawn: { A: 39, B: 61, C: 74, D: 80 }, // TR-55 (USDA 1986), open space in good condition
@@ -360,12 +368,15 @@ export function buildModel(res, { kinds, soilAt, soils, roofTo, light = null, li
   /* THE ROOTS THROUGH THE SEASON (lib/roots.js, H53): each soil's available water by root depth, cm by cm to its
      working depth (soils[k].tawByCm, from plan.js), so a day's shallower roots draw on less; the working values are
      kept to restore at a run's end. */
-  const rootCm = new Float32Array(N);
+  const rootCm = new Float32Array(N), pTex = new Float32Array(N);
   for (let i = 0; i < N; i++) {
     const s = soils[soilAt[i]] || soils[0];
     const rz = s?.rz;
     const t = rz?.tawMm ?? 20;
-    taw[i] = t; raw[i] = params.p * t;
+    // the soil's part of the stress line (the weather's is set day by day in simulate)
+    const tex = rz?.texture && Number.isFinite(rz.texture.sand) && Number.isFinite(rz.texture.clay) ? textureClass(rz.texture.sand, rz.texture.clay) : null;
+    pTex[i] = params.p * (params.pAdjust ? params.pTexture?.[tex] ?? 1 : 1);
+    taw[i] = t; raw[i] = pTex[i] * t;
     rootCm[i] = rz?.rootCm ?? 15;
     satRoom[i] = params.satRoomFrac * (rz?.rootCm ?? 15) * 10;
     const below = rz?.belowMmH ?? 5;
@@ -403,7 +414,7 @@ export function buildModel(res, { kinds, soilAt, soils, roofTo, light = null, li
       return at;
     });
   }
-  const model = { g, N, kinds, soilAt, soils, roofTo, light, lightMonths: lightMonths?.length === 12 ? lightMonths : null, canopy, winds, windAt, windAtMonths, order, down, recv, share, nRecv, slope, pondCap, taw, raw, satRoom, drainDay, rootCm, tawFull: Float32Array.from(taw), heat, etBase, params };
+  const model = { g, N, kinds, soilAt, soils, roofTo, light, lightMonths: lightMonths?.length === 12 ? lightMonths : null, canopy, winds, windAt, windAtMonths, order, down, recv, share, nRecv, slope, pondCap, taw, raw, pTex, satRoom, drainDay, rootCm, tawFull: Float32Array.from(taw), heat, etBase, params };
   model.rad = radiation ? radiationModel(radiation, N, params) : null;
   model.fenceHeat = radiation && fenceHeat ? fenceHeat : null;
   model.etFactor = etToday(model, null, false, new Float32Array(N));
@@ -434,7 +445,7 @@ export function simulate(model, days, { irrigate = null, start = null, record = 
   const cn = new Float32Array(N);
   const soaked = new Float32Array(N); // what rain and run-on put into each root zone the day before (not the watering), for a schedule kept apart
   let snow = 0, lastMonth = -1, rootNow = 1;
-  const temps = [];
+  const temps = [], et0s = [];
   /* WATER PERCHED ON A SLOW LAYER (H73; lib/perched.js): a store above each perching cell's slow layer, filled by
      what drains out of its roots, leaking down through the layer and running downhill along its top, rising back into
      the roots (and out at the surface) when it fills the room between them. */
@@ -460,7 +471,7 @@ export function simulate(model, days, { irrigate = null, start = null, record = 
         const cm = Math.max(1, Math.round(model.rootCm[i] * rr));
         const t = tbl && tbl[Math.min(cm, tbl.length - 1)] > 0 ? tbl[Math.min(cm, tbl.length - 1)] : model.tawFull[i] * rr;
         if (taw[i] > 0) Dr[i] *= t / taw[i];
-        taw[i] = t; raw[i] = params.p * t; satRoom[i] = params.satRoomFrac * cm * 10;
+        taw[i] = t; raw[i] = model.pTex[i] * t; satRoom[i] = params.satRoomFrac * cm * 10;
         if (rootToday) rootToday[i] = cm;
       }
     }
@@ -487,6 +498,16 @@ export function simulate(model, days, { irrigate = null, start = null, record = 
     tot.rain += P;
     const et0 = Number.isFinite(day.et0) ? day.et0 : 0;
     etToday(model, et0 > 0 ? airShare(day, lat, dayOfYear(day.date), 200, { winds: model.winds }) : null, inSeason, etFactor, month);
+    /* THE DAY'S STRESS LINE (FAO-56 p adjusted for the grass's use: PARAMS.pAdjust), on the past week's use */
+    et0s.push(et0); if (et0s.length > 7) et0s.shift();
+    if (params.pAdjust) {
+      const et0w = et0s.reduce((a, v) => a + v, 0) / et0s.length;
+      for (let i = 0; i < N; i++) {
+        if (kinds[i] === 2 || kinds[i] === 3) continue;
+        const p = Math.max(0.1, Math.min(0.8, model.pTex[i] + 0.04 * (5 - et0w * params.kc * etFactor[i])));
+        raw[i] = p * taw[i];
+      }
+    }
     const irr = irrigate ? irrigate(d, { Dr, grav, month, inSeason, date: day.date, use: et0 * (params.scheduleKc ?? params.kc), etFactor, rain: P, soaked }) : null;
     soaked.fill(0);
 
@@ -599,7 +620,9 @@ export function simulate(model, days, { irrigate = null, start = null, record = 
     if (record) record(d, { Dr, grav, pond, month, inSeason, date: day.date, P: PS });
   }
   // back to the working root zone, for what reads the model after the run (the zones' depths)
-  if (rootNow !== 1) for (let i = 0; i < N; i++) { const t = model.tawFull[i]; if (taw[i] > 0) Dr[i] *= t / taw[i]; taw[i] = t; raw[i] = params.p * t; satRoom[i] = params.satRoomFrac * model.rootCm[i] * 10; }
+  if (rootNow !== 1) for (let i = 0; i < N; i++) { const t = model.tawFull[i]; if (taw[i] > 0) Dr[i] *= t / taw[i]; taw[i] = t; raw[i] = model.pTex[i] * t; satRoom[i] = params.satRoomFrac * model.rootCm[i] * 10; }
+  // ...and the stress line at its typical value (the weather's day-by-day part ends with the run): the zones' depths read it
+  if (params.pAdjust) for (let i = 0; i < N; i++) raw[i] = model.pTex[i] * taw[i];
   return { ...tot, perched: ptot, end: { Dr, grav, pond, film, snow, P: PS } };
 }
 

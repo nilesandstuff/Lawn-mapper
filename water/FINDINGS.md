@@ -2440,6 +2440,20 @@ The meter (a research agent, 2026-11-02): no hand meter under $50 reads calibrat
 readings are a ranking, wetter or drier, unless set against oven-dried cores; the comparison with the model is to be
 done on ranks (which spots are wettest), not on percentages. The page's default unit is that relative scale.
 
+### H75. The stress line moves with the week's use and the soil (FAO-56's p adjustments): built (water session, 2026-11-02)
+
+The owner, after asking whether grass "suffers under 40% moisture": yes to FAO-56's adjustments (PARAMS-SOURCES 2b).
+lib/balance.js: each day p = p_soil + 0.04 (5 - ETc), held to 0.1-0.8, ETc the cell's past-week mean (ET0 x Kc x
+its etFactor); p_soil = p_table x 1.075 for sand and loamy sand, x 0.925 for clay, silty clay and sandy clay (FAO's
+5-10% taken at 7.5%), by the root zone's top layer. The zones' depths after a run read p at 5 mm/day.
+PARAMS.pAdjust switches it. test/plan.test.js: 0.40 at 5 mm/day, 0.32 at 7, 0.50 at 2.5; 0.43 sand, 0.37 clay.
+On the owner's lawn (the page, ten years): the year's watering, lawn-weighted, 7.12 -> 5.96 in (-16%); July
+waterings 7.07 -> 6.12; the sunniest zone's July unchanged at 10. Zones 3 -> 4 (shares 0.53/0.27/0.21 ->
+0.39/0.27/0.06/0.28). Days past the line, planned 3.3% -> 4.1% of the season; rain alone 38.7% -> 32.4%. Why it
+mostly LOWERS watering here: Michigan lawn use is mostly under FAO's 5 mm/day reference point (shade, the owner's
+Kc), so p sits above 0.4 most days; it falls below 0.4 only on hot, sunny weeks in open lawn. Not measured: the
+moisture readings (H74) are the check.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge
