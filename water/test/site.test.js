@@ -176,6 +176,78 @@ test('gauge readings: a signed-in visitor keeps one; only the admin reads them b
   assert.equal(await readings(new Request('https://water.example.com/api/other'), env, new URL('https://water.example.com/api/other'), admin), null);
 });
 
+/** A D1 stand-in for the moisture tables: the statements src/moisture.js sends, on two arrays. */
+function moistureDb() {
+  const visits = [], rdgs = [];
+  const cols = (sql) => sql.match(/\(([^)]+)\) VALUES/)[1].split(', ');
+  const exec = (sql, args) => {
+    if (/^INSERT OR REPLACE INTO moisture_visits/.test(sql)) { const row = Object.fromEntries(cols(sql).map((c, k) => [c, args[k]])); const k = visits.findIndex((v) => v.id === row.id); if (k >= 0) visits[k] = row; else visits.push(row); }
+    else if (/^INSERT INTO moisture_readings/.test(sql)) rdgs.push(Object.fromEntries(cols(sql).map((c, k) => [c, args[k]])));
+    else if (/^DELETE FROM moisture_readings WHERE visit_id/.test(sql)) { for (let k = rdgs.length - 1; k >= 0; k--) if (rdgs[k].visit_id === args[0]) rdgs.splice(k, 1); }
+    else if (/^DELETE FROM moisture_visits/.test(sql)) { const k = visits.findIndex((v) => v.id === args[0]); if (k >= 0) visits.splice(k, 1); }
+    else throw new Error(`unexpected ${sql}`);
+  };
+  const query = (sql, args) => {
+    if (/FROM moisture_visits WHERE parcel_pin/.test(sql)) return visits.filter((v) => v.parcel_pin === args[0]).sort((a, b) => a.at - b.at);
+    if (/FROM moisture_visits ORDER BY/.test(sql)) return visits.slice().sort((a, b) => b.at - a.at);
+    if (/FROM moisture_readings WHERE visit_id IN/.test(sql)) return rdgs.filter((r) => args.includes(r.visit_id)).sort((a, b) => a.n - b.n);
+    if (/JOIN moisture_visits/.test(sql)) return rdgs.map((r) => { const v = visits.find((x) => x.id === r.visit_id); return { ...r, visit_at: v.at, parcel_pin: v.parcel_pin, county: v.county, map_id: v.map_id, meter: v.meter, unit: v.unit, depth_in: v.depth_in }; });
+    throw new Error(`unexpected ${sql}`);
+  };
+  return {
+    visits, rdgs,
+    prepare(sql) { let args = []; const st = { sql, bind: (...a) => { args = a; return st; }, run: async () => exec(sql, args), all: async () => ({ results: query(sql, args) }), get args() { return args; } }; return st; },
+    batch: async (list) => { for (const st of list) exec(st.sql, st.args); return []; },
+  };
+}
+
+test('moisture readings: the admin keeps a visit, saves it again whole, reads a property\'s visits back, and nobody else can', async () => {
+  const { moisture, cleanVisit } = await import('../src/moisture.js');
+  const env = { DB: moistureDb() };
+  const u = (q = '') => new URL(`https://water.example.com/api/water/moisture${q}`);
+  const post = (body) => new Request(u(), { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } });
+  const admin = { isAdmin: async () => true }, nobody = { isAdmin: async () => false };
+  const visit = { id: 'visit-0001', at: Date.now() - 6e4, lng: -85.6, lat: 42.8, parcel_pin: '41-00-00-000-001', county: 'kent', unit: 'vwc', depth_in: 3, meter: 'test meter', weather: { lastTwoDays: 'none' },
+    readings: [{ n: 1, spot: 's1', lng: -85.60001, lat: 42.80001, value: 21.5 }, { n: 2, spot: 's2', lng: -85.60002, lat: 42.80002, value: 34 }], address: '1 Any Street' };
+  // not the admin: nothing, either way
+  assert.equal((await moisture(post(visit), env, u(), nobody)).status, 404);
+  assert.equal((await moisture(new Request(u()), env, u(), nobody)).status, 404);
+  // bad ones
+  assert.equal((await moisture(post({ ...visit, readings: [] }), env, u(), admin)).status, 400);
+  assert.equal((await moisture(post({ ...visit, readings: [{ lng: -85.6, lat: 42.8, value: 140 }] }), env, u(), admin)).status, 400, 'over 100% is no moisture');
+  assert.equal((await moisture(post({ ...visit, id: 'x' }), env, u(), admin)).status, 400);
+  // kept, and no street address anywhere
+  assert.equal((await moisture(post(visit), env, u(), admin)).status, 200);
+  assert.equal(env.DB.visits.length, 1); assert.equal(env.DB.rdgs.length, 2);
+  assert.ok(!JSON.stringify(env.DB.visits).includes('Any Street'));
+  // saved again with a third reading: replaced, not doubled
+  await moisture(post({ ...visit, readings: [...visit.readings, { n: 3, spot: 's3', lng: -85.60003, lat: 42.80003, value: 18 }] }), env, u(), admin);
+  assert.equal(env.DB.visits.length, 1); assert.equal(env.DB.rdgs.length, 3);
+  // a property's visits back, with their readings
+  const back = await (await moisture(new Request(u('?pin=41-00-00-000-001')), env, u('?pin=41-00-00-000-001'), admin)).json();
+  assert.equal(back.visits.length, 1); assert.equal(back.visits[0].readings.length, 3); assert.deepEqual(back.visits[0].weather, { lastTwoDays: 'none' });
+  const csv = await (await moisture(new Request(u('?format=csv')), env, u('?format=csv'), admin)).text();
+  assert.match(csv.split('\n')[0], /^visit_id,visit_at,parcel_pin/); assert.equal(csv.trim().split('\n').length, 4);
+  // taken off whole
+  await moisture(new Request(u('?id=visit-0001'), { method: 'DELETE' }), env, u('?id=visit-0001'), admin);
+  assert.equal(env.DB.visits.length + env.DB.rdgs.length, 0);
+  // no database yet: 503
+  assert.equal((await moisture(post(visit), {}, u(), admin)).status, 503);
+  assert.equal(await moisture(new Request('https://water.example.com/api/other'), env, new URL('https://water.example.com/api/other'), admin), null);
+  // the meter's own scale may go past 100
+  assert.ok(cleanVisit({ ...visit, unit: 'scale', readings: [{ lng: 1, lat: 1, value: 250 }] }).visit);
+});
+
+test('the moisture page is the admin\'s only, open site or not', async () => {
+  const open = env('ok', { ADMIN_ONLY: '0' });
+  for (const p of ['/moisture', '/moisture.html', '/moisture.js']) assert.equal((await get(p, '', open)).status, 404, p);
+  for (const p of ['/moisture', '/moisture.html', '/moisture.js']) assert.equal((await get(p, 'lm_session=user', open)).status, 404, p);
+  assert.equal((await get('/moisture', 'lm_session=admin', open)).status, 200);
+  assert.equal((await get('/moisture.html', 'lm_session=admin', open)).status, 200);
+  assert.match((await get('/moisture', 'lm_session=admin', open)).headers.get('Cache-Control'), /no-store/);
+  assert.equal((await get('/api/water/moisture', 'lm_session=user', open)).status, 404);
+});
+
 let failed = 0;
 for (const [name, fn] of tests) {
   try { await fn(); console.log(`ok  ${name}`); } catch (e) { failed++; console.log(`FAIL ${name}\n     ${e.message}`); }

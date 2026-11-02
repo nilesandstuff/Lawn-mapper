@@ -2416,6 +2416,24 @@ Measured on the page (the local build, the live sources):
   survey's wet months to say so.
 - Uniform loam, sand, and the owner's Filer: no store, and every earlier test unchanged (plan 25, groundwater 6).
 
+### H74. Soil moisture readings in the field: the page and the store (water session, 2026-11-02)
+
+The owner: "I tap a location button, it pulls my gps to see which property I'm at (and I can move the pin if needed),
+all that's loaded is the aerial imagery... tap a dot, then it prompts me for the reading... Then later we can run the
+simulation and see how it holds up." Built: /moisture (public/moisture.html, moisture.js), the admin only. The phone's
+position finds the county property line (Lawn Mapper's /api/parcel) and a saved map on it if any; one Mapbox photo round
+the line; drag, pinch or the buttons to move and zoom; a tap asks for the reading; a visit is kept on the phone until
+saved, then in the water database (moisture_visits, moisture_readings: the parcel number and the points, never a
+street), saved again whole each time. Earlier visits' spots come back as grey rings; reading one again keeps its spot id,
+so a spot can be followed from visit to visit. Each visit also keeps the meter, what it reads, the probe's depth and
+the last two days' rain or watering. Workflow task "moisture" prints what is kept, visits #1, #2..., numbers only.
+Checked in a phone-sized browser with a made-up position (find, three readings, save, a new visit re-reading a spot,
+a reload bringing back an unsaved reading) and in test/site.test.js (the routes and the admin-only gate).
+The meter (a research agent, 2026-11-02): no hand meter under $50 reads calibrated water content; the Ecowitt WH51L
+(about $40, dielectric, its own display) reads a relative 0-99% from its counts between air and water, +/-5%. Its
+readings are a ranking, wetter or drier, unless set against oven-dried cores; the comparison with the model is to be
+done on ranks (which spots are wettest), not on percentages. The page's default unit is that relative scale.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge

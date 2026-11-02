@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<title>Moisture Readings</title>
+<style>
+  :root { --bg: #f6f8f7; --fg: #17201c; --dim: #5b6b63; --card: #ffffff; --line: #d7dfdb; --accent: #1b7f4b; --warn: #b4561a; --bad: #c62828; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #101614; --fg: #e6ece9; --dim: #9aa9a2; --card: #18201d; --line: #2c3833; --accent: #4cc38a; --warn: #f0a060; --bad: #ff6f60; } }
+  :root[data-theme="dark"] { --bg: #101614; --fg: #e6ece9; --dim: #9aa9a2; --card: #18201d; --line: #2c3833; --accent: #4cc38a; --warn: #f0a060; --bad: #ff6f60; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 12px 16px calc(16px + env(safe-area-inset-bottom)); }
+  h1 { font-size: 1.2rem; margin: 0; }
+  .dim { color: var(--dim); }
+  .small { font-size: .85rem; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+  button { font: inherit; border: 0; border-radius: 8px; padding: 10px 14px; background: var(--accent); color: #fff; cursor: pointer; }
+  button.plain { background: transparent; color: var(--fg); border: 1px solid var(--line); }
+  button.on { outline: 3px solid var(--warn); outline-offset: 2px; }
+  button:disabled { opacity: .45; cursor: default; }
+  button.big { flex: 1; padding: 14px; font-size: 1.05rem; }
+  #status { min-height: 1.4em; margin: 4px 0; }
+  #status.bad { color: var(--bad); }
+  #mapwrap { position: relative; width: 100%; height: 62vh; min-height: 320px; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: #2a332f; touch-action: none; user-select: none; -webkit-user-select: none; }
+  #map { display: block; width: 100%; height: 100%; }
+  #side { position: absolute; right: 8px; top: 8px; display: flex; flex-direction: column; gap: 6px; }
+  #side button { width: 44px; height: 44px; padding: 0; font-size: 22px; line-height: 1; background: rgba(0,0,0,.6); border: 1px solid rgba(255,255,255,.5); }
+  #hint { position: absolute; left: 8px; bottom: 8px; right: 60px; color: #fff; background: rgba(0,0,0,.55); border-radius: 8px; padding: 6px 10px; font-size: .9rem; pointer-events: none; }
+  #hint:empty { display: none; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin: 10px 0; }
+  details summary { cursor: pointer; font-weight: 600; }
+  label { display: block; margin: 8px 0 2px; font-size: .9rem; color: var(--dim); }
+  input, select, textarea { font: inherit; width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--fg); }
+  ol#list { margin: 4px 0; padding-left: 24px; }
+  ol#list li { margin: 3px 0; }
+  ol#list button { padding: 2px 8px; margin-left: 6px; font-size: .85rem; }
+  dialog { border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: var(--fg); width: min(92vw, 380px); padding: 14px; }
+  dialog::backdrop { background: rgba(0,0,0,.45); }
+  dialog h2 { margin: 0 0 6px; font-size: 1.1rem; }
+  #val { font-size: 1.6rem; text-align: center; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Soil moisture readings</h1>
+  <p class="dim small" style="margin:2px 0 0">Spot readings with a hand meter, to check the water model against the ground.</p>
+
+  <div class="row">
+    <button id="locate" class="big">📍 Find this property</button>
+    <button id="movepin" class="plain" disabled>Move the pin</button>
+  </div>
+  <p id="status" class="small dim"></p>
+
+  <div id="mapwrap">
+    <canvas id="map"></canvas>
+    <div id="side">
+      <button id="zin" aria-label="Zoom in">+</button>
+      <button id="zout" aria-label="Zoom out">−</button>
+      <button id="me" aria-label="Show where I am">◎</button>
+    </div>
+    <div id="hint"></div>
+  </div>
+
+  <div class="row">
+    <button id="save" class="big" disabled>Save readings</button>
+    <button id="newvisit" class="plain" disabled>New visit</button>
+  </div>
+  <p id="saved" class="small dim"></p>
+
+  <div class="card">
+    <strong>This visit</strong> <span id="count" class="dim small"></span>
+    <ol id="list"></ol>
+    <label for="weather">Rain or watering in the last two days</label>
+    <select id="weather">
+      <option value="">not sure</option>
+      <option value="none">none</option>
+      <option value="light">light rain (under ¼ in)</option>
+      <option value="heavy">real rain (¼ in or more)</option>
+      <option value="watered">the sprinklers ran</option>
+    </select>
+    <label for="vnote">Note (optional)</label>
+    <input id="vnote" placeholder="e.g. mowed yesterday, front zone just ran">
+  </div>
+
+  <details class="card" id="setup">
+    <summary>Meter</summary>
+    <label for="meter">Which meter</label>
+    <input id="meter" placeholder="make and model">
+    <label for="unit">What it reads</label>
+    <select id="unit">
+      <option value="vwc">% water by volume (VWC)</option>
+      <option value="scale">the meter's own % or scale (not calibrated to true water content)</option>
+      <option value="other">something else</option>
+    </select>
+    <label for="depth">How deep the probe goes (inches)</label>
+    <input id="depth" type="number" inputmode="decimal" step="0.5" min="0" max="48" placeholder="e.g. 3">
+    <p class="dim small">Kept on this phone for the next visit.</p>
+  </details>
+
+  <div class="card" id="earlier" hidden></div>
+
+  <p class="dim small">Grey rings are spots read on earlier visits here: tap one to read the same spot again. Readings are kept in the water tool's own database with the county parcel number, never the street address. <a href="/admin">Admin</a></p>
+</main>
+
+<dialog id="ask">
+  <form method="dialog" id="askform">
+    <h2 id="asktitle">Reading</h2>
+    <p id="askwhere" class="dim small" style="margin:0 0 6px"></p>
+    <input id="val" type="number" inputmode="decimal" step="any" required autocomplete="off">
+    <label for="rnote">Note (optional)</label>
+    <input id="rnote" placeholder="e.g. under the maple, thatchy">
+    <div class="row" style="margin-top:12px">
+      <button id="askok" value="ok" class="big">Keep</button>
+      <button id="askcancel" value="cancel" class="plain" formnovalidate>Cancel</button>
+      <button id="askdel" value="delete" class="plain" formnovalidate style="color:var(--bad)" hidden>Delete</button>
+    </div>
+  </form>
+</dialog>
+
+<script type="module" src="/moisture.js"></script>
+</body>
+</html>

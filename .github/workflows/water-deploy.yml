@@ -32,6 +32,8 @@ name: W. Water tool
 #             (label,lat,lng per line). The repository is public, so lots
 #             live only in that secret: the log prints labels and numbers,
 #             never a place, and no maps are uploaded.
+#   moisture  the soil moisture readings kept by the /moisture page so far,
+#             visit by visit, numbers only (no place, parcel or map id)
 on:
   workflow_dispatch:
     inputs:
@@ -40,7 +42,7 @@ on:
         required: true
         default: tests
         type: choice
-        options: [tests, deploy, limits, corpus, surfaces, impervious, paving-sam, flair, baro, lowspots]
+        options: [tests, deploy, limits, corpus, surfaces, impervious, paving-sam, flair, baro, lowspots, moisture]
 
 permissions:
   contents: read
@@ -158,6 +160,13 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: node water/tools/baro.mjs | tee baro.txt
 
+      - name: The soil moisture readings so far
+        if: ${{ inputs.task == 'moisture' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node water/tools/moisture.mjs | tee moisture.txt
+
       - name: Low spots on the owner's lots
         if: ${{ inputs.task == 'lowspots' }}
         env:
@@ -177,6 +186,7 @@ jobs:
             flair)    sed -n '/=====/,$p' flair.txt 2>/dev/null || echo "no summary: see the step above" ;;
             baro)     sed -n '/=====/,$p' baro.txt 2>/dev/null || echo "no summary: see the step above" ;;
             lowspots) cat lowspots.txt 2>/dev/null || echo "no lots run: see the step above" ;;
+            moisture) cat moisture.txt 2>/dev/null || echo "no readings read: see the step above" ;;
             deploy)   echo "Water site: ${WATER_STATE:-not deployed -- see the steps above}" ;;
             *)        echo "Water tests: ${{ job.status }}" ;;
           esac

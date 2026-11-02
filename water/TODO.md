@@ -126,6 +126,9 @@ SPECULATION), as always.
 
 ## Done
 
+- **Soil moisture readings in the field** (owner, 2026-11-02): the /moisture page and the water database's
+  moisture tables (H74). Next: the model run on each visit's property and day, set against the readings by rank.
+
 - **Water perched on slow layers** (owner, 2026-11-02: "Yes build it"): the store on a slow layer, its leak, its
   flow downhill along the layer to seeps, flat ground kept wet, the layer's shape from the ground, the survey's wet
   months as the check on the layer's speed, cemented bands, and the capillary barrier under topsoil on sand (H73).

@@ -25,3 +25,34 @@ CREATE TABLE IF NOT EXISTS readings (
 );
 CREATE INDEX IF NOT EXISTS readings_at ON readings (at);
 CREATE INDEX IF NOT EXISTS readings_map ON readings (map_id);
+
+-- SOIL MOISTURE READINGS (owner, 2026-11-02: "tap a dot, then it prompts me for the reading... Then later we can run
+-- the simulation and see how it holds up"): spot readings with a hand meter on a property, taken on the /moisture page,
+-- ground truth for the water balance (lib/balance.js). One visit per save; its readings beside it. The property is its
+-- county parcel number and the point found; never its street or house number. The admin only.
+CREATE TABLE IF NOT EXISTS moisture_visits (
+  id TEXT PRIMARY KEY,              -- made by the page, so saving again replaces the visit
+  at INTEGER NOT NULL,              -- ms since 1970, when the visit began
+  saved INTEGER NOT NULL,           -- when it was last saved
+  lng REAL, lat REAL,               -- the property's pin
+  parcel_pin TEXT, county TEXT,     -- the county's parcel number, when the property line was found
+  map_id TEXT,                      -- a saved map on this property, if there is one
+  meter TEXT,                       -- which meter
+  unit TEXT,                        -- 'vwc' (% water by volume) | 'scale' (the meter's own scale) | 'other'
+  depth_in REAL,                    -- how deep the probe went
+  note TEXT,
+  weather TEXT                      -- what the visitor said of the last days' weather, JSON (optional)
+);
+CREATE INDEX IF NOT EXISTS moisture_visits_pin ON moisture_visits (parcel_pin);
+CREATE INDEX IF NOT EXISTS moisture_visits_at ON moisture_visits (at);
+CREATE TABLE IF NOT EXISTS moisture_readings (
+  id TEXT PRIMARY KEY,
+  visit_id TEXT NOT NULL,
+  n INTEGER,                        -- the dot's number in the visit
+  spot TEXT,                        -- the spot's id: the same spot read again on a later visit keeps its id
+  at INTEGER,                       -- when it was read
+  lng REAL NOT NULL, lat REAL NOT NULL,
+  value REAL NOT NULL,
+  note TEXT
+);
+CREATE INDEX IF NOT EXISTS moisture_readings_visit ON moisture_readings (visit_id);

@@ -30,6 +30,7 @@
  */
 
 import { readings } from './readings.js';
+import { moisture } from './moisture.js';
 import { handleStreams } from './streams.js';
 
 export const PROXIED = ['/api/geocode', '/api/parcel', '/api/imagery', '/api/county-imagery', '/api/shade/lidar', '/api/water/layers', '/api/shade/climate',
@@ -94,6 +95,16 @@ export default {
       out.headers.set('Cache-Control', 'private, no-store');
       return out;
     }
+    // the soil moisture readings page (public/moisture.html; owner, 2026-11-02): the admin only, whether or not the site is open
+    if (url.pathname === '/moisture' || url.pathname === '/moisture.html' || url.pathname === '/moisture.js') {
+      if (!(await isAdmin(request, env))) return url.pathname === '/moisture.js' ? notFound() : notOpenYet(env.LAWNMAP_HOST?.split('.').slice(1).join('.'));
+      const res = await env.ASSETS.fetch(new Request(new URL(url.pathname === '/moisture.js' ? '/moisture.js' : '/moisture', url), request));
+      const out = new Response(res.body, res);
+      out.headers.set('Cache-Control', 'private, no-store');
+      return out;
+    }
+    const wet = await moisture(request, env, url, { isAdmin });
+    if (wet) return wet;
     // the national stream map, fetched and kept at the edge by this site (src/streams.js)
     if (url.pathname === '/api/water/streams') return handleStreams(request, url, ctx);
     const kept = await readings(request, env, url, { isAdmin });
