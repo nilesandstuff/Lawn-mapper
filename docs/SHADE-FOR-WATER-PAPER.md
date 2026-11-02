@@ -20,10 +20,10 @@ Most lidar is flown in winter, with the leaves off. The laser then measures a ma
 
 - **Which trees are evergreen.** A crown that stopped most of the laser in winter (passing under a fifth of the overhead sun) is taken as evergreen and kept as measured all year. Everything else is deciduous and gets leaves. A broad, flat-topped dome is kept deciduous even when dense, because big oaks can hold dead leaves into a late flight.
 - **How much leaf.** About one square meter of leaf per cubic meter of crown, capped at a leaf area index of 5.5, from measurements of open-grown urban trees [S6]. A full crown passes about 6% of the sun straight down. Deeper crowns are darker, which is what Canham and colleagues found separates shady species from light ones [S7].
-
-Technical note: each cube's extinction is μ = −ln(1 − returned/entered)/Δz, with every return counted as 1/n of its pulse. In leaf, a deciduous crown's cubes take μ = G × LAD with G = 0.5 (spherical leaf angles) and an effective LAD of 1.0 m²/m³, clumping folded in, until the crown's effective LAI reaches 5.5. A beam's share through is exp(−Σ μ ds) along its path.
 - **Where the leaves go.** Leaf-off lidar under-reads crown cover by about a fifth [S8], so small gaps inside a crown are filled. Leaves start at the crown's lowest branches, not at the ground, so a low sun can still slip under a tall tree.
 - **When.** Leaf-out and leaf-fall follow the year's own weather: the days already observed, the National Weather Service forecast for the week ahead, then the typical year. Spring green-up was fitted on PhenoCam's canopy cameras at 119 deciduous sites [S9]. The delay from green-up to shade, and the fall timing, were fitted on the National Ecological Observatory Network's (NEON) light sensors on the forest floor at eleven sites [S10].
+
+Technical note: each cube's extinction is μ = −ln(1 − returned/entered)/Δz, with every return counted as 1/n of its pulse. In leaf, a deciduous crown's cubes take μ = G × LAD with G = 0.5 (spherical leaf angles) and an effective LAD of 1.0 m²/m³, clumping folded in, until the crown's effective LAI reaches 5.5. A beam's share through is exp(−Σ μ ds) along its path.
 
 When a survey was flown in leaf, the map can tell from each point's own laser clock. Those trees get no added leaves, because the laser already saw them in leaf. A deciduous tree on an in-leaf survey therefore keeps its summer leaves all year. That is a known weak point: it is too shady before leaf-out and after leaf-fall.
 
