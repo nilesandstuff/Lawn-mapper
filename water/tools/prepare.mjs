@@ -10,7 +10,8 @@
  *   CUSTOM_DOMAIN=lawnmap.example.com node water/tools/prepare.mjs
  */
 
-import { appendFileSync, cpSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { withShadePart } from './md.mjs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -84,6 +85,14 @@ function main() {
      (Node, for the tests, follows the links to public/shade/ and finds them there already.) */
   for (const f of readdirSync(join(water, '..', 'public', 'shade'))) {
     if (f.endsWith('.js')) cpSync(join(water, '..', 'public', 'shade', f), join(build, 'lib', 'shade', f));
+  }
+  /* THE WHITE PAPER'S SHADE MAP PART: written and kept by the shade session in docs/SHADE-FOR-WATER-PAPER.md
+     (owner, 2026-11-02), put into the paper at every build; until it exists the paper's holding line stays. */
+  const shadePart = join(water, '..', 'docs', 'SHADE-FOR-WATER-PAPER.md');
+  if (existsSync(shadePart)) {
+    const page = join(build, 'paper.html');
+    writeFileSync(page, withShadePart(readFileSync(page, 'utf8'), readFileSync(shadePart, 'utf8')));
+    console.log('The paper carries the shade map\'s own part (docs/SHADE-FOR-WATER-PAPER.md).');
   }
   for (const f of ['favicon.svg', 'favicon-32.png', 'favicon.ico', 'apple-touch-icon.png']) {
     cpSync(join(water, '..', 'public', f), join(build, f));

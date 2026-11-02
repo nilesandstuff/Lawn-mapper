@@ -103,8 +103,9 @@ SPECULATION), as always.
 - **The white paper stays true to the live model** (owner, 2026-11-02: "remember to continuously add to it if
   something in the live model changes from the information already in the paper"). public/paper.html, served at
   /paper. Any change to the live model that changes a statement there is edited there in the same commit, with a
-  line in its change log; any new check against real data goes into its section 10, results against the model
-  included. Plain language, no "we", for homeowners and a turf scientist alike; addresses never, the owner's lot
+  line in its change log; any new check against real data goes into its section 11, results against the model
+  included. Its section 6's second half is the shade session's own file, docs/SHADE-FOR-WATER-PAPER.md, put in at
+  each build (tools/md.mjs): never edited here; when the shade session says it changed, deploy. Plain language, no "we", for homeowners and a turf scientist alike; addresses never, the owner's lot
   only as "the developer's lawn".
 
 - **Shade is the shade map's.** "You should follow the output of the shade map. If we need to make adjustments to how

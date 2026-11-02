@@ -248,6 +248,26 @@ test('the moisture page is the admin\'s only, open site or not', async () => {
   assert.equal((await get('/api/water/moisture', 'lm_session=user', open)).status, 404);
 });
 
+test('the paper\'s shade map part: the shade session\'s Markdown, escaped, put between the markers', async () => {
+  const { mdToHtml, withShadePart } = await import('../tools/md.mjs');
+  const md = `Light comes from **lidar** and the *sun's path* [S1].\n\n### How light is worked out\n\n- one\n- two with [a link](https://example.com/x)\n\nTechnical note: k = 0.5 <script>alert(1)</script>\n\n### References\n\nS1. Someone (2020). A paper. Journal 1: 2.\nS2. Other (2021). Another.`;
+  const html = mdToHtml(md);
+  assert.match(html, /<p>Light comes from <strong>lidar<\/strong> and the <em>sun's path<\/em> \[S1\]\.<\/p>/);
+  assert.match(html, /<h3>How light is worked out<\/h3>/);
+  assert.match(html, /<ul><li>one<\/li><li>two with <a href="https:\/\/example.com\/x">a link<\/a><\/li><\/ul>/);
+  assert.match(html, /<div class="tech"><strong>Technical note<\/strong>k = 0.5 &lt;script&gt;/);
+  assert.ok(!html.includes('<script>'), 'no HTML of the file\'s own runs');
+  assert.match(html, /<ul class="refs srefs"><li>S1\. Someone \(2020\)\. A paper\. Journal 1: 2\.<\/li><li>S2\./);
+  assert.ok(!mdToHtml('[x](javascript:alert(1))').includes('href'), 'only http(s) or site links');
+  const paper = '<p>before</p>\n<!--SHADE-MAP-PART-->\n<p>holding</p>\n<!--/SHADE-MAP-PART-->\n<p>after</p>';
+  const out = withShadePart(paper, md);
+  assert.ok(!out.includes('holding') && out.includes('<h3>How light') && out.includes('<p>after</p>'));
+  assert.equal(withShadePart(paper, ''), paper, 'no file yet: the holding line stays');
+  // the live paper has the markers, so the part has somewhere to go
+  const { readFileSync } = await import('node:fs');
+  assert.match(readFileSync(new URL('../public/paper.html', import.meta.url), 'utf8'), /<!--SHADE-MAP-PART-->[\s\S]*<!--\/SHADE-MAP-PART-->/);
+});
+
 let failed = 0;
 for (const [name, fn] of tests) {
   try { await fn(); console.log(`ok  ${name}`); } catch (e) { failed++; console.log(`FAIL ${name}\n     ${e.message}`); }
