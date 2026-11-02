@@ -98,6 +98,12 @@ SPECULATION), as always.
   use -- the near and far infrared, the skylight, the night sky (owner, 2026-10-27: "this part belongs to the water
   map") -- is the water map's (FINDINGS H47), from the shade map's output, with no shade calculation of its own.
 
+## Declined
+
+- **Former wetlands from old maps** (USGS historical topographic maps from the 1880s on; Michigan's map of vegetation
+  about 1800). Owner, 2026-11-02: "I'm not sure if we should use information from that long ago... in many other
+  conditions I'm sure it could be a red herring... A lot can change in 200 years." Not used.
+
 ## Shelved (owner, 2026-10-26: "shelve the tree thing to the todo list")
 
 - **Trees using the lawn's water**: researched (FINDINGS H40, research-trees.md),
