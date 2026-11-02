@@ -31,11 +31,19 @@ export function mdToHtml(text, { h = 'h3' } = {}) {
       if (lines.length > 1) lines.splice(0, 1); else continue;
     }
     if (refs) { out.push(`<ul class="refs srefs">${lines.map((l) => `<li>${inline(l)}</li>`).join('')}</ul>`); continue; }
-    if (lines.every((l) => /^[-*]\s/.test(l))) { out.push(`<ul>${lines.map((l) => `<li>${inline(l.replace(/^[-*]\s+/, ''))}</li>`).join('')}</ul>`); continue; }
-    const para = lines.join(' ');
-    const tech = /^technical note:\s*/i.exec(para);
-    if (tech) out.push(`<div class="tech"><strong>Technical note</strong>${inline(para.slice(tech[0].length))}</div>`);
-    else out.push(`<p>${inline(para)}</p>`);
+    // a block can switch between list lines and text lines with no blank line between: each run is its own piece
+    const runs = [];
+    for (const l of lines) {
+      const bullet = /^[-*]\s/.test(l), last = runs[runs.length - 1];
+      if (last && last.bullet === bullet) last.lines.push(l); else runs.push({ bullet, lines: [l] });
+    }
+    for (const r of runs) {
+      if (r.bullet) { out.push(`<ul>${r.lines.map((l) => `<li>${inline(l.replace(/^[-*]\s+/, ''))}</li>`).join('')}</ul>`); continue; }
+      const para = r.lines.join(' ');
+      const tech = /^technical note:\s*/i.exec(para);
+      if (tech) out.push(`<div class="tech"><strong>Technical note</strong>${inline(para.slice(tech[0].length))}</div>`);
+      else out.push(`<p>${inline(para)}</p>`);
+    }
   }
   return out.join('\n');
 }

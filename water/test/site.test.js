@@ -263,6 +263,8 @@ test('the paper\'s shade map part: the shade session\'s Markdown, escaped, put b
   const out = withShadePart(paper, md);
   assert.ok(!out.includes('holding') && out.includes('<h3>How light') && out.includes('<p>after</p>'));
   assert.equal(withShadePart(paper, ''), paper, 'no file yet: the holding line stays');
+  // a technical note followed by list lines with no blank line: the note, then its own list
+  assert.equal(mdToHtml('Technical note: x = 1.\n- **a.** one\n- b'), '<div class="tech"><strong>Technical note</strong>x = 1.</div>\n<ul><li><strong>a.</strong> one</li><li>b</li></ul>');
   // the live paper has the markers, so the part has somewhere to go
   const { readFileSync } = await import('node:fs');
   assert.match(readFileSync(new URL('../public/paper.html', import.meta.url), 'utf8'), /<!--SHADE-MAP-PART-->[\s\S]*<!--\/SHADE-MAP-PART-->/);
