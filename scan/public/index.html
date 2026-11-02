@@ -45,7 +45,12 @@
   #cross::after { top: 50%; left: -12px; right: -12px; height: 2px; margin-top: -1px; }
   #cross.hit { border-color: #4cff9a; }
   #cross.hit::before, #cross.hit::after { background: #4cff9a; }
-  #hud { position: absolute; left: 8px; right: 8px; top: calc(8px + env(safe-area-inset-top)); background: rgba(0,0,0,.55); border-radius: 8px; padding: 8px 10px; line-height: 1.35; }
+  #hud { position: absolute; left: 8px; right: 8px; top: calc(8px + env(safe-area-inset-top)); background: rgba(0,0,0,.55); border-radius: 8px; padding: 8px 10px; line-height: 1.35; font-size: 14px; }
+  #mapwrap { position: relative; width: 100%; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: #2a332f; touch-action: none; margin-top: 8px; }
+  #map { display: block; width: 100%; height: auto; }
+  #zoom { position: absolute; right: 8px; top: 8px; display: flex; flex-direction: column; gap: 6px; }
+  #zoom button { width: 42px; height: 42px; padding: 0; font-size: 22px; line-height: 1; background: rgba(0,0,0,.6); border: 1px solid rgba(255,255,255,.5); }
+  #points { margin: 8px 0 0; }
   #hud .warn { color: #ffcf6e; }
   #hud .bad { color: #ff8a80; }
   /* raised off the bottom by default: Chrome's "you're in full screen" notice sits there for the first minute */
@@ -62,13 +67,31 @@
   <h1>Yard AR <span class="tag">admin test</span></h1>
   <p class="dim">Phase 1 of <code>docs/SCAN-PLAN.md</code>: does the phone's tracking hold on a lawn? No map is used yet. <a id="back" href="__HOME__/dashboard">Back to your maps</a></p>
   <p id="status" class="dim">Checking what this phone offers…</p>
+  <p id="mapnote" class="dim"></p>
   <div id="start" class="tools"></div>
   <p id="why" class="dim"></p>
+
+  <div id="setup" hidden>
+    <div class="card">
+      <strong>Before you go out: references and check points on the photo.</strong>
+      <p class="dim" style="margin:6px 0 0"><span style="color:#2f7cf6;font-weight:600">References</span> are spots you can aim at where they meet the ground: driveway, sidewalk and patio corners first (the lidar and the photo see the ground there), then a fence post or a shed corner, a house corner last (its roof may overhang the wall). Two line the map up; more is better, spread round the lawn. <span style="color:#a54bd8;font-weight:600">Check points</span> are other corners you will aim at to measure how close the fix is. Tap the photo to add one; drag a point to move it; pinch or + to zoom.</p>
+      <div class="tools">
+        <button type="button" data-add="ref">Add references</button>
+        <button type="button" data-add="check" class="plain">Add check points</button>
+        <button type="button" id="undo-point" class="plain">Remove the last</button>
+        <button type="button" id="clear-pins" class="plain">Clear old pins</button>
+      </div>
+      <div id="mapwrap"><canvas id="map" width="1280" height="1280"></canvas><div id="zoom"><button type="button" id="zin" aria-label="Zoom in">+</button><button type="button" id="zout" aria-label="Zoom out">&minus;</button><button type="button" id="zfit" aria-label="Show it all">&#x2922;</button></div></div>
+      <ol id="points"></ol>
+      <p id="lidar" class="dim">Reading the lidar…</p>
+    </div>
+  </div>
 
   <div class="card">
     <strong>The test, on each phone</strong>
     <ol>
       <li>Start AR. Point the camera at the lawn and move the phone slowly until the crosshair turns green on the ground.</li>
+      <li>Stand within 10 ft of the first reference, aim the crosshair at it where it meets the ground, tap <strong>Mark</strong>; then the second. From then on the top line says where you are. As you walk, look round at the house, fences, bushes and trunks: the lidar match takes over when it can ("You are here (lidar fix…)"). Mark each check point the same way: it says how far off the map position is.</li>
       <li>Stand at a spot you can find again (a sprinkler head, a paving corner). Aim at it from about a metre and tap <strong>Drop pin</strong>. The dot is green when the ground comes from the phone's depth picture, amber when only from a plane (planes reach past where the phone saw them: that put pins under the back yard on the first walk).</li>
       <li>Walk about 20 m away and back. Aim at the same spot again and tap <strong>Check</strong>: it says how far the pin has moved from the spot, as placed and (with a *) as its anchor carries it. Drop a pin in the front and one in the back, then do one deliberate swing of the phone mid-walk, and check both afterwards: the first walk lost 3 m there.</li>
       <li>Two marks a tape says are 10 m (or 30 ft) apart: aim at one, tap <strong>Measure</strong>, aim at the other, tap <strong>Measure</strong>. Afterwards type what the tape said.</li>
@@ -91,6 +114,7 @@
     <button type="button" id="move" class="side" aria-label="Move the buttons up or down">&#x21C5;</button>
     <button type="button" id="undo" class="side">Undo</button>
     <button type="button" id="exit" class="side">Exit</button>
+    <button type="button" id="mark" disabled>Mark</button>
     <button type="button" id="pin" disabled>Drop pin</button>
     <button type="button" id="check" disabled>Check</button>
     <button type="button" id="measure" disabled>Measure</button>

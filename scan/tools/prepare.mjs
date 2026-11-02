@@ -89,6 +89,12 @@ function main() {
   const page = join(build, 'index.html');
   writeFileSync(page, readFileSync(page, 'utf8').split('__LAWNMAP__').join(`https://${lawnmap}`).split('__HOME__').join(`https://${home}`));
   cpSync(join(scan, 'lib'), join(build, 'lib'), { recursive: true });
+  /* THE LIDAR READERS for /lidar-worker.js, copied from the water tool's copies (water session) and the shade map's
+     vendored laz-perf (features session), unchanged: ept.js, las.js, laz.js, datum.js, browser-io.js and
+     vendor/laz-perf.*. Not this tool's to edit; a change there is theirs. */
+  for (const f of ['ept.js', 'las.js', 'laz.js', 'datum.js', 'browser-io.js']) cpSync(join(root, 'water', 'lib', f), join(build, 'lib', f));
+  mkdirSync(join(build, 'lib', 'vendor'), { recursive: true });
+  for (const f of ['laz-perf.js', 'laz-perf.wasm']) cpSync(join(root, 'public', 'shade', 'vendor', f), join(build, 'lib', 'vendor', f));
   for (const f of ['favicon.svg', 'favicon-32.png', 'favicon.ico', 'apple-touch-icon.png']) {
     if (existsSync(join(root, 'public', f))) cpSync(join(root, 'public', f), join(build, f));
   }

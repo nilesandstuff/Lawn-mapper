@@ -378,10 +378,15 @@ result goes in the Findings.
    two taped marks 10 m apart read within 2%. The iPhone side waits: the
    owner has no iPhone and will rarely have one, so 8th Wall is kept working
    on Android for the day one is at hand, and is not a gate.
-2. **Locate.** Two references from the lidar's house corners, the 3DEP match
-   on both phones, the fix's confidence on screen, check points.
+2. **Locate.** Two references (driveway and paving corners first), the 3DEP
+   match from the depth picture, the fix's state on screen, check points.
+   Built 2026-11-02 (scan/lib/align.js, locate.js, lidar.js and
+   lidar-worker.js, the last two carried from the water session's H68 code
+   with their agreement; the page's photo with references and check points).
+   References are tapped on the photo by hand for now; offering paving
+   corners automatically is a later refinement.
    *Done when:* five check points spread over the lot (taped from house
-   corners) read within 0.3 m on both phones, after a full walk of the yard.
+   corners) read within 0.3 m, after a full walk of the yard, on the S21.
 3. **Heads.** Tap kinds, saving in `tools.scan.data`, the water map's import
    (water session).
    *Done when:* the owner's heads, placed in one walk, are within 0.3 m of

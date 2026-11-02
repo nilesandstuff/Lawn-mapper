@@ -21,7 +21,8 @@
  *
  * Every frame the page gets:
  *   { t, pose: { position, quaternion } | null, tracking: 'normal' | 'limited' | 'lost',
- *     reset, hit: { position, type, distance, plane? } | null, points, gl, framebuffer, viewport, view, proj }
+ *     reset, hit: { position, type, distance, plane? } | null, depth: { at(x, y) } | null, points,
+ *     gl, framebuffer, viewport, view, proj }
  *
  * THE GROUND UNDER THE CROSSHAIR, on WebXR, comes from the phone's depth picture first (type 'DEPTH': the
  * distance the camera measures to what the crosshair is on, SCAN-H1) and from the engine's hit test only when
@@ -141,7 +142,7 @@ async function startWebXR({ overlay, onFrame, onEvent }) {
     const pose = xrFrame.getViewerPose(ref);
     const tracking = !pose ? 'lost' : pose.emulatedPosition ? 'limited' : 'normal';
     const view = pose?.views[0] || null;
-    let hit = null, plane = null;
+    let hit = null, plane = null, depth = null;
     if (pose) {
       const c = pose.transform.position;
       const rs = xrFrame.getHitTestResults(hits);
@@ -159,6 +160,11 @@ async function startWebXR({ overlay, onFrame, onEvent }) {
           if (z >= HIT_NEAR && z <= HIT_FAR) {
             const p = unproject(CROSS.x, CROSS.y, z, view.projectionMatrix, view.transform.matrix);
             hit = { position: p, type: 'DEPTH', distance: dist3(p, c), plane: plane?.position || null };
+          }
+          // the whole depth picture, for the lidar match: a point at any screen spot (0-1), 0.4-8 m, or null
+          if (di) {
+            const P = view.projectionMatrix, M = view.transform.matrix;
+            depth = { at: (x, y) => { let d = 0; try { d = di.getDepthInMeters(x, y); } catch { return null; } return d >= 0.4 && d <= 8 ? unproject(x, y, d, P, M) : null; } };
           }
         } catch { /* no depth this frame */ }
       }
@@ -182,7 +188,7 @@ async function startWebXR({ overlay, onFrame, onEvent }) {
     const vp = view ? layer.getViewport(view) : null;
     const p = pose?.transform.position, q = pose?.transform.orientation;
     onFrame({
-      t, tracking, reset, hit, points: 0,
+      t, tracking, reset, hit, depth, points: 0,
       pose: pose ? { position: { x: p.x, y: p.y, z: p.z }, quaternion: { x: q.x, y: q.y, z: q.z, w: q.w } } : null,
       gl, framebuffer: layer.framebuffer, viewport: vp ? { x: vp.x, y: vp.y, w: vp.width, h: vp.height } : null,
       view: view ? view.transform.inverse.matrix : null, proj: view ? view.projectionMatrix : null,
@@ -225,7 +231,7 @@ async function start8thWall({ canvas, onFrame, onEvent, eightWallUrl }) {
         try { hit = rankHits(XR8.XrController.hitTest(CROSS.x, CROSS.y, ['FEATURE_POINT']), pose.position); } catch { hit = null; }
       }
       onFrame({
-        t, tracking, reset: false, hit, points: r?.worldPoints?.length || 0, pose,
+        t, tracking, reset: false, hit, depth: null, points: r?.worldPoints?.length || 0, pose,
         gl, framebuffer: null, viewport: { x: 0, y: 0, w: gl.drawingBufferWidth, h: gl.drawingBufferHeight }, view, proj,
       });
     },

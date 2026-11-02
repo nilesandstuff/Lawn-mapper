@@ -45,6 +45,10 @@ jobs:
           node scan/test/track.test.js
           node scan/test/worker.test.js
           node scan/test/prepare.test.js
+          node scan/test/align.test.js
+          node scan/test/locate.test.js
+          node scan/test/photo.test.js
+          node scan/test/lidar.test.js
 
       - name: The 8th Wall engine binary (pinned)
         if: ${{ inputs.task == 'deploy' }}
