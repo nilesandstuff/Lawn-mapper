@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<title>How Lawn Water Works</title>
+<meta name="description" content="How the Lawn Water model decides where a lawn needs water and how much: its methods, sources, assumptions, and what has been checked against real measurements.">
+<!--
+  THE WHITE PAPER (owner, 2026-11-02): "describes the way the model works, cite sources, highlight assumptions, and
+  explain what ground truthing has been done... honest, but don't demean the model... homeowners, but also an actual
+  turf scientist... continuously add to it if something in the live model changes... plain language, don't talk like
+  an LLM, and don't say 'we'."
+  KEEP IT CURRENT: any change to the live model that changes a statement here is edited here in the same commit, with
+  a line in the change log at the bottom (water/TODO.md, Rules).
+-->
+<style>
+  :root { --bg: #fbfcfb; --fg: #18211d; --dim: #56665e; --line: #d6dfda; --box: #eef3f0; --accent: #1b6f44; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #111614; --fg: #e4ebe7; --dim: #9aaba3; --line: #2d3934; --box: #18211d; --accent: #5fcf96; } }
+  :root[data-theme="dark"] { --bg: #111614; --fg: #e4ebe7; --dim: #9aaba3; --line: #2d3934; --box: #18211d; --accent: #5fcf96; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 17px/1.6 Georgia, "Times New Roman", serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1, h2, h3 { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; line-height: 1.25; }
+  h1 { font-size: 1.9rem; margin: 0 0 4px; }
+  h2 { font-size: 1.3rem; margin: 2.2em 0 .5em; padding-top: .6em; border-top: 1px solid var(--line); }
+  h3 { font-size: 1.05rem; margin: 1.6em 0 .3em; }
+  .sub { font-family: system-ui, sans-serif; color: var(--dim); margin: 0 0 4px; }
+  .meta { font-family: system-ui, sans-serif; font-size: .85rem; color: var(--dim); }
+  a { color: var(--accent); }
+  .tech { background: var(--box); border-left: 3px solid var(--accent); padding: 8px 14px; margin: 12px 0; font-size: .92rem; }
+  .tech strong:first-child { font-family: system-ui, sans-serif; font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; color: var(--dim); display: block; }
+  table { border-collapse: collapse; width: 100%; font: .88rem/1.4 system-ui, sans-serif; margin: 10px 0; }
+  th, td { text-align: left; vertical-align: top; padding: 6px 6px; border-bottom: 1px solid var(--line); }
+  th { color: var(--dim); font-weight: 600; }
+  .scroll { overflow-x: auto; }
+  code { font-size: .9em; }
+  ol.refs { font-size: .88rem; padding-left: 28px; }
+  ol.refs li { margin: 4px 0; }
+  nav ul { font-family: system-ui, sans-serif; font-size: .92rem; columns: 2; column-gap: 24px; padding-left: 0; list-style: none; }
+  nav li { margin: 2px 0; }
+  @media (max-width: 560px) { nav ul { columns: 1; } }
+  .verdict { font-family: system-ui, sans-serif; font-size: .8rem; font-weight: 600; white-space: nowrap; }
+  @media print { body { font-size: 11pt; } h2 { break-after: avoid; } .tech, table { break-inside: avoid; } nav { display: none; } }
+</style>
+</head>
+<body>
+<main>
+<h1>How Lawn Water works</h1>
+<p class="sub">A daily water model for one lawn, square metre by square metre</p>
+<p class="meta">Last updated 2 November 2026. Describes the model live at <a href="/">water.nilesandstuff.com</a> on that date. The change log at the end lists what has changed since the first version.</p>
+
+<nav>
+<ul>
+  <li><a href="#summary">Summary</a></li>
+  <li><a href="#outputs">1. What it gives you</a></li>
+  <li><a href="#data">2. The data it uses</a></li>
+  <li><a href="#balance">3. The daily water account</a></li>
+  <li><a href="#grass">4. Grass type, roots and season</a></li>
+  <li><a href="#weather">5. Weather and water use</a></li>
+  <li><a href="#sun">6. Sun, shade, heat and wind</a></li>
+  <li><a href="#surface">7. Slope, runoff, roofs and paving</a></li>
+  <li><a href="#below">8. Water from below</a></li>
+  <li><a href="#schedule">9. Zones and the schedule</a></li>
+  <li><a href="#checked">10. What has been checked</a></li>
+  <li><a href="#assumptions">11. Assumptions and weak points</a></li>
+  <li><a href="#next">12. How it will be checked next</a></li>
+  <li><a href="#others">13. How it compares with other tools</a></li>
+  <li><a href="#refs">References</a></li>
+  <li><a href="#log">Change log</a></li>
+</ul>
+</nav>
+
+<h2 id="summary">Summary</h2>
+<p>Lawn Water splits a lawn into watering zones. For each zone it says how much to water and how often, month by month, and when to water next this week. It works on a grid of 1 m squares (a little over 3 ft) and keeps a daily account of the water in every square over ten past years of weather, 2016 to 2025.</p>
+<p>Nearly every piece of it is a published method in wide use. Grass water use and the soil water account follow the United Nations Food and Agriculture Organization's FAO-56 method [1]. Runoff follows the USDA curve number method [2]. Soil comes from the USDA soil survey [3]. Water rising from a water table follows FAO's AquaCrop model [4]. The new part is the combination: these methods run together at the scale of one yard, from free public data, with each square's own sun, shade, slope, wind and soil.</p>
+<p>Several pieces have been checked against outside measurements, with results in <a href="#checked">section 10</a>. The sunlight data agreed with research radiometers to within 1%. Roofs and paving found from lidar agreed with a 1 m land cover map on about 85% of squares. The water-table rule was fitted to 227 shallow wells. The developer's own lawn needs about an inch a week in July over 2 to 3 waterings, and the model gives a close figure.</p>
+<p>The central output has not yet been checked against soil moisture measured on a lawn: which parts dry out first, and how fast. Field readings with a soil moisture meter began in November 2026. Until those results are in, the zones and amounts are the model's estimate, built from measured inputs and published methods, not a measured result. The largest known open question is the weather-based water use figure, which runs 15 to 20% above one Michigan weather network's figures (<a href="#weather">section 5</a>).</p>
+
+<h2 id="outputs">1. What it gives you</h2>
+<ul>
+  <li><strong>Zones.</strong> Up to four, grouped by how often each part of the lawn needs water in its thirstiest month. Sunny slopes, shaded corners, wet hollows and the strip below a downspout tend to land in different zones.</li>
+  <li><strong>How much and how often, by month.</strong> For each zone, the number of waterings in a typical month and the depth each time in inches, with the range seen across the ten years.</li>
+  <li><strong>This week.</strong> The next watering date and amount, from the last 60 days of weather and the National Weather Service forecast.</li>
+  <li><strong>Run times.</strong> With sprinklers mapped, minutes per valve, split into soak cycles where the ground takes water slowly.</li>
+  <li><strong>Maps.</strong> Where water collects, the water table depth, slope, shade, wind shelter, the soil.</li>
+</ul>
+<p>The person using it supplies a traced outline of the lawn, the property line, where the downspouts empty, the grass species, whether topsoil was brought in, and the watering level they want (normal, deficit or dormancy).</p>
+
+<h2 id="data">2. The data it uses</h2>
+<div class="scroll"><table>
+<tr><th>What</th><th>Source</th><th>Detail</th></tr>
+<tr><td>Ground height, buildings, trees</td><td>USGS 3D Elevation Program (3DEP) airborne lidar</td><td>About 1 to 9 ground points per square metre. One flight per place, often several years old.</td></tr>
+<tr><td>Aerial photo</td><td>USDA National Agriculture Imagery Program (NAIP), with near-infrared</td><td>0.3 to 0.6 m. Used to tell paving and roofs from green ground.</td></tr>
+<tr><td>Roads and sidewalks</td><td>Overture Maps</td><td>Centre lines, widened into bands.</td></tr>
+<tr><td>Soil</td><td>USDA NRCS soil survey (SSURGO), through Soil Data Access</td><td>Each layer's depth, water-holding capacity, permeability, sand and clay, drainage class, and the months with a wet layer. Mapped for fields: one map unit usually covers many lots.</td></tr>
+<tr><td>Rain</td><td>PRISM daily rain, 4 km grid, built from rain gauges</td><td>2016 to 2025, and the recent weeks.</td></tr>
+<tr><td>Rain by the hour</td><td>Nearest airport station (ten years); radar-based IEMRE (recent weeks)</td><td>Only the shape of each storm. The day's total stays PRISM's.</td></tr>
+<tr><td>Temperature, humidity, wind, sunlight</td><td>NASA POWER</td><td>A grid about 50 km across.</td></tr>
+<tr><td>Forecast</td><td>National Weather Service</td><td>About 7 days.</td></tr>
+<tr><td>Soil temperature</td><td>Iowa Environmental Mesonet (ERA5-Land)</td><td>Daily, 4 in deep, for the roots and the growing season.</td></tr>
+<tr><td>Streams, ponds, wetlands</td><td>USGS NHDPlus HR; US Fish and Wildlife Service National Wetlands Inventory</td><td>Within about 1 km, for the water table.</td></tr>
+<tr><td>Wider ground</td><td>USGS 3DEP 10 m elevation</td><td>600 m round the lot.</td></tr>
+<tr><td>Shade and light</td><td>The companion shade map, which traces the sun through the lidar's trees and buildings</td><td>Every third day of each month, leaf-on and leaf-off.</td></tr>
+<tr><td>Sprinklers</td><td>Manufacturers' printed performance charts</td><td>572 nozzles on 152 bodies (Rain Bird, Hunter, Toro, K-Rain).</td></tr>
+</table></div>
+
+<h2 id="balance">3. The daily water account</h2>
+<p>Each square of lawn is treated as a bucket: the soil the roots can reach. Water comes in as rain, as water running in from uphill, as roof water from a downspout, as sprinkler water, and as water rising from below. It leaves as the grass's use, as runoff downhill, and as drainage below the roots.</p>
+<p>The size of the bucket is the water the roots can use between "full" (field capacity) and "too dry to give up any more" (the wilting point). It is added up layer by layer from the soil survey, down to that day's root depth. Grass starts to suffer once a set share of that water is used: 40% for cool-season grasses and 50% for warm-season grasses, from FAO-56's table for turf [1]. The ideal watering refills a square on the morning it would cross that line.</p>
+<p>Water beyond "full" can sit briefly in the soil before it drains. When the soil can hold no more, extra water runs off to the next square downhill. Low spots hold their share until it soaks in or dries.</p>
+<div class="tech"><strong>Technical note</strong>
+FAO-56 single-coefficient root-zone balance, run daily per 1 m cell [1]: depletion <i>D</i><sub>r</sub> rises with ET<sub>c</sub> and falls with infiltration and capillary rise. TAW = &Sigma; &theta;<sub>awc,j</sub>&middot;&Delta;z<sub>j</sub> over the day's root depth, from SSURGO <code>awc_r</code>. RAW = <i>p</i>&middot;TAW with <i>p</i> fixed at 0.40 (cool) or 0.50 (warm); FAO-56's adjustment of <i>p</i> for ET<sub>c</sub> is not applied. K<sub>s</sub> = (TAW &minus; D<sub>r</sub>)/(TAW &minus; RAW) when D<sub>r</sub> &gt; RAW. Water above field capacity goes to a gravity store holding up to 10% of the root depth (in mm). It drains each day at most 60% of that store, at the slowest saturated conductivity in the metre below the roots &times; a drainage-class factor (well drained 1, moderately well 0.5, somewhat poorly 0.25, poorly 0.1, very poorly 0.05). Those three numbers (10%, 60%, the factors) are the model's own choices, not taken from a publication. Snow is stored on days at or below 0 &deg;C and melts at 3.5 mm per &deg;C-day, also unsourced. Surface flow passes to every lower neighbour in proportion to slope<sup>1.1</sup>, on a surface filled by Priority-Flood [22]. In tests, water in equals water out plus storage to within 0.1%.
+</div>
+
+<h2 id="grass">4. Grass type, roots and season</h2>
+<h3>How thirsty each grass is</h3>
+<p>Water use is the weather's reference figure (<a href="#weather">section 5</a>) times a crop coefficient for the grass. The coefficients come from a table supplied by the developer, taken from the Irrigation tool at lawn-answers.com (app version 1.17.3). That table gives a range per species and per watering level, and the model takes the middle of each range. For Kentucky bluegrass that is 0.90 at normal watering, 0.725 at deficit and 0.50 at dormancy; tall fescue 0.90, 0.70 and 0.50. The table does not cite its sources. Published values for comparison: FAO-56 gives 0.90 to 0.95 for cool-season turf [1], and University of California work gives an annual average of 0.80 for cool-season and 0.60 for warm-season grass [5]. The deficit figure for bluegrass sits inside a range of 71 to 110% of reference use found acceptable in a national trial (NTEP 2018&ndash;20).</p>
+<p>At deficit or dormancy the schedule waters for the lower coefficient while the grass keeps drawing at the normal one. The shortfall dries the soil past the stress line, and the model counts those days.</p>
+<p>One coefficient applies all season. There is no month-by-month curve, and mowing height, fertilizer and thinning in shade are not modeled.</p>
+<h3>Roots</h3>
+<p>Each species has a working root depth, averaged over the species ticked: Kentucky bluegrass and perennial ryegrass 8 in, tall fescue and bermudagrass 12 in, with sources in the research notes behind the tool (for example K-State's MF-2803 gives 6 to 8 in for bluegrass [31]).</p>
+<p>Roots are not the same depth all year. The model grows and loses roots day by day with the soil temperature 4 in down, following the finding that a 5-day running mean of soil temperature explained most of the variation in bentgrass roots [18]. The depth never drops below 40% of the working depth. On the developer's lawn this gives bluegrass about 6.8 in of roots in May and June and about 5.3 in by September. Only the bentgrass curve is fitted to measured data. The others are estimates held to published temperature limits.</p>
+<p>The water the roots can use is counted layer by layer, down to that day's depth. A dense or sandy layer within the root zone changes the count. Layers that physically stop roots are not yet modeled.</p>
+<h3>The growing season</h3>
+<p>Watering is planned only in the growing season. It starts on the first spring day the grass's growth potential reaches 20% (Gelernter and Stowell's temperature curve [17]) and ends when the 5-day mean soil temperature falls below 7 &deg;C (cool-season) or 13 &deg;C (warm-season).</p>
+
+<h2 id="weather">5. Weather and water use</h2>
+<p>The weather's demand for water is the "reference evapotranspiration": what a well-watered, mown grass surface would use. It is computed each day by the FAO-56 Penman&ndash;Monteith equation [1] from NASA POWER's temperature, humidity, wind and sunlight. The code reproduces FAO-56's own worked example (3.88 against the published 3.9 mm a day).</p>
+<p>Rain comes from PRISM, a gauge-based 4 km grid. PRISM replaced NASA POWER's rain after the developer noticed POWER's July rain ran high: ten-year July medians were 3.94 in from POWER against 2.94 in from PRISM.</p>
+<p>The hours of a storm matter on slow soils. Rain falling faster than the ground takes it in runs off even when the day's total would soak in. The model shapes each rainy day by the hours seen at the nearest airport (or on radar, for recent weeks) and keeps PRISM's total.</p>
+<div class="tech"><strong>Known open question</strong>
+On the developer's lawn, the model's June and July reference ET is 15 to 20% above the figures Michigan State University's Enviroweather network gives for that area (figures read off its site by the developer, not pulled from its data). The sunlight input was checked and is not the cause: NASA POWER's sunlight matched seven SURFRAD research radiometers to within 1% (ratio 0.991, 2018&ndash;2024). Running FAO-56 on nearby stations' own measured weather gives values at or above the model's, so the gap may come from a difference in method rather than in the weather data. It is not settled. If Enviroweather's lower figure is right, the model's summer amounts are high by roughly that much.
+</div>
+
+<h2 id="sun">6. Sun, shade, heat and wind</h2>
+<h3>Shade</h3>
+<p>Each square's daily light, as a share of open sky, comes from the companion shade map, which traces the sun's path through the lidar's trees and buildings with leaves on and off through the year. Grass in shade uses less water, but not in proportion to the light. Part of its use is driven by the air (warmth, dryness and wind), and that part continues in shade. Danielson and Feldhake's lysimeter work on Kentucky bluegrass [6] showed this, and the model computes the air-driven share for each day from the Penman&ndash;Monteith equation. On the developer's lawn in summer it is about a quarter of open-lawn use.</p>
+<p>Check against published measurements: the shadiest tenth of the developer's lawn is modeled at 0.39 of open-lawn use, inside the 0.33 to 0.61 measured under deep shade elsewhere [7, 8]. The shadiest 2% comes out at 0.22, below every published measurement, so the model may under-water the very darkest spots.</p>
+<h3>Light under leaves, and the night sky</h3>
+<p>Leaves let through more near-infrared light than visible light, so shade under trees is warmer than its brightness suggests. The model splits sunlight into its visible and near-infrared parts [19] and also counts how much open sky each square sees at night, since a square that sees open sky loses heat faster. Together these add 1 to 3% to use in shaded spots.</p>
+<h3>Cooler air near trees</h3>
+<p>On sunny days, air near tree cover is cooler. A study in Madison, Wisconsin measured up to 1.3 &deg;C cooler at full tree cover within 30 m [9]. The model cuts the air-driven part of use to match: 2 to 3% less in sun near trees, up to 8% less in deep shade.</p>
+<h3>Wind</h3>
+<p>A yard's wind is reduced by the buildings and trees around it. The yard average follows Heisler's measurements at houses in Pennsylvania [10]; the developer's lawn comes out at 42% of open wind. Each square then gets its own shelter by direction from fences, hedges, trees and houses, using the USDA wind erosion model's barrier curves [12] and published rules for the calm zone behind buildings, weighted by the nearest airport's wind directions. These curves come from field windbreaks and wind tunnels, not yards.</p>
+<h3>Fences and paving</h3>
+<p>A sunny fence board is warmer than the air and blocks part of the cold night sky. On a test fence the grass on the sunny side used 1.9% more, the shaded side about the same, and nothing changed beyond three fence heights. Grass within 7 m of paving or a roof uses up to 8% more at the edge, fading to nothing at 7 m. That figure is an estimate drawn from a desert field edge [11], in line with the 1.1 to 1.4 microclimate factors that California's landscape water guide gives as expert judgement [29]. No measurement of grass beside paving by direction was found.</p>
+
+<h2 id="surface">7. Slope, runoff, roofs and paving</h2>
+<p>The ground surface comes from the lidar at 1 m. Runoff follows the USDA curve number method (TR-55 [2]) by the soil's hydrologic group, steepened for slope by the method in the SWAT model's documentation [13]. On days with hourly rain, any rain falling faster than the ground's intake also runs off. Runoff flows on to lower squares, so a square below a slope or a downspout gets more water than falls on it.</p>
+<p>The ground's intake rate comes from the NRCS table of maximum sprinkler rates by soil texture and slope, as reproduced in Hunter's scheduling notes [28], capped at the soil survey's measured permeability of the top 6 in. On the developer's lawn this gives 0.14 in an hour, which matched the developer's experience of a slow lawn after an earlier version read it far too fast.</p>
+<div class="tech"><strong>Technical note</strong>
+Curve numbers: open space in good condition, groups A/B/C/D 39/61/74/80; other ground in fair condition 49/69/79/84; paving 98; pavers as gravel 76/85/89/91 [2]. Initial abstraction I<sub>a</sub> = 0.2S. Hawkins and others [14] argue for 0.05S, which gives more runoff from small rains; that change has not been made. The curve number method was built for storm events and is applied here to daily totals.
+</div>
+<p><strong>Roofs</strong> are found from the lidar, with the photo used to drop green tree tops. Against a 1 m land cover map of 23 residential squares in Virginia, Maryland and Pennsylvania, the rule in use found 83% of roof squares exactly and 95% within 1 m. The user marks where each downspout empties. Each rain day the first 0.5 mm wets the roof, following the Texas rainwater harvesting manual's first-flush figure [27], and the rest goes to the downspout's spot on the lawn.</p>
+<p><strong>Paving</strong> is found from the lidar and the photo, using the user's own traced lawn as the reference for "green". On 11 test squares it was right on 85.5% of squares and found 85% of the paving. Every test so far is in the mid-Atlantic.</p>
+<p><strong>Low spots</strong> are the hollows where water would collect if it did not soak in. On made-up ground with known hollows, a hollow 8 m or more across and 5 cm or more deep is found most of the time. One 5 m across is found about half the time unless it is deeper than 7 cm, and one 3 m across is nearly invisible. This is a limit of the lidar's point spacing and noise.</p>
+
+<h2 id="below">8. Water from below</h2>
+<h3>The water table</h3>
+<p>Where the water table is close to the surface, it lifts water up into the roots and can keep ground wet whatever the weather. The model starts from the water on the national maps within about 1 km (streams, ponds, lakes and wetlands), where the water table meets the surface. Between them the water table is taken to rise about half as fast as the ground. That rate was fitted to 227 shallow wells in two Michigan counties, where the height above nearby water ranked the depth to water with a correlation of 0.56 to 0.59 and a typical error of 1.7 m. The water table is taken to be highest in April and 0.75 m (about 2.5 ft) lower by October, except near year-round water. Where the soil survey lists a shallower wet layer, the survey wins.</p>
+<p>Water rising into the roots follows AquaCrop's equations for four soil classes [4], limited to what refills the roots and shutting off as they wet. On the developer's lawn the water table is 12 ft or more down and lifts almost nothing. On a customer's lawn that stayed wet weeks after rain in a dry October, the model now puts the water table about 6 in down from November to June, which fits what was seen.</p>
+<h3>Water held up by a slow layer</h3>
+<p>A slow layer partway down, such as dense clay under sand, can hold water up above the true water table. That water stays wet on flat ground and runs downhill along the top of the layer elsewhere, coming out lower down as a seep. The model finds such layers in the soil survey: a layer passing a tenth or less of what the soil above it passes, and no more than about 3.4 in a day, or a cemented layer or hardpan the survey names. Water draining from the roots builds up on it, leaks through it at the layer's own rate [16], and moves downhill along it to lower squares, the approach of Cornell's Soil Moisture Routing model for soils over hardpans [15]. The layer is set deeper under rises and shallower under hollows, by the survey's range of depths.</p>
+<p>The layer's speed is the least known number here. Where the survey records water standing on a layer in certain months, the model slows the layer until it would hold water at that depth under those months' rain. This has been run on two lawns but not checked against a probe.</p>
+<h3>Topsoil on sand</h3>
+<p>A finer soil laid over sand holds water above the boundary, because the sand takes none until the topsoil is nearly soaked (a capillary barrier) [30]. When a user says loamy topsoil was brought in over a sandy soil, the model adds about 2.2 mm of holding per cm of topsoil (about 0.9 in for 4 in) and lifts no water across the boundary. This rests on standard soil water curves and has not been measured on a lawn.</p>
+
+<h2 id="schedule">9. Zones and the schedule</h2>
+<p>First the model waters every square on its own, ideally, over the ten years. In the lawn's thirstiest month it records how often each square would need water, then groups squares by that interval using fixed breaks at 2, 3, 4.5, 7 and 10 days. Small groups join their neighbours, groups with similar rhythms merge, and the result is at most four zones. The breaks were chosen so that the same lawn always gives the same zones. A user can draw their own zones instead, and mapped sprinklers replace the zones with their valves.</p>
+<p>Then each zone is watered as one: on the morning its average square would cross the stress line, refilled to full plus that day's use. Each watering is capped at what the ground can take in two soak cycles a day (the developer's rule), each taken as one hour at the ground's intake rate (an assumption a soak test would check). The amount is then raised by a scheduling multiplier, because sprinklers never water evenly. Using the Irrigation Association's formula, SM = 1 / (0.4 + 0.6 &times; DU), with a distribution uniformity of 0.65 for a typical home spray system, the multiplier is 1.27. Once sprinklers are mapped, each zone's own modeled uniformity is used instead.</p>
+<p>Refilling to full plus the day's use means some water drains past the roots on fast soils: about 10 to 20% beyond the grass's use in a one-square test on loam or sand. Lighter, more frequent watering was tried and dropped, because it kept the soil full so that rain ran off.</p>
+
+<h2 id="checked">10. What has been checked</h2>
+<p>Checking a model like this happens at two levels. Its parts can be held against outside data, and its output (wet and dry spots, and how much water) can be held against a real lawn. The first has been done for many parts. The second has started.</p>
+<div class="scroll"><table>
+<tr><th>Part</th><th>Checked against</th><th>Result</th></tr>
+<tr><td>Water use equation</td><td>FAO-56's worked examples</td><td>3.88 against 3.9 mm/day</td></tr>
+<tr><td>Sunlight input</td><td>7 SURFRAD research radiometers, 2018&ndash;2024</td><td>Within 1% (ratio 0.991)</td></tr>
+<tr><td>Wind input</td><td>Nearest airport, 368 summer days</td><td>Ratio 0.96, correlation 0.92</td></tr>
+<tr><td>Reference ET</td><td>Enviroweather (figures read off its site); stations' own weather</td><td><span class="verdict">Open:</span> 15&ndash;20% above Enviroweather; at or below FAO-56 on station weather</td></tr>
+<tr><td>Rain</td><td>The developer's local sources</td><td>POWER's July rain ran high; switched to PRISM</td></tr>
+<tr><td>Which 24 hours a rain day covers</td><td>Radar, 14 rainy days</td><td>Matched the 24 h ending 12:00 UTC (7 or 8 a.m. Eastern)</td></tr>
+<tr><td>Soil temperature</td><td>Two Michigan reference stations, one week</td><td>Mean difference +0.1 and +2.6 &deg;C</td></tr>
+<tr><td>Roofs</td><td>Chesapeake Bay 1 m land cover, 23 squares</td><td>83% exact, 95% within 1 m; overlap score 0.74</td></tr>
+<tr><td>Paving</td><td>Same map, 162,288 test squares</td><td>85.5% right, 85% of paving found</td></tr>
+<tr><td>Low spots</td><td>Made-up ground; a blind photo test</td><td>Size limits above; of 11 "hollows" checked by photo, only 2 were open ground, so only hollows on the traced lawn are reported</td></tr>
+<tr><td>Water table rate</td><td>227&ndash;241 shallow wells in two Michigan counties</td><td>Typical error 1.7 m; rate of about 0.5 adopted</td></tr>
+<tr><td>Soil intake</td><td>The developer's experience of the lawn</td><td>Corrected to 0.14 in/h</td></tr>
+<tr><td>Shade's effect on use</td><td>Published deep-shade measurements</td><td>Shadiest tenth inside the measured range; shadiest 2% below it</td></tr>
+<tr><td>Sprinkler rates</td><td>Manufacturers' printed rates</td><td>Exact on the two checked</td></tr>
+<tr><td>A wet lawn</td><td>One customer's lawn, by eye</td><td>Model shows a shallow water table there</td></tr>
+<tr><td><strong>Whole plan</strong></td><td>The developer's experience: about 1 in a week over 2&ndash;3 waterings in July, full sun</td><td>First version 1.2 in over 4 waterings; after the grass-type coefficients, 0.95 in over 3</td></tr>
+</table></div>
+<p><strong>Not yet checked against measurements:</strong> soil moisture through time on any lawn; infiltration (a soak test); runoff; drainage rates; the crop coefficients; the root model (no soil cores); water rising from a water table under turf; slow layers (no probe); the zone boundaries; the effects of shade, wind, fences, tree cooling and paving at these lawns; sprinkler pressure at the heads (no gauge readings yet); sprinkler evenness (no catch-cup test). The modeled evenness of rotors at head-to-head spacing, 73% in still air, is above the roughly 50% found in real home audits [23].</p>
+
+<h2 id="assumptions">11. Assumptions and weak points</h2>
+<p>In rough order of how much they could change a watering plan:</p>
+<ol>
+  <li><strong>The weather's water demand.</strong> The 15&ndash;20% gap with Enviroweather (<a href="#weather">section 5</a>). If Enviroweather is right, summer amounts are high by about that much.</li>
+  <li><strong>The soil survey describes native soil, and a lawn is usually built ground.</strong> Graded fill and compacted topsoil can take in water far more slowly than the survey says. Measured urban lawns ran 0.1 to 0.35 times the survey's rate when new or compacted, and about the same as the survey when old [20, 21]. The model makes no adjustment for compaction. The developer's own lot is thought to be heavier clay than the survey's loam; no soil pit has settled it.</li>
+  <li><strong>Crop coefficients from an app's table</strong>, not a publication, one value all season.</li>
+  <li><strong>The model's own numbers</strong>: the drainage-class factors, the 60% a day drainage, the 10% of root depth held above field capacity, the one-hour soak cycle, and the snowmelt rate. Each is a reasonable choice, and none comes from a measurement.</li>
+  <li><strong>Runoff from small rains</strong> depends on the curve number method's initial abstraction, kept at the standard 0.2S.</li>
+  <li><strong>One weather cell per lot.</strong> Rain is from a 4 km grid and the rest from about 50 km. Microclimate comes only from shade, wind, fences, paving and nearby trees.</li>
+  <li><strong>The lidar is as old as its flight.</strong> Regrading, new patios and removed trees since then are invisible unless the user marks them.</li>
+  <li><strong>Things not modeled:</strong> trees drawing water from the lawn through their roots, dew, sump pumps and foundation drains, water from a neighbour's yard moving underground, and soil layers that stop roots.</li>
+</ol>
+
+<h2 id="next">12. How it will be checked next</h2>
+<p><strong>Soil moisture readings.</strong> Since November 2026, readings are taken in the field with a hand meter at marked spots, a few days apart, and kept with each spot's position. The meter in use reads a relative scale, not calibrated water content, so the first test is one of order. Do the spots the model calls driest read driest, and does the order hold from visit to visit? That tests the zone pattern directly. Matching amounts would take oven-dried soil cores.</p>
+<p><strong>A soak test</strong> (a can and a ruler, or a ring infiltrometer) would test the intake rate and the one-hour soak cycle, which set the cap on each watering.</p>
+<p><strong>Wet spots after rain</strong>, photographed and compared with the low-spot map. The target set before any field data: at least 7 of 10 real wet spots found within 5 m, and at least 7 of 10 reported spots really wet.</p>
+<p><strong>Catch cups and gauge readings</strong> at sprinkler heads, for the evenness and pressure models.</p>
+<p>Results will be added to this paper as they come in, including results that go against the model.</p>
+
+<h2 id="others">13. How it compares with other tools</h2>
+<p>Each part of this model is well studied. A search of the research literature and commercial tools in November 2026 found no other tool that combines them for a single residential lawn at 1 m. The nearest relatives:</p>
+<ul>
+  <li><strong>Smart irrigation controllers</strong> (the EPA WaterSense category) use the same kind of inputs (soil type, slope, sun or shade, root depth, plant type), entered as one setting per zone and adjusted daily for weather.</li>
+  <li><strong>Precision golf course irrigation</strong> maps fairways on a 2.5 m grid and draws management zones from measured soil moisture and terrain [24]. It measures in the field rather than modeling, and it found that results on one fairway do not always carry to the next.</li>
+  <li><strong>Watershed models</strong> such as DHSVM [25] and the Soil Moisture Routing model [15] use much the same physics cell by cell (sun and shade from terrain and canopy, layered soil, water moving sideways underground) at 10 to 100 m, checked against stream gauges.</li>
+  <li><strong>Urban climate models</strong> such as UT&amp;C [26] and ENVI-met couple shade, heat, soil water and irrigation for a street or block, to study cooling rather than watering schedules.</li>
+</ul>
+
+<h2 id="refs">References</h2>
+<ol class="refs">
+  <li>Allen, R.G., Pereira, L.S., Raes, D., Smith, M. (1998). <i>Crop Evapotranspiration: Guidelines for Computing Crop Water Requirements</i>. FAO Irrigation and Drainage Paper 56. FAO, Rome.</li>
+  <li>USDA Soil Conservation Service (1986). <i>Urban Hydrology for Small Watersheds</i>. Technical Release 55, 2nd ed.</li>
+  <li>Soil Survey Staff, USDA Natural Resources Conservation Service. Soil Survey Geographic Database (SSURGO), through Soil Data Access.</li>
+  <li>Raes, D., Steduto, P., Hsiao, T.C., Fereres, E. (2023). <i>AquaCrop Version 7.1 Reference Manual</i>, chapter 3. FAO, Rome.</li>
+  <li>Meyer, J.L. et al. (1985). Proceedings of the 5th International Turfgrass Research Conference, Avignon, pp. 357&ndash;364.</li>
+  <li>Danielson, R.E., Feldhake, C.M. (1981). <i>Urban Lawn Irrigation and Management Practices for Water Saving with Minimum Effect on Lawn Quality</i>. Colorado Water Resources Research Institute, Completion Report 106. Colorado State University.</li>
+  <li>Wilfong et al. (2024). <i>Journal of the American Water Resources Association</i> 61(1): e13236.</li>
+  <li>Litvak, E., Pataki, D.E. (2016). <i>Journal of Arid Environments</i> 134: 87&ndash;96.</li>
+  <li>Ziter, C.D., Pedersen, E.J., Kucharik, C.J., Turner, M.G. (2019). Scale-dependent interactions between tree canopy cover and impervious surfaces reduce daytime urban heat during summer. <i>PNAS</i> 116: 7575&ndash;7580.</li>
+  <li>Heisler, G.M. (1990). <i>ASHRAE Transactions</i> 96(1): 1389&ndash;1396.</li>
+  <li>Brown, P.W. (2005). Evapotranspiration of turfgrass located adjacent to a fallow desert soil: a quantitative assessment of the "edge effect". World Water Congress 2005, ASCE. doi:10.1061/40792(173)529.</li>
+  <li>USDA Agricultural Research Service (2020). <i>Wind Erosion Prediction System (WEPS) Technical Documentation</i>. Agriculture Handbook 727.</li>
+  <li>Neitsch, S.L., Arnold, J.G., Kiniry, J.R., Williams, J.R. (2011). <i>Soil and Water Assessment Tool Theoretical Documentation, Version 2009</i>. Texas Water Resources Institute.</li>
+  <li>Hawkins, R.H. et al. (2002). Runoff curve number method: examination of the initial abstraction ratio. Second Federal Interagency Hydrologic Modeling Conference.</li>
+  <li>Frankenberger, J.R., Brooks, E.S., Walter, M.T., Walter, M.F., Steenhuis, T.S. (1999). A GIS-based variable source area hydrology model. <i>Hydrological Processes</i> 13: 805&ndash;822.</li>
+  <li>Jackson, C.R., Bitew, M.M., Du, E. (2014). <i>Hydrological Processes</i> 28: 3195&ndash;3200.</li>
+  <li>Gelernter, W., Stowell, L. (2005). <i>Golf Course Management</i> 73: 108&ndash;113.</li>
+  <li>Beard, J.B., Daniel, W.H. (1966). <i>Agronomy Journal</i> 58: 337&ndash;339.</li>
+  <li>Spitters, C.J.T., Toussaint, H.A.J.M., Goudriaan, J. (1986). <i>Agricultural and Forest Meteorology</i> 38: 217&ndash;229.</li>
+  <li>Pitt, R., Lantrip, J. (2000). Infiltration through disturbed urban soils. In <i>Applied Modeling of Urban Water Systems</i>, CHI Monograph 8.</li>
+  <li>Gregory, J.H., Dukes, M.D., Jones, P.H., Miller, G.L. (2006). <i>Journal of Soil and Water Conservation</i> 61(3): 117&ndash;124.</li>
+  <li>Barnes, R., Lehman, C., Mulla, D. (2014). Priority-Flood: an optimal depression-filling and watershed-labeling algorithm for digital elevation models. <i>Computers &amp; Geosciences</i>. doi:10.1016/j.cageo.2013.04.024.</li>
+  <li>Mecham, B.Q. (2004). Using distribution uniformity to evaluate the quality of a sprinkler system. Irrigation Association Technical Conference.</li>
+  <li>Krum, J.M., Carrow, R.N., Karnok, K. (2010). Spatial mapping of complex turfgrass sites: site-specific management units and protocols. <i>Crop Science</i> 50(1): 301&ndash;315.</li>
+  <li>Wigmosta, M.S., Vail, L.W., Lettenmaier, D.P. (1994). A distributed hydrology-vegetation model for complex terrain. <i>Water Resources Research</i> 30(6): 1665&ndash;1679.</li>
+  <li>Meili, N. et al. (2020). An urban ecohydrological model to quantify the effect of vegetation on urban climate and hydrology (UT&amp;C v1.0). <i>Geoscientific Model Development</i> 13: 335&ndash;362.</li>
+  <li>Texas Water Development Board (2005). <i>The Texas Manual on Rainwater Harvesting</i>, 3rd ed.</li>
+  <li>Hunter Industries. <i>Irrigation Notes: Scheduling Irrigation</i> (maximum precipitation rates by soil and slope, after USDA NRCS).</li>
+  <li>Costello, L.R., Matheny, N.P., Clark, J.R., Jones, K.S. (2000). <i>A Guide to Estimating Irrigation Water Needs of Landscape Plantings in California (WUCOLS III)</i>. University of California Cooperative Extension and California Department of Water Resources.</li>
+  <li>Stormont, J.C., Anderson, C.E. (1999). Capillary barrier effect from underlying coarser soil layer. <i>Journal of Geotechnical and Geoenvironmental Engineering</i> 125(8): 641&ndash;648.</li>
+  <li>Upham, W. et al. (2008). <i>Watering Established Lawns</i>. Kansas State University Research and Extension, MF-2803.</li>
+</ol>
+<p class="meta">Data: USGS 3DEP; USDA NAIP; Overture Maps Foundation; USDA NRCS Soil Data Access; PRISM Climate Group, Oregon State University, through NOAA's Applied Climate Information System; NASA POWER; Iowa Environmental Mesonet; National Weather Service; USGS NHDPlus HR; USFWS National Wetlands Inventory; Michigan EGLE Wellogic (checks only); NOAA SURFRAD (checks only); Chesapeake Bay Program 1 m land cover (checks only). Fuller notes on every number, with the measurements behind each check, are kept with the tool's source code.</p>
+
+<h2 id="log">Change log</h2>
+<ul class="meta" style="font-size:.9rem">
+  <li><strong>2 November 2026.</strong> First version. Describes the model with the water table (built 1 November), water held up by slow layers, topsoil over sand (2 November), and the start of field moisture readings.</li>
+</ul>
+</main>
+</body>
+</html>

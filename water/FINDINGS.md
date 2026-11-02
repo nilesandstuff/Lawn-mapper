@@ -21,6 +21,11 @@ go in this file (or anywhere in the repository): lots are named by a label.
 
 *Kept current so a fresh session can pick up without the conversation.*
 
+- **2026-11-02: the white paper** (public/paper.html, /paper) describes the live model for homeowners and a turf
+  scientist, and is the current summary of what the model does and what has been checked; keep it true to the code
+  (water/TODO.md, Rules). Parts of the list below are older than H53-H74 (roots by species, the Kc table, the water
+  table, perched water, the moisture page): the paper and those entries win where they differ.
+
 - **THE WATERING PLAN (owner's vision, VISION.md, 2026-10-18) is live on the
   admin-only site**: soil survey + ten years of weather + the daily water
   balance per square metre -> zones, how much and how often each month, this

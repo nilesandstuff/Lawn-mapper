@@ -100,6 +100,13 @@ SPECULATION), as always.
 
 ## Rules (owner, 2026-10-27)
 
+- **The white paper stays true to the live model** (owner, 2026-11-02: "remember to continuously add to it if
+  something in the live model changes from the information already in the paper"). public/paper.html, served at
+  /paper. Any change to the live model that changes a statement there is edited there in the same commit, with a
+  line in its change log; any new check against real data goes into its section 10, results against the model
+  included. Plain language, no "we", for homeowners and a turf scientist alike; addresses never, the owner's lot
+  only as "the developer's lawn".
+
 - **Shade is the shade map's.** "You should follow the output of the shade map. If we need to make adjustments to how
   shade actually works, that goes through the shade map. Re use the shade map's work, for uniformity... we don't
   want to start any tree models or shade calculations from scratch here." The water map runs the shade map's own
