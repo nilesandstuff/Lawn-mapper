@@ -2376,7 +2376,45 @@ Researched (research-interface.md, a research agent; live Soil Data Access queri
   breaks through at only 10-18 cm of suction; 10-20 cm of loam over sand holds about 22-40 mm more than the survey's
   field capacity, roughly doubling that topsoil's available water. Native cases in the two counties sit 76-109 cm down
   (2-3% of the area strictly, 7-10% loosely); a lawn's own topsoil or sod over sand is in no dataset.
-Not built yet: waiting on the owner's go.
+Built (owner, 2026-11-02: "Yes build it"): H73.
+
+### H73. Water perched on a slow layer: built (water session, 2026-11-02)
+
+lib/perched.js, in the daily balance (lib/balance.js) and the plan (lib/plan.js); test/perched.test.js (7 tests).
+The design is research-perched.md section 5 (the Soil Moisture Routing model's perched store, Frankenberger et al.
+1999) with research-interface.md's band and barrier:
+- **Which soils.** A horizon at 1.0 um/s or slower and at most a tenth of the fastest above it; else a restriction row
+  (fragipan, ortstein, densic...) or a cemented horizon (an m suffix) the survey gives no slower Ksat, as a thin band
+  (ortstein 0.5 um/s over 10 cm, R 2.3 days; fragipan 1 mm/day). Clay bands in sand (E and Bt), Bs/Bhs without the m,
+  and a plain change of material add nothing.
+- **The store.** What drains out of the roots goes into a store on the layer at the survey's own rate down to it
+  (the drainage class's factor is dropped there: it already held the perching). Each day, uphill first: down through
+  the layer by Jackson's L = (h + C) / R (none where the water table already stands above the layer's base, or the
+  week's mean temperature is at or below 0 C); sideways along the layer's filled surface as an exact linear
+  reservoir, a = K S / (phid L), to the lower neighbours by slope; what the room between the roots and the layer
+  cannot hold up into the roots, then out at the surface (a seep, which runs on as surface water the next day).
+  Water rises from perched water into the roots by AquaCrop's rise, as from the water table, from whichever is nearer.
+  The survey's wet months no longer stand in for the water table over a slow layer (the store holds that water).
+- **The layer's shape.** The soil's depth plus beta times the ground's height above its 40 m average (smoothed at
+  5 m first): deeper under rises, shallower under hollows; beta from the survey's range of depths for that horizon
+  (low to high against four standard deviations of the ground's relief over that soil), else 0.5.
+- **The survey as the check.** Where the survey's wet months put water above the slow layer, the layer is held to
+  the rate that would keep perched water at the survey's depth under those months' mean surplus of rain over the
+  grass's use (K = surplus x C / (h + C)); never faster than the survey's own Ksat. This is the calibration the
+  research note named as the check ("never perching there means K_L is too high; it is the least known number").
+- **The capillary barrier.** The 4 in loamy topsoil put on a soil whose top is sand or loamy sand: +2.2 mm per cm of
+  topsoil (22 mm) on its available water, and no water rises across it.
+Measured on the page (the local build, the live sources):
+- The owner's lot: no slow layer. Filer loam is slow all the way down (Ap 1 um/s over 0.55 um/s), a contrast of 2,
+  not 10; its 1% Metea inclusion would perch (2Bt2 at 81 cm) but is not placed on the lawn. Unchanged plan.
+- The wet lawn (S23): of its map units only Rimer loamy fine sand perches (clay at 81 cm, 0.91 um/s,
+  79 mm a day). The survey records Rimer wet at 53 cm January to April, which at 79 mm a day could never happen; the
+  check slows it to 1.2 mm a day. Perched water then peaks about 22 cm down in late winter and stays below the roots
+  in the growing season. Rimer is 1.3% of the test window there; most of it is Glendora (sand, no layer).
+- A layer passing the survey's 0.5-1 um/s (43-86 mm a day under its own weight) perches water only under storms and
+  snowmelt; daily rain never builds it. Perching through a season needs a layer near 1 mm a day (a fragipan), or the
+  survey's wet months to say so.
+- Uniform loam, sand, and the owner's Filer: no store, and every earlier test unchanged (plan 25, groundwater 6).
 
 ## SPECULATION
 
@@ -2416,6 +2454,19 @@ the wetter group in those months.
 
 
 
+### S25. What the perched-water model leaves out (2026-11-02, with H73)
+
+- The layer's speed is the least known number. The survey's horizon Ksat is a class figure; the check against the
+  survey's wet months fixes it only where the survey records wet months above the layer. A slow layer with no wet
+  months keeps the survey's speed, which is likely too fast for a dense till.
+- The layer's shape is a guess from the ground and the survey's range: a soil probe pushed down until it stops, at a
+  few spots, would fix it (kriging the readings is the next step, not built).
+- Sideways flow uses the survey's Ksat of the soil above the layer; hillslopes measured 3-14 times that (Brooks 2004).
+  PERCH.kLatMult is 1 until a seep on a real lawn says otherwise.
+- Perched water from a neighbour's yard uphill is not seen: the window is the lot and a little round it.
+- Foundation drains, sump pits and gravel-filled trenches catch perched water; none is in any dataset.
+- Below the survey's 1.5-2 m nothing is known. Clay 3-10 m down (Wellogic logs) could perch water too, out of reach.
+
 ### S24. What the water-table model leaves out (2026-11-01, with H70)
 
 - The half-rate and the 0.75 m swing are Kent and Ottawa's glacial drift; a clay till or bedrock country may keep the
@@ -2437,7 +2488,7 @@ breaks from the raised edge to the flat, water moving sideways through sand come
 back yards along the same edge (as the owner saw); (3) sump pumps -- houses on ground like this run their footing-drain
 sumps all season, and many discharge onto the back lawn, carrying the groundwater to the surface. Not wet from rain:
 the month's surplus was small. A hole dug or augered 2 ft and left an hour shows the water table where water stands in
-it. Built since: the water table, water rising from it, and seeps where it reaches the surface (H70).
+it. Built since: the water table, water rising from it, and seeps where it reaches the surface (H70); water perched on a slow layer and its seeps (H73) -- there only Rimer perches, below the roots, so (2) still rests on the sand over the water table, not on a slow layer.
 
 ### S22. A passive "you are here": matching what the phone senses to the lidar (2026-10-31, owner's idea)
 

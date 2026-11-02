@@ -86,6 +86,18 @@ SPECULATION), as always.
     afternoon); in wind it mixes away. Research how the cooling under and beside a crown depends on the wind, then
     tie it to each spot's own shade and the day's wind.
 
+23. **Roots stopped or thinned by the soil's layers** (owner, 2026-11-02: "root depth variability due to changing soil
+    layers in the rootzone"). Today the roots' depth follows the species and the soil's temperature, and the water
+    they can use is read layer by layer down to that depth; but a dense, cemented, compacted or waterlogged layer
+    (and a sand that dries hard) also stops or thins roots, which the model does not know. Research how turf roots
+    respond to a slow, dense or saturated layer and cap or reshape the root zone from the survey's layers (and the
+    perched water, H71-H72).
+24. **Soil spread from the foundation onto the lawn** (owner, 2026-11-02: "spreading soil from the foundation out onto
+    the lawn"). Digging a basement leaves subsoil (often clay or sand from several feet down) spread round the house and
+    across the yard, under whatever topsoil went back: the top layers there are not the survey's. Research how to
+    estimate it (the house's footprint and age, the basement's depth, the lidar's raised pads round houses, the survey's
+    deeper horizons as the likely spread soil) and how far from the house it reaches.
+
 ## Rules (owner, 2026-10-27)
 
 - **Shade is the shade map's.** "You should follow the output of the shade map. If we need to make adjustments to how
@@ -113,6 +125,11 @@ SPECULATION), as always.
   beside a maple and a spruce would settle the numbers.
 
 ## Done
+
+- **Water perched on slow layers** (owner, 2026-11-02: "Yes build it"): the store on a slow layer, its leak, its
+  flow downhill along the layer to seeps, flat ground kept wet, the layer's shape from the ground, the survey's wet
+  months as the check on the layer's speed, cemented bands, and the capillary barrier under topsoil on sand (H73).
+  Open: probe readings to fix the layer's depth, a neighbour's water from uphill, drains (S25).
 
 - **The water table under each square metre** (owner, 2026-11-01: "build all 3... as true to life as possible"):
   the height above the nearest water, water rising into the roots, seeps; calibrated on 227 wells (H70). Open:

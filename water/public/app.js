@@ -153,6 +153,8 @@ const VIEWS = ['zones', 'need', 'soil', 'water', 'table', 'drains', 'slope', 'wi
 /** The water table view's steps: its depth in September, at the surface (a seep) to over 4 ft (H70). cm. */
 const TABLE_STEPS = [[5, [13, 71, 161, 225]], [30.48, [30, 136, 229, 205]], [60.96, [100, 181, 246, 185]], [121.92, [187, 222, 251, 160]]];
 const TABLE_WORDS = ['at the surface: a seep, wet in any weather', 'within 1 ft', '1 to 2 ft down', '2 to 4 ft down'];
+/** ...and the water perched on a slow layer (H73): where it comes out (a seep), where it stands in the roots for weeks. */
+const PERCH_SEEP = [123, 31, 162, 215], PERCH_STAND = [186, 104, 200, 150];
 /** The wind view's steps: each spot's July wind as a share of the open wind, calm (deep teal) to windy (pale). */
 const WIND_STEPS = [[0.25, [0, 77, 64, 200]], [0.35, [0, 121, 107, 180]], [0.45, [38, 166, 154, 160]], [0.55, [128, 203, 196, 150]], [Infinity, [224, 242, 241, 150]]];
 const WIND_WORDS = ['under a quarter of the open wind', 'a quarter to a third', 'a third to under half', 'about half', 'over half'];
@@ -211,9 +213,11 @@ function overlay(d, v, { hard = true } = {}) {
       else if (d.reported[i] === 1) rgba = [190, 200, 215, 110]; // not a lawn hollow: pavement, trees, a ditch...
       // runoff lines: weighted by what each surface sheds when the lawn is traced (m^2 of runoff-producing surface), plain area otherwise
       if (!d.wall[i] && d.flow[i] >= (d.weighted ? 60 : 250)) rgba = [34, 211, 238, 220];
-    } else if (v === 'table' && p?.groundwater?.late && kind === 1) {
-      const cm = p.groundwater.late[i];
+    } else if (v === 'table' && (p?.groundwater?.late || p?.perched?.standDays) && kind === 1) {
+      const cm = p.groundwater?.late ? p.groundwater.late[i] : NaN;
       if (Number.isFinite(cm)) { const step = TABLE_STEPS.find(([lim]) => cm <= lim); if (step) rgba = step[1]; }
+      const pr = p.perched;
+      if (pr?.standDays && !(cm <= 5)) { if (pr.seepMmMap[i] >= 5) rgba = PERCH_SEEP; else if (pr.standDays[i] >= 14) rgba = PERCH_STAND; }
     } else if (v === 'wind' && p?.windJuly && kind === 1 && d.lawnMask?.[i]) {
       const w = p.windJuly[i];
       if (Number.isFinite(w)) rgba = WIND_STEPS.find(([lim]) => w < lim)[1];
@@ -871,8 +875,8 @@ function hillReport(h) {
    which the plan counts. */
 function groundwaterReport(p) {
   const el = $('#groundwater'); if (!el) return;
-  const g = p?.groundwater;
-  if (!g) { el.innerHTML = view.groundwaterError ? `<p class="dim">The water table could not be worked out (${esc(view.groundwaterError)}): the plan uses the soil survey's own wet layers.</p>` : ''; return; }
+  const g = p?.groundwater, perched = perchedCard(p?.perched);
+  if (!g) { el.innerHTML = (view.groundwaterError ? `<p class="dim">The water table could not be worked out (${esc(view.groundwaterError)}): the plan uses the soil survey's own wet layers.</p>` : '') + perched; return; }
   const depth = (cm) => (cm === null || cm === undefined ? 'deeper than 13 ft' : cm < 5 ? 'at the surface' : cm < 30.48 ? `${Math.round(cm / 2.54)} in down` : `${(cm / 30.48).toFixed(cm < 152 ? 1 : 0)} ft down`);
   const inch = (mm) => (mm / 25.4 < 1 ? (mm / 25.4).toFixed(1) : Math.round(mm / 25.4));
   const pc = (v) => `${Math.round(v * 100)}%`, s = g.summary || {};
@@ -891,7 +895,36 @@ function groundwaterReport(p) {
   if (s.wetlandAtLawn >= 0.05) near.push(`${pc(s.wetlandAtLawn)} of the lawn lies in a mapped wetland`);
   if (near.length) lines.push(`<p>${near.join('; ').replace(/^./, (c) => c.toUpperCase())}.</p>`);
   el.innerHTML = `<div class="card"><h2>The water table under the lawn</h2>${lines.join('')}
-    <p class="dim">The water table meets the ground at ponds, streams and wetlands; between them it rises about half as fast as the ground (measured on 227 shallow wells in Kent and Ottawa counties), and sinks about 2.5 ft from spring to autumn except where year-round water holds it up. The water from the USGS stream map and the national wetlands inventory, the ground from the lawn's lidar, the soil survey's own wet layers where they are shallower; the water lifted by FAO's AquaCrop method for the soil under the roots. A model: a hole dug 2 ft and left an hour shows the water table where water stands in it. See the Water table view.</p></div>`;
+    <p class="dim">The water table meets the ground at ponds, streams and wetlands; between them it rises about half as fast as the ground (measured on 227 shallow wells in Kent and Ottawa counties), and sinks about 2.5 ft from spring to autumn except where year-round water holds it up. The water from the USGS stream map and the national wetlands inventory, the ground from the lawn's lidar, the soil survey's own wet layers where they are shallower; the water lifted by FAO's AquaCrop method for the soil under the roots. A model: a hole dug 2 ft and left an hour shows the water table where water stands in it. See the Water table view.</p></div>${perched}`;
+}
+
+/* WATER PERCHED ON A SLOW LAYER (owner, 2026-11-02; FINDINGS H73; lib/perched.js): which soils under the lawn have a
+   layer that holds water up, how deep and how slow, what the perched water does through the season, and the
+   capillary barrier under topsoil put on sand. */
+function perchedCard(r) {
+  if (!r) return '';
+  const inch = (mm) => (mm / 25.4 < 1 ? (mm / 25.4).toFixed(1) : Math.round(mm / 25.4));
+  const depth = (cm) => (cm < 91 ? `${Math.round(cm / 2.54)} in` : `${(cm / 30.48).toFixed(1)} ft`);
+  const pc = (v) => `${Math.round(v * 100)}%`;
+  const lines = [];
+  if (r.soils.length) {
+    const kind = (s) => (s.how === 'band' ? `a thin ${esc(String(s.band).toLowerCase())} the survey names (${esc(s.layer)})` : `its ${esc(s.layer || 'slow')} layer`);
+    const pass = (s) => { const mmDay = (s.cM * 1000) / Math.max(1e-6, s.resistDays); return mmDay >= 25.4 ? `lets about ${inch(mmDay)} in a day through` : `lets only about ${(mmDay / 25.4).toFixed(2)} in a day through`; };
+    const MON = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const span = (ms) => (ms.length > 2 && ms[ms.length - 1] - ms[0] === ms.length - 1 ? `${MON[ms[0]]} to ${MON[ms[ms.length - 1]]}` : ms.map((m) => MON[m]).join(', '));
+    const calib = r.soils.filter((s) => s.calibrated).map((s) => `The survey's figures have ${esc(s.name)}'s layer passing about ${inch(s.calibrated.surveyMmDay)} in a day, but the survey also records water standing on it about ${depth(s.calibrated.wetCm)} down from ${span(s.calibrated.months)}; for that, under those months' rain, it can pass only about ${(s.calibrated.mmDay / 25.4).toFixed(2)} in a day, and the plan takes that.`);
+    lines.push(`<p><strong>${r.share >= 0.99 ? 'All' : pc(r.share)} of the lawn lies over a slow layer</strong> that holds water up above the true water table: ${r.soils.map((s) => `${esc(s.name)}${s.topsoil ? ' (under the topsoil)' : ''}, ${kind(s)} about ${depth(s.depthCm)} down, which ${pass(s)}`).join('; ')}.${Number.isFinite(r.layerCmLow) && r.layerCmHigh - r.layerCmLow > 15 ? ` Under the rises it sits deeper and under the hollows shallower: from about ${depth(r.layerCmLow)} to ${depth(r.layerCmHigh)} across the lawn.` : ''}</p>`);
+    if (calib.length) lines.push(`<p>${calib.join(' ')}</p>`);
+    if (r.standDaysMost >= 1) lines.push(`<p>With rain alone, water perched on it rises into the roots on about <strong>${Math.round(r.standDaysRainAlone)} days of the growing season</strong> at the lawn's middle${r.standDaysMost > r.standDaysRainAlone + 3 ? `, up to ${Math.round(r.standDaysMost)} where it gathers` : ''}${Math.abs(r.standDaysPlanned - r.standDaysRainAlone) >= 3 ? ` (${Math.round(r.standDaysPlanned)} as watered)` : ''}: soil kept soaked long after the rain. The plan counts it, so those days are not watered.</p>`);
+    else if (Number.isFinite(r.topMinCm)) lines.push(`<p>Water does build up on it: in the wettest weeks it rises to about <strong>${depth(r.topMinCm)} down</strong> at the lawn's middle, with rain alone. That is below the roots, so the grass is not soaked by it, though the ground under them stays wet.</p>`);
+    else lines.push('<p>With rain alone no water builds up on it: the layer lets it through as fast as it arrives.</p>');
+    if (r.seepShare >= 0.01) lines.push(`<p><strong>On ${pc(r.seepShare)} of the lawn the perched water comes out at the surface</strong>, about ${inch(r.seepMostMm)} in a year where it is most: water that soaked in uphill and ran down along the top of the layer. Purple on the Water table view.</p>`);
+    if (r.toRootsMm >= 2.5) lines.push(`<p>Over a year about ${inch(r.toRootsMm)} in of it goes back up to the roots at the lawn's middle, and about ${inch(r.leakMm)} in soaks on down through the layer.</p>`);
+  }
+  for (const b of r.barrier || []) lines.push(`<p><strong>The topsoil on ${esc(b.name)}'s sand holds about ${inch(b.mm)} in more water than the survey's figures give.</strong> A finer soil over sand holds water above the boundary: the sand takes none until the topsoil is nearly soaked (a capillary barrier). The plan counts it, and lifts no water from below across it.</p>`);
+  if (!lines.length) return '';
+  return `<div class="card"><h2>Water held up by a slow layer</h2>${lines.join('')}
+    <p class="dim">The slow layer from the soil survey: a layer letting through a tenth or less of what the soil above it does, and no more than about 3.4 in a day, or a cemented band or pan the survey names. Water draining from the roots builds up on top of it, soaks through it as fast as the layer allows, and runs downhill along its top to come out where it meets the surface (the Soil Moisture Routing model of Cornell, built for soils over hardpans). How deep the layer sits under each part of the lawn is a model from the survey's range and the lawn's lidar: a soil probe pushed down until it stops tells the real depth.</p></div>`;
 }
 
 /* STREAMS AND THE FLOOD PLAIN (owner, 2026-10-31; FINDINGS H63): the nearest streams and their water's height, and
@@ -1303,7 +1336,9 @@ function legend() {
     } else info.push(view.layersError ? `Not here: ${esc(view.layersError)}.` : 'Asking the county and the national maps for drains and water here…');
   } else if (mapView === 'table') {
     TABLE_STEPS.forEach(([, c], k) => items.push(key(`rgb(${c[0]},${c[1]},${c[2]})`, TABLE_WORDS[k])));
+    if (p?.perched?.standDays) items.push(key(`rgb(${PERCH_SEEP.slice(0, 3)})`, 'water perched on a slow layer comes out here (a seep)'), key(`rgb(${PERCH_STAND.slice(0, 3)})`, 'perched water in the roots 2 weeks or more of the season'));
     info.push(p?.groundwater ? 'How deep the water table is under each part of the lawn in September, when it is lowest (deeper than 4 ft is left clear). From the water round the lawn on the national maps (ponds, streams, wetlands), the lawn\'s own lidar ground and the soil survey: the groundwater card below says how.' : 'The water table needs the national water maps, which did not answer this time.');
+    if (p?.perched?.standDays) info.push('In purple, the water held up on a slow layer partway down (the perched water card below), with rain alone.');
   } else if (mapView === 'slope') {
     SLOPE_STEPS.forEach(([, c], k) => { if (c[3]) items.push(key(`rgb(${c[0]},${c[1]},${c[2]})`, SLOPE_WORDS[k])); });
     items.push(key('#e53935', 'beside the house: falls toward it'), key('#ffb300', 'falls away, but under 6 in over 10 ft'), key('#43a047', 'falls away 6 in or more over 10 ft (the building code)'));

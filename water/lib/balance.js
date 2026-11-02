@@ -31,6 +31,7 @@
 import { KC, airShare, dayOfYear } from './et.js';
 import { dayIndex } from './shade/climate.js';
 import { capRise } from './groundwater.js';
+import { perchedDay } from './perched.js';
 
 export const PARAMS = {
   kc: KC,                 // the grass coefficient when no species is known (et.js, 0.8); the plan sets it by species and level (roots.js kcFor)
@@ -434,6 +435,14 @@ export function simulate(model, days, { irrigate = null, start = null, record = 
   const soaked = new Float32Array(N); // what rain and run-on put into each root zone the day before (not the watering), for a schedule kept apart
   let snow = 0, lastMonth = -1, rootNow = 1;
   const temps = [];
+  /* WATER PERCHED ON A SLOW LAYER (H73; lib/perched.js): a store above each perching cell's slow layer, filled by
+     what drains out of its roots, leaking down through the layer and running downhill along its top, rising back into
+     the roots (and out at the surface) when it fills the room between them. */
+  const per = model.perched || null;
+  const PS = per ? (start?.P ? Float32Array.from(start.P) : new Float32Array(N)) : null;
+  const ptot = per ? { leak: new Float32Array(N), latIn: new Float32Array(N), latOut: new Float32Array(N), seep: new Float32Array(N), toRoots: new Float32Array(N), fullDays: new Uint16Array(N), standDays: new Uint16Array(N), into: new Float32Array(N), topMin: new Float32Array(N).fill(Infinity) } : null;
+  const rootToday = per ? Float32Array.from(model.rootCm) : null, wtMonth = per && model.wtCm ? new Float32Array(N).fill(NaN) : null;
+  const perching = (i) => per && Number.isFinite(per.par.zL[i]);
   for (let d = 0; d < days.length; d++) {
     const day = days[d];
     const month = Number(day.date.slice(5, 7)) - 1;
@@ -452,6 +461,7 @@ export function simulate(model, days, { irrigate = null, start = null, record = 
         const t = tbl && tbl[Math.min(cm, tbl.length - 1)] > 0 ? tbl[Math.min(cm, tbl.length - 1)] : model.tawFull[i] * rr;
         if (taw[i] > 0) Dr[i] *= t / taw[i];
         taw[i] = t; raw[i] = params.p * t; satRoom[i] = params.satRoomFrac * cm * 10;
+        if (rootToday) rootToday[i] = cm;
       }
     }
     const inSeason = season ? season.has(dayIndex(day.date.replace(/-/g, ''))) : temps.reduce((s, v) => s + v, 0) / temps.length >= params.seasonC;
@@ -460,7 +470,9 @@ export function simulate(model, days, { irrigate = null, start = null, record = 
         const s = soils[soilAt[i]] || soils[0];
         // the water table's depth this month: the groundwater model's where it has one (H70), else the soil survey's
         const wtm = model.wtCm ? model.wtCm[i * 12 + month] : NaN;
-        const wt = Number.isFinite(wtm) ? wtm : s?.wetByMonth?.[month];
+        // (not the survey's wet months over a slow layer: they are the perched water, which the store now holds)
+        const wt = Number.isFinite(wtm) ? wtm : perching(i) ? null : s?.wetByMonth?.[month];
+        if (wtMonth) wtMonth[i] = wtm;
         const wetTable = wt !== null && wt !== undefined && wt <= (s?.rz?.rootCm ?? 15) + params.tableBlockCm;
         const kind = kinds[i] === 1 ? 'lawn' : kinds[i] === 3 ? 'paved' : kinds[i] === 4 ? 'pavers' : 'other';
         cn[i] = kinds[i] === 2 ? 99 : cnSlope(curveNumber(s?.hydgrp, kind, wetTable, params), slope[i]);
@@ -527,6 +539,7 @@ export function simulate(model, days, { irrigate = null, start = null, record = 
         const rate = model.blocked[i] ? drainDay[i] * 0.05 : drainDay[i];
         const out = Math.min(grav[i] * params.drainShareMax, rate, grav[i]);
         grav[i] -= out; tot.drained[i] += out;
+        if (PS && perching(i)) { PS[i] += out; ptot.into[i] += out; }
       }
       let use = etc;
       if (pond[i] > 0) { const e = Math.min(pond[i], use); pond[i] -= e; use -= e; tot.et[i] += e; }
@@ -541,18 +554,24 @@ export function simulate(model, days, { irrigate = null, start = null, record = 
          the roots, CR = exp((ln z - b) / a) for the soil between, no more than refills the roots, shutting off as they
          wet (1 - w^16), falling to nothing as they dry past half (the soil too dry to pass it on), none on a day they
          drain. A table in the roots fills them; one at the surface (a seep) keeps them soaked. */
-      if (model.wtCm) {
-        const wt = model.wtCm[i * 12 + month];
+      /* ...and from perched water, where its top is the nearer (taken from the store; Jackson's flat top, zL less the
+         water's own height). None across a capillary barrier (loam put on sand: model.noRise). */
+      if ((model.wtCm || PS) && !(model.noRise && model.noRise[i])) {
+        const wtG = model.wtCm ? model.wtCm[i * 12 + month] : NaN;
+        const wtP = PS && PS[i] > 0 && perching(i) ? per.par.zL[i] - PS[i] / (per.par.phid[i] * 10) : NaN;
+        const fromP = Number.isFinite(wtP) && !(wtG <= wtP);
+        const wt = fromP ? wtP : wtG;
         if (Number.isFinite(wt)) {
           const zb = (wt - model.rootCm[i] * rootNow) / 100;
           if (zb <= 0) {
-            if (Dr[i] > 0) { tot.rose[i] += Dr[i]; Dr[i] = 0; }
-            if (wt <= params.seepCm && grav[i] < satRoom[i]) grav[i] = satRoom[i];
+            const take = fromP ? Math.min(Dr[i], PS[i]) : Dr[i];
+            if (take > 0) { tot.rose[i] += take; Dr[i] -= take; if (fromP) PS[i] -= take; }
+            if (!fromP && wt <= params.seepCm && grav[i] < satRoom[i]) grav[i] = satRoom[i];
           } else if (grav[i] <= 0 && Dr[i] > 0) {
             const w = 1 - Dr[i] / Math.max(1e-6, taw[i]);
             const dry = Dr[i] > 0.5 * taw[i] ? Math.max(0, (taw[i] - Dr[i]) / (0.5 * taw[i])) : 1;
-            const cr = Math.min(Dr[i], capRise(model.crCls[i], model.crK[i], zb) * (1 - w ** 16) * dry);
-            Dr[i] -= cr; tot.rose[i] += cr;
+            const cr = Math.min(Dr[i], fromP ? PS[i] : Infinity, capRise(model.crCls[i], model.crK[i], zb) * (1 - w ** 16) * dry);
+            Dr[i] -= cr; tot.rose[i] += cr; if (fromP) PS[i] -= cr;
           }
         }
       }
@@ -565,12 +584,23 @@ export function simulate(model, days, { irrigate = null, start = null, record = 
         tot.etFull[i] += etc; tot.etSeason[i] += tot.et[i] - before;
       }
     }
+    if (PS) {
+      const frozen = temps.reduce((a, v) => a + v, 0) / temps.length <= 0;
+      perchedDay(per.routes, { P: PS, Dr, grav, satRoom, pond }, per.par, rootToday, wtMonth, ptot, { frozen, cellM: model.g?.cell ?? 1 });
+      // a day the perched water stands in the roots (its top above their bottom), in season
+      for (const i of per.routes.order) {
+        if (!(PS[i] > 0)) continue;
+        const top = per.par.zL[i] - PS[i] / (per.par.phid[i] * 10);
+        if (top < ptot.topMin[i]) ptot.topMin[i] = top;
+        if (inSeason && top <= rootToday[i] + 0.5) ptot.standDays[i]++;
+      }
+    }
     if (inSeason) tot.seasonDays++;
-    if (record) record(d, { Dr, grav, pond, month, inSeason, date: day.date });
+    if (record) record(d, { Dr, grav, pond, month, inSeason, date: day.date, P: PS });
   }
   // back to the working root zone, for what reads the model after the run (the zones' depths)
   if (rootNow !== 1) for (let i = 0; i < N; i++) { const t = model.tawFull[i]; if (taw[i] > 0) Dr[i] *= t / taw[i]; taw[i] = t; raw[i] = params.p * t; satRoom[i] = params.satRoomFrac * model.rootCm[i] * 10; }
-  return { ...tot, end: { Dr, grav, pond, film, snow } };
+  return { ...tot, perched: ptot, end: { Dr, grav, pond, film, snow, P: PS } };
 }
 
 /**

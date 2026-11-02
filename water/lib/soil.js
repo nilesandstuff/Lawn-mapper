@@ -82,14 +82,21 @@ export async function soilFor(box, post) {
     byKey.set(mukey, u);
   }
   const keys = [...byKey.keys()].map((k) => `'${String(k).replace(/\D/g, '')}'`).join(',');
-  const [comps, hz, wet] = await Promise.all([post(`SELECT mu.mukey, mu.muname, ma.wtdepannmin, c.cokey, c.compname, c.comppct_r, c.majcompflag, c.drainagecl, c.hydgrp, c.slope_r FROM mapunit mu JOIN muaggatt ma ON ma.mukey = mu.mukey JOIN component c ON c.mukey = mu.mukey WHERE mu.mukey IN (${keys}) ORDER BY mu.mukey, c.comppct_r DESC`),
-    post(`SELECT c.cokey, h.hzname, h.hzdept_r, h.hzdepb_r, h.ksat_r, h.awc_r, h.sandtotal_r, h.claytotal_r, h.om_r, h.wthirdbar_r, h.wfifteenbar_r FROM component c JOIN chorizon h ON h.cokey = c.cokey WHERE c.mukey IN (${keys}) ORDER BY c.cokey, h.hzdept_r`),
-    post(`SELECT c.cokey, cm.month, MIN(sm.soimoistdept_r) FROM component c JOIN comonth cm ON cm.cokey = c.cokey JOIN cosoilmoist sm ON sm.comonthkey = cm.comonthkey WHERE c.mukey IN (${keys}) AND sm.soimoiststat = 'Wet' GROUP BY c.cokey, cm.month`)]);
+  const [comps, hz, wet, restr] = await Promise.all([post(`SELECT mu.mukey, mu.muname, ma.wtdepannmin, c.cokey, c.compname, c.comppct_r, c.majcompflag, c.drainagecl, c.hydgrp, c.slope_r FROM mapunit mu JOIN muaggatt ma ON ma.mukey = mu.mukey JOIN component c ON c.mukey = mu.mukey WHERE mu.mukey IN (${keys}) ORDER BY mu.mukey, c.comppct_r DESC`),
+    post(`SELECT c.cokey, h.hzname, h.hzdept_r, h.hzdepb_r, h.ksat_r, h.awc_r, h.sandtotal_r, h.claytotal_r, h.om_r, h.wthirdbar_r, h.wfifteenbar_r, h.hzdept_l, h.hzdept_h, h.wsatiated_r FROM component c JOIN chorizon h ON h.cokey = c.cokey WHERE c.mukey IN (${keys}) ORDER BY c.cokey, h.hzdept_r`),
+    post(`SELECT c.cokey, cm.month, MIN(sm.soimoistdept_r) FROM component c JOIN comonth cm ON cm.cokey = c.cokey JOIN cosoilmoist sm ON sm.comonthkey = cm.comonthkey WHERE c.mukey IN (${keys}) AND sm.soimoiststat = 'Wet' GROUP BY c.cokey, cm.month`),
+    // restrictive layers (ortstein, fragipan, densic...: research-interface.md); Kent County has none, Ottawa a few
+    post(`SELECT c.cokey, r.reskind, r.resdept_r, r.resthk_r FROM component c JOIN corestrictions r ON r.cokey = c.cokey WHERE c.mukey IN (${keys})`).catch(() => [])]);
 
   const horizons = new Map();
-  for (const [cokey, name, top, bottom, ksat, awc, sand, clay, om, fc, wp] of hz) {
+  for (const [cokey, name, top, bottom, ksat, awc, sand, clay, om, fc, wp, topLo, topHi, sat] of hz) {
     if (!horizons.has(cokey)) horizons.set(cokey, []);
-    horizons.get(cokey).push({ name, topCm: num(top), bottomCm: num(bottom), ksatUmS: num(ksat), awc: num(awc), sand: num(sand), clay: num(clay), om: num(om), fc: num(fc), wp: num(wp) });
+    horizons.get(cokey).push({ name, topCm: num(top), bottomCm: num(bottom), ksatUmS: num(ksat), awc: num(awc), sand: num(sand), clay: num(clay), om: num(om), fc: num(fc), wp: num(wp), topLoCm: num(topLo), topHiCm: num(topHi), sat: num(sat) });
+  }
+  const restrictions = new Map();
+  for (const [cokey, kind, depth, thick] of restr || []) {
+    if (!restrictions.has(cokey)) restrictions.set(cokey, []);
+    restrictions.get(cokey).push({ kind: kind || null, topCm: num(depth), thickCm: num(thick) });
   }
   const wetBy = new Map();
   for (const [cokey, month, depth] of wet) {
@@ -114,8 +121,8 @@ export async function soilFor(box, post) {
       drainage: main.drainage || top.drainage || null, hydgrp: main.hydgrp || top.hydgrp || null, slope: main.slope ?? null,
       wtMinCm: u.wtMinCm ?? null,
       // each soil with its own layers and water table, for placing it by the lie of the land (soilplace.js, H62)
-      components: comps2.map(({ cokey, ...c }) => { const hz = horizons.get(cokey) || []; return { ...c, soil: hz.some((h) => h.awc !== null), profile: { name: c.name, horizons: hz }, wetByMonth: wetBy.get(cokey) || new Array(12).fill(null) }; }),
-      profile: { name: main.name || null, horizons: horizons.get(main.cokey) || [] },
+      components: comps2.map(({ cokey, ...c }) => { const hz = horizons.get(cokey) || []; return { ...c, soil: hz.some((h) => h.awc !== null), profile: { name: c.name, horizons: hz, restrictions: restrictions.get(cokey) || [] }, wetByMonth: wetBy.get(cokey) || new Array(12).fill(null) }; }),
+      profile: { name: main.name || null, horizons: horizons.get(main.cokey) || [], restrictions: restrictions.get(main.cokey) || [] },
       wetByMonth: wetBy.get(main.cokey) || new Array(12).fill(null),
       urban: comps2.some((c) => /urban land/i.test(c.name || '')),
     };

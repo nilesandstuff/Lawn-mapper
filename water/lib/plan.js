@@ -19,7 +19,8 @@
  *      when to water next and how much.
  */
 
-import { rootZone, maxSprinklerRate, withTexture, layersOf, textureClass } from './soil.js';
+import { rootZone, maxSprinklerRate, withTexture, layersOf, textureClass, TOPSOIL } from './soil.js';
+import { slowLayerOf, calibrateLayer, layerDepths, perchedRoutes, perchedCells, drainToLayerMmDay, barrierExtraMm } from './perched.js';
 import { tableDepths, subsoilOf } from './groundwater.js';
 import { workingCm, speciesOf, groupOf, typicalRoots, attachRootRatio, rootsByMonth, kcFor, SPECIES } from './roots.js';
 import { soilIndex } from './soilplace.js';
@@ -113,6 +114,25 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
     soils.push({ unit: u, rz: rootZone(u.profile, { rootCm, topsoil: true }), tawByCm: tableFor(u.profile, true), drainage: u.drainage, hydgrp: u.hydgrp, wetByMonth: u.wetByMonth, topsoil: true });
   }
   if (topsoil) for (let i = 0; i < N; i++) if (kinds[i] === KIND.lawn) soilAt[i] += 1;
+  /* THE CAPILLARY BARRIER (research-interface.md B; H73): the loamy topsoil put on a sand or loamy sand holds water
+     above the boundary that the survey's field capacity does not count -- the sand below takes none until the loam is
+     nearly saturated. About 2.2 mm more per cm of loam (10 cm +22 mm, the topsoil's own available water again),
+     counted as a raised field capacity, and no water rises from below across it (the sand under it dry and nearly
+     non-conducting). */
+  for (const s of soils) {
+    if (!s.topsoil || !s.rz) continue;
+    const ex = barrierExtraMm(s.unit.profile, TOPSOIL.cm, textureClass);
+    if (!(ex > 0)) continue;
+    s.barrierMm = ex; s.rz = { ...s.rz, tawMm: s.rz.tawMm + ex };
+    for (let cm = 1; cm < s.tawByCm.length; cm++) s.tawByCm[cm] += ex * Math.min(1, cm / TOPSOIL.cm);
+  }
+  /* SLOW LAYERS THAT PERCH WATER (H73; lib/perched.js): each soil's, its depth under the topsoil when there is some */
+  const slow = soils.map((s) => {
+    const L = calibrateLayer(slowLayerOf(s.unit.profile), s.wetByMonth, typical, params.kc);
+    if (!L || !s.topsoil) return L;
+    const t = TOPSOIL.cm, sh = (v) => (Number.isFinite(v) ? v + t : null);
+    return { ...L, topCm: L.topCm + t, topLoCm: sh(L.topLoCm), topHiCm: sh(L.topHiCm) };
+  });
 
   // 2. roofs
   const roofs = roofRouting(g, wallNow, res.runoff.filled, { downspouts, gutters });
@@ -147,10 +167,33 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
     const sub = soils.map((s) => subsoilOf(s.unit.profile, rootCm, 200, textureClass));
     for (let i = 0; i < N; i++) {
       if (kinds[i] !== KIND.lawn || !Number.isFinite(res.z[i])) continue;
-      model.wtCm.set(tableDepths(res.z[i], { any: groundwater.levelAny[i], perm: groundwater.levelPerm[i] }, soils[soilAt[i]].wetByMonth), i * 12);
+      // over a slow layer the survey's wet months are the perched water (the store below holds it), not the water table
+      model.wtCm.set(tableDepths(res.z[i], { any: groundwater.levelAny[i], perm: groundwater.levelPerm[i] }, slow[soilAt[i]] ? null : soils[soilAt[i]].wetByMonth), i * 12);
       model.crCls[i] = sub[soilAt[i]].cls; model.crK[i] = sub[soilAt[i]].ksatMmDay;
     }
   }
+
+  /* THE PERCHED STORE (H73): the slow layer's depth under each cell of ground (its soil's depth, deeper under rises and
+     shallower under hollows), the routes along its top, and what each cell's roots drain into it at: the survey's own
+     rate down to the layer, not the drainage class's factor (which already holds the perching and would count it
+     twice). Roofs and paving keep none (their cells take what runs to them as free-draining ground). */
+  if (slow.some(Boolean)) {
+    const ground = (i) => (kinds[i] === KIND.lawn || kinds[i] === KIND.other || kinds[i] === KIND.pavers) && Number.isFinite(res.z[i]);
+    const { zL, beta, z5 } = layerDepths(g, res.z, soilAt, slow);
+    const par = perchedCells(N, soilAt, slow, zL, ground);
+    let any = false; for (let i = 0; i < N && !any; i++) any = Number.isFinite(par.zL[i]);
+    if (any) {
+      model.perched = { routes: perchedRoutes(g, z5, par.zL), par, slow, beta };
+      const drainTo = soils.map((s, k) => (slow[k] ? drainToLayerMmDay(s.unit.profile, rootCm - (s.topsoil ? TOPSOIL.cm : 0), slow[k].topCm - (s.topsoil ? TOPSOIL.cm : 0), s.rz?.belowMmH) : null));
+      for (let i = 0; i < N; i++) if (Number.isFinite(par.zL[i])) model.drainDay[i] = drainTo[soilAt[i]];
+      if (!model.crCls) {
+        model.crCls = new Uint8Array(N).fill(2); model.crK = new Float32Array(N).fill(100);
+        const sub = soils.map((s) => subsoilOf(s.unit.profile, rootCm, 200, textureClass));
+        for (let i = 0; i < N; i++) if (Number.isFinite(par.zL[i])) { model.crCls[i] = sub[soilAt[i]].cls; model.crK[i] = sub[soilAt[i]].ksatMmDay; }
+      }
+    }
+  }
+  if (soils.some((s) => s.barrierMm)) { model.noRise = new Uint8Array(N); for (let i = 0; i < N; i++) if (kinds[i] === KIND.lawn && soils[soilAt[i]].barrierMm) model.noRise[i] = 1; }
 
   const years = Math.max(1, new Set(typical.map((d) => d.date.slice(0, 4))).size); // distinct years (a test may give summers only)
   // 3. the ideal, cell by cell
@@ -279,8 +322,37 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
       late, riseMm, summary: groundwater.summary || null,
     };
   })();
+  /* What the perched water does under the lawn (H73): the share of the lawn over a slow layer, each such soil's layer
+     (depth, kind, how slowly it lets water through), the layer's depth across the lawn, the season's days the perched
+     water stands in the roots, and a year's seep at the surface, leak through the layer, and water arriving sideways. */
+  const perchedOut = (() => {
+    const barrier = soils.filter((s, k) => s.barrierMm && kinds.some((v, i) => v === KIND.lawn && soilAt[i] === k)).map((s) => ({ name: s.unit.name, mm: s.barrierMm }));
+    if (!model.perched) return barrier.length ? { share: 0, soils: [], barrier } : null;
+    const par = model.perched.par;
+    const lawnCells = []; for (let i = 0; i < N; i++) if (kinds[i] === KIND.lawn) lawnCells.push(i);
+    const cells = lawnCells.filter((i) => Number.isFinite(par.zL[i]));
+    if (!cells.length) return barrier.length ? { share: 0, soils: [], barrier } : null;
+    const usedSoils = [...new Set(cells.map((i) => soilAt[i]))];
+    const yr = (t, k) => cells.map((i) => t.perched[k][i] / years);
+    const sd = Math.max(1, rainOnly.seasonDays / years);
+    const standDays = new Float32Array(N).fill(NaN), seepMm = new Float32Array(N).fill(NaN), layerCm = new Float32Array(N).fill(NaN);
+    for (const i of cells) { standDays[i] = rainOnly.perched.standDays[i] / years; seepMm[i] = rainOnly.perched.seep[i] / years; layerCm[i] = par.zL[i]; }
+    return {
+      share: cells.length / Math.max(1, lawnCells.length),
+      soils: usedSoils.map((k) => { const L = model.perched.slow[k]; return { name: soils[k].unit.name, topsoil: !!soils[k].topsoil, depthCm: L.topCm, how: L.how, band: L.band, layer: L.name, resistDays: L.resistDays, cM: L.cM, calibrated: L.calibrated || null, kLatMmDay: L.kLatMmDay, beta: model.perched.beta[k] }; }),
+      layerCmLow: q(cells.map((i) => par.zL[i]), 0.1), layerCmHigh: q(cells.map((i) => par.zL[i]), 0.9),
+      standDaysRainAlone: med(cells.map((i) => rainOnly.perched.standDays[i] / years)), standDaysPlanned: med(cells.map((i) => planned.perched.standDays[i] / years)),
+      standDaysMost: Math.max(...cells.map((i) => rainOnly.perched.standDays[i] / years)), seasonDays: sd,
+      seepMm: med(yr(rainOnly, 'seep')), seepMostMm: Math.max(...yr(rainOnly, 'seep')), seepShare: cells.filter((i) => rainOnly.perched.seep[i] / years >= 5).length / lawnCells.length,
+      leakMm: med(yr(rainOnly, 'leak')), sidewaysInMostMm: Math.max(...yr(rainOnly, 'latIn')), intoMm: med(yr(rainOnly, 'into')),
+      toRootsMm: med(yr(rainOnly, 'toRoots')), toRootsPlannedMm: med(yr(planned, 'toRoots')),
+      topMinCm: med(cells.map((i) => rainOnly.perched.topMin[i])), // the perched water's shallowest, with rain alone (Infinity: never)
+      standDays, seepMmMap: seepMm, layerCm, barrier,
+    };
+  })();
   return {
     groundwater: groundwaterOut,
+    perched: perchedOut,
     multiplier: SM, rootIn: rootCm / 2.54,
     mode: params.mode, kc: { ...kc, used: params.scheduleKc ?? params.kc, grass: params.kc },
     /* THE GRASS SHORT OF WATER (owner, 2026-10-29): the lawn's middle cell's share of the season's days past the
