@@ -185,6 +185,34 @@ contract is docs/MAPS.md. The core session owns it and the code behind it
 (worker/src/unified.js, routes-maps.js, home/); a tool that needs something
 it does not give asks. No tool keeps maps in the browser any more.
 
+## One way to read lidar (owner, 2026-11-03)
+
+"I want as much cohesiveness between the different ways to read lidar as
+possible. The different maps only diverge when they're doing something
+specific to that particular map." The one map-specific use the owner
+names is the water map's ground hollows.
+
+So a rule about what a lidar point or cell IS -- ground, roof, tree,
+wall, void, how high -- has ONE home, a pure module with tests, and every
+tool imports it (or has it copied in at build time, unchanged, the way the
+scan and water sites copy the shade map's readers) instead of keeping its
+own version. A session that finds a rule wrong fixes it in its home and
+says so to the others; it does not fix its own copy.
+
+As of 2026-11-03 the tree-versus-building rule exists FOUR times, and they
+disagree:
+  - the shade map: public/shade/view3d.js kindOf (drawing) and canopy.js
+    (roofs are opaque cubes; no building class of its own);
+  - the water map: water/lib/surface.js buildingMask (no ground return,
+    over 2 m, 80% or more single echoes), copied into water/lib/ar-lidar.js;
+  - the AR tool: scan/lib/lidar.js, a copy of the water map's;
+  - the detector: tools/lidar_frame.py roof (no ground return, enough
+    returns, 2.5 m or more up, a small height spread), in Python.
+The features session is to put the tree-versus-building rule in a module
+of its own beside the shade code; the scan and water sites then import
+it. The detector's Python copy is the core session's and is changed only
+with a run to measure it (it feeds the live model's lidar veto).
+
 ## The water session: a third session with a site of its own
 
 Since 2026-10-16 a THIRD session builds the lawn water tool (rain,
