@@ -33,11 +33,12 @@ const pct = (a, b) => (b ? `${Math.round((100 * a) / b)}%` : '-');
 async function readMap(id, site, key) {
   if (process.env.CLOUDFLARE_API_TOKEN) {
     const { query } = await import('../../tools/corpus-db.js');
-    const rows = query(`SELECT m.key, m.lng, m.lat, m.payload, m.user_id FROM maps m JOIN users u ON u.id = m.user_id WHERE u.role = 'admin' AND m.key = '${id}'`);
+    const q = `'${String(id).replace(/'/g, "''")}'`;
+    const rows = query(`SELECT m.key, m.lng, m.lat, m.payload, m.user_id FROM maps m JOIN users u ON u.id = m.user_id WHERE u.role = 'admin' AND m.key = ${q}`);
     if (!rows.length) throw new Error('no such map among the owner\'s');
     let payload = {}; try { payload = JSON.parse(rows[0].payload) || {}; } catch { /* empty */ }
     const tools = {};
-    for (const t of query(`SELECT tool, data FROM map_tools WHERE owner_kind = 'user' AND owner_id = '${rows[0].user_id}' AND map_key = '${id}'`)) {
+    for (const t of query(`SELECT tool, data FROM map_tools WHERE owner_kind = 'user' AND owner_id = '${String(rows[0].user_id).replace(/'/g, "''")}' AND map_key = ${q}`)) {
       try { tools[t.tool] = { data: JSON.parse(t.data) }; } catch { /* unreadable part */ }
     }
     return { ...payload, lng: payload.lng ?? rows[0].lng, lat: payload.lat ?? rows[0].lat, tools };
@@ -56,9 +57,11 @@ async function main() {
   const recs = [];
   for (const f of readdirSync(dir).filter((x) => /^cloud-\d+\.bin$/.test(x)).sort()) { const b = readFileSync(join(dir, f)); recs.push(...readCloud(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength))); }
   console.log(`Twin: ${recs.length.toLocaleString()} phone points; ${live.fixes.length} lidar fixes, ${live.marks.filter((m) => m.kind === 'ref').length} reference marks${live.ended ? '' : ' (cut short)'}.`);
-  // a map's key can be its "lng,lat": checked for SQL, never printed
-  if (!meta.map || !/^[\w.,:-]{1,120}$/.test(String(meta.map))) throw new Error(meta.map ? 'the twin\'s map key has characters it should not' : 'the twin names no map');
-  const m = await readMap(meta.map, site, key);
+  // a map's key is whatever the page made it (it can name the place): quoted for SQL, never printed
+  if (!meta.map || String(meta.map).length > 300 || /[\u0000-\u001f]/.test(String(meta.map))) throw new Error('the twin names no usable map');
+  // an error from the database read can quote the query, and so the map's key: not printed
+  let m;
+  try { m = await readMap(meta.map, site, key); } catch (e) { throw new Error(/no such map|needs the|could not be read \(\d+\)/.test(e.message) ? e.message : 'the map could not be read from the database'); }
   const origin = [m.lng, m.lat];
   const pts = [...ringsOf(m.shapes || []), ...ringsOf(m.parcel ? [m.parcel] : [])].flat().map((p) => toLocal(origin, p));
   const es = pts.map((p) => p[0]), ns = pts.map((p) => p[1]);
