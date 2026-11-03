@@ -199,19 +199,35 @@ scan and water sites copy the shade map's readers) instead of keeping its
 own version. A session that finds a rule wrong fixes it in its home and
 says so to the others; it does not fix its own copy.
 
-As of 2026-11-03 the tree-versus-building rule exists FOUR times, and they
-disagree:
-  - the shade map: public/shade/view3d.js kindOf (drawing) and canopy.js
-    (roofs are opaque cubes; no building class of its own);
+As of 2026-11-03 the tree-versus-building rule exists in SIX places, and
+they disagree (the water session's own list, 2026-11-03, added three):
+  - the shade map: public/shade/view3d.js kindOf (drawing), canopy.js
+    (roofs are opaque cubes) and its seasonal classifier (seasonalCanopy
+    with classify:true);
+  - the detector: tools/lidar_frame.py roof (no ground return, 3+ returns,
+    top 2.5 m+ up, height spread under 1.5 m, 2 m cells), in Python;
+  - the water map: water/lib/roofs.js coreRoofs, a JS port of the
+    detector's rule, OR'd with the shade classifier (shadeRoofs), with a
+    NAIP green veto -- this is its live roof;
   - the water map: water/lib/surface.js buildingMask (no ground return,
-    over 2 m, 80% or more single echoes), copied into water/lib/ar-lidar.js;
-  - the AR tool: scan/lib/lidar.js, a copy of the water map's;
-  - the detector: tools/lidar_frame.py roof (no ground return, enough
-    returns, 2.5 m or more up, a small height spread), in Python.
+    over 2 m, 80% or more single echoes, or class 6), copied into
+    water/lib/ar-lidar.js;
+  - the water map's wind obstacles: water/lib/obstacles.js (4 m cells,
+    Overture outlines or class 6 for buildings, 40% of returns 1.5 m+ up
+    for vegetation);
+  - the AR tool: scan/lib/lidar.js, a copy of ar-lidar.js.
+Other shared jobs done more than once: walls under the eaves (the roof
+pulled in 0.5 m, ar-lidar.js and the scan copy), the noise classes {7, 18}
+(roofs.js, obstacles.js, the shade filter), and the readers themselves
+(water/lib/ept.js, las.js, laz.js, datum.js near-copies of the shade
+map's). The ground is already shared (water/lib/shade/ground.js).
 The features session is to put the tree-versus-building rule in a module
 of its own beside the shade code; the scan and water sites then import
-it. The detector's Python copy is the core session's and is changed only
-with a run to measure it (it feeds the live model's lidar veto).
+it, and the water session re-measures its roofs on the Chesapeake squares
+before and after (its H32 IoU 0.74 is the number to keep). The
+detector's Python copy is the core session's and is changed only with a
+run to measure it (it feeds the live model's lidar veto). Map-specific,
+and staying so: the water map's ground hollows, spot kinds and paving.
 
 ## The water session: a third session with a site of its own
 
