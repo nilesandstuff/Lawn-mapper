@@ -46,9 +46,11 @@
  *     skirt of a spruce. Not used on a flight that kept almost no second
  *     returns (under 2% of those over 2 m split), nor on points in leaf. MEASURED on the owner's lot (Kent 2016, 2 points
  *     a square meter; areas read from the photo): the white-roofed shed 34
- *     of 37 columns, the stone-bin row 74 of 88, parked cars 22 of 47, and
- *     no column of the bare trees (1,907), the spruce rows (654) or the
- *     roadside trees taken; see shade findings 33.
+ *     of 37 columns, the stone-bin row 74 of 88, parked cars 22 of 47; no
+ *     column of the bare trees (1,907) or the spruce rows (654), 20 of
+ *     1,122 by the road (two patches by small dark shrubs). On the core's
+ *     267 labelled lawn trees, 1.5% of their columns over 2 m (small
+ *     evergreens 5.1%); see shade findings 33.
  *
  * MEASURED (shade findings 24, by the water session, 2026-10-17): against
  * the Chesapeake 1 m land use's structures, 23 residential squares in VA,
