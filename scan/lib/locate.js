@@ -27,8 +27,9 @@ export const REF_TOL_M = 2, REF_TOL_DEG = 10, MIN_HITS_ALONE = 0.65;
 const BANDS = { groundTol: 0.2, standLow: 0.4, standHigh: 2.4, near: 0.4, far: 8 };
 
 export function newLocate({ scale = 1 } = {}) {
-  return { marks: [], fixes: [], cloud: new Map(), groundY: null, gps: null, scale, asks: 0, refused: {}, last: null, lastAsk: 0, pending: null, nextId: 1 };
+  return { marks: [], fixes: [], cloud: new Map(), cols: new Map(), groundY: null, gps: null, scale, asks: 0, refused: {}, last: null, lastAsk: 0, pending: null, nextId: 1, log: [] };
 }
+export const LOG_MAX = 150;
 
 /* ------------------------------------------------------------- references */
 
@@ -49,19 +50,41 @@ export function noteGround(L, y) {
   L.groundY = L.groundY == null ? y : 0.9 * L.groundY + 0.1 * y;
 }
 
+export const COL = 1; // m: the ground is remembered per column this wide
+export const FLOOR_ABOVE = 0.5; // m: a column floor higher than this above the crosshair's ground is not a floor
+/**
+ * The ground under a point: the lowest point seen in its 1 m column or the eight round it (SCAN-H2's lesson: one
+ * ground height from the crosshair misreads a slope, a step or a drop, and a wall's foot becomes "ground" or a lawn
+ * "standing"); failing any, the crosshair's slow average.
+ */
+export function groundUnder(L, p) {
+  const cx = Math.floor(p.x / COL), cz = Math.floor(p.z / COL), gy = L.groundY;
+  let g = Infinity;
+  // a column whose lowest point is well above the general ground has no ground in it (a wall seen from afar, a
+  // deck top): it does not count as a floor. Below the general ground anything goes (a drop, a hollow).
+  for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) { const c = L.cols.get(`${cx + dx},${cz + dz}`); if (c && c.y < g && (gy == null || c.y <= gy + FLOOR_ABOVE)) g = c.y; }
+  return Number.isFinite(g) ? g : gy;
+}
+
 /** Depth points round the phone, kept one to a VOX cell as ground ('g') or standing ('s'), with the walk they were seen at. */
 export function addDepth(L, points, odo, camY = null) {
-  const gy = L.groundY ?? (camY != null ? camY - 1.35 : null);
-  if (gy == null) return 0;
+  if (L.groundY == null && camY != null) L.groundY = camY - 1.35;
+  if (L.groundY == null) return 0;
+  // first the columns' floors from this batch (a point can only be "standing" above something lower seen near it)
+  for (const p of points) {
+    const k = `${Math.floor(p.x / COL)},${Math.floor(p.z / COL)}`, c = L.cols.get(k);
+    if (!c || p.y < c.y) L.cols.set(k, { y: p.y, odo }); else c.odo = odo;
+  }
   let kept = 0;
   for (const p of points) {
-    const h = p.y - gy;
+    const h = p.y - groundUnder(L, p);
     const cls = Math.abs(h) < BANDS.groundTol ? 'g' : h > BANDS.standLow && h < BANDS.standHigh ? 's' : null;
     if (!cls) continue;
     L.cloud.set(`${Math.floor(p.x / VOX)},${Math.floor(p.z / VOX)},${cls}`, { u: p.x, v: -p.z, y: p.y, odo, cls });
     kept++;
   }
   if (L.cloud.size > 8000) for (const [k, p] of L.cloud) if (p.odo < odo - KEEP_M) L.cloud.delete(k);
+  if (L.cols.size > 4000) for (const [k, c] of L.cols) if (c.odo < odo - KEEP_M) L.cols.delete(k);
   return kept;
 }
 
@@ -111,7 +134,7 @@ export function nextAsk(L, odo, now = Date.now(), pos = null) {
   const prior = priorFor(L, odo, now);
   if (!prior) return { why: 'waiting for GPS (or two references) to start from' };
   const id = L.nextId++;
-  L.pending = { id, odo, from: prior.from, at: now, phone: pos ? level(pos) : null, refs: refFit(L, odo) };
+  L.pending = { id, odo, from: prior.from, at: now, phone: pos ? level(pos) : null, refs: refFit(L, odo), stand: stand.length, ground: ground.length };
   L.lastAsk = now; L.asks++;
   return { id, stand: thin(stand, 600), ground: thin(ground, 300), prior, s: L.scale };
 }
@@ -125,19 +148,25 @@ export function disagreement(Ta, Tb, phone) {
 }
 
 /** A match's answer. -> the fix added, or null when refused (the reason counted). */
-export function answer(L, fix, id) {
+export function answer(L, fix, id, now = Date.now()) {
   if (!L.pending || L.pending.id !== id) return null;
-  const { odo, from, phone, refs } = L.pending;
+  const { odo, from, phone, refs, at, stand, ground } = L.pending;
   L.pending = null;
-  const refuse = (why) => { L.last = { ok: false, why, hits: fix?.hits ?? null, from, odo }; const k = why.replace(/\d+(\.\d+)?/g, '#'); L.refused[k] = (L.refused[k] || 0) + 1; return null; };
+  // the log: one line per ask, so a wrong lock can be traced afterwards (SCAN-H2)
+  const r2 = (v) => (v == null || !Number.isFinite(v) ? null : +Number(v).toFixed(2));
+  const entry = { odo: r2(odo), ms: now - at, from: from[0] === 't' ? from.split(' ').pop() : from, stand, ground, ok: !!fix?.ok, hits: r2(fix?.hits), cost: fix?.cost != null ? +fix.cost.toFixed(4) : null, runnerUp: fix?.runnerUp ? { ratio: r2(fix.runnerUp.cost / (fix.cost || 1e-9)), apartM: r2(fix.runnerUp.apartM), apartDeg: r2(fix.runnerUp.apartDeg) } : null, tz: r2(fix?.tz), why: null, agreeM: null, agreeDeg: null, kept: false };
+  L.log.push(entry); if (L.log.length > LOG_MAX) L.log.shift();
+  const refuse = (why) => { entry.why = why; L.last = { ok: false, why, hits: fix?.hits ?? null, from, odo }; const k = why.replace(/\d+(\.\d+)?/g, '#'); L.refused[k] = (L.refused[k] || 0) + 1; return null; };
   if (!fix?.ok) return refuse(fix?.why || 'unknown');
   let agree = null;
   if (refs && phone) {
     agree = disagreement(fix.T, refs, phone);
+    entry.agreeM = r2(agree.m); entry.agreeDeg = r2(agree.deg);
     if (agree.m > REF_TOL_M || agree.deg > REF_TOL_DEG) return refuse(`disagrees with the references by ${agree.m.toFixed(1)} m and ${agree.deg.toFixed(0)} degrees`);
   } else if ((fix.hits ?? 0) < MIN_HITS_ALONE) return refuse(`only ${Math.round((fix.hits ?? 0) * 100)}% landed and no references to check it against`);
+  entry.kept = true;
   L.last = { ok: true, why: null, hits: fix.hits ?? null, from, odo };
-  const f = { T: fix.T, odo, hits: fix.hits, cost: fix.cost, from, runnerUp: fix.runnerUp || null, agreeM: agree ? +agree.m.toFixed(2) : null, agreeDeg: agree ? +agree.deg.toFixed(1) : null };
+  const f = { T: fix.T, odo, hits: fix.hits, cost: fix.cost, tz: fix.tz ?? null, from, runnerUp: fix.runnerUp || null, agreeM: agree ? +agree.m.toFixed(2) : null, agreeDeg: agree ? +agree.deg.toFixed(1) : null };
   L.fixes.push(f);
   if (L.fixes.length > 300) L.fixes.shift();
   return f;
@@ -191,9 +220,30 @@ export function status(L, odo) {
   return `Not placed yet: mark two references, or look round at the house and fences${L.last?.why ? ` (${L.last.why})` : ''}`;
 }
 
+/**
+ * The phone's recent standing points sorted by whether they land on the lidar under the fit for this moment:
+ * { on: [{x, y, z}], off: [...] } in the session frame, for drawing; dist: the lidar's distance grid
+ * { box, cell, W, H, data } as the worker sends it. Empty without a fit.
+ */
+export function agreement(L, odo, dist, within = 0.3) {
+  const T = fitFor(L, odo);
+  const on = [], off = [];
+  if (!T || !dist) return { on, off };
+  const { stand } = recent(L, odo);
+  for (const [u, v] of stand) {
+    const [e, n] = apply(T, [u, v]);
+    const c = Math.floor((e - dist.box[0]) / dist.cell), r = Math.floor((dist.box[3] - n) / dist.cell);
+    const d = c >= 0 && r >= 0 && c < dist.W && r < dist.H ? dist.data[r * dist.W + c] : Infinity;
+    const y = (L.cloud.get(`${Math.floor(u / VOX)},${Math.floor(-v / VOX)},s`)?.y) ?? L.groundY ?? 0;
+    (d <= within ? on : off).push({ x: u, y, z: -v });
+  }
+  return { on, off };
+}
+
 /** For the walk's copy: counts and errors, no positions. */
 export function summaryOf(L) {
   return {
+    asksLog: L.log,
     marks: L.marks.length, references: new Set(refMarks(L).map((m) => m.id)).size,
     fixes: L.fixes.length, asks: L.asks, refused: L.refused,
     fixHits: L.fixes.map((f) => +(f.hits || 0).toFixed(2)), fixAgreeM: L.fixes.map((f) => f.agreeM), fixFrom: L.fixes.reduce((a, f) => { a[f.from] = (a[f.from] || 0) + 1; return a; }, {}),

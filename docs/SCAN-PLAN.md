@@ -395,6 +395,11 @@ result goes in the Findings.
    their layers drawn on the lawn, draped and hidden behind the house.
    *Done when:* the owner walks the lot with shade and water layers on and the
    layers stay put on the lawn (within 0.5 m) for the whole walk.
+2b. **The ground-class match** (section 7): the lawn and paving edges from
+   the map (the lawn trace, the photo, the lidar's ground intensity) against
+   the phone's ground points classed grass or paving from the camera picture
+   and the depth step. Dense, unchanged since the flight, strongest in the
+   front yard. Only after 2's log says where the solid-cell match fails.
 5. **Sharpen after the walk** (only if 2-3 fall short; server cost asked
    first).
 6. **The 3D model bonuses**: fences, trunks, fine ground, lawn edge, splat,
@@ -416,6 +421,99 @@ None blocking phase 1. Later:
   has changed since (new fence, removed tree)? The house should.
 - Lidar ground is the soil; a phone sees the grass top, a few cm higher. Does
   that matter for the match? Probably not; measure.
+
+## 7. The lock: what the match sees, and what the literature says (2026-11-03)
+
+The owner, after SCAN-H2: why was the lock so wrong; is it looking at the
+lidar ground; is the alignment the same as the shade map's; show the lidar in
+the camera; what logging is there; and would matching against aerial
+imagery draped over the lidar be a better system? With a literature review.
+
+**What the match is fed (scan/lib/lidar.js, carried from water H68).** Two
+grids at 0.25 m from the lot's cloud: the bare ground (ground returns,
+holes filled) and the "solid" cells: lidar points 0.25-2.5 m above the
+ground (fences, shrubs, trunks, parked cars at the flight, low branches)
+plus the house's walls (its roof footprint pulled in by the eaves, then its
+outline). From the phone: the depth picture's points sorted into ground
+(within 0.2 m of the ground level) and standing (0.4-2.4 m above it). The
+cost: standing points must land near solid cells (truncated at 1 m);
+ground points must follow the lidar ground's SHAPE up to one height offset
+(weight 0.5, truncated at 0.3 m). On a flat lawn the ground term carries
+no position at all (a plane fits anywhere): position comes from the
+standing points alone. So yes, it looks at the lidar ground, and the ground
+helps only where it has shape (a step, a drop, a bank).
+
+**Where it went wrong in SCAN-H2 (SPECULATION, to be read off the new
+log).** Three candidates: (1) the first fix was seeded from GPS, any turn,
+up to 20 m round the GPS point, on a lawn whose fences and walls repeat;
+with half the points landing it passed the 50% bar, and the next fixes
+searched only 1.5 m round it; (2) the phone's ground level came from the
+crosshair's depth, one number for the whole walk, so on a slope or a drop
+standing and ground points were mislabelled; (3) the lidar's solid cells
+hold what stood there at the flight, not what stands there now.
+
+**Alignment.** The same as the shade and water maps: the shade map's kept
+shift (its lidar ground INTENSITY matched to the photo the lawn was traced
+on, which is Mapbox's ground or a county photo moved onto it), else the
+NAD83 correction at the flight's epoch. The references are tapped on the
+Mapbox photo, so references and lidar share a ground frame to within the
+shade shift's error (under 20 cm when applied). Alignment is not the 8.9 m.
+
+**The literature.**
+- Render-and-compare against a textured mesh works where the mesh has
+  the texture the camera sees: MeshLoc (Panek, Kukelova, Sattler, ECCV 2022,
+  arxiv.org/abs/2207.10762) found rendering realism matters little, and
+  Render2Loc (Yan et al. 2023, arxiv.org/abs/2302.06287) reports
+  centimetre-level poses from a textured OBLIQUE aerial mesh with a noisy
+  prior, rendering depth as well as colour. But on the 2025 egenioussBench
+  (aerial textured mesh, city scale; emergentmind.com/papers/2605.05351)
+  the mesh-based methods placed only 19% of queries within 0.5 m and 2 deg
+  on the hard split, blamed on "viewpoint discrepancy and textureless
+  geometry". A NADIR orthophoto draped on a 2016 DEM is the weakest case of
+  this: no facade texture at all, grass seen from above against grass seen
+  at grazing angles.
+- Ground-to-aerial cross-view localization (Shi et al. 2020,
+  arxiv.org/abs/2005.03860; the 2025 air-ground benchmark,
+  arxiv.org/abs/2509.07362; Nuro's DSM work, arxiv.org/abs/2503.13896)
+  reaches metre-level, sub-metre only with learned models trained on
+  aligned vehicle lidar, none of it browser-sized.
+- What does reach centimetres from a camera is SEMANTIC map matching, the
+  driving literature: curbs, lane markings and crosswalks against a vector
+  map (RoadMap, Huawei, arxiv.org/abs/2106.02527; Poggenhans et al. 2018,
+  KIT; the HD-map survey arxiv.org/abs/2409.09726). Curbs give "a reliable,
+  continuous lateral constraint"; the limit is feature density.
+- Google's own answer (ARCore Geospatial / Streetscape Geometry,
+  developers.google.com/ar/develop/.../streetscape-geometry) localizes
+  against building meshes made from Street View, i.e. facades, and is
+  native-app only.
+- Smartphone-to-prior-lidar registration outdoors (ISPRS Annals 2026,
+  isprs-annals.copernicus.org/articles/XI-4-2026/205/2026/) aligns phone
+  scans to prescanned tiles with GNSS only to pick the tile: the same shape
+  as ours, with a denser prior.
+
+**So: would imagery draped over the lidar be the better system?** Not as
+pixels. The yard's camera view is facades, fences, trunks and grass at a
+grazing angle, none of which a nadir photo holds, and the one published
+benchmark on aerial meshes puts that approach at 19% within half a metre.
+What the owner's idea does point at, and the literature backs, is matching
+what the photo DOES hold that the phone can also see: the edges of paving
+(driveway, sidewalk, patio, curbs) and the lawn's own outline. The photo
+and the lawn trace give those as lines on the map (the lawn mapper's
+product); the lidar's ground intensity gives them too (shade/align.js);
+and the phone can classify its ground points as grass or paving from the
+camera picture under each depth sample, and see the curb step in depth.
+Matching that boundary is dense (metres of edge, not a few posts),
+unchanged since the flight, and strongest exactly in the front yard where
+the references now go by hand. That is phase 2b.
+
+**Built now (SCAN-H2's follow-up):** the lidar drawn in the camera view
+through the fit (solid cells blue, canopy green, roofs orange, see-through,
+with a Lidar button to hide them), black dots where the phone's standing
+points land on a solid cell and red where they land on nothing; the ground
+level per 1 m column instead of one number from the crosshair; and a log of
+every ask (points offered, prior, time, landing share, cost, the runner-up's
+ratio and distance, the disagreement with the references, kept or why not)
+in the walk's copy.
 
 ## Findings
 

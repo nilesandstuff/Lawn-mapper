@@ -10,11 +10,11 @@
  */
 import { detect, start, engineChoice, load8thWall } from '/lib/track.js';
 import { newWalk, step, dropPin, checkPin, measure, tapeFor, undo, far, summary, pinNow } from '/lib/walk.js';
-import { makeDrawer } from '/lib/draw.js';
+import { makeDrawer, lidarMeshes } from '/lib/draw.js';
 import { levelDist, toLocal } from '/lib/frames.js';
 import { frameFor, bboxOf, toPx, fromPx, ringsOf } from '/lib/photo.js';
-import { newLocate, mark, noteGround, addDepth, nextAsk, answer, fitFor, mapOf, sessionOf, checkError, nearestNamed, status as fixStatus, summaryOf } from '/lib/locate.js';
-import { leftOut } from '/lib/align.js';
+import { newLocate, mark, noteGround, addDepth, nextAsk, answer, fitFor, mapOf, sessionOf, checkError, nearestNamed, agreement, status as fixStatus, summaryOf } from '/lib/locate.js';
+import { leftOut, mapToSession } from '/lib/align.js';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -30,7 +30,8 @@ const DEPTH_EVERY = 250;
 const st = {
   caps: null, has8w: false, map: new URLSearchParams(location.search).get('map'), site: null, origin: null, lawn: [], parcel: [], frame: null, photo: null,
   points: [], adding: 'ref', view: { s: 1, ox: 0, oy: 0 }, pins: [],
-  walk: null, L: null, tracker: null, drawer: null, frame: null, hudAt: 0, farAt: 0, depthAt: 0, errors: [], lid: { worker: null, ready: null, error: null, progress: '' }, gpsWatch: null,
+  walk: null, L: null, tracker: null, drawer: null, frame: null, hudAt: 0, farAt: 0, depthAt: 0, errors: [], lid: { worker: null, ready: null, error: null, progress: '', overlay: null, meshes: null }, gpsWatch: null,
+  lidarOn: true, agree: null,
 };
 // the photo frame and the AR frame are both "frame": keep the AR one apart
 st.ar = null;
@@ -197,6 +198,7 @@ function startLidar(m) {
     w.onmessage = ({ data }) => {
       if (data.progress) { st.lid.progress = data.progress; showLidar(); }
       if (data.ready) { st.lid.ready = data.ready; log(`lidar read: ${data.ready.points} points, ${data.ready.solid} solid cells, shift ${data.ready.shift}`); showLidar(); }
+      if (data.overlay) { st.lid.overlay = data.overlay; st.lid.meshes = null; log(`lidar overlay: ${data.overlay.solids.length / 4} solid cells, ${data.overlay.tall.length / 5} tall cells`); }
       if (data.error) { st.lid.error = data.error; log(`lidar: ${data.error}`); showLidar(); }
       if (data.fix && st.L) { const f = answer(st.L, data.fix, data.id); if (f && st.L.fixes.length === 1) flash('You are here: the lidar found you'); }
     };
@@ -296,10 +298,31 @@ function onFrame(f) {
         if (now !== p.at) items.push({ kind: 'mark', at: p.at, color: COLOR.placed });
       }
       // the references and check points where the fit puts them: on the real corner when the fix is right
-      if (fitFor(L, odo)) for (const p of st.points) { const s = sessionOf(L, p.map, odo, L.groundY ?? (f.pose ? f.pose.position.y - 1.4 : 0)); if (s && f.pose && levelDist(s, f.pose.position) < 30) items.push({ kind: 'mark', at: s, color: p.kind === 'ref' ? COLOR.ref : COLOR.check }); }
+      const T = fitFor(L, odo);
+      if (T) for (const p of st.points) { const s = sessionOf(L, p.map, odo, L.groundY ?? (f.pose ? f.pose.position.y - 1.4 : 0)); if (s && f.pose && levelDist(s, f.pose.position) < 30) items.push({ kind: 'mark', at: s, color: p.kind === 'ref' ? COLOR.ref : COLOR.check }); }
       if (w.pendingMeasure) items.push({ kind: 'mark', at: w.pendingMeasure.a, color: COLOR.mark });
       if (f.hit) items.push({ kind: 'dot', at: f.hit.position, color: f.hit.type === 'DEPTH' ? COLOR.dot : COLOR.dotPlane });
-      st.drawer.d.draw({ view: f.view, proj: f.proj, viewport: f.viewport, framebuffer: f.framebuffer, items });
+      // THE LIDAR IN THE CAMERA (owner, 2026-11-03: "so that I can see how it's lining up... mostly transparent, but
+      // still visible... then add a black dot on them if the AR agrees with them"): the solid cells the match matches
+      // against (blue), the canopy (green) and the roofs (orange), through the fit for this moment; black dots where
+      // the phone's standing points land on a solid cell, red where they land on nothing
+      const statics = [], dots = [];
+      if (st.lidarOn && T && st.lid.overlay && f.pose) {
+        if (!st.lid.meshes || st.lid.meshes.gl !== f.gl) {
+          const m = lidarMeshes(st.lid.overlay);
+          st.lid.meshes = { gl: f.gl, solids: st.drawer.d.makeMesh(m.solids), canopy: st.drawer.d.makeMesh(m.canopy), roofs: st.drawer.d.makeMesh(m.roofs) };
+        }
+        const me = mapOf(L, f.pose.position, odo);
+        const groundHere = L.groundY ?? f.pose.position.y - 1.4;
+        const dy = me ? groundHere - demAt(st.lid.overlay.dem1, me[0], me[1], groundHere) : 0;
+        const model = mapToSession(T, dy);
+        statics.push({ mesh: st.lid.meshes.solids, model, color: [0.35, 0.7, 1, 0.26], through: true });
+        statics.push({ mesh: st.lid.meshes.canopy, model, color: [0.3, 0.9, 0.4, 0.12], through: true });
+        statics.push({ mesh: st.lid.meshes.roofs, model, color: [1, 0.6, 0.3, 0.14], through: true });
+        if (f.t - (st.agreeAt || 0) > 300) { st.agreeAt = f.t; st.agree = agreement(L, odo, st.lid.overlay.dist); }
+        if (st.agree) { dots.push({ points: st.agree.on, color: [0, 0, 0, 0.95], r: 0.045 }); dots.push({ points: st.agree.off, color: [1, 0.25, 0.2, 0.7], r: 0.03 }); }
+      } else st.agree = null;
+      st.drawer.d.draw({ view: f.view, proj: f.proj, viewport: f.viewport, framebuffer: f.framebuffer, items, dots, statics });
     } catch (e) { if (!st.drawErr) { st.drawErr = true; log(`draw: ${e.message}`); } }
   }
   $('#cross').classList.toggle('hit', !!f.hit);
@@ -312,12 +335,22 @@ function hud(f) {
   const aim = f.hit ? `aim ${ftIn(f.hit.distance)} <span class="dim">(${f.hit.type === 'DEPTH' ? 'depth' : 'plane'})</span>${far(f.hit) ? ' <span class="warn">(far)</span>' : ''}` : 'no ground under the crosshair';
   const pts = f.points ? ` · ${f.points} pts` : '';
   const target = st.points.length ? nextTarget() : null;
-  const fixLine = st.origin ? `<br>${esc(st.lid.ready ? fixStatus(L, w.odo) : st.lid.error ? `No lidar (${st.lid.error}); references only: ${fixStatus(L, w.odo)}` : `Lidar: ${st.lid.progress || 'reading…'}`)}${target ? `<br>Next to mark: <strong style="color:${target.kind === 'ref' ? '#8ab4ff' : '#d9a6ff'}">${esc(target.name)}</strong> (aim where it meets the ground, within 10 ft, tap Mark)` : ''}` : '';
+  const ag = st.agree ? ` · lidar dots: <strong>${st.agree.on.length}</strong> on, ${st.agree.off.length} off` : '';
+  const fixLine = st.origin ? `<br>${esc(st.lid.ready ? fixStatus(L, w.odo) : st.lid.error ? `No lidar (${st.lid.error}); references only: ${fixStatus(L, w.odo)}` : `Lidar: ${st.lid.progress || 'reading…'}`)}${ag}${target ? `<br>Next to mark: <strong style="color:${target.kind === 'ref' ? '#8ab4ff' : '#d9a6ff'}">${esc(target.name)}</strong> (aim where it meets the ground, within 10 ft, tap Mark)` : ''}` : '';
   const last = st.errors.length && Date.now() - st.errors[st.errors.length - 1].t < 6000 && /engine|start/.test(st.errors[st.errors.length - 1].what) ? `<br><span class="bad">${esc(st.errors[st.errors.length - 1].what)}</span>` : '';
   $('#hud').innerHTML = `${NAME[w.engine]} · ${tr} · walked ${Math.round(w.stats.walked * FT)} ft${pts} · ${aim} · ${w.pins.length} pin${w.pins.length === 1 ? '' : 's'}${w.pendingMeasure ? ' · <span class="warn">now aim at the second mark</span>' : ''}${fixLine}${last}`;
   const can = !!f.hit && f.tracking !== 'lost';
   $('#pin').disabled = !can; $('#measure').disabled = !can; $('#check').disabled = !can || !w.pins.length; $('#mark').disabled = !can || !target;
   if (f.t - (st.mapAt || 0) > 1000 && fitFor(L, w.odo)) { st.mapAt = f.t; drawMap(); }
+}
+
+/** The lidar ground at a map point from the 1 m grid the worker sent; `fallback` off the grid. */
+function demAt(g, e, n, fallback) {
+  if (!g) return fallback;
+  const c = Math.floor((e - g.box[0]) / g.cell), r = Math.floor((g.box[3] - n) / g.cell);
+  if (c < 0 || r < 0 || c >= g.W || r >= g.H) return fallback;
+  const v = g.data[r * g.W + c];
+  return Number.isFinite(v) ? v : fallback;
 }
 
 const nearestPin = (hit) => { let best = null, bd = 6; for (const p of st.walk.pins) { const d = levelDist(pinNow(p), hit.position); if (d < bd) { bd = d; best = p; } } return best; };
@@ -361,6 +394,7 @@ function wire() {
   $('#undo').addEventListener('click', () => { const u = undo(st.walk); flash(u === 'pin' ? 'Pin removed' : u === 'measure' ? 'First mark cleared' : 'Nothing to undo'); });
   $('#exit').addEventListener('click', () => { if (st.tracker) st.tracker.stop(); else finish(); });
   $('#move').addEventListener('click', () => $('#overlay').classList.toggle('bar-low'));
+  $('#lidar-toggle').addEventListener('click', () => { st.lidarOn = !st.lidarOn; $('#lidar-toggle').classList.toggle('off', !st.lidarOn); flash(st.lidarOn ? 'Lidar shown' : 'Lidar hidden'); });
 }
 
 /* ------------------------------------------------------------ results */
@@ -390,7 +424,7 @@ function finish() {
     page: 'yard AR test v2', features: w.features || null, failed: w.failed || null, errors: st.errors.map((e) => e.what).slice(-30),
     references: refs, checks: (w.checks || []).map((c) => ({ ...c, errorM: r3(c.errorM), errorFixM: r3(c.errorFixM), errorRefsM: r3(c.errorRefsM), walkedSinceFixM: r2(c.walkedSinceFixM), aimM: r2(c.aimM), walkedM: r2(c.walkedM) })),
     pinsNear: w.pins.map((p) => ({ name: p.name, nearest: p.nearest ? { name: p.nearest.name, m: r2(p.nearest.m), byRefsM: r2(p.nearest.byRefsM) } : null })),
-    fix: L ? summaryOf(L) : null, lidar: st.lid.ready ? { points: st.lid.ready.points, solid: st.lid.ready.solid, shift: st.lid.ready.shift } : st.lid.error ? { error: st.lid.error } : null,
+    fix: L ? summaryOf(L) : null, lidar: st.lid.ready ? { points: st.lid.ready.points, solid: st.lid.ready.solid, shift: st.lid.ready.shift, tallCells: st.lid.overlay ? st.lid.overlay.tall.length / 5 : null } : st.lid.error ? { error: st.lid.error } : null,
   });
   s.id = `${w.startedAt}`; s.saved = null;
   st.tracker = null; st.walk = null; st.L = null; st.ar = null; st.drawer = null;

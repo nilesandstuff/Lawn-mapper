@@ -1,6 +1,6 @@
 // scan/lib/locate.js: the fix's bookkeeping. node scan/test/locate.test.js
 import assert from 'node:assert/strict';
-import { newLocate, mark, refFit, noteGround, addDepth, recent, nextAsk, answer, fitFor, fitSource, priorFor, mapOf, sessionOf, checkError, nearestNamed, disagreement, status, summaryOf, FIX_REACH, MIN_STAND, REF_TOL_M } from '../lib/locate.js';
+import { newLocate, mark, refFit, noteGround, addDepth, recent, nextAsk, answer, fitFor, fitSource, priorFor, mapOf, sessionOf, checkError, nearestNamed, disagreement, groundUnder, agreement, status, summaryOf, FIX_REACH, MIN_STAND, REF_TOL_M } from '../lib/locate.js';
 
 const near = (a, b, eps, msg) => assert.ok(Math.abs(a - b) <= eps, `${msg}: ${a} vs ${b}`);
 const TH = (30 * Math.PI) / 180, SH = [5, 5];
@@ -99,5 +99,39 @@ const hitAt = (map, y = 0) => { const [u, v] = toAR(map); return { position: { x
   const n = nearestNamed(L, hitAt([20.5, 20]).position, 11, [{ name: 'C1', map: [20, 20] }, { name: 'R1', map: [0, 0] }]);
   assert.equal(n.name, 'C1'); near(n.byRefsM, 0.5, 1e-9, 'by the references'); assert.ok(n.m < 1.5);
   assert.equal(nearestNamed(L, me, 11, []), null);
+}
+// the ground per column: a drop of 1.8 m is still ground; a wall's foot is standing even where the crosshair's ground is higher; the asks are logged
+{
+  const L = newLocate(); noteGround(L, 0);
+  const pts = [];
+  for (let i = 0; i < 30; i++) pts.push({ x: 10 + (i % 6) * 0.3, y: -1.8, z: -(10 + Math.floor(i / 6) * 0.3) }); // the back yard, 1.8 m down
+  pts.push({ x: 10.5, y: -0.6, z: -10.5 }); // a 1.2 m post standing on it
+  pts.push({ x: 30, y: 1.3, z: -30 }); // a wall point far off, nothing lower seen near it
+  addDepth(L, pts, 5);
+  near(groundUnder(L, { x: 10.5, y: 0, z: -10.5 }), -1.8, 1e-9, 'the column floor');
+  near(groundUnder(L, { x: 30, y: 0, z: -30 }), 0, 1e-9, 'a lone high point is not a floor: the crosshair ground');
+  const r = recent(L, 5);
+  assert.equal(r.stand.length, 2, 'the post and the wall point stand');
+  assert.ok(r.ground.length >= 4, 'the back yard is ground');
+  L.gps = { at: [0, 0], phone: [0, 0], acc: 5, t: 0 };
+  for (let i = 0; i < 40; i++) addDepth(L, [{ x: i * 0.3, y: 1.2, z: -3 }], 5);
+  const ask = nextAsk(L, 5, 10000, { x: 0, y: 1.5, z: 0 });
+  answer(L, { ok: false, why: 'two places fit about as well', hits: 0.3, cost: 0.2, runnerUp: { cost: 0.21, apartM: 4, apartDeg: 90 } }, ask.id, 10400);
+  const s = summaryOf(L);
+  assert.equal(s.asksLog.length, 1);
+  assert.equal(s.asksLog[0].ms, 400); assert.equal(s.asksLog[0].from, 'GPS'); assert.equal(s.asksLog[0].kept, false);
+  assert.equal(s.asksLog[0].runnerUp.ratio, 1.05);
+  assert.match(s.asksLog[0].why, /two places/);
+  assert.ok(!JSON.stringify(s.asksLog).includes('"at"'), 'no positions');
+  // agreement: with a fit, the standing points sorted by the lidar's distance grid
+  mark(L, { id: 'r1', kind: 'ref', map: [0, 0] }, hitAt([0, 0]), 0);
+  mark(L, { id: 'r2', kind: 'ref', map: [12, 4] }, hitAt([12, 4]), 10);
+  const dist = { box: [-50, -50, 50, 50], cell: 1, W: 100, H: 100, data: new Float32Array(10000).fill(5) };
+  const ag = agreement(L, 5, dist);
+  assert.equal(ag.on.length, 0); assert.ok(ag.off.length >= 40);
+  dist.data.fill(0.1);
+  const ag2 = agreement(L, 5, dist);
+  assert.ok(ag2.on.length >= 40 && ag2.off.length === 0, 'all on when everything is near a solid cell');
+  assert.deepEqual(agreement(newLocate(), 0, dist), { on: [], off: [] });
 }
 console.log('locate: ok');

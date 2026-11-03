@@ -1,6 +1,6 @@
 // scan/lib/align.js: the reference fit. node scan/test/align.test.js
 import assert from 'node:assert/strict';
-import { fitRigid, apply, unapply, fitAt, walkWeight, leftOut } from '../lib/align.js';
+import { fitRigid, apply, unapply, fitAt, walkWeight, leftOut, mapToSession } from '../lib/align.js';
 
 const near = (a, b, eps, msg) => assert.ok(Math.abs(a - b) <= eps, `${msg}: ${a} vs ${b}`);
 // a session turned 40 degrees and shifted (12, -7) from the map
@@ -44,5 +44,14 @@ const refs = [[0, 0], [15, 3], [4, 20], [-10, 8]];
   near(leftOut(bad, 'b'), 2, 0.05, 'the wrong one stands out');
   assert.ok(leftOut(bad, 'a') < 1.2, `the right ones less so: ${leftOut(bad, 'a')}`);
   assert.equal(leftOut(marks.slice(0, 1), 'a'), null, 'nothing to line it up with');
+}
+// the map -> session matrix agrees with unapply, and lifts heights by dy
+{
+  const T = fitRigid(refs.slice(0, 2).map((m) => ({ ar: toAR(m), map: m })));
+  const M = mapToSession(T, 0.5);
+  const [e, n, z] = [7, -3, 101.2];
+  const x = M[0] * e + M[4] * z + M[8] * n + M[12], y = M[1] * e + M[5] * z + M[9] * n + M[13], zz = M[2] * e + M[6] * z + M[10] * n + M[14];
+  const [u, v] = unapply(T, [e, n]);
+  near(x, u, 1e-9, 'x = u'); near(zz, -v, 1e-9, 'z = -v'); near(y, 101.7, 1e-9, 'height plus dy');
 }
 console.log('align: ok');

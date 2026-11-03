@@ -38,13 +38,13 @@ export function buildGrids(pts, box, { cell = 0.25, band = [0.25, 2.5], cap = 5,
     if (!(dem[k] <= pts.z[i])) dem[k] = pts.z[i];
   }
   fill(dem, W, H);
-  const occ = new Uint8Array(W * H);
+  const occ = new Uint8Array(W * H), occTop = new Float32Array(W * H);
   for (let i = 0; i < N; i++) {
     const c = pts.cls[i];
     if (c === 2 || c === 7 || c === 18 || c === 9 || c === 6) continue;
     const k = idx(pts.e[i], pts.n[i]); if (k < 0) continue;
     const h = pts.z[i] - dem[k];
-    if (h > band[0] && h < band[1]) occ[k] = 1;
+    if (h > band[0] && h < band[1]) { occ[k] = 1; if (h > occTop[k]) occTop[k] = h; }
   }
   const bld = roofMask(pts, box, cell, W, H, dem);
   /* A building is its walls, not its inside (the phone cannot see in, and points landing inside a solid footprint
@@ -58,7 +58,9 @@ export function buildGrids(pts, box, { cell = 0.25, band = [0.25, 2.5], cap = 5,
     if (r === 0 || c === 0 || r === H - 1 || c === W - 1 || !walls[k - 1] || !walls[k + 1] || !walls[k - W] || !walls[k + W]) occ[k] = 1;
   }
   let solid = 0; for (let k = 0; k < occ.length; k++) solid += occ[k];
-  return { box, cell, W, H, dem, occ, dist: distanceField(occ, W, H, cell, cap), solid };
+  // (core session, 2026-11-03) occTop: how tall each solid cell's points reach, and bld, the roof mask, so the AR
+  // page can draw what the match is matching against (docs/SCAN-PLAN.md SCAN-H2); walls are drawn to the roof.
+  return { box, cell, W, H, dem, occ, occTop, bld, dist: distanceField(occ, W, H, cell, cap), solid };
 }
 
 /**

@@ -44,6 +44,14 @@ assert.ok(sample(G, G.dist, -12, 8) < 0.3, 'a wall');
 assert.ok(sample(G, G.dist, -5, 8) > 2, 'inside the house is not solid');
 assert.ok(sample(G, G.dist, 0, -12) < 0.3, 'the fence');
 assert.ok(sample(G, G.dist, 22, 20) > 3, 'open lawn');
+assert.ok(G.occTop && G.bld, 'the tops and the roof mask come back for the overlay');
+{
+  const k = (e, n) => Math.floor((30 - n) / G.cell) * G.W + Math.floor((e + 30) / G.cell);
+  const fenceTop = Math.max(G.occTop[k(0, -12)], G.occTop[k(0, -11.9)], G.occTop[k(0, -12.1)]);
+  assert.ok(fenceTop > 1.5 && fenceTop < 2, `the fence's top: ${fenceTop}`);
+  assert.equal(G.bld[k(-5, 8)], 1, 'under the roof');
+  assert.equal(G.bld[k(20, 20)], 0, 'open lawn is not roof');
+}
 // past the house and a tree, from a GPS guess 8 m off and any turn: found to a few centimetres
 {
   const path = [[-6, -1], [-2, -1], [2, -1], [6, -1], [8, -2]];

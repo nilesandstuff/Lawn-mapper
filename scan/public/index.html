@@ -58,6 +58,7 @@
   #overlay.bar-low #bar { bottom: calc(10px + env(safe-area-inset-bottom)); }
   #bar button { flex: 1 1 28%; padding: 14px 6px; font-size: 15px; }
   #bar button.side { flex: 0 0 auto; background: rgba(0,0,0,.6); border: 1px solid rgba(255,255,255,.4); }
+  #bar button.side.off { opacity: .5; text-decoration: line-through; }
   #flash { position: absolute; left: 50%; top: 58%; transform: translateX(-50%); background: rgba(0,0,0,.7); padding: 6px 12px; border-radius: 8px; opacity: 0; transition: opacity .2s; white-space: nowrap; max-width: 92vw; }
   #flash.show { opacity: 1; }
 </style>
@@ -112,6 +113,7 @@
   <div id="flash"></div>
   <div id="bar">
     <button type="button" id="move" class="side" aria-label="Move the buttons up or down">&#x21C5;</button>
+    <button type="button" id="lidar-toggle" class="side" aria-label="Show or hide the lidar">Lidar</button>
     <button type="button" id="undo" class="side">Undo</button>
     <button type="button" id="exit" class="side">Exit</button>
     <button type="button" id="mark" disabled>Mark</button>

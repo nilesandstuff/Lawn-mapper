@@ -78,3 +78,18 @@ export function leftOut(marks, id) {
   const [e, n] = apply(T, last.ar);
   return Math.hypot(e - last.map[0], n - last.map[1]);
 }
+
+/**
+ * The column-major 4x4 that takes a map point (e, z, n) -- east, height, north -- into the session frame (x, y, z)
+ * under the fit T, with dy added to heights (the session's ground height minus the lidar's there). For drawing the
+ * lidar in the camera view: one matrix, a static mesh. The level part is unapply().
+ */
+export function mapToSession(T, dy = 0) {
+  const k = T.s ?? 1, c = Math.cos(T.theta), s = Math.sin(T.theta);
+  return new Float32Array([
+    c / k, 0, s / k, 0,
+    0, 1, 0, 0,
+    s / k, 0, -c / k, 0,
+    -(c * T.tx + s * T.ty) / k, dy, -(s * T.tx - c * T.ty) / k, 1,
+  ]);
+}
