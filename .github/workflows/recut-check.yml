@@ -1,0 +1,77 @@
+name: 49. Confidence slider check
+
+# The confidence slider against real predictions (owner, 2026-11-03: a condo
+# complex's lawn shrank from 125,000 to 810 sq ft at 40%, and vanished at 45%
+# and above 50%). Fetches the newest predictions' pictures from the corpus
+# bucket and re-cuts them at every setting the way the page does
+# (tools/recut-check.mjs). Read the end of the log. Nothing is written.
+on:
+  workflow_dispatch:
+    inputs:
+      newest:
+        description: 'How many of the newest predictions to check'
+        required: true
+        default: '4'
+      call:
+        description: 'Or one prediction by its call id (the part after "alpha-" in its mask URL); blank for the newest'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  recut:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - run: npm ci --no-audit --no-fund
+
+      - name: Which predictions
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          NEWEST: ${{ inputs.newest }}
+          CALL: ${{ inputs.call }}
+        run: |
+          set -e
+          if [ -n "$CALL" ]; then echo "$CALL" > calls.txt; cat calls.txt; exit 0; fi
+          # the bucket's objects under alpha/masks/, newest first, by the Cloudflare API (wrangler has no object list)
+          curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/r2/buckets/lawn-mapper-corpus/objects?prefix=alpha/masks/&per_page=1000" > list.json
+          node -e '
+            const j = JSON.parse(require("fs").readFileSync("list.json", "utf8"));
+            if (!j.success) { console.error("list failed:", JSON.stringify(j.errors || j).slice(0, 400)); process.exit(1); }
+            const raws = (j.result || []).filter((o) => /-raw\.png$/.test(o.key)).sort((a, b) => new Date(b.last_modified) - new Date(a.last_modified));
+            const n = Math.max(1, Math.min(20, Number(process.env.NEWEST) || 4));
+            const calls = raws.slice(0, n).map((o) => o.key.replace(/^alpha\/masks\//, "").replace(/-raw\.png$/, ""));
+            console.log(`${raws.length} predictions with a decoder picture; checking the newest ${calls.length}: ${calls.join(", ")}`);
+            require("fs").writeFileSync("calls.txt", calls.join("\n") + "\n");
+          '
+
+      - name: Fetch their pictures
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          mkdir -p masks
+          while read -r c; do
+            [ -z "$c" ] && continue
+            for f in "$c.png" "$c-raw.png" "$c-canopy.png" "$c-roof.png" "$c-void.png" "$c.json"; do
+              npx wrangler r2 object get "lawn-mapper-corpus/alpha/masks/$f" --file "masks/$f" --remote > /dev/null 2>&1 || echo "  (no $f)"
+            done
+          done < calls.txt
+          ls -la masks | head -40
+
+      - name: Re-cut at every setting
+        run: DIR=masks node tools/recut-check.mjs | tee recut.txt
+
+      - name: The answer
+        if: always()
+        run: |
+          echo "--------------------------------------------------------------"
+          tail -40 recut.txt 2>/dev/null || echo "no result: see the steps above"
