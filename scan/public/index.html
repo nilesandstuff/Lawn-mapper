@@ -61,6 +61,11 @@
   #bar button.side.off { opacity: .5; text-decoration: line-through; }
   #flash { position: absolute; left: 50%; top: 58%; transform: translateX(-50%); background: rgba(0,0,0,.7); padding: 6px 12px; border-radius: 8px; opacity: 0; transition: opacity .2s; white-space: nowrap; max-width: 92vw; }
   #flash.show { opacity: 1; }
+  /* the mini map (scan/lib/minimap.js): drag, pinch, double-tap to follow again */
+  #mini { position: absolute; right: 8px; top: max(18vh, calc(110px + env(safe-area-inset-top))); width: 40vw; max-width: 220px; aspect-ratio: 1; border-radius: 10px; border: 1px solid rgba(255,255,255,.55); background: rgba(20,26,23,.55); touch-action: none; }
+  #arrows { position: absolute; inset: 0; pointer-events: none; }
+  #arrows .arrow { position: absolute; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; font: 600 12px system-ui, sans-serif; text-shadow: 0 0 3px #000; }
+  #arrows .arrow i { display: block; width: 0; height: 0; border-top: 9px solid transparent; border-bottom: 9px solid transparent; border-left: 16px solid currentColor; filter: drop-shadow(0 0 2px #000); }
 </style>
 </head>
 <body>
@@ -112,6 +117,8 @@
   <div id="cross"></div>
   <div id="hud">Starting…</div>
   <div id="flash"></div>
+  <canvas id="mini" aria-label="Mini map: drag to move, pinch to zoom, double-tap to follow again"></canvas>
+  <div id="arrows"></div>
   <div id="bar">
     <button type="button" id="move" class="side" aria-label="Move the buttons up or down">&#x21C5;</button>
     <button type="button" id="lidar-toggle" class="side" aria-label="Show or hide the lidar">Lidar</button>

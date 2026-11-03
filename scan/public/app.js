@@ -16,6 +16,8 @@ import { frameFor, bboxOf, toPx, fromPx, ringsOf } from '/lib/photo.js';
 import { newLocate, mark, noteGround, addDepth, nextAsk, answer, fitFor, mapOf, sessionOf, checkError, nearestNamed, agreement, status as fixStatus, summaryOf } from '/lib/locate.js';
 import { leftOut, mapToSession } from '/lib/align.js';
 import { newTwin, addPoints, addPose, wantKey, addKey, flush, flushDue, liveOf } from '/lib/twin.js';
+import { surfaceOf } from '/lib/surface.js';
+import { viewToFit, followView, toScreen, zoomAt as miniZoom, pan as miniPan, edgeArrow } from '/lib/minimap.js';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -27,6 +29,7 @@ const COLOR = { dot: [0.3, 1, 0.6, 0.9], dotPlane: [1, 0.8, 0.2, 0.9], pin: [0.9
 const CSS = { ref: '#2f7cf6', check: '#a54bd8', pin: '#e53935', lawn: '#4cc38a' };
 const FAR_AGAIN = 3000;
 const DEPTH_EVERY = 250;
+const COLOUR_EVERY = 900; // ms between reads of the ground's colour
 
 const st = {
   caps: null, has8w: false, map: new URLSearchParams(location.search).get('map'), site: null, origin: null, lawn: [], parcel: [], frame: null, photo: null,
@@ -204,13 +207,13 @@ function startLidar(m) {
       if (data.fix && st.L) { const f = answer(st.L, data.fix, data.id); if (f && st.L.fixes.length === 1) flash('You are here: the lidar found you'); }
     };
     w.onerror = (e) => { st.lid.error = e.message || 'the lidar reader failed'; showLidar(); };
-    w.postMessage({ load: { origin: st.origin, box, lidar: m.tools?.shade?.data?.lidar || null } });
+    w.postMessage({ load: { origin: st.origin, box, lidar: m.tools?.shade?.data?.lidar || null, lawn: st.lawn } });
   } catch (e) { st.lid.error = e.message; showLidar(); }
 }
 function showLidar() {
   const el = $('#lidar'); if (!el) return;
   el.textContent = st.lid.error ? `The lidar could not be read (${st.lid.error}): references only.`
-    : st.lid.ready ? `Lidar ready: ${st.lid.ready.points.toLocaleString()} points, ${st.lid.ready.solid.toLocaleString()} solid cells (walls, fences, trunks), lined up by ${st.lid.ready.shift}; buildings by ${st.lid.ready.rule || 'the AR copy'}${st.lid.ready.structures ? ` (${st.lid.ready.structures.building.toLocaleString()} m² of building)` : ''}.`
+    : st.lid.ready ? `Lidar ready: ${st.lid.ready.points.toLocaleString()} points, ${st.lid.ready.solid.toLocaleString()} solid cells (walls, fences, trunks), lined up by ${st.lid.ready.shift}; buildings by ${st.lid.ready.rule || 'the AR copy'}${st.lid.ready.lawnEdge ? '; the lawn\'s edges matched too' : ''}${st.lid.ready.structures ? ` (${st.lid.ready.structures.building.toLocaleString()} m² of building)` : ''}.`
       : st.lid.progress || 'Reading the lidar…';
 }
 
@@ -224,6 +227,8 @@ async function startAR(engine) {
   st.walk = newWalk({ engine, phone: navigator.userAgent });
   st.walk.checks = [];
   st.L = newLocate();
+  mini.view = null; mini.mode = 'fit'; mini.locked = false; $('#arrows').innerHTML = '';
+  st.surfCount = { grass: 0, pave: 0 };
   // the walk's twin (scan/lib/twin.js): its points, track and pictures go up to the site as it goes (src/twin.js)
   st.twin = newTwin({ walk: `${st.walk.startedAt}`, map: st.map || null, engine, started: st.walk.startedAt });
   st.twinUp = { queue: [], busy: false, off: null, sent: 0, failed: 0 };
@@ -286,19 +291,37 @@ function onFrame(f) {
     addDepth(L, pts, odo, f.pose.position.y);
     if (st.twin) addPoints(st.twin, Date.now(), odo, pts, L.groundY);
   }
+  // THE GROUND'S COLOUR (scan/lib/surface.js): about once a second, the camera's picture read back, and the depth
+  // under a grid of it labelled grass or paving, for the lawn-edge term of the match. The same read serves the twin.
+  let grabbed = null;
+  if (f.grab && f.depth && f.pose && f.tracking === 'normal' && f.t - (st.colourAt || 0) > COLOUR_EVERY) {
+    st.colourAt = f.t;
+    grabbed = f.grab();
+    if (grabbed?.pixels) {
+      const pts = [], { w: gw, h: gh, pixels } = grabbed;
+      for (let i = 0; i < 18; i++) for (let j = 0; j < 32; j++) {
+        const x = (i + 0.5) / 18, y = (j + 0.5) / 32, p = f.depth.at(x, y);
+        if (!p) continue;
+        const k = (Math.min(gh - 1, Math.floor(y * gh)) * gw + Math.min(gw - 1, Math.floor(x * gw))) * 4;
+        const surf = surfaceOf(pixels[k], pixels[k + 1], pixels[k + 2]);
+        if (surf) { p.surf = surf; pts.push(p); st.surfCount[surf]++; }
+      }
+      if (pts.length) addDepth(L, pts, odo, f.pose.position.y);
+    }
+  }
   // the twin: the camera's track, a picture now and then, and what has piled up sent every 15 s
   if (st.twin && f.pose) {
     const now = Date.now();
     addPose(st.twin, now, odo, f.pose.position, f.pose.quaternion, f.tracking);
     if (f.grab && f.tracking === 'normal' && !st.twinUp.off && wantKey(st.twin, now, f.pose.position, f.pose.quaternion)) {
-      const g = f.grab();
+      const g = grabbed || f.grab();
       if (g) { const name = addKey(st.twin, now, odo, f.pose.position, f.pose.quaternion, g); g.blob.then((b) => b && sendTwin([{ name, type: 'image/jpeg', body: b }]), () => {}); }
     }
     if (flushDue(st.twin, now)) sendTwin(flush(st.twin, now, liveOf(L, w)));
   }
   if (st.lid.ready && st.lid.worker && f.tracking === 'normal') {
     const ask = nextAsk(L, odo, Date.now(), f.pose?.position || null);
-    if (ask.id) st.lid.worker.postMessage({ register: { id: ask.id, stand: ask.stand, ground: ask.ground, high: ask.high, prior: ask.prior, s: ask.s, refs: ask.refs } });
+    if (ask.id) st.lid.worker.postMessage({ register: { id: ask.id, stand: ask.stand, ground: ask.ground, high: ask.high, surface: ask.surface, prior: ask.prior, s: ask.s, refs: ask.refs } });
     else if (ask.why && !/too soon|running/.test(ask.why)) L.why = ask.why;
   }
   // draw
@@ -342,6 +365,7 @@ function onFrame(f) {
   }
   $('#cross').classList.toggle('hit', !!f.hit);
   if (f.t - st.hudAt > 200) { st.hudAt = f.t; hud(f); }
+  if (f.t - (st.miniAt || 0) > 120) { st.miniAt = f.t; try { drawMini(f); arrows(f); } catch (e) { log(`mini map: ${e.message}`); } }
 }
 
 function hud(f) {
@@ -370,7 +394,101 @@ function demAt(g, e, n, fallback) {
 
 const nearestPin = (hit) => { let best = null, bd = 6; for (const p of st.walk.pins) { const d = levelDist(pinNow(p), hit.position); if (d < bd) { bd = d; best = p; } } return best; };
 
+/* ------------------------------------------------------------ the mini map */
+
+// mode: 'fit' (every reference and check point), 'follow' (the phone, once there is a lock), 'manual' (moved by hand)
+const mini = { view: null, mode: 'fit', locked: false, w: 0, h: 0 };
+function miniSize() {
+  const cv = $('#mini'), r = cv.getBoundingClientRect(), dpr = Math.min(2, window.devicePixelRatio || 1);
+  const w = Math.max(1, Math.round(r.width * dpr)), h = Math.max(1, Math.round(r.height * dpr));
+  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+  mini.w = w; mini.h = h; mini.dpr = dpr;
+  return cv;
+}
+function drawMini(f) {
+  const cv = miniSize(), g = cv.getContext('2d'), { w, h, dpr } = mini;
+  const L = st.L, odo = st.walk?.odo ?? 0;
+  const me = L && f?.pose ? mapOf(L, f.pose.position, odo) : null;
+  if (me && !mini.locked) { mini.locked = true; if (mini.mode !== 'manual') mini.mode = 'follow'; }
+  if (!me) mini.locked = false;
+  if (mini.mode === 'follow' && me) mini.view = followView(me, w, h);
+  else if (mini.mode !== 'manual' || !mini.view) mini.view = viewToFit(st.points.map((p) => p.map), w, h, 18 * dpr);
+  const v = mini.view, S = (m) => toScreen(v, m, w, h);
+  g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, w, h);
+  // the photo, put down by where three of its pixels fall
+  if (st.photo && st.frame) {
+    const a = S(unpx([0, 0])), b = S(unpx([1, 0])), c = S(unpx([0, 1]));
+    g.save(); g.globalAlpha = 0.9; g.setTransform(b[0] - a[0], b[1] - a[1], c[0] - a[0], c[1] - a[1], a[0], a[1]); g.drawImage(st.photo, 0, 0); g.restore();
+  }
+  g.lineWidth = 1.5 * dpr;
+  for (const r of st.lawn) { if (r.length < 2) continue; g.beginPath(); r.forEach((p, i) => { const [x, y] = S(p); if (i) g.lineTo(x, y); else g.moveTo(x, y); }); g.closePath(); g.strokeStyle = CSS.lawn; g.stroke(); }
+  const marked = new Set((L?.marks || []).map((m) => m.id));
+  g.font = `600 ${11 * dpr}px system-ui, sans-serif`;
+  for (const p of st.points) {
+    const [x, y] = S(p.map);
+    g.beginPath(); g.arc(x, y, 5 * dpr, 0, Math.PI * 2); g.fillStyle = p.kind === 'ref' ? CSS.ref : CSS.check; g.fill();
+    g.lineWidth = (marked.has(p.id) ? 2.5 : 1.5) * dpr; g.strokeStyle = marked.has(p.id) ? '#4cff9a' : '#fff'; g.stroke();
+    g.fillStyle = '#fff'; g.strokeStyle = 'rgba(0,0,0,.8)'; g.lineWidth = 3 * dpr; g.strokeText(p.name, x + 7 * dpr, y + 4 * dpr); g.fillText(p.name, x + 7 * dpr, y + 4 * dpr);
+  }
+  if (me) {
+    // where the phone faces: its look direction on the level, turned onto the map by the fit
+    const q = f.pose.quaternion, fx = -(2 * (q.x * q.z + q.w * q.y)), fz = -(1 - 2 * (q.x * q.x + q.y * q.y));
+    const ahead = mapOf(L, { x: f.pose.position.x + fx * 4, y: f.pose.position.y, z: f.pose.position.z + fz * 4 }, odo);
+    const [x, y] = S(me);
+    if (ahead) { const [ax, ay] = S(ahead), d = Math.hypot(ax - x, ay - y) || 1; g.beginPath(); g.moveTo(x, y); g.lineTo(x + ((ax - x) / d) * 16 * dpr, y + ((ay - y) / d) * 16 * dpr); g.strokeStyle = '#ffeb3b'; g.lineWidth = 3 * dpr; g.stroke(); }
+    g.beginPath(); g.arc(x, y, 6 * dpr, 0, Math.PI * 2); g.fillStyle = '#ffeb3b'; g.fill(); g.lineWidth = 2 * dpr; g.strokeStyle = '#000'; g.stroke();
+  } else {
+    g.fillStyle = 'rgba(0,0,0,.6)'; g.fillRect(0, h - 18 * dpr, w, 18 * dpr); g.fillStyle = '#fff'; g.fillText('No lock yet: aim at a reference', 6 * dpr, h - 5 * dpr);
+  }
+  if (mini.mode === 'manual') { g.fillStyle = 'rgba(0,0,0,.6)'; g.fillRect(w - 64 * dpr, 0, 64 * dpr, 16 * dpr); g.fillStyle = '#fff'; g.fillText('2 taps: back', w - 60 * dpr, 12 * dpr); }
+}
+/** Arrows at the screen's edge to the references and check points out of the picture, once there is a lock. */
+function arrows(f) {
+  const box = $('#arrows'), L = st.L;
+  const on = L && f?.view && f?.proj && st.walk && fitFor(L, st.walk.odo);
+  const seen = new Set();
+  if (on) {
+    const vw = window.innerWidth, vh = window.innerHeight, odo = st.walk.odo;
+    for (const p of st.points) {
+      const s = sessionOf(L, p.map, odo, L.groundY);
+      const a = s ? edgeArrow(s, f.view, f.proj, vw, vh, 30) : null;
+      if (!a) continue;
+      seen.add(p.id);
+      let el = box.querySelector(`[data-id="${CSS_ESC(p.id)}"]`);
+      if (!el) { el = document.createElement('div'); el.className = 'arrow'; el.dataset.id = p.id; el.innerHTML = '<i></i><span></span>'; box.append(el); }
+      el.style.left = `${a.x}px`; el.style.top = `${a.y}px`; el.style.color = p.kind === 'ref' ? '#6ea8ff' : '#d58cff';
+      el.querySelector('i').style.transform = `rotate(${a.angle}rad)`;
+      el.querySelector('span').textContent = p.name;
+    }
+  }
+  for (const el of [...box.children]) if (!seen.has(el.dataset.id)) el.remove();
+}
+const CSS_ESC = (s) => String(s).replace(/["\\]/g, '\\$&');
+function wireMini() {
+  const cv = $('#mini'), touches = new Map();
+  let pinch = null, lastTap = 0;
+  const at = (e) => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * (mini.dpr || 1), (e.clientY - r.top) * (mini.dpr || 1)]; };
+  cv.addEventListener('pointerdown', (e) => {
+    e.stopPropagation(); cv.setPointerCapture(e.pointerId); touches.set(e.pointerId, at(e));
+    const now = Date.now();
+    if (touches.size === 1 && now - lastTap < 320) { mini.mode = mini.locked ? 'follow' : 'fit'; mini.view = null; lastTap = 0; return; }
+    lastTap = now;
+    if (touches.size === 2) { const [a, b] = [...touches.values()]; pinch = Math.hypot(a[0] - b[0], a[1] - b[1]); }
+  });
+  cv.addEventListener('pointermove', (e) => {
+    if (!touches.has(e.pointerId) || !mini.view) return;
+    const prev = touches.get(e.pointerId), now = at(e); touches.set(e.pointerId, now);
+    if (touches.size === 1) { if (Math.hypot(now[0] - prev[0], now[1] - prev[1]) < 1) return; mini.mode = 'manual'; mini.view = miniPan(mini.view, now[0] - prev[0], now[1] - prev[1]); }
+    else if (touches.size === 2 && pinch) { const [a, b] = [...touches.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]); if (d > 0) { mini.mode = 'manual'; mini.view = miniZoom(mini.view, d / pinch, [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], mini.w, mini.h); pinch = d; } }
+    if (st.ar) drawMini(st.ar);
+  });
+  const up = (e) => { touches.delete(e.pointerId); if (touches.size < 2) pinch = null; };
+  cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+  cv.addEventListener('wheel', (e) => { e.preventDefault(); if (!mini.view) return; mini.mode = 'manual'; mini.view = miniZoom(mini.view, e.deltaY < 0 ? 1.25 : 0.8, at(e), mini.w, mini.h); if (st.ar) drawMini(st.ar); }, { passive: false });
+}
+
 function wire() {
+  wireMini();
   $('#pin').addEventListener('click', () => {
     const f = st.ar; if (!f?.hit) return;
     if (far(f.hit) && Date.now() - st.farAt > FAR_AGAIN) { st.farAt = Date.now(); flash(`Aiming from ${ftIn(f.hit.distance)}: step closer, or tap again to drop it anyway`); return; }
@@ -439,7 +557,7 @@ function finish() {
     page: 'yard AR test v2', features: w.features || null, failed: w.failed || null, errors: st.errors.map((e) => e.what).slice(-30),
     references: refs, checks: (w.checks || []).map((c) => ({ ...c, errorM: r3(c.errorM), errorFixM: r3(c.errorFixM), errorRefsM: r3(c.errorRefsM), walkedSinceFixM: r2(c.walkedSinceFixM), aimM: r2(c.aimM), walkedM: r2(c.walkedM) })),
     pinsNear: w.pins.map((p) => ({ name: p.name, nearest: p.nearest ? { name: p.nearest.name, m: r2(p.nearest.m), byRefsM: r2(p.nearest.byRefsM) } : null })),
-    fix: L ? summaryOf(L) : null, lidar: st.lid.ready ? { points: st.lid.ready.points, solid: st.lid.ready.solid, shift: st.lid.ready.shift, rule: st.lid.ready.rule || null, structures: st.lid.ready.structures || null, tallCells: st.lid.overlay ? st.lid.overlay.tall.length / 5 : null } : st.lid.error ? { error: st.lid.error } : null,
+    fix: L ? summaryOf(L) : null, surfaceSeen: st.surfCount || null, lidar: st.lid.ready ? { points: st.lid.ready.points, solid: st.lid.ready.solid, shift: st.lid.ready.shift, rule: st.lid.ready.rule || null, structures: st.lid.ready.structures || null, tallCells: st.lid.overlay ? st.lid.overlay.tall.length / 5 : null } : st.lid.error ? { error: st.lid.error } : null,
   });
   s.id = `${w.startedAt}`; s.saved = null;
   if (st.twin) {

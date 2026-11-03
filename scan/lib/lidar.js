@@ -25,6 +25,7 @@
  * parked car, a person) does not drag the fix. A fix is taken only when most of the phone's standing points land on
  * something and no clearly different position does nearly as well (a rectangular house matches itself turned round).
  */
+import { surfaceCost } from './surface.js';
 
 /**
  * THE BUILDINGS FROM THE SHARED RULE (core session, 2026-11-03; CLAUDE.md "One way to read lidar"). The shade map's
@@ -274,6 +275,7 @@ export const WALL_CAP = 0.15;          // the charge per point for a wall at the
 export const WALL_WORTH = 20;          // ...for a wall of up to this many points; a longer wall pays this many points'
                                        // worth in all, so a long porch wall seen well cannot outvote the trees
 export const PIECE_GAP = 0.3;          // m: points closer than this, in the phone's frame, are one piece
+export const SURF_W = 1;              // the lawn-edge term's weight against the standing points'
 export const HIGH_W = 0.5;             // what a high point counts for, against a standing one
 export const RAY_HEADINGS = 8;         // headings (over half a turn) at which buildGrids measures inset across a wall
 const insetCharge = (m) => { const o = m < WALL_USUAL[0] ? WALL_USUAL[0] - m : m > WALL_USUAL[1] ? m - WALL_USUAL[1] : 0; return WALL_CAP * Math.min(1, (o / 2.7) ** 2); };
@@ -311,7 +313,7 @@ export function piecesOf(pts, gap = PIECE_GAP) {
   const ways = Float64Array.from({ length: n }, (_, p) => (cnt[p] >= 3 && cnt[p] >= tot[p] / 2 ? 0.5 * Math.atan2(sn[p], cs[p]) : NaN));
   const out = { of, n, way: ways }; pieceCache.set(pts, out); return out;
 }
-export function placementCost(g, stand, ground, T, { trunc = 1, groundW = 0.5, groundTrunc = 0.3, high = [], detail = false } = {}) {
+export function placementCost(g, stand, ground, T, { trunc = 1, groundW = 0.5, groundTrunc = 0.3, high = [], surface = [], surfW = SURF_W, detail = false } = {}) {
   const c = Math.cos(T.theta) * T.s, s = Math.sin(T.theta) * T.s;
   let sum = 0, n = 0, hits = 0, hHits = 0;
   const walls = detail ? [] : null;
@@ -367,10 +369,18 @@ export function placementCost(g, stand, ground, T, { trunc = 1, groundW = 0.5, g
       for (const d of diffs) { const r = Math.min(Math.abs(d - tz), groundTrunc); gsum += r * r; gn++; }
     }
   }
-  const cost = (n ? sum / n : 0) + (gn ? groundW * gsum / gn : 0);
+  /* THE LAWN'S EDGE (scan/lib/surface.js, SCAN-H3's follow-up): ground points the camera saw as grass or paving,
+     against the lawn the owner traced (g.lawnSd, set by the page from the map's shapes) */
+  let ssum = 0, sn = 0, sBad = 0;
+  if (g.lawnSd && surface.length) for (const [u, v, kind] of surface) {
+    const sd = sample(g, g.lawnSd, c * u - s * v + T.tx, s * u + c * v + T.ty);
+    if (!Number.isFinite(sd)) continue;
+    const x = surfaceCost(kind, sd); ssum += x; sn++; if (x > 0.04) sBad++;
+  }
+  const cost = (n ? sum / n : 0) + (gn ? groundW * gsum / gn : 0) + (sn ? surfW * ssum / sn : 0);
   const landedOf = n - (g.distRoof ? HIGH_W * (high.length - hHits) : 0);
   const out = { cost, hits: landedOf > 0 ? hits / landedOf : 0, landed: Math.round(hits), tz };
-  if (detail) { out.walls = walls; out.high = { n: g.distRoof ? high.length : 0, hits: hHits }; }
+  if (detail) { out.walls = walls; out.high = { n: g.distRoof ? high.length : 0, hits: hHits }; out.surface = { n: sn, off: sBad }; }
   return out;
 }
 
@@ -387,7 +397,7 @@ export function placementCost(g, stand, ground, T, { trunc = 1, groundW = 0.5, g
 export const MIN_LANDED = 40;
 // the coarse pass scores every candidate on this many standing points; 150 was too few once most of them land nowhere
 export const COARSE_STAND = 400;
-export function register(g, stand, ground, prior, { s = 1, searchM = 4, searchDeg = 15, stepM = 0.5, stepDeg = 3, minStand = 30, minHits = 0.5, minLanded = Infinity, high = [] } = {}) {
+export function register(g, stand, ground, prior, { s = 1, searchM = 4, searchDeg = 15, stepM = 0.5, stepDeg = 3, minStand = 30, minHits = 0.5, minLanded = Infinity, high = [], surface = [] } = {}) {
   if (stand.length + (g.distRoof ? high.length : 0) < minStand) return { ok: false, why: `${stand.length + (g.distRoof ? high.length : 0)} standing points; ${minStand} wanted` };
   // coarse candidates: positions of the phone on the map, and turns
   const cands = [];
@@ -413,25 +423,25 @@ export function register(g, stand, ground, prior, { s = 1, searchM = 4, searchDe
   if (!cands.length) return { ok: false, why: 'GPS puts you off the edge of the lidar read for this map' };
   // the coarse pass on a thinned set of points
   const thin = (a, m) => (a.length <= m ? a : a.filter((_, i) => i % Math.ceil(a.length / m) === 0));
-  const st = thin(stand, COARSE_STAND), gr = thin(ground, 80), hi = thin(high, 80);
-  const scored = cands.map((T) => ({ T, cost: placementCost(g, st, gr, T, { high: hi }).cost })).sort((a, b) => a.cost - b.cost);
+  const st = thin(stand, COARSE_STAND), gr = thin(ground, 80), hi = thin(high, 80), su = thin(surface, 120);
+  const scored = cands.map((T) => ({ T, cost: placementCost(g, st, gr, T, { high: hi, surface: su }).cost })).sort((a, b) => a.cost - b.cost);
   // refine the best few apart from each other
   const seeds = [];
   for (const x of scored) {
     if (seeds.length >= 4) break;
     if (seeds.every((y) => Math.hypot(x.T.tx - y.T.tx, x.T.ty - y.T.ty) > 2 || Math.abs(angDiff(x.T.theta, y.T.theta)) > (10 * Math.PI) / 180)) seeds.push(x);
   }
-  const refined = seeds.map((x) => hop(g, stand, ground, refine(g, stand, ground, x.T, high), high)).sort((a, b) => a.cost - b.cost);
+  const refined = seeds.map((x) => hop(g, stand, ground, refine(g, stand, ground, x.T, high, 0.5, surface), high, surface)).sort((a, b) => a.cost - b.cost);
   const best = refined[0];
   const other = refined.find((r) => Math.hypot(r.T.tx - best.T.tx, r.T.ty - best.T.ty) > 1 || Math.abs(angDiff(r.T.theta, best.T.theta)) > (5 * Math.PI) / 180);
-  const m = placementCost(g, stand, ground, best.T, { high, detail: true });
-  const out = { T: best.T, cost: m.cost, hits: m.hits, tz: m.tz, walls: m.walls, high: m.high, runnerUp: other ? { cost: other.cost, apartM: Math.hypot(other.T.tx - best.T.tx, other.T.ty - best.T.ty), apartDeg: Math.abs(angDiff(other.T.theta, best.T.theta)) * 180 / Math.PI } : null };
+  const m = placementCost(g, stand, ground, best.T, { high, surface, detail: true });
+  const out = { T: best.T, cost: m.cost, hits: m.hits, tz: m.tz, walls: m.walls, high: m.high, surface: m.surface, runnerUp: other ? { cost: other.cost, apartM: Math.hypot(other.T.tx - best.T.tx, other.T.ty - best.T.ty), apartDeg: Math.abs(angDiff(other.T.theta, best.T.theta)) * 180 / Math.PI } : null };
   out.landed = m.landed;
   if (m.hits < minHits && m.landed < minLanded) return { ...out, ok: false, why: `only ${Math.round(m.hits * 100)}% of what the phone sees lands on the lidar (${m.landed} points)` };
   // two places fit about as well: by cost, and by how many points land (what lands nowhere at either costs the same at
   // both, and on a thin flight that is most of it, which pulls the costs together without making them alike)
   if (other && other.cost < best.cost * 1.25) {
-    const mo = placementCost(g, stand, ground, other.T, { high });
+    const mo = placementCost(g, stand, ground, other.T, { high, surface });
     out.runnerUp.landed = mo.landed;
     if (mo.landed * 1.25 > m.landed) return { ...out, ok: false, why: 'two places fit about as well' };
   }
@@ -443,21 +453,21 @@ const angDiff = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
 /** Since each wall finds its own inset, the cost has shallow side hollows a pattern search can stop in (a degree or
  *  two off, a few tenths of a metre). So from where it stopped, start again a little turned and shifted each way and
  *  keep the lowest. */
-function hop(g, stand, ground, best, high = []) {
+function hop(g, stand, ground, best, high = [], surface = []) {
   const [mu, mv] = middle(stand);
   for (const [dd, dx, dy] of [[1.5, 0, 0], [-1.5, 0, 0], [3, 0, 0], [-3, 0, 0], [0, 0.3, 0], [0, -0.3, 0], [0, 0, 0.3], [0, 0, -0.3]]) {
     const T = best.T, th = T.theta + (dd * Math.PI) / 180;
     const c0 = Math.cos(T.theta) * T.s, s0 = Math.sin(T.theta) * T.s, c1 = Math.cos(th) * T.s, s1 = Math.sin(th) * T.s;
     const C = { ...T, theta: th, tx: T.tx + (c0 * mu - s0 * mv) - (c1 * mu - s1 * mv) + dx, ty: T.ty + (s0 * mu + c0 * mv) - (s1 * mu + c1 * mv) + dy };
-    const r = refine(g, stand, ground, C, high, 0.25);
+    const r = refine(g, stand, ground, C, high, 0.25, surface);
     if (r.cost < best.cost - 1e-9) best = r;
   }
   return best;
 }
 
 /** Pattern search on (turn, east, north) from T, down to 1 cm and 0.05 degrees. */
-function refine(g, stand, ground, T0, high = [], sm = 0.5) {
-  let T = { ...T0 }, cost = placementCost(g, stand, ground, T, { high }).cost;
+function refine(g, stand, ground, T0, high = [], sm = 0.5, surface = []) {
+  let T = { ...T0 }, cost = placementCost(g, stand, ground, T, { high, surface }).cost;
   let sd = ((4 * sm) * Math.PI) / 180;
   while (sm > 0.01) {
     let moved = false;
@@ -465,7 +475,7 @@ function refine(g, stand, ground, T0, high = [], sm = 0.5) {
       const C = { ...T, [k]: T[k] + d };
       // a turn about the phone's points' middle, not the AR origin, so turning does not also throw them sideways
       if (k === 'theta') { const [mu, mv] = middle(stand); const c0 = Math.cos(T.theta) * T.s, s0 = Math.sin(T.theta) * T.s, c1 = Math.cos(C.theta) * T.s, s1 = Math.sin(C.theta) * T.s; C.tx = T.tx + (c0 * mu - s0 * mv) - (c1 * mu - s1 * mv); C.ty = T.ty + (s0 * mu + c0 * mv) - (s1 * mu + c1 * mv); }
-      const v = placementCost(g, stand, ground, C, { high }).cost;
+      const v = placementCost(g, stand, ground, C, { high, surface }).cost;
       if (v < cost - 1e-9) { T = C; cost = v; moved = true; }
     }
     if (!moved) { sm /= 2; sd /= 2; }

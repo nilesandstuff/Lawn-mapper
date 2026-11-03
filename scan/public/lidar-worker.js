@@ -18,6 +18,7 @@ import { pointsIn, toMerc } from '/lib/ept.js';
 import { nad83Correction } from '/lib/datum.js';
 import { register, MIN_LANDED } from '/lib/lidar.js';
 import { loadLidar } from '/lib/lidar-load.js';
+import { lawnField } from '/lib/surface.js';
 // THE SHARED TREE-VERSUS-BUILDING RULE (CLAUDE.md, "One way to read lidar"): the shade map's own module, copied into
 // this site unchanged at deploy time (scan/tools/prepare.mjs). Loaded lazily, so a failure falls back to the old rule.
 const sharedRule = () => Promise.all([import('/lib/shade/structures.js'), import('/lib/shade/grid.js')]);
@@ -26,15 +27,15 @@ let G = null;
 
 self.onmessage = async ({ data }) => {
   if (data.register) {
-    const { id, stand, ground, prior, s, high = [], refs = false } = data.register;
+    const { id, stand, ground, prior, s, high = [], refs = false, surface = [] } = data.register;
     let fix;
-    try { fix = G ? register(G, stand, ground, prior, { s, high, ...(refs ? { minLanded: MIN_LANDED } : {}), ...(prior?.T ? { searchM: prior.searchM ?? 4, searchDeg: prior.searchDeg ?? 15 } : {}) }) : { ok: false, why: 'the lidar is not read yet' }; } catch (e) { fix = { ok: false, why: e.message }; }
+    try { fix = G ? register(G, stand, ground, prior, { s, high, surface, ...(refs ? { minLanded: MIN_LANDED } : {}), ...(prior?.T ? { searchM: prior.searchM ?? 4, searchDeg: prior.searchDeg ?? 15 } : {}) }) : { ok: false, why: 'the lidar is not read yet' }; } catch (e) { fix = { ok: false, why: e.message }; }
     self.postMessage({ fix, id });
     return;
   }
   if (!data.load) return;
   try {
-    const { origin, box, lidar } = data.load;
+    const { origin, box, lidar, lawn = [] } = data.load;
     const io = await workerIo('/lib');
     const L = await loadLidar({ origin, box, lidar, fetchLidar: async (lng, lat) => {
       const res = await fetch(`/api/shade/lidar?lng=${lng}&lat=${lat}`);
@@ -43,7 +44,9 @@ self.onmessage = async ({ data }) => {
     } }, { pointsIn, toMerc, nad83Correction, io, rule: sharedRule }, (progress) => self.postMessage({ progress }));
     const { cols, e, n, cloud, how, rule, counts } = L;
     G = L.G;
-    self.postMessage({ ready: { points: cols.n, solid: G.solid, cell: G.cell, cloud: cloud.name || null, shift: how, rule, structures: counts } });
+    // the lawn the owner traced, for the lawn-edge term (scan/lib/surface.js)
+    if (lawn.length) { const F = lawnField(lawn, box, G.cell); if (F.W === G.W && F.H === G.H && F.cells) G.lawnSd = F.sd; }
+    self.postMessage({ ready: { points: cols.n, solid: G.solid, cell: G.cell, cloud: cloud.name || null, shift: how, rule, structures: counts, lawnEdge: !!G.lawnSd } });
     // THE OVERLAY (core session, SCAN-H2): what the match matches against, for the camera view. solids: each solid
     // 0.25 m cell as [e, n, ground, top]; tall: each 1 m cell with points 2.5 m or more above the ground as
     // [e, n, lowest, highest, roof?]; dem1: the ground at 1 m; dist: the distance grid, for the agreement dots.

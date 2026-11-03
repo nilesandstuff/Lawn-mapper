@@ -154,10 +154,15 @@ export function cameraGrabber(session, gl, maxW = 640) {
       // GL reads bottom row first: flip into a picture the right way up
       const img = new ImageData(w, h), row = w * 4;
       for (let y = 0; y < h; y++) img.data.set(px.subarray((h - 1 - y) * row, (h - y) * row), y * row);
-      const canvas = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(w, h) : Object.assign(document.createElement('canvas'), { width: w, height: h });
-      canvas.getContext('2d').putImageData(img, 0, 0);
-      const blob = canvas.convertToBlob ? canvas.convertToBlob({ type: 'image/jpeg', quality: 0.8 }) : new Promise((ok) => canvas.toBlob(ok, 'image/jpeg', 0.8));
-      return { blob, w, h, proj: Array.from(view.projectionMatrix), view: Array.from(view.transform.matrix) };
+      // the JPEG only when asked for (a picture for the twin); the colours alone need none
+      let jpeg = null;
+      const blobOf = () => jpeg || (jpeg = (() => {
+        const canvas = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(w, h) : Object.assign(document.createElement('canvas'), { width: w, height: h });
+        canvas.getContext('2d').putImageData(img, 0, 0);
+        return canvas.convertToBlob ? canvas.convertToBlob({ type: 'image/jpeg', quality: 0.8 }) : new Promise((ok) => canvas.toBlob(ok, 'image/jpeg', 0.8));
+      })());
+      // pixels: the picture the right way up (RGBA rows from the top), for the ground's colour (scan/lib/surface.js)
+      return { get blob() { return blobOf(); }, w, h, pixels: img.data, proj: Array.from(view.projectionMatrix), view: Array.from(view.transform.matrix) };
     } catch {
       return null;
     }

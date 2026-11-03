@@ -95,6 +95,22 @@ assert.ok(G.occTop && G.bld, 'the tops and the roof mask come back for the overl
   assert.ok(sample(Gu, Gu.dist, 0, -12) > 0.5, 'the fence, all under a "crown" here, is gone');
   assert.ok(sample(Gu, Gu.dist, -12, 8) < 0.3, 'the house walls stay');
 }
+// THE LAWN'S EDGE (scan/lib/surface.js): a straight fence alone slides along itself; grass meeting paving pins it
+{
+  const { lawnField } = await import('../lib/surface.js');
+  const Gs = { ...G, lawnSd: lawnField([[[-25, -11], [6, -11], [6, -2], [-25, -2]]], [-30, -30, 30, 30], G.cell).sd };
+  const { stand, ground: gr } = seen([[-10, -9], [-6, -9], [-2, -9]], { reach: 4 });
+  const surf = [];
+  for (let n = -10.5; n <= -3; n += 0.3) for (let e = 2; e <= 10; e += 0.3) surf.push([...toAR([e + (rnd() - 0.5) * 0.05, n]), e < 6 ? 'grass' : 'pave']);
+  const prior = { T: { theta: TH + 0.03, tx: SH[0] + 1.2, ty: SH[1] - 0.3, s: 1 } };
+  const without = register(G, stand, gr, prior, { searchM: 2.5, searchDeg: 6 });
+  const withEdge = register(Gs, stand, gr, prior, { searchM: 2.5, searchDeg: 6, surface: surf });
+  assert.ok(withEdge.ok, `with the lawn's edge, a fix: ${withEdge.why}`);
+  // to within the edge's slack (15 cm either side, SURF_TOL) and the 0.3 m spacing of the colour samples
+  assert.ok(offAt(withEdge.T, [0, -12]) < 0.45 && offAt(withEdge.T, [6, -6]) < 0.45, `pinned along the fence: ${offAt(withEdge.T, [6, -6]).toFixed(2)}`);
+  assert.ok(!without.ok || offAt(without.T, [6, -6]) > offAt(withEdge.T, [6, -6]), `the fence alone does worse: ${without.why || offAt(without.T, [6, -6]).toFixed(2)}`);
+  assert.ok(withEdge.surface.n > 100 && withEdge.surface.off < withEdge.surface.n * 0.1, `the surface lands: ${JSON.stringify(withEdge.surface)}`);
+}
 // a straight fence alone: two places fit, refused
 {
   const { stand, ground: gr } = seen([[-10, -9], [-6, -9], [-2, -9]], { reach: 4 });

@@ -26,6 +26,8 @@ import { loadLidar } from '../lib/lidar-load.js';
 import { buildingsOnGrid, register, MIN_LANDED } from '../lib/lidar.js';
 import { disagreement } from '../lib/locate.js';
 import { readCloud, placer, placeCloud } from '../lib/twin.js';
+import { surfaceOf, lawnField, tally } from '../lib/surface.js';
+import jpeg from 'jpeg-js';
 
 const pct = (a, b) => (b ? `${Math.round((100 * a) / b)}%` : '-');
 
@@ -57,6 +59,7 @@ async function main() {
   const live = existsSync(join(dir, 'live.json')) ? JSON.parse(readFileSync(join(dir, 'live.json'), 'utf8')) : { fixes: [], marks: [] };
   const recs = [];
   for (const f of readdirSync(dir).filter((x) => /^cloud-\d+\.bin$/.test(x)).sort()) { const b = readFileSync(join(dir, f)); recs.push(...readCloud(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength))); }
+  recs.forEach((r, i) => { r.i = i; });
   console.log(`Twin: ${recs.length.toLocaleString()} phone points; ${live.fixes.length} lidar fixes, ${live.marks.filter((m) => m.kind === 'ref').length} reference marks${live.ended ? '' : ' (cut short)'}.`);
   // a map's key is whatever the page made it (it can name the place): quoted for SQL, never printed
   if (!meta.map || String(meta.map).length > 300 || /[\u0000-\u001f]/.test(String(meta.map))) throw new Error('the twin names no usable map');
@@ -201,38 +204,86 @@ async function main() {
     console.log(`STRUCTURE patches, one a line (numbers only; phantoms = wall cells within 6 m of the walk where the phone saw nothing within 0.5 m):`);
     patchRows.forEach((r, i) => console.log(`  patch ${i + 1}: ${JSON.stringify(r)}`));
   }
+  // THE GROUND'S COLOUR, as the page now reads it live: each ground point labelled from the twin's picture nearest it
+  // in time that sees it (scan/lib/surface.js), and the lawn the owner traced as the match's lawn edge
+  const lawnRings = ringsOf(m.shapes || []).map((r) => r.map((p) => toLocal(origin, p)));
+  if (lawnRings.length) { const F = lawnField(lawnRings, box, G.cell); if (F.cells) G.lawnSd = F.sd; console.log(`The traced lawn: ${Math.round(F.cells * G.cell * G.cell).toLocaleString()} m2 on the match's grid.`); }
+  const surfOf = new Map(); // record index -> 'grass' | 'pave'
+  const keys = [];
+  for (const f of readdirSync(dir).filter((x) => /^keys-\d+\.json$/.test(x)).sort()) keys.push(...JSON.parse(readFileSync(join(dir, f), 'utf8')));
+  const pics = keys.filter((k) => existsSync(join(dir, k.name))).sort((a, b) => a.t - b.t);
+  if (pics.length) {
+    const groundIdx = []; for (let i = 0; i < recs.length; i++) if (Math.abs(recs[i].y - recs[i].ground) < 0.2) groundIdx.push(i);
+    groundIdx.sort((a, b) => recs[a].t - recs[b].t);
+    let lo = 0;
+    const mul = (M, x, y, z, w) => [M[0] * x + M[4] * y + M[8] * z + M[12] * w, M[1] * x + M[5] * y + M[9] * z + M[13] * w, M[2] * x + M[6] * y + M[10] * z + M[14] * w, M[3] * x + M[7] * y + M[11] * z + M[15] * w];
+    const inv = (M) => { // a rigid camera-to-world: transpose the turn, turn the move back
+      const R = [M[0], M[1], M[2], 0, M[4], M[5], M[6], 0, M[8], M[9], M[10], 0, 0, 0, 0, 1], t0 = [M[12], M[13], M[14]];
+      const o = [R[0], R[4], R[8], 0, R[1], R[5], R[9], 0, R[2], R[6], R[10], 0, 0, 0, 0, 1];
+      o[12] = -(o[0] * t0[0] + o[4] * t0[1] + o[8] * t0[2]); o[13] = -(o[1] * t0[0] + o[5] * t0[1] + o[9] * t0[2]); o[14] = -(o[2] * t0[0] + o[6] * t0[1] + o[10] * t0[2]);
+      return o;
+    };
+    for (let q = 0; q < pics.length; q++) {
+      const k = pics[q], t0 = q ? (pics[q - 1].t + k.t) / 2 : -Infinity, t1 = q + 1 < pics.length ? (k.t + pics[q + 1].t) / 2 : Infinity;
+      while (lo < groundIdx.length && recs[groundIdx[lo]].t < t0) lo++;
+      let img = null;
+      const V = inv(k.view);
+      for (let j = lo; j < groundIdx.length && recs[groundIdx[j]].t < t1; j++) {
+        const r = recs[groundIdx[j]], c = mul(V, r.x, r.y, r.z, 1);
+        if (c[2] > -0.3) continue;
+        const cl = mul(k.proj, c[0], c[1], c[2], c[3]), nx = cl[0] / cl[3], ny = cl[1] / cl[3];
+        if (Math.abs(nx) > 0.98 || Math.abs(ny) > 0.98) continue;
+        if (!img) img = jpeg.decode(readFileSync(join(dir, k.name)), { useTArray: true, formatAsRGBA: true });
+        const px = Math.min(img.width - 1, Math.floor(((nx + 1) / 2) * img.width)), py = Math.min(img.height - 1, Math.floor(((1 - ny) / 2) * img.height));
+        const o = (py * img.width + px) * 4, s = surfaceOf(img.data[o], img.data[o + 1], img.data[o + 2]);
+        if (s) surfOf.set(groundIdx[j], s);
+      }
+    }
+    console.log(`Ground points coloured from ${pics.length} pictures: ${JSON.stringify(tally([...surfOf.values()]))} of ${groundIdx.length.toLocaleString()} ground points.`);
+  } else console.log('No pictures in the twin: the lawn-edge term cannot be tried on it.');
+
   // THE WALK REPLAYED THROUGH TODAY'S MATCH: every 5 m of the walk, the last 25 ft of what the phone saw (classed by
   // its height over the ground the page took then), searched from the references' fit as the page would, and judged
   // the way locate.js judges it (2 m and 10 degrees from the references)
   const refsAt = placer(live, 'refs');
   const byOdo = recs.slice().sort((a, b) => a.odo - b.odo);
   const end = byOdo.length ? byOdo[byOdo.length - 1].odo : 0;
-  const rep = { asked: 0, strict: 0, lenient: 0, agreeStrict: 0, agreeLenient: 0, offM: [], why: {} };
+  const VARIANTS = [['strict', {}], ['lenient', { minLanded: MIN_LANDED }], ['lawnEdge', { minLanded: MIN_LANDED, useSurface: true }], ['lawnEdgeRoofs', { minLanded: MIN_LANDED, useSurface: true, highX: 2 }]];
+  const rep = { asked: 0, why: {} };
+  for (const [name] of VARIANTS) rep[name] = { fixes: 0, agree: 0, offM: [] };
   let lo = 0;
   for (let odo = 8; odo <= end; odo += 5) {
     const T0 = refsAt(odo); if (!T0) continue;
     while (lo < byOdo.length && byOdo[lo].odo < odo - 7.6) lo++;
-    const stand = [], ground = [], high = [], vox = new Set();
+    const stand = [], ground = [], high = [], surface = [], vox = new Set();
     for (let i = lo; i < byOdo.length && byOdo[i].odo <= odo; i++) {
       const p = byOdo[i], h = p.y - p.ground, kk = `${Math.floor(p.x / 0.1)},${Math.floor(p.z / 0.1)},${h > 0.3 ? 1 : 0}`;
       if (vox.has(kk)) continue; vox.add(kk);
-      if (Math.abs(h) < 0.2) ground.push([p.x, -p.z, p.y]); else if (h > 0.4 && h < 2.4) stand.push([p.x, -p.z]); else if (h >= 2.4 && h < 12) high.push([p.x, -p.z]);
+      if (Math.abs(h) < 0.2) { ground.push([p.x, -p.z, p.y]); const s = surfOf.get(p.i); if (s) surface.push([p.x, -p.z, s]); }
+      else if (h > 0.4 && h < 2.4) stand.push([p.x, -p.z]); else if (h >= 2.4 && h < 12) high.push([p.x, -p.z]);
     }
     const thinA = (a, m) => (a.length <= m ? a : a.filter((_, i) => i % Math.ceil(a.length / m) === 0));
-    const S = thinA(stand, 600), Gr = thinA(ground, 300), Hi = thinA(high, 300);
+    const S = thinA(stand, 600), Gr = thinA(ground, 300), Hi = thinA(high, 300), Su = thinA(surface, 400);
     if (S.length + Hi.length < 30) continue;
     rep.asked++;
     const phone = (() => { let best = null; for (const p of byOdo) if (p.odo <= odo) best = p; return best ? [best.x, -best.z] : [0, 0]; })();
-    for (const [mode, opts] of [['strict', {}], ['lenient', { minLanded: MIN_LANDED }]]) {
-      const f = register(G, S, Gr, { T: T0 }, { searchM: 4, searchDeg: 15, high: Hi, ...opts });
-      if (!f.ok) { if (mode === 'lenient') { const w = f.why.replace(/\d+/g, '#'); rep.why[w] = (rep.why[w] || 0) + 1; } continue; }
-      rep[mode]++;
+    for (const [mode, opts] of VARIANTS) {
+      const { useSurface, highX, ...o } = opts;
+      const hi = highX ? Array.from({ length: highX }, () => Hi).flat() : Hi;
+      const f = register(G, S, Gr, { T: T0 }, { searchM: 4, searchDeg: 15, high: hi, surface: useSurface ? Su : [], ...o });
+      if (!f.ok) { if (mode === 'lawnEdge') { const w = `${f.why}`.replace(/\d+/g, '#'); rep.why[w] = (rep.why[w] || 0) + 1; } continue; }
+      rep[mode].fixes++;
       const d = disagreement(f.T, T0, phone);
-      if (d.m <= 2 && d.deg <= 10) { rep[mode === 'strict' ? 'agreeStrict' : 'agreeLenient']++; if (mode === 'lenient') rep.offM.push(d.m); }
+      if (d.m <= 2 && d.deg <= 10) { rep[mode].agree++; rep[mode].offM.push(d.m); }
     }
   }
-  rep.offM.sort((a, b) => a - b);
-  console.log(`Replayed through today's match, every 5 m: ${rep.asked} asks. At the 50% share: ${rep.strict} fixes, ${rep.agreeStrict} within 2 m of the references. With the references marked (${MIN_LANDED} points landed in number): ${rep.lenient} fixes, ${rep.agreeLenient} within 2 m of them${rep.offM.length ? `, half within ${rep.offM[rep.offM.length >> 1].toFixed(2)} m` : ''}. Refused: ${JSON.stringify(rep.why)}.`);
+  const line = (k) => { const r = rep[k]; r.offM.sort((a, b) => a - b); return `${r.fixes} fixes, ${r.agree} within 2 m of the references${r.offM.length ? ` (half within ${r.offM[r.offM.length >> 1].toFixed(2)} m)` : ''}`; };
+  console.log(`Replayed through today's match, every 5 m from the references' fit: ${rep.asked} asks.`);
+  console.log(`  at the 50% share: ${line('strict')}`);
+  console.log(`  with ${MIN_LANDED} points landed in number: ${line('lenient')}`);
+  console.log(`  + the lawn's edges (grass and paving against the traced lawn): ${line('lawnEdge')}`);
+  console.log(`  + the lawn's edges and the roof edges counted twice: ${line('lawnEdgeRoofs')}`);
+  console.log(`  refused with the lawn's edges: ${JSON.stringify(rep.why)}`);
 }
 
 // an error can carry a URL with a place in it: long decimals are blanked before it is printed (the repository is public)

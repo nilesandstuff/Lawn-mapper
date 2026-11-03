@@ -83,7 +83,9 @@ export function addDepth(L, points, odo, camY = null) {
     // 'h': high up (gutters, a roof's edge, the bottom of a crown), matched against the lidar's roof edge
     const cls = Math.abs(h) < BANDS.groundTol ? 'g' : h > BANDS.standLow && h < BANDS.standHigh ? 's' : h >= BANDS.standHigh && h < BANDS.highTop ? 'h' : null;
     if (!cls) continue;
-    L.cloud.set(`${Math.floor(p.x / VOX)},${Math.floor(p.z / VOX)},${cls}`, { u: p.x, v: -p.z, y: p.y, odo, cls });
+    // a ground point the camera saw the colour of carries 'grass' or 'pave' (scan/lib/surface.js), kept apart
+    const surf = cls === 'g' && p.surf ? p.surf : null;
+    L.cloud.set(`${Math.floor(p.x / VOX)},${Math.floor(p.z / VOX)},${cls}${surf ? `:${surf}` : ''}`, { u: p.x, v: -p.z, y: p.y, odo, cls, surf });
     kept++;
   }
   if (L.cloud.size > 8000) for (const [k, p] of L.cloud) if (p.odo < odo - KEEP_M) L.cloud.delete(k);
@@ -93,12 +95,13 @@ export function addDepth(L, points, odo, camY = null) {
 
 /** The points of the last RECENT_M metres of walking, as the match wants them. */
 export function recent(L, odo, m = RECENT_M) {
-  const stand = [], ground = [], high = [];
+  const stand = [], ground = [], high = [], surface = [];
   for (const p of L.cloud.values()) {
     if (p.odo < odo - m) continue;
-    if (p.cls === 's') stand.push([p.u, p.v]); else if (p.cls === 'h') high.push([p.u, p.v]); else ground.push([p.u, p.v, p.y]);
+    if (p.cls === 's') stand.push([p.u, p.v]); else if (p.cls === 'h') high.push([p.u, p.v]);
+    else if (p.surf) surface.push([p.u, p.v, p.surf]); else ground.push([p.u, p.v, p.y]);
   }
-  return { stand, ground, high };
+  return { stand, ground, high, surface };
 }
 
 /* ------------------------------------------------------------- the fixes */
@@ -137,15 +140,15 @@ export function priorFor(L, odo, now = Date.now()) {
 export function nextAsk(L, odo, now = Date.now(), pos = null) {
   if (L.pending) return { why: 'a match is running' };
   if (now - L.lastAsk < ASK_EVERY_MS) return { why: 'too soon' };
-  const { stand, ground, high } = recent(L, odo);
+  const { stand, ground, high, surface } = recent(L, odo);
   if (stand.length + high.length < MIN_STAND) return { why: `the camera has ${stand.length + high.length} points on walls, fences, bushes, trunks or a roof's edge within 25 ft (${MIN_STAND} wanted): look round, or look up at the gutters` };
   const prior = priorFor(L, odo, now);
   if (!prior) return { why: 'waiting for GPS (or two references) to start from' };
   const id = L.nextId++;
-  L.pending = { id, odo, from: prior.from, at: now, phone: pos ? level(pos) : null, refs: refFit(L, odo), stand: stand.length, ground: ground.length, high: high.length };
+  L.pending = { id, odo, from: prior.from, at: now, phone: pos ? level(pos) : null, refs: refFit(L, odo), stand: stand.length, ground: ground.length, high: high.length, surface: surface.length };
   L.lastAsk = now; L.asks++;
   // with the references marked, they judge the fix (answer), so the match may pass on points landed in number
-  return { id, stand: thin(stand, 600), ground: thin(ground, 300), high: thin(high, 300), prior, s: L.scale, refs: !!L.pending.refs };
+  return { id, stand: thin(stand, 600), ground: thin(ground, 300), high: thin(high, 300), surface: thin(surface, 400), prior, s: L.scale, refs: !!L.pending.refs };
 }
 export const thin = (a, m) => (a.length <= m ? a : a.filter((_, i) => i % Math.ceil(a.length / m) === 0));
 
@@ -159,11 +162,11 @@ export function disagreement(Ta, Tb, phone) {
 /** A match's answer. -> the fix added, or null when refused (the reason counted). */
 export function answer(L, fix, id, now = Date.now()) {
   if (!L.pending || L.pending.id !== id) return null;
-  const { odo, from, phone, refs, at, stand, ground, high } = L.pending;
+  const { odo, from, phone, refs, at, stand, ground, high, surface } = L.pending;
   L.pending = null;
   // the log: one line per ask, so a wrong lock can be traced afterwards (SCAN-H2)
   const r2 = (v) => (v == null || !Number.isFinite(v) ? null : +Number(v).toFixed(2));
-  const entry = { odo: r2(odo), ms: now - at, from: from[0] === 't' ? from.split(' ').pop() : from, stand, ground, high, walls: fix?.walls || null, roofHits: fix?.high ? fix.high.hits : null, ok: !!fix?.ok, hits: r2(fix?.hits), landed: fix?.landed ?? null, cost: fix?.cost != null ? +fix.cost.toFixed(4) : null, runnerUp: fix?.runnerUp ? { ratio: r2(fix.runnerUp.cost / (fix.cost || 1e-9)), apartM: r2(fix.runnerUp.apartM), apartDeg: r2(fix.runnerUp.apartDeg) } : null, tz: r2(fix?.tz), why: null, agreeM: null, agreeDeg: null, kept: false };
+  const entry = { odo: r2(odo), ms: now - at, from: from[0] === 't' ? from.split(' ').pop() : from, stand, ground, high, surface: surface ?? 0, surfaceOff: fix?.surface ? fix.surface.off : null, walls: fix?.walls || null, roofHits: fix?.high ? fix.high.hits : null, ok: !!fix?.ok, hits: r2(fix?.hits), landed: fix?.landed ?? null, cost: fix?.cost != null ? +fix.cost.toFixed(4) : null, runnerUp: fix?.runnerUp ? { ratio: r2(fix.runnerUp.cost / (fix.cost || 1e-9)), apartM: r2(fix.runnerUp.apartM), apartDeg: r2(fix.runnerUp.apartDeg) } : null, tz: r2(fix?.tz), why: null, agreeM: null, agreeDeg: null, kept: false };
   L.log.push(entry); if (L.log.length > LOG_MAX) L.log.shift();
   const refuse = (why) => { entry.why = why; L.last = { ok: false, why, hits: fix?.hits ?? null, from, odo }; const k = why.replace(/\d+(\.\d+)?/g, '#'); L.refused[k] = (L.refused[k] || 0) + 1; return null; };
   if (!fix?.ok) return refuse(fix?.why || 'unknown');
