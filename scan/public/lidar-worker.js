@@ -50,7 +50,9 @@ self.onmessage = async ({ data }) => {
     const sol = [];
     for (let r = 0; r < G.H; r++) for (let cc = 0; cc < G.W; cc++) {
       const k = r * G.W + cc; if (!G.occ[k]) continue;
-      const top = G.bld && G.bld[k] ? 3 : Math.max(0.5, G.occTop[k] || 0.5);
+      // a building's or structure's wall drawn as tall as its column stands in the lidar (3 m only when unknown)
+      const wt = G.wallTop ? G.wallTop[k] : NaN;
+      const top = G.bld && G.bld[k] ? (Number.isFinite(wt) && wt > 0.3 ? Math.min(15, wt) : 3) : Math.max(0.5, G.occTop[k] || 0.5);
       sol.push(box[0] + cc * G.cell, box[3] - (r + 1) * G.cell, G.dem[k], G.dem[k] + top);
     }
     const CW = Math.ceil((box[2] - box[0]) / 1), CH = Math.ceil((box[3] - box[1]) / 1);

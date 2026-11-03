@@ -229,6 +229,7 @@ async function startAR(engine) {
   st.L = newLocate();
   mini.view = null; mini.mode = 'fit'; mini.locked = false; $('#arrows').innerHTML = '';
   st.surfCount = { grass: 0, pave: 0 };
+  st.chosen = null; st.undoMarks = [];
   // the walk's twin (scan/lib/twin.js): its points, track and pictures go up to the site as it goes (src/twin.js)
   st.twin = newTwin({ walk: `${st.walk.startedAt}`, map: st.map || null, engine, started: st.walk.startedAt });
   st.twinUp = { queue: [], busy: false, off: null, sent: 0, failed: 0 };
@@ -262,6 +263,9 @@ function onEvent(ev) {
 
 /** What to mark next: an unmarked reference, then an unmarked check point, then the reference nearest the phone. */
 function nextTarget() {
+  // the point the owner picked on the mini map, until it is marked (2026-11-03: Mark "was demanding R2, which I had
+  // just marked" when C1 was wanted)
+  if (st.chosen) { const c = st.points.find((p) => p.id === st.chosen); if (c) return c; st.chosen = null; }
   const markedIds = new Set(st.L.marks.map((m) => m.id));
   const want = st.points.filter((p) => !markedIds.has(p.id));
   const first = want.find((p) => p.kind === 'ref') || want[0];
@@ -375,11 +379,13 @@ function hud(f) {
   const pts = f.points ? ` · ${f.points} pts` : '';
   const target = st.points.length ? nextTarget() : null;
   const ag = st.agree ? ` · lidar dots: <strong>${st.agree.on.length}</strong> on, ${st.agree.off.length} off` : '';
-  const fixLine = st.origin ? `<br>${esc(st.lid.ready ? fixStatus(L, w.odo) : st.lid.error ? `No lidar (${st.lid.error}); references only: ${fixStatus(L, w.odo)}` : `Lidar: ${st.lid.progress || 'reading…'}`)}${ag}${target ? `<br>Next to mark: <strong style="color:${target.kind === 'ref' ? '#8ab4ff' : '#d9a6ff'}">${esc(target.name)}</strong> (aim where it meets the ground, within 10 ft, tap Mark)` : ''}` : '';
+  const fixLine = st.origin ? `<br>${esc(st.lid.ready ? fixStatus(L, w.odo) : st.lid.error ? `No lidar (${st.lid.error}); references only: ${fixStatus(L, w.odo)}` : `Lidar: ${st.lid.progress || 'reading…'}`)}${ag}${target ? `<br>Next to mark: <strong style="color:${target.kind === 'ref' ? '#8ab4ff' : '#d9a6ff'}">${esc(target.name)}</strong> (aim where it meets the ground, within 10 ft, tap Mark; tap another point on the mini map to mark that one instead)` : ''}` : '';
   const last = st.errors.length && Date.now() - st.errors[st.errors.length - 1].t < 6000 && /engine|start/.test(st.errors[st.errors.length - 1].what) ? `<br><span class="bad">${esc(st.errors[st.errors.length - 1].what)}</span>` : '';
   $('#hud').innerHTML = `${NAME[w.engine]} · ${tr} · walked ${Math.round(w.stats.walked * FT)} ft${pts} · ${aim} · ${w.pins.length} pin${w.pins.length === 1 ? '' : 's'}${w.pendingMeasure ? ' · <span class="warn">now aim at the second mark</span>' : ''}${fixLine}${last}`;
   const can = !!f.hit && f.tracking !== 'lost';
   $('#pin').disabled = !can; $('#measure').disabled = !can; $('#check').disabled = !can || !w.pins.length; $('#mark').disabled = !can || !target;
+  const again = target && L.marks.some((m) => m.id === target.id);
+  $('#mark').textContent = target ? `Mark ${target.name}${again ? ' again' : ''}` : 'Mark';
   if (f.t - (st.mapAt || 0) > 1000 && fitFor(L, w.odo)) { st.mapAt = f.t; drawMap(); }
 }
 
@@ -429,6 +435,7 @@ function drawMini(f) {
     const [x, y] = S(p.map);
     g.beginPath(); g.arc(x, y, 5 * dpr, 0, Math.PI * 2); g.fillStyle = p.kind === 'ref' ? CSS.ref : CSS.check; g.fill();
     g.lineWidth = (marked.has(p.id) ? 2.5 : 1.5) * dpr; g.strokeStyle = marked.has(p.id) ? '#4cff9a' : '#fff'; g.stroke();
+    if (st.chosen === p.id) { g.beginPath(); g.arc(x, y, 10 * dpr, 0, Math.PI * 2); g.strokeStyle = '#ffeb3b'; g.lineWidth = 2 * dpr; g.stroke(); }
     g.fillStyle = '#fff'; g.strokeStyle = 'rgba(0,0,0,.8)'; g.lineWidth = 3 * dpr; g.strokeText(p.name, x + 7 * dpr, y + 4 * dpr); g.fillText(p.name, x + 7 * dpr, y + 4 * dpr);
   }
   if (me) {
@@ -483,7 +490,20 @@ function wireMini() {
     else if (touches.size === 2 && pinch) { const [a, b] = [...touches.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]); if (d > 0) { mini.mode = 'manual'; mini.view = miniZoom(mini.view, d / pinch, [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], mini.w, mini.h); pinch = d; } }
     if (st.ar) drawMini(st.ar);
   });
-  const up = (e) => { touches.delete(e.pointerId); if (touches.size < 2) pinch = null; };
+  let downAt = null;
+  cv.addEventListener('pointerdown', (e) => { downAt = { p: at(e), t: Date.now() }; });
+  const up = (e) => {
+    touches.delete(e.pointerId); if (touches.size < 2) pinch = null;
+    // a short tap that did not move: pick the nearest reference or check point to mark next
+    if (e.type === 'pointerup' && downAt && Date.now() - downAt.t < 300 && mini.view && st.L) {
+      const p = at(e);
+      if (Math.hypot(p[0] - downAt.p[0], p[1] - downAt.p[1]) < 8 * (mini.dpr || 1)) {
+        let best = null;
+        for (const q of st.points) { const s = toScreen(mini.view, q.map, mini.w, mini.h), d = Math.hypot(s[0] - p[0], s[1] - p[1]); if (d < 28 * (mini.dpr || 1) && (!best || d < best.d)) best = { q, d }; }
+        if (best) { st.chosen = best.q.id; flash(`Next to mark: ${best.q.name}`); if (st.ar) drawMini(st.ar); }
+      }
+    }
+  };
   cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
   cv.addEventListener('wheel', (e) => { e.preventDefault(); if (!mini.view) return; mini.mode = 'manual'; mini.view = miniZoom(mini.view, e.deltaY < 0 ? 1.25 : 0.8, at(e), mini.w, mini.h); if (st.ar) drawMini(st.ar); }, { passive: false });
 }
@@ -519,13 +539,28 @@ function wire() {
       flash(n >= 2 ? `${target.name} marked: lined up by ${n} references` : `${target.name} marked: one more reference lines the map up`);
     }
     log(`marked ${target.name} (${target.kind}) from ${f.hit.distance?.toFixed(2)} m`);
+    st.undoMarks.push({ id: target.id, name: target.name, check: target.kind === 'check' && st.walk.checks.length && st.walk.checks[st.walk.checks.length - 1].name === target.name, at: Date.now() });
+    st.chosen = null;
   });
   $('#measure').addEventListener('click', () => {
     const f = st.ar; if (!f?.hit) return;
     const m = measure(st.walk, f.hit);
     flash(m ? `Measured ${ftIn(m.m)} (${m.m.toFixed(2)} m)` : 'First mark set: aim at the second and tap Measure');
   });
-  $('#undo').addEventListener('click', () => { const u = undo(st.walk); flash(u === 'pin' ? 'Pin removed' : u === 'measure' ? 'First mark cleared' : 'Nothing to undo'); });
+  $('#undo').addEventListener('click', () => {
+    // the newest of: a reference or check mark (kept here), a pin or a half-done measure (walk.js)
+    const m = st.undoMarks[st.undoMarks.length - 1], lastPin = st.walk.pins[st.walk.pins.length - 1];
+    const pinAt = lastPin ? st.walk.startedAt + (lastPin.t || 0) : 0;
+    if (m && m.at >= pinAt && !st.walk.pendingMeasure) {
+      st.undoMarks.pop();
+      const i = st.L.marks.map((x) => x.id).lastIndexOf(m.id);
+      if (i >= 0) st.L.marks.splice(i, 1);
+      if (m.check) st.walk.checks.pop();
+      log(`unmarked ${m.name}`); flash(`${m.name}: last mark removed`);
+      return;
+    }
+    const u = undo(st.walk); flash(u === 'pin' ? 'Pin removed' : u === 'measure' ? 'First mark cleared' : 'Nothing to undo');
+  });
   $('#exit').addEventListener('click', () => { if (st.tracker) st.tracker.stop(); else finish(); });
   $('#move').addEventListener('click', () => $('#overlay').classList.toggle('bar-low'));
   $('#lidar-toggle').addEventListener('click', () => { st.lidarOn = !st.lidarOn; $('#lidar-toggle').classList.toggle('off', !st.lidarOn); flash(st.lidarOn ? 'Lidar shown' : 'Lidar hidden'); });

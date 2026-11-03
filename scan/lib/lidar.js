@@ -34,6 +34,20 @@ import { surfaceCost } from './surface.js';
  * each fine cell's centre, east/north of `origin3857` ([x, y], the map's point in 3857) at latitude scale k, is looked
  * up in the shade grid. sgrid: { x0, y1, cell, cellY?, w, h }. -> Uint8Array(W * H), 1 where a building stands.
  */
+/** A value per shade column (e.g. the shared rule's column `top`, m over the ground) put on this file's fine grid, as
+ *  buildingsOnGrid puts kinds. -> Float32Array(W * H), NaN off the shade grid or where the value is not finite. */
+export function valuesOnGrid(vals, sgrid, box, cell, origin3857, k) {
+  const W = Math.max(1, Math.ceil((box[2] - box[0]) / cell)), H = Math.max(1, Math.ceil((box[3] - box[1]) / cell));
+  const out = new Float32Array(W * H).fill(NaN), cy = sgrid.cellY || sgrid.cell;
+  for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) {
+    const e = box[0] + (c + 0.5) * cell, n = box[3] - (r + 0.5) * cell;
+    const sc = Math.floor((origin3857[0] + e / k - sgrid.x0) / sgrid.cell), sr = Math.floor((sgrid.y1 - (origin3857[1] + n / k)) / cy);
+    if (sc < 0 || sr < 0 || sc >= sgrid.w || sr >= sgrid.h) continue;
+    const v = vals[sr * sgrid.w + sc];
+    if (Number.isFinite(v)) out[r * W + c] = v;
+  }
+  return out;
+}
 export function buildingsOnGrid(kind, sgrid, box, cell, origin3857, k, BUILDING = 1) {
   const W = Math.max(1, Math.ceil((box[2] - box[0]) / cell)), H = Math.max(1, Math.ceil((box[3] - box[1]) / cell));
   const out = new Uint8Array(W * H), cy = sgrid.cellY || sgrid.cell;

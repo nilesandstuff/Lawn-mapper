@@ -173,6 +173,9 @@ assert.ok(G.occTop && G.bld, 'the tops and the roof mask come back for the overl
     const R = await loadLidar({ origin, box, lidar: { url: 'x', shift: [0, 0] } }, { pointsIn: async () => ({ cols, flown: null }), toMerc, nad83Correction: () => ({ east: 0, north: 0 }), io: null,
       rule: () => Promise.all([import('../../public/shade/structures.js'), import('../../public/shade/grid.js')]) });
     assert.match(R.rule, /shared rule/);
+    // walls drawn as tall as they stand: the house's roof is 6 m over its ground
+    const kk = Math.floor((30 - 8) / 0.25) * R.G.W + Math.floor((-5 + 30) / 0.25);
+    assert.ok(R.G.wallTop && Math.abs(R.G.wallTop[kk] - 6) < 0.6, `the house's top: ${R.G.wallTop && R.G.wallTop[kk]}`);
     assert.ok(R.shade && R.counts.building > 0, `the rule ran: ${JSON.stringify(R.counts)}`);
     assert.ok(sample(R.G, R.G.dist, -5, 8) > 2 && sample(R.G, R.G.inset, -5, 8) > 2, 'inside the house: not solid, well in');
     let w2 = null; for (let e = -13; e < -9; e += 0.05) if (sample(R.G, R.G.dist, e, 8) < 0.15) { w2 = e; break; }

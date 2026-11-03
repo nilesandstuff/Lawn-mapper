@@ -6,7 +6,7 @@
  * at different paths: { pointsIn, toMerc, nad83Correction, io, rule: () => Promise<[structures module, grid module]> }.
  */
 import { fromLocal } from './frames.js';
-import { buildGrids, buildingsOnGrid } from './lidar.js';
+import { buildGrids, buildingsOnGrid, valuesOnGrid } from './lidar.js';
 import { lawnField } from './surface.js';
 
 export async function loadLidar({ origin, box, lidar, fetchLidar, lawn = [] }, { pointsIn, toMerc, nad83Correction, io, rule }, progress = () => {}) {
@@ -56,5 +56,9 @@ export async function loadLidar({ origin, box, lidar, fetchLidar, lawn = [] }, {
   const lowIn = F && F.cells ? Uint8Array.from(F.sd, (v) => (v > 0.3 ? 1 : 0)) : null;
   const G = buildGrids({ e, n, z: cols.z, cls: cols.cls, nret: cols.nret }, box, { buildings, footprint, under, lowIn });
   if (F && F.cells && F.W === G.W && F.H === G.H) G.lawnSd = F.sd;
+  // how tall each building's or structure's wall really stands: its column's top in the shared rule (the owner,
+  // 2026-11-03: "the stone wall right next to me is shorter in reality than it is according to the lidar" -- every
+  // such wall was drawn 3 m tall)
+  if (shade?.stats?.top) G.wallTop = valuesOnGrid(shade.stats.top, shade.sgrid, box, 0.25, [ox, oy], k);
   return { G, cols, e, n, k, ox, oy, cloud, how, rule: ruleName, counts, shade, buildings, footprint };
 }
