@@ -5,6 +5,7 @@
  */
 import { lasHeader, makeColumns, readRecord, gpsTimes, gpsMs, leafOfMs, LEAF_OFF, LEAF_ON } from '../public/shade/las.js';
 import { onePass } from '../public/shade/passes.js';
+import { structuresOf, structuresFrom, NOTHING, BUILDING, TREE, SOLID_TREE } from '../public/shade/structures.js';
 import { kindOf as kindOfTrees } from '../public/shade/trees-ui.js';
 import { nodeBox, walk, hierarchyReader, pointsIn, toMerc, fromMerc, mercScale, flownOf } from '../public/shade/ept.js';
 import { nad83Correction } from '../public/shade/datum.js';
@@ -626,6 +627,18 @@ check('the color ramp runs dark to bright and clamps', ramp(-1).join() === '0,0,
   let added = 0;
   for (let i = 0; i < as.muOn.length; i++) if (as.muOn[i] !== as.muOff[i]) added++;
   check('seasons: a lot flown wholly in leaf gets no leaves added anywhere', added === 0, `${added} cubes changed`);
+  /* STRUCTURES (structures.js, the rule's one home; owner, 2026-11-03). */
+  const so = structuresOf(cols, buildCanopy(cols, grid)); // a fresh model: seasonalCanopy trims the one it is given
+  check('structures: the flat roof is a building by the flat-roof rule, the dense spruce a tree, the bare crown a tree, open lawn nothing',
+    so.kind[at(35, 45)] === BUILDING && so.why[at(35, 45)] === 1 && so.kind[at(50, 45)] !== BUILDING && so.kind[at(50, 45)] !== NOTHING && so.kind[at(45, 15)] === TREE && so.kind[at(5, 50)] === NOTHING && so.counts.building > 0,
+    `${so.kind[at(35, 45)]}/${so.why[at(35, 45)]} ${so.kind[at(50, 45)]} ${so.kind[at(45, 15)]} ${so.kind[at(5, 50)]}`);
+  const sf = structuresFrom(cols, grid);
+  let sameKinds = 0;
+  for (let i = 0; i < sf.kind.length; i++) if (sf.kind[i] === so.kind[i]) sameKinds++;
+  check('structures: from the points alone it builds the same model and gives the same answer', sameKinds === so.kind.length && sf.ground.length === so.kind.length);
+  let agree = 0;
+  for (let i = 0; i < so.kind.length; i++) if ((so.kind[i] === BUILDING) === (s.kind[i] === 1)) agree++;
+  check('structures: the shade map\'s buildings are exactly its buildings', agree === so.kind.length, `${so.kind.length - agree} differ`);
 
   /* A typical year: -5 C in mid-January to 23 C in mid-July. */
   const tMean = Array.from({ length: 365 }, (_, d) => 9 - 14 * Math.cos(((d - 14) / 365) * 2 * Math.PI));
@@ -1575,6 +1588,25 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   const season = growingSeason(year(-8, 22), 'cool');
   const w = plantingWindow(season, 'cool');
   check('grass: cool-season planting is six to eight weeks before growth stops; warm-season early in its season; all year says so', /six to eight weeks before growth stops around/.test(w) && /early in the growing season/.test(plantingWindow(growingSeason(year(8, 29), 'warm'), 'warm')) && /late summer/.test(plantingWindow({ allYear: true, days: [] }, 'cool')) && plantingWindow({ days: [], start: null }, 'cool') === null, w);
+}
+
+/* A STEEP ROOF (structures.js): a gable 10 x 12 m rising 2 m a meter (about 63 degrees), every pulse back once off the shingles. Within a 1 m column its returns spread 2 m, so the flat-roof rule (1.5 m) misses it; nothing reaching the ground finds it. (An ordinary pitch spreads under 1.5 m a column and the flat rule takes it.) */
+{
+  const lat = 40, k = mercScale(lat);
+  const grid = gridOver([0, 0, 40 / k, 40 / k], 1, lat);
+  const pts = [];
+  for (let e = 0.125; e < 40; e += 0.25) for (let n = 0.125; n < 40; n += 0.25) {
+    const roof = e > 15 && e < 25 && n > 14 && n < 26;
+    pts.push(roof ? [e, n, 104 + 10 - Math.abs(e - 20) * 2, 6] : [e, n, 100, 2]);
+  }
+  const cols = makeColumns(pts.length);
+  pts.forEach(([e, n, z, c], i) => { cols.x[i] = e / k; cols.y[i] = n / k; cols.z[i] = z; cols.cls[i] = c; cols.ret[i] = 1; cols.nret[i] = 1; });
+  const st = structuresFrom(cols, grid);
+  const at = (e, n) => Math.floor(40 - n) * grid.w + Math.floor(e);
+  let inside = 0, built = 0;
+  for (let n = 15; n < 25; n++) for (let e = 16; e < 24; e++) { inside++; if (st.kind[at(e + 0.5, n + 0.5)] === BUILDING) built++; }
+  check('structures: a steep roof is a building, by nothing getting through, though its returns spread over more than 1.5 m a column',
+    built === inside && st.why[at(17.5, 20.5)] === 2 && st.kind[at(5, 5)] === NOTHING && st.counts.solidTree === 0, `${built} of ${inside}`);
 }
 
 /* ONE LEAF STATE PER LOT (passes.js; owner, 2026-10-29). */

@@ -144,15 +144,11 @@
  */
 
 import { cellOf } from './grid.js';
-import { GRASS_M, solidAtGrass } from './canopy.js';
 import { crownsOf } from './crowns.js';
+import { structuresOf, NOISE, CROWN_ABOVE_M, BUILDING, TREE, SOLID_TREE } from './structures.js';
 
-const NOISE = new Set([7, 18]);
-export const CROWN_ABOVE_M = 2;
-export const SOLID_TREE_SPLIT = 0.25; // a solid patch this split is a tree, not a roof (1b)
-export const SOLID_TREE_MAX_M2 = 60; // or one smaller than this
-export const SOLID_SPECK_M2 = 4; // a solid patch smaller than this is always part of a tree
-export const SOLID_TREE_ROUGH_M = 0.55; // whose neighboring tops differ by this much (median)
+/* The building rule's numbers live in structures.js; re-exported for the tools that read them here. */
+export { CROWN_ABOVE_M, SOLID_TREE_SPLIT, SOLID_TREE_MAX_M2, SOLID_SPECK_M2, SOLID_TREE_ROUGH_M } from './structures.js';
 export const WINTER_DENSE_T = 0.2; // a crown passing less of the overhead sun than this in winter is evergreen (2)
 export const DOME_RING_M = [2.5, 3.5]; // how far out from a crown's highest return its top is read (2c)
 export const DOME_DROP_M = 0.7; // a crown whose top falls less than this there is a dome (H73's crowns)
@@ -208,24 +204,18 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true, fil
   const { closeR = 2, taperM = 0, spread = 'even', topR = 2, ladScale = 1, baseFrom = 'column10', laiMax = LAI_MAX, edgeTopM = LAWN_EDGE_TOP_M, lawnClumpM2 = LAWN_CLUMP_M2, underFloor = 1, unfill = true } = fill;
   const { grid, w, h, nz, dz, z0, ground, mu } = model;
   const N = w * h;
-  const above = new Uint16Array(N), multiAbove = new Uint16Array(N), lastGround = new Uint16Array(N);
-  const heights = []; // [column, height over ground] of every crown return, for clump depths
-  const zLo = new Float32Array(N).fill(Infinity), zHi = new Float32Array(N).fill(-Infinity);
-  /* Crown returns per column fired in leaf and with the leaves off, by each
-     point's own day (las.js leafOfMs; passes.js). */
+  /* Crown returns' heights, for clump depths, and how many were fired in
+     leaf or with the leaves off, by each point's own day (las.js leafOfMs;
+     passes.js). */
+  const heights = []; // [column, height over ground] of every crown return
   const onRet = cols.leaf ? new Uint16Array(N) : null, offRet = cols.leaf ? new Uint16Array(N) : null;
   for (let i = 0; i < cols.n; i++) {
     if (NOISE.has(cols.cls[i])) continue;
     const k = cellOf(grid, cols.x[i], cols.y[i], shift);
     if (k < 0) continue;
     const over = cols.z[i] - ground[k];
-    if ((cols.ret[i] || 1) >= (cols.nret[i] || 1) && over < GRASS_M) lastGround[k]++; // a pulse that reached the ground
     if (over > CROWN_ABOVE_M && over < 80) {
-      above[k]++;
-      if ((cols.nret[i] || 1) > 1) multiAbove[k]++;
       heights.push(k, over);
-      if (cols.z[i] < zLo[k]) zLo[k] = cols.z[i];
-      if (cols.z[i] > zHi[k]) zHi[k] = cols.z[i];
       if (onRet) { if (cols.leaf[i] === 2) onRet[k]++; else if (cols.leaf[i] === 1) offRet[k]++; }
     }
   }
@@ -237,67 +227,13 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true, fil
      leaf-on flight that is every crown; on a 'mixed' lot, the in-leaf side. */
   const inLeaf = new Uint8Array(N);
   if (onRet) for (let k = 0; k < N; k++) if (onRet[k] > offRet[k]) inLeaf[k] = 1;
+  /* 1, 1b. BUILDINGS AND TREES: structures.js, the one home of the rule
+     (owner, 2026-11-03), on every flight. Its kinds onto this file's:
+     building 1, tree 3, a solid tree 5 (decided below). */
+  const built = structuresOf(cols, model, { shift });
+  const { above, zHi } = built.stats;
   const kind = new Uint8Array(N);
-  for (let k = 0; k < N; k++) {
-    if (!above[k]) continue;
-    /* A building: H38's flat-roof rule, or a column nothing got through (a
-       pitched roof, which the flat rule misses, or the densest evergreen). */
-    const roof = (above[k] >= 3 && zHi[k] - zLo[k] < 1.5 && lastGround[k] === 0) || solidAtGrass(model, k);
-    kind[k] = roof ? 1 : 3;
-  }
-  /* A tree nothing got through (a dense spruce) is solid like a roof, and
-     stays so in the light, but it is not a building. Per patch of solid
-     columns it is a tree when a quarter or more of the returns above 2 m
-     came from pulses that split (on needles and branches; almost never on
-     a roof), or when the patch is small and its top is rough -- a roof is
-     planes, so neighboring columns' tops differ little. Since it was that
-     dense with the leaves off, it is an evergreen. (Kent 2016 cloud, the
-     owner's lot, checked against the photo, 2026-10-11: houses 200-311 m2,
-     2-3% split, tops differing a median 0.36-0.44 m between neighbors;
-     the lawn spruces 6-42 m2, 0-38% split, 0.55-1.5 m.) */
-  const seen = new Uint8Array(N);
-  for (let s0 = 0; s0 < N; s0++) {
-    if (kind[s0] !== 1 || seen[s0]) continue;
-    const patch = [s0];
-    seen[s0] = 1;
-    let a = 0, m = 0;
-    const steps = [];
-    for (let q = 0; q < patch.length; q++) {
-      const k = patch[q], x = k % w, y = (k / w) | 0;
-      a += above[k]; m += multiAbove[k];
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-        const xx = x + dx, yy = y + dy;
-        if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
-        const j = yy * w + xx;
-        if (kind[j] !== 1) continue;
-        if (dx + dy > 0 && above[k] && above[j]) steps.push(Math.abs(zHi[k] - zHi[j]));
-        if (!seen[j]) { seen[j] = 1; patch.push(j); }
-      }
-    }
-    steps.sort((p1, p2) => p1 - p2);
-    const rough = steps.length ? steps[steps.length >> 1] : 0;
-    /* And a speck under 4 m2 is no building: a column or two of a dense crown
-       where, by chance, no pulse reached the ground. */
-    const tree = (a > 0 && m / a >= SOLID_TREE_SPLIT) || patch.length < SOLID_SPECK_M2 || (patch.length < SOLID_TREE_MAX_M2 && rough >= SOLID_TREE_ROUGH_M);
-    /* On every flight: a building is a building whether the trees were in
-       leaf or not (owner, 2026-10-29: buildings drawn black). */
-    if (tree) for (const k of patch) kind[k] = 5;
-  }
-  /* Eaves: a pulse that lands half on a roof edge and half on the ground
-     splits like a tree's (the core's lidar-trees notes), so a ring of
-     "crown" hugs every roof. A crown column next to a roof whose top is
-     within 2 m of that roof's is the roof's edge. */
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    const k = y * w + x;
-    if (kind[k] !== 3) continue;
-    for (let dy = -1; dy <= 1 && kind[k] === 3; dy++) for (let dx = -1; dx <= 1; dx++) {
-      const xx = x + dx, yy = y + dy;
-      if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
-      const j = yy * w + xx;
-      if (kind[j] === 1 && Math.abs((zHi[j] - ground[j]) - (zHi[k] - ground[k])) <= 2) { kind[k] = 4; break; }
-    }
-  }
-  for (let k = 0; k < N; k++) if (kind[k] === 4) kind[k] = 1;
+  for (let k = 0; k < N; k++) kind[k] = built.kind[k] === BUILDING ? 1 : built.kind[k] === TREE ? 3 : built.kind[k] === SOLID_TREE ? 5 : 0;
   /* A solid tree: evergreen on a leaf-off flight (that dense with the
      leaves off); unsorted (3, held as flown) when it was in leaf. */
   for (let k = 0; k < N; k++) if (kind[k] === 5) kind[k] = classify && !inLeaf[k] ? 2 : 3;
