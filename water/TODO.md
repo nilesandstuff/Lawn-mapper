@@ -98,6 +98,13 @@ SPECULATION), as always.
     estimate it (the house's footprint and age, the basement's depth, the lidar's raised pads round houses, the survey's
     deeper horizons as the likely spread soil) and how far from the house it reaches.
 
+25. **One way to read lidar** (owner via the core session, 2026-11-03; CLAUDE.md "One way to read lidar"): when the
+    features session's tree-versus-building module lands, retire the water map's own rules onto it -- roofs.js
+    coreRoofs (a port of the detector's Python rule) and shadeRoofs, surface.js buildingMask, ar-lidar.js roofMask,
+    and obstacles.js's coarse vegetation/building cells -- and the NOISE lists and near-copy readers (ept.js, las.js,
+    datum.js) onto shared ones as they exist. Measure the roofs on the Chesapeake squares before and after (H32's IoU
+    0.74). The ground hollows and spot kinds stay the water map's. The full list went to the core session 2026-11-03.
+
 ## Rules (owner, 2026-10-27)
 
 - **The white paper stays true to the live model** (owner, 2026-11-02: "remember to continuously add to it if
