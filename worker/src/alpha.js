@@ -157,6 +157,16 @@ export async function pollAlpha(env, id, selfOrigin) {
 /** The pictures besides the mask a finished lot keeps (pollAlpha). */
 export const ALPHA_PARTS = ['canopy', 'roof', 'void'];
 
+/**
+ * Which picture an /api/alpha-mask address asks for: { raw, part }. ONE reading of the query for both ways in --
+ * the route itself and /api/mask's same-host shortcut. The shortcut once read `raw` and dropped `part`, so every
+ * canopy, roof and void the confidence slider loaded was the finished lawn mask, and any setting but 50% cleared
+ * nearly all the lawn (owner, 2026-11-03: "from about 125,000 to just 810 square feet").
+ */
+export function alphaMaskParams(searchParams) {
+  return { raw: searchParams.get('raw') === '1', part: searchParams.get('part') || null };
+}
+
 /** The finished mask (or with `raw`, the decoder's own picture; with `part`, one of ALPHA_PARTS), from R2. */
 export async function alphaMaskResponse(env, id, headers = {}, { raw = false, part = null } = {}) {
   if (!isAlphaId(id) || !env?.CORPUS) return new Response('Not found', { status: 404, headers });

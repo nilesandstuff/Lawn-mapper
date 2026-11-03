@@ -5,7 +5,7 @@
  */
 import assert from 'node:assert/strict';
 
-import { alphaEnabled, resultUrl, isAlphaId, pollAlpha, alphaMaskResponse } from '../worker/src/alpha.js';
+import { alphaEnabled, resultUrl, isAlphaId, pollAlpha, alphaMaskResponse, alphaMaskParams } from '../worker/src/alpha.js';
 import { MODELS, modelCatalogue, defaultModelFor, normaliseModel } from '../worker/src/sam.js';
 import { updateFor, keyForFips, lotFrames } from './score-queue.js';
 import { frameFor } from '../public/lib/mercator.js';
@@ -109,6 +109,16 @@ assert.ok(!isAlphaId('alpha-../../etc'));
   const rawEnv = { CORPUS: { get: async (k) => (k === 'alpha/masks/fc-1234567-raw.png' ? { body: 'r' } : null) } };
   assert.equal((await alphaMaskResponse(rawEnv, 'alpha-fc-1234567', {}, { raw: true })).status, 200);
   assert.equal((await alphaMaskResponse(rawEnv, 'alpha-fc-1234567')).status, 404, 'raw only when asked');
+  /* The confidence slider's parts go through /api/mask's shortcut: `part` must survive it (2026-11-03: dropping it
+     handed the slider the finished mask as its canopy and roofs, and every setting but 50% lost the lawn). */
+  const q = (s) => new URL(`https://lawn.example/api/alpha-mask?${s}`).searchParams;
+  assert.deepEqual(alphaMaskParams(q('id=alpha-fc-1&part=canopy')), { raw: false, part: 'canopy' });
+  assert.deepEqual(alphaMaskParams(q('id=alpha-fc-1&raw=1')), { raw: true, part: null });
+  assert.deepEqual(alphaMaskParams(q('id=alpha-fc-1')), { raw: false, part: null });
+  const keys = [];
+  const partEnv = { CORPUS: { get: async (k) => { keys.push(k); return { body: 'png' }; } } };
+  for (const s of ['part=canopy', 'part=roof', 'part=void', 'raw=1', '']) await alphaMaskResponse(partEnv, 'alpha-fc-1234567', {}, alphaMaskParams(q(`id=alpha-fc-1234567&${s}`)));
+  assert.deepEqual(keys.map((k) => k.replace(/^.*1234567/, '')), ['-canopy.png', '-roof.png', '-void.png', '-raw.png', '.png'], 'each part reads its own picture');
 }
 
 /* Loop 2: a lot is framed as the app frames it; scores reach SQL only when well formed. */
