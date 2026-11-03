@@ -11,13 +11,14 @@
  *
  *   DIR=masks node tools/recut-check.mjs           every <call> that has a -raw.png in DIR
  */
-import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { PNG } from 'pngjs';
 import { finishLot, predictionMask, LAWN_THRESHOLD } from '../public/lib/finish.js';
 
 const dir = process.env.DIR || 'masks';
-const read = (f) => (existsSync(f) ? PNG.sync.read(readFileSync(f)) : null);
+/** A picture, or null when absent, empty (wrangler leaves a 0-byte file for a missing object) or unreadable. */
+const read = (f) => { if (!existsSync(f) || statSync(f).size === 0) return null; try { return PNG.sync.read(readFileSync(f)); } catch { return null; } };
 const cells = (m) => { let n = 0; for (let i = 0; i < m.length; i++) n += m[i] ? 1 : 0; return n; };
 const lawnOf = (png) => { if (!png) return null; let n = 0; for (let i = 0; i < png.width * png.height; i++) n += png.data[i * 4] >= 128 ? 1 : 0; return n; };
 
