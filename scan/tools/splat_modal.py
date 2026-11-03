@@ -31,7 +31,7 @@ GPU = os.environ.get("MODAL_GPU", "L4")
 app = modal.App("lawn-scan-splat")
 image = (
     modal.Image.debian_slim(python_version="3.10")
-    .pip_install("torch==2.4.1", "numpy<2", "pillow")
+    .pip_install("torch==2.4.1", "numpy<2", "pillow", "packaging", "ninja", "jaxtyping", "rich")
     .pip_install("https://github.com/nerfstudio-project/gsplat/releases/download/v1.5.3/gsplat-1.5.3%2Bpt24cu121-cp310-cp310-linux_x86_64.whl")
 )
 

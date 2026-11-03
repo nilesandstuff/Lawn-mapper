@@ -47,6 +47,7 @@ jobs:
           MODAL_GPU: ${{ inputs.gpu }}
           STEPS: ${{ inputs.steps }}
         run: |
+          set -o pipefail
           pip install modal > /dev/null
           modal run scan/tools/splat_modal.py --src twin --out out --steps "$STEPS" 2>&1 | grep -v -i "key-[0-9]" | tee splat.log
 
