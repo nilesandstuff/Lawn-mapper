@@ -16,8 +16,8 @@
 import { workerIo } from '/lib/browser-io.js';
 import { pointsIn, toMerc } from '/lib/ept.js';
 import { nad83Correction } from '/lib/datum.js';
-import { fromLocal } from '/lib/frames.js';
-import { buildGrids, buildingsOnGrid, register } from '/lib/lidar.js';
+import { register } from '/lib/lidar.js';
+import { loadLidar } from '/lib/lidar-load.js';
 // THE SHARED TREE-VERSUS-BUILDING RULE (CLAUDE.md, "One way to read lidar"): the shade map's own module, copied into
 // this site unchanged at deploy time (scan/tools/prepare.mjs). Loaded lazily, so a failure falls back to the old rule.
 const sharedRule = () => Promise.all([import('/lib/shade/structures.js'), import('/lib/shade/grid.js')]);
@@ -35,50 +35,14 @@ self.onmessage = async ({ data }) => {
   if (!data.load) return;
   try {
     const { origin, box, lidar } = data.load;
-    const [lng, lat] = origin;
-    const k = Math.cos((lat * Math.PI) / 180);
-    self.postMessage({ progress: 'Finding the lidar survey…' });
-    let cloud = lidar?.url ? { url: lidar.url, name: lidar.name || "the shade map's survey", epoch: lidar.epoch ?? null } : null;
-    if (!cloud) {
+    const io = await workerIo('/lib');
+    const L = await loadLidar({ origin, box, lidar, fetchLidar: async (lng, lat) => {
       const res = await fetch(`/api/shade/lidar?lng=${lng}&lat=${lat}`);
       if (!res.ok) throw new Error(`the lidar search answered ${res.status}`);
-      cloud = (await res.json()).clouds?.[0] || null;
-      if (!cloud) throw new Error('no public lidar over this property');
-    }
-    const io = await workerIo('/lib');
-    const a = toMerc(fromLocal(origin, [box[0], box[1]])), b = toMerc(fromLocal(origin, [box[2], box[3]]));
-    const bbox = [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[0], b[0]), Math.max(a[1], b[1])];
-    const { cols, flown } = await pointsIn(cloud.url, bbox, io, { lat, tries: 12, progress: (done, total) => { if (total) self.postMessage({ progress: `Reading the lidar: ${done} of ${total} pieces…` }); } });
-    if (!cols.n) throw new Error('the survey has no points here');
-    let east = 0, north = 0, how = 'none';
-    if (Array.isArray(lidar?.shift) && lidar.shift.length === 2) { east = lidar.shift[0] * k; north = lidar.shift[1] * k; how = "the shade map's"; }
-    else {
-      const epoch = cloud.epoch || (flown ? 1970 + flown.mid / (365.25 * 864e5) : null);
-      if (epoch) { const d = nad83Correction(lat, lng, epoch); east = d.east; north = d.north; how = `the datum at ${epoch.toFixed(1)}`; }
-    }
-    self.postMessage({ progress: `Gridding ${cols.n.toLocaleString()} lidar points…` });
-    const [ox, oy] = toMerc(origin);
-    const e = new Float64Array(cols.n), n = new Float64Array(cols.n);
-    for (let i = 0; i < cols.n; i++) { e[i] = (cols.x[i] - ox) * k + east; n[i] = (cols.y[i] - oy) * k + north; }
-    // the buildings by the shared rule, on the shade map's 1 m grid over the same (shifted) ground
-    // (2026-11-03, after the owner's fix: sheds, stone bins, walls are STRUCTURE now, and walls stand 2 ft in from a
-    // roof's edge, wallsOf; both from the same module, so the AR match uses the house AND the short structures' walls)
-    let buildings = null, footprint = null, rule = 'the AR copy of the water rule (the shared module did not load)', counts = null;
-    try {
-      const [S, { gridOver }] = await sharedRule();
-      const sgrid = gridOver(bbox, 1, lat);
-      const s = S.structuresFrom(cols, sgrid, { shift: [east / k, north / k] });
-      const solid = new Uint8Array(s.kind.length);
-      for (let j = 0; j < solid.length; j++) solid[j] = s.kind[j] === S.BUILDING || (S.STRUCTURE != null && s.kind[j] === S.STRUCTURE) ? 1 : 0;
-      buildings = buildingsOnGrid(solid, sgrid, box, 0.25, [ox, oy], k, 1);
-      if (typeof S.wallsOf === 'function') {
-        const wl = S.wallsOf(solid, sgrid.w, sgrid.h, { cellM: 1, fineM: 0.25 });
-        const fine = { x0: sgrid.x0, y1: sgrid.y1, cell: (sgrid.cell * wl.cellM) / 1, w: wl.w, h: wl.h };
-        footprint = buildingsOnGrid(wl.walls, fine, box, 0.25, [ox, oy], k, 1);
-      }
-      rule = `the shared rule (public/shade/structures.js${footprint ? ', walls 2 ft in' : ''})`; counts = s.counts;
-    } catch (err) { rule += `: ${err.message}`; }
-    G = buildGrids({ e, n, z: cols.z, cls: cols.cls, nret: cols.nret }, box, { buildings, footprint });
+      return (await res.json()).clouds?.[0] || null;
+    } }, { pointsIn, toMerc, nad83Correction, io, rule: sharedRule }, (progress) => self.postMessage({ progress }));
+    const { cols, e, n, cloud, how, rule, counts } = L;
+    G = L.G;
     self.postMessage({ ready: { points: cols.n, solid: G.solid, cell: G.cell, cloud: cloud.name || null, shift: how, rule, structures: counts } });
     // THE OVERLAY (core session, SCAN-H2): what the match matches against, for the camera view. solids: each solid
     // 0.25 m cell as [e, n, ground, top]; tall: each 1 m cell with points 2.5 m or more above the ground as

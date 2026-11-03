@@ -69,6 +69,12 @@ assert.ok(G.occTop && G.bld, 'the tops and the roof mask come back for the overl
   const fix2 = register(G, next.stand, next.ground, { T: fix.T }, { searchM: 1.5, searchDeg: 6 });
   assert.ok(fix2.ok && offAt(fix2.T, [0, 0]) < 0.15, 'the next fix from the last');
 }
+// GPS off the lidar read for the map: refused with a reason, not a crash (the owner's walk, 2026-11-03)
+{
+  const { stand, ground: gr } = seen([[0, -1], [4, -1]]);
+  const fix = register(G, stand, gr, { at: [500, 500], phone: toAR([0, -1]), radiusM: 6 });
+  assert.ok(!fix.ok && /off the edge of the lidar/.test(fix.why), fix.why);
+}
 // a straight fence alone: two places fit, refused
 {
   const { stand, ground: gr } = seen([[-10, -9], [-6, -9], [-2, -9]], { reach: 4 });
@@ -111,6 +117,22 @@ assert.ok(G.occTop && G.bld, 'the tops and the roof mask come back for the overl
   // the wall stands inside the roof's edge: the roof's west edge is about -12.5..-12, its wall 0.6 m in, near -11.5
   let wallE = null; for (let e = -13; e < -9; e += 0.05) if (sample(G3, G3.dist, e, 8) < 0.15) { wallE = e; break; }
   assert.ok(wallE != null && wallE > -12.4 && wallE < -10.8, `the west wall 2 ft in from the roof's edge: ${wallE}`);
+  // THE SAME THROUGH loadLidar (scan/lib/lidar-load.js), the one reading the AR page's worker and the twin check share
+  {
+    const { loadLidar } = await import('../lib/lidar-load.js');
+    const { toMerc } = await import('../../water/lib/ept.js');
+    const { fromMerc } = await import('../lib/photo.js');
+    const origin = fromMerc([ox, oy]);
+    const R = await loadLidar({ origin, box, lidar: { url: 'x', shift: [0, 0] } }, { pointsIn: async () => ({ cols, flown: null }), toMerc, nad83Correction: () => ({ east: 0, north: 0 }), io: null,
+      rule: () => Promise.all([import('../../public/shade/structures.js'), import('../../public/shade/grid.js')]) });
+    assert.match(R.rule, /shared rule/);
+    assert.ok(R.shade && R.counts.building > 0, `the rule ran: ${JSON.stringify(R.counts)}`);
+    assert.ok(sample(R.G, R.G.dist, -5, 8) > 2 && sample(R.G, R.G.inset, -5, 8) > 2, 'inside the house: not solid, well in');
+    let w2 = null; for (let e = -13; e < -9; e += 0.05) if (sample(R.G, R.G.dist, e, 8) < 0.15) { w2 = e; break; }
+    // within a 1 m column of the direct reading: the shade grid starts where the box's corner falls, so the house's
+    // edge can move by one of its columns
+    assert.ok(w2 != null && Math.abs(w2 - wallE) <= 1.05, `the same west wall, to a column: ${w2} against ${wallE}`);
+  }
   // a mapping check that does not lean on the rule: one building column, found where it is
   const fake = { x0: 0, y1: 100, cell: 2, w: 50, h: 50 }, kind = new Uint8Array(2500); kind[10 * 50 + 20] = 1;
   const one = buildingsOnGrid(kind, fake, [-10, -10, 10, 10], 0.5, [41, 79], 1); // the column spans x 40-42, y 78-80: e and n -1..1

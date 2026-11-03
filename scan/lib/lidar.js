@@ -397,6 +397,9 @@ export function register(g, stand, ground, prior, { s = 1, searchM = 4, searchDe
       }
     }
   } else return { ok: false, why: 'no starting guess' };
+  // (2026-11-03, the owner's walk: "Cannot read properties of undefined (reading 'T')") GPS can put the phone off the
+  // lidar this page read, and then there is nowhere to try
+  if (!cands.length) return { ok: false, why: 'GPS puts you off the edge of the lidar read for this map' };
   // the coarse pass on a thinned set of points
   const thin = (a, m) => (a.length <= m ? a : a.filter((_, i) => i % Math.ceil(a.length / m) === 0));
   const st = thin(stand, 150), gr = thin(ground, 80), hi = thin(high, 80);
