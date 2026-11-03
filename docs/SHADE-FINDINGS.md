@@ -1361,6 +1361,22 @@ deciduous one loses its summer leaves and is solid in winter.
 Buildings (kind BUILDING) are untouched by it, so finding 24's scores
 stand. The water map's and the AR tool's roof masks read BUILDING only.
 
+THE RING ROUND CANOPIES (owner, 2026-11-03, through the core session:
+"trees get a ring of brown squares on the edges of canopies"; the AR view
+drew walls under them). Two causes. (1) The drawing: a column with nothing
+of its own over 2 m was drawn as a tree before this change and as "low"
+brown after it, and every crown's edge has such columns (a twig the pulses
+clipped, or cubes canopy.js lends a thin column from its neighbours): on the
+owner's lot 13,681 brown pieces. Now a kind-0 column within 2 m of a tree is
+drawn as that tree; brown 5,043, all in the yard away from trees. (2) The
+rule: where a crown slopes gently, an edge column clipped once reads as
+hard and no neighbour is 2 m taller. Now a patch that touches a tree column
+is part of the tree. On the owner's lot the shed, the stone-bin row and the
+cars keep their counts (34, 74, 22); the 100 structure columns that touched
+a tree go (882 structure columns left). The labelled lawn trees again
+(257 found this run): 61 of 16,893 columns over 2 m (0.36%, 6 trees);
+evergreens 1.7% (4 of 57 trees), bare 0, in leaf 0.4% (2 trees).
+
 WALLS UNDER THE EAVES (structures.js wallsOf; owner: "walls are offset by
 the standard amount, 2 feet probably"): a roof mask at 0.25 m, the walls
 0.61 m in from its edge, the band outside them eave. Unmeasured.

@@ -50,9 +50,10 @@
  *     a square meter; areas read from the photo): the white-roofed shed 34
  *     of 37 columns, the stone-bin row 74 of 88, parked cars 22 of 47; no
  *     column of the bare trees (1,907) or the spruce rows (654), 20 of
- *     1,122 by the road (two patches by small dark shrubs). On the core's
- *     267 labelled lawn trees, 1.5% of their columns over 2 m (small
- *     evergreens 5.1%); see shade findings 33.
+ *     1,122 by the road (two patches by small dark shrubs) before the
+ *     touching-a-tree test, none after. On the core's labelled lawn trees,
+ *     0.36% of their columns over 2 m (evergreens 1.7%, bare 0); see shade
+ *     findings 33.
  *
  * MEASURED (shade findings 24, by the water session, 2026-10-17): against
  * the Chesapeake 1 m land use's structures, 23 residential squares in VA,
