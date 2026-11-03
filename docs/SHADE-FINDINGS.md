@@ -1310,6 +1310,61 @@ NOT DONE: a deciduous tree on a leaf-on flight keeps its summer leaves all
 year (too dark before leaf-out and after leaf-fall). Taking them off needs
 a leaf-off density the flight never measured.
 
+### 33. Short structures read as trees: a single-echo rule finds the owner's sheds, stone bins and trucks and takes 1.5% of 17,521 labelled tree columns (2026-11-03)
+
+The owner, 2026-11-03, with a screenshot of the owner's lot (a landscape
+yard; Kent 2016 lidar, leaf-off, about 2 points a square meter over the
+yard): "everything ... that shows up as a green cube is actually a solid
+man made structure (I'm sure a few were trucks and equipment, but most are
+small buildings or wide stone walls)."
+
+WHY. Two causes, read off the columns (scratch lot/feat.py; areas picked
+from the photo):
+- under 2 m nothing was classified (CROWN_ABOVE_M), and the drawing showed
+  an unclassified column as a deciduous tree: the stone-bin row (median top
+  1.7 m) and the cars (1.3 m) were never looked at;
+- at 2 points a square meter a 2-5 m shed has about 2 returns a column, too
+  few for the flat-roof rule (3+) and, the 3 x 3 pooling lending it ground
+  pulses, not "nothing got through": the white-roofed shed (2.8 m) read as
+  a crown the laser got through, and so got summer leaves.
+
+WHAT TELLS THEM APART. The share of a column's returns over 0.5 m that came
+back as single echoes: stone bins, shed, cars, quonset 1.00 (median); bare
+deciduous crowns 0.00; the spruce rows 0.50-0.60. The owner's lot's split
+share over 2 m is 0.81, so the flight keeps second returns.
+
+THE RULE (structures.js 6, kind STRUCTURE): a patch (8-way) of 4+ columns
+1-6 m tall whose every return over 1 m is a single echo, none fired in
+leaf, not already a building, and no tree more than 2 m taller within 2 m
+(the spruce's skirt). Not used on a flight that kept almost no second
+returns: a North Carolina 2016 flight (B32) has none split over 2 m, and
+there every short tree passed. seasonal.js gives the kind no leaves and
+fills it solid from the grass to its top.
+
+ON THE OWNER'S LOT: the white-roofed shed 34 of 37 columns, the stone-bin
+row 74 of 88, the south bins 21 of 98 (most of those cells are under 1 m,
+loose stone), parked cars 22 of 47; none of 1,907 bare-tree columns, 654
+spruce-row columns or the yard's trees; 20 of 1,122 along the road, two
+small patches by small dark shrubs (likely evergreen shrubs).
+
+AGAINST THE CORE'S LABELLED LAWN TREES (data/labelled-crowns.csv, H73's
+crowns; 267 found on 54 maps; a circle of the crown's area round its
+point; scratch crowns/fp3.mjs): of 17,521 columns over 2 m, 263 (1.5%)
+became structures, on 28 of 267 trees. Evergreens 86 of 1,685 (5.1%, 11 of
+57 trees, small ones), bare 81 of 7,359 (1.1%), in leaf 96 of 8,477
+(1.1%). The circle takes in what stands beside a tree too: B07's 63 are
+2-3 m columns beside its crown, not in it. Not checked against photos.
+What a wrong call costs: an evergreen called a structure is solid from
+the grass up and gets no leaves -- a small evergreen nearly is already; a
+deciduous one loses its summer leaves and is solid in winter.
+
+Buildings (kind BUILDING) are untouched by it, so finding 24's scores
+stand. The water map's and the AR tool's roof masks read BUILDING only.
+
+WALLS UNDER THE EAVES (structures.js wallsOf; owner: "walls are offset by
+the standard amount, 2 feet probably"): a roof mask at 0.25 m, the walls
+0.61 m in from its edge, the band outside them eave. Unmeasured.
+
 ## Speculation
 
 - FENCES (2026-10-27, IN USE, unmeasured; fences.js): drawn by the visitor
