@@ -17,6 +17,8 @@ assert.match(wranglerFor('scan.example.com', 'lawnmap.example.com', false), /ADM
 assert.ok(!/d1_databases/.test(toml), 'no database id, no binding (the Worker answers 503 for walks)');
 const withDb = wranglerFor('scan.example.com', 'lawnmap.example.com', true, '12345678-1234-1234-1234-123456789abc');
 assert.match(withDb, /\[\[d1_databases\]\]\nbinding = "DB"\ndatabase_name = "lawn-scan"\ndatabase_id = "12345678-1234-1234-1234-123456789abc"/);
+assert.ok(!/r2_buckets/.test(withDb), 'no bucket, no binding (the Worker answers 503 for twins)');
+assert.match(wranglerFor('scan.example.com', 'lawnmap.example.com', true, null, 'lawn-scan-twins'), /\[\[r2_buckets\]\]\nbinding = "TWIN"\nbucket_name = "lawn-scan-twins"/);
 assert.match(ENGINE_VERSION, /^\d+\.\d+\.\d+$/, 'the engine is pinned');
 assert.equal(engineDist('/nowhere'), null, 'no engine installed, none copied');
 console.log('prepare: ok');

@@ -107,6 +107,63 @@ export async function start(opts) {
 
 /* ---------------------------------------------------------------- WebXR */
 
+/**
+ * THE CAMERA'S PICTURE (WebXR camera-access), for the twin. The picture is a GL texture good only during the frame,
+ * so it is drawn into a small framebuffer of our own, read back and made a JPEG off the frame. At most `maxW` wide.
+ * -> grab(view, restoreTo) -> { blob: Promise<Blob>, w, h, proj, view } or null. GL state the page's drawing relies on
+ * (program, framebuffer, viewport, the array buffer, attribute 0) is put back.
+ */
+export function cameraGrabber(session, gl, maxW = 640) {
+  let binding = null, prog = null, buf = null, fbo = null, tex = null, fw = 0, fh = 0, loc = -1, uloc = null;
+  const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; };
+  return (view, restoreTo) => {
+    try {
+      binding ||= new XRWebGLBinding(session, gl);
+      const cam = view.camera, src = binding.getCameraImage(cam);
+      if (!src) return null;
+      const scale = Math.min(1, maxW / cam.width), w = Math.round(cam.width * scale), h = Math.round(cam.height * scale);
+      if (!prog) {
+        prog = gl.createProgram();
+        gl.attachShader(prog, sh(gl.VERTEX_SHADER, 'attribute vec2 p; varying vec2 uv; void main(){ uv = p * 0.5 + 0.5; gl_Position = vec4(p, 0.0, 1.0); }'));
+        gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, 'precision mediump float; varying vec2 uv; uniform sampler2D t; void main(){ gl_FragColor = texture2D(t, uv); }'));
+        gl.linkProgram(prog); loc = gl.getAttribLocation(prog, 'p'); uloc = gl.getUniformLocation(prog, 't');
+        buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+      }
+      if (!fbo || fw !== w || fh !== h) {
+        tex = tex || gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        fbo = fbo || gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+        fw = w; fh = h;
+      }
+      const prevProg = gl.getParameter(gl.CURRENT_PROGRAM), prevBuf = gl.getParameter(gl.ARRAY_BUFFER_BINDING), prevVp = gl.getParameter(gl.VIEWPORT);
+      const prevTex = gl.getParameter(gl.TEXTURE_BINDING_2D), blend = gl.isEnabled(gl.BLEND), depthT = gl.isEnabled(gl.DEPTH_TEST);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fbo); gl.viewport(0, 0, w, h);
+      gl.disable(gl.BLEND); gl.disable(gl.DEPTH_TEST);
+      gl.useProgram(prog); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+      gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, src); gl.uniform1i(uloc, 0);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      const px = new Uint8Array(w * h * 4);
+      gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
+      gl.disableVertexAttribArray(loc);
+      gl.bindTexture(gl.TEXTURE_2D, prevTex); gl.useProgram(prevProg); gl.bindBuffer(gl.ARRAY_BUFFER, prevBuf);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, restoreTo); gl.viewport(prevVp[0], prevVp[1], prevVp[2], prevVp[3]);
+      if (blend) gl.enable(gl.BLEND); if (depthT) gl.enable(gl.DEPTH_TEST);
+      // GL reads bottom row first: flip into a picture the right way up
+      const img = new ImageData(w, h), row = w * 4;
+      for (let y = 0; y < h; y++) img.data.set(px.subarray((h - 1 - y) * row, (h - y) * row), y * row);
+      const canvas = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(w, h) : Object.assign(document.createElement('canvas'), { width: w, height: h });
+      canvas.getContext('2d').putImageData(img, 0, 0);
+      const blob = canvas.convertToBlob ? canvas.convertToBlob({ type: 'image/jpeg', quality: 0.8 }) : new Promise((ok) => canvas.toBlob(ok, 'image/jpeg', 0.8));
+      return { blob, w, h, proj: Array.from(view.projectionMatrix), view: Array.from(view.transform.matrix) };
+    } catch {
+      return null;
+    }
+  };
+}
+
 async function startWebXR({ overlay, onFrame, onEvent }) {
   let session;
   const base = { requiredFeatures: ['hit-test'], optionalFeatures: ['dom-overlay', 'anchors'], domOverlay: { root: overlay } };
@@ -130,6 +187,7 @@ async function startWebXR({ overlay, onFrame, onEvent }) {
   const hasDepth = !!features?.includes('depth-sensing') && typeof XRFrame !== 'undefined' && 'getDepthInformation' in XRFrame.prototype;
   const anchorsOn = !!features?.includes('anchors') && typeof XRFrame !== 'undefined' && 'createAnchor' in XRFrame.prototype;
   const anchorQueue = [], anchorPos = new Map();
+  const grabber = features?.includes('camera-access') && typeof XRWebGLBinding !== 'undefined' ? cameraGrabber(session, gl) : null;
   ref.addEventListener?.('reset', () => { reset = true; });
   session.addEventListener('end', () => { live = false; onEvent?.({ type: 'end' }); });
   overlay?.addEventListener('beforexrselect', (ev) => ev.preventDefault());
@@ -192,6 +250,8 @@ async function startWebXR({ overlay, onFrame, onEvent }) {
       pose: pose ? { position: { x: p.x, y: p.y, z: p.z }, quaternion: { x: q.x, y: q.y, z: q.z, w: q.w } } : null,
       gl, framebuffer: layer.framebuffer, viewport: vp ? { x: vp.x, y: vp.y, w: vp.width, h: vp.height } : null,
       view: view ? view.transform.inverse.matrix : null, proj: view ? view.projectionMatrix : null,
+      // the camera's picture of this frame, for the twin (scan/lib/twin.js): call during this frame only
+      grab: grabber && view?.camera ? () => grabber(view, layer.framebuffer) : null,
     });
     reset = false;
   };

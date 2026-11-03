@@ -31,7 +31,7 @@ export function scanDomainFor(custom) {
   return parts.length >= 3 ? `scan.${parts.slice(1).join('.')}` : null;
 }
 
-export function wranglerFor(domain, lawnmap, adminOnly = true, d1Id = null) {
+export function wranglerFor(domain, lawnmap, adminOnly = true, d1Id = null, r2 = null) {
   return `# Written by scan/tools/prepare.mjs at deploy time. Not checked in.
 name = "lawn-scan"
 main = "src/index.js"
@@ -64,6 +64,11 @@ ${d1Id ? `
 binding = "DB"
 database_name = "lawn-scan"
 database_id = "${d1Id}"
+` : ''}${r2 ? `
+# The walks' twins (src/twin.js): the phone's points, track and pictures, admin only.
+[[r2_buckets]]
+binding = "TWIN"
+bucket_name = "${r2}"
 ` : ''}`;
 }
 
@@ -111,7 +116,7 @@ function main() {
     engine = `8th Wall engine binary ${ENGINE_VERSION} at /vendor/xr/`;
   }
   writeFileSync(join(build, 'robots.txt'), 'User-agent: *\nDisallow: /\n');
-  writeFileSync(join(scan, 'wrangler.toml'), wranglerFor(domain, lawnmap, true, (process.env.SCAN_D1_ID || '').trim() || null));
+  writeFileSync(join(scan, 'wrangler.toml'), wranglerFor(domain, lawnmap, true, (process.env.SCAN_D1_ID || '').trim() || null, (process.env.SCAN_R2 || '').trim() || null));
   env(`SCAN_DOMAIN=${domain}`);
   env(`SCAN_ENGINE=${engine}`);
   console.log(`Scan site built for https://${domain} (accounts via https://${lawnmap}); ${engine}.`);

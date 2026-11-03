@@ -15,6 +15,7 @@ import { levelDist, toLocal } from '/lib/frames.js';
 import { frameFor, bboxOf, toPx, fromPx, ringsOf } from '/lib/photo.js';
 import { newLocate, mark, noteGround, addDepth, nextAsk, answer, fitFor, mapOf, sessionOf, checkError, nearestNamed, agreement, status as fixStatus, summaryOf } from '/lib/locate.js';
 import { leftOut, mapToSession } from '/lib/align.js';
+import { newTwin, addPoints, addPose, wantKey, addKey, flush, flushDue, liveOf } from '/lib/twin.js';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -223,6 +224,9 @@ async function startAR(engine) {
   st.walk = newWalk({ engine, phone: navigator.userAgent });
   st.walk.checks = [];
   st.L = newLocate();
+  // the walk's twin (scan/lib/twin.js): its points, track and pictures go up to the site as it goes (src/twin.js)
+  st.twin = newTwin({ walk: `${st.walk.startedAt}`, map: st.map || null, engine, started: st.walk.startedAt });
+  st.twinUp = { queue: [], busy: false, off: null, sent: 0, failed: 0 };
   st.errors = []; st.ar = null; st.drawer = null;
   overlay.hidden = false; document.body.classList.add('in-ar');
   $('#hud').textContent = engine === '8thwall' ? 'Loading the engine… then the phone asks for the camera and the motion sensors.' : 'Starting…';
@@ -280,6 +284,17 @@ function onFrame(f) {
     const pts = [];
     for (let i = 0; i < 16; i++) for (let j = 0; j < 28; j++) { const p = f.depth.at((i + 0.5) / 16, (j + 0.5) / 28); if (p) pts.push(p); }
     addDepth(L, pts, odo, f.pose.position.y);
+    if (st.twin) addPoints(st.twin, Date.now(), odo, pts, L.groundY);
+  }
+  // the twin: the camera's track, a picture now and then, and what has piled up sent every 15 s
+  if (st.twin && f.pose) {
+    const now = Date.now();
+    addPose(st.twin, now, odo, f.pose.position, f.pose.quaternion, f.tracking);
+    if (f.grab && f.tracking === 'normal' && !st.twinUp.off && wantKey(st.twin, now, f.pose.position, f.pose.quaternion)) {
+      const g = f.grab();
+      if (g) { const name = addKey(st.twin, now, odo, f.pose.position, f.pose.quaternion, g); g.blob.then((b) => b && sendTwin([{ name, type: 'image/jpeg', body: b }]), () => {}); }
+    }
+    if (flushDue(st.twin, now)) sendTwin(flush(st.twin, now, liveOf(L, w)));
   }
   if (st.lid.ready && st.lid.worker && f.tracking === 'normal') {
     const ask = nextAsk(L, odo, Date.now(), f.pose?.position || null);
@@ -427,6 +442,11 @@ function finish() {
     fix: L ? summaryOf(L) : null, lidar: st.lid.ready ? { points: st.lid.ready.points, solid: st.lid.ready.solid, shift: st.lid.ready.shift, rule: st.lid.ready.rule || null, structures: st.lid.ready.structures || null, tallCells: st.lid.overlay ? st.lid.overlay.tall.length / 5 : null } : st.lid.error ? { error: st.lid.error } : null,
   });
   s.id = `${w.startedAt}`; s.saved = null;
+  if (st.twin) {
+    sendTwin(flush(st.twin, Date.now(), liveOf(L, w, { ended: true, summary: s.id })));
+    s.twin = { ...st.twin.counts, camera: st.twin.camera, off: st.twinUp.off };
+  }
+  st.twin = null;
   st.tracker = null; st.walk = null; st.L = null; st.ar = null; st.drawer = null;
   $('#overlay').hidden = true; document.body.classList.remove('in-ar');
   const list = kept(); list.push(s); keep(list);
@@ -434,6 +454,33 @@ function finish() {
   post(s);
 }
 const r2 = (v) => (v == null ? null : +Number(v).toFixed(2)), r3 = (v) => (v == null ? null : +Number(v).toFixed(3));
+
+/** The twin's parts up to the site (src/twin.js), one at a time, each tried twice; a missing bucket stops it. */
+function sendTwin(parts) {
+  const up = st.twinUp, walk = st.twin?.walk || up.walk;
+  if (!up || up.off || !parts?.length) return;
+  up.walk = walk;
+  for (const p of parts) up.queue.push(p);
+  if (up.busy) return;
+  up.busy = true;
+  (async () => {
+    while (up.queue.length && !up.off) {
+      const p = up.queue.shift();
+      let ok = false;
+      for (let tries = 0; tries < 2 && !ok; tries++) {
+        try {
+          const res = await fetch(`/api/scan/twin?walk=${encodeURIComponent(up.walk)}&part=${encodeURIComponent(p.name)}`, { method: 'PUT', headers: { 'Content-Type': p.type }, body: p.body });
+          ok = res.ok;
+          if (res.status === 503) { up.off = 'the site has no twin bucket yet'; break; }
+          if (!ok && res.status < 500) break;
+        } catch { /* tried again */ }
+        if (!ok && tries === 0) await new Promise((r) => setTimeout(r, 3000));
+      }
+      if (ok) up.sent++; else { up.failed++; if (st.twin) st.twin.counts.failed++; }
+    }
+    up.busy = false;
+  })();
+}
 
 /** A walk to the site's own database (scan/src/walks.js); failing that it stays on this phone. */
 async function post(s) {
@@ -483,6 +530,7 @@ function walkCard(s, open) {
     <p class="dim">${s.saved === true ? 'Saved to the site.' : s.saved === false ? `On this phone only (not saved: ${esc(s.savedWhy || '?')}).` : 'Saving…'}</p>
     <p>Walked ${Math.round(x.walkedM * FT)} ft; lost its place ${x.losses} time${x.losses === 1 ? '' : 's'}; ${x.resets} jump${x.resets === 1 ? '' : 's'}; ${x.fastTurns} fast turn${x.fastTurns === 1 ? '' : 's'}; tracked ${x.trackedShare != null ? Math.round(x.trackedShare * 100) : '?'}% of frames${s.points?.maxAtOnce ? `; up to ${s.points.maxAtOnce} points seen at once` : ''}.</p>
     ${fx ? `<p><strong>Where you were:</strong> ${fx.fixes} lidar fix${fx.fixes === 1 ? '' : 'es'} from ${fx.asks} tries${fx.fixes ? ` (${Math.round(100 * fx.fixHits.reduce((a, b) => a + b, 0) / fx.fixHits.length)}% of points landed on average)` : ''}; ${fx.references} reference${fx.references === 1 ? '' : 's'}, ${fx.marks} marks. ${Object.keys(fx.refused || {}).length ? `Refused: ${esc(Object.entries(fx.refused).map(([k, v]) => `${k} (${v})`).join('; '))}.` : ''}${s.lidar?.error ? ` <span class="warn">Lidar: ${esc(s.lidar.error)}</span>` : s.lidar ? ` Lidar: ${s.lidar.points.toLocaleString()} points, ${s.lidar.solid.toLocaleString()} solid cells.` : ''}</p>` : ''}
+    ${s.twin ? `<p>Twin: ${s.twin.points.toLocaleString()} points, ${s.twin.keys} picture${s.twin.keys === 1 ? '' : 's'}${s.twin.off ? ` <span class="warn">not kept: ${esc(s.twin.off)}</span>` : s.twin.failed ? ` <span class="warn">(${s.twin.failed} part${s.twin.failed === 1 ? '' : 's'} did not upload)</span>` : ''}. <a href="/twin.html?walk=${encodeURIComponent(s.id)}">See how it lines up</a></p>` : ''}
     ${refs ? `<p class="dim">References: ${refs}.</p>` : ''}
     ${near ? `<p class="dim">Pins on the map: ${near}.</p>` : ''}
     ${checks ? `<table><tr><th>Check point</th><th>On the map</th><th>By</th></tr>${checks}</table>` : ''}

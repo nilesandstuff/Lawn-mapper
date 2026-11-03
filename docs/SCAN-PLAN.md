@@ -541,6 +541,28 @@ the jump is taken only if a second fix agrees with it within 0.6 m (the
 world moved: ARCore corrected its map). The walk's copy counts jumps held
 and taken.
 
+**The walk's twin, kept (owner, 2026-11-03: "start saving the outputs of the
+digital twin that is being constructed? I want to see how it lines up with
+reality").** Every walk now sends, as it goes, what the phone built: its depth
+points (one per 5 cm cube, with the ground it stood on), its track five times
+a second, a camera picture about once a second while moving (WebXR
+camera-access, with each picture's pose and projection), and the fixes and
+marks so far. They go to the scan site's own R2 bucket (scan/lib/twin.js,
+scan/src/twin.js; the bucket made by scan/tools/r2.mjs in the deploy), admin
+only, never into a log. /twin.html lays a walk over the photo and the same
+lidar: the phone's walls, fences and trunks in red against the lidar's in
+blue, placed by the walk's own fixes, the references alone or the fixes
+alone, with how many land within a foot.
+
+**Gaussian splats.** Not made by ARCore or WebXR: ARCore gives tracking,
+depth, planes and the camera picture. A splat is built after a walk from
+many posed pictures (what Niantic's Scaniverse does on the phone, and what
+gsplat or nerfstudio do on a GPU). The twin's pictures, each with its pose,
+are what such a pass needs; running one wants a GPU (Modal is paid: asked
+first). The 8th Wall engine is Niantic's tracking (its SLAM), not its
+splats; its view on the S21 was a broken fisheye in the first walk, and the
+canvas fix for that is untested.
+
 ## Findings
 
 HARD findings are measured, with the yard named only as "the owner's lot",

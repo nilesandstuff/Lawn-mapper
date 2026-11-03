@@ -102,6 +102,51 @@ const url = (p) => new URL(`https://scan.example.com${p}`);
   assert.equal(r.status, 200);
   assert.equal((await r.json()).walks.length, 1);
 }
+// the walks' twins (src/twin.js): parts in R2, admin only, named strictly, no degrees in the JSON
+{
+  const { twin, checkPart, typeOf } = await import('../src/twin.js');
+  const { listed } = await import('../tools/r2.mjs');
+  assert.ok(listed('name: lawn-scan-twins\ncreation_date: x') && listed('[{"name":"lawn-scan-twins"}]') && !listed('name: lawn-scan-twins-old'));
+  assert.equal(checkPart('w 1', null).error, 'which walk?');
+  assert.equal(checkPart('w1', '../x').error, 'not a twin part');
+  for (const ok of ['meta.json', 'live.json', 'cloud-0003.bin', 'track-0000.bin', 'keys-0001.json', 'key-0042.jpg']) assert.ok(!checkPart('w1', ok).error, ok);
+  assert.equal(typeOf('key-0001.jpg'), 'image/jpeg');
+  const objs = new Map();
+  const R2 = {
+    put: async (k, body, o) => { objs.set(k, { body: new Uint8Array(body), type: o?.httpMetadata?.contentType, uploaded: new Date().toISOString() }); },
+    get: async (k) => (objs.has(k) ? { body: objs.get(k).body } : null),
+    list: async ({ prefix }) => ({ objects: [...objs.entries()].filter(([k]) => k.startsWith(prefix)).map(([key, o]) => ({ key, size: o.body.byteLength, uploaded: o.uploaded })), truncated: false }),
+    delete: async (keys) => { for (const k of [].concat(keys)) objs.delete(k); },
+  };
+  const lawnmap = (who) => ({ fetch: async () => new Response(JSON.stringify({ user: { admin: who === 'admin' } }), { headers: { 'Content-Type': 'application/json' } }) });
+  const env = (who, b = R2) => ({ ADMIN_ONLY: '1', LAWNMAP_HOST: 'lawnmap.example.com', LAWNMAP: lawnmap(who), TWIN: b });
+  const call = (e, method, path, q = '', body) => twin(new Request(`https://scan.example.com${path}${q}`, { method, headers: { Cookie: 'lm_session=x' }, body }), e, new URL(`https://scan.example.com${path}${q}`), { isAdmin });
+  assert.equal(await call(env('admin'), 'GET', '/api/scan/other'), null, 'not its route');
+  assert.equal((await call(env('user'), 'GET', '/api/scan/twins')).status, 404, 'not the admin: nothing');
+  assert.equal((await call({ ...env('admin'), TWIN: undefined }, 'GET', '/api/scan/twins')).status, 503, 'no bucket: says so');
+  let r = await call(env('admin'), 'PUT', '/api/scan/twin', '?walk=w1&part=cloud-0000.bin', new Float32Array([1, 2, 3]).buffer);
+  assert.equal(r.status, 200); assert.equal((await r.json()).bytes, 12);
+  r = await call(env('admin'), 'PUT', '/api/scan/twin', '?walk=w1&part=live.json', JSON.stringify({ fixes: [], marks: [{ map: [1, 2] }] }));
+  assert.equal(r.status, 200);
+  r = await call(env('admin'), 'PUT', '/api/scan/twin', '?walk=w1&part=meta.json', JSON.stringify({ lat: 42 }));
+  assert.equal(r.status, 400, 'degrees refused');
+  r = await call(env('admin'), 'PUT', '/api/scan/twin', '?walk=w1&part=evil.html', 'x');
+  assert.equal(r.status, 400, 'only twin parts');
+  await call(env('admin'), 'PUT', '/api/scan/twin', '?walk=w2&part=key-0000.jpg', new Uint8Array([255, 216, 255]).buffer);
+  r = await call(env('admin'), 'GET', '/api/scan/twins');
+  const tl = (await r.json()).twins;
+  assert.deepEqual(tl.map((x) => x.walk).sort(), ['w1', 'w2']); assert.equal(tl.find((x) => x.walk === 'w2').keys, 1);
+  r = await call(env('admin'), 'GET', '/api/scan/twin', '?walk=w1');
+  assert.deepEqual((await r.json()).parts.map((p) => p.name).sort(), ['cloud-0000.bin', 'live.json']);
+  r = await call(env('admin'), 'GET', '/api/scan/twin', '?walk=w1&part=cloud-0000.bin');
+  assert.deepEqual([...new Float32Array(await r.arrayBuffer())], [1, 2, 3]);
+  assert.equal((await call(env('admin'), 'GET', '/api/scan/twin', '?walk=w1&part=track-0000.bin')).status, 404);
+  r = await call(env('admin'), 'DELETE', '/api/scan/twin', '?walk=w1');
+  assert.equal((await r.json()).deleted, 2); assert.equal(objs.size, 1);
+  // through the Worker
+  r = await worker.fetch(new Request('https://scan.example.com/api/scan/twins', { headers: { Cookie: 'lm_session=x' } }), { ...env('admin'), ASSETS: { fetch: async () => new Response('page') } });
+  assert.equal((await r.json()).twins.length, 1);
+}
 // scan/tools/walks.mjs: the one-line headline and wrangler's JSON rows
 {
   const { headline, rowsOf } = await import('../tools/walks.mjs');

@@ -15,6 +15,7 @@
  */
 
 import { walks } from './walks.js';
+import { twin } from './twin.js';
 
 /** GETs passed on to Lawn Mapper for the page's own use (the photo and the lidar come in phase 2). */
 export const PROXIED = ['/api/imagery', '/api/parcel', '/api/shade/lidar', '/api/lidar/tiles'];
@@ -79,6 +80,9 @@ export default {
     // the walks kept on the site (src/walks.js): the admin only, whether or not the site is open
     const kept = await walks(request, env, url, { isAdmin });
     if (kept) return kept;
+    // the walks' twins (src/twin.js): the admin only, the same way
+    const twinned = await twin(request, env, url, { isAdmin });
+    if (twinned) return twinned;
     const up = upstreamFor(url, env.LAWNMAP_HOST, request.method);
     if (!up) return notFound();
     if (env.LAWNMAP) return env.LAWNMAP.fetch(new Request(up, request));

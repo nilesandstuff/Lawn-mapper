@@ -60,6 +60,7 @@ jobs:
           node scan/test/locate.test.js
           node scan/test/photo.test.js
           node scan/test/lidar.test.js
+          node scan/test/twin.test.js
 
       - name: The 8th Wall engine binary (pinned)
         if: ${{ (inputs.task || 'deploy') == 'deploy' }}
@@ -76,6 +77,13 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: node scan/tools/d1.mjs
+
+      - name: The twin bucket (the walks' points, track and pictures)
+        if: ${{ (inputs.task || 'deploy') == 'deploy' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node scan/tools/r2.mjs
 
       - name: Deploy the scan site
         if: ${{ (inputs.task || 'deploy') == 'deploy' }}
@@ -128,6 +136,7 @@ jobs:
             deploy)
               echo "Scan site: ${SCAN_STATE:-not deployed -- see the steps above}"
               echo "Engine: ${SCAN_ENGINE:-unknown}"
+              echo "Twins: ${SCAN_R2:+kept in the $SCAN_R2 bucket, viewed at /twin.html}${SCAN_R2:-NOT kept (no bucket: see the twin bucket step)}"
               echo "Open it from the dashboard's Yard AR card (admin account), on each phone." ;;
             walks) head -3 walks.txt 2>/dev/null || echo "no walks read: see the step above" ;;
             *) echo "Scan tests: ${{ job.status }}" ;;
