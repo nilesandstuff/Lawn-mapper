@@ -276,7 +276,7 @@ export const WALL_WORTH = 20;          // ...for a wall of up to this many point
                                        // worth in all, so a long porch wall seen well cannot outvote the trees
 export const PIECE_GAP = 0.3;          // m: points closer than this, in the phone's frame, are one piece
 export const EDGE_NEAR = 1.5;          // m from the lawn's edge: a surface point near enough to say where it is
-export const SURF_W = 1;              // the lawn-edge term's weight against the standing points'
+export const SURF_W = 3;              // the lawn-edge term's weight against the standing points' (SCAN-H4: 1 found 5 fixes on the thin walk, 3 found 8)
 export const HIGH_W = 0.5;             // what a high point counts for, against a standing one
 export const RAY_HEADINGS = 8;         // headings (over half a turn) at which buildGrids measures inset across a wall
 const insetCharge = (m) => { const o = m < WALL_USUAL[0] ? WALL_USUAL[0] - m : m > WALL_USUAL[1] ? m - WALL_USUAL[1] : 0; return WALL_CAP * Math.min(1, (o / 2.7) ** 2); };

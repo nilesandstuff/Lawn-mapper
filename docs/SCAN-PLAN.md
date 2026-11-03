@@ -702,3 +702,29 @@ dB PSNR: rough (20 is rough, 25 good). The pictures are the right way up
 SPECULATION on why it is rough: ARCore's poses drift a little against the
 pictures, the camera's exposure changes in bright sun, and 7,000 steps is a
 short run.
+
+### SCAN-H4. The lawn's edge as a match target, replayed on SCAN-H3's walk (2026-11-03)
+
+HARD, by the twin check's replay (every 5 m, from the references' fit,
+searched 4 m and 15 degrees):
+
+- The ground's colour from the walk's 144 pictures: 74,509 ground points
+  read as grass, 3,732 as paving (scan/lib/surface.js). Where the
+  references put them, 6% sat on the wrong side of the traced lawn's edge
+  by more than 35 cm; of the 2,969 within 1.5 m of the edge, 83% on the
+  right side. The colours and the traced lawn agree.
+- Fixes out of 23 asks, and how many within 2 m of the references: walls
+  and shrubs alone 3 (1); with the lawn's edge 5 (1); weighed 3 times 8
+  (1); weighed 8 times 9 (1); roof edges counted twice changed nothing.
+- The fixes the lawn's edge found, 13-28 m and 118-138 m into the walk:
+  0.6-3.4 m and 9-20 degrees from the references, with 99-100% of the edge
+  points on the right side against the references' 74-96%. From 73 to 108
+  m the references' fit landed almost nothing (0-2 points) and the fixes
+  were 3-10 m away from it.
+
+SPECULATION, to be settled by a walk with check points: the references'
+turn was about 10 degrees off on this walk (three marks, close together,
+and ARCore's heading drifting over 168 m), and the lawn-edge fixes were
+nearer the truth than the references they were judged against. If so, the
+references judge (2 m, 10 degrees) refuses good fixes on a walk like this.
+Not changed until measured. The live page weighs the lawn's edge 3 times.
