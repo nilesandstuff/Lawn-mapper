@@ -314,7 +314,7 @@ export function piecesOf(pts, gap = PIECE_GAP) {
   const ways = Float64Array.from({ length: n }, (_, p) => (cnt[p] >= 3 && cnt[p] >= tot[p] / 2 ? 0.5 * Math.atan2(sn[p], cs[p]) : NaN));
   const out = { of, n, way: ways }; pieceCache.set(pts, out); return out;
 }
-export function placementCost(g, stand, ground, T, { trunc = 1, groundW = 0.5, groundTrunc = 0.3, high = [], surface = [], surfW = SURF_W, detail = false } = {}) {
+export function placementCost(g, stand, ground, T, { trunc = 1, groundW = 0.5, groundTrunc = 0.3, high = [], surface = [], surfW = g.surfW ?? SURF_W, detail = false } = {}) {
   const c = Math.cos(T.theta) * T.s, s = Math.sin(T.theta) * T.s;
   let sum = 0, n = 0, hits = 0, hHits = 0;
   const walls = detail ? [] : null;
