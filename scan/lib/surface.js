@@ -13,8 +13,10 @@
 export function surfaceOf(r, g, b) {
   const mx = Math.max(r, g, b), mn = Math.min(r, g, b), v = mx / 255, s = mx ? (mx - mn) / mx : 0;
   if (v < 0.18) return null; // too dark to say
-  if (s < 0.12 && v > 0.3) return 'pave';
-  if (s < 0.16) return null;
+  /* paving is grey: under 7% colour (SCAN-H6: at 12%, sunlit November grass washed out to grey read as paving -- 99%
+     of the points on the wrong side of a lawn edge the check points vouched for were "paving" inside the lawn) */
+  if (s < 0.07 && v > 0.3) return 'pave';
+  if (s < 0.12) return null;
   let h = 0;
   const d = mx - mn;
   if (mx === r) h = 60 * (((g - b) / d) % 6); else if (mx === g) h = 60 * ((b - r) / d + 2); else h = 60 * ((r - g) / d + 4);

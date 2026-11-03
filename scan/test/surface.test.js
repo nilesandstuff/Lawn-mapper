@@ -8,6 +8,7 @@ import { surfaceOf, lawnField, surfaceCost, tally } from '../lib/surface.js';
 assert.equal(surfaceOf(70, 120, 50), 'grass', 'green lawn');
 assert.equal(surfaceOf(120, 115, 70), 'grass', 'a dormant, olive lawn');
 assert.equal(surfaceOf(150, 150, 145), 'pave', 'concrete');
+assert.equal(surfaceOf(170, 175, 150), 'grass', 'sunlit, washed-out dormant grass is not paving');
 assert.equal(surfaceOf(95, 95, 100), 'pave', 'asphalt');
 assert.equal(surfaceOf(20, 25, 18), null, 'deep shade says nothing');
 assert.equal(surfaceOf(110, 70, 40), null, 'mulch or soil says nothing');
