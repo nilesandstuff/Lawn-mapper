@@ -7,6 +7,23 @@ this file only points there.
 
 ## Asked for, not started
 
+### 0. Lawn Mapper's buildings and roads from the shade map's lidar rules, if needed (owner, 2026-11-03)
+
+"I'm not sure if the lawn map should get any changes, except maybe for
+buildings and roads, because the shade map is pretty good at that." Later,
+only if it proves needed.
+
+The detector reads buildings through its own copy of the rule
+(tools/lidar_frame.py roof, feeding the live model's lidar veto), one of
+the copies CLAUDE.md "One way to read lidar" lists; the shared rule's home
+is now public/shade/structures.js. Roads: the shade map lines its lidar up
+with the photo by the lidar's ground intensity (public/shade/align.js),
+which draws roads, kerbs and drives; the lawn mapper has no lidar road
+rule of its own. Before changing anything: score the detector's roof veto
+against structures.js on the locked corpus (a training-free comparison,
+workflow 14's lidar layers), and only switch with a measured run, as for
+any change the live model reads (docs/DETECTOR-FINDINGS.md).
+
 ### 1. Sections cut automatically: the auto-front check (owner, 2026-10-24; rule agreed 2026-10-28)
 
 The rule (public/lib/yards.js): the house faces the street in its address;
