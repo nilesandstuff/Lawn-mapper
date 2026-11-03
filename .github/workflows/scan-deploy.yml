@@ -136,7 +136,7 @@ jobs:
             deploy)
               echo "Scan site: ${SCAN_STATE:-not deployed -- see the steps above}"
               echo "Engine: ${SCAN_ENGINE:-unknown}"
-              echo "Twins: ${SCAN_R2:+kept in the $SCAN_R2 bucket, viewed at /twin.html}${SCAN_R2:-NOT kept (no bucket: see the twin bucket step)}"
+              if [ -n "$SCAN_R2" ]; then echo "Twins: kept in the $SCAN_R2 bucket, viewed at /twin.html"; else echo "Twins: NOT kept (no bucket: see the twin bucket step)"; fi
               echo "Open it from the dashboard's Yard AR card (admin account), on each phone." ;;
             walks) head -3 walks.txt 2>/dev/null || echo "no walks read: see the step above" ;;
             *) echo "Scan tests: ${{ job.status }}" ;;
