@@ -38,6 +38,32 @@ async function main() {
   wire();
   place();
   if (st.keys.length) { $('#pics').hidden = false; $('#pic-at').max = String(st.keys.length - 1); showPic(0); }
+  if (names.includes('splat.splat')) showSplat(parts);
+}
+
+/** The splat made from this walk by workflow S2 (scan/tools/splat_modal.py), when there is one. */
+async function showSplat(parts) {
+  $('#splat').hidden = false;
+  const size = parts.find((p) => p.name === 'splat.splat')?.bytes || 0;
+  $('#splat-size').textContent = `${(size / 1e6).toFixed(1)} MB`;
+  try {
+    const n = await (await part('splat.json')).json();
+    $('#splat-numbers').textContent = n.error ? n.error : `${n.gaussians.toLocaleString()} splats from ${n.pictures} pictures; matches them to ${n.psnr} dB (PSNR: 20 is rough, 25 good, 30 very good).`;
+  } catch { /* the numbers are optional */ }
+  try { const r = await part('splat-compare.jpg'); if (r.ok) $('#splat-compare').src = URL.createObjectURL(await r.blob()); } catch { /* none */ }
+  $('#splat-open').addEventListener('click', async () => {
+    const el = $('#splat-3d'), b = $('#splat-open');
+    b.disabled = true; b.textContent = 'Loading…'; el.hidden = false;
+    try {
+      const GS = await import('https://cdn.jsdelivr.net/npm/@mkkellogg/gaussian-splats-3d@0.4.7/build/gaussian-splats-3d.module.js');
+      // start where the first picture was taken, looking the way it looked
+      const v = st.keys[0]?.view, at = v ? [v[12], v[13], v[14]] : [0, 1.5, 0], look = v ? [v[12] - v[8], v[13] - v[9], v[14] - v[10]] : [0, 1.5, -1];
+      const viewer = new GS.Viewer({ rootElement: el, cameraUp: [0, 1, 0], initialCameraPosition: at, initialCameraLookAt: look, sharedMemoryForWorkers: false, gpuAcceleratedSort: false });
+      await viewer.addSplatScene(`/api/scan/twin?walk=${encodeURIComponent(walkId)}&part=splat.splat`, { format: GS.SceneFormat.Splat, showLoadingUI: true, progressiveLoad: false });
+      viewer.start();
+      b.textContent = 'Opened';
+    } catch (e) { b.textContent = `Could not open it (${e.message})`; }
+  });
 }
 
 async function listTwins() {

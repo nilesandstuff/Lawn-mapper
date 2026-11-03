@@ -56,9 +56,18 @@
       <input type="range" id="pic-at" min="0" max="0" value="0" aria-label="Which picture">
       <img id="pic" alt="What the camera saw">
     </div>
+    <div class="card" id="splat" hidden>
+      <strong>Splat</strong> <span class="dim" id="splat-numbers"></span>
+      <p class="dim" style="font-size:.9rem">Left: what the camera saw. Right: the splat's picture from the same spot.</p>
+      <img id="splat-compare" alt="Pictures beside the splat's renders" style="width:100%;border-radius:8px">
+      <div class="tools"><button type="button" id="splat-open">Open the 3D splat</button> <span class="dim" id="splat-size"></span></div>
+      <div id="splat-3d" style="position:relative;width:100%;height:70vh;border-radius:8px;overflow:hidden;background:#000" hidden></div>
+      <p class="dim" style="font-size:.85rem">One finger turns, two move and zoom. Trained from the walk's pictures and the phone's own poses (workflow S2).</p>
+    </div>
     <div class="tools"><button type="button" class="plain" id="delete">Delete this twin</button></div>
   </section>
 </main>
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }</script>
 <script type="module" src="/twin-view.js"></script>
 </body>
 </html>

@@ -109,7 +109,7 @@ const url = (p) => new URL(`https://scan.example.com${p}`);
   assert.ok(listed('name: lawn-scan-twins\ncreation_date: x') && listed('[{"name":"lawn-scan-twins"}]') && !listed('name: lawn-scan-twins-old'));
   assert.equal(checkPart('w 1', null).error, 'which walk?');
   assert.equal(checkPart('w1', '../x').error, 'not a twin part');
-  for (const ok of ['meta.json', 'live.json', 'cloud-0003.bin', 'track-0000.bin', 'keys-0001.json', 'key-0042.jpg']) assert.ok(!checkPart('w1', ok).error, ok);
+  for (const ok of ['meta.json', 'live.json', 'cloud-0003.bin', 'track-0000.bin', 'keys-0001.json', 'key-0042.jpg', 'splat.splat', 'splat-compare.jpg', 'splat.json']) assert.ok(!checkPart('w1', ok).error, ok);
   assert.equal(typeOf('key-0001.jpg'), 'image/jpeg');
   const objs = new Map();
   const R2 = {

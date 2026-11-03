@@ -1,0 +1,67 @@
+# S2. A GAUSSIAN SPLAT FROM A WALK (core session, 2026-11-03; the owner: "Do the splat afterwards just for
+# curiosity sake"). Reads one walk's twin from the scan site's bucket, trains a splat on Modal's GPU from the
+# phone's own poses and pictures (scan/tools/splat_modal.py), and keeps the splat beside the twin, where the twin
+# page (/twin.html) shows it. MODAL IS PAID: run only when the owner has said yes. The log carries numbers only.
+name: "S2. Yard AR splat"
+
+on:
+  workflow_dispatch:
+    inputs:
+      walk:
+        description: "The walk's id (the number in its twin page's address)"
+        required: true
+      steps:
+        description: "Training steps (7000 is about ten minutes)"
+        default: "7000"
+      gpu:
+        description: "Modal GPU"
+        default: "L4"
+
+permissions:
+  contents: read
+
+jobs:
+  splat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: The walk's twin
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WALK: ${{ inputs.walk }}
+        run: node scan/tools/twin-r2.mjs get "$WALK" twin
+
+      - name: The splat, on Modal's GPU
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+          MODAL_GPU: ${{ inputs.gpu }}
+          STEPS: ${{ inputs.steps }}
+        run: |
+          pip install modal > /dev/null
+          modal run scan/tools/splat_modal.py --src twin --out out --steps "$STEPS" 2>&1 | grep -v -i "key-[0-9]" | tee splat.log
+
+      - name: Kept beside the twin
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WALK: ${{ inputs.walk }}
+        run: node scan/tools/twin-r2.mjs put "$WALK" out/splat.splat out/splat-compare.jpg out/splat.json
+
+      - name: The answer
+        if: always()
+        env:
+          WALK: ${{ inputs.walk }}
+        run: |
+          echo "--------------------------------------------------------------"
+          if [ -f out/splat.json ]; then echo "Splat: $(cat out/splat.json)"; else echo "Splat: none -- see the steps above"; fi
+          echo "See it on the twin page: /twin.html?walk=$WALK"

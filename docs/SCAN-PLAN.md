@@ -559,7 +559,11 @@ depth, planes and the camera picture. A splat is built after a walk from
 many posed pictures (what Niantic's Scaniverse does on the phone, and what
 gsplat or nerfstudio do on a GPU). The twin's pictures, each with its pose,
 are what such a pass needs; running one wants a GPU (Modal is paid: asked
-first). The 8th Wall engine is Niantic's tracking (its SLAM), not its
+first). Workflow "S2. Yard AR splat" (scan-splat.yml, scan/tools/splat_modal.py)
+does it for one walk when the owner says so: gsplat on a Modal GPU, started
+from the phone's depth points and trained against its pictures at the poses
+ARCore gave them (no structure-from-motion step), kept beside the twin and
+shown on its page with the pictures beside the splat's renders. The 8th Wall engine is Niantic's tracking (its SLAM), not its
 splats; its view on the S21 was a broken fisheye in the first walk, and the
 canvas fix for that is untested.
 
