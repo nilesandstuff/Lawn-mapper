@@ -655,3 +655,40 @@ ARCore's 3 m correction (ARCore moves anchors with its map; the water page's
 anchors moved 0.19-0.67 m on ordinary walks, water H66) -- to be measured by
 the as-anchored checks. The P1 offset came from a plane hit 0.5-0.6 m off in
 height at a 2.7 m aim. Dusk may have cost accuracy; no daylight walk yet.
+
+### SCAN-H3. A thin flight: the lock finds nothing to hold; the references hold; the canopy ring is phantom (2026-11-03)
+
+HARD, measured on the owner's walk on a new lawn (not the owner's lot),
+3 min, 168 m walked, WebXR on the S21, three references marked, no check
+points (too bright to read the screen). The twin check (task `twin` of
+workflow "S. Yard AR tool", scan/tools/twin-check.mjs) against the lidar
+the page read:
+
+- The flight is thin: 35,408 points over 15,286 m2, 2.3 a m2.
+- 0 lidar fixes in 108 asks: 103 refused for too little landing (6-18%),
+  5 for a crash (GPS off the edge of the lidar read; fixed, "GPS puts you
+  off the edge of the lidar read for this map").
+- Placed by the references alone, 6% of the phone's 8,673 standing points
+  landed within 30 cm of a solid cell; of the 30% standing under a crown,
+  none. Of what landed, 499 on building walls, 31 on the lidar's own low
+  points, 0 on STRUCTURE walls.
+- Within 6 m of the walk, every building-wall cell had something the phone
+  saw (0 of 33 unseen); the lidar's own low-point cells 84% unseen (36 of
+  43); the STRUCTURE walls 100% unseen (45 of 45). The STRUCTURE columns:
+  142 in 13 patches, 29% touching a tree column, 35% within 2 m of one.
+  These are the blue walls under canopies the owner saw: asked of the shade
+  map (structures.js is the rule's home).
+- Replayed through the match after the changes below, every 5 m from the
+  references' fit: 23 asks, 3 fixes, 1 within 2 m of the references.
+
+What changed on the AR side alone: low points under a crown are not solid;
+with references marked a fix may pass on 40 points landed in number; the
+runner-up must also land about as many points to count as "as good"; the
+coarse pass scores 400 points. None of it rescues this flight.
+
+SPECULATION, not yet measured: on a flight this thin the lock must come
+from what a thin flight still sees well -- roof edges (the phone's points
+2.4 m up hit them 66-75 times an ask late in this walk) and the ground's
+shape -- and from the photo (phase 2b: drive, walk and lawn edges), not
+from shrubs, trunks and fences, which it mostly does not have. Until then
+the references are the walk's fit on such a lawn.
