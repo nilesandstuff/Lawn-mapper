@@ -411,8 +411,9 @@ function drawMini(f) {
   const me = L && f?.pose ? mapOf(L, f.pose.position, odo) : null;
   if (me && !mini.locked) { mini.locked = true; if (mini.mode !== 'manual') mini.mode = 'follow'; }
   if (!me) mini.locked = false;
-  if (mini.mode === 'follow' && me) mini.view = followView(me, w, h);
-  else if (mini.mode !== 'manual' || !mini.view) mini.view = viewToFit(st.points.map((p) => p.map), w, h, 18 * dpr);
+  const fit = viewToFit(st.points.map((p) => p.map), w, h, 18 * dpr);
+  if (mini.mode === 'follow' && me) mini.view = followView(me, w, h, fit);
+  else if (mini.mode !== 'manual' || !mini.view) mini.view = fit;
   const v = mini.view, S = (m) => toScreen(v, m, w, h);
   g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, w, h);
   // the photo, put down by where three of its pixels fall
@@ -660,5 +661,7 @@ function walkCard(s, open) {
 }
 
 wire(); wireMap();
+// for a browser test without a phone (?debug=1): the mini map's pieces, nothing else
+if (new URLSearchParams(location.search).get('debug') === '1') window.__scan = { st, mini, drawMini, arrows };
 main().catch((e) => { $('#status').textContent = `This page could not start: ${e.message}`; });
 if (/iPhone|iPad|iPod/.test(navigator.userAgent)) setTimeout(() => { if (st.has8w) load8thWall(ENGINE_URL).catch(() => {}); }, 1500);

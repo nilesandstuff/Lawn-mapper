@@ -20,8 +20,9 @@ export function viewToFit(pts, w, h, pad = 18) {
   const mpp = Math.max(sx / Math.max(1, w - 2 * pad), sy / Math.max(1, h - 2 * pad));
   return { cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, mpp: clampMpp(mpp) };
 }
-/** A view on the phone, FOLLOW_SPAN_M across the shorter side. */
-export const followView = (me, w, h) => ({ cx: me[0], cy: me[1], mpp: FOLLOW_SPAN_M / Math.min(w, h) });
+/** A view on the phone, FOLLOW_SPAN_M across the shorter side, and always closer than `fit` (the view of every
+ *  point) when one is given, so a lock zooms in on a small yard too. */
+export const followView = (me, w, h, fit = null) => ({ cx: me[0], cy: me[1], mpp: Math.min(FOLLOW_SPAN_M / Math.min(w, h), fit ? fit.mpp * 0.6 : Infinity) });
 
 const clampMpp = (m) => Math.min(MAX_MPP, Math.max(MIN_MPP, m));
 export const toScreen = (v, [x, y], w, h) => [w / 2 + (x - v.cx) / v.mpp, h / 2 - (y - v.cy) / v.mpp];

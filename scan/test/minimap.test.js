@@ -18,6 +18,8 @@ assert.ok(viewToFit([[3, 3]], 200, 200).mpp >= 0.1);
 // the lock: the phone in the middle, FOLLOW_SPAN_M across
 const f = followView([5, 7], 200, 300);
 near(f.mpp * 200, FOLLOW_SPAN_M, 1e-9, 'span'); assert.deepEqual(toScreen(f, [5, 7], 200, 300), [100, 150]);
+// on a small yard, the lock still zooms in
+assert.ok(followView([0, 0], 200, 200, viewToFit([[0, 0], [12, 8]], 200, 200)).mpp < viewToFit([[0, 0], [12, 8]], 200, 200).mpp);
 // zoom about a finger keeps that spot under it; a drag moves the map with the finger
 const z = zoomAt(v, 2, [50, 60], 200, 200);
 near(z.mpp, v.mpp / 2, 1e-12, 'twice as close');
