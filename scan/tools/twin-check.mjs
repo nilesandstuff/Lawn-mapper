@@ -23,7 +23,7 @@ import { nodeIo } from '../../water/lib/node-io.js';
 import { toLocal } from '../lib/frames.js';
 import { ringsOf } from '../lib/photo.js';
 import { loadLidar } from '../lib/lidar-load.js';
-import { buildingsOnGrid, register, MIN_LANDED } from '../lib/lidar.js';
+import { buildingsOnGrid, register, MIN_LANDED, placementCost } from '../lib/lidar.js';
 import { disagreement } from '../lib/locate.js';
 import { readCloud, placer, placeCloud } from '../lib/twin.js';
 import { surfaceOf, lawnField, tally } from '../lib/surface.js';
@@ -266,6 +266,8 @@ async function main() {
     const S = thinA(stand, 600), Gr = thinA(ground, 300), Hi = thinA(high, 300), Su = thinA(surface, 400);
     if (S.length + Hi.length < 30) continue;
     rep.asked++;
+    // how the colours agree with the traced lawn where the references put the phone
+    if (G.lawnSd && Su.length) { const pc = placementCost(G, [], [], T0, { surface: Su, detail: true }).surface; rep.surf = rep.surf || { n: 0, off: 0, edge: 0, landed: 0 }; for (const k of Object.keys(rep.surf)) rep.surf[k] += pc[k]; }
     const phone = (() => { let best = null; for (const p of byOdo) if (p.odo <= odo) best = p; return best ? [best.x, -best.z] : [0, 0]; })();
     for (const [mode, opts] of VARIANTS) {
       const { useSurface, highX, ...o } = opts;
@@ -284,6 +286,7 @@ async function main() {
   console.log(`  + the lawn's edges (grass and paving against the traced lawn): ${line('lawnEdge')}`);
   console.log(`  + the lawn's edges and the roof edges counted twice: ${line('lawnEdgeRoofs')}`);
   console.log(`  refused with the lawn's edges: ${JSON.stringify(rep.why)}`);
+  if (rep.surf) console.log(`  where the references put it: ${rep.surf.n.toLocaleString()} grass and paving points, ${pct(rep.surf.off, rep.surf.n)} on the wrong side of the traced lawn's edge by more than 35 cm; ${rep.surf.edge.toLocaleString()} within ${1.5} m of the edge, ${pct(rep.surf.landed, rep.surf.edge)} of those on the right side.`);
 }
 
 // an error can carry a URL with a place in it: long decimals are blanked before it is printed (the repository is public)

@@ -275,6 +275,7 @@ export const WALL_CAP = 0.15;          // the charge per point for a wall at the
 export const WALL_WORTH = 20;          // ...for a wall of up to this many points; a longer wall pays this many points'
                                        // worth in all, so a long porch wall seen well cannot outvote the trees
 export const PIECE_GAP = 0.3;          // m: points closer than this, in the phone's frame, are one piece
+export const EDGE_NEAR = 1.5;          // m from the lawn's edge: a surface point near enough to say where it is
 export const SURF_W = 1;              // the lawn-edge term's weight against the standing points'
 export const HIGH_W = 0.5;             // what a high point counts for, against a standing one
 export const RAY_HEADINGS = 8;         // headings (over half a turn) at which buildGrids measures inset across a wall
@@ -371,16 +372,19 @@ export function placementCost(g, stand, ground, T, { trunc = 1, groundW = 0.5, g
   }
   /* THE LAWN'S EDGE (scan/lib/surface.js, SCAN-H3's follow-up): ground points the camera saw as grass or paving,
      against the lawn the owner traced (g.lawnSd, set by the page from the map's shapes) */
-  let ssum = 0, sn = 0, sBad = 0;
+  // near the edge (within EDGE_NEAR) a point says where the edge is, and one that agrees counts as landed with the
+  // standing points' (half each); deep in the lawn or out on the drive it only says "not here"
+  let ssum = 0, sn = 0, sBad = 0, sEdge = 0, sLanded = 0;
   if (g.lawnSd && surface.length) for (const [u, v, kind] of surface) {
     const sd = sample(g, g.lawnSd, c * u - s * v + T.tx, s * u + c * v + T.ty);
     if (!Number.isFinite(sd)) continue;
     const x = surfaceCost(kind, sd); ssum += x; sn++; if (x > 0.04) sBad++;
+    if (Math.abs(sd) < EDGE_NEAR) { sEdge++; if (x < 0.01) sLanded++; }
   }
   const cost = (n ? sum / n : 0) + (gn ? groundW * gsum / gn : 0) + (sn ? surfW * ssum / sn : 0);
   const landedOf = n - (g.distRoof ? HIGH_W * (high.length - hHits) : 0);
-  const out = { cost, hits: landedOf > 0 ? hits / landedOf : 0, landed: Math.round(hits), tz };
-  if (detail) { out.walls = walls; out.high = { n: g.distRoof ? high.length : 0, hits: hHits }; out.surface = { n: sn, off: sBad }; }
+  const out = { cost, hits: landedOf > 0 ? hits / landedOf : 0, landed: Math.round(hits + 0.5 * sLanded), tz };
+  if (detail) { out.walls = walls; out.high = { n: g.distRoof ? high.length : 0, hits: hHits }; out.surface = { n: sn, off: sBad, edge: sEdge, landed: sLanded }; }
   return out;
 }
 
