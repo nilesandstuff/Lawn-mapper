@@ -43,10 +43,16 @@ export async function loadLidar({ origin, box, lidar, fetchLidar, lawn = [] }, {
     for (let j = 0; j < solid.length; j++) solid[j] = s.kind[j] === S.BUILDING || (S.STRUCTURE != null && s.kind[j] === S.STRUCTURE) ? 1 : 0;
     buildings = buildingsOnGrid(solid, sgrid, box, 0.25, [ox, oy], k, 1);
     if (typeof S.wallsOf === 'function') {
-      const wl = S.wallsOf(solid, sgrid.w, sgrid.h, { cellM: 1, fineM: 0.25 });
+      /* 2 ft in from the edge only for a BUILDING, whose roof overhangs its walls. A STRUCTURE -- a stone wall, a
+         shed, bins -- is drawn and matched at its own edge (the owner's walk at work, 2026-11-03: the phone saw
+         nothing at 60% of the STRUCTURE wall cells drawn 2 ft inside a stone wall; SCAN-H6). The AR's choice of which
+         walls to match; the shared rule's kinds are unchanged. */
+      const bOnly = Uint8Array.from(s.kind, (v) => (v === S.BUILDING ? 1 : 0));
+      const wl = S.wallsOf(bOnly, sgrid.w, sgrid.h, { cellM: 1, fineM: 0.25 });
       footprint = buildingsOnGrid(wl.walls, { x0: sgrid.x0, y1: sgrid.y1, cell: sgrid.cell * wl.cellM, w: wl.w, h: wl.h }, box, 0.25, [ox, oy], k, 1);
+      if (S.STRUCTURE != null) { const st = buildingsOnGrid(s.kind, sgrid, box, 0.25, [ox, oy], k, S.STRUCTURE); for (let j = 0; j < footprint.length; j++) if (st[j]) footprint[j] = 1; }
     }
-    ruleName = `the shared rule (public/shade/structures.js${footprint ? ', walls 2 ft in' : ''})`; counts = s.counts;
+    ruleName = `the shared rule (public/shade/structures.js${footprint ? ', house walls 2 ft in, other structures at their edge' : ''})`; counts = s.counts;
     shade = { kind: s.kind, sgrid, S, stats: s.stats };
     // under a crown: the AR's own choice not to match low points there (lidar.js buildGrids opts.under)
     under = buildingsOnGrid(Uint8Array.from(s.kind, (v) => (v === S.TREE || v === S.SOLID_TREE ? 1 : 0)), sgrid, box, 0.25, [ox, oy], k, 1);

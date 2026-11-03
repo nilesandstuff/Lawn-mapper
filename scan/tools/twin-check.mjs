@@ -289,7 +289,7 @@ async function main() {
   const byOdo = recs.slice().sort((a, b) => a.odo - b.odo);
   const end = byOdo.length ? byOdo[byOdo.length - 1].odo : 0;
   const VARIANTS = [['strict', {}], ['lenient', { minLanded: MIN_LANDED }], ['lawnEdge', { minLanded: MIN_LANDED, useSurface: true }], ['lawnEdgeRoofs', { minLanded: MIN_LANDED, useSurface: true, highX: 2 }],
-    ['lawnEdgeW3', { minLanded: MIN_LANDED, useSurface: true, surfW: 3 }], ['lawnEdgeW8', { minLanded: MIN_LANDED, useSurface: true, surfW: 8 }], ['lawnEdgeW8Roofs', { minLanded: MIN_LANDED, useSurface: true, surfW: 8, highX: 2 }]];
+    ['paveOnly', { minLanded: MIN_LANDED, useSurface: true, grassCap: 0 }], ['lawnEdgeW3', { minLanded: MIN_LANDED, useSurface: true, surfW: 3 }], ['lawnEdgeW8', { minLanded: MIN_LANDED, useSurface: true, surfW: 8 }], ['lawnEdgeW8Roofs', { minLanded: MIN_LANDED, useSurface: true, surfW: 8, highX: 2 }]];
   const rep = { asked: 0, why: {} };
   for (const [name] of VARIANTS) rep[name] = { fixes: 0, agree: 0, offM: [] };
   let lo = 0;
@@ -308,11 +308,11 @@ async function main() {
     if (S.length + Hi.length < 30) continue;
     rep.asked++;
     // how the colours agree with the traced lawn where the references put the phone
-    if (G.lawnSd && Su.length) { const pc = placementCost(G, [], [], T0, { surface: Su, detail: true }).surface; rep.surf = rep.surf || { n: 0, off: 0, edge: 0, landed: 0 }; for (const k of Object.keys(rep.surf)) rep.surf[k] += pc[k]; }
+    if (G.lawnSd && Su.length) { const pc = placementCost(G, [], [], T0, { surface: Su, detail: true }).surface; rep.surf = rep.surf || { n: 0, off: 0, offGrass: 0, edge: 0, landed: 0 }; for (const k of Object.keys(rep.surf)) rep.surf[k] += pc[k]; }
     const phone = (() => { let best = null; for (const p of byOdo) if (p.odo <= odo) best = p; return best ? [best.x, -best.z] : [0, 0]; })();
     for (const [mode, opts] of VARIANTS) {
-      const { useSurface, highX, surfW, ...o } = opts;
-      G.surfW = surfW;
+      const { useSurface, highX, surfW, grassCap, ...o } = opts;
+      G.surfW = surfW; G.grassCap = grassCap;
       const hi = highX ? Array.from({ length: highX }, () => Hi).flat() : Hi;
       const f = register(G, S, Gr, { T: T0 }, { searchM: 6, searchDeg: 25, high: hi, surface: useSurface ? Su : [], ...o });
       if (!f.ok) { if (mode === 'lawnEdge') { const w = `${f.why}`.replace(/\d+/g, '#'); rep.why[w] = (rep.why[w] || 0) + 1; } continue; }
@@ -332,12 +332,13 @@ async function main() {
   console.log(`  with ${MIN_LANDED} points landed in number: ${line('lenient')}`);
   console.log(`  + the lawn's edges (grass and paving against the traced lawn): ${line('lawnEdge')}`);
   console.log(`  + the lawn's edges and the roof edges counted twice: ${line('lawnEdgeRoofs')}`);
+  console.log(`  the lawn's edges, paving only (grass off the traced lawn costs nothing): ${line('paveOnly')}`);
   console.log(`  the lawn's edges weighed 3 times: ${line('lawnEdgeW3')}`);
   console.log(`  the lawn's edges weighed 8 times: ${line('lawnEdgeW8')}`);
   console.log(`  the lawn's edges weighed 8 times, roof edges twice: ${line('lawnEdgeW8Roofs')}`);
   console.log(`  refused with the lawn's edges: ${JSON.stringify(rep.why)}`);
   for (const r of rep.rows || []) console.log(`  fix at ${r.atM} m walked: ${r.offM} m and ${r.offDeg} deg from the references; edge points on the right side ${r.fix.edgeOk}% at the fix, ${r.refs.edgeOk}% at the references; points landed ${r.fix.landed} against ${r.refs.landed}`);
-  if (rep.surf) console.log(`  where the references put it: ${rep.surf.n.toLocaleString()} grass and paving points, ${pct(rep.surf.off, rep.surf.n)} on the wrong side of the traced lawn's edge by more than 35 cm; ${rep.surf.edge.toLocaleString()} within ${1.5} m of the edge, ${pct(rep.surf.landed, rep.surf.edge)} of those on the right side.`);
+  if (rep.surf) console.log(`  where the references put it: ${rep.surf.n.toLocaleString()} grass and paving points, ${pct(rep.surf.off, rep.surf.n)} on the wrong side of the traced lawn's edge by more than 35 cm (grass outside it ${pct(rep.surf.offGrass, rep.surf.off)} of those, paving inside it the rest); ${rep.surf.edge.toLocaleString()} within ${1.5} m of the edge, ${pct(rep.surf.landed, rep.surf.edge)} of those on the right side.`);
 }
 
 // an error can carry a URL with a place in it: long decimals are blanked before it is printed (the repository is public)

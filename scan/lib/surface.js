@@ -78,9 +78,9 @@ function chamfer(occ, W, H, cell, cap) {
 
 /** What a surface point costs at signed distance sd (m, + inside the lawn): paving inside, grass outside. */
 export const SURF_TOL = 0.15, PAVE_CAP = 1, GRASS_CAP = 0.5;
-export function surfaceCost(kind, sd) {
+export function surfaceCost(kind, sd, grassCap = GRASS_CAP) {
   if (!Number.isFinite(sd)) return 0;
   if (kind === 'pave') { const x = Math.min(PAVE_CAP, Math.max(0, sd - SURF_TOL)); return x * x; }
-  if (kind === 'grass') { const x = Math.min(GRASS_CAP, Math.max(0, -sd - SURF_TOL)); return x * x; }
+  if (kind === 'grass') { const x = Math.min(grassCap, Math.max(0, -sd - SURF_TOL)); return x * x; }
   return 0;
 }

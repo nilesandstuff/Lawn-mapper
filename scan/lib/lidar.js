@@ -394,17 +394,17 @@ export function placementCost(g, stand, ground, T, { trunc = 1, groundW = 0.5, g
      against the lawn the owner traced (g.lawnSd, set by the page from the map's shapes) */
   // near the edge (within EDGE_NEAR) a point says where the edge is, and one that agrees counts as landed with the
   // standing points' (half each); deep in the lawn or out on the drive it only says "not here"
-  let ssum = 0, sn = 0, sBad = 0, sEdge = 0, sLanded = 0;
+  let ssum = 0, sn = 0, sBad = 0, sBadGrass = 0, sEdge = 0, sLanded = 0;
   if (g.lawnSd && surface.length) for (const [u, v, kind] of surface) {
     const sd = sample(g, g.lawnSd, c * u - s * v + T.tx, s * u + c * v + T.ty);
     if (!Number.isFinite(sd)) continue;
-    const x = surfaceCost(kind, sd); ssum += x; sn++; if (x > 0.04) sBad++;
+    const x = surfaceCost(kind, sd, g.grassCap); ssum += x; sn++; if (x > 0.04) { sBad++; if (kind === 'grass') sBadGrass++; }
     if (Math.abs(sd) < EDGE_NEAR) { sEdge++; if (x < 0.01) sLanded++; }
   }
   const cost = (n ? sum / n : 0) + (gn ? groundW * gsum / gn : 0) + (sn ? surfW * ssum / sn : 0);
   const landedOf = n - (g.distRoof ? HIGH_W * (high.length - hHits) : 0);
   const out = { cost, hits: landedOf > 0 ? hits / landedOf : 0, landed: Math.round(hits + 0.5 * sLanded), tz };
-  if (detail) { out.walls = walls; out.high = { n: g.distRoof ? high.length : 0, hits: hHits }; out.surface = { n: sn, off: sBad, edge: sEdge, landed: sLanded }; }
+  if (detail) { out.walls = walls; out.high = { n: g.distRoof ? high.length : 0, hits: hHits }; out.surface = { n: sn, off: sBad, offGrass: sBadGrass, edge: sEdge, landed: sLanded }; }
   return out;
 }
 
