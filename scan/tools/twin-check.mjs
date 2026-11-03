@@ -278,6 +278,11 @@ async function main() {
       if (!f.ok) { if (mode === 'lawnEdge') { const w = `${f.why}`.replace(/\d+/g, '#'); rep.why[w] = (rep.why[w] || 0) + 1; } continue; }
       rep[mode].fixes++;
       const d = disagreement(f.T, T0, phone);
+      // who is right, the fix or the references? how each lines the lawn's edge and the walls up
+      if (mode === 'lawnEdgeW8') {
+        const at = (T) => { const pc = placementCost(G, S, Gr, T, { high: Hi, surface: Su, detail: true }); return { edgeOk: pc.surface.edge ? Math.round((100 * pc.surface.landed) / pc.surface.edge) : null, landed: pc.landed }; };
+        rep.rows = rep.rows || []; rep.rows.push({ atM: Math.round(odo), offM: +d.m.toFixed(1), offDeg: +d.deg.toFixed(0), fix: at(f.T), refs: at(T0) });
+      }
       if (d.m <= 2 && d.deg <= 10) { rep[mode].agree++; rep[mode].offM.push(d.m); }
     }
   }
@@ -291,6 +296,7 @@ async function main() {
   console.log(`  the lawn's edges weighed 8 times: ${line('lawnEdgeW8')}`);
   console.log(`  the lawn's edges weighed 8 times, roof edges twice: ${line('lawnEdgeW8Roofs')}`);
   console.log(`  refused with the lawn's edges: ${JSON.stringify(rep.why)}`);
+  for (const r of rep.rows || []) console.log(`  fix at ${r.atM} m walked: ${r.offM} m and ${r.offDeg} deg from the references; edge points on the right side ${r.fix.edgeOk}% at the fix, ${r.refs.edgeOk}% at the references; points landed ${r.fix.landed} against ${r.refs.landed}`);
   if (rep.surf) console.log(`  where the references put it: ${rep.surf.n.toLocaleString()} grass and paving points, ${pct(rep.surf.off, rep.surf.n)} on the wrong side of the traced lawn's edge by more than 35 cm; ${rep.surf.edge.toLocaleString()} within ${1.5} m of the edge, ${pct(rep.surf.landed, rep.surf.edge)} of those on the right side.`);
 }
 
