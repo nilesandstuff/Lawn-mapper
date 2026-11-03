@@ -28,6 +28,26 @@ import { readCloud, placer, placeCloud } from '../lib/twin.js';
 
 const pct = (a, b) => (b ? `${Math.round((100 * a) / b)}%` : '-');
 
+/** The saved map with its tools' parts: from the database when the runner has the Cloudflare token (the site's edge
+ *  answers GitHub's runners 403, as tools/draw-map.mjs found), else through the site's read-only route. */
+async function readMap(id, site, key) {
+  if (process.env.CLOUDFLARE_API_TOKEN) {
+    const { query } = await import('../../tools/corpus-db.js');
+    const rows = query(`SELECT m.key, m.lng, m.lat, m.payload, m.user_id FROM maps m JOIN users u ON u.id = m.user_id WHERE u.role = 'admin' AND m.key = '${id}'`);
+    if (!rows.length) throw new Error('no such map among the owner\'s');
+    let payload = {}; try { payload = JSON.parse(rows[0].payload) || {}; } catch { /* empty */ }
+    const tools = {};
+    for (const t of query(`SELECT tool, data FROM map_tools WHERE owner_kind = 'user' AND owner_id = '${rows[0].user_id}' AND map_key = '${id}'`)) {
+      try { tools[t.tool] = { data: JSON.parse(t.data) }; } catch { /* unreadable part */ }
+    }
+    return { ...payload, lng: payload.lng ?? rows[0].lng, lat: payload.lat ?? rows[0].lat, tools };
+  }
+  if (!site || !key) throw new Error('the map needs the Cloudflare token, or SITE and MAPS_READ_TOKEN');
+  const r = await fetch(`${site}/api/admin/saved-maps/one?id=${encodeURIComponent(id)}`, { headers: { Authorization: `Bearer ${key}` } });
+  if (!r.ok) throw new Error(`the map could not be read (${r.status})`);
+  return (await r.json()).map;
+}
+
 async function main() {
   const dir = process.argv[2] || 'twin';
   const site = (process.env.SITE || '').replace(/\/$/, ''), key = process.env.MAPS_READ_TOKEN;
@@ -36,11 +56,8 @@ async function main() {
   const recs = [];
   for (const f of readdirSync(dir).filter((x) => /^cloud-\d+\.bin$/.test(x)).sort()) { const b = readFileSync(join(dir, f)); recs.push(...readCloud(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength))); }
   console.log(`Twin: ${recs.length.toLocaleString()} phone points; ${live.fixes.length} lidar fixes, ${live.marks.filter((m) => m.kind === 'ref').length} reference marks${live.ended ? '' : ' (cut short)'}.`);
-  if (!meta.map) throw new Error('the twin names no map');
-  if (!site || !key) throw new Error('SITE and MAPS_READ_TOKEN are needed to read the map');
-  const r = await fetch(`${site}/api/admin/saved-maps/one?id=${encodeURIComponent(meta.map)}`, { headers: { Authorization: `Bearer ${key}` } });
-  if (!r.ok) throw new Error(`the map could not be read (${r.status})`);
-  const m = (await r.json()).map;
+  if (!meta.map || !/^[\w-]{1,80}$/.test(meta.map)) throw new Error('the twin names no map');
+  const m = await readMap(meta.map, site, key);
   const origin = [m.lng, m.lat];
   const pts = [...ringsOf(m.shapes || []), ...ringsOf(m.parcel ? [m.parcel] : [])].flat().map((p) => toLocal(origin, p));
   const es = pts.map((p) => p[0]), ns = pts.map((p) => p[1]);
