@@ -692,3 +692,13 @@ from what a thin flight still sees well -- roof edges (the phone's points
 shape -- and from the photo (phase 2b: drive, walk and lawn edges), not
 from shrubs, trunks and fences, which it mostly does not have. Until then
 the references are the walk's fit on such a lawn.
+
+The first splat (workflow S2, the same walk, the owner's yes): 144 pictures
+of 640x1422, 163,049 depth points to start from, 387,818 splats after 7,000
+steps, 135 s of training on an L4 (the first run spent most of half an hour
+building the GPU image, cached since). It matches its own pictures to 16.8
+dB PSNR: rough (20 is rough, 25 good). The pictures are the right way up
+(a short trial each way: 0.286 against 0.296 loss, a thin margin).
+SPECULATION on why it is rough: ARCore's poses drift a little against the
+pictures, the camera's exposure changes in bright sun, and 7,000 steps is a
+short run.
