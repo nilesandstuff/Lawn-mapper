@@ -23,7 +23,8 @@ import { nodeIo } from '../../water/lib/node-io.js';
 import { toLocal } from '../lib/frames.js';
 import { ringsOf } from '../lib/photo.js';
 import { loadLidar } from '../lib/lidar-load.js';
-import { buildingsOnGrid } from '../lib/lidar.js';
+import { buildingsOnGrid, register, MIN_LANDED } from '../lib/lidar.js';
+import { disagreement } from '../lib/locate.js';
 import { readCloud, placer, placeCloud } from '../lib/twin.js';
 
 const pct = (a, b) => (b ? `${Math.round((100 * a) / b)}%` : '-');
@@ -160,6 +161,39 @@ async function main() {
     console.log(`Placed by ${mode === 'refs' ? 'the references alone' : 'the walk\'s fixes, else its references'}: ${P.placed.toLocaleString()} points (${P.unplaced.toLocaleString()} not placed). Standing points ${st.toLocaleString()}: ${pct(stHit, st)} within 30 cm of a solid cell (on the lidar's own points ${byKind[1]}, on building walls ${byKind[2]}, on STRUCTURE walls ${byKind[3]}); ${pct(stOverCrown, st)} of them stand under a crown, and of those ${pct(stOverCrownHit, stOverCrown)} land. Ground points ${gr.toLocaleString()}.`);
     console.log(`  Solid cells within 6 m of the walk that the phone saw nothing at (phantoms): the lidar's own ${ph[1]} of ${tot[1]} (${pct(ph[1], tot[1])}), building walls ${ph[2]} of ${tot[2]} (${pct(ph[2], tot[2])}), STRUCTURE walls ${ph[3]} of ${tot[3]} (${pct(ph[3], tot[3])}).`);
   }
+
+  // THE WALK REPLAYED THROUGH TODAY'S MATCH: every 5 m of the walk, the last 25 ft of what the phone saw (classed by
+  // its height over the ground the page took then), searched from the references' fit as the page would, and judged
+  // the way locate.js judges it (2 m and 10 degrees from the references)
+  const refsAt = placer(live, 'refs');
+  const byOdo = recs.slice().sort((a, b) => a.odo - b.odo);
+  const end = byOdo.length ? byOdo[byOdo.length - 1].odo : 0;
+  const rep = { asked: 0, strict: 0, lenient: 0, agreeStrict: 0, agreeLenient: 0, offM: [], why: {} };
+  let lo = 0;
+  for (let odo = 8; odo <= end; odo += 5) {
+    const T0 = refsAt(odo); if (!T0) continue;
+    while (lo < byOdo.length && byOdo[lo].odo < odo - 7.6) lo++;
+    const stand = [], ground = [], high = [], vox = new Set();
+    for (let i = lo; i < byOdo.length && byOdo[i].odo <= odo; i++) {
+      const p = byOdo[i], h = p.y - p.ground, kk = `${Math.floor(p.x / 0.1)},${Math.floor(p.z / 0.1)},${h > 0.3 ? 1 : 0}`;
+      if (vox.has(kk)) continue; vox.add(kk);
+      if (Math.abs(h) < 0.2) ground.push([p.x, -p.z, p.y]); else if (h > 0.4 && h < 2.4) stand.push([p.x, -p.z]); else if (h >= 2.4 && h < 12) high.push([p.x, -p.z]);
+    }
+    const thinA = (a, m) => (a.length <= m ? a : a.filter((_, i) => i % Math.ceil(a.length / m) === 0));
+    const S = thinA(stand, 600), Gr = thinA(ground, 300), Hi = thinA(high, 300);
+    if (S.length + Hi.length < 30) continue;
+    rep.asked++;
+    const phone = (() => { let best = null; for (const p of byOdo) if (p.odo <= odo) best = p; return best ? [best.x, -best.z] : [0, 0]; })();
+    for (const [mode, opts] of [['strict', {}], ['lenient', { minLanded: MIN_LANDED }]]) {
+      const f = register(G, S, Gr, { T: T0 }, { searchM: 4, searchDeg: 15, high: Hi, ...opts });
+      if (!f.ok) { if (mode === 'lenient') { const w = f.why.replace(/\d+/g, '#'); rep.why[w] = (rep.why[w] || 0) + 1; } continue; }
+      rep[mode]++;
+      const d = disagreement(f.T, T0, phone);
+      if (d.m <= 2 && d.deg <= 10) { rep[mode === 'strict' ? 'agreeStrict' : 'agreeLenient']++; if (mode === 'lenient') rep.offM.push(d.m); }
+    }
+  }
+  rep.offM.sort((a, b) => a - b);
+  console.log(`Replayed through today's match, every 5 m: ${rep.asked} asks. At the 50% share: ${rep.strict} fixes, ${rep.agreeStrict} within 2 m of the references. With the references marked (${MIN_LANDED} points landed in number): ${rep.lenient} fixes, ${rep.agreeLenient} within 2 m of them${rep.offM.length ? `, half within ${rep.offM[rep.offM.length >> 1].toFixed(2)} m` : ''}. Refused: ${JSON.stringify(rep.why)}.`);
 }
 
 // an error can carry a URL with a place in it: long decimals are blanked before it is printed (the repository is public)

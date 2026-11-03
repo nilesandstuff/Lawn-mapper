@@ -75,6 +75,26 @@ assert.ok(G.occTop && G.bld, 'the tops and the roof mask come back for the overl
   const fix = register(G, stand, gr, { at: [500, 500], phone: toAR([0, -1]), radiusM: 6 });
   assert.ok(!fix.ok && /off the edge of the lidar/.test(fix.why), fix.why);
 }
+// SCAN-H3: what the phone sees is mostly not in a thin lidar. The same walk with three times as many points that land
+// nowhere (shrubs the flight missed): the share falls under 50% and it is refused, unless enough land in number
+// (minLanded, offered when references are marked to judge the fix)
+{
+  const path = [[-6, -1], [-2, -1], [2, -1], [6, -1], [8, -2]];
+  const { stand, ground: gr } = seen(path);
+  const junk = []; for (let i = 0; i < stand.length * 3; i++) junk.push(toAR([-20 + rnd() * 40, -25 + rnd() * 8]));
+  const prior = { at: [path[2][0] + 1, path[2][1] - 1], phone: toAR(path[2]), radiusM: 4 };
+  const strict = register(G, [...stand, ...junk], gr, prior);
+  assert.ok(!strict.ok && /lands on the lidar/.test(strict.why), `refused on share: ${strict.why}`);
+  const lenient = register(G, [...stand, ...junk], gr, prior, { minLanded: 40 });
+  assert.ok(lenient.ok && lenient.landed >= 40 && offAt(lenient.T, [0, 0]) < 0.3, `passed on number: ${lenient.why} ${lenient.landed}`);
+}
+// opts.under: low points under a crown are not solid
+{
+  const under = new Uint8Array(G.W * G.H).fill(1);
+  const Gu = buildGrids(lot(), [-30, -30, 30, 30], { under });
+  assert.ok(sample(Gu, Gu.dist, 0, -12) > 0.5, 'the fence, all under a "crown" here, is gone');
+  assert.ok(sample(Gu, Gu.dist, -12, 8) < 0.3, 'the house walls stay');
+}
 // a straight fence alone: two places fit, refused
 {
   const { stand, ground: gr } = seen([[-10, -9], [-6, -9], [-2, -9]], { reach: 4 });

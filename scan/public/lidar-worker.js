@@ -16,7 +16,7 @@
 import { workerIo } from '/lib/browser-io.js';
 import { pointsIn, toMerc } from '/lib/ept.js';
 import { nad83Correction } from '/lib/datum.js';
-import { register } from '/lib/lidar.js';
+import { register, MIN_LANDED } from '/lib/lidar.js';
 import { loadLidar } from '/lib/lidar-load.js';
 // THE SHARED TREE-VERSUS-BUILDING RULE (CLAUDE.md, "One way to read lidar"): the shade map's own module, copied into
 // this site unchanged at deploy time (scan/tools/prepare.mjs). Loaded lazily, so a failure falls back to the old rule.
@@ -26,9 +26,9 @@ let G = null;
 
 self.onmessage = async ({ data }) => {
   if (data.register) {
-    const { id, stand, ground, prior, s, high = [] } = data.register;
+    const { id, stand, ground, prior, s, high = [], refs = false } = data.register;
     let fix;
-    try { fix = G ? register(G, stand, ground, prior, { s, high, ...(prior?.T ? { searchM: prior.searchM ?? 4, searchDeg: prior.searchDeg ?? 15 } : {}) }) : { ok: false, why: 'the lidar is not read yet' }; } catch (e) { fix = { ok: false, why: e.message }; }
+    try { fix = G ? register(G, stand, ground, prior, { s, high, ...(refs ? { minLanded: MIN_LANDED } : {}), ...(prior?.T ? { searchM: prior.searchM ?? 4, searchDeg: prior.searchDeg ?? 15 } : {}) }) : { ok: false, why: 'the lidar is not read yet' }; } catch (e) { fix = { ok: false, why: e.message }; }
     self.postMessage({ fix, id });
     return;
   }

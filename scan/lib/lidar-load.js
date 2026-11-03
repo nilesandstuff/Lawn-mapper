@@ -33,7 +33,7 @@ export async function loadLidar({ origin, box, lidar, fetchLidar }, { pointsIn, 
   for (let i = 0; i < cols.n; i++) { e[i] = (cols.x[i] - ox) * k + east; n[i] = (cols.y[i] - oy) * k + north; }
   // the buildings by the shared rule, on the shade map's 1 m grid over the same (shifted) ground (CLAUDE.md "One way
   // to read lidar"): BUILDING and STRUCTURE solid, and the walls 2 ft in from a roof's edge (wallsOf)
-  let buildings = null, footprint = null, ruleName = 'the AR copy of the water rule (the shared module did not load)', counts = null, shade = null;
+  let buildings = null, footprint = null, under = null, ruleName = 'the AR copy of the water rule (the shared module did not load)', counts = null, shade = null;
   try {
     const [S, { gridOver }] = await rule();
     const sgrid = gridOver(bbox, 1, lat);
@@ -47,7 +47,9 @@ export async function loadLidar({ origin, box, lidar, fetchLidar }, { pointsIn, 
     }
     ruleName = `the shared rule (public/shade/structures.js${footprint ? ', walls 2 ft in' : ''})`; counts = s.counts;
     shade = { kind: s.kind, sgrid, S };
+    // under a crown: the AR's own choice not to match low points there (lidar.js buildGrids opts.under)
+    under = buildingsOnGrid(Uint8Array.from(s.kind, (v) => (v === S.TREE || v === S.SOLID_TREE ? 1 : 0)), sgrid, box, 0.25, [ox, oy], k, 1);
   } catch (err) { ruleName += `: ${err.message}`; }
-  const G = buildGrids({ e, n, z: cols.z, cls: cols.cls, nret: cols.nret }, box, { buildings, footprint });
+  const G = buildGrids({ e, n, z: cols.z, cls: cols.cls, nret: cols.nret }, box, { buildings, footprint, under });
   return { G, cols, e, n, k, ox, oy, cloud, how, rule: ruleName, counts, shade, buildings, footprint };
 }

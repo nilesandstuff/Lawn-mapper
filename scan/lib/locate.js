@@ -144,7 +144,8 @@ export function nextAsk(L, odo, now = Date.now(), pos = null) {
   const id = L.nextId++;
   L.pending = { id, odo, from: prior.from, at: now, phone: pos ? level(pos) : null, refs: refFit(L, odo), stand: stand.length, ground: ground.length, high: high.length };
   L.lastAsk = now; L.asks++;
-  return { id, stand: thin(stand, 600), ground: thin(ground, 300), high: thin(high, 300), prior, s: L.scale };
+  // with the references marked, they judge the fix (answer), so the match may pass on points landed in number
+  return { id, stand: thin(stand, 600), ground: thin(ground, 300), high: thin(high, 300), prior, s: L.scale, refs: !!L.pending.refs };
 }
 export const thin = (a, m) => (a.length <= m ? a : a.filter((_, i) => i % Math.ceil(a.length / m) === 0));
 
@@ -162,7 +163,7 @@ export function answer(L, fix, id, now = Date.now()) {
   L.pending = null;
   // the log: one line per ask, so a wrong lock can be traced afterwards (SCAN-H2)
   const r2 = (v) => (v == null || !Number.isFinite(v) ? null : +Number(v).toFixed(2));
-  const entry = { odo: r2(odo), ms: now - at, from: from[0] === 't' ? from.split(' ').pop() : from, stand, ground, high, walls: fix?.walls || null, roofHits: fix?.high ? fix.high.hits : null, ok: !!fix?.ok, hits: r2(fix?.hits), cost: fix?.cost != null ? +fix.cost.toFixed(4) : null, runnerUp: fix?.runnerUp ? { ratio: r2(fix.runnerUp.cost / (fix.cost || 1e-9)), apartM: r2(fix.runnerUp.apartM), apartDeg: r2(fix.runnerUp.apartDeg) } : null, tz: r2(fix?.tz), why: null, agreeM: null, agreeDeg: null, kept: false };
+  const entry = { odo: r2(odo), ms: now - at, from: from[0] === 't' ? from.split(' ').pop() : from, stand, ground, high, walls: fix?.walls || null, roofHits: fix?.high ? fix.high.hits : null, ok: !!fix?.ok, hits: r2(fix?.hits), landed: fix?.landed ?? null, cost: fix?.cost != null ? +fix.cost.toFixed(4) : null, runnerUp: fix?.runnerUp ? { ratio: r2(fix.runnerUp.cost / (fix.cost || 1e-9)), apartM: r2(fix.runnerUp.apartM), apartDeg: r2(fix.runnerUp.apartDeg) } : null, tz: r2(fix?.tz), why: null, agreeM: null, agreeDeg: null, kept: false };
   L.log.push(entry); if (L.log.length > LOG_MAX) L.log.shift();
   const refuse = (why) => { entry.why = why; L.last = { ok: false, why, hits: fix?.hits ?? null, from, odo }; const k = why.replace(/\d+(\.\d+)?/g, '#'); L.refused[k] = (L.refused[k] || 0) + 1; return null; };
   if (!fix?.ok) return refuse(fix?.why || 'unknown');

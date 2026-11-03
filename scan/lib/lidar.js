@@ -52,7 +52,7 @@ export function buildingsOnGrid(kind, sgrid, box, cell, origin3857, k, BUILDING 
  * roof rule (roofMask, the water map's, kept only as the fallback when the shared module cannot be loaded).
  * opts.footprint: the shared rule's inside-of-the-walls on this grid; when given it replaces the pull-in by `eave`.
  */
-export function buildGrids(pts, box, { cell = 0.25, band = [0.25, 2.5], cap = 5, eave = 0.5, buildings = null, footprint = null } = {}) {
+export function buildGrids(pts, box, { cell = 0.25, band = [0.25, 2.5], cap = 5, eave = 0.5, buildings = null, footprint = null, under = null } = {}) {
   const W = Math.max(1, Math.ceil((box[2] - box[0]) / cell)), H = Math.max(1, Math.ceil((box[3] - box[1]) / cell));
   const idx = (e, n) => { const c = Math.floor((e - box[0]) / cell), r = Math.floor((box[3] - n) / cell); return c >= 0 && c < W && r >= 0 && r < H ? r * W + c : -1; };
   const dem = new Float32Array(W * H).fill(NaN);
@@ -68,6 +68,10 @@ export function buildGrids(pts, box, { cell = 0.25, band = [0.25, 2.5], cap = 5,
     const c = pts.cls[i];
     if (c === 2 || c === 7 || c === 18 || c === 9 || c === 6) continue;
     const k = idx(pts.e[i], pts.n[i]); if (k < 0) continue;
+    // opts.under: cells under a tree's crown (the shared rule's TREE / SOLID_TREE), whose low points are not used: on
+    // the owner's walk of 2026-11-03 the phone saw nothing at 84% of the low-point cells near it (SCAN-H3), and under a
+    // crown they are drawn as blue walls the owner saw and could not account for
+    if (under && under[k]) continue;
     const h = pts.z[i] - dem[k];
     if (h > band[0] && h < band[1]) { occ[k] = 1; if (h > occTop[k]) occTop[k] = h; }
   }
@@ -365,7 +369,7 @@ export function placementCost(g, stand, ground, T, { trunc = 1, groundW = 0.5, g
   }
   const cost = (n ? sum / n : 0) + (gn ? groundW * gsum / gn : 0);
   const landedOf = n - (g.distRoof ? HIGH_W * (high.length - hHits) : 0);
-  const out = { cost, hits: landedOf > 0 ? hits / landedOf : 0, tz };
+  const out = { cost, hits: landedOf > 0 ? hits / landedOf : 0, landed: Math.round(hits), tz };
   if (detail) { out.walls = walls; out.high = { n: g.distRoof ? high.length : 0, hits: hHits }; }
   return out;
 }
@@ -376,7 +380,14 @@ export function placementCost(g, stand, ground, T, { trunc = 1, groundW = 0.5, g
  * phone stands on, e.g. GPS), phone: [u, v] (where it stands in AR), radiusM } (any turn). -> { T, cost, hits,
  * runnerUp: { cost, apartM, apartDeg }, ok, why }
  */
-export function register(g, stand, ground, prior, { s = 1, searchM = 4, searchDeg = 15, stepM = 0.5, stepDeg = 3, minStand = 30, minHits = 0.5, high = [] } = {}) {
+/* MIN_LANDED (2026-11-03, the owner's walk on a new lawn, SCAN-H3): on a thin flight (2.3 points a m2) most of what the
+   phone sees standing -- shrubs, trunks, low branches -- is not in the lidar at all, and only 6% of its points landed
+   even where the references placed them well; no ask passed the 50% share. With the references marked (they judge the
+   fix, locate.js REF_TOL_M), enough points landing in number is enough: opts.minLanded. */
+export const MIN_LANDED = 40;
+// the coarse pass scores every candidate on this many standing points; 150 was too few once most of them land nowhere
+export const COARSE_STAND = 400;
+export function register(g, stand, ground, prior, { s = 1, searchM = 4, searchDeg = 15, stepM = 0.5, stepDeg = 3, minStand = 30, minHits = 0.5, minLanded = Infinity, high = [] } = {}) {
   if (stand.length + (g.distRoof ? high.length : 0) < minStand) return { ok: false, why: `${stand.length + (g.distRoof ? high.length : 0)} standing points; ${minStand} wanted` };
   // coarse candidates: positions of the phone on the map, and turns
   const cands = [];
@@ -402,7 +413,7 @@ export function register(g, stand, ground, prior, { s = 1, searchM = 4, searchDe
   if (!cands.length) return { ok: false, why: 'GPS puts you off the edge of the lidar read for this map' };
   // the coarse pass on a thinned set of points
   const thin = (a, m) => (a.length <= m ? a : a.filter((_, i) => i % Math.ceil(a.length / m) === 0));
-  const st = thin(stand, 150), gr = thin(ground, 80), hi = thin(high, 80);
+  const st = thin(stand, COARSE_STAND), gr = thin(ground, 80), hi = thin(high, 80);
   const scored = cands.map((T) => ({ T, cost: placementCost(g, st, gr, T, { high: hi }).cost })).sort((a, b) => a.cost - b.cost);
   // refine the best few apart from each other
   const seeds = [];
@@ -415,8 +426,15 @@ export function register(g, stand, ground, prior, { s = 1, searchM = 4, searchDe
   const other = refined.find((r) => Math.hypot(r.T.tx - best.T.tx, r.T.ty - best.T.ty) > 1 || Math.abs(angDiff(r.T.theta, best.T.theta)) > (5 * Math.PI) / 180);
   const m = placementCost(g, stand, ground, best.T, { high, detail: true });
   const out = { T: best.T, cost: m.cost, hits: m.hits, tz: m.tz, walls: m.walls, high: m.high, runnerUp: other ? { cost: other.cost, apartM: Math.hypot(other.T.tx - best.T.tx, other.T.ty - best.T.ty), apartDeg: Math.abs(angDiff(other.T.theta, best.T.theta)) * 180 / Math.PI } : null };
-  if (m.hits < minHits) return { ...out, ok: false, why: `only ${Math.round(m.hits * 100)}% of what the phone sees lands on the lidar` };
-  if (other && other.cost < best.cost * 1.25) return { ...out, ok: false, why: 'two places fit about as well' };
+  out.landed = m.landed;
+  if (m.hits < minHits && m.landed < minLanded) return { ...out, ok: false, why: `only ${Math.round(m.hits * 100)}% of what the phone sees lands on the lidar (${m.landed} points)` };
+  // two places fit about as well: by cost, and by how many points land (what lands nowhere at either costs the same at
+  // both, and on a thin flight that is most of it, which pulls the costs together without making them alike)
+  if (other && other.cost < best.cost * 1.25) {
+    const mo = placementCost(g, stand, ground, other.T, { high });
+    out.runnerUp.landed = mo.landed;
+    if (mo.landed * 1.25 > m.landed) return { ...out, ok: false, why: 'two places fit about as well' };
+  }
   return { ...out, ok: true };
 }
 
