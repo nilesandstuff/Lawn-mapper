@@ -61,15 +61,24 @@ self.onmessage = async ({ data }) => {
     const e = new Float64Array(cols.n), n = new Float64Array(cols.n);
     for (let i = 0; i < cols.n; i++) { e[i] = (cols.x[i] - ox) * k + east; n[i] = (cols.y[i] - oy) * k + north; }
     // the buildings by the shared rule, on the shade map's 1 m grid over the same (shifted) ground
-    let buildings = null, rule = 'the AR copy of the water rule (the shared module did not load)', counts = null;
+    // (2026-11-03, after the owner's fix: sheds, stone bins, walls are STRUCTURE now, and walls stand 2 ft in from a
+    // roof's edge, wallsOf; both from the same module, so the AR match uses the house AND the short structures' walls)
+    let buildings = null, footprint = null, rule = 'the AR copy of the water rule (the shared module did not load)', counts = null;
     try {
-      const [{ structuresFrom, BUILDING }, { gridOver }] = await sharedRule();
+      const [S, { gridOver }] = await sharedRule();
       const sgrid = gridOver(bbox, 1, lat);
-      const s = structuresFrom(cols, sgrid, { shift: [east / k, north / k] });
-      buildings = buildingsOnGrid(s.kind, sgrid, box, 0.25, [ox, oy], k, BUILDING);
-      rule = 'the shared rule (public/shade/structures.js)'; counts = s.counts;
+      const s = S.structuresFrom(cols, sgrid, { shift: [east / k, north / k] });
+      const solid = new Uint8Array(s.kind.length);
+      for (let j = 0; j < solid.length; j++) solid[j] = s.kind[j] === S.BUILDING || (S.STRUCTURE != null && s.kind[j] === S.STRUCTURE) ? 1 : 0;
+      buildings = buildingsOnGrid(solid, sgrid, box, 0.25, [ox, oy], k, 1);
+      if (typeof S.wallsOf === 'function') {
+        const wl = S.wallsOf(solid, sgrid.w, sgrid.h, { cellM: 1, fineM: 0.25 });
+        const fine = { x0: sgrid.x0, y1: sgrid.y1, cell: (sgrid.cell * wl.cellM) / 1, w: wl.w, h: wl.h };
+        footprint = buildingsOnGrid(wl.walls, fine, box, 0.25, [ox, oy], k, 1);
+      }
+      rule = `the shared rule (public/shade/structures.js${footprint ? ', walls 2 ft in' : ''})`; counts = s.counts;
     } catch (err) { rule += `: ${err.message}`; }
-    G = buildGrids({ e, n, z: cols.z, cls: cols.cls, nret: cols.nret }, box, { buildings });
+    G = buildGrids({ e, n, z: cols.z, cls: cols.cls, nret: cols.nret }, box, { buildings, footprint });
     self.postMessage({ ready: { points: cols.n, solid: G.solid, cell: G.cell, cloud: cloud.name || null, shift: how, rule, structures: counts } });
     // THE OVERLAY (core session, SCAN-H2): what the match matches against, for the camera view. solids: each solid
     // 0.25 m cell as [e, n, ground, top]; tall: each 1 m cell with points 2.5 m or more above the ground as

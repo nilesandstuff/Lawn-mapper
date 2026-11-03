@@ -50,8 +50,9 @@ export function buildingsOnGrid(kind, sgrid, box, cell, origin3857, k, BUILDING 
  * The lot's lidar as grids. pts: { e, n, z, cls } typed columns in map metres (count = e.length); box [e0, n0, e1, n1].
  * opts.buildings: the shared rule's buildings on this grid (buildingsOnGrid); when given it replaces this file's own
  * roof rule (roofMask, the water map's, kept only as the fallback when the shared module cannot be loaded).
+ * opts.footprint: the shared rule's inside-of-the-walls on this grid; when given it replaces the pull-in by `eave`.
  */
-export function buildGrids(pts, box, { cell = 0.25, band = [0.25, 2.5], cap = 5, eave = 0.5, buildings = null } = {}) {
+export function buildGrids(pts, box, { cell = 0.25, band = [0.25, 2.5], cap = 5, eave = 0.5, buildings = null, footprint = null } = {}) {
   const W = Math.max(1, Math.ceil((box[2] - box[0]) / cell)), H = Math.max(1, Math.ceil((box[3] - box[1]) / cell));
   const idx = (e, n) => { const c = Math.floor((e - box[0]) / cell), r = Math.floor((box[3] - n) / cell); return c >= 0 && c < W && r >= 0 && r < H ? r * W + c : -1; };
   const dem = new Float32Array(W * H).fill(NaN);
@@ -75,8 +76,10 @@ export function buildGrids(pts, box, { cell = 0.25, band = [0.25, 2.5], cap = 5,
      would cost nothing wherever they went): the roof's footprint pulled in by the eaves (0.5 m), then its
      outline. */
   // the roof's points are sparser than the cells: grow the roof by 0.5 m to close it, then shrink it back by that and the eaves
+  /* opts.footprint: the inside of the walls by the shared rule (structures.js wallsOf: 2 ft in from the roof's edge,
+     the owner's number, 2026-11-03), put on this grid; else this file's own pull-in by `eave`. */
   const grow = Math.max(1, Math.round(0.5 / cell));
-  const walls = erode(dilate(bld, W, H, grow), W, H, grow + eave / cell);
+  const walls = footprint && footprint.length === W * H ? footprint : erode(dilate(bld, W, H, grow), W, H, grow + eave / cell);
   for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) {
     const k = r * W + c; if (!walls[k]) continue;
     if (r === 0 || c === 0 || r === H - 1 || c === W - 1 || !walls[k - 1] || !walls[k + 1] || !walls[k - W] || !walls[k + W]) occ[k] = 1;

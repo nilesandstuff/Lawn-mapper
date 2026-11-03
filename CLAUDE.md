@@ -205,7 +205,10 @@ there unchanged; structuresOf / structuresFrom; scored in shade findings
 24). The yard AR tool imports it (since 2026-11-03; the scan deploy copies
 public/shade/ in and redeploys by itself when structures.js or what it
 imports changes on the default branch). view3d.js kindOf is only the
-point-cloud drawing's colour, not a rule.
+point-cloud drawing's colour, not a rule. Since the owner's fix
+(2026-11-03, shade findings 33) it also has STRUCTURE (short structures:
+sheds, walls, bins, some cars) and wallsOf (walls 2 ft in from a roof's
+edge, the owner's number); the AR tool uses both.
 
 Before that, as of 2026-11-03, the rule existed in SIX places, and they
 disagree (the water session's own list, 2026-11-03, added three):
@@ -224,7 +227,7 @@ disagree (the water session's own list, 2026-11-03, added three):
   - the AR tool: scan/lib/lidar.js, a copy of ar-lidar.js (now only the
     fallback when structures.js cannot be loaded).
 Other shared jobs done more than once: walls under the eaves (the roof
-pulled in 0.5 m, ar-lidar.js and the scan copy), the noise classes {7, 18}
+pulled in 0.5 m in ar-lidar.js; the scan copy now uses wallsOf), the noise classes {7, 18}
 (roofs.js, obstacles.js, the shade filter), and the readers themselves
 (water/lib/ept.js, las.js, laz.js, datum.js near-copies of the shade
 map's). The ground is already shared (water/lib/shade/ground.js).

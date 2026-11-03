@@ -6,7 +6,7 @@
  */
 import assert from 'node:assert/strict';
 import { buildGrids, buildingsOnGrid, register, sample } from '../lib/lidar.js';
-import { structuresFrom, BUILDING } from '../../public/shade/structures.js';
+import { structuresFrom, BUILDING, STRUCTURE, wallsOf } from '../../public/shade/structures.js';
 import { gridOver } from '../../public/shade/grid.js';
 
 let seed = 7;
@@ -97,6 +97,18 @@ assert.ok(G.occTop && G.bld, 'the tops and the roof mask come back for the overl
   const G2 = buildGrids(L, box, { buildings: bld });
   assert.ok(sample(G2, G2.dist, -12, 8) < 0.3, 'its wall is solid');
   assert.ok(sample(G2, G2.dist, -5, 8) > 2, 'its inside is not');
+  // the walls 2 ft in by the shared wallsOf, put on the fine grid the way the worker does it
+  const solid = Uint8Array.from(s.kind, (v) => (v === BUILDING || v === STRUCTURE ? 1 : 0));
+  const wl = wallsOf(solid, sgrid.w, sgrid.h, { cellM: 1, fineM: 0.25 });
+  const fp = buildingsOnGrid(wl.walls, { x0: sgrid.x0, y1: sgrid.y1, cell: sgrid.cell * wl.cellM, w: wl.w, h: wl.h }, box, 0.25, [ox, oy], k, 1);
+  const fat = (e, nn) => fp[Math.floor((30 - nn) / 0.25) * 240 + Math.floor((e + 30) / 0.25)];
+  assert.equal(fat(-5, 8), 1, 'inside the house is inside the walls');
+  assert.equal(fat(20, 20), 0, 'the lawn is not');
+  const G3 = buildGrids(L, box, { buildings: bld, footprint: fp });
+  assert.ok(sample(G3, G3.dist, -5, 8) > 2, 'its inside is still not solid');
+  // the wall stands inside the roof's edge: the roof's west edge is about -12.5..-12, its wall 0.6 m in, near -11.5
+  let wallE = null; for (let e = -13; e < -9; e += 0.05) if (sample(G3, G3.dist, e, 8) < 0.15) { wallE = e; break; }
+  assert.ok(wallE != null && wallE > -12.4 && wallE < -10.8, `the west wall 2 ft in from the roof's edge: ${wallE}`);
   // a mapping check that does not lean on the rule: one building column, found where it is
   const fake = { x0: 0, y1: 100, cell: 2, w: 50, h: 50 }, kind = new Uint8Array(2500); kind[10 * 50 + 20] = 1;
   const one = buildingsOnGrid(kind, fake, [-10, -10, 10, 10], 0.5, [41, 79], 1); // the column spans x 40-42, y 78-80: e and n -1..1
