@@ -23,7 +23,11 @@ export const ASK_EVERY_MS = 1500;
    off while two cleanly marked references were to hand). A fix that puts the phone more than REF_TOL_M or turns it
    more than REF_TOL_DEG from where the references' fit puts it is refused; with no references at all a fix needs
    MIN_HITS_ALONE of its points landing. */
-export const REF_TOL_M = 2, REF_TOL_DEG = 10, MIN_HITS_ALONE = 0.65;
+/* LOOSENED (owner, 2026-11-03: "The reference points are inherently flawed because it's just extremely difficult,
+   borderline impossible, to accurately place dots and mark the dots perfectly... So yes, loosen it. Because the goal is
+   to get rid of reference points when we're able to"). Was 2 m and 10 degrees; SCAN-H4's lawn-edge fixes sat 0.6-3.4 m
+   and 9-20 degrees from three close references. The references now only stop a lock that is plainly elsewhere. */
+export const REF_TOL_M = 5, REF_TOL_DEG = 25, MIN_HITS_ALONE = 0.65;
 /* A fix this far (m, degrees) from the last kept one is a jump, held until a second fix agrees with it this closely. */
 export const JUMP_M = 1.5, JUMP_DEG = 8, CONFIRM_M = 0.6, CONFIRM_DEG = 4;
 const BANDS = { groundTol: 0.2, standLow: 0.4, standHigh: 2.4, highTop: 12, near: 0.4, far: 8 };
@@ -131,7 +135,7 @@ export function priorFor(L, odo, now = Date.now()) {
     return { T: f.T, searchM: 1.5, searchDeg: 6, from: 'the last fix' };
   }
   const ref = refFit(L, odo);
-  if (ref) return { T: ref, searchM: 4, searchDeg: 15, from: 'the references' };
+  if (ref) return { T: ref, searchM: 6, searchDeg: 25, from: 'the references' }; // as wide as the references are trusted
   if (L.gps && now - L.gps.t < 30000) return { at: L.gps.at, phone: L.gps.phone, radiusM: Math.max(6, Math.min(20, L.gps.acc * 1.5)), from: 'GPS' };
   return null;
 }

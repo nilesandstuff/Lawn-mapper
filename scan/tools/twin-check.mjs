@@ -24,7 +24,7 @@ import { toLocal } from '../lib/frames.js';
 import { ringsOf } from '../lib/photo.js';
 import { loadLidar } from '../lib/lidar-load.js';
 import { buildingsOnGrid, register, MIN_LANDED, placementCost } from '../lib/lidar.js';
-import { disagreement } from '../lib/locate.js';
+import { disagreement, REF_TOL_M, REF_TOL_DEG } from '../lib/locate.js';
 import { readCloud, placer, placeCloud } from '../lib/twin.js';
 import { surfaceOf, lawnField, tally } from '../lib/surface.js';
 import jpeg from 'jpeg-js';
@@ -208,6 +208,44 @@ async function main() {
   // in time that sees it (scan/lib/surface.js), and the lawn the owner traced as the match's lawn edge
   const lawnRings = ringsOf(m.shapes || []).map((r) => r.map((p) => toLocal(origin, p)));
   if (lawnRings.length) { const F = lawnField(lawnRings, box, G.cell); if (F.cells) G.lawnSd = F.sd; console.log(`The traced lawn: ${Math.round(F.cells * G.cell * G.cell).toLocaleString()} m2 on the match's grid.`); }
+  // SOLID CELLS IN THE LAWN (the owner, 2026-11-03: "solid blue columns showing up in the lawn area that weren't
+  // associated with anything I was seeing... on the south end of the bigger strip of grass on the hill"): the lidar's
+  // own low points more than 0.5 m inside the traced lawn, by class, height over the ground the match took, returns,
+  // and whether the phone saw anything within 0.5 m of them (placed by the references)
+  if (G.lawnSd) {
+    const P = placeCloud(recs, placer(live, 'refs')), seenAt = new Uint8Array(N);
+    for (let i = 0; i < P.pts.length; i += 4) {
+      if (P.pts[i + 3] !== 1) continue;
+      const c = Math.floor((P.pts[i] - box[0]) / G.cell), r2 = Math.floor((box[3] - P.pts[i + 1]) / G.cell);
+      for (let dr = -2; dr <= 2; dr++) for (let dc = -2; dc <= 2; dc++) { const rr = r2 + dr, cc = c + dc; if (rr >= 0 && cc >= 0 && rr < H && cc < W) seenAt[rr * W + cc] = 1; }
+    }
+    const cls = {}, hs = [], rets = {}, cells = new Set(), seenCells = new Set();
+    let lawnN = 0, ys = [], y0 = Infinity, y1 = -Infinity;
+    for (let k = 0; k < N; k++) if (G.lawnSd[k] > 0) { lawnN++; const r2 = (k / W) | 0; y0 = Math.min(y0, r2); y1 = Math.max(y1, r2); }
+    for (let i = 0; i < L.cols.n; i++) {
+      const c0 = L.cols.cls[i]; if (c0 === 2 || c0 === 7 || c0 === 18 || c0 === 9 || c0 === 6) continue;
+      const cc = Math.floor((L.e[i] - box[0]) / G.cell), rr = Math.floor((box[3] - L.n[i]) / G.cell);
+      if (cc < 0 || rr < 0 || cc >= W || rr >= H) continue;
+      const k = rr * W + cc;
+      if (!(G.lawnSd[k] > 0.5) || !G.occ[k]) continue;
+      const h = L.cols.z[i] - G.dem[k];
+      if (!(h > 0.25 && h < 2.5)) continue;
+      cls[c0] = (cls[c0] || 0) + 1; hs.push(h); const nr = L.cols.nret ? L.cols.nret[i] : 0; rets[nr] = (rets[nr] || 0) + 1;
+      cells.add(k); if (seenAt[k]) seenCells.add(k); ys.push(rr);
+    }
+    hs.sort((a2, b2) => a2 - b2);
+    const south = ys.filter((r2) => r2 > y0 + (2 * (y1 - y0)) / 3).length;
+    // the ground under them: how far the match's ground there sits from the lowest lidar ground return within 2 m
+    let demGap = [];
+    for (const k of cells) {
+      const cc = k % W, rr = (k / W) | 0; let lowest = Infinity;
+      for (let i = 0; i < L.cols.n; i++) { if (L.cols.cls[i] !== 2) continue; const c2 = Math.floor((L.e[i] - box[0]) / G.cell), r3 = Math.floor((box[3] - L.n[i]) / G.cell); if (Math.abs(c2 - cc) <= 8 && Math.abs(r3 - rr) <= 8) lowest = Math.min(lowest, L.cols.z[i]); }
+      if (Number.isFinite(lowest)) demGap.push(G.dem[k] - lowest);
+      if (demGap.length > 200) break;
+    }
+    demGap.sort((a2, b2) => a2 - b2);
+    console.log(`Solid cells more than 0.5 m inside the traced lawn: ${cells.size} (of ${lawnN.toLocaleString()} lawn cells), from ${hs.length} lidar points; ${pct(south, ys.length)} of those points in the southern third of the lawn. Classes ${JSON.stringify(cls)} (1 unclassified, 3-5 low/medium/high vegetation); height over the match's ground: median ${hs.length ? hs[hs.length >> 1].toFixed(2) : '-'} m, lowest ${hs.length ? hs[0].toFixed(2) : '-'}, highest ${hs.length ? hs[hs.length - 1].toFixed(2) : '-'}; returns a pulse ${JSON.stringify(rets)}. The phone saw something within 0.5 m of ${seenCells.size} of the ${cells.size} cells. The match's ground there sits ${demGap.length ? demGap[demGap.length >> 1].toFixed(2) : '-'} m above the lowest ground return within 2 m (median).`);
+  }
   const surfOf = new Map(); // record index -> 'grass' | 'pave'
   const keys = [];
   for (const f of readdirSync(dir).filter((x) => /^keys-\d+\.json$/.test(x)).sort()) keys.push(...JSON.parse(readFileSync(join(dir, f), 'utf8')));
@@ -274,7 +312,7 @@ async function main() {
       const { useSurface, highX, surfW, ...o } = opts;
       G.surfW = surfW;
       const hi = highX ? Array.from({ length: highX }, () => Hi).flat() : Hi;
-      const f = register(G, S, Gr, { T: T0 }, { searchM: 4, searchDeg: 15, high: hi, surface: useSurface ? Su : [], ...o });
+      const f = register(G, S, Gr, { T: T0 }, { searchM: 6, searchDeg: 25, high: hi, surface: useSurface ? Su : [], ...o });
       if (!f.ok) { if (mode === 'lawnEdge') { const w = `${f.why}`.replace(/\d+/g, '#'); rep.why[w] = (rep.why[w] || 0) + 1; } continue; }
       rep[mode].fixes++;
       const d = disagreement(f.T, T0, phone);
@@ -283,10 +321,10 @@ async function main() {
         const at = (T) => { const pc = placementCost(G, S, Gr, T, { high: Hi, surface: Su, detail: true }); return { edgeOk: pc.surface.edge ? Math.round((100 * pc.surface.landed) / pc.surface.edge) : null, landed: pc.landed }; };
         rep.rows = rep.rows || []; rep.rows.push({ atM: Math.round(odo), offM: +d.m.toFixed(1), offDeg: +d.deg.toFixed(0), fix: at(f.T), refs: at(T0) });
       }
-      if (d.m <= 2 && d.deg <= 10) { rep[mode].agree++; rep[mode].offM.push(d.m); }
+      if (d.m <= REF_TOL_M && d.deg <= REF_TOL_DEG) { rep[mode].agree++; rep[mode].offM.push(d.m); }
     }
   }
-  const line = (k) => { const r = rep[k]; r.offM.sort((a, b) => a - b); return `${r.fixes} fixes, ${r.agree} within 2 m of the references${r.offM.length ? ` (half within ${r.offM[r.offM.length >> 1].toFixed(2)} m)` : ''}`; };
+  const line = (k) => { const r = rep[k]; r.offM.sort((a, b) => a - b); return `${r.fixes} fixes, ${r.agree} within ${REF_TOL_M} m and ${REF_TOL_DEG} deg of the references${r.offM.length ? ` (half within ${r.offM[r.offM.length >> 1].toFixed(2)} m)` : ''}`; };
   console.log(`Replayed through today's match, every 5 m from the references' fit: ${rep.asked} asks.`);
   console.log(`  at the 50% share: ${line('strict')}`);
   console.log(`  with ${MIN_LANDED} points landed in number: ${line('lenient')}`);
