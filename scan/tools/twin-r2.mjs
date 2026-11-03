@@ -43,11 +43,21 @@ async function pool(items, n, fn) {
 }
 
 async function main() {
-  const [cmd, walk, ...rest] = process.argv.slice(2);
+  let [cmd, walk, ...rest] = process.argv.slice(2);
   const token = process.env.CLOUDFLARE_API_TOKEN;
   if (!token) throw new Error('no CLOUDFLARE_API_TOKEN');
-  if (!walkOk(walk)) throw new Error('which walk? (the number on its twin page)');
   const base = `${API}/accounts/${await account(token)}/r2/buckets/${BUCKET}`;
+  // "latest": the walk whose twin was written to last (so nobody copies an id off a phone)
+  if (walk === 'latest') {
+    const all = await list(base, token, 'twins/');
+    const newest = all.filter((o) => /\/live\.json$/.test(o.key)).sort((a, b) => new Date(b.last_modified) - new Date(a.last_modified))[0];
+    if (!newest) throw new Error('no twins yet');
+    walk = newest.key.split('/')[1];
+    console.log(`The latest walk: ${walk}`);
+  }
+  if (!walkOk(walk)) throw new Error('which walk? (the number on its twin page)');
+  // the later steps of workflow S2 use the walk as found here
+  if (cmd === 'get' && process.env.GITHUB_ENV) (await import('node:fs')).appendFileSync(process.env.GITHUB_ENV, `WALK=${walk}\n`);
   if (cmd === 'get') {
     const dir = rest[0] || 'twin';
     mkdirSync(dir, { recursive: true });

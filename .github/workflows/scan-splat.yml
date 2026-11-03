@@ -8,8 +8,8 @@ on:
   workflow_dispatch:
     inputs:
       walk:
-        description: "The walk's id (the number in its twin page's address)"
-        required: true
+        description: "The walk's id (the number in its twin page's address), or latest"
+        default: "latest"
       steps:
         description: "Training steps (7000 is about ten minutes)"
         default: "7000"
@@ -54,13 +54,10 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          WALK: ${{ inputs.walk }}
         run: node scan/tools/twin-r2.mjs put "$WALK" out/splat.splat out/splat-compare.jpg out/splat.json
 
       - name: The answer
         if: always()
-        env:
-          WALK: ${{ inputs.walk }}
         run: |
           echo "--------------------------------------------------------------"
           if [ -f out/splat.json ]; then echo "Splat: $(cat out/splat.json)"; else echo "Splat: none -- see the steps above"; fi
