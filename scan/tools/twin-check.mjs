@@ -56,7 +56,8 @@ async function main() {
   const recs = [];
   for (const f of readdirSync(dir).filter((x) => /^cloud-\d+\.bin$/.test(x)).sort()) { const b = readFileSync(join(dir, f)); recs.push(...readCloud(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength))); }
   console.log(`Twin: ${recs.length.toLocaleString()} phone points; ${live.fixes.length} lidar fixes, ${live.marks.filter((m) => m.kind === 'ref').length} reference marks${live.ended ? '' : ' (cut short)'}.`);
-  if (!meta.map || !/^[\w-]{1,80}$/.test(meta.map)) throw new Error('the twin names no map');
+  // a map's key can be its "lng,lat": checked for SQL, never printed
+  if (!meta.map || !/^[\w.,:-]{1,120}$/.test(String(meta.map))) throw new Error(meta.map ? 'the twin\'s map key has characters it should not' : 'the twin names no map');
   const m = await readMap(meta.map, site, key);
   const origin = [m.lng, m.lat];
   const pts = [...ringsOf(m.shapes || []), ...ringsOf(m.parcel ? [m.parcel] : [])].flat().map((p) => toLocal(origin, p));
