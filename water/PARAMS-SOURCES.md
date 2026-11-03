@@ -197,6 +197,7 @@ https://swat.tamu.edu/media/99192/swat2009-theory.pdf:
 ## 4. Soil hydraulic properties by texture
 
 ### 4a. Rawls Green-Ampt table (two published versions disagree on Ks)
+*Correction (2026-11-03, reference check for the white paper): the FC and WP columns are not in Rawls, Brakensiek & Miller (1983), whose Table 2 gives porosity, effective porosity, suction and Ks only. They are Table 1 of Schroeder et al. (1994), HELP Model Engineering Documentation v3, EPA/600/R-94/168b, computed from the class means of Rawls, Brakensiek & Saxton (1982), Trans. ASAE 25(5):1316-1320, doi:10.13031/2013.33720; the SWMM manuals re-labelled them "Rawls et al. 1983". The Ks columns are Rawls et al. 1983 as labelled.*
 | Texture | Ks, Rawls et al. 1983 (in/h) | Ks, Rawls et al. 1993 Handbook (in/h) | Porosity | FC (1983) | WP (1983) | FC − WP |
 |---|---|---|---|---|---|---|
 | Sand | 4.74 | 9.28 | 0.437 | 0.062 | 0.024 | 0.038 |
