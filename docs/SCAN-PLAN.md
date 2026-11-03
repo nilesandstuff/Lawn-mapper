@@ -728,3 +728,38 @@ and ARCore's heading drifting over 168 m), and the lawn-edge fixes were
 nearer the truth than the references they were judged against. If so, the
 references judge (2 m, 10 degrees) refuses good fixes on a walk like this.
 Not changed until measured. The live page weighs the lawn's edge 3 times.
+
+### SCAN-H5. The second walk of the day: a denser flight, the lawn's edge finds the most, and blue columns in the lawn (2026-11-03)
+
+HARD, the owner's later walk on a bigger lawn (2,792 m2 traced; 4.8 lidar
+points a m2), two references, by the twin check:
+
+- Where the references put the phone, 22% of the grass and paving points
+  sat on the wrong side of the traced lawn's edge by more than 35 cm (71%
+  right within 1.5 m of the edge): the references were worse than on
+  SCAN-H3's walk.
+- Replayed every 5 m from the references (searching 6 m and 25 degrees),
+  fixes and how many within 5 m and 25 degrees of the references: walls
+  and shrubs 9 (0); with the lawn's edge weighed 3: 8 (2); weighed 8: 9
+  (5); weighed 8 with the roof edges at full weight: 12 (5). From 43 to 53
+  m into the walk the fixes sat 4.3-8.5 m from the references with turns
+  of 3-5 degrees, and landed about twice the points (237-308 against
+  131-138).
+- The blue columns the owner saw in the lawn: 181 solid cells more than
+  0.5 m inside the traced lawn, all from unclassified (class 1) single-
+  return points, median 0.51 m over the match's ground (lowest 0.26,
+  highest 2.49); the phone saw something near only 26 of them. The match's
+  ground there sits a median 0.27 m above the lowest ground return within
+  2 m: a hillside where the flight's ground labelling missed some ground.
+
+Changed (AR only): inside the traced lawn, unclassified points under 1.2 m
+are not solid (lidar.js LAWN_LOW_M); the lawn's edge weighs 8 and a roof
+edge point counts fully (SURF_W, HIGH_W); the references judge is 5 m and
+25 degrees (owner: "loosen it... the goal is to get rid of reference
+points"), and the search from them 6 m and 25 degrees.
+
+SPECULATION: the 4-8 m fixes mid-walk are right and the references wrong
+there (twice the points land, the edge agrees as well); a walk with check
+points away from the references settles it. The owner saw lidar points on
+houses hundreds of feet away line up well with the camera: the shift onto
+the photo's ground is right at a distance.

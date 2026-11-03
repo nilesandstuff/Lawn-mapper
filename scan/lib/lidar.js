@@ -53,7 +53,7 @@ export function buildingsOnGrid(kind, sgrid, box, cell, origin3857, k, BUILDING 
  * roof rule (roofMask, the water map's, kept only as the fallback when the shared module cannot be loaded).
  * opts.footprint: the shared rule's inside-of-the-walls on this grid; when given it replaces the pull-in by `eave`.
  */
-export function buildGrids(pts, box, { cell = 0.25, band = [0.25, 2.5], cap = 5, eave = 0.5, buildings = null, footprint = null, under = null } = {}) {
+export function buildGrids(pts, box, { cell = 0.25, band = [0.25, 2.5], cap = 5, eave = 0.5, buildings = null, footprint = null, under = null, lowIn = null } = {}) {
   const W = Math.max(1, Math.ceil((box[2] - box[0]) / cell)), H = Math.max(1, Math.ceil((box[3] - box[1]) / cell));
   const idx = (e, n) => { const c = Math.floor((e - box[0]) / cell), r = Math.floor((box[3] - n) / cell); return c >= 0 && c < W && r >= 0 && r < H ? r * W + c : -1; };
   const dem = new Float32Array(W * H).fill(NaN);
@@ -74,6 +74,10 @@ export function buildGrids(pts, box, { cell = 0.25, band = [0.25, 2.5], cap = 5,
     // crown they are drawn as blue walls the owner saw and could not account for
     if (under && under[k]) continue;
     const h = pts.z[i] - dem[k];
+    // opts.lowIn: cells well inside the lawn the owner traced, where an unclassified point under LAWN_LOW_M is the
+    // ground mislabelled on a slope, not a thing (SCAN-H5: 181 such cells on the hill lawn, every point class 1,
+    // single return, median 0.51 m over the match's ground, nothing the phone saw at 155 of them)
+    if (lowIn && lowIn[k] && c === 1 && h < LAWN_LOW_M) continue;
     if (h > band[0] && h < band[1]) { occ[k] = 1; if (h > occTop[k]) occTop[k] = h; }
   }
   const bld = buildings && buildings.length === W * H ? buildings : roofMask(pts, box, cell, W, H, dem);
@@ -276,8 +280,10 @@ export const WALL_WORTH = 20;          // ...for a wall of up to this many point
                                        // worth in all, so a long porch wall seen well cannot outvote the trees
 export const PIECE_GAP = 0.3;          // m: points closer than this, in the phone's frame, are one piece
 export const EDGE_NEAR = 1.5;          // m from the lawn's edge: a surface point near enough to say where it is
-export const SURF_W = 3;              // the lawn-edge term's weight against the standing points' (SCAN-H4: 1 found 5 fixes on the thin walk, 3 found 8)
-export const HIGH_W = 0.5;             // what a high point counts for, against a standing one
+export const LAWN_LOW_M = 1.2;        // m: in the traced lawn, unclassified points lower than this are not solid
+export const SURF_W = 8;              // the lawn-edge term's weight (SCAN-H4/H5: 8 with the roof edges at full weight found the most fixes
+                                       // within the references' reach on both walks of 2026-11-03)
+export const HIGH_W = 1;               // what a high point (a roof's edge) counts for, against a standing one (was 0.5; SCAN-H5)
 export const RAY_HEADINGS = 8;         // headings (over half a turn) at which buildGrids measures inset across a wall
 const insetCharge = (m) => { const o = m < WALL_USUAL[0] ? WALL_USUAL[0] - m : m > WALL_USUAL[1] ? m - WALL_USUAL[1] : 0; return WALL_CAP * Math.min(1, (o / 2.7) ** 2); };
 const pieceCache = new WeakMap();

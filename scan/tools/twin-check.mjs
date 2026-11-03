@@ -23,7 +23,7 @@ import { nodeIo } from '../../water/lib/node-io.js';
 import { toLocal } from '../lib/frames.js';
 import { ringsOf } from '../lib/photo.js';
 import { loadLidar } from '../lib/lidar-load.js';
-import { buildingsOnGrid, register, MIN_LANDED, placementCost } from '../lib/lidar.js';
+import { buildingsOnGrid, register, MIN_LANDED, placementCost, LAWN_LOW_M } from '../lib/lidar.js';
 import { disagreement, REF_TOL_M, REF_TOL_DEG } from '../lib/locate.js';
 import { readCloud, placer, placeCloud } from '../lib/twin.js';
 import { surfaceOf, lawnField, tally } from '../lib/surface.js';
@@ -70,7 +70,8 @@ async function main() {
   const pts = [...ringsOf(m.shapes || []), ...ringsOf(m.parcel ? [m.parcel] : [])].flat().map((p) => toLocal(origin, p));
   const es = pts.map((p) => p[0]), ns = pts.map((p) => p[1]);
   const box = pts.length ? [Math.min(...es) - 20, Math.min(...ns) - 20, Math.max(...es) + 20, Math.max(...ns) + 20] : [-60, -60, 60, 60];
-  const L = await loadLidar({ origin, box, lidar: m.tools?.shade?.data?.lidar || null, fetchLidar: async (lng, lat) => {
+  const lawnRings = ringsOf(m.shapes || []).map((r) => r.map((p) => toLocal(origin, p)));
+  const L = await loadLidar({ origin, box, lidar: m.tools?.shade?.data?.lidar || null, lawn: lawnRings, fetchLidar: async (lng, lat) => {
     const res = await fetch(`${site}/api/shade/lidar?lng=${lng}&lat=${lat}`);
     return res.ok ? (await res.json()).clouds?.[0] || null : null;
   } }, { pointsIn, toMerc, nad83Correction, io: nodeIo(), rule: () => Promise.all([import('../../public/shade/structures.js'), import('../../public/shade/grid.js')]) });
@@ -206,8 +207,7 @@ async function main() {
   }
   // THE GROUND'S COLOUR, as the page now reads it live: each ground point labelled from the twin's picture nearest it
   // in time that sees it (scan/lib/surface.js), and the lawn the owner traced as the match's lawn edge
-  const lawnRings = ringsOf(m.shapes || []).map((r) => r.map((p) => toLocal(origin, p)));
-  if (lawnRings.length) { const F = lawnField(lawnRings, box, G.cell); if (F.cells) G.lawnSd = F.sd; console.log(`The traced lawn: ${Math.round(F.cells * G.cell * G.cell).toLocaleString()} m2 on the match's grid.`); }
+  if (G.lawnSd) { let cells = 0; for (const v of G.lawnSd) if (v > 0) cells++; console.log(`The traced lawn: ${Math.round(cells * G.cell * G.cell).toLocaleString()} m2 on the match's grid.`); }
   // SOLID CELLS IN THE LAWN (the owner, 2026-11-03: "solid blue columns showing up in the lawn area that weren't
   // associated with anything I was seeing... on the south end of the bigger strip of grass on the hill"): the lidar's
   // own low points more than 0.5 m inside the traced lawn, by class, height over the ground the match took, returns,
@@ -227,7 +227,7 @@ async function main() {
       const cc = Math.floor((L.e[i] - box[0]) / G.cell), rr = Math.floor((box[3] - L.n[i]) / G.cell);
       if (cc < 0 || rr < 0 || cc >= W || rr >= H) continue;
       const k = rr * W + cc;
-      if (!(G.lawnSd[k] > 0.5) || !G.occ[k]) continue;
+      if (!(G.lawnSd[k] > 0.5)) continue;
       const h = L.cols.z[i] - G.dem[k];
       if (!(h > 0.25 && h < 2.5)) continue;
       cls[c0] = (cls[c0] || 0) + 1; hs.push(h); const nr = L.cols.nret ? L.cols.nret[i] : 0; rets[nr] = (rets[nr] || 0) + 1;
@@ -244,7 +244,9 @@ async function main() {
       if (demGap.length > 200) break;
     }
     demGap.sort((a2, b2) => a2 - b2);
-    console.log(`Solid cells more than 0.5 m inside the traced lawn: ${cells.size} (of ${lawnN.toLocaleString()} lawn cells), from ${hs.length} lidar points; ${pct(south, ys.length)} of those points in the southern third of the lawn. Classes ${JSON.stringify(cls)} (1 unclassified, 3-5 low/medium/high vegetation); height over the match's ground: median ${hs.length ? hs[hs.length >> 1].toFixed(2) : '-'} m, lowest ${hs.length ? hs[0].toFixed(2) : '-'}, highest ${hs.length ? hs[hs.length - 1].toFixed(2) : '-'}; returns a pulse ${JSON.stringify(rets)}. The phone saw something within 0.5 m of ${seenCells.size} of the ${cells.size} cells. The match's ground there sits ${demGap.length ? demGap[demGap.length >> 1].toFixed(2) : '-'} m above the lowest ground return within 2 m (median).`);
+    let stillSolid = 0; for (const k of cells) if (G.occ[k]) stillSolid++;
+    console.log(`Still solid after the lawn rule (unclassified under ${LAWN_LOW_M} m in the lawn is ground): ${stillSolid} of the ${cells.size} cells below.`);
+    console.log(`Low-point cells more than 0.5 m inside the traced lawn: ${cells.size} (of ${lawnN.toLocaleString()} lawn cells), from ${hs.length} lidar points; ${pct(south, ys.length)} of those points in the southern third of the lawn. Classes ${JSON.stringify(cls)} (1 unclassified, 3-5 low/medium/high vegetation); height over the match's ground: median ${hs.length ? hs[hs.length >> 1].toFixed(2) : '-'} m, lowest ${hs.length ? hs[0].toFixed(2) : '-'}, highest ${hs.length ? hs[hs.length - 1].toFixed(2) : '-'}; returns a pulse ${JSON.stringify(rets)}. The phone saw something within 0.5 m of ${seenCells.size} of the ${cells.size} cells. The match's ground there sits ${demGap.length ? demGap[demGap.length >> 1].toFixed(2) : '-'} m above the lowest ground return within 2 m (median).`);
   }
   const surfOf = new Map(); // record index -> 'grass' | 'pave'
   const keys = [];

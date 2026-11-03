@@ -7,8 +7,9 @@
  */
 import { fromLocal } from './frames.js';
 import { buildGrids, buildingsOnGrid } from './lidar.js';
+import { lawnField } from './surface.js';
 
-export async function loadLidar({ origin, box, lidar, fetchLidar }, { pointsIn, toMerc, nad83Correction, io, rule }, progress = () => {}) {
+export async function loadLidar({ origin, box, lidar, fetchLidar, lawn = [] }, { pointsIn, toMerc, nad83Correction, io, rule }, progress = () => {}) {
   const [lng, lat] = origin;
   const k = Math.cos((lat * Math.PI) / 180);
   progress('Finding the lidar survey…');
@@ -50,6 +51,10 @@ export async function loadLidar({ origin, box, lidar, fetchLidar }, { pointsIn, 
     // under a crown: the AR's own choice not to match low points there (lidar.js buildGrids opts.under)
     under = buildingsOnGrid(Uint8Array.from(s.kind, (v) => (v === S.TREE || v === S.SOLID_TREE ? 1 : 0)), sgrid, box, 0.25, [ox, oy], k, 1);
   } catch (err) { ruleName += `: ${err.message}`; }
-  const G = buildGrids({ e, n, z: cols.z, cls: cols.cls, nret: cols.nret }, box, { buildings, footprint, under });
+  // the lawn the owner traced: the lawn-edge term's field, and where low unclassified points are the ground
+  const F = lawn.length ? lawnField(lawn, box, 0.25) : null;
+  const lowIn = F && F.cells ? Uint8Array.from(F.sd, (v) => (v > 0.3 ? 1 : 0)) : null;
+  const G = buildGrids({ e, n, z: cols.z, cls: cols.cls, nret: cols.nret }, box, { buildings, footprint, under, lowIn });
+  if (F && F.cells && F.W === G.W && F.H === G.H) G.lawnSd = F.sd;
   return { G, cols, e, n, k, ox, oy, cloud, how, rule: ruleName, counts, shade, buildings, footprint };
 }

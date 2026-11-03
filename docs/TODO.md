@@ -149,3 +149,10 @@ inside of the loop".
   and lawn pieces down to 100 sq ft (commit 7c5bd1d).
 - 2026-10-24: water layers searched the moment someone looks at a place
   (47c9eb6), and 15 statewide drainage inventories (ece3ab1).
+
+- **The AR walk correcting the trees (owner, 2026-11-03: "It would be awesome if we could get the AR to make
+  corrections to the tree renders, in addition to fences and such. Not sure we're there yet").** The twin already
+  keeps what the phone saw: trunks as standing points, crowns as high points, pictures with poses. Once the lock is
+  trusted (check points within a foot), a walk could say where each trunk stands and how wide and low each crown is,
+  and offer those to the shade map's tree model (the features session's; its rule, its call). Not before the lock is
+  measured good.

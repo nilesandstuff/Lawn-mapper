@@ -111,6 +111,17 @@ assert.ok(G.occTop && G.bld, 'the tops and the roof mask come back for the overl
   assert.ok(!without.ok || offAt(without.T, [6, -6]) > offAt(withEdge.T, [6, -6]), `the fence alone does worse: ${without.why || offAt(without.T, [6, -6]).toFixed(2)}`);
   assert.ok(withEdge.surface.n > 100 && withEdge.surface.off < withEdge.surface.n * 0.1, `the surface lands: ${JSON.stringify(withEdge.surface)}`);
 }
+// opts.lowIn (SCAN-H5): in the traced lawn, unclassified points under 1.2 m are the ground, not a thing; a post is kept
+{
+  const E = [], N = [], Z = [], C = [];
+  for (let e = -5; e <= 5; e += 0.5) for (let n = -5; n <= 5; n += 0.5) { E.push(e); N.push(n); Z.push(100); C.push(2); }
+  E.push(1, 1.05, -2); N.push(1, 1, -2); Z.push(100.5, 100.45, 101.6); C.push(1, 1, 1); // a mislabelled lump; a post
+  const pts = { e: Float64Array.from(E), n: Float64Array.from(N), z: Float32Array.from(Z), cls: Uint8Array.from(C) };
+  const lowIn = new Uint8Array(40 * 40).fill(1);
+  const Gl = buildGrids(pts, [-5, -5, 5, 5], { lowIn }), G0 = buildGrids(pts, [-5, -5, 5, 5]);
+  assert.ok(sample(G0, G0.dist, 1.1, 1.1) < 0.3 && sample(Gl, Gl.dist, 1.1, 1.1) > 0.5, `the low lump: solid before, ground after: ${sample(G0, G0.dist, 1.1, 1.1)} ${sample(Gl, Gl.dist, 1.1, 1.1)}`);
+  assert.ok(sample(Gl, Gl.dist, -1.9, -1.9) < 0.3, `the 1.6 m post stays solid: ${sample(Gl, Gl.dist, -1.9, -1.9)}`);
+}
 // a straight fence alone: two places fit, refused
 {
   const { stand, ground: gr } = seen([[-10, -9], [-6, -9], [-2, -9]], { reach: 4 });
