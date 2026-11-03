@@ -110,7 +110,8 @@ export function windGrid(grid, og, near, shadeKinds, pad = 150) {
     const inside = gc >= 0 && gr >= 0 && gc < grid.W && gr < grid.H;
     if (inside && shadeKinds) {
       const i = gr * grid.W + gc, k = shadeKinds[i];
-      kind[j] = k >= 1 && k <= 3 ? k : 0; height[j] = near.height[i]; base[j] = near.base[i];
+      // a LOW STRUCTURE (shade kind 4 since 2026-11-03: a shed, a stone wall, a parked car) is solid: a building here
+      kind[j] = k === 4 ? 1 : k >= 1 && k <= 3 ? k : 0; height[j] = near.height[i]; base[j] = near.base[i];
       continue;
     }
     if (!og) continue;

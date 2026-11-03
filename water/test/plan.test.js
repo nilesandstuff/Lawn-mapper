@@ -191,7 +191,7 @@ test('shade and the air: the day\'s own air share stays in deep shade, and trees
   assert.ok(Math.abs(out[1] - shadeFactor(0)) < 1e-6 && out[2] === 1);
 });
 
-test('the yard\'s wind: Heisler\'s neighbourhoods, and the day worked out again at it', () => {
+test('the yard\'s wind: Heisler\'s neighbourhoods, and the day worked out again at it', async () => {
   assert.equal(windShare(0), 1);
   assert.ok(Math.abs(windShare(9) - 0.73) < 0.02, `buildings alone, about 22% less: ${windShare(9)}`);
   assert.ok(Math.abs(windShare(86) - 0.30) < 0.04, `77% trees and 9% buildings, about 70% less (his curve, within its scatter): ${windShare(86)}`);
@@ -215,6 +215,14 @@ test('the yard\'s wind: Heisler\'s neighbourhoods, and the day worked out again 
   for (let i = 350; i < 400; i++) kinds[i] = 3;
   const c = coverAround({ grid: { W, H, cell: 1 }, wall }, 90, kinds);
   assert.ok(Math.abs(c.built[210] - 0.25) < 1e-6 && Math.abs(c.crown[210] - 0.25) < 1e-6);
+  // a low structure (shade kind 4: a shed, a stone wall) counts as built, not as crown
+  const k4 = Uint8Array.from(kinds); for (let i = 100; i < 140; i++) k4[i] = 4;
+  const c4 = coverAround({ grid: { W, H, cell: 1 }, wall }, 90, k4);
+  assert.ok(Math.abs(c4.built[210] - 0.35) < 1e-6 && Math.abs(c4.crown[210] - 0.25) < 1e-6);
+  // ...and shelters the wind as a solid obstacle
+  const { windGrid } = await import('../lib/obstacles.js');
+  const wg = windGrid({ W: 2, H: 1, bbox: [0, 0, 2, 1] }, null, { height: new Float32Array([3, 8]), base: new Float32Array([0, 2]) }, new Uint8Array([4, 3]), 0);
+  assert.deepEqual(Array.from(wg.kind), [1, 3]);
   // without the shade map: the water map's own walls, and no crowns
   for (let i = 0; i < 40; i++) wall[i] = 1;
   const own = coverAround({ grid: { W, H, cell: 1 }, wall }, 90, null);

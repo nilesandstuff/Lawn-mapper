@@ -144,7 +144,7 @@ export const shadeFactor = (light, airShare = PARAMS.airShare) => airShare + (1 
 /**
  * Within radiusM of each cell, the share of the ground under tree crowns and the share under buildings, BY THE SHADE
  * MAP'S OWN READING of every cell (owner, 2026-10-27: "you should follow the output of the shade map"): `kinds` as
- * its light worker returns them (seasonal.js: 0 open, 1 roof, 2 evergreen, 3 deciduous), on this same grid. Without
+ * its light worker returns them (seasonal.js: 0 open, 1 roof, 2 evergreen, 3 deciduous, 4 low structure), on this same grid. Without
  * them (no shade worked out) no crowns, and the buildings are the water map's own walls. Each share is against the
  * cells within the radius on the grid (it reaches 30 m past the lot, so a wider radius is clipped to it).
  * -> { crown: Float32Array | null, built: Float32Array }
@@ -157,7 +157,7 @@ export function coverAround(res, radiusM, kinds = null) {
     let rc = 0, rb = 0;
     for (let c = 0; c < W; c++) {
       const i = r * W + c, k = kinds ? kinds[i] : 0;
-      if (kinds ? k === 1 : res.wall?.[i]) rb++;
+      if (kinds ? k === 1 || k === 4 : res.wall?.[i]) rb++; // 4: a low structure (shed, wall), built, not a crown
       else if (k === 2 || k === 3) rc++;
       const j = (r + 1) * (W + 1) + c + 1;
       crownS[j] = crownS[j - W - 1] + rc; builtS[j] = builtS[j - W - 1] + rb;
@@ -304,7 +304,7 @@ export function scsRunoff(w, cn) {
  *            buildings alone -- or null (H47)
  * fenceHeat  lib/fenceheat.js fenceRadiation(...): the fences' longwave (H49), or null
  * windMonths [12 Float32Array] each cell's own wind by month, a share of the open wind (shelter.js, H50), or null
- * shadeKinds  Uint8Array per cell from the shade map's light worker (0 open, 1 roof, 2 evergreen, 3 deciduous) or null
+ * shadeKinds  Uint8Array per cell from the shade map's light worker (0 open, 1 roof, 2 evergreen, 3 deciduous, 4 low structure) or null
  */
 export function buildModel(res, { kinds, soilAt, soils, roofTo, light = null, lightMonths = null, radiation = null, fenceHeat = null, windMonths = null, shadeKinds = null, params = PARAMS }) {
   const g = res.grid, N = g.W * g.H;
