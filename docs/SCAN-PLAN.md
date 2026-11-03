@@ -763,3 +763,39 @@ there (twice the points land, the edge agrees as well); a walk with check
 points away from the references settles it. The owner saw lidar points on
 houses hundreds of feet away line up well with the camera: the shift onto
 the photo's ground is right at a distance.
+
+### SCAN-H6. At work, with check points: the references were good and the lock was not (2026-11-03)
+
+HARD, the owner's walk on the workplace lawn (not the owner's lot; 4.1
+lidar points a m2, 7,329 m2 traced), two references (R2 marked three
+times, one by mistake), two check points: C1 1 ft 0 in off, C2 10 in off,
+both by the references. So here the references were good to a foot, and
+the walk is a fair test of the lidar lock.
+
+- The live page: 0 fixes kept in 80 asks; 2 found, 7.6-7.8 m and 13-15
+  degrees from the references, refused by the references judge (rightly).
+- The stone wall drawn too tall (owner): every BUILDING and STRUCTURE wall
+  was drawn 3 m tall; now as tall as its column. And every STRUCTURE wall
+  was matched 2 ft inside its edge as if it had eaves: the phone saw
+  nothing at 60% of those cells; matched at the edge, the phone's points
+  landing on STRUCTURE walls went from 305 to 1,159 and the unseen share
+  fell to 49%.
+- Low unclassified points inside the traced lawn: 1,324 cells, the phone
+  saw something at 3; the lawn rule (SCAN-H5) leaves 83 of them solid.
+- The lawn's edge, where the references put the phone: 22% of grass and
+  paving points on the wrong side, 99% of those "paving" inside the trace:
+  sunlit, washed-out November grass read as paving. Paving now needs under
+  7% colour (was 12%): the wrong side fell to 12%.
+- Replayed every 5 m: no setting (walls alone, with the lawn's edge at 1,
+  3 or 8, paving only, roof edges doubled) found a fix within 5 m and 25
+  degrees of these good references; 15 of 20 asks were "two places fit".
+
+So on this lawn the lidar lock does not yet stand without references.
+SPECULATION: the "two places fit" refusals are the next thing to study --
+a long stone wall and a regular lawn edge repeat along their length, and
+the match has nothing across them to break the tie.
+
+The Mark button: once every point was marked it fell back to the nearest
+reference without saying so (the owner's accidental third R2). It now
+names its target, takes a pick from the mini map, and Undo takes back a
+mark.
