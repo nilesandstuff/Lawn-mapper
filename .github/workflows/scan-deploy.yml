@@ -15,6 +15,17 @@ name: S. Yard AR tool
 #   walks     print the walks the phone saved to the site (newest first):
 #             distances and counts only, read from the log, no copying.
 on:
+  # THE SHARED LIDAR RULE (CLAUDE.md "One way to read lidar"): this site copies public/shade/ in at deploy time, so a
+  # change to structures.js or what it imports, landed on the default branch, redeploys it by itself.
+  push:
+    branches: [claude/resume-previous-session-y94slo]
+    paths:
+      - 'public/shade/structures.js'
+      - 'public/shade/canopy.js'
+      - 'public/shade/grid.js'
+      - 'public/shade/ground.js'
+      - 'public/shade/ept.js'
+      - 'public/shade/las.js'
   workflow_dispatch:
     inputs:
       task:
@@ -51,7 +62,7 @@ jobs:
           node scan/test/lidar.test.js
 
       - name: The 8th Wall engine binary (pinned)
-        if: ${{ inputs.task == 'deploy' }}
+        if: ${{ (inputs.task || 'deploy') == 'deploy' }}
         run: |
           v=$(sed -n "s/^export const ENGINE_VERSION = '\(.*\)';/\1/p" scan/tools/prepare.mjs)
           echo "engine version $v" 
@@ -60,14 +71,14 @@ jobs:
           head -c 400 node_modules/@8thwall/engine-binary/dist/xr.js; echo
 
       - name: The scan database (walks)
-        if: ${{ inputs.task == 'deploy' }}
+        if: ${{ (inputs.task || 'deploy') == 'deploy' }}
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: node scan/tools/d1.mjs
 
       - name: Deploy the scan site
-        if: ${{ inputs.task == 'deploy' }}
+        if: ${{ (inputs.task || 'deploy') == 'deploy' }}
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -86,7 +97,7 @@ jobs:
           fi
 
       - name: Is it answering
-        if: ${{ inputs.task == 'deploy' }}
+        if: ${{ (inputs.task || 'deploy') == 'deploy' }}
         run: |
           d=$(sed -n 's/^pattern = "\(.*\)"$/\1/p' scan/wrangler.toml)
           for i in 1 2 3 4 5 6; do
@@ -113,7 +124,7 @@ jobs:
         if: always()
         run: |
           echo "--------------------------------------------------------------"
-          case "${{ inputs.task }}" in
+          case "${{ inputs.task || 'deploy' }}" in
             deploy)
               echo "Scan site: ${SCAN_STATE:-not deployed -- see the steps above}"
               echo "Engine: ${SCAN_ENGINE:-unknown}"

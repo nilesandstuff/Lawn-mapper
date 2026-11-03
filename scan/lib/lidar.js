@@ -26,8 +26,32 @@
  * something and no clearly different position does nearly as well (a rectangular house matches itself turned round).
  */
 
-/** The lot's lidar as grids. pts: { e, n, z, cls } typed columns in map metres (count = e.length); box [e0, n0, e1, n1]. */
-export function buildGrids(pts, box, { cell = 0.25, band = [0.25, 2.5], cap = 5, eave = 0.5 } = {}) {
+/**
+ * THE BUILDINGS FROM THE SHARED RULE (core session, 2026-11-03; CLAUDE.md "One way to read lidar"). The shade map's
+ * public/shade/structures.js decides building / tree / nothing per 1 m column of its own grid (grid.js gridOver, in
+ * EPSG:3857, the points moved by `shift`). This puts its BUILDING columns onto this file's fine grid in map metres:
+ * each fine cell's centre, east/north of `origin3857` ([x, y], the map's point in 3857) at latitude scale k, is looked
+ * up in the shade grid. sgrid: { x0, y1, cell, cellY?, w, h }. -> Uint8Array(W * H), 1 where a building stands.
+ */
+export function buildingsOnGrid(kind, sgrid, box, cell, origin3857, k, BUILDING = 1) {
+  const W = Math.max(1, Math.ceil((box[2] - box[0]) / cell)), H = Math.max(1, Math.ceil((box[3] - box[1]) / cell));
+  const out = new Uint8Array(W * H), cy = sgrid.cellY || sgrid.cell;
+  for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) {
+    const e = box[0] + (c + 0.5) * cell, n = box[3] - (r + 0.5) * cell;
+    const X = origin3857[0] + e / k, Y = origin3857[1] + n / k;
+    const sc = Math.floor((X - sgrid.x0) / sgrid.cell), sr = Math.floor((sgrid.y1 - Y) / cy);
+    if (sc < 0 || sr < 0 || sc >= sgrid.w || sr >= sgrid.h) continue;
+    if (kind[sr * sgrid.w + sc] === BUILDING) out[r * W + c] = 1;
+  }
+  return out;
+}
+
+/**
+ * The lot's lidar as grids. pts: { e, n, z, cls } typed columns in map metres (count = e.length); box [e0, n0, e1, n1].
+ * opts.buildings: the shared rule's buildings on this grid (buildingsOnGrid); when given it replaces this file's own
+ * roof rule (roofMask, the water map's, kept only as the fallback when the shared module cannot be loaded).
+ */
+export function buildGrids(pts, box, { cell = 0.25, band = [0.25, 2.5], cap = 5, eave = 0.5, buildings = null } = {}) {
   const W = Math.max(1, Math.ceil((box[2] - box[0]) / cell)), H = Math.max(1, Math.ceil((box[3] - box[1]) / cell));
   const idx = (e, n) => { const c = Math.floor((e - box[0]) / cell), r = Math.floor((box[3] - n) / cell); return c >= 0 && c < W && r >= 0 && r < H ? r * W + c : -1; };
   const dem = new Float32Array(W * H).fill(NaN);
@@ -46,7 +70,7 @@ export function buildGrids(pts, box, { cell = 0.25, band = [0.25, 2.5], cap = 5,
     const h = pts.z[i] - dem[k];
     if (h > band[0] && h < band[1]) { occ[k] = 1; if (h > occTop[k]) occTop[k] = h; }
   }
-  const bld = roofMask(pts, box, cell, W, H, dem);
+  const bld = buildings && buildings.length === W * H ? buildings : roofMask(pts, box, cell, W, H, dem);
   /* A building is its walls, not its inside (the phone cannot see in, and points landing inside a solid footprint
      would cost nothing wherever they went): the roof's footprint pulled in by the eaves (0.5 m), then its
      outline. */

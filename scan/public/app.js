@@ -209,7 +209,7 @@ function startLidar(m) {
 function showLidar() {
   const el = $('#lidar'); if (!el) return;
   el.textContent = st.lid.error ? `The lidar could not be read (${st.lid.error}): references only.`
-    : st.lid.ready ? `Lidar ready: ${st.lid.ready.points.toLocaleString()} points, ${st.lid.ready.solid.toLocaleString()} solid cells (walls, fences, trunks), lined up by ${st.lid.ready.shift}.`
+    : st.lid.ready ? `Lidar ready: ${st.lid.ready.points.toLocaleString()} points, ${st.lid.ready.solid.toLocaleString()} solid cells (walls, fences, trunks), lined up by ${st.lid.ready.shift}; buildings by ${st.lid.ready.rule || 'the AR copy'}${st.lid.ready.structures ? ` (${st.lid.ready.structures.building.toLocaleString()} m² of building)` : ''}.`
       : st.lid.progress || 'Reading the lidar…';
 }
 
@@ -424,7 +424,7 @@ function finish() {
     page: 'yard AR test v2', features: w.features || null, failed: w.failed || null, errors: st.errors.map((e) => e.what).slice(-30),
     references: refs, checks: (w.checks || []).map((c) => ({ ...c, errorM: r3(c.errorM), errorFixM: r3(c.errorFixM), errorRefsM: r3(c.errorRefsM), walkedSinceFixM: r2(c.walkedSinceFixM), aimM: r2(c.aimM), walkedM: r2(c.walkedM) })),
     pinsNear: w.pins.map((p) => ({ name: p.name, nearest: p.nearest ? { name: p.nearest.name, m: r2(p.nearest.m), byRefsM: r2(p.nearest.byRefsM) } : null })),
-    fix: L ? summaryOf(L) : null, lidar: st.lid.ready ? { points: st.lid.ready.points, solid: st.lid.ready.solid, shift: st.lid.ready.shift, tallCells: st.lid.overlay ? st.lid.overlay.tall.length / 5 : null } : st.lid.error ? { error: st.lid.error } : null,
+    fix: L ? summaryOf(L) : null, lidar: st.lid.ready ? { points: st.lid.ready.points, solid: st.lid.ready.solid, shift: st.lid.ready.shift, rule: st.lid.ready.rule || null, structures: st.lid.ready.structures || null, tallCells: st.lid.overlay ? st.lid.overlay.tall.length / 5 : null } : st.lid.error ? { error: st.lid.error } : null,
   });
   s.id = `${w.startedAt}`; s.saved = null;
   st.tracker = null; st.walk = null; st.L = null; st.ar = null; st.drawer = null;

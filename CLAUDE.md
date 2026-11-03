@@ -199,11 +199,17 @@ scan and water sites copy the shade map's readers) instead of keeping its
 own version. A session that finds a rule wrong fixes it in its home and
 says so to the others; it does not fix its own copy.
 
-As of 2026-11-03 the tree-versus-building rule exists in SIX places, and
-they disagree (the water session's own list, 2026-11-03, added three):
-  - the shade map: public/shade/view3d.js kindOf (drawing), canopy.js
-    (roofs are opaque cubes) and its seasonal classifier (seasonalCanopy
-    with classify:true);
+THE TREE-VERSUS-BUILDING RULE'S HOME: public/shade/structures.js (the
+features session, 2026-11-03: seasonal.js seasonalCanopy's rule moved
+there unchanged; structuresOf / structuresFrom; scored in shade findings
+24). The yard AR tool imports it (since 2026-11-03; the scan deploy copies
+public/shade/ in and redeploys by itself when structures.js or what it
+imports changes on the default branch). view3d.js kindOf is only the
+point-cloud drawing's colour, not a rule.
+
+Before that, as of 2026-11-03, the rule existed in SIX places, and they
+disagree (the water session's own list, 2026-11-03, added three):
+  - the shade map: seasonal.js seasonalCanopy (now structures.js);
   - the detector: tools/lidar_frame.py roof (no ground return, 3+ returns,
     top 2.5 m+ up, height spread under 1.5 m, 2 m cells), in Python;
   - the water map: water/lib/roofs.js coreRoofs, a JS port of the
@@ -215,7 +221,8 @@ they disagree (the water session's own list, 2026-11-03, added three):
   - the water map's wind obstacles: water/lib/obstacles.js (4 m cells,
     Overture outlines or class 6 for buildings, 40% of returns 1.5 m+ up
     for vegetation);
-  - the AR tool: scan/lib/lidar.js, a copy of ar-lidar.js.
+  - the AR tool: scan/lib/lidar.js, a copy of ar-lidar.js (now only the
+    fallback when structures.js cannot be loaded).
 Other shared jobs done more than once: walls under the eaves (the roof
 pulled in 0.5 m, ar-lidar.js and the scan copy), the noise classes {7, 18}
 (roofs.js, obstacles.js, the shade filter), and the readers themselves

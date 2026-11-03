@@ -17,7 +17,7 @@
  * copies its dist/ unchanged, notice and LICENSE included.
  */
 
-import { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -93,6 +93,11 @@ function main() {
      vendored laz-perf (features session), unchanged: ept.js, las.js, laz.js, datum.js, browser-io.js and
      vendor/laz-perf.*. Not this tool's to edit; a change there is theirs. */
   for (const f of ['ept.js', 'las.js', 'laz.js', 'datum.js', 'browser-io.js']) cpSync(join(root, 'water', 'lib', f), join(build, 'lib', f));
+  /* THE SHADE MAP'S OWN MODULES, unchanged, under /lib/shade/ (CLAUDE.md "One way to read lidar"): structures.js, the
+     shared tree-versus-building rule, and what it imports (canopy.js, grid.js, ground.js, ept.js, las.js). All of
+     them, so a module the features session adds to that chain is there too. */
+  mkdirSync(join(build, 'lib', 'shade'), { recursive: true });
+  for (const f of readdirSync(join(root, 'public', 'shade'))) if (f.endsWith('.js')) cpSync(join(root, 'public', 'shade', f), join(build, 'lib', 'shade', f));
   mkdirSync(join(build, 'lib', 'vendor'), { recursive: true });
   for (const f of ['laz-perf.js', 'laz-perf.wasm']) cpSync(join(root, 'public', 'shade', 'vendor', f), join(build, 'lib', 'vendor', f));
   for (const f of ['favicon.svg', 'favicon-32.png', 'favicon.ico', 'apple-touch-icon.png']) {

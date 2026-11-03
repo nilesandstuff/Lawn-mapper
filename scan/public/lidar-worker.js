@@ -17,7 +17,10 @@ import { workerIo } from '/lib/browser-io.js';
 import { pointsIn, toMerc } from '/lib/ept.js';
 import { nad83Correction } from '/lib/datum.js';
 import { fromLocal } from '/lib/frames.js';
-import { buildGrids, register } from '/lib/lidar.js';
+import { buildGrids, buildingsOnGrid, register } from '/lib/lidar.js';
+// THE SHARED TREE-VERSUS-BUILDING RULE (CLAUDE.md, "One way to read lidar"): the shade map's own module, copied into
+// this site unchanged at deploy time (scan/tools/prepare.mjs). Loaded lazily, so a failure falls back to the old rule.
+const sharedRule = () => Promise.all([import('/lib/shade/structures.js'), import('/lib/shade/grid.js')]);
 
 let G = null;
 
@@ -57,8 +60,17 @@ self.onmessage = async ({ data }) => {
     const [ox, oy] = toMerc(origin);
     const e = new Float64Array(cols.n), n = new Float64Array(cols.n);
     for (let i = 0; i < cols.n; i++) { e[i] = (cols.x[i] - ox) * k + east; n[i] = (cols.y[i] - oy) * k + north; }
-    G = buildGrids({ e, n, z: cols.z, cls: cols.cls, nret: cols.nret }, box);
-    self.postMessage({ ready: { points: cols.n, solid: G.solid, cell: G.cell, cloud: cloud.name || null, shift: how } });
+    // the buildings by the shared rule, on the shade map's 1 m grid over the same (shifted) ground
+    let buildings = null, rule = 'the AR copy of the water rule (the shared module did not load)', counts = null;
+    try {
+      const [{ structuresFrom, BUILDING }, { gridOver }] = await sharedRule();
+      const sgrid = gridOver(bbox, 1, lat);
+      const s = structuresFrom(cols, sgrid, { shift: [east / k, north / k] });
+      buildings = buildingsOnGrid(s.kind, sgrid, box, 0.25, [ox, oy], k, BUILDING);
+      rule = 'the shared rule (public/shade/structures.js)'; counts = s.counts;
+    } catch (err) { rule += `: ${err.message}`; }
+    G = buildGrids({ e, n, z: cols.z, cls: cols.cls, nret: cols.nret }, box, { buildings });
+    self.postMessage({ ready: { points: cols.n, solid: G.solid, cell: G.cell, cloud: cloud.name || null, shift: how, rule, structures: counts } });
     // THE OVERLAY (core session, SCAN-H2): what the match matches against, for the camera view. solids: each solid
     // 0.25 m cell as [e, n, ground, top]; tall: each 1 m cell with points 2.5 m or more above the ground as
     // [e, n, lowest, highest, roof?]; dem1: the ground at 1 m; dist: the distance grid, for the agreement dots.

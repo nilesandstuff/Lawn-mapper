@@ -5,7 +5,9 @@
  *   node scan/test/lidar.test.js
  */
 import assert from 'node:assert/strict';
-import { buildGrids, register, sample } from '../lib/lidar.js';
+import { buildGrids, buildingsOnGrid, register, sample } from '../lib/lidar.js';
+import { structuresFrom, BUILDING } from '../../public/shade/structures.js';
+import { gridOver } from '../../public/shade/grid.js';
 
 let seed = 7;
 const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
@@ -70,5 +72,35 @@ assert.ok(G.occTop && G.bld, 'the tops and the roof mask come back for the overl
   const { stand, ground: gr } = seen([[-10, -9], [-6, -9], [-2, -9]], { reach: 4 });
   const fix = register(G, stand, gr, { at: [-6 + 3, -9 - 4], phone: toAR([-6, -9]), radiusM: 10 });
   assert.ok(!fix.ok, `refused: ${fix.why}`);
+}
+// THE SHARED RULE (public/shade/structures.js) on the same lot, the way the worker calls it: the points in 3857 round
+// a map point, the shade grid at 1 m, its buildings put on the fine grid in map metres
+{
+  const lat = 42.8, k = Math.cos((lat * Math.PI) / 180), ox = -9540000, oy = 5285000;
+  const L0 = lot();
+  // as a real cloud has it: no ground returns under the roof (the test lot's ground runs under the house), and the
+  // roof unclassified (class 1), so the rule has to find it from its shape
+  const keep = [];
+  for (let i = 0; i < L0.e.length; i++) if (!(L0.cls[i] === 2 && L0.e[i] > -12.5 && L0.e[i] < 2.5 && L0.n[i] > 3.5 && L0.n[i] < 13.5)) keep.push(i);
+  const L = { e: Float64Array.from(keep, (i) => L0.e[i]), n: Float64Array.from(keep, (i) => L0.n[i]), z: Float32Array.from(keep, (i) => L0.z[i]), cls: Uint8Array.from(keep, (i) => (L0.cls[i] === 6 ? 1 : L0.cls[i])) };
+  const n = L.e.length, x = new Float64Array(n), y = new Float64Array(n);
+  for (let i = 0; i < n; i++) { x[i] = ox + L.e[i] / k; y[i] = oy + L.n[i] / k; }
+  const cols = { n, x, y, z: L.z, cls: L.cls, ret: new Uint8Array(n).fill(1), nret: new Uint8Array(n).fill(1), intensity: new Uint16Array(n) };
+  const bbox = [ox - 30 / k, oy - 30 / k, ox + 30 / k, oy + 30 / k];
+  const sgrid = gridOver(bbox, 1, lat);
+  const s = structuresFrom(cols, sgrid, {});
+  const box = [-30, -30, 30, 30];
+  const bld = buildingsOnGrid(s.kind, sgrid, box, 0.25, [ox, oy], k, BUILDING);
+  const at = (e, nn) => bld[Math.floor((30 - nn) / 0.25) * 240 + Math.floor((e + 30) / 0.25)];
+  assert.equal(at(-5, 8), 1, `the house is a building by the shared rule (${JSON.stringify(s.counts)})`);
+  assert.equal(at(20, 20), 0, 'open lawn is not');
+  const G2 = buildGrids(L, box, { buildings: bld });
+  assert.ok(sample(G2, G2.dist, -12, 8) < 0.3, 'its wall is solid');
+  assert.ok(sample(G2, G2.dist, -5, 8) > 2, 'its inside is not');
+  // a mapping check that does not lean on the rule: one building column, found where it is
+  const fake = { x0: 0, y1: 100, cell: 2, w: 50, h: 50 }, kind = new Uint8Array(2500); kind[10 * 50 + 20] = 1;
+  const one = buildingsOnGrid(kind, fake, [-10, -10, 10, 10], 0.5, [41, 79], 1); // the column spans x 40-42, y 78-80: e and n -1..1
+  let c = 0; for (const v of one) c += v;
+  assert.equal(c, 16, 'a 2 m column is 16 half-metre cells');
 }
 console.log('lidar: ok');
