@@ -52,6 +52,6 @@ const refs = [[0, 0], [15, 3], [4, 20], [-10, 8]];
   const [e, n, z] = [7, -3, 101.2];
   const x = M[0] * e + M[4] * z + M[8] * n + M[12], y = M[1] * e + M[5] * z + M[9] * n + M[13], zz = M[2] * e + M[6] * z + M[10] * n + M[14];
   const [u, v] = unapply(T, [e, n]);
-  near(x, u, 1e-9, 'x = u'); near(zz, -v, 1e-9, 'z = -v'); near(y, 101.7, 1e-9, 'height plus dy');
+  near(x, u, 1e-5, 'x = u'); near(zz, -v, 1e-5, 'z = -v'); near(y, 101.7, 1e-5, 'height plus dy (a 32-bit matrix)');
 }
 console.log('align: ok');
