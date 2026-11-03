@@ -48,14 +48,42 @@ export function dayOfYear(ms) {
 
 /** What the model took a column for. */
 export function kindOf(season, k, leafy) {
-  const v = season?.kind?.[k];
+  let v = season?.kind?.[k];
   if (v === 1) return 'roof'; // on every flight
   if (v === 4) return 'structure'; // structures.js 6, on every flight
+  /* A column with nothing of its own over 2 m beside a tree is the tree's
+     edge (a twig the pulses clipped, or cubes lent by its neighbours where
+     the flight is thin): drawn as that tree. Only away from trees is it
+     something low (owner, 2026-11-03: a ring of brown round every canopy). */
+  if (v === 0 && leafy && season?.classified && !season.inLeaf?.[k]) return 'filled'; // leaves filled in a gap, as before
+  if (v === 0 && season?.beside?.[k]) v = season.beside[k];
   if (v === 0 && !leafy) return 'low';
   if (!season?.classified || season.inLeaf?.[k]) return 'other'; // in leaf as flown: not sorted, no leaves added
   if (v === 2) return 'evergreen';
   if (v === 3) return 'deciduous';
   return leafy ? 'filled' : 'low';
+}
+
+/**
+ * For each column with nothing over 2 m (kind 0), the kind (2 or 3) of a
+ * tree column within `r` columns of it, the nearer first; 0 where none.
+ */
+export function treeBeside(kind, w, h, r = 2) {
+  const out = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const k = y * w + x;
+    if (kind[k] !== 0) continue;
+    let best = 0, bd = Infinity;
+    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+      const xx = x + dx, yy = y + dy;
+      if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+      const v = kind[yy * w + xx];
+      const dd = dx * dx + dy * dy;
+      if ((v === 2 || v === 3) && dd < bd) { bd = dd; best = v; }
+    }
+    out[k] = best;
+  }
+  return out;
 }
 
 /**
@@ -67,6 +95,7 @@ export function treeRuns(model, mu, season, { roofs = true, cutBelow = 0 } = {})
   const { w, h, nz, dz, z0, ground } = model;
   const out = [];
   const bandOf = (m) => BANDS.findIndex((b) => m < b.below);
+  if (season?.kind && !season.beside) season.beside = treeBeside(season.kind, w, h);
   for (let k = 0; k < w * h; k++) {
     let leafy = false;
     if (season) for (let l = 0; l < nz && !leafy; l++) if (season.muOn[k * nz + l] > season.muOff[k * nz + l]) leafy = true;

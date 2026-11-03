@@ -41,9 +41,11 @@
  *     STRUCTURE_MAX_M), every return over 1 m came back as a single echo,
  *     none was fired in leaf (a crown in leaf can stop pulses whole), and
  *     it is not already a building. Hard columns join 8-way into patches;
- *     a patch of 4 or more is a low structure unless a tree more than 2 m
- *     taller than its top stands within 2 m of it -- the solid-looking
- *     skirt of a spruce. Not used on a flight that kept almost no second
+ *     a patch of 4 or more is a low structure unless it touches a tree
+ *     column, or a tree more than 2 m taller than its top stands within
+ *     2 m of it -- the solid-looking skirt of a spruce, or the edge of a
+ *     crown where a pulse clipped one twig (owner, 2026-11-03: a ring of
+ *     them round canopies, and walls under them in the AR view). Not used on a flight that kept almost no second
  *     returns (under 2% of those over 2 m split), nor on points in leaf. MEASURED on the owner's lot (Kent 2016, 2 points
  *     a square meter; areas read from the photo): the white-roofed shed 34
  *     of 37 columns, the stone-bin row 74 of 88, parked cars 22 of 47; no
@@ -245,7 +247,9 @@ function lowStructures(kind, why, st, w, h) {
         const xx = x + dx, yy = y + dy;
         if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
         const j = yy * w + xx;
-        if (lab[j] !== s0 && (kind[j] === TREE || kind[j] === SOLID_TREE) && top[j] > pTop + STRUCTURE_TREE_RISE_M) { skirt = true; break; }
+        if (lab[j] === s0 || (kind[j] !== TREE && kind[j] !== SOLID_TREE)) continue;
+        /* Touching a tree, or a tree well over it near by: part of the tree. */
+        if ((Math.abs(dx) <= 1 && Math.abs(dy) <= 1) || top[j] > pTop + STRUCTURE_TREE_RISE_M) { skirt = true; break; }
       }
     }
     if (skirt) continue;

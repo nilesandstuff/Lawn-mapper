@@ -1618,7 +1618,10 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   const pts = [];
   for (let e = 0.35; e < 60; e += 0.7) for (let n = 0.35; n < 60; n += 0.7) {
     const shed = e > 5 && e < 10 && n > 5 && n < 12, wall = e > 20 && e < 21 && n > 5 && n < 20, truck = e > 30 && e < 32.5 && n > 5 && n < 11;
-    const rT = Math.hypot(e - 45, n - 15), rS = Math.hypot(e - 15, n - 45);
+    const rT = Math.hypot(e - 45, n - 15), rS = Math.hypot(e - 15, n - 45), rG = Math.hypot(e - 45, n - 45);
+    /* A low, flat-topped crown (4.5 m) whose edge pulses each clip one twig at 3.5 m: the rise rule alone misses that edge. */
+    if (rG < 3.5) { if (rnd() < 0.6) { pts.push([e, n, 104.5, 1, 1, 2], [e, n, 100, 2, 2, 2]); } else pts.push([e, n, 100, 2, 1, 1]); continue; }
+    if (rG < 5) { pts.push([e, n, 103.5, 1, 1, 1]); continue; }
     if (shed) { pts.push([e, n, 102.5, 1, 1, 1]); continue; }
     if (wall) { pts.push([e, n, 101.7, 1, 1, 1]); continue; }
     if (truck) { pts.push([e, n, 101.8 + 0.4 * (e > 31.5), 1, 1, 1]); continue; }
@@ -1635,6 +1638,14 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   check('structures: a 2.5 m shed, a 1.7 m stone wall and a parked truck on a sparse flight are low structures, not trees',
     share(6, 9, 6, 11, [STRUCTURE, BUILDING]) > 0.8 && share(20, 21, 6, 19, [STRUCTURE]) > 0.8 && share(30, 32, 6, 10, [STRUCTURE]) > 0.8 && st.why[at(20.5, 12.5)] === 8,
     `shed ${share(6, 9, 6, 11, [STRUCTURE, BUILDING]).toFixed(2)} wall ${share(20, 21, 6, 19, [STRUCTURE]).toFixed(2)} truck ${share(30, 32, 6, 10, [STRUCTURE]).toFixed(2)}`);
+  let ringStruct = 0;
+  for (let n = 39; n < 51; n++) for (let e = 39; e < 51; e++) if (st.kind[at(e + 0.5, n + 0.5)] === STRUCTURE) ringStruct++;
+  check('structures: the edge of a low crown, where each pulse clipped one twig, is not a ring of structures round it (owner, 2026-11-03)', ringStruct === 0, `${ringStruct} columns`);
+  const { treeBeside, kindOf: drawnKind } = await import('../public/shade/trees-ui.js');
+  const besideKinds = Uint8Array.from([3, 0, 0, 0, 0, 0]);
+  const bes = treeBeside(besideKinds, 6, 1);
+  check('drawing: a column with nothing over 2 m beside a tree is drawn as the tree; away from trees it is something low',
+    bes[1] === 3 && bes[2] === 3 && bes[3] === 0 && drawnKind({ kind: besideKinds, beside: bes, classified: true }, 1, false) === 'deciduous' && drawnKind({ kind: besideKinds, beside: bes, classified: true }, 4, false) === 'low', `${[...bes]}`);
   check('structures: the bare tree stays a tree and the spruce\'s solid-looking skirt stays with its tree',
     share(43, 47, 13, 17, [STRUCTURE]) === 0 && share(12, 18, 42, 48, [STRUCTURE]) === 0 && st.kind[at(15.5, 45.5)] !== NOTHING, `${share(12, 18, 42, 48, [STRUCTURE])}`);
   const inLeaf = makeColumns(cols.n);
