@@ -5,7 +5,7 @@
  */
 import { lasHeader, makeColumns, readRecord, gpsTimes, gpsMs, leafOfMs, LEAF_OFF, LEAF_ON } from '../public/shade/las.js';
 import { onePass } from '../public/shade/passes.js';
-import { structuresOf, structuresFrom, NOTHING, BUILDING, TREE, SOLID_TREE } from '../public/shade/structures.js';
+import { structuresOf, structuresFrom, wallsOf, WALL_INSET_M, NOTHING, BUILDING, TREE, SOLID_TREE, STRUCTURE } from '../public/shade/structures.js';
 import { kindOf as kindOfTrees } from '../public/shade/trees-ui.js';
 import { nodeBox, walk, hierarchyReader, pointsIn, toMerc, fromMerc, mercScale, flownOf } from '../public/shade/ept.js';
 import { nad83Correction } from '../public/shade/datum.js';
@@ -1607,6 +1607,69 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   for (let n = 15; n < 25; n++) for (let e = 16; e < 24; e++) { inside++; if (st.kind[at(e + 0.5, n + 0.5)] === BUILDING) built++; }
   check('structures: a steep roof is a building, by nothing getting through, though its returns spread over more than 1.5 m a column',
     built === inside && st.why[at(17.5, 20.5)] === 2 && st.kind[at(5, 5)] === NOTHING && st.counts.solidTree === 0, `${built} of ${inside}`);
+}
+
+/* LOW STRUCTURES AND WALLS (structures.js 6; owner, 2026-11-03: short structures drawn as trees; walls 2 ft in under the eaves). A sparse flight, 2 pulses a square meter: a shed 2.5 m tall, a stone wall 1.7 m tall and 1 m wide, a parked truck, a bare tree, and a spruce whose low skirt every pulse hits once. */
+{
+  const lat = 43, k = mercScale(lat);
+  const grid = gridOver([0, 0, 60 / k, 60 / k], 1, lat);
+  let seed = 5;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const pts = [];
+  for (let e = 0.35; e < 60; e += 0.7) for (let n = 0.35; n < 60; n += 0.7) {
+    const shed = e > 5 && e < 10 && n > 5 && n < 12, wall = e > 20 && e < 21 && n > 5 && n < 20, truck = e > 30 && e < 32.5 && n > 5 && n < 11;
+    const rT = Math.hypot(e - 45, n - 15), rS = Math.hypot(e - 15, n - 45);
+    if (shed) { pts.push([e, n, 102.5, 1, 1, 1]); continue; }
+    if (wall) { pts.push([e, n, 101.7, 1, 1, 1]); continue; }
+    if (truck) { pts.push([e, n, 101.8 + 0.4 * (e > 31.5), 1, 1, 1]); continue; }
+    if (rT < 5) { if (rnd() < 0.5) { pts.push([e, n, 106 + rnd() * 8, 1, 1, 2], [e, n, 100, 2, 2, 2]); } else pts.push([e, n, 100, 2, 1, 1]); continue; }
+    if (rS < 2) { pts.push([e, n, 112 - rS * 2, 1, 1, 1]); continue; }
+    if (rS < 4) { pts.push([e, n, 101.5 + (4 - rS), 1, 1, 1]); continue; }
+    pts.push([e, n, 100, 2, 1, 1]);
+  }
+  const cols = makeColumns(pts.length);
+  pts.forEach(([e, n, z, c, r, nr], i) => { cols.x[i] = e / k; cols.y[i] = n / k; cols.z[i] = z; cols.cls[i] = c; cols.ret[i] = r; cols.nret[i] = nr; });
+  const st = structuresFrom(cols, grid);
+  const at = (e, n) => Math.floor(60 - n) * grid.w + Math.floor(e);
+  const share = (e0, e1, n0, n1, want) => { let a = 0, b = 0; for (let n = n0; n < n1; n++) for (let e = e0; e < e1; e++) { b++; if (want.includes(st.kind[at(e + 0.5, n + 0.5)])) a++; } return a / b; };
+  check('structures: a 2.5 m shed, a 1.7 m stone wall and a parked truck on a sparse flight are low structures, not trees',
+    share(6, 9, 6, 11, [STRUCTURE, BUILDING]) > 0.8 && share(20, 21, 6, 19, [STRUCTURE]) > 0.8 && share(30, 32, 6, 10, [STRUCTURE]) > 0.8 && st.why[at(20.5, 12.5)] === 8,
+    `shed ${share(6, 9, 6, 11, [STRUCTURE, BUILDING]).toFixed(2)} wall ${share(20, 21, 6, 19, [STRUCTURE]).toFixed(2)} truck ${share(30, 32, 6, 10, [STRUCTURE]).toFixed(2)}`);
+  check('structures: the bare tree stays a tree and the spruce\'s solid-looking skirt stays with its tree',
+    share(43, 47, 13, 17, [STRUCTURE]) === 0 && share(12, 18, 42, 48, [STRUCTURE]) === 0 && st.kind[at(15.5, 45.5)] !== NOTHING, `${share(12, 18, 42, 48, [STRUCTURE])}`);
+  const inLeaf = makeColumns(cols.n);
+  for (const key of ['x', 'y', 'z', 'intensity', 'ret', 'nret', 'cls']) inLeaf[key].set(cols[key]);
+  inLeaf.leaf.fill(2);
+  check('structures: on a flight in leaf the single-echo test is not used (a crown in leaf stops pulses whole too)',
+    structuresFrom(inLeaf, grid).counts.structure === 0);
+  const oneReturn = makeColumns(cols.n);
+  for (const key of ['x', 'y', 'z', 'intensity', 'ret', 'cls']) oneReturn[key].set(cols[key]);
+  oneReturn.nret.fill(1); oneReturn.ret.fill(1);
+  check('structures: nor on a flight that kept one return a pulse (nothing to tell a hard surface by)',
+    structuresFrom(oneReturn, grid).counts.structure === 0);
+  const scModel = buildCanopy(cols, grid);
+  const sc = seasonalCanopy(cols, scModel);
+  const wk = at(20.5, 12.5), nz = scModel.nz;
+  let noLeaves = true, solidLow = false;
+  for (let l = 0; l < nz; l++) {
+    if (sc.muOn[wk * nz + l] !== sc.muOff[wk * nz + l]) noLeaves = false;
+    const mid = scModel.z0 + (l + 0.5) * scModel.dz - scModel.ground[wk];
+    if (mid > 0.5 && mid < 1.7 && sc.muOff[wk * nz + l] >= -Math.log(0.01) * 0.999) solidLow = true;
+  }
+  /* A low sun from the east across the wall, 1 m up just west of it: the wall stops it. */
+  const across = transmittance({ ...scModel, mu: sc.muOn }, 21.5, 60 - 12.5, scModel.ground[at(21.5, 12.5)] + 1, [-Math.cos(0.2), 0, Math.sin(0.2)]);
+  check('seasons: a low structure is kind 4, takes no leaves, and is solid from the grass up',
+    sc.kind[wk] === 4 && sc.counts.structure > 0 && noLeaves && solidLow && across < 0.05, `kind ${sc.kind[wk]}, through the wall ${across.toFixed(3)}`);
+  /* Walls: a 6 x 4 m roof on 1 m columns, at 0.25 m. */
+  const mask = new Uint8Array(10 * 10);
+  for (let y = 3; y < 7; y++) for (let x = 2; x < 8; x++) mask[y * 10 + x] = 1;
+  const wl = wallsOf(mask, 10, 10);
+  let wallN = 0, eaveN = 0;
+  for (let i = 0; i < wl.walls.length; i++) { wallN += wl.walls[i]; eaveN += wl.eaves[i]; }
+  /* Inside the walls: the roof less 2 ft all round, about (6 - 1.22) x (4 - 1.22) m. */
+  const wallM2 = wallN * wl.cellM * wl.cellM;
+  check('walls: under a roof the walls stand 2 ft in from its edge; the band outside them is eave',
+    wl.cellM === 0.25 && Math.abs(wallM2 - (6 - 2 * 0.61) * (4 - 2 * 0.61)) < 3 && wallN + eaveN === 24 * 16 && WALL_INSET_M === 0.61, `${wallM2.toFixed(1)} m2 inside, ${(eaveN * 0.0625).toFixed(1)} m2 eave`);
 }
 
 /* ONE LEAF STATE PER LOT (passes.js; owner, 2026-10-29). */

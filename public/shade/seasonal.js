@@ -145,7 +145,8 @@
 
 import { cellOf } from './grid.js';
 import { crownsOf } from './crowns.js';
-import { structuresOf, NOISE, CROWN_ABOVE_M, BUILDING, TREE, SOLID_TREE } from './structures.js';
+import { structuresOf, NOISE, CROWN_ABOVE_M, BUILDING, TREE, SOLID_TREE, STRUCTURE } from './structures.js';
+import { GRASS_M, SOLID_MU } from './canopy.js';
 
 /* The building rule's numbers live in structures.js; re-exported for the tools that read them here. */
 export { CROWN_ABOVE_M, SOLID_TREE_SPLIT, SOLID_TREE_MAX_M2, SOLID_SPECK_M2, SOLID_TREE_ROUGH_M } from './structures.js';
@@ -190,7 +191,8 @@ export const LEAF_FALL_DAYS = 28;
 /**
  * Classify the model's columns and build its leaf-on state.
  *
- * Returns { kind (Uint8 per column: 0 open, 1 roof, 2 evergreen, 3 deciduous),
+ * Returns { kind (Uint8 per column: 0 open, 1 roof, 2 evergreen, 3 deciduous,
+ *                 4 low structure: a shed, a wall, a vehicle),
  *           clumps: [{ n, base, top, depth, evergreenShare }],
  *           clumpOf, muOn (per cube), muOff, counts (columns of each kind),
  *           inLeaf (Uint8 per column: 1 where most crown returns were fired
@@ -229,11 +231,12 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true, fil
   if (onRet) for (let k = 0; k < N; k++) if (onRet[k] > offRet[k]) inLeaf[k] = 1;
   /* 1, 1b. BUILDINGS AND TREES: structures.js, the one home of the rule
      (owner, 2026-11-03), on every flight. Its kinds onto this file's:
-     building 1, tree 3, a solid tree 5 (decided below). */
+     building 1, tree 3, a solid tree 5 (decided below), a low structure 4
+     (a shed, a stone wall, a parked truck: never a crown). */
   const built = structuresOf(cols, model, { shift });
   const { above, zHi } = built.stats;
   const kind = new Uint8Array(N);
-  for (let k = 0; k < N; k++) kind[k] = built.kind[k] === BUILDING ? 1 : built.kind[k] === TREE ? 3 : built.kind[k] === SOLID_TREE ? 5 : 0;
+  for (let k = 0; k < N; k++) kind[k] = built.kind[k] === BUILDING ? 1 : built.kind[k] === TREE ? 3 : built.kind[k] === SOLID_TREE ? 5 : built.kind[k] === STRUCTURE ? 4 : 0;
   /* A solid tree: evergreen on a leaf-off flight (that dense with the
      leaves off); unsorted (3, held as flown) when it was in leaf. */
   for (let k = 0; k < N; k++) if (kind[k] === 5) kind[k] = classify && !inLeaf[k] ? 2 : 3;
@@ -272,7 +275,7 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true, fil
   let ever = 0, domed = 0;
   if (classify) {
     const top = new Float32Array(N).fill(NaN);
-    for (let k = 0; k < N; k++) if (above[k] && kind[k] !== 1) top[k] = zHi[k] - ground[k];
+    for (let k = 0; k < N; k++) if (above[k] && kind[k] !== 1 && kind[k] !== 4) top[k] = zHi[k] - ground[k];
     const { lab, crowns } = crownsOf(cols, model, { shift, top, dropAt: DOME_RING_M });
     const ts = crowns.map(() => []);
     for (let k = 0; k < N; k++) {
@@ -331,7 +334,7 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true, fil
       if (xx >= 0 && yy >= 0 && xx < w && yy < h && !grown[yy * w + xx]) { all = 0; break; }
     }
     const k = y * w + x;
-    footprint[k] = (all || isCrown(k)) && kind[k] !== 1 && kind[k] !== 2 && !inLeaf[k] ? 1 : 0;
+    footprint[k] = (all || isCrown(k)) && kind[k] !== 1 && kind[k] !== 2 && kind[k] !== 4 && !inLeaf[k] ? 1 : 0;
   }
   /* Leaf-off crown returns per cube, for leaves where the branches are, and
      each column's lowest one (both over the 5 x 5 around it). */
@@ -394,6 +397,18 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true, fil
         mu[base + q] = f.measured[q - f.l0];
         unfilled++;
       }
+    }
+  }
+  /* A LOW STRUCTURE IS SOLID (structures.js 6): a wall or a shed stops
+     the light from the grass to its top. At 2 points a square meter
+     canopy.js lends a thin column its neighbours' pulses, ground included,
+     and so left these part see-through. Changes mu (the leaf-off state too). */
+  for (let k = 0; k < N; k++) {
+    if (kind[k] !== 4) continue;
+    const hTop = built.stats.top[k];
+    for (let l = 0; l < nz; l++) {
+      const mid = z0 + (l + 0.5) * dz - ground[k];
+      if (mid > GRASS_M && mid < hTop && mu[k * nz + l] < SOLID_MU) mu[k * nz + l] = SOLID_MU;
     }
   }
   const muOn = Float32Array.from(mu);
@@ -513,8 +528,8 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true, fil
       if (muLeaf > muOn[i]) muOn[i] = muLeaf;
     }
   }
-  const counts = { roof: 0, evergreen: ever, deciduous: 0, domed };
-  for (let k = 0; k < N; k++) { if (kind[k] === 1) counts.roof++; else if (kind[k] === 3) counts.deciduous++; }
+  const counts = { roof: 0, evergreen: ever, deciduous: 0, domed, structure: 0 };
+  for (let k = 0; k < N; k++) { if (kind[k] === 1) counts.roof++; else if (kind[k] === 3) counts.deciduous++; else if (kind[k] === 4) counts.structure++; }
   let inLeafColumns = 0;
   for (let k = 0; k < N; k++) if (inLeaf[k] && kind[k] === 3) inLeafColumns++;
   return { kind, clumps, clumpOf, muOn, muOff: mu, counts, classified: classify, leafyColumns: leafy, unfilled, inLeaf, inLeafColumns };

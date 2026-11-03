@@ -35,8 +35,8 @@ export const BANDS = [
 const MIN_MU = 0.01; // a cube passing over 99% a meter is drawn as air
 /* Dark and apart from each other, to stand out on a sunny photo (owner, 2026-10-14: "I can hardly see any of them"). */
 /* Buildings black (owner, 2026-10-29), apart from every tree. */
-export const KIND_COLOR = { roof: '#0a0a0a', evergreen: '#0d3b8c', deciduous: '#1b6e20', filled: '#7a5c00', other: '#1b6e20' };
-export const KIND_NAME = { roof: 'building (or a crown nothing got through)', evergreen: 'evergreen: as the laser saw it, all year', deciduous: 'deciduous', filled: 'deciduous, leaves filled in where the laser found a gap', other: 'tree, in leaf as the laser saw it (no leaves added)' };
+export const KIND_COLOR = { roof: '#0a0a0a', structure: '#4a4a4a', low: '#8a7560', evergreen: '#0d3b8c', deciduous: '#1b6e20', filled: '#7a5c00', other: '#1b6e20' };
+export const KIND_NAME = { roof: 'building (or a crown nothing got through)', structure: 'low structure: a shed, a wall, a vehicle (every pulse came back once)', low: 'something under 2 m, not sorted (a pile, a shrub, a low fence)', evergreen: 'evergreen: as the laser saw it, all year', deciduous: 'deciduous', filled: 'deciduous, leaves filled in where the laser found a gap', other: 'tree, in leaf as the laser saw it (no leaves added)' };
 
 /** 0-based day of the year, 29 Feb folded onto 28 Feb (as the light worker). */
 export function dayOfYear(ms) {
@@ -48,12 +48,14 @@ export function dayOfYear(ms) {
 
 /** What the model took a column for. */
 export function kindOf(season, k, leafy) {
-  if (season?.kind?.[k] === 1) return 'roof'; // on every flight
+  const v = season?.kind?.[k];
+  if (v === 1) return 'roof'; // on every flight
+  if (v === 4) return 'structure'; // structures.js 6, on every flight
+  if (v === 0 && !leafy) return 'low';
   if (!season?.classified || season.inLeaf?.[k]) return 'other'; // in leaf as flown: not sorted, no leaves added
-  const v = season.kind[k];
   if (v === 2) return 'evergreen';
   if (v === 3) return 'deciduous';
-  return leafy ? 'filled' : 'deciduous';
+  return leafy ? 'filled' : 'low';
 }
 
 /**
@@ -69,7 +71,7 @@ export function treeRuns(model, mu, season, { roofs = true, cutBelow = 0 } = {})
     let leafy = false;
     if (season) for (let l = 0; l < nz && !leafy; l++) if (season.muOn[k * nz + l] > season.muOff[k * nz + l]) leafy = true;
     const kind = kindOf(season, k, leafy);
-    if (kind === 'roof' && !roofs) continue;
+    if ((kind === 'roof' || kind === 'structure') && !roofs) continue;
     let run = null;
     const close = () => { if (run) { run.mu /= run.n; delete run.n; out.push(run); run = null; } };
     for (let l = 0; l < nz; l++) {
@@ -215,8 +217,8 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
     const asFlown = season.inLeafColumns || 0;
     const columns = c.evergreen == null ? ''
       : season.classified
-        ? ` Columns: ${(c.deciduous || 0) - asFlown} deciduous, ${c.evergreen || 0} evergreen, ${asFlown ? `${asFlown} in leaf as flown, ` : ''}${c.roof || 0} building.`
-        : ` Columns: ${c.deciduous || 0} tree, ${c.roof || 0} building.`;
+        ? ` Columns: ${(c.deciduous || 0) - asFlown} deciduous, ${c.evergreen || 0} evergreen, ${asFlown ? `${asFlown} in leaf as flown, ` : ''}${c.roof || 0} building${c.structure ? `, ${c.structure} low structure` : ''}.`
+        : ` Columns: ${c.deciduous || 0} tree, ${c.roof || 0} building${c.structure ? `, ${c.structure} low structure` : ''}.`;
     say(`${runs.length.toLocaleString()} pieces drawn. ${leafOff
       ? `${flight === 'mixed' ? 'Part of the lidar here was flown with the leaves off and part in leaf; leaves are added only where the laser saw bare branches' : 'The lidar was flown with the leaves off'}${flownTo ? ` (to ${flownTo})` : ''}; ${st.leaves === 0 ? 'drawn bare, as flown' : `deciduous crowns drawn with ${Math.round(100 * st.leaves)}% of their summer leaves`}.`
       : flight === 'on' ? 'The lidar was flown in leaf: drawn as flown, no leaves added.' : 'The flight season is unknown: drawn as flown.'}${columns}`);
@@ -237,7 +239,7 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
   const applySolid = () => { ids.forEach((id, i) => { if (map.getLayer(id)) map.setPaintProperty(id, 'fill-extrusion-opacity', Math.min(1, bandAt(i).opacity * solid())); }); };
   try { const v = localStorage.getItem('lawnmapper.shade.treesSolid'); if (v) $('#tr-solid').value = v; } catch { /* not kept */ }
   $('#tr-solid').oninput = () => { applySolid(); try { localStorage.setItem('lawnmapper.shade.treesSolid', $('#tr-solid').value); } catch { /* not kept */ } };
-  $('#tr-legend').innerHTML = Object.entries(KIND_COLOR).filter(([k]) => (leafOff ? k !== 'other' || season.inLeafColumns > 0 : k === 'other' || k === 'roof'))
+  $('#tr-legend').innerHTML = Object.entries(KIND_COLOR).filter(([k]) => (leafOff ? k !== 'other' || season.inLeafColumns > 0 : k === 'other' || k === 'roof' || k === 'structure' || k === 'low'))
     .map(([k, c]) => `<span class="sw" style="background:${c}"></span>${KIND_NAME[k]}`).join('<br>')
     + `<br><span class="dim">Faint to solid: ${BANDS.map((b) => b.name).join('; ')}.</span>`;
 
@@ -362,7 +364,7 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
     return [(mx - grid.x0) / grid.cell, (grid.y1 - my) / (grid.cellY || grid.cell), fc.position.toAltitude()];
   };
   /* A block as drawn: its layer at a height over the flat map, and whether it is there to be hit. */
-  const isRoof = (k) => season?.kind?.[k] === 1;
+  const isRoof = (k) => season?.kind?.[k] === 1 || season?.kind?.[k] === 4;
   const cubeAt = (k, z) => {
     const l = Math.floor((z - lift(k) + model.ground[k] - model.z0) / model.dz);
     return l >= 0 && l < model.nz ? l : -1;

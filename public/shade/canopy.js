@@ -221,4 +221,4 @@ export function solidAtGrass(model, k) {
   const l = Math.floor((model.ground[k] + GRASS_M + 0.5 - model.z0) / model.dz);
   return l >= 0 && l < model.nz && model.mu[k * model.nz + l] >= SOLID_MU * 0.999;
 }
-const SOLID_MU = -Math.log(P_MIN);
+export const SOLID_MU = -Math.log(P_MIN); // the most a cube can stop: 99% a meter
