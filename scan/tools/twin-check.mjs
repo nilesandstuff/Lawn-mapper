@@ -87,6 +87,11 @@ async function main() {
     if (h > 0.25 && h < 2.5) band[rr * W + cc] = 1;
   }
   let crown = new Uint8Array(N), structure = new Uint8Array(N), building = new Uint8Array(N);
+  let patchOf = null; const patchRows = [];
+  const mPerUnit = L.k; // 3857 units to metres at this latitude
+  // the shade column under a fine cell, as buildingsOnGrid finds it
+  const columnAt = (k) => { if (!shade) return -1; const { sgrid } = shade; const e = box[0] + ((k % W) + 0.5) * G.cell, n = box[3] - (((k / W) | 0) + 0.5) * G.cell; const x = L.ox + e / L.k, y = L.oy + n / L.k; const c = Math.floor((x - sgrid.x0) / sgrid.cell), r = Math.floor((sgrid.y1 - y) / (sgrid.cellY || sgrid.cell)); return c >= 0 && r >= 0 && c < sgrid.w && r < sgrid.h ? r * sgrid.w + c : -1; };
+  const patchAtCell = (k) => { if (!patchOf) return -1; const { sgrid } = shade; const c0 = columnAt(k); if (c0 < 0) return -1; const cx = c0 % sgrid.w, cy = (c0 / sgrid.w) | 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const xx = cx + dx, yy = cy + dy; if (xx >= 0 && yy >= 0 && xx < sgrid.w && yy < sgrid.h && patchOf[yy * sgrid.w + xx] >= 0) return patchOf[yy * sgrid.w + xx]; } return -1; };
   if (shade) {
     const { S, sgrid, kind } = shade;
     const tree = Uint8Array.from(kind, (v) => (v === S.TREE || v === S.SOLID_TREE ? 1 : 0));
@@ -109,6 +114,31 @@ async function main() {
       if (!seen[k]) { patches++; const q = [k]; seen[k] = 1; while (q.length) { const j = q.pop(), jx = j % w, jy = (j / w) | 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const xx = jx + dx, yy = jy + dy; if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue; const i2 = yy * w + xx; if (!seen[i2] && kind[i2] === S.STRUCTURE) { seen[i2] = 1; q.push(i2); } } } }
     }
     console.log(`STRUCTURE: ${st} columns in ${patches} patches; ${st ? pct(touch1, st) : '-'} touch a tree column, ${st ? pct(touch2, st) : '-'} are within 2 m of one.`);
+    // each patch, for the features session (2026-11-03): size, heights, returns, nearest tree, contact, phantoms
+    patchOf = new Int32Array(w * h).fill(-1);
+    const stats = shade.stats || {};
+    for (let k0 = 0; k0 < w * h; k0++) {
+      if (kind[k0] !== S.STRUCTURE || patchOf[k0] >= 0) continue;
+      const id = patchRows.length, cells = [k0]; patchOf[k0] = id;
+      for (let q = 0; q < cells.length; q++) { const j = cells[q], jx = j % w, jy = (j / w) | 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const xx = jx + dx, yy = jy + dy; if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue; const i2 = yy * w + xx; if (patchOf[i2] < 0 && kind[i2] === S.STRUCTURE) { patchOf[i2] = id; cells.push(i2); } } }
+      const xs = cells.map((j) => j % w), ys = cells.map((j) => (j / w) | 0);
+      const tops = cells.map((j) => (stats.top ? stats.top[j] : NaN)).filter(Number.isFinite).sort((x, y) => x - y);
+      const firm = stats.firm ? cells.reduce((a2, j) => a2 + stats.firm[j], 0) / cells.length : null;
+      let nearest = null, building = false;
+      for (const j of cells) {
+        const jx = j % w, jy = (j / w) | 0;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const xx = jx + dx, yy = jy + dy; if (xx >= 0 && yy >= 0 && xx < w && yy < h && kind[yy * w + xx] === S.BUILDING) building = true; }
+        for (let dy = -15; dy <= 15; dy++) for (let dx = -15; dx <= 15; dx++) {
+          const xx = jx + dx, yy = jy + dy; if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+          const i2 = yy * w + xx; if (!tree[i2]) continue;
+          const d = Math.hypot(dx, dy) * (sgrid.cell * mPerUnit);
+          if (!nearest || d < nearest.m) nearest = { m: d, top: stats.top ? stats.top[i2] : null };
+        }
+      }
+      patchRows.push({ columns: cells.length, boxM: [(Math.max(...xs) - Math.min(...xs) + 1) * sgrid.cell * mPerUnit, (Math.max(...ys) - Math.min(...ys) + 1) * (sgrid.cellY || sgrid.cell) * mPerUnit].map((v) => +v.toFixed(1)),
+        topMedianM: tops.length ? +tops[tops.length >> 1].toFixed(1) : null, topMaxM: tops.length ? +tops[tops.length - 1].toFixed(1) : null, firmPerColumn: firm != null ? +firm.toFixed(2) : null,
+        nearestTree: nearest ? { m: +nearest.m.toFixed(1), topM: nearest.top != null && Number.isFinite(nearest.top) ? +nearest.top.toFixed(1) : null } : null, bordersBuilding: building, wallCells: 0, wallCellsNearWalk: 0, phantoms: 0 });
+    }
   }
   // the solid cells by source
   const near = (arr, k, r = 1) => { const x = k % W, y = (k / W) | 0; for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) { const xx = x + dx, yy = y + dy; if (xx >= 0 && yy >= 0 && xx < W && yy < H && arr[yy * W + xx]) return true; } return false; };
@@ -158,10 +188,19 @@ async function main() {
     }
     const ph = [0, 0, 0, 0], tot = [0, 0, 0, 0];
     for (let k = 0; k < N; k++) if (kindOfSolid[k] && walked[k]) { tot[kindOfSolid[k]]++; if (!seenNear[k]) ph[kindOfSolid[k]]++; }
+    if (mode === 'refs' && patchRows.length) for (let k = 0; k < N; k++) {
+      if (!G.occ[k] || band[k]) continue;
+      const p = patchAtCell(k); if (p < 0) continue;
+      patchRows[p].wallCells++; if (walked[k]) { patchRows[p].wallCellsNearWalk++; if (!seenNear[k]) patchRows[p].phantoms++; }
+    }
     console.log(`Placed by ${mode === 'refs' ? 'the references alone' : 'the walk\'s fixes, else its references'}: ${P.placed.toLocaleString()} points (${P.unplaced.toLocaleString()} not placed). Standing points ${st.toLocaleString()}: ${pct(stHit, st)} within 30 cm of a solid cell (on the lidar's own points ${byKind[1]}, on building walls ${byKind[2]}, on STRUCTURE walls ${byKind[3]}); ${pct(stOverCrown, st)} of them stand under a crown, and of those ${pct(stOverCrownHit, stOverCrown)} land. Ground points ${gr.toLocaleString()}.`);
     console.log(`  Solid cells within 6 m of the walk that the phone saw nothing at (phantoms): the lidar's own ${ph[1]} of ${tot[1]} (${pct(ph[1], tot[1])}), building walls ${ph[2]} of ${tot[2]} (${pct(ph[2], tot[2])}), STRUCTURE walls ${ph[3]} of ${tot[3]} (${pct(ph[3], tot[3])}).`);
   }
 
+  if (patchRows.length) {
+    console.log(`STRUCTURE patches, one a line (numbers only; phantoms = wall cells within 6 m of the walk where the phone saw nothing within 0.5 m):`);
+    patchRows.forEach((r, i) => console.log(`  patch ${i + 1}: ${JSON.stringify(r)}`));
+  }
   // THE WALK REPLAYED THROUGH TODAY'S MATCH: every 5 m of the walk, the last 25 ft of what the phone saw (classed by
   // its height over the ground the page took then), searched from the references' fit as the page would, and judged
   // the way locate.js judges it (2 m and 10 degrees from the references)

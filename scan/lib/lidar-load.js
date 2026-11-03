@@ -46,7 +46,7 @@ export async function loadLidar({ origin, box, lidar, fetchLidar }, { pointsIn, 
       footprint = buildingsOnGrid(wl.walls, { x0: sgrid.x0, y1: sgrid.y1, cell: sgrid.cell * wl.cellM, w: wl.w, h: wl.h }, box, 0.25, [ox, oy], k, 1);
     }
     ruleName = `the shared rule (public/shade/structures.js${footprint ? ', walls 2 ft in' : ''})`; counts = s.counts;
-    shade = { kind: s.kind, sgrid, S };
+    shade = { kind: s.kind, sgrid, S, stats: s.stats };
     // under a crown: the AR's own choice not to match low points there (lidar.js buildGrids opts.under)
     under = buildingsOnGrid(Uint8Array.from(s.kind, (v) => (v === S.TREE || v === S.SOLID_TREE ? 1 : 0)), sgrid, box, 0.25, [ox, oy], k, 1);
   } catch (err) { ruleName += `: ${err.message}`; }
