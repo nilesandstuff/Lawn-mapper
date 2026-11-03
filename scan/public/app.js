@@ -283,7 +283,7 @@ function onFrame(f) {
   }
   if (st.lid.ready && st.lid.worker && f.tracking === 'normal') {
     const ask = nextAsk(L, odo, Date.now(), f.pose?.position || null);
-    if (ask.id) st.lid.worker.postMessage({ register: { id: ask.id, stand: ask.stand, ground: ask.ground, prior: ask.prior, s: ask.s } });
+    if (ask.id) st.lid.worker.postMessage({ register: { id: ask.id, stand: ask.stand, ground: ask.ground, high: ask.high, prior: ask.prior, s: ask.s } });
     else if (ask.why && !/too soon|running/.test(ask.why)) L.why = ask.why;
   }
   // draw

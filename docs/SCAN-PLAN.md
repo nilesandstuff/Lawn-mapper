@@ -515,6 +515,32 @@ every ask (points offered, prior, time, landing share, cost, the runner-up's
 ratio and distance, the disagreement with the references, kept or why not)
 in the walk's copy.
 
+**Walls judged one by one (owner, 2026-11-03).** Walls usually stand within
+2 ft of the roof's edge, sometimes a foot or less, sometimes 10 ft (a porch,
+a sunroom, rarely a pavilion). So the match no longer assumes 2 ft. What the
+phone sees standing is cut into pieces in its own frame (a corner splits two
+walls; a bush stays whole), and under each placement a piece that lands just
+inside a roof finds its OWN inset, measured straight across itself. Its
+points pay for being crooked to the roof's edge, not for the inset; an
+unusual inset (past 3 ft) pays a small charge, and a long wall no more in
+all than a short one's, so a porch wall seen well cannot outvote the trees.
+The price, measured in scan/test/lidar.test.js: one long wall alone no longer
+says how far from it the phone is (the made-up lot's first fix went from
+within 15 cm to within 25 cm); the porch case it was built for is found
+where the 2 ft rule is pulled off.
+
+**The roof's edge.** Points the phone sees 2.4 to 12 m up (gutters, fascia)
+are matched to the lidar roof's edge itself, which needs no inset at all.
+A high point far from any edge (a crown) costs the same wherever the
+placement puts it, so trees neither help nor hurt there. Looking up at the
+gutters is now a way to get a fix.
+
+**Skeptical of a jump.** A fix more than 1.5 m or 8 degrees from the last
+kept one is held, not taken; the next search is widened to reach both, and
+the jump is taken only if a second fix agrees with it within 0.6 m (the
+world moved: ARCore corrected its map). The walk's copy counts jumps held
+and taken.
+
 ## Findings
 
 HARD findings are measured, with the yard named only as "the owner's lot",

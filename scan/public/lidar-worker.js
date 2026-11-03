@@ -26,9 +26,9 @@ let G = null;
 
 self.onmessage = async ({ data }) => {
   if (data.register) {
-    const { id, stand, ground, prior, s } = data.register;
+    const { id, stand, ground, prior, s, high = [] } = data.register;
     let fix;
-    try { fix = G ? register(G, stand, ground, prior, { s, ...(prior?.T ? { searchM: prior.searchM ?? 4, searchDeg: prior.searchDeg ?? 15 } : {}) }) : { ok: false, why: 'the lidar is not read yet' }; } catch (e) { fix = { ok: false, why: e.message }; }
+    try { fix = G ? register(G, stand, ground, prior, { s, high, ...(prior?.T ? { searchM: prior.searchM ?? 4, searchDeg: prior.searchDeg ?? 15 } : {}) }) : { ok: false, why: 'the lidar is not read yet' }; } catch (e) { fix = { ok: false, why: e.message }; }
     self.postMessage({ fix, id });
     return;
   }

@@ -80,6 +80,7 @@ export function buildGrids(pts, box, { cell = 0.25, band = [0.25, 2.5], cap = 5,
      the owner's number, 2026-11-03), put on this grid; else this file's own pull-in by `eave`. */
   const grow = Math.max(1, Math.round(0.5 / cell));
   const walls = footprint && footprint.length === W * H ? footprint : erode(dilate(bld, W, H, grow), W, H, grow + eave / cell);
+  const occNoWalls = occ.slice();
   for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) {
     const k = r * W + c; if (!walls[k]) continue;
     if (r === 0 || c === 0 || r === H - 1 || c === W - 1 || !walls[k - 1] || !walls[k + 1] || !walls[k - W] || !walls[k + W]) occ[k] = 1;
@@ -87,7 +88,53 @@ export function buildGrids(pts, box, { cell = 0.25, band = [0.25, 2.5], cap = 5,
   let solid = 0; for (let k = 0; k < occ.length; k++) solid += occ[k];
   // (core session, 2026-11-03) occTop: how tall each solid cell's points reach, and bld, the roof mask, so the AR
   // page can draw what the match is matching against (docs/SCAN-PLAN.md SCAN-H2); walls are drawn to the roof.
-  return { box, cell, W, H, dem, occ, occTop, bld, dist: distanceField(occ, W, H, cell, cap), solid };
+  const g = { box, cell, W, H, dem, occ, occTop, bld, dist: distanceField(occ, W, H, cell, cap), solid };
+  /* WALLS JUDGED ONE BY ONE, AND THE ROOF'S EDGE (owner, 2026-11-03: walls are "USUALLY within 2 feet of the
+     overhang... But sometimes they're just 1 foot or less, and other times they could be 10 feet (like an
+     all-seasons room or large front porch...). So each wall needs to be judge independently and the trust needs to
+     weighed"). Three more grids, when there are buildings:
+       inset     how far inside the roof's edge each cell is (m; negative outside), for placementCost's wall term,
+                 which charges a wall point by how far it is from 2 ft in, up to a small cap, so an ordinary wall
+                 pulls the fix and a porch's or a sunroom's costs a little and pulls nothing;
+       distNW    the distance to the solid cells WITHOUT the drawn 2 ft walls (fences, trunks, low structures);
+       distRoof  the distance to the roof's edge itself, which the lidar sees exactly and the phone sees when it
+                 looks up (the gutter line): no inset to guess. */
+  let any = 0; for (let k = 0; k < bld.length; k++) any += bld[k];
+  if (any) {
+    // the roof closed first (gaps under 1 m filled), since a roof found from its points can be holed at 0.25 m
+    const roof = erode(dilate(bld, W, H, grow), W, H, grow);
+    const notBld = new Uint8Array(W * H), edge = new Uint8Array(W * H);
+    for (let k = 0; k < roof.length; k++) notBld[k] = roof[k] ? 0 : 1;
+    for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) {
+      const k = r * W + c; if (!roof[k]) continue;
+      if (r === 0 || c === 0 || r === H - 1 || c === W - 1 || !roof[k - 1] || !roof[k + 1] || !roof[k - W] || !roof[k + W]) edge[k] = 1;
+    }
+    const inside = distanceField(notBld, W, H, cell, cap), outside = distanceField(roof, W, H, cell, cap);
+    const inset = new Float32Array(W * H);
+    for (let k = 0; k < inset.length; k++) inset[k] = roof[k] ? inside[k] - cell / 2 : -outside[k] + cell / 2;
+    g.inset = inset; g.distNW = distanceField(occNoWalls, W, H, cell, cap); g.distRoof = distanceField(edge, W, H, cell, cap);
+    /* how far in, measured straight across a wall: for each of 8 headings, from each roof cell to the roof's edge along
+       that heading and against it, the nearer. A porch wall 10 ft in reads 10 ft along its whole length, where the
+       distance to the nearest edge would read less near the house's corners. Outside the roof, as inset. */
+    const reach = WALL_BAND[1] + 0.5, stepM = cell / 2;
+    g.rays = [];
+    for (let h = 0; h < RAY_HEADINGS; h++) {
+      const a = (h * Math.PI) / RAY_HEADINGS, de = Math.cos(a), dn = Math.sin(a), ray = new Float32Array(W * H);
+      for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) {
+        const k = r * W + c;
+        if (!roof[k]) { ray[k] = inset[k]; continue; }
+        const e0 = box[0] + (c + 0.5) * cell, n0 = box[3] - (r + 0.5) * cell;
+        let best = reach;
+        for (const sg of [1, -1]) for (let d = stepM; d < best; d += stepM) {
+          const cc = Math.floor((e0 + sg * de * d - box[0]) / cell), rr = Math.floor((box[3] - (n0 + sg * dn * d)) / cell);
+          if (cc < 0 || rr < 0 || cc >= W || rr >= H || !roof[rr * W + cc]) { best = d; break; }
+        }
+        ray[k] = best;
+      }
+      g.rays.push(ray);
+    }
+  }
+  return g;
 }
 
 /**
@@ -207,13 +254,105 @@ export function sample(g, arr, e, n) {
  * The cost of one placement. stand: [[u, v]] (the phone's points at chest height, AR level); ground: [[u, v, y]];
  * T: { theta, tx, ty, s }. -> { cost, hits (share of stand within 0.3 m of something), tz }
  */
-export function placementCost(g, stand, ground, T, { trunc = 1, groundW = 0.5, groundTrunc = 0.3 } = {}) {
+/* EACH WALL JUDGED ON ITS OWN (owner, 2026-11-03: walls are "USUALLY within 2 feet of the overhang... But sometimes
+   they're just 1 foot or less, and other times they could be 10 feet (like an all-seasons room or large front porch.
+   And, rarely, a pavilion type structure). So each wall needs to be judge independently").
+   What the phone sees standing is cut into pieces in its own frame (points within 0.3 m of each other: one wall, one
+   fence run, one bush). Under a placement, a piece that lands just inside a roof is a wall, and it finds its OWN
+   inset: the trimmed mean of how far in its points stand. Its points then cost how far each is from that inset (so
+   the wall must run along the roof's edge, straight and square), plus a small charge for an unusual inset: nothing
+   from a foot outside to 3 ft in, growing to WALL_CAP by 12 ft, and for a long wall no more in all than a short
+   one's. A porch wall 10 ft in therefore fits as a wall and costs a little; it never drags the fix to put it 2 ft in. The 2 ft walls drawn into g.dist are only for the
+   drawing and the agreement dots now. */
+export const WALL_USUAL = [-0.3, 0.9]; // m in from the roof's edge: no charge (a foot or less, to 2 ft and a bit)
+export const WALL_BAND = [-0.4, 3.6];  // m: anywhere in here a piece may be a wall (a 10 ft porch is the far end)
+export const WALL_CAP = 0.15;          // the charge per point for a wall at the far end (a missed point costs 1)...
+export const WALL_WORTH = 20;          // ...for a wall of up to this many points; a longer wall pays this many points'
+                                       // worth in all, so a long porch wall seen well cannot outvote the trees
+export const PIECE_GAP = 0.3;          // m: points closer than this, in the phone's frame, are one piece
+export const HIGH_W = 0.5;             // what a high point counts for, against a standing one
+export const RAY_HEADINGS = 8;         // headings (over half a turn) at which buildGrids measures inset across a wall
+const insetCharge = (m) => { const o = m < WALL_USUAL[0] ? WALL_USUAL[0] - m : m > WALL_USUAL[1] ? m - WALL_USUAL[1] : 0; return WALL_CAP * Math.min(1, (o / 2.7) ** 2); };
+const pieceCache = new WeakMap();
+/** Cut points [[u, v]] into pieces: points within PIECE_GAP of each other that run the same way share one, so a
+ *  house's corner splits its two walls (each finds its own inset) and a bush, which runs no way, stays whole.
+ *  Returns { of: Int32Array, n }. */
+export function piecesOf(pts, gap = PIECE_GAP) {
+  if (pieceCache.has(pts)) return pieceCache.get(pts);
+  const N = pts.length, parent = Int32Array.from({ length: N }, (_, i) => i);
+  const find = (i) => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
+  const R = 0.6, cells = new Map(), key = (a, b) => a * 100003 + b;
+  for (let i = 0; i < N; i++) { const k = key(Math.floor(pts[i][0] / R), Math.floor(pts[i][1] / R)); (cells.get(k) || cells.set(k, []).get(k)).push(i); }
+  const near = (i, r, f) => {
+    const a = Math.floor(pts[i][0] / R), b = Math.floor(pts[i][1] / R);
+    for (let da = -1; da <= 1; da++) for (let db = -1; db <= 1; db++) for (const j of cells.get(key(a + da, b + db)) || []) if (j !== i && Math.hypot(pts[i][0] - pts[j][0], pts[i][1] - pts[j][1]) < r) f(j);
+  };
+  // each point's way: the long axis of its neighbours within 0.6 m (an angle mod 180), or none when they spread evenly
+  const way = new Float64Array(N).fill(NaN);
+  for (let i = 0; i < N; i++) {
+    let sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0, k = 1; const [x0, y0] = pts[i];
+    near(i, R, (j) => { const x = pts[j][0] - x0, y = pts[j][1] - y0; sx += x; sy += y; sxx += x * x; syy += y * y; sxy += x * y; k++; });
+    if (k < 4) continue;
+    const mx = sx / k, my = sy / k, a = sxx / k - mx * mx, b = syy / k - my * my, cxy = sxy / k - mx * my;
+    const tr = a + b, det = a * b - cxy * cxy, l1 = tr / 2 + Math.sqrt(Math.max(0, (tr * tr) / 4 - det)), l2 = tr - l1;
+    if (l1 > 0 && l2 / l1 < 0.15) way[i] = 0.5 * Math.atan2(2 * cxy, a - b);
+  }
+  const sameWay = (i, j) => { const x = way[i], y = way[j]; if (Number.isNaN(x) || Number.isNaN(y)) return Number.isNaN(x) && Number.isNaN(y); let d = Math.abs(x - y) % Math.PI; if (d > Math.PI / 2) d = Math.PI - d; return d < (25 * Math.PI) / 180; };
+  for (let i = 0; i < N; i++) near(i, gap, (j) => { if (j > i && sameWay(i, j)) { const x = find(i), y = find(j); if (x !== y) parent[x] = y; } });
+  const ids = new Map(), of = new Int32Array(N);
+  for (let i = 0; i < N; i++) { const r = find(i); if (!ids.has(r)) ids.set(r, ids.size); of[i] = ids.get(r); }
+  // each piece's way: the mean of its points' (as doubled angles), when most of them run one way
+  const n = ids.size, cs = new Float64Array(n), sn = new Float64Array(n), cnt = new Float64Array(n), tot = new Float64Array(n);
+  for (let i = 0; i < N; i++) { tot[of[i]]++; if (!Number.isNaN(way[i])) { cs[of[i]] += Math.cos(2 * way[i]); sn[of[i]] += Math.sin(2 * way[i]); cnt[of[i]]++; } }
+  const ways = Float64Array.from({ length: n }, (_, p) => (cnt[p] >= 3 && cnt[p] >= tot[p] / 2 ? 0.5 * Math.atan2(sn[p], cs[p]) : NaN));
+  const out = { of, n, way: ways }; pieceCache.set(pts, out); return out;
+}
+export function placementCost(g, stand, ground, T, { trunc = 1, groundW = 0.5, groundTrunc = 0.3, high = [], detail = false } = {}) {
   const c = Math.cos(T.theta) * T.s, s = Math.sin(T.theta) * T.s;
-  let sum = 0, n = 0, hits = 0;
-  for (const [u, v] of stand) {
-    const d = sample(g, g.dist, c * u - s * v + T.tx, s * u + c * v + T.ty);
-    const dd = Number.isFinite(d) ? Math.min(d, trunc) : trunc;
-    sum += dd * dd; n++; if (dd < 0.3) hits++;
+  let sum = 0, n = 0, hits = 0, hHits = 0;
+  const walls = detail ? [] : null;
+  if (g.inset) {
+    const N = stand.length, P = piecesOf(stand), dd2 = new Float64Array(N), si = new Float64Array(N);
+    const ps = new Float64Array(P.n), pc = new Float64Array(P.n);
+    // each piece that runs one way is measured across itself: its normal's heading under this placement
+    const across = g.rays ? Array.from(P.way, (w) => (Number.isNaN(w) ? g.inset : g.rays[((Math.round((((w + T.theta + Math.PI / 2) % Math.PI) + Math.PI) % Math.PI / (Math.PI / RAY_HEADINGS)) % RAY_HEADINGS) + RAY_HEADINGS) % RAY_HEADINGS])) : null;
+    for (let i = 0; i < N; i++) {
+      const [u, v] = stand[i], e = c * u - s * v + T.tx, nn = s * u + c * v + T.ty;
+      const d = sample(g, g.distNW, e, nn), dd = Number.isFinite(d) ? Math.min(d, trunc) : trunc;
+      dd2[i] = dd * dd; si[i] = sample(g, across ? across[P.of[i]] : g.inset, e, nn);
+      if (si[i] >= WALL_BAND[0] && si[i] <= WALL_BAND[1]) { ps[P.of[i]] += si[i]; pc[P.of[i]]++; }
+    }
+    // each piece's own inset: the mean of its points in the band, then again of those within 0.5 m of it
+    const m = new Float64Array(P.n).fill(NaN);
+    for (let p = 0; p < P.n; p++) if (pc[p] >= 3) m[p] = ps[p] / pc[p];
+    ps.fill(0); pc.fill(0);
+    for (let i = 0; i < N; i++) { const p = P.of[i]; if (Math.abs(si[i] - m[p]) < 0.5) { ps[p] += si[i]; pc[p]++; } }
+    for (let p = 0; p < P.n; p++) m[p] = pc[p] >= 3 ? ps[p] / pc[p] : NaN;
+    const charge = Float64Array.from(m, (x, p) => (Number.isFinite(x) ? (insetCharge(x) * WALL_WORTH) / Math.max(WALL_WORTH, pc[p]) : 0));
+    const used = detail ? new Uint32Array(P.n) : null;
+    for (let i = 0; i < N; i++) {
+      const p = P.of[i]; let cost = dd2[i], hit = dd2[i] < 0.09;
+      if (Number.isFinite(m[p]) && Number.isFinite(si[i])) {
+        const r = Math.min(trunc, Math.abs(si[i] - m[p])), wc = r * r + charge[p];
+        if (wc < cost) { cost = wc; hit = r < 0.3; if (used && hit) used[p]++; }
+      }
+      sum += cost; n++; if (hit) hits++;
+    }
+    if (detail) for (let p = 0; p < P.n; p++) if (used[p] >= 3) walls.push({ points: used[p], insetM: Math.round(m[p] * 100) / 100 });
+  } else {
+    for (const [u, v] of stand) {
+      const d = sample(g, g.dist, c * u - s * v + T.tx, s * u + c * v + T.ty);
+      const dd = Number.isFinite(d) ? Math.min(d, trunc) : trunc;
+      sum += dd * dd; n++; if (dd < 0.3) hits++;
+    }
+  }
+  /* the roof's edge, from what the phone saw high up (2.4 m or more over its ground): gutters and fascia, which the
+     lidar has exactly. Each counts half a point, and costs at most 0.6 m off: a high point far from any edge is most
+     likely a tree's crown, which costs the same wherever the placement puts it. It counts towards the share that
+     landed only when it lands, so a yard full of crowns does not read as a bad match. */
+  if (g.distRoof) for (const [u, v] of high) {
+    const d = sample(g, g.distRoof, c * u - s * v + T.tx, s * u + c * v + T.ty), dd = Number.isFinite(d) ? Math.min(d, 0.6) : 0.6;
+    sum += HIGH_W * dd * dd; n += HIGH_W; if (dd < 0.3) { hits += HIGH_W; hHits++; }
   }
   let tz = 0, gsum = 0, gn = 0;
   if (ground.length) {
@@ -225,7 +364,10 @@ export function placementCost(g, stand, ground, T, { trunc = 1, groundW = 0.5, g
     }
   }
   const cost = (n ? sum / n : 0) + (gn ? groundW * gsum / gn : 0);
-  return { cost, hits: n ? hits / n : 0, tz };
+  const landedOf = n - (g.distRoof ? HIGH_W * (high.length - hHits) : 0);
+  const out = { cost, hits: landedOf > 0 ? hits / landedOf : 0, tz };
+  if (detail) { out.walls = walls; out.high = { n: g.distRoof ? high.length : 0, hits: hHits }; }
+  return out;
 }
 
 /**
@@ -234,8 +376,8 @@ export function placementCost(g, stand, ground, T, { trunc = 1, groundW = 0.5, g
  * phone stands on, e.g. GPS), phone: [u, v] (where it stands in AR), radiusM } (any turn). -> { T, cost, hits,
  * runnerUp: { cost, apartM, apartDeg }, ok, why }
  */
-export function register(g, stand, ground, prior, { s = 1, searchM = 4, searchDeg = 15, stepM = 0.5, stepDeg = 3, minStand = 30, minHits = 0.5 } = {}) {
-  if (stand.length < minStand) return { ok: false, why: `${stand.length} standing points; ${minStand} wanted` };
+export function register(g, stand, ground, prior, { s = 1, searchM = 4, searchDeg = 15, stepM = 0.5, stepDeg = 3, minStand = 30, minHits = 0.5, high = [] } = {}) {
+  if (stand.length + (g.distRoof ? high.length : 0) < minStand) return { ok: false, why: `${stand.length + (g.distRoof ? high.length : 0)} standing points; ${minStand} wanted` };
   // coarse candidates: positions of the phone on the map, and turns
   const cands = [];
   if (prior?.T) {
@@ -257,19 +399,19 @@ export function register(g, stand, ground, prior, { s = 1, searchM = 4, searchDe
   } else return { ok: false, why: 'no starting guess' };
   // the coarse pass on a thinned set of points
   const thin = (a, m) => (a.length <= m ? a : a.filter((_, i) => i % Math.ceil(a.length / m) === 0));
-  const st = thin(stand, 150), gr = thin(ground, 80);
-  const scored = cands.map((T) => ({ T, cost: placementCost(g, st, gr, T).cost })).sort((a, b) => a.cost - b.cost);
+  const st = thin(stand, 150), gr = thin(ground, 80), hi = thin(high, 80);
+  const scored = cands.map((T) => ({ T, cost: placementCost(g, st, gr, T, { high: hi }).cost })).sort((a, b) => a.cost - b.cost);
   // refine the best few apart from each other
   const seeds = [];
   for (const x of scored) {
     if (seeds.length >= 4) break;
     if (seeds.every((y) => Math.hypot(x.T.tx - y.T.tx, x.T.ty - y.T.ty) > 2 || Math.abs(angDiff(x.T.theta, y.T.theta)) > (10 * Math.PI) / 180)) seeds.push(x);
   }
-  const refined = seeds.map((x) => refine(g, stand, ground, x.T)).sort((a, b) => a.cost - b.cost);
+  const refined = seeds.map((x) => hop(g, stand, ground, refine(g, stand, ground, x.T, high), high)).sort((a, b) => a.cost - b.cost);
   const best = refined[0];
   const other = refined.find((r) => Math.hypot(r.T.tx - best.T.tx, r.T.ty - best.T.ty) > 1 || Math.abs(angDiff(r.T.theta, best.T.theta)) > (5 * Math.PI) / 180);
-  const m = placementCost(g, stand, ground, best.T);
-  const out = { T: best.T, cost: m.cost, hits: m.hits, tz: m.tz, runnerUp: other ? { cost: other.cost, apartM: Math.hypot(other.T.tx - best.T.tx, other.T.ty - best.T.ty), apartDeg: Math.abs(angDiff(other.T.theta, best.T.theta)) * 180 / Math.PI } : null };
+  const m = placementCost(g, stand, ground, best.T, { high, detail: true });
+  const out = { T: best.T, cost: m.cost, hits: m.hits, tz: m.tz, walls: m.walls, high: m.high, runnerUp: other ? { cost: other.cost, apartM: Math.hypot(other.T.tx - best.T.tx, other.T.ty - best.T.ty), apartDeg: Math.abs(angDiff(other.T.theta, best.T.theta)) * 180 / Math.PI } : null };
   if (m.hits < minHits) return { ...out, ok: false, why: `only ${Math.round(m.hits * 100)}% of what the phone sees lands on the lidar` };
   if (other && other.cost < best.cost * 1.25) return { ...out, ok: false, why: 'two places fit about as well' };
   return { ...out, ok: true };
@@ -277,17 +419,32 @@ export function register(g, stand, ground, prior, { s = 1, searchM = 4, searchDe
 
 const angDiff = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
 
+/** Since each wall finds its own inset, the cost has shallow side hollows a pattern search can stop in (a degree or
+ *  two off, a few tenths of a metre). So from where it stopped, start again a little turned and shifted each way and
+ *  keep the lowest. */
+function hop(g, stand, ground, best, high = []) {
+  const [mu, mv] = middle(stand);
+  for (const [dd, dx, dy] of [[1.5, 0, 0], [-1.5, 0, 0], [3, 0, 0], [-3, 0, 0], [0, 0.3, 0], [0, -0.3, 0], [0, 0, 0.3], [0, 0, -0.3]]) {
+    const T = best.T, th = T.theta + (dd * Math.PI) / 180;
+    const c0 = Math.cos(T.theta) * T.s, s0 = Math.sin(T.theta) * T.s, c1 = Math.cos(th) * T.s, s1 = Math.sin(th) * T.s;
+    const C = { ...T, theta: th, tx: T.tx + (c0 * mu - s0 * mv) - (c1 * mu - s1 * mv) + dx, ty: T.ty + (s0 * mu + c0 * mv) - (s1 * mu + c1 * mv) + dy };
+    const r = refine(g, stand, ground, C, high, 0.25);
+    if (r.cost < best.cost - 1e-9) best = r;
+  }
+  return best;
+}
+
 /** Pattern search on (turn, east, north) from T, down to 1 cm and 0.05 degrees. */
-function refine(g, stand, ground, T0) {
-  let T = { ...T0 }, cost = placementCost(g, stand, ground, T).cost;
-  let sm = 0.5, sd = (2 * Math.PI) / 180;
+function refine(g, stand, ground, T0, high = [], sm = 0.5) {
+  let T = { ...T0 }, cost = placementCost(g, stand, ground, T, { high }).cost;
+  let sd = ((4 * sm) * Math.PI) / 180;
   while (sm > 0.01) {
     let moved = false;
     for (const [k, d] of [['tx', sm], ['tx', -sm], ['ty', sm], ['ty', -sm], ['theta', sd], ['theta', -sd]]) {
       const C = { ...T, [k]: T[k] + d };
       // a turn about the phone's points' middle, not the AR origin, so turning does not also throw them sideways
       if (k === 'theta') { const [mu, mv] = middle(stand); const c0 = Math.cos(T.theta) * T.s, s0 = Math.sin(T.theta) * T.s, c1 = Math.cos(C.theta) * T.s, s1 = Math.sin(C.theta) * T.s; C.tx = T.tx + (c0 * mu - s0 * mv) - (c1 * mu - s1 * mv); C.ty = T.ty + (s0 * mu + c0 * mv) - (s1 * mu + c1 * mv); }
-      const v = placementCost(g, stand, ground, C).cost;
+      const v = placementCost(g, stand, ground, C, { high }).cost;
       if (v < cost - 1e-9) { T = C; cost = v; moved = true; }
     }
     if (!moved) { sm /= 2; sd /= 2; }

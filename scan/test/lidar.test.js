@@ -5,7 +5,7 @@
  *   node scan/test/lidar.test.js
  */
 import assert from 'node:assert/strict';
-import { buildGrids, buildingsOnGrid, register, sample } from '../lib/lidar.js';
+import { buildGrids, buildingsOnGrid, register, sample, piecesOf, placementCost } from '../lib/lidar.js';
 import { structuresFrom, BUILDING, STRUCTURE, wallsOf } from '../../public/shade/structures.js';
 import { gridOver } from '../../public/shade/grid.js';
 
@@ -60,7 +60,9 @@ assert.ok(G.occTop && G.bld, 'the tops and the roof mask come back for the overl
   const { stand, ground: gr } = seen(path);
   const fix = register(G, stand, gr, { at: [path[2][0] + 5, path[2][1] - 6], phone: toAR(path[2]), radiusM: 12 });
   assert.ok(fix.ok, `a fix: ${fix.why}`);
-  for (const p of [[0, 0], [-12, 4], [15, -5]]) assert.ok(offAt(fix.T, p) < 0.15, `${p} within 15 cm: ${offAt(fix.T, p).toFixed(3)}`);
+  // 25 cm, not the 15 cm of when every wall was taken to stand 2 ft in: each wall now finds its own inset, so the one
+  // long wall seen here no longer pins how far north the phone is by itself; a tree and two short walls do
+  for (const p of [[0, 0], [-12, 4], [15, -5]]) assert.ok(offAt(fix.T, p) < 0.25, `${p} within 25 cm: ${offAt(fix.T, p).toFixed(3)}`);
   assert.ok(fix.hits > 0.8, `most points land: ${fix.hits}`);
   // from that fix, a small search a few steps on
   const next = seen([[6, -1], [8, -2], [10, -4]]);
@@ -114,5 +116,46 @@ assert.ok(G.occTop && G.bld, 'the tops and the roof mask come back for the overl
   const one = buildingsOnGrid(kind, fake, [-10, -10, 10, 10], 0.5, [41, 79], 1); // the column spans x 40-42, y 78-80: e and n -1..1
   let c = 0; for (const v of one) c += v;
   assert.equal(c, 16, 'a 2 m column is 16 half-metre cells');
+}
+// EACH WALL ON ITS OWN (owner, 2026-11-03: usually 2 ft in from the roof's edge, sometimes a foot or less, sometimes
+// 10 ft for a porch or a sunroom). The roof here runs 3.5..13.5 north; its edge is near 3.6-4 in the mask.
+{
+  const line = (e0, n0, e1, n1, step = 0.1) => { const out = [], len = Math.hypot(e1 - e0, n1 - n0); for (let t = 0; t <= len; t += step) out.push([e0 + ((e1 - e0) * t) / len + (rnd() - 0.5) * 0.03, n0 + ((n1 - n0) * t) / len + (rnd() - 0.5) * 0.03]); return out; };
+  const trunk = (te, tn) => Array.from({ length: 40 }, () => { const a = rnd() * 6.283; return [te + 0.2 * Math.cos(a), tn + 0.2 * Math.sin(a)]; });
+  const groundNear = (pts) => pts.map(([pe, pn]) => { const a = rnd() * 6.283, r = 0.5 + rnd() * 4, e = pe + r * Math.cos(a), n = pn + r * Math.sin(a); return [...toAR([e, n]), ground(e, n) - 101.3]; });
+  // pieces: an L corner is two pieces, a trunk stays one
+  const L = [...line(0, 0, 4, 0), ...line(0, 0.1, 0, 4)], P = piecesOf(L);
+  assert.equal(new Set(P.of.slice(8, 35)).size, 1, 'one wall is one piece (away from the corner, where points run no one way)');
+  assert.notEqual(P.of[20], P.of[65], 'the two walls of a corner are two pieces');
+  const tk = piecesOf(trunk(0, 0)); assert.equal(tk.n, 1, 'a trunk is one piece');
+  // a porch: the south wall stands 3 m in from the roof's edge, the side walls 2 ft in, and two trees
+  const map = [...line(-11.4, 6.5, 1.4, 6.5), ...line(1.9, 6.6, 1.9, 9), ...line(-11.9, 6.6, -11.9, 9), ...trunk(8, 3), ...trunk(15, -5)];
+  const walk = [[-6, 0], [0, 0], [6, -1]];
+  const stand = map.map(toAR), gr = groundNear(walk.flatMap((p) => Array(20).fill(p)));
+  const fix = register(G, stand, gr, { at: [3, -6], phone: toAR([0, 0]), radiusM: 12 });
+  assert.ok(fix.ok, `the porch: a fix: ${fix.why}`);
+  for (const p of [[0, 0], [-12, 4], [15, -5]]) assert.ok(offAt(fix.T, p) < 0.3, `the porch: ${p} within 30 cm: ${offAt(fix.T, p).toFixed(3)}`);
+  const porch = fix.walls.find((w) => w.insetM > 2);
+  assert.ok(porch, `the porch wall found as a wall of its own, well in: ${JSON.stringify(fix.walls)}`);
+  // the old way, every wall 2 ft in (the distance to the drawn walls), is pulled north by the porch wall
+  const old = { ...G, inset: null, distNW: null, distRoof: null };
+  const fixOld = register(old, stand, gr, { at: [3, -6], phone: toAR([0, 0]), radiusM: 12 });
+  const offOld = fixOld.ok ? offAt(fixOld.T, [0, 0]) : Infinity;
+  assert.ok(offOld > offAt(fix.T, [0, 0]), `the old way does worse: ${offOld.toFixed(2)} against ${offAt(fix.T, [0, 0]).toFixed(2)}`);
+  // the roof's edge alone: the phone looks up at the gutters along the south and east edges, and the trees
+  const gutters = [];
+  const lowest = (f) => { let best = null; for (let x = 0; x <= 2; x += 0.01) { const [e, n] = f(x), d = sample(G, G.distRoof, e, n); if (!best || d < best.d) best = { d, p: [e, n] }; } return best; };
+  for (let e = -12; e <= 2; e += 0.25) { const b = lowest((x) => [e, 3 + x]); if (b.d < 0.15) gutters.push(b.p); }
+  for (let n = 4.5; n <= 13; n += 0.25) { const b = lowest((x) => [1 + x, n]); if (b.d < 0.15) gutters.push(b.p); }
+  assert.ok(gutters.length > 60, `the roof's edge traced: ${gutters.length}`);
+  const fixUp = register(G, [...trunk(8, 3), ...trunk(15, -5)].map(toAR), gr, { at: [3, -6], phone: toAR([0, 0]), radiusM: 12 }, { high: gutters.map(toAR) });
+  assert.ok(fixUp.ok, `looking up: a fix: ${fixUp.why}`);
+  assert.ok(fixUp.high.hits > 50, `the gutters land on the roof's edge: ${JSON.stringify(fixUp.high)}`);
+  for (const p of [[0, 0], [-12, 4]]) assert.ok(offAt(fixUp.T, p) < 0.25, `looking up: ${p} within 25 cm: ${offAt(fixUp.T, p).toFixed(3)}`);
+  // a crown high up, far from any roof, costs the same wherever the placement puts it, and is not a miss
+  const T0 = { theta: TH, tx: SH[0], ty: SH[1], s: 1 }, crown = trunk(15, -5).map(toAR), tree = trunk(8, 3).map(toAR);
+  const a = placementCost(G, tree, [], T0, { high: crown }), b = placementCost(G, tree, [], { ...T0, tx: T0.tx + 1 }, { high: crown });
+  assert.ok(Math.abs(placementCost(G, [], [], T0, { high: crown }).cost - placementCost(G, [], [], { ...T0, ty: T0.ty + 1 }, { high: crown }).cost) < 1e-9, 'a crown costs the same anywhere');
+  assert.ok(a.hits > 0.95 && a.cost < b.cost, `the tree still decides: ${a.hits} ${a.cost} ${b.cost}`);
 }
 console.log('lidar: ok');

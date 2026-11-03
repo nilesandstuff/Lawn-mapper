@@ -24,7 +24,9 @@ export const ASK_EVERY_MS = 1500;
    more than REF_TOL_DEG from where the references' fit puts it is refused; with no references at all a fix needs
    MIN_HITS_ALONE of its points landing. */
 export const REF_TOL_M = 2, REF_TOL_DEG = 10, MIN_HITS_ALONE = 0.65;
-const BANDS = { groundTol: 0.2, standLow: 0.4, standHigh: 2.4, near: 0.4, far: 8 };
+/* A fix this far (m, degrees) from the last kept one is a jump, held until a second fix agrees with it this closely. */
+export const JUMP_M = 1.5, JUMP_DEG = 8, CONFIRM_M = 0.6, CONFIRM_DEG = 4;
+const BANDS = { groundTol: 0.2, standLow: 0.4, standHigh: 2.4, highTop: 12, near: 0.4, far: 8 };
 
 export function newLocate({ scale = 1 } = {}) {
   return { marks: [], fixes: [], cloud: new Map(), cols: new Map(), groundY: null, gps: null, scale, asks: 0, refused: {}, last: null, lastAsk: 0, pending: null, nextId: 1, log: [] };
@@ -78,7 +80,8 @@ export function addDepth(L, points, odo, camY = null) {
   let kept = 0;
   for (const p of points) {
     const h = p.y - groundUnder(L, p);
-    const cls = Math.abs(h) < BANDS.groundTol ? 'g' : h > BANDS.standLow && h < BANDS.standHigh ? 's' : null;
+    // 'h': high up (gutters, a roof's edge, the bottom of a crown), matched against the lidar's roof edge
+    const cls = Math.abs(h) < BANDS.groundTol ? 'g' : h > BANDS.standLow && h < BANDS.standHigh ? 's' : h >= BANDS.standHigh && h < BANDS.highTop ? 'h' : null;
     if (!cls) continue;
     L.cloud.set(`${Math.floor(p.x / VOX)},${Math.floor(p.z / VOX)},${cls}`, { u: p.x, v: -p.z, y: p.y, odo, cls });
     kept++;
@@ -90,12 +93,12 @@ export function addDepth(L, points, odo, camY = null) {
 
 /** The points of the last RECENT_M metres of walking, as the match wants them. */
 export function recent(L, odo, m = RECENT_M) {
-  const stand = [], ground = [];
+  const stand = [], ground = [], high = [];
   for (const p of L.cloud.values()) {
     if (p.odo < odo - m) continue;
-    if (p.cls === 's') stand.push([p.u, p.v]); else ground.push([p.u, p.v, p.y]);
+    if (p.cls === 's') stand.push([p.u, p.v]); else if (p.cls === 'h') high.push([p.u, p.v]); else ground.push([p.u, p.v, p.y]);
   }
-  return { stand, ground };
+  return { stand, ground, high };
 }
 
 /* ------------------------------------------------------------- the fixes */
@@ -118,7 +121,12 @@ export function fitSource(L, odo) {
 /** Where to start the next search: the last fix (a small search), the references (a wider one), or GPS (any turn). */
 export function priorFor(L, odo, now = Date.now()) {
   const f = nearestFix(L, odo);
-  if (f && Math.abs(f.odo - odo) < FIX_REACH) return { T: f.T, searchM: 1.5, searchDeg: 6, from: 'the last fix' };
+  if (f && Math.abs(f.odo - odo) < FIX_REACH) {
+    // a jump held for a second look: search wide enough round the last fix to find either again, so the better wins
+    const c = L.candidate;
+    if (c && Math.abs(c.odo - odo) < FIX_REACH) return { T: f.T, searchM: Math.min(6, c.jumpM + 1), searchDeg: Math.min(20, Math.max(6, c.jumpDeg + 4)), from: 'the last fix' };
+    return { T: f.T, searchM: 1.5, searchDeg: 6, from: 'the last fix' };
+  }
   const ref = refFit(L, odo);
   if (ref) return { T: ref, searchM: 4, searchDeg: 15, from: 'the references' };
   if (L.gps && now - L.gps.t < 30000) return { at: L.gps.at, phone: L.gps.phone, radiusM: Math.max(6, Math.min(20, L.gps.acc * 1.5)), from: 'GPS' };
@@ -129,14 +137,14 @@ export function priorFor(L, odo, now = Date.now()) {
 export function nextAsk(L, odo, now = Date.now(), pos = null) {
   if (L.pending) return { why: 'a match is running' };
   if (now - L.lastAsk < ASK_EVERY_MS) return { why: 'too soon' };
-  const { stand, ground } = recent(L, odo);
-  if (stand.length < MIN_STAND) return { why: `the camera has ${stand.length} points on walls, fences, bushes or trunks within 25 ft (${MIN_STAND} wanted): look round at them` };
+  const { stand, ground, high } = recent(L, odo);
+  if (stand.length + high.length < MIN_STAND) return { why: `the camera has ${stand.length + high.length} points on walls, fences, bushes, trunks or a roof's edge within 25 ft (${MIN_STAND} wanted): look round, or look up at the gutters` };
   const prior = priorFor(L, odo, now);
   if (!prior) return { why: 'waiting for GPS (or two references) to start from' };
   const id = L.nextId++;
-  L.pending = { id, odo, from: prior.from, at: now, phone: pos ? level(pos) : null, refs: refFit(L, odo), stand: stand.length, ground: ground.length };
+  L.pending = { id, odo, from: prior.from, at: now, phone: pos ? level(pos) : null, refs: refFit(L, odo), stand: stand.length, ground: ground.length, high: high.length };
   L.lastAsk = now; L.asks++;
-  return { id, stand: thin(stand, 600), ground: thin(ground, 300), prior, s: L.scale };
+  return { id, stand: thin(stand, 600), ground: thin(ground, 300), high: thin(high, 300), prior, s: L.scale };
 }
 export const thin = (a, m) => (a.length <= m ? a : a.filter((_, i) => i % Math.ceil(a.length / m) === 0));
 
@@ -150,11 +158,11 @@ export function disagreement(Ta, Tb, phone) {
 /** A match's answer. -> the fix added, or null when refused (the reason counted). */
 export function answer(L, fix, id, now = Date.now()) {
   if (!L.pending || L.pending.id !== id) return null;
-  const { odo, from, phone, refs, at, stand, ground } = L.pending;
+  const { odo, from, phone, refs, at, stand, ground, high } = L.pending;
   L.pending = null;
   // the log: one line per ask, so a wrong lock can be traced afterwards (SCAN-H2)
   const r2 = (v) => (v == null || !Number.isFinite(v) ? null : +Number(v).toFixed(2));
-  const entry = { odo: r2(odo), ms: now - at, from: from[0] === 't' ? from.split(' ').pop() : from, stand, ground, ok: !!fix?.ok, hits: r2(fix?.hits), cost: fix?.cost != null ? +fix.cost.toFixed(4) : null, runnerUp: fix?.runnerUp ? { ratio: r2(fix.runnerUp.cost / (fix.cost || 1e-9)), apartM: r2(fix.runnerUp.apartM), apartDeg: r2(fix.runnerUp.apartDeg) } : null, tz: r2(fix?.tz), why: null, agreeM: null, agreeDeg: null, kept: false };
+  const entry = { odo: r2(odo), ms: now - at, from: from[0] === 't' ? from.split(' ').pop() : from, stand, ground, high, walls: fix?.walls || null, roofHits: fix?.high ? fix.high.hits : null, ok: !!fix?.ok, hits: r2(fix?.hits), cost: fix?.cost != null ? +fix.cost.toFixed(4) : null, runnerUp: fix?.runnerUp ? { ratio: r2(fix.runnerUp.cost / (fix.cost || 1e-9)), apartM: r2(fix.runnerUp.apartM), apartDeg: r2(fix.runnerUp.apartDeg) } : null, tz: r2(fix?.tz), why: null, agreeM: null, agreeDeg: null, kept: false };
   L.log.push(entry); if (L.log.length > LOG_MAX) L.log.shift();
   const refuse = (why) => { entry.why = why; L.last = { ok: false, why, hits: fix?.hits ?? null, from, odo }; const k = why.replace(/\d+(\.\d+)?/g, '#'); L.refused[k] = (L.refused[k] || 0) + 1; return null; };
   if (!fix?.ok) return refuse(fix?.why || 'unknown');
@@ -164,6 +172,20 @@ export function answer(L, fix, id, now = Date.now()) {
     entry.agreeM = r2(agree.m); entry.agreeDeg = r2(agree.deg);
     if (agree.m > REF_TOL_M || agree.deg > REF_TOL_DEG) return refuse(`disagrees with the references by ${agree.m.toFixed(1)} m and ${agree.deg.toFixed(0)} degrees`);
   } else if ((fix.hits ?? 0) < MIN_HITS_ALONE) return refuse(`only ${Math.round((fix.hits ?? 0) * 100)}% landed and no references to check it against`);
+  /* SKEPTICAL OF A JUMP (owner, 2026-11-03: "if there's a good fix on one wall or the roof, and then another fix is
+     way off, be skeptical of the one that's way off"). A fix far from the last kept one is held, not taken; it is
+     taken when the next fix agrees with IT (the world moved, e.g. ARCore corrected its map) and dropped otherwise. */
+  const prev = nearestFix(L, odo);
+  if (!refs && prev && phone && Math.abs(prev.odo - odo) <= FIX_REACH) {
+    const d = disagreement(fix.T, prev.T, phone);
+    entry.jumpM = r2(d.m);
+    if (d.m > JUMP_M || d.deg > JUMP_DEG) {
+      const c = L.candidate, agrees = c && disagreement(fix.T, c.T, phone).m < CONFIRM_M && disagreement(fix.T, c.T, phone).deg < CONFIRM_DEG;
+      if (!agrees) { L.candidate = { T: fix.T, odo, jumpM: d.m, jumpDeg: d.deg }; L.jumpsHeld = (L.jumpsHeld || 0) + 1; return refuse(`jumps ${d.m.toFixed(1)} m from the last fix; waiting for a second fix to agree`); }
+      entry.confirmedJump = true; L.jumpsTaken = (L.jumpsTaken || 0) + 1;
+    }
+  }
+  L.candidate = null;
   entry.kept = true;
   L.last = { ok: true, why: null, hits: fix.hits ?? null, from, odo };
   const f = { T: fix.T, odo, hits: fix.hits, cost: fix.cost, tz: fix.tz ?? null, from, runnerUp: fix.runnerUp || null, agreeM: agree ? +agree.m.toFixed(2) : null, agreeDeg: agree ? +agree.deg.toFixed(1) : null };
@@ -245,7 +267,7 @@ export function summaryOf(L) {
   return {
     asksLog: L.log,
     marks: L.marks.length, references: new Set(refMarks(L).map((m) => m.id)).size,
-    fixes: L.fixes.length, asks: L.asks, refused: L.refused,
+    fixes: L.fixes.length, asks: L.asks, refused: L.refused, jumpsHeld: L.jumpsHeld || 0, jumpsTaken: L.jumpsTaken || 0,
     fixHits: L.fixes.map((f) => +(f.hits || 0).toFixed(2)), fixAgreeM: L.fixes.map((f) => f.agreeM), fixFrom: L.fixes.reduce((a, f) => { a[f.from] = (a[f.from] || 0) + 1; return a; }, {}),
     cloud: L.cloud.size, scale: L.scale,
   };

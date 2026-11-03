@@ -34,9 +34,11 @@ const hitAt = (map, y = 0) => { const [u, v] = toAR(map); return { position: { x
   const pts = [];
   for (let i = 0; i < 100; i++) pts.push({ x: i * 0.05, y: 0.02, z: -3 }); // the ground, many in one cell
   for (let i = 0; i < 50; i++) pts.push({ x: 2 + i * 0.25, y: 1.2, z: -4 }); // a fence
-  pts.push({ x: 1, y: 4, z: -5 }); // a branch: neither
+  pts.push({ x: 1, y: 4, z: -5 }); // 4 m up: a high point, matched against the roof's edges
+  pts.push({ x: 1, y: 14, z: -5 }); // 14 m up: nothing (above the highest roof edge we look for)
   const kept = addDepth(L, pts, 10);
-  assert.equal(kept, 150);
+  assert.equal(kept, 151);
+  assert.equal(recent(L, 10).high.length, 1, 'one high point');
   const r = recent(L, 10);
   assert.equal(r.stand.length, 50, 'the fence, one point a cell');
   assert.ok(r.ground.length >= 20 && r.ground.length <= 30, `the ground thinned to cells: ${r.ground.length}`);
@@ -133,5 +135,29 @@ const hitAt = (map, y = 0) => { const [u, v] = toAR(map); return { position: { x
   const ag2 = agreement(L, 5, dist);
   assert.ok(ag2.on.length >= 40 && ag2.off.length === 0, 'all on when everything is near a solid cell');
   assert.deepEqual(agreement(newLocate(), 0, dist), { on: [], off: [] });
+}
+// SKEPTICAL OF A JUMP (owner, 2026-11-03): a fix far from the last kept one waits for a second to agree with it
+{
+  const L = newLocate(); noteGround(L, 0); L.gps = { at: [0, 0], phone: [0, 0], acc: 5, t: 0 };
+  const fence = []; for (let i = 0; i < 60; i++) fence.push({ x: i * 0.25, y: 1.2, z: -4 });
+  addDepth(L, fence, 0);
+  const pos = { x: 0, y: 1.4, z: 0 }, A = { theta: TH, tx: SH[0], ty: SH[1], s: 1 }, B = { ...A, tx: SH[0] + 3 };
+  let now = 1000;
+  const ask = () => { now += 2000; const a = nextAsk(L, 2, now, pos); assert.ok(a.id, a.why); return a; };
+  assert.ok(answer(L, { ok: true, T: A, hits: 0.8, cost: 0.01 }, ask().id, now), 'the first fix');
+  assert.equal(answer(L, { ok: true, T: B, hits: 0.9, cost: 0.005 }, ask().id, now), null, 'a 3 m jump is held');
+  assert.match(L.log.at(-1).why, /jumps 3\.0 m from the last fix/);
+  const wide = ask();
+  assert.equal(wide.prior.searchM, 4, 'the next search reaches both');
+  assert.ok(answer(L, { ok: true, T: { ...A, tx: SH[0] + 0.1 }, hits: 0.8, cost: 0.01 }, wide.id, now), 'a fix by the old one is kept');
+  assert.equal(L.candidate, null, 'and the jump forgotten');
+  assert.equal(ask().prior.searchM, 1.5, 'the search narrow again');
+  // the world did move (ARCore corrected its map): two fixes agree on the new place, and the second is taken
+  assert.equal(answer(L, { ok: true, T: B, hits: 0.9, cost: 0.005 }, L.pending.id, now), null);
+  const f = answer(L, { ok: true, T: { ...B, tx: B.tx + 0.2 }, hits: 0.9, cost: 0.005 }, ask().id, now);
+  assert.ok(f, 'a second fix agreeing with the jump is kept');
+  assert.equal(L.log.at(-1).confirmedJump, true);
+  const s = summaryOf(L);
+  assert.equal(s.jumpsHeld, 2); assert.equal(s.jumpsTaken, 1);
 }
 console.log('locate: ok');
