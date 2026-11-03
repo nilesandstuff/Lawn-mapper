@@ -44,6 +44,21 @@
   @media (max-width: 560px) { nav ul { columns: 1; } }
   .verdict { font-family: system-ui, sans-serif; font-size: .8rem; font-weight: 600; white-space: nowrap; }
   @media print { body { font-size: 11pt; } h2 { break-after: avoid; } .tech, table { break-inside: avoid; } nav { display: none; } }
+  /* citations: tap one for the full reference in a drawer at the bottom (owner, 2026-11-03: "like Wikipedia does") */
+  sup.cites { font-family: system-ui, sans-serif; font-size: .72em; line-height: 0; white-space: nowrap; color: var(--accent); }
+  a.cite { text-decoration: none; padding: 0 1px; cursor: pointer; }
+  a.cite:hover, a.cite:focus-visible { text-decoration: underline; }
+  #drawer { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; background: var(--bg); color: var(--fg); border-top: 1px solid var(--line); box-shadow: 0 -6px 24px rgba(0,0,0,.18); transform: translateY(105%); transition: transform .2s ease; max-height: 55vh; overflow-y: auto; padding: 14px 16px calc(16px + env(safe-area-inset-bottom)); font-family: system-ui, sans-serif; }
+  #drawer.open { transform: none; }
+  #drawer .inner { max-width: 760px; margin: 0 auto; position: relative; }
+  #drawer .num { font-size: .78rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--dim); margin: 0 40px 6px 0; }
+  #drawer .text { font: .97rem/1.5 Georgia, "Times New Roman", serif; margin: 0 40px 10px 0; }
+  #drawer .links { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: .9rem; }
+  #drawer .close { position: absolute; top: -4px; right: -4px; width: 40px; height: 40px; border: 0; background: transparent; color: var(--dim); font-size: 26px; line-height: 1; cursor: pointer; border-radius: 8px; }
+  #drawer .close:hover { background: var(--box); }
+  #drawer .more + .more { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 10px; }
+  @media (prefers-reduced-motion: reduce) { #drawer { transition: none; } }
+  @media print { #drawer { display: none; } a.cite { color: inherit; } }
 </style>
 </head>
 <body>
@@ -301,6 +316,7 @@ Curve numbers: open space in good condition, groups A/B/C/D 39/61/74/80; other g
 
 <h2 id="log">Change log</h2>
 <ul class="meta" style="font-size:.9rem">
+  <li><strong>3 November 2026.</strong> Citations open the full reference in a drawer at the bottom of the screen, with a link to the source where one is known and a Google Scholar search.</li>
   <li><strong>2 November 2026, latest.</strong> Section 3: the 40%/50% stress line now moves with each square's water use over the past week and with the soil (FAO-56's adjustments). On the developer's lawn this cut the year's watering about 16%.</li>
   <li><strong>2 November 2026, late.</strong> The tool is called "the water model". Section 3 explains what the 40% and 50% stress line means (a share of the usable water, not a moisture reading), how the wilting point and field capacity vary by soil, and that FAO-56's weather and soil adjustments to that share are not applied yet. Section 4: where the crop coefficients came from, corrected.</li>
   <li><strong>2 November 2026, night.</strong> Section 6 now carries the shade map's own description, written by its developers: lidar to light, the leaves, fences, what has been checked against measurements, its weak points, and references S1&ndash;S16.</li>
@@ -309,5 +325,87 @@ Curve numbers: open space in good condition, groups A/B/C/D 39/61/74/80; other g
   <li><strong>2 November 2026.</strong> First version. Describes the model with the water table (built 1 November), water held up by slow layers, topsoil over sand (2 November), and the start of field moisture readings.</li>
 </ul>
 </main>
+<div id="drawer" role="dialog" aria-modal="false" aria-label="Reference" hidden>
+  <div class="inner"><button class="close" type="button" aria-label="Close">&times;</button><div id="drawer-body"></div></div>
+</div>
+<script>
+/* CITATIONS AS POP-UPS (owner, 2026-11-03): each [12] or [S3] in the text becomes a link; a tap opens a drawer at the
+   bottom with the full reference and a way to it: its own link, its DOI, a site named in it, else a Google Scholar
+   search for it. The references stay where they are at the end, and a citation's link still jumps there. */
+(function () {
+  var main = document.querySelector('main'), drawer = document.getElementById('drawer'), body = document.getElementById('drawer-body');
+  var refs = {};
+  document.querySelectorAll('ol.refs > li').forEach(function (li, k) { li.id = li.id || 'ref-' + (k + 1); refs[String(k + 1)] = li; });
+  document.querySelectorAll('ul.srefs > li').forEach(function (li) {
+    var m = /^\s*(S\d+)\.\s*/.exec(li.textContent); if (!m) return;
+    li.id = li.id || 'ref-' + m[1]; refs[m[1]] = li;
+  });
+  // wrap the numbers in [..] found in the text (not in the reference lists, the change log, links or code)
+  var skip = function (el) { return el.closest('ol.refs, ul.srefs, #log, #log ~ ul, a, code, script, style, #drawer, nav'); };
+  var walker = document.createTreeWalker(main, NodeFilter.SHOW_TEXT, { acceptNode: function (n) { return /\[S?\d+(?:\s*,\s*S?\d+)*\]/.test(n.nodeValue) && !skip(n.parentElement) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT; } });
+  var nodes = []; while (walker.nextNode()) nodes.push(walker.currentNode);
+  nodes.forEach(function (n) {
+    var frag = document.createDocumentFragment(), text = n.nodeValue, re = /\[(S?\d+(?:\s*,\s*S?\d+)*)\]/g, last = 0, m;
+    while ((m = re.exec(text))) {
+      var ids = m[1].split(/\s*,\s*/);
+      if (!ids.every(function (id) { return refs[id]; })) continue;
+      frag.appendChild(document.createTextNode(text.slice(last, m.index).replace(/\s+$/, '')));
+      var sup = document.createElement('sup'); sup.className = 'cites';
+      sup.appendChild(document.createTextNode('['));
+      ids.forEach(function (id, k) {
+        if (k) sup.appendChild(document.createTextNode(', '));
+        var a = document.createElement('a'); a.className = 'cite'; a.href = '#' + refs[id].id; a.textContent = id; a.dataset.ref = id;
+        a.setAttribute('aria-label', 'Reference ' + id); sup.appendChild(a);
+      });
+      sup.appendChild(document.createTextNode(']'));
+      frag.appendChild(sup);
+      last = m.index + m[0].length;
+    }
+    frag.appendChild(document.createTextNode(text.slice(last)));
+    n.parentNode.replaceChild(frag, n);
+  });
+  function linkFor(li) {
+    var own = li.querySelector('a[href]'); if (own) return { href: own.href, label: 'Open the source' };
+    var t = li.textContent;
+    var doi = /doi:\s*(10\.\S+?)\.?(\s|$)/i.exec(t); if (doi) return { href: 'https://doi.org/' + doi[1], label: 'Open at doi.org' };
+    var site = /\b((?:[a-z0-9-]+\.)+(?:gov|edu|org|com))(\/[^\s,;]*)?/i.exec(t.replace(/\.$/, ''));
+    if (site) return { href: 'https://' + site[1] + (site[2] || '').replace(/\.$/, ''), label: 'Open ' + site[1] };
+    return null;
+  }
+  function show(ids, from) {
+    body.innerHTML = '';
+    ids.forEach(function (id) {
+      var li = refs[id]; if (!li) return;
+      var box = document.createElement('div'); box.className = 'more';
+      var num = document.createElement('p'); num.className = 'num'; num.textContent = 'Reference ' + id; box.appendChild(num);
+      var text = document.createElement('p'); text.className = 'text'; text.innerHTML = li.innerHTML.replace(/^\s*S\d+\.\s*/, ''); box.appendChild(text);
+      var links = document.createElement('div'); links.className = 'links';
+      var l = linkFor(li), plain = li.textContent.replace(/^\s*S\d+\.\s*/, '').replace(/\s+/g, ' ').trim();
+      if (l) { var a = document.createElement('a'); a.href = l.href; a.textContent = l.label; a.target = '_blank'; a.rel = 'noopener'; links.appendChild(a); }
+      var g = document.createElement('a'); g.href = 'https://scholar.google.com/scholar?q=' + encodeURIComponent(plain.slice(0, 250)); g.textContent = 'Search Google Scholar'; g.target = '_blank'; g.rel = 'noopener'; links.appendChild(g);
+      var j = document.createElement('a'); j.href = '#' + li.id; j.textContent = 'See in the reference list';
+      j.addEventListener('click', function () { close(); }); links.appendChild(j);
+      box.appendChild(links); body.appendChild(box);
+    });
+    drawer.hidden = false; drawer.dataset.from = from ? '1' : '';
+    requestAnimationFrame(function () { drawer.classList.add('open'); });
+    lastFrom = from; drawer.querySelector('.close').focus({ preventScroll: true });
+  }
+  var lastFrom = null;
+  function close() {
+    if (!drawer.classList.contains('open')) return;
+    drawer.classList.remove('open');
+    setTimeout(function () { if (!drawer.classList.contains('open')) drawer.hidden = true; }, 220);
+    if (lastFrom) lastFrom.focus({ preventScroll: true });
+  }
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest && e.target.closest('a.cite');
+    if (a) { e.preventDefault(); show([a.dataset.ref], a); return; }
+    if (drawer.classList.contains('open') && !drawer.contains(e.target)) close();
+  });
+  drawer.querySelector('.close').addEventListener('click', close);
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+})();
+</script>
 </body>
 </html>
