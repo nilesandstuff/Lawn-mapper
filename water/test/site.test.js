@@ -219,6 +219,10 @@ test('moisture readings: the admin keeps a visit, saves it again whole, reads a 
   assert.equal((await moisture(new Request(u()), env, u(), nobody)).status, 404);
   // bad ones
   assert.equal((await moisture(post({ ...visit, readings: [] }), env, u(), admin)).status, 400);
+  // marks alone save (trunks marked before any reading)
+  assert.equal((await moisture(post({ ...visit, id: 'visit-marks-only', readings: [], marks: [{ kind: 'trunk', lng: -85.6, lat: 42.8 }] }), env, u(), admin)).status, 200);
+  assert.equal(env.DB.marks.length, 1); assert.equal(env.DB.rdgs.length, 0);
+  await moisture(new Request(u('?id=visit-marks-only'), { method: 'DELETE' }), env, u('?id=visit-marks-only'), admin);
   assert.equal((await moisture(post({ ...visit, readings: [{ lng: -85.6, lat: 42.8, value: 140 }] }), env, u(), admin)).status, 400, 'over 100% is no moisture');
   assert.equal((await moisture(post({ ...visit, id: 'x' }), env, u(), admin)).status, 400);
   // kept, and no street address anywhere

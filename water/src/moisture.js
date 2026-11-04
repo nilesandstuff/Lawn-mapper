@@ -33,8 +33,10 @@ export function cleanVisit(b, now = Date.now()) {
   if (!b || typeof b !== 'object') return { error: 'no visit' };
   const id = txt(b.id, 64);
   if (!id || !/^[A-Za-z0-9-]{8,64}$/.test(id)) return { error: 'a visit needs an id' };
-  if (!Array.isArray(b.readings) || !b.readings.length) return { error: 'no readings' };
-  if (b.readings.length > 500) return { error: 'at most 500 readings a visit' };
+  // a visit may hold readings, marks (tree trunks), or both (owner, 2026-11-04: marking trunks alone would not save)
+  const readingsIn = Array.isArray(b.readings) ? b.readings : [], marksIn = Array.isArray(b.marks) ? b.marks : [];
+  if (!readingsIn.length && !marksIn.length) return { error: 'no readings and no marks' };
+  if (readingsIn.length > 500) return { error: 'at most 500 readings a visit' };
   const unit = UNITS.includes(b.unit) ? b.unit : 'other';
   const visit = {
     id, at: num(b.at, 1.5e12, now + 864e5) ?? now, saved: now,
@@ -45,7 +47,7 @@ export function cleanVisit(b, now = Date.now()) {
     placed_on: txt(b.placed_on, 40), // the photo the dots were put on: 'county:<svc>' (the one the lawn was traced on) or 'mapbox'
   };
   const readings = [];
-  for (const [k, r] of b.readings.entries()) {
+  for (const [k, r] of readingsIn.entries()) {
     const lng = num(r?.lng, -180, 180), lat = num(r?.lat, -90, 90), value = num(r?.value, -1000, 100000);
     if (lng === null || lat === null || value === null) return { error: `reading ${k + 1}: needs a place and a number` };
     if (unit === 'vwc' && (value < 0 || value > 100)) return { error: `reading ${k + 1}: ${value}% is not a soil moisture` };
@@ -53,7 +55,7 @@ export function cleanVisit(b, now = Date.now()) {
   }
   // marks (2026-11-04): tree trunks the visitor stood at, ground truth for the water map's trunk finder (lib/trunks.js)
   const marks = [];
-  for (const [k, m] of (Array.isArray(b.marks) ? b.marks.slice(0, 200) : []).entries()) {
+  for (const [k, m] of marksIn.slice(0, 200).entries()) {
     const lng = num(m?.lng, -180, 180), lat = num(m?.lat, -90, 90);
     if (lng === null || lat === null) continue;
     marks.push({ id: `${id}:m${k + 1}`, visit_id: id, n: k + 1, kind: MARK_KINDS.includes(m.kind) ? m.kind : 'trunk', lng, lat, note: txt(m.note, 200) });

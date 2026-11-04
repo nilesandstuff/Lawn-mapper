@@ -42,10 +42,18 @@ function main() {
   if (!id) { console.log('No water database id came back: the site deploys without gauge readings.'); return; }
   try {
     wrangler(['d1', 'execute', DB_NAME, '--remote', `--file=${join(water, 'schema.sql')}`, '--yes']);
-    for (const stmt of readFileSync(join(water, 'migrations.sql'), 'utf8').split(';').map((x) => x.replace(/--.*$/gm, '').trim()).filter(Boolean)) {
-      try { wrangler(['d1', 'execute', DB_NAME, '--remote', `--command=${stmt}`, '--yes']); } catch { /* already applied */ }
+    // comments off FIRST, then split: a semicolon inside a comment once cut an ALTER in two (2026-11-04)
+    const stmts = readFileSync(join(water, 'migrations.sql'), 'utf8').replace(/--.*$/gm, '').split(';').map((x) => x.trim()).filter(Boolean);
+    const failed = [];
+    for (const stmt of stmts) {
+      try { wrangler(['d1', 'execute', DB_NAME, '--remote', `--command=${stmt}`, '--yes']); }
+      catch (err) {
+        // a column that is already there is the expected failure; anything else is said, so the log's end shows it
+        const why = String(err.stderr || err.message);
+        if (!/duplicate column/i.test(why)) failed.push(`${stmt.slice(0, 60)}: ${why.split('\n').find((l) => /error|Error/.test(l)) || why.split('\n')[0]}`);
+      }
     }
-    console.log(`Water database "${DB_NAME}" ready; schema applied.`);
+    console.log(`Water database "${DB_NAME}" ready; schema applied; ${stmts.length} migration statement${stmts.length === 1 ? '' : 's'} run${failed.length ? `, ${failed.length} FAILED (not "already applied"): ${failed.join(' | ')}` : ''}.`);
   } catch (err) {
     console.log(`The water schema did not apply (${String(err.stderr || err.message).split('\n')[0]}).`);
   }
