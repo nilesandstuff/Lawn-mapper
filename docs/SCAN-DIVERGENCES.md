@@ -20,11 +20,14 @@ inferred. The ground between columns is therefore stepped at 1 m, not smooth.
 ## 2. Which columns are solid for the match
 
 The phone's "standing" points are the depth points 0.4 to 2.4 m over its ground (scan/lib/locate.js BANDS). A
-column is solid for them when the shade map's own cubes between those two heights over its ground hold any leaf
-(`mu` > 0): a trunk, a hedge, a shed, a stone wall, an unknown thing -- and NOT a crown a person walks under, whose
-low cubes the shade map leaves open. The cubes' contents are the shade map's; only the height band is the AR's,
-and it is the band its own points are taken at. A file without cubes falls back to the kind alone: every TREE,
-SOLID_TREE, STRUCTURE and UNKNOWN column, whole.
+column is solid for them when it has something OF ITS OWN in that band, read from the file in this order:
+`low` (its lowest own return over the grass, exact) in the band; else any own `returns` in a cube overlapping the
+band; else, for a file written before the evening of 2026-11-04, any leaf (`mu` > 0) in such a cube. The last is
+the pooled canopy, and shade findings 35 measured why it is last: on the owner's lot 59% of the crowned columns it
+called solid were solid only because canopy.js pools a sparse flight's neighbours (right for light, wrong for a
+wall), and 8% only because a 1 m cube reached a crown's underside. A file with none of the three falls back to
+the kind alone: every TREE, SOLID_TREE, STRUCTURE and UNKNOWN column, whole. The numbers are all the shade map's;
+only the band is the AR's, and it is the band its own points are taken at.
 
 Not done any more (removed 2026-11-04): the AR's own band of lidar points 0.25-2.5 m up; its own roof rule
 (the water map's buildingMask) as a fallback; skipping low points under crowns 3 m or taller (CROWN_M); treating
@@ -59,9 +62,13 @@ is the map's lawn trace, not the shade map's output; the shade map has no part i
 
 ## 6. The camera view draws the model's columns
 
-Solid cells (step 2 and 3) are drawn as blue boxes as tall as the model's `top` for that column (0.5 m at least,
-15 m at most, for legibility). Every other column with anything in it is drawn as a green box from its lowest cube
-with leaf (`mu` > 0) to its top, orange when the column is BUILDING. Nothing is drawn that the model does not have.
+Solid cells (step 2 and 3) are drawn as blue boxes. A building's wall stands to its column's `top`. Anything else
+stands from its lowest own return up through the cubes that have own returns without a gap (0.5 m at least, 15 m
+at most, for legibility), so a trunk under a crown is a post, not a wall to the treetop (the owner, 2026-11-04: "in
+AR, I'm seeing blue walls under those same canopies"; shade findings 35: one low cube, a median 2 m of air, then the
+crown). A file without per-cube returns draws to the column's top as before. Every other column with anything in it
+is drawn as a green box from its lowest cube with leaf (`mu` > 0) to its top, orange when the column is BUILDING.
+Nothing is drawn that the model does not have.
 
 ## 7. Which canopy: `mu`, as flown
 
