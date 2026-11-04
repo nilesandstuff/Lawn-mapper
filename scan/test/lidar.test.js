@@ -174,6 +174,8 @@ assert.ok(G.occTop && G.bld, 'the tops and the roof mask come back for the overl
       // the real module, but its photo call answered without the network (no summer photo: no low structures)
       rule: async () => { const [S, Gd] = await Promise.all([import('../../public/shade/structures.js'), import('../../public/shade/grid.js')]); return [{ ...S, structuresFor: async (c, g, o) => ({ ...S.structuresFrom(c, g, o), photo: false }) }, Gd]; } });
     assert.match(R.rule, /shared rule.*no summer photo/);
+    // the fence (1.7 m, TREE by the rule's step 7) stays solid for the match; under the 4-9 m crowns the low points do not
+    assert.ok(sample(R.G, R.G.dist, 0, -12) < 0.3, `the fence is solid under the shared rule: ${sample(R.G, R.G.dist, 0, -12)}`);
     // walls drawn as tall as they stand: the house's roof is 6 m over its ground
     const kk = Math.floor((30 - 8) / 0.25) * R.G.W + Math.floor((-5 + 30) / 0.25);
     assert.ok(R.G.wallTop && Math.abs(R.G.wallTop[kk] - 6) < 0.6, `the house's top: ${R.G.wallTop && R.G.wallTop[kk]}`);

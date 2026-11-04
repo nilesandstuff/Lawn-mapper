@@ -22,7 +22,7 @@ import { nad83Correction } from '../../water/lib/datum.js';
 import { nodeIo } from '../../water/lib/node-io.js';
 import { toLocal } from '../lib/frames.js';
 import { ringsOf } from '../lib/photo.js';
-import { loadLidar } from '../lib/lidar-load.js';
+import { loadLidar, CROWN_M } from '../lib/lidar-load.js';
 import { buildingsOnGrid, register, MIN_LANDED, placementCost, LAWN_LOW_M } from '../lib/lidar.js';
 import { disagreement, REF_TOL_M, REF_TOL_DEG } from '../lib/locate.js';
 import { readCloud, readTrack, placer, placeCloud } from '../lib/twin.js';
@@ -132,7 +132,7 @@ async function main() {
   const patchAtCell = (k) => { if (!patchOf) return -1; const { sgrid } = shade; const c0 = columnAt(k); if (c0 < 0) return -1; const cx = c0 % sgrid.w, cy = (c0 / sgrid.w) | 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const xx = cx + dx, yy = cy + dy; if (xx >= 0 && yy >= 0 && xx < sgrid.w && yy < sgrid.h && patchOf[yy * sgrid.w + xx] >= 0) return patchOf[yy * sgrid.w + xx]; } return -1; };
   if (shade) {
     const { S, sgrid, kind } = shade;
-    const tree = Uint8Array.from(kind, (v) => (v === S.TREE || v === S.SOLID_TREE ? 1 : 0));
+    const tree = Uint8Array.from(kind, (v, j) => ((v === S.TREE || v === S.SOLID_TREE) && (!shade.stats?.top || shade.stats.top[j] >= CROWN_M) ? 1 : 0)); // crowns, as the page takes them
     crown = buildingsOnGrid(tree, sgrid, box, G.cell, [L.ox, L.oy], L.k, 1);
     structure = buildingsOnGrid(kind, sgrid, box, G.cell, [L.ox, L.oy], L.k, S.STRUCTURE);
     building = buildingsOnGrid(kind, sgrid, box, G.cell, [L.ox, L.oy], L.k, S.BUILDING);

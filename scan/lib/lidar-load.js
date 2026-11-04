@@ -9,6 +9,8 @@ import { fromLocal } from './frames.js';
 import { buildGrids, buildingsOnGrid, valuesOnGrid } from './lidar.js';
 import { lawnField } from './surface.js';
 
+export const CROWN_M = 3; // m: a tree column at least this tall is a crown the phone walks under; lower, a thing it sees
+
 export async function loadLidar({ origin, box, lidar, fetchLidar, lawn = [] }, { pointsIn, toMerc, nad83Correction, io, rule }, progress = () => {}) {
   const [lng, lat] = origin;
   const k = Math.cos((lat * Math.PI) / 180);
@@ -57,8 +59,12 @@ export async function loadLidar({ origin, box, lidar, fetchLidar, lawn = [] }, {
     }
     ruleName = `the shared rule (public/shade/structures.js${footprint ? ', house walls 2 ft in, other structures at their edge' : ''}; ${s.photo ? 'low structures judged by the summer photo' : 'no summer photo, so no low structures'})`; counts = s.counts;
     shade = { kind: s.kind, sgrid, S, stats: s.stats };
-    // under a crown: the AR's own choice not to match low points there (lidar.js buildGrids opts.under)
-    under = buildingsOnGrid(Uint8Array.from(s.kind, (v) => (v === S.TREE || v === S.SOLID_TREE ? 1 : 0)), sgrid, box, 0.25, [ox, oy], k, 1);
+    /* under a crown: the AR's own choice not to match low points there (lidar.js buildGrids opts.under; SCAN-H3).
+       A crown is a TREE column standing CROWN_M or more: since the rule's step 7 (2026-11-04, the owner: what no rule
+       names is a tree, never left out) a hedge, a low wall or a bush is TREE too, and those the phone sees and the
+       match wants. */
+    const tall = Uint8Array.from(s.kind, (v, j) => ((v === S.TREE || v === S.SOLID_TREE) && s.stats?.top && s.stats.top[j] >= CROWN_M ? 1 : 0));
+    under = buildingsOnGrid(tall, sgrid, box, 0.25, [ox, oy], k, 1);
   } catch (err) { ruleName += `: ${err.message}`; }
   // the lawn the owner traced: the lawn-edge term's field, and where low unclassified points are the ground
   const F = lawn.length ? lawnField(lawn, box, 0.25) : null;
