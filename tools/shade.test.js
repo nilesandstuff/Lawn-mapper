@@ -5,7 +5,7 @@
  */
 import { lasHeader, makeColumns, readRecord, gpsTimes, gpsMs, leafOfMs, LEAF_OFF, LEAF_ON } from '../public/shade/las.js';
 import { onePass } from '../public/shade/passes.js';
-import { structuresOf, structuresFrom, wallsOf, greenCut, WALL_INSET_M, NOTHING, BUILDING, TREE, SOLID_TREE, STRUCTURE } from '../public/shade/structures.js';
+import { structuresOf, structuresFrom, structuresFor, wallsOf, greenCut, WALL_INSET_M, NOTHING, BUILDING, TREE, SOLID_TREE, STRUCTURE } from '../public/shade/structures.js';
 import { ndviFromBsq } from '../public/shade/naip.js';
 import { kindOf as kindOfTrees } from '../public/shade/trees-ui.js';
 import { nodeBox, walk, hierarchyReader, pointsIn, toMerc, fromMerc, mercScale, flownOf } from '../public/shade/ept.js';
@@ -1669,6 +1669,16 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   const nd = ndviFromBsq(bsq, 2, 2);
   check('naip: the photo\'s four planes become one vegetation index per column; an all-black frame is no photo',
     Math.abs(nd[0] - 0.5) < 1e-6 && Math.abs(nd[1]) < 1e-6 && Math.abs(nd[2] - 0.5) < 1e-6 && ndviFromBsq(new Uint8Array(64), 2, 2) === null, `${[...nd]}`);
+  /* The one call (structuresFor) reads the photo itself: here a stand-in for the NAIP service built from the same green. */
+  const bsqOf = (gv) => { const W = grid.w * 2, Hh = grid.h * 2, b = new Uint8Array(W * Hh * 4); for (let r = 0; r < Hh; r++) for (let c = 0; c < W; c++) { const g = gv[(r >> 1) * grid.w + (c >> 1)], p = r * W + c; b[p] = 50; b[3 * W * Hh + p] = Math.min(255, Math.round((50 * (1 + g)) / (1 - g))); } return b; };
+  let calls = 0;
+  const fakeNaip = async () => { calls++; return { ok: true, arrayBuffer: async () => bsqOf(green).buffer }; };
+  const sfor = await structuresFor(cols, grid, { fetchFn: fakeNaip });
+  const sfor2 = await structuresFor(cols, grid, { fetchFn: fakeNaip });
+  check('structures: the one call reads the summer photo itself (once per lot) and judges as with it handed in',
+    sfor.photo && sfor.counts.structure === st.counts.structure && sfor.kind.every((v, i) => v === st.kind[i]) && calls === 1 && sfor2.counts.structure === st.counts.structure, `${sfor.counts.structure} vs ${st.counts.structure}, ${calls} request(s)`);
+  const noPhoto = await structuresFor(cols, gridOver([0, 0, 61 / k, 60 / k], 1, lat), { fetchFn: async () => ({ ok: false }) });
+  check('structures: and when the photo service does not answer, no low structures', !noPhoto.photo && noPhoto.counts.structure === 0);
   check('structures: with no summer photo no low structures are called (owner, 2026-11-04: no structures where there are none)',
     structuresFrom(cols, grid).counts.structure === 0 && st.counts.structure > 0);
   const greenTruck = photo((e, n) => treeGreen(e, n) ?? ((e > 30 && e < 32.5 && n > 5 && n < 11) ? 0.6 : (e > 5 && e < 10 && n > 5 && n < 12) || (e > 20 && e < 21 && n > 5 && n < 20) ? 0.05 : 0.35));

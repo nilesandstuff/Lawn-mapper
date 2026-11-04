@@ -22,11 +22,22 @@ export const UP = 2; // pixels asked for per cell, each way, then averaged
  * cellY, w, h; EPSG:3857), as a Float32Array (-1..1), or null when the
  * service does not answer or has no photo there.
  */
-export async function greenOver(grid, { fetchFn = (u, i) => globalThis.fetch(u, i), timeoutMs = 45000 } = {}) {
+const asked = new Map(); // one request per lot per page, however many callers ask
+
+export function greenOver(grid, { fetchFn = (u, i) => globalThis.fetch(u, i), timeoutMs = 45000 } = {}) {
   const w = grid.w, h = grid.h, cy = grid.cellY || grid.cell;
   const bbox = [grid.x0, grid.y1 - h * cy, grid.x0 + w * grid.cell, grid.y1];
   const W = w * UP, H = h * UP;
   const url = `${NAIP}?bbox=${bbox.map((v) => v.toFixed(2)).join(',')}&bboxSR=3857&imageSR=3857&size=${W},${H}&format=bsq&pixelType=U8&interpolation=RSP_BilinearInterpolation&f=image`;
+  if (!asked.has(url)) {
+    const p = readGreen(url, w, h, fetchFn, timeoutMs);
+    asked.set(url, p);
+    p.then((g) => { if (!g) asked.delete(url); }); // a failure is asked again next time
+  }
+  return asked.get(url);
+}
+
+async function readGreen(url, w, h, fetchFn, timeoutMs) {
   let buf;
   try {
     const res = await fetchFn(url, { signal: AbortSignal.timeout(timeoutMs) });

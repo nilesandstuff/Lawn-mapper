@@ -70,6 +70,7 @@
 
 import { GRASS_M, solidAtGrass, buildCanopy } from './canopy.js';
 import { cellOf } from './grid.js';
+import { greenOver } from './naip.js';
 
 export const NOISE = new Set([7, 18]); // LAS low and high noise
 export const CROWN_ABOVE_M = 2;
@@ -341,6 +342,20 @@ export function wallsOf(mask, w, h, { cellM = 1, fineM = 0.25, insetM = WALL_INS
  * `green`: naip.js greenOver(grid), the summer photo's vegetation index per
  * column; without it no low structures are called.
  */
+/**
+ * THE ONE CALL FOR EVERY TOOL (owner, 2026-11-04: "set it up to where the
+ * shade map handles the photo comparison and makes the judgements here, so
+ * we don't need to duplicate any changes elsewhere"): reads the summer photo
+ * for `grid` itself (naip.js, one request per lot per page) and returns
+ * structuresFrom's answer with it, plus `photo` (whether it answered). A
+ * tool that calls this gets every later change to the rule and the photo
+ * check with no change of its own.
+ */
+export async function structuresFor(cols, grid, { shift = null, fetchFn } = {}) {
+  const green = await greenOver(grid, fetchFn ? { fetchFn } : {});
+  return { ...structuresFrom(cols, grid, { shift, green }), photo: !!green };
+}
+
 export function structuresFrom(cols, grid, { shift = null, green = null } = {}) {
   const model = buildCanopy(cols, grid, { shift });
   return { ...structuresOf(cols, model, { shift, low: { green } }), ground: model.ground, model };

@@ -18,7 +18,7 @@
  */
 
 import { buildCanopy } from './canopy.js';
-import { seasonalCanopy, muWithLeaves, leafCalendar, CROWN_ABOVE_M } from './seasonal.js';
+import { seasonalCanopy, seasonalCanopyFor, muWithLeaves, leafCalendar, CROWN_ABOVE_M } from './seasonal.js';
 import { gridOver, cellOf } from './grid.js';
 import { toMerc, fromMerc } from './ept.js';
 import { cellsUnder, squareRing, Erased, SIZES_M, rayHit, brushTargets } from './erase.js';
@@ -143,7 +143,7 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
   const grid = gridOver(box, 1, site.lat);
   const model = buildCanopy(cols, grid, { shift });
   const leafOff = flight === 'off' || flight === 'mixed';
-  const season = seasonalCanopy(cols, model, { shift, classify: leafOff, green });
+  const season = await seasonalCanopyFor(cols, model, { shift, classify: leafOff, green }); // the photo, read once per lot (naip.js)
   let calendar = null;
   try {
     const c = await (await fetch(`/api/shade/climate?lng=${site.lng}&lat=${site.lat}`)).json();

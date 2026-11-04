@@ -147,6 +147,7 @@ import { cellOf } from './grid.js';
 import { crownsOf } from './crowns.js';
 import { structuresOf, NOISE, CROWN_ABOVE_M, BUILDING, TREE, SOLID_TREE, STRUCTURE } from './structures.js';
 import { GRASS_M, SOLID_MU } from './canopy.js';
+import { greenOver } from './naip.js';
 
 /* The building rule's numbers live in structures.js; re-exported for the tools that read them here. */
 export { CROWN_ABOVE_M, SOLID_TREE_SPLIT, SOLID_TREE_MAX_M2, SOLID_SPECK_M2, SOLID_TREE_ROUGH_M } from './structures.js';
@@ -200,6 +201,16 @@ export const LEAF_FALL_DAYS = 28;
  * Roofs are found on every flight; `classify` (a leaf-off or mixed flight)
  * adds the evergreen/deciduous split.
  */
+/**
+ * seasonalCanopy with the summer photo read for the model's grid
+ * (naip.js), so a tool need not fetch it: the one call for any tool that
+ * wants the shade map's kinds, low structures included (structures.js).
+ */
+export async function seasonalCanopyFor(cols, model, opts = {}) {
+  const green = opts.green ?? await greenOver(model.grid, opts.fetchFn ? { fetchFn: opts.fetchFn } : {});
+  return seasonalCanopy(cols, model, { ...opts, green });
+}
+
 export function seasonalCanopy(cols, model, { shift = null, classify = true, fill = {}, green = null } = {}) {
   /* How the summer leaves are filled in (tools/shade-check-leafon.js scores
      the choices against NEON's leaf-on lidar). Defaults: as shipped. */
