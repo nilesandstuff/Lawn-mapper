@@ -38,6 +38,7 @@ const hitAt = (map, y = 0) => { const [u, v] = toAR(map); return { position: { x
   pts.push({ x: 1, y: 14, z: -5 }); // 14 m up: nothing (above the highest roof edge we look for)
   const kept = addDepth(L, pts, 10);
   assert.equal(kept, 151);
+  addDepth(L, pts, 10); // seen twice: standing points count only then (SCAN-H7)
   assert.equal(recent(L, 10).high.length, 1, 'one high point');
   const r = recent(L, 10);
   assert.equal(r.stand.length, 50, 'the fence, one point a cell');
@@ -69,7 +70,7 @@ const hitAt = (map, y = 0) => { const [u, v] = toAR(map); return { position: { x
   assert.ok(!JSON.stringify(sum).includes('"at"'), 'no positions in the copy');
   // too few standing points: the ask explains
   const L2 = newLocate(); noteGround(L2, 0); L2.gps = { at: [0, 0], phone: [0, 0], acc: 5, t: 0 };
-  addDepth(L2, [{ x: 1, y: 1.2, z: -1 }], 0);
+  addDepth(L2, [{ x: 1, y: 1.2, z: -1 }], 0); addDepth(L2, [{ x: 1, y: 1.2, z: -1 }], 0);
   assert.match(nextAsk(L2, 0, 10000).why, new RegExp(`1 points .* \\(${MIN_STAND} wanted\\)`));
 }
 // the references are the judge: a fix that disagrees with them is refused; one that agrees is kept with its agreement
@@ -109,7 +110,7 @@ const hitAt = (map, y = 0) => { const [u, v] = toAR(map); return { position: { x
   for (let i = 0; i < 30; i++) pts.push({ x: 10 + (i % 6) * 0.3, y: -1.8, z: -(10 + Math.floor(i / 6) * 0.3) }); // the back yard, 1.8 m down
   pts.push({ x: 10.5, y: -0.6, z: -10.5 }); // a 1.2 m post standing on it
   pts.push({ x: 30, y: 1.3, z: -30 }); // a wall point far off, nothing lower seen near it
-  addDepth(L, pts, 5);
+  addDepth(L, pts, 5); addDepth(L, pts, 5);
   near(groundUnder(L, { x: 10.5, y: 0, z: -10.5 }), -1.8, 0.03, 'the column floor (to the histogram bin)');
   near(groundUnder(L, { x: 30, y: 0, z: -30 }), 0, 1e-9, 'a lone high point is not a floor: the crosshair ground');
   const r = recent(L, 5);
@@ -142,18 +143,30 @@ const hitAt = (map, y = 0) => { const [u, v] = toAR(map); return { position: { x
   const pts = [];
   for (let i = 0; i < 100; i++) pts.push({ x: 0.5, y: (i % 10 === 0 ? -0.7 : 0) + (i % 3) * 0.02, z: -1.5 }); // the ground, with a noisy tail 0.7 m under it
   pts.push({ x: 0.5, y: 0.45, z: -1.6 }); // 45 cm up: a low thing (would have read 1.15 m over the lowest point)
-  addDepth(L, pts, 0, { x: 0, y: 1.4, z: 0 });
+  addDepth(L, pts, 0, { x: 0, y: 1.4, z: 0 }); addDepth(L, pts, 0, { x: 0, y: 1.4, z: 0 });
   const col = L.cols.get('0,-2');
   assert.ok(col && col.y > -0.1 && col.y < 0.1, `the floor at the ground, not the tail: ${col && col.y}`);
   const r = recent(L, 0);
   assert.ok(r.ground.length >= 1 && r.stand.length === 1, `ground and one standing: ${r.ground.length} ${r.stand.length}`);
   // a standing point 5 m away is not kept; the same point 3 m away is
   const L2 = newLocate(); noteGround(L2, 0);
-  addDepth(L2, [{ x: 0, y: 0, z: -5 }, { x: 0, y: 1, z: -5 }, { x: 0, y: 0, z: -3 }, { x: 0.3, y: 1, z: -3 }], 0, { x: 0, y: 1.4, z: 0 });
+  for (let k = 0; k < 2; k++) addDepth(L2, [{ x: 0, y: 0, z: -5 }, { x: 0, y: 1, z: -5 }, { x: 0, y: 0, z: -3 }, { x: 0.3, y: 1, z: -3 }], 0, { x: 0, y: 1.4, z: 0 });
   const r2 = recent(L2, 0);
   assert.equal(r2.stand.length, 1, `one standing point kept (the near one): ${r2.stand.length}`);
   assert.deepEqual(r2.stand[0], [0.3, 3]);
   assert.equal(r2.ground.length, 2, 'ground points within 6 m kept');
+}
+// SCAN-H7: standing points only from a pass that knows their colour, never grass; seen twice before they count
+{
+  const L = newLocate(); noteGround(L, 0);
+  const cam = { x: 0, y: 1.4, z: 0 };
+  addDepth(L, [{ x: 0, y: 0, z: -2 }, { x: 0.5, y: 1, z: -2 }], 0, cam, { standing: false });
+  assert.equal(recent(L, 0).stand.length, 0, 'the colourless pass adds no standing points');
+  addDepth(L, [{ x: 0.5, y: 1, z: -2, surf: 'grass' }, { x: 1.5, y: 1, z: -2, surf: 'other' }, { x: 1.5, y: 1, z: -2.05, surf: 'other' }, { x: -1, y: 1, z: -2, surf: 'pave' }], 0, cam);
+  const r = recent(L, 0);
+  assert.equal(L.dropped, 1, 'the grass-coloured standing point dropped');
+  assert.equal(r.stand.length, 1, `only the cell seen twice counts: ${r.stand.length}`);
+  assert.deepEqual(r.stand[0], [1.5, 2.05]);
 }
 // SKEPTICAL OF A JUMP (owner, 2026-11-03): a fix far from the last kept one waits for a second to agree with it
 {

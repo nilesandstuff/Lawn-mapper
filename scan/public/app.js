@@ -292,7 +292,7 @@ function onFrame(f) {
     st.depthAt = f.t;
     const pts = [];
     for (let i = 0; i < 16; i++) for (let j = 0; j < 28; j++) { const p = f.depth.at((i + 0.5) / 16, (j + 0.5) / 28); if (p) pts.push(p); }
-    addDepth(L, pts, odo, f.pose.position);
+    addDepth(L, pts, odo, f.pose.position, { standing: false }); // standing points come from the colour pass below
     if (st.twin) addPoints(st.twin, Date.now(), odo, pts, L.groundY);
   }
   // THE GROUND'S COLOUR (scan/lib/surface.js): about once a second, the camera's picture read back, and the depth
@@ -303,12 +303,12 @@ function onFrame(f) {
     grabbed = f.grab();
     if (grabbed?.pixels) {
       const pts = [], { w: gw, h: gh, pixels } = grabbed;
-      for (let i = 0; i < 18; i++) for (let j = 0; j < 32; j++) {
-        const x = (i + 0.5) / 18, y = (j + 0.5) / 32, p = f.depth.at(x, y);
+      for (let i = 0; i < 24; i++) for (let j = 0; j < 40; j++) {
+        const x = (i + 0.5) / 24, y = (j + 0.5) / 40, p = f.depth.at(x, y);
         if (!p) continue;
         const k = (Math.min(gh - 1, Math.floor(y * gh)) * gw + Math.min(gw - 1, Math.floor(x * gw))) * 4;
         const surf = surfaceOf(pixels[k], pixels[k + 1], pixels[k + 2]);
-        if (surf) { p.surf = surf; pts.push(p); st.surfCount[surf]++; }
+        p.surf = surf || 'other'; pts.push(p); if (surf) st.surfCount[surf]++;
       }
       if (pts.length) addDepth(L, pts, odo, f.pose.position);
     }

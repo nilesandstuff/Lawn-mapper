@@ -108,7 +108,8 @@ export function floorOf(c, cap = Infinity) {
  * Depth points round the phone, kept one to a VOX cell as ground ('g') or standing ('s'), with the walk they were
  * seen at. cam: the camera's position {x, y, z} when they were seen (for the range cap), or its height alone.
  */
-export function addDepth(L, points, odo, cam = null) {
+export const STAND_SEEN = 2;     // sightings a standing point's cell needs before the match uses it (noise scatters)
+export function addDepth(L, points, odo, cam = null, { standing = true } = {}) {
   const camY = cam == null ? null : typeof cam === 'number' ? cam : cam.y;
   const camPos = cam && typeof cam === 'object' ? cam : null;
   if (L.groundY == null && camY != null) L.groundY = camY - 1.35;
@@ -133,9 +134,14 @@ export function addDepth(L, points, odo, cam = null) {
     // 'h': high up (gutters, a roof's edge, the bottom of a crown), matched against the lidar's roof edge
     const cls = Math.abs(h) < BANDS.groundTol ? 'g' : h > BANDS.standLow && h < BANDS.standHigh ? 's' : h >= BANDS.standHigh && h < BANDS.highTop ? 'h' : null;
     if (!cls) continue;
+    /* standing points: only from a pass that knows their colour (app.js, once a second), and never grass-coloured
+       (SCAN-H7: of the standing points that landed on the lidar none was grass; of those that landed on nothing,
+       1,574 were -- the lawn itself, floated up by depth that was off along the ray) */
+    if (cls === 's') { if (!standing) continue; if (p.surf === 'grass') { L.dropped = (L.dropped || 0) + 1; continue; } }
     // a ground point the camera saw the colour of carries 'grass' or 'pave' (scan/lib/surface.js), kept apart
-    const surf = cls === 'g' && p.surf ? p.surf : null;
-    L.cloud.set(`${Math.floor(p.x / VOX)},${Math.floor(p.z / VOX)},${cls}${surf ? `:${surf}` : ''}`, { u: p.x, v: -p.z, y: p.y, odo, cls, surf });
+    const surf = cls === 'g' && (p.surf === 'grass' || p.surf === 'pave') ? p.surf : null;
+    const key = `${Math.floor(p.x / VOX)},${Math.floor(p.z / VOX)},${cls}${surf ? `:${surf}` : ''}`, was = L.cloud.get(key);
+    L.cloud.set(key, { u: p.x, v: -p.z, y: p.y, odo, cls, surf, n: (was ? was.n : 0) + 1 });
     kept++;
   }
   if (L.cloud.size > 8000) for (const [k, p] of L.cloud) if (p.odo < odo - KEEP_M) L.cloud.delete(k);
@@ -148,7 +154,7 @@ export function recent(L, odo, m = RECENT_M) {
   const stand = [], ground = [], high = [], surface = [];
   for (const p of L.cloud.values()) {
     if (p.odo < odo - m) continue;
-    if (p.cls === 's') stand.push([p.u, p.v]); else if (p.cls === 'h') high.push([p.u, p.v]);
+    if (p.cls === 's') { if ((p.n || 1) >= STAND_SEEN) stand.push([p.u, p.v]); } else if (p.cls === 'h') high.push([p.u, p.v]);
     else if (p.surf) surface.push([p.u, p.v, p.surf]); else ground.push([p.u, p.v, p.y]);
   }
   return { stand, ground, high, surface };
@@ -321,7 +327,7 @@ export function summaryOf(L) {
   return {
     asksLog: L.log,
     marks: L.marks.length, references: new Set(refMarks(L).map((m) => m.id)).size,
-    fixes: L.fixes.length, asks: L.asks, refused: L.refused, jumpsHeld: L.jumpsHeld || 0, jumpsTaken: L.jumpsTaken || 0,
+    fixes: L.fixes.length, asks: L.asks, refused: L.refused, jumpsHeld: L.jumpsHeld || 0, jumpsTaken: L.jumpsTaken || 0, grassDropped: L.dropped || 0,
     fixHits: L.fixes.map((f) => +(f.hits || 0).toFixed(2)), fixAgreeM: L.fixes.map((f) => f.agreeM), fixFrom: L.fixes.reduce((a, f) => { a[f.from] = (a[f.from] || 0) + 1; return a; }, {}),
     cloud: L.cloud.size, scale: L.scale,
   };
