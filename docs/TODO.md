@@ -7,6 +7,20 @@ this file only points there.
 
 ## Asked for, not started
 
+### 0a. NAIP of the lidar's year against the newest: trees cut since, canopies grown since (owner, 2026-11-04; shade map)
+
+"Compare naip from year of lidar with naip from current year, to see if
+we can automatically remove trees that have been cut down... Or inflate
+canopies to reflect real growth." The shade map now reads the NAIP frame
+nearest the lidar flight for its green check (public/shade/naip.js,
+Planetary Computer; every NAIP year is there). The test: for the lots in
+data/labelled-crowns.csv, the vegetation index of each lidar crown in the
+flight-year frame against the newest; a crown green then and bare ground
+now was cut (erase it); green then and wider green now has grown (grow the
+footprint, and by how much against the years between). Score against
+photos read by eye before any of it touches the light. Features session.
+
+
 ### 0. Lawn Mapper's buildings and roads from the shade map's lidar rules, if needed (owner, 2026-11-03)
 
 "I'm not sure if the lawn map should get any changes, except maybe for

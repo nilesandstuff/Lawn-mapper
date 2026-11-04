@@ -630,6 +630,7 @@ async function build(site) {
       <tr><td>Cloud</td><td>${esc(cloud.name)}${cloud.confirmed ? '' : ' <span class="warn">(box match only: USGS did not confirm it flew this point)</span>'}</td></tr>
       ${u ? `<tr><td>Flown</td><td>${day(u.start)}${day(u.end) !== day(u.start) ? ` to ${day(u.end)}` : ''}, ${esc(u.ql || '?')}, ${seasonWord(u.season)} <span class="dim">${u.source === 'laser' ? 'by the laser\'s own clock' : 'by the USGS catalogue'}${u.catalogue && !u.agree ? `; the catalogue says ${day(u.catalogue.start)} to ${day(u.catalogue.end)}, ${u.catalogue.season || '?'} — the clock wins` : ''}</span></td></tr>` : '<tr><td>Flown</td><td class="warn">unknown: the files keep no time and the USGS catalogue did not answer; the trees are drawn as the laser saw them</td></tr>'}
       ${passWords}
+      <tr><td>Summer photo</td><td>${green?.frame ? (green.frame.date ? `NAIP of ${esc(green.frame.date)}, the frame nearest the flight` : 'the newest NAIP mosaic (no single frame covered the lot)') : '<span class="warn">none answered: low structures are not told from small trees here</span>'} <span class="dim">(the green check for sheds against small trees; the picture under the map is the one this map was traced on)</span></td></tr>
       <tr><td>Points</td><td>${cols.n.toLocaleString()} within ${MARGIN_M} m of the lot; ${(inLot / lotM2).toFixed(1)} a square meter over the lot</td></tr>
       ${notOnAws.length ? `<tr><td>Also flown</td><td class="warn">${notOnAws.map((x) => `${esc(x.workunit)} (${day(x.end)}, ${esc(x.ql || '?')})`).join('; ')} — not in the public cloud store, so not read</td></tr>` : ''}
     </table>
@@ -654,7 +655,7 @@ async function build(site) {
   /* The summer photo's green per square meter, for telling a small tree
      from a shed (structures.js; no photo, no low structures). */
   status('Reading the summer aerial photo…');
-  const green = await greenOver(gridOver(box, 1, site.lat));
+  const green = await greenOver(gridOver(box, 1, site.lat), { flownMs: u?.end || u?.start || null }); // the frame nearest the flight (naip.js)
   view.builtFor = site;
   view.model = {
     green,

@@ -363,10 +363,11 @@ export function wallsOf(mask, w, h, { cellM = 1, fineM = 0.25, insetM = WALL_INS
  * for `grid` itself (naip.js, one request per lot per page) and returns
  * structuresFrom's answer with it, plus `photo` (whether it answered). A
  * tool that calls this gets every later change to the rule and the photo
- * check with no change of its own.
+ * check with no change of its own. `flownMs`: the lidar flight's date, so
+ * the photo read is the one nearest it (naip.js).
  */
-export async function structuresFor(cols, grid, { shift = null, fetchFn } = {}) {
-  const green = await greenOver(grid, fetchFn ? { fetchFn } : {});
+export async function structuresFor(cols, grid, { shift = null, flownMs = null, fetchFn, decodePng } = {}) {
+  const green = await greenOver(grid, { flownMs, ...(fetchFn ? { fetchFn } : {}), ...(decodePng ? { decodePng } : {}) });
   return { ...structuresFrom(cols, grid, { shift, green }), photo: !!green };
 }
 

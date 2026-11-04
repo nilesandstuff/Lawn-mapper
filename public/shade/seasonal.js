@@ -207,7 +207,7 @@ export const LEAF_FALL_DAYS = 28;
  * wants the shade map's kinds, low structures included (structures.js).
  */
 export async function seasonalCanopyFor(cols, model, opts = {}) {
-  const green = opts.green ?? await greenOver(model.grid, opts.fetchFn ? { fetchFn: opts.fetchFn } : {});
+  const green = opts.green ?? await greenOver(model.grid, { flownMs: opts.flownMs ?? null, ...(opts.fetchFn ? { fetchFn: opts.fetchFn } : {}), ...(opts.decodePng ? { decodePng: opts.decodePng } : {}) });
   return seasonalCanopy(cols, model, { ...opts, green });
 }
 

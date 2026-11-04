@@ -6,7 +6,8 @@
 import { lasHeader, makeColumns, readRecord, gpsTimes, gpsMs, leafOfMs, LEAF_OFF, LEAF_ON } from '../public/shade/las.js';
 import { onePass } from '../public/shade/passes.js';
 import { structuresOf, structuresFrom, structuresFor, wallsOf, greenCut, WALL_INSET_M, NOTHING, BUILDING, TREE, SOLID_TREE, STRUCTURE, UNKNOWN } from '../public/shade/structures.js';
-import { ndviFromBsq } from '../public/shade/naip.js';
+import { ndviFromBsq, ndviFromRgba, pickFrame, inPolygon, STAC, CROP } from '../public/shade/naip.js';
+import { PNG as PngJs } from 'pngjs';
 import { kindOf as kindOfTrees } from '../public/shade/trees-ui.js';
 import { nodeBox, walk, hierarchyReader, pointsIn, toMerc, fromMerc, mercScale, flownOf } from '../public/shade/ept.js';
 import { nad83Correction } from '../public/shade/datum.js';
@@ -1673,11 +1674,31 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   /* The one call (structuresFor) reads the photo itself: here a stand-in for the NAIP service built from the same green. */
   const bsqOf = (gv) => { const W = grid.w * 2, Hh = grid.h * 2, b = new Uint8Array(W * Hh * 4); for (let r = 0; r < Hh; r++) for (let c = 0; c < W; c++) { const g = gv[(r >> 1) * grid.w + (c >> 1)], p = r * W + c; b[p] = 50; b[3 * W * Hh + p] = Math.min(255, Math.round((50 * (1 + g)) / (1 - g))); } return b; };
   let calls = 0;
-  const fakeNaip = async () => { calls++; return { ok: true, arrayBuffer: async () => bsqOf(green).buffer }; };
+  /* The stand-in photo service: no frame from Planetary Computer (STAC answers 500), so the USGS mosaic is read. */
+  const fakeNaip = async (u) => { calls++; if (u === STAC) return { ok: false, status: 500 }; return { ok: true, arrayBuffer: async () => bsqOf(green).buffer }; };
   const sfor = await structuresFor(cols, grid, { fetchFn: fakeNaip });
   const sfor2 = await structuresFor(cols, grid, { fetchFn: fakeNaip });
   check('structures: the one call reads the summer photo itself (once per lot) and judges as with it handed in',
-    sfor.photo && sfor.counts.structure === st.counts.structure && sfor.kind.every((v, i) => v === st.kind[i]) && calls === 1 && sfor2.counts.structure === st.counts.structure, `${sfor.counts.structure} vs ${st.counts.structure}, ${calls} request(s)`);
+    sfor.photo && sfor.counts.structure === st.counts.structure && sfor.kind.every((v, i) => v === st.kind[i]) && calls === 2 && sfor2.counts.structure === st.counts.structure, `${sfor.counts.structure} vs ${st.counts.structure}, ${calls} request(s)`);
+  /* THE FRAME OF THE LIDAR'S YEAR (owner, 2026-11-04): STAC lists a 2018 and a 2022 frame covering the lot and a 2016 one that does not; the flight was 2017-11. */
+  const big = { type: 'Polygon', coordinates: [[[-180, -85], [180, -85], [180, 85], [-180, 85], [-180, -85]]] };
+  const tiny = { type: 'Polygon', coordinates: [[[0, 0], [0.0001, 0], [0.0001, 0.0001], [0, 0.0001], [0, 0]]] };
+  const stacItems = [
+    { id: 'f2022', properties: { datetime: '2022-09-08T00:00:00Z', gsd: 0.6 }, geometry: big },
+    { id: 'f2018', properties: { datetime: '2018-07-06T00:00:00Z', gsd: 0.6 }, geometry: big },
+    { id: 'f2016', properties: { datetime: '2016-07-27T00:00:00Z', gsd: 1 }, geometry: tiny },
+  ];
+  const pngOf = (gv) => { const W = grid.w * 2, Hh = grid.h * 2, png = new PngJs({ width: W, height: Hh }); for (let r = 0; r < Hh; r++) for (let c = 0; c < W; c++) { const g = gv[(r >> 1) * grid.w + (c >> 1)], o = (r * W + c) * 4; png.data[o] = Math.min(255, Math.round((50 * (1 + g)) / (1 - g))); png.data[o + 1] = 50; png.data[o + 2] = 40; png.data[o + 3] = 255; } return PngJs.sync.write(png); };
+  const decodePng = async (buf) => { const png = PngJs.sync.read(Buffer.from(buf)); return { data: png.data, width: png.width, height: png.height }; };
+  let cropUrl = null;
+  const fakePc = async (u) => { if (u === STAC) return { ok: true, json: async () => ({ features: stacItems }) }; if (String(u).startsWith(CROP)) { cropUrl = u; const b = pngOf(green); return { ok: true, arrayBuffer: async () => b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) }; } return { ok: false, status: 404 }; };
+  const sYear = await structuresFor(cols, grid, { flownMs: Date.UTC(2017, 10, 1), fetchFn: fakePc, decodePng }); // a date of its own: a fresh photo request, not the cached one
+  check('naip: with the flight\'s date the frame nearest it that covers the whole lot is read (2018, not 2022 nor the 2016 one that misses it), bands NIR,red,green, and the check comes out the same',
+    /item=f2018/.test(cropUrl) && /4,1,2/.test(cropUrl) && sYear.photo && sYear.counts.structure === st.counts.structure, `${cropUrl && cropUrl.slice(0, 80)}; ${sYear.counts.structure} vs ${st.counts.structure}`);
+  const ring = [[0.01, 0.01], [0.02, 0.01], [0.02, 0.02], [0.01, 0.02]];
+  const its = stacItems.map((f) => ({ id: f.id, date: Date.parse(f.properties.datetime), gsd: f.properties.gsd, geometry: f.geometry }));
+  check('naip: without a date the newest covering frame; a flight far from every frame takes the newest; no covering frame, none',
+    pickFrame(its, ring).id === 'f2022' && pickFrame(its, ring, Date.UTC(2019, 5, 1)).id === 'f2018' && pickFrame(its, ring, Date.UTC(2005, 5, 1)).id === 'f2022' && pickFrame(its.filter((i) => i.id === 'f2016'), ring) === null && inPolygon([0.00005, 0.00005], tiny) && !inPolygon([1, 1], tiny), '');
   const noPhoto = await structuresFor(cols, gridOver([0, 0, 61 / k, 60 / k], 1, lat), { fetchFn: async () => ({ ok: false }) });
   check('structures: and when the photo service does not answer, no low structures', !noPhoto.photo && noPhoto.counts.structure === 0);
   const bare = structuresFrom(cols, grid);
