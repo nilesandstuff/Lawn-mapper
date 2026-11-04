@@ -1473,6 +1473,24 @@ flagged; no return of the 25 m tree is; on the owner's lot nothing over
 tall pine whose next return within 3 m sits more than 10 m below its top
 would lose that top; not seen on either lot.
 
+SECOND ROUND, THE SAME DAY (owner: "There's 6 cubes. Significantly higher
+than any other nearby object. Every other cube on the property or next
+door neighbors property looks good"): the six cubes were one return
+13.3 m up, first of two echoes, in a cell with no other return, plus the
+two neighbouring columns the drawing pools from it. The first rule let it
+through twice over: a cell's own lowest return counted as its anchor
+(here the stray itself), and a 5 m shrub three cells away was support
+enough under a flat 10 m allowance. Now a return is anchored when it is
+within 10 m of the LOWEST return within 3 m (the local ground), or within
+an allowance of an anchored return within 3 m that is the support's own
+height over that ground, clamped to 5-10 m: a 24 m tree's top 8 m above
+its next return still stands, a return 8 m over a 5 m shrub does not.
+Measured: on that lot 11 of 131,103 returns flagged and the six cubes
+gone (what stays over 8 m is a 10-11.5 m flat roof and a 10 m tree); the
+owner's lot 5 of 184,078; over the 250 labelled crowns on 49 corpus lots
+(data/labelled-crowns.csv) 8 of 341,468 crown returns flagged, no crown
+top lowered by a metre, 780 of 5.1 million lot returns in all (0.015%).
+
 WALLS UNDER THE EAVES (structures.js wallsOf; owner: "walls are offset by
 the standard amount, 2 feet probably"): a roof mask at 0.25 m, the walls
 0.61 m in from its edge, the band outside them eave. Unmeasured.

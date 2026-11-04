@@ -1701,14 +1701,15 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
     pickFrame(its, ring).id === 'f2022' && pickFrame(its, ring, Date.UTC(2019, 5, 1)).id === 'f2018' && pickFrame(its, ring, Date.UTC(2005, 5, 1)).id === 'f2022' && pickFrame(its.filter((i) => i.id === 'f2016'), ring) === null && inPolygon([0.00005, 0.00005], tiny) && !inPolygon([1, 1], tiny), '');
   const noPhoto = await structuresFor(cols, gridOver([0, 0, 61 / k, 60 / k], 1, lat), { fetchFn: async () => ({ ok: false }) });
   /* A STRAY THE SURVEY MISSED (owner, 2026-11-04): one return 46 m up over open lawn, class 1; and a real 25 m tree top with its crown under it. */
-  const strayCols = makeColumns(cols.n + 6);
+  const strayCols = makeColumns(cols.n + 14);
   for (const key of ['x', 'y', 'z', 'intensity', 'ret', 'nret', 'cls']) strayCols[key].set(cols[key]);
-  const extra = [[5, 50, 146.5, 1], [6, 52, 140.9, 1], [30, 30, 125, 1], [30.4, 30.4, 122, 1], [30.2, 30.1, 118, 1], [30.1, 30.3, 110, 1]]; // a bird's two echoes; a tall tree's top four returns
+  const extra = [[5, 50, 146.5, 1], [6, 52, 140.9, 1], [30, 30, 125, 1], [30.4, 30.4, 122, 1], [30.2, 30.1, 118, 1], [30.1, 30.3, 110, 1], [25.5, 55.5, 113.3, 1], [5.5, 30.5, 105.3, 1], [5.6, 30.6, 104.2, 1], [7.5, 32.5, 113.8, 1], [57.5, 30.5, 124, 1], [57.6, 30.4, 116, 1], [57.4, 30.6, 108, 1], [57.5, 30.6, 103, 1]]; // a bird's two echoes; a tall tree's top four returns; a lone echo 13 m up alone in its cell; a 5 m shrub with an echo 13.8 m up 3 m away; a 24 m tree whose flight caught it at 24, 16, 8 and 3 m
   extra.forEach(([e, n, z, c], j) => { const i = cols.n + j; strayCols.x[i] = e / k; strayCols.y[i] = n / k; strayCols.z[i] = z; strayCols.cls[i] = c; strayCols.ret[i] = 1; strayCols.nret[i] = 1; });
+  for (let i = 0; i < cols.n; i++) { const e = cols.x[i] * k, n = cols.y[i] * k; if (e >= 25 && e < 26 && n >= 55 && n < 56) strayCols.cls[i] = 7; } // that cell's own ground returns set aside: the stray is alone in it
   const nStray = flagStrays(strayCols, grid);
-  check('structures: a bird\'s two echoes 41 and 46 m over open lawn are flagged as the survey\'s high noise (neither vouches for the other); a tall tree\'s top, with its own crown under it, is not',
-    nStray === 2 && strayCols.cls[cols.n] === 18 && strayCols.cls[cols.n + 1] === 18 && strayCols.cls[cols.n + 2] === 1 && strayCols.cls[cols.n + 3] === 1 && flagStrays(strayCols, grid) === 0, `${nStray} flagged`);
-  check('structures: and the spruce\'s own top (a tree whose crown stands under it) is never a stray', structuresFrom(strayCols, grid, { green }).kind[at(15.5, 45.5)] !== NOTHING && [...strayCols.cls].filter((c) => c === 18).length === 2);
+  check('structures: a bird\'s two echoes 41 and 46 m over open lawn, a lone echo 13 m up alone in its cell, and an echo 13.8 m over a 5 m shrub are flagged as the survey\'s high noise; a tall tree\'s top with its crown under it, and a 24 m tree caught at 8 m steps, are not',
+    nStray === 4 && strayCols.cls[cols.n] === 18 && strayCols.cls[cols.n + 1] === 18 && strayCols.cls[cols.n + 6] === 18 && strayCols.cls[cols.n + 9] === 18 && strayCols.cls[cols.n + 2] === 1 && strayCols.cls[cols.n + 3] === 1 && strayCols.cls[cols.n + 7] === 1 && strayCols.cls[cols.n + 10] === 1 && strayCols.cls[cols.n + 11] === 1 && flagStrays(strayCols, grid) === 0, `${nStray} flagged; shrub ${strayCols.cls[cols.n + 7]}, echo over it ${strayCols.cls[cols.n + 9]}, 24 m tree top ${strayCols.cls[cols.n + 10]}`);
+  check('structures: and the spruce\'s own top (a tree whose crown stands under it) is never a stray', structuresFrom(strayCols, grid, { green }).kind[at(15.5, 45.5)] !== NOTHING && [...strayCols.cls].filter((c) => c === 18).length === 4);
   check('structures: and when the photo service does not answer, no low structures', !noPhoto.photo && noPhoto.counts.structure === 0);
   const bare = structuresFrom(cols, grid);
   check('structures: with no summer photo no low structures are called (owner, 2026-11-04: no structures where there are none)',
