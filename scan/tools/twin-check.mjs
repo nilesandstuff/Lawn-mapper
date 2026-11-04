@@ -364,10 +364,13 @@ async function main() {
     const pl = placer(live, 'refs');
     const demAt = (e, n) => { const c = Math.floor((e - box[0]) / G.cell), r = Math.floor((box[3] - n) / G.cell); return c >= 0 && r >= 0 && c < W && r < H ? G.dem[r * W + c] : NaN; };
     const distAt = (e, n) => { const c = Math.floor((e - box[0]) / G.cell), r = Math.floor((box[3] - n) / G.cell); return c >= 0 && r >= 0 && c < W && r < H ? G.dist[r * W + c] : NaN; };
-    const diffs = [];
-    for (let i = 0; i < recs.length; i += 7) { const r = recs[i]; if (Math.abs(r.y - r.ground) >= 0.2) continue; const T = pl(r.odo); if (!T) continue; const [e, n] = apply(T, [r.x, -r.z]), z = demAt(e, n); if (Number.isFinite(z)) diffs.push(z - r.y); }
-    diffs.sort((a, b) => a - b);
-    const tz = diffs.length ? diffs[diffs.length >> 1] : NaN;
+    // the phone's up lined to the lidar's per 20 m of walk (ARCore's height drifts along a walk), by the ground points
+    const segs = new Map();
+    for (let i = 0; i < recs.length; i += 5) { const r = recs[i]; if (Math.abs(r.y - r.ground) >= 0.2) continue; const T = pl(r.odo); if (!T) continue; const [e, n] = apply(T, [r.x, -r.z]), z = demAt(e, n); if (!Number.isFinite(z)) continue; const s = Math.floor(r.odo / 20); (segs.get(s) || segs.set(s, []).get(s)).push(z - r.y); }
+    const tzOf = new Map(); let diffsN = 0;
+    for (const [s, d] of segs) { d.sort((a, b) => a - b); tzOf.set(s, d[d.length >> 1]); diffsN += d.length; }
+    const tzAt = (odo) => { const s = Math.floor(odo / 20); if (tzOf.has(s)) return tzOf.get(s); let best = null; for (const [k, v] of tzOf) if (best == null || Math.abs(k - s) < Math.abs(best[0] - s)) best = [k, v]; return best ? best[1] : NaN; };
+    const diffs = { length: diffsN }, tz = tzAt(0);
     const k = { groundMisread: 0, landed: 0, near: 0, missing: 0, high: 0, n: 0 }, slopes = { misread: [], all: [] };
     const ranges = { misread: [], landed: [], missing: [] }, inLawn = { missing: 0, missingN: 0, landed: 0, landedN: 0 }, farMissing = { n: 0, far: 0 };
     const slopeAt = (e, n) => { const a = demAt(e + 1, n), b = demAt(e - 1, n), c = demAt(e, n + 1), d = demAt(e, n - 1); return Number.isFinite(a + b + c + d) ? Math.hypot((a - b) / 2, (c - d) / 2) : NaN; };
@@ -375,7 +378,7 @@ async function main() {
       if (!isStand(r)) continue;
       const T = pl(r.odo); if (!T) continue;
       const [e, n] = apply(T, [r.x, -r.z]), z = demAt(e, n); if (!Number.isFinite(z)) continue;
-      const hl = r.y + tz - z, d = distAt(e, n); k.n++;
+      const hl = r.y + tzAt(r.odo) - z, d = distAt(e, n); k.n++;
       const cam = camAt(r.t), range = cam ? Math.hypot(r.x - cam.x, r.y - cam.y, r.z - cam.z) : NaN;
       const sd = G.lawnSd ? G.lawnSd[Math.floor((box[3] - n) / G.cell) * W + Math.floor((e - box[0]) / G.cell)] : NaN;
       if (hl < 0.3) { k.groundMisread++; const s = slopeAt(e, n); if (Number.isFinite(s)) slopes.misread.push(s); if (Number.isFinite(range)) ranges.misread.push(range); }
@@ -386,7 +389,7 @@ async function main() {
       const s = slopeAt(e, n); if (Number.isFinite(s) && k.n % 3 === 0) slopes.all.push(s);
     }
     const med = (a) => { a.sort((x, y) => x - y); return a.length ? a[a.length >> 1] : NaN; };
-    console.log(`The phone's standing points, ${label}, at the references' pose (${k.n.toLocaleString()}; the phone's up lined to the lidar's by ${Number.isFinite(tz) ? tz.toFixed(2) : '?'} m from ${diffs.length.toLocaleString()} ground points): ${pct(k.groundMisread, k.n)} are under 0.3 m over the LIDAR ground (the phone misread the ground as a thing; the lidar's slope under them ${(med(slopes.misread) * 100).toFixed(0)}%, under all of them ${(med(slopes.all) * 100).toFixed(0)}%); ${pct(k.landed, k.n)} land on a solid cell; ${pct(k.near, k.n)} within 1 m of one; ${pct(k.missing, k.n)} stand 0.3-2.5 m up with nothing solid within 1 m (things the lidar does not have); ${pct(k.high, k.n)} are over 2.5 m up by the lidar (a crown, a wall top on a slope).`);
+    console.log(`The phone's standing points, ${label}, at the references' pose (${k.n.toLocaleString()}; the phone's up lined to the lidar's per 20 m of walk from ${diffs.length.toLocaleString()} ground points; ${[...tzOf.values()].map((v) => v.toFixed(2)).join(', ')} m): ${pct(k.groundMisread, k.n)} are under 0.3 m over the LIDAR ground (the phone misread the ground as a thing; the lidar's slope under them ${(med(slopes.misread) * 100).toFixed(0)}%, under all of them ${(med(slopes.all) * 100).toFixed(0)}%); ${pct(k.landed, k.n)} land on a solid cell; ${pct(k.near, k.n)} within 1 m of one; ${pct(k.missing, k.n)} stand 0.3-2.5 m up with nothing solid within 1 m (things the lidar does not have); ${pct(k.high, k.n)} are over 2.5 m up by the lidar (a crown, a wall top on a slope).`);
     const q = (a, f) => { a.sort((x, y) => x - y); return a.length ? a[Math.floor(a.length * f)].toFixed(1) : '?'; };
     console.log(`  Range from the camera when seen (median / 9 in 10 under): misread ground ${q(ranges.misread, 0.5)} / ${q(ranges.misread, 0.9)} m, landed ${q(ranges.landed, 0.5)} / ${q(ranges.landed, 0.9)} m, missing from the lidar ${q(ranges.missing, 0.5)} / ${q(ranges.missing, 0.9)} m; ${pct(farMissing.far, farMissing.n)} of the missing were seen from over 4 m. Inside the traced lawn, where nothing stands: ${pct(inLawn.missing, inLawn.missingN)} of the missing, ${pct(inLawn.landed, inLawn.landedN)} of the landed.`);
     // the same points by range band: what share of each band lands, is missing, or is misread ground
@@ -397,10 +400,34 @@ async function main() {
       const [e, n] = apply(T, [r.x, -r.z]), z = demAt(e, n); if (!Number.isFinite(z)) continue;
       const cam = camAt(r.t); if (!cam) continue;
       const range = Math.hypot(r.x - cam.x, r.y - cam.y, r.z - cam.z), bi = bands.findIndex(([a, b]) => range >= a && range < b); if (bi < 0) continue;
-      const hl = r.y + tz - z, d = distAt(e, n), b = tot[bi]; b.n++;
+      const hl = r.y + tzAt(r.odo) - z, d = distAt(e, n), b = tot[bi]; b.n++;
       if (hl < 0.3) b.misread++; else if (hl <= 2.5 && d <= 0.3) b.landed++; else if (hl <= 2.5 && d > 1) b.missing++;
     }
     console.log(`  By range: ${bands.map(([a, b], i) => `${a}-${b} m: ${tot[i].n.toLocaleString()} points, ${pct(tot[i].landed, tot[i].n)} land, ${pct(tot[i].missing, tot[i].n)} missing, ${pct(tot[i].misread, tot[i].n)} misread ground`).join('; ')}.`);
+  }
+
+  const end2 = recs.reduce((m, r) => Math.max(m, r.odo), 0);
+  /* IS THE LIDAR WHERE THE PHONE SAYS, OR OFF AS A WHOLE? (SCAN-H7: at 78 m, where check point C2 vouched for the
+     references to 10 in, a fix 4.9 m off landed 100 points against the references' 2.) The phone's standing points
+     (the new classing), placed by the references, slid as one over the lidar: the shift that lands the most, in each
+     third of the walk. The same shift in all three means the lidar sits off this map by that much (its move onto
+     the photo); different shifts mean the references' fit drifts along the walk. */
+  {
+    const pl = placer(live, 'refs');
+    const thirds = [[], [], []];
+    for (const r of recs) { if (cls2[r.i] !== 's') continue; const T = pl(r.odo); if (!T) continue; const third = Math.min(2, Math.floor((3 * r.odo) / Math.max(1e-9, end2))); thirds[third].push(apply(T, [r.x, -r.z])); }
+    const landedAt = (pts, de, dn) => { let n = 0; for (const [e, nn] of pts) { const c = Math.floor((e + de - box[0]) / G.cell), r = Math.floor((box[3] - (nn + dn)) / G.cell); if (c >= 0 && r >= 0 && c < W && r < H && G.dist[r * W + c] <= 0.3) n++; } return n; };
+    const out = [];
+    for (let i = 0; i < 3; i++) {
+      const pts = thirds[i].filter((_, j) => j % 2 === 0); if (pts.length < 50) { out.push(`third ${i + 1}: too few points (${pts.length})`); continue; }
+      let best = { n: landedAt(pts, 0, 0), de: 0, dn: 0 };
+      const at0 = best.n;
+      for (let de = -8; de <= 8; de += 0.5) for (let dn = -8; dn <= 8; dn += 0.5) { const n = landedAt(pts, de, dn); if (n > best.n) best = { n, de, dn }; }
+      // refined to a quarter metre round the best
+      for (let de = best.de - 0.5; de <= best.de + 0.5; de += 0.25) for (let dn = best.dn - 0.5; dn <= best.dn + 0.5; dn += 0.25) { const n = landedAt(pts, de, dn); if (n > best.n) best = { n, de, dn }; }
+      out.push(`third ${i + 1} (${pts.length.toLocaleString()} points): ${pct(at0, pts.length)} land where the references put them; most land, ${pct(best.n, pts.length)}, shifted ${Math.hypot(best.de, best.dn).toFixed(2)} m (${best.de >= 0 ? 'east' : 'west'} ${Math.abs(best.de).toFixed(2)}, ${best.dn >= 0 ? 'north' : 'south'} ${Math.abs(best.dn).toFixed(2)})`);
+    }
+    console.log(`The lidar against the phone's standing points, slid as one (shift only, no turn): ${out.join('; ')}.`);
   }
 
   // THE WALK REPLAYED THROUGH TODAY'S MATCH: every 5 m of the walk, the last 25 ft of what the phone saw (classed by
