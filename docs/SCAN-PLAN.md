@@ -799,3 +799,60 @@ The Mark button: once every point was marked it fell back to the nearest
 reference without saying so (the owner's accidental third R2). It now
 names its target, takes a pick from the mini map, and Undo takes back a
 mark.
+
+### SCAN-H7. The work walk, dug into: the phone's depth, not the lidar, was what the lock had to work with (2026-11-04)
+
+The owner, on SCAN-H6's reading: the "paving inside the lawn" was a
+gravel drive beside the lawn, in the first pictures and others; the grass
+was green and the light soft. HARD, all on that walk (check points C1 1 ft,
+C2 10 in by the references), by the twin check:
+
+- The picture is read the right way round: against the traced lawn where
+  the references place the points, 9% of grass and paving on the wrong
+  side read as kept, 9% mirrored, 18% flipped top to bottom. The first
+  nine pictures read 56, 40, 28, 37, 42, 33, 55, 33, 17% paving, then 1,
+  0, 0%: the owner stepping off the gravel. Every picture of the walk is
+  read, in order. The washed-out-grass guess in SCAN-H6 was wrong.
+- At the references' pose the phone's "standing" points were mostly not
+  things: with the page's floor rule of the time (the lowest point of a
+  column and its eight neighbours) 82% of them stood under 0.3 m over the
+  lidar's ground (the ground itself; the lowest of hundreds of noisy
+  depth samples sits well under it), 2% landed on a solid cell, and of
+  the rest 88% stood inside the mowed lawn, where nothing stands.
+- By range from the camera (the S21 has no depth sensor; ARCore's depth
+  is estimated from motion): within 2 m, 86% misread ground; 2-3 m, 23%
+  land; past 3 m, 83-91% stand on nothing.
+- Floor rules compared: the lowest point, 2% land; the 15th percentile,
+  3% (83% still the ground: the tail under the ground is long); the
+  densest 5 cm height, own column first, standing within 3.5 m, 21% land
+  (6,652 points left of 139,650).
+- Of those 6,652, by the picture: the landed were grass 0, paving 263,
+  other 855; the missing grass 1,574, paving 374, other 1,607. Dropping
+  grass-coloured standing points costs no real one. With that and a cell
+  seen 3+ times, 30% land.
+- The lidar slid as one against the standing points, by thirds of the
+  walk: first third (the gravel and the stone wall) 73% land where the
+  references put them, 80% slid 5.25 m along the wall (the "two places
+  fit" tie is the wall sliding along itself); second and third thirds
+  (the open lawn) 0% land at any shift within 8 m. The lidar sits right
+  on this map; in open lawn the phone sees nothing real to match.
+- The cost round the references' pose stays flat (a 2 m step costs under
+  10% more at 20 of 21 asks; west is cheaper than the truth) and the
+  replay with the new rules found 3 fixes in 12 asks, 1 within 5 m and 25
+  degrees. The lawn-edge colours near the edge were 59% on the right
+  side: depth that is off along the ray moves a ground point sideways too.
+
+Changed on the AR side: a column's floor is its densest height, own
+column first (locate.js floorOf, OWN_COLUMN_N); standing points only
+within 3.5 m, ground within 6 m (STAND_RANGE, GROUND_RANGE); standing
+points come only from the once-a-second colour pass (24 x 40), never
+grass-coloured, and count once their cell is seen twice (STAND_SEEN); the
+twin records the floor the page took under each point. The twin check
+compares floor rules, slides the lidar, and measures filters before they
+are built.
+
+SPECULATION: on a phone without a depth sensor the camera picture is the
+stronger signal (section 7: render-and-compare, edges of drive and wall),
+and the depth should serve the ground and near walls only. A phone whose
+ARCore depth comes from a time-of-flight sensor would be worth a walk to
+compare. Not measured.
