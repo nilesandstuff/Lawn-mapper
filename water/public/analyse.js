@@ -62,6 +62,7 @@ function planWith(inputs = {}, zoneOf = null) {
     topsoil: !!inputs.topsoil, downspouts: inputs.downspouts || [], gutters: inputs.gutters || [],
     typical: kept.typical, week: kept.week, season: kept.season, species: inputs.species || null, mode: inputs.mode || 'normal', soilTemp: { byDate: kept.soilDays || null, typical: kept.climate?.tSoil || null }, light: kept.light, lightMonths: kept.lightMonths || null, radiation: kept.radiation || null, fenceHeat: kept.fenceHeat || null, windMonths: kept.windMonths || null, shadeKinds: kept.shadeKinds || null, grass,
     texture: inputs.texture || null, parcelMask: r.parcelMask || null, areas: inputs.areas || [], zoneOf, groundwater: kept.groundwater || null,
+    snapshots: Array.isArray(inputs.snapshots) ? inputs.snapshots : null,
   });
 }
 
@@ -82,7 +83,7 @@ async function plan(inputs = {}) {
     roofs: p.roofs, soil: p.soil, weather: p.weather, thisWeek: p.thisWeek, years: p.years, topsoil: p.topsoil,
     standIn: kept.standIn, seconds: (Date.now() - t0) / 1000, shaded: p.shaded, lightByMonth: p.lightByMonth, ownRadiation: p.ownRadiation, fences: p.fences, treeCool: p.treeCool, yardWind: p.yardWind, windInfo: kept.windInfo || null, windJuly: kept.windMonths ? kept.windMonths[6].slice() : null, localWind: kept.wind || null, lightInfo: kept.lightInfo || null, sunShare: p.sunShare,
     seasonDays: kept.season ? kept.season.size : null, grass, roots: p.roots, mode: p.mode, kc: p.kc, stress: p.stress, rainFrom: kept.rainFrom, rainShaped: kept.rainShaped || 0, rainStation: kept.rainShaped ? kept.wind.station : null, texture: p.texture,
-    trouble: Object.values(kept.sources || {}).filter(Boolean), groundwater: p.groundwater, perched: p.perched,
+    trouble: Object.values(kept.sources || {}).filter(Boolean), groundwater: p.groundwater, perched: p.perched, snapshots: p.snapshots || null,
   };
   self.postMessage({ plan: out }, [out.zoneOf.buffer, out.kinds.buffer, out.soilAt.buffer, out.needMm.buffer, out.wetFromWatering.buffer, out.wetAnyway.buffer, out.dryShare.buffer]);
 }

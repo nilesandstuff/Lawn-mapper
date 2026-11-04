@@ -7,7 +7,9 @@
  *   POST   /api/water/moisture          a visit and its readings; saving the same visit id again replaces it
  *   GET    /api/water/moisture?pin=     the visits on one property (its county parcel number), oldest first
  *   GET    /api/water/moisture          every visit (?format=csv: every reading, for a spreadsheet)
+ *   GET    /api/water/moisture?map=     the visits made on one saved map, oldest first (the water map's check)
  *   DELETE /api/water/moisture?id=      one visit and its readings
+ *   POST   /api/water/moisture/check    the water map's check of the model against a visit: numbers only
  *
  * No street or house number is kept: the parcel number and the points.
  */
@@ -45,6 +47,20 @@ export function cleanVisit(b, now = Date.now()) {
   return { visit, readings };
 }
 
+/** A posted check, kept to numbers: anything that could place a spot (a point, a map id, a note) is dropped. */
+export function cleanCheck(b) {
+  if (!b || typeof b !== 'object') return { error: 'no check' };
+  const visit_id = txt(b.visit_id, 64);
+  if (!visit_id || !/^[A-Za-z0-9-]{8,64}$/.test(visit_id)) return { error: 'which visit?' };
+  const spots = (Array.isArray(b.spots) ? b.spots : []).slice(0, 500).map((s) => ({
+    n: num(s?.n, 0, 100000), value: num(s?.value, -1000, 100000), wet: num(s?.wet, -10, 100), zone: num(s?.zone, -1, 1000),
+    kind: num(s?.kind, 0, 50), need: num(s?.need, 0, 10000), tree: num(s?.tree, 0, 1), sun: num(s?.sun, 0, 1),
+  }));
+  const settings = {};
+  for (const k of ['date', 'depth_in', 'rootMm', 'season', 'irrigated']) if (b.settings && b.settings[k] != null) settings[k] = typeof b.settings[k] === 'number' ? b.settings[k] : txt(String(b.settings[k]), 40);
+  return { visit_id, rho: num(b.rho, -1, 1), n: num(b.n, 0, 500), detail: JSON.stringify({ spots, settings }) };
+}
+
 /** Every reading as CSV, with its visit's columns. */
 export function toCsv(rows) {
   const cols = ['visit_id', 'visit_at', 'parcel_pin', 'county', 'map_id', 'meter', 'unit', 'depth_in', 'n', 'spot', 'at', 'lng', 'lat', 'value', 'note'];
@@ -55,9 +71,18 @@ export function toCsv(rows) {
 
 /** The routes, or null when the request is not one of them. isAdmin(request, env) -> bool. */
 export async function moisture(request, env, url, { isAdmin }) {
-  if (url.pathname !== '/api/water/moisture') return null;
+  if (url.pathname !== '/api/water/moisture' && url.pathname !== '/api/water/moisture/check') return null;
   if (!(await isAdmin(request, env))) return json({ error: 'Not found' }, 404);
   if (!env.DB) return json({ error: 'no-database', note: 'the water database is not set up yet' }, 503);
+  if (url.pathname === '/api/water/moisture/check') {
+    if (request.method !== 'POST') return json({ error: 'method' }, 405);
+    let body = null;
+    try { body = await request.json(); } catch { /* below */ }
+    const c = cleanCheck(body);
+    if (c.error) return json({ error: c.error }, 400);
+    await env.DB.prepare('INSERT OR REPLACE INTO moisture_checks (visit_id, checked, rho, n, detail) VALUES (?, ?, ?, ?, ?)').bind(c.visit_id, Date.now(), c.rho, c.n, c.detail).run();
+    return json({ ok: true });
+  }
   if (request.method === 'POST') {
     let body = null;
     try { body = await request.json(); } catch { /* below */ }
@@ -71,13 +96,14 @@ export async function moisture(request, env, url, { isAdmin }) {
     return json({ ok: true, id: visit.id, readings: readings.length });
   }
   if (request.method === 'GET') {
-    const pin = url.searchParams.get('pin');
+    const pin = url.searchParams.get('pin'), map = url.searchParams.get('map');
     if (url.searchParams.get('format') === 'csv') {
       const { results } = await env.DB.prepare('SELECT r.*, v.at AS visit_at, v.parcel_pin, v.county, v.map_id, v.meter, v.unit, v.depth_in FROM moisture_readings r JOIN moisture_visits v ON v.id = r.visit_id ORDER BY v.at, r.n').all();
       return new Response(toCsv(results || []), { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="soil-moisture-readings.csv"', 'Cache-Control': 'no-store' } });
     }
     const visits = pin
       ? (await env.DB.prepare('SELECT * FROM moisture_visits WHERE parcel_pin = ? ORDER BY at').bind(pin).all()).results || []
+      : map ? (await env.DB.prepare('SELECT * FROM moisture_visits WHERE map_id = ? ORDER BY at').bind(map).all()).results || []
       : (await env.DB.prepare('SELECT * FROM moisture_visits ORDER BY at DESC LIMIT 500').all()).results || [];
     if (!visits.length) return json({ visits: [] });
     const ids = visits.map((v) => v.id);

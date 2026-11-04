@@ -17,6 +17,7 @@ import { makeColumns, concatColumns, filterColumns, LEAF_OFF, LEAF_ON } from '..
 import { onePass } from '../lib/shade/passes.js';
 import { roofRouting } from '../lib/gutters.js';
 import { waterPlan } from '../lib/plan.js';
+import { spearman } from '../lib/rank.js';
 import { analyse } from '../lib/lowspots.js';
 import { cloud, LAT } from '../lib/synthetic.js';
 import { fromMerc, toMerc, mercScale } from '../lib/ept.js';
@@ -318,6 +319,36 @@ test('a lawn half sand, half loam: two zones, and the sand is watered more often
   assert.ok(jul(often).waterings > jul(seldom).waterings && jul(often).mmEach < jul(seldom).mmEach);
   assert.ok(Math.abs(often.m2 - seldom.m2) < 200, `${often.m2} / ${seldom.m2}`);
   assert.equal(plan.roofs.pieces, 0);
+});
+
+test('rank correlation: same order 1, reversed -1, ties share a rank, too few is null', () => {
+  assert.equal(spearman([1, 2, 3, 4], [10, 20, 30, 40]), 1);
+  assert.equal(spearman([1, 2, 3, 4], [9, 7, 5, 1]), -1);
+  assert.equal(spearman([1, 2], [1, 2]), null);
+  assert.equal(spearman([1, 1, 1], [1, 2, 3]), null);
+  assert.ok(Math.abs(spearman([1, 2, 2, 3], [1, 3, 2, 4]) - 0.9487) < 1e-3);
+});
+
+test('a snapshot of the soil on a reading\'s date: wetter after rain, sand drier than loam', () => {
+  const res = lot({ roofs: [] });
+  const g = res.grid;
+  const corner = (x, y) => fromMerc([g.bbox[0] + x / g.k, g.bbox[1] + y / g.k]);
+  const half = (x0, x1) => [[corner(x0, 0), corner(x1, 0), corner(x1, 40), corner(x0, 40), corner(x0, 0)]];
+  const sandy = { ...loam, name: 'sand', hydgrp: 'A', profile: { horizons: [{ topCm: 0, bottomCm: 150, awc: 0.05, ksatUmS: 100 }] }, polygons: [half(0, 20)] };
+  const silty = { ...loam, name: 'silt loam', profile: { horizons: [{ topCm: 0, bottomCm: 150, awc: 0.2, ksatUmS: 2 }] }, polygons: [half(20, 40)] };
+  const lawn = new Uint8Array(g.W * g.H).fill(1);
+  const typical = [];
+  for (let y = 0; y < 3; y++) for (const d of summer(150)) typical.push({ ...d, date: `${2023 + y}${d.date.slice(4)}` });
+  // three weeks dry, then an inch of rain on the 22nd
+  const wk = summer(30).slice(0, 30).map((d, k) => ({ ...d, date: `2026-07-${String(k + 1).padStart(2, '0')}`, rain: k === 21 ? 25 : 0, rainMm: k === 21 ? 25 : 0, P: k === 21 ? 25 : 0 }));
+  const plan = waterPlan(res, { lawnMask: lawn, soil: { units: [sandy, silty] }, typical, week: { days: wk, today: 20 }, snapshots: ['2026-07-21', '2026-07-23', '1999-01-01'] });
+  assert.equal(plan.snapshots.length, 2, 'a date outside the record has no snapshot');
+  const [dry, wet] = plan.snapshots.map((s) => s.wet);
+  const mid = (x0) => (g.H >> 1) * g.W + Math.round(x0 * g.W / 40);
+  const sand = mid(8), loamy = mid(32);
+  assert.ok(Number.isFinite(dry[sand]) && Number.isFinite(dry[loamy]));
+  assert.ok(wet[sand] > dry[sand] && wet[loamy] > dry[loamy], `rain wets: ${dry[sand]}->${wet[sand]}, ${dry[loamy]}->${wet[loamy]}`);
+  assert.ok(wet[loamy] <= 2 && dry[sand] >= 0);
 });
 
 test('a lawn at the foot of a steep hill is flagged; one on a gentle rise is not', () => {

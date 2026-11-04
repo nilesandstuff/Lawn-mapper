@@ -56,3 +56,14 @@ CREATE TABLE IF NOT EXISTS moisture_readings (
   note TEXT
 );
 CREATE INDEX IF NOT EXISTS moisture_readings_visit ON moisture_readings (visit_id);
+
+-- THE MODEL AGAINST A VISIT'S READINGS (2026-11-04): worked out on the water map in the admin's browser (the readings
+-- and their places never leave the database for anywhere else), kept here as numbers only, so the workflow's
+-- "moisture" task can print it in a public log: no place, no point, no map id. One row per visit, replaced on each check.
+CREATE TABLE IF NOT EXISTS moisture_checks (
+  visit_id TEXT PRIMARY KEY,
+  checked INTEGER NOT NULL,         -- when
+  rho REAL,                         -- Spearman rank correlation, reading against the model's wetness, lawn spots only
+  n INTEGER,                        -- how many lawn spots went into rho
+  detail TEXT                       -- JSON: per spot { n, value, wet, zone, kind, need } and the run's settings
+);

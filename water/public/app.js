@@ -31,6 +31,7 @@ import { openable } from '/lib/maps.js';
 import { KINDS as LAYER_KINDS, FIELD_WORDS, typeWords, hasCounty, askBox, compact, freshEnough, summary as layerSummary, pick as layerPick, intakesNear } from '/lib/layers.js';
 import { sectorName } from '/lib/wind.js';
 import { SPECIES, groupOf } from '/lib/roots.js';
+import { spearman } from '/lib/rank.js';
 
 const $ = (s) => document.querySelector(s);
 const R = 6378137;
@@ -740,6 +741,7 @@ function planReport(p) {
   const parts = [];
   legend();
   groundwaterReport(p);
+  moistureCard(p);
   if (!p.zones.length) { $('#plan').innerHTML = '<div class="card"><h2>No lawn to plan for</h2><p class="dim">Trace the lawn in Lawn Mapper and open the map from your dashboard.</p></div>'; return; }
   const peak = (z) => z.months.reduce((a, b) => ((b.mmMonth || 0) > (a.mmMonth || 0) ? b : a), z.months[0]);
   if (p.trouble?.length) parts.push(`<div class="card" style="border-color:var(--warn)"><h2>Not everything answered this time</h2><ul>${p.trouble.map((t) => `<li>${esc(t)}</li>`).join('')}</ul><p class="dim">Reload the page to try again; the plan below is worked out without it.</p></div>`);
@@ -873,6 +875,56 @@ function hillReport(h) {
 /* THE WATER TABLE UNDER THE LAWN (owner, 2026-11-01: "We're really trying to make this as true to life as possible";
    FINDINGS H70): how deep it is month by month, where it reaches the surface, and the water it lifts into the roots,
    which the plan counts. */
+/* THE MODEL AGAINST THE METER (owner, 2026-11-04: "I uploaded a set of readings, check it out and compare with
+   predictions... See if these measurements were even useful at all"). Each reading on this map is put on its grid cell
+   and set beside the model's soil wetness on that cell on the visit's date (rain alone: no sprinkler is in the record),
+   where wetness is the root zone's water as a share of what it holds at field capacity (over 1 = wetter than that).
+   A hand meter's scale is not the model's, so the check is by rank: does a wetter reading go with a wetter cell
+   (Spearman's rho)? The admin only. What is saved for the water session to read is numbers only, no place. */
+const localDate = (ms) => new Date(ms).toLocaleDateString('en-CA');
+
+function moistureCard(p) {
+  let el = $('#moisture-check');
+  if (!el) { $('#groundwater')?.insertAdjacentHTML('afterend', '<div id="moisture-check"></div>'); el = $('#moisture-check'); }
+  if (!el) return;
+  const d = view.data, visits = view.moisture || [];
+  if (!visits.length || !d?.grid || !p?.kinds) { el.innerHTML = ''; return; }
+  const { W, H, bbox } = d.grid, dx = d.shift.east / d.grid.k, dy = d.shift.north / d.grid.k;
+  const snaps = new Map((p.snapshots || []).map((s) => [s.date, s.wet]));
+  const cellOf = (lng, lat) => {
+    const [x, y] = toMerc([lng, lat]);
+    const c = Math.floor(((x - dx - bbox[0]) / (bbox[2] - bbox[0])) * W), r = Math.floor(((bbox[3] - (y - dy)) / (bbox[3] - bbox[1])) * H);
+    return c >= 0 && c < W && r >= 0 && r < H ? r * W + c : -1;
+  };
+  const KINDW = ['not lawn', 'lawn', 'roof', 'paving', 'pavers'];
+  const cards = visits.map((v) => {
+    const date = localDate(v.at), wet = snaps.get(date);
+    const spots = v.readings.map((r) => {
+      const i = cellOf(r.lng, r.lat);
+      return { n: r.n, value: r.value, note: r.note, i, kind: i >= 0 ? p.kinds[i] : null, zone: i >= 0 && p.zoneOf ? p.zoneOf[i] : null, wet: i >= 0 && wet && Number.isFinite(wet[i]) ? wet[i] : null, need: i >= 0 && p.needMm && Number.isFinite(p.needMm[i]) ? p.needMm[i] : null };
+    });
+    const lawn = spots.filter((s) => s.kind === 1 && s.wet !== null);
+    const rho = spearman(lawn.map((s) => s.value), lawn.map((s) => s.wet));
+    const rhoNeed = spearman(lawn.filter((s) => s.need !== null).map((s) => s.value), lawn.filter((s) => s.need !== null).map((s) => s.need));
+    const ws = lawn.map((s) => s.wet).sort((a, b) => a - b), vs = lawn.map((s) => s.value).sort((a, b) => a - b);
+    const f2 = (x) => (x === null || x === undefined ? '-' : x.toFixed(2));
+    const rows = spots.map((s) => `<tr><td>${s.n}</td><td>${s.value}</td><td>${f2(s.wet)}</td><td>${s.kind === null ? 'off the map' : KINDW[s.kind] || s.kind}</td><td>${s.zone >= 0 && s.zone !== null ? s.zone + 1 : '-'}</td><td>${s.need === null ? '-' : Math.round(s.need / 25.4 * 10) / 10}</td><td>${esc(s.note || '')}</td></tr>`).join('');
+    const say = rho === null ? 'Too few readings on lawn to rank.' : `Rank correlation, reading against the model's wetness, over ${lawn.length} lawn spots: <strong>${rho.toFixed(2)}</strong> (1 = the same order, 0 = no relation, -1 = the reverse).`;
+    const flat = ws.length && ws[ws.length - 1] - ws[0] < 0.05 ? ' The model has every one of these spots within 5% of each other, so it predicts no pattern here to rank against.' : '';
+    // numbers only to the server: no point, no note, no map id
+    fetch('/api/water/moisture/check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+      visit_id: v.id, rho, n: lawn.length,
+      spots: spots.map((s) => ({ n: s.n, value: s.value, wet: s.wet, zone: s.zone, kind: s.kind, need: s.need })),
+      settings: { date, depth_in: v.depth_in, rootMm: p.rootIn ? Math.round(p.rootIn * 25.4) : null, season: p.mode || null, irrigated: 'rain alone' },
+    }) }).catch(() => {});
+    return `<details class="card"><summary>Readings of ${date}: ${v.readings.length} spots, the model's rank against them ${rho === null ? '-' : rho.toFixed(2)}</summary>
+      <p>${say}${flat} Against the peak month's watering need instead (sun, trees, slope): ${rhoNeed === null ? '-' : rhoNeed.toFixed(2)}.</p>
+      <p class="dim">Readings ${vs[0] ?? '-'} to ${vs[vs.length - 1] ?? '-'}; the model's wetness ${f2(ws[0])} to ${f2(ws[ws.length - 1])} (the root zone's water over what it holds at field capacity, with rain alone). ${wet ? '' : 'The weather record does not reach this date, so the model has no wetness for it.'}</p>
+      <div style="overflow-x:auto"><table class="small"><tr><th>#</th><th>reading</th><th>model</th><th>where</th><th>area</th><th>peak-month need, in</th><th>note</th></tr>${rows}</table></div></details>`;
+  });
+  el.innerHTML = `<h2>Soil moisture readings against the model</h2>${cards.join('')}`;
+}
+
 function groundwaterReport(p) {
   const el = $('#groundwater'); if (!el) return;
   const g = p?.groundwater, perched = perchedCard(p?.perched);
@@ -989,7 +1041,7 @@ async function run(site) {
       else if (data.planProgress) { $('#saved').textContent = data.planProgress; busy('plan', data.planProgress); }
       else if (data.valvePlan) { const w = valveAsk.waiting.get(data.valvePlan.id); valveAsk.waiting.delete(data.valvePlan.id); if (w) { if (data.valvePlan.error) w.reject(new Error(data.valvePlan.error)); else w.resolve(data.valvePlan); } }
       else if (data.groundwaterError) { view.groundwaterError = data.groundwaterError; }
-      else if (data.plan) { idle('plan'); if (!view.hillIn) busy('hill', 'Reading the land round the lawn (water from uphill)…'); view.plan = data.plan; needScale(); heads.planIn?.(); $('#saved').textContent = savedNote; if (!heads.active) planReport(data.plan); legend(); draw(); }
+      else if (data.plan) { idle('plan'); if (!view.hillIn) busy('hill', 'Reading the land round the lawn (water from uphill)…'); view.plan = data.plan; needScale(); heads.planIn?.(); $('#saved').textContent = savedNote; if (!heads.active) planReport(data.plan); else moistureCard(data.plan); legend(); draw(); }
       else if (data.planError) { idle('plan'); idle('hill'); $('#saved').textContent = `The watering plan could not be worked out: ${data.planError}`; }
       else if (data.hill) { view.hillIn = true; idle('hill'); hillReport(data.hill); }
       else if (data.streams) { streamsReport(data.streams); }
@@ -997,6 +1049,17 @@ async function run(site) {
     };
     w.onerror = (e) => { w.terminate(); clearBusy(); reject(new Error(e.message || 'the analysis stopped')); };
   });
+  // the admin's soil moisture readings on this map (the /moisture page): the plan works out the model's wetness on each
+  // visit's date so the two can be set side by side (moistureCard). Anyone else gets a 404: no readings, no check.
+  view.moisture = [];
+  inputs.snapshots = null;
+  if (site.mapId) {
+    try {
+      const r = await fetch(`/api/water/moisture?map=${encodeURIComponent(site.mapId)}`, { signal: AbortSignal.timeout(6000) });
+      if (r.ok) view.moisture = ((await r.json()).visits || []).filter((v) => v.readings?.length);
+    } catch { /* no readings: no check */ }
+    if (view.moisture.length) inputs.snapshots = [...new Set(view.moisture.map((v) => localDate(v.at)))];
+  }
   w.postMessage({ site, inputs: { ...inputs } });
   // the photo first, over the analysis box (lib/site.js boxFor; the shade map's own box when it has one),
   // so the sprinklers can be placed while the survey is read

@@ -24,3 +24,18 @@ visits.forEach((v, k) => {
   console.log(`#${k + 1}  ${new Date(v.at).toISOString().slice(0, 10)}  property ${props.get(v.parcel_pin || v.id)}  ${r.length} readings  ${vals.length ? `${vals[0]}-${vals[vals.length - 1]}${u}, median ${vals[vals.length >> 1]}` : ''}  depth ${v.depth_in ?? '?'} in  re-read ${again}  last 2 days: ${w}${v.map_id ? '  (a saved map)' : ''}`);
 });
 console.log(`${props.size} propert${props.size === 1 ? 'y' : 'ies'}; ${spotsSeen.size} spots.`);
+
+// the water map's checks (public/app.js moistureCard): numbers only, worked out in the admin's browser
+let checks = [];
+try { checks = query('SELECT visit_id, checked, rho, n, detail FROM moisture_checks'); } catch { /* no table yet */ }
+console.log('=====');
+console.log(checks.length ? 'THE MODEL AGAINST THE READINGS (rank correlation over lawn spots; wet = root-zone water / field capacity, rain alone)' : 'No check yet: open the map these readings were taken on, as the admin, on the water site.');
+const f = (x, d = 2) => (x === null || x === undefined ? '-' : Number(x).toFixed(d));
+for (const c of checks) {
+  const k = visits.findIndex((v) => v.id === c.visit_id);
+  let det = {}; try { det = JSON.parse(c.detail || '{}'); } catch { /* none */ }
+  const st = det.settings || {}, spots = det.spots || [];
+  console.log(`#${k + 1}  checked ${new Date(c.checked).toISOString().slice(0, 16)}  model date ${st.date || '?'}  rho ${f(c.rho)} over ${c.n} lawn spots  root zone ${st.rootMm ?? '?'} mm  probe ${st.depth_in ?? '?'} in`);
+  console.log('   n  reading  wet   kind zone peak_month_need_mm');
+  for (const s of spots) console.log(`  ${String(s.n).padStart(2)}  ${String(s.value).padStart(6)}  ${f(s.wet).padStart(5)}  ${String(s.kind ?? '-').padStart(3)}  ${String(s.zone ?? '-').padStart(3)}  ${s.need === null || s.need === undefined ? '-' : Math.round(s.need)}`);
+}

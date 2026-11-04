@@ -178,24 +178,26 @@ test('gauge readings: a signed-in visitor keeps one; only the admin reads them b
 
 /** A D1 stand-in for the moisture tables: the statements src/moisture.js sends, on two arrays. */
 function moistureDb() {
-  const visits = [], rdgs = [];
+  const visits = [], rdgs = [], checks = [];
   const cols = (sql) => sql.match(/\(([^)]+)\) VALUES/)[1].split(', ');
   const exec = (sql, args) => {
     if (/^INSERT OR REPLACE INTO moisture_visits/.test(sql)) { const row = Object.fromEntries(cols(sql).map((c, k) => [c, args[k]])); const k = visits.findIndex((v) => v.id === row.id); if (k >= 0) visits[k] = row; else visits.push(row); }
     else if (/^INSERT INTO moisture_readings/.test(sql)) rdgs.push(Object.fromEntries(cols(sql).map((c, k) => [c, args[k]])));
     else if (/^DELETE FROM moisture_readings WHERE visit_id/.test(sql)) { for (let k = rdgs.length - 1; k >= 0; k--) if (rdgs[k].visit_id === args[0]) rdgs.splice(k, 1); }
     else if (/^DELETE FROM moisture_visits/.test(sql)) { const k = visits.findIndex((v) => v.id === args[0]); if (k >= 0) visits.splice(k, 1); }
+    else if (/^INSERT OR REPLACE INTO moisture_checks/.test(sql)) { const row = { visit_id: args[0], checked: args[1], rho: args[2], n: args[3], detail: args[4] }; const k = checks.findIndex((v) => v.visit_id === row.visit_id); if (k >= 0) checks[k] = row; else checks.push(row); }
     else throw new Error(`unexpected ${sql}`);
   };
   const query = (sql, args) => {
     if (/FROM moisture_visits WHERE parcel_pin/.test(sql)) return visits.filter((v) => v.parcel_pin === args[0]).sort((a, b) => a.at - b.at);
+    if (/FROM moisture_visits WHERE map_id/.test(sql)) return visits.filter((v) => v.map_id === args[0]).sort((a, b) => a.at - b.at);
     if (/FROM moisture_visits ORDER BY/.test(sql)) return visits.slice().sort((a, b) => b.at - a.at);
     if (/FROM moisture_readings WHERE visit_id IN/.test(sql)) return rdgs.filter((r) => args.includes(r.visit_id)).sort((a, b) => a.n - b.n);
     if (/JOIN moisture_visits/.test(sql)) return rdgs.map((r) => { const v = visits.find((x) => x.id === r.visit_id); return { ...r, visit_at: v.at, parcel_pin: v.parcel_pin, county: v.county, map_id: v.map_id, meter: v.meter, unit: v.unit, depth_in: v.depth_in }; });
     throw new Error(`unexpected ${sql}`);
   };
   return {
-    visits, rdgs,
+    visits, rdgs, checks,
     prepare(sql) { let args = []; const st = { sql, bind: (...a) => { args = a; return st; }, run: async () => exec(sql, args), all: async () => ({ results: query(sql, args) }), get args() { return args; } }; return st; },
     batch: async (list) => { for (const st of list) exec(st.sql, st.args); return []; },
   };
@@ -236,6 +238,28 @@ test('moisture readings: the admin keeps a visit, saves it again whole, reads a 
   assert.equal(await moisture(new Request('https://water.example.com/api/other'), env, new URL('https://water.example.com/api/other'), admin), null);
   // the meter's own scale may go past 100
   assert.ok(cleanVisit({ ...visit, unit: 'scale', readings: [{ lng: 1, lat: 1, value: 250 }] }).visit);
+});
+
+test('the water map\'s check of the model against a visit: by map id for the admin, and only numbers kept', async () => {
+  const { moisture } = await import('../src/moisture.js');
+  const env = { DB: moistureDb() };
+  const u = (q = '', path = '/api/water/moisture') => new URL(`https://water.example.com${path}${q}`);
+  const admin = { isAdmin: async () => true }, nobody = { isAdmin: async () => false };
+  const visit = { id: 'visit-0002', at: Date.now() - 6e4, map_id: 'map-abc', unit: 'scale', readings: [{ n: 1, spot: 's1', lng: -85.6, lat: 42.8, value: 30 }] };
+  await moisture(new Request(u(), { method: 'POST', body: JSON.stringify(visit) }), env, u(), admin);
+  const back = await (await moisture(new Request(u('?map=map-abc')), env, u('?map=map-abc'), admin)).json();
+  assert.equal(back.visits.length, 1); assert.equal(back.visits[0].readings.length, 1);
+  assert.equal((await (await moisture(new Request(u('?map=other')), env, u('?map=other'), admin)).json()).visits.length, 0);
+  const cu = u('', '/api/water/moisture/check');
+  const check = { visit_id: 'visit-0002', rho: 0.41, n: 12, map_id: 'map-abc', spots: [{ n: 1, value: 30, wet: 0.92, zone: 0, kind: 1, need: 180, lng: -85.6, lat: 42.8, note: 'by the porch' }], settings: { date: '2026-11-03', depth_in: 3, where: 'somewhere' } };
+  assert.equal((await moisture(new Request(cu, { method: 'POST', body: JSON.stringify(check) }), env, cu, nobody)).status, 404);
+  assert.equal((await moisture(new Request(cu, { method: 'POST', body: JSON.stringify(check) }), env, cu, admin)).status, 200);
+  assert.equal((await moisture(new Request(cu, { method: 'POST', body: JSON.stringify(check) }), env, cu, admin)).status, 200);
+  assert.equal(env.DB.checks.length, 1, 'checked again: replaced');
+  const kept = JSON.stringify(env.DB.checks);
+  for (const bad of ['-85.6', '42.8', 'porch', 'map-abc', 'somewhere']) assert.ok(!kept.includes(bad), `no ${bad} kept`);
+  assert.equal(env.DB.checks[0].rho, 0.41);
+  assert.equal((await moisture(new Request(cu, { method: 'POST', body: JSON.stringify({ ...check, visit_id: 'x' }) }), env, cu, admin)).status, 400);
 });
 
 test('the moisture page is the admin\'s only, open site or not', async () => {
