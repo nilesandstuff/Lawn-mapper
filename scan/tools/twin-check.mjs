@@ -25,7 +25,7 @@ import { ringsOf } from '../lib/photo.js';
 import { loadLidar } from '../lib/lidar-load.js';
 import { buildingsOnGrid, register, MIN_LANDED, placementCost, LAWN_LOW_M } from '../lib/lidar.js';
 import { disagreement, REF_TOL_M, REF_TOL_DEG } from '../lib/locate.js';
-import { readCloud, placer, placeCloud } from '../lib/twin.js';
+import { readCloud, readTrack, placer, placeCloud } from '../lib/twin.js';
 import { apply } from '../lib/align.js';
 import { surfaceOf, lawnField, tally } from '../lib/surface.js';
 import jpeg from 'jpeg-js';
@@ -336,19 +336,43 @@ async function main() {
     diffs.sort((a, b) => a - b);
     const tz = diffs.length ? diffs[diffs.length >> 1] : NaN;
     const k = { groundMisread: 0, landed: 0, near: 0, missing: 0, high: 0, n: 0 }, slopes = { misread: [], all: [] };
+    // the camera's place when each point was seen (the track, 5 a second), for the point's range from it
+    const track = [];
+    for (const f of readdirSync(dir).filter((x) => /^track-\d+\.bin$/.test(x)).sort()) { const b = readFileSync(join(dir, f)); track.push(...readTrack(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength))); }
+    track.sort((a, b) => a.t - b.t);
+    const camAt = (tt) => { let lo = 0, hi = track.length - 1; while (lo < hi) { const m = (lo + hi) >> 1; if (track[m].t < tt) lo = m + 1; else hi = m; } return track[lo]?.pos || null; };
+    const ranges = { misread: [], landed: [], missing: [] }, inLawn = { missing: 0, missingN: 0, landed: 0, landedN: 0 }, farMissing = { n: 0, far: 0 };
     const slopeAt = (e, n) => { const a = demAt(e + 1, n), b = demAt(e - 1, n), c = demAt(e, n + 1), d = demAt(e, n - 1); return Number.isFinite(a + b + c + d) ? Math.hypot((a - b) / 2, (c - d) / 2) : NaN; };
     for (const r of recs) {
       const h = r.y - r.ground; if (!(h > 0.4 && h < 2.4)) continue;
       const T = pl(r.odo); if (!T) continue;
       const [e, n] = apply(T, [r.x, -r.z]), z = demAt(e, n); if (!Number.isFinite(z)) continue;
       const hl = r.y + tz - z, d = distAt(e, n); k.n++;
-      if (hl < 0.3) { k.groundMisread++; const s = slopeAt(e, n); if (Number.isFinite(s)) slopes.misread.push(s); }
+      const cam = camAt(r.t), range = cam ? Math.hypot(r.x - cam.x, r.y - cam.y, r.z - cam.z) : NaN;
+      const sd = G.lawnSd ? G.lawnSd[Math.floor((box[3] - n) / G.cell) * W + Math.floor((e - box[0]) / G.cell)] : NaN;
+      if (hl < 0.3) { k.groundMisread++; const s = slopeAt(e, n); if (Number.isFinite(s)) slopes.misread.push(s); if (Number.isFinite(range)) ranges.misread.push(range); }
       else if (hl > 2.5) k.high++;
-      else if (d <= 0.3) k.landed++; else if (d <= 1) k.near++; else k.missing++;
+      else if (d <= 0.3) { k.landed++; if (Number.isFinite(range)) ranges.landed.push(range); if (Number.isFinite(sd)) { inLawn.landedN++; if (sd > 0.5) inLawn.landed++; } }
+      else if (d <= 1) k.near++;
+      else { k.missing++; if (Number.isFinite(range)) { ranges.missing.push(range); farMissing.n++; if (range > 4) farMissing.far++; } if (Number.isFinite(sd)) { inLawn.missingN++; if (sd > 0.5) inLawn.missing++; } }
       const s = slopeAt(e, n); if (Number.isFinite(s) && k.n % 3 === 0) slopes.all.push(s);
     }
     const med = (a) => { a.sort((x, y) => x - y); return a.length ? a[a.length >> 1] : NaN; };
     console.log(`The phone's standing points at the references' pose (${k.n.toLocaleString()}; the phone's up lined to the lidar's by ${Number.isFinite(tz) ? tz.toFixed(2) : '?'} m from ${diffs.length.toLocaleString()} ground points): ${pct(k.groundMisread, k.n)} are under 0.3 m over the LIDAR ground (the phone misread the ground as a thing; the lidar's slope under them ${(med(slopes.misread) * 100).toFixed(0)}%, under all of them ${(med(slopes.all) * 100).toFixed(0)}%); ${pct(k.landed, k.n)} land on a solid cell; ${pct(k.near, k.n)} within 1 m of one; ${pct(k.missing, k.n)} stand 0.3-2.5 m up with nothing solid within 1 m (things the lidar does not have); ${pct(k.high, k.n)} are over 2.5 m up by the lidar (a crown, a wall top on a slope).`);
+    const q = (a, f) => { a.sort((x, y) => x - y); return a.length ? a[Math.floor(a.length * f)].toFixed(1) : '?'; };
+    console.log(`  Range from the camera when seen (median / 9 in 10 under): misread ground ${q(ranges.misread, 0.5)} / ${q(ranges.misread, 0.9)} m, landed ${q(ranges.landed, 0.5)} / ${q(ranges.landed, 0.9)} m, missing from the lidar ${q(ranges.missing, 0.5)} / ${q(ranges.missing, 0.9)} m; ${pct(farMissing.far, farMissing.n)} of the missing were seen from over 4 m. Inside the traced lawn, where nothing stands: ${pct(inLawn.missing, inLawn.missingN)} of the missing, ${pct(inLawn.landed, inLawn.landedN)} of the landed.`);
+    // the same points by range band: what share of each band lands, is missing, or is misread ground
+    const bands = [[0, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 8]], tot = bands.map(() => ({ n: 0, landed: 0, missing: 0, misread: 0 }));
+    for (const r of recs) {
+      const h = r.y - r.ground; if (!(h > 0.4 && h < 2.4)) continue;
+      const T = pl(r.odo); if (!T) continue;
+      const [e, n] = apply(T, [r.x, -r.z]), z = demAt(e, n); if (!Number.isFinite(z)) continue;
+      const cam = camAt(r.t); if (!cam) continue;
+      const range = Math.hypot(r.x - cam.x, r.y - cam.y, r.z - cam.z), bi = bands.findIndex(([a, b]) => range >= a && range < b); if (bi < 0) continue;
+      const hl = r.y + tz - z, d = distAt(e, n), b = tot[bi]; b.n++;
+      if (hl < 0.3) b.misread++; else if (hl <= 2.5 && d <= 0.3) b.landed++; else if (hl <= 2.5 && d > 1) b.missing++;
+    }
+    console.log(`  By range: ${bands.map(([a, b], i) => `${a}-${b} m: ${tot[i].n.toLocaleString()} points, ${pct(tot[i].landed, tot[i].n)} land, ${pct(tot[i].missing, tot[i].n)} missing, ${pct(tot[i].misread, tot[i].n)} misread ground`).join('; ')}.`);
   }
 
   // THE WALK REPLAYED THROUGH TODAY'S MATCH: every 5 m of the walk, the last 25 ft of what the phone saw (classed by
