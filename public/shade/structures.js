@@ -103,6 +103,7 @@ export const WHY = Object.freeze({
   6: 'solid tree: a patch under 4 m2',
   7: 'solid tree: a small patch with a rough top',
   8: 'low structure: every pulse came back once, as off a hard surface',
+  9: 'something under 2 m not otherwise known: taken as a tree',
 });
 
 /**
@@ -212,6 +213,12 @@ export function structuresOf(cols, model, { shift = null, stats = null, low = {}
   }
   for (let k = 0; k < N; k++) if (eave[k]) { kind[k] = BUILDING; why[k] = 3; }
   const lowInfo = lowStructures(kind, why, st, w, h, low);
+  /* 7. NOTHING THE LASER HIT IS LEFT OUT (owner, 2026-11-04: "every thing
+     that the lidar hits should be recognized ... If we can't determine what
+     it is, consider it a tree ... the fallback is tree, not exclusion"): a
+     column with a return over the grass (GRASS_M) that no step above
+     claimed is a tree. */
+  for (let k = 0; k < N; k++) if (kind[k] === NOTHING && st.top[k] > GRASS_M) { kind[k] = TREE; why[k] = 9; }
   const counts = { building: 0, tree: 0, solidTree: 0, structure: 0 };
   for (let k = 0; k < N; k++) {
     if (kind[k] === BUILDING) counts.building++;

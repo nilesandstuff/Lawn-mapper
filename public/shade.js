@@ -620,10 +620,8 @@ async function build(site) {
   const u0 = flightOf(cloud.unit, flown);
   /* The points' own days over the lot decide the season (passes.js). */
   const u = u0 && passes.season ? { ...u0, season: passes.season, source: 'laser', agree: u0.catalogue ? u0.catalogue.season === passes.season : u0.agree } : u0;
-  const passWords = !passes.season || (!passes.dropped && passes.season !== 'mixed') ? ''
-    : passes.season === 'mixed'
-      ? `<tr><td>Leaves</td><td class="warn">Part of this lot was flown with the leaves off (${passes.off.toLocaleString()} points) and part in leaf (${passes.on.toLocaleString()}), and neither pass covers it alone. Each square meter is judged by its own returns: leaves are added only where the laser saw bare branches, never on top of a canopy it saw in leaf.</td></tr>`
-      : `<tr><td>Leaves</td><td>Two passes over this lot, ${passes.off.toLocaleString()} points with the leaves off and ${passes.on.toLocaleString()} in leaf. The ${passes.season === 'on' ? 'in-leaf' : 'leaf-off'} pass covers the lot alone, so the other's ${passes.dropped.toLocaleString()} points are left out: no canopy here is part summer leaves and part bare branches.</td></tr>`;
+  const passWords = passes.season !== 'mixed' ? ''
+    : `<tr><td>Leaves</td><td class="warn">Part of this lot's lidar was flown with the leaves off (${passes.off.toLocaleString()} points) and part in leaf (${passes.on.toLocaleString()}); every point is kept. Each square meter is judged by its own returns: leaves are added only where the laser saw bare branches, never on top of a canopy it saw in leaf.</td></tr>`;
   const day = (ms) => (ms ? new Date(ms).toISOString().slice(0, 10) : '?');
   const seasonWord = (s) => (s === 'off' ? '<span class="warn">leaf-off</span>' : s === 'on' ? 'leaf-on' : s === 'mixed' ? '<span class="warn">part leaf-off</span>' : 'season unknown');
   report.unshift(`

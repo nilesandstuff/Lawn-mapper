@@ -239,7 +239,9 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true, fil
      how dense it was (a maple in July is as dense as a spruce). On a whole
      leaf-on flight that is every crown; on a 'mixed' lot, the in-leaf side. */
   const inLeaf = new Uint8Array(N);
-  if (onRet) for (let k = 0; k < N; k++) if (onRet[k] > offRet[k]) inLeaf[k] = 1;
+  /* A third or more in leaf: the laser already saw summer leaves there (two passes over one
+     lot are all kept, passes.js), so none are added on top. */
+  if (onRet) for (let k = 0; k < N; k++) if (onRet[k] && 2 * onRet[k] >= offRet[k]) inLeaf[k] = 1;
   /* 1, 1b. BUILDINGS AND TREES: structures.js, the one home of the rule
      (owner, 2026-11-03), on every flight. Its kinds onto this file's:
      building 1, tree 3, a solid tree 5 (decided below), a low structure 4
@@ -247,7 +249,9 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true, fil
   const built = structuresOf(cols, model, { shift, low: { green } }); // green: naip.js, the summer photo; without it no low structures
   const { above, zHi } = built.stats;
   const kind = new Uint8Array(N);
-  for (let k = 0; k < N; k++) kind[k] = built.kind[k] === BUILDING ? 1 : built.kind[k] === TREE ? 3 : built.kind[k] === SOLID_TREE ? 5 : built.kind[k] === STRUCTURE ? 4 : 0;
+  /* A tree only by the fallback (structures.js 7: something under 2 m nothing else claims) keeps
+     0 here: it is in the light as the laser measured it, and takes no crown's leaves. */
+  for (let k = 0; k < N; k++) kind[k] = built.kind[k] === BUILDING ? 1 : built.kind[k] === TREE && built.why[k] !== 9 ? 3 : built.kind[k] === SOLID_TREE ? 5 : built.kind[k] === STRUCTURE ? 4 : 0;
   /* A solid tree: evergreen on a leaf-off flight (that dense with the
      leaves off); unsorted (3, held as flown) when it was in leaf. */
   for (let k = 0; k < N; k++) if (kind[k] === 5) kind[k] = classify && !inLeaf[k] ? 2 : 3;

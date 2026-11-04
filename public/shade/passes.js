@@ -12,28 +12,27 @@
  * not from the survey's span or one median time.
  *
  *   - All the lot's dated points in one state: that state.
- *   - Both, but the larger share alone covers the lot (a point in 95% or more
- *     of the 2 m squares that hold any point): that state, and the other
- *     pass's points are left out, so a canopy is never part summer leaves
- *     and part winter branches with leaves added on top.
- *   - Both, and neither covers the lot alone (a seam between a spring pass
- *     and a summer one crosses it): 'mixed', and every point is kept;
- *     seasonal.js then judges column by column, and a column whose crown
- *     returns are mostly in leaf gets no leaves added.
+ *   - Both: 'mixed', and EVERY POINT IS KEPT (owner, 2026-11-04: "We should
+ *     never, under any circumstances, remove a lidar return"). seasonal.js
+ *     then judges column by column: a column a third or more of whose crown
+ *     returns were fired in leaf already shows its summer canopy and gets no
+ *     leaves added; the rest are treated as bare branches. Until 2026-11-04
+ *     the smaller pass's points were dropped when the larger covered the lot
+ *     alone; no longer.
  */
 
-import { LEAF_OFF, LEAF_ON, filterColumns } from './las.js';
+import { LEAF_OFF, LEAF_ON } from './las.js';
 
-export const COVER_SHARE = 0.95; // the larger pass alone must reach this share of the lot's 2 m squares
 export const COVER_CELL_M = 2;
 
 /**
  * cols: the cloud's columns (with `leaf`); lot: [x0, y0, x1, y1] in the
  * columns' units (EPSG:3857); metersPer: meters per unit there (cos lat).
- * Returns { cols, season: 'off'|'on'|'mixed'|null, off, on, dropped,
- * cover } -- season null when no point over the lot keeps a date.
+ * Returns { cols (always every point, unchanged), season: 'off'|'on'|'mixed'|null,
+ * off, on, dropped (always 0), cover } -- season null when no point over
+ * the lot keeps a date.
  */
-export function onePass(cols, lot, metersPer = 1, { coverShare = COVER_SHARE, cellM = COVER_CELL_M } = {}) {
+export function onePass(cols, lot, metersPer = 1, { cellM = COVER_CELL_M } = {}) {
   const none = { cols, season: null, off: 0, on: 0, dropped: 0, cover: null };
   if (!cols?.leaf || !cols.n) return none;
   const [x0, y0, x1, y1] = lot;
@@ -52,11 +51,8 @@ export function onePass(cols, lot, metersPer = 1, { coverShare = COVER_SHARE, ce
   if (!off && !on) return none;
   if (!on) return { ...none, season: 'off', off };
   if (!off) return { ...none, season: 'on', on };
-  const big = on >= off ? LEAF_ON : LEAF_OFF, small = big === LEAF_ON ? LEAF_OFF : LEAF_ON;
-  let squares = 0, covered = 0;
-  for (let c = 0; c < any.length; c++) if (any[c]) { squares++; if (has[big][c]) covered++; }
-  const cover = squares ? covered / squares : 0;
-  if (cover < coverShare) return { cols, season: 'mixed', off, on, dropped: 0, cover };
-  const kept = filterColumns(cols, (i) => cols.leaf[i] !== small);
-  return { cols: kept, season: big === LEAF_ON ? 'on' : 'off', off, on, dropped: cols.n - kept.n, cover };
+  /* How much of the lot each pass reaches (2 m squares holding any point), for the report. */
+  let squares = 0, onSq = 0, offSq = 0;
+  for (let c = 0; c < any.length; c++) if (any[c]) { squares++; if (has[LEAF_ON][c]) onSq++; if (has[LEAF_OFF][c]) offSq++; }
+  return { cols, season: 'mixed', off, on, dropped: 0, cover: squares ? { on: onSq / squares, off: offSq / squares } : null };
 }

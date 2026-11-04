@@ -1649,8 +1649,8 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   const { treeBeside, kindOf: drawnKind } = await import('../public/shade/trees-ui.js');
   const besideKinds = Uint8Array.from([3, 0, 0, 0, 0, 0]);
   const bes = treeBeside(besideKinds, 6, 1);
-  check('drawing: a column with nothing over 2 m beside a tree is drawn as the tree; away from trees it is something low',
-    bes[1] === 3 && bes[2] === 3 && bes[3] === 0 && drawnKind({ kind: besideKinds, beside: bes, classified: true }, 1, false) === 'deciduous' && drawnKind({ kind: besideKinds, beside: bes, classified: true }, 4, false) === 'low', `${[...bes]}`);
+  check('drawing: what the laser hit and no rule named is drawn as a tree, beside a tree or not (owner, 2026-11-04: "the fallback is tree, not exclusion")',
+    bes[1] === 3 && drawnKind({ kind: besideKinds, classified: true }, 1, false) === 'deciduous' && drawnKind({ kind: besideKinds, classified: true }, 4, false) === 'deciduous' && drawnKind({ kind: besideKinds, classified: false }, 4, false) === 'other', `${[...bes]}`);
   check('structures: the bare tree stays a tree and the spruce\'s solid-looking skirt stays with its tree',
     share(43, 47, 13, 17, [STRUCTURE]) === 0 && share(12, 18, 42, 48, [STRUCTURE]) === 0 && st.kind[at(15.5, 45.5)] !== NOTHING, `${share(12, 18, 42, 48, [STRUCTURE])}`);
   const inLeaf = makeColumns(cols.n);
@@ -1679,8 +1679,11 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
     sfor.photo && sfor.counts.structure === st.counts.structure && sfor.kind.every((v, i) => v === st.kind[i]) && calls === 1 && sfor2.counts.structure === st.counts.structure, `${sfor.counts.structure} vs ${st.counts.structure}, ${calls} request(s)`);
   const noPhoto = await structuresFor(cols, gridOver([0, 0, 61 / k, 60 / k], 1, lat), { fetchFn: async () => ({ ok: false }) });
   check('structures: and when the photo service does not answer, no low structures', !noPhoto.photo && noPhoto.counts.structure === 0);
+  const bare = structuresFrom(cols, grid);
   check('structures: with no summer photo no low structures are called (owner, 2026-11-04: no structures where there are none)',
-    structuresFrom(cols, grid).counts.structure === 0 && st.counts.structure > 0);
+    bare.counts.structure === 0 && st.counts.structure > 0);
+  check('structures: and the wall the laser hit is then a tree, not nothing: the fallback is tree (owner, 2026-11-04)',
+    bare.kind[at(20.5, 12.5)] === TREE && bare.why[at(20.5, 12.5)] === 9 && bare.kind[at(5.5, 50.5)] === NOTHING, `${bare.kind[at(20.5, 12.5)]}/${bare.why[at(20.5, 12.5)]}`);
   const greenTruck = photo((e, n) => treeGreen(e, n) ?? ((e > 30 && e < 32.5 && n > 5 && n < 11) ? 0.6 : (e > 5 && e < 10 && n > 5 && n < 12) || (e > 20 && e < 21 && n > 5 && n < 20) ? 0.05 : 0.35));
   const gs = structuresFrom(cols, grid, { green: greenTruck });
   check('structures: a patch the photo shows green (a small tree that looks like a truck or a shed to the laser) is not a structure; the wall still is',
@@ -1731,8 +1734,8 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   const one = onePass(lotOf(0, LEAF_ON, LEAF_OFF), [0, 0, 20, 20]);
   check('passes: a lot flown wholly in leaf is in leaf, and nothing is dropped', one.season === 'on' && one.dropped === 0 && one.cols.n === 1600);
   const seam = onePass(lotOf(10, LEAF_ON, LEAF_OFF), [0, 0, 20, 20]);
-  check('passes: a summer pass over the whole lot and a spring pass over half: the summer one alone, the spring points left out',
-    seam.season === 'on' && seam.dropped === 800 && seam.cols.n === 1600 && [...seam.cols.leaf].every((v) => v === LEAF_ON), `${seam.season} dropped ${seam.dropped}`);
+  check('passes: a summer pass over the whole lot and a spring pass over half: mixed, and every point of both kept (owner, 2026-11-04: never remove a lidar return)',
+    seam.season === 'mixed' && seam.dropped === 0 && seam.cols.n === 2400 && seam.cols === seam.cols, `${seam.season} kept ${seam.cols.n}`);
   /* Two passes that each cover only half the lot: nothing to drop. */
   const xs = [];
   for (let x = 0.25; x < 20; x += 0.5) for (let y = 0.25; y < 20; y += 0.5) xs.push([x, y, x < 10 ? LEAF_OFF : LEAF_ON]);

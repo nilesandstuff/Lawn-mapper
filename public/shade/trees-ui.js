@@ -35,8 +35,8 @@ export const BANDS = [
 const MIN_MU = 0.01; // a cube passing over 99% a meter is drawn as air
 /* Dark and apart from each other, to stand out on a sunny photo (owner, 2026-10-14: "I can hardly see any of them"). */
 /* Buildings black (owner, 2026-10-29), apart from every tree. */
-export const KIND_COLOR = { roof: '#0a0a0a', structure: '#4a4a4a', low: '#8a7560', evergreen: '#0d3b8c', deciduous: '#1b6e20', filled: '#7a5c00', other: '#1b6e20' };
-export const KIND_NAME = { roof: 'building (or a crown nothing got through)', structure: 'low structure: a shed, a wall, a vehicle (every pulse came back once)', low: 'something under 2 m, not sorted (a pile, a shrub, a low fence)', evergreen: 'evergreen: as the laser saw it, all year', deciduous: 'deciduous', filled: 'deciduous, leaves filled in where the laser found a gap', other: 'tree, in leaf as the laser saw it (no leaves added)' };
+export const KIND_COLOR = { roof: '#0a0a0a', structure: '#4a4a4a', evergreen: '#0d3b8c', deciduous: '#1b6e20', filled: '#7a5c00', other: '#1b6e20' };
+export const KIND_NAME = { roof: 'building (or a crown nothing got through)', structure: 'low structure: a shed, a wall, a vehicle (every pulse came back once)', evergreen: 'evergreen: as the laser saw it, all year', deciduous: 'deciduous', filled: 'deciduous, leaves filled in where the laser found a gap', other: 'tree, in leaf as the laser saw it (no leaves added)' };
 
 /** 0-based day of the year, 29 Feb folded onto 28 Feb (as the light worker). */
 export function dayOfYear(ms) {
@@ -48,20 +48,15 @@ export function dayOfYear(ms) {
 
 /** What the model took a column for. */
 export function kindOf(season, k, leafy) {
-  let v = season?.kind?.[k];
+  const v = season?.kind?.[k];
   if (v === 1) return 'roof'; // on every flight
   if (v === 4) return 'structure'; // structures.js 6, on every flight
-  /* A column with nothing of its own over 2 m beside a tree is the tree's
-     edge (a twig the pulses clipped, or cubes lent by its neighbours where
-     the flight is thin): drawn as that tree. Only away from trees is it
-     something low (owner, 2026-11-03: a ring of brown round every canopy). */
-  if (v === 0 && leafy && season?.classified && !season.inLeaf?.[k]) return 'filled'; // leaves filled in a gap, as before
-  if (v === 0 && season?.beside?.[k]) v = season.beside[k];
-  if (v === 0 && !leafy) return 'low';
-  if (!season?.classified || season.inLeaf?.[k]) return 'other'; // in leaf as flown: not sorted, no leaves added
+  /* Anything else the laser hit is a tree: what no rule could name falls
+     back to a tree, never to nothing (owner, 2026-11-04). */
+  if (v === 0 && leafy && season?.classified && !season.inLeaf?.[k]) return 'filled';
+  if (!season?.classified || season.inLeaf?.[k]) return 'other';
   if (v === 2) return 'evergreen';
-  if (v === 3) return 'deciduous';
-  return leafy ? 'filled' : 'low';
+  return 'deciduous';
 }
 
 /**
@@ -95,7 +90,6 @@ export function treeRuns(model, mu, season, { roofs = true, cutBelow = 0 } = {})
   const { w, h, nz, dz, z0, ground } = model;
   const out = [];
   const bandOf = (m) => BANDS.findIndex((b) => m < b.below);
-  if (season?.kind && !season.beside) season.beside = treeBeside(season.kind, w, h);
   for (let k = 0; k < w * h; k++) {
     let leafy = false;
     if (season) for (let l = 0; l < nz && !leafy; l++) if (season.muOn[k * nz + l] > season.muOff[k * nz + l]) leafy = true;
@@ -268,7 +262,7 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
   const applySolid = () => { ids.forEach((id, i) => { if (map.getLayer(id)) map.setPaintProperty(id, 'fill-extrusion-opacity', Math.min(1, bandAt(i).opacity * solid())); }); };
   try { const v = localStorage.getItem('lawnmapper.shade.treesSolid'); if (v) $('#tr-solid').value = v; } catch { /* not kept */ }
   $('#tr-solid').oninput = () => { applySolid(); try { localStorage.setItem('lawnmapper.shade.treesSolid', $('#tr-solid').value); } catch { /* not kept */ } };
-  $('#tr-legend').innerHTML = Object.entries(KIND_COLOR).filter(([k]) => (leafOff ? k !== 'other' || season.inLeafColumns > 0 : k === 'other' || k === 'roof' || k === 'structure' || k === 'low'))
+  $('#tr-legend').innerHTML = Object.entries(KIND_COLOR).filter(([k]) => (leafOff ? k !== 'other' || season.inLeafColumns > 0 : k === 'other' || k === 'roof' || k === 'structure'))
     .map(([k, c]) => `<span class="sw" style="background:${c}"></span>${KIND_NAME[k]}`).join('<br>')
     + `<br><span class="dim">Faint to solid: ${BANDS.map((b) => b.name).join('; ')}.</span>`;
 
