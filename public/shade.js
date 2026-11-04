@@ -620,6 +620,11 @@ async function build(site) {
   const u0 = flightOf(cloud.unit, flown);
   /* The points' own days over the lot decide the season (passes.js). */
   const u = u0 && passes.season ? { ...u0, season: passes.season, source: 'laser', agree: u0.catalogue ? u0.catalogue.season === passes.season : u0.agree } : u0;
+  /* The summer photo's green per square meter, for telling a small tree
+     from a shed (structures.js; no photo, no low structures): the frame
+     nearest the flight (naip.js). */
+  status('Reading the summer aerial photo…');
+  const green = await greenOver(gridOver(box, 1, site.lat), { flownMs: u?.end || u?.start || null });
   const passWords = passes.season !== 'mixed' ? ''
     : `<tr><td>Leaves</td><td class="warn">Part of this lot's lidar was flown with the leaves off (${passes.off.toLocaleString()} points) and part in leaf (${passes.on.toLocaleString()}); every point is kept. Each square meter is judged by its own returns: leaves are added only where the laser saw bare branches, never on top of a canopy it saw in leaf.</td></tr>`;
   const day = (ms) => (ms ? new Date(ms).toISOString().slice(0, 10) : '?');
@@ -652,10 +657,6 @@ async function build(site) {
   status(keptUsed ? 'Built and lined up as kept with this map.' : fit?.confident ? 'Built and lined up.' : 'Built. The photo check was not tight enough to apply; the datum correction is applied.', keptUsed || fit?.confident ? 'ok' : 'warn');
   track('built', `${Math.round((Date.now() - started) / 1000)} s, ${fit?.confident ? 'lined up' : 'not lined up'}`);
 
-  /* The summer photo's green per square meter, for telling a small tree
-     from a shed (structures.js; no photo, no low structures). */
-  status('Reading the summer aerial photo…');
-  const green = await greenOver(gridOver(box, 1, site.lat), { flownMs: u?.end || u?.start || null }); // the frame nearest the flight (naip.js)
   view.builtFor = site;
   view.model = {
     green,
