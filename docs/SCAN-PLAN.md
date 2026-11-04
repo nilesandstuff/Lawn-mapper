@@ -869,3 +869,13 @@ depth fills those in, and that fill across plain grass is the likeliest
 source of the invented points. The page now asks for raw first and the
 walk's log says which it got (depthType). A request only; not yet measured
 on a walk.
+
+The owner's word (2026-11-04, through the features session): LAS classes
+7 and 18 and returns over 80 m stay out everywhere; the detector's
+lidar_frame.py is unchanged. SPECULATION from the features session (shade
+findings 33), not measured here: on the owner's lot, emptying every cube
+under 2.5 m in a tree column (1,500 cubes, 3.8% of the canopy's mass)
+moves the lawn's mean direct beam by about one point at a 10-degree sun
+and nothing at noon; whether those low points are trunks and shrubs or
+phantoms is not known from the lidar alone. The AR's 3 m crown rule
+(SCAN-H7) stands on what the phone saw under crowns, not on this.
