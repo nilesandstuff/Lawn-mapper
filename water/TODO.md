@@ -106,6 +106,13 @@ SPECULATION), as always.
     went to the core session 2026-11-03. DONE 2026-11-04: shadeRoofs reads structures.js (H77). The owner: no
     re-measure on the Chesapeake squares. Still the water map's own: coreRoofs, buildingMask, roofMask, obstacles.js.
 
+26. **Never drop a lidar return** (owner via the features session, 2026-11-04: "We should never, under any
+    circumstances, remove a lidar return. If we can't determine what it is, consider it a tree... the fallback is
+    tree, not exclusion"; merged ad5afce, structures.js step 7). The water map's own code still skips the LAS noise
+    classes 7 and 18 (lib/roofs.js, lib/trunks.js, lib/obstacles.js, lib/lowspots.js perCell, the shade filter it
+    copies): the features session is asking the owner whether the rule covers those two classes and will pass on
+    the answer; change them all together when it comes, in their one home where one exists (structures.js NOISE).
+
 ## Rules (owner, 2026-10-27)
 
 - **The white paper stays true to the live model** (owner, 2026-11-02: "remember to continuously add to it if
