@@ -10,6 +10,10 @@
  *   GET    /api/water/moisture?map=     the visits made on one saved map, oldest first (the water map's check)
  *   DELETE /api/water/moisture?id=      one visit and its readings
  *   POST   /api/water/moisture/check    the water map's check of the model against a visit: numbers only
+ *   GET    /api/water/moisture/export   every visit with its readings, to the water session's sandbox (owner,
+ *                                       2026-11-04: "I'm permitting you to let the data pass outside the sandbox"),
+ *                                       read-only, with the header X-Export-Key: a key only that session holds; the
+ *                                       repository has its SHA-256 and a date it stops working, never the key
  *
  * No street or house number is kept: the parcel number and the points.
  */
@@ -69,8 +73,32 @@ export function toCsv(rows) {
   return [cols.join(','), ...rows.map((r) => cols.map((c) => cell(c === 'at' || c === 'visit_at' ? when(r[c]) : r[c])).join(','))].join('\n');
 }
 
+export const EXPORT_KEY_SHA256 = 'eefe21c55f4eceb9254875aadfd979ef3e65cde2d77ce7ff5ee4addefdcba81b';
+export const EXPORT_UNTIL = Date.parse('2026-12-05T00:00:00Z');
+
+/** Does the request carry the export key, before its date? */
+export async function exportKeyOk(request, now = Date.now()) {
+  const key = request.headers.get('X-Export-Key');
+  if (!key || key.length > 200 || now >= EXPORT_UNTIL) return false;
+  const h = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(key)))].map((b) => b.toString(16).padStart(2, '0')).join('');
+  let diff = 0;
+  for (let i = 0; i < 64; i++) diff |= h.charCodeAt(i) ^ EXPORT_KEY_SHA256.charCodeAt(i);
+  return diff === 0;
+}
+
 /** The routes, or null when the request is not one of them. isAdmin(request, env) -> bool. */
 export async function moisture(request, env, url, { isAdmin }) {
+  if (url.pathname === '/api/water/moisture/export') {
+    if (request.method !== 'GET' || !(await exportKeyOk(request))) return json({ error: 'Not found' }, 404);
+    if (!env.DB) return json({ error: 'no-database' }, 503);
+    const visits = (await env.DB.prepare('SELECT * FROM moisture_visits ORDER BY at').all()).results || [];
+    const rows = (await env.DB.prepare('SELECT * FROM moisture_readings ORDER BY visit_id, n').all()).results || [];
+    let checks = [];
+    try { checks = (await env.DB.prepare('SELECT * FROM moisture_checks').all()).results || []; } catch { /* none yet */ }
+    const by = new Map(visits.map((v) => [v.id, { ...v, weather: v.weather ? JSON.parse(v.weather) : null, readings: [] }]));
+    for (const r of rows) by.get(r.visit_id)?.readings.push(r);
+    return json({ visits: [...by.values()], checks });
+  }
   if (url.pathname !== '/api/water/moisture' && url.pathname !== '/api/water/moisture/check') return null;
   if (!(await isAdmin(request, env))) return json({ error: 'Not found' }, 404);
   if (!env.DB) return json({ error: 'no-database', note: 'the water database is not set up yet' }, 503);

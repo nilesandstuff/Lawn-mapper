@@ -262,6 +262,17 @@ test('the water map\'s check of the model against a visit: by map id for the adm
   assert.equal((await moisture(new Request(cu, { method: 'POST', body: JSON.stringify({ ...check, visit_id: 'x' }) }), env, cu, admin)).status, 400);
 });
 
+test('the readings export: only with the key, only before its date, read-only', async () => {
+  const { moisture, exportKeyOk, EXPORT_UNTIL } = await import('../src/moisture.js');
+  const env = { DB: moistureDb() };
+  const u = new URL('https://water.example.com/api/water/moisture/export');
+  const nobody = { isAdmin: async () => false };
+  assert.equal((await moisture(new Request(u), env, u, nobody)).status, 404);
+  assert.equal((await moisture(new Request(u, { headers: { 'X-Export-Key': 'guess' } }), env, u, nobody)).status, 404);
+  assert.equal((await moisture(new Request(u, { method: 'DELETE', headers: { 'X-Export-Key': 'guess' } }), env, u, nobody)).status, 404);
+  assert.equal(await exportKeyOk(new Request(u, { headers: { 'X-Export-Key': 'guess' } }), EXPORT_UNTIL - 1), false);
+});
+
 test('the moisture page is the admin\'s only, open site or not', async () => {
   const open = env('ok', { ADMIN_ONLY: '0' });
   for (const p of ['/moisture', '/moisture.html', '/moisture.js']) assert.equal((await get(p, '', open)).status, 404, p);
