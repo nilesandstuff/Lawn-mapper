@@ -1377,6 +1377,42 @@ a tree go (882 structure columns left). The labelled lawn trees again
 (257 found this run): 61 of 16,893 columns over 2 m (0.36%, 6 trees);
 evergreens 1.7% (4 of 57 trees), bare 0, in leaf 0.4% (2 trees).
 
+THE TOUCHING-A-TREE TEST DROPPED, THE SUMMER PHOTO ADOPTED (2026-11-04).
+The owner: "sometimes trees do legitimately touch structures ... I just
+don't want us to be seeing structures where there aren't any ... I don't
+want to be losing legitimate trees based on assumptions", and lidar
+brightness "calibrated per property". Checked against the newest NAIP photo
+of each labelled lot (Planetary Computer; scratch crowns/vis*.mjs, the
+patches drawn over the photo and read by eye):
+- without either test the low-structure step called SMALL TREES structures
+  on many lots (ornamental and evergreen trees on lawns and in beds; C71,
+  B13), at 2 points a square meter as solid-looking as a shed;
+- the touching-a-tree test removed 1,715 of 3,630 structure columns over
+  49 lots: tree edges and small trees, but also decks, porches and building
+  edges; on the owner's lot what it removed (11 patches, 100 columns) was
+  building edges and nursery rows, no ring round a tree;
+- lidar brightness (each column's single echoes over the flight's own
+  ground's median): the owner's structures 0.75-1.23, tree-edge columns
+  0.54 median, but per column they overlap, and a cut at 0.6 dropped dark
+  cars (21 -> 16) while small trees elsewhere passed; a peaked-top test
+  (max minus median top) took a deck with the trees. Neither used; the
+  brightness stays in columnStats.
+- the summer photo's vegetation index (USGS NAIP service, near infrared;
+  naip.js) separated them by eye on every lot looked at: small trees and
+  crown edges green, decks, patios, sheds, bins and cars not.
+ADOPTED: a patch whose median vegetation index is at or over the
+property's own line (halfway between its roofs' and its trees' medians in
+the same photo) is not a structure; no photo, or under 20 tree columns to
+calibrate on, and no low structures are called at all. The touching test
+is off. On the owner's lot: shed 34/37, stone-bin row 73/88, cars 21/46,
+south yard 58/114 (as with no test), the two roadside shrub patches 0, no
+tree column taken; 821 structure columns. On the labelled lawn trees (250
+found; 48 of 49 lots had a photo, 46 calibrated): 2 of 16,524 columns over
+2 m (0.01%, one bare tree), against 1.5% with no test and 0.36% with the
+touching test. NOT MEASURED: patches by phone or by hand-drawn outlines;
+the photo is newer than the lidar on most lots (a tree since cut is
+"green" nowhere, a shed since built is in no lidar).
+
 WALLS UNDER THE EAVES (structures.js wallsOf; owner: "walls are offset by
 the standard amount, 2 feet probably"): a roof mask at 0.25 m, the walls
 0.61 m in from its edge, the band outside them eave. Unmeasured.
