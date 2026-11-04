@@ -26,6 +26,7 @@ import { loadLidar } from '../lib/lidar-load.js';
 import { buildingsOnGrid, register, MIN_LANDED, placementCost, LAWN_LOW_M } from '../lib/lidar.js';
 import { disagreement, REF_TOL_M, REF_TOL_DEG } from '../lib/locate.js';
 import { readCloud, placer, placeCloud } from '../lib/twin.js';
+import { apply } from '../lib/align.js';
 import { surfaceOf, lawnField, tally } from '../lib/surface.js';
 import jpeg from 'jpeg-js';
 
