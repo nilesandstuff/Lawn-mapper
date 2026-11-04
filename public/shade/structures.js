@@ -41,19 +41,21 @@
  *     STRUCTURE_MAX_M), every return over 1 m came back as a single echo,
  *     none was fired in leaf (a crown in leaf can stop pulses whole), and
  *     it is not already a building. Hard columns join 8-way into patches;
- *     a patch of 4 or more is a low structure unless it touches a tree
- *     column, or a tree more than 2 m taller than its top stands within
- *     2 m of it -- the solid-looking skirt of a spruce, or the edge of a
- *     crown where a pulse clipped one twig (owner, 2026-11-03: a ring of
- *     them round canopies, and walls under them in the AR view). Not used on a flight that kept almost no second
- *     returns (under 2% of those over 2 m split), nor on points in leaf. MEASURED on the owner's lot (Kent 2016, 2 points
- *     a square meter; areas read from the photo): the white-roofed shed 34
- *     of 37 columns, the stone-bin row 74 of 88, parked cars 22 of 47; no
- *     column of the bare trees (1,907) or the spruce rows (654), 20 of
- *     1,122 by the road (two patches by small dark shrubs) before the
- *     touching-a-tree test, none after. On the core's labelled lawn trees,
- *     0.36% of their columns over 2 m (evergreens 1.7%, bare 0); see shade
- *     findings 33.
+ *     a patch of 4 or more is a low structure unless a tree more than 2 m
+ *     taller than its top stands within 2 m of it (the solid-looking skirt
+ *     of a spruce), or it is GREEN in the summer aerial photo (naip.js):
+ *     its median vegetation index at or over the property's own line,
+ *     halfway between its roofs' and its trees' in the same photo. At 2
+ *     points a square meter a small evergreen or ornamental tree looks to
+ *     the laser just like a shed; in the photo it is green and the shed is
+ *     not. NO PHOTO, NO LOW STRUCTURES (owner, 2026-11-04: "I just don't
+ *     want us to be seeing structures where there aren't any"); nor on a
+ *     flight that kept almost no second returns (under 2% of those over
+ *     2 m split), nor on points in leaf.
+ *     A test that took a patch touching a tree as part of the tree
+ *     (2026-11-03) was dropped the next day: on the owner's lot what it took
+ *     was the edges of buildings, and the owner asked for no rules on
+ *     assumptions. See shade findings 33.
  *
  * MEASURED (shade findings 24, by the water session, 2026-10-17): against
  * the Chesapeake 1 m land use's structures, 23 residential squares in VA,
@@ -208,7 +210,7 @@ export function structuresOf(cols, model, { shift = null, stats = null, low = {}
     }
   }
   for (let k = 0; k < N; k++) if (eave[k]) { kind[k] = BUILDING; why[k] = 3; }
-  lowStructures(kind, why, st, w, h, low);
+  const lowInfo = lowStructures(kind, why, st, w, h, low);
   const counts = { building: 0, tree: 0, solidTree: 0, structure: 0 };
   for (let k = 0; k < N; k++) {
     if (kind[k] === BUILDING) counts.building++;
@@ -216,18 +218,25 @@ export function structuresOf(cols, model, { shift = null, stats = null, low = {}
     else if (kind[k] === SOLID_TREE) counts.solidTree++;
     else if (kind[k] === STRUCTURE) counts.structure++;
   }
-  return { kind, why, stats: st, counts };
+  return { kind, why, stats: st, counts, green: lowInfo };
 }
 
 /** 6. Low structures (see the head of this file), set in place on `kind` and `why`. */
-function lowStructures(kind, why, st, w, h, { touchTree = true, minBright = 0 } = {}) {
+function lowStructures(kind, why, st, w, h, { green = null, touchTree = false } = {}) {
   const { top, firm, firmSingle, firmLeafOn, above, multiAbove, firmBright, groundBright } = st;
   const N = w * h;
   /* A flight that kept only one return a pulse (some did: a North Carolina
      2016 flight has none split) cannot tell a hard surface from a crown. */
   let a = 0, m = 0;
   for (let k = 0; k < N; k++) { a += above[k]; m += multiAbove[k]; }
-  if (!a || m / a < STRUCTURE_MIN_SPLIT) return;
+  if (!a || m / a < STRUCTURE_MIN_SPLIT) return null;
+  /* NO PHOTO, NO LOW STRUCTURES (owner, 2026-11-04: "I just don't want us
+     to be seeing structures where there aren't any"). At 2 points a square
+     meter a small evergreen and a shed look alike to the laser; the summer
+     photo's green tells them apart (shade findings 33). */
+  if (!green || green.length !== N) return null;
+  const cut = greenCut(kind, green, N);
+  if (cut === null) return null;
   const hard = new Uint8Array(N);
   for (let k = 0; k < N; k++) {
     hard[k] = kind[k] !== BUILDING && top[k] >= STRUCTURE_FLOOR_M && top[k] <= STRUCTURE_MAX_M
@@ -264,14 +273,32 @@ function lowStructures(kind, why, st, w, h, { touchTree = true, minBright = 0 } 
       }
     }
     if (skirt) continue;
-    /* An experiment (minBright, off by default): the patch's median single-
-       echo brightness, relative to the flight's own ground, at least this. */
-    if (minBright > 0 && groundBright > 0) {
-      const b = patch.map((k) => firmBright[k] / groundBright).sort((p1, p2) => p1 - p2);
-      if (b[b.length >> 1] < minBright) continue;
-    }
+    /* Green in the summer photo: a plant, not a structure. */
+    const gv = patch.map((k) => green[k]).filter(Number.isFinite).sort((p1, p2) => p1 - p2);
+    if (!gv.length || gv[gv.length >> 1] >= cut) continue;
     for (const k of patch) { kind[k] = STRUCTURE; why[k] = 8; }
   }
+  return { cut };
+}
+
+/**
+ * The property's own line between green and not (owner, 2026-11-04:
+ * calibrated per property): halfway between the median vegetation index of
+ * its buildings' roofs and of its trees, in the same photo. Null when the
+ * photo shows fewer than 20 tree columns (no trees to calibrate on) -- then
+ * no low structures are called. With no roofs, 0 stands in for them.
+ */
+export function greenCut(kind, green, N = kind.length) {
+  const roofs = [], trees = [];
+  for (let k = 0; k < N; k++) {
+    if (!Number.isFinite(green[k])) continue;
+    if (kind[k] === BUILDING) roofs.push(green[k]);
+    else if (kind[k] === TREE || kind[k] === SOLID_TREE) trees.push(green[k]);
+  }
+  if (trees.length < 20) return null;
+  const med = (v) => v.sort((p1, p2) => p1 - p2)[v.length >> 1];
+  const t = med(trees), r = roofs.length >= 20 ? med(roofs) : 0;
+  return t > r + 0.05 ? (t + r) / 2 : null;
 }
 
 /**
@@ -311,8 +338,10 @@ export function wallsOf(mask, w, h, { cellM = 1, fineM = 0.25, insetM = WALL_INS
  * The same from the points alone, for a tool with no canopy model of its
  * own: builds one over `grid` (grid.js gridOver, ~1 m cells) as the shade
  * map does, and returns structuresOf's answer plus that model's `ground`.
+ * `green`: naip.js greenOver(grid), the summer photo's vegetation index per
+ * column; without it no low structures are called.
  */
-export function structuresFrom(cols, grid, { shift = null } = {}) {
+export function structuresFrom(cols, grid, { shift = null, green = null } = {}) {
   const model = buildCanopy(cols, grid, { shift });
-  return { ...structuresOf(cols, model, { shift }), ground: model.ground, model };
+  return { ...structuresOf(cols, model, { shift, low: { green } }), ground: model.ground, model };
 }

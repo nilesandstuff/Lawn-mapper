@@ -200,7 +200,7 @@ export const LEAF_FALL_DAYS = 28;
  * Roofs are found on every flight; `classify` (a leaf-off or mixed flight)
  * adds the evergreen/deciduous split.
  */
-export function seasonalCanopy(cols, model, { shift = null, classify = true, fill = {} } = {}) {
+export function seasonalCanopy(cols, model, { shift = null, classify = true, fill = {}, green = null } = {}) {
   /* How the summer leaves are filled in (tools/shade-check-leafon.js scores
      the choices against NEON's leaf-on lidar). Defaults: as shipped. */
   const { closeR = 2, taperM = 0, spread = 'even', topR = 2, ladScale = 1, baseFrom = 'column10', laiMax = LAI_MAX, edgeTopM = LAWN_EDGE_TOP_M, lawnClumpM2 = LAWN_CLUMP_M2, underFloor = 1, unfill = true } = fill;
@@ -233,7 +233,7 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true, fil
      (owner, 2026-11-03), on every flight. Its kinds onto this file's:
      building 1, tree 3, a solid tree 5 (decided below), a low structure 4
      (a shed, a stone wall, a parked truck: never a crown). */
-  const built = structuresOf(cols, model, { shift });
+  const built = structuresOf(cols, model, { shift, low: { green } }); // green: naip.js, the summer photo; without it no low structures
   const { above, zHi } = built.stats;
   const kind = new Uint8Array(N);
   for (let k = 0; k < N; k++) kind[k] = built.kind[k] === BUILDING ? 1 : built.kind[k] === TREE ? 3 : built.kind[k] === SOLID_TREE ? 5 : built.kind[k] === STRUCTURE ? 4 : 0;

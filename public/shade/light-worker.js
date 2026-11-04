@@ -166,7 +166,7 @@ function build(m) {
      not already see the summer canopy. */
   const leafOffFlight = m.flight === 'off' || m.flight === 'mixed';
   const calendar = m.tMean ? leafCalendar(m.tMean, m.tMeanTypical ? { typical: m.tMeanTypical } : {}) : null;
-  const season = !solidMode ? seasonalCanopy(m.cols, model, { shift: m.shift, classify: leafOffFlight }) : null;
+  const season = !solidMode ? seasonalCanopy(m.cols, model, { shift: m.shift, classify: leafOffFlight, green: m.green || null }) : null;
   const seasonal = m.canopy === 'seasonal' && leafOffFlight && calendar && season;
   /* ERASED COLUMNS (the trees step's eraser, erase.js): whatever stood in
      them is gone from the model in every season -- open air down to the

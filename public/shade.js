@@ -31,6 +31,7 @@
 import { pointsIn, toMerc, fromMerc, mercScale } from './shade/ept.js';
 import { flightOf } from './shade/find.js';
 import { onePass } from './shade/passes.js';
+import { greenOver } from './shade/naip.js';
 import { lazDecoder, browserFactory } from './shade/laz.js';
 import { nad83Correction } from './shade/datum.js';
 import { alignToPhoto } from './shade/align.js';
@@ -652,21 +653,26 @@ async function build(site) {
   status(keptUsed ? 'Built and lined up as kept with this map.' : fit?.confident ? 'Built and lined up.' : 'Built. The photo check was not tight enough to apply; the datum correction is applied.', keptUsed || fit?.confident ? 'ok' : 'warn');
   track('built', `${Math.round((Date.now() - started) / 1000)} s, ${fit?.confident ? 'lined up' : 'not lined up'}`);
 
+  /* The summer photo's green per square meter, for telling a small tree
+     from a shed (structures.js; no photo, no low structures). */
+  status('Reading the summer aerial photo…');
+  const green = await greenOver(gridOver(box, 1, site.lat));
   view.builtFor = site;
   view.model = {
+    green,
     cols, box, shift, baseZ, ground, fit, season: u?.season ?? null, flownTo: u?.end ? day(u.end) : null,
     lidar: keptUsed ? kept : { url: cloud.url, name: cloud.name, epoch: cloud.epoch, box, shift, fit: fit ? { east: fit.east, north: fit.north, confident: !!fit.confident, why: fit.why } : null, at: new Date().toISOString() },
   };
 
   /* The trees page (/shade-trees): the same model drawn instead of lit (shade/trees-ui.js). */
   if (TREES) {
-    view.sun = await startTrees({ map, site, cols, box, shift, season: view.model.season, flownTo: view.model.flownTo, baseZ });
+    view.sun = await startTrees({ map, site, cols, box, shift, season: view.model.season, flownTo: view.model.flownTo, baseZ, green });
     return;
   }
 
   if (STEPPED) {
     /* Step 2: the trees, with the eraser; the shade waits for step 3. */
-    view.trees = await startTrees({ map, site, cols, box, shift, season: view.model.season, flownTo: view.model.flownTo, erase: true, baseZ, onErase: () => { view.eraseVersion++; saveShadePart(); } });
+    view.trees = await startTrees({ map, site, cols, box, shift, season: view.model.season, flownTo: view.model.flownTo, erase: true, baseZ, green, onErase: () => { view.eraseVersion++; saveShadePart(); } });
     view.trees.setActive(view.steps.current === 2);
     view.steps.unlock(3);
     view.steps.setNext(2, true);
@@ -699,7 +705,7 @@ function startShade() {
   }
   view.sun?.stop();
   view.sun = startSun({
-    map, site, cols: m.cols, box: m.box, shift: m.shift, heightM: m.baseZ, season: m.season, ground: m.ground, erased: mask, erasedCubes: cubes, fences: view.fences || [],
+    map, site, cols: m.cols, box: m.box, shift: m.shift, heightM: m.baseZ, season: m.season, ground: m.ground, erased: mask, erasedCubes: cubes, fences: view.fences || [], green: m.green || null,
     beforeLayer: () => (map.getLayer('parcel') ? 'parcel' : undefined),
     onSeason: (se, climate) => {
       if (!STEPPED) return;

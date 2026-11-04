@@ -88,7 +88,7 @@ const WHATS = [['#w-hours', 'hours'], ['#w-dli', 'dli'], ['#w-now', 'now'], ['#w
 const WHENS = [['#p-season', 'season'], ['#p-before', 'beforeLeaves'], ['#p-leaf', 'inLeaf'], ['#p-after', 'afterLeaves'], ['#p-day', 'day']];
 const WHEN_LABEL = { season: 'the growing season', beforeLeaves: 'the growing season before leaf-out', inLeaf: 'the growing season in leaf', afterLeaves: 'the growing season after leaf-fall', day: 'one day' };
 
-export function startSun({ map, site, cols, box, shift, heightM, season, beforeLayer, ground = null, erased = null, erasedCubes = null, fences = [], onSeason = null, onChange = null }) {
+export function startSun({ map, site, cols, box, shift, heightM, season, beforeLayer, ground = null, erased = null, erasedCubes = null, fences = [], green = null, onSeason = null, onChange = null }) {
   const st = {
     erased, erasedCubes, fences,
     worker: null, what: 'hours', when: 'season', soilWhen: 'last5', soilData: null, soilAsked: false, soil: null, whenBefore: null, day: null, now: null, period: null, periodDays: [], calendar: null, seasonInfo: null, ids: 0, path: [],
@@ -711,7 +711,7 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     const c = { n: cols.n };
     for (const k of pick) if (cols[k]) c[k] = cols[k].slice(0, cols.n);
     send({
-      type: 'build', cols: c, box, lat: site.lat, lng: site.lng, shift, heightM,
+      type: 'build', cols: c, box, lat: site.lat, lng: site.lng, shift, heightM, green: green ? Float32Array.from(green) : null,
       canopy: $('#sun-canopy')?.value || 'seasonal', flight: season || null, erased: st.erased || null, erasedCubes: st.erasedCubes?.length ? Int32Array.from(st.erasedCubes) : null, fences: st.fences || [], tMean: st.climate?.tMeanNow || st.climate?.tMean || null, tMeanTypical: st.climate?.tMeanNow ? st.climate.tMean : null,
       /* A field-readings check (site.area: the whole track's box) draws the
          light over everything he treated -- neighbors' lots of a

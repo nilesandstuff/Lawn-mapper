@@ -132,7 +132,7 @@ export function overhead(model, mu, k) {
  * the end of every stroke, undo and clear. `setActive(false)` hides the
  * trees and stops the tap readout (another step has the map).
  */
-export async function startTrees({ map, site, cols, box, shift, season: flight, flownTo, erase = false, onErase = null, baseZ = null }) {
+export async function startTrees({ map, site, cols, box, shift, season: flight, flownTo, erase = false, onErase = null, baseZ = null, green = null }) {
   const sec = $('#trees');
   sec.hidden = false;
   const say = (html) => { $('#tr-status').innerHTML = html; };
@@ -143,7 +143,7 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
   const grid = gridOver(box, 1, site.lat);
   const model = buildCanopy(cols, grid, { shift });
   const leafOff = flight === 'off' || flight === 'mixed';
-  const season = seasonalCanopy(cols, model, { shift, classify: leafOff });
+  const season = seasonalCanopy(cols, model, { shift, classify: leafOff, green });
   let calendar = null;
   try {
     const c = await (await fetch(`/api/shade/climate?lng=${site.lng}&lat=${site.lat}`)).json();

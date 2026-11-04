@@ -5,7 +5,8 @@
  */
 import { lasHeader, makeColumns, readRecord, gpsTimes, gpsMs, leafOfMs, LEAF_OFF, LEAF_ON } from '../public/shade/las.js';
 import { onePass } from '../public/shade/passes.js';
-import { structuresOf, structuresFrom, wallsOf, WALL_INSET_M, NOTHING, BUILDING, TREE, SOLID_TREE, STRUCTURE } from '../public/shade/structures.js';
+import { structuresOf, structuresFrom, wallsOf, greenCut, WALL_INSET_M, NOTHING, BUILDING, TREE, SOLID_TREE, STRUCTURE } from '../public/shade/structures.js';
+import { ndviFromBsq } from '../public/shade/naip.js';
 import { kindOf as kindOfTrees } from '../public/shade/trees-ui.js';
 import { nodeBox, walk, hierarchyReader, pointsIn, toMerc, fromMerc, mercScale, flownOf } from '../public/shade/ept.js';
 import { nad83Correction } from '../public/shade/datum.js';
@@ -1632,7 +1633,11 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   }
   const cols = makeColumns(pts.length);
   pts.forEach(([e, n, z, c, r, nr], i) => { cols.x[i] = e / k; cols.y[i] = n / k; cols.z[i] = z; cols.cls[i] = c; cols.ret[i] = r; cols.nret[i] = nr; });
-  const st = structuresFrom(cols, grid);
+  /* The summer photo (naip.js): the trees green, the lawn less so, the shed, wall and truck not at all. */
+  const photo = (greenAt) => Float32Array.from({ length: grid.w * grid.h }, (_, kk) => { const e = (kk % grid.w) + 0.5, n = 60 - (Math.floor(kk / grid.w) + 0.5); return greenAt(e, n); });
+  const treeGreen = (e, n) => (Math.hypot(e - 45, n - 15) < 5.5 || Math.hypot(e - 15, n - 45) < 4.5 || Math.hypot(e - 45, n - 45) < 5.5 ? 0.55 : null);
+  const green = photo((e, n) => treeGreen(e, n) ?? ((e > 5 && e < 10 && n > 5 && n < 12) || (e > 20 && e < 21 && n > 5 && n < 20) || (e > 30 && e < 32.5 && n > 5 && n < 11) ? 0.05 : 0.35));
+  const st = structuresFrom(cols, grid, { green });
   const at = (e, n) => Math.floor(60 - n) * grid.w + Math.floor(e);
   const share = (e0, e1, n0, n1, want) => { let a = 0, b = 0; for (let n = n0; n < n1; n++) for (let e = e0; e < e1; e++) { b++; if (want.includes(st.kind[at(e + 0.5, n + 0.5)])) a++; } return a / b; };
   check('structures: a 2.5 m shed, a 1.7 m stone wall and a parked truck on a sparse flight are low structures, not trees',
@@ -1652,14 +1657,29 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   for (const key of ['x', 'y', 'z', 'intensity', 'ret', 'nret', 'cls']) inLeaf[key].set(cols[key]);
   inLeaf.leaf.fill(2);
   check('structures: on a flight in leaf the single-echo test is not used (a crown in leaf stops pulses whole too)',
-    structuresFrom(inLeaf, grid).counts.structure === 0);
+    structuresFrom(inLeaf, grid, { green }).counts.structure === 0);
   const oneReturn = makeColumns(cols.n);
   for (const key of ['x', 'y', 'z', 'intensity', 'ret', 'cls']) oneReturn[key].set(cols[key]);
   oneReturn.nret.fill(1); oneReturn.ret.fill(1);
   check('structures: nor on a flight that kept one return a pulse (nothing to tell a hard surface by)',
-    structuresFrom(oneReturn, grid).counts.structure === 0);
+    structuresFrom(oneReturn, grid, { green }).counts.structure === 0);
+  const bsq = new Uint8Array(4 * 4 * 4 * 4); // 2 x 2 columns at 2 pixels each: red 40 everywhere, NIR 120 in the first column only
+  for (let i = 0; i < 16; i++) bsq[i] = 40;
+  for (let r = 0; r < 4; r++) for (let c = 0; c < 4; c++) bsq[3 * 16 + r * 4 + c] = c < 2 ? 120 : 40;
+  const nd = ndviFromBsq(bsq, 2, 2);
+  check('naip: the photo\'s four planes become one vegetation index per column; an all-black frame is no photo',
+    Math.abs(nd[0] - 0.5) < 1e-6 && Math.abs(nd[1]) < 1e-6 && Math.abs(nd[2] - 0.5) < 1e-6 && ndviFromBsq(new Uint8Array(64), 2, 2) === null, `${[...nd]}`);
+  check('structures: with no summer photo no low structures are called (owner, 2026-11-04: no structures where there are none)',
+    structuresFrom(cols, grid).counts.structure === 0 && st.counts.structure > 0);
+  const greenTruck = photo((e, n) => treeGreen(e, n) ?? ((e > 30 && e < 32.5 && n > 5 && n < 11) ? 0.6 : (e > 5 && e < 10 && n > 5 && n < 12) || (e > 20 && e < 21 && n > 5 && n < 20) ? 0.05 : 0.35));
+  const gs = structuresFrom(cols, grid, { green: greenTruck });
+  check('structures: a patch the photo shows green (a small tree that looks like a truck or a shed to the laser) is not a structure; the wall still is',
+    share(30, 32, 6, 10, [STRUCTURE]) > 0.8 && (() => { let a = 0; for (let n = 6; n < 10; n++) for (let e = 30; e < 32; e++) if (gs.kind[at(e + 0.5, n + 0.5)] === STRUCTURE) a++; return a; })() === 0 && gs.kind[at(20.5, 12.5)] === STRUCTURE, '');
+  check('structures: the green line is the property\'s own, halfway between its roofs and its trees in the same photo; none without trees to calibrate on',
+    Math.abs(greenCut(Uint8Array.from([...Array(25).fill(1), ...Array(25).fill(2)]), Float32Array.from([...Array(25).fill(0.1), ...Array(25).fill(0.5)])) - 0.3) < 1e-6
+      && greenCut(Uint8Array.from(Array(25).fill(1)), new Float32Array(25)) === null, '');
   const scModel = buildCanopy(cols, grid);
-  const sc = seasonalCanopy(cols, scModel);
+  const sc = seasonalCanopy(cols, scModel, { green });
   const wk = at(20.5, 12.5), nz = scModel.nz;
   let noLeaves = true, solidLow = false;
   for (let l = 0; l < nz; l++) {
