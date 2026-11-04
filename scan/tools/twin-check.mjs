@@ -321,6 +321,36 @@ async function main() {
     console.log(`  the first pictures, paving share of their ground points: ${[...perPic.entries()].sort((a, b) => a[0] - b[0]).map(([q, e]) => `#${q + 1} ${pct(e.pave, e.n)}`).join(', ')}`);
   } else console.log('No pictures in the twin: the lawn-edge term cannot be tried on it.');
 
+  /* WHAT THE PHONE'S "STANDING" POINTS ARE, against the lidar's own ground, where the references put them (SCAN-H6:
+     87% landed on nothing at a pose the check points vouched for). The phone's up is lined to the lidar's by the
+     median of (lidar ground - phone y) over the ground points; then each standing point's height over the LIDAR
+     ground says: under 0.3 m, the phone misread the ground as a thing (a slope: its ground is the lowest point of a
+     1 m column and its neighbours); 0.3-2.5 m and on a solid cell, a match; 0.3-2.5 m and over 1 m from any solid
+     cell, a thing the lidar does not have (new, or missed by a thin flight); over 2.5 m, a crown or an overhang. */
+  if (G.lawnSd || true) {
+    const pl = placer(live, 'refs');
+    const demAt = (e, n) => { const c = Math.floor((e - box[0]) / G.cell), r = Math.floor((box[3] - n) / G.cell); return c >= 0 && r >= 0 && c < W && r < H ? G.dem[r * W + c] : NaN; };
+    const distAt = (e, n) => { const c = Math.floor((e - box[0]) / G.cell), r = Math.floor((box[3] - n) / G.cell); return c >= 0 && r >= 0 && c < W && r < H ? G.dist[r * W + c] : NaN; };
+    const diffs = [];
+    for (let i = 0; i < recs.length; i += 7) { const r = recs[i]; if (Math.abs(r.y - r.ground) >= 0.2) continue; const T = pl(r.odo); if (!T) continue; const [e, n] = apply(T, [r.x, -r.z]), z = demAt(e, n); if (Number.isFinite(z)) diffs.push(z - r.y); }
+    diffs.sort((a, b) => a - b);
+    const tz = diffs.length ? diffs[diffs.length >> 1] : NaN;
+    const k = { groundMisread: 0, landed: 0, near: 0, missing: 0, high: 0, n: 0 }, slopes = { misread: [], all: [] };
+    const slopeAt = (e, n) => { const a = demAt(e + 1, n), b = demAt(e - 1, n), c = demAt(e, n + 1), d = demAt(e, n - 1); return Number.isFinite(a + b + c + d) ? Math.hypot((a - b) / 2, (c - d) / 2) : NaN; };
+    for (const r of recs) {
+      const h = r.y - r.ground; if (!(h > 0.4 && h < 2.4)) continue;
+      const T = pl(r.odo); if (!T) continue;
+      const [e, n] = apply(T, [r.x, -r.z]), z = demAt(e, n); if (!Number.isFinite(z)) continue;
+      const hl = r.y + tz - z, d = distAt(e, n); k.n++;
+      if (hl < 0.3) { k.groundMisread++; const s = slopeAt(e, n); if (Number.isFinite(s)) slopes.misread.push(s); }
+      else if (hl > 2.5) k.high++;
+      else if (d <= 0.3) k.landed++; else if (d <= 1) k.near++; else k.missing++;
+      const s = slopeAt(e, n); if (Number.isFinite(s) && k.n % 3 === 0) slopes.all.push(s);
+    }
+    const med = (a) => { a.sort((x, y) => x - y); return a.length ? a[a.length >> 1] : NaN; };
+    console.log(`The phone's standing points at the references' pose (${k.n.toLocaleString()}; the phone's up lined to the lidar's by ${Number.isFinite(tz) ? tz.toFixed(2) : '?'} m from ${diffs.length.toLocaleString()} ground points): ${pct(k.groundMisread, k.n)} are under 0.3 m over the LIDAR ground (the phone misread the ground as a thing; the lidar's slope under them ${(med(slopes.misread) * 100).toFixed(0)}%, under all of them ${(med(slopes.all) * 100).toFixed(0)}%); ${pct(k.landed, k.n)} land on a solid cell; ${pct(k.near, k.n)} within 1 m of one; ${pct(k.missing, k.n)} stand 0.3-2.5 m up with nothing solid within 1 m (things the lidar does not have); ${pct(k.high, k.n)} are over 2.5 m up by the lidar (a crown, a wall top on a slope).`);
+  }
+
   // THE WALK REPLAYED THROUGH TODAY'S MATCH: every 5 m of the walk, the last 25 ft of what the phone saw (classed by
   // its height over the ground the page took then), searched from the references' fit as the page would, and judged
   // the way locate.js judges it (2 m and 10 degrees from the references)
@@ -346,6 +376,9 @@ async function main() {
     const S = thinA(stand, 600), Gr = thinA(ground, 300), Hi = thinA(high, 300), Su = thinA(surface, 400);
     if (S.length + Hi.length < 30) continue;
     rep.asked++;
+    // how the colours agree with the traced lawn where the references put the phone
+    if (G.lawnSd && Su.length) { const pc = placementCost(G, [], [], T0, { surface: Su, detail: true }).surface; rep.surf = rep.surf || { n: 0, off: 0, offGrass: 0, edge: 0, landed: 0 }; for (const k of Object.keys(rep.surf)) rep.surf[k] += pc[k]; }
+    const phone = (() => { let best = null; for (const p of byOdo) if (p.odo <= odo) best = p; return best ? [best.x, -best.z] : [0, 0]; })();
     /* THE COST ROUND THE REFERENCES' POSE (SCAN-H6's "two places fit about as well"): the match's cost at the
        references' pose and 2 m off it each way, and turned 10 degrees each way. A direction the cost barely rises
        in is one the match cannot pin (a wall slides along itself). Summed over the asks. */
@@ -357,9 +390,7 @@ async function main() {
       rep.prof.n++; rep.prof.e += prof.e; rep.prof.w += prof.w; rep.prof.nn += prof.n; rep.prof.s += prof.s; rep.prof.cw += prof.cw; rep.prof.ccw += prof.ccw;
       if (Math.min(prof.e, prof.w, prof.n, prof.s) < 1.1) rep.prof.flat++;
     }
-    // how the colours agree with the traced lawn where the references put the phone
-    if (G.lawnSd && Su.length) { const pc = placementCost(G, [], [], T0, { surface: Su, detail: true }).surface; rep.surf = rep.surf || { n: 0, off: 0, offGrass: 0, edge: 0, landed: 0 }; for (const k of Object.keys(rep.surf)) rep.surf[k] += pc[k]; }
-    const phone = (() => { let best = null; for (const p of byOdo) if (p.odo <= odo) best = p; return best ? [best.x, -best.z] : [0, 0]; })();
+
     for (const [mode, opts] of VARIANTS) {
       const { useSurface, highX, surfW, grassCap, ...o } = opts;
       G.surfW = surfW; G.grassCap = grassCap;
