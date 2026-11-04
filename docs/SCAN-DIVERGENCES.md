@@ -63,7 +63,15 @@ Solid cells (step 2 and 3) are drawn as blue boxes as tall as the model's `top` 
 15 m at most, for legibility). Every other column with anything in it is drawn as a green box from its lowest cube
 with leaf (`mu` > 0) to its top, orange when the column is BUILDING. Nothing is drawn that the model does not have.
 
-## 7. What the AR does not take from the model
+## 7. Which canopy: `mu`, as flown
+
+The shade map writes two canopies (public/shade/model-out.js, 2026-11-04): `mu`, the canopy as the laser saw it
+with erasures applied, and `muOn`, the same with every deciduous crown in summer leaf, which it blends by the day.
+The AR reads `mu` only: what stands at the phone's height is the same in both (the leaf fill never reaches below a
+crown's branch floor), and for drawing the canopy the laser's own answer is the honest one. A file too big for
+`muOn` changes nothing here.
+
+## 8. What the AR does not take from the model
 
 The fences drawn in the shade map's step 1 (its part's `fences`) are not read yet; the person's erased cells are
 already applied in the model and need no reading. The model's `why` is not used.
