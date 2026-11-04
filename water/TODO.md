@@ -107,8 +107,8 @@ SPECULATION), as always.
     re-measure on the Chesapeake squares. Still the water map's own: coreRoofs, buildingMask, roofMask, obstacles.js.
 
 26. **Never drop a lidar return** (owner via the features session, 2026-11-04: "We should never, under any
-    circumstances, remove a lidar return. If we can't determine what it is, consider it a tree... the fallback is
-    tree, not exclusion"; merged ad5afce, structures.js step 7). The water map's own code still skips the LAS noise
+    circumstances, remove a lidar return"; merged ad5afce, then c84abc1: what no rule names is UNKNOWN (structures.js
+    kind 5), kept with the laser's own light, not a tree; the water map's kinds input is unchanged). The water map's own code still skips the LAS noise
     classes 7 and 18 (lib/roofs.js, lib/trunks.js, lib/obstacles.js, lib/lowspots.js perCell, the shade filter it
     copies): the features session is asking the owner whether the rule covers those two classes and will pass on
     the answer; change them all together when it comes, in their one home where one exists (structures.js NOISE).
