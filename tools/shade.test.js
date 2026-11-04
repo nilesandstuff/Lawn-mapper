@@ -5,7 +5,7 @@
  */
 import { lasHeader, makeColumns, readRecord, gpsTimes, gpsMs, leafOfMs, LEAF_OFF, LEAF_ON } from '../public/shade/las.js';
 import { onePass } from '../public/shade/passes.js';
-import { structuresOf, structuresFrom, structuresFor, wallsOf, greenCut, WALL_INSET_M, NOTHING, BUILDING, TREE, SOLID_TREE, STRUCTURE } from '../public/shade/structures.js';
+import { structuresOf, structuresFrom, structuresFor, wallsOf, greenCut, WALL_INSET_M, NOTHING, BUILDING, TREE, SOLID_TREE, STRUCTURE, UNKNOWN } from '../public/shade/structures.js';
 import { ndviFromBsq } from '../public/shade/naip.js';
 import { kindOf as kindOfTrees } from '../public/shade/trees-ui.js';
 import { nodeBox, walk, hierarchyReader, pointsIn, toMerc, fromMerc, mercScale, flownOf } from '../public/shade/ept.js';
@@ -1646,11 +1646,12 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   let ringStruct = 0;
   for (let n = 39; n < 51; n++) for (let e = 39; e < 51; e++) if (st.kind[at(e + 0.5, n + 0.5)] === STRUCTURE) ringStruct++;
   check('structures: the edge of a low crown, where each pulse clipped one twig, is not a ring of structures round it (owner, 2026-11-03)', ringStruct === 0, `${ringStruct} columns`);
-  const { treeBeside, kindOf: drawnKind } = await import('../public/shade/trees-ui.js');
+  const { besideOf, kindOf: drawnKind } = await import('../public/shade/trees-ui.js');
   const besideKinds = Uint8Array.from([3, 0, 0, 0, 0, 0]);
-  const bes = treeBeside(besideKinds, 6, 1);
-  check('drawing: what the laser hit and no rule named is drawn as a tree, beside a tree or not (owner, 2026-11-04: "the fallback is tree, not exclusion")',
-    bes[1] === 3 && drawnKind({ kind: besideKinds, classified: true }, 1, false) === 'deciduous' && drawnKind({ kind: besideKinds, classified: true }, 4, false) === 'deciduous' && drawnKind({ kind: besideKinds, classified: false }, 4, false) === 'other', `${[...bes]}`);
+  const bes = besideOf(besideKinds, null, 6, 1);
+  const unk = Uint8Array.from([0, 1, 0, 0, 1, 0]);
+  check('drawing: what the laser hit and no rule named is drawn brown as unknown, never left out and never a tree (owner, 2026-11-04)',
+    bes[1] === 3 && drawnKind({ kind: besideKinds, unknown: unk, classified: true }, 1, false) === 'unknown' && drawnKind({ kind: besideKinds, unknown: unk, classified: false }, 4, false) === 'unknown' && drawnKind({ kind: besideKinds, unknown: unk, classified: true }, 0, false) === 'deciduous' && besideOf(Uint8Array.from([0, 0, 0]), Uint8Array.from([1, 0, 0]), 3, 1)[1] === 6 && drawnKind({ kind: Uint8Array.from([0, 0]), unknown: Uint8Array.from([1, 0]), beside: Uint8Array.from([0, 6]), classified: true }, 1, false) === 'unknown', `${[...bes]}`);
   check('structures: the bare tree stays a tree and the spruce\'s solid-looking skirt stays with its tree',
     share(43, 47, 13, 17, [STRUCTURE]) === 0 && share(12, 18, 42, 48, [STRUCTURE]) === 0 && st.kind[at(15.5, 45.5)] !== NOTHING, `${share(12, 18, 42, 48, [STRUCTURE])}`);
   const inLeaf = makeColumns(cols.n);
@@ -1682,8 +1683,11 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   const bare = structuresFrom(cols, grid);
   check('structures: with no summer photo no low structures are called (owner, 2026-11-04: no structures where there are none)',
     bare.counts.structure === 0 && st.counts.structure > 0);
-  check('structures: and the wall the laser hit is then a tree, not nothing: the fallback is tree (owner, 2026-11-04)',
-    bare.kind[at(20.5, 12.5)] === TREE && bare.why[at(20.5, 12.5)] === 9 && bare.kind[at(5.5, 50.5)] === NOTHING, `${bare.kind[at(20.5, 12.5)]}/${bare.why[at(20.5, 12.5)]}`);
+  check('structures: and the wall the laser hit is then UNKNOWN, not nothing and not a tree: in the light as measured (owner, 2026-11-04)',
+    bare.kind[at(20.5, 12.5)] === UNKNOWN && bare.why[at(20.5, 12.5)] === 9 && bare.counts.unknown > 0 && bare.kind[at(5.5, 50.5)] === NOTHING, `${bare.kind[at(20.5, 12.5)]}/${bare.why[at(20.5, 12.5)]}`);
+  const scBare = seasonalCanopy(cols, buildCanopy(cols, grid));
+  { const wk2 = at(20.5, 12.5), nz2 = scBare.muOff.length / (grid.w * grid.h); let same = true; for (let l = 0; l < nz2; l++) if (scBare.muOn[wk2 * nz2 + l] !== scBare.muOff[wk2 * nz2 + l]) same = false;
+    check('seasons: an unknown column is kind 0 with the unknown mark, gets no leaves, and keeps the laser\'s own light', scBare.kind[wk2] === 0 && scBare.unknown[wk2] === 1 && same && scBare.counts.unknown > 0, `${scBare.kind[wk2]} ${scBare.unknown[wk2]}`); }
   const greenTruck = photo((e, n) => treeGreen(e, n) ?? ((e > 30 && e < 32.5 && n > 5 && n < 11) ? 0.6 : (e > 5 && e < 10 && n > 5 && n < 12) || (e > 20 && e < 21 && n > 5 && n < 20) ? 0.05 : 0.35));
   const gs = structuresFrom(cols, grid, { green: greenTruck });
   check('structures: a patch the photo shows green (a small tree that looks like a truck or a shed to the laser) is not a structure; the wall still is',

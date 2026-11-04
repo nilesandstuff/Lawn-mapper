@@ -35,8 +35,8 @@ export const BANDS = [
 const MIN_MU = 0.01; // a cube passing over 99% a meter is drawn as air
 /* Dark and apart from each other, to stand out on a sunny photo (owner, 2026-10-14: "I can hardly see any of them"). */
 /* Buildings black (owner, 2026-10-29), apart from every tree. */
-export const KIND_COLOR = { roof: '#0a0a0a', structure: '#4a4a4a', evergreen: '#0d3b8c', deciduous: '#1b6e20', filled: '#7a5c00', other: '#1b6e20' };
-export const KIND_NAME = { roof: 'building (or a crown nothing got through)', structure: 'low structure: a shed, a wall, a vehicle (every pulse came back once)', evergreen: 'evergreen: as the laser saw it, all year', deciduous: 'deciduous', filled: 'deciduous, leaves filled in where the laser found a gap', other: 'tree, in leaf as the laser saw it (no leaves added)' };
+export const KIND_COLOR = { roof: '#0a0a0a', structure: '#4a4a4a', unknown: '#8a7560', evergreen: '#0d3b8c', deciduous: '#1b6e20', filled: '#7a5c00', other: '#1b6e20' };
+export const KIND_NAME = { roof: 'building (or a crown nothing got through)', structure: 'low structure: a shed, a wall, a vehicle (every pulse came back once)', unknown: 'unknown: the laser hit something here no rule could name; it stops light exactly as the laser measured it', evergreen: 'evergreen: as the laser saw it, all year', deciduous: 'deciduous', filled: 'deciduous, leaves filled in where the laser found a gap', other: 'tree, in leaf as the laser saw it (no leaves added)' };
 
 /** 0-based day of the year, 29 Feb folded onto 28 Feb (as the light worker). */
 export function dayOfYear(ms) {
@@ -48,38 +48,46 @@ export function dayOfYear(ms) {
 
 /** What the model took a column for. */
 export function kindOf(season, k, leafy) {
-  const v = season?.kind?.[k];
+  let v = season?.kind?.[k];
   if (v === 1) return 'roof'; // on every flight
   if (v === 4) return 'structure'; // structures.js 6, on every flight
-  /* Anything else the laser hit is a tree: what no rule could name falls
-     back to a tree, never to nothing (owner, 2026-11-04). */
-  if (v === 0 && leafy && season?.classified && !season.inLeaf?.[k]) return 'filled';
+  if (v === 0 && leafy && season?.classified && !season.inLeaf?.[k]) return 'filled'; // a crown's leaves closed over it
+  /* The laser hit something here that no rule could name: drawn brown as
+     unknown, and in the light exactly as the laser measured it (owner,
+     2026-11-04). Never left out, never given a tree's leaves. */
+  if (season?.unknown?.[k]) return 'unknown';
+  /* A column with no return of its own over the grass draws cubes lent by
+     a neighbour (canopy.js pools a thin column's 3 x 3): it takes that
+     neighbour's colour, since that is where its light came from. */
+  if (v === 0 && season?.beside?.[k]) { const b = season.beside[k]; if (b === 4) return 'structure'; if (b === 6) return 'unknown'; v = b; }
   if (!season?.classified || season.inLeaf?.[k]) return 'other';
   if (v === 2) return 'evergreen';
   return 'deciduous';
 }
 
 /**
- * For each column with nothing over 2 m (kind 0), the kind (2 or 3) of a
- * tree column within `r` columns of it, the nearer first; 0 where none.
+ * For each column no rule named (kind 0, not unknown), the named kind of
+ * the nearest column within `r` (2 or 3 a tree, 4 a structure, 6 an
+ * unknown), the nearer first; 0 where none. Drawing only.
  */
-export function treeBeside(kind, w, h, r = 2) {
+export function besideOf(kind, unknown, w, h, r = 1) {
   const out = new Uint8Array(w * h);
+  const named = (j) => (unknown?.[j] ? 6 : kind[j] === 2 || kind[j] === 3 || kind[j] === 4 ? kind[j] : 0);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const k = y * w + x;
-    if (kind[k] !== 0) continue;
+    if (kind[k] !== 0 || unknown?.[k]) continue;
     let best = 0, bd = Infinity;
     for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
       const xx = x + dx, yy = y + dy;
       if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
-      const v = kind[yy * w + xx];
-      const dd = dx * dx + dy * dy;
-      if ((v === 2 || v === 3) && dd < bd) { bd = dd; best = v; }
+      const n = named(yy * w + xx), dd = dx * dx + dy * dy;
+      if (n && dd < bd) { bd = dd; best = n; }
     }
     out[k] = best;
   }
   return out;
 }
+
 
 /**
  * Every column's runs of light-stopping cubes: [{ k, base, top (m over the
@@ -90,6 +98,7 @@ export function treeRuns(model, mu, season, { roofs = true, cutBelow = 0 } = {})
   const { w, h, nz, dz, z0, ground } = model;
   const out = [];
   const bandOf = (m) => BANDS.findIndex((b) => m < b.below);
+  if (season?.kind && !season.beside) season.beside = besideOf(season.kind, season.unknown, w, h);
   for (let k = 0; k < w * h; k++) {
     let leafy = false;
     if (season) for (let l = 0; l < nz && !leafy; l++) if (season.muOn[k * nz + l] > season.muOff[k * nz + l]) leafy = true;
@@ -262,7 +271,7 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
   const applySolid = () => { ids.forEach((id, i) => { if (map.getLayer(id)) map.setPaintProperty(id, 'fill-extrusion-opacity', Math.min(1, bandAt(i).opacity * solid())); }); };
   try { const v = localStorage.getItem('lawnmapper.shade.treesSolid'); if (v) $('#tr-solid').value = v; } catch { /* not kept */ }
   $('#tr-solid').oninput = () => { applySolid(); try { localStorage.setItem('lawnmapper.shade.treesSolid', $('#tr-solid').value); } catch { /* not kept */ } };
-  $('#tr-legend').innerHTML = Object.entries(KIND_COLOR).filter(([k]) => (leafOff ? k !== 'other' || season.inLeafColumns > 0 : k === 'other' || k === 'roof' || k === 'structure'))
+  $('#tr-legend').innerHTML = Object.entries(KIND_COLOR).filter(([k]) => (leafOff ? k !== 'other' || season.inLeafColumns > 0 : k === 'other' || k === 'roof' || k === 'structure' || k === 'unknown'))
     .map(([k, c]) => `<span class="sw" style="background:${c}"></span>${KIND_NAME[k]}`).join('<br>')
     + `<br><span class="dim">Faint to solid: ${BANDS.map((b) => b.name).join('; ')}.</span>`;
 

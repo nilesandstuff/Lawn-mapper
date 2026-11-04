@@ -91,7 +91,7 @@ export const STRUCTURE_MIN_SPLIT = 0.02; // the flight must keep second returns:
 export const WALL_INSET_M = 0.61; // walls stand 2 ft in from a roof's edge (owner, 2026-11-03: "the standard amount")
 
 /** The kinds, per column. */
-export const NOTHING = 0, BUILDING = 1, TREE = 2, SOLID_TREE = 3, STRUCTURE = 4;
+export const NOTHING = 0, BUILDING = 1, TREE = 2, SOLID_TREE = 3, STRUCTURE = 4, UNKNOWN = 5;
 /** Why, per column (the rule's step that decided it). */
 export const WHY = Object.freeze({
   0: 'nothing over 2 m',
@@ -103,7 +103,7 @@ export const WHY = Object.freeze({
   6: 'solid tree: a patch under 4 m2',
   7: 'solid tree: a small patch with a rough top',
   8: 'low structure: every pulse came back once, as off a hard surface',
-  9: 'something under 2 m not otherwise known: taken as a tree',
+  9: 'unknown: the laser hit something here that no rule named; it stops light as the laser measured it',
 });
 
 /**
@@ -158,9 +158,10 @@ export function columnStats(cols, model, { shift = null } = {}) {
  * read). `cols` are the readers' point columns (las.js: x, y in EPSG:3857,
  * z, cls, ret, nret); `shift` the same [dx, dy] the model was built with.
  *
- * Returns { kind (Uint8 per column: NOTHING, BUILDING, TREE, SOLID_TREE, STRUCTURE),
+ * Returns { kind (Uint8 per column: NOTHING, BUILDING, TREE, SOLID_TREE, STRUCTURE,
+ *                 UNKNOWN: something over the grass no rule named, light as measured),
  *           why (Uint8 per column, a key of WHY), stats (columnStats),
- *           counts: { building, tree, solidTree, structure } }.
+ *           counts: { building, tree, solidTree, structure, unknown } }.
  */
 export function structuresOf(cols, model, { shift = null, stats = null, low = {} } = {}) {
   const { w, h, ground } = model;
@@ -214,17 +215,23 @@ export function structuresOf(cols, model, { shift = null, stats = null, low = {}
   for (let k = 0; k < N; k++) if (eave[k]) { kind[k] = BUILDING; why[k] = 3; }
   const lowInfo = lowStructures(kind, why, st, w, h, low);
   /* 7. NOTHING THE LASER HIT IS LEFT OUT (owner, 2026-11-04: "every thing
-     that the lidar hits should be recognized ... If we can't determine what
-     it is, consider it a tree ... the fallback is tree, not exclusion"): a
-     column with a return over the grass (GRASS_M) that no step above
-     claimed is a tree. */
-  for (let k = 0; k < N; k++) if (kind[k] === NOTHING && st.top[k] > GRASS_M) { kind[k] = TREE; why[k] = 9; }
-  const counts = { building: 0, tree: 0, solidTree: 0, structure: 0 };
+     that the lidar hits should be recognized"), and what no rule can name
+     is UNKNOWN, not a tree (owner, later the same day: "we can go back to
+     marking it brown and then calling it unknown, then just judge how much
+     light is passing through based on laser passing through"). A column
+     with a return over the grass (GRASS_M) that no step above claimed keeps
+     exactly the light the laser measured: no leaves added, no trunk space
+     emptied, no solid fill forced. That is the lidar's own strength -- the
+     laser passes through what light passes through -- and it is the most
+     faithful answer when the shape alone cannot say what stands there. */
+  for (let k = 0; k < N; k++) if (kind[k] === NOTHING && st.top[k] > GRASS_M) { kind[k] = UNKNOWN; why[k] = 9; }
+  const counts = { building: 0, tree: 0, solidTree: 0, structure: 0, unknown: 0 };
   for (let k = 0; k < N; k++) {
     if (kind[k] === BUILDING) counts.building++;
     else if (kind[k] === TREE) counts.tree++;
     else if (kind[k] === SOLID_TREE) counts.solidTree++;
     else if (kind[k] === STRUCTURE) counts.structure++;
+    else if (kind[k] === UNKNOWN) counts.unknown++;
   }
   return { kind, why, stats: st, counts, green: lowInfo };
 }

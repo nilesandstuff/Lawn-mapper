@@ -1413,6 +1413,22 @@ touching test. NOT MEASURED: patches by phone or by hand-drawn outlines;
 the photo is newer than the lidar on most lots (a tree since cut is
 "green" nowhere, a shed since built is in no lidar).
 
+THE FALLBACK IS UNKNOWN, IN THE LIGHT AS MEASURED (owner, 2026-11-04,
+twice). First: "every thing that the lidar hits should be recognized ...
+never, under any circumstances, remove a lidar return ... the fallback is
+tree, not exclusion"; then, the same day: "If we don't know what something
+is, we can go back to marking it brown and then calling it unknown, then
+just judge how much light is passing through based on laser passing
+through." So: passes.js keeps every point of both passes over a lot (it
+dropped the smaller pass's until 2026-11-04); structures.js step 7 gives a
+column with a return over the grass that no rule named the kind UNKNOWN
+(5, why 9); seasonal.js keeps it as the laser measured it -- no leaves, no
+trunk emptied, no solid fill forced -- and the drawing shows it brown as
+"unknown". A borrowed-cube halo (a thin column drawn from its neighbours'
+pulses) takes its neighbour's colour. For light this is the more faithful
+choice than "tree": a tree's label empties its trunk space to the branch
+floor and adds summer leaves; a hedge or a wall has neither.
+
 WALLS UNDER THE EAVES (structures.js wallsOf; owner: "walls are offset by
 the standard amount, 2 feet probably"): a roof mask at 0.25 m, the walls
 0.61 m in from its edge, the band outside them eave. Unmeasured.

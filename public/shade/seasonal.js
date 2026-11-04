@@ -145,7 +145,7 @@
 
 import { cellOf } from './grid.js';
 import { crownsOf } from './crowns.js';
-import { structuresOf, NOISE, CROWN_ABOVE_M, BUILDING, TREE, SOLID_TREE, STRUCTURE } from './structures.js';
+import { structuresOf, NOISE, CROWN_ABOVE_M, BUILDING, TREE, SOLID_TREE, STRUCTURE, UNKNOWN } from './structures.js';
 import { GRASS_M, SOLID_MU } from './canopy.js';
 import { greenOver } from './naip.js';
 
@@ -249,9 +249,12 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true, fil
   const built = structuresOf(cols, model, { shift, low: { green } }); // green: naip.js, the summer photo; without it no low structures
   const { above, zHi } = built.stats;
   const kind = new Uint8Array(N);
-  /* A tree only by the fallback (structures.js 7: something under 2 m nothing else claims) keeps
-     0 here: it is in the light as the laser measured it, and takes no crown's leaves. */
-  for (let k = 0; k < N; k++) kind[k] = built.kind[k] === BUILDING ? 1 : built.kind[k] === TREE && built.why[k] !== 9 ? 3 : built.kind[k] === SOLID_TREE ? 5 : built.kind[k] === STRUCTURE ? 4 : 0;
+  /* UNKNOWN (structures.js 7) is 0 here: in the light exactly as the laser
+     measured it, no crown's leaves, no trunk emptied; `unknown` marks it
+     for the drawing. */
+  for (let k = 0; k < N; k++) kind[k] = built.kind[k] === BUILDING ? 1 : built.kind[k] === TREE ? 3 : built.kind[k] === SOLID_TREE ? 5 : built.kind[k] === STRUCTURE ? 4 : 0;
+  const unknown = new Uint8Array(N);
+  for (let k = 0; k < N; k++) if (built.kind[k] === UNKNOWN) unknown[k] = 1;
   /* A solid tree: evergreen on a leaf-off flight (that dense with the
      leaves off); unsorted (3, held as flown) when it was in leaf. */
   for (let k = 0; k < N; k++) if (kind[k] === 5) kind[k] = classify && !inLeaf[k] ? 2 : 3;
@@ -543,11 +546,11 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true, fil
       if (muLeaf > muOn[i]) muOn[i] = muLeaf;
     }
   }
-  const counts = { roof: 0, evergreen: ever, deciduous: 0, domed, structure: 0 };
+  const counts = { roof: 0, evergreen: ever, deciduous: 0, domed, structure: 0, unknown: built.counts.unknown };
   for (let k = 0; k < N; k++) { if (kind[k] === 1) counts.roof++; else if (kind[k] === 3) counts.deciduous++; else if (kind[k] === 4) counts.structure++; }
   let inLeafColumns = 0;
   for (let k = 0; k < N; k++) if (inLeaf[k] && kind[k] === 3) inLeafColumns++;
-  return { kind, clumps, clumpOf, muOn, muOff: mu, counts, classified: classify, leafyColumns: leafy, unfilled, inLeaf, inLeafColumns };
+  return { kind, clumps, clumpOf, muOn, muOff: mu, counts, classified: classify, leafyColumns: leafy, unfilled, inLeaf, inLeafColumns, unknown };
 }
 
 /** The extinction coefficients with a share `f` (0 bare .. 1 in full leaf) of deciduous leaves out. */
