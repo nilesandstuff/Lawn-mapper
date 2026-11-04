@@ -78,7 +78,7 @@ const hitAt = (map, y = 0) => { const [u, v] = toAR(map); return { position: { x
   const L = newLocate(); noteGround(L, 0);
   mark(L, { id: 'r1', kind: 'ref', map: [0, 0] }, hitAt([0, 0]), 0);
   mark(L, { id: 'r2', kind: 'ref', map: [12, 4] }, hitAt([12, 4]), 10);
-  for (let i = 0; i < 50; i++) addDepth(L, [{ x: 2 + i * 0.25, y: 1.2, z: -4 }], 10);
+  for (let k = 0; k < 2; k++) for (let i = 0; i < 50; i++) addDepth(L, [{ x: 2 + i * 0.25, y: 1.2, z: -4 }], 10);
   const me = hitAt([3, 3]).position;
   const ask = nextAsk(L, 10, 20000, me);
   assert.equal(ask.prior.from, 'the references');
@@ -117,7 +117,7 @@ const hitAt = (map, y = 0) => { const [u, v] = toAR(map); return { position: { x
   assert.equal(r.stand.length, 2, 'the post and the wall point stand');
   assert.ok(r.ground.length >= 4, 'the back yard is ground');
   L.gps = { at: [0, 0], phone: [0, 0], acc: 5, t: 0 };
-  for (let i = 0; i < 40; i++) addDepth(L, [{ x: i * 0.3, y: 1.2, z: -3 }], 5);
+  for (let k = 0; k < 2; k++) for (let i = 0; i < 40; i++) addDepth(L, [{ x: i * 0.3, y: 1.2, z: -3 }], 5);
   const ask = nextAsk(L, 5, 10000, { x: 0, y: 1.5, z: 0 });
   answer(L, { ok: false, why: 'two places fit about as well', hits: 0.3, cost: 0.2, runnerUp: { cost: 0.21, apartM: 4, apartDeg: 90 } }, ask.id, 10400);
   const s = summaryOf(L);
@@ -162,17 +162,17 @@ const hitAt = (map, y = 0) => { const [u, v] = toAR(map); return { position: { x
   const cam = { x: 0, y: 1.4, z: 0 };
   addDepth(L, [{ x: 0, y: 0, z: -2 }, { x: 0.5, y: 1, z: -2 }], 0, cam, { standing: false });
   assert.equal(recent(L, 0).stand.length, 0, 'the colourless pass adds no standing points');
-  addDepth(L, [{ x: 0.5, y: 1, z: -2, surf: 'grass' }, { x: 1.5, y: 1, z: -2, surf: 'other' }, { x: 1.5, y: 1, z: -2.05, surf: 'other' }, { x: -1, y: 1, z: -2, surf: 'pave' }], 0, cam);
+  addDepth(L, [{ x: 0.5, y: 1, z: -2, surf: 'grass' }, { x: 1.5, y: 1, z: -2.1, surf: 'other' }, { x: 1.5, y: 1, z: -2.12, surf: 'other' }, { x: -1, y: 1, z: -2, surf: 'pave' }], 0, cam);
   const r = recent(L, 0);
   assert.equal(L.dropped, 1, 'the grass-coloured standing point dropped');
   assert.equal(r.stand.length, 1, `only the cell seen twice counts: ${r.stand.length}`);
-  assert.deepEqual(r.stand[0], [1.5, 2.05]);
+  assert.deepEqual(r.stand[0], [1.5, 2.12]);
 }
 // SKEPTICAL OF A JUMP (owner, 2026-11-03): a fix far from the last kept one waits for a second to agree with it
 {
   const L = newLocate(); noteGround(L, 0); L.gps = { at: [0, 0], phone: [0, 0], acc: 5, t: 0 };
   const fence = []; for (let i = 0; i < 60; i++) fence.push({ x: i * 0.25, y: 1.2, z: -4 });
-  addDepth(L, fence, 0);
+  addDepth(L, fence, 0); addDepth(L, fence, 0);
   const pos = { x: 0, y: 1.4, z: 0 }, A = { theta: TH, tx: SH[0], ty: SH[1], s: 1 }, B = { ...A, tx: SH[0] + 3 };
   let now = 1000;
   const ask = () => { now += 2000; const a = nextAsk(L, 2, now, pos); assert.ok(a.id, a.why); return a; };
