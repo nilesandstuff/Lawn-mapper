@@ -175,7 +175,11 @@ async function startWebXR({ overlay, onFrame, onEvent }) {
   try {
     // the extra sensors the water session found Chrome grants (H68): asked for, not required
     session = await navigator.xr.requestSession('immersive-ar', { ...base, optionalFeatures: [...base.optionalFeatures, 'depth-sensing', 'camera-access', 'plane-detection'],
-      depthSensing: { usagePreference: ['cpu-optimized'], dataFormatPreference: ['luminance-alpha', 'float32'] } });
+      /* depthTypeRequest (the owner's reading, 2026-11-04: low-confidence depth can be filtered): "raw" depth comes with
+         the least processing, and the runtime marks what it is not confident of invalid (0, which depth.at drops);
+         "smooth" fills those in, and the fill across plain grass is the likeliest source of SCAN-H7's invented points.
+         A request only; the runtime may give smooth anyway, and the walk's log says which (depthType). */
+      depthSensing: { usagePreference: ['cpu-optimized'], dataFormatPreference: ['luminance-alpha', 'float32'], depthTypeRequest: ['raw', 'smooth'] } });
   } catch {
     session = await navigator.xr.requestSession('immersive-ar', base);
   }
@@ -188,7 +192,7 @@ async function startWebXR({ overlay, onFrame, onEvent }) {
   let hits;
   try { hits = await session.requestHitTestSource({ space: viewer, entityTypes: ['plane', 'point'] }); } catch { hits = await session.requestHitTestSource({ space: viewer }); }
   const features = session.enabledFeatures ? [...session.enabledFeatures] : null;
-  let reset = false, live = true;
+  let reset = false, live = true, depthType = null;
   const hasDepth = !!features?.includes('depth-sensing') && typeof XRFrame !== 'undefined' && 'getDepthInformation' in XRFrame.prototype;
   const anchorsOn = !!features?.includes('anchors') && typeof XRFrame !== 'undefined' && 'createAnchor' in XRFrame.prototype;
   const anchorQueue = [], anchorPos = new Map();
@@ -219,6 +223,7 @@ async function startWebXR({ overlay, onFrame, onEvent }) {
       if (hasDepth && view) {
         try {
           const di = xrFrame.getDepthInformation(view);
+          if (di && depthType == null) depthType = di.depthType || 'not said';
           const z = di ? di.getDepthInMeters(CROSS.x, CROSS.y) : 0;
           if (z >= HIT_NEAR && z <= HIT_FAR) {
             const p = unproject(CROSS.x, CROSS.y, z, view.projectionMatrix, view.transform.matrix);
@@ -251,7 +256,7 @@ async function startWebXR({ overlay, onFrame, onEvent }) {
     const vp = view ? layer.getViewport(view) : null;
     const p = pose?.transform.position, q = pose?.transform.orientation;
     onFrame({
-      t, tracking, reset, hit, depth, points: 0,
+      t, tracking, reset, hit, depth, depthType, points: 0,
       pose: pose ? { position: { x: p.x, y: p.y, z: p.z }, quaternion: { x: q.x, y: q.y, z: q.z, w: q.w } } : null,
       gl, framebuffer: layer.framebuffer, viewport: vp ? { x: vp.x, y: vp.y, w: vp.width, h: vp.height } : null,
       view: view ? view.transform.inverse.matrix : null, proj: view ? view.projectionMatrix : null,
@@ -262,7 +267,7 @@ async function startWebXR({ overlay, onFrame, onEvent }) {
   };
   session.requestAnimationFrame(frame);
   return {
-    engine: 'webxr', features, depth: hasDepth, anchors: anchorsOn, stop: () => session.end().catch(() => {}),
+    engine: 'webxr', features, depth: hasDepth, get depthType() { return depthType; }, anchors: anchorsOn, stop: () => session.end().catch(() => {}),
     anchor: (position) => new Promise((resolve) => { if (!anchorsOn || !live) resolve(null); else anchorQueue.push({ position: { x: position.x, y: position.y, z: position.z }, resolve }); }),
     anchorAt: (a) => anchorPos.get(a) || null,
   };

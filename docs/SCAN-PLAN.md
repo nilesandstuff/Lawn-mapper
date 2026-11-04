@@ -856,3 +856,16 @@ stronger signal (section 7: render-and-compare, edges of drive and wall),
 and the depth should serve the ground and near walls only. A phone whose
 ARCore depth comes from a time-of-flight sensor would be worth a walk to
 compare. Not measured.
+
+The owner's reading (2026-11-04): the S21's depth comes from sub-pixel
+stereo across its lenses, parallax between camera feeds and the laser
+autofocus, fused by the NPU; grass confuses all of them (time-of-flight
+sensors too); low-confidence depth can be filtered; and the visual parts
+assume a rigid world, so wind moves things. In WebXR there is no
+confidence buffer, but a page may ask for RAW depth (depthTypeRequest
+['raw', 'smooth']): the least processing, and what the runtime is not
+confident of comes back invalid (0), which depth.at already drops. SMOOTH
+depth fills those in, and that fill across plain grass is the likeliest
+source of the invented points. The page now asks for raw first and the
+walk's log says which it got (depthType). A request only; not yet measured
+on a walk.

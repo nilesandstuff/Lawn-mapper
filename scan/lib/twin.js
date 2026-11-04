@@ -108,7 +108,7 @@ export function flush(tw, now, live = null) {
   tw.counts.parts += out.length;
   return out;
 }
-export const metaOf = (tw) => ({ walk: tw.walk, map: tw.map, engine: tw.engine, started: new Date(tw.started).toISOString(), camera: tw.camera, voxelM: VOXEL, cloudRecord: ['t', 'odo', 'x', 'y', 'z', 'ground'], trackRecord: ['t', 'odo', 'x', 'y', 'z', 'qx', 'qy', 'qz', 'qw', 'tracking'] });
+export const metaOf = (tw) => ({ walk: tw.walk, map: tw.map, engine: tw.engine, depthType: tw.depthType || null, started: new Date(tw.started).toISOString(), camera: tw.camera, voxelM: VOXEL, cloudRecord: ['t', 'odo', 'x', 'y', 'z', 'ground'], trackRecord: ['t', 'odo', 'x', 'y', 'z', 'qx', 'qy', 'qz', 'qw', 'tracking'] });
 
 /**
  * The state worth keeping as it stands: the lidar's kept fixes and the references' marks (each with its moment of
