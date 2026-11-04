@@ -2454,25 +2454,33 @@ mostly LOWERS watering here: Michigan lawn use is mostly under FAO's 5 mm/day re
 Kc), so p sits above 0.4 most days; it falls below 0.4 only on hot, sunny weeks in open lawn. Not measured: the
 moisture readings (H74) are the check.
 
-### H76. The first moisture readings against the model: rank 0.40 over 23 lawn spots, p about 0.06 (water session, 2026-11-04)
+### H76. The first moisture readings against the model: rank 0.31 over 27 lawn spots, p about 0.11 (water session, 2026-11-04; corrected the same day)
 
 One visit, the owner's lot, the evening of 2026-11-03: Ecowitt WH51L, the meter's own 0-99 scale, 3 in deep after
 a knife slit, 27 spots; the owner waited for each reading to refresh, zeroed between spots, and reports no air gaps
 (so the readings are taken as sound). The visit's note: no real rain for weeks, the grass evenly green. Readings
 16-64, SD 11, far wider than the meter's +-5%, so the spread is the soil's, not the meter's.
-The model: the page's own plan (public/app.js moistureCard, lib/plan.js snapshots) on the saved map, rain alone
-(no sprinkler in the record), the root zone's water over field capacity on that date: 0.40-0.91. Of 27 spots, 23
-fall on lawn cells (4 on beds or edges: left out). Spearman rho, reading against wetness: 0.40 (permutation p
-0.060, 20,000 shuffles); leaving any one spot out, 0.31-0.49. Against the peak month's watering need instead (sun,
-trees, slope) 0.15, so the day-by-day balance orders the spots better than the yearly need does.
-By watering area (lawn spots): area 1 n 8, reading mean 39.6, model 0.51; area 4 (the least watering, the shaded
-part) n 9, 41.0 against 0.75; areas 2 and 3, 3 spots each. Within area 4 rho 0.61, within area 1 0.33. So the
-model ORDERS spots within an area fairly well, but puts the shaded area much wetter than the open lawn (0.75 against
-0.51) where the meter has them nearly level (41 against 40). Three shaded spots the model has among its wettest
-(0.81-0.87) read 26-35.
-What it does not show: anything about timing (one visit), the root zone below 3 in, or summer. Reading it as a pass
-or a fail would be wrong; it is a weak positive with one specific mismatch (S26). The readings came out through the
-key-gated export (src/moisture.js), the comparison ran in the sandbox on the page itself; no place is written here.
+THE CORRECTION. The first run (the morning of the 4th) read each dot off its 1 m grid cell and called 4 of 27 "not
+lawn". The owner: "Zero spots were in beds, all were on traced lawn", one (#27) put 2 in onto the driveway by
+mistake. Checked against the traced polygon itself in plain lng/lat: 3 dots fall outside it, by 0.06, 0.45 and
+0.40 m, and a shift of 0.6 m east puts 26 of 27 inside. The dots were placed on Mapbox's photo; the lawn was traced
+on the county photo; the two photos sit about half a meter apart here (speculation as to which is right). The
+check now judges "on the lawn" by the trace with a 0.6 m allowance and takes the model as the mean of the lawn
+cells within 1 m of the dot (else the nearest within 2 m); the readings page now shows the photo the map was traced
+on with the trace drawn over it, and records which photo the dots went on (placed_on).
+THE RESULT, corrected. The model: the page's own plan (public/app.js moistureCard, lib/plan.js snapshots), rain
+alone (no sprinkler in the record), root zone 203 mm, the root zone's water over field capacity on 2026-11-03:
+0.40-0.89. All 27 on lawn. Spearman rho, reading against wetness: 0.31 (permutation p 0.11, 20,000 shuffles);
+leaving any one spot out, 0.23-0.38; without the two dots whose model came from a lawn cell 1.1-1.2 m away, 0.27.
+Against the peak month's watering need instead (sun, trees, slope) 0.14.
+By watering area: area 1 (open lawn) n 7, reading mean 39.1, model 0.49, within-area rho 0.40; area 2 n 11, 40.0
+against 0.63, rho 0.61; area 3 (the shaded part, the least watering) n 9, 38.8 against 0.77, rho 0.55. So the model
+ORDERS spots within an area fairly well, and gets the areas' order wrong: it has the shaded part much wetter than
+the open lawn (0.77 against 0.49) where the meter has them level (38.8 against 39.1). The model's nine wettest
+spots (0.75+) read a median 38; its eleven driest (under 0.60) a median 36.
+What it does not show: timing (one visit), the root zone below 3 in, or summer. A weak positive with one specific
+mismatch (S26). The readings came out through the key-gated export (src/moisture.js); the comparison ran in the
+sandbox on the page itself; no place is written here.
 
 ### H77. Roofs read from the shared tree-versus-building rule (water session, 2026-11-04)
 
@@ -2807,8 +2815,9 @@ safer number to act on; neither is checked against a level and a tape.
 
 ### S26. Under mature trees the lawn may be drier than the model thinks (2026-11-04, with H76)
 
-The model has the shaded watering area wetter than the open lawn (0.75 against 0.51 of field capacity) because
-shade cuts the grass's use; the meter had them level, and three shaded spots it puts among its wettest read low.
+The model has the shaded watering area wetter than the open lawn (0.77 against 0.49 of field capacity, H76 as
+corrected) because shade cuts the grass's use; the meter had them level (38.8 against 39.1), and spots the model
+puts among its wettest read no higher than the rest.
 Trees drinking from the lawn's root zone would do exactly that, and the model does not take tree uptake from the
 lawn (the research is done, the build is not: TODO). Other readings fit too: rain caught by the crowns (the model
 does take interception, but not by species), the meter's top 3 in drying where the model's bucket is deeper, or

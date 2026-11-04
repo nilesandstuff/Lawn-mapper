@@ -36,6 +36,6 @@ for (const c of checks) {
   let det = {}; try { det = JSON.parse(c.detail || '{}'); } catch { /* none */ }
   const st = det.settings || {}, spots = det.spots || [];
   console.log(`#${k + 1}  checked ${new Date(c.checked).toISOString().slice(0, 16)}  model date ${st.date || '?'}  rho ${f(c.rho)} over ${c.n} lawn spots  root zone ${st.rootMm ?? '?'} mm  probe ${st.depth_in ?? '?'} in`);
-  console.log('   n  reading  wet   kind zone peak_month_need_mm');
-  for (const s of spots) console.log(`  ${String(s.n).padStart(2)}  ${String(s.value).padStart(6)}  ${f(s.wet).padStart(5)}  ${String(s.kind ?? '-').padStart(3)}  ${String(s.zone ?? '-').padStart(3)}  ${s.need === null || s.need === undefined ? '-' : Math.round(s.need)}`);
+  console.log('   n  reading  wet   lawn off_m cells zone peak_month_need_mm');
+  for (const s of spots) console.log(`  ${String(s.n).padStart(2)}  ${String(s.value).padStart(6)}  ${f(s.wet).padStart(5)}  ${String(s.lawn ?? s.kind ?? '-').padStart(4)}  ${f(s.off, 1).padStart(4)}  ${String(s.cells ?? '-').padStart(4)}  ${String(s.zone ?? '-').padStart(3)}  ${s.need === null || s.need === undefined ? '-' : Math.round(s.need)}`);
 }

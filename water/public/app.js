@@ -883,43 +883,97 @@ function hillReport(h) {
    (Spearman's rho)? The admin only. What is saved for the water session to read is numbers only, no place. */
 const localDate = (ms) => new Date(ms).toLocaleDateString('en-CA');
 
+/* WHERE A READING SITS (owner, 2026-11-04: "Zero spots were in beds, all were on traced lawn... whatever you've done
+   to align the readings doesn't line up with the way I marked them on the map"): by the lawn the owner traced
+   (site.lawn, lng/lat), never by a grid cell's kind. A thumb on a phone, and the photo the dot was put on against the
+   one the lawn was traced on, are good to about half a meter, so a spot within ON_TRACE_M of the traced lawn is on
+   it, the distance shown. The model's wetness at a spot is the mean over the lawn cells within NEAR_M of it (a 1 m
+   grid read at one point hangs on which side of a cell line the tap fell), else the nearest lawn cell within SNAP_M. */
+const ON_TRACE_M = 0.6, NEAR_M = 1.0, SNAP_M = 2.0;
+
+/** Meters from a point to the traced lawn (0 inside it); null with no trace. features: GeoJSON, lng/lat. */
+function offLawnM([lng, lat], features) {
+  if (!features?.length) return null;
+  const k = Math.cos((lat * Math.PI) / 180), [px, py] = toMerc([lng, lat]);
+  let inside = false, best = Infinity;
+  for (const f of features) {
+    const g = f.geometry || f, polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : [];
+    for (const poly of polys) {
+      let inPoly = false;
+      poly.forEach((ring, ri) => {
+        const pts = ring.map(toMerc); let c = false;
+        for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+          const [xi, yi] = pts[i], [xj, yj] = pts[j];
+          if ((yi > py) !== (yj > py) && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) c = !c;
+          const ex = xj - xi, ey = yj - yi, L = ex * ex + ey * ey, t = L ? Math.max(0, Math.min(1, ((px - xi) * ex + (py - yi) * ey) / L)) : 0;
+          best = Math.min(best, Math.hypot(px - xi - t * ex, py - yi - t * ey) * k);
+        }
+        if (ri === 0) inPoly = c; else if (c) inPoly = false;
+      });
+      if (inPoly) inside = true;
+    }
+  }
+  return inside ? 0 : best;
+}
+
 function moistureCard(p) {
   let el = $('#moisture-check');
   if (!el) { $('#groundwater')?.insertAdjacentHTML('afterend', '<div id="moisture-check"></div>'); el = $('#moisture-check'); }
   if (!el) return;
-  const d = view.data, visits = view.moisture || [];
+  const d = view.data, visits = view.moisture || [], trace = view.site?.lawn || [];
   if (!visits.length || !d?.grid || !p?.kinds) { el.innerHTML = ''; return; }
   const { W, H, bbox } = d.grid, dx = d.shift.east / d.grid.k, dy = d.shift.north / d.grid.k;
+  const cw = (bbox[2] - bbox[0]) / W, ch = (bbox[3] - bbox[1]) / H;
   const snaps = new Map((p.snapshots || []).map((s) => [s.date, s.wet]));
-  const cellOf = (lng, lat) => {
-    const [x, y] = toMerc([lng, lat]);
-    const c = Math.floor(((x - dx - bbox[0]) / (bbox[2] - bbox[0])) * W), r = Math.floor(((bbox[3] - (y - dy)) / (bbox[3] - bbox[1])) * H);
-    return c >= 0 && c < W && r >= 0 && r < H ? r * W + c : -1;
+  /* the model round a point: lawn cells whose centers lie within NEAR_M (mean), else the nearest within SNAP_M */
+  const modelAt = (lng, lat, wet) => {
+    const k = Math.cos((lat * Math.PI) / 180), [x, y] = toMerc([lng, lat]);
+    const gx = (x - dx - bbox[0]) / cw, gy = (bbox[3] - (y - dy)) / ch; // in cells, row 0 north
+    const c0 = Math.floor(gx), r0 = Math.floor(gy), i0 = c0 >= 0 && c0 < W && r0 >= 0 && r0 < H ? r0 * W + c0 : -1;
+    const reach = Math.ceil(SNAP_M / (cw * k)) + 1, near = [], zones = new Map();
+    let best = null;
+    for (let r = r0 - reach; r <= r0 + reach; r++) for (let c = c0 - reach; c <= c0 + reach; c++) {
+      if (c < 0 || c >= W || r < 0 || r >= H) continue;
+      const i = r * W + c;
+      if (p.kinds[i] !== 1 || !wet || !Number.isFinite(wet[i])) continue;
+      const dist = Math.hypot((c + 0.5 - gx) * cw, (r + 0.5 - gy) * ch) * k;
+      if (dist <= NEAR_M) near.push(i);
+      if (dist <= SNAP_M && (!best || dist < best.dist)) best = { i, dist };
+    }
+    const cells = near.length ? near : best ? [best.i] : [];
+    if (!cells.length) return { i: i0, kind: i0 >= 0 ? p.kinds[i0] : null, wet: null, need: null, zone: null, cells: 0, snap: null };
+    for (const i of cells) if (p.zoneOf && p.zoneOf[i] >= 0) zones.set(p.zoneOf[i], (zones.get(p.zoneOf[i]) || 0) + 1);
+    const mean = (f) => { const v = cells.map(f).filter(Number.isFinite); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+    return { i: i0, kind: i0 >= 0 ? p.kinds[i0] : null, wet: mean((i) => wet[i]), need: p.needMm ? mean((i) => p.needMm[i]) : null, zone: zones.size ? [...zones.entries()].sort((a, b) => b[1] - a[1])[0][0] : null, cells: cells.length, snap: near.length ? null : best.dist };
   };
   const KINDW = ['not lawn', 'lawn', 'roof', 'paving', 'pavers'];
   const cards = visits.map((v) => {
     const date = localDate(v.at), wet = snaps.get(date);
     const spots = v.readings.map((r) => {
-      const i = cellOf(r.lng, r.lat);
-      return { n: r.n, value: r.value, note: r.note, i, kind: i >= 0 ? p.kinds[i] : null, zone: i >= 0 && p.zoneOf ? p.zoneOf[i] : null, wet: i >= 0 && wet && Number.isFinite(wet[i]) ? wet[i] : null, need: i >= 0 && p.needMm && Number.isFinite(p.needMm[i]) ? p.needMm[i] : null };
+      const m = modelAt(r.lng, r.lat, wet), off = offLawnM([r.lng, r.lat], trace);
+      // on the lawn by the trace; with no trace (a stand-in lawn), by the cell
+      const lawn = off === null ? m.kind === 1 : off <= ON_TRACE_M;
+      return { n: r.n, value: r.value, note: r.note, ...m, off, lawn };
     });
-    const lawn = spots.filter((s) => s.kind === 1 && s.wet !== null);
+    const lawn = spots.filter((s) => s.lawn && s.wet !== null);
     const rho = spearman(lawn.map((s) => s.value), lawn.map((s) => s.wet));
     const rhoNeed = spearman(lawn.filter((s) => s.need !== null).map((s) => s.value), lawn.filter((s) => s.need !== null).map((s) => s.need));
     const ws = lawn.map((s) => s.wet).sort((a, b) => a - b), vs = lawn.map((s) => s.value).sort((a, b) => a - b);
     const f2 = (x) => (x === null || x === undefined ? '-' : x.toFixed(2));
-    const rows = spots.map((s) => `<tr><td>${s.n}</td><td>${s.value}</td><td>${f2(s.wet)}</td><td>${s.kind === null ? 'off the map' : KINDW[s.kind] || s.kind}</td><td>${s.zone >= 0 && s.zone !== null ? s.zone + 1 : '-'}</td><td>${s.need === null ? '-' : Math.round(s.need / 25.4 * 10) / 10}</td><td>${esc(s.note || '')}</td></tr>`).join('');
+    const where = (s) => (s.off === null ? (s.kind === null ? 'off the map' : KINDW[s.kind] || s.kind) : s.off === 0 ? 'lawn' : s.off <= ON_TRACE_M ? `lawn (${s.off.toFixed(1)} m off the trace)` : `${s.off.toFixed(1)} m off the lawn${s.kind !== null && s.kind !== 1 ? `, on ${KINDW[s.kind] || s.kind}` : ''}`) + (s.snap ? `; model from the nearest lawn square, ${s.snap.toFixed(1)} m away` : '');
+    const rows = spots.map((s) => `<tr><td>${s.n}</td><td>${s.value}</td><td>${f2(s.wet)}</td><td>${where(s)}</td><td>${s.zone >= 0 && s.zone !== null ? s.zone + 1 : '-'}</td><td>${s.need === null ? '-' : Math.round(s.need / 25.4 * 10) / 10}</td><td>${esc(s.note || '')}</td></tr>`).join('');
     const say = rho === null ? 'Too few readings on lawn to rank.' : `Rank correlation, reading against the model's wetness, over ${lawn.length} lawn spots: <strong>${rho.toFixed(2)}</strong> (1 = the same order, 0 = no relation, -1 = the reverse).`;
     const flat = ws.length && ws[ws.length - 1] - ws[0] < 0.05 ? ' The model has every one of these spots within 5% of each other, so it predicts no pattern here to rank against.' : '';
+    const offs = spots.filter((s) => s.off !== null && s.off > 0).length;
     // numbers only to the server: no point, no note, no map id
     fetch('/api/water/moisture/check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
       visit_id: v.id, rho, n: lawn.length,
-      spots: spots.map((s) => ({ n: s.n, value: s.value, wet: s.wet, zone: s.zone, kind: s.kind, need: s.need })),
-      settings: { date, depth_in: v.depth_in, rootMm: p.rootIn ? Math.round(p.rootIn * 25.4) : null, season: p.mode || null, irrigated: 'rain alone' },
+      spots: spots.map((s) => ({ n: s.n, value: s.value, wet: s.wet, zone: s.zone, kind: s.kind, need: s.need, lawn: s.lawn ? 1 : 0, off: s.off, cells: s.cells })),
+      settings: { date, depth_in: v.depth_in, rootMm: p.rootIn ? Math.round(p.rootIn * 25.4) : null, season: p.mode || null, irrigated: 'rain alone', onTraceM: ON_TRACE_M, nearM: NEAR_M },
     }) }).catch(() => {});
     return `<details class="card"><summary>Readings of ${date}: ${v.readings.length} spots, the model's rank against them ${rho === null ? '-' : rho.toFixed(2)}</summary>
       <p>${say}${flat} Against the peak month's watering need instead (sun, trees, slope): ${rhoNeed === null ? '-' : rhoNeed.toFixed(2)}.</p>
-      <p class="dim">Readings ${vs[0] ?? '-'} to ${vs[vs.length - 1] ?? '-'}; the model's wetness ${f2(ws[0])} to ${f2(ws[ws.length - 1])} (the root zone's water over what it holds at field capacity, with rain alone). ${wet ? '' : 'The weather record does not reach this date, so the model has no wetness for it.'}</p>
+      <p class="dim">Readings ${vs[0] ?? '-'} to ${vs[vs.length - 1] ?? '-'}; the model's wetness ${f2(ws[0])} to ${f2(ws[ws.length - 1])} (the root zone's water over what it holds at field capacity, with rain alone), each spot the mean of the lawn squares within ${NEAR_M} m of it. A spot is on the lawn when it is on the traced lawn or within ${ON_TRACE_M} m of it${offs ? ` (${offs} of these sit just off the trace: the photo a dot is put on and the one the lawn was traced on can differ by about that much)` : ''}. ${wet ? '' : 'The weather record does not reach this date, so the model has no wetness for it.'}</p>
       <div style="overflow-x:auto"><table class="small"><tr><th>#</th><th>reading</th><th>model</th><th>where</th><th>area</th><th>peak-month need, in</th><th>note</th></tr>${rows}</table></div></details>`;
   });
   el.innerHTML = `<h2>Soil moisture readings against the model</h2>${cards.join('')}`;

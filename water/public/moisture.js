@@ -4,11 +4,15 @@
  * zoom/pan and then tap a dot, then it prompts me for the reading, and I move on to the next one. Then I save it."
  *
  * The property: the phone's position, then the county property line there (Lawn Mapper's /api/parcel), then a
- * saved map on it if there is one (/api/maps). The photo: one Mapbox frame round the property line (/api/imagery).
+ * saved map on it if there is one (/api/maps). The photo: THE ONE THE LAWN WAS TRACED ON when a saved map is here
+ * (the county photo, lined up as the editor left it, with the traced lawn drawn over it; owner, 2026-11-04: dots
+ * put on Mapbox's photo sat half a meter off the trace), else one Mapbox frame round the property line.
  * The readings: a draft on this phone until saved (so a dead spot in the signal loses nothing), then the water
  * Worker's database (src/moisture.js), the visit saved again whole each time. Earlier visits' spots are drawn as grey
  * rings: a reading taken on one keeps that spot's id, so the same spot can be followed from visit to visit.
  */
+
+import { tracedOn, lineUpAt } from '/lib/shade/traced.js';
 
 const $ = (s) => document.querySelector(s);
 const R = 6378137;
@@ -22,8 +26,8 @@ const DRAFT = 'moisture-draft-v1', SETUP = 'moisture-setup-v1';
 const store = { get: (k) => { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* private window */ } } };
 
 const st = {
-  property: null,   // { lng, lat, pin, county, label, ring: [[lng, lat]...] | null, mapId }
-  frame: null, photo: null,
+  property: null,   // { lng, lat, pin, county, label, ring: [[lng, lat]...] | null, mapId, lawn: [rings] | null, tracedOn }
+  frame: null, photo: null, photoShift: [0, 0], placedOn: 'mapbox',
   view: { s: 1, ox: 0, oy: 0 },
   visit: null,      // { id, at, dots: [{ n, spot, lng, lat, value, note, at }], savedAt, savedCount }
   old: [],          // earlier spots here: { spot, lng, lat, value, at }
@@ -63,7 +67,7 @@ const outerRing = (g) => (g?.type === 'Polygon' ? g.coordinates[0] : g?.type ===
 const metres = (a, b) => { const k = Math.cos((a[1] * Math.PI) / 180); return Math.hypot((b[0] - a[0]) * 111320 * k, (b[1] - a[1]) * 111320); };
 
 async function propertyAt(lng, lat) {
-  const out = { lng, lat, pin: null, county: null, label: null, ring: null, mapId: null };
+  const out = { lng, lat, pin: null, county: null, label: null, ring: null, mapId: null, lawn: null, tracedOn: null };
   try {
     const r = await fetch(`/api/parcel?lng=${lng}&lat=${lat}`);
     const j = r.ok ? await r.json() : null;
@@ -82,6 +86,15 @@ async function propertyAt(lng, lat) {
       .map((m) => ({ m, d: metres([lng, lat], [m.lng, m.lat]), inside: out.ring ? inRing([m.lng, m.lat], out.ring) : false }))
       .filter((x) => x.inside || x.d < 40).sort((a, b) => b.inside - a.inside || a.d - b.d)[0];
     if (near) out.mapId = near.m.id;
+    if (out.mapId) {
+      // the saved map itself: the traced lawn, and the photo it was traced on
+      const one = await fetch(`/api/maps/one?id=${encodeURIComponent(out.mapId)}`);
+      const m = one.ok ? (await one.json())?.map : null;
+      if (m) {
+        out.tracedOn = tracedOn(m);
+        out.lawn = (m.shapes || []).map((f) => f?.geometry || f).flatMap((g) => (g?.type === 'Polygon' ? [g.coordinates] : g?.type === 'MultiPolygon' ? g.coordinates : [])).flat();
+      }
+    }
   } catch { /* signed out, or no maps */ }
   return out;
 }
@@ -104,11 +117,26 @@ function frameFor(p) {
   const [lng, lat] = fromMerc([(box[0] + box[2]) / 2, (box[1] + box[3]) / 2]);
   return { lng, lat, zoom, size: 1280, height: 1280 };
 }
-async function photoOf(f) {
-  const q = new URLSearchParams({ lng: f.lng, lat: f.lat, zoom: f.zoom, size: f.size, height: f.height, provider: 'mapbox' });
+async function photoOf(f, provider = 'mapbox', svc = null) {
+  const q = new URLSearchParams({ lng: f.lng, lat: f.lat, zoom: f.zoom, size: f.size, height: f.height, provider });
+  if (svc != null) q.set('svc', svc);
   const r = await fetch(`/api/imagery?${q}`);
-  if (!r.ok) throw new Error(`the photo would not load (${r.status})`);
+  if (!r.ok) throw new Error(`the ${provider === 'county' ? 'county' : 'Mapbox'} photo would not load (${r.status})`);
   return createImageBitmap(await r.blob());
+}
+
+/** The photo the lawn was traced on, as the water map shows it (app.js savedPhoto): the county photo moved by the
+ *  editor's line-up, else Mapbox's. -> { photo, shift: [px, py], placedOn, name } */
+async function savedPhoto(f, t) {
+  if (t?.provider === 'county') {
+    try {
+      const photo = await photoOf(f, 'county', t.svc);
+      const move = lineUpAt(t, [f.lng, f.lat]);
+      const k = Math.cos((f.lat * Math.PI) / 180), s = (worldSize(f.zoom) / (2 * Math.PI * R)) * (photo.width / f.size);
+      return { photo, shift: [(move.east / k) * s, -(move.north / k) * s], placedOn: `county:${t.svc}`, name: 'the county photo the lawn was traced on' };
+    } catch (e) { hint(e.message); }
+  }
+  return { photo: await photoOf(f), shift: [0, 0], placedOn: 'mapbox', name: t?.provider === 'county' ? "Mapbox's photo (the county photo would not load)" : "Mapbox's photo" };
 }
 
 async function load(lng, lat, { keepVisit = false } = {}) {
@@ -118,7 +146,7 @@ async function load(lng, lat, { keepVisit = false } = {}) {
   say(p.ring ? `${p.label || 'Property found'}${p.pin ? ` (parcel ${p.pin})` : ''}${p.mapId ? ' · a saved map is on it' : ''}` : 'No county property line here: readings keep their place on the photo alone.');
   st.frame = frameFor(p);
   hint('Loading the photo…');
-  try { st.photo = await photoOf(st.frame); hint(''); } catch (e) { st.photo = null; hint(e.message); }
+  try { const sp = await savedPhoto(st.frame, p.tracedOn); st.photo = sp.photo; st.photoShift = sp.shift; st.placedOn = sp.placedOn; hint(''); if (p.lawn?.length) say(`${$('#status').textContent} · ${sp.name}, the traced lawn in green`); } catch (e) { st.photo = null; hint(e.message); }
   if (!keepVisit || !st.visit) newVisit();
   else saveDraft();
   const visits = await earlierAt(p.pin);
@@ -206,7 +234,7 @@ $('#save').addEventListener('click', async () => {
   if (!v || !p || !v.dots.length) return;
   $('#save').disabled = true; $('#save').textContent = 'Saving…';
   const weather = $('#weather').value ? { lastTwoDays: $('#weather').value } : null;
-  const body = { id: v.id, at: v.at, lng: p.lng, lat: p.lat, parcel_pin: p.pin, county: p.county, map_id: p.mapId, meter: setup.meter || null, unit: setup.unit, depth_in: setup.depth === '' ? null : Number(setup.depth), note: $('#vnote').value.trim() || null, weather, readings: v.dots.map(({ n, spot, lng, lat, value, note, at }) => ({ n, spot, lng, lat, value, note, at })) };
+  const body = { id: v.id, at: v.at, lng: p.lng, lat: p.lat, parcel_pin: p.pin, county: p.county, map_id: p.mapId, placed_on: st.placedOn, meter: setup.meter || null, unit: setup.unit, depth_in: setup.depth === '' ? null : Number(setup.depth), note: $('#vnote').value.trim() || null, weather, readings: v.dots.map(({ n, spot, lng, lat, value, note, at }) => ({ n, spot, lng, lat, value, note, at })) };
   try {
     const r = await fetch('/api/water/moisture', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const j = await r.json().catch(() => ({}));
@@ -284,7 +312,12 @@ function draw() {
   ctx.clearRect(0, 0, r.width, r.height);
   if (!st.frame) { ctx.fillStyle = '#cfd8d3'; ctx.font = '15px system-ui'; ctx.textAlign = 'center'; ctx.fillText('Tap “Find this property” to start', r.width / 2, r.height / 2); return; }
   const { s, ox, oy } = st.view;
-  if (st.photo) ctx.drawImage(st.photo, ox, oy, st.photo.width * s, st.photo.height * s);
+  if (st.photo) ctx.drawImage(st.photo, ox + st.photoShift[0] * s, oy + st.photoShift[1] * s, st.photo.width * s, st.photo.height * s);
+  // the traced lawn, when a saved map is here: the line the readings are judged against
+  for (const ring of st.property?.lawn || []) {
+    ctx.beginPath(); ring.forEach((q, k) => { const [x, y] = screenOf(pxOf(q)); k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+    ctx.closePath(); ctx.lineWidth = 2.5; ctx.strokeStyle = 'rgba(105,240,174,.95)'; ctx.stroke();
+  }
   // the property line
   if (st.property?.ring) {
     ctx.beginPath(); st.property.ring.forEach((q, k) => { const [x, y] = screenOf(pxOf(q)); k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });

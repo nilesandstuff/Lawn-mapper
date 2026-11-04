@@ -144,8 +144,10 @@ SPECULATION), as always.
 
 - **The readings against the model** (owner, 2026-11-04): the water map ranks a visit's readings against the
   model's wetness on that day (moistureCard) and keeps the scores; a key-gated export lets the water session run
-  it itself (src/moisture.js; key in the session's scratchpad, stops 2026-12-05). First visit: rho 0.40 over 23
-  lawn spots, p 0.06 (H76); the shaded area reads drier than the model has it (S26). Next: a visit a day or two
+  it itself (src/moisture.js; key in the session's scratchpad, stops 2026-12-05). First visit, corrected the same
+  day (the owner: all 27 were on traced lawn; the dots had been placed on Mapbox's photo, the trace on the
+  county's, half a meter apart): rho 0.31 over 27 spots, p 0.11 (H76); the shaded area reads drier than the model
+  has it (S26). The readings page now shows the traced-on photo with the trace drawn over it. Next: a visit a day or two
   after real rain, and the trees' draw on the lawn's water (S26).
 - **Growing season start** (owner, 2026-11-04): asked whether to start it on soil temperature (45 or 55 F): "No".
   It stays as it is: the start at 20% growth potential on air temperature, the end on soil temperature.

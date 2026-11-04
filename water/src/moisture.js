@@ -23,7 +23,7 @@ const num = (v, lo, hi) => { const x = Number(v); return v !== null && v !== '' 
 const txt = (v, n = 120) => (v == null || v === '' ? null : String(v).slice(0, n));
 const UNITS = ['vwc', 'scale', 'other'];
 
-export const VISIT_COLS = ['id', 'at', 'saved', 'lng', 'lat', 'parcel_pin', 'county', 'map_id', 'meter', 'unit', 'depth_in', 'note', 'weather'];
+export const VISIT_COLS = ['id', 'at', 'saved', 'lng', 'lat', 'parcel_pin', 'county', 'map_id', 'meter', 'unit', 'depth_in', 'note', 'weather', 'placed_on'];
 export const READING_COLS = ['id', 'visit_id', 'n', 'spot', 'at', 'lng', 'lat', 'value', 'note'];
 
 /** A posted visit, checked. -> { visit, readings } or { error } */
@@ -40,6 +40,7 @@ export function cleanVisit(b, now = Date.now()) {
     parcel_pin: txt(b.parcel_pin, 64), county: txt(b.county, 64), map_id: txt(b.map_id, 64),
     meter: txt(b.meter, 80), unit, depth_in: num(b.depth_in, 0, 48), note: txt(b.note, 2000),
     weather: b.weather ? txt(JSON.stringify(b.weather), 4000) : null,
+    placed_on: txt(b.placed_on, 40), // the photo the dots were put on: 'county:<svc>' (the one the lawn was traced on) or 'mapbox'
   };
   const readings = [];
   for (const [k, r] of b.readings.entries()) {
@@ -59,15 +60,16 @@ export function cleanCheck(b) {
   const spots = (Array.isArray(b.spots) ? b.spots : []).slice(0, 500).map((s) => ({
     n: num(s?.n, 0, 100000), value: num(s?.value, -1000, 100000), wet: num(s?.wet, -10, 100), zone: num(s?.zone, -1, 1000),
     kind: num(s?.kind, 0, 50), need: num(s?.need, 0, 10000), tree: num(s?.tree, 0, 1), sun: num(s?.sun, 0, 1),
+    lawn: num(s?.lawn, 0, 1), off: num(s?.off, 0, 10000), cells: num(s?.cells, 0, 10000),
   }));
   const settings = {};
-  for (const k of ['date', 'depth_in', 'rootMm', 'season', 'irrigated']) if (b.settings && b.settings[k] != null) settings[k] = typeof b.settings[k] === 'number' ? b.settings[k] : txt(String(b.settings[k]), 40);
+  for (const k of ['date', 'depth_in', 'rootMm', 'season', 'irrigated', 'onTraceM', 'nearM']) if (b.settings && b.settings[k] != null) settings[k] = typeof b.settings[k] === 'number' ? b.settings[k] : txt(String(b.settings[k]), 40);
   return { visit_id, rho: num(b.rho, -1, 1), n: num(b.n, 0, 500), detail: JSON.stringify({ spots, settings }) };
 }
 
 /** Every reading as CSV, with its visit's columns. */
 export function toCsv(rows) {
-  const cols = ['visit_id', 'visit_at', 'parcel_pin', 'county', 'map_id', 'meter', 'unit', 'depth_in', 'n', 'spot', 'at', 'lng', 'lat', 'value', 'note'];
+  const cols = ['visit_id', 'visit_at', 'parcel_pin', 'county', 'map_id', 'meter', 'unit', 'depth_in', 'placed_on', 'n', 'spot', 'at', 'lng', 'lat', 'value', 'note'];
   const cell = (v) => (v == null ? '' : /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
   const when = (v) => (Number.isFinite(v) ? new Date(v).toISOString() : v);
   return [cols.join(','), ...rows.map((r) => cols.map((c) => cell(c === 'at' || c === 'visit_at' ? when(r[c]) : r[c])).join(','))].join('\n');
@@ -126,7 +128,7 @@ export async function moisture(request, env, url, { isAdmin }) {
   if (request.method === 'GET') {
     const pin = url.searchParams.get('pin'), map = url.searchParams.get('map');
     if (url.searchParams.get('format') === 'csv') {
-      const { results } = await env.DB.prepare('SELECT r.*, v.at AS visit_at, v.parcel_pin, v.county, v.map_id, v.meter, v.unit, v.depth_in FROM moisture_readings r JOIN moisture_visits v ON v.id = r.visit_id ORDER BY v.at, r.n').all();
+      const { results } = await env.DB.prepare('SELECT r.*, v.at AS visit_at, v.parcel_pin, v.county, v.map_id, v.meter, v.unit, v.depth_in, v.placed_on FROM moisture_readings r JOIN moisture_visits v ON v.id = r.visit_id ORDER BY v.at, r.n').all();
       return new Response(toCsv(results || []), { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="soil-moisture-readings.csv"', 'Cache-Control': 'no-store' } });
     }
     const visits = pin
