@@ -124,7 +124,9 @@ SPECULATION), as always.
     wider box round the lot for the wind's obstacles and the water from uphill. Not started; wait for "live" and
     the owner's word on the split. The features session (2026-11-04, night) is adding `returns` (each column's own
     returns per cube, not pooled) and `low` (the lowest own return over the grass) to the file: the honest stem
-    signal for trunks.js, whose stems then come from the file rather than the points.
+    signal for trunks.js, whose stems then come from the file rather than the points. LIVE since 2026-11-04 23:50
+    (a4fe4ef): `returns`, `low` and the header's `own`; a map gets them the next time it is opened in the shade
+    map; `returns` may be left out over 24 MB, `low` always stays. Still waiting on the owner's word on the split.
 
 ## Rules (owner, 2026-10-27)
 
