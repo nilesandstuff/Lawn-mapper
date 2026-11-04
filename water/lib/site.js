@@ -18,6 +18,8 @@ import { boundsOf, maskOf, maskBox } from './geo.js';
 import { gridFor } from './surface.js';
 import { imperviousness, weightedFlow, runOnSources } from './impervious.js';
 import { naipFor, ndvi } from './naip.js';
+import { greenOver } from './shade/naip.js';
+import { gridOver } from './shade/grid.js';
 import { overtureFor, overtureMasks } from './overture.js';
 
 export const PAD = 30;
@@ -75,8 +77,17 @@ export async function runSite(site, io, pickCloud, { progress = () => {}, nullRu
   const ov = await ovP;
   const ovMasks = ov ? overtureMasks(g, ov) : null;
   const photo = await photoP;
-  // the photo's vegetation index per cell: the roof veto's, and since 2026-11-04 the shared rule's (its low structures need it)
-  const green = photo ? ndvi(photo) : null;
+  /* THE SUMMER PHOTO'S GREEN, THE SHADE MAP'S READING (owner, 2026-11-04, via the features session: "The water map
+     switching its green check to the shade map's reading: yes"): public/shade/naip.js greenOver, the NAIP frame
+     nearest the lidar flight (so a tree that has grown or gone since is judged as it was when flown), the USGS
+     mosaic when none covers the lot. One rule about what a cell is, one photo behind it: the roof veto, the shared
+     rule's low structures and the light worker all read this one. The water map's own naipFor (the newest mosaic,
+     with its bands) stays for paving, which needs the bands and is the water map's own. */
+  const shadeGrid = gridOver(bbox, 1, site.lat);
+  let green = null, greenFrame = null;
+  try { green = await greenOver(shadeGrid, { flownMs: flown?.mid || null }); greenFrame = green?.frame || null; } catch { green = null; }
+  if (green && green.length !== g.W * g.H) green = null; // the two grids are the same 1 m cells over the same box; if not, do without
+  if (!green && photo) { green = ndvi(photo); greenFrame = { id: 'usgs-mosaic', date: null, source: 'usgs (the water map\'s own reading)' }; }
   const res = analyse(cols, bbox, site.lat, { epoch, within, nullRuns, shift: kept && Array.isArray(kept.shift) ? kept.shift : null, overture: ovMasks, ndvi: green });
 
   const onParcel = parcelMask ? spotsOn(res, parcelMask) : [];
@@ -109,7 +120,7 @@ export async function runSite(site, io, pickCloud, { progress = () => {}, nullRu
   }
 
   return {
-    green, // the summer photo's vegetation index per cell (null without a photo): for the shade map's light worker
+    green, greenFrame, // the summer photo's vegetation index per cell (null without a photo) and which frame: for the shade map's light worker and the report
     sameGridAsShade: !!kept,
     cloud: { name: cloud.name, url: cloud.url || null, ql: cloud.unit?.ql ?? null, flown: flown ? new Date(flown.mid).toISOString().slice(0, 10) : null, season: flightSeason(flown), notOnAws: pick.notOnAws || [] },
     result: res, parcelMask, lawnMask, impervious: imp, weightedFlow: wflow,

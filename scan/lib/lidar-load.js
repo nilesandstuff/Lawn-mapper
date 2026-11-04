@@ -51,21 +51,47 @@ export function gridsFromModel(model, { origin, box, lawn = [], S, toMerc, cell 
   const sgrid = meta.grid, K = kindsOf(model, S);
   const [ox, oy] = toMerc(origin);
   const k = Math.cos((origin[1] * Math.PI) / 180);
-  const kind = arrays.kind, { ground, mu } = arrays, layers = meta.layers;
+  const kind = arrays.kind, { ground, mu, returns, low } = arrays, layers = meta.layers;
   const counts = { building: 0, tree: 0, solidTree: 0, structure: 0, unknown: 0, standing: 0 };
   const things1 = new Uint8Array(kind.length), bld1 = new Uint8Array(kind.length);
-  /* SOLID FOR THE MATCH: a column the shade map's 3D map has something in AT THE HEIGHT THE PHONE SEES (its cubes
-     between standLow and standHigh over the ground with any leaf, mu > 0: a hedge, a trunk, a wall, a shed; not the
-     crown a person walks under, whose low cubes the shade map leaves open). The cubes' contents are the shade map's;
-     the band is the phone's (locate.js BANDS, the heights its standing points are taken at). A file without cubes
-     falls back to the column's kind: every tree, solid tree, structure or unknown column, whole. */
+  /* SOLID FOR THE MATCH: a column with something of ITS OWN at the height the phone sees, 0.4-2.4 m over the ground
+     (locate.js BANDS, the heights its standing points are taken at). The shade map's file says what that is, in
+     this order of preference (shade findings 35, 2026-11-04: on the owner's lot 59% of the crowned columns the
+     cubes alone called solid were solid only through canopy.js's pooling of a sparse flight's neighbours, and 8%
+     through the cubes' 1 m steps reaching a crown's underside):
+       low      the column's lowest own return over the grass, exact: solid when it falls in the band;
+       returns  the column's own returns per cube: solid when a cube overlapping the band has any;
+       mu       the pooled canopy (files written before 2026-11-04 evening): solid when a band cube has leaf.
+     The band is the AR's; every number in it is the shade map's. A file with none of the three falls back to the
+     kind alone: every tree, solid tree, structure or unknown column, whole. */
+  const cubesOf = (j) => {
+    const lo = ground[j] + BANDS.standLow, hi = ground[j] + BANDS.standHigh;
+    return [Math.max(0, Math.floor((lo - layers.z0) / layers.dz)), Math.min(layers.nz - 1, Math.floor((hi - layers.z0) / layers.dz))];
+  };
   const standsIn = (j) => {
-    if (!mu || !layers || !Number.isFinite(ground[j])) return true;
-    const lo = ground[j] + BANDS.standLow, hi = ground[j] + BANDS.standHigh, base = j * layers.nz;
-    const l0 = Math.max(0, Math.floor((lo - layers.z0) / layers.dz)), l1 = Math.min(layers.nz - 1, Math.floor((hi - layers.z0) / layers.dz));
-    for (let l = l0; l <= l1; l++) if (mu[base + l] > 0) return true;
+    if (!Number.isFinite(ground[j])) return true;
+    if (low && Number.isFinite(low[j])) return low[j] >= BANDS.standLow && low[j] <= BANDS.standHigh;
+    const own = returns || mu;
+    if (!own || !layers) return true;
+    const [l0, l1] = cubesOf(j), base = j * layers.nz;
+    for (let l = l0; l <= l1; l++) if (own[base + l] > 0) return true;
     return false;
   };
+  /* HOW TALL A SOLID COLUMN IS DRAWN (the owner, 2026-11-04: "in AR, I'm seeing blue walls under those same
+     canopies"; shade findings 35: one low cube, a median 2 m of air, then the crown, drawn as one box to the
+     treetop). From its lowest own return up through the cubes that have own returns without a gap; the column's top
+     when the file has no per-cube returns. A building's wall is drawn to its top as before. */
+  const standTop = new Float32Array(kind.length).fill(NaN);
+  for (let j = 0; j < kind.length; j++) {
+    const t = arrays.top ? arrays.top[j] : NaN;
+    if (!returns || !layers || !Number.isFinite(ground[j])) { standTop[j] = t; continue; }
+    const base = j * layers.nz;
+    let l = low && Number.isFinite(low[j]) ? Math.max(0, Math.floor((ground[j] + low[j] - layers.z0) / layers.dz)) : cubesOf(j)[0];
+    while (l < layers.nz && !(returns[base + l] > 0)) l++;
+    if (l >= layers.nz) { standTop[j] = t; continue; }
+    let e = l; while (e + 1 < layers.nz && returns[base + e + 1] > 0) e++;
+    standTop[j] = Math.min(Number.isFinite(t) ? t : Infinity, layers.z0 + (e + 1) * layers.dz - ground[j]);
+  }
   for (let j = 0; j < kind.length; j++) {
     const v = kind[j];
     if (v === K.BUILDING) { bld1[j] = 1; counts.building++; continue; }
@@ -76,7 +102,8 @@ export function gridsFromModel(model, { origin, box, lawn = [], S, toMerc, cell 
   const dem = valuesOnGrid(arrays.ground, sgrid, box, cell, at, k);
   const things = buildingsOnGrid(things1, sgrid, box, cell, at, k, 1);
   const bld = buildingsOnGrid(bld1, sgrid, box, cell, at, k, 1);
-  const top = arrays.top ? valuesOnGrid(arrays.top, sgrid, box, cell, at, k) : null;
+  const topForDraw = arrays.top ? Float32Array.from(arrays.top, (t, j) => (bld1[j] ? t : standTop[j])) : null;
+  const top = topForDraw ? valuesOnGrid(topForDraw, sgrid, box, cell, at, k) : null;
   /* A building's walls: the shade map's own rule, wallsOf (2 ft in from the roof's edge, the owner's number), run on
      its BUILDING columns. A STRUCTURE (a stone wall, a shed, bins) has no eaves and is solid at its own edge. */
   let walls = null;
@@ -88,13 +115,13 @@ export function gridsFromModel(model, { origin, box, lawn = [], S, toMerc, cell 
   // the lawn the owner traced: the lawn-edge term's field (scan/lib/surface.js), the AR's own
   const F = lawn.length ? lawnField(lawn, box, cell) : null;
   if (F && F.cells && F.W === G.W && F.H === G.H) G.lawnSd = F.sd;
-  if (top) G.wallTop = top;
+  if (arrays.top) G.wallTop = valuesOnGrid(arrays.top, sgrid, box, cell, at, k);
   const ruleName = `the shade map's model of ${meta.at ? String(meta.at).slice(0, 10) : 'an unknown date'}${meta.photo ? ', low structures judged by the summer photo' : ''}${meta.erased ? `, ${meta.erased} columns erased by hand` : ''}`;
   return {
     G, k, ox, oy, counts, buildings: bld, footprint: walls, rule: ruleName,
     cloud: { name: meta.lidar?.name || "the shade map's survey", url: meta.lidar?.url || null, epoch: meta.lidar?.epoch ?? null },
     how: Array.isArray(meta.lidar?.shift) ? "the shade map's" : 'as the model has it',
-    shade: { kind, sgrid, S, K, stats: { top: arrays.top || null }, ground: arrays.ground, mu: arrays.mu || null, layers: meta.layers || null, meta },
+    shade: { kind, sgrid, S, K, stats: { top: arrays.top || null, standTop }, ground: arrays.ground, mu: arrays.mu || null, returns: returns || null, low: low || null, layers: meta.layers || null, meta },
   };
 }
 

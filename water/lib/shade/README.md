@@ -35,3 +35,7 @@ for lib/roofs.js shadeRoofs (owner: "Yes" to reading the rule from there).
 `green`, naip.js greenOver; shade findings 33) and calls none without it. The water map passes the vegetation index
 it already reads for its roof veto (lib/site.js, the same NAIP service and reading) to shadeRoofs, trunksOf and the
 light worker's build message, so the shared rule judges with the photo and nothing is read twice.
+
+2026-11-04, night: naip.js linked. The owner (via the features session): "The water map switching its green check to
+the shade map's reading: yes." lib/site.js reads the summer photo's green through greenOver(grid, { flownMs }), the
+frame nearest the lidar flight; the water map's own naipFor keeps only paving, which needs the bands.

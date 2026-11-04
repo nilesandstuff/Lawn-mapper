@@ -122,7 +122,9 @@ SPECULATION), as always.
     those rules; it still needs the points for what is its own and not in the file: the ground hollows (the fine
     surface and its noise floor), the trunks' stems (returns 0.5-3 m up), paving (intensity and the photo), and the
     wider box round the lot for the wind's obstacles and the water from uphill. Not started; wait for "live" and
-    the owner's word on the split.
+    the owner's word on the split. The features session (2026-11-04, night) is adding `returns` (each column's own
+    returns per cube, not pooled) and `low` (the lowest own return over the grass) to the file: the honest stem
+    signal for trunks.js, whose stems then come from the file rather than the points.
 
 ## Rules (owner, 2026-10-27)
 

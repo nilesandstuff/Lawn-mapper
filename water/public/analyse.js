@@ -181,6 +181,7 @@ async function start(site, inputs) {
     parcelMask: r.parcelMask, lawnMask: r.lawnMask,
     spots: r.spots, hasLawn: r.hasLawn, summary: { ...r.summary, noiseRuns: undefined }, cloud: r.cloud,
     trunks: res.trunks || null,
+    photoFrame: r.greenFrame || null, // which summer photo the rule read (shade/naip.js): the frame nearest the flight, or the mosaic
   };
   const transfer = [out.depth.buffer, out.z.buffer, reported.buffer, out.flow.buffer, out.wall.buffer, grade.buffer, ...(out.paved ? [out.paved.buffer] : [])];
   self.postMessage({ done: out }, transfer);

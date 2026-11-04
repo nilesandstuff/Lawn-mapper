@@ -152,6 +152,26 @@ assert.ok(G.occTop && G.bld && G.wallTop, 'the tops and the roof mask come back 
   const one = buildingsOnGrid(kind, fake, [-10, -10, 10, 10], 0.5, [41, 79], 1); // the column spans x 40-42, y 78-80: e and n -1..1
   let c = 0; for (const v of one) c += v;
   assert.equal(c, 16, 'a 2 m column is 16 half-metre cells');
+  // THE COLUMN'S OWN RETURNS (shade findings 35, 2026-11-04): with `low` and `returns` in the file, a crown whose
+  // pooled cubes reach the band is not solid unless its own lowest return is in the band, and a solid column is
+  // drawn from that return up through its own cubes, not to the treetop
+  {
+    const g1 = { w: 3, h: 1, x0: OX - 1.5 / K, y1: OY + 0.5 / K, cell: 1 / K, lat: LAT }, nz = 12, z0 = 100;
+    const gr = Float32Array.from([100.5, 100.5, 100.5]), kd = Uint8Array.from([S.TREE, S.TREE, S.UNKNOWN]), tp = Float32Array.from([9, 9, 1.7]);
+    const mu = new Float32Array(3 * nz), ret = new Uint8Array(3 * nz);
+    for (let j = 0; j < 3; j++) for (let l = 0; l < nz; l++) { const z = z0 + l; if (j < 2 && z >= 100.5 + 1 && z < 110) mu[j * nz + l] = 0.5; if (j === 2 && z <= 102) mu[j * nz + l] = 9; }
+    // column 0: a trunk of its own from the ground (returns in every cube), low 0.6; column 1: pooled leaf low down
+    // but its own returns only from 5 m up (low 5.2); column 2: a 1.7 m thing, own returns in cubes 0-1
+    for (let l = 0; l < nz; l++) { if (z0 + l >= 101 && z0 + l < 110) ret[l] = 1; if (z0 + l >= 105.5 && z0 + l < 110) ret[nz + l] = 1; if (z0 + l <= 101) ret[2 * nz + l] = 1; }
+    const lowA = Float32Array.from([0.6, 5.2, 0.5]);
+    const mk = (extra) => gridsFromModel(decodeModel(encodeModel({ ...M.meta, grid: g1, layers: { z0, dz: 1, nz } }, { ground: gr, kind: kd, top: tp, mu, ...extra })), { origin: ORIGIN, box: [-1.5, -0.5, 1.5, 0.5], S, toMerc });
+    const byMu = mk({}), byOwn = mk({ returns: ret, low: lowA });
+    assert.equal(byMu.counts.standing, 3, 'by the pooled cubes all three stand');
+    assert.equal(byOwn.counts.standing, 2, `by the column's own returns the pooled crown does not: ${byOwn.counts.standing}`);
+    const at = (L, e) => L.G.occTop[Math.floor(0.5 / 0.25) * L.G.W + Math.floor((e + 1.5) / 0.25)];
+    assert.ok(Math.abs(at(byOwn, -1) - 9) < 0.01 && Math.abs(at(byOwn, 1) - 1.5) < 0.01, `drawn through its own cubes: trunk ${at(byOwn, -1)}, low thing ${at(byOwn, 1)} (its top 1.7, its cubes end at 1.5)`);
+    assert.ok(Math.abs(at(byMu, 0) - 9) < 0.01, 'without own returns, the old height');
+  }
   // buildGrids refuses grids of the wrong size
   assert.throws(() => buildGrids({ dem: new Float32Array(3) }, BOX), /cells/);
 }
