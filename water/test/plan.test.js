@@ -530,9 +530,10 @@ test('each lidar point carries its leaf state from its own GPS day, and the shad
   assert.equal(on, 1600); assert.equal(off, 800);
   const joined = concatColumns([cols, filterColumns(cols, (i) => cols.leaf[i] === LEAF_OFF)]);
   assert.equal(joined.n, 3200); assert.equal(joined.leaf[3199], LEAF_OFF, 'leaf survives joining and filtering');
-  // the August pass covers the box alone: the March points are left out, as on the shade map
+  // two passes over the box: 'mixed', and EVERY point kept (owner, 2026-11-04: "never, under any circumstances, remove a
+  // lidar return"; the shade map's passes.js); until then the March points were dropped where the August pass covered alone
   const one = onePass(cols, [0, 0, 20, 20], 1);
-  assert.equal(one.season, 'on'); assert.equal(one.dropped, 800); assert.equal(one.cols.n, 1600);
+  assert.equal(one.season, 'mixed'); assert.equal(one.dropped, 0); assert.equal(one.cols.n, 2400); assert.equal(one.on, 1600); assert.equal(one.off, 800);
   // records without a GPS time keep no state, and the rule leaves the season to the flight's dates
   const bare = cropRecords({ ...header, format: 0, recordLength: 20, gpsAt: -1 }, new Uint8Array(buf, 0, 20 * 40), [0, 0, 20, 20]);
   assert.ok([...bare.leaf].every((v) => v === 0)); assert.equal(onePass(bare, [0, 0, 20, 20], 1).season, null);
