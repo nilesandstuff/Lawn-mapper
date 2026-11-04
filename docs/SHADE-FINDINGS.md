@@ -1429,6 +1429,28 @@ pulses) takes its neighbour's colour. For light this is the more faithful
 choice than "tree": a tree's label empties its trunk space to the branch
 floor and adds summer leaves; a hedge or a wall has neither.
 
+WHAT STAYS OUT, ON THE OWNER'S WORD (2026-11-04: "ignore 80m and noise"):
+returns the survey itself flagged as noise (LAS classes 7 and 18) and
+returns more than 80 m over the ground. Neither is a thing on a lawn.
+
+LOW CUBES UNDER TREES AT A LOW SUN (owner, 2026-11-04: "what's up with
+the phantom columns under canopies? ... messing with light in ways that
+don't reflect reality (especially when sun is at low angles)"). On the
+owner's lot (Kent 2016, bare canopy, 16,962 lawn cells within 12 m of a
+tree; scratch lot/lowsun.mjs), every cube under 2.5 m in a tree column
+emptied -- 1,500 cubes, 3.8% of the canopy's light-stopping mass -- moves
+the mean direct beam reaching those cells from 0.527 to 0.540 with the sun
+10 degrees up in the southwest, 0.595 to 0.604 at 15 degrees, 0.688 to
+0.693 at 25, 0.777 to 0.780 at 40, 0.868 to 0.869 at 60; cells moved by
+more than 5%: 870, 603, 361, 232, 119 of 16,962. So the low cubes are
+worth about a point of the lawn's light at the lowest sun and nothing at
+noon. Whether they are real (trunks, low branches, shrubs: on this lot 18%
+of last returns stopped in shrubs, finding 9) or phantoms is NOT known
+from the lidar alone: the phone's depth missing them (SCAN-H3) says what a
+phone sees from 8 m, not what stops light. The field readings never put a
+miss on them (finding 11: the model-shade rays the phone read lit were
+stopped a median 5.8 m up by the laser's own branches).
+
 WALLS UNDER THE EAVES (structures.js wallsOf; owner: "walls are offset by
 the standard amount, 2 feet probably"): a roof mask at 0.25 m, the walls
 0.61 m in from its edge, the band outside them eave. Unmeasured.
