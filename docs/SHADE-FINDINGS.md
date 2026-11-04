@@ -1455,6 +1455,57 @@ WALLS UNDER THE EAVES (structures.js wallsOf; owner: "walls are offset by
 the standard amount, 2 feet probably"): a roof mask at 0.25 m, the walls
 0.61 m in from its edge, the band outside them eave. Unmeasured.
 
+### 34. A leaf-on (summer) flight cannot tell an evergreen from a deciduous tree: nothing measured beats "all deciduous" (NEON, 2026-11-04)
+
+The owner, 2026-11-04: the evergreen split (seasonal.js 2, winter
+density) runs only on leaf-off flights, so on a flight in leaf deciduous
+trees keep their summer density all year; could the summer crown's shape
+or returns make the split there? Tested on NEON's own LEAF-ON clouds
+(DP1.30003.001, the latest June-September month per site; TALL and DELA
+only 2015) against NEON's mapped stems with species (DP1.10098.001; the
+labels of finding 7). 13 sites, 31 tiles, 206 plots, 4,327 stems; crowns
+segmented as the map does (crownsOf), each taking its tallest stem's
+label; scored on 1,229 one-label crowns with 20+ returns: 257 evergreen
+(202 southern pines, 43 northern hemlock/spruce/fir), 972 deciduous.
+Scratch: leafon-ever/ (results.jsonl, SUMMARY.md, scripts; no coordinates).
+
+Features per crown from the summer cloud: vertical profile (shares in the
+top fifth, middle, bottom third; p10/median/p90 height), shape (height
+over radius, the dome drop, pointedness, top roughness), density
+(overhead transmittance in leaf, single-echo share, first-return share,
+returns per m2, pulses reaching the ground), intensity over the flight's
+own ground. Scored by AUC pooled, per site and within-site (each site
+shifted to its own median), and by ridge-logistic fits with every site
+held out in turn, cut on finding 7's light cost (9 per broadleaf left
+bare, 2 per evergreen given leaves).
+
+| | pooled AUC | within-site AUC | leave-one-site-out, light cost (all-deciduous 514) |
+|---|---|---|---|
+| summer transmittance | 0.82 | 0.56 | 527 (one-feature rule) |
+| first-return share | 0.81 | 0.58 | 679 |
+| dome drop / pointedness | 0.64 / 0.62 | 0.57 / 0.48 | calls none evergreen |
+| intensity | 0.48 | 0.44 | 514 (none) |
+| shape + profile + density | 0.80 | - | 447: 36 of 257 evergreens, 34 of them at one longleaf savanna; 0 of 43 in the north |
+
+The pooled 0.82 is the SITES, not the trees: pine savannas against
+closed hardwood forest (evergreen median T 0.40-0.78 at TALL, JERC, OSBS;
+0.01-0.12 at BART, DELA, HARV, STEI, TREE, where hemlock and fir are as
+dark from above as the maples in August). Intensity reverses between the
+two biggest pine sites (TALL pines darker than hardwoods, AUC 0.10; OSBS
+brighter, 0.95). The one real signal, northern conifers pointier (drop
+1.3-2.3 m against 0.7-0.8), is the dome test the map already has and runs
+one way: it rules a dome out, never an evergreen in (north-only shape fit
+AUC 0.71, 17% of evergreens at 5% of broadleaves wrong; at the cost cut
+0 of 42). Single-stem crowns, nearest a lawn tree's case: no better
+(within-site 0.37-0.63).
+
+NOT SHIPPED; the split stays off on leaf-on flights. Forest plots, not
+lawns, and understory conifers are hidden from above; the core's 186
+labelled lawn crowns have no leaf-on flight to test on. What might still
+move it: colour (needle foliage is darker and less green-peaked than
+broadleaf in summer photos; NAIP is in leaf; untested), and the two-flight
+case where a county has a leaf-off survey too.
+
 ## Speculation
 
 - FENCES (2026-10-27, IN USE, unmeasured; fences.js): drawn by the visitor
