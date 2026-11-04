@@ -567,6 +567,26 @@ shown on its page with the pictures beside the splat's renders. The 8th Wall eng
 splats; its view on the S21 was a broken fisheye in the first walk, and the
 canvas fix for that is untested.
 
+## 8. The lidar is the shade map's finished model, read, not rebuilt (2026-11-04)
+
+The owner, after SCAN-H7: "I want the AR to perfectly follow the shade map's output at this point. That means any
+rules you have about height that differ from shade map rules, remove. It will be too difficult to hunt down bugs
+between 2 different implementations of the same thing... I don't want duplicate files here. There should be one
+base set of files for making 3d maps from lidar... When a map goes into the shade map, the lidar gets built,
+aligned, points get sorted/classified, then the finished output is saved. The AR shouldn't be rebuilding lidar
+maps from scratch."
+
+Done the same day: the shade map's finished model is one file per map (public/lib/lidar-model.js; PUT/GET
+/api/maps/model, docs/MAPS.md), the AR's worker reads it and grids it (scan/lib/lidar-load.js gridsFromModel),
+and every step the AR takes on top of it is in docs/SCAN-DIVERGENCES.md. Gone from the AR: its own point band
+(0.25-2.5 m), its roof fallback, CROWN_M, LAWN_LOW_M, the 3 m default wall. The readers (ept.js, las.js, laz.js)
+are no longer imported by the AR's worker. What the AR now knows only to a 1 m column: a roof's edge and a trunk's
+place, so a fix resting on them is free by up to half a column; the tests say "to a column" where they said 25 cm
+(scan/test/lidar.test.js), and two fits within 1.5 m are one place (lidar.js SAME_PLACE_M). If the walks show the
+lock wants the roof's edge finer than a column, that is a request to the shade map (a sub-column edge in the
+model), not a rule here. The shade map writes the file from its own session's change; until it does, the AR says
+"open this map in the shade map first".
+
 ## Findings
 
 HARD findings are measured, with the yard named only as "the owner's lot",

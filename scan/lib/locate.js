@@ -30,7 +30,7 @@ export const ASK_EVERY_MS = 1500;
 export const REF_TOL_M = 5, REF_TOL_DEG = 25, MIN_HITS_ALONE = 0.65;
 /* A fix this far (m, degrees) from the last kept one is a jump, held until a second fix agrees with it this closely. */
 export const JUMP_M = 1.5, JUMP_DEG = 8, CONFIRM_M = 0.6, CONFIRM_DEG = 4;
-const BANDS = { groundTol: 0.2, standLow: 0.4, standHigh: 2.4, highTop: 12, near: 0.4, far: 8 };
+export const BANDS = { groundTol: 0.2, standLow: 0.4, standHigh: 2.4, highTop: 12, near: 0.4, far: 8 };
 
 export function newLocate({ scale = 1 } = {}) {
   return { marks: [], fixes: [], cloud: new Map(), cols: new Map(), groundY: null, gps: null, scale, asks: 0, refused: {}, last: null, lastAsk: 0, pending: null, nextId: 1, log: [] };

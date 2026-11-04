@@ -94,10 +94,8 @@ function main() {
   const page = join(build, 'index.html');
   writeFileSync(page, readFileSync(page, 'utf8').split('__LAWNMAP__').join(`https://${lawnmap}`).split('__HOME__').join(`https://${home}`));
   cpSync(join(scan, 'lib'), join(build, 'lib'), { recursive: true });
-  /* THE LIDAR READERS for /lidar-worker.js, copied from the water tool's copies (water session) and the shade map's
-     vendored laz-perf (features session), unchanged: ept.js, las.js, laz.js, datum.js, browser-io.js and
-     vendor/laz-perf.*. Not this tool's to edit; a change there is theirs. */
-  for (const f of ['ept.js', 'las.js', 'laz.js', 'datum.js', 'browser-io.js']) cpSync(join(root, 'water', 'lib', f), join(build, 'lib', f));
+  /* THE LIDAR MODEL FILE FORMAT (public/lib/lidar-model.js, the core session's): the real file over scan/lib's Node re-export. */
+  cpSync(join(root, 'public', 'lib', 'lidar-model.js'), join(build, 'lib', 'lidar-model.js'));
   /* THE SHADE MAP'S OWN MODULES, unchanged, under /lib/shade/ (CLAUDE.md "One way to read lidar"): structures.js, the
      shared tree-versus-building rule, and what it imports (canopy.js, grid.js, ground.js, ept.js, las.js). All of
      them, so a module the features session adds to that chain is there too. */

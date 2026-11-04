@@ -17,6 +17,8 @@
  *   GET    /api/maps/one?id=      one map with every tool's data
  *   POST   /api/maps/new          a map started by another tool (address, point, line)
  *   POST   /api/maps/tool?id=&tool=   one tool's part: { data, basedOn }
+ *   PUT    /api/maps/model?id=&tool=  the finished lidar model, a binary file (public/lib/lidar-model.js)
+ *   GET    /api/maps/model?id=&tool=  the same bytes back; 404 until the tool has written one
  *   GET    /api/tools             the tools, their order and where they open
  *
  * The contract the other tools build against is docs/MAPS.md.
@@ -26,7 +28,7 @@ import { currentUser } from './auth.js';
 import { accountsEnabled } from './db.js';
 import {
   USER_MAX_MAPS, GUEST_MAX_MAPS, findGuest, newGuest, userOwner, guestOwner,
-  listMaps, getMap, upsertMap, deleteMap, putTool, toolsFor,
+  listMaps, getMap, upsertMap, deleteMap, putTool, toolsFor, putModel, getModel,
 } from './unified.js';
 
 /** How many an account keeps (unified.js USER_MAX_MAPS). */
@@ -161,6 +163,29 @@ export async function handleMaps(request, env, url, origin, ctx, json) {
     if (r.error === 'no-map') return reply({ error: 'no-map', ...who }, 404);
     if (r.error) return reply(r, 400);
     return reply({ ...r, ...who });
+  }
+
+  /* ----------------------------------------------------- /api/maps/model */
+  if (path === '/api/maps/model') {
+    const key = url.searchParams.get('id');
+    const tool = url.searchParams.get('tool');
+    if (!key || !tool) return reply({ error: 'id and tool required' }, 400);
+    if (request.method === 'PUT' || request.method === 'POST') {
+      const bytes = await request.arrayBuffer();
+      const r = owner ? await putModel(env, owner, key, tool, bytes) : { error: 'no-map' };
+      if (r.error === 'no-map') return reply({ error: 'no-map', ...who }, 404);
+      if (r.error === 'no-bucket') return reply({ error: 'no-bucket', message: 'the site has no bucket for models' }, 503);
+      if (r.error) return reply(r, r.error === 'too-big' ? 413 : 400);
+      return reply({ ...r, ...who });
+    }
+    if (request.method === 'GET' || request.method === 'HEAD') {
+      const obj = owner ? await getModel(env, owner, key, tool) : null;
+      if (!obj) return reply({ error: 'no-model', ...who }, 404);
+      const headers = new Headers({ 'Content-Type': 'application/octet-stream', 'Cache-Control': 'private, no-store', 'Content-Length': String(obj.size) });
+      if (obj.customMetadata?.at) headers.set('X-Model-At', obj.customMetadata.at);
+      return withCookies(new Response(request.method === 'HEAD' ? null : obj.body, { status: 200, headers }), cookies);
+    }
+    return reply({ error: 'GET or PUT' }, 405);
   }
 
   return reply({ error: 'Not found' }, 404);

@@ -130,13 +130,13 @@ export function makeDrawer(gl) {
 /**
  * THE LOT'S LIDAR AS A MESH, in map coordinates (e, height, n), from what the worker sends (scan/public/lidar-worker.js
  * overlay): solids [e, n, z0, z1] per 0.25 m cell (walls, fences, trunks, shrubs: what the match matches against) and
- * tall [e, n, z0, z1, roof] per 1 m cell (canopy, or a roof). Returns { solids: verts, canopy: verts, roofs: verts }.
+ * tall [e, n, z0, z1, roof] per shade-map column (overlay.tallCell m on a side; canopy, or a roof). Returns { solids: verts, canopy: verts, roofs: verts }.
  */
 export function lidarMeshes(overlay) {
   const solids = [], canopy = [], roofs = [];
   const s = overlay.solids || [], c = overlay.cell || 0.25;
   for (let i = 0; i + 3 < s.length; i += 4) box(solids, s[i], s[i + 2], s[i + 1], s[i] + c, s[i + 3], s[i + 1] + c);
-  const t = overlay.tall || [];
-  for (let i = 0; i + 4 < t.length; i += 5) box(t[i + 4] ? roofs : canopy, t[i], t[i + 2], t[i + 1], t[i] + 1, t[i + 3], t[i + 1] + 1);
+  const t = overlay.tall || [], tc = overlay.tallCell || 1;
+  for (let i = 0; i + 4 < t.length; i += 5) box(t[i + 4] ? roofs : canopy, t[i], t[i + 2], t[i + 1], t[i] + tc, t[i + 3], t[i + 1] + tc);
   return { solids, canopy, roofs };
 }

@@ -42,6 +42,20 @@ async function pool(items, n, fn) {
   await Promise.all(Array.from({ length: n }, async () => { while (i < items.length) { const x = items[i++]; await fn(x); } }));
 }
 
+/** One object's bytes from a bucket (the main site's models among them), or null when it is not there. */
+export const CORPUS_BUCKET = 'lawn-mapper-corpus';
+export async function readObject(bucket, key) {
+  const token = process.env.CLOUDFLARE_API_TOKEN;
+  if (!token) throw new Error('no CLOUDFLARE_API_TOKEN');
+  const base = `${API}/accounts/${await account(token)}/r2/buckets/${bucket}`;
+  for (let t = 0; t < 3; t++) {
+    const r = await fetch(`${base}/objects/${key.split('/').map(encodeURIComponent).join('/')}`, { headers: { Authorization: `Bearer ${token}` } }).catch(() => null);
+    if (r?.status === 404) return null;
+    if (r?.ok) return Buffer.from(await r.arrayBuffer());
+  }
+  throw new Error(`the object could not be read from ${bucket}`);
+}
+
 async function main() {
   let [cmd, walk, ...rest] = process.argv.slice(2);
   const token = process.env.CLOUDFLARE_API_TOKEN;

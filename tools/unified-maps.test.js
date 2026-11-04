@@ -145,6 +145,39 @@ let guestCookie;
     set.some((c) => c.startsWith(`${SESSION_COOKIE}=${token}`) && /Domain=example\.test/.test(c)), JSON.stringify(set));
 }
 
+/* ----------------------------------------- the finished lidar model (R2) */
+{
+  const store = new Map();
+  const fakeR2 = {
+    async put(k, body, opts) { store.set(k, { body: body instanceof ArrayBuffer ? body : await new Response(body).arrayBuffer(), ...opts }); },
+    async get(k) { const o = store.get(k); return o ? { body: o.body, size: o.body.byteLength, customMetadata: o.customMetadata, httpMetadata: o.httpMetadata } : null; },
+    async head(k) { return store.has(k) ? {} : null; },
+    async delete(k) { store.delete(k); },
+    async list({ prefix }) { return { objects: [...store.keys()].filter((k) => k.startsWith(prefix)).map((key) => ({ key })) }; },
+  };
+  const env3 = { DB: testDb(), CORPUS: fakeR2 };
+  const s = await call(env3, req('/api/maps', { method: 'POST', body: save() }));
+  const gc = cookieFrom(s.cookies, GUEST_COOKIE), id = encodeURIComponent(save().id);
+  const bytes = new TextEncoder().encode('LMDL' + 'x'.repeat(20));
+  const raw = (path, method, cookie, body) => handleMaps(new Request(`${HOST}${path}`, { method, headers: { Cookie: cookie }, ...(body ? { body } : {}) }), env3, new URL(`${HOST}${path}`), '', ctx, json);
+  const missing = await raw(`/api/maps/model?id=${id}&tool=shade`, 'GET', gc);
+  check('no model yet: 404', missing.status === 404 && (await missing.json()).error === 'no-model');
+  const put = await raw(`/api/maps/model?id=${id}&tool=shade`, 'PUT', gc, bytes);
+  check('the shade map writes its model', put.status === 200 && (await put.json()).bytes === bytes.length);
+  const got = await raw(`/api/maps/model?id=${id}&tool=shade`, 'GET', gc);
+  check('and the same bytes come back, private', got.status === 200 && new Uint8Array(await got.arrayBuffer()).length === bytes.length && /no-store/.test(got.headers.get('Cache-Control')));
+  const stranger = await raw(`/api/maps/model?id=${id}&tool=shade`, 'GET', '');
+  check('a stranger gets nothing', stranger.status === 404);
+  const badTool = await raw(`/api/maps/model?id=${id}&tool=lawn`, 'PUT', gc, bytes);
+  check('only a tool may write one', badTool.status === 400);
+  const noMap = await raw(`/api/maps/model?id=nope&tool=shade`, 'PUT', gc, bytes);
+  check('and only for a map the owner has', noMap.status === 404);
+  const gone = await call(env3, req(`/api/maps?id=${id}`, { method: 'DELETE', cookie: gc }));
+  check('deleting the map deletes its model', gone.res.status === 200 && store.size === 0);
+  const noBucket = await handleMaps(new Request(`${HOST}/api/maps/model?id=${id}&tool=shade`, { method: 'PUT', headers: { Cookie: gc }, body: bytes }), { DB: env3.DB }, new URL(`${HOST}/api/maps/model?id=${id}&tool=shade`), "", ctx, json);
+  check("without a bucket the site says so", noBucket.status === 503 || noBucket.status === 404, `${noBucket.status} ${await noBucket.text()}`);
+}
+
 /* -------------------------------------------------------- idle guests go */
 {
   const env2 = { DB: testDb() };

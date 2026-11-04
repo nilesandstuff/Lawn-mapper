@@ -3,32 +3,33 @@
  * lawn: "there are blue 'walls' underneath tree canopies... there should be plenty of data from this walk for you to
  * dig into." Run by workflow "S. Yard AR tool", task `twin`, on a twin already fetched (scan/tools/twin-r2.mjs get).
  *
- * The lidar is read exactly as the AR page reads it (scan/lib/lidar-load.js), and the phone's points placed as the
- * walk placed them (its lidar fixes, else its references; scan/lib/twin.js placer). Then, counted:
- *   - the solid cells the match uses, by where they came from: the lidar's own points 0.25-2.5 m up (trunks, fences,
- *     low branches, shrubs) or the walls drawn 2 ft inside a BUILDING or a STRUCTURE; and how many of each stand
- *     under a tree's crown (the shade map's TREE / SOLID_TREE columns);
+ * The lidar is THE SHADE MAP'S FINISHED MODEL (public/lib/lidar-model.js), read from the main site's bucket and
+ * gridded exactly as the AR page grids it (scan/lib/lidar-load.js gridsFromModel; since 2026-11-04 the AR rebuilds
+ * nothing from points), and the phone's points placed as the walk placed them (its lidar fixes, else its references;
+ * scan/lib/twin.js placer). Then, counted:
+ *   - the solid cells the match uses, by where they came from: a column the shade map's cubes fill at the phone's
+ *     height (a trunk, a hedge, a structure, unknown) or the walls drawn 2 ft inside a BUILDING; and how many of
+ *     each stand in or by a tree's column;
  *   - the STRUCTURE columns, and how many touch a tree's (the ring round canopies);
  *   - the phone's standing points: how many land within 30 cm of a solid cell, over a crown or not;
  *   - the solid cells near the walk that the phone never saw anything at (phantoms).
- * NUMBERS ONLY: no coordinates, no address, no picture. The map is read with MAPS_READ_TOKEN from SITE.
+ * NUMBERS ONLY: no coordinates, no address, no picture. The map is read from the database with the Cloudflare token.
  *
- *   SITE=https://lawnmap.example.com MAPS_READ_TOKEN=... node scan/tools/twin-check.mjs twin
+ *   CLOUDFLARE_API_TOKEN=... node scan/tools/twin-check.mjs twin
  */
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { PNG as PngJs } from 'pngjs';
-import { pointsIn, toMerc } from '../../water/lib/ept.js';
-import { nad83Correction } from '../../water/lib/datum.js';
-import { nodeIo } from '../../water/lib/node-io.js';
+import { createHash } from 'node:crypto';
+import { toMerc, ringsOf } from '../lib/photo.js';
 import { toLocal } from '../lib/frames.js';
-import { ringsOf } from '../lib/photo.js';
-import { loadLidar, CROWN_M } from '../lib/lidar-load.js';
-import { buildingsOnGrid, register, MIN_LANDED, placementCost, LAWN_LOW_M } from '../lib/lidar.js';
+import { gridsFromModel } from '../lib/lidar-load.js';
+import { decodeModel, modelUsable } from '../lib/lidar-model.js';
+import { buildingsOnGrid, register, MIN_LANDED, placementCost } from '../lib/lidar.js';
+import { readObject, CORPUS_BUCKET } from './twin-r2.mjs';
 import { disagreement, REF_TOL_M, REF_TOL_DEG } from '../lib/locate.js';
 import { readCloud, readTrack, placer, placeCloud } from '../lib/twin.js';
 import { apply } from '../lib/align.js';
-import { surfaceOf, lawnField, tally } from '../lib/surface.js';
+import { surfaceOf, tally } from '../lib/surface.js';
 import jpeg from 'jpeg-js';
 
 const pct = (a, b) => (b ? `${Math.round((100 * a) / b)}%` : '-');
@@ -46,12 +47,24 @@ async function readMap(id, site, key) {
     for (const t of query(`SELECT tool, data FROM map_tools WHERE owner_kind = 'user' AND owner_id = '${String(rows[0].user_id).replace(/'/g, "''")}' AND map_key = ${q}`)) {
       try { tools[t.tool] = { data: JSON.parse(t.data) }; } catch { /* unreadable part */ }
     }
-    return { ...payload, lng: payload.lng ?? rows[0].lng, lat: payload.lat ?? rows[0].lat, tools };
+    return { ...payload, lng: payload.lng ?? rows[0].lng, lat: payload.lat ?? rows[0].lat, tools, ownerId: rows[0].user_id };
   }
   if (!site || !key) throw new Error('the map needs the Cloudflare token, or SITE and MAPS_READ_TOKEN');
   const r = await fetch(`${site}/api/admin/saved-maps/one?id=${encodeURIComponent(id)}`, { headers: { Authorization: `Bearer ${key}` } });
   if (!r.ok) throw new Error(`the map could not be read (${r.status})`);
   return (await r.json()).map;
+}
+
+/** THE SHADE MAP'S FINISHED MODEL of the map (public/lib/lidar-model.js), as the page reads it: from the main site's
+ *  bucket by the key routes-maps.js writes it under (unified.js modelKey), since the site answers the runner 403. */
+async function readModel(mapKey, ownerId) {
+  if (!ownerId) throw new Error('the model needs the map\'s owner');
+  const key = `models/user/${ownerId}/${createHash('sha256').update(String(mapKey)).digest('hex')}/shade.bin`;
+  const bytes = await readObject(CORPUS_BUCKET, key);
+  if (!bytes) throw new Error('this map has no lidar model yet: open it in the shade map first, which builds and saves it');
+  const m = decodeModel(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+  if (!modelUsable(m)) throw new Error('the lidar model is incomplete');
+  return m;
 }
 
 async function main() {
@@ -106,26 +119,16 @@ async function main() {
   const es = pts.map((p) => p[0]), ns = pts.map((p) => p[1]);
   const box = pts.length ? [Math.min(...es) - 20, Math.min(...ns) - 20, Math.max(...es) + 20, Math.max(...ns) + 20] : [-60, -60, 60, 60];
   const lawnRings = ringsOf(m.shapes || []).map((r) => r.map((p) => toLocal(origin, p)));
-  const L = await loadLidar({ origin, box, lidar: m.tools?.shade?.data?.lidar || null, lawn: lawnRings, fetchLidar: async (lng, lat) => {
-    const res = await fetch(`${site}/api/shade/lidar?lng=${lng}&lat=${lat}`);
-    return res.ok ? (await res.json()).clouds?.[0] || null : null;
-  } }, { pointsIn, toMerc, nad83Correction, io: nodeIo(), rule: () => Promise.all([import('../../public/shade/structures.js'), import('../../public/shade/grid.js')]),
-    decodePng: async (buf) => { const png = PngJs.sync.read(Buffer.from(buf)); return { data: png.data, width: png.width, height: png.height }; } });
+  const model = await readModel(meta.map, m.ownerId);
+  const S = await import('../../public/shade/structures.js');
+  const L = { ...gridsFromModel(model, { origin, box, lawn: lawnRings, S, toMerc }), model };
   const { G, shade } = L;
   const W = G.W, H = G.H, N = W * H;
-  console.log(`Lidar: ${L.cols.n.toLocaleString()} points over ${Math.round((box[2] - box[0]) * (box[3] - box[1])).toLocaleString()} m2 (${(L.cols.n / ((box[2] - box[0]) * (box[3] - box[1]))).toFixed(1)} a m2), shift ${L.how}; ${L.rule}.`);
-  if (L.counts) console.log(`Shared rule, 1 m columns: ${JSON.stringify(L.counts)}.`);
+  console.log(`Lidar: the shade map's model (${model.meta.at ? String(model.meta.at).slice(0, 10) : 'undated'}), ${(shade.sgrid.w * shade.sgrid.h).toLocaleString()} columns over ${Math.round((box[2] - box[0]) * (box[3] - box[1])).toLocaleString()} m2, shift ${L.how}; ${L.rule}.`);
+  if (L.counts) console.log(`The model's columns: ${JSON.stringify(L.counts)} (standing: solid for the match at the phone's height).`);
 
-  // where each solid cell came from: the lidar's own low points, or a drawn wall; and under a crown or not
-  const band = new Uint8Array(N);
-  const B = { e: L.e, n: L.n, z: L.cols.z, cls: L.cols.cls };
-  for (let i = 0; i < L.cols.n; i++) {
-    const c = B.cls[i]; if (c === 2 || c === 7 || c === 18 || c === 9 || c === 6) continue;
-    const cc = Math.floor((B.e[i] - box[0]) / G.cell), rr = Math.floor((box[3] - B.n[i]) / G.cell);
-    if (cc < 0 || rr < 0 || cc >= W || rr >= H) continue;
-    const h = B.z[i] - G.dem[rr * W + cc];
-    if (h > 0.25 && h < 2.5) band[rr * W + cc] = 1;
-  }
+  // where each solid cell came from: a column solid at the phone's height (a tree's trunk, a hedge, a structure, unknown), or a building's drawn wall; and under a crown or not
+  const band = new Uint8Array(N); // the shade map's standing columns, filled below
   let crown = new Uint8Array(N), structure = new Uint8Array(N), building = new Uint8Array(N);
   let patchOf = null; const patchRows = [];
   const mPerUnit = L.k; // 3857 units to metres at this latitude
@@ -134,7 +137,8 @@ async function main() {
   const patchAtCell = (k) => { if (!patchOf) return -1; const { sgrid } = shade; const c0 = columnAt(k); if (c0 < 0) return -1; const cx = c0 % sgrid.w, cy = (c0 / sgrid.w) | 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const xx = cx + dx, yy = cy + dy; if (xx >= 0 && yy >= 0 && xx < sgrid.w && yy < sgrid.h && patchOf[yy * sgrid.w + xx] >= 0) return patchOf[yy * sgrid.w + xx]; } return -1; };
   if (shade) {
     const { S, sgrid, kind } = shade;
-    const tree = Uint8Array.from(kind, (v, j) => ((v === S.TREE || v === S.SOLID_TREE) && (!shade.stats?.top || shade.stats.top[j] >= CROWN_M) ? 1 : 0)); // crowns, as the page takes them
+    const tree = Uint8Array.from(kind, (v) => (v === S.TREE || v === S.SOLID_TREE ? 1 : 0)); // crowns, as the shade map has them
+    { const standing = buildingsOnGrid(Uint8Array.from(kind, (v) => (v !== S.BUILDING && v !== S.NOTHING ? 1 : 0)), sgrid, box, G.cell, [L.ox, L.oy], L.k, 1); for (let k = 0; k < N; k++) if (G.occ[k] && standing[k] && !(L.footprint && L.footprint[k])) band[k] = 1; }
     crown = buildingsOnGrid(tree, sgrid, box, G.cell, [L.ox, L.oy], L.k, 1);
     structure = buildingsOnGrid(kind, sgrid, box, G.cell, [L.ox, L.oy], L.k, S.STRUCTURE);
     building = buildingsOnGrid(kind, sgrid, box, G.cell, [L.ox, L.oy], L.k, S.BUILDING);
@@ -183,14 +187,14 @@ async function main() {
   // the solid cells by source
   const near = (arr, k, r = 1) => { const x = k % W, y = (k / W) | 0; for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) { const xx = x + dx, yy = y + dy; if (xx >= 0 && yy >= 0 && xx < W && yy < H && arr[yy * W + xx]) return true; } return false; };
   const src = { band: 0, bandUnderCrown: 0, wall: 0, wallOfStructure: 0, wallOfStructureUnderCrown: 0, wallOfBuilding: 0 };
-  const kindOfSolid = new Uint8Array(N); // 1 band, 2 wall of a building, 3 wall of a structure
+  const kindOfSolid = new Uint8Array(N); // 1 a column solid at the phone's height, 2 wall of a building, 3 a structure's cell
   for (let k = 0; k < N; k++) {
     if (!G.occ[k]) continue;
     if (band[k]) { src.band++; kindOfSolid[k] = 1; if (crown[k]) src.bandUnderCrown++; continue; }
     src.wall++;
     if (near(structure, k, 4) && !near(building, k, 4)) { src.wallOfStructure++; kindOfSolid[k] = 3; if (near(crown, k, 4)) src.wallOfStructureUnderCrown++; } else { src.wallOfBuilding++; kindOfSolid[k] = 2; }
   }
-  console.log(`Solid cells (0.25 m) the match uses: ${G.solid.toLocaleString()}. From the lidar's own points 0.25-2.5 m up: ${src.band.toLocaleString()} (${pct(src.bandUnderCrown, src.band)} of them under a crown). Drawn walls: ${src.wall.toLocaleString()}, of buildings ${src.wallOfBuilding.toLocaleString()}, of STRUCTUREs ${src.wallOfStructure.toLocaleString()} (${pct(src.wallOfStructureUnderCrown, src.wallOfStructure)} of those by a crown).`);
+  console.log(`Solid cells (0.25 m) the match uses: ${G.solid.toLocaleString()}. Columns solid at the phone's height: ${src.band.toLocaleString()} (${pct(src.bandUnderCrown, src.band)} of them tree columns). Building walls drawn 2 ft in: ${src.wallOfBuilding.toLocaleString()}; structures' cells: ${src.wallOfStructure.toLocaleString()} (${pct(src.wallOfStructureUnderCrown, src.wallOfStructure)} within 1 m of a crown).`);
 
   // the phone's points, as the walk placed them
   const modes = live.fixes.length ? ['both', 'refs'] : ['refs'];
@@ -234,7 +238,7 @@ async function main() {
       patchRows[p].wallCells++; if (walked[k]) { patchRows[p].wallCellsNearWalk++; if (!seenNear[k]) patchRows[p].phantoms++; }
     }
     console.log(`Placed by ${mode === 'refs' ? 'the references alone' : 'the walk\'s fixes, else its references'}: ${P.placed.toLocaleString()} points (${P.unplaced.toLocaleString()} not placed). Standing points ${st.toLocaleString()}: ${pct(stHit, st)} within 30 cm of a solid cell (on the lidar's own points ${byKind[1]}, on building walls ${byKind[2]}, on STRUCTURE walls ${byKind[3]}); ${pct(stOverCrown, st)} of them stand under a crown, and of those ${pct(stOverCrownHit, stOverCrown)} land. Ground points ${gr.toLocaleString()}.`);
-    console.log(`  Solid cells within 6 m of the walk that the phone saw nothing at (phantoms): the lidar's own ${ph[1]} of ${tot[1]} (${pct(ph[1], tot[1])}), building walls ${ph[2]} of ${tot[2]} (${pct(ph[2], tot[2])}), STRUCTURE walls ${ph[3]} of ${tot[3]} (${pct(ph[3], tot[3])}).`);
+    console.log(`  Solid cells within 6 m of the walk that the phone saw nothing at (phantoms): the standing columns ${ph[1]} of ${tot[1]} (${pct(ph[1], tot[1])}), building walls ${ph[2]} of ${tot[2]} (${pct(ph[2], tot[2])}), STRUCTURE walls ${ph[3]} of ${tot[3]} (${pct(ph[3], tot[3])}).`);
   }
 
   if (patchRows.length) {
@@ -244,45 +248,18 @@ async function main() {
   // THE GROUND'S COLOUR, as the page now reads it live: each ground point labelled from the twin's picture nearest it
   // in time that sees it (scan/lib/surface.js), and the lawn the owner traced as the match's lawn edge
   if (G.lawnSd) { let cells = 0; for (const v of G.lawnSd) if (v > 0) cells++; console.log(`The traced lawn: ${Math.round(cells * G.cell * G.cell).toLocaleString()} m2 on the match's grid.`); }
-  // SOLID CELLS IN THE LAWN (the owner, 2026-11-03: "solid blue columns showing up in the lawn area that weren't
-  // associated with anything I was seeing... on the south end of the bigger strip of grass on the hill"): the lidar's
-  // own low points more than 0.5 m inside the traced lawn, by class, height over the ground the match took, returns,
-  // and whether the phone saw anything within 0.5 m of them (placed by the references)
-  if (G.lawnSd) {
-    const P = placeCloud(recs, placer(live, 'refs')), seenAt = new Uint8Array(N);
-    for (let i = 0; i < P.pts.length; i += 4) {
-      if (P.pts[i + 3] !== 1) continue;
-      const c = Math.floor((P.pts[i] - box[0]) / G.cell), r2 = Math.floor((box[3] - P.pts[i + 1]) / G.cell);
-      for (let dr = -2; dr <= 2; dr++) for (let dc = -2; dc <= 2; dc++) { const rr = r2 + dr, cc = c + dc; if (rr >= 0 && cc >= 0 && rr < H && cc < W) seenAt[rr * W + cc] = 1; }
+  // SOLID CELLS IN THE LAWN (the owner, 2026-11-03: blue columns in the grass): now the shade map's columns, so what
+  // stands inside the traced lawn is read from its kinds, for the shade map to judge
+  if (G.lawnSd && shade) {
+    const inLawn = new Map();
+    for (let k = 0; k < N; k++) {
+      if (!G.occ[k] || !(G.lawnSd[k] > 0.5)) continue;
+      const j = columnAt(k); if (j < 0) continue;
+      const v = shade.kind[j]; inLawn.set(v, (inLawn.get(v) || 0) + 1);
     }
-    const cls = {}, hs = [], rets = {}, cells = new Set(), seenCells = new Set();
-    let lawnN = 0, ys = [], y0 = Infinity, y1 = -Infinity;
-    for (let k = 0; k < N; k++) if (G.lawnSd[k] > 0) { lawnN++; const r2 = (k / W) | 0; y0 = Math.min(y0, r2); y1 = Math.max(y1, r2); }
-    for (let i = 0; i < L.cols.n; i++) {
-      const c0 = L.cols.cls[i]; if (c0 === 2 || c0 === 7 || c0 === 18 || c0 === 9 || c0 === 6) continue;
-      const cc = Math.floor((L.e[i] - box[0]) / G.cell), rr = Math.floor((box[3] - L.n[i]) / G.cell);
-      if (cc < 0 || rr < 0 || cc >= W || rr >= H) continue;
-      const k = rr * W + cc;
-      if (!(G.lawnSd[k] > 0.5)) continue;
-      const h = L.cols.z[i] - G.dem[k];
-      if (!(h > 0.25 && h < 2.5)) continue;
-      cls[c0] = (cls[c0] || 0) + 1; hs.push(h); const nr = L.cols.nret ? L.cols.nret[i] : 0; rets[nr] = (rets[nr] || 0) + 1;
-      cells.add(k); if (seenAt[k]) seenCells.add(k); ys.push(rr);
-    }
-    hs.sort((a2, b2) => a2 - b2);
-    const south = ys.filter((r2) => r2 > y0 + (2 * (y1 - y0)) / 3).length;
-    // the ground under them: how far the match's ground there sits from the lowest lidar ground return within 2 m
-    let demGap = [];
-    for (const k of cells) {
-      const cc = k % W, rr = (k / W) | 0; let lowest = Infinity;
-      for (let i = 0; i < L.cols.n; i++) { if (L.cols.cls[i] !== 2) continue; const c2 = Math.floor((L.e[i] - box[0]) / G.cell), r3 = Math.floor((box[3] - L.n[i]) / G.cell); if (Math.abs(c2 - cc) <= 8 && Math.abs(r3 - rr) <= 8) lowest = Math.min(lowest, L.cols.z[i]); }
-      if (Number.isFinite(lowest)) demGap.push(G.dem[k] - lowest);
-      if (demGap.length > 200) break;
-    }
-    demGap.sort((a2, b2) => a2 - b2);
-    let stillSolid = 0; for (const k of cells) if (G.occ[k]) stillSolid++;
-    console.log(`Still solid after the lawn rule (unclassified under ${LAWN_LOW_M} m in the lawn is ground): ${stillSolid} of the ${cells.size} cells below.`);
-    console.log(`Low-point cells more than 0.5 m inside the traced lawn: ${cells.size} (of ${lawnN.toLocaleString()} lawn cells), from ${hs.length} lidar points; ${pct(south, ys.length)} of those points in the southern third of the lawn. Classes ${JSON.stringify(cls)} (1 unclassified, 3-5 low/medium/high vegetation); height over the match's ground: median ${hs.length ? hs[hs.length >> 1].toFixed(2) : '-'} m, lowest ${hs.length ? hs[0].toFixed(2) : '-'}, highest ${hs.length ? hs[hs.length - 1].toFixed(2) : '-'}; returns a pulse ${JSON.stringify(rets)}. The phone saw something within 0.5 m of ${seenCells.size} of the ${cells.size} cells. The match's ground there sits ${demGap.length ? demGap[demGap.length >> 1].toFixed(2) : '-'} m above the lowest ground return within 2 m (median).`);
+    let lawnN = 0; for (const v of G.lawnSd) if (v > 0.5) lawnN++;
+    const names = { [S.BUILDING]: 'building', [S.TREE]: 'tree', [S.SOLID_TREE]: 'solid tree', [S.STRUCTURE]: 'structure', [S.UNKNOWN]: 'unknown' };
+    console.log(`Solid cells more than 0.5 m inside the traced lawn: ${[...inLawn.values()].reduce((a2, b2) => a2 + b2, 0)} of ${lawnN.toLocaleString()} lawn cells, by the shade map's kind: ${[...inLawn.entries()].map(([v, c]) => `${names[v] || v} ${c}`).join(', ') || 'none'}.`);
   }
   let surfOf = new Map(); // record index -> 'grass' | 'pave'
   let standSurf = new Map(); // standing record index -> 'grass' | 'pave' | 'none', from the picture

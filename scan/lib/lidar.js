@@ -12,10 +12,12 @@
  * with our own 3d map to place one on top of the other?"; FINDINGS H68).
  *
  * The phone's depth picture (Chrome gives it on the owner's phone: 52 of 53 frames, H68) turned into points round
- * the phone, in ARCore's own level frame; the lot's 3DEP lidar turned into two grids in the map's frame:
- *   dem   the bare ground's height (the lidar's ground points), 0.25 m cells
- *   occ   what stands at chest height: lidar points 0.25-2.5 m above the ground (fences, bushes, trunks, cars, low
- *         branches), and the house's walls (its roof's footprint pulled in by the eaves, its outline)
+ * the phone, in ARCore's own level frame; the lot's lidar, AS THE SHADE MAP FINISHED IT (public/lib/lidar-model.js;
+ * the owner, 2026-11-04: the AR follows the shade map's output and rebuilds nothing), turned into grids in the map's
+ * frame by buildGrids below:
+ *   dem   the shade map's ground, 0.25 m cells
+ *   occ   what stands: every column the shade map calls a tree, a solid tree, a low structure or unknown, and a
+ *         building's walls (its outline by the shade map's wallsOf)
  *   dist  how far each cell is from the nearest such thing, metres (capped)
  * The phone's points that stand 0.3-2.5 m above its ground must land on occ; its ground points must follow the dem's
  * shape (a slope, a hollow) up to one height offset. The turn and shift that do both best is the fix.
@@ -62,55 +64,36 @@ export function buildingsOnGrid(kind, sgrid, box, cell, origin3857, k, BUILDING 
 }
 
 /**
- * The lot's lidar as grids. pts: { e, n, z, cls } typed columns in map metres (count = e.length); box [e0, n0, e1, n1].
- * opts.buildings: the shared rule's buildings on this grid (buildingsOnGrid); when given it replaces this file's own
- * roof rule (roofMask, the water map's, kept only as the fallback when the shared module cannot be loaded).
- * opts.footprint: the shared rule's inside-of-the-walls on this grid; when given it replaces the pull-in by `eave`.
+ * THE MATCH'S GRIDS FROM THE SHADE MAP'S FINISHED MODEL (owner, 2026-11-04: "I want the AR to perfectly follow the
+ * shade map's output... The AR shouldn't be rebuilding lidar maps from scratch"). Nothing here reads a point or
+ * judges a height: what stands where, and how tall, is the shade map's answer (public/lib/lidar-model.js), put on this
+ * 0.25 m grid in map metres by scan/lib/lidar-load.js. This file adds only the match's own geometry (the distance
+ * fields, each wall's inset, the roof's edge), and every step of it is listed in docs/SCAN-DIVERGENCES.md.
+ *
+ *   fine.dem     Float32 W*H  the shade map's ground (absolute m) under each cell
+ *   fine.things  Uint8   W*H  cells of a column the shade map calls a tree, a solid tree, a low structure or unknown:
+ *                             solid for the match, the whole column, as the shade map has it
+ *   fine.bld     Uint8   W*H  cells under a BUILDING column (the roof)
+ *   fine.walls   Uint8   W*H  the inside of a building's walls (structures.js wallsOf, the shade map's own rule)
+ *   fine.top     Float32 W*H  the column's top over the ground (m), for drawing and for the roof's walls
  */
-export function buildGrids(pts, box, { cell = 0.25, band = [0.25, 2.5], cap = 5, eave = 0.5, buildings = null, footprint = null, under = null, lowIn = null } = {}) {
+export function buildGrids(fine, box, { cell = 0.25, cap = 5 } = {}) {
   const W = Math.max(1, Math.ceil((box[2] - box[0]) / cell)), H = Math.max(1, Math.ceil((box[3] - box[1]) / cell));
-  const idx = (e, n) => { const c = Math.floor((e - box[0]) / cell), r = Math.floor((box[3] - n) / cell); return c >= 0 && c < W && r >= 0 && r < H ? r * W + c : -1; };
-  const dem = new Float32Array(W * H).fill(NaN);
-  const N = pts.e.length;
-  for (let i = 0; i < N; i++) {
-    if (pts.cls[i] !== 2) continue;
-    const k = idx(pts.e[i], pts.n[i]); if (k < 0) continue;
-    if (!(dem[k] <= pts.z[i])) dem[k] = pts.z[i];
-  }
+  const N = W * H;
+  for (const [name, a] of Object.entries(fine)) if (a && a.length !== N) throw new Error(`lidar grids: ${name} has ${a.length} cells, not ${N}`);
+  const dem = Float32Array.from(fine.dem || new Float32Array(N).fill(NaN));
   fill(dem, W, H);
-  const occ = new Uint8Array(W * H), occTop = new Float32Array(W * H);
-  for (let i = 0; i < N; i++) {
-    const c = pts.cls[i];
-    if (c === 2 || c === 7 || c === 18 || c === 9 || c === 6) continue;
-    const k = idx(pts.e[i], pts.n[i]); if (k < 0) continue;
-    // opts.under: cells under a tree's crown (the shared rule's TREE / SOLID_TREE), whose low points are not used: on
-    // the owner's walk of 2026-11-03 the phone saw nothing at 84% of the low-point cells near it (SCAN-H3), and under a
-    // crown they are drawn as blue walls the owner saw and could not account for
-    if (under && under[k]) continue;
-    const h = pts.z[i] - dem[k];
-    // opts.lowIn: cells well inside the lawn the owner traced, where an unclassified point under LAWN_LOW_M is the
-    // ground mislabelled on a slope, not a thing (SCAN-H5: 181 such cells on the hill lawn, every point class 1,
-    // single return, median 0.51 m over the match's ground, nothing the phone saw at 155 of them)
-    if (lowIn && lowIn[k] && c === 1 && h < LAWN_LOW_M) continue;
-    if (h > band[0] && h < band[1]) { occ[k] = 1; if (h > occTop[k]) occTop[k] = h; }
-  }
-  const bld = buildings && buildings.length === W * H ? buildings : roofMask(pts, box, cell, W, H, dem);
+  const things = fine.things || new Uint8Array(N), bld = fine.bld || new Uint8Array(N), walls = fine.walls || new Uint8Array(N), top = fine.top || null;
+  const occ = things.slice();
   /* A building is its walls, not its inside (the phone cannot see in, and points landing inside a solid footprint
-     would cost nothing wherever they went): the roof's footprint pulled in by the eaves (0.5 m), then its
-     outline. */
-  // the roof's points are sparser than the cells: grow the roof by 0.5 m to close it, then shrink it back by that and the eaves
-  /* opts.footprint: the inside of the walls by the shared rule (structures.js wallsOf: 2 ft in from the roof's edge,
-     the owner's number, 2026-11-03), put on this grid; else this file's own pull-in by `eave`. */
-  const grow = Math.max(1, Math.round(0.5 / cell));
-  const walls = footprint && footprint.length === W * H ? footprint : erode(dilate(bld, W, H, grow), W, H, grow + eave / cell);
-  const occNoWalls = occ.slice();
+     would cost nothing wherever they went): the outline of the inside-of-the-walls the shade map's wallsOf gives. */
   for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) {
     const k = r * W + c; if (!walls[k]) continue;
     if (r === 0 || c === 0 || r === H - 1 || c === W - 1 || !walls[k - 1] || !walls[k + 1] || !walls[k - W] || !walls[k + W]) occ[k] = 1;
   }
-  let solid = 0; for (let k = 0; k < occ.length; k++) solid += occ[k];
-  // (core session, 2026-11-03) occTop: how tall each solid cell's points reach, and bld, the roof mask, so the AR
-  // page can draw what the match is matching against (docs/SCAN-PLAN.md SCAN-H2); walls are drawn to the roof.
+  const occTop = new Float32Array(N);
+  if (top) for (let k = 0; k < N; k++) if (occ[k] && Number.isFinite(top[k])) occTop[k] = top[k];
+  let solid = 0; for (let k = 0; k < N; k++) solid += occ[k];
   const g = { box, cell, W, H, dem, occ, occTop, bld, dist: distanceField(occ, W, H, cell, cap), solid };
   /* WALLS JUDGED ONE BY ONE, AND THE ROOF'S EDGE (owner, 2026-11-03: walls are "USUALLY within 2 feet of the
      overhang... But sometimes they're just 1 foot or less, and other times they could be 10 feet (like an
@@ -119,30 +102,29 @@ export function buildGrids(pts, box, { cell = 0.25, band = [0.25, 2.5], cap = 5,
        inset     how far inside the roof's edge each cell is (m; negative outside), for placementCost's wall term,
                  which charges a wall point by how far it is from 2 ft in, up to a small cap, so an ordinary wall
                  pulls the fix and a porch's or a sunroom's costs a little and pulls nothing;
-       distNW    the distance to the solid cells WITHOUT the drawn 2 ft walls (fences, trunks, low structures);
+       distNW    the distance to the solid cells WITHOUT the drawn walls (fences, trunks, low structures);
        distRoof  the distance to the roof's edge itself, which the lidar sees exactly and the phone sees when it
                  looks up (the gutter line): no inset to guess. */
   let any = 0; for (let k = 0; k < bld.length; k++) any += bld[k];
   if (any) {
-    // the roof closed first (gaps under 1 m filled), since a roof found from its points can be holed at 0.25 m
-    const roof = erode(dilate(bld, W, H, grow), W, H, grow);
-    const notBld = new Uint8Array(W * H), edge = new Uint8Array(W * H);
+    const roof = bld;
+    const notBld = new Uint8Array(N), edge = new Uint8Array(N);
     for (let k = 0; k < roof.length; k++) notBld[k] = roof[k] ? 0 : 1;
     for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) {
       const k = r * W + c; if (!roof[k]) continue;
       if (r === 0 || c === 0 || r === H - 1 || c === W - 1 || !roof[k - 1] || !roof[k + 1] || !roof[k - W] || !roof[k + W]) edge[k] = 1;
     }
     const inside = distanceField(notBld, W, H, cell, cap), outside = distanceField(roof, W, H, cell, cap);
-    const inset = new Float32Array(W * H);
+    const inset = new Float32Array(N);
     for (let k = 0; k < inset.length; k++) inset[k] = roof[k] ? inside[k] - cell / 2 : -outside[k] + cell / 2;
-    g.inset = inset; g.distNW = distanceField(occNoWalls, W, H, cell, cap); g.distRoof = distanceField(edge, W, H, cell, cap);
+    g.inset = inset; g.distNW = distanceField(things, W, H, cell, cap); g.distRoof = distanceField(edge, W, H, cell, cap);
     /* how far in, measured straight across a wall: for each of 8 headings, from each roof cell to the roof's edge along
        that heading and against it, the nearer. A porch wall 10 ft in reads 10 ft along its whole length, where the
        distance to the nearest edge would read less near the house's corners. Outside the roof, as inset. */
     const reach = WALL_BAND[1] + 0.5, stepM = cell / 2;
     g.rays = [];
     for (let h = 0; h < RAY_HEADINGS; h++) {
-      const a = (h * Math.PI) / RAY_HEADINGS, de = Math.cos(a), dn = Math.sin(a), ray = new Float32Array(W * H);
+      const a = (h * Math.PI) / RAY_HEADINGS, de = Math.cos(a), dn = Math.sin(a), ray = new Float32Array(N);
       for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) {
         const k = r * W + c;
         if (!roof[k]) { ray[k] = inset[k]; continue; }
@@ -158,72 +140,6 @@ export function buildGrids(pts, box, { cell = 0.25, band = [0.25, 2.5], cap = 5,
     }
   }
   return g;
-}
-
-/**
- * The roofs, on the fine grid. A cloud with building points (class 6): those. Otherwise (the owner's 2016 Kent County
- * cloud has only ground, unclassified and noise) the water map's own rule (lib/surface.js buildingMask): a 1 m cell
- * with returns over 2 m above the ground, no ground return, and at least 80% of them single echoes (a tree's crown
- * echoes more than once); pinholes closed; pieces under 15 m2 dropped.
- */
-function roofMask(pts, box, cell, W, H, dem) {
-  const N = pts.e.length, out = new Uint8Array(W * H);
-  let class6 = false;
-  for (let i = 0; i < N && !class6; i++) if (pts.cls[i] === 6) class6 = true;
-  const fineIdx = (e, n) => { const c = Math.floor((e - box[0]) / cell), r = Math.floor((box[3] - n) / cell); return c >= 0 && c < W && r >= 0 && r < H ? r * W + c : -1; };
-  if (class6) { for (let i = 0; i < N; i++) if (pts.cls[i] === 6) { const k = fineIdx(pts.e[i], pts.n[i]); if (k >= 0) out[k] = 1; } return out; }
-  if (!pts.nret) return out;
-  const C = 1, CW = Math.ceil((box[2] - box[0]) / C), CH = Math.ceil((box[3] - box[1]) / C);
-  const tall = new Uint16Array(CW * CH), single = new Uint16Array(CW * CH), grd = new Uint16Array(CW * CH);
-  for (let i = 0; i < N; i++) {
-    const c = Math.floor((pts.e[i] - box[0]) / C), r = Math.floor((box[3] - pts.n[i]) / C);
-    if (c < 0 || r < 0 || c >= CW || r >= CH) continue;
-    const j = r * CW + c, cl = pts.cls[i];
-    if (cl === 2) { grd[j]++; continue; }
-    if (cl === 7 || cl === 18 || cl === 9) continue;
-    const k = fineIdx(pts.e[i], pts.n[i]);
-    if (k < 0 || pts.z[i] - dem[k] < 2) continue;
-    tall[j]++; if (pts.nret[i] <= 1) single[j]++;
-  }
-  let m = new Uint8Array(CW * CH);
-  for (let j = 0; j < m.length; j++) m[j] = tall[j] > 0 && grd[j] === 0 && single[j] >= 0.8 * tall[j] ? 1 : 0;
-  // close one cell, then drop pieces under 15 m2
-  const closed = m.slice();
-  for (let r = 1; r < CH - 1; r++) for (let c = 1; c < CW - 1; c++) { const j = r * CW + c; if (!m[j] && ((m[j - 1] && m[j + 1]) || (m[j - CW] && m[j + CW]))) closed[j] = 1; }
-  m = closed;
-  const seen = new Int32Array(CW * CH).fill(-1);
-  for (let j0 = 0; j0 < m.length; j0++) {
-    if (!m[j0] || seen[j0] >= 0) continue;
-    const stack = [j0], part = []; seen[j0] = j0;
-    while (stack.length) { const j = stack.pop(); part.push(j); const r = Math.floor(j / CW), c = j % CW; for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) { const rr = r + dr, cc = c + dc; if (rr < 0 || cc < 0 || rr >= CH || cc >= CW) continue; const q = rr * CW + cc; if (m[q] && seen[q] < 0) { seen[q] = j0; stack.push(q); } } }
-    if (part.length * C * C < 15) for (const j of part) m[j] = 0;
-  }
-  for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) {
-    const cc = Math.floor(((c + 0.5) * cell) / C), rr = Math.floor(((r + 0.5) * cell) / C);
-    if (cc < CW && rr < CH && m[rr * CW + cc]) out[r * W + c] = 1;
-  }
-  return out;
-}
-
-/** A mask grown by n cells (4-neighbour steps). */
-function dilate(m, W, H, n) {
-  let cur = m;
-  for (let step = 0; step < n; step++) {
-    const next = cur.slice();
-    for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) { const k = r * W + c; if (!cur[k] && ((c > 0 && cur[k - 1]) || (c < W - 1 && cur[k + 1]) || (r > 0 && cur[k - W]) || (r < H - 1 && cur[k + W]))) next[k] = 1; }
-    cur = next;
-  }
-  return cur;
-}
-/** A mask shrunk by n cells (4-neighbour steps, n rounded). */
-function erode(m, W, H, n) {
-  let cur = m;
-  for (let step = 0; step < Math.round(n); step++) {
-    const next = new Uint8Array(W * H);
-    for (let r = 1; r < H - 1; r++) for (let c = 1; c < W - 1; c++) { const k = r * W + c; next[k] = cur[k] && cur[k - 1] && cur[k + 1] && cur[k - W] && cur[k + W] ? 1 : 0; }
-    cur = next;
-  }
-  return cur;
 }
 
 /** Holes in the ground filled from their neighbours, ring by ring. */
@@ -287,6 +203,9 @@ export function sample(g, arr, e, n) {
    from a foot outside to 3 ft in, growing to WALL_CAP by 12 ft, and for a long wall no more in all than a short
    one's. A porch wall 10 ft in therefore fits as a wall and costs a little; it never drags the fix to put it 2 ft in. The 2 ft walls drawn into g.dist are only for the
    drawing and the agreement dots now. */
+/* Two fits closer than this are the same place, not two places (2026-11-04): the shade map's model places a roof's edge
+   or a trunk only to its 1 m column, so a fix that rests on them is free by up to half a column each way. */
+export const SAME_PLACE_M = 1.5;
 export const WALL_USUAL = [-0.3, 0.9]; // m in from the roof's edge: no charge (a foot or less, to 2 ft and a bit)
 export const WALL_BAND = [-0.4, 3.6];  // m: anywhere in here a piece may be a wall (a 10 ft porch is the far end)
 export const WALL_CAP = 0.15;          // the charge per point for a wall at the far end (a missed point costs 1)...
@@ -294,7 +213,6 @@ export const WALL_WORTH = 20;          // ...for a wall of up to this many point
                                        // worth in all, so a long porch wall seen well cannot outvote the trees
 export const PIECE_GAP = 0.3;          // m: points closer than this, in the phone's frame, are one piece
 export const EDGE_NEAR = 1.5;          // m from the lawn's edge: a surface point near enough to say where it is
-export const LAWN_LOW_M = 1.2;        // m: in the traced lawn, unclassified points lower than this are not solid
 export const SURF_W = 8;              // the lawn-edge term's weight (SCAN-H4/H5: 8 with the roof edges at full weight found the most fixes
                                        // within the references' reach on both walks of 2026-11-03)
 export const HIGH_W = 1;               // what a high point (a roof's edge) counts for, against a standing one (was 0.5; SCAN-H5)
@@ -457,7 +375,7 @@ export function register(g, stand, ground, prior, { s = 1, searchM = 4, searchDe
   }
   const refined = seeds.map((x) => hop(g, stand, ground, refine(g, stand, ground, x.T, high, 0.5, surface), high, surface)).sort((a, b) => a.cost - b.cost);
   const best = refined[0];
-  const other = refined.find((r) => Math.hypot(r.T.tx - best.T.tx, r.T.ty - best.T.ty) > 1 || Math.abs(angDiff(r.T.theta, best.T.theta)) > (5 * Math.PI) / 180);
+  const other = refined.find((r) => Math.hypot(r.T.tx - best.T.tx, r.T.ty - best.T.ty) > SAME_PLACE_M || Math.abs(angDiff(r.T.theta, best.T.theta)) > (5 * Math.PI) / 180);
   const m = placementCost(g, stand, ground, best.T, { high, surface, detail: true });
   const out = { T: best.T, cost: m.cost, hits: m.hits, tz: m.tz, walls: m.walls, high: m.high, surface: m.surface, runnerUp: other ? { cost: other.cost, apartM: Math.hypot(other.T.tx - best.T.tx, other.T.ty - best.T.ty), apartDeg: Math.abs(angDiff(other.T.theta, best.T.theta)) * 180 / Math.PI } : null };
   out.landed = m.landed;

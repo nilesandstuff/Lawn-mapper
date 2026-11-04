@@ -69,6 +69,7 @@ jobs:
           node scan/test/twin.test.js
           node scan/test/minimap.test.js
           node scan/test/surface.test.js
+          node tools/lidar-model.test.js
 
       - name: The 8th Wall engine binary (pinned)
         if: ${{ (inputs.task || 'deploy') == 'deploy' }}

@@ -301,6 +301,58 @@ export async function deleteMap(env, owner, key) {
     env.DB.prepare(`DELETE FROM ${table} WHERE ${col} = ? AND key = ?`).bind(owner.id, key),
     env.DB.prepare('DELETE FROM map_tools WHERE owner_kind = ? AND owner_id = ? AND map_key = ?').bind(owner.kind, owner.id, key),
   ]);
+  await deleteModels(env, owner, key);
+}
+
+/*
+ * THE FINISHED LIDAR MODEL (core session, 2026-11-04; public/lib/lidar-model.js): one binary file per map and tool,
+ * written by the tool that builds it (the shade map) and read by every other, kept in the CORPUS bucket under
+ * models/<owner kind>/<owner id>/<sha-256 of the map key>/<tool>.bin. The map key can hold anything (an address
+ * once did), so it is hashed, never written into a key. Deleting the map deletes its models; signing in moves a
+ * guest's along with the maps (adoptGuest).
+ */
+export const MODEL_MAX_BYTES = 24 * 1024 * 1024;
+const modelPrefix = async (owner, key) => `models/${owner.kind}/${owner.id}/${await hash(key)}/`;
+export async function modelKey(owner, key, tool) { return `${await modelPrefix(owner, key)}${tool}.bin`; }
+
+export async function putModel(env, owner, key, tool, bytes) {
+  if (!isTool(tool)) return { error: 'unknown-tool' };
+  if (!env.CORPUS) return { error: 'no-bucket' };
+  if (!bytes || bytes.byteLength < 8) return { error: 'empty' };
+  if (bytes.byteLength > MODEL_MAX_BYTES) return { error: 'too-big', max: MODEL_MAX_BYTES };
+  const { table, col } = T(owner);
+  const exists = await env.DB.prepare(`SELECT 1 AS y FROM ${table} WHERE ${col} = ? AND key = ?`).bind(owner.id, key).first();
+  if (!exists) return { error: 'no-map' };
+  const t = nowIso();
+  await env.CORPUS.put(await modelKey(owner, key, tool), bytes, { httpMetadata: { contentType: 'application/octet-stream' }, customMetadata: { at: t, tool } });
+  return { tool, at: t, bytes: bytes.byteLength };
+}
+
+/** The model's R2 object, or null. */
+export async function getModel(env, owner, key, tool) {
+  if (!isTool(tool) || !env.CORPUS) return null;
+  return env.CORPUS.get(await modelKey(owner, key, tool));
+}
+
+export async function deleteModels(env, owner, key) {
+  if (!env?.CORPUS) return;
+  const prefix = await modelPrefix(owner, key);
+  const listed = await env.CORPUS.list({ prefix });
+  for (const o of listed.objects || []) await env.CORPUS.delete(o.key);
+}
+
+/** A guest's models become the account's (an object the account already has for the same map and tool stays). */
+async function adoptModels(env, guestId, userId, keys) {
+  if (!env?.CORPUS) return;
+  for (const key of keys) {
+    const from = await modelPrefix({ kind: 'guest', id: guestId }, key), to = await modelPrefix({ kind: 'user', id: userId }, key);
+    const listed = await env.CORPUS.list({ prefix: from });
+    for (const o of listed.objects || []) {
+      const dest = to + o.key.slice(from.length);
+      if (!(await env.CORPUS.head(dest))) { const obj = await env.CORPUS.get(o.key); if (obj) await env.CORPUS.put(dest, obj.body, { httpMetadata: obj.httpMetadata, customMetadata: obj.customMetadata }); }
+      await env.CORPUS.delete(o.key);
+    }
+  }
 }
 
 /**
@@ -344,6 +396,7 @@ export async function adoptGuest(env, guestId, userId) {
     ).bind(newId('map'), userId, r.key, r.address, r.lng, r.lat, r.county, r.model, r.mode, r.square_feet,
       r.payload, r.created_at, r.updated_at).run();
   }
+  await adoptModels(env, guestId, userId, (results || []).map((r) => r.key)).catch(() => {});
   await env.DB.batch([
     // A tool row the account already has for the same map stays; the guest's copy goes.
     env.DB.prepare(`UPDATE OR IGNORE map_tools SET owner_kind = 'user', owner_id = ?

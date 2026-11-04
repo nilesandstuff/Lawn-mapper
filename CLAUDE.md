@@ -185,6 +185,26 @@ contract is docs/MAPS.md. The core session owns it and the code behind it
 (worker/src/unified.js, routes-maps.js, home/); a tool that needs something
 it does not give asks. No tool keeps maps in the browser any more.
 
+## The lidar is built once, in the shade map; every tool reads the finished file (owner, 2026-11-04)
+
+"There should be one base set of files for making 3d maps from lidar... When
+a map goes into the shade map, the lidar gets built, aligned, points get
+sorted/classified, then the finished output is saved. The AR shouldn't be
+rebuilding lidar maps from scratch. HOWEVER, those base files should be
+constructed in a way that allows the AR to make post processing tweaks if
+needed."
+
+So: the shade map writes one file per map (public/lib/lidar-model.js, the
+format and the contract; PUT /api/maps/model?id=&tool=shade, kept in R2 by
+the main Worker, docs/MAPS.md). The yard AR tool reads that file and nothing
+else, and lists every step it takes on top of it in docs/SCAN-DIVERGENCES.md
+(the owner: "maintain a doc that describes every way in which the AR diverges
+from the shade map"). A problem in what the AR shows is looked for in the
+shade map first; the AR changes only what matters to the AR alone, and never
+to hide a shade-map fault (the phantom columns under canopies are being fixed
+in the shade map, 2026-11-04). The core session does not edit the shade map's
+files to make this happen; it asks.
+
 ## One way to read lidar (owner, 2026-11-03)
 
 "I want as much cohesiveness between the different ways to read lidar as

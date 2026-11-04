@@ -201,19 +201,19 @@ function startLidar(m) {
     const box = pts.length ? [Math.min(...es) - 20, Math.min(...ns) - 20, Math.max(...es) + 20, Math.max(...ns) + 20] : [-60, -60, 60, 60];
     w.onmessage = ({ data }) => {
       if (data.progress) { st.lid.progress = data.progress; showLidar(); }
-      if (data.ready) { st.lid.ready = data.ready; log(`lidar read: ${data.ready.points} points, ${data.ready.solid} solid cells, shift ${data.ready.shift}`); showLidar(); }
+      if (data.ready) { st.lid.ready = data.ready; log(`lidar model read: ${data.ready.points} columns, ${data.ready.solid} solid cells, shift ${data.ready.shift}`); showLidar(); }
       if (data.overlay) { st.lid.overlay = data.overlay; st.lid.meshes = null; log(`lidar overlay: ${data.overlay.solids.length / 4} solid cells, ${data.overlay.tall.length / 5} tall cells`); }
       if (data.error) { st.lid.error = data.error; log(`lidar: ${data.error}`); showLidar(); }
       if (data.fix && st.L) { const f = answer(st.L, data.fix, data.id); if (f && st.L.fixes.length === 1) flash('You are here: the lidar found you'); }
     };
     w.onerror = (e) => { st.lid.error = e.message || 'the lidar reader failed'; showLidar(); };
-    w.postMessage({ load: { origin: st.origin, box, lidar: m.tools?.shade?.data?.lidar || null, lawn: st.lawn } });
+    w.postMessage({ load: { origin: st.origin, box, map: st.map, lawn: st.lawn } });
   } catch (e) { st.lid.error = e.message; showLidar(); }
 }
 function showLidar() {
   const el = $('#lidar'); if (!el) return;
   el.textContent = st.lid.error ? `The lidar could not be read (${st.lid.error}): references only.`
-    : st.lid.ready ? `Lidar ready: ${st.lid.ready.points.toLocaleString()} points, ${st.lid.ready.solid.toLocaleString()} solid cells (walls, fences, trunks), lined up by ${st.lid.ready.shift}; buildings by ${st.lid.ready.rule || 'the AR copy'}${st.lid.ready.lawnEdge ? '; the lawn\'s edges matched too' : ''}${st.lid.ready.structures ? ` (${st.lid.ready.structures.building.toLocaleString()} m² of building)` : ''}.`
+    : st.lid.ready ? `Lidar ready: the shade map's model, ${st.lid.ready.points.toLocaleString()} columns, ${st.lid.ready.solid.toLocaleString()} solid cells (walls, fences, trunks), lined up by ${st.lid.ready.shift}; buildings by ${st.lid.ready.rule || 'the AR copy'}${st.lid.ready.lawnEdge ? '; the lawn\'s edges matched too' : ''}${st.lid.ready.structures ? ` (${st.lid.ready.structures.building.toLocaleString()} m² of building)` : ''}.`
       : st.lid.progress || 'Reading the lidar…';
 }
 
