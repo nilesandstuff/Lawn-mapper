@@ -2491,6 +2491,30 @@ seasonal.js seasonalCanopy, so its BUILDING cells are unchanged) and adds the ru
 stone bins: hard surfaces that shed rain). The scoring tools' parts (flat, solid, evergreen) still run the shade
 map's seasonal pass. Not re-scored, by the owner's word; H32's IoU 0.74 was for the union before this.
 
+### H78. Tree trunks from the lidar: built, not yet measured (water session, 2026-11-04)
+
+The owner: "Yes let's do tree roots. A pre requisite to that is knowing where tree trunks are. Can you interpret
+where trunks are without changing anything on the shade map's side?" Yes: lib/trunks.js reads the shade map's own
+crown finder (shade/crowns.js, linked unchanged: local maxima of the pit-free canopy height model on the columns
+the shared rule does not call built, flooded downhill) and adds what it does not look for, the STEM under the
+crown: returns 0.5-3 m over the ground (and under 0.4 of the crown's height) inside the crown's columns, counted
+in 3 x 3 m blocks. A block of 3 or more whose returns stand within 1 m RMS of each other is a stem and the trunk
+is their mean; without one the crown's top stands in (marked 'top'). A crown may hold several stems 3 m or more
+apart, each at least half as strong as the first, at most one per 25 m2 of crown (a wide leaf-off crown is often
+two or three trees the canopy model cannot part); the crown's area is shared among them.
+ON THE OWNER'S LOT (Kent 2016 cloud, flown 2017-11-27, leaf-off, the page's whole analysis box of about 250 x
+170 m): 287 crowns; one stem per crown found 198 of them a stem, 33 of the 34 crowns within 35 m of the house
+(a leaf-off flight sees under the crowns); with several stems per crown, 528 trunks, 437 from stems, 75 within
+35 m of the house (84 before the 25 m2 cap). Where a stem was found it stands a median 5.0 m (quartiles 3.0-7.7)
+from the crown's top, which is how far a top-only trunk would have been wrong by on this flight. UNMEASURED: 75
+trunks in 70 x 70 m is a wood's density; shrubs, fence posts and low branches under crowns pass the stem rule too,
+and the readings page's trunk marks (moisture_marks; the owner marks the trunks on the lot) are the ground truth
+the water map's card scores it against (nearest found trunk per mark). H32's crown-top score stands as the floor.
+Tests: test/trunks.test.js on made-up clouds (a stem found and placed within 0.7 m; a tree without one placed at
+its top within 1.5 m; a roof is no tree; two trees the canopy model merges give two trunks sharing the crown).
+Under CLAUDE.md "One way to read lidar" this rule goes to the shade session to adopt once it is measured, and the
+water map imports it back from there; nothing on the shade map's side changed.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge
