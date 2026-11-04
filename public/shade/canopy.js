@@ -41,7 +41,7 @@ import { groundOf } from './ground.js';
 const NOISE = new Set([7, 18]);
 export const GRASS_M = 0.5; // nothing below this over the ground stops light reaching the grass blades' tops
 const P_MIN = 0.01; // a cube can stop at most 99% of light per meter; roofs are several cubes of it
-const MAX_OVER_M = 80; // nothing on a residential lot stands taller
+export const MAX_OVER_M = 80; // nothing on a residential lot stands taller
 const SOLID_BELOW = 0.03; // under a layer that let through less than this share of pulses, nothing was seen
 
 /**
