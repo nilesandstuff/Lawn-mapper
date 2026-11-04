@@ -1546,6 +1546,51 @@ move it: colour (needle foliage is darker and less green-peaked than
 broadleaf in summer photos; NAIP is in leaf; untested), and the two-flight
 case where a county has a leaf-off survey too.
 
+
+### 35. The AR's blue walls under canopies: 59% came from the shade map's pooled cubes, the rest from how the AR tests and draws them (owner's lot, 2026-11-04)
+
+The owner, 2026-11-04: "on the shade map, I'm seeing green cubes that are
+pretty faithful to the actual canopies, with empty space under them... But
+in AR, I'm seeing blue walls under those same canopies. Look into whether
+or not something on your side is causing that."
+
+What the AR does with the model file (scan/lib/lidar-load.js, the core's):
+a column is SOLID for its match when any cube it overlaps between 0.4 and
+2.4 m over the ground has mu > 0, and the blue overlay draws each solid
+cell from the grass to the column's TOP (its highest return, up to 15 m),
+not over the band that made it solid.
+
+Measured on the owner's lot (Kent 2016-18, leaf-off; the file the local
+page wrote, 283 x 301 columns, read the way the AR reads it). Tree and
+solid-tree columns with a top over 4 m that the AR calls solid: 3,750. Of
+them:
+  - 2,214 (59%) are solid only through POOLING: canopy.js pools a column
+    with the 3 x 3 metres round it when it caught under 4 pulses of its
+    own (right for light on a sparse flight), so one trunk or shrub return
+    gives eight neighbours a low cube too. Rebuilding the canopy with no
+    pooling, these columns have nothing in the band.
+  - 305 (8%) have returns of their own in the band's cubes only between
+    2.4 and 3.5 m: the AR's band is snapped to whole 1 m cubes, so it
+    reaches the underside of a crown.
+  - 15 from the solid fill under a dense layer.
+  - 1,216 (32%) have a return of their own truly between 0.4 and 2.4 m
+    (a trunk, a low branch, a shrub under the tree).
+And 2,080 of the 3,750 are, as the shade map draws them, one low cube with
+a median 2 m (90th percentile 6 m) of open air above it before the crown;
+the AR's overlay turns each into one blue box from the grass to the
+treetop. The shade map does draw those low cubes (median mu 0.13 a metre,
+its "medium" band), but as cubes, not walls.
+
+DONE ON THE SHADE MAP'S SIDE: the model file now also carries each
+column's OWN evidence (public/shade/model-out.js ownReturns): `returns`
+(Uint8 per cube, the column's own returns as mu counts them, not pooled,
+not weighted, erasures applied) and `low` (Float32 per column, the lowest
+own return over the grass, m, exact). The light is unchanged. On the
+owner's lot the file grows from 21.3 to 23.1 MB (the server takes 24);
+over the cap the summer-leaf copy goes first, then `returns`. With `low`
+between 0.4 and 2.4 m as the test, 1,209 of the 3,750 stay solid. The
+AR's test and its drawing are the core session's to change (asked).
+
 ## Speculation
 
 - FENCES (2026-10-27, IN USE, unmeasured; fences.js): drawn by the visitor

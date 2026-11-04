@@ -20,6 +20,16 @@ now was cut (erase it); green then and wider green now has grown (grow the
 footprint, and by how much against the years between). Score against
 photos read by eye before any of it touches the light. Features session.
 
+### 0b. PINNED, not to do yet: fill a sparse flight's tree columns down to the branch floor (owner, 2026-11-04; shade map)
+
+The owner: "no but put a pin in that." On a sparse leaf-off flight (2
+points a square metre, a neighbour's lot) a crown is caught only near its
+top, so many tree columns' lowest cube floats 2.5 m or more over the
+grass, and the cubes look like they hover. The idea held back: continue a
+tree column from its lowest measured cube down to the crown's branch floor
+(seasonal.js floor10) at the crown's own density. Not to be done unless
+the owner says so. Features session.
+
 
 ### 0. Lawn Mapper's buildings and roads from the shade map's lidar rules, if needed (owner, 2026-11-03)
 

@@ -1769,7 +1769,7 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   const model = buildCanopy(cols, grid), season = seasonalCanopy(cols, model);
   const at = (e, n) => Math.floor(30 - n) * grid.w + Math.floor(e);
   const erasedMask = new Uint8Array(grid.w * grid.h); erasedMask[at(20.5, 20.5)] = 1;
-  const fin = finishedModel({ model, season, erasedMask, erasedCubes: [at(18.5, 20.5) * model.nz + 6], lidar: { url: 'u', name: 'n', epoch: 2018, shift: [0.1, 0.2], fit: null }, flown: { start: 1, mid: 2, end: 3 }, photo: { id: 'f', date: '2018-07-06', source: 'planetary-computer' }, basedOn: 'then' });
+  const fin = finishedModel({ model, season, cols, erasedMask, erasedCubes: [at(18.5, 20.5) * model.nz + 6], lidar: { url: 'u', name: 'n', epoch: 2018, shift: [0.1, 0.2], fit: null }, flown: { start: 1, mid: 2, end: 3 }, photo: { id: 'f', date: '2018-07-06', source: 'planetary-computer' }, basedOn: 'then' });
   const bytes = modelBytes(fin);
   const back = decodeModel(bytes);
   const { meta, arrays } = back;
@@ -1782,6 +1782,29 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
     `kinds ${arrays.kind[at(7.5, 7.5)]} ${arrays.kind[at(19.5, 20.5)]} ${arrays.kind[at(20.5, 20.5)]}; roof top ${arrays.top[at(7.5, 7.5)]}; open top ${arrays.top[at(2.5, 25.5)]}; cube ${arrays.mu[at(18.5, 20.5) * model.nz + 6]}; erased col zero ${arrays.mu.subarray(at(20.5, 20.5) * model.nz, (at(20.5, 20.5) + 1) * model.nz).every((v) => v === 0)}; muOn>=mu ${arrays.muOn.every((v, i) => v >= arrays.mu[i] - 1e-6)}; columnAt ${columnAt(meta.grid, (7.5 / k) + grid.x0, grid.y1 - 22.5 / k)} vs ${at(7.5, 7.5)}`);
   const small = modelBytes(fin, { maxBytes: bytes.byteLength - 1 });
   check('model file: over the size the server takes, the summer-leaf cubes are left out and the file still written', small.byteLength < bytes.byteLength && !decodeModel(small).arrays.muOn && modelUsable(decodeModel(small)) && /left out/.test(decodeModel(small).meta.leaves.muOn));
+  const tiny = decodeModel(modelBytes(fin, { maxBytes: 1 }));
+  check('model file: still over, the per-cube own returns go next; the lowest return stays', !tiny.arrays.muOn && !tiny.arrays.returns && tiny.arrays.low?.length === grid.w * grid.h && /left out/.test(tiny.meta.own.returns) && modelUsable(tiny));
+
+  /* WHAT THE LASER HIT IN THIS VERY METRE (the AR's blue walls, 2026-11-04): a
+     sparse flight (one return a square metre, so every column is pooled with
+     the 3 x 3 round it) with one trunk return 1.5 m up. mu gives the trunk's
+     neighbours a low cube too; `returns` and `low` give it to the trunk alone. */
+  const pts2 = [];
+  for (let e = 0.5; e < 12; e += 1) for (let n = 0.5; n < 12; n += 1) pts2.push([e, n, 100, 2, 1, 1]);
+  pts2.push([6.5, 6.5, 101.5, 1, 1, 2]);
+  const cols2 = makeColumns(pts2.length);
+  pts2.forEach(([e, n, z, c, r, nr], i) => { cols2.x[i] = e / k; cols2.y[i] = n / k; cols2.z[i] = z; cols2.cls[i] = c; cols2.ret[i] = r; cols2.nret[i] = nr; });
+  const grid2 = gridOver([0, 0, 12 / k, 12 / k], 1, lat);
+  const model2 = buildCanopy(cols2, grid2), season2 = seasonalCanopy(cols2, model2);
+  const at2 = (e, n) => Math.floor(12 - n) * grid2.w + Math.floor(e);
+  const cube = (j) => j * model2.nz + Math.floor((101.5 - model2.z0) / model2.dz);
+  const own2 = decodeModel(modelBytes(finishedModel({ model: model2, season: season2, cols: cols2 }))).arrays;
+  const trunk = at2(6.5, 6.5), beside = at2(7.5, 6.5);
+  check('model file: on a sparse flight the trunk\'s neighbour has a pooled low cube in mu but no return of its own; the trunk has one, its lowest 1.5 m up exactly',
+    model2.mu[cube(beside)] > 0 && own2.returns[cube(beside)] === 0 && Number.isNaN(own2.low[beside]) && own2.returns[cube(trunk)] === 1 && Math.abs(own2.low[trunk] - 1.5) < 1e-3,
+    `mu beside ${model2.mu[cube(beside)]}; returns beside ${own2.returns[cube(beside)]}, trunk ${own2.returns[cube(trunk)]}; low ${own2.low[trunk]}`);
+  const er2 = decodeModel(modelBytes(finishedModel({ model: model2, season: season2, cols: cols2, erasedCubes: [cube(trunk)] }))).arrays;
+  check('model file: an erased cube takes its own returns with it', er2.returns[cube(trunk)] === 0 && Number.isNaN(er2.low[trunk]));
 }
 
 /* ONE LEAF STATE PER LOT (passes.js; owner, 2026-10-29). */

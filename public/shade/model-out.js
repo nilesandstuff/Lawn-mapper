@@ -16,10 +16,27 @@
  * between blends them by the leaf share, as the light worker does.
  * Written by public/shade.js when the trees are built and after each
  * erasure, to PUT /api/maps/model?id=&tool=shade.
+ *
+ * WHAT THE LASER HIT IN THIS VERY METRE (2026-11-04; the owner: blue walls
+ * under canopies in the AR where the shade map shows open space). `mu` is
+ * for light: where a column caught fewer than 4 pulses of its own, canopy.js
+ * pools it with the 3 x 3 metres round it, so one trunk return gives nine
+ * columns a low cube. On the owner's lot 59% of the crowned tree columns the
+ * AR called solid at standing height were so only through a neighbour's
+ * return. Two extra arrays (lidar-model.js keeps extra arrays) say what each
+ * column's OWN returns were, for a reader asking "is something here":
+ *   returns  Uint8 w*h*nz  the column's own returns in each cube, as mu
+ *                          counts them (non-noise, over GRASS_M, under
+ *                          MAX_OVER_M; strays already class 18), not pooled,
+ *                          not weighted, capped at 255; erasures applied
+ *   low      Float32 w*h   the lowest of them, m over the ground, exact (not
+ *                          snapped to a cube); NaN where none
  */
 
 import { encodeModel } from '../lib/lidar-model.js';
-import { NOTHING, BUILDING, TREE, SOLID_TREE, STRUCTURE, UNKNOWN } from './structures.js';
+import { NOTHING, BUILDING, TREE, SOLID_TREE, STRUCTURE, UNKNOWN, NOISE } from './structures.js';
+import { GRASS_M, MAX_OVER_M } from './canopy.js';
+import { cellOf } from './grid.js';
 
 export const KINDS = { NOTHING, BUILDING, TREE, SOLID_TREE, STRUCTURE, UNKNOWN };
 
@@ -30,7 +47,7 @@ export const KINDS = { NOTHING, BUILDING, TREE, SOLID_TREE, STRUCTURE, UNKNOWN }
  * erasedCubes (indices k*nz+l). `lidar`, `flown`, `photo`, `basedOn` go into
  * the header as they are.
  */
-export function finishedModel({ model, season, erasedMask = null, erasedCubes = [], lidar = null, flown = null, photo = null, basedOn = null, now = new Date() }) {
+export function finishedModel({ model, season, cols = null, shift = null, erasedMask = null, erasedCubes = [], lidar = null, flown = null, photo = null, basedOn = null, now = new Date() }) {
   const { grid, w, h, nz, dz, z0, ground } = model;
   const N = w * h;
   const built = season?.built;
@@ -51,6 +68,7 @@ export function finishedModel({ model, season, erasedMask = null, erasedCubes = 
     }
   }
   for (const i of erasedCubes) if (i >= 0 && i < mu.length) { mu[i] = 0; if (muOn) muOn[i] = 0; }
+  const own = cols ? ownReturns(cols, model, { shift, erasedMask, erasedCubes }) : null;
   const meta = {
     v: 1, tool: 'shade', at: now.toISOString(), basedOn: basedOn || null,
     grid: { w, h, x0: grid.x0, y1: grid.y1, cell: grid.cell, cellY: grid.cellY || grid.cell, lat: grid.lat },
@@ -59,20 +77,58 @@ export function finishedModel({ model, season, erasedMask = null, erasedCubes = 
     photo: photo ? { id: photo.id, date: photo.date, source: photo.source } : null,
     rule: { kinds: KINDS },
     leaves: { mu: 'as flown: leaf-off branches, trunk space emptied to the branch floor, low structures solid; erasures applied', muOn: 'every deciduous crown in full summer leaf; erasures applied' },
+    own: own ? { returns: "the column's own returns per cube, not pooled with its neighbours (mu is, where a column caught under 4 pulses); erasures applied", low: "the lowest own return over the grass, m over the ground, exact; NaN where none", grassM: GRASS_M } : null,
     erased,
     counts: built?.counts || null,
   };
   const arrays = { ground: Float32Array.from(ground), kind, why, top, mu };
   if (muOn) arrays.muOn = muOn;
+  if (own) { arrays.returns = own.returns; arrays.low = own.low; }
   return { meta, arrays };
 }
 
-/** The bytes to PUT. Over `maxBytes`, muOn is left out, then the file is still written. */
+/**
+ * Each column's own returns per cube and its lowest one (see the header):
+ * the returns canopy.js turns into cubes, counted where they fell, before
+ * any pooling. Returns in an erased column or an erased cube are left out.
+ */
+export function ownReturns(cols, model, { shift = null, erasedMask = null, erasedCubes = [] } = {}) {
+  const { grid, w, h, nz, dz, z0, ground } = model;
+  const N = w * h;
+  const returns = new Uint8Array(N * nz), low = new Float32Array(N).fill(NaN);
+  const gone = erasedCubes.length ? new Set(erasedCubes) : null;
+  for (let i = 0; i < cols.n; i++) {
+    if (NOISE.has(cols.cls[i])) continue;
+    const k = cellOf(grid, cols.x[i], cols.y[i], shift);
+    if (k < 0 || (erasedMask && erasedMask[k])) continue;
+    const over = cols.z[i] - ground[k];
+    if (!(over > GRASS_M) || over > MAX_OVER_M) continue;
+    const c = k * nz + Math.min(nz - 1, Math.max(0, Math.floor((cols.z[i] - z0) / dz)));
+    if (gone?.has(c)) continue;
+    if (returns[c] < 255) returns[c]++;
+    if (!(low[k] <= over)) low[k] = over;
+  }
+  return { returns, low };
+}
+
+/**
+ * The bytes to PUT. Over `maxBytes` (the server's, worker/src/unified.js
+ * MODEL_MAX_BYTES), muOn is left out first (no reader uses it yet), then the
+ * per-cube `returns` (`low` stays); the file is still written.
+ */
 export function modelBytes(finished, { maxBytes = 24 * 1024 * 1024 } = {}) {
-  let bytes = encodeModel(finished.meta, finished.arrays);
-  if (bytes.byteLength > maxBytes && finished.arrays.muOn) {
-    const { muOn, ...rest } = finished.arrays;
-    bytes = encodeModel({ ...finished.meta, leaves: { ...finished.meta.leaves, muOn: 'left out: the file would be over the size the server takes' } }, rest);
+  let meta = finished.meta, arrays = finished.arrays;
+  let bytes = encodeModel(meta, arrays);
+  const LEFT_OUT = 'left out: the file would be over the size the server takes';
+  if (bytes.byteLength > maxBytes && arrays.muOn) {
+    const { muOn, ...rest } = arrays;
+    arrays = rest; meta = { ...meta, leaves: { ...meta.leaves, muOn: LEFT_OUT } };
+    bytes = encodeModel(meta, arrays);
+  }
+  if (bytes.byteLength > maxBytes && arrays.returns) {
+    const { returns, ...rest } = arrays;
+    arrays = rest; meta = { ...meta, own: { ...meta.own, returns: LEFT_OUT } };
+    bytes = encodeModel(meta, arrays);
   }
   return bytes;
 }
