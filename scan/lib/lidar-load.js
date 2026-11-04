@@ -11,7 +11,7 @@ import { lawnField } from './surface.js';
 
 export const CROWN_M = 3; // m: a tree column at least this tall is a crown the phone walks under; lower, a thing it sees
 
-export async function loadLidar({ origin, box, lidar, fetchLidar, lawn = [] }, { pointsIn, toMerc, nad83Correction, io, rule }, progress = () => {}) {
+export async function loadLidar({ origin, box, lidar, fetchLidar, lawn = [] }, { pointsIn, toMerc, nad83Correction, io, rule, decodePng = null }, progress = () => {}) {
   const [lng, lat] = origin;
   const k = Math.cos((lat * Math.PI) / 180);
   progress('Finding the lidar survey…');
@@ -43,7 +43,12 @@ export async function loadLidar({ origin, box, lidar, fetchLidar, lawn = [] }, {
     /* structuresFor (the features session, 2026-11-04): the rule reads the summer photo itself and judges low
        structures by it (green is a plant, not a shed); without the photo there are no low structures at all. The AR
        tool makes one call and gets every later change to the rule and the photo check with no change of its own. */
-    const s = typeof S.structuresFor === 'function' ? await S.structuresFor(cols, sgrid, { shift: [east / k, north / k] }) : S.structuresFrom(cols, sgrid, { shift: [east / k, north / k] });
+    /* The flight's date goes with it (2026-11-04), so the photo read is the summer nearest the flight rather than the
+       newest one: a shed built since the flight is not in the lidar, and a tree felled since is. A node caller (the
+       twin check) passes decodePng; the page decodes in the browser. */
+    const flownMs = flown?.end ?? (cloud.epoch ? (cloud.epoch - 1970) * 365.25 * 864e5 : null);
+    const opts = { shift: [east / k, north / k], ...(flownMs ? { flownMs } : {}), ...(decodePng ? { decodePng } : {}) };
+    const s = typeof S.structuresFor === 'function' ? await S.structuresFor(cols, sgrid, opts) : S.structuresFrom(cols, sgrid, opts);
     const solid = new Uint8Array(s.kind.length);
     for (let j = 0; j < solid.length; j++) solid[j] = s.kind[j] === S.BUILDING || (S.STRUCTURE != null && s.kind[j] === S.STRUCTURE) ? 1 : 0;
     buildings = buildingsOnGrid(solid, sgrid, box, 0.25, [ox, oy], k, 1);

@@ -17,6 +17,7 @@
  */
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { PNG as PngJs } from 'pngjs';
 import { pointsIn, toMerc } from '../../water/lib/ept.js';
 import { nad83Correction } from '../../water/lib/datum.js';
 import { nodeIo } from '../../water/lib/node-io.js';
@@ -108,7 +109,8 @@ async function main() {
   const L = await loadLidar({ origin, box, lidar: m.tools?.shade?.data?.lidar || null, lawn: lawnRings, fetchLidar: async (lng, lat) => {
     const res = await fetch(`${site}/api/shade/lidar?lng=${lng}&lat=${lat}`);
     return res.ok ? (await res.json()).clouds?.[0] || null : null;
-  } }, { pointsIn, toMerc, nad83Correction, io: nodeIo(), rule: () => Promise.all([import('../../public/shade/structures.js'), import('../../public/shade/grid.js')]) });
+  } }, { pointsIn, toMerc, nad83Correction, io: nodeIo(), rule: () => Promise.all([import('../../public/shade/structures.js'), import('../../public/shade/grid.js')]),
+    decodePng: async (buf) => { const png = PngJs.sync.read(Buffer.from(buf)); return { data: png.data, width: png.width, height: png.height }; } });
   const { G, shade } = L;
   const W = G.W, H = G.H, N = W * H;
   console.log(`Lidar: ${L.cols.n.toLocaleString()} points over ${Math.round((box[2] - box[0]) * (box[3] - box[1])).toLocaleString()} m2 (${(L.cols.n / ((box[2] - box[0]) * (box[3] - box[1]))).toFixed(1)} a m2), shift ${L.how}; ${L.rule}.`);
