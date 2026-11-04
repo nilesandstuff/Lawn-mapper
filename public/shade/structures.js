@@ -116,6 +116,8 @@ export function columnStats(cols, model, { shift = null } = {}) {
   const above = new Uint16Array(N), multiAbove = new Uint16Array(N), lastGround = new Uint16Array(N);
   const zLo = new Float32Array(N).fill(Infinity), zHi = new Float32Array(N).fill(-Infinity);
   const top = new Float32Array(N).fill(-Infinity), firm = new Uint16Array(N), firmSingle = new Uint16Array(N), firmLeafOn = new Uint16Array(N);
+  const firmBright = new Float32Array(N); // mean intensity of the single echoes over 1 m (summed here, divided below)
+  const groundI = [];
   for (let i = 0; i < cols.n; i++) {
     if (NOISE.has(cols.cls[i])) continue;
     const k = cellOf(grid, cols.x[i], cols.y[i], shift);
@@ -127,6 +129,7 @@ export function columnStats(cols, model, { shift = null } = {}) {
       firm[k]++;
       if ((cols.nret[i] || 1) === 1) firmSingle[k]++;
       if (cols.leaf?.[i] === 2) firmLeafOn[k]++;
+      if ((cols.nret[i] || 1) === 1) firmBright[k] += cols.intensity?.[i] || 0;
     }
     if (over > CROWN_ABOVE_M && over < MAX_OVER_M) {
       above[k]++;
@@ -135,7 +138,14 @@ export function columnStats(cols, model, { shift = null } = {}) {
       if (cols.z[i] > zHi[k]) zHi[k] = cols.z[i];
     }
   }
-  return { above, multiAbove, lastGround, zLo, zHi, top, firm, firmSingle, firmLeafOn };
+  for (let k = 0; k < N; k++) if (firmSingle[k]) firmBright[k] /= firmSingle[k];
+  /* The flight's own ground, for brightness relative to it: intensity is
+     not comparable between flights (sensor, gain, altitude), so every use
+     of it is per property, against this. */
+  for (let i = 0; i < cols.n; i += 7) if (cols.cls[i] === 2 && cols.intensity?.[i]) groundI.push(cols.intensity[i]);
+  groundI.sort((a, b) => a - b);
+  const groundBright = groundI.length ? groundI[groundI.length >> 1] : 0;
+  return { above, multiAbove, lastGround, zLo, zHi, top, firm, firmSingle, firmLeafOn, firmBright, groundBright };
 }
 
 /**
@@ -148,7 +158,7 @@ export function columnStats(cols, model, { shift = null } = {}) {
  *           why (Uint8 per column, a key of WHY), stats (columnStats),
  *           counts: { building, tree, solidTree, structure } }.
  */
-export function structuresOf(cols, model, { shift = null, stats = null } = {}) {
+export function structuresOf(cols, model, { shift = null, stats = null, low = {} } = {}) {
   const { w, h, ground } = model;
   const N = w * h;
   const st = stats || columnStats(cols, model, { shift });
@@ -198,7 +208,7 @@ export function structuresOf(cols, model, { shift = null, stats = null } = {}) {
     }
   }
   for (let k = 0; k < N; k++) if (eave[k]) { kind[k] = BUILDING; why[k] = 3; }
-  lowStructures(kind, why, st, w, h);
+  lowStructures(kind, why, st, w, h, low);
   const counts = { building: 0, tree: 0, solidTree: 0, structure: 0 };
   for (let k = 0; k < N; k++) {
     if (kind[k] === BUILDING) counts.building++;
@@ -210,8 +220,8 @@ export function structuresOf(cols, model, { shift = null, stats = null } = {}) {
 }
 
 /** 6. Low structures (see the head of this file), set in place on `kind` and `why`. */
-function lowStructures(kind, why, st, w, h) {
-  const { top, firm, firmSingle, firmLeafOn, above, multiAbove } = st;
+function lowStructures(kind, why, st, w, h, { touchTree = true, minBright = 0 } = {}) {
+  const { top, firm, firmSingle, firmLeafOn, above, multiAbove, firmBright, groundBright } = st;
   const N = w * h;
   /* A flight that kept only one return a pulse (some did: a North Carolina
      2016 flight has none split) cannot tell a hard surface from a crown. */
@@ -250,10 +260,16 @@ function lowStructures(kind, why, st, w, h) {
         const j = yy * w + xx;
         if (lab[j] === s0 || (kind[j] !== TREE && kind[j] !== SOLID_TREE)) continue;
         /* Touching a tree, or a tree well over it near by: part of the tree. */
-        if ((Math.abs(dx) <= 1 && Math.abs(dy) <= 1) || top[j] > pTop + STRUCTURE_TREE_RISE_M) { skirt = true; break; }
+        if ((touchTree && Math.abs(dx) <= 1 && Math.abs(dy) <= 1) || top[j] > pTop + STRUCTURE_TREE_RISE_M) { skirt = true; break; }
       }
     }
     if (skirt) continue;
+    /* An experiment (minBright, off by default): the patch's median single-
+       echo brightness, relative to the flight's own ground, at least this. */
+    if (minBright > 0 && groundBright > 0) {
+      const b = patch.map((k) => firmBright[k] / groundBright).sort((p1, p2) => p1 - p2);
+      if (b[b.length >> 1] < minBright) continue;
+    }
     for (const k of patch) { kind[k] = STRUCTURE; why[k] = 8; }
   }
 }
