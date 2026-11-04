@@ -113,6 +113,17 @@ SPECULATION), as always.
     water map's code (lib/roofs.js, lib/trunks.js, lib/obstacles.js, lib/lowspots.js perCell) already does exactly
     that; nothing to change.
 
+27. **The finished lidar model** (CLAUDE.md "The lidar is built once, in the shade map; every tool reads the
+    finished file", owner 2026-11-04; the features session, 28fd65d: GET /api/maps/model?id=&tool=shade, format
+    public/lib/lidar-model.js: per column the ground, kind/why after erasures, top, and the canopy's cubes mu, on
+    the shade map's grid with the shift applied; the core says when it is live). TO ASK THE OWNER: the water map
+    could read ground, kind, top and mu from it for the parts it shares with the shade map (roofs, trees, the
+    canopy the light worker builds, the structures the wind and the built-cover counts use) and stop re-running
+    those rules; it still needs the points for what is its own and not in the file: the ground hollows (the fine
+    surface and its noise floor), the trunks' stems (returns 0.5-3 m up), paving (intensity and the photo), and the
+    wider box round the lot for the wind's obstacles and the water from uphill. Not started; wait for "live" and
+    the owner's word on the split.
+
 ## Rules (owner, 2026-10-27)
 
 - **The white paper stays true to the live model** (owner, 2026-11-02: "remember to continuously add to it if
