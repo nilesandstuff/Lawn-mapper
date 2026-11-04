@@ -73,7 +73,8 @@ import { cellOf } from './grid.js';
 import { greenOver } from './naip.js';
 
 export const NOISE = new Set([7, 18]); // LAS low and high noise
-export const STRAY_ABOVE_M = 10; // a return this far above every other within STRAY_RADIUS_M is a stray the survey missed
+export const STRAY_ABOVE_M = 10; // a return this far above every anchored return within STRAY_RADIUS_M is a stray the survey missed...
+export const STRAY_NEAR_M = 5; // ...and no farther above a low support than that support's own height, at least this: a 5 m shrub does not reach 13 m
 export const STRAY_RADIUS_M = 3;
 export const HIGH_NOISE = 18; // the LAS class a stray is given
 
@@ -91,7 +92,7 @@ export const HIGH_NOISE = 18; // the LAS class a stray is given
  * crown under it within that radius; a wire has the next return along it
  * at its own height. Returns the count flagged.
  */
-export function flagStrays(cols, grid, { shift = null, aboveM = STRAY_ABOVE_M, radiusM = STRAY_RADIUS_M, cellM = null } = {}) {
+export function flagStrays(cols, grid, { shift = null, aboveM = STRAY_ABOVE_M, nearM = STRAY_NEAR_M, radiusM = STRAY_RADIUS_M, cellM = null } = {}) {
   if (!cols?.n) return 0;
   const { w, h } = grid;
   const N = w * h;
@@ -115,20 +116,41 @@ export function flagStrays(cols, grid, { shift = null, aboveM = STRAY_ABOVE_M, r
     if (cols.z[i] < low[k]) low[k] = cols.z[i];
   }
   order.sort((p, q) => cols.z[p] - cols.z[q]);
-  const anchoredTop = Float32Array.from(low); // the highest anchored return per cell so far (the lowest to start)
+  /* The local ground: the lowest return within the radius. A cell whose only
+     return is a bird's echo has that echo as its own lowest, so a cell's own
+     lowest return is no anchor by itself; nearness to the lowest round it is. */
+  const localLow = new Float32Array(N).fill(Infinity);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    let m = Infinity;
+    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+      const xx = x + dx, yy = y + dy;
+      if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+      const v = low[yy * w + xx];
+      if (v < m) m = v;
+    }
+    localLow[y * w + x] = m;
+  }
+  const anchoredTop = new Float32Array(N).fill(-Infinity); // the highest anchored return per cell so far
+  /* How far above its support a return may stand: as far as the support
+     itself stands over the local ground, between nearM and aboveM. A tall
+     crown's top may be 8-10 m above the next return a thin flight caught
+     in it, and that return is itself 8-16 m up; a return 8 m above a 5 m
+     shrub belongs to nothing. */
+  const allow = (support, k) => Math.min(aboveM, Math.max(nearM, support - localLow[k]));
   let flagged = 0;
   for (const i of order) {
     const k = cell[i], z = cols.z[i];
-    if (z === low[k]) continue; // the cell's lowest: anchored by definition
-    const x = k % w, y = (k / w) | 0;
-    let support = -Infinity;
-    for (let dy = -r; dy <= r && support < z - aboveM; dy++) for (let dx = -r; dx <= r; dx++) {
-      const xx = x + dx, yy = y + dy;
-      if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
-      const t = anchoredTop[yy * w + xx];
-      if (t > support) support = t;
+    let anchored = z - localLow[k] <= aboveM; // near the ground round it
+    if (!anchored) {
+      const x = k % w, y = (k / w) | 0;
+      for (let dy = -r; dy <= r && !anchored; dy++) for (let dx = -r; dx <= r; dx++) {
+        const xx = x + dx, yy = y + dy;
+        if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+        const t = anchoredTop[yy * w + xx];
+        if (z - t <= allow(t, k)) { anchored = true; break; }
+      }
     }
-    if (z - support <= aboveM) { if (z > anchoredTop[k]) anchoredTop[k] = z; } else { cols.cls[i] = HIGH_NOISE; flagged++; }
+    if (anchored) { if (z > anchoredTop[k]) anchoredTop[k] = z; } else { cols.cls[i] = HIGH_NOISE; flagged++; }
   }
   return flagged;
 }
