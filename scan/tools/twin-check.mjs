@@ -248,14 +248,19 @@ async function main() {
     console.log(`Still solid after the lawn rule (unclassified under ${LAWN_LOW_M} m in the lawn is ground): ${stillSolid} of the ${cells.size} cells below.`);
     console.log(`Low-point cells more than 0.5 m inside the traced lawn: ${cells.size} (of ${lawnN.toLocaleString()} lawn cells), from ${hs.length} lidar points; ${pct(south, ys.length)} of those points in the southern third of the lawn. Classes ${JSON.stringify(cls)} (1 unclassified, 3-5 low/medium/high vegetation); height over the match's ground: median ${hs.length ? hs[hs.length >> 1].toFixed(2) : '-'} m, lowest ${hs.length ? hs[0].toFixed(2) : '-'}, highest ${hs.length ? hs[hs.length - 1].toFixed(2) : '-'}; returns a pulse ${JSON.stringify(rets)}. The phone saw something within 0.5 m of ${seenCells.size} of the ${cells.size} cells. The match's ground there sits ${demGap.length ? demGap[demGap.length >> 1].toFixed(2) : '-'} m above the lowest ground return within 2 m (median).`);
   }
-  const surfOf = new Map(); // record index -> 'grass' | 'pave'
+  let surfOf = new Map(); // record index -> 'grass' | 'pave'
   const keys = [];
   for (const f of readdirSync(dir).filter((x) => /^keys-\d+\.json$/.test(x)).sort()) keys.push(...JSON.parse(readFileSync(join(dir, f), 'utf8')));
   const pics = keys.filter((k) => existsSync(join(dir, k.name))).sort((a, b) => a.t - b.t);
   if (pics.length) {
+    /* WHICH WAY UP, AND WHICH WAY ROUND, IS THE PICTURE against the depth (the owner, 2026-11-04: the gravel drive
+       is in the first pictures and beside the lawn, and the colour read "paving inside the lawn" where the check
+       points vouch for the references). Each ground point is coloured from the picture nearest it in time under
+       four readings of that picture -- as kept, flipped top to bottom, mirrored left to right, both -- and the
+       reading whose grass and paving agree best with the traced lawn, where the references place them, is the one
+       the depth and the picture share. The live page (app.js) reads the picture the same way as "as kept". */
     const groundIdx = []; for (let i = 0; i < recs.length; i++) if (Math.abs(recs[i].y - recs[i].ground) < 0.2) groundIdx.push(i);
     groundIdx.sort((a, b) => recs[a].t - recs[b].t);
-    let lo = 0;
     const mul = (M, x, y, z, w) => [M[0] * x + M[4] * y + M[8] * z + M[12] * w, M[1] * x + M[5] * y + M[9] * z + M[13] * w, M[2] * x + M[6] * y + M[10] * z + M[14] * w, M[3] * x + M[7] * y + M[11] * z + M[15] * w];
     const inv = (M) => { // a rigid camera-to-world: transpose the turn, turn the move back
       const R = [M[0], M[1], M[2], 0, M[4], M[5], M[6], 0, M[8], M[9], M[10], 0, 0, 0, 0, 1], t0 = [M[12], M[13], M[14]];
@@ -263,23 +268,56 @@ async function main() {
       o[12] = -(o[0] * t0[0] + o[4] * t0[1] + o[8] * t0[2]); o[13] = -(o[1] * t0[0] + o[5] * t0[1] + o[9] * t0[2]); o[14] = -(o[2] * t0[0] + o[6] * t0[1] + o[10] * t0[2]);
       return o;
     };
+    // each ground point's picture and pixel, once; the four readings only move the pixel
+    const hits = []; // [recIdx, picIdx, px, py]
+    const imgs = new Map();
+    let lo = 0;
     for (let q = 0; q < pics.length; q++) {
       const k = pics[q], t0 = q ? (pics[q - 1].t + k.t) / 2 : -Infinity, t1 = q + 1 < pics.length ? (k.t + pics[q + 1].t) / 2 : Infinity;
       while (lo < groundIdx.length && recs[groundIdx[lo]].t < t0) lo++;
-      let img = null;
       const V = inv(k.view);
       for (let j = lo; j < groundIdx.length && recs[groundIdx[j]].t < t1; j++) {
         const r = recs[groundIdx[j]], c = mul(V, r.x, r.y, r.z, 1);
         if (c[2] > -0.3) continue;
         const cl = mul(k.proj, c[0], c[1], c[2], c[3]), nx = cl[0] / cl[3], ny = cl[1] / cl[3];
         if (Math.abs(nx) > 0.98 || Math.abs(ny) > 0.98) continue;
-        if (!img) img = jpeg.decode(readFileSync(join(dir, k.name)), { useTArray: true, formatAsRGBA: true });
-        const px = Math.min(img.width - 1, Math.floor(((nx + 1) / 2) * img.width)), py = Math.min(img.height - 1, Math.floor(((1 - ny) / 2) * img.height));
-        const o = (py * img.width + px) * 4, s = surfaceOf(img.data[o], img.data[o + 1], img.data[o + 2]);
-        if (s) surfOf.set(groundIdx[j], s);
+        if (!imgs.has(q)) imgs.set(q, jpeg.decode(readFileSync(join(dir, k.name)), { useTArray: true, formatAsRGBA: true }));
+        const img = imgs.get(q);
+        hits.push([groundIdx[j], q, Math.min(img.width - 1, Math.floor(((nx + 1) / 2) * img.width)), Math.min(img.height - 1, Math.floor(((1 - ny) / 2) * img.height))]);
       }
     }
-    console.log(`Ground points coloured from ${pics.length} pictures: ${JSON.stringify(tally([...surfOf.values()]))} of ${groundIdx.length.toLocaleString()} ground points.`);
+    const refsPlace = placer(live, 'refs');
+    const readings = [['as kept', false, false], ['flipped top to bottom', true, false], ['mirrored left to right', false, true], ['flipped and mirrored', true, true]];
+    const results = [];
+    for (const [name, fy, fx] of readings) {
+      const map = new Map();
+      for (const [ri, q, px0, py0] of hits) {
+        const img = imgs.get(q), px = fx ? img.width - 1 - px0 : px0, py = fy ? img.height - 1 - py0 : py0;
+        const o = (py * img.width + px) * 4, s = surfaceOf(img.data[o], img.data[o + 1], img.data[o + 2]);
+        if (s) map.set(ri, s);
+      }
+      // agreement with the traced lawn where the references place the points
+      let n = 0, paveIn = 0, grassOut = 0, firstTen = 0, firstTenPave = 0;
+      if (G.lawnSd) for (const [ri, s] of map) {
+        const r = recs[ri], T = refsPlace(r.odo); if (!T) continue;
+        const [e, nn] = apply(T, [r.x, -r.z]), c = Math.floor((e - box[0]) / G.cell), rr = Math.floor((box[3] - nn) / G.cell);
+        if (c < 0 || rr < 0 || c >= W || rr >= H) continue;
+        const sd = G.lawnSd[rr * W + c]; n++;
+        if (s === 'pave' && sd > 0.35) paveIn++; if (s === 'grass' && sd < -0.35) grassOut++;
+      }
+      for (const [ri, q] of hits) if (q < 10 && map.has(ri)) { firstTen++; if (map.get(ri) === 'pave') firstTenPave++; }
+      results.push({ name, map, tally: tally([...map.values()]), n, paveIn, grassOut, wrong: n ? (paveIn + grassOut) / n : 1, firstTen, firstTenPave });
+    }
+    results.sort((a, b) => a.wrong - b.wrong);
+    console.log(`Ground points coloured from ${pics.length} pictures (${hits.length.toLocaleString()} point-in-picture pairs of ${groundIdx.length.toLocaleString()} ground points). The picture read four ways, against the traced lawn where the references place the points:`);
+    for (const r of results) console.log(`  ${r.name}: grass ${r.tally.grass.toLocaleString()}, paving ${r.tally.pave.toLocaleString()}; on the wrong side of the trace ${pct(r.paveIn + r.grassOut, r.n)} (paving inside it ${r.paveIn.toLocaleString()}, grass outside it ${r.grassOut.toLocaleString()}); in the first 10 pictures ${pct(r.firstTenPave, r.firstTen)} paving of ${r.firstTen.toLocaleString()} points`);
+    const best = results[0];
+    console.log(`  -> read ${best.name}: ${best === results.find((r) => r.name === 'as kept') ? 'what the live page does' : 'NOT what the live page does (app.js reads it as kept)'}.`);
+    surfOf = best.map;
+    // the pictures one by one, the first dozen: what share of the ground in each reads as paving, best reading
+    const perPic = new Map();
+    for (const [ri, q] of hits) { if (q >= 12 || !best.map.has(ri)) continue; const e = perPic.get(q) || { n: 0, pave: 0 }; e.n++; if (best.map.get(ri) === 'pave') e.pave++; perPic.set(q, e); }
+    console.log(`  the first pictures, paving share of their ground points: ${[...perPic.entries()].sort((a, b) => a[0] - b[0]).map(([q, e]) => `#${q + 1} ${pct(e.pave, e.n)}`).join(', ')}`);
   } else console.log('No pictures in the twin: the lawn-edge term cannot be tried on it.');
 
   // THE WALK REPLAYED THROUGH TODAY'S MATCH: every 5 m of the walk, the last 25 ft of what the phone saw (classed by
@@ -307,6 +345,17 @@ async function main() {
     const S = thinA(stand, 600), Gr = thinA(ground, 300), Hi = thinA(high, 300), Su = thinA(surface, 400);
     if (S.length + Hi.length < 30) continue;
     rep.asked++;
+    /* THE COST ROUND THE REFERENCES' POSE (SCAN-H6's "two places fit about as well"): the match's cost at the
+       references' pose and 2 m off it each way, and turned 10 degrees each way. A direction the cost barely rises
+       in is one the match cannot pin (a wall slides along itself). Summed over the asks. */
+    {
+      const at = (T) => placementCost(G, S, Gr, T, { high: Hi, surface: Su }).cost;
+      const c0 = at(T0), rot = (d) => { const th = T0.theta + (d * Math.PI) / 180, c = Math.cos(T0.theta), s = Math.sin(T0.theta), c1 = Math.cos(th), s1 = Math.sin(th), [u, v] = phone; return { ...T0, theta: th, tx: T0.tx + (c * u - s * v) - (c1 * u - s1 * v), ty: T0.ty + (s * u + c * v) - (s1 * u + c1 * v) }; };
+      const prof = { e: at({ ...T0, tx: T0.tx + 2 }) / c0, w: at({ ...T0, tx: T0.tx - 2 }) / c0, n: at({ ...T0, ty: T0.ty + 2 }) / c0, s: at({ ...T0, ty: T0.ty - 2 }) / c0, cw: at(rot(10)) / c0, ccw: at(rot(-10)) / c0 };
+      rep.prof = rep.prof || { n: 0, e: 0, w: 0, nn: 0, s: 0, cw: 0, ccw: 0, flat: 0 };
+      rep.prof.n++; rep.prof.e += prof.e; rep.prof.w += prof.w; rep.prof.nn += prof.n; rep.prof.s += prof.s; rep.prof.cw += prof.cw; rep.prof.ccw += prof.ccw;
+      if (Math.min(prof.e, prof.w, prof.n, prof.s) < 1.1) rep.prof.flat++;
+    }
     // how the colours agree with the traced lawn where the references put the phone
     if (G.lawnSd && Su.length) { const pc = placementCost(G, [], [], T0, { surface: Su, detail: true }).surface; rep.surf = rep.surf || { n: 0, off: 0, offGrass: 0, edge: 0, landed: 0 }; for (const k of Object.keys(rep.surf)) rep.surf[k] += pc[k]; }
     const phone = (() => { let best = null; for (const p of byOdo) if (p.odo <= odo) best = p; return best ? [best.x, -best.z] : [0, 0]; })();
@@ -338,6 +387,7 @@ async function main() {
   console.log(`  the lawn's edges weighed 8 times, roof edges twice: ${line('lawnEdgeW8Roofs')}`);
   console.log(`  refused with the lawn's edges: ${JSON.stringify(rep.why)}`);
   for (const r of rep.rows || []) console.log(`  fix at ${r.atM} m walked: ${r.offM} m and ${r.offDeg} deg from the references; edge points on the right side ${r.fix.edgeOk}% at the fix, ${r.refs.edgeOk}% at the references; points landed ${r.fix.landed} against ${r.refs.landed}`);
+  if (rep.prof) { const P = rep.prof, f = (v) => (v / P.n).toFixed(2); console.log(`  the cost round the references' pose, as a multiple of the cost there (1.00 = no worse), averaged over ${P.n} asks: 2 m east ${f(P.e)}, west ${f(P.w)}, north ${f(P.nn)}, south ${f(P.s)}; turned 10 degrees ${f(P.cw)} / ${f(P.ccw)}. Asks where some 2 m step costs under 10% more: ${P.flat} of ${P.n}.`); }
   if (rep.surf) console.log(`  where the references put it: ${rep.surf.n.toLocaleString()} grass and paving points, ${pct(rep.surf.off, rep.surf.n)} on the wrong side of the traced lawn's edge by more than 35 cm (grass outside it ${pct(rep.surf.offGrass, rep.surf.off)} of those, paving inside it the rest); ${rep.surf.edge.toLocaleString()} within ${1.5} m of the edge, ${pct(rep.surf.landed, rep.surf.edge)} of those on the right side.`);
 }
 
