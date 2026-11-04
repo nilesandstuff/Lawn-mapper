@@ -551,7 +551,7 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true, fil
   for (let k = 0; k < N; k++) { if (kind[k] === 1) counts.roof++; else if (kind[k] === 3) counts.deciduous++; else if (kind[k] === 4) counts.structure++; }
   let inLeafColumns = 0;
   for (let k = 0; k < N; k++) if (inLeaf[k] && kind[k] === 3) inLeafColumns++;
-  return { kind, clumps, clumpOf, muOn, muOff: mu, counts, classified: classify, leafyColumns: leafy, unfilled, inLeaf, inLeafColumns, unknown };
+  return { kind, clumps, clumpOf, muOn, muOff: mu, counts, classified: classify, leafyColumns: leafy, unfilled, inLeaf, inLeafColumns, unknown, built };
 }
 
 /** The extinction coefficients with a share `f` (0 bare .. 1 in full leaf) of deciduous leaves out. */

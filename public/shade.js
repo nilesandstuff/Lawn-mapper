@@ -32,6 +32,7 @@ import { pointsIn, toMerc, fromMerc, mercScale } from './shade/ept.js';
 import { flightOf } from './shade/find.js';
 import { onePass } from './shade/passes.js';
 import { flagStrays } from './shade/structures.js';
+import { finishedModel, modelBytes } from './shade/model-out.js';
 import { greenOver } from './shade/naip.js';
 import { lazDecoder, browserFactory } from './shade/laz.js';
 import { nad83Correction } from './shade/datum.js';
@@ -171,6 +172,26 @@ function saveShadePart({ now = false } = {}) {
       const res = await fetch(`/api/maps/tool?id=${encodeURIComponent(site.map.id)}&tool=shade`, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data, basedOn: site.map.at || null }) });
       if (res.ok) { site.map.shade = data; backLink(); } else track('map', `part refused ${res.status}`);
     } catch { /* offline: the next change tries again */ }
+  }, now ? 0 : 1000);
+}
+
+/**
+ * THE FINISHED MODEL FILE (owner, 2026-11-04: one base set of 3D files;
+ * model-out.js): written when the trees are built and after each erasure,
+ * settled for a second. Every other tool reads it instead of the points.
+ */
+let modelTimer = null;
+function saveModelFile({ now = false } = {}) {
+  const site = view.site;
+  if (!site?.map?.id || !view.trees?.finished) return;
+  clearTimeout(modelTimer);
+  modelTimer = setTimeout(async () => {
+    try {
+      const fin = finishedModel({ ...view.trees.finished(), lidar: view.model?.lidar || null, flown: view.model?.flown || null, photo: view.model?.green?.frame || null, basedOn: site.map.at || null });
+      const bytes = modelBytes(fin);
+      const res = await fetch(`/api/maps/model?id=${encodeURIComponent(site.map.id)}&tool=shade`, { method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/octet-stream' }, body: bytes });
+      if (!res.ok) track('model', `refused ${res.status}`); else track('model', `${Math.round(bytes.byteLength / 1024)} KB`);
+    } catch (e) { track('model', `failed: ${String(e.message).slice(0, 60)}`); }
   }, now ? 0 : 1000);
 }
 
@@ -665,7 +686,7 @@ async function build(site) {
 
   view.builtFor = site;
   view.model = {
-    green,
+    green, flown: flown ? { start: flown.start, mid: flown.mid, end: flown.end } : null,
     cols, box, shift, baseZ, ground, fit, season: u?.season ?? null, flownTo: u?.end ? day(u.end) : null,
     lidar: keptUsed ? kept : { url: cloud.url, name: cloud.name, epoch: cloud.epoch, box, shift, fit: fit ? { east: fit.east, north: fit.north, confident: !!fit.confident, why: fit.why } : null, at: new Date().toISOString() },
   };
@@ -673,12 +694,14 @@ async function build(site) {
   /* The trees page (/shade-trees): the same model drawn instead of lit (shade/trees-ui.js). */
   if (TREES) {
     view.sun = await startTrees({ map, site, cols, box, shift, season: view.model.season, flownTo: view.model.flownTo, baseZ, green });
+    view.trees = view.sun;
+    saveModelFile({ now: true });
     return;
   }
 
   if (STEPPED) {
     /* Step 2: the trees, with the eraser; the shade waits for step 3. */
-    view.trees = await startTrees({ map, site, cols, box, shift, season: view.model.season, flownTo: view.model.flownTo, erase: true, baseZ, green, onErase: () => { view.eraseVersion++; saveShadePart(); } });
+    view.trees = await startTrees({ map, site, cols, box, shift, season: view.model.season, flownTo: view.model.flownTo, erase: true, baseZ, green, onErase: () => { view.eraseVersion++; saveShadePart(); saveModelFile(); } });
     view.trees.setActive(view.steps.current === 2);
     view.steps.unlock(3);
     view.steps.setNext(2, true);
@@ -687,6 +710,7 @@ async function build(site) {
     /* The part kept last time: the erased cells back in, if the grid is the same; the step they left. */
     const part = site.map?.shade;
     if ((part?.erased?.length || part?.cubes?.length) && partFitsGrid(part)) { view.trees.restore({ cells: part.erased || [], cubes: part.cubes || [] }); view.eraseVersion++; }
+    saveModelFile({ now: true }); // the finished model, kept erasures included (model-out.js)
     if (part && (part.settings?.step || 0) >= 3 && view.steps.current === 2) { view.steps.unlock(3); view.steps.go(3); }
     status(keptUsed ? 'The trees are built and lined up as kept with this map. Erase any that should not count, then go on to the shade map.'
       : fit?.confident ? 'The trees are built and lined up with the photo. Erase any that should not count, then go on to the shade map.'

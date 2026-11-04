@@ -1750,6 +1750,39 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
     wl.cellM === 0.25 && Math.abs(wallM2 - (6 - 2 * 0.61) * (4 - 2 * 0.61)) < 3 && wallN + eaveN === 24 * 16 && WALL_INSET_M === 0.61, `${wallM2.toFixed(1)} m2 inside, ${(eaveN * 0.0625).toFixed(1)} m2 eave`);
 }
 
+/* THE FINISHED MODEL FILE (model-out.js; owner, 2026-11-04: one base set of 3D files). */
+{
+  const { finishedModel, modelBytes } = await import('../public/shade/model-out.js');
+  const { decodeModel, modelUsable, columnAt } = await import('../public/lib/lidar-model.js');
+  const lat = 43, k = mercScale(lat);
+  const grid = gridOver([0, 0, 30 / k, 30 / k], 1, lat);
+  const pts = [];
+  for (let e = 0.25; e < 30; e += 0.5) for (let n = 0.25; n < 30; n += 0.5) {
+    const roof = e > 4 && e < 10 && n > 4 && n < 10, r = Math.hypot(e - 20, n - 20);
+    if (roof) pts.push([e, n, 104, 6, 1, 1]);
+    else if (r < 4 && (e * 7 + n * 13) % 1 < 0.5) pts.push([e, n, 108 - r, 1, 1, 2], [e, n, 100, 2, 2, 2]);
+    else pts.push([e, n, 100, 2, 1, 1]);
+  }
+  const cols = makeColumns(pts.length);
+  pts.forEach(([e, n, z, c, r, nr], i) => { cols.x[i] = e / k; cols.y[i] = n / k; cols.z[i] = z; cols.cls[i] = c; cols.ret[i] = r; cols.nret[i] = nr; });
+  const model = buildCanopy(cols, grid), season = seasonalCanopy(cols, model);
+  const at = (e, n) => Math.floor(30 - n) * grid.w + Math.floor(e);
+  const erasedMask = new Uint8Array(grid.w * grid.h); erasedMask[at(20.5, 20.5)] = 1;
+  const fin = finishedModel({ model, season, erasedMask, erasedCubes: [at(18.5, 20.5) * model.nz + 6], lidar: { url: 'u', name: 'n', epoch: 2018, shift: [0.1, 0.2], fit: null }, flown: { start: 1, mid: 2, end: 3 }, photo: { id: 'f', date: '2018-07-06', source: 'planetary-computer' }, basedOn: 'then' });
+  const bytes = modelBytes(fin);
+  const back = decodeModel(bytes);
+  const { meta, arrays } = back;
+  check('model file: the finished model round-trips through lidar-model.js, usable, with the grid, layers, lidar, photo and kind codes in its header',
+    modelUsable(back) && meta.tool === 'shade' && meta.grid.w === grid.w && meta.layers.nz === model.nz && meta.lidar.flown.end === 3 && meta.photo.date === '2018-07-06' && meta.rule.kinds.BUILDING === 1 && meta.basedOn === 'then' && arrays.mu.length === grid.w * grid.h * model.nz && arrays.muOn.length === arrays.mu.length, JSON.stringify(Object.keys(arrays)));
+  check('model file: a building column is BUILDING with its top; a tree column TREE; the erased column is NOTHING with its cubes emptied; the erased cube alone is empty; summer leaves only add',
+    arrays.kind[at(7.5, 7.5)] === BUILDING && Math.abs(arrays.top[at(7.5, 7.5)] - 4) < 0.6 && arrays.kind[at(19.5, 20.5)] === TREE && arrays.kind[at(20.5, 20.5)] === 0 && Number.isNaN(arrays.top[at(20.5, 20.5)])
+      && arrays.mu.subarray(at(20.5, 20.5) * model.nz, (at(20.5, 20.5) + 1) * model.nz).every((v) => v === 0) && arrays.mu[at(18.5, 20.5) * model.nz + 6] === 0 && meta.erased === 1
+      && arrays.muOn.every((v, i) => v >= arrays.mu[i] - 1e-6) && Math.abs(arrays.top[at(2.5, 25.5)]) < 0.3 && columnAt(meta.grid, (7.5 / k) + grid.x0, grid.y1 - 22.5 / k) === at(7.5, 7.5),
+    `kinds ${arrays.kind[at(7.5, 7.5)]} ${arrays.kind[at(19.5, 20.5)]} ${arrays.kind[at(20.5, 20.5)]}; roof top ${arrays.top[at(7.5, 7.5)]}; open top ${arrays.top[at(2.5, 25.5)]}; cube ${arrays.mu[at(18.5, 20.5) * model.nz + 6]}; erased col zero ${arrays.mu.subarray(at(20.5, 20.5) * model.nz, (at(20.5, 20.5) + 1) * model.nz).every((v) => v === 0)}; muOn>=mu ${arrays.muOn.every((v, i) => v >= arrays.mu[i] - 1e-6)}; columnAt ${columnAt(meta.grid, (7.5 / k) + grid.x0, grid.y1 - 22.5 / k)} vs ${at(7.5, 7.5)}`);
+  const small = modelBytes(fin, { maxBytes: bytes.byteLength - 1 });
+  check('model file: over the size the server takes, the summer-leaf cubes are left out and the file still written', small.byteLength < bytes.byteLength && !decodeModel(small).arrays.muOn && modelUsable(decodeModel(small)) && /left out/.test(decodeModel(small).meta.leaves.muOn));
+}
+
 /* ONE LEAF STATE PER LOT (passes.js; owner, 2026-10-29). */
 {
   check('passes: a point fired 9 May or in November is leaf-off; 11 May, July and an undated one are not',

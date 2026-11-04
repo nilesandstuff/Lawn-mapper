@@ -504,6 +504,8 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
     erasedCubes: () => er?.cubeList() || [],
     /** The model's cube layers per column: a kept list of blocks fits only a model with the same. */
     nz: model.nz,
+    /** The finished numbers for the model file (model-out.js): the canopy, the kinds and the erasures as they stand. */
+    finished: () => ({ model, season, erasedMask: er?.any ? er.mask : null, erasedCubes: er?.cubeList() || [] }),
     /** The block under a point on the map's ground plane as the camera sees it ({ k, l }), or null. */
     hitAt: (lngLat) => { const h = hitUnder(lngLat); return h && { k: h.k, l: h.l }; },
     /** What was erased last time, back out of the model (one stroke, so one undo puts it all back): a list of cells, or { cells, cubes }. */
