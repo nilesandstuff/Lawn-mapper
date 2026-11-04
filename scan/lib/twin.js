@@ -5,7 +5,8 @@
  * What the phone builds while it walks, kept so it can be laid over the photo and the lidar afterwards (/twin.html):
  *
  *   cloud-NNNN.bin  the depth points, in the session's own frame: Float32 records [t, odo, x, y, z, ground], t in
- *                   seconds from the walk's start, ground the height the page took for the ground under it then.
+ *                   seconds from the walk's start, ground the height the page took for the ground under it then
+ *                   (the column's floor, locate.js groundUnder; before 2026-11-04 the crosshair's average).
  *                   One point per 5 cm cube for the whole walk, so standing still adds nothing.
  *   track-NNNN.bin  the camera, five times a second: Float32 [t, odo, x, y, z, qx, qy, qz, qw, tracking 0|1|2].
  *   key-NNNN.jpg    camera pictures (WebXR's camera-access), at most one a second and only after moving 0.3 m or
@@ -49,7 +50,7 @@ export function addPoints(tw, now, odo, pts, gy = NaN) {
       if (tw.vox.has(k)) continue;
       tw.vox.add(k);
     }
-    tw.cloud.push(t, odo, p.x, p.y, p.z, gy ?? NaN); n++;
+    tw.cloud.push(t, odo, p.x, p.y, p.z, p.g ?? gy ?? NaN); n++; // p.g: the ground the page took under it (locate.js addDepth)
   }
   tw.counts.points += n;
   return n;

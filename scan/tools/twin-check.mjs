@@ -72,15 +72,28 @@ async function main() {
      walk went, so a little kinder than the page. */
   const colYs = new Map();
   for (const r of recs) { const k = `${Math.floor(r.x)},${Math.floor(r.z)}`; (colYs.get(k) || colYs.set(k, []).get(k)).push(r.y); }
-  const colFloor = new Map();
-  for (const [k, ys] of colYs) { ys.sort((a, b) => a - b); colFloor.set(k, ys[Math.min(ys.length - 1, Math.floor(0.15 * ys.length))]); }
-  const floor2 = (r) => { const cx = Math.floor(r.x), cz = Math.floor(r.z); let g = Infinity; for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) { const f = colFloor.get(`${cx + dx},${cz + dz}`); if (f != null && f < g && f <= r.ground + 0.5) g = f; } return Number.isFinite(g) ? g : r.ground; };
-  const cls2 = new Array(recs.length).fill(null), h2 = new Float32Array(recs.length);
-  for (const r of recs) {
-    const cam = camAt(r.t), range = cam ? Math.hypot(r.x - cam.x, r.y - cam.y, r.z - cam.z) : 0, h = r.y - floor2(r); h2[r.i] = h;
-    cls2[r.i] = Math.abs(h) < 0.2 ? (range <= 6 ? 'g' : null) : h > 0.4 && h < 2.4 ? (range <= 3.5 ? 's' : null) : h >= 2.4 && h < 12 ? 'h' : null;
+  // three floor rules per column: the lowest point (as the page did until 2026-11-04), the 15th percentile, the
+  // densest 5 cm height (as the page does now); the own column when it has 12 points, else the lowest of nine
+  const floors = { lowest: new Map(), p15: new Map(), densest: new Map() };
+  for (const [k, ys] of colYs) {
+    ys.sort((a, b) => a - b);
+    floors.lowest.set(k, ys[0]); floors.p15.set(k, ys[Math.min(ys.length - 1, Math.floor(0.15 * ys.length))]);
+    const hist = new Map(); for (const y of ys) { const b = Math.floor(y / 0.05); hist.set(b, (hist.get(b) || 0) + 1); }
+    let best = null, bestN = -1; for (const [b] of hist) { const n = (hist.get(b - 1) || 0) + hist.get(b) + (hist.get(b + 1) || 0); if (n > bestN) { bestN = n; best = b; } }
+    floors.densest.set(k, (best + 0.5) * 0.05);
   }
-  { const c = { g: 0, s: 0, h: 0, null: 0 }; for (const v of cls2) c[v]++; const c1 = { g: 0, s: 0, h: 0, null: 0 }; for (const r of recs) { const h = r.y - r.ground; c1[Math.abs(h) < 0.2 ? 'g' : h > 0.4 && h < 2.4 ? 's' : h >= 2.4 && h < 12 ? 'h' : 'null']++; } console.log(`Classed by the page as it walked: ground ${c1.g.toLocaleString()}, standing ${c1.s.toLocaleString()}, high ${c1.h.toLocaleString()}. Classed again (floor the 15th percentile; standing within 3.5 m, ground within 6 m): ground ${c.g.toLocaleString()}, standing ${c.s.toLocaleString()}, high ${c.h.toLocaleString()}.`); }
+  const floorBy = (rule, r, ownFirst) => {
+    const cx = Math.floor(r.x), cz = Math.floor(r.z), F = floors[rule], gy = r.ground; // r.ground: the crosshair's average on this walk
+    if (ownFirst) { const own = F.get(`${cx},${cz}`); if (own != null && colYs.get(`${cx},${cz}`).length >= 12 && own <= gy + 0.5) return own; }
+    let g = Infinity; for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) { const f = F.get(`${cx + dx},${cz + dz}`); if (f != null && f < g && f <= gy + 0.5) g = f; }
+    return Number.isFinite(g) ? g : gy;
+  };
+  const rangeOf = (r) => { const cam = camAt(r.t); return cam ? Math.hypot(r.x - cam.x, r.y - cam.y, r.z - cam.z) : 0; };
+  const classify = (rule, ownFirst, standCap, groundCap) => recs.map((r) => { const range = rangeOf(r), h = r.y - floorBy(rule, r, ownFirst); return Math.abs(h) < 0.2 ? (range <= groundCap ? 'g' : null) : h > 0.4 && h < 2.4 ? (range <= standCap ? 's' : null) : h >= 2.4 && h < 12 ? 'h' : null; });
+  const RULES = [['the lowest of nine columns, any range (as the page did)', 'lowest', false, Infinity, Infinity], ['the 15th percentile, standing within 3.5 m', 'p15', false, 3.5, 6], ['the densest height, own column first, standing within 3.5 m (as the page does now)', 'densest', true, 3.5, 6], ['the densest height, own column first, any range', 'densest', true, Infinity, Infinity]];
+  const CLS = RULES.map(([, rule, own, sc, gc]) => classify(rule, own, sc, gc));
+  const cls2 = CLS[2];
+  for (let i = 0; i < RULES.length; i++) { const c = { g: 0, s: 0, h: 0, null: 0 }; for (const v of CLS[i]) c[v]++; console.log(`Classed with the floor ${RULES[i][0]}: ground ${c.g.toLocaleString()}, standing ${c.s.toLocaleString()}, high ${c.h.toLocaleString()}.`); }
   console.log(`Twin: ${recs.length.toLocaleString()} phone points; ${live.fixes.length} lidar fixes, ${live.marks.filter((m) => m.kind === 'ref').length} reference marks${live.ended ? '' : ' (cut short)'}.`);
   // a map's key is whatever the page made it (it can name the place): quoted for SQL, never printed
   if (!meta.map || String(meta.map).length > 300 || /[\u0000-\u001f]/.test(String(meta.map))) throw new Error('the twin names no usable map');
@@ -347,7 +360,7 @@ async function main() {
      ground says: under 0.3 m, the phone misread the ground as a thing (a slope: its ground is the lowest point of a
      1 m column and its neighbours); 0.3-2.5 m and on a solid cell, a match; 0.3-2.5 m and over 1 m from any solid
      cell, a thing the lidar does not have (new, or missed by a thin flight); over 2.5 m, a crown or an overhang. */
-  for (const [label, isStand] of [['as the page classed them', (r) => { const h = r.y - r.ground; return h > 0.4 && h < 2.4; }], ['classed again (SCAN-H7)', (r) => cls2[r.i] === 's']]) {
+  for (const [label, isStand] of RULES.map(([name], i) => [name, (r) => CLS[i][r.i] === 's'])) {
     const pl = placer(live, 'refs');
     const demAt = (e, n) => { const c = Math.floor((e - box[0]) / G.cell), r = Math.floor((box[3] - n) / G.cell); return c >= 0 && r >= 0 && c < W && r < H ? G.dem[r * W + c] : NaN; };
     const distAt = (e, n) => { const c = Math.floor((e - box[0]) / G.cell), r = Math.floor((box[3] - n) / G.cell); return c >= 0 && r >= 0 && c < W && r < H ? G.dist[r * W + c] : NaN; };
@@ -396,10 +409,9 @@ async function main() {
   const refsAt = placer(live, 'refs');
   const byOdo = recs.slice().sort((a, b) => a.odo - b.odo);
   const end = byOdo.length ? byOdo[byOdo.length - 1].odo : 0;
-  const pageCls = (p) => { const h = p.y - p.ground; return Math.abs(h) < 0.2 ? 'g' : h > 0.4 && h < 2.4 ? 's' : h >= 2.4 && h < 12 ? 'h' : null; };
   const ALL = [['strict', {}], ['lenient', { minLanded: MIN_LANDED }], ['lawnEdge', { minLanded: MIN_LANDED, useSurface: true }], ['lawnEdgeRoofs', { minLanded: MIN_LANDED, useSurface: true, highX: 2 }],
     ['paveOnly', { minLanded: MIN_LANDED, useSurface: true, grassCap: 0 }], ['lawnEdgeW3', { minLanded: MIN_LANDED, useSurface: true, surfW: 3 }], ['lawnEdgeW8', { minLanded: MIN_LANDED, useSurface: true, surfW: 8 }], ['lawnEdgeW8Roofs', { minLanded: MIN_LANDED, useSurface: true, surfW: 8, highX: 2 }]];
-  for (const [passName, classify, VARIANTS] of [['as the page classed them', pageCls, ALL], ['classed again (SCAN-H7: the 15th-percentile floor, standing within 3.5 m)', (p) => cls2[p.i], ALL]]) {
+  for (const [passName, classify, VARIANTS] of [['classed as the page did (the lowest of nine, any range)', (p) => CLS[0][p.i], ALL], ['classed as the page does now (the densest height, own column first, standing within 3.5 m)', (p) => cls2[p.i], ALL]]) {
   const rep = { asked: 0, why: {} };
   for (const [name] of VARIANTS) rep[name] = { fixes: 0, agree: 0, offM: [] };
   let lo = 0;

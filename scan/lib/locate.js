@@ -63,9 +63,8 @@ export const FLOOR_ABOVE = 0.5; // m: a column floor higher than this above the 
    LOWEST point, and the lowest of hundreds of noisy samples sits well below the ground, so within 2 m of the phone 86%
    of the "standing" points were the ground itself. And past 3 m, 83-91% of the standing points stood on nothing in
    the lidar, 82% of those inside the mowed lawn: phantoms from depth that was off along the ray. So: the floor is a
-   low percentile of the column's points, not its minimum; and a standing point farther than STAND_RANGE from the
-   camera, or a ground point farther than GROUND_RANGE, is not kept for the match. */
-export const FLOOR_PCT = 0.15;   // the column's floor: this low a share of its points lie under it
+   column's densest height, not its minimum (nor a low percentile, which the tail also fools); and a standing point
+   farther than STAND_RANGE from the camera, or a ground point farther than GROUND_RANGE, is not kept for the match. */
 export const FLOOR_BIN = 0.05;   // m: the column's height histogram's bin
 export const STAND_RANGE = 3.5;  // m from the camera: standing points farther than this are not kept
 export const GROUND_RANGE = 6;   // m from the camera: ground points farther than this are not kept
@@ -74,8 +73,12 @@ export const GROUND_RANGE = 6;   // m from the camera: ground points farther tha
  * ground height from the crosshair misreads a slope, a step or a drop, and a wall's foot becomes "ground" or a lawn
  * "standing"); failing any, the crosshair's slow average.
  */
+export const OWN_COLUMN_N = 12; // points a column needs for its own floor to stand alone (else the lowest round it)
 export function groundUnder(L, p) {
   const cx = Math.floor(p.x / COL), cz = Math.floor(p.z / COL), gy = L.groundY;
+  // the point's own column when it has seen enough: the lowest of nine is low on a slope (SCAN-H7)
+  const own = L.cols.get(`${cx},${cz}`);
+  if (own && own.n >= OWN_COLUMN_N && (gy == null || own.y <= gy + FLOOR_ABOVE)) return own.y;
   let g = Infinity;
   // a column whose lowest point is well above the general ground has no ground in it (a wall seen from afar, a
   // deck top): it does not count as a floor. Below the general ground anything goes (a drop, a hollow).
@@ -83,13 +86,22 @@ export function groundUnder(L, p) {
   return Number.isFinite(g) ? g : gy;
 }
 
-/** A column's floor from its height histogram: the height under which FLOOR_PCT of its points lie. */
-export function floorOf(c) {
-  const want = Math.max(1, Math.ceil(FLOOR_PCT * c.n));
+/**
+ * A column's floor from its height histogram: the DENSEST height (each bin with its neighbours), looking only under
+ * `cap` when given (the crosshair's ground plus FLOOR_ABOVE: a wall face is dense too, but not the floor). The ground
+ * is the densest surface in a column; noisy depth puts a long thin tail under it, which a minimum or a low percentile
+ * both fall into (SCAN-H7: the 15th percentile still read 83% of the ground as standing).
+ */
+export function floorOf(c, cap = Infinity) {
   const bins = [...c.hist.keys()].sort((a, b) => a - b);
-  let seen = 0;
-  for (const b of bins) { seen += c.hist.get(b); if (seen >= want) return (b + 0.5) * FLOOR_BIN; }
-  return (bins[bins.length - 1] + 0.5) * FLOOR_BIN;
+  let best = null, bestN = -1;
+  for (const b of bins) {
+    if ((b + 0.5) * FLOOR_BIN > cap) break;
+    const n = (c.hist.get(b - 1) || 0) + c.hist.get(b) + (c.hist.get(b + 1) || 0);
+    if (n > bestN) { bestN = n; best = b; }
+  }
+  if (best == null) best = bins[0];
+  return (best + 0.5) * FLOOR_BIN;
 }
 
 /**
@@ -110,12 +122,13 @@ export function addDepth(L, points, odo, cam = null) {
     const b = Math.floor(p.y / FLOOR_BIN);
     c.hist.set(b, (c.hist.get(b) || 0) + 1); c.n++; c.odo = odo; touched.add(c);
   }
-  for (const c of touched) c.y = floorOf(c);
+  for (const c of touched) c.y = floorOf(c, L.groundY + FLOOR_ABOVE);
   let kept = 0;
   for (const p of points) {
     const range = camPos ? Math.hypot(p.x - camPos.x, p.y - camPos.y, p.z - camPos.z) : 0;
-    if (range > GROUND_RANGE && p.y - groundUnder(L, p) < BANDS.standHigh) continue;
     const h = p.y - groundUnder(L, p);
+    if (range > GROUND_RANGE && h < BANDS.standHigh) continue;
+    p.g = p.y - h; // the ground the page took under it, for the twin's record
     if (range > STAND_RANGE && h > BANDS.standLow && h < BANDS.standHigh) continue;
     // 'h': high up (gutters, a roof's edge, the bottom of a crown), matched against the lidar's roof edge
     const cls = Math.abs(h) < BANDS.groundTol ? 'g' : h > BANDS.standLow && h < BANDS.standHigh ? 's' : h >= BANDS.standHigh && h < BANDS.highTop ? 'h' : null;
