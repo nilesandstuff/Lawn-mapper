@@ -22,7 +22,7 @@
 import { gridOver } from './shade/grid.js';
 import { buildCanopy } from './shade/canopy.js';
 import { seasonalCanopy } from './shade/seasonal.js';
-import { structuresFrom, BUILDING, STRUCTURE } from './shade/structures.js';
+import { structuresFrom, flagStrays, BUILDING, STRUCTURE } from './shade/structures.js';
 
 const NOISE = new Set([7, 18]);
 
@@ -59,6 +59,9 @@ function flatRule(cols, model) {
  */
 export function shadeRoofs(cols, bbox, lat, { parts = false, structures = true, green = null } = {}) {
   const grid = gridOver(bbox, 1, lat);
+  // strays the survey did not flag (a bird's echoes) get class 18 in place first, as the shade map does (structures.js, 2026-11-04);
+  // the columns' cls is shared with every later reader here, so the light worker and the trunk finder see the same flags
+  flagStrays(cols, grid);
   const st = structuresFrom(cols, grid, { green });
   const roof = Uint8Array.from(st.kind, (v) => (v === BUILDING || (structures && v === STRUCTURE) ? 1 : 0));
   if (!parts) return { roof, w: grid.w, h: grid.h, counts: st.counts, built: st };

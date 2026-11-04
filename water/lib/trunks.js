@@ -28,7 +28,7 @@
  */
 
 import { gridOver, cellOf } from './shade/grid.js';
-import { structuresFrom, BUILDING, STRUCTURE, NOISE } from './shade/structures.js';
+import { structuresFrom, flagStrays, BUILDING, STRUCTURE, NOISE } from './shade/structures.js';
 import { crownsOf } from './shade/crowns.js';
 import { fromMerc } from './ept.js';
 
@@ -46,6 +46,7 @@ export const TRUNK = {
 
 export function trunksOf(cols, bbox, lat, { built = null, green = null, opts = TRUNK } = {}) {
   const grid = gridOver(bbox, 1, lat);
+  if (!built) flagStrays(cols, grid); // as the shade map does before it reads the columns (shadeRoofs did it already when `built` is given)
   const st = built || structuresFrom(cols, grid, { green });
   const { model, kind, stats } = st, { w, h, ground } = model, N = w * h;
   // the top of what is not built: the crown finder's canopy height model
