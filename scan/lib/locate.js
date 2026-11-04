@@ -58,6 +58,17 @@ export function noteGround(L, y) {
 
 export const COL = 1; // m: the ground is remembered per column this wide
 export const FLOOR_ABOVE = 0.5; // m: a column floor higher than this above the crosshair's ground is not a floor
+/* SCAN-H7 (the owner's walk at work, 2026-11-03, with check points vouching for the references): the S21 has no
+   depth sensor; ARCore's depth is estimated from motion, and noisy. Two things followed. A column's floor was its
+   LOWEST point, and the lowest of hundreds of noisy samples sits well below the ground, so within 2 m of the phone 86%
+   of the "standing" points were the ground itself. And past 3 m, 83-91% of the standing points stood on nothing in
+   the lidar, 82% of those inside the mowed lawn: phantoms from depth that was off along the ray. So: the floor is a
+   low percentile of the column's points, not its minimum; and a standing point farther than STAND_RANGE from the
+   camera, or a ground point farther than GROUND_RANGE, is not kept for the match. */
+export const FLOOR_PCT = 0.15;   // the column's floor: this low a share of its points lie under it
+export const FLOOR_BIN = 0.05;   // m: the column's height histogram's bin
+export const STAND_RANGE = 3.5;  // m from the camera: standing points farther than this are not kept
+export const GROUND_RANGE = 6;   // m from the camera: ground points farther than this are not kept
 /**
  * The ground under a point: the lowest point seen in its 1 m column or the eight round it (SCAN-H2's lesson: one
  * ground height from the crosshair misreads a slope, a step or a drop, and a wall's foot becomes "ground" or a lawn
@@ -72,18 +83,40 @@ export function groundUnder(L, p) {
   return Number.isFinite(g) ? g : gy;
 }
 
-/** Depth points round the phone, kept one to a VOX cell as ground ('g') or standing ('s'), with the walk they were seen at. */
-export function addDepth(L, points, odo, camY = null) {
+/** A column's floor from its height histogram: the height under which FLOOR_PCT of its points lie. */
+export function floorOf(c) {
+  const want = Math.max(1, Math.ceil(FLOOR_PCT * c.n));
+  const bins = [...c.hist.keys()].sort((a, b) => a - b);
+  let seen = 0;
+  for (const b of bins) { seen += c.hist.get(b); if (seen >= want) return (b + 0.5) * FLOOR_BIN; }
+  return (bins[bins.length - 1] + 0.5) * FLOOR_BIN;
+}
+
+/**
+ * Depth points round the phone, kept one to a VOX cell as ground ('g') or standing ('s'), with the walk they were
+ * seen at. cam: the camera's position {x, y, z} when they were seen (for the range cap), or its height alone.
+ */
+export function addDepth(L, points, odo, cam = null) {
+  const camY = cam == null ? null : typeof cam === 'number' ? cam : cam.y;
+  const camPos = cam && typeof cam === 'object' ? cam : null;
   if (L.groundY == null && camY != null) L.groundY = camY - 1.35;
   if (L.groundY == null) return 0;
   // first the columns' floors from this batch (a point can only be "standing" above something lower seen near it)
+  const touched = new Set();
   for (const p of points) {
-    const k = `${Math.floor(p.x / COL)},${Math.floor(p.z / COL)}`, c = L.cols.get(k);
-    if (!c || p.y < c.y) L.cols.set(k, { y: p.y, odo }); else c.odo = odo;
+    const k = `${Math.floor(p.x / COL)},${Math.floor(p.z / COL)}`;
+    let c = L.cols.get(k);
+    if (!c) { c = { y: p.y, odo, hist: new Map(), n: 0 }; L.cols.set(k, c); }
+    const b = Math.floor(p.y / FLOOR_BIN);
+    c.hist.set(b, (c.hist.get(b) || 0) + 1); c.n++; c.odo = odo; touched.add(c);
   }
+  for (const c of touched) c.y = floorOf(c);
   let kept = 0;
   for (const p of points) {
+    const range = camPos ? Math.hypot(p.x - camPos.x, p.y - camPos.y, p.z - camPos.z) : 0;
+    if (range > GROUND_RANGE && p.y - groundUnder(L, p) < BANDS.standHigh) continue;
     const h = p.y - groundUnder(L, p);
+    if (range > STAND_RANGE && h > BANDS.standLow && h < BANDS.standHigh) continue;
     // 'h': high up (gutters, a roof's edge, the bottom of a crown), matched against the lidar's roof edge
     const cls = Math.abs(h) < BANDS.groundTol ? 'g' : h > BANDS.standLow && h < BANDS.standHigh ? 's' : h >= BANDS.standHigh && h < BANDS.highTop ? 'h' : null;
     if (!cls) continue;

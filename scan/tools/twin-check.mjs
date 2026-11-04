@@ -61,6 +61,26 @@ async function main() {
   const recs = [];
   for (const f of readdirSync(dir).filter((x) => /^cloud-\d+\.bin$/.test(x)).sort()) { const b = readFileSync(join(dir, f)); recs.push(...readCloud(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength))); }
   recs.forEach((r, i) => { r.i = i; });
+  // the camera's place when each point was seen (the track, 5 a second), for a point's range from it
+  const track = [];
+  for (const f of readdirSync(dir).filter((x) => /^track-\d+\.bin$/.test(x)).sort()) { const b = readFileSync(join(dir, f)); track.push(...readTrack(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength))); }
+  track.sort((a, b) => a.t - b.t);
+  const camAt = (tt) => { let lo = 0, hi = track.length - 1; while (lo < hi) { const m = (lo + hi) >> 1; if (track[m].t < tt) lo = m + 1; else hi = m; } return track[lo]?.pos || null; };
+  /* THE PHONE'S POINTS CLASSED AGAIN THE WAY locate.js NOW DOES IT (SCAN-H7): a column's floor the 15th percentile
+     of its points, not the lowest; standing points kept within STAND_RANGE of the camera, ground within GROUND_RANGE.
+     `cls2[i]`: 'g', 's', 'h' or null; `h2[i]` the height over that floor. Over the whole walk at once, not as the
+     walk went, so a little kinder than the page. */
+  const colYs = new Map();
+  for (const r of recs) { const k = `${Math.floor(r.x)},${Math.floor(r.z)}`; (colYs.get(k) || colYs.set(k, []).get(k)).push(r.y); }
+  const colFloor = new Map();
+  for (const [k, ys] of colYs) { ys.sort((a, b) => a - b); colFloor.set(k, ys[Math.min(ys.length - 1, Math.floor(0.15 * ys.length))]); }
+  const floor2 = (r) => { const cx = Math.floor(r.x), cz = Math.floor(r.z); let g = Infinity; for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) { const f = colFloor.get(`${cx + dx},${cz + dz}`); if (f != null && f < g && f <= r.ground + 0.5) g = f; } return Number.isFinite(g) ? g : r.ground; };
+  const cls2 = new Array(recs.length).fill(null), h2 = new Float32Array(recs.length);
+  for (const r of recs) {
+    const cam = camAt(r.t), range = cam ? Math.hypot(r.x - cam.x, r.y - cam.y, r.z - cam.z) : 0, h = r.y - floor2(r); h2[r.i] = h;
+    cls2[r.i] = Math.abs(h) < 0.2 ? (range <= 6 ? 'g' : null) : h > 0.4 && h < 2.4 ? (range <= 3.5 ? 's' : null) : h >= 2.4 && h < 12 ? 'h' : null;
+  }
+  { const c = { g: 0, s: 0, h: 0, null: 0 }; for (const v of cls2) c[v]++; const c1 = { g: 0, s: 0, h: 0, null: 0 }; for (const r of recs) { const h = r.y - r.ground; c1[Math.abs(h) < 0.2 ? 'g' : h > 0.4 && h < 2.4 ? 's' : h >= 2.4 && h < 12 ? 'h' : 'null']++; } console.log(`Classed by the page as it walked: ground ${c1.g.toLocaleString()}, standing ${c1.s.toLocaleString()}, high ${c1.h.toLocaleString()}. Classed again (floor the 15th percentile; standing within 3.5 m, ground within 6 m): ground ${c.g.toLocaleString()}, standing ${c.s.toLocaleString()}, high ${c.h.toLocaleString()}.`); }
   console.log(`Twin: ${recs.length.toLocaleString()} phone points; ${live.fixes.length} lidar fixes, ${live.marks.filter((m) => m.kind === 'ref').length} reference marks${live.ended ? '' : ' (cut short)'}.`);
   // a map's key is whatever the page made it (it can name the place): quoted for SQL, never printed
   if (!meta.map || String(meta.map).length > 300 || /[\u0000-\u001f]/.test(String(meta.map))) throw new Error('the twin names no usable map');
@@ -327,7 +347,7 @@ async function main() {
      ground says: under 0.3 m, the phone misread the ground as a thing (a slope: its ground is the lowest point of a
      1 m column and its neighbours); 0.3-2.5 m and on a solid cell, a match; 0.3-2.5 m and over 1 m from any solid
      cell, a thing the lidar does not have (new, or missed by a thin flight); over 2.5 m, a crown or an overhang. */
-  if (G.lawnSd || true) {
+  for (const [label, isStand] of [['as the page classed them', (r) => { const h = r.y - r.ground; return h > 0.4 && h < 2.4; }], ['classed again (SCAN-H7)', (r) => cls2[r.i] === 's']]) {
     const pl = placer(live, 'refs');
     const demAt = (e, n) => { const c = Math.floor((e - box[0]) / G.cell), r = Math.floor((box[3] - n) / G.cell); return c >= 0 && r >= 0 && c < W && r < H ? G.dem[r * W + c] : NaN; };
     const distAt = (e, n) => { const c = Math.floor((e - box[0]) / G.cell), r = Math.floor((box[3] - n) / G.cell); return c >= 0 && r >= 0 && c < W && r < H ? G.dist[r * W + c] : NaN; };
@@ -336,15 +356,10 @@ async function main() {
     diffs.sort((a, b) => a - b);
     const tz = diffs.length ? diffs[diffs.length >> 1] : NaN;
     const k = { groundMisread: 0, landed: 0, near: 0, missing: 0, high: 0, n: 0 }, slopes = { misread: [], all: [] };
-    // the camera's place when each point was seen (the track, 5 a second), for the point's range from it
-    const track = [];
-    for (const f of readdirSync(dir).filter((x) => /^track-\d+\.bin$/.test(x)).sort()) { const b = readFileSync(join(dir, f)); track.push(...readTrack(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength))); }
-    track.sort((a, b) => a.t - b.t);
-    const camAt = (tt) => { let lo = 0, hi = track.length - 1; while (lo < hi) { const m = (lo + hi) >> 1; if (track[m].t < tt) lo = m + 1; else hi = m; } return track[lo]?.pos || null; };
     const ranges = { misread: [], landed: [], missing: [] }, inLawn = { missing: 0, missingN: 0, landed: 0, landedN: 0 }, farMissing = { n: 0, far: 0 };
     const slopeAt = (e, n) => { const a = demAt(e + 1, n), b = demAt(e - 1, n), c = demAt(e, n + 1), d = demAt(e, n - 1); return Number.isFinite(a + b + c + d) ? Math.hypot((a - b) / 2, (c - d) / 2) : NaN; };
     for (const r of recs) {
-      const h = r.y - r.ground; if (!(h > 0.4 && h < 2.4)) continue;
+      if (!isStand(r)) continue;
       const T = pl(r.odo); if (!T) continue;
       const [e, n] = apply(T, [r.x, -r.z]), z = demAt(e, n); if (!Number.isFinite(z)) continue;
       const hl = r.y + tz - z, d = distAt(e, n); k.n++;
@@ -358,13 +373,13 @@ async function main() {
       const s = slopeAt(e, n); if (Number.isFinite(s) && k.n % 3 === 0) slopes.all.push(s);
     }
     const med = (a) => { a.sort((x, y) => x - y); return a.length ? a[a.length >> 1] : NaN; };
-    console.log(`The phone's standing points at the references' pose (${k.n.toLocaleString()}; the phone's up lined to the lidar's by ${Number.isFinite(tz) ? tz.toFixed(2) : '?'} m from ${diffs.length.toLocaleString()} ground points): ${pct(k.groundMisread, k.n)} are under 0.3 m over the LIDAR ground (the phone misread the ground as a thing; the lidar's slope under them ${(med(slopes.misread) * 100).toFixed(0)}%, under all of them ${(med(slopes.all) * 100).toFixed(0)}%); ${pct(k.landed, k.n)} land on a solid cell; ${pct(k.near, k.n)} within 1 m of one; ${pct(k.missing, k.n)} stand 0.3-2.5 m up with nothing solid within 1 m (things the lidar does not have); ${pct(k.high, k.n)} are over 2.5 m up by the lidar (a crown, a wall top on a slope).`);
+    console.log(`The phone's standing points, ${label}, at the references' pose (${k.n.toLocaleString()}; the phone's up lined to the lidar's by ${Number.isFinite(tz) ? tz.toFixed(2) : '?'} m from ${diffs.length.toLocaleString()} ground points): ${pct(k.groundMisread, k.n)} are under 0.3 m over the LIDAR ground (the phone misread the ground as a thing; the lidar's slope under them ${(med(slopes.misread) * 100).toFixed(0)}%, under all of them ${(med(slopes.all) * 100).toFixed(0)}%); ${pct(k.landed, k.n)} land on a solid cell; ${pct(k.near, k.n)} within 1 m of one; ${pct(k.missing, k.n)} stand 0.3-2.5 m up with nothing solid within 1 m (things the lidar does not have); ${pct(k.high, k.n)} are over 2.5 m up by the lidar (a crown, a wall top on a slope).`);
     const q = (a, f) => { a.sort((x, y) => x - y); return a.length ? a[Math.floor(a.length * f)].toFixed(1) : '?'; };
     console.log(`  Range from the camera when seen (median / 9 in 10 under): misread ground ${q(ranges.misread, 0.5)} / ${q(ranges.misread, 0.9)} m, landed ${q(ranges.landed, 0.5)} / ${q(ranges.landed, 0.9)} m, missing from the lidar ${q(ranges.missing, 0.5)} / ${q(ranges.missing, 0.9)} m; ${pct(farMissing.far, farMissing.n)} of the missing were seen from over 4 m. Inside the traced lawn, where nothing stands: ${pct(inLawn.missing, inLawn.missingN)} of the missing, ${pct(inLawn.landed, inLawn.landedN)} of the landed.`);
     // the same points by range band: what share of each band lands, is missing, or is misread ground
     const bands = [[0, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 8]], tot = bands.map(() => ({ n: 0, landed: 0, missing: 0, misread: 0 }));
     for (const r of recs) {
-      const h = r.y - r.ground; if (!(h > 0.4 && h < 2.4)) continue;
+      if (!isStand(r)) continue;
       const T = pl(r.odo); if (!T) continue;
       const [e, n] = apply(T, [r.x, -r.z]), z = demAt(e, n); if (!Number.isFinite(z)) continue;
       const cam = camAt(r.t); if (!cam) continue;
@@ -381,8 +396,10 @@ async function main() {
   const refsAt = placer(live, 'refs');
   const byOdo = recs.slice().sort((a, b) => a.odo - b.odo);
   const end = byOdo.length ? byOdo[byOdo.length - 1].odo : 0;
-  const VARIANTS = [['strict', {}], ['lenient', { minLanded: MIN_LANDED }], ['lawnEdge', { minLanded: MIN_LANDED, useSurface: true }], ['lawnEdgeRoofs', { minLanded: MIN_LANDED, useSurface: true, highX: 2 }],
+  const pageCls = (p) => { const h = p.y - p.ground; return Math.abs(h) < 0.2 ? 'g' : h > 0.4 && h < 2.4 ? 's' : h >= 2.4 && h < 12 ? 'h' : null; };
+  const ALL = [['strict', {}], ['lenient', { minLanded: MIN_LANDED }], ['lawnEdge', { minLanded: MIN_LANDED, useSurface: true }], ['lawnEdgeRoofs', { minLanded: MIN_LANDED, useSurface: true, highX: 2 }],
     ['paveOnly', { minLanded: MIN_LANDED, useSurface: true, grassCap: 0 }], ['lawnEdgeW3', { minLanded: MIN_LANDED, useSurface: true, surfW: 3 }], ['lawnEdgeW8', { minLanded: MIN_LANDED, useSurface: true, surfW: 8 }], ['lawnEdgeW8Roofs', { minLanded: MIN_LANDED, useSurface: true, surfW: 8, highX: 2 }]];
+  for (const [passName, classify, VARIANTS] of [['as the page classed them', pageCls, ALL], ['classed again (SCAN-H7: the 15th-percentile floor, standing within 3.5 m)', (p) => cls2[p.i], ALL]]) {
   const rep = { asked: 0, why: {} };
   for (const [name] of VARIANTS) rep[name] = { fixes: 0, agree: 0, offM: [] };
   let lo = 0;
@@ -391,10 +408,11 @@ async function main() {
     while (lo < byOdo.length && byOdo[lo].odo < odo - 7.6) lo++;
     const stand = [], ground = [], high = [], surface = [], vox = new Set();
     for (let i = lo; i < byOdo.length && byOdo[i].odo <= odo; i++) {
-      const p = byOdo[i], h = p.y - p.ground, kk = `${Math.floor(p.x / 0.1)},${Math.floor(p.z / 0.1)},${h > 0.3 ? 1 : 0}`;
+      const p = byOdo[i], c = classify(p); if (!c) continue;
+      const kk = `${Math.floor(p.x / 0.1)},${Math.floor(p.z / 0.1)},${c}`;
       if (vox.has(kk)) continue; vox.add(kk);
-      if (Math.abs(h) < 0.2) { ground.push([p.x, -p.z, p.y]); const s = surfOf.get(p.i); if (s) surface.push([p.x, -p.z, s]); }
-      else if (h > 0.4 && h < 2.4) stand.push([p.x, -p.z]); else if (h >= 2.4 && h < 12) high.push([p.x, -p.z]);
+      if (c === 'g') { ground.push([p.x, -p.z, p.y]); const s = surfOf.get(p.i); if (s) surface.push([p.x, -p.z, s]); }
+      else if (c === 's') stand.push([p.x, -p.z]); else high.push([p.x, -p.z]);
     }
     const thinA = (a, m) => (a.length <= m ? a : a.filter((_, i) => i % Math.ceil(a.length / m) === 0));
     const S = thinA(stand, 600), Gr = thinA(ground, 300), Hi = thinA(high, 300), Su = thinA(surface, 400);
@@ -432,7 +450,7 @@ async function main() {
     }
   }
   const line = (k) => { const r = rep[k]; r.offM.sort((a, b) => a - b); return `${r.fixes} fixes, ${r.agree} within ${REF_TOL_M} m and ${REF_TOL_DEG} deg of the references${r.offM.length ? ` (half within ${r.offM[r.offM.length >> 1].toFixed(2)} m)` : ''}`; };
-  console.log(`Replayed through today's match, every 5 m from the references' fit: ${rep.asked} asks.`);
+  console.log(`Replayed through today's match, the points ${passName}, every 5 m from the references' fit: ${rep.asked} asks.`);
   console.log(`  at the 50% share: ${line('strict')}`);
   console.log(`  with ${MIN_LANDED} points landed in number: ${line('lenient')}`);
   console.log(`  + the lawn's edges (grass and paving against the traced lawn): ${line('lawnEdge')}`);
@@ -445,6 +463,7 @@ async function main() {
   for (const r of rep.rows || []) console.log(`  fix at ${r.atM} m walked: ${r.offM} m and ${r.offDeg} deg from the references; edge points on the right side ${r.fix.edgeOk}% at the fix, ${r.refs.edgeOk}% at the references; points landed ${r.fix.landed} against ${r.refs.landed}`);
   if (rep.prof) { const P = rep.prof, f = (v) => (v / P.n).toFixed(2); console.log(`  the cost round the references' pose, as a multiple of the cost there (1.00 = no worse), averaged over ${P.n} asks: 2 m east ${f(P.e)}, west ${f(P.w)}, north ${f(P.nn)}, south ${f(P.s)}; turned 10 degrees ${f(P.cw)} / ${f(P.ccw)}. Asks where some 2 m step costs under 10% more: ${P.flat} of ${P.n}.`); }
   if (rep.surf) console.log(`  where the references put it: ${rep.surf.n.toLocaleString()} grass and paving points, ${pct(rep.surf.off, rep.surf.n)} on the wrong side of the traced lawn's edge by more than 35 cm (grass outside it ${pct(rep.surf.offGrass, rep.surf.off)} of those, paving inside it the rest); ${rep.surf.edge.toLocaleString()} within ${1.5} m of the edge, ${pct(rep.surf.landed, rep.surf.edge)} of those on the right side.`);
+  }
 }
 
 // an error can carry a URL with a place in it: long decimals are blanked before it is printed (the repository is public)

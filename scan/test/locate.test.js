@@ -110,7 +110,7 @@ const hitAt = (map, y = 0) => { const [u, v] = toAR(map); return { position: { x
   pts.push({ x: 10.5, y: -0.6, z: -10.5 }); // a 1.2 m post standing on it
   pts.push({ x: 30, y: 1.3, z: -30 }); // a wall point far off, nothing lower seen near it
   addDepth(L, pts, 5);
-  near(groundUnder(L, { x: 10.5, y: 0, z: -10.5 }), -1.8, 1e-9, 'the column floor');
+  near(groundUnder(L, { x: 10.5, y: 0, z: -10.5 }), -1.8, 0.03, 'the column floor (to the histogram bin)');
   near(groundUnder(L, { x: 30, y: 0, z: -30 }), 0, 1e-9, 'a lone high point is not a floor: the crosshair ground');
   const r = recent(L, 5);
   assert.equal(r.stand.length, 2, 'the post and the wall point stand');
@@ -135,6 +135,25 @@ const hitAt = (map, y = 0) => { const [u, v] = toAR(map); return { position: { x
   const ag2 = agreement(L, 5, dist);
   assert.ok(ag2.on.length >= 40 && ag2.off.length === 0, 'all on when everything is near a solid cell');
   assert.deepEqual(agreement(newLocate(), 0, dist), { on: [], off: [] });
+}
+// SCAN-H7: the floor is a low percentile, not the lowest noisy point; far standing points are not kept
+{
+  const L = newLocate(); noteGround(L, 0);
+  const pts = [];
+  for (let i = 0; i < 100; i++) pts.push({ x: 0.5, y: (i % 10 === 0 ? -0.7 : 0) + (i % 3) * 0.02, z: -1.5 }); // the ground, with a noisy tail 0.7 m under it
+  pts.push({ x: 0.5, y: 0.45, z: -1.6 }); // 45 cm up: a low thing (would have read 1.15 m over the lowest point)
+  addDepth(L, pts, 0, { x: 0, y: 1.4, z: 0 });
+  const col = L.cols.get('0,-2');
+  assert.ok(col && col.y > -0.1 && col.y < 0.1, `the floor at the ground, not the tail: ${col && col.y}`);
+  const r = recent(L, 0);
+  assert.ok(r.ground.length >= 1 && r.stand.length === 1, `ground and one standing: ${r.ground.length} ${r.stand.length}`);
+  // a standing point 5 m away is not kept; the same point 3 m away is
+  const L2 = newLocate(); noteGround(L2, 0);
+  addDepth(L2, [{ x: 0, y: 0, z: -5 }, { x: 0, y: 1, z: -5 }, { x: 0, y: 0, z: -3 }, { x: 0.3, y: 1, z: -3 }], 0, { x: 0, y: 1.4, z: 0 });
+  const r2 = recent(L2, 0);
+  assert.equal(r2.stand.length, 1, `one standing point kept (the near one): ${r2.stand.length}`);
+  assert.deepEqual(r2.stand[0], [0.3, 3]);
+  assert.equal(r2.ground.length, 2, 'ground points within 6 m kept');
 }
 // SKEPTICAL OF A JUMP (owner, 2026-11-03): a fix far from the last kept one waits for a second to agree with it
 {

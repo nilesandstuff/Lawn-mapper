@@ -292,7 +292,7 @@ function onFrame(f) {
     st.depthAt = f.t;
     const pts = [];
     for (let i = 0; i < 16; i++) for (let j = 0; j < 28; j++) { const p = f.depth.at((i + 0.5) / 16, (j + 0.5) / 28); if (p) pts.push(p); }
-    addDepth(L, pts, odo, f.pose.position.y);
+    addDepth(L, pts, odo, f.pose.position);
     if (st.twin) addPoints(st.twin, Date.now(), odo, pts, L.groundY);
   }
   // THE GROUND'S COLOUR (scan/lib/surface.js): about once a second, the camera's picture read back, and the depth
@@ -310,7 +310,7 @@ function onFrame(f) {
         const surf = surfaceOf(pixels[k], pixels[k + 1], pixels[k + 2]);
         if (surf) { p.surf = surf; pts.push(p); st.surfCount[surf]++; }
       }
-      if (pts.length) addDepth(L, pts, odo, f.pose.position.y);
+      if (pts.length) addDepth(L, pts, odo, f.pose.position);
     }
   }
   // the twin: the camera's track, a picture now and then, and what has piled up sent every 15 s
