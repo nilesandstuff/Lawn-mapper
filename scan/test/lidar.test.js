@@ -171,8 +171,9 @@ assert.ok(G.occTop && G.bld, 'the tops and the roof mask come back for the overl
     const { fromMerc } = await import('../lib/photo.js');
     const origin = fromMerc([ox, oy]);
     const R = await loadLidar({ origin, box, lidar: { url: 'x', shift: [0, 0] } }, { pointsIn: async () => ({ cols, flown: null }), toMerc, nad83Correction: () => ({ east: 0, north: 0 }), io: null,
-      rule: () => Promise.all([import('../../public/shade/structures.js'), import('../../public/shade/grid.js')]) });
-    assert.match(R.rule, /shared rule/);
+      // the real module, but its photo call answered without the network (no summer photo: no low structures)
+      rule: async () => { const [S, Gd] = await Promise.all([import('../../public/shade/structures.js'), import('../../public/shade/grid.js')]); return [{ ...S, structuresFor: async (c, g, o) => ({ ...S.structuresFrom(c, g, o), photo: false }) }, Gd]; } });
+    assert.match(R.rule, /shared rule.*no summer photo/);
     // walls drawn as tall as they stand: the house's roof is 6 m over its ground
     const kk = Math.floor((30 - 8) / 0.25) * R.G.W + Math.floor((-5 + 30) / 0.25);
     assert.ok(R.G.wallTop && Math.abs(R.G.wallTop[kk] - 6) < 0.6, `the house's top: ${R.G.wallTop && R.G.wallTop[kk]}`);
