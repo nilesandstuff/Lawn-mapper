@@ -75,7 +75,9 @@ export async function runSite(site, io, pickCloud, { progress = () => {}, nullRu
   const ov = await ovP;
   const ovMasks = ov ? overtureMasks(g, ov) : null;
   const photo = await photoP;
-  const res = analyse(cols, bbox, site.lat, { epoch, within, nullRuns, shift: kept && Array.isArray(kept.shift) ? kept.shift : null, overture: ovMasks, ndvi: photo ? ndvi(photo) : null });
+  // the photo's vegetation index per cell: the roof veto's, and since 2026-11-04 the shared rule's (its low structures need it)
+  const green = photo ? ndvi(photo) : null;
+  const res = analyse(cols, bbox, site.lat, { epoch, within, nullRuns, shift: kept && Array.isArray(kept.shift) ? kept.shift : null, overture: ovMasks, ndvi: green });
 
   const onParcel = parcelMask ? spotsOn(res, parcelMask) : [];
   const onLawn = lawnMask ? spotsOn(res, lawnMask) : [];
@@ -107,6 +109,7 @@ export async function runSite(site, io, pickCloud, { progress = () => {}, nullRu
   }
 
   return {
+    green, // the summer photo's vegetation index per cell (null without a photo): for the shade map's light worker
     sameGridAsShade: !!kept,
     cloud: { name: cloud.name, url: cloud.url || null, ql: cloud.unit?.ql ?? null, flown: flown ? new Date(flown.mid).toISOString().slice(0, 10) : null, season: flightSeason(flown), notOnAws: pick.notOnAws || [] },
     result: res, parcelMask, lawnMask, impervious: imp, weightedFlow: wflow,

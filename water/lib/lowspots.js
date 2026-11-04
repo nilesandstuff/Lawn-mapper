@@ -115,7 +115,8 @@ export function analyse(cols0, bbox, lat, { epoch = null, shift: givenShift = nu
   if (core) { coreRoof = coreRoofs(g, cols, z); wall = coreRoof; overture = overture ? { ...overture, building: null } : overture; }
   let trunks = null;
   if (useShadeRoofs && cols.n) {
-    const sh = shadeRoofs(cols, bbox, lat);
+    // the summer photo's green (ndvi, the shade map's naip.js reading) goes to the shared rule too: its low structures need it
+    const sh = shadeRoofs(cols, bbox, lat, { green: ndvi && ndvi.length === g.W * g.H ? ndvi : null });
     // the core's rule misses the roof's edge (it sits inside: H32), so the shade map's finder is added to it
     if (sh.w === g.W && sh.h === g.H) { shadeRoof = sh.roof; wall = Uint8Array.from(core ? coreRoof : ownRoofs, (v, i) => (v || sh.roof[i] ? 1 : 0)); }
     // the tree trunks (lib/trunks.js), from the same structures pass: for the tree-root draw and the readings check

@@ -49,19 +49,22 @@ function flatRule(cols, model) {
  * shared tree-versus-building rule (public/shade/structures.js, its one home
  * since 2026-11-03; owner, 2026-11-04, "Yes" to reading it from there): its
  * BUILDINGs and, with `structures` (the default), its low STRUCTUREs too
- * (sheds, walls, stone bins: hard surfaces that shed rain). With `parts`,
+ * (sheds, walls, stone bins: hard surfaces that shed rain). `green` is the
+ * summer photo's vegetation index per cell (the shade map's naip.js
+ * greenOver, the same grid): since 2026-11-04 (shade findings 33) the rule
+ * calls no low structure without it, and none that is green in it. With `parts`,
  * also { flat, solid, evergreen } for the scoring tools (the flat rule alone;
  * flat or solid at the grass before the tree test; the shade map's
  * evergreens), which need the shade map's full seasonal run.
  */
-export function shadeRoofs(cols, bbox, lat, { parts = false, structures = true } = {}) {
+export function shadeRoofs(cols, bbox, lat, { parts = false, structures = true, green = null } = {}) {
   const grid = gridOver(bbox, 1, lat);
-  const st = structuresFrom(cols, grid);
+  const st = structuresFrom(cols, grid, { green });
   const roof = Uint8Array.from(st.kind, (v) => (v === BUILDING || (structures && v === STRUCTURE) ? 1 : 0));
   if (!parts) return { roof, w: grid.w, h: grid.h, counts: st.counts, built: st };
   const model = st.model;
-  const full = seasonalCanopy(cols, model, { classify: true }).kind;
-  const noTreeTest = seasonalCanopy(cols, model, { classify: false }).kind;
+  const full = seasonalCanopy(cols, model, { classify: true, green }).kind;
+  const noTreeTest = seasonalCanopy(cols, model, { classify: false, green }).kind;
   return {
     roof, w: grid.w, h: grid.h, counts: st.counts, built: st,
     evergreen: Uint8Array.from(full, (v) => (v === 2 ? 1 : 0)),

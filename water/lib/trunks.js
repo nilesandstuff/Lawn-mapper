@@ -44,9 +44,9 @@ export const TRUNK = {
   stemAreaM2: 25,   // and a crown holds at most one trunk per this many square metres (R 2.8 m each: a close wood)
 };
 
-export function trunksOf(cols, bbox, lat, { built = null, opts = TRUNK } = {}) {
+export function trunksOf(cols, bbox, lat, { built = null, green = null, opts = TRUNK } = {}) {
   const grid = gridOver(bbox, 1, lat);
-  const st = built || structuresFrom(cols, grid);
+  const st = built || structuresFrom(cols, grid, { green });
   const { model, kind, stats } = st, { w, h, ground } = model, N = w * h;
   // the top of what is not built: the crown finder's canopy height model
   const top = new Float32Array(N).fill(NaN);

@@ -30,3 +30,8 @@ saved map was traced on (Mapbox, or a county service and the editor's line-up).
 
 2026-11-04: structures.js, the tree-versus-building rule's one home (CLAUDE.md, "One way to read lidar"), linked
 for lib/roofs.js shadeRoofs (owner: "Yes" to reading the rule from there).
+
+2026-11-04, later: the features session's low-structure rule now needs the summer photo's green (structures.js
+`green`, naip.js greenOver; shade findings 33) and calls none without it. The water map passes the vegetation index
+it already reads for its roof veto (lib/site.js, the same NAIP service and reading) to shadeRoofs, trunksOf and the
+light worker's build message, so the shared rule judges with the photo and nothing is read twice.

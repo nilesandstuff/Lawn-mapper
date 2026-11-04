@@ -382,6 +382,7 @@ function lawnLight(res, site, climate, season) {
      otherwise 'mixed' and the canopy judges column by column. The same call the shade page makes, on the same points. */
   const passes = onePass(res.points, g.bbox, Math.cos((site.lat * Math.PI) / 180));
   const build = (erased) => ask({ type: 'build', cols: passes.cols, box: g.bbox, lat: site.lat, lng: site.lng, shift: null, lot: polygonsOf(site.lawn), lawn: polygonsOf(site.lawn),
+    green: r.green || null, // the summer photo's green: the shade map's low-structure rule needs it (2026-11-04)
     canopy: 'seasonal', flight: site.cloudSeason || null, tMean: Array.isArray(climate?.tMean) ? climate.tMean : null, erased, erasedCubes: edits.cubes,
     // the fences drawn on the shade map (its part, v 3): their shade too, as the shade map works it out
     fences: site.shadeEdits?.fences?.length ? site.shadeEdits.fences : undefined });
