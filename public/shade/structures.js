@@ -73,6 +73,65 @@ import { cellOf } from './grid.js';
 import { greenOver } from './naip.js';
 
 export const NOISE = new Set([7, 18]); // LAS low and high noise
+export const STRAY_ABOVE_M = 10; // a return this far above every other within STRAY_RADIUS_M is a stray the survey missed
+export const STRAY_RADIUS_M = 3;
+export const HIGH_NOISE = 18; // the LAS class a stray is given
+
+/**
+ * STRAYS THE SURVEY DID NOT FLAG (owner, 2026-11-04: a "column of tree
+ * that's like 150 feet tall that doesn't relate to anything in real life":
+ * one return 46.5 m up, class 1, nothing else within 40 m below it; a bird,
+ * or a glitch). USGS's deliveries flag high noise as class 18, which every
+ * reader here ignores (owner: "ignore 80m and noise"), but some slip
+ * through. A return more than STRAY_ABOVE_M above every other return within
+ * STRAY_RADIUS_M of it -- counting only returns that are themselves
+ * anchored to something below, since one pulse off a bird leaves two or
+ * three echoes that would vouch for each other -- is given class 18 here,
+ * in place, before anything reads the columns. A tree's top has its own
+ * crown under it within that radius; a wire has the next return along it
+ * at its own height. Returns the count flagged.
+ */
+export function flagStrays(cols, grid, { shift = null, aboveM = STRAY_ABOVE_M, radiusM = STRAY_RADIUS_M, cellM = null } = {}) {
+  if (!cols?.n) return 0;
+  const { w, h } = grid;
+  const N = w * h;
+  const cm = cellM ?? grid.cell * Math.cos((grid.lat || 0) * Math.PI / 180);
+  const r = Math.max(1, Math.round(radiusM / Math.max(cm, 1e-9)));
+  /* ANCHORED, from the ground up: a return is anchored when, within the
+     radius, an anchored return stands no more than aboveM below it; each
+     cell's lowest return is anchored (the ground, or as near as the laser
+     got). Taken in height order, so a stray cannot anchor another stray --
+     one pulse off a bird leaves two or three echoes a few metres apart, and
+     each would vouch for the other if judged alone. */
+  const cell = new Int32Array(cols.n).fill(-1);
+  const order = [];
+  const low = new Float32Array(N).fill(Infinity);
+  for (let i = 0; i < cols.n; i++) {
+    if (NOISE.has(cols.cls[i])) continue;
+    const k = cellOf(grid, cols.x[i], cols.y[i], shift);
+    if (k < 0) continue;
+    cell[i] = k;
+    order.push(i);
+    if (cols.z[i] < low[k]) low[k] = cols.z[i];
+  }
+  order.sort((p, q) => cols.z[p] - cols.z[q]);
+  const anchoredTop = Float32Array.from(low); // the highest anchored return per cell so far (the lowest to start)
+  let flagged = 0;
+  for (const i of order) {
+    const k = cell[i], z = cols.z[i];
+    if (z === low[k]) continue; // the cell's lowest: anchored by definition
+    const x = k % w, y = (k / w) | 0;
+    let support = -Infinity;
+    for (let dy = -r; dy <= r && support < z - aboveM; dy++) for (let dx = -r; dx <= r; dx++) {
+      const xx = x + dx, yy = y + dy;
+      if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+      const t = anchoredTop[yy * w + xx];
+      if (t > support) support = t;
+    }
+    if (z - support <= aboveM) { if (z > anchoredTop[k]) anchoredTop[k] = z; } else { cols.cls[i] = HIGH_NOISE; flagged++; }
+  }
+  return flagged;
+}
 export const CROWN_ABOVE_M = 2;
 export const MAX_OVER_M = 80;
 export const FLAT_MIN_RETURNS = 3; // the flat-roof rule: this many returns over 2 m
@@ -367,6 +426,7 @@ export function wallsOf(mask, w, h, { cellM = 1, fineM = 0.25, insetM = WALL_INS
  * the photo read is the one nearest it (naip.js).
  */
 export async function structuresFor(cols, grid, { shift = null, flownMs = null, fetchFn, decodePng } = {}) {
+  flagStrays(cols, grid, { shift });
   const green = await greenOver(grid, { flownMs, ...(fetchFn ? { fetchFn } : {}), ...(decodePng ? { decodePng } : {}) });
   return { ...structuresFrom(cols, grid, { shift, green }), photo: !!green };
 }

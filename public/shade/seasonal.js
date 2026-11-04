@@ -145,7 +145,7 @@
 
 import { cellOf } from './grid.js';
 import { crownsOf } from './crowns.js';
-import { structuresOf, NOISE, CROWN_ABOVE_M, BUILDING, TREE, SOLID_TREE, STRUCTURE, UNKNOWN } from './structures.js';
+import { structuresOf, flagStrays, NOISE, CROWN_ABOVE_M, BUILDING, TREE, SOLID_TREE, STRUCTURE, UNKNOWN } from './structures.js';
 import { GRASS_M, SOLID_MU } from './canopy.js';
 import { greenOver } from './naip.js';
 
@@ -207,6 +207,7 @@ export const LEAF_FALL_DAYS = 28;
  * wants the shade map's kinds, low structures included (structures.js).
  */
 export async function seasonalCanopyFor(cols, model, opts = {}) {
+  flagStrays(cols, model.grid, { shift: opts.shift ?? null });
   const green = opts.green ?? await greenOver(model.grid, { flownMs: opts.flownMs ?? null, ...(opts.fetchFn ? { fetchFn: opts.fetchFn } : {}), ...(opts.decodePng ? { decodePng: opts.decodePng } : {}) });
   return seasonalCanopy(cols, model, { ...opts, green });
 }

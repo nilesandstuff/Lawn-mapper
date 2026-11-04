@@ -31,6 +31,7 @@
 import { pointsIn, toMerc, fromMerc, mercScale } from './shade/ept.js';
 import { flightOf } from './shade/find.js';
 import { onePass } from './shade/passes.js';
+import { flagStrays } from './shade/structures.js';
 import { greenOver } from './shade/naip.js';
 import { lazDecoder, browserFactory } from './shade/laz.js';
 import { nad83Correction } from './shade/datum.js';
@@ -530,6 +531,10 @@ async function build(site) {
      survey's passes can be months apart, one in leaf and one not. */
   const passes = onePass(cols, [lx0, ly0, lx1, ly1], k);
   cols = passes.cols;
+  /* Strays the survey did not flag as noise (structures.js flagStrays): a
+     return far above everything round it is given the noise class here,
+     before anything reads the columns. */
+  const strays = flagStrays(cols, gridOver(box, 1, site.lat));
 
   /* Density over the lot itself. */
   const inLot = Math.round(lotDensity(cols) * lotM2);
@@ -635,6 +640,7 @@ async function build(site) {
       <tr><td>Cloud</td><td>${esc(cloud.name)}${cloud.confirmed ? '' : ' <span class="warn">(box match only: USGS did not confirm it flew this point)</span>'}</td></tr>
       ${u ? `<tr><td>Flown</td><td>${day(u.start)}${day(u.end) !== day(u.start) ? ` to ${day(u.end)}` : ''}, ${esc(u.ql || '?')}, ${seasonWord(u.season)} <span class="dim">${u.source === 'laser' ? 'by the laser\'s own clock' : 'by the USGS catalogue'}${u.catalogue && !u.agree ? `; the catalogue says ${day(u.catalogue.start)} to ${day(u.catalogue.end)}, ${u.catalogue.season || '?'} — the clock wins` : ''}</span></td></tr>` : '<tr><td>Flown</td><td class="warn">unknown: the files keep no time and the USGS catalogue did not answer; the trees are drawn as the laser saw them</td></tr>'}
       ${passWords}
+      ${strays ? `<tr><td>Strays</td><td>${strays} return${strays === 1 ? '' : 's'} far above everything round ${strays === 1 ? 'it' : 'them'} (birds, glitches the survey did not flag), set aside as noise</td></tr>` : ''}
       <tr><td>Summer photo</td><td>${green?.frame ? (green.frame.date ? `NAIP of ${esc(green.frame.date)}, the frame nearest the flight` : 'the newest NAIP mosaic (no single frame covered the lot)') : '<span class="warn">none answered: low structures are not told from small trees here</span>'} <span class="dim">(the green check for sheds against small trees; the picture under the map is the one this map was traced on)</span></td></tr>
       <tr><td>Points</td><td>${cols.n.toLocaleString()} within ${MARGIN_M} m of the lot; ${(inLot / lotM2).toFixed(1)} a square meter over the lot</td></tr>
       ${notOnAws.length ? `<tr><td>Also flown</td><td class="warn">${notOnAws.map((x) => `${esc(x.workunit)} (${day(x.end)}, ${esc(x.ql || '?')})`).join('; ')} — not in the public cloud store, so not read</td></tr>` : ''}

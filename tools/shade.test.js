@@ -5,7 +5,7 @@
  */
 import { lasHeader, makeColumns, readRecord, gpsTimes, gpsMs, leafOfMs, LEAF_OFF, LEAF_ON } from '../public/shade/las.js';
 import { onePass } from '../public/shade/passes.js';
-import { structuresOf, structuresFrom, structuresFor, wallsOf, greenCut, WALL_INSET_M, NOTHING, BUILDING, TREE, SOLID_TREE, STRUCTURE, UNKNOWN } from '../public/shade/structures.js';
+import { structuresOf, structuresFrom, structuresFor, flagStrays, wallsOf, greenCut, WALL_INSET_M, NOTHING, BUILDING, TREE, SOLID_TREE, STRUCTURE, UNKNOWN } from '../public/shade/structures.js';
 import { ndviFromBsq, ndviFromRgba, pickFrame, inPolygon, STAC, CROP } from '../public/shade/naip.js';
 import { PNG as PngJs } from 'pngjs';
 import { kindOf as kindOfTrees } from '../public/shade/trees-ui.js';
@@ -1700,6 +1700,15 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   check('naip: without a date the newest covering frame; a flight far from every frame takes the newest; no covering frame, none',
     pickFrame(its, ring).id === 'f2022' && pickFrame(its, ring, Date.UTC(2019, 5, 1)).id === 'f2018' && pickFrame(its, ring, Date.UTC(2005, 5, 1)).id === 'f2022' && pickFrame(its.filter((i) => i.id === 'f2016'), ring) === null && inPolygon([0.00005, 0.00005], tiny) && !inPolygon([1, 1], tiny), '');
   const noPhoto = await structuresFor(cols, gridOver([0, 0, 61 / k, 60 / k], 1, lat), { fetchFn: async () => ({ ok: false }) });
+  /* A STRAY THE SURVEY MISSED (owner, 2026-11-04): one return 46 m up over open lawn, class 1; and a real 25 m tree top with its crown under it. */
+  const strayCols = makeColumns(cols.n + 6);
+  for (const key of ['x', 'y', 'z', 'intensity', 'ret', 'nret', 'cls']) strayCols[key].set(cols[key]);
+  const extra = [[5, 50, 146.5, 1], [6, 52, 140.9, 1], [30, 30, 125, 1], [30.4, 30.4, 122, 1], [30.2, 30.1, 118, 1], [30.1, 30.3, 110, 1]]; // a bird's two echoes; a tall tree's top four returns
+  extra.forEach(([e, n, z, c], j) => { const i = cols.n + j; strayCols.x[i] = e / k; strayCols.y[i] = n / k; strayCols.z[i] = z; strayCols.cls[i] = c; strayCols.ret[i] = 1; strayCols.nret[i] = 1; });
+  const nStray = flagStrays(strayCols, grid);
+  check('structures: a bird\'s two echoes 41 and 46 m over open lawn are flagged as the survey\'s high noise (neither vouches for the other); a tall tree\'s top, with its own crown under it, is not',
+    nStray === 2 && strayCols.cls[cols.n] === 18 && strayCols.cls[cols.n + 1] === 18 && strayCols.cls[cols.n + 2] === 1 && strayCols.cls[cols.n + 3] === 1 && flagStrays(strayCols, grid) === 0, `${nStray} flagged`);
+  check('structures: and the spruce\'s own top (a tree whose crown stands under it) is never a stray', structuresFrom(strayCols, grid, { green }).kind[at(15.5, 45.5)] !== NOTHING && [...strayCols.cls].filter((c) => c === 18).length === 2);
   check('structures: and when the photo service does not answer, no low structures', !noPhoto.photo && noPhoto.counts.structure === 0);
   const bare = structuresFrom(cols, grid);
   check('structures: with no summer photo no low structures are called (owner, 2026-11-04: no structures where there are none)',

@@ -1451,6 +1451,28 @@ phone sees from 8 m, not what stops light. The field readings never put a
 miss on them (finding 11: the model-shade rays the phone read lit were
 stopped a median 5.8 m up by the laser's own branches).
 
+STRAYS THE SURVEY DID NOT FLAG (owner, 2026-11-04: on a neighbour's lot
+"a column of tree that's like 150 feet tall that doesn't relate to
+anything in real life, and there's random green cubes high up in the
+air"). Read from that lot's cloud (Kent 2016, 105,814 points): the column
+is one return 46.5 m (152 ft) over the ground, class 1 (unclassified, not
+the survey's noise class 18), first of three echoes, with its second echo
+40.9 m up two cells away and nothing else within 40 m below either -- a
+bird, or a glitch. The "random cubes high up" are something else: a real
+tree 25-26 m tall (eight columns with 2-18 returns each at 25-26 m), whose
+crown the 2 points-a-square-metre flight caught only at the top, so its
+cubes float with little drawn beneath. FIXED (structures.js flagStrays,
+run by the page and by structuresFor/seasonalCanopyFor before anything
+reads the columns): a return more than 10 m above every return within 3 m
+that is itself anchored to the ground -- taken in height order, so one
+pulse's two or three echoes cannot vouch for each other -- is given the
+survey's own high-noise class 18, which every reader already ignores (the
+owner's "ignore 80m and noise"). On that lot the 46.5 and 40.9 m echoes are
+flagged; no return of the 25 m tree is; on the owner's lot nothing over
+25 m exists and nothing changes. The risk: a very sparse flight over a
+tall pine whose next return within 3 m sits more than 10 m below its top
+would lose that top; not seen on either lot.
+
 WALLS UNDER THE EAVES (structures.js wallsOf; owner: "walls are offset by
 the standard amount, 2 feet probably"): a roof mask at 0.25 m, the walls
 0.61 m in from its edge, the band outside them eave. Unmeasured.
