@@ -283,6 +283,7 @@ async function main() {
     console.log(`Low-point cells more than 0.5 m inside the traced lawn: ${cells.size} (of ${lawnN.toLocaleString()} lawn cells), from ${hs.length} lidar points; ${pct(south, ys.length)} of those points in the southern third of the lawn. Classes ${JSON.stringify(cls)} (1 unclassified, 3-5 low/medium/high vegetation); height over the match's ground: median ${hs.length ? hs[hs.length >> 1].toFixed(2) : '-'} m, lowest ${hs.length ? hs[0].toFixed(2) : '-'}, highest ${hs.length ? hs[hs.length - 1].toFixed(2) : '-'}; returns a pulse ${JSON.stringify(rets)}. The phone saw something within 0.5 m of ${seenCells.size} of the ${cells.size} cells. The match's ground there sits ${demGap.length ? demGap[demGap.length >> 1].toFixed(2) : '-'} m above the lowest ground return within 2 m (median).`);
   }
   let surfOf = new Map(); // record index -> 'grass' | 'pave'
+  let standSurf = new Map(); // standing record index -> 'grass' | 'pave' | 'none', from the picture
   const keys = [];
   for (const f of readdirSync(dir).filter((x) => /^keys-\d+\.json$/.test(x)).sort()) keys.push(...JSON.parse(readFileSync(join(dir, f), 'utf8')));
   const pics = keys.filter((k) => existsSync(join(dir, k.name))).sort((a, b) => a.t - b.t);
@@ -293,7 +294,7 @@ async function main() {
        four readings of that picture -- as kept, flipped top to bottom, mirrored left to right, both -- and the
        reading whose grass and paving agree best with the traced lawn, where the references place them, is the one
        the depth and the picture share. The live page (app.js) reads the picture the same way as "as kept". */
-    const groundIdx = []; for (let i = 0; i < recs.length; i++) if (Math.abs(recs[i].y - recs[i].ground) < 0.2) groundIdx.push(i);
+    const groundIdx = []; for (let i = 0; i < recs.length; i++) if (Math.abs(recs[i].y - recs[i].ground) < 0.2 || cls2[i] === 's') groundIdx.push(i);
     groundIdx.sort((a, b) => recs[a].t - recs[b].t);
     const mul = (M, x, y, z, w) => [M[0] * x + M[4] * y + M[8] * z + M[12] * w, M[1] * x + M[5] * y + M[9] * z + M[13] * w, M[2] * x + M[6] * y + M[10] * z + M[14] * w, M[3] * x + M[7] * y + M[11] * z + M[15] * w];
     const inv = (M) => { // a rigid camera-to-world: transpose the turn, turn the move back
@@ -324,10 +325,11 @@ async function main() {
     const readings = [['as kept', false, false], ['flipped top to bottom', true, false], ['mirrored left to right', false, true], ['flipped and mirrored', true, true]];
     const results = [];
     for (const [name, fy, fx] of readings) {
-      const map = new Map();
+      const map = new Map(), standMap = new Map();
       for (const [ri, q, px0, py0] of hits) {
         const img = imgs.get(q), px = fx ? img.width - 1 - px0 : px0, py = fy ? img.height - 1 - py0 : py0;
         const o = (py * img.width + px) * 4, s = surfaceOf(img.data[o], img.data[o + 1], img.data[o + 2]);
+        if (cls2[ri] === 's') { standMap.set(ri, s || 'none'); if (Math.abs(recs[ri].y - recs[ri].ground) >= 0.2) continue; }
         if (s) map.set(ri, s);
       }
       // agreement with the traced lawn where the references place the points
@@ -340,14 +342,14 @@ async function main() {
         if (s === 'pave' && sd > 0.35) paveIn++; if (s === 'grass' && sd < -0.35) grassOut++;
       }
       for (const [ri, q] of hits) if (q < 10 && map.has(ri)) { firstTen++; if (map.get(ri) === 'pave') firstTenPave++; }
-      results.push({ name, map, tally: tally([...map.values()]), n, paveIn, grassOut, wrong: n ? (paveIn + grassOut) / n : 1, firstTen, firstTenPave });
+      results.push({ name, map, standMap, tally: tally([...map.values()]), n, paveIn, grassOut, wrong: n ? (paveIn + grassOut) / n : 1, firstTen, firstTenPave });
     }
     results.sort((a, b) => a.wrong - b.wrong);
     console.log(`Ground points coloured from ${pics.length} pictures (${hits.length.toLocaleString()} point-in-picture pairs of ${groundIdx.length.toLocaleString()} ground points). The picture read four ways, against the traced lawn where the references place the points:`);
     for (const r of results) console.log(`  ${r.name}: grass ${r.tally.grass.toLocaleString()}, paving ${r.tally.pave.toLocaleString()}; on the wrong side of the trace ${pct(r.paveIn + r.grassOut, r.n)} (paving inside it ${r.paveIn.toLocaleString()}, grass outside it ${r.grassOut.toLocaleString()}); in the first 10 pictures ${pct(r.firstTenPave, r.firstTen)} paving of ${r.firstTen.toLocaleString()} points`);
     const best = results[0];
     console.log(`  -> read ${best.name}: ${best === results.find((r) => r.name === 'as kept') ? 'what the live page does' : 'NOT what the live page does (app.js reads it as kept)'}.`);
-    surfOf = best.map;
+    surfOf = best.map; standSurf = best.standMap;
     // the pictures one by one, the first dozen: what share of the ground in each reads as paving, best reading
     const perPic = new Map();
     for (const [ri, q] of hits) { if (q >= 12 || !best.map.has(ri)) continue; const e = perPic.get(q) || { n: 0, pave: 0 }; e.n++; if (best.map.get(ri) === 'pave') e.pave++; perPic.set(q, e); }
@@ -407,6 +409,35 @@ async function main() {
   }
 
   const end2 = recs.reduce((m, r) => Math.max(m, r.odo), 0);
+  /* TWO FILTERS FOR INVENTED STANDING POINTS, measured before they are built (SCAN-H7: in the open lawn the phone's
+     standing points land on nothing anywhere): their colour in the picture (grass-coloured things do not stand 0.4 m
+     up in a mowed lawn), and how densely they were seen (a real surface fills its 0.2 m voxel with many 5 cm cubes;
+     noise scatters). For the standing points at the references' pose: landed against missing, by each. */
+  {
+    const dens = new Map();
+    for (const r of recs) if (cls2[r.i] === 's') { const k = `${Math.floor(r.x / 0.2)},${Math.floor(r.y / 0.2)},${Math.floor(r.z / 0.2)}`; dens.set(k, (dens.get(k) || 0) + 1); }
+    const pl = placer(live, 'refs');
+    const distAt = (e, n) => { const c = Math.floor((e - box[0]) / G.cell), r = Math.floor((box[3] - n) / G.cell); return c >= 0 && r >= 0 && c < W && r < H ? G.dist[r * W + c] : NaN; };
+    const by = { landed: { grass: 0, pave: 0, none: 0, unseen: 0, dens: [] }, missing: { grass: 0, pave: 0, none: 0, unseen: 0, dens: [] } };
+    const filt = { grass: { landed: 0, n: 0 }, dens3: { landed: 0, n: 0 }, dens5: { landed: 0, n: 0 }, both: { landed: 0, n: 0 }, all: { landed: 0, n: 0 } };
+    for (const r of recs) {
+      if (cls2[r.i] !== 's') continue; const T = pl(r.odo); if (!T) continue;
+      const [e, n] = apply(T, [r.x, -r.z]), d = distAt(e, n); if (!Number.isFinite(d)) continue;
+      const landed = d <= 0.3, missing = d > 1; if (!landed && !missing) continue;
+      const s = standSurf.get(r.i) || 'unseen', dn = dens.get(`${Math.floor(r.x / 0.2)},${Math.floor(r.y / 0.2)},${Math.floor(r.z / 0.2)}`) || 1;
+      const g = landed ? by.landed : by.missing; g[s]++; g.dens.push(dn);
+      const notGrass = s !== 'grass';
+      filt.all.n++; if (landed) filt.all.landed++;
+      if (notGrass) { filt.grass.n++; if (landed) filt.grass.landed++; }
+      if (dn >= 3) { filt.dens3.n++; if (landed) filt.dens3.landed++; }
+      if (dn >= 5) { filt.dens5.n++; if (landed) filt.dens5.landed++; }
+      if (notGrass && dn >= 3) { filt.both.n++; if (landed) filt.both.landed++; }
+    }
+    const med = (a) => { a.sort((x, y) => x - y); return a.length ? a[a.length >> 1] : '-'; };
+    const row = (g) => `grass ${g.grass}, paving ${g.pave}, other colour ${g.none}, not in a picture ${g.unseen}; cubes a voxel, median ${med(g.dens)}`;
+    console.log(`Standing points (the new classing) at the references' pose: landed: ${row(by.landed)}. Missing: ${row(by.missing)}.`);
+    console.log(`  What a filter would leave, and how many of those land: all ${filt.all.n} (${pct(filt.all.landed, filt.all.n)}); not grass-coloured ${filt.grass.n} (${pct(filt.grass.landed, filt.grass.n)}); 3+ cubes a voxel ${filt.dens3.n} (${pct(filt.dens3.landed, filt.dens3.n)}); 5+ cubes ${filt.dens5.n} (${pct(filt.dens5.landed, filt.dens5.n)}); not grass and 3+ cubes ${filt.both.n} (${pct(filt.both.landed, filt.both.n)}).`);
+  }
   /* IS THE LIDAR WHERE THE PHONE SAYS, OR OFF AS A WHOLE? (SCAN-H7: at 78 m, where check point C2 vouched for the
      references to 10 in, a fix 4.9 m off landed 100 points against the references' 2.) The phone's standing points
      (the new classing), placed by the references, slid as one over the lidar: the shift that lands the most, in each
