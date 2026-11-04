@@ -102,8 +102,9 @@ SPECULATION), as always.
     features session's tree-versus-building module lands, retire the water map's own rules onto it -- roofs.js
     coreRoofs (a port of the detector's Python rule) and shadeRoofs, surface.js buildingMask, ar-lidar.js roofMask,
     and obstacles.js's coarse vegetation/building cells -- and the NOISE lists and near-copy readers (ept.js, las.js,
-    datum.js) onto shared ones as they exist. Measure the roofs on the Chesapeake squares before and after (H32's IoU
-    0.74). The ground hollows and spot kinds stay the water map's. The full list went to the core session 2026-11-03.
+    datum.js) onto shared ones as they exist. The ground hollows and spot kinds stay the water map's. The full list
+    went to the core session 2026-11-03. DONE 2026-11-04: shadeRoofs reads structures.js (H77). The owner: no
+    re-measure on the Chesapeake squares. Still the water map's own: coreRoofs, buildingMask, roofMask, obstacles.js.
 
 ## Rules (owner, 2026-10-27)
 
@@ -140,6 +141,14 @@ SPECULATION), as always.
   beside a maple and a spruce would settle the numbers.
 
 ## Done
+
+- **The readings against the model** (owner, 2026-11-04): the water map ranks a visit's readings against the
+  model's wetness on that day (moistureCard) and keeps the scores; a key-gated export lets the water session run
+  it itself (src/moisture.js; key in the session's scratchpad, stops 2026-12-05). First visit: rho 0.40 over 23
+  lawn spots, p 0.06 (H76); the shaded area reads drier than the model has it (S26). Next: a visit a day or two
+  after real rain, and the trees' draw on the lawn's water (S26).
+- **Growing season start** (owner, 2026-11-04): asked whether to start it on soil temperature (45 or 55 F): "No".
+  It stays as it is: the start at 20% growth potential on air temperature, the end on soil temperature.
 
 - **Soil moisture readings in the field** (owner, 2026-11-02): the /moisture page and the water database's
   moisture tables (H74). Next: the model run on each visit's property and day, set against the readings by rank.

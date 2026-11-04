@@ -67,7 +67,7 @@
 <main>
 <h1>How the water model works</h1>
 <p class="sub">A daily water model for one lawn, square metre by square metre</p>
-<p class="meta">Last updated 2 November 2026. Describes the model live at <a href="/">water.nilesandstuff.com</a> on that date. The change log at the end lists what has changed since the first version.</p>
+<p class="meta">Last updated 4 November 2026. Describes the model live at <a href="/">water.nilesandstuff.com</a> on that date. The change log at the end lists what has changed since the first version.</p>
 
 <nav>
 <ul>
@@ -207,7 +207,7 @@ Each face of a fence board is solved for its own temperature from the sun on it 
 <div class="tech"><strong>Technical note</strong>
 Curve numbers: open space in good condition, groups A/B/C/D 39/61/74/80; other ground in fair condition 49/69/79/84; paving 98; pavers as gravel 76/85/89/91 [2]. Initial abstraction I<sub>a</sub> = 0.2S. Hawkins and others [14] argue for 0.05S, which gives more runoff from small rains; that change has not been made. The curve number method was built for storm events and is applied here to daily totals.
 </div>
-<p><strong>Roofs</strong> are found from the lidar, with the photo used to drop green tree tops. Against a 1 m land cover map of 23 residential squares in Virginia, Maryland and Pennsylvania, the rule in use found 83% of roof squares exactly and 95% within 1 m. The user marks where each downspout empties. Each rain day the first 0.5 mm wets the roof, a reading of the Texas rainwater harvesting manual's rule for setting aside the first, dirtiest water (at least 10 gallons per 1,000 sq ft, about 0.4 mm) [27], and the rest goes to the downspout's spot on the lawn.</p>
+<p><strong>Roofs</strong> are found from the lidar, with the photo used to drop green tree tops. The rule that tells a building from a tree is the shade map's, the same one every tool on the site uses; it also counts low structures such as sheds and walls as roof. Against a 1 m land cover map of 23 residential squares in Virginia, Maryland and Pennsylvania, the rule found 83% of roof squares exactly and 95% within 1 m (measured before sheds and walls were added). The user marks where each downspout empties. Each rain day the first 0.5 mm wets the roof, a reading of the Texas rainwater harvesting manual's rule for setting aside the first, dirtiest water (at least 10 gallons per 1,000 sq ft, about 0.4 mm) [27], and the rest goes to the downspout's spot on the lawn.</p>
 <p><strong>Paving</strong> is found from the lidar and the photo, using the user's own traced lawn as the reference for "green". On 11 test squares it was right on 85.5% of squares and found 85% of the paving. Every test so far is in the mid-Atlantic.</p>
 <p><strong>Low spots</strong> are the hollows where water would collect if it did not soak in. On made-up ground with known hollows, a hollow 8 m or more across and 5 cm or more deep is found most of the time. One 5 m across is found about half the time unless it is deeper than 7 cm, and one 3 m across is nearly invisible. This is a limit of the lidar's point spacing and noise.</p>
 
@@ -237,7 +237,7 @@ Curve numbers: open space in good condition, groups A/B/C/D 39/61/74/80; other g
 <tr><td>Rain</td><td>The developer's local sources</td><td>POWER's July rain ran high; switched to PRISM</td></tr>
 <tr><td>Which 24 hours a rain day covers</td><td>Radar, 14 rainy days</td><td>Matched the 24 h ending 12:00 UTC (7 or 8 a.m. Eastern)</td></tr>
 <tr><td>Soil temperature</td><td>Two Michigan reference stations, one week</td><td>Mean difference +0.1 and +2.6 &deg;C</td></tr>
-<tr><td>Roofs</td><td>Chesapeake Bay 1 m land cover, 23 squares</td><td>83% exact, 95% within 1 m; overlap score 0.74</td></tr>
+<tr><td>Roofs</td><td>Chesapeake Bay 1 m land cover, 23 squares</td><td>83% exact, 95% within 1 m; overlap score 0.74 (before sheds and walls were added, 4 November)</td></tr>
 <tr><td>Paving</td><td>Same map, 162,288 test squares</td><td>85.5% right, 85% of paving found</td></tr>
 <tr><td>Low spots</td><td>Made-up ground; a blind photo test</td><td>Size limits above; of 11 "hollows" checked by photo, only 2 were open ground, so only hollows on the traced lawn are reported</td></tr>
 <tr><td>Water table rate</td><td>227&ndash;241 shallow wells in two Michigan counties</td><td>Typical error 1.7 m; rate of about 0.5 adopted</td></tr>
@@ -245,10 +245,11 @@ Curve numbers: open space in good condition, groups A/B/C/D 39/61/74/80; other g
 <tr><td>The shade map's light</td><td>Research light sensors under forest canopy, aerial photos, the developer's phone readings on foot</td><td>See section 6</td></tr>
 <tr><td>Shade's effect on use</td><td>Published deep-shade measurements</td><td>Shadiest tenth inside the measured range; shadiest 2% below it</td></tr>
 <tr><td>Sprinkler rates</td><td>Manufacturers' printed rates</td><td>Exact on the two checked</td></tr>
+<tr><td>Soil moisture, one day</td><td>27 readings with a hand meter on the developer's lawn, 3 November 2026, 3 in deep, after weeks without real rain</td><td>The model put the 23 lawn spots in roughly the same order as the meter (rank correlation 0.40; about a 6% chance of that by luck). It ordered spots within each part of the lawn fairly well but had the shaded part much wetter than the open lawn, where the meter found them about level</td></tr>
 <tr><td>A wet lawn</td><td>One customer's lawn, by eye</td><td>Model shows a shallow water table there</td></tr>
 <tr><td><strong>Whole plan</strong></td><td>The developer's experience: about 1 in a week over 2&ndash;3 waterings in July, full sun</td><td>First version 1.2 in over 4 waterings; after the grass-type coefficients, 0.95 in over 3</td></tr>
 </table></div>
-<p><strong>Not yet checked against measurements:</strong> soil moisture through time on any lawn; infiltration (a soak test); runoff; drainage rates; the crop coefficients; the root model (no soil cores); water rising from a water table under turf; slow layers (no probe); the zone boundaries; the effects of shade, wind, fences, tree cooling and paving at these lawns; sprinkler pressure at the heads (no gauge readings yet); sprinkler evenness (no catch-cup test). The modeled evenness of rotors at head-to-head spacing, 73% in still air, is above the roughly 50% found in real home audits [23].</p>
+<p><strong>Not yet checked against measurements:</strong> soil moisture through time on any lawn (one day, above, is a start); soil moisture below 3 in; infiltration (a soak test); runoff; drainage rates; the crop coefficients; the root model (no soil cores); water rising from a water table under turf; slow layers (no probe); the zone boundaries; the effects of shade, wind, fences, tree cooling and paving at these lawns; sprinkler pressure at the heads (no gauge readings yet); sprinkler evenness (no catch-cup test). The modeled evenness of rotors at head-to-head spacing, 73% in still air, is above the roughly 50% found in real home audits [23].</p>
 
 <h2 id="assumptions">12. Assumptions and weak points</h2>
 <p>In rough order of how much they could change a watering plan:</p>
@@ -320,6 +321,7 @@ Curve numbers: open space in good condition, groups A/B/C/D 39/61/74/80; other g
 
 <h2 id="log">Change log</h2>
 <ul class="meta" style="font-size:.9rem">
+  <li><strong>4 November 2026.</strong> Section 11: the first soil moisture readings against the model. Roofs now come straight from the shade map's shared rule for buildings and trees, which also counts sheds and walls as roof.</li>
   <li><strong>3 November 2026, later.</strong> Every reference checked against the source and given a link; each is marked by how it was read. The soil-class figures in section 3 are now credited to the EPA's HELP documentation and Rawls, Brakensiek and Saxton (1982), not the 1983 paper the notes had named. Wording corrected where the text claimed more than its source: shade measurements [7, 8], root depth [31], soil temperature and roots [18], the growing season's 20% rule [17], tree cooling [9], the wind curves [12], roof wetting [27], the rate table [28] and the watershed model [25].</li>
   <li><strong>3 November 2026.</strong> Citations open the full reference in a drawer at the bottom of the screen, with a link to the source where one is known and a Google Scholar search.</li>
   <li><strong>2 November 2026, latest.</strong> Section 3: the 40%/50% stress line now moves with each square's water use over the past week and with the soil (FAO-56's adjustments). On the developer's lawn this cut the year's watering about 16%.</li>

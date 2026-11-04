@@ -1,11 +1,10 @@
 /**
- * ROOFS, THE SHADE MAP'S WAY (water session, 2026-10-17). The features
- * session's building classifier, run on the water map's own grid, from its
- * modules copied unchanged into lib/shade/ (see its README), as it advised:
+ * ROOFS, THE SHADE MAP'S WAY (water session, 2026-10-17; since 2026-11-04 read
+ * straight from the rule's one home, public/shade/structures.js, linked into
+ * lib/shade/ like the shade map's other modules):
  *
  *   grid  = gridOver(box, 1, lat)        the water map's grid exactly (1 m, row 0 north)
- *   model = buildCanopy(cols, grid)      ground = lowest class-2 return per column, filled
- *   kind  = seasonalCanopy(cols, model, { classify: true }).kind     1 = ROOF
+ *   kind  = structuresFrom(cols, grid).kind     1 = BUILDING, 4 = a low STRUCTURE
  *
  * No datum shift is passed: the water map works in the cloud's own frame.
  *
@@ -23,6 +22,7 @@
 import { gridOver } from './shade/grid.js';
 import { buildCanopy } from './shade/canopy.js';
 import { seasonalCanopy } from './shade/seasonal.js';
+import { structuresFrom, BUILDING, STRUCTURE } from './shade/structures.js';
 
 const NOISE = new Set([7, 18]);
 
@@ -46,19 +46,25 @@ function flatRule(cols, model) {
 
 /**
  * Roof masks on the grid of `bbox` (EPSG:3857) at `lat`: { roof } -- the
- * shade map's full classifier -- and with `parts`, also { flat, solid } (the
- * flat rule alone; flat or solid at the grass, before the tree test).
+ * shared tree-versus-building rule (public/shade/structures.js, its one home
+ * since 2026-11-03; owner, 2026-11-04, "Yes" to reading it from there): its
+ * BUILDINGs and, with `structures` (the default), its low STRUCTUREs too
+ * (sheds, walls, stone bins: hard surfaces that shed rain). With `parts`,
+ * also { flat, solid, evergreen } for the scoring tools (the flat rule alone;
+ * flat or solid at the grass before the tree test; the shade map's
+ * evergreens), which need the shade map's full seasonal run.
  */
-export function shadeRoofs(cols, bbox, lat, { parts = false } = {}) {
+export function shadeRoofs(cols, bbox, lat, { parts = false, structures = true } = {}) {
   const grid = gridOver(bbox, 1, lat);
-  const model = buildCanopy(cols, grid);
+  const st = structuresFrom(cols, grid);
+  const roof = Uint8Array.from(st.kind, (v) => (v === BUILDING || (structures && v === STRUCTURE) ? 1 : 0));
+  if (!parts) return { roof, w: grid.w, h: grid.h, counts: st.counts };
+  const model = st.model;
   const full = seasonalCanopy(cols, model, { classify: true }).kind;
-  const roof = Uint8Array.from(full, (v) => (v === 1 ? 1 : 0));
-  const evergreen = Uint8Array.from(full, (v) => (v === 2 ? 1 : 0));
-  if (!parts) return { roof, evergreen, w: grid.w, h: grid.h };
   const noTreeTest = seasonalCanopy(cols, model, { classify: false }).kind;
   return {
-    roof, evergreen, w: grid.w, h: grid.h,
+    roof, w: grid.w, h: grid.h, counts: st.counts,
+    evergreen: Uint8Array.from(full, (v) => (v === 2 ? 1 : 0)),
     solid: Uint8Array.from(noTreeTest, (v) => (v === 1 ? 1 : 0)),
     flat: flatRule(cols, model),
   };

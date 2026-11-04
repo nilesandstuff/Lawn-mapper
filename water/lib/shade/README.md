@@ -27,3 +27,6 @@ rule), so both maps use one season.
 photo is saved, use the county photo, if mapbox is saved, use that"): traced.js,
 unchanged from public/shade/ on the default branch at commit f070fb0 -- which photo a
 saved map was traced on (Mapbox, or a county service and the editor's line-up).
+
+2026-11-04: structures.js, the tree-versus-building rule's one home (CLAUDE.md, "One way to read lidar"), linked
+for lib/roofs.js shadeRoofs (owner: "Yes" to reading the rule from there).

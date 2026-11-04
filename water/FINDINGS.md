@@ -2454,6 +2454,35 @@ mostly LOWERS watering here: Michigan lawn use is mostly under FAO's 5 mm/day re
 Kc), so p sits above 0.4 most days; it falls below 0.4 only on hot, sunny weeks in open lawn. Not measured: the
 moisture readings (H74) are the check.
 
+### H76. The first moisture readings against the model: rank 0.40 over 23 lawn spots, p about 0.06 (water session, 2026-11-04)
+
+One visit, the owner's lot, the evening of 2026-11-03: Ecowitt WH51L, the meter's own 0-99 scale, 3 in deep after
+a knife slit, 27 spots; the owner waited for each reading to refresh, zeroed between spots, and reports no air gaps
+(so the readings are taken as sound). The visit's note: no real rain for weeks, the grass evenly green. Readings
+16-64, SD 11, far wider than the meter's +-5%, so the spread is the soil's, not the meter's.
+The model: the page's own plan (public/app.js moistureCard, lib/plan.js snapshots) on the saved map, rain alone
+(no sprinkler in the record), the root zone's water over field capacity on that date: 0.40-0.91. Of 27 spots, 23
+fall on lawn cells (4 on beds or edges: left out). Spearman rho, reading against wetness: 0.40 (permutation p
+0.060, 20,000 shuffles); leaving any one spot out, 0.31-0.49. Against the peak month's watering need instead (sun,
+trees, slope) 0.15, so the day-by-day balance orders the spots better than the yearly need does.
+By watering area (lawn spots): area 1 n 8, reading mean 39.6, model 0.51; area 4 (the least watering, the shaded
+part) n 9, 41.0 against 0.75; areas 2 and 3, 3 spots each. Within area 4 rho 0.61, within area 1 0.33. So the
+model ORDERS spots within an area fairly well, but puts the shaded area much wetter than the open lawn (0.75 against
+0.51) where the meter has them nearly level (41 against 40). Three shaded spots the model has among its wettest
+(0.81-0.87) read 26-35.
+What it does not show: anything about timing (one visit), the root zone below 3 in, or summer. Reading it as a pass
+or a fail would be wrong; it is a weak positive with one specific mismatch (S26). The readings came out through the
+key-gated export (src/moisture.js), the comparison ran in the sandbox on the page itself; no place is written here.
+
+### H77. Roofs read from the shared tree-versus-building rule (water session, 2026-11-04)
+
+The owner: "Yes" to reading the shade map's roofs from public/shade/structures.js, the rule's one home (CLAUDE.md,
+"One way to read lidar"), and no re-measure on the Chesapeake squares ("you don't need to check against
+Chesapeake"). lib/roofs.js shadeRoofs now calls structuresFrom directly (before, the same rule reached it through
+seasonal.js seasonalCanopy, so its BUILDING cells are unchanged) and adds the rule's low STRUCTUREs (sheds, walls,
+stone bins: hard surfaces that shed rain). The scoring tools' parts (flat, solid, evergreen) still run the shade
+map's seasonal pass. Not re-scored, by the owner's word; H32's IoU 0.74 was for the union before this.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge
@@ -2775,3 +2804,14 @@ part of that window often lies on the flatter yard beyond the foundation
 strip, and the 0.8 m kernel softens the strip's own slope. Both push the
 measure toward flat. The "falls toward the house" share (median 8%) is the
 safer number to act on; neither is checked against a level and a tape.
+
+### S26. Under mature trees the lawn may be drier than the model thinks (2026-11-04, with H76)
+
+The model has the shaded watering area wetter than the open lawn (0.75 against 0.51 of field capacity) because
+shade cuts the grass's use; the meter had them level, and three shaded spots it puts among its wettest read low.
+Trees drinking from the lawn's root zone would do exactly that, and the model does not take tree uptake from the
+lawn (the research is done, the build is not: TODO). Other readings fit too: rain caught by the crowns (the model
+does take interception, but not by species), the meter's top 3 in drying where the model's bucket is deeper, or
+late-season dew on open grass. One visit cannot tell them apart; a second visit a day or two after real rain, and
+one in summer, would.
+
