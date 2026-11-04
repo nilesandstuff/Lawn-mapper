@@ -142,6 +142,13 @@ SPECULATION), as always.
 
 ## Done
 
+- **Tree trunks** (owner, 2026-11-04: "Yes let's do tree roots. A pre requisite to that is knowing where tree
+  trunks are"): lib/trunks.js, from the shade map's crowns (unchanged) plus the stem returns 0.5-3 m up under
+  each crown (H78). Trunks drawn on the water map (solid: a stem seen; hollow: the crown's top). The readings
+  page marks trunks by hand (moisture_marks), the water map's card scores the finder against them. NEXT: the
+  owner marks the trunks on the lot; score; offer the module to the shade session (one home for the rule); then
+  the root draw (H40's model) and the readings check again (S26).
+
 - **The readings against the model** (owner, 2026-11-04): the water map ranks a visit's readings against the
   model's wetness on that day (moistureCard) and keeps the scores; a key-gated export lets the water session run
   it itself (src/moisture.js; key in the session's scratchpad, stops 2026-12-05). First visit, corrected the same

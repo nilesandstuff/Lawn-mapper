@@ -152,7 +152,7 @@ async function load(lng, lat, { keepVisit = false } = {}) {
   const visits = await earlierAt(p.pin);
   st.old = oldSpots(visits.filter((v) => v.id !== st.visit.id));
   earlierCard(visits.filter((v) => v.id !== st.visit.id));
-  $('#movepin').disabled = false; $('#newvisit').disabled = false;
+  $('#movepin').disabled = false; $('#newvisit').disabled = false; $('#marktrunk').disabled = false;
   fit(); refresh();
   if (!$('#hint').textContent) hint('Tap the lawn where you took a reading.');
 }
@@ -175,7 +175,7 @@ function earlierCard(visits) {
 
 /* ---------------------------------------------------------------- the visit and its draft */
 function newVisit() {
-  st.visit = { id: uid(), at: Date.now(), dots: [], savedAt: null, savedCount: 0 };
+  st.visit = { id: uid(), at: Date.now(), dots: [], marks: [], savedAt: null, savedCount: 0 };
   $('#weather').value = ''; $('#vnote').value = '';
   saveDraft(); refresh();
 }
@@ -185,14 +185,15 @@ function saveDraft() {
 }
 $('#weather').addEventListener('change', () => { if (st.visit) st.visit.dirty = true; saveDraft(); refresh(); });
 $('#vnote').addEventListener('change', () => { if (st.visit) st.visit.dirty = true; saveDraft(); refresh(); });
-const unsaved = () => !!st.visit && st.visit.dots.length > 0 && (st.visit.dirty || st.visit.savedCount !== st.visit.dots.length);
+const unsaved = () => !!st.visit && (st.visit.dots.length > 0 || (st.visit.marks || []).length > 0) && (st.visit.dirty || st.visit.savedCount !== st.visit.dots.length);
 
 function refresh() {
   const v = st.visit, n = v ? v.dots.length : 0;
-  $('#count').textContent = n ? `${n} reading${n === 1 ? '' : 's'}` : '';
+  const nm = (v?.marks || []).length;
+  $('#count').textContent = [n ? `${n} reading${n === 1 ? '' : 's'}` : '', nm ? `${nm} trunk${nm === 1 ? '' : 's'} marked` : ''].filter(Boolean).join(', ');
   $('#list').innerHTML = v ? v.dots.map((d, k) => `<li>${d.value}${unitWord()}${d.again ? ' <span class="dim small">(same spot as before)</span>' : ''}${d.note ? ` <span class="dim small">${esc(d.note)}</span>` : ''}<button class="plain" data-k="${k}">edit</button></li>`).join('') : '';
   $('#save').disabled = !unsaved();
-  $('#save').textContent = !n ? 'Save readings' : unsaved() ? `Save ${n} reading${n === 1 ? '' : 's'}` : 'Saved';
+  $('#save').textContent = !n && !nm ? 'Save readings' : unsaved() ? `Save ${n ? `${n} reading${n === 1 ? '' : 's'}` : ''}${n && nm ? ' and ' : ''}${nm ? `${nm} trunk${nm === 1 ? '' : 's'}` : ''}` : 'Saved';
   $('#saved').textContent = v?.savedAt ? `Saved at ${new Date(v.savedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}${unsaved() ? ': newer readings are on this phone only until you save again.' : '.'}` : n ? 'On this phone only until saved.' : '';
   draw();
 }
@@ -231,16 +232,16 @@ $('#ask').addEventListener('close', () => {
 /* ---------------------------------------------------------------- saving */
 $('#save').addEventListener('click', async () => {
   const v = st.visit, p = st.property;
-  if (!v || !p || !v.dots.length) return;
+  if (!v || !p || (!v.dots.length && !(v.marks || []).length)) return;
   $('#save').disabled = true; $('#save').textContent = 'Saving…';
   const weather = $('#weather').value ? { lastTwoDays: $('#weather').value } : null;
-  const body = { id: v.id, at: v.at, lng: p.lng, lat: p.lat, parcel_pin: p.pin, county: p.county, map_id: p.mapId, placed_on: st.placedOn, meter: setup.meter || null, unit: setup.unit, depth_in: setup.depth === '' ? null : Number(setup.depth), note: $('#vnote').value.trim() || null, weather, readings: v.dots.map(({ n, spot, lng, lat, value, note, at }) => ({ n, spot, lng, lat, value, note, at })) };
+  const body = { id: v.id, at: v.at, lng: p.lng, lat: p.lat, parcel_pin: p.pin, county: p.county, map_id: p.mapId, placed_on: st.placedOn, meter: setup.meter || null, unit: setup.unit, depth_in: setup.depth === '' ? null : Number(setup.depth), note: $('#vnote').value.trim() || null, weather, readings: v.dots.map(({ n, spot, lng, lat, value, note, at }) => ({ n, spot, lng, lat, value, note, at })), marks: (v.marks || []).map(({ kind, lng, lat, note }) => ({ kind, lng, lat, note })) };
   try {
     const r = await fetch('/api/water/moisture', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.error || `the server said ${r.status}`);
     v.savedAt = Date.now(); v.savedCount = v.dots.length; v.dirty = false;
-    saveDraft(); say(`Saved ${j.readings} reading${j.readings === 1 ? '' : 's'}.`);
+    saveDraft(); say(`Saved ${j.readings} reading${j.readings === 1 ? '' : 's'}${j.marks ? ` and ${j.marks} trunk${j.marks === 1 ? '' : 's'}` : ''}.`);
   } catch (e) {
     say(`Not saved (${e.message}). The readings are kept on this phone: try again when there is signal.`, true);
   }
@@ -264,6 +265,11 @@ $('#locate').addEventListener('click', async () => {
     await load(p.lng, p.lat);
   } catch (e) { say(e.message, true); }
   $('#locate').disabled = false;
+});
+$('#marktrunk').addEventListener('click', () => {
+  st.marking = !st.marking; st.movingPin = false; $('#movepin').classList.remove('on');
+  $('#marktrunk').classList.toggle('on', st.marking);
+  hint(st.marking ? 'Tap where each tree trunk stands (tap a brown dot again to remove it). Tap the button again when done.' : '');
 });
 $('#movepin').addEventListener('click', () => {
   st.movingPin = !st.movingPin;
@@ -325,6 +331,11 @@ function draw() {
   }
   // the pin
   { const [x, y] = screenOf(pxOf([st.property.lng, st.property.lat])); ctx.fillStyle = '#e53935'; ctx.beginPath(); ctx.arc(x, y - 14, 7, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.moveTo(x - 5, y - 10); ctx.lineTo(x, y); ctx.lineTo(x + 5, y - 10); ctx.fill(); }
+  // trunks marked on this visit: brown dots
+  for (const m of st.visit?.marks || []) {
+    const [x, y] = screenOf(pxOf([m.lng, m.lat]));
+    ctx.fillStyle = '#6d4c41'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, 9, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  }
   // earlier spots: grey rings with their last value
   const taken = new Set((st.visit?.dots || []).map((d) => d.spot));
   ctx.font = '600 11px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -406,6 +417,13 @@ async function tap(at) {
     return;
   }
   const near = (q, px) => { const [x, y] = screenOf(pxOf(q)); return Math.hypot(x - at[0], y - at[1]) <= px; };
+  if (st.marking) {
+    const v = st.visit; v.marks = v.marks || [];
+    const hit = v.marks.findIndex((m) => near([m.lng, m.lat], 18));
+    if (hit >= 0) v.marks.splice(hit, 1); else v.marks.push({ kind: 'trunk', lng: place[0], lat: place[1], note: null, at: Date.now() });
+    v.dirty = true; saveDraft(); refresh();
+    return;
+  }
   const mine = (st.visit?.dots || []).findIndex((d) => near([d.lng, d.lat], 20));
   if (mine >= 0) return ask({ edit: mine });
   const taken = new Set((st.visit?.dots || []).map((d) => d.spot));
@@ -418,7 +436,7 @@ async function tap(at) {
 window.addEventListener('resize', () => { if (st.frame) { const r0 = { ...st.view }; size(); st.view = r0; draw(); } else { size(); draw(); } });
 size(); draw();
 const draft = store.get(DRAFT);
-if (draft?.visit?.dots?.length && draft.property && (draft.visit.dirty || draft.visit.savedCount !== draft.visit.dots.length)) {
+if ((draft?.visit?.dots?.length || draft?.visit?.marks?.length) && draft.property && (draft.visit.dirty || draft.visit.savedCount !== draft.visit.dots.length)) {
   st.visit = draft.visit;
   $('#weather').value = draft.weather || ''; $('#vnote').value = draft.note || '';
   say('Bringing back the readings not yet saved…');

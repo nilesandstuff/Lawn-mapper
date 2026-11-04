@@ -57,6 +57,17 @@ CREATE TABLE IF NOT EXISTS moisture_readings (
   note TEXT
 );
 CREATE INDEX IF NOT EXISTS moisture_readings_visit ON moisture_readings (visit_id);
+-- marks made on a visit (2026-11-04): where a tree trunk stands, tapped on the readings page; ground truth for the
+-- water map's trunk finder (water/lib/trunks.js), and the trunks the tree-root draw uses on a lawn that has them
+CREATE TABLE IF NOT EXISTS moisture_marks (
+  id TEXT PRIMARY KEY,
+  visit_id TEXT NOT NULL,
+  n INTEGER,
+  kind TEXT NOT NULL,               -- 'trunk'
+  lng REAL NOT NULL, lat REAL NOT NULL,
+  note TEXT
+);
+CREATE INDEX IF NOT EXISTS moisture_marks_visit ON moisture_marks (visit_id);
 
 -- THE MODEL AGAINST A VISIT'S READINGS (2026-11-04): worked out on the water map in the admin's browser (the readings
 -- and their places never leave the database for anywhere else), kept here as numbers only, so the workflow's

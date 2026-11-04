@@ -180,6 +180,7 @@ async function start(site, inputs) {
     paved: r.impervious ? r.impervious.paved.slice() : null,
     parcelMask: r.parcelMask, lawnMask: r.lawnMask,
     spots: r.spots, hasLawn: r.hasLawn, summary: { ...r.summary, noiseRuns: undefined }, cloud: r.cloud,
+    trunks: res.trunks || null,
   };
   const transfer = [out.depth.buffer, out.z.buffer, reported.buffer, out.flow.buffer, out.wall.buffer, grade.buffer, ...(out.paved ? [out.paved.buffer] : [])];
   self.postMessage({ done: out }, transfer);

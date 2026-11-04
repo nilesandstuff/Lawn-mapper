@@ -58,12 +58,12 @@ export function shadeRoofs(cols, bbox, lat, { parts = false, structures = true }
   const grid = gridOver(bbox, 1, lat);
   const st = structuresFrom(cols, grid);
   const roof = Uint8Array.from(st.kind, (v) => (v === BUILDING || (structures && v === STRUCTURE) ? 1 : 0));
-  if (!parts) return { roof, w: grid.w, h: grid.h, counts: st.counts };
+  if (!parts) return { roof, w: grid.w, h: grid.h, counts: st.counts, built: st };
   const model = st.model;
   const full = seasonalCanopy(cols, model, { classify: true }).kind;
   const noTreeTest = seasonalCanopy(cols, model, { classify: false }).kind;
   return {
-    roof, w: grid.w, h: grid.h, counts: st.counts,
+    roof, w: grid.w, h: grid.h, counts: st.counts, built: st,
     evergreen: Uint8Array.from(full, (v) => (v === 2 ? 1 : 0)),
     solid: Uint8Array.from(noTreeTest, (v) => (v === 1 ? 1 : 0)),
     flat: flatRule(cols, model),

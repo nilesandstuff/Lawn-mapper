@@ -4,7 +4,7 @@
  * simulation and see how it holds up"). The page is /moisture (public/moisture.html), the admin only; the readings
  * live in the water Worker's own D1 (water/schema.sql: moisture_visits, moisture_readings).
  *
- *   POST   /api/water/moisture          a visit and its readings; saving the same visit id again replaces it
+ *   POST   /api/water/moisture          a visit, its readings and its marks (tree trunks); saving the same visit id again replaces it
  *   GET    /api/water/moisture?pin=     the visits on one property (its county parcel number), oldest first
  *   GET    /api/water/moisture          every visit (?format=csv: every reading, for a spreadsheet)
  *   GET    /api/water/moisture?map=     the visits made on one saved map, oldest first (the water map's check)
@@ -25,6 +25,8 @@ const UNITS = ['vwc', 'scale', 'other'];
 
 export const VISIT_COLS = ['id', 'at', 'saved', 'lng', 'lat', 'parcel_pin', 'county', 'map_id', 'meter', 'unit', 'depth_in', 'note', 'weather', 'placed_on'];
 export const READING_COLS = ['id', 'visit_id', 'n', 'spot', 'at', 'lng', 'lat', 'value', 'note'];
+export const MARK_COLS = ['id', 'visit_id', 'n', 'kind', 'lng', 'lat', 'note'];
+const MARK_KINDS = ['trunk'];
 
 /** A posted visit, checked. -> { visit, readings } or { error } */
 export function cleanVisit(b, now = Date.now()) {
@@ -49,7 +51,26 @@ export function cleanVisit(b, now = Date.now()) {
     if (unit === 'vwc' && (value < 0 || value > 100)) return { error: `reading ${k + 1}: ${value}% is not a soil moisture` };
     readings.push({ id: `${id}:${k + 1}`, visit_id: id, n: num(r.n, 0, 100000) ?? k + 1, spot: txt(r.spot, 64), at: num(r.at, 1.5e12, now + 864e5) ?? now, lng, lat, value, note: txt(r.note, 500) });
   }
-  return { visit, readings };
+  // marks (2026-11-04): tree trunks the visitor stood at, ground truth for the water map's trunk finder (lib/trunks.js)
+  const marks = [];
+  for (const [k, m] of (Array.isArray(b.marks) ? b.marks.slice(0, 200) : []).entries()) {
+    const lng = num(m?.lng, -180, 180), lat = num(m?.lat, -90, 90);
+    if (lng === null || lat === null) continue;
+    marks.push({ id: `${id}:m${k + 1}`, visit_id: id, n: k + 1, kind: MARK_KINDS.includes(m.kind) ? m.kind : 'trunk', lng, lat, note: txt(m.note, 200) });
+  }
+  return { visit, readings, marks };
+}
+
+/** The marks of these visits (none when the table is not there yet). */
+async function marksOf(env, ids) {
+  const out = [];
+  try {
+    for (let k = 0; k < ids.length; k += 90) {
+      const part = ids.slice(k, k + 90);
+      out.push(...((await env.DB.prepare(`SELECT * FROM moisture_marks WHERE visit_id IN (${part.map(() => '?').join(', ')}) ORDER BY n`).bind(...part).all()).results || []));
+    }
+  } catch { /* no marks table yet */ }
+  return out;
 }
 
 /** A posted check, kept to numbers: anything that could place a spot (a point, a map id, a note) is dropped. */
@@ -97,8 +118,9 @@ export async function moisture(request, env, url, { isAdmin }) {
     const rows = (await env.DB.prepare('SELECT * FROM moisture_readings ORDER BY visit_id, n').all()).results || [];
     let checks = [];
     try { checks = (await env.DB.prepare('SELECT * FROM moisture_checks').all()).results || []; } catch { /* none yet */ }
-    const by = new Map(visits.map((v) => [v.id, { ...v, weather: v.weather ? JSON.parse(v.weather) : null, readings: [] }]));
+    const by = new Map(visits.map((v) => [v.id, { ...v, weather: v.weather ? JSON.parse(v.weather) : null, readings: [], marks: [] }]));
     for (const r of rows) by.get(r.visit_id)?.readings.push(r);
+    for (const m of await marksOf(env, visits.map((v) => v.id))) by.get(m.visit_id)?.marks.push(m);
     return json({ visits: [...by.values()], checks });
   }
   if (url.pathname !== '/api/water/moisture' && url.pathname !== '/api/water/moisture/check') return null;
@@ -116,14 +138,16 @@ export async function moisture(request, env, url, { isAdmin }) {
   if (request.method === 'POST') {
     let body = null;
     try { body = await request.json(); } catch { /* below */ }
-    const { visit, readings, error } = cleanVisit(body);
+    const { visit, readings, marks, error } = cleanVisit(body);
     if (error) return json({ error }, 400);
     await env.DB.batch([
       env.DB.prepare(`INSERT OR REPLACE INTO moisture_visits (${VISIT_COLS.join(', ')}) VALUES (${VISIT_COLS.map(() => '?').join(', ')})`).bind(...VISIT_COLS.map((c) => visit[c])),
       env.DB.prepare('DELETE FROM moisture_readings WHERE visit_id = ?').bind(visit.id),
       ...readings.map((r) => env.DB.prepare(`INSERT INTO moisture_readings (${READING_COLS.join(', ')}) VALUES (${READING_COLS.map(() => '?').join(', ')})`).bind(...READING_COLS.map((c) => r[c]))),
+      env.DB.prepare('DELETE FROM moisture_marks WHERE visit_id = ?').bind(visit.id),
+      ...marks.map((m) => env.DB.prepare(`INSERT INTO moisture_marks (${MARK_COLS.join(', ')}) VALUES (${MARK_COLS.map(() => '?').join(', ')})`).bind(...MARK_COLS.map((c) => m[c]))),
     ]);
-    return json({ ok: true, id: visit.id, readings: readings.length });
+    return json({ ok: true, id: visit.id, readings: readings.length, marks: marks.length });
   }
   if (request.method === 'GET') {
     const pin = url.searchParams.get('pin'), map = url.searchParams.get('map');
@@ -142,14 +166,15 @@ export async function moisture(request, env, url, { isAdmin }) {
       const part = ids.slice(k, k + 90);
       rows.push(...((await env.DB.prepare(`SELECT * FROM moisture_readings WHERE visit_id IN (${part.map(() => '?').join(', ')}) ORDER BY n`).bind(...part).all()).results || []));
     }
-    const by = new Map(visits.map((v) => [v.id, { ...v, weather: v.weather ? JSON.parse(v.weather) : null, readings: [] }]));
+    const by = new Map(visits.map((v) => [v.id, { ...v, weather: v.weather ? JSON.parse(v.weather) : null, readings: [], marks: [] }]));
     for (const r of rows) by.get(r.visit_id)?.readings.push(r);
+    for (const m of await marksOf(env, ids)) by.get(m.visit_id)?.marks.push(m);
     return json({ visits: [...by.values()] });
   }
   if (request.method === 'DELETE') {
     const id = url.searchParams.get('id');
     if (!id) return json({ error: 'which visit?' }, 400);
-    await env.DB.batch([env.DB.prepare('DELETE FROM moisture_readings WHERE visit_id = ?').bind(id), env.DB.prepare('DELETE FROM moisture_visits WHERE id = ?').bind(id)]);
+    await env.DB.batch([env.DB.prepare('DELETE FROM moisture_readings WHERE visit_id = ?').bind(id), env.DB.prepare('DELETE FROM moisture_marks WHERE visit_id = ?').bind(id), env.DB.prepare('DELETE FROM moisture_visits WHERE id = ?').bind(id)]);
     return json({ ok: true });
   }
   return json({ error: 'method' }, 405);

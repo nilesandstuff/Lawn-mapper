@@ -345,6 +345,18 @@ function draw2d() {
     g.stroke(); g.setLineDash([]);
     for (const p of a.ring) { const [x, y] = at(p); g.fillStyle = AREA_COLOR[a.kind] || '#fff'; g.beginPath(); g.arc(x, y, lw, 0, 7); g.fill(); }
   }
+  // tree trunks (lib/trunks.js): brown, solid where a stem was seen under the crown, hollow where the crown's top stands in;
+  // and the trunks marked on the readings page, as brown crosses (the admin's ground truth)
+  for (const t of view.data?.trunks || []) {
+    const [x, y] = toPx(frame, photo, [t.x, t.y]);
+    g.strokeStyle = '#fff'; g.lineWidth = lw * 0.5; g.fillStyle = '#6d4c41';
+    g.beginPath(); g.arc(x, y, lw * 1.4, 0, 7);
+    if (t.how === 'stem') { g.fill(); g.stroke(); } else { g.stroke(); g.strokeStyle = '#6d4c41'; g.lineWidth = lw * 0.5; g.beginPath(); g.arc(x, y, lw * 0.9, 0, 7); g.stroke(); }
+  }
+  for (const v of view.moisture || []) for (const m of v.marks || []) {
+    const [x, y] = at([m.lng, m.lat]), r = lw * 1.6;
+    g.strokeStyle = '#3e2723'; g.lineWidth = lw * 0.7; g.beginPath(); g.moveTo(x - r, y - r); g.lineTo(x + r, y + r); g.moveTo(x - r, y + r); g.lineTo(x + r, y - r); g.stroke();
+  }
   if (heads.active) { heads.drawOn(g, lw); return; }
   // the downspouts belong to the water the lot sheds: the zones, the need and the standing water
   const spouts = [...inputs.downspouts, ...(mode === 'to' && pending ? [{ from: pending, to: null }] : [])];
@@ -976,7 +988,30 @@ function moistureCard(p) {
       <p class="dim">Readings ${vs[0] ?? '-'} to ${vs[vs.length - 1] ?? '-'}; the model's wetness ${f2(ws[0])} to ${f2(ws[ws.length - 1])} (the root zone's water over what it holds at field capacity, with rain alone), each spot the mean of the lawn squares within ${NEAR_M} m of it. A spot is on the lawn when it is on the traced lawn or within ${ON_TRACE_M} m of it${offs ? ` (${offs} of these sit just off the trace: the photo a dot is put on and the one the lawn was traced on can differ by about that much)` : ''}. ${wet ? '' : 'The weather record does not reach this date, so the model has no wetness for it.'}</p>
       <div style="overflow-x:auto"><table class="small"><tr><th>#</th><th>reading</th><th>model</th><th>where</th><th>area</th><th>peak-month need, in</th><th>note</th></tr>${rows}</table></div></details>`;
   });
-  el.innerHTML = `<h2>Soil moisture readings against the model</h2>${cards.join('')}`;
+  el.innerHTML = `<h2>Soil moisture readings against the model</h2>${cards.join('')}${trunksNote()}`;
+}
+
+/* THE TRUNK FINDER AGAINST THE MARKED TRUNKS (lib/trunks.js; the readings page's marks): each mark's nearest found
+   trunk, in meters, and how the trunk was placed (a stem seen under the crown, or the crown's top). */
+function trunksNote() {
+  const found = view.data?.trunks || [], marks = (view.moisture || []).flatMap((v) => v.marks || []);
+  if (!found.length && !marks.length) return '';
+  const k = Math.cos(((view.site?.lat || 0) * Math.PI) / 180);
+  const stems = found.filter((t) => t.how === 'stem').length;
+  let rows = '';
+  if (marks.length) {
+    const dists = marks.map((m, i) => {
+      const [mx, my] = toMerc([m.lng, m.lat]);
+      let best = null;
+      for (const t of found) { const d = Math.hypot(t.x - mx, t.y - my) * k; if (!best || d < best.d) best = { t, d }; }
+      return { i: i + 1, note: m.note, best };
+    });
+    const ds = dists.filter((x) => x.best).map((x) => x.best.d).sort((a, b) => a - b);
+    rows = `<p>Trunks marked on the readings page: ${marks.length}. Nearest found trunk: median <strong>${ds.length ? ds[ds.length >> 1].toFixed(1) : '-'} m</strong> away, within 2 m for ${ds.filter((d) => d <= 2).length} of ${marks.length}.</p>
+      <div style="overflow-x:auto"><table class="small"><tr><th>mark</th><th>nearest found trunk</th><th>placed by</th><th>crown</th></tr>${dists.map((x) => `<tr><td>${x.i}${x.note ? ` ${esc(x.note)}` : ''}</td><td>${x.best ? `${x.best.d.toFixed(1)} m` : '-'}</td><td>${x.best ? (x.best.t.how === 'stem' ? `a stem under the crown (${x.best.t.stemReturns} returns)` : 'the crown\'s top') : '-'}</td><td>${x.best ? `${x.best.t.H.toFixed(0)} m tall, ${x.best.t.R.toFixed(0)} m across` : '-'}</td></tr>`).join('')}</table></div>`;
+  }
+  return `<details class="card"><summary>Tree trunks: ${found.length} found${stems ? `, ${stems} from a stem seen under the crown` : ''}${marks.length ? `; ${marks.length} marked by hand` : ''}</summary>
+    <p class="dim">A trunk is placed at the lidar returns 0.5-3 m up under a crown when there are three or more close together (solid brown dot on the map), else at the crown's top (hollow dot). Crosses are trunks marked on the readings page.</p>${rows}</details>`;
 }
 
 function groundwaterReport(p) {
