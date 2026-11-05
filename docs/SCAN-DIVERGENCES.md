@@ -50,7 +50,25 @@ wallsOf (2 ft in from the roof's edge, the owner's number), run on the model's B
 mask's OUTLINE as the solid cells. A STRUCTURE (a stone wall, a shed, bins) has no eaves and is solid at its own
 edge, i.e. by step 2.
 
-## 4. Each wall is judged on its own inset, and the roof's edge is a target of its own
+## 3b. Straight things made straight (2026-11-05)
+
+The owner: "let's do the shape/line cleaning for roofs and objects that we think are actually straight. Let's not touch
+trees. But tree trunks i believe currently get averaged to 1m, so let's just make those a thin line." From the
+model's 1 m columns (scan/lib/outline.js, scan/lib/lidar-load.js straightShapes):
+
+- **Buildings**: each BUILDING patch's outline is traced, fitted with straight sides (a line through the staircase's
+  steps), and sides within 12 degrees of the building's main direction, or square to it, are turned onto it. The
+  walls are that outline moved 2 ft in (the shade map's WALL_INSET_M), in place of wallsOf on the columns. An edge
+  that runs along the grid cannot be helped: whether its edge column is roof is a toss-up the model already made, so
+  such an edge stays within half a column; a turned edge comes out within centimetres.
+- **Structures**: a long thin STRUCTURE patch (three times as long as wide: a wall, a fence) is one line through its
+  middle, 30 cm wide; any other (a shed, bins) is its straightened outline.
+- **Trunks**: a patch of up to 4 standing tree columns under a crown (a column top 3 m or more) is one post, 30 cm each
+  way (a trunk's own surface; the match's own 30 cm hit radius), at the centre of the columns' own returns at standing
+  height. Its place is known only to the columns, so to within half a column when the trunk is in one column.
+- **Not touched**: bigger patches of standing tree columns (hedges, bushes, a low crown), UNKNOWN columns, the canopy.
+
+, and the roof's edge is a target of its own
 
 Owner, 2026-11-03: walls are "USUALLY within 2 feet of the overhang... sometimes 1 foot or less, other times 10
 feet (an all-seasons room or large front porch)". So the match does not insist on the drawn wall: a run of phone

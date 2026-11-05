@@ -16,6 +16,12 @@ import { buildGrids, buildingsOnGrid, valuesOnGrid } from './lidar.js';
 import { lawnField } from './surface.js';
 import { unpackModel, modelUsable } from './lidar-model.js';
 import { BANDS } from './locate.js';
+import { ringsOfMask, straighten, offsetRing, fillRings, lineOfPatch, postOf, patchesOf, areaOf, drawSegment } from './outline.js';
+
+export const TRUNK_MAX_COLUMNS = 4; // a patch of standing tree columns this small, under a crown, is a trunk
+export const TRUNK_CROWN_M = 3;     // its column's top at least this high: a crown over it, not a bush
+export const TRUNK_HALF_M = 0.3;    // drawn and matched as a post this thick each way: a real trunk's surface, a third of a column
+export const WALL_HALF_M = 0.15;    // a long thin structure (a wall, a fence) as a line this thick each way
 
 export const MODEL_PATH = (map, tool = 'shade') => `/api/maps/model?id=${encodeURIComponent(map)}&tool=${tool}`;
 export const NO_MODEL = 'this map has no lidar model yet: open it in the shade map first, which builds and saves it';
@@ -46,7 +52,7 @@ export function kindsOf(model, S) {
  * `lawn` the traced lawn's rings in map metres (the AR's lawn-edge term), `S` the shared structures module (wallsOf
  * and the kind codes), `toMerc` [lng, lat] -> EPSG:3857.
  */
-export function gridsFromModel(model, { origin, box, lawn = [], S, toMerc, cell = 0.25 }) {
+export function gridsFromModel(model, { origin, box, lawn = [], S, toMerc, cell = 0.25, straight = true }) {
   const { meta, arrays } = model;
   const sgrid = meta.grid, K = kindsOf(model, S);
   const [ox, oy] = toMerc(origin);
@@ -100,14 +106,19 @@ export function gridsFromModel(model, { origin, box, lawn = [], S, toMerc, cell 
   }
   const at = [ox, oy];
   const dem = valuesOnGrid(arrays.ground, sgrid, box, cell, at, k);
-  const things = buildingsOnGrid(things1, sgrid, box, cell, at, k, 1);
-  const bld = buildingsOnGrid(bld1, sgrid, box, cell, at, k, 1);
+  let things, bld, walls = null, shapes = null;
+  if (straight) {
+    shapes = straightShapes({ sgrid, kind, K, things1, bld1, top: arrays.top, returns, ground, layers, ox, oy, k, box, cell, inset: S?.WALL_INSET_M ?? 0.61 });
+    ({ things, bld, walls } = shapes);
+  } else {
+    things = buildingsOnGrid(things1, sgrid, box, cell, at, k, 1);
+    bld = buildingsOnGrid(bld1, sgrid, box, cell, at, k, 1);
+  }
   const topForDraw = arrays.top ? Float32Array.from(arrays.top, (t, j) => (bld1[j] ? t : standTop[j])) : null;
   const top = topForDraw ? valuesOnGrid(topForDraw, sgrid, box, cell, at, k) : null;
   /* A building's walls: the shade map's own rule, wallsOf (2 ft in from the roof's edge, the owner's number), run on
      its BUILDING columns. A STRUCTURE (a stone wall, a shed, bins) has no eaves and is solid at its own edge. */
-  let walls = null;
-  if (typeof S?.wallsOf === 'function') {
+  if (!straight && typeof S?.wallsOf === 'function') {
     const wl = S.wallsOf(bld1, sgrid.w, sgrid.h, { cellM: 1, fineM: cell });
     walls = buildingsOnGrid(wl.walls, { x0: sgrid.x0, y1: sgrid.y1, cell: sgrid.cell * wl.cellM, cellY: (sgrid.cellY || sgrid.cell) * wl.cellM, w: wl.w, h: wl.h }, box, cell, at, k, 1);
   }
@@ -118,11 +129,65 @@ export function gridsFromModel(model, { origin, box, lawn = [], S, toMerc, cell 
   if (arrays.top) G.wallTop = valuesOnGrid(arrays.top, sgrid, box, cell, at, k);
   const ruleName = `the shade map's model of ${meta.at ? String(meta.at).slice(0, 10) : 'an unknown date'}${meta.photo ? ', low structures judged by the summer photo' : ''}${meta.erased ? `, ${meta.erased} columns erased by hand` : ''}`;
   return {
-    G, k, ox, oy, counts, buildings: bld, footprint: walls, rule: ruleName,
+    G, k, ox, oy, counts: shapes ? { ...counts, ...shapes.counts } : counts, buildings: bld, footprint: walls, rule: ruleName + (shapes ? `, straightened (${shapes.counts.buildingsStraight} buildings, ${shapes.counts.wallLines} walls as lines, ${shapes.counts.trunks} trunks as posts)` : ''),
     cloud: { name: meta.lidar?.name || "the shade map's survey", url: meta.lidar?.url || null, epoch: meta.lidar?.epoch ?? null },
     how: Array.isArray(meta.lidar?.shift) ? "the shade map's" : 'as the model has it',
     shade: { kind, sgrid, S, K, stats: { top: arrays.top || null, standTop }, ground: arrays.ground, mu: arrays.mu || null, returns: returns || null, low: low || null, layers: meta.layers || null, meta },
   };
+}
+
+/**
+ * STRAIGHT THINGS MADE STRAIGHT (owner, 2026-11-05; scan/lib/outline.js; docs/SCAN-DIVERGENCES.md step 3b). From the
+ * model's 1 m columns, on the match's fine grid:
+ *   bld     every building's outline traced, fitted with straight sides, near-square corners squared, filled
+ *   walls   that outline moved 2 ft in (the shade map's own number, WALL_INSET_M), filled: the inside of the walls
+ *   things  a long thin STRUCTURE patch (a wall, a fence) as one line through its middle; any other STRUCTURE patch
+ *           (a shed, bins) as its straightened outline; a TRUNK -- a patch of TRUNK_MAX_COLUMNS or fewer standing tree
+ *           columns under a crown -- as one post where its own returns are; every other standing column (a bush, a
+ *           hedge, an unknown thing) as its columns, untouched ("let's not touch trees")
+ */
+export function straightShapes({ sgrid, kind, K, things1, bld1, top, returns, ground, layers, ox, oy, k, box, cell, inset }) {
+  const cy = sgrid.cellY || sgrid.cell, w = sgrid.w, h = sgrid.h;
+  const toM = ([gx, gy]) => [(sgrid.x0 + gx * sgrid.cell - ox) * k, (sgrid.y1 - gy * cy - oy) * k];
+  const centre = (j) => toM([(j % w) + 0.5, ((j / w) | 0) + 0.5]);
+  const counts = { buildingsStraight: 0, wallLines: 0, shedsStraight: 0, trunks: 0 };
+  // buildings
+  const rings = ringsOfMask(bld1, w, h).map((r) => straighten(r.map(toM)));
+  // an outline runs clockwise in map metres (outline.js ringsOfMask: the inside on the right), a courtyard the other way;
+  // the walls stand 2 ft into the building from either
+  counts.buildingsStraight = rings.filter((r) => areaOf(r) < 0).length;
+  const bld = fillRings(rings, box, cell);
+  const walls = fillRings(rings.map((r) => offsetRing(r, areaOf(r) < 0 ? inset : -inset)), box, cell);
+  // what stands at the phone's height
+  const rest = things1.slice(), extra = fillRings([], box, cell), W = Math.max(1, Math.ceil((box[2] - box[0]) / cell));
+  const struct = Uint8Array.from(kind, (v, j) => (v === K.STRUCTURE && things1[j] ? 1 : 0));
+  for (const patch of patchesOf(struct, w, h)) {
+    for (const j of patch) rest[j] = 0;
+    const seg = lineOfPatch(patch.map(centre), { colM: sgrid.cell * k });
+    if (seg) { drawSegment(extra, box, cell, seg[0], seg[1], WALL_HALF_M); counts.wallLines++; continue; }
+    const m = new Uint8Array(w * h); for (const j of patch) m[j] = 1;
+    const shed = ringsOfMask(m, w, h).map((r) => straighten(r.map(toM)));
+    const f = fillRings(shed, box, cell); for (let i = 0; i < f.length; i++) if (f[i]) extra[i] = 1;
+    counts.shedsStraight++;
+  }
+  const tree = Uint8Array.from(kind, (v, j) => ((v === K.TREE || v === K.SOLID_TREE) && things1[j] ? 1 : 0));
+  const ownInBand = (j) => {
+    if (!returns || !layers || !Number.isFinite(ground[j])) return 1;
+    const l0 = Math.max(0, Math.floor((ground[j] + BANDS.standLow - layers.z0) / layers.dz)), l1 = Math.min(layers.nz - 1, Math.floor((ground[j] + BANDS.standHigh - layers.z0) / layers.dz));
+    let n = 0; for (let l = l0; l <= l1; l++) n += returns[j * layers.nz + l]; return n;
+  };
+  for (const patch of patchesOf(tree, w, h)) {
+    const tall = top && patch.some((j) => top[j] >= TRUNK_CROWN_M);
+    if (patch.length > TRUNK_MAX_COLUMNS || !tall) continue;
+    for (const j of patch) rest[j] = 0;
+    const p = postOf(patch.map(centre), patch.map(ownInBand));
+    drawSegment(extra, box, cell, p, p, TRUNK_HALF_M);
+    counts.trunks++;
+  }
+  const things = buildingsOnGrid(rest, sgrid, box, cell, [ox, oy], k, 1);
+  for (let i = 0; i < extra.length; i++) if (extra[i]) things[i] = 1;
+  void W;
+  return { bld, walls, things, counts };
 }
 
 /**

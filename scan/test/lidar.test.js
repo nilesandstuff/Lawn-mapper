@@ -35,8 +35,9 @@ function model(box = BOX) {
     const e = (grid.x0 + (c + 0.5) * grid.cell - OX) * K, n = (grid.y1 - (r + 0.5) * grid.cell - OY) * K;
     gr[j] = ground(e, n);
     const tree = TREES.find(([te, tn]) => Math.hypot(e - te, n - tn) < 3);
-    // a column with any roof over it is BUILDING (its roof returns are there), as the real rule has it
-    if (e + 0.5 > -12.5 && e - 0.5 < 2.5 && n + 0.5 > 3.5 && n - 0.5 < 13.5) { kind[j] = S.BUILDING; top[j] = 6; }
+    // a column whose centre is under the roof is BUILDING (the roof's edges here fall on column edges, so this puts
+    // the edge half a column in: the toss-up a grid-aligned edge always is)
+    if (e > -12.5 && e < 2.5 && n > 3.5 && n < 13.5) { kind[j] = S.BUILDING; top[j] = 6; }
     else if (tree) { const trunk = Math.floor(e) === Math.floor(tree[0]) && Math.floor(n) === Math.floor(tree[1]); kind[j] = S.TREE; top[j] = 9; for (let l = 0; l < nz; l++) { const z = z0 + l * dz; if (z >= gr[j] + (trunk ? 0 : 4) && z <= gr[j] + 9) mu[j * nz + l] = trunk ? 9 : 0.5; } }
     else if (e > -20 && e < 10 && Math.floor(n) === -12) { kind[j] = S.UNKNOWN; top[j] = 1.7; }
     if (kind[j] !== S.NOTHING && kind[j] !== S.TREE) { const lo = kind[j] === S.BUILDING ? 5 : 0; for (let l = 0; l < nz; l++) { const z = z0 + l * dz; if (z >= gr[j] + lo && z <= gr[j] + top[j]) mu[j * nz + l] = 9; } }
@@ -69,6 +70,15 @@ assert.ok(sample(G, G.dist, 0, -11.5) < 0.3, 'the fence');
 assert.ok(sample(G, G.dist, 22, 20) > 3, 'open lawn');
 assert.ok(sample(G, G.dist, 8.5, 3.5) < 0.3 && sample(G, G.dist, 8.5 + 2.4, 3.5) > 1, `a tree is solid where the shade map's cubes have its trunk, open under its crown: ${sample(G, G.dist, 8.5, 3.5)} ${sample(G, G.dist, 10.9, 3.5)}`);
 assert.ok(G.occTop && G.bld && G.wallTop, 'the tops and the roof mask come back for the overlay');
+// STRAIGHT THINGS MADE STRAIGHT (2026-11-05): a trunk is a post, not its 1 m column; the house's walls 2 ft in from a
+// straight edge
+{
+  const G0 = gridsFromModel(M, { origin: ORIGIN, box: BOX, S, toMerc, straight: false }).G;
+  assert.equal(L0.counts.trunks, 3, `three trunks as posts: ${JSON.stringify(L0.counts)}`);
+  assert.ok(sample(G, G.distNW, 8.5, 3.5) < 0.05, 'the post is where the trunk is');
+  assert.ok(sample(G0, G0.distNW, 8.9, 3.9) < 0.05 && sample(G, G.distNW, 8.95, 3.95) > 0.2, 'the column filled the whole metre; the post does not');
+  assert.equal(L0.counts.buildingsStraight, 1);
+}
 {
   const k = (e, n) => Math.floor((30 - n) / G.cell) * G.W + Math.floor((e + 30) / G.cell);
   assert.ok(Math.abs(G.occTop[k(0, -11.5)] - 1.7) < 0.01, `the fence\'s top is the shade map\'s: ${G.occTop[k(0, -11.5)]}`);
@@ -164,7 +174,7 @@ assert.ok(G.occTop && G.bld && G.wallTop, 'the tops and the roof mask come back 
     // but its own returns only from 5 m up (low 5.2); column 2: a 1.7 m thing, own returns in cubes 0-1
     for (let l = 0; l < nz; l++) { if (z0 + l >= 101 && z0 + l < 110) ret[l] = 1; if (z0 + l >= 105.5 && z0 + l < 110) ret[nz + l] = 1; if (z0 + l <= 101) ret[2 * nz + l] = 1; }
     const lowA = Float32Array.from([0.6, 5.2, 0.5]);
-    const mk = (extra) => gridsFromModel(decodeModel(encodeModel({ ...M.meta, grid: g1, layers: { z0, dz: 1, nz } }, { ground: gr, kind: kd, top: tp, mu, ...extra })), { origin: ORIGIN, box: [-1.5, -0.5, 1.5, 0.5], S, toMerc });
+    const mk = (extra) => gridsFromModel(decodeModel(encodeModel({ ...M.meta, grid: g1, layers: { z0, dz: 1, nz } }, { ground: gr, kind: kd, top: tp, mu, ...extra })), { origin: ORIGIN, box: [-1.5, -0.5, 1.5, 0.5], S, toMerc, straight: false }); // heights on plain columns
     const byMu = mk({}), byOwn = mk({ returns: ret, low: lowA });
     assert.equal(byMu.counts.standing, 3, 'by the pooled cubes all three stand');
     assert.equal(byOwn.counts.standing, 2, `by the column's own returns the pooled crown does not: ${byOwn.counts.standing}`);
