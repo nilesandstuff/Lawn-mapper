@@ -272,13 +272,19 @@ function onEvent(ev) {
 }
 
 /** What to mark next: an unmarked reference, then an unmarked check point, then the reference nearest the phone. */
+/* the references and check points with their map places, kept in the walk's private twin (live.json), so the walk
+   can be scored afterwards against them even when none was marked: a pin dropped on a check point counts */
+const pointsKept = () => (st.points || []).map((p) => ({ id: p.id, name: p.name, kind: p.kind, map: p.map }));
+
 function nextTarget() {
   // the point the owner picked on the mini map, until it is marked (2026-11-03: Mark "was demanding R2, which I had
   // just marked" when C1 was wanted)
   if (st.chosen) { const c = st.points.find((p) => p.id === st.chosen); if (c) return c; st.chosen = null; }
   const markedIds = new Set(st.L.marks.map((m) => m.id));
   const want = st.points.filter((p) => !markedIds.has(p.id));
-  const first = want.find((p) => p.kind === 'ref') || want[0];
+  /* references first, so the map lines up early; but a record-only walk is lined up afterwards, and its references are
+     optional (the owner, 2026-11-05: on a walk without references "it didn't let me actually mark the checkpoints") */
+  const first = (st.recordOnly ? want.find((p) => p.kind === 'check') : want.find((p) => p.kind === 'ref')) || want[0];
   if (first) return first;
   const me = st.ar?.pose ? mapOf(st.L, st.ar.pose.position, st.walk.odo) : null;
   const refs = st.points.filter((p) => p.kind === 'ref');
@@ -296,7 +302,7 @@ function onFrame(f) {
     if (x === 'fast') flash('Turn slower');
   }
   // the ground near the phone: the crosshair's depth when it is on the ground (0.8-2.5 m below the camera)
-  if ((f.hit?.type === 'DEPTH' || f.hit?.type === 'DETECTED_SURFACE' || f.hit?.type === 'ESTIMATED_SURFACE') && f.pose) { const drop = f.pose.position.y - f.hit.position.y; if (drop > 0.8 && drop < 2.5) noteGround(L, f.hit.position.y); }
+  if ((f.hit?.type === 'DEPTH' || f.hit?.type === 'DETECTED_SURFACE') && f.pose) { const drop = f.pose.position.y - f.hit.position.y; if (drop > 0.8 && drop < 2.5) noteGround(L, f.hit.position.y); }
   // the depth picture as points round the phone, four times a second; then, when it is time, a match
   if (f.depthType && !w.depthType) { w.depthType = f.depthType; log(`depth: ${f.depthType}`); if (st.twin) st.twin.depthType = f.depthType; }
   if (f.depth && f.pose && f.tracking === 'normal' && f.t - st.depthAt > DEPTH_EVERY) {
@@ -339,7 +345,7 @@ function onFrame(f) {
       const g = grabbed || f.grab();
       if (g) { const name = addKey(st.twin, now, odo, f.pose.position, f.pose.quaternion, g); g.blob.then((b) => b && sendTwin([{ name, type: 'image/jpeg', body: b }]), () => {}); }
     }
-    if (flushDue(st.twin, now)) sendTwin(flush(st.twin, now, liveOf(L, w, { recordOnly: !!st.recordOnly })));
+    if (flushDue(st.twin, now)) sendTwin(flush(st.twin, now, liveOf(L, w, { recordOnly: !!st.recordOnly, points: pointsKept() })));
   }
   if (!st.recordOnly && st.lid.ready && st.lid.worker && f.tracking === 'normal') {
     const ask = nextAsk(L, odo, Date.now(), f.pose?.position || null);
@@ -407,7 +413,7 @@ function hud(f) {
   const pts = f.points ? ` · ${f.points} pts` : '';
   const target = st.points.length ? nextTarget() : null;
   const ag = st.agree ? ` · lidar dots: <strong>${st.agree.on.length}</strong> on, ${st.agree.off.length} off` : '';
-  const fixLine = st.origin ? `<br>${esc(st.lid.ready ? fixStatus(L, w.odo) : st.lid.error ? `No lidar (${st.lid.error}); references only: ${fixStatus(L, w.odo)}` : `Lidar: ${st.lid.progress || 'reading…'}`)}${ag}${target ? `<br>Next to mark: <strong style="color:${target.kind === 'ref' ? '#8ab4ff' : '#d9a6ff'}">${esc(target.name)}</strong> (aim where it meets the ground, within 10 ft, tap Mark; tap another point on the mini map to mark that one instead)` : ''}` : '';
+  const fixLine = st.origin ? `<br>${st.recordOnly ? '<strong>Recording only</strong>: no live lidar fix; the walk is placed afterwards (workflow S, task fix). ' : ''}${esc(st.lid.ready ? fixStatus(L, w.odo) : st.lid.error ? `No lidar (${st.lid.error}); references only: ${fixStatus(L, w.odo)}` : `Lidar: ${st.lid.progress || 'reading…'}`)}${ag}${target ? `<br>Next to mark: <strong style="color:${target.kind === 'ref' ? '#8ab4ff' : '#d9a6ff'}">${esc(target.name)}</strong> (aim where it meets the ground, within 10 ft, tap Mark; tap another point on the mini map to mark that one instead)` : ''}` : '';
   const last = st.errors.length && Date.now() - st.errors[st.errors.length - 1].t < 6000 && /engine|start/.test(st.errors[st.errors.length - 1].what) ? `<br><span class="bad">${esc(st.errors[st.errors.length - 1].what)}</span>` : '';
   $('#hud').innerHTML = `${NAME[w.engine]} · ${tr} · walked ${Math.round(w.stats.walked * FT)} ft${pts} · ${aim} · ${w.pins.length} pin${w.pins.length === 1 ? '' : 's'}${w.pendingMeasure ? ' · <span class="warn">now aim at the second mark</span>' : ''}${fixLine}${last}`;
   const can = !!f.hit && f.tracking !== 'lost';
@@ -625,7 +631,7 @@ function finish() {
   });
   s.id = `${w.startedAt}`; s.saved = null;
   if (st.twin) {
-    sendTwin(flush(st.twin, Date.now(), liveOf(L, w, { ended: true, summary: s.id, recordOnly: !!st.recordOnly })));
+    sendTwin(flush(st.twin, Date.now(), liveOf(L, w, { ended: true, summary: s.id, recordOnly: !!st.recordOnly, points: pointsKept() })));
     s.twin = { ...st.twin.counts, camera: st.twin.camera, off: st.twinUp.off };
   }
   st.twin = null;

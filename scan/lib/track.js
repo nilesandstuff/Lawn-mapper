@@ -313,7 +313,13 @@ async function start8thWall({ canvas, onFrame, onEvent, eightWallUrl }) {
         /* the surfaces too, not feature points alone (the owner, 2026-11-05: "8th wall just didn't work at all... It
            couldn't even find the ground"): rankHits prefers a detected, then an estimated surface, but was only ever
            offered feature points, so no hit was ever the ground */
-        try { hit = rankHits(XR8.XrController.hitTest(CROSS.x, CROSS.y, ['DETECTED_SURFACE', 'ESTIMATED_SURFACE', 'FEATURE_POINT']), pose.position); } catch { hit = null; }
+        /* not the ESTIMATED surface (the owner, 2026-11-05: "when it does, its actually fixing only a few inches away
+           from the phone... Like 4+ feet off the ground": the engine's estimated ground sits at the camera's own height
+           until it has found the real one); a detected surface only below the camera, else feature points */
+        try {
+          const all = XR8.XrController.hitTest(CROSS.x, CROSS.y, ['DETECTED_SURFACE', 'FEATURE_POINT']) || [];
+          hit = rankHits(all.filter((h) => h?.type !== 'DETECTED_SURFACE' || (h.position && pose.position.y - h.position.y > 0.5)), pose.position);
+        } catch { hit = null; }
       }
       onFrame({
         /* THE WORLD POINTS (2026-11-05): the engine's web build gives no depth map (its depth field is internal), but

@@ -27,7 +27,12 @@ export const ASK_EVERY_MS = 1500;
    borderline impossible, to accurately place dots and mark the dots perfectly... So yes, loosen it. Because the goal is
    to get rid of reference points when we're able to"). Was 2 m and 10 degrees; SCAN-H4's lawn-edge fixes sat 0.6-3.4 m
    and 9-20 degrees from three close references. The references now only stop a lock that is plainly elsewhere. */
-export const REF_TOL_M = 5, REF_TOL_DEG = 25, MIN_HITS_ALONE = 0.65;
+/* TIGHTENED AGAIN (2026-11-05, measured): on the owner's walks of 2026-11-04 22:02 and 2026-11-05 20:26 the references
+   put the check points 6 in to 6 ft off (C2, C3, C4 within 6 in on the second), while the kept lidar fixes sat a
+   median 2.2 m and 4.8 m from them; on the second, two such fixes became the held fit and put C2 25 ft off. Until the
+   lidar is shown to beat the references, a fix must sit within 2 m and 8 degrees of them. A walk without references
+   is judged by the lidar alone, as before. */
+export const REF_TOL_M = 2, REF_TOL_DEG = 8, MIN_HITS_ALONE = 0.65;
 /* A fix this far (m, degrees) from the last kept one is a jump, held until a second fix agrees with it this closely. */
 /* TRUST THE AR ENGINE (owner, 2026-11-05: "behavior was jittery. Seems to update too often. I think we should
    trust the ar engine for longer periods of time, then update fixes when needed"). The walk of 2026-11-04 22:02 kept

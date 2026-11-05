@@ -92,6 +92,21 @@ async function main() {
   };
   writeFileSync(join(dir, 'fixed.json'), JSON.stringify(fixed));
   console.log(`Pins put on the map: ${pins.filter((p) => p.map).length} of ${pins.length}. Height known: ${tz != null ? 'yes, from the ground points' : 'no'}.`);
+  /* PINS AS CHECKS (the owner, 2026-11-05: on a walk without references "I placed pins on the checkpoints... I also
+     placed a pin on the same spot a few times"): each placed pin against the nearest check point on the map (when the
+     walk kept the points, live.json `points`), and pins dropped on one spot, how far apart they are as ARCore had them
+     and as placed */
+  const checksMap = (live.points || []).filter((p) => p.kind === 'check' && p.map);
+  if (checksMap.length) {
+    const near = pins.filter((p) => p.map).map((p) => { let best = null; for (const c of checksMap) { const d = Math.hypot(p.map[0] - c.map[0], p.map[1] - c.map[1]); if (!best || d < best.d) best = { d, name: c.name }; } return { pin: p.name, ...best }; });
+    console.log(`Pins against the nearest check point (as placed after the walk): ${near.map((x) => `${String(x.pin).slice(0, 8)}->${String(x.name).slice(0, 8)} ${ft(x.d)}`).join(', ') || 'none'}.`);
+  } else console.log('The walk kept no check points (walks before 2026-11-05 did not): pins cannot be scored against them.');
+  const sess = (live.pins || []).filter((p) => p.at).map((p, i) => ({ i, u: p.at.x, v: -p.at.z }));
+  const groups = [];
+  for (const p of sess) { const g = groups.find((G) => G.some((q) => Math.hypot(q.u - p.u, q.v - p.v) < 2)); if (g) g.push(p); else groups.push([p]); }
+  const spread = (pts) => { let m = 0; for (const a of pts) for (const b of pts) m = Math.max(m, Math.hypot(a[0] - b[0], a[1] - b[1])); return m; };
+  const same = groups.filter((G) => G.length > 1);
+  if (same.length) console.log(`Pins on one spot: ${same.map((G) => `${G.length} pins, ${ft(spread(G.map((p) => [p.u, p.v])))} apart as ARCore had them, ${ft(spread(G.map((p) => pins[p.i]?.map).filter(Boolean)))} as placed after the walk`).join('; ')}.`);
   console.log(`Base mesh: ${mesh.e.length.toLocaleString()} cells of 10 cm from ${recs.length.toLocaleString()} points, ${(meshBytes.byteLength / 1e6).toFixed(2)} MB gzipped. Done in ${Math.round((Date.now() - t0) / 1000)} s.`);
 }
 

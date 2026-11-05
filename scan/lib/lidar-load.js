@@ -132,7 +132,7 @@ export function gridsFromModel(model, { origin, box, lawn = [], S, toMerc, cell 
     G, k, ox, oy, counts: shapes ? { ...counts, ...shapes.counts } : counts, buildings: bld, footprint: walls, rule: ruleName + (shapes ? `, straightened (${shapes.counts.buildingsStraight} buildings, ${shapes.counts.wallLines} walls as lines, ${shapes.counts.trunks} trunks as posts)` : ''),
     cloud: { name: meta.lidar?.name || "the shade map's survey", url: meta.lidar?.url || null, epoch: meta.lidar?.epoch ?? null },
     how: Array.isArray(meta.lidar?.shift) ? "the shade map's" : 'as the model has it',
-    shade: { kind, sgrid, S, K, stats: { top: arrays.top || null, standTop }, ground: arrays.ground, mu: arrays.mu || null, returns: returns || null, low: low || null, layers: meta.layers || null, meta },
+    shade: { kind, sgrid, S, K, trunkCols: shapes?.trunkCols || null, stats: { top: arrays.top || null, standTop }, ground: arrays.ground, mu: arrays.mu || null, returns: returns || null, low: low || null, layers: meta.layers || null, meta },
   };
 }
 
@@ -151,6 +151,7 @@ export function straightShapes({ sgrid, kind, K, things1, bld1, top, returns, gr
   const toM = ([gx, gy]) => [(sgrid.x0 + gx * sgrid.cell - ox) * k, (sgrid.y1 - gy * cy - oy) * k];
   const centre = (j) => toM([(j % w) + 0.5, ((j / w) | 0) + 0.5]);
   const counts = { buildingsStraight: 0, wallLines: 0, shedsStraight: 0, trunks: 0 };
+  const trunkCols = new Uint8Array(w * h); // the columns made into posts, so the drawing does not box them again
   // buildings
   const rings = ringsOfMask(bld1, w, h).map((r) => straighten(r.map(toM)));
   // an outline runs clockwise in map metres (outline.js ringsOfMask: the inside on the right), a courtyard the other way;
@@ -186,11 +187,12 @@ export function straightShapes({ sgrid, kind, K, things1, bld1, top, returns, gr
     const p = postOf(patch.map(at), patch.map(ownInBand));
     drawSegment(extra, box, cell, p, p, TRUNK_HALF_M);
     counts.trunks++;
+    for (const j of patch) trunkCols[j] = 1;
   }
   const things = buildingsOnGrid(rest, sgrid, box, cell, [ox, oy], k, 1);
   for (let i = 0; i < extra.length; i++) if (extra[i]) things[i] = 1;
   void W;
-  return { bld, walls, things, counts };
+  return { bld, walls, things, counts, trunkCols };
 }
 
 /**

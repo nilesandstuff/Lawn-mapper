@@ -138,5 +138,8 @@ export function lidarMeshes(overlay) {
   for (let i = 0; i + 3 < s.length; i += 4) box(solids, s[i], s[i + 2], s[i + 1], s[i] + c, s[i + 3], s[i + 1] + c);
   const t = overlay.tall || [], tc = overlay.tallCell || 1;
   for (let i = 0; i + 4 < t.length; i += 5) box(t[i + 4] ? roofs : canopy, t[i], t[i + 2], t[i + 1], t[i] + tc, t[i + 3], t[i + 1] + tc);
+  // the straightened roofs: [e0, n0, e1, n1, z0, z1] per run along a row of the match's grid
+  const R = overlay.roofRuns || [];
+  for (let i = 0; i + 5 < R.length; i += 6) box(roofs, R[i], R[i + 4], R[i + 1], R[i + 2], R[i + 5], R[i + 3]);
   return { solids, canopy, roofs };
 }

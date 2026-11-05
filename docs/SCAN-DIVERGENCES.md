@@ -96,7 +96,10 @@ stands from its lowest own return up through the cubes that have own returns wit
 at most, for legibility), so a trunk under a crown is a post, not a wall to the treetop (the owner, 2026-11-04: "in
 AR, I'm seeing blue walls under those same canopies"; shade findings 35: one low cube, a median 2 m of air, then the
 crown). A file without per-cube returns draws to the column's top as before. Every other column with anything in it
-is drawn as a green box from its lowest cube with leaf (`mu` > 0) to its top, orange when the column is BUILDING.
+is drawn as a green box from its lowest cube with leaf (`mu` > 0) to its top. Buildings are drawn orange from the
+straightened outline the match uses (step 3b), as runs along the match's 0.25 m rows, not as 1 m columns; a trunk
+made into a post is drawn as the post, its column green only from 2.4 m up (2026-11-05: the owner saw none of the
+straightening, because the drawing still showed the raw columns).
 Nothing is drawn that the model does not have.
 
 ## 7. Which canopy: `mu`, as flown

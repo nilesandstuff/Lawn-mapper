@@ -46,22 +46,38 @@ self.onmessage = async ({ data }) => {
       const top = Math.min(15, Math.max(0.5, G.occTop[k2] || 0.5));
       sol.push(box[0] + cc * G.cell, box[3] - (r + 1) * G.cell, G.dem[k2], G.dem[k2] + top);
     }
-    const tall = [];
-    const { kind, sgrid, K, ground, mu, layers } = shade, top = shade.stats.top;
+    /* WHAT YOU SEE IS WHAT IS MATCHED (the owner, 2026-11-05: "none of the post processing you said you did actually
+       ended up in the live ar"): roofs drawn from the straightened outline the match uses (G.bld, 0.25 m), as runs
+       along each row, not the model's 1 m columns; a trunk made into a post is not boxed again from the ground, its
+       column drawn from the crown up only */
+    const tall = [], roofRuns = [];
+    const { kind, sgrid, K, ground, mu, layers, trunkCols } = shade, top = shade.stats.top;
+    for (let r = 0; r < G.H; r++) {
+      for (let c0 = 0; c0 < G.W;) {
+        if (!G.bld[r * G.W + c0]) { c0++; continue; }
+        let c1 = c0; while (c1 + 1 < G.W && G.bld[r * G.W + c1 + 1]) c1++;
+        let lo = Infinity, hi = -Infinity;
+        for (let c = c0; c <= c1; c++) { const k2 = r * G.W + c, g = G.dem[k2], t = G.wallTop ? G.wallTop[k2] : NaN; if (Number.isFinite(g)) { lo = Math.min(lo, g); if (Number.isFinite(t)) hi = Math.max(hi, g + Math.min(40, t)); } }
+        if (Number.isFinite(lo) && hi > lo) roofRuns.push(box[0] + c0 * G.cell, box[3] - (r + 1) * G.cell, box[0] + (c1 + 1) * G.cell, box[3] - r * G.cell, lo, hi);
+        c0 = c1 + 1;
+      }
+    }
     const cellE = sgrid.cell * k, cellN = (sgrid.cellY || sgrid.cell) * k;
     for (let r = 0; r < sgrid.h; r++) for (let c = 0; c < sgrid.w; c++) {
-      const j = r * sgrid.w + c; if (kind[j] === K.NOTHING || !Number.isFinite(ground[j])) continue;
+      const j = r * sgrid.w + c; if (kind[j] === K.NOTHING || kind[j] === K.BUILDING || !Number.isFinite(ground[j])) continue;
       const e = (sgrid.x0 + c * sgrid.cell - ox) * k, n = (sgrid.y1 - (r + 1) * (sgrid.cellY || sgrid.cell) - oy) * k;
       if (e + cellE < box[0] || e > box[2] || n + cellN < box[1] || n > box[3]) continue;
       let lo = ground[j];
-      if (mu && layers) { for (let l = 0; l < layers.nz; l++) if (mu[j * layers.nz + l] > 0) { lo = Math.max(ground[j], layers.z0 + l * layers.dz); break; } }
+      const floor = trunkCols && trunkCols[j] ? ground[j] + 2.4 : -Infinity; // a post's column: the crown only
+      if (mu && layers) { for (let l = 0; l < layers.nz; l++) if (mu[j * layers.nz + l] > 0 && layers.z0 + (l + 1) * layers.dz > floor) { lo = Math.max(ground[j], floor, layers.z0 + l * layers.dz); break; } }
+      else lo = Math.max(lo, floor);
       const hi = ground[j] + (top && Number.isFinite(top[j]) ? Math.min(80, top[j]) : 3);
       if (hi > lo) tall.push(e, n, lo, hi, kind[j] === K.BUILDING ? 1 : 0);
     }
     const dw = Math.ceil(G.W / 4), dh = Math.ceil(G.H / 4), dem1 = new Float32Array(dw * dh);
     for (let r = 0; r < dh; r++) for (let cc = 0; cc < dw; cc++) dem1[r * dw + cc] = G.dem[Math.min(G.H - 1, r * 4 + 2) * G.W + Math.min(G.W - 1, cc * 4 + 2)];
-    const solids = Float32Array.from(sol), tallA = Float32Array.from(tall), dist = Float32Array.from(G.dist);
-    self.postMessage({ overlay: { box, cell: G.cell, solids, tall: tallA, tallCell: cellE, dem1: { box, cell: G.cell * 4, W: dw, H: dh, data: dem1 }, dist: { box, cell: G.cell, W: G.W, H: G.H, data: dist } } }, [solids.buffer, tallA.buffer, dem1.buffer, dist.buffer]);
+    const solids = Float32Array.from(sol), tallA = Float32Array.from(tall), roofsA = Float32Array.from(roofRuns), dist = Float32Array.from(G.dist);
+    self.postMessage({ overlay: { box, cell: G.cell, solids, tall: tallA, roofRuns: roofsA, tallCell: cellE, dem1: { box, cell: G.cell * 4, W: dw, H: dh, data: dem1 }, dist: { box, cell: G.cell, W: G.W, H: G.H, data: dist } } }, [solids.buffer, tallA.buffer, roofsA.buffer, dem1.buffer, dist.buffer]);
   } catch (err) {
     self.postMessage({ error: err.message || String(err) });
   }
