@@ -899,3 +899,32 @@ moves the lawn's mean direct beam by about one point at a 10-degree sun
 and nothing at noon; whether those low points are trunks and shrubs or
 phantoms is not known from the lidar alone. The AR's 3 m crown rule
 (SCAN-H7) stands on what the phone saw under crowns, not on this.
+
+### SCAN-H8. The owner's lot, 2026-11-04 22:02, six check points: the fixes made it worse; the lawn trace drove them (2026-11-05)
+
+Measured on walk 1793829761981 (9 min, 344 m walked, 2 references, 6 check points; the model written before the
+shade map's canopy and own-return fixes), from its record and the twin check's replay:
+
+- **At every check point the lidar fix was worse than the references alone.** By the fix: 0.57, 2.53, 6.93, 2.65,
+  2.30 m; by the references: 0.13, 0.45, 1.77, 1.27, 0.31 m. (C4 was 43 m off both ways: its map place, or its mark,
+  is wrong.)
+- **The kept fixes sat a median 2.2 m from the references** (p90 4.2 m), all inside the 5 m the references allow,
+  so all were taken. Each ask carried a median 32 standing points against 2,132 grass-and-paving points weighed 8
+  times: the lawn trace, not the lidar, chose the fix.
+- **Jitter:** 131 fixes in 295 asks, each drawn at once; standing at one spot, four fixes in a row each differed.
+- **The real height offset was steady**: the phone's ground points against the lidar's ground, per 20 m of walk,
+  247.60 to 247.93 m, a 0.33 m spread over the whole walk. The 1-6 ft the owner saw came from the page drawing at
+  the crosshair's last depth hit, not from the lidar.
+- **The cost landscape is flat**: round the references' pose, a 2 m step cost under 10% more in 65 of 66 asks.
+  Replayed with today's classing and no lawn edges, 28 asks gave 4 fixes, 1 within the references' bounds. Under
+  the references only 22% of the phone's standing points land within 30 cm of a solid cell (13% under the walk's
+  fixes); 87% of the solid cells at standing height were tree columns, before the shade map's own-return fix.
+- **8th Wall** (walk 1793831670545, 3 min, 1.5 m walked): tracked 31% of frames, re-initializing three times; no
+  depth, so no points for the match at all; its hit test was only ever offered feature points.
+
+Done the same day (dc187ae): one held fit, moved only by three agreeing fixes; no lawn trace or lawn colour in the
+match; the drawing's height from the ground points (groundOffset); 8th Wall's hit test offered surfaces. Expected:
+far fewer fix changes, the references and ARCore carrying most of a walk, the lidar drawn at the ground. Open: with
+the lawn trace gone the match has little to hold on this lot; whether the own-return model (fewer phantom tree
+columns) gives it more is the next walk's question.
+
