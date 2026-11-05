@@ -33,7 +33,7 @@
  * Any array may be absent when a writer does not have it; a reader checks. Extra arrays are allowed and kept.
  *
  * KEPT AND SENT GZIPPED (2026-11-05; the owner's lot is 23.1 MB raw, and a lot is mostly empty air, which gzip
- * all but erases: about 15 to 1 on a file shaped like it). packModel gives the gzipped bytes to PUT; unpackModel
+ * all but erases: the owner's real file keeps in 1.29 MB, about 18 to 1). packModel gives the gzipped bytes to PUT; unpackModel
  * reads either kind (a raw file written before this, or gzip). The Worker gzips a raw upload itself, so every
  * stored file is gzip; a reader that fetches one calls unpackModel, never decodeModel on the bytes directly.
  */
