@@ -50,7 +50,7 @@ export function cameraAt(track, t) {
  * frame (u = x, v = -z), as the page classes them (locate.js addDepth): height over the ground the page took, the
  * range caps, and a standing cell seen at least twice.
  */
-export function classify(recs, track = []) {
+export function classify(recs, track = [], { standRange = STAND_RANGE } = {}) {
   const stand = [], ground = [], high = [], seen = new Map(), standAt = [];
   for (const r of recs) {
     if (!Number.isFinite(r.ground)) continue;
@@ -58,7 +58,7 @@ export function classify(recs, track = []) {
     const range = cam ? Math.hypot(r.x - cam.x, r.y - cam.y, r.z - cam.z) : 0;
     if (Math.abs(h) < BANDS.groundTol) { if (range <= GROUND_RANGE) ground.push([r.x, -r.z, r.y, r.odo]); continue; }
     if (h > BANDS.standLow && h < BANDS.standHigh) {
-      if (range > STAND_RANGE) continue;
+      if (range > standRange) continue;
       const k = `${Math.floor(r.x / VOX_M)},${Math.floor(r.z / VOX_M)}`;
       seen.set(k, (seen.get(k) || 0) + 1);
       standAt.push([r.x, -r.z, r.odo, k]);

@@ -59,10 +59,11 @@ async function main() {
   const pts = classify(recs, track);
   const above = [];
   for (const r of recs) { if (!Number.isFinite(r.ground)) continue; const h = r.y - r.ground; if (h > BANDS.standLow && h < BANDS.highTop) above.push([r.x, -r.z, r.y, r.odo]); }
+  const far = classify(recs, track, { standRange: 8 }), farStand = thin(far.stand, 4000);
   const stand = thin(pts.stand, 3000), high = thin(pts.high.map((p) => p), 3000), ground = thin(pts.ground, 3000), occ = thin(above, 4000);
   // the high points need their heights for the canopy: take them from the records again (classify keeps u, v, odo)
   const highY = thin(recs.filter((r) => Number.isFinite(r.ground) && r.y - r.ground >= BANDS.standHigh && r.y - r.ground < BANDS.highTop).map((r) => [r.x, -r.z, r.y, r.odo]), 3000);
-  console.log(`Walk: ${recs.length.toLocaleString()} points; classed ${pts.stand.length.toLocaleString()} standing, ${pts.high.length.toLocaleString()} high, ${pts.ground.length.toLocaleString()} ground; ${above.length.toLocaleString()} above the ground in all. Model: ${L.rule}.`);
+  console.log(`Walk: ${recs.length.toLocaleString()} points; classed ${pts.stand.length.toLocaleString()} standing (${far.stand.length.toLocaleString()} out to 8 m), ${pts.high.length.toLocaleString()} high, ${pts.ground.length.toLocaleString()} ground; ${above.length.toLocaleString()} above the ground in all. Model: ${L.rule}.`);
 
   // the model in 3D: is the cube at a map point and an absolute height occupied (leaf or roof), give or take one cube
   const { grid } = model.meta, layers = model.meta.layers, mu = model.arrays.mu, mg = model.arrays.ground, kind = model.arrays.kind, top = model.arrays.top;
@@ -89,13 +90,15 @@ async function main() {
       const [e, n] = apply(T, [u, v]), d = sample(G, G.dist, e, n);
       if (d <= 0.3) { wIn++; const nw = G.distNW ? sample(G, G.distNW, e, n) : 0; if (nw > 0.3) hIn++; else tIn++; }
     }
+    let fIn = 0, fH = 0;
+    for (const [u, v] of farStand) { const [e, n] = apply(T, [u, v]), d = sample(G, G.dist, e, n); if (d <= 0.3) { fIn++; if (G.distNW && sample(G, G.distNW, e, n) > 0.3) fH++; } }
     let rIn = 0, rN = 0; if (G.distRoof) for (const [u, v] of high) { const [e, n] = apply(T, [u, v]); rN++; if (sample(G, G.distRoof, e, n) <= 0.3) rIn++; }
     let cIn = 0, oIn = 0;
     if (tz != null) {
       for (const [u, v, y] of highY) { const [e, n] = apply(T, [u, v]); if (occupied(e, n, y + tz)) cIn++; }
       for (const [u, v, y] of occ) { const [e, n] = apply(T, [u, v]); if (occupied(e, n, y + tz)) oIn++; }
     }
-    return { walls: stand.length ? wIn / stand.length : null, houseWalls: stand.length ? hIn / stand.length : null, otherSolids: stand.length ? tIn / stand.length : null, roofEdge: rN ? rIn / rN : null, canopy: highY.length && tz != null ? cIn / highY.length : null, occupied: occ.length && tz != null ? oIn / occ.length : null, ground: gz.length ? gIn / gz.length : null };
+    return { wallsTo8m: farStand.length ? fIn / farStand.length : null, houseWallsTo8m: farStand.length ? fH / farStand.length : null, walls: stand.length ? wIn / stand.length : null, houseWalls: stand.length ? hIn / stand.length : null, otherSolids: stand.length ? tIn / stand.length : null, roofEdge: rN ? rIn / rN : null, canopy: highY.length && tz != null ? cIn / highY.length : null, occupied: occ.length && tz != null ? oIn / occ.length : null, ground: gz.length ? gIn / gz.length : null };
   };
 
   // the references' placement for the walk as a whole (their fit at the middle of the walk), and the moves round it
@@ -112,7 +115,7 @@ async function main() {
   const at0 = results.find((r) => r.dx === 0 && r.dy === 0 && r.dDeg === 0).s;
   console.log(`Placements tried round the references' fit: ${results.length} (shifts to 6 m, turns to 12 degrees).`);
   console.log('signal     at refs  best anywhere (where)                contrast (refs / median 2 m+ away)');
-  for (const key of ['walls', 'houseWalls', 'otherSolids', 'roofEdge', 'canopy', 'occupied', 'ground']) {
+  for (const key of ['wallsTo8m', 'houseWallsTo8m', 'walls', 'houseWalls', 'otherSolids', 'roofEdge', 'canopy', 'occupied', 'ground']) {
     const vals = results.filter((r) => r.s[key] != null);
     if (!vals.length) { console.log(`${key.padEnd(10)} -`); continue; }
     const best = vals.reduce((a, b) => (b.s[key] > a.s[key] ? b : a));
@@ -123,8 +126,8 @@ async function main() {
   }
   // the combination the study suggests: canopy and occupied with walls and ground, each normalised by its median away
   const norm = {};
-  for (const key of ['walls', 'houseWalls', 'otherSolids', 'roofEdge', 'canopy', 'occupied', 'ground']) { const a = results.map((r) => r.s[key]).filter((v) => v != null).sort((x, y) => x - y); norm[key] = a.length ? a[a.length >> 1] || 1e-9 : null; }
-  const combos = { 'ground alone': ['ground'], 'ground+roofEdge': ['ground', 'roofEdge'], 'ground+roofEdge+houseWalls': ['ground', 'roofEdge', 'houseWalls'], 'ground+houseWalls': ['ground', 'houseWalls'], 'walls+ground (today, roughly)': ['walls', 'ground'], 'occupied (3D) alone': ['occupied'], 'occupied+ground': ['occupied', 'ground'], 'occupied+walls+ground': ['occupied', 'walls', 'ground'], 'canopy+walls+ground': ['canopy', 'walls', 'ground'] };
+  for (const key of ['wallsTo8m', 'houseWallsTo8m', 'walls', 'houseWalls', 'otherSolids', 'roofEdge', 'canopy', 'occupied', 'ground']) { const a = results.map((r) => r.s[key]).filter((v) => v != null).sort((x, y) => x - y); norm[key] = a.length ? a[a.length >> 1] || 1e-9 : null; }
+  const combos = { 'ground+houseWallsTo8m': ['ground', 'houseWallsTo8m'], 'ground+roofEdge+houseWallsTo8m': ['ground', 'roofEdge', 'houseWallsTo8m'], 'ground+wallsTo8m': ['ground', 'wallsTo8m'], 'ground alone': ['ground'], 'ground+roofEdge': ['ground', 'roofEdge'], 'ground+roofEdge+houseWalls': ['ground', 'roofEdge', 'houseWalls'], 'ground+houseWalls': ['ground', 'houseWalls'], 'walls+ground (today, roughly)': ['walls', 'ground'], 'occupied (3D) alone': ['occupied'], 'occupied+ground': ['occupied', 'ground'], 'occupied+walls+ground': ['occupied', 'walls', 'ground'], 'canopy+walls+ground': ['canopy', 'walls', 'ground'] };
   for (const [name, keys] of Object.entries(combos)) {
     const val = (r) => keys.reduce((a, key) => a + (r.s[key] != null && norm[key] ? r.s[key] / norm[key] : 0), 0);
     const best = results.reduce((a, b) => (val(b) > val(a) ? b : a));
