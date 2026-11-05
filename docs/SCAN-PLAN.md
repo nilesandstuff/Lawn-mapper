@@ -959,3 +959,20 @@ no depth; run depth from pictures for later. Done the same day (6c93b02, cd624b0
   scale comes from ARCore, so this says where the two disagree, not which is right. The next run should score both
   against the lidar's ground and walls where the references place the walk.
 
+### SCAN-H10. Five walks of 2026-11-05: the straightening was matched but not drawn; references beat the live fix; ARCore holds a pin to inches (2026-11-05)
+
+From the walk digests (walks task, BRIEF) and the after-the-walk fix on the two record-only walks:
+
+- **Not drawn**: the live rule read "straightened (28 buildings, 483 trunks as posts)", but the camera view drew roofs
+  and crowns from the model's 1 m columns, so the owner saw none of it. Fixed (2c104a5): roofs from the straightened
+  outline, a trunk post's column from 2.4 m up.
+- **The live fix broke a walk** (20:26): the references put C2, C3, C4 within 6 in; the kept fixes sat a median
+  4.8 m from them, inside the 5 m then allowed; two became the held fit and put C2 25 ft off. REF_TOL back to 2 m, 8 deg.
+- **ARCore holds a spot**: on the no-reference walk the owner's pin checks read 1 ft 4 in once, then 3, 4 and 3 in;
+  another 7 in. Trusting the engine between fixes is right.
+- **No references, no placement**: the after-the-walk fix found no single placement ("two places fit about as well")
+  and had no heading to start from (one GPS reading). The page now keeps a GPS trail (b71f8dd) for the fix to start
+  from. The record-only walk with references came out at the references' own 1.4 and 6.0 ft; no window was kept.
+- **8th Wall**: 1,578 world points recorded, tracking 72% (was 31%); the ground "a few inches from the phone, 4+ ft
+  up" was its estimated surface at camera height, no longer asked for.
+
