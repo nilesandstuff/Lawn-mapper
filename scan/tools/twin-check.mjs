@@ -23,7 +23,7 @@ import { createHash } from 'node:crypto';
 import { toMerc, ringsOf } from '../lib/photo.js';
 import { toLocal } from '../lib/frames.js';
 import { gridsFromModel } from '../lib/lidar-load.js';
-import { decodeModel, modelUsable } from '../lib/lidar-model.js';
+import { unpackModel, modelUsable } from '../lib/lidar-model.js';
 import { buildingsOnGrid, register, MIN_LANDED, placementCost } from '../lib/lidar.js';
 import { readObject, CORPUS_BUCKET } from './twin-r2.mjs';
 import { disagreement, REF_TOL_M, REF_TOL_DEG } from '../lib/locate.js';
@@ -62,7 +62,7 @@ async function readModel(mapKey, ownerId) {
   const key = `models/user/${ownerId}/${createHash('sha256').update(String(mapKey)).digest('hex')}/shade.bin`;
   const bytes = await readObject(CORPUS_BUCKET, key);
   if (!bytes) throw new Error('this map has no lidar model yet: open it in the shade map first, which builds and saves it');
-  const m = decodeModel(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+  const m = await unpackModel(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
   if (!modelUsable(m)) throw new Error('the lidar model is incomplete');
   return m;
 }

@@ -311,21 +311,67 @@ export async function deleteMap(env, owner, key) {
  * once did), so it is hashed, never written into a key. Deleting the map deletes its models; signing in moves a
  * guest's along with the maps (adoptGuest).
  */
-export const MODEL_MAX_BYTES = 24 * 1024 * 1024;
+/* THE SIZE OF A MODEL (2026-11-05; the owner's lot came to 23.1 MB raw against the first cap of 24 MB). Every file
+   is KEPT GZIPPED: a lot is mostly empty air, and gzip takes a file shaped like the owner's from 23.1 MB to about
+   1.5 MB. A writer may send it packed (public/lib/lidar-model.js packModel, the small upload) or raw, which this
+   gzips while it streams in, so a raw upload never sits whole in the Worker's 128 MB.
+     MODEL_MAX_UPLOAD  what may come in: under the 100 MB request body Cloudflare takes on a Free or Pro zone
+     MODEL_MAX_STORED  what is kept, gzipped: room for a lot many times the owner's, inside the Worker's memory */
 const modelPrefix = async (owner, key) => `models/${owner.kind}/${owner.id}/${await hash(key)}/`;
 export async function modelKey(owner, key, tool) { return `${await modelPrefix(owner, key)}${tool}.bin`; }
+export const MODEL_MAX_UPLOAD = 95 * 1024 * 1024;
+export const MODEL_MAX_STORED = 48 * 1024 * 1024;
+const MAGIC = [0x4c, 0x4d, 0x44, 0x4c]; // "LMDL"
 
-export async function putModel(env, owner, key, tool, bytes) {
+/** The bytes to keep from an upload stream: gzip as it came, or gzipped here. { bytes } or { error }. */
+export async function storedModelBytes(body, { maxIn = MODEL_MAX_UPLOAD, maxOut = MODEL_MAX_STORED } = {}) {
+  if (!body) return { error: 'empty' };
+  const reader = body.getReader();
+  let head = new Uint8Array(0);
+  while (head.length < 4) { const { done, value } = await reader.read(); if (done) break; const n = new Uint8Array(head.length + value.length); n.set(head); n.set(value, head.length); head = n; }
+  if (head.length < 4) return { error: 'empty' };
+  const gz = head[0] === 0x1f && head[1] === 0x8b;
+  if (!gz && !MAGIC.every((v, i) => head[i] === v)) return { error: 'not-a-model' };
+  if (head.length > maxIn) { await reader.cancel(); return { error: 'too-big', max: maxIn }; }
+  let seen = head.length, over = false;
+  const stream = new ReadableStream({
+    start(c) { c.enqueue(head); },
+    async pull(c) {
+      const { done, value } = await reader.read();
+      if (done) { c.close(); return; }
+      seen += value.length;
+      if (seen > maxIn) { over = true; c.error(new Error('too-big')); return; }
+      c.enqueue(value);
+    },
+  });
+  const out = (gz ? stream : stream.pipeThrough(new CompressionStream('gzip'))).getReader();
+  const parts = []; let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await out.read();
+      if (done) break;
+      total += value.length;
+      if (total > maxOut) { await out.cancel(); return { error: 'too-big', max: maxOut }; }
+      parts.push(value);
+    }
+  } catch { return over ? { error: 'too-big', max: maxIn } : { error: 'unreadable' }; }
+  const bytes = new Uint8Array(total); let o = 0;
+  for (const p of parts) { bytes.set(p, o); o += p.length; }
+  return { bytes, gzipped: !gz };
+}
+
+export async function putModel(env, owner, key, tool, body, contentLength = 0) {
   if (!isTool(tool)) return { error: 'unknown-tool' };
   if (!env.CORPUS) return { error: 'no-bucket' };
-  if (!bytes || bytes.byteLength < 8) return { error: 'empty' };
-  if (bytes.byteLength > MODEL_MAX_BYTES) return { error: 'too-big', max: MODEL_MAX_BYTES };
+  if (contentLength > MODEL_MAX_UPLOAD) return { error: 'too-big', max: MODEL_MAX_UPLOAD };
   const { table, col } = T(owner);
   const exists = await env.DB.prepare(`SELECT 1 AS y FROM ${table} WHERE ${col} = ? AND key = ?`).bind(owner.id, key).first();
   if (!exists) return { error: 'no-map' };
+  const got = await storedModelBytes(body);
+  if (got.error) return got;
   const t = nowIso();
-  await env.CORPUS.put(await modelKey(owner, key, tool), bytes, { httpMetadata: { contentType: 'application/octet-stream' }, customMetadata: { at: t, tool } });
-  return { tool, at: t, bytes: bytes.byteLength };
+  await env.CORPUS.put(await modelKey(owner, key, tool), got.bytes, { httpMetadata: { contentType: 'application/gzip' }, customMetadata: { at: t, tool } });
+  return { tool, at: t, bytes: got.bytes.byteLength, gzippedHere: got.gzipped };
 }
 
 /** The model's R2 object, or null. */

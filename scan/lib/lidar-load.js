@@ -14,7 +14,7 @@
 import { fromLocal } from './frames.js';
 import { buildGrids, buildingsOnGrid, valuesOnGrid } from './lidar.js';
 import { lawnField } from './surface.js';
-import { decodeModel, modelUsable } from './lidar-model.js';
+import { unpackModel, modelUsable } from './lidar-model.js';
 import { BANDS } from './locate.js';
 
 export const MODEL_PATH = (map, tool = 'shade') => `/api/maps/model?id=${encodeURIComponent(map)}&tool=${tool}`;
@@ -26,7 +26,7 @@ export async function fetchModel(map, { fetchFn = fetch, base = '' } = {}) {
   const res = await fetchFn(`${base}${MODEL_PATH(map)}`, { credentials: 'same-origin' });
   if (res.status === 404) throw new Error(NO_MODEL);
   if (!res.ok) throw new Error(`the lidar model could not be read (${res.status})`);
-  const m = decodeModel(await res.arrayBuffer());
+  const m = await unpackModel(await res.arrayBuffer());
   if (!modelUsable(m)) throw new Error('the lidar model is incomplete (no grid, ground or kinds)');
   return m;
 }

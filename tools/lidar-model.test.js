@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { encodeModel, decodeModel, columnAt, modelUsable } from '../public/lib/lidar-model.js';
+import { encodeModel, decodeModel, columnAt, modelUsable, packModel, unpackModel, isGzip } from '../public/lib/lidar-model.js';
 
 const grid = { w: 3, h: 2, x0: 100, y1: 200, cell: 1, cellY: 1.2, lat: 42 };
 const meta = { tool: 'shade', at: '2026-11-04T00:00:00Z', grid, layers: { z0: 90, dz: 1, nz: 2 } };
@@ -11,7 +11,7 @@ assert.equal(m.meta.v, 1); assert.equal(m.meta.tool, 'shade'); assert.deepEqual(
 assert.deepEqual([...m.arrays.ground], [...ground]); assert.deepEqual([...m.arrays.kind], [...kind]);
 assert.deepEqual([...m.arrays.mu], [...mu]); assert.ok(m.arrays.ground instanceof Float32Array && m.arrays.kind instanceof Uint8Array);
 assert.equal(m.arrays.missing, undefined, 'a null array is left out');
-assert.ok(m.arrays.ground.byteOffset === 0, 'copies, aligned');
+assert.ok(m.arrays.ground.byteOffset % 4 === 0 && m.arrays.ground.buffer === buf, 'aligned views on the file, not copies');
 // odd lengths keep every later array on a 4-byte boundary
 const odd = decodeModel(encodeModel(meta, { kind: Uint8Array.from([1, 2, 3]), ground: Float32Array.from([7.5]) }));
 assert.equal(odd.arrays.ground[0], 7.5);
@@ -20,4 +20,12 @@ assert.equal(decodeModel(new Uint8Array(buf)).arrays.kind[3], 3);
 assert.throws(() => decodeModel(new ArrayBuffer(16)), /not a lidar model/);
 assert.equal(columnAt(grid, 100.5, 199.5), 0); assert.equal(columnAt(grid, 102.5, 198.5), 5); assert.equal(columnAt(grid, 99, 199), -1);
 assert.ok(modelUsable(m)); assert.ok(!modelUsable({ meta: { grid }, arrays: { ground } }));
+// gzip: packed bytes are gzip and smaller; unpack reads packed and raw alike
+{
+  const big = new Float32Array(30000); big[17] = 0.5; big[29000] = 2;
+  const packed = await packModel(meta, { ground, kind, mu: big });
+  const raw = encodeModel(meta, { ground, kind, mu: big });
+  assert.ok(isGzip(packed) && !isGzip(raw) && packed.byteLength * 10 < raw.byteLength, `packed ${packed.byteLength} of ${raw.byteLength}`);
+  for (const b of [packed, raw, new Uint8Array(packed)]) { const u = await unpackModel(b); assert.equal(u.arrays.mu[29000], 2); assert.equal(u.arrays.kind[5], 5); assert.equal(u.meta.tool, 'shade'); }
+}
 console.log('lidar-model: ok');

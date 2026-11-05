@@ -8,7 +8,7 @@
 import assert from 'node:assert/strict';
 import { buildGrids, buildingsOnGrid, register, sample, piecesOf, placementCost } from '../lib/lidar.js';
 import { gridsFromModel, loadLidar, kindsOf, NO_MODEL } from '../lib/lidar-load.js';
-import { encodeModel, decodeModel } from '../lib/lidar-model.js';
+import { encodeModel, decodeModel, packModel } from '../lib/lidar-model.js';
 import * as S from '../../public/shade/structures.js';
 import { gridOver } from '../../public/shade/grid.js';
 import { toMerc, fromMerc } from '../lib/photo.js';
@@ -138,7 +138,7 @@ assert.ok(G.occTop && G.bld && G.wallTop, 'the tops and the roof mask come back 
 // THE SAME THROUGH loadLidar (scan/lib/lidar-load.js), the one reading the AR page's worker and the twin check share:
 // the model fetched from the site, the kinds read from the file's own codes
 {
-  const bytes = encodeModel(M.meta, M.arrays);
+  const bytes = await packModel(M.meta, M.arrays); // as the site keeps it: gzipped
   const fetchFn = async (url) => (/id=map-1&tool=shade/.test(url) ? new Response(bytes) : new Response('no', { status: 404 }));
   const R = await loadLidar({ origin: ORIGIN, box: BOX, map: 'map-1', lawn: [[[-25, -11], [6, -11], [6, -2], [-25, -2]]] }, { toMerc, rule: async () => S, fetchFn });
   assert.ok(sample(R.G, R.G.dist, 0, -11.5) < 0.3 && sample(R.G, R.G.dist, -5, 8) > 2, 'the same grids');

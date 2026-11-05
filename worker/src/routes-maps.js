@@ -17,8 +17,8 @@
  *   GET    /api/maps/one?id=      one map with every tool's data
  *   POST   /api/maps/new          a map started by another tool (address, point, line)
  *   POST   /api/maps/tool?id=&tool=   one tool's part: { data, basedOn }
- *   PUT    /api/maps/model?id=&tool=  the finished lidar model, a binary file (public/lib/lidar-model.js)
- *   GET    /api/maps/model?id=&tool=  the same bytes back; 404 until the tool has written one
+ *   PUT    /api/maps/model?id=&tool=  the finished lidar model, a binary file (public/lib/lidar-model.js), kept gzipped
+ *   GET    /api/maps/model?id=&tool=  the kept (gzipped) bytes; read with unpackModel; 404 until written
  *   GET    /api/tools             the tools, their order and where they open
  *
  * The contract the other tools build against is docs/MAPS.md.
@@ -171,8 +171,7 @@ export async function handleMaps(request, env, url, origin, ctx, json) {
     const tool = url.searchParams.get('tool');
     if (!key || !tool) return reply({ error: 'id and tool required' }, 400);
     if (request.method === 'PUT' || request.method === 'POST') {
-      const bytes = await request.arrayBuffer();
-      const r = owner ? await putModel(env, owner, key, tool, bytes) : { error: 'no-map' };
+      const r = owner ? await putModel(env, owner, key, tool, request.body, Number(request.headers.get('Content-Length') || 0)) : { error: 'no-map' };
       if (r.error === 'no-map') return reply({ error: 'no-map', ...who }, 404);
       if (r.error === 'no-bucket') return reply({ error: 'no-bucket', message: 'the site has no bucket for models' }, 503);
       if (r.error) return reply(r, r.error === 'too-big' ? 413 : 400);

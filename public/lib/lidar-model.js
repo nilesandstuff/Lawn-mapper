@@ -31,6 +31,11 @@
  *                           after erasures: the 3D map itself
  *
  * Any array may be absent when a writer does not have it; a reader checks. Extra arrays are allowed and kept.
+ *
+ * KEPT AND SENT GZIPPED (2026-11-05; the owner's lot is 23.1 MB raw, and a lot is mostly empty air, which gzip
+ * all but erases: about 15 to 1 on a file shaped like it). packModel gives the gzipped bytes to PUT; unpackModel
+ * reads either kind (a raw file written before this, or gzip). The Worker gzips a raw upload itself, so every
+ * stored file is gzip; a reader that fetches one calls unpackModel, never decodeModel on the bytes directly.
  */
 export const MAGIC = 'LMDL';
 export const MODEL_V = 1;
@@ -64,7 +69,27 @@ export function encodeModel(meta, arrays) {
   return out;
 }
 
-/** ArrayBuffer -> { meta, arrays }. The arrays are copies (aligned, safe to transfer). */
+/** Are these the gzip magic bytes (1f 8b)? */
+export function isGzip(buf) {
+  const b = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+  return b.length > 2 && b[0] === 0x1f && b[1] === 0x8b;
+}
+
+const through = (bytes, stream) => new Response(new Blob([bytes]).stream().pipeThrough(stream)).arrayBuffer();
+
+/** { meta, arrays } -> the gzipped file, what a writer PUTs (browser, Worker and Node 18+ alike). */
+export async function packModel(meta, arrays) {
+  return through(new Uint8Array(encodeModel(meta, arrays)), new CompressionStream('gzip'));
+}
+
+/** A stored or fetched file, gzipped or raw -> { meta, arrays }. */
+export async function unpackModel(buf) {
+  const b = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+  return decodeModel(isGzip(b) ? await through(b, new DecompressionStream('gzip')) : b);
+}
+
+/** ArrayBuffer (raw, not gzip) -> { meta, arrays }. Each array is a view on `buf` where it sits aligned (no second
+ *  copy of a 20 MB file on a phone), else a copy; transferring one to another thread detaches them all. */
 export function decodeModel(buf) {
   const bytes = new Uint8Array(buf), dv = new DataView(buf instanceof ArrayBuffer ? buf : bytes.buffer, bytes.byteOffset, bytes.byteLength);
   if (bytes.length < 8 || new TextDecoder().decode(bytes.subarray(0, 4)) !== MAGIC) throw new Error('not a lidar model file');
@@ -75,7 +100,7 @@ export function decodeModel(buf) {
     const T = TYPES[t.type];
     if (!T) continue;
     const start = bytes.byteOffset + 8 + headerLen + t.offset;
-    arrays[t.name] = new T(bytes.buffer.slice(start, start + t.length * T.BYTES_PER_ELEMENT));
+    arrays[t.name] = start % T.BYTES_PER_ELEMENT === 0 ? new T(bytes.buffer, start, t.length) : new T(bytes.buffer.slice(start, start + t.length * T.BYTES_PER_ELEMENT));
   }
   return { meta, arrays };
 }
