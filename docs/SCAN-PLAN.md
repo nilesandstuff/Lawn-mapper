@@ -1032,3 +1032,23 @@ Changed: `scale: 'responsive'` (the engine's default; its ground is y = 0 and th
 over it, which sets the scale), the estimated surface offered to the crosshair again (below the camera only), and
 counted as ground. SPECULATION until a walk shows it: that 8th Wall now registers walking and finds the ground;
 any scale error left from the assumed 1.4 m is what the references' fit takes out (T.s).
+
+### SCAN-H13. The walk of 2026-11-05 21:56: ARCore barely bends; placing it once is the whole problem (2026-11-05)
+
+Record only, no references, 6 min, 1,106 ft, tracked 100%, check points C1-C4 marked over 395 ft of walking (task
+`fix`, with the new "check points as their own references" lines).
+
+HARD:
+  - all four checks fitted as one turn and shift: 0.4, 1.0, 1.3, 1.4 ft left over; AR distances against the map's
+    0.0% apart. Over this walk ARCore's frame bent about a foot and its scale was exact.
+  - each check placed by the other three: 0.5, 1.9, 2.1, 4.0 ft.
+  - the GPS trail's placement (83 readings, median 7.8 m scatter): 26-44 ft off at every check, all one way. GPS
+    here is a bias of several metres, not scatter that averages out; the 6-degree test in postfix.test.js assumed
+    unbiased scatter.
+  - the lidar, searching round that: no placement (two places fit about as well); no 60 m window kept.
+  - the walk's two pins are in its summary but not in its twin's live.json (the last save of the walk did not
+    land, or came before the pins): to look into.
+
+What it says: the hard part is not keeping the walk on the map, it is putting it there once. A placement good to a
+foot at any moment of the walk would carry the whole walk to about a foot. The references' 2.7-4.2 ft (SCAN-H11) is
+then mostly the marks themselves (where the spot was put on the photo, how it was aimed), not ARCore.
