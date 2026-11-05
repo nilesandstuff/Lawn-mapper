@@ -31,6 +31,14 @@
  *                          not weighted, capped at 255; erasures applied
  *   low      Float32 w*h   the lowest of them, m over the ground, exact (not
  *                          snapped to a cube); NaN where none
+ *   lowDx, lowDy  Int16 w*h where in its metre the column's own returns
+ *                          between STAND_LOW_M and STAND_HIGH_M over the
+ *                          ground fall: their mean offset from the column's
+ *                          centre, cm east and north, clamped to +-50; 0
+ *                          where none (core session, 2026-11-05: the AR draws
+ *                          a trunk as a thin post, the owner: "trunks
+ *                          currently get averaged to 1m, so let's just make
+ *                          those a thin line")
  *
  * SENT GZIPPED (core session, 2026-11-05; the owner: "there are definitely
  * larger lots out there"): the server keeps every model gzipped, 48 MB at
@@ -42,6 +50,9 @@ import { packModel } from '../lib/lidar-model.js';
 import { NOTHING, BUILDING, TREE, SOLID_TREE, STRUCTURE, UNKNOWN, NOISE } from './structures.js';
 import { GRASS_M, MAX_OVER_M } from './canopy.js';
 import { cellOf } from './grid.js';
+import { mercScale } from './ept.js';
+
+export const STAND_LOW_M = 0.4, STAND_HIGH_M = 2.4; // the heights a person standing on the lawn sees (scan/lib/locate.js BANDS)
 
 export const KINDS = { NOTHING, BUILDING, TREE, SOLID_TREE, STRUCTURE, UNKNOWN };
 
@@ -82,13 +93,13 @@ export function finishedModel({ model, season, cols = null, shift = null, erased
     photo: photo ? { id: photo.id, date: photo.date, source: photo.source } : null,
     rule: { kinds: KINDS },
     leaves: { mu: 'as flown: leaf-off branches, trunk space emptied to the branch floor, low structures solid; erasures applied', muOn: 'every deciduous crown in full summer leaf; erasures applied' },
-    own: own ? { returns: "the column's own returns per cube, not pooled with its neighbours (mu is, where a column caught under 4 pulses); erasures applied", low: "the lowest own return over the grass, m over the ground, exact; NaN where none", grassM: GRASS_M } : null,
+    own: own ? { returns: "the column's own returns per cube, not pooled with its neighbours (mu is, where a column caught under 4 pulses); erasures applied", low: "the lowest own return over the grass, m over the ground, exact; NaN where none", grassM: GRASS_M, lowDx: "mean offset east of the column's centre, cm (Int16, +-50), of its own returns between standLowM and standHighM; 0 where none", lowDy: 'the same, north', standLowM: STAND_LOW_M, standHighM: STAND_HIGH_M } : null,
     erased,
     counts: built?.counts || null,
   };
   const arrays = { ground: Float32Array.from(ground), kind, why, top, mu };
   if (muOn) arrays.muOn = muOn;
-  if (own) { arrays.returns = own.returns; arrays.low = own.low; }
+  if (own) { arrays.returns = own.returns; arrays.low = own.low; arrays.lowDx = own.lowDx; arrays.lowDy = own.lowDy; }
   return { meta, arrays };
 }
 
@@ -101,19 +112,32 @@ export function ownReturns(cols, model, { shift = null, erasedMask = null, erase
   const { grid, w, h, nz, dz, z0, ground } = model;
   const N = w * h;
   const returns = new Uint8Array(N * nz), low = new Float32Array(N).fill(NaN);
+  const sx = new Float32Array(N), sy = new Float32Array(N), sn = new Uint16Array(N);
   const gone = erasedCubes.length ? new Set(erasedCubes) : null;
+  const mPer = Number.isFinite(grid.lat) ? mercScale(grid.lat) : 1, cy = grid.cellY || grid.cell;
   for (let i = 0; i < cols.n; i++) {
     if (NOISE.has(cols.cls[i])) continue;
     const k = cellOf(grid, cols.x[i], cols.y[i], shift);
     if (k < 0 || (erasedMask && erasedMask[k])) continue;
     const over = cols.z[i] - ground[k];
-    if (!(over > GRASS_M) || over > MAX_OVER_M) continue;
+    if (!(over > 0) || over > MAX_OVER_M) continue;
     const c = k * nz + Math.min(nz - 1, Math.max(0, Math.floor((cols.z[i] - z0) / dz)));
     if (gone?.has(c)) continue;
+    if (over >= STAND_LOW_M && over <= STAND_HIGH_M && sn[k] < 65535) {
+      /* the offset in real metres from the column's centre, after the same shift cellOf applied */
+      const x = cols.x[i] + (shift ? shift[0] : 0), y = cols.y[i] + (shift ? shift[1] : 0);
+      sx[k] += (x - (grid.x0 + ((k % w) + 0.5) * grid.cell)) * mPer;
+      sy[k] += (y - (grid.y1 - (Math.floor(k / w) + 0.5) * cy)) * mPer;
+      sn[k]++;
+    }
+    if (over <= GRASS_M) continue;
     if (returns[c] < 255) returns[c]++;
     if (!(low[k] <= over)) low[k] = over;
   }
-  return { returns, low };
+  const lowDx = new Int16Array(N), lowDy = new Int16Array(N); // Int16: lidar-model.js takes no Int8
+  const cm = (v) => Math.max(-50, Math.min(50, Math.round(v * 100)));
+  for (let k = 0; k < N; k++) if (sn[k]) { lowDx[k] = cm(sx[k] / sn[k]); lowDy[k] = cm(sy[k] / sn[k]); }
+  return { returns, low, lowDx, lowDy };
 }
 
 /**
