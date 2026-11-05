@@ -84,14 +84,18 @@ async function main() {
     gz.sort((a, b) => a - b);
     const tz = gz.length ? gz[gz.length >> 1] : null;
     let gIn = 0; for (const d of gz) if (Math.abs(d - tz) < 0.15) gIn++;
-    let wIn = 0; for (const [u, v] of stand) { const [e, n] = apply(T, [u, v]); if (sample(G, G.dist, e, n) <= 0.3) wIn++; }
+    let wIn = 0, hIn = 0, tIn = 0;
+    for (const [u, v] of stand) {
+      const [e, n] = apply(T, [u, v]), d = sample(G, G.dist, e, n);
+      if (d <= 0.3) { wIn++; const nw = G.distNW ? sample(G, G.distNW, e, n) : 0; if (nw > 0.3) hIn++; else tIn++; }
+    }
     let rIn = 0, rN = 0; if (G.distRoof) for (const [u, v] of high) { const [e, n] = apply(T, [u, v]); rN++; if (sample(G, G.distRoof, e, n) <= 0.3) rIn++; }
     let cIn = 0, oIn = 0;
     if (tz != null) {
       for (const [u, v, y] of highY) { const [e, n] = apply(T, [u, v]); if (occupied(e, n, y + tz)) cIn++; }
       for (const [u, v, y] of occ) { const [e, n] = apply(T, [u, v]); if (occupied(e, n, y + tz)) oIn++; }
     }
-    return { walls: stand.length ? wIn / stand.length : null, roofEdge: rN ? rIn / rN : null, canopy: highY.length && tz != null ? cIn / highY.length : null, occupied: occ.length && tz != null ? oIn / occ.length : null, ground: gz.length ? gIn / gz.length : null };
+    return { walls: stand.length ? wIn / stand.length : null, houseWalls: stand.length ? hIn / stand.length : null, otherSolids: stand.length ? tIn / stand.length : null, roofEdge: rN ? rIn / rN : null, canopy: highY.length && tz != null ? cIn / highY.length : null, occupied: occ.length && tz != null ? oIn / occ.length : null, ground: gz.length ? gIn / gz.length : null };
   };
 
   // the references' placement for the walk as a whole (their fit at the middle of the walk), and the moves round it
@@ -108,7 +112,7 @@ async function main() {
   const at0 = results.find((r) => r.dx === 0 && r.dy === 0 && r.dDeg === 0).s;
   console.log(`Placements tried round the references' fit: ${results.length} (shifts to 6 m, turns to 12 degrees).`);
   console.log('signal     at refs  best anywhere (where)                contrast (refs / median 2 m+ away)');
-  for (const key of ['walls', 'roofEdge', 'canopy', 'occupied', 'ground']) {
+  for (const key of ['walls', 'houseWalls', 'otherSolids', 'roofEdge', 'canopy', 'occupied', 'ground']) {
     const vals = results.filter((r) => r.s[key] != null);
     if (!vals.length) { console.log(`${key.padEnd(10)} -`); continue; }
     const best = vals.reduce((a, b) => (b.s[key] > a.s[key] ? b : a));
@@ -119,8 +123,8 @@ async function main() {
   }
   // the combination the study suggests: canopy and occupied with walls and ground, each normalised by its median away
   const norm = {};
-  for (const key of ['walls', 'roofEdge', 'canopy', 'occupied', 'ground']) { const a = results.map((r) => r.s[key]).filter((v) => v != null).sort((x, y) => x - y); norm[key] = a.length ? a[a.length >> 1] || 1e-9 : null; }
-  const combos = { 'walls+ground (today, roughly)': ['walls', 'ground'], 'occupied (3D) alone': ['occupied'], 'occupied+ground': ['occupied', 'ground'], 'occupied+walls+ground': ['occupied', 'walls', 'ground'], 'canopy+walls+ground': ['canopy', 'walls', 'ground'] };
+  for (const key of ['walls', 'houseWalls', 'otherSolids', 'roofEdge', 'canopy', 'occupied', 'ground']) { const a = results.map((r) => r.s[key]).filter((v) => v != null).sort((x, y) => x - y); norm[key] = a.length ? a[a.length >> 1] || 1e-9 : null; }
+  const combos = { 'ground alone': ['ground'], 'ground+roofEdge': ['ground', 'roofEdge'], 'ground+roofEdge+houseWalls': ['ground', 'roofEdge', 'houseWalls'], 'ground+houseWalls': ['ground', 'houseWalls'], 'walls+ground (today, roughly)': ['walls', 'ground'], 'occupied (3D) alone': ['occupied'], 'occupied+ground': ['occupied', 'ground'], 'occupied+walls+ground': ['occupied', 'walls', 'ground'], 'canopy+walls+ground': ['canopy', 'walls', 'ground'] };
   for (const [name, keys] of Object.entries(combos)) {
     const val = (r) => keys.reduce((a, key) => a + (r.s[key] != null && norm[key] ? r.s[key] / norm[key] : 0), 0);
     const best = results.reduce((a, b) => (val(b) > val(a) ? b : a));
