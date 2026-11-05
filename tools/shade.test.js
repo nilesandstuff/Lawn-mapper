@@ -1806,6 +1806,16 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
     `mu beside ${model2.mu[cube(beside)]}; returns beside ${own2.returns[cube(beside)]}, trunk ${own2.returns[cube(trunk)]}; low ${own2.low[trunk]}`);
   const er2 = (await unpackModel(await modelBytes(finishedModel({ model: model2, season: season2, cols: cols2, erasedCubes: [cube(trunk)] })))).arrays;
   check('model file: an erased cube takes its own returns with it', er2.returns[cube(trunk)] === 0 && Number.isNaN(er2.low[trunk]));
+  /* Where in its metre a trunk stands (lowDx/lowDy; the AR's thin posts, 2026-11-05): one more return 1.2 m up,
+     30 cm east and 30 cm south of a column's centre; the centred trunk reads 0, 0. */
+  const cols3 = makeColumns(pts2.length + 1);
+  [...pts2, [3.8, 6.2, 101.2, 1, 1, 1]].forEach(([e, n, z, c, r, nr], i) => { cols3.x[i] = e / k; cols3.y[i] = n / k; cols3.z[i] = z; cols3.cls[i] = c; cols3.ret[i] = r; cols3.nret[i] = nr; });
+  const model3 = buildCanopy(cols3, grid2), season3 = seasonalCanopy(cols3, model3);
+  const own3 = (await unpackModel(await modelBytes(finishedModel({ model: model3, season: season3, cols: cols3 })))).arrays;
+  const off = at2(3.8, 6.2);
+  check('model file: a trunk 30 cm east and 30 cm south of its column\'s centre reads +30, -30 cm; a centred one 0, 0; an empty column 0, 0',
+    own3.lowDx instanceof Int16Array && own3.lowDx[off] === 30 && own3.lowDy[off] === -30 && own3.lowDx[trunk] === 0 && own3.lowDy[trunk] === 0 && own3.lowDx[at2(1.5, 1.5)] === 0,
+    `off ${own3.lowDx[off]}, ${own3.lowDy[off]}; trunk ${own3.lowDx[trunk]}, ${own3.lowDy[trunk]}`);
 }
 
 /* ONE LEAF STATE PER LOT (passes.js; owner, 2026-10-29). */
