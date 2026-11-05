@@ -312,8 +312,7 @@ export async function deleteMap(env, owner, key) {
  * guest's along with the maps (adoptGuest).
  */
 /* THE SIZE OF A MODEL (2026-11-05; the owner's lot came to 23.1 MB raw against the first cap of 24 MB). Every file
-   is KEPT GZIPPED: a lot is mostly empty air, and gzip takes a file shaped like the owner's from 23.1 MB to about
-   1.5 MB. A writer may send it packed (public/lib/lidar-model.js packModel, the small upload) or raw, which this
+   is KEPT GZIPPED: a lot is mostly empty air, and gzip takes the owner's real file from 23.1 MB to 1.29 MB. A writer may send it packed (public/lib/lidar-model.js packModel, the small upload) or raw, which this
    gzips while it streams in, so a raw upload never sits whole in the Worker's 128 MB.
      MODEL_MAX_UPLOAD  what may come in: under the 100 MB request body Cloudflare takes on a Free or Pro zone
      MODEL_MAX_STORED  what is kept, gzipped: room for a lot many times the owner's, inside the Worker's memory */
