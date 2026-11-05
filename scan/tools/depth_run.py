@@ -3,8 +3,8 @@ DEPTH FROM ONE PICTURE, AGAINST ARCORE'S (core session, 2026-11-05; the owner: "
 so we have the info for later"). Run by workflow "S. Yard AR tool", task `depth`, on a twin fetched WITH its
 pictures, on GitHub's free runner (CPU; no paid compute).
 
-The S21 has no depth sensor; ARCore guesses depth from motion, and on the work walk most of what it called standing
-was the ground misread or nothing at all (SCAN-H7). A depth model trained on pictures (Depth Anything V2, small,
+The S21's depth (its depth hardware with ARCore; the owner: good on walls, poor on grass and in bright light), as
+WebXR hands it over: on the work walk most of what it called standing was the ground misread or nothing (SCAN-H7). A depth model trained on pictures (Depth Anything V2, small,
 public) guesses depth from ONE picture: good at shapes and edges, with no scale of its own. So for each picture the
 twin kept, the model's guess is scaled to ARCore's depth points from the same moment (1/depth = a * guess + b, fitted
 robustly), and then the two are compared where both have something:

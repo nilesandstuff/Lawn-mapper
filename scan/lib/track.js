@@ -40,6 +40,8 @@
 import { dist3, matFromPose, invertRigid, unproject } from './frames.js';
 
 export const CROSS = { x: 0.5, y: 0.5 };
+/** 8th Wall, responsive scale: how high the phone is held over the ground when the walk starts (it sets the scale). */
+export const PHONE_HEIGHT_M = 1.4;
 const HIT_NEAR = 0.3, HIT_FAR = 20; // m: a hit closer or farther is noise
 
 /** 8th Wall's hit test answers several estimates; the best is a found surface, then an estimated one, then the nearest point. */
@@ -292,11 +294,18 @@ async function start8thWall({ canvas, onFrame, onEvent, eightWallUrl }) {
   // then load the engine (which may ask again; a second ask answers at once)
   try { if (typeof DeviceMotionEvent !== 'undefined' && DeviceMotionEvent.requestPermission) { const r = await DeviceMotionEvent.requestPermission(); onEvent?.({ type: 'motion', status: r }); } } catch (e) { onEvent?.({ type: 'motion', status: `refused: ${e.message}` }); }
   const XR8 = await load8thWall(eightWallUrl);
-  XR8.XrController.configure({ scale: 'absolute', enableWorldPoints: true });
+  /* RESPONSIVE SCALE, NOT ABSOLUTE (2026-11-05). Every 8th Wall walk on the S21 walked 0-1.5 m, flipped between
+     INITIALIZING and NORMAL, and put its ground "a few inches from the phone". 'absolute' asks the engine to estimate
+     metric scale itself, which it does only from a guided calibration (8th Wall's Coaching Overlay: "a flow to
+     generate appropriate data for scale estimation"), which this page never ran; until then its positions are not
+     metres and its ground is not the ground (the binary sets origin.y to 1 and the scale to 1 in that mode).
+     'responsive' is the engine's own default and what its apps run: the scene's ground is y = 0 and the camera
+     starts PHONE_HEIGHT_M above it, which fixes the scale; the walk's references fit any scale left over (T.s). */
+  XR8.XrController.configure({ scale: 'responsive', enableWorldPoints: true });
   let gl = null, reality = null, status = { status: 'LIMITED', reason: 'INITIALIZING' }, live = true, lastT = 0;
   const mod = {
     name: 'lawnscan',
-    onStart: () => { XR8.XrController.updateCameraProjectionMatrix({ origin: { x: 0, y: 1.5, z: 0 }, facing: { w: 1, x: 0, y: 0, z: 0 } }); onEvent?.({ type: 'started' }); },
+    onStart: () => { XR8.XrController.updateCameraProjectionMatrix({ origin: { x: 0, y: PHONE_HEIGHT_M, z: 0 }, facing: { w: 1, x: 0, y: 0, z: 0 } }); onEvent?.({ type: 'started', scale: 'responsive', phoneHeightM: PHONE_HEIGHT_M }); },
     onUpdate: ({ frameStartResult, processCpuResult }) => { gl = frameStartResult?.GLctx || gl; reality = processCpuResult?.reality || null; },
     onRender: () => {
       if (!live || !gl) return;
@@ -313,12 +322,12 @@ async function start8thWall({ canvas, onFrame, onEvent, eightWallUrl }) {
         /* the surfaces too, not feature points alone (the owner, 2026-11-05: "8th wall just didn't work at all... It
            couldn't even find the ground"): rankHits prefers a detected, then an estimated surface, but was only ever
            offered feature points, so no hit was ever the ground */
-        /* not the ESTIMATED surface (the owner, 2026-11-05: "when it does, its actually fixing only a few inches away
-           from the phone... Like 4+ feet off the ground": the engine's estimated ground sits at the camera's own height
-           until it has found the real one); a detected surface only below the camera, else feature points */
+        /* the ESTIMATED surface is the engine's ground (y = 0 in responsive scale, PHONE_HEIGHT_M under the start);
+           it was dropped while the page ran absolute scale, where it sat inches under the phone. A surface counts only
+           well below the camera, so a ground that has not settled cannot be marked on. */
         try {
-          const all = XR8.XrController.hitTest(CROSS.x, CROSS.y, ['DETECTED_SURFACE', 'FEATURE_POINT']) || [];
-          hit = rankHits(all.filter((h) => h?.type !== 'DETECTED_SURFACE' || (h.position && pose.position.y - h.position.y > 0.5)), pose.position);
+          const all = XR8.XrController.hitTest(CROSS.x, CROSS.y, ['DETECTED_SURFACE', 'ESTIMATED_SURFACE', 'FEATURE_POINT']) || [];
+          hit = rankHits(all.filter((h) => !/SURFACE$/.test(h?.type || '') || (h.position && pose.position.y - h.position.y > 0.5)), pose.position);
         } catch { hit = null; }
       }
       onFrame({

@@ -839,7 +839,7 @@ C2 10 in by the references), by the twin check:
   lidar's ground (the ground itself; the lowest of hundreds of noisy
   depth samples sits well under it), 2% landed on a solid cell, and of
   the rest 88% stood inside the mowed lawn, where nothing stands.
-- By range from the camera (the S21 has no depth sensor; ARCore's depth
+- By range from the camera (the S21 has no depth sensor [wrong: corrected in SCAN-H11]; ARCore's depth
   is estimated from motion): within 2 m, 86% misread ground; 2-3 m, 23%
   land; past 3 m, 83-91% stand on nothing.
 - Floor rules compared: the lowest point, 2% land; the 15th percentile,
@@ -1005,8 +1005,9 @@ walk, the phone's points prefer the wrong place to the right one: the score foll
 walk was. One check (the 20:37 walk's fourth) is 145 ft off by the references themselves: a mis-mark, left in.
 
 What this says (the inference, held as SPECULATION until a different input is measured the same way): the lidar is
-not short of detail. The phone's own points are. The S21 has no depth sensor; ARCore's depth from motion floats
-standing points nearer (SCAN-H7; 29% of them more than 0.5 m off by the depth model's reading), barely reaches a
+not short of detail. The phone's own points are. (Corrected 2026-11-05: an earlier line here said the S21 has no
+depth sensor; the owner: it has three mechanisms feeding its NPU a depth, good on walls, poor on grass and in bright
+light.) What WebXR hands the page from it floats standing points nearer (SCAN-H7; 29% of them more than 0.5 m off by the depth model's reading), barely reaches a
 house wall, and what it does put on a wall is lost among phantoms that land on whatever is solid nearby. A 30 cm
 test on that input cannot pin a walk, and no reshaping of the lidar changes the input.
 
@@ -1018,3 +1019,16 @@ What could, in order of promise (none built):
   2. the depth model's points (scan/tools/depth_run.py keeps each picture's depth) in place of ARCore's standing
      points, scored by the same round 4.
   3. ground shape with the GPS trail, for walks without references: a few metres, not inches.
+
+### SCAN-H12. 8th Wall ran in absolute scale with no calibration: the likely reason it never walked (2026-11-05)
+
+HARD: every 8th Wall walk on the S21 registered 0-1.5 m walked (the 21:55 walk: 1 min, 63% "tracked", 0 ft, its
+status flipping INITIALIZING / NORMAL), found no ground under the crosshair, and earlier put its estimated ground
+"a few inches from the phone". The page configured `scale: 'absolute'`. In the binary (1.0.0), absolute scale turns on
+the engine's own metric scale estimation and overrides the start height to 1 with a scale of 1; 8th Wall pairs it
+with a Coaching Overlay, "a flow to generate appropriate data for scale estimation", which this page never ran.
+
+Changed: `scale: 'responsive'` (the engine's default; its ground is y = 0 and the camera starts PHONE_HEIGHT_M = 1.4 m
+over it, which sets the scale), the estimated surface offered to the crosshair again (below the camera only), and
+counted as ground. SPECULATION until a walk shows it: that 8th Wall now registers walking and finds the ground;
+any scale error left from the assumed 1.4 m is what the references' fit takes out (T.s).
