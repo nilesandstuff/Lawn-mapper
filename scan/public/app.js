@@ -234,7 +234,7 @@ const log = (what) => { st.errors.push({ t: Date.now(), what }); if (st.errors.l
 async function startAR(engine) {
   const overlay = $('#overlay');
   st.walk = newWalk({ engine, phone: navigator.userAgent });
-  st.dy = null; st.dyFrom = null;
+  st.dy = null; st.dyFrom = null; st.gpsTrail = [];
   st.walk.checks = [];
   st.L = newLocate();
   mini.view = null; mini.mode = 'fit'; mini.locked = false; $('#arrows').innerHTML = '';
@@ -252,7 +252,11 @@ async function startAR(engine) {
     st.walk.features = st.tracker.features;
     // GPS, only as a place to start the lidar search from; kept in memory, never in the copy
     if (st.origin && navigator.geolocation) {
-      try { st.gpsWatch = navigator.geolocation.watchPosition((pos) => { if (!st.ar?.pose || !st.L) return; const p = st.ar.pose.position; st.L.gps = { at: toLocal(st.origin, [pos.coords.longitude, pos.coords.latitude]), acc: pos.coords.accuracy, phone: [p.x, -p.z], t: Date.now() }; }, () => {}, { enableHighAccuracy: true, maximumAge: 2000 }); } catch { /* no GPS */ }
+      try { st.gpsWatch = navigator.geolocation.watchPosition((pos) => { if (!st.ar?.pose || !st.L) return; const p = st.ar.pose.position; st.L.gps = { at: toLocal(st.origin, [pos.coords.longitude, pos.coords.latitude]), acc: pos.coords.accuracy, phone: [p.x, -p.z], t: Date.now() };
+            /* THE GPS TRAIL (2026-11-05: a walk without references has GPS's place but no heading; the trail of GPS
+               readings against the session's own track gives both, over a long walk): one reading per 2 m walked */
+            const tr = (st.gpsTrail = st.gpsTrail || []), g = st.L.gps, last = tr[tr.length - 1];
+            if (!last || Math.hypot(g.phone[0] - last.phone[0], g.phone[1] - last.phone[1]) >= 2) { tr.push({ at: g.at, phone: g.phone, acc: g.acc, odo: st.walk?.odo ?? 0 }); if (tr.length > 3000) tr.shift(); } }, () => {}, { enableHighAccuracy: true, maximumAge: 2000 }); } catch { /* no GPS */ }
     }
   } catch (e) {
     log(`start failed: ${e.message}`);
@@ -274,6 +278,7 @@ function onEvent(ev) {
 /** What to mark next: an unmarked reference, then an unmarked check point, then the reference nearest the phone. */
 /* the references and check points with their map places, kept in the walk's private twin (live.json), so the walk
    can be scored afterwards against them even when none was marked: a pin dropped on a check point counts */
+const trailKept = () => (st.gpsTrail || []).map((g) => ({ at: g.at.map((v) => +v.toFixed(2)), phone: g.phone.map((v) => +v.toFixed(2)), acc: +(+g.acc).toFixed(1), odo: +(+g.odo).toFixed(1) }));
 const pointsKept = () => (st.points || []).map((p) => ({ id: p.id, name: p.name, kind: p.kind, map: p.map }));
 
 function nextTarget() {
@@ -345,7 +350,7 @@ function onFrame(f) {
       const g = grabbed || f.grab();
       if (g) { const name = addKey(st.twin, now, odo, f.pose.position, f.pose.quaternion, g); g.blob.then((b) => b && sendTwin([{ name, type: 'image/jpeg', body: b }]), () => {}); }
     }
-    if (flushDue(st.twin, now)) sendTwin(flush(st.twin, now, liveOf(L, w, { recordOnly: !!st.recordOnly, points: pointsKept() })));
+    if (flushDue(st.twin, now)) sendTwin(flush(st.twin, now, liveOf(L, w, { recordOnly: !!st.recordOnly, points: pointsKept(), gpsTrail: trailKept() })));
   }
   if (!st.recordOnly && st.lid.ready && st.lid.worker && f.tracking === 'normal') {
     const ask = nextAsk(L, odo, Date.now(), f.pose?.position || null);
@@ -631,7 +636,7 @@ function finish() {
   });
   s.id = `${w.startedAt}`; s.saved = null;
   if (st.twin) {
-    sendTwin(flush(st.twin, Date.now(), liveOf(L, w, { ended: true, summary: s.id, recordOnly: !!st.recordOnly, points: pointsKept() })));
+    sendTwin(flush(st.twin, Date.now(), liveOf(L, w, { ended: true, summary: s.id, recordOnly: !!st.recordOnly, points: pointsKept(), gpsTrail: trailKept() })));
     s.twin = { ...st.twin.counts, camera: st.twin.camera, off: st.twinUp.off };
   }
   st.twin = null;

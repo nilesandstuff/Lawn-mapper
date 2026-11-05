@@ -21,7 +21,7 @@ import { gridsFromModel } from '../lib/lidar-load.js';
 import { packModel } from '../lib/lidar-model.js';
 import { readCloud, readTrack, placer } from '../lib/twin.js';
 import { apply } from '../lib/align.js';
-import { classify, solveWalk, refsPrior, checkErrors, baseMesh } from '../lib/postfix.js';
+import { classify, solveWalk, refsPrior, gpsPrior, checkErrors, baseMesh } from '../lib/postfix.js';
 import { readMap, readModel } from './twin-io.mjs';
 
 const FT = 3.28084;
@@ -54,6 +54,7 @@ async function main() {
   console.log(`Classed as the page does: ${pts.stand.length.toLocaleString()} standing (seen twice, within 3.5 m), ${pts.ground.length.toLocaleString()} ground, ${pts.high.length.toLocaleString()} high.`);
   // where to start: the references; else GPS as the page kept it; else anywhere in the box
   let prior = refsPrior(live.marks), from = 'the references';
+  if (!prior) { const g = gpsPrior(live.gpsTrail); if (g) { prior = g; from = g.from; } }
   if (!prior && live.gps?.at && live.gps?.phone) { prior = { at: live.gps.at, phone: live.gps.phone, radiusM: Math.max(8, Math.min(25, (live.gps.acc || 10) * 1.5)) }; from = 'GPS'; }
   if (!prior) {
     const p0 = track[0]?.pos;

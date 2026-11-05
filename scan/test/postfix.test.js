@@ -6,7 +6,7 @@
  *   node scan/test/postfix.test.js
  */
 import assert from 'node:assert/strict';
-import { classify, solveWalk, checkErrors, baseMesh, refsPrior } from '../lib/postfix.js';
+import { classify, solveWalk, checkErrors, baseMesh, refsPrior, gpsPrior } from '../lib/postfix.js';
 import { gridsFromModel } from '../lib/lidar-load.js';
 import { encodeModel, decodeModel } from '../lib/lidar-model.js';
 import { apply, unapply } from '../lib/align.js';
@@ -88,6 +88,19 @@ assert.ok(max(eG) < max(eP), 'and one placement for the whole walk already beats
   const good = solveWalk(pts, G, prior, { refPlace: truthAt });
   assert.ok(good.windows.filter((w) => w.kept).length >= kept - 1, 'with true references the windows stay');
   assert.ok(med(err(good.placeAt)) < 0.45, `and the walk is placed: ${med(err(good.placeAt)).toFixed(2)} m`);
+}
+// A WALK WITHOUT REFERENCES: its GPS trail (readings scattered 3 m) against the session's track gives the turn and the
+// shift, the heading within a few degrees over 60 m; a short or thin trail gives nothing
+{
+  let g = 5; const gauss = () => { let u = 0; for (let i = 0; i < 6; i++) { g = (g * 16807) % 2147483647; u += g / 2147483647; } return (u - 3) * 1.41; };
+  const T = { theta: 0.7, tx: 12, ty: -8, s: 1 }, trail = [];
+  for (let i = 0; i <= 30; i++) { const phone = i <= 15 ? [i * 2, 0] : [30, (i - 15) * 2]; const at = apply(T, phone); trail.push({ at: [at[0] + 3 * gauss(), at[1] + 3 * gauss()], phone, acc: 5 }); }
+  const p = gpsPrior(trail);
+  const dDeg = Math.abs(((p.T.theta - T.theta) * 180) / Math.PI);
+  const mid = apply(p.T, [15, 15]), tru = apply(T, [15, 15]);
+  assert.ok(dDeg < 6 && Math.hypot(mid[0] - tru[0], mid[1] - tru[1]) < 2.5, `the GPS trail: ${dDeg.toFixed(1)} degrees, ${Math.hypot(mid[0] - tru[0], mid[1] - tru[1]).toFixed(2)} m`);
+  assert.ok(p.searchM >= 4 && p.searchDeg >= 6, JSON.stringify({ m: p.searchM, deg: p.searchDeg }));
+  assert.equal(gpsPrior(trail.slice(0, 5)), null, 'too few readings');
 }
 // check points, by mark: a check at the far end of the walk
 const far = path.at(-1), mark = { id: 'c1', kind: 'check', map: far.at, ar: unapply(truthAt(far.odo), far.at), odo: far.odo };

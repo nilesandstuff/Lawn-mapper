@@ -19,7 +19,7 @@
  */
 import { register, MIN_LANDED } from './lidar.js';
 import { apply } from './align.js';
-import { fitAt } from './align.js';
+import { fitAt, fitRigid } from './align.js';
 import { BANDS, STAND_RANGE, GROUND_RANGE } from './locate.js';
 
 /* 60 m of walk a window, every 20 m (scan/test/postfix.test.js: on a walk round a house with a fence and trunks, 30 m
@@ -143,6 +143,26 @@ export function refsPrior(marks, odo = 0) {
   const refs = (marks || []).filter((m) => m.kind === 'ref');
   const T = fitAt(refs, odo, 1e9);
   return T ? { T, searchM: 6, searchDeg: 25, from: 'the references' } : null;
+}
+
+/**
+ * A WALK WITHOUT REFERENCES, placed by its GPS trail (2026-11-05): each reading's place on the map against where the
+ * session had the phone then, fitted as one turn and shift, each weighed by 1/accuracy^2. GPS is metres off, but its
+ * errors are not all one way, and over a long walk the fit's heading comes out within a few degrees. Searched as
+ * wide as the trail's own scatter allows. -> a prior for solveWalk, or null with too short or too straight a trail.
+ */
+export function gpsPrior(trail, { minSpanM = 25, minReadings = 10 } = {}) {
+  const t = (trail || []).filter((g) => g?.at && g?.phone && Number.isFinite(g.acc));
+  if (t.length < minReadings) return null;
+  let span = 0;
+  for (const a of t) for (const b of t) span = Math.max(span, Math.hypot(a.phone[0] - b.phone[0], a.phone[1] - b.phone[1]));
+  if (span < minSpanM) return null;
+  const T = fitRigid(t.map((g) => ({ ar: g.phone, map: g.at, w: 1 / Math.max(1, g.acc) ** 2 })));
+  if (!T) return null;
+  const res = t.map((g) => { const p = apply(T, g.phone); return Math.hypot(p[0] - g.at[0], p[1] - g.at[1]); }).sort((a, b) => a - b);
+  const spread = res[res.length >> 1];
+  const degFromSpan = Math.min(30, Math.max(6, (Math.atan2(2 * spread, span) * 180) / Math.PI * 2));
+  return { T, searchM: Math.min(12, Math.max(4, 2 * spread)), searchDeg: degFromSpan, from: `the GPS trail (${t.length} readings over ${Math.round(span)} m, median ${spread.toFixed(1)} m off)` };
 }
 
 /** How far a placement puts each check mark from its place on the map: [{ id, m }]. */
