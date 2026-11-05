@@ -137,7 +137,7 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: node scan/tools/walks.mjs | tee walks.txt
+        run: BRIEF=1 N=6 node scan/tools/walks.mjs | tee walks.txt
 
       - name: A walk's twin against the lidar
         if: ${{ inputs.task == 'twin' }}
@@ -196,7 +196,7 @@ jobs:
               echo "Engine: ${SCAN_ENGINE:-unknown}"
               if [ -n "$SCAN_R2" ]; then echo "Twins: kept in the $SCAN_R2 bucket, viewed at /twin.html"; else echo "Twins: NOT kept (no bucket: see the twin bucket step)"; fi
               echo "Open it from the dashboard's Yard AR card (admin account), on each phone." ;;
-            walks) head -3 walks.txt 2>/dev/null || echo "no walks read: see the step above" ;;
+            walks) cat walks.txt 2>/dev/null || echo "no walks read: see the step above" ;;
             twin) cat twin.txt 2>/dev/null || echo "no twin check: see the step above" ;;
             fix) cat fix.txt 2>/dev/null || echo "no fix: see the step above" ;;
             depth) tail -25 depth.txt 2>/dev/null || echo "no depth run: see the step above" ;;

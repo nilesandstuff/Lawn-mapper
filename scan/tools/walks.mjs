@@ -23,6 +23,28 @@ export function headline(s) {
   return `${s.engine} ${s.when} ${Math.round((s.seconds || 0) / 60)} min, walked ${Math.round((x.walkedM || 0) * FT)} ft, losses ${x.losses}, resets ${x.resets}, fast turns ${x.fastTurns}${s.failed ? `, DID NOT START: ${s.failed}` : ''} | pins (as placed/anchored @ m walked since): ${pins || 'none'}${tapes ? ` | tape: ${tapes}` : ''}${checks ? ` | checks: ${checks}` : ''}${fx}${dt}`;
 }
 
+/**
+ * A walk in a few lines (BRIEF=1, 2026-11-05: the owner's usage credits; the session reads these, not the 25,000-line
+ * JSON). Counts and distances only, as kept.
+ */
+export function digest(s) {
+  const x = s.stats || {}, f = s.fix || {}, L = f.asksLog || [];
+  const med = (a) => { const b = a.filter(Number.isFinite).sort((p, q) => p - q); return b.length ? +b[b.length >> 1].toFixed(2) : null; };
+  const top = (o, n = 4) => Object.entries(o || {}).sort((a, b) => b[1] - a[1]).slice(0, n).map(([k, v]) => `${v} ${k}`).join('; ');
+  const kept = L.filter((e) => e.kept), held = L.reduce((a, e) => { if (e.held) a[e.held] = (a[e.held] || 0) + 1; return a; }, {});
+  const moves = L.map((e, i) => ({ e, i })).filter(({ e }) => e.held === 'moved' || e.held === 'first').map(({ e }) => `${e.held} at ${Math.round(e.odo)} m${e.agreeM != null ? ` (${e.agreeM} m from refs)` : ''}`);
+  return [
+    `id ${s.id} | ${s.recordOnly ? 'RECORD ONLY | ' : ''}tracked ${Math.round((x.trackedShare ?? 0) * 100)}% of ${x.frames ?? '?'} frames, limited ${x.limitedS ?? 0} s | depth ${s.depthType || '-'}`,
+    `lidar: ${s.lidar?.error ? `ERROR ${s.lidar.error}` : `${s.lidar?.rule || 'none'}`}`,
+    `fix: ${f.asks ?? 0} asks, ${f.fixes ?? 0} fixes, holds ${f.holds ?? '-'} (vouched ${f.holdsVouched ?? '-'}), what fixes did: ${JSON.stringify(held)}; refused: ${top(f.refused)}`,
+    `asks: median standing ${med(L.map((e) => e.stand))}, high ${med(L.map((e) => e.high))}, ground ${med(L.map((e) => e.ground))}; kept fixes' distance from refs median ${med(kept.map((e) => e.agreeM))} m`,
+    `hold changes: ${moves.join(', ') || 'none'}`,
+    `marks: ${(s.references || []).map((r) => `${r.name}x${r.marks}`).join(' ') || 'no references'}; checks ${(s.checks || []).length}; pins ${(s.pins || []).length}: ${(s.pins || []).map((p) => p.name).join(' ')}`,
+    `twin: ${s.twin ? `${s.twin.points} points, ${s.twin.keys} pictures, ${s.twin.poses} poses${s.twin.off ? `, OFF ${s.twin.off}` : ''}` : 'none'}`,
+    `messages: ${(s.errors || []).slice(-12).join(' | ')}`,
+  ];
+}
+
 /** The rows out of `wrangler d1 execute --json`. */
 export function rowsOf(stdout) {
   const out = parseList(stdout);
@@ -45,6 +67,7 @@ function main() {
     console.log('\n==============================================================');
     if (!s) { console.log(`${r.id}: unreadable JSON`); continue; }
     console.log(headline(s));
+    if (process.env.BRIEF) { for (const line of digest(s)) console.log(`  ${line}`); continue; }
     console.log(JSON.stringify({ ...s, events: (s.events || []).slice(-30) }, null, 1));
   }
 }
