@@ -950,4 +950,12 @@ no depth; run depth from pictures for later. Done the same day (6c93b02, cd624b0
   the model written before the shade map's own-return fix and only 7,457 standing points over 344 m (the page's
   classing). The value of recording first is that the fix can be re-run on the same walk whenever the inputs get
   better (the own-return model, trunks placed within their column, depth from pictures), at no cost to the owner.
+- **Depth from one picture** (task `depth`, 2026-11-05, the same walk; Depth Anything V2 small on the free runner,
+  580 s for 436 pictures; kept as depth-summary.json and depth-maps.npz, 22 MB, beside the twin). Each picture's
+  guess was scaled to ARCore's own points from the same moment, so near the phone they agree by construction (ground
+  within 2 m: 4 cm). Farther out they part: ground at 4-6 m a median 0.35 m apart, standing points at 4-6 m 0.45 m.
+  Of ARCore's 25,107 standing points the model puts 29% more than 0.5 m farther away (ARCore floating them nearer,
+  the phantoms of SCAN-H7?) and agrees within 25 cm on 30%. SPECULATION until measured against something true: the
+  scale comes from ARCore, so this says where the two disagree, not which is right. The next run should score both
+  against the lidar's ground and walls where the references place the walk.
 
