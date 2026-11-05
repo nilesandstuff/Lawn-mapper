@@ -54,6 +54,18 @@ export function rankHits(results, from = null) {
   return { position: { x: h.position.x, y: h.position.y, z: h.position.z }, type: h.type || 'UNSPECIFIED', distance };
 }
 
+/** 8th Wall's world points as plain session points: confident, finite ones only (the engine's own `confidence`, 0-1). */
+export function worldPointsOf(list, minConfidence = 0.5) {
+  const out = [];
+  for (const w of list || []) {
+    const p = w?.position || w;
+    if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y) || !Number.isFinite(p.z)) continue;
+    if (w.confidence != null && w.confidence < minConfidence) continue;
+    out.push({ x: p.x, y: p.y, z: p.z });
+  }
+  return out;
+}
+
 /** 8th Wall says LIMITED or NORMAL, with a reason; before it has found its feet (INITIALIZING) nothing it says is a place. */
 export function trackingOf8w(status, reason) {
   if (status === 'NORMAL') return 'normal';
@@ -304,7 +316,11 @@ async function start8thWall({ canvas, onFrame, onEvent, eightWallUrl }) {
         try { hit = rankHits(XR8.XrController.hitTest(CROSS.x, CROSS.y, ['DETECTED_SURFACE', 'ESTIMATED_SURFACE', 'FEATURE_POINT']), pose.position); } catch { hit = null; }
       }
       onFrame({
+        /* THE WORLD POINTS (2026-11-05): the engine's web build gives no depth map (its depth field is internal), but
+           it does give the 3D feature points its tracking stands on, { confidence, position }. Configured on from
+           the start and, until now, only counted. They are this engine's points for the twin and the match. */
         t, tracking, reset: false, hit, depth: null, points: r?.worldPoints?.length || 0, pose,
+        world: tracking === 'normal' && r?.worldPoints?.length ? worldPointsOf(r.worldPoints) : null,
         gl, framebuffer: null, viewport: { x: 0, y: 0, w: gl.drawingBufferWidth, h: gl.drawingBufferHeight }, view, proj,
       });
     },

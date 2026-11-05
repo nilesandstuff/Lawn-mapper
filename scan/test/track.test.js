@@ -1,6 +1,6 @@
 // scan/lib/track.js: the pure parts of the tracking interface. node scan/test/track.test.js
 import assert from 'node:assert/strict';
-import { rankHits, trackingOf8w, engineChoice, CROSS } from '../lib/track.js';
+import { rankHits, trackingOf8w, engineChoice, CROSS, worldPointsOf } from '../lib/track.js';
 
 // the crosshair is the exact centre, so one hit test serves both engines
 assert.deepEqual(CROSS, { x: 0.5, y: 0.5 });
@@ -39,5 +39,11 @@ assert.deepEqual(CROSS, { x: 0.5, y: 0.5 });
   assert.deepEqual(engineChoice({ hasXR: true, has8w: true, prefer: '8thwall' }), { offered: ['webxr', '8thwall'], start: '8thwall' });
   assert.deepEqual(engineChoice({ hasXR: false, has8w: false, ios: true }), { offered: [], start: null, why: 'no8w-ios' });
   assert.deepEqual(engineChoice({}), { offered: [], start: null, why: 'none' });
+}
+// 8th Wall's world points: confident, finite ones, as plain session points
+{
+  const w = worldPointsOf([{ confidence: 0.9, position: { x: 1, y: 0.2, z: -3 } }, { confidence: 0.2, position: { x: 2, y: 0, z: -1 } }, { confidence: 0.8, position: { x: NaN, y: 0, z: 0 } }, { x: 0.5, y: 1, z: -2 }]);
+  assert.deepEqual(w, [{ x: 1, y: 0.2, z: -3 }, { x: 0.5, y: 1, z: -2 }]);
+  assert.deepEqual(worldPointsOf(null), []);
 }
 console.log('track: ok');

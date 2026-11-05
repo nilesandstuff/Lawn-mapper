@@ -297,6 +297,13 @@ function onFrame(f) {
     addDepth(L, pts, odo, f.pose.position, { standing: false }); // standing points come from the colour pass below
     if (st.twin) addPoints(st.twin, Date.now(), odo, pts, L.groundY);
   }
+  // 8th Wall: no depth map, but its world points, at the same pace (scan/lib/track.js worldPointsOf); no camera
+  // picture to colour them, so they go in as standing candidates too, each still needing two sightings
+  if (!f.depth && f.world && f.pose && f.t - st.depthAt > DEPTH_EVERY) {
+    st.depthAt = f.t;
+    addDepth(L, f.world, odo, f.pose.position);
+    if (st.twin) addPoints(st.twin, Date.now(), odo, f.world, L.groundY);
+  }
   // THE GROUND'S COLOUR (scan/lib/surface.js): about once a second, the camera's picture read back, and the depth
   // under a grid of it labelled grass or paving, for the lawn-edge term of the match. The same read serves the twin.
   let grabbed = null;
