@@ -976,3 +976,45 @@ From the walk digests (walks task, BRIEF) and the after-the-walk fix on the two 
 - **8th Wall**: 1,578 world points recorded, tracking 72% (was 31%); the ground "a few inches from the phone, 4+ ft
   up" was its estimated surface at camera height, no longer asked for.
 
+
+### SCAN-H11. Why the lidar cannot place a walk: the phone's points carry too little true shape (2026-11-05)
+
+The owner, after the record-only walks: "It's strange that there was not enough lidar for a match on the post
+processing... Look into that thoroughly." Four rounds of scan/tools/match-study.mjs (task `study`), on the walks of
+2026-11-04 22:02 (4 check points with map places) and 2026-11-05 20:37's companion with references (6), both on the
+shade map's model of 2026-11-05 (straightened, trunks as posts).
+
+HARD, rounds 1-3 (the whole walk moved round the references' placement, 8,125 placements, 6 m and 12 degrees):
+
+  - ground shape (the phone's ground points against the lidar ground, 15 cm): 69-76% at the references, only 55-93
+    placements better; a broad, shallow peak (contrast 1.3x). It narrows the search; it cannot pin.
+  - roof edges: strong on one walk (25%, contrast 3.3x, 106 better), nothing on the other (3%).
+  - house walls: 0% of the phone's standing points within 30 cm of one at the references on both walks; out to 8 m
+    from the phone (instead of 3.5) still 0% and 5%. Lengthening the range is not the fix.
+  - the 3D crowns (canopy, occupied cubes): nearly flat (contrast 1.1-1.3x).
+
+HARD, round 4 (the decisive one): each check point taken as the truth; only the points within 15 m of walking
+either side of it; the same moves round the references' fit at that moment; and for each signal, how far its
+favourite placement puts the check point.
+
+  walk 22:02 (4 checks)   references 2.7 ft median; best signal (ground + occupied) 11.2 ft; walls 19.2; ground 25.8
+  walk 20:37 (6 checks)   references 4.2 ft median; best signal (ground + roof edges) 16.9 ft; walls 20.1; canopy 22.7
+
+No signal and no combination comes within 10 ft; most pick a placement near the edge of the search. On a stretch of
+walk, the phone's points prefer the wrong place to the right one: the score follows where clutter is, not where the
+walk was. One check (the 20:37 walk's fourth) is 145 ft off by the references themselves: a mis-mark, left in.
+
+What this says (the inference, held as SPECULATION until a different input is measured the same way): the lidar is
+not short of detail. The phone's own points are. The S21 has no depth sensor; ARCore's depth from motion floats
+standing points nearer (SCAN-H7; 29% of them more than 0.5 m off by the depth model's reading), barely reaches a
+house wall, and what it does put on a wall is lost among phantoms that land on whatever is solid nearby. A 30 cm
+test on that input cannot pin a walk, and no reshaping of the lidar changes the input.
+
+What could, in order of promise (none built):
+  1. the pictures, not the points: roof lines and tree tops against the sky in the twin's pictures, against the
+     model's outline rendered from ARCore's pose. It needs no phone depth at all, only the pose ARCore already holds
+     to inches over a few metres (SCAN-H10), and far edges fix the heading hard. The owner's own allowance (2026-11-04):
+     "hard edges with vision".
+  2. the depth model's points (scan/tools/depth_run.py keeps each picture's depth) in place of ARCore's standing
+     points, scored by the same round 4.
+  3. ground shape with the GPS trail, for walks without references: a few metres, not inches.
