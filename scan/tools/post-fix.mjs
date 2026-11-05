@@ -20,7 +20,7 @@ import { toLocal } from '../lib/frames.js';
 import { gridsFromModel } from '../lib/lidar-load.js';
 import { packModel } from '../lib/lidar-model.js';
 import { readCloud, readTrack, placer } from '../lib/twin.js';
-import { apply } from '../lib/align.js';
+import { apply, fitRigid } from '../lib/align.js';
 import { classify, solveWalk, refsPrior, gpsPrior, checkErrors, baseMesh } from '../lib/postfix.js';
 import { readMap, readModel } from './twin-io.mjs';
 
@@ -78,6 +78,26 @@ async function main() {
     const med = (k) => { const a = Object.values(table).map((r) => r[k]).filter(Number.isFinite).sort((x, y) => x - y); return a.length ? a[a.length >> 1] : null; };
     console.log(`  median: ${Object.keys(ways).map((k) => `${k} ${ft(med(k))}`).join(', ')}`);
   } else console.log('No check points marked: nothing to score against.');
+
+  /* THE CHECK POINTS AS THEIR OWN REFERENCES (2026-11-05): what any placement made from marks could do on this walk.
+     All of them fitted as one turn and shift: what is left at each is how far ARCore's own frame bent between them (no
+     single placement can beat it); and each one left out, placed by the others: what marking references at those
+     spots would have given. With the GPS trail's placement beside them, when there was one. */
+  const cks = (live.marks || []).filter((x) => x.kind === 'check' && x.ar && x.map);
+  const byId = new Map(); for (const c of cks) byId.set(c.id, c); // a point marked twice: its last mark
+  const uniq = [...byId.values()];
+  if (uniq.length >= 3) {
+    const all = fitRigid(uniq.map((c) => ({ ar: c.ar, map: c.map })));
+    const loo = uniq.map((c) => { const T = fitRigid(uniq.filter((d) => d !== c).map((d) => ({ ar: d.ar, map: d.map }))); if (!T) return null; const [e, n] = apply(T, c.ar); return Math.hypot(e - c.map[0], n - c.map[1]); });
+    const span = Math.max(...uniq.map((c) => c.odo ?? 0)) - Math.min(...uniq.map((c) => c.odo ?? 0));
+    console.log(`The ${uniq.length} check points as their own references (marked over ${Math.round(span * FT)} ft of walking):`);
+    if (all) console.log(`  all fitted at once: left over ${all.residuals.map((r) => ft(r)).join(', ')} (ARCore's frame bending between them); distances AR against map ${((all.scale - 1) * 100).toFixed(1)}%`);
+    console.log(`  each placed by the others: ${loo.map((r) => ft(r)).join(', ')}`);
+    const g = gpsPrior(live.gpsTrail);
+    if (g?.T) console.log(`  the GPS trail's placement alone: ${uniq.map((c) => { const [e, n] = apply(g.T, c.ar); return ft(Math.hypot(e - c.map[0], n - c.map[1])); }).join(', ')}`);
+    const twice = cks.filter((c) => cks.filter((d) => d.id === c.id).length > 1);
+    if (twice.length) { const ids = [...new Set(twice.map((c) => c.id))]; for (const id of ids) { const ms = cks.filter((c) => c.id === id); console.log(`  marked twice: ${ms.length} marks ${ft(Math.hypot(ms[0].ar[0] - ms[ms.length - 1].ar[0], ms[0].ar[1] - ms[ms.length - 1].ar[1]))} apart as ARCore had them, ${Math.round(Math.abs((ms[ms.length - 1].odo ?? 0) - (ms[0].odo ?? 0)) * FT)} ft walked between`); } }
+  }
 
   // the height, the pins, the mesh
   const tz = sol.global.tz ?? null;
