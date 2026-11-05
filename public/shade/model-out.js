@@ -31,9 +31,14 @@
  *                          not weighted, capped at 255; erasures applied
  *   low      Float32 w*h   the lowest of them, m over the ground, exact (not
  *                          snapped to a cube); NaN where none
+ *
+ * SENT GZIPPED (core session, 2026-11-05; the owner: "there are definitely
+ * larger lots out there"): the server keeps every model gzipped, 48 MB at
+ * most. A lot is mostly empty air, so the owner's 23.1 MB file goes up as
+ * 1.3 MB on every save (measured 2026-11-05, 0.5 s to pack).
  */
 
-import { encodeModel } from '../lib/lidar-model.js';
+import { packModel } from '../lib/lidar-model.js';
 import { NOTHING, BUILDING, TREE, SOLID_TREE, STRUCTURE, UNKNOWN, NOISE } from './structures.js';
 import { GRASS_M, MAX_OVER_M } from './canopy.js';
 import { cellOf } from './grid.js';
@@ -112,23 +117,24 @@ export function ownReturns(cols, model, { shift = null, erasedMask = null, erase
 }
 
 /**
- * The bytes to PUT. Over `maxBytes` (the server's, worker/src/unified.js
- * MODEL_MAX_BYTES), muOn is left out first (no reader uses it yet), then the
- * per-cube `returns` (`low` stays); the file is still written.
+ * The bytes to PUT: the file gzipped (lidar-model.js packModel). Over
+ * `maxBytes` gzipped (the server's MODEL_MAX_STORED, worker/src/unified.js),
+ * muOn is left out first (no reader uses it yet), then the per-cube
+ * `returns` (`low` stays); the file is still written.
  */
-export function modelBytes(finished, { maxBytes = 24 * 1024 * 1024 } = {}) {
+export async function modelBytes(finished, { maxBytes = 48 * 1024 * 1024 } = {}) {
   let meta = finished.meta, arrays = finished.arrays;
-  let bytes = encodeModel(meta, arrays);
+  let bytes = await packModel(meta, arrays);
   const LEFT_OUT = 'left out: the file would be over the size the server takes';
   if (bytes.byteLength > maxBytes && arrays.muOn) {
     const { muOn, ...rest } = arrays;
     arrays = rest; meta = { ...meta, leaves: { ...meta.leaves, muOn: LEFT_OUT } };
-    bytes = encodeModel(meta, arrays);
+    bytes = await packModel(meta, arrays);
   }
   if (bytes.byteLength > maxBytes && arrays.returns) {
     const { returns, ...rest } = arrays;
     arrays = rest; meta = { ...meta, own: { ...meta.own, returns: LEFT_OUT } };
-    bytes = encodeModel(meta, arrays);
+    bytes = await packModel(meta, arrays);
   }
   return bytes;
 }
