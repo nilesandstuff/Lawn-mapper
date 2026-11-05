@@ -108,7 +108,7 @@ export function gridsFromModel(model, { origin, box, lawn = [], S, toMerc, cell 
   const dem = valuesOnGrid(arrays.ground, sgrid, box, cell, at, k);
   let things, bld, walls = null, shapes = null;
   if (straight) {
-    shapes = straightShapes({ sgrid, kind, K, things1, bld1, top: arrays.top, returns, ground, layers, ox, oy, k, box, cell, inset: S?.WALL_INSET_M ?? 0.61 });
+    shapes = straightShapes({ sgrid, kind, K, things1, bld1, top: arrays.top, returns, ground, layers, ox, oy, k, box, cell, inset: S?.WALL_INSET_M ?? 0.61, lowDx: arrays.lowDx || null, lowDy: arrays.lowDy || null });
     ({ things, bld, walls } = shapes);
   } else {
     things = buildingsOnGrid(things1, sgrid, box, cell, at, k, 1);
@@ -146,7 +146,7 @@ export function gridsFromModel(model, { origin, box, lawn = [], S, toMerc, cell 
  *           columns under a crown -- as one post where its own returns are; every other standing column (a bush, a
  *           hedge, an unknown thing) as its columns, untouched ("let's not touch trees")
  */
-export function straightShapes({ sgrid, kind, K, things1, bld1, top, returns, ground, layers, ox, oy, k, box, cell, inset }) {
+export function straightShapes({ sgrid, kind, K, things1, bld1, top, returns, ground, layers, ox, oy, k, box, cell, inset, lowDx = null, lowDy = null }) {
   const cy = sgrid.cellY || sgrid.cell, w = sgrid.w, h = sgrid.h;
   const toM = ([gx, gy]) => [(sgrid.x0 + gx * sgrid.cell - ox) * k, (sgrid.y1 - gy * cy - oy) * k];
   const centre = (j) => toM([(j % w) + 0.5, ((j / w) | 0) + 0.5]);
@@ -180,7 +180,10 @@ export function straightShapes({ sgrid, kind, K, things1, bld1, top, returns, gr
     const tall = top && patch.some((j) => top[j] >= TRUNK_CROWN_M);
     if (patch.length > TRUNK_MAX_COLUMNS || !tall) continue;
     for (const j of patch) rest[j] = 0;
-    const p = postOf(patch.map(centre), patch.map(ownInBand));
+    /* where in each column its own standing returns are (the shade map's lowDx, lowDy, cm east and north of the
+       column's centre, 2026-11-05): the post within centimetres, not half a column */
+    const at = (j) => { const c = centre(j); return lowDx && lowDy ? [c[0] + lowDx[j] / 100, c[1] + lowDy[j] / 100] : c; };
+    const p = postOf(patch.map(at), patch.map(ownInBand));
     drawSegment(extra, box, cell, p, p, TRUNK_HALF_M);
     counts.trunks++;
   }

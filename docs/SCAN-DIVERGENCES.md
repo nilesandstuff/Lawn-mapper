@@ -65,7 +65,8 @@ model's 1 m columns (scan/lib/outline.js, scan/lib/lidar-load.js straightShapes)
   middle, 30 cm wide; any other (a shed, bins) is its straightened outline.
 - **Trunks**: a patch of up to 4 standing tree columns under a crown (a column top 3 m or more) is one post, 30 cm each
   way (a trunk's own surface; the match's own 30 cm hit radius), at the centre of the columns' own returns at standing
-  height. Its place is known only to the columns, so to within half a column when the trunk is in one column.
+  height, each column's place moved to where its own standing returns are (the shade map's lowDx, lowDy, since
+  2026-11-05); without them, to the column centre, within half a column.
 - **Not touched**: bigger patches of standing tree columns (hedges, bushes, a low crown), UNKNOWN columns, the canopy.
 
 , and the roof's edge is a target of its own

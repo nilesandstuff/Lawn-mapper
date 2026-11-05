@@ -78,6 +78,12 @@ assert.ok(G.occTop && G.bld && G.wallTop, 'the tops and the roof mask come back 
   assert.ok(sample(G, G.distNW, 8.5, 3.5) < 0.05, 'the post is where the trunk is');
   assert.ok(sample(G0, G0.distNW, 8.9, 3.9) < 0.05 && sample(G, G.distNW, 8.95, 3.95) > 0.2, 'the column filled the whole metre; the post does not');
   assert.equal(L0.counts.buildingsStraight, 1);
+  // with the shade map's in-column offsets (lowDx, lowDy, cm), the post moves to where the trunk's returns are
+  const dx = new Int16Array(M.arrays.kind.length), dy = new Int16Array(M.arrays.kind.length);
+  for (let j = 0; j < dx.length; j++) if (M.arrays.kind[j] === S.TREE && M.arrays.top[j] >= 3) { dx[j] = 30; dy[j] = -30; }
+  const Mo = decodeModel(encodeModel(M.meta, { ...M.arrays, lowDx: dx, lowDy: dy }));
+  const Go = gridsFromModel(Mo, { origin: ORIGIN, box: BOX, S, toMerc }).G;
+  assert.ok(sample(Go, Go.distNW, 8.8, 3.2) < 0.05 && sample(Go, Go.distNW, 8.2, 3.8) > 0.2, `the post at the returns: ${sample(Go, Go.distNW, 8.8, 3.2)} ${sample(Go, Go.distNW, 8.2, 3.8)}`);
 }
 {
   const k = (e, n) => Math.floor((30 - n) / G.cell) * G.W + Math.floor((e + 30) / G.cell);
