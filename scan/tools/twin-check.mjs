@@ -19,13 +19,11 @@
  */
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { createHash } from 'node:crypto';
 import { toMerc, ringsOf } from '../lib/photo.js';
 import { toLocal } from '../lib/frames.js';
 import { gridsFromModel } from '../lib/lidar-load.js';
-import { unpackModel, modelUsable } from '../lib/lidar-model.js';
 import { buildingsOnGrid, register, MIN_LANDED, placementCost } from '../lib/lidar.js';
-import { readObject, CORPUS_BUCKET } from './twin-r2.mjs';
+import { readMap, readModel } from './twin-io.mjs';
 import { disagreement, REF_TOL_M, REF_TOL_DEG } from '../lib/locate.js';
 import { readCloud, readTrack, placer, placeCloud } from '../lib/twin.js';
 import { apply } from '../lib/align.js';
@@ -33,39 +31,6 @@ import { surfaceOf, tally } from '../lib/surface.js';
 import jpeg from 'jpeg-js';
 
 const pct = (a, b) => (b ? `${Math.round((100 * a) / b)}%` : '-');
-
-/** The saved map with its tools' parts: from the database when the runner has the Cloudflare token (the site's edge
- *  answers GitHub's runners 403, as tools/draw-map.mjs found), else through the site's read-only route. */
-async function readMap(id, site, key) {
-  if (process.env.CLOUDFLARE_API_TOKEN) {
-    const { query } = await import('../../tools/corpus-db.js');
-    const q = `'${String(id).replace(/'/g, "''")}'`;
-    const rows = query(`SELECT m.key, m.lng, m.lat, m.payload, m.user_id FROM maps m JOIN users u ON u.id = m.user_id WHERE u.role = 'admin' AND m.key = ${q}`);
-    if (!rows.length) throw new Error('no such map among the owner\'s');
-    let payload = {}; try { payload = JSON.parse(rows[0].payload) || {}; } catch { /* empty */ }
-    const tools = {};
-    for (const t of query(`SELECT tool, data FROM map_tools WHERE owner_kind = 'user' AND owner_id = '${String(rows[0].user_id).replace(/'/g, "''")}' AND map_key = ${q}`)) {
-      try { tools[t.tool] = { data: JSON.parse(t.data) }; } catch { /* unreadable part */ }
-    }
-    return { ...payload, lng: payload.lng ?? rows[0].lng, lat: payload.lat ?? rows[0].lat, tools, ownerId: rows[0].user_id };
-  }
-  if (!site || !key) throw new Error('the map needs the Cloudflare token, or SITE and MAPS_READ_TOKEN');
-  const r = await fetch(`${site}/api/admin/saved-maps/one?id=${encodeURIComponent(id)}`, { headers: { Authorization: `Bearer ${key}` } });
-  if (!r.ok) throw new Error(`the map could not be read (${r.status})`);
-  return (await r.json()).map;
-}
-
-/** THE SHADE MAP'S FINISHED MODEL of the map (public/lib/lidar-model.js), as the page reads it: from the main site's
- *  bucket by the key routes-maps.js writes it under (unified.js modelKey), since the site answers the runner 403. */
-async function readModel(mapKey, ownerId) {
-  if (!ownerId) throw new Error('the model needs the map\'s owner');
-  const key = `models/user/${ownerId}/${createHash('sha256').update(String(mapKey)).digest('hex')}/shade.bin`;
-  const bytes = await readObject(CORPUS_BUCKET, key);
-  if (!bytes) throw new Error('this map has no lidar model yet: open it in the shade map first, which builds and saves it');
-  const m = await unpackModel(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
-  if (!modelUsable(m)) throw new Error('the lidar model is incomplete');
-  return m;
-}
 
 async function main() {
   const dir = process.argv[2] || 'twin';

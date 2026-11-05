@@ -122,6 +122,9 @@ export function liveOf(L, w, extra = {}) {
     marks: (L?.marks || []).map((m) => ({ id: m.id, kind: m.kind, map: m.map, ar: m.ar, y: r(m.y), odo: r(m.odo) })),
     pins: (w?.pins || []).map((p) => ({ name: p.name, at: xyz(p.at), anchorAt: xyz(p.anchorAt), odo: r(p.odo) })),
     checks: (w?.checks || []).length,
+    // where GPS put the phone, as the page took it (map metres, the phone's level position then, accuracy): the
+    // after-the-walk fix's start when no references were marked; kept in the private twin bucket, never printed
+    gps: L?.gps?.at ? { at: L.gps.at.map(r), phone: (L.gps.phone || []).map(r), acc: r(L.gps.acc) } : null,
     odo: r(w?.odo ?? 0),
     ...extra,
   };

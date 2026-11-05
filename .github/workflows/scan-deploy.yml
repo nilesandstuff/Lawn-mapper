@@ -36,9 +36,9 @@ on:
         required: true
         default: tests
         type: choice
-        options: [tests, deploy, walks, twin]
+        options: [tests, deploy, walks, twin, fix, depth]
       walk:
-        description: 'For twin: the walk id, or latest'
+        description: 'For twin, fix or depth: the walk id, or latest'
         default: latest
 
 permissions:
@@ -70,6 +70,7 @@ jobs:
           node scan/test/minimap.test.js
           node scan/test/surface.test.js
           node scan/test/outline.test.js
+          node scan/test/postfix.test.js
           node tools/lidar-model.test.js
 
       - name: The 8th Wall engine binary (pinned)
@@ -150,6 +151,21 @@ jobs:
           node scan/tools/twin-r2.mjs get "$WALK" twin
           node scan/tools/twin-check.mjs twin | tee twin.txt
 
+      # RECORD FIRST, FIX AFTERWARDS (scan/lib/postfix.js): the whole walk placed on the model, its pins put on the map,
+      # its check points scored; fixed.json and mesh.bin kept in the walk's folder of the twin bucket. No pictures read.
+      - name: A walk fixed afterwards
+        if: ${{ inputs.task == 'fix' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WALK: ${{ inputs.walk }}
+          NO_PICTURES: '1'
+        run: |
+          set -o pipefail
+          node scan/tools/twin-r2.mjs get "$WALK" twin
+          node scan/tools/post-fix.mjs twin | tee fix.txt
+          node scan/tools/twin-r2.mjs put "$WALK" twin/fixed.json twin/mesh.bin | tee -a fix.txt
+
       - name: The answer
         if: always()
         run: |
@@ -162,5 +178,7 @@ jobs:
               echo "Open it from the dashboard's Yard AR card (admin account), on each phone." ;;
             walks) head -3 walks.txt 2>/dev/null || echo "no walks read: see the step above" ;;
             twin) cat twin.txt 2>/dev/null || echo "no twin check: see the step above" ;;
+            fix) cat fix.txt 2>/dev/null || echo "no fix: see the step above" ;;
+            depth) tail -25 depth.txt 2>/dev/null || echo "no depth run: see the step above" ;;
             *) echo "Scan tests: ${{ job.status }}" ;;
           esac
