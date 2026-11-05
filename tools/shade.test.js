@@ -1754,7 +1754,7 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
 /* THE FINISHED MODEL FILE (model-out.js; owner, 2026-11-04: one base set of 3D files). */
 {
   const { finishedModel, modelBytes } = await import('../public/shade/model-out.js');
-  const { decodeModel, modelUsable, columnAt } = await import('../public/lib/lidar-model.js');
+  const { unpackModel, modelUsable, columnAt } = await import('../public/lib/lidar-model.js');
   const lat = 43, k = mercScale(lat);
   const grid = gridOver([0, 0, 30 / k, 30 / k], 1, lat);
   const pts = [];
@@ -1770,8 +1770,9 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   const at = (e, n) => Math.floor(30 - n) * grid.w + Math.floor(e);
   const erasedMask = new Uint8Array(grid.w * grid.h); erasedMask[at(20.5, 20.5)] = 1;
   const fin = finishedModel({ model, season, cols, erasedMask, erasedCubes: [at(18.5, 20.5) * model.nz + 6], lidar: { url: 'u', name: 'n', epoch: 2018, shift: [0.1, 0.2], fit: null }, flown: { start: 1, mid: 2, end: 3 }, photo: { id: 'f', date: '2018-07-06', source: 'planetary-computer' }, basedOn: 'then' });
-  const bytes = modelBytes(fin);
-  const back = decodeModel(bytes);
+  const bytes = new Uint8Array(await modelBytes(fin));
+  const back = await unpackModel(bytes);
+  check('model file: sent gzipped, a small part of the raw size', bytes[0] === 0x1f && bytes[1] === 0x8b && bytes.byteLength < 0.5 * Object.values(back.arrays).reduce((a, x) => a + x.byteLength, 0), `${bytes.byteLength} bytes`);
   const { meta, arrays } = back;
   check('model file: the finished model round-trips through lidar-model.js, usable, with the grid, layers, lidar, photo and kind codes in its header',
     modelUsable(back) && meta.tool === 'shade' && meta.grid.w === grid.w && meta.layers.nz === model.nz && meta.lidar.flown.end === 3 && meta.photo.date === '2018-07-06' && meta.rule.kinds.BUILDING === 1 && meta.basedOn === 'then' && arrays.mu.length === grid.w * grid.h * model.nz && arrays.muOn.length === arrays.mu.length, JSON.stringify(Object.keys(arrays)));
@@ -1780,9 +1781,9 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
       && arrays.mu.subarray(at(20.5, 20.5) * model.nz, (at(20.5, 20.5) + 1) * model.nz).every((v) => v === 0) && arrays.mu[at(18.5, 20.5) * model.nz + 6] === 0 && meta.erased === 1
       && arrays.muOn.every((v, i) => v >= arrays.mu[i] - 1e-6) && Math.abs(arrays.top[at(2.5, 25.5)]) < 0.3 && columnAt(meta.grid, (7.5 / k) + grid.x0, grid.y1 - 22.5 / k) === at(7.5, 7.5),
     `kinds ${arrays.kind[at(7.5, 7.5)]} ${arrays.kind[at(19.5, 20.5)]} ${arrays.kind[at(20.5, 20.5)]}; roof top ${arrays.top[at(7.5, 7.5)]}; open top ${arrays.top[at(2.5, 25.5)]}; cube ${arrays.mu[at(18.5, 20.5) * model.nz + 6]}; erased col zero ${arrays.mu.subarray(at(20.5, 20.5) * model.nz, (at(20.5, 20.5) + 1) * model.nz).every((v) => v === 0)}; muOn>=mu ${arrays.muOn.every((v, i) => v >= arrays.mu[i] - 1e-6)}; columnAt ${columnAt(meta.grid, (7.5 / k) + grid.x0, grid.y1 - 22.5 / k)} vs ${at(7.5, 7.5)}`);
-  const small = modelBytes(fin, { maxBytes: bytes.byteLength - 1 });
-  check('model file: over the size the server takes, the summer-leaf cubes are left out and the file still written', small.byteLength < bytes.byteLength && !decodeModel(small).arrays.muOn && modelUsable(decodeModel(small)) && /left out/.test(decodeModel(small).meta.leaves.muOn));
-  const tiny = decodeModel(modelBytes(fin, { maxBytes: 1 }));
+  const small = await modelBytes(fin, { maxBytes: bytes.byteLength - 1 }), smallM = await unpackModel(small);
+  check('model file: over the size the server takes (gzipped), the summer-leaf cubes are left out and the file still written', small.byteLength < bytes.byteLength && !smallM.arrays.muOn && modelUsable(smallM) && /left out/.test(smallM.meta.leaves.muOn));
+  const tiny = await unpackModel(await modelBytes(fin, { maxBytes: 1 }));
   check('model file: still over, the per-cube own returns go next; the lowest return stays', !tiny.arrays.muOn && !tiny.arrays.returns && tiny.arrays.low?.length === grid.w * grid.h && /left out/.test(tiny.meta.own.returns) && modelUsable(tiny));
 
   /* WHAT THE LASER HIT IN THIS VERY METRE (the AR's blue walls, 2026-11-04): a
@@ -1798,12 +1799,12 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   const model2 = buildCanopy(cols2, grid2), season2 = seasonalCanopy(cols2, model2);
   const at2 = (e, n) => Math.floor(12 - n) * grid2.w + Math.floor(e);
   const cube = (j) => j * model2.nz + Math.floor((101.5 - model2.z0) / model2.dz);
-  const own2 = decodeModel(modelBytes(finishedModel({ model: model2, season: season2, cols: cols2 }))).arrays;
+  const own2 = (await unpackModel(await modelBytes(finishedModel({ model: model2, season: season2, cols: cols2 })))).arrays;
   const trunk = at2(6.5, 6.5), beside = at2(7.5, 6.5);
   check('model file: on a sparse flight the trunk\'s neighbour has a pooled low cube in mu but no return of its own; the trunk has one, its lowest 1.5 m up exactly',
     model2.mu[cube(beside)] > 0 && own2.returns[cube(beside)] === 0 && Number.isNaN(own2.low[beside]) && own2.returns[cube(trunk)] === 1 && Math.abs(own2.low[trunk] - 1.5) < 1e-3,
     `mu beside ${model2.mu[cube(beside)]}; returns beside ${own2.returns[cube(beside)]}, trunk ${own2.returns[cube(trunk)]}; low ${own2.low[trunk]}`);
-  const er2 = decodeModel(modelBytes(finishedModel({ model: model2, season: season2, cols: cols2, erasedCubes: [cube(trunk)] }))).arrays;
+  const er2 = (await unpackModel(await modelBytes(finishedModel({ model: model2, season: season2, cols: cols2, erasedCubes: [cube(trunk)] })))).arrays;
   check('model file: an erased cube takes its own returns with it', er2.returns[cube(trunk)] === 0 && Number.isNaN(er2.low[trunk]));
 }
 

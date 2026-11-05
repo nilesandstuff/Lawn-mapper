@@ -188,7 +188,7 @@ function saveModelFile({ now = false } = {}) {
   modelTimer = setTimeout(async () => {
     try {
       const fin = finishedModel({ ...view.trees.finished(), lidar: view.model?.lidar || null, flown: view.model?.flown || null, photo: view.model?.green?.frame || null, basedOn: site.map.at || null });
-      const bytes = modelBytes(fin);
+      const bytes = await modelBytes(fin); // gzipped (lidar-model.js packModel)
       const res = await fetch(`/api/maps/model?id=${encodeURIComponent(site.map.id)}&tool=shade`, { method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/octet-stream' }, body: bytes });
       if (!res.ok) track('model', `refused ${res.status}`); else track('model', `${Math.round(bytes.byteLength / 1024)} KB`);
     } catch (e) { track('model', `failed: ${String(e.message).slice(0, 60)}`); }
