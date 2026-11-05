@@ -928,3 +928,26 @@ far fewer fix changes, the references and ARCore carrying most of a walk, the li
 the lawn trace gone the match has little to hold on this lot; whether the own-return model (fewer phantom tree
 columns) gives it more is the next walk's question.
 
+### SCAN-H9. Record first, fix afterwards: built, tested, and safe; on the owner's lot it adds nothing yet (2026-11-05)
+
+The owner, 2026-11-05: straighten what is straight, trunks thin; build record-then-fix; find out why 8th Wall gives
+no depth; run depth from pictures for later. Done the same day (6c93b02, cd624b0, a92350a, 00ae32c, 9d07a37):
+
+- **8th Wall**: the engine's web build has no depth map (the depth field in its message format is internal; the frame
+  it hands the page has rotation, position, intrinsics, world points, lighting and detected images). The page had
+  switched world points on and kept only their count. They now feed the twin and the match.
+- **Straightening** (scan/lib/outline.js; SCAN-DIVERGENCES step 3b): on the owner's lot, 28 buildings straightened,
+  3 structures as lines, 91 trunks as 30 cm posts. A turned edge comes out within centimetres (test); an edge along
+  the grid stays within half a column, a toss-up the model already made.
+- **Record then fix** (scan/lib/postfix.js, task `fix`): on a synthetic 160 m walk drifting 1.2 m and 2.5 degrees the
+  fix is a median 0.35 m off, one placement 0.53 m, the references' worst 1.65 m. On the owner's walk of 2026-11-04
+  22:02 the first version made it WORSE: no single placement found, two windows kept and stretched over 344 m, check
+  points a median 15 ft off against 4.2 ft by the references. With the references as its bound (a window within
+  1.5 m and 5 degrees of them at its own stretch, the references everywhere else) it equals them: 4.2 ft, no window
+  kept (8 ambiguous, 7 disagreeing with their neighbours, 2 too far from the references). The base mesh: 231,815
+  cells of 10 cm from 445,833 points, 2.4 MB gzipped, kept with the walk.
+- **What that says**: on this lot the match against the model still has too little to hold, whole walk or not, with
+  the model written before the shade map's own-return fix and only 7,457 standing points over 344 m (the page's
+  classing). The value of recording first is that the fix can be re-run on the same walk whenever the inputs get
+  better (the own-return model, trunks placed within their column, depth from pictures), at no cost to the owner.
+
