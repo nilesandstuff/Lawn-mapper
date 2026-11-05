@@ -78,6 +78,17 @@ const med = (a) => [...a].sort((x, y) => x - y)[a.length >> 1], max = (a) => Mat
 assert.ok(med(eW) < 0.45 && max(eW) < 1.0, `the windows follow the walk: median ${med(eW).toFixed(2)} m, worst ${max(eW).toFixed(2)} m`);
 assert.ok(med(eW) < med(eG) && max(eW) < max(eP), `better than one placement (median ${med(eG).toFixed(2)} m) and than the references (worst ${max(eP).toFixed(2)} m)`);
 assert.ok(max(eG) < max(eP), 'and one placement for the whole walk already beats the references alone');
+// NEVER WORSE THAN THE REFERENCES: references 3 m off everywhere -> no window is within 1.5 m of them, the walk keeps
+// them; true references -> the windows are kept, and the placement is no worse than with no references at all
+{
+  const off = (o) => ({ ...truthAt(o), tx: truthAt(o).tx + 3 });
+  const bound = solveWalk(pts, G, prior, { refPlace: off });
+  assert.equal(bound.windows.filter((w) => w.kept).length, 0, 'every window too far from the references');
+  assert.deepEqual(bound.placeAt(40), off(40), 'the references kept where no window is');
+  const good = solveWalk(pts, G, prior, { refPlace: truthAt });
+  assert.ok(good.windows.filter((w) => w.kept).length >= kept - 1, 'with true references the windows stay');
+  assert.ok(med(err(good.placeAt)) < 0.45, `and the walk is placed: ${med(err(good.placeAt)).toFixed(2)} m`);
+}
 // check points, by mark: a check at the far end of the walk
 const far = path.at(-1), mark = { id: 'c1', kind: 'check', map: far.at, ar: unapply(truthAt(far.odo), far.at), odo: far.odo };
 const [c] = checkErrors([mark], sol.placeAt);

@@ -30,6 +30,12 @@ export const WINDOW_M = 60, WINDOW_STEP_M = 20;
 export const WINDOW_SEARCH_M = 2.5, WINDOW_SEARCH_DEG = 6;
 export const NEIGHBOUR_M = 1.0, NEIGHBOUR_DEG = 3; // a window this far from the median of its neighbours is dropped
 export const VOX_M = 0.2; // a standing point's cell, for counting sightings
+/* NEVER WORSE THAN THE REFERENCES (2026-11-05, the first real run, on the owner's walk of 2026-11-04 22:02: the whole
+   walk found no single placement, two windows were kept, and stretched over 344 m of walk they put the six check
+   points a median 15 ft off, where the references alone had 4.2 ft). So, when the references are given: a window is
+   kept only within REF_GATE_M and REF_GATE_DEG of them at its own stretch; a kept window stands for its own stretch
+   (KNOT_REACH_M either side of its middle), and everywhere else the walk keeps the references' placement. */
+export const REF_GATE_M = 1.5, REF_GATE_DEG = 5, KNOT_REACH_M = 30;
 
 /** The camera's position at a moment, from the track (sorted by t). */
 export function cameraAt(track, t) {
@@ -73,7 +79,7 @@ const angDiff = (a, b) => ((((a - b) * 180) / Math.PI + 540) % 360) - 180;
  * prior: { T } (the references), { at, phone, radiusM } (GPS) or { at, phone, radiusM: big } (the whole box).
  * -> { global, windows: [{ odo0, odo1, centre, ok, T, hits, landed, why, kept }], placeAt(odo) -> T, knots }
  */
-export function solveWalk(pts, G, prior, { s = 1, windowM = WINDOW_M, stepM = WINDOW_STEP_M, maxPts = 4000 } = {}) {
+export function solveWalk(pts, G, prior, { s = 1, windowM = WINDOW_M, stepM = WINDOW_STEP_M, maxPts = 4000, refPlace = null } = {}) {
   const two = (a) => a.map((p) => [p[0], p[1]]), withY = (a) => a.map((p) => [p[0], p[1], p[2]]);
   const all = { stand: thin(pts.stand, maxPts), ground: thin(pts.ground, 1500), high: thin(pts.high, 1500) };
   const gOpts = prior?.T ? { searchM: prior.searchM ?? 6, searchDeg: prior.searchDeg ?? 25 } : {};
@@ -105,14 +111,26 @@ export function solveWalk(pts, G, prior, { s = 1, windowM = WINDOW_M, stepM = WI
       const med = (arr) => { const s2 = [...arr].sort((p, q) => p - q); return s2[s2.length >> 1]; };
       const me = [med(there.map((p) => p[0])), med(there.map((p) => p[1]))], mth = med(nb.map((x) => angDiff(x.T.theta, w.T.theta)));
       w.kept = Math.hypot(here[0] - me[0], here[1] - me[1]) <= NEIGHBOUR_M && Math.abs(mth) <= NEIGHBOUR_DEG;
+      if (!w.kept) w.why = 'disagreed with its neighbours';
+    }
+    // the references as the bound, where they are given
+    if (refPlace) for (const w of okW) {
+      if (!w.kept) continue;
+      const R = refPlace(w.centre); if (!R) continue;
+      const a = apply(w.T, w.mid), b = apply(R, w.mid);
+      if (Math.hypot(a[0] - b[0], a[1] - b[1]) > REF_GATE_M || Math.abs(angDiff(w.T.theta, R.theta)) > REF_GATE_DEG) { w.kept = false; w.why = 'too far from the references'; }
     }
   }
   const knots = windows.filter((w) => w.kept).map((w) => ({ odo: w.centre, T: w.T }));
+  const fallback = (odo) => (refPlace ? refPlace(odo) : null) || base;
+  const near = (odo) => knots.some((k) => Math.abs(k.odo - odo) <= KNOT_REACH_M);
   const placeAt = (odo) => {
-    if (!knots.length) return base;
+    if (!knots.length || (refPlace && !near(odo))) return fallback(odo);
     if (odo <= knots[0].odo) return knots[0].T;
     if (odo >= knots.at(-1).odo) return knots.at(-1).T;
     let i = 0; while (knots[i + 1].odo < odo) i++;
+    // two kept windows far apart with the references between: the references there, not a blend across the gap
+    if (refPlace && knots[i + 1].odo - knots[i].odo > 2 * KNOT_REACH_M && !near(odo)) return fallback(odo);
     const a = knots[i], b = knots[i + 1], t = (odo - a.odo) / (b.odo - a.odo || 1);
     const dth = (angDiff(b.T.theta, a.T.theta) * Math.PI) / 180;
     return { theta: a.T.theta + t * dth, tx: a.T.tx + t * (b.T.tx - a.T.tx), ty: a.T.ty + t * (b.T.ty - a.T.ty), s: a.T.s ?? 1 };

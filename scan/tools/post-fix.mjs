@@ -60,13 +60,15 @@ async function main() {
     prior = { at: [(box[0] + box[2]) / 2, (box[1] + box[3]) / 2], phone: p0 ? [p0.x, -p0.z] : [0, 0], radiusM: Math.hypot(box[2] - box[0], box[3] - box[1]) / 2 };
     from = 'anywhere on the lot (no references, no GPS)';
   }
-  const sol = solveWalk(pts, L.G, prior);
+  const refsPlace = placer(live, 'refs');
+  const hasRefs = (live.marks || []).filter((x) => x.kind === 'ref').length >= 2;
+  const sol = solveWalk(pts, L.G, prior, { refPlace: hasRefs ? refsPlace : null });
   const kept = sol.windows.filter((w) => w.kept);
   console.log(`Started from ${from}. One placement for the whole walk: ${sol.global.ok ? `found, ${Math.round((sol.global.hits || 0) * 100)}% of standing points landed (${sol.global.landed})` : `not found (${sol.global.why})`}.`);
-  console.log(`Windows of 60 m every 20 m: ${sol.windows.length}; found ${sol.windows.filter((w) => w.ok).length}; kept ${kept.length} (the rest disagreed with their neighbours or found nothing: ${JSON.stringify(sol.windows.filter((w) => !w.kept).map((w) => (w.why ? w.why.replace(/\d+(\.\d+)?/g, '#') : 'disagreed with its neighbours')).reduce((a, k) => { a[k] = (a[k] || 0) + 1; return a; }, {}))}).`);
+  console.log(`Windows of 60 m every 20 m: ${sol.windows.length}; found ${sol.windows.filter((w) => w.ok).length}; kept ${kept.length}${hasRefs ? ', each within 1.5 m and 5 degrees of the references, the references kept everywhere else' : ''} (the rest: ${JSON.stringify(sol.windows.filter((w) => !w.kept).map((w) => (w.why ? w.why.replace(/\d+(\.\d+)?/g, '#') : 'not found')).reduce((a, k) => { a[k] = (a[k] || 0) + 1; return a; }, {}))}).`);
 
   // the check points, four ways
-  const ways = { 'after the walk': sol.placeAt, 'one placement': () => sol.global.T, 'references alone': placer(live, 'refs'), 'as walked': placer(live, 'both') };
+  const ways = { 'after the walk': sol.placeAt, ...(sol.global.ok ? { 'one placement': () => sol.global.T } : {}), 'references alone': refsPlace, 'as walked': placer(live, 'both') };
   const table = {};
   for (const [name, place] of Object.entries(ways)) for (const c of checkErrors(live.marks, place)) (table[c.id] = table[c.id] || {})[name] = c.m;
   if (Object.keys(table).length) {
