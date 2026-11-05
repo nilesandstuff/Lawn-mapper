@@ -62,7 +62,8 @@ async function main() {
   const far = classify(recs, track, { standRange: 8 }), farStand = thin(far.stand, 4000);
   const stand = thin(pts.stand, 3000), high = thin(pts.high.map((p) => p), 3000), ground = thin(pts.ground, 3000), occ = thin(above, 4000);
   // the high points need their heights for the canopy: take them from the records again (classify keeps u, v, odo)
-  const highY = thin(recs.filter((r) => Number.isFinite(r.ground) && r.y - r.ground >= BANDS.standHigh && r.y - r.ground < BANDS.highTop).map((r) => [r.x, -r.z, r.y, r.odo]), 3000);
+  const highYAll = recs.filter((r) => Number.isFinite(r.ground) && r.y - r.ground >= BANDS.standHigh && r.y - r.ground < BANDS.highTop).map((r) => [r.x, -r.z, r.y, r.odo]);
+  const highY = thin(highYAll, 3000);
   console.log(`Walk: ${recs.length.toLocaleString()} points; classed ${pts.stand.length.toLocaleString()} standing (${far.stand.length.toLocaleString()} out to 8 m), ${pts.high.length.toLocaleString()} high, ${pts.ground.length.toLocaleString()} ground; ${above.length.toLocaleString()} above the ground in all. Model: ${L.rule}.`);
 
   // the model in 3D: is the cube at a map point and an absolute height occupied (leaf or roof), give or take one cube
@@ -134,6 +135,56 @@ async function main() {
     const v0 = val(results.find((r) => r.dx === 0 && r.dy === 0 && r.dDeg === 0)), rank = results.filter((r) => val(r) > v0).length;
     console.log(`combined ${name}: best at ${Math.hypot(best.dx, best.dy).toFixed(1)} m, ${best.dDeg} deg from the refs; ${rank} of ${results.length} placements score better than the refs`);
   }
+
+  /* ROUND 4: THE CHECK POINTS AS THE TRUTH, ONE STRETCH AT A TIME. The references' own placement is a few feet off
+     (median 4 ft on these walks) and ARCore drifts along a walk, so a single placement for the whole walk blurs any
+     30 cm test. Here: for each check point, only the points recorded within LOCAL_M of walking either side of it, the
+     same moves round the references' fit at that moment, and for each signal the placement it likes best. The answer
+     that counts: how far that placement puts the check point from where it is on the map, against the references. */
+  const LOCAL_M = Number(process.env.LOCAL_M || 15);
+  const checks = (live.marks || []).filter((x) => x.kind === 'check' && x.ar && x.map && Number.isFinite(x.odo));
+  if (!checks.length) { console.log('Round 4: no check points with a map place on this walk.'); console.log(`Done in ${Math.round((Date.now() - t0) / 1000)} s.`); return; }
+  const keysAll = ['walls', 'wallsTo8m', 'otherSolids', 'roofEdge', 'canopy', 'occupied', 'ground'];
+  const combos4 = { 'ground+roofEdge': ['ground', 'roofEdge'], 'ground+walls': ['ground', 'walls'], 'ground+roofEdge+walls': ['ground', 'roofEdge', 'walls'], 'ground+occupied': ['ground', 'occupied'], 'ground+roofEdge+occupied': ['ground', 'roofEdge', 'occupied'] };
+  const errs = {}; const push = (k, v) => (errs[k] = errs[k] || []).push(v);
+  const near = (a, o, i) => a.filter((p) => Math.abs(p[i] - o) <= LOCAL_M);
+  const wide = (sel) => ({ ground: near(pts.ground, sel, 3), stand: near(pts.stand, sel, 2), farStand: near(far.stand, sel, 2), high: near(pts.high, sel, 2), highY: near(highYAll, sel, 3), occ: near(above, sel, 3) });
+  let rowN = 0;
+  for (const c of checks) {
+    const P = wide(c.odo), Tc = refs(c.odo); if (!Tc) continue;
+    const g0 = thin(P.ground, 1500), s0 = thin(P.stand, 1500), f0 = thin(P.farStand, 1500), h0 = thin(P.high, 1500), hy0 = thin(P.highY, 1500), o0 = thin(P.occ, 2000);
+    const scoreL = (T) => {
+      const gz = []; for (const [u, v, y] of g0) { const [e, n] = apply(T, [u, v]), z = demAt(e, n); if (Number.isFinite(z)) gz.push(z - y); }
+      gz.sort((a, b) => a - b); const tz = gz.length ? gz[gz.length >> 1] : null;
+      let gIn = 0; for (const d of gz) if (Math.abs(d - tz) < 0.15) gIn++;
+      let wIn = 0, tIn = 0; for (const [u, v] of s0) { const [e, n] = apply(T, [u, v]); if (sample(G, G.dist, e, n) <= 0.3) { wIn++; if (!(G.distNW && sample(G, G.distNW, e, n) > 0.3)) tIn++; } }
+      let fIn = 0; for (const [u, v] of f0) { const [e, n] = apply(T, [u, v]); if (sample(G, G.dist, e, n) <= 0.3) fIn++; }
+      let rIn = 0; if (G.distRoof) for (const [u, v] of h0) { const [e, n] = apply(T, [u, v]); if (sample(G, G.distRoof, e, n) <= 0.3) rIn++; }
+      let cIn = 0, oIn = 0; if (tz != null) { for (const [u, v, y] of hy0) { const [e, n] = apply(T, [u, v]); if (occupied(e, n, y + tz)) cIn++; } for (const [u, v, y] of o0) { const [e, n] = apply(T, [u, v]); if (occupied(e, n, y + tz)) oIn++; } }
+      const r = (a, b) => (b >= 20 ? a / b : null);
+      return { walls: r(wIn, s0.length), wallsTo8m: r(fIn, f0.length), otherSolids: r(tIn, s0.length), roofEdge: r(rIn, h0.length), canopy: tz != null ? r(cIn, hy0.length) : null, occupied: tz != null ? r(oIn, o0.length) : null, ground: r(gIn, gz.length) };
+    };
+    const pm = apply(Tc, c.ar), res = [];
+    for (let dDeg = -12; dDeg <= 12; dDeg += 2) for (let dx = -6; dx <= 6; dx += 0.5) for (let dy = -6; dy <= 6; dy += 0.5) {
+      // turn about the check point as the references put it, then shift
+      const th = (dDeg * Math.PI) / 180;
+      const T = { theta: Tc.theta + th, tx: pm[0] + Math.cos(th) * (Tc.tx - pm[0]) - Math.sin(th) * (Tc.ty - pm[1]) + dx, ty: pm[1] + Math.sin(th) * (Tc.tx - pm[0]) + Math.cos(th) * (Tc.ty - pm[1]) + dy, s: Tc.s ?? 1 };
+      const q = apply(T, c.ar);
+      res.push({ s: scoreL(T), err: Math.hypot(q[0] - c.map[0], q[1] - c.map[1]) });
+    }
+    const e0 = Math.hypot(pm[0] - c.map[0], pm[1] - c.map[1]); push('references', e0);
+    const nrm = {}; for (const k2 of keysAll) { const a = res.map((r) => r.s[k2]).filter((v) => v != null).sort((x, y) => x - y); nrm[k2] = a.length ? a[a.length >> 1] || 1e-9 : null; }
+    const line = [`refs ${(e0 * 3.28084).toFixed(1)}`];
+    const pick = (val) => { let b = null; for (const r of res) { const v = val(r); if (v != null && (!b || v > b.v)) b = { v, err: r.err }; } return b; };
+    for (const k2 of keysAll) { const b = pick((r) => r.s[k2]); if (b) { push(k2, b.err); line.push(`${k2} ${(b.err * 3.28084).toFixed(1)}`); } }
+    for (const [name, ks] of Object.entries(combos4)) { const b = pick((r) => (ks.every((k2) => r.s[k2] != null && nrm[k2]) ? ks.reduce((a, k2) => a + r.s[k2] / nrm[k2], 0) : null)); if (b) { push(name, b.err); line.push(`${name} ${(b.err * 3.28084).toFixed(1)}`); } }
+    // the truth's own rank: does each signal score the best-by-check placement near its top?
+    rowN++;
+    console.log(`  check ${rowN} (${P.stand.length} standing, ${P.high.length} high, ${P.ground.length} ground nearby), ft: ${line.join(', ')}`);
+  }
+  console.log(`Round 4, each check point placed by one signal on the walk within ${LOCAL_M} m of it (median error over ${rowN} checks; the references for comparison):`);
+  const medOf = (a) => { const b = [...a].sort((x, y) => x - y); return b[b.length >> 1]; };
+  for (const [k2, a] of Object.entries(errs).sort((x, y) => medOf(x[1]) - medOf(y[1]))) console.log(`  ${k2.padEnd(26)} ${(medOf(a) * 3.28084).toFixed(1)} ft median, worst ${(Math.max(...a) * 3.28084).toFixed(1)} ft (${a.length})`);
   console.log(`Done in ${Math.round((Date.now() - t0) / 1000)} s.`);
 }
 
