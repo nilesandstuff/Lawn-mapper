@@ -126,7 +126,11 @@ SPECULATION), as always.
     returns per cube, not pooled) and `low` (the lowest own return over the grass) to the file: the honest stem
     signal for trunks.js, whose stems then come from the file rather than the points. LIVE since 2026-11-04 23:50
     (a4fe4ef): `returns`, `low` and the header's `own`; a map gets them the next time it is opened in the shade
-    map; `returns` may be left out over 24 MB, `low` always stays. Still waiting on the owner's word on the split.
+    map; `returns` may be left out over 24 MB, `low` always stays. THE OWNER'S SPLIT (2026-11-05): "Use the shade
+    map for things like tree canopies, buildings/other structures and their effect on wind. But you do your own
+    thing for the things on the ground and the wider area beyond what the shade map gives." And: "still display
+    the aerial image that the lawn map was traced on. The user doesn't need to see NAIP." NEXT, before the root
+    draw.
 
 ## Rules (owner, 2026-10-27)
 

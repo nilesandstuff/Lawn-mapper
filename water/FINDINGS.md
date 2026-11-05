@@ -2515,6 +2515,25 @@ its top within 1.5 m; a roof is no tree; two trees the canopy model merges give 
 Under CLAUDE.md "One way to read lidar" this rule goes to the shade session to adopt once it is measured, and the
 water map imports it back from there; nothing on the shade map's side changed.
 
+### H79. The trunk finder against the owner's 7 marked trunks: 7 of 7 within 2.1 m, after a rule fitted on them (water session, 2026-11-05)
+
+The owner marked 7 trunks on the readings page (on the county photo the lawn was traced on; one visit of marks
+alone). Scored against lib/trunks.js on the owner's lot (Kent 2016 cloud, leaf-off), nearest found trunk per mark:
+- As built in H78: 1.1, 1.6, 7.1, 11.4, 1.2, 1.6, 0.9 m; median 1.6, 5 of 7 within 2 m. The two misses: the stem
+  picked stood 7.8 and 8.9-12.6 m from its crown's top, out toward the crown's edge, where nothing was marked; the
+  marked trunks stood 2.1 and 3.8 m from the top. The crown's top alone would have given 1.1, 2.1, 2.1, 3.8, 2.6,
+  4.9, 0.9 (median 2.1, 2 of 7 within 2 m): the stem helps where it is near the top.
+- Every stem 4.6 m or more from its crown's top matched no mark; the matched ones stood 1.6-3.4 m from it. So a
+  stem now counts only within max(3 m, 0.4 R) of the top: 1.1, 1.6, 2.1, 1.4, 1.2, 1.6, 0.9 m, median 1.4, 7 of
+  7 within 2.1 m. FITTED ON THESE 7 MARKS: not yet checked on any other lot or marks.
+- Marks 5 and 6 are two trunks 2.4 m apart under one crown; one found trunk stands 1.2 and 1.6 m from them, so
+  the finder sees one tree there (6 trunks found for 7 marked).
+- Over the whole analysis box 326 trunks (185 from stems), from 528. Inside the marks' own box (+5 m) 22 found
+  trunks against 7 marks: if the owner marked every trunk there, about two-thirds are false (shrubs, posts, low
+  limbs); not known whether every trunk there was marked. Asked.
+For the tree-root draw this is enough: its disc runs to about twice the crown radius (H40), 10-20 m here, so a
+1-2 m error in the trunk moves its edge little.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge

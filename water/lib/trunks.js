@@ -15,6 +15,8 @@
  *      trees the canopy model could not part), at most one per STEM_AREA_M2 of crown; each is a trunk, and the
  *      crown's area is shared among them. (On the owner's lot's leaf-off flight the rule without that cap put 84
  *      trunks within 35 m of the house: shrubs, fence posts and low branches under the crowns pass as stems too.)
+ *      A stem must also stand within max(3 m, 0.4 R) of the crown's top: against the owner's 7 marked trunks the
+ *      stems farther out than that were all wrong (H79).
  *
  * MEASURED: not yet. H32 (2026-10-22) scored crown tops against the core's photo-traced crowns: inside the right
  * crown 53-60%, a median 3.8 m from the crown's centre -- a floor, those were crowns, not trunks. The readings
@@ -42,6 +44,8 @@ export const TRUNK = {
   stemSpreadM: 1.0, // a stem's returns stand within this (RMS radius, m) of each other: a trunk is narrow
   stemAlso: 0.5,    // a further stem in the same crown needs at least this share of the strongest's returns
   stemAreaM2: 25,   // and a crown holds at most one trunk per this many square metres (R 2.8 m each: a close wood)
+  nearTopShare: 0.4, // a stem counts only within this share of the crown's radius of its top...
+  nearTopMinM: 3,   // ...or this many metres, whichever is more (the owner's 7 marks, 2026-11-05: H79)
 };
 
 export function trunksOf(cols, bbox, lat, { built = null, green = null, opts = TRUNK } = {}) {
@@ -104,6 +108,9 @@ export function trunksOf(cols, bbox, lat, { built = null, green = null, opts = T
       if (stems.some((q) => Math.hypot(q.X - mx, q.Y - my) * kM < opts.stemApart)) continue;
       // a trunk is narrow: its returns stand within a metre of each other; a crown's underside spreads over the block
       if (rms > opts.stemSpreadM) continue;
+      // and it stands near the crown's top: the stems found 4.6-12.6 m from the top on the owner's lot were all
+      // somewhere no trunk was marked, the right ones 1.6-3.4 m from it (H79; fitted on 7 marks, not yet checked on others)
+      if (Math.hypot(mx - topAt.x, my - topAt.y) * kM > Math.max(opts.nearTopMinM, opts.nearTopShare * c.R)) continue;
       // a second stem in the crown must be as strong as the first (its low branches and shrubs give a few returns too)
       if (stems.length && (blk[k] < opts.stemAlso * stems[0].n || stems.length >= Math.max(1, Math.floor(c.n / opts.stemAreaM2)))) break;
       stems.push({ x, y, X: mx, Y: my, n: blk[k], rms });

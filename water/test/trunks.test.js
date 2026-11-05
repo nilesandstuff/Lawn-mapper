@@ -69,17 +69,20 @@ test('stem returns too few, or too high up the crown, do not make a stem', () =>
   assert.ok(t2.every((t) => t.how === 'top'));
 });
 
-test('two trees the canopy model cannot part: one crown, two stems, two trunks sharing its area', () => {
-  // the lower tree's top lies within the taller one's search radius, so the canopy model sees one crown
+test('two trees the canopy model cannot part: the stem near the crown top is the trunk, the far one is not taken (H79)', () => {
+  // the lower tree's top lies within the taller one's search radius, so the canopy model sees one crown. Until
+  // 2026-11-05 each stem became a trunk; against the owner's 7 marked trunks every stem farther than max(3 m, 0.4 R)
+  // from the crown's top was wrong (shrubs, posts, low limbs), so now only the near one is taken, and it keeps the
+  // crown's whole area. A real second tree 5 m off is the cost; its water is still in the crown's area.
   const trees = [{ x: 24, y: 30, R: 5, H: 14, stem: 7, sx: 24.2, sy: 30.1 }, { x: 29, y: 30, R: 4, H: 9, stem: 7, sx: 29.3, sy: 29.8 }];
   const l = lot({ trees, seed: 5 });
   const { trunks } = trunksOf(l.cols, l.bbox, LAT);
   const near = (t, x, y) => Math.hypot(t.x - at(l, x, y)[0], t.y - at(l, x, y)[1]) * l.k;
   const a = trunks.filter((t) => near(t, 24.2, 30.1) < 1), b = trunks.filter((t) => near(t, 29.3, 29.8) < 1);
-  assert.equal(a.length, 1, `a trunk at the first stem (${trunks.map((t) => [t.how, near(t, 24.2, 30.1).toFixed(1)]).join('; ')})`);
-  assert.equal(b.length, 1, 'a trunk at the second stem');
-  assert.ok(a[0].how === 'stem' && b[0].how === 'stem');
-  if (a[0].crown === b[0].crown) { assert.equal(a[0].stemsInCrown, 2); assert.ok(a[0].R < a[0].crownR); }
+  assert.equal(a.length, 1, `a trunk at the stem by the top (${trunks.map((t) => [t.how, near(t, 24.2, 30.1).toFixed(1)]).join('; ')})`);
+  assert.equal(a[0].how, 'stem');
+  if (b.length === 0) { assert.equal(a[0].stemsInCrown, 1); assert.ok(Math.abs(a[0].R - a[0].crownR) < 1e-9, 'one trunk keeps the crown whole'); }
+  else assert.notEqual(b[0].crown, a[0].crown, 'the second stem found only if the canopy model parted the crowns');
 });
 
 console.log(`water trunks: ${passed} passed`);
