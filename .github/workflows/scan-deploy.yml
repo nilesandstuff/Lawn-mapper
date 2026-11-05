@@ -36,7 +36,7 @@ on:
         required: true
         default: tests
         type: choice
-        options: [tests, deploy, walks, twin, fix, depth]
+        options: [tests, deploy, walks, twin, fix, depth, study]
       walk:
         description: 'For twin, fix or depth: the walk id, or latest'
         default: latest
@@ -166,6 +166,19 @@ jobs:
           node scan/tools/post-fix.mjs twin | tee fix.txt
           node scan/tools/twin-r2.mjs put "$WALK" twin/fixed.json twin/mesh.bin | tee -a fix.txt
 
+      # WHAT CAN PLACE THIS WALK (scan/tools/match-study.mjs): each kind of evidence scored round the references' fit.
+      - name: What can place a walk
+        if: ${{ inputs.task == 'study' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WALK: ${{ inputs.walk }}
+          NO_PICTURES: '1'
+        run: |
+          set -o pipefail
+          node scan/tools/twin-r2.mjs get "$WALK" twin
+          node scan/tools/match-study.mjs twin | tee study.txt
+
       # DEPTH FROM ONE PICTURE (scan/tools/depth_run.py): a public depth model on every picture of the walk, scaled to
       # ARCore's points from the same moment, and the two compared. Free runner, CPU. Kept beside the twin for later.
       - uses: actions/setup-python@v5
@@ -199,6 +212,7 @@ jobs:
             walks) cat walks.txt 2>/dev/null || echo "no walks read: see the step above" ;;
             twin) cat twin.txt 2>/dev/null || echo "no twin check: see the step above" ;;
             fix) cat fix.txt 2>/dev/null || echo "no fix: see the step above" ;;
+            study) cat study.txt 2>/dev/null || echo "no study: see the step above" ;;
             depth) tail -25 depth.txt 2>/dev/null || echo "no depth run: see the step above" ;;
             *) echo "Scan tests: ${{ job.status }}" ;;
           esac
