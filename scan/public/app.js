@@ -13,7 +13,7 @@ import { newWalk, step, dropPin, checkPin, measure, tapeFor, undo, far, summary,
 import { makeDrawer, lidarMeshes } from '/lib/draw.js';
 import { levelDist, toLocal } from '/lib/frames.js';
 import { frameFor, bboxOf, toPx, fromPx, ringsOf } from '/lib/photo.js';
-import { newLocate, mark, noteGround, addDepth, nextAsk, answer, fitFor, mapOf, sessionOf, checkError, nearestNamed, agreement, status as fixStatus, summaryOf } from '/lib/locate.js';
+import { newLocate, mark, noteGround, addDepth, nextAsk, answer, fitFor, mapOf, sessionOf, checkError, nearestNamed, agreement, groundOffset, status as fixStatus, summaryOf } from '/lib/locate.js';
 import { leftOut, mapToSession } from '/lib/align.js';
 import { newTwin, addPoints, addPose, wantKey, addKey, flush, flushDue, liveOf } from '/lib/twin.js';
 import { surfaceOf } from '/lib/surface.js';
@@ -204,7 +204,7 @@ function startLidar(m) {
       if (data.ready) { st.lid.ready = data.ready; log(`lidar model read: ${data.ready.points} columns, ${data.ready.solid} solid cells, shift ${data.ready.shift}`); showLidar(); }
       if (data.overlay) { st.lid.overlay = data.overlay; st.lid.meshes = null; log(`lidar overlay: ${data.overlay.solids.length / 4} solid cells, ${data.overlay.tall.length / 5} tall cells`); }
       if (data.error) { st.lid.error = data.error; log(`lidar: ${data.error}`); showLidar(); }
-      if (data.fix && st.L) { const f = answer(st.L, data.fix, data.id); if (f && st.L.fixes.length === 1) flash('You are here: the lidar found you'); }
+      if (data.fix && st.L) { const f = answer(st.L, data.fix, data.id); if (f && st.L.log.at(-1)?.held === 'first') flash('You are here: the lidar found you'); }
     };
     w.onerror = (e) => { st.lid.error = e.message || 'the lidar reader failed'; showLidar(); };
     w.postMessage({ load: { origin: st.origin, box, map: st.map, lawn: st.lawn } });
@@ -225,6 +225,7 @@ const log = (what) => { st.errors.push({ t: Date.now(), what }); if (st.errors.l
 async function startAR(engine) {
   const overlay = $('#overlay');
   st.walk = newWalk({ engine, phone: navigator.userAgent });
+  st.dy = null; st.dyFrom = null;
   st.walk.checks = [];
   st.L = newLocate();
   mini.view = null; mini.mode = 'fit'; mini.locked = false; $('#arrows').innerHTML = '';
@@ -286,7 +287,7 @@ function onFrame(f) {
     if (x === 'fast') flash('Turn slower');
   }
   // the ground near the phone: the crosshair's depth when it is on the ground (0.8-2.5 m below the camera)
-  if (f.hit?.type === 'DEPTH' && f.pose) { const drop = f.pose.position.y - f.hit.position.y; if (drop > 0.8 && drop < 2.5) noteGround(L, f.hit.position.y); }
+  if ((f.hit?.type === 'DEPTH' || f.hit?.type === 'DETECTED_SURFACE' || f.hit?.type === 'ESTIMATED_SURFACE') && f.pose) { const drop = f.pose.position.y - f.hit.position.y; if (drop > 0.8 && drop < 2.5) noteGround(L, f.hit.position.y); }
   // the depth picture as points round the phone, four times a second; then, when it is time, a match
   if (f.depthType && !w.depthType) { w.depthType = f.depthType; log(`depth: ${f.depthType}`); if (st.twin) st.twin.depthType = f.depthType; }
   if (f.depth && f.pose && f.tracking === 'normal' && f.t - st.depthAt > DEPTH_EVERY) {
@@ -355,9 +356,19 @@ function onFrame(f) {
           const m = lidarMeshes(st.lid.overlay);
           st.lid.meshes = { gl: f.gl, solids: st.drawer.d.makeMesh(m.solids), canopy: st.drawer.d.makeMesh(m.canopy), roofs: st.drawer.d.makeMesh(m.roofs) };
         }
-        const me = mapOf(L, f.pose.position, odo);
-        const groundHere = L.groundY ?? f.pose.position.y - 1.4;
-        const dy = me ? groundHere - demAt(st.lid.overlay.dem1, me[0], me[1], groundHere) : 0;
+        /* the height: the phone's own ground points against the lidar's ground at their own places (locate.js
+           groundOffset), worked out twice a second and moved only when it changes by more than 10 cm, so a glance
+           does not lift the drawing; the crosshair's ground only until there are ground points enough */
+        if (f.t - (st.dyAt || 0) > 500) {
+          st.dyAt = f.t;
+          const g = groundOffset(L, odo, T, (e, n) => demAt(st.lid.overlay.dem1, e, n, NaN));
+          if (g != null && (st.dy == null || st.dyFrom !== 'ground' || Math.abs(g - st.dy) > 0.1)) { st.dy = g; st.dyFrom = 'ground'; }
+          else if (g == null && st.dyFrom !== 'ground') {
+            const me = mapOf(L, f.pose.position, odo), groundHere = L.groundY ?? f.pose.position.y - 1.4;
+            st.dy = me ? groundHere - demAt(st.lid.overlay.dem1, me[0], me[1], groundHere) : 0; st.dyFrom = 'crosshair';
+          }
+        }
+        const dy = st.dy ?? 0;
         const model = mapToSession(T, dy);
         statics.push({ mesh: st.lid.meshes.solids, model, color: [0.35, 0.7, 1, 0.26], through: true });
         statics.push({ mesh: st.lid.meshes.canopy, model, color: [0.3, 0.9, 0.4, 0.12], through: true });

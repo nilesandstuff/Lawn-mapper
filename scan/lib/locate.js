@@ -29,11 +29,21 @@ export const ASK_EVERY_MS = 1500;
    and 9-20 degrees from three close references. The references now only stop a lock that is plainly elsewhere. */
 export const REF_TOL_M = 5, REF_TOL_DEG = 25, MIN_HITS_ALONE = 0.65;
 /* A fix this far (m, degrees) from the last kept one is a jump, held until a second fix agrees with it this closely. */
-export const JUMP_M = 1.5, JUMP_DEG = 8, CONFIRM_M = 0.6, CONFIRM_DEG = 4;
+/* TRUST THE AR ENGINE (owner, 2026-11-05: "behavior was jittery. Seems to update too often. I think we should
+   trust the ar engine for longer periods of time, then update fixes when needed"). The walk of 2026-11-04 22:02 kept
+   71 fixes, a new one every few seconds, each drawn at once; standing still at one spot it kept four in a row, each
+   a little different. So the page HOLDS one fit and lets ARCore carry it. A fix close to the held one (HOLD_M,
+   HOLD_DEG) changes nothing but says the held fit is still good. The held fit moves only when AGREE_N fixes in a
+   row agree with each other (AGREE_M, AGREE_DEG) and not with it, at most once every MOVE_GAP_MS; it then becomes
+   their mean. It stands for HOLD_REACH metres of walk past the last fix that vouched for it. */
+export const HOLD_M = 0.4, HOLD_DEG = 2;
+export const AGREE_N = 3, AGREE_M = 0.5, AGREE_DEG = 3;
+export const MOVE_GAP_MS = 5000;
+export const HOLD_REACH = 60;
 export const BANDS = { groundTol: 0.2, standLow: 0.4, standHigh: 2.4, highTop: 12, near: 0.4, far: 8 };
 
 export function newLocate({ scale = 1 } = {}) {
-  return { marks: [], fixes: [], cloud: new Map(), cols: new Map(), groundY: null, gps: null, scale, asks: 0, refused: {}, last: null, lastAsk: 0, pending: null, nextId: 1, log: [] };
+  return { marks: [], fixes: [], holds: [], streak: [], cloud: new Map(), cols: new Map(), groundY: null, gps: null, scale, asks: 0, refused: {}, last: null, lastAsk: 0, pending: null, nextId: 1, log: [] };
 }
 export const LOG_MAX = 150;
 
@@ -149,6 +159,28 @@ export function addDepth(L, points, odo, cam = null, { standing = true } = {}) {
   return kept;
 }
 
+/**
+ * HOW HIGH TO DRAW THE LIDAR (owner, 2026-11-05: "lidar height jumped around a lot, and for the most part it seemed
+ * to place the height too high... Generally 1-6ish feet too high"). The page drew it so the lidar's ground under the
+ * phone met L.groundY, the crosshair's last depth hit 0.8-2.5 m below the camera: a hedge top, a slope ahead or grass
+ * depth that floats (SCAN-H7) all lifted it, and every glance moved it. Instead, as the match measures it (lidar.js
+ * placementCost tz): the median, over the ground points of the last RECENT_M metres, of the lidar's ground at each
+ * point's own place under T minus the point's height. -> the session height minus the lidar height, or null with
+ * fewer than `min` points. demAt(e, n) -> the lidar's ground there (NaN off the grid).
+ */
+export function groundOffset(L, odo, T, demAt, { min = 30, m = RECENT_M } = {}) {
+  if (!T) return null;
+  const d = [];
+  for (const p of L.cloud.values()) {
+    if (p.cls !== 'g' || p.odo < odo - m) continue;
+    const z = demAt(...apply(T, [p.u, p.v]));
+    if (Number.isFinite(z)) d.push(p.y - z);
+  }
+  if (d.length < min) return null;
+  d.sort((a, b) => a - b);
+  return d[d.length >> 1];
+}
+
 /** The points of the last RECENT_M metres of walking, as the match wants them. */
 export function recent(L, odo, m = RECENT_M) {
   const stand = [], ground = [], high = [], surface = [];
@@ -164,28 +196,36 @@ export function recent(L, odo, m = RECENT_M) {
 
 export const nearestFix = (L, odo) => L.fixes.reduce((b, f) => (!b || Math.abs(f.odo - odo) < Math.abs(b.odo - odo) ? f : b), null);
 
-/** The fit for a moment: the lidar's fix nearest it in the walk, within FIX_REACH; else the references'; else null. */
+/** The held fit for a moment of the walk: the last hold taken at or before it, while within HOLD_REACH of the last
+ *  fix that vouched for it; else null. A walk saved before holds (L.legacy, set by twin.js placer) falls back to the
+ *  nearest fix, as the page then drew it. */
+export function holdAt(L, odo) {
+  const H = L.holds || [];
+  if (!H.length) {
+    if (!L.legacy) return null;
+    const f = nearestFix(L, odo);
+    return f && Math.abs(f.odo - odo) <= FIX_REACH ? { T: f.T, odo0: f.odo, odo1: f.odo, legacy: true } : null;
+  }
+  let h = null;
+  for (const x of H) if (x.odo0 <= odo + 1e-9) h = x;
+  return h && odo - h.odo1 <= HOLD_REACH ? h : null;
+}
+
+/** The fit for a moment: the held lidar fit; else the references'; else null. */
 export function fitFor(L, odo) {
-  const f = nearestFix(L, odo);
-  if (f && Math.abs(f.odo - odo) <= FIX_REACH) return f.T;
-  return refFit(L, odo);
+  const h = holdAt(L, odo);
+  return h ? h.T : refFit(L, odo);
 }
 /** Which the fit came from: 'fix', 'refs' or null. */
 export function fitSource(L, odo) {
-  const f = nearestFix(L, odo);
-  if (f && Math.abs(f.odo - odo) <= FIX_REACH) return 'fix';
+  if (holdAt(L, odo)) return 'fix';
   return refFit(L, odo) ? 'refs' : null;
 }
 
 /** Where to start the next search: the last fix (a small search), the references (a wider one), or GPS (any turn). */
 export function priorFor(L, odo, now = Date.now()) {
-  const f = nearestFix(L, odo);
-  if (f && Math.abs(f.odo - odo) < FIX_REACH) {
-    // a jump held for a second look: search wide enough round the last fix to find either again, so the better wins
-    const c = L.candidate;
-    if (c && Math.abs(c.odo - odo) < FIX_REACH) return { T: f.T, searchM: Math.min(6, c.jumpM + 1), searchDeg: Math.min(20, Math.max(6, c.jumpDeg + 4)), from: 'the last fix' };
-    return { T: f.T, searchM: 1.5, searchDeg: 6, from: 'the last fix' };
-  }
+  const h = holdAt(L, odo);
+  if (h) return { T: h.T, searchM: 1.5, searchDeg: 6, from: 'the last fix' };
   const ref = refFit(L, odo);
   if (ref) return { T: ref, searchM: 6, searchDeg: 25, from: 'the references' }; // as wide as the references are trusted
   if (L.gps && now - L.gps.t < 30000) return { at: L.gps.at, phone: L.gps.phone, radiusM: Math.max(6, Math.min(20, L.gps.acc * 1.5)), from: 'GPS' };
@@ -204,7 +244,12 @@ export function nextAsk(L, odo, now = Date.now(), pos = null) {
   L.pending = { id, odo, from: prior.from, at: now, phone: pos ? level(pos) : null, refs: refFit(L, odo), stand: stand.length, ground: ground.length, high: high.length, surface: surface.length };
   L.lastAsk = now; L.asks++;
   // with the references marked, they judge the fix (answer), so the match may pass on points landed in number
-  return { id, stand: thin(stand, 600), ground: thin(ground, 300), high: thin(high, 300), surface: thin(surface, 400), prior, s: L.scale, refs: !!L.pending.refs };
+  /* NO LAWN TRACE IN THE MATCH (owner, 2026-11-05: "lawn traces shouldn't be used anymore to get a fix. We can use
+     hard edges with vision or lidar brightness, but not the actual geometry of the lawn traces"). On the walk of
+     2026-11-04 22:02 the asks carried a median 2,132 grass-and-paving points weighed 8 times against 32 standing
+     points, and the kept fixes sat a median 2.2 m from the references, which the check points put within 0.5 m. The
+     colour is still read (the twin keeps it); the match is not sent it. */
+  return { id, stand: thin(stand, 600), ground: thin(ground, 300), high: thin(high, 300), surface: [], prior, s: L.scale, refs: !!L.pending.refs };
 }
 export const thin = (a, m) => (a.length <= m ? a : a.filter((_, i) => i % Math.ceil(a.length / m) === 0));
 
@@ -232,26 +277,37 @@ export function answer(L, fix, id, now = Date.now()) {
     entry.agreeM = r2(agree.m); entry.agreeDeg = r2(agree.deg);
     if (agree.m > REF_TOL_M || agree.deg > REF_TOL_DEG) return refuse(`disagrees with the references by ${agree.m.toFixed(1)} m and ${agree.deg.toFixed(0)} degrees`);
   } else if ((fix.hits ?? 0) < MIN_HITS_ALONE) return refuse(`only ${Math.round((fix.hits ?? 0) * 100)}% landed and no references to check it against`);
-  /* SKEPTICAL OF A JUMP (owner, 2026-11-03: "if there's a good fix on one wall or the roof, and then another fix is
-     way off, be skeptical of the one that's way off"). A fix far from the last kept one is held, not taken; it is
-     taken when the next fix agrees with IT (the world moved, e.g. ARCore corrected its map) and dropped otherwise. */
-  const prev = nearestFix(L, odo);
-  if (!refs && prev && phone && Math.abs(prev.odo - odo) <= FIX_REACH) {
-    const d = disagreement(fix.T, prev.T, phone);
-    entry.jumpM = r2(d.m);
-    if (d.m > JUMP_M || d.deg > JUMP_DEG) {
-      const c = L.candidate, agrees = c && disagreement(fix.T, c.T, phone).m < CONFIRM_M && disagreement(fix.T, c.T, phone).deg < CONFIRM_DEG;
-      if (!agrees) { L.candidate = { T: fix.T, odo, jumpM: d.m, jumpDeg: d.deg }; L.jumpsHeld = (L.jumpsHeld || 0) + 1; return refuse(`jumps ${d.m.toFixed(1)} m from the last fix; waiting for a second fix to agree`); }
-      entry.confirmedJump = true; L.jumpsTaken = (L.jumpsTaken || 0) + 1;
-    }
-  }
-  L.candidate = null;
   entry.kept = true;
   L.last = { ok: true, why: null, hits: fix.hits ?? null, from, odo };
   const f = { T: fix.T, odo, hits: fix.hits, cost: fix.cost, tz: fix.tz ?? null, from, runnerUp: fix.runnerUp || null, agreeM: agree ? +agree.m.toFixed(2) : null, agreeDeg: agree ? +agree.deg.toFixed(1) : null };
   L.fixes.push(f);
   if (L.fixes.length > 300) L.fixes.shift();
+  entry.held = hold(L, f, phone || [0, 0], now);
   return f;
+}
+
+const meanT = (fs) => {
+  const n = fs.length, c = fs.reduce((a, f) => a + Math.cos(f.T.theta), 0), sn = fs.reduce((a, f) => a + Math.sin(f.T.theta), 0);
+  return { theta: Math.atan2(sn, c), tx: fs.reduce((a, f) => a + f.T.tx, 0) / n, ty: fs.reduce((a, f) => a + f.T.ty, 0) / n, s: fs.reduce((a, f) => a + (f.T.s ?? 1), 0) / n };
+};
+const agreeAll = (fs, phone) => fs.every((a, i) => fs.every((b, j) => j <= i || (() => { const d = disagreement(a.T, b.T, phone); return d.m <= AGREE_M && d.deg <= AGREE_DEG; })()));
+
+/** A kept fix against the held fit (see HOLD_M). -> what it did: 'first', 'vouched', 'moved' or 'waiting'. */
+function hold(L, f, phone, now) {
+  L.holds = L.holds || [];
+  const cur = L.holds.at(-1);
+  if (cur) {
+    const d = disagreement(f.T, cur.T, phone);
+    if (d.m <= HOLD_M && d.deg <= HOLD_DEG) { cur.odo1 = Math.max(cur.odo1, f.odo); cur.vouched++; L.streak = []; return 'vouched'; }
+  }
+  L.streak = [...(L.streak || []), f].slice(-AGREE_N);
+  const need = cur ? AGREE_N : 2;
+  if (L.streak.length < need || !agreeAll(L.streak.slice(-need), phone)) return 'waiting';
+  if (cur && now - cur.at < MOVE_GAP_MS) return 'waiting';
+  L.holds.push({ T: meanT(L.streak.slice(-need)), odo0: f.odo, odo1: f.odo, at: now, vouched: 0 });
+  if (L.holds.length > 100) L.holds.shift();
+  L.streak = [];
+  return cur ? 'moved' : 'first';
 }
 
 /* --------------------------------------------------------- map <-> session */
@@ -296,8 +352,8 @@ export const slid = (a, b) => levelDist({ x: a.ar[0], y: 0, z: -a.ar[1] }, { x: 
 /** What the HUD says about the fix. */
 export function status(L, odo) {
   const src = fitSource(L, odo);
-  const f = nearestFix(L, odo);
-  if (src === 'fix') return `You are here (lidar fix, ${Math.round(Math.abs(odo - f.odo))} m ago, ${Math.round((f.hits || 0) * 100)}% landed)`;
+  const h = holdAt(L, odo);
+  if (src === 'fix') return `You are here (lidar fix held ${Math.round(Math.abs(odo - h.odo0))} m, last vouched for ${Math.round(Math.abs(odo - h.odo1))} m ago)`;
   if (src === 'refs') return `Lined up by ${refMarks(L).length} reference mark${refMarks(L).length === 1 ? '' : 's'}; no lidar fix${L.last?.why ? ` (${L.last.why})` : ''}`;
   return `Not placed yet: mark two references, or look round at the house and fences${L.last?.why ? ` (${L.last.why})` : ''}`;
 }
@@ -327,7 +383,7 @@ export function summaryOf(L) {
   return {
     asksLog: L.log,
     marks: L.marks.length, references: new Set(refMarks(L).map((m) => m.id)).size,
-    fixes: L.fixes.length, asks: L.asks, refused: L.refused, jumpsHeld: L.jumpsHeld || 0, jumpsTaken: L.jumpsTaken || 0, grassDropped: L.dropped || 0,
+    fixes: L.fixes.length, asks: L.asks, refused: L.refused, holds: (L.holds || []).length, holdsVouched: (L.holds || []).reduce((a, h) => a + h.vouched, 0), grassDropped: L.dropped || 0,
     fixHits: L.fixes.map((f) => +(f.hits || 0).toFixed(2)), fixAgreeM: L.fixes.map((f) => f.agreeM), fixFrom: L.fixes.reduce((a, f) => { a[f.from] = (a[f.from] || 0) + 1; return a; }, {}),
     cloud: L.cloud.size, scale: L.scale,
   };

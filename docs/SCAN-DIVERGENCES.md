@@ -11,6 +11,13 @@ the AR's own. A line not here is a bug: either the AR is doing something unliste
 
 The code: scan/lib/lidar-load.js (gridsFromModel) and scan/lib/lidar.js (buildGrids, placementCost, register).
 
+## 0. Not about the lidar, but about trusting it
+
+None of these change what the model says. Two page-side rules sit on top of every step below (scan/lib/locate.js):
+the page HOLDS one fit and moves it only when three fixes in a row agree it is wrong (2026-11-05, the owner:
+"trust the ar engine for longer periods of time"), and it draws the lidar at the height the phone's own ground points
+say, not the crosshair's (groundOffset).
+
 ## 1. The 1 m columns are put on a 0.25 m grid in map metres
 
 The model's columns are in EPSG:3857; the match works in metres round the map's origin. Each fine cell takes the
@@ -54,11 +61,14 @@ is the model's column edge, so a wall or an edge is known to the AR only to its 
 walls and trunks is free by up to half a column each way, and two fits closer than 1.5 m are one place
 (SAME_PLACE_M), not two.
 
-## 5. The traced lawn's edge is a match target
+## 5. The traced lawn is NOT used (removed 2026-11-05)
 
-Ground points the camera saw as grass or as paving (scan/lib/surface.js, from the camera picture) are matched
-against the lawn the person traced in the lawn mapper (the map's shapes, a signed distance field at 0.25 m). This
-is the map's lawn trace, not the shade map's output; the shade map has no part in it.
+Until 2026-11-05 the ground points the camera saw as grass or paving were matched against the lawn the person
+traced. The owner: "lawn traces shouldn't be used anymore to get a fix. We can use hard edges with vision or lidar
+brightness, but not the actual geometry of the lawn traces." The walk of 2026-11-04 22:02 agreed: its asks carried a
+median 2,132 such points weighed 8 times against 32 standing points, and its kept fixes sat a median 2.2 m from the
+references, which the check points put within half a metre. The colour is still read and kept in the twin; the
+match is not given it, nor the trace. Lidar brightness would be a column array the shade map writes; it does not yet.
 
 ## 6. The camera view draws the model's columns
 

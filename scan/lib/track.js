@@ -298,7 +298,10 @@ async function start8thWall({ canvas, onFrame, onEvent, eightWallUrl }) {
         pose = { position: { x: r.position.x, y: r.position.y, z: r.position.z }, quaternion: { x: r.rotation.x, y: r.rotation.y, z: r.rotation.z, w: r.rotation.w } };
         view = invertRigid(matFromPose(pose.quaternion, pose.position));
         proj = r.intrinsics ? Float32Array.from(r.intrinsics) : null;
-        try { hit = rankHits(XR8.XrController.hitTest(CROSS.x, CROSS.y, ['FEATURE_POINT']), pose.position); } catch { hit = null; }
+        /* the surfaces too, not feature points alone (the owner, 2026-11-05: "8th wall just didn't work at all... It
+           couldn't even find the ground"): rankHits prefers a detected, then an estimated surface, but was only ever
+           offered feature points, so no hit was ever the ground */
+        try { hit = rankHits(XR8.XrController.hitTest(CROSS.x, CROSS.y, ['DETECTED_SURFACE', 'ESTIMATED_SURFACE', 'FEATURE_POINT']), pose.position); } catch { hit = null; }
       }
       onFrame({
         t, tracking, reset: false, hit, depth: null, points: r?.worldPoints?.length || 0, pose,

@@ -1,6 +1,6 @@
 // scan/lib/locate.js: the fix's bookkeeping. node scan/test/locate.test.js
 import assert from 'node:assert/strict';
-import { newLocate, mark, refFit, noteGround, addDepth, recent, nextAsk, answer, fitFor, fitSource, priorFor, mapOf, sessionOf, checkError, nearestNamed, disagreement, groundUnder, agreement, status, summaryOf, FIX_REACH, MIN_STAND, REF_TOL_M } from '../lib/locate.js';
+import { newLocate, mark, refFit, noteGround, addDepth, recent, nextAsk, answer, fitFor, fitSource, priorFor, mapOf, sessionOf, checkError, nearestNamed, disagreement, groundUnder, agreement, status, summaryOf, groundOffset, FIX_REACH, MIN_STAND, REF_TOL_M, HOLD_REACH, MOVE_GAP_MS } from '../lib/locate.js';
 
 const near = (a, b, eps, msg) => assert.ok(Math.abs(a - b) <= eps, `${msg}: ${a} vs ${b}`);
 const TH = (30 * Math.PI) / 180, SH = [5, 5];
@@ -60,13 +60,17 @@ const hitAt = (map, y = 0) => { const [u, v] = toAR(map); return { position: { x
   const ask3 = nextAsk(L, 10, 12000);
   const f = answer(L, { ok: true, T: { theta: TH, tx: SH[0], ty: SH[1], s: 1 }, hits: 0.8, cost: 0.01 }, ask3.id);
   assert.ok(f && L.fixes.length === 1);
+  assert.equal(fitSource(L, 10), null, 'one fix alone is not held: a second must agree');
+  const ask4 = nextAsk(L, 10, 15000);
+  answer(L, { ok: true, T: { theta: TH, tx: SH[0] + 0.1, ty: SH[1], s: 1 }, hits: 0.8, cost: 0.01 }, ask4.id, 15000);
+  assert.equal(L.log.at(-1).held, 'first');
   assert.equal(fitSource(L, 10), 'fix');
-  assert.equal(fitSource(L, 10 + FIX_REACH + 1), null, 'a fix stands for FIX_REACH metres');
+  assert.equal(fitSource(L, 10 + HOLD_REACH + 1), null, 'a held fit stands for HOLD_REACH metres past its last vouching fix');
   assert.equal(priorFor(L, 12).from, 'the last fix');
   assert.equal(priorFor(L, 12).searchM, 1.5);
-  assert.match(status(L, 12), /lidar fix, 2 m ago, 80% landed/);
+  assert.match(status(L, 12), /lidar fix held 2 m, last vouched for 2 m ago/);
   const sum = summaryOf(L);
-  assert.equal(sum.fixes, 1); assert.equal(sum.asks, 3); assert.deepEqual(sum.fixFrom, { GPS: 1 });
+  assert.equal(sum.fixes, 2); assert.equal(sum.asks, 4); assert.deepEqual(sum.fixFrom, { GPS: 2 }); assert.equal(sum.holds, 1);
   assert.ok(!JSON.stringify(sum).includes('"at"'), 'no positions in the copy');
   // too few standing points: the ask explains
   const L2 = newLocate(); noteGround(L2, 0); L2.gps = { at: [0, 0], phone: [0, 0], acc: 5, t: 0 };
@@ -88,9 +92,10 @@ const hitAt = (map, y = 0) => { const [u, v] = toAR(map); return { position: { x
   assert.equal(fitSource(L, 10), 'refs', 'the references still rule');
   const ask2 = nextAsk(L, 10, 30000, me);
   const close = { theta: TH + 0.01, tx: SH[0] + 0.3, ty: SH[1] - 0.2, s: 1 };
-  const f = answer(L, { ok: true, T: close, hits: 0.55 }, ask2.id);
+  const f = answer(L, { ok: true, T: close, hits: 0.55 }, ask2.id, 30000);
   assert.ok(f, 'a fix that agrees is kept, whatever its score');
   assert.ok(f.agreeM < REF_TOL_M && f.agreeM > 0.3, `agreement kept: ${f.agreeM}`);
+  answer(L, { ok: true, T: close, hits: 0.55 }, nextAsk(L, 10, 40000, me).id, 40000); // a second, agreeing: held
   const d = disagreement(wrong, close, [0, 0]);
   assert.ok(d.m > 8 && d.deg < 1, 'disagreement measured where the phone is');
   // a check reports both numbers
@@ -168,28 +173,48 @@ const hitAt = (map, y = 0) => { const [u, v] = toAR(map); return { position: { x
   assert.equal(r.stand.length, 1, `only the cell seen twice counts: ${r.stand.length}`);
   assert.deepEqual(r.stand[0], [1.5, 2.12]);
 }
-// SKEPTICAL OF A JUMP (owner, 2026-11-03): a fix far from the last kept one waits for a second to agree with it
+// TRUST THE AR ENGINE (owner, 2026-11-05): one fit is held; a fix near it changes nothing; it moves only when three
+// fixes in a row agree with each other and not with it, and not twice within MOVE_GAP_MS
 {
   const L = newLocate(); noteGround(L, 0); L.gps = { at: [0, 0], phone: [0, 0], acc: 5, t: 0 };
   const fence = []; for (let i = 0; i < 60; i++) fence.push({ x: i * 0.25, y: 1.2, z: -4 });
   addDepth(L, fence, 0); addDepth(L, fence, 0);
   const pos = { x: 0, y: 1.4, z: 0 }, A = { theta: TH, tx: SH[0], ty: SH[1], s: 1 }, B = { ...A, tx: SH[0] + 3 };
   let now = 1000;
-  const ask = () => { now += 2000; const a = nextAsk(L, 2, now, pos); assert.ok(a.id, a.why); return a; };
-  assert.ok(answer(L, { ok: true, T: A, hits: 0.8, cost: 0.01 }, ask().id, now), 'the first fix');
-  assert.equal(answer(L, { ok: true, T: B, hits: 0.9, cost: 0.005 }, ask().id, now), null, 'a 3 m jump is held');
-  assert.match(L.log.at(-1).why, /jumps 3\.0 m from the last fix/);
-  const wide = ask();
-  assert.equal(wide.prior.searchM, 4, 'the next search reaches both');
-  assert.ok(answer(L, { ok: true, T: { ...A, tx: SH[0] + 0.1 }, hits: 0.8, cost: 0.01 }, wide.id, now), 'a fix by the old one is kept');
-  assert.equal(L.candidate, null, 'and the jump forgotten');
-  assert.equal(ask().prior.searchM, 1.5, 'the search narrow again');
-  // the world did move (ARCore corrected its map): two fixes agree on the new place, and the second is taken
-  assert.equal(answer(L, { ok: true, T: B, hits: 0.9, cost: 0.005 }, L.pending.id, now), null);
-  const f = answer(L, { ok: true, T: { ...B, tx: B.tx + 0.2 }, hits: 0.9, cost: 0.005 }, ask().id, now);
-  assert.ok(f, 'a second fix agreeing with the jump is kept');
-  assert.equal(L.log.at(-1).confirmedJump, true);
+  const give = (T) => { now += 2000; const a = nextAsk(L, 2, now, pos); assert.ok(a.id, a.why); answer(L, { ok: true, T, hits: 0.8, cost: 0.01 }, a.id, now); return L.log.at(-1).held; };
+  assert.equal(give(A), 'waiting'); assert.equal(give({ ...A, tx: A.tx + 0.1 }), 'first');
+  const held = fitFor(L, 2);
+  near(held.tx, SH[0] + 0.05, 1e-9, 'the first hold is the mean of the two');
+  // jitter: fixes within 40 cm wobble round it and the drawing does not move
+  for (const dx of [0.3, -0.2, 0.35, -0.3]) assert.equal(give({ ...A, tx: A.tx + dx }), 'vouched');
+  assert.equal(fitFor(L, 2), held, 'held, through the wobble');
+  // one wild fix, then back: nothing moves
+  assert.equal(give(B), 'waiting'); assert.equal(give({ ...A, tx: A.tx + 0.1 }), 'vouched');
+  assert.equal(fitFor(L, 2), held);
+  // the world did move (ARCore corrected its map): three agreeing fixes move it
+  assert.equal(give(B), 'waiting'); assert.equal(give({ ...B, tx: B.tx + 0.2 }), 'waiting'); assert.equal(give({ ...B, tx: B.tx - 0.1 }), 'moved');
+  near(fitFor(L, 2).tx, B.tx + 1 / 30, 1e-9, 'to the mean of the three');
+  // and not again within MOVE_GAP_MS, even on three more agreeing fixes
+  const C = { ...A, tx: SH[0] - 3 };
+  now -= 2000; L.lastAsk = 0;
+  const quick = (T) => { now += 1; const a = nextAsk(L, 2, now + 2000, pos); answer(L, { ok: true, T, hits: 0.8, cost: 0.01 }, a.id, now); L.lastAsk = 0; return L.log.at(-1).held; };
+  assert.deepEqual([quick(C), quick(C), quick(C)], ['waiting', 'waiting', 'waiting'], 'too soon after the last move');
   const s = summaryOf(L);
-  assert.equal(s.jumpsHeld, 2); assert.equal(s.jumpsTaken, 1);
+  assert.equal(s.holds, 2); assert.ok(s.holdsVouched >= 5);
+}
+// HOW HIGH TO DRAW THE LIDAR (owner, 2026-11-05: 1-6 ft too high, jumping): the median of the phone's ground points
+// against the lidar's ground at their own places, not the crosshair's last hit
+{
+  const L = newLocate(); noteGround(L, 0);
+  const pts = []; for (let i = 0; i < 80; i++) pts.push({ x: (i % 10) * 0.4, y: -1.4 + (i % 10) * 0.04, z: -1 - Math.floor(i / 10) * 0.4 });
+  addDepth(L, pts, 5, { x: 0, y: 0, z: 0 }); addDepth(L, pts, 5, { x: 0, y: 0, z: 0 });
+  const T = { theta: 0, tx: 100, ty: 200, s: 1 };
+  const dem = (e) => 50 + 0.1 * (e - 100); // a 10% slope east, the same as the phone's ground
+  const g = groundOffset(L, 5, T, dem);
+  near(g, -51.4, 0.02, `the offset, whatever the slope: ${g}`);
+  L.groundY = 0.6; // the crosshair on a hedge top: no effect
+  near(groundOffset(L, 5, T, dem), g, 1e-9);
+  assert.equal(groundOffset(L, 5, T, () => NaN), null, 'off the lidar: none');
+  assert.equal(groundOffset(newLocate(), 5, T, dem), null, 'no ground points: none');
 }
 console.log('locate: ok');

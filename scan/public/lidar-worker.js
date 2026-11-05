@@ -29,8 +29,9 @@ self.onmessage = async ({ data }) => {
   }
   if (!data.load) return;
   try {
-    const { origin, box, map, lawn = [] } = data.load;
-    const L = await loadLidar({ origin, box, map, lawn }, { toMerc, rule: sharedRule }, (progress) => self.postMessage({ progress }));
+    const { origin, box, map } = data.load;
+    // the traced lawn is not given to the match (owner, 2026-11-05; docs/SCAN-DIVERGENCES.md step 5)
+    const L = await loadLidar({ origin, box, map, lawn: [] }, { toMerc, rule: sharedRule }, (progress) => self.postMessage({ progress }));
     const { cloud, how, rule, counts, shade, k, ox, oy } = L;
     G = L.G;
     const columns = shade.sgrid.w * shade.sgrid.h;

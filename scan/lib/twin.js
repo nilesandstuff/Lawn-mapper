@@ -118,6 +118,7 @@ export function liveOf(L, w, extra = {}) {
   const r = (v) => (Number.isFinite(v) ? +v.toFixed(4) : null), xyz = (p) => (p ? { x: r(p.x), y: r(p.y), z: r(p.z) } : null);
   return {
     fixes: (L?.fixes || []).map((f) => ({ odo: r(f.odo), T: { theta: r(f.T.theta), tx: r(f.T.tx), ty: r(f.T.ty), s: r(f.T.s ?? 1) }, hits: r(f.hits), from: f.from || null })),
+    holds: (L?.holds || []).map((h) => ({ odo0: r(h.odo0), odo1: r(h.odo1), T: { theta: r(h.T.theta), tx: r(h.T.tx), ty: r(h.T.ty), s: r(h.T.s ?? 1) }, vouched: h.vouched })),
     marks: (L?.marks || []).map((m) => ({ id: m.id, kind: m.kind, map: m.map, ar: m.ar, y: r(m.y), odo: r(m.odo) })),
     pins: (w?.pins || []).map((p) => ({ name: p.name, at: xyz(p.at), anchorAt: xyz(p.anchorAt), odo: r(p.odo) })),
     checks: (w?.checks || []).length,
@@ -151,6 +152,8 @@ export function placer(live, mode = 'both') {
   const L = newLocate();
   L.marks = (live?.marks || []).map((m) => ({ ...m }));
   L.fixes = (live?.fixes || []).map((f) => ({ ...f }));
+  L.holds = (live?.holds || []).map((h) => ({ ...h }));
+  L.legacy = !Array.isArray(live?.holds); // a walk saved before holds: placed by the nearest fix, as the page drew it then
   if (mode === 'refs') return (odo) => refFit(L, odo);
   if (mode === 'fixes') return (odo) => { const f = nearestFix(L, odo); return f && Math.abs(f.odo - odo) <= FIX_REACH ? f.T : null; };
   return (odo) => fitFor(L, odo);
