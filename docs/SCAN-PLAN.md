@@ -1078,3 +1078,28 @@ SPECULATION, to measure next: the twist comes from the model's edge (251 x 172 m
 100 m, where the picture's skyline is higher than anything the model holds), or from the bare crowns' band, or from
 the pictures' timing against their poses on turns. Each can be tested on these two walks: a wider model, roofs-only
 samples, and a per-picture time offset.
+
+### SCAN-H15. The twist is not trees, the edge, a fixed camera offset or picture lag; the roof edges want it too (2026-11-06, night)
+
+Four more tests on the same two walks, after the owner's notes (trunks unreliable, leaf-off crowns read short,
+ARCore's small discrete shifts, the back yard lower).
+
+HARD:
+  - roof-edge samples alone (the narrow band: 133 and 219 samples) score the twisted placement ABOVE the truth
+    (164 vs 201; 251 vs 290), as the under-crown samples do. The twist is not the trees' doing.
+  - a 6-degree leaf-off slack on tree tops: best placement still 5.9 degrees off (5.6 ft median).
+  - the walk's halves fitted apart: -3.3 and -6.6 degrees (22:02), -6.1 and -2.1 (21:56). Not one body's twist;
+    not a constant of the phone.
+  - the picture's lag behind its pose (each ray turned by the phone's turn rate then x the lag; half the pictures
+    taken turning faster than 10 deg/s): the best lag is -75 and 0 ms, worth under 2 points of score. Not lag.
+  - at the truth, with a 3-degree tilt applied, only 13-21% of roof-edge samples sit within 2 degrees of the model's
+    roof skyline; without the tilt, round 2 had roofs matching to 0.6-1.5 degrees where a roof MADE the skyline.
+    The "tilt" of SCAN-H14 was fitted mostly on under-crown samples; the roofs do not want it.
+  - the AR match no longer rests on any tree column (SCAN-DIVERGENCES 9); deployed 2026-11-06 05:09 UTC.
+
+SPECULATION, in order: (1) the 1 m columns' tops at a roof's edge (an eave over a wall reads as the wall's column;
+the skyline from a few metres away moves by degrees); (2) the check points' map places (the truth) and the roofs
+sit on different photos: the lidar's shift fit to the summer photo vs the editor's imagery; a 1-2 m offset between
+the two over a 60 m lot would read as a twist that changes along the walk; (3) a per-stretch ARCore heading
+error that the four checks cannot see. The next cheap test is the search run on roof-edge samples alone, and the
+twist measured against the references' placement as well as the checks'.
