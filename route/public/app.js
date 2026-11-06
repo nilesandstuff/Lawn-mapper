@@ -587,6 +587,7 @@ async function plan() {
       legs = order.slice(1).map((j, k) => ({ duration: durations[order[k]][j], distance: distances[order[k]][j] }));
     }
 
+    $('#shareOneOut').hidden = true;
     result = {
       at: Date.now(),
       startMode,
@@ -699,7 +700,7 @@ function showShare(k = null) {
   if (!result?.shareId) { out.hidden = true; return; }
   const url = `${location.origin}/s/${result.shareId}${k == null ? '' : `?p=${k + 1}`}`;
   out.hidden = false;
-  out.innerHTML = `${k == null ? 'Everyone' : esc(result.plan.people[k].name)}: <a href="${esc(url)}" target="_blank" rel="noopener">${esc(url)}</a>`;
+  out.innerHTML = `${k == null ? 'Everyone (and helpers)' : `${esc(result.plan.people[k].name)}'s own`}: <a href="${esc(url)}" target="_blank" rel="noopener">${esc(url)}</a><br><span class="meta">Live: ticks show for everyone, and anyone free can take stops.</span>`;
 }
 
 /** A link to the split (or to one person's route), shared through the phone's share sheet, else copied. */
@@ -722,6 +723,41 @@ async function shareSplit(k = null) {
   }
 }
 $('#shareAll').addEventListener('click', () => shareSplit(null));
+
+/** The single route as a live shared day: helpers open the link and take stops (share.js). */
+async function shareOne() {
+  const r = result;
+  if (!r || r.mode === 'split') return;
+  try {
+    if (!r.shareId) {
+      let name = store.get('share.name', '');
+      if (!name) {
+        name = (prompt('Your name, as helpers will see it:') || '').trim().slice(0, 40);
+        if (!name) return;
+        store.set('share.name', name);
+      }
+      const plan = {
+        at: r.at, shop: { label: r.end.label, lng: r.end.lng, lat: r.end.lat },
+        // a shared route starts at its first stop, as a split does: whoever helps comes from elsewhere
+        people: [{ name, stops: r.stops.map((s) => ({ address: s.address, city: s.city || '', name: s.name || '', minutes: s.minutes ?? null, sqft: s.sqft ?? null, label: s.hit.label, lng: s.hit.lng, lat: s.hit.lat })), legs: r.legs.slice(1), geometry: null }],
+      };
+      r.shareId = (await call('/api/share', { plan })).id;
+      store.set('result', r);
+    }
+    const helpers = `${location.origin}/s/${r.shareId}`;
+    const mine = `${helpers}?p=1`;
+    const out = $('#shareOneOut');
+    out.hidden = false;
+    out.innerHTML = `For helpers: <a href="${esc(helpers)}" target="_blank" rel="noopener">${esc(helpers)}</a><br>Yours (tick stops as you go): <a href="${esc(mine)}" target="_blank" rel="noopener">open my live route</a>`;
+    if (navigator.share) {
+      try { await navigator.share({ title: 'Help with my route', text: 'Open this when you are free to help:', url: helpers }); return; } catch (e) { if (e.name === 'AbortError') return; }
+    }
+    try { await navigator.clipboard.writeText(helpers); say(`Helpers' link copied: ${helpers}`); } catch { say(helpers); }
+  } catch (e) {
+    say(e.message || String(e), true);
+  }
+}
+$('#shareOne').addEventListener('click', shareOne);
 $('#splitSum').addEventListener('click', (e) => {
   const b = e.target.closest('[data-share]');
   if (b) shareSplit(Number(b.dataset.share));

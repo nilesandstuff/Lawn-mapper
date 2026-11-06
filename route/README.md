@@ -63,5 +63,27 @@ else); every route ends at the shop. One route through everything is cut
 evenly (exact for its order), then improved by moving and swapping stops and
 by shaking and trying again; on small days it finds the best split there is.
 
-**Share** keeps the split in KV for 30 days under a random 12-character id:
-`/s/<id>` shows everyone's routes, `/s/<id>?p=2` the second person's.
+## Shared days, live (`lib/live.js`, `src/share.js`, `public/share.js`)
+
+**Share** (a split, or one route with "Share / get help") makes a live day,
+kept in the planner's D1 for 30 days from its last change under a random
+12-character id: `/s/<id>` for everyone (and helpers), `/s/<id>?p=2` for the
+second person's own phone.
+
+- Ticks are shared: anyone's tick shows on every phone holding the link
+  (pages check every 25 s while open).
+- Helpers need nothing loaded: they open the link, give a name, **Now** or the
+  time they'll be free, and where from (their location, or an address).
+  Every stop not yet done is then shared out again among everyone working
+  (`split.js` rebalance) so all get back to the shop at about the same
+  time. The stop each working person is on stays theirs; a stop is moved
+  only when it gains real time.
+- "I'm free to help now" / "I'll be free at..." for anyone already on the
+  day; "Your list changed" when someone else's re-split moved your stops.
+- Optional, while the page is open: near your next stop for a while and
+  then leaving it, "Done at ...?" -- never a tick by itself. (Phones stop a
+  web page's location when it is not on screen, so ticks are the record.)
+
+A re-split is worked out on the phone that asks for it and saved only over
+the version it read (`PUT`, 409 if anything changed), so two phones never
+overwrite each other.

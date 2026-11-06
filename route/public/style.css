@@ -144,3 +144,18 @@
   .stepper output { min-width: 2ch; text-align: center; font-weight: 700; font-size: 18px; font-variant-numeric: tabular-nums; }
   .share-link { overflow-wrap: anywhere; font-size: 14px; }
   .person:not([open]) summary h2::after { content: "Show ▸"; }
+  /* the live shared day (share.js) */
+  .person.me { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .done-list { margin-top: 8px; }
+  .done-list summary { cursor: pointer; }
+  .banner { background: var(--warn-soft); color: var(--ink); border: 1px solid var(--warn); border-radius: 12px; padding: 10px 12px; margin: 12px 0; font-size: 15px; }
+  .banner button { margin-top: 8px; }
+  .events { list-style: none; margin: 0; padding: 0; font-size: 14px; color: var(--muted); }
+  .events li { padding: 3px 0; }
+  .events b { color: var(--ink); font-weight: 600; }
+  .help-form { display: grid; gap: 10px; }
+  .help-form .seg { margin-top: 0; }
+  .help-form input[type=time] { font: inherit; padding: 9px 10px; min-height: 44px; border: 1px solid var(--line); border-radius: 9px; background: var(--field); color: var(--ink); }
+  .live-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); margin-right: 6px; vertical-align: middle; }
+  .toggle { display: flex; gap: 10px; align-items: center; font-size: 14px; color: var(--muted); }
+  .toggle input { width: 20px; height: 20px; accent-color: var(--accent); }

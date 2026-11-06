@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Shared Route</title>
-<meta name="description" content="A day's route, split between people: each person's stops in order, ending at the shop.">
+<meta name="description" content="A day's route, shared: each person's stops in order, ticked off live, re-split when someone comes to help.">
 <meta name="robots" content="noindex">
 <meta name="theme-color" content="#1f7a4d">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
@@ -19,15 +19,54 @@
     <h1 id="title">Shared route</h1>
     <p id="sub">Loading…</p>
   </header>
-  <section class="card" id="whoCard" hidden>
-    <h2>Whose route?</h2>
-    <div class="seg" role="group" aria-label="Show the route of" id="who"></div>
+
+  <div class="banner" id="changed" hidden></div>
+  <div class="banner" id="suggest" hidden></div>
+
+  <section class="card" id="helpCard" hidden aria-labelledby="helpH">
+    <h2 id="helpH">Help with this route</h2>
+    <div class="help-form">
+      <div id="nameRow"><label class="field" for="helpName">Your name</label><input id="helpName" type="text" autocomplete="given-name" maxlength="40" placeholder="Name"></div>
+      <div>
+        <span class="field">Free to help</span>
+        <div class="seg" role="group" aria-label="When"><button type="button" data-when="now" aria-pressed="true">Now</button><button type="button" data-when="later" aria-pressed="false">At a time</button></div>
+        <input id="helpTime" type="time" hidden aria-label="The time you'll be free">
+      </div>
+      <div>
+        <span class="field">Starting from</span>
+        <div class="seg" role="group" aria-label="From"><button type="button" data-from="here" aria-pressed="true">Where I am</button><button type="button" data-from="address" aria-pressed="false">An address</button></div>
+        <input id="helpAddress" type="text" hidden placeholder="Address, city" autocomplete="street-address">
+      </div>
+      <button type="button" class="btn primary" id="helpGo">Share out the stops</button>
+      <p class="hint" id="helpHint">Every stop not done yet is shared out again, so everyone gets back to the shop at about the same time. The stop someone is on stays theirs.</p>
+    </div>
   </section>
+
+  <section class="card" id="meCard" hidden>
+    <div class="row-btns" style="margin-top:0">
+      <button type="button" class="btn primary" id="freeNow">I'm free to help now</button>
+      <button type="button" class="btn" id="freeLater">I'll be free at…</button>
+    </div>
+    <label class="toggle" style="margin-top:12px"><input type="checkbox" id="geoToggle"> Suggest ticks from my location while this page is open</label>
+  </section>
+
+  <section class="card" id="whoCard" hidden>
+    <h2>Show</h2>
+    <div class="seg" role="group" aria-label="Show the route of" id="who"></div>
+    <p class="hint" style="margin-top:10px" id="whoHint"></p>
+  </section>
+
+  <section class="card" id="eventsCard" hidden>
+    <h2><span class="live-dot" aria-hidden="true"></span>Live <small id="updated"></small></h2>
+    <ul class="events" id="events"></ul>
+  </section>
+
   <section class="card" id="mapCard" hidden>
     <div id="map" role="img" aria-label="Map of the routes"></div>
   </section>
   <div id="people"></div>
-  <footer>Tap a stop to tick it off (on this phone only). Each route starts at its first stop and ends at the shop. Map © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>.</footer>
+  <p class="status" id="status" role="status"></p>
+  <footer>Tap a stop to tick it off; everyone with this link sees it. Each route ends at the shop. Map © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>.</footer>
 </main>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script type="module" src="/share.js"></script>

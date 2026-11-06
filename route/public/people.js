@@ -123,3 +123,86 @@ export function thin(geometry) {
   if (last && out.at(-1) !== last) out.push([Math.round(last[0] * 1e5) / 1e5, Math.round(last[1] * 1e5) / 1e5]);
   return out;
 }
+
+/* ------------------------------------------------------------ a live shared day (lib/live.js's doc) */
+
+const clockAt = (t) => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+/** One person in a live day: their stops still to do, job minutes and driving left, and when they would be back. */
+export function liveTotals(doc, k, now = Date.now()) {
+  const p = doc.people[k];
+  const todo = p.stops.filter((s) => !doc.stops[s].done);
+  const done = p.stops.filter((s) => doc.stops[s].done);
+  const jobs = todo.reduce((a, s) => a + (Number(doc.stops[s].minutes) || 0), 0);
+  const drive = todo.reduce((a, s) => a + (p.into?.[s]?.duration || 0), 0) + (todo.length ? p.back?.duration || 0 : 0);
+  const area = p.stops.reduce((a, s) => a + (Number(doc.stops[s].sqft) || 0), 0);
+  const from = Math.max(now, p.readyAt || 0);
+  return { todo, done, jobs, drive, area, back: todo.length ? from + (jobs * 60 + drive) * 1000 : null };
+}
+
+/** A live person's card: done stops ticked, the rest in order, Go buttons, their Google Maps trip. */
+export function liveCard(doc, k, { me = null, open = true, now = Date.now() } = {}) {
+  const p = doc.people[k];
+  const t = liveTotals(doc, k, now);
+  const color = COLORS[k % COLORS.length];
+  const status = t.todo.length
+    ? `${t.todo.length} to go · back about ${clockAt(t.back)}`
+    : p.free ? 'free to help' : (t.done.length ? 'all done ✓' : 'no stops');
+  const waiting = p.readyAt && p.readyAt > now ? ` · free from ${clockAt(p.readyAt)}` : '';
+  const row = (s, i) => {
+    const st = doc.stops[s];
+    const leg = p.into?.[s];
+    return `<li class="${st.done ? 'done' : ''}" data-stop="${esc(s)}">
+      <span class="num" style="background:${color}">${st.done ? '✓' : i + 1}</span>
+      <div class="body">
+        <div class="addr">${esc(st.address)}</div>
+        <div class="meta">${esc([st.name, st.city].filter(Boolean).join(' · '))}${st.done ? ` · done ${clockAt(st.done.at)}${st.done.by ? ` by ${esc(st.done.by)}` : ''}` : ''}</div>
+        <div class="chips">${!st.done && leg ? `<span>🚗 ${mins(leg.duration)} · ${miles(leg.distance)}</span>` : ''}${st.minutes != null ? `<span>⏱ ${st.minutes}m job</span>` : ''}${st.sqft ? `<span>📐 ${sqft(st.sqft)}</span>` : ''}</div>
+      </div>
+      ${st.done ? '' : `<a class="go" target="_blank" rel="noopener" href="${esc(nav(st.label || `${st.address}, ${st.city}`))}" aria-label="Directions">Go</a>`}
+    </li>`;
+  };
+  const todoRows = t.todo.map(row);
+  const doneRows = t.done.map((s) => row(s, 0));
+  if (t.todo.length) {
+    todoRows.push(`<li class="home"><span class="num">⌂</span><div class="body"><div class="addr">Back to the shop</div>
+      ${p.back ? `<div class="chips"><span>🚗 ${mins(p.back.duration)} · ${miles(p.back.distance)}</span></div>` : ''}</div>
+      <a class="go" target="_blank" rel="noopener" href="${esc(nav(doc.shop.label))}" aria-label="Directions to the shop">Go</a></li>`);
+  }
+  const trip = t.todo.length ? trips({ stops: t.todo.map((s) => doc.stops[s]) }, doc.shop) : [];
+  return `<details class="card person${p.id === me ? ' me' : ''}" ${open ? 'open' : ''} data-person="${k}">
+    <summary><h2><span class="dot" style="background:${color}"></span>${esc(p.name)}${p.id === me ? ' <small>(you)</small>' : ''} <small>${esc(status)}${waiting}</small></h2></summary>
+    <p class="meta">${t.todo.length ? `${formatMinutes(t.jobs)} of jobs and ${formatMinutes(Math.round(t.drive / 60))} of driving left` : ''}${t.area ? `${t.todo.length ? ' · ' : ''}${sqft(t.area)}` : ''}</p>
+    ${t.todo.length ? `<ol class="legs">${todoRows.join('')}</ol>
+    <div class="gm">${trip.map((x) => `<a class="btn small" target="_blank" rel="noopener" href="${esc(x.href)}">Google Maps: ${esc(x.label)}</a>`).join('')}</div>` : ''}
+    ${doneRows.length ? `<details class="done-list"><summary class="meta">${doneRows.length} done</summary><ol class="legs">${doneRows.join('')}</ol></details>` : ''}
+  </details>`;
+}
+
+/** A live day on the map: each person's stops still to do, in their colour. */
+export function drawLive(L, el, doc, only = null, map = null) {
+  if (!map) {
+    map = L.map(el);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(map);
+  } else map.eachLayer((l) => { if (!(l instanceof L.TileLayer)) map.removeLayer(l); });
+  const all = [];
+  doc.people.forEach((p, k) => {
+    if (only != null && only !== k) return;
+    const todo = p.stops.filter((s) => !doc.stops[s].done).map((s) => doc.stops[s]);
+    if (!todo.length) return;
+    const color = COLORS[k % COLORS.length];
+    const line = p.geometry ? p.geometry.map(([lng, lat]) => [lat, lng]) : [...todo, doc.shop].map((s) => [s.lat, s.lng]);
+    L.polyline(line, { color, weight: 5, opacity: 0.85 }).addTo(map);
+    todo.forEach((s, i) => L.marker([s.lat, s.lng], {
+      icon: L.divIcon({ className: 'pin2', html: `<span style="background:${color}">${i + 1}</span>`, iconSize: [26, 26], iconAnchor: [13, 13] }),
+    }).addTo(map));
+    all.push(...line);
+    if (p.start && p.free && !p.stops.some((s) => doc.stops[s].done)) {
+      L.marker([p.start.lat, p.start.lng], { icon: L.divIcon({ className: 'pin2', html: `<span style="background:${color}">★</span>`, iconSize: [26, 26], iconAnchor: [13, 13] }) }).addTo(map);
+    }
+  });
+  L.marker([doc.shop.lat, doc.shop.lng], { icon: L.divIcon({ className: 'pin2 home', html: '<span>⌂</span>', iconSize: [26, 26], iconAnchor: [13, 13] }) }).addTo(map);
+  all.push([doc.shop.lat, doc.shop.lng]);
+  map.fitBounds(L.latLngBounds(all), { padding: [20, 20] });
+  return map;
+}
