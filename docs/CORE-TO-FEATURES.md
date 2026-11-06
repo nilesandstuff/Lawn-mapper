@@ -150,3 +150,26 @@ when present and ignored when absent:
 Datum for the shade findings: where a roof makes the skyline the walk's pictures agree with the model to about
 1 degree; where a crown within 15 m does, 30-40 degrees (leaf-off). Lidar trunks are ignored by the AR match since
 2026-11-06 (the owner's call).
+
+
+## 2026-11-06: the shade map's cleaned lidar at full resolution (sent by Routine for 20:06 UTC; repeated here)
+
+The owner: "Yes absolutely get the finest returns for the ground. Heck, if you think getting the max resolution
+everywhere would help, try it. The shade map's filtering and block classification is what I wanted to be consistent
+across the maps, so if the shade map can just pass along all of that at the highest resolution possible, great."
+
+Why: the AR places a walk with no marks from the skyline (coarse), then `intensity` and the ground's shape (fine);
+SCAN-H20: 1.8 ft and 4.0 ft on the two walks with check points. 71-75% of the phone's ground points sit within 15 cm
+of `ground` at the truth. A curb, a driveway's edge, a step or a bed's border is a 10-15 cm change over less than a
+metre, so the 1 m cells are now the limit.
+
+Asked, additive, all AFTER the shade map's filters (noise out, strays out, the owner's erasures applied):
+
+  1. The points: arrays `ptX ptY ptZ ptI ptCls ptRet ptKind`, meta.points = { n, spacingM (null if unthinned) }.
+     x, y Int32 cm from the grid's (x0, y1) corner in the model's 3857 frame, shift applied; z Int32 cm absolute;
+     intensity Uint16; cls Uint8 (ASPRS); ret Uint8 = (return number << 4) | number of returns; kind Uint8, the
+     structures.js kind of the point's 1 m column. Thinned to no coarser than 0.25 m only if too heavy; the
+     surround may stay at 2 m and only the lot's box carry points.
+  2. If the points are too much: `groundFine` Float32 and `intensityFine` Uint16 at 0.25 m, meta.fine = { grid, cellM }.
+
+The AR keeps working without them. Ask for a go before merging and deploying.
