@@ -31,12 +31,13 @@ SEG_MODEL = "nvidia/segformer-b0-finetuned-ade-512-512"
 MAX_PICS = int(os.environ.get("PAVE_PICS", 90))
 GROUND_REACH_M = 8.0
 CELL = 0.2
-PAVE = {"road", "sidewalk", "path", "floor", "earth", "runway"}
+PAVE = {"road", "sidewalk", "path"}  # not earth or floor: November lawn reads as earth (57% of "pavement" fell in the lawn)
 GRASS = {"grass", "field", "plant", "flower"}
 FT = 3.28084
 
 
 def labels(d, pics):
+    labels.seen = []
     import torch
     from transformers import SegformerForSemanticSegmentation, SegformerImageProcessor
     torch.set_num_threads(os.cpu_count() or 2)
@@ -52,6 +53,10 @@ def labels(d, pics):
             lab = model(**proc(images=img, return_tensors="pt")).logits.argmax(1)[0].numpy()
         mh, mw = max(8, img.height // 4), max(8, img.width // 4)
         lab = np.asarray(Image.fromarray(lab.astype(np.uint8)).resize((mw, mh), Image.NEAREST))
+        for k in pave_ids:
+            n_ = int((lab == k).sum())
+            if n_:
+                labels.seen.append({names[k]: n_})
         cls = np.zeros(lab.shape, np.int8)
         cls[np.isin(lab, list(pave_ids))] = 1
         cls[np.isin(lab, list(grass_ids))] = 2
@@ -113,6 +118,13 @@ def main():
         pics = [pics[int(i)] for i in np.linspace(0, len(pics) - 1, MAX_PICS)]
     labs = labels(d, pics)
     share = [(c == 1).mean() for c in labs]
+    # which classes the pavement came from, for the record
+    from collections import Counter
+    cnt = Counter()
+    for lab_names in getattr(labels, "seen", []):
+        cnt.update(lab_names)
+    if cnt:
+        print("  pavement classes seen (pixels): " + ", ".join(f"{k} {v:,}" for k, v in cnt.most_common(6)))
     print(f"Pavement study: {len(pics)} pictures; pavement in a median {np.median(share):.0%} of a picture's pixels, {sum(1 for s_ in share if s_ > 0.05)} pictures with more than 5%. ({int(time.time() - t0)} s)")
     cells = cast(pics, labs)
     pts = [(k[0] * CELL + CELL / 2, k[1] * CELL + CELL / 2, v[0], v[1]) for k, v in cells.items()]
