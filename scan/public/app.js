@@ -16,7 +16,7 @@ import { frameFor, bboxOf, toPx, fromPx, ringsOf } from '/lib/photo.js';
 import { newLocate, mark, noteGround, addDepth, nextAsk, answer, fitFor, mapOf, sessionOf, checkError, nearestNamed, agreement, groundOffset, status as fixStatus, summaryOf } from '/lib/locate.js';
 import { leftOut, mapToSession } from '/lib/align.js';
 import { newTwin, addPoints, addPose, wantKey, addKey, flush, flushDue, liveOf } from '/lib/twin.js';
-import { newAnchors, viewOf, noteView, nudge, pitchOf, anchorsKept } from '/lib/anchors.js';
+import { newAnchors, viewOf, noteView, nudge, pitchOf, anchorsKept, SHOW_S } from '/lib/anchors.js';
 import { surfaceOf } from '/lib/surface.js';
 import { viewToFit, followView, toScreen, zoomAt as miniZoom, pan as miniPan, edgeArrow } from '/lib/minimap.js';
 
@@ -69,6 +69,14 @@ async function main() {
     lab.innerHTML = '<input type="checkbox" id="record-only"> Record only: no live lidar fix; the walk is fixed afterwards';
     box.append(lab);
     $('#record-only').addEventListener('change', (e) => { st.recordOnly = e.target.checked; });
+    /* RAW DEPTH ONLY, a test (2026-11-06): asked for raw first, the S21's Chrome gave smooth. Asked for raw alone,
+       it either gives raw or no depth at all; the walk's log says which ("depth raw" or "depth -"). */
+    if (pick.offered.includes('webxr')) {
+      const raw = document.createElement('label'); raw.className = 'dim'; raw.style.display = 'block'; raw.style.margin = '8px 0';
+      raw.innerHTML = '<input type="checkbox" id="raw-depth"> Raw depth only (a test: the walk may get no depth at all)';
+      box.append(raw);
+      $('#raw-depth').addEventListener('change', (e) => { st.rawDepth = e.target.checked; });
+    }
   }
   if (!pick.offered.length) {
     $('#why').innerHTML = st.caps.why ? esc(st.caps.why) : st.caps.ios
@@ -249,7 +257,7 @@ async function startAR(engine) {
   $('#hud').textContent = engine === '8thwall' ? 'Loading the engine… then the phone asks for the camera and the motion sensors.' : 'Starting…';
   const canvas = $('#cam');
   try {
-    st.tracker = await start({ engine, overlay, canvas, eightWallUrl: ENGINE_URL, onFrame, onEvent });
+    st.tracker = await start({ engine, overlay, canvas, eightWallUrl: ENGINE_URL, onFrame, onEvent, rawDepth: !!st.rawDepth });
     st.walk.features = st.tracker.features;
     // GPS, only as a place to start the lidar search from; kept in memory, never in the copy
     if (st.origin && navigator.geolocation) {
@@ -336,9 +344,10 @@ function onFrame(f) {
     if (grabbed?.pixels && st.anchors) {
       const view = viewOf(grabbed.pixels, grabbed.w, grabbed.h, pitchOf(f.pose.quaternion));
       noteView(st.anchors, odo, view);
-      if (st.nudge && view[st.nudge.kind]) st.nudge = null;
-      const n = nudge(st.anchors, odo);
-      if (n) { st.nudge = n; flash(n.text); }
+      const now = performance.now() / 1000;
+      if (st.nudge && (view[st.nudge.kind] || now > st.nudge.until)) st.nudge = null;
+      const n = nudge(st.anchors, odo, now);
+      if (n) { st.nudge = { ...n, until: now + SHOW_S }; flash(n.text); }
     }
     if (grabbed?.pixels && f.depth) {
       const pts = [], { w: gw, h: gh, pixels } = grabbed;
@@ -639,7 +648,7 @@ function finish() {
   }
   const refs = st.points.filter((p) => p.kind === 'ref').map((p) => ({ name: p.name, marks: L ? L.marks.filter((m) => m.id === p.id).length : 0, leftOutM: L ? r3(leftOut(L.marks.filter((m) => m.kind === 'ref'), p.id)) : null }));
   const s = summary(w, {
-    page: 'yard AR test v2', recordOnly: !!st.recordOnly, features: w.features || null, depthType: w.depthType || null, failed: w.failed || null, errors: st.errors.map((e) => e.what).slice(-30),
+    page: 'yard AR test v2', recordOnly: !!st.recordOnly, features: w.features || null, depthType: w.depthType || null, anchors: st.anchors ? anchorsKept(st.anchors) : null, failed: w.failed || null, errors: st.errors.map((e) => e.what).slice(-30),
     references: refs, checks: (w.checks || []).map((c) => ({ ...c, errorM: r3(c.errorM), errorFixM: r3(c.errorFixM), errorRefsM: r3(c.errorRefsM), walkedSinceFixM: r2(c.walkedSinceFixM), aimM: r2(c.aimM), walkedM: r2(c.walkedM) })),
     pinsNear: w.pins.map((p) => ({ name: p.name, nearest: p.nearest ? { name: p.nearest.name, m: r2(p.nearest.m), byRefsM: r2(p.nearest.byRefsM) } : null })),
     fix: L ? summaryOf(L) : null, surfaceSeen: st.surfCount || null, lidar: st.lid.ready ? { points: st.lid.ready.points, solid: st.lid.ready.solid, shift: st.lid.ready.shift, rule: st.lid.ready.rule || null, structures: st.lid.ready.structures || null, tallCells: st.lid.overlay ? st.lid.overlay.tall.length / 5 : null } : st.lid.error ? { error: st.lid.error } : null,

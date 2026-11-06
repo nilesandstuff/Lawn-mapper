@@ -894,6 +894,10 @@ the page read depthType from the per-frame XRDepthInformation; the spec
 keeps it on the XRSession. Fixed (track.js depthTypeOf); so whether the
 S21 gives raw depth is still NOT known, and the walks of 11-04 to 11-06
 may have had either. The next walk's log says.
+MEASURED (2026-11-06 22:43, at the owner's work, the first walk after the
+fix): "depth smooth (cpu-optimized, luminance-alpha)". Asked for raw first,
+the S21's Chrome gives smooth. The start screen now offers "Raw depth only"
+(depthTypeRequest ['raw']): a walk with it says raw, or gets no depth.
 
 The owner's word (2026-11-04, through the features session): LAS classes
 7 and 18 and returns over 80 m stay out everywhere; the detector's

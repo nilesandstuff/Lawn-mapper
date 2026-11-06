@@ -15,8 +15,14 @@
  */
 import { surfaceOf } from './surface.js';
 
-export const NUDGE_M = 30;    // metres walked without a view of that kind before a nudge
-export const REPEAT_M = 15;   // metres walked between two nudges of one kind
+/* The owner's first walks with nudges (2026-11-06, at work): "popped up way too frequently, often times immediately
+   after looking at a building", and the HUD line "never went away". So: a skyline no longer needs the camera tipped
+   up (a tall building seen level never showed its roof in the top of the picture with the phone tipped 2 degrees),
+   the gaps are longer and also counted in seconds, one nudge stands at a time, and the line clears itself. */
+export const NUDGE_M = 45;    // metres walked without a view of that kind before a nudge
+export const REPEAT_M = 30;   // metres walked between two nudges of one kind
+export const GAP_S = 60;      // seconds at least between any two nudges
+export const SHOW_S = 8;      // seconds a nudge stays on the HUD (it clears sooner when the view is seen)
 export const START_M = 6;     // nothing in the walk's first metres: the user is finding their feet
 
 /** The camera's tilt from a quaternion, degrees: + looking up, - looking down. */
@@ -41,16 +47,18 @@ export function isSky(r, g, b) {
 export function viewOf(pixels, w, h, pitch) {
   const at = (x, y) => { const k = (Math.min(h - 1, Math.floor(y * h)) * w + Math.min(w - 1, Math.floor(x * w))) * 4; return [pixels[k], pixels[k + 1], pixels[k + 2]]; };
   const share = (y0, y1, test) => { let n = 0, m = 0; for (let j = 0; j < 8; j++) for (let i = 0; i < 16; i++) { m++; if (test(...at((i + 0.5) / 16, y0 + ((j + 0.5) / 8) * (y1 - y0)))) n++; } return n / m; };
-  const skyTop = share(0, 0.15, isSky), skyMid = share(0.3, 0.6, isSky);
+  const skyTop = share(0, 0.25, isSky), skyLow = share(0.5, 1, isSky);
   const paveLow = share(0.5, 1, (r, g, b) => surfaceOf(r, g, b) === 'pave');
   return {
-    sky: pitch > 2 && skyTop >= 0.4 && skyMid <= 0.6, // sky above, something (a roof, a crown) under it
+    // sky across the top quarter and little in the lower half: a skyline crosses the picture. Not when the camera
+    // looks well down (no skyline there; a pale drive is not sky)
+    sky: pitch > -15 && skyTop >= 0.3 && skyLow <= 0.25,
     pave: pitch < -10 && paveLow >= 0.25,
     skyShare: +skyTop.toFixed(2), paveShare: +paveLow.toFixed(2),
   };
 }
 
-export const newAnchors = () => ({ lastSky: 0, lastPave: 0, nudgedSky: -1e9, nudgedPave: -1e9, views: { sky: 0, pave: 0, frames: 0 }, nudges: { sky: 0, pave: 0 } });
+export const newAnchors = () => ({ lastSky: 0, lastPave: 0, nudgedSky: -1e9, nudgedPave: -1e9, nudgedAt: -1e9, views: { sky: 0, pave: 0, frames: 0 }, nudges: { sky: 0, pave: 0 } });
 
 /** Record one picture's view at `odo` metres walked. */
 export function noteView(a, odo, view) {
@@ -59,14 +67,16 @@ export function noteView(a, odo, view) {
   if (view.pave) { a.lastPave = odo; a.views.pave++; }
 }
 
-/** A nudge due now, or null: { kind: 'sky' | 'pave', text }. Counts it as given. */
-export function nudge(a, odo) {
+/** A nudge due now (odo metres walked, t seconds), or null: { kind: 'sky' | 'pave', text }. Counts it as given. */
+export function nudge(a, odo, t = Infinity) {
   if (odo < START_M) return null;
+  if (t - a.nudgedAt < GAP_S) return null;
   const want = [];
   if (odo - a.lastSky >= NUDGE_M && odo - a.nudgedSky >= REPEAT_M) want.push(['sky', odo - a.lastSky]);
   if (odo - a.lastPave >= NUDGE_M && odo - a.nudgedPave >= REPEAT_M) want.push(['pave', odo - a.lastPave]);
   if (!want.length) return null;
   const [kind] = want.sort((p, q) => q[1] - p[1])[0]; // the longer-missing one first
+  if (Number.isFinite(t)) a.nudgedAt = t;
   if (kind === 'sky') { a.nudgedSky = odo; a.nudges.sky++; return { kind, text: 'Look up at a roofline against the sky for a few seconds' }; }
   a.nudgedPave = odo; a.nudges.pave++;
   return { kind, text: 'Point the camera at the driveway, road, sidewalk or patio for a few seconds' };

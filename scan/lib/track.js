@@ -193,7 +193,7 @@ export function depthTypeOf(session) {
   return more ? `${kind} (${more})` : kind;
 }
 
-async function startWebXR({ overlay, onFrame, onEvent }) {
+async function startWebXR({ overlay, onFrame, onEvent, rawDepth = false }) {
   let session;
   const base = { requiredFeatures: ['hit-test'], optionalFeatures: ['dom-overlay', 'anchors'], domOverlay: { root: overlay } };
   try {
@@ -203,7 +203,7 @@ async function startWebXR({ overlay, onFrame, onEvent }) {
          the least processing, and the runtime marks what it is not confident of invalid (0, which depth.at drops);
          "smooth" fills those in, and the fill across plain grass is the likeliest source of SCAN-H7's invented points.
          A request only; the runtime may give smooth anyway, and the walk's log says which (depthType). */
-      depthSensing: { usagePreference: ['cpu-optimized'], dataFormatPreference: ['luminance-alpha', 'float32'], depthTypeRequest: ['raw', 'smooth'] } });
+      depthSensing: { usagePreference: ['cpu-optimized'], dataFormatPreference: ['luminance-alpha', 'float32'], depthTypeRequest: rawDepth ? ['raw'] : ['raw', 'smooth'] } });
   } catch {
     session = await navigator.xr.requestSession('immersive-ar', base);
   }

@@ -40,6 +40,7 @@ export function digest(s) {
     `asks: median standing ${med(L.map((e) => e.stand))}, high ${med(L.map((e) => e.high))}, ground ${med(L.map((e) => e.ground))}; kept fixes' distance from refs median ${med(kept.map((e) => e.agreeM))} m`,
     `hold changes: ${moves.join(', ') || 'none'}`,
     `marks: ${(s.references || []).map((r) => `${r.name}x${r.marks}`).join(' ') || 'no references'}; checks ${(s.checks || []).length}; pins ${(s.pins || []).length}: ${(s.pins || []).map((p) => p.name).join(' ')}`,
+    `views: ${s.anchors ? `skyline in ${s.anchors.views.sky} and pavement in ${s.anchors.views.pave} of ${s.anchors.views.frames} pictures read; nudges ${s.anchors.nudges.sky} skyline, ${s.anchors.nudges.pave} pavement` : 'not kept'}`,
     `twin: ${s.twin ? `${s.twin.points} points, ${s.twin.keys} pictures, ${s.twin.poses} poses${s.twin.off ? `, OFF ${s.twin.off}` : ''}` : 'none'}`,
     `messages: ${(s.errors || []).slice(-12).join(' | ')}`,
   ];

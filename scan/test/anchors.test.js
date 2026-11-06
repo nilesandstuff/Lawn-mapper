@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { pitchOf, isSky, viewOf, newAnchors, noteView, nudge, NUDGE_M, REPEAT_M } from '../lib/anchors.js';
+import { pitchOf, isSky, viewOf, newAnchors, noteView, nudge, NUDGE_M, REPEAT_M, GAP_S } from '../lib/anchors.js';
 
 // pitch: identity looks level; a turn about x by +20 degrees looks up 20
 const qx = (deg) => { const a = (deg * Math.PI) / 360; return { x: Math.sin(a), y: 0, z: 0, w: Math.cos(a) }; };
@@ -18,7 +18,8 @@ const paving = pic((y) => (y < 0.5 ? [110, 120, 70] : [150, 150, 148]));
 const lawn = pic(() => [110, 125, 60]);
 let v = viewOf(skyline, W, H, 12);
 assert.ok(v.sky && !v.pave, `a roofline: ${JSON.stringify(v)}`);
-assert.ok(!viewOf(skyline, W, H, -5).sky, 'not when looking down');
+assert.ok(viewOf(skyline, W, H, 0).sky, 'a roofline with the phone held level (the owner, 2026-11-06)');
+assert.ok(!viewOf(skyline, W, H, -30).sky, 'not when looking well down');
 assert.ok(!viewOf(pic(() => [215, 220, 228]), W, H, 30).sky, 'all sky is no skyline');
 v = viewOf(paving, W, H, -30);
 assert.ok(v.pave && !v.sky, `paving: ${JSON.stringify(v)}`);
@@ -39,4 +40,9 @@ assert.equal(nudge(a, NUDGE_M + 1 + REPEAT_M)?.kind, 'pave', 'repeated after REP
 noteView(a, 70, { sky: true, pave: true });
 assert.equal(nudge(a, 80), null, 'both seen: quiet');
 assert.deepEqual(a.nudges, { sky: 1, pave: 2 });
+// seconds as well as metres: no two nudges within GAP_S, however far walked
+const b = newAnchors();
+assert.equal(nudge(b, NUDGE_M + 1, 100)?.kind, 'sky', 'first due (both missing; ties go to the skyline)');
+assert.equal(nudge(b, NUDGE_M + 1 + REPEAT_M + 5, 100 + GAP_S - 1), null, 'inside the gap: nothing');
+assert.ok(nudge(b, NUDGE_M + 1 + REPEAT_M + 5, 100 + GAP_S), 'after the gap: the next');
 console.log('anchors: ok');
