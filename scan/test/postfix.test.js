@@ -35,7 +35,7 @@ for (let r = 0; r < grid.h; r++) for (let c = 0; c < grid.w; c++) {
   if (t) { kind[j] = S.TREE; top[j] = 10; low[j] = 0.5; }
 }
 const M = decodeModel(encodeModel({ tool: 'shade', at: '2026-11-05T00:00:00Z', grid, layers: { z0, dz: 1, nz }, rule: { kinds: { NOTHING: 0, BUILDING: 1, TREE: 2, SOLID_TREE: 3, STRUCTURE: 4, UNKNOWN: 5 } } }, { ground, kind, top, low, mu }));
-const { G } = gridsFromModel(M, { origin: ORIGIN, box: BOX, S, toMerc });
+const { G } = gridsFromModel(M, { origin: ORIGIN, box: BOX, S, toMerc, treesInMatch: true }); // the synthetic yard's trees are its trunks, as it was built (trees are out of the live match since 2026-11-06)
 
 // the walk: a loop round the house, 1.5 m a sample; the true session -> map placement drifts with distance walked
 const path = [];
