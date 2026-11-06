@@ -19,6 +19,8 @@ import { addressVariants, formatMinutes, mergeStops, parseWords, sameStreet, sli
 import { pathCost, solvePath } from './lib/solve.js';
 import { kindOf, parseDocument, readDocument } from './lib/doc.js';
 import { parseMail } from './lib/mail.js';
+import { splitRoutes } from './lib/split.js';
+import { COLORS, drawPlan, personCard, thin, totals } from './people.js';
 import { elementsOf, fill, fromCache, MAX_PAIRS, prune, remember, toFetch } from './lib/cache.js';
 
 const TESSERACT = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
@@ -132,6 +134,18 @@ for (const b of document.querySelectorAll('[data-start]')) {
   b.addEventListener('click', () => { startMode = b.dataset.start; store.set('startMode', startMode); showStartMode(); });
 }
 showStartMode();
+
+/* how many people share the day (lib/split.js); with more than one, each starts at their first stop */
+let people = Math.max(1, Math.min(10, Number(store.get('people', 1)) || 1));
+function showPeople() {
+  $('#peopleN').textContent = String(people);
+  $('#peopleHint').hidden = people === 1;
+  $('#startSeg').hidden = people > 1;
+  $('#plan').textContent = people > 1 ? `Split between ${people} people` : 'Plan fastest route';
+}
+$('#peopleLess').addEventListener('click', () => { people = Math.max(1, people - 1); store.set('people', people); showPeople(); });
+$('#peopleMore').addEventListener('click', () => { people = Math.min(10, people + 1); store.set('people', people); showPeople(); });
+showPeople();
 
 /* ------------------------------------------------------------ reading the screenshot */
 function loadScript(src) {
@@ -310,7 +324,7 @@ async function load(reader, { append = false, what = 'document', source = '' } =
     stops = append ? merge([stops, fresh]) : fresh;
     const added = stops.length - before;
     store.set('stops', stops);
-    if (!append) { result = null; store.set('result', null); $('#result').hidden = true; }
+    if (!append) { result = null; store.set('result', null); $('#result').hidden = true; $('#splitResult').hidden = true; }
     renderStops();
     $('#stopsBox').open = true;
     const timed = fresh.filter((s) => s.minutes != null).length;
@@ -451,7 +465,7 @@ $('#clear').addEventListener('click', () => {
   store.set('stops', stops);
   store.set('result', null);
   renderStops();
-  $('#result').hidden = true;
+  $('#result').hidden = true; $('#splitResult').hidden = true;
   say('');
 });
 
@@ -523,11 +537,6 @@ async function plan() {
     sayPlan('Finding the shop…');
     const end = await geocode(endQ, null);
     if (!end) throw new Error(`Could not find "${endQ}" on the map. Add the city and state.`);
-    let start = { ...end, label: 'The shop' };
-    if (startMode === 'here') {
-      sayPlan('Getting your location…');
-      start = await locate();
-    }
     sayPlan('Finding the stops…');
     const found = [];
     const queue = [...list];
@@ -544,6 +553,12 @@ async function plan() {
     found.sort((a, b) => list.indexOf(a.stop) - list.indexOf(b.stop));
     if (!found.length) throw new Error('None of the stops could be found on the map.');
     if (found.length > 60) throw new Error('At most 60 stops at a time.');
+    if (people > 1) { await planSplit(end, found, list); return; }
+    let start = { ...end, label: 'The shop' };
+    if (startMode === 'here') {
+      sayPlan('Getting your location…');
+      start = await locate();
+    }
 
     sayPlan('Timing every drive…');
     const points = [start, ...found.map((f) => f.hit), end];
@@ -599,10 +614,130 @@ async function plan() {
     loadUsage();
   } finally {
     btn.disabled = false;
-    $('#plan').textContent = 'Plan fastest route';
+    showPeople();
   }
 }
 $('#plan').addEventListener('click', plan);
+
+/* ------------------------------------------------------------ the day, split between people */
+const ll = (p) => [p.lng, p.lat];
+
+/** Every drive between the points: from this phone's cache, the rest from Mapbox (lib/cache.js). */
+async function driveTables(points, keep = points.map(() => true)) {
+  const tables = fromCache(drives, points, { keep });
+  const asks = toFetch(tables.durations);
+  for (const q of asks) fill(tables, await call('/api/matrix', { points: points.map(ll), ...q }));
+  remember(drives, points, tables.durations, tables.distances, { keep });
+  saveDrives();
+  return { ...tables, fetched: elementsOf(asks) };
+}
+
+async function planSplit(end, found, list) {
+  sayPlan('Timing every drive…');
+  const points = [...found.map((f) => f.hit), end];
+  const n = found.length;
+  const tables = await driveTables(points);
+  sayPlan(`Splitting between ${people} people…`);
+  await new Promise((r) => setTimeout(r, 30));
+  const service = found.map((f) => (Number(f.stop.minutes) || 0) * 60).concat(0);
+  const { routes } = splitRoutes(tables.durations, { stops: [...Array(n).keys()], shop: n, service, people, timeMs: 2500 });
+  sayPlan('Drawing the roads…');
+  const split = { at: Date.now(), shop: { label: end.label, lng: end.lng, lat: end.lat }, people: [] };
+  for (const [k, r] of routes.entries()) {
+    const out = r.map((i) => {
+      const { stop, hit } = found[i];
+      return { address: stop.address, city: stop.city || '', name: stop.name || '', minutes: stop.minutes ?? null, sqft: stop.sqft ?? null, label: hit.label, lng: hit.lng, lat: hit.lat };
+    });
+    const seq = [...r, n];
+    let legs = seq.slice(1).map((j, x) => ({ duration: tables.durations[seq[x]][j], distance: tables.distances[seq[x]][j] }));
+    let geometry = null;
+    if (r.length) {
+      try {
+        const got = await call('/api/route', { points: seq.map((i) => ll(points[i])) });
+        legs = got.legs;
+        geometry = thin(got.geometry);
+      } catch { /* straight lines and the matrix's times */ }
+    }
+    split.people.push({ name: `Person ${k + 1}`, stops: out, legs: r.length ? legs : [], geometry });
+  }
+  result = {
+    mode: 'split', at: split.at, plan: split, done: [], shareId: null,
+    missing: list.filter((s) => s.error).map((s) => ({ address: s.address, minutes: s.minutes })),
+    reused: tables.hits, fetched: tables.fetched,
+  };
+  store.set('result', result);
+  loadUsage();
+  sayPlan('');
+  renderResult(true);
+}
+
+let splitMap = null;
+function renderSplit(scroll = false) {
+  const r = result;
+  const plan = r.plan;
+  $('#result').hidden = true;
+  $('#splitResult').hidden = false;
+  const ts = plan.people.map(totals);
+  $('#splitPlanned').textContent = `planned ${clock(r.at)}`;
+  $('#splitSum').innerHTML = plan.people.map((p, k) => `<li><span><span class="dot" style="background:${COLORS[k % COLORS.length]}"></span> ${esc(p.name)} · ${p.stops.length} stop${p.stops.length === 1 ? '' : 's'}</span><span class="right"><b>${formatMinutes(ts[k].total)}</b> <button type="button" class="btn small" data-share="${k}" aria-label="Share ${esc(p.name)}'s route">Share</button></span></li>`).join('');
+  const longest = Math.max(...ts.map((t) => t.total));
+  const shortest = Math.min(...ts.map((t) => t.total));
+  const notes = [`Each day is driving from the first stop to the shop, plus job time. Longest ${formatMinutes(longest)}, shortest ${formatMinutes(shortest)}.`];
+  notes.push(`All together: ${formatMinutes(ts.reduce((a, t) => a + t.jobs, 0))} of jobs and ${formatMinutes(Math.round(ts.reduce((a, t) => a + t.drive, 0) / 60))} of driving.`);
+  if (r.fetched != null) notes.push(`Drive times: ${r.reused.toLocaleString()} reused from this phone, ${r.fetched.toLocaleString()} new from Mapbox.`);
+  const warn = r.missing?.length ? [`Not routed (not found on the map near the shop): ${r.missing.map((s) => s.address).join('; ')}.`] : [];
+  $('#splitNotes').innerHTML = notes.map((x) => `<li>${esc(x)}</li>`).join('') + warn.map((x) => `<li class="warn">${esc(x)}</li>`).join('');
+  const done = new Set(r.done || []);
+  $('#splitPeople').innerHTML = plan.people.map((_, k) => personCard(plan, k, { done, share: true, open: plan.people.length <= 2 })).join('');
+  showShare();
+  if (window.L) splitMap = drawPlan(window.L, 'splitMap', plan, null, splitMap);
+  if (scroll) { $('#stopsBox').open = false; $('#splitResult').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+}
+
+function showShare(k = null) {
+  const out = $('#shareOut');
+  if (!result?.shareId) { out.hidden = true; return; }
+  const url = `${location.origin}/s/${result.shareId}${k == null ? '' : `?p=${k + 1}`}`;
+  out.hidden = false;
+  out.innerHTML = `${k == null ? 'Everyone' : esc(result.plan.people[k].name)}: <a href="${esc(url)}" target="_blank" rel="noopener">${esc(url)}</a>`;
+}
+
+/** A link to the split (or to one person's route), shared through the phone's share sheet, else copied. */
+async function shareSplit(k = null) {
+  try {
+    if (!result.shareId) {
+      const { id } = await call('/api/share', { plan: result.plan });
+      result.shareId = id;
+      store.set('result', result);
+    }
+    const url = `${location.origin}/s/${result.shareId}${k == null ? '' : `?p=${k + 1}`}`;
+    showShare(k);
+    const title = k == null ? `Route split ${result.plan.people.length} ways` : `${result.plan.people[k].name}'s route`;
+    if (navigator.share) {
+      try { await navigator.share({ title, url }); return; } catch (e) { if (e.name === 'AbortError') return; }
+    }
+    try { await navigator.clipboard.writeText(url); say(`Link copied: ${url}`); } catch { say(url); }
+  } catch (e) {
+    say(e.message || String(e), true);
+  }
+}
+$('#shareAll').addEventListener('click', () => shareSplit(null));
+$('#splitSum').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-share]');
+  if (b) shareSplit(Number(b.dataset.share));
+});
+$('#splitPeople').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-share]');
+  if (b) { shareSplit(Number(b.dataset.share)); return; }
+  const li = e.target.closest('li[data-tick]');
+  if (!li || !e.target.closest('.body') || !result) return;
+  const done = new Set(result.done || []);
+  const key = li.dataset.tick;
+  if (done.has(key)) done.delete(key); else done.add(key);
+  result.done = [...done];
+  store.set('result', result);
+  li.classList.toggle('done', done.has(key));
+});
 
 /* ------------------------------------------------------------ the answer */
 const miles = (m) => `${(m / 1609.344).toFixed(m < 16093 ? 1 : 0)} mi`;
@@ -650,6 +785,8 @@ function drawMap(r) {
 
 function renderResult(scroll = false) {
   const r = result;
+  if (r?.mode === 'split') { renderSplit(scroll); return; }
+  $('#splitResult').hidden = true;
   $('#result').hidden = !r;
   if (!r) return;
   const allStops = [...r.stops, ...r.missing];

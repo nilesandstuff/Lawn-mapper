@@ -52,3 +52,16 @@ done once by hand, from a phone:
 2. **Routing rules** -> **Create address** -> custom address: the inbox
    address's part before the @ -> action **Send to a Worker** ->
    **route-planner** -> **Save**.
+
+## Splitting a day between people (`lib/split.js`, `src/share.js`, `public/share.html`)
+
+With People set above 1, the stops are split so each person's day -- driving
+from their first stop to the shop, plus job time -- comes out as even as it
+can: the longest day as short as possible, then the least driving overall.
+Getting to the first stop is not counted (everyone comes from somewhere
+else); every route ends at the shop. One route through everything is cut
+evenly (exact for its order), then improved by moving and swapping stops and
+by shaking and trying again; on small days it finds the best split there is.
+
+**Share** keeps the split in KV for 30 days under a random 12-character id:
+`/s/<id>` shows everyone's routes, `/s/<id>?p=2` the second person's.

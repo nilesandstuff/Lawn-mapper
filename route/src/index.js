@@ -12,6 +12,7 @@
  *   /api/shop, /api/catalog              the shop's address and the first document (src/store.js)
  *   /api/inbox, /api/inbox/<id>          route sheets that arrived by email (src/inbox.js), with the inbox key
  *   email()                              where Email Routing delivers them
+ *   /api/share, /api/share/<id>, /s/<id> a split day shared by link (src/share.js)
  *   GET  /api/usage                      this month's Mapbox use against the free allowance (src/usage.js);
  *                                        every Mapbox call above is counted there first, and refused past the cap
  *
@@ -27,6 +28,7 @@ import { geocode, matrix, matrixBlocks, route, validIndexes, validPoints } from 
 import { store, keyed } from './store.js';
 import { LimitError, meter, report } from './usage.js';
 import { inbox, receive } from './inbox.js';
+import { share } from './share.js';
 
 const json = (body, status = 200) => new Response(JSON.stringify(body), {
   status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
@@ -42,6 +44,7 @@ export async function api(request, env, url, fetcher = fetch) {
   if (foreign(request, url)) return json({ error: 'Not from this site' }, 403);
   if (url.pathname === '/api/shop' || url.pathname === '/api/catalog') return store(request, env, url);
   if (url.pathname === '/api/inbox' || url.pathname.startsWith('/api/inbox/')) return inbox(request, env, url);
+  if (url.pathname === '/api/share' || url.pathname.startsWith('/api/share/')) return share(request, env, url);
   if (url.pathname === '/api/usage') {
     if (request.method === 'GET') return json(await report(env).catch(() => ({ counting: false })));
     // the key may add use the meter did not see (testing before it existed): never refused, never less
@@ -85,6 +88,8 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (url.pathname.startsWith('/api/')) return api(request, env, url);
+    // a shared split route: /s/<id> is the share page, which reads the id from its own address
+    if (/^\/s\/[A-Za-z0-9]{8,20}\/?$/.test(url.pathname)) return env.ASSETS.fetch(new Request(new URL('/share.html', url), request));
     return env.ASSETS.fetch(request);
   },
   // route sheets by email: Cloudflare Email Routing sends the planner's address here (src/inbox.js)

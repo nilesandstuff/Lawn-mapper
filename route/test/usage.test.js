@@ -83,8 +83,9 @@ assert.equal(results.filter((x) => x.status === 'fulfilled').length, 1);
 assert.equal((await report(e2)).apis.directions.used, CAP.directions - 1);
 
 // a new month starts from nothing
-const nov = Date.UTC(2026, 10, 2);
-assert.equal((await report(e2, nov)).apis.directions.used, 0);
+const d0 = new Date();
+const nextMonth = Date.UTC(d0.getUTCFullYear(), d0.getUTCMonth() + 1, 2);
+assert.equal((await report(e2, nextMonth)).apis.directions.used, 0);
 assert.equal(resetsOn(Date.UTC(2026, 11, 15)), '2027-01-01');
 
 console.log('route usage: ok');

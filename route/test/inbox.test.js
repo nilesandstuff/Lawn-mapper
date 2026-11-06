@@ -67,7 +67,7 @@ assert.equal((await call('/api/inbox', { headers: { 'X-Route-Key': ROUTE_KEY } }
 // newest first; only the 20 newest kept
 for (let i = 0; i < MAX_MESSAGES + 3; i += 1) {
   const { receive } = await import('../src/inbox.js');
-  await receive(message(sheet(1000 + i)), env, Date.UTC(2026, 9, 28) + i * 60000);
+  await receive(message(sheet(1000 + i)), env, Date.now() + 3600000 + i * 60000);
 }
 const after = await (await call('/api/inbox', { headers: { 'X-Inbox-Key': INBOX_KEY } })).json();
 assert.equal(after.messages.length, MAX_MESSAGES);

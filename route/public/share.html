@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Shared Route</title>
+<meta name="description" content="A day's route, split between people: each person's stops in order, ending at the shop.">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#1f7a4d">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main>
+  <header>
+    <a class="home-link" href="/">Route Planner</a>
+    <h1 id="title">Shared route</h1>
+    <p id="sub">Loading…</p>
+  </header>
+  <section class="card" id="whoCard" hidden>
+    <h2>Whose route?</h2>
+    <div class="seg" role="group" aria-label="Show the route of" id="who"></div>
+  </section>
+  <section class="card" id="mapCard" hidden>
+    <div id="map" role="img" aria-label="Map of the routes"></div>
+  </section>
+  <div id="people"></div>
+  <footer>Tap a stop to tick it off (on this phone only). Each route starts at its first stop and ends at the shop. Map © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>.</footer>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script type="module" src="/share.js"></script>
+</body>
+</html>

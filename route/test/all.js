@@ -7,5 +7,7 @@ import './worker.test.js';
 import './mail.test.js';
 import './inbox.test.js';
 import './email-setup.test.js';
+import './split.test.js';
+import './share.test.js';
 import './usage.test.js';
 import './site.test.js';
