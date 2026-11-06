@@ -143,6 +143,55 @@ def main():
         print(f"At the check points' own placement: {pin:.0%} of the pavement cells fall inside the traced lawn, {gin:.0%} of the grass cells do (the cast is right when the first is small and the second large).")
     else:
         print("No check points, lawn trace or pavement to test the cast against.")
+    # THE MATCH AGAINST THE LIDAR'S BRIGHTNESS (the model's `intensity`, the shade map 2026-11-06): pavement is dark,
+    # grass bright. P(pavement | I) = sigmoid((median - I) / scale) with the lot's own ground median; the log-likelihood
+    # of every cast point, searched round each of the skyline's placements (skyline.json) and round the truth.
+    ip = os.path.join(d, "sky-intensity.bin")
+    if os.path.exists(ip) and pave and grass:
+        g = inp["grid"]
+        I = np.fromfile(ip, dtype="<u2").reshape(g["h"], g["w"]).astype(np.float64)
+        has = I > 0
+        med = float(inp.get("intensityMedian") or np.median(I[has]))
+        scale = float(np.percentile(I[has], 75) - np.percentile(I[has], 25)) / 2 or 1.0
+        def look(e, n):
+            c = np.floor((e - g["x0"]) / g["cell"]).astype(np.int64); r = np.floor((g["y1"] - n) / g["cellY"]).astype(np.int64)
+            ok = (c >= 0) & (r >= 0) & (c < g["w"]) & (r < g["h"])
+            v = I[np.where(ok, r, 0), np.where(ok, c, 0)]
+            return np.where(ok & (v > 0), v, np.nan)
+        P = np.array(pave); G = np.array(grass)
+        def score(T):
+            th, tx, ty = T; c_, s_ = math.cos(th), math.sin(th)
+            def ll(pts, want_pave):
+                e = c_ * pts[:, 0] - s_ * pts[:, 1] + tx; n = s_ * pts[:, 0] + c_ * pts[:, 1] + ty
+                v = look(e, n); z = (med - v) / scale
+                pp = 1 / (1 + np.exp(-z)); pp = np.where(np.isnan(pp), 0.5, pp)
+                return np.log(np.clip(pp if want_pave else 1 - pp, 0.02, 1)).sum()
+            return ll(P, True) + ll(G, False)
+        def refine(T, steps=((2.0, 1.0), (0.5, 0.3), (0.25, 0.1))):
+            sc = score(T)
+            for dd, mm in steps:
+                cands = [(T[0] + math.radians(a), T[1] + x, T[2] + y) for a in np.arange(-3, 3.01, 1) * dd for x in np.arange(-4, 4.01, 1) * mm for y in np.arange(-4, 4.01, 1) * mm]
+                scs = [score(C) for C in cands]; j = int(np.argmax(scs))
+                if scs[j] > sc:
+                    sc, T = scs[j], cands[j]
+            return sc, T
+        truth = fit_rigid([(c["ar"], c["map"]) for c in checks]) if len(checks) >= 2 else None
+        starts = []
+        sk = os.path.join(d, "skyline.json")
+        if os.path.exists(sk):
+            starts += [(q["theta"], q["tx"], q["ty"]) for q in json.load(open(sk)).get("placements", [])[:3]]
+        if truth:
+            print(f"Brightness at the truth: score {score(truth):.1f} over {len(P)} pavement and {len(G)} grass cells (median {med:.0f}, scale {scale:.0f}).")
+            starts.append(truth)
+        res = sorted((refine(T0) for T0 in starts), key=lambda x: -x[0])
+        for rank, (sc, T) in enumerate(res, 1):
+            line = f"  brightness placement {rank}: score {sc:.1f}"
+            if truth:
+                errs = [math.hypot(*np.subtract((math.cos(T[0]) * c["ar"][0] - math.sin(T[0]) * c["ar"][1] + T[1], math.sin(T[0]) * c["ar"][0] + math.cos(T[0]) * c["ar"][1] + T[2]), c["map"])) for c in checks]
+                line += f"; checks {', '.join(f'{x * FT:.1f}' for x in errs)} ft (median {np.median(errs) * FT:.1f}); {math.degrees((T[0] - truth[0] + np.pi) % (2 * np.pi) - np.pi):+.1f} deg from the truth"
+            print(line)
+    else:
+        print("No intensity in the model yet (the shade map writes it on the lot's next save): the brightness match waits.")
     print(f"Done in {int(time.time() - t0)} s.")
 
 

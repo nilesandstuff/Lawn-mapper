@@ -51,8 +51,10 @@ def load(d):
 
 
 class Surface:
-    def __init__(self, g, surf, gr, kind=None):
+    def __init__(self, g, surf, gr, kind=None, surround=None):
         self.g, self.s, self.gr = g, surf, gr
+        # THE SURROUND (the shade map, 2026-11-06): ground and top 100 m out at 2 m cells, read where a ray leaves the lot
+        self.sur = surround  # (grid, surface, ground) or None
         # the roofs alone (structures.js BUILDING 1), every tree as bare ground: what the picture can never see sky below
         self.sr = np.where(kind == 1, surf, gr).astype(np.float32) if kind is not None else surf
         self.e0, self.n1 = g["x0"], g["y1"]
@@ -68,11 +70,23 @@ class Surface:
         ok = (c >= 0) & (r >= 0) & (c < self.g["w"]) & (r < self.g["h"])
         return np.where(ok, r, 0), np.where(ok, c, 0), ok
 
+    def sidx(self, e, n):
+        sg = self.sur[0]
+        c = np.floor((e - sg["x0"]) / sg["cell"]).astype(np.int64)
+        r = np.floor((sg["y1"] - n) / sg["cellY"]).astype(np.int64)
+        ok = (c >= 0) & (r >= 0) & (c < sg["w"]) & (r < sg["h"])
+        return np.where(ok, r, 0), np.where(ok, c, 0), ok
+
     def height(self, e, n, grid=None):
         a = self.s if grid is None else grid
         r, c, ok = self.idx(e, n)
-        v = a[r, c]
-        return np.where(ok & np.isfinite(v), v, np.nan)
+        v = np.where(ok & np.isfinite(a[r, c]), a[r, c], np.nan)
+        if self.sur is not None:
+            sr, sc, sok = self.sidx(e, n)
+            sa = self.sur[1] if grid is None or grid is self.s else self.sur[2]
+            sv = sa[sr, sc]
+            v = np.where(np.isnan(v) & sok & np.isfinite(sv), sv, v)
+        return v
 
     def ground(self, e, n):
         v = self.height(e, n, self.gr)
@@ -93,9 +107,12 @@ def skyline_both(S, e, n, eye_abs, az):
         sl = slice(i, i + step)
         pe = e[sl, None] + RADII[None, :] * np.cos(az[sl, None])
         pn = n[sl, None] + RADII[None, :] * np.sin(az[sl, None])
-        r, c, ok = S.idx(pe, pn)
         for grid, out in ((S.s, A), (S.sr, R)):
-            h = np.where(ok, grid[r, c], np.nan)
+            h = S.height(pe, pn, grid)
+            if grid is S.sr and S.sur is not None:
+                # the surround has no kinds: outside the lot its surface counts as roof-free ground for the lower bound
+                r_, c_, ok_ = S.idx(pe, pn)
+                h = np.where(ok_, h, S.height(pe, pn, S.gr))
             el = np.arctan2(h - eye_abs[sl, None], RADII[None, :])
             out[sl] = np.where(np.isfinite(el), el, -np.pi / 2).max(axis=1)
     return A.reshape(shp), np.minimum(R, A).reshape(shp)
@@ -244,7 +261,14 @@ def main():
     d = sys.argv[1] if len(sys.argv) > 1 else "twin"
     t0 = time.time()
     inp, surf, gr, kind = load(d)
-    S = Surface(inp["grid"], surf, gr, kind)
+    surround = None
+    if inp.get("surround") and os.path.exists(os.path.join(d, "sky-surround-surface.bin")):
+        sg = inp["surround"]
+        ss = np.fromfile(os.path.join(d, "sky-surround-surface.bin"), dtype="<f4").reshape(sg["h"], sg["w"])
+        sgr = np.fromfile(os.path.join(d, "sky-surround-ground.bin"), dtype="<f4").reshape(sg["h"], sg["w"])
+        surround = (sg, ss, sgr)
+        print(f"Surround in use: {sg['w']} x {sg['h']} cells of {sg['cell']:.1f} m.")
+    S = Surface(inp["grid"], surf, gr, kind, surround)
     pics = [p for p in inp["pictures"] if p.get("eye") is not None and 0.5 < p["eye"] < 2.5]
     if len(pics) > MAX_PICS:
         pics = [pics[int(i)] for i in np.linspace(0, len(pics) - 1, MAX_PICS)]
