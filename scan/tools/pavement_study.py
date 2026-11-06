@@ -159,13 +159,19 @@ def main():
             v = I[np.where(ok, r, 0), np.where(ok, c, 0)]
             return np.where(ok & (v > 0), v, np.nan)
         P = np.array(pave); G = np.array(grass)
-        def score(T):
+        def under(T, pts):
             th, tx, ty = T; c_, s_ = math.cos(th), math.sin(th)
+            e = c_ * pts[:, 0] - s_ * pts[:, 1] + tx; n = s_ * pts[:, 0] + c_ * pts[:, 1] + ty
+            return look(e, n)
+        def score(T):
+            # the two classes weighed alike (grass cells outnumber pavement 15 to 1); cells with no ground return
+            # (under roofs and crowns) say nothing
             def ll(pts, want_pave):
-                e = c_ * pts[:, 0] - s_ * pts[:, 1] + tx; n = s_ * pts[:, 0] + c_ * pts[:, 1] + ty
-                v = look(e, n); z = (med - v) / scale
-                pp = 1 / (1 + np.exp(-z)); pp = np.where(np.isnan(pp), 0.5, pp)
-                return np.log(np.clip(pp if want_pave else 1 - pp, 0.02, 1)).sum()
+                v = under(T, pts); ok = np.isfinite(v)
+                if ok.sum() < 10:
+                    return 0.0
+                z = (med - v[ok]) / scale; pp = 1 / (1 + np.exp(-z))
+                return np.log(np.clip(pp if want_pave else 1 - pp, 0.02, 1)).mean() * 1000
             return ll(P, True) + ll(G, False)
         def refine(T, steps=((2.0, 1.0), (0.5, 0.3), (0.25, 0.1))):
             sc = score(T)
@@ -181,7 +187,9 @@ def main():
         if os.path.exists(sk):
             starts += [(q["theta"], q["tx"], q["ty"]) for q in json.load(open(sk)).get("placements", [])[:3]]
         if truth:
-            print(f"Brightness at the truth: score {score(truth):.1f} over {len(P)} pavement and {len(G)} grass cells (median {med:.0f}, scale {scale:.0f}).")
+            vp, vg = under(truth, P), under(truth, G)
+            okp, okg = np.isfinite(vp), np.isfinite(vg)
+            print(f"Brightness at the truth: score {score(truth):.1f}; {len(P)} pavement cells ({okp.mean():.0%} over a lidar ground return, median brightness {np.median(vp[okp]) if okp.any() else float('nan'):.0f}) and {len(G)} grass cells ({okg.mean():.0%}, median {np.median(vg[okg]) if okg.any() else float('nan'):.0f}); the lot's ground median {med:.0f}, scale {scale:.0f}. Pavement should be the darker.")
             starts.append(truth)
         res = sorted((refine(T0) for T0 in starts), key=lambda x: -x[0])
         for rank, (sc, T) in enumerate(res, 1):
