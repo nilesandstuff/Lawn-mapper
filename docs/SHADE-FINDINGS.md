@@ -1729,6 +1729,19 @@ also carries:
     one point a square metre (surround.js; ept.js pointsIn now takes
     spacingM, ported from water/lib/ept.js). The owner's lot: 241 x 251
     cells, read while the trees build; the whole file goes up at 1.81 MB.
+THE POINTS THEMSELVES, 2026-11-06 (the owner, via the core session: "if
+the shade map can just pass along all of that at the highest resolution
+possible, great"): the model file now carries every return the shade map
+kept over its grid, cleaned (noise classes and flagged strays out; in an
+erased column or cube only the ground returns stay), each with its x, y
+(cm from the grid's corner, the shift applied), z, intensity, class,
+return number and its 1 m column's kind (ptX ... ptKind; model-out.js
+keptPoints). The owner's lot: 339,372 points (3.98 a square metre:
+192,263 ground, 147,109 unclassified), not thinned; the whole file goes
+up at 4.08 MB gzipped (29.6 MB raw). The 0.25 m fine-ground fallback the
+core session offered was not needed: at 2.3 ground returns a square
+metre most 0.25 m cells would hold none, so the points are the honest
+form.
 MEASURED BY THE CORE SESSION, 2026-11-06, not by this one: where a roof
 makes the skyline in the AR's pictures, the pictures agree with the model
 to about 1 degree; where a crown within 15 m does, 30-40 degrees (leaf-off
