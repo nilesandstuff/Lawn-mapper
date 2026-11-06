@@ -1210,7 +1210,7 @@ HARD:
     class-2 returns per metre, once one height offset is taken out). The phone's ground is good relative to itself;
     the shape it shares with the lidar places a walk to about 3.6 ft on its own.
 
-### SCAN-H21. The shade map's own points for the ground: built, not yet measured on a walk (2026-11-06)
+### SCAN-H21. The shade map's own points: the ground a little better, the brightness worse; mixed, 1.5 and 2.9 ft (2026-11-06)
 
 The owner: "get the finest returns for the ground... if the shade map can just pass along all of that at the highest
 resolution possible, great." The shade map now writes every return it keeps (ptX ... ptKind; its filters and the
@@ -1222,4 +1222,20 @@ skyline-prep.mjs writes them as sky-points.bin; pavement_study.py builds, over t
 
 Synthetic only, so far (a made-up lot with a 10 cm curb and a 15 cm step, ARCore-like noise of 5 cm): the ground's
 shape alone, from a start 1.5 m and 3 degrees off, lands at 1.6 ft on the 1 m cells and 0.5 ft on the fine surface.
-NOT a result about walks. The two walks with check points (21:56, 22:02) are rerun once the lot is re-saved.
+NOT a result about walks.
+
+MEASURED on the owner's two walks with check points, the lot re-saved with its points (2026-11-06, task place;
+medians of the four check points, no marks used):
+
+                                          21:56 (saw its drive)    22:02 (629 pavement cells: ground only)
+  1 m columns, both signals               1.5 ft                   3.6 ft
+  0.25 m points, both signals             3.7 ft                   2.9 ft
+  1 m brightness + 0.25 m ground (kept)   1.5 ft                   2.9 ft
+
+  - The ground's shape alone, from the skyline: 3.4 ft fine against 3.7 at 1 m (21:56), 2.9 against 3.6 (22:02).
+  - The share of ARCore's ground points within 15 cm of the lidar's ground at the truth did NOT move: 75% and 72%
+    fine, 71-75% at 1 m. The ground term is limited by the phone's ground, not the lidar's resolution.
+  - The fine brightness is worse: alone it pulled 21:56 10 degrees off (22.9 ft). One return's intensity is noisy;
+    the 1 m column's median of two or three is steadier. Kept at 1 m.
+  - So the placement kept since commit "brightness from the 1 m columns, the ground's shape from the shade map's
+    points" mixes the two. Chosen on these two walks, so the next walks are the test of it, not these.
