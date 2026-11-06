@@ -38,6 +38,7 @@ COARSE_M, COARSE_DEG = 1.5, 2.0
 AZ_BINS = 180
 TREE_SLACK = math.radians(float(os.environ.get("SKY_TREE_SLACK", 0)))  # degrees a tree top may stand above the model's
 FT = 3.28084
+LEAN = os.environ.get("SKY_LEAN") == "1"  # the placement step: the search alone, no studies
 
 
 def load(d):
@@ -324,26 +325,27 @@ def main():
             keepn = ((np.maximum(A, R) - R) < math.radians(3)) & (obs[:, 3] == 0)
             obs = obs[keepn]
             print(f"Narrow-band samples alone from here: {len(obs)} (roof edges, open sky, judged at the truth).")
-        # THE CAMERA'S AIM (2026-11-06: on two walks the best placement sat 5.1 and 5.3 degrees turned from the truth,
-        # the same way): at the truth, the turn and tilt of every picture's rays that the skyline likes best
-        cal = [(exact_score(S, cams, eyes, obs, *truth, daz=math.radians(a), delv=math.radians(b))[0], a, b)
-               for a in np.arange(-10, 10.01, 1.0) for b in np.arange(-3, 3.01, 1.0)]
-        c0 = max(cal)
-        cal2 = [(exact_score(S, cams, eyes, obs, *truth, daz=math.radians(a), delv=math.radians(b))[0], a, b)
-                for a in np.arange(c0[1] - 1, c0[1] + 1.01, 0.25) for b in np.arange(c0[2] - 1, c0[2] + 1.01, 0.25)]
-        c1 = max(cal2)
-        print(f"  the camera's aim at the truth: the skyline fits best with the rays turned {c1[1]:+.2f} deg and tilted {c1[2]:+.2f} deg (score {c1[0]:.1f}, against {sc:.1f} as recorded)")
-        # THE PICTURE'S LAG (2026-11-06): if the picture is a frame or two older than its pose, each ray is turned by
-        # the phone's turn rate then x the lag. At the truth, which lag the skyline likes; applied when SKY_LAG says so.
-        rates = np.array([p.get("yawRate") or 0.0 for p in pics])
-        pi_all = obs[:, 0].astype(int)
-        lags = []
-        for lag_ms in range(-150, 301, 25):
-            o2 = obs.copy(); o2[:, 1] -= np.radians(rates[pi_all]) * (lag_ms / 1000)
-            lags.append((exact_score(S, cams, eyes, o2, *truth)[0], lag_ms))
-        bl = max(lags)
-        turning = np.mean(np.abs(rates) > 10)
-        print(f"  the picture's lag behind its pose, at the truth: best {bl[1]:+d} ms (score {bl[0]:.1f}; 0 ms {dict((l, s_) for s_, l in lags)[0]:.1f}); {turning:.0%} of pictures taken turning faster than 10 deg/s, median |rate| {np.median(np.abs(rates)):.1f} deg/s")
+        if not LEAN:
+            # THE CAMERA'S AIM (2026-11-06: on two walks the best placement sat 5.1 and 5.3 degrees turned from the truth,
+            # the same way): at the truth, the turn and tilt of every picture's rays that the skyline likes best
+            cal = [(exact_score(S, cams, eyes, obs, *truth, daz=math.radians(a), delv=math.radians(b))[0], a, b)
+                   for a in np.arange(-10, 10.01, 1.0) for b in np.arange(-3, 3.01, 1.0)]
+            c0 = max(cal)
+            cal2 = [(exact_score(S, cams, eyes, obs, *truth, daz=math.radians(a), delv=math.radians(b))[0], a, b)
+                    for a in np.arange(c0[1] - 1, c0[1] + 1.01, 0.25) for b in np.arange(c0[2] - 1, c0[2] + 1.01, 0.25)]
+            c1 = max(cal2)
+            print(f"  the camera's aim at the truth: the skyline fits best with the rays turned {c1[1]:+.2f} deg and tilted {c1[2]:+.2f} deg (score {c1[0]:.1f}, against {sc:.1f} as recorded)")
+            # THE PICTURE'S LAG (2026-11-06): if the picture is a frame or two older than its pose, each ray is turned by
+            # the phone's turn rate then x the lag. At the truth, which lag the skyline likes; applied when SKY_LAG says so.
+            rates = np.array([p.get("yawRate") or 0.0 for p in pics])
+            pi_all = obs[:, 0].astype(int)
+            lags = []
+            for lag_ms in range(-150, 301, 25):
+                o2 = obs.copy(); o2[:, 1] -= np.radians(rates[pi_all]) * (lag_ms / 1000)
+                lags.append((exact_score(S, cams, eyes, o2, *truth)[0], lag_ms))
+            bl = max(lags)
+            turning = np.mean(np.abs(rates) > 10)
+            print(f"  the picture's lag behind its pose, at the truth: best {bl[1]:+d} ms (score {bl[0]:.1f}; 0 ms {dict((l, s_) for s_, l in lags)[0]:.1f}); {turning:.0%} of pictures taken turning faster than 10 deg/s, median |rate| {np.median(np.abs(rates)):.1f} deg/s")
 
     # COARSE: the model's skyline from every lattice spot, every 2 degrees, at the median eye height
     m = COARSE_M
@@ -417,7 +419,7 @@ def main():
             dth = math.degrees((T[0] - truth[0] + np.pi) % (2 * np.pi) - np.pi)
             line += f"; checks {', '.join(f'{x * FT:.1f}' for x in errs)} ft (median {np.median(errs) * FT:.1f}); {dth:+.1f} deg from the truth"
         print(line)
-    if truth:
+    if truth and not LEAN:
         # WHO PREFERS THE TWIST: the same two placements scored on the narrow-band samples alone (roof edges, open
         # sky) and on the wide-band ones (under crowns, the model's edge)
         def split(T):
@@ -459,82 +461,85 @@ def main():
     far = [o for o in out[1:] if math.hypot(*np.subtract(place(o[1], mid), place(out[0][1], mid))) > 2 or abs(math.degrees((o[1][0] - out[0][1][0] + np.pi) % (2 * np.pi) - np.pi)) > 5]
     if far:
         print(f"The best different placement scores {out[0][0] - far[0][0]:.1f} below the best (log-likelihood over {len(obs)} samples; higher is surer, under ~10 is a toss-up).")
-    # STEP 3 (the owner, 2026-11-06: "maybe each discrete arcore alignment needs its own fit"): windows of WINDOW_M of
-    # walking every STEP_M, each refined from the best whole-walk placement on its own pictures, kept when it holds
-    # enough samples and sits within 3 m and 6 degrees of its neighbours' mean; each check scored by the window
-    # nearest it, else by the whole-walk placement.
-    WINDOW_M, STEP_M = 60.0, 20.0
-    odos = np.array([p["odo"] for p in pics]); o_pi = odos[obs[:, 0].astype(int)]
-    T0 = out[0][1]; wins = []
-    for c0 in np.arange(odos.min(), odos.max() + 1e-6, STEP_M):
-        keep = (o_pi >= c0 - WINDOW_M / 2) & (o_pi < c0 + WINDOW_M / 2)
-        o2 = obs[keep]
-        if len(o2) < 60:
-            continue
-        T = T0; sc = exact_score(S, cams, eyes, o2, *T)[0]
+    if not LEAN:
+        # STEP 3 (the owner, 2026-11-06: "maybe each discrete arcore alignment needs its own fit"): windows of WINDOW_M of
+        # walking every STEP_M, each refined from the best whole-walk placement on its own pictures, kept when it holds
+        # enough samples and sits within 3 m and 6 degrees of its neighbours' mean; each check scored by the window
+        # nearest it, else by the whole-walk placement.
+        WINDOW_M, STEP_M = 60.0, 20.0
+        odos = np.array([p["odo"] for p in pics]); o_pi = odos[obs[:, 0].astype(int)]
+        T0 = out[0][1]; wins = []
+        for c0 in np.arange(odos.min(), odos.max() + 1e-6, STEP_M):
+            keep = (o_pi >= c0 - WINDOW_M / 2) & (o_pi < c0 + WINDOW_M / 2)
+            o2 = obs[keep]
+            if len(o2) < 60:
+                continue
+            T = T0; sc = exact_score(S, cams, eyes, o2, *T)[0]
+            for dd, mm in ((1.0, 0.5), (0.25, 0.2)):
+                cands = [(T[0] + math.radians(a), T[1] + x, T[2] + y) for a in (-3 * dd, -2 * dd, -dd, 0, dd, 2 * dd, 3 * dd) for x in np.arange(-3, 3.01, 1) * mm for y in np.arange(-3, 3.01, 1) * mm]
+                scs = [exact_score(S, cams, eyes, o2, *C)[0] for C in cands]
+                j = int(np.argmax(scs))
+                if scs[j] > sc:
+                    sc, T = scs[j], cands[j]
+            wins.append({"odo": float(c0), "T": T, "n": int(keep.sum()), "score": sc})
+        mid = cams.mean(0)
+        for w_ in wins:
+            others = [o for o in wins if o is not w_ and abs(o["odo"] - w_["odo"]) <= STEP_M * 1.01]
+            if not others:
+                w_["kept"] = True; continue
+            dth = np.mean([math.degrees((o["T"][0] - w_["T"][0] + np.pi) % (2 * np.pi) - np.pi) for o in others])
+            dpos = np.mean([math.hypot(*np.subtract(place(o["T"], mid), place(w_["T"], mid))) for o in others])
+            w_["kept"] = abs(dth) <= 6 and dpos <= 3
+        kept = [w_ for w_ in wins if w_["kept"]]
+        def place_at(odo):
+            if not kept:
+                return T0
+            w_ = min(kept, key=lambda w__: abs(w__["odo"] - odo))
+            return w_["T"] if abs(w_["odo"] - odo) <= WINDOW_M / 2 else T0
+        print(f"Windows of {WINDOW_M:.0f} m every {STEP_M:.0f} m: {len(wins)} fitted, {len(kept)} kept (agreeing with their neighbours within 3 m and 6 degrees).")
+        if truth and uniq:
+            errs_w = [math.hypot(*np.subtract(place(place_at(c.get("odo") or 0), c["ar"]), c["map"])) for c in uniq]
+            errs_g = check_errs(T0, uniq)
+            turns = [math.degrees((w_["T"][0] - truth[0] + np.pi) % (2 * np.pi) - np.pi) for w_ in kept]
+            print(f"  checks by their window: {', '.join(f'{x * FT:.1f}' for x in errs_w)} ft (median {np.median(errs_w) * FT:.1f}); by the one placement {np.median(errs_g) * FT:.1f} ft; the kept windows' turn from the truth {', '.join(f'{t:+.1f}' for t in turns)} deg")
+        # HEADING DRIFT (2026-11-06: the windows' twist grew from -0.1 to -6.3 degrees along the 22:02 walk, about a degree
+        # a minute): one placement whose heading turns steadily with the distance walked, theta(odo) = theta0 + k * odo,
+        # the position carried along. k searched, the rest re-refined; each check scored at its own odo.
+        def drift_score(T, k_):
+            th0, tx, ty = T; sc = 0.0
+            # pictures grouped by odo so each gets its own turn about the walk's middle
+            for i0 in range(0, len(obs), 400):
+                o2 = obs[i0:i0 + 400]
+                pi2 = o2[:, 0].astype(int); dth = k_ * (odos[pi2] - odo_ref)
+                # rotate each picture's camera about the reference point by its own dth
+                c_, s_ = np.cos(dth), np.sin(dth)
+                u, v = cams[pi2, 0] - cam_ref[0], cams[pi2, 1] - cam_ref[1]
+                u2, v2 = c_ * u - s_ * v + cam_ref[0], s_ * u + c_ * v + cam_ref[1]
+                th = th0; c0, s0 = math.cos(th), math.sin(th)
+                e, n = c0 * u2 - s0 * v2 + tx, s0 * u2 + c0 * v2 + ty
+                eye = S.ground(e, n) + eyes[pi2]
+                A, R = skyline_both(S, e, n, eye, o2[:, 1] + th + dth)
+                sc += float(score_from(A, R, o2[:, 2], o2[:, 3]).sum())
+            return sc
+        odo_ref = float(np.median(odos)); i_ref = int(np.argmin(np.abs(odos - odo_ref))); cam_ref = cams[i_ref]
+        def drift_place(T, k_, odo, uv):
+            dth = k_ * (odo - odo_ref); c_, s_ = math.cos(dth), math.sin(dth)
+            u, v = uv[0] - cam_ref[0], uv[1] - cam_ref[1]
+            return place(T, (c_ * u - s_ * v + cam_ref[0], s_ * u + c_ * v + cam_ref[1]))
+        ks = np.radians(np.arange(-0.10, 0.101, 0.01))  # degrees per metre walked
+        best_k = max(((drift_score(T0, k_), k_) for k_ in ks), key=lambda x: x[0])
+        Tk, kk, sck = T0, best_k[1], best_k[0]
         for dd, mm in ((1.0, 0.5), (0.25, 0.2)):
-            cands = [(T[0] + math.radians(a), T[1] + x, T[2] + y) for a in (-3 * dd, -2 * dd, -dd, 0, dd, 2 * dd, 3 * dd) for x in np.arange(-3, 3.01, 1) * mm for y in np.arange(-3, 3.01, 1) * mm]
-            scs = [exact_score(S, cams, eyes, o2, *C)[0] for C in cands]
-            j = int(np.argmax(scs))
-            if scs[j] > sc:
-                sc, T = scs[j], cands[j]
-        wins.append({"odo": float(c0), "T": T, "n": int(keep.sum()), "score": sc})
-    mid = cams.mean(0)
-    for w_ in wins:
-        others = [o for o in wins if o is not w_ and abs(o["odo"] - w_["odo"]) <= STEP_M * 1.01]
-        if not others:
-            w_["kept"] = True; continue
-        dth = np.mean([math.degrees((o["T"][0] - w_["T"][0] + np.pi) % (2 * np.pi) - np.pi) for o in others])
-        dpos = np.mean([math.hypot(*np.subtract(place(o["T"], mid), place(w_["T"], mid))) for o in others])
-        w_["kept"] = abs(dth) <= 6 and dpos <= 3
-    kept = [w_ for w_ in wins if w_["kept"]]
-    def place_at(odo):
-        if not kept:
-            return T0
-        w_ = min(kept, key=lambda w__: abs(w__["odo"] - odo))
-        return w_["T"] if abs(w_["odo"] - odo) <= WINDOW_M / 2 else T0
-    print(f"Windows of {WINDOW_M:.0f} m every {STEP_M:.0f} m: {len(wins)} fitted, {len(kept)} kept (agreeing with their neighbours within 3 m and 6 degrees).")
-    if truth and uniq:
-        errs_w = [math.hypot(*np.subtract(place(place_at(c.get("odo") or 0), c["ar"]), c["map"])) for c in uniq]
-        errs_g = check_errs(T0, uniq)
-        turns = [math.degrees((w_["T"][0] - truth[0] + np.pi) % (2 * np.pi) - np.pi) for w_ in kept]
-        print(f"  checks by their window: {', '.join(f'{x * FT:.1f}' for x in errs_w)} ft (median {np.median(errs_w) * FT:.1f}); by the one placement {np.median(errs_g) * FT:.1f} ft; the kept windows' turn from the truth {', '.join(f'{t:+.1f}' for t in turns)} deg")
-    # HEADING DRIFT (2026-11-06: the windows' twist grew from -0.1 to -6.3 degrees along the 22:02 walk, about a degree
-    # a minute): one placement whose heading turns steadily with the distance walked, theta(odo) = theta0 + k * odo,
-    # the position carried along. k searched, the rest re-refined; each check scored at its own odo.
-    def drift_score(T, k_):
-        th0, tx, ty = T; sc = 0.0
-        # pictures grouped by odo so each gets its own turn about the walk's middle
-        for i0 in range(0, len(obs), 400):
-            o2 = obs[i0:i0 + 400]
-            pi2 = o2[:, 0].astype(int); dth = k_ * (odos[pi2] - odo_ref)
-            # rotate each picture's camera about the reference point by its own dth
-            c_, s_ = np.cos(dth), np.sin(dth)
-            u, v = cams[pi2, 0] - cam_ref[0], cams[pi2, 1] - cam_ref[1]
-            u2, v2 = c_ * u - s_ * v + cam_ref[0], s_ * u + c_ * v + cam_ref[1]
-            th = th0; c0, s0 = math.cos(th), math.sin(th)
-            e, n = c0 * u2 - s0 * v2 + tx, s0 * u2 + c0 * v2 + ty
-            eye = S.ground(e, n) + eyes[pi2]
-            A, R = skyline_both(S, e, n, eye, o2[:, 1] + th + dth)
-            sc += float(score_from(A, R, o2[:, 2], o2[:, 3]).sum())
-        return sc
-    odo_ref = float(np.median(odos)); i_ref = int(np.argmin(np.abs(odos - odo_ref))); cam_ref = cams[i_ref]
-    def drift_place(T, k_, odo, uv):
-        dth = k_ * (odo - odo_ref); c_, s_ = math.cos(dth), math.sin(dth)
-        u, v = uv[0] - cam_ref[0], uv[1] - cam_ref[1]
-        return place(T, (c_ * u - s_ * v + cam_ref[0], s_ * u + c_ * v + cam_ref[1]))
-    ks = np.radians(np.arange(-0.10, 0.101, 0.01))  # degrees per metre walked
-    best_k = max(((drift_score(T0, k_), k_) for k_ in ks), key=lambda x: x[0])
-    Tk, kk, sck = T0, best_k[1], best_k[0]
-    for dd, mm in ((1.0, 0.5), (0.25, 0.2)):
-        cands = [(Tk[0] + math.radians(a), Tk[1] + x, Tk[2] + y) for a in (-2 * dd, -dd, 0, dd, 2 * dd) for x in np.arange(-2, 2.01, 1) * mm for y in np.arange(-2, 2.01, 1) * mm]
-        scs = [drift_score(C, kk) for C in cands]; j = int(np.argmax(scs))
-        if scs[j] > sck:
-            sck, Tk = scs[j], cands[j]
-    print(f"Heading drift: best {math.degrees(kk):+.3f} deg per metre walked ({math.degrees(kk) * 60:+.1f} deg per 60 m); score {sck:.1f} against {out[0][0]:.1f} with none.")
-    if truth and uniq:
-        errs_k = [math.hypot(*np.subtract(drift_place(Tk, kk, c.get("odo") or 0, c["ar"]), c["map"])) for c in uniq]
-        print(f"  checks with the drift: {', '.join(f'{x * FT:.1f}' for x in errs_k)} ft (median {np.median(errs_k) * FT:.1f}); heading at the walk's middle {math.degrees((Tk[0] - truth[0] + np.pi) % (2 * np.pi) - np.pi):+.1f} deg from the truth")
+            cands = [(Tk[0] + math.radians(a), Tk[1] + x, Tk[2] + y) for a in (-2 * dd, -dd, 0, dd, 2 * dd) for x in np.arange(-2, 2.01, 1) * mm for y in np.arange(-2, 2.01, 1) * mm]
+            scs = [drift_score(C, kk) for C in cands]; j = int(np.argmax(scs))
+            if scs[j] > sck:
+                sck, Tk = scs[j], cands[j]
+        print(f"Heading drift: best {math.degrees(kk):+.3f} deg per metre walked ({math.degrees(kk) * 60:+.1f} deg per 60 m); score {sck:.1f} against {out[0][0]:.1f} with none.")
+        if truth and uniq:
+            errs_k = [math.hypot(*np.subtract(drift_place(Tk, kk, c.get("odo") or 0, c["ar"]), c["map"])) for c in uniq]
+            print(f"  checks with the drift: {', '.join(f'{x * FT:.1f}' for x in errs_k)} ft (median {np.median(errs_k) * FT:.1f}); heading at the walk's middle {math.degrees((Tk[0] - truth[0] + np.pi) % (2 * np.pi) - np.pi):+.1f} deg from the truth")
+    if LEAN:
+        wins = []
     f_ = float
     json.dump({"placements": [{"score": f_(s), "theta": f_(T[0]), "tx": f_(T[1]), "ty": f_(T[2])} for s, T in out], "windows": [{"odo": f_(w_["odo"]), "theta": f_(w_["T"][0]), "tx": f_(w_["T"][1]), "ty": f_(w_["T"][2]), "n": int(w_["n"]), "kept": bool(w_["kept"])} for w_ in wins]}, open(os.path.join(d, "skyline.json"), "w"))
     print(f"Done in {int(time.time() - t0)} s.")

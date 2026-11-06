@@ -1177,3 +1177,20 @@ What it says: brightness is the sharp signal and the skyline is the coarse one; 
 has looked at its drive and paths for a few seconds sits on the map to about 2.5 ft. The walk itself is the lever:
 a protocol that turns the camera along the drive, the sidewalk and the house's roofline early on gives both
 signals what they need.
+
+### 9. Placing a walk from its pictures, and nudging the walk to see what places it (2026-11-06)
+
+The owner, 2026-11-06: build the combined placement (SCAN-H19's recommendation 2), and "some way to notify the user
+while they're doing a walk to be like 'look at the roof, driveway, road, or patio' if it's been a while since a
+good anchor was seen", and use the ground's position and shape in the placement.
+
+- Task `place` of "S. Yard AR tool": the twin with its pictures; skyline_study.py in its lean mode (SKY_LEAN: the
+  search alone) writes skyline.json; pavement_study.py refines its best three on the lidar's brightness under the
+  cast pavement plus the ground's shape (ARCore's ground points against the model's ground, weight 0.5) and writes
+  placement.json (the skyline's best alone when fewer than 1,000 pavement cells were seen); post-fix.mjs uses it for
+  the whole walk when no references were marked, scores it beside the references when they were, and sets the
+  height from the phone's ground points under it. All kept beside the twin.
+- scan/lib/anchors.js on the page: from the picture it already reads about once a second, whether this moment shows
+  a roofline against the sky (camera tipped up, sky over something) or pavement (tipped down, grey ground under
+  surface.js's paving rule); after 30 m walked without one, a flash and a line on the screen asking for it, at most
+  every 15 m. Counts kept in live.json (`anchors`). WebXR only (8th Wall hands the page no picture).

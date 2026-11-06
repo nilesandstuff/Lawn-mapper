@@ -16,6 +16,7 @@ import { frameFor, bboxOf, toPx, fromPx, ringsOf } from '/lib/photo.js';
 import { newLocate, mark, noteGround, addDepth, nextAsk, answer, fitFor, mapOf, sessionOf, checkError, nearestNamed, agreement, groundOffset, status as fixStatus, summaryOf } from '/lib/locate.js';
 import { leftOut, mapToSession } from '/lib/align.js';
 import { newTwin, addPoints, addPose, wantKey, addKey, flush, flushDue, liveOf } from '/lib/twin.js';
+import { newAnchors, viewOf, noteView, nudge, pitchOf, anchorsKept } from '/lib/anchors.js';
 import { surfaceOf } from '/lib/surface.js';
 import { viewToFit, followView, toScreen, zoomAt as miniZoom, pan as miniPan, edgeArrow } from '/lib/minimap.js';
 
@@ -234,7 +235,7 @@ const log = (what) => { st.errors.push({ t: Date.now(), what }); if (st.errors.l
 async function startAR(engine) {
   const overlay = $('#overlay');
   st.walk = newWalk({ engine, phone: navigator.userAgent });
-  st.dy = null; st.dyFrom = null; st.gpsTrail = [];
+  st.dy = null; st.dyFrom = null; st.gpsTrail = []; st.anchors = newAnchors(); st.nudge = null;
   st.walk.checks = [];
   st.L = newLocate();
   mini.view = null; mini.mode = 'fit'; mini.locked = false; $('#arrows').innerHTML = '';
@@ -327,10 +328,19 @@ function onFrame(f) {
   // THE GROUND'S COLOUR (scan/lib/surface.js): about once a second, the camera's picture read back, and the depth
   // under a grid of it labelled grass or paving, for the lawn-edge term of the match. The same read serves the twin.
   let grabbed = null;
-  if (f.grab && f.depth && f.pose && f.tracking === 'normal' && f.t - (st.colourAt || 0) > COLOUR_EVERY) {
+  if (f.grab && f.pose && f.tracking === 'normal' && f.t - (st.colourAt || 0) > COLOUR_EVERY) {
     st.colourAt = f.t;
     grabbed = f.grab();
-    if (grabbed?.pixels) {
+    /* ANCHOR NUDGES (scan/lib/anchors.js): does this picture show a roofline against the sky, or pavement? After
+       30 m without one, a hint to look at it; the after-the-walk placement lives on both (SCAN-H19) */
+    if (grabbed?.pixels && st.anchors) {
+      const view = viewOf(grabbed.pixels, grabbed.w, grabbed.h, pitchOf(f.pose.quaternion));
+      noteView(st.anchors, odo, view);
+      if (st.nudge && view[st.nudge.kind]) st.nudge = null;
+      const n = nudge(st.anchors, odo);
+      if (n) { st.nudge = n; flash(n.text); }
+    }
+    if (grabbed?.pixels && f.depth) {
       const pts = [], { w: gw, h: gh, pixels } = grabbed;
       for (let i = 0; i < 24; i++) for (let j = 0; j < 40; j++) {
         const x = (i + 0.5) / 24, y = (j + 0.5) / 40, p = f.depth.at(x, y);
@@ -350,7 +360,7 @@ function onFrame(f) {
       const g = grabbed || f.grab();
       if (g) { const name = addKey(st.twin, now, odo, f.pose.position, f.pose.quaternion, g); g.blob.then((b) => b && sendTwin([{ name, type: 'image/jpeg', body: b }]), () => {}); }
     }
-    if (flushDue(st.twin, now)) sendTwin(flush(st.twin, now, liveOf(L, w, { recordOnly: !!st.recordOnly, points: pointsKept(), gpsTrail: trailKept() })));
+    if (flushDue(st.twin, now)) sendTwin(flush(st.twin, now, liveOf(L, w, { recordOnly: !!st.recordOnly, points: pointsKept(), gpsTrail: trailKept(), anchors: st.anchors ? anchorsKept(st.anchors) : null })));
   }
   if (!st.recordOnly && st.lid.ready && st.lid.worker && f.tracking === 'normal') {
     const ask = nextAsk(L, odo, Date.now(), f.pose?.position || null);
@@ -420,7 +430,7 @@ function hud(f) {
   const ag = st.agree ? ` · lidar dots: <strong>${st.agree.on.length}</strong> on, ${st.agree.off.length} off` : '';
   const fixLine = st.origin ? `<br>${st.recordOnly ? '<strong>Recording only</strong>: no live lidar fix; the walk is placed afterwards (workflow S, task fix). ' : ''}${esc(st.lid.ready ? fixStatus(L, w.odo) : st.lid.error ? `No lidar (${st.lid.error}); references only: ${fixStatus(L, w.odo)}` : `Lidar: ${st.lid.progress || 'reading…'}`)}${ag}${target ? `<br>Next to mark: <strong style="color:${target.kind === 'ref' ? '#8ab4ff' : '#d9a6ff'}">${esc(target.name)}</strong> (aim where it meets the ground, within 10 ft, tap Mark; tap another point on the mini map to mark that one instead)` : ''}` : '';
   const last = st.errors.length && Date.now() - st.errors[st.errors.length - 1].t < 6000 && /engine|start/.test(st.errors[st.errors.length - 1].what) ? `<br><span class="bad">${esc(st.errors[st.errors.length - 1].what)}</span>` : '';
-  $('#hud').innerHTML = `${NAME[w.engine]} · ${tr} · walked ${Math.round(w.stats.walked * FT)} ft${pts} · ${aim} · ${w.pins.length} pin${w.pins.length === 1 ? '' : 's'}${w.pendingMeasure ? ' · <span class="warn">now aim at the second mark</span>' : ''}${fixLine}${last}`;
+  $('#hud').innerHTML = `${NAME[w.engine]} · ${tr} · walked ${Math.round(w.stats.walked * FT)} ft${pts} · ${aim} · ${w.pins.length} pin${w.pins.length === 1 ? '' : 's'}${w.pendingMeasure ? ' · <span class="warn">now aim at the second mark</span>' : ''}${fixLine}${st.nudge ? `<br><span class="warn">${esc(st.nudge.text)}</span>` : ''}${last}`;
   const can = !!f.hit && f.tracking !== 'lost';
   $('#pin').disabled = !can; $('#measure').disabled = !can; $('#check').disabled = !can || !w.pins.length; $('#mark').disabled = !can || !target;
   const again = target && L.marks.some((m) => m.id === target.id);
@@ -636,7 +646,7 @@ function finish() {
   });
   s.id = `${w.startedAt}`; s.saved = null;
   if (st.twin) {
-    sendTwin(flush(st.twin, Date.now(), liveOf(L, w, { ended: true, summary: s.id, recordOnly: !!st.recordOnly, points: pointsKept(), gpsTrail: trailKept() })));
+    sendTwin(flush(st.twin, Date.now(), liveOf(L, w, { ended: true, summary: s.id, recordOnly: !!st.recordOnly, points: pointsKept(), gpsTrail: trailKept(), anchors: st.anchors ? anchorsKept(st.anchors) : null })));
     s.twin = { ...st.twin.counts, camera: st.twin.camera, off: st.twinUp.off };
   }
   st.twin = null;

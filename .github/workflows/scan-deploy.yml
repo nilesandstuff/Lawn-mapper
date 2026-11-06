@@ -36,7 +36,7 @@ on:
         required: true
         default: tests
         type: choice
-        options: [tests, deploy, walks, twin, fix, depth, study, skyline, pavement]
+        options: [tests, deploy, walks, twin, fix, place, depth, study, skyline, pavement]
       walk:
         description: 'For twin, fix or depth: the walk id, or latest'
         default: latest
@@ -62,7 +62,7 @@ permissions:
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -86,6 +86,7 @@ jobs:
           node scan/test/surface.test.js
           node scan/test/outline.test.js
           node scan/test/postfix.test.js
+          node scan/test/anchors.test.js
           node tools/lidar-model.test.js
 
       - name: The 8th Wall engine binary (pinned)
@@ -217,7 +218,7 @@ jobs:
       # CAN THE SKYLINE PLACE A WALK (scan/tools/skyline_study.py, SCAN-H11 option 1): the sky in each picture against
       # the shade map's model seen from every placement; scored against the check points. CPU, free.
       - name: Run actions/setup-python@v5 (skyline)
-        if: ${{ inputs.task == 'skyline' || inputs.task == 'pavement' }}
+        if: ${{ inputs.task == 'skyline' || inputs.task == 'pavement' || inputs.task == 'place' }}
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -240,6 +241,27 @@ jobs:
           node scan/tools/skyline-prep.mjs twin | tee skyline.txt
           python scan/tools/skyline_study.py twin | tee -a skyline.txt
           node scan/tools/twin-r2.mjs put "$WALK" twin/skyline.json | tee -a skyline.txt
+
+      # PLACE A WALK FROM ITS PICTURES (SCAN-H19): the skyline for the coarse placement, the lidar's brightness under the
+      # pavement and the ground's shape for the fine one, then the after-the-walk fix with it (used when the walk has
+      # no references). Keeps skyline.json, pavement.json, placement.json, fixed.json and mesh.bin beside the twin.
+      - name: A walk placed from its pictures
+        if: ${{ inputs.task == 'place' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WALK: ${{ inputs.walk }}
+          SKY_LEAN: '1'
+        run: |
+          set -o pipefail
+          pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+          pip install --quiet "transformers>=4.45" pillow numpy
+          node scan/tools/twin-r2.mjs get "$WALK" twin
+          node scan/tools/skyline-prep.mjs twin | tee place.txt
+          python scan/tools/skyline_study.py twin | tee -a place.txt
+          python scan/tools/pavement_study.py twin | tee -a place.txt
+          node scan/tools/post-fix.mjs twin | tee -a place.txt
+          node scan/tools/twin-r2.mjs put "$WALK" twin/skyline.json twin/pavement.json twin/placement.json twin/fixed.json twin/mesh.bin | tee -a place.txt
 
       # PAVEMENT FROM THE PICTURES (scan/tools/pavement_study.py): road and sidewalk pixels cast onto the ground, kept
       # for the match against the model's intensity when it has one; tested against the traced lawn meanwhile.
@@ -274,6 +296,7 @@ jobs:
             study) cat study.txt 2>/dev/null || echo "no study: see the step above" ;;
             skyline) cat skyline.txt 2>/dev/null || echo "no skyline study: see the step above" ;;
             pavement) cat pavement.txt 2>/dev/null || echo "no pavement study: see the step above" ;;
+            place) grep -v '^  model\|^  rays\|^  the picture' place.txt 2>/dev/null | tail -40 || echo "no placement: see the step above" ;;
             depth) tail -25 depth.txt 2>/dev/null || echo "no depth run: see the step above" ;;
             *) echo "Scan tests: ${{ job.status }}" ;;
           esac

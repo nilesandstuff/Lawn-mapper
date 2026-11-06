@@ -34,6 +34,23 @@ CELL = 0.2
 PAVE = {"road", "sidewalk", "path"}  # not earth or floor: November lawn reads as earth (57% of "pavement" fell in the lawn)
 GRASS = {"grass", "field", "plant", "flower"}
 FT = 3.28084
+GROUND_TOL_M = 0.15
+GROUND_W = float(os.environ.get("PLACE_GROUND_W", 0.5))
+PAVE_ENOUGH = int(os.environ.get("PLACE_PAVE_ENOUGH", 1000))  # pavement cells below which brightness is not trusted (SCAN-H19)
+
+
+def ground_points(d, keep=6000):
+    """ARCore's ground points in the session's level frame: [u, v, y]. From the twin's cloud parts (t, odo, x, y, z,
+    ground: the page's ground height then); a point within 15 cm of it is ground."""
+    import glob
+    parts = sorted(glob.glob(os.path.join(d, "cloud-*.bin")))
+    if not parts:
+        return np.zeros((0, 3))
+    a = np.concatenate([np.fromfile(p_, dtype="<f4") for p_ in parts]); a = a[: len(a) // 6 * 6].reshape(-1, 6)
+    a = a[np.isfinite(a[:, 5]) & (np.abs(a[:, 3] - a[:, 5]) < 0.15)]
+    if len(a) > keep:
+        a = a[:: len(a) // keep]
+    return np.stack([a[:, 2], -a[:, 4], a[:, 3]], 1).astype(np.float64)
 
 
 def labels(d, pics):
@@ -173,36 +190,80 @@ def main():
                 z = (med - v[ok]) / scale; pp = 1 / (1 + np.exp(-z))
                 return np.log(np.clip(pp if want_pave else 1 - pp, 0.02, 1)).mean() * 1000
             return ll(P, True) + ll(G, False)
-        def refine(T, steps=((2.0, 1.0), (0.5, 0.3), (0.25, 0.1))):
-            sc = score(T)
+        # THE GROUND'S SHAPE (the owner, 2026-11-06: "we should at least be able to inform the placement based on the
+        # position and shape of the ground"): ARCore's ground points against the lidar's ground (the model's `ground`,
+        # its class-2 returns per metre), once their height offset is taken out: the share within GROUND_TOL_M. Broad
+        # (SCAN-H11: a few metres, not inches), so a light weight beside the brightness; its own answer is printed.
+        gp = ground_points(d)
+        gg = np.fromfile(os.path.join(d, "sky-ground.bin"), dtype="<f4").reshape(g["h"], g["w"]) if os.path.exists(os.path.join(d, "sky-ground.bin")) else None
+        def gscore(T):
+            if gg is None or not len(gp):
+                return 0.0
+            th, tx, ty = T; c_, s_ = math.cos(th), math.sin(th)
+            e = c_ * gp[:, 0] - s_ * gp[:, 1] + tx; n = s_ * gp[:, 0] + c_ * gp[:, 1] + ty
+            c = np.floor((e - g["x0"]) / g["cell"]).astype(np.int64); r = np.floor((g["y1"] - n) / g["cellY"]).astype(np.int64)
+            ok = (c >= 0) & (r >= 0) & (c < g["w"]) & (r < g["h"])
+            z = np.where(ok, gg[np.where(ok, r, 0), np.where(ok, c, 0)], np.nan)
+            dz = z - gp[:, 2]; dz = dz[np.isfinite(dz)]
+            if len(dz) < 50:
+                return 0.0
+            tz = np.median(dz)
+            return float(np.exp(-0.5 * ((dz - tz) / GROUND_TOL_M) ** 2).mean() * 1000)
+        def total(T):
+            return score(T) + GROUND_W * gscore(T)
+        def refine(T, f, steps=((2.0, 1.0), (0.5, 0.3), (0.25, 0.1))):
+            sc = f(T)
             for dd, mm in steps:
                 cands = [(T[0] + math.radians(a), T[1] + x, T[2] + y) for a in np.arange(-3, 3.01, 1) * dd for x in np.arange(-4, 4.01, 1) * mm for y in np.arange(-4, 4.01, 1) * mm]
-                scs = [score(C) for C in cands]; j = int(np.argmax(scs))
-                if scs[j] > sc:
-                    sc, T = scs[j], cands[j]
+                scs = [f(C) for C in cands]; j_ = int(np.argmax(scs))
+                if scs[j_] > sc:
+                    sc, T = scs[j_], cands[j_]
             return sc, T
         truth = fit_rigid([(c["ar"], c["map"]) for c in checks]) if len(checks) >= 2 else None
-        starts = []
+        def errs_of(T):
+            return [math.hypot(*np.subtract((math.cos(T[0]) * c["ar"][0] - math.sin(T[0]) * c["ar"][1] + T[1], math.sin(T[0]) * c["ar"][0] + math.cos(T[0]) * c["ar"][1] + T[2]), c["map"])) for c in checks]
+        def described(T):
+            if not truth:
+                return ""
+            e_ = errs_of(T)
+            return f"; checks {', '.join(f'{x * FT:.1f}' for x in e_)} ft (median {np.median(e_) * FT:.1f}); {math.degrees((T[0] - truth[0] + np.pi) % (2 * np.pi) - np.pi):+.1f} deg from the truth"
+        sky_starts = []
         sk = os.path.join(d, "skyline.json")
         if os.path.exists(sk):
-            starts += [(q["theta"], q["tx"], q["ty"]) for q in json.load(open(sk)).get("placements", [])[:3]]
+            sky_starts = [(q["theta"], q["tx"], q["ty"]) for q in json.load(open(sk)).get("placements", [])[:3]]
+        else:
+            print("  (no skyline.json beside the twin: the skyline's placements were not tried as starts)")
         if truth:
             vp, vg = under(truth, P), under(truth, G)
             okp, okg = np.isfinite(vp), np.isfinite(vg)
             print(f"Brightness at the truth: score {score(truth):.1f}; {len(P)} pavement cells ({okp.mean():.0%} over a lidar ground return, median brightness {np.median(vp[okp]) if okp.any() else float('nan'):.0f}) and {len(G)} grass cells ({okg.mean():.0%}, median {np.median(vg[okg]) if okg.any() else float('nan'):.0f}); the lot's ground median {med:.0f}, scale {scale:.0f}. Pavement should be the darker.")
-            starts.append(truth)
-        names = ([f"from the skyline's {i + 1}" for i in range(len(starts) - (1 if truth else 0))] + (["from the truth"] if truth else []))
-        res = sorted(((*refine(T0), nm) for T0, nm in zip(starts, names)), key=lambda x: -x[0])
-        if not os.path.exists(sk):
-            print("  (no skyline.json beside the twin: the skyline's placements were not tried as starts)")
-        for rank, (sc, T, nm) in enumerate(res, 1):
-            line = f"  brightness placement {rank} ({nm}): score {sc:.1f}"
-            if truth:
-                errs = [math.hypot(*np.subtract((math.cos(T[0]) * c["ar"][0] - math.sin(T[0]) * c["ar"][1] + T[1], math.sin(T[0]) * c["ar"][0] + math.cos(T[0]) * c["ar"][1] + T[2]), c["map"])) for c in checks]
-                line += f"; checks {', '.join(f'{x * FT:.1f}' for x in errs)} ft (median {np.median(errs) * FT:.1f}); {math.degrees((T[0] - truth[0] + np.pi) % (2 * np.pi) - np.pi):+.1f} deg from the truth"
-            print(line)
+            print(f"Ground shape at the truth: {gscore(truth) / 10:.0f}% of {len(gp):,} ARCore ground points within {GROUND_TOL_M * 100:.0f} cm of the lidar's ground (weight {GROUND_W}).")
+        # each signal alone and the two together, from every skyline start (and, for the record, from the truth)
+        named = [(T0, f"the skyline's {i + 1}") for i, T0 in enumerate(sky_starts)] + ([(truth, "the truth (study only)")] if truth else [])
+        for label, f in (("brightness", score), ("ground", gscore), ("both", total)):
+            res = sorted(((*refine(T0, f), nm) for T0, nm in named), key=lambda x: -x[0])
+            for rank, (sc, T, nm) in enumerate(res[:3], 1):
+                print(f"  {label} {rank} (from {nm}): score {sc:.1f}{described(T)}")
+        # THE PLACEMENT (the after-the-walk fix reads it): both signals together, from the skyline's starts only
+        if sky_starts:
+            best = sorted((refine(T0, total) for T0 in sky_starts), key=lambda x: -x[0])
+            sc, T = best[0]
+            enough = len(P) >= PAVE_ENOUGH
+            if not enough:
+                T = sky_starts[0]
+            out_ = {"theta": float(T[0]), "tx": float(T[1]), "ty": float(T[2]), "score": float(sc),
+                    "from": "skyline, then brightness and ground" if enough else f"skyline alone (only {len(P)} pavement cells seen; {PAVE_ENOUGH} wanted)",
+                    "pavementCells": len(P), "groundPoints": int(len(gp))}
+            json.dump(out_, open(os.path.join(d, "placement.json"), "w"))
+            print(f"Placement kept (placement.json): {out_['from']}{described(T)}")
     else:
         print("No intensity in the model yet (the shade map writes it on the lot's next save): the brightness match waits.")
+        sk = os.path.join(d, "skyline.json")
+        if os.path.exists(sk):
+            q = json.load(open(sk)).get("placements", [])
+            if q:
+                json.dump({"theta": q[0]["theta"], "tx": q[0]["tx"], "ty": q[0]["ty"], "score": q[0]["score"], "from": "skyline alone (no brightness in the model)"}, open(os.path.join(d, "placement.json"), "w"))
+                print("Placement kept (placement.json): skyline alone.")
     print(f"Done in {int(time.time() - t0)} s.")
 
 

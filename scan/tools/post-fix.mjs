@@ -18,6 +18,7 @@ import { join } from 'node:path';
 import { toMerc, ringsOf } from '../lib/photo.js';
 import { toLocal } from '../lib/frames.js';
 import { gridsFromModel } from '../lib/lidar-load.js';
+import { sample } from '../lib/lidar.js';
 import { packModel } from '../lib/lidar-model.js';
 import { readCloud, readTrack, placer } from '../lib/twin.js';
 import { apply, fitRigid } from '../lib/align.js';
@@ -61,15 +62,24 @@ async function main() {
     prior = { at: [(box[0] + box[2]) / 2, (box[1] + box[3]) / 2], phone: p0 ? [p0.x, -p0.z] : [0, 0], radiusM: Math.hypot(box[2] - box[0], box[3] - box[1]) / 2 };
     from = 'anywhere on the lot (no references, no GPS)';
   }
+  /* THE PICTURES' PLACEMENT (2026-11-06, SCAN-H19; scan/tools/skyline_study.py then pavement_study.py, task place):
+     the skyline for the coarse placement, the lidar's brightness under the pavement the pictures saw and the ground's
+     shape for the fine one. ARCore holds a walk to about a foot (SCAN-H13), so one placement stands for the whole
+     walk. Used for the walk when no references were marked; with references, scored beside them. */
+  const pl = existsSync(join(dir, 'placement.json')) ? JSON.parse(readFileSync(join(dir, 'placement.json'), 'utf8')) : null;
+  const plT = pl && Number.isFinite(pl.theta) ? { theta: pl.theta, tx: pl.tx, ty: pl.ty, s: 1 } : null;
+  if (plT) console.log(`The pictures' placement: ${pl.from}${pl.pavementCells != null ? ` (${pl.pavementCells} pavement cells, ${pl.groundPoints} ground points)` : ''}.`);
   const refsPlace = placer(live, 'refs');
   const hasRefs = (live.marks || []).filter((x) => x.kind === 'ref').length >= 2;
   const sol = solveWalk(pts, L.G, prior, { refPlace: hasRefs ? refsPlace : null });
   const kept = sol.windows.filter((w) => w.kept);
+  const placeAfter = !hasRefs && plT ? () => plT : sol.placeAt;
+  if (!hasRefs && plT) console.log('No references: the walk is placed by its pictures (the lidar points below are reported, not used).');
   console.log(`Started from ${from}. One placement for the whole walk: ${sol.global.ok ? `found, ${Math.round((sol.global.hits || 0) * 100)}% of standing points landed (${sol.global.landed})` : `not found (${sol.global.why})`}.`);
   console.log(`Windows of 60 m every 20 m: ${sol.windows.length}; found ${sol.windows.filter((w) => w.ok).length}; kept ${kept.length}${hasRefs ? ', each within 1.5 m and 5 degrees of the references, the references kept everywhere else' : ''} (the rest: ${JSON.stringify(sol.windows.filter((w) => !w.kept).map((w) => (w.why ? w.why.replace(/\d+(\.\d+)?/g, '#') : 'not found')).reduce((a, k) => { a[k] = (a[k] || 0) + 1; return a; }, {}))}).`);
 
   // the check points, four ways
-  const ways = { 'after the walk': sol.placeAt, ...(sol.global.ok ? { 'one placement': () => sol.global.T } : {}), 'references alone': refsPlace, 'as walked': placer(live, 'both') };
+  const ways = { 'after the walk': placeAfter, ...(plT ? { pictures: () => plT } : {}), ...(sol.global.ok ? { 'one placement': () => sol.global.T } : {}), 'references alone': refsPlace, 'as walked': placer(live, 'both') };
   const table = {};
   for (const [name, place] of Object.entries(ways)) for (const c of checkErrors(live.marks, place)) (table[c.id] = table[c.id] || {})[name] = c.m;
   if (Object.keys(table).length) {
@@ -100,13 +110,16 @@ async function main() {
   }
 
   // the height, the pins, the mesh
-  const tz = sol.global.tz ?? null;
-  const pins = (live.pins || []).filter((p) => p.at).map((p) => { const T = sol.placeAt(p.odo ?? 0); const [e, n] = T ? apply(T, [p.at.x, -p.at.z]) : [null, null]; return { name: p.name, map: e == null ? null : [r4(e), r4(n)], z: tz != null && Number.isFinite(p.at.y) ? r4(p.at.y + tz) : null, odo: p.odo ?? null }; });
-  const mesh = baseMesh(recs, sol.placeAt, tz ?? 0);
+  // the height: the lidar's ground minus the phone's, at the phone's ground points as the walk is placed
+  const tzOf = (place) => { const d = []; for (const [u, v, y, odo] of pts.ground.filter((_, i) => i % 20 === 0)) { const T = place(odo); if (!T) continue; const [e, n] = apply(T, [u, v]); const z = sample(L.G, L.G.dem, e, n); if (Number.isFinite(z)) d.push(z - y); } d.sort((a, b) => a - b); return d.length > 30 ? d[d.length >> 1] : null; };
+  const tz = !hasRefs && plT ? tzOf(placeAfter) : (sol.global.tz ?? tzOf(placeAfter));
+  const pins = (live.pins || []).filter((p) => p.at).map((p) => { const T = placeAfter(p.odo ?? 0); const [e, n] = T ? apply(T, [p.at.x, -p.at.z]) : [null, null]; return { name: p.name, map: e == null ? null : [r4(e), r4(n)], z: tz != null && Number.isFinite(p.at.y) ? r4(p.at.y + tz) : null, odo: p.odo ?? null }; });
+  const mesh = baseMesh(recs, placeAfter, tz ?? 0);
   const meshBytes = await packModel({ tool: 'scan', kind: 'base-mesh', v: 1, walk: meta.walk || null, at: new Date().toISOString(), voxel: 0.1, frame: 'map metres round the map origin; z absolute (the lidar ground)', classes: { 0: 'ground', 1: 'standing', 2: 'high', 3: 'other' }, heightKnown: tz != null }, mesh);
   writeFileSync(join(dir, 'mesh.bin'), Buffer.from(meshBytes));
   const fixed = {
-    v: 1, at: new Date().toISOString(), method: 'postfix.js solveWalk: global, 60 m windows every 20 m, neighbour check, blended', from,
+    v: 1, at: new Date().toISOString(), method: !hasRefs && plT ? `the pictures: ${pl.from}` : 'postfix.js solveWalk: global, 60 m windows every 20 m, neighbour check, blended', from,
+    pictures: plT ? { ...Tout(plT), from: pl.from, pavementCells: pl.pavementCells ?? null } : null,
     model: { at: model.meta.at || null }, global: { ...sol.global, T: Tout(sol.global.T) }, tz,
     windows: sol.windows.map((w) => ({ odo0: w.odo0, odo1: w.odo1, ok: w.ok, kept: w.kept, hits: r4(w.hits), landed: w.landed ?? null, why: w.why || null, T: Tout(w.T) })),
     knots: sol.knots.map((k) => ({ odo: k.odo, T: Tout(k.T) })), pins, checks: table,
