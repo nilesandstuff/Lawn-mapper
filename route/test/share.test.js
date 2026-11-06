@@ -35,5 +35,5 @@ const served = [];
 const assets = { fetch: async (req) => { served.push(new URL(req.url).pathname); return new Response('page'); } };
 await worker.fetch(new Request(`https://route.example.com/s/${id}`), { ...env, ASSETS: assets });
 await worker.fetch(new Request('https://route.example.com/s/../index'), { ...env, ASSETS: assets });
-assert.deepEqual(served, ['/share.html', '/index']);
+assert.deepEqual(served, ['/share', '/index']); // /share, not /share.html: the asset server redirects .html away
 console.log('route share: ok');

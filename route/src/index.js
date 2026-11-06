@@ -89,7 +89,7 @@ export default {
     const url = new URL(request.url);
     if (url.pathname.startsWith('/api/')) return api(request, env, url);
     // a shared split route: /s/<id> is the share page, which reads the id from its own address
-    if (/^\/s\/[A-Za-z0-9]{8,20}\/?$/.test(url.pathname)) return env.ASSETS.fetch(new Request(new URL('/share.html', url), request));
+    if (/^\/s\/[A-Za-z0-9]{8,20}\/?$/.test(url.pathname)) return env.ASSETS.fetch(new Request(new URL('/share', url), request));
     return env.ASSETS.fetch(request);
   },
   // route sheets by email: Cloudflare Email Routing sends the planner's address here (src/inbox.js)
