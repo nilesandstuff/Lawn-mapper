@@ -11,6 +11,13 @@
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="stylesheet" href="/style.css">
+<link rel="manifest" id="manifest" href="/app.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<script>
+  // on a home screen, start at this route (and this person), not the planner
+  document.getElementById('manifest').href = '/app.webmanifest?start=' + encodeURIComponent(location.pathname + location.search);
+</script>
 </head>
 <body>
 <main>
@@ -47,7 +54,9 @@
       <button type="button" class="btn primary" id="freeNow">I'm free to help now</button>
       <button type="button" class="btn" id="freeLater">I'll be free at…</button>
     </div>
-    <label class="toggle" style="margin-top:12px"><input type="checkbox" id="geoToggle"> Suggest ticks from my location while this page is open</label>
+    <label class="toggle" style="margin-top:12px"><input type="checkbox" id="pushToggle"> Notify me when my list changes</label>
+    <p class="hint" id="pushHint" hidden></p>
+    <label class="toggle" style="margin-top:8px"><input type="checkbox" id="geoToggle"> Suggest ticks from my location while this page is open</label>
   </section>
 
   <section class="card" id="whoCard" hidden>

@@ -20,6 +20,7 @@ import { pathCost, solvePath } from './lib/solve.js';
 import { kindOf, parseDocument, readDocument } from './lib/doc.js';
 import { parseMail } from './lib/mail.js';
 import { splitRoutes } from './lib/split.js';
+import { rideAdjust, rideLeg, rulesFrom } from './lib/ride.js';
 import { COLORS, drawPlan, personCard, thin, totals } from './people.js';
 import { elementsOf, fill, fromCache, MAX_PAIRS, prune, remember, toFetch } from './lib/cache.js';
 
@@ -134,6 +135,25 @@ for (const b of document.querySelectorAll('[data-start]')) {
   b.addEventListener('click', () => { startMode = b.dataset.start; store.set('startMode', startMode); showStartMode(); });
 }
 showStartMode();
+
+/* riding the machine between close stops (lib/ride.js): the owner's numbers, changeable */
+let ride = { roadFt: 1000, yardFt: 230, saveMin: 5, ...store.get('ride', {}) };
+const rules = () => rulesFrom(ride);
+for (const k of ['roadFt', 'yardFt', 'saveMin']) {
+  const el = $(`#ride_${k}`);
+  el.value = ride[k];
+  el.addEventListener('change', () => {
+    const v = Number(el.value);
+    if (Number.isFinite(v) && v >= 0) { ride[k] = v; store.set('ride', ride); }
+    el.value = ride[k];
+  });
+}
+
+/** A leg's chip: driving, or riding between close stops with the time it saves. */
+const legChip = (leg) => (leg?.ride
+  ? `<span>🛵 ride ${mins(leg.duration || 0)} · saves ${Math.round((leg.saved || 0) / 60)}m</span>`
+  : `<span>🚗 ${mins(leg?.duration || 0)} · ${miles(leg?.distance || 0)}</span>`);
+const savedMin = (legs) => Math.round(legs.reduce((a, l) => a + (l?.ride ? l.saved || 0 : 0), 0) / 60);
 
 /* how many people share the day (lib/split.js); with more than one, each starts at their first stop */
 let people = Math.max(1, Math.min(10, Number(store.get('people', 1)) || 1));
@@ -574,9 +594,11 @@ async function plan() {
 
     sayPlan('Choosing the order…');
     await new Promise((r) => setTimeout(r, 30));
-    const order = solvePath(durations);
-    const listed = pathCost(durations, points.map((_, i) => i));
-    const best = pathCost(durations, order);
+    // close stops ridden between, not driven: their steps cost less (lib/ride.js)
+    const R = rideAdjust(durations, distances, points, (i) => i > 0 && i < points.length - 1, rules());
+    const order = solvePath(R.D);
+    const listed = pathCost(R.D, points.map((_, i) => i));
+    const best = pathCost(R.D, order);
 
     sayPlan('Drawing the roads…');
     let legs;
@@ -586,6 +608,8 @@ async function plan() {
     } catch {
       legs = order.slice(1).map((j, k) => ({ duration: durations[order[k]][j], distance: distances[order[k]][j] }));
     }
+    // a step between two stops that are close is a ride
+    legs = legs.map((l, k) => (k > 0 && k < legs.length - 1 ? rideLeg(l, points[order[k]], points[order[k + 1]], rules()) : l));
 
     $('#shareOneOut').hidden = true;
     result = {
@@ -641,9 +665,10 @@ async function planSplit(end, found, list) {
   sayPlan(`Splitting between ${people} people…`);
   await new Promise((r) => setTimeout(r, 30));
   const service = found.map((f) => (Number(f.stop.minutes) || 0) * 60).concat(0);
-  const { routes } = splitRoutes(tables.durations, { stops: [...Array(n).keys()], shop: n, service, people, timeMs: 2500 });
+  const R = rideAdjust(tables.durations, tables.distances, points, (i) => i < n, rules());
+  const { routes } = splitRoutes(R.D, { stops: [...Array(n).keys()], shop: n, service, people, timeMs: 2500 });
   sayPlan('Drawing the roads…');
-  const split = { at: Date.now(), shop: { label: end.label, lng: end.lng, lat: end.lat }, people: [] };
+  const split = { at: Date.now(), shop: { label: end.label, lng: end.lng, lat: end.lat }, ride: rules(), people: [] };
   for (const [k, r] of routes.entries()) {
     const out = r.map((i) => {
       const { stop, hit } = found[i];
@@ -659,6 +684,7 @@ async function planSplit(end, found, list) {
         geometry = thin(got.geometry);
       } catch { /* straight lines and the matrix's times */ }
     }
+    legs = legs.map((l, x) => (x < legs.length - 1 ? rideLeg(l, points[seq[x]], points[seq[x + 1]], rules()) : l));
     split.people.push({ name: `Person ${k + 1}`, stops: out, legs: r.length ? legs : [], geometry });
   }
   result = {
@@ -737,7 +763,7 @@ async function shareOne() {
         store.set('share.name', name);
       }
       const plan = {
-        at: r.at, shop: { label: r.end.label, lng: r.end.lng, lat: r.end.lat },
+        at: r.at, shop: { label: r.end.label, lng: r.end.lng, lat: r.end.lat }, ride: rules(),
         // a shared route starts at its first stop, as a split does: whoever helps comes from elsewhere
         people: [{ name, stops: r.stops.map((s) => ({ address: s.address, city: s.city || '', name: s.name || '', minutes: s.minutes ?? null, sqft: s.sqft ?? null, label: s.hit.label, lng: s.hit.lng, lat: s.hit.lat })), legs: r.legs.slice(1), geometry: null }],
       };
@@ -833,10 +859,13 @@ function renderResult(scroll = false) {
   $('#planned').textContent = `planned ${clock(r.at)}`;
   $('#tJobs').textContent = formatMinutes(jobs);
   $('#tDrive').textContent = formatMinutes(driveM);
-  $('#tAll').textContent = formatMinutes(jobs + driveM);
+  const rideSaved = savedMin(r.legs);
+  $('#tAll').textContent = formatMinutes(jobs + driveM - rideSaved);
 
   const notes = [`${r.stops.length} stop${r.stops.length === 1 ? '' : 's'}, ${miles(dist)} of driving.`];
-  notes.push(`Starting now, back at the shop about ${clock(Date.now() + (jobs + driveM) * 60000)}.`);
+  const rides = r.legs.filter((l) => l?.ride).length;
+  if (rides) notes.push(`🛵 Riding between ${rides} pair${rides === 1 ? '' : 's'} of close stops saves ${formatMinutes(rideSaved)} (taken off the total).`);
+  notes.push(`Starting now, back at the shop about ${clock(Date.now() + (jobs + driveM - rideSaved) * 60000)}.`);
   if (r.saved >= 60) notes.push(`${mins(r.saved)} less driving than the order in the list.`);
   if (r.fetched != null) notes.push(`Drive times: ${r.reused.toLocaleString()} reused from this phone, ${r.fetched.toLocaleString()} new from Mapbox.`);
   const area = allStops.reduce((a, s) => a + (Number(s.sqft) || 0), 0);
@@ -857,7 +886,7 @@ function renderResult(scroll = false) {
       <div class="body">
         <div class="addr">${esc(s.address)}</div>
         <div class="meta">${esc([s.name, s.city].filter(Boolean).join(' · '))}</div>
-        <div class="chips"><span>🚗 ${mins(leg.duration || 0)} · ${miles(leg.distance || 0)}</span>${s.minutes != null ? `<span>⏱ ${s.minutes}m job</span>` : ''}${s.sqft ? `<span>📐 ${sqft(s.sqft)}</span>` : ''}</div>
+        <div class="chips">${legChip(leg)}${s.minutes != null ? `<span>⏱ ${s.minutes}m job</span>` : ''}${s.sqft ? `<span>📐 ${sqft(s.sqft)}</span>` : ''}</div>
         ${shaky ? `<div class="found">Map's best guess: ${esc(s.hit.label)}</div>` : ''}
       </div>
       <a class="go" target="_blank" rel="noopener" href="${esc(nav(s.hit.label))}" aria-label="Directions to stop ${i + 1}">Go</a>

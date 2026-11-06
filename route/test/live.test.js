@@ -68,3 +68,30 @@ for (const s of finished.people[1].stops) finished.stops[s].done = { at: now, by
 finished.people[1].free = false;
 assert.deepEqual(taking(finished).map((p) => p.id), ['p1']);
 console.log(`route live: ok (Sam took ${next.people[1].stops.length} of Pat's 11)`);
+
+// riding between close stops: kept in the doc, marked on the legs a re-split writes
+{
+  const { rideAdjust } = await import('../lib/ride.js');
+  const near = { at: 1, shop, people: [{ name: 'Pat', stops: [
+    { address: '1 A St', lng: -85.7, lat: 42.8, minutes: 20 },
+    { address: '2 A St', lng: -85.7 + 150 / 81900, lat: 42.8, minutes: 20 }, // 150 m east: close by road
+    { address: '3 B St', lng: -85.6, lat: 42.9, minutes: 20 },
+  ], legs: [] }] };
+  const d2 = planToLive(near, { id: 'n' });
+  assert.deepEqual(d2.ride, { road: 305, yard: 70, save: 300 }, 'the default rules');
+  d2.people.push({ id: 'h', name: 'Sam', stops: [], into: {}, back: null, geometry: null, readyAt: 0, start: { lng: -85.61, lat: 42.89, label: 'x' }, free: true, helper: true });
+  const { points: P, index: I } = problemPoints(d2);
+  const MM = P.map((a) => P.map((b) => Math.hypot((a.lng - b.lng) * 81900, (a.lat - b.lat) * 111000) * 1.2));
+  const DD = MM.map((r) => r.map((x) => x / 12));
+  const R = rideAdjust(DD, MM, P, (i) => Boolean(d2.stops[P[i].key]), d2.ride);
+  const pr3 = problem(d2, R.D, I, 1);
+  const res3 = rebalance(R.D, { persons: pr3.persons, current: pr3.current, shop: pr3.shop, service: pr3.service, timeMs: 200 });
+  const { doc: n3 } = applySplit(d2, pr3, res3.routes, DD, MM, P, 1);
+  const pat = n3.people[0];
+  const i1 = pat.stops.indexOf('s1');
+  assert.equal(pat.stops[i1 + 1], 's2', 'the close pair stays together, with the stop Pat is on');
+  assert.equal(pat.into.s2.ride, 'road');
+  assert.equal(pat.into.s2.saved, 300);
+  assert.ok(n3.people[1].stops.includes('s3'), 'the far stop goes to Sam, who is near it');
+}
+console.log('route live riding: ok');

@@ -11,6 +11,7 @@
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="stylesheet" href="/style.css">
+<link rel="manifest" href="/app.webmanifest">
 </head>
 <body>
 <main>
@@ -31,6 +32,15 @@
       <input id="end" type="text" autocomplete="street-address" placeholder="Shop address, city">
       <button type="button" class="btn small" id="shopBtn" hidden>⌂ Shop</button>
     </div>
+    <details class="ride-set">
+      <summary class="hint">🛵 Riding between close stops: saves time</summary>
+      <p class="hint">Close stops are ridden between on the machine instead of loading up and driving. The route counts that time saved.</p>
+      <div class="ride-grid">
+        <label>Within <input id="ride_roadFt" type="number" inputmode="numeric" min="0" step="50"> ft by road</label>
+        <label>or <input id="ride_yardFt" type="number" inputmode="numeric" min="0" step="10"> ft across yards</label>
+        <label>saves <input id="ride_saveMin" type="number" inputmode="numeric" min="0" step="1"> min a stop (0: off)</label>
+      </div>
+    </details>
     <div class="stepper" role="group" aria-label="People">
       <span>People</span>
       <button type="button" id="peopleLess" aria-label="Fewer people">−</button>

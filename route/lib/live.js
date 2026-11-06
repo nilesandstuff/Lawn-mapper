@@ -26,8 +26,11 @@
  *                start: { lng, lat, label } | null,   where they said they are
  *                free: bool,           volunteered to help, whether or not they have stops
  *                helper: bool }],      joined by the link, rather than from the planner
+ *     ride: { road, yard, save },      riding between close stops (lib/ride.js)
  *     events: [{ at, text }] }
  */
+
+import { RIDE_DEFAULTS, rideLeg } from './ride.js';
 
 export const MAX_EVENTS = 30;
 
@@ -53,7 +56,7 @@ export function planToLive(plan, { id = null, now = Date.now() } = {}) {
       geometry: p.geometry || null, readyAt: null, start: null, free: false, helper: false,
     };
   });
-  return { id, version: 1, at: plan.at || now, shop: plan.shop, stops, people, events: [] };
+  return { id, version: 1, at: plan.at || now, shop: plan.shop, ride: plan.ride || RIDE_DEFAULTS, stops, people, events: [] };
 }
 
 /** Each person's stops: done (in the order they were done) and still to do (in route order). */
@@ -153,7 +156,9 @@ export function applySplit(doc, pr, routes, D, M, points, now = Date.now()) {
     let from = pos ? pos.key : null;
     const idx = (key) => points.findIndex((x) => x.key === key);
     for (const s of todo) {
-      person.into[s] = from == null ? null : { duration: D[idx(from)][idx(s)], distance: M[idx(from)][idx(s)] };
+      const leg = from == null ? null : { duration: D[idx(from)][idx(s)], distance: M[idx(from)][idx(s)] };
+      // from a stop to a close stop: ridden, not driven (lib/ride.js)
+      person.into[s] = leg && doc.stops[from] ? rideLeg(leg, doc.stops[from], doc.stops[s], doc.ride || RIDE_DEFAULTS) : leg;
       from = s;
     }
     const shopI = idx('shop');

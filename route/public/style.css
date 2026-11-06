@@ -159,3 +159,7 @@
   .live-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); margin-right: 6px; vertical-align: middle; }
   .toggle { display: flex; gap: 10px; align-items: center; font-size: 14px; color: var(--muted); }
   .toggle input { width: 20px; height: 20px; accent-color: var(--accent); }
+  .ride-set { margin-top: 12px; }
+  .ride-set summary { cursor: pointer; margin: 0; }
+  .ride-grid { display: grid; gap: 8px; font-size: 14px; color: var(--muted); }
+  .ride-grid input { width: 84px; min-height: 40px; padding: 6px 8px; display: inline-block; text-align: center; }

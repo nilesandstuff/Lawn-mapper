@@ -87,3 +87,23 @@ second person's own phone.
 A re-split is worked out on the phone that asks for it and saved only over
 the version it read (`PUT`, 409 if anything changed), so two phones never
 overwrite each other.
+
+## Riding between close stops (`lib/ride.js`)
+
+Between two stops within 1,000 ft by road, or 230 ft across back yards, the
+step is ridden on the machine instead of loading up and driving, which saves
+about 5 minutes (the owner's figure). Every route, split and re-split counts
+that, so close stops end up next to each other and with one person; such
+legs show as "🛵 ride · saves 5m" and the totals take it off. All three
+numbers are in the planner's settings; a shared day keeps the ones it was
+made with.
+
+## Notifications (`src/push.js`, `public/sw.js`)
+
+"Notify me when my list changes" on a shared day's page: when someone
+else's re-split changes your stops (or a helper joins), your phone is told
+even with the page shut. The push itself is empty and signed with the VAPID
+key kept in KV ("push-vapid", set with the route key); the phone's service
+worker fetches the message from the Worker. On iPhone, notifications need the
+route added to the home screen (Share -> Add to Home Screen) and opened from
+there; the manifest starts the icon at that route.

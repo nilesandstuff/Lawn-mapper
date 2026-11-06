@@ -20,6 +20,7 @@
  */
 
 import { checkUpdate, MAX_EVENTS, planToLive } from '../lib/live.js';
+import { messagesFor, notify } from './push.js';
 
 export const KEEP_DAYS = 30;
 const MAX_BYTES = 600 * 1024;
@@ -60,7 +61,12 @@ async function save(db, doc, readVersion, now) {
 }
 
 const str = (v, n) => String(v ?? '').slice(0, n);
-const leg = (l) => (l && Number.isFinite(l.duration) ? { duration: Math.round(l.duration * 10) / 10, distance: Math.round(Number(l.distance) || 0) } : null);
+const leg = (l) => {
+  if (!l || !Number.isFinite(l.duration)) return null;
+  const out = { duration: Math.round(l.duration * 10) / 10, distance: Math.round(Number(l.distance) || 0) };
+  if (l.ride === 'road' || l.ride === 'yard') { out.ride = l.ride; out.saved = Math.max(0, Math.min(1800, Number(l.saved) || 0)); }
+  return out;
+};
 const point = (p) => (p && Number.isFinite(p.lng) && Number.isFinite(p.lat) ? { lng: p.lng, lat: p.lat, label: str(p.label, 200) } : null);
 
 /** Only the fields a person has, each in its shape. */
@@ -77,7 +83,7 @@ function cleanPerson(p) {
   };
 }
 
-export async function share(request, env, url, now = Date.now()) {
+export async function share(request, env, url, now = Date.now(), fetcher = fetch) {
   const db = env.USAGE;
   if (!db) return json({ error: 'No storage on this deploy' }, 503);
   await init(db);
@@ -135,6 +141,10 @@ export async function share(request, env, url, now = Date.now()) {
       const events = (Array.isArray(body.events) ? body.events : []).slice(0, 5).map((t) => ({ at: now, text: str(t, 200) })).filter((e) => e.text);
       const next = { ...doc, people, events: [...(doc.events || []), ...events].slice(-MAX_EVENTS) };
       if (!(await save(db, next, doc.version, now))) return json({ error: 'Changed since you looked', doc: await load(db, id) }, 409);
+      // phones whose page is shut hear about it (src/push.js); never the one who did it
+      try {
+        await notify(env, id, messagesFor(doc, next, events.map((e) => e.text), { actor: str(body.by, 20) || null, id }), { fetcher, origin: url.origin, now });
+      } catch { /* a re-split is saved whether or not a phone hears of it */ }
       return json(next);
     }
     return json({ error: 'Not found' }, 404);

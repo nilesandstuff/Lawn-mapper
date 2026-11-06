@@ -29,6 +29,7 @@ import { store, keyed } from './store.js';
 import { LimitError, meter, report } from './usage.js';
 import { inbox, receive } from './inbox.js';
 import { share } from './share.js';
+import { push } from './push.js';
 
 const json = (body, status = 200) => new Response(JSON.stringify(body), {
   status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
@@ -44,7 +45,8 @@ export async function api(request, env, url, fetcher = fetch) {
   if (foreign(request, url)) return json({ error: 'Not from this site' }, 403);
   if (url.pathname === '/api/shop' || url.pathname === '/api/catalog') return store(request, env, url);
   if (url.pathname === '/api/inbox' || url.pathname.startsWith('/api/inbox/')) return inbox(request, env, url);
-  if (url.pathname === '/api/share' || url.pathname.startsWith('/api/share/')) return share(request, env, url);
+  if (url.pathname.startsWith('/api/push/') || /^\/api\/share\/[A-Za-z0-9]+\/subscribe$/.test(url.pathname)) return push(request, env, url);
+  if (url.pathname === '/api/share' || url.pathname.startsWith('/api/share/')) return share(request, env, url, Date.now(), fetcher);
   if (url.pathname === '/api/usage') {
     if (request.method === 'GET') return json(await report(env).catch(() => ({ counting: false })));
     // the key may add use the meter did not see (testing before it existed): never refused, never less
@@ -84,10 +86,23 @@ export async function api(request, env, url, fetcher = fetch) {
   return json({ error: 'Not found' }, 404);
 }
 
+/** A manifest whose start is the page it was added from: /s/<id>?p=2 stays that person's route on a home screen. */
+export function manifest(url) {
+  const start = url.searchParams.get('start') || '/';
+  const safe = /^\/(s\/[A-Za-z0-9]{8,20}(\?p=\d{1,2})?)?$/.test(start) ? start : '/';
+  return new Response(JSON.stringify({
+    name: safe === '/' ? 'Route Planner' : 'Shared route', short_name: safe === '/' ? 'Routes' : 'Route',
+    start_url: safe, scope: '/', display: 'standalone', background_color: '#f4f6f5', theme_color: '#1f7a4d',
+    icons: [{ src: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }, { src: '/favicon.svg', sizes: 'any', type: 'image/svg+xml' }],
+  }), { headers: { 'Content-Type': 'application/manifest+json', 'Cache-Control': 'no-store' } });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (url.pathname.startsWith('/api/')) return api(request, env, url);
+    // the web app manifest, starting where it was added from (a shared day's own link, on a home screen)
+    if (url.pathname === '/app.webmanifest') return manifest(url);
     // a shared split route: /s/<id> is the share page, which reads the id from its own address
     if (/^\/s\/[A-Za-z0-9]{8,20}\/?$/.test(url.pathname)) return env.ASSETS.fetch(new Request(new URL('/share', url), request));
     return env.ASSETS.fetch(request);

@@ -24,6 +24,7 @@ import { COLORS, drawLive, liveCard, liveTotals, thin } from './people.js';
 import { applySplit, describe, problem, problemPoints, standing } from './lib/live.js';
 import { rebalance } from './lib/split.js';
 import { elementsOf, fill, fromCache, MAX_PAIRS, prune, remember, toFetch } from './lib/cache.js';
+import { RIDE_DEFAULTS, rideAdjust } from './lib/ride.js';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -135,7 +136,7 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 /* ------------------------------------------------------------ ticks */
 $('#people').addEventListener('click', async (e) => {
   const meBtn = e.target.closest('[data-me]');
-  if (meBtn) { me = meBtn.dataset.me; store.set('me', me); store.set('seenTodo', null); render(); return; }
+  if (meBtn) { me = meBtn.dataset.me; store.set('me', me); store.set('seenTodo', null); render(); pushFollowMe(); return; }
   const li = e.target.closest('li[data-stop]');
   if (!li || !e.target.closest('.body')) return;
   const sid = li.dataset.stop;
@@ -227,11 +228,13 @@ async function resplit(change) {
       say('Sharing out the stops…');
       await new Promise((r) => setTimeout(r, 30));
       const now = Date.now();
-      const pr = problem(fresh, t.durations, index, now);
+      // close stops ridden between, not driven: steps between them cost less (lib/ride.js)
+      const R = rideAdjust(t.durations, t.distances, points, (i) => Boolean(fresh.stops[points[i].key]), fresh.ride || RIDE_DEFAULTS);
+      const pr = problem(fresh, R.D, index, now);
       if (pr.who.length < 2) {
         lines.push('Nobody else is working to share with yet');
       }
-      const res = pr.who.length ? rebalance(t.durations, { persons: pr.persons, current: pr.current, shop: pr.shop, service: pr.service, timeMs: 2000 }) : { routes: [] };
+      const res = pr.who.length ? rebalance(R.D, { persons: pr.persons, current: pr.current, shop: pr.shop, service: pr.service, timeMs: 2000 }) : { routes: [] };
       const { doc: next, changes } = pr.who.length ? applySplit(fresh, pr, res.routes, t.durations, t.distances, points, now) : { doc: fresh, changes: [] };
       lines.push(...describe(fresh, changes));
       // the roads, for whoever's list changed
@@ -245,7 +248,7 @@ async function resplit(change) {
         try { p.geometry = thin((await call('/api/route', { method: 'POST', body: JSON.stringify({ points: seq.map((x) => [x.lng, x.lat]) }) })).geometry); } catch { /* straight lines */ }
       }
       try {
-        doc = await call(`/api/share/${id}`, { method: 'PUT', body: JSON.stringify({ version: fresh.version, people: next.people, events: lines }) });
+        doc = await call(`/api/share/${id}`, { method: 'PUT', body: JSON.stringify({ version: fresh.version, people: next.people, events: lines, by: me }) });
         store.set('seenTodo', meIndex() >= 0 ? standing(doc)[meIndex()].todo : null);
         say(lines.length ? lines.join('. ') : 'Shared out: no change was worth making.');
         render();
@@ -297,6 +300,7 @@ $('#helpGo').addEventListener('click', async () => {
     d.people.push({ id: newId, name, stops: [], into: {}, back: null, geometry: null, readyAt: ww.readyAt, start: ww.start, free: true, helper: true });
     return [`${name} is helping${ww.readyAt > Date.now() + 60000 ? ` from ${clock(ww.readyAt)}` : ' now'}`];
   });
+  if (meIndex() >= 0) pushFollowMe();
 });
 
 /** Me, already on the day: free now (here), or at a time I give. */
@@ -328,6 +332,60 @@ async function meFree(later) {
 }
 $('#freeNow').addEventListener('click', () => meFree(false));
 $('#freeLater').addEventListener('click', () => meFree(true));
+
+/* ------------------------------------------------------------ notifications (src/push.js, sw.js) */
+const b64uBytes = (s) => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(s.length / 4) * 4, '=')), (c) => c.charCodeAt(0));
+let registration = null;
+
+function pushHint(text) { const h = $('#pushHint'); h.hidden = !text; h.textContent = text || ''; }
+
+/** Whether this phone can be told, and whether it is set to be. */
+async function pushReady() {
+  const box = $('#pushToggle');
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+    box.disabled = true;
+    pushHint(/iPhone|iPad/.test(navigator.userAgent)
+      ? 'On iPhone: tap Share, then "Add to Home Screen", open your route from that icon, and turn this on there.'
+      : 'This browser cannot show notifications.');
+    return;
+  }
+  try {
+    registration = await navigator.serviceWorker.register('/sw.js');
+    const sub = await registration.pushManager.getSubscription();
+    box.checked = Boolean(sub) && store.get('push', false) && Notification.permission === 'granted';
+  } catch { box.disabled = true; pushHint('Notifications could not start here.'); }
+}
+
+/** This phone told about my list (me), or no longer. */
+async function setPush(on) {
+  const box = $('#pushToggle');
+  try {
+    if (!registration) registration = await navigator.serviceWorker.register('/sw.js');
+    let sub = await registration.pushManager.getSubscription();
+    if (!on) {
+      if (sub) await call(`/api/share/${id}/subscribe`, { method: 'DELETE', body: JSON.stringify({ subscription: sub.toJSON() }) });
+      store.set('push', false);
+      pushHint('');
+      return;
+    }
+    if (meIndex() < 0) throw new Error('Pick which route is yours first.');
+    if ((await Notification.requestPermission()) !== 'granted') throw new Error('Notifications are blocked for this site: allow them in the browser settings.');
+    if (!sub) {
+      const { publicKey } = await call('/api/push/key');
+      sub = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64uBytes(publicKey) });
+    }
+    await call(`/api/share/${id}/subscribe`, { method: 'POST', body: JSON.stringify({ person: me, subscription: sub.toJSON() }) });
+    store.set('push', true);
+    pushHint("You'll be told when your list changes, even with this page shut.");
+  } catch (e) {
+    box.checked = false;
+    store.set('push', false);
+    pushHint(e.message || String(e));
+  }
+}
+$('#pushToggle').addEventListener('change', (e) => setPush(e.target.checked));
+/** After I join or say who I am: if this phone is set to be told, about me now. */
+const pushFollowMe = () => { if (store.get('push', false)) setPush(true); };
 
 /* ------------------------------------------------------------ "Done at ...?" from location, page open */
 let watch = null;
@@ -377,5 +435,6 @@ async function main() {
   if (me && meIndex() < 0) { me = null; store.set('me', null); }
   render();
   if (store.get('geo', false)) geoSuggest(true);
+  pushReady();
 }
 main();
