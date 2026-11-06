@@ -499,6 +499,42 @@ def main():
         errs_g = check_errs(T0, uniq)
         turns = [math.degrees((w_["T"][0] - truth[0] + np.pi) % (2 * np.pi) - np.pi) for w_ in kept]
         print(f"  checks by their window: {', '.join(f'{x * FT:.1f}' for x in errs_w)} ft (median {np.median(errs_w) * FT:.1f}); by the one placement {np.median(errs_g) * FT:.1f} ft; the kept windows' turn from the truth {', '.join(f'{t:+.1f}' for t in turns)} deg")
+    # HEADING DRIFT (2026-11-06: the windows' twist grew from -0.1 to -6.3 degrees along the 22:02 walk, about a degree
+    # a minute): one placement whose heading turns steadily with the distance walked, theta(odo) = theta0 + k * odo,
+    # the position carried along. k searched, the rest re-refined; each check scored at its own odo.
+    def drift_score(T, k_):
+        th0, tx, ty = T; sc = 0.0
+        # pictures grouped by odo so each gets its own turn about the walk's middle
+        for i0 in range(0, len(obs), 400):
+            o2 = obs[i0:i0 + 400]
+            pi2 = o2[:, 0].astype(int); dth = k_ * (odos[pi2] - odo_ref)
+            # rotate each picture's camera about the reference point by its own dth
+            c_, s_ = np.cos(dth), np.sin(dth)
+            u, v = cams[pi2, 0] - cam_ref[0], cams[pi2, 1] - cam_ref[1]
+            u2, v2 = c_ * u - s_ * v + cam_ref[0], s_ * u + c_ * v + cam_ref[1]
+            th = th0; c0, s0 = math.cos(th), math.sin(th)
+            e, n = c0 * u2 - s0 * v2 + tx, s0 * u2 + c0 * v2 + ty
+            eye = S.ground(e, n) + eyes[pi2]
+            A, R = skyline_both(S, e, n, eye, o2[:, 1] + th + dth)
+            sc += float(score_from(A, R, o2[:, 2], o2[:, 3]).sum())
+        return sc
+    odo_ref = float(np.median(odos)); i_ref = int(np.argmin(np.abs(odos - odo_ref))); cam_ref = cams[i_ref]
+    def drift_place(T, k_, odo, uv):
+        dth = k_ * (odo - odo_ref); c_, s_ = math.cos(dth), math.sin(dth)
+        u, v = uv[0] - cam_ref[0], uv[1] - cam_ref[1]
+        return place(T, (c_ * u - s_ * v + cam_ref[0], s_ * u + c_ * v + cam_ref[1]))
+    ks = np.radians(np.arange(-0.10, 0.101, 0.01))  # degrees per metre walked
+    best_k = max(((drift_score(T0, k_), k_) for k_ in ks), key=lambda x: x[0])
+    Tk, kk, sck = T0, best_k[1], best_k[0]
+    for dd, mm in ((1.0, 0.5), (0.25, 0.2)):
+        cands = [(Tk[0] + math.radians(a), Tk[1] + x, Tk[2] + y) for a in (-2 * dd, -dd, 0, dd, 2 * dd) for x in np.arange(-2, 2.01, 1) * mm for y in np.arange(-2, 2.01, 1) * mm]
+        scs = [drift_score(C, kk) for C in cands]; j = int(np.argmax(scs))
+        if scs[j] > sck:
+            sck, Tk = scs[j], cands[j]
+    print(f"Heading drift: best {math.degrees(kk):+.3f} deg per metre walked ({math.degrees(kk) * 60:+.1f} deg per 60 m); score {sck:.1f} against {out[0][0]:.1f} with none.")
+    if truth and uniq:
+        errs_k = [math.hypot(*np.subtract(drift_place(Tk, kk, c.get("odo") or 0, c["ar"]), c["map"])) for c in uniq]
+        print(f"  checks with the drift: {', '.join(f'{x * FT:.1f}' for x in errs_k)} ft (median {np.median(errs_k) * FT:.1f}); heading at the walk's middle {math.degrees((Tk[0] - truth[0] + np.pi) % (2 * np.pi) - np.pi):+.1f} deg from the truth")
     f_ = float
     json.dump({"placements": [{"score": f_(s), "theta": f_(T[0]), "tx": f_(T[1]), "ty": f_(T[2])} for s, T in out], "windows": [{"odo": f_(w_["odo"]), "theta": f_(w_["T"][0]), "tx": f_(w_["T"][1]), "ty": f_(w_["T"][2]), "n": int(w_["n"]), "kept": bool(w_["kept"])} for w_ in wins]}, open(os.path.join(d, "skyline.json"), "w"))
     print(f"Done in {int(time.time() - t0)} s.")
