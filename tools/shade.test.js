@@ -1816,6 +1816,58 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   check('model file: a trunk 30 cm east and 30 cm south of its column\'s centre reads +30, -30 cm; a centred one 0, 0; an empty column 0, 0',
     own3.lowDx instanceof Int16Array && own3.lowDx[off] === 30 && own3.lowDy[off] === -30 && own3.lowDx[trunk] === 0 && own3.lowDy[trunk] === 0 && own3.lowDx[at2(1.5, 1.5)] === 0,
     `off ${own3.lowDx[off]}, ${own3.lowDy[off]}; trunk ${own3.lowDx[trunk]}, ${own3.lowDy[trunk]}`);
+  /* The ground's brightness (intensity/gIntens; core session, 2026-11-06, pavement edges for placing an AR walk):
+     a strip of pavement (east of 8 m, intensity 200) beside grass (50); one grass column with two more ground
+     returns (10 and 90) reads the median of 10, 50, 90; a cloud with no intensity writes neither array. */
+  const pts4 = [...pts2, [2.3, 2.3, 100, 2, 1, 1], [2.7, 2.7, 100, 2, 1, 1]];
+  const cols4 = makeColumns(pts4.length);
+  pts4.forEach(([e, n, z, c, r, nr], i) => { cols4.x[i] = e / k; cols4.y[i] = n / k; cols4.z[i] = z; cols4.cls[i] = c; cols4.ret[i] = r; cols4.nret[i] = nr; cols4.intensity[i] = c !== 2 ? 999 : e > 8 ? 200 : 50; });
+  cols4.intensity[pts2.length] = 10; cols4.intensity[pts2.length + 1] = 90;
+  const model4 = buildCanopy(cols4, grid2), season4 = seasonalCanopy(cols4, model4);
+  const f4 = await unpackModel(await modelBytes(finishedModel({ model: model4, season: season4, cols: cols4 })));
+  const a4 = f4.arrays;
+  check('model file: the ground\'s brightness per column: pavement 200, grass 50, a column of 10/50/90 reads 50 from 3 returns; the trunk\'s 999 is not ground; the lot median is in the header; no intensity, no arrays',
+    a4.intensity instanceof Uint16Array && a4.intensity[at2(9.5, 5.5)] === 200 && a4.intensity[at2(4.5, 5.5)] === 50 && a4.intensity[at2(2.5, 2.5)] === 50 && a4.gIntens[at2(2.5, 2.5)] === 3 && a4.gIntens[at2(9.5, 5.5)] === 1
+      && a4.intensity[trunk] === 50 && f4.meta.own.intensityMedian === 50 && !own2.intensity && !own2.gIntens,
+    `pave ${a4.intensity?.[at2(9.5, 5.5)]}, grass ${a4.intensity?.[at2(4.5, 5.5)]}, mixed ${a4.intensity?.[at2(2.5, 2.5)]} from ${a4.gIntens?.[at2(2.5, 2.5)]}, trunk col ${a4.intensity?.[trunk]}, lot ${f4.meta.own?.intensityMedian}`);
+}
+
+/* THE BLOCK AROUND THE LOT (surround.js; core session, 2026-11-06, the AR's skyline). */
+{
+  const { surroundGrids, surroundBox } = await import('../public/shade/surround.js');
+  const { finishedModel, modelBytes } = await import('../public/shade/model-out.js');
+  const { unpackModel } = await import('../public/lib/lidar-model.js');
+  const { walk } = await import('../public/shade/ept.js');
+  const lat = 43, k = mercScale(lat);
+  /* 60 x 60 m at a point a square meter: ground 100 m (class 2), a 10 x 10 m roof 8 m up from (30, 30), one bird 60 m up. */
+  const pts = [];
+  for (let e = 0.5; e < 60; e += 1) for (let n = 0.5; n < 60; n += 1) {
+    if (e > 30 && e < 40 && n > 30 && n < 40) pts.push([e, n, 108, 6]); else pts.push([e, n, 100, 2]);
+  }
+  pts.push([10.5, 50.5, 160, 1]);
+  const cols = makeColumns(pts.length);
+  pts.forEach(([e, n, z, c], i) => { cols.x[i] = e / k; cols.y[i] = n / k; cols.z[i] = z; cols.cls[i] = c; cols.ret[i] = 1; cols.nret[i] = 1; });
+  const box = [0, 0, 60 / k, 60 / k];
+  const sur = surroundGrids(cols, box, lat);
+  const at = (e, n) => Math.floor((60 - n) / 2) * sur.grid.w + Math.floor(e / 2);
+  check('surround: 2 m cells; the ground 100 m, filled under the roof; the roof 8 m over it; the bird flagged, not a tower',
+    sur.grid.w === 30 && Math.abs(sur.ground[at(5, 5)] - 100) < 1e-3 && Math.abs(sur.ground[at(35, 35)] - 100) < 1e-3 && Math.abs(sur.top[at(35, 35)] - 8) < 1e-3 && sur.top[at(10.5, 50.5)] < 1 && cols.cls[pts.length - 1] === 18,
+    `w ${sur.grid.w}; ground ${sur.ground[at(5, 5)]}, under roof ${sur.ground[at(35, 35)]}; roof ${sur.top[at(35, 35)]}; bird cell ${sur.top[at(10.5, 50.5)]}`);
+  const wide = surroundBox(box, lat, 100);
+  check('surround: the box is 100 real meters wider each way', Math.abs((wide[2] - wide[0]) * k - 260) < 1e-6);
+  /* in the model file, with its own grid in the header */
+  const grid2 = gridOver([0, 0, 12 / k, 12 / k], 1, lat);
+  const c2 = makeColumns(144);
+  let i2 = 0; for (let e = 0.5; e < 12; e += 1) for (let n = 0.5; n < 12; n += 1, i2++) { c2.x[i2] = e / k; c2.y[i2] = n / k; c2.z[i2] = 100; c2.cls[i2] = 2; c2.ret[i2] = 1; c2.nret[i2] = 1; }
+  const m2 = buildCanopy(c2, grid2), s2 = seasonalCanopy(c2, m2);
+  const f = await unpackModel(await modelBytes(finishedModel({ model: m2, season: s2, cols: c2, surround: { ...sur, aroundM: 100 } })));
+  const f0 = await unpackModel(await modelBytes(finishedModel({ model: m2, season: s2, cols: c2 })));
+  check('surround: written as surroundGround / surroundTop with its grid in the header; absent until read',
+    f.arrays.surroundGround?.length === sur.grid.w * sur.grid.h && f.arrays.surroundTop?.length === sur.grid.w * sur.grid.h && f.meta.surround.grid.w === 30 && f.meta.surround.cellM === 2 && f.meta.surround.aroundM === 100 && !f0.arrays.surroundGround && f0.meta.surround === null);
+  /* ept.js walk: a depth limit keeps to the coarse levels (the surround's thin read) */
+  const count = async () => 1;
+  const all = await walk([0, 0, 0, 8, 8, 8], [0, 0, 8, 8], count, { maxDepth: 1, maxNodes: 5000 });
+  check('ept: a depth limit of 1 reads the root and its 8 children only', all.length === 9 && all.every((n) => Number(n.key.split('-')[0]) <= 1), `${all.length} nodes`);
 }
 
 /* ONE LEAF STATE PER LOT (passes.js; owner, 2026-10-29). */

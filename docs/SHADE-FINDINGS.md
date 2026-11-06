@@ -1709,3 +1709,28 @@ AR's test and its drawing are the core session's to change (asked).
 
 - TWICE-FLOWN STREETS: RUN 2026-10-15, finding 18. No broadleaf-town pairs
   exist in the catalogue; Florida only.
+
+MORE ARRAYS FOR THE AR, 2026-11-06 (the core session, at the owner's
+request "ask the shade map for the updates that you recommend"): the AR
+places a walk with no marked references from the skyline in its pictures
+and, next, from pavement edges in lidar brightness. The model file now
+also carries:
+  - lowDx, lowDy (Int16 per column): where in its metre a column's own
+    returns between 0.4 and 2.4 m fall, cm from its centre (2026-11-05;
+    the AR's thin trunk posts). The owner's lot: 4,295 columns.
+  - intensity (Uint16) and gIntens (Uint8) per column: the median
+    intensity of the column's own ground returns (class 2) and how many it
+    came from; header own.intensityMedian for calibrating per property.
+    The owner's lot: 74,088 of 85,183 columns have ground returns, median
+    16,377 (p10 7,155, p90 26,553, raw units). Drawn as a picture, the
+    roads and drives are dark lines on bright grass.
+  - surroundGround, surroundTop (Float32, own grid in meta.surround): the
+    block 100 m beyond the lot each way at 2 m cells, read thinned to about
+    one point a square metre (surround.js; ept.js pointsIn now takes
+    spacingM, ported from water/lib/ept.js). The owner's lot: 241 x 251
+    cells, read while the trees build; the whole file goes up at 1.81 MB.
+MEASURED BY THE CORE SESSION, 2026-11-06, not by this one: where a roof
+makes the skyline in the AR's pictures, the pictures agree with the model
+to about 1 degree; where a crown within 15 m does, 30-40 degrees (leaf-off
+model, pictures through bare branches). The owner had lidar trunks left
+out of the AR's match the same day.

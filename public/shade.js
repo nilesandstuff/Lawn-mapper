@@ -33,6 +33,7 @@ import { flightOf } from './shade/find.js';
 import { onePass } from './shade/passes.js';
 import { flagStrays } from './shade/structures.js';
 import { finishedModel, modelBytes } from './shade/model-out.js';
+import { readSurround } from './shade/surround.js';
 import { greenOver } from './shade/naip.js';
 import { lazDecoder, browserFactory } from './shade/laz.js';
 import { nad83Correction } from './shade/datum.js';
@@ -187,7 +188,7 @@ function saveModelFile({ now = false } = {}) {
   clearTimeout(modelTimer);
   modelTimer = setTimeout(async () => {
     try {
-      const fin = finishedModel({ ...view.trees.finished(), lidar: view.model?.lidar || null, flown: view.model?.flown || null, photo: view.model?.green?.frame || null, basedOn: site.map.at || null });
+      const fin = finishedModel({ ...view.trees.finished(), surround: view.surround || null, lidar: view.model?.lidar || null, flown: view.model?.flown || null, photo: view.model?.green?.frame || null, basedOn: site.map.at || null });
       const bytes = await modelBytes(fin); // gzipped (lidar-model.js packModel)
       const res = await fetch(`/api/maps/model?id=${encodeURIComponent(site.map.id)}&tool=shade`, { method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/octet-stream' }, body: bytes });
       if (!res.ok) track('model', `refused ${res.status}`); else track('model', `${Math.round(bytes.byteLength / 1024)} KB`);
@@ -690,6 +691,14 @@ async function build(site) {
     cols, box, shift, baseZ, ground, fit, season: u?.season ?? null, flownTo: u?.end ? day(u.end) : null,
     lidar: keptUsed ? kept : { url: cloud.url, name: cloud.name, epoch: cloud.epoch, box, shift, fit: fit ? { east: fit.east, north: fit.north, confident: !!fit.confident, why: fit.why } : null, at: new Date().toISOString() },
   };
+
+  /* The block around the lot, coarsely, for the AR's skyline (shade/surround.js): read while the trees are built, and
+     written into the model file with a second save. A failure costs nothing but those arrays. */
+  view.surround = null;
+  const surroundFor = view.model;
+  readSurround({ url: view.model.lidar.url, box, lat: site.lat, shift, io, pointsIn })
+    .then((sur) => { if (sur && view.model === surroundFor) { view.surround = sur; track('surround', `${sur.points} points, ${sur.grid.w}x${sur.grid.h}`); saveModelFile(); } })
+    .catch((e) => track('surround', `failed: ${String(e.message).slice(0, 60)}`));
 
   /* The trees page (/shade-trees): the same model drawn instead of lit (shade/trees-ui.js). */
   if (TREES) {
