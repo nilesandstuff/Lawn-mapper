@@ -40,6 +40,9 @@ on:
       walk:
         description: 'For twin, fix or depth: the walk id, or latest'
         default: latest
+      calib:
+        description: 'For skyline: the phone camera turn,tilt in degrees (e.g. -0.6,-3.1); empty for none'
+        default: ''
 
 permissions:
   contents: read
@@ -212,6 +215,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           WALK: ${{ inputs.walk }}
+          SKY_CAL: ${{ inputs.calib }}
         run: |
           set -o pipefail
           pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu

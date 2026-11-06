@@ -252,6 +252,13 @@ def main():
     if not len(obs):
         print("No skyline found in any picture."); return
     print(f"Sky found: {withsky} of {len(pics)} pictures show sky in their top sixth; {int((obs[:, 3] == 0).sum())} skyline samples, {int((obs[:, 3] == 1).sum())} 'at least this high'. ({int(time.time() - t0)} s)")
+    # THE PHONE'S CALIBRATION (2026-11-06): a turn and tilt added to every ray, measured on another walk's check
+    # points (the camera's aim against ARCore's pose: about 3 degrees of tilt on the S21)
+    cal = [float(x) for x in (os.environ.get("SKY_CAL") or "0,0").split(",")[:2]] + [0.0, 0.0]
+    cal_az, cal_el = cal[0], cal[1]
+    if cal_az or cal_el:
+        obs[:, 1] += math.radians(cal_az); obs[:, 2] += math.radians(cal_el)
+        print(f"Calibration applied: rays turned {cal_az:+.2f} deg, tilted {cal_el:+.2f} deg.")
     cams = np.array([[np.asarray(p["view"])[12], -np.asarray(p["view"])[14]] for p in pics])
     eyes = np.array([p["eye"] for p in pics])
     eye_med = float(np.median(eyes))
