@@ -435,7 +435,47 @@ def main():
     far = [o for o in out[1:] if math.hypot(*np.subtract(place(o[1], mid), place(out[0][1], mid))) > 2 or abs(math.degrees((o[1][0] - out[0][1][0] + np.pi) % (2 * np.pi) - np.pi)) > 5]
     if far:
         print(f"The best different placement scores {out[0][0] - far[0][0]:.1f} below the best (log-likelihood over {len(obs)} samples; higher is surer, under ~10 is a toss-up).")
-    json.dump({"placements": [{"score": s, "theta": T[0], "tx": T[1], "ty": T[2]} for s, T in out]}, open(os.path.join(d, "skyline.json"), "w"))
+    # STEP 3 (the owner, 2026-11-06: "maybe each discrete arcore alignment needs its own fit"): windows of WINDOW_M of
+    # walking every STEP_M, each refined from the best whole-walk placement on its own pictures, kept when it holds
+    # enough samples and sits within 3 m and 6 degrees of its neighbours' mean; each check scored by the window
+    # nearest it, else by the whole-walk placement.
+    WINDOW_M, STEP_M = 60.0, 20.0
+    odos = np.array([p["odo"] for p in pics]); o_pi = odos[obs[:, 0].astype(int)]
+    T0 = out[0][1]; wins = []
+    for c0 in np.arange(odos.min(), odos.max() + 1e-6, STEP_M):
+        keep = (o_pi >= c0 - WINDOW_M / 2) & (o_pi < c0 + WINDOW_M / 2)
+        o2 = obs[keep]
+        if len(o2) < 60:
+            continue
+        T = T0; sc = exact_score(S, cams, eyes, o2, *T)[0]
+        for dd, mm in ((1.0, 0.5), (0.25, 0.2)):
+            cands = [(T[0] + math.radians(a), T[1] + x, T[2] + y) for a in (-3 * dd, -2 * dd, -dd, 0, dd, 2 * dd, 3 * dd) for x in np.arange(-3, 3.01, 1) * mm for y in np.arange(-3, 3.01, 1) * mm]
+            scs = [exact_score(S, cams, eyes, o2, *C)[0] for C in cands]
+            j = int(np.argmax(scs))
+            if scs[j] > sc:
+                sc, T = scs[j], cands[j]
+        wins.append({"odo": float(c0), "T": T, "n": int(keep.sum()), "score": sc})
+    mid = cams.mean(0)
+    for w_ in wins:
+        others = [o for o in wins if o is not w_ and abs(o["odo"] - w_["odo"]) <= STEP_M * 1.01]
+        if not others:
+            w_["kept"] = True; continue
+        dth = np.mean([math.degrees((o["T"][0] - w_["T"][0] + np.pi) % (2 * np.pi) - np.pi) for o in others])
+        dpos = np.mean([math.hypot(*np.subtract(place(o["T"], mid), place(w_["T"], mid))) for o in others])
+        w_["kept"] = abs(dth) <= 6 and dpos <= 3
+    kept = [w_ for w_ in wins if w_["kept"]]
+    def place_at(odo):
+        if not kept:
+            return T0
+        w_ = min(kept, key=lambda w__: abs(w__["odo"] - odo))
+        return w_["T"] if abs(w_["odo"] - odo) <= WINDOW_M / 2 else T0
+    print(f"Windows of {WINDOW_M:.0f} m every {STEP_M:.0f} m: {len(wins)} fitted, {len(kept)} kept (agreeing with their neighbours within 3 m and 6 degrees).")
+    if truth and uniq:
+        errs_w = [math.hypot(*np.subtract(place(place_at(c.get("odo") or 0), c["ar"]), c["map"])) for c in uniq]
+        errs_g = check_errs(T0, uniq)
+        turns = [math.degrees((w_["T"][0] - truth[0] + np.pi) % (2 * np.pi) - np.pi) for w_ in kept]
+        print(f"  checks by their window: {', '.join(f'{x * FT:.1f}' for x in errs_w)} ft (median {np.median(errs_w) * FT:.1f}); by the one placement {np.median(errs_g) * FT:.1f} ft; the kept windows' turn from the truth {', '.join(f'{t:+.1f}' for t in turns)} deg")
+    json.dump({"placements": [{"score": s, "theta": T[0], "tx": T[1], "ty": T[2]} for s, T in out], "windows": [{"odo": w_["odo"], "theta": w_["T"][0], "tx": w_["T"][1], "ty": w_["T"][2], "n": w_["n"], "kept": w_["kept"]} for w_ in wins]}, open(os.path.join(d, "skyline.json"), "w"))
     print(f"Done in {int(time.time() - t0)} s.")
 
 

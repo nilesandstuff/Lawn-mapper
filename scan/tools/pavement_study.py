@@ -28,7 +28,7 @@ import numpy as np
 from PIL import Image
 
 SEG_MODEL = "nvidia/segformer-b0-finetuned-ade-512-512"
-MAX_PICS = int(os.environ.get("PAVE_PICS", 90))
+MAX_PICS = int(os.environ.get("PAVE_PICS", 400))  # segmentation is cheap: every picture the twin kept
 GROUND_REACH_M = 8.0
 CELL = 0.2
 PAVE = {"road", "sidewalk", "path"}  # not earth or floor: November lawn reads as earth (57% of "pavement" fell in the lawn)
