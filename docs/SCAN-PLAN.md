@@ -1273,4 +1273,8 @@ MEASURED with the gate (2026-11-06, task place):
   - work 22:37: 256 ft -> 1.3 ft median (checks 1.3, 0.9, 3.2 ft; -0.5 degrees), skyline then ground (349 pavement
     cells). Its GPS trail alone: 8-13 ft; its check points placed by the other two: 2.9-11.9 ft.
   - home 21:56: unchanged, 1.5 ft (5.6, 1.1, 1.8, 0.8): the gate (GPS 26-44 ft off there) took nothing away.
-  - work 22:43: see below.
+  - work 22:43: 334 ft -> 6.5 ft median (6.5, 6.8, 4.3; -1.4 degrees), skyline then ground (423 pavement cells); the
+    ground alone from the truth gives 6.1, so this walk's floor is the ground's own. Its GPS alone: 14-23 ft.
+  - That run timed out (30 minutes) in the step after: the skyline search took 1,633 s on the work lot's whole box.
+    With a gate the coarse skylines are now computed only where the gated placements can put a picture (the gate's
+    reach plus the walk's own size), and the job may run 60 minutes.

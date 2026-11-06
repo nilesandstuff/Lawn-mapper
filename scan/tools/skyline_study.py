@@ -347,19 +347,6 @@ def main():
             turning = np.mean(np.abs(rates) > 10)
             print(f"  the picture's lag behind its pose, at the truth: best {bl[1]:+d} ms (score {bl[0]:.1f}; 0 ms {dict((l, s_) for s_, l in lags)[0]:.1f}); {turning:.0%} of pictures taken turning faster than 10 deg/s, median |rate| {np.median(np.abs(rates)):.1f} deg/s")
 
-    # COARSE: the model's skyline from every lattice spot, every 2 degrees, at the median eye height
-    m = COARSE_M
-    ge = np.arange(S.e0 + 5, S.e1 - 5, m); gn = np.arange(S.n0 + 5, S.n1 - 5, m)
-    EE, NN = np.meshgrid(ge, gn)
-    azs = np.linspace(-np.pi, np.pi, AZ_BINS, endpoint=False)
-    prof = np.empty((len(gn), len(ge), AZ_BINS), np.float32)
-    profR = np.empty((len(gn), len(ge), AZ_BINS), np.float32)
-    eye_grid = S.ground(EE, NN) + eye_med
-    for a_i, az in enumerate(azs):
-        prof[:, :, a_i], profR[:, :, a_i] = skyline_both(S, EE, NN, eye_grid, np.full(EE.shape, az))
-    print(f"Coarse skylines: {len(ge)} x {len(gn)} spots x {AZ_BINS} directions ({int(time.time() - t0)} s).")
-    pi = obs[:, 0].astype(int)
-    by_pic = [np.nonzero(pi == i)[0] for i in range(len(pics))]
     # THE GPS GATE (SCAN-H22): on the owner's work walks the skyline alone chose places 190-370 ft away while the GPS
     # trail alone was 8-23 ft off. With a GPS placement, only placements that put the walk's middle within gate_m of
     # where the GPS puts it, turned within gate_deg of it, are kept. No GPS (or none left inside): the whole box.
@@ -370,44 +357,70 @@ def main():
         gate = {"at": (cg * c0[0] - sg_ * c0[1] + gps["tx"], sg_ * c0[0] + cg * c0[1] + gps["ty"]), "m": min(24.0, max(10.0, 2 * gps["searchM"])),
                 "rad": math.radians(gps["searchDeg"] + 10), "theta": gps["theta"]}
         print(f"GPS gate: {gps.get('from', 'the GPS trail')}; kept within {gate['m']:.0f} m and {math.degrees(gate['rad']):.0f} degrees of its placement.")
-    best, best_all = [], []
-    for th in np.radians(np.arange(0, 360, COARSE_DEG)):
-        c, s = math.cos(th), math.sin(th)
-        q = np.stack([c * cams[:, 0] - s * cams[:, 1], s * cams[:, 0] + c * cams[:, 1]], 1)
-        # shifts that keep every picture's spot on the lattice
-        lo_e, hi_e = ge[0] - q[:, 0].min(), ge[-1] - q[:, 0].max()
-        lo_n, hi_n = gn[0] - q[:, 1].min(), gn[-1] - q[:, 1].max()
-        if hi_e < lo_e or hi_n < lo_n:
-            continue
-        te = np.arange(lo_e, hi_e + 1e-9, m); tn = np.arange(lo_n, hi_n + 1e-9, m)
-        acc = np.zeros((len(tn), len(te)), np.float32)
-        cnt = np.zeros((len(tn), len(te)), np.int32)  # a shift scored on fewer pictures (the lattice's edge) is not a shift
-        for i, oi in enumerate(by_pic):
-            if not len(oi):
+    # The lattice: with a gate, only the spots the gated placements can put a picture on (SCAN-H22: the work lot's
+    # whole box took 27 minutes); with no gate, or none inside it, the whole box.
+    def coarse(gate, box=None):
+        m = COARSE_M
+        ge = np.arange(S.e0 + 5, S.e1 - 5, m); gn = np.arange(S.n0 + 5, S.n1 - 5, m)
+        if box is not None:
+            ge = ge[(ge >= box[0]) & (ge <= box[1])]; gn = gn[(gn >= box[2]) & (gn <= box[3])]
+            if len(ge) < 3 or len(gn) < 3:
+                return [], []
+        EE, NN = np.meshgrid(ge, gn)
+        azs = np.linspace(-np.pi, np.pi, AZ_BINS, endpoint=False)
+        prof = np.empty((len(gn), len(ge), AZ_BINS), np.float32)
+        profR = np.empty((len(gn), len(ge), AZ_BINS), np.float32)
+        eye_grid = S.ground(EE, NN) + eye_med
+        for a_i, az in enumerate(azs):
+            prof[:, :, a_i], profR[:, :, a_i] = skyline_both(S, EE, NN, eye_grid, np.full(EE.shape, az))
+        print(f"Coarse skylines: {len(ge)} x {len(gn)} spots x {AZ_BINS} directions ({int(time.time() - t0)} s).")
+        pi = obs[:, 0].astype(int)
+        by_pic = [np.nonzero(pi == i)[0] for i in range(len(pics))]
+        best, best_all = [], []
+        for th in np.radians(np.arange(0, 360, COARSE_DEG)):
+            if gate is not None and abs((th - gate["theta"] + np.pi) % (2 * np.pi) - np.pi) > gate["rad"]:
                 continue
-            bx = max(0, int(round((q[i, 0] + te[0] - ge[0]) / m))); bn = max(0, int(round((q[i, 1] + tn[0] - gn[0]) / m)))
-            bins = np.round(((obs[oi, 1] + th + np.pi) % (2 * np.pi)) / (2 * np.pi) * AZ_BINS).astype(int) % AZ_BINS
-            sl = prof[bn:bn + len(tn), bx:bx + len(te)][:, :, bins][: acc.shape[0], : acc.shape[1]]
-            slr = profR[bn:bn + len(tn), bx:bx + len(te)][:, :, bins][: acc.shape[0], : acc.shape[1]]
-            acc[: sl.shape[0], : sl.shape[1]] += score_from(sl, slr, obs[oi, 2][None, None, :], obs[oi, 3][None, None, :]).sum(2)
-            cnt[: sl.shape[0], : sl.shape[1]] += 1
-        acc[cnt < sum(1 for oi in by_pic if len(oi))] = -1e9
-        for f in np.argsort(acc, axis=None)[-6:]:
-            r_, c_ = np.unravel_index(f, acc.shape)
-            best_all.append((float(acc[r_, c_]), th, te[c_], tn[r_]))
-        if gate is not None:
-            if abs((th - gate["theta"] + np.pi) % (2 * np.pi) - np.pi) > gate["rad"]:
+            c, s = math.cos(th), math.sin(th)
+            q = np.stack([c * cams[:, 0] - s * cams[:, 1], s * cams[:, 0] + c * cams[:, 1]], 1)
+            # shifts that keep every picture's spot on the lattice
+            lo_e, hi_e = ge[0] - q[:, 0].min(), ge[-1] - q[:, 0].max()
+            lo_n, hi_n = gn[0] - q[:, 1].min(), gn[-1] - q[:, 1].max()
+            if hi_e < lo_e or hi_n < lo_n:
                 continue
-            qm = q.mean(0)
-            far = np.hypot(qm[0] + te[None, :] - gate["at"][0], qm[1] + tn[:, None] - gate["at"][1]) > gate["m"]
-            acc = np.where(far, -1e9, acc)
+            te = np.arange(lo_e, hi_e + 1e-9, m); tn = np.arange(lo_n, hi_n + 1e-9, m)
+            acc = np.zeros((len(tn), len(te)), np.float32)
+            cnt = np.zeros((len(tn), len(te)), np.int32)  # a shift scored on fewer pictures (the lattice's edge) is not a shift
+            for i, oi in enumerate(by_pic):
+                if not len(oi):
+                    continue
+                bx = max(0, int(round((q[i, 0] + te[0] - ge[0]) / m))); bn = max(0, int(round((q[i, 1] + tn[0] - gn[0]) / m)))
+                bins = np.round(((obs[oi, 1] + th + np.pi) % (2 * np.pi)) / (2 * np.pi) * AZ_BINS).astype(int) % AZ_BINS
+                sl = prof[bn:bn + len(tn), bx:bx + len(te)][:, :, bins][: acc.shape[0], : acc.shape[1]]
+                slr = profR[bn:bn + len(tn), bx:bx + len(te)][:, :, bins][: acc.shape[0], : acc.shape[1]]
+                acc[: sl.shape[0], : sl.shape[1]] += score_from(sl, slr, obs[oi, 2][None, None, :], obs[oi, 3][None, None, :]).sum(2)
+                cnt[: sl.shape[0], : sl.shape[1]] += 1
+            acc[cnt < sum(1 for oi in by_pic if len(oi))] = -1e9
             for f in np.argsort(acc, axis=None)[-6:]:
                 r_, c_ = np.unravel_index(f, acc.shape)
-                if acc[r_, c_] > -1e8:
-                    best.append((float(acc[r_, c_]), th, te[c_], tn[r_]))
-    if gate is None or not best:
-        if gate is not None:
+                best_all.append((float(acc[r_, c_]), th, te[c_], tn[r_]))
+            if gate is not None:
+                qm = q.mean(0)
+                far = np.hypot(qm[0] + te[None, :] - gate["at"][0], qm[1] + tn[:, None] - gate["at"][1]) > gate["m"]
+                acc = np.where(far, -1e9, acc)
+                for f in np.argsort(acc, axis=None)[-6:]:
+                    r_, c_ = np.unravel_index(f, acc.shape)
+                    if acc[r_, c_] > -1e8:
+                        best.append((float(acc[r_, c_]), th, te[c_], tn[r_]))
+        return best, best_all
+    if gate is not None:
+        rc = float(np.hypot(*(cams - cams.mean(0)).T).max()) + gate["m"] + 4 * COARSE_M
+        best, best_all = coarse(gate, (gate["at"][0] - rc, gate["at"][0] + rc, gate["at"][1] - rc, gate["at"][1] + rc))
+        if not best:
             print("GPS gate: no placement inside it scored; the whole box searched.")
+            best, best_all = coarse(None)
+            best = best_all
+    else:
+        best, best_all = coarse(None)
         best = best_all
     best.sort(key=lambda x: -x[0])
     # the distinct best few (3 m or 10 degrees apart)
