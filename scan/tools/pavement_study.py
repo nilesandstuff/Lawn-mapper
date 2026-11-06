@@ -162,10 +162,11 @@ def fine_rasters(d, g, cell=FINE_CELL):
     return fg, Iv, Z
 
 
-def match(d, inp, checks, pave, grass, gp, g, I, gg, med0, tag, write):
-    """The placement against the lidar on one grid: brightness (I, the ground's intensity; 0 = no ground return)
-    and the ground's shape (gg, NaN = none), round the skyline's starts. Prints its rows marked [tag]; writes
-    placement.json when `write`."""
+def match(d, inp, checks, pave, grass, gp, g, I, gg, med0, tag, write, gz=None):
+    """The placement against the lidar: brightness (I on grid g, the ground's intensity; 0 = no ground return)
+    and the ground's shape (gg, NaN = none, on grid gz, g when not given), round the skyline's starts. Prints its
+    rows marked [tag]; writes placement.json when `write`."""
+    gz = gz or g
     has = I > 0
     med = float(med0 or np.median(I[has]))
     scale = float(np.percentile(I[has], 75) - np.percentile(I[has], 25)) / 2 or 1.0
@@ -198,8 +199,8 @@ def match(d, inp, checks, pave, grass, gp, g, I, gg, med0, tag, write):
             return 0.0
         th, tx, ty = T; c_, s_ = math.cos(th), math.sin(th)
         e = c_ * gp[:, 0] - s_ * gp[:, 1] + tx; n = s_ * gp[:, 0] + c_ * gp[:, 1] + ty
-        c = np.floor((e - g["x0"]) / g["cell"]).astype(np.int64); r = np.floor((g["y1"] - n) / g["cellY"]).astype(np.int64)
-        ok = (c >= 0) & (r >= 0) & (c < g["w"]) & (r < g["h"])
+        c = np.floor((e - gz["x0"]) / gz["cell"]).astype(np.int64); r = np.floor((gz["y1"] - n) / gz["cellY"]).astype(np.int64)
+        ok = (c >= 0) & (r >= 0) & (c < gz["w"]) & (r < gz["h"])
         z = np.where(ok, gg[np.where(ok, r, 0), np.where(ok, c, 0)], np.nan)
         dz = z - gp[:, 2]; dz = dz[np.isfinite(dz)]
         if len(dz) < 50:
@@ -303,12 +304,16 @@ def main():
         I = np.fromfile(ip, dtype="<u2").reshape(g["h"], g["w"]).astype(np.float64)
         gg = np.fromfile(os.path.join(d, "sky-ground.bin"), dtype="<f4").reshape(g["h"], g["w"]) if os.path.exists(os.path.join(d, "sky-ground.bin")) else None
         fine = fine_rasters(d, g)
-        # the model's 1 m columns, and (when the model carries its points) the same match on the fine surfaces; the
-        # fine one is kept when it is there, the 1 m one printed beside it for the record
+        # the model's 1 m columns, and (when the model carries its points) the same match on the fine surfaces and on
+        # the two mixed; the mixed one is kept when there are points, the others printed beside it for the record
         match(d, inp, checks, pave, grass, gp, g, I, gg, inp.get("intensityMedian"), f"{g['cell']:.1f} m", write=fine is None)
         if fine is not None:
+            # SCAN-H21: on the owner's two walks the fine brightness was worse (21:56: 1.5 ft at 1 m, 3.7 ft fine; it
+            # pulled 10 degrees off alone) and the fine ground a little better (3.4 and 2.9 ft against 3.7 and 3.6).
+            # So the placement kept takes the brightness from the 1 m columns and the ground's shape from the points.
             fg, fI, fZ = fine
-            match(d, inp, checks, pave, grass, gp, fg, fI, fZ, None, f"{fg['cell']:.2f} m points", write=True)
+            match(d, inp, checks, pave, grass, gp, fg, fI, fZ, None, f"{fg['cell']:.2f} m points", write=False)
+            match(d, inp, checks, pave, grass, gp, g, I, fZ, inp.get("intensityMedian"), f"1 m brightness, {fg['cell']:.2f} m ground", write=True, gz=fg)
     else:
         print("No intensity in the model yet (the shade map writes it on the lot's next save): the brightness match waits.")
         sk = os.path.join(d, "skyline.json")
