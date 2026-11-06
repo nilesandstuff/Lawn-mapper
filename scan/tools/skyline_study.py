@@ -281,6 +281,12 @@ def main():
     refs = list({r["id"]: r for r in inp.get("refs") or []}.values())
     if len(refs) >= 2:
         refsT = fit_rigid([(r["ar"], r["map"]) for r in refs])
+    if truth and refsT:
+        d_rt = math.degrees((refsT[0] - truth[0] + np.pi) % (2 * np.pi) - np.pi)
+        print(f"The references' placement against the check points' own: {d_rt:+.2f} deg turned, checks median {np.median(check_errs(refsT, uniq)) * FT:.1f} ft by the references (their own fit {np.median(check_errs(truth, uniq)) * FT:.1f} ft).")
+        if os.environ.get("SKY_TRUTH") == "refs":
+            truth = refsT
+            print("Truth for this run: the references' placement.")
     if truth:
         sc, (A, R) = exact_score(S, cams, eyes, obs, *truth)
         ex = obs[:, 3] == 0
@@ -290,6 +296,10 @@ def main():
         narrow = (a - r) < math.radians(3)
         print(f"At the check points' own placement: score {sc:.1f}. Skyline samples between the roofs' and the model's tallest (2 deg slack): {np.mean(~below & ~above):.0%}; below a roof {np.mean(below):.0%}; above everything {np.mean(above):.0%}. Where the band is narrow (under 3 deg: roof edges, open sky): {narrow.sum()} samples, {np.mean(~below[narrow] & ~above[narrow]) if narrow.any() else float('nan'):.0%} inside.")
         diagnose(S, cams, eyes, obs, truth, A)
+        if os.environ.get("SKY_NARROW") == "1":
+            keepn = ((np.maximum(A, R) - R) < math.radians(3)) & (obs[:, 3] == 0)
+            obs = obs[keepn]
+            print(f"Narrow-band samples alone from here: {len(obs)} (roof edges, open sky, judged at the truth).")
         # THE CAMERA'S AIM (2026-11-06: on two walks the best placement sat 5.1 and 5.3 degrees turned from the truth,
         # the same way): at the truth, the turn and tilt of every picture's rays that the skyline likes best
         cal = [(exact_score(S, cams, eyes, obs, *truth, daz=math.radians(a), delv=math.radians(b))[0], a, b)

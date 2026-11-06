@@ -134,3 +134,19 @@ Finding 31's "not done: reading rockyweb tiles" is now done; the note in
 docs/SHADE-FINDINGS.md is yours to write once you have seen it live. The
 test line in package.json gained `tools/lidar-tiles.test.js`.
 
+
+## 2026-11-06: model arrays for the AR fix (sent by Routine at 11:14 UTC; repeated here)
+
+Asked of the shade map, by the owner's request, as additive arrays in the model file (model-out.js), read by name
+when present and ignored when absent:
+
+  1. `intensity`  Uint16 w*h: the median intensity of the column's GROUND returns (ground.js's surface; noise classes
+     out); 0 where none. For pavement edges (driveways, paths, roads) as a fix signal: long, straight, on the ground.
+  2. `gIntens` (optional) Uint8 w*h: the count of ground returns behind that median, capped at 255.
+  3. Lower priority: `ground` and `top` for the surrounding block (about 100 m more each way), either on a wider grid
+     or as a separate coarser "surround" pair (2 m cells) with its own grid in meta. 14-29% of the AR's skyline rays
+     leave the current 251 x 172 m model within 100 m.
+
+Datum for the shade findings: where a roof makes the skyline the walk's pictures agree with the model to about
+1 degree; where a crown within 15 m does, 30-40 degrees (leaf-off). Lidar trunks are ignored by the AR match since
+2026-11-06 (the owner's call).

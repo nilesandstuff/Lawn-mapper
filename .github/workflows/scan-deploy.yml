@@ -49,6 +49,12 @@ on:
       lag:
         description: 'For skyline: milliseconds each picture lags its pose (0 for none)'
         default: '0'
+      truth:
+        description: 'For skyline: checks (the check points own fit) or refs (the references placement)'
+        default: checks
+      narrow:
+        description: 'For skyline: 1 to search on roof-edge and open-sky samples alone'
+        default: '0'
 
 permissions:
   contents: read
@@ -224,6 +230,8 @@ jobs:
           SKY_CAL: ${{ inputs.calib }}
           SKY_TREE_SLACK: ${{ inputs.slack }}
           SKY_LAG: ${{ inputs.lag }}
+          SKY_TRUTH: ${{ inputs.truth }}
+          SKY_NARROW: ${{ inputs.narrow }}
         run: |
           set -o pipefail
           pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
