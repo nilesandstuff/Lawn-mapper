@@ -1052,3 +1052,29 @@ HARD:
 What it says: the hard part is not keeping the walk on the map, it is putting it there once. A placement good to a
 foot at any moment of the walk would carry the whole walk to about a foot. The references' 2.7-4.2 ft (SCAN-H11) is
 then mostly the marks themselves (where the spot was put on the photo, how it was aimed), not ARCore.
+
+### SCAN-H14. The skyline places a walk without marks to about 5 ft, with a steady 5-degree twist (2026-11-06)
+
+SCAN-H11's option 1, chosen by the owner. scan/tools/skyline_study.py (task `skyline`): the sky in each picture
+(SegFormer-b0, ADE20K, CPU) against the shade map's model seen from every placement, all pictures at once; scored
+against the check points' own fit. Synthetic yard: placed to 0.1 ft. Two real walks (21:56 no references; 22:02 with).
+
+HARD:
+  - roofs: where a roof makes the model's skyline (0-40 m), the pictures' skyline matches it to a median 0.6-1.5
+    degrees. Crowns within 15 m: 29-38 degrees off, the picture lower (November's bare branches show sky through
+    what the lidar saw as solid). Far trees: about 3 degrees. Scoring therefore treats the picture's skyline as
+    lying between the roofs' skyline and the model's tallest ("the band").
+  - with the band, both walks are placed decisively (the next different placement 70-105 log-likelihood lower):
+    checks median 4.9 ft (21:56; GPS was 28 ft, the lidar points found nothing) and 5.0 ft (22:02; references 1.6).
+  - both best placements sit 5.1-5.6 degrees turned from the truth, the same way, on both walks; a placement about
+    2.5 degrees turned with checks median 2.3 ft is the runner-up on the 22:02 walk.
+  - the camera's aim at the truth: every ray fits best tilted down 2.5 (21:56) and 3.75 degrees (22:02), turned
+    +0.5 and -1.75. Applying one walk's tilt to the other raises the truth's score (181 -> 272, 370 -> 561) but does
+    not remove the 5-degree preference (best placements 8.5 and 5.3 ft median, 4.1 and 5.6 degrees turned).
+  - the lidar is not rotated against the photo by the shade map: 3DEP's EPT is already EPSG:3857 and the shade map's
+    fit is a shift only.
+
+SPECULATION, to measure next: the twist comes from the model's edge (251 x 172 m; 14-29% of rays leave it within
+100 m, where the picture's skyline is higher than anything the model holds), or from the bare crowns' band, or from
+the pictures' timing against their poses on turns. Each can be tested on these two walks: a wider model, roofs-only
+samples, and a per-picture time offset.
