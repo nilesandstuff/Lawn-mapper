@@ -5,6 +5,7 @@
  *   sky-surface.bin  Float32, the shade map's model as one surface: ground + the highest return per column (the
  *                    ground where a column has none), absolute metres, row-major from the north edge
  *   sky-ground.bin   Float32, the ground alone, the same grid
+ *   sky-points.bin   Float32 [east, north, z, intensity, class, kind] per return, when the model carries its points
  *   sky-input.json   the grid in the map's local metres (east, north round the map's origin), the check points
  *                    (session [u, v] and map [e, n]), and for each picture the phone's height over its own ground then
  *
@@ -54,6 +55,20 @@ async function main() {
     surround = { w: sg.w, h: sg.h, x0: (sg.x0 - ox) * k, y1: (sg.y1 - oy) * k, cell: sg.cell * k, cellY: (sg.cellY || sg.cell) * k };
     hasSur = true;
   }
+  // THE POINTS THEMSELVES (the shade map, 2026-11-06, asked for by the core at the owner's word: "get the finest returns
+  // for the ground"): every return the shade map kept, cleaned and with its column's kind. Written as Float32 records
+  // [east, north, z, intensity, class, kind] in the map's local metres. ptX/ptY are 3857 cm east and SOUTH of the
+  // grid's (x0, y1) corner, the cloud's shift applied, the same frame as the columns.
+  let nPts = 0;
+  if (A.ptX && A.ptY && A.ptZ && A.ptX.length) {
+    const np_ = A.ptX.length, rec = new Float32Array(np_ * 6);
+    for (let i = 0; i < np_; i++) {
+      const mx = g.x0 + A.ptX[i] / 100, my = g.y1 - A.ptY[i] / 100;
+      rec.set([(mx - ox) * k, (my - oy) * k, A.ptZ[i] / 100, A.ptI ? A.ptI[i] : 0, A.ptCls ? A.ptCls[i] : 0, A.ptKind ? A.ptKind[i] : 0], i * 6);
+    }
+    writeFileSync(join(dir, 'sky-points.bin'), Buffer.from(rec.buffer));
+    nPts = np_;
+  }
   // the kinds (structures.js: BUILDING 1), so roofs alone can be tried: they do not change with the season
   writeFileSync(join(dir, 'sky-kind.bin'), Buffer.from(Uint8Array.from(model.arrays.kind).buffer));
 
@@ -98,7 +113,7 @@ async function main() {
     pictures: pics, checks, refs, surround, intensityMedian: model.meta.own?.intensityMedian ?? null,
   }));
   const eyes = pics.map((p) => p.eye).filter(Number.isFinite).sort((a, b) => a - b);
-  console.log(`Model extras: intensity ${hasInt ? 'yes' : 'no'}, surround ${hasSur ? `${surround.w} x ${surround.h} cells of ${surround.cell.toFixed(1)} m` : 'no'}.`);
+  console.log(`Model extras: intensity ${hasInt ? 'yes' : 'no'}, surround ${hasSur ? `${surround.w} x ${surround.h} cells of ${surround.cell.toFixed(1)} m` : 'no'}, points ${nPts ? nPts.toLocaleString() : (model.meta.points?.leftOut ? 'left out of the file (too big)' : 'no')}.`);
   console.log(`Skyline inputs: the model's surface ${g.w} x ${g.h} columns of ${(g.cell * k).toFixed(2)} m (${tops.toLocaleString()} with something standing), ${pics.length} pictures (phone over its ground: median ${eyes.length ? eyes[eyes.length >> 1].toFixed(2) : '-'} m), ${checks.length} check marks, ${refs.length} reference marks.`);
 }
 

@@ -255,7 +255,7 @@ jobs:
         run: |
           set -o pipefail
           pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
-          pip install --quiet "transformers>=4.45" pillow numpy
+          pip install --quiet "transformers>=4.45" pillow numpy scipy
           node scan/tools/twin-r2.mjs get "$WALK" twin
           node scan/tools/skyline-prep.mjs twin | tee place.txt
           python scan/tools/skyline_study.py twin | tee -a place.txt
@@ -274,7 +274,7 @@ jobs:
         run: |
           set -o pipefail
           pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
-          pip install --quiet "transformers>=4.45" pillow numpy
+          pip install --quiet "transformers>=4.45" pillow numpy scipy
           node scan/tools/twin-r2.mjs get "$WALK" twin
           node scan/tools/skyline-prep.mjs twin | tee pavement.txt
           python scan/tools/pavement_study.py twin | tee -a pavement.txt

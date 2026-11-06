@@ -1209,3 +1209,17 @@ HARD:
   - at the truth 71-75% of ARCore's ground points lie within 15 cm of the lidar's ground (the model's `ground`,
     class-2 returns per metre, once one height offset is taken out). The phone's ground is good relative to itself;
     the shape it shares with the lidar places a walk to about 3.6 ft on its own.
+
+### SCAN-H21. The shade map's own points for the ground: built, not yet measured on a walk (2026-11-06)
+
+The owner: "get the finest returns for the ground... if the shade map can just pass along all of that at the highest
+resolution possible, great." The shade map now writes every return it keeps (ptX ... ptKind; its filters and the
+column kinds carried along; the owner's lot 339,372 points, 2.3 ground returns a square metre, 4.08 MB gzipped).
+skyline-prep.mjs writes them as sky-points.bin; pavement_study.py builds, over the model's box, a 0.25 m ground
+(a triangulated surface through the class-2 returns, left out where none is within 0.75 m) and a 0.25 m brightness
+(the mean of the three nearest ground returns), and runs the same match on both grids in one run, rows marked
+[1.0 m] and [0.25 m points]; the fine one is kept when the model has points.
+
+Synthetic only, so far (a made-up lot with a 10 cm curb and a 15 cm step, ARCore-like noise of 5 cm): the ground's
+shape alone, from a start 1.5 m and 3 degrees off, lands at 1.6 ft on the 1 m cells and 0.5 ft on the fine surface.
+NOT a result about walks. The two walks with check points (21:56, 22:02) are rerun once the lot is re-saved.
