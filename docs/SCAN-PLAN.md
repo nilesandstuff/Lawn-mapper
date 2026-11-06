@@ -1162,3 +1162,18 @@ HARD:
   - brightness as a placement, refined from the truth: 21:56 (1,638 pavement cells) stays within 2.3 ft median,
     2.0 degrees; 22:02 (629 cells, 12 pictures with any pavement) wanders to 12.4 ft. It holds a good placement
     when the walk has looked at the drive; it has not yet been tried from the skyline's placements (next).
+
+### SCAN-H19. Skyline then brightness places a walk with no marks to 2.6 ft, when the walk has looked at the drive (2026-11-06)
+
+HARD:
+  - 21:56 (no references; 1,638 pavement cells from 19 pictures): the skyline's best placement (4.9 ft, 5.1 degrees)
+    refined on the lidar's brightness lands at checks 6.6, 2.1, 3.1, 1.3 ft (median 2.6), 2.1 degrees turned; from
+    the skyline's second, the same spot; from the truth, 2.3 ft. Three starts, one answer.
+  - 22:02 (629 pavement cells from 12 pictures of 347): the brightness refine wanders to 12-17 ft from every start,
+    the truth included. Too little pavement seen.
+  - the skyline's third candidate on 21:56 (300 ft off) is rejected by brightness outright (score -1287 against -839).
+
+What it says: brightness is the sharp signal and the skyline is the coarse one; together, with no marks, a walk that
+has looked at its drive and paths for a few seconds sits on the map to about 2.5 ft. The walk itself is the lever:
+a protocol that turns the camera along the drive, the sidewalk and the house's roofline early on gives both
+signals what they need.
