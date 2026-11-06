@@ -499,7 +499,8 @@ def main():
         errs_g = check_errs(T0, uniq)
         turns = [math.degrees((w_["T"][0] - truth[0] + np.pi) % (2 * np.pi) - np.pi) for w_ in kept]
         print(f"  checks by their window: {', '.join(f'{x * FT:.1f}' for x in errs_w)} ft (median {np.median(errs_w) * FT:.1f}); by the one placement {np.median(errs_g) * FT:.1f} ft; the kept windows' turn from the truth {', '.join(f'{t:+.1f}' for t in turns)} deg")
-    json.dump({"placements": [{"score": s, "theta": T[0], "tx": T[1], "ty": T[2]} for s, T in out], "windows": [{"odo": w_["odo"], "theta": w_["T"][0], "tx": w_["T"][1], "ty": w_["T"][2], "n": w_["n"], "kept": w_["kept"]} for w_ in wins]}, open(os.path.join(d, "skyline.json"), "w"))
+    f_ = float
+    json.dump({"placements": [{"score": f_(s), "theta": f_(T[0]), "tx": f_(T[1]), "ty": f_(T[2])} for s, T in out], "windows": [{"odo": f_(w_["odo"]), "theta": f_(w_["T"][0]), "tx": f_(w_["T"][1]), "ty": f_(w_["T"][2]), "n": int(w_["n"]), "kept": bool(w_["kept"])} for w_ in wins]}, open(os.path.join(d, "skyline.json"), "w"))
     print(f"Done in {int(time.time() - t0)} s.")
 
 
