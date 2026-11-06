@@ -1145,3 +1145,20 @@ HARD:
 What stands: the skyline alone places a walk to about 5 ft and no better, on these two walks, whichever way it is
 cut. The next gain is more trustworthy samples, not a better search: the brightness match once the model has it,
 and the surround for the rays that leave the lot.
+
+### SCAN-H18. With the surround the skyline's twist halves; the lidar's brightness tells pavement from grass and holds a walk to 2 ft (2026-11-06)
+
+The shade map's two additions (the features session, merged and deployed 2026-11-06 11:37 UTC; the owner re-saved
+the lot at 13:2x): `intensity` per column and a 2 m surround 100 m out (226 x 186 cells).
+
+HARD:
+  - skyline with the surround, 22:02 against the references: the best placement 1.6 degrees turned (was 3.1),
+    checks median 4.9 ft; the third candidate +1.4 degrees, checks 5.1, 1.2, 1.5, 1.4 ft (median 1.5); no coarse
+    placement scores above the truth any more (was 3), and on roof-edge samples the truth and the best tie (313 vs
+    315). 21:56: still 5.1 degrees and 4.9 ft, the runner-up 1.9 degrees and 2.0 ft.
+  - brightness: the pavement the pictures cast has a median lidar brightness of 26,315 (22:02) and 31,005 (21:56)
+    where the grass has 51,403 and the lot's ground 38,137; 89% of cast cells sit over a ground return. The
+    signal the owner asked for is there and crisp.
+  - brightness as a placement, refined from the truth: 21:56 (1,638 pavement cells) stays within 2.3 ft median,
+    2.0 degrees; 22:02 (629 cells, 12 pictures with any pavement) wanders to 12.4 ft. It holds a good placement
+    when the walk has looked at the drive; it has not yet been tried from the skyline's placements (next).

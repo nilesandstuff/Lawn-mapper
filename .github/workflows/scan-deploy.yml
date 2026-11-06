@@ -239,6 +239,7 @@ jobs:
           node scan/tools/twin-r2.mjs get "$WALK" twin
           node scan/tools/skyline-prep.mjs twin | tee skyline.txt
           python scan/tools/skyline_study.py twin | tee -a skyline.txt
+          node scan/tools/twin-r2.mjs put "$WALK" twin/skyline.json | tee -a skyline.txt
 
       # PAVEMENT FROM THE PICTURES (scan/tools/pavement_study.py): road and sidewalk pixels cast onto the ground, kept
       # for the match against the model's intensity when it has one; tested against the traced lawn meanwhile.

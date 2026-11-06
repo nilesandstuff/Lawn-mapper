@@ -191,9 +191,12 @@ def main():
             okp, okg = np.isfinite(vp), np.isfinite(vg)
             print(f"Brightness at the truth: score {score(truth):.1f}; {len(P)} pavement cells ({okp.mean():.0%} over a lidar ground return, median brightness {np.median(vp[okp]) if okp.any() else float('nan'):.0f}) and {len(G)} grass cells ({okg.mean():.0%}, median {np.median(vg[okg]) if okg.any() else float('nan'):.0f}); the lot's ground median {med:.0f}, scale {scale:.0f}. Pavement should be the darker.")
             starts.append(truth)
-        res = sorted((refine(T0) for T0 in starts), key=lambda x: -x[0])
-        for rank, (sc, T) in enumerate(res, 1):
-            line = f"  brightness placement {rank}: score {sc:.1f}"
+        names = ([f"from the skyline's {i + 1}" for i in range(len(starts) - (1 if truth else 0))] + (["from the truth"] if truth else []))
+        res = sorted(((*refine(T0), nm) for T0, nm in zip(starts, names)), key=lambda x: -x[0])
+        if not os.path.exists(sk):
+            print("  (no skyline.json beside the twin: the skyline's placements were not tried as starts)")
+        for rank, (sc, T, nm) in enumerate(res, 1):
+            line = f"  brightness placement {rank} ({nm}): score {sc:.1f}"
             if truth:
                 errs = [math.hypot(*np.subtract((math.cos(T[0]) * c["ar"][0] - math.sin(T[0]) * c["ar"][1] + T[1], math.sin(T[0]) * c["ar"][0] + math.cos(T[0]) * c["ar"][1] + T[2]), c["map"])) for c in checks]
                 line += f"; checks {', '.join(f'{x * FT:.1f}' for x in errs)} ft (median {np.median(errs) * FT:.1f}); {math.degrees((T[0] - truth[0] + np.pi) % (2 * np.pi) - np.pi):+.1f} deg from the truth"
