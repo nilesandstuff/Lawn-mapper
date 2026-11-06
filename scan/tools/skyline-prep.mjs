@@ -39,6 +39,21 @@ async function main() {
   }
   writeFileSync(join(dir, 'sky-surface.bin'), Buffer.from(surf.buffer));
   writeFileSync(join(dir, 'sky-ground.bin'), Buffer.from(gr.buffer));
+  // THE SHADE MAP'S ADDITIONS OF 2026-11-06 (the features session, asked for by the core): the ground's intensity per
+  // column (pavement is dark, grass bright) and the surround (ground and top 100 m out at 2 m cells, its own grid)
+  const A = model.arrays, sur = model.meta.surround;
+  let hasInt = false, hasSur = false;
+  if (A.intensity && A.intensity.length === n) { writeFileSync(join(dir, 'sky-intensity.bin'), Buffer.from(Uint16Array.from(A.intensity).buffer)); hasInt = true; }
+  if (A.gIntens && A.gIntens.length === n) writeFileSync(join(dir, 'sky-gintens.bin'), Buffer.from(Uint8Array.from(A.gIntens).buffer));
+  let surround = null;
+  if (sur?.grid && A.surroundGround && A.surroundTop && A.surroundGround.length === sur.grid.w * sur.grid.h) {
+    const sg = sur.grid, ns = sg.w * sg.h, ssurf = new Float32Array(ns), sgr = new Float32Array(ns);
+    for (let i = 0; i < ns; i++) { const z = A.surroundGround[i], t = A.surroundTop[i]; sgr[i] = Number.isFinite(z) ? z : NaN; ssurf[i] = Number.isFinite(z) ? z + (Number.isFinite(t) && t > 0 ? t : 0) : NaN; }
+    writeFileSync(join(dir, 'sky-surround-surface.bin'), Buffer.from(ssurf.buffer));
+    writeFileSync(join(dir, 'sky-surround-ground.bin'), Buffer.from(sgr.buffer));
+    surround = { w: sg.w, h: sg.h, x0: (sg.x0 - ox) * k, y1: (sg.y1 - oy) * k, cell: sg.cell * k, cellY: (sg.cellY || sg.cell) * k };
+    hasSur = true;
+  }
   // the kinds (structures.js: BUILDING 1), so roofs alone can be tried: they do not change with the season
   writeFileSync(join(dir, 'sky-kind.bin'), Buffer.from(Uint8Array.from(model.arrays.kind).buffer));
 
@@ -80,9 +95,10 @@ async function main() {
   writeFileSync(join(dir, 'sky-input.json'), JSON.stringify({
     lawn,
     grid: { w: g.w, h: g.h, x0: (g.x0 - ox) * k, y1: (g.y1 - oy) * k, cell: g.cell * k, cellY: (g.cellY || g.cell) * k },
-    pictures: pics, checks, refs,
+    pictures: pics, checks, refs, surround, intensityMedian: model.meta.own?.intensityMedian ?? null,
   }));
   const eyes = pics.map((p) => p.eye).filter(Number.isFinite).sort((a, b) => a - b);
+  console.log(`Model extras: intensity ${hasInt ? 'yes' : 'no'}, surround ${hasSur ? `${surround.w} x ${surround.h} cells of ${surround.cell.toFixed(1)} m` : 'no'}.`);
   console.log(`Skyline inputs: the model's surface ${g.w} x ${g.h} columns of ${(g.cell * k).toFixed(2)} m (${tops.toLocaleString()} with something standing), ${pics.length} pictures (phone over its ground: median ${eyes.length ? eyes[eyes.length >> 1].toFixed(2) : '-'} m), ${checks.length} check marks, ${refs.length} reference marks.`);
 }
 

@@ -51,8 +51,10 @@ def load(d):
 
 
 class Surface:
-    def __init__(self, g, surf, gr, kind=None):
+    def __init__(self, g, surf, gr, kind=None, surround=None):
         self.g, self.s, self.gr = g, surf, gr
+        # THE SURROUND (the shade map, 2026-11-06): ground and top 100 m out at 2 m cells, read where a ray leaves the lot
+        self.sur = surround  # (grid, surface, ground) or None
         # the roofs alone (structures.js BUILDING 1), every tree as bare ground: what the picture can never see sky below
         self.sr = np.where(kind == 1, surf, gr).astype(np.float32) if kind is not None else surf
         self.e0, self.n1 = g["x0"], g["y1"]
@@ -68,11 +70,23 @@ class Surface:
         ok = (c >= 0) & (r >= 0) & (c < self.g["w"]) & (r < self.g["h"])
         return np.where(ok, r, 0), np.where(ok, c, 0), ok
 
+    def sidx(self, e, n):
+        sg = self.sur[0]
+        c = np.floor((e - sg["x0"]) / sg["cell"]).astype(np.int64)
+        r = np.floor((sg["y1"] - n) / sg["cellY"]).astype(np.int64)
+        ok = (c >= 0) & (r >= 0) & (c < sg["w"]) & (r < sg["h"])
+        return np.where(ok, r, 0), np.where(ok, c, 0), ok
+
     def height(self, e, n, grid=None):
         a = self.s if grid is None else grid
         r, c, ok = self.idx(e, n)
-        v = a[r, c]
-        return np.where(ok & np.isfinite(v), v, np.nan)
+        v = np.where(ok & np.isfinite(a[r, c]), a[r, c], np.nan)
+        if self.sur is not None:
+            sr, sc, sok = self.sidx(e, n)
+            sa = self.sur[1] if grid is None or grid is self.s else self.sur[2]
+            sv = sa[sr, sc]
+            v = np.where(np.isnan(v) & sok & np.isfinite(sv), sv, v)
+        return v
 
     def ground(self, e, n):
         v = self.height(e, n, self.gr)
@@ -93,9 +107,12 @@ def skyline_both(S, e, n, eye_abs, az):
         sl = slice(i, i + step)
         pe = e[sl, None] + RADII[None, :] * np.cos(az[sl, None])
         pn = n[sl, None] + RADII[None, :] * np.sin(az[sl, None])
-        r, c, ok = S.idx(pe, pn)
         for grid, out in ((S.s, A), (S.sr, R)):
-            h = np.where(ok, grid[r, c], np.nan)
+            h = S.height(pe, pn, grid)
+            if grid is S.sr and S.sur is not None:
+                # the surround has no kinds: outside the lot its surface counts as roof-free ground for the lower bound
+                r_, c_, ok_ = S.idx(pe, pn)
+                h = np.where(ok_, h, S.height(pe, pn, S.gr))
             el = np.arctan2(h - eye_abs[sl, None], RADII[None, :])
             out[sl] = np.where(np.isfinite(el), el, -np.pi / 2).max(axis=1)
     return A.reshape(shp), np.minimum(R, A).reshape(shp)
@@ -244,7 +261,14 @@ def main():
     d = sys.argv[1] if len(sys.argv) > 1 else "twin"
     t0 = time.time()
     inp, surf, gr, kind = load(d)
-    S = Surface(inp["grid"], surf, gr, kind)
+    surround = None
+    if inp.get("surround") and os.path.exists(os.path.join(d, "sky-surround-surface.bin")):
+        sg = inp["surround"]
+        ss = np.fromfile(os.path.join(d, "sky-surround-surface.bin"), dtype="<f4").reshape(sg["h"], sg["w"])
+        sgr = np.fromfile(os.path.join(d, "sky-surround-ground.bin"), dtype="<f4").reshape(sg["h"], sg["w"])
+        surround = (sg, ss, sgr)
+        print(f"Surround in use: {sg['w']} x {sg['h']} cells of {sg['cell']:.1f} m.")
+    S = Surface(inp["grid"], surf, gr, kind, surround)
     pics = [p for p in inp["pictures"] if p.get("eye") is not None and 0.5 < p["eye"] < 2.5]
     if len(pics) > MAX_PICS:
         pics = [pics[int(i)] for i in np.linspace(0, len(pics) - 1, MAX_PICS)]
@@ -435,7 +459,47 @@ def main():
     far = [o for o in out[1:] if math.hypot(*np.subtract(place(o[1], mid), place(out[0][1], mid))) > 2 or abs(math.degrees((o[1][0] - out[0][1][0] + np.pi) % (2 * np.pi) - np.pi)) > 5]
     if far:
         print(f"The best different placement scores {out[0][0] - far[0][0]:.1f} below the best (log-likelihood over {len(obs)} samples; higher is surer, under ~10 is a toss-up).")
-    json.dump({"placements": [{"score": s, "theta": T[0], "tx": T[1], "ty": T[2]} for s, T in out]}, open(os.path.join(d, "skyline.json"), "w"))
+    # STEP 3 (the owner, 2026-11-06: "maybe each discrete arcore alignment needs its own fit"): windows of WINDOW_M of
+    # walking every STEP_M, each refined from the best whole-walk placement on its own pictures, kept when it holds
+    # enough samples and sits within 3 m and 6 degrees of its neighbours' mean; each check scored by the window
+    # nearest it, else by the whole-walk placement.
+    WINDOW_M, STEP_M = 60.0, 20.0
+    odos = np.array([p["odo"] for p in pics]); o_pi = odos[obs[:, 0].astype(int)]
+    T0 = out[0][1]; wins = []
+    for c0 in np.arange(odos.min(), odos.max() + 1e-6, STEP_M):
+        keep = (o_pi >= c0 - WINDOW_M / 2) & (o_pi < c0 + WINDOW_M / 2)
+        o2 = obs[keep]
+        if len(o2) < 60:
+            continue
+        T = T0; sc = exact_score(S, cams, eyes, o2, *T)[0]
+        for dd, mm in ((1.0, 0.5), (0.25, 0.2)):
+            cands = [(T[0] + math.radians(a), T[1] + x, T[2] + y) for a in (-3 * dd, -2 * dd, -dd, 0, dd, 2 * dd, 3 * dd) for x in np.arange(-3, 3.01, 1) * mm for y in np.arange(-3, 3.01, 1) * mm]
+            scs = [exact_score(S, cams, eyes, o2, *C)[0] for C in cands]
+            j = int(np.argmax(scs))
+            if scs[j] > sc:
+                sc, T = scs[j], cands[j]
+        wins.append({"odo": float(c0), "T": T, "n": int(keep.sum()), "score": sc})
+    mid = cams.mean(0)
+    for w_ in wins:
+        others = [o for o in wins if o is not w_ and abs(o["odo"] - w_["odo"]) <= STEP_M * 1.01]
+        if not others:
+            w_["kept"] = True; continue
+        dth = np.mean([math.degrees((o["T"][0] - w_["T"][0] + np.pi) % (2 * np.pi) - np.pi) for o in others])
+        dpos = np.mean([math.hypot(*np.subtract(place(o["T"], mid), place(w_["T"], mid))) for o in others])
+        w_["kept"] = abs(dth) <= 6 and dpos <= 3
+    kept = [w_ for w_ in wins if w_["kept"]]
+    def place_at(odo):
+        if not kept:
+            return T0
+        w_ = min(kept, key=lambda w__: abs(w__["odo"] - odo))
+        return w_["T"] if abs(w_["odo"] - odo) <= WINDOW_M / 2 else T0
+    print(f"Windows of {WINDOW_M:.0f} m every {STEP_M:.0f} m: {len(wins)} fitted, {len(kept)} kept (agreeing with their neighbours within 3 m and 6 degrees).")
+    if truth and uniq:
+        errs_w = [math.hypot(*np.subtract(place(place_at(c.get("odo") or 0), c["ar"]), c["map"])) for c in uniq]
+        errs_g = check_errs(T0, uniq)
+        turns = [math.degrees((w_["T"][0] - truth[0] + np.pi) % (2 * np.pi) - np.pi) for w_ in kept]
+        print(f"  checks by their window: {', '.join(f'{x * FT:.1f}' for x in errs_w)} ft (median {np.median(errs_w) * FT:.1f}); by the one placement {np.median(errs_g) * FT:.1f} ft; the kept windows' turn from the truth {', '.join(f'{t:+.1f}' for t in turns)} deg")
+    json.dump({"placements": [{"score": s, "theta": T[0], "tx": T[1], "ty": T[2]} for s, T in out], "windows": [{"odo": w_["odo"], "theta": w_["T"][0], "tx": w_["T"][1], "ty": w_["T"][2], "n": w_["n"], "kept": w_["kept"]} for w_ in wins]}, open(os.path.join(d, "skyline.json"), "w"))
     print(f"Done in {int(time.time() - t0)} s.")
 
 
