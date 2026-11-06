@@ -38,6 +38,8 @@ async function main() {
   }
   writeFileSync(join(dir, 'sky-surface.bin'), Buffer.from(surf.buffer));
   writeFileSync(join(dir, 'sky-ground.bin'), Buffer.from(gr.buffer));
+  // the kinds (structures.js: BUILDING 1), so roofs alone can be tried: they do not change with the season
+  writeFileSync(join(dir, 'sky-kind.bin'), Buffer.from(Uint8Array.from(model.arrays.kind).buffer));
 
   // the phone's height over its own ground at each picture: the camera's height less the ground the page had then
   const recs = [];

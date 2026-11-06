@@ -44,7 +44,11 @@ def load(d):
     g = inp["grid"]
     surf = np.fromfile(os.path.join(d, "sky-surface.bin"), dtype="<f4").reshape(g["h"], g["w"])
     gr = np.fromfile(os.path.join(d, "sky-ground.bin"), dtype="<f4").reshape(g["h"], g["w"])
-    return inp, surf, gr
+    kp = os.path.join(d, "sky-kind.bin")
+    kind = np.fromfile(kp, dtype=np.uint8).reshape(g["h"], g["w"]) if os.path.exists(kp) else None
+    if os.environ.get("SKY_SURFACE") == "buildings" and kind is not None:
+        surf = np.where(kind == 1, surf, gr).astype(np.float32)  # roofs only: trees as bare ground
+    return inp, surf, gr, kind
 
 
 class Surface:
@@ -168,6 +172,32 @@ def exact_score(S, cams, eyes, obs, theta, tx, ty):
     return float(score_from(pred, obs[:, 2], obs[:, 3]).sum()), pred
 
 
+def diagnose(S, cams, eyes, obs, T, pred):
+    """Where the pictures' skyline and the model's part, at the truth: which way, and why it might."""
+    ex = obs[:, 3] == 0
+    d = np.degrees(obs[ex, 2] - pred[ex])  # + : the picture's skyline is higher than the model's
+    th, tx, ty = T; c, s = math.cos(th), math.sin(th)
+    pi = obs[ex, 0].astype(int)
+    e = c * cams[pi, 0] - s * cams[pi, 1] + tx; n = s * cams[pi, 0] + c * cams[pi, 1] + ty
+    az = obs[ex, 1] + th
+    # how far each ray runs before it leaves the model, and how far away the thing that makes the model's skyline is
+    pe = e[:, None] + RADII[None, :] * np.cos(az[:, None]); pn = n[:, None] + RADII[None, :] * np.sin(az[:, None])
+    _, _, ok = S.idx(pe, pn)
+    edge = np.where(ok.all(1), RADII[-1], RADII[np.argmin(ok, axis=1)])
+    h = S.height(pe, pn); eye = S.ground(e, n) + eyes[pi]
+    el = np.where(np.isfinite(h), np.arctan2(h - eye[:, None], RADII[None, :]), -9)
+    near = RADII[np.argmax(el, axis=1)]
+    q = np.percentile(d, [25, 50, 75])
+    print(f"  the picture's skyline minus the model's: quartiles {q[0]:+.1f} / {q[1]:+.1f} / {q[2]:+.1f} deg; higher by 3+ deg {np.mean(d > 3):.0%}, lower by 3+ {np.mean(d < -3):.0%}")
+    short = edge < 100
+    if short.any():
+        print(f"  rays leaving the model within 100 m: {short.mean():.0%} of samples, median difference there {np.median(d[short]):+.1f} deg (elsewhere {np.median(d[~short]) if (~short).any() else float('nan'):+.1f})")
+    for lo, hi in ((0, 15), (15, 40), (40, 300)):
+        sel = (near >= lo) & (near < hi)
+        if sel.sum() >= 10:
+            print(f"  model's skyline made {lo}-{hi} m away: {sel.sum()} samples, median |difference| {np.median(np.abs(d[sel])):.1f} deg, signed {np.median(d[sel]):+.1f}")
+
+
 def fit_rigid(pairs):
     a = np.array([p[0] for p in pairs], float); b = np.array([p[1] for p in pairs], float)
     am, bm = a.mean(0), b.mean(0); A, B = a - am, b - bm
@@ -188,7 +218,8 @@ def check_errs(T, checks):
 def main():
     d = sys.argv[1] if len(sys.argv) > 1 else "twin"
     t0 = time.time()
-    inp, surf, gr = load(d)
+    inp, surf, gr, kind = load(d)
+    print(f"Surface: {'roofs only' if os.environ.get('SKY_SURFACE') == 'buildings' else 'roofs and trees'}.")
     S = Surface(inp["grid"], surf, gr)
     pics = [p for p in inp["pictures"] if p.get("eye") is not None and 0.5 < p["eye"] < 2.5]
     if len(pics) > MAX_PICS:
@@ -219,6 +250,7 @@ def main():
         ex = obs[:, 3] == 0
         res = np.degrees(np.abs(pred[ex] - obs[ex, 2]))
         print(f"At the check points' own placement: score {sc:.1f} of {len(obs)}; the skyline samples sit a median {np.median(res):.1f} deg from the model's ({np.mean(res < 2):.0%} within 2 deg, {np.mean(res < 5):.0%} within 5).")
+        diagnose(S, cams, eyes, obs, truth, pred)
 
     # COARSE: the model's skyline from every lattice spot, every 2 degrees, at the median eye height
     m = COARSE_M
@@ -290,7 +322,7 @@ def main():
         print(line)
     if truth:
         tsc = exact_score(S, cams, eyes, obs, *truth)[0]
-        good = np.median(check_errs(out[0][1], uniq)) < 1.5
+        good = np.median(check_errs(out[0][1], uniq)) * FT < 1.5
         verdict = ('the best placement IS the truth (within 1.5 ft): the skyline can place this walk' if good else
                    'the truth scores higher than anything found: the signal is there, the search missed it' if tsc > out[0][0] else
                    'the skyline scores another placement at least as high as the truth: on this walk it cannot place it')
