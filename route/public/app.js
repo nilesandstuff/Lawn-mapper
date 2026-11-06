@@ -151,8 +151,8 @@ for (const k of ['roadFt', 'yardFt', 'saveMin']) {
 
 /** A leg's chip: driving, or riding between close stops with the time it saves. */
 const legChip = (leg) => (leg?.ride
-  ? `<span>🛵 ride ${mins(leg.duration || 0)} · saves ${Math.round((leg.saved || 0) / 60)}m</span>`
-  : `<span>🚗 ${mins(leg?.duration || 0)} · ${miles(leg?.distance || 0)}</span>`);
+  ? `<span>Ride ${mins(leg.duration || 0)} · saves ${Math.round((leg.saved || 0) / 60)}m</span>`
+  : `<span>Drive ${mins(leg?.duration || 0)} · ${miles(leg?.distance || 0)}</span>`);
 const savedMin = (legs) => Math.round(legs.reduce((a, l) => a + (l?.ride ? l.saved || 0 : 0), 0) / 60);
 
 /* how many people share the day (lib/split.js); with more than one, each starts at their first stop */
@@ -478,7 +478,7 @@ $('#addStop').addEventListener('click', () => {
   const inputs = document.querySelectorAll('#stops input[data-k="address"]');
   inputs[inputs.length - 1]?.focus();
 });
-$('#clear').addEventListener('click', () => {
+function clearRoute() {
   if (!confirm('Clear all stops and the route?')) return;
   stops = [];
   result = null;
@@ -486,8 +486,11 @@ $('#clear').addEventListener('click', () => {
   store.set('result', null);
   renderStops();
   $('#result').hidden = true; $('#splitResult').hidden = true;
+  $('#shareOneOut').hidden = true; $('#shareOut').hidden = true;
   say('');
-});
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+for (const b of ['#clear', '#clearRoute', '#clearSplit']) $(b).addEventListener('click', clearRoute);
 
 /* ------------------------------------------------------------ planning */
 async function call(path, body) {
@@ -839,8 +842,8 @@ function drawMap(r) {
     ? r.geometry.map(([lng, lat]) => [lat, lng])
     : [r.start, ...r.stops.map((s) => s.hit), r.end].map((p) => [p.lat, p.lng]);
   window.L.polyline(line, { color: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#1f7a4d', weight: 5, opacity: 0.85 }).addTo(map);
-  if (km(r.start, r.end) > 0.05) pin(r.start, 'S', true);
-  pin(r.end, '⌂', true);
+  if (km(r.start, r.end) > 0.05) pin(r.start, 'Me', true);
+  pin(r.end, 'S', true);
   r.stops.forEach((s, i) => pin(s.hit, String(i + 1)));
   map.fitBounds(window.L.latLngBounds(line), { padding: [20, 20] });
 }
@@ -864,7 +867,7 @@ function renderResult(scroll = false) {
 
   const notes = [`${r.stops.length} stop${r.stops.length === 1 ? '' : 's'}, ${miles(dist)} of driving.`];
   const rides = r.legs.filter((l) => l?.ride).length;
-  if (rides) notes.push(`🛵 Riding between ${rides} pair${rides === 1 ? '' : 's'} of close stops saves ${formatMinutes(rideSaved)} (taken off the total).`);
+  if (rides) notes.push(`Riding between ${rides} pair${rides === 1 ? '' : 's'} of close stops saves ${formatMinutes(rideSaved)} (taken off the total).`);
   notes.push(`Starting now, back at the shop about ${clock(Date.now() + (jobs + driveM - rideSaved) * 60000)}.`);
   if (r.saved >= 60) notes.push(`${mins(r.saved)} less driving than the order in the list.`);
   if (r.fetched != null) notes.push(`Drive times: ${r.reused.toLocaleString()} reused from this phone, ${r.fetched.toLocaleString()} new from Mapbox.`);
@@ -886,15 +889,15 @@ function renderResult(scroll = false) {
       <div class="body">
         <div class="addr">${esc(s.address)}</div>
         <div class="meta">${esc([s.name, s.city].filter(Boolean).join(' · '))}</div>
-        <div class="chips">${legChip(leg)}${s.minutes != null ? `<span>⏱ ${s.minutes}m job</span>` : ''}${s.sqft ? `<span>📐 ${sqft(s.sqft)}</span>` : ''}</div>
+        <div class="chips">${legChip(leg)}${s.minutes != null ? `<span>${s.minutes}m job</span>` : ''}${s.sqft ? `<span>${sqft(s.sqft)}</span>` : ''}</div>
         ${shaky ? `<div class="found">Map's best guess: ${esc(s.hit.label)}</div>` : ''}
       </div>
       <a class="go" target="_blank" rel="noopener" href="${esc(nav(s.hit.label))}" aria-label="Directions to stop ${i + 1}">Go</a>
     </li>`;
   });
   const back = r.legs[r.stops.length] || {};
-  items.push(`<li class="home"><span class="num">⌂</span><div class="body"><div class="addr">Back to the shop</div>
-    <div class="chips"><span>🚗 ${mins(back.duration || 0)} · ${miles(back.distance || 0)}</span></div></div>
+  items.push(`<li class="home"><span class="num">S</span><div class="body"><div class="addr">Back to the shop</div>
+    <div class="chips"><span>Drive ${mins(back.duration || 0)} · ${miles(back.distance || 0)}</span></div></div>
     <a class="go" target="_blank" rel="noopener" href="${esc(nav(r.end.label))}" aria-label="Directions to the shop">Go</a></li>`);
   $('#legs').innerHTML = items.join('');
   $('#gmaps').innerHTML = googleLinks(r);

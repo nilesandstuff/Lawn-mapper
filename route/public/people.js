@@ -20,8 +20,8 @@ const mins = (s) => `${Math.max(1, Math.round(s / 60))} min`;
 const sqft = (n) => `${Math.round(n).toLocaleString()} sq ft`;
 /** A leg's chip: driving, or riding between close stops (lib/ride.js) with the time it saves. */
 const chip = (leg) => (leg?.ride
-  ? `<span>🛵 ride ${mins(leg.duration || 0)} · saves ${Math.round((leg.saved || 0) / 60)}m</span>`
-  : `<span>🚗 ${mins(leg?.duration || 0)} · ${miles(leg?.distance || 0)}</span>`);
+  ? `<span>Ride ${mins(leg.duration || 0)} · saves ${Math.round((leg.saved || 0) / 60)}m</span>`
+  : `<span>Drive ${mins(leg?.duration || 0)} · ${miles(leg?.distance || 0)}</span>`);
 const savedSec = (legs) => legs.reduce((a, l) => a + (l?.ride ? l.saved || 0 : 0), 0);
 
 /** A person's job minutes, driving seconds, metres, and their whole day in minutes. */
@@ -54,7 +54,7 @@ export function trips(person, shop) {
 /** The short line for a person: "3 stops · 1h 05m jobs · 42 min driving · 1h 47m". */
 export function summary(person) {
   const t = totals(person);
-  return `${person.stops.length} stop${person.stops.length === 1 ? '' : 's'} · ${formatMinutes(t.jobs)} jobs · ${formatMinutes(Math.round(t.drive / 60))} driving · ${miles(t.dist)}${t.saved ? ` · 🛵 ${formatMinutes(Math.round(t.saved / 60))} saved riding` : ''}`;
+  return `${person.stops.length} stop${person.stops.length === 1 ? '' : 's'} · ${formatMinutes(t.jobs)} jobs · ${formatMinutes(Math.round(t.drive / 60))} driving · ${miles(t.dist)}${t.saved ? ` · ${formatMinutes(Math.round(t.saved / 60))} saved riding` : ''}`;
 }
 
 /**
@@ -72,15 +72,15 @@ export function personCard(plan, k, { done = new Set(), share = false, open = tr
       <div class="body">
         <div class="addr">${esc(s.address)}</div>
         <div class="meta">${esc([s.name, s.city].filter(Boolean).join(' · '))}</div>
-        <div class="chips">${leg ? chip(leg) : '<span>first stop</span>'}${s.minutes != null ? `<span>⏱ ${s.minutes}m job</span>` : ''}${s.sqft ? `<span>📐 ${sqft(s.sqft)}</span>` : ''}</div>
+        <div class="chips">${leg ? chip(leg) : '<span>first stop</span>'}${s.minutes != null ? `<span>${s.minutes}m job</span>` : ''}${s.sqft ? `<span>${sqft(s.sqft)}</span>` : ''}</div>
       </div>
       <a class="go" target="_blank" rel="noopener" href="${esc(nav(s.label || `${s.address}, ${s.city}`))}" aria-label="Directions to stop ${i + 1}">Go</a>
     </li>`;
   });
   const back = person.legs[person.stops.length - 1];
   if (person.stops.length) {
-    rows.push(`<li class="home"><span class="num">⌂</span><div class="body"><div class="addr">Back to the shop</div>
-      <div class="chips"><span>🚗 ${mins(back?.duration || 0)} · ${miles(back?.distance || 0)}</span></div></div>
+    rows.push(`<li class="home"><span class="num">S</span><div class="body"><div class="addr">Back to the shop</div>
+      <div class="chips"><span>Drive ${mins(back?.duration || 0)} · ${miles(back?.distance || 0)}</span></div></div>
       <a class="go" target="_blank" rel="noopener" href="${esc(nav(plan.shop.label))}" aria-label="Directions to the shop">Go</a></li>`);
   }
   return `<details class="card person" ${open ? 'open' : ''} data-person="${k}">
@@ -110,7 +110,7 @@ export function drawPlan(L, el, plan, only = null, map = null) {
     }).addTo(map));
     all.push(...line);
   });
-  L.marker([plan.shop.lat, plan.shop.lng], { icon: L.divIcon({ className: 'pin2 home', html: '<span>⌂</span>', iconSize: [26, 26], iconAnchor: [13, 13] }) }).addTo(map);
+  L.marker([plan.shop.lat, plan.shop.lng], { icon: L.divIcon({ className: 'pin2 home', html: '<span>S</span>', iconSize: [26, 26], iconAnchor: [13, 13] }) }).addTo(map);
   all.push([plan.shop.lat, plan.shop.lng]);
   map.fitBounds(L.latLngBounds(all), { padding: [20, 20] });
   return map;
@@ -164,7 +164,7 @@ export function liveCard(doc, k, { me = null, open = true, now = Date.now() } = 
       <div class="body">
         <div class="addr">${esc(st.address)}</div>
         <div class="meta">${esc([st.name, st.city].filter(Boolean).join(' · '))}${st.done ? ` · done ${clockAt(st.done.at)}${st.done.by ? ` by ${esc(st.done.by)}` : ''}` : ''}</div>
-        <div class="chips">${!st.done && leg ? chip(leg) : ''}${st.minutes != null ? `<span>⏱ ${st.minutes}m job</span>` : ''}${st.sqft ? `<span>📐 ${sqft(st.sqft)}</span>` : ''}</div>
+        <div class="chips">${!st.done && leg ? chip(leg) : ''}${st.minutes != null ? `<span>${st.minutes}m job</span>` : ''}${st.sqft ? `<span>${sqft(st.sqft)}</span>` : ''}</div>
       </div>
       ${st.done ? '' : `<a class="go" target="_blank" rel="noopener" href="${esc(nav(st.label || `${st.address}, ${st.city}`))}" aria-label="Directions">Go</a>`}
     </li>`;
@@ -172,8 +172,8 @@ export function liveCard(doc, k, { me = null, open = true, now = Date.now() } = 
   const todoRows = t.todo.map(row);
   const doneRows = t.done.map((s) => row(s, 0));
   if (t.todo.length) {
-    todoRows.push(`<li class="home"><span class="num">⌂</span><div class="body"><div class="addr">Back to the shop</div>
-      ${p.back ? `<div class="chips"><span>🚗 ${mins(p.back.duration)} · ${miles(p.back.distance)}</span></div>` : ''}</div>
+    todoRows.push(`<li class="home"><span class="num">S</span><div class="body"><div class="addr">Back to the shop</div>
+      ${p.back ? `<div class="chips"><span>Drive ${mins(p.back.duration)} · ${miles(p.back.distance)}</span></div>` : ''}</div>
       <a class="go" target="_blank" rel="noopener" href="${esc(nav(doc.shop.label))}" aria-label="Directions to the shop">Go</a></li>`);
   }
   const trip = t.todo.length ? trips({ stops: t.todo.map((s) => doc.stops[s]) }, doc.shop) : [];
@@ -205,10 +205,10 @@ export function drawLive(L, el, doc, only = null, map = null) {
     }).addTo(map));
     all.push(...line);
     if (p.start && p.free && !p.stops.some((s) => doc.stops[s].done)) {
-      L.marker([p.start.lat, p.start.lng], { icon: L.divIcon({ className: 'pin2', html: `<span style="background:${color}">★</span>`, iconSize: [26, 26], iconAnchor: [13, 13] }) }).addTo(map);
+      L.marker([p.start.lat, p.start.lng], { icon: L.divIcon({ className: 'pin2', html: `<span style="background:${color}">+</span>`, iconSize: [26, 26], iconAnchor: [13, 13] }) }).addTo(map);
     }
   });
-  L.marker([doc.shop.lat, doc.shop.lng], { icon: L.divIcon({ className: 'pin2 home', html: '<span>⌂</span>', iconSize: [26, 26], iconAnchor: [13, 13] }) }).addTo(map);
+  L.marker([doc.shop.lat, doc.shop.lng], { icon: L.divIcon({ className: 'pin2 home', html: '<span>S</span>', iconSize: [26, 26], iconAnchor: [13, 13] }) }).addTo(map);
   all.push([doc.shop.lat, doc.shop.lng]);
   map.fitBounds(L.latLngBounds(all), { padding: [20, 20] });
   return map;

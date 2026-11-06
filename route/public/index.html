@@ -30,10 +30,10 @@
     <label class="field" for="end">Ends at</label>
     <div class="endrow">
       <input id="end" type="text" autocomplete="street-address" placeholder="Shop address, city">
-      <button type="button" class="btn small" id="shopBtn" hidden>⌂ Shop</button>
+      <button type="button" class="btn small" id="shopBtn" hidden>Shop</button>
     </div>
     <details class="ride-set">
-      <summary class="hint">🛵 Riding between close stops: saves time</summary>
+      <summary class="hint">Riding between close stops: saves time</summary>
       <p class="hint">Close stops are ridden between on the machine instead of loading up and driving. The route counts that time saved.</p>
       <div class="ride-grid">
         <label>Within <input id="ride_roadFt" type="number" inputmode="numeric" min="0" step="50"> ft by road</label>
@@ -100,7 +100,7 @@
         <div class="all"><span>Total</span><b id="tAll">-</b></div>
       </div>
       <ul class="notes" id="notes"></ul>
-      <div class="row-btns"><button type="button" class="btn" id="shareOne">Share / get help</button></div>
+      <div class="row-btns"><button type="button" class="btn" id="shareOne">Share / get help</button><button type="button" class="btn" id="clearRoute">Clear route</button></div>
       <p class="share-link" id="shareOneOut" hidden></p>
     </div>
     <div class="card">
@@ -122,7 +122,7 @@
       <h2 id="splitH">The day, split <small id="splitPlanned"></small></h2>
       <ul class="split-sum" id="splitSum"></ul>
       <ul class="notes" id="splitNotes"></ul>
-      <div class="row-btns"><button type="button" class="btn primary" id="shareAll">Share all routes</button></div>
+      <div class="row-btns"><button type="button" class="btn primary" id="shareAll">Share all routes</button><button type="button" class="btn" id="clearSplit">Clear route</button></div>
       <p class="share-link" id="shareOut" hidden></p>
     </div>
     <div class="card"><div id="splitMap" role="img" aria-label="Map of everyone's routes" style="height:340px;border-radius:12px"></div></div>
