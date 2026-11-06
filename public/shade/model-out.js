@@ -39,6 +39,23 @@
  *                          a trunk as a thin post, the owner: "trunks
  *                          currently get averaged to 1m, so let's just make
  *                          those a thin line")
+ *   intensity  Uint16 w*h  the median intensity of the column's own GROUND
+ *                          returns (class 2, the ones ground.js builds the
+ *                          surface from); 0 where none. Raw sensor units:
+ *                          they differ between flights, so the header's
+ *                          own.intensityMedian (the lot's ground median) is
+ *                          there to calibrate per property (the owner,
+ *                          2026-11-03: "calibrated per property")
+ *   gIntens    Uint8 w*h   how many ground returns that median came from,
+ *                          capped at 255 (core session, 2026-11-06: pavement
+ *                          edges from lidar brightness, for placing an AR
+ *                          walk with no marked references)
+ *
+ * THE BLOCK AROUND (surround.js; core session, 2026-11-06, the AR's skyline):
+ *   surroundGround, surroundTop  Float32 on their own grid (meta.surround:
+ *                          the lot's box 100 m wider each way, 2 m cells),
+ *                          the same meaning as `ground` and `top`; absent
+ *                          until the page has read them (a second save)
  *
  * SENT GZIPPED (core session, 2026-11-05; the owner: "there are definitely
  * larger lots out there"): the server keeps every model gzipped, 48 MB at
@@ -63,7 +80,7 @@ export const KINDS = { NOTHING, BUILDING, TREE, SOLID_TREE, STRUCTURE, UNKNOWN }
  * erasedCubes (indices k*nz+l). `lidar`, `flown`, `photo`, `basedOn` go into
  * the header as they are.
  */
-export function finishedModel({ model, season, cols = null, shift = null, erasedMask = null, erasedCubes = [], lidar = null, flown = null, photo = null, basedOn = null, now = new Date() }) {
+export function finishedModel({ model, season, cols = null, shift = null, surround = null, erasedMask = null, erasedCubes = [], lidar = null, flown = null, photo = null, basedOn = null, now = new Date() }) {
   const { grid, w, h, nz, dz, z0, ground } = model;
   const N = w * h;
   const built = season?.built;
@@ -93,13 +110,15 @@ export function finishedModel({ model, season, cols = null, shift = null, erased
     photo: photo ? { id: photo.id, date: photo.date, source: photo.source } : null,
     rule: { kinds: KINDS },
     leaves: { mu: 'as flown: leaf-off branches, trunk space emptied to the branch floor, low structures solid; erasures applied', muOn: 'every deciduous crown in full summer leaf; erasures applied' },
-    own: own ? { returns: "the column's own returns per cube, not pooled with its neighbours (mu is, where a column caught under 4 pulses); erasures applied", low: "the lowest own return over the grass, m over the ground, exact; NaN where none", grassM: GRASS_M, lowDx: "mean offset east of the column's centre, cm (Int16, +-50), of its own returns between standLowM and standHighM; 0 where none", lowDy: 'the same, north', standLowM: STAND_LOW_M, standHighM: STAND_HIGH_M } : null,
+    own: own ? { returns: "the column's own returns per cube, not pooled with its neighbours (mu is, where a column caught under 4 pulses); erasures applied", low: "the lowest own return over the grass, m over the ground, exact; NaN where none", grassM: GRASS_M, lowDx: "mean offset east of the column's centre, cm (Int16, +-50), of its own returns between standLowM and standHighM; 0 where none", lowDy: 'the same, north', standLowM: STAND_LOW_M, standHighM: STAND_HIGH_M, ...(own.intensity ? { intensity: "median intensity of the column's own ground (class 2) returns, raw sensor units; 0 where none", gIntens: 'ground returns behind that median, capped at 255', intensityMedian: own.intensityMedian } : { intensity: 'not written: this cloud carries no intensity' }) } : null,
     erased,
     counts: built?.counts || null,
+    surround: surround ? { grid: { w: surround.grid.w, h: surround.grid.h, x0: surround.grid.x0, y1: surround.grid.y1, cell: surround.grid.cell, cellY: surround.grid.cellY || surround.grid.cell, lat: surround.grid.lat }, cellM: surround.cellM, aroundM: surround.aroundM, surroundGround: 'the ground, absolute m, mean of the ground returns, gaps filled', surroundTop: 'the highest return over that ground, m; 0 where nothing stands' } : null,
   };
   const arrays = { ground: Float32Array.from(ground), kind, why, top, mu };
   if (muOn) arrays.muOn = muOn;
-  if (own) { arrays.returns = own.returns; arrays.low = own.low; arrays.lowDx = own.lowDx; arrays.lowDy = own.lowDy; }
+  if (surround) { arrays.surroundGround = Float32Array.from(surround.ground); arrays.surroundTop = Float32Array.from(surround.top); }
+  if (own) { arrays.returns = own.returns; arrays.low = own.low; arrays.lowDx = own.lowDx; arrays.lowDy = own.lowDy; if (own.intensity) { arrays.intensity = own.intensity; arrays.gIntens = own.gIntens; } }
   return { meta, arrays };
 }
 
@@ -115,10 +134,14 @@ export function ownReturns(cols, model, { shift = null, erasedMask = null, erase
   const sx = new Float32Array(N), sy = new Float32Array(N), sn = new Uint16Array(N);
   const gone = erasedCubes.length ? new Set(erasedCubes) : null;
   const mPer = Number.isFinite(grid.lat) ? mercScale(grid.lat) : 1, cy = grid.cellY || grid.cell;
+  const I = cols.intensity, gi = I ? new Int32Array(cols.n).fill(-1) : null; // each ground return's column
+  let anyI = false;
   for (let i = 0; i < cols.n; i++) {
     if (NOISE.has(cols.cls[i])) continue;
     const k = cellOf(grid, cols.x[i], cols.y[i], shift);
-    if (k < 0 || (erasedMask && erasedMask[k])) continue;
+    if (k < 0) continue;
+    if (gi && cols.cls[i] === 2) { gi[i] = k; if (I[i]) anyI = true; } // the ground stays the ground under an erasure
+    if (erasedMask && erasedMask[k]) continue;
     const over = cols.z[i] - ground[k];
     if (!(over > 0) || over > MAX_OVER_M) continue;
     const c = k * nz + Math.min(nz - 1, Math.max(0, Math.floor((cols.z[i] - z0) / dz)));
@@ -137,7 +160,24 @@ export function ownReturns(cols, model, { shift = null, erasedMask = null, erase
   const lowDx = new Int16Array(N), lowDy = new Int16Array(N); // Int16: lidar-model.js takes no Int8
   const cm = (v) => Math.max(-50, Math.min(50, Math.round(v * 100)));
   for (let k = 0; k < N; k++) if (sn[k]) { lowDx[k] = cm(sx[k] / sn[k]); lowDy[k] = cm(sy[k] / sn[k]); }
-  return { returns, low, lowDx, lowDy };
+  if (!anyI) return { returns, low, lowDx, lowDy };
+  /* The ground's brightness: each column's ground returns, gathered per column (CSR), their median. */
+  const start = new Uint32Array(N + 1);
+  for (let i = 0; i < cols.n; i++) if (gi[i] >= 0) start[gi[i] + 1]++;
+  for (let k = 0; k < N; k++) start[k + 1] += start[k];
+  const vals = new Uint16Array(start[N]), fill = start.slice(0, N);
+  for (let i = 0; i < cols.n; i++) if (gi[i] >= 0) vals[fill[gi[i]]++] = I[i];
+  const intensity = new Uint16Array(N), gIntens = new Uint8Array(N);
+  for (let k = 0; k < N; k++) {
+    const n = start[k + 1] - start[k];
+    if (!n) continue;
+    const v = vals.subarray(start[k], start[k + 1]).sort();
+    intensity[k] = n % 2 ? v[n >> 1] : Math.round((v[(n >> 1) - 1] + v[n >> 1]) / 2);
+    gIntens[k] = Math.min(255, n);
+  }
+  const all = Uint16Array.from(vals).sort();
+  const intensityMedian = all.length ? all[all.length >> 1] : 0;
+  return { returns, low, lowDx, lowDy, intensity, gIntens, intensityMedian };
 }
 
 /**
