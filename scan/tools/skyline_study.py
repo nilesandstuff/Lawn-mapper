@@ -46,14 +46,14 @@ def load(d):
     gr = np.fromfile(os.path.join(d, "sky-ground.bin"), dtype="<f4").reshape(g["h"], g["w"])
     kp = os.path.join(d, "sky-kind.bin")
     kind = np.fromfile(kp, dtype=np.uint8).reshape(g["h"], g["w"]) if os.path.exists(kp) else None
-    if os.environ.get("SKY_SURFACE") == "buildings" and kind is not None:
-        surf = np.where(kind == 1, surf, gr).astype(np.float32)  # roofs only: trees as bare ground
     return inp, surf, gr, kind
 
 
 class Surface:
-    def __init__(self, g, surf, gr):
+    def __init__(self, g, surf, gr, kind=None):
         self.g, self.s, self.gr = g, surf, gr
+        # the roofs alone (structures.js BUILDING 1), every tree as bare ground: what the picture can never see sky below
+        self.sr = np.where(kind == 1, surf, gr).astype(np.float32) if kind is not None else surf
         self.e0, self.n1 = g["x0"], g["y1"]
         self.ce, self.cn = g["cell"], g["cellY"]
         self.e1 = self.e0 + g["w"] * self.ce
@@ -81,22 +81,27 @@ class Surface:
 RADII = np.geomspace(0.75, 220.0, 110)
 
 
-def skyline_elev(S, e, n, eye_abs, az):
+def skyline_both(S, e, n, eye_abs, az):
     """The model's skyline from (e, n) at eye height eye_abs, looking along map azimuth az (atan2 of north, east):
-    the highest elevation angle along that direction. All arrays the same shape (flattened inside)."""
+    the highest elevation angle along that direction, with trees (A) and of the roofs alone (R). Same shapes in."""
     shp = np.shape(e)
     e, n, eye_abs, az = (np.ravel(x).astype(np.float64) for x in (e, n, eye_abs, az))
-    out = np.full(e.shape, -np.pi / 2)
+    A = np.full(e.shape, -np.pi / 2); R = np.full(e.shape, -np.pi / 2)
     step = max(1, 400000 // len(RADII))
     for i in range(0, len(e), step):
         sl = slice(i, i + step)
         pe = e[sl, None] + RADII[None, :] * np.cos(az[sl, None])
         pn = n[sl, None] + RADII[None, :] * np.sin(az[sl, None])
-        h = S.height(pe, pn)
-        el = np.arctan2(h - eye_abs[sl, None], RADII[None, :])
-        el = np.where(np.isfinite(el), el, -np.pi / 2)
-        out[sl] = el.max(axis=1)
-    return out.reshape(shp)
+        r, c, ok = S.idx(pe, pn)
+        for grid, out in ((S.s, A), (S.sr, R)):
+            h = np.where(ok, grid[r, c], np.nan)
+            el = np.arctan2(h - eye_abs[sl, None], RADII[None, :])
+            out[sl] = np.where(np.isfinite(el), el, -np.pi / 2).max(axis=1)
+    return A.reshape(shp), np.minimum(R, A).reshape(shp)
+
+
+def skyline_elev(S, e, n, eye_abs, az):
+    return skyline_both(S, e, n, eye_abs, az)[0]
 
 
 def sky_masks(d, pics):
@@ -154,11 +159,23 @@ def observations(pics, masks):
     return np.array(obs, dtype=np.float64).reshape(-1, 4)
 
 
-def score_from(pred, el, kind):
-    d = pred - el
-    exact = np.exp(-(d / SIGMA) ** 2)
-    lower = np.where(d >= -math.radians(1), 1.0, np.exp(-((d + math.radians(1)) / SIGMA) ** 2))
-    return np.where(kind == 0, exact, 0.5 * lower)
+def _phi(x):
+    return 0.5 * (1 + np.tanh(0.7978845608 * (x + 0.044715 * x ** 3)))
+
+
+def score_from(A, R, el, kind):
+    """THE BAND (2026-11-06, the second round): the picture's skyline can be no lower than the roofs' (R: sky is
+    never seen through a roof) and no higher than the model's tallest (A); November's bare crowns let sky through
+    anywhere between. A skyline inside a narrow band (a roof edge, open sky) says much; inside a wide one (under a
+    crown) little. Log-likelihood of a band uniform from R to A blurred by SIGMA, with a floor for what the model
+    cannot know (things off its edge, grown since the flight, a sky misread). 'At least this high' samples: the
+    share of the band above them."""
+    lo, hi = R, np.maximum(A, R)
+    p = (_phi((el - lo) / SIGMA + 1.25) - _phi((el - hi) / SIGMA - 1.25)) / (hi - lo + 2.5 * SIGMA)
+    exact = np.log(p + 0.3)
+    up = np.clip((hi + SIGMA - el) / (hi - lo + 2 * SIGMA), 0, 1)
+    lower = 0.5 * np.log(up + 0.05)
+    return np.where(kind == 0, exact, lower)
 
 
 def exact_score(S, cams, eyes, obs, theta, tx, ty):
@@ -168,8 +185,8 @@ def exact_score(S, cams, eyes, obs, theta, tx, ty):
     u, v = cams[pi, 0], cams[pi, 1]
     e, n = c * u - s * v + tx, s * u + c * v + ty
     eye = S.ground(e, n) + eyes[pi]
-    pred = skyline_elev(S, e, n, eye, obs[:, 1] + theta)
-    return float(score_from(pred, obs[:, 2], obs[:, 3]).sum()), pred
+    A, R = skyline_both(S, e, n, eye, obs[:, 1] + theta)
+    return float(score_from(A, R, obs[:, 2], obs[:, 3]).sum()), (A, R)
 
 
 def diagnose(S, cams, eyes, obs, T, pred):
@@ -219,8 +236,7 @@ def main():
     d = sys.argv[1] if len(sys.argv) > 1 else "twin"
     t0 = time.time()
     inp, surf, gr, kind = load(d)
-    print(f"Surface: {'roofs only' if os.environ.get('SKY_SURFACE') == 'buildings' else 'roofs and trees'}.")
-    S = Surface(inp["grid"], surf, gr)
+    S = Surface(inp["grid"], surf, gr, kind)
     pics = [p for p in inp["pictures"] if p.get("eye") is not None and 0.5 < p["eye"] < 2.5]
     if len(pics) > MAX_PICS:
         pics = [pics[int(i)] for i in np.linspace(0, len(pics) - 1, MAX_PICS)]
@@ -246,11 +262,14 @@ def main():
     if len(refs) >= 2:
         refsT = fit_rigid([(r["ar"], r["map"]) for r in refs])
     if truth:
-        sc, pred = exact_score(S, cams, eyes, obs, *truth)
+        sc, (A, R) = exact_score(S, cams, eyes, obs, *truth)
         ex = obs[:, 3] == 0
-        res = np.degrees(np.abs(pred[ex] - obs[ex, 2]))
-        print(f"At the check points' own placement: score {sc:.1f} of {len(obs)}; the skyline samples sit a median {np.median(res):.1f} deg from the model's ({np.mean(res < 2):.0%} within 2 deg, {np.mean(res < 5):.0%} within 5).")
-        diagnose(S, cams, eyes, obs, truth, pred)
+        el, a, r = obs[ex, 2], A[ex], R[ex]
+        tol = math.radians(2)
+        below, above = el < r - tol, el > a + tol
+        narrow = (a - r) < math.radians(3)
+        print(f"At the check points' own placement: score {sc:.1f}. Skyline samples between the roofs' and the model's tallest (2 deg slack): {np.mean(~below & ~above):.0%}; below a roof {np.mean(below):.0%}; above everything {np.mean(above):.0%}. Where the band is narrow (under 3 deg: roof edges, open sky): {narrow.sum()} samples, {np.mean(~below[narrow] & ~above[narrow]) if narrow.any() else float('nan'):.0%} inside.")
+        diagnose(S, cams, eyes, obs, truth, A)
 
     # COARSE: the model's skyline from every lattice spot, every 2 degrees, at the median eye height
     m = COARSE_M
@@ -258,9 +277,10 @@ def main():
     EE, NN = np.meshgrid(ge, gn)
     azs = np.linspace(-np.pi, np.pi, AZ_BINS, endpoint=False)
     prof = np.empty((len(gn), len(ge), AZ_BINS), np.float32)
+    profR = np.empty((len(gn), len(ge), AZ_BINS), np.float32)
     eye_grid = S.ground(EE, NN) + eye_med
     for a_i, az in enumerate(azs):
-        prof[:, :, a_i] = skyline_elev(S, EE, NN, eye_grid, np.full(EE.shape, az))
+        prof[:, :, a_i], profR[:, :, a_i] = skyline_both(S, EE, NN, eye_grid, np.full(EE.shape, az))
     print(f"Coarse skylines: {len(ge)} x {len(gn)} spots x {AZ_BINS} directions ({int(time.time() - t0)} s).")
     pi = obs[:, 0].astype(int)
     by_pic = [np.nonzero(pi == i)[0] for i in range(len(pics))]
@@ -275,14 +295,17 @@ def main():
             continue
         te = np.arange(lo_e, hi_e + 1e-9, m); tn = np.arange(lo_n, hi_n + 1e-9, m)
         acc = np.zeros((len(tn), len(te)), np.float32)
+        cnt = np.zeros((len(tn), len(te)), np.int32)  # a shift scored on fewer pictures (the lattice's edge) is not a shift
         for i, oi in enumerate(by_pic):
             if not len(oi):
                 continue
             bx = max(0, int(round((q[i, 0] + te[0] - ge[0]) / m))); bn = max(0, int(round((q[i, 1] + tn[0] - gn[0]) / m)))
             bins = np.round(((obs[oi, 1] + th + np.pi) % (2 * np.pi)) / (2 * np.pi) * AZ_BINS).astype(int) % AZ_BINS
-            sl = prof[bn:bn + len(tn), bx:bx + len(te)][:, :, bins]
-            sl = sl[: acc.shape[0], : acc.shape[1]]
-            acc[: sl.shape[0], : sl.shape[1]] += score_from(sl, obs[oi, 2][None, None, :], obs[oi, 3][None, None, :]).sum(2)
+            sl = prof[bn:bn + len(tn), bx:bx + len(te)][:, :, bins][: acc.shape[0], : acc.shape[1]]
+            slr = profR[bn:bn + len(tn), bx:bx + len(te)][:, :, bins][: acc.shape[0], : acc.shape[1]]
+            acc[: sl.shape[0], : sl.shape[1]] += score_from(sl, slr, obs[oi, 2][None, None, :], obs[oi, 3][None, None, :]).sum(2)
+            cnt[: sl.shape[0], : sl.shape[1]] += 1
+        acc[cnt < sum(1 for oi in by_pic if len(oi))] = -1e9
         k = np.argsort(acc, axis=None)[-6:]
         for f in k:
             r_, c_ = np.unravel_index(f, acc.shape)
@@ -333,7 +356,7 @@ def main():
     mid = cams.mean(0)
     far = [o for o in out[1:] if math.hypot(*np.subtract(place(o[1], mid), place(out[0][1], mid))) > 2 or abs(math.degrees((o[1][0] - out[0][1][0] + np.pi) % (2 * np.pi) - np.pi)) > 5]
     if far:
-        print(f"The best different placement scores {far[0][0] / max(out[0][0], 1e-9):.0%} of the best (lower is surer).")
+        print(f"The best different placement scores {out[0][0] - far[0][0]:.1f} below the best (log-likelihood over {len(obs)} samples; higher is surer, under ~10 is a toss-up).")
     json.dump({"placements": [{"score": s, "theta": T[0], "tx": T[1], "ty": T[2]} for s, T in out]}, open(os.path.join(d, "skyline.json"), "w"))
     print(f"Done in {int(time.time() - t0)} s.")
 

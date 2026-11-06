@@ -219,7 +219,6 @@ jobs:
           node scan/tools/twin-r2.mjs get "$WALK" twin
           node scan/tools/skyline-prep.mjs twin | tee skyline.txt
           python scan/tools/skyline_study.py twin | tee -a skyline.txt
-          SKY_SURFACE=buildings python scan/tools/skyline_study.py twin | tee -a skyline.txt
 
       - name: The answer
         if: always()
