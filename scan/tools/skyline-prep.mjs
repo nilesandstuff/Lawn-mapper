@@ -14,7 +14,8 @@
  */
 import { readFileSync, readdirSync, existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { toMerc } from '../lib/photo.js';
+import { toMerc, ringsOf } from '../lib/photo.js';
+import { toLocal } from '../lib/frames.js';
 import { readCloud, readTrack } from '../lib/twin.js';
 import { readMap, readModel } from './twin-io.mjs';
 
@@ -74,7 +75,10 @@ async function main() {
   });
   const checks = (live.marks || []).filter((x) => x.kind === 'check' && x.ar && x.map).map((x) => ({ id: x.id, ar: x.ar, map: x.map, odo: x.odo ?? null }));
   const refs = (live.marks || []).filter((x) => x.kind === 'ref' && x.ar && x.map).map((x) => ({ id: x.id, ar: x.ar, map: x.map, odo: x.odo ?? null }));
+  // the traced lawn, local metres: NOT a fix signal (the owner, 2026-11-04); only to check the pavement projection
+  const lawn = ringsOf(m.shapes || []).map((r) => r.map((p) => toLocal(origin, p).map((v) => +v.toFixed(2))));
   writeFileSync(join(dir, 'sky-input.json'), JSON.stringify({
+    lawn,
     grid: { w: g.w, h: g.h, x0: (g.x0 - ox) * k, y1: (g.y1 - oy) * k, cell: g.cell * k, cellY: (g.cellY || g.cell) * k },
     pictures: pics, checks, refs,
   }));

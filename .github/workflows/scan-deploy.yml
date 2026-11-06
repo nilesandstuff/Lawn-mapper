@@ -36,7 +36,7 @@ on:
         required: true
         default: tests
         type: choice
-        options: [tests, deploy, walks, twin, fix, depth, study, skyline]
+        options: [tests, deploy, walks, twin, fix, depth, study, skyline, pavement]
       walk:
         description: 'For twin, fix or depth: the walk id, or latest'
         default: latest
@@ -217,7 +217,7 @@ jobs:
       # CAN THE SKYLINE PLACE A WALK (scan/tools/skyline_study.py, SCAN-H11 option 1): the sky in each picture against
       # the shade map's model seen from every placement; scored against the check points. CPU, free.
       - name: Run actions/setup-python@v5 (skyline)
-        if: ${{ inputs.task == 'skyline' }}
+        if: ${{ inputs.task == 'skyline' || inputs.task == 'pavement' }}
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -240,6 +240,23 @@ jobs:
           node scan/tools/skyline-prep.mjs twin | tee skyline.txt
           python scan/tools/skyline_study.py twin | tee -a skyline.txt
 
+      # PAVEMENT FROM THE PICTURES (scan/tools/pavement_study.py): road and sidewalk pixels cast onto the ground, kept
+      # for the match against the model's intensity when it has one; tested against the traced lawn meanwhile.
+      - name: A walk's pavement from its pictures
+        if: ${{ inputs.task == 'pavement' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WALK: ${{ inputs.walk }}
+        run: |
+          set -o pipefail
+          pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+          pip install --quiet "transformers>=4.45" pillow numpy
+          node scan/tools/twin-r2.mjs get "$WALK" twin
+          node scan/tools/skyline-prep.mjs twin | tee pavement.txt
+          python scan/tools/pavement_study.py twin | tee -a pavement.txt
+          node scan/tools/twin-r2.mjs put "$WALK" twin/pavement.json | tee -a pavement.txt
+
       - name: The answer
         if: always()
         run: |
@@ -255,6 +272,7 @@ jobs:
             fix) cat fix.txt 2>/dev/null || echo "no fix: see the step above" ;;
             study) cat study.txt 2>/dev/null || echo "no study: see the step above" ;;
             skyline) cat skyline.txt 2>/dev/null || echo "no skyline study: see the step above" ;;
+            pavement) cat pavement.txt 2>/dev/null || echo "no pavement study: see the step above" ;;
             depth) tail -25 depth.txt 2>/dev/null || echo "no depth run: see the step above" ;;
             *) echo "Scan tests: ${{ job.status }}" ;;
           esac
