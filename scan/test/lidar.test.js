@@ -46,7 +46,9 @@ function model(box = BOX) {
   return decodeModel(encodeModel(meta, { ground: gr, kind, top, mu }));
 }
 const M = model();
-const L0 = gridsFromModel(M, { origin: ORIGIN, box: BOX, S, toMerc });
+const L0 = gridsFromModel(M, { origin: ORIGIN, box: BOX, S, toMerc, treesInMatch: true });
+// TREES OUT (2026-11-06): the default match rests on no tree column
+{ const Lt = gridsFromModel(M, { origin: ORIGIN, box: BOX, S, toMerc }); assert.equal(Lt.counts.trunks, 0, "no posts by default"); assert.ok(Lt.counts.treesIgnored > 0, "tree columns ignored"); assert.ok(sample(Lt.G, Lt.G.dist, 8.5, 3.5) > 1, `a trunk is not solid by default: ${sample(Lt.G, Lt.G.dist, 8.5, 3.5)}`); }
 const G = L0.G;
 const TH = (63 * Math.PI) / 180, SH = [5, -7];
 const toAR = ([e, n]) => { const a = e - SH[0], b = n - SH[1]; return [Math.cos(-TH) * a - Math.sin(-TH) * b, Math.sin(-TH) * a + Math.cos(-TH) * b]; };
@@ -82,7 +84,7 @@ assert.ok(G.occTop && G.bld && G.wallTop, 'the tops and the roof mask come back 
   const dx = new Int16Array(M.arrays.kind.length), dy = new Int16Array(M.arrays.kind.length);
   for (let j = 0; j < dx.length; j++) if (M.arrays.kind[j] === S.TREE && M.arrays.top[j] >= 3) { dx[j] = 30; dy[j] = -30; }
   const Mo = decodeModel(encodeModel(M.meta, { ...M.arrays, lowDx: dx, lowDy: dy }));
-  const Go = gridsFromModel(Mo, { origin: ORIGIN, box: BOX, S, toMerc }).G;
+  const Go = gridsFromModel(Mo, { origin: ORIGIN, box: BOX, S, toMerc, treesInMatch: true }).G;
   assert.ok(sample(Go, Go.distNW, 8.8, 3.2) < 0.05 && sample(Go, Go.distNW, 8.2, 3.8) > 0.2, `the post at the returns: ${sample(Go, Go.distNW, 8.8, 3.2)} ${sample(Go, Go.distNW, 8.2, 3.8)}`);
 }
 {

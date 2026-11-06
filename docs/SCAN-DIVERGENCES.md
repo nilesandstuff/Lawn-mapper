@@ -114,3 +114,10 @@ crown's branch floor), and for drawing the canopy the laser's own answer is the 
 
 The fences drawn in the shade map's step 1 (its part's `fences`) are not read yet; the person's erased cells are
 already applied in the model and need no reading. The model's `why` is not used.
+
+## 9. Trees are not in the match (2026-11-06)
+
+The owner: "lidar tree trunks are not reliable. I'm working on that with the shade map. For now, we need to ignore
+them." scan/lib/lidar-load.js straightShapes drops every TREE and SOLID_TREE column from the solids the live fix and
+the after-the-walk fix may rest on (no trunk posts either); buildings, walls and STRUCTURE stay. The drawing is
+unchanged. `treesInMatch: true` (the tests) restores step 3b's posts. Goes when the shade map's trunks are trusted.

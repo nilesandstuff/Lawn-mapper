@@ -52,7 +52,7 @@ export function kindsOf(model, S) {
  * `lawn` the traced lawn's rings in map metres (the AR's lawn-edge term), `S` the shared structures module (wallsOf
  * and the kind codes), `toMerc` [lng, lat] -> EPSG:3857.
  */
-export function gridsFromModel(model, { origin, box, lawn = [], S, toMerc, cell = 0.25, straight = true }) {
+export function gridsFromModel(model, { origin, box, lawn = [], S, toMerc, cell = 0.25, straight = true, treesInMatch = false }) {
   const { meta, arrays } = model;
   const sgrid = meta.grid, K = kindsOf(model, S);
   const [ox, oy] = toMerc(origin);
@@ -108,7 +108,7 @@ export function gridsFromModel(model, { origin, box, lawn = [], S, toMerc, cell 
   const dem = valuesOnGrid(arrays.ground, sgrid, box, cell, at, k);
   let things, bld, walls = null, shapes = null;
   if (straight) {
-    shapes = straightShapes({ sgrid, kind, K, things1, bld1, top: arrays.top, returns, ground, layers, ox, oy, k, box, cell, inset: S?.WALL_INSET_M ?? 0.61, lowDx: arrays.lowDx || null, lowDy: arrays.lowDy || null });
+    shapes = straightShapes({ sgrid, kind, K, things1, bld1, top: arrays.top, returns, ground, layers, ox, oy, k, box, cell, inset: S?.WALL_INSET_M ?? 0.61, lowDx: arrays.lowDx || null, lowDy: arrays.lowDy || null, treesInMatch });
     ({ things, bld, walls } = shapes);
   } else {
     things = buildingsOnGrid(things1, sgrid, box, cell, at, k, 1);
@@ -129,7 +129,7 @@ export function gridsFromModel(model, { origin, box, lawn = [], S, toMerc, cell 
   if (arrays.top) G.wallTop = valuesOnGrid(arrays.top, sgrid, box, cell, at, k);
   const ruleName = `the shade map's model of ${meta.at ? String(meta.at).slice(0, 10) : 'an unknown date'}${meta.photo ? ', low structures judged by the summer photo' : ''}${meta.erased ? `, ${meta.erased} columns erased by hand` : ''}`;
   return {
-    G, k, ox, oy, counts: shapes ? { ...counts, ...shapes.counts } : counts, buildings: bld, footprint: walls, rule: ruleName + (shapes ? `, straightened (${shapes.counts.buildingsStraight} buildings, ${shapes.counts.wallLines} walls as lines, ${shapes.counts.trunks} trunks as posts)` : ''),
+    G, k, ox, oy, counts: shapes ? { ...counts, ...shapes.counts } : counts, buildings: bld, footprint: walls, rule: ruleName + (shapes ? `, straightened (${shapes.counts.buildingsStraight} buildings, ${shapes.counts.wallLines} walls as lines, ${shapes.counts.treesIgnored ? `${shapes.counts.treesIgnored} tree columns ignored` : `${shapes.counts.trunks} trunks as posts`})` : ''),
     cloud: { name: meta.lidar?.name || "the shade map's survey", url: meta.lidar?.url || null, epoch: meta.lidar?.epoch ?? null },
     how: Array.isArray(meta.lidar?.shift) ? "the shade map's" : 'as the model has it',
     shade: { kind, sgrid, S, K, trunkCols: shapes?.trunkCols || null, stats: { top: arrays.top || null, standTop }, ground: arrays.ground, mu: arrays.mu || null, returns: returns || null, low: low || null, layers: meta.layers || null, meta },
@@ -146,11 +146,14 @@ export function gridsFromModel(model, { origin, box, lawn = [], S, toMerc, cell 
  *           columns under a crown -- as one post where its own returns are; every other standing column (a bush, a
  *           hedge, an unknown thing) as its columns, untouched ("let's not touch trees")
  */
-export function straightShapes({ sgrid, kind, K, things1, bld1, top, returns, ground, layers, ox, oy, k, box, cell, inset, lowDx = null, lowDy = null }) {
+/* TREES OUT OF THE MATCH (the owner, 2026-11-06: "lidar tree trunks are not reliable. I'm working on that with the
+   shade map. For now, we need to ignore them"): no tree column, post or not, is a solid the match may rest on, unless
+   treesInMatch is set (the tests). Buildings and STRUCTURE stay. docs/SCAN-DIVERGENCES.md step 9. */
+export function straightShapes({ sgrid, kind, K, things1, bld1, top, returns, ground, layers, ox, oy, k, box, cell, inset, lowDx = null, lowDy = null, treesInMatch = false }) {
   const cy = sgrid.cellY || sgrid.cell, w = sgrid.w, h = sgrid.h;
   const toM = ([gx, gy]) => [(sgrid.x0 + gx * sgrid.cell - ox) * k, (sgrid.y1 - gy * cy - oy) * k];
   const centre = (j) => toM([(j % w) + 0.5, ((j / w) | 0) + 0.5]);
-  const counts = { buildingsStraight: 0, wallLines: 0, shedsStraight: 0, trunks: 0 };
+  const counts = { buildingsStraight: 0, wallLines: 0, shedsStraight: 0, trunks: 0, treesIgnored: 0 };
   const trunkCols = new Uint8Array(w * h); // the columns made into posts, so the drawing does not box them again
   // buildings
   const rings = ringsOfMask(bld1, w, h).map((r) => straighten(r.map(toM)));
@@ -177,7 +180,8 @@ export function straightShapes({ sgrid, kind, K, things1, bld1, top, returns, gr
     const l0 = Math.max(0, Math.floor((ground[j] + BANDS.standLow - layers.z0) / layers.dz)), l1 = Math.min(layers.nz - 1, Math.floor((ground[j] + BANDS.standHigh - layers.z0) / layers.dz));
     let n = 0; for (let l = l0; l <= l1; l++) n += returns[j * layers.nz + l]; return n;
   };
-  for (const patch of patchesOf(tree, w, h)) {
+  if (!treesInMatch) for (let j = 0; j < tree.length; j++) if (tree[j]) { rest[j] = 0; counts.treesIgnored++; }
+  for (const patch of treesInMatch ? patchesOf(tree, w, h) : []) {
     const tall = top && patch.some((j) => top[j] >= TRUNK_CROWN_M);
     if (patch.length > TRUNK_MAX_COLUMNS || !tall) continue;
     for (const j of patch) rest[j] = 0;

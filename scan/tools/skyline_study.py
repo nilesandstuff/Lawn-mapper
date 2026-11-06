@@ -36,6 +36,7 @@ COLS = 24                 # columns sampled across each picture
 SIGMA = math.radians(2.0) # how close a skyline must come to count
 COARSE_M, COARSE_DEG = 1.5, 2.0
 AZ_BINS = 180
+TREE_SLACK = math.radians(float(os.environ.get("SKY_TREE_SLACK", 0)))  # degrees a tree top may stand above the model's
 FT = 3.28084
 
 
@@ -170,7 +171,11 @@ def score_from(A, R, el, kind):
     crown) little. Log-likelihood of a band uniform from R to A blurred by SIGMA, with a floor for what the model
     cannot know (things off its edge, grown since the flight, a sky misread). 'At least this high' samples: the
     share of the band above them."""
-    lo, hi = R, np.maximum(A, R)
+    lo = R
+    hi = np.maximum(A, R)
+    # LEAF-OFF SLACK (the owner, 2026-11-06: "tree canopies from leaf off flights are generally read by the lidar as
+    # being shorter than they really are"): where a tree makes the top of the band, allow it TREE_SLACK higher
+    hi = np.where(A > R + 1e-6, hi + TREE_SLACK, hi)
     p = (_phi((el - lo) / SIGMA + 1.25) - _phi((el - hi) / SIGMA - 1.25)) / (hi - lo + 2.5 * SIGMA)
     exact = np.log(p + 0.3)
     up = np.clip((hi + SIGMA - el) / (hi - lo + 2 * SIGMA), 0, 1)
@@ -363,6 +368,34 @@ def main():
             line += f"; checks {', '.join(f'{x * FT:.1f}' for x in errs)} ft (median {np.median(errs) * FT:.1f}); {dth:+.1f} deg from the truth"
         print(line)
     if truth:
+        # WHO PREFERS THE TWIST: the same two placements scored on the narrow-band samples alone (roof edges, open
+        # sky) and on the wide-band ones (under crowns, the model's edge)
+        def split(T):
+            sc_, (A, R) = exact_score(S, cams, eyes, obs, *T)
+            band = np.maximum(A, R) - R
+            narrow = (band < math.radians(3)) & (obs[:, 3] == 0)
+            wide = (~narrow) & (obs[:, 3] == 0)
+            v = score_from(A, R, obs[:, 2], obs[:, 3])
+            return float(v[narrow].sum()), int(narrow.sum()), float(v[wide].sum()), int(wide.sum())
+        tn_, nn_, tw_, nw_ = split(truth); bn_, _, bw_, _ = split(out[0][1])
+        print(f"Narrow-band samples ({nn_}: roof edges, open sky): truth {tn_:.1f}, best found {bn_:.1f}. Wide-band ({nw_}: under crowns, the edge): truth {tw_:.1f}, best found {bw_:.1f}.")
+        # HALVES (the owner, 2026-11-06: ARCore's "occasional little shifts... maybe each discrete arcore alignment
+        # needs its own fit"): the first and second half of the pictures, each refined from the best found
+        odo_mid = float(np.median([p["odo"] for p in pics]))
+        for name, keep in (("first half", np.array([pics[int(i)]["odo"] <= odo_mid for i in obs[:, 0]])), ("second half", np.array([pics[int(i)]["odo"] > odo_mid for i in obs[:, 0]]))):
+            o2 = obs[keep]
+            if len(o2) < 40:
+                continue
+            T = out[0][1]; sc = exact_score(S, cams, eyes, o2, *T)[0]
+            for dd, mm in ((1.0, 0.5), (0.25, 0.2)):
+                cands = [(T[0] + math.radians(a), T[1] + x, T[2] + y) for a in (-3 * dd, -2 * dd, -dd, 0, dd, 2 * dd, 3 * dd) for x in np.arange(-3, 3.01, 1) * mm for y in np.arange(-3, 3.01, 1) * mm]
+                scs = [exact_score(S, cams, eyes, o2, *C)[0] for C in cands]
+                j = int(np.argmax(scs))
+                if scs[j] > sc:
+                    sc, T = scs[j], cands[j]
+            cks = [c for c in uniq if (c.get("odo") is not None and ((c["odo"] <= odo_mid) == (name == "first half")))] or uniq
+            errs = check_errs(T, cks)
+            print(f"  {name} alone ({int(keep.sum())} samples): {math.degrees((T[0] - truth[0] + np.pi) % (2 * np.pi) - np.pi):+.1f} deg from the truth, its own checks {', '.join(f'{x * FT:.1f}' for x in errs)} ft")
         tsc = exact_score(S, cams, eyes, obs, *truth)[0]
         good = np.median(check_errs(out[0][1], uniq)) * FT < 1.5
         verdict = ('the best placement IS the truth (within 1.5 ft): the skyline can place this walk' if good else

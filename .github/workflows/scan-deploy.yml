@@ -43,6 +43,9 @@ on:
       calib:
         description: 'For skyline: the phone camera turn,tilt in degrees (e.g. -0.6,-3.1); empty for none'
         default: ''
+      slack:
+        description: 'For skyline: degrees a leaf-off tree top may stand above the lidar (0 for none)'
+        default: '0'
 
 permissions:
   contents: read
@@ -216,6 +219,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           WALK: ${{ inputs.walk }}
           SKY_CAL: ${{ inputs.calib }}
+          SKY_TREE_SLACK: ${{ inputs.slack }}
         run: |
           set -o pipefail
           pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
