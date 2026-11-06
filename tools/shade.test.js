@@ -1816,6 +1816,26 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   check('model file: a trunk 30 cm east and 30 cm south of its column\'s centre reads +30, -30 cm; a centred one 0, 0; an empty column 0, 0',
     own3.lowDx instanceof Int16Array && own3.lowDx[off] === 30 && own3.lowDy[off] === -30 && own3.lowDx[trunk] === 0 && own3.lowDy[trunk] === 0 && own3.lowDx[at2(1.5, 1.5)] === 0,
     `off ${own3.lowDx[off]}, ${own3.lowDy[off]}; trunk ${own3.lowDx[trunk]}, ${own3.lowDy[trunk]}`);
+  /* THE POINTS THEMSELVES (core session, 2026-11-06; the owner: "pass along all of that at the highest resolution
+     possible"): every kept return, cleaned, with its column's kind; an erased column keeps only its ground. */
+  const ptsP = [...pts2, [6.5, 6.5, 140, 1, 1, 1]]; // the trunk return from before, and one bird 40 m up
+  const colsP = makeColumns(ptsP.length);
+  ptsP.forEach(([e, n, z, c, r, nr], i) => { colsP.x[i] = e / k; colsP.y[i] = n / k; colsP.z[i] = z; colsP.cls[i] = c; colsP.ret[i] = r; colsP.nret[i] = nr; colsP.intensity[i] = 7; });
+  flagStrays(colsP, grid2);
+  const modelP = buildCanopy(colsP, grid2), seasonP = seasonalCanopy(colsP, modelP);
+  const fp = await unpackModel(await modelBytes(finishedModel({ model: modelP, season: seasonP, cols: colsP, shift: [0.1, -0.2] })));
+  const P = fp.arrays, mp = fp.meta.points;
+  const tr = Array.from(P.ptZ).findIndex((z) => z === 10150);
+  const colOf = (j) => Math.floor(P.ptY[j] / mp.cellYCm) * grid2.w + Math.floor(P.ptX[j] / mp.cellCm);
+  check('model file: the points, cleaned: every return but the bird, the trunk return at its own column with its kind, return 1 of 2, intensity, shift applied',
+    mp.n === pts2.length && P.ptX.length === mp.n && tr >= 0 && P.ptRet[tr] === ((1 << 4) | 2) && P.ptCls[tr] === 1 && P.ptI[tr] === 7 && P.ptKind[tr] === fp.arrays.kind[colOf(tr)]
+      && Math.abs(P.ptX[tr] - Math.round((6.5 / k + 0.1 - grid2.x0) * 100)) <= 1 && Math.abs(P.ptY[tr] - Math.round((grid2.y1 - (6.5 / k - 0.2)) * 100)) <= 1 && !Array.from(P.ptZ).includes(14000),
+    `n ${mp.n} of ${pts2.length}; trunk at ${tr}, ret ${P.ptRet[tr]}, kind ${P.ptKind[tr]} vs ${fp.arrays.kind[colOf(tr)]}`);
+  const eM = new Uint8Array(grid2.w * grid2.h); eM[trunk] = 1;
+  const fe = (await unpackModel(await modelBytes(finishedModel({ model: modelP, season: seasonP, cols: colsP, erasedMask: eM })))).arrays;
+  check('model file: in an erased column the points above the ground go and its ground return stays',
+    !Array.from(fe.ptZ).includes(10150) && fe.ptZ.length === pts2.length - 1);
+
   /* The ground's brightness (intensity/gIntens; core session, 2026-11-06, pavement edges for placing an AR walk):
      a strip of pavement (east of 8 m, intensity 200) beside grass (50); one grass column with two more ground
      returns (10 and 90) reads the median of 10, 50, 90; a cloud with no intensity writes neither array. */

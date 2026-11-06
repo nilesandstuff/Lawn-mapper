@@ -51,6 +51,22 @@
  *                          edges from lidar brightness, for placing an AR
  *                          walk with no marked references)
  *
+ * THE POINTS THEMSELVES (core session, 2026-11-06, the owner: "if the shade
+ * map can just pass along all of that at the highest resolution possible,
+ * great"): every return the shade map kept over the model's grid, after its
+ * filters -- the noise classes and the flagged strays out; in an erased
+ * column or cube only the ground returns (class 2) stay -- with the kind of
+ * the 1 m column it falls in, so the classification travels with it:
+ *   ptX, ptY  Int32  cm (3857 units x 100) from the grid's (x0, y1) corner,
+ *                    east and SOUTH (the way columns and rows run), the
+ *                    cloud's shift applied: column = floor(ptX / (cell*100))
+ *   ptZ       Int32  cm, absolute
+ *   ptI       Uint16 intensity as read
+ *   ptCls     Uint8  the ASPRS class as read (2 ground, ...)
+ *   ptRet     Uint8  (return number << 4) | number of returns
+ *   ptKind    Uint8  structures.js kind of its column, after erasures
+ * meta.points = { n, spacingM: null (not thinned), frame, ... }.
+ *
  * THE BLOCK AROUND (surround.js; core session, 2026-11-06, the AR's skyline):
  *   surroundGround, surroundTop  Float32 on their own grid (meta.surround:
  *                          the lot's box 100 m wider each way, 2 m cells),
@@ -117,9 +133,51 @@ export function finishedModel({ model, season, cols = null, shift = null, surrou
   };
   const arrays = { ground: Float32Array.from(ground), kind, why, top, mu };
   if (muOn) arrays.muOn = muOn;
+  const pts = cols ? keptPoints(cols, model, { shift, kind, erasedMask, erasedCubes }) : null;
+  if (pts) Object.assign(arrays, pts.arrays);
+  if (pts) meta.points = pts.meta;
   if (surround) { arrays.surroundGround = Float32Array.from(surround.ground); arrays.surroundTop = Float32Array.from(surround.top); }
   if (own) { arrays.returns = own.returns; arrays.low = own.low; arrays.lowDx = own.lowDx; arrays.lowDy = own.lowDy; if (own.intensity) { arrays.intensity = own.intensity; arrays.gIntens = own.gIntens; } }
   return { meta, arrays };
+}
+
+/**
+ * The cleaned cloud over the model's grid (see the header): the arrays and
+ * meta.points. `kind` is the column kinds after erasures.
+ */
+export function keptPoints(cols, model, { shift = null, kind, erasedMask = null, erasedCubes = [] } = {}) {
+  const { grid, nz, dz, z0 } = model;
+  const gone = erasedCubes.length ? new Set(erasedCubes) : null;
+  const cy = grid.cellY || grid.cell, sx = shift ? shift[0] : 0, sy = shift ? shift[1] : 0;
+  const keep = new Int32Array(cols.n);
+  let n = 0;
+  for (let i = 0; i < cols.n; i++) {
+    if (NOISE.has(cols.cls[i])) continue;
+    const k = cellOf(grid, cols.x[i], cols.y[i], shift);
+    if (k < 0) continue;
+    if (cols.cls[i] !== 2) {
+      if (erasedMask && erasedMask[k]) continue;
+      if (gone && gone.has(k * nz + Math.min(nz - 1, Math.max(0, Math.floor((cols.z[i] - z0) / dz))))) continue;
+    }
+    keep[n++] = i;
+  }
+  const ptX = new Int32Array(n), ptY = new Int32Array(n), ptZ = new Int32Array(n), ptI = new Uint16Array(n);
+  const ptCls = new Uint8Array(n), ptRet = new Uint8Array(n), ptKind = new Uint8Array(n);
+  for (let j = 0; j < n; j++) {
+    const i = keep[j];
+    const x = cols.x[i] + sx, y = cols.y[i] + sy;
+    ptX[j] = Math.round((x - grid.x0) * 100);
+    ptY[j] = Math.round((grid.y1 - y) * 100);
+    ptZ[j] = Math.round(cols.z[i] * 100);
+    ptI[j] = cols.intensity ? cols.intensity[i] : 0;
+    ptCls[j] = cols.cls[i];
+    ptRet[j] = ((Math.min(15, cols.ret?.[i] || 1)) << 4) | Math.min(15, cols.nret?.[i] || 1);
+    ptKind[j] = kind[cellOf(grid, cols.x[i], cols.y[i], shift)];
+  }
+  return {
+    arrays: { ptX, ptY, ptZ, ptI, ptCls, ptRet, ptKind },
+    meta: { n, spacingM: null, frame: "ptX east and ptY SOUTH of the grid's (x0, y1) corner in 3857 units x 100 (real cm = value x cos(lat)), the cloud's shift applied; ptZ absolute cm", kept: 'noise classes and flagged strays out; in an erased column or cube only the ground returns stay', ret: '(return number << 4) | number of returns', cellCm: grid.cell * 100, cellYCm: cy * 100 },
+  };
 }
 
 /**
@@ -184,7 +242,7 @@ export function ownReturns(cols, model, { shift = null, erasedMask = null, erase
  * The bytes to PUT: the file gzipped (lidar-model.js packModel). Over
  * `maxBytes` gzipped (the server's MODEL_MAX_STORED, worker/src/unified.js),
  * muOn is left out first (no reader uses it yet), then the per-cube
- * `returns` (`low` stays); the file is still written.
+ * `returns` (`low` stays), then the points; the file is still written.
  */
 export async function modelBytes(finished, { maxBytes = 48 * 1024 * 1024 } = {}) {
   let meta = finished.meta, arrays = finished.arrays;
@@ -198,6 +256,11 @@ export async function modelBytes(finished, { maxBytes = 48 * 1024 * 1024 } = {})
   if (bytes.byteLength > maxBytes && arrays.returns) {
     const { returns, ...rest } = arrays;
     arrays = rest; meta = { ...meta, own: { ...meta.own, returns: LEFT_OUT } };
+    bytes = await packModel(meta, arrays);
+  }
+  if (bytes.byteLength > maxBytes && arrays.ptX) {
+    const { ptX, ptY, ptZ, ptI, ptCls, ptRet, ptKind, ...rest } = arrays;
+    arrays = rest; meta = { ...meta, points: { ...meta.points, n: 0, leftOut: LEFT_OUT } };
     bytes = await packModel(meta, arrays);
   }
   return bytes;
