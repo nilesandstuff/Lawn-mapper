@@ -178,8 +178,11 @@ def score_from(A, R, el, kind):
     return np.where(kind == 0, exact, lower)
 
 
-def exact_score(S, cams, eyes, obs, theta, tx, ty):
-    """The score of one placement against the exact model: each picture's spot on the map, its own eye height."""
+def exact_score(S, cams, eyes, obs, theta, tx, ty, daz=0.0, delv=0.0):
+    """The score of one placement against the exact model: each picture's spot on the map, its own eye height.
+    daz, delv: a turn and a tilt added to every picture's rays (the camera's aim against ARCore's pose)."""
+    if daz or delv:
+        obs = obs.copy(); obs[:, 1] += daz; obs[:, 2] += delv
     c, s = math.cos(theta), math.sin(theta)
     pi = obs[:, 0].astype(int)
     u, v = cams[pi, 0], cams[pi, 1]
@@ -270,6 +273,15 @@ def main():
         narrow = (a - r) < math.radians(3)
         print(f"At the check points' own placement: score {sc:.1f}. Skyline samples between the roofs' and the model's tallest (2 deg slack): {np.mean(~below & ~above):.0%}; below a roof {np.mean(below):.0%}; above everything {np.mean(above):.0%}. Where the band is narrow (under 3 deg: roof edges, open sky): {narrow.sum()} samples, {np.mean(~below[narrow] & ~above[narrow]) if narrow.any() else float('nan'):.0%} inside.")
         diagnose(S, cams, eyes, obs, truth, A)
+        # THE CAMERA'S AIM (2026-11-06: on two walks the best placement sat 5.1 and 5.3 degrees turned from the truth,
+        # the same way): at the truth, the turn and tilt of every picture's rays that the skyline likes best
+        cal = [(exact_score(S, cams, eyes, obs, *truth, daz=math.radians(a), delv=math.radians(b))[0], a, b)
+               for a in np.arange(-10, 10.01, 1.0) for b in np.arange(-3, 3.01, 1.0)]
+        c0 = max(cal)
+        cal2 = [(exact_score(S, cams, eyes, obs, *truth, daz=math.radians(a), delv=math.radians(b))[0], a, b)
+                for a in np.arange(c0[1] - 1, c0[1] + 1.01, 0.25) for b in np.arange(c0[2] - 1, c0[2] + 1.01, 0.25)]
+        c1 = max(cal2)
+        print(f"  the camera's aim at the truth: the skyline fits best with the rays turned {c1[1]:+.2f} deg and tilted {c1[2]:+.2f} deg (score {c1[0]:.1f}, against {sc:.1f} as recorded)")
 
     # COARSE: the model's skyline from every lattice spot, every 2 degrees, at the median eye height
     m = COARSE_M
