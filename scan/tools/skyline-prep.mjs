@@ -15,7 +15,7 @@
 import { readFileSync, readdirSync, existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { toMerc } from '../lib/photo.js';
-import { readCloud } from '../lib/twin.js';
+import { readCloud, readTrack } from '../lib/twin.js';
 import { readMap, readModel } from './twin-io.mjs';
 
 async function main() {
@@ -45,6 +45,19 @@ async function main() {
   const recs = [];
   for (const f of readdirSync(dir).filter((x) => /^cloud-\d+\.bin$/.test(x)).sort()) { const b = readFileSync(join(dir, f)); recs.push(...readCloud(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength))); }
   recs.sort((a, b) => a.t - b.t);
+  // the phone's turn rate at each picture, from the track (poses every so often): a picture that lags its pose by a
+  // frame or two is turned by rate x lag, one way on a walk taken one way round
+  const track = [];
+  for (const f of readdirSync(dir).filter((x) => /^track-\d+\.bin$/.test(x)).sort()) { const b = readFileSync(join(dir, f)); track.push(...readTrack(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength))); }
+  track.sort((a, b) => a.t - b.t);
+  const yawOf = (q) => { const { x, y, z, w } = q; const fx = -(2 * (x * z + w * y)), fz = -(1 - 2 * (x * x + y * y)); return Math.atan2(-fz, fx); };
+  const yawRateAt = (t) => {
+    const near = track.filter((p) => Math.abs(p.t - t) <= 0.35 && p.tracking !== 'lost');
+    if (near.length < 2) return null;
+    const a = near[0], b = near[near.length - 1]; if (b.t - a.t < 0.1) return null;
+    let d = yawOf(b.quat) - yawOf(a.quat); d = ((d + 3 * Math.PI) % (2 * Math.PI)) - Math.PI;
+    return +((d / (b.t - a.t)) * 180 / Math.PI).toFixed(2); // degrees per second, the azimuth convention of the study
+  };
   const keys = [];
   for (const f of readdirSync(dir).filter((x) => /^keys-\d+\.json$/.test(x)).sort()) keys.push(...JSON.parse(readFileSync(join(dir, f), 'utf8')));
   const groundAt = (t) => {
@@ -57,7 +70,7 @@ async function main() {
   };
   const pics = keys.filter((x) => existsSync(join(dir, x.name))).map((x) => {
     const camY = x.view[13], gy = groundAt(x.t);
-    return { name: x.name, t: x.t, odo: x.odo, w: x.w, h: x.h, view: x.view, proj: x.proj, eye: gy != null ? +(camY - gy).toFixed(3) : null };
+    return { name: x.name, t: x.t, odo: x.odo, w: x.w, h: x.h, view: x.view, proj: x.proj, eye: gy != null ? +(camY - gy).toFixed(3) : null, yawRate: yawRateAt(x.t) };
   });
   const checks = (live.marks || []).filter((x) => x.kind === 'check' && x.ar && x.map).map((x) => ({ id: x.id, ar: x.ar, map: x.map, odo: x.odo ?? null }));
   const refs = (live.marks || []).filter((x) => x.kind === 'ref' && x.ar && x.map).map((x) => ({ id: x.id, ar: x.ar, map: x.map, odo: x.odo ?? null }));

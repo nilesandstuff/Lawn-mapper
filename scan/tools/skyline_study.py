@@ -264,6 +264,11 @@ def main():
     if cal_az or cal_el:
         obs[:, 1] += math.radians(cal_az); obs[:, 2] += math.radians(cal_el)
         print(f"Calibration applied: rays turned {cal_az:+.2f} deg, tilted {cal_el:+.2f} deg.")
+    lag_ms = float(os.environ.get("SKY_LAG", 0) or 0)
+    if lag_ms:
+        rates_ = np.array([p.get("yawRate") or 0.0 for p in pics])
+        obs[:, 1] -= np.radians(rates_[obs[:, 0].astype(int)]) * (lag_ms / 1000)
+        print(f"Picture lag applied: {lag_ms:+.0f} ms of each picture's turn rate.")
     cams = np.array([[np.asarray(p["view"])[12], -np.asarray(p["view"])[14]] for p in pics])
     eyes = np.array([p["eye"] for p in pics])
     eye_med = float(np.median(eyes))
@@ -294,6 +299,17 @@ def main():
                 for a in np.arange(c0[1] - 1, c0[1] + 1.01, 0.25) for b in np.arange(c0[2] - 1, c0[2] + 1.01, 0.25)]
         c1 = max(cal2)
         print(f"  the camera's aim at the truth: the skyline fits best with the rays turned {c1[1]:+.2f} deg and tilted {c1[2]:+.2f} deg (score {c1[0]:.1f}, against {sc:.1f} as recorded)")
+        # THE PICTURE'S LAG (2026-11-06): if the picture is a frame or two older than its pose, each ray is turned by
+        # the phone's turn rate then x the lag. At the truth, which lag the skyline likes; applied when SKY_LAG says so.
+        rates = np.array([p.get("yawRate") or 0.0 for p in pics])
+        pi_all = obs[:, 0].astype(int)
+        lags = []
+        for lag_ms in range(-150, 301, 25):
+            o2 = obs.copy(); o2[:, 1] -= np.radians(rates[pi_all]) * (lag_ms / 1000)
+            lags.append((exact_score(S, cams, eyes, o2, *truth)[0], lag_ms))
+        bl = max(lags)
+        turning = np.mean(np.abs(rates) > 10)
+        print(f"  the picture's lag behind its pose, at the truth: best {bl[1]:+d} ms (score {bl[0]:.1f}; 0 ms {dict((l, s_) for s_, l in lags)[0]:.1f}); {turning:.0%} of pictures taken turning faster than 10 deg/s, median |rate| {np.median(np.abs(rates)):.1f} deg/s")
 
     # COARSE: the model's skyline from every lattice spot, every 2 degrees, at the median eye height
     m = COARSE_M

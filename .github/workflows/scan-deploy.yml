@@ -46,6 +46,9 @@ on:
       slack:
         description: 'For skyline: degrees a leaf-off tree top may stand above the lidar (0 for none)'
         default: '0'
+      lag:
+        description: 'For skyline: milliseconds each picture lags its pose (0 for none)'
+        default: '0'
 
 permissions:
   contents: read
@@ -220,6 +223,7 @@ jobs:
           WALK: ${{ inputs.walk }}
           SKY_CAL: ${{ inputs.calib }}
           SKY_TREE_SLACK: ${{ inputs.slack }}
+          SKY_LAG: ${{ inputs.lag }}
         run: |
           set -o pipefail
           pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
