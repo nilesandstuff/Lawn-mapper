@@ -1268,3 +1268,9 @@ Two record-only walks on the work lot (22:37 and 22:43, three check points each,
     walk's middle within 10-24 m (twice the trail's spread) and its heading within the trail's degrees + 10; with none
     inside, the whole box as before. The pavement study also starts from the GPS placement itself.
   - At home the GPS trail was 26-44 ft off, inside the gate; the 21:56 walk is rerun to see that nothing is lost.
+
+MEASURED with the gate (2026-11-06, task place):
+  - work 22:37: 256 ft -> 1.3 ft median (checks 1.3, 0.9, 3.2 ft; -0.5 degrees), skyline then ground (349 pavement
+    cells). Its GPS trail alone: 8-13 ft; its check points placed by the other two: 2.9-11.9 ft.
+  - home 21:56: unchanged, 1.5 ft (5.6, 1.1, 1.8, 0.8): the gate (GPS 26-44 ft off there) took nothing away.
+  - work 22:43: see below.
