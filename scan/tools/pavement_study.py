@@ -250,9 +250,11 @@ def main():
             sc, T = best[0]
             enough = len(P) >= PAVE_ENOUGH
             if not enough:
-                T = sky_starts[0]
+                # too little pavement seen to trust the brightness (SCAN-H19): the ground's shape alone refines the
+                # skyline's starts (on the 22:02 walk, 3.6 ft against the skyline's 4.9)
+                sc, T = sorted((refine(T0, gscore) for T0 in sky_starts), key=lambda x: -x[0])[0]
             out_ = {"theta": float(T[0]), "tx": float(T[1]), "ty": float(T[2]), "score": float(sc),
-                    "from": "skyline, then brightness and ground" if enough else f"skyline alone (only {len(P)} pavement cells seen; {PAVE_ENOUGH} wanted)",
+                    "from": "skyline, then brightness and ground" if enough else f"skyline, then ground (only {len(P)} pavement cells seen; {PAVE_ENOUGH} wanted for brightness)",
                     "pavementCells": len(P), "groundPoints": int(len(gp))}
             json.dump(out_, open(os.path.join(d, "placement.json"), "w"))
             print(f"Placement kept (placement.json): {out_['from']}{described(T)}")

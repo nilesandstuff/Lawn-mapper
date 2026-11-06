@@ -1194,3 +1194,18 @@ good anchor was seen", and use the ground's position and shape in the placement.
   a roofline against the sky (camera tipped up, sky over something) or pavement (tipped down, grey ground under
   surface.js's paving rule); after 30 m walked without one, a flash and a line on the screen asking for it, at most
   every 15 m. Counts kept in live.json (`anchors`). WebXR only (8th Wall hands the page no picture).
+
+### SCAN-H20. Placed from the pictures, no marks: 1.5-1.8 ft on a walk that saw its drive; the ground's shape helps (2026-11-06)
+
+Task `place` (section 9), run end to end on both walks.
+
+HARD:
+  - 21:56 (no references, 1,638 pavement cells): brightness alone 2.6 ft median, -2.1 degrees; the ground's shape
+    alone 3.7 ft, +1.9 degrees; together 1.5 ft (numpy median) / 1.8 ft (the fix's), -1.6 degrees, checks 5.6, 1.2,
+    1.8, 0.8 ft. The two err in opposite turns; their sum lands between. The after-the-walk fix used it for the walk.
+  - 22:02 (629 pavement cells): brightness wanders (17 ft); ground alone from the skyline's starts 3.6 ft, +0.2
+    degrees; the two together 11.6 ft (the brightness drags). The placement fell back to the skyline (4.9 ft) and
+    now falls back to skyline-then-ground instead. The references on this walk: 2.7 ft by the fix's median.
+  - at the truth 71-75% of ARCore's ground points lie within 15 cm of the lidar's ground (the model's `ground`,
+    class-2 returns per metre, once one height offset is taken out). The phone's ground is good relative to itself;
+    the shape it shares with the lidar places a walk to about 3.6 ft on its own.
