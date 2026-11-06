@@ -1124,3 +1124,24 @@ HARD (walk 22:02, the one with both):
 What it says: the roofs are the trustworthy part of the skyline and there are too few of them seen; the truth is
 itself uncertain by about 2 degrees; a per-stretch fit (step 3) will do better than one placement because the
 second half alone already does. Pavement (step 2) is the way to more trustworthy samples.
+
+### SCAN-H17. Steps 2 and 3: the pavement cast is right; windows show the twist growing along a walk, a steady drift does not fit (2026-11-06)
+
+HARD:
+  - pavement from the pictures (SegFormer road, sidewalk, path; earth and floor out, since November lawn reads as
+    earth), cast onto the level ground within 8 m: at the truth 6-7% of pavement cells fall inside the traced lawn
+    and 92-94% of grass cells do, on both walks. 629 pavement cells (22:02, 347 pictures) and 983 (21:56, 90): sparse,
+    because the walks seldom look at the drive. The match against the lidar's brightness waits on the model's
+    `intensity`, which the shade map now writes on a lot's next save (merged and deployed 2026-11-06 11:37 UTC, with
+    the 2 m surround 100 m out); the readers are in (skyline-prep, pavement_study, skyline_study).
+  - windows of 60 m every 20 m, each its own skyline fit from the whole-walk best: 22:02, 12 of 15 kept, their turn
+    from the truth running -0.1, -0.8, -2.6, -3.3, -3.6, -0.8, -3.6, -3.8, -3.1, -4.3, -5.8, -6.3 degrees along the
+    walk; 21:56, all 11 kept, -1.6 to -7.1 with no trend. The checks by their window: 10.2 and 5.3 ft median, against
+    5.0 and 4.9 by one placement: windows alone do not help; each has too few roof samples.
+  - a heading drifting steadily with distance walked (theta0 + k x odo, the position carried along), k searched
+    from -0.10 to +0.10 degrees a metre: both walks choose k = 0. The growing twist of the 22:02 windows is not a
+    steady drift of the camera's heading against its position.
+
+What stands: the skyline alone places a walk to about 5 ft and no better, on these two walks, whichever way it is
+cut. The next gain is more trustworthy samples, not a better search: the brightness match once the model has it,
+and the surround for the rays that leave the lot.
