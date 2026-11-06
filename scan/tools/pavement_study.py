@@ -237,7 +237,11 @@ def match(d, inp, checks, pave, grass, gp, g, I, gg, med0, tag, write, gz=None):
         print(f"[{tag}] Brightness at the truth: score {score(truth):.1f}; {len(P)} pavement cells ({okp.mean():.0%} over a lidar ground return, median brightness {np.median(vp[okp]) if okp.any() else float('nan'):.0f}) and {len(G)} grass cells ({okg.mean():.0%}, median {np.median(vg[okg]) if okg.any() else float('nan'):.0f}); the lot's ground median {med:.0f}, scale {scale:.0f}. Pavement should be the darker.")
         print(f"[{tag}] Ground shape at the truth: {gscore(truth) / 10:.0f}% of {len(gp):,} ARCore ground points within {GROUND_TOL_M * 100:.0f} cm of the lidar's ground (weight {GROUND_W}).")
     # each signal alone and the two together, from every skyline start (and, for the record, from the truth)
-    named = [(T0, f"the skyline's {i + 1}") for i, T0 in enumerate(sky_starts)] + ([(truth, "the truth (study only)")] if truth else [])
+    # the GPS trail's placement as a start of its own (SCAN-H22: at the owner's work it was 8-23 ft off, the skyline 190+)
+    gps = inp.get("gps")
+    if gps and not any(abs(T0[1] - gps["tx"]) < 0.5 and abs(T0[2] - gps["ty"]) < 0.5 for T0 in sky_starts):
+        sky_starts = sky_starts + [(gps["theta"], gps["tx"], gps["ty"])]
+    named = [(T0, f"the skyline's {i + 1}" if not (gps and T0 == (gps["theta"], gps["tx"], gps["ty"])) else "the GPS trail") for i, T0 in enumerate(sky_starts)] + ([(truth, "the truth (study only)")] if truth else [])
     for label, f in (("brightness", score), ("ground", gscore), ("both", total)):
         res = sorted(((*refine(T0, f), nm) for T0, nm in named), key=lambda x: -x[0])
         for rank, (sc, T, nm) in enumerate(res[:3], 1):

@@ -360,7 +360,17 @@ def main():
     print(f"Coarse skylines: {len(ge)} x {len(gn)} spots x {AZ_BINS} directions ({int(time.time() - t0)} s).")
     pi = obs[:, 0].astype(int)
     by_pic = [np.nonzero(pi == i)[0] for i in range(len(pics))]
-    best = []
+    # THE GPS GATE (SCAN-H22): on the owner's work walks the skyline alone chose places 190-370 ft away while the GPS
+    # trail alone was 8-23 ft off. With a GPS placement, only placements that put the walk's middle within gate_m of
+    # where the GPS puts it, turned within gate_deg of it, are kept. No GPS (or none left inside): the whole box.
+    gps = inp.get("gps")
+    gate = None
+    if gps and os.environ.get("SKY_GPS", "1") != "0":
+        c0 = cams.mean(0); cg, sg_ = math.cos(gps["theta"]), math.sin(gps["theta"])
+        gate = {"at": (cg * c0[0] - sg_ * c0[1] + gps["tx"], sg_ * c0[0] + cg * c0[1] + gps["ty"]), "m": min(24.0, max(10.0, 2 * gps["searchM"])),
+                "rad": math.radians(gps["searchDeg"] + 10), "theta": gps["theta"]}
+        print(f"GPS gate: {gps.get('from', 'the GPS trail')}; kept within {gate['m']:.0f} m and {math.degrees(gate['rad']):.0f} degrees of its placement.")
+    best, best_all = [], []
     for th in np.radians(np.arange(0, 360, COARSE_DEG)):
         c, s = math.cos(th), math.sin(th)
         q = np.stack([c * cams[:, 0] - s * cams[:, 1], s * cams[:, 0] + c * cams[:, 1]], 1)
@@ -382,10 +392,23 @@ def main():
             acc[: sl.shape[0], : sl.shape[1]] += score_from(sl, slr, obs[oi, 2][None, None, :], obs[oi, 3][None, None, :]).sum(2)
             cnt[: sl.shape[0], : sl.shape[1]] += 1
         acc[cnt < sum(1 for oi in by_pic if len(oi))] = -1e9
-        k = np.argsort(acc, axis=None)[-6:]
-        for f in k:
+        for f in np.argsort(acc, axis=None)[-6:]:
             r_, c_ = np.unravel_index(f, acc.shape)
-            best.append((float(acc[r_, c_]), th, te[c_], tn[r_]))
+            best_all.append((float(acc[r_, c_]), th, te[c_], tn[r_]))
+        if gate is not None:
+            if abs((th - gate["theta"] + np.pi) % (2 * np.pi) - np.pi) > gate["rad"]:
+                continue
+            qm = q.mean(0)
+            far = np.hypot(qm[0] + te[None, :] - gate["at"][0], qm[1] + tn[:, None] - gate["at"][1]) > gate["m"]
+            acc = np.where(far, -1e9, acc)
+            for f in np.argsort(acc, axis=None)[-6:]:
+                r_, c_ = np.unravel_index(f, acc.shape)
+                if acc[r_, c_] > -1e8:
+                    best.append((float(acc[r_, c_]), th, te[c_], tn[r_]))
+    if gate is None or not best:
+        if gate is not None:
+            print("GPS gate: no placement inside it scored; the whole box searched.")
+        best = best_all
     best.sort(key=lambda x: -x[0])
     # the distinct best few (3 m or 10 degrees apart)
     picks = []

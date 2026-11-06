@@ -1248,3 +1248,23 @@ medians of the four check points, no marks used):
     the 1 m column's median of two or three is steadier. Kept at 1 m.
   - So the placement kept since commit "brightness from the 1 m columns, the ground's shape from the shade map's
     points" mixes the two. Chosen on these two walks, so the next walks are the test of it, not these.
+
+### SCAN-H22. At the owner's work the skyline placed walks 190-370 ft off; the GPS trail now bounds the search (2026-11-06)
+
+Two record-only walks on the work lot (22:37 and 22:43, three check points each, depth smooth), task place:
+
+                                          22:43                        22:37
+  the pictures' placement (kept)          334 ft (189-367), +92 deg    256 ft (248-264), +10 deg
+  the GPS trail's placement alone         14-23 ft                     8-13 ft
+  ground shape alone, from the truth      6.1 ft                       1.2 ft   (study only)
+  check points placed by the others       1.9-7.9 ft                   2.9-11.9 ft
+
+  - The skyline's three best starts were all 80-110 m from the truth; brightness and ground refine only a few
+    metres round a start, so they could not come back. Too little pavement was seen on either (423 and 349 cells).
+  - At the truth the ground shape fits as at home (68% and 76% within 15 cm), and from the truth it holds to 1-6 ft:
+    what failed is the coarse step, not the fine one.
+  - The search had no notion of where the phone roughly was. Now (skyline-prep.mjs, skyline_study.py): the GPS trail's
+    placement (postfix.js gpsPrior) goes in sky-input.json; the coarse skyline search keeps only placements putting the
+    walk's middle within 10-24 m (twice the trail's spread) and its heading within the trail's degrees + 10; with none
+    inside, the whole box as before. The pavement study also starts from the GPS placement itself.
+  - At home the GPS trail was 26-44 ft off, inside the gate; the 21:56 walk is rerun to see that nothing is lost.

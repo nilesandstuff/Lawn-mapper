@@ -19,6 +19,7 @@ import { toMerc, ringsOf } from '../lib/photo.js';
 import { toLocal } from '../lib/frames.js';
 import { readCloud, readTrack } from '../lib/twin.js';
 import { readMap, readModel } from './twin-io.mjs';
+import { gpsPrior } from '../lib/postfix.js';
 
 async function main() {
   const dir = process.argv[2] || 'twin';
@@ -107,12 +108,17 @@ async function main() {
   const refs = (live.marks || []).filter((x) => x.kind === 'ref' && x.ar && x.map).map((x) => ({ id: x.id, ar: x.ar, map: x.map, odo: x.odo ?? null }));
   // the traced lawn, local metres: NOT a fix signal (the owner, 2026-11-04); only to check the pavement projection
   const lawn = ringsOf(m.shapes || []).map((r) => r.map((p) => toLocal(origin, p).map((v) => +v.toFixed(2))));
+  // THE GPS TRAIL'S PLACEMENT (SCAN-H22): the owner's work walks, 2026-11-06, where the skyline's best three were 190-370
+  // ft off and the GPS trail alone 8-23 ft. The search keeps near it; the pavement study starts from it as well.
+  const gp = gpsPrior(live.gpsTrail);
+  const gps = gp ? { theta: gp.T.theta, tx: gp.T.tx, ty: gp.T.ty, searchM: gp.searchM, searchDeg: gp.searchDeg, from: gp.from } : null;
   writeFileSync(join(dir, 'sky-input.json'), JSON.stringify({
     lawn,
     grid: { w: g.w, h: g.h, x0: (g.x0 - ox) * k, y1: (g.y1 - oy) * k, cell: g.cell * k, cellY: (g.cellY || g.cell) * k },
-    pictures: pics, checks, refs, surround, intensityMedian: model.meta.own?.intensityMedian ?? null,
+    pictures: pics, checks, refs, surround, intensityMedian: model.meta.own?.intensityMedian ?? null, gps,
   }));
   const eyes = pics.map((p) => p.eye).filter(Number.isFinite).sort((a, b) => a - b);
+  console.log(`GPS trail: ${gps ? `${gps.from}; the search keeps within ${Math.round(Math.min(24, Math.max(10, 2 * gps.searchM)))} m and ${Math.round(gps.searchDeg + 10)} degrees of its placement` : 'too short or none: the search is not limited'}.`);
   console.log(`Model extras: intensity ${hasInt ? 'yes' : 'no'}, surround ${hasSur ? `${surround.w} x ${surround.h} cells of ${surround.cell.toFixed(1)} m` : 'no'}, points ${nPts ? nPts.toLocaleString() : (model.meta.points?.leftOut ? 'left out of the file (too big)' : 'no')}.`);
   console.log(`Skyline inputs: the model's surface ${g.w} x ${g.h} columns of ${(g.cell * k).toFixed(2)} m (${tops.toLocaleString()} with something standing), ${pics.length} pictures (phone over its ground: median ${eyes.length ? eyes[eyes.length >> 1].toFixed(2) : '-'} m), ${checks.length} check marks, ${refs.length} reference marks.`);
 }
