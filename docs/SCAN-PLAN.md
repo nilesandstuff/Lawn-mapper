@@ -1103,3 +1103,24 @@ sit on different photos: the lidar's shift fit to the summer photo vs the editor
 the two over a 60 m lot would read as a twist that changes along the walk; (3) a per-stretch ARCore heading
 error that the four checks cannot see. The next cheap test is the search run on roof-edge samples alone, and the
 twist measured against the references' placement as well as the checks'.
+
+### SCAN-H16. The two truths disagree by 2 degrees; roof edges alone place the walk's second half to 0.3-3.8 ft (2026-11-06)
+
+Step 1 of the owner's three (the twist measured against the references as well as the check points), and the
+skyline search run on roof-edge and open-sky samples alone.
+
+HARD (walk 22:02, the one with both):
+  - the references' placement is 2.25 degrees turned from the check points' own fit, though it puts the checks a
+    median 1.6 ft off (their own fit: 1.3 ft). Four marks over 400 ft cannot pin a heading better than about 2
+    degrees when each mark is a foot or two off on the photo. The "5-degree twist" of SCAN-H14 is 3 degrees against
+    the references, and a candidate 0.1 degree from them (checks median 2.2 ft) was the search's fourth.
+  - roof-edge and open-sky samples alone (219 of 2,016): the best placement is still 5.6 degrees turned; but the
+    second half of the walk fitted on those samples alone puts its own checks 3.8, 1.9 and 0.3 ft off (3.1 degrees
+    turned); the first half, 18 ft (few roof samples: 65 against 154).
+  - walk 21:56, roof samples alone (133): the truth scores above everything the search found (237.6 against
+    226.6), a margin of 11.6: the signal is there, weak, and the coarse search (1.5 m, 2 degrees, one eye height)
+    does not land on it.
+
+What it says: the roofs are the trustworthy part of the skyline and there are too few of them seen; the truth is
+itself uncertain by about 2 degrees; a per-stretch fit (step 3) will do better than one placement because the
+second half alone already does. Pavement (step 2) is the way to more trustworthy samples.
