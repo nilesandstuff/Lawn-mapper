@@ -1,6 +1,6 @@
 // scan/lib/track.js: the pure parts of the tracking interface. node scan/test/track.test.js
 import assert from 'node:assert/strict';
-import { rankHits, trackingOf8w, engineChoice, CROSS, worldPointsOf } from '../lib/track.js';
+import { rankHits, trackingOf8w, engineChoice, CROSS, worldPointsOf, depthTypeOf } from '../lib/track.js';
 
 // the crosshair is the exact centre, so one hit test serves both engines
 assert.deepEqual(CROSS, { x: 0.5, y: 0.5 });
@@ -46,4 +46,9 @@ assert.deepEqual(CROSS, { x: 0.5, y: 0.5 });
   assert.deepEqual(w, [{ x: 1, y: 0.2, z: -3 }, { x: 0.5, y: 1, z: -2 }]);
   assert.deepEqual(worldPointsOf(null), []);
 }
+// the depth type is the session's (the spec), not the frame's
+assert.equal(depthTypeOf({ depthType: 'raw', depthUsage: 'cpu-optimized', depthDataFormat: 'luminance-alpha' }), 'raw (cpu-optimized, luminance-alpha)');
+assert.equal(depthTypeOf({ depthType: 'smooth' }), 'smooth');
+assert.match(depthTypeOf({ depthType: null }), /^not said/);
+assert.match(depthTypeOf({}), /^not said/);
 console.log('track: ok');

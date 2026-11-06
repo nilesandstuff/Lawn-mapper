@@ -889,6 +889,11 @@ depth fills those in, and that fill across plain grass is the likeliest
 source of the invented points. The page now asks for raw first and the
 walk's log says which it got (depthType). A request only; not yet measured
 on a walk.
+CORRECTION (2026-11-06): every walk since logged "depth not said" because
+the page read depthType from the per-frame XRDepthInformation; the spec
+keeps it on the XRSession. Fixed (track.js depthTypeOf); so whether the
+S21 gives raw depth is still NOT known, and the walks of 11-04 to 11-06
+may have had either. The next walk's log says.
 
 The owner's word (2026-11-04, through the features session): LAS classes
 7 and 18 and returns over 80 m stay out everywhere; the detector's

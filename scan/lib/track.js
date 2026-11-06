@@ -183,6 +183,16 @@ export function cameraGrabber(session, gl, maxW = 640) {
   };
 }
 
+/* Which depth the runtime gave. The spec keeps depthType on the XRSESSION (null when the runtime has one kind only or
+   ignored depthTypeRequest), never on the per-frame XRDepthInformation, which is where this page read it until
+   2026-11-06: every walk before then logged "not said" whatever it got. */
+export function depthTypeOf(session) {
+  const t = session?.depthType;
+  const kind = t === 'raw' || t === 'smooth' ? t : t == null ? 'not said (one kind only, or the request ignored)' : String(t);
+  const more = [session?.depthUsage, session?.depthDataFormat].filter(Boolean).join(', ');
+  return more ? `${kind} (${more})` : kind;
+}
+
 async function startWebXR({ overlay, onFrame, onEvent }) {
   let session;
   const base = { requiredFeatures: ['hit-test'], optionalFeatures: ['dom-overlay', 'anchors'], domOverlay: { root: overlay } };
@@ -237,7 +247,7 @@ async function startWebXR({ overlay, onFrame, onEvent }) {
       if (hasDepth && view) {
         try {
           const di = xrFrame.getDepthInformation(view);
-          if (di && depthType == null) depthType = di.depthType || 'not said';
+          if (di && depthType == null) depthType = depthTypeOf(session);
           const z = di ? di.getDepthInMeters(CROSS.x, CROSS.y) : 0;
           if (z >= HIT_NEAR && z <= HIT_FAR) {
             const p = unproject(CROSS.x, CROSS.y, z, view.projectionMatrix, view.transform.matrix);
