@@ -39,22 +39,29 @@ export function viewFromSem(sem, pitch = 0) {
 }
 
 /** The labels the walk's depth cells carried. */
-export const newSemCount = () => ({ cells: 0, sure: 0, by: {}, skyNear: 0, sky: 0, dropped: 0 });
-/** One depth cell: its label, the label's confidence and its depth in metres (0 = none). */
-export function noteSem(c, label, conf, d) {
+export const newSemCount = () => ({ cells: 0, sure: 0, by: {}, skyNear: 0, sky: 0, dropped: 0, terrain: 0, terrainLow: 0, building: 0, buildingHigh: 0 });
+/** One depth cell: its label, the label's confidence, its depth in metres (0 = none) and, when it has a point, the
+ *  point's height over the ground the page has (h). The second alignment check (2026-11-07: sky over leafless
+ *  branches has near depth whether or not the labels sit right): grass should lie on the ground, a building stand. */
+export function noteSem(c, label, conf, d, h = null) {
   if (!label) return;
   c.cells++;
   if (conf != null && conf < SEM_SURE) return;
   c.sure++;
   c.by[label] = (c.by[label] || 0) + 1;
   if (label === 'sky') { c.sky++; if (d > 0 && d < 8) c.skyNear++; }
+  if (h != null && Number.isFinite(h)) {
+    if (label === 'terrain') { c.terrain++; if (Math.abs(h) < 0.3) c.terrainLow++; }
+    if (label === 'building') { c.building++; if (h > 1) c.buildingHigh++; }
+  }
 }
 /** For the walk's summary: shares by label (of the sure cells) and the alignment check. */
 export function semSummary(c) {
   if (!c || !c.cells) return null;
   const by = {};
   for (const [k, n] of Object.entries(c.by)) by[k] = +(n / Math.max(1, c.sure)).toFixed(3);
-  return { cells: c.cells, sure: +(c.sure / c.cells).toFixed(3), by, skyWithNearDepth: c.sky ? +(c.skyNear / c.sky).toFixed(3) : null, dropped: c.dropped };
+  return { cells: c.cells, sure: +(c.sure / c.cells).toFixed(3), by, skyWithNearDepth: c.sky ? +(c.skyNear / c.sky).toFixed(3) : null, dropped: c.dropped,
+    terrainOnGround: c.terrain ? +(c.terrainLow / c.terrain).toFixed(3) : null, buildingStanding: c.building ? +(c.buildingHigh / c.building).toFixed(3) : null };
 }
 
 /** The drift log: an anchor every CRUMB_M walked, at most CRUMB_MAX. */

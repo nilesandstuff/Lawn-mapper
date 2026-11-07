@@ -458,7 +458,7 @@ function onFrame(f) {
     for (let i = 0; i < 16; i++) for (let j = 0; j < 28; j++) {
       const x = (i + 0.5) / 16, y = (j + 0.5) / 28, p = f.depth.at(x, y);
       const l = lab ? lab(x, y) : null, lc = l ? labC(x, y) : null;
-      if (l && st.sem) noteSem(st.sem, l, lc, f.depth.m(x, y));
+      if (l && st.sem) noteSem(st.sem, l, lc, f.depth.m(x, y), p && L.groundY != null ? p.y - L.groundY : null);
       if (!p) continue;
       if (!keepPoint(l, lc)) { if (st.sem) st.sem.dropped++; continue; }
       if (l) p.label = l;

@@ -21,6 +21,9 @@ assert.equal(viewFromSem(null), null);
   const s = semSummary(c);
   assert.equal(s.cells, 4); assert.equal(s.sure, 0.75); assert.equal(s.by.sky, 0.667); assert.equal(s.skyWithNearDepth, 0.5);
   assert.equal(semSummary(newSemCount()), null);
+  const a = newSemCount();
+  noteSem(a, 'terrain', 0.9, 2, 0.05); noteSem(a, 'terrain', 0.9, 2, 1.5); noteSem(a, 'building', 0.9, 4, 2.5);
+  const sa = semSummary(a); assert.equal(sa.terrainOnGround, 0.5); assert.equal(sa.buildingStanding, 1);
 }
 
 // the grid's labels as the page reads them
