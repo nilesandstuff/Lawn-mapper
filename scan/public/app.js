@@ -19,6 +19,7 @@ import { newTwin, addPoints, addPose, wantKey, addKey, flush, flushDue, liveOf }
 import { newAnchors, viewOf, noteView, nudge, pitchOf, anchorsKept, SHOW_S } from '/lib/anchors.js';
 import { surfaceOf } from '/lib/surface.js';
 import { newOutbox, idbStore, memoryStore, statusText } from '/lib/outbox.js';
+import { byDistance, nearestMap, mapLabel } from '/lib/maps-pick.js';
 import { viewToFit, followView, toScreen, zoomAt as miniZoom, pan as miniPan, edgeArrow } from '/lib/minimap.js';
 
 const $ = (s) => document.querySelector(s);
@@ -97,8 +98,48 @@ async function main() {
     $('#why').textContent = 'Safari will ask for the camera and the motion sensors; both are needed. The engine downloads about 7 MB the first time.';
   }
   renderResults();
-  if (st.map) await loadMap(st.map).catch((e) => { $('#mapnote').textContent = `The map could not be opened (${e.message}): tracking only, no references or lidar.`; });
-  else $('#mapnote').textContent = 'No map: open this page from the dashboard to use references and the lidar. Tracking still works.';
+  if (st.map) { await loadMap(st.map).catch((e) => { $('#mapnote').textContent = `The map could not be opened (${e.message}): tracking only, no references or lidar.`; }); changeButton(); }
+  else await pickMap().catch(() => { $('#mapnote').textContent = 'No map: open this page from the dashboard to use references and the lidar. Tracking still works.'; });
+}
+
+/* WHICH MAP (scan/lib/maps-pick.js; owner, 2026-11-07): the app cannot be handed a map by the dashboard (that opens
+   in the browser), so the page picks one itself: the nearest saved map within reach of the phone's place opens by
+   itself, otherwise a list, nearest first; Change map lists them again. */
+async function pickMap({ auto = true } = {}) {
+  const note = $('#mapnote');
+  note.textContent = 'Finding your maps…';
+  let maps = [];
+  try { maps = (await (await fetch('/api/maps', { credentials: 'same-origin' })).json())?.maps || []; } catch { maps = []; }
+  if (!maps.length) { note.textContent = 'No saved maps for this account: tracking still works without one.'; return; }
+  const here = await new Promise((resolve) => {
+    if (!navigator.geolocation) { resolve(null); return; }
+    navigator.geolocation.getCurrentPosition((p) => resolve({ at: [p.coords.longitude, p.coords.latitude], acc: p.coords.accuracy }), () => resolve(null), { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 });
+  });
+  const near = auto ? nearestMap(maps, here?.at, here?.acc ?? 0) : null;
+  if (near) { await openMap(near.map.id, `the nearest saved map (${Math.round(near.m * FT)} ft from here)`); return; }
+  const list = byDistance(maps, here?.at);
+  const far = (m) => (m == null ? '' : ` · ${m < 1609 ? `${Math.round(m * FT)} ft` : `${(m / 1609).toFixed(1)} mi`}`);
+  note.innerHTML = `<strong>Pick a map</strong>${here ? ' (nearest first)' : ' (the phone did not give its place)'}:
+    <div class="tools" style="margin-top:6px">${list.slice(0, 15).map(({ map, m }) => `<button type="button" class="plain" data-map="${esc(map.id)}">${esc(mapLabel(map))}${far(m)}</button>`).join(' ')}</div>`;
+  note.querySelectorAll('[data-map]').forEach((b) => b.addEventListener('click', () => openMap(b.dataset.map, 'as picked')));
+}
+
+async function openMap(id, how) {
+  st.map = id;
+  try { const u = new URL(location.href); u.searchParams.set('map', id); history.replaceState(null, '', u); } catch { /* the address bar can wait */ }
+  const back = $('#back');
+  if (back) back.href = `${(back.getAttribute('href') || '').split('?')[0]}?map=${encodeURIComponent(id)}`;
+  try { await loadMap(id); $('#mapnote').textContent += ` Opened ${how}.`; } catch (e) { $('#mapnote').textContent = `The map could not be opened (${e.message}).`; }
+  changeButton();
+}
+
+function changeButton() {
+  const note = $('#mapnote');
+  if (!note || note.querySelector('#change-map')) return;
+  const b = document.createElement('button');
+  b.type = 'button'; b.id = 'change-map'; b.className = 'plain'; b.style.marginLeft = '8px'; b.textContent = 'Change map';
+  b.addEventListener('click', () => pickMap({ auto: false }));
+  note.append(' ', b);
 }
 
 /* --------------------------------------------------------------- the map */

@@ -134,6 +134,22 @@ async function main() {
   if (checksMap.length) {
     const near = pins.filter((p) => p.map).map((p) => { let best = null; for (const c of checksMap) { const d = Math.hypot(p.map[0] - c.map[0], p.map[1] - c.map[1]); if (!best || d < best.d) best = { d, name: c.name }; } return { pin: p.name, ...best }; });
     console.log(`Pins against the nearest check point (as placed after the walk): ${near.map((x) => `${String(x.pin).slice(0, 8)}->${String(x.name).slice(0, 8)} ${ft(x.d)}`).join(', ') || 'none'}.`);
+    /* WHICH CHECK POINTS THE PINS WERE ON (the owner, 2026-11-07: "I can't remember which 2"): with no placement at
+       all, the distance between two pins as ARCore had them against the distance between every two check points on
+       the map; the pairs that agree best */
+    const pp = (live.pins || []).filter((p) => p.at);
+    if (pp.length >= 2 && checksMap.length >= 2) {
+      const lines = [];
+      for (let a = 0; a < pp.length; a++) for (let b = a + 1; b < pp.length; b++) {
+        const dAr = Math.hypot(pp[a].at.x - pp[b].at.x, pp[a].at.z - pp[b].at.z);
+        if (dAr < 1) continue; // two pins on one spot say nothing here
+        const pairs = [];
+        for (let i = 0; i < checksMap.length; i++) for (let j = i + 1; j < checksMap.length; j++) pairs.push({ i, j, d: Math.abs(Math.hypot(checksMap[i].map[0] - checksMap[j].map[0], checksMap[i].map[1] - checksMap[j].map[1]) - dAr) });
+        pairs.sort((x, y) => x.d - y.d);
+        lines.push(`pins ${String(pp[a].name).slice(0, 8)} and ${String(pp[b].name).slice(0, 8)}, ${ft(dAr)} apart: ${pairs.slice(0, 3).map((x) => `${String(checksMap[x.i].name).slice(0, 8)}+${String(checksMap[x.j].name).slice(0, 8)} (off by ${ft(x.d)})`).join(', ')}`);
+      }
+      if (lines.length) console.log(`Which check points the pins were on, by their distance apart alone: ${lines.join('; ')}.`);
+    }
   } else console.log('The walk kept no check points (walks before 2026-11-05 did not): pins cannot be scored against them.');
   const sess = (live.pins || []).filter((p) => p.at).map((p, i) => ({ i, u: p.at.x, v: -p.at.z }));
   const groups = [];

@@ -55,6 +55,9 @@ on:
       narrow:
         description: 'For skyline: 1 to search on roof-edge and open-sky samples alone'
         default: '0'
+      mapfrom:
+        description: 'For place: a walk recorded with no map open takes its map (and check points) from this walk id'
+        default: ''
 
 permissions:
   contents: read
@@ -89,6 +92,7 @@ jobs:
           node scan/test/anchors.test.js
           node scan/test/app.test.js
           node scan/test/outbox.test.js
+          node scan/test/maps-pick.test.js
           node tools/lidar-model.test.js
 
       - name: The 8th Wall engine binary (pinned)
@@ -253,13 +257,20 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           WALK: ${{ inputs.walk }}
+          MAPFROM: ${{ inputs.mapfrom }}
           SKY_LEAN: '1'
         run: |
           set -o pipefail
           pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
           pip install --quiet "transformers>=4.45" pillow numpy scipy
           node scan/tools/twin-r2.mjs get "$WALK" twin
-          node scan/tools/skyline-prep.mjs twin | tee place.txt
+          : > place.txt
+          # a walk recorded with no map open (the app before its picker, 2026-11-07): its map from another walk, kept
+          if [ -n "$MAPFROM" ]; then
+            node scan/tools/twin-map.mjs twin "$MAPFROM" | tee -a place.txt
+            node scan/tools/twin-r2.mjs put "$WALK" twin/meta.json twin/live.json | tee -a place.txt
+          fi
+          node scan/tools/skyline-prep.mjs twin | tee -a place.txt
           python scan/tools/skyline_study.py twin | tee -a place.txt
           python scan/tools/pavement_study.py twin | tee -a place.txt
           node scan/tools/post-fix.mjs twin | tee -a place.txt
