@@ -10,7 +10,7 @@
  */
 import { detect, start, engineChoice, load8thWall } from '/lib/track.js';
 import { newWalk, step, dropPin, checkPin, measure, tapeFor, undo, far, summary, pinNow } from '/lib/walk.js';
-import { makeDrawer, lidarMeshes } from '/lib/draw.js';
+import { makeDrawer, lidarMeshes, OCC_RANGE } from '/lib/draw.js';
 import { levelDist, toLocal } from '/lib/frames.js';
 import { frameFor, bboxOf, toPx, fromPx, ringsOf } from '/lib/photo.js';
 import { newLocate, mark, noteGround, addDepth, nextAsk, answer, fitFor, mapOf, sessionOf, checkError, nearestNamed, agreement, groundOffset, status as fixStatus, summaryOf } from '/lib/locate.js';
@@ -297,7 +297,7 @@ const log = (what) => { st.errors.push({ t: Date.now(), what }); if (st.errors.l
 async function startAR(engine) {
   const overlay = $('#overlay');
   st.walk = newWalk({ engine, phone: navigator.userAgent });
-  st.dy = null; st.dyFrom = null; st.gpsTrail = []; st.anchors = newAnchors(); st.nudge = null; st.depthFill = null; st.geoTrail = []; st.geoSeen = null; st.sem = newSemCount(); st.lastSem = null; st.semDims = null; st.crumbs = newCrumbs();
+  st.dy = null; st.dyFrom = null; st.gpsTrail = []; st.anchors = newAnchors(); st.nudge = null; st.depthFill = null; st.geoTrail = []; st.geoSeen = null; st.sem = newSemCount(); st.lastSem = null; st.semDims = null; st.occ = null; st.crumbs = newCrumbs();
   st.walk.checks = [];
   st.L = newLocate();
   mini.view = null; mini.mode = 'fit'; mini.locked = false; $('#arrows').innerHTML = '';
@@ -467,6 +467,15 @@ function onFrame(f) {
     /* HOLES IN THE DEPTH (2026-11-07): Chrome no longer names the depth type when asked for raw alone, so the walk
        measures it. Raw depth is 0 where the runtime is not confident; smooth fills every pixel. Indoors nearly all of
        a smooth picture is within range, so a high share of holes says raw. */
+    // what the phone sees, as a small picture of distances, so a real wall or trunk hides the lidar behind it (draw.js)
+    if (f.depth.m) {
+      const OW = 24, OH = 42, od = new Uint8Array(OW * OH);
+      for (let j = 0; j < OH; j++) for (let i = 0; i < OW; i++) {
+        const d = f.depth.m((i + 0.5) / OW, (j + 0.5) / OH);
+        od[j * OW + i] = d > 0 ? Math.max(1, Math.min(255, Math.round((d / OCC_RANGE) * 255))) : 0;
+      }
+      st.occ = { w: OW, h: OH, data: od, t: f.t };
+    }
     if (f.depth.m) {
       const df = (st.depthFill ||= { frames: 0, cells: 0, zero: 0, far: 0, weak: 0, minConf: f.depth.minConf ?? null });
       df.frames++;
@@ -582,7 +591,8 @@ function onFrame(f) {
         if (f.t - (st.agreeAt || 0) > 300) { st.agreeAt = f.t; st.agree = agreement(L, odo, st.lid.overlay.dist); }
         if (st.agree) { dots.push({ points: st.agree.on, color: [0, 0, 0, 0.95], r: 0.045 }); dots.push({ points: st.agree.off, color: [1, 0.25, 0.2, 0.7], r: 0.03 }); }
       } else st.agree = null;
-      st.drawer.d.draw({ view: f.view, proj: f.proj, viewport: f.viewport, framebuffer: f.framebuffer, items, dots, statics });
+      const occlusion = st.occ && f.t - st.occ.t < 1000 ? st.occ : null;
+      st.drawer.d.draw({ view: f.view, proj: f.proj, viewport: f.viewport, framebuffer: f.framebuffer, items, dots, statics, occlusion });
     } catch (e) { if (!st.drawErr) { st.drawErr = true; log(`draw: ${e.message}`); } }
   }
   $('#cross').classList.toggle('hit', !!f.hit);

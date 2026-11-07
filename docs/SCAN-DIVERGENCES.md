@@ -103,7 +103,9 @@ straightening, because the drawing still showed the raw columns).
 Each run stands to the roof's own height: a run breaks where the column top changes by more than 0.3 m (2026-11-07:
 the owner's screenshot showed a gable drawn as a flat block, every row at its highest cell, the ridge). The drawing
 shows only the nearest lidar surface at each pixel (a depth pass first), so the far side of a house or a shape behind
-it no longer shows through; pins and marks are drawn over it all. The real world does not yet hide the lidar.
+it no longer shows through; pins and marks are drawn over it all. The real world hides it too: the phone's latest depth
+picture (24 x 42 cells, under a second old) is passed to the drawing, and a lidar surface more than 0.3 m behind the real
+surface at that spot is not drawn (2026-11-07).
 Nothing is drawn that the model does not have.
 
 ## 7. Which canopy: `mu`, as flown

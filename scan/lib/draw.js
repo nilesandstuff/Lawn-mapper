@@ -14,6 +14,20 @@ import { multiply } from './frames.js';
 
 const VS = 'attribute vec3 p; uniform mat4 mvp; void main(){ gl_Position = mvp * vec4(p, 1.0); }';
 const FS = 'precision mediump float; uniform vec4 c; void main(){ gl_FragColor = c; }';
+/* THE LIDAR'S OWN SHADERS (2026-11-07, the owner: real physical objects should hide the shapes): each fragment's
+   distance along the camera's axis against the phone's own depth at that spot of the screen (occ, OCC_RANGE metres
+   per 255, 0 = no depth there); a fragment farther than the real surface by OCC_MARGIN is not drawn */
+export const OCC_RANGE = 20, OCC_MARGIN = 0.3;
+const VS_L = 'attribute vec3 p; uniform mat4 mvp; uniform mat4 mv; varying float ez; void main(){ ez = -(mv * vec4(p, 1.0)).z; gl_Position = mvp * vec4(p, 1.0); }';
+const FS_L = `precision mediump float; uniform vec4 c; uniform sampler2D occ; uniform float useOcc; uniform vec4 vpr; varying float ez;
+void main(){
+  if (useOcc > 0.5) {
+    vec2 uv = vec2((gl_FragCoord.x - vpr.x) / vpr.z, 1.0 - (gl_FragCoord.y - vpr.y) / vpr.w);
+    float d = texture2D(occ, uv).r * ${OCC_RANGE.toFixed(1)};
+    if (d > 0.01 && ez > d + ${OCC_MARGIN.toFixed(2)}) discard;
+  }
+  gl_FragColor = c;
+}`;
 
 function compile(gl, type, src) {
   const s = gl.createShader(type);
@@ -55,6 +69,14 @@ export function makeDrawer(gl) {
   if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog) || 'program');
   const aP = gl.getAttribLocation(prog, 'p'), uMvp = gl.getUniformLocation(prog, 'mvp'), uC = gl.getUniformLocation(prog, 'c');
   const buf = gl.createBuffer();
+  const progL = gl.createProgram();
+  gl.attachShader(progL, compile(gl, gl.VERTEX_SHADER, VS_L));
+  gl.attachShader(progL, compile(gl, gl.FRAGMENT_SHADER, FS_L));
+  gl.linkProgram(progL);
+  if (!gl.getProgramParameter(progL, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(progL) || 'program');
+  const L = { aP: gl.getAttribLocation(progL, 'p'), mvp: gl.getUniformLocation(progL, 'mvp'), mv: gl.getUniformLocation(progL, 'mv'), c: gl.getUniformLocation(progL, 'c'), occ: gl.getUniformLocation(progL, 'occ'), use: gl.getUniformLocation(progL, 'useOcc'), vpr: gl.getUniformLocation(progL, 'vpr') };
+  const occTex = gl.createTexture();
+  let occFor = null;
 
   function geometry(item) {
     const at = item.at;
@@ -72,11 +94,13 @@ export function makeDrawer(gl) {
   }
 
   /** Draw with this frame's matrices. Leaves the GL state as found. */
-  function draw({ view, proj, viewport, framebuffer = null, items = [], dots = [], statics = [] }) {
+  /** occlusion: { w, h, data: Uint8Array w*h, rows from the screen's top, OCC_RANGE m per 255 } or null */
+  function draw({ view, proj, viewport, framebuffer = null, items = [], dots = [], statics = [], occlusion = null }) {
     if (!view || !proj || (!items.length && !dots.length && !statics.length)) return;
     const was = {
       prog: gl.getParameter(gl.CURRENT_PROGRAM), buf: gl.getParameter(gl.ARRAY_BUFFER_BINDING), fb: gl.getParameter(gl.FRAMEBUFFER_BINDING),
       depth: gl.isEnabled(gl.DEPTH_TEST), blend: gl.isEnabled(gl.BLEND), cull: gl.isEnabled(gl.CULL_FACE), vp: gl.getParameter(gl.VIEWPORT), mask: gl.getParameter(gl.DEPTH_WRITEMASK),
+      unit: gl.getParameter(gl.ACTIVE_TEXTURE),
     };
     gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
     if (viewport) gl.viewport(viewport.x, viewport.y, viewport.w, viewport.h);
@@ -87,27 +111,44 @@ export function makeDrawer(gl) {
     gl.enableVertexAttribArray(aP);
     /* (2026-11-07, the owner: "neither real world objects or lidar objects block the rendered lidar, but in real life
        they do") the see-through meshes first fill the depth buffer alone, so each pixel then shows only the nearest
-       lidar surface, tinted, and the far side of the house or the shape behind it no longer shows through */
-    if (statics.some((s) => s.through && s.mesh?.n)) {
-      gl.colorMask(false, false, false, false); gl.depthMask(true);
-      for (const s of statics) {
-        if (!s.through || !s.mesh?.n) continue;
-        gl.uniformMatrix4fv(uMvp, false, s.model ? multiply(vp, s.model) : vp);
-        gl.bindBuffer(gl.ARRAY_BUFFER, s.mesh.buf);
-        gl.vertexAttribPointer(aP, 3, gl.FLOAT, false, 0, 0);
-        gl.drawArrays(gl.TRIANGLES, 0, s.mesh.n);
+       lidar surface, tinted, and the far side of the house or the shape behind it no longer shows through; and with the
+       phone's depth (occlusion) a lidar surface behind a real one is not drawn at all */
+    const lit = statics.filter((x) => x.mesh?.n);
+    if (lit.length) {
+      gl.disableVertexAttribArray(aP);
+      gl.useProgram(progL);
+      gl.enableVertexAttribArray(L.aP);
+      gl.activeTexture(gl.TEXTURE0);
+      const wasTex = gl.getParameter(gl.TEXTURE_BINDING_2D);
+      gl.bindTexture(gl.TEXTURE_2D, occTex);
+      const useOcc = !!(occlusion && occlusion.data && occlusion.w && occlusion.h);
+      if (useOcc && occFor !== occlusion) {
+        gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, occlusion.w, occlusion.h, 0, gl.LUMINANCE, gl.UNSIGNED_BYTE, occlusion.data);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        occFor = occlusion;
       }
-      gl.colorMask(true, true, true, true);
-    }
-    // then tinted, only where each is the nearest (LEQUAL against the depth just written), so what comes after draws over them
-    for (const s of statics) {
-      if (!s.mesh?.n) continue;
-      gl.uniformMatrix4fv(uMvp, false, s.model ? multiply(vp, s.model) : vp);
-      gl.uniform4fv(uC, s.color || [1, 1, 1, 0.2]);
-      gl.depthMask(!s.through);
-      gl.bindBuffer(gl.ARRAY_BUFFER, s.mesh.buf);
-      gl.vertexAttribPointer(aP, 3, gl.FLOAT, false, 0, 0);
-      gl.drawArrays(gl.TRIANGLES, 0, s.mesh.n);
+      const vpNow = viewport || { x: 0, y: 0, w: gl.drawingBufferWidth, h: gl.drawingBufferHeight };
+      gl.uniform1i(L.occ, 0); gl.uniform1f(L.use, useOcc ? 1 : 0); gl.uniform4f(L.vpr, vpNow.x, vpNow.y, vpNow.w, vpNow.h);
+      const pass = (colour) => {
+        for (const s of lit) {
+          gl.uniformMatrix4fv(L.mvp, false, s.model ? multiply(vp, s.model) : vp);
+          gl.uniformMatrix4fv(L.mv, false, s.model ? multiply(view, s.model) : view);
+          gl.uniform4fv(L.c, s.color || [1, 1, 1, 0.2]);
+          gl.depthMask(colour ? !s.through : true);
+          gl.bindBuffer(gl.ARRAY_BUFFER, s.mesh.buf);
+          gl.vertexAttribPointer(L.aP, 3, gl.FLOAT, false, 0, 0);
+          gl.drawArrays(gl.TRIANGLES, 0, s.mesh.n);
+        }
+      };
+      gl.colorMask(false, false, false, false); pass(false); gl.colorMask(true, true, true, true);
+      // then tinted, only where each is the nearest (LEQUAL against the depth just written)
+      pass(true);
+      gl.bindTexture(gl.TEXTURE_2D, wasTex);
+      gl.disableVertexAttribArray(L.aP);
+      gl.useProgram(prog);
+      gl.enableVertexAttribArray(aP);
     }
     gl.depthMask(true);
     // the pins, marks and dots stay in view whatever lidar stands before them (it may be placed wrong)
@@ -132,6 +173,7 @@ export function makeDrawer(gl) {
     }
     gl.disableVertexAttribArray(aP);
     gl.bindBuffer(gl.ARRAY_BUFFER, was.buf);
+    gl.activeTexture(was.unit);
     gl.useProgram(was.prog);
     gl.bindFramebuffer(gl.FRAMEBUFFER, was.fb);
     gl.depthMask(was.mask);
