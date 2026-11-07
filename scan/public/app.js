@@ -19,6 +19,7 @@ import { newTwin, addPoints, addPose, wantKey, addKey, flush, flushDue, liveOf }
 import { newAnchors, viewOf, noteView, nudge, pitchOf, anchorsKept, SHOW_S } from '/lib/anchors.js';
 import { surfaceOf } from '/lib/surface.js';
 import { geoReading } from '/lib/geo.js';
+import { keepPoint, viewFromSem, newSemCount, noteSem, semSummary, newCrumbs, crumbDue, addCrumb, crumbMoves } from '/lib/semantics.js';
 import { newOutbox, idbStore, memoryStore, statusText } from '/lib/outbox.js';
 import { byDistance, nearestMap, mapLabel } from '/lib/maps-pick.js';
 import { viewToFit, followView, toScreen, zoomAt as miniZoom, pan as miniPan, edgeArrow } from '/lib/minimap.js';
@@ -296,7 +297,7 @@ const log = (what) => { st.errors.push({ t: Date.now(), what }); if (st.errors.l
 async function startAR(engine) {
   const overlay = $('#overlay');
   st.walk = newWalk({ engine, phone: navigator.userAgent });
-  st.dy = null; st.dyFrom = null; st.gpsTrail = []; st.anchors = newAnchors(); st.nudge = null; st.depthFill = null; st.geoTrail = []; st.geoSeen = null;
+  st.dy = null; st.dyFrom = null; st.gpsTrail = []; st.anchors = newAnchors(); st.nudge = null; st.depthFill = null; st.geoTrail = []; st.geoSeen = null; st.sem = newSemCount(); st.lastSem = null; st.crumbs = newCrumbs();
   st.walk.checks = [];
   st.L = newLocate();
   mini.view = null; mini.mode = 'fit'; mini.locked = false; $('#arrows').innerHTML = '';
@@ -411,6 +412,7 @@ function nextTarget() {
   const first = (st.recordOnly ? want.find((p) => p.kind === 'check') : want.find((p) => p.kind === 'ref')) || want[0];
   if (first) return first;
   const me = st.ar?.pose ? mapOf(st.L, st.ar.pose.position, st.walk.odo) : null;
+  const crumbs = st.crumbs?.list.length && st.tracker?.anchorAt ? crumbMoves(st.crumbs, (h) => st.tracker.anchorAt(h)) : null;
   const refs = st.points.filter((p) => p.kind === 'ref');
   return me ? refs.slice().sort((a, b) => Math.hypot(a.map[0] - me[0], a.map[1] - me[1]) - Math.hypot(b.map[0] - me[0], b.map[1] - me[1]))[0] || null : refs[0] || null;
 }
@@ -429,6 +431,14 @@ function onFrame(f) {
   if ((f.hit?.type === 'DEPTH' || /SURFACE$/.test(f.hit?.type || '')) && f.pose) { const drop = f.pose.position.y - f.hit.position.y; if (drop > 0.8 && drop < 2.5) noteGround(L, f.hit.position.y); }
   // the depth picture as points round the phone, four times a second; then, when it is time, a match
   if (f.geo) noteGeo(f, odo);
+  if (f.sem) st.lastSem = { t: f.t, sem: f.sem };
+  // THE DRIFT LOG (bridge 2, semantics.js): an ARCore anchor every 10 m at the camera; how far ARCore has moved each
+  // by the walk's end is the drift it corrected
+  if (st.tracker?.anchors && st.tracker.engine === 'native' && st.crumbs && f.pose && f.tracking === 'normal' && crumbDue(st.crumbs, odo)) {
+    const at = { ...f.pose.position }, c = st.crumbs;
+    c.lastOdo = odo; // no second ask while this one is answered
+    st.tracker.anchor(at).then((h) => addCrumb(c, h, at, odo), () => addCrumb(c, null, at, odo));
+  }
   if (f.depthType && !w.depthType) { w.depthType = f.depthType; log(`depth: ${f.depthType}`); if (st.twin) st.twin.depthType = f.depthType; }
   // (2026-11-07) the app keeps its last depth picture until a new one is taken; read twice, its points would count as
   // seen twice (the standing rule) when they were seen once: a picture already used is skipped
@@ -437,7 +447,17 @@ function onFrame(f) {
   if (depthDue && (shot == null || shot !== st.depthShot)) {
     st.depthAt = f.t; st.depthShot = shot;
     const pts = [];
-    for (let i = 0; i < 16; i++) for (let j = 0; j < 28; j++) { const p = f.depth.at((i + 0.5) / 16, (j + 0.5) / 28); if (p) pts.push(p); }
+    // bridge 2: ARCore's label at each cell; people and cars dropped (semantics.js), the labels counted
+    const lab = f.depth.label, labC = f.depth.labelConf;
+    for (let i = 0; i < 16; i++) for (let j = 0; j < 28; j++) {
+      const x = (i + 0.5) / 16, y = (j + 0.5) / 28, p = f.depth.at(x, y);
+      const l = lab ? lab(x, y) : null, lc = l ? labC(x, y) : null;
+      if (l && st.sem) noteSem(st.sem, l, lc, f.depth.m(x, y));
+      if (!p) continue;
+      if (!keepPoint(l, lc)) { if (st.sem) st.sem.dropped++; continue; }
+      if (l) p.label = l;
+      pts.push(p);
+    }
     /* HOLES IN THE DEPTH (2026-11-07): Chrome no longer names the depth type when asked for raw alone, so the walk
        measures it. Raw depth is 0 where the runtime is not confident; smooth fills every pixel. Indoors nearly all of
        a smooth picture is within range, so a high share of holes says raw. */
@@ -470,7 +490,10 @@ function onFrame(f) {
     /* ANCHOR NUDGES (scan/lib/anchors.js): does this picture show a roofline against the sky, or pavement? After
        30 m without one, a hint to look at it; the after-the-walk placement lives on both (SCAN-H19) */
     if (grabbed?.pixels && st.anchors) {
-      const view = viewOf(grabbed.pixels, grabbed.w, grabbed.h, pitchOf(f.pose.quaternion));
+      // bridge 2: ARCore's own labels when the app sends them (semantics.js), else the page's colour test
+      const pitch = pitchOf(f.pose.quaternion);
+      const fresh = st.lastSem && f.t - st.lastSem.t < 1500;
+      const view = (fresh && viewFromSem(st.lastSem.sem, pitch)) || viewOf(grabbed.pixels, grabbed.w, grabbed.h, pitch);
       noteView(st.anchors, odo, view);
       const now = performance.now() / 1000;
       if (st.nudge && (view[st.nudge.kind] || now > st.nudge.until)) st.nudge = null;
@@ -482,6 +505,9 @@ function onFrame(f) {
       for (let i = 0; i < 24; i++) for (let j = 0; j < 40; j++) {
         const x = (i + 0.5) / 24, y = (j + 0.5) / 40, p = f.depth.at(x, y);
         if (!p) continue;
+        const l = f.depth.label ? f.depth.label(x, y) : null;
+        if (l && !keepPoint(l, f.depth.labelConf(x, y))) continue;
+        if (l) p.label = l;
         const k = (Math.min(gh - 1, Math.floor(y * gh)) * gw + Math.min(gw - 1, Math.floor(x * gw))) * 4;
         const surf = surfaceOf(pixels[k], pixels[k + 1], pixels[k + 2]);
         p.surf = surf || 'other'; pts.push(p); if (surf) st.surfCount[surf]++;
@@ -777,16 +803,17 @@ function finish() {
     }
     savePins();
   }
+  const crumbs = st.crumbs?.list.length && st.tracker?.anchorAt ? crumbMoves(st.crumbs, (h) => st.tracker.anchorAt(h)) : null;
   const refs = st.points.filter((p) => p.kind === 'ref').map((p) => ({ name: p.name, marks: L ? L.marks.filter((m) => m.id === p.id).length : 0, leftOutM: L ? r3(leftOut(L.marks.filter((m) => m.kind === 'ref'), p.id)) : null }));
   const s = summary(w, {
-    page: 'yard AR test v2', recordOnly: !!st.recordOnly, features: w.features || null, depthType: w.depthType || null, anchors: st.anchors ? anchorsKept(st.anchors) : null, depthFill: st.depthFill ? { frames: st.depthFill.frames, holes: +(st.depthFill.zero / Math.max(1, st.depthFill.cells)).toFixed(3), past8m: +(st.depthFill.far / Math.max(1, st.depthFill.cells)).toFixed(3), weak: +(st.depthFill.weak / Math.max(1, st.depthFill.cells)).toFixed(3), minConf: st.depthFill.minConf } : null, rawAsked: !!st.rawDepth, geo: geoSummary(), app: st.caps?.native ? { app: st.caps.native.app, bridge: st.caps.native.bridge, device: st.caps.native.device } : null, failed: w.failed || null, errors: st.errors.map((e) => e.what).slice(-30),
+    page: 'yard AR test v2', recordOnly: !!st.recordOnly, features: w.features || null, depthType: w.depthType || null, anchors: st.anchors ? anchorsKept(st.anchors) : null, depthFill: st.depthFill ? { frames: st.depthFill.frames, holes: +(st.depthFill.zero / Math.max(1, st.depthFill.cells)).toFixed(3), past8m: +(st.depthFill.far / Math.max(1, st.depthFill.cells)).toFixed(3), weak: +(st.depthFill.weak / Math.max(1, st.depthFill.cells)).toFixed(3), minConf: st.depthFill.minConf } : null, rawAsked: !!st.rawDepth, geo: geoSummary(), semantics: st.caps?.native ? { on: !!st.tracker?.semantics, ...(semSummary(st.sem) || {}) } : null, crumbs: crumbs ? { n: crumbs.n, held: crumbs.held, lost: crumbs.lost, refused: crumbs.refused, medianM: crumbs.medianM, maxM: crumbs.maxM, maxLevelM: crumbs.maxLevelM, worstOdo: crumbs.worstOdo } : null, app: st.caps?.native ? { app: st.caps.native.app, bridge: st.caps.native.bridge, device: st.caps.native.device } : null, failed: w.failed || null, errors: st.errors.map((e) => e.what).slice(-30),
     references: refs, checks: (w.checks || []).map((c) => ({ ...c, errorM: r3(c.errorM), errorFixM: r3(c.errorFixM), errorRefsM: r3(c.errorRefsM), walkedSinceFixM: r2(c.walkedSinceFixM), aimM: r2(c.aimM), walkedM: r2(c.walkedM) })),
     pinsNear: w.pins.map((p) => ({ name: p.name, nearest: p.nearest ? { name: p.nearest.name, m: r2(p.nearest.m), byRefsM: r2(p.nearest.byRefsM) } : null })),
     fix: L ? summaryOf(L) : null, surfaceSeen: st.surfCount || null, lidar: st.lid.ready ? { points: st.lid.ready.points, solid: st.lid.ready.solid, shift: st.lid.ready.shift, rule: st.lid.ready.rule || null, structures: st.lid.ready.structures || null, tallCells: st.lid.overlay ? st.lid.overlay.tall.length / 5 : null } : st.lid.error ? { error: st.lid.error } : null,
   });
   s.id = `${w.startedAt}`; s.saved = null;
   if (st.twin) {
-    sendTwin(flush(st.twin, Date.now(), liveOf(L, w, { ended: true, summary: s.id, recordOnly: !!st.recordOnly, points: pointsKept(), gpsTrail: trailKept(), geoTrail: geoKept(), anchors: st.anchors ? anchorsKept(st.anchors) : null })));
+    sendTwin(flush(st.twin, Date.now(), liveOf(L, w, { ended: true, summary: s.id, crumbs: crumbs ? crumbs.list : null, recordOnly: !!st.recordOnly, points: pointsKept(), gpsTrail: trailKept(), geoTrail: geoKept(), anchors: st.anchors ? anchorsKept(st.anchors) : null })));
     s.twin = { ...st.twin.counts, camera: st.twin.camera, off: st.twinUp.off };
   }
   st.twin = null;

@@ -15,12 +15,15 @@ The page talks to ARCore through one bridge, `window.LawnARNative` (`Bridge.kt`)
 - What the app does with the camera is tuned from the page (`NATIVE_OPTIONS`, `NATIVE_DEPTH` in track.js): picture
   size and rate, depth kind and confidence, Geospatial rate.
 
-## The bridge (version 1)
+## The bridge (version 2)
 
 Page to app: `info()`, `start(optionsJson)`, `stop()`, `setCross(x, y)`, `depthGrid(nx, ny, kind, minConf)`,
-`grab()`, `openExternal(url)`, `log(msg)`. App to page: `LawnARNative_onFrame(frame)` about 30 times a second
-(pose, view, projection, the crosshair's hit, Geospatial when on) and `LawnARNative_onEvent(event)` (started,
-installing, error, end).
+`grab()`, `openExternal(url)`, `log(msg)`; since version 2 `anchor(x, y, z)` (an ARCore anchor's id, or -1) and
+`dropAnchor(id)`. App to page: `LawnARNative_onFrame(frame)` about 30 times a second (pose, view, projection, the
+crosshair's hit, Geospatial when on; since version 2 `sem`, the share of the picture under each Scene Semantics label,
+and `anchors`, [[id, x, y, z, state], ...]) and `LawnARNative_onEvent(event)` (started, with `semantics` since
+version 2; installing, error, end). Since version 2 `depthGrid` also carries each cell's semantic label `l` (ARCore's
+numbers 0-11) and its confidence `lc`.
 
 What Chrome's WebXR does not give and this does: raw depth with ARCore's confidence (Chrome on the S21 ignores the
 raw request, SCAN-PLAN), the camera's own picture at the camera mode's full size, ARCore's Geospatial pose (with a

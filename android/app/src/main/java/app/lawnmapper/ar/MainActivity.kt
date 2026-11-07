@@ -129,6 +129,7 @@ class MainActivity : Activity() {
                 grabW = o.optInt("grabW", 480).coerceIn(120, 1280), jpegQ = o.optInt("jpegQ", 80).coerceIn(30, 95),
                 near = o.optDouble("near", 0.05).toFloat(), far = o.optDouble("far", 300.0).toFloat(),
                 depthEveryMs = o.optLong("depthEveryMs", 200), pictureEveryMs = o.optLong("pictureEveryMs", 700), geoEveryMs = o.optLong("geoEveryMs", 1000),
+                semEveryMs = o.optLong("semEveryMs", 500), anchorsEveryMs = o.optLong("anchorsEveryMs", 1000),
             )
             val s = Session(this)
             // the camera mode with the largest picture the phone offers (the page's pictures are cut from it)
@@ -145,22 +146,35 @@ class MainActivity : Activity() {
             var geo = o.optBoolean("geospatial", true) && BuildConfig.GEO_KEY && s.isGeospatialModeSupported(Config.GeospatialMode.ENABLED)
             var geoWhy: String? = null
             if (geo) c.geospatialMode = Config.GeospatialMode.ENABLED
+            // Scene Semantics (bridge 2): not every phone has it; outdoor pictures only
+            var sem = o.optBoolean("semantics", true) && s.isSemanticModeSupported(Config.SemanticMode.ENABLED)
+            var semWhy: String? = null
+            if (sem) c.semanticMode = Config.SemanticMode.ENABLED
+            // Geospatial and semantics are bonuses: without them the walk still runs (the reasons go to the page)
             try {
                 s.configure(c)
             } catch (e: Exception) {
-                if (!geo) throw e
-                // Geospatial is a bonus: without it the walk still runs (the reason goes to the page)
-                geo = false
-                geoWhy = e.javaClass.simpleName
-                c.geospatialMode = Config.GeospatialMode.DISABLED
-                s.configure(c)
+                if (!sem && !geo) throw e
+                try {
+                    if (!sem) throw e
+                    sem = false; semWhy = e.javaClass.simpleName
+                    c.semanticMode = Config.SemanticMode.DISABLED
+                    s.configure(c)
+                } catch (e2: Exception) {
+                    if (!geo) throw e2
+                    geo = false; geoWhy = e2.javaClass.simpleName
+                    c.geospatialMode = Config.GeospatialMode.DISABLED
+                    s.configure(c)
+                }
             }
             s.resume()
             session = s
+            engine.reset()
             engine.geoOn = geo
+            engine.semOn = sem
             engine.session = s
             val img = s.cameraConfig.imageSize
-            event("{\"type\":\"started\",\"depth\":$depth,\"geospatial\":$geo${if (geoWhy != null) ",\"geoError\":${quote(geoWhy)}" else ""},\"image\":\"${img.width}x${img.height}\"}")
+            event("{\"type\":\"started\",\"depth\":$depth,\"geospatial\":$geo${if (geoWhy != null) ",\"geoError\":${quote(geoWhy)}" else ""},\"semantics\":$sem${if (semWhy != null) ",\"semError\":${quote(semWhy)}" else ""},\"image\":\"${img.width}x${img.height}\"}")
         } catch (e: Exception) {
             session = null
             event("{\"type\":\"error\",\"message\":${quote(e.javaClass.simpleName + ": " + (e.message ?: ""))}}")
@@ -172,6 +186,7 @@ class MainActivity : Activity() {
         session = null
         engine.session = null
         engine.geoOn = false
+        engine.semOn = false
         // past the GL thread's current frame (it reads engine.session afresh each frame), then off it: closing ARCore
         // takes a second or more, and on the GL thread that froze the last camera picture on screen (owner, 2026-11-07)
         gl.queueEvent { Thread { try { s.pause(); s.close() } catch (_: Exception) { } }.start() }

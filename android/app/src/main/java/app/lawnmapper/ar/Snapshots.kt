@@ -33,6 +33,7 @@ class Affine(val ox: Float, val oy: Float, val ux: Float, val uy: Float, val vx:
 class DepthSnapshot(
     val kind: String, val w: Int, val h: Int, val mm: ShortArray, val conf: ByteArray?,
     val fx: Float, val fy: Float, val cx: Float, val cy: Float, val pose: FloatArray, val map: Affine, val t: Double,
+    val sem: SemImage? = null,
 ) {
     /**
      * A grid over the screen, nx across and ny down, row by row: each cell's world point (or null where there is no
@@ -43,6 +44,11 @@ class DepthSnapshot(
         val d = StringBuilder(nx * ny * 6)
         val c = StringBuilder(nx * ny * 4)
         var holes = 0
+        // the semantic labels at the same cells (bridge 2): the label image is taken to share the depth image's frame
+        // (both ARCore's GPU-aspect images in the camera's native orientation); the page checks it (sky cells with
+        // near depth should be few)
+        val l = if (sem != null) StringBuilder(nx * ny * 3) else null
+        val lc = if (sem != null) StringBuilder(nx * ny * 4) else null
         for (j in 0 until ny) for (i in 0 until nx) {
             val u = (i + 0.5f) / nx
             val v = (j + 0.5f) / ny
@@ -54,6 +60,13 @@ class DepthSnapshot(
             val z = (mm[k].toInt() and 0xFFFF) / 1000f
             val cf = if (conf != null) (conf[k].toInt() and 0xFF) else 255
             if (p.isNotEmpty()) { p.append(','); d.append(','); c.append(',') }
+            if (sem != null && l != null && lc != null) {
+                if (l.isNotEmpty()) { l.append(','); lc.append(',') }
+                val sxp = min(sem.w - 1, max(0, floor(map.s(u, v) * sem.w).toInt()))
+                val syp = min(sem.h - 1, max(0, floor(map.t(u, v) * sem.h).toInt()))
+                val sk = syp * sem.w + sxp
+                l.append(sem.labels[sk].toInt() and 0xFF); lc.append(sem.conf[sk].toInt() and 0xFF)
+            }
             d.append(if (z > 0f) r3(z) else "0")
             c.append(cf)
             if (z <= 0f) holes++
@@ -67,9 +80,14 @@ class DepthSnapshot(
             val wz = pose[2] * ax + pose[6] * ay + pose[10] * az + pose[14]
             p.append(r3(wx)).append(',').append(r3(wy)).append(',').append(r3(wz))
         }
-        return "{\"kind\":\"$kind\",\"nx\":$nx,\"ny\":$ny,\"w\":$w,\"h\":$h,\"t\":$t,\"holes\":$holes,\"p\":[$p],\"d\":[$d],\"c\":[$c]}"
+        val semPart = if (l != null && lc != null) ",\"l\":[$l],\"lc\":[$lc]" else ""
+        return "{\"kind\":\"$kind\",\"nx\":$nx,\"ny\":$ny,\"w\":$w,\"h\":$h,\"t\":$t,\"holes\":$holes,\"p\":[$p],\"d\":[$d],\"c\":[$c]$semPart}"
     }
 }
+
+/** A semantic picture copied off the frame: ARCore's label (0 unlabeled, 1 sky, 2 building, 3 tree, 4 road,
+ *  5 sidewalk, 6 terrain, 7 structure, 8 object, 9 vehicle, 10 person, 11 water) and its confidence, per pixel. */
+class SemImage(val w: Int, val h: Int, val labels: ByteArray, val conf: ByteArray)
 
 /** A camera picture's planes, copied off the frame, waiting to be turned into what the page wants. */
 class RawPicture(

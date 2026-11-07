@@ -27,7 +27,8 @@ class Bridge(private val a: MainActivity) {
 
     /**
      * Start ARCore with the page's options (JSON, all optional): { grabW, jpegQ, near, far, depthEveryMs,
-     * pictureEveryMs, geoEveryMs, depth: true, geospatial: true, planes: true }. Answers at once; how it went comes
+     * pictureEveryMs, geoEveryMs, semEveryMs, anchorsEveryMs, depth: true, geospatial: true, semantics: true,
+     * planes: true }. Answers at once; how it went comes
      * as an event.
      */
     @JavascriptInterface
@@ -46,6 +47,17 @@ class Bridge(private val a: MainActivity) {
         val d = if (kind == "smooth") a.engine.depthSmooth else a.engine.depthRaw ?: a.engine.depthSmooth
         return d?.gridJson(nx.coerceIn(1, 200), ny.coerceIn(1, 400), minConf) ?: "null"
     }
+
+    /**
+     * Bridge 2: an ARCore anchor at a session point; answers its id at once (made with the next frame), or -1 when too
+     * many are held. Where ARCore puts each anchor comes with the frames: "anchors": [[id, x, y, z, state], ...].
+     */
+    @JavascriptInterface
+    fun anchor(x: Float, y: Float, z: Float): Int = a.engine.askAnchor(x, y, z)
+
+    /** Bridge 2: let an anchor go (ARCore stops spending on it). */
+    @JavascriptInterface
+    fun dropAnchor(id: Int) { a.engine.dropAnchor(id) }
 
     /** The latest camera picture as the screen shows it (Picture.json): RGBA and JPEG, base64; null when none yet. */
     @JavascriptInterface

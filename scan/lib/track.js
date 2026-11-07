@@ -393,7 +393,9 @@ export function nativeInfo() {
 }
 
 /** What the app is asked for (Bridge.start): the picture's width and quality, how often depth, pictures, Geospatial. */
-export const NATIVE_OPTIONS = { grabW: 480, jpegQ: 80, depthEveryMs: 200, pictureEveryMs: 700, geoEveryMs: 1000, depth: true, geospatial: true, planes: true };
+export const NATIVE_OPTIONS = { grabW: 480, jpegQ: 80, depthEveryMs: 200, pictureEveryMs: 700, geoEveryMs: 1000, semEveryMs: 500, anchorsEveryMs: 1000, depth: true, geospatial: true, semantics: true, planes: true };
+/** ARCore's Scene Semantics labels by their number (developers.google.com/ar/reference/c/group/ar-semantics). */
+export const SEM_LABELS = ['unlabeled', 'sky', 'building', 'tree', 'road', 'sidewalk', 'terrain', 'structure', 'object', 'vehicle', 'person', 'water'];
 /** The depth the page reads: raw (holes where ARCore is unsure), points kept at this confidence (0..1) and up. */
 /* minConf (2026-11-07): 0.4 kept 8,462 points on the owner's 387 ft outdoor walk against 100,000+ on Chrome walks of
    the kind; outdoors most of raw depth's far cells are low-confidence. 0.2, and the walk counts what it drops. */
@@ -411,6 +413,9 @@ export function depthFromGrid(g, near = 0.4, far = 8) {
     at: (x, y) => { const k = cell(x, y), d = g.d[k], px = g.p[k * 3]; return px != null && d >= near && d <= far ? { x: px, y: g.p[k * 3 + 1], z: g.p[k * 3 + 2] } : null; },
     m: (x, y) => g.d[cell(x, y)],
     conf: (x, y) => (g.c ? g.c[cell(x, y)] / 255 : null),
+    // bridge 2: ARCore's semantic label at the cell (SEM_LABELS) and its confidence 0..1; null without semantics
+    label: g.l ? (x, y) => SEM_LABELS[g.l[cell(x, y)]] ?? 'unlabeled' : null,
+    labelConf: g.lc ? (x, y) => g.lc[cell(x, y)] / 255 : null,
   };
 }
 
@@ -420,7 +425,10 @@ async function startNative({ canvas, onFrame, onEvent, nativeOptions = {}, nativ
   const opt = { ...NATIVE_OPTIONS, ...nativeOptions }, dep = { ...NATIVE_DEPTH, ...nativeDepth };
   document.documentElement.classList.add('native-ar'); // the page goes see-through over the app's camera
   const gl = canvas.getContext('webgl', { alpha: true, premultipliedAlpha: true, antialias: true });
-  let live = true, label = null, started = false;
+  let live = true, label = null, started = false, semantics = false;
+  // bridge 2: anchors by id, and where ARCore last put each (the frames carry them about once a second)
+  const anchorsOn = (nativeInfo()?.bridge ?? 0) >= 2 && typeof N.anchor === 'function';
+  const anchorPos = new Map();
   const size = () => { const r = window.devicePixelRatio || 1, w = Math.round(canvas.clientWidth * r), h = Math.round(canvas.clientHeight * r); if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; } };
   N.setCross(CROSS.x, CROSS.y);
   const ready = new Promise((resolve, reject) => {
@@ -428,6 +436,7 @@ async function startNative({ canvas, onFrame, onEvent, nativeOptions = {}, nativ
       if (e.type === 'started') {
         started = true;
         label = e.depth ? `${dep.kind} (the app, ARCore, confidence ${dep.minConf} and up)` : 'none';
+        semantics = !!e.semantics;
         onEvent?.({ type: 'native', ...e });
         resolve();
       } else if (e.type === 'error' || e.type === 'installing') {
@@ -449,8 +458,10 @@ async function startNative({ canvas, onFrame, onEvent, nativeOptions = {}, nativ
     let grid;
     const depth = fr.depth ? (() => {
       const get = () => (grid === undefined ? (grid = (() => { try { return depthFromGrid(JSON.parse(N.depthGrid(dep.nx, dep.ny, dep.kind, Math.round(dep.minConf * 255)))); } catch { return null; } })()) : grid);
-      return { at: (x, y) => get()?.at(x, y) ?? null, m: (x, y) => get()?.m(x, y) ?? NaN, conf: (x, y) => get()?.conf(x, y) ?? null, minConf: dep.minConf, shot: () => get()?.t ?? null };
+      return { at: (x, y) => get()?.at(x, y) ?? null, m: (x, y) => get()?.m(x, y) ?? NaN, conf: (x, y) => get()?.conf(x, y) ?? null, minConf: dep.minConf, shot: () => get()?.t ?? null,
+        label: (x, y) => get()?.label?.(x, y) ?? null, labelConf: (x, y) => get()?.labelConf?.(x, y) ?? null };
     })() : null;
+    if (fr.anchors) for (const [id, x, y, z, state] of fr.anchors) anchorPos.set(id, { x, y, z, state });
     const pose = fr.pose ? { position: { x: fr.pose.p[0], y: fr.pose.p[1], z: fr.pose.p[2] }, quaternion: { x: fr.pose.q[0], y: fr.pose.q[1], z: fr.pose.q[2], w: fr.pose.q[3] } } : null;
     const hit = fr.hit ? { position: { x: fr.hit.p[0], y: fr.hit.p[1], z: fr.hit.p[2] }, type: fr.hit.type, distance: fr.hit.d, plane: null } : null;
     onFrame({
@@ -458,6 +469,7 @@ async function startNative({ canvas, onFrame, onEvent, nativeOptions = {}, nativ
       gl, framebuffer: null, viewport: { x: 0, y: 0, w: canvas.width, h: canvas.height },
       view: fr.view ? new Float32Array(fr.view) : null, proj: fr.proj ? new Float32Array(fr.proj) : null,
       geo: fr.geo || null,
+      sem: fr.sem || null, // bridge 2: the share of the picture under each label
       grab: () => {
         let g;
         try { g = JSON.parse(N.grab()); } catch { return null; }
@@ -471,8 +483,11 @@ async function startNative({ canvas, onFrame, onEvent, nativeOptions = {}, nativ
   await ready;
   const info = nativeInfo() || {};
   return {
-    engine: 'native', features: ['native', `app ${info.app || '?'}`, `bridge ${info.bridge ?? '?'}`], depth: true, get depthType() { return label; }, anchors: false, info,
+    engine: 'native', features: ['native', `app ${info.app || '?'}`, `bridge ${info.bridge ?? '?'}`], depth: true, get depthType() { return label; }, get semantics() { return semantics; }, anchors: anchorsOn, info,
+    // the same two calls as WebXR's: an anchor's handle (the app's id) or null; where ARCore now puts it, or null
+    anchor: async (p) => { if (!anchorsOn || !live) return null; const id = N.anchor(p.x, p.y, p.z); return id > 0 ? id : null; },
+    anchorAt: (id) => { const a = anchorPos.get(id); return a && a.state !== 2 ? { x: a.x, y: a.y, z: a.z } : null; },
+    dropAnchor: (id) => { if (anchorsOn) { try { N.dropAnchor(id); } catch { /* gone */ } anchorPos.delete(id); } },
     stop: () => { try { N.stop(); } catch { /* gone */ } },
-    anchor: async () => null, anchorAt: () => null,
   };
 }

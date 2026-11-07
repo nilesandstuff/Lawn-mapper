@@ -3,15 +3,21 @@ package app.lawnmapper.ar
 import android.opengl.GLES20
 import android.opengl.GLSurfaceView
 import android.view.Surface
+import com.google.ar.core.Anchor
 import com.google.ar.core.Coordinates2d
 import com.google.ar.core.DepthPoint
 import com.google.ar.core.Frame
 import com.google.ar.core.Plane
 import com.google.ar.core.Point
+import com.google.ar.core.Pose
+import com.google.ar.core.SemanticLabel
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingState
 import java.nio.ByteOrder
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 import kotlin.math.roundToInt
@@ -26,6 +32,7 @@ class ArEngine(private val send: (String) -> Unit) : GLSurfaceView.Renderer {
     class Options(
         var grabW: Int = 480, var jpegQ: Int = 80, var near: Float = 0.05f, var far: Float = 300f,
         var depthEveryMs: Long = 200, var pictureEveryMs: Long = 700, var geoEveryMs: Long = 1000,
+        var semEveryMs: Long = 500, var anchorsEveryMs: Long = 1000,
     )
 
     @Volatile var session: Session? = null
@@ -39,7 +46,32 @@ class ArEngine(private val send: (String) -> Unit) : GLSurfaceView.Renderer {
     private var lastRawImageTs = 0L
     @Volatile var picture: Picture? = null
     @Volatile var geoOn = false
+    // ARCore's Scene Semantics (bridge 2): a label for each pixel of an outdoor picture, read with the depth
+    @Volatile var semOn = false
     @Volatile private var inFlight = false
+
+    /* ANCHORS (bridge 2): the page asks for one at a session point and gets its id at once; it is made on this thread
+       with the next frame, and every anchorsEveryMs the frame carries where ARCore now puts each one. ARCore moves an
+       anchor when it corrects its own map, so the moves are its drift, admitted. */
+    private val anchors = ConcurrentHashMap<Int, Anchor>()
+    private val anchorAsks = ConcurrentLinkedQueue<Pair<Int, FloatArray>>()
+    private val anchorDrops = ConcurrentLinkedQueue<Int>()
+    private val nextAnchor = AtomicInteger(1)
+    private var lastAnchors = 0L
+    private var lastSem = 0L
+    private var semJson: String? = null
+    private var anchorsJson: String? = null
+
+    /** An anchor asked for at a session point; its id, or -1 when too many are held (the page drops old ones). */
+    fun askAnchor(x: Float, y: Float, z: Float): Int {
+        if (anchors.size + anchorAsks.size >= MAX_ANCHORS) return -1
+        val id = nextAnchor.getAndIncrement()
+        anchorAsks.add(id to floatArrayOf(x, y, z))
+        return id
+    }
+    fun dropAnchor(id: Int) { anchorDrops.add(id) }
+    /** A new session: the old one's anchors died with it. */
+    fun reset() { anchors.clear(); anchorAsks.clear(); anchorDrops.clear(); lastRawImageTs = 0L; depthRaw = null; depthSmooth = null }
 
     private val bg = BackgroundRenderer()
     private val worker = Executors.newSingleThreadExecutor()
@@ -86,6 +118,9 @@ class ArEngine(private val send: (String) -> Unit) : GLSurfaceView.Renderer {
         if (tracking && now - lastDepth >= options.depthEveryMs) { lastDepth = now; snapDepth(frame) }
         if (tracking && !pictureBusy && now - lastPicture >= options.pictureEveryMs) { lastPicture = now; snapPicture(frame) }
         if (geoOn && now - lastGeo >= options.geoEveryMs) { lastGeo = now; geoJson = geo(s) }
+        if (semOn && now - lastSem >= options.semEveryMs) { lastSem = now; semJson = semShares(frame) }
+        if (tracking) anchorWork(s)
+        if ((anchors.isNotEmpty()) && now - lastAnchors >= options.anchorsEveryMs) { lastAnchors = now; anchorsJson = anchorPoses() }
         if (inFlight) return
         inFlight = true
         send(frameJson(frame, tracking))
@@ -110,6 +145,8 @@ class ArEngine(private val send: (String) -> Unit) : GLSurfaceView.Renderer {
         }
         sb.append(",\"depth\":").append(depthRaw != null || depthSmooth != null)
         geoJson?.let { sb.append(",\"geo\":").append(it); geoJson = null }
+        semJson?.let { sb.append(",\"sem\":").append(it); semJson = null }
+        anchorsJson?.let { sb.append(",\"anchors\":").append(it); anchorsJson = null }
         sb.append('}')
         return sb.toString()
     }
@@ -162,7 +199,7 @@ class ArEngine(private val send: (String) -> Unit) : GLSurfaceView.Renderer {
                 for (y in 0 until h) { cb.position(y * cp.rowStride); cb.get(conf, y * w, w) }
             }
             val sx = w.toFloat() / dims[0]; val sy = h.toFloat() / dims[1]
-            return DepthSnapshot(kind, w, h, mm, conf, f[0] * sx, f[1] * sy, c[0] * sx, c[1] * sy, pose, map, t)
+            return DepthSnapshot(kind, w, h, mm, conf, f[0] * sx, f[1] * sy, c[0] * sx, c[1] * sy, pose, map, t, if (semOn) semantics(frame) else null)
         }
         var raw = false
         try {
@@ -178,6 +215,55 @@ class ArEngine(private val send: (String) -> Unit) : GLSurfaceView.Renderer {
         if (!raw) try {
             frame.acquireDepthImage16Bits().use { img -> depthSmooth = make("smooth", img, null) }
         } catch (_: Exception) { }
+    }
+
+    /** The frame's semantic labels and their confidence, copied off (256 wide; ARCore's own label numbers 0..11). */
+    private fun semantics(frame: Frame): SemImage? = try {
+        frame.acquireSemanticImage().use { img ->
+            frame.acquireSemanticConfidenceImage().use { ci ->
+                val w = img.width; val h = img.height
+                fun copy(im: android.media.Image): ByteArray {
+                    val pl = im.planes[0]; val b = pl.buffer; val out = ByteArray(w * h)
+                    for (y in 0 until h) { b.position(y * pl.rowStride); b.get(out, y * w, w) }
+                    return out
+                }
+                SemImage(w, h, copy(img), copy(ci))
+            }
+        }
+    } catch (_: Exception) { null }
+
+    /** The share of the latest semantic picture under each label that matters here. */
+    private fun semShares(frame: Frame): String? = try {
+        val sb = StringBuilder("{")
+        for ((k, l) in SEM_LABELS) {
+            if (sb.length > 1) sb.append(',')
+            sb.append('"').append(k).append("\":").append(r3(frame.getSemanticLabelFraction(l)))
+        }
+        sb.append('}').toString()
+    } catch (_: Exception) { null }
+
+    /** The anchors asked for and dropped since the last frame (here, on the GL thread, where ARCore wants them). */
+    private fun anchorWork(s: Session) {
+        while (true) {
+            val (id, p) = anchorAsks.poll() ?: break
+            try { anchors[id] = s.createAnchor(Pose.makeTranslation(p[0], p[1], p[2])) } catch (_: Exception) { }
+        }
+        while (true) {
+            val id = anchorDrops.poll() ?: break
+            anchors.remove(id)?.let { try { it.detach() } catch (_: Exception) { } }
+        }
+    }
+
+    /** [[id, x, y, z, state], ...]: state 0 tracking, 1 paused, 2 stopped for good. */
+    private fun anchorPoses(): String {
+        val sb = StringBuilder("[")
+        for ((id, a) in anchors) {
+            val p = a.pose
+            val st = when (a.trackingState) { TrackingState.TRACKING -> 0; TrackingState.PAUSED -> 1; else -> 2 }
+            if (sb.length > 1) sb.append(',')
+            sb.append('[').append(id).append(',').append(r3(p.tx())).append(',').append(r3(p.ty())).append(',').append(r3(p.tz())).append(',').append(st).append(']')
+        }
+        return sb.append(']').toString()
     }
 
     private fun snapPicture(frame: Frame) {
@@ -210,5 +296,15 @@ class ArEngine(private val send: (String) -> Unit) : GLSurfaceView.Renderer {
         return "{\"state\":\"ENABLED\",\"lat\":${g.latitude},\"lng\":${g.longitude},\"alt\":${r3(g.altitude.toFloat())}," +
             "\"hacc\":${r3(g.horizontalAccuracy.toFloat())},\"vacc\":${r3(g.verticalAccuracy.toFloat())}," +
             "\"yawAcc\":${r3(g.orientationYawAccuracy.toFloat())},\"eus\":[${q[0]},${q[1]},${q[2]},${q[3]}]}"
+    }
+
+    companion object {
+        const val MAX_ANCHORS = 64
+        val SEM_LABELS = listOf(
+            "sky" to SemanticLabel.SKY, "building" to SemanticLabel.BUILDING, "tree" to SemanticLabel.TREE,
+            "road" to SemanticLabel.ROAD, "sidewalk" to SemanticLabel.SIDEWALK, "terrain" to SemanticLabel.TERRAIN,
+            "structure" to SemanticLabel.STRUCTURE, "object" to SemanticLabel.OBJECT, "vehicle" to SemanticLabel.VEHICLE,
+            "person" to SemanticLabel.PERSON,
+        )
     }
 }

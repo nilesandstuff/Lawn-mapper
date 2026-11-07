@@ -1419,7 +1419,12 @@ the time and place. The camera's own pictures say more (which ground is sunlit a
 
 ### Road map (owner, 2026-11-07; not started unless marked)
 
-Bridge 2 (one new APK, page work after it is site deploys):
+Bridge 2 (one new APK, page work after it is site deploys). BUILT 2026-11-07 (items 1-3 and the drift log; not yet
+measured on a walk): scan/lib/semantics.js, the app's anchor() / dropAnchor() and labelled depth grid. People and
+cars (ARCore sure) are dropped from the points; the nudges use the label shares when the app sends them; the walk
+keeps the label shares, a check that the labels sit right on the depth (sky cells with near depth), and the drift
+log (an anchor every 10 m; how far ARCore moved each). Unknown from Google's docs: how the label image sits on the
+screen; it is taken to share the depth image's frame, and that check says whether it does.
   1. Scene semantics on the depth grid: each depth sample's label and confidence; the share of sky, building, road and
      sidewalk per picture.
   2. Anchors through the bridge: the pins anchored in the app as they are in Chrome, and a drift log of anchors along
