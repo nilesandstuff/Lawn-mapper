@@ -395,7 +395,9 @@ export function nativeInfo() {
 /** What the app is asked for (Bridge.start): the picture's width and quality, how often depth, pictures, Geospatial. */
 export const NATIVE_OPTIONS = { grabW: 480, jpegQ: 80, depthEveryMs: 200, pictureEveryMs: 700, geoEveryMs: 1000, depth: true, geospatial: true, planes: true };
 /** The depth the page reads: raw (holes where ARCore is unsure), points kept at this confidence (0..1) and up. */
-export const NATIVE_DEPTH = { kind: 'raw', minConf: 0.4, nx: 48, ny: 84 };
+/* minConf (2026-11-07): 0.4 kept 8,462 points on the owner's 387 ft outdoor walk against 100,000+ on Chrome walks of
+   the kind; outdoors most of raw depth's far cells are low-confidence. 0.2, and the walk counts what it drops. */
+export const NATIVE_DEPTH = { kind: 'raw', minConf: 0.2, nx: 48, ny: 84 };
 
 const b64bytes = (s) => { const bin = atob(s); const u = new Uint8ClampedArray(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; };
 
@@ -407,6 +409,7 @@ export function depthFromGrid(g, near = 0.4, far = 8) {
     kind: g.kind,
     at: (x, y) => { const k = cell(x, y), d = g.d[k], px = g.p[k * 3]; return px != null && d >= near && d <= far ? { x: px, y: g.p[k * 3 + 1], z: g.p[k * 3 + 2] } : null; },
     m: (x, y) => g.d[cell(x, y)],
+    conf: (x, y) => (g.c ? g.c[cell(x, y)] / 255 : null),
   };
 }
 
@@ -445,7 +448,7 @@ async function startNative({ canvas, onFrame, onEvent, nativeOptions = {}, nativ
     let grid;
     const depth = fr.depth ? (() => {
       const get = () => (grid === undefined ? (grid = (() => { try { return depthFromGrid(JSON.parse(N.depthGrid(dep.nx, dep.ny, dep.kind, Math.round(dep.minConf * 255)))); } catch { return null; } })()) : grid);
-      return { at: (x, y) => get()?.at(x, y) ?? null, m: (x, y) => get()?.m(x, y) ?? NaN };
+      return { at: (x, y) => get()?.at(x, y) ?? null, m: (x, y) => get()?.m(x, y) ?? NaN, conf: (x, y) => get()?.conf(x, y) ?? null, minConf: dep.minConf };
     })() : null;
     const pose = fr.pose ? { position: { x: fr.pose.p[0], y: fr.pose.p[1], z: fr.pose.p[2] }, quaternion: { x: fr.pose.q[0], y: fr.pose.q[1], z: fr.pose.q[2], w: fr.pose.q[3] } } : null;
     const hit = fr.hit ? { position: { x: fr.hit.p[0], y: fr.hit.p[1], z: fr.hit.p[2] }, type: fr.hit.type, distance: fr.hit.d, plane: null } : null;

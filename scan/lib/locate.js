@@ -12,6 +12,7 @@
  */
 import { level, levelDist } from './frames.js';
 import { apply, unapply, fitAt } from './align.js';
+import { geoPrior, geoFit } from './geo.js';
 
 export const FIX_REACH = 20;   // m of walk a lidar fix stands for
 export const VOX = 0.2;        // m: the phone's depth points kept one to a cell this size
@@ -216,25 +217,31 @@ export function holdAt(L, odo) {
   return h && odo - h.odo1 <= HOLD_REACH ? h : null;
 }
 
-/** The fit for a moment: the held lidar fit; else the references'; else null. */
-export function fitFor(L, odo) {
+/** The fit for a moment: the held lidar fit; else the references'; else Street View's, when ARCore is sure of it
+ *  (L.geo, the latest reading: geo.js; live only, so a walk replayed afterwards never has it); else null. */
+export function fitFor(L, odo, now = Date.now()) {
   const h = holdAt(L, odo);
-  return h ? h.T : refFit(L, odo);
+  return h ? h.T : refFit(L, odo) || geoFit(L.geo, now);
 }
-/** Which the fit came from: 'fix', 'refs' or null. */
-export function fitSource(L, odo) {
+/** Which the fit came from: 'fix', 'refs', 'geo' or null. */
+export function fitSource(L, odo, now = Date.now()) {
   if (holdAt(L, odo)) return 'fix';
-  return refFit(L, odo) ? 'refs' : null;
+  if (refFit(L, odo)) return 'refs';
+  return geoFit(L.geo, now) ? 'geo' : null;
 }
 
-/** Where to start the next search: the last fix (a small search), the references (a wider one), or GPS (any turn). */
+/** Where to start the next search: the last fix (a small search), the references (a wider one), Street View (its
+ *  turn and place when ARCore is sure of both, else its place; geo.js), or GPS (any turn). Street View goes before
+ *  GPS unless GPS says it is the closer of the two. */
 export function priorFor(L, odo, now = Date.now()) {
   const h = holdAt(L, odo);
   if (h) return { T: h.T, searchM: 1.5, searchDeg: 6, from: 'the last fix' };
   const ref = refFit(L, odo);
   if (ref) return { T: ref, searchM: 6, searchDeg: 25, from: 'the references' }; // as wide as the references are trusted
-  if (L.gps && now - L.gps.t < 30000) return { at: L.gps.at, phone: L.gps.phone, radiusM: Math.max(6, Math.min(20, L.gps.acc * 1.5)), from: 'GPS' };
-  return null;
+  const gps = L.gps && now - L.gps.t < 30000 ? { at: L.gps.at, phone: L.gps.phone, radiusM: Math.max(6, Math.min(20, L.gps.acc * 1.5)), from: 'GPS' } : null;
+  const geo = geoPrior(L.geo, now);
+  if (geo && (!gps || geo.T || L.geo.hacc <= L.gps.acc)) return geo;
+  return gps;
 }
 
 /** Is it time to ask, and with what? pos: the camera's session position now. -> { id, stand, ground, prior, s } or { why } */
@@ -244,7 +251,7 @@ export function nextAsk(L, odo, now = Date.now(), pos = null) {
   const { stand, ground, high, surface } = recent(L, odo);
   if (stand.length + high.length < MIN_STAND) return { why: `the camera has ${stand.length + high.length} points on walls, fences, bushes, trunks or a roof's edge within 25 ft (${MIN_STAND} wanted): look round, or look up at the gutters` };
   const prior = priorFor(L, odo, now);
-  if (!prior) return { why: 'waiting for GPS (or two references) to start from' };
+  if (!prior) return { why: 'waiting for GPS, Street View or two references to start from' };
   const id = L.nextId++;
   L.pending = { id, odo, from: prior.from, at: now, phone: pos ? level(pos) : null, refs: refFit(L, odo), stand: stand.length, ground: ground.length, high: high.length, surface: surface.length };
   L.lastAsk = now; L.asks++;
@@ -360,6 +367,7 @@ export function status(L, odo) {
   const h = holdAt(L, odo);
   if (src === 'fix') return `You are here (lidar fix held ${Math.round(Math.abs(odo - h.odo0))} m, last vouched for ${Math.round(Math.abs(odo - h.odo1))} m ago)`;
   if (src === 'refs') return `Lined up by ${refMarks(L).length} reference mark${refMarks(L).length === 1 ? '' : 's'}; no lidar fix${L.last?.why ? ` (${L.last.why})` : ''}`;
+  if (src === 'geo') return `Placed by Street View (within ${Math.round(L.geo.hacc * 3.281)} ft, ${Math.round(L.geo.yawAcc)}° by ARCore's own reckoning); no lidar fix yet${L.last?.why ? ` (${L.last.why})` : ''}`;
   return `Not placed yet: mark two references, or look round at the house and fences${L.last?.why ? ` (${L.last.why})` : ''}`;
 }
 

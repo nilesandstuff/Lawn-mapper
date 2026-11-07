@@ -25,6 +25,7 @@ export function memoryStore() {
   return {
     kind: 'memory',
     put: async (x) => { m.set(x.id, x); },
+    get: async (id) => m.get(id) ?? null,
     del: async (id) => { m.delete(id); },
     all: async () => [...m.values()].sort((a, b) => a.at - b.at),
   };
@@ -51,6 +52,7 @@ export async function idbStore(name = 'yard-ar', table = 'outbox') {
   return {
     kind: 'phone',
     put: (x) => tx('readwrite', (s) => s.put(x)),
+    get: async (id) => (await tx('readonly', (s) => s.get(id))) ?? null,
     del: (id) => tx('readwrite', (s) => s.delete(id)),
     all: async () => ((await tx('readonly', (s) => s.getAll())) || []).sort((a, b) => a.at - b.at),
   };
@@ -63,6 +65,15 @@ export async function idbStore(name = 'yard-ar', table = 'outbox') {
 export function newOutbox({ store, send, onChange = () => {}, now = () => Date.now(), sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
   const st = { pending: 0, bytes: 0, walks: 0, sending: false, waitingMs: 0, sent: 0, sentBytes: 0, dropped: 0, off: null, lastError: null, store: store.kind };
   let running = false, kickAgain = false, seq = 0;
+  /* (2026-11-07, the owner's first outdoor walk in the app: its pins and its Street View trail never reached the
+     bucket) a part written again while its older copy waited in this round's list, or was on its way, must not be
+     deleted when the older copy lands: live.json is rewritten every few seconds and at the walk's end, and the end's
+     copy, the one with everything, was deleted as "sent". Only the copy that went is taken off the phone. */
+  const settle = async (item) => {
+    const cur = store.get ? await store.get(item.id) : item;
+    if (!cur || cur.at === item.at) await store.del(item.id);
+    else kickAgain = true;
+  };
   const emit = async () => {
     try {
       const all = await store.all();
@@ -85,8 +96,8 @@ export function newOutbox({ store, send, onChange = () => {}, now = () => Date.n
         for (const item of all) {
           let r;
           try { r = await send(item); } catch (e) { r = 'retry'; st.lastError = e?.message || 'no connection'; }
-          if (r === 'ok') { await store.del(item.id); st.sent++; st.sentBytes += sizeOf(item.body); st.lastError = null; backoff = 0; await emit(); continue; }
-          if (r === 'drop') { await store.del(item.id); st.dropped++; await emit(); continue; }
+          if (r === 'ok') { await settle(item); st.sent++; st.sentBytes += sizeOf(item.body); st.lastError = null; backoff = 0; await emit(); continue; }
+          if (r === 'drop') { await settle(item); st.dropped++; await emit(); continue; }
           if (r === 'off') { st.off = item.offWhy || 'the site cannot take uploads'; break; }
           failed = true; break; // 'retry': wait, then start again from the oldest
         }

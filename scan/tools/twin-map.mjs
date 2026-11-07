@@ -25,6 +25,8 @@ async function main() {
   const otherMeta = JSON.parse((await readObject(BUCKET, `twins/${from}/meta.json`))?.toString() || '{}');
   const otherLive = JSON.parse((await readObject(BUCKET, `twins/${from}/live.json`))?.toString() || '{}');
   const said = [];
+  // what the walk's own live.json holds, counts only (2026-11-07: the walk's last copy had been lost by the outbox)
+  said.push(`its live.json ${live.ended ? 'is the walk\'s last' : 'is NOT the walk\'s last (ended not set)'}, ${(live.pins || []).length} pins, ${(live.geoTrail || []).length} Street View readings, ${(live.gpsTrail || []).length} GPS readings, walked ${Math.round(live.odo ?? 0)} m`);
   if (!meta.map) {
     if (!otherMeta.map) throw new Error('that walk names no map either');
     meta.map = otherMeta.map; said.push("the map from the other walk");

@@ -1328,3 +1328,41 @@ time the page opens if the app was closed; the page and the HUD say what waits. 
 Not yet measured: whether raw depth (confidence 0.4 and up, NATIVE_DEPTH) makes the ground fit better than Chrome's
 smooth depth (SCAN-H21: 72-75% within 15 cm), and how far the Geospatial pose is off on the owner's lot. Not yet
 built: ARCore's session recording (an MP4 of the walk for replay in the runners), a bridge 2 call.
+
+### SCAN-H23. The first outdoor app walk: its last copy never left the phone; Street View now starts the live search (2026-11-07)
+
+The walk (the owner's lot, 3 min, 387 ft, app 1.5, no map open: the app had no picker yet; two pins on check
+points) was given its map afterwards from another walk (workflow S, task place, `mapfrom`) and placed from its
+pictures. MEASURED: the map arrived (6 references and check points), but the walk's live.json in the bucket held 0
+pins and 0 Street View readings, while its summary had 2 pins. So nothing could be scored: no Geospatial accuracy,
+no "which check points", no error at the pins. The pictures alone placed it with two places about as good (the best
+2.0 apart in log-likelihood; under ~10 is a toss-up), from 14 pictures, 4 with sky; only 551 pavement cells were
+seen (1,000 wanted for brightness).
+
+WHY (found, and proven by a test that fails on the old code): the outbox deleted a part by name once it was sent.
+live.json is rewritten every few seconds and once more at the walk's end; when the end's copy was written while an
+older copy was on its way, or waited in the same round's list, the older copy's success deleted the newer one. The
+end's copy, the one with everything, was lost on the phone. Fixed: only the copy that went is removed
+(scan/lib/outbox.js settle; scan/test/outbox.test.js). The pins and the Street View trail of that walk are gone.
+
+Also on that walk: raw depth with confidence 0.4 and up kept 8,462 points where Chrome walks of the kind kept
+100,000+. NATIVE_DEPTH.minConf is now 0.2, and the walk counts the share of depth samples dropped under the cut
+(walks: "under confidence 0.2, dropped").
+
+STREET VIEW LIVE (the owner: "If it's accurate, use it live. Or atleast use it to narrow the fix from other
+sources"). scan/lib/geo.js turns each Geospatial reading into a whole placement: the place from lat/lng, the turn
+from the East-Up-South orientation against the session's own for the same frame (eus * conj(session), read off the
+session's x axis). How it is used, by ARCore's own accuracy figures, which are its estimates and NOT YET MEASURED
+here:
+  - within 5 m and 12 degrees: the lidar search starts from Street View's placement, searched 2 x its accuracy
+    (1.5-6 m, 6-25 degrees), before GPS;
+  - within 20 m but unsure of the heading: its place only, any turn, as GPS (GPS goes first when it says it is
+    closer);
+  - within 2 m and 5 degrees, with no lidar fix and no references: the page draws with it ("Placed by Street View");
+  - a reading older than 10 s is not used. A walk replayed afterwards never has it (twin.js), so the replays are
+    unchanged.
+The walk's summary keeps the readings' count, median and best accuracy, how long Earth took to track, the frames it
+waited and in what state, and how many searches started from Street View (walks: "street view:").
+
+Next: an outdoor walk at the owner's lot with the map open (the picker opens it by the phone's place) and pins on
+check points. That gives Street View's accuracy against the check points and whether its starts help the live fix.

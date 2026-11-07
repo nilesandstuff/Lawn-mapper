@@ -18,6 +18,7 @@ import { leftOut, mapToSession } from '/lib/align.js';
 import { newTwin, addPoints, addPose, wantKey, addKey, flush, flushDue, liveOf } from '/lib/twin.js';
 import { newAnchors, viewOf, noteView, nudge, pitchOf, anchorsKept, SHOW_S } from '/lib/anchors.js';
 import { surfaceOf } from '/lib/surface.js';
+import { geoReading } from '/lib/geo.js';
 import { newOutbox, idbStore, memoryStore, statusText } from '/lib/outbox.js';
 import { byDistance, nearestMap, mapLabel } from '/lib/maps-pick.js';
 import { viewToFit, followView, toScreen, zoomAt as miniZoom, pan as miniPan, edgeArrow } from '/lib/minimap.js';
@@ -295,7 +296,7 @@ const log = (what) => { st.errors.push({ t: Date.now(), what }); if (st.errors.l
 async function startAR(engine) {
   const overlay = $('#overlay');
   st.walk = newWalk({ engine, phone: navigator.userAgent });
-  st.dy = null; st.dyFrom = null; st.gpsTrail = []; st.anchors = newAnchors(); st.nudge = null; st.depthFill = null; st.geoTrail = [];
+  st.dy = null; st.dyFrom = null; st.gpsTrail = []; st.anchors = newAnchors(); st.nudge = null; st.depthFill = null; st.geoTrail = []; st.geoSeen = null;
   st.walk.checks = [];
   st.L = newLocate();
   mini.view = null; mini.mode = 'fit'; mini.locked = false; $('#arrows').innerHTML = '';
@@ -348,9 +349,28 @@ const trailKept = () => (st.gpsTrail || []).map((g) => ({ at: g.at.map((v) => +v
 /* ARCORE'S GEOSPATIAL POSE (the app, when built with a key): Street View's place and heading for the phone, with its
    accuracies, beside the session's own place then; one a second at most. Kept in the walk's private twin only. */
 const geoKept = () => (st.geoTrail || []).map((g) => ({ ...g }));
+/** For the walk's summary: how many readings, ARCore's median accuracies, how long Earth waited; no places. */
+function geoSummary() {
+  const tr = st.geoTrail || [], seen = st.geoSeen;
+  if (!tr.length && !seen) return null;
+  const med = (k) => { const a = tr.map((g) => g[k]).filter(Number.isFinite).sort((x, y) => x - y); return a.length ? +a[a.length >> 1].toFixed(1) : null; };
+  const best = (k) => { const a = tr.map((g) => g[k]).filter(Number.isFinite); return a.length ? +Math.min(...a).toFixed(1) : null; };
+  return { n: tr.length, hacc: med('hacc'), yawAcc: med('yawAcc'), bestHacc: best('hacc'), bestYawAcc: best('yawAcc'), firstS: seen?.firstS ?? null, waiting: seen?.waiting ?? 0, states: seen?.states || {}, used: st.L ? (st.L.log || []).filter((e) => /Street View/.test(e.from || '')).length : null };
+}
 function noteGeo(f, odo) {
   const g = f.geo;
-  if (!g || g.state !== 'ENABLED' || !f.pose) return;
+  if (!g || !f.pose) return;
+  // (2026-11-07) Earth can be ENABLED and still not tracking (no Street View yet, or none here): the app then sends the
+  // state alone. Counted, so the walk says how long Street View took or that it never came
+  const seen = (st.geoSeen ||= { tracking: 0, waiting: 0, states: {} });
+  if (g.state !== 'ENABLED' || ![g.lat, g.lng, g.hacc].every(Number.isFinite)) {
+    const k = g.state === 'ENABLED' ? 'on, not yet tracking' : g.state || '?'; // the app (bridge 1) sends Earth's state alone then
+    seen.waiting++; seen.states[k] = (seen.states[k] || 0) + 1; return;
+  }
+  seen.tracking++;
+  if (seen.firstS == null && st.walk) seen.firstS = Math.round((Date.now() - st.walk.startedAt) / 1000);
+  // live: the latest reading on the map, for the lidar search's start and, when ARCore is sure, the placement (geo.js)
+  if (st.L && st.origin) { const r = geoReading(g, f.pose, st.origin); if (r) { r.t = Date.now(); st.L.geo = r; } }
   const tr = (st.geoTrail ||= []), last = tr[tr.length - 1];
   if (last && f.t - last.tms < 1000) return;
   const p = f.pose.position;
@@ -418,9 +438,14 @@ function onFrame(f) {
        measures it. Raw depth is 0 where the runtime is not confident; smooth fills every pixel. Indoors nearly all of
        a smooth picture is within range, so a high share of holes says raw. */
     if (f.depth.m) {
-      const df = (st.depthFill ||= { frames: 0, cells: 0, zero: 0, far: 0 });
+      const df = (st.depthFill ||= { frames: 0, cells: 0, zero: 0, far: 0, weak: 0, minConf: f.depth.minConf ?? null });
       df.frames++;
-      for (let i = 0; i < 8; i++) for (let j = 0; j < 14; j++) { const d = f.depth.m((i + 0.5) / 8, (j + 0.5) / 14); df.cells++; if (d === 0) df.zero++; else if (d > 8) df.far++; }
+      for (let i = 0; i < 8; i++) for (let j = 0; j < 14; j++) {
+        const x = (i + 0.5) / 8, y = (j + 0.5) / 14, d = f.depth.m(x, y); df.cells++;
+        if (d === 0) df.zero++; else if (d > 8) df.far++;
+        // depth given but under the app's confidence cut (the app's grids only): dropped
+        if (d > 0 && f.depth.conf && f.depth.minConf != null) { const c = f.depth.conf(x, y); if (c != null && c < f.depth.minConf) df.weak++; }
+      }
     }
     addDepth(L, pts, odo, f.pose.position, { standing: false }); // standing points come from the colour pass below
     if (st.twin) addPoints(st.twin, Date.now(), odo, pts, L.groundY);
@@ -750,7 +775,7 @@ function finish() {
   }
   const refs = st.points.filter((p) => p.kind === 'ref').map((p) => ({ name: p.name, marks: L ? L.marks.filter((m) => m.id === p.id).length : 0, leftOutM: L ? r3(leftOut(L.marks.filter((m) => m.kind === 'ref'), p.id)) : null }));
   const s = summary(w, {
-    page: 'yard AR test v2', recordOnly: !!st.recordOnly, features: w.features || null, depthType: w.depthType || null, anchors: st.anchors ? anchorsKept(st.anchors) : null, depthFill: st.depthFill ? { frames: st.depthFill.frames, holes: +(st.depthFill.zero / Math.max(1, st.depthFill.cells)).toFixed(3), past8m: +(st.depthFill.far / Math.max(1, st.depthFill.cells)).toFixed(3) } : null, rawAsked: !!st.rawDepth, geo: st.geoTrail?.length ? { n: st.geoTrail.length, hacc: +st.geoTrail.map((g) => g.hacc).sort((a, b) => a - b)[st.geoTrail.length >> 1].toFixed(1), yawAcc: +st.geoTrail.map((g) => g.yawAcc).sort((a, b) => a - b)[st.geoTrail.length >> 1].toFixed(1) } : null, app: st.caps?.native ? { app: st.caps.native.app, bridge: st.caps.native.bridge, device: st.caps.native.device } : null, failed: w.failed || null, errors: st.errors.map((e) => e.what).slice(-30),
+    page: 'yard AR test v2', recordOnly: !!st.recordOnly, features: w.features || null, depthType: w.depthType || null, anchors: st.anchors ? anchorsKept(st.anchors) : null, depthFill: st.depthFill ? { frames: st.depthFill.frames, holes: +(st.depthFill.zero / Math.max(1, st.depthFill.cells)).toFixed(3), past8m: +(st.depthFill.far / Math.max(1, st.depthFill.cells)).toFixed(3), weak: +(st.depthFill.weak / Math.max(1, st.depthFill.cells)).toFixed(3), minConf: st.depthFill.minConf } : null, rawAsked: !!st.rawDepth, geo: geoSummary(), app: st.caps?.native ? { app: st.caps.native.app, bridge: st.caps.native.bridge, device: st.caps.native.device } : null, failed: w.failed || null, errors: st.errors.map((e) => e.what).slice(-30),
     references: refs, checks: (w.checks || []).map((c) => ({ ...c, errorM: r3(c.errorM), errorFixM: r3(c.errorFixM), errorRefsM: r3(c.errorRefsM), walkedSinceFixM: r2(c.walkedSinceFixM), aimM: r2(c.aimM), walkedM: r2(c.walkedM) })),
     pinsNear: w.pins.map((p) => ({ name: p.name, nearest: p.nearest ? { name: p.nearest.name, m: r2(p.nearest.m), byRefsM: r2(p.nearest.byRefsM) } : null })),
     fix: L ? summaryOf(L) : null, surfaceSeen: st.surfCount || null, lidar: st.lid.ready ? { points: st.lid.ready.points, solid: st.lid.ready.solid, shift: st.lid.ready.shift, rule: st.lid.ready.rule || null, structures: st.lid.ready.structures || null, tallCells: st.lid.overlay ? st.lid.overlay.tall.length / 5 : null } : st.lid.error ? { error: st.lid.error } : null,

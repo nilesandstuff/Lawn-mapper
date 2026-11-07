@@ -58,5 +58,32 @@ const settle = async (n = 20) => { for (let i = 0; i < n; i++) await tick(); };
   ob.kick(); await settle();
   assert.deepEqual(got, ['old']);
 }
+// (2026-11-07) a part written again while its older copy is on its way: the newer copy is not deleted with it, and goes
+{
+  const store = memoryStore(), got = []; let ob;
+  ob = newOutbox({ store, sleep: async () => {}, send: async (p) => {
+    got.push(p.body);
+    if (p.body === '{"v":1}') await ob.add('w5', 'live.json', 'application/json', '{"v":2,"ended":true}'); // the walk ends meanwhile
+    return 'ok';
+  } });
+  await ob.add('w5', 'live.json', 'application/json', '{"v":1}');
+  await settle(60);
+  assert.deepEqual(got, ['{"v":1}', '{"v":2,"ended":true}'], 'the end\'s copy goes too');
+  assert.equal((await store.all()).length, 0);
+}
+// and one replaced while it waited in the round's list behind another part
+{
+  const store = memoryStore(), got = []; let ob;
+  ob = newOutbox({ store, sleep: async () => {}, send: async (p) => {
+    got.push(`${p.name}:${p.body}`);
+    if (p.name === 'key-0000.jpg') await ob.add('w6', 'live.json', 'application/json', 'B');
+    return 'ok';
+  } });
+  await store.put({ id: 'w6/key-0000.jpg', walk: 'w6', name: 'key-0000.jpg', type: 'image/jpeg', body: 'J', at: 1 });
+  await store.put({ id: 'w6/live.json', walk: 'w6', name: 'live.json', type: 'application/json', body: 'A', at: 2 });
+  ob.kick(); await settle(60);
+  assert.deepEqual(got, ['key-0000.jpg:J', 'live.json:A', 'live.json:B']);
+  assert.equal((await store.all()).length, 0);
+}
 assert.equal(sizeOf('abc'), 3); assert.equal(sizeOf(new ArrayBuffer(10)), 10); assert.equal(sizeOf(null), 0);
 console.log('outbox: ok');
