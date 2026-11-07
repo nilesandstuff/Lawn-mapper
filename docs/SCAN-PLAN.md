@@ -1484,3 +1484,32 @@ degrees in twin parts was this session's own rule, wider than the owner's. Twin 
 the Street View readings in degrees with ARCore's East-Up-South turn, and the map's metres beside them when a map is
 open; the site no longer refuses degrees there. Walk summaries still refuse them, as the walk listing prints them in
 the public workflow logs; the tools print counts only (CLAUDE.md, "Addresses and coordinates").
+
+## 12. Match what the camera should see, not where points fall on a plan (owner, 2026-11-07)
+
+The owner, from a screenshot of the live view: the roof was drawn flat (fixed the same day: the drawing took each
+row's highest cell), and "neither real world objects or lidar objects block the rendered lidar, but in real life
+they do... maybe that's part of why lidar matching is so bad... The matching isn't considering the things that the
+camera should actually be able to see... loosen the match on individual features while putting more emphasis on
+the overall arrangement of features... Seeing a wall, a hill, and a few trees can tell you exactly where you're
+standing". And on tall roofs: "looking up the roof may show you the true peak, it might show the eaves, or it might
+show a lower peak. That's why the opacity thing matters so much."
+
+HARD (read from the code, 2026-11-07): the live match (scan/lib/lidar.js placementCost) is a plan-view match. Each
+phone point is moved by the candidate placement and charged by how far it lands, ON THE MAP, from a wall, a tree or a
+fence outline (and high points from the roof's edge); heights enter only through the ground's offset. It never asks
+what the model says the camera could see from that spot. So a point on a ridge seen from below is charged against
+the roof's edge, the far side of anything costs the same as the near side, and the yard's many similar walls and
+fences give "two places fit about as well" (32 of 66 asks on the 434 ft walk, SCAN-H24).
+
+SPECULATION, to be measured: render-and-compare. For a candidate placement, cast the camera's rays through the
+model (a 2.5D grid of column heights: the ground, buildings with their roof shapes, canopies as soft), take the
+first surface each ray meets, and compare that depth picture with the phone's own depth picture, cell by cell;
+sky in the model against sky in the picture (the skyline study already does that part, after the walk, and placed
+walks to about 5 ft alone). Occlusion comes free, and so does the arrangement: one picture is scored whole, not
+point by point. ARCore's labels weight it: building and ground cells counted hard, tree cells loosely (crowns move
+and change by season), cars and people dropped.
+
+Order: build it first after the walk, on the GitHub runner, where walks with check points give the truth and it
+can be scored beside the present placement; port it to the live match (WebGL renders small depth pictures quickly)
+only if it wins.
