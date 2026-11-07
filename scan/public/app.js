@@ -376,10 +376,9 @@ function noteGeo(f, odo) {
   const tr = (st.geoTrail ||= []), last = tr[tr.length - 1];
   if (last && f.t - last.tms < 1000) return;
   const p = f.pose.position;
-  /* (2026-11-07) kept in the map's local metres and the turn it implies, never in degrees: the site refuses a twin part
-     with "lat"/"lng" in it (src/twin.js leaks), and it refused every live.json of the owner's walks once Street View
-     tracked, the pins and trails with them. With no map open there is no place to keep, only the accuracies. */
-  tr.push({ tms: f.t, at: r ? r.at.map((v) => +v.toFixed(2)) : null, theta: r ? +r.theta.toFixed(5) : null, alt: g.alt, hacc: g.hacc, vacc: g.vacc, yawAcc: g.yawAcc, phone: [+p.x.toFixed(3), +(-p.z).toFixed(3)], y: +p.y.toFixed(3), odo: +odo.toFixed(1) });
+  /* Kept in degrees, as ARCore gives them (absolute: they mean the same with any map or none; the private bucket only,
+     the owner, 2026-11-07), with the East-Up-South turn, and beside them the map's metres and turn when a map is open */
+  tr.push({ tms: f.t, lat: g.lat, lng: g.lng, alt: g.alt, hacc: g.hacc, vacc: g.vacc, yawAcc: g.yawAcc, eus: g.eus, at: r ? r.at.map((v) => +v.toFixed(2)) : null, theta: r ? +r.theta.toFixed(5) : null, phone: [+p.x.toFixed(3), +(-p.z).toFixed(3)], y: +p.y.toFixed(3), odo: +odo.toFixed(1) });
   if (tr.length > 5000) tr.shift();
 }
 

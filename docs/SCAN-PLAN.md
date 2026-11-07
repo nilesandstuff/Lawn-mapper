@@ -1477,3 +1477,10 @@ MEASURED:
     label image's height matches the display's aspect ratio, so it is taken to be upright like the screen while the
     depth lies landscape; app 1.8 reads it by screen position when the shapes differ, and says which it did. Until
     then the page uses no label by position (the share-of-picture nudges were unaffected).
+
+Correction to the fix above (owner, 2026-11-07: "I never signed off on that restriction. I just didn't want the gps
+for my own house, or work, in the very public github files... i think we should use coordinates"). The refusal of
+degrees in twin parts was this session's own rule, wider than the owner's. Twin parts (the private bucket) now keep
+the Street View readings in degrees with ARCore's East-Up-South turn, and the map's metres beside them when a map is
+open; the site no longer refuses degrees there. Walk summaries still refuse them, as the walk listing prints them in
+the public workflow logs; the tools print counts only (CLAUDE.md, "Addresses and coordinates").

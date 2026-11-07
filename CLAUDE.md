@@ -175,6 +175,12 @@ What still stays out:
   - the owner's own lot, named in any way (say "the owner's lot");
   - a user's address quoted from a lookup.
 
+Private storage is not the repository (owner, 2026-11-07: "I just didn't want the gps for my own house, or work,
+in the very public github files"). Coordinates may be kept in the sites' private buckets and databases (the yard
+AR walks' twins hold the Street View trail in degrees). Workflow LOGS are public with the repository: they print
+counts and distances, never coordinates, and anything printed whole in a log (the scan walks' summaries) holds
+none.
+
 ## One map, every tool: docs/MAPS.md
 
 Since 2026-10-16 every saved map lives on the server (signed out: a guest

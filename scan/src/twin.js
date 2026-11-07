@@ -10,6 +10,10 @@
  *   DELETE /api/scan/twin?walk=         the walk's twin, all of it
  *
  * The admin only, every method. Never printed by any workflow: a twin holds yard pictures and the yard's shape.
+ *
+ * Coordinates in degrees are allowed here (the owner, 2026-11-07: "I just didn't want the gps for my own house, or
+ * work, in the very public github files"): the bucket is private and the tools that read it print counts only. The
+ * walks' summaries (src/walks.js) still refuse them, because the walk listing prints those in public workflow logs.
  */
 
 const json = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
@@ -28,8 +32,6 @@ export function checkPart(walk, part) {
   return { walk, part };
 }
 
-/** Text parts hold no degrees and no address (the same rule as a walk's results). */
-export const leaks = (text) => /"(lng|lat|latitude|longitude|address)"/.test(text);
 
 export async function twin(request, env, url, { isAdmin }) {
   const p = url.pathname;
@@ -59,7 +61,6 @@ export async function twin(request, env, url, { isAdmin }) {
     if (!part) return json({ error: 'which part?' }, 400);
     const body = await request.arrayBuffer();
     if (body.byteLength > MAX_PART) return json({ error: `a part is at most ${MAX_PART} bytes` }, 413);
-    if (part.endsWith('.json') && leaks(new TextDecoder().decode(body))) return json({ error: 'a twin holds no coordinates in degrees or addresses' }, 400);
     await env.TWIN.put(keyOf(walk, part), body, { httpMetadata: { contentType: typeOf(part) } });
     return json({ ok: true, walk, part, bytes: body.byteLength });
   }

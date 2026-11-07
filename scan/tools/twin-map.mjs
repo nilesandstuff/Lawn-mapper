@@ -35,8 +35,8 @@ async function main() {
   if (!(live.gpsTrail || []).length && (live.geoTrail || []).length) {
     const m = await readMap(meta.map);
     const origin = [m.lng, m.lat];
-    // readings keep the map's metres (`at`, since 2026-11-07); the first app builds' degrees are read if any survive
-    live.gpsTrail = live.geoTrail.filter((g) => (Array.isArray(g.at) || Number.isFinite(g.lat)) && Number.isFinite(g.hacc)).map((g) => ({ at: (g.at || toLocal(origin, [g.lng, g.lat])).map((v) => +v.toFixed(2)), phone: g.phone, acc: Math.max(1, +g.hacc), odo: g.odo, src: 'geospatial' }));
+    // degrees first (absolute, against this map's origin); the map metres a reading carried when degrees are missing
+    live.gpsTrail = live.geoTrail.filter((g) => (Number.isFinite(g.lat) || Array.isArray(g.at)) && Number.isFinite(g.hacc)).map((g) => ({ at: (Number.isFinite(g.lat) ? toLocal(origin, [g.lng, g.lat]) : g.at).map((v) => +v.toFixed(2)), phone: g.phone, acc: Math.max(1, +g.hacc), odo: g.odo, src: 'geospatial' }));
     const acc = live.gpsTrail.map((g) => g.acc).sort((a, b) => a - b);
     said.push(`a trail from ${live.gpsTrail.length} Geospatial readings (median accuracy ${acc.length ? acc[acc.length >> 1].toFixed(1) : '-'} m)`);
   }

@@ -102,7 +102,7 @@ const url = (p) => new URL(`https://scan.example.com${p}`);
   assert.equal(r.status, 200);
   assert.equal((await r.json()).walks.length, 1);
 }
-// the walks' twins (src/twin.js): parts in R2, admin only, named strictly, no degrees in the JSON
+// the walks' twins (src/twin.js): parts in R2, admin only, named strictly; degrees allowed (private bucket)
 {
   const { twin, checkPart, typeOf } = await import('../src/twin.js');
   const { listed } = await import('../tools/r2.mjs');
@@ -128,8 +128,8 @@ const url = (p) => new URL(`https://scan.example.com${p}`);
   assert.equal(r.status, 200); assert.equal((await r.json()).bytes, 12);
   r = await call(env('admin'), 'PUT', '/api/scan/twin', '?walk=w1&part=live.json', JSON.stringify({ fixes: [], marks: [{ map: [1, 2] }] }));
   assert.equal(r.status, 200);
-  r = await call(env('admin'), 'PUT', '/api/scan/twin', '?walk=w1&part=meta.json', JSON.stringify({ lat: 42 }));
-  assert.equal(r.status, 400, 'degrees refused');
+  r = await call(env('admin'), 'PUT', '/api/scan/twin', '?walk=w1&part=live.json', JSON.stringify({ geoTrail: [{ lat: 42.1, lng: -71.2, hacc: 4 }] }));
+  assert.equal(r.status, 200, 'degrees kept: the bucket is private (owner, 2026-11-07)');
   r = await call(env('admin'), 'PUT', '/api/scan/twin', '?walk=w1&part=evil.html', 'x');
   assert.equal(r.status, 400, 'only twin parts');
   await call(env('admin'), 'PUT', '/api/scan/twin', '?walk=w2&part=key-0000.jpg', new Uint8Array([255, 216, 255]).buffer);
