@@ -168,6 +168,10 @@ SPECULATION), as always.
 
 ## Done
 
+- **The heat view** (owner, 2026-11-07): Heat on the map's views: the ground's 24-hour energy against open lawn,
+  the night sky's pull, the trees' cooling of the air, by month, a tapped spot's own breakdown (lib/heat.js, H80).
+  Found and fixed on the way: the live plans had run without the shade since 2026-11-04 midday (H80).
+
 - **Tree trunks** (owner, 2026-11-04: "Yes let's do tree roots. A pre requisite to that is knowing where tree
   trunks are"): lib/trunks.js, from the shade map's crowns (unchanged) plus the stem returns 0.5-3 m up under
   each crown (H78). Trunks drawn on the water map (solid: a stem seen; hollow: the crown's top). The readings

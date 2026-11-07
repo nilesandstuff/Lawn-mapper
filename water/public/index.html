@@ -127,11 +127,13 @@
       <button type="button" data-view="drains">Drains and water</button>
       <button type="button" data-view="slope">Slope</button>
       <button type="button" data-view="wind">Wind</button>
+      <button type="button" data-view="heat">Heat</button>
       <button type="button" data-view="sprinklers">Sprinklers</button>
     </div>
     <div style="margin-top:6px">
       <label class="toggle"><input type="checkbox" id="show-hard" checked> roofs and paving</label>
       <label class="toggle"><input type="checkbox" id="show-photo" checked> photo</label>
+      <span id="heat-sub" hidden><label class="toggle"><input type="radio" name="heatview" value="ground" checked> ground, day and night</label><label class="toggle"><input type="radio" name="heatview" value="night"> night sky</label><label class="toggle"><input type="radio" name="heatview" value="air"> air</label><label class="toggle">in <select id="heat-month" aria-label="Month"><option value="3">April</option><option value="4">May</option><option value="5">June</option><option value="6" selected>July</option><option value="7">August</option><option value="8">September</option><option value="9">October</option></select></label></span>
       <span id="sprinkler-sub" hidden><label class="toggle"><input type="radio" name="sprview" value="arcs" checked> arcs</label><label class="toggle"><input type="radio" name="sprview" value="cover" id="show-coverage"> how evenly they water</label></span>
     </div>
     <div class="legend" id="legend"></div>

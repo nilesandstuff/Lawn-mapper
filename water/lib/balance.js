@@ -415,6 +415,7 @@ export function buildModel(res, { kinds, soilAt, soils, roofTo, light = null, li
     });
   }
   const model = { g, N, kinds, soilAt, soils, roofTo, light, lightMonths: lightMonths?.length === 12 ? lightMonths : null, canopy, winds, windAt, windAtMonths, order, down, recv, share, nRecv, slope, pondCap, taw, raw, pTex, satRoom, drainDay, rootCm, tawFull: Float32Array.from(taw), heat, etBase, params };
+  model.edgeHeat = heat; // the paving and walls' heat alone, per cell (the heat view, lib/heat.js)
   model.rad = radiation ? radiationModel(radiation, N, params) : null;
   model.fenceHeat = radiation && fenceHeat ? fenceHeat : null;
   model.etFactor = etToday(model, null, false, new Float32Array(N));

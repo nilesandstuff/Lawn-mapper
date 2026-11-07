@@ -2534,6 +2534,29 @@ alone). Scored against lib/trunks.js on the owner's lot (Kent 2016 cloud, leaf-o
 For the tree-root draw this is enough: its disc runs to about twice the crown radius (H40), 10-20 m here, so a
 1-2 m error in the trunk moves its edge little.
 
+### H80. The heat view; and the live plans ran WITHOUT the shade from 2026-11-04 midday to 2026-11-07 (water session, 2026-11-07)
+
+THE SHADE WAS OFF. Commit 881aa60 (2026-11-04, passing the summer photo's green to the shade map's light worker)
+read `r.green` inside analyse.js lawnLight, where no `r` exists; the ReferenceError was caught by the shade step's
+retry and the plan went on "taken as in full sun" with only a line in its trouble list. Every water plan opened from
+then until this fix (site.green, set beside site.cloudSeason) had no trees, buildings, sky view, fences' heat, tree
+cooling or yard wind. Found while building the heat view (its sun term was 0 everywhere). The trouble line now names
+the error. The 2026-11-04 readings check (H76: rho 0.31) and the trunk scores (H79) were run before it or do not use
+the shade, and stand.
+THE HEAT VIEW (owner: "a view that represents the overall push and pull of the various factors that affect soil
+temps and air temps"), lib/heat.js, test/heat.test.js: no new physics, a read-out of the balance's own terms for a
+typical day of a chosen month (the ten years' days of it), each lawn square against open lawn: sun (visible and
+near-infrared through what stands over it, less turf's reflection), sky (FAO-56's net longwave, in proportion to the
+sky not seen), fences (H49), paving (S8's edge heat as the energy of the extra water it drives off), net; the night
+loss to the sky as the spot's own; and the air's afternoon cooling from trees (H43). On the owner's lot in July:
+the open lawn absorbs 200 W/m2 of sunshine (24-hour mean) and loses 39 W/m2 to the sky; across the traced lawn the
+sun term is a median -52 W/m2 (5th-95th -159 to -20), the sky +12 (+5.9 to +30), paving 0 (to +6.1), net -38 (-129
+to -13); the air -0.3 C (-0.5 to -0.2). October: sun -23, sky +8.9, net -13 W/m2. So on this lot no square of lawn is
+open lawn: the trees round it take more sun than they keep heat from the sky, every month shown.
+NIGHT COOLING (the owner: "if nighttime cooling from radiation is not affected by cloud cover and humidity, it
+should be"): it is, through FAO-56 eq. 39 (vapour pressure and the day's sunshine against a clear day's); the test
+checks it falls in damper air and under cloud. Its limit: night cloud is read from the day's sunshine, not measured.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge

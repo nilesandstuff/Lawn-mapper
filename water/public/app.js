@@ -222,6 +222,8 @@ function overlay(d, v, { hard = true } = {}) {
     } else if (v === 'wind' && p?.windJuly && kind === 1 && d.lawnMask?.[i]) {
       const w = p.windJuly[i];
       if (Number.isFinite(w)) rgba = WIND_STEPS.find(([lim]) => w < lim)[1];
+    } else if (v === 'heat' && kind === 1 && view.heat?.data) { // the lawn: the shade map works out the light there only
+      rgba = heatRgba(view.heat, i);
     } else if (v === 'slope' && ground && (!mine || mine[i])) {
       const sl = slope[i];
       if (Number.isFinite(sl)) { const step = SLOPE_STEPS.find(([lim]) => sl < lim); if (step[1][3]) rgba = step[1]; }
@@ -347,13 +349,13 @@ function draw2d() {
   }
   // tree trunks (lib/trunks.js): brown, solid where a stem was seen under the crown, hollow where the crown's top stands in;
   // and the trunks marked on the readings page, as brown crosses (the admin's ground truth)
-  for (const t of view.data?.trunks || []) {
+  if (mapView === 'heat') for (const t of view.data?.trunks || []) { // the trees' trunks: on the heat view only (2026-11-07)
     const [x, y] = toPx(frame, photo, [t.x, t.y]);
     g.strokeStyle = '#fff'; g.lineWidth = lw * 0.5; g.fillStyle = '#6d4c41';
     g.beginPath(); g.arc(x, y, lw * 1.4, 0, 7);
     if (t.how === 'stem') { g.fill(); g.stroke(); } else { g.stroke(); g.strokeStyle = '#6d4c41'; g.lineWidth = lw * 0.5; g.beginPath(); g.arc(x, y, lw * 0.9, 0, 7); g.stroke(); }
   }
-  for (const v of view.moisture || []) for (const m of v.marks || []) {
+  if (mapView === 'heat') for (const v of view.moisture || []) for (const m of v.marks || []) {
     const [x, y] = at([m.lng, m.lat]), r = lw * 1.6;
     g.strokeStyle = '#3e2723'; g.lineWidth = lw * 0.7; g.beginPath(); g.moveTo(x - r, y - r); g.lineTo(x + r, y + r); g.moveTo(x - r, y + r); g.lineTo(x + r, y - r); g.stroke();
   }
@@ -1129,8 +1131,9 @@ async function run(site) {
       else if (data.done) resolve(data.done);
       else if (data.planProgress) { $('#saved').textContent = data.planProgress; busy('plan', data.planProgress); }
       else if (data.valvePlan) { const w = valveAsk.waiting.get(data.valvePlan.id); valveAsk.waiting.delete(data.valvePlan.id); if (w) { if (data.valvePlan.error) w.reject(new Error(data.valvePlan.error)); else w.resolve(data.valvePlan); } }
+      else if (data.heat) { heatIn(data.heat); }
       else if (data.groundwaterError) { view.groundwaterError = data.groundwaterError; }
-      else if (data.plan) { idle('plan'); if (!view.hillIn) busy('hill', 'Reading the land round the lawn (water from uphill)…'); view.plan = data.plan; needScale(); heads.planIn?.(); $('#saved').textContent = savedNote; if (!heads.active) planReport(data.plan); else moistureCard(data.plan); legend(); draw(); }
+      else if (data.plan) { view.heat = null; if (mapView === 'heat') askHeat(); idle('plan'); if (!view.hillIn) busy('hill', 'Reading the land round the lawn (water from uphill)…'); view.plan = data.plan; needScale(); heads.planIn?.(); $('#saved').textContent = savedNote; if (!heads.active) planReport(data.plan); else moistureCard(data.plan); legend(); draw(); }
       else if (data.planError) { idle('plan'); idle('hill'); $('#saved').textContent = `The watering plan could not be worked out: ${data.planError}`; }
       else if (data.hill) { view.hillIn = true; idle('hill'); hillReport(data.hill); }
       else if (data.streams) { streamsReport(data.streams); }
@@ -1348,6 +1351,12 @@ stageEl.addEventListener('click', (ev) => { // on the stage: it holds the pointe
     legend(); draw();
     return;
   }
+  if (!mode && mapView === 'heat' && view.heat?.data && view.data) {
+    const i = cellAt(tapAt(ev));
+    view.heat.picked = i >= 0 && view.plan?.kinds?.[i] === 1 ? i : null; // the lawn only: the light is worked out there
+    legend(); draw();
+    return;
+  }
   if (!mode || !view.data) return;
   const p = tapAt(ev);
   if (mode === 'from') { setMode('to'); pending = p; draw(); return; }
@@ -1450,6 +1459,92 @@ function needScale() {
   view.need = { lo: v[Math.floor(v.length * 0.05)], hi: v[Math.floor(v.length * 0.95)] };
 }
 
+/* THE HEAT VIEW (owner, 2026-11-07: "a view that represents the overall push and pull of the various factors that
+   affect soil temps and air temps... You can show air and heat seperately if you have to"). lib/heat.js works out a
+   month's energy terms per spot in the worker, from the plan's own model; here they are drawn and explained:
+   the ground (the 24-hour energy each spot gets against the open lawn, warmer red, cooler blue), the night sky (what
+   each spot loses to the sky, the open the most) and the air (the trees' cooling of a sunny afternoon). */
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+let heatAsk = 0;
+function askHeat() {
+  const month = Number($('#heat-month').value);
+  if (!running || !view.plan) return;
+  if (view.heat?.month === month && (view.heat.data || view.heat.waiting)) return;
+  view.heat = { month, waiting: ++heatAsk, data: null, picked: null };
+  busy('heat', `Working out the heat in ${MONTHS[month]}…`);
+  running.postMessage({ heat: { month, id: heatAsk } });
+}
+function heatIn(h) {
+  if (!view.heat || h.id !== view.heat.waiting) return;
+  idle('heat');
+  if (h.error) { view.heat = { ...view.heat, waiting: 0, error: h.error }; legend(); return; }
+  view.heat = { ...view.heat, waiting: 0, data: h };
+  view.heatScale = null;
+  legend(); draw();
+}
+const heatMode = () => document.querySelector('[name=heatview]:checked')?.value || 'ground';
+/** the colour scale of the mode shown: the lawn's own spread (95th percentile), so a small yard's contrasts show */
+function heatScale(H) {
+  if (view.heatScale?.mode === heatMode() && view.heatScale.month === H.month) return view.heatScale;
+  const m = heatMode(), d = H.data, lawn = view.plan?.kinds;
+  const arr = m === 'ground' ? d.ground.net : m === 'night' ? d.night : d.air;
+  const vals = [];
+  for (let i = 0; i < arr.length; i++) if ((!lawn || lawn[i] === 1) && Number.isFinite(arr[i])) vals.push(m === 'night' ? arr[i] : Math.abs(arr[i]));
+  vals.sort((a, b) => a - b);
+  const q = (f) => (vals.length ? vals[Math.min(vals.length - 1, Math.floor(vals.length * f))] : 0);
+  view.heatScale = m === 'night' ? { mode: m, month: H.month, lo: q(0.05), hi: Math.max(q(0.95), q(0.05) + 1) } : { mode: m, month: H.month, max: Math.max(m === 'air' ? 0.1 : 5, q(0.95)) };
+  return view.heatScale;
+}
+function heatRgba(H, i) {
+  const m = heatMode(), d = H.data, sc = heatScale(H);
+  if (H.picked === i) return [255, 255, 255, 255];
+  if (m === 'night') {
+    // more lost to the sky: deeper blue
+    const t = Math.max(0, Math.min(1, (d.night[i] - sc.lo) / (sc.hi - sc.lo)));
+    return [Math.round(227 - 214 * t), Math.round(242 - 171 * t), Math.round(253 - 92 * t), 190];
+  }
+  const v = m === 'ground' ? d.ground.net[i] : d.air[i];
+  const t = Math.max(-1, Math.min(1, v / sc.max));
+  if (Math.abs(t) < 0.04) return [245, 245, 245, 110];
+  return t > 0 ? [Math.round(250 - 20 * t), Math.round(235 - 190 * t), Math.round(220 - 200 * t), 200] : [Math.round(235 + 200 * t), Math.round(240 + 110 * t), 250, 200];
+}
+/** the grid cell under a [lng, lat], or -1 */
+function cellAt([lng, lat]) {
+  const d = view.data; if (!d?.grid) return -1;
+  const { W, H, bbox } = d.grid, dx = d.shift.east / d.grid.k, dy = d.shift.north / d.grid.k;
+  const [x, y] = toMerc([lng, lat]);
+  const c = Math.floor(((x - dx - bbox[0]) / (bbox[2] - bbox[0])) * W), r = Math.floor(((bbox[3] - (y - dy)) / (bbox[3] - bbox[1])) * H);
+  return c >= 0 && c < W && r >= 0 && r < H ? r * W + c : -1;
+}
+function heatLegend(items, info) {
+  const H = view.heat;
+  if (!H || H.waiting) { info.push('Working out the heat…'); return; }
+  if (H.error) { info.push(`The heat could not be worked out: ${esc(H.error)}.`); return; }
+  const d = H.data, m = heatMode(), sc = heatScale(H), month = MONTHS[d.month], w = d.weather;
+  const W0 = (v) => `${Math.round(v)} W/m²`, signed = (v, u = ' W/m²') => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v) < 10 ? Math.abs(v).toFixed(1) : Math.round(Math.abs(v))}${u}`;
+  const lawn = view.plan?.kinds, med = (a) => { const v = []; for (let i = 0; i < a.length; i++) if ((!lawn || lawn[i] === 1) && Number.isFinite(a[i])) v.push(a[i]); v.sort((x, y) => x - y); return v.length ? [v[Math.floor(v.length * 0.05)], v[v.length >> 1], v[Math.floor(v.length * 0.95)]] : [0, 0, 0]; };
+  if (m === 'ground') {
+    items.push(key('rgb(230,45,20)', `${signed(sc.max)} or more than open lawn (warmer)`), key('rgb(245,245,245)', 'about the same as open lawn', true), key('rgb(35,130,250)', `${signed(-sc.max)} or less (cooler)`));
+    info.push(`<p>What warms or cools the ground at each spot on a typical ${month} day, day and night together, against open lawn in full sun with the whole sky over it. It is what pushes the surface, and the soil under it, warmer or cooler.</p>`);
+  } else if (m === 'night') {
+    items.push(key('rgb(13,71,161)', `${W0(sc.hi)} lost to the sky (open)`), key('rgb(227,242,253)', `${W0(sc.lo)} (sheltered)`, true));
+    info.push(`<p>The heat each spot loses to the sky, day and night alike, on a typical ${month} night. Open ground sees the most sky and loses the most: frost and dew come there first. Trees, houses and fences hold it back. In ${month} the open lawn loses ${W0(d.open.sky)}: less in damp air and under cloud, which send heat back down.</p>`);
+  } else {
+    items.push(key('rgb(35,130,250)', `${sc.max.toFixed(1)} °C cooler or more`), key('rgb(245,245,245)', 'no cooling', true));
+    info.push(`<p>How much cooler the air is near trees on a sunny ${month} afternoon (the shade map's canopy within ${Math.round(30 * 3.28)} ft; up to 1.3 °C, 2.3 °F, at full canopy: Ziter et al. 2019).${d.inSeason ? '' : ` <strong>${month} is outside the grass's growing season, so the water plan does not use it then.</strong>`} The model keeps the air the same everywhere else: it has no warmer air over paving or in a sheltered corner.</p>`);
+  }
+  // the lawn's pushes and pulls, or a tapped spot's
+  const g = d.ground, i = H.picked;
+  const row = (name, a, what) => (i !== null && i !== undefined ? `<tr><td>${name}</td><td>${signed(a[i])}</td><td class="dim">${what}</td></tr>` : (() => { const [lo, mid, hi] = med(a); return `<tr><td>${name}</td><td>${signed(mid)}</td><td>${signed(lo)} to ${signed(hi)}</td><td class="dim">${what}</td></tr>`; })());
+  const head = i !== null && i !== undefined ? `<p><strong>The spot you tapped</strong> (white), against open lawn, ${month}:</p><table class="small"><tr><th></th><th>this spot</th><th></th></tr>` : `<p><strong>Across the lawn</strong>, against open lawn, ${month} (tap a spot on the lawn for its own):</p><table class="small"><tr><th></th><th>middle</th><th>most of the lawn</th><th></th></tr>`;
+  const rows = [row('sun', g.sun, 'sunlight through what stands over it'), row('sky', g.sky, 'heat kept from the sky by trees and buildings overhead')];
+  if (d.fences) rows.push(row('fences', g.fence, 'sunlit boards, and the sky they fill'));
+  rows.push(row('paving', g.paving, 'heat off paving and walls nearby'), row('<strong>net</strong>', g.net, ''));
+  if (d.trees) rows.push(i !== null && i !== undefined ? `<tr><td>air</td><td>${d.air[i] < -0.005 ? `${d.air[i].toFixed(1)} °C` : 'no cooling'}</td><td class="dim">a sunny afternoon, from the trees nearby</td></tr>` : `<tr><td>air</td><td>${med(d.air)[1].toFixed(1)} °C</td><td>${med(d.air)[0].toFixed(1)} to ${med(d.air)[2].toFixed(1)} °C</td><td class="dim">a sunny afternoon, from the trees nearby</td></tr>`);
+  info.push(head + rows.join('') + '</table>');
+  info.push(`<p class="dim">The open lawn in ${month}: ${W0(d.open.sun)} of sunshine absorbed, ${W0(d.open.sky)} lost to the sky (a 24-hour mean, from ${w.days} days in ten years: ${Math.round(w.tmax)}/${Math.round(w.tmin)} °C, humidity ${Math.round(w.rh)}%, ${Math.round(Math.min(1, w.clear) * 100)}% of a clear day's sun). The loss to the sky is FAO-56's: it falls as the air gets damper and as it clouds over, the cloud read from the day's sunshine.${d.ownRadiation ? '' : ' The shade is the shade map\'s share of light alone here (no sky view), so the sky term is not shown.'} Not modelled: the soil's own temperature spot by spot (the roots use the area's measured soil temperature).</p>`);
+}
+
 /* THE KEY AND A FEW WORDS FOR THE VIEW SHOWN: only its own colours (the property line and the lawn's outline
    are on every view) */
 const key = (bg, text, border = false) => `<span><i style="background:${bg}${border ? ';border:1px solid #888' : ''}"></i>${text}</span>`;
@@ -1507,9 +1602,11 @@ function legend() {
     if ($('#show-coverage').checked) items.push(key('#d32f2f', 'no water'), key('#f57c00', 'under 60% of the average (dry)'), key('#1565c0', 'over 150%'));
     info.push(heads.data?.done && !heads.data?.none ? ($('#show-coverage').checked ? 'Each zone run long enough to put down its average depth, all the zones together.' : 'Where each head throws. <em>Your sprinklers</em> changes them.') : 'No sprinklers mapped yet: <em>Your sprinklers</em> adds them.');
   }
+  if (mapView === 'heat') heatLegend(items, info);
   $('#legend').innerHTML = [...items, ...base].join('');
   $('#view-info').innerHTML = info.join('');
   $('#sprinkler-sub').hidden = mapView !== 'sprinklers';
+  $('#heat-sub').hidden = mapView !== 'heat';
 }
 
 /* THE SOIL, IN A FEW WORDS (owner, 2026-10-23: "give a brief description of the soil characteristics in the info
@@ -1543,8 +1640,11 @@ function soilInfo(p) {
 document.querySelectorAll('.views [data-view]').forEach((b) => b.addEventListener('click', () => {
   mapView = b.dataset.view;
   document.querySelectorAll('.views [data-view]').forEach((x) => x.classList.toggle('on', x === b));
+  if (mapView === 'heat') askHeat();
   legend(); draw();
 }));
+document.querySelectorAll('[name=heatview]').forEach((r) => r.addEventListener('change', () => { view.heatScale = null; legend(); draw(); }));
+$('#heat-month').addEventListener('change', () => { if (view.heat) view.heat.picked = null; askHeat(); });
 document.querySelectorAll('[name=sprview]').forEach((r) => r.addEventListener('change', () => { legend(); draw(); }));
 
 if (mapId) guarded(async () => { status('Opening your map…'); await run(await siteFromMap(mapId)); });

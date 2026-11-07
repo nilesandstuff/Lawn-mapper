@@ -370,6 +370,7 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
     };
   })();
   return {
+    model, // for the heat view (lib/heat.js), kept in the worker; never sent to the page
     snapshots: snaps,
     groundwater: groundwaterOut,
     perched: perchedOut,

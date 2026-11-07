@@ -16,6 +16,7 @@ import { workerIo } from '/lib/browser-io.js';
 import { runSite } from '/lib/site.js';
 import { soilFor, sdaPost } from '/lib/soil.js';
 import { typicalYears, thisWeek, attachStationHours, soilDaysOver } from '/lib/weather.js';
+import { heatOfMonth } from '/lib/heat.js';
 import { waterPlan } from '/lib/plan.js';
 import { demAround, terrain, hillside, RADIUS_M } from '/lib/upslope.js';
 import { placeSoils, twiForGrid } from '/lib/soilplace.js';
@@ -66,6 +67,17 @@ function planWith(inputs = {}, zoneOf = null) {
   });
 }
 
+/* THE HEAT VIEW (owner, 2026-11-07; lib/heat.js): one month's energy pushes and pulls per spot, from the plan's own model
+   and the ten years' days of that month, on request (the page asks when the view or the month changes). */
+function heatFor({ month, id }) {
+  if (!kept.model || !kept.typical) { self.postMessage({ heat: { id, error: 'the plan is not worked out yet' } }); return; }
+  const h = heatOfMonth(kept.model, kept.typical, month, { season: kept.season || null });
+  if (!h) { self.postMessage({ heat: { id, error: 'no weather for that month' } }); return; }
+  const g = h.ground;
+  self.postMessage({ heat: { id, month, weather: h.weather, inSeason: h.inSeason, sunny: h.sunny, open: h.open, ground: g, night: h.night, air: h.air, ownRadiation: !!kept.model.rad, fences: !!kept.model.fenceHeat, trees: !!kept.model.canopy } },
+    [g.sun.buffer, g.sky.buffer, g.fence.buffer, g.paving.buffer, g.net.buffer, h.night.buffer, h.air.buffer]);
+}
+
 /* THE PLAN ON THE PERSON'S OWN VALVES (owner, 2026-10-23: "a final step that gives exact watering recs by season
    and zone"): the same ten years, each valve's lawn (public/heads.js, from where its heads throw) watered as one. */
 function valvePlan({ inputs, zoneOf, id }) {
@@ -77,6 +89,7 @@ function valvePlan({ inputs, zoneOf, id }) {
 async function plan(inputs = {}) {
   const t0 = Date.now();
   const p = planWith(inputs);
+  kept.model = p.model; // the heat view's (heatFor): the plan's own model, never sent to the page
   const grass = p.grass;
   const out = {
     zones: p.zones, zoneOf: p.zoneOf, kinds: p.kinds, needMm: p.needMm, soilAt: p.soilAt, multiplier: p.multiplier, rootIn: p.rootIn, needMonth: p.needMonth, wetFromWatering: p.wetFromWatering, wetAnyway: p.wetAnyway, dryShare: p.dryShare,
@@ -253,7 +266,8 @@ async function start(site, inputs) {
     self.postMessage({ planProgress: 'Working out the shade on the lawn…' });
     kept.season = seasonFor(inputs.grass === 'warm' ? 'warm' : 'cool');
     site.cloudSeason = r.cloud?.season || null;
-    const lit = await again(() => lawnLight(res, site, kept.climate, kept.season), 2).catch(() => null);
+    site.green = r.green || null;
+    const lit = await again(() => lawnLight(res, site, kept.climate, kept.season), 2).catch((e) => { kept.shadeWhy = e?.message || String(e); return null; });
     kept.light = lit?.summer || null; kept.lightMonths = lit?.months || null; kept.radiation = lit?.radiation || null;
     // the fences' longwave on the lawn (H49): the shade map's fences, seen from each lawn cell
     // EACH SPOT'S OWN WIND (H50): what stands upwind of it, by direction, weighted by the station's daytime wind
@@ -299,7 +313,7 @@ async function start(site, inputs) {
     week: kept.week ? null : "this week's weather did not answer",
     overture: r.summary.overture ? null : 'Overture did not answer: roofs and paving from the laser and the photo only',
     photo: r.summary.pavingFromPhoto || !r.lawnMask ? null : 'the USDA photo did not answer: paving and roofs from the laser only',
-    shade: kept.shade === 'failed' ? 'the shade could not be worked out: the lawn is taken as in full sun' : null,
+    shade: kept.shade === 'failed' ? `the shade could not be worked out${kept.shadeWhy ? ` (${kept.shadeWhy})` : ''}: the lawn is taken as in full sun` : null,
   };
   self.postMessage({ planProgress: 'Working out the watering plan…' });
   await plan(inputs);
@@ -383,7 +397,7 @@ function lawnLight(res, site, climate, season) {
      otherwise 'mixed' and the canopy judges column by column. The same call the shade page makes, on the same points. */
   const passes = onePass(res.points, g.bbox, Math.cos((site.lat * Math.PI) / 180));
   const build = (erased) => ask({ type: 'build', cols: passes.cols, box: g.bbox, lat: site.lat, lng: site.lng, shift: null, lot: polygonsOf(site.lawn), lawn: polygonsOf(site.lawn),
-    green: r.green || null, // the summer photo's green: the shade map's low-structure rule needs it (2026-11-04)
+    green: site.green || null, // the summer photo's green: the shade map's low-structure rule needs it (2026-11-04; set on site by start, as cloudSeason is)
     canopy: 'seasonal', flight: site.cloudSeason || null, tMean: Array.isArray(climate?.tMean) ? climate.tMean : null, erased, erasedCubes: edits.cubes,
     // the fences drawn on the shade map (its part, v 3): their shade too, as the shade map works it out
     fences: site.shadeEdits?.fences?.length ? site.shadeEdits.fences : undefined });
@@ -431,7 +445,9 @@ self.onmessage = async ({ data }) => {
     if (data.site) { kept.inputs = data.inputs || {}; await start(data.site, data.inputs || {}); }
     else if (data.replan) { kept.inputs = data.replan; if (kept.r) await plan(data.replan); }
     else if (data.valvePlan) valvePlan(data.valvePlan);
+    else if (data.heat) heatFor(data.heat);
   } catch (e) {
+    if (data?.heat) { self.postMessage({ heat: { id: data.heat.id, error: e.message || String(e) } }); return; }
     if (data?.valvePlan) { self.postMessage({ valvePlan: { id: data.valvePlan.id, error: e.message || String(e) } }); return; }
     self.postMessage(kept.r ? { planError: e.message || String(e) } : { error: e.message || String(e) });
   }
