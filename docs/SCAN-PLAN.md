@@ -1316,6 +1316,15 @@ the page's WebGL over the camera, as the pins do now; only a new bridge call nee
 for it (BRIDGE_NEEDED). Built and signed by workflow "A. Android app"; served to the admin by the scan site;
 signed in by pairing with Chrome.
 
+MEASURED (2026-11-07 17:23, app 1.5, a stationary indoor test): the app's depth is raw, "depth raw (the app,
+ARCore, confidence 0.4 and up)", holes 15% of samples over 151 frames, against Chrome's 1-8% (smooth, raw asked or
+not). Raw depth reaches the page; the S21's Chrome alone withheld it.
+
+Uploads (2026-11-07, the owner: would closing the app or losing signal lose a walk? It did): every part now waits on
+the phone (scan/lib/outbox.js, IndexedDB) until the site has it, retried 5 s doubling to a minute, and sent the next
+time the page opens if the app was closed; the page and the HUD say what waits. The app's own background upload
+(after the app is closed) would be a bridge 2 call; not built.
+
 Not yet measured: whether raw depth (confidence 0.4 and up, NATIVE_DEPTH) makes the ground fit better than Chrome's
 smooth depth (SCAN-H21: 72-75% within 15 cm), and how far the Geospatial pose is off on the owner's lot. Not yet
 built: ARCore's session recording (an MP4 of the walk for replay in the runners), a bridge 2 call.
