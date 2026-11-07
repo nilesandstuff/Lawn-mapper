@@ -906,6 +906,17 @@ counts the holes in the depth (0 = no depth there: raw leaves them, smooth
 fills them) and the walk list prints the share. The option's name is the
 spec's and Chromium's own (WPT webxr-depth-sensing.idl): depthTypeRequest,
 inside depthSensing; "depthTypePreference" is not in it and would be ignored.
+MEASURED (2026-11-07 01:04-01:06, three short indoor walks, the last two on
+stairs, holes = share of depth samples the runtime left at 0):
+  raw only           depthType null    holes 1% (214 frames)
+  raw, then smooth   depthType smooth  holes 8% (53 frames)
+  raw only           depthType null    holes 5% (150 frames)
+Asking for raw alone gives no MORE holes than smooth; raw depth (ARCore's
+raw API) leaves large parts of a picture empty. So the S21's Chrome does
+not give raw depth: the request is ignored and the depth is the same either
+way. HARD for this phone and this Chrome; the switch stays in case a later
+Chrome honours it, and the hole count says so if it does. The ground the page
+takes stays the column's densest height (SCAN-H7), not its lowest.
 
 The owner's word (2026-11-04, through the features session): LAS classes
 7 and 18 and returns over 80 m stay out everywhere; the detector's
