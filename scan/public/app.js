@@ -52,10 +52,14 @@ async function main() {
   st.caps = await detect({ eightWallUrl: st.has8w ? ENGINE_URL : null });
   const pick = engineChoice({ hasXR: st.caps.webxr, has8w: st.has8w, ios: st.caps.ios, hasNative: !!st.caps.native });
   const bits = [];
-  if (st.caps.native) bits.push(`Inside the Yard AR app (version ${st.caps.native.app}, ${st.caps.native.device}).`);
-  bits.push(st.caps.ios ? 'An iPhone or iPad.' : 'Not an iPhone.');
-  bits.push(st.caps.webxr ? "Chrome's AR is here." : 'No WebXR in this browser (none on iPhone; on Android, Chrome with Google Play Services for AR has it).');
-  bits.push(st.has8w ? 'The 8th Wall engine is on this site.' : 'The 8th Wall engine is not on this site (the deploy did not install it).');
+  if (st.caps.native) {
+    // inside the app: its own ARCore, so the browser's engines are beside the point
+    bits.push(`Inside the Yard AR app (version ${st.caps.native.app}, ${st.caps.native.device}); it uses ARCore directly.`);
+  } else {
+    bits.push(st.caps.ios ? 'An iPhone or iPad.' : 'Not an iPhone.');
+    bits.push(st.caps.webxr ? "Chrome's AR is here." : 'No WebXR in this browser (none on iPhone; on Android, Chrome with Google Play Services for AR has it).');
+    bits.push(st.has8w ? 'The 8th Wall engine is on this site.' : 'The 8th Wall engine is not on this site (the deploy did not install it).');
+  }
   $('#status').textContent = bits.join(' ');
   appBox().catch(() => {});
   const box = $('#start');
@@ -286,7 +290,11 @@ function onEvent(ev) {
   if (ev.type === 'camera') log(`camera ${ev.status}`);
   if (ev.type === 'motion') log(`motion sensors ${ev.status}`);
   if (ev.type === 'tracking') log(`tracking ${ev.status} ${ev.reason || ''}`.trim());
-  if (ev.type === 'native') { log(`app: ${ev.type === 'native' ? (ev.message || [ev.depth != null ? `depth ${ev.depth}` : '', ev.geospatial != null ? `geospatial ${ev.geospatial}` : '', ev.image ? `camera ${ev.image}` : ''].filter(Boolean).join(', ')) : ''}`); if (ev.message) flash(ev.message.slice(0, 80)); }
+  if (ev.type === 'native') {
+    log(`app: ${ev.message || [ev.depth != null ? `depth ${ev.depth}` : '', ev.geospatial != null ? `geospatial ${ev.geospatial}` : '', ev.geoError ? `geospatial failed: ${ev.geoError}` : '', ev.image ? `camera ${ev.image}` : ''].filter(Boolean).join(', ')}`);
+    if (ev.message) flash(ev.message.slice(0, 80));
+    else if (ev.geoError) flash(`Street View positioning is off this walk (${ev.geoError})`.slice(0, 80));
+  }
   if (ev.type === 'end') finish();
 }
 

@@ -142,15 +142,25 @@ class MainActivity : Activity() {
             }
             val depth = o.optBoolean("depth", true) && s.isDepthModeSupported(Config.DepthMode.AUTOMATIC)
             if (depth) c.depthMode = Config.DepthMode.AUTOMATIC
-            val geo = o.optBoolean("geospatial", true) && BuildConfig.GEO_KEY && s.isGeospatialModeSupported(Config.GeospatialMode.ENABLED)
+            var geo = o.optBoolean("geospatial", true) && BuildConfig.GEO_KEY && s.isGeospatialModeSupported(Config.GeospatialMode.ENABLED)
+            var geoWhy: String? = null
             if (geo) c.geospatialMode = Config.GeospatialMode.ENABLED
-            s.configure(c)
+            try {
+                s.configure(c)
+            } catch (e: Exception) {
+                if (!geo) throw e
+                // Geospatial is a bonus: without it the walk still runs (the reason goes to the page)
+                geo = false
+                geoWhy = e.javaClass.simpleName
+                c.geospatialMode = Config.GeospatialMode.DISABLED
+                s.configure(c)
+            }
             s.resume()
             session = s
             engine.geoOn = geo
             engine.session = s
             val img = s.cameraConfig.imageSize
-            event("{\"type\":\"started\",\"depth\":$depth,\"geospatial\":$geo,\"image\":\"${img.width}x${img.height}\"}")
+            event("{\"type\":\"started\",\"depth\":$depth,\"geospatial\":$geo${if (geoWhy != null) ",\"geoError\":${quote(geoWhy)}" else ""},\"image\":\"${img.width}x${img.height}\"}")
         } catch (e: Exception) {
             session = null
             event("{\"type\":\"error\",\"message\":${quote(e.javaClass.simpleName + ": " + (e.message ?: ""))}}")
