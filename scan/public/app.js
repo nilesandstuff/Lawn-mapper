@@ -18,6 +18,7 @@ import { leftOut, mapToSession } from '/lib/align.js';
 import { newTwin, addPoints, addPose, wantKey, addKey, flush, flushDue, liveOf } from '/lib/twin.js';
 import { newAnchors, viewOf, noteView, nudge, pitchOf, anchorsKept, SHOW_S } from '/lib/anchors.js';
 import { surfaceOf } from '/lib/surface.js';
+import { newOutbox, idbStore, memoryStore, statusText } from '/lib/outbox.js';
 import { viewToFit, followView, toScreen, zoomAt as miniZoom, pan as miniPan, edgeArrow } from '/lib/minimap.js';
 
 const $ = (s) => document.querySelector(s);
@@ -47,6 +48,7 @@ st.ar = null;
 /* ------------------------------------------------------------- the page */
 
 async function main() {
+  startOutbox().catch(() => {});
   if (st.map) $('#back').href = `${$('#back').getAttribute('href')}?map=${encodeURIComponent(st.map)}`;
   try { st.has8w = (await fetch('/vendor/xr/VERSION', { method: 'HEAD', cache: 'no-store' })).ok; } catch { st.has8w = false; }
   st.caps = await detect({ eightWallUrl: st.has8w ? ENGINE_URL : null });
@@ -495,7 +497,7 @@ function hud(f) {
   const ag = st.agree ? ` · lidar dots: <strong>${st.agree.on.length}</strong> on, ${st.agree.off.length} off` : '';
   const fixLine = st.origin ? `<br>${st.recordOnly ? '<strong>Recording only</strong>: no live lidar fix; the walk is placed afterwards (workflow S, task fix). ' : ''}${esc(st.lid.ready ? fixStatus(L, w.odo) : st.lid.error ? `No lidar (${st.lid.error}); references only: ${fixStatus(L, w.odo)}` : `Lidar: ${st.lid.progress || 'reading…'}`)}${ag}${target ? `<br>Next to mark: <strong style="color:${target.kind === 'ref' ? '#8ab4ff' : '#d9a6ff'}">${esc(target.name)}</strong> (aim where it meets the ground, within 10 ft, tap Mark; tap another point on the mini map to mark that one instead)` : ''}` : '';
   const last = st.errors.length && Date.now() - st.errors[st.errors.length - 1].t < 6000 && /engine|start/.test(st.errors[st.errors.length - 1].what) ? `<br><span class="bad">${esc(st.errors[st.errors.length - 1].what)}</span>` : '';
-  $('#hud').innerHTML = `${NAME[w.engine]} · ${tr} · walked ${Math.round(w.stats.walked * FT)} ft${pts} · ${aim} · ${w.pins.length} pin${w.pins.length === 1 ? '' : 's'}${w.pendingMeasure ? ' · <span class="warn">now aim at the second mark</span>' : ''}${fixLine}${st.nudge ? `<br><span class="warn">${esc(st.nudge.text)}</span>` : ''}${last}`;
+  $('#hud').innerHTML = `${NAME[w.engine]} · ${tr} · walked ${Math.round(w.stats.walked * FT)} ft${pts} · ${aim} · ${w.pins.length} pin${w.pins.length === 1 ? '' : 's'}${w.pendingMeasure ? ' · <span class="warn">now aim at the second mark</span>' : ''}${fixLine}${st.nudge ? `<br><span class="warn">${esc(st.nudge.text)}</span>` : ''}${st.upStatus && (st.upStatus.pending > 3 || st.upStatus.off || (st.upStatus.pending && !st.upStatus.sending)) ? `<br><span class="dim">${esc(statusText(st.upStatus))}</span>` : ''}${last}`;
   const can = !!f.hit && f.tracking !== 'lost';
   $('#pin').disabled = !can; $('#measure').disabled = !can; $('#check').disabled = !can || !w.pins.length; $('#mark').disabled = !can || !target;
   const again = target && L.marks.some((m) => m.id === target.id);
@@ -727,30 +729,40 @@ function finish() {
 const r2 = (v) => (v == null ? null : +Number(v).toFixed(2)), r3 = (v) => (v == null ? null : +Number(v).toFixed(3));
 
 /** The twin's parts up to the site (src/twin.js), one at a time, each tried twice; a missing bucket stops it. */
+/* THE OUTBOX (scan/lib/outbox.js, 2026-11-07): every part of a walk is kept on the phone first and leaves only when
+   the site has it; a failed part waits and goes again, and parts left by a walk closed early go up the next time the
+   page opens. Walk summaries the site did not take are posted again then too. */
+async function startOutbox() {
+  const store = (await idbStore().catch(() => null)) || memoryStore();
+  st.outbox = newOutbox({ store, send: sendPart, onChange: (u) => { st.upStatus = u; if (st.twinUp) { st.twinUp.off = u.off; st.twinUp.sent = u.sent; st.twinUp.failed = u.dropped; } renderUploads(); } });
+  await st.outbox.refresh();
+  st.outbox.kick();
+  for (const w of kept().filter((x) => x.saved === false)) post(w);
+  window.addEventListener('online', () => { st.outbox?.kick(); for (const w of kept().filter((x) => x.saved === false)) post(w); });
+}
+
+/** One part to the site: 'ok', 'retry' (no answer, 5xx, 408, 429), 'drop' (refused) or 'off' (no bucket). */
+async function sendPart(p) {
+  const res = await fetch(`/api/scan/twin?walk=${encodeURIComponent(p.walk)}&part=${encodeURIComponent(p.name)}`, { method: 'PUT', headers: { 'Content-Type': p.type }, body: p.body });
+  if (res.ok) return 'ok';
+  if (res.status === 503) { p.offWhy = 'the site has no twin bucket yet'; return 'off'; }
+  if (res.status === 408 || res.status === 429 || res.status >= 500) return 'retry';
+  if (res.status === 401 || res.status === 403 || res.status === 404) return 'retry'; // signed out for now: keep it for later
+  return 'drop';
+}
+
 function sendTwin(parts) {
-  const up = st.twinUp, walk = st.twin?.walk || up.walk;
-  if (!up || up.off || !parts?.length) return;
-  up.walk = walk;
-  for (const p of parts) up.queue.push(p);
-  if (up.busy) return;
-  up.busy = true;
-  (async () => {
-    while (up.queue.length && !up.off) {
-      const p = up.queue.shift();
-      let ok = false;
-      for (let tries = 0; tries < 2 && !ok; tries++) {
-        try {
-          const res = await fetch(`/api/scan/twin?walk=${encodeURIComponent(up.walk)}&part=${encodeURIComponent(p.name)}`, { method: 'PUT', headers: { 'Content-Type': p.type }, body: p.body });
-          ok = res.ok;
-          if (res.status === 503) { up.off = 'the site has no twin bucket yet'; break; }
-          if (!ok && res.status < 500) break;
-        } catch { /* tried again */ }
-        if (!ok && tries === 0) await new Promise((r) => setTimeout(r, 3000));
-      }
-      if (ok) up.sent++; else { up.failed++; if (st.twin) st.twin.counts.failed++; }
-    }
-    up.busy = false;
-  })();
+  const walk = st.twin?.walk || st.twinUp?.walk;
+  if (!walk || !parts?.length) return;
+  if (st.twinUp) st.twinUp.walk = walk;
+  if (!st.outbox) { setTimeout(() => sendTwin(parts), 500); return; }
+  for (const p of parts) st.outbox.add(walk, p.name, p.type, p.body).catch(() => {});
+}
+
+/** The upload line on the page (and in the HUD while walking, when anything waits). */
+function renderUploads() {
+  const el = $('#uploads');
+  if (el) el.textContent = st.upStatus ? statusText(st.upStatus) : '';
 }
 
 /** A walk to the site's own database (scan/src/walks.js); failing that it stays on this phone. */

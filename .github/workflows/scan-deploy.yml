@@ -88,6 +88,7 @@ jobs:
           node scan/test/postfix.test.js
           node scan/test/anchors.test.js
           node scan/test/app.test.js
+          node scan/test/outbox.test.js
           node tools/lidar-model.test.js
 
       - name: The 8th Wall engine binary (pinned)

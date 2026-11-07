@@ -42,6 +42,9 @@ export function code(bytes = 24) {
 /** Chrome's way to open an app by its link, falling back to nothing (the page says what to do then). */
 export const intentFor = (t) => `intent://signin?t=${t}#Intent;scheme=lawnar;package=${APP_PACKAGE};end`;
 
+/** The APK's file name: yard-ar-<version>.apk (just yard-ar.apk when the version is unknown). */
+export const apkName = (v) => `yard-ar${v?.name && /^[0-9A-Za-z._-]{1,20}$/.test(String(v.name)) ? `-${v.name}` : ''}.apk`;
+
 export const pairCookie = (session, secure = true) => `${SESSION}=${session}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${30 * 86400}${secure ? '; Secure' : ''}`;
 
 function page(title, body, status = 200) {
@@ -64,9 +67,11 @@ export async function app(request, env, url) {
   if (p === 'apk') {
     const o = env.TWIN ? await env.TWIN.get(APP_APK) : null;
     if (!o) return json({ error: 'no app built yet' }, 404);
+    // named for its version, so Chrome does not stop at "download again?" over last time's file (owner, 2026-11-07)
+    const v = await env.TWIN.get(APP_VERSION).then((x) => (x ? x.json() : null)).catch(() => null);
     return new Response(o.body, { headers: {
       'Content-Type': 'application/vnd.android.package-archive',
-      'Content-Disposition': 'attachment; filename="yard-ar.apk"',
+      'Content-Disposition': `attachment; filename="${apkName(v)}"`,
       'Cache-Control': 'private, no-store',
     } });
   }

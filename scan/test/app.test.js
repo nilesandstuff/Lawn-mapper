@@ -1,6 +1,6 @@
 // scan/src/app.js: the Android app's routes (pairing, version, download). node scan/test/app.test.js
 import assert from 'node:assert/strict';
-import { app, cookieOf, code, intentFor, pairCookie, APP_PACKAGE, PAIR_MS } from '../src/app.js';
+import { app, cookieOf, code, intentFor, pairCookie, apkName, APP_PACKAGE, PAIR_MS } from '../src/app.js';
 import { engineChoice, depthFromGrid } from '../lib/track.js';
 
 // cookies and codes
@@ -36,6 +36,8 @@ assert.equal(await call('/api/other'), null, 'not an app route');
 assert.deepEqual(await (await call('/api/app/version')).json(), { code: 7, name: '7', bridge: 1 });
 const apk = await call('/api/app/apk');
 assert.equal(apk.headers.get('Content-Type'), 'application/vnd.android.package-archive');
+assert.match(apk.headers.get('Content-Disposition'), /filename="yard-ar-7\.apk"/, 'named for its version');
+assert.equal(apkName({ name: '1.6' }), 'yard-ar-1.6.apk'); assert.equal(apkName(null), 'yard-ar.apk'); assert.equal(apkName({ name: '../x' }), 'yard-ar.apk');
 
 // pairing: Chrome (signed in) -> intent link with a code; the app claims it once and gets the same session
 assert.equal((await call('/api/app/pair')).status, 401, 'not signed in');
