@@ -416,6 +416,7 @@ export function depthFromGrid(g, near = 0.4, far = 8) {
     // bridge 2: ARCore's semantic label at the cell (SEM_LABELS) and its confidence 0..1; null without semantics
     label: g.l ? (x, y) => SEM_LABELS[g.l[cell(x, y)]] ?? 'unlabeled' : null,
     labelConf: g.lc ? (x, y) => g.lc[cell(x, y)] / 255 : null,
+    semDims: g.sw ? { w: g.sw, h: g.sh, depthW: g.w, depthH: g.h, byScreen: !!g.sscreen } : null, // how the labels were read
   };
 }
 
@@ -459,7 +460,7 @@ async function startNative({ canvas, onFrame, onEvent, nativeOptions = {}, nativ
     const depth = fr.depth ? (() => {
       const get = () => (grid === undefined ? (grid = (() => { try { return depthFromGrid(JSON.parse(N.depthGrid(dep.nx, dep.ny, dep.kind, Math.round(dep.minConf * 255)))); } catch { return null; } })()) : grid);
       return { at: (x, y) => get()?.at(x, y) ?? null, m: (x, y) => get()?.m(x, y) ?? NaN, conf: (x, y) => get()?.conf(x, y) ?? null, minConf: dep.minConf, shot: () => get()?.t ?? null,
-        label: (x, y) => get()?.label?.(x, y) ?? null, labelConf: (x, y) => get()?.labelConf?.(x, y) ?? null };
+        label: (x, y) => get()?.label?.(x, y) ?? null, labelConf: (x, y) => get()?.labelConf?.(x, y) ?? null, semDims: () => get()?.semDims ?? null };
     })() : null;
     if (fr.anchors) for (const [id, x, y, z, state] of fr.anchors) anchorPos.set(id, { x, y, z, state });
     const pose = fr.pose ? { position: { x: fr.pose.p[0], y: fr.pose.p[1], z: fr.pose.p[2] }, quaternion: { x: fr.pose.q[0], y: fr.pose.q[1], z: fr.pose.q[2], w: fr.pose.q[3] } } : null;

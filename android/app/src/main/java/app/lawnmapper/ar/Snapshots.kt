@@ -49,6 +49,11 @@ class DepthSnapshot(
         // near depth should be few)
         val l = if (sem != null) StringBuilder(nx * ny * 3) else null
         val lc = if (sem != null) StringBuilder(nx * ny * 4) else null
+        /* (2026-11-07, app 1.7's walks: 39-47% of sky-labelled cells had near depth, so the labels did not sit on the
+           depth.) Google: the label image is 256 wide and its height "will match its display aspect ratio", i.e. it
+           is upright like the screen, while the depth image lies in the camera's native (landscape) orientation. A
+           label image shaped unlike the depth image is read by screen position directly. */
+        val semScreen = sem != null && ((sem.h > sem.w) != (h > w))
         for (j in 0 until ny) for (i in 0 until nx) {
             val u = (i + 0.5f) / nx
             val v = (j + 0.5f) / ny
@@ -62,8 +67,10 @@ class DepthSnapshot(
             if (p.isNotEmpty()) { p.append(','); d.append(','); c.append(',') }
             if (sem != null && l != null && lc != null) {
                 if (l.isNotEmpty()) { l.append(','); lc.append(',') }
-                val sxp = min(sem.w - 1, max(0, floor(map.s(u, v) * sem.w).toInt()))
-                val syp = min(sem.h - 1, max(0, floor(map.t(u, v) * sem.h).toInt()))
+                val su = if (semScreen) u else map.s(u, v)
+                val sv = if (semScreen) v else map.t(u, v)
+                val sxp = min(sem.w - 1, max(0, floor(su * sem.w).toInt()))
+                val syp = min(sem.h - 1, max(0, floor(sv * sem.h).toInt()))
                 val sk = syp * sem.w + sxp
                 l.append(sem.labels[sk].toInt() and 0xFF); lc.append(sem.conf[sk].toInt() and 0xFF)
             }
@@ -80,7 +87,7 @@ class DepthSnapshot(
             val wz = pose[2] * ax + pose[6] * ay + pose[10] * az + pose[14]
             p.append(r3(wx)).append(',').append(r3(wy)).append(',').append(r3(wz))
         }
-        val semPart = if (l != null && lc != null) ",\"l\":[$l],\"lc\":[$lc]" else ""
+        val semPart = if (sem != null && l != null && lc != null) ",\"l\":[$l],\"lc\":[$lc],\"sw\":${sem.w},\"sh\":${sem.h},\"sscreen\":$semScreen" else ""
         return "{\"kind\":\"$kind\",\"nx\":$nx,\"ny\":$ny,\"w\":$w,\"h\":$h,\"t\":$t,\"holes\":$holes,\"p\":[$p],\"d\":[$d],\"c\":[$c]$semPart}"
     }
 }

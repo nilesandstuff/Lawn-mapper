@@ -1455,3 +1455,25 @@ tracked was refused and dropped: the first outdoor app walk and these two lost t
 drift logs from live.json; their summaries (no places) were kept. Fixed: a reading keeps the map's local metres and
 its turn (`at`, `theta`), never degrees, and only with a map open; a test passes live.json through the guard; the
 upload line now names the last refused part and the site's reason.
+
+### SCAN-H24. App 1.7 on the owner's lot: Street View at 4-5 m and 3.5-4.3 degrees; ARCore's own drift up to 1.1 m; the labels sat wrong (2026-11-07)
+
+Two walks, from their summaries only (their live.json was refused, SCAN-H23: no check marks or trails to score).
+MEASURED:
+  - Street View (ARCore's own figures): median accuracy 4.1 m and 5.1 m (best 4.1 and 4.5), heading 3.5 and 4.3
+    degrees (best 3.2 and 3.8), tracking within 2-3 s. So on the owner's lot it is not localising to VPS grade
+    (sub-metre); the place is GPS-like, the heading good. It started 4 of the first walk's live searches (as a whole
+    placement, since 4 m and 3.5 degrees pass the 5 m / 12 degree bar); never sure enough (2 m / 5 degrees) to
+    place the walk by itself.
+  - The live fix on the first walk (434 ft): checks C3, C4, C5 read 36.5, 33.3 and 24.8 ft off by the fix; 31 of 66
+    asks kept, 32 refused as "two places fit about as well". Whether Street View's starts helped or hurt is not
+    known from this.
+  - Drift log: ARCore moved its anchors median 0.11 m (most 0.26 m) on the 434 ft walk, median 0.34 m (most 1.14 m,
+    at 185 m walked) on the 780 ft walk. ARCore's own corrections are small next to the placement's errors.
+  - Raw depth at confidence 0.2: 45,486 and 67,161 points (8,462 at 0.4 on the earlier walk); 56% and 74% of the
+    depth given was still under 0.2.
+  - Semantics: 97% of depth cells labelled with confidence; terrain 45-56%, tree 18-20%, building 10-15%, sky 9-11%.
+    But 39% and 47% of sky-labelled cells had near depth: the labels did not sit on the depth. Google says the
+    label image's height matches the display's aspect ratio, so it is taken to be upright like the screen while the
+    depth lies landscape; app 1.8 reads it by screen position when the shapes differ, and says which it did. Until
+    then the page uses no label by position (the share-of-picture nudges were unaffected).
