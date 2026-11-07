@@ -85,7 +85,21 @@ export function makeDrawer(gl) {
     gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.disable(gl.CULL_FACE);
     const vp = multiply(proj, view);
     gl.enableVertexAttribArray(aP);
-    // the big meshes first, see-through, so what comes after draws over them
+    /* (2026-11-07, the owner: "neither real world objects or lidar objects block the rendered lidar, but in real life
+       they do") the see-through meshes first fill the depth buffer alone, so each pixel then shows only the nearest
+       lidar surface, tinted, and the far side of the house or the shape behind it no longer shows through */
+    if (statics.some((s) => s.through && s.mesh?.n)) {
+      gl.colorMask(false, false, false, false); gl.depthMask(true);
+      for (const s of statics) {
+        if (!s.through || !s.mesh?.n) continue;
+        gl.uniformMatrix4fv(uMvp, false, s.model ? multiply(vp, s.model) : vp);
+        gl.bindBuffer(gl.ARRAY_BUFFER, s.mesh.buf);
+        gl.vertexAttribPointer(aP, 3, gl.FLOAT, false, 0, 0);
+        gl.drawArrays(gl.TRIANGLES, 0, s.mesh.n);
+      }
+      gl.colorMask(true, true, true, true);
+    }
+    // then tinted, only where each is the nearest (LEQUAL against the depth just written), so what comes after draws over them
     for (const s of statics) {
       if (!s.mesh?.n) continue;
       gl.uniformMatrix4fv(uMvp, false, s.model ? multiply(vp, s.model) : vp);
@@ -96,6 +110,8 @@ export function makeDrawer(gl) {
       gl.drawArrays(gl.TRIANGLES, 0, s.mesh.n);
     }
     gl.depthMask(true);
+    // the pins, marks and dots stay in view whatever lidar stands before them (it may be placed wrong)
+    if (statics.length) gl.clear(gl.DEPTH_BUFFER_BIT);
     gl.uniformMatrix4fv(uMvp, false, vp);
     gl.bindBuffer(gl.ARRAY_BUFFER, buf);
     gl.vertexAttribPointer(aP, 3, gl.FLOAT, false, 0, 0);

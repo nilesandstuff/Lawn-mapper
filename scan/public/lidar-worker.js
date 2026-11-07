@@ -50,14 +50,23 @@ self.onmessage = async ({ data }) => {
        ended up in the live ar"): roofs drawn from the straightened outline the match uses (G.bld, 0.25 m), as runs
        along each row, not the model's 1 m columns; a trunk made into a post is not boxed again from the ground, its
        column drawn from the crown up only */
+    /* (2026-11-07, the owner's screenshot: a gable roof drawn as a flat-topped block) a run along a row was drawn at
+       its highest cell, so every row across a ridge stood at the ridge's height. A run now breaks wherever the roof's
+       height changes by more than ROOF_STEP, so the roof is drawn at the height the model has, cell by cell. */
+    const ROOF_STEP = 0.3;
     const tall = [], roofRuns = [];
     const { kind, sgrid, K, ground, mu, layers, trunkCols } = shade, top = shade.stats.top;
+    const roofAt = (k2) => { const g = G.dem[k2], t = G.wallTop ? G.wallTop[k2] : NaN; return Number.isFinite(g) && Number.isFinite(t) ? g + Math.min(40, t) : NaN; };
     for (let r = 0; r < G.H; r++) {
       for (let c0 = 0; c0 < G.W;) {
-        if (!G.bld[r * G.W + c0]) { c0++; continue; }
-        let c1 = c0; while (c1 + 1 < G.W && G.bld[r * G.W + c1 + 1]) c1++;
-        let lo = Infinity, hi = -Infinity;
-        for (let c = c0; c <= c1; c++) { const k2 = r * G.W + c, g = G.dem[k2], t = G.wallTop ? G.wallTop[k2] : NaN; if (Number.isFinite(g)) { lo = Math.min(lo, g); if (Number.isFinite(t)) hi = Math.max(hi, g + Math.min(40, t)); } }
+        const k0 = r * G.W + c0, h0 = roofAt(k0);
+        if (!G.bld[k0] || !Number.isFinite(h0)) { c0++; continue; }
+        let c1 = c0, lo = Number.isFinite(G.dem[k0]) ? G.dem[k0] : Infinity, hi = h0;
+        while (c1 + 1 < G.W && G.bld[k0 + (c1 + 1 - c0)]) {
+          const h = roofAt(k0 + (c1 + 1 - c0));
+          if (!Number.isFinite(h) || Math.abs(h - h0) > ROOF_STEP) break;
+          c1++; hi = Math.max(hi, h); const g = G.dem[k0 + (c1 - c0)]; if (Number.isFinite(g)) lo = Math.min(lo, g);
+        }
         if (Number.isFinite(lo) && hi > lo) roofRuns.push(box[0] + c0 * G.cell, box[3] - (r + 1) * G.cell, box[0] + (c1 + 1) * G.cell, box[3] - r * G.cell, lo, hi);
         c0 = c1 + 1;
       }

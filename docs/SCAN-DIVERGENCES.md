@@ -100,6 +100,10 @@ is drawn as a green box from its lowest cube with leaf (`mu` > 0) to its top. Bu
 straightened outline the match uses (step 3b), as runs along the match's 0.25 m rows, not as 1 m columns; a trunk
 made into a post is drawn as the post, its column green only from 2.4 m up (2026-11-05: the owner saw none of the
 straightening, because the drawing still showed the raw columns).
+Each run stands to the roof's own height: a run breaks where the column top changes by more than 0.3 m (2026-11-07:
+the owner's screenshot showed a gable drawn as a flat block, every row at its highest cell, the ridge). The drawing
+shows only the nearest lidar surface at each pixel (a depth pass first), so the far side of a house or a shape behind
+it no longer shows through; pins and marks are drawn over it all. The real world does not yet hide the lidar.
 Nothing is drawn that the model does not have.
 
 ## 7. Which canopy: `mu`, as flown
