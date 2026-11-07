@@ -1513,3 +1513,33 @@ and change by season), cars and people dropped.
 Order: build it first after the walk, on the GitHub runner, where walks with check points give the truth and it
 can be scored beside the present placement; port it to the live match (WebGL renders small depth pictures quickly)
 only if it wins.
+
+### SCAN-H25. Sight lines through the model, first measured: no better than the placement after the walk (2026-11-07)
+
+scan/tools/view_study.py on the owner's two app-1.8 walks with six check points each (907 ft with the live fix on;
+729 ft recorded only). Median error at the check points:
+
+| | 907 ft walk | 729 ft walk |
+|---|---|---|
+| live fix, as walked | 24.0 ft | (record only) |
+| after the walk now (skyline, then the ground's shape) | 2.7 ft | 3.6 ft |
+| GPS / Street View trail alone | 16.8 ft | 2.2 ft |
+| sight lines A: 1 m columns, crowns cheap | 9.0 | 1.4 |
+| B: 0.25 m, open under the eaves, crowns neutral | 3.6 | 5.4 |
+| C: B, ground by its height | 3.6 | 5.4 |
+| D: C, early stops doubled | 4.4 | 3.8 |
+
+HARD: no variant beats the present placement on both walks, and on neither walk is the check points' own fit the
+cost's minimum (a search from it moves 3.5-9 ft). At the truth 45-65% of the phone's non-ground lines end in what
+the model calls open air: most of what the phone sees standing (shrubs, bare branches, fences, things below the
+lidar's notice) is not in the model as anything hard, so the lines that could carry the occlusion signal are few
+and outvoted. A's 1.4 ft is one start of four landing well (its starts end at 1.4, 2.0, 6.4 and 7.7 ft), not a
+result. The study stays in task place, printing; placement.json is unchanged.
+
+Also measured: ARCore's own drift is small next to these (anchors moved a median 0.1-0.3 m, at most 1.1 m, over
+434-907 ft), and the after-the-walk placement, one rigid placement for the whole walk, is 2.7-3.6 ft while the live
+fix, which places a window of the last 25 ft at a time, is 24 ft. SPECULATION, the next thing to measure: the live
+fix should place the whole walk so far at once, with the ground's shape as the after-walk does (the walk's extent is
+what pins it), rather than short windows that each fit two places about equally. And the sight lines want the
+phone's points labelled (ARCore's labels: buildings and structures only), which means keeping each point's label in
+the twin; the page has it, the twin's cloud record does not.
