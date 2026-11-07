@@ -1278,3 +1278,4 @@ MEASURED with the gate (2026-11-06, task place):
   - That run timed out (30 minutes) in the step after: the skyline search took 1,633 s on the work lot's whole box.
     With a gate the coarse skylines are now computed only where the gated placements can put a picture (the gate's
     reach plus the walk's own size), and the job may run 60 minutes.
+    Rerun: the whole placement step in 3.6 minutes (it ran past 30 before), the same answer, 6.5 ft (6.5, 6.8, 4.3).
