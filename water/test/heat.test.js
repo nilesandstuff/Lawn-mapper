@@ -3,7 +3,7 @@
  *   node water/test/heat.test.js
  */
 import assert from 'node:assert/strict';
-import { heatOfMonth, monthWeather, W_PER_MJ } from '../lib/heat.js';
+import { heatOfMonth, monthWeather, W_PER_MJ, surfaceOfMonth, dayLength } from '../lib/heat.js';
 import { PARAMS } from '../lib/balance.js';
 
 let passed = 0;
@@ -42,6 +42,27 @@ test('against the open lawn: a shaded spot gets less sun and loses less to the s
   assert.ok(flat.ground.sun[1] < 0 && flat.ground.sky[1] === 0 && flat.air[1] === 0);
   // out of the growing season the air's cooling is not applied by the balance, and the view says so
   assert.equal(heatOfMonth(model, july(), 6, { season: new Set([0, 1, 2]) }).inSeason, false);
+});
+
+test('the surface model: dry grass, a sun-facing slope and a sheltered corner run hot by day; an open, calm spot runs cold before dawn', () => {
+  const one = (a) => Float32Array.from(a);
+  // spots: 0 open lawn; 1 the same, dry; 2 a slope facing the sun (1.3 x the beam); 3 sheltered (30% of the wind);
+  // 4 under a crown (25% of the sun, 40% of the sky)
+  const rad = Array.from({ length: 12 }, () => ({ parB: one([1, 1, 1.3, 1, 0.2]), parD: one([1, 1, 1, 1, 0.4]), nirB: one([1, 1, 1.3, 1, 0.3]), nirD: one([1, 1, 1, 1, 0.5]) }));
+  const model = { N: 5, params: { ...PARAMS, kc: 0.8 }, g: { lat: 43 }, rad, winds: [1, 0.3], windAt: Uint8Array.from([0, 0, 0, 1, 0]) };
+  const h = heatOfMonth(model, july(), 6);
+  const s = surfaceOfMonth(model, h, { ks: one([1, 0.3, 1, 1, 1]) });
+  const [open, dry, slope, calm, shade] = s.day;
+  assert.ok(Math.abs(open - s.open.day) < 1e-3, 'spot 0 is the open lawn');
+  assert.ok(open > s.ta.day && open < s.ta.day + 4, `watered open lawn a little over the air at the peak: ${open.toFixed(1)} against ${s.ta.day} C`);
+  assert.ok(dry > open + 6, `dry grass much hotter: ${dry.toFixed(1)} C`);
+  assert.ok(slope > open, `a sun-facing slope hotter: ${slope.toFixed(1)} C`);
+  assert.ok(calm > open, `a sheltered spot hotter by day: ${calm.toFixed(2)} against ${open.toFixed(2)} C`);
+  assert.ok(shade < open, `shade cooler: ${shade.toFixed(1)} C`);
+  const [nOpen, , , nCalm, nShade] = s.night;
+  assert.ok(nOpen < s.ta.night && nCalm < nOpen, `before dawn the open spot is under the air, the calm one more so: ${nOpen.toFixed(1)}, ${nCalm.toFixed(1)} against ${s.ta.night} C`);
+  assert.ok(nShade > nOpen, 'under the crown it stays warmer');
+  assert.ok(Math.abs(dayLength(43, 172) - 15.2) < 0.1 && Math.abs(dayLength(43, 355) - 8.8) < 0.1, "FAO-56 day lengths at 43 N (the sun's centre, no refraction)");
 });
 
 console.log(`water heat: ${passed} passed`);

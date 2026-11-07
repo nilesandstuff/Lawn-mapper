@@ -168,6 +168,10 @@ SPECULATION), as always.
 
 ## Done
 
+- **Heat, finished** (owner, 2026-11-07: "Add all of the missing things..."; "add the surface model"): sun-facing
+  slopes, pavers, cooling from any shade (H81); the surface temperature, afternoon and before dawn, kept watered or
+  rain alone, with each square's wind and wetness (H82); the paper's section 7 and change log.
+
 - **The heat view** (owner, 2026-11-07): Heat on the map's views: the ground's 24-hour energy against open lawn,
   the night sky's pull, the trees' cooling of the air, by month, a tapped spot's own breakdown (lib/heat.js, H80).
   Found and fixed on the way: the live plans had run without the shade since 2026-11-04 midday (H80).

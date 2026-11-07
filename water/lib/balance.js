@@ -95,6 +95,8 @@ export const PARAMS = {
      share of clear-sky sunshine (their sampling days, summer afternoons, about 29 C). */
   airShare: 0.3,
   airCoolC: 1.3,
+  coolFromAnyShade: true, // the cooling from crowns AND buildings within canopyRadiusM (owner, 2026-11-07; S27)
+  beamMax: 1.6,           // the most of open level ground's beam a slope facing the sun may get (a 30-degree south slope in winter: about 1.5)
   /* THE YARD'S WIND (FINDINGS H44): Heisler 1990's neighbourhoods, cover counted within windRadiusM (his inner
      band, 0-91 m; clipped to the grid, which reaches 30 m past the lot), the share rounded to windStep. */
   /* A SPOT'S OWN RADIATION (FINDINGS H47): the visible light and the near-infrared apart. Leaves pass more of the
@@ -176,8 +178,19 @@ export function coverAround(res, radiusM, kinds = null) {
   return { crown, built };
 }
 
-/** The share of the ground within PARAMS.canopyRadiusM of each cell under the shade map's tree crowns, or null. */
-export const canopyAround = (res, kinds, params = PARAMS) => (kinds ? coverAround(res, params.canopyRadiusM, kinds).crown : null);
+/**
+ * The share of the ground within PARAMS.canopyRadiusM of each cell in shade: under the shade map's tree crowns and,
+ * since 2026-11-07, under its buildings and low structures too (owner: "we've been treating tree cover as an air
+ * cooling trigger. But I feel like it should really be any shade"). Ziter et al. 2019 measured the cooling against
+ * canopy alone; that a building's footprint cools the air round it as a crown's does is the owner's call, unmeasured
+ * here (S27). PARAMS.coolFromAnyShade false keeps canopy alone. Null without the shade map's reading.
+ */
+export const canopyAround = (res, kinds, params = PARAMS) => {
+  if (!kinds) return null;
+  const c = coverAround(res, params.canopyRadiusM, kinds);
+  if (!params.coolFromAnyShade) return c.crown;
+  return Float32Array.from(c.crown, (v, i) => Math.min(1, v + c.built[i]));
+};
 
 /**
  * THE YARD'S WIND, as a share of the open wind the weather gives (NASA POWER's matches the nearest major airport's,
@@ -246,11 +259,16 @@ export function etToday(model, part, inSeason, out, month = null) {
  * visible share, beam / beamB), the buildings' part the same for both. -> [12 { parB, parD, nirB, nirD }]
  */
 export function radiationModel({ beam, sky, beamB, skyB }, N, params = PARAMS) {
+  /* The shade map's beam share is against OPEN, LEVEL ground and angles the sun onto the ground's own slope
+     (rays.js beamShare): over 1 on a slope facing the sun, under 1 on one facing away. Until 2026-11-07 it was held
+     to 1 here, so a sun-facing slope got no more sun than flat open lawn (owner: "angled slopes to and away from
+     sun"). The beam keeps up to beamMax; the sky's share (the sky view) stays at most 1. */
   const x = params.nirExp, fin = (v) => (Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 1);
+  const finB = (v) => (Number.isFinite(v) ? Math.max(0, Math.min(params.beamMax ?? 1.6, v)) : 1);
   return beam.map((_, m) => {
     const parB = new Float32Array(N), parD = new Float32Array(N), nirB = new Float32Array(N), nirD = new Float32Array(N);
     for (let i = 0; i < N; i++) {
-      const b = fin(beam[m][i]), d = fin(sky[m][i]), bb = Math.max(b, fin(beamB[m][i])), db = Math.max(d, fin(skyB[m][i]));
+      const b = finB(beam[m][i]), d = fin(sky[m][i]), bb = Math.max(b, finB(beamB[m][i])), db = Math.max(d, fin(skyB[m][i]));
       parB[i] = b; parD[i] = d;
       nirB[i] = bb > 1e-4 ? bb * (b / bb) ** x : 0;
       nirD[i] = db > 1e-4 ? db * (d / db) ** x : 0;
@@ -354,7 +372,7 @@ export function buildModel(res, { kinds, soilAt, soils, roofTo, light = null, li
     let best = 0;
     for (let rr = Math.max(0, r - reach); rr <= Math.min(g.H - 1, r + reach); rr++) for (let cc = Math.max(0, c - reach); cc <= Math.min(g.W - 1, c + reach); cc++) {
       const k = kinds[rr * g.W + cc];
-      if (k !== 2 && k !== 3) continue;
+      if (k !== 2 && k !== 3 && k !== 4) continue; // roofs and walls, paving, and brick or paver patios (pavers: 2026-11-07)
       const d = Math.hypot(rr - r, cc - c) * g.cell;
       if (d > params.edgeReachM) continue;
       // row grows southward: the hot surface is to the south when rr > r, to the west when cc < c

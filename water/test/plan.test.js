@@ -321,6 +321,24 @@ test('a lawn half sand, half loam: two zones, and the sand is watered more often
   assert.equal(plan.roofs.pieces, 0);
 });
 
+test('a slope facing the sun keeps its extra beam, one facing away its loss; the sky view stays at most 1 (2026-11-07)', () => {
+  const m = (v) => Array.from({ length: 12 }, () => Float32Array.from(v));
+  const R = radiationModel({ beam: m([1.3, 0.7, 2.5]), sky: m([1.2, 0.9, 1]), beamB: m([1.3, 0.7, 2.5]), skyB: m([1.2, 0.9, 1]) }, 3, PARAMS);
+  assert.ok(Math.abs(R[6].parB[0] - 1.3) < 1e-6, 'a sun-facing slope: more than flat open lawn');
+  assert.ok(Math.abs(R[6].parB[1] - 0.7) < 1e-6, 'one facing away: less');
+  assert.ok(Math.abs(R[6].parB[2] - PARAMS.beamMax) < 1e-6, 'held to beamMax');
+  assert.equal(R[6].parD[0], 1, 'the sky seen is never more than the whole sky');
+});
+
+test('the air cools from any shade within 30 m, crowns and buildings (owner, 2026-11-07); canopy alone on request', () => {
+  const W = 40, H = 40, N = W * H, res = { grid: { W, H, cell: 1 } };
+  const kinds = new Uint8Array(N);
+  for (let r = 0; r < 20; r++) for (let c = 0; c < 20; c++) kinds[r * W + c] = 1; // a building in one corner
+  const any = canopyAround(res, kinds, PARAMS), crowns = canopyAround(res, kinds, { ...PARAMS, coolFromAnyShade: false });
+  assert.ok(any[10 * W + 25] > 0.2, `beside the building: ${any[10 * W + 25].toFixed(2)}`);
+  assert.equal(crowns[10 * W + 25], 0, 'no trees: no cooling by canopy alone');
+});
+
 test('rank correlation: same order 1, reversed -1, ties share a rank, too few is null', () => {
   assert.equal(spearman([1, 2, 3, 4], [10, 20, 30, 40]), 1);
   assert.equal(spearman([1, 2, 3, 4], [9, 7, 5, 1]), -1);

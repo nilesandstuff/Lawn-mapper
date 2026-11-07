@@ -16,7 +16,7 @@ import { workerIo } from '/lib/browser-io.js';
 import { runSite } from '/lib/site.js';
 import { soilFor, sdaPost } from '/lib/soil.js';
 import { typicalYears, thisWeek, attachStationHours, soilDaysOver } from '/lib/weather.js';
-import { heatOfMonth } from '/lib/heat.js';
+import { heatOfMonth, surfaceOfMonth, stressByMonth } from '/lib/heat.js';
 import { waterPlan } from '/lib/plan.js';
 import { demAround, terrain, hillside, RADIUS_M } from '/lib/upslope.js';
 import { placeSoils, twiForGrid } from '/lib/soilplace.js';
@@ -74,8 +74,14 @@ function heatFor({ month, id }) {
   const h = heatOfMonth(kept.model, kept.typical, month, { season: kept.season || null });
   if (!h) { self.postMessage({ heat: { id, error: 'no weather for that month' } }); return; }
   const g = h.ground;
-  self.postMessage({ heat: { id, month, weather: h.weather, inSeason: h.inSeason, sunny: h.sunny, open: h.open, ground: g, night: h.night, air: h.air, ownRadiation: !!kept.model.rad, fences: !!kept.model.fenceHeat, trees: !!kept.model.canopy } },
-    [g.sun.buffer, g.sky.buffer, g.fence.buffer, g.paving.buffer, g.net.buffer, h.night.buffer, h.air.buffer]);
+  /* THE SURFACE'S OWN TEMPERATURE (lib/heat.js surfaceOfMonth): kept watered (no water stress), and with rain alone
+     (each square's own Ks that month, from the plan's ten years without a sprinkler, worked out once a plan) */
+  if (!kept.ksRain) kept.ksRain = stressByMonth(kept.model, kept.typical, { season: kept.season || null });
+  const ks = kept.ksRain[month];
+  const wet = surfaceOfMonth(kept.model, h), dry = surfaceOfMonth(kept.model, h, { ks });
+  const surf = { wetDay: wet.day, wetNight: wet.night, dryDay: dry.day, dryNight: dry.night, wind: wet.wind, ks: Float32Array.from(ks), ta: wet.ta, open: wet.open, peakW: wet.peakW, hours: wet.hours, wind2: wet.wind2, windByMonth: !!kept.model.windAtMonths };
+  self.postMessage({ heat: { id, month, weather: h.weather, inSeason: h.inSeason, sunny: h.sunny, open: h.open, ground: g, night: h.night, air: h.air, surf, ownRadiation: !!kept.model.rad, fences: !!kept.model.fenceHeat, trees: !!kept.model.canopy } },
+    [g.sun.buffer, g.sky.buffer, g.fence.buffer, g.paving.buffer, g.net.buffer, h.night.buffer, h.air.buffer, surf.wetDay.buffer, surf.wetNight.buffer, surf.dryDay.buffer, surf.dryNight.buffer, surf.wind.buffer, surf.ks.buffer]);
 }
 
 /* THE PLAN ON THE PERSON'S OWN VALVES (owner, 2026-10-23: "a final step that gives exact watering recs by season
@@ -90,6 +96,7 @@ async function plan(inputs = {}) {
   const t0 = Date.now();
   const p = planWith(inputs);
   kept.model = p.model; // the heat view's (heatFor): the plan's own model, never sent to the page
+  kept.ksRain = null; // how wet the ground runs with rain alone, month by month: worked out again on the heat view's first ask
   const grass = p.grass;
   const out = {
     zones: p.zones, zoneOf: p.zoneOf, kinds: p.kinds, needMm: p.needMm, soilAt: p.soilAt, multiplier: p.multiplier, rootIn: p.rootIn, needMonth: p.needMonth, wetFromWatering: p.wetFromWatering, wetAnyway: p.wetAnyway, dryShare: p.dryShare,

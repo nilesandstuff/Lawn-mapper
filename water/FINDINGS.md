@@ -2557,6 +2557,36 @@ NIGHT COOLING (the owner: "if nighttime cooling from radiation is not affected b
 should be"): it is, through FAO-56 eq. 39 (vapour pressure and the day's sunshine against a clear day's); the test
 checks it falls in damper air and under cloud. Its limit: night cloud is read from the day's sunshine, not measured.
 
+### H81. Sun-facing slopes, pavers, and cooling from any shade (water session, 2026-11-07)
+
+The owner: "Add all of the missing things, wind, how wet the ground is, angled slopes to and away from sun, pavers"
+and "we've been treating tree cover as an air cooling trigger. But I feel like it should really be any shade".
+- SLOPES. The shade map's beam share is against open, level ground and angles the sun onto the ground's own slope
+  (rays.js beamShare: over 1 facing the sun, under 1 facing away). balance.js radiationModel held it to 1, so a
+  slope facing the sun got no more than flat open lawn; it now keeps up to PARAMS.beamMax 1.6 (slopes facing away
+  were never held). The sky view stays at most 1.
+- PAVERS (kind 4) now count beside paving and walls for the edge heat (S8).
+- ANY SHADE. canopyAround counts the shade map's buildings and low structures with its crowns, within 30 m, held to
+  1 (PARAMS.coolFromAnyShade; S27: Ziter's 1.3 C was measured against canopy only).
+On the owner's lawn (the page, ten years, the shade in): the year's watering, lawn-weighted, 6.00 -> 6.01 in; July
+waterings 6.28 -> 6.35; zones 3 -> 4 (shares 0.39/0.34/0.27 -> 0.38/0.28/0.06/0.28). Small: the lawn is mostly flat
+and its shade was already mostly trees. test/plan.test.js: a 1.3 beam kept, 0.7 kept, 2.5 held to 1.6; a building
+cools the air beside it, not by canopy alone.
+
+### H82. The surface temperature: an estimate, built, unmeasured (water session, 2026-11-07)
+
+lib/heat.js surfaceOfMonth, on the Heat view: Ts - Ta = (Rn - G - LE) / (rho cp / ra + 4 e s Ta^3) at a sunny
+afternoon's peak and before dawn of a typical day of the month; Rn from the square's own sun (its slope, through
+what stands over it), sky view, fences and paving; G 0.1 Rn by day, 0.5 Rn by night (FAO-56 hourly); LE by
+Priestley & Taylor (1.26) cut by the plan's Ks, kept watered (1) or rain alone (each square's mean Ks that month
+from the ten-year run without sprinklers, stressByMonth); ra = 208 / u2, u2 the month's mean open wind times the
+square's own share (H50), at least 0.5 m/s. Test (heat.test.js): watered open lawn 0.7 C over 28 C air; the same at
+Ks 0.3, 43 C; a sheltered square hotter by day and colder before dawn; shade cooler by day, warmer before dawn.
+On the owner's lawn, July: air 81 F; afternoon surface kept watered 81-83 F (5th-95th of the lawn), rain alone
+81-102 F (median 93), the open east lawn hottest; before dawn 59-61 F against 62 F air. Its lawn wind 20-60% of the
+open (median 45%); with rain alone the grass keeps up 64-100% of its water use in July (median 78%). NOT CHECKED
+against any thermometer (S28).
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge
@@ -2889,4 +2919,20 @@ lawn (the research is done, the build is not: TODO). Other readings fit too: rai
 does take interception, but not by species), the meter's top 3 in drying where the model's bucket is deeper, or
 late-season dew on open grass. One visit cannot tell them apart; a second visit a day or two after real rain, and
 one in summer, would.
+
+### S27. A building's shade cools the air as a tree's does (owner's call, 2026-11-07, with H81)
+
+The air's afternoon cooling (Ziter et al. 2019: up to 1.3 C at full canopy within 30 m) now counts buildings and
+low structures with crowns. Ziter measured canopy; trees cool by transpiring as well as by shading, and a roof
+heats in the sun, so a building's cooling of the air is likely smaller than a crown's, perhaps none. Unmeasured
+here; a thermometer walk past the owner's house on a still, sunny afternoon would size it.
+
+### S28. The surface temperatures (H82) are physics, not measurements
+
+Every coefficient in surfaceOfMonth is textbook (FAO-56's hourly soil heat and grass resistance; Priestley & Taylor;
+Stefan-Boltzmann), none fitted here. Weak points, in rough order: the day's sun share used at the afternoon peak (a
+square shaded only in the morning reads as part-shaded at the peak); the month's MEAN longwave loss used for the
+night (a clear, calm night loses two to three times that, so the pre-dawn figures are a typical night's, not a frost
+night's); the wind's mean used at night (nights are calmer); no heat stored in paving. An infrared thermometer at
+the afternoon peak and before dawn, open lawn against shade and a dry patch, would check it.
 
