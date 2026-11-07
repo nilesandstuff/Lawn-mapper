@@ -72,11 +72,12 @@ jobs:
           set -o pipefail
           CODE=$((100 + ${{ github.run_number }}))
           NAME="1.${{ github.run_number }}"
+          # a quiet build prints nothing, and grep with nothing to pass on exits 1: hence the || true above
           echo "APP_CODE=$CODE" >> "$GITHUB_ENV"
           echo "APP_NAME=$NAME" >> "$GITHUB_ENV"
           gradle -p android --no-daemon -q assembleRelease \
             -PscanUrl="https://$SCAN_DOMAIN" -PversionCode="$CODE" -PversionName="$NAME" \
-            -PkeystorePath="$RUNNER_TEMP/release.jks" -PkeystorePass="$KEY_PASS" -ParcoreApiKey="$ARCORE_API_KEY" 2>&1 | grep -v '^w:' | tail -40
+            -PkeystorePath="$RUNNER_TEMP/release.jks" -PkeystorePass="$KEY_PASS" -ParcoreApiKey="$ARCORE_API_KEY" 2>&1 | { grep -v '^w:' || true; } | tail -40
           APK=android/app/build/outputs/apk/release/app-release.apk
           test -f "$APK"
           BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
