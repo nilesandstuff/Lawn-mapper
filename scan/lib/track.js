@@ -75,8 +75,9 @@ export function trackingOf8w(status, reason) {
 }
 
 /** Which engines to offer and which to start by default. */
-export function engineChoice({ hasXR = false, has8w = false, ios = false, prefer = null } = {}) {
+export function engineChoice({ hasXR = false, has8w = false, ios = false, prefer = null, hasNative = false } = {}) {
   const offered = [];
+  if (hasNative) offered.push('native'); // inside the Android app (android/): ARCore itself, first
   if (hasXR) offered.push('webxr');
   if (has8w) offered.push('8thwall');
   if (prefer && offered.includes(prefer)) return { offered, start: prefer };
@@ -88,7 +89,7 @@ export const isIOS = (ua = navigator.userAgent, touchMac = navigator.maxTouchPoi
 
 /** What this phone offers. eightWallUrl: where the binary is served from (null when the site has none). */
 export async function detect({ eightWallUrl = null } = {}) {
-  const out = { webxr: false, eightWall: !!eightWallUrl, ios: isIOS(), secure: !!window.isSecureContext, why: null };
+  const out = { webxr: false, eightWall: !!eightWallUrl, ios: isIOS(), secure: !!window.isSecureContext, why: null, native: nativeInfo() };
   if (!out.secure) { out.why = 'AR needs the secure (https) page.'; return out; }
   if (navigator.xr) { try { out.webxr = await navigator.xr.isSessionSupported('immersive-ar'); } catch { out.webxr = false; } }
   return out;
@@ -114,6 +115,7 @@ export function load8thWall(url) {
  * -> { engine, stop(), features }
  */
 export async function start(opts) {
+  if (opts.engine === 'native') return startNative(opts);
   if (opts.engine === 'webxr') return startWebXR(opts);
   if (opts.engine === '8thwall') return start8thWall(opts);
   throw new Error(`no such engine: ${opts.engine}`);
@@ -372,5 +374,101 @@ async function start8thWall({ canvas, onFrame, onEvent, eightWallUrl }) {
     engine: '8thwall', features: ['slam', 'world-points'], depth: false, anchors: false,
     anchor: async () => null, anchorAt: () => null,
     stop: () => { live = false; window.removeEventListener('resize', size); try { XR8.stop(); XR8.clearCameraPipelineModules(); } catch { /* already */ } onEvent?.({ type: 'end' }); },
+  };
+}
+
+/* ------------------------------------------------------- the Android app */
+
+/*
+ * THE APP (android/, 2026-11-07; docs/SCAN-PLAN.md section 10). This page runs inside the app's WebView, over the
+ * camera the app draws; the app's bridge, window.LawnARNative, hands over ARCore itself: the pose about 30 times a
+ * second, the crosshair's hit, raw depth with its confidence (which Chrome's WebXR does not give: SCAN-PLAN, the
+ * S21), the camera's picture as the screen shows it, and ARCore's Geospatial pose when the build has a key. What the
+ * app does with the camera is set here (NATIVE_OPTIONS), so a change is a site deploy, not a new APK.
+ */
+
+/** The app's own description, or null outside the app. */
+export function nativeInfo() {
+  try { return typeof window !== 'undefined' && window.LawnARNative ? JSON.parse(window.LawnARNative.info()) : null; } catch { return null; }
+}
+
+/** What the app is asked for (Bridge.start): the picture's width and quality, how often depth, pictures, Geospatial. */
+export const NATIVE_OPTIONS = { grabW: 480, jpegQ: 80, depthEveryMs: 200, pictureEveryMs: 700, geoEveryMs: 1000, depth: true, geospatial: true, planes: true };
+/** The depth the page reads: raw (holes where ARCore is unsure), points kept at this confidence (0..1) and up. */
+export const NATIVE_DEPTH = { kind: 'raw', minConf: 0.4, nx: 48, ny: 84 };
+
+const b64bytes = (s) => { const bin = atob(s); const u = new Uint8ClampedArray(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; };
+
+/** A depth grid from the app (DepthSnapshot.gridJson) as the page's depth: at(x, y) a world point or null, m(x, y) metres. */
+export function depthFromGrid(g, near = 0.4, far = 8) {
+  if (!g) return null;
+  const cell = (x, y) => Math.min(g.ny - 1, Math.max(0, Math.floor(y * g.ny))) * g.nx + Math.min(g.nx - 1, Math.max(0, Math.floor(x * g.nx)));
+  return {
+    kind: g.kind,
+    at: (x, y) => { const k = cell(x, y), d = g.d[k], px = g.p[k * 3]; return px != null && d >= near && d <= far ? { x: px, y: g.p[k * 3 + 1], z: g.p[k * 3 + 2] } : null; },
+    m: (x, y) => g.d[cell(x, y)],
+  };
+}
+
+async function startNative({ canvas, onFrame, onEvent, nativeOptions = {}, nativeDepth = {} }) {
+  const N = window.LawnARNative;
+  if (!N) throw new Error('not inside the app');
+  const opt = { ...NATIVE_OPTIONS, ...nativeOptions }, dep = { ...NATIVE_DEPTH, ...nativeDepth };
+  document.documentElement.classList.add('native-ar'); // the page goes see-through over the app's camera
+  const gl = canvas.getContext('webgl', { alpha: true, premultipliedAlpha: true, antialias: true });
+  let live = true, label = null, started = false;
+  const size = () => { const r = window.devicePixelRatio || 1, w = Math.round(canvas.clientWidth * r), h = Math.round(canvas.clientHeight * r); if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; } };
+  N.setCross(CROSS.x, CROSS.y);
+  const ready = new Promise((resolve, reject) => {
+    window.LawnARNative_onEvent = (e) => {
+      if (e.type === 'started') {
+        started = true;
+        label = e.depth ? `${dep.kind} (the app, ARCore, confidence ${dep.minConf} and up)` : 'none';
+        onEvent?.({ type: 'native', ...e });
+        resolve();
+      } else if (e.type === 'error' || e.type === 'installing') {
+        onEvent?.({ type: 'native', ...e });
+        if (!started) reject(new Error(e.message || e.type));
+      } else if (e.type === 'end') {
+        live = false;
+        document.documentElement.classList.remove('native-ar');
+        onEvent?.({ type: 'end' });
+      }
+    };
+  });
+  window.LawnARNative_onFrame = (fr) => {
+    if (!live || !gl) return;
+    size();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    let grid;
+    const depth = fr.depth ? (() => {
+      const get = () => (grid === undefined ? (grid = (() => { try { return depthFromGrid(JSON.parse(N.depthGrid(dep.nx, dep.ny, dep.kind, Math.round(dep.minConf * 255)))); } catch { return null; } })()) : grid);
+      return { at: (x, y) => get()?.at(x, y) ?? null, m: (x, y) => get()?.m(x, y) ?? NaN };
+    })() : null;
+    const pose = fr.pose ? { position: { x: fr.pose.p[0], y: fr.pose.p[1], z: fr.pose.p[2] }, quaternion: { x: fr.pose.q[0], y: fr.pose.q[1], z: fr.pose.q[2], w: fr.pose.q[3] } } : null;
+    const hit = fr.hit ? { position: { x: fr.hit.p[0], y: fr.hit.p[1], z: fr.hit.p[2] }, type: fr.hit.type, distance: fr.hit.d, plane: null } : null;
+    onFrame({
+      t: fr.t, tracking: fr.tracking, reason: fr.reason || null, reset: false, hit, depth, depthType: label, points: 0, pose,
+      gl, framebuffer: null, viewport: { x: 0, y: 0, w: canvas.width, h: canvas.height },
+      view: fr.view ? new Float32Array(fr.view) : null, proj: fr.proj ? new Float32Array(fr.proj) : null,
+      geo: fr.geo || null,
+      grab: () => {
+        let g;
+        try { g = JSON.parse(N.grab()); } catch { return null; }
+        if (!g) return null;
+        const jpeg = new Blob([b64bytes(g.jpeg)], { type: 'image/jpeg' });
+        return { w: g.w, h: g.h, pixels: b64bytes(g.rgba), blob: Promise.resolve(jpeg), proj: g.proj, view: g.view };
+      },
+    });
+  };
+  N.start(JSON.stringify(opt));
+  await ready;
+  const info = nativeInfo() || {};
+  return {
+    engine: 'native', features: ['native', `app ${info.app || '?'}`, `bridge ${info.bridge ?? '?'}`], depth: true, get depthType() { return label; }, anchors: false, info,
+    stop: () => { try { N.stop(); } catch { /* gone */ } },
+    anchor: async () => null, anchorAt: () => null,
   };
 }

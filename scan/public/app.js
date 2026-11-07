@@ -25,7 +25,10 @@ const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<
 const FT = 3.28084;
 const ftIn = (m) => { const inch = Math.round(m * FT * 12); return inch < 12 ? `${inch} in` : `${Math.floor(inch / 12)} ft ${inch % 12} in`; };
 const ENGINE_URL = '/vendor/xr/xr.js';
-const NAME = { webxr: "Chrome's AR (WebXR)", '8thwall': '8th Wall' };
+const NAME = { webxr: "Chrome's AR (WebXR)", '8thwall': '8th Wall', native: 'the Yard AR app (ARCore)' };
+/* THE ANDROID APP (android/, 2026-11-07): the bridge version this page needs (Bridge.kt; build.gradle.kts BRIDGE). A
+   page needing more than the installed app has says so and offers the update; otherwise the app needs nothing new. */
+const BRIDGE_NEEDED = 1;
 const COLOR = { dot: [0.3, 1, 0.6, 0.9], dotPlane: [1, 0.8, 0.2, 0.9], pin: [0.9, 0.22, 0.2, 0.95], placed: [0.9, 0.22, 0.2, 0.45], mark: [0.35, 0.6, 1, 0.95], ref: [0.25, 0.5, 1, 0.9], check: [0.75, 0.3, 0.9, 0.9] };
 const CSS = { ref: '#2f7cf6', check: '#a54bd8', pin: '#e53935', lawn: '#4cc38a' };
 const FAR_AGAIN = 3000;
@@ -47,12 +50,14 @@ async function main() {
   if (st.map) $('#back').href = `${$('#back').getAttribute('href')}?map=${encodeURIComponent(st.map)}`;
   try { st.has8w = (await fetch('/vendor/xr/VERSION', { method: 'HEAD', cache: 'no-store' })).ok; } catch { st.has8w = false; }
   st.caps = await detect({ eightWallUrl: st.has8w ? ENGINE_URL : null });
-  const pick = engineChoice({ hasXR: st.caps.webxr, has8w: st.has8w, ios: st.caps.ios });
+  const pick = engineChoice({ hasXR: st.caps.webxr, has8w: st.has8w, ios: st.caps.ios, hasNative: !!st.caps.native });
   const bits = [];
+  if (st.caps.native) bits.push(`Inside the Yard AR app (version ${st.caps.native.app}, ${st.caps.native.device}).`);
   bits.push(st.caps.ios ? 'An iPhone or iPad.' : 'Not an iPhone.');
   bits.push(st.caps.webxr ? "Chrome's AR is here." : 'No WebXR in this browser (none on iPhone; on Android, Chrome with Google Play Services for AR has it).');
   bits.push(st.has8w ? 'The 8th Wall engine is on this site.' : 'The 8th Wall engine is not on this site (the deploy did not install it).');
   $('#status').textContent = bits.join(' ');
+  appBox().catch(() => {});
   const box = $('#start');
   box.innerHTML = '';
   for (const e of pick.offered) {
@@ -243,7 +248,7 @@ const log = (what) => { st.errors.push({ t: Date.now(), what }); if (st.errors.l
 async function startAR(engine) {
   const overlay = $('#overlay');
   st.walk = newWalk({ engine, phone: navigator.userAgent });
-  st.dy = null; st.dyFrom = null; st.gpsTrail = []; st.anchors = newAnchors(); st.nudge = null; st.depthFill = null;
+  st.dy = null; st.dyFrom = null; st.gpsTrail = []; st.anchors = newAnchors(); st.nudge = null; st.depthFill = null; st.geoTrail = [];
   st.walk.checks = [];
   st.L = newLocate();
   mini.view = null; mini.mode = 'fit'; mini.locked = false; $('#arrows').innerHTML = '';
@@ -281,6 +286,7 @@ function onEvent(ev) {
   if (ev.type === 'camera') log(`camera ${ev.status}`);
   if (ev.type === 'motion') log(`motion sensors ${ev.status}`);
   if (ev.type === 'tracking') log(`tracking ${ev.status} ${ev.reason || ''}`.trim());
+  if (ev.type === 'native') { log(`app: ${ev.type === 'native' ? (ev.message || [ev.depth != null ? `depth ${ev.depth}` : '', ev.geospatial != null ? `geospatial ${ev.geospatial}` : '', ev.image ? `camera ${ev.image}` : ''].filter(Boolean).join(', ')) : ''}`); if (ev.message) flash(ev.message.slice(0, 80)); }
   if (ev.type === 'end') finish();
 }
 
@@ -288,6 +294,39 @@ function onEvent(ev) {
 /* the references and check points with their map places, kept in the walk's private twin (live.json), so the walk
    can be scored afterwards against them even when none was marked: a pin dropped on a check point counts */
 const trailKept = () => (st.gpsTrail || []).map((g) => ({ at: g.at.map((v) => +v.toFixed(2)), phone: g.phone.map((v) => +v.toFixed(2)), acc: +(+g.acc).toFixed(1), odo: +(+g.odo).toFixed(1) }));
+/* ARCORE'S GEOSPATIAL POSE (the app, when built with a key): Street View's place and heading for the phone, with its
+   accuracies, beside the session's own place then; one a second at most. Kept in the walk's private twin only. */
+const geoKept = () => (st.geoTrail || []).map((g) => ({ ...g }));
+function noteGeo(f, odo) {
+  const g = f.geo;
+  if (!g || g.state !== 'ENABLED' || !f.pose) return;
+  const tr = (st.geoTrail ||= []), last = tr[tr.length - 1];
+  if (last && f.t - last.tms < 1000) return;
+  const p = f.pose.position;
+  tr.push({ tms: f.t, lat: g.lat, lng: g.lng, alt: g.alt, hacc: g.hacc, vacc: g.vacc, yawAcc: g.yawAcc, eus: g.eus, phone: [+p.x.toFixed(3), +(-p.z).toFixed(3)], y: +p.y.toFixed(3), odo: +odo.toFixed(1) });
+  if (tr.length > 5000) tr.shift();
+}
+
+/** The Android app's box: in Chrome on Android, get it or open it; inside it, an update when one is ready. */
+async function appBox() {
+  const box = $('#appbox');
+  if (!box) return;
+  const v = await (await fetch('/api/app/version', { cache: 'no-store' })).json();
+  const inApp = st.caps.native;
+  if (inApp) {
+    const old = (inApp.bridge ?? 0) < BRIDGE_NEEDED, newer = v.code > (inApp.code || 0);
+    if (!old && !newer) return;
+    box.hidden = false;
+    box.innerHTML = `<strong>${old ? 'This page needs a newer app.' : `A newer app is ready (version ${esc(v.name || v.code)}).`}</strong> <button type="button" id="app-update">Update</button> <span class="dim">Chrome downloads it; tap the download to install over this one.</span>`;
+    $('#app-update').addEventListener('click', () => window.LawnARNative.openExternal(`${location.origin}/api/app/apk`));
+    return;
+  }
+  if (!/Android/i.test(navigator.userAgent) || !v.code) return;
+  box.hidden = false;
+  box.innerHTML = `<strong>The Android app</strong> (version ${esc(v.name || v.code)}): ARCore itself, with what Chrome holds back (raw depth, Street View's place).
+    <div class="tools" style="margin-top:6px"><a href="/api/app/apk"><button type="button">Get the app</button></a> <a href="/api/app/pair"><button type="button" class="plain">Open in the app</button></a></div>
+    <p class="dim" style="margin:6px 0 0">First time: Get the app, open the download and allow installing from Chrome. Then Open in the app signs it in (once).</p>`;
+}
 const pointsKept = () => (st.points || []).map((p) => ({ id: p.id, name: p.name, kind: p.kind, map: p.map }));
 
 function nextTarget() {
@@ -318,6 +357,7 @@ function onFrame(f) {
   // the ground near the phone: the crosshair's depth when it is on the ground (0.8-2.5 m below the camera)
   if ((f.hit?.type === 'DEPTH' || /SURFACE$/.test(f.hit?.type || '')) && f.pose) { const drop = f.pose.position.y - f.hit.position.y; if (drop > 0.8 && drop < 2.5) noteGround(L, f.hit.position.y); }
   // the depth picture as points round the phone, four times a second; then, when it is time, a match
+  if (f.geo) noteGeo(f, odo);
   if (f.depthType && !w.depthType) { w.depthType = f.depthType; log(`depth: ${f.depthType}`); if (st.twin) st.twin.depthType = f.depthType; }
   if (f.depth && f.pose && f.tracking === 'normal' && f.t - st.depthAt > DEPTH_EVERY) {
     st.depthAt = f.t;
@@ -377,7 +417,7 @@ function onFrame(f) {
       const g = grabbed || f.grab();
       if (g) { const name = addKey(st.twin, now, odo, f.pose.position, f.pose.quaternion, g); g.blob.then((b) => b && sendTwin([{ name, type: 'image/jpeg', body: b }]), () => {}); }
     }
-    if (flushDue(st.twin, now)) sendTwin(flush(st.twin, now, liveOf(L, w, { recordOnly: !!st.recordOnly, points: pointsKept(), gpsTrail: trailKept(), anchors: st.anchors ? anchorsKept(st.anchors) : null })));
+    if (flushDue(st.twin, now)) sendTwin(flush(st.twin, now, liveOf(L, w, { recordOnly: !!st.recordOnly, points: pointsKept(), gpsTrail: trailKept(), geoTrail: geoKept(), anchors: st.anchors ? anchorsKept(st.anchors) : null })));
   }
   if (!st.recordOnly && st.lid.ready && st.lid.worker && f.tracking === 'normal') {
     const ask = nextAsk(L, odo, Date.now(), f.pose?.position || null);
@@ -656,14 +696,14 @@ function finish() {
   }
   const refs = st.points.filter((p) => p.kind === 'ref').map((p) => ({ name: p.name, marks: L ? L.marks.filter((m) => m.id === p.id).length : 0, leftOutM: L ? r3(leftOut(L.marks.filter((m) => m.kind === 'ref'), p.id)) : null }));
   const s = summary(w, {
-    page: 'yard AR test v2', recordOnly: !!st.recordOnly, features: w.features || null, depthType: w.depthType || null, anchors: st.anchors ? anchorsKept(st.anchors) : null, depthFill: st.depthFill ? { frames: st.depthFill.frames, holes: +(st.depthFill.zero / Math.max(1, st.depthFill.cells)).toFixed(3), past8m: +(st.depthFill.far / Math.max(1, st.depthFill.cells)).toFixed(3) } : null, rawAsked: !!st.rawDepth, failed: w.failed || null, errors: st.errors.map((e) => e.what).slice(-30),
+    page: 'yard AR test v2', recordOnly: !!st.recordOnly, features: w.features || null, depthType: w.depthType || null, anchors: st.anchors ? anchorsKept(st.anchors) : null, depthFill: st.depthFill ? { frames: st.depthFill.frames, holes: +(st.depthFill.zero / Math.max(1, st.depthFill.cells)).toFixed(3), past8m: +(st.depthFill.far / Math.max(1, st.depthFill.cells)).toFixed(3) } : null, rawAsked: !!st.rawDepth, geo: st.geoTrail?.length ? { n: st.geoTrail.length, hacc: +st.geoTrail.map((g) => g.hacc).sort((a, b) => a - b)[st.geoTrail.length >> 1].toFixed(1), yawAcc: +st.geoTrail.map((g) => g.yawAcc).sort((a, b) => a - b)[st.geoTrail.length >> 1].toFixed(1) } : null, app: st.caps?.native ? { app: st.caps.native.app, bridge: st.caps.native.bridge, device: st.caps.native.device } : null, failed: w.failed || null, errors: st.errors.map((e) => e.what).slice(-30),
     references: refs, checks: (w.checks || []).map((c) => ({ ...c, errorM: r3(c.errorM), errorFixM: r3(c.errorFixM), errorRefsM: r3(c.errorRefsM), walkedSinceFixM: r2(c.walkedSinceFixM), aimM: r2(c.aimM), walkedM: r2(c.walkedM) })),
     pinsNear: w.pins.map((p) => ({ name: p.name, nearest: p.nearest ? { name: p.nearest.name, m: r2(p.nearest.m), byRefsM: r2(p.nearest.byRefsM) } : null })),
     fix: L ? summaryOf(L) : null, surfaceSeen: st.surfCount || null, lidar: st.lid.ready ? { points: st.lid.ready.points, solid: st.lid.ready.solid, shift: st.lid.ready.shift, rule: st.lid.ready.rule || null, structures: st.lid.ready.structures || null, tallCells: st.lid.overlay ? st.lid.overlay.tall.length / 5 : null } : st.lid.error ? { error: st.lid.error } : null,
   });
   s.id = `${w.startedAt}`; s.saved = null;
   if (st.twin) {
-    sendTwin(flush(st.twin, Date.now(), liveOf(L, w, { ended: true, summary: s.id, recordOnly: !!st.recordOnly, points: pointsKept(), gpsTrail: trailKept(), anchors: st.anchors ? anchorsKept(st.anchors) : null })));
+    sendTwin(flush(st.twin, Date.now(), liveOf(L, w, { ended: true, summary: s.id, recordOnly: !!st.recordOnly, points: pointsKept(), gpsTrail: trailKept(), geoTrail: geoKept(), anchors: st.anchors ? anchorsKept(st.anchors) : null })));
     s.twin = { ...st.twin.counts, camera: st.twin.camera, off: st.twinUp.off };
   }
   st.twin = null;

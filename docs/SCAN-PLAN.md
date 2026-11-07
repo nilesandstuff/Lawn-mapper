@@ -1298,3 +1298,24 @@ MEASURED with the gate (2026-11-06, task place):
     With a gate the coarse skylines are now computed only where the gated placements can put a picture (the gate's
     reach plus the walk's own size), and the job may run 60 minutes.
     Rerun: the whole placement step in 3.6 minutes (it ran past 30 before), the same answer, 6.5 ft (6.5, 6.8, 4.3).
+
+## 10. The Android app (2026-11-07)
+
+The owner: "is it possible to build an android app in our desktop-less workflow?" and then "Yea let's do it. And
+build it to be compatible with a full ar viewer in the future, so it doesn't need full rebuild ... minimize the need
+to push a whole new apk for minor updates and tweaks."
+
+Why: the browser hides ARCore's best parts. Measured above: the S21's Chrome ignores the raw-depth request (holes
+1-5% asked raw, 8% smooth). Native ARCore gives raw depth with a confidence per pixel, the camera's own picture at
+full size, the Geospatial API (Street View's place and heading, outdoors, with a key) and session recording.
+
+How (android/README.md): a thin Kotlin shell, ARCore and the camera natively, the scan site's page in a transparent
+WebView over it, one bridge between (window.LawnARNative; engine "native" in scan/lib/track.js). The page does
+everything it did; the app's options come from the page, so a tweak is a scan deploy. A future AR viewer draws in
+the page's WebGL over the camera, as the pins do now; only a new bridge call needs a new APK, and the page asks
+for it (BRIDGE_NEEDED). Built and signed by workflow "A. Android app"; served to the admin by the scan site;
+signed in by pairing with Chrome.
+
+Not yet measured: whether raw depth (confidence 0.4 and up, NATIVE_DEPTH) makes the ground fit better than Chrome's
+smooth depth (SCAN-H21: 72-75% within 15 cm), and how far the Geospatial pose is off on the owner's lot. Not yet
+built: ARCore's session recording (an MP4 of the walk for replay in the runners), a bridge 2 call.

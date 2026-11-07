@@ -1,0 +1,106 @@
+# A. ANDROID APP (core session, 2026-11-07; android/README.md, docs/SCAN-PLAN.md section 10).
+#
+# Builds the Yard AR app (android/), signs it, and puts it where the scan site serves it (/api/app/apk, with
+# /api/app/version for the update check). The app is a thin shell round the scan site's page, so most changes are a
+# scan deploy (workflow "S. Yard AR tool", task deploy), not this; this runs when android/ changes.
+#
+# The signing key is made here the first time and kept in the scan site's private bucket (app/release.jks); every
+# later build signs with it, as Android only installs an update signed like the app it replaces. The key file is the
+# secret: it is never served and never printed. Optional: a repository secret ARCORE_API_KEY turns on ARCore's
+# Geospatial API (Street View's place and heading) in the build.
+name: "A. Android app"
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Put the build on the scan site (no: build and check only)'
+        type: choice
+        options: ['yes', 'no']
+        default: 'yes'
+
+concurrency:
+  group: android-app
+  cancel-in-progress: false
+
+jobs:
+  app:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CUSTOM_DOMAIN: ${{ vars.CUSTOM_DOMAIN }}
+      # the key file is the secret (private bucket); this only opens it
+      KEY_PASS: yard-ar-release-key
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14.3'
+
+      - name: The scan site's host
+        run: node scan/tools/app-r2.mjs domain
+
+      - name: The signing key (made once, kept private)
+        run: |
+          set +e
+          node scan/tools/app-r2.mjs get app/release.jks "$RUNNER_TEMP/release.jks"
+          got=$?
+          set -e
+          if [ "$got" = "2" ]; then
+            keytool -genkeypair -keystore "$RUNNER_TEMP/release.jks" -alias lawnar -keyalg RSA -keysize 2048 -validity 20000 \
+              -storepass "$KEY_PASS" -keypass "$KEY_PASS" -dname "CN=Yard AR" > /dev/null 2>&1
+            node scan/tools/app-r2.mjs put app/release.jks "$RUNNER_TEMP/release.jks"
+            echo "KEY_NOTE=a new signing key was made (the first build; a phone with an older test build must uninstall it once)" >> "$GITHUB_ENV"
+          elif [ "$got" != "0" ]; then
+            echo "The signing key could not be read; not building with a new one (it would not install over the app)."
+            exit 1
+          fi
+
+      - name: Build
+        env:
+          ARCORE_API_KEY: ${{ secrets.ARCORE_API_KEY }}
+        run: |
+          set -o pipefail
+          CODE=$((100 + ${{ github.run_number }}))
+          NAME="1.${{ github.run_number }}"
+          echo "APP_CODE=$CODE" >> "$GITHUB_ENV"
+          echo "APP_NAME=$NAME" >> "$GITHUB_ENV"
+          gradle -p android --no-daemon -q assembleRelease \
+            -PscanUrl="https://$SCAN_DOMAIN" -PversionCode="$CODE" -PversionName="$NAME" \
+            -PkeystorePath="$RUNNER_TEMP/release.jks" -PkeystorePass="$KEY_PASS" -ParcoreApiKey="$ARCORE_API_KEY" 2>&1 | grep -v '^w:' | tail -40
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          test -f "$APK"
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BT/apksigner" verify "$APK" && echo "Signed: yes"
+          echo "APK_SIZE=$(du -k "$APK" | cut -f1)" >> "$GITHUB_ENV"
+          if [ -n "$ARCORE_API_KEY" ]; then echo "GEO=on (ARCORE_API_KEY is set)" >> "$GITHUB_ENV"; else echo "GEO=off (no ARCORE_API_KEY secret)" >> "$GITHUB_ENV"; fi
+
+      - name: Publish to the scan site
+        if: inputs.publish == 'yes'
+        run: |
+          BRIDGE=$(grep -o 'buildConfigField("int", "BRIDGE", "[0-9]*")' android/app/build.gradle.kts | grep -o '"[0-9]*")' | tr -dc 0-9)
+          node -e "require('fs').writeFileSync('version.json', JSON.stringify({ code: +process.env.APP_CODE, name: process.env.APP_NAME, bridge: +process.argv[1], at: new Date().toISOString(), commit: process.env.GITHUB_SHA.slice(0, 7) }))" "$BRIDGE"
+          node scan/tools/app-r2.mjs put app/lawn-ar.apk android/app/build/outputs/apk/release/app-release.apk application/vnd.android.package-archive
+          node scan/tools/app-r2.mjs put app/version.json version.json application/json
+          echo "PUBLISHED=yes" >> "$GITHUB_ENV"
+
+      - name: The answer
+        if: always()
+        run: |
+          echo "--------------------------------------------------------------"
+          echo "Yard AR app: version ${APP_NAME:-?} (code ${APP_CODE:-?}), ${APK_SIZE:-?} KB; Geospatial ${GEO:-?}."
+          if [ "${PUBLISHED:-}" = "yes" ]; then
+            echo "Published: on the phone, open https://$SCAN_DOMAIN in Chrome (signed in) and tap Get the app, then Open in the app."
+          else
+            echo "Not published (build only, or a step above failed)."
+          fi
+          if [ -n "${KEY_NOTE:-}" ]; then echo "Note: $KEY_NOTE."; fi

@@ -13,3 +13,11 @@ CREATE TABLE IF NOT EXISTS walks (
   json TEXT NOT NULL                -- the summary
 );
 CREATE INDEX IF NOT EXISTS walks_at ON walks (at);
+
+-- THE ANDROID APP'S PAIRING (src/app.js, 2026-11-07): Chrome, signed in, leaves its session here under a random code
+-- for five minutes; the app's WebView claims it once. A new table, so no ALTER is owed in migrations.sql.
+CREATE TABLE IF NOT EXISTS app_pairs (
+  token TEXT PRIMARY KEY,
+  session TEXT NOT NULL,
+  expires INTEGER NOT NULL          -- ms since 1970
+);

@@ -16,6 +16,7 @@
 
 import { walks } from './walks.js';
 import { twin } from './twin.js';
+import { app } from './app.js';
 
 /** GETs passed on to Lawn Mapper for the page's own use (the photo and the lidar come in phase 2). */
 export const PROXIED = ['/api/imagery', '/api/parcel', '/api/shade/lidar', '/api/lidar/tiles'];
@@ -68,7 +69,8 @@ function privately(res, path) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    const signIn = url.pathname.startsWith('/api/auth/');
+    // the app's pairing (src/app.js) is a sign-in too: it carries its own one-time proof
+    const signIn = url.pathname.startsWith('/api/auth/') || url.pathname === '/api/app/claim';
     const home = homeOf(env.LAWNMAP_HOST);
     if (env.ADMIN_ONLY === '1' && !signIn && !(await isAdmin(request, env))) {
       return url.pathname.startsWith('/api/') ? notFound() : notOpenYet(home);
@@ -77,6 +79,9 @@ export default {
       const res = await env.ASSETS.fetch(request);
       return env.ADMIN_ONLY === '1' ? privately(res, url.pathname) : res;
     }
+    // the Android app (src/app.js): its build, its download and its pairing
+    const appRoute = await app(request, env, url);
+    if (appRoute) return appRoute;
     // the walks kept on the site (src/walks.js): the admin only, whether or not the site is open
     const kept = await walks(request, env, url, { isAdmin });
     if (kept) return kept;
