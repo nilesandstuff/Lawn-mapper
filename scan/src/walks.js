@@ -14,14 +14,14 @@
 const json = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 
 export const MAX_JSON = 200000;
-const ENGINES = new Set(['webxr', '8thwall']);
+const ENGINES = new Set(['webxr', '8thwall', 'native']); // native: the Android app (android/, 2026-11-07)
 
 /** A posted walk, checked. -> { row } or { error } */
 export function cleanWalk(b, now = Date.now()) {
   if (!b || typeof b !== 'object') return { error: 'no walk' };
   const id = String(b.id || '').trim();
   if (!/^[0-9a-zA-Z_-]{1,40}$/.test(id)) return { error: 'a walk needs an id' };
-  if (!ENGINES.has(b.engine)) return { error: 'engine must be webxr or 8thwall' };
+  if (!ENGINES.has(b.engine)) return { error: 'engine must be webxr, 8thwall or native' };
   const text = JSON.stringify(b);
   if (text.length > MAX_JSON) return { error: `a walk is at most ${MAX_JSON} bytes of JSON` };
   if (/"(lng|lat|latitude|longitude|address)"/.test(text)) return { error: 'a walk holds no coordinates or addresses' };

@@ -65,4 +65,7 @@ assert.equal(g.at(0.9, 0.1), null, 'a hole');
 assert.equal(g.at(0.1, 0.9), null, 'past 8 m');
 assert.equal(g.at(0.9, 0.9), null, 'nearer than 0.4 m');
 assert.equal(g.m(0.9, 0.1), 0);
+// the app's walks are kept like the browser's (walks.js once refused engine 'native': the owner's first two app walks)
+const { cleanWalk } = await import('../src/walks.js');
+assert.ok(cleanWalk({ id: '1', engine: 'native', geo: { n: 3, hacc: 1.2, yawAcc: 2 }, app: { app: '1.5', bridge: 1 } }).row, 'a native walk, with its Geospatial counts, is kept');
 console.log('app: ok');

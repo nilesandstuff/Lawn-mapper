@@ -8,7 +8,7 @@
 CREATE TABLE IF NOT EXISTS walks (
   id TEXT PRIMARY KEY,
   at INTEGER NOT NULL,              -- ms since 1970, when the walk began
-  engine TEXT NOT NULL,             -- 'webxr' | '8thwall'
+  engine TEXT NOT NULL,             -- 'webxr' | '8thwall' | 'native' (the Android app)
   phone TEXT,                       -- the browser's user agent string
   json TEXT NOT NULL                -- the summary
 );

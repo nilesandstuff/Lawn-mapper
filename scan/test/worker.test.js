@@ -54,7 +54,7 @@ const url = (p) => new URL(`https://scan.example.com${p}`);
   const { cleanWalk, walks } = await import('../src/walks.js');
   assert.equal(cleanWalk(null).error, 'no walk');
   assert.equal(cleanWalk({ id: 'x y', engine: 'webxr' }).error, 'a walk needs an id');
-  assert.equal(cleanWalk({ id: '1', engine: 'arkit' }).error, 'engine must be webxr or 8thwall');
+  assert.equal(cleanWalk({ id: '1', engine: 'arkit' }).error, 'engine must be webxr, 8thwall or native');
   assert.match(cleanWalk({ id: '1', engine: 'webxr', pins: [{ lat: 42 }] }).error, /no coordinates/);
   const ok = cleanWalk({ id: '1793573191838', engine: 'webxr', when: '2026-11-01T22:46:31.838Z', phone: 'Mozilla/5.0', stats: { walkedM: 276.9 } });
   assert.equal(ok.row.at, Date.parse('2026-11-01T22:46:31.838Z'));
