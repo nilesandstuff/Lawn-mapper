@@ -275,8 +275,10 @@ jobs:
           node scan/tools/skyline-prep.mjs twin | tee -a place.txt
           python scan/tools/skyline_study.py twin | tee -a place.txt
           python scan/tools/pavement_study.py twin | tee -a place.txt
+          # SCAN-PLAN 12: the walk's depth points as sight lines through the model (study: placement.json unchanged)
+          python scan/tools/view_study.py twin | tee -a place.txt
           node scan/tools/post-fix.mjs twin | tee -a place.txt
-          node scan/tools/twin-r2.mjs put "$WALK" twin/skyline.json twin/pavement.json twin/placement.json twin/fixed.json twin/mesh.bin | tee -a place.txt
+          node scan/tools/twin-r2.mjs put "$WALK" twin/skyline.json twin/pavement.json twin/placement.json twin/fixed.json twin/mesh.bin $(test -f twin/view.json && echo twin/view.json) | tee -a place.txt
 
       # PAVEMENT FROM THE PICTURES (scan/tools/pavement_study.py): road and sidewalk pixels cast onto the ground, kept
       # for the match against the model's intensity when it has one; tested against the traced lawn meanwhile.
@@ -311,7 +313,7 @@ jobs:
             study) cat study.txt 2>/dev/null || echo "no study: see the step above" ;;
             skyline) cat skyline.txt 2>/dev/null || echo "no skyline study: see the step above" ;;
             pavement) cat pavement.txt 2>/dev/null || echo "no pavement study: see the step above" ;;
-            place) grep -v '^  model\|^  rays\|^  the picture' place.txt 2>/dev/null | tail -40 || echo "no placement: see the step above" ;;
+            place) grep -v '^  model\|^  rays\|^  the picture' place.txt 2>/dev/null | tail -60 || echo "no placement: see the step above" ;;
             depth) tail -25 depth.txt 2>/dev/null || echo "no depth run: see the step above" ;;
             *) echo "Scan tests: ${{ job.status }}" ;;
           esac

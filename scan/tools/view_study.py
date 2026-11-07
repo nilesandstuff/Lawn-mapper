@@ -1,0 +1,232 @@
+"""
+WHAT THE CAMERA SHOULD SEE (core session, 2026-11-07; docs/SCAN-PLAN.md section 12; the owner: "The matching isn't
+considering the things that the camera should actually be able to see... loosen the match on individual features
+while putting more emphasis on the overall arrangement of features"). Run by workflow "S. Yard AR tool", task `place`,
+after scan/tools/skyline-prep.mjs (and the skyline and pavement studies, whose placements it starts from).
+
+Every depth point the phone kept is a sight line: from where the camera stood then (the twin's track) to the first
+surface it saw, r metres off. Under a candidate placement the same line is run through the shade map's model (the
+ground, and each column's top: buildings and low structures hard, trees and the unknown soft, as the model's own
+`kind` says), and the first hard surface the model puts on it is compared with what the phone measured:
+  - the model's surface where the phone's was (within TOL): good, charged its difference;
+  - a hard surface well before it (the model says the camera could not have seen that far): charged, up to CAP;
+  - nothing hard by then: the phone saw something the model lacks, or saw it in a tree's crown (soft, little cost),
+    or the placement is wrong (a flat charge, the same wherever the placement puts it).
+Occlusion comes free (the far side of a house is never asked about: the camera's line stops at the near side), and so
+does the arrangement: the whole walk's lines are scored at once, not each point against its nearest outline. Leafless
+crowns are seen through, so a tree before the phone's point costs nothing.
+
+The vertical: the session's height plus the offset that puts ARCore's ground points on the model's ground (their
+median difference), found for each placement.
+
+NUMBERS ONLY in the log. Writes view.json (the best placement and its score) beside the twin; placement.json is not
+changed until this has been measured against the check points (SCAN-PLAN section 12).
+
+    python scan/tools/view_study.py twin
+"""
+import glob
+import json
+import math
+import os
+import sys
+import time
+
+import numpy as np
+
+FT = 3.28084
+STEP = 0.25            # metres between samples along a sight line
+TOL = 0.35             # the model's surface this near the phone's counts as the same surface
+CAP = 2.0              # a line blocked this early or earlier costs no more
+FREE = 0.6             # the cost of a point in the model's open air (squared metres, as a 0.77 m miss)
+SOFT = 0.05            # the cost of a point inside a crown or an unknown column
+RAYS = int(os.environ.get("VIEW_RAYS", 4000))
+GROUND_RAYS = int(os.environ.get("VIEW_GROUND_RAYS", 1200))
+HARD = (1, 4)          # structures.js BUILDING, STRUCTURE
+SOFT_KINDS = (2, 3, 5)  # TREE, SOLID_TREE, UNKNOWN
+
+
+def read_parts(d, pattern, rec):
+    parts = sorted(glob.glob(os.path.join(d, pattern)))
+    if not parts:
+        return np.zeros((0, rec), np.float64)
+    a = np.concatenate([np.fromfile(p, dtype="<f4") for p in parts])
+    return a[: len(a) // rec * rec].reshape(-1, rec).astype(np.float64)
+
+
+def sight_lines(d):
+    """[cam x, y, z, point x, y, z, ground?] per depth point, the camera from the track (nearest pose in time, within
+    0.4 s; poses every 0.2 s), in the session frame."""
+    cloud = read_parts(d, "cloud-*.bin", 6)       # t, odo, x, y, z, ground
+    track = read_parts(d, "track-*.bin", 10)      # t, odo, x, y, z, qx, qy, qz, qw, tracking
+    if not len(cloud) or not len(track):
+        return None
+    track = track[track[:, 9] == 0]
+    track = track[np.argsort(track[:, 0])]
+    i = np.clip(np.searchsorted(track[:, 0], cloud[:, 0]), 1, len(track) - 1)
+    near = np.where(np.abs(track[i, 0] - cloud[:, 0]) < np.abs(track[i - 1, 0] - cloud[:, 0]), i, i - 1)
+    ok = np.abs(track[near, 0] - cloud[:, 0]) < 0.4
+    cam = track[near, 2:5]
+    gnd = np.isfinite(cloud[:, 5]) & (np.abs(cloud[:, 3] - cloud[:, 5]) < 0.15)
+    out = np.concatenate([cam, cloud[:, 2:5], gnd[:, None].astype(np.float64)], 1)[ok]
+    r = np.linalg.norm(out[:, 3:6] - out[:, 0:3], axis=1)
+    return out[(r > 0.5) & (r < 9.0)]
+
+
+def pick(lines, n, ground):
+    """n lines spread over the walk (every k-th, in time order)."""
+    a = lines[(lines[:, 6] > 0.5) == ground]
+    if len(a) > n:
+        a = a[np.linspace(0, len(a) - 1, n).astype(np.int64)]
+    return a
+
+
+class Model:
+    def __init__(self, d, g):
+        self.g = g
+        self.S = np.fromfile(os.path.join(d, "sky-surface.bin"), dtype="<f4").reshape(g["h"], g["w"]).astype(np.float64)
+        self.G = np.fromfile(os.path.join(d, "sky-ground.bin"), dtype="<f4").reshape(g["h"], g["w"]).astype(np.float64)
+        kp = os.path.join(d, "sky-kind.bin")
+        self.K = np.fromfile(kp, dtype="<u1").reshape(g["h"], g["w"]) if os.path.exists(kp) else np.zeros((g["h"], g["w"]), np.uint8)
+        self.hard = np.isin(self.K, HARD)
+        self.soft = np.isin(self.K, SOFT_KINDS)
+        # where the ground is unknown (under a roof, off the edge) the surface stands for it, so lines end there
+        self.G = np.where(np.isfinite(self.G), self.G, self.S)
+
+    def cells(self, e, n):
+        g = self.g
+        c = np.floor((e - g["x0"]) / g["cell"]).astype(np.int64); r = np.floor((g["y1"] - n) / g["cellY"]).astype(np.int64)
+        ok = (c >= 0) & (r >= 0) & (c < g["w"]) & (r < g["h"])
+        return np.where(ok, r, 0), np.where(ok, c, 0), ok
+
+
+def to_map(T, x, z):
+    """session (x, z) -> map (e, n): u = x, v = -z, then the rigid turn and shift."""
+    th, tx, ty = T; c, s = math.cos(th), math.sin(th)
+    u, v = x, -z
+    return c * u - s * v + tx, s * u + c * v + ty
+
+
+def height_offset(M, T, gl):
+    """the offset that puts ARCore's ground points on the model's ground (median), or None."""
+    e, n = to_map(T, gl[:, 3], gl[:, 5])
+    r, c, ok = M.cells(e, n)
+    z = np.where(ok, M.G[r, c], np.nan)
+    dz = z - gl[:, 4]; dz = dz[np.isfinite(dz)]
+    return float(np.median(dz)) if len(dz) >= 30 else None
+
+
+def cost(M, T, lines, gl, detail=False):
+    tz = height_offset(M, T, gl)
+    if tz is None:
+        return (9.0, None) if not detail else (9.0, None, {})
+    cam, pt = lines[:, 0:3], lines[:, 3:6]
+    dvec = pt - cam
+    r = np.linalg.norm(dvec, axis=1); u = dvec / r[:, None]
+    nS = int(math.ceil((r.max() + TOL + STEP) / STEP))
+    ds = (np.arange(1, nS + 1) * STEP)[None, :]                     # 1 x S
+    X = cam[:, 0:1] + u[:, 0:1] * ds; Y = cam[:, 1:2] + u[:, 1:2] * ds + tz; Z = cam[:, 2:3] + u[:, 2:3] * ds
+    e, n = to_map(T, X, Z)
+    rr, cc, ok = M.cells(e, n)
+    within = ds <= (r[:, None] + TOL)
+    hit = ok & within & ((Y < M.G[rr, cc]) | (M.hard[rr, cc] & (Y < M.S[rr, cc])))
+    first = np.where(hit.any(1), hit.argmax(1), -1)
+    R = np.where(first >= 0, (first + 1) * STEP, np.inf)
+    # the phone's own point: inside a crown or an unknown column?
+    pe, pn = to_map(T, pt[:, 0], pt[:, 2])
+    pr, pc, pok = M.cells(pe, pn)
+    pz = pt[:, 1] + tz
+    in_soft = pok & M.soft[pr, pc] & (pz < M.S[pr, pc] + TOL) & (pz > M.G[pr, pc] - TOL)
+    blocked = R < r - TOL
+    same = np.abs(R - r) <= TOL
+    c_ = np.where(blocked, np.minimum(r - R, CAP) ** 2,
+         np.where(same, (R - r) ** 2,
+         np.where(in_soft, SOFT, FREE)))
+    total = float(c_.mean())
+    if not detail:
+        return total, tz
+    return total, tz, {"blocked": float(blocked.mean()), "same": float(same.mean()), "soft": float((~blocked & ~same & in_soft).mean()), "free": float((~blocked & ~same & ~in_soft).mean())}
+
+
+def fit_rigid(pairs):
+    a = np.array([p[0] for p in pairs], float); b = np.array([p[1] for p in pairs], float)
+    am, bm = a.mean(0), b.mean(0); A, B = a - am, b - bm
+    sxx = (A * B).sum(); sxy = (A[:, 0] * B[:, 1] - A[:, 1] * B[:, 0]).sum()
+    th = math.atan2(sxy, sxx); c, s = math.cos(th), math.sin(th)
+    return th, bm[0] - (c * am[0] - s * am[1]), bm[1] - (s * am[0] + c * am[1])
+
+
+def refine(f, T, steps=((2.0, 1.0), (1.0, 0.5), (0.5, 0.25), (0.25, 0.1))):
+    best = f(T)
+    for dd, mm in steps:
+        improved = True
+        while improved:
+            improved = False
+            cands = [(T[0] + math.radians(a * dd), T[1] + x * mm, T[2] + y * mm) for a in (-2, -1, 0, 1, 2) for x in (-2, -1, 0, 1, 2) for y in (-2, -1, 0, 1, 2)]
+            scs = [f(C) for C in cands]
+            j = int(np.argmin(scs))
+            if scs[j] < best - 1e-9:
+                best, T, improved = scs[j], cands[j], True
+    return best, T
+
+
+def main():
+    d = sys.argv[1] if len(sys.argv) > 1 else "twin"
+    t0 = time.time()
+    inp = json.load(open(os.path.join(d, "sky-input.json")))
+    g = inp["grid"]
+    if not os.path.exists(os.path.join(d, "sky-surface.bin")):
+        print("View study: no model surface (sky-surface.bin); nothing to do.")
+        return
+    lines = sight_lines(d)
+    if lines is None or len(lines) < 200:
+        print(f"View study: {0 if lines is None else len(lines)} sight lines; too few.")
+        return
+    M = Model(d, g)
+    L = np.concatenate([pick(lines, RAYS, False), pick(lines, GROUND_RAYS, True)])
+    gl = pick(lines, 3000, True)
+    print(f"View study: {len(lines):,} sight lines from the walk's depth points ({int((lines[:, 6] > 0.5).sum()):,} on the ground); {len(L):,} used, {len(gl):,} ground points for the height. Model {g['w']} x {g['h']} columns of {g['cell']:.2f} m, {int(M.hard.sum()):,} hard (buildings, low structures), {int(M.soft.sum()):,} soft (crowns, unknown).")
+    f = lambda T: cost(M, T, L, gl)[0]
+    checks = list({c["id"]: c for c in inp.get("checks") or []}.values())
+    truth = fit_rigid([(c["ar"], c["map"]) for c in checks]) if len(checks) >= 2 else None
+    def errs(T):
+        return [math.hypot(math.cos(T[0]) * c["ar"][0] - math.sin(T[0]) * c["ar"][1] + T[1] - c["map"][0], math.sin(T[0]) * c["ar"][0] + math.cos(T[0]) * c["ar"][1] + T[2] - c["map"][1]) for c in checks]
+    def said(T):
+        if not truth:
+            return ""
+        e_ = errs(T)
+        return f"; checks {', '.join(f'{x * FT:.1f}' for x in e_)} ft (median {np.median(e_) * FT:.1f}); {math.degrees((T[0] - truth[0] + math.pi) % (2 * math.pi) - math.pi):+.1f} deg from the truth"
+    # the starts: the skyline's best three, the placement kept so far (pavement study), the GPS / Street View trail
+    starts = []
+    sk = os.path.join(d, "skyline.json")
+    if os.path.exists(sk):
+        for i, q in enumerate(json.load(open(sk)).get("placements", [])[:3]):
+            starts.append(((q["theta"], q["tx"], q["ty"]), f"the skyline's {i + 1}"))
+    pl = os.path.join(d, "placement.json")
+    if os.path.exists(pl):
+        q = json.load(open(pl)); starts.append(((q["theta"], q["tx"], q["ty"]), "the placement kept (skyline, then ground)"))
+    if inp.get("gps"):
+        q = inp["gps"]; starts.append(((q["theta"], q["tx"], q["ty"]), "the GPS / Street View trail"))
+    if not starts:
+        print("View study: no placement to start from (skyline, pavement or GPS); nothing to search round.")
+        return
+    if truth:
+        c0, tz0, parts = cost(M, truth, L, gl, detail=True)
+        print(f"  At the truth (the check points' own fit, study only): cost {c0:.3f}; lines meeting the model's surface {parts['same']:.0%}, blocked early {parts['blocked']:.0%}, in a crown {parts['soft']:.0%}, in open air {parts['free']:.0%}.")
+    res = []
+    for T0, name in starts:
+        c_start = f(T0)
+        c1, T1 = refine(f, T0)
+        res.append((c1, T1, name))
+        print(f"  from {name}: cost {c_start:.3f} at the start{said(T0)}")
+        print(f"    refined by sight lines: cost {c1:.3f}{said(T1)}")
+    res.sort(key=lambda x: x[0])
+    best = res[0]
+    other = next((x for x in res[1:] if math.hypot(x[1][1] - best[1][1], x[1][2] - best[1][2]) > 1.5 or abs(x[1][0] - best[1][0]) > math.radians(5)), None)
+    _, tz, parts = cost(M, best[1], L, gl, detail=True)
+    print(f"View study's placement: from {best[2]}, cost {best[0]:.3f}{said(best[1])}; lines meeting the model's surface {parts['same']:.0%}, blocked early {parts['blocked']:.0%}, in a crown {parts['soft']:.0%}, in open air {parts['free']:.0%}." + (f" The best different placement costs {other[0] - best[0]:+.3f} more ({math.hypot(other[1][1] - best[1][1], other[1][2] - best[1][2]) * FT:.0f} ft away)." if other else " Every start came to the same place."))
+    json.dump({"theta": best[1][0], "tx": best[1][1], "ty": best[1][2], "cost": best[0], "from": best[2], "tz": tz, "parts": parts}, open(os.path.join(d, "view.json"), "w"))
+    print(f"Done in {int(time.time() - t0)} s.")
+
+
+if __name__ == "__main__":
+    main()
