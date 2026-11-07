@@ -687,6 +687,9 @@ const kept = () => { try { return JSON.parse(localStorage.getItem(KEY) || '[]');
 const keep = (list) => { try { localStorage.setItem(KEY, JSON.stringify(list.slice(-12))); } catch { /* this phone only */ } };
 
 function finish() {
+  // inside the Android app: make sure ARCore is stopped and the page is opaque again, however the walk ended (an exit
+  // tapped while the app was still starting left the camera running under the summary: owner, 2026-11-07)
+  if (window.LawnARNative) { try { window.LawnARNative.stop(); } catch { /* gone */ } document.documentElement.classList.remove('native-ar'); }
   if (!st.walk) return;
   const w = st.walk, L = st.L;
   w.endedAt = w.endedAt || Date.now();

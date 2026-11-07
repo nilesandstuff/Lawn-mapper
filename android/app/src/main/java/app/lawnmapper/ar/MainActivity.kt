@@ -172,7 +172,9 @@ class MainActivity : Activity() {
         session = null
         engine.session = null
         engine.geoOn = false
-        gl.queueEvent { try { s.pause(); s.close() } catch (_: Exception) { } }
+        // past the GL thread's current frame (it reads engine.session afresh each frame), then off it: closing ARCore
+        // takes a second or more, and on the GL thread that froze the last camera picture on screen (owner, 2026-11-07)
+        gl.queueEvent { Thread { try { s.pause(); s.close() } catch (_: Exception) { } }.start() }
         event("{\"type\":\"end\"}")
     }
 
