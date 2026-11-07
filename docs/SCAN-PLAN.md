@@ -898,6 +898,14 @@ MEASURED (2026-11-06 22:43, at the owner's work, the first walk after the
 fix): "depth smooth (cpu-optimized, luminance-alpha)". Asked for raw first,
 the S21's Chrome gives smooth. The start screen now offers "Raw depth only"
 (depthTypeRequest ['raw']): a walk with it says raw, or gets no depth.
+MEASURED (2026-11-07, two short indoor walks with "Raw depth only"): depth
+came (6,795 and 12,604 points) and session.depthType was null, where the
+['raw', 'smooth'] request had said smooth. Null is what the spec gives
+when the runtime ignores the request, so this is not yet raw. The page now
+counts the holes in the depth (0 = no depth there: raw leaves them, smooth
+fills them) and the walk list prints the share. The option's name is the
+spec's and Chromium's own (WPT webxr-depth-sensing.idl): depthTypeRequest,
+inside depthSensing; "depthTypePreference" is not in it and would be ignored.
 
 The owner's word (2026-11-04, through the features session): LAS classes
 7 and 18 and returns over 80 m stay out everywhere; the detector's

@@ -256,7 +256,11 @@ async function startWebXR({ overlay, onFrame, onEvent, rawDepth = false }) {
           // the whole depth picture, for the lidar match: a point at any screen spot (0-1), 0.4-8 m, or null
           if (di) {
             const P = view.projectionMatrix, M = view.transform.matrix;
-            depth = { at: (x, y) => { let d = 0; try { d = di.getDepthInMeters(x, y); } catch { return null; } return d >= 0.4 && d <= 8 ? unproject(x, y, d, P, M) : null; } };
+            depth = {
+              at: (x, y) => { let d = 0; try { d = di.getDepthInMeters(x, y); } catch { return null; } return d >= 0.4 && d <= 8 ? unproject(x, y, d, P, M) : null; },
+              // metres as given, 0 where the runtime has no depth (raw depth leaves holes; smooth fills them), NaN on error
+              m: (x, y) => { try { return di.getDepthInMeters(x, y); } catch { return NaN; } },
+            };
           }
         } catch { /* no depth this frame */ }
       }
