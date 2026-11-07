@@ -39,6 +39,7 @@ const settle = async (n = 20) => { for (let i = 0; i < n; i++) await tick(); };
   await ob.add('w3', 'bad', 'text/plain', 'x'); await ob.add('w3', 'good', 'text/plain', 'y');
   await settle();
   assert.equal(ob.status().dropped, 1); assert.equal(ob.status().sent, 1);
+  assert.match(statusText(ob.status()), /refused by the site \(last: bad: refused\)/, 'says which part and why');
   const s2 = memoryStore();
   const off = newOutbox({ store: s2, send: async () => 'off', sleep: async () => {} });
   await off.add('w4', 'p', 'text/plain', 'z');

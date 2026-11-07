@@ -63,7 +63,7 @@ export async function idbStore(name = 'yard-ar', table = 'outbox') {
  * bucket; everything stays on the phone). onChange(status) on every change.
  */
 export function newOutbox({ store, send, onChange = () => {}, now = () => Date.now(), sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
-  const st = { pending: 0, bytes: 0, walks: 0, sending: false, waitingMs: 0, sent: 0, sentBytes: 0, dropped: 0, off: null, lastError: null, store: store.kind };
+  const st = { pending: 0, bytes: 0, walks: 0, sending: false, waitingMs: 0, sent: 0, sentBytes: 0, dropped: 0, lastDrop: null, off: null, lastError: null, store: store.kind };
   let running = false, kickAgain = false, seq = 0;
   /* (2026-11-07, the owner's first outdoor walk in the app: its pins and its Street View trail never reached the
      bucket) a part written again while its older copy waited in this round's list, or was on its way, must not be
@@ -97,7 +97,7 @@ export function newOutbox({ store, send, onChange = () => {}, now = () => Date.n
           let r;
           try { r = await send(item); } catch (e) { r = 'retry'; st.lastError = e?.message || 'no connection'; }
           if (r === 'ok') { await settle(item); st.sent++; st.sentBytes += sizeOf(item.body); st.lastError = null; backoff = 0; await emit(); continue; }
-          if (r === 'drop') { await settle(item); st.dropped++; await emit(); continue; }
+          if (r === 'drop') { await settle(item); st.dropped++; st.lastDrop = `${item.name}: ${item.dropWhy || 'refused'}`; await emit(); continue; }
           if (r === 'off') { st.off = item.offWhy || 'the site cannot take uploads'; break; }
           failed = true; break; // 'retry': wait, then start again from the oldest
         }
@@ -133,7 +133,7 @@ export function statusText(s) {
   if (!s) return '';
   const mb = (b) => (b >= 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1e3))} KB`);
   if (s.off) return `Upload: off (${s.off}); ${s.pending} part${s.pending === 1 ? '' : 's'} kept on this phone`;
-  if (!s.pending) return `Upload: all saved${s.sent ? ` (${s.sent} part${s.sent === 1 ? '' : 's'}, ${mb(s.sentBytes)} sent)` : ''}${s.dropped ? `; ${s.dropped} refused by the site` : ''}`;
+  if (!s.pending) return `Upload: all saved${s.sent ? ` (${s.sent} part${s.sent === 1 ? '' : 's'}, ${mb(s.sentBytes)} sent)` : ''}${s.dropped ? `; ${s.dropped} refused by the site${s.lastDrop ? ` (last: ${s.lastDrop})` : ''}` : ''}`;
   const what = `${s.pending} part${s.pending === 1 ? '' : 's'} (${mb(s.bytes)})${s.walks > 1 ? ` from ${s.walks} walks` : ''}`;
   if (s.sending) return `Upload: sending ${what}`;
   return `Upload: ${what} waiting on this phone; trying again in ${Math.round(s.waitingMs / 1000)} s${s.lastError ? ` (${s.lastError})` : ''}`;

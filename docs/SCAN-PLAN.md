@@ -1447,3 +1447,11 @@ Parked:
   - Geospatial Depth (smoothed depth only, VPS in front yards only, our lidar is better geometry); maybe Streetscape
     meshes as a check where VPS works.
   - Lighting estimation (the sun's direction is known).
+
+SCAN-H23, the rest of the cause (2026-11-07, the owner's two walks on app 1.7: "Upload: all saved (735 parts, 78.9 MB
+sent); 50 refused by the site"). The Street View trail was kept in live.json with "lat"/"lng", and the site refuses
+any twin part holding degrees (src/twin.js leaks, the privacy rule). So every live.json written after Earth first
+tracked was refused and dropped: the first outdoor app walk and these two lost their pins, Street View trails and
+drift logs from live.json; their summaries (no places) were kept. Fixed: a reading keeps the map's local metres and
+its turn (`at`, `theta`), never degrees, and only with a map open; a test passes live.json through the guard; the
+upload line now names the last refused part and the site's reason.

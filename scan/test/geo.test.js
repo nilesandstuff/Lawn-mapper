@@ -60,4 +60,14 @@ assert.equal(geoReading({ state: 'ENABLED', lat: 1, lng: 2, hacc: 1, eus: [0, 0,
   assert.match(status(L, 0), /Not placed yet|Street View/);
   assert.equal(fitFor(L, 0, 1000 + GEO_FRESH_MS + 5), null, 'stale: no fit');
 }
+// (2026-11-07) a walk's live.json with its Street View trail must pass the site's guard against degrees: every
+// live.json was refused while the trail kept lat/lng, and the walks lost their pins and trails with it
+{
+  const { liveOf } = await import('../lib/twin.js');
+  const { leaks } = await import('../src/twin.js');
+  const trail = [{ tms: 1, at: [10.5, 20.25], theta: 0.5, alt: 30, hacc: 1.2, vacc: 2, yawAcc: 3, phone: [1, 2], y: 1.5, odo: 4 }];
+  const live = liveOf(null, { pins: [{ name: 'P1', at: { x: 1, y: 0, z: 2 }, odo: 3 }] }, { geoTrail: trail, crumbs: [{ odo: 1, m: 0.1, level: 0.1, at: { x: 0, y: 0, z: 0 }, at0: { x: 0, y: 0, z: 0 } }] });
+  assert.equal(leaks(JSON.stringify(live)), false, 'live.json passes the guard');
+  assert.equal(leaks(JSON.stringify({ geoTrail: [{ lat: 1, lng: 2 }] })), true, 'the guard still catches degrees');
+}
 console.log('geo: ok');

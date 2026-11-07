@@ -371,11 +371,15 @@ function noteGeo(f, odo) {
   seen.tracking++;
   if (seen.firstS == null && st.walk) seen.firstS = Math.round((Date.now() - st.walk.startedAt) / 1000);
   // live: the latest reading on the map, for the lidar search's start and, when ARCore is sure, the placement (geo.js)
-  if (st.L && st.origin) { const r = geoReading(g, f.pose, st.origin); if (r) { r.t = Date.now(); st.L.geo = r; } }
+  const r = st.origin ? geoReading(g, f.pose, st.origin) : null;
+  if (r && st.L) { r.t = Date.now(); st.L.geo = r; }
   const tr = (st.geoTrail ||= []), last = tr[tr.length - 1];
   if (last && f.t - last.tms < 1000) return;
   const p = f.pose.position;
-  tr.push({ tms: f.t, lat: g.lat, lng: g.lng, alt: g.alt, hacc: g.hacc, vacc: g.vacc, yawAcc: g.yawAcc, eus: g.eus, phone: [+p.x.toFixed(3), +(-p.z).toFixed(3)], y: +p.y.toFixed(3), odo: +odo.toFixed(1) });
+  /* (2026-11-07) kept in the map's local metres and the turn it implies, never in degrees: the site refuses a twin part
+     with "lat"/"lng" in it (src/twin.js leaks), and it refused every live.json of the owner's walks once Street View
+     tracked, the pins and trails with them. With no map open there is no place to keep, only the accuracies. */
+  tr.push({ tms: f.t, at: r ? r.at.map((v) => +v.toFixed(2)) : null, theta: r ? +r.theta.toFixed(5) : null, alt: g.alt, hacc: g.hacc, vacc: g.vacc, yawAcc: g.yawAcc, phone: [+p.x.toFixed(3), +(-p.z).toFixed(3)], y: +p.y.toFixed(3), odo: +odo.toFixed(1) });
   if (tr.length > 5000) tr.shift();
 }
 
@@ -845,6 +849,7 @@ async function sendPart(p) {
   if (res.status === 503) { p.offWhy = 'the site has no twin bucket yet'; return 'off'; }
   if (res.status === 408 || res.status === 429 || res.status >= 500) return 'retry';
   if (res.status === 401 || res.status === 403 || res.status === 404) return 'retry'; // signed out for now: keep it for later
+  p.dropWhy = ((await res.json().catch(() => ({})))?.error || `${res.status}`).slice(0, 80);
   return 'drop';
 }
 
