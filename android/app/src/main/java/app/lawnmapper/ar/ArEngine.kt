@@ -34,6 +34,9 @@ class ArEngine(private val send: (String) -> Unit) : GLSurfaceView.Renderer {
     @Volatile var crossY = 0.5f
     @Volatile var depthRaw: DepthSnapshot? = null
     @Volatile var depthSmooth: DepthSnapshot? = null
+    // the raw depth image's own time: ARCore does not make new raw depth every frame, and a repeat is the last depth
+    // reprojected (developers.google.com/ar/develop/java/depth/raw-depth), so a repeat is not kept as a new picture
+    private var lastRawImageTs = 0L
     @Volatile var picture: Picture? = null
     @Volatile var geoOn = false
     @Volatile private var inFlight = false
@@ -161,10 +164,18 @@ class ArEngine(private val send: (String) -> Unit) : GLSurfaceView.Renderer {
             val sx = w.toFloat() / dims[0]; val sy = h.toFloat() / dims[1]
             return DepthSnapshot(kind, w, h, mm, conf, f[0] * sx, f[1] * sy, c[0] * sx, c[1] * sy, pose, map, t)
         }
+        var raw = false
         try {
-            frame.acquireRawDepthImage16Bits().use { img -> frame.acquireRawDepthConfidenceImage().use { ci -> depthRaw = make("raw", img, ci) } }
+            frame.acquireRawDepthImage16Bits().use { img ->
+                raw = true
+                if (img.timestamp != lastRawImageTs) {
+                    lastRawImageTs = img.timestamp
+                    frame.acquireRawDepthConfidenceImage().use { ci -> depthRaw = make("raw", img, ci) }
+                }
+            }
         } catch (_: Exception) { }
-        try {
+        // the smoothed depth only where there is no raw (the page uses raw when it has it)
+        if (!raw) try {
             frame.acquireDepthImage16Bits().use { img -> depthSmooth = make("smooth", img, null) }
         } catch (_: Exception) { }
     }

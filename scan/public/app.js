@@ -430,8 +430,12 @@ function onFrame(f) {
   // the depth picture as points round the phone, four times a second; then, when it is time, a match
   if (f.geo) noteGeo(f, odo);
   if (f.depthType && !w.depthType) { w.depthType = f.depthType; log(`depth: ${f.depthType}`); if (st.twin) st.twin.depthType = f.depthType; }
-  if (f.depth && f.pose && f.tracking === 'normal' && f.t - st.depthAt > DEPTH_EVERY) {
-    st.depthAt = f.t;
+  // (2026-11-07) the app keeps its last depth picture until a new one is taken; read twice, its points would count as
+  // seen twice (the standing rule) when they were seen once: a picture already used is skipped
+  const depthDue = f.depth && f.pose && f.tracking === 'normal' && f.t - st.depthAt > DEPTH_EVERY;
+  const shot = depthDue && f.depth.shot ? f.depth.shot() : null; // read only when due: each read is a bridge call
+  if (depthDue && (shot == null || shot !== st.depthShot)) {
+    st.depthAt = f.t; st.depthShot = shot;
     const pts = [];
     for (let i = 0; i < 16; i++) for (let j = 0; j < 28; j++) { const p = f.depth.at((i + 0.5) / 16, (j + 0.5) / 28); if (p) pts.push(p); }
     /* HOLES IN THE DEPTH (2026-11-07): Chrome no longer names the depth type when asked for raw alone, so the walk

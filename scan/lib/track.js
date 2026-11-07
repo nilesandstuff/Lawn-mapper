@@ -407,6 +407,7 @@ export function depthFromGrid(g, near = 0.4, far = 8) {
   const cell = (x, y) => Math.min(g.ny - 1, Math.max(0, Math.floor(y * g.ny))) * g.nx + Math.min(g.nx - 1, Math.max(0, Math.floor(x * g.nx)));
   return {
     kind: g.kind,
+    t: g.t ?? null, // the snapshot's time: the same picture read twice is one sighting, not two
     at: (x, y) => { const k = cell(x, y), d = g.d[k], px = g.p[k * 3]; return px != null && d >= near && d <= far ? { x: px, y: g.p[k * 3 + 1], z: g.p[k * 3 + 2] } : null; },
     m: (x, y) => g.d[cell(x, y)],
     conf: (x, y) => (g.c ? g.c[cell(x, y)] / 255 : null),
@@ -448,7 +449,7 @@ async function startNative({ canvas, onFrame, onEvent, nativeOptions = {}, nativ
     let grid;
     const depth = fr.depth ? (() => {
       const get = () => (grid === undefined ? (grid = (() => { try { return depthFromGrid(JSON.parse(N.depthGrid(dep.nx, dep.ny, dep.kind, Math.round(dep.minConf * 255)))); } catch { return null; } })()) : grid);
-      return { at: (x, y) => get()?.at(x, y) ?? null, m: (x, y) => get()?.m(x, y) ?? NaN, conf: (x, y) => get()?.conf(x, y) ?? null, minConf: dep.minConf };
+      return { at: (x, y) => get()?.at(x, y) ?? null, m: (x, y) => get()?.m(x, y) ?? NaN, conf: (x, y) => get()?.conf(x, y) ?? null, minConf: dep.minConf, shot: () => get()?.t ?? null };
     })() : null;
     const pose = fr.pose ? { position: { x: fr.pose.p[0], y: fr.pose.p[1], z: fr.pose.p[2] }, quaternion: { x: fr.pose.q[0], y: fr.pose.q[1], z: fr.pose.q[2], w: fr.pose.q[3] } } : null;
     const hit = fr.hit ? { position: { x: fr.hit.p[0], y: fr.hit.p[1], z: fr.hit.p[2] }, type: fr.hit.type, distance: fr.hit.d, plane: null } : null;

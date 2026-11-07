@@ -1366,3 +1366,12 @@ waited and in what state, and how many searches started from Street View (walks:
 
 Next: an outdoor walk at the owner's lot with the map open (the picker opens it by the phone's place) and pins on
 check points. That gives Street View's accuracy against the check points and whether its starts help the live fix.
+
+Checked against Google's raw depth guide and its codelab (2026-11-07, the owner's pointer:
+developers.google.com/ar/develop/java/depth/raw-depth). The app matches them on units (millimetres), intrinsics
+(texture intrinsics scaled by the depth image over their image dimensions) and unprojection. The guide gives no
+confidence threshold; the codelab's demo uses 0.3 (ours is now 0.2, measured by the walk's dropped share). It differed
+in one place: ARCore does not make new raw depth every frame, and a repeat is the last depth reprojected. The app kept
+those repeats as new pictures; it now keeps a raw image only when its own timestamp changes (app build after 1.5),
+skips the smoothed depth when it has raw, and the page uses each depth picture once, so a repeat cannot make a point
+"seen twice" by the standing rule.
