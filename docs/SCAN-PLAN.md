@@ -1375,3 +1375,70 @@ in one place: ARCore does not make new raw depth every frame, and a repeat is th
 those repeats as new pictures; it now keeps a raw image only when its own timestamp changes (app build after 1.5),
 skips the smoothed depth when it has raw, and the page uses each depth picture once, so a repeat cannot make a point
 "seen twice" by the standing rule.
+
+## 11. ARCore features the owner found in Google's docs, read 2026-11-07, and the road map from them
+
+Read from developers.google.com/ar on 2026-11-07 (anchors, cloud anchors, geospatial depth, streetscape geometry,
+scene semantics, SemanticLabel, lighting estimation), not from memory. Everything below the facts is SPECULATION
+until a walk measures it.
+
+**Anchors.** What the docs say: an anchor is a pose ARCore keeps updating as its picture of the world improves; each
+one costs CPU ("ARCore does not release Trackables that have attached anchors"); no maximum is given; keep content
+within 8 m of its anchor. What that means here: an anchor does not fix drift by itself. ARCore corrects only when it
+recognises a place it has seen, and the back of a roof seen from the back yard is not the front of it seen from the
+front, so ARCore will not tie those two together; our own matching against the lidar (the skyline, the roof edges) is
+what can. What anchors CAN give, cheaply: a line of them dropped every ~10 m along a walk records each correction
+ARCore makes (an anchor that moves is ARCore admitting drift), which the after-walk fix can use as a drift log. A few
+dozen is a modest load. The pins already use anchors in Chrome (SCAN-H10: held to inches); the app has no anchor call
+yet (a bridge 2 call).
+
+**Cloud Anchors, for the next stage (a first walk as the reference for later ones).** Hosted in Google Cloud, resolved
+later by a new session from the same place's visual features. With an API key they live 24 hours; longer needs
+keyless (OAuth) sign-in, extendable through the Cloud Anchor Management API. Hosting wants the spot seen from several
+angles while moving round it (feature quality INSUFFICIENT / SUFFICIENT / GOOD). Quotas are generous (30 hosts and 300
+resolves a minute). For the next stage: the first, well-fixed walk hosts a handful of anchors at strong spots (house
+corners, the drive); a later walk that resolves any one of them is placed at once in the first walk's frame, and so on
+the map. This sits beside the plan to build a mesh from the first walk; the two check each other.
+
+**Geospatial Depth.** Merges Streetscape Geometry (Google's building and terrain meshes from Street View: LOD1
+footprints extruded, "building heights may be inaccurate", or LOD2 roofs) into the depth image, out to 65 m, where
+VPS works. Our concern is right: in a back yard VPS may not localise at all, and without it nothing changes. Two
+further reasons to keep it off for now: it comes through the smoothed depth image, so the phone's point cloud would
+partly be Google's mesh rather than the yard; and our lidar model of the house is already better geometry than LOD1/2.
+Worth keeping in mind as a check: where VPS works, Streetscape's building meshes against our lidar placement.
+
+**Scene Semantics (the most useful of the five).** Per-pixel labels, outdoors, with a confidence image and a cheap
+per-label share of the picture: BUILDING, STRUCTURE (fences, walls, guardrails), TREE (trees and shrubs), TERRAIN
+(grass, soil), ROAD (includes driveways), SIDEWALK, SKY, OBJECT, VEHICLE, PERSON, WATER, UNLABELED. Not every phone
+supports it (isSemanticModeSupported). Today the page tests for sky itself (anchors.js) and the runners run Segformer
+after the walk; this would give both live, on the phone, aligned to the depth grid.
+
+**Lighting estimation.** Environmental HDR gives a main light direction and intensity, ambient light and a cubemap,
+estimated by machine learning for rendering. Little use to the shade map: the sun's direction is known exactly from
+the time and place. The camera's own pictures say more (which ground is sunlit and which shaded, with a timestamp).
+
+### Road map (owner, 2026-11-07; not started unless marked)
+
+Bridge 2 (one new APK, page work after it is site deploys):
+  1. Scene semantics on the depth grid: each depth sample's label and confidence; the share of sky, building, road and
+     sidewalk per picture.
+  2. Anchors through the bridge: the pins anchored in the app as they are in Chrome, and a drift log of anchors along
+     the walk.
+Then, on the page and the runners:
+  3. Nudges from the semantic shares ("look at a building", "look at the drive") instead of the page's own sky and
+     colour tests.
+  4. Labelled points in the lidar match: building and structure points weighted as hard edges, tree points as soft,
+     cars and people dropped; where to tie the lidar into buildings, shrubs, permanent structures and pavement.
+  5. The ground split by label (TERRAIN against ROAD/SIDEWALK) beside surface.js's colour test, for the pavement match.
+Future uses of the labels:
+  6. Refining lawn traces from walks, or building them from scratch.
+  7. Refining tree canopies.
+  8. Tree trunks placed for the water model (the AR still ignores trunks for its own fix: owner's direction).
+  9. Fences placed for the water and shade models.
+  10. Shade truth from walk pictures: sunlit against shaded ground, with time and place, against the shade map.
+Next stage (reference walks):
+  11. Cloud Anchors hosted on a first well-fixed walk, resolved by later walks; with the first walk's mesh.
+Parked:
+  - Geospatial Depth (smoothed depth only, VPS in front yards only, our lidar is better geometry); maybe Streetscape
+    meshes as a check where VPS works.
+  - Lighting estimation (the sun's direction is known).
