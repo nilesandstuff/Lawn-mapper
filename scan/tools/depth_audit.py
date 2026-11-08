@@ -144,12 +144,19 @@ def main():
 
     # THE NEIGHBOUR CHECK (spikes): one spot reading near on a surface the rest of the picture reads far
     st_ = {}
-    spike = spikes(lines, stats=st_)
+    live = lines[:, 12] > 0.5
+    if (lines[:, 9] > 0).mean() > 0.2 and live.any():
+        # the page's own verdict on each whole picture (scan/lib/spikes.js, from the evening of 2026-11-08)
+        spike = live
+        st_.update(per_picture=float("nan"), with_nb=float("nan"))
+        print("  The spikes below are the page's own, judged on each whole depth picture as it was taken.")
+    else:
+        spike = spikes(lines, stats=st_)
     patch = spikes(lines, radius_deg=12.0, min_nb=8, alone=0.45)   # a fake patch a few cells wide
     spike_l = spikes(lines, by_label=True) if has_labels else None
     def overlap(a, b):
         return f"{(a & b).sum() / max(1, a.sum()):.0%}"
-    print(f"  The saved points per depth picture: median {st_['per_picture']:.0f} (the page reads 448 cells; the twin keeps a point only in a 5 cm cube not seen before); points with 4+ neighbours within 5 degrees: {st_['with_nb']:.0%}.")
+    if np.isfinite(st_['per_picture']): print(f"  The saved points per depth picture: median {st_['per_picture']:.0f} (the page reads 448 cells; the twin keeps a point only in a 5 cm cube not seen before); points with 4+ neighbours within 5 degrees: {st_['with_nb']:.0%}.")
     print(f"  PATCHES (the same check 12 degrees round, up to 45% of the neighbours as near): {share(patch, ~isg)} of standing points; phantoms among them {overlap(patch & ~isg, phantom)}; of the standing phantoms, patches {overlap(phantom & ~isg, patch)}.")
     print(f"  SPIKES (a reading nearer than 60% of its neighbours in the same depth picture, on a surface they agree on): {share(spike, ~isg)} of standing points, {share(spike, isg)} of ground points; of the standing spikes, phantoms by the walk's own lines {overlap(spike & ~isg, phantom)}; of the standing phantoms, spikes {overlap(phantom & ~isg, spike)}." + (f" Neighbours of the same label only: {share(spike_l, ~isg)} of standing points, phantoms among them {overlap(spike_l & ~isg, phantom)}." if spike_l is not None else ""))
 

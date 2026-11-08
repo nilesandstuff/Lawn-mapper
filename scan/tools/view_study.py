@@ -57,25 +57,28 @@ LABELS = ['unlabeled', 'sky', 'building', 'tree', 'road', 'sidewalk', 'terrain',
 
 
 def read_cloud(d):
-    """The cloud's records [t, odo, x, y, z, ground, label + 1 (0 none), label confidence, depth confidence (0 none)],
+    """The cloud's records [t, odo, x, y, z, ground, label + 1 (0 none), label confidence, depth confidence (0 none),
+    the page's spike flag (spikes.js, 1 = a spike)],
     each cloud part with its labels part (scan/lib/twin.js, the app from 2026-11-08) when one of the right length is
     there."""
     out = []
     for p in sorted(glob.glob(os.path.join(d, "cloud-*.bin"))):
         a = np.fromfile(p, dtype="<f4")
         a = a[: len(a) // 6 * 6].reshape(-1, 6).astype(np.float64)
-        lab = np.zeros((len(a), 3))
+        lab = np.zeros((len(a), 4))
         lp = p.replace("cloud-", "labels-")
         if os.path.exists(lp):
             u = np.fromfile(lp, dtype=np.uint8)
-            if len(u) == 3 * len(a):
-                lab = np.stack([u[0::3].astype(np.float64), u[1::3] / 255.0, u[2::3] / 255.0], 1)
+            if len(u) == 4 * len(a):
+                lab = np.stack([u[0::4].astype(np.float64), u[1::4] / 255.0, u[2::4] / 255.0, (u[3::4] & 1).astype(np.float64)], 1)
+            elif len(u) == 3 * len(a):
+                lab[:, :3] = np.stack([u[0::3].astype(np.float64), u[1::3] / 255.0, u[2::3] / 255.0], 1)
         out.append(np.concatenate([a, lab], 1))
-    return np.concatenate(out) if out else np.zeros((0, 9))
+    return np.concatenate(out) if out else np.zeros((0, 10))
 
 
 def sight_lines(d):
-    """[cam x, y, z, point x, y, z, ground?, label + 1 (0 none), label confidence, depth confidence, t, odo] per depth
+    """[cam x, y, z, point x, y, z, ground?, label + 1 (0 none), label confidence, depth confidence, t, odo, the page's spike flag] per depth
     point (t: seconds into the walk; the points of one depth picture share it), the camera from the
     track (nearest pose in time, within 0.4 s; poses every 0.2 s), in the session frame."""
     cloud = read_cloud(d)                         # t, odo, x, y, z, ground, label + 1, label conf, depth conf
@@ -89,7 +92,7 @@ def sight_lines(d):
     ok = np.abs(track[near, 0] - cloud[:, 0]) < 0.4
     cam = track[near, 2:5]
     gnd = np.isfinite(cloud[:, 5]) & (np.abs(cloud[:, 3] - cloud[:, 5]) < 0.15)
-    out = np.concatenate([cam, cloud[:, 2:5], gnd[:, None].astype(np.float64), cloud[:, 6:9], cloud[:, 0:2]], 1)[ok]
+    out = np.concatenate([cam, cloud[:, 2:5], gnd[:, None].astype(np.float64), cloud[:, 6:9], cloud[:, 0:2], cloud[:, 9:10]], 1)[ok]
     r = np.linalg.norm(out[:, 3:6] - out[:, 0:3], axis=1)
     return out[(r > 0.5) & (r < 9.0)]
 

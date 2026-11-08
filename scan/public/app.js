@@ -19,6 +19,7 @@ import { newTwin, addPoints, addPose, wantKey, addKey, flush, flushDue, liveOf }
 import { newAnchors, viewOf, noteView, nudge, pitchOf, anchorsKept, SHOW_S } from '/lib/anchors.js';
 import { surfaceOf } from '/lib/surface.js';
 import { geoReading } from '/lib/geo.js';
+import { spikesIn } from '/lib/spikes.js';
 import { walkPrior } from '/lib/walkfix.js';
 import { keepPoint, viewFromSem, newSemCount, noteSem, semSummary, newCrumbs, crumbDue, addCrumb, crumbMoves } from '/lib/semantics.js';
 import { newOutbox, idbStore, memoryStore, statusText } from '/lib/outbox.js';
@@ -308,7 +309,7 @@ const log = (what) => { st.errors.push({ t: Date.now(), what }); if (st.errors.l
 async function startAR(engine) {
   const overlay = $('#overlay');
   st.walk = newWalk({ engine, phone: navigator.userAgent });
-  st.dy = null; st.dyFrom = null; st.gpsTrail = []; st.anchors = newAnchors(); st.nudge = null; st.depthFill = null; st.geoTrail = []; st.geoSeen = null; st.sem = newSemCount(); st.lastSem = null; st.semDims = null; st.occ = null; st.walkGround = new Map(); st.walkAsk = null; st.walkAt = 0; st.walkStats = { asks: 0, ok: 0, lastWhy: null, firstOkM: null }; st.crumbs = newCrumbs();
+  st.dy = null; st.dyFrom = null; st.gpsTrail = []; st.anchors = newAnchors(); st.nudge = null; st.depthFill = null; st.geoTrail = []; st.geoSeen = null; st.sem = newSemCount(); st.lastSem = null; st.semDims = null; st.occ = null; st.walkGround = new Map(); st.spikes = { pictures: 0, cells: 0, flagged: 0 }; st.walkAsk = null; st.walkAt = 0; st.walkStats = { asks: 0, ok: 0, lastWhy: null, firstOkM: null }; st.crumbs = newCrumbs();
   st.walk.checks = [];
   st.L = newLocate();
   mini.view = null; mini.mode = 'fit'; mini.locked = false; $('#arrows').innerHTML = '';
@@ -466,14 +467,25 @@ function onFrame(f) {
     const dims = f.depth.semDims ? f.depth.semDims() : null;
     if (!st.semDims && dims) st.semDims = dims;
     const lab = dims ? f.depth.label : null, labC = f.depth.labelConf;
+    /* (2026-11-08) one spot read near on a wall the rest of the picture reads far (spikes.js): judged on the whole
+       picture, RECORDED ONLY for now (kept with the point in the twin, counted in the summary), nothing dropped */
+    const cam = f.pose.position, rr = new Float32Array(16 * 28), cellP = new Array(16 * 28);
+    for (let j = 0; j < 28; j++) for (let i = 0; i < 16; i++) {
+      const p = f.depth.at((i + 0.5) / 16, (j + 0.5) / 28);
+      cellP[j * 16 + i] = p;
+      rr[j * 16 + i] = p ? Math.hypot(p.x - cam.x, p.y - cam.y, p.z - cam.z) : 0;
+    }
+    const spk = spikesIn(rr, 16, 28);
+    if (st.spikes) { st.spikes.pictures++; st.spikes.cells += rr.reduce((a, v) => a + (v > 0 ? 1 : 0), 0); st.spikes.flagged += spk.reduce((a, v) => a + v, 0); }
     for (let i = 0; i < 16; i++) for (let j = 0; j < 28; j++) {
-      const x = (i + 0.5) / 16, y = (j + 0.5) / 28, p = f.depth.at(x, y);
+      const x = (i + 0.5) / 16, y = (j + 0.5) / 28, p = cellP[j * 16 + i];
       const l = lab ? lab(x, y) : null, lc = l ? labC(x, y) : null;
       if (l && st.sem) noteSem(st.sem, l, lc, f.depth.m(x, y), p && L.groundY != null ? p.y - L.groundY : null);
       if (!p) continue;
       if (!keepPoint(l, lc)) { if (st.sem) st.sem.dropped++; continue; }
       if (l) { p.label = l; p.lconf = lc; }
       if (f.depth.conf) p.dconf = f.depth.conf(x, y); // kept with the point (twin labels part): are phantoms the weak ones?
+      if (spk[j * 16 + i]) p.spike = true;
       pts.push(p);
     }
     /* HOLES IN THE DEPTH (2026-11-07): Chrome no longer names the depth type when asked for raw alone, so the walk
@@ -852,7 +864,7 @@ function finish() {
   const crumbs = st.crumbs?.list.length && st.tracker?.anchorAt ? crumbMoves(st.crumbs, (h) => st.tracker.anchorAt(h)) : null;
   const refs = st.points.filter((p) => p.kind === 'ref').map((p) => ({ name: p.name, marks: L ? L.marks.filter((m) => m.id === p.id).length : 0, leftOutM: L ? r3(leftOut(L.marks.filter((m) => m.kind === 'ref'), p.id)) : null }));
   const s = summary(w, {
-    page: 'yard AR test v2', recordOnly: !!st.recordOnly, features: w.features || null, depthType: w.depthType || null, anchors: st.anchors ? anchorsKept(st.anchors) : null, depthFill: st.depthFill ? { frames: st.depthFill.frames, holes: +(st.depthFill.zero / Math.max(1, st.depthFill.cells)).toFixed(3), past8m: +(st.depthFill.far / Math.max(1, st.depthFill.cells)).toFixed(3), weak: +(st.depthFill.weak / Math.max(1, st.depthFill.cells)).toFixed(3), minConf: st.depthFill.minConf } : null, rawAsked: !!st.rawDepth, geo: geoSummary(), walkFix: st.walkStats ? { ...st.walkStats, share: L?.walk?.ok ? +L.walk.share.toFixed(3) : null, margin: L?.walk?.ok ? +L.walk.margin.toFixed(3) : null, walkedM: L?.walk?.ok ? Math.round(L.walk.walkedM) : null } : null, semantics: st.caps?.native ? { on: !!st.tracker?.semantics, dims: st.semDims || null, ...(semSummary(st.sem) || {}) } : null, crumbs: crumbs ? { n: crumbs.n, held: crumbs.held, lost: crumbs.lost, refused: crumbs.refused, medianM: crumbs.medianM, maxM: crumbs.maxM, maxLevelM: crumbs.maxLevelM, worstOdo: crumbs.worstOdo } : null, app: st.caps?.native ? { app: st.caps.native.app, bridge: st.caps.native.bridge, device: st.caps.native.device } : null, failed: w.failed || null, errors: st.errors.map((e) => e.what).slice(-30),
+    page: 'yard AR test v2', recordOnly: !!st.recordOnly, features: w.features || null, depthType: w.depthType || null, anchors: st.anchors ? anchorsKept(st.anchors) : null, depthFill: st.depthFill ? { frames: st.depthFill.frames, holes: +(st.depthFill.zero / Math.max(1, st.depthFill.cells)).toFixed(3), past8m: +(st.depthFill.far / Math.max(1, st.depthFill.cells)).toFixed(3), weak: +(st.depthFill.weak / Math.max(1, st.depthFill.cells)).toFixed(3), minConf: st.depthFill.minConf } : null, rawAsked: !!st.rawDepth, geo: geoSummary(), depthSpikes: st.spikes ? { ...st.spikes, share: +(st.spikes.flagged / Math.max(1, st.spikes.cells)).toFixed(4), recordOnly: true } : null, walkFix: st.walkStats ? { ...st.walkStats, share: L?.walk?.ok ? +L.walk.share.toFixed(3) : null, margin: L?.walk?.ok ? +L.walk.margin.toFixed(3) : null, walkedM: L?.walk?.ok ? Math.round(L.walk.walkedM) : null } : null, semantics: st.caps?.native ? { on: !!st.tracker?.semantics, dims: st.semDims || null, ...(semSummary(st.sem) || {}) } : null, crumbs: crumbs ? { n: crumbs.n, held: crumbs.held, lost: crumbs.lost, refused: crumbs.refused, medianM: crumbs.medianM, maxM: crumbs.maxM, maxLevelM: crumbs.maxLevelM, worstOdo: crumbs.worstOdo } : null, app: st.caps?.native ? { app: st.caps.native.app, bridge: st.caps.native.bridge, device: st.caps.native.device } : null, failed: w.failed || null, errors: st.errors.map((e) => e.what).slice(-30),
     references: refs, checks: (w.checks || []).map((c) => ({ ...c, errorM: r3(c.errorM), errorFixM: r3(c.errorFixM), errorRefsM: r3(c.errorRefsM), walkedSinceFixM: r2(c.walkedSinceFixM), aimM: r2(c.aimM), walkedM: r2(c.walkedM) })),
     pinsNear: w.pins.map((p) => ({ name: p.name, nearest: p.nearest ? { name: p.nearest.name, m: r2(p.nearest.m), byRefsM: r2(p.nearest.byRefsM) } : null })),
     fix: L ? summaryOf(L) : null, surfaceSeen: st.surfCount || null, lidar: st.lid.ready ? { points: st.lid.ready.points, solid: st.lid.ready.solid, shift: st.lid.ready.shift, rule: st.lid.ready.rule || null, structures: st.lid.ready.structures || null, tallCells: st.lid.overlay ? st.lid.overlay.tall.length / 5 : null } : st.lid.error ? { error: st.lid.error } : null,
