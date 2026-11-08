@@ -1689,6 +1689,26 @@ confidence 0.32, labelled building). Not worth turning on as a filter.
 SPECULATION: the patches short of a building at 1:46-1:49 may be something real the lidar lacks (a parked car, a
 fence, a trailer) rather than bad depth; 43-63% of them are phantoms by the walk's own lines, so not all.
 
+### SCAN-H29. Do the check marks sit on the lidar? Not measurable to a foot on this lot (2026-11-08)
+
+The owner: the check marks are put on the Mapbox photo, on things it shows, within inches by eye, "BUT I'm wondering
+if the aerial imagery is connecting correctly with the reality". Every placement error in SCAN-H2x is measured
+against those marks, so a photo off the lidar at a mark is an error in the yardstick. Task checks (run 207, walk
+1794162116852, 7 marks), scan/tools/checks-shade.mjs: the shade map's own photo matcher (align.js alignToPhoto,
+H103/H108) asked again on the lidar as the scan uses it.
+
+HARD: when the shade map built this lot's model it put the lidar on the same Mapbox photo the marks are on, moved
+1.1 ft past the datum move, and called that fit sure. Asked again now: the whole lot 1.1 ft (east +0.1, north +1.1),
+NOT sure (its quarters alone 8.0, 2.0, 1.2, 1.1 ft; error about 2.2 ft). Round each mark (35 m squares): none sure;
+two read 0.9 and 1.6 ft, four read 6.6-12.1 ft with another match nearly as good (too little open ground: trees,
+houses and 1.6 ground returns a square metre). A matcher of the test's own (checks_lidar.py, removed) found
+synthetic shifts but read noise here.
+
+So the photo-to-lidar agreement at the marks is NOT known better than about 1-2 ft on this lot, the same size as
+the best placements (1.9-2.2 ft, SCAN-H28). SPECULATION: part of what the studies call placement error may be the
+marks' own; the best-fit score preferring a pose 2 ft from the marks' fit (SCAN-H28: "refined from the truth it
+moves to 2.0 ft") fits that, and fits a flaw in the score just as well.
+
 ### 13. Recording and replay, Geospatial Depth, camera modes (the app's bridge 3, 2026-11-08)
 
 The owner: "let's do it so I don't have to keep doing the same walks over and over." App 1.9: every walk in the app is
