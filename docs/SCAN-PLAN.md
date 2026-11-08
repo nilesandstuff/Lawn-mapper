@@ -1566,9 +1566,21 @@ within 2% as well; without two references it comes before the windowed fix. Repl
 | 680 ft | yes | 79% | 2.4% | 3.1 ft | 20.3 ft |
 | 907 ft | yes | 79% | 3.4% | 2.4 ft | 19.7 ft |
 
-HARD (one walk): the margin gate refused both placements that would have been 10-12 ft off and took both that were
-2-3 ft; at the end it beats the after-walk placement (2.4 against 3.1 ft on this run). The 729 ft walk's replay: being run
-(to be filled in).
+The 729 ft walk (six check points, recorded only):
+
+| walked | used? | ground on the lidar | margin | checks median | the trail alone |
+|---|---|---|---|---|---|
+| 182 ft | no | 79% | 0.4% | 41.5 ft | 8.3 ft |
+| 364 ft | no | 75% | 1.7% | 17.4 ft | 7.8 ft |
+| 547 ft | no | 76% | 1.2% | 6.7 ft | 7.8 ft |
+| 729 ft | no | 74% | 1.4% | 3.6 ft | 7.7 ft |
+
+HARD (two walks): the margin gate refused every placement that would have been 6.7-41.5 ft off, and took the two
+that were 2-3 ft; it never took a bad one. On the 907 ft walk it places the walk from 680 ft on and ends better than
+the after-walk placement (2.4 against 3.1 ft); on the 729 ft walk it never places it, though by the end it would have
+been right (3.6 ft, margin 1.4% against the 2% wanted). Both trails it started from were Street View's: 19.7 and 7.7
+ft alone, where the GPS trail alone was 16.8 and 2.2 ft (SCAN-H25). SPECULATION: the 2% margin may be a little strict;
+two walks are too few to lower it.
 
 2. WHICH DEPTH POINTS ARE REAL (scan/tools/depth_audit.py, in task place). A point is a PHANTOM when the walk's own
 other sight lines pass through its 0.3 m cube more than twice as often as anything is seen there. On a synthetic
