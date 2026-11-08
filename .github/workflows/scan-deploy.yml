@@ -305,7 +305,7 @@ jobs:
           python scan/tools/pavement_study.py twin | tee -a pavement.txt
           node scan/tools/twin-r2.mjs put "$WALK" twin/pavement.json | tee -a pavement.txt
 
-      # DO THE CHECK MARKS SIT ON THE LIDAR (scan/tools/checks_lidar.py; the owner, 2026-11-08: "Are we sure that
+      # DO THE CHECK MARKS SIT ON THE LIDAR (scan/tools/checks-shade.mjs; the owner, 2026-11-08: "Are we sure that
       # (1,000, 1,000) and (2,000, 2,000) actually point to where the lidar signatures for those visually recognizable
       # shapes would be"): round each check mark, how far the Mapbox photo the marks were put on sits from the lidar's
       # ground. No pictures read; the photo is fetched for the run and never kept.
@@ -320,11 +320,10 @@ jobs:
           NO_PICTURES: '1'
         run: |
           set -o pipefail
-          pip install --quiet pillow numpy scipy
           node scan/tools/twin-r2.mjs get "$WALK" twin
           node scan/tools/skyline-prep.mjs twin > /dev/null
           node scan/tools/checks-prep.mjs twin | tee checks.txt
-          python scan/tools/checks_lidar.py twin | tee -a checks.txt
+          node scan/tools/checks-shade.mjs twin | tee -a checks.txt
 
       - name: The answer
         if: always()

@@ -53,7 +53,7 @@ async function main() {
   const q = (fit?.quarters || []).filter((x) => x && Number.isFinite(x.east));
   const spread = q.length >= 2 && Number.isFinite(fit.east) ? Math.max(...q.map((x) => Math.hypot(x.east - fit.east, x.north - fit.north))) : null;
   console.log(`Check marks' photo: Mapbox, ${w} x ${h} px at ${(mpp * 100).toFixed(1)} cm a pixel. The map was traced on ${m.tracedOn?.provider || 'mapbox'}. ` +
-    `The shade map put the lidar on that photo: ${fit ? (fit.confident ? `moved ${(Math.hypot(fit.east, fit.north) * 3.281).toFixed(1)} ft past the datum move, sure` : `not sure (${fit.why || 'no reason given'}), so the datum move alone`) : 'no record of a fit'}` +
+    `The shade map put the lidar on that photo: ${fit ? (fit.confident ? `moved ${(Math.hypot(fit.east, fit.north) * 3.281).toFixed(1)} ft past the datum move, sure${Number.isFinite(fit.errorM) ? ` to about ${(fit.errorM * 3.281).toFixed(1)} ft (its quarters scattered ${(fit.spreadM * 3.281).toFixed(1)} ft)` : ''}` : `not sure (${fit.why || 'no reason given'}), so the datum move alone`) : 'no record of a fit'}` +
     `${spread != null ? `; its four quarters disagreed by up to ${(spread * 3.281).toFixed(1)} ft` : ''}.`);
 }
 
