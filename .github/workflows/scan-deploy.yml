@@ -36,7 +36,7 @@ on:
         required: true
         default: tests
         type: choice
-        options: [tests, deploy, walks, twin, fix, place, depth, study, skyline, pavement]
+        options: [tests, deploy, walks, twin, fix, place, depth, study, skyline, pavement, checks]
       walk:
         description: 'For twin, fix or depth: the walk id, or latest'
         default: latest
@@ -227,7 +227,7 @@ jobs:
       # CAN THE SKYLINE PLACE A WALK (scan/tools/skyline_study.py, SCAN-H11 option 1): the sky in each picture against
       # the shade map's model seen from every placement; scored against the check points. CPU, free.
       - name: Run actions/setup-python@v5 (skyline)
-        if: ${{ inputs.task == 'skyline' || inputs.task == 'pavement' || inputs.task == 'place' }}
+        if: ${{ inputs.task == 'skyline' || inputs.task == 'pavement' || inputs.task == 'place' || inputs.task == 'checks' }}
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -305,6 +305,27 @@ jobs:
           python scan/tools/pavement_study.py twin | tee -a pavement.txt
           node scan/tools/twin-r2.mjs put "$WALK" twin/pavement.json | tee -a pavement.txt
 
+      # DO THE CHECK MARKS SIT ON THE LIDAR (scan/tools/checks_lidar.py; the owner, 2026-11-08: "Are we sure that
+      # (1,000, 1,000) and (2,000, 2,000) actually point to where the lidar signatures for those visually recognizable
+      # shapes would be"): round each check mark, how far the Mapbox photo the marks were put on sits from the lidar's
+      # ground. No pictures read; the photo is fetched for the run and never kept.
+      - name: The check marks against the lidar
+        if: ${{ inputs.task == 'checks' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          MAPBOX_TOKEN: ${{ secrets.MAPBOX_TOKEN }}
+          MAPBOX_SERVER_TOKEN: ${{ secrets.MAPBOX_SERVER_TOKEN }}
+          WALK: ${{ inputs.walk }}
+          NO_PICTURES: '1'
+        run: |
+          set -o pipefail
+          pip install --quiet pillow numpy scipy
+          node scan/tools/twin-r2.mjs get "$WALK" twin
+          node scan/tools/skyline-prep.mjs twin > /dev/null
+          node scan/tools/checks-prep.mjs twin | tee checks.txt
+          python scan/tools/checks_lidar.py twin | tee -a checks.txt
+
       - name: The answer
         if: always()
         run: |
@@ -322,6 +343,7 @@ jobs:
             skyline) cat skyline.txt 2>/dev/null || echo "no skyline study: see the step above" ;;
             pavement) cat pavement.txt 2>/dev/null || echo "no pavement study: see the step above" ;;
             place) grep -v '^  model\|^  rays\|^  the picture' place.txt 2>/dev/null | tail -60 || echo "no placement: see the step above" ;;
+            checks) cat checks.txt 2>/dev/null || echo "no check-mark test: see the step above" ;;
             depth) tail -25 depth.txt 2>/dev/null || echo "no depth run: see the step above" ;;
             *) echo "Scan tests: ${{ job.status }}" ;;
           esac
