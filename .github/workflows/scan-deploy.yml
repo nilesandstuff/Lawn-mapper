@@ -277,6 +277,8 @@ jobs:
           python scan/tools/pavement_study.py twin | tee -a place.txt
           # SCAN-PLAN 12: the walk's depth points as sight lines through the model (study: placement.json unchanged)
           python scan/tools/view_study.py twin | tee -a place.txt
+          # which depth points are real (the walk's own lines, then the model); the moments near readings cluster
+          python scan/tools/depth_audit.py twin | tee -a place.txt
           node scan/tools/post-fix.mjs twin | tee -a place.txt
           node scan/tools/twin-r2.mjs put "$WALK" twin/skyline.json twin/pavement.json twin/placement.json twin/fixed.json twin/mesh.bin $(test -f twin/view.json && echo twin/view.json) | tee -a place.txt
 

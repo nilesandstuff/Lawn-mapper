@@ -1,0 +1,173 @@
+"""
+WHICH OF THE PHONE'S DEPTH POINTS ARE REAL (core session, 2026-11-08; the owner, after SCAN-H25: "That points to the
+issue being recognizing which depth points are real and which aren't... I was facing the main west facing wall of the
+house, on the southern 1/3. Staring at the wall straight on, the cursor jumped forward to be only a few feet away").
+Run by workflow "S. Yard AR tool", task `place`, after scan/tools/view_study.py.
+
+Two judges, independent of each other:
+  1. THE WALK ITSELF. Every depth point is a sight line from where the camera stood to what it saw. A point is a
+     PHANTOM when, from other places along the walk, the camera's lines passed THROUGH its spot (0.3 m cubes) more
+     than twice as often as anything was seen there: something real stops the lines that cross it. No model needed.
+  2. THE MODEL, under the walk's placement (the check points' own fit when there are check points, else the
+     placement after the walk): a line the model says runs on to a building or the ground well beyond where the
+     phone stopped (the phone saw something much nearer than the model's first hard surface).
+Then the moments where near readings cluster in front of a building (seconds into the walk, feet walked, which way
+the camera faced), and the view study's variant C again with the phantom lines left out.
+
+NUMBERS ONLY in the log (times, distances, compass directions; never a place).
+
+    python scan/tools/depth_audit.py twin
+"""
+import json
+import math
+import os
+import sys
+import time
+
+import numpy as np
+
+sys.path.insert(0, os.path.dirname(__file__))
+import view_study as vs  # noqa: E402
+
+FT = 3.28084
+CUBE = 0.3
+STEP = 0.15
+COMPASS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
+
+
+def carve(lines, cube=CUBE, step=STEP, keep=60000):
+    """free and seen counts per cube from the walk's own lines (cam -> point), and each line's endpoint cube's
+    counts. -> (free_at_end, seen_at_end) per line."""
+    L = lines if len(lines) <= keep else lines[np.linspace(0, len(lines) - 1, keep).astype(np.int64)]
+    lo = np.minimum(L[:, 0:3].min(0), L[:, 3:6].min(0)) - 1.0
+    hi = np.maximum(L[:, 0:3].max(0), L[:, 3:6].max(0)) + 1.0
+    dims = np.ceil((hi - lo) / cube).astype(np.int64)
+    def key(p):
+        i = np.floor((p - lo) / cube).astype(np.int64)
+        i = np.clip(i, 0, dims - 1)
+        return (i[..., 0] * dims[1] + i[..., 1]) * dims[2] + i[..., 2]
+    nvox = int(dims.prod())
+    seen = np.bincount(key(L[:, 3:6]), minlength=nvox)
+    free = np.zeros(nvox, np.int64)
+    d = L[:, 3:6] - L[:, 0:3]; r = np.linalg.norm(d, axis=1); u = d / r[:, None]
+    for a in range(0, len(L), 8000):
+        b = min(len(L), a + 8000)
+        nS = int(math.ceil(r[a:b].max() / step))
+        ts = (np.arange(1, nS + 1) * step)[None, :]
+        ok = ts < (r[a:b, None] - cube)            # stop short of the point's own cube
+        P = L[a:b, None, 0:3] + u[a:b, None, :] * ts[..., None]
+        k = key(P)[ok]
+        free += np.bincount(k, minlength=nvox)
+    ke = key(lines[:, 3:6])
+    return free[ke], seen[ke]
+
+
+def main():
+    d = sys.argv[1] if len(sys.argv) > 1 else "twin"
+    t0 = time.time()
+    inp = json.load(open(os.path.join(d, "sky-input.json")))
+    lines = vs.sight_lines(d)
+    if lines is None or len(lines) < 500:
+        print("Depth audit: too few depth points.")
+        return
+    cam, pt = lines[:, 0:3], lines[:, 3:6]
+    r = np.linalg.norm(pt - cam, axis=1)
+    isg = lines[:, 6] > 0.5
+    free, seen = carve(lines)
+    phantom = (free >= 3) & (free > 2 * seen)
+    bins = [(0, 2), (2, 4), (4, 6), (6, 9)]
+    def share(mask, sel):
+        return f"{mask[sel].mean():.0%} of {int(sel.sum()):,}" if sel.any() else "-"
+    print(f"Depth audit: {len(lines):,} depth points ({int(isg.sum()):,} on the ground). PHANTOMS by the walk's own lines (seen through from elsewhere more than twice as often as seen): {share(phantom, np.ones(len(lines), bool))}; standing points {share(phantom, ~isg)}; ground points {share(phantom, isg)}.")
+    print("  standing points by how far off: " + "; ".join(f"{a * FT:.0f}-{b * FT:.0f} ft {share(phantom, (~isg) & (r >= a) & (r < b))}" for a, b in bins))
+
+    # the model, under the truth (check points) or the placement after the walk
+    checks = list({c["id"]: c for c in inp.get("checks") or []}.values())
+    T, src = None, None
+    if len(checks) >= 2:
+        T, src = vs.fit_rigid([(c["ar"], c["map"]) for c in checks]), "the check points' own fit"
+    elif os.path.exists(os.path.join(d, "placement.json")):
+        q = json.load(open(os.path.join(d, "placement.json"))); T, src = (q["theta"], q["tx"], q["ty"]), "the placement after the walk"
+    if T is None:
+        print("  No placement to judge against the model.")
+        return
+    M = vs.Model(d, inp["grid"], fine=0.25)
+    gl = vs.pick(lines, 3000, True)
+    tz = vs.height_offset(M, T, gl)
+    S = ~isg
+    Ls = lines[S]
+    c_, p_ = Ls[:, 0:3], Ls[:, 3:6]
+    dv = p_ - c_; rs = np.linalg.norm(dv, axis=1); u = dv / rs[:, None]
+    ds = (np.arange(1, int(40 / 0.25) + 1) * 0.25)[None, :]           # run each line on to 40 m
+    X = c_[:, 0:1] + u[:, 0:1] * ds; Y = c_[:, 1:2] + u[:, 1:2] * ds + tz; Z = c_[:, 2:3] + u[:, 2:3] * ds
+    e, n = vs.to_map(T, X, Z)
+    rr, cc, ok = M.cells(e, n)
+    solid = M.hard[rr, cc] & (Y < M.S[rr, cc])
+    if M.roof_low is not None:
+        solid &= Y > np.minimum(M.roof_low[rr, cc], M.S[rr, cc])
+    hit = ok & ((Y < M.G[rr, cc]) | solid)
+    first = np.where(hit.any(1), hit.argmax(1), -1)
+    R = np.where(first >= 0, (first + 1) * 0.25, np.inf)
+    hitbld = np.zeros(len(Ls), bool)
+    j = first >= 0
+    hitbld[j] = M.K[rr[j, first[j]], cc[j, first[j]]] == 1
+    near = (R - rs > 2.0) & (rs < 0.6 * R)          # the phone stopped well short of the model's first surface
+    print(f"  Against the model under {src}: standing points stopped well short of the model's first hard surface (2 m+ and under 60% of its distance): {near.mean():.0%}; of those, in front of a BUILDING {np.mean(hitbld[near]) if near.any() else 0:.0%}; of those, phantoms by the walk's own lines {np.mean(phantom[S][near & hitbld]) if (near & hitbld).any() else 0:.0%}.")
+    print("  short of a building, by how far the phone said: " + "; ".join(f"{a * FT:.0f}-{b * FT:.0f} ft {int(((near & hitbld) & (rs >= a) & (rs < b)).sum()):,}" for a, b in bins))
+
+    # the moments: per second, standing points well short of a building at least 5 m off
+    tcol = None
+    cloud = vs.read_parts(d, "cloud-*.bin", 6)
+    # sight_lines kept rows of the cloud in order with a filter; recover each line's time and odometer by matching
+    # the points (exact floats) back to the cloud
+    keyc = {tuple(np.round(row[2:5], 4)): (row[0], row[1]) for row in cloud}
+    tt = np.array([keyc.get(tuple(np.round(p, 4)), (np.nan, np.nan)) for p in p_])
+    tcol, odo = tt[:, 0], tt[:, 1]
+    ev = near & hitbld & (R > 5)
+    if ev.any() and np.isfinite(tcol[ev]).any():
+        sec = np.floor(tcol[ev]).astype(np.int64)
+        cnt = np.bincount(sec - sec.min())
+        top = np.argsort(-cnt)[:6]
+        print("  Moments with the most near readings in front of a building (time into the walk, walked, facing, readings, phone said / model said, phantoms by the walk's own lines):")
+        for k in top:
+            if cnt[k] < 3:
+                break
+            s0 = k + sec.min()
+            m = ev & (np.floor(tcol) == s0)
+            fwd = u[m].mean(0)
+            fe, fn = vs.to_map(T, np.array([fwd[0]]), np.array([fwd[2]]))
+            ce, cn = vs.to_map(T, np.array([0.0]), np.array([0.0]))
+            ang = math.degrees(math.atan2(fe[0] - ce[0], fn[0] - cn[0])) % 360
+            face = COMPASS[int(((ang + 22.5) % 360) // 45)]
+            pitch = math.degrees(math.asin(max(-1, min(1, fwd[1] / max(1e-9, np.linalg.norm(fwd))))))
+            print(f"    {int(s0 // 60)}:{int(s0 % 60):02d}, {np.nanmedian(odo[m]) * FT:.0f} ft walked, facing {face} ({ang:.0f} deg), camera {pitch:+.0f} deg: {int(m.sum())} readings, phone {np.median(rs[m]) * FT:.1f} ft / model {np.median(R[m]) * FT:.1f} ft, phantoms {np.mean(phantom[S][m]):.0%}")
+    else:
+        print("  No moments with near readings in front of a building.")
+
+    # the view study's variant C without the phantoms
+    keep = ~phantom
+    clean = lines[keep]
+    if len(checks) >= 2 and len(clean) > 1000:
+        name, fine, P = vs.VARIANTS[2]
+        L = np.concatenate([vs.pick(clean, vs.RAYS, False), vs.pick(clean, vs.GROUND_RAYS, True)])
+        f = lambda T_: vs.cost(M, T_, L, gl, P=P)[0]
+        truth = T
+        def med(T_):
+            return float(np.median([math.hypot(math.cos(T_[0]) * c["ar"][0] - math.sin(T_[0]) * c["ar"][1] + T_[1] - c["map"][0], math.sin(T_[0]) * c["ar"][0] + math.cos(T_[0]) * c["ar"][1] + T_[2] - c["map"][1]) for c in checks]) * FT)
+        starts = []
+        sk = os.path.join(d, "skyline.json")
+        if os.path.exists(sk):
+            starts += [((q["theta"], q["tx"], q["ty"]), f"the skyline's {i + 1}") for i, q in enumerate(json.load(open(sk)).get("placements", [])[:3])]
+        if os.path.exists(os.path.join(d, "placement.json")):
+            q = json.load(open(os.path.join(d, "placement.json"))); starts.append(((q["theta"], q["tx"], q["ty"]), "the placement kept"))
+        if inp.get("gps"):
+            q = inp["gps"]; starts.append(((q["theta"], q["tx"], q["ty"]), "the GPS / Street View trail"))
+        res = sorted((vs.refine(f, T0) + (nm,) for T0, nm in starts), key=lambda x: x[0])
+        cT, TT = vs.refine(f, truth)
+        ct, _, parts = vs.cost(M, truth, L, gl, detail=True, P=P)
+        print(f"  View study C without the phantoms ({int(phantom.sum()):,} left out): best from {res[0][2]}, median {med(res[0][1]):.1f} ft at the check points (starts end at {sorted({round(med(x[1]), 1) for x in res})} ft); at the truth: cost {ct:.4f} against the best {res[0][0]:.4f}, open air {parts['free']:.0%}; refined from the truth it moves to median {med(TT):.1f} ft.")
+    print(f"Done in {int(time.time() - t0)} s.")
+
+
+if __name__ == "__main__":
+    main()
