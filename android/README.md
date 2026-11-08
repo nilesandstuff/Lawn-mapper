@@ -41,6 +41,8 @@ Version 4 (2026-11-08): recordings kept on the phone. `localRecordings()` ([{ wa
 it, marked sent, and one fetched for a replay is kept too; a replay uses the phone's copy when there is one). With keep
 off, a sent recording leaves the phone, and a fetched one leaves when its replay ends. The app takes the smallest
 camera mode (640x480) unless `start` asks `cameraImage: 'largest'` (1.10: the largest made 2.2 GB recordings).
+App 1.12 (bridge unchanged): the sending runs in a foreground service (UploadService.kt, data-sync kind) with
+its progress in a notification, so it carries on with the screen off or the app in the background.
 
 What Chrome's WebXR does not give and this does: raw depth with ARCore's confidence (Chrome on the S21 ignores the
 raw request, SCAN-PLAN), the camera's own picture at the camera mode's full size, ARCore's Geospatial pose (with a

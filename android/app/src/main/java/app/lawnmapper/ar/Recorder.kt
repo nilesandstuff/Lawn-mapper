@@ -1,5 +1,9 @@
 package app.lawnmapper.ar
 
+import android.content.Context
+import android.content.Intent
+import android.os.Handler
+import android.os.Looper
 import android.webkit.CookieManager
 import org.json.JSONArray
 import org.json.JSONObject
@@ -16,8 +20,20 @@ import java.net.URL
  * sent again when the app next opens. For a replay the MP4 is fetched back into the cache. How each goes is told to the
  * page as events: { type: "upload" | "download", walk, sent | got, total, done, error }.
  */
-class Recorder(private val a: MainActivity, private val base: String) {
-    val dir: File get() = File(a.filesDir, "recordings").apply { mkdirs() }
+class Recorder private constructor(ctx: Context, val base: String) {
+    /* IN THE BACKGROUND (1.12; the owner, 2026-11-08: "Is there any way to upload in the background?"): the sending is
+       done by UploadService, a foreground service with a notification, so it carries on with the screen off or the app
+       in the background. One Recorder per process, shared by the activity and the service. */
+    companion object {
+        @Volatile private var one: Recorder? = null
+        fun of(ctx: Context, base: String): Recorder = one ?: synchronized(this) { one ?: Recorder(ctx, base).also { one = it } }
+    }
+    private val app: Context = ctx.applicationContext
+    private val main = Handler(Looper.getMainLooper())
+    /** Where the events go: the page, while the activity is alive. */
+    @Volatile var sink: ((String) -> Unit)? = null
+    private fun event(json: String) { sink?.invoke(json) }
+    val dir: File get() = File(app.filesDir, "recordings").apply { mkdirs() }
     fun fileFor(walk: String) = File(dir, "${safe(walk)}.mp4")
     @Volatile private var sending = false
 
@@ -25,7 +41,7 @@ class Recorder(private val a: MainActivity, private val base: String) {
        to replay it"): with keep on (the default), a recording stays in recordings/ once the site has it, marked sent
        (<walk>.sent), and a recording fetched for a replay is kept there too; a replay uses the phone's copy when there
        is one. Each can be removed from the phone by hand; the site's copy stays. */
-    private val prefs get() = a.getSharedPreferences("recordings", android.content.Context.MODE_PRIVATE)
+    private val prefs get() = app.getSharedPreferences("recordings", Context.MODE_PRIVATE)
     var keep: Boolean
         get() = prefs.getBoolean("keep", true)
         set(v) { prefs.edit().putBoolean("keep", v).apply() }
@@ -71,15 +87,27 @@ class Recorder(private val a: MainActivity, private val base: String) {
         JSONObject().put("walk", f.nameWithoutExtension).put("bytes", f.length()).put("sent", if (k != null) minOf(f.length(), k.getJSONArray("parts").length() * k.getLong("piece")) else 0L)
     } ?: emptyList<JSONObject>()).toString()
 
-    /** Send every recording waiting on the phone, one after another, off the UI thread. */
+    private fun waiting() = dir.listFiles { x -> x.name.endsWith(".mp4") && x.length() > 0 && !sentMark(x).exists() }?.sortedBy { it.lastModified() } ?: emptyList()
+
+    /** Send every recording waiting on the phone: UploadService does it, in the background, with a notification. */
     fun sendAll() {
-        if (sending) return
-        sending = true
-        Thread {
-            try {
-                for (f in dir.listFiles { x -> x.name.endsWith(".mp4") && x.length() > 0 && !sentMark(x).exists() }?.sortedBy { it.lastModified() } ?: emptyList()) send(f)
-            } finally { sending = false }
-        }.start()
+        if (sending || waiting().isEmpty()) return
+        val i = Intent(app, UploadService::class.java).putExtra("base", base)
+        try { app.startForegroundService(i) } catch (e: Exception) {
+            // not allowed to start one now (the app in the background on Android 12+): sent on this thread instead
+            Thread { sendPending { _, _, _ -> } }.start()
+        }
+    }
+
+    /** The sending itself, one recording after another, on the caller's thread; progress(walk, sent, total). True when
+     *  every one went. */
+    fun sendPending(progress: (String, Long, Long) -> Unit): Boolean {
+        synchronized(this) { if (sending) return true; sending = true }
+        try {
+            var ok = true
+            for (f in waiting()) if (!send(f, progress)) ok = false
+            return ok
+        } finally { sending = false }
     }
 
     /* RESUMABLE (1.10): the upload's id and the pieces the site has are kept beside the file (<walk>.json), so a send
@@ -87,7 +115,7 @@ class Recorder(private val a: MainActivity, private val base: String) {
        recording was 2.2 GB). R2 keeps an unfinished upload for days; one it no longer knows is started afresh. */
     private fun sideOf(f: File) = File(f.parentFile, f.nameWithoutExtension + ".json")
 
-    private fun send(f: File) {
+    private fun send(f: File, progress: (String, Long, Long) -> Unit): Boolean {
         val walk = f.nameWithoutExtension
         val total = f.length()
         val side = sideOf(f)
@@ -130,7 +158,8 @@ class Recorder(private val a: MainActivity, private val base: String) {
                         }
                     }
                     sent += len; n++
-                    a.event(JSONObject().put("type", "upload").put("walk", walk).put("sent", sent).put("total", total).toString())
+                    progress(walk, sent, total)
+                    event(JSONObject().put("type", "upload").put("walk", walk).put("sent", sent).put("total", total).toString())
                 }
             }
             val done = open("/api/scan/recording/done?walk=$walk&upload=${java.net.URLEncoder.encode(upload, "UTF-8")}", "POST")
@@ -140,16 +169,18 @@ class Recorder(private val a: MainActivity, private val base: String) {
             side.delete()
             // the site has it whole: kept and marked sent, or off the phone, as the owner chose
             if (keep) sentMark(f).writeText("sent") else f.delete()
-            a.event(JSONObject().put("type", "upload").put("walk", walk).put("sent", total).put("total", total).put("done", true).toString())
+            event(JSONObject().put("type", "upload").put("walk", walk).put("sent", total).put("total", total).put("done", true).toString())
+            return true
         } catch (e: Exception) {
-            a.event(JSONObject().put("type", "upload").put("walk", walk).put("total", total).put("error", e.message ?: e.javaClass.simpleName).toString())
+            event(JSONObject().put("type", "upload").put("walk", walk).put("total", total).put("error", e.message ?: e.javaClass.simpleName).toString())
+            return false
         }
     }
 
     /** Fetch a walk's recording for a replay; then(file) on the UI thread, or an error event. */
     fun fetch(walk: String, then: (File) -> Unit) {
         val f = replayFile(walk)
-        if (f.exists() && f.length() > 0) { a.runOnUiThread { then(f) }; return }
+        if (f.exists() && f.length() > 0) { main.post { then(f) }; return }
         Thread {
             try {
                 val c = open("/api/scan/recording?walk=${safe(walk)}", "GET")
@@ -163,15 +194,15 @@ class Recorder(private val a: MainActivity, private val base: String) {
                     while (true) {
                         val k = ins.read(buf); if (k < 0) break
                         out.write(buf, 0, k); got += k
-                        if (got - last > 4L * 1024 * 1024) { last = got; a.event(JSONObject().put("type", "download").put("walk", walk).put("got", got).put("total", total).toString()) }
+                        if (got - last > 4L * 1024 * 1024) { last = got; event(JSONObject().put("type", "download").put("walk", walk).put("got", got).put("total", total).toString()) }
                     }
                 } }
                 tmp.renameTo(f)
                 sentMark(f).writeText("sent")   // the site's copy: never sent back (with keep off, removed when the replay ends)
-                a.event(JSONObject().put("type", "download").put("walk", walk).put("got", got).put("total", total).put("done", true).toString())
-                a.runOnUiThread { then(f) }
+                event(JSONObject().put("type", "download").put("walk", walk).put("got", got).put("total", total).put("done", true).toString())
+                main.post { then(f) }
             } catch (e: Exception) {
-                a.event(JSONObject().put("type", "error").put("message", "the recording could not be fetched: ${e.message ?: e.javaClass.simpleName}").toString())
+                event(JSONObject().put("type", "error").put("message", "the recording could not be fetched: ${e.message ?: e.javaClass.simpleName}").toString())
             }
         }.start()
     }

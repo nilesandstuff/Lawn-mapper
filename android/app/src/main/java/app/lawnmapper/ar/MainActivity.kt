@@ -88,7 +88,8 @@ class MainActivity : Activity() {
         })
         askPermissions()
         open(intent)
-        recorder = Recorder(this, base)
+        recorder = Recorder.of(this, base)
+        recorder.sink = { event(it) }   // the background send's progress, to the page while it is open
         engine.onPlaybackEnd = { status -> event("{\"type\":\"playbackEnd\",\"status\":${quote(status)}}") }
         // a recording an earlier walk could not send (no signal, the app closed): sent now
         web.postDelayed({ recorder.sendAll() }, 5000)
@@ -112,7 +113,9 @@ class MainActivity : Activity() {
     }
 
     private fun askPermissions() {
-        val want = arrayOf(Manifest.permission.CAMERA, Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+        // and the notifications (Android 13+): the background send's progress shows in one (1.12)
+        val want = arrayOf(Manifest.permission.CAMERA, Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION) +
+            (if (android.os.Build.VERSION.SDK_INT >= 33) arrayOf(Manifest.permission.POST_NOTIFICATIONS) else emptyArray())
         val missing = want.filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
         if (missing.isNotEmpty()) requestPermissions(missing.toTypedArray(), 1)
     }
@@ -284,6 +287,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        recorder.sink = null   // a send in the background carries on, with no page to tell
         session?.close()
         session = null
         web.destroy()
