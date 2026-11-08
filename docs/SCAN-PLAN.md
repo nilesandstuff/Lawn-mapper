@@ -1543,3 +1543,62 @@ fix should place the whole walk so far at once, with the ground's shape as the a
 what pins it), rather than short windows that each fit two places about equally. And the sight lines want the
 phone's points labelled (ARCore's labels: buildings and structures only), which means keeping each point's label in
 the twin; the page has it, the twin's cloud record does not.
+
+### SCAN-H26. The whole walk placed at once, live: 2.4 ft where the live fix was 24; the cursor's jump is a phantom (2026-11-08)
+
+The owner, after SCAN-H25: the strategy (what the camera should see against what it sees) is right, so one of the
+inputs is wrong; and on the 1.7 and 1.8 walks the crosshair now and then jumped to a few feet away while facing the
+house's west wall straight on, though up and down the wall read the true 30-odd feet. Then: "if 1 and 2 still seem
+like good ideas, go ahead with them" (1: place the whole walk so far at once, live; 2: keep ARCore's label with each
+point).
+
+1. THE WHOLE WALK AT ONCE (scan/lib/walkfix.js, live since this date). Every 10 s the lidar worker takes the Street
+View trail's placement (GPS's when Street View has fewer than 10 readings within 10 m) and refines it by all of
+ARCore's ground seen so far (one point per half metre, Gaussian 15 cm about the median height offset, the after-walk
+study's steps). Used when 45% or more of the ground sits on the lidar's and no placement 2 m or 5 degrees off fits
+within 2% as well; without two references it comes before the windowed fix. Replayed by post-fix on the 907 ft walk
+(six check points; the live fix as walked was 24.0 ft):
+
+| walked | used? | ground on the lidar | margin | checks median | the trail alone |
+|---|---|---|---|---|---|
+| 227 ft | no (a place a few metres off fits as well) | 80% | 0.4% | 11.5 ft | 18.6 ft |
+| 453 ft | no | 80% | 0.6% | 9.6 ft | 19.7 ft |
+| 680 ft | yes | 79% | 2.4% | 3.1 ft | 20.3 ft |
+| 907 ft | yes | 79% | 3.4% | 2.4 ft | 19.7 ft |
+
+HARD (one walk): the margin gate refused both placements that would have been 10-12 ft off and took both that were
+2-3 ft; at the end it beats the after-walk placement (2.4 against 3.1 ft on this run). The 729 ft walk's replay: being run
+(to be filled in).
+
+2. WHICH DEPTH POINTS ARE REAL (scan/tools/depth_audit.py, in task place). A point is a PHANTOM when the walk's own
+other sight lines pass through its 0.3 m cube more than twice as often as anything is seen there. On a synthetic
+yard every planted mid-air point is caught and 4-5% of true wall points are flagged; 10-15% of true ground points
+are flagged too (glancing lines), so ground shares are not evidence.
+
+| | 907 ft walk | 729 ft walk | 1.7 walk (no checks) |
+|---|---|---|---|
+| standing points that are phantoms | 30% of 17,873 | 14% of 10,829 | 17% of 7,215 |
+| of those within 7 ft | 39% | 19% | 19% |
+| standing points short of the model's first hard surface (truth) | 20% | 18% | 18% (placement) |
+| ... of those in front of a building | 41% | 14% | 8% |
+| view study C, all points / without phantoms | 3.6 / 4.1 ft | 5.4 / 5.2 ft | - |
+
+The owner's west-wall moment is in the 729 ft walk: 4:54 in, 553 ft walked, facing east (80 degrees), camera +5
+degrees: 7 readings at 3.4 ft where the model's wall is 24.6 ft, all of them phantoms by the walk's own lines. The
+907 ft walk has another facing east (8:56, 842 ft walked): 56 readings at 12.7 ft against the model's 27.9, 70%
+phantoms.
+
+HARD: the cursor's jump is ARCore's depth, not the page: the crosshair is ARCore's own hit test, and the saved raw
+depth (a separate path, cut at confidence 0.2) shows the same short readings at that moment, which the walk itself
+contradicts. HARD: leaving the phantoms out does not mend the sight-line placement (3.6 to 4.1 ft, 5.4 to 5.2 ft):
+the open air at the truth (50-65% of lines) is not phantoms.
+
+SPECULATION: the raw-depth confidence cut went from 0.4 to 0.2 on 2026-11-07 (SCAN-H23), before both walks; the
+phantoms may be the weak readings it let in. A plain wall is a poor surface for depth from motion and a window
+reflects; either could make one spot read short. Not measured: the twin did not keep each point's confidence.
+
+3. LABELS AND CONFIDENCE KEPT (twin labels-NNNN.bin, from this date): for each cloud record ARCore's semantic label,
+its confidence, and the depth's own confidence. The audit splits phantoms by label and by confidence, names the
+label at each near-reading moment, and runs the view study on ARCore's buildings and structures alone. The next walk
+answers: are the phantoms the 0.2-0.4 readings (then the cut goes back up, outdoors at least), and what are the
+open-air lines (trees, fences, shrubs, cars)?
