@@ -351,7 +351,10 @@ async function startAR(engine) {
       // the camera's picture: full resolution (1920x1080, pictures kept 1080 wide) when asked, or for the replay of a
       // walk recorded that way; else the smallest mode (640x480, pictures 480 wide; 1.10). Tracking, depth and labels
       // come from ARCore at their own sizes whichever is chosen.
-      nativeOptions: (st.replayOf ? st.replayImage === '1920x1080' : st.fullRes) ? { cameraImage: 'largest', grabW: 1080 } : {} });
+      // A replay of a full-resolution walk may be asked to keep its pictures 480 wide, so one walk compares the two
+      // (the owner, 2026-11-08: "Do we know that 480 is actually good enough?"); ARCore still plays the 1920x1080 mode.
+      nativeOptions: (st.replayOf ? st.replayImage === '1920x1080' : st.fullRes) ? { cameraImage: 'largest', grabW: st.replayOf && st.replaySmall ? 480 : 1080 } : {} });
+    st.grabW = (st.replayOf ? st.replayImage === '1920x1080' : st.fullRes) && !(st.replayOf && st.replaySmall) ? 1080 : 480;
     st.walk.features = st.tracker.features;
     // GPS, only as a place to start the lidar search from; kept in memory, never in the copy
     if (st.origin && navigator.geolocation && !st.replayOf) { // a replay's place is the recording's, not the phone's now
@@ -410,6 +413,13 @@ async function pickReplay() {
   for (const wk of onPhone) if (!recordings.some((r) => r.walk === wk)) recordings.push({ walk: wk, bytes: phoneList().find((r) => r.walk === wk)?.bytes || 0, phoneOnly: true });
   const list = document.createElement('div'); list.className = 'card';
   list.innerHTML = recordings.length ? '<strong>Replay a walk</strong><p class="dim">ARCore runs on the walk\'s recording as if walking it again, in real time; the page does again what was done then (marks, pins, checks). The replay is kept as a walk of its own.</p>' : '<p class="dim">No recorded walks yet: the next walk in the app records itself.</p>';
+  if (recordings.length) {
+    const sm = document.createElement('label'); sm.className = 'dim'; sm.style.display = 'block'; sm.style.margin = '6px 0';
+    sm.innerHTML = '<input type="checkbox" id="replay-small"> Replay a full-resolution walk with its pictures 480 wide (to compare with the same walk at 1080)';
+    list.append(sm);
+    sm.querySelector('input').addEventListener('change', (e) => { st.replaySmall = e.target.checked; });
+    st.replaySmall = false;
+  }
   for (const r of recordings) {
     const x = when.get(r.walk), b = document.createElement('button'); b.type = 'button'; b.className = 'plain'; b.style.display = 'block'; b.style.margin = '6px 0';
     b.textContent = `${x ? new Date(x.at).toLocaleString() : new Date(+r.walk).toLocaleString()}: ${x?.summary?.stats ? `${Math.round(x.summary.stats.walkedM * 3.281)} ft, ` : ''}${Math.round(r.bytes / 1e6)} MB${onPhone.has(r.walk) ? ' (on this phone)' : ''}`;
@@ -995,7 +1005,7 @@ function finish() {
   const crumbs = st.crumbs?.list.length && st.tracker?.anchorAt ? crumbMoves(st.crumbs, (h) => st.tracker.anchorAt(h)) : null;
   const refs = st.points.filter((p) => p.kind === 'ref').map((p) => ({ name: p.name, marks: L ? L.marks.filter((m) => m.id === p.id).length : 0, leftOutM: L ? r3(leftOut(L.marks.filter((m) => m.kind === 'ref'), p.id)) : null }));
   const s = summary(w, {
-    page: 'yard AR test v2', recordOnly: !!st.recordOnly, features: w.features || null, depthType: w.depthType || null, anchors: st.anchors ? anchorsKept(st.anchors) : null, depthFill: st.depthFill ? { frames: st.depthFill.frames, holes: +(st.depthFill.zero / Math.max(1, st.depthFill.cells)).toFixed(3), past8m: +(st.depthFill.far / Math.max(1, st.depthFill.cells)).toFixed(3), weak: +(st.depthFill.weak / Math.max(1, st.depthFill.cells)).toFixed(3), minConf: st.depthFill.minConf } : null, rawAsked: !!st.rawDepth, geo: geoSummary(), depthSpikes: st.spikes ? { ...st.spikes, share: +(st.spikes.flagged / Math.max(1, st.spikes.cells)).toFixed(4), recordOnly: true } : null, walkFix: st.walkStats ? { ...st.walkStats, share: L?.walk?.ok ? +L.walk.share.toFixed(3) : null, margin: L?.walk?.ok ? +L.walk.margin.toFixed(3) : null, walkedM: L?.walk?.ok ? Math.round(L.walk.walkedM) : null } : null, semantics: st.caps?.native ? { on: !!st.tracker?.semantics, dims: st.semDims || null, ...(semSummary(st.sem) || {}) } : null, crumbs: crumbs ? { n: crumbs.n, held: crumbs.held, lost: crumbs.lost, refused: crumbs.refused, medianM: crumbs.medianM, maxM: crumbs.maxM, maxLevelM: crumbs.maxLevelM, worstOdo: crumbs.worstOdo } : null, app: st.caps?.native ? { app: st.caps.native.app, bridge: st.caps.native.bridge, device: st.caps.native.device, camera: st.started?.camera ?? null, image: st.started?.image ?? null, modes: st.started?.modes ?? null, streetscape: st.started?.streetscape ?? null, streetError: st.started?.streetError ?? null, recording: st.started?.recording ?? null, recordError: st.started?.recordError ?? null, geoDepthPoints: st.geoDepthN || 0 } : null, replayOf: st.replayOf || null, failed: w.failed || null, errors: st.errors.map((e) => e.what).slice(-30),
+    page: 'yard AR test v2', recordOnly: !!st.recordOnly, features: w.features || null, depthType: w.depthType || null, anchors: st.anchors ? anchorsKept(st.anchors) : null, depthFill: st.depthFill ? { frames: st.depthFill.frames, holes: +(st.depthFill.zero / Math.max(1, st.depthFill.cells)).toFixed(3), past8m: +(st.depthFill.far / Math.max(1, st.depthFill.cells)).toFixed(3), weak: +(st.depthFill.weak / Math.max(1, st.depthFill.cells)).toFixed(3), minConf: st.depthFill.minConf } : null, rawAsked: !!st.rawDepth, geo: geoSummary(), depthSpikes: st.spikes ? { ...st.spikes, share: +(st.spikes.flagged / Math.max(1, st.spikes.cells)).toFixed(4), recordOnly: true } : null, walkFix: st.walkStats ? { ...st.walkStats, share: L?.walk?.ok ? +L.walk.share.toFixed(3) : null, margin: L?.walk?.ok ? +L.walk.margin.toFixed(3) : null, walkedM: L?.walk?.ok ? Math.round(L.walk.walkedM) : null } : null, semantics: st.caps?.native ? { on: !!st.tracker?.semantics, dims: st.semDims || null, ...(semSummary(st.sem) || {}) } : null, crumbs: crumbs ? { n: crumbs.n, held: crumbs.held, lost: crumbs.lost, refused: crumbs.refused, medianM: crumbs.medianM, maxM: crumbs.maxM, maxLevelM: crumbs.maxLevelM, worstOdo: crumbs.worstOdo } : null, app: st.caps?.native ? { app: st.caps.native.app, bridge: st.caps.native.bridge, device: st.caps.native.device, camera: st.started?.camera ?? null, image: st.started?.image ?? null, modes: st.started?.modes ?? null, streetscape: st.started?.streetscape ?? null, streetError: st.started?.streetError ?? null, recording: st.started?.recording ?? null, recordError: st.started?.recordError ?? null, geoDepthPoints: st.geoDepthN || 0, grabW: st.grabW || null } : null, replayOf: st.replayOf || null, failed: w.failed || null, errors: st.errors.map((e) => e.what).slice(-30),
     references: refs, checks: (w.checks || []).map((c) => ({ ...c, errorM: r3(c.errorM), errorFixM: r3(c.errorFixM), errorRefsM: r3(c.errorRefsM), walkedSinceFixM: r2(c.walkedSinceFixM), aimM: r2(c.aimM), walkedM: r2(c.walkedM) })),
     pinsNear: w.pins.map((p) => ({ name: p.name, nearest: p.nearest ? { name: p.nearest.name, m: r2(p.nearest.m), byRefsM: r2(p.nearest.byRefsM) } : null })),
     fix: L ? summaryOf(L) : null, surfaceSeen: st.surfCount || null, lidar: st.lid.ready ? { points: st.lid.ready.points, solid: st.lid.ready.solid, shift: st.lid.ready.shift, rule: st.lid.ready.rule || null, structures: st.lid.ready.structures || null, tallCells: st.lid.overlay ? st.lid.overlay.tall.length / 5 : null } : st.lid.error ? { error: st.lid.error } : null,
@@ -1007,7 +1017,7 @@ function finish() {
   }
   st.twin = null;
   st.tracker = null; st.walk = null; st.L = null; st.ar = null; st.drawer = null;
-  st.replayOf = null; st.replayImage = null; // a replay is one walk; the next starts from the camera again
+  st.replayOf = null; st.replayImage = null; st.replaySmall = false; // a replay is one walk; the next starts from the camera again
   $('#overlay').hidden = true; document.body.classList.remove('in-ar');
   const list = kept(); list.push(s); keep(list);
   renderResults(s.id); drawMap();

@@ -1651,6 +1651,44 @@ SPECULATION, measured on the next walk: ARCore's labels route the evidence (in t
 earns only from building or structure points, a thing from tree, structure or object, sky, people and cars from
 nothing). Walks from the evening of 2026-11-08 carry them.
 
+### SCAN-H28. The first walk with labels on every point: the best fit overall 1.9 ft; the spike check catches almost nothing (2026-11-08)
+
+Walk 1794162116852 (app 1.9; 7 check marks; depth kept to 30 m; labels, label and depth confidence and the page's own
+spike flag with every point). Task place, run 197. Median at the check points:
+
+| | ft | margin |
+|---|---|---|
+| after the walk (skyline, then the ground; placement.json) | 5.7 | |
+| the whole walk at once, live (SCAN-H26) | 7.8 | |
+| the whole walk at once, replayed | 4.2 | |
+| the GPS trail alone | 8.9 | |
+| view study A (1 m columns) | 1.0 | |
+| view study C (0.25 m, the ground by height) | 2.8 | |
+| best fit overall: ground only | 10.4 | 4% |
+| best fit overall: buildings only | 2.2 | 6% |
+| best fit overall: things only | 15.5 | 13% |
+| best fit overall: ground + buildings + things | 2.1 | 5% |
+| best fit overall: all, seeing through a house counted | 1.9 | 5% |
+
+HARD (one walk, the first with labels): with ARCore's labels routing the evidence, every best-fit weighting that
+counts buildings lands within 2.7 ft, and the lowest score is the truth's own neighbourhood (refined from the truth,
+2.0 ft). The 907 ft walk of SCAN-H27, without labels, was 7.7-13 ft. One walk: the labels are the likeliest reason,
+not a proven one (a different walk, a different route). Ground alone and things alone do not place a walk here.
+
+HARD, the phantoms (a point seen through from elsewhere on the walk more than twice as often as seen): 16% of all
+points, 18% of standing ones. By label among standing points: tree 27%, terrain 25%, building 15%, structure 10%,
+sidewalk 4%. By ARCore's depth confidence: 20-21% below 0.4, 19% at 0.4-0.6, 12-13% at 0.6 and over: the confidence
+halves them at best and is no filter on its own. Leaving the phantoms out of view study C: 3.0 ft (2.8 with them).
+
+HARD, the spike check (scan/lib/spikes.js, recorded only): 25 points flagged of 43,377 (0%); 96% of those are
+phantoms, but they are 1% of the phantoms. It is right when it fires and almost never fires: the phantoms are not
+lone near spots on a surface read correctly round them; they come as whole patches (the worst moment, 1:48 facing
+W at a building: 72 readings at a median 21 ft where the model's first surface is 53 ft, 43% phantoms, depth
+confidence 0.32, labelled building). Not worth turning on as a filter.
+
+SPECULATION: the patches short of a building at 1:46-1:49 may be something real the lidar lacks (a parked car, a
+fence, a trailer) rather than bad depth; 43-63% of them are phantoms by the walk's own lines, so not all.
+
 ### 13. Recording and replay, Geospatial Depth, camera modes (the app's bridge 3, 2026-11-08)
 
 The owner: "let's do it so I don't have to keep doing the same walks over and over." App 1.9: every walk in the app is
