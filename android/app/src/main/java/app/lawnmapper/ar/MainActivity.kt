@@ -148,9 +148,14 @@ class MainActivity : Activity() {
                 semEveryMs = o.optLong("semEveryMs", 500), anchorsEveryMs = o.optLong("anchorsEveryMs", 1000),
             )
             val s = Session(this)
-            // the camera mode with the largest picture the phone offers (the page's pictures are cut from it)
+            // THE CAMERA MODE (1.10, 2026-11-08): the smallest picture ARCore offers unless the page asks for the largest.
+            // The largest (1920x1080 on the S21) went into the walk's recording whole: 2.2 GB for an 8-minute walk, while
+            // the page shrinks every picture to grabW (480) wide anyway. All the S21's modes share one camera and the
+            // same 1920x1080 view; only the CPU picture's size differs.
             val configs: List<CameraConfig> = s.getSupportedCameraConfigs(CameraConfigFilter(s).setFacingDirection(CameraConfig.FacingDirection.BACK))
-            configs.maxByOrNull { it.imageSize.width * it.imageSize.height }?.let { try { s.cameraConfig = it } catch (_: Exception) { } }
+            val largest = o.optString("cameraImage", "smallest") == "largest"
+            (if (largest) configs.maxByOrNull { it.imageSize.width * it.imageSize.height } else configs.minByOrNull { it.imageSize.width * it.imageSize.height })
+                ?.let { try { s.cameraConfig = it } catch (_: Exception) { } }
             // every mode ARCore offers on this phone, told to the page (the owner, 2026-11-08: is the 1x camera the best,
             // or the widest?): its camera, picture and texture sizes, frame rates, depth sensor and stereo use
             val modes = configs.joinToString(",", "[", "]") { c ->

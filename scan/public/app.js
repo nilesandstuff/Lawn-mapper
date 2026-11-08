@@ -99,7 +99,7 @@ async function main() {
       rb.addEventListener('click', () => pickReplay().catch((e) => flash(`Recordings could not be listed: ${e.message}`)));
       box.append(rb);
       const pend = (() => { try { return JSON.parse(window.LawnARNative.pendingRecordings()); } catch { return []; } })();
-      if (pend.length) { const n = document.createElement('p'); n.className = 'dim'; n.textContent = `${pend.length} recording${pend.length === 1 ? '' : 's'} still on the phone, being sent (${Math.round(pend.reduce((a, x) => a + x.bytes, 0) / 1e6)} MB).`; box.append(n); try { window.LawnARNative.sendRecordings(); } catch { /* none */ } }
+      if (pend.length) { const n = document.createElement('p'); n.className = 'dim'; n.id = 'rec-pending'; n.textContent = `${pend.length} recording${pend.length === 1 ? '' : 's'} still on the phone, being sent (${Math.round(pend.reduce((a, x) => a + (x.sent || 0), 0) / 1e6)} of ${Math.round(pend.reduce((a, x) => a + x.bytes, 0) / 1e6)} MB so far; keep the app open on wifi).`; box.append(n); try { window.LawnARNative.sendRecordings(); } catch { /* none */ } }
     } else if (st.caps.native) {
       const n = document.createElement('p'); n.className = 'dim'; n.textContent = 'Recording walks for replay needs the app\'s next version: update it from the link above.'; box.append(n);
     }
@@ -384,7 +384,7 @@ const recUpText = () => { const u = st.recUp; if (!u) return ''; return u.done ?
 
 function onEvent(ev) {
   // the recording's upload carries on after the walk ends: its progress goes on the results
-  if (!st.walk) { if (ev.type === 'native' && ev.what === 'upload') { st.recUp = ev; const el = $('#rec-up'); if (el) el.textContent = recUpText(); } return; }
+  if (!st.walk) { if (ev.type === 'native' && ev.what === 'upload') { st.recUp = ev; for (const id of ['#rec-up', '#rec-pending']) { const el = $(id); if (el) el.textContent = recUpText(); } } return; }
   if (ev.type === 'error') { log(`engine: ${ev.message}`); flash(`Engine: ${ev.message}`.slice(0, 80)); }
   if (ev.type === 'camera') log(`camera ${ev.status}`);
   if (ev.type === 'motion') log(`motion sensors ${ev.status}`);

@@ -40,7 +40,10 @@ class Recorder(private val a: MainActivity, private val base: String) {
     }
 
     /** Recordings on the phone not yet sent: [{ walk, bytes }]. */
-    fun pending(): String = JSONArray(dir.listFiles { f -> f.name.endsWith(".mp4") }?.map { JSONObject().put("walk", it.nameWithoutExtension).put("bytes", it.length()) } ?: emptyList<JSONObject>()).toString()
+    fun pending(): String = JSONArray(dir.listFiles { f -> f.name.endsWith(".mp4") }?.map { f ->
+        val k = try { JSONObject(sideOf(f).readText()) } catch (_: Exception) { null }
+        JSONObject().put("walk", f.nameWithoutExtension).put("bytes", f.length()).put("sent", if (k != null) minOf(f.length(), k.getJSONArray("parts").length() * k.getLong("piece")) else 0L)
+    } ?: emptyList<JSONObject>()).toString()
 
     /** Send every recording waiting on the phone, one after another, off the UI thread. */
     fun sendAll() {
@@ -53,16 +56,30 @@ class Recorder(private val a: MainActivity, private val base: String) {
         }.start()
     }
 
+    /* RESUMABLE (1.10): the upload's id and the pieces the site has are kept beside the file (<walk>.json), so a send
+       cut off -- no signal, the app closed -- carries on where it stopped instead of starting again (the owner's first
+       recording was 2.2 GB). R2 keeps an unfinished upload for days; one it no longer knows is started afresh. */
+    private fun sideOf(f: File) = File(f.parentFile, f.nameWithoutExtension + ".json")
+
     private fun send(f: File) {
         val walk = f.nameWithoutExtension
         val total = f.length()
+        val side = sideOf(f)
         try {
-            val start = readJson(open("/api/scan/recording/start?walk=$walk", "POST").apply { doOutput = true; outputStream.close() })
-            val upload = start.getString("upload")
-            val piece = start.optLong("piece", 8L * 1024 * 1024)
-            val parts = JSONArray()
-            var sent = 0L
-            var n = 1
+            var kept = try { JSONObject(side.readText()) } catch (_: Exception) { null }
+            if (kept != null && kept.optLong("bytes") != total) kept = null
+            val upload: String
+            val piece: Long
+            val parts: JSONArray
+            if (kept != null) {
+                upload = kept.getString("upload"); piece = kept.getLong("piece"); parts = kept.getJSONArray("parts")
+            } else {
+                val start = readJson(open("/api/scan/recording/start?walk=$walk", "POST").apply { doOutput = true; outputStream.close() })
+                upload = start.getString("upload"); piece = start.optLong("piece", 8L * 1024 * 1024); parts = JSONArray()
+                side.writeText(JSONObject().put("upload", upload).put("piece", piece).put("bytes", total).put("parts", parts).toString())
+            }
+            var n = parts.length() + 1
+            var sent = minOf(total, parts.length() * piece)
             RandomAccessFile(f, "r").use { raf ->
                 val buf = ByteArray(piece.toInt())
                 while (sent < total) {
@@ -77,8 +94,11 @@ class Recorder(private val a: MainActivity, private val base: String) {
                             c.outputStream.use { it.write(buf, 0, len) }
                             val j = readJson(c)
                             parts.put(JSONObject().put("n", n).put("etag", j.getString("etag")))
+                            side.writeText(JSONObject().put("upload", upload).put("piece", piece).put("bytes", total).put("parts", parts).toString())
                             break
                         } catch (e: Exception) {
+                            // the site no longer knows this upload (expired): start afresh next time
+                            if (e.message?.contains(" 404") == true || e.message?.contains("NoSuchUpload") == true) { side.delete(); throw e }
                             if (++tries >= 4) throw e
                             Thread.sleep(2000L * tries)
                         }
@@ -91,7 +111,7 @@ class Recorder(private val a: MainActivity, private val base: String) {
             done.doOutput = true; done.setRequestProperty("Content-Type", "application/json")
             done.outputStream.use { it.write(JSONObject().put("parts", parts).toString().toByteArray()) }
             readJson(done)
-            f.delete()   // the site has it whole: 100+ MB off the phone
+            f.delete(); side.delete()   // the site has it whole: 100+ MB off the phone
             a.event(JSONObject().put("type", "upload").put("walk", walk).put("sent", total).put("total", total).put("done", true).toString())
         } catch (e: Exception) {
             a.event(JSONObject().put("type", "upload").put("walk", walk).put("total", total).put("error", e.message ?: e.javaClass.simpleName).toString())

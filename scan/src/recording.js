@@ -57,15 +57,14 @@ export async function recording(request, env, url, { isAdmin }) {
     if (!Number.isInteger(n) || n < 1 || n > 10000) return json({ error: 'which piece?' }, 400);
     const body = await request.arrayBuffer();
     if (body.byteLength > PIECE) return json({ error: `a piece is at most ${PIECE} bytes` }, 413);
-    const part = await mp.uploadPart(n, body);
-    return json({ n, etag: part.etag });
+    // an upload R2 no longer knows (expired, or finished) answers 404: the app starts that recording afresh
+    try { const part = await mp.uploadPart(n, body); return json({ n, etag: part.etag }); } catch (e) { return json({ error: 'no such upload', detail: String(e?.message || e).slice(0, 120) }, 404); }
   }
   if (p === '/api/scan/recording/done' && request.method === 'POST') {
     const b = await request.json().catch(() => null);
     const parts = (b?.parts || []).filter((x) => Number.isInteger(x?.n) && typeof x?.etag === 'string').sort((a, c) => a.n - c.n).map((x) => ({ partNumber: x.n, etag: x.etag }));
     if (!parts.length) return json({ error: 'no pieces' }, 400);
-    const o = await mp.complete(parts);
-    return json({ ok: true, walk, bytes: o?.size ?? null });
+    try { const o = await mp.complete(parts); return json({ ok: true, walk, bytes: o?.size ?? null }); } catch (e) { return json({ error: 'no such upload', detail: String(e?.message || e).slice(0, 120) }, 404); }
   }
   return json({ error: 'method' }, 405);
 }
