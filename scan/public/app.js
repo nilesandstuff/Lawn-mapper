@@ -95,6 +95,10 @@ async function main() {
       rec.innerHTML = '<input type="checkbox" id="record-arcore" checked> Record this walk for replay (ARCore\'s camera and motion; sent to the site after the walk, about 100-300 MB, best on wifi)';
       box.append(rec);
       $('#record-arcore').addEventListener('change', (e) => { st.recordOff = !e.target.checked; });
+      const fr = document.createElement('label'); fr.className = 'dim'; fr.style.display = 'block'; fr.style.margin = '8px 0';
+      fr.innerHTML = '<input type="checkbox" id="full-res"> Full-resolution camera (1920x1080, pictures kept 1080 wide; the recording is about 2 GB for 8 minutes)';
+      box.append(fr);
+      $('#full-res').addEventListener('change', (e) => { st.fullRes = e.target.checked; });
       const rb = document.createElement('button'); rb.type = 'button'; rb.className = 'plain'; rb.textContent = 'Replay a recorded walk';
       rb.addEventListener('click', () => pickReplay().catch((e) => flash(`Recordings could not be listed: ${e.message}`)));
       box.append(rb);
@@ -342,7 +346,11 @@ async function startAR(engine) {
   try {
     // bridge 3: this walk recorded by ARCore for replay (on unless turned off), or an earlier walk replayed
     st.recUp = null; st.started = null; st.geoDepthN = 0;
-    st.tracker = await start({ engine, overlay, canvas, eightWallUrl: ENGINE_URL, onFrame, onEvent, rawDepth: !!st.rawDepth, record: st.replayOf || st.recordOff ? null : st.walk.startedAt, playback: st.replayOf || null });
+    st.tracker = await start({ engine, overlay, canvas, eightWallUrl: ENGINE_URL, onFrame, onEvent, rawDepth: !!st.rawDepth, record: st.replayOf || st.recordOff ? null : st.walk.startedAt, playback: st.replayOf || null,
+      // the camera's picture: full resolution (1920x1080, pictures kept 1080 wide) when asked, or for the replay of a
+      // walk recorded that way; else the smallest mode (640x480, pictures 480 wide; 1.10). Tracking, depth and labels
+      // come from ARCore at their own sizes whichever is chosen.
+      nativeOptions: (st.replayOf ? st.replayImage === '1920x1080' : st.fullRes) ? { cameraImage: 'largest', grabW: 1080 } : {} });
     st.walk.features = st.tracker.features;
     // GPS, only as a place to start the lidar search from; kept in memory, never in the copy
     if (st.origin && navigator.geolocation && !st.replayOf) { // a replay's place is the recording's, not the phone's now
@@ -371,6 +379,7 @@ async function pickReplay() {
     b.textContent = `${x ? new Date(x.at).toLocaleString() : r.walk}: ${x?.summary?.stats ? `${Math.round(x.summary.stats.walkedM * 3.281)} ft, ` : ''}${Math.round(r.bytes / 1e6)} MB`;
     b.addEventListener('click', async () => {
       st.replayOf = r.walk;
+      st.replayImage = x?.summary?.app?.image || (x?.summary?.app?.app && /^1\.9$/.test(x.summary.app.app) ? '1920x1080' : null); // replayed in the mode it was recorded in
       try { const meta = await (await fetch(`/api/scan/twin?walk=${encodeURIComponent(r.walk)}&part=meta.json`, { credentials: 'same-origin' })).json(); if (meta?.map && meta.map !== st.map) await openMap(meta.map, 'from the recorded walk'); } catch { /* the map open now, if any */ }
       flash('Fetching the recording, then replaying it');
       startAR('native');
@@ -962,6 +971,7 @@ function finish() {
   }
   st.twin = null;
   st.tracker = null; st.walk = null; st.L = null; st.ar = null; st.drawer = null;
+  st.replayOf = null; st.replayImage = null; // a replay is one walk; the next starts from the camera again
   $('#overlay').hidden = true; document.body.classList.remove('in-ar');
   const list = kept(); list.push(s); keep(list);
   renderResults(s.id); drawMap();
