@@ -404,7 +404,10 @@ export const NATIVE_DEPTH = { kind: 'raw', minConf: 0.2, nx: 48, ny: 84 };
 const b64bytes = (s) => { const bin = atob(s); const u = new Uint8ClampedArray(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; };
 
 /** A depth grid from the app (DepthSnapshot.gridJson) as the page's depth: at(x, y) a world point or null, m(x, y) metres. */
-export function depthFromGrid(g, near = 0.4, far = 8) {
+/* far (2026-11-08): 8 m dropped every true reading of a wall 30 ft off and kept only the ones that erred short (the
+   owner's west wall: almost no points on it, and the few there phantoms; almost none on the roof). Readings to 20 m
+   now reach the twin; the live match still takes only what is within 8 m (app.js LIVE_RANGE). */
+export function depthFromGrid(g, near = 0.4, far = 20) {
   if (!g) return null;
   const cell = (x, y) => Math.min(g.ny - 1, Math.max(0, Math.floor(y * g.ny))) * g.nx + Math.min(g.nx - 1, Math.max(0, Math.floor(x * g.nx)));
   return {

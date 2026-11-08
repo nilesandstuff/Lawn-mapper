@@ -114,7 +114,7 @@ def main():
     isg = lines[:, 6] > 0.5
     free, seen = carve(lines)
     phantom = (free >= 3) & (free > 2 * seen)
-    bins = [(0, 2), (2, 4), (4, 6), (6, 9)]
+    bins = [(0, 2), (2, 4), (4, 6), (6, 9), (9, 20)]
     def share(mask, sel):
         return f"{mask[sel].mean():.0%} of {int(sel.sum()):,}" if sel.any() else "-"
     print(f"Depth audit: {len(lines):,} depth points ({int(isg.sum()):,} on the ground). PHANTOMS by the walk's own lines (seen through from elsewhere more than twice as often as seen): {share(phantom, np.ones(len(lines), bool))}; standing points {share(phantom, ~isg)}; ground points {share(phantom, isg)}.")

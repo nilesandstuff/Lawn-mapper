@@ -39,6 +39,7 @@ const COLOR = { dot: [0.3, 1, 0.6, 0.9], dotPlane: [1, 0.8, 0.2, 0.9], pin: [0.9
 const CSS = { ref: '#2f7cf6', check: '#a54bd8', pin: '#e53935', lawn: '#4cc38a' };
 const FAR_AGAIN = 3000;
 const DEPTH_EVERY = 250;
+const LIVE_RANGE = 8; // m: the live match and the walk's ground take depth this near; the twin keeps it to 20 m (track.js)
 const WALK_EVERY = 10000; // ms between placements of the whole walk (walkfix.js)
 const COLOUR_EVERY = 900; // ms between reads of the ground's colour
 
@@ -510,13 +511,14 @@ function onFrame(f) {
         if (d > 0 && f.depth.conf && f.depth.minConf != null) { const c = f.depth.conf(x, y); if (c != null && c < f.depth.minConf) df.weak++; }
       }
     }
+    const near = pts.filter((p) => Math.hypot(p.x - cam.x, p.y - cam.y, p.z - cam.z) <= LIVE_RANGE);
     // THE WHOLE WALK'S GROUND (walkfix.js): one ARCore ground point per half metre of the walk, for its placement
-    if (L.groundY != null && st.walkGround && st.walkGround.size < 8000) for (const p of pts) {
+    if (L.groundY != null && st.walkGround && st.walkGround.size < 8000) for (const p of near) {
       if (Math.abs(p.y - L.groundY) >= 0.15) continue;
       const k = `${Math.floor(p.x / 0.5)},${Math.floor(p.z / 0.5)}`;
       if (!st.walkGround.has(k)) st.walkGround.set(k, [+p.x.toFixed(3), +(-p.z).toFixed(3), +p.y.toFixed(3)]);
     }
-    addDepth(L, pts, odo, f.pose.position, { standing: false }); // standing points come from the colour pass below
+    addDepth(L, near, odo, f.pose.position, { standing: false }); // standing points come from the colour pass below
     if (st.twin) addPoints(st.twin, Date.now(), odo, pts, L.groundY);
   }
   // 8th Wall: no depth map, but its world points, at the same pace (scan/lib/track.js worldPointsOf); no camera
@@ -549,7 +551,7 @@ function onFrame(f) {
       const pts = [], { w: gw, h: gh, pixels } = grabbed;
       for (let i = 0; i < 24; i++) for (let j = 0; j < 40; j++) {
         const x = (i + 0.5) / 24, y = (j + 0.5) / 40, p = f.depth.at(x, y);
-        if (!p) continue;
+        if (!p || Math.hypot(p.x - f.pose.position.x, p.y - f.pose.position.y, p.z - f.pose.position.z) > LIVE_RANGE) continue;
         const l = f.depth.label && st.semDims ? f.depth.label(x, y) : null;
         if (l && !keepPoint(l, f.depth.labelConf(x, y))) continue;
         if (l) p.label = l;

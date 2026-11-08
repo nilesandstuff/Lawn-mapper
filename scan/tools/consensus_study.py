@@ -132,7 +132,7 @@ class Scene:
         M = self.M
         cam, pt = L[:, 0:3], L[:, 3:6]
         dv = pt - cam; rl = np.linalg.norm(dv, axis=1); u_ = dv / rl[:, None]
-        ds = (np.arange(1, int(9 / 0.25) + 1) * 0.25)[None, :]
+        ds = (np.arange(1, int(20 / 0.25) + 1) * 0.25)[None, :]
         X = cam[:, 0:1] + u_[:, 0:1] * ds; Y = cam[:, 1:2] + u_[:, 1:2] * ds + tz; Z = cam[:, 2:3] + u_[:, 2:3] * ds
         ee, nn = vs.to_map(T, X, Z)
         rr, cc, okk = self.cells(ee, nn)
@@ -219,7 +219,7 @@ class Scene:
             L = self.through_lines
             cam, pt = L[:, 0:3], L[:, 3:6]
             dv = pt - cam; rl = np.linalg.norm(dv, axis=1); u_ = dv / rl[:, None]
-            ds = (np.arange(1, int(9 / 0.25) + 1) * 0.25)[None, :]
+            ds = (np.arange(1, int(20 / 0.25) + 1) * 0.25)[None, :]
             X = cam[:, 0:1] + u_[:, 0:1] * ds; Y = cam[:, 1:2] + u_[:, 1:2] * ds + tz; Z = cam[:, 2:3] + u_[:, 2:3] * ds
             ee, nn = vs.to_map(T, X, Z)
             rr, cc, okk = self.cells(ee, nn)

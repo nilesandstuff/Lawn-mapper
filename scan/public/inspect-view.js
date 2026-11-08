@@ -90,7 +90,7 @@ function summary() {
   $('#placements').innerHTML = `<table><tr><th>Placed by</th><th>Off</th><th>Margin</th></tr>${J.placements.map((p) => `<tr><td>${esc(p.name)}</td><td>${p.med != null ? `${p.med.toFixed(1)} ft` : '<span class="dim">no check points</span>'}</td><td>${p.margin != null ? `${(p.margin * 100).toFixed(1)}%` : ''}</td></tr>`).join('')}</table>`;
   const c = J.counts, tot = st.n || 1, pc = (k) => `${c[k].toLocaleString()} <span class="dim">(${Math.round((c[k] / tot) * 100)}%)</span>`;
   $('#counts').innerHTML = `<table>${J.verdicts.map((t, i) => `<tr><td><span class="key" style="background:${VERDICT[i]}"></span>${esc(t)}</td><td>${pc(['groundOn', 'groundOff', 'wall', 'wallHidden', 'thing', 'nothing', 'off'][i])}</td></tr>`).join('')}
-    <tr><td>phantoms (the walk's other sight lines pass through them)</td><td>${pc('phantoms')}</td></tr><tr><td>spikes (the page's own check; walks from the evening of 2026-11-08)</td><td>${pc('spikes')}</td></tr></table>`;
+    ${J.wallInset?.median != null ? `<tr><td>wall points, how far inside the lidar's roof edge (walls stand about 2 ft in)</td><td>median ${(J.wallInset.median * FT).toFixed(1)} ft <span class="dim">(half between ${(J.wallInset.q25 * FT).toFixed(1)} and ${(J.wallInset.q75 * FT).toFixed(1)})</span></td></tr>` : ''}<tr><td>phantoms (the walk's other sight lines pass through them)</td><td>${pc('phantoms')}</td></tr><tr><td>spikes (the page's own check; walks from the evening of 2026-11-08)</td><td>${pc('spikes')}</td></tr></table>`;
   const W = J.consensus?.weights || {};
   const row = (nm, w) => `<tr><td>${esc(nm)}</td><td>${w.med != null ? `${w.med.toFixed(1)} ft` : ''}</td><td>${w.margin != null ? `${(w.margin * 100).toFixed(1)}%` : ''}</td><td>${w.credits ? ['G', 'B', 'O', 'P', 'X'].map((k) => (w.credits[k] ?? 0).toFixed(1)).join(' / ') : ''}</td></tr>`;
   const tr = J.consensus?.truth;
@@ -152,9 +152,16 @@ function draw() {
   if ($('#show-credits').checked && scoredView) {
     for (const [e, n, q] of J.groundCells) { const [x, y] = toPx(e - 1, n + 1); g.fillStyle = `rgba(148,163,184,${0.08 + 0.3 * q})`; g.fillRect(x, y, 2 * s, 2 * s); }
     for (const [e, n, q] of J.edges) { const [x, y] = toPx(e, n); g.fillStyle = ramp(1 - q); g.beginPath(); g.arc(x, y, 0.45 * s, 0, 7); g.fill(); }
-    for (const [e, n, q] of J.thingsHit) { const [x, y] = toPx(e, n); g.strokeStyle = '#14b8a6'; g.lineWidth = 3 / v.s; g.beginPath(); g.arc(x, y, (0.6 + q) * s, 0, 7); g.stroke(); }
   }
-  if ($('#show-things').checked) for (const [e, n, area, top] of J.things) { const [x, y] = toPx(e, n); g.strokeStyle = 'rgba(245,158,11,.9)'; g.lineWidth = 1.5 / v.s; g.beginPath(); g.arc(x, y, Math.max(0.5, Math.sqrt(area / Math.PI)) * s, 0, 7); g.stroke(); }
+  // the lidar's things (shrubs, trees, boulders, low structures) as their own cells: teal when phone points fell on
+  // them (they earned), orange when none did (out of sight, cut down, gone, or misplaced)
+  if ($('#show-things').checked && Array.isArray(J.things) && J.things.length && typeof J.things[0] === 'object') {
+    const [cw, ch] = J.thingCell || [0.25, 0.25];
+    for (const t of things()) {
+      g.fillStyle = t.points ? `rgba(20,184,166,${0.25 + 0.5 * t.credit})` : 'rgba(249,115,22,.55)';
+      for (let r = 0; r < t.h; r++) for (let c = 0; c < t.w; c++) if (t.m[r * t.w + c]) { const [x, y] = toPx(t.e0 + c * cw, t.n1 - r * ch); g.fillRect(x, y, cw * s + 0.5 / v.s, ch * s + 0.5 / v.s); }
+    }
+  }
   const mode = $('#colour').value, size = Math.max(1.2 / v.s, 0.12 * s), sg = $('#show-ground').checked, ss = $('#show-stand').checked;
   for (let pass = 0; pass < 2; pass++) for (let i = 0; i < st.n; i++) {
     const f = i * 8, ground = st.U[f] === 1;
@@ -187,8 +194,19 @@ function draw() {
     const [x0, y0] = toPx(...a), [x1, y1] = toPx(...b);
     g.strokeStyle = '#facc15'; g.lineWidth = 3 / v.s; g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke();
   }
-  $('#legend').innerHTML = legend(mode) + ($('#show-credits').checked ? `<br><span class="dim">credits: grey squares the ground (darker earns more), dots each metre of building edge (green full, red little), teal rings the lidar things that earned</span>` : '') + ($('#show-checks').checked ? '<br><span class="dim">check points: purple where they are on the map, white where this placement puts the mark</span>' : '') + (!scoredView ? '<br><span class="warn">Credits, track and verdicts are scored under the first placement; only the points move.</span>' : '');
+  $('#legend').innerHTML = legend(mode) + ($('#show-things').checked ? '<br><span class="dim">lidar things (shrubs, trees, boulders, low structures, from the lidar): teal where the phone\'s points fell on them, orange where none did; tap one</span>' : '') + ($('#show-credits').checked ? `<br><span class="dim">credits: grey squares the ground (darker earns more), dots each metre of building edge (green full, red little), the things' teal deepens with their credit</span>` : '') + ($('#show-checks').checked ? '<br><span class="dim">check points: purple where they are on the map, white where this placement puts the mark</span>' : '') + (!scoredView ? '<br><span class="warn">Credits, track and verdicts are scored under the first placement; only the points move.</span>' : '');
   $('#time-at').textContent = +$('#window').value ? `${fmtT(+$('#time').value)} into the walk` : '';
+}
+let _things = null;
+function things() {
+  if (_things) return _things;
+  _things = (st.J.things || []).map((t) => { const bits = b64(t.bits), m = new Uint8Array(t.w * t.h); for (let i = 0; i < m.length; i++) m[i] = (bits[i >> 3] >> (7 - (i & 7))) & 1; return { ...t, m }; });
+  return _things;
+}
+function thingAt(e, n) {
+  const [cw, ch] = st.J.thingCell || [0.25, 0.25];
+  for (const t of things()) { const c = Math.floor((e - t.e0) / cw), r = Math.floor((t.n1 - n) / ch); if (c >= 0 && r >= 0 && c < t.w && r < t.h && t.m[r * t.w + c]) return t; }
+  return null;
 }
 function dot(g, e, n, color, vs, r = 6) { const [x, y] = toPx(e, n); g.beginPath(); g.arc(x, y, r / vs, 0, 7); g.fillStyle = color; g.fill(); g.lineWidth = 1.5 / vs; g.strokeStyle = '#000'; g.stroke(); }
 const fmtT = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
@@ -202,9 +220,13 @@ function pick(cx, cy) {
     if (st.U[f] === 1 ? !$('#show-ground').checked : !$('#show-stand').checked) continue;
     const [pe, pn] = placed(i), d = (pe - e) ** 2 + (pn - n) ** 2; if (d < bd) { bd = d; best = i; }
   }
-  if (best < 0) { $('#pick').textContent = ''; return; }
+  if (best < 0) {
+    const t = $('#show-things').checked && st.T === st.scoredT ? thingAt(e, n) : null;
+    $('#pick').innerHTML = t ? `<strong>A lidar thing: ${esc(t.kind)}</strong>, ${(t.top * FT).toFixed(0)} ft tall when flown, ${Math.round(t.area * 10.764)} sq ft. ${t.points ? `${t.points} of the phone's points fell on it (or within 2.5 ft of it): credit ${t.credit.toFixed(2)}.` : 'None of the phone\'s points fell on it: no credit, and no loss (it may have been out of sight, cut back or gone).'}` : '';
+    return;
+  }
   const f = best * 8, F = st.F, U = st.U, lab = st.J.labels[U[f + 1] - 1];
-  $('#pick').innerHTML = `<strong>${esc(st.J.verdicts[U[f + 5]])}</strong>${U[f + 5] === 2 || U[f] ? ` (grade ${F[f + 7].toFixed(2)})` : ''}. ${U[f] ? 'Ground point' : 'Standing point'}, ${F[f + 6] > -50 ? `${(F[f + 6] * FT).toFixed(1)} ft over the lidar's ground` : 'off the lidar'}; ARCore: ${lab ? esc(lab) : 'no label kept'}${U[f + 2] ? `, depth confidence ${(U[f + 2] / 255).toFixed(2)}` : ''}${U[f + 4] ? '; <span class="warn">a phantom</span>' : ''}${U[f + 3] ? '; <span class="warn">a spike</span>' : ''}. Seen ${fmtT(F[f + 3])} into the walk.`;
+  $('#pick').innerHTML = `<strong>${esc(st.J.verdicts[U[f + 5]])}</strong>${U[f + 5] === 2 || U[f] ? ` (grade ${F[f + 7].toFixed(2)})` : ''}. ${U[f] ? 'Ground point' : 'Standing point'}, ${F[f + 6] > -50 ? `${(F[f + 6] * FT).toFixed(1)} ft over the lidar's ground` : 'off the lidar'}; ARCore: ${lab ? esc(lab) : 'no label kept'}${U[f + 2] ? `, depth confidence ${(U[f + 2] / 255).toFixed(2)}` : ''}${!U[f] && U[f + 6] ? `; ${(Math.abs(U[f + 6] / 50 - 2) * FT).toFixed(1)} ft ${U[f + 6] / 50 - 2 >= 0 ? 'inside' : 'outside'} the lidar's roof edge (walls stand about 2 ft in)` : ''}${U[f + 4] ? '; <span class="warn">a phantom</span>' : ''}${U[f + 3] ? '; <span class="warn">a spike</span>' : ''}. Seen ${fmtT(F[f + 3])} into the walk.`;
 }
 
 /* ------------------------------------------------------------ pictures */

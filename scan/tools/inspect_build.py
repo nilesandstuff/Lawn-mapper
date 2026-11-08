@@ -121,7 +121,7 @@ def main():
 
     F = np.stack([L[:, 3], L[:, 4], L[:, 5], L[:, 10], e, n, np.nan_to_num(h, nan=-99), grade], 1).astype("<f4")
     U = np.stack([isg.astype(np.uint8), np.clip(lab, 0, 255).astype(np.uint8), np.clip(np.round(L[:, 9] * 255), 0, 255).astype(np.uint8),
-                  (L[:, 12] > 0.5).astype(np.uint8), phantom.astype(np.uint8), verdict, np.zeros(len(L), np.uint8), np.zeros(len(L), np.uint8)], 1)
+                  (L[:, 12] > 0.5).astype(np.uint8), phantom.astype(np.uint8), verdict, np.where(ok & ~isg, np.clip(np.round((sd + 2) * 50), 1, 255), 0).astype(np.uint8), np.zeros(len(L), np.uint8)], 1)
     with open(os.path.join(d, "inspect-points.bin"), "wb") as fh:
         fh.write(F.tobytes()); fh.write(U.tobytes())
 
@@ -140,20 +140,27 @@ def main():
     edges = agg(sc.edge_key[r[wall], c[wall]], q[wall], e[wall], n[wall], 2)
     th = np.flatnonzero(verdict == 4)
     things_hit = agg(tid[th], np.ones(len(th)), e[th], n[th], 5, mean=False)
-    # every lidar thing, hit or not, at its middle
-    from scipy.ndimage import center_of_mass, label
+    # every lidar thing, hit or not: its cells (0.25 m, as the study saw it), what kind, how tall, the points that
+    # fell on it and its credit. The same labelling as the study's (consensus_study.Scene), so ids agree.
+    from scipy.ndimage import find_objects, label
     thing_raw = np.isin(M.K, cs.THING_KINDS) & (M.S - M.G > cs.THING_MIN_H)
     comp, nc = label(thing_raw, structure=np.ones((3, 3)))
     g = M.g
+    hits = np.bincount(tid[th], minlength=nc + 1) if len(th) else np.zeros(nc + 1, np.int64)
+    KIND = {2: "tree", 3: "tree (solid)", 4: "low structure", 5: "unknown"}
     allthings = []
-    if nc:
-        cms = center_of_mass(thing_raw, comp, range(1, nc + 1))
-        sizes = np.bincount(comp.ravel())[1:]
-        tops = [float(np.nanmax((M.S - M.G)[comp == i + 1])) for i in range(nc)] if nc < 3000 else [0] * nc
-        for i, (cy, cx) in enumerate(cms):
-            if sizes[i] < 2:
-                continue
-            allthings.append([round(g["x0"] + (cx + 0.5) * g["cell"], 2), round(g["y1"] - (cy + 0.5) * g["cellY"], 2), round(float(sizes[i]) * g["cell"] * g["cellY"], 1), round(tops[i], 1)])
+    for i, sl in enumerate(find_objects(comp)):
+        if sl is None:
+            continue
+        m = comp[sl] == i + 1
+        if m.sum() < 2:
+            continue
+        r0, c0 = sl[0].start, sl[1].start
+        kinds = M.K[sl][m]
+        allthings.append({"id": i + 1, "e0": round(g["x0"] + c0 * g["cell"], 3), "n1": round(g["y1"] - r0 * g["cellY"], 3), "w": int(m.shape[1]), "h": int(m.shape[0]),
+                          "bits": b64(np.packbits(m.astype(np.uint8).ravel())), "kind": KIND.get(int(np.bincount(kinds).argmax()), "thing"),
+                          "top": round(float(np.nanmax((M.S - M.G)[sl][m])), 1), "area": round(float(m.sum()) * g["cell"] * g["cellY"], 1),
+                          "points": int(hits[i + 1]), "credit": round(min(1.0, hits[i + 1] / 5), 2)})
     gidx = np.flatnonzero(isg & ok)
     k2 = np.floor(e[gidx] / 2).astype(np.int64) * 100003 + np.floor(n[gidx] / 2).astype(np.int64)
     ground_cells = agg(k2, gq[gidx], e[gidx], n[gidx], 5)
@@ -197,15 +204,17 @@ def main():
         "v": 1, "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "walk": os.environ.get("WALK"),
         "scored": scored["name"], "heightOffset": tz, "placements": places, "consensus": con,
         "checks": [{"id": c_["id"], "map": c_["map"], "ar": c_["ar"]} for c_ in checks],
-        "grid": grid, "edges": edges, "thingsHit": things_hit, "things": allthings, "groundCells": ground_cells, "through": through, "track": tr,
-        "points": {"n": int(len(L)), "of": int(len(lines)), "float": ["x", "y", "z", "t", "e", "n", "h", "grade"], "byte": ["ground", "label", "depthConf", "spike", "phantom", "verdict", "0", "0"]},
+        "grid": grid, "edges": edges, "thingsHit": things_hit, "things": allthings, "thingCell": [g["cell"], g["cellY"]], "groundCells": ground_cells, "through": through, "track": tr,
+        "points": {"n": int(len(L)), "of": int(len(lines)), "float": ["x", "y", "z", "t", "e", "n", "h", "grade"], "byte": ["ground", "label", "depthConf", "spike", "phantom", "verdict", "inset: (m inside the lidar's roof edge + 2) x 50, 0 none", "0"]},
         "labels": vs.LABELS,
         "verdicts": ["ground on the lidar's ground", "ground off it", "on a wall the camera could see", "on a wall it could not have seen", "on a lidar thing (any height)", "standing on nothing the lidar has", "off the lidar"],
         "counts": {k: int((verdict == i).sum()) for i, k in enumerate(["groundOn", "groundOff", "wall", "wallHidden", "thing", "nothing", "off"])} | {"phantoms": int(phantom.sum()), "spikes": int((L[:, 12] > 0.5).sum())},
     }
+    wi = sd[verdict == 2]
+    out["wallInset"] = {"median": float(np.median(wi)) if len(wi) else None, "q25": float(np.percentile(wi, 25)) if len(wi) else None, "q75": float(np.percentile(wi, 75)) if len(wi) else None}
     json.dump(out, open(os.path.join(d, "inspect.json"), "w"))
     sz = os.path.getsize(os.path.join(d, "inspect.json")) + os.path.getsize(os.path.join(d, "inspect-points.bin"))
-    print(f"Inspector: {len(L):,} points, {len(edges)} metres of building edge credited, {len(things_hit)} of {len(allthings)} lidar things, {len(ground_cells)} ground cells, {len(through)} lines through a house; scored under {scored['name']}; {sz / 1e6:.1f} MB. Done in {int(time.time() - t0)} s.")
+    print(f"Inspector: {len(L):,} points, {len(edges)} metres of building edge credited, {sum(1 for t in allthings if t['points'])} of {len(allthings)} lidar things, {len(ground_cells)} ground cells, {len(through)} lines through a house; wall points sit a median {(out['wallInset']['median'] or 0) * FT:.1f} ft inside the lidar's roof edge (walls stand about 2 ft in); scored under {scored['name']}; {sz / 1e6:.1f} MB. Done in {int(time.time() - t0)} s.")
 
 
 if __name__ == "__main__":
