@@ -1709,6 +1709,30 @@ the best placements (1.9-2.2 ft, SCAN-H28). SPECULATION: part of what the studie
 marks' own; the best-fit score preferring a pose 2 ft from the marks' fit (SCAN-H28: "refined from the truth it
 moves to 2.0 ft") fits that, and fits a flaw in the score just as well.
 
+### SCAN-H30. Repeat walks: no sign the photo's marks are off; the walks disagree with each other by 3-6 ft (2026-11-08)
+
+The owner pointed to the research report: a fit's score "is a residual, not an accuracy. It needs held-out checks:
+surveyed corners, or agreement between repeat walks." Task repeat (run 208), scan/tools/repeat_study.mjs, on the
+three walks that share the six check marks (1794089603603, 1794090013502, 1794162116852): each mark carried through
+each walk's own placement. A gap from the photo's mark that every walk shares would be the yardstick's (SCAN-H29);
+walks scattered round the mark are the placements'.
+
+| placement | each walk from the photo's mark (median) | walks from their own mean (median) | their mean from the photo's mark (median) |
+|---|---|---|---|
+| after the walk (placement.json; never sees the marks) | 3.9 ft | 5.5 ft | 0.7 ft |
+| best fit overall (all) | 2.9 | 7.7 | 2.3 |
+| best fit (ground + buildings + things) | 3.4 | 10.0 | 4.2 |
+| the marks' own fit (fitted to them; not held out) | 1.2 | 1.2 | 1.1 |
+
+HARD (three walks): the after-the-walk placements, which never look at the marks, average to within 0.4-0.7 ft of
+the photo's marks at four of the five usable marks (2.1 ft at the fifth): no sign of a shared offset, so no sign the
+photo's marks are off the lidar. With walks 3-6 ft apart and only three of them, a shared offset under about 2 ft
+cannot yet be ruled out; each further walk narrows it. What is large is the walks' disagreement with each other.
+Mark 1794089537730 is 60 ft off on one walk even under the marks' own fit: a mismark there (stood elsewhere, or the
+tracking jumped), left out of the medians' reading. Fitted to their own marks, the walks agree to 1.2 ft: ARCore's
+bending and the marking itself put about a foot under everything. The best fit's scatter is mostly the 1794090013502
+walk (5-12 ft; no labels, SCAN-H27); on the newest walk (labels) it is 0.8-2.4 ft at every usable mark.
+
 ### 13. Recording and replay, Geospatial Depth, camera modes (the app's bridge 3, 2026-11-08)
 
 The owner: "let's do it so I don't have to keep doing the same walks over and over." App 1.9: every walk in the app is
