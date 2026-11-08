@@ -1711,3 +1711,26 @@ camera-config page offers no choice of field of view or of physical camera; ARCo
 now lists every mode ARCore offers on the phone (camera id, picture and texture sizes, frame rates, stereo) in the
 walk's summary; the walk list prints them. If ARCore offers more than one camera id, a wider one can be tried; if one,
 there is no choice to make.
+
+## 14. Staying ready for iPhones (owner, 2026-11-08)
+
+"We're not ready to build the iPhone app, I just want to make sure we're not doing development that we'll regret
+later when we incorporate iPhones." The plan for iPhones, when it comes: a thin Swift app running ARKit under the same
+page, answering the same bridge (window.LawnARNative), like the Android app (not Unity: that would rewrite the page in
+C# and keep only what ARCore and ARKit share). Until then, these keep the work portable:
+
+  - THE PAGE AND THE STUDIES DO THE WORK; THE APP ONLY REPORTS. A new ability goes in the bridge as data any phone
+    can give (a pose, a depth grid with a 0-1 confidence, a picture with its projection), never as an ARCore idea the
+    page must know about.
+  - ARKIT HAS NO OUTDOOR LABELS. Scene Semantics (sky, building, tree, terrain...) is ARCore's alone; ARKit only
+    classifies a LiDAR mesh into indoor kinds, and ARCore on iOS has no semantics or depth. Anything that needs labels
+    must also work with them missing, or take them from our own model (the Segformer the studies already run, on the
+    pictures, projected onto the points), with LABELS (scan/lib/twin.js) as our own list, not ARCore's.
+  - DEPTH IS NOT ON EVERY IPHONE. ARKit gives depth only on Pro models (LiDAR, which reads a few metres); others have
+    none. What places a walk must not need depth: the pictures (skyline, pavement) and an offline model from them
+    (research report 2026-11-08) work on any phone; depth makes them better where there is some.
+  - ARKIT HAS NO RECORDING AND REPLAY. ARCore's MP4 replay is a development tool, not something the product needs. The
+    walk's own record is the twin (points, track, pictures with their poses); offline work reads the twin and, when
+    there is one, a plain video of the walk, not ARCore's own tracks.
+  - Both stacks use the same frame (metres, right-handed, Y up, the camera looking down -Z), as WebXR does: keep it.
+  - Street View positioning (Geospatial, Streetscape) is in Google's ARCore SDK for iOS too; Geospatial Depth is not.
