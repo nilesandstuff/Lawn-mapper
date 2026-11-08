@@ -61,10 +61,12 @@ assert.ok(PAIR_MS <= 10 * 60 * 1000);
 assert.deepEqual(engineChoice({ hasNative: true, hasXR: true }).offered, ['native', 'webxr']);
 assert.equal(engineChoice({ hasNative: true, hasXR: true }).start, 'native');
 assert.deepEqual(engineChoice({ hasXR: true }).offered, ['webxr']);
-const g = depthFromGrid({ kind: 'raw', nx: 2, ny: 2, p: [1, 2, 3, null, null, null, 4, 5, 6, 7, 8, 9], d: [2, 0, 9, 0.2], c: [200, 0, 200, 200] });
+const g = depthFromGrid({ kind: 'raw', nx: 2, ny: 2, p: [1, 2, 3, null, null, null, 4, 5, 6, 7, 8, 9], d: [2, 0, 25, 0.2], c: [200, 0, 200, 200] });
 assert.deepEqual(g.at(0.1, 0.1), { x: 1, y: 2, z: 3 });
 assert.equal(g.at(0.9, 0.1), null, 'a hole');
-assert.equal(g.at(0.1, 0.9), null, 'past 8 m');
+assert.equal(g.at(0.1, 0.9), null, 'past 20 m');
+// (2026-11-08) a wall 9 m off is kept now: 8 m kept only the readings of it that erred short
+assert.deepEqual(depthFromGrid({ kind: 'raw', nx: 1, ny: 1, p: [4, 5, 6], d: [9], c: [200] }).at(0.5, 0.5), { x: 4, y: 5, z: 6 }, 'a wall 9 m off');
 assert.equal(g.at(0.9, 0.9), null, 'nearer than 0.4 m');
 assert.equal(g.m(0.9, 0.1), 0);
 // the app's walks are kept like the browser's (walks.js once refused engine 'native': the owner's first two app walks)
