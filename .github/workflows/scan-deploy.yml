@@ -36,7 +36,7 @@ on:
         required: true
         default: tests
         type: choice
-        options: [tests, deploy, walks, twin, fix, place, depth, study, skyline, pavement, checks]
+        options: [tests, deploy, walks, twin, fix, place, depth, study, skyline, pavement, checks, repeat]
       walk:
         description: 'For twin, fix or depth: the walk id, or latest'
         default: latest
@@ -325,6 +325,20 @@ jobs:
           node scan/tools/checks-prep.mjs twin | tee checks.txt
           node scan/tools/checks-shade.mjs twin | tee -a checks.txt
 
+      # DO REPEAT WALKS AGREE (scan/tools/repeat_study.mjs; the research report of 2026-11-08: a fit's score "needs
+      # held-out checks: surveyed corners, or agreement between repeat walks"): each check mark carried through each
+      # walk's own placement; how far apart the walks put it, and the gap they share from the photo's mark. The walk
+      # input takes walks comma separated, each already through task place.
+      - name: Repeat walks against each other
+        if: ${{ inputs.task == 'repeat' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WALKS: ${{ inputs.walk }}
+        run: |
+          set -o pipefail
+          node scan/tools/repeat_study.mjs "$WALKS" | tee repeat.txt
+
       - name: The answer
         if: always()
         run: |
@@ -342,6 +356,7 @@ jobs:
             skyline) cat skyline.txt 2>/dev/null || echo "no skyline study: see the step above" ;;
             pavement) cat pavement.txt 2>/dev/null || echo "no pavement study: see the step above" ;;
             place) grep -v '^  model\|^  rays\|^  the picture' place.txt 2>/dev/null | tail -60 || echo "no placement: see the step above" ;;
+            repeat) cat repeat.txt 2>/dev/null || echo "no repeat-walk study: see the step above" ;;
             checks) cat checks.txt 2>/dev/null || echo "no check-mark test: see the step above" ;;
             depth) tail -25 depth.txt 2>/dev/null || echo "no depth run: see the step above" ;;
             *) echo "Scan tests: ${{ job.status }}" ;;
