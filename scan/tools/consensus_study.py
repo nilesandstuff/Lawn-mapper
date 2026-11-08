@@ -10,7 +10,7 @@ A placement earns CREDITS, one per thing that matches, each capped, so no one ob
 carry or spoil it:
   GROUND     each 2 m cell of the lidar's ground that ARCore's ground points lie on (Gaussian 15 cm about the
              walk's height offset), up to 1 a cell
-  BUILDINGS  each 1 m of a building's edge with the phone's standing points on its walls or roof (inside the
+  BUILDINGS  (only points whose sight line reaches the wall without crossing the building) each 1 m of a building's edge with the phone's standing points on its walls or roof (inside the
              footprint within 1.2 m of the edge, the walls stand under the eaves, or outside within 0.4 m; each
              point counted to the edge nearest it), graded by how near each point is to where a wall (0.6 m in) or the roof's edge should be; each metre of
              edge earns the mean grade of its points, 1 at most
@@ -47,6 +47,7 @@ GROUND_TOL = 0.15
 THING_KINDS = (2, 3, 4, 5)      # structures.js TREE, SOLID_TREE, STRUCTURE, UNKNOWN
 THING_MIN_H = 0.5
 THING_GROW = 0.75
+PAVE_MAX = 30.0
 WEIGHTS = {
     "ground only": dict(G=1, B=0, O=0, P=0, X=0),
     "buildings only": dict(G=0, B=1, O=0, P=0, X=0),
@@ -112,9 +113,25 @@ class Scene:
                 self.pave = np.array(P["pavement"], float)
                 gr = np.array(P.get("grass", []), float)
                 self.grass = gr[np.linspace(0, len(gr) - 1, min(len(gr), 4 * len(self.pave))).astype(np.int64)] if len(gr) else gr
+                allp = np.concatenate([self.pave, self.grass]) if len(self.grass) else self.pave
+                self.n_pave_cells = len(np.unique(np.floor(allp).astype(np.int64), axis=0))
 
     def cells(self, e, n):
         return self.M.cells(e, n)
+
+    def blocked(self, T, tz, L):
+        """Which of these lines cross more than 0.5 m of a building's solid before their point."""
+        M = self.M
+        cam, pt = L[:, 0:3], L[:, 3:6]
+        dv = pt - cam; rl = np.linalg.norm(dv, axis=1); u_ = dv / rl[:, None]
+        ds = (np.arange(1, int(9 / 0.25) + 1) * 0.25)[None, :]
+        X = cam[:, 0:1] + u_[:, 0:1] * ds; Y = cam[:, 1:2] + u_[:, 1:2] * ds + tz; Z = cam[:, 2:3] + u_[:, 2:3] * ds
+        ee, nn = vs.to_map(T, X, Z)
+        rr, cc, okk = self.cells(ee, nn)
+        solid = okk & (M.K[rr, cc] == 1) & (Y < M.S[rr, cc]) & (Y > M.G[rr, cc] + 0.3) & (ds < rl[:, None] - 0.5)
+        if M.roof_low is not None:
+            solid &= Y > np.minimum(M.roof_low[rr, cc], M.S[rr, cc])
+        return solid.sum(1) * 0.25 > 0.5
 
     def credits(self, T, want_x=True):
         M, g = self.M, self.g
@@ -143,6 +160,11 @@ class Scene:
         y = S_[:, 4] + tz
         gnd = np.where(ok, M.G[r, c], np.nan)
         onb = ok & self.on_bld[r, c] & (y > gnd + 0.3) & (y < self.bld_top[r, c] + 0.5)
+        # SEEN FROM WHERE THE CAMERA STOOD: a wall earns only from points whose sight line reaches it without
+        # crossing the building first (2026-11-08, the 907 ft walk: with credit alone a placement 39 ft off laid
+        # tree and shrub points along other houses' far sides and out-earned the truth, 27 to 15)
+        if onb.any():
+            onb[np.flatnonzero(onb)[self.blocked(T, tz, S_[onb])]] = False
         # graded: each point by how near it sits to where a wall (0.6 m in) or the roof's edge (on it) should be;
         # each metre of edge earns the mean of its points' grades (2 or more points), so a placement is told from
         # one a little off, and no metre earns more than 1 however many points it has
@@ -180,7 +202,9 @@ class Scene:
                 kk = rr[m] * gi["w"] + cc[m]
                 u, inv = np.unique(kk, return_inverse=True)
                 tot += float((np.bincount(inv, weights=q) / np.bincount(inv)).sum())
-            out["P"] = tot
+            # scaled to at most PAVE_MAX: hundreds of cells must not outvote the rest (the 729 ft walk: 1.4 ft
+            # without pavement, 9.5 with it at one credit a cell)
+            out["P"] = tot / max(1, self.n_pave_cells) * PAVE_MAX
         # THROUGH a building: lines that cross more than 0.5 m of solid before their point
         out["X"] = 0.0
         if want_x:
@@ -245,6 +269,18 @@ def main():
         q = json.load(open(os.path.join(d, "placement.json"))); starts.append(((q["theta"], q["tx"], q["ty"]), "the placement kept"))
     if inp.get("gps"):
         q = inp["gps"]; starts.append(((q["theta"], q["tx"], q["ty"]), "the GPS / Street View trail"))
+    # THE SEARCH KEPT NEAR THE TRAIL (the owner: "since we can narrow the search from other means"): within the
+    # GPS / Street View trail's own reach, as the skyline study keeps (SCAN-H22); starts outside it are left out
+    bound = None
+    if inp.get("gps"):
+        q = inp["gps"]
+        bound = ((q["theta"], q["tx"], q["ty"]), min(24.0, max(10.0, 2 * (q.get("searchM") or 5))), math.radians((q.get("searchDeg") or 10) + 10))
+    def within(T):
+        if bound is None:
+            return True
+        (th, tx, ty), m, a = bound
+        return math.hypot(T[1] - tx, T[2] - ty) <= m and abs((T[0] - th + math.pi) % (2 * math.pi) - math.pi) <= a
+    starts = [s_ for s_ in starts if within(s_[0])]
     if not starts:
         print("Best fit overall: nowhere to start from.")
         return
@@ -264,7 +300,7 @@ def main():
     for name, W in WEIGHTS.items():
         tw = time.time()
         wx = W["X"] > 0
-        f = lambda T, W=W, wx=wx: (lambda c: -1e9 if c is None else total(c, W))(cr(T, wx))
+        f = lambda T, W=W, wx=wx: -1e9 if not within(T) else (lambda c: -1e9 if c is None else total(c, W))(cr(T, wx))
         res = sorted((refine(f, T0) + (nm,) for T0, nm in starts), key=lambda x: -x[0])
         best, Tb, frm = res[0]
         # margin: the best of the placements 2-4 m or 5-10 degrees off, refined finely
