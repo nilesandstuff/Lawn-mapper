@@ -21,6 +21,7 @@ const part = (name) => fetch(`/api/scan/twin?walk=${encodeURIComponent(walkId)}&
 
 async function main() {
   if (!walkId) return listTwins();
+  $('#inspect-link').href = `/inspect.html?walk=${encodeURIComponent(walkId)}`;
   const { parts } = await getJSON(`/api/scan/twin?walk=${encodeURIComponent(walkId)}`);
   if (!parts.length) { $('#status').textContent = 'No twin was kept for this walk.'; return; }
   const names = parts.map((p) => p.name).sort();

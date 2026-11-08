@@ -305,6 +305,7 @@ def main():
         ct = cr(truth, True)
         print(f"  At the truth (the check points' own fit): ground {ct['G']:.1f} cells, buildings {ct['B']:.1f} cells, things {ct['O']:.1f} of {sc.n_things}, pavement {ct['P']:.1f} cells, through a building {ct['X']:.1f} cells.")
     summary = []
+    kept = {"truth": {"T": list(truth), "med": med(truth), "credits": cr(truth, True)} if truth is not None else None, "starts": [{"name": nm, "T": list(T), "med": med(T)} for T, nm in starts], "weights": {}}
     for name, W in WEIGHTS.items():
         tw = time.time()
         wx = W["X"] > 0
@@ -327,6 +328,9 @@ def main():
             line += f"; the truth scores {tt:.1f} against the best {best:.1f}, and refined from it moves to {med(Tt):.1f} ft"
         print(line + f" ({int(time.time() - tw)} s)")
         summary.append(f"{name} {med(Tb):.1f} ft ({margin:.0%})")
+        kept["weights"][name] = {"T": list(Tb), "med": med(Tb), "margin": margin, "from": frm, "credits": cb, "W": W}
+    # for the walk inspector (scan/public/inspect.html, via scan/tools/inspect_build.py); the private bucket only
+    json.dump(kept, open(os.path.join(d, "consensus.json"), "w"))
     print("Best fit overall, the weightings' medians at the check points (margin): " + "; ".join(summary) + f". Done in {int(time.time() - t0)} s.")
 
 

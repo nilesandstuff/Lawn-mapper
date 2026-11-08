@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Walk Inspector</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<style>
+  :root { --bg: #f6f8f7; --fg: #17201c; --dim: #5b6b63; --card: #ffffff; --line: #d7dfdb; --accent: #1b7f4b; --warn: #b4561a; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #101614; --fg: #e6ece9; --dim: #9aa9a2; --card: #18201d; --line: #2c3833; --accent: #4cc38a; --warn: #f0a060; } }
+  :root[data-theme="dark"] { --bg: #101614; --fg: #e6ece9; --dim: #9aa9a2; --card: #18201d; --line: #2c3833; --accent: #4cc38a; --warn: #f0a060; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  main { max-width: 960px; margin: 0 auto; padding: 16px 16px 48px; }
+  h1 { font-size: 1.3rem; margin: 0 0 4px; } h2 { font-size: 1.05rem; margin: 0 0 8px; }
+  .dim { color: var(--dim); } .warn { color: var(--warn); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin: 12px 0; }
+  a { color: var(--accent); }
+  button { font: inherit; border: 0; border-radius: 8px; padding: 8px 12px; background: var(--accent); color: #fff; cursor: pointer; }
+  button.plain { background: transparent; color: var(--fg); border: 1px solid var(--line); }
+  select { font: inherit; padding: 6px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--fg); max-width: 100%; }
+  .tools { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin: 8px 0; }
+  label { display: inline-flex; gap: 6px; align-items: center; font-size: .95rem; max-width: 100%; }
+  label select { min-width: 0; flex: 1; }
+  .wrap { position: relative; overflow: hidden; border-radius: 10px; border: 1px solid var(--line); touch-action: none; background: #1d2421; }
+  canvas { display: block; width: 100%; height: auto; }
+  input[type=range] { width: 100%; }
+  table { border-collapse: collapse; width: 100%; font-size: .9rem; } td, th { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .key { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+  #legend span { display: inline-block; margin: 2px 10px 2px 0; font-size: .85rem; }
+  #pick { font-size: .9rem; min-height: 1.4em; }
+  .scroll { overflow-x: auto; }
+  #three { position: relative; width: 100%; height: 70vh; border-radius: 8px; overflow: hidden; background: #0b0f0d; }
+  ul { padding-left: 20px; } li { margin: 4px 0; }
+</style>
+</head>
+<body>
+<main>
+  <p><a href="/">&larr; Yard AR</a> &middot; <a id="twin-link" href="/twin.html">Walk twin</a></p>
+  <h1>Walk inspector</h1>
+  <p class="dim" id="status">Loading…</p>
+  <div id="list"></div>
+  <section id="view" hidden>
+    <div class="card"><h2>Placements</h2><div class="scroll" id="placements"></div><p class="dim" style="font-size:.85rem">"Off" is the median distance at the check points marked on the walk. The verdicts below are scored under <strong id="scored"></strong>.</p></div>
+    <div class="card"><h2>What the points did</h2><div id="counts"></div></div>
+    <div class="card"><h2>The best-fit-overall credits</h2><div class="scroll" id="credits"></div>
+      <p class="dim" style="font-size:.85rem">Each thing earns at most 1: each 2 m of ground, each metre of a building's edge (graded by how near the points sit to its wall or roof edge), each lidar thing with points anywhere over it, pavement against the lidar's brightness (30 at most). Only sight lines through a house cost.</p></div>
+
+    <div class="card">
+      <h2>The yard, from above</h2>
+      <div class="tools">
+        <label>Placed by <select id="place"></select></label>
+        <label>Points coloured by <select id="colour">
+          <option value="verdict">match verdict</option><option value="label">ARCore's label</option><option value="conf">depth confidence</option>
+          <option value="class">ground / standing</option><option value="height">height over the lidar's ground</option><option value="flags">phantoms and spikes</option><option value="time">time into the walk</option>
+        </select></label>
+        <label>Under it <select id="base"><option value="kind">lidar: buildings, trees, things</option><option value="height">lidar: heights</option><option value="bright">lidar: brightness (pavement dark)</option><option value="none">nothing</option></select></label>
+      </div>
+      <div class="tools">
+        <label><input type="checkbox" id="show-ground" checked> ground points</label>
+        <label><input type="checkbox" id="show-stand" checked> standing points</label>
+        <label><input type="checkbox" id="show-credits"> credits</label>
+        <label><input type="checkbox" id="show-things" checked> lidar things</label>
+        <label><input type="checkbox" id="show-track" checked> track</label>
+        <label><input type="checkbox" id="show-checks" checked> check points</label>
+        <label><input type="checkbox" id="show-through" checked> lines through a house</label>
+      </div>
+      <div class="tools">
+        <label>Time <select id="window"><option value="0">the whole walk</option><option value="2">2 s round the slider</option><option value="10">10 s</option><option value="30">30 s</option></select></label>
+        <span class="dim" id="time-at"></span>
+      </div>
+      <input type="range" id="time" min="0" max="1" value="0" step="0.5" aria-label="Time into the walk">
+      <div class="tools"><button type="button" class="plain" id="zoom-in">+</button><button type="button" class="plain" id="zoom-out">&minus;</button><button type="button" class="plain" id="zoom-fit">Fit</button><span class="dim" style="font-size:.85rem">Tap a point to see what it was.</span></div>
+      <div class="wrap"><canvas id="map" width="1200" height="1200"></canvas></div>
+      <p id="legend"></p>
+      <p id="pick" class="dim"></p>
+    </div>
+
+    <div class="card" id="pics" hidden>
+      <h2>What the camera saw</h2>
+      <p class="dim" style="font-size:.85rem">The depth points of that moment (within half a second), drawn where the camera saw them, coloured as above.</p>
+      <div class="tools"><span class="dim" id="pic-when"></span> <label><input type="checkbox" id="pic-dots" checked> points</label> <button type="button" class="plain" id="pic-sync">Show this moment on the map</button></div>
+      <input type="range" id="pic-at" min="0" max="0" value="0" aria-label="Which picture">
+      <div class="wrap" style="touch-action:auto"><canvas id="pic" width="640" height="480"></canvas></div>
+    </div>
+
+    <div class="card">
+      <h2>In 3D</h2>
+      <p class="dim" style="font-size:.85rem">The lidar's columns (buildings blue, trees green, other things amber) and the phone's points, coloured as above, under the placement chosen. The walk's mesh is the after-walk placement's.</p>
+      <div class="tools"><button type="button" id="open-3d">Open the 3D view</button> <label><input type="checkbox" id="mesh" > the walk's mesh instead of the points</label></div>
+      <div id="three" hidden></div>
+    </div>
+  </section>
+</main>
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }</script>
+<script type="module" src="/inspect-view.js"></script>
+</body>
+</html>

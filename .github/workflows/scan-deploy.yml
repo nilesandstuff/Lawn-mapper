@@ -284,7 +284,9 @@ jobs:
           # the best fit overall (the owner, 2026-11-08): ground, buildings, things, pavement, each capped; nothing lost
           # for what changed, only for seeing through a house (study: placement.json unchanged)
           python scan/tools/consensus_study.py twin | tee -a place.txt
-          node scan/tools/twin-r2.mjs put "$WALK" twin/skyline.json twin/pavement.json twin/placement.json twin/fixed.json twin/mesh.bin $(test -f twin/view.json && echo twin/view.json) | tee -a place.txt
+          # the walk inspector's data (scan/public/inspect.html): per-point verdicts, credits, placements; private bucket
+          python scan/tools/inspect_build.py twin | tee -a place.txt
+          node scan/tools/twin-r2.mjs put "$WALK" twin/skyline.json twin/pavement.json twin/placement.json twin/fixed.json twin/mesh.bin $(test -f twin/view.json && echo twin/view.json) $(test -f twin/consensus.json && echo twin/consensus.json) $(test -f twin/inspect.json && echo twin/inspect.json twin/inspect-points.bin) | tee -a place.txt
 
       # PAVEMENT FROM THE PICTURES (scan/tools/pavement_study.py): road and sidewalk pixels cast onto the ground, kept
       # for the match against the model's intensity when it has one; tested against the traced lawn meanwhile.
