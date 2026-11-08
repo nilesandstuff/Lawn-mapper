@@ -473,6 +473,7 @@ function onFrame(f) {
       if (!p) continue;
       if (!keepPoint(l, lc)) { if (st.sem) st.sem.dropped++; continue; }
       if (l) { p.label = l; p.lconf = lc; }
+      if (f.depth.conf) p.dconf = f.depth.conf(x, y); // kept with the point (twin labels part): are phantoms the weak ones?
       pts.push(p);
     }
     /* HOLES IN THE DEPTH (2026-11-07): Chrome no longer names the depth type when asked for raw alone, so the walk

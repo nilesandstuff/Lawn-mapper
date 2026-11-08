@@ -95,6 +95,13 @@ def main():
         print(f"  ARCore's labels on {(lab > 0).mean():.0%} of the points ({sure[lab > 0].mean():.0%} of those sure). Phantoms among standing points, by label: " + "; ".join(rows))
     else:
         print("  No labels saved with this walk's points (they are kept from the scan site of 2026-11-08 on).")
+    # the depth's own confidence on each point (same part): are the phantoms the weak readings? (the cut was lowered
+    # from 0.4 to 0.2 on 2026-11-07; the owner's cursor jumps were seen on the walks after)
+    dc = lines[:, 9]
+    has_conf = (dc > 0).mean() > 0.2
+    if has_conf:
+        cb = [(0.0, 0.3), (0.3, 0.4), (0.4, 0.6), (0.6, 0.8), (0.8, 1.01)]
+        print("  Phantoms among standing points by the depth's own confidence: " + "; ".join(f"{a:.1f}-{min(b, 1):.1f} {share(phantom, (~isg) & (dc >= a) & (dc < b))}" for a, b in cb))
 
     # the model, under the truth (check points) or the placement after the walk
     checks = list({c["id"]: c for c in inp.get("checks") or []}.values())
@@ -160,9 +167,11 @@ def main():
             face = COMPASS[int(((ang + 22.5) % 360) // 45)]
             pitch = math.degrees(math.asin(max(-1, min(1, fwd[1] / max(1e-9, np.linalg.norm(fwd))))))
             lm = ""
+            if has_conf:
+                lm += f", depth confidence {np.median(Ls[m, 9]):.2f}"
             if has_labels:
                 lk = np.bincount(Ls[m, 7].astype(np.int64), minlength=13)
-                lm = f", ARCore said {lname(int(lk.argmax()))} ({lk.max() / m.sum():.0%})"
+                lm += f", ARCore said {lname(int(lk.argmax()))} ({lk.max() / m.sum():.0%})"
             print(f"    {int(s0 // 60)}:{int(s0 % 60):02d}, {np.nanmedian(odo[m]) * FT:.0f} ft walked, facing {face} ({ang:.0f} deg), camera {pitch:+.0f} deg: {int(m.sum())} readings, phone {np.median(rs[m]) * FT:.1f} ft / model {np.median(R[m]) * FT:.1f} ft, phantoms {np.mean(phantom[S][m]):.0%}{lm}")
     else:
         print("  No moments with near readings in front of a building.")
