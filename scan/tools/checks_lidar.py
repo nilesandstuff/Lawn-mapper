@@ -74,7 +74,8 @@ def lidar_rasters(pts, hag, e0, n1, nx, ny):
     np.add.at(wt, (r[g], c[g]), 1.0)
     sig = 0.3 / RES
     S, W = ndimage.gaussian_filter(s, sig), ndimage.gaussian_filter(wt, sig)
-    bright = np.where(W > 0.02, S / np.maximum(W, 1e-9), np.nan)
+    # seen: ground returns at 0.3 a square metre or more round the cell (this lot's lidar has about 1.6)
+    bright = np.where(W * (1 / RES ** 2) >= 0.3, S / np.maximum(W, 1e-9), np.nan)
     # heights: the tallest nearby, spread over the sparse returns
     height = ndimage.grey_dilation(height, size=(5, 5))
     return bright, height
