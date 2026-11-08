@@ -1,6 +1,6 @@
 {
   "foundBy": "tools/find-parcels.js",
-  "foundAt": "2026-11-07",
+  "foundAt": "2026-11-08",
   "note": "Candidates only, from parcel_gaps. Nothing here is coverage until verify-counties.js says so.",
   "candidates": [
     {
@@ -164,6 +164,44 @@
           "fields": {
             "pin": "pid",
             "address": "address"
+          }
+        }
+      ]
+    },
+    {
+      "key": "oh-lorain",
+      "name": "Lorain County, OH",
+      "fips": "39093",
+      "service": "https://services1.arcgis.com/vGBb7WYV10mOJRNM/arcgis/rest/services/OwnershipParcels_2025_Public_View/FeatureServer",
+      "layer": 1,
+      "layerName": "Ownership Parcels 2025",
+      "fields": {
+        "pin": "PARCELID",
+        "address": "SITEADDRESS"
+      },
+      "fallbacks": [
+        {
+          "service": "https://services1.arcgis.com/vGBb7WYV10mOJRNM/arcgis/rest/services/2024_Reval_Tax_Parcels/FeatureServer",
+          "layer": 1,
+          "fields": {
+            "pin": "PIN",
+            "address": "loc_address"
+          }
+        },
+        {
+          "service": "https://maps.lcauditor.com/hosting/rest/services/ParcelFabric/Ownership_Parcels_ISSG/MapServer",
+          "layer": 1,
+          "fields": {
+            "pin": "PIN",
+            "address": "Location_Address"
+          }
+        },
+        {
+          "service": "https://services3.arcgis.com/hWSAOIhj0aeyKxxM/arcgis/rest/services/Lorain_Mega_Site_Map_WFL1/FeatureServer",
+          "layer": 21,
+          "fields": {
+            "pin": "PIN",
+            "address": "owner_address1"
           }
         }
       ]
