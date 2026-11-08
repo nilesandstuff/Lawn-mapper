@@ -75,7 +75,8 @@ def read_cloud(d):
 
 
 def sight_lines(d):
-    """[cam x, y, z, point x, y, z, ground?, label + 1 (0 none), label confidence, depth confidence] per depth point, the camera from the
+    """[cam x, y, z, point x, y, z, ground?, label + 1 (0 none), label confidence, depth confidence, t, odo] per depth
+    point (t: seconds into the walk; the points of one depth picture share it), the camera from the
     track (nearest pose in time, within 0.4 s; poses every 0.2 s), in the session frame."""
     cloud = read_cloud(d)                         # t, odo, x, y, z, ground, label + 1, label conf, depth conf
     track = read_parts(d, "track-*.bin", 10)      # t, odo, x, y, z, qx, qy, qz, qw, tracking
@@ -88,7 +89,7 @@ def sight_lines(d):
     ok = np.abs(track[near, 0] - cloud[:, 0]) < 0.4
     cam = track[near, 2:5]
     gnd = np.isfinite(cloud[:, 5]) & (np.abs(cloud[:, 3] - cloud[:, 5]) < 0.15)
-    out = np.concatenate([cam, cloud[:, 2:5], gnd[:, None].astype(np.float64), cloud[:, 6:9]], 1)[ok]
+    out = np.concatenate([cam, cloud[:, 2:5], gnd[:, None].astype(np.float64), cloud[:, 6:9], cloud[:, 0:2]], 1)[ok]
     r = np.linalg.norm(out[:, 3:6] - out[:, 0:3], axis=1)
     return out[(r > 0.5) & (r < 9.0)]
 

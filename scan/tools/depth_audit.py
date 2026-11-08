@@ -62,6 +62,40 @@ def carve(lines, cube=CUBE, step=STEP, keep=60000):
     return free[ke], seen[ke]
 
 
+def spikes(lines, by_label=False, radius_deg=5.0, min_nb=4):
+    """A reading much nearer than the readings round it in the same depth picture (the owner, 2026-11-08: "that wall
+    ... had correct depth readings for most of it, it was just one spot"). Neighbours are the picture's other points
+    within radius_deg of its line of sight (the page reads 16 x 28 cells, about 3 degrees apart). A spike: at least
+    min_nb neighbours, nearer than 60% of their median and by 1 m or more, the neighbours agreeing with each other (60%
+    within 15% of their median: a surface) and few of them as near as it (a quarter at most: not a post or a branch).
+    by_label: neighbours only of the same ARCore label, when the walk has labels. -> bool per line."""
+    out = np.zeros(len(lines), bool)
+    t = lines[:, 10]
+    d = lines[:, 3:6] - lines[:, 0:3]
+    r = np.linalg.norm(d, axis=1)
+    u = d / r[:, None]
+    cosr = math.cos(math.radians(radius_deg))
+    order = np.argsort(t, kind="stable")
+    ts = t[order]
+    cuts = np.flatnonzero(np.diff(ts)) + 1
+    for g in np.split(order, cuts):
+        if len(g) < min_nb + 1:
+            continue
+        C = u[g] @ u[g].T
+        nb = C > cosr
+        np.fill_diagonal(nb, False)
+        if by_label:
+            lab = lines[g, 7]
+            nb &= (lab[:, None] == lab[None, :]) & (lab[:, None] > 0)
+        rg = r[g]
+        for i in np.flatnonzero(nb.sum(1) >= min_nb):
+            rn = rg[nb[i]]
+            med = np.median(rn)
+            if rg[i] < 0.6 * med and rg[i] < med - 1.0 and np.mean(np.abs(rn - med) < 0.15 * med) >= 0.6 and np.mean(rn < rg[i] * 1.3) <= 0.25:
+                out[g[i]] = True
+    return out
+
+
 def main():
     d = sys.argv[1] if len(sys.argv) > 1 else "twin"
     t0 = time.time()
@@ -103,6 +137,13 @@ def main():
         cb = [(0.0, 0.3), (0.3, 0.4), (0.4, 0.6), (0.6, 0.8), (0.8, 1.01)]
         print("  Phantoms among standing points by the depth's own confidence: " + "; ".join(f"{a:.1f}-{min(b, 1):.1f} {share(phantom, (~isg) & (dc >= a) & (dc < b))}" for a, b in cb))
 
+    # THE NEIGHBOUR CHECK (spikes): one spot reading near on a surface the rest of the picture reads far
+    spike = spikes(lines)
+    spike_l = spikes(lines, by_label=True) if has_labels else None
+    def overlap(a, b):
+        return f"{(a & b).sum() / max(1, a.sum()):.0%}"
+    print(f"  SPIKES (a reading nearer than 60% of its neighbours in the same depth picture, on a surface they agree on): {share(spike, ~isg)} of standing points, {share(spike, isg)} of ground points; of the standing spikes, phantoms by the walk's own lines {overlap(spike & ~isg, phantom)}; of the standing phantoms, spikes {overlap(phantom & ~isg, spike)}." + (f" Neighbours of the same label only: {share(spike_l, ~isg)} of standing points, phantoms among them {overlap(spike_l & ~isg, phantom)}." if spike_l is not None else ""))
+
     # the model, under the truth (check points) or the placement after the walk
     checks = list({c["id"]: c for c in inp.get("checks") or []}.values())
     T, src = None, None
@@ -139,6 +180,9 @@ def main():
         lk = Ls[:, 7].astype(np.int64)[near & hitbld]
         cnt = np.bincount(lk, minlength=13)
         print("  ARCore's labels on the points short of a building: " + "; ".join(f"{lname(k)} {cnt[k] / len(lk):.0%}" for k in np.argsort(-cnt)[:5] if cnt[k]))
+    match = np.abs(R - rs) <= 0.5                      # the phone and the model agree on the first surface
+    sp = spike[S]
+    print(f"  Spikes against the model: of the standing spikes, short of the model's first hard surface {np.mean(near[sp]) if sp.any() else 0:.0%}, agreeing with the model (within 0.5 m) {np.mean(match[sp]) if sp.any() else 0:.0%} (those would be good points thrown away); of all standing points agreeing with the model, spikes {np.mean(sp[match]) if match.any() else 0:.1%}.")
     print("  short of a building, by how far the phone said: " + "; ".join(f"{a * FT:.0f}-{b * FT:.0f} ft {int(((near & hitbld) & (rs >= a) & (rs < b)).sum()):,}" for a, b in bins))
 
     # the moments: per second, standing points well short of a building at least 5 m off
@@ -166,7 +210,7 @@ def main():
             ang = math.degrees(math.atan2(fe[0] - ce[0], fn[0] - cn[0])) % 360
             face = COMPASS[int(((ang + 22.5) % 360) // 45)]
             pitch = math.degrees(math.asin(max(-1, min(1, fwd[1] / max(1e-9, np.linalg.norm(fwd))))))
-            lm = ""
+            lm = f", spikes {np.mean(sp[m]):.0%}"
             if has_conf:
                 lm += f", depth confidence {np.median(Ls[m, 9]):.2f}"
             if has_labels:
@@ -179,6 +223,7 @@ def main():
     # the view study's variant C without the phantoms; with labels, also with only the standing points ARCore was sure
     # were a building or a structure (the model's hard kinds)
     rerun(d, inp, M, T, checks, gl, lines[~phantom], f"without the phantoms ({int(phantom.sum()):,} left out)")
+    rerun(d, inp, M, T, checks, gl, lines[~spike], f"without the spikes ({int(spike.sum()):,} left out)")
     if has_labels:
         hard = isg | (sure & np.isin(lab, [vs.LABELS.index("building") + 1, vs.LABELS.index("structure") + 1]))
         rerun(d, inp, M, T, checks, gl, lines[hard & ~phantom], f"on ARCore's buildings and structures only ({int((hard & ~isg).sum()):,} standing points)")
