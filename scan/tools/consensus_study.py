@@ -97,6 +97,14 @@ class Scene:
         self.stand = lines[~isg]
         if len(self.stand) > 20000:
             self.stand = self.stand[np.linspace(0, len(self.stand) - 1, 20000).astype(np.int64)]
+        # ARCORE'S LABELS ROUTE THE EVIDENCE (walks from 2026-11-08 on): a wall earns only from points called building
+        # or structure, a thing from tree, structure or object; sky, people and cars earn nothing; unlabelled points
+        # (older walks) count for both. Codes: twin.js LABELS index + 1.
+        lab = self.stand[:, 7].astype(np.int64)
+        self.labelled = (lab > 0).mean() > 0.2
+        L_ = {k: vs.LABELS.index(k) + 1 for k in vs.LABELS}
+        self.for_b = (lab == 0) | np.isin(lab, [L_["building"], L_["structure"]])
+        self.for_o = (lab == 0) | np.isin(lab, [L_["tree"], L_["structure"], L_["object"]])
         self.through_lines = np.concatenate([vs.pick(lines, 1000, False), vs.pick(lines, 300, True)])
         # pavement from the pictures (pavement.json, session level frame u, v) against the lidar's brightness
         self.pave = self.grass = None
@@ -159,7 +167,7 @@ class Scene:
         r, c, ok = self.cells(e, n)
         y = S_[:, 4] + tz
         gnd = np.where(ok, M.G[r, c], np.nan)
-        onb = ok & self.on_bld[r, c] & (y > gnd + 0.3) & (y < self.bld_top[r, c] + 0.5)
+        onb = ok & self.for_b & self.on_bld[r, c] & (y > gnd + 0.3) & (y < self.bld_top[r, c] + 0.5)
         # SEEN FROM WHERE THE CAMERA STOOD: a wall earns only from points whose sight line reaches it without
         # crossing the building first (2026-11-08, the 907 ft walk: with credit alone a placement 39 ft off laid
         # tree and shrub points along other houses' far sides and out-earned the truth, 27 to 15)
@@ -178,7 +186,7 @@ class Scene:
         else:
             out["B"] = 0.0
         h = y - gnd
-        tid = np.where(ok & ~onb & (h > 0.15) & (h < 8), self.thing[r, c], 0)
+        tid = np.where(ok & self.for_o & ~onb & (h > 0.15) & (h < 8), self.thing[r, c], 0)
         cnt = np.bincount(tid[tid > 0])
         out["O"] = float(np.minimum(1, cnt[1:] / 5).sum()) if len(cnt) > 1 else 0.0
         # PAVEMENT: each 1 m cell, positive only
@@ -292,7 +300,7 @@ def main():
             cache[key] = sc.credits(T, want_x)
         return cache[key]
 
-    print(f"Best fit overall: {len(sc.ground):,} ground points, {len(sc.stand):,} standing points, {sc.n_things} lidar things (shrubs, trees, boulders, low structures), pavement {'yes' if sc.pave is not None else 'no'}; starts: {', '.join(nm + (f' ({med(T):.1f} ft)' if checks else '') for T, nm in starts)}.")
+    print(f"Best fit overall: {len(sc.ground):,} ground points, {len(sc.stand):,} standing points, {sc.n_things} lidar things (shrubs, trees, boulders, low structures), pavement {'yes' if sc.pave is not None else 'no'}, ARCore's labels {'routing the evidence' if sc.labelled else 'none (an older walk)'}; starts: {', '.join(nm + (f' ({med(T):.1f} ft)' if checks else '') for T, nm in starts)}.")
     if truth is not None:
         ct = cr(truth, True)
         print(f"  At the truth (the check points' own fit): ground {ct['G']:.1f} cells, buildings {ct['B']:.1f} cells, things {ct['O']:.1f} of {sc.n_things}, pavement {ct['P']:.1f} cells, through a building {ct['X']:.1f} cells.")

@@ -1614,3 +1614,39 @@ its confidence, and the depth's own confidence. The audit splits phantoms by lab
 label at each near-reading moment, and runs the view study on ARCore's buildings and structures alone. The next walk
 answers: are the phantoms the 0.2-0.4 readings (then the cut goes back up, outdoors at least), and what are the
 open-air lines (trees, fences, shrubs, cars)?
+
+### SCAN-H27. The best fit overall: 1.8 ft on one walk, 7.7-13 ft on the other; without labels a tree reads as a wall (2026-11-08)
+
+The owner: not buildings only; match the ground, permanent structures, driveways to the lidar's brightness and the
+general positions of shrubs, "going for the best possible fit overall rather than a perfect fit on any one object":
+an ornamental grass flown at 7-8 ft is cut down each spring, three shrubs were planted since; "3 partial matches =
+fit, 1 pretty good match and 1 partial match = fit."
+
+Also asked: no filtering of our own compared a depth reading with its neighbours (only ARCore's confidence, 0.2, and
+range, people and cars, and the height bands). A neighbour check (scan/lib/spikes.js: a spot of up to 3 x 3 cells
+read 60% nearer than the surface round it, a post or an edge excluded) could not be judged on the saved walks (the
+twin keeps a median 35 of each picture's 448 readings), so it now runs on the page on every whole picture, RECORDED
+ONLY (a flag with each point, a count in the summary); the next walk says whether it catches the phantoms.
+
+scan/tools/consensus_study.py, in task place: credits capped per thing (each 2 m of ground; each metre of a
+building's edge, graded by how near the points sit to its wall or roof edge, from points whose sight line reaches it;
+each lidar thing with points anywhere over its footprint grown 0.75 m, at any height; pavement against brightness,
+30 credits at most), nothing lost for what changed, a loss only for seeing through a house; the search kept within
+the trail's reach. Median at the check points:
+
+| | 729 ft walk | 907 ft walk |
+|---|---|---|
+| after the walk now (skyline, then the ground) | 3.7 ft | 3.1 ft |
+| the whole walk at once (ground only, live since SCAN-H26) | 3.6 (not taken) | 2.4 |
+| ground + buildings + things | 1.8 (margin 1%) | 13.0 (5%) |
+| all, seeing through a house counted | 1.8 (2%) | 7.7 (4%) |
+| buildings alone | 9.8 | 13.2 |
+
+HARD (two walks): one walk is the best yet, the other well worse; not ready to place walks. On the 907 ft walk a
+placement 13 ft off earns 24 building credits to the truth's 15, even counting only walls the camera could see: with
+no labels, any standing point near a wall counts as wall, and that walk's standing points are 30% phantoms besides
+its trees and shrubs. First version (no line of sight, pavement at a credit a cell): 15.8 and 9.5 ft.
+
+SPECULATION, measured on the next walk: ARCore's labels route the evidence (in the study since this date: a wall
+earns only from building or structure points, a thing from tree, structure or object, sky, people and cars from
+nothing). Walks from the evening of 2026-11-08 carry them.
