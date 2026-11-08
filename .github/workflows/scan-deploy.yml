@@ -281,6 +281,9 @@ jobs:
           # which depth points are real (the walk's own lines, then the model); the moments near readings cluster
           python scan/tools/depth_audit.py twin | tee -a place.txt
           node scan/tools/post-fix.mjs twin | tee -a place.txt
+          # the best fit overall (the owner, 2026-11-08): ground, buildings, things, pavement, each capped; nothing lost
+          # for what changed, only for seeing through a house (study: placement.json unchanged)
+          python scan/tools/consensus_study.py twin | tee -a place.txt
           node scan/tools/twin-r2.mjs put "$WALK" twin/skyline.json twin/pavement.json twin/placement.json twin/fixed.json twin/mesh.bin $(test -f twin/view.json && echo twin/view.json) | tee -a place.txt
 
       # PAVEMENT FROM THE PICTURES (scan/tools/pavement_study.py): road and sidewalk pixels cast onto the ground, kept
