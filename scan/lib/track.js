@@ -405,9 +405,10 @@ const b64bytes = (s) => { const bin = atob(s); const u = new Uint8ClampedArray(b
 
 /** A depth grid from the app (DepthSnapshot.gridJson) as the page's depth: at(x, y) a world point or null, m(x, y) metres. */
 /* far (2026-11-08): 8 m dropped every true reading of a wall 30 ft off and kept only the ones that erred short (the
-   owner's west wall: almost no points on it, and the few there phantoms; almost none on the roof). Readings to 20 m
-   now reach the twin; the live match still takes only what is within 8 m (app.js LIVE_RANGE). */
-export function depthFromGrid(g, near = 0.4, far = 20) {
+   owner's west wall: almost no points on it, and the few there phantoms; almost none on the roof). The owner: "Save
+   depth to 30m ... I'm not sure why live matching wouldn't be 30 either?" Both read to 30 m now (app.js LIVE_RANGE;
+   the match's own rules still keep standing points within 3.5 m and ground within 6 m, locate.js). */
+export function depthFromGrid(g, near = 0.4, far = 30) {
   if (!g) return null;
   const cell = (x, y) => Math.min(g.ny - 1, Math.max(0, Math.floor(y * g.ny))) * g.nx + Math.min(g.nx - 1, Math.max(0, Math.floor(x * g.nx)));
   return {

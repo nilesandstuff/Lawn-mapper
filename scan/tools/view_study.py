@@ -94,7 +94,7 @@ def sight_lines(d):
     gnd = np.isfinite(cloud[:, 5]) & (np.abs(cloud[:, 3] - cloud[:, 5]) < 0.15)
     out = np.concatenate([cam, cloud[:, 2:5], gnd[:, None].astype(np.float64), cloud[:, 6:9], cloud[:, 0:2], cloud[:, 9:10]], 1)[ok]
     r = np.linalg.norm(out[:, 3:6] - out[:, 0:3], axis=1)
-    return out[(r > 0.5) & (r < 20.0)]   # (to 9 m before 2026-11-08; the page kept nothing past 8 m till then)
+    return out[(r > 0.5) & (r < 30.0)]   # (to 9 m before 2026-11-08; the page kept nothing past 8 m till then)
 
 
 def pick(lines, n, ground):

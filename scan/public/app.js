@@ -39,7 +39,7 @@ const COLOR = { dot: [0.3, 1, 0.6, 0.9], dotPlane: [1, 0.8, 0.2, 0.9], pin: [0.9
 const CSS = { ref: '#2f7cf6', check: '#a54bd8', pin: '#e53935', lawn: '#4cc38a' };
 const FAR_AGAIN = 3000;
 const DEPTH_EVERY = 250;
-const LIVE_RANGE = 8; // m: the live match and the walk's ground take depth this near; the twin keeps it to 20 m (track.js)
+const LIVE_RANGE = 30; // m: the live match and the walk's ground take depth this near, as far as the twin keeps it (track.js; 8 until 2026-11-08)
 const WALK_EVERY = 10000; // ms between placements of the whole walk (walkfix.js)
 const COLOUR_EVERY = 900; // ms between reads of the ground's colour
 
