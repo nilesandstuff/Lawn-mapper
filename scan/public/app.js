@@ -87,6 +87,22 @@ async function main() {
     lab.innerHTML = '<input type="checkbox" id="record-only"> Record only: no live lidar fix; the walk is fixed afterwards';
     box.append(lab);
     $('#record-only').addEventListener('change', (e) => { st.recordOnly = e.target.checked; });
+    /* RECORDING AND REPLAY (the app's bridge 3; the owner, 2026-11-08: "so I don't have to keep doing the same walks
+       over and over"): ARCore records the walk's camera and motion; it goes to the site after the walk, and any
+       recorded walk can be run again through ARCore and this page from the couch. */
+    if ((st.caps.native?.bridge ?? 0) >= 3) {
+      const rec = document.createElement('label'); rec.className = 'dim'; rec.style.display = 'block'; rec.style.margin = '8px 0';
+      rec.innerHTML = '<input type="checkbox" id="record-arcore" checked> Record this walk for replay (ARCore\'s camera and motion; sent to the site after the walk, about 100-300 MB, best on wifi)';
+      box.append(rec);
+      $('#record-arcore').addEventListener('change', (e) => { st.recordOff = !e.target.checked; });
+      const rb = document.createElement('button'); rb.type = 'button'; rb.className = 'plain'; rb.textContent = 'Replay a recorded walk';
+      rb.addEventListener('click', () => pickReplay().catch((e) => flash(`Recordings could not be listed: ${e.message}`)));
+      box.append(rb);
+      const pend = (() => { try { return JSON.parse(window.LawnARNative.pendingRecordings()); } catch { return []; } })();
+      if (pend.length) { const n = document.createElement('p'); n.className = 'dim'; n.textContent = `${pend.length} recording${pend.length === 1 ? '' : 's'} still on the phone, being sent (${Math.round(pend.reduce((a, x) => a + x.bytes, 0) / 1e6)} MB).`; box.append(n); try { window.LawnARNative.sendRecordings(); } catch { /* none */ } }
+    } else if (st.caps.native) {
+      const n = document.createElement('p'); n.className = 'dim'; n.textContent = 'Recording walks for replay needs the app\'s next version: update it from the link above.'; box.append(n);
+    }
     /* RAW DEPTH ONLY, a test (2026-11-06): asked for raw first, the S21's Chrome gave smooth. Asked for raw alone,
        it either gives raw or no depth at all; the walk's log says which ("depth raw" or "depth -"). */
     if (pick.offered.includes('webxr')) {
@@ -324,10 +340,12 @@ async function startAR(engine) {
   $('#hud').textContent = engine === '8thwall' ? 'Loading the engine… then the phone asks for the camera and the motion sensors.' : 'Starting…';
   const canvas = $('#cam');
   try {
-    st.tracker = await start({ engine, overlay, canvas, eightWallUrl: ENGINE_URL, onFrame, onEvent, rawDepth: !!st.rawDepth });
+    // bridge 3: this walk recorded by ARCore for replay (on unless turned off), or an earlier walk replayed
+    st.recUp = null; st.started = null; st.geoDepthN = 0;
+    st.tracker = await start({ engine, overlay, canvas, eightWallUrl: ENGINE_URL, onFrame, onEvent, rawDepth: !!st.rawDepth, record: st.replayOf || st.recordOff ? null : st.walk.startedAt, playback: st.replayOf || null });
     st.walk.features = st.tracker.features;
     // GPS, only as a place to start the lidar search from; kept in memory, never in the copy
-    if (st.origin && navigator.geolocation) {
+    if (st.origin && navigator.geolocation && !st.replayOf) { // a replay's place is the recording's, not the phone's now
       try { st.gpsWatch = navigator.geolocation.watchPosition((pos) => { if (!st.ar?.pose || !st.L) return; const p = st.ar.pose.position; st.L.gps = { at: toLocal(st.origin, [pos.coords.longitude, pos.coords.latitude]), acc: pos.coords.accuracy, phone: [p.x, -p.z], t: Date.now() };
             /* THE GPS TRAIL (2026-11-05: a walk without references has GPS's place but no heading; the trail of GPS
                readings against the session's own track gives both, over a long walk): one reading per 2 m walked */
@@ -342,8 +360,31 @@ async function startAR(engine) {
   }
 }
 
+/** The recorded walks, newest first; picking one opens its map and runs it through ARCore again (bridge 3). */
+async function pickReplay() {
+  const [{ recordings }, w] = await Promise.all([fetch('/api/scan/recordings', { credentials: 'same-origin' }).then((r) => r.json()), fetch('/api/scan/walks', { credentials: 'same-origin' }).then((r) => r.json()).catch(() => ({ walks: [] }))]);
+  const when = new Map((w.walks || []).map((x) => [x.id, x]));
+  const list = document.createElement('div'); list.className = 'card';
+  list.innerHTML = recordings.length ? '<strong>Replay a walk</strong><p class="dim">ARCore runs on the walk\'s recording as if walking it again, in real time; the page does again what was done then (marks, pins, checks). The replay is kept as a walk of its own.</p>' : '<p class="dim">No recorded walks yet: the next walk in the app records itself.</p>';
+  for (const r of recordings) {
+    const x = when.get(r.walk), b = document.createElement('button'); b.type = 'button'; b.className = 'plain'; b.style.display = 'block'; b.style.margin = '6px 0';
+    b.textContent = `${x ? new Date(x.at).toLocaleString() : r.walk}: ${x?.summary?.stats ? `${Math.round(x.summary.stats.walkedM * 3.281)} ft, ` : ''}${Math.round(r.bytes / 1e6)} MB`;
+    b.addEventListener('click', async () => {
+      st.replayOf = r.walk;
+      try { const meta = await (await fetch(`/api/scan/twin?walk=${encodeURIComponent(r.walk)}&part=meta.json`, { credentials: 'same-origin' })).json(); if (meta?.map && meta.map !== st.map) await openMap(meta.map, 'from the recorded walk'); } catch { /* the map open now, if any */ }
+      flash('Fetching the recording, then replaying it');
+      startAR('native');
+    });
+    list.append(b);
+  }
+  $('#start').append(list);
+}
+
+const recUpText = () => { const u = st.recUp; if (!u) return ''; return u.done ? 'Recording: on the site, ready to replay.' : u.error ? `Recording: not sent yet (${u.error}); tried again when the app next opens.` : `Recording: sending, ${Math.round((u.sent || 0) / 1e6)} of ${Math.round((u.total || 0) / 1e6)} MB.`; };
+
 function onEvent(ev) {
-  if (!st.walk) return;
+  // the recording's upload carries on after the walk ends: its progress goes on the results
+  if (!st.walk) { if (ev.type === 'native' && ev.what === 'upload') { st.recUp = ev; const el = $('#rec-up'); if (el) el.textContent = recUpText(); } return; }
   if (ev.type === 'error') { log(`engine: ${ev.message}`); flash(`Engine: ${ev.message}`.slice(0, 80)); }
   if (ev.type === 'camera') log(`camera ${ev.status}`);
   if (ev.type === 'motion') log(`motion sensors ${ev.status}`);
@@ -352,6 +393,13 @@ function onEvent(ev) {
     log(`app: ${ev.message || [ev.depth != null ? `depth ${ev.depth}` : '', ev.geospatial != null ? `geospatial ${ev.geospatial}` : '', ev.geoError ? `geospatial failed: ${ev.geoError}` : '', ev.image ? `camera ${ev.image}` : ''].filter(Boolean).join(', ')}`);
     if (ev.message) flash(ev.message.slice(0, 80));
     else if (ev.geoError) flash(`Street View positioning is off this walk (${ev.geoError})`.slice(0, 80));
+    if (ev.modes) { st.started = { camera: ev.camera, image: ev.image, modes: ev.modes, streetscape: !!ev.streetscape, streetError: ev.streetError || null, recording: !!ev.recording, recordError: ev.recordError || null, replay: ev.replay || null }; log(`app: camera ${ev.camera} of ${ev.modes.length} modes; streetscape ${ev.streetscape}; recording ${ev.recording}${ev.recordError ? ` (${ev.recordError})` : ''}`); }
+    if (ev.recordError) flash(`This walk is not being recorded (${ev.recordError})`.slice(0, 80));
+    if (ev.what === 'fetching') flash('Fetching the recorded walk');
+    if (ev.what === 'download' && !ev.done && ev.total) flash(`Fetching the recording: ${Math.round((ev.got / ev.total) * 100)}%`);
+    if (ev.what === 'upload') { st.recUp = ev; if (ev.done) flash('The recording is on the site'); else if (ev.error) flash(`The recording is not sent yet (${ev.error}); it will be tried again`.slice(0, 80)); }
+    if (ev.what === 'playbackEnd') { flash('The recording has ended'); log(`replay ended: ${ev.status}`); st.tracker?.stop(); }
+    if (ev.what === 'recorded') log(`recording finished: ${Math.round(ev.bytes / 1e6)} MB, being sent`);
   }
   if (ev.type === 'end') finish();
 }
@@ -436,6 +484,7 @@ function nextTarget() {
 function onFrame(f) {
   if (!st.walk) return;
   st.ar = f;
+  if (f.events) replayActs(f); // a replay: what was done at this frame of the recorded walk
   const w = st.walk, L = st.L, odo = w.odo;
   const warnings = step(w, { t: f.t, pos: f.pose?.position, quat: f.pose?.quaternion, tracking: f.tracking, reset: f.reset, points: f.points });
   for (const x of warnings) {
@@ -520,6 +569,17 @@ function onFrame(f) {
     }
     addDepth(L, near, odo, f.pose.position, { standing: false }); // standing points come from the colour pass below
     if (st.twin) addPoints(st.twin, Date.now(), odo, pts, L.groundY);
+    /* GEOSPATIAL DEPTH (bridge 3, where Google has VPS): ARCore's smoothed depth carried to 65 m by Streetscape
+       Geometry, kept in the twin past where the camera's own depth reaches (25 m), flagged, and not matched live:
+       it is Google's buildings and terrain placed by the Geospatial pose, not something the camera measured */
+    if (st.twin && f.depth.geoDepth && st.started?.streetscape) {
+      const gd = f.depth.geoDepth(), far = [];
+      if (gd) for (let j = 0; j < 28; j++) for (let i = 0; i < 16; i++) {
+        const p = gd.at((i + 0.5) / 16, (j + 0.5) / 28);
+        if (p && Math.hypot(p.x - cam.x, p.y - cam.y, p.z - cam.z) > 25) { p.geoDepth = true; far.push(p); }
+      }
+      if (far.length) { st.geoDepthN = (st.geoDepthN || 0) + far.length; addPoints(st.twin, Date.now(), odo, far, L.groundY); }
+    }
   }
   // 8th Wall: no depth map, but its world points, at the same pace (scan/lib/track.js worldPointsOf); no camera
   // picture to colour them, so they go in as standing candidates too, each still needing two sightings
@@ -782,24 +842,50 @@ function wireMini() {
 
 function wire() {
   wireMini();
-  $('#pin').addEventListener('click', () => {
+  $('#pin').addEventListener('click', () => doPin(st.ar));
+  $('#check').addEventListener('click', () => doCheck(st.ar));
+  $('#mark').addEventListener('click', () => doMark(st.ar));
+  $('#undo').addEventListener('click', () => doUndo());
+  $('#measure').addEventListener('click', () => {
     const f = st.ar; if (!f?.hit) return;
-    if (far(f.hit) && Date.now() - st.farAt > FAR_AGAIN) { st.farAt = Date.now(); flash(`Aiming from ${ftIn(f.hit.distance)}: step closer, or tap again to drop it anyway`); return; }
+    const m = measure(st.walk, f.hit);
+    flash(m ? `Measured ${ftIn(m.m)} (${m.m.toFixed(2)} m)` : 'First mark set: aim at the second and tap Measure');
+  });
+  wireRest();
+}
+
+/* THE WALK'S ACTIONS, kept in its ARCore recording (bridge 3) with the frame they happened on, and done again by a
+   replay when that frame comes round (replay: true skips the "step closer" check: it was answered the first time). */
+const recordAct = (a) => { if (!st.replayOf) st.tracker?.recordAction?.(a); };
+function replayActs(f) {
+  for (const a of f.events || []) {
+    if (a.a === 'pin') doPin(f, { replay: true });
+    else if (a.a === 'check') doCheck(f, { replay: true });
+    else if (a.a === 'mark') doMark(f, { replay: true, target: a.target });
+    else if (a.a === 'undo') doUndo({ replay: true });
+  }
+}
+function doPin(f, { replay = false } = {}) {
+    if (!f?.hit) return;
+    if (!replay && far(f.hit) && Date.now() - st.farAt > FAR_AGAIN) { st.farAt = Date.now(); flash(`Aiming from ${ftIn(f.hit.distance)}: step closer, or tap again to drop it anyway`); return; }
+    recordAct({ a: 'pin' });
     const p = dropPin(st.walk, f.hit);
     flash(`Pin ${p.name} dropped (${ftIn(p.aim || 0)}, by ${p.type === 'DEPTH' ? 'depth' : 'plane'})`);
     if (st.tracker?.anchor) st.tracker.anchor(p.at).then((a) => { if (a && st.walk && st.walk.pins.includes(p)) { p.anchor = a; p.anchorAt = st.tracker?.anchorAt(a) || { ...p.at }; } });
-  });
-  $('#check').addEventListener('click', () => {
-    const f = st.ar; if (!f?.hit || !st.walk.pins.length) return;
+}
+function doCheck(f, { replay = false } = {}) {
+    if (!f?.hit || !st.walk.pins.length) return;
     const p = nearestPin(f.hit);
     if (!p) { flash('No pin within 20 ft of the crosshair'); return; }
+    if (!replay) recordAct({ a: 'check' });
     const c = checkPin(st.walk, p, f.hit);
     flash(`Pin ${p.name}: ${ftIn(c.offLevelM)} off as placed${c.offAnchorLevelM != null ? `, ${ftIn(c.offAnchorLevelM)} as anchored` : ''} (${ftIn(c.walkedSinceM)} walked since)`);
-  });
-  $('#mark').addEventListener('click', () => {
-    const f = st.ar; if (!f?.hit) return;
-    const target = nextTarget(); if (!target) return;
-    if (far(f.hit) && Date.now() - st.farAt > FAR_AGAIN) { st.farAt = Date.now(); flash(`Aiming from ${ftIn(f.hit.distance)}: step closer, or tap again to mark anyway`); return; }
+}
+function doMark(f, { replay = false, target: tid = null } = {}) {
+    if (!f?.hit) return;
+    const target = tid != null ? st.points.find((q) => q.id === tid) : nextTarget(); if (!target) return;
+    if (!replay && far(f.hit) && Date.now() - st.farAt > FAR_AGAIN) { st.farAt = Date.now(); flash(`Aiming from ${ftIn(f.hit.distance)}: step closer, or tap again to mark anyway`); return; }
+    recordAct({ a: 'mark', target: target.id });
     const odo = st.walk.odo;
     if (target.kind === 'check') {
       const c = checkError(st.L, target, f.hit, odo);
@@ -813,13 +899,9 @@ function wire() {
     log(`marked ${target.name} (${target.kind}) from ${f.hit.distance?.toFixed(2)} m`);
     st.undoMarks.push({ id: target.id, name: target.name, check: target.kind === 'check' && st.walk.checks.length && st.walk.checks[st.walk.checks.length - 1].name === target.name, at: Date.now() });
     st.chosen = null;
-  });
-  $('#measure').addEventListener('click', () => {
-    const f = st.ar; if (!f?.hit) return;
-    const m = measure(st.walk, f.hit);
-    flash(m ? `Measured ${ftIn(m.m)} (${m.m.toFixed(2)} m)` : 'First mark set: aim at the second and tap Measure');
-  });
-  $('#undo').addEventListener('click', () => {
+}
+function doUndo() {
+    recordAct({ a: 'undo' });
     // the newest of: a reference or check mark (kept here), a pin or a half-done measure (walk.js)
     const m = st.undoMarks[st.undoMarks.length - 1], lastPin = st.walk.pins[st.walk.pins.length - 1];
     const pinAt = lastPin ? st.walk.startedAt + (lastPin.t || 0) : 0;
@@ -832,7 +914,9 @@ function wire() {
       return;
     }
     const u = undo(st.walk); flash(u === 'pin' ? 'Pin removed' : u === 'measure' ? 'First mark cleared' : 'Nothing to undo');
-  });
+}
+
+function wireRest() {
   $('#exit').addEventListener('click', () => { if (st.tracker) st.tracker.stop(); else finish(); });
   $('#move').addEventListener('click', () => $('#overlay').classList.toggle('bar-low'));
   $('#lidar-toggle').addEventListener('click', () => { st.lidarOn = !st.lidarOn; $('#lidar-toggle').classList.toggle('off', !st.lidarOn); flash(st.lidarOn ? 'Lidar shown' : 'Lidar hidden'); });
@@ -866,7 +950,7 @@ function finish() {
   const crumbs = st.crumbs?.list.length && st.tracker?.anchorAt ? crumbMoves(st.crumbs, (h) => st.tracker.anchorAt(h)) : null;
   const refs = st.points.filter((p) => p.kind === 'ref').map((p) => ({ name: p.name, marks: L ? L.marks.filter((m) => m.id === p.id).length : 0, leftOutM: L ? r3(leftOut(L.marks.filter((m) => m.kind === 'ref'), p.id)) : null }));
   const s = summary(w, {
-    page: 'yard AR test v2', recordOnly: !!st.recordOnly, features: w.features || null, depthType: w.depthType || null, anchors: st.anchors ? anchorsKept(st.anchors) : null, depthFill: st.depthFill ? { frames: st.depthFill.frames, holes: +(st.depthFill.zero / Math.max(1, st.depthFill.cells)).toFixed(3), past8m: +(st.depthFill.far / Math.max(1, st.depthFill.cells)).toFixed(3), weak: +(st.depthFill.weak / Math.max(1, st.depthFill.cells)).toFixed(3), minConf: st.depthFill.minConf } : null, rawAsked: !!st.rawDepth, geo: geoSummary(), depthSpikes: st.spikes ? { ...st.spikes, share: +(st.spikes.flagged / Math.max(1, st.spikes.cells)).toFixed(4), recordOnly: true } : null, walkFix: st.walkStats ? { ...st.walkStats, share: L?.walk?.ok ? +L.walk.share.toFixed(3) : null, margin: L?.walk?.ok ? +L.walk.margin.toFixed(3) : null, walkedM: L?.walk?.ok ? Math.round(L.walk.walkedM) : null } : null, semantics: st.caps?.native ? { on: !!st.tracker?.semantics, dims: st.semDims || null, ...(semSummary(st.sem) || {}) } : null, crumbs: crumbs ? { n: crumbs.n, held: crumbs.held, lost: crumbs.lost, refused: crumbs.refused, medianM: crumbs.medianM, maxM: crumbs.maxM, maxLevelM: crumbs.maxLevelM, worstOdo: crumbs.worstOdo } : null, app: st.caps?.native ? { app: st.caps.native.app, bridge: st.caps.native.bridge, device: st.caps.native.device } : null, failed: w.failed || null, errors: st.errors.map((e) => e.what).slice(-30),
+    page: 'yard AR test v2', recordOnly: !!st.recordOnly, features: w.features || null, depthType: w.depthType || null, anchors: st.anchors ? anchorsKept(st.anchors) : null, depthFill: st.depthFill ? { frames: st.depthFill.frames, holes: +(st.depthFill.zero / Math.max(1, st.depthFill.cells)).toFixed(3), past8m: +(st.depthFill.far / Math.max(1, st.depthFill.cells)).toFixed(3), weak: +(st.depthFill.weak / Math.max(1, st.depthFill.cells)).toFixed(3), minConf: st.depthFill.minConf } : null, rawAsked: !!st.rawDepth, geo: geoSummary(), depthSpikes: st.spikes ? { ...st.spikes, share: +(st.spikes.flagged / Math.max(1, st.spikes.cells)).toFixed(4), recordOnly: true } : null, walkFix: st.walkStats ? { ...st.walkStats, share: L?.walk?.ok ? +L.walk.share.toFixed(3) : null, margin: L?.walk?.ok ? +L.walk.margin.toFixed(3) : null, walkedM: L?.walk?.ok ? Math.round(L.walk.walkedM) : null } : null, semantics: st.caps?.native ? { on: !!st.tracker?.semantics, dims: st.semDims || null, ...(semSummary(st.sem) || {}) } : null, crumbs: crumbs ? { n: crumbs.n, held: crumbs.held, lost: crumbs.lost, refused: crumbs.refused, medianM: crumbs.medianM, maxM: crumbs.maxM, maxLevelM: crumbs.maxLevelM, worstOdo: crumbs.worstOdo } : null, app: st.caps?.native ? { app: st.caps.native.app, bridge: st.caps.native.bridge, device: st.caps.native.device, camera: st.started?.camera ?? null, image: st.started?.image ?? null, modes: st.started?.modes ?? null, streetscape: st.started?.streetscape ?? null, streetError: st.started?.streetError ?? null, recording: st.started?.recording ?? null, recordError: st.started?.recordError ?? null, geoDepthPoints: st.geoDepthN || 0 } : null, replayOf: st.replayOf || null, failed: w.failed || null, errors: st.errors.map((e) => e.what).slice(-30),
     references: refs, checks: (w.checks || []).map((c) => ({ ...c, errorM: r3(c.errorM), errorFixM: r3(c.errorFixM), errorRefsM: r3(c.errorRefsM), walkedSinceFixM: r2(c.walkedSinceFixM), aimM: r2(c.aimM), walkedM: r2(c.walkedM) })),
     pinsNear: w.pins.map((p) => ({ name: p.name, nearest: p.nearest ? { name: p.nearest.name, m: r2(p.nearest.m), byRefsM: r2(p.nearest.byRefsM) } : null })),
     fix: L ? summaryOf(L) : null, surfaceSeen: st.surfCount || null, lidar: st.lid.ready ? { points: st.lid.ready.points, solid: st.lid.ready.solid, shift: st.lid.ready.shift, rule: st.lid.ready.rule || null, structures: st.lid.ready.structures || null, tallCells: st.lid.overlay ? st.lid.overlay.tall.length / 5 : null } : st.lid.error ? { error: st.lid.error } : null,
@@ -972,6 +1056,7 @@ function walkCard(s, open) {
     <p>Walked ${Math.round(x.walkedM * FT)} ft; lost its place ${x.losses} time${x.losses === 1 ? '' : 's'}; ${x.resets} jump${x.resets === 1 ? '' : 's'}; ${x.fastTurns} fast turn${x.fastTurns === 1 ? '' : 's'}; tracked ${x.trackedShare != null ? Math.round(x.trackedShare * 100) : '?'}% of frames${s.points?.maxAtOnce ? `; up to ${s.points.maxAtOnce} points seen at once` : ''}.</p>
     ${fx ? `<p><strong>Where you were:</strong> ${fx.fixes} lidar fix${fx.fixes === 1 ? '' : 'es'} from ${fx.asks} tries${fx.fixes ? ` (${Math.round(100 * fx.fixHits.reduce((a, b) => a + b, 0) / fx.fixHits.length)}% of points landed on average)` : ''}; ${fx.references} reference${fx.references === 1 ? '' : 's'}, ${fx.marks} marks. ${Object.keys(fx.refused || {}).length ? `Refused: ${esc(Object.entries(fx.refused).map(([k, v]) => `${k} (${v})`).join('; '))}.` : ''}${s.lidar?.error ? ` <span class="warn">Lidar: ${esc(s.lidar.error)}</span>` : s.lidar ? ` Lidar: ${s.lidar.points.toLocaleString()} points, ${s.lidar.solid.toLocaleString()} solid cells.` : ''}</p>` : ''}
     ${s.twin ? `<p>Twin: ${s.twin.points.toLocaleString()} points, ${s.twin.keys} picture${s.twin.keys === 1 ? '' : 's'}${s.twin.off ? ` <span class="warn">not kept: ${esc(s.twin.off)}</span>` : s.twin.failed ? ` <span class="warn">(${s.twin.failed} part${s.twin.failed === 1 ? '' : 's'} did not upload)</span>` : ''}. <a href="/twin.html?walk=${encodeURIComponent(s.id)}">See how it lines up</a> &middot; <a href="/inspect.html?walk=${encodeURIComponent(s.id)}">Inspect it</a></p>` : ''}
+    ${s.app?.recording || st.recUp ? `<p class="dim" id="rec-up">${esc(recUpText() || 'Recording: being finished, then sent.')}</p>` : ''}${s.replayOf ? `<p class="dim">A replay of the walk of ${esc(new Date(+s.replayOf).toLocaleString())}.</p>` : ''}
     ${refs ? `<p class="dim">References: ${refs}.</p>` : ''}
     ${near ? `<p class="dim">Pins on the map: ${near}.</p>` : ''}
     ${checks ? `<table><tr><th>Check point</th><th>On the map</th><th>By</th></tr>${checks}</table>` : ''}

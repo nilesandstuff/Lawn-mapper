@@ -393,7 +393,7 @@ export function nativeInfo() {
 }
 
 /** What the app is asked for (Bridge.start): the picture's width and quality, how often depth, pictures, Geospatial. */
-export const NATIVE_OPTIONS = { grabW: 480, jpegQ: 80, depthEveryMs: 200, pictureEveryMs: 700, geoEveryMs: 1000, semEveryMs: 500, anchorsEveryMs: 1000, depth: true, geospatial: true, semantics: true, planes: true };
+export const NATIVE_OPTIONS = { grabW: 480, jpegQ: 80, depthEveryMs: 200, pictureEveryMs: 700, geoEveryMs: 1000, semEveryMs: 500, anchorsEveryMs: 1000, depth: true, geospatial: true, semantics: true, planes: true, streetscape: true };
 /** ARCore's Scene Semantics labels by their number (developers.google.com/ar/reference/c/group/ar-semantics). */
 export const SEM_LABELS = ['unlabeled', 'sky', 'building', 'tree', 'road', 'sidewalk', 'terrain', 'structure', 'object', 'vehicle', 'person', 'water'];
 /** The depth the page reads: raw (holes where ARCore is unsure), points kept at this confidence (0..1) and up. */
@@ -424,10 +424,14 @@ export function depthFromGrid(g, near = 0.4, far = 30) {
   };
 }
 
-async function startNative({ canvas, onFrame, onEvent, nativeOptions = {}, nativeDepth = {} }) {
+async function startNative({ canvas, onFrame, onEvent, nativeOptions = {}, nativeDepth = {}, record = null, playback = null }) {
   const N = window.LawnARNative;
   if (!N) throw new Error('not inside the app');
   const opt = { ...NATIVE_OPTIONS, ...nativeOptions }, dep = { ...NATIVE_DEPTH, ...nativeDepth };
+  // bridge 3: an ARCore recording of this walk (its id), or a replay of an earlier walk's recording instead of the camera
+  const bridge = nativeInfo()?.bridge ?? 0;
+  if (bridge >= 3 && record) opt.record = String(record);
+  if (bridge >= 3 && playback) opt.playback = String(playback);
   document.documentElement.classList.add('native-ar'); // the page goes see-through over the app's camera
   const gl = canvas.getContext('webgl', { alpha: true, premultipliedAlpha: true, antialias: true });
   let live = true, label = null, started = false, semantics = false;
@@ -442,16 +446,16 @@ async function startNative({ canvas, onFrame, onEvent, nativeOptions = {}, nativ
         started = true;
         label = e.depth ? `${dep.kind} (the app, ARCore, confidence ${dep.minConf} and up)` : 'none';
         semantics = !!e.semantics;
-        onEvent?.({ type: 'native', ...e });
+        onEvent?.({ ...e, type: 'native', what: e.type });
         resolve();
       } else if (e.type === 'error' || e.type === 'installing') {
-        onEvent?.({ type: 'native', ...e });
+        onEvent?.({ ...e, type: 'native', what: e.type });
         if (!started) reject(new Error(e.message || e.type));
       } else if (e.type === 'end') {
         live = false;
         document.documentElement.classList.remove('native-ar');
         onEvent?.({ type: 'end' });
-      }
+      } else onEvent?.({ ...e, type: 'native', what: e.type }); // bridge 3: fetching, download, upload, recorded, playbackEnd
     };
   });
   window.LawnARNative_onFrame = (fr) => {
@@ -464,7 +468,9 @@ async function startNative({ canvas, onFrame, onEvent, nativeOptions = {}, nativ
     const depth = fr.depth ? (() => {
       const get = () => (grid === undefined ? (grid = (() => { try { return depthFromGrid(JSON.parse(N.depthGrid(dep.nx, dep.ny, dep.kind, Math.round(dep.minConf * 255)))); } catch { return null; } })()) : grid);
       return { at: (x, y) => get()?.at(x, y) ?? null, m: (x, y) => get()?.m(x, y) ?? NaN, conf: (x, y) => get()?.conf(x, y) ?? null, minConf: dep.minConf, shot: () => get()?.t ?? null,
-        label: (x, y) => get()?.label?.(x, y) ?? null, labelConf: (x, y) => get()?.labelConf?.(x, y) ?? null, semDims: () => get()?.semDims ?? null };
+        label: (x, y) => get()?.label?.(x, y) ?? null, labelConf: (x, y) => get()?.labelConf?.(x, y) ?? null, semDims: () => get()?.semDims ?? null,
+        // bridge 3, Geospatial Depth on: ARCore's smoothed depth, which Streetscape Geometry carries to 65 m
+        geoDepth: bridge >= 3 && opt.streetscape ? () => { try { return depthFromGrid(JSON.parse(N.depthGrid(16, 28, 'smooth', 0)), 0.4, 65); } catch { return null; } } : null };
     })() : null;
     if (fr.anchors) for (const [id, x, y, z, state] of fr.anchors) anchorPos.set(id, { x, y, z, state });
     const pose = fr.pose ? { position: { x: fr.pose.p[0], y: fr.pose.p[1], z: fr.pose.p[2] }, quaternion: { x: fr.pose.q[0], y: fr.pose.q[1], z: fr.pose.q[2], w: fr.pose.q[3] } } : null;
@@ -475,6 +481,7 @@ async function startNative({ canvas, onFrame, onEvent, nativeOptions = {}, nativ
       view: fr.view ? new Float32Array(fr.view) : null, proj: fr.proj ? new Float32Array(fr.proj) : null,
       geo: fr.geo || null,
       sem: fr.sem || null, // bridge 2: the share of the picture under each label
+      events: fr.events || null, // bridge 3: on a replay, what the page did at this frame of the recorded walk
       grab: () => {
         let g;
         try { g = JSON.parse(N.grab()); } catch { return null; }
@@ -493,6 +500,8 @@ async function startNative({ canvas, onFrame, onEvent, nativeOptions = {}, nativ
     anchor: async (p) => { if (!anchorsOn || !live) return null; const id = N.anchor(p.x, p.y, p.z); return id > 0 ? id : null; },
     anchorAt: (id) => { const a = anchorPos.get(id); return a && a.state !== 2 ? { x: a.x, y: a.y, z: a.z } : null; },
     dropAnchor: (id) => { if (anchorsOn) { try { N.dropAnchor(id); } catch { /* gone */ } anchorPos.delete(id); } },
+    // bridge 3: something the page did, kept in the walk's recording with this frame
+    recordAction: bridge >= 3 && opt.record ? (a) => { try { N.record(JSON.stringify(a)); } catch { /* gone */ } } : null,
     stop: () => { try { N.stop(); } catch { /* gone */ } },
   };
 }

@@ -22,6 +22,8 @@ import com.google.ar.core.ArCoreApk
 import com.google.ar.core.CameraConfig
 import com.google.ar.core.CameraConfigFilter
 import com.google.ar.core.Config
+import com.google.ar.core.RecordingConfig
+import com.google.ar.core.Track
 import com.google.ar.core.Session
 import org.json.JSONObject
 
@@ -32,6 +34,8 @@ import org.json.JSONObject
  */
 class MainActivity : Activity() {
     lateinit var engine: ArEngine
+    lateinit var recorder: Recorder
+    private var recordingWalk: String? = null
     private lateinit var gl: GLSurfaceView
     private lateinit var web: WebView
     private var session: Session? = null
@@ -83,6 +87,10 @@ class MainActivity : Activity() {
         })
         askPermissions()
         open(intent)
+        recorder = Recorder(this, base)
+        engine.onPlaybackEnd = { status -> event("{\"type\":\"playbackEnd\",\"status\":${quote(status)}}") }
+        // a recording an earlier walk could not send (no signal, the app closed): sent now
+        web.postDelayed({ recorder.sendAll() }, 5000)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -125,6 +133,14 @@ class MainActivity : Activity() {
                 return
             }
             val o = try { JSONObject(json) } catch (e: Exception) { JSONObject() }
+            // A REPLAY (bridge 3): the walk's recording fetched first, then ARCore runs on it instead of the camera
+            val replayWalk = o.optString("playback", "").ifEmpty { null }
+            val replayFile = replayWalk?.let { recorder.replayFile(it) }
+            if (replayWalk != null && (replayFile == null || !replayFile.exists())) {
+                event("{\"type\":\"fetching\",\"walk\":${quote(replayWalk)}}")
+                recorder.fetch(replayWalk) { startAr(json) }
+                return
+            }
             engine.options = ArEngine.Options(
                 grabW = o.optInt("grabW", 480).coerceIn(120, 1280), jpegQ = o.optInt("jpegQ", 80).coerceIn(30, 95),
                 near = o.optDouble("near", 0.05).toFloat(), far = o.optDouble("far", 300.0).toFloat(),
@@ -134,7 +150,12 @@ class MainActivity : Activity() {
             val s = Session(this)
             // the camera mode with the largest picture the phone offers (the page's pictures are cut from it)
             val configs: List<CameraConfig> = s.getSupportedCameraConfigs(CameraConfigFilter(s).setFacingDirection(CameraConfig.FacingDirection.BACK))
-            configs.maxByOrNull { it.imageSize.width * it.imageSize.height }?.let { s.cameraConfig = it }
+            configs.maxByOrNull { it.imageSize.width * it.imageSize.height }?.let { try { s.cameraConfig = it } catch (_: Exception) { } }
+            // every mode ARCore offers on this phone, told to the page (the owner, 2026-11-08: is the 1x camera the best,
+            // or the widest?): its camera, picture and texture sizes, frame rates, depth sensor and stereo use
+            val modes = configs.joinToString(",", "[", "]") { c ->
+                "{\"camera\":${quote(c.cameraId)},\"image\":\"${c.imageSize.width}x${c.imageSize.height}\",\"texture\":\"${c.textureSize.width}x${c.textureSize.height}\",\"fps\":\"${c.fpsRange.lower}-${c.fpsRange.upper}\",\"depthSensor\":${quote(c.depthSensorUsage.name)},\"stereo\":${quote(c.stereoCameraUsage.name)}}"
+            }
             val c = Config(s).apply {
                 updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
                 focusMode = Config.FocusMode.AUTO
@@ -146,13 +167,23 @@ class MainActivity : Activity() {
             var geo = o.optBoolean("geospatial", true) && BuildConfig.GEO_KEY && s.isGeospatialModeSupported(Config.GeospatialMode.ENABLED)
             var geoWhy: String? = null
             if (geo) c.geospatialMode = Config.GeospatialMode.ENABLED
+            // GEOSPATIAL DEPTH (bridge 3; developers.google.com/ar/develop/java/depth/geospatial-depth): with Geospatial
+            // and Streetscape Geometry on and depth AUTOMATIC, ARCore's depth reaches 65 m where Google has VPS
+            var street = geo && depth && o.optBoolean("streetscape", true)
+            var streetWhy: String? = null
+            if (street) c.streetscapeGeometryMode = Config.StreetscapeGeometryMode.ENABLED
             // Scene Semantics (bridge 2): not every phone has it; outdoor pictures only
             var sem = o.optBoolean("semantics", true) && s.isSemanticModeSupported(Config.SemanticMode.ENABLED)
             var semWhy: String? = null
             if (sem) c.semanticMode = Config.SemanticMode.ENABLED
             // Geospatial and semantics are bonuses: without them the walk still runs (the reasons go to the page)
             try {
-                s.configure(c)
+                try { s.configure(c) } catch (e0: Exception) {
+                    if (!street) throw e0
+                    street = false; streetWhy = e0.javaClass.simpleName
+                    c.streetscapeGeometryMode = Config.StreetscapeGeometryMode.DISABLED
+                    s.configure(c)
+                }
             } catch (e: Exception) {
                 if (!sem && !geo) throw e
                 try {
@@ -167,14 +198,30 @@ class MainActivity : Activity() {
                     s.configure(c)
                 }
             }
+            // replay or record: both set before the session first resumes (ARCore Recording & Playback)
+            var recWhy: String? = null
+            recordingWalk = null
+            if (replayFile != null) {
+                s.setPlaybackDatasetUri(Uri.fromFile(replayFile))
+            } else o.optString("record", "").ifEmpty { null }?.let { walk ->
+                try {
+                    val rc = RecordingConfig(s).setMp4DatasetUri(Uri.fromFile(recorder.fileFor(walk))).setAutoStopOnPause(true)
+                        .addTrack(Track(s).setId(ArEngine.TRACK).setMimeType("application/json"))
+                    s.startRecording(rc)
+                    recordingWalk = walk
+                } catch (e: Exception) { recWhy = e.javaClass.simpleName + ": " + (e.message ?: "") }
+            }
             s.resume()
             session = s
             engine.reset()
             engine.geoOn = geo
             engine.semOn = sem
+            engine.bothDepths = street
+            engine.recording = recordingWalk != null
+            engine.playback = replayFile != null
             engine.session = s
             val img = s.cameraConfig.imageSize
-            event("{\"type\":\"started\",\"depth\":$depth,\"geospatial\":$geo${if (geoWhy != null) ",\"geoError\":${quote(geoWhy)}" else ""},\"semantics\":$sem${if (semWhy != null) ",\"semError\":${quote(semWhy)}" else ""},\"image\":\"${img.width}x${img.height}\"}")
+            event("{\"type\":\"started\",\"depth\":$depth,\"geospatial\":$geo${if (geoWhy != null) ",\"geoError\":${quote(geoWhy)}" else ""},\"semantics\":$sem${if (semWhy != null) ",\"semError\":${quote(semWhy)}" else ""},\"image\":\"${img.width}x${img.height}\",\"camera\":${quote(s.cameraConfig.cameraId)},\"modes\":$modes,\"streetscape\":$street${if (streetWhy != null) ",\"streetError\":${quote(streetWhy)}" else ""},\"recording\":${recordingWalk != null}${if (recWhy != null) ",\"recordError\":${quote(recWhy)}" else ""},\"replay\":${quote(replayWalk)}}")
         } catch (e: Exception) {
             session = null
             event("{\"type\":\"error\",\"message\":${quote(e.javaClass.simpleName + ": " + (e.message ?: ""))}}")
@@ -187,9 +234,21 @@ class MainActivity : Activity() {
         engine.session = null
         engine.geoOn = false
         engine.semOn = false
+        val rec = recordingWalk
+        recordingWalk = null
+        engine.recording = false
+        engine.playback = false
         // past the GL thread's current frame (it reads engine.session afresh each frame), then off it: closing ARCore
         // takes a second or more, and on the GL thread that froze the last camera picture on screen (owner, 2026-11-07)
-        gl.queueEvent { Thread { try { s.pause(); s.close() } catch (_: Exception) { } }.start() }
+        gl.queueEvent { Thread {
+            try { if (rec != null) s.stopRecording() } catch (_: Exception) { }
+            try { s.pause(); s.close() } catch (_: Exception) { }
+            if (rec != null) {
+                // the MP4 is finished once recording stops: told to the page, then sent to the site
+                event("{\"type\":\"recorded\",\"walk\":${quote(rec)},\"bytes\":${recorder.fileFor(rec).length()}}")
+                recorder.sendAll()
+            }
+        }.start() }
         event("{\"type\":\"end\"}")
     }
 

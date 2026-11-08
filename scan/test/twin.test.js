@@ -79,13 +79,15 @@ console.log('twin viewer sums: ok');
   assert.ok(labels, 'a labels part with the cloud part');
   assert.ok(PART.test('labels-0000.bin'), 'the site keeps it');
   const recs = readCloud(cloud.body);
-  assert.deepEqual(readLabels(labels.body, recs.length), [{ label: null, conf: null, depthConf: null, spike: false }, { label: 'building', conf: 204 / 255, depthConf: 77 / 255, spike: true }, { label: 'sky', conf: 0, depthConf: null, spike: false }]);
+  assert.deepEqual(readLabels(labels.body, recs.length), [{ label: null, conf: null, depthConf: null, spike: false, geoDepth: false }, { label: 'building', conf: 204 / 255, depthConf: 77 / 255, spike: true, geoDepth: false }, { label: 'sky', conf: 0, depthConf: null, spike: false, geoDepth: false }]);
   assert.equal(readLabels(labels.body, recs.length + 1), null, 'a part of the wrong length is not trusted');
   assert.deepEqual(LABELS, (await import('../lib/track.js')).SEM_LABELS, 'the same labels, in the same order, as the app sends');
   addPoints(tw, T0 + 30000, 2, [{ x: 5, y: 0, z: 0 }]);
   assert.deepEqual(flush(tw, T0 + 40000).map((p) => p.name), ['cloud-0001.bin'], 'no labels part when nothing was labelled');
   addPoints(tw, T0 + 50000, 3, [{ x: 9, y: 0, z: 0, dconf: 0.9 }]);
   const p3 = flush(tw, T0 + 60000);
-  assert.deepEqual(readLabels(p3[1].body, 1), [{ label: null, conf: null, depthConf: 230 / 255, spike: false }], 'depth confidence alone writes the part');
+  assert.deepEqual(readLabels(p3[1].body, 1), [{ label: null, conf: null, depthConf: 230 / 255, spike: false, geoDepth: false }], 'depth confidence alone writes the part');
+  addPoints(tw, T0 + 70000, 4, [{ x: 40, y: 0, z: 0, geoDepth: true }]);
+  assert.equal(readLabels(flush(tw, T0 + 80000)[1].body, 1)[0].geoDepth, true, 'a Geospatial Depth point is flagged');
 }
 console.log('twin labels: ok');

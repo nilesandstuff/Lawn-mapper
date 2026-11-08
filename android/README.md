@@ -15,7 +15,7 @@ The page talks to ARCore through one bridge, `window.LawnARNative` (`Bridge.kt`)
 - What the app does with the camera is tuned from the page (`NATIVE_OPTIONS`, `NATIVE_DEPTH` in track.js): picture
   size and rate, depth kind and confidence, Geospatial rate.
 
-## The bridge (version 2)
+## The bridge (version 3)
 
 Page to app: `info()`, `start(optionsJson)`, `stop()`, `setCross(x, y)`, `depthGrid(nx, ny, kind, minConf)`,
 `grab()`, `openExternal(url)`, `log(msg)`; since version 2 `anchor(x, y, z)` (an ARCore anchor's id, or -1) and
@@ -24,6 +24,17 @@ crosshair's hit, Geospatial when on; since version 2 `sem`, the share of the pic
 and `anchors`, [[id, x, y, z, state], ...]) and `LawnARNative_onEvent(event)` (started, with `semantics` since
 version 2; installing, error, end). Since version 2 `depthGrid` also carries each cell's semantic label `l` (ARCore's
 numbers 0-11) and its confidence `lc`.
+
+Version 3 (app 1.9, 2026-11-08): RECORDING AND REPLAY. `start` takes `record: <walk id>` (ARCore Recording & Playback
+writes the walk's camera, motion and Geospatial input to recordings/<walk>.mp4, with the page's actions on a data
+track: `record(json)`) and `playback: <walk id>` (the walk's recording fetched from the site, then ARCore runs on it
+instead of the camera; the page's recorded actions come back in the frame's `events`, and a `playbackEnd` event when
+it is over). After a walk the MP4 goes to the scan site in 8 MB pieces with the page's sign-in cookie
+(scan/src/recording.js) and is deleted from the phone once the site has it; what could not be sent is sent when the
+app next opens (`pendingRecordings()`, `sendRecordings()`). Events: fetching, download, upload, recorded,
+playbackEnd. Also Geospatial Depth (Streetscape Geometry on with Geospatial and depth: ARCore's smoothed depth to 65 m
+where Google has VPS; `depthGrid(..., 'smooth', ...)` keeps it beside the raw), and `started` lists every camera mode
+ARCore offers (camera id, picture and texture sizes, frame rates, depth sensor, stereo).
 
 What Chrome's WebXR does not give and this does: raw depth with ARCore's confidence (Chrome on the S21 ignores the
 raw request, SCAN-PLAN), the camera's own picture at the camera mode's full size, ARCore's Geospatial pose (with a

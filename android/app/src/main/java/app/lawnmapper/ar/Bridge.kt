@@ -28,7 +28,9 @@ class Bridge(private val a: MainActivity) {
     /**
      * Start ARCore with the page's options (JSON, all optional): { grabW, jpegQ, near, far, depthEveryMs,
      * pictureEveryMs, geoEveryMs, semEveryMs, anchorsEveryMs, depth: true, geospatial: true, semantics: true,
-     * planes: true }. Answers at once; how it went comes
+     * planes: true, streetscape: true, record: <walk id> (bridge 3: an ARCore recording of the walk),
+     * playback: <walk id> (bridge 3: run ARCore on that walk's recording instead of the camera) }. Answers at once;
+     * how it went comes
      * as an event.
      */
     @JavascriptInterface
@@ -66,6 +68,19 @@ class Bridge(private val a: MainActivity) {
     /** Open a link outside the app (Chrome): the update's download, a page off the scan site. */
     @JavascriptInterface
     fun openExternal(url: String) { a.runOnUiThread { a.openExternal(url) } }
+
+    /** Bridge 3: something the page did (a check mark, a pin), as JSON, kept in the walk's recording with this frame;
+     *  a replay hands it back in the frame's "events". */
+    @JavascriptInterface
+    fun record(json: String) { a.engine.record(json.take(4000)) }
+
+    /** Bridge 3: recordings on the phone not yet sent to the site: [{ walk, bytes }]. */
+    @JavascriptInterface
+    fun pendingRecordings(): String = a.recorder.pending()
+
+    /** Bridge 3: send the waiting recordings now (they are also sent when a walk ends and when the app opens). */
+    @JavascriptInterface
+    fun sendRecordings() { a.recorder.sendAll() }
 
     @JavascriptInterface
     fun log(msg: String) { Log.i("LawnAR", msg.take(500)) }

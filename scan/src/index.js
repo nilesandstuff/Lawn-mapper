@@ -16,6 +16,7 @@
 
 import { walks } from './walks.js';
 import { twin } from './twin.js';
+import { recording } from './recording.js';
 import { app } from './app.js';
 
 /** GETs passed on to Lawn Mapper for the page's own use (the photo and the lidar come in phase 2). */
@@ -88,6 +89,9 @@ export default {
     // the walks' twins (src/twin.js): the admin only, the same way
     const twinned = await twin(request, env, url, { isAdmin });
     if (twinned) return twinned;
+    // a walk's ARCore recording, for replay (src/recording.js): the admin only, the same way
+    const recorded = await recording(request, env, url, { isAdmin });
+    if (recorded) return recorded;
     const up = upstreamFor(url, env.LAWNMAP_HOST, request.method);
     if (!up) return notFound();
     if (env.LAWNMAP) return env.LAWNMAP.fetch(new Request(up, request));

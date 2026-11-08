@@ -71,6 +71,10 @@ def read_cloud(d):
             u = np.fromfile(lp, dtype=np.uint8)
             if len(u) == 4 * len(a):
                 lab = np.stack([u[0::4].astype(np.float64), u[1::4] / 255.0, u[2::4] / 255.0, (u[3::4] & 1).astype(np.float64)], 1)
+                # Geospatial Depth points (flag 2) are Google's model placed by the Geospatial pose, not the camera's
+                # sight: left out of every sight-line study
+                keep = (u[3::4] & 2) == 0
+                a, lab = a[keep], lab[keep]
             elif len(u) == 3 * len(a):
                 lab[:, :3] = np.stack([u[0::3].astype(np.float64), u[1::3] / 255.0, u[2::3] / 255.0], 1)
         out.append(np.concatenate([a, lab], 1))

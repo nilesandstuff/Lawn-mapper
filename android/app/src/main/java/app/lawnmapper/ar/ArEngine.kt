@@ -13,7 +13,10 @@ import com.google.ar.core.Pose
 import com.google.ar.core.SemanticLabel
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingState
+import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.UUID
+import com.google.ar.core.PlaybackStatus
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.Executors
@@ -50,6 +53,18 @@ class ArEngine(private val send: (String) -> Unit) : GLSurfaceView.Renderer {
     @Volatile var semOn = false
     @Volatile private var inFlight = false
 
+    /* RECORDING AND REPLAY (bridge 3): while ARCore records, what the page does (a check mark, a pin) goes into the
+       recording as a data track beside the camera, with the frame it happened on; on a replay those come back with
+       the same frames ("events" in the frame), so the page can do them again. */
+    @Volatile var recording = false
+    @Volatile var bothDepths = false
+    @Volatile var playback = false
+    @Volatile var onPlaybackEnd: ((String) -> Unit)? = null
+    private val toRecord = ConcurrentLinkedQueue<String>()
+    private val replayed = StringBuilder()
+    private var playbackEnded = false
+    fun record(json: String) { if (recording) toRecord.add(json) }
+
     /* ANCHORS (bridge 2): the page asks for one at a session point and gets its id at once; it is made on this thread
        with the next frame, and every anchorsEveryMs the frame carries where ARCore now puts each one. ARCore moves an
        anchor when it corrects its own map, so the moves are its drift, admitted. */
@@ -71,7 +86,7 @@ class ArEngine(private val send: (String) -> Unit) : GLSurfaceView.Renderer {
     }
     fun dropAnchor(id: Int) { anchorDrops.add(id) }
     /** A new session: the old one's anchors died with it. */
-    fun reset() { anchors.clear(); anchorAsks.clear(); anchorDrops.clear(); lastRawImageTs = 0L; depthRaw = null; depthSmooth = null }
+    fun reset() { anchors.clear(); anchorAsks.clear(); anchorDrops.clear(); lastRawImageTs = 0L; depthRaw = null; depthSmooth = null; toRecord.clear(); replayed.setLength(0); playbackEnded = false }
 
     private val bg = BackgroundRenderer()
     private val worker = Executors.newSingleThreadExecutor()
@@ -109,6 +124,18 @@ class ArEngine(private val send: (String) -> Unit) : GLSurfaceView.Renderer {
         if (geometryFor !== s) { s.setDisplayGeometry(Surface.ROTATION_0, viewW, viewH); geometryFor = s }
         val frame = try { s.update() } catch (e: Exception) { return }
         bg.draw(frame)
+        if (recording) while (true) { val j = toRecord.poll() ?: break; try { frame.recordTrackData(TRACK, ByteBuffer.wrap(j.toByteArray())) } catch (_: Exception) { } }
+        if (playback) {
+            try {
+                for (d in frame.getUpdatedTrackData(TRACK)) {
+                    val b = d.data; val bytes = ByteArray(b.remaining()); b.get(bytes)
+                    if (replayed.isNotEmpty()) replayed.append(',')
+                    replayed.append(String(bytes))
+                }
+            } catch (_: Exception) { }
+            val ps = try { s.playbackStatus } catch (_: Exception) { PlaybackStatus.OK }
+            if (!playbackEnded && ps != PlaybackStatus.OK && ps != PlaybackStatus.NONE) { playbackEnded = true; onPlaybackEnd?.invoke(ps.name) }
+        }
         val ts = frame.timestamp
         if (ts == 0L || ts == lastTs) return
         lastTs = ts
@@ -147,6 +174,7 @@ class ArEngine(private val send: (String) -> Unit) : GLSurfaceView.Renderer {
         geoJson?.let { sb.append(",\"geo\":").append(it); geoJson = null }
         semJson?.let { sb.append(",\"sem\":").append(it); semJson = null }
         anchorsJson?.let { sb.append(",\"anchors\":").append(it); anchorsJson = null }
+        if (replayed.isNotEmpty()) { sb.append(",\"events\":[").append(replayed).append(']'); replayed.setLength(0) }
         sb.append('}')
         return sb.toString()
     }
@@ -211,8 +239,9 @@ class ArEngine(private val send: (String) -> Unit) : GLSurfaceView.Renderer {
                 }
             }
         } catch (_: Exception) { }
-        // the smoothed depth only where there is no raw (the page uses raw when it has it)
-        if (!raw) try {
+        // the smoothed depth only where there is no raw (the page uses raw when it has it), or always when Geospatial
+        // Depth is on (bridge 3): that one reaches 65 m from Google's Streetscape Geometry, where raw stops
+        if (!raw || bothDepths) try {
             frame.acquireDepthImage16Bits().use { img -> depthSmooth = make("smooth", img, null) }
         } catch (_: Exception) { }
     }
@@ -300,6 +329,8 @@ class ArEngine(private val send: (String) -> Unit) : GLSurfaceView.Renderer {
 
     companion object {
         const val MAX_ANCHORS = 64
+        /** The page's own track in a recording (its actions, as JSON, with their frames). */
+        val TRACK: UUID = UUID.fromString("5b0f3a1e-6c2d-4c4e-9a57-1a2b3c4d5e6f")
         val SEM_LABELS = listOf(
             "sky" to SemanticLabel.SKY, "building" to SemanticLabel.BUILDING, "tree" to SemanticLabel.TREE,
             "road" to SemanticLabel.ROAD, "sidewalk" to SemanticLabel.SIDEWALK, "terrain" to SemanticLabel.TERRAIN,

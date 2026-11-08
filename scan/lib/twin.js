@@ -10,7 +10,8 @@
  *                   One point per 5 cm cube for the whole walk, so standing still adds nothing.
  *   labels-NNNN.bin what ARCore said of each record of cloud-NNNN.bin, in the same order (the app, since 2026-11-08):
  *                   Uint8 quads [semantic label + 1 (0 = none; LABELS), its confidence x 255, the depth's own
- *                   confidence x 255 (0 = not given), flags (1: a spike, spikes.js)]. Only written when a point of
+ *                   confidence x 255 (0 = not given), flags (1: a spike, spikes.js; 2: Geospatial Depth, Google's
+ *                   Streetscape Geometry past 25 m, not measured by the camera)]. Only written when a point of
  *                   that part had any of them; a reader takes a missing or short part as none. (Triples on the
  *                   walks of the evening of 2026-11-08 before the flags.)
  *   track-NNNN.bin  the camera, five times a second: Float32 [t, odo, x, y, z, qx, qy, qz, qw, tracking 0|1|2].
@@ -60,8 +61,8 @@ export function addPoints(tw, now, odo, pts, gy = NaN) {
     tw.cloud.push(t, odo, p.x, p.y, p.z, p.g ?? gy ?? NaN); n++; // p.g: the ground the page took under it (locate.js addDepth)
     const li = p.label ? LABELS.indexOf(p.label) : -1;
     const byte = (v) => (Number.isFinite(v) ? Math.max(0, Math.min(255, Math.round(v * 255))) : 0);
-    tw.labels.push(li + 1, li >= 0 ? byte(p.lconf) : 0, byte(p.dconf), p.spike ? 1 : 0);
-    if (li >= 0 || Number.isFinite(p.dconf) || p.spike) tw.labelled = true;
+    tw.labels.push(li + 1, li >= 0 ? byte(p.lconf) : 0, byte(p.dconf), (p.spike ? 1 : 0) | (p.geoDepth ? 2 : 0));
+    if (li >= 0 || Number.isFinite(p.dconf) || p.spike || p.geoDepth) tw.labelled = true;
   }
   tw.counts.points += n;
   return n;
@@ -124,7 +125,7 @@ export function flush(tw, now, live = null) {
   tw.counts.parts += out.length;
   return out;
 }
-export const metaOf = (tw) => ({ walk: tw.walk, map: tw.map, engine: tw.engine, depthType: tw.depthType || null, started: new Date(tw.started).toISOString(), camera: tw.camera, voxelM: VOXEL, cloudRecord: ['t', 'odo', 'x', 'y', 'z', 'ground'], labelRecord: ['label + 1 (0 none)', 'label confidence x 255', 'depth confidence x 255 (0 not given)', 'flags (1 spike)'], labels: LABELS, trackRecord: ['t', 'odo', 'x', 'y', 'z', 'qx', 'qy', 'qz', 'qw', 'tracking'] });
+export const metaOf = (tw) => ({ walk: tw.walk, map: tw.map, engine: tw.engine, depthType: tw.depthType || null, started: new Date(tw.started).toISOString(), camera: tw.camera, voxelM: VOXEL, cloudRecord: ['t', 'odo', 'x', 'y', 'z', 'ground'], labelRecord: ['label + 1 (0 none)', 'label confidence x 255', 'depth confidence x 255 (0 not given)', 'flags (1 spike, 2 geospatial depth)'], labels: LABELS, trackRecord: ['t', 'odo', 'x', 'y', 'z', 'qx', 'qy', 'qz', 'qw', 'tracking'] });
 
 /**
  * The state worth keeping as it stands: the lidar's kept fixes and the references' marks (each with its moment of
@@ -158,7 +159,7 @@ export function readLabels(buf, records) {
   const u = new Uint8Array(buf);
   if (u.length !== records * LABEL_REC) return null;
   const out = [];
-  for (let i = 0; i < u.length; i += LABEL_REC) out.push({ label: u[i] ? LABELS[u[i] - 1] ?? null : null, conf: u[i] ? u[i + 1] / 255 : null, depthConf: u[i + 2] ? u[i + 2] / 255 : null, spike: !!(u[i + 3] & 1) });
+  for (let i = 0; i < u.length; i += LABEL_REC) out.push({ label: u[i] ? LABELS[u[i] - 1] ?? null : null, conf: u[i] ? u[i + 1] / 255 : null, depthConf: u[i + 2] ? u[i + 2] / 255 : null, spike: !!(u[i + 3] & 1), geoDepth: !!(u[i + 3] & 2) });
   return out;
 }
 /** A track part back as records: [{ t, odo, pos, quat, tracking }]. */

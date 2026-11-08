@@ -1650,3 +1650,26 @@ its trees and shrubs. First version (no line of sight, pavement at a credit a ce
 SPECULATION, measured on the next walk: ARCore's labels route the evidence (in the study since this date: a wall
 earns only from building or structure points, a thing from tree, structure or object, sky, people and cars from
 nothing). Walks from the evening of 2026-11-08 carry them.
+
+### 13. Recording and replay, Geospatial Depth, camera modes (the app's bridge 3, 2026-11-08)
+
+The owner: "let's do it so I don't have to keep doing the same walks over and over." App 1.9: every walk in the app is
+recorded by ARCore (camera, motion, Geospatial) unless the page's box is unticked, with the page's actions (marks,
+pins, checks, undo) on a data track at their frames; after the walk the MP4 goes to the site (twins/<walk>/recording.mp4,
+private) and off the phone. "Replay a recorded walk" fetches it and runs ARCore on it instead of the camera, in real
+time (Google: playback cannot be sped up, and "ARCore APIs may produce different results during playback"); the page
+does the recorded actions again at their frames and keeps the replay as a walk of its own (summary replayOf), so any
+change to the page can be tried on a walk already walked. A replay uses no live GPS.
+
+Geospatial Depth (developers.google.com/ar/develop/java/depth/geospatial-depth): with Geospatial and Streetscape
+Geometry on and depth AUTOMATIC, ARCore's (smoothed) depth reaches 65 m where Google has VPS. Google documents it for
+the smoothed depth only; the page's matching uses raw. On: the smoothed depth past 25 m is kept in the twin, flagged
+(flag 2 in labels-NNNN.bin) and left out of every sight-line study and of the live match, since it is Google's model
+placed by the Geospatial pose, not the camera's sight. SPECULATION: those points against the lidar would say how well
+the Geospatial pose itself is placed, a check independent of the phone's depth.
+
+Camera modes (the owner: "is the 1x camera still the best option? Or should we use the widest available?"): Google's
+camera-config page offers no choice of field of view or of physical camera; ARCore tracks with its own camera. The app
+now lists every mode ARCore offers on the phone (camera id, picture and texture sizes, frame rates, stereo) in the
+walk's summary; the walk list prints them. If ARCore offers more than one camera id, a wider one can be tried; if one,
+there is no choice to make.
