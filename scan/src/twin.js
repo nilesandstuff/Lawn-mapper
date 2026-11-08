@@ -19,7 +19,7 @@
 const json = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 
 export const MAX_PART = 8 * 1024 * 1024;
-export const PART = /^(meta|live|end|splat|fixed)\.json$|^(cloud|track)-\d{4}\.bin$|^keys-\d{4}\.json$|^key-\d{4}\.jpg$|^splat\.splat$|^splat-compare\.jpg$|^mesh\.bin$/;
+export const PART = /^(meta|live|end|splat|fixed)\.json$|^(cloud|track|labels)-\d{4}\.bin$|^keys-\d{4}\.json$|^key-\d{4}\.jpg$|^splat\.splat$|^splat-compare\.jpg$|^mesh\.bin$/;
 export const WALK = /^[0-9a-zA-Z_-]{1,40}$/;
 const TYPES = { json: 'application/json', bin: 'application/octet-stream', jpg: 'image/jpeg' };
 export const typeOf = (part) => TYPES[part.split('.').pop()] || 'application/octet-stream';

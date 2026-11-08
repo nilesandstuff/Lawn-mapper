@@ -67,3 +67,22 @@ console.log('twin: ok');
   assert.deepEqual(lineUp(pts, dist), { n: 1, within30cm: 1, medianM: Float32Array.of(0.2)[0] });
 }
 console.log('twin viewer sums: ok');
+// ARCore's label with each point (app bridge 2): a labels part beside the cloud part, one pair per record, written
+// only when a point had a label; the site takes it
+{
+  const { readLabels, LABELS } = await import('../lib/twin.js');
+  const { PART } = await import('../src/twin.js');
+  const tw = newTwin({ walk: 'l', started: T0 });
+  addPoints(tw, T0 + 100, 1, [{ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0, label: 'building', lconf: 0.8 }, { x: 2, y: 0, z: 0, label: 'sky', lconf: null }]);
+  const parts = flush(tw, T0 + 20000);
+  const cloud = parts.find((p) => p.name === 'cloud-0000.bin'), labels = parts.find((p) => p.name === 'labels-0000.bin');
+  assert.ok(labels, 'a labels part with the cloud part');
+  assert.ok(PART.test('labels-0000.bin'), 'the site keeps it');
+  const recs = readCloud(cloud.body);
+  assert.deepEqual(readLabels(labels.body, recs.length), [{ label: null, conf: null }, { label: 'building', conf: 204 / 255 }, { label: 'sky', conf: 0 }]);
+  assert.equal(readLabels(labels.body, recs.length + 1), null, 'a part of the wrong length is not trusted');
+  assert.deepEqual(LABELS, (await import('../lib/track.js')).SEM_LABELS, 'the same labels, in the same order, as the app sends');
+  addPoints(tw, T0 + 30000, 2, [{ x: 5, y: 0, z: 0 }]);
+  assert.deepEqual(flush(tw, T0 + 40000).map((p) => p.name), ['cloud-0001.bin'], 'no labels part when nothing was labelled');
+}
+console.log('twin labels: ok');

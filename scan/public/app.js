@@ -472,7 +472,7 @@ function onFrame(f) {
       if (l && st.sem) noteSem(st.sem, l, lc, f.depth.m(x, y), p && L.groundY != null ? p.y - L.groundY : null);
       if (!p) continue;
       if (!keepPoint(l, lc)) { if (st.sem) st.sem.dropped++; continue; }
-      if (l) p.label = l;
+      if (l) { p.label = l; p.lconf = lc; }
       pts.push(p);
     }
     /* HOLES IN THE DEPTH (2026-11-07): Chrome no longer names the depth type when asked for raw alone, so the walk

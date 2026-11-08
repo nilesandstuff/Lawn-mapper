@@ -80,6 +80,21 @@ def main():
         return f"{mask[sel].mean():.0%} of {int(sel.sum()):,}" if sel.any() else "-"
     print(f"Depth audit: {len(lines):,} depth points ({int(isg.sum()):,} on the ground). PHANTOMS by the walk's own lines (seen through from elsewhere more than twice as often as seen): {share(phantom, np.ones(len(lines), bool))}; standing points {share(phantom, ~isg)}; ground points {share(phantom, isg)}.")
     print("  standing points by how far off: " + "; ".join(f"{a * FT:.0f}-{b * FT:.0f} ft {share(phantom, (~isg) & (r >= a) & (r < b))}" for a, b in bins))
+    # ARCore's own label on each point (labels-NNNN.bin, app bridge 2 from 2026-11-08)
+    lab = lines[:, 7].astype(np.int64)
+    sure = lines[:, 8] >= 0.5
+    has_labels = (lab > 0).mean() > 0.2
+    def lname(k):
+        return vs.LABELS[k - 1] if 0 < k <= len(vs.LABELS) else "none"
+    if has_labels:
+        rows = []
+        for k in np.argsort(-np.bincount(lab[~isg], minlength=13))[:7]:
+            sel = (~isg) & (lab == k)
+            if sel.sum() >= 200:
+                rows.append(f"{lname(k)} {share(phantom, sel)}")
+        print(f"  ARCore's labels on {(lab > 0).mean():.0%} of the points ({sure[lab > 0].mean():.0%} of those sure). Phantoms among standing points, by label: " + "; ".join(rows))
+    else:
+        print("  No labels saved with this walk's points (they are kept from the scan site of 2026-11-08 on).")
 
     # the model, under the truth (check points) or the placement after the walk
     checks = list({c["id"]: c for c in inp.get("checks") or []}.values())
@@ -113,6 +128,10 @@ def main():
     hitbld[j] = M.K[rr[j, first[j]], cc[j, first[j]]] == 1
     near = (R - rs > 2.0) & (rs < 0.6 * R)          # the phone stopped well short of the model's first surface
     print(f"  Against the model under {src}: standing points stopped well short of the model's first hard surface (2 m+ and under 60% of its distance): {near.mean():.0%}; of those, in front of a BUILDING {np.mean(hitbld[near]) if near.any() else 0:.0%}; of those, phantoms by the walk's own lines {np.mean(phantom[S][near & hitbld]) if (near & hitbld).any() else 0:.0%}.")
+    if has_labels and (near & hitbld).any():
+        lk = Ls[:, 7].astype(np.int64)[near & hitbld]
+        cnt = np.bincount(lk, minlength=13)
+        print("  ARCore's labels on the points short of a building: " + "; ".join(f"{lname(k)} {cnt[k] / len(lk):.0%}" for k in np.argsort(-cnt)[:5] if cnt[k]))
     print("  short of a building, by how far the phone said: " + "; ".join(f"{a * FT:.0f}-{b * FT:.0f} ft {int(((near & hitbld) & (rs >= a) & (rs < b)).sum()):,}" for a, b in bins))
 
     # the moments: per second, standing points well short of a building at least 5 m off
@@ -140,14 +159,25 @@ def main():
             ang = math.degrees(math.atan2(fe[0] - ce[0], fn[0] - cn[0])) % 360
             face = COMPASS[int(((ang + 22.5) % 360) // 45)]
             pitch = math.degrees(math.asin(max(-1, min(1, fwd[1] / max(1e-9, np.linalg.norm(fwd))))))
-            print(f"    {int(s0 // 60)}:{int(s0 % 60):02d}, {np.nanmedian(odo[m]) * FT:.0f} ft walked, facing {face} ({ang:.0f} deg), camera {pitch:+.0f} deg: {int(m.sum())} readings, phone {np.median(rs[m]) * FT:.1f} ft / model {np.median(R[m]) * FT:.1f} ft, phantoms {np.mean(phantom[S][m]):.0%}")
+            lm = ""
+            if has_labels:
+                lk = np.bincount(Ls[m, 7].astype(np.int64), minlength=13)
+                lm = f", ARCore said {lname(int(lk.argmax()))} ({lk.max() / m.sum():.0%})"
+            print(f"    {int(s0 // 60)}:{int(s0 % 60):02d}, {np.nanmedian(odo[m]) * FT:.0f} ft walked, facing {face} ({ang:.0f} deg), camera {pitch:+.0f} deg: {int(m.sum())} readings, phone {np.median(rs[m]) * FT:.1f} ft / model {np.median(R[m]) * FT:.1f} ft, phantoms {np.mean(phantom[S][m]):.0%}{lm}")
     else:
         print("  No moments with near readings in front of a building.")
 
-    # the view study's variant C without the phantoms
-    keep = ~phantom
-    clean = lines[keep]
-    if len(checks) >= 2 and len(clean) > 1000:
+    # the view study's variant C without the phantoms; with labels, also with only the standing points ARCore was sure
+    # were a building or a structure (the model's hard kinds)
+    rerun(d, inp, M, T, checks, gl, lines[~phantom], f"without the phantoms ({int(phantom.sum()):,} left out)")
+    if has_labels:
+        hard = isg | (sure & np.isin(lab, [vs.LABELS.index("building") + 1, vs.LABELS.index("structure") + 1]))
+        rerun(d, inp, M, T, checks, gl, lines[hard & ~phantom], f"on ARCore's buildings and structures only ({int((hard & ~isg).sum()):,} standing points)")
+    print(f"Done in {int(time.time() - t0)} s.")
+
+
+def rerun(d, inp, M, T, checks, gl, clean, what):
+    if len(checks) >= 2 and len(clean) > 1000 and (clean[:, 6] < 0.5).sum() > 300:
         name, fine, P = vs.VARIANTS[2]
         L = np.concatenate([vs.pick(clean, vs.RAYS, False), vs.pick(clean, vs.GROUND_RAYS, True)])
         f = lambda T_: vs.cost(M, T_, L, gl, P=P)[0]
@@ -165,8 +195,7 @@ def main():
         res = sorted((vs.refine(f, T0) + (nm,) for T0, nm in starts), key=lambda x: x[0])
         cT, TT = vs.refine(f, truth)
         ct, _, parts = vs.cost(M, truth, L, gl, detail=True, P=P)
-        print(f"  View study C without the phantoms ({int(phantom.sum()):,} left out): best from {res[0][2]}, median {med(res[0][1]):.1f} ft at the check points (starts end at {sorted({round(med(x[1]), 1) for x in res})} ft); at the truth: cost {ct:.4f} against the best {res[0][0]:.4f}, open air {parts['free']:.0%}; refined from the truth it moves to median {med(TT):.1f} ft.")
-    print(f"Done in {int(time.time() - t0)} s.")
+        print(f"  View study C {what}: best from {res[0][2]}, median {med(res[0][1]):.1f} ft at the check points (starts end at {sorted({round(med(x[1]), 1) for x in res})} ft); at the truth: cost {ct:.4f} against the best {res[0][0]:.4f}, open air {parts['free']:.0%}; refined from the truth it moves to median {med(TT):.1f} ft.")
 
 
 if __name__ == "__main__":

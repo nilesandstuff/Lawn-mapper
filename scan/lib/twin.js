@@ -8,6 +8,9 @@
  *                   seconds from the walk's start, ground the height the page took for the ground under it then
  *                   (the column's floor, locate.js groundUnder; before 2026-11-04 the crosshair's average).
  *                   One point per 5 cm cube for the whole walk, so standing still adds nothing.
+ *   labels-NNNN.bin ARCore's semantic label for each record of cloud-NNNN.bin, in the same order (app bridge 2, since
+ *                   2026-11-08): Uint8 pairs [label + 1 (0 = none; LABELS), confidence x 255]. Only written when a
+ *                   point of that part had a label; a reader takes a missing or short part as no labels.
  *   track-NNNN.bin  the camera, five times a second: Float32 [t, odo, x, y, z, qx, qy, qz, qw, tracking 0|1|2].
  *   key-NNNN.jpg    camera pictures (WebXR's camera-access), at most one a second and only after moving 0.3 m or
  *                   turning 10 degrees, each with its pose and projection in keys-NNNN.json: what a later Gaussian
@@ -30,11 +33,13 @@ export const POSE_EVERY = 200;       // ms between camera poses
 export const KEY_EVERY = 1000;       // ms at least between pictures
 export const KEY_MOVE = 0.3, KEY_TURN = 10; // m, degrees: what counts as having moved for a new picture
 export const KEY_MAX = 900;          // pictures per walk at most (15 minutes of one a second)
-export const CLOUD_REC = 6, TRACK_REC = 10;
+export const CLOUD_REC = 6, TRACK_REC = 10, LABEL_REC = 2;
+/** ARCore's Scene Semantics labels (track.js SEM_LABELS), in its order; stored as index + 1, 0 for none. */
+export const LABELS = ['unlabeled', 'sky', 'building', 'tree', 'road', 'sidewalk', 'terrain', 'structure', 'object', 'vehicle', 'person', 'water'];
 export const FLUSH_EVERY = 15000;    // ms between uploads of what has piled up
 
 export function newTwin({ walk, map = null, engine = null, started = Date.now() } = {}) {
-  return { walk: String(walk), map, engine, started, cloud: [], track: [], keys: [], vox: new Set(), seq: { cloud: 0, track: 0, key: 0 }, lastPose: -Infinity, lastKey: null, flushedAt: started, counts: { points: 0, poses: 0, keys: 0, parts: 0, failed: 0 }, camera: null };
+  return { walk: String(walk), map, engine, started, cloud: [], labels: [], labelled: false, track: [], keys: [], vox: new Set(), seq: { cloud: 0, track: 0, key: 0 }, lastPose: -Infinity, lastKey: null, flushedAt: started, counts: { points: 0, poses: 0, keys: 0, parts: 0, failed: 0 }, camera: null };
 }
 
 const sec = (tw, now) => (now - tw.started) / 1000;
@@ -51,6 +56,9 @@ export function addPoints(tw, now, odo, pts, gy = NaN) {
       tw.vox.add(k);
     }
     tw.cloud.push(t, odo, p.x, p.y, p.z, p.g ?? gy ?? NaN); n++; // p.g: the ground the page took under it (locate.js addDepth)
+    const li = p.label ? LABELS.indexOf(p.label) : -1;
+    tw.labels.push(li + 1, li >= 0 && Number.isFinite(p.lconf) ? Math.max(0, Math.min(255, Math.round(p.lconf * 255))) : 0);
+    if (li >= 0) tw.labelled = true;
   }
   tw.counts.points += n;
   return n;
@@ -99,7 +107,12 @@ export function flush(tw, now, live = null) {
     out.push({ name: 'meta.json', type: 'application/json', body: JSON.stringify(metaOf(tw)) });
     tw.metaSent = true;
   }
-  if (tw.cloud.length) { out.push({ name: `cloud-${pad(tw.seq.cloud++)}.bin`, type: 'application/octet-stream', body: Float32Array.from(tw.cloud).buffer }); tw.cloud = []; }
+  if (tw.cloud.length) {
+    const k = pad(tw.seq.cloud++);
+    out.push({ name: `cloud-${k}.bin`, type: 'application/octet-stream', body: Float32Array.from(tw.cloud).buffer });
+    if (tw.labelled) out.push({ name: `labels-${k}.bin`, type: 'application/octet-stream', body: Uint8Array.from(tw.labels).buffer });
+    tw.cloud = []; tw.labels = []; tw.labelled = false;
+  }
   if (tw.track.length) { out.push({ name: `track-${pad(tw.seq.track++)}.bin`, type: 'application/octet-stream', body: Float32Array.from(tw.track).buffer }); tw.track = []; }
   if (tw.keys.length) { out.push({ name: `keys-${pad(tw.seq.key++)}.json`, type: 'application/json', body: JSON.stringify(tw.keys) }); tw.keys = []; }
   if (live) out.push({ name: 'live.json', type: 'application/json', body: JSON.stringify(live) });
@@ -108,7 +121,7 @@ export function flush(tw, now, live = null) {
   tw.counts.parts += out.length;
   return out;
 }
-export const metaOf = (tw) => ({ walk: tw.walk, map: tw.map, engine: tw.engine, depthType: tw.depthType || null, started: new Date(tw.started).toISOString(), camera: tw.camera, voxelM: VOXEL, cloudRecord: ['t', 'odo', 'x', 'y', 'z', 'ground'], trackRecord: ['t', 'odo', 'x', 'y', 'z', 'qx', 'qy', 'qz', 'qw', 'tracking'] });
+export const metaOf = (tw) => ({ walk: tw.walk, map: tw.map, engine: tw.engine, depthType: tw.depthType || null, started: new Date(tw.started).toISOString(), camera: tw.camera, voxelM: VOXEL, cloudRecord: ['t', 'odo', 'x', 'y', 'z', 'ground'], labelRecord: ['label + 1 (0 none)', 'confidence x 255'], labels: LABELS, trackRecord: ['t', 'odo', 'x', 'y', 'z', 'qx', 'qy', 'qz', 'qw', 'tracking'] });
 
 /**
  * The state worth keeping as it stands: the lidar's kept fixes and the references' marks (each with its moment of
@@ -134,6 +147,15 @@ export function liveOf(L, w, extra = {}) {
 export function readCloud(buf) {
   const f = new Float32Array(buf), out = [];
   for (let i = 0; i + CLOUD_REC <= f.length; i += CLOUD_REC) out.push({ t: f[i], odo: f[i + 1], x: f[i + 2], y: f[i + 3], z: f[i + 4], ground: f[i + 5] });
+  return out;
+}
+/** A labels part back, beside its cloud part's records: [{ label, conf }] (label null for none), or null when the
+ *  part does not hold one pair per record. */
+export function readLabels(buf, records) {
+  const u = new Uint8Array(buf);
+  if (u.length !== records * LABEL_REC) return null;
+  const out = [];
+  for (let i = 0; i < u.length; i += LABEL_REC) out.push({ label: u[i] ? LABELS[u[i] - 1] ?? null : null, conf: u[i] ? u[i + 1] / 255 : null });
   return out;
 }
 /** A track part back as records: [{ t, odo, pos, quat, tracking }]. */
