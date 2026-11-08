@@ -24,7 +24,7 @@ async function main() {
   const dir = process.argv[2] || 'twin';
   const meta = JSON.parse(readFileSync(join(dir, 'meta.json'), 'utf8'));
   if (!meta.map) throw new Error('the twin names no map');
-  const token = process.env.MAPBOX_TOKEN || process.env.MAPBOX_SERVER_TOKEN;
+  const token = process.env.MAPBOX_SERVER_TOKEN || process.env.MAPBOX_TOKEN;   // the server one: the browser one is restricted to the site (worker/src/index.js serverToken)
   if (!token) throw new Error('no Mapbox token');
   const m = await readMap(meta.map);
   const model = await readModel(meta.map, m.ownerId);
