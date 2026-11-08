@@ -8,7 +8,7 @@
  *
  * Prints counts and sizes only: a twin holds yard pictures and the repository is public.
  */
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 
 export const BUCKET = 'lawn-scan-twins';
@@ -77,15 +77,24 @@ async function main() {
     mkdirSync(dir, { recursive: true });
     const objs = (await list(base, token, `twins/${walk}/`)).filter((o) => !/\/splat[.-]/.test(o.key) && !(process.env.NO_PICTURES && /\/key-\d+\.jpg$/.test(o.key)));
     let bytes = 0, failed = 0;
-    await pool(objs, 8, async (o) => {
-      for (let t = 0; t < 3; t++) {
+    const why = {};
+    // backs off on a refusal: four place runs at once (8 requests each, retried at once) lost 218 of 566 parts to
+    // the API's rate limit on 2026-11-08
+    await pool(objs, 6, async (o) => {
+      let last = 'no answer';
+      for (let t = 0; t < 7; t++) {
+        if (t) await new Promise((ok) => setTimeout(ok, Math.min(30000, 1000 * 2 ** (t - 1)) * (0.75 + Math.random() / 2)));
         const r = await fetch(`${base}/objects/${o.key.split('/').map(encodeURIComponent).join('/')}`, { headers: { Authorization: `Bearer ${token}` } }).catch(() => null);
-        if (r?.ok) { const b = Buffer.from(await r.arrayBuffer()); writeFileSync(join(dir, basename(o.key)), b); bytes += b.length; return; }
+        const b = r?.ok ? await r.arrayBuffer().then((x) => Buffer.from(x), () => null) : null;
+        if (b) { writeFileSync(join(dir, basename(o.key)), b); bytes += b.length; return; }
+        last = r ? (r.ok ? 'cut off' : String(r.status)) : 'no answer';
+        if (r?.status === 404) break;
       }
-      failed++;
+      failed++; why[last] = (why[last] || 0) + 1;
     });
     const pics = objs.filter((o) => /\/key-\d+\.jpg$/.test(o.key)).length;
-    console.log(`Twin read: ${objs.length - failed} parts, ${(bytes / 1e6).toFixed(1)} MB, ${pics} pictures${failed ? `, ${failed} could not be read` : ''}.`);
+    console.log(`Twin read: ${objs.length - failed} parts, ${(bytes / 1e6).toFixed(1)} MB, ${pics} pictures${failed ? `, ${failed} could not be read (${Object.entries(why).map(([k, n]) => `${n} x ${k}`).join(', ')})` : ''}.`);
+    if (!existsSync(join(dir, 'meta.json')) && objs.some((o) => /\/meta\.json$/.test(o.key))) { console.log('The twin\'s meta.json could not be read: run it again.'); process.exit(1); }
     if (!objs.length) { console.log('No twin under that walk.'); process.exit(1); }
   } else if (cmd === 'put') {
     for (const f of rest) {

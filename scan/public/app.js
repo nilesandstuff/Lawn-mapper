@@ -19,6 +19,7 @@ import { newTwin, addPoints, addPose, wantKey, addKey, flush, flushDue, liveOf }
 import { newAnchors, viewOf, noteView, nudge, pitchOf, anchorsKept, SHOW_S } from '/lib/anchors.js';
 import { surfaceOf } from '/lib/surface.js';
 import { geoReading } from '/lib/geo.js';
+import { walkPrior } from '/lib/walkfix.js';
 import { keepPoint, viewFromSem, newSemCount, noteSem, semSummary, newCrumbs, crumbDue, addCrumb, crumbMoves } from '/lib/semantics.js';
 import { newOutbox, idbStore, memoryStore, statusText } from '/lib/outbox.js';
 import { byDistance, nearestMap, mapLabel } from '/lib/maps-pick.js';
@@ -37,6 +38,7 @@ const COLOR = { dot: [0.3, 1, 0.6, 0.9], dotPlane: [1, 0.8, 0.2, 0.9], pin: [0.9
 const CSS = { ref: '#2f7cf6', check: '#a54bd8', pin: '#e53935', lawn: '#4cc38a' };
 const FAR_AGAIN = 3000;
 const DEPTH_EVERY = 250;
+const WALK_EVERY = 10000; // ms between placements of the whole walk (walkfix.js)
 const COLOUR_EVERY = 900; // ms between reads of the ground's colour
 
 const st = {
@@ -276,6 +278,15 @@ function startLidar(m) {
       if (data.ready) { st.lid.ready = data.ready; log(`lidar model read: ${data.ready.points} columns, ${data.ready.solid} solid cells, shift ${data.ready.shift}`); showLidar(); }
       if (data.overlay) { st.lid.overlay = data.overlay; st.lid.meshes = null; log(`lidar overlay: ${data.overlay.solids.length / 4} solid cells, ${data.overlay.tall.length / 5} tall cells`); }
       if (data.error) { st.lid.error = data.error; log(`lidar: ${data.error}`); showLidar(); }
+      if (data.walk && st.L && st.walkAsk && data.id === st.walkAsk.id) {
+        const a = st.walkAsk; st.walkAsk = null;
+        if (data.walk.ok) {
+          const first = !st.L.walk?.ok;
+          st.L.walk = { ...data.walk, walkedM: a.odo, from: a.from.replace(/ \(.*$/, ''), at: Date.now() };
+          st.walkStats.ok++; if (st.walkStats.firstOkM == null) st.walkStats.firstOkM = Math.round(a.odo);
+          if (first) flash('Placed by the whole walk so far');
+        } else st.walkStats.lastWhy = data.walk.why;
+      }
       if (data.fix && st.L) { const f = answer(st.L, data.fix, data.id); if (f && st.L.log.at(-1)?.held === 'first') flash('You are here: the lidar found you'); }
     };
     w.onerror = (e) => { st.lid.error = e.message || 'the lidar reader failed'; showLidar(); };
@@ -297,7 +308,7 @@ const log = (what) => { st.errors.push({ t: Date.now(), what }); if (st.errors.l
 async function startAR(engine) {
   const overlay = $('#overlay');
   st.walk = newWalk({ engine, phone: navigator.userAgent });
-  st.dy = null; st.dyFrom = null; st.gpsTrail = []; st.anchors = newAnchors(); st.nudge = null; st.depthFill = null; st.geoTrail = []; st.geoSeen = null; st.sem = newSemCount(); st.lastSem = null; st.semDims = null; st.occ = null; st.crumbs = newCrumbs();
+  st.dy = null; st.dyFrom = null; st.gpsTrail = []; st.anchors = newAnchors(); st.nudge = null; st.depthFill = null; st.geoTrail = []; st.geoSeen = null; st.sem = newSemCount(); st.lastSem = null; st.semDims = null; st.occ = null; st.walkGround = new Map(); st.walkAsk = null; st.walkAt = 0; st.walkStats = { asks: 0, ok: 0, lastWhy: null, firstOkM: null }; st.crumbs = newCrumbs();
   st.walk.checks = [];
   st.L = newLocate();
   mini.view = null; mini.mode = 'fit'; mini.locked = false; $('#arrows').innerHTML = '';
@@ -486,6 +497,12 @@ function onFrame(f) {
         if (d > 0 && f.depth.conf && f.depth.minConf != null) { const c = f.depth.conf(x, y); if (c != null && c < f.depth.minConf) df.weak++; }
       }
     }
+    // THE WHOLE WALK'S GROUND (walkfix.js): one ARCore ground point per half metre of the walk, for its placement
+    if (L.groundY != null && st.walkGround && st.walkGround.size < 8000) for (const p of pts) {
+      if (Math.abs(p.y - L.groundY) >= 0.15) continue;
+      const k = `${Math.floor(p.x / 0.5)},${Math.floor(p.z / 0.5)}`;
+      if (!st.walkGround.has(k)) st.walkGround.set(k, [+p.x.toFixed(3), +(-p.z).toFixed(3), +p.y.toFixed(3)]);
+    }
     addDepth(L, pts, odo, f.pose.position, { standing: false }); // standing points come from the colour pass below
     if (st.twin) addPoints(st.twin, Date.now(), odo, pts, L.groundY);
   }
@@ -544,6 +561,18 @@ function onFrame(f) {
     const ask = nextAsk(L, odo, Date.now(), f.pose?.position || null);
     if (ask.id) st.lid.worker.postMessage({ register: { id: ask.id, stand: ask.stand, ground: ask.ground, high: ask.high, surface: ask.surface, prior: ask.prior, s: ask.s, refs: ask.refs } });
     else if (ask.why && !/too soon|running/.test(ask.why)) L.why = ask.why;
+    // THE WHOLE WALK AT ONCE (walkfix.js, SCAN-H25): every WALK_EVERY, the trail's placement refined by all the ground
+    // seen so far, in the worker
+    const nowMs = Date.now();
+    if (!st.walkAsk && nowMs - st.walkAt > WALK_EVERY && st.walkGround?.size >= 300) {
+      const prior = walkPrior(st.gpsTrail, st.geoTrail);
+      if (prior) {
+        const all = [...st.walkGround.values()], step = Math.max(1, Math.ceil(all.length / 1500));
+        const id = `w${nowMs}`;
+        st.walkAt = nowMs; st.walkAsk = { id, odo, from: prior.from }; st.walkStats.asks++;
+        st.lid.worker.postMessage({ walk: { id, ground: all.filter((_, i) => i % step === 0), prior: { T: prior.T } } });
+      }
+    }
   }
   // draw
   if (f.gl && f.view && f.proj) {
@@ -822,14 +851,14 @@ function finish() {
   const crumbs = st.crumbs?.list.length && st.tracker?.anchorAt ? crumbMoves(st.crumbs, (h) => st.tracker.anchorAt(h)) : null;
   const refs = st.points.filter((p) => p.kind === 'ref').map((p) => ({ name: p.name, marks: L ? L.marks.filter((m) => m.id === p.id).length : 0, leftOutM: L ? r3(leftOut(L.marks.filter((m) => m.kind === 'ref'), p.id)) : null }));
   const s = summary(w, {
-    page: 'yard AR test v2', recordOnly: !!st.recordOnly, features: w.features || null, depthType: w.depthType || null, anchors: st.anchors ? anchorsKept(st.anchors) : null, depthFill: st.depthFill ? { frames: st.depthFill.frames, holes: +(st.depthFill.zero / Math.max(1, st.depthFill.cells)).toFixed(3), past8m: +(st.depthFill.far / Math.max(1, st.depthFill.cells)).toFixed(3), weak: +(st.depthFill.weak / Math.max(1, st.depthFill.cells)).toFixed(3), minConf: st.depthFill.minConf } : null, rawAsked: !!st.rawDepth, geo: geoSummary(), semantics: st.caps?.native ? { on: !!st.tracker?.semantics, dims: st.semDims || null, ...(semSummary(st.sem) || {}) } : null, crumbs: crumbs ? { n: crumbs.n, held: crumbs.held, lost: crumbs.lost, refused: crumbs.refused, medianM: crumbs.medianM, maxM: crumbs.maxM, maxLevelM: crumbs.maxLevelM, worstOdo: crumbs.worstOdo } : null, app: st.caps?.native ? { app: st.caps.native.app, bridge: st.caps.native.bridge, device: st.caps.native.device } : null, failed: w.failed || null, errors: st.errors.map((e) => e.what).slice(-30),
+    page: 'yard AR test v2', recordOnly: !!st.recordOnly, features: w.features || null, depthType: w.depthType || null, anchors: st.anchors ? anchorsKept(st.anchors) : null, depthFill: st.depthFill ? { frames: st.depthFill.frames, holes: +(st.depthFill.zero / Math.max(1, st.depthFill.cells)).toFixed(3), past8m: +(st.depthFill.far / Math.max(1, st.depthFill.cells)).toFixed(3), weak: +(st.depthFill.weak / Math.max(1, st.depthFill.cells)).toFixed(3), minConf: st.depthFill.minConf } : null, rawAsked: !!st.rawDepth, geo: geoSummary(), walkFix: st.walkStats ? { ...st.walkStats, share: L?.walk?.ok ? +L.walk.share.toFixed(3) : null, margin: L?.walk?.ok ? +L.walk.margin.toFixed(3) : null, walkedM: L?.walk?.ok ? Math.round(L.walk.walkedM) : null } : null, semantics: st.caps?.native ? { on: !!st.tracker?.semantics, dims: st.semDims || null, ...(semSummary(st.sem) || {}) } : null, crumbs: crumbs ? { n: crumbs.n, held: crumbs.held, lost: crumbs.lost, refused: crumbs.refused, medianM: crumbs.medianM, maxM: crumbs.maxM, maxLevelM: crumbs.maxLevelM, worstOdo: crumbs.worstOdo } : null, app: st.caps?.native ? { app: st.caps.native.app, bridge: st.caps.native.bridge, device: st.caps.native.device } : null, failed: w.failed || null, errors: st.errors.map((e) => e.what).slice(-30),
     references: refs, checks: (w.checks || []).map((c) => ({ ...c, errorM: r3(c.errorM), errorFixM: r3(c.errorFixM), errorRefsM: r3(c.errorRefsM), walkedSinceFixM: r2(c.walkedSinceFixM), aimM: r2(c.aimM), walkedM: r2(c.walkedM) })),
     pinsNear: w.pins.map((p) => ({ name: p.name, nearest: p.nearest ? { name: p.nearest.name, m: r2(p.nearest.m), byRefsM: r2(p.nearest.byRefsM) } : null })),
     fix: L ? summaryOf(L) : null, surfaceSeen: st.surfCount || null, lidar: st.lid.ready ? { points: st.lid.ready.points, solid: st.lid.ready.solid, shift: st.lid.ready.shift, rule: st.lid.ready.rule || null, structures: st.lid.ready.structures || null, tallCells: st.lid.overlay ? st.lid.overlay.tall.length / 5 : null } : st.lid.error ? { error: st.lid.error } : null,
   });
   s.id = `${w.startedAt}`; s.saved = null;
   if (st.twin) {
-    sendTwin(flush(st.twin, Date.now(), liveOf(L, w, { ended: true, summary: s.id, crumbs: crumbs ? crumbs.list : null, recordOnly: !!st.recordOnly, points: pointsKept(), gpsTrail: trailKept(), geoTrail: geoKept(), anchors: st.anchors ? anchorsKept(st.anchors) : null })));
+    sendTwin(flush(st.twin, Date.now(), liveOf(L, w, { ended: true, summary: s.id, crumbs: crumbs ? crumbs.list : null, walk: L?.walk?.ok ? { T: L.walk.T, share: L.walk.share, margin: L.walk.margin, walkedM: L.walk.walkedM, from: L.walk.from } : null, recordOnly: !!st.recordOnly, points: pointsKept(), gpsTrail: trailKept(), geoTrail: geoKept(), anchors: st.anchors ? anchorsKept(st.anchors) : null })));
     s.twin = { ...st.twin.counts, camera: st.twin.camera, off: st.twinUp.off };
   }
   st.twin = null;

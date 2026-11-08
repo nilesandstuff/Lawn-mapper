@@ -8,11 +8,13 @@
  *
  * In:  { load: { origin: [lng, lat], box: [e0, n0, e1, n1] map metres, map: the map's id, lawn: traced rings } }
  *      { register: { id, stand, ground, prior, s, high, refs, surface } }
+ *      { walk: { id, ground: [[u, v, y]], prior: { T } } }  (scan/lib/walkfix.js) -> { walk: fix, id }
  * Out: { progress }; { ready: { points, solid, cell, cloud, shift, rule, structures, lawnEdge } } or { error }; { fix, id }.
  */
 import { toMerc } from '/lib/photo.js';
 import { register, MIN_LANDED } from '/lib/lidar.js';
 import { loadLidar } from '/lib/lidar-load.js';
+import { walkFix } from '/lib/walkfix.js';
 // THE SHARED TREE-VERSUS-BUILDING RULE'S MODULE (CLAUDE.md, "One way to read lidar"), copied into this site unchanged
 // at deploy time (scan/tools/prepare.mjs): its kind codes and wallsOf. The kinds themselves come from the model.
 const sharedRule = () => import('/lib/shade/structures.js');
@@ -25,6 +27,14 @@ self.onmessage = async ({ data }) => {
     let fix;
     try { fix = G ? register(G, stand, ground, prior, { s, high, surface, ...(refs ? { minLanded: MIN_LANDED } : {}), ...(prior?.T ? { searchM: prior.searchM ?? 4, searchDeg: prior.searchDeg ?? 15 } : {}) }) : { ok: false, why: 'no lidar yet' }; } catch (err) { fix = { ok: false, why: `the match failed: ${err.message}` }; }
     self.postMessage({ fix, id });
+    return;
+  }
+  // THE WHOLE WALK AT ONCE (scan/lib/walkfix.js, SCAN-H25): the trail's placement refined by the ground's shape
+  if (data.walk) {
+    const { id, ground, prior } = data.walk;
+    let fix;
+    try { fix = G ? walkFix({ box: G.box, cell: G.cell, W: G.W, H: G.H, data: G.dem }, ground, prior) : { ok: false, why: 'no lidar yet' }; } catch (err) { fix = { ok: false, why: `the walk's placement failed: ${err.message}` }; }
+    self.postMessage({ walk: fix, id });
     return;
   }
   if (!data.load) return;

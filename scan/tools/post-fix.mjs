@@ -24,6 +24,7 @@ import { readCloud, readTrack, placer } from '../lib/twin.js';
 import { apply, fitRigid } from '../lib/align.js';
 import { classify, solveWalk, refsPrior, gpsPrior, checkErrors, baseMesh } from '../lib/postfix.js';
 import { readMap, readModel } from './twin-io.mjs';
+import { walkPrior, walkFix } from '../lib/walkfix.js';
 
 const FT = 3.28084;
 const ft = (m) => (m == null || !Number.isFinite(m) ? '-' : `${(m * FT).toFixed(1)} ft`);
@@ -78,8 +79,31 @@ async function main() {
   console.log(`Started from ${from}. One placement for the whole walk: ${sol.global.ok ? `found, ${Math.round((sol.global.hits || 0) * 100)}% of standing points landed (${sol.global.landed})` : `not found (${sol.global.why})`}.`);
   console.log(`Windows of 60 m every 20 m: ${sol.windows.length}; found ${sol.windows.filter((w) => w.ok).length}; kept ${kept.length}${hasRefs ? ', each within 1.5 m and 5 degrees of the references, the references kept everywhere else' : ''} (the rest: ${JSON.stringify(sol.windows.filter((w) => !w.kept).map((w) => (w.why ? w.why.replace(/\d+(\.\d+)?/g, '#') : 'not found')).reduce((a, k) => { a[k] = (a[k] || 0) + 1; return a; }, {}))}).`);
 
+  /* THE WHOLE WALK PLACED AT ONCE, AS THE PAGE NOW DOES LIVE (scan/lib/walkfix.js, 2026-11-08), replayed: at a
+     quarter, half, three quarters and the end of the walk, the trail's placement (Street View's readings, else GPS's)
+     from what had been walked by then, refined by the ground points seen by then. */
+  const gnd = [], seenCell = new Set();
+  for (const r of recs) {
+    if (!Number.isFinite(r.ground) || Math.abs(r.y - r.ground) >= 0.15) continue;
+    const k = `${Math.floor(r.x / 0.5)},${Math.floor(r.z / 0.5)}`; if (seenCell.has(k)) continue; seenCell.add(k);
+    gnd.push({ p: [r.x, -r.z, r.y], odo: r.odo });
+  }
+  const geoT = (live.geoTrail || []).map((g) => ({ ...g, at: Array.isArray(g.at) ? g.at : Number.isFinite(g.lat) ? toLocal(origin, [g.lng, g.lat]) : null }));
+  const dem = { box: L.G.box, cell: L.G.cell, W: L.G.W, H: L.G.H, data: L.G.dem };
+  const maxOdo = Math.max(0, ...recs.map((r) => r.odo || 0));
+  const replay = [];
+  for (const frac of [0.25, 0.5, 0.75, 1]) {
+    const upto = maxOdo * frac;
+    const gsub = gnd.filter((g) => g.odo <= upto + 1e-6), step = Math.max(1, Math.ceil(gsub.length / 1500));
+    const ground = gsub.filter((_, i) => i % step === 0).map((g) => g.p);
+    const prior = walkPrior((live.gpsTrail || []).filter((g) => (g.odo ?? 0) <= upto), geoT.filter((g) => (g.odo ?? 0) <= upto));
+    const fx = walkFix(dem, ground, prior);
+    replay.push({ frac, upto, prior, fx, ground: ground.length });
+  }
+  const lastWalk = replay[replay.length - 1].fx;
   // the check points, four ways
-  const ways = { 'after the walk': placeAfter, ...(plT ? { pictures: () => plT } : {}), ...(sol.global.ok ? { 'one placement': () => sol.global.T } : {}), 'references alone': refsPlace, 'as walked': placer(live, 'both') };
+  const ways = { 'after the walk': placeAfter, ...(plT ? { pictures: () => plT } : {}), ...(sol.global.ok ? { 'one placement': () => sol.global.T } : {}), 'references alone': refsPlace, 'as walked': placer(live, 'both'),
+    ...(lastWalk?.T ? { 'whole walk (replayed)': () => lastWalk.T } : {}), ...(live.walk?.T ? { 'whole walk, live': () => live.walk.T } : {}) };
   const table = {};
   for (const [name, place] of Object.entries(ways)) for (const c of checkErrors(live.marks, place)) (table[c.id] = table[c.id] || {})[name] = c.m;
   if (Object.keys(table).length) {
@@ -88,6 +112,10 @@ async function main() {
     const med = (k) => { const a = Object.values(table).map((r) => r[k]).filter(Number.isFinite).sort((x, y) => x - y); return a.length ? a[a.length >> 1] : null; };
     console.log(`  median: ${Object.keys(ways).map((k) => `${k} ${ft(med(k))}`).join(', ')}`);
   } else console.log('No check points marked: nothing to score against.');
+  {
+    const medOf = (T) => { if (!T) return null; const a = checkErrors(live.marks, () => T).map((c) => c.m).filter(Number.isFinite).sort((x, y) => x - y); return a.length ? a[a.length >> 1] : null; };
+    console.log(`The whole walk placed at once, as the page now does live (replayed): ${replay.map((r) => `at ${Math.round(r.upto * FT)} ft walked: ${r.prior ? (r.fx.ok ? 'used' : `not used (${r.fx.why})`) : 'no trail yet'}${r.fx.T ? `, ${Math.round((r.fx.share || 0) * 100)}% on the ground, margin ${((r.fx.margin || 0) * 100).toFixed(1)}%` : ''}${medOf(r.fx.T) != null ? `, checks median ${ft(medOf(r.fx.T))}` : ''}${r.prior && medOf(r.prior.T) != null ? ` (the trail alone ${ft(medOf(r.prior.T))})` : ''}`).join('; ')}.`);
+  }
 
   /* THE CHECK POINTS AS THEIR OWN REFERENCES (2026-11-05): what any placement made from marks could do on this walk.
      All of them fitted as one turn and shift: what is left at each is how far ARCore's own frame bent between them (no
