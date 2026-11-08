@@ -6,7 +6,7 @@
  *   node scan/test/postfix.test.js
  */
 import assert from 'node:assert/strict';
-import { classify, solveWalk, checkErrors, baseMesh, refsPrior, gpsPrior } from '../lib/postfix.js';
+import { classify, solveWalk, checkErrors, checkMarks, baseMesh, refsPrior, gpsPrior } from '../lib/postfix.js';
 import { gridsFromModel } from '../lib/lidar-load.js';
 import { encodeModel, decodeModel } from '../lib/lidar-model.js';
 import { apply, unapply } from '../lib/align.js';
@@ -115,4 +115,10 @@ const mesh = baseMesh(recs, sol.placeAt, 101.4);
 assert.ok(mesh.e.length > 1000 && mesh.e.length < recs.length, `mesh cells: ${mesh.e.length} of ${recs.length} records`);
 let gz = 0, gn = 0; for (let i = 0; i < mesh.e.length; i++) if (mesh.cls[i] === 0) { gz += mesh.z[i]; gn++; }
 assert.ok(Math.abs(gz / gn - 100) < 0.05, `the ground at the map's height: ${(gz / gn).toFixed(3)}`);
+// a point marked twice counts by its last mark (the owner's mis-tap, SCAN-H30); other kinds and half-marks are left out
+{
+  const ms = checkMarks([{ id: 'a', kind: 'check', ar: [0, 0], map: [60, 0] }, { id: 'b', kind: 'check', ar: [1, 1], map: [1, 1] }, { id: 'a', kind: 'check', ar: [0, 0], map: [0, 0] }, { id: 'r', kind: 'ref', ar: [0, 0], map: [0, 0] }, { id: 'c', kind: 'check', map: [0, 0] }]);
+  assert.deepEqual(ms.map((m) => m.id), ['b', 'a']);
+  assert.deepEqual(ms.find((m) => m.id === 'a').map, [0, 0]);
+}
 console.log(`postfix: ok (median ${med(eW).toFixed(2)} m with windows, worst ${max(eW).toFixed(2)}; one placement worst ${max(eG).toFixed(2)}; references worst ${max(eP).toFixed(2)})`);

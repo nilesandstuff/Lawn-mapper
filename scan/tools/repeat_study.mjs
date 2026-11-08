@@ -16,6 +16,7 @@
  *   CLOUDFLARE_API_TOKEN=... node scan/tools/repeat_study.mjs <walk>,<walk>[,<walk>...]
  */
 import { readObject, BUCKET } from './twin-r2.mjs';
+import { checkMarks } from '../lib/postfix.js';
 
 const FT = 3.281;
 const ft = (m) => (m * FT).toFixed(1);
@@ -34,7 +35,7 @@ async function main() {
   const per = [];
   for (const w of walks) {
     const live = await json(w, 'live.json'), cons = await json(w, 'consensus.json'), pl = await json(w, 'placement.json');
-    const checks = (live?.marks || []).filter((x) => x.kind === 'check' && x.ar && x.map);
+    const checks = checkMarks(live?.marks);   // a point marked twice: its last mark
     const placements = {};
     if (cons?.weights?.all?.T) placements['best fit overall (all)'] = cons.weights.all.T;
     if (cons?.weights?.['ground + buildings + things']?.T) placements['best fit (ground + buildings + things)'] = cons.weights['ground + buildings + things'].T;

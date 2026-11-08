@@ -19,7 +19,7 @@ import { toMerc, ringsOf } from '../lib/photo.js';
 import { toLocal } from '../lib/frames.js';
 import { readCloud, readTrack } from '../lib/twin.js';
 import { readMap, readModel } from './twin-io.mjs';
-import { gpsPrior } from '../lib/postfix.js';
+import { gpsPrior, checkMarks } from '../lib/postfix.js';
 
 async function main() {
   const dir = process.argv[2] || 'twin';
@@ -104,7 +104,7 @@ async function main() {
     const camY = x.view[13], gy = groundAt(x.t);
     return { name: x.name, t: x.t, odo: x.odo, w: x.w, h: x.h, view: x.view, proj: x.proj, eye: gy != null ? +(camY - gy).toFixed(3) : null, yawRate: yawRateAt(x.t) };
   });
-  const checks = (live.marks || []).filter((x) => x.kind === 'check' && x.ar && x.map).map((x) => ({ id: x.id, ar: x.ar, map: x.map, odo: x.odo ?? null }));
+  const checks = checkMarks(live.marks).map((x) => ({ id: x.id, ar: x.ar, map: x.map, odo: x.odo ?? null }));
   const refs = (live.marks || []).filter((x) => x.kind === 'ref' && x.ar && x.map).map((x) => ({ id: x.id, ar: x.ar, map: x.map, odo: x.odo ?? null }));
   // the traced lawn, local metres: NOT a fix signal (the owner, 2026-11-04); only to check the pavement projection
   const lawn = ringsOf(m.shapes || []).map((r) => r.map((p) => toLocal(origin, p).map((v) => +v.toFixed(2))));

@@ -22,7 +22,7 @@ import { sample } from '../lib/lidar.js';
 import { packModel } from '../lib/lidar-model.js';
 import { readCloud, readTrack, placer } from '../lib/twin.js';
 import { apply, fitRigid } from '../lib/align.js';
-import { classify, solveWalk, refsPrior, gpsPrior, checkErrors, baseMesh } from '../lib/postfix.js';
+import { classify, solveWalk, refsPrior, gpsPrior, checkErrors, checkMarks, baseMesh } from '../lib/postfix.js';
 import { readMap, readModel } from './twin-io.mjs';
 import { walkPrior, walkFix } from '../lib/walkfix.js';
 
@@ -121,9 +121,7 @@ async function main() {
      All of them fitted as one turn and shift: what is left at each is how far ARCore's own frame bent between them (no
      single placement can beat it); and each one left out, placed by the others: what marking references at those
      spots would have given. With the GPS trail's placement beside them, when there was one. */
-  const cks = (live.marks || []).filter((x) => x.kind === 'check' && x.ar && x.map);
-  const byId = new Map(); for (const c of cks) byId.set(c.id, c); // a point marked twice: its last mark
-  const uniq = [...byId.values()];
+  const uniq = checkMarks(live.marks); // a point marked twice: its last mark
   if (uniq.length >= 3) {
     const all = fitRigid(uniq.map((c) => ({ ar: c.ar, map: c.map })));
     const loo = uniq.map((c) => { const T = fitRigid(uniq.filter((d) => d !== c).map((d) => ({ ar: d.ar, map: d.map }))); if (!T) return null; const [e, n] = apply(T, c.ar); return Math.hypot(e - c.map[0], n - c.map[1]); });

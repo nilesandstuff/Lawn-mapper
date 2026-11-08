@@ -165,9 +165,20 @@ export function gpsPrior(trail, { minSpanM = 25, minReadings = 10 } = {}) {
   return { T, searchM: Math.min(12, Math.max(4, 2 * spread)), searchDeg: degFromSpan, from: `the GPS trail (${t.length} readings over ${Math.round(span)} m, median ${spread.toFixed(1)} m off)` };
 }
 
+/**
+ * THE CHECK MARKS OF A WALK, ONE PER POINT: a point marked twice counts by its LAST mark (the owner, 2026-11-08: "I
+ * did hit one checkpoint wrong, then I selected the right ones and did it again"; that walk's wrong tap sat 60 ft off,
+ * SCAN-H30). Every study reads the marks through this.
+ */
+export function checkMarks(marks) {
+  const byId = new Map();
+  for (const m of marks || []) if (m.kind === 'check' && m.ar && m.map) { byId.delete(m.id); byId.set(m.id, m); }
+  return [...byId.values()];
+}
+
 /** How far a placement puts each check mark from its place on the map: [{ id, m }]. */
 export function checkErrors(marks, placeAt) {
-  return (marks || []).filter((m) => m.kind === 'check' && m.ar && m.map).map((m) => {
+  return checkMarks(marks).map((m) => {
     const T = placeAt(m.odo); if (!T) return { id: m.id, m: null };
     const p = apply(T, m.ar);
     return { id: m.id, m: Math.hypot(p[0] - m.map[0], p[1] - m.map[1]) };

@@ -29,7 +29,7 @@ import { columnAt } from '../lib/lidar-model.js';
 import { sample } from '../lib/lidar.js';
 import { readCloud, readTrack, placer } from '../lib/twin.js';
 import { apply } from '../lib/align.js';
-import { classify } from '../lib/postfix.js';
+import { classify, checkMarks } from '../lib/postfix.js';
 import { BANDS } from '../lib/locate.js';
 import { readMap, readModel } from './twin-io.mjs';
 
@@ -142,7 +142,7 @@ async function main() {
      same moves round the references' fit at that moment, and for each signal the placement it likes best. The answer
      that counts: how far that placement puts the check point from where it is on the map, against the references. */
   const LOCAL_M = Number(process.env.LOCAL_M || 15);
-  const checks = (live.marks || []).filter((x) => x.kind === 'check' && x.ar && x.map && Number.isFinite(x.odo));
+  const checks = checkMarks(live.marks).filter((x) => Number.isFinite(x.odo));
   if (!checks.length) { console.log('Round 4: no check points with a map place on this walk.'); console.log(`Done in ${Math.round((Date.now() - t0) / 1000)} s.`); return; }
   const keysAll = ['walls', 'wallsTo8m', 'otherSolids', 'roofEdge', 'canopy', 'occupied', 'ground'];
   const combos4 = { 'ground+roofEdge': ['ground', 'roofEdge'], 'ground+walls': ['ground', 'walls'], 'ground+roofEdge+walls': ['ground', 'roofEdge', 'walls'], 'ground+occupied': ['ground', 'occupied'], 'ground+roofEdge+occupied': ['ground', 'roofEdge', 'occupied'] };
