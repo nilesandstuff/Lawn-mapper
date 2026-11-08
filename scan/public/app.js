@@ -99,6 +99,7 @@ async function main() {
       fr.innerHTML = '<input type="checkbox" id="full-res"> Full-resolution camera (1920x1080, pictures kept 1080 wide; the recording is about 2 GB for 8 minutes)';
       box.append(fr);
       $('#full-res').addEventListener('change', (e) => { st.fullRes = e.target.checked; });
+      if (typeof window.LawnARNative.localRecordings === 'function') phoneRecordings(box);
       const rb = document.createElement('button'); rb.type = 'button'; rb.className = 'plain'; rb.textContent = 'Replay a recorded walk';
       rb.addEventListener('click', () => pickReplay().catch((e) => flash(`Recordings could not be listed: ${e.message}`)));
       box.append(rb);
@@ -368,20 +369,55 @@ async function startAR(engine) {
   }
 }
 
+/* RECORDINGS ON THE PHONE (the app's bridge 4; the owner: "make it so I can choose whether to remove a recording from
+   my phone or not? I don't want to have to download every time to replay it"): keep them once sent (the default) or
+   not, and remove any by hand; a replay uses the phone's copy when there is one. */
+const phoneList = () => { try { return JSON.parse(window.LawnARNative.localRecordings()); } catch { return []; } };
+function phoneRecordings(box) {
+  const N = window.LawnARNative, wrap = document.createElement('div');
+  wrap.style.margin = '8px 0';
+  const keep = document.createElement('label'); keep.className = 'dim'; keep.style.display = 'block';
+  keep.innerHTML = '<input type="checkbox" id="keep-rec"> Keep recordings on this phone once they are on the site (replays then use the phone\'s copy instead of fetching it)';
+  wrap.append(keep);
+  const list = document.createElement('div'); wrap.append(list);
+  box.append(wrap);
+  $('#keep-rec').checked = (() => { try { return N.keepRecordings(); } catch { return true; } })();
+  $('#keep-rec').addEventListener('change', (e) => { try { N.setKeepRecordings(e.target.checked); } catch { /* old app */ } });
+  const draw = () => {
+    const recs = phoneList();
+    list.innerHTML = recs.length ? `<p class="dim" style="margin:6px 0">On this phone (${Math.round(recs.reduce((a, r) => a + r.bytes, 0) / 1e6)} MB):</p>` : '';
+    for (const r of recs) {
+      const row = document.createElement('div'); row.className = 'dim'; row.style.margin = '4px 0';
+      row.textContent = `${new Date(+r.walk).toLocaleString()}, ${Math.round(r.bytes / 1e6)} MB, ${r.sent ? 'on the site too' : 'not on the site yet'} `;
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'plain'; b.textContent = 'Remove from phone';
+      b.addEventListener('click', () => {
+        if (!r.sent && !confirm('This recording is not on the site yet: removing it loses it. Remove anyway?')) return;
+        try { N.removeRecording(r.walk); } catch { /* old app */ }
+        draw();
+      });
+      row.append(b); list.append(row);
+    }
+  };
+  draw();
+}
+
 /** The recorded walks, newest first; picking one opens its map and runs it through ARCore again (bridge 3). */
 async function pickReplay() {
   const [{ recordings }, w] = await Promise.all([fetch('/api/scan/recordings', { credentials: 'same-origin' }).then((r) => r.json()), fetch('/api/scan/walks', { credentials: 'same-origin' }).then((r) => r.json()).catch(() => ({ walks: [] }))]);
   const when = new Map((w.walks || []).map((x) => [x.id, x]));
+  // with the recordings kept on the phone (bridge 4), those too, and marked: a replay of one fetches nothing
+  const onPhone = new Set(typeof window.LawnARNative?.localRecordings === 'function' ? phoneList().map((r) => r.walk) : []);
+  for (const wk of onPhone) if (!recordings.some((r) => r.walk === wk)) recordings.push({ walk: wk, bytes: phoneList().find((r) => r.walk === wk)?.bytes || 0, phoneOnly: true });
   const list = document.createElement('div'); list.className = 'card';
   list.innerHTML = recordings.length ? '<strong>Replay a walk</strong><p class="dim">ARCore runs on the walk\'s recording as if walking it again, in real time; the page does again what was done then (marks, pins, checks). The replay is kept as a walk of its own.</p>' : '<p class="dim">No recorded walks yet: the next walk in the app records itself.</p>';
   for (const r of recordings) {
     const x = when.get(r.walk), b = document.createElement('button'); b.type = 'button'; b.className = 'plain'; b.style.display = 'block'; b.style.margin = '6px 0';
-    b.textContent = `${x ? new Date(x.at).toLocaleString() : r.walk}: ${x?.summary?.stats ? `${Math.round(x.summary.stats.walkedM * 3.281)} ft, ` : ''}${Math.round(r.bytes / 1e6)} MB`;
+    b.textContent = `${x ? new Date(x.at).toLocaleString() : new Date(+r.walk).toLocaleString()}: ${x?.summary?.stats ? `${Math.round(x.summary.stats.walkedM * 3.281)} ft, ` : ''}${Math.round(r.bytes / 1e6)} MB${onPhone.has(r.walk) ? ' (on this phone)' : ''}`;
     b.addEventListener('click', async () => {
       st.replayOf = r.walk;
       st.replayImage = x?.summary?.app?.image || (x?.summary?.app?.app && /^1\.9$/.test(x.summary.app.app) ? '1920x1080' : null); // replayed in the mode it was recorded in
       try { const meta = await (await fetch(`/api/scan/twin?walk=${encodeURIComponent(r.walk)}&part=meta.json`, { credentials: 'same-origin' })).json(); if (meta?.map && meta.map !== st.map) await openMap(meta.map, 'from the recorded walk'); } catch { /* the map open now, if any */ }
-      flash('Fetching the recording, then replaying it');
+      flash(onPhone.has(r.walk) ? 'Replaying it from the phone' : 'Fetching the recording, then replaying it');
       startAR('native');
     });
     list.append(b);

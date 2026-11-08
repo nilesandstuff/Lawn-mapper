@@ -19,8 +19,34 @@ import java.net.URL
 class Recorder(private val a: MainActivity, private val base: String) {
     val dir: File get() = File(a.filesDir, "recordings").apply { mkdirs() }
     fun fileFor(walk: String) = File(dir, "${safe(walk)}.mp4")
-    fun replayFile(walk: String) = File(a.cacheDir, "replay-${safe(walk)}.mp4")
     @Volatile private var sending = false
+
+    /* KEEPING RECORDINGS ON THE PHONE (bridge 4; the owner, 2026-11-08: "I don't want to have to download every time
+       to replay it"): with keep on (the default), a recording stays in recordings/ once the site has it, marked sent
+       (<walk>.sent), and a recording fetched for a replay is kept there too; a replay uses the phone's copy when there
+       is one. Each can be removed from the phone by hand; the site's copy stays. */
+    private val prefs get() = a.getSharedPreferences("recordings", android.content.Context.MODE_PRIVATE)
+    var keep: Boolean
+        get() = prefs.getBoolean("keep", true)
+        set(v) { prefs.edit().putBoolean("keep", v).apply() }
+    private fun sentMark(f: File) = File(f.parentFile, f.nameWithoutExtension + ".sent")
+    /** The phone's copy of a walk's recording, sent or not, or the file a replay fetches into. */
+    fun replayFile(walk: String) = fileFor(walk)
+
+    /** Every recording on the phone: [{ walk, bytes, sent }]. */
+    fun local(): String = JSONArray(dir.listFiles { f -> f.name.endsWith(".mp4") }?.sortedByDescending { it.lastModified() }?.map { f ->
+        JSONObject().put("walk", f.nameWithoutExtension).put("bytes", f.length()).put("sent", sentMark(f).exists())
+    } ?: emptyList<JSONObject>()).toString()
+
+    fun isSent(walk: String) = sentMark(fileFor(walk)).exists()
+
+    /** Off the phone (the site keeps its copy); a recording not yet sent is lost with it. */
+    fun remove(walk: String): Boolean {
+        val f = fileFor(walk)
+        val ok = !f.exists() || f.delete()
+        sentMark(f).delete(); sideOf(f).delete(); File(f.path + ".part").delete()
+        return ok
+    }
 
     private fun safe(w: String) = w.replace(Regex("[^0-9a-zA-Z_-]"), "").take(40)
     private fun cookie(): String? = try { CookieManager.getInstance().getCookie(base) } catch (_: Exception) { null }
@@ -40,7 +66,7 @@ class Recorder(private val a: MainActivity, private val base: String) {
     }
 
     /** Recordings on the phone not yet sent: [{ walk, bytes }]. */
-    fun pending(): String = JSONArray(dir.listFiles { f -> f.name.endsWith(".mp4") }?.map { f ->
+    fun pending(): String = JSONArray(dir.listFiles { f -> f.name.endsWith(".mp4") && !sentMark(f).exists() }?.map { f ->
         val k = try { JSONObject(sideOf(f).readText()) } catch (_: Exception) { null }
         JSONObject().put("walk", f.nameWithoutExtension).put("bytes", f.length()).put("sent", if (k != null) minOf(f.length(), k.getJSONArray("parts").length() * k.getLong("piece")) else 0L)
     } ?: emptyList<JSONObject>()).toString()
@@ -51,7 +77,7 @@ class Recorder(private val a: MainActivity, private val base: String) {
         sending = true
         Thread {
             try {
-                for (f in dir.listFiles { x -> x.name.endsWith(".mp4") && x.length() > 0 }?.sortedBy { it.lastModified() } ?: emptyList()) send(f)
+                for (f in dir.listFiles { x -> x.name.endsWith(".mp4") && x.length() > 0 && !sentMark(x).exists() }?.sortedBy { it.lastModified() } ?: emptyList()) send(f)
             } finally { sending = false }
         }.start()
     }
@@ -111,7 +137,9 @@ class Recorder(private val a: MainActivity, private val base: String) {
             done.doOutput = true; done.setRequestProperty("Content-Type", "application/json")
             done.outputStream.use { it.write(JSONObject().put("parts", parts).toString().toByteArray()) }
             readJson(done)
-            f.delete(); side.delete()   // the site has it whole: 100+ MB off the phone
+            side.delete()
+            // the site has it whole: kept and marked sent, or off the phone, as the owner chose
+            if (keep) sentMark(f).writeText("sent") else f.delete()
             a.event(JSONObject().put("type", "upload").put("walk", walk).put("sent", total).put("total", total).put("done", true).toString())
         } catch (e: Exception) {
             a.event(JSONObject().put("type", "upload").put("walk", walk).put("total", total).put("error", e.message ?: e.javaClass.simpleName).toString())
@@ -138,9 +166,8 @@ class Recorder(private val a: MainActivity, private val base: String) {
                         if (got - last > 4L * 1024 * 1024) { last = got; a.event(JSONObject().put("type", "download").put("walk", walk).put("got", got).put("total", total).toString()) }
                     }
                 } }
-                // old replays out of the cache: one at a time is plenty
-                a.cacheDir.listFiles { x -> x.name.startsWith("replay-") && x.name.endsWith(".mp4") }?.forEach { it.delete() }
                 tmp.renameTo(f)
+                sentMark(f).writeText("sent")   // the site's copy: never sent back (with keep off, removed when the replay ends)
                 a.event(JSONObject().put("type", "download").put("walk", walk).put("got", got).put("total", total).put("done", true).toString())
                 a.runOnUiThread { then(f) }
             } catch (e: Exception) {

@@ -15,7 +15,7 @@ The page talks to ARCore through one bridge, `window.LawnARNative` (`Bridge.kt`)
 - What the app does with the camera is tuned from the page (`NATIVE_OPTIONS`, `NATIVE_DEPTH` in track.js): picture
   size and rate, depth kind and confidence, Geospatial rate.
 
-## The bridge (version 3)
+## The bridge (version 4)
 
 Page to app: `info()`, `start(optionsJson)`, `stop()`, `setCross(x, y)`, `depthGrid(nx, ny, kind, minConf)`,
 `grab()`, `openExternal(url)`, `log(msg)`; since version 2 `anchor(x, y, z)` (an ARCore anchor's id, or -1) and
@@ -35,6 +35,12 @@ app next opens (`pendingRecordings()`, `sendRecordings()`). Events: fetching, do
 playbackEnd. Also Geospatial Depth (Streetscape Geometry on with Geospatial and depth: ARCore's smoothed depth to 65 m
 where Google has VPS; `depthGrid(..., 'smooth', ...)` keeps it beside the raw), and `started` lists every camera mode
 ARCore offers (camera id, picture and texture sizes, frame rates, depth sensor, stereo).
+
+Version 4 (2026-11-08): recordings kept on the phone. `localRecordings()` ([{ walk, bytes, sent }]),
+`removeRecording(walk)`, `keepRecordings()` / `setKeepRecordings(on)` (default on: a recording stays once the site has
+it, marked sent, and one fetched for a replay is kept too; a replay uses the phone's copy when there is one). With keep
+off, a sent recording leaves the phone, and a fetched one leaves when its replay ends. The app takes the smallest
+camera mode (640x480) unless `start` asks `cameraImage: 'largest'` (1.10: the largest made 2.2 GB recordings).
 
 What Chrome's WebXR does not give and this does: raw depth with ARCore's confidence (Chrome on the S21 ignores the
 raw request, SCAN-PLAN), the camera's own picture at the camera mode's full size, ARCore's Geospatial pose (with a

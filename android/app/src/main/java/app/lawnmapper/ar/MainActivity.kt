@@ -36,6 +36,7 @@ class MainActivity : Activity() {
     lateinit var engine: ArEngine
     lateinit var recorder: Recorder
     private var recordingWalk: String? = null
+    private var replayingWalk: String? = null
     private lateinit var gl: GLSurfaceView
     private lateinit var web: WebView
     private var session: Session? = null
@@ -206,8 +207,10 @@ class MainActivity : Activity() {
             // replay or record: both set before the session first resumes (ARCore Recording & Playback)
             var recWhy: String? = null
             recordingWalk = null
+            replayingWalk = null
             if (replayFile != null) {
                 s.setPlaybackDatasetUri(Uri.fromFile(replayFile))
+                replayingWalk = replayWalk
             } else o.optString("record", "").ifEmpty { null }?.let { walk ->
                 try {
                     val rc = RecordingConfig(s).setMp4DatasetUri(Uri.fromFile(recorder.fileFor(walk))).setAutoStopOnPause(true)
@@ -241,6 +244,8 @@ class MainActivity : Activity() {
         engine.semOn = false
         val rec = recordingWalk
         recordingWalk = null
+        val replayed = replayingWalk
+        replayingWalk = null
         engine.recording = false
         engine.playback = false
         // past the GL thread's current frame (it reads engine.session afresh each frame), then off it: closing ARCore
@@ -248,6 +253,8 @@ class MainActivity : Activity() {
         gl.queueEvent { Thread {
             try { if (rec != null) s.stopRecording() } catch (_: Exception) { }
             try { s.pause(); s.close() } catch (_: Exception) { }
+            // a replay's download, with keep off: off the phone once it has been replayed
+            if (replayed != null && !recorder.keep && recorder.isSent(replayed)) recorder.remove(replayed)   // never one not yet on the site
             if (rec != null) {
                 // the MP4 is finished once recording stops: told to the page, then sent to the site
                 event("{\"type\":\"recorded\",\"walk\":${quote(rec)},\"bytes\":${recorder.fileFor(rec).length()}}")

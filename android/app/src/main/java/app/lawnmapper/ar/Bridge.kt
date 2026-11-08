@@ -82,6 +82,21 @@ class Bridge(private val a: MainActivity) {
     @JavascriptInterface
     fun sendRecordings() { a.recorder.sendAll() }
 
+    /** Bridge 4: every recording on the phone, [{ walk, bytes, sent }]; replays use these without fetching. */
+    @JavascriptInterface
+    fun localRecordings(): String = a.recorder.local()
+
+    /** Bridge 4: take a recording off the phone (the site keeps its copy). */
+    @JavascriptInterface
+    fun removeRecording(walk: String): Boolean = a.recorder.remove(walk)
+
+    /** Bridge 4: keep recordings on the phone once sent (and those fetched for replays), or not. */
+    @JavascriptInterface
+    fun keepRecordings(): Boolean = a.recorder.keep
+
+    @JavascriptInterface
+    fun setKeepRecordings(on: Boolean) { a.recorder.keep = on }
+
     @JavascriptInterface
     fun log(msg: String) { Log.i("LawnAR", msg.take(500)) }
 }
