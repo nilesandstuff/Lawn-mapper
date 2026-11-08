@@ -104,6 +104,10 @@ async function main() {
       rb.addEventListener('click', () => pickReplay().catch((e) => flash(`Recordings could not be listed: ${e.message}`)));
       box.append(rb);
       const pend = (() => { try { return JSON.parse(window.LawnARNative.pendingRecordings()); } catch { return []; } })();
+      /* The app's events before any walk has started (the owner, 2026-11-08: the send "only updates when I close the
+         app and re open"): track.js sets this hook only when a walk starts, so a send begun as the app opened told
+         nobody. A walk's own hook replaces this one. */
+      if (!window.LawnARNative_onEvent) window.LawnARNative_onEvent = (e) => onEvent({ ...e, type: 'native', what: e.type });
       if (pend.length) { const n = document.createElement('p'); n.className = 'dim'; n.id = 'rec-pending'; n.textContent = `${pend.length} recording${pend.length === 1 ? '' : 's'} still on the phone, being sent (${Math.round(pend.reduce((a, x) => a + (x.sent || 0), 0) / 1e6)} of ${Math.round(pend.reduce((a, x) => a + x.bytes, 0) / 1e6)} MB so far; keep the app open on wifi).`; box.append(n); try { window.LawnARNative.sendRecordings(); } catch { /* none */ } }
     } else if (st.caps.native) {
       const n = document.createElement('p'); n.className = 'dim'; n.textContent = 'Recording walks for replay needs the app\'s next version: update it from the link above.'; box.append(n);
