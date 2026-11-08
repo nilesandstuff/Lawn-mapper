@@ -62,7 +62,7 @@ def carve(lines, cube=CUBE, step=STEP, keep=60000):
     return free[ke], seen[ke]
 
 
-def spikes(lines, by_label=False, radius_deg=5.0, min_nb=4):
+def spikes(lines, by_label=False, radius_deg=5.0, min_nb=4, alone=0.25, stats=None):
     """A reading much nearer than the readings round it in the same depth picture (the owner, 2026-11-08: "that wall
     ... had correct depth readings for most of it, it was just one spot"). Neighbours are the picture's other points
     within radius_deg of its line of sight (the page reads 16 x 28 cells, about 3 degrees apart). A spike: at least
@@ -70,6 +70,7 @@ def spikes(lines, by_label=False, radius_deg=5.0, min_nb=4):
     within 15% of their median: a surface) and few of them as near as it (a quarter at most: not a post or a branch).
     by_label: neighbours only of the same ARCore label, when the walk has labels. -> bool per line."""
     out = np.zeros(len(lines), bool)
+    nbs = np.zeros(len(lines), np.int64)
     t = lines[:, 10]
     d = lines[:, 3:6] - lines[:, 0:3]
     r = np.linalg.norm(d, axis=1)
@@ -88,11 +89,15 @@ def spikes(lines, by_label=False, radius_deg=5.0, min_nb=4):
             lab = lines[g, 7]
             nb &= (lab[:, None] == lab[None, :]) & (lab[:, None] > 0)
         rg = r[g]
+        nbs[g] = nb.sum(1)
         for i in np.flatnonzero(nb.sum(1) >= min_nb):
             rn = rg[nb[i]]
             med = np.median(rn)
-            if rg[i] < 0.6 * med and rg[i] < med - 1.0 and np.mean(np.abs(rn - med) < 0.15 * med) >= 0.6 and np.mean(rn < rg[i] * 1.3) <= 0.25:
+            if rg[i] < 0.6 * med and rg[i] < med - 1.0 and np.mean(np.abs(rn - med) < 0.15 * med) >= 0.6 and np.mean(rn < rg[i] * 1.3) <= alone:
                 out[g[i]] = True
+    if stats is not None:
+        sizes = np.diff(np.concatenate([[0], cuts, [len(order)]]))
+        stats.update(per_picture=float(np.median(sizes)), with_nb=float(np.mean(nbs >= min_nb)))
     return out
 
 
@@ -138,10 +143,14 @@ def main():
         print("  Phantoms among standing points by the depth's own confidence: " + "; ".join(f"{a:.1f}-{min(b, 1):.1f} {share(phantom, (~isg) & (dc >= a) & (dc < b))}" for a, b in cb))
 
     # THE NEIGHBOUR CHECK (spikes): one spot reading near on a surface the rest of the picture reads far
-    spike = spikes(lines)
+    st_ = {}
+    spike = spikes(lines, stats=st_)
+    patch = spikes(lines, radius_deg=12.0, min_nb=8, alone=0.45)   # a fake patch a few cells wide
     spike_l = spikes(lines, by_label=True) if has_labels else None
     def overlap(a, b):
         return f"{(a & b).sum() / max(1, a.sum()):.0%}"
+    print(f"  The saved points per depth picture: median {st_['per_picture']:.0f} (the page reads 448 cells; the twin keeps a point only in a 5 cm cube not seen before); points with 4+ neighbours within 5 degrees: {st_['with_nb']:.0%}.")
+    print(f"  PATCHES (the same check 12 degrees round, up to 45% of the neighbours as near): {share(patch, ~isg)} of standing points; phantoms among them {overlap(patch & ~isg, phantom)}; of the standing phantoms, patches {overlap(phantom & ~isg, patch)}.")
     print(f"  SPIKES (a reading nearer than 60% of its neighbours in the same depth picture, on a surface they agree on): {share(spike, ~isg)} of standing points, {share(spike, isg)} of ground points; of the standing spikes, phantoms by the walk's own lines {overlap(spike & ~isg, phantom)}; of the standing phantoms, spikes {overlap(phantom & ~isg, spike)}." + (f" Neighbours of the same label only: {share(spike_l, ~isg)} of standing points, phantoms among them {overlap(spike_l & ~isg, phantom)}." if spike_l is not None else ""))
 
     # the model, under the truth (check points) or the placement after the walk
@@ -182,6 +191,8 @@ def main():
         print("  ARCore's labels on the points short of a building: " + "; ".join(f"{lname(k)} {cnt[k] / len(lk):.0%}" for k in np.argsort(-cnt)[:5] if cnt[k]))
     match = np.abs(R - rs) <= 0.5                      # the phone and the model agree on the first surface
     sp = spike[S]
+    pa = patch[S]
+    print(f"  Patches against the model: short of the model's first hard surface {np.mean(near[pa]) if pa.any() else 0:.0%}, agreeing with the model {np.mean(match[pa]) if pa.any() else 0:.0%}; of all standing points agreeing with the model, patches {np.mean(pa[match]) if match.any() else 0:.1%}.")
     print(f"  Spikes against the model: of the standing spikes, short of the model's first hard surface {np.mean(near[sp]) if sp.any() else 0:.0%}, agreeing with the model (within 0.5 m) {np.mean(match[sp]) if sp.any() else 0:.0%} (those would be good points thrown away); of all standing points agreeing with the model, spikes {np.mean(sp[match]) if match.any() else 0:.1%}.")
     print("  short of a building, by how far the phone said: " + "; ".join(f"{a * FT:.0f}-{b * FT:.0f} ft {int(((near & hitbld) & (rs >= a) & (rs < b)).sum()):,}" for a, b in bins))
 
@@ -210,7 +221,7 @@ def main():
             ang = math.degrees(math.atan2(fe[0] - ce[0], fn[0] - cn[0])) % 360
             face = COMPASS[int(((ang + 22.5) % 360) // 45)]
             pitch = math.degrees(math.asin(max(-1, min(1, fwd[1] / max(1e-9, np.linalg.norm(fwd))))))
-            lm = f", spikes {np.mean(sp[m]):.0%}"
+            lm = f", spikes {np.mean(sp[m]):.0%}, patches {np.mean(patch[S][m]):.0%}"
             if has_conf:
                 lm += f", depth confidence {np.median(Ls[m, 9]):.2f}"
             if has_labels:
