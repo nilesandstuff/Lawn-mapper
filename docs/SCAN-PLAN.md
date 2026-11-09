@@ -1810,3 +1810,24 @@ C# and keep only what ARCore and ARKit share). Until then, these keep the work p
     there is one, a plain video of the walk, not ARCore's own tracks.
   - Both stacks use the same frame (metres, right-handed, Y up, the camera looking down -Z), as WebXR does: keep it.
   - Street View positioning (Geospatial, Streetscape) is in Google's ARCore SDK for iOS too; Geospatial Depth is not.
+
+## 15. References placed by hand; the automatic lidar fix set aside (owner, 2026-11-09)
+
+"Let's go back to just placing references manually and set aside everything about getting a live fix from lidar and
+finding the best fit after a walk. We might want to keep some things to check/correct drift (maybe other users will
+have bigger drift problems)... And maybe we should consider using it to line up lidar (and remember that a future
+feature will be to refine tree canopies, auto add fences, and update ground grading after a user has done grading
+work). But yeah, it looks like automatic lidar alignment is just too difficult to make work." (SCAN-H28 to H31.)
+
+  - The walk is placed by its reference marks. The live lidar fix and the whole-walk fix are off on the page
+    (scan/public/app.js LIDAR_LIVE; ?lidarfix=1 turns them on for a test). The lidar is still read and drawn.
+  - Kept, as checks: task repeat (walks against each other), task checks (marks against the lidar), the depth audit,
+    the inspector. The after-the-walk studies stay in task place as studies, run only by hand.
+  - Later, the other way round: a walk placed by references can line the LIDAR up (canopies refined, fences added,
+    the ground's grading updated after work), the phone's walk as the newer truth.
+  - References want flat ground features (driveway and patio corners, path edges): the well-head check (6-8 in) sat
+    3-5 ft off the same way on every walk (SCAN-H30), though too short to lean; the crosshair's hit kind and distance
+    are now kept with each mark to tell why next time.
+  - The placement map (same day): points and labels sized in screen pixels (they were a sixth of their size), zoom to
+    40x, a point keeps where the finger took hold of it, a magnifier while dragging, and the photo the map was traced
+    on (the county photo with the editor's line-up, or Mapbox).
