@@ -47,7 +47,7 @@ FT = 3.28084
 WIDTH = 640               # pictures are matched at this width
 FEATURES = 1500
 TOP = 6                   # reference pictures tried for each picture
-PX = 8                    # px: a matched point takes the depth of the nearest surface among depth points this near it
+PX = 12                   # px: a matched point takes the depth of the nearest surface among depth points this near it
 RANGE = (0.5, 25.0)       # m from the camera
 DROP = {2, 10, 11}        # label + 1: sky, vehicle, person
 CELL = 0.3                # m: the shape plan's cells
@@ -132,13 +132,21 @@ def picture_points(w):
             if ok.sum() >= 10:
                 px = np.stack([(ndc[0, ok] + 1) / 2 * WIDTH, (1 - ndc[1, ok]) / 2 * H], 1)
                 depth = -cam[2, ok]
-                src = C[ok]
                 tree = cKDTree(px)
+                Pi = np.linalg.inv(P)
                 for i, nb in enumerate(tree.query_ball_point(uv, PX)):
                     if nb:
-                        j = nb[int(np.argmin(depth[nb]))]       # the nearest surface under the point
-                        pts3[i] = [src[j, 2], -src[j, 4], src[j, 3]]
-        out.append({"name": p["name"], "des": des.astype(np.float32), "uv": uv, "xyz": pts3})
+                        # the nearest surface under the point: its distance, along the point's own line of sight
+                        d = float(depth[nb][int(np.argmin(depth[nb]))])
+                        nx, ny = 2 * uv[i, 0] / WIDTH - 1, 1 - 2 * uv[i, 1] / H
+                        a0 = Pi @ np.array([nx, ny, -1.0, 1.0]); a0 = a0[:3] / a0[3]
+                        a1 = Pi @ np.array([nx, ny, 1.0, 1.0]); a1 = a1[:3] / a1[3]
+                        ray = a1 - a0
+                        if ray[2] >= 0:
+                            continue
+                        q = V @ np.array([*(ray / -ray[2] * d), 1.0])
+                        pts3[i] = [q[0], -q[2], q[1]]
+        out.append({"name": p["name"], "des": des.astype(np.float32), "uv": uv, "xyz": pts3, "W": WIDTH, "H": H, "V": V, "P": P})
     return out
 
 
@@ -190,7 +198,7 @@ def by_pictures(ref, w, TA, fref, fw):
     BW /= np.linalg.norm(BW, axis=1, keepdims=True) + 1e-9
     sim = BW @ BA.T
     bf = cv2.BFMatcher(cv2.NORM_L2)
-    A3, W3, pairs_ok = [], [], 0
+    A3, W3, pairs_ok, poses = [], [], 0, []
     for i, f in enumerate(fw):
         for j in np.argsort(-sim[i])[:TOP]:
             g = fref[j]
@@ -203,16 +211,75 @@ def by_pictures(ref, w, TA, fref, fw):
             if F is None or mask is None or mask.sum() < 15:
                 continue
             pairs_ok += 1
+            obj, img = [], []
             for x, keep in zip(good, mask.ravel()):
                 if not keep:
                     continue
                 pw, pa = f["xyz"][x.queryIdx], g["xyz"][x.trainIdx]
-                if np.isfinite(pw).all() and np.isfinite(pa).all():
-                    W3.append(pw)
-                    A3.append([*place(TA, pa[None, :2])[0], pa[2]])
+                if np.isfinite(pa).all():
+                    # the reference's point on the map, and where this walk's picture sees it (run 218: depth on both
+                    # sides at once left 0-13 pairs; the camera from 2D needs it on the reference's side only)
+                    obj.append([*place(TA, pa[None, :2])[0], pa[2]])
+                    img.append(f["uv"][x.queryIdx])
+                    if np.isfinite(pw).all():
+                        W3.append(pw)
+                        A3.append(obj[-1])
+            if len(obj) >= 8:
+                T = camera_place(f, np.array(obj, np.float64), np.array(img, np.float64))
+                if T is not None:
+                    poses.append(T)
     a, b = np.array(A3), np.array(W3)
-    T, n = fit4(a, b) if len(a) else (None, 0)
-    return T, {"picture pairs": pairs_ok, "3D pairs": len(a), "agreeing": n, "s": round(time.time() - t0)}
+    T3, n3 = fit4(a, b) if len(a) >= 6 else (None, 0)
+    ctr = np.mean([[g["V"][0, 3], -g["V"][2, 3]] for g in fw], 0) if fw else np.zeros(2)
+    T, n = consensus(poses, ctr)
+    if T is None and T3 is not None:
+        T, n = T3, n3
+    return T, {"picture pairs": pairs_ok, "cameras placed": len(poses), "agreeing cameras": n, "3D pairs": len(a), "s": round(time.time() - t0)}
+
+
+def camera_place(f, obj, img):
+    """This walk's picture placed on the map from the reference's points it sees (PnP, RANSAC), turned into the walk's
+    turn and shift (the camera's place and heading on the map against its place and heading in the walk's own
+    session). None when it does not hold."""
+    W, H, P, V = f["W"], f["H"], f["P"], f["V"]
+    K = np.array([[P[0, 0] * W / 2, 0, (1 - P[0, 2]) * W / 2], [0, P[1, 1] * H / 2, (1 + P[1, 2]) * H / 2], [0, 0, 1]])
+    ok, rvec, tvec, inl = cv2.solvePnPRansac(obj, img, K, None, iterationsCount=300, reprojectionError=8.0,
+                                             confidence=0.99, flags=cv2.SOLVEPNP_EPNP)
+    if not ok or inl is None or len(inl) < 8:
+        return None
+    R, _ = cv2.Rodrigues(rvec)
+    Cm = (-R.T @ tvec).ravel()                    # the camera on the map (east, north, up)
+    fwd_m = R.T[:, 2]                             # the camera's forward (OpenCV +z) on the map
+    if math.hypot(fwd_m[0], fwd_m[1]) < 0.3:
+        return None                               # looking straight up or down: no heading
+    Cs = V[:3, 3]                                 # the camera in the walk's session (x, y up, z)
+    fwd_s = V[:3, :3] @ np.array([0.0, 0.0, -1.0])
+    plan_c, plan_f = np.array([Cs[0], -Cs[2]]), np.array([fwd_s[0], -fwd_s[2]])
+    th = math.atan2(fwd_m[1], fwd_m[0]) - math.atan2(plan_f[1], plan_f[0])
+    c, s = math.cos(th), math.sin(th)
+    return (th, Cm[0] - (c * plan_c[0] - s * plan_c[1]), Cm[1] - (s * plan_c[0] + c * plan_c[1]))
+
+
+def consensus(poses, ctr, m=1.0, deg=4.0):
+    """The turn and shift most of the placed cameras agree on: within deg degrees and m metres where they put the middle
+    of the walk (ctr, in its session), averaged."""
+    if len(poses) < 3:
+        return None, len(poses)
+    A = np.array(poses)
+    at = np.array([place(T, ctr[None, :])[0] for T in A])
+    best = None
+    for i in range(len(A)):
+        dth = np.abs(((A[:, 0] - A[i, 0] + math.pi) % (2 * math.pi)) - math.pi)
+        near = (dth < math.radians(deg)) & (np.hypot(*(at - at[i]).T) < m)
+        if best is None or near.sum() > best.sum():
+            best = near
+    if best.sum() < 3:
+        return None, int(best.sum())
+    S, P = A[best], at[best]
+    th = math.atan2(np.sin(S[:, 0]).mean(), np.cos(S[:, 0]).mean())
+    c, s = math.cos(th), math.sin(th)
+    mid = P.mean(0)                                    # the middle of the walk where the agreeing cameras put it
+    return (th, mid[0] - (c * ctr[0] - s * ctr[1]), mid[1] - (s * ctr[0] + c * ctr[1])), int(best.sum())
 
 
 # --------------------------------------------------------------------- shapes
