@@ -89,7 +89,7 @@ export function compact(answer, { centre, budget = 30000, now = Date.now() } = {
       if (!byKind.has(kind)) byKind.set(kind, []);
       byKind.get(kind).push({ g: { type: f.geometry.type, coordinates: roundCoords(f.geometry.coordinates) }, p });
     }
-    for (const [kind, features] of byKind) layers.push({ kind, title: String(l.title || '').slice(0, 60), source: String(l.source || '').slice(0, 60), from: l.from === 'national' ? 'national' : 'county', features });
+    for (const [kind, features] of byKind) layers.push({ kind, title: String(l.title || '').slice(0, 60), source: String(l.source || '').slice(0, 60), from: l.from === 'national' ? 'national' : 'county', features , ...(l.copiedAt ? { copiedAt: String(l.copiedAt).slice(0, 10) } : {}) });
   }
   const out = {
     v: SAVED_V, at: new Date(now).toISOString(), box: answer?.box || null,

@@ -103,4 +103,11 @@ test('a county service that fails keeps the county layers saved before; one that
   assert.equal(keepCounty(fresh, null, { failed: [{}] }), fresh, 'nothing saved before: nothing to keep');
 });
 
+test("a layer answered from the site's own copy keeps the copy's date (2026-11-09)", () => {
+  const ans = { layers: [{ kind: 'storm_pipe', title: 'storm sewer', source: 'Kent County', from: 'county', copiedAt: '2026-11-01T03:00:00Z', features: [{ geometry: { type: 'LineString', coordinates: [[-85.6, 42.9], [-85.6001, 42.9001]] }, properties: {} }] }] };
+  const c = compact(ans, { centre: [-85.6, 42.9] });
+  assert.equal(c.layers[0].copiedAt, '2026-11-01');
+  assert.equal(compact({ layers: [{ ...ans.layers[0], copiedAt: undefined }] }).layers[0].copiedAt, undefined);
+});
+
 console.log(`water layers: ${tests.length} passed`);
