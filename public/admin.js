@@ -1078,6 +1078,13 @@ async function renderParcelOutages() {
   if (data.unavailable) { box.append(el('p', 'empty', `Cannot read the log: ${data.unavailable}`)); return; }
   const list = data.outages || [];
   box.append(el('p', 'sub', `${n(data.open)} not answering now; ${n(list.length)} ever recorded.`));
+  /* Our own copy, served while a county is down (workflow "P2. Parcel mirror"). */
+  const m = data.mirror;
+  box.append(el('p', 'sub', m
+    ? `Our copy of the parcels: ${n(m.copied)} of ${n(m.services)} services copied whole (${n(m.parcels)} parcels), ${n(m.underway)} under way, `
+      + `${n(m.failed)} could not be copied${m.failures?.length ? ` (${m.failures.map(([k, c]) => `${c} ${k}`).join(', ')})` : ''}; oldest copy `
+      + `${m.oldest ? new Date(m.oldest).toLocaleDateString() : 'none yet'}; last run ${new Date(m.at).toLocaleString()}.`
+    : 'Our copy of the parcels: not started yet (workflow "P2. Parcel mirror").'));
   if (!list.length) { box.append(el('p', 'empty', 'None recorded yet.')); return; }
   const KIND = { refused: 'refuses (a login or permission now required)', error: 'answers with an error', http: 'answers with an HTTP error', timeout: 'does not answer in time', unreachable: 'cannot be reached' };
   for (const o of list) {
@@ -1092,6 +1099,10 @@ async function renderParcelOutages() {
       `since ${when(o.first_at)}`, `last ${when(o.last_at)}`, `${n(o.hits)} lookup${o.hits === 1 ? '' : 's'}`,
       o.detail ? `said: ${o.detail}` : null, o.answered_at && o.status !== 'open' ? `answering since ${when(o.answered_at)}` : null,
     ].filter(Boolean).join(' · ')));
+    const copy = data.copies?.[o.county_key];
+    row.append(el('div', 'meta', copy?.done
+      ? `our copy: ${n(copy.count)} parcels from ${new Date(copy.done).toLocaleDateString()} — served while it is down`
+      : copy?.failed ? `our copy: could not be made (${copy.failed})` : copy ? 'our copy: under way' : 'our copy: none'));
     if (o.service) { const a = document.createElement('a'); a.href = o.service; a.textContent = 'the service'; a.target = '_blank'; a.rel = 'noopener'; const m = el('div', 'meta', ''); m.append(a); row.append(m); }
     box.append(row);
   }

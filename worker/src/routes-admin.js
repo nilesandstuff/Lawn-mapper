@@ -2310,7 +2310,22 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
   /* Counties whose parcel service is not answering (gaps.js parcel_outages; owner, 2026-11-09). */
   if (path === 'parcel-outages') {
     const { parcelOutages } = await import('./gaps.js');
-    return json(await parcelOutages(env, { limit: url.searchParams.get('limit') || 100 }), 200, origin);
+    const out = await parcelOutages(env, { limit: url.searchParams.get('limit') || 100 });
+    /* Our own copy of the parcels (parcel-mirror.js, workflow P2): its totals, and for each county here how old its
+       copy is, since that is what the site serves while the county is down. */
+    try {
+      const read = async (k) => { const o = await env.CORPUS?.get(k); return o ? JSON.parse(await o.text()) : null; };
+      const { mirrorKeyOf } = await import('./parcel-mirror.js');
+      const { ALL_COUNTIES } = await import('./counties.js');
+      out.mirror = await read('parcels/_summary.json');
+      const state = await read('parcels/_state.json');
+      out.copies = {};
+      for (const o of out.outages || []) {
+        const st = state?.services?.[mirrorKeyOf(ALL_COUNTIES, o.county_key)];
+        if (st) out.copies[o.county_key] = { done: st.done || null, count: st.count || null, failed: st.failed?.kind || null };
+      }
+    } catch { out.mirror = out.mirror || null; }
+    return json(out, 200, origin);
   }
   /* County photos that failed to load (county-failures.js), newest first. */
   if (path === 'county-failures') {

@@ -2809,9 +2809,15 @@ async function confirmLocation() {
           'the county had stacked on top of each other — the line is unchanged.'
         : '';
       setStatus(
-        `Found your property line — ${a.acres} acres total ` +
-        `(${state.parcel.properties.county}).${tidyNote} Check it, then open AI ` +
-        'to detect your lawn — or Draw to trace it yourself.'
+        /* OUR OWN COPY (owner, 2026-11-09): the county could not be asked, so the line is the one we last copied from
+           it, and says how old it is (worker/src/parcel-mirror.js). */
+        state.parcel.properties.source === 'mirror'
+          ? `${state.parcel.properties.county}'s parcel service isn't answering right now, so this property line is from `
+            + `our copy of its records${copiedOn(state.parcel)} — ${a.acres} acres.${tidyNote} If it looks out of date, `
+            + 'trace it yourself, or try "Fetch a new one" later.'
+          : `Found your property line — ${a.acres} acres total ` +
+            `(${state.parcel.properties.county}).${tidyNote} Check it, then open AI ` +
+            'to detect your lawn — or Draw to trace it yourself.'
       );
       /*
        * Neighbours, merge, and the line out to the road: for everybody since
@@ -4811,6 +4817,8 @@ function refreshDrawParcelButton() {
   if (!drawParcel) return;
   drawParcel.hidden = !state.chosen || document.body.classList.contains('job-mode');
   drawParcel.textContent = parcelRing() ? 'Redraw the property line' : 'Draw the property line';
+  const fresh = $('#btn-parcel-fresh');
+  if (fresh) fresh.hidden = drawParcel.hidden;
 }
 
 /* ---------------------------------------------------------- model picker */
@@ -14312,6 +14320,7 @@ function reset() {
   $('#edge-ft').value = String(DEFAULT_EDGE_FT);
   $('#sens-panel').hidden = true;
   $('#btn-draw-parcel').hidden = true;
+  $('#btn-parcel-fresh').hidden = true;
   tips.seen.clear();
   hideTip();
   closeLayerList();
@@ -14461,6 +14470,71 @@ $('#feedback-skip').addEventListener('click', () => {
  * refreshSurveyed() knows none of its corners came from the county, so nothing
  * on the map claims a precision it does not have.
  */
+/** " (copied 3 Nov 2026)" for a parcel from our copy, or "". */
+function copiedOn(parcel) {
+  const d = new Date(parcel?.properties?.mirroredAt || '');
+  return Number.isNaN(d.getTime()) ? '' : ` (copied ${d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })})`;
+}
+
+/*
+ * "PARCEL LINE OUT OF DATE, FETCH A NEW ONE" (owner, 2026-11-09). A saved map keeps the property line it was saved
+ * with, and a county redraws lots (a split, a survey, a merge). This asks the county again for the lot at the map's
+ * address -- or, when the county cannot be asked, our own copy of its records -- and puts it in place of the line on
+ * screen, as one undoable change, saying what changed. Nothing is saved until the map is.
+ */
+async function fetchFreshParcel() {
+  const c = state.chosen;
+  if (!c || !Number.isFinite(c.lng) || !Number.isFinite(c.lat)) return;
+  const btn = $('#btn-parcel-fresh');
+  btn.disabled = true;
+  setStatus("Asking the county for this lot's current property line…");
+  try {
+    const where = new URLSearchParams({ lng: c.lng, lat: c.lat });
+    if (state.clientId) where.set('clientId', state.clientId);
+    const data = await api(`/api/parcel?${where}`);
+    const fresh = data.parcel;
+    if (!fresh?.geometry) {
+      setStatus(data.unavailable
+        ? `${data.unavailable.counties?.join(' and ') || 'Your county'}'s parcel service isn't answering right now, and our copy of its records has nothing here yet. Your property line is unchanged.`
+        : 'The county has no property line on record at this address now. Your property line is unchanged.', 'warn');
+      return;
+    }
+    const before = state.parcel ? measure(state.parcel.geometry) : null;
+    const oldRing = parcelRing();
+    const freshRing = (fresh.geometry.type === 'Polygon' ? fresh.geometry.coordinates[0] : fresh.geometry.coordinates[0]?.[0]) || null;
+    if (!freshRing) return;
+    const tidied = tidyRing(freshRing.map((p) => [...p]));
+    const sameLine = oldRing && oldRing.length === tidied.ring.length
+      && oldRing.every((p, i) => Math.abs(p[0] - tidied.ring[i][0]) < 1e-7 && Math.abs(p[1] - tidied.ring[i][1]) < 1e-7);
+    const from = fresh.properties?.source === 'mirror'
+      ? `our copy of ${fresh.properties.county}'s records${copiedOn(fresh)}, since its own service isn't answering right now`
+      : `${fresh.properties?.county || 'the county'}`;
+    if (sameLine) { setStatus(`Your property line is already the current one, from ${from}.`); return; }
+    pushHistory();
+    endHistoryGroup();
+    if (state.parcel) {
+      state.parcel.geometry = JSON.parse(JSON.stringify(fresh.geometry));
+      state.parcel.properties = { ...(state.parcel.properties || {}), ...fresh.properties };
+    } else {
+      state.parcel = JSON.parse(JSON.stringify(fresh));
+    }
+    setParcelRing(tidied.ring);
+    state.surveyed = tidied.ring.map((p) => [...p]);
+    $('#btn-parcel-shape').hidden = false;
+    refreshDrawParcelButton();
+    clearNeighbours();
+    aroundParcel();
+    const a = measure(state.parcel.geometry);
+    setStatus(`New property line from ${from}: ${a.acres} acres${before ? ` (it was ${before.acres})` : ''}. `
+      + 'Undo puts the old one back; save the map to keep it.');
+  } catch (e) {
+    setStatus(`Could not fetch a new property line: ${e.message || e}. Your property line is unchanged.`, 'warn');
+  } finally {
+    btn.disabled = false;
+  }
+}
+$('#btn-parcel-fresh').addEventListener('click', () => { fetchFreshParcel(); });
+
 $('#btn-draw-parcel').addEventListener('click', () => {
   setMode(null);
   state.drawingHole = false;

@@ -1,0 +1,43 @@
+name: P2. Parcel mirror
+
+# OUR OWN COPY OF EVERY COUNTY'S PARCELS (tools/parcel-mirror.mjs, worker/src/parcel-mirror.js; core session,
+# 2026-11-09). The owner, after a county's parcel server began asking for a login: fetch every parcel of every county
+# hooked up, "so this can't happen again". Each run copies the stalest services for about five hours and the next run
+# carries on; a service is copied again once its copy is a month old. The site uses the copy only when a county's
+# server cannot be asked, and says how old it is.
+#
+# The log prints totals only (the repository and its logs are public): no county, no place, no coordinate. Free.
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: 'How long to copy for (minutes, at most 320)'
+        default: '320'
+
+concurrency:
+  group: parcel-mirror
+  cancel-in-progress: false
+
+jobs:
+  copy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - run: npm ci --no-audit --no-fund
+      - name: Copy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          BUDGET_MIN: ${{ inputs.minutes || '320' }}
+        run: node tools/parcel-mirror.mjs | tee copy.txt
+      - name: The answer
+        if: always()
+        run: |
+          echo "--------------------------------------------------------------"
+          tail -n 3 copy.txt 2>/dev/null || echo "no copy: see the step above"

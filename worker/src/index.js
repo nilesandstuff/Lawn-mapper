@@ -36,7 +36,8 @@
 
 import { countyServicesAt, countyChoicesAt, countyServiceById } from './county.js';
 import { encodePng } from './tile-mosaic.js';
-import { lookupParcel, lookupNeighbours, unreachedCounties } from './parcel.js';
+import { lookupParcel, lookupNeighbours, unreachedCounties, esriToGeoJSON, touchingNeighbours } from './parcel.js';
+import { mirrorLookup, mirrorParcelsIn } from './parcel-mirror.js';
 import { isCovered, servesCounty, ALL_COUNTIES } from './counties.js';
 import { coverage, coverageSummary, NEAR_COMPLETE } from './coverage.js';
 import { checkQuota, consumeQuota, refundQuota } from './quota.js';
@@ -286,7 +287,7 @@ async function handleGeocode(url, env, origin) {
  * capped at about 400 m a side so this cannot be used to pull a county's
  * parcel layer down a tile at a time.
  */
-async function handleNeighbours(url, origin) {
+async function handleNeighbours(url, env, origin) {
   const county = url.searchParams.get('county') || '';
   const bbox = (url.searchParams.get('bbox') || '').split(',').map(Number);
   if (!county || bbox.length !== 4 || bbox.some((v) => !Number.isFinite(v))) {
@@ -310,7 +311,14 @@ async function handleNeighbours(url, origin) {
     } catch { ring = null; }
     if (!ring) return json({ error: 'ring must be a JSON list of [lng, lat] pairs' }, 400, origin);
   }
-  const features = await lookupNeighbours(county, bbox, ring, url.searchParams.get('pin') || null);
+  const pin = url.searchParams.get('pin') || null;
+  let features = await lookupNeighbours(county, bbox, ring, pin);
+  /* None from the county (its server down, or a lot with no neighbours): our copy's, when it has some
+     (parcel-mirror.js). */
+  if (!features.length) {
+    const copied = await mirrorParcelsIn(env, ALL_COUNTIES, county, bbox, { toGeoJSON: esriToGeoJSON }).catch(() => []);
+    if (copied.length) features = touchingNeighbours(copied, ring, { pin });
+  }
   return json({ features }, 200, origin);
 }
 
@@ -345,10 +353,14 @@ async function handleParcel(request, url, env, origin, ctx) {
     if (answeredKeys.length) ctx.waitUntil(clearParcelOutages(env, answeredKeys));
   }
   if (!parcel && unreached.length) {
-    return json({
-      parcel: null, covered: true,
-      unavailable: { counties: unreached.map((c) => c.name), kind: unreached[0].failures[0]?.kind || 'error' },
-    }, 200, origin);
+    const unavailable = { counties: unreached.map((c) => c.name), kind: unreached[0].failures[0]?.kind || 'error' };
+    /* OUR OWN COPY (owner, 2026-11-09: "so this can't happen again"; parcel-mirror.js): the county's parcel as we last
+       copied it, saying so and how old it is (properties.source 'mirror', mirroredAt). */
+    const copied = await mirrorLookup(env, ALL_COUNTIES, unreached.map((c) => c.county), lng, lat, {
+      pin: url.searchParams.get('pin') || null, toGeoJSON: esriToGeoJSON,
+    }).catch(() => null);
+    if (copied) return json({ parcel: copied, covered: true, unavailable }, 200, origin);
+    return json({ parcel: null, covered: true, unavailable }, 200, origin);
   }
   if (!parcel) {
     // Not an error. Most of the country, and plenty of covered addresses,
@@ -1651,7 +1663,7 @@ async function handle(request, env, ctx) {
         case '/api/parcel':
           return await handleParcel(request, url, env, origin, ctx);
         case '/api/parcel/neighbours':
-          return await handleNeighbours(url, origin);
+          return await handleNeighbours(url, env, origin);
         /*
          * THE TRAINED MODEL'S WEIGHTS, a few hundred numbers.
          *
