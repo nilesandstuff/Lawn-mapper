@@ -45,7 +45,7 @@ self.onmessage = async ({ data }) => {
     const { cloud, how, rule, counts, shade, k, ox, oy } = L;
     G = L.G;
     const columns = shade.sgrid.w * shade.sgrid.h;
-    self.postMessage({ ready: { points: columns, solid: G.solid, cell: G.cell, cloud: cloud.name || null, shift: how, rule, structures: counts, lawnEdge: !!G.lawnSd, modelAt: shade.meta?.at || null } });
+    self.postMessage({ ready: { points: columns, solid: G.solid, cell: G.cell, cloud: cloud.name || null, shift: how, rule, structures: counts, lawnEdge: !!G.lawnSd, modelAt: shade.meta?.at || null, modelBuild: shade.meta?.build ?? null, modelBasedOn: shade.meta?.basedOn || null } });
     // THE OVERLAY (SCAN-H2): what the match matches against, for the camera view. solids: each solid 0.25 m cell as
     // [e, n, ground, top], as tall as the shade map's column; tall: each shade-map column with anything in it as
     // [e, n, lowest, highest, roof?], the lowest its first cube with any leaf in the shade map's canopy (mu > 0) and

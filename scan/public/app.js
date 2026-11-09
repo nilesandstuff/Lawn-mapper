@@ -238,9 +238,9 @@ function startLidar(m) {
     const box = pts.length ? [Math.min(...es) - 20, Math.min(...ns) - 20, Math.max(...es) + 20, Math.max(...ns) + 20] : [-60, -60, 60, 60];
     w.onmessage = ({ data }) => {
       if (data.progress) { st.lid.progress = data.progress; showLidar(); }
-      if (data.ready) { st.lid.ready = data.ready; log(`lidar model read: ${data.ready.points} columns, ${data.ready.solid} solid cells, shift ${data.ready.shift}`); showLidar(); }
+      if (data.ready) { st.lid.ready = data.ready; log(`lidar model read: ${data.ready.points} columns, ${data.ready.solid} solid cells, shift ${data.ready.shift}`); showLidar(); keepShadeFresh(m, data.ready); }
       if (data.overlay) { st.lid.overlay = data.overlay; st.lid.meshes = null; log(`lidar overlay: ${data.overlay.solids.length / 4} solid cells, ${data.overlay.tall.length / 5} tall cells`); }
-      if (data.error) { st.lid.error = data.error; log(`lidar: ${data.error}`); showLidar(); }
+      if (data.error) { st.lid.error = data.error; log(`lidar: ${data.error}`); showLidar(); if (/no lidar model yet/.test(data.error)) keepShadeFresh(m, null); }
       if (data.walk && st.L && st.walkAsk && data.id === st.walkAsk.id) {
         const a = st.walkAsk; st.walkAsk = null;
         if (data.walk.ok) {
@@ -255,6 +255,48 @@ function startLidar(m) {
     w.onerror = (e) => { st.lid.error = e.message || 'the lidar reader failed'; showLidar(); };
     w.postMessage({ load: { origin: st.origin, box, map: st.map, lawn: st.lawn } });
   } catch (e) { st.lid.error = e.message; showLidar(); }
+}
+/**
+ * THE SHADE MODEL KEPT UP TO DATE (the owner, 2026-11-09: "when a user visits the AR tool, it checks to see if the
+ * most recent version of the shade map has been loaded and saved for that map. If the most recent version hasn't been
+ * loaded, it calls the shade maps tools and updates it. It needs to retain any edits that have been to the shade map,
+ * including fences and erased branches/trees"). Out of date: no model, a model with no build stamp or an older one
+ * than the shade map's own (public/shade/build.js SHADE_BUILD), or built from an older save of the map than this one.
+ * Then the shade map's own rebuild (public/shade/rebuild.js, the features session's: the lidar kept with the map, the
+ * same steps as the shade page, the person's erasures and fences applied) builds and saves it, and the page reads it
+ * again. Once per visit; a map never opened in the shade map is sent there.
+ */
+async function keepShadeFresh(m, ready) {
+  if (st.lid.rebuilt || st.lid.rebuilding || !st.map) return;
+  let build = null;
+  try { ({ SHADE_BUILD: build } = await import('/lib/shade/build.js')); } catch { return; } // a scan site before the stamp
+  const when = (s) => { const t = Date.parse(s || ''); return Number.isFinite(t) ? t : null; };
+  const why = !ready ? 'there is none yet'
+    : !Number.isFinite(ready.modelBuild) || ready.modelBuild < build ? 'the shade map has changed since it was built'
+      : when(ready.modelBasedOn) != null && when(m.at) != null && when(ready.modelBasedOn) < when(m.at) ? 'the map was saved again since'
+        : null;
+  if (!why) return;
+  st.lid.rebuilding = true;
+  log(`shade model out of date (${why}): rebuilding`);
+  const say = (w) => { st.lid.progress = `Updating the lidar from the shade map (${why}): ${w}`; if (!st.lid.ready) showLidar(); else { const el = $('#lidar'); if (el) el.textContent = st.lid.progress; } };
+  say('starting…');
+  let r;
+  try {
+    const { rebuildModel } = await import('/lib/shade/rebuild.js');
+    r = await rebuildModel(st.map, { onProgress: say, lazSrc: '/lib/vendor/laz-perf.js' });
+  } catch (e) { r = { ok: false, why: e.message || String(e) }; }
+  st.lid.rebuilding = false; st.lid.rebuilt = true;
+  if (r?.ok) {
+    log(`shade model rebuilt (build ${r.build}, ${r.fences ?? 0} fences, ${r.erased ?? 0} erasures kept)`);
+    try { st.lid.worker?.terminate(); } catch { /* gone */ }
+    st.lid = { ...st.lid, worker: null, ready: null, error: null, progress: 'Reading the updated lidar…', overlay: null, meshes: null };
+    showLidar();
+    startLidar(m);
+    return;
+  }
+  const words = r?.words || (r?.why === 'not-in-shade-map' ? 'Open this map in the shade map once, so its lidar is chosen and lined up; then come back.' : `The lidar could not be updated (${r?.why || 'no answer'}).`);
+  log(`shade model not rebuilt: ${r?.why}`);
+  if (st.lid.ready) { const el = $('#lidar'); if (el) el.textContent = `${words} The saved lidar is used meanwhile.`; } else { st.lid.error = words; showLidar(); }
 }
 function showLidar() {
   const el = $('#lidar'); if (!el) return;
