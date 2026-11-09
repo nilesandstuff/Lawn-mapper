@@ -1743,6 +1743,28 @@ the other five the same way on all three walks: the photo's mark there is about 
 SPECULATION: something with height (a leaning top in the photo) or a point hard to stand on exactly; the owner knows
 which it is.
 
+### SCAN-H31. Registered to the lidar with small_gicp, ground first: it cannot move off its start on this lot (2026-11-09)
+
+The owner pointed at the research report's registration tools (small_gicp, TEASER++, Open3D; MIT) and, the site
+being non-commercial, at CMRNet / OrienterNet (CC BY-NC) too. scan/tools/register_study.py (task register, run 210,
+the three walks of SCAN-H30): the report's recipe (Paired-CSLiDAR): GICP on the ground first, then the ground and
+the 0.3-2.5 m band together, each band to itself, a stage kept only if more points land within 0.4 m; four degrees
+of freedom; from every start the studies use. On a synthetic yard with gentle relief it found the truth from 5.7 ft.
+
+HARD (three walks): on the owner's lot it does nothing useful. From the after-the-walk placement neither stage lands
+more points, so it keeps the start (the repeat table is identical to the after-the-walk one: 3.7 ft from the marks,
+the walks 5.0 ft from their own mean); from other starts it settles where it began (7-14 ft). On the newest walk
+the score prefers the after-the-walk pose (17,451 points landed, 5.6 ft from the marks) to the marks' own fit
+(16,843): the lawn is too flat for the ground to say where along it the walk lies, and adding the low band lands
+FEWER points (the lidar has 7,350 low returns there, mostly crowns and roofs' edges the phone does not see the same
+way). This is the report's own caution ("the vertical and tilt terms weakly constrained on flat lawns") measured.
+
+So the geometric registration cannot place a walk on this lot by itself. What does say where along the lawn the walk
+is: buildings and things with ARCore's labels (SCAN-H28, 1.9 ft on the newest walk). SPECULATION: TEASER++ needs
+distinctive features to match globally and would meet the same flat ground; CMRNet (camera against a lidar map,
+licence now no bar) is the untried kind, but was trained on dense car lidar and would need a GPU to retrain (Modal:
+ask first).
+
 ### 13. Recording and replay, Geospatial Depth, camera modes (the app's bridge 3, 2026-11-08)
 
 The owner: "let's do it so I don't have to keep doing the same walks over and over." App 1.9: every walk in the app is
