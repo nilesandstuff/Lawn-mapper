@@ -1733,6 +1733,16 @@ tracking jumped), left out of the medians' reading. Fitted to their own marks, t
 bending and the marking itself put about a foot under everything. The best fit's scatter is mostly the 1794090013502
 walk (5-12 ft; no labels, SCAN-H27); on the newest walk (labels) it is 0.8-2.4 ft at every usable mark.
 
+RE-RUN with a point marked twice counted by its last mark (run 209; the owner: "I did hit one checkpoint wrong, then
+I selected the right ones and did it again"; scan/lib/postfix.js checkMarks, now in every study): the after-the-walk
+placements' mean sits 0.4-1.2 ft from five of the six marks and 2.1 ft at one, but 4.9 ft from mark 1794089537730
+(the third placed), and there the three walks agree with each other (6.7 ft apart at most) and lean the same way
+(east +2.3, north -4.3 ft). Fitted to their own marks, every walk leaves that mark 2.0-4.4 ft off in the same
+direction (mean east +1.9, north -2.8 ft) while the other five sit 0.5-1.5 ft. HARD: that one mark disagrees with
+the other five the same way on all three walks: the photo's mark there is about 3-5 ft from where the phone stands.
+SPECULATION: something with height (a leaning top in the photo) or a point hard to stand on exactly; the owner knows
+which it is.
+
 ### 13. Recording and replay, Geospatial Depth, camera modes (the app's bridge 3, 2026-11-08)
 
 The owner: "let's do it so I don't have to keep doing the same walks over and over." App 1.9: every walk in the app is
