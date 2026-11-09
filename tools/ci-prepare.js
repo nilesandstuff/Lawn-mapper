@@ -440,10 +440,13 @@ function migrate() {
  */
 export const SITE_PLACEHOLDER = '__SITE__';
 /**
- * THE LANDING MOVED HOME (owner, 2026-10-16): nilesandstuff.com is the page
- * search should index, built from this file's landing (tools/home-prepare.js).
- * So the app's front page names the home page as the canonical one, rather
- * than competing with its own copy. Nothing changes without a home domain.
+ * THE LANDING MOVED HOME (owner, 2026-10-16): nilesandstuff.com is built from
+ * this file's landing (tools/home-prepare.js). Until 2026-11-09 the app's front
+ * page named the home page as its canonical, so search indexed only the home
+ * page; the owner then: "let's let the lawn mapper page be indexed too". So the
+ * front page keeps its own canonical (https://<lawnmap>/, which ?new=1 and the
+ * like fold into) and is in this Worker's sitemap; only the landing's shade link
+ * is pointed home here.
  */
 /**
  * The front page's HTML developer comments are not shipped (2026-10-22 audit:
@@ -458,14 +461,12 @@ export function stripComments(html) {
   return stripped.replace(/\u0000(\d+)\u0000/g, (_, i) => keep[Number(i)]);
 }
 
-export function canonicalToHome(html, customDomain, homeDomain = '') {
+export function shadeLinkHome(html, customDomain, homeDomain = '') {
   const home = homeDomainFor(customDomain, homeDomain);
   if (!customDomain || !home) return html;
-  return html.replace(`<link rel="canonical" href="https://${customDomain}/">`,
-    `<link rel="canonical" href="https://${home}/">`)
-    /* And the landing's shade link straight to shade.<home>, rather than
-       through this Worker's /shade redirect (2026-10-22 audit). */
-    .replace(/href="\/shade"/g, `href="https://shade.${home}/"`);
+  /* The landing's shade link straight to shade.<home>, rather than through
+     this Worker's /shade redirect (2026-10-22 audit). */
+  return html.replace(/href="\/shade"/g, `href="https://shade.${home}/"`);
 }
 
 export function fillSiteOrigin(html, customDomain) {
@@ -635,7 +636,7 @@ function main() {
     const page = new URL('../public/index.html', import.meta.url);
     /* The landing's county table, from the registry this deploy ships with
        (tools/landing-coverage.js), so crawlers read today's list as text. */
-    writeFileSync(page, stripComments(canonicalToHome(fillCoverage(
+    writeFileSync(page, stripComments(shadeLinkHome(fillCoverage(
       fillSiteOrigin(readFileSync(page, 'utf8'), customDomain), coverage()
     ), customDomain, process.env.HOME_DOMAIN || '')));
     /* The privacy page's canonical, on this host. */

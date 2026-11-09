@@ -1837,8 +1837,9 @@ async function handle(request, env, ctx) {
           return new Response(
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             + '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
-            /* The front page is not listed: its canonical is the home page
-               (owner, 2026-10-16), which has a sitemap of its own. */
+            /* The front page, indexed in its own right since 2026-11-09 (owner: "let's let the lawn
+               mapper page be indexed too"); until then its canonical was the home page. */
+            + `  <url><loc>${url.origin}/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>\n`
             /* The shade analyzer, a page of its own (owner, 2026-10-13), at /shade --
                until it moved to shade.<home> (2026-10-18), which lists itself in
                its own sitemap; /shade here is then a redirect, and a sitemap

@@ -48,6 +48,6 @@ console.log('llms.txt: ok');
   assert.match(robots, /Allow: \/shade\n/, 'the shade analyzer is named, beside the home page');
   const sitemap = await (await at('/sitemap.xml')).text();
   assert.ok(sitemap.includes('<loc>https://example.test/shade</loc>'), 'the sitemap lists the shade analyzer');
-  assert.ok(!sitemap.includes('<loc>https://example.test/</loc>'), 'and not the front page, whose canonical is the home page');
+  assert.ok(sitemap.includes('<loc>https://example.test/</loc>'), 'and the front page, indexed in its own right (2026-11-09)');
   console.log('unknown files 404, unknown paths open the app as a noindex 404, robots says yes to search and AI answers: ok');
 }
