@@ -1765,6 +1765,53 @@ distinctive features to match globally and would meet the same flat ground; CMRN
 licence now no bar) is the untried kind, but was trained on dense car lidar and would need a GPU to retrain (Modal:
 ask first).
 
+### SCAN-H32. A walk placed by an earlier walk: shapes 2.1-3.7 ft on four of six pairs; pictures held back by the twin's sparse depth (2026-11-09)
+
+The owner, on the next phase (a first walk as the reference that places later ones without marks): matching a phone's
+points to the same phone's points should be far easier than to the lidar, "so lets try both photos and shapes"
+(later softened: pictures can fix from a single look, so the ground tests decide). scan/tools/walk_fix_study.py, task
+walkfix, runs 217-219, on the three walks of SCAN-H30 (1794089603603, 1794090013502, 1794162116852): each walk in
+turn the reference, placed by its own marks; each other walk placed from it without its marks, scored on its own six
+check marks.
+
+| placed walk, by reference | shapes | pictures | its own marks' fit | after the walk (lidar) |
+|---|---|---|---|---|
+| ...013502 by ...603603 | 3.7 ft (landed 0.40) | none | 1.4 | 2.7 |
+| ...116852 by ...603603 | 2.1 (0.43) | none | 1.2 | 5.6 |
+| ...603603 by ...013502 | 2.6 (0.46) | none | 0.8 | 3.6 |
+| ...116852 by ...013502 | 27.2 (0.22) | none | 1.2 | 5.6 |
+| ...603603 by ...116852 | 2.9 (0.37) | none | 0.8 | 3.6 |
+| ...013502 by ...116852 | 15.0 (0.25) | none | 1.4 | 2.7 |
+| median | 3.3 | - | 1.2 | 3.6 |
+
+HARD (three walks, one lot):
+  - SHAPES (the standing things as a plan, every 2 degrees by correlation with no start, the best eight refined by
+    small_gicp with the ground) placed four of six pairs at 2.1-3.7 ft, as well as or better than the lidar's
+    after-the-walk placement, with no lidar and no marks; the two failures (15, 27 ft) are both between the newest
+    walk and 1794090013502, the walk recorded before labels. The share of points landed (within 0.3 m of the
+    reference's) told them apart on all six: 0.37-0.46 for the good, 0.22-0.25 for the failures.
+  - Run 217's first shapes (three turns refined, not eight) put ...603603 by ...013502 at 72 ft and by ...116852 at
+    4.9 ft; refining more turns brought them to 2.6 and 2.9.
+  - PICTURES matched well between walks (63-288 picture pairs a pair of walks passed the two-camera check) but never
+    placed a walk. The twin keeps one depth point per small cube, the first seen (43,000-93,000 for a whole walk), so
+    few matched picture points have a depth on the reference's side: 10,800-48,000 of a walk's ~500,000 points found
+    one (run 219, every depth point through every picture, the nearest surface within 12 px), and from those 0-17
+    pictures a pair placed a camera and at most 2 agreed. Requiring depth on both sides (run 218) left 0-13 pairs.
+  - Buildings and structures alone could not be tried: only the newest of the three walks has labels.
+  - Speed, the batch study on the free runner: shapes 3-6 s a pair of walks; pictures about 5 min a pair (some 2,300
+    picture comparisons, about 0.13 s each).
+
+SPECULATION:
+  - The pictures failed for want of depth in the REFERENCE, not for want of matches. A reference walk that keeps the
+    depth image with each of its pictures (ARCore's, ~160 x 90; some 30 KB a picture, ~12 MB a walk) would give every
+    matched point a depth, and is what a live picture fix would need anyway.
+  - The landed share (about 0.3 between the good and the bad) is a usable gate: below it the walk is not placed and
+    the marks are asked for. Three walks are too few to fix the number.
+  - The two failures may be the unlabeled walk (its tree points pass as standing things that the other walks' trees
+    do not match), partial overlap, or both; a fourth walk with labels would tell.
+  - A live shape fix needs enough of the walk to have seen some walls and shrubs (20-60 s, untested); a live picture
+    fix could come from one look at the house.
+
 ### 13. Recording and replay, Geospatial Depth, camera modes (the app's bridge 3, 2026-11-08)
 
 The owner: "let's do it so I don't have to keep doing the same walks over and over." App 1.9: every walk in the app is
