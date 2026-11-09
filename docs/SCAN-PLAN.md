@@ -1910,3 +1910,60 @@ be on the ground live tests."
     study's shapes 3.3. The gates: 0.30 of all points, 0.12 of the standing things (flat ground lands anywhere on a
     flat lot: a test walk of another lot passed on the ground alone). A match takes 3-11 s on the runner's CPU, so
     likely 10-40 s on a phone, in its worker; untested on a phone.
+
+## 17. The photo is not the ground: mark on the lidar, or stretch the photo to it? (owner, 2026-11-09, night)
+
+The owner's walk of 2026-11-09 evening was the first with check marks placed on the COUNTY photo (every earlier home
+walk's were on Mapbox), and some marks had to be moved to sit where the real objects are relative to each other.
+HARD, the owner's finding, first made on the lawn mapper and not to be re-argued: aerial imagery is not true to the
+ground; it is locally distorted (skewed, stretched), differently in each photo. "Realistically, lidar is the only
+thing that objectively has a 1:1 relationship with real points in the world."
+
+Consequences already true today:
+  - Every placement measured against marks so far (SCAN-H11 to H32) was measured against a photo's frame: Mapbox's
+    for the home walks before this one. A walk placed by the earlier-walk fix (section 16) inherits its reference's
+    photo frame (1794089603603: Mapbox). This walk's county-photo marks are in another frame, so its scores mix the
+    two photos' disagreement with the fix's own error.
+  - The marks' "truth" (the marks' own fit, 0.8-1.4 ft) is a photo's truth, not the ground's.
+
+### The idea: references and checks placed on the lidar
+
+The owner's considerations, recorded as he gave them (2026-11-09), each with what has been measured that bears on it:
+
+  1. PIXELS. The lidar must be shown more precisely than it really is: a driveway not running north-south shows as a
+     staircase of blocks, and people cannot place points on pixelated shapes.
+     -> Known: the lot has about 1.6 returns per square metre (SCAN-H29); the shade map draws 1 m cells. SPECULATION:
+        draw what the points imply, not cells: edges fitted as straight lines through many returns (pavement against
+        grass by brightness, SCAN-H18; building edges by height), corners as the crossing of two fitted lines. A fitted
+        line through dozens of returns is better placed than any one return; the user then snaps to a drawn corner
+        rather than judging blocks.
+  2. CANOPIES as thin green outlines, not blocks.
+  3. ROOFS look wider than the buildings are. The owner's guess: at the overhang the edge cell is split between ground
+     and roof, and the whole metre is called roof. He may never have seen the 0.5 m grid: the shade map rounds to 1 m
+     for its view (the owner wants that view at 0.5 m: a shade-map change, asked of the features session).
+     -> Known: real eaves overhang the wall (often 0.3-0.6 m), so a roof's true edge IS outside the wall; the shared
+        rule's wallsOf puts walls 2 ft in from a roof's edge (the owner's number, shade findings 33). Not yet measured
+        on the owner's lot: the phone's own wall points (ARCore labels building) against the lidar roof edge, on walks
+        placed by marks, would give the offset directly.
+  4. REFERENCES ARE ON THE GROUND. A ground point placed in front of a hot tub's corner goes at the edge of the hot
+     tub's lidar cells, which can be a couple of feet from the real corner; marked in AR, the point then appears on top
+     of the hot tub, and the error can double.
+     -> SCAN-H30 already found the well-head check (6-8 in high) 3-5 ft off the same way on every walk. Things with
+        height make poor marks on any map; on the lidar, only flat ground edges (pavement, patio, path) are safe.
+  5. FEW CANDIDATES. Marks placed only where the lidar shows something are far fewer.
+     -> True on an all-grass yard. Pavement edges (drive, walk, patio) are the likely candidates; the lot's driveway was
+        already the best-placing feature (SCAN-H19, H20).
+
+The owner's own conclusion: these may not be overcome.
+
+### The alternative: stretch each photo onto the lidar
+
+Keep marking on the photo, but warp the photo first so its ground sits on the lidar's ground everywhere, not by one
+shift for the whole frame (what the shade map's alignToPhoto does today; per-mark shifts were measured by
+scan/tools/checks-shade.mjs, SCAN-H29, and could not be measured to a foot on this lot). The owner asks whether a
+machine-learning model registers 3DEP to aerial imagery better than our own matchers. A research question first
+(2026-11-09): cross-modal dense matchers (lidar brightness and height shading against the photo) giving many local
+correspondences, and a smooth warp (thin-plate spline) per lot through them.
+
+What decides between the two: whether a stretched photo's ground lands within about a foot of the lidar's at
+held-out points. Neither is built.
