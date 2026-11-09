@@ -1928,7 +1928,7 @@ Consequences already true today:
 
 ### The idea: references and checks placed on the lidar
 
-The owner's considerations, recorded as he gave them (2026-11-09), each with what has been measured that bears on it:
+The owner's considerations, recorded as given (2026-11-09), each with what has been measured that bears on it:
 
   1. PIXELS. The lidar must be shown more precisely than it really is: a driveway not running north-south shows as a
      staircase of blocks, and people cannot place points on pixelated shapes.
@@ -1939,7 +1939,7 @@ The owner's considerations, recorded as he gave them (2026-11-09), each with wha
         rather than judging blocks.
   2. CANOPIES as thin green outlines, not blocks.
   3. ROOFS look wider than the buildings are. The owner's guess: at the overhang the edge cell is split between ground
-     and roof, and the whole metre is called roof. He may never have seen the 0.5 m grid: the shade map rounds to 1 m
+     and roof, and the whole metre is called roof. The owner may never have seen the 0.5 m grid: the shade map rounds to 1 m
      for its view (the owner wants that view at 0.5 m: a shade-map change, asked of the features session).
      -> Known: real eaves overhang the wall (often 0.3-0.6 m), so a roof's true edge IS outside the wall; the shared
         rule's wallsOf puts walls 2 ft in from a roof's edge (the owner's number, shade findings 33). Not yet measured
