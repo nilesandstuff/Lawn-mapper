@@ -19,13 +19,15 @@
  */
 
 export const STAND = [0.3, 4.0];        // m over the phone's ground: standing things
-export const SEARCH_CELL = 1.0;          // m: the correlation's cells (coarse; ICP does the fine part)
+export const SEARCH_CELL = 0.5;          // m: the correlation's cells (run 224: 0.5 m placed 5 of 6 pairs at 1.9-4.3 ft,
+                                         // 1 m put one at 7.4 ft; 3-11 s a match on the runner's CPU)
 export const TURN_STEP = 4;              // degrees between turns tried
 export const MARGIN = 30;                // m round the reference the walk may fall
 export const CANDIDATES = 8;             // the best turns refined
 export const LAND_M = 0.3;               // m: a point this near the reference's has landed
 export const GATE = 0.3;                 // the landed share a fix needs (SCAN-H32: 0.37-0.46 good, 0.22-0.25 wrong)
 export const STAND_GATE = 0.12;          // and of the standing things alone: flat ground lands anywhere on a flat lot
+                                         // (run 224, the five good: all 0.33-0.41, standing 0.13-0.24; the one refused 0.24)
 export const MIN_STAND = 600;            // standing cells (20 cm) the walk needs before a match is tried
 export const VOX = 0.2;                  // m: points kept one to a cell this size
 const MAX_STAND = 60000, MAX_GROUND = 30000;

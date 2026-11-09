@@ -1901,3 +1901,12 @@ be on the ground live tests."
     of the same bridge call (track.js dense: no new APK); in Chrome, the WebXR depth sampled. walk_fix_study.py reads
     it first, so the pictures can be tried again on walks that have it.
   - Task walkfix also runs the page's own fix (reference-build.mjs check) beside the Python study, on the same walks.
+
+  - CALIBRATED (runs 222 and 224, task walkfixjs, the three walks of SCAN-H30). The page's own fix, scored on each
+    placed walk's held-out check marks: on 1 m cells it put the pairs where the study's shapes did (2.5-3.9 ft on the
+    good ones) but its landed share, then taken on the ICP's sample, sat at 0.23-0.30 and passed nothing. Taken on all
+    the walk's points as the study took it, with 0.5 m cells and 4-degree turns: 2.4, 1.9, 2.8, 4.3, 3.0 ft placed
+    (landed 0.33-0.41, standing things 0.13-0.24), and 6.5 ft refused (landed 0.24): median of the placed 2.8 ft, the
+    study's shapes 3.3. The gates: 0.30 of all points, 0.12 of the standing things (flat ground lands anywhere on a
+    flat lot: a test walk of another lot passed on the ground alone). A match takes 3-11 s on the runner's CPU, so
+    likely 10-40 s on a phone, in its worker; untested on a phone.
