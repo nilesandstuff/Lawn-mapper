@@ -443,4 +443,4 @@ async function lookupNeighbours(countyKey, bbox, ring = null, pin = null) {
   return [];
 }
 
-export { lookupParcel, lookupNeighbours, queryCounty, esriToGeoJSON };
+export { lookupParcel, lookupNeighbours, queryCounty, esriToGeoJSON, endpointsFor, queryVariants };
