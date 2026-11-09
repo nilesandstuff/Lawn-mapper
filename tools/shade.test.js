@@ -1890,6 +1890,34 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   check('ept: a depth limit of 1 reads the root and its 8 children only', all.length === 9 && all.every((n) => Number(n.key.split('-')[0]) <= 1), `${all.length} nodes`);
 }
 
+/* THE MODEL KEPT CURRENT (build.js, site.js, rebuild.js; core session, 2026-11-09: the AR rebuilds an out-of-date model). */
+{
+  const { SHADE_BUILD } = await import('../public/shade/build.js');
+  const { siteFromSave, siteBounds, partFits } = await import('../public/shade/site.js');
+  const { rebuildModel, NOT_IN_SHADE_MAP } = await import('../public/shade/rebuild.js');
+  const { finishedModel, modelBytes } = await import('../public/shade/model-out.js');
+  const { unpackModel } = await import('../public/lib/lidar-model.js');
+  const lat = 43, k = mercScale(lat);
+  const grid = gridOver([0, 0, 12 / k, 12 / k], 1, lat);
+  const c = makeColumns(144);
+  let i = 0; for (let e = 0.5; e < 12; e += 1) for (let n = 0.5; n < 12; n += 1, i++) { c.x[i] = e / k; c.y[i] = n / k; c.z[i] = 100; c.cls[i] = 2; c.ret[i] = 1; c.nret[i] = 1; }
+  const m = buildCanopy(c, grid), s = seasonalCanopy(c, m);
+  const fence = { line: [[-85.7, 42.78], [-85.6999, 42.78]], heightM: 1.8, style: 'solid', material: 'vinyl', color: 'white' };
+  const f = await unpackModel(await modelBytes(finishedModel({ model: m, season: s, cols: c, fences: [fence, { line: [[0, 0]] }] })));
+  check('rebuild: every saved model carries the build stamp and the person\'s fences (a broken one dropped)',
+    Number.isInteger(SHADE_BUILD) && SHADE_BUILD >= 1 && f.meta.build === SHADE_BUILD && f.meta.fences.length === 1 && f.meta.fences[0].style === 'solid' && f.meta.fences[0].heightM === 1.8);
+  const rec = { id: 'm1', address: 'x', lng: -85.7, lat: 42.78, at: '2026-11-09T00:00:00Z', parcel: { type: 'Polygon', coordinates: [[[-85.701, 42.779], [-85.699, 42.779], [-85.699, 42.781], [-85.701, 42.779]]] }, shapes: [], tools: { shade: { data: { fences: [fence], erased: [3], grid: { w: grid.w, h: grid.h, x0: grid.x0, y1: grid.y1, nz: m.nz } } } } };
+  const site = siteFromSave(rec), b = siteBounds(site);
+  check('rebuild: a saved map read as the page reads it (site.js): its parcel, bounds, and its edits fit only the grid they were made on',
+    site.map.id === 'm1' && site.parcel?.type === 'Feature' && Math.abs(b[0] + 85.701) < 1e-9 && Math.abs(b[3] - 42.781) < 1e-9
+      && partFits(rec.tools.shade.data, grid, m.nz) && !partFits(rec.tools.shade.data, gridOver([0, 0, 13 / k, 12 / k], 1, lat), m.nz) && !partFits(rec.tools.shade.data, grid, m.nz + 1));
+  const fake = (body, status = 200) => async () => ({ ok: status < 300, status, json: async () => body });
+  const never = await rebuildModel('m1', { fetchFn: fake({ map: rec }) });
+  const gone = await rebuildModel('m1', { fetchFn: fake({}, 404) });
+  check('rebuild: a map never opened in the shade map (no lidar kept) is not guessed at: it says so; a missing map says so',
+    never.ok === false && never.why === NOT_IN_SHADE_MAP && /shade map/.test(never.words) && gone.ok === false && /not found/.test(gone.why), JSON.stringify(never));
+}
+
 /* ONE LEAF STATE PER LOT (passes.js; owner, 2026-10-29). */
 {
   check('passes: a point fired 9 May or in November is leaf-off; 11 May, July and an undated one are not',

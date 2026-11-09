@@ -18,6 +18,7 @@
  */
 
 import { buildCanopy } from './canopy.js';
+import { treesModel } from './trees-model.js';
 import { seasonalCanopy, seasonalCanopyFor, muWithLeaves, leafCalendar, CROWN_ABOVE_M } from './seasonal.js';
 import { gridOver, cellOf } from './grid.js';
 import { toMerc, fromMerc } from './ept.js';
@@ -143,10 +144,7 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
   await new Promise((r) => setTimeout(r, 30));
 
   /* Exactly as the light worker builds them (light-worker.js build). */
-  const grid = gridOver(box, 1, site.lat);
-  const model = buildCanopy(cols, grid, { shift });
-  const leafOff = flight === 'off' || flight === 'mixed';
-  const season = await seasonalCanopyFor(cols, model, { shift, classify: leafOff, green }); // the photo, read once per lot (naip.js)
+  const { grid, model, season, leafOff } = await treesModel(cols, box, shift, site.lat, { flight, green }); // shared with rebuild.js
   let calendar = null;
   try {
     const c = await (await fetch(`/api/shade/climate?lng=${site.lng}&lat=${site.lat}`)).json();

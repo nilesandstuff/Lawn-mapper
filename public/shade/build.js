@@ -1,0 +1,16 @@
+/**
+ * THE SHADE MAP'S BUILD STAMP (core session, 2026-11-09; the owner: "when a
+ * user visits the AR tool, it checks to see if the most recent version of
+ * the shade map has been loaded and saved for that map. If the most recent
+ * version hasn't been loaded, it calls the shade maps tools and updates it").
+ *
+ * Written into every saved model as meta.build (model-out.js). A reader
+ * holding a newer SHADE_BUILD than a model's (or a model with none) knows
+ * the model is out of date and can run rebuild.js. BUMP IT whenever what the
+ * model holds changes: a rule in structures.js, the canopy, the seasons, an
+ * array added or changed in model-out.js, how erasures or fences are applied.
+ *
+ *   1  2026-11-09  the first stamp: points, intensity, the surround, trunk
+ *                  offsets, own returns, fences in the header
+ */
+export const SHADE_BUILD = 1;

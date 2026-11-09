@@ -34,6 +34,7 @@ import { onePass } from './shade/passes.js';
 import { flagStrays } from './shade/structures.js';
 import { finishedModel, modelBytes } from './shade/model-out.js';
 import { readSurround } from './shade/surround.js';
+import { siteFromSave, siteBounds, partFits, asFeature } from './shade/site.js';
 import { greenOver } from './shade/naip.js';
 import { lazDecoder, browserFactory } from './shade/laz.js';
 import { nad83Correction } from './shade/datum.js';
@@ -188,7 +189,7 @@ function saveModelFile({ now = false } = {}) {
   clearTimeout(modelTimer);
   modelTimer = setTimeout(async () => {
     try {
-      const fin = finishedModel({ ...view.trees.finished(), surround: view.surround || null, lidar: view.model?.lidar || null, flown: view.model?.flown || null, photo: view.model?.green?.frame || null, basedOn: site.map.at || null });
+      const fin = finishedModel({ ...view.trees.finished(), surround: view.surround || null, fences: view.fences || [], lidar: view.model?.lidar || null, flown: view.model?.flown || null, photo: view.model?.green?.frame || null, basedOn: site.map.at || null });
       const bytes = await modelBytes(fin); // gzipped (lidar-model.js packModel)
       const res = await fetch(`/api/maps/model?id=${encodeURIComponent(site.map.id)}&tool=shade`, { method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/octet-stream' }, body: bytes });
       if (!res.ok) track('model', `refused ${res.status}`); else track('model', `${Math.round(bytes.byteLength / 1024)} KB`);
@@ -198,10 +199,8 @@ function saveModelFile({ now = false } = {}) {
 
 /** Do the erased cells kept on the server belong to this model's grid (the lot and the lidar unchanged)? */
 function partFitsGrid(part) {
-  if (!part?.grid || !view.model) return false;
-  const g = gridOver(view.model.box, 1, view.site.lat);
-  const nzOk = !part.grid.nz || !view.trees?.nz || part.grid.nz === view.trees.nz;
-  return nzOk && g.w === part.grid.w && g.h === part.grid.h && Math.abs(g.x0 - part.grid.x0) < 0.5 && Math.abs(g.y1 - part.grid.y1) < 0.5;
+  if (!view.model) return false;
+  return partFits(part, gridOver(view.model.box, 1, view.site.lat), view.trees?.nz || null);
 }
 
 /** The link back to the dashboard, once the map has an id (none on workers.dev or a local host). */
@@ -211,23 +210,6 @@ function backLink() {
   const id = view.site?.map?.id;
   a.hidden = !(HOME && id);
   if (HOME && id) a.href = `https://${HOME}/dashboard?map=${encodeURIComponent(id)}`;
-}
-
-const asFeature = (p) => (p?.type === 'Feature' ? p : p?.type ? { type: 'Feature', properties: {}, geometry: p } : null);
-
-function siteFromSave(s) {
-  const part = s.tools?.shade?.data || null;
-  const site = {
-    label: s.address || 'Saved map', lng: s.lng, lat: s.lat,
-    parcel: asFeature(s.parcel),
-    lawn: (s.shapes || []).map(asFeature).filter(Boolean),
-    tracedOn: tracedOn(s),
-    county: s.county || null,
-    map: { id: s.id, at: s.at || null, shade: part },
-  };
-  /* The line traced here last time, when the county had none. */
-  if (!site.parcel && part?.lot && !lotProblem(part.lot)) site.parcel = lotFeature(part.lot);
-  return site;
 }
 
 /**
@@ -295,25 +277,6 @@ async function siteFromPoint(lat, lng) {
     if (res.ok) parcel = (await res.json()).parcel || null;
   } catch { /* no parcel: a box round the point will do */ }
   return { label: `${lat.toFixed(5)}, ${lng.toFixed(5)}`, lng, lat, parcel, lawn: [], tracedOn: { provider: 'mapbox' } };
-}
-
-/** [w, s, e, n] in degrees of everything we know about the site. */
-function siteBounds(site) {
-  const pts = [];
-  const add = (g) => {
-    if (!g) return;
-    const walk = (c) => (typeof c[0] === 'number' ? pts.push(c) : c.forEach(walk));
-    walk(g.coordinates);
-  };
-  add(site.parcel?.geometry);
-  site.lawn.forEach((f) => add(f.geometry));
-  /* A field-readings check covers the whole track (shade/log.js: area). */
-  if (site.area) { pts.push([site.area[0], site.area[1]], [site.area[2], site.area[3]]); }
-  if (!pts.length) {
-    const d = 15 / 111320;
-    return [site.lng - d / Math.cos(site.lat * Math.PI / 180), site.lat - d, site.lng + d / Math.cos(site.lat * Math.PI / 180), site.lat + d];
-  }
-  return [Math.min(...pts.map((p) => p[0])), Math.min(...pts.map((p) => p[1])), Math.max(...pts.map((p) => p[0])), Math.max(...pts.map((p) => p[1]))];
 }
 
 /* ------------------------------------------------------------- the map */
@@ -1164,3 +1127,4 @@ async function main() {
 
 main();
 globalThis.__shade = view; // for the headless smoke tests only
+view.saveNow = () => { saveShadePart({ now: true }); saveModelFile({ now: true }); }; // the smoke tests: keep the part and the model as they stand
