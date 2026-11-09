@@ -16,7 +16,8 @@ its own marks:
   SHAPES:   the things standing on the ground (0.3-4 m over the phone's ground: walls, shrubs, trunks, fences) drawn
             as a plan on both sides, matched over every turn (every 2 degrees, by correlation: no start needed), the
             three best refined by small_gicp's GICP in 3D with the ground, four degrees of freedom; the one that lands
-            the most points within 0.3 m of the reference's kept.
+            the most points within 0.3 m of the reference's kept (the eight best turns refined). Also with only the
+            points ARCore labels building or structure (walls, fences), where both walks have labels.
 
 Scored on the placed walk's own check marks (held out: neither method sees them), against two yardsticks: the walk
 fitted to its own marks (the best any placement can do, ARCore's bending and the marking themselves), and its
@@ -46,8 +47,8 @@ FT = 3.28084
 WIDTH = 640               # pictures are matched at this width
 FEATURES = 1500
 TOP = 6                   # reference pictures tried for each picture
-DEPTH_WINDOW = 1.5        # s: the depth points of a picture are those taken this near it in time
-PX = 5                    # px: a matched point takes the depth of a depth point this near it in the picture
+PX = 8                    # px: a matched point takes the depth of the nearest surface among depth points this near it
+RANGE = (0.5, 25.0)       # m from the camera
 DROP = {2, 10, 11}        # label + 1: sky, vehicle, person
 CELL = 0.3                # m: the shape plan's cells
 STAND = (0.3, 4.0)        # m over the phone's ground: standing things
@@ -103,8 +104,9 @@ def picture_points(w):
     """Per picture: SIFT keypoints (px at WIDTH), descriptors, and each keypoint's 3D point in the session plan
     [u, v, height] (NaN where no depth point is near)."""
     sift = cv2.SIFT_create(nfeatures=FEATURES)
+    # every depth point of the walk, through each picture's camera (the twin keeps one point per small cube, the
+    # first seen, so the points of the picture's own moment are too few: run 217 lifted 156 of a walk's points)
     C = w["cloud"]
-    t = C[:, 0] if len(C) else np.zeros(0)
     xyz1 = np.concatenate([C[:, 2:5], np.ones((len(C), 1))], 1) if len(C) else np.zeros((0, 4))
     out = []
     for p in w["pics"]:
@@ -120,18 +122,17 @@ def picture_points(w):
         # the depth points of this moment, through this picture's camera
         V = np.asarray(p["view"], float).reshape(4, 4).T      # camera -> session
         P = np.asarray(p["proj"], float).reshape(4, 4).T
-        near = np.abs(t - p["t"]) <= DEPTH_WINDOW
         pts3 = np.full((len(kps), 3), np.nan)
-        if near.any():
-            cam = (np.linalg.inv(V) @ xyz1[near].T)
-            front = cam[2] < -0.3
+        if len(C):
+            cam = (np.linalg.inv(V) @ xyz1.T)
+            front = (cam[2] < -RANGE[0]) & (cam[2] > -RANGE[1])
             clip = P @ cam
-            ndc = clip[:3] / clip[3]
+            ndc = clip[:3] / np.where(np.abs(clip[3]) < 1e-9, 1e-9, clip[3])
             ok = front & (np.abs(ndc[0]) <= 1) & (np.abs(ndc[1]) <= 1)
             if ok.sum() >= 10:
                 px = np.stack([(ndc[0, ok] + 1) / 2 * WIDTH, (1 - ndc[1, ok]) / 2 * H], 1)
                 depth = -cam[2, ok]
-                src = C[near][ok]
+                src = C[ok]
                 tree = cKDTree(px)
                 for i, nb in enumerate(tree.query_ball_point(uv, PX)):
                     if nb:
@@ -215,10 +216,20 @@ def by_pictures(ref, w, TA, fref, fw):
 
 
 # --------------------------------------------------------------------- shapes
-def standing(w):
+BUILT = {3, 8}             # label + 1: building, structure (fences, walls)
+
+
+def labelled(w):
+    C = w["cloud"]
+    return len(C) and C.shape[1] > 6 and (C[:, 6] > 0).mean() > 0.3
+
+
+def standing(w, built=False):
     C = w["cloud"]
     if not len(C):
         return np.zeros((0, 3)), np.zeros((0, 3))
+    if built:
+        C = C[np.isin(C[:, 6].astype(int), list(BUILT)) | (np.abs(C[:, 3] - C[:, 5]) < 0.15)]
     h = C[:, 3] - C[:, 5]
     ok = np.isfinite(h)
     C, h = C[ok], h[ok]
@@ -240,11 +251,13 @@ def thin(P, n, seed=0):
     return P[np.random.default_rng(seed).choice(len(P), n, replace=False)]
 
 
-def by_shapes(ref, w, TA):
+def by_shapes(ref, w, TA, built=False):
     import small_gicp
     t0 = time.time()
-    sa, ga = standing(ref)
-    sw, gw = standing(w)
+    if built and not (labelled(ref) and labelled(w)):
+        return None, {"why": "a walk without labels"}
+    sa, ga = standing(ref, built)
+    sw, gw = standing(w, built)
     if len(sa) < 500 or len(sw) < 500:
         return None, {"why": "too few standing points"}
     A = np.concatenate([place(TA, sa[:, :2]), sa[:, 2:]], 1)
@@ -275,7 +288,7 @@ def by_shapes(ref, w, TA):
     for cnd in cands:
         if all(abs(((cnd[1] - p[1] + math.pi) % (2 * math.pi)) - math.pi) > math.radians(10) or math.hypot(cnd[2] - p[2], cnd[3] - p[3]) > 3 for p in picked):
             picked.append(cnd)
-        if len(picked) == 3:
+        if len(picked) == 8:
             break
     tgt = np.concatenate([thin(A, 80000), thin(AG, 40000)])
     src = np.concatenate([thin(sw, 60000), thin(gw, 30000)])
@@ -336,16 +349,18 @@ def main(dirs):
             after = check_errs(w, w["placement"])
             Tp, ip = by_pictures(ref, w, TA, feats[ref["name"]], feats[w["name"]])
             Ts, is_ = by_shapes(ref, w, TA)
-            ep, es = check_errs(w, Tp), check_errs(w, Ts)
+            Tb, ib = by_shapes(ref, w, TA, built=True)
+            ep, es, eb = check_errs(w, Tp), check_errs(w, Ts), check_errs(w, Tb)
             fmt = lambda e: f"{med(e):.1f} ft ({', '.join(f'{x:.1f}' for x in e)})" if e else "no placement"
             print(f"  {w['name']} placed by {ref['name']}:")
             print(f"    pictures: {fmt(ep)}  [{', '.join(f'{k} {v}' for k, v in ip.items())}]")
             print(f"    shapes:   {fmt(es)}  [{', '.join(f'{k} {v}' for k, v in is_.items())}]")
+            print(f"    shapes, buildings and structures only: {fmt(eb)}  [{', '.join(f'{k} {v}' for k, v in ib.items())}]")
             print(f"    its own marks' fit (the best possible): {fmt(own)}; after the walk, from the lidar: {fmt(after)}")
-            rows.append((med(ep), med(es), med(own), med(after)))
+            rows.append((med(ep), med(es), med(eb), med(own), med(after)))
     if rows:
         R = np.array(rows, float)
-        names = ("pictures", "shapes", "own marks' fit", "after the walk")
+        names = ("pictures", "shapes", "shapes (built only)", "own marks' fit", "after the walk")
         print("Over every pair, the median of the medians: " + "; ".join(
             f"{n} {np.nanmedian(R[:, i]):.1f} ft ({int(np.isfinite(R[:, i]).sum())} of {len(R)} placed)" for i, n in enumerate(names)))
 
