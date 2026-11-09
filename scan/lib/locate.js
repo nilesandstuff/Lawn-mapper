@@ -223,13 +223,19 @@ export function holdAt(L, odo) {
    there are no references: 2.7-3.6 ft after the walk against 24 ft live. With references, a held fix has already
    agreed with them (answer: REF_TOL_M), and the references come before the walk's placement. */
 const walkFirst = (L) => !!L.walk?.ok && new Set(refMarks(L).map((m) => m.id)).size < 2;
+/* (2026-11-09, SCAN-H32) placed by an earlier walk on the same map, by its shape (L.prev, walkref.js; the page sets it
+   when the landed share passes walkref.js GATE): first of all when fewer than two references are marked; marked
+   references still come first once there are two. */
+const prevFirst = (L) => !!L.prev?.ok && new Set(refMarks(L).map((m) => m.id)).size < 2;
 export function fitFor(L, odo, now = Date.now()) {
+  if (prevFirst(L)) return L.prev.T;
   if (walkFirst(L)) return L.walk.T;
   const h = holdAt(L, odo);
   return h ? h.T : refFit(L, odo) || (L.walk?.ok ? L.walk.T : null) || geoFit(L.geo, now);
 }
 /** Which the fit came from: 'walk', 'fix', 'refs', 'geo' or null. */
 export function fitSource(L, odo, now = Date.now()) {
+  if (prevFirst(L)) return 'earlier';
   if (walkFirst(L)) return 'walk';
   if (holdAt(L, odo)) return 'fix';
   if (refFit(L, odo)) return 'refs';
@@ -374,6 +380,7 @@ export function status(L, odo) {
   const h = holdAt(L, odo);
   if (src === 'fix') return `You are here (lidar fix held ${Math.round(Math.abs(odo - h.odo0))} m, last vouched for ${Math.round(Math.abs(odo - h.odo1))} m ago)`;
   if (src === 'refs') return `Lined up by ${refMarks(L).length} reference mark${refMarks(L).length === 1 ? '' : 's'}; no lidar fix${L.last?.why ? ` (${L.last.why})` : ''}`;
+  if (src === 'earlier') return `Placed by your earlier walk (${Math.round(L.prev.landed * 100)}% of this walk's points on its, ${Math.round(L.prev.walkedM * 3.281)} ft walked)`;
   if (src === 'walk') return `Placed by the whole walk (${Math.round(L.walk.walkedM * 3.281)} ft walked, ${Math.round(L.walk.share * 100)}% of the ground on the lidar's, from ${L.walk.from || 'the trail'})`;
   if (src === 'geo') return `Placed by Street View (within ${Math.round(L.geo.hacc * 3.281)} ft, ${Math.round(L.geo.yawAcc)}° by ARCore's own reckoning); no lidar fix yet${L.last?.why ? ` (${L.last.why})` : ''}`;
   return `Not placed yet: mark two references, or look round at the house and fences${L.last?.why ? ` (${L.last.why})` : ''}`;

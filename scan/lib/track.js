@@ -468,6 +468,8 @@ async function startNative({ canvas, onFrame, onEvent, nativeOptions = {}, nativ
     const depth = fr.depth ? (() => {
       const get = () => (grid === undefined ? (grid = (() => { try { return depthFromGrid(JSON.parse(N.depthGrid(dep.nx, dep.ny, dep.kind, Math.round(dep.minConf * 255)))); } catch { return null; } })()) : grid);
       return { at: (x, y) => get()?.at(x, y) ?? null, m: (x, y) => get()?.m(x, y) ?? NaN, conf: (x, y) => get()?.conf(x, y) ?? null, minConf: dep.minConf, shot: () => get()?.t ?? null,
+        // a finer grid than the page's own, asked for once (the depth kept with each picture: app.js keyDepth)
+        dense: (nx, ny) => { try { return depthFromGrid(JSON.parse(N.depthGrid(nx, ny, dep.kind, Math.round(dep.minConf * 255)))); } catch { return null; } },
         label: (x, y) => get()?.label?.(x, y) ?? null, labelConf: (x, y) => get()?.labelConf?.(x, y) ?? null, semDims: () => get()?.semDims ?? null,
         // bridge 3, Geospatial Depth on: ARCore's smoothed depth, which Streetscape Geometry carries to 65 m
         geoDepth: bridge >= 3 && opt.streetscape ? () => { try { return depthFromGrid(JSON.parse(N.depthGrid(16, 28, 'smooth', 0)), 0.4, 65); } catch { return null; } } : null };

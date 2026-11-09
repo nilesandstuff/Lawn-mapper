@@ -1878,3 +1878,26 @@ work). But yeah, it looks like automatic lidar alignment is just too difficult t
   - The placement map (same day): points and labels sized in screen pixels (they were a sixth of their size), zoom to
     40x, a point keeps where the finger took hold of it, a magnifier while dragging, and the photo the map was traced
     on (the county photo with the editor's line-up, or Mapbox).
+
+## 16. Placed by an earlier walk, live; a depth grid with each picture (owner, 2026-11-09)
+
+After SCAN-H32 the owner: "Yes go ahead with 1 and 2" (1: the live shape fix; 2: depth kept with each picture), and on
+the choice between them: "I'll soften my stance about going with shapes if they're about the same. The real test will
+be on the ground live tests."
+
+  - THE REFERENCE: a walk placed by its marks, its standing things and ground carried onto the map
+    (scan/lib/walkref.js buildRef), one per map, kept as refs/<map>.bin in the twin bucket (GET/PUT
+    /api/scan/reference?map=, the admin only). Made by workflow S task reference from a twin
+    (scan/tools/reference-build.mjs build); later, at the end of a well-marked walk, by the page.
+  - THE LIVE FIX: the page keeps this walk's standing things and ground (20 cm cells, up to 40,000 each) and every
+    15 s, once 600 standing cells are in, matches them against the reference in a worker (scan/public/ref-worker.js,
+    walkref.js shapeFix: correlation over every 4 degrees on 1 m cells, the best eight refined by point-to-point ICP;
+    1.4 s on a synthetic yard on the runner's CPU). Used only when 30% or more of the walk's points land within
+    0.3 m of the reference's (SCAN-H32's gate). It places the walk when fewer than two references are marked
+    (locate.js fitFor: 'earlier'); two marked references still come first. The HUD says which, or what the match
+    waits for; live.json keeps the fix and the asks (prev).
+  - THE DEPTH WITH EACH PICTURE: key-NNNN.depth beside key-NNNN.jpg (app.js keyDepth): u16 [nx, ny] then each cell's
+    surface distance from the camera in mm, 72 x 128 cells, about 18 KB a picture. On the app it is a finer grid asked
+    of the same bridge call (track.js dense: no new APK); in Chrome, the WebXR depth sampled. walk_fix_study.py reads
+    it first, so the pictures can be tried again on walks that have it.
+  - Task walkfix also runs the page's own fix (reference-build.mjs check) beside the Python study, on the same walks.

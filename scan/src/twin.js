@@ -19,7 +19,7 @@
 const json = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 
 export const MAX_PART = 8 * 1024 * 1024;
-export const PART = /^(meta|live|end|splat|fixed|inspect|consensus)\.json$|^inspect-points\.bin$|^(cloud|track|labels)-\d{4}\.bin$|^keys-\d{4}\.json$|^key-\d{4}\.jpg$|^splat\.splat$|^splat-compare\.jpg$|^mesh\.bin$/;
+export const PART = /^(meta|live|end|splat|fixed|inspect|consensus)\.json$|^inspect-points\.bin$|^(cloud|track|labels)-\d{4}\.bin$|^keys-\d{4}\.json$|^key-\d{4}\.(jpg|depth)$|^splat\.splat$|^splat-compare\.jpg$|^mesh\.bin$/;
 export const WALK = /^[0-9a-zA-Z_-]{1,40}$/;
 const TYPES = { json: 'application/json', bin: 'application/octet-stream', jpg: 'image/jpeg' };
 export const typeOf = (part) => TYPES[part.split('.').pop()] || 'application/octet-stream';
@@ -87,6 +87,37 @@ export async function twin(request, env, url, { isAdmin }) {
       cursor = page.truncated ? page.cursor : undefined;
     } while (cursor);
     return json({ ok: true, deleted: n });
+  }
+  return json({ error: 'method' }, 405);
+}
+
+/*
+ * THE MAP'S REFERENCE WALK (core session, 2026-11-09; scan/lib/walkref.js, SCAN-H32): an earlier walk placed by its
+ * marks, its points on the map, that places later walks by their shape. One per map, under refs/<map>.bin.
+ *
+ *   GET /api/scan/reference?map=   the reference (bytes), 404 when the map has none
+ *   PUT /api/scan/reference?map=   a new one (scan/tools/reference-build.mjs writes it straight to the bucket too)
+ *
+ * The admin only, like the twins: it is the yard's shape.
+ */
+export const MAP = /^[0-9a-zA-Z_-]{1,64}$/;
+export const refKey = (map) => `refs/${map}.bin`;
+export async function reference(request, env, url, { isAdmin }) {
+  if (url.pathname !== '/api/scan/reference') return null;
+  if (!(await isAdmin(request, env))) return json({ error: 'Not found' }, 404);
+  if (!env.TWIN) return json({ error: 'no-bucket' }, 503);
+  const map = url.searchParams.get('map') || '';
+  if (!MAP.test(map)) return json({ error: 'which map?' }, 400);
+  if (request.method === 'GET') {
+    const o = await env.TWIN.get(refKey(map));
+    if (!o) return json({ error: 'Not found' }, 404);
+    return new Response(o.body, { headers: { 'Content-Type': 'application/octet-stream', 'Cache-Control': 'private, no-store', 'X-Reference-Walk': o.customMetadata?.walk || '' } });
+  }
+  if (request.method === 'PUT') {
+    const body = await request.arrayBuffer();
+    if (body.byteLength > MAX_PART) return json({ error: `at most ${MAX_PART} bytes` }, 413);
+    await env.TWIN.put(refKey(map), body, { httpMetadata: { contentType: 'application/octet-stream' }, customMetadata: { walk: url.searchParams.get('walk') || '' } });
+    return json({ ok: true, map, bytes: body.byteLength });
   }
   return json({ error: 'method' }, 405);
 }

@@ -36,7 +36,7 @@ on:
         required: true
         default: tests
         type: choice
-        options: [tests, deploy, walks, twin, fix, place, depth, study, skyline, pavement, checks, repeat, register, walkfix]
+        options: [tests, deploy, walks, twin, fix, place, depth, study, skyline, pavement, checks, repeat, register, walkfix, reference]
       walk:
         description: 'For twin, fix or depth: the walk id, or latest'
         default: latest
@@ -375,6 +375,22 @@ jobs:
             dirs="$dirs w-$W"
           done
           python scan/tools/walk_fix_study.py $dirs | tee -a walkfix.txt
+          # the page's own shape fix (scan/lib/walkref.js), the code the phone runs, on the same walks
+          node scan/tools/reference-build.mjs check $dirs | tee -a walkfix.txt
+
+      # THE MAP'S REFERENCE WALK (scan/tools/reference-build.mjs; SCAN-H32): a walk placed by its marks becomes the one
+      # that places later walks on its map by their shape, live on the page. The walk input: one walk.
+      - name: A walk kept as its map's reference
+        if: ${{ inputs.task == 'reference' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WALK: ${{ inputs.walk }}
+          NO_PICTURES: '1'
+        run: |
+          set -o pipefail
+          node scan/tools/twin-r2.mjs get "$WALK" twin | tee reference.txt
+          node scan/tools/reference-build.mjs build twin | tee -a reference.txt
 
       - name: Repeat walks against each other
         if: ${{ inputs.task == 'repeat' }}
@@ -406,6 +422,7 @@ jobs:
             register) grep -v '^Twin read\|: kept (' register.txt 2>/dev/null | tail -70 || echo "no registration: see the step above" ;;
             repeat) cat repeat.txt 2>/dev/null || echo "no repeat-walk study: see the step above" ;;
             walkfix) grep -v '^Twin read' walkfix.txt 2>/dev/null | tail -40 || echo "no walk-to-walk study: see the step above" ;;
+            reference) cat reference.txt 2>/dev/null || echo "no reference: see the step above" ;;
             checks) cat checks.txt 2>/dev/null || echo "no check-mark test: see the step above" ;;
             depth) tail -25 depth.txt 2>/dev/null || echo "no depth run: see the step above" ;;
             *) echo "Scan tests: ${{ job.status }}" ;;

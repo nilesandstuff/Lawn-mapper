@@ -123,6 +123,27 @@ def picture_points(w):
         V = np.asarray(p["view"], float).reshape(4, 4).T      # camera -> session
         P = np.asarray(p["proj"], float).reshape(4, 4).T
         pts3 = np.full((len(kps), 3), np.nan)
+        dpath = os.path.join(w["dir"], p["name"].replace(".jpg", ".depth"))
+        if os.path.exists(dpath):
+            # the depth grid kept with the picture (app.js keyDepth, from 2026-11-09): every keypoint its own distance
+            a = np.fromfile(dpath, dtype="<u2")
+            nx, ny = int(a[0]), int(a[1])
+            if len(a) >= 2 + nx * ny:
+                D = a[2:2 + nx * ny].reshape(ny, nx).astype(np.float64) / 1000.0
+                Pi = np.linalg.inv(P)
+                for i, (u, v) in enumerate(uv):
+                    d = D[min(ny - 1, int(v / H * ny)), min(nx - 1, int(u / WIDTH * nx))]
+                    if d <= 0:
+                        continue
+                    nx_, ny_ = 2 * u / WIDTH - 1, 1 - 2 * v / H
+                    a0 = Pi @ np.array([nx_, ny_, -1.0, 1.0]); a0 = a0[:3] / a0[3]
+                    a1 = Pi @ np.array([nx_, ny_, 1.0, 1.0]); a1 = a1[:3] / a1[3]
+                    ray = a1 - a0
+                    ray = ray / np.linalg.norm(ray)
+                    q = V[:3, 3] + V[:3, :3] @ ray * d
+                    pts3[i] = [q[0], -q[2], q[1]]
+                out.append({"name": p["name"], "des": des.astype(np.float32), "uv": uv, "xyz": pts3, "W": WIDTH, "H": H, "V": V, "P": P, "dense": True})
+                continue
         if len(C):
             cam = (np.linalg.inv(V) @ xyz1.T)
             front = (cam[2] < -RANGE[0]) & (cam[2] > -RANGE[1])

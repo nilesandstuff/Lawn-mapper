@@ -15,7 +15,7 @@
  */
 
 import { walks } from './walks.js';
-import { twin } from './twin.js';
+import { twin, reference } from './twin.js';
 import { recording } from './recording.js';
 import { app } from './app.js';
 
@@ -86,6 +86,9 @@ export default {
     // the walks kept on the site (src/walks.js): the admin only, whether or not the site is open
     const kept = await walks(request, env, url, { isAdmin });
     if (kept) return kept;
+    // the map's reference walk (src/twin.js reference): the admin only, the same way
+    const referred = await reference(request, env, url, { isAdmin });
+    if (referred) return referred;
     // the walks' twins (src/twin.js): the admin only, the same way
     const twinned = await twin(request, env, url, { isAdmin });
     if (twinned) return twinned;

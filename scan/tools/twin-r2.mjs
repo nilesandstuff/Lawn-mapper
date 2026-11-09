@@ -42,6 +42,21 @@ async function pool(items, n, fn) {
   await Promise.all(Array.from({ length: n }, async () => { while (i < items.length) { const x = items[i++]; await fn(x); } }));
 }
 
+/** One object written to a bucket (the map's reference walk: scan/tools/reference-build.mjs). */
+export async function writeObject(bucket, key, bytes, type = 'application/octet-stream', meta = null) {
+  const token = process.env.CLOUDFLARE_API_TOKEN;
+  if (!token) throw new Error('no CLOUDFLARE_API_TOKEN');
+  const base = `${API}/accounts/${await account(token)}/r2/buckets/${bucket}`;
+  const headers = { Authorization: `Bearer ${token}`, 'Content-Type': type };
+  if (meta) for (const [k, v] of Object.entries(meta)) headers[`cf-r2-custom-metadata-${k}`] = String(v);
+  for (let t = 0; t < 4; t++) {
+    const r = await fetch(`${base}/objects/${key.split('/').map(encodeURIComponent).join('/')}`, { method: 'PUT', headers, body: bytes }).catch(() => null);
+    if (r?.ok) return true;
+    await new Promise((ok) => setTimeout(ok, 2000 * 2 ** t));
+  }
+  throw new Error(`the object could not be written to ${bucket}`);
+}
+
 /** One object's bytes from a bucket (the main site's models among them), or null when it is not there. */
 export const CORPUS_BUCKET = 'lawn-mapper-corpus';
 export async function readObject(bucket, key) {

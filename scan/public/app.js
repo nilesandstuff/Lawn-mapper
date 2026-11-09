@@ -13,7 +13,8 @@ import { newWalk, step, dropPin, checkPin, measure, tapeFor, undo, far, summary,
 import { makeDrawer, lidarMeshes, OCC_RANGE } from '/lib/draw.js';
 import { levelDist, toLocal } from '/lib/frames.js';
 import { frameFor, bboxOf, toPx, fromPx, ringsOf } from '/lib/photo.js';
-import { newLocate, mark, noteGround, addDepth, nextAsk, answer, fitFor, mapOf, sessionOf, checkError, nearestNamed, agreement, groundOffset, status as fixStatus, summaryOf } from '/lib/locate.js';
+import { newLocate, mark, noteGround, addDepth, nextAsk, answer, fitFor, mapOf, sessionOf, checkError, nearestNamed, agreement, groundOffset, groundUnder, status as fixStatus, summaryOf } from '/lib/locate.js';
+import { STAND as REF_STAND, MIN_STAND as REF_MIN_STAND, VOX as REF_VOX } from '/lib/walkref.js';
 import { leftOut, mapToSession } from '/lib/align.js';
 import { newTwin, addPoints, addPose, wantKey, addKey, flush, flushDue, liveOf } from '/lib/twin.js';
 import { newAnchors, viewOf, noteView, nudge, pitchOf, anchorsKept, SHOW_S } from '/lib/anchors.js';
@@ -46,6 +47,12 @@ const FAR_AGAIN = 3000;
 const DEPTH_EVERY = 250;
 const LIVE_RANGE = 30; // m: the live match and the walk's ground take depth this near, as far as the twin keeps it (track.js; 8 until 2026-11-08)
 const WALK_EVERY = 10000; // ms between placements of the whole walk (walkfix.js)
+const PREV_EVERY = 15000; // ms between matches against the map's earlier walk (walkref.js, SCAN-H32)
+const PREV_MAX = 40000;   // standing (and ground) points kept for that match
+/* A DEPTH GRID WITH EACH PICTURE (the owner, 2026-11-09, step 2 after SCAN-H32: the pictures matched between walks
+   but the twin's thinned points gave few of them a depth): key-NNNN.depth beside key-NNNN.jpg, u16 [nx, ny] then the
+   distance from the camera of each cell's surface in mm (0 none), rows from the top. ~18 KB a picture. */
+const KEY_DEPTH = { nx: 72, ny: 128 };
 const COLOUR_EVERY = 900; // ms between reads of the ground's colour
 
 const st = {
@@ -316,6 +323,8 @@ async function startAR(engine) {
   st.dy = null; st.dyFrom = null; st.gpsTrail = []; st.anchors = newAnchors(); st.nudge = null; st.depthFill = null; st.geoTrail = []; st.geoSeen = null; st.sem = newSemCount(); st.lastSem = null; st.semDims = null; st.occ = null; st.walkGround = new Map(); st.spikes = { pictures: 0, cells: 0, flagged: 0 }; st.walkAsk = null; st.walkAt = 0; st.walkStats = { asks: 0, ok: 0, lastWhy: null, firstOkM: null }; st.crumbs = newCrumbs();
   st.walk.checks = [];
   st.L = newLocate();
+  st.prevStand = new Map(); st.prevGround = new Map(); st.prevAsk = null; st.prevAt = 0; st.prevStats = { asks: 0, ok: 0, lastWhy: null, firstOkM: null, lastMs: null };
+  loadReference();
   mini.view = null; mini.mode = 'fit'; mini.locked = false; $('#arrows').innerHTML = '';
   st.surfCount = { grass: 0, pave: 0 };
   st.chosen = null; st.undoMarks = [];
@@ -657,6 +666,7 @@ function onFrame(f) {
         p.surf = surf || 'other'; pts.push(p); if (surf) st.surfCount[surf]++;
       }
       if (pts.length) addDepth(L, pts, odo, f.pose.position);
+      if (pts.length && st.ref?.ready) keepForPrev(L, pts);
     }
   }
   // the twin: the camera's track, a picture now and then, and what has piled up sent every 15 s
@@ -665,9 +675,20 @@ function onFrame(f) {
     addPose(st.twin, now, odo, f.pose.position, f.pose.quaternion, f.tracking);
     if (f.grab && f.tracking === 'normal' && !st.twinUp.off && wantKey(st.twin, now, f.pose.position, f.pose.quaternion)) {
       const g = grabbed || f.grab();
-      if (g) { const name = addKey(st.twin, now, odo, f.pose.position, f.pose.quaternion, g); g.blob.then((b) => b && sendTwin([{ name, type: 'image/jpeg', body: b }]), () => {}); }
+      if (g) {
+        const name = addKey(st.twin, now, odo, f.pose.position, f.pose.quaternion, g);
+        g.blob.then((b) => b && sendTwin([{ name, type: 'image/jpeg', body: b }]), () => {});
+        const dep = keyDepth(f, name);
+        if (dep) sendTwin([dep]);
+      }
     }
-    if (flushDue(st.twin, now)) sendTwin(flush(st.twin, now, liveOf(L, w, { recordOnly: !!st.recordOnly, points: pointsKept(), gpsTrail: trailKept(), geoTrail: geoKept(), anchors: st.anchors ? anchorsKept(st.anchors) : null })));
+    if (flushDue(st.twin, now)) sendTwin(flush(st.twin, now, liveOf(L, w, { recordOnly: !!st.recordOnly, points: pointsKept(), gpsTrail: trailKept(), geoTrail: geoKept(), anchors: st.anchors ? anchorsKept(st.anchors) : null, prev: prevKept() })));
+  }
+  // PLACED BY THE MAP'S EARLIER WALK (walkref.js, SCAN-H32): every PREV_EVERY, this walk's points so far against it
+  if (st.ref?.ready && !st.prevAsk && f.tracking === 'normal' && Date.now() - st.prevAt > PREV_EVERY && st.prevStand.size >= REF_MIN_STAND) {
+    const id = `p${Date.now()}`;
+    st.prevAt = Date.now(); st.prevAsk = { id, odo }; st.prevStats.asks++;
+    st.ref.worker.postMessage({ fix: { id, stand: [...st.prevStand.values()], ground: [...st.prevGround.values()] } });
   }
   if (LIDAR_LIVE && !st.recordOnly && st.lid.ready && st.lid.worker && f.tracking === 'normal') {
     const ask = nextAsk(L, odo, Date.now(), f.pose?.position || null);
@@ -748,9 +769,12 @@ function hud(f) {
   const pts = f.points ? ` · ${f.points} pts` : '';
   const target = st.points.length ? nextTarget() : null;
   const ag = st.agree ? ` · lidar dots: <strong>${st.agree.on.length}</strong> on, ${st.agree.off.length} off` : '';
+  // the map's earlier walk (walkref.js): what its match is waiting for, until it places the walk
+  const prevLine = st.ref?.ready && !L.prev?.ok ? `<br><span class="dim">Earlier walk: ${esc(st.prevStats?.lastWhy || (st.prevStand?.size < REF_MIN_STAND ? `gathering points (${st.prevStand.size} of ${REF_MIN_STAND} on walls, fences and shrubs)` : 'matching…'))}</span>`
+    : st.ref?.error ? `<br><span class="dim">Earlier walk: ${esc(st.ref.error)}</span>` : '';
   const fixLine = st.origin ? `<br>${st.recordOnly ? '<strong>Recording only</strong>: no live lidar fix; the walk is placed afterwards (workflow S, task fix). ' : ''}${esc(st.lid.ready ? fixStatus(L, w.odo) : st.lid.error ? `No lidar (${st.lid.error}); references only: ${fixStatus(L, w.odo)}` : `Lidar: ${st.lid.progress || 'reading…'}`)}${ag}${target ? `<br>Next to mark: <strong style="color:${target.kind === 'ref' ? '#8ab4ff' : '#d9a6ff'}">${esc(target.name)}</strong> (aim where it meets the ground, within 10 ft, tap Mark; tap another point on the mini map to mark that one instead)` : ''}` : '';
   const last = st.errors.length && Date.now() - st.errors[st.errors.length - 1].t < 6000 && /engine|start/.test(st.errors[st.errors.length - 1].what) ? `<br><span class="bad">${esc(st.errors[st.errors.length - 1].what)}</span>` : '';
-  $('#hud').innerHTML = `${NAME[w.engine]} · ${tr} · walked ${Math.round(w.stats.walked * FT)} ft${pts} · ${aim} · ${w.pins.length} pin${w.pins.length === 1 ? '' : 's'}${w.pendingMeasure ? ' · <span class="warn">now aim at the second mark</span>' : ''}${fixLine}${st.nudge ? `<br><span class="warn">${esc(st.nudge.text)}</span>` : ''}${st.upStatus && (st.upStatus.pending > 3 || st.upStatus.off || (st.upStatus.pending && !st.upStatus.sending)) ? `<br><span class="dim">${esc(statusText(st.upStatus))}</span>` : ''}${last}`;
+  $('#hud').innerHTML = `${NAME[w.engine]} · ${tr} · walked ${Math.round(w.stats.walked * FT)} ft${pts} · ${aim} · ${w.pins.length} pin${w.pins.length === 1 ? '' : 's'}${w.pendingMeasure ? ' · <span class="warn">now aim at the second mark</span>' : ''}${fixLine}${prevLine}${st.nudge ? `<br><span class="warn">${esc(st.nudge.text)}</span>` : ''}${st.upStatus && (st.upStatus.pending > 3 || st.upStatus.off || (st.upStatus.pending && !st.upStatus.sending)) ? `<br><span class="dim">${esc(statusText(st.upStatus))}</span>` : ''}${last}`;
   const can = !!f.hit && f.tracking !== 'lost';
   $('#pin').disabled = !can; $('#measure').disabled = !can; $('#check').disabled = !can || !w.pins.length; $('#mark').disabled = !can || !target;
   const again = target && L.marks.some((m) => m.id === target.id);
@@ -1029,6 +1053,78 @@ async function sendPart(p) {
   if (res.status === 401 || res.status === 403 || res.status === 404) return 'retry'; // signed out for now: keep it for later
   p.dropWhy = ((await res.json().catch(() => ({})))?.error || `${res.status}`).slice(0, 80);
   return 'drop';
+}
+
+/* ------------------------------------------------ the map's earlier walk */
+/** The map's reference walk (scan/lib/walkref.js), if it has one: read once, matched in its own worker. */
+async function loadReference() {
+  if (!st.map) { st.ref = null; return; }
+  if (st.ref?.map === st.map && (st.ref.worker || st.ref.none)) return;
+  st.ref?.worker?.terminate?.();
+  st.ref = { map: st.map, worker: null, ready: null, none: false, error: null };
+  try {
+    const r = await fetch(`/api/scan/reference?map=${encodeURIComponent(st.map)}`, { credentials: 'same-origin' });
+    if (r.status === 404) { st.ref.none = true; return; }
+    if (!r.ok) throw new Error(`the site answered ${r.status}`);
+    const bytes = await r.arrayBuffer();
+    const w = new Worker('/ref-worker.js', { type: 'module' });
+    st.ref.worker = w;
+    w.onmessage = ({ data }) => {
+      if (data.ready) { st.ref.ready = data.ready; log(`earlier walk read: ${data.ready.stand} standing and ${data.ready.ground} ground points`); }
+      if (data.error) { st.ref.error = data.error; log(`earlier walk: ${data.error}`); }
+      if (data.fix && st.prevAsk && data.id === st.prevAsk.id) {
+        const a = st.prevAsk; st.prevAsk = null;
+        st.prevStats.lastMs = data.fix.ms ?? null;
+        if (data.fix.ok && st.L) {
+          const first = !st.L.prev?.ok;
+          st.L.prev = { ok: true, T: data.fix.T, tz: data.fix.tz, landed: data.fix.landed, second: data.fix.second, walkedM: a.odo, at: Date.now() };
+          st.prevStats.ok++; st.prevStats.lastWhy = null;
+          if (st.prevStats.firstOkM == null) st.prevStats.firstOkM = Math.round(a.odo);
+          if (first) flash('Placed by your earlier walk');
+        } else st.prevStats.lastWhy = data.fix.why;
+      }
+    };
+    w.onerror = (e) => { st.ref.error = e.message || 'the earlier walk could not be matched'; };
+    w.postMessage({ ref: bytes }, [bytes]);
+  } catch (e) { st.ref.error = e.message; }
+}
+
+/** This walk's standing things and ground, one point to a small cube, for the earlier walk's match. */
+function keepForPrev(L, pts) {
+  for (const p of pts) {
+    const g = groundUnder(L, p);
+    if (g == null || !Number.isFinite(g)) continue;
+    const h = p.y - g, u = p.x, v = -p.z;
+    const which = Math.abs(h) < 0.15 ? st.prevGround : h >= REF_STAND[0] && h <= REF_STAND[1] ? st.prevStand : null;
+    if (!which || which.size >= PREV_MAX) continue;
+    const k = `${Math.floor(u / REF_VOX)},${Math.floor(v / REF_VOX)},${Math.floor(p.y / REF_VOX)}`;
+    if (!which.has(k)) which.set(k, [u, v, p.y]);
+  }
+}
+
+/** What the earlier walk's match did, for the walk's twin (live.json). */
+function prevKept() {
+  if (!st.ref || st.ref.none) return st.ref?.none ? { reference: false } : null;
+  const P = st.L?.prev, r = (v) => (Number.isFinite(v) ? +v.toFixed(4) : null);
+  return { reference: !!st.ref.ready, ...st.prevStats, fix: P ? { T: { theta: r(P.T.theta), tx: r(P.T.tx), ty: r(P.T.ty), s: 1 }, tz: r(P.tz), landed: P.landed, second: P.second, walkedM: r(P.walkedM) } : null };
+}
+
+/** The depth grid of a picture just taken: key-NNNN.depth (see KEY_DEPTH), or null when there is no depth. */
+function keyDepth(f, name) {
+  try {
+    const D = f.depth?.dense ? f.depth.dense(KEY_DEPTH.nx, KEY_DEPTH.ny) : f.depth;
+    if (!D?.at || !f.pose) return null;
+    const { nx, ny } = KEY_DEPTH, c = f.pose.position, a = new Uint16Array(2 + nx * ny);
+    a[0] = nx; a[1] = ny;
+    let n = 0;
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      const p = D.at((i + 0.5) / nx, (j + 0.5) / ny);
+      if (!p) continue;
+      const d = Math.hypot(p.x - c.x, p.y - c.y, p.z - c.z);
+      if (d > 0 && d < 65) { a[2 + j * nx + i] = Math.round(d * 1000); n++; }
+    }
+    return n ? { name: name.replace(/\.jpg$/, '.depth'), type: 'application/octet-stream', body: new Blob([a.buffer]) } : null;
+  } catch { return null; }
 }
 
 function sendTwin(parts) {
