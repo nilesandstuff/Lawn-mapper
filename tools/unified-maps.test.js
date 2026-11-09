@@ -197,6 +197,44 @@ let guestCookie;
   check("without a bucket the site says so", noBucket.status === 503 || noBucket.status === 404, `${noBucket.status} ${await noBucket.text()}`);
 }
 
+/* ------------------------- the photo a map was traced on, kept with it */
+{
+  const store = new Map();
+  const r2 = {
+    async put(k, body, opts) { store.set(k, { body: body instanceof Uint8Array ? body : new Uint8Array(await new Response(body).arrayBuffer()), ...opts }); },
+    async get(k) { const o = store.get(k); return o ? { body: o.body, size: o.body.byteLength, customMetadata: o.customMetadata, httpMetadata: o.httpMetadata } : null; },
+    async head(k) { const o = store.get(k); return o ? { customMetadata: o.customMetadata } : null; },
+    async delete(k) { store.delete(k); },
+    async list({ prefix }) { return { objects: [...store.keys()].filter((k) => k.startsWith(prefix)).map((key) => ({ key })) }; },
+  };
+  const env4 = { DB: testDb(), CORPUS: r2, MAPBOX_SERVER_TOKEN: 'test-token' };
+  const realFetch = globalThis.fetch;
+  let fetched = 0;
+  globalThis.fetch = async (u) => { fetched++; return new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]), { status: 200, headers: { 'Content-Type': 'image/png' } }); };
+  const pending = [];
+  const ctx4 = { waitUntil(p) { pending.push(p); } };
+  const go = (path, method = 'GET', cookie = '', body = null) => handleMaps(new Request(`${HOST}${path}`, { method, headers: { Cookie: cookie, ...(body ? { 'Content-Type': 'application/json' } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) }), env4, new URL(`${HOST}${path}`), '', ctx4, json);
+  const frame = { lng: -85.1, lat: 42.1, zoom: 19.5, size: 640, height: 640 };
+  const first = await go('/api/maps', 'POST', '', save({ frame, provider: 'mapbox' }));
+  const gc = cookieFrom(first.headers.getSetCookie?.() || [], GUEST_COOKIE), id = encodeURIComponent(save().id);
+  await Promise.all(pending.splice(0));
+  check('saving a map keeps the photo it was traced on', fetched === 1 && [...store.keys()].some((k) => k.endsWith('/photo.bin')), `fetched ${fetched}`);
+  const got = await go(`/api/maps/photo?id=${id}`, 'GET', gc);
+  const fr = JSON.parse(got.headers.get('X-Photo-Frame') || 'null');
+  check('and serves it with its frame and source, without fetching again',
+    got.status === 200 && fr && Number.isFinite(fr.zoom) && got.headers.get('X-Photo-Source') === 'mapbox' && fetched === 1, `${got.status} ${fetched}`);
+  await go('/api/maps', 'POST', gc, save({ frame, provider: 'mapbox', squareFeet: 5100 }));
+  await Promise.all(pending.splice(0));
+  check('re-saving on the same photo takes nothing new', fetched === 1, `fetched ${fetched}`);
+  await go('/api/maps', 'POST', gc, save({ frame, provider: 'county', countySvc: 'no-such-service', countyAlign: { east: 0.4, north: -0.2, scale: 1.001 } }));
+  await Promise.all(pending.splice(0));
+  const wrong = await go(`/api/maps/photo?id=${id}`, 'GET', gc);
+  check('saved on a photo that cannot be had: an error, never the old photo in its place', wrong.status === 502, `${wrong.status}`);
+  const stranger = await go(`/api/maps/photo?id=${id}`, 'GET', '');
+  check("a stranger gets no one's photo", stranger.status === 404);
+  globalThis.fetch = realFetch;
+}
+
 /* -------------------------------------------------------- idle guests go */
 {
   const env2 = { DB: testDb() };

@@ -12,7 +12,7 @@ import { detect, start, engineChoice, load8thWall } from '/lib/track.js';
 import { newWalk, step, dropPin, checkPin, measure, tapeFor, undo, far, summary, pinNow } from '/lib/walk.js';
 import { makeDrawer, lidarMeshes, OCC_RANGE } from '/lib/draw.js';
 import { levelDist, toLocal } from '/lib/frames.js';
-import { frameFor, bboxOf, toPx, fromPx, ringsOf, toMerc } from '/lib/photo.js';
+import { frameFor, bboxOf, toPx, fromPx, ringsOf } from '/lib/photo.js';
 import { newLocate, mark, noteGround, addDepth, nextAsk, answer, fitFor, mapOf, sessionOf, checkError, nearestNamed, agreement, groundOffset, status as fixStatus, summaryOf } from '/lib/locate.js';
 import { leftOut, mapToSession } from '/lib/align.js';
 import { newTwin, addPoints, addPose, wantKey, addKey, flush, flushDue, liveOf } from '/lib/twin.js';
@@ -199,176 +199,33 @@ async function loadMap(id) {
   drawMap();
   startLidar(m);
   st.photo = null;
-  const got = await tracedPhoto(m, st.frame);
-  st.photo = got.photo;
+  const got = await keptPhoto(id);
+  if (got.photo) { st.photo = got.photo; st.frame = got.frame; }
   $('#mapnote').textContent += ` Photo: ${got.note}.`;
   drawMap();
 }
 
 /**
- * THE PHOTO THE MAP WAS TRACED ON (the owner, 2026-11-09: "let's make sure the AR point placement map gets the same
- * imagery that the map was initially saved on"). A map saved on a county photo records the service (countySvc) and the
- * editor's line-up that moved it onto Mapbox's ground (countyAlign: east, north in metres and a scale about the saved
- * frame's centre; public/shade/traced.js); the outline and the points are on the photo as it was shown. So the county
- * photo is fetched for the frame that, moved by that line-up (public/app.js alignedFrame), lands exactly on this page's
- * frame, and is drawn as it comes. Any other map was traced on Mapbox. A county photo that cannot be had falls back to
- * Mapbox, and says so.
+ * THE PHOTO THE MAP WAS TRACED ON, KEPT WITH THE MAP (the owner, 2026-11-09: "let's make sure the AR point placement
+ * map gets the same imagery that the map was initially saved on"; and, of a fallback to Mapbox when a county photo
+ * could not be had, "that's a bug that needs addressing. The photo a map is traced on should be accessible
+ * indefinitely"). Lawn Mapper keeps it beside the map when the map is saved (worker/src/map-photo.js): the county
+ * photo as the editor showed it (its line-up applied), or Mapbox, with its frame. The page lays it down on that frame,
+ * so a point on it is a point on the photo the outline was drawn on. No stand-in: a photo that cannot be had is said.
  */
-async function tracedPhoto(m, frame) {
-  const get = async (params) => {
-    const r = await fetch(`/api/imagery?${new URLSearchParams(params)}`);
-    if (!r.ok) throw new Error(`${r.status}`);
-    return createImageBitmap(await r.blob());
-  };
-  const base = { size: frame.size, height: frame.height };
-  if (m.provider === 'county' && m.countySvc != null) {
-    const a = m.countyAlign && [m.countyAlign.east, m.countyAlign.north, m.countyAlign.scale].every(Number.isFinite) ? m.countyAlign : null;
-    let f = frame;
-    if (a) {
-      // the line-up at this frame's centre (the shift, plus the scale about the saved frame's centre)
-      const about = m.frame && Number.isFinite(m.frame.lng) ? [m.frame.lng, m.frame.lat] : [m.lng, m.lat];
-      const k = Math.cos((frame.lat * Math.PI) / 180), [px_, py_] = toMerc([frame.lng, frame.lat]), [cx, cy] = toMerc(about);
-      const east = a.east + (a.scale - 1) * (px_ - cx) * k, north = a.north + (a.scale - 1) * (py_ - cy) * k;
-      const lat = (frame.lat * Math.PI) / 180;
-      f = { ...frame, lng: frame.lng - ((east / (6378137 * Math.cos(lat))) * 180) / Math.PI, lat: frame.lat - ((north / 6378137) * 180) / Math.PI, zoom: frame.zoom + Math.log2(a.scale || 1) };
-    }
-    try {
-      return { photo: await get({ ...base, lng: f.lng, lat: f.lat, zoom: f.zoom, provider: 'county', svc: m.countySvc }), note: `the county photo the map was traced on${a ? ', lined up as the editor had it' : ''}` };
-    } catch (e) {
-      try { return { photo: await get({ ...base, lng: frame.lng, lat: frame.lat, zoom: frame.zoom, provider: 'mapbox' }), note: `Mapbox, because the county photo the map was traced on could not be had (${e.message}): place points with care` }; } catch { return { photo: null, note: 'none could be had (the outline alone)' }; }
-    }
+async function keptPhoto(id) {
+  try {
+    const r = await fetch(`/api/maps/photo?id=${encodeURIComponent(id)}`, { credentials: 'same-origin' });
+    if (!r.ok) { const j = await r.json().catch(() => null); throw new Error(j?.error || `${r.status}`); }
+    const frame = JSON.parse(r.headers.get('X-Photo-Frame') || 'null');
+    if (!frame || ![frame.lng, frame.lat, frame.zoom, frame.size].every(Number.isFinite)) throw new Error('no frame with the photo');
+    frame.height = Number.isFinite(frame.height) ? frame.height : frame.size;
+    const src = r.headers.get('X-Photo-Source');
+    const photo = await createImageBitmap(await r.blob());
+    return { photo, frame, note: `${src === 'county' ? 'the county photo' : 'the Mapbox photo'} the map was traced on, kept with the map` };
+  } catch (e) {
+    return { photo: null, frame: null, note: `the map's own photo could not be loaded (${e.message}); reload to try again` };
   }
-  try { return { photo: await get({ ...base, lng: frame.lng, lat: frame.lat, zoom: frame.zoom, provider: 'mapbox' }), note: 'Mapbox, the photo the map was traced on' }; } catch { return { photo: null, note: 'none could be had (the outline alone)' }; }
-}
-
-const photoW = () => (st.photo ? st.photo.width : 1280), photoH = () => (st.photo ? st.photo.height : 1280);
-const px = (map) => toPx(st.frame, st.origin, map, photoW(), photoH());
-const unpx = (p) => fromPx(st.frame, st.origin, p, photoW(), photoH());
-const KEYP = () => `scan-points:${st.map}`, KEYPIN = () => `scan-pins:${st.map}`;
-const loadPoints = () => { try { st.points = JSON.parse(localStorage.getItem(KEYP()) || '[]'); } catch { st.points = []; } };
-const savePoints = () => { try { localStorage.setItem(KEYP(), JSON.stringify(st.points)); } catch { /* this phone only */ } };
-const loadPins = () => { try { st.pins = JSON.parse(localStorage.getItem(KEYPIN()) || '[]'); } catch { st.pins = []; } };
-const savePins = () => { try { localStorage.setItem(KEYPIN(), JSON.stringify(st.pins.slice(-200))); } catch { /* this phone only */ } };
-const nextName = (kind) => { const pre = kind === 'ref' ? 'R' : 'C'; let k = 1; while (st.points.some((p) => p.name === `${pre}${k}`)) k++; return `${pre}${k}`; };
-
-function drawMap() {
-  const cv = $('#map'); if (!cv || !st.frame) return;
-  const w = photoW(), h = photoH();
-  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
-  const g = cv.getContext('2d');
-  g.setTransform(1, 0, 0, 1, 0, 0);
-  g.fillStyle = '#2a332f'; g.fillRect(0, 0, w, h);
-  g.setTransform(st.view.s, 0, 0, st.view.s, st.view.ox, st.view.oy);
-  g.imageSmoothingEnabled = st.view.s < 6; // past the photo's own pixels, show them as they are
-  if (st.photo) g.drawImage(st.photo, 0, 0);
-  /* SIZES IN SCREEN PIXELS (the owner, 2026-11-09: "the points aren't labeled, and they're really hard to drag
-     around because they're so small"): the canvas is the photo's 2560 pixels shown about 400 wide, so a size in
-     canvas pixels came out a sixth as big. u = canvas pixels per screen pixel at this zoom. */
-  const u = cssK() / st.view.s;
-  const lw = 2 * u;
-  const ring = (r, color, dash) => { if (r.length < 2) return; g.beginPath(); r.forEach((p, i) => { const [x, y] = px(p); if (i) g.lineTo(x, y); else g.moveTo(x, y); }); g.closePath(); g.setLineDash(dash || []); g.strokeStyle = color; g.lineWidth = lw; g.stroke(); g.setLineDash([]); };
-  for (const r of st.parcel) ring(r, 'rgba(255,255,255,.8)', [6 * u, 4 * u]);
-  for (const r of st.lawn) ring(r, CSS.lawn);
-  // a point: a ring with a fine cross at its exact spot (the photo shows through), and its name beside it
-  const dot = (map, color, label, r = 9, chosen = false) => {
-    const [x, y] = px(map), R = r * u;
-    g.beginPath(); g.arc(x, y, R, 0, Math.PI * 2); g.lineWidth = (chosen ? 4 : 3) * u; g.strokeStyle = color; g.stroke();
-    g.beginPath(); g.arc(x, y, R + 1.5 * u, 0, Math.PI * 2); g.lineWidth = 1 * u; g.strokeStyle = '#fff'; g.stroke();
-    g.beginPath(); g.moveTo(x - R * 0.6, y); g.lineTo(x + R * 0.6, y); g.moveTo(x, y - R * 0.6); g.lineTo(x, y + R * 0.6); g.lineWidth = 1.2 * u; g.strokeStyle = '#fff'; g.stroke();
-    if (label) { g.font = `bold ${15 * u}px system-ui, sans-serif`; g.fillStyle = '#fff'; g.strokeStyle = 'rgba(0,0,0,.85)'; g.lineWidth = 4 * u; g.strokeText(label, x + R + 4 * u, y - R * 0.4); g.fillText(label, x + R + 4 * u, y - R * 0.4); }
-  };
-  for (const p of st.pins) if (p.map) dot(p.map, CSS.pin, p.name, 7);
-  for (const p of st.points) dot(p.map, p.kind === 'ref' ? CSS.ref : CSS.check, p.name, 14, p === st.dragging);
-  // WHILE DRAGGING, A MAGNIFIER: the photo round the point four times closer, in the top corner away from the finger
-  if (st.dragging) {
-    const [x, y] = px(st.dragging.map), k = cssK(), R = 70 * k, Z = 4;
-    const cx = st.dragLoupeLeft ? R + 10 * k : cv.width - R - 10 * k, cy = R + 10 * k;
-    g.setTransform(1, 0, 0, 1, 0, 0);
-    g.save(); g.beginPath(); g.arc(cx, cy, R, 0, Math.PI * 2); g.clip();
-    g.fillStyle = '#2a332f'; g.fillRect(cx - R, cy - R, 2 * R, 2 * R);
-    const zs = st.view.s * Z;
-    g.imageSmoothingEnabled = zs < 6;
-    g.setTransform(zs, 0, 0, zs, cx - x * zs, cy - y * zs);
-    if (st.photo) g.drawImage(st.photo, 0, 0);
-    g.setTransform(1, 0, 0, 1, 0, 0);
-    g.beginPath(); g.moveTo(cx - R, cy); g.lineTo(cx + R, cy); g.moveTo(cx, cy - R); g.lineTo(cx, cy + R); g.lineWidth = 1.5 * k; g.strokeStyle = st.dragging.kind === 'ref' ? CSS.ref : CSS.check; g.stroke();
-    g.restore();
-    g.beginPath(); g.arc(cx, cy, R, 0, Math.PI * 2); g.lineWidth = 3 * k; g.strokeStyle = '#fff'; g.stroke();
-    g.font = `bold ${14 * k}px system-ui, sans-serif`; g.fillStyle = '#fff'; g.strokeStyle = 'rgba(0,0,0,.85)'; g.lineWidth = 4 * k;
-    g.strokeText(st.dragging.name, cx - R + 8 * k, cy + R - 10 * k); g.fillText(st.dragging.name, cx - R + 8 * k, cy + R - 10 * k);
-    g.setTransform(st.view.s, 0, 0, st.view.s, st.view.ox, st.view.oy);
-  }
-  if (st.L && st.ar?.pose && st.walk) { const me = mapOf(st.L, st.ar.pose.position, st.walk.odo); if (me) dot(me, '#ffeb3b', 'you', 7); }
-}
-/** Canvas pixels per screen pixel: the map canvas is the photo's own size, shown at the page's width. */
-function cssK() { const cv = $('#map'), r = cv?.getBoundingClientRect(); return r && r.width ? cv.width / r.width : 1; }
-const MAX_ZOOM = 40;
-function clampView() {
-  const cv = $('#map'), w = cv.width, h = cv.height, s = st.view.s;
-  st.view.ox = Math.min(0, Math.max(w - w * s, st.view.ox)); st.view.oy = Math.min(0, Math.max(h - h * s, st.view.oy));
-}
-function zoomAt(f, [x, y]) {
-  const s0 = st.view.s, s1 = Math.max(1, Math.min(MAX_ZOOM, s0 * f));
-  st.view.ox = x - ((x - st.view.ox) * s1) / s0; st.view.oy = y - ((y - st.view.oy) * s1) / s0; st.view.s = s1;
-  clampView(); drawMap();
-}
-function listPoints() {
-  const el = $('#points');
-  el.innerHTML = st.points.map((p) => `<li><span style="color:${p.kind === 'ref' ? CSS.ref : CSS.check};font-weight:600">${esc(p.name)}</span> ${p.kind === 'ref' ? 'reference' : 'check point'}</li>`).join('') || '<li class="dim">None yet. Tap the photo.</li>';
-}
-function wireMap() {
-  const cv = $('#map'), ptrs = new Map();
-  let drag = null, downAt = null, pan = null, pinch = null, moved = false;
-  const canvasXY = (ev) => { const r = cv.getBoundingClientRect(); return [((ev.clientX - r.left) / r.width) * cv.width, ((ev.clientY - r.top) / r.height) * cv.height]; };
-  const toBase = ([x, y]) => [(x - st.view.ox) / st.view.s, (y - st.view.oy) / st.view.s];
-  const hitR = () => (24 * cssK()) / st.view.s; // about a fingertip, at any zoom
-  // the nearest point within reach (two close together: the one under the finger)
-  const hitAt = (b) => { let best = null, bd = hitR(); for (const p of st.points) { const [x, y] = px(p.map), d = Math.hypot(x - b[0], y - b[1]); if (d < bd) { bd = d; best = p; } } return best; };
-  cv.addEventListener('pointerdown', (ev) => {
-    cv.setPointerCapture(ev.pointerId); ptrs.set(ev.pointerId, canvasXY(ev));
-    if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch = { d0: Math.hypot(a[0] - b[0], a[1] - b[1]) || 1, s0: st.view.s, base: toBase([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]) }; if (drag) delete drag.grab; drag = null; st.dragging = null; pan = null; downAt = null; return; }
-    if (ptrs.size > 2) return;
-    const xy = canvasXY(ev), b = toBase(xy);
-    downAt = xy; moved = false;
-    const hit = hitAt(b);
-    // a point keeps where the finger took hold of it, so it moves beside the finger, not under it
-    if (hit) { const [hx, hy] = px(hit.map); drag = hit; drag.grab = [hx - b[0], hy - b[1]]; } else pan = { x: xy[0], y: xy[1], ox: st.view.ox, oy: st.view.oy };
-  });
-  cv.addEventListener('pointermove', (ev) => {
-    if (!ptrs.has(ev.pointerId)) return;
-    ptrs.set(ev.pointerId, canvasXY(ev));
-    if (pinch && ptrs.size >= 2) { const [a, b] = [...ptrs.values()], mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]; st.view.s = Math.max(1, Math.min(MAX_ZOOM, pinch.s0 * Math.hypot(a[0] - b[0], a[1] - b[1]) / pinch.d0)); st.view.ox = mid[0] - pinch.base[0] * st.view.s; st.view.oy = mid[1] - pinch.base[1] * st.view.s; clampView(); drawMap(); return; }
-    const xy = canvasXY(ev);
-    if (downAt && Math.hypot(xy[0] - downAt[0], xy[1] - downAt[1]) > 12) moved = true;
-    if (drag && moved) { const b = toBase(xy), gr = drag.grab || [0, 0]; drag.map = unpx([b[0] + gr[0], b[1] + gr[1]]); st.dragging = drag; st.dragLoupeLeft = xy[0] > cv.width / 2; drawMap(); } else if (pan && moved) { st.view.ox = pan.ox + xy[0] - pan.x; st.view.oy = pan.oy + xy[1] - pan.y; clampView(); drawMap(); }
-  });
-  const up = (ev, cancelled) => {
-    ptrs.delete(ev.pointerId);
-    if (pinch) { if (ptrs.size < 2) pinch = null; downAt = null; drag = null; pan = null; return; }
-    const xy = canvasXY(ev);
-    if (drag && moved) { delete drag.grab; drag = null; st.dragging = null; savePoints(); listPoints(); drawMap(); return; }
-    const tap = !cancelled && downAt && !moved;
-    if (drag) delete drag.grab;
-    drag = null; pan = null; downAt = null; st.dragging = null;
-    if (!tap) { drawMap(); return; }
-    const b = toBase(xy);
-    if (hitAt(b)) return;
-    st.points.push({ id: `${Date.now()}`, kind: st.adding, name: nextName(st.adding), map: unpx(b) });
-    savePoints(); listPoints(); drawMap();
-  };
-  cv.addEventListener('pointerup', (ev) => up(ev, false));
-  cv.addEventListener('pointercancel', (ev) => up(ev, true));
-  cv.addEventListener('wheel', (ev) => { ev.preventDefault(); zoomAt(ev.deltaY < 0 ? 1.25 : 0.8, canvasXY(ev)); }, { passive: false });
-  const mid = () => [cv.width / 2, cv.height / 2];
-  $('#zin').addEventListener('click', () => zoomAt(1.6, mid()));
-  $('#zout').addEventListener('click', () => zoomAt(1 / 1.6, mid()));
-  $('#zfit').addEventListener('click', () => { st.view = { s: 1, ox: 0, oy: 0 }; drawMap(); });
-  document.querySelectorAll('[data-add]').forEach((b) => b.addEventListener('click', () => {
-    st.adding = b.dataset.add;
-    document.querySelectorAll('[data-add]').forEach((x) => { x.classList.toggle('plain', x !== b); });
-  }));
-  $('#undo-point').addEventListener('click', () => { st.points.pop(); savePoints(); listPoints(); drawMap(); });
-  $('#clear-pins').addEventListener('click', () => { st.pins = []; savePins(); drawMap(); });
 }
 
 /* ------------------------------------------------------ the lot's lidar */

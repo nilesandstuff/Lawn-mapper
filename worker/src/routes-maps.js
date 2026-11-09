@@ -19,6 +19,7 @@
  *   POST   /api/maps/tool?id=&tool=   one tool's part: { data, basedOn }
  *   PUT    /api/maps/model?id=&tool=  the finished lidar model, a binary file (public/lib/lidar-model.js), kept gzipped
  *   GET    /api/maps/model?id=&tool=  the kept (gzipped) bytes; read with unpackModel; 404 until written
+ *   GET    /api/maps/photo?id=    the photo the map was traced on, kept with it (map-photo.js); X-Photo-Frame
  *   GET    /api/tools             the tools, their order and where they open
  *
  * The contract the other tools build against is docs/MAPS.md.
@@ -30,6 +31,7 @@ import {
   USER_MAX_MAPS, GUEST_MAX_MAPS, findGuest, newGuest, userOwner, guestOwner,
   listMaps, getMap, upsertMap, deleteMap, putTool, toolsFor, putModel, getModel,
 } from './unified.js';
+import { keepPhoto, mapPhoto } from './map-photo.js';
 
 /** How many an account keeps (unified.js USER_MAX_MAPS). */
 export const MAX_MAPS = USER_MAX_MAPS;
@@ -101,6 +103,9 @@ export async function handleMaps(request, env, url, origin, ctx, json) {
       for (const map of incoming.slice(0, owner.max === GUEST_MAX_MAPS ? incoming.length : USER_MAX_MAPS)) {
         const r = await upsertMap(env, owner, map);
         if (r.key) saved.push({ id: r.key, at: r.at });
+        /* The photo it was traced on, kept with it the first time it is saved on that photo (map-photo.js; the
+           owner, 2026-11-09: "The photo a map is traced on should be accessible indefinitely"). After the answer. */
+        if (r.key && ctx?.waitUntil) ctx.waitUntil(keepPhoto(env, owner, r.key, map));
         else if (r.error === 'guest-limit') refused++;
       }
       if (!saved.length && refused) return reply({ ...limitAnswer, ...who }, 409);
@@ -166,6 +171,22 @@ export async function handleMaps(request, env, url, origin, ctx, json) {
   }
 
   /* ----------------------------------------------------- /api/maps/model */
+  /* ------------------------------------------------------ /api/maps/photo */
+  if (path === '/api/maps/photo') {
+    const key = url.searchParams.get('id');
+    if (!key) return reply({ error: 'id required' }, 400);
+    if (request.method !== 'GET' && request.method !== 'HEAD') return reply({ error: 'GET' }, 405);
+    const map = owner ? await getMap(env, owner, key) : null;
+    if (!map) return reply({ error: 'no-map', ...who }, 404);
+    const obj = await mapPhoto(env, owner, key, map);
+    if (obj.error) return reply({ error: obj.error, ...who }, obj.error === 'no-frame' ? 404 : 502);
+    const headers = new Headers({ 'Content-Type': obj.httpMetadata?.contentType || 'image/png', 'Cache-Control': 'private, no-store' });
+    if (obj.customMetadata?.frame) headers.set('X-Photo-Frame', obj.customMetadata.frame);
+    headers.set('X-Photo-Source', obj.customMetadata?.source || '');
+    if (obj.customMetadata?.at) headers.set('X-Photo-At', obj.customMetadata.at);
+    return withCookies(new Response(request.method === 'HEAD' ? null : obj.body, { status: 200, headers }), cookies);
+  }
+
   if (path === '/api/maps/model') {
     const key = url.searchParams.get('id');
     const tool = url.searchParams.get('tool');
