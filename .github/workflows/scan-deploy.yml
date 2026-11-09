@@ -36,7 +36,7 @@ on:
         required: true
         default: tests
         type: choice
-        options: [tests, deploy, walks, twin, fix, place, depth, study, skyline, pavement, checks, repeat, register]
+        options: [tests, deploy, walks, twin, fix, place, depth, study, skyline, pavement, checks, repeat, register, walkfix]
       walk:
         description: 'For twin, fix or depth: the walk id, or latest'
         default: latest
@@ -227,7 +227,7 @@ jobs:
       # CAN THE SKYLINE PLACE A WALK (scan/tools/skyline_study.py, SCAN-H11 option 1): the sky in each picture against
       # the shade map's model seen from every placement; scored against the check points. CPU, free.
       - name: Run actions/setup-python@v5 (skyline)
-        if: ${{ inputs.task == 'skyline' || inputs.task == 'pavement' || inputs.task == 'place' || inputs.task == 'checks' || inputs.task == 'register' }}
+        if: ${{ inputs.task == 'skyline' || inputs.task == 'pavement' || inputs.task == 'place' || inputs.task == 'checks' || inputs.task == 'register' || inputs.task == 'walkfix' }}
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -354,6 +354,28 @@ jobs:
           done
           if [ "$(echo "$WALKS" | tr ',' ' ' | wc -w)" -ge 2 ]; then node scan/tools/repeat_study.mjs "$WALKS" | tee -a register.txt; fi
 
+      # A WALK PLACED BY AN EARLIER WALK (scan/tools/walk_fix_study.py; the owner, 2026-11-09: "lets try both photos and
+      # shapes. If they're about equal, i say let's go with the shapes"): each walk in turn the reference, placed by its
+      # marks; the others placed from it by their pictures and by their shapes, scored on their own held-out check
+      # marks. The walk input takes walks comma separated (same map). CPU, free.
+      - name: Walks placed by an earlier walk
+        if: ${{ inputs.task == 'walkfix' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WALKS: ${{ inputs.walk }}
+        run: |
+          set -o pipefail
+          pip install --quiet numpy scipy small_gicp opencv-python-headless
+          : > walkfix.txt
+          dirs=""
+          for W in $(echo "$WALKS" | tr ',' ' '); do
+            node scan/tools/twin-r2.mjs get "$W" "w-$W" | tee -a walkfix.txt
+            node scan/tools/skyline-prep.mjs "w-$W" > /dev/null
+            dirs="$dirs w-$W"
+          done
+          python scan/tools/walk_fix_study.py $dirs | tee -a walkfix.txt
+
       - name: Repeat walks against each other
         if: ${{ inputs.task == 'repeat' }}
         env:
@@ -383,6 +405,7 @@ jobs:
             place) grep -v '^  model\|^  rays\|^  the picture' place.txt 2>/dev/null | tail -60 || echo "no placement: see the step above" ;;
             register) grep -v '^Twin read\|: kept (' register.txt 2>/dev/null | tail -70 || echo "no registration: see the step above" ;;
             repeat) cat repeat.txt 2>/dev/null || echo "no repeat-walk study: see the step above" ;;
+            walkfix) grep -v '^Twin read' walkfix.txt 2>/dev/null | tail -40 || echo "no walk-to-walk study: see the step above" ;;
             checks) cat checks.txt 2>/dev/null || echo "no check-mark test: see the step above" ;;
             depth) tail -25 depth.txt 2>/dev/null || echo "no depth run: see the step above" ;;
             *) echo "Scan tests: ${{ job.status }}" ;;
