@@ -136,7 +136,7 @@ export function liveOf(L, w, extra = {}) {
   return {
     fixes: (L?.fixes || []).map((f) => ({ odo: r(f.odo), T: { theta: r(f.T.theta), tx: r(f.T.tx), ty: r(f.T.ty), s: r(f.T.s ?? 1) }, hits: r(f.hits), from: f.from || null })),
     holds: (L?.holds || []).map((h) => ({ odo0: r(h.odo0), odo1: r(h.odo1), T: { theta: r(h.T.theta), tx: r(h.T.tx), ty: r(h.T.ty), s: r(h.T.s ?? 1) }, vouched: h.vouched })),
-    marks: (L?.marks || []).map((m) => ({ id: m.id, kind: m.kind, map: m.map, ar: m.ar, y: r(m.y), odo: r(m.odo) })),
+    marks: (L?.marks || []).map((m) => ({ id: m.id, kind: m.kind, map: m.map, ar: m.ar, y: r(m.y), odo: r(m.odo), aim: r(m.aim), by: m.by || null })),   // aim, by: how far the crosshair was and what it hit (2026-11-09)
     pins: (w?.pins || []).map((p) => ({ name: p.name, at: xyz(p.at), anchorAt: xyz(p.anchorAt), odo: r(p.odo) })),
     checks: (w?.checks || []).length,
     // where GPS put the phone, as the page took it (map metres, the phone's level position then, accuracy): the
