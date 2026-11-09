@@ -4,7 +4,7 @@
  *
  *   node tools/modal-fingerprint.test.js
  */
-import { serverFiles, fingerprint, importsOf } from './modal-fingerprint.js';
+import { serverFiles, legacyServerFiles, fingerprint, importsOf } from './modal-fingerprint.js';
 
 let failures = 0;
 const check = (name, ok, detail = '') => {
@@ -35,6 +35,14 @@ check('the S26 trial head is not part of the server fingerprint',
   !serverFiles().includes('tools/upernet_head.py') && serverFiles().includes('tools/train_decoder.py'));
 check('nor is S38\'s intensity measurement', !serverFiles().includes('tools/intensity_errors.py'));
 check('the lidar\'s sources and the newest-flight planner are the server\'s (H95, H96)', serverFiles().includes('tools/lidar_sources.py') && serverFiles().includes('tools/lidar_frame.py') && serverFiles().includes('tools/lidar-newest.js'));
+
+/* A Python tool the server never reaches is not the server (2026-11-09: tools/parcel_file.py redeployed it). */
+check('a Python tool the server never reaches is not part of it: the parcel-file reader, the Modal training planner',
+  !serverFiles().includes('tools/parcel_file.py') && !serverFiles().includes('tools/modal_plan.py'));
+check('what the server imports at run time still is: its sources, the tile reader, the decoder it trains and serves',
+  ['tools/alpha_infer.py', 'tools/lidar_partial.py', 'tools/naip_align.py', 'tools/train_decoder.py', 'tools/windows.py'].every((f) => serverFiles().includes(f)));
+check('the old rule covers everything the new one does (so a kept old fingerprint that matches means nothing served changed)',
+  serverFiles().every((f) => legacyServerFiles().includes(f)) && legacyServerFiles().includes('tools/parcel_file.py'));
 
 console.log(failures ? `\n${failures} check(s) FAILED.` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);

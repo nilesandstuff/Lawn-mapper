@@ -430,12 +430,18 @@ jobs:
           # fingerprint covers what the server runs (tools/modal-fingerprint.js);
           # the last one deployed is kept on the volume beside the release.
           fp=$(node tools/modal-fingerprint.js)
+          # the same by the rule before 2026-11-09 (every tools/*.py), so the change of rule redeploys nothing
+          legacy=$(node tools/modal-fingerprint.js --legacy)
           modal volume get --force lawn-mapper-models alpha/serve-fingerprint.txt last-fp.txt >/dev/null 2>&1 || true
           last=$(cat last-fp.txt 2>/dev/null || true)
           touch modal-deploy.log
           redeployed=0
           if [ "$fp" = "$last" ] && [ "${{ inputs.model_server }}" != "redeploy" ]; then
             echo "The model server has not changed since it was last deployed ($fp), so it was left alone."
+          elif [ -n "$last" ] && [ "$legacy" = "$last" ] && [ "${{ inputs.model_server }}" != "redeploy" ]; then
+            echo "The model server has not changed since it was last deployed (kept by the old rule), so it was left alone; its fingerprint is now kept by the new one ($fp)."
+            printf '%s' "$fp" > fp.txt
+            modal volume put --force lawn-mapper-models fp.txt alpha/serve-fingerprint.txt >/dev/null 2>&1 || true
           else
             modal deploy tools/modal_serve.py | tee modal-deploy.log
             if [ "${PIPESTATUS[0]}" = "0" ]; then

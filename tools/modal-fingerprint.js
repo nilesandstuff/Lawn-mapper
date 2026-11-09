@@ -13,6 +13,7 @@
  * deployed (kept on the Modal volume).
  *
  *   node tools/modal-fingerprint.js          -> prints the fingerprint
+ *   node tools/modal-fingerprint.js --legacy -> the same by the rule before 2026-11-09 (see legacyServerFiles)
  */
 import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -59,10 +60,51 @@ export function jsClosure(entry = join(ROOT, 'tools', 'serve-alpha.mjs')) {
    (and warm, at a few cents) the model server. */
 const NOT_SERVED_PY = new Set(['modal-logs.py', 'upernet_head.py', 'intensity_errors.py']); // never imported by the server: the log reader; the S26 trial head; S38's measurement
 
+/*
+ * ONLY THE PYTHON THE SERVER CAN REACH (owner, 2026-11-09, after a deploy redeployed and warmed the server because a
+ * new parcel-file reader, tools/parcel_file.py, had been added to tools/: "We shouldn't have done anything that
+ * required a modal deploy and warm press"). It used to be every tools/*.py but a short list, so every new study
+ * script was a new server. Now: modal_serve.py and every tools module it reaches -- by `import` / `from`, or named as
+ * a .py file (a script it runs) -- and the same from the JavaScript the server runs. Mentions are over-counted on
+ * purpose (a comment naming a file counts), which can only redeploy when nothing changed, never miss a change.
+ */
+export function pyClosure() {
+  const dir = join(ROOT, 'tools');
+  const mods = new Set(readdirSync(dir).filter((n) => n.endsWith('.py')).map((n) => n.slice(0, -3)));
+  const refs = (text) => {
+    const out = [];
+    for (const m of text.matchAll(/^\s*(?:from\s+([A-Za-z_]\w*)|import\s+([A-Za-z_][\w, ]*))/gm)) {
+      if (m[1]) out.push(m[1]); else out.push(...m[2].split(',').map((x) => x.trim().split(/\s+/)[0]));
+    }
+    for (const m of text.matchAll(/([A-Za-z_][\w-]*)\.py\b/g)) out.push(m[1]);
+    return out.filter((x) => mods.has(x));
+  };
+  const stack = ['modal_serve'];
+  for (const f of jsClosure()) { try { stack.push(...refs(readFileSync(f, 'utf8'))); } catch { /* gone */ } }
+  const seen = new Set();
+  while (stack.length) {
+    const m = stack.pop();
+    if (seen.has(m)) continue;
+    seen.add(m);
+    try { stack.push(...refs(readFileSync(join(dir, `${m}.py`), 'utf8'))); } catch { /* gone */ }
+  }
+  return [...seen].map((m) => join(dir, `${m}.py`));
+}
+
+const served = (n) => n.endsWith('.py') && !n.endsWith('_test.py') && !NOT_SERVED_PY.has(n);
+
 export function serverFiles() {
-  const py = readdirSync(join(ROOT, 'tools'))
-    .filter((n) => n.endsWith('.py') && !n.endsWith('_test.py') && !NOT_SERVED_PY.has(n))
-    .map((n) => join(ROOT, 'tools', n));
+  const py = pyClosure().filter((f) => served(f.split('/').pop()));
+  return [...new Set([...py, ...jsClosure()])].map((f) => relative(ROOT, f)).sort();
+}
+
+/**
+ * The files the fingerprint covered before 2026-11-09 (every tools/*.py but the short list). The deploy accepts a
+ * kept fingerprint made this way as "unchanged" when it still matches, so the change of rule did not itself
+ * redeploy the server: that set holds everything the new one does, so a match means nothing served has changed.
+ */
+export function legacyServerFiles() {
+  const py = readdirSync(join(ROOT, 'tools')).filter(served).map((n) => join(ROOT, 'tools', n));
   return [...new Set([...py, ...jsClosure()])].map((f) => relative(ROOT, f)).sort();
 }
 
@@ -77,5 +119,5 @@ export function fingerprint(files = serverFiles()) {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  console.log(fingerprint());
+  console.log(process.argv.includes('--legacy') ? fingerprint(legacyServerFiles()) : fingerprint());
 }
