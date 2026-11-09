@@ -134,6 +134,19 @@ export const typeWords = (v) => String(v).replace(/_/g, ' ').replace(/([a-z])([A
    a first answer may hold the national layers alone. */
 export const NO_COUNTY_DAYS = 2;
 export const hasCounty = (saved) => !!saved?.layers?.some((l) => l.from === 'county');
+/**
+ * A new answer without the county's layers, because the county's service failed (not because it has none here),
+ * keeps the county layers saved before (2026-11-09: the owner's county put its drain maps behind a login on 4-6 Nov,
+ * and a map opened since would otherwise have lost the drains it had). They keep their own date (countyAt); the
+ * national layers are the new answer's. -> the merged copy, or `fresh` unchanged.
+ */
+export function keepCounty(fresh, before, answer) {
+  if (!fresh || hasCounty(fresh) || !hasCounty(before)) return fresh;
+  // the answer's failed entries do not say whose they are: no county layer back and something failed is the county's
+  // service failing (a county with no drains here fails nothing)
+  if (!(answer?.failed || []).length) return fresh;
+  return { ...fresh, layers: [...before.layers.filter((l) => l.from === 'county'), ...fresh.layers], countyAt: before.countyAt || before.at, sources: [...new Set([...(before.sources || []), ...(fresh.sources || [])])] };
+}
 export const freshEnough = (saved, now = Date.now()) => !!saved && saved.v === SAVED_V && saved.complete
   && Date.parse(saved.at) > now - (hasCounty(saved) ? FRESH_DAYS : NO_COUNTY_DAYS) * 86400000;
 

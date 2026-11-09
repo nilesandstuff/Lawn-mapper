@@ -5,7 +5,7 @@
  */
 
 import assert from 'node:assert/strict';
-import { typeWords, compact, askBox, freshEnough, summary, pick, intakesNear, distanceM, enuOf } from '../lib/layers.js';
+import { typeWords, compact, askBox, freshEnough, summary, pick, intakesNear, distanceM, enuOf, keepCounty, hasCounty } from '../lib/layers.js';
 
 const tests = [];
 const test = (name, fn) => tests.push([name, fn]);
@@ -92,4 +92,15 @@ for (const [name, fn] of tests) {
   try { await fn(); console.log(`ok   ${name}`); } catch (e) { failed++; console.log(`FAIL ${name}\n     ${e.stack.split('\n').slice(0, 3).join('\n     ')}`); }
 }
 if (failed) { console.log(`${failed} failed`); process.exit(1); }
+test('a county service that fails keeps the county layers saved before; one that answers with none does not (2026-11-09)', () => {
+  const line = (from, title) => ({ kind: 'storm_pipe', title, source: from === 'county' ? 'Kent County' : 'USGS', from, features: [{ g: { type: 'LineString', coordinates: [[0, 0], [1, 1]] }, p: {} }] });
+  const before = { v: 1, at: '2026-10-20T00:00:00Z', complete: true, failed: [], sources: ['Kent County', 'USGS'], layers: [line('county', 'storm sewer'), line('national', 'streams')] };
+  const fresh = { v: 1, at: '2026-11-09T00:00:00Z', complete: false, failed: ['storm sewer'], sources: ['USGS'], layers: [line('national', 'streams')] };
+  const kept = keepCounty(fresh, before, { failed: [{ title: 'storm sewer', reason: '499 Token Required' }] });
+  assert.ok(hasCounty(kept) && kept.countyAt === before.at, 'the saved county layers stay, with their own date');
+  assert.equal(kept.layers.filter((l) => l.from === 'national').length, 1, "the national layers are the new answer's");
+  assert.equal(keepCounty(fresh, before, { failed: [] }), fresh, 'nothing failed: the county has none here now');
+  assert.equal(keepCounty(fresh, null, { failed: [{}] }), fresh, 'nothing saved before: nothing to keep');
+});
+
 console.log(`water layers: ${tests.length} passed`);

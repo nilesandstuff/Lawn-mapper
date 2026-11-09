@@ -28,7 +28,7 @@ import { boxFor } from '/lib/site.js';
 import { sprinklers } from '/heads.js';
 import { viewer3d, groundMesh } from '/view3d.js';
 import { openable } from '/lib/maps.js';
-import { KINDS as LAYER_KINDS, FIELD_WORDS, typeWords, hasCounty, askBox, compact, freshEnough, summary as layerSummary, pick as layerPick, intakesNear } from '/lib/layers.js';
+import { KINDS as LAYER_KINDS, FIELD_WORDS, typeWords, hasCounty, keepCounty, askBox, compact, freshEnough, summary as layerSummary, pick as layerPick, intakesNear } from '/lib/layers.js';
 import { sectorName } from '/lib/wind.js';
 import { SPECIES, groupOf } from '/lib/roots.js';
 import { spearman } from '/lib/rank.js';
@@ -462,10 +462,12 @@ async function askLayers(ask, boxDeg, kept) {
         const j = await res.json();
         if (ask !== layersAsk) return;
         view.layersRaw = j; view.layersError = '';
-        const saved = compact(j, { centre: lawnMid(), budget: layerBudget() });
+        // the county's layers saved before stay when its service failed this time (keepCounty)
+        const saved = keepCounty(compact(j, { centre: lawnMid(), budget: layerBudget() }), kept, j);
         view.layers = saved; inputs.layers = saved; layersIn(); keep();
-        // whole, with the county's own: done. With none, the service may still be searching this place: soon again
-        if (!j.pending?.length && (hasCounty(saved) || k > 0)) return;
+        // whole, with the county's own: done. The county's service failing (not searching): done too, nothing to wait for.
+        // With none and no failure, the service may still be searching this place: soon again
+        if (!j.pending?.length && (hasCounty(saved) || k > 0 || j.failed?.length)) return;
         if (!j.pending?.length) { busy('layers', "Looking for this county's drain maps (a first look here takes a few seconds)…"); await new Promise((r) => setTimeout(r, 20000)); if (ask !== layersAsk) return; continue; }
         busy('layers', `Still waiting on ${j.pending.map((x) => x.title).join(', ')} (asking again in a minute)…`);
       } else if (!view.layers) { view.layersError = `the drains and water layers did not answer (${res.status})`; layersIn(); }
@@ -1608,7 +1610,7 @@ function legend() {
     if (L) {
       const lines = layerSummary(L, { lawn: lawnRingsOf(), mid: lawnMid() });
       info.push(`<ul>${lines.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>`);
-      info.push(`Tap a drain, a pipe or an area for its details. From ${L.sources.length ? esc(L.sources.join(', ')) : 'the national maps'}: the county's own storm sewer where it publishes one, and USGS water, the national wetlands inventory and FEMA flood zones everywhere; drawn as the sources place them.${L.failed?.length ? ` Not answering this time: ${esc(L.failed.join(', '))}.` : ''}${L.trimmed ? ' The farthest of the less useful pieces were left out to keep the map small.' : ''}`);
+      info.push(`Tap a drain, a pipe or an area for its details. From ${L.sources.length ? esc(L.sources.join(', ')) : 'the national maps'}: the county's own storm sewer where it publishes one, and USGS water, the national wetlands inventory and FEMA flood zones everywhere; drawn as the sources place them.${L.countyAt ? ` The county's own layers are as saved with this map on ${esc(new Date(L.countyAt).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' }))}: the county's service did not answer this time.` : ''}${L.failed?.length ? ` Not answering this time: ${L.failed.length > 4 ? `${L.failed.length} of the county's layers` : esc(L.failed.join(', '))}.` : ''}${L.trimmed ? ' The farthest of the less useful pieces were left out to keep the map small.' : ''}`);
     } else info.push(view.layersError ? `Not here: ${esc(view.layersError)}.` : 'Asking the county and the national maps for drains and water here…');
   } else if (mapView === 'table') {
     TABLE_STEPS.forEach(([, c], k) => items.push(key(`rgb(${c[0]},${c[1]},${c[2]})`, TABLE_WORDS[k])));
