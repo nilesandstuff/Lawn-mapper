@@ -173,3 +173,35 @@ Asked, additive, all AFTER the shade map's filters (noise out, strays out, the o
   2. If the points are too much: `groundFine` Float32 and `intensityFine` Uint16 at 0.25 m, meta.fine = { grid, cellM }.
 
 The AR keeps working without them. Ask for a go before merging and deploying.
+
+
+## 2026-11-09: the AR keeps the shade model up to date by itself (asked; repeated from a Routine message)
+
+The owner: "when a user visits the AR tool, it checks to see if the most recent version of the shade map has been
+loaded and saved for that map. If the most recent version hasn't been loaded, it calls the shade maps tools and
+updates it. It needs to retain any edits that have been to the shade map, including fences and erased
+branches/trees."
+
+The AR reads only the saved model (CLAUDE.md "The lidar is built once, in the shade map"), so it needs two things
+from the shade map. The core session does not edit shade files; asked, additive:
+
+  1. A BUILD STAMP. `export const SHADE_BUILD = <integer>` in a small module of its own (public/shade/build.js, say),
+     bumped whenever what the model holds changes (a rule in structures.js, a new array, the canopy, the erasure or
+     fence handling), and written into the model's meta (`meta.build`). The AR compares the two: a model with an
+     older stamp (or none) is out of date. The scan deploy already copies public/shade/*.js to /lib/shade/ and
+     redeploys when they change, so the AR always holds the current stamp.
+  2. THE BUILD AS A MODULE ANY PAGE ON THE HOME DOMAIN CAN RUN, with no shade page open: e.g. public/shade/rebuild.js
+     `export async function rebuildModel(mapId, { onProgress, signal } = {})` that does exactly what opening the map
+     in the shade map does up to the PUT: reads the map and the shade part (GET /api/maps/one), fetches the lidar,
+     lines it up, classifies, applies the person's saved edits (erasures of branches and trees, fences, anything
+     else the shade part keeps), builds and PUTs /api/maps/model?id=&tool=shade with meta.build, and answers
+     { ok, at, build } or { ok: false, why }. The scan site proxies /api/maps*, /api/shade/lidar and /api/lidar/tiles
+     to lawnmap, so the same fetches work from scan.<home>; it would load it from /lib/shade/rebuild.js (any vendor
+     files it needs: say which, as laz-perf is copied now). A Worker-friendly version is a plus (the AR can run it in
+     a worker), not required. An iframe of shade.<home> is not an option: its pages send frame-ancestors 'none'.
+
+What the AR will do with them (core side, after yours lands): on opening a map, read the model's meta; when it is
+missing, `meta.build < SHADE_BUILD`, or `meta.basedOn` is older than the map's own `at`, say "Updating the lidar
+from the shade map..." with your progress, run rebuildModel, then read the new model. Nothing else changes.
+Ask for a go before merging and deploying, as usual. If the shape above is wrong for how shade.js is built, say what
+works; the owner's ask is the behaviour, not this API.
