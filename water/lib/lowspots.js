@@ -113,14 +113,14 @@ export function analyse(cols0, bbox, lat, { epoch = null, shift: givenShift = nu
   const core = roofRule === 'core';
   let coreRoof = null;
   if (core) { coreRoof = coreRoofs(g, cols, z); wall = coreRoof; overture = overture ? { ...overture, building: null } : overture; }
-  let trunks = null;
+  let trunks = null, crowns = null;
   if (useShadeRoofs && cols.n) {
     // the summer photo's green (ndvi, the shade map's naip.js reading) goes to the shared rule too: its low structures need it
     const sh = shadeRoofs(cols, bbox, lat, { green: ndvi && ndvi.length === g.W * g.H ? ndvi : null });
     // the core's rule misses the roof's edge (it sits inside: H32), so the shade map's finder is added to it
     if (sh.w === g.W && sh.h === g.H) { shadeRoof = sh.roof; wall = Uint8Array.from(core ? coreRoof : ownRoofs, (v, i) => (v || sh.roof[i] ? 1 : 0)); }
     // the tree trunks (lib/trunks.js), from the same structures pass: for the tree-root draw and the readings check
-    try { trunks = trunksOf(cols, bbox, lat, { built: sh.built }).trunks; } catch { trunks = null; }
+    try { const tf = trunksOf(cols, bbox, lat, { built: sh.built }); trunks = tf.trunks; crowns = tf.w === g.W && tf.h === g.H ? { lab: tf.lab, list: tf.crowns } : null; } catch { trunks = null; crowns = null; }
   }
   /* WITH OVERTURE'S BUILDINGS (lib/overture.js; owner 2026-10-19, "use that on top of current system"):
      on the 23 Chesapeake squares its buildings alone found 89% of roof cells at 89% precision, against the
@@ -193,7 +193,7 @@ export function analyse(cols0, bbox, lat, { epoch = null, shift: givenShift = nu
   const seVals = Array.from(raw.se).filter(Number.isFinite).sort((a, b) => a - b);
 
   return {
-    grid: g, z, rawZ: raw.z, sd: raw.sd, se, wall, ownRoofs, groundOk, spots, runoff, beside, shift, datum, lngLat, perCell, points: cols, trunks,
+    grid: g, z, rawZ: raw.z, sd: raw.sd, se, wall, ownRoofs, groundOk, spots, runoff, beside, shift, datum, lngLat, perCell, points: cols, trunks, crowns,
     stats: {
       cells: g.W * g.H,
       groundPointsPerM2: groundPerM2,

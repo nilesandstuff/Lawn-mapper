@@ -369,6 +369,32 @@ test('a snapshot of the soil on a reading\'s date: wetter after rain, sand drier
   assert.ok(wet[loamy] <= 2 && dry[sand] >= 0);
 });
 
+test("a tree drinks from the lawn round its crown: the year's draw, and the need, highest near it (H83)", () => {
+  const res = lot({ roofs: [] });
+  const g = res.grid, N = g.W * g.H;
+  const lawn = new Uint8Array(N).fill(1);
+  const days = [];
+  for (let y = 0; y < 3; y++) for (const d of summer(150)) days.push({ ...d, date: `${2023 + y}${d.date.slice(4)}` });
+  const light = new Float32Array(N).fill(1); // the shade worked out (open sun): the trees' draw needs the shade map's reading
+  const plain = waterPlan(res, { lawnMask: lawn, soil: { units: [loam] }, typical: days, light });
+  // a 6 m crown in the middle of the lot
+  const lab = new Int32Array(N).fill(-1), cx = g.W >> 1, cy = g.H >> 1;
+  for (let r = 0; r < g.H; r++) for (let c = 0; c < g.W; c++) if (Math.hypot(c - cx, r - cy) < 6) lab[r * g.W + c] = 0;
+  const A = lab.reduce((a, v) => a + (v === 0 ? 1 : 0), 0);
+  res.crowns = { lab, list: [{ id: 0, cx: g.bbox[0] + (cx + 0.5) * (g.bbox[2] - g.bbox[0]) / g.W, cy: g.bbox[3] - (cy + 0.5) * (g.bbox[3] - g.bbox[1]) / g.H, R: Math.sqrt(A / Math.PI), A, H: 12 }] };
+  const withTree = waterPlan(res, { lawnMask: lawn, soil: { units: [loam] }, typical: days, light });
+  assert.equal(plain.trees, null, 'no crowns: no draw');
+  assert.ok(withTree.trees.maxMm > 20, `under the crown a summer's draw: ${withTree.trees.maxMm.toFixed(0)} mm a year`);
+  const mid = cy * g.W + cx, edge = 2 * g.W + 2;
+  assert.ok(withTree.treeMm[mid] > withTree.treeMm[mid + 9] && withTree.treeMm[edge] === 0, 'most at the middle, none past twice the radius');
+  // the peak month alone is a poor test: waterings come as whole refills, and a month can hold one fewer; the year and
+  // the dryness are not (on these days the ideal watering under it went 2119 -> 2258 mm over three years)
+  assert.ok(withTree.dryShare[mid] > plain.dryShare[mid] + 0.1, `drier under it as the zone is watered: ${plain.dryShare[mid]} -> ${withTree.dryShare[mid].toFixed(2)} of the season`);
+  const year = (p) => p.zones.reduce((a, z) => a + z.months.reduce((b, m) => b + (m.mmMonth || 0), 0), 0);
+  assert.ok(year(withTree) > year(plain), `and the zone is watered more over the year: ${year(plain).toFixed(0)} -> ${year(withTree).toFixed(0)} mm`);
+  delete res.crowns;
+});
+
 test('a lawn at the foot of a steep hill is flagged; one on a gentle rise is not', () => {
   // 600 m square, 10 m cells, row 0 north: a 15% hill falling south onto a flat strip, which falls 1% east
   const W = 60, H = 60, cell = 10, z = new Float32Array(W * H);

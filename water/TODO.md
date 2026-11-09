@@ -168,6 +168,10 @@ SPECULATION), as always.
 
 ## Done
 
+- **Trees drinking from the lawn** (owner, 2026-11-09: "Do we even need trunks? It's really the canopy that
+  matters"): the draw centred on each crown (H83; three guesses, S29); the trunk finder shelved. On the owner's lawn
+  +16% watering. Next to settle it: the probe transect (research-trees.md), or more readings.
+
 - **Heat, finished** (owner, 2026-11-07: "Add all of the missing things..."; "add the surface model"): sun-facing
   slopes, pavers, cooling from any shade (H81); the surface temperature, afternoon and before dawn, kept watered or
   rain alone, with each square's wind and wetness (H82); the paper's section 7 and change log.

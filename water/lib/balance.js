@@ -95,6 +95,8 @@ export const PARAMS = {
      share of clear-sky sunshine (their sampling days, summer afternoons, about 29 C). */
   airShare: 0.3,
   airCoolC: 1.3,
+  trees: true,            // the trees' roots draw on the lawn's root zone (lib/treeroots.js, H83)
+  treeEt0Cap: 5,          // mm: a tree's use stops rising with ET0 past this (research-trees.md, a guess)
   coolFromAnyShade: true, // the cooling from crowns AND buildings within canopyRadiusM (owner, 2026-11-07; S27)
   beamMax: 1.6,           // the most of open level ground's beam a slope facing the sun may get (a 30-degree south slope in winter: about 1.5)
   /* THE YARD'S WIND (FINDINGS H44): Heisler 1990's neighbourhoods, cover counted within windRadiusM (his inner
@@ -459,7 +461,7 @@ export function simulate(model, days, { irrigate = null, start = null, record = 
   const etFactor = new Float32Array(N), lat = model.g?.lat ?? 42.5;
   const Dr = start?.Dr ? Float32Array.from(start.Dr) : new Float32Array(N);
   const grav = new Float32Array(N), pond = new Float32Array(N), film = new Float32Array(N);
-  const tot = { rose: new Float32Array(N), irrigation: new Float32Array(N), et: new Float32Array(N), drained: new Float32Array(N), ranOff: new Float32Array(N), ranOn: new Float32Array(N), wetDays: new Uint16Array(N), dryDays: new Uint16Array(N), severeDays: new Uint16Array(N), etSeason: new Float32Array(N), etFull: new Float32Array(N), seasonDays: 0, rain: 0 };
+  const tot = { tree: new Float32Array(N), rose: new Float32Array(N), irrigation: new Float32Array(N), et: new Float32Array(N), drained: new Float32Array(N), ranOff: new Float32Array(N), ranOn: new Float32Array(N), wetDays: new Uint16Array(N), dryDays: new Uint16Array(N), severeDays: new Uint16Array(N), etSeason: new Float32Array(N), etFull: new Float32Array(N), seasonDays: 0, rain: 0 };
   const inflow = new Float32Array(N);
   const cn = new Float32Array(N);
   const soaked = new Float32Array(N); // what rain and run-on put into each root zone the day before (not the watering), for a schedule kept apart
@@ -517,6 +519,16 @@ export function simulate(model, days, { irrigate = null, start = null, record = 
     tot.rain += P;
     const et0 = Number.isFinite(day.et0) ? day.et0 : 0;
     etToday(model, et0 > 0 ? airShare(day, lat, dayOfYear(day.date), 200, { winds: model.winds }) : null, inSeason, etFactor, month);
+    /* TREES DRINKING FROM THE LAWN (lib/treeroots.js, H83): broadleaf by the share of leaves out (the shade map's
+       leaf calendar), conifers when the soil is not frozen, both at the day's ET0 up to a cap */
+    const TD = model.treeDraw;
+    let leafF = 0, conF = 0, e0t = 0;
+    if (TD && et0 > 0) {
+      const di = dayIndex(day.date.replace(/-/g, ''));
+      leafF = model.leafShare ? model.leafShare[Math.max(0, Math.min(364, di))] || 0 : inSeason ? 1 : 0;
+      conF = temps.reduce((a, v) => a + v, 0) / temps.length > 0 ? 1 : 0;
+      e0t = Math.min(et0, params.treeEt0Cap ?? 5);
+    }
     /* THE DAY'S STRESS LINE (FAO-56 p adjusted for the grass's use: PARAMS.pAdjust), on the past week's use */
     et0s.push(et0); if (et0s.length > 7) et0s.shift();
     if (params.pAdjust) {
@@ -589,6 +601,14 @@ export function simulate(model, days, { irrigate = null, start = null, record = 
         const ks = Dr[i] <= raw[i] ? 1 : Math.max(0, (taw[i] - Dr[i]) / Math.max(1e-6, taw[i] - raw[i]));
         const e = Math.min(use * ks, taw[i] - Dr[i]);
         Dr[i] += e; tot.et[i] += e;
+      }
+      if (TD && e0t > 0) {
+        const u = (TD.broad[i] * leafF + TD.conifer[i] * conF) * e0t;
+        if (u > 0) {
+          const ks = Dr[i] <= raw[i] ? 1 : Math.max(0, (taw[i] - Dr[i]) / Math.max(1e-6, taw[i] - raw[i]));
+          const e = Math.min(u * ks, taw[i] - Dr[i]);
+          if (e > 0) { Dr[i] += e; tot.tree[i] += e; }
+        }
       }
       /* WATER RISING FROM THE WATER TABLE (H70; research-caprise.md): AquaCrop's capillary rise from a table z below
          the roots, CR = exp((ln z - b) / a) for the soil between, no more than refills the roots, shutting off as they

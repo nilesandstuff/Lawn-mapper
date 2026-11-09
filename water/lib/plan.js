@@ -25,6 +25,7 @@ import { tableDepths, subsoilOf } from './groundwater.js';
 import { workingCm, speciesOf, groupOf, typicalRoots, attachRootRatio, rootsByMonth, kcFor, SPECIES } from './roots.js';
 import { soilIndex } from './soilplace.js';
 import { dayIndex } from './shade/climate.js';
+import { treeDrawCoefs } from './treeroots.js';
 import { maskOf } from './geo.js';
 import { roofRouting } from './gutters.js';
 import { buildModel, simulate, idealIrrigation, zoneIrrigation, schedulingMultiplier, PARAMS, WARM, withMode } from './balance.js';
@@ -55,7 +56,7 @@ const DEFAULT_SOIL = { name: 'no survey soil here (a loam assumed)', drainage: '
  *   topsoil (bool), downspouts, gutters, typical (days), week ({ days, today }), light (Float32Array | null),
  *   zoneOf (Int16Array, the user's own zones, optional), params
  */
-export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, topsoil = false, downspouts = [], gutters = [], typical, week = null, light = null, lightMonths = null, radiation = null, fenceHeat = null, windMonths = null, shadeKinds = null, season = null, grass = 'cool', species = null, soilTemp = null, mode = 'normal', placement = null, texture = null, parcelMask = null, areas = [], zoneOf: userZones = null, groundwater = null, snapshots = null, params: given = null } = {}) {
+export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, topsoil = false, downspouts = [], gutters = [], typical, week = null, light = null, lightMonths = null, radiation = null, fenceHeat = null, windMonths = null, shadeKinds = null, season = null, grass = 'cool', species = null, soilTemp = null, mode = 'normal', placement = null, texture = null, parcelMask = null, areas = [], zoneOf: userZones = null, groundwater = null, snapshots = null, leafShare = null, params: given = null } = {}) {
   // warm-season turf (owner 2026-10-18): FAO-56's p 0.5 in place of cool-season's 0.4
   // the level's crop coefficient from the owner's table by species (roots.js kcFor; FINDINGS H54), unless params were given whole
   const kc = kcFor(species, grass, mode);
@@ -137,6 +138,9 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
   // 2. roofs
   const roofs = roofRouting(g, wallNow, res.runoff.filled, { downspouts, gutters });
   const model = buildModel(res, { kinds, soilAt, soils, roofTo: roofs.roofTo, light, lightMonths: light ? lightMonths : null, radiation: light ? radiation : null, fenceHeat: light ? fenceHeat : null, windMonths, shadeKinds: light ? shadeKinds : null, params });
+  /* TREES DRINKING FROM THE LAWN (lib/treeroots.js, H83): each crown's draw, centred on the crown, on every run */
+  model.treeDraw = params.trees && light ? treeDrawCoefs(res.grid, kinds, res.crowns || null, { shadeKinds: shadeKinds || null }) : null;
+  model.leafShare = leafShare;
   for (let i = 0; i < N; i++) if (deckCells[i]) { model.etFactor[i] *= params.deckShelter; model.etBase[i] *= params.deckShelter; }
   /* The roots through the season: each day of the ten years (and of this week) takes its root-zone share from the
      10 cm soil temperature -- the day's own where IEMRE gave it, else the typical year's (roots.js). The warm-season
@@ -402,6 +406,18 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
     })(),
     texture: texture || null,
     soil: placed.map((u) => ({ name: u.name, component: u.component || null, borrowed: u.borrowed || null, chosen: u.chosen || null, share: u.share ?? null, layers: layersOf(u.profile), intakeInH: (() => { const r = rootZone(u.profile); return r?.topKsatMmH ? r.topKsatMmH / 25.4 : null; })(), drainage: u.drainage, hydgrp: u.hydgrp, wtMinCm: u.wtMinCm ?? null, wetByMonth: u.wetByMonth, assumed: !!u.assumed, tawMm: rootZone(u.profile)?.tawMm ?? null, tawTopsoilMm: rootZone(u.profile, { topsoil: true })?.tawMm ?? null })),
+    trees: (() => {
+      /* what the trees' roots take from the lawn's root zone in a year, as watered (median over the lawn, and its
+         thirstiest tenth), and how much of the lawn they reach */
+      if (!model.treeDraw) return null;
+      const v = [], tot = planned.tree;
+      for (let i = 0; i < N; i++) if (kinds[i] === KIND.lawn) v.push(tot[i] / years);
+      v.sort((a, b) => a - b);
+      const q = (f) => (v.length ? v[Math.min(v.length - 1, Math.floor(v.length * f))] : 0);
+      const list = res.crowns?.list || [];
+      return { crowns: list.length, reached: v.length ? v.filter((x) => x > 1).length / v.length : 0, medianMm: q(0.5), topMm: q(0.9), maxMm: v.length ? v[v.length - 1] : 0, rainAloneMedianMm: (() => { const w = []; for (let i = 0; i < N; i++) if (kinds[i] === KIND.lawn) w.push(rainOnly.tree[i] / years); w.sort((a, b) => a - b); return w.length ? w[w.length >> 1] : 0; })() };
+    })(),
+    treeMm: model.treeDraw ? Float32Array.from(planned.tree, (t) => t / years) : null,
     years, topsoil, grass, thisWeek, shaded: !!light, lightByMonth: !!model.lightMonths, ownRadiation: !!model.rad, fences: model.fenceHeat ? { fences: model.fenceHeat.fences, seen: model.fenceHeat.seen } : null, treeCool: !!model.canopy, yardWind: model.windAt ? (() => { const v = []; for (let i = 0; i < N; i++) if (kinds[i] === KIND.lawn) v.push(model.winds[model.windAt[i]]); return v.length ? med(v) : null; })() : null,
     sunShare: light ? (() => { const v = []; for (let i = 0; i < N; i++) if (kinds[i] === KIND.lawn) v.push(light[i]); return med(v); })() : null,
     weather: wx,

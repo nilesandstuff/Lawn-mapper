@@ -123,5 +123,8 @@ export function trunksOf(cols, bbox, lat, { built = null, green = null, opts = T
     if (!stems.length) trunks.push(one(topAt.x, topAt.y, 'top', cands[id].length ? Math.max(...cands[id].map((k) => blk[k])) : 0, 0));
     else stems.forEach((q, i) => trunks.push(one(q.X, q.Y, 'stem', q.n, i)));
   });
-  return { w, h, lab, trunks };
+  // each crown on its own (the tree roots' draw centres on the crown, not the trunk: owner, 2026-11-09):
+  // its middle (the mean of its columns, in 3857), its radius and area (1 m columns), its height
+  const crownList = crowns.map((c, id) => ({ id, cx: sums[id].n ? sums[id].x / sums[id].n : centre(c.apex).x, cy: sums[id].n ? sums[id].y / sums[id].n : centre(c.apex).y, R: c.R, A: c.n, H: c.H }));
+  return { w, h, lab, trunks, crowns: crownList };
 }

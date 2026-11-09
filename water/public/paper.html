@@ -67,7 +67,7 @@
 <main>
 <h1>How the water model works</h1>
 <p class="sub">A daily water model for one lawn, square metre by square metre</p>
-<p class="meta">Last updated 7 November 2026. Describes the model live at <a href="/">water.nilesandstuff.com</a> on that date. The change log at the end lists what has changed since the first version.</p>
+<p class="meta">Last updated 9 November 2026. Describes the model live at <a href="/">water.nilesandstuff.com</a> on that date. The change log at the end lists what has changed since the first version.</p>
 
 <nav>
 <ul>
@@ -189,6 +189,12 @@ Each day's sunlight is split into direct and diffuse light (Spitters and others 
 <p>On sunny days, air near tree cover is cooler. A study in Madison, Wisconsin measured up to 1.3 &deg;C cooler at full tree cover within 30 m [9]. The model cuts the air-driven part of use to match: 2 to 3% less in sun near trees, up to 8% less in deep shade. Since 7 November 2026 the shade of buildings counts as well as trees. That is the developer's judgement: the study measured tree cover only, and how much a house's shade cools the air around it has not been measured here.</p>
 <div class="tech"><strong>Technical note</strong>
 On growing-season days the day's maximum temperature is lowered by 1.3 &deg;C &times; the share of ground under tree crowns within 30 m &times; the day's sunniness (its clearness over 0.75, at most 1), the minimum by 0.3 of that, vapour held, and the aerodynamic term recomputed. Ziter and others found the cooling grows faster than linearly above about 40% cover, most strongly when cover is counted over 60 to 90 m; the model keeps it linear, over 30 m. The share counted is of ground under tree crowns, buildings and low structures (sheds, walls) together, held to 1.
+</div>
+<h3>Trees drinking from the lawn</h3>
+<p>Tree roots spread well past the crown and take water from the same top layer of soil as the grass. The model gives each tree a daily use in proportion to its crown's area and the day's weather. It takes 40% of that from the lawn's root zone, spread out to twice the crown's width and most near its middle. Broadleaf trees drink while their leaves are out, by the shade map's leaf calendar; evergreens drink whenever the ground is not frozen. Like the grass, they take less as the soil dries.</p>
+<p>On the developer's lawn this reaches 80% of the lawn. A typical spot loses about 1 in a year to the trees, the thirstiest tenth about 2.4 in, and the year's watering rises 16%. All three numbers behind it come from the middle of published ranges, and none has been measured on a lawn. At the top of the ranges the draw would be about three times this, at the bottom about a fifth. The first soil readings (section 11) still find shaded spots drier than the model has them.</p>
+<div class="tech"><strong>Technical note</strong>
+A tree's day: <i>T</i> = <i>K</i><sub>t</sub> &times; ET<sub>0</sub> &times; <i>A</i> litres, with ET<sub>0</sub> capped at 5 mm and <i>A</i> the crown's area from the lidar. <i>K</i><sub>t</sub> is 0.4 for broadleaf and 0.5 for conifers; the range runs from about 0.3 (suburban sap flow) to 1.0 (a nursery sizing rule). The lawn's share is <i>f</i> = 0.4, from the share of forest roots in the top 20 cm, lowered because turf holds tree roots back. It is spread as a cone, weight 1 &minus; <i>d</i>/(<i>kR</i>) with <i>k</i> = 2, round the crown's middle (not the trunk), shared over every square that is not a building, and taken only from lawn and bare ground. A crown is a conifer when most of its squares are the shade map's evergreens. The draw is cut by FAO-56's <i>K</i><sub>s</sub> in each square.
 </div>
 <h3>Wind</h3>
 <p>A yard's wind is reduced by the buildings and trees around it. The yard average follows Heisler's measurements at houses in Pennsylvania [10]; the developer's lawn comes out at 42% of open wind. Each square then gets its own shelter by direction from fences, hedges, trees and houses, using the USDA wind erosion model's barrier curves [12] and published rules for the calm zone behind buildings, weighted by the nearest airport's wind directions. These curves come from field windbreaks and wind tunnels, not yards.</p>
@@ -344,6 +350,7 @@ Curve numbers: open space in good condition, groups A/B/C/D 39/61/74/80; other g
 
 <h2 id="log">Change log</h2>
 <ul class="meta" style="font-size:.9rem">
+  <li><strong>9 November 2026.</strong> Section 7: trees now drink from the lawn round their crowns (a new part). On the developer's lawn the year's watering rises 16%, from 6.01 to 6.96 in. The numbers behind it are unmeasured.</li>
   <li><strong>7 November 2026.</strong> Section 7: a new part on the Heat view and an estimate of surface temperature (sun, sky, fences, paving, each square's wind and how wet its ground is; reference [34]). A slope facing the sun now gets more sun than flat ground. It had been held to flat ground's. Brick and paver patios now count as paving for the heat beside them. Cooler air comes from any shade, buildings as well as trees, by the developer's judgement. On the developer's lawn these change the year's watering from 6.00 to 6.01 in. Section 12: from 4 to 7 November the live tool ran without the shade map by mistake.</li>
   <li><strong>4 November 2026, later.</strong> Section 11: the readings check corrected. It had read each reading off a 1 m grid square and dropped four as "not lawn"; it now judges a reading by the traced lawn itself, with a 0.6 m allowance for the photo it was placed on, and takes the model's wetness as the mean of the lawn squares within 1 m. All 27 count; the correlation is 0.31, the shade mismatch unchanged.</li>
   <li><strong>4 November 2026.</strong> Section 11: the first soil moisture readings against the model. Roofs now come straight from the shade map's shared rule for buildings and trees, which also counts sheds and walls as roof.</li>

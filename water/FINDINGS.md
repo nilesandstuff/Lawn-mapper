@@ -2587,6 +2587,28 @@ On the owner's lawn, July: air 81 F; afternoon surface kept watered 81-83 F (5th
 open (median 45%); with rain alone the grass keeps up 64-100% of its water use in July (median 78%). NOT CHECKED
 against any thermometer (S28).
 
+### H83. Trees drink from the lawn, centred on their crowns: built (water session, 2026-11-09)
+
+The owner: "Do we even need trunks? It's really the canopy that matters, right?" -- agreed: the root draw centres on
+each crown's middle; the trunk finder (H78, H79) is shelved, not deleted, and not offered to the shared rule.
+lib/treeroots.js builds research-trees.md's proposed model as written (every parameter SPECULATION, S29): a tree's
+day T = K_t x ET0 (capped at 5 mm) x crown area, K_t 0.4 broadleaf, 0.5 conifer (most of the crown's columns the
+shade map's evergreen); f = 0.4 of it from the turf's root zone; spread as a cone to 2 crown radii from the crown's
+middle, shared over the cells that are not buildings and taken from lawn and other ground only; broadleaf by the
+shade map's leaf calendar (its share of leaves out that day), conifers on days the soil is not frozen; cut by the
+cell's Ks. The crowns are the shade map's crownsOf on the water map's own structures pass (to-do 27 moves it to the
+shade map's model file). simulate adds it after the turf's own use (tot.tree).
+On the owner's lawn (ten years, as watered): 287 crowns over the analysis box; 80% of the lawn within some crown's
+reach; the lawn's draw a median 25 mm a year (1.0 in), its thirstiest tenth 61 mm (2.4 in), at most 120 mm; with rain
+alone 19 mm (the grass and trees both short). The year's watering, lawn-weighted, 6.01 -> 6.96 in (+16%); July
+waterings 6.35 -> 7.37; areas 0.38/0.28/0.06/0.28 -> 0.52/0.23/0.08/0.17.
+Against the readings (H76): rho 0.31 -> 0.33. The model's shadier half of the spots (by need) 0.71 -> 0.65 of field
+capacity, its sunnier half 0.58 -> 0.56; the meter has the shadier half DRIER (36.5 against 42.1). So the draw
+narrows S26's mismatch from 0.13 to 0.09 and does not turn it: the trees at the model's defaults do not explain it.
+Test: treeroots.test.js (the cone, buildings, conifers); plan.test.js (a 6 m crown: up to 89 mm a year under it,
+the zone watered more over the year, drier under it). The peak month alone moved the other way in that test (one
+refill fewer in July on the made-up weather): the per-month need is lumpy and is not the measure of it.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge
@@ -2935,4 +2957,12 @@ square shaded only in the morning reads as part-shaded at the peak); the month's
 night (a clear, calm night loses two to three times that, so the pre-dawn figures are a typical night's, not a frost
 night's); the wind's mean used at night (nights are calmer); no heat stored in paving. An infrared thermometer at
 the afternoon peak and before dawn, open lawn against shade and a dry patch, would check it.
+
+### S29. The trees' draw is three guesses multiplied (2026-11-09, with H83)
+
+K_t (0.25-0.8 broadleaf), f (0.25-0.55) and k (1.5-3) are each the middle of a published range with no lawn
+measurement behind it (research-trees.md); the draw scales with K_t x f and spreads as 1/k^2. At the top of all three
+it is about 3 times H83's, at the bottom about a fifth. It added 16% to the owner's watering at the middle values.
+The probe transect in research-trees.md (0.5R to 3R, north and south of one maple and one spruce, over a dry week)
+measures the three together. The readings so far (H76) say shade runs drier than the model has it even with the draw.
 
