@@ -1967,3 +1967,34 @@ correspondences, and a smooth warp (thin-plate spline) per lot through them.
 
 What decides between the two: whether a stretched photo's ground lands within about a foot of the lidar's at
 held-out points. Neither is built.
+
+### Research, 2026-11-09 (a research agent; sources as it gave them, not yet checked by a run here)
+
+What sources state:
+  - Pretrained image matchers registered SAR to optical satellite pairs zero-shot (Corley, Stoken, Berton, CVPR 2026
+    Image Matching Workshop, arXiv 2604.10217): RoMa (code MIT, DINOv2 backbone Apache-2) and XoFTR (Apache-2.0)
+    tied best on SpaceNet9 at about 3 px mean error; XoFTR about 10 times faster.
+  - MINIMA (CVPR 2025, Apache-2.0; its LightGlue variant uses SuperPoint, non-commercial only) retrains RoMa, LoFTR,
+    ELoFTR, XoFTR and LightGlue on synthetic other-modality images, depth and normals among them.
+  - Airborne-lidar rasters matched to aerial camera images with SuperGlue and LoFTR: intensity gave the strongest
+    matches (Leahy and Jabari, Remote Sensing 17(3):357, 2025). SIFT works on lidar intensity, not on elevation.
+  - No published use of RoMa, MINIMA or MatchAnything on airborne-lidar intensity against orthophotos was found.
+  - MatchAnything's code now carries a registration licence (an organisation must register first): left aside.
+  - Orthophoto accuracy: NAIP is specified to plus or minus 4-6 m; county 4-6 inch programmes report about 1.4-2.5 ft
+    at 95% (Los Angeles County, Chatham County GA), rectified on bare-earth models so buildings lean; Mapbox's Vivid
+    is specified at 2-8.5 m CE90 depending on tier. 3DEP specifies vertical accuracy only; horizontal is reported per
+    project.
+
+SPECULATION (the agent's and this session's): the error at the ground is smooth within a photo frame (orientation,
+the rectifying DEM's height error times the view angle) with jumps at mosaic seams, so a smoothed thin-plate spline
+per frame, piecewise where residuals jump, should fit it. Match on ground-return intensity (and ground-level edges),
+never on roofs and crowns (they lean): drop matches within about 1 m of anything 0.5 m or more above the ground.
+Tiles of 384-640 px with overlap; cheap matchers first on the runner's CPU (XoFTR, MINIMA-ELoFTR), RoMa where they
+come back thin; outliers removed per tile; 50-300 matches a lot. A warp is kept only if it beats today's single
+shift at held-out points; and once warped, the county photo, Mapbox and NAIP should agree with one another there.
+The baseline to beat first: the site's own edge-by-direction matcher (public/shade/align.js) run in overlapping
+windows instead of once per frame.
+
+A test the owner's walks already allow: the same check points placed on Mapbox (the walks before 2026-11-09 evening)
+and on the county photo (that walk) are the two photos' disagreement, measured by eye at real objects; after both
+photos are warped to the lidar, the two placements of each point should come together.
