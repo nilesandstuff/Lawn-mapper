@@ -2609,6 +2609,20 @@ Test: treeroots.test.js (the cone, buildings, conifers); plan.test.js (a 6 m cro
 the zone watered more over the year, drier under it). The peak month alone moved the other way in that test (one
 refill fewer in July on the made-up weather): the per-month need is lumpy and is not the measure of it.
 
+### H84. Surface temperatures on the readings page, checked on the visit day's own weather: built (water session, 2026-11-09)
+
+The owner will read the grass surface with an infrared thermometer or a phone thermal camera and the air with a
+cheap thermometer in the shade. The readings page's meter list has "surface temperature, F" (moisture_visits.unit
+'surface_f', readings -40 to 200 F) and, for such a visit, the air's temperature then (moisture_visits.air_f, schema
+and migration). The water map's worker (analyse.js surfCheck) runs lib/heat.js's surface model on the visit day's own
+weather from the plan's recent weeks, the air set to the visitor's reading, the ground as wet as that day's rain-alone
+run left it, at the afternoon peak (a visit 10 am-5 pm) or before dawn (9 pm-8 am; anything else is not compared);
+a recent day's missing sunshine is FAO-56's from the cloud cover or the temperature range (eq. 50, kRs 0.16), its
+humidity from the night's low, its wind 2 m/s, and the card says which. Each spot is compared as surface minus air:
+Spearman rho over the lawn spots and the mean gap, measured against modelled; the numbers-only check is kept with
+the visit's. A made-up visit (random 56-66 F readings, 55 F air, 2026-11-08 at 2 pm on the owner's lot) ran through:
+the model put the lawn at +4.3 F over the air (open, level, watered +3.5 F). No real temperatures yet.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge

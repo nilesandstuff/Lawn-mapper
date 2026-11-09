@@ -38,11 +38,12 @@ CREATE TABLE IF NOT EXISTS moisture_visits (
   parcel_pin TEXT, county TEXT,     -- the county's parcel number, when the property line was found
   map_id TEXT,                      -- a saved map on this property, if there is one
   meter TEXT,                       -- which meter
-  unit TEXT,                        -- 'vwc' (% water by volume) | 'scale' (the meter's own scale) | 'other'
+  unit TEXT,                        -- 'vwc' (% water by volume) | 'scale' (the meter's own scale) | 'surface_f' (surface temperature, F) | 'other'
   depth_in REAL,                    -- how deep the probe went
   note TEXT,
   weather TEXT,                     -- what the visitor said of the last days' weather, JSON (optional)
-  placed_on TEXT                    -- the photo the dots were put on: 'county:<svc>' (the one the lawn was traced on) or 'mapbox' (2026-11-04)
+  placed_on TEXT,                   -- the photo the dots were put on: 'county:<svc>' (the one the lawn was traced on) or 'mapbox' (2026-11-04)
+  air_f REAL                        -- surface-temperature visits: the air's temperature then, F, in the shade (2026-11-09)
 );
 CREATE INDEX IF NOT EXISTS moisture_visits_pin ON moisture_visits (parcel_pin);
 CREATE INDEX IF NOT EXISTS moisture_visits_at ON moisture_visits (at);

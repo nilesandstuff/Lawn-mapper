@@ -74,6 +74,11 @@
   <div class="card">
     <strong>This visit</strong> <span id="count" class="dim small"></span>
     <ol id="list"></ol>
+    <div id="air-box" hidden>
+      <label for="airf">Air temperature now, °F (a thermometer in the shade at chest height, after a minute or two)</label>
+      <input id="airf" type="number" inputmode="decimal" step="0.1" placeholder="e.g. 81">
+      <p class="dim small" style="margin:4px 0 0">Aim at the grass, not bare soil, from about a foot away, your shadow off the spot. Best on a sunny afternoon (1-3 pm) or before dawn on a clear night.</p>
+    </div>
     <label for="weather">Rain or watering in the last two days</label>
     <select id="weather">
       <option value="">not sure</option>
@@ -94,9 +99,10 @@
     <select id="unit">
       <option value="vwc">% water by volume (VWC)</option>
       <option value="scale">the meter's own % or scale (not calibrated to true water content)</option>
+      <option value="surface_f">surface temperature, °F (infrared thermometer or thermal camera, emissivity 0.98)</option>
       <option value="other">something else</option>
     </select>
-    <label for="depth">How deep the probe goes (inches)</label>
+    <label for="depth" id="depth-label">How deep the probe goes (inches)</label>
     <input id="depth" type="number" inputmode="decimal" step="0.5" min="0" max="48" placeholder="e.g. 3">
     <p class="dim small">Kept on this phone for the next visit.</p>
   </details>

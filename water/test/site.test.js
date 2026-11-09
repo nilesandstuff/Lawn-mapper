@@ -243,6 +243,10 @@ test('moisture readings: the admin keeps a visit, saves it again whole, reads a 
   // no database yet: 503
   assert.equal((await moisture(post(visit), {}, u(), admin)).status, 503);
   assert.equal(await moisture(new Request('https://water.example.com/api/other'), env, new URL('https://water.example.com/api/other'), admin), null);
+  // a surface-temperature visit: F readings and the air's temperature kept
+  const sv = cleanVisit({ ...visit, unit: 'surface_f', air_f: 81, readings: [{ lng: 1, lat: 1, value: 96.5 }] });
+  assert.equal(sv.visit.unit, 'surface_f'); assert.equal(sv.visit.air_f, 81); assert.equal(sv.readings[0].value, 96.5);
+  assert.ok(cleanVisit({ ...visit, unit: 'surface_f', readings: [{ lng: 1, lat: 1, value: 250 }] }).error, '250 F is no lawn');
   // the meter's own scale may go past 100
   assert.ok(cleanVisit({ ...visit, unit: 'scale', readings: [{ lng: 1, lat: 1, value: 250 }] }).visit);
 });

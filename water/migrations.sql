@@ -6,3 +6,6 @@
 -- COMMENT HERE: tools/d1.mjs splits this file on them (it strips comments first since 2026-11-04, after one in this
 -- very comment cut the ALTER in two and the readings page saved 500s for six hours).
 ALTER TABLE moisture_visits ADD COLUMN placed_on TEXT;
+
+-- 2026-11-09: surface-temperature visits carry the air's temperature at the time, F
+ALTER TABLE moisture_visits ADD COLUMN air_f REAL;

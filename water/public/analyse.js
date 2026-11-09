@@ -17,6 +17,8 @@ import { runSite } from '/lib/site.js';
 import { soilFor, sdaPost } from '/lib/soil.js';
 import { typicalYears, thisWeek, attachStationHours, soilDaysOver } from '/lib/weather.js';
 import { heatOfMonth, surfaceOfMonth, stressByMonth } from '/lib/heat.js';
+import { simulate } from '/lib/balance.js';
+import { ra, rsFromCover, dayOfYear } from '/lib/et.js';
 import { waterPlan } from '/lib/plan.js';
 import { demAround, terrain, hillside, RADIUS_M } from '/lib/upslope.js';
 import { placeSoils, twiForGrid } from '/lib/soilplace.js';
@@ -89,6 +91,42 @@ function heatFor({ month, id }) {
   const surf = { wetDay: wet.day, wetNight: wet.night, dryDay: dry.day, dryNight: dry.night, wind: wet.wind, ks: Float32Array.from(ks), ta: wet.ta, open: wet.open, peakW: wet.peakW, hours: wet.hours, wind2: wet.wind2, windByMonth: !!kept.model.windAtMonths };
   self.postMessage({ heat: { id, month, weather: h.weather, inSeason: h.inSeason, sunny: h.sunny, open: h.open, ground: g, night: h.night, air: h.air, surf, ownRadiation: !!kept.model.rad, fences: !!kept.model.fenceHeat, trees: !!kept.model.canopy } },
     [g.sun.buffer, g.sky.buffer, g.fence.buffer, g.paving.buffer, g.net.buffer, h.night.buffer, h.air.buffer, surf.wetDay.buffer, surf.wetNight.buffer, surf.dryDay.buffer, surf.dryNight.buffer, surf.wind.buffer, surf.ks.buffer]);
+}
+
+/* A SURFACE-TEMPERATURE VISIT AGAINST THE MODEL (owner, 2026-11-09): the surface model (lib/heat.js) on the visit
+   day's own weather (the weeks the plan reads), the air as the visitor measured it when they did, the ground as wet as
+   that day's rain-alone run has it; each cell's surface minus the air, at the afternoon peak (a visit 10 am-5 pm) or
+   before dawn (9 pm-8 am). Anything else (dusk, dawn) has no fair moment to compare with. */
+function surfCheck({ id, date, hour, airF }) {
+  const days = kept.week?.days || [];
+  const day = days.find((d) => d.date === date);
+  if (!kept.model || !day) { self.postMessage({ surfCheck: { id, error: kept.model ? 'the weather record does not reach that day' : 'the plan is not worked out yet' } }); return; }
+  const mode = hour >= 10 && hour < 17 ? 'day' : hour >= 21 || hour < 8 ? 'night' : null;
+  if (!mode) { self.postMessage({ surfCheck: { id, error: 'taken at dusk or dawn: no fair moment to compare with (the model gives the afternoon peak and before dawn)' } }); return; }
+  const month = Number(date.slice(5, 7)) - 1;
+  // how wet the ground was that day, with rain alone (the water map does not know when sprinklers ran)
+  let ks = null;
+  simulate(kept.model, days, { season: kept.season || null, record: (d, st) => {
+    if (days[d].date !== date) return;
+    const m = kept.model;
+    ks = Float32Array.from(st.Dr, (Dr, i) => (Dr <= m.raw[i] || !(m.taw[i] > m.raw[i]) ? 1 : Math.max(0, (m.taw[i] - Dr) / (m.taw[i] - m.raw[i]))));
+  } });
+  const air = Number.isFinite(airF) ? (airF - 32) / 1.8 : null;
+  /* a recent day from the stations has no sunshine yet (NASA's comes days later): the forecast's cloud cover, else
+     FAO-56's estimate from the day's temperature range (eq. 50, kRs 0.16 inland); a missing wind 2 m/s and humidity
+     from the night's low as the dew point (FAO-56's fallbacks) */
+  const lat = kept.model.g?.lat ?? kept.lat ?? 42.5, doy = dayOfYear(date);
+  const es = (t) => 0.6108 * Math.exp((17.27 * t) / (t + 237.3));
+  const rs = Number.isFinite(day.rs) ? day.rs : Number.isFinite(day.cover) ? rsFromCover(day.cover, lat, doy) : 0.16 * Math.sqrt(Math.max(0, day.tmax - day.tmin)) * ra(lat, doy);
+  const rh = Number.isFinite(day.rh) ? day.rh : Math.min(100, (100 * es(day.tmin)) / ((es(day.tmax) + es(day.tmin)) / 2));
+  const one = { ...day, rs, rh, wind: Number.isFinite(day.wind) ? day.wind : 2, ...(air !== null ? (mode === 'day' ? { tmax: air } : { tmin: air }) : {}) };
+  const filled = [!Number.isFinite(day.rs) && (Number.isFinite(day.cover) ? 'sunshine from the cloud cover' : 'sunshine from the day\'s temperature range'), !Number.isFinite(day.rh) && 'humidity from the night\'s low', !Number.isFinite(day.wind) && 'wind 2 m/s'].filter(Boolean);
+  const h = heatOfMonth(kept.model, [one], month, { season: kept.season || null });
+  if (!h) { self.postMessage({ surfCheck: { id, error: 'that day has no sunshine, humidity or wind in the record' } }); return; }
+  const s = surfaceOfMonth(kept.model, h, { ks });
+  const ta = mode === 'day' ? s.ta.day : s.ta.night;
+  const dT = Float32Array.from(mode === 'day' ? s.day : s.night, (t) => t - ta);
+  self.postMessage({ surfCheck: { id, mode, ta, open: (mode === 'day' ? s.open.day : s.open.night) - ta, dT, ks, wind: s.wind, filled } }, [dT.buffer]);
 }
 
 /* THE PLAN ON THE PERSON'S OWN VALVES (owner, 2026-10-23: "a final step that gives exact watering recs by season
@@ -461,8 +499,10 @@ self.onmessage = async ({ data }) => {
     else if (data.replan) { kept.inputs = data.replan; if (kept.r) await plan(data.replan); }
     else if (data.valvePlan) valvePlan(data.valvePlan);
     else if (data.heat) heatFor(data.heat);
+    else if (data.surfCheck) surfCheck(data.surfCheck);
   } catch (e) {
     if (data?.heat) { self.postMessage({ heat: { id: data.heat.id, error: e.message || String(e) } }); return; }
+    if (data?.surfCheck) { self.postMessage({ surfCheck: { id: data.surfCheck.id, error: e.message || String(e) } }); return; }
     if (data?.valvePlan) { self.postMessage({ valvePlan: { id: data.valvePlan.id, error: e.message || String(e) } }); return; }
     self.postMessage(kept.r ? { planError: e.message || String(e) } : { error: e.message || String(e) });
   }

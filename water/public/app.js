@@ -936,8 +936,8 @@ function moistureCard(p) {
   let el = $('#moisture-check');
   if (!el) { $('#groundwater')?.insertAdjacentHTML('afterend', '<div id="moisture-check"></div>'); el = $('#moisture-check'); }
   if (!el) return;
-  const d = view.data, visits = view.moisture || [], trace = view.site?.lawn || [];
-  if (!visits.length || !d?.grid || !p?.kinds) { el.innerHTML = ''; return; }
+  const d = view.data, visits = (view.moisture || []).filter((v) => v.unit !== 'surface_f'), trace = view.site?.lawn || [];
+  if ((!visits.length && !(view.moisture || []).some((v) => v.unit === 'surface_f')) || !d?.grid || !p?.kinds) { el.innerHTML = ''; return; }
   const { W, H, bbox } = d.grid, dx = d.shift.east / d.grid.k, dy = d.shift.north / d.grid.k;
   const cw = (bbox[2] - bbox[0]) / W, ch = (bbox[3] - bbox[1]) / H;
   const snaps = new Map((p.snapshots || []).map((s) => [s.date, s.wet]));
@@ -992,7 +992,60 @@ function moistureCard(p) {
       <p class="dim">Readings ${vs[0] ?? '-'} to ${vs[vs.length - 1] ?? '-'}; the model's wetness ${f2(ws[0])} to ${f2(ws[ws.length - 1])} (the root zone's water over what it holds at field capacity, with rain alone), each spot the mean of the lawn squares within ${NEAR_M} m of it. A spot is on the lawn when it is on the traced lawn or within ${ON_TRACE_M} m of it${offs ? ` (${offs} of these sit just off the trace: the photo a dot is put on and the one the lawn was traced on can differ by about that much)` : ''}. ${wet ? '' : 'The weather record does not reach this date, so the model has no wetness for it.'}</p>
       <div style="overflow-x:auto"><table class="small"><tr><th>#</th><th>reading</th><th>model</th><th>where</th><th>area</th><th>peak-month need, in</th><th>note</th></tr>${rows}</table></div></details>`;
   });
-  el.innerHTML = `<h2>Soil moisture readings against the model</h2>${cards.join('')}${trunksNote()}`;
+  el.innerHTML = `${cards.length ? `<h2>Soil moisture readings against the model</h2>${cards.join('')}` : ''}${surfCards()}${trunksNote()}`;
+  askSurf();
+}
+
+/* SURFACE TEMPERATURES AGAINST THE MODEL (owner, 2026-11-09): each surface-temperature visit (the readings page, an
+   infrared thermometer or thermal camera, the air read in the shade) against lib/heat.js's surface model on that
+   day's own weather (the worker's surfCheck). Compared as each spot's surface minus the air, so the day's weather
+   errors cancel: does a spot the model has hotter read hotter (rank), and by about how much (the mean gap)? */
+const surfState = new Map(); // visit id -> { asked, data, error }
+function askSurf() {
+  if (!running || !view.plan) return;
+  for (const v of view.moisture || []) {
+    if (v.unit !== 'surface_f' || surfState.has(v.id)) continue;
+    const t = new Date(v.at);
+    surfState.set(v.id, { asked: true });
+    running.postMessage({ surfCheck: { id: v.id, date: localDate(v.at), hour: t.getHours() + t.getMinutes() / 60, airF: Number.isFinite(v.air_f) ? v.air_f : null } });
+  }
+}
+function surfIn(r) {
+  surfState.set(r.id, r.error ? { error: r.error } : { data: r });
+  if (view.plan) moistureCard(view.plan);
+}
+function surfCards() {
+  const vs = (view.moisture || []).filter((v) => v.unit === 'surface_f');
+  if (!vs.length) return '';
+  const p = view.plan, trace = view.site?.lawn || [];
+  const F = (c) => c * 1.8; // a difference in C, in F
+  const cards = vs.map((v) => {
+    const sv = surfState.get(v.id), date = localDate(v.at);
+    if (!sv || sv.asked) return `<div class="card">Surface temperatures of ${date}: working out the model on that day's weather…</div>`;
+    if (sv.error) return `<div class="card">Surface temperatures of ${date}: not compared (${esc(sv.error)}).</div>`;
+    const m = sv.data, air = Number.isFinite(v.air_f) ? v.air_f : m.ta * 1.8 + 32;
+    const spots = v.readings.map((r) => {
+      const i = cellAt([r.lng, r.lat]), off = offLawnM([r.lng, r.lat], trace);
+      const lawn = off === null ? p?.kinds?.[i] === 1 : off <= ON_TRACE_M;
+      return { n: r.n, value: r.value, note: r.note, lawn, measured: r.value - air, model: i >= 0 && Number.isFinite(m.dT[i]) ? F(m.dT[i]) : null, ks: i >= 0 && m.ks ? m.ks[i] : null, wind: i >= 0 && m.wind ? m.wind[i] : null };
+    });
+    const ok = spots.filter((s) => s.lawn && s.model !== null);
+    const rho = spearman(ok.map((s) => s.measured), ok.map((s) => s.model));
+    const mean = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : null);
+    const mM = mean(ok.map((s) => s.measured)), mD = mean(ok.map((s) => s.model));
+    const f1 = (x) => (x === null || x === undefined ? '-' : `${x > 0 ? '+' : ''}${x.toFixed(1)}`);
+    fetch('/api/water/moisture/check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+      visit_id: v.id, rho, n: ok.length,
+      spots: spots.map((s) => ({ n: s.n, value: s.value, wet: s.model, lawn: s.lawn ? 1 : 0 })),
+      settings: { date, irrigated: 'rain alone', season: `surface, ${m.mode === 'day' ? 'afternoon' : 'before dawn'}; air ${Math.round(air)} F` },
+    }) }).catch(() => {});
+    const rows = spots.map((s) => `<tr><td>${s.n}</td><td>${s.value} °F</td><td>${f1(s.measured)}</td><td>${f1(s.model)}</td><td>${s.lawn ? 'lawn' : 'off the lawn'}</td><td>${s.wind === null ? '-' : `${Math.round(s.wind * 100)}%`}</td><td>${s.ks === null ? '-' : `${Math.round(s.ks * 100)}%`}</td><td>${esc(s.note || '')}</td></tr>`).join('');
+    return `<details class="card"><summary>Surface temperatures of ${date} (${m.mode === 'day' ? 'afternoon' : 'before dawn'}): ${v.readings.length} spots, the model's rank against them ${rho === null ? '-' : rho.toFixed(2)}</summary>
+      <p>Each spot as degrees above (+) or below (−) the air at ${Math.round(air)} °F${Number.isFinite(v.air_f) ? ', as you read it' : " (no air reading: the day's " + (m.mode === 'day' ? 'high' : 'low') + ' from the weather record)'}. Rank correlation over ${ok.length} lawn spots: <strong>${rho === null ? '-' : rho.toFixed(2)}</strong>. On average the spots read ${f1(mM)} °F against the air; the model has them at ${f1(mD)} °F (open, level, watered lawn ${f1(F(m.open))} °F).</p>
+      <p class="dim">The model on that day's own sunshine, humidity, cloud and wind, ${m.mode === 'day' ? "at the day's peak sun (a reading well before or after 1-2 pm comes cooler)" : 'before dawn'}, the ground as wet as rain alone left it that day (it does not know when sprinklers ran).${m.filled?.length ? ` Not yet in the record for that day, so estimated: ${esc(m.filled.join(', '))}.` : ''} An estimate: H82.</p>
+      <div style="overflow-x:auto"><table class="small"><tr><th>#</th><th>reading</th><th>vs air, °F</th><th>model, °F</th><th>where</th><th>wind</th><th>wetness</th><th>note</th></tr>${rows}</table></div></details>`;
+  });
+  return `<h2>Surface temperatures against the model</h2>${cards.join('')}`;
 }
 
 /* THE TRUNK FINDER AGAINST THE MARKED TRUNKS (lib/trunks.js; the readings page's marks): each mark's nearest found
@@ -1134,6 +1187,7 @@ async function run(site) {
       else if (data.planProgress) { $('#saved').textContent = data.planProgress; busy('plan', data.planProgress); }
       else if (data.valvePlan) { const w = valveAsk.waiting.get(data.valvePlan.id); valveAsk.waiting.delete(data.valvePlan.id); if (w) { if (data.valvePlan.error) w.reject(new Error(data.valvePlan.error)); else w.resolve(data.valvePlan); } }
       else if (data.heat) { heatIn(data.heat); }
+      else if (data.surfCheck) { surfIn(data.surfCheck); }
       else if (data.groundwaterError) { view.groundwaterError = data.groundwaterError; }
       else if (data.plan) { view.heat = null; if (mapView === 'heat') askHeat(); idle('plan'); if (!view.hillIn) busy('hill', 'Reading the land round the lawn (water from uphill)…'); view.plan = data.plan; needScale(); heads.planIn?.(); $('#saved').textContent = savedNote; if (!heads.active) planReport(data.plan); else moistureCard(data.plan); legend(); draw(); }
       else if (data.planError) { idle('plan'); idle('hill'); $('#saved').textContent = `The watering plan could not be worked out: ${data.planError}`; }

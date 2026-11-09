@@ -168,6 +168,9 @@ SPECULATION), as always.
 
 ## Done
 
+- **Temperatures on the readings page** (owner, 2026-11-09): "surface temperature, F" with the air read then; the
+  water map checks each visit on that day's own weather (H84). Waiting on the owner's thermometer and camera.
+
 - **Trees drinking from the lawn** (owner, 2026-11-09: "Do we even need trunks? It's really the canopy that
   matters"): the draw centred on each crown (H83; three guesses, S29); the trunk finder shelved. On the owner's lawn
   +16% watering. Next to settle it: the probe transect (research-trees.md), or more readings.

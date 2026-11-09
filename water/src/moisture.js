@@ -21,9 +21,9 @@
 const json = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 const num = (v, lo, hi) => { const x = Number(v); return v !== null && v !== '' && Number.isFinite(x) && x >= lo && x <= hi ? x : null; };
 const txt = (v, n = 120) => (v == null || v === '' ? null : String(v).slice(0, n));
-const UNITS = ['vwc', 'scale', 'other'];
+const UNITS = ['vwc', 'scale', 'surface_f', 'other']; // surface_f: the grass surface's temperature, F (2026-11-09)
 
-export const VISIT_COLS = ['id', 'at', 'saved', 'lng', 'lat', 'parcel_pin', 'county', 'map_id', 'meter', 'unit', 'depth_in', 'note', 'weather', 'placed_on'];
+export const VISIT_COLS = ['id', 'at', 'saved', 'lng', 'lat', 'parcel_pin', 'county', 'map_id', 'meter', 'unit', 'depth_in', 'note', 'weather', 'placed_on', 'air_f'];
 export const READING_COLS = ['id', 'visit_id', 'n', 'spot', 'at', 'lng', 'lat', 'value', 'note'];
 export const MARK_COLS = ['id', 'visit_id', 'n', 'kind', 'lng', 'lat', 'note'];
 const MARK_KINDS = ['trunk'];
@@ -45,12 +45,14 @@ export function cleanVisit(b, now = Date.now()) {
     meter: txt(b.meter, 80), unit, depth_in: num(b.depth_in, 0, 48), note: txt(b.note, 2000),
     weather: b.weather ? txt(JSON.stringify(b.weather), 4000) : null,
     placed_on: txt(b.placed_on, 40), // the photo the dots were put on: 'county:<svc>' (the one the lawn was traced on) or 'mapbox'
+    air_f: num(b.air_f, -40, 130), // the air's temperature when the readings were taken, F, in the shade at chest height (surface visits)
   };
   const readings = [];
   for (const [k, r] of readingsIn.entries()) {
     const lng = num(r?.lng, -180, 180), lat = num(r?.lat, -90, 90), value = num(r?.value, -1000, 100000);
     if (lng === null || lat === null || value === null) return { error: `reading ${k + 1}: needs a place and a number` };
     if (unit === 'vwc' && (value < 0 || value > 100)) return { error: `reading ${k + 1}: ${value}% is not a soil moisture` };
+    if (unit === 'surface_f' && (value < -40 || value > 200)) return { error: `reading ${k + 1}: ${value} F is not a lawn's surface` };
     readings.push({ id: `${id}:${k + 1}`, visit_id: id, n: num(r.n, 0, 100000) ?? k + 1, spot: txt(r.spot, 64), at: num(r.at, 1.5e12, now + 864e5) ?? now, lng, lat, value, note: txt(r.note, 500) });
   }
   // marks (2026-11-04): tree trunks the visitor stood at, ground truth for the water map's trunk finder (lib/trunks.js)

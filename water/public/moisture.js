@@ -38,9 +38,19 @@ const st = {
 /* ---------------------------------------------------------------- the meter's setup, kept on the phone */
 const setup = { meter: '', unit: 'scale', depth: '', ...(store.get(SETUP) || {}) }; // most hand meters under $200 read a relative %, not true water content
 $('#meter').value = setup.meter; $('#unit').value = setup.unit; $('#depth').value = setup.depth;
-for (const id of ['meter', 'unit', 'depth']) $(`#${id}`).addEventListener('change', () => { setup[id] = $(`#${id}`).value; store.set(SETUP, setup); });
+for (const id of ['meter', 'unit', 'depth']) $(`#${id}`).addEventListener('change', () => { setup[id] = $(`#${id}`).value; store.set(SETUP, setup); unitShown(); });
 if (!setup.meter) $('#setup').open = true;
-const unitWord = () => (setup.unit === 'vwc' ? '%' : '');
+const surface = () => setup.unit === 'surface_f';
+const unitWord = () => (setup.unit === 'vwc' ? '%' : surface() ? '°F' : '');
+/* SURFACE TEMPERATURE VISITS (owner, 2026-11-09: an infrared thermometer or a thermal camera, and a cheap thermometer
+   for the air): no probe depth; the air's temperature for the visit instead */
+function unitShown() {
+  $('#air-box').hidden = !surface();
+  $('#depth').hidden = surface(); $('#depth-label').hidden = surface();
+  if (typeof refresh === 'function' && st?.visit) refresh();
+}
+unitShown();
+$('#airf').addEventListener('change', () => { if (st.visit) { st.visit.dirty = true; saveDraft(); refresh(); } });
 
 /* ---------------------------------------------------------------- status */
 function say(text, bad = false) { const el = $('#status'); el.textContent = text; el.classList.toggle('bad', bad); }
@@ -150,7 +160,7 @@ async function load(lng, lat, { keepVisit = false } = {}) {
   if (!keepVisit || !st.visit) newVisit();
   else saveDraft();
   const visits = await earlierAt(p.pin);
-  st.old = oldSpots(visits.filter((v) => v.id !== st.visit.id));
+  st.old = oldSpots(visits.filter((v) => v.id !== st.visit.id && (v.unit === 'surface_f') === surface())); // a temperature visit's spots apart from a moisture visit's
   earlierCard(visits.filter((v) => v.id !== st.visit.id));
   $('#movepin').disabled = false; $('#newvisit').disabled = false; $('#marktrunk').disabled = false;
   fit(); refresh();
@@ -176,12 +186,12 @@ function earlierCard(visits) {
 /* ---------------------------------------------------------------- the visit and its draft */
 function newVisit() {
   st.visit = { id: uid(), at: Date.now(), dots: [], marks: [], savedAt: null, savedCount: 0 };
-  $('#weather').value = ''; $('#vnote').value = '';
+  $('#weather').value = ''; $('#vnote').value = ''; $('#airf').value = '';
   saveDraft(); refresh();
 }
 function saveDraft() {
   if (!st.visit || !st.property) return;
-  store.set(DRAFT, { property: st.property, visit: st.visit, weather: $('#weather').value, note: $('#vnote').value });
+  store.set(DRAFT, { property: st.property, visit: st.visit, weather: $('#weather').value, note: $('#vnote').value, airf: $('#airf').value });
 }
 $('#weather').addEventListener('change', () => { if (st.visit) st.visit.dirty = true; saveDraft(); refresh(); });
 $('#vnote').addEventListener('change', () => { if (st.visit) st.visit.dirty = true; saveDraft(); refresh(); });
@@ -206,7 +216,7 @@ function ask(what) {
   asking = what;
   const v = st.visit, d = what.edit !== undefined ? v.dots[what.edit] : null;
   $('#asktitle').textContent = d ? `Reading ${d.n}` : `Reading ${v.dots.length + 1}`;
-  $('#askwhere').textContent = what.old ? `The spot read on ${new Date(what.old.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} (${what.old.value}${what.old.unit === 'vwc' ? '%' : ''} then)` : setup.unit === 'vwc' ? '% water by volume' : setup.unit === 'scale' ? "the meter's own % or scale" : '';
+  $('#askwhere').textContent = what.old ? `The spot read on ${new Date(what.old.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} (${what.old.value}${what.old.unit === 'vwc' ? '%' : what.old.unit === 'surface_f' ? ' °F' : ''} then)` : setup.unit === 'vwc' ? '% water by volume' : setup.unit === 'scale' ? "the meter's own % or scale" : surface() ? 'the grass surface, °F' : '';
   $('#val').value = d ? d.value : ''; $('#rnote').value = d?.note || '';
   $('#askdel').hidden = !d;
   $('#ask').showModal();
@@ -221,6 +231,7 @@ $('#ask').addEventListener('close', () => {
     const value = Number($('#val').value);
     if (!Number.isFinite(value) || $('#val').value === '') return;
     if (setup.unit === 'vwc' && (value < 0 || value > 100)) { say(`${value}% is not a soil moisture: not kept.`, true); return; }
+    if (surface() && (value < -40 || value > 200)) { say(`${value} °F is not a lawn's surface: not kept.`, true); return; }
     const note = $('#rnote').value.trim() || null;
     if (w.edit !== undefined) Object.assign(v.dots[w.edit], { value, note });
     else v.dots.push({ n: v.dots.length + 1, spot: w.old ? w.old.spot : uid(), again: !!w.old, lng: w.lng, lat: w.lat, value, note, at: Date.now() });
@@ -235,7 +246,7 @@ $('#save').addEventListener('click', async () => {
   if (!v || !p || (!v.dots.length && !(v.marks || []).length)) return;
   $('#save').disabled = true; $('#save').textContent = 'Saving…';
   const weather = $('#weather').value ? { lastTwoDays: $('#weather').value } : null;
-  const body = { id: v.id, at: v.at, lng: p.lng, lat: p.lat, parcel_pin: p.pin, county: p.county, map_id: p.mapId, placed_on: st.placedOn, meter: setup.meter || null, unit: setup.unit, depth_in: setup.depth === '' ? null : Number(setup.depth), note: $('#vnote').value.trim() || null, weather, readings: v.dots.map(({ n, spot, lng, lat, value, note, at }) => ({ n, spot, lng, lat, value, note, at })), marks: (v.marks || []).map(({ kind, lng, lat, note }) => ({ kind, lng, lat, note })) };
+  const body = { id: v.id, at: v.at, lng: p.lng, lat: p.lat, parcel_pin: p.pin, county: p.county, map_id: p.mapId, placed_on: st.placedOn, air_f: surface() && $('#airf').value !== '' ? Number($('#airf').value) : null, meter: setup.meter || null, unit: setup.unit, depth_in: surface() || setup.depth === '' ? null : Number(setup.depth), note: $('#vnote').value.trim() || null, weather, readings: v.dots.map(({ n, spot, lng, lat, value, note, at }) => ({ n, spot, lng, lat, value, note, at })), marks: (v.marks || []).map(({ kind, lng, lat, note }) => ({ kind, lng, lat, note })) };
   try {
     const r = await fetch('/api/water/moisture', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const j = await r.json().catch(() => ({}));
@@ -438,7 +449,7 @@ size(); draw();
 const draft = store.get(DRAFT);
 if ((draft?.visit?.dots?.length || draft?.visit?.marks?.length) && draft.property && (draft.visit.dirty || draft.visit.savedCount !== draft.visit.dots.length)) {
   st.visit = draft.visit;
-  $('#weather').value = draft.weather || ''; $('#vnote').value = draft.note || '';
+  $('#weather').value = draft.weather || ''; $('#vnote').value = draft.note || ''; $('#airf').value = draft.airf || '';
   say('Bringing back the readings not yet saved…');
   load(draft.property.lng, draft.property.lat, { keepVisit: true }).then(() => say(`${st.visit.dots.length === 1 ? 'An unsaved reading from earlier is back: save it' : `${st.visit.dots.length} unsaved readings from earlier are back: save them`}, or start a new visit.`));
 }
