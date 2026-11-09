@@ -36,7 +36,7 @@ on:
         required: true
         default: tests
         type: choice
-        options: [tests, deploy, walks, twin, fix, place, depth, study, skyline, pavement, checks, repeat]
+        options: [tests, deploy, walks, twin, fix, place, depth, study, skyline, pavement, checks, repeat, register]
       walk:
         description: 'For twin, fix or depth: the walk id, or latest'
         default: latest
@@ -227,7 +227,7 @@ jobs:
       # CAN THE SKYLINE PLACE A WALK (scan/tools/skyline_study.py, SCAN-H11 option 1): the sky in each picture against
       # the shade map's model seen from every placement; scored against the check points. CPU, free.
       - name: Run actions/setup-python@v5 (skyline)
-        if: ${{ inputs.task == 'skyline' || inputs.task == 'pavement' || inputs.task == 'place' || inputs.task == 'checks' }}
+        if: ${{ inputs.task == 'skyline' || inputs.task == 'pavement' || inputs.task == 'place' || inputs.task == 'checks' || inputs.task == 'register' }}
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -265,7 +265,7 @@ jobs:
         run: |
           set -o pipefail
           pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
-          pip install --quiet "transformers>=4.45" pillow numpy scipy
+          pip install --quiet "transformers>=4.45" pillow numpy scipy small_gicp
           node scan/tools/twin-r2.mjs get "$WALK" twin
           : > place.txt
           # a walk recorded with no map open (the app before its picker, 2026-11-07): its map from another walk, kept
@@ -284,9 +284,11 @@ jobs:
           # the best fit overall (the owner, 2026-11-08): ground, buildings, things, pavement, each capped; nothing lost
           # for what changed, only for seeing through a house (study: placement.json unchanged)
           python scan/tools/consensus_study.py twin | tee -a place.txt
+          # the walk registered to the lidar with small_gicp, ground first (the research report's recipe; study only)
+          python scan/tools/register_study.py twin | tee -a place.txt
           # the walk inspector's data (scan/public/inspect.html): per-point verdicts, credits, placements; private bucket
           python scan/tools/inspect_build.py twin | tee -a place.txt
-          node scan/tools/twin-r2.mjs put "$WALK" twin/skyline.json twin/pavement.json twin/placement.json twin/fixed.json twin/mesh.bin $(test -f twin/view.json && echo twin/view.json) $(test -f twin/consensus.json && echo twin/consensus.json) $(test -f twin/inspect.json && echo twin/inspect.json twin/inspect-points.bin) | tee -a place.txt
+          node scan/tools/twin-r2.mjs put "$WALK" twin/skyline.json twin/pavement.json twin/placement.json twin/fixed.json twin/mesh.bin $(test -f twin/view.json && echo twin/view.json) $(test -f twin/consensus.json && echo twin/consensus.json) $(test -f twin/registration.json && echo twin/registration.json) $(test -f twin/inspect.json && echo twin/inspect.json twin/inspect-points.bin) | tee -a place.txt
 
       # PAVEMENT FROM THE PICTURES (scan/tools/pavement_study.py): road and sidewalk pixels cast onto the ground, kept
       # for the match against the model's intensity when it has one; tested against the traced lawn meanwhile.
@@ -329,6 +331,29 @@ jobs:
       # held-out checks: surveyed corners, or agreement between repeat walks"): each check mark carried through each
       # walk's own placement; how far apart the walks put it, and the gap they share from the photo's mark. The walk
       # input takes walks comma separated, each already through task place.
+      # THE WALK REGISTERED TO THE LIDAR, GROUND FIRST (scan/tools/register_study.py, small_gicp; the research report's
+      # recipe, Paired-CSLiDAR): from the starts task place kept. The walk input takes walks comma separated.
+      - name: Walks registered to the lidar
+        if: ${{ inputs.task == 'register' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WALKS: ${{ inputs.walk }}
+          NO_PICTURES: '1'
+        run: |
+          set -o pipefail
+          pip install --quiet numpy scipy small_gicp
+          : > register.txt
+          for W in $(echo "$WALKS" | tr ',' ' '); do
+            rm -rf twin
+            echo "== walk $W" | tee -a register.txt
+            node scan/tools/twin-r2.mjs get "$W" twin | tee -a register.txt
+            node scan/tools/skyline-prep.mjs twin > /dev/null
+            python scan/tools/register_study.py twin | tee -a register.txt
+            node scan/tools/twin-r2.mjs put "$W" twin/registration.json | tee -a register.txt
+          done
+          if [ "$(echo "$WALKS" | tr ',' ' ' | wc -w)" -ge 2 ]; then node scan/tools/repeat_study.mjs "$WALKS" | tee -a register.txt; fi
+
       - name: Repeat walks against each other
         if: ${{ inputs.task == 'repeat' }}
         env:
@@ -356,6 +381,7 @@ jobs:
             skyline) cat skyline.txt 2>/dev/null || echo "no skyline study: see the step above" ;;
             pavement) cat pavement.txt 2>/dev/null || echo "no pavement study: see the step above" ;;
             place) grep -v '^  model\|^  rays\|^  the picture' place.txt 2>/dev/null | tail -60 || echo "no placement: see the step above" ;;
+            register) grep -v '^Twin read\|: kept (' register.txt 2>/dev/null | tail -70 || echo "no registration: see the step above" ;;
             repeat) cat repeat.txt 2>/dev/null || echo "no repeat-walk study: see the step above" ;;
             checks) cat checks.txt 2>/dev/null || echo "no check-mark test: see the step above" ;;
             depth) tail -25 depth.txt 2>/dev/null || echo "no depth run: see the step above" ;;

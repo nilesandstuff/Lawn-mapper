@@ -34,9 +34,10 @@ async function main() {
   if (walks.length < 2) throw new Error('give two walks or more, comma separated');
   const per = [];
   for (const w of walks) {
-    const live = await json(w, 'live.json'), cons = await json(w, 'consensus.json'), pl = await json(w, 'placement.json');
+    const live = await json(w, 'live.json'), cons = await json(w, 'consensus.json'), pl = await json(w, 'placement.json'), reg = await json(w, 'registration.json');
     const checks = checkMarks(live?.marks);   // a point marked twice: its last mark
     const placements = {};
+    if (reg?.T) placements['registered to the lidar (small_gicp, ground first)'] = reg.T;
     if (cons?.weights?.all?.T) placements['best fit overall (all)'] = cons.weights.all.T;
     if (cons?.weights?.['ground + buildings + things']?.T) placements['best fit (ground + buildings + things)'] = cons.weights['ground + buildings + things'].T;
     if (pl && Number.isFinite(pl.theta)) placements['after the walk (placement.json)'] = [pl.theta, pl.tx, pl.ty];
