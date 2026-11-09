@@ -104,7 +104,7 @@ function main() {
   /* What that chain reaches outside public/shade (the features session, 2026-11-09: model-out.js imports
      ../lib/lidar-model.js, trace.js ../lib/area.js; from /lib/shade/ those are /lib/lib/...), for rebuild.js. */
   mkdirSync(join(build, 'lib', 'lib'), { recursive: true });
-  for (const f of ['lidar-model.js', 'area.js']) cpSync(join(root, 'public', 'lib', f), join(build, 'lib', 'lib', f));
+  for (const f of ['lidar-model.js', 'area.js', 'mask.js', 'register.js']) cpSync(join(root, 'public', 'lib', f), join(build, 'lib', 'lib', f)); // all four the shade modules import
   mkdirSync(join(build, 'lib', 'vendor'), { recursive: true });
   for (const f of ['laz-perf.js', 'laz-perf.wasm']) cpSync(join(root, 'public', 'shade', 'vendor', f), join(build, 'lib', 'vendor', f));
   for (const f of ['favicon.svg', 'favicon-32.png', 'favicon.ico', 'apple-touch-icon.png']) {
