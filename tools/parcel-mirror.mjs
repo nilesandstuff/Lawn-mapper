@@ -360,6 +360,7 @@ function servicesToCopy() {
  * same way under water/<id>/ (worker/src/water-copy.js reads it when the layer does not answer). From the catalogue,
  * or for a test from WATER_LAYERS (JSON: [{ url, west, south, east, north }]).
  */
+const waterFeatures = { n: 0 }, waterSkipped = { n: 0, features: 0 };
 async function waterLayersToCopy() {
   if (process.env.NO_WATER) return [];
   let rows;
@@ -376,7 +377,8 @@ async function waterLayersToCopy() {
     const box = [r.west, r.south, r.east, r.north].map(Number);
     const m = /^(.*)\/(\d+)\/?$/.exec(r.url || '');
     if (!m || !box.every(Number.isFinite) || !(box[2] > box[0] && box[3] > box[1])) continue;
-    if (Number(r.features) > WATER_MAX_FEATURES) continue;
+    if (Number(r.features) > WATER_MAX_FEATURES) { waterSkipped.n++; waterSkipped.features += Number(r.features); continue; }
+    waterFeatures.n += Number(r.features) || 0;
     const id = await waterIdOf(r.url);
     out.push({
       key: `water:${id}`, water: true, cfg: { service: m[1] }, box, page: PAGE_MAX, minPoints: 1,
@@ -398,7 +400,8 @@ function order(services, state, now) {
   };
   const area = (s) => (s.box[2] - s.box[0]) * (s.box[3] - s.box[1]);
   const rank = (s) => { const st = age(s.key); return !st ? 0 : st.round && !st.done ? 1 : 2; };
-  return services.filter(stale).sort((a, b) => rank(a) - rank(b)
+  // parcels before water layers, rank for rank: the parcel line is what every tool needs first
+  return services.filter(stale).sort((a, b) => rank(a) - rank(b) || Number(!!a.water) - Number(!!b.water)
     || (rank(a) === 2 ? Date.parse(age(a.key).done || 0) - Date.parse(age(b.key).done || 0) : area(a) - area(b)));
 }
 
@@ -412,6 +415,10 @@ async function main() {
   const now = Date.now();
   const todo = order(services, state, now);
   const totals = { squares: 0, parcels: 0, bytes: 0, services: 0, failed: {} };
+  if (services.some((x) => x.water)) {
+    console.log(`Water catalogue: ${services.filter((x) => x.water).length} layers holding ${waterFeatures.n.toLocaleString()} features`
+      + `${waterSkipped.n ? `; ${waterSkipped.n} bigger than ${WATER_MAX_FEATURES.toLocaleString()} features (${waterSkipped.features.toLocaleString()} between them) left out` : ''}.`);
+  }
   console.log(`Parcel copy: ${services.filter((x) => !x.water).length} parcel services in the registry and ${services.filter((x) => x.water).length} water layers in the catalogue; ${todo.length} want copying (never copied, under way, `
     + `or over ${MAX_AGE_DAYS} days old); ${SERVICES_AT_ONCE} at a time, for up to ${Math.round(BUDGET_MS / 60e3)} min.`);
 
