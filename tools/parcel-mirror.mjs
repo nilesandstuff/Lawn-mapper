@@ -46,7 +46,6 @@ const PAUSE_MS = 250;                          // between one page and the next 
 const TIMEOUT_MS = 90e3;
 const API_PER_SEC = 2;                         // R2 writes: the API allows 4 a second for everything on the account
 const BUCKET = 'lawn-mapper-corpus';
-const WATER_MAX_FEATURES = 1.5e6;              // a water layer bigger than this (a state's every stream) is not copied
 const API = 'https://api.cloudflare.com/client/v4';
 const UA = 'lawn-mapper-parcel-mirror (non-commercial; one request at a time)';
 
@@ -360,7 +359,7 @@ function servicesToCopy() {
  * same way under water/<id>/ (worker/src/water-copy.js reads it when the layer does not answer). From the catalogue,
  * or for a test from WATER_LAYERS (JSON: [{ url, west, south, east, north }]).
  */
-const waterFeatures = { n: 0 }, waterSkipped = { n: 0, features: 0 };
+const waterFeatures = { n: 0 };
 async function waterLayersToCopy() {
   if (process.env.NO_WATER) return [];
   let rows;
@@ -377,7 +376,8 @@ async function waterLayersToCopy() {
     const box = [r.west, r.south, r.east, r.north].map(Number);
     const m = /^(.*)\/(\d+)\/?$/.exec(r.url || '');
     if (!m || !box.every(Number.isFinite) || !(box[2] > box[0] && box[3] > box[1])) continue;
-    if (Number(r.features) > WATER_MAX_FEATURES) { waterSkipped.n++; waterSkipped.features += Number(r.features); continue; }
+    // every layer, however big (owner, 2026-11-09: the 4 statewide ones over 1.5 million features had been left out;
+    // the copy goes by half-degree squares, so size costs time, not memory)
     waterFeatures.n += Number(r.features) || 0;
     const id = await waterIdOf(r.url);
     out.push({
@@ -416,8 +416,7 @@ async function main() {
   const todo = order(services, state, now);
   const totals = { squares: 0, parcels: 0, bytes: 0, services: 0, failed: {} };
   if (services.some((x) => x.water)) {
-    console.log(`Water catalogue: ${services.filter((x) => x.water).length} layers holding ${waterFeatures.n.toLocaleString()} features`
-      + `${waterSkipped.n ? `; ${waterSkipped.n} bigger than ${WATER_MAX_FEATURES.toLocaleString()} features (${waterSkipped.features.toLocaleString()} between them) left out` : ''}.`);
+    console.log(`Water catalogue: ${services.filter((x) => x.water).length} layers holding ${waterFeatures.n.toLocaleString()} features.`);
   }
   console.log(`Parcel copy: ${services.filter((x) => !x.water).length} parcel services in the registry and ${services.filter((x) => x.water).length} water layers in the catalogue; ${todo.length} want copying (never copied, under way, `
     + `or over ${MAX_AGE_DAYS} days old); ${SERVICES_AT_ONCE} at a time, for up to ${Math.round(BUDGET_MS / 60e3)} min.`);
