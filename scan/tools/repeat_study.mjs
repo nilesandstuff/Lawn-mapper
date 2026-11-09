@@ -54,7 +54,7 @@ async function main() {
     for (const p of used) for (const c of p.checks) {
       const at = place(p.placements[kind], c.ar);
       if (!byMark.has(c.id)) byMark.set(c.id, { photo: c.map, at: [] });
-      byMark.get(c.id).at.push({ w: p.w, at });
+      byMark.get(c.id).at.push({ w: p.w, at, aim: c.aim, by: c.by });
     }
     const rows = [], spreads = [], shared = [], own = [];
     for (const [id, m] of byMark) {
@@ -64,7 +64,7 @@ async function main() {
       const gap = [mean[0] - m.photo[0], mean[1] - m.photo[1]];
       const each = m.at.map((x) => Math.hypot(x.at[0] - m.photo[0], x.at[1] - m.photo[1]));
       spreads.push(spread); shared.push(Math.hypot(...gap)); own.push(...each);
-      rows.push(`    ${id}: walks ${m.at.length}, apart up to ${ft(2 * spread)} ft (each from their mean at most ${ft(spread)}); their mean from the photo's mark ${ft(Math.hypot(...gap))} ft (east ${gap[0] >= 0 ? '+' : ''}${ft(gap[0])}, north ${gap[1] >= 0 ? '+' : ''}${ft(gap[1])}); each from the mark ${each.map(ft).join(', ')} ft`);
+      rows.push(`    ${id}: walks ${m.at.length}, apart up to ${ft(2 * spread)} ft (each from their mean at most ${ft(spread)}); their mean from the photo's mark ${ft(Math.hypot(...gap))} ft (east ${gap[0] >= 0 ? '+' : ''}${ft(gap[0])}, north ${gap[1] >= 0 ? '+' : ''}${ft(gap[1])}); each from the mark ${each.map(ft).join(', ')} ft; aimed from ${m.at.map((x) => (Number.isFinite(x.aim) ? `${ft(x.aim)} ft` : '?') + (x.by ? ` (${x.by})` : '')).join(', ')}`);
     }
     if (!rows.length) { console.log(`  ${kind}: no mark on two walks.`); continue; }
     console.log(`  ${kind}: ${rows.length} marks on ${used.length} walks. Median: from the photo's mark ${ft(med(own))} ft; the walks from their own mean ${ft(med(spreads))} ft; the mean from the photo's mark ${ft(med(shared))} ft.`);
