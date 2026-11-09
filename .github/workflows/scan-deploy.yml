@@ -36,7 +36,7 @@ on:
         required: true
         default: tests
         type: choice
-        options: [tests, deploy, walks, twin, fix, place, depth, study, skyline, pavement, checks, repeat, register, walkfix, reference]
+        options: [tests, deploy, walks, twin, fix, place, depth, study, skyline, pavement, checks, repeat, register, walkfix, walkfixjs, reference]
       walk:
         description: 'For twin, fix or depth: the walk id, or latest'
         default: latest
@@ -378,6 +378,25 @@ jobs:
           # the page's own shape fix (scan/lib/walkref.js), the code the phone runs, on the same walks
           node scan/tools/reference-build.mjs check $dirs | tee -a walkfix.txt
 
+      # THE PAGE'S OWN SHAPE FIX ALONE (scan/tools/reference-build.mjs check): minutes, not the pictures' 35; a few
+      # search settings side by side (WALKREF_VARIANTS). The walk input: walks comma separated, same map.
+      - name: The page's shape fix on walks
+        if: ${{ inputs.task == 'walkfixjs' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WALKS: ${{ inputs.walk }}
+          NO_PICTURES: '1'
+          WALKREF_VARIANTS: '1,4;0.5,4;0.5,2;0.75,3'
+        run: |
+          set -o pipefail
+          dirs=""
+          for W in $(echo "$WALKS" | tr ',' ' '); do
+            node scan/tools/twin-r2.mjs get "$W" "w-$W" > /dev/null
+            dirs="$dirs w-$W"
+          done
+          node scan/tools/reference-build.mjs check $dirs | tee walkfix.txt
+
       # THE MAP'S REFERENCE WALK (scan/tools/reference-build.mjs; SCAN-H32): a walk placed by its marks becomes the one
       # that places later walks on its map by their shape, live on the page. The walk input: one walk.
       - name: A walk kept as its map's reference
@@ -421,6 +440,7 @@ jobs:
             place) grep -v '^  model\|^  rays\|^  the picture' place.txt 2>/dev/null | tail -60 || echo "no placement: see the step above" ;;
             register) grep -v '^Twin read\|: kept (' register.txt 2>/dev/null | tail -70 || echo "no registration: see the step above" ;;
             repeat) cat repeat.txt 2>/dev/null || echo "no repeat-walk study: see the step above" ;;
+            walkfixjs) cat walkfix.txt 2>/dev/null || echo "no check: see the step above" ;;
             walkfix) grep -v '^Twin read' walkfix.txt 2>/dev/null | tail -40 || echo "no walk-to-walk study: see the step above" ;;
             reference) cat reference.txt 2>/dev/null || echo "no reference: see the step above" ;;
             checks) cat checks.txt 2>/dev/null || echo "no check-mark test: see the step above" ;;

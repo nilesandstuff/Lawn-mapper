@@ -57,7 +57,7 @@ for (let k = 0; k < 3000; k++) other.stand.push([rnd() * 30, rnd() * 30, 0.3 + r
 for (let k = 0; k < 3000; k++) other.ground.push([rnd() * 30, rnd() * 30, 0]);
 const no = shapeFix(ref, other);
 assert.equal(no.ok, false);
-assert.match(no.why, /land on the earlier walk/);
+assert.match(no.why, /land on the earlier walk|walls, fences and shrubs do/);
 
 // too little walked yet; no reference
 assert.match(shapeFix(ref, { stand: B.stand.slice(0, 50), ground: [] }).why, /standing points so far/);

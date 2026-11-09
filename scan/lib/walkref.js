@@ -25,6 +25,7 @@ export const MARGIN = 30;                // m round the reference the walk may f
 export const CANDIDATES = 8;             // the best turns refined
 export const LAND_M = 0.3;               // m: a point this near the reference's has landed
 export const GATE = 0.3;                 // the landed share a fix needs (SCAN-H32: 0.37-0.46 good, 0.22-0.25 wrong)
+export const STAND_GATE = 0.12;          // and of the standing things alone: flat ground lands anywhere on a flat lot
 export const MIN_STAND = 600;            // standing cells (20 cm) the walk needs before a match is tried
 export const VOX = 0.2;                  // m: points kept one to a cell this size
 const MAX_STAND = 60000, MAX_GROUND = 30000;
@@ -176,7 +177,7 @@ function lookups(points3) {
  * This walk placed on the reference. walk: { stand: [[u, v, y]], ground: [[u, v, y]] } in its session.
  * -> { ok, T: { theta, tx, ty, s }, tz, landed, second, stand, ms, why }
  */
-export function shapeFix(ref, walk, { cell = SEARCH_CELL, step = TURN_STEP, margin = MARGIN, gate = GATE, minStand = MIN_STAND } = {}) {
+export function shapeFix(ref, walk, { cell = SEARCH_CELL, step = TURN_STEP, margin = MARGIN, gate = GATE, standGate = STAND_GATE, minStand = MIN_STAND } = {}) {
   const t0 = Date.now();
   const stand = voxel(walk.stand || []), ground = voxel(walk.ground || []);
   if (!ref || ref.stand.length < 300) return { ok: false, why: 'no reference for this map yet' };
@@ -249,11 +250,16 @@ export function shapeFix(ref, walk, { cell = SEARCH_CELL, step = TURN_STEP, marg
   const gy = [];
   for (let i = 2; i < ref.ground.length; i += 3) gy.push(ref.ground[i]);
   const tz0 = ground.length && gy.length ? median(gy) - median(ground.map((p) => p[2])) : 0;
+  /* The landed share on all the walk's points in their own proportions, ground and standing things alike, as the
+     study measured it (SCAN-H32's gate): run 222 scored the ICP's sample (two standing points to one ground) and read
+     0.23-0.30 where the study read 0.22-0.46 for the same placements. */
+  const all = [...thinTo(stand, 20000), ...thinTo(ground, 10000)];
+  const ns = Math.min(stand.length, 20000);
   const landedOf = (T, tz) => {
-    let n = 0;
+    let n = 0, nst = 0;
     const h = H(LAND_M);
-    for (const p of src) { const [e, nn] = place(T, p[0], p[1]); if (h.nearest(e, nn, p[2] + tz, LAND_M) >= 0) n++; }
-    return n / src.length;
+    all.forEach((p, i) => { const [e, nn] = place(T, p[0], p[1]); if (h.nearest(e, nn, p[2] + tz, LAND_M) >= 0) { n++; if (i < ns) nst++; } });
+    return { all: n / all.length, stand: ns ? nst / ns : 0 };
   };
   const results = [];
   for (const k of picked) {
@@ -269,13 +275,15 @@ export function shapeFix(ref, walk, { cell = SEARCH_CELL, step = TURN_STEP, marg
       if (a.length < 30) break;
       T = fitRigid(a, b); tz = median(dz);
     }
-    results.push({ T, tz, landed: landedOf(T, tz) });
+    const L = landedOf(T, tz);
+    results.push({ T, tz, landed: L.all, standLanded: L.stand });
   }
   results.sort((a, b) => b.landed - a.landed);
   const best = results[0];
   const other = results.find((r) => Math.hypot(r.T.tx - best.T.tx, r.T.ty - best.T.ty) > 2
     || Math.abs((((r.T.theta - best.T.theta) * 180) / Math.PI + 540) % 360 - 180) > 5);
-  const out = { T: best.T, tz: best.tz, landed: +best.landed.toFixed(3), second: other ? +other.landed.toFixed(3) : null, stand: stand.length, ms: Date.now() - t0 };
+  const out = { T: best.T, tz: best.tz, landed: +best.landed.toFixed(3), standLanded: +best.standLanded.toFixed(3), second: other ? +other.landed.toFixed(3) : null, stand: stand.length, ms: Date.now() - t0 };
   if (best.landed < gate) return { ...out, ok: false, why: `only ${Math.round(best.landed * 100)}% of the walk's points land on the earlier walk's (${Math.round(gate * 100)}% wanted)` };
+  if (best.standLanded < standGate) return { ...out, ok: false, why: `the ground lines up but only ${Math.round(best.standLanded * 100)}% of the walls, fences and shrubs do (${Math.round(standGate * 100)}% wanted)` };
   return { ...out, ok: true, why: null };
 }

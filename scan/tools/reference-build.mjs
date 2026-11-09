@@ -72,6 +72,9 @@ async function build(dir) {
     + `(${(bytes.length / 1e6).toFixed(1)} MB), placed by ${checks.length + refs.length} marks (the marks' own fit: median ${(med(resid) * FT).toFixed(1)} ft).`);
 }
 
+/* WALKREF_VARIANTS="cell,step;cell,step": the fix tried with other search cells (m) and turn steps (degrees) too. */
+const variants = () => (process.env.WALKREF_VARIANTS || '').split(';').map((x) => x.split(',').map(Number)).filter((v) => v.length === 2 && v.every((n) => n > 0));
+
 function check(dirs) {
   const walks = dirs.map((d) => ({ d, meta: readJson(d, 'meta.json') || {}, pts: twinPoints(d), ...marksOf(d) })).filter((w) => w.T && w.checks.length >= 3);
   console.log(`The page's own shape fix (scan/lib/walkref.js) on ${walks.length} walks; each placement scored on the placed walk's own check marks.`);
@@ -81,10 +84,15 @@ function check(dirs) {
     const ref = buildRef(r.pts, r.T);
     for (const w of walks) {
       if (w === r || (r.meta.map && w.meta.map && r.meta.map !== w.meta.map)) continue;
+      for (const [cell, step] of variants()) {
+        const g = shapeFix(ref, w.pts, { cell, step, gate: 0, standGate: 0 });
+        const eg = g.T ? errs(w, g.T) : [];
+        console.log(`    (search ${cell} m, ${step} degrees: landed ${g.landed ?? '-'} (standing ${g.standLanded ?? '-'}), next best ${g.second ?? '-'}, ${g.ms ?? '-'} ms: ${eg.length ? `${med(eg).toFixed(1)} ft` : g.why})`);
+      }
       const f = shapeFix(ref, w.pts);
       const e = f.T ? errs(w, f.T) : [];
       const own = errs(w, fitRigid(w.checks.map((m) => m.ar), w.checks.map((m) => m.map)));
-      console.log(`  ${w.meta.walk || w.d} placed by ${r.meta.walk || r.d}: ${f.ok ? 'PLACED' : 'not placed'} (landed ${f.landed ?? '-'}, next best ${f.second ?? '-'}, ${f.ms ?? '-'} ms): `
+      console.log(`  ${w.meta.walk || w.d} placed by ${r.meta.walk || r.d}: ${f.ok ? 'PLACED' : 'not placed'} (landed ${f.landed ?? '-'}, standing ${f.standLanded ?? '-'}, next best ${f.second ?? '-'}, ${f.ms ?? '-'} ms): `
         + `${e.length ? `${med(e).toFixed(1)} ft (${e.map((x) => x.toFixed(1)).join(', ')})` : f.why}; its own marks' fit ${med(own).toFixed(1)} ft`);
       if (f.ok) meds.push(med(e));
     }
