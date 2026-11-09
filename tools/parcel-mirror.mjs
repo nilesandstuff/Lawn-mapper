@@ -19,8 +19,13 @@
  *   OUT=dir ONLY=key1,key2 node tools/parcel-mirror.mjs                    # to files, for a test; no bucket
  */
 import { gzipSync } from 'node:zlib';
-import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, existsSync, createWriteStream, createReadStream, rmSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
+import { tmpdir } from 'node:os';
+import { spawnSync } from 'node:child_process';
+import { createInterface } from 'node:readline';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { ALL_COUNTIES, COUNTY_BBOX } from '../worker/src/counties.js';
 import { VERIFIED_COUNTIES } from '../worker/src/counties-verified.js';
 import { endpointsFor } from '../worker/src/parcel.js';
@@ -190,6 +195,11 @@ async function copySquare(svc, endpoint, key, tx, ty, old) {
   const [bw, bs, be, bn] = svc.box;
   const box = [Math.max(bw, tx * TILE), Math.max(bs, ty * TILE), Math.min(be, (tx + 1) * TILE), Math.min(bn, (ty + 1) * TILE)];
   const { parcels } = await fetchSquare(svc, endpoint, box);
+  return writeSquare(key, tx, ty, parcels, old);
+}
+
+/** One square's parcels into its cells: written, and cells it no longer fills dropped. Returns { n, mask, bytes }. */
+async function writeSquare(key, tx, ty, parcels, old) {
   const cx0 = tx * PER, cy0 = ty * PER;
   const cells = new Map();
   for (const p of parcels) {
@@ -219,6 +229,81 @@ async function copySquare(svc, endpoint, key, tx, ty, old) {
     if (!cells.has(i)) await del(cellKey(key, cx0 + (i % PER), cy0 + Math.floor(i / PER)));
   }
   return { n: parcels.length, mask: maskOf([...cells.keys()]), bytes };
+}
+
+/* ------------------------------------------------- the county's published file */
+/*
+ * WHEN THE SERVER CANNOT BE COPIED, THE FILE (owner, 2026-11-09: "Yes, add the file fallback"). A county whose parcel
+ * server refused a login-less query during a republish still offered the same parcels as a public download on its own
+ * portal. The server names its portal (/rest/info owningSystemUrl); the portal is searched for a public parcel file
+ * (File Geodatabase, shapefile or GeoPackage) and the newest is copied (tools/parcel_file.py reads it). Only the
+ * county's own portal: on ArcGIS Online, only the organisation the service belongs to.
+ */
+const FILE_TYPES = ['File Geodatabase', 'Shapefile', 'GeoPackage'];
+const FILE_MAX = 2e9;
+async function findFile(svc) {
+  const service = svc.cfg.service;
+  const root = service.replace(/\/rest\/services\/.*$/i, '');
+  const info = await ask(`${root}/rest/info`, {}).catch(() => null);
+  const portal = info?.owningSystemUrl;
+  if (!portal) return null;
+  const org = /services\d*\.arcgis\.com\/([^/]+)\//i.exec(service)?.[1];
+  const q = `parcel AND access:public AND (${FILE_TYPES.map((t) => `type:"${t}"`).join(' OR ')})${org ? ` AND orgid:${org}` : ''}`;
+  const found = await ask(`${portal.replace(/\/$/, '')}/sharing/rest/search`, { q, num: '50', sortField: 'modified', sortOrder: 'desc' }).catch(() => null);
+  const it = pickFile(found?.results, svc.box);
+  return it ? { url: `${portal.replace(/\/$/, '')}/sharing/rest/content/items/${it.id}/data`, modified: it.modified, type: it.type } : null;
+}
+
+/** Of a portal's search results, the parcel file for a service's box: the newest public one, or null. */
+export function pickFile(results, [w, s, e, n]) {
+  const items = (results || []).filter((it) => FILE_TYPES.includes(it.type) && it.access === 'public'
+    && /parcel/i.test(it.title || '') && !/(point|address|annotation|\banno|centroid|label|line|fabric|history|retired)/i.test(it.title || '')
+    && !(it.size > FILE_MAX)
+    // where the item says where it is, it has to be here
+    && (!Array.isArray(it.extent) || it.extent.length !== 2 || !(it.extent[1][0] < w || it.extent[0][0] > e || it.extent[1][1] < s || it.extent[0][1] > n)));
+  return items.sort((a, b) => b.modified - a.modified)[0] || null;
+}
+
+/** Copy a service from its county's published file: every square at once. Returns { n, bytes } or throws. */
+async function copyFromFile(svc, st, file) {
+  const work = join(tmpdir(), `parcel-file-${process.pid}-${svc.key}`);
+  mkdirSync(work, { recursive: true });
+  try {
+    const zip = join(work, 'file.zip'), out = join(work, 'parcels.jsonl');
+    const r = await fetch(file.url, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(30 * 60e3) });
+    if (!r.ok || !r.body) throw Object.assign(new Error(`the file answered ${r.status}`), { kind: 'file' });
+    await pipeline(Readable.fromWeb(r.body), createWriteStream(zip));
+    if (statSync(zip).size > FILE_MAX) throw Object.assign(new Error('the file is too big'), { kind: 'file' });
+    const pin = endpointsFor(svc.cfg)[0]?.fields?.pin || '-';
+    const py = spawnSync(process.env.PYTHON || 'python3', [join(dirname(new URL(import.meta.url).pathname), 'parcel_file.py'), zip, out, pin, svc.box.join(',')], { encoding: 'utf8', maxBuffer: 1 << 24 });
+    if (py.status !== 0) throw Object.assign(new Error(`the file could not be read: ${(py.stderr || py.stdout || '').trim().split('\n').pop()?.slice(0, 100)}`), { kind: 'file' });
+    // every parcel into each square its box touches
+    const squares = new Map();
+    for await (const line of createInterface({ input: createReadStream(out) })) {
+      if (!line) continue;
+      const p = JSON.parse(line);
+      let w = Infinity, s = Infinity, e = -Infinity, n = -Infinity;
+      for (const ring of p.rings) for (const [x, y] of ring) { if (x < w) w = x; if (x > e) e = x; if (y < s) s = y; if (y > n) n = y; }
+      for (let tx = Math.floor(w / TILE); tx <= Math.floor(e / TILE); tx++) {
+        for (let ty = Math.floor(s / TILE); ty <= Math.floor(n / TILE); ty++) {
+          const id = squareId(tx, ty);
+          if (!squares.has(id)) squares.set(id, []);
+          squares.get(id).push(p);
+        }
+      }
+    }
+    let n = 0, bytes = 0;
+    const at = new Date().toISOString();
+    for (const [tx, ty] of squaresOf(svc.box)) {
+      const id = squareId(tx, ty);
+      const got = await writeSquare(svc.key, tx, ty, squares.get(id) || [], st.squares[id]);
+      st.squares[id] = { at, n: got.n, mask: got.mask, file: true };
+      n += got.n; bytes += got.bytes;
+    }
+    return { n, bytes };
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
 }
 
 /* --------------------------------------------------------------- the services */
@@ -284,10 +369,13 @@ async function main() {
       if (!st.round || st.done) { st.round = new Date().toISOString(); st.done = null; st.squares ||= {}; }
       st.squares ||= {};
       delete st.failed;
+      delete st.fileFailed;
       const squares = squaresOf(svc.box);
       const endpoints = endpointsFor(svc.cfg);
       let ep = st.endpoint != null ? endpoints[st.endpoint] || endpoints[0] : endpoints[0];
       try {
+        // FILE_ONLY=1: straight to the published file (a test of the fallback)
+        if (process.env.FILE_ONLY) throw new Refused('file only');
         for (const [tx, ty] of squares) {
           if (elapsed() > BUDGET_MS) break;
           const id = squareId(tx, ty), old = st.squares[id];
@@ -305,11 +393,31 @@ async function main() {
         }
         if (squares.every(([tx, ty]) => { const q = st.squares[squareId(tx, ty)]; return q && Date.parse(q.at) >= Date.parse(st.round); })) {
           st.done = new Date().toISOString();
+          st.source = { kind: 'server' };
           st.count = squares.reduce((s, [tx, ty]) => s + (st.squares[squareId(tx, ty)]?.n || 0), 0);
           totals.services++;
         }
       } catch (e) {
         const kind = e instanceof Refused ? 'refused' : e.kind === 'time' ? 'out of time' : e.kind === 'ids' ? 'ids not given' : e.kind === 'page' ? 'a page failed' : 'error';
+        // the server cannot be copied: the same parcels as the county publishes them for download, when it does
+        if (kind !== 'out of time' && elapsed() < BUDGET_MS) {
+          try {
+            const file = await findFile(svc);
+            if (file) {
+              const got = await copyFromFile(svc, st, file);
+              st.done = new Date().toISOString();
+              st.count = got.n;
+              st.source = { kind: 'file', type: file.type, published: new Date(file.modified).toISOString(), because: kind };
+              totals.squares += squaresOf(svc.box).length; totals.parcels += got.n; totals.bytes += got.bytes;
+              totals.services++; totals.fromFile = (totals.fromFile || 0) + 1;
+              save();
+              continue;
+            }
+          } catch (fe) {
+            totals.fileFailed = (totals.fileFailed || 0) + 1;
+            st.fileFailed = { at: new Date().toISOString(), why: String(fe.message || fe).slice(0, 120) };
+          }
+        }
         if (kind !== 'out of time') st.failed = { at: new Date().toISOString(), kind, why: String(e.message || e).slice(0, 120) };
         totals.failed[kind] = (totals.failed[kind] || 0) + 1;
       }
@@ -334,7 +442,9 @@ async function main() {
   await put(`${PREFIX}_summary.json`, Buffer.from(JSON.stringify(summary)), 'application/json');
   const failed = Object.entries(totals.failed).map(([k, n]) => `${n} ${k}`).join(', ');
   console.log(`This run: ${totals.squares} squares, ${totals.parcels.toLocaleString()} parcels, ${(totals.bytes / 1e6).toFixed(1)} MB written; `
-    + `${totals.services} services finished${failed ? `; stopped on ${failed}` : ''}. (${Math.round(elapsed() / 60e3)} min)`);
+    + `${totals.services} services finished${totals.fromFile ? ` (${totals.fromFile} from the county's published file, its server refusing)` : ''}`
+    + `${totals.fileFailed ? `; ${totals.fileFailed} published file${totals.fileFailed === 1 ? '' : 's'} could not be read` : ''}`
+    + `${failed ? `; stopped on ${failed}` : ''}. (${Math.round(elapsed() / 60e3)} min)`);
   console.log(`The copy now: ${summary.copied} of ${summary.services} services copied whole (${summary.parcels.toLocaleString()} parcels), `
     + `${summary.underway} under way, ${summary.failed} could not be copied${summary.failures.length ? ` (${summary.failures.map(([k, n]) => `${n} ${k}`).join(', ')})` : ''}; `
     + `the oldest copy ${summary.oldest ? summary.oldest.slice(0, 10) : 'none yet'}.`);

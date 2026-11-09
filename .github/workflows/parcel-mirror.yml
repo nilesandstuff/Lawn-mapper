@@ -4,7 +4,8 @@ name: P2. Parcel mirror
 # 2026-11-09). The owner, after a county's parcel server began asking for a login: fetch every parcel of every county
 # hooked up, "so this can't happen again". Each run copies the stalest services for about five hours and the next run
 # carries on; a service is copied again once its copy is a month old. The site uses the copy only when a county's
-# server cannot be asked, and says how old it is.
+# server cannot be asked, and says how old it is. A server that cannot be copied (it refuses, or will not list its
+# parcels) is copied from the parcel file its county publishes on its own portal, when there is one.
 #
 # The log prints totals only (the repository and its logs are public): no county, no place, no coordinate. Free.
 on:
@@ -30,6 +31,11 @@ jobs:
         with:
           node-version: 22
       - run: npm ci --no-audit --no-fund
+      # a county's published parcel file, read when its server cannot be copied (tools/parcel_file.py)
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --quiet pyogrio shapely pyproj
       - name: Copy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

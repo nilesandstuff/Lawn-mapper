@@ -112,4 +112,21 @@ await test('the site reads the copy: a feature like a live one, saying it is the
   assert.deepEqual(around.map((p) => p.properties.pin), ['41-01-123', '41-01-124']);
 });
 
+await test("a county's published parcel file: the newest public parcel file here, not its address points", async () => {
+  const { pickFile } = await import('./parcel-mirror.mjs');
+  const box = [-86, 42, -85, 43];
+  const items = [
+    { id: 'a', type: 'File Geodatabase', title: 'County Parcels', access: 'public', modified: 2, extent: [] },
+    { id: 'b', type: 'File Geodatabase', title: 'County Address Points', access: 'public', modified: 3 },
+    { id: 'c', type: 'Shapefile', title: 'Parcels 2019', access: 'public', modified: 1 },
+    { id: 'd', type: 'Feature Service', title: 'Parcels', access: 'public', modified: 9 },
+    { id: 'e', type: 'Shapefile', title: 'Parcels', access: 'private', modified: 8 },
+    { id: 'f', type: 'Shapefile', title: 'Parcels elsewhere', access: 'public', modified: 7, extent: [[-90, 30], [-89, 31]] },
+    { id: 'g', type: 'GeoPackage', title: 'Tax Parcels', access: 'public', modified: 5, size: 3e9 },
+  ];
+  assert.equal(pickFile(items, box).id, 'a');
+  assert.equal(pickFile(items.filter((x) => x.id !== 'a'), box).id, 'c');
+  assert.equal(pickFile([], box), null);
+});
+
 console.log(`\n${passed} passed`);
