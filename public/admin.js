@@ -1070,6 +1070,33 @@ function statusControl({ status, resolution, resolvedAt, post: send, rerender })
   return box;
 }
 
+/* -------------------------------------- county parcel services down */
+async function renderParcelOutages() {
+  const box = $('#parcel-outages');
+  const data = await get('/api/admin/parcel-outages?limit=100');
+  box.innerHTML = '';
+  if (data.unavailable) { box.append(el('p', 'empty', `Cannot read the log: ${data.unavailable}`)); return; }
+  const list = data.outages || [];
+  box.append(el('p', 'sub', `${n(data.open)} not answering now; ${n(list.length)} ever recorded.`));
+  if (!list.length) { box.append(el('p', 'empty', 'None recorded yet.')); return; }
+  const KIND = { refused: 'refuses (a login or permission now required)', error: 'answers with an error', http: 'answers with an HTTP error', timeout: 'does not answer in time', unreachable: 'cannot be reached' };
+  for (const o of list) {
+    const row = el('div', 'person');
+    const who = el('div', 'who');
+    who.append(el('b', null, `${o.name || o.county_key} — ${KIND[o.kind] || o.kind}`));
+    who.append(el('span', o.status === 'open' ? 'pill warn' : 'pill free', o.status === 'open' ? 'not answering' : 'answering again'));
+    row.append(who);
+    if (o.status !== 'open') row.style.opacity = '0.7';
+    const when = (s) => { const d = new Date(s); return Number.isNaN(d.getTime()) ? s : d.toLocaleString(); };
+    row.append(el('div', 'meta', [
+      `since ${when(o.first_at)}`, `last ${when(o.last_at)}`, `${n(o.hits)} lookup${o.hits === 1 ? '' : 's'}`,
+      o.detail ? `said: ${o.detail}` : null, o.answered_at && o.status !== 'open' ? `answering since ${when(o.answered_at)}` : null,
+    ].filter(Boolean).join(' · ')));
+    if (o.service) { const a = document.createElement('a'); a.href = o.service; a.textContent = 'the service'; a.target = '_blank'; a.rel = 'noopener'; const m = el('div', 'meta', ''); m.append(a); row.append(m); }
+    box.append(row);
+  }
+}
+
 /* ------------------------------------------- county photos that failed */
 /*
  * One row per failure, newest first, with everything the Worker and the
@@ -1391,6 +1418,7 @@ async function renderLog() {
   renderCorpus().catch(() => { $('#corpus').textContent = 'Could not load the training data.'; });
   renderGaps().catch(() => { $('#gaps').textContent = 'Could not load the county list.'; });
   renderCountyFailures().catch(() => { $('#county-failures').textContent = 'Could not load the failures.'; });
+  renderParcelOutages().catch(() => { $('#parcel-outages').textContent = 'Could not load the parcel outages.'; });
   renderCountySearch().catch(() => { $('#county-search').textContent = 'Could not load the county search.'; });
 
   /* Each sort is a fresh question to the server, for the reason in renderGaps. */

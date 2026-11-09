@@ -40,7 +40,7 @@ import { worldSize } from '../public/lib/mercator.js';
 import {
   COUNTIES, COUNTY_BBOX, candidateCounties, isCovered,
 } from '../worker/src/counties.js';
-import { queryCounty, lookupParcel } from '../worker/src/parcel.js';
+import { queryCounty, lookupParcel, unreachedCounties } from '../worker/src/parcel.js';
 import { geometryAreaSqM } from '../public/lib/area.js';
 import { VERIFIED_COUNTIES } from '../worker/src/counties-verified.js';
 import { readFile } from 'node:fs/promises';
@@ -1341,6 +1341,22 @@ check('and a typed prompt is sent verbatim',
   check('a county without one sends no where at all',
     plain.length > 0 && plain.every((u) => !u.includes('where=')),
     `${plain.length} requests, none filtered`);
+}
+
+/* A COUNTY THAT LOCKS ITS SERVER (2026-11-09): a token now required used to read as "no parcel here". The lookup
+   reports it, and unreachedCounties names the county only when none of its endpoints answered. */
+{
+  const realFetch = globalThis.fetch;
+  const report = [];
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({ error: { code: 499, message: 'Token Required' } }) });
+  try { await queryCounty('champaign', -88.2700, 40.1100, report); } finally { globalThis.fetch = realFetch; }
+  const down = unreachedCounties(report);
+  check('a county whose server wants a token is reported refused, not as no parcel',
+    down.length === 1 && down[0].county === 'champaign' && down[0].failures.every((f) => f.kind === 'refused'), JSON.stringify(report.map((r) => r.kind)));
+  const fine = [];
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({ features: [] }) });
+  try { await queryCounty('champaign', -88.2700, 40.1100, fine); } finally { globalThis.fetch = realFetch; }
+  check('one that answers with nothing is not down', unreachedCounties(fine).length === 0 && fine.some((r) => r.kind === 'answered'));
 }
 
 /* ------------------------------------------- the parcel a queued lawn IS */

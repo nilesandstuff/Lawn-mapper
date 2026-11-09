@@ -85,6 +85,56 @@ export async function recordParcelGap(env, { county, state, who, covered = false
  * and ORDER BY cannot be a bound parameter. Anything not named here falls back
  * rather than reaching the database.
  */
+/**
+ * A county's parcel service not answering (worker/src/parcel.js unreachedCounties): one row per county, the latest
+ * failure, how many times. Never throws, like recordParcelGap. `failed`: [{ county, name, failures: [{ kind, detail,
+ * service }] }].
+ */
+export async function recordParcelOutages(env, failed) {
+  if (!env?.DB || !failed?.length) return false;
+  const now = new Date().toISOString();
+  try {
+    for (const c of failed) {
+      const f = c.failures[0] || {};
+      await env.DB.prepare(
+        `INSERT INTO parcel_outages (county_key, name, kind, detail, service, hits, first_at, last_at, status)
+         VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, ?6, 'open')
+         ON CONFLICT(county_key) DO UPDATE SET
+           name = excluded.name, kind = excluded.kind, detail = excluded.detail, service = excluded.service,
+           hits = parcel_outages.hits + 1, last_at = excluded.last_at,
+           first_at = CASE WHEN parcel_outages.status = 'open' THEN parcel_outages.first_at ELSE excluded.first_at END,
+           status = 'open'`,
+      ).bind(String(c.county).slice(0, 60), text(c.name, 80), String(f.kind || 'error').slice(0, 20), text(f.detail, 160), text(f.service, 300), now).run();
+    }
+    return true;
+  } catch { return false; }
+}
+
+/** A county answering again: its outage, if open, marked answered. Never throws. */
+export async function clearParcelOutages(env, countyKeys) {
+  if (!env?.DB || !countyKeys?.length) return false;
+  try {
+    for (const k of countyKeys) {
+      await env.DB.prepare("UPDATE parcel_outages SET status = 'answering', answered_at = ?2 WHERE county_key = ?1 AND status = 'open'")
+        .bind(String(k).slice(0, 60), new Date().toISOString()).run();
+    }
+    return true;
+  } catch { return false; }
+}
+
+/** Every county's outage, open ones first, newest first. */
+export async function parcelOutages(env, { limit = 100 } = {}) {
+  if (!env?.DB) return { outages: [], unavailable: 'no database' };
+  try {
+    const { results } = await env.DB.prepare(
+      "SELECT * FROM parcel_outages ORDER BY (status = 'open') DESC, last_at DESC LIMIT ?1",
+    ).bind(Math.max(1, Math.min(500, Number(limit) || 100))).all();
+    return { outages: results || [], open: (results || []).filter((r) => r.status === 'open').length };
+  } catch (e) {
+    return { outages: [], unavailable: String(e?.message || e).slice(0, 120) };
+  }
+}
+
 export const GAP_SORTS = {
   hits: 'hits DESC, people DESC',
   people: 'people DESC, hits DESC',

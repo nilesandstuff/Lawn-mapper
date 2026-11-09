@@ -2307,6 +2307,11 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
     }
   }
 
+  /* Counties whose parcel service is not answering (gaps.js parcel_outages; owner, 2026-11-09). */
+  if (path === 'parcel-outages') {
+    const { parcelOutages } = await import('./gaps.js');
+    return json(await parcelOutages(env, { limit: url.searchParams.get('limit') || 100 }), 200, origin);
+  }
   /* County photos that failed to load (county-failures.js), newest first. */
   if (path === 'county-failures') {
     const { countyFailures } = await import('./county-failures.js');

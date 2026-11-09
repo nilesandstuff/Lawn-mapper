@@ -608,6 +608,23 @@ CREATE TABLE IF NOT EXISTS parcel_gaps (
 );
 CREATE INDEX IF NOT EXISTS parcel_gaps_place ON parcel_gaps(state, county);
 
+-- A COUNTY'S PARCEL SERVICE NOT ANSWERING (owner, 2026-11-09, after a county locked its server behind a login and
+-- every lookup there quietly answered "no parcel"). One row per county in the registry: the latest way it failed
+-- (refused: a token or permission now required; error; http; timeout; unreachable), how often, since when. A
+-- lookup that gets an answer from it again marks it answering. New table: CREATE only (CLAUDE.md "Schema changes").
+CREATE TABLE IF NOT EXISTS parcel_outages (
+  county_key TEXT PRIMARY KEY,
+  name       TEXT,
+  kind       TEXT NOT NULL,
+  detail     TEXT,
+  service    TEXT,
+  hits       INTEGER NOT NULL DEFAULT 0,
+  first_at   TEXT NOT NULL,
+  last_at    TEXT NOT NULL,
+  status     TEXT NOT NULL DEFAULT 'open',
+  answered_at TEXT
+);
+
 -- COUNTY PHOTOS THAT FAILED TO LOAD (owner, 2026-10-10: "start collecting
 -- logs of the errors that trip when a county map fails to load"). One row
 -- per failure, from the Worker (the county's own refusal, a cache that

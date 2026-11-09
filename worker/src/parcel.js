@@ -132,19 +132,26 @@ function endpointsFor(cfg) {
   return list;
 }
 
-async function queryCounty(countyKey, lng, lat) {
+/*
+ * WHY A COUNTY SAID NOTHING (owner, 2026-11-09). A county's server that refuses (a token now required), errors or
+ * times out used to answer exactly like a lot with no parcel, so a county that locked its server down vanished
+ * silently: nothing said so, nothing logged it (tools/parcel-probe.mjs found one). `report`, when given, gets one entry
+ * per endpoint asked: { county, kind: 'answered' | 'refused' | 'error' | 'http' | 'timeout' | 'unreachable', detail }.
+ */
+async function queryCounty(countyKey, lng, lat, report = null) {
   const cfg = ALL_COUNTIES[countyKey];
   if (!cfg || !cfg.service) return null;
 
   for (const endpoint of endpointsFor(cfg)) {
-    const parcel = await queryEndpoint(cfg, countyKey, endpoint, lng, lat);
+    const parcel = await queryEndpoint(cfg, countyKey, endpoint, lng, lat, report);
     if (parcel) return parcel;
   }
   return null;
 }
 
-async function queryEndpoint(cfg, countyKey, endpoint, lng, lat) {
-  let data = null;
+async function queryEndpoint(cfg, countyKey, endpoint, lng, lat, report = null) {
+  const note = (kind, detail = null) => { if (report) report.push({ county: countyKey, kind, detail, service: endpoint.service }); };
+  let data = null, lastError = null;
   for (const params of queryVariants(lng, lat, endpoint.where)) {
     const url = `${endpoint.service}/${endpoint.layer}/query?${new URLSearchParams(params)}`;
     const controller = new AbortController();
@@ -155,20 +162,25 @@ async function queryEndpoint(cfg, countyKey, endpoint, lng, lat) {
         signal: controller.signal,
         headers: { Accept: 'application/json' },
       });
-      if (!res.ok) return null; // this endpoint is unhappy; the caller tries the next
+      if (!res.ok) { note('http', `HTTP ${res.status}`); return null; } // this endpoint is unhappy; the caller tries the next
 
       const body = await res.json();
       // ArcGIS returns HTTP 200 with an { error } body on failure.
-      if (body.error) continue; // try the simpler parameter set
+      if (body.error) { lastError = body.error; continue; } // try the simpler parameter set
       data = body;
       break;
-    } catch {
+    } catch (e) {
       // Timeout, DNS failure, county server down -- all non-fatal.
+      note(e?.name === 'AbortError' ? 'timeout' : 'unreachable', e?.name === 'AbortError' ? `no answer in ${REQUEST_TIMEOUT_MS / 1000} s` : String(e?.message || e).slice(0, 80));
       return null;
     } finally {
       clearTimeout(timer);
     }
   }
+  if (!data && lastError) {
+    const code = Number(lastError.code);
+    note(code === 499 || code === 498 || code === 403 || /token/i.test(lastError.message || '') ? 'refused' : 'error', `${lastError.code ?? ''} ${String(lastError.message || '').slice(0, 80)}`.trim());
+  } else if (data) note('answered');
 
   if (!data || !data.features || data.features.length === 0) return null;
   return featureFrom(cfg, countyKey, endpoint, data.features[0]);
@@ -274,7 +286,7 @@ async function queryByPin(cfg, countyKey, endpoint, pin, near) {
  * Look up the parcel containing a point. Tries each candidate county in
  * turn; the bbox filter usually leaves exactly one.
  */
-async function lookupParcel(lng, lat, { pin = null, sqft = null } = {}) {
+async function lookupParcel(lng, lat, { pin = null, sqft = null, report = null } = {}) {
   const keys = candidateCounties(lng, lat);
   if (pin) {
     for (const key of keys) {
@@ -288,7 +300,7 @@ async function lookupParcel(lng, lat, { pin = null, sqft = null } = {}) {
   }
   let found = null;
   for (const key of keys) {
-    found = await queryCounty(key, lng, lat);
+    found = await queryCounty(key, lng, lat, report);
     if (found) break;
   }
   if (!found || !(Number(sqft) > 0)) return found;
@@ -443,4 +455,18 @@ async function lookupNeighbours(countyKey, bbox, ring = null, pin = null) {
   return [];
 }
 
-export { lookupParcel, lookupNeighbours, queryCounty, esriToGeoJSON, endpointsFor, queryVariants };
+/**
+ * The counties a lookup could not ask, from its report: those where every endpoint failed (none answered). [] when
+ * every county asked answered, even with nothing.
+ */
+function unreachedCounties(report) {
+  const by = new Map();
+  for (const r of report || []) {
+    if (!by.has(r.county)) by.set(r.county, { county: r.county, answered: false, failures: [] });
+    const c = by.get(r.county);
+    if (r.kind === 'answered') c.answered = true; else c.failures.push(r);
+  }
+  return [...by.values()].filter((c) => !c.answered && c.failures.length);
+}
+
+export { lookupParcel, lookupNeighbours, queryCounty, esriToGeoJSON, endpointsFor, queryVariants, unreachedCounties };

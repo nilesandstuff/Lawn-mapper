@@ -36,8 +36,8 @@
 
 import { countyServicesAt, countyChoicesAt, countyServiceById } from './county.js';
 import { encodePng } from './tile-mosaic.js';
-import { lookupParcel, lookupNeighbours } from './parcel.js';
-import { isCovered, servesCounty } from './counties.js';
+import { lookupParcel, lookupNeighbours, unreachedCounties } from './parcel.js';
+import { isCovered, servesCounty, ALL_COUNTIES } from './counties.js';
 import { coverage, coverageSummary, NEAR_COMPLETE } from './coverage.js';
 import { checkQuota, consumeQuota, refundQuota } from './quota.js';
 import { charge, refund, allowance } from './allowance.js';
@@ -61,7 +61,7 @@ import { handleWaterLayers } from './water-layers.js';
 import { discoverWaterAt } from './water-find.js';
 import { accountsEnabled, publicUser } from './db.js';
 import { currentUser } from './auth.js';
-import { recordParcelGap } from './gaps.js';
+import { recordParcelGap, recordParcelOutages, clearParcelOutages } from './gaps.js';
 import { recordCountyFailure } from './county-failures.js';
 import { llmsTxt } from './llms.js';
 
@@ -329,10 +329,27 @@ async function handleParcel(request, url, env, origin, ctx) {
 
   /* What the lawn queue knows about the parcel it meant (parcel.js): its
      number, or its size when it was queued before numbers were kept. */
+  const report = [];
   const parcel = await lookupParcel(lng, lat, {
     pin: url.searchParams.get('pin') || null,
     sqft: Number(url.searchParams.get('sqft')) || null,
+    report,
   });
+  /* A COUNTY THAT COULD NOT BE ASKED (owner, 2026-11-09): its server refused, errored or timed out on every endpoint.
+     Logged for the console (gaps.js parcel_outages), cleared when a county answers again, and said to the person
+     instead of "no parcel here". */
+  const unreached = unreachedCounties(report).map((c) => ({ ...c, name: ALL_COUNTIES[c.county]?.name || c.county }));
+  const answeredKeys = [...new Set(report.filter((r) => r.kind === 'answered').map((r) => r.county))];
+  if (ctx?.waitUntil) {
+    if (unreached.length) ctx.waitUntil(recordParcelOutages(env, unreached));
+    if (answeredKeys.length) ctx.waitUntil(clearParcelOutages(env, answeredKeys));
+  }
+  if (!parcel && unreached.length) {
+    return json({
+      parcel: null, covered: true,
+      unavailable: { counties: unreached.map((c) => c.name), kind: unreached[0].failures[0]?.kind || 'error' },
+    }, 200, origin);
+  }
   if (!parcel) {
     // Not an error. Most of the country, and plenty of covered addresses,
     // land here. The UI drops straight to manual boundary drawing.

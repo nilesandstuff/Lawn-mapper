@@ -2845,7 +2845,10 @@ async function confirmLocation() {
       map.flyTo({ center: [lng, lat], zoom: IMAGERY_ZOOM_FALLBACK, duration: 600 });
       state.frame = { lng, lat, zoom: IMAGERY_ZOOM_FALLBACK, size: FRAME_SIZE };
       setStatus(
-        data.covered
+        /* The county's parcel service did not answer (owner, 2026-11-09): said, rather than "no parcel here". */
+        data.unavailable
+          ? `${data.unavailable.counties?.join(' and ') || 'Your county'}'s parcel service isn't answering right now${data.unavailable.kind === 'refused' ? ' (it has started asking for a login)' : ''}. Trace the property line to carry on, or try again later.`
+          : data.covered
           ? 'Your county has records, but not for this parcel. Trace the property line and you can still measure it.'
           : 'No county record for this address. Press "Draw the property line" and trace your boundary — detection needs it to know where your lot ends.'
       );
