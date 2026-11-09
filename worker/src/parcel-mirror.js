@@ -87,11 +87,12 @@ const enc = new TextEncoder(), dec = new TextDecoder();
 /**
  * One parcel as a body record: { rings: [[[lng, lat], ...], ...], pin } -> bytes, with its box in degrees. Rings come from the county quantized to 1e-7; a ring with fewer than 3 points is dropped.
  */
-export function encodeParcel(p) {
+export function encodeParcel(p, minPoints = 3) {
   const w = new Writer(256);
   const pin = enc.encode(p.pin == null ? '' : String(p.pin));
   w.uvar(pin.length); w.bytes(pin);
-  const rings = (p.rings || []).filter((r) => Array.isArray(r) && r.length >= 3);
+  // a water layer's points and lines too (water-copy.js): one corner is a point, two a line
+  const rings = (p.rings || []).filter((r) => Array.isArray(r) && r.length >= minPoints);
   w.uvar(rings.length);
   let px = 0, py = 0;
   let bw = Infinity, bs = Infinity, be = -Infinity, bn = -Infinity;

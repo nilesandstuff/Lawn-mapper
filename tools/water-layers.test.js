@@ -94,6 +94,29 @@ const env = { DB: { prepare: () => ({ bind: () => ({ all: async () => ({ results
   check('with no database, the national layers still answer', r.asked.county === 0 && r.failed.length === 0);
 }
 
+/* ------------------------------------- a county layer that does not answer: our copy (water-copy.js) */
+{
+  const { encodeCell, encodeParcel, cellOf, gzip } = await import('../worker/src/parcel-mirror.js');
+  const { waterIdOf } = await import('../worker/src/water-copy.js');
+  const at = Date.parse('2026-11-01T00:00:00Z');
+  const [cx, cy] = cellOf(-85.705, 42.835);
+  const cell = await gzip(encodeCell(cx, cy, [
+    { pin: JSON.stringify({ g: 'p', a: { TOP_OF_CASTING: 690, OBJECTID: 7 } }), rings: [[[-85.705, 42.835]]] },
+    { pin: JSON.stringify({ g: 'p', a: { TOP_OF_CASTING: 1 } }), rings: [[[-85.9, 42.99]]] },
+  ].map((p) => encodeParcel(p, 1)), at));
+  const key = `water/${await waterIdOf(countyRows[0].url)}/${cx}_${cy}.bin`;
+  const corpus = { get: async (k) => (k === key ? { arrayBuffer: async () => cell.buffer.slice(0) } : null) };
+  const down = fake((u) => (u.includes('county/arcgis') ? { error: { code: 499, message: 'Token Required' } } : { features: [] }));
+  const { body: r } = await waterLayersAt({ ...env, CORPUS: corpus }, box, { fetcher: down });
+  const inlets = r.layers.find((l) => l.kind === 'storm_inlet');
+  check('a county layer behind a login is answered from our copy, saying how old it is',
+    inlets && inlets.copiedAt === '2026-11-01T00:00:00.000Z' && inlets.features.length === 1
+    && inlets.features[0].properties.TOP_OF_CASTING === 690 && !('OBJECTID' in inlets.features[0].properties)
+    && inlets.features[0].geometry.type === 'Point' && !r.failed.some((f) => f.kind === 'storm_inlet'), JSON.stringify(r.layers.map((l) => [l.kind, l.copiedAt, l.features.length])));
+  const { body: r2 } = await waterLayersAt({ ...env, CORPUS: { get: async () => null } }, box, { fetcher: down });
+  check('with no copy there, it is still named as failed', r2.failed.some((f) => f.kind === 'storm_inlet'));
+}
+
 /* ------------------------------------------------------- the deadline */
 {
   const slow = async (url) => {

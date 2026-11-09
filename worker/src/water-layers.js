@@ -30,6 +30,7 @@
  */
 
 import { discoverWaterAt, askCell } from './water-find.js';
+import { copiedLayer } from './water-copy.js';
 
 /* ---------------------------------------------------------------- kinds */
 
@@ -529,7 +530,14 @@ export async function countyLayersOver(env, box) {
 export async function waterLayersAt(env, box, { fetcher = fetch, timeoutMs = 25000, deadlineMs = 0 } = {}) {
   const county = await countyLayersOver(env, box);
   const all = [...NATIONAL.map((l) => ({ ...l, from: 'national' })), ...county.map((l) => ({ ...l, from: 'county' }))];
+  /* A county layer that does not answer: our own copy of it, when there is one (water-copy.js, owner 2026-11-09),
+     saying how old it is (copiedAt). */
+  const copied = (l, e) => (l.from !== 'county' ? Promise.reject(e) : copiedLayer(env, l, box, {
+    toGeoJSON: esriToGeoJSON, clip: (g) => clipGeometry(g, margin(box)),
+    tidy: (a) => tidyAttributes(decodeAttributes(a, l.codebook), null), label: (k) => KINDS[k]?.label || k,
+  }).catch(() => null).then((c) => (c ? c : Promise.reject(e))));
   const asks = all.map((l) => queryLayer(l, box, { fetcher, timeoutMs: l.slow ? SLOW_MS : timeoutMs })
+    .catch((e) => copied(l, e))
     .then((value) => ({ status: 'fulfilled', value }), (reason) => ({ status: 'rejected', reason })));
   const assemble = (settled) => {
     const layers = [];

@@ -29,7 +29,9 @@ import { pipeline } from 'node:stream/promises';
 import { ALL_COUNTIES, COUNTY_BBOX } from '../worker/src/counties.js';
 import { VERIFIED_COUNTIES } from '../worker/src/counties-verified.js';
 import { endpointsFor } from '../worker/src/parcel.js';
-import { CELL, cellOf, cellKey, encodeParcel, encodeCell, mirrorKeys, PREFIX } from '../worker/src/parcel-mirror.js';
+import { CELL, cellOf, encodeParcel, encodeCell, mirrorKeys, PREFIX } from '../worker/src/parcel-mirror.js';
+import { tidyAttributes, clipRing, clipLine } from '../worker/src/water-layers.js';
+import { waterIdOf, WATER_PREFIX } from '../worker/src/water-copy.js';
 
 export const TILE = 0.5;                       // degrees: 10 x 10 cells
 const PER = Math.round(TILE / CELL);
@@ -44,6 +46,7 @@ const PAUSE_MS = 250;                          // between one page and the next 
 const TIMEOUT_MS = 90e3;
 const API_PER_SEC = 2;                         // R2 writes: the API allows 4 a second for everything on the account
 const BUCKET = 'lawn-mapper-corpus';
+const WATER_MAX_FEATURES = 1.5e6;              // a water layer bigger than this (a state's every stream) is not copied
 const API = 'https://api.cloudflare.com/client/v4';
 const UA = 'lawn-mapper-parcel-mirror (non-commercial; one request at a time)';
 
@@ -162,13 +165,25 @@ async function fetchSquare(svc, endpoint, box) {
     const page = svc.page;
     if (elapsed() > HARD_MS) throw Object.assign(new Error('out of time'), { kind: 'time' });
     const batch = all.slice(i, i + page);
-    const base = { objectIds: batch.join(','), outFields: pin || '', returnGeometry: 'true', outSR: '4326' };
+    const base = {
+      objectIds: batch.join(','), outFields: svc.water ? '*' : pin || '', returnGeometry: 'true', outSR: '4326',
+      // a water layer as the water route shows it: shapes simplified to about half a metre (water-layers.js queryUrl)
+      ...(svc.water ? { maxAllowableOffset: '0.000005' } : {}),
+    };
     const post = !svc.get;
     let j = svc.precise !== false ? await ask(url, { ...base, geometryPrecision: '7' }, { post }) : { error: 'skip' };
     if (j.error) { j = await ask(url, base, { post }); if (!j.error && svc.precise === undefined) svc.precise = false; }
     if (j.error) throw Object.assign(new Error(j.error), { kind: 'page' });
     if (svc.precise === undefined) svc.precise = true;
     for (const f of j.features || []) {
+      if (svc.water) {
+        // a water layer's feature: its shape (area, line or points) and its tidied attributes, in the number's place
+        const g = f.geometry || {};
+        const parts = g.rings ? ['a', g.rings] : g.paths ? ['l', g.paths] : Number.isFinite(g.x) ? ['p', [[[g.x, g.y]]]]
+          : Array.isArray(g.points) ? ['p', g.points.map((q) => [q])] : null;
+        if (parts) out.push({ pin: JSON.stringify({ g: parts[0], a: tidyAttributes(f.attributes) }), rings: parts[1] });
+        continue;
+      }
       const rings = f.geometry?.rings;
       if (!Array.isArray(rings) || !rings.length) continue;
       out.push({ pin: pin ? f.attributes?.[pin] ?? null : null, rings });
@@ -195,25 +210,44 @@ async function copySquare(svc, endpoint, key, tx, ty, old) {
   const [bw, bs, be, bn] = svc.box;
   const box = [Math.max(bw, tx * TILE), Math.max(bs, ty * TILE), Math.min(be, (tx + 1) * TILE), Math.min(bn, (ty + 1) * TILE)];
   const { parcels } = await fetchSquare(svc, endpoint, box);
-  return writeSquare(key, tx, ty, parcels, old);
+  return writeSquare(svc, tx, ty, parcels, old);
+}
+
+/** A water record cut to one cell (a hair over, so no seam shows): encoded, or null when nothing of it is in the cell. */
+function cutToCell(p, cx, cy, minPoints) {
+  const pad = CELL * 1e-4;
+  const b = [cx * CELL - pad, cy * CELL - pad, (cx + 1) * CELL + pad, (cy + 1) * CELL + pad];
+  let g = 'a';
+  try { g = JSON.parse(p.pin).g; } catch { /* an area */ }
+  const rings = g === 'a' ? p.rings.map((r) => clipRing(r, b)).filter((r) => r && r.length >= 3)
+    : g === 'l' ? p.rings.flatMap((r) => clipLine(r, b))
+      : p.rings.filter((r) => r[0] && r[0][0] >= b[0] && r[0][0] <= b[2] && r[0][1] >= b[1] && r[0][1] <= b[3]);
+  if (!rings.length) return null;
+  const rec = encodeParcel({ pin: p.pin, rings }, minPoints);
+  return rec.rings ? rec : null;
 }
 
 /** One square's parcels into its cells: written, and cells it no longer fills dropped. Returns { n, mask, bytes }. */
-async function writeSquare(key, tx, ty, parcels, old) {
+async function writeSquare(svc, tx, ty, parcels, old) {
+  const cellAt = (cx, cy) => `${svc.prefix}/${cx}_${cy}.bin`;
   const cx0 = tx * PER, cy0 = ty * PER;
   const cells = new Map();
   for (const p of parcels) {
     let rec;
-    try { rec = encodeParcel(p); } catch { continue; }
+    try { rec = encodeParcel(p, svc.minPoints || 3); } catch { continue; }
     if (!rec.rings) continue;
     const [w, s, e, n] = rec.box;
     const [x0, y0] = cellOf(w, s), [x1, y1] = cellOf(e, n);
+    const many = x1 > x0 || y1 > y0;
     // only this square's cells: a parcel across its edge is in the next square's answer too
     for (let cx = Math.max(x0, cx0); cx <= Math.min(x1, cx0 + PER - 1); cx++) {
       for (let cy = Math.max(y0, cy0); cy <= Math.min(y1, cy0 + PER - 1); cy++) {
         const i = (cy - cy0) * PER + (cx - cx0);
+        // a water shape across cells is cut to each (a county's flood zone can be one polygon of a million corners)
+        const r = svc.water && many ? cutToCell(p, cx, cy, svc.minPoints || 1) : rec;
+        if (!r) continue;
         if (!cells.has(i)) cells.set(i, []);
-        cells.get(i).push(rec);
+        cells.get(i).push(r);
       }
     }
   }
@@ -223,10 +257,10 @@ async function writeSquare(key, tx, ty, parcels, old) {
     const cx = cx0 + (i % PER), cy = cy0 + Math.floor(i / PER);
     const gz = gzipSync(encodeCell(cx, cy, recs, at), { level: 9 });
     bytes += gz.length;
-    await put(cellKey(key, cx, cy), gz, 'application/octet-stream');
+    await put(cellAt(cx, cy), gz, 'application/octet-stream');
   }
   for (const i of cellsOfMask(old?.mask)) {
-    if (!cells.has(i)) await del(cellKey(key, cx0 + (i % PER), cy0 + Math.floor(i / PER)));
+    if (!cells.has(i)) await del(cellAt(cx0 + (i % PER), cy0 + Math.floor(i / PER)));
   }
   return { n: parcels.length, mask: maskOf([...cells.keys()]), bytes };
 }
@@ -296,7 +330,7 @@ async function copyFromFile(svc, st, file) {
     const at = new Date().toISOString();
     for (const [tx, ty] of squaresOf(svc.box)) {
       const id = squareId(tx, ty);
-      const got = await writeSquare(svc.key, tx, ty, squares.get(id) || [], st.squares[id]);
+      const got = await writeSquare(svc, tx, ty, squares.get(id) || [], st.squares[id]);
       st.squares[id] = { at, n: got.n, mask: got.mask, file: true };
       n += got.n; bytes += got.bytes;
     }
@@ -315,7 +349,39 @@ function servicesToCopy() {
     const cfg = ALL_COUNTIES[key];
     const box = COUNTY_BBOX[key] || VERIFIED_COUNTIES[key]?.box;
     if (!box || box.length !== 4) continue;
-    out.push({ key, cfg, box, page: PAGE_MAX });
+    out.push({ key, cfg, box, page: PAGE_MAX, prefix: `${PREFIX}${key}`, endpoints: endpointsFor(cfg) });
+  }
+  return out;
+}
+
+/*
+ * THE WATER MAP'S COUNTY LAYERS TOO (owner, 2026-11-09, after the owner's county's drain network went behind a login:
+ * "If it's similar, that's fine"). Every layer the water catalogue keeps (D1 water_layers, workflow 44), copied the
+ * same way under water/<id>/ (worker/src/water-copy.js reads it when the layer does not answer). From the catalogue,
+ * or for a test from WATER_LAYERS (JSON: [{ url, west, south, east, north }]).
+ */
+async function waterLayersToCopy() {
+  if (process.env.NO_WATER) return [];
+  let rows;
+  try {
+    if (process.env.WATER_LAYERS) rows = JSON.parse(process.env.WATER_LAYERS);
+    else if (OUT) return [];
+    else rows = (await import('./corpus-db.js')).query('SELECT url, west, south, east, north, features FROM water_layers WHERE ok = 1');
+  } catch (e) {
+    console.log(`Water layers: the catalogue could not be read (${String(e.message || e).slice(0, 80)}); parcels only this run.`);
+    return [];
+  }
+  const out = [];
+  for (const r of rows || []) {
+    const box = [r.west, r.south, r.east, r.north].map(Number);
+    const m = /^(.*)\/(\d+)\/?$/.exec(r.url || '');
+    if (!m || !box.every(Number.isFinite) || !(box[2] > box[0] && box[3] > box[1])) continue;
+    if (Number(r.features) > WATER_MAX_FEATURES) continue;
+    const id = await waterIdOf(r.url);
+    out.push({
+      key: `water:${id}`, water: true, cfg: { service: m[1] }, box, page: PAGE_MAX, minPoints: 1,
+      prefix: `${WATER_PREFIX}${id}`, endpoints: [{ service: m[1], layer: m[2], where: null, fields: {} }],
+    });
   }
   return out;
 }
@@ -339,14 +405,14 @@ function order(services, state, now) {
 async function main() {
   await r2init();
   const only = (process.env.ONLY || '').split(',').map((s) => s.trim()).filter(Boolean);
-  let services = servicesToCopy();
-  if (only.length) services = services.filter((s) => only.includes(s.key));
+  let services = [...servicesToCopy(), ...await waterLayersToCopy()];
+  if (only.length) services = services.filter((s) => only.includes(s.key) || (s.water && only.includes('water')));
   const state = (await getJson(`${PREFIX}_state.json`)) || { v: 1, services: {} };
   state.services ||= {};
   const now = Date.now();
   const todo = order(services, state, now);
   const totals = { squares: 0, parcels: 0, bytes: 0, services: 0, failed: {} };
-  console.log(`Parcel copy: ${services.length} services in the registry; ${todo.length} want copying (never copied, under way, `
+  console.log(`Parcel copy: ${services.filter((x) => !x.water).length} parcel services in the registry and ${services.filter((x) => x.water).length} water layers in the catalogue; ${todo.length} want copying (never copied, under way, `
     + `or over ${MAX_AGE_DAYS} days old); ${SERVICES_AT_ONCE} at a time, for up to ${Math.round(BUDGET_MS / 60e3)} min.`);
 
   let saving = Promise.resolve(), lastSave = 0;
@@ -371,7 +437,7 @@ async function main() {
       delete st.failed;
       delete st.fileFailed;
       const squares = squaresOf(svc.box);
-      const endpoints = endpointsFor(svc.cfg);
+      const endpoints = svc.endpoints;
       let ep = st.endpoint != null ? endpoints[st.endpoint] || endpoints[0] : endpoints[0];
       try {
         // FILE_ONLY=1: straight to the published file (a test of the fallback)
@@ -388,19 +454,20 @@ async function main() {
           if (!got) throw err;
           st.endpoint = endpoints.indexOf(ep);
           st.squares[id] = { at: new Date().toISOString(), n: got.n, mask: got.mask };
-          totals.squares++; totals.parcels += got.n; totals.bytes += got.bytes;
+          totals.squares++; totals.bytes += got.bytes;
+          if (svc.water) totals.features = (totals.features || 0) + got.n; else totals.parcels += got.n;
           save();
         }
         if (squares.every(([tx, ty]) => { const q = st.squares[squareId(tx, ty)]; return q && Date.parse(q.at) >= Date.parse(st.round); })) {
           st.done = new Date().toISOString();
           st.source = { kind: 'server' };
           st.count = squares.reduce((s, [tx, ty]) => s + (st.squares[squareId(tx, ty)]?.n || 0), 0);
-          totals.services++;
+          if (svc.water) totals.water = (totals.water || 0) + 1; else totals.services++;
         }
       } catch (e) {
         const kind = e instanceof Refused ? 'refused' : e.kind === 'time' ? 'out of time' : e.kind === 'ids' ? 'ids not given' : e.kind === 'page' ? 'a page failed' : 'error';
         // the server cannot be copied: the same parcels as the county publishes them for download, when it does
-        if (kind !== 'out of time' && elapsed() < BUDGET_MS) {
+        if (!svc.water && kind !== 'out of time' && elapsed() < BUDGET_MS) {
           try {
             const file = await findFile(svc);
             if (file) {
@@ -427,27 +494,34 @@ async function main() {
   clearInterval(progress);
 
   // the totals, for the console (routes-admin.js parcel-mirror)
-  const all = services.map((s) => state.services[s.key]).filter(Boolean);
+  const all = services.filter((s) => !s.water).map((s) => state.services[s.key]).filter(Boolean);
   const done = all.filter((s) => s.done);
+  const wall = services.filter((s) => s.water).map((s) => state.services[s.key]).filter(Boolean);
   const summary = {
-    at: new Date().toISOString(), services: services.length,
+    at: new Date().toISOString(), services: services.filter((s) => !s.water).length,
     copied: done.length, underway: all.filter((s) => s.round && !s.done).length,
     failed: all.filter((s) => s.failed).length,
     failures: Object.entries(all.filter((s) => s.failed).reduce((m, s) => ({ ...m, [s.failed.kind]: (m[s.failed.kind] || 0) + 1 }), {})),
     parcels: done.reduce((s, x) => s + (x.count || 0), 0),
     oldest: done.map((s) => s.done).sort()[0] || null,
     newest: done.map((s) => s.done).sort().pop() || null,
+    water: {
+      layers: services.filter((s) => s.water).length, copied: wall.filter((s) => s.done).length,
+      underway: wall.filter((s) => s.round && !s.done).length, failed: wall.filter((s) => s.failed).length,
+      features: wall.filter((s) => s.done).reduce((s, x) => s + (x.count || 0), 0),
+    },
   };
   await save(true);
   await put(`${PREFIX}_summary.json`, Buffer.from(JSON.stringify(summary)), 'application/json');
   const failed = Object.entries(totals.failed).map(([k, n]) => `${n} ${k}`).join(', ');
   console.log(`This run: ${totals.squares} squares, ${totals.parcels.toLocaleString()} parcels, ${(totals.bytes / 1e6).toFixed(1)} MB written; `
-    + `${totals.services} services finished${totals.fromFile ? ` (${totals.fromFile} from the county's published file, its server refusing)` : ''}`
+    + `${totals.services} services finished${totals.water ? `, and ${totals.water} water layers (${(totals.features || 0).toLocaleString()} features)` : ''}${totals.fromFile ? ` (${totals.fromFile} from the county's published file, its server refusing)` : ''}`
     + `${totals.fileFailed ? `; ${totals.fileFailed} published file${totals.fileFailed === 1 ? '' : 's'} could not be read` : ''}`
     + `${failed ? `; stopped on ${failed}` : ''}. (${Math.round(elapsed() / 60e3)} min)`);
   console.log(`The copy now: ${summary.copied} of ${summary.services} services copied whole (${summary.parcels.toLocaleString()} parcels), `
     + `${summary.underway} under way, ${summary.failed} could not be copied${summary.failures.length ? ` (${summary.failures.map(([k, n]) => `${n} ${k}`).join(', ')})` : ''}; `
-    + `the oldest copy ${summary.oldest ? summary.oldest.slice(0, 10) : 'none yet'}.`);
+    + `the oldest copy ${summary.oldest ? summary.oldest.slice(0, 10) : 'none yet'}. Water layers: ${summary.water.copied} of ${summary.water.layers} copied `
+    + `(${summary.water.features.toLocaleString()} features), ${summary.water.underway} under way, ${summary.water.failed} could not be copied.`);
 }
 
 if (process.argv[1]?.endsWith('parcel-mirror.mjs')) main().catch((e) => { console.log(`Parcel copy: ${e.message}`); process.exit(1); });

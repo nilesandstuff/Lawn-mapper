@@ -1084,6 +1084,7 @@ async function renderParcelOutages() {
     ? `Our copy of the parcels: ${n(m.copied)} of ${n(m.services)} services copied whole (${n(m.parcels)} parcels), ${n(m.underway)} under way, `
       + `${n(m.failed)} could not be copied${m.failures?.length ? ` (${m.failures.map(([k, c]) => `${c} ${k}`).join(', ')})` : ''}; oldest copy `
       + `${m.oldest ? new Date(m.oldest).toLocaleDateString() : 'none yet'}; last run ${new Date(m.at).toLocaleString()}.`
+      + (m.water ? ` Water map layers: ${n(m.water.copied)} of ${n(m.water.layers)} copied (${n(m.water.features)} features), ${n(m.water.underway)} under way, ${n(m.water.failed)} could not be copied.` : '')
     : 'Our copy of the parcels: not started yet (workflow "P2. Parcel mirror").'));
   if (!list.length) { box.append(el('p', 'empty', 'None recorded yet.')); return; }
   const KIND = { refused: 'refuses (a login or permission now required)', error: 'answers with an error', http: 'answers with an HTTP error', timeout: 'does not answer in time', unreachable: 'cannot be reached' };
