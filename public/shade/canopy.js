@@ -130,7 +130,10 @@ export function buildCanopy(cols, grid, { shift = null, dz = 1, opaqueCanopy = f
     /* From the bottom up: what entered a cube is what came back from it
        and from everything beneath it, the floor included. */
     const base = k * nz;
-    const usePool = own[k] < minPulses;
+    /* own[k] adds pulses in thirds and halves (1 / nret), so a column of exactly minPulses sums to 3.9999999 or
+       4.0000001 by the order the points arrived in (the octree's pieces come in parallel): two loads of one lot
+       pooled it differently (rebuild.js against the page, 2026-11-09). A hair's tolerance makes it the same every time. */
+    const usePool = own[k] < minPulses - 1e-4;
     const src = usePool ? pooled : ret;
     let entered = usePool ? pooledFloor[k] : floor[k];
     for (let l = 0; l < nz; l++) {

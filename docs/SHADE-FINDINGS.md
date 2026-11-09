@@ -1742,6 +1742,21 @@ up at 4.08 MB gzipped (29.6 MB raw). The 0.25 m fine-ground fallback the
 core session offered was not needed: at 2.3 ground returns a square
 metre most 0.25 m cells would hold none, so the points are the honest
 form.
+THE MODEL KEPT CURRENT, 2026-11-09 (the owner: the AR "checks to see if
+the most recent version of the shade map has been loaded and saved for
+that map. If [not], it calls the shade maps tools and updates it. It needs
+to retain any edits"): every model now carries meta.build (build.js
+SHADE_BUILD, 1) and the person's fences (meta.fences), and rebuild.js
+rebuilds a map's model with no page open, from the lidar and line-up kept
+with the map, its erasures and fences applied. Checked on the owner's lot
+with a fence, two erased columns and three erased blocks: the page's save
+and the rebuild's are the same file -- every array identical, the header
+identical but for its time, the points the same set -- save canopy values
+within 1.2e-7 (summing order). The first run found one column that
+differed: canopy.js pools a column with fewer than 4 pulses of its own,
+counted in thirds and halves, so a column of exactly 4 summed to just
+under or just over by the order the octree's pieces arrived in, and two
+loads of one lot could draw it differently. A 1e-4 tolerance fixed it.
 MEASURED BY THE CORE SESSION, 2026-11-06, not by this one: where a roof
 makes the skyline in the AR's pictures, the pictures agree with the model
 to about 1 degree; where a crown within 15 m does, 30-40 degrees (leaf-off

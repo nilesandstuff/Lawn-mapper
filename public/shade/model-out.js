@@ -73,6 +73,10 @@
  *                          the same meaning as `ground` and `top`; absent
  *                          until the page has read them (a second save)
  *
+ * THE BUILD STAMP AND THE FENCES (2026-11-09): meta.build is build.js
+ * SHADE_BUILD (a reader holding a newer one rebuilds, rebuild.js); meta.fences
+ * the person's fences (fences.js records) as kept with the map.
+ *
  * SENT GZIPPED (core session, 2026-11-05; the owner: "there are definitely
  * larger lots out there"): the server keeps every model gzipped, 48 MB at
  * most. A lot is mostly empty air, so the owner's 23.1 MB file goes up as
@@ -84,6 +88,8 @@ import { NOTHING, BUILDING, TREE, SOLID_TREE, STRUCTURE, UNKNOWN, NOISE } from '
 import { GRASS_M, MAX_OVER_M } from './canopy.js';
 import { cellOf } from './grid.js';
 import { mercScale } from './ept.js';
+import { SHADE_BUILD } from './build.js';
+import { cleanFences } from './fences.js';
 
 export const STAND_LOW_M = 0.4, STAND_HIGH_M = 2.4; // the heights a person standing on the lawn sees (scan/lib/locate.js BANDS)
 
@@ -96,7 +102,7 @@ export const KINDS = { NOTHING, BUILDING, TREE, SOLID_TREE, STRUCTURE, UNKNOWN }
  * erasedCubes (indices k*nz+l). `lidar`, `flown`, `photo`, `basedOn` go into
  * the header as they are.
  */
-export function finishedModel({ model, season, cols = null, shift = null, surround = null, erasedMask = null, erasedCubes = [], lidar = null, flown = null, photo = null, basedOn = null, now = new Date() }) {
+export function finishedModel({ model, season, cols = null, shift = null, surround = null, fences = [], erasedMask = null, erasedCubes = [], lidar = null, flown = null, photo = null, basedOn = null, now = new Date() }) {
   const { grid, w, h, nz, dz, z0, ground } = model;
   const N = w * h;
   const built = season?.built;
@@ -119,7 +125,10 @@ export function finishedModel({ model, season, cols = null, shift = null, surrou
   for (const i of erasedCubes) if (i >= 0 && i < mu.length) { mu[i] = 0; if (muOn) muOn[i] = 0; }
   const own = cols ? ownReturns(cols, model, { shift, erasedMask, erasedCubes }) : null;
   const meta = {
-    v: 1, tool: 'shade', at: now.toISOString(), basedOn: basedOn || null,
+    v: 1, tool: 'shade', build: SHADE_BUILD, at: now.toISOString(), basedOn: basedOn || null,
+    /* The fences the person marked (fences.js records: line [lng, lat] points, heightM, style, material, color,
+       and their light, wind and surface numbers), as kept with the map: too thin for the lidar, so carried as drawn. */
+    fences: cleanFences(fences),
     grid: { w, h, x0: grid.x0, y1: grid.y1, cell: grid.cell, cellY: grid.cellY || grid.cell, lat: grid.lat },
     layers: { z0, dz, nz },
     lidar: lidar ? { url: lidar.url, name: lidar.name, epoch: lidar.epoch, shift: lidar.shift || null, fit: lidar.fit || null, flown: flown ? { start: flown.start, mid: flown.mid, end: flown.end } : null } : null,
