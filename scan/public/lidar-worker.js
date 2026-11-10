@@ -16,7 +16,7 @@ import { register, MIN_LANDED } from '/lib/lidar.js';
 import { loadLidar } from '/lib/lidar-load.js';
 import { walkFix } from '/lib/walkfix.js';
 import { lookGrids, lidarPicture } from '/lib/look.js';
-import { lidarMarks } from '/lib/lidar-marks.js';
+import { lidarMarks, returnsFrom } from '/lib/lidar-marks.js';
 // THE SHARED TREE-VERSUS-BUILDING RULE'S MODULE (CLAUDE.md, "One way to read lidar"), copied into this site unchanged
 // at deploy time (scan/tools/prepare.mjs): its kind codes and wallsOf. The kinds themselves come from the model.
 const sharedRule = () => import('/lib/shade/structures.js');
@@ -105,28 +105,22 @@ self.onmessage = async ({ data }) => {
     const show = lookGrids(G, roofAt, { w: sgrid.w, h: sgrid.h, e0: (sgrid.x0 - ox) * k, n1: (sgrid.y1 - oy) * k, cellE, cellN, tree: isTree, lo: crownLo, hi: crownHi });
     /* THE LIDAR AS A PICTURE TO PLACE POINTS ON (lib/look.js lidarPicture; the owner, 2026-11-10): from the model's
        own returns, where it keeps them; a column's kind is the shade map's, a height is over the shade map's ground. */
-    let picture = null;
+    let picture = null, P = null;
     try {
-      const A = L.model?.arrays;
-      if (A?.ptX?.length) {
-        const cw = sgrid.cell * 100, ch = (sgrid.cellY || sgrid.cell) * 100;
-        const col = (i) => { const c = Math.floor(A.ptX[i] / cw), r = Math.floor(A.ptY[i] / ch); return c < 0 || r < 0 || c >= sgrid.w || r >= sgrid.h ? -1 : r * sgrid.w + c; };
-        const P = {
-          n: A.ptX.length,
-          e: (i) => (sgrid.x0 + A.ptX[i] / 100 - ox) * k, nn: (i) => (sgrid.y1 - A.ptY[i] / 100 - oy) * k,
-          hag: (i) => { const j = col(i); return j < 0 || !Number.isFinite(ground[j]) ? NaN : A.ptZ[i] / 100 - ground[j]; },
-          bright: (i) => (A.ptI ? A.ptI[i] : 0),
-          kind: (i) => { const j = col(i), v = j < 0 ? K.NOTHING : kind[j]; return v === K.BUILDING ? 1 : v === K.TREE || v === K.SOLID_TREE ? 2 : v === K.STRUCTURE || v === K.UNKNOWN ? 3 : 0; },
-        };
-        picture = lidarPicture(box, P, undefined, { noRaised: true });
-        // the raised things' straight edges and corners, to place points on (lib/lidar-marks.js)
-        const t0 = Date.now(), M = lidarMarks(box, P);
-        picture.marks = { objects: M.objects.map((o) => ({ id: o.id, kind: o.kind, ring: o.ring, top: o.top, area: o.area, square: o.square })), corners: M.corners, spacing: M.spacing };
-        self.postMessage({ progress: `lidar marks: ${M.objects.length} things, ${M.corners.filter((c) => c.kind === 'corner').length} corners (${M.corners.filter((c) => c.sure).length} sure), ${Date.now() - t0} ms` });
-      }
+      P = returnsFrom(L);
+      if (P) picture = lidarPicture(box, P, undefined, { noRaised: true });
     } catch (err) { self.postMessage({ progress: `the lidar picture could not be made (${err.message})` }); }
     const solids = Float32Array.from(sol), tallA = Float32Array.from(tall), roofsA = Float32Array.from(roofRuns), dist = Float32Array.from(G.dist);
     self.postMessage({ overlay: { show, picture, box, cell: G.cell, solids, tall: tallA, roofRuns: roofsA, tallCell: cellE, dem1: { box, cell: G.cell * 4, W: dw, H: dh, data: dem1 }, dist: { box, cell: G.cell, W: G.W, H: G.H, data: dist } } }, [solids.buffer, tallA.buffer, roofsA.buffer, dem1.buffer, dist.buffer]);
+    // the raised things' straight edges and corners, to place points on (lib/lidar-marks.js): after the overlay, since
+    // they take some seconds on a phone and the camera view needs none of them
+    if (P) {
+      try {
+        const t0 = Date.now(), M = lidarMarks(box, P);
+        const marks = { objects: M.objects.map((o) => ({ id: o.id, kind: o.kind, ring: o.ring, top: o.top, area: o.area, square: o.square })), corners: M.corners, spacing: M.spacing };
+        self.postMessage({ marks, progress: `lidar marks: ${M.objects.length} things, ${M.corners.filter((c) => c.kind === 'corner').length} corners (${M.corners.filter((c) => c.sure).length} sure), ${Date.now() - t0} ms` });
+      } catch (err) { self.postMessage({ progress: `the lidar's corners could not be found (${err.message})` }); }
+    }
   } catch (err) {
     self.postMessage({ error: err.message || String(err) });
   }

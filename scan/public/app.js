@@ -594,6 +594,7 @@ function startLidar(m) {
     w.onmessage = ({ data }) => {
       if (data.progress) { st.lid.progress = data.progress; showLidar(); }
       if (data.ready) { st.lid.ready = data.ready; log(`lidar model read: ${data.ready.points} columns, ${data.ready.solid} solid cells, shift ${data.ready.shift}`); showLidar(); keepShadeFresh(m, data.ready); }
+      if (data.marks && st.lid.overlay?.picture) { st.lid.overlay.picture.marks = data.marks; if (st.photoChoice === 'lidar') { photoTools(); drawMap(); } }
       if (data.overlay) { st.lid.overlay = data.overlay; st.lid.meshes = null; lidarPhoto().catch((e) => log(`lidar picture: ${e.message}`)); log(`lidar overlay: ${data.overlay.solids.length / 4} solid cells, ${data.overlay.tall.length / 5} tall cells`); }
       if (data.error) { st.lid.error = data.error; log(`lidar: ${data.error}`); showLidar(); if (/no lidar model yet/.test(data.error)) keepShadeFresh(m, null); }
       if (data.walk && st.L && st.walkAsk && data.id === st.walkAsk.id) {

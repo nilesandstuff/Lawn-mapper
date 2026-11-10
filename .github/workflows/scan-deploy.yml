@@ -36,7 +36,7 @@ on:
         required: true
         default: tests
         type: choice
-        options: [tests, deploy, walks, twin, fix, place, depth, study, skyline, pavement, checks, repeat, register, walkfix, walkfixjs, reference, warp]
+        options: [tests, deploy, walks, twin, fix, place, depth, study, skyline, pavement, checks, repeat, register, walkfix, walkfixjs, reference, warp, marks]
       walk:
         description: 'For twin, fix or depth: the walk id, or latest'
         default: latest
@@ -386,6 +386,18 @@ jobs:
       # the map's kept photo and Mapbox matched to the lidar's ground brightness (windows, and RoMa on the CPU), a
       # smoothed spline per photo scored on held-out matches, and the owner's check points placed on both photos. The
       # walk input: any walk on the map. CPU, free; keeps the stretched photos under refs/warp/<map>/.
+      # THE PLACEMENT MAP'S LIDAR CORNERS ON THE WALK'S MAP (scan/tools/marks-check.mjs; SCAN-PLAN section 21): what
+      # the page finds and why each candidate was kept. Counts and reasons only.
+      - name: The lidar's corners on a map
+        if: ${{ inputs.task == 'marks' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WALK: ${{ inputs.walk }}
+        run: |
+          set -o pipefail
+          node scan/tools/marks-check.mjs "$WALK" | tee marks.txt
+
       - name: Photos stretched onto the lidar
         if: ${{ inputs.task == 'warp' }}
         env:
@@ -466,6 +478,7 @@ jobs:
             register) grep -v '^Twin read\|: kept (' register.txt 2>/dev/null | tail -70 || echo "no registration: see the step above" ;;
             repeat) cat repeat.txt 2>/dev/null || echo "no repeat-walk study: see the step above" ;;
             warp) cat warp.txt 2>/dev/null || echo "no warp study: see the step above" ;;
+            marks) cat marks.txt 2>/dev/null || echo "no marks check: see the step above" ;;
             walkfixjs) cat walkfix.txt 2>/dev/null || echo "no check: see the step above" ;;
             walkfix) grep -v '^Twin read' walkfix.txt 2>/dev/null | tail -40 || echo "no walk-to-walk study: see the step above" ;;
             reference) cat reference.txt 2>/dev/null || echo "no reference: see the step above" ;;

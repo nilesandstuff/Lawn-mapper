@@ -139,10 +139,13 @@ function refineSide(s, inside, outside, reach, noise = 0.05) {
   }
   near.sort((a, b) => a[0] - b[0]);
   let bestErr = Infinity, bestAt = s.at, bestGap = Infinity;
+  // a cut between near[i-1] and near[i]: inside below it when the outside lies above. Its errors: outside returns below
+  // it and inside returns above it (or the other way round), counted from running totals
+  const totIn = near.reduce((t, x) => t + x[1], 0), totOut = near.length - totIn;
+  let inBelow = 0, outBelow = 0;
   for (let i = 0; i <= near.length; i++) {
-    // a cut between near[i-1] and near[i]: inside below it when the outside lies above
-    let err = 0;
-    for (let j = 0; j < near.length; j++) { const below = j < i; err += (outUp ? below !== !!near[j][1] : below === !!near[j][1]) ? 1 : 0; }
+    if (i > 0) { if (near[i - 1][1]) inBelow++; else outBelow++; }
+    const err = outUp ? outBelow + (totIn - inBelow) : inBelow + (totOut - outBelow);
     const at = i === 0 ? near[0][0] - 0.1 : i === near.length ? near[near.length - 1][0] + 0.1 : (near[i - 1][0] + near[i][0]) / 2;
     const gap = i === 0 || i === near.length ? Infinity : near[i][0] - near[i - 1][0];
     if (err < bestErr || (err === bestErr && Math.abs(at - s.at) < Math.abs(bestAt - s.at))) { bestErr = err; bestAt = at; bestGap = gap; }
@@ -153,8 +156,17 @@ function refineSide(s, inside, outside, reach, noise = 0.05) {
 }
 
 /** One thing's outline, square to its own grid, each side set by the returns, and its corners. */
-function squareOutline(mask, box, W, H, cell, inside, outside, { minJog, reach, loose = false, edgeIn = null, edgeOut = null }) {
+function squareOutline(mask, box, W, H, cell, inside, outside, { minJog, reach, loose = false, edgeIn = null, edgeOut = null, view = null }) {
   if (inside.length < 6) return null;
+  // only the returns near this thing matter to it (the lot has tens of thousands)
+  {
+    let e0 = Infinity, e1 = -Infinity, n0 = Infinity, n1 = -Infinity;
+    for (const p of inside) { e0 = Math.min(e0, p.e); e1 = Math.max(e1, p.e); n0 = Math.min(n0, p.n); n1 = Math.max(n1, p.n); }
+    const R = 2 * reach + 1, near = (p) => p.e >= e0 - R && p.e <= e1 + R && p.n >= n0 - R && p.n <= n1 + R;
+    outside = outside.filter(near);
+    if (edgeIn) edgeIn = edgeIn.filter(near);
+    if (edgeOut) edgeOut = edgeOut.filter(near);
+  }
   const t = loose ? edgeTurn(inside, outside, reach) : mainTurn(inside), c = Math.cos(t), sn = Math.sin(t);
   const rot = (p) => [c * p.e + sn * p.n, -sn * p.e + c * p.n], back = ([u, v]) => [c * u - sn * v, sn * u + c * v];
   // the thing's cells, turned onto its own grid
@@ -189,9 +201,16 @@ function squareOutline(mask, box, W, H, cell, inside, outside, { minJog, reach, 
   // a paving corner is never "sure": brightness parts paving from grass with returns on the wrong side of every edge
   // (2026-11-10, a synthetic drive: edges 0.2-0.6 m off), so it is offered as less sure, for the eye to judge
   const sure = sides.map((s, i) => (loose ? Infinity : Math.max(s.gap, sides[(i + 1) % sides.length].gap) / 2));
-  // a slab of paving is believed only when most of its sides were set by returns on both sides of them
-  const pinned = sides.filter((s) => Number.isFinite(s.gap)).length / sides.length;
-  return { ring, sure, square: loose ? held >= 0.85 && strays <= 0.15 && pinned >= 0.6 && sides.length <= 12 : held >= 0.9 && strays <= 0.1 };
+  // a side along the edge of the lidar's box is where the box cut the thing (a drive running on into the street), not
+  // its edge: its corners are not marks, and it does not count against the slab
+  const offView = (p) => view && (p[0] - view[0] < 1 || view[2] - p[0] < 1 || p[1] - view[1] < 1 || view[3] - p[1] < 1);
+  const cut = sides.map((_, i) => offView(ring[(i + ring.length - 1) % ring.length]) && offView(ring[i]));
+  const real = sides.filter((_, i) => !cut[i]);
+  const keep = sides.map((_, i) => !cut[i] && !cut[(i + 1) % sides.length]);
+  // a paving slab is believed only when most of its sides were set by returns on both sides of them
+  const pinned = real.filter((s) => Number.isFinite(s.gap)).length / Math.max(1, real.length);
+  const why = `held ${held.toFixed(2)} strays ${strays.toFixed(2)} pinned ${pinned.toFixed(2)} sides ${sides.length}`;
+  return { ring, sure, keep, why, square: loose ? held >= 0.85 && strays <= 0.15 && pinned >= 0.6 && sides.length <= 12 : held >= 0.9 && strays <= 0.1 };
 }
 
 /** Grown (v = 1) or taken back (v = 0) by a disc of rad cells. */
@@ -240,7 +259,7 @@ function linked(ps, link, dh = Infinity) {
   return [...groups.values()];
 }
 
-export function lidarMarks(box, pts, { cell = CELL } = {}) {
+export function lidarMarks(box, pts, { cell = CELL, debug = null } = {}) {
   const W = Math.max(1, Math.ceil((box[2] - box[0]) / cell)), H = Math.max(1, Math.ceil((box[3] - box[1]) / cell)), N = W * H;
   // every return in the box, raised (not a tree's) or not; a tree's own returns are left out altogether
   const P = [];
@@ -286,21 +305,32 @@ export function lidarMarks(box, pts, { cell = CELL } = {}) {
     const area = inside.length * spacing * spacing;
     let span = 0; for (let a = 0; a < 180; a += 15) { const t = (a * Math.PI) / 180, v = inside.map((p) => Math.cos(t) * p.e + Math.sin(t) * p.n); span = Math.max(span, Math.max(...v) - Math.min(...v)); }
     const local = area >= minArea || span >= minSpan ? maskOf(inside) : null;
-    const fit = local ? squareOutline(local.mask, local.box, local.W, local.H, cell, inside, outside, { minJog, reach, loose: kind === 'paving', edgeIn, edgeOut }) : null;
+    const fit = local ? squareOutline(local.mask, local.box, local.W, local.H, cell, inside, outside, { minJog, reach, loose: kind === 'paving', edgeIn, edgeOut, view: box }) : null;
+    if (debug) debug.push({ kind, n: inside.length, area: +area.toFixed(1), fitted: !!fit, square: !!fit?.square, why: fit?.why || null });
     if (kind === 'paving' && !fit?.square) return; // a patch of ground that is not a straight-edged slab is not a mark
     const id = objects.length;
-    const cs = fit?.square ? fit.ring : [];
+    const cs = fit?.square ? fit.ring.filter((_, j) => fit.keep[j]) : [];
+    const sureOf = fit?.square ? fit.sure.filter((_, j) => fit.keep[j]) : [];
     objects.push({ id, kind, ring: fit?.ring || null, top: +hs[hs.length >> 1].toFixed(1), corners: cs, middle: mid, area: +area.toFixed(1), square: !!fit?.square });
-    cs.forEach((c, j) => corners.push({ at: c, of: id, kind: 'corner', within: Number.isFinite(fit.sure[j]) ? +fit.sure[j].toFixed(2) : null, sure: fit.sure[j] <= SURE_M }));
+    cs.forEach((c, j) => corners.push({ at: c, of: id, kind: 'corner', within: Number.isFinite(sureOf[j]) ? +sureOf[j].toFixed(2) : null, sure: sureOf[j] <= SURE_M }));
     // a small thing (a hot tub, a stump, a post) is also marked by its middle: round, it has no corners
     if (!cs.length || area < 6) corners.push({ at: mid, of: id, kind: 'middle' });
   };
   const raised = P.filter((p) => p.raised), ground = P.filter((p) => !p.raised);
+  const solidity = solidityOf(P, Math.max(1, 2.5 * spacing));
   // 1. things: raised returns that touch; 2. within a thing, its levels: returns that touch at much the same height
   for (const group of linked(raised, link)) {
     if (group.length < 3) continue;
+    // SOLID THINGS ONLY (the owner, 2026-11-10: "lots of buildings and objects showing up in the woods... There are no
+    // buildings, and not really anything out there that would be square. Just stumps and normal woods stuff"): a deck,
+    // a roof, a wall or a hot tub stops the laser, so its returns' neighbours are its own and flat; brush, logs and a
+    // crown's low branches let it through to the ground, and stand at every height
+    const sol = solidity(group);
+    if (sol.through > 0.15 || sol.rough > 0.35) { if (debug) debug.push({ kind: 'not solid', n: group.length, through: +sol.through.toFixed(2), rough: +sol.rough.toFixed(2) }); continue; }
     const inG = new Set(group), others = P.filter((p) => !inG.has(p));
-    const kind = group.filter((p) => p.bld).length > group.length * 0.3 ? 'building' : 'object';
+    // a building is tall: a deck the shade map calls a building (flat, high, no ground under it) is a thing here
+    const hsG = group.map((p) => p.h).sort((a, b) => a - b), tall = hsG[hsG.length >> 1] >= 3.5;
+    const kind = tall && group.filter((p) => p.bld).length > group.length * 0.3 ? 'building' : 'object';
     add(group, others, kind);
     if (kind !== 'object') continue;
     const levels = linked(group, link, 0.8).filter((l) => l.length >= 20);
@@ -315,16 +345,24 @@ export function lidarMarks(box, pts, { cell = CELL } = {}) {
   }
   // 3. PAVING: the ground's returns parted by brightness (Otsu's threshold), each part's slabs (a drive, a walk, a patio)
   // outlined the same way, the other ground as their outside; only straight-edged ones are kept
-  const gb = ground.map((p) => p.b).filter(Number.isFinite);
-  const thr = otsu(gb);
-  if (thr != null) {
+  const gb = ground.map((p) => p.b).filter(Number.isFinite).sort((a, b) => a - b);
+  // (2026-11-10, the owner's drive, strong against the grass, was not found at the one threshold that parts the whole
+  // lot best, perhaps the lawn from the woods) so several: Otsu's, and the 50th to 90th percentiles of the ground's
+  const q = (f) => gb[Math.min(gb.length - 1, Math.floor(gb.length * f))];
+  const thrs = gb.length < 50 ? [] : [otsu(gb), q(0.5), q(0.6), q(0.7), q(0.8), q(0.9)].filter((t) => t != null);
+  const firstPaving = objects.length;
+  const lists = thrs.length ? nearestLists(ground, 15, Math.max(1.2, 3 * spacing)) : null;
+  for (const thr of thrs) {
     // each return's side by the vote of its nearest ground returns: a bright speck in grass is grass
-    const lit = smoothVote(ground, ground.map((p) => p.b > thr), 15, Math.max(1.2, 3 * spacing));
+    const lit = smoothVote(lists, ground.map((p) => p.b > thr));
     for (const bright of [true, false]) {
       const part = ground.filter((p, i) => lit[i] === bright), rest = ground.filter((p, i) => lit[i] !== bright);
       for (const group of linked(part, Math.max(0.8, 1.6 * spacing), 0.25)) {
         if (group.length * spacing * spacing < 8) continue;
         const inG = new Set(group);
+        // one slab once: a group whose middle lies in a slab already found is the same slab at another threshold
+        const mid = group.reduce((s2, p) => [s2[0] + p.e / group.length, s2[1] + p.n / group.length], [0, 0]);
+        if (objects.slice(firstPaving).some((o) => o.ring && inRing(o.ring, mid))) continue;
         add(group, [...rest, ...part.filter((p) => !inG.has(p))], 'paving', { minArea: 8, minSpan: 6,
           edgeIn: ground.filter((p) => (p.b > thr) === bright), edgeOut: ground.filter((p) => (p.b > thr) !== bright) });
       }
@@ -333,17 +371,63 @@ export function lidarMarks(box, pts, { cell = CELL } = {}) {
   return { objects, corners, spacing: +spacing.toFixed(2) };
 }
 
-/** Each point's label by the vote of its K nearest (itself among them) within reach. */
-function smoothVote(ps, lab, K, reach) {
+/**
+ * How solid a group of raised returns is. `through`: ground returns whose three nearest returns are all this thing's,
+ * per return of it: the laser went through it to the ground (brush, a crown's low branches); a deck, a roof, a wall or
+ * a hot tub stops it, and a thin wall's ground lies beside it, not inside it. `rough`: the median, over its returns, of
+ * how far each one's height is from its raised neighbours' (m): a deck is flat, a tangle is not.
+ */
+function solidityOf(P, reach) {
+  const B = reach, hash = new Map(), key = (x, y) => `${x},${y}`;
+  P.forEach((p, i) => { const k = key(Math.floor(p.e / B), Math.floor(p.n / B)); if (!hash.has(k)) hash.set(k, []); hash.get(k).push(i); });
+  const nearest = (p, K) => {
+    const bx = Math.floor(p.e / B), by = Math.floor(p.n / B), d = [];
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) for (const j of hash.get(key(bx + dx, by + dy)) || []) {
+      const q = P[j]; if (q === p) continue; const dd = (q.e - p.e) ** 2 + (q.n - p.n) ** 2; if (dd <= reach * reach) d.push([dd, q]);
+    }
+    d.sort((a, b) => a[0] - b[0]);
+    return d.slice(0, K).map(([, q]) => q);
+  };
+  return (group) => {
+    const inG = new Set(group);
+    let e0 = Infinity, e1 = -Infinity, n0 = Infinity, n1 = -Infinity;
+    for (const p of group) { e0 = Math.min(e0, p.e); e1 = Math.max(e1, p.e); n0 = Math.min(n0, p.n); n1 = Math.max(n1, p.n); }
+    let through = 0;
+    for (let bx = Math.floor(e0 / B); bx <= Math.floor(e1 / B); bx++) for (let by = Math.floor(n0 / B); by <= Math.floor(n1 / B); by++) {
+      for (const j of hash.get(key(bx, by)) || []) {
+        const p = P[j]; if (p.raised || p.e < e0 || p.e > e1 || p.n < n0 || p.n > n1) continue;
+        const k = nearest(p, 3); if (k.length === 3 && k.every((q) => inG.has(q))) through++;
+      }
+    }
+    const rs = [], step = Math.max(1, Math.floor(group.length / 200));
+    for (let gi = 0; gi < group.length; gi += step) {
+      const p = group[gi], hs = nearest(p, 8).filter((q) => q.raised).map((q) => Math.abs(q.h - p.h)).sort((a, b) => a - b);
+      if (hs.length) rs.push(hs[hs.length >> 1]);
+    }
+    rs.sort((a, b) => a - b);
+    return { through: through / group.length, rough: rs.length ? rs[rs.length >> 1] : 0 };
+  };
+}
+
+/** Each point's K nearest (itself among them) within reach: indices. Found once, voted on at every threshold. */
+function nearestLists(ps, K, reach) {
   const B = reach, hash = new Map(), key = (x, y) => `${x},${y}`;
   ps.forEach((p, i) => { const k = key(Math.floor(p.e / B), Math.floor(p.n / B)); if (!hash.has(k)) hash.set(k, []); hash.get(k).push(i); });
   return ps.map((p) => {
     const bx = Math.floor(p.e / B), by = Math.floor(p.n / B), d = [];
     for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) for (const j of hash.get(key(bx + dx, by + dy)) || []) { const q = ps[j], dd = (q.e - p.e) ** 2 + (q.n - p.n) ** 2; if (dd <= reach * reach) d.push([dd, j]); }
     d.sort((a, b) => a[0] - b[0]);
-    const k = d.slice(0, K); let yes = 0; for (const [, j] of k) if (lab[j]) yes++;
-    return yes * 2 > k.length;
+    return Int32Array.from(d.slice(0, K), (x) => x[1]);
   });
+}
+/** Each point's label by the vote of its nearest. */
+const smoothVote = (lists, lab) => lists.map((l) => { let yes = 0; for (const j of l) if (lab[j]) yes++; return yes * 2 > l.length; });
+
+/** Is a point inside a ring (even-odd)? */
+function inRing(ring, [x, y]) {
+  let c = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) { const [xi, yi] = ring[i], [xj, yj] = ring[j]; if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c; }
+  return c;
 }
 
 /** Otsu's threshold: the brightness that best parts a list into two groups (null when it does not part at all). */
@@ -369,3 +453,24 @@ export function snapTo(marks, at, reach) {
   for (const c of marks?.corners || []) { const d = Math.hypot(c.at[0] - at[0], c.at[1] - at[1]); if (d <= bd) { bd = d; best = c; } }
   return best;
 }
+
+/**
+ * The model's own returns as lidarMarks and look.js lidarPicture take them, from what lidar-load.js gridsFromModel
+ * (or loadLidar) gives: { model, shade: { sgrid, kind, K, ground }, k, ox, oy }. A column's kind is the shade map's; a
+ * height is over the shade map's ground. Shared by the page's worker and the tools, so both see the same returns.
+ */
+export function returnsFrom(L) {
+  const A = L.model?.arrays;
+  if (!A?.ptX?.length) return null;
+  const { sgrid, kind, K, ground } = L.shade, { k, ox, oy } = L;
+  const cw = sgrid.cell * 100, ch = (sgrid.cellY || sgrid.cell) * 100;
+  const col = (i) => { const c = Math.floor(A.ptX[i] / cw), r = Math.floor(A.ptY[i] / ch); return c < 0 || r < 0 || c >= sgrid.w || r >= sgrid.h ? -1 : r * sgrid.w + c; };
+  return {
+    n: A.ptX.length,
+    e: (i) => (sgrid.x0 + A.ptX[i] / 100 - ox) * k, nn: (i) => (sgrid.y1 - A.ptY[i] / 100 - oy) * k,
+    hag: (i) => { const j = col(i); return j < 0 || !Number.isFinite(ground[j]) ? NaN : A.ptZ[i] / 100 - ground[j]; },
+    bright: (i) => (A.ptI ? A.ptI[i] : 0),
+    kind: (i) => { const j = col(i), v = j < 0 ? K.NOTHING : kind[j]; return v === K.BUILDING ? 1 : v === K.TREE || v === K.SOLID_TREE ? 2 : v === K.STRUCTURE || v === K.UNKNOWN ? 3 : 0; },
+  };
+}
+
