@@ -344,7 +344,10 @@ def main(d):
 
     # THE OWNER'S TEST: the same check points placed on Mapbox and on the county photo
     if len(marks) >= 2:
-        marks = sorted(marks, key=lambda w: w.get("started") or "")
+        # by the walk's id, the moment it began (Date.now()); a walk's meta may carry no start (run 233: tonight's
+        # walk sorted first for want of one, and an older walk was taken for it)
+        marks = sorted(marks, key=lambda w: int(w["walk"]) if str(w.get("walk", "")).isdigit() else 0)
+        print(f"  the county walk: {marks[-1]['walk']} ({len(marks[-1]['marks'])} marks)")
         county, earlier = marks[-1], marks[:-1]
         cm = {m["id"]: np.array(m["map"], float) for m in county["marks"]}
         pairs = []
