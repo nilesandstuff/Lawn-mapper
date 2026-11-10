@@ -30,6 +30,7 @@ import { LimitError, meter, report } from './usage.js';
 import { inbox, receive } from './inbox.js';
 import { share } from './share.js';
 import { censusGeocode } from './census.js';
+import { countyGeocode, parseStreet, typeOf } from './county.js';
 import { sameStreet } from '../lib/parse.js';
 import { metres } from '../lib/ride.js';
 import { push } from './push.js';
@@ -70,12 +71,19 @@ export async function api(request, env, url, fetcher = fetch) {
       const near = (url.searchParams.get('near') || '').split(',').map(Number);
       const nearPt = near.length === 2 && near.every(Number.isFinite) ? near : null;
       let hit = await geocode(fetcher, token, q, nearPt, m);
-      // Mapbox found nothing, or somewhere far off, or another street: ask the Census (src/census.js)
+      // Mapbox found nothing, somewhere far off, another street, or another street TYPE (an Ave for
+      // a Ct): ask the county's parcels (src/county.js), the authority; failing that, the Census
       const far = (h) => nearPt && metres(h, { lng: nearPt[0], lat: nearPt[1] }) > 80000;
       const street = q.split(',')[0];
-      if (!hit || far(hit) || !sameStreet(hit.label, street)) {
-        const second = await censusGeocode(fetcher, q).catch(() => null);
-        if (second && !far(second) && (!hit || far(hit) || sameStreet(second.label, street))) hit = second;
+      const asked = parseStreet(street).type;
+      const doubtful = !hit || far(hit) || !sameStreet(hit.label, street) || (asked && typeOf(hit.label) && typeOf(hit.label) !== asked);
+      if (doubtful) {
+        const county = await countyGeocode(fetcher, q, nearPt).catch(() => null);
+        if (county && !far(county)) hit = county;
+        else if (!hit || far(hit) || !sameStreet(hit.label, street)) {
+          const census = await censusGeocode(fetcher, q).catch(() => null);
+          if (census && !far(census) && (!hit || far(hit) || sameStreet(census.label, street))) hit = census;
+        }
       }
       return hit ? json(hit) : json({ error: 'Address not found' }, 404);
     }
