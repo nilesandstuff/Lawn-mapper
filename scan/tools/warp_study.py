@@ -144,19 +144,35 @@ def match_windows(lid, raised, photo, inside, win=24.0, step=8.0, reach=3.0):
 _ROMA = None
 
 
-def match_roma(lid, raised, photo, inside, n=4000, a_photo=None):
-    """RoMa from the lidar's ground brightness (or, given a_photo, another photo on the same grid) to the photo."""
+def match_roma(lid, raised, photo, inside, n=4000, a_photo=None, ground_only=False):
+    """RoMa from the lidar's ground brightness (or, given a_photo, another photo on the same grid) to the photo.
+
+    ground_only (the owner, 2026-11-10: "We can only match against things at ground level. Because buildings lean...
+    Specifically don't give the matcher anything above like 1m"): everything 0.5 m or more up, and 2.5 m round it
+    (a roof in the photo leans past its walls and hides the ground there), blanked in BOTH pictures before RoMa sees
+    them, the lidar's brightness evened out (CLAHE) so paving and grass read as they do in a photo, and no match kept
+    within 0.5 m of the blank (a shared blank is a pattern both pictures have at zero shift)."""
     global _ROMA
     import torch
     from PIL import Image
     from romatch import roma_outdoor
     torch.set_num_threads(os.cpu_count() or 2)
     H, W = lid.shape
+    if ground_only:
+        blank = binary_dilation(raised, iterations=int(round(1.5 / CELL)))
+        raised = binary_dilation(blank, iterations=int(round(0.5 / CELL)))
     if a_photo is not None:
-        A = Image.fromarray(cv2.cvtColor(a_photo, cv2.COLOR_BGR2RGB))
+        a8 = a_photo.copy()
     else:
-        A = Image.fromarray((np.nan_to_num(lid, nan=0.5) * 255).astype(np.uint8)).convert("RGB")
-    B = Image.fromarray(cv2.cvtColor(photo, cv2.COLOR_BGR2RGB))
+        g8 = (np.nan_to_num(lid, nan=0.5) * 255).astype(np.uint8)
+        if ground_only:
+            g8 = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(g8)
+        a8 = cv2.cvtColor(g8, cv2.COLOR_GRAY2BGR)
+    b8 = photo.copy()
+    if ground_only:
+        a8[blank] = 128; b8[blank] = 128
+    A = Image.fromarray(cv2.cvtColor(a8, cv2.COLOR_BGR2RGB))
+    B = Image.fromarray(cv2.cvtColor(b8, cv2.COLOR_BGR2RGB))
     # no custom CUDA kernel on a CPU runner (run 226: "No module named 'local_corr'"), and full precision on a CPU
     if _ROMA is None:
         _ROMA = roma_outdoor(device="cpu", coarse_res=448, upsample_res=672, use_custom_corr=False, amp_dtype=torch.float32)
@@ -255,10 +271,11 @@ def main(d):
         photo, inside = photo_on_grid(os.path.join(d, p["file"]), fr, x0, y1, W, H)
         ties = {}
         ties["windows"] = match_windows(lid, raised, photo, inside)
-        try:
-            ties["RoMa"] = match_roma(lid, raised, photo, inside)
-        except Exception as e:   # noqa: BLE001
-            print(f"  {src}: RoMa could not run ({str(e)[:120]})")
+        for name, kw in (("RoMa", {}), ("RoMa ground only", {"ground_only": True})):
+            try:
+                ties[name] = match_roma(lid, raised, photo, inside, **kw)
+            except Exception as e:   # noqa: BLE001
+                print(f"  {src}: {name} could not run ({str(e)[:120]})")
         print(f"  {src} ({W}x{H} cells of {CELL} m, {inside.mean():.0%} covered, {raised.mean():.0%} raised): "
               + ", ".join(f"{k} {len(v)} matches" for k, v in ties.items()))
         to_m = lambda T: np.c_[x0 + (T[:, 0] + 0.5) * CELL, y1 - (T[:, 1] + 0.5) * CELL]
