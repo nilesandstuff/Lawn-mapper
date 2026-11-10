@@ -2059,6 +2059,12 @@ on both photos (it matches the blanks at any size); plain RoMa on the lidar said
 found 8.9 ft of the 4.9 ft move, with none 10.5 ft RMS held out on the tile, roofs and trees counted. No matcher
 has passed a planted move, on the lidar or between photos, as of this run.
 
+Run 240, photo to photo with only bare-ground matches counted (nothing blanked): 794 matches, RoMa found 9.7 ft
+of the 4.9 ft move. With run 239's 8.9 ft that is about DOUBLE the planted move twice running, which is not what
+a failing matcher looks like: it points at the study (how the move is planted, or how RoMa's answer is read on a
+tile). So the photo-to-photo result is INCONCLUSIVE, not a failure, until the study's own test is tested: the
+county photo against itself, still and moved (added after run 240).
+
 THE MARKS (the owner, 2026-11-10): the check points placed so far were not placed to be found again exactly, and
 were dragged between walks. Every score made ON THE MARKS carries that error: the walk-to-walk shape fix's feet
 (SCAN-H32, run 224's gates, the 1.9 and 3.0 ft above), the marks' own fits, the Mapbox-vs-county mark test. Results

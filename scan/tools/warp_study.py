@@ -419,6 +419,19 @@ def main(d):
                     print(f"    Mapbox moved {np.hypot(pe, pn) * FT:.1f} ft on purpose: RoMa found {np.hypot(*got) * FT:.1f} ft of it, {miss * FT:.1f} ft off ({len(T2)} matches)")
                 else:
                     print(f"    Mapbox moved on purpose: {len(T2)} matches, too few")
+                # THE TEST TESTED (runs 239, 240: RoMa found 8.9 and 9.7 ft of the 4.9 ft move, about double, twice):
+                # the county photo against ITSELF, still and then moved the same amount. Identical pictures, so the
+                # answer must be nothing and then the move exactly; double here means the study reads RoMa wrong.
+                imc2, inc2 = photo_on_grid(os.path.join(d, pc["file"]), fc, x0 + pe, y1 + pn, W, H)
+                none = np.zeros((H, W), bool)
+                S0 = match_roma(np.zeros((H, W)), none, imc, inc, a_photo=imc, x0=x0, y1=y1)
+                S1 = match_roma(np.zeros((H, W)), none, imc2, inc & inc2, a_photo=imc, x0=x0, y1=y1)
+                if len(S0) >= 12 and len(S1) >= 12:
+                    m0, m1 = np.median(S0[:, 2:4], 0), np.median(S1[:, 2:4], 0)
+                    print(f"    the county photo against itself: still, RoMa says {np.hypot(*m0) * FT:.2f} ft; moved ({pe:+.2f}, {pn:+.2f}) m on purpose, "
+                          f"RoMa says ({m1[0] - m0[0]:+.2f}, {m1[1] - m0[1]:+.2f}) m ({len(S0)} and {len(S1)} matches)")
+                else:
+                    print(f"    the county photo against itself: {len(S0)} and {len(S1)} matches, too few")
             else:
                 print(f"  RoMa, Mapbox onto the county photo: {len(T)} matches, too few")
         except Exception as e:   # noqa: BLE001
