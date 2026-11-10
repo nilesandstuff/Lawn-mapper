@@ -36,7 +36,7 @@ on:
         required: true
         default: tests
         type: choice
-        options: [tests, deploy, walks, twin, fix, place, depth, study, skyline, pavement, checks, repeat, register, walkfix, walkfixjs, reference]
+        options: [tests, deploy, walks, twin, fix, place, depth, study, skyline, pavement, checks, repeat, register, walkfix, walkfixjs, reference, warp]
       walk:
         description: 'For twin, fix or depth: the walk id, or latest'
         default: latest
@@ -378,6 +378,27 @@ jobs:
           # the page's own shape fix (scan/lib/walkref.js), the code the phone runs, on the same walks
           node scan/tools/reference-build.mjs check $dirs | tee -a walkfix.txt
 
+      # THE PHOTOS STRETCHED ONTO THE LIDAR (scan/tools/warp-prep.mjs, warp_study.py; docs/SCAN-PLAN.md section 17):
+      # the map's kept photo and Mapbox matched to the lidar's ground brightness (windows, and RoMa on the CPU), a
+      # smoothed spline per photo scored on held-out matches, and the owner's check points placed on both photos. The
+      # walk input: any walk on the map. CPU, free; keeps the stretched photos under refs/warp/<map>/.
+      - name: Photos stretched onto the lidar
+        if: ${{ inputs.task == 'warp' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          MAPBOX_SERVER_TOKEN: ${{ secrets.MAPBOX_SERVER_TOKEN }}
+          MAPBOX_TOKEN: ${{ secrets.MAPBOX_TOKEN }}
+          WALK: ${{ inputs.walk }}
+        run: |
+          set -o pipefail
+          pip install --quiet numpy scipy opencv-python-headless pillow
+          pip install --quiet torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          pip install --quiet "git+https://github.com/Parskatt/RoMa.git" || echo "RoMa did not install: the windows only"
+          node scan/tools/warp-prep.mjs "$WALK" warp | tee warp.txt
+          python scan/tools/warp_study.py warp | tee -a warp.txt
+          node scan/tools/warp-keep.mjs warp | tee -a warp.txt
+
       # THE PAGE'S OWN SHAPE FIX ALONE (scan/tools/reference-build.mjs check): minutes, not the pictures' 35; a few
       # search settings side by side (WALKREF_VARIANTS). The walk input: walks comma separated, same map.
       - name: The page's shape fix on walks
@@ -440,6 +461,7 @@ jobs:
             place) grep -v '^  model\|^  rays\|^  the picture' place.txt 2>/dev/null | tail -60 || echo "no placement: see the step above" ;;
             register) grep -v '^Twin read\|: kept (' register.txt 2>/dev/null | tail -70 || echo "no registration: see the step above" ;;
             repeat) cat repeat.txt 2>/dev/null || echo "no repeat-walk study: see the step above" ;;
+            warp) cat warp.txt 2>/dev/null || echo "no warp study: see the step above" ;;
             walkfixjs) cat walkfix.txt 2>/dev/null || echo "no check: see the step above" ;;
             walkfix) grep -v '^Twin read' walkfix.txt 2>/dev/null | tail -40 || echo "no walk-to-walk study: see the step above" ;;
             reference) cat reference.txt 2>/dev/null || echo "no reference: see the step above" ;;
