@@ -145,7 +145,32 @@ def match_windows(lid, raised, photo, inside, win=24.0, step=8.0, reach=3.0):
 _ROMA = None
 
 
-def match_roma(lid, raised, photo, inside, n=4000, a_photo=None, ground_only=False):
+TILE = 448           # cells a side: RoMa sees the lot at the grid's own 0.25 m, not the whole frame squeezed (run 238)
+
+
+def match_roma(lid, raised, photo, inside, n=4000, a_photo=None, ground_only=False, x0=None, y1=None):
+    """RoMa on ONE SQUARE TILE round the map's point, at the grid's own size. Run 238: given the whole frame (1370 cells,
+    342 m) squeezed to 448 pixels, a pixel was 0.76 m of ground, and RoMa found 2.7 ft of a 4.9 ft move planted
+    between two photos. The lot is what matters, and it fits a 112 m tile."""
+    H, W = lid.shape
+    S = min(TILE, H, W)
+    cc = int(round((0 - x0) / CELL)) if x0 is not None else W // 2
+    rc = int(round((y1 - 0) / CELL)) if y1 is not None else H // 2
+    c0 = int(np.clip(cc - S // 2, 0, W - S)); r0 = int(np.clip(rc - S // 2, 0, H - S))
+    sl = (slice(r0, r0 + S), slice(c0, c0 + S))
+    T = match_roma_frame(lid[sl], raised[sl], photo[sl], inside[sl], n=n, a_photo=None if a_photo is None else a_photo[sl], ground_only=ground_only)
+    if len(T):
+        T = T.copy(); T[:, 0] += c0; T[:, 1] += r0
+    return T
+
+
+def clamped(g, P):
+    """A fitted field held to where its matches were: outside their box it answers as at the box's nearest edge."""
+    lo, hi = P.min(0), P.max(0)
+    return lambda Q: g(np.clip(Q, lo, hi))
+
+
+def match_roma_frame(lid, raised, photo, inside, n=4000, a_photo=None, ground_only=False):
     """RoMa from the lidar's ground brightness (or, given a_photo, another photo on the same grid) to the photo.
 
     ground_only (the owner, 2026-11-10: "We can only match against things at ground level. Because buildings lean...
@@ -274,7 +299,7 @@ def main(d):
         ties["windows"] = match_windows(lid, raised, photo, inside)
         for name, kw in (("RoMa", {}), ("RoMa ground only", {"ground_only": True})):
             try:
-                ties[name] = match_roma(lid, raised, photo, inside, **kw)
+                ties[name] = match_roma(lid, raised, photo, inside, x0=x0, y1=y1, **kw)
             except Exception as e:   # noqa: BLE001
                 print(f"  {src}: {name} could not run ({str(e)[:120]})")
         print(f"  {src} ({W}x{H} cells of {CELL} m, {inside.mean():.0%} covered, {raised.mean():.0%} raised): "
@@ -287,7 +312,7 @@ def main(d):
             pe, pn = PLANT
             try:
                 photo2, inside2 = photo_on_grid(os.path.join(d, p["file"]), fr, x0 + pe, y1 + pn, W, H)
-                g2 = match_roma(lid, raised, photo2, inside & inside2, ground_only=True)
+                g2 = match_roma(lid, raised, photo2, inside & inside2, ground_only=True, x0=x0, y1=y1)
                 got = np.median(g2[:, 2:4], 0) - np.median(g[:, 2:4], 0) if len(g2) >= 12 else np.array([np.nan, np.nan])
                 miss = float(min(np.hypot(got[0] - pe, got[1] - pn), np.hypot(got[0] + pe, got[1] + pn)))   # either sign
                 ok = np.isfinite(miss) and miss < 0.3
@@ -333,7 +358,7 @@ def main(d):
                 cross = {m: np.linalg.norm(fit(m, P, D, lam)(P2) - D2, axis=1) for m in ("none", "shift", "affine", "spline")}
                 print(f"      fitted on {name}, scored on {other}'s matches: " + "; ".join(f"{m} {summary(e)}" for m, e in cross.items()))
             if best_field is None or rms[method] < best_field[2]:
-                best_field = (f"{name}'s {method}", g, rms[method])
+                best_field = (f"{name}'s {method}", clamped(g, P), rms[method])
         if best_field:
             fields[src] = best_field[1]
             # the field on a 1 m grid over the photo, for the placement map (the photo stretched onto the lidar)
@@ -368,7 +393,7 @@ def main(d):
             W, H = int((float(e1) - x0) / CELL), int((y1 - float(n0)) / CELL)
             imc, inc = photo_on_grid(os.path.join(d, pc["file"]), fc, x0, y1, W, H)
             imm, inm = photo_on_grid(os.path.join(d, pm["file"]), fm, x0, y1, W, H)
-            T = match_roma(np.zeros((H, W)), np.zeros((H, W), bool), imm, inc & inm, a_photo=imc)
+            T = match_roma(np.zeros((H, W)), np.zeros((H, W), bool), imm, inc & inm, a_photo=imc, x0=x0, y1=y1)
             if len(T) >= 12:
                 to_m = lambda T: np.c_[x0 + (T[:, 0] + 0.5) * CELL, y1 - (T[:, 1] + 0.5) * CELL]
                 P, D = to_m(T), T[:, 2:4]
@@ -379,10 +404,11 @@ def main(d):
                 # other, for Lawn Mapper's line-up): Mapbox moved a known amount, and the fitted maps must differ by it
                 pe, pn = PLANT
                 imm2, inm2 = photo_on_grid(os.path.join(d, pm["file"]), fm, x0 + pe, y1 + pn, W, H)
-                T2 = match_roma(np.zeros((H, W)), np.zeros((H, W), bool), imm2, inc & inm2, a_photo=imc)
+                T2 = match_roma(np.zeros((H, W)), np.zeros((H, W), bool), imm2, inc & inm2, a_photo=imc, x0=x0, y1=y1)
                 if len(T2) >= 12:
                     P2, D2 = to_m(T2), T2[:, 2:4]
-                    gx, gy = np.meshgrid(np.linspace(x0, x0 + W * CELL, 12), np.linspace(y1 - H * CELL, y1, 8))
+                    lo, hi = P.min(0), P.max(0)
+                    gx, gy = np.meshgrid(np.linspace(lo[0], hi[0], 10), np.linspace(lo[1], hi[1], 10))
                     Q = np.c_[gx.ravel(), gy.ravel()]
                     got = np.median(fit("affine", P2, D2)(Q) - fit("affine", P, D)(Q), 0)
                     miss = float(min(np.hypot(got[0] - pe, got[1] - pn), np.hypot(got[0] + pe, got[1] + pn)))

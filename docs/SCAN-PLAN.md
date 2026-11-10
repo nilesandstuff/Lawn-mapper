@@ -2045,6 +2045,15 @@ up, and 2.5 m round it, blanked in both pictures; the lidar's brightness evened 
   - So no matcher here has yet read the lidar's ground against a photo. The photos against each other: RoMa finds
     a smooth 2-D warp between them in every run (none 3.6-6.6 ft RMS held out, affine 2.5-2.8, spline 1.3-1.5).
 
+Run 238, the planted shift between the two photos (the owner, 2026-11-10: "maybe it would be handy, just in
+general, if we could stretch aerial imagery onto each other. We have an automatic fit for the lawn mapper, but it's
+not very good sometimes"): Mapbox moved 4.9 ft on purpose, RoMa found 2.7 ft of it. So its photo-to-photo numbers
+above (spline 1.3-1.5 ft held out) are its agreement with itself and are NOT yet a measured accuracy. A fault of
+the study's own, found by this: every RoMa run so far was given the whole frame (1370 cells, 342 m) squeezed to 448
+pixels, 0.76 m of ground a pixel. Since commit after 30f353c RoMa runs on one 448-cell tile (112 m) round the map's
+point at the grid's own 0.25 m, and a kept field is held to its matches' box. All RoMa findings above were made on
+the squeezed frame and are to be read so.
+
 THE MARKS (the owner, 2026-11-10): the check points placed so far were not placed to be found again exactly, and
 were dragged between walks. Every score made ON THE MARKS carries that error: the walk-to-walk shape fix's feet
 (SCAN-H32, run 224's gates, the 1.9 and 3.0 ft above), the marks' own fits, the Mapbox-vs-county mark test. Results
