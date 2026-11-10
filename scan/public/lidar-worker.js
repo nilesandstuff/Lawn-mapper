@@ -16,6 +16,7 @@ import { register, MIN_LANDED } from '/lib/lidar.js';
 import { loadLidar } from '/lib/lidar-load.js';
 import { walkFix } from '/lib/walkfix.js';
 import { lookGrids, lidarPicture } from '/lib/look.js';
+import { lidarMarks } from '/lib/lidar-marks.js';
 // THE SHARED TREE-VERSUS-BUILDING RULE'S MODULE (CLAUDE.md, "One way to read lidar"), copied into this site unchanged
 // at deploy time (scan/tools/prepare.mjs): its kind codes and wallsOf. The kinds themselves come from the model.
 const sharedRule = () => import('/lib/shade/structures.js');
@@ -110,13 +111,18 @@ self.onmessage = async ({ data }) => {
       if (A?.ptX?.length) {
         const cw = sgrid.cell * 100, ch = (sgrid.cellY || sgrid.cell) * 100;
         const col = (i) => { const c = Math.floor(A.ptX[i] / cw), r = Math.floor(A.ptY[i] / ch); return c < 0 || r < 0 || c >= sgrid.w || r >= sgrid.h ? -1 : r * sgrid.w + c; };
-        picture = lidarPicture(box, {
+        const P = {
           n: A.ptX.length,
           e: (i) => (sgrid.x0 + A.ptX[i] / 100 - ox) * k, nn: (i) => (sgrid.y1 - A.ptY[i] / 100 - oy) * k,
           hag: (i) => { const j = col(i); return j < 0 || !Number.isFinite(ground[j]) ? NaN : A.ptZ[i] / 100 - ground[j]; },
           bright: (i) => (A.ptI ? A.ptI[i] : 0),
           kind: (i) => { const j = col(i), v = j < 0 ? K.NOTHING : kind[j]; return v === K.BUILDING ? 1 : v === K.TREE || v === K.SOLID_TREE ? 2 : v === K.STRUCTURE || v === K.UNKNOWN ? 3 : 0; },
-        });
+        };
+        picture = lidarPicture(box, P, undefined, { noRaised: true });
+        // the raised things' straight edges and corners, to place points on (lib/lidar-marks.js)
+        const t0 = Date.now(), M = lidarMarks(box, P);
+        picture.marks = { objects: M.objects.map((o) => ({ id: o.id, kind: o.kind, ring: o.ring, top: o.top, area: o.area, square: o.square })), corners: M.corners, spacing: M.spacing };
+        self.postMessage({ progress: `lidar marks: ${M.objects.length} things, ${M.corners.filter((c) => c.kind === 'corner').length} corners (${M.corners.filter((c) => c.sure).length} sure), ${Date.now() - t0} ms` });
       }
     } catch (err) { self.postMessage({ progress: `the lidar picture could not be made (${err.message})` }); }
     const solids = Float32Array.from(sol), tallA = Float32Array.from(tall), roofsA = Float32Array.from(roofRuns), dist = Float32Array.from(G.dist);

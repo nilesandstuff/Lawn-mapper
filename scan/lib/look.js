@@ -127,7 +127,7 @@ export function lookMeshes(show) {
  * Returns { e0, n1, cell, W, H, rgba } with rows from the north.
  */
 export const PICTURE_CELL = 0.25;
-export function lidarPicture(box, pts, cell = PICTURE_CELL) {
+export function lidarPicture(box, pts, cell = PICTURE_CELL, opts = {}) {
   const W = Math.max(1, Math.ceil((box[2] - box[0]) / cell)), H = Math.max(1, Math.ceil((box[3] - box[1]) / cell)), N = W * H;
   const sum = new Float32Array(N), cnt = new Float32Array(N), roof = new Uint8Array(N), tree = new Uint8Array(N), other = new Uint8Array(N);
   for (let i = 0; i < pts.n; i++) {
@@ -160,8 +160,12 @@ export function lidarPicture(box, pts, cell = PICTURE_CELL) {
   for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) {
     const k = r * W + c, v = Number.isNaN(g[k]) ? 70 : 40 + 190 * Math.min(1, Math.max(0, (g[k] - lo) / Math.max(1e-6, hi - lo)));
     let px = [v, v, v];
-    if (O[k]) px = edge(O, k, r, c) ? [200, 90, 0] : [255, 150, 40];
-    if (R[k]) px = edge(R, k, r, c) ? [255, 255, 255] : [20, 20, 22];   // a white line round a dark roof: its edge is what is aimed at
+    // raised things (roofs, decks, walls, sheds) are not drawn here: lib/lidar-marks.js gives them straight edges and
+    // corners, drawn over this picture as lines (scan/public/app.js); the cells only for a caller with no outlines
+    if (!opts.noRaised) {
+      if (O[k]) px = edge(O, k, r, c) ? [200, 90, 0] : [255, 150, 40];
+      if (R[k]) px = edge(R, k, r, c) ? [255, 255, 255] : [20, 20, 22];
+    }
     if (T[k] && !R[k] && edge(T, k, r, c)) px = [40, 220, 80];
     rgba[k * 4] = px[0]; rgba[k * 4 + 1] = px[1]; rgba[k * 4 + 2] = px[2]; rgba[k * 4 + 3] = 255;
   }

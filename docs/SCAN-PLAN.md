@@ -2237,3 +2237,38 @@ fix is needed on it; Street View places the view and its "by geo" readings mean 
 at again exactly, never dragged. The walk after it is the test of the shape fit, scored aim to aim. With "Lidar"
 chosen on the placement map the points of the new set are placed on the lidar.
 
+## 21. Corners to place points on, from the laser's own returns (owner, 2026-11-10)
+
+The owner, on the first lidar picture (section 20): "I was very clear about how those points from yesterday were
+problems that needed solving... They don't need to just be explained away." Straight edges and corners to snap to
+were asked for in section 17's point 1, and "The blurry edge is just too imprecise for human eyes". Marks beside raised
+things (point 4) cannot be avoided: at home the brick patio does not show on the lidar, at work the drives are dirt
+with no edges, and the marks used there were tree stumps and the corner of a ~6 ft stone wall. The deck (5-6 ft round
+the pool and hot tub, an upper level ~10 ft) showed as orange zigzags.
+
+What answers it (scan/lib/lidar-marks.js, on the placement map's "Lidar" picture):
+  - A RAISED THING WITH UPRIGHT SIDES IS, FROM ABOVE, EXACTLY AS WIDE AS ITS TOP: the laser's outermost returns are its
+    edge, and in the walk its corner is aimed at where it is, at any height (a mark's fit uses its place across the
+    ground). Point 4's doubling came from blurry cells and a ground mark beside the thing, not from height.
+  - Things: raised returns (0.3 m+ over the ground, trees' left out) that touch, or lie further apart at the same
+    height (a wall's top); levels within a thing parted by a 0.8 m height step (a deck's upper floor is its own thing).
+  - Each thing squared to its own grid, every side set where its own returns and the others' part along it, halfway
+    across the gap, in two passes; a short side (a wall's end) looks further for ground beyond it.
+  - Every corner says how sure it is: half the gap of returns its two sides were set in. Sure (a white dot) when that is
+    0.3 m or less; a hollow yellow ring otherwise (a wall's end, where the laser's last hit on its top may stop short of
+    it). A small thing (under 6 m2: a hot tub, a stump, a post) is also marked by its middle (a white cross).
+  - Paving told apart from grass by the ground returns' brightness (Otsu's threshold, each return's side by the vote of
+    its 15 nearest), outlined the same way, dashed blue; its corners are NEVER said to be sure.
+  - Drawn as lines over the ground's brightness, at any zoom, in the magnifier too; a placed point snaps to a corner
+    within a fingertip and keeps what it snapped to (`snap` in live.json's points).
+
+HARD, on synthetic yards at 4 returns a square metre (scan/test/lidar-marks.test.js): a two-level deck's ten corners
+0.0-0.3 ft (median 0.1); a 0.5 m stone wall's faces within 0.15 m, its ends 0.1 ft where the laser hits them and 4.4 ft
+where its last hits stop short (both said unsure); a drive by brightness overlapping the grass's 0.3-1.4 ft. A whole
+lot, 38,400 returns, in 2.6 s on a desktop. NOT yet run on the owner's lots; NOT yet seen on a phone.
+
+What it does not answer: a stump the 2018 flight hit once or not at all cannot be found from the lidar (about 4
+returns a square metre; a 0.5 m stump is hit about once). The brick patio, if its brightness does not part from the
+grass. These may need the photo for their geometry (the owner: "If we have to use the imagery to guess at the specific
+geometry, that should be fine, because the skew shouldn't come into play on modestly sized driveways"): not built.
+

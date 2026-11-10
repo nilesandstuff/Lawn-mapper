@@ -1,0 +1,70 @@
+// scan/lib/lidar-marks.js: straight edges and corners from the laser's returns. node scan/test/lidar-marks.test.js
+import assert from 'node:assert/strict';
+import { lidarMarks, snapTo } from '../lib/lidar-marks.js';
+
+let seed = 11; const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+// a 40 x 30 m patch at about 4 returns a square metre (the owner's 2018 flight), returns scattered at random
+const P = [];
+const inRect = (e, n, x0, y0, x1, y1) => e >= x0 && e <= x1 && n >= y0 && n <= y1;
+const deckLow = (e, n) => inRect(e, n, 5, 5, 17, 13) || inRect(e, n, 5, 13, 10, 18);     // an L, 1.7 m up
+const deckHigh = (e, n) => inRect(e, n, 12, 8, 17, 13);                                    // its upper level, 3.1 m up
+const wall = (e, n) => inRect(e, n, 25, 4, 33, 4.5);                                       // a stone wall, 1.8 m, 0.5 thick
+const tub = (e, n) => Math.hypot(e - 30, n - 20) <= 1.1;                                   // a round hot tub, 1 m
+for (let i = 0; i < 40 * 30 * 4; i++) {
+  const e = rnd() * 40, n = rnd() * 30;
+  let h = 0;
+  if (deckHigh(e, n)) h = 3.1; else if (deckLow(e, n)) h = 1.7; else if (wall(e, n)) h = 1.8; else if (tub(e, n)) h = 1.0;
+  P.push({ e, n, h: h + (rnd() - 0.5) * 0.05 });
+}
+const pts = { n: P.length, e: (i) => P[i].e, nn: (i) => P[i].n, hag: (i) => P[i].h, bright: () => 0, kind: () => 3 };
+const M = lidarMarks([0, 0, 40, 30], pts);
+const near = (at, want) => Math.hypot(at[0] - want[0], at[1] - want[1]);
+const best = (want) => Math.min(...M.corners.map((c) => near(c.at, want)));
+
+assert.ok(M.spacing > 0.4 && M.spacing < 0.6, `return spacing ${M.spacing}`);
+// the deck's six outer corners and the upper level's four, each found
+const deck = [[5, 5], [17, 5], [17, 13], [10, 13], [10, 18], [5, 18]], high = [[12, 8], [17, 8], [17, 13], [12, 13]];
+const errs = [...deck, ...high].map(best);
+console.log(`deck corners: ${errs.map((x) => (x * 3.281).toFixed(1)).join(', ')} ft off (median ${(errs.sort((a, b) => a - b)[errs.length >> 1] * 3.281).toFixed(1)})`);
+assert.ok(errs.every((x) => x < 0.45), 'every deck corner within 0.45 m');
+assert.ok(errs[errs.length >> 1] < 0.25, 'the median within 0.25 m');
+// the wall: its long sides exact; its ends only as sure as the laser's last hits on its top, and said so
+const wallObj = M.objects.find((o) => near(o.middle, [29, 4.25]) < 3 && o.ring);
+assert.ok(wallObj, 'the wall is one thing');
+const vs = wallObj.ring.map((p) => p[1]);
+assert.ok(Math.abs(Math.min(...vs) - 4) < 0.15 && Math.abs(Math.max(...vs) - 4.5) < 0.15, `the wall's faces: ${vs.map((v) => v.toFixed(2))}`);
+const wallCorners = M.corners.filter((c) => c.of === wallObj.id && c.kind === 'corner');
+for (const c of wallCorners) {
+  const e = Math.min(...[[25, 4], [33, 4], [33, 4.5], [25, 4.5]].map((w) => near(c.at, w)));
+  if (c.sure) assert.ok(e < 0.4, `a corner said to be sure is within 0.4 m (${e.toFixed(2)})`);
+  else assert.ok(c.within === null || c.within > 0.3, 'an unsure corner says how unsure');
+}
+console.log(`wall corners: ${wallCorners.map((c) => `${(Math.min(...[[25, 4], [33, 4], [33, 4.5], [25, 4.5]].map((w) => near(c.at, w))) * 3.281).toFixed(1)} ft${c.sure ? '' : ' (unsure)'}`).join(', ')}`);
+// every deck corner is sure
+assert.ok(M.corners.filter((c) => c.kind === 'corner' && near(c.at, [11, 11]) < 9).every((c) => c.sure), 'the deck\'s corners are sure');
+// the hot tub: round, so its middle
+const tubMark = M.corners.find((c) => near(c.at, [30, 20]) < 0.5);
+assert.ok(M.corners.some((c) => c.kind === 'middle' && near(c.at, [30, 20]) < 0.4), 'a small round thing is marked by its middle');
+// two levels of the deck: two objects over it, the upper one about 3.1 m up
+const overDeck = M.objects.filter((o) => near(o.middle, [11, 11]) < 6);
+assert.equal(overDeck.length, 2); assert.ok(overDeck.some((o) => Math.abs(o.top - 3.1) < 0.2) && overDeck.some((o) => Math.abs(o.top - 1.7) < 0.2));
+// snapping
+assert.ok(near(snapTo(M, [17.3, 4.8], 1).at, [17, 5]) < 0.45); assert.equal(snapTo(M, [2, 25], 1), null);
+console.log('lidar-marks: ok');
+
+// paving by the ground's brightness: a 6 x 14 m drive, brightness overlapping the grass's (as a real flight's does)
+{
+  let sd = 5; const r = () => ((sd = (sd * 1103515245 + 12345) % 2147483648) / 2147483648);
+  const g = () => Math.sqrt(-2 * Math.log(r() + 1e-12)) * Math.cos(2 * Math.PI * r());
+  const Q = [];
+  for (let i = 0; i < 30 * 25 * 4; i++) { const e = r() * 30, n = r() * 25; const drive = e >= 8 && e <= 14 && n >= 5 && n <= 19; Q.push({ e, n, b: drive ? 120 + 25 * g() : 60 + 25 * g() }); }
+  const R2 = lidarMarks([0, 0, 30, 25], { n: Q.length, e: (i) => Q[i].e, nn: (i) => Q[i].n, hag: () => 0, bright: (i) => Q[i].b, kind: () => 0 });
+  const drive = R2.objects.find((o) => o.kind === 'paving' && near(o.middle, [11, 12]) < 2);
+  assert.ok(drive, 'the drive is found by its brightness');
+  const dc = [[8, 5], [14, 5], [14, 19], [8, 19]].map((w) => Math.min(...R2.corners.filter((c) => c.of === drive.id).map((c) => near(c.at, w))));
+  console.log(`drive corners: ${dc.map((x) => (x * 3.281).toFixed(1)).join(', ')} ft off`);
+  assert.ok(dc.every((x) => x < 0.7), 'every drive corner within 0.7 m (brightness is noisy)');
+  assert.ok(R2.corners.filter((c) => c.of === drive.id && c.kind === 'corner').every((c) => !c.sure), 'and none is said to be sure');
+  assert.ok(R2.objects.filter((o) => o.kind === 'paving').length <= 2, 'the grass is not a slab with corners');
+  console.log('lidar-marks (paving): ok');
+}

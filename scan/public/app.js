@@ -12,6 +12,7 @@ import { detect, start, engineChoice, load8thWall } from '/lib/track.js';
 import { newWalk, step, dropPin, checkPin, measure, tapeFor, undo, far, summary, pinNow } from '/lib/walk.js';
 import { makeDrawer, lidarMeshes, OCC_RANGE, OCC_RANGE_FULL } from '/lib/draw.js';
 import { lookMeshes } from '/lib/look.js';
+import { snapTo } from '/lib/lidar-marks.js';
 import { levelDist, toLocal } from '/lib/frames.js';
 import { frameFor, bboxOf, toPx, fromPx, ringsOf } from '/lib/photo.js';
 import { newLocate, mark, noteGround, addDepth, nextAsk, answer, fitFor, mapOf, sessionOf, checkError, nearestNamed, agreement, groundOffset, groundUnder, status as fixStatus, summaryOf } from '/lib/locate.js';
@@ -294,7 +295,7 @@ function photoTools() {
   s.classList.toggle('plain', st.photoChoice !== 'stretched');
   const crisp = pref('scan-crisp', '1') !== '0';
   c.classList.toggle('plain', !crisp); c.setAttribute('aria-pressed', String(crisp));
-  if (st.photoChoice === 'lidar') { $('#photo-why').textContent = 'The lidar itself: the ground by its brightness (paving shows), roofs dark with a white edge where the laser hit them (no walls: the laser did not see them), a green line round each tree, other things orange. A point placed here is placed on the lidar.'; return; }
+  if (st.photoChoice === 'lidar') { const M = st.lid.overlay?.picture?.marks; $('#photo-why').textContent = `The lidar itself. Raised things (roofs, decks, walls, sheds, hot tubs) have straight edges fitted to the laser's hits; paving the laser tells apart by brightness is dashed blue (its corners always less sure). A point snaps to a corner: a white dot is pinned to about a foot, a yellow ring is less sure (the laser's last hit may stop short), a white cross is a small thing's middle. In the walk, aim at that corner itself, at any height. The ground shows by brightness; trees are green outlines.${M ? ` ${M.corners.filter((c) => c.sure).length} sure corners here.` : ''}`; return; }
   $('#photo-why').textContent = st.photos?.stretched
     ? (st.photoChoice === 'stretched' ? 'Stretched onto the lidar: each spot moved to where the lidar measured it, so a corner on the ground is where it is on the ground.' : 'The photo as the map was traced on it. Aerial photos lean and stretch a little at the ground; "Stretched onto the lidar" corrects that.')
     : 'No stretched photo for this map yet.';
@@ -400,6 +401,7 @@ function drawMap() {
   // the property line (dashed white) and the traced lawn, at a width of v canvas pixels a screen pixel
   const traces = (v) => { for (const r of st.parcel) ring(r, 'rgba(255,255,255,.8)', [6 * v, 4 * v], 2 * v); for (const r of st.lawn) ring(r, CSS.lawn, null, 2 * v); };
   traces(u);
+  if (st.photoChoice === 'lidar') lidarLines(g, u);
   // a point: a ring with a fine cross at its exact spot (the photo shows through), and its name beside it
   const dot = (map, color, label, r = 9, chosen = false) => {
     const [x, y] = px(map), R = r * u;
@@ -422,6 +424,7 @@ function drawMap() {
     g.setTransform(zs, 0, 0, zs, cx - x * zs, cy - y * zs);
     if (st.photo) g.drawImage(st.photo, 0, y0);
     traces(k / zs); // the lawn's and the lot's lines in the magnifier too (the owner, 2026-11-10)
+    if (st.photoChoice === 'lidar') lidarLines(g, k / zs);
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.beginPath(); g.moveTo(cx - R, cy); g.lineTo(cx + R, cy); g.moveTo(cx, cy - R); g.lineTo(cx, cy + R); g.lineWidth = 1.5 * k; g.strokeStyle = st.dragging.kind === 'ref' ? CSS.ref : CSS.check; g.stroke();
     g.restore();
@@ -432,6 +435,40 @@ function drawMap() {
   }
   if (st.L && st.ar?.pose && st.walk) { const me = mapOf(st.L, st.ar.pose.position, st.walk.odo); if (me) dot(me, '#ffeb3b', 'you', 7); }
 }
+/**
+ * THE LIDAR'S RAISED THINGS AS STRAIGHT LINES, AND THEIR CORNERS (lib/lidar-marks.js; the owner, 2026-11-10: "The
+ * blurry edge is just too imprecise for human eyes to decide where the edge is"). A roof dark, a deck, wall, shed or hot
+ * tub orange (an upper level deeper), each edge a crisp line; a corner a white dot when the laser pins it to about a
+ * foot, a hollow yellow ring when it does not (a wall's end the laser's last hit may stop short of); a small round
+ * thing's middle a white cross. u: canvas pixels a screen pixel.
+ */
+function lidarLines(g, u) {
+  const M = st.lid.overlay?.picture?.marks; if (!M) return;
+  for (const o of M.objects) {
+    if (!o.ring || o.ring.length < 3) continue;
+    g.beginPath(); o.ring.forEach((p, i) => { const [x, y] = px(p); if (i) g.lineTo(x, y); else g.moveTo(x, y); }); g.closePath();
+    if (o.kind === 'paving') { g.fillStyle = 'rgba(120,170,255,.22)'; g.fill(); g.setLineDash([5 * u, 3 * u]); g.lineWidth = 2 * u; g.strokeStyle = '#9cc4ff'; g.stroke(); g.setLineDash([]); continue; }
+    g.fillStyle = o.kind === 'building' ? 'rgba(18,18,22,.85)' : o.top > 2.5 ? 'rgba(210,95,0,.7)' : 'rgba(255,150,40,.6)';
+    g.fill(); g.lineWidth = 2 * u; g.strokeStyle = '#fff'; g.stroke();
+  }
+  for (const c of M.corners) {
+    const [x, y] = px(c.at), r = 5 * u;
+    if (c.kind === 'middle') { g.beginPath(); g.moveTo(x - r, y); g.lineTo(x + r, y); g.moveTo(x, y - r); g.lineTo(x, y + r); g.lineWidth = 2.5 * u; g.strokeStyle = '#fff'; g.stroke(); continue; }
+    g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2);
+    if (c.sure) { g.fillStyle = '#fff'; g.fill(); g.lineWidth = 1.5 * u; g.strokeStyle = '#000'; g.stroke(); }
+    else { g.lineWidth = 2 * u; g.strokeStyle = '#ffd400'; g.stroke(); }
+  }
+}
+
+/** A point placed on the lidar view goes to the corner within a fingertip, when there is one. */
+function snapped(at) {
+  if (st.photoChoice !== 'lidar') return { at, snap: null };
+  const reach = (28 * cssK()) / st.view.s * (photoW() ? Math.abs(unpx([1, 0])[0] - unpx([0, 0])[0]) : 0);
+  const c = snapTo(st.lid.overlay?.picture?.marks, at, reach);
+  return c ? { at: c.at.slice(), snap: { kind: c.kind, of: c.of, sure: !!c.sure, within: c.within ?? null } } : { at, snap: null };
+}
+const snapWord = (sn) => (!sn ? 'not on a corner' : sn.kind === 'middle' ? 'on a small thing\'s middle' : sn.sure ? 'on a corner the laser pins (about a foot)' : `on a corner the laser does not pin${sn.within ? ` (within ${Math.round(sn.within * 3.281 * 10) / 10} ft)` : ''}`);
+
 /** Canvas pixels per screen pixel: the map canvas is the photo's own size, shown at the page's width. */
 function cssK() { const cv = $('#map'), r = cv?.getBoundingClientRect(); return r && r.width ? cv.width / r.width : 1; }
 const MAX_ZOOM = 40;
@@ -452,7 +489,7 @@ function listPoints() {
     el.innerHTML = st.points.map((p) => `<li><span style="color:${p.kind === 'ref' ? CSS.ref : CSS.check};font-weight:600">${esc(p.name)}</span> ${p.again ? 'placed again' : p === t ? '<strong>tap its spot now</strong>' : 'to do'}</li>`).join('');
     return;
   }
-  el.innerHTML = st.points.map((p) => `<li><span style="color:${p.kind === 'ref' ? CSS.ref : CSS.check};font-weight:600">${esc(p.name)}</span> ${p.kind === 'ref' ? 'reference' : 'check point'}</li>`).join('') || '<li class="dim">None yet. Tap the photo.</li>';
+  el.innerHTML = st.points.map((p) => `<li><span style="color:${p.kind === 'ref' ? CSS.ref : CSS.check};font-weight:600">${esc(p.name)}</span> ${p.kind === 'ref' ? 'reference' : 'check point'}${p.on === 'lidar' ? (p.snap ? (p.snap.kind === 'middle' ? ' · on a small thing\'s middle' : p.snap.sure ? ' · on a sure corner' : ' · on a less sure corner') : ' · on the lidar, not on a corner') : ''}</li>`).join('') || '<li class="dim">None yet. Tap the photo.</li>';
 }
 function wireMap() {
   const cv = $('#map'), ptrs = new Map();
@@ -496,6 +533,7 @@ function wireMap() {
     ptrs.delete(ev.pointerId);
     if (pinch) { if (ptrs.size < 2) pinch = null; downAt = null; drag = null; pan = null; return; }
     const xy = canvasXY(ev);
+    if (drag && moved && !drag.of && st.photoChoice === 'lidar') { const sp = snapped(drag.map); drag.map = sp.at; drag.snap = sp.snap || undefined; }
     if (drag && moved) {
       const far = dragFrom ? Math.hypot(drag.map[0] - dragFrom[0], drag.map[1] - dragFrom[1]) * 3.281 : 0;
       flash(`${drag.name} moved ${far < 10 ? far.toFixed(1) : Math.round(far)} ft`); log(`point ${drag.name} moved ${far.toFixed(1)} ft on the map`);
@@ -514,7 +552,9 @@ function wireMap() {
       if (!againTodo()) flash('Every point placed again. Tap "Done" to go back.');
       return;
     }
-    st.points.push({ id: `${Date.now()}`, kind: st.adding, name: nextName(st.adding), map: unpx(b), on: st.photoChoice || undefined });
+    const sp = snapped(unpx(b));
+    st.points.push({ id: `${Date.now()}`, kind: st.adding, name: nextName(st.adding), map: sp.at, on: st.photoChoice || undefined, snap: sp.snap || undefined });
+    if (st.photoChoice === 'lidar') flash(`${st.points[st.points.length - 1].name} ${snapWord(sp.snap)}`);
     savePoints(); listPoints(); drawMap();
   };
   cv.addEventListener('pointerup', (ev) => up(ev, false));
@@ -817,7 +857,7 @@ async function appBox() {
     <div class="tools" style="margin-top:6px"><a href="/api/app/apk"><button type="button">Get the app</button></a> <a href="/api/app/pair"><button type="button" class="plain">Open in the app</button></a></div>
     <p class="dim" style="margin:6px 0 0">First time: Get the app, open the download and allow installing from Chrome. Then Open in the app signs it in (once).</p>`;
 }
-const pointsKept = () => (st.points || []).map((p) => ({ id: p.id, name: p.name, kind: p.kind, map: p.map, on: p.on || null, again: p.again || null }));
+const pointsKept = () => (st.points || []).map((p) => ({ id: p.id, name: p.name, kind: p.kind, map: p.map, on: p.on || null, again: p.again || null, snap: p.snap || null }));
 
 function nextTarget() {
   // the point the owner picked on the mini map, until it is marked (2026-11-03: Mark "was demanding R2, which I had
