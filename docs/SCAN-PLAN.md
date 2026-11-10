@@ -2280,8 +2280,17 @@ called a building ("Not sure if thats solvable or worth solving").
     building, 52 returns at 3.4 m, against the 141 m2 building at 7.2 m (the owner's house, by the deck).
   - then, not re-run: a thing of under 6 returns is dropped, and one under 10 m2 with crowns over 30% round it (run 252
     left 15 of 1.5-4 m2 there, 60-120 m out). Of run 252's 25 things that leaves about 10.
-  - The drive: which of the 5 slabs it is cannot be told from a public log (distances only: 49-113 m from the largest
-    building, which is not the house). The owner's look decides.
+  - The drive: the owner's look at run 252's slabs: "2 are my neighbor's grass... They actually pretty neatly outline
+    the grass and don't overlap the driveway hardly at all, so you're onto something, it's just backwards... my
+    driveway is concrete and the road is black top. Both show up darker than grass, blacktop shows up a little darker
+    than concrete." The 474 m2 building is the neighbour's house; the owner's is the 141 m2 one, with the deck.
+  - run 254 (aa85906, paving = ground darker than the lawn, in bands of brightness and below cuts, ground under crowns
+    left out, contrast in a surface's own noise): 9 slabs of 9-80 m2 kept, specks; the big dark groups nearest the
+    lawn (380-1230 m2, 36-46 m from the lawn's middle) failed as unpinned.
+  - run 255 (388a7b5, a slab's outside is everything not it; 20 m2 or more): 6 slabs of 26-136 m2, 34-86 m from the
+    lawn's middle. The dark groups 36-37 m from it (380-480 m2) still fail: straight enough in parts (held 0.9, pinned
+    0.9) but 18-36 sides and strays 0.23-0.31: most likely the drive run into the road, one ragged shape. NOT solved.
+    The way the owner offered for it: the aerial photo's geometry for a drive (not built).
 NOT yet seen on a phone.
 
 What it does not answer: a stump the 2018 flight hit once or not at all cannot be found from the lidar (about 4
