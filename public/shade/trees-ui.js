@@ -280,7 +280,7 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
       : season.classified
         ? ` Columns: ${(c.deciduous || 0) - asFlown} deciduous, ${c.evergreen || 0} evergreen, ${asFlown ? `${asFlown} in leaf as flown, ` : ''}${c.roof || 0} building${c.structure ? `, ${c.structure} low structure` : ''}.`
         : ` Columns: ${c.deciduous || 0} tree, ${c.roof || 0} building${c.structure ? `, ${c.structure} low structure` : ''}.`;
-    say(`${showingFine() ? `${fineCount.toLocaleString()} half-meter blocks drawn, where the laser hit (the light is worked out on 1 m blocks: untick "Laser blocks at 0.5 m" to see those; ${runs.length.toLocaleString()} pieces).` : `${runs.length.toLocaleString()} pieces drawn.`} ${leafOff
+    say(`${showingFine() ? `${fineCount.toLocaleString()} half-meter blocks drawn, where the laser hit; where the survey was sparse, trees look speckled, because that is all the laser caught (the light is worked out on 1 m blocks: untick "Laser blocks at 0.5 m" to see those; ${runs.length.toLocaleString()} pieces).` : `${runs.length.toLocaleString()} pieces drawn.`} ${leafOff
       ? `${flight === 'mixed' ? 'Part of the lidar here was flown with the leaves off and part in leaf; leaves are added only where the laser saw bare branches' : 'The lidar was flown with the leaves off'}${flownTo ? ` (to ${flownTo})` : ''}; ${st.leaves === 0 ? 'drawn bare, as flown' : `deciduous crowns drawn with ${Math.round(100 * st.leaves)}% of their summer leaves`}.`
       : flight === 'on' ? 'The lidar was flown in leaf: drawn as flown, no leaves added.' : 'The flight season is unknown: drawn as flown.'}${columns}`);
     eraseNote();
