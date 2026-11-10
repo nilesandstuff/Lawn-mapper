@@ -36,6 +36,7 @@ import numpy as np
 from scipy.interpolate import RBFInterpolator
 from scipy.ndimage import binary_dilation, gaussian_filter
 
+PLANT = (1.2, -0.9)  # m: the shift planted to check a matcher sees a real one (run 235)
 MAX_STRETCH = 3.0    # m: no stretch kept whose matches' median says more (run 227)
 SHIFT = [0.0, 0.0]                   # the model's one shift onto the photo, in the map's metres (photos.json)
 FT = 3.28084
@@ -278,6 +279,26 @@ def main(d):
                 print(f"  {src}: {name} could not run ({str(e)[:120]})")
         print(f"  {src} ({W}x{H} cells of {CELL} m, {inside.mean():.0%} covered, {raised.mean():.0%} raised): "
               + ", ".join(f"{k} {len(v)} matches" for k, v in ties.items()))
+        # A PLANTED SHIFT (run 235): ground-only RoMa said both photos sit within 0.2 ft of the lidar while RoMa put the
+        # two photos 2.2 ft apart, which cannot both hold. The blanks are in the same place in both pictures, a pattern
+        # they share at zero shift. So the photo is moved a known amount and RoMa must find it; if not, it is refused.
+        g = ties.get("RoMa ground only")
+        if g is not None and len(g) >= 12:
+            pe, pn = PLANT
+            try:
+                photo2, inside2 = photo_on_grid(os.path.join(d, p["file"]), fr, x0 + pe, y1 + pn, W, H)
+                g2 = match_roma(lid, raised, photo2, inside & inside2, ground_only=True)
+                got = np.median(g2[:, 2:4], 0) - np.median(g[:, 2:4], 0) if len(g2) >= 12 else np.array([np.nan, np.nan])
+                miss = float(np.hypot(got[0] - pe, got[1] - pn))
+                ok = np.isfinite(miss) and miss < 0.3
+                print(f"    RoMa ground only, the photo moved {np.hypot(pe, pn) * FT:.1f} ft on purpose: found "
+                      + (f"{np.hypot(*got) * FT:.1f} ft of it, {miss * FT:.1f} ft off" if np.isfinite(miss) else "too few matches")
+                      + ("" if ok else "; it does not see a real shift, so nothing is kept from it"))
+                if not ok:
+                    del ties["RoMa ground only"]
+            except Exception as e:   # noqa: BLE001
+                print(f"    RoMa ground only, planted shift could not run ({str(e)[:100]}); nothing kept from it")
+                del ties["RoMa ground only"]
         to_m = lambda T: np.c_[x0 + (T[:, 0] + 0.5) * CELL, y1 - (T[:, 1] + 0.5) * CELL]
         best_field = None
         for name, T in ties.items():
