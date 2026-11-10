@@ -2291,6 +2291,15 @@ called a building ("Not sure if thats solvable or worth solving").
     lawn's middle. The dark groups 36-37 m from it (380-480 m2) still fail: straight enough in parts (held 0.9, pinned
     0.9) but 18-36 sides and strays 0.23-0.31: most likely the drive run into the road, one ragged shape. NOT solved.
     The way the owner offered for it: the aerial photo's geometry for a drive (not built).
+  - The owner, on run 255's deploy: "Nothing drew that time" (a page bug: the worker did not send each thing's middle,
+    and the on-the-photo test threw), and of the drive: "my driveway is pretty big, has a turnaround spot, and a large
+    curved side... That would be fine if it merges with the road though, we do need to also get the road."
+  - run 257 (153c9f5, candidates from every band taken best first; straight-edged slabs first, with corners; where none
+    lies, a slab mostly of its own colour drawn as its traced outline, smoothed by a metre, no corners, up to 4000 m2):
+    6 straight-edged slabs and 11 traced outlines, among them 1229 m2 traced 37 m from the lawn's middle (the drive
+    and the road, it is thought) and 194 m2 traced 15 m from it. The owner's look decides.
+  - Correction: the 474 m2 building is 7 m from the lawn's middle, the owner's house; the 141 m2 one at 7.2 m, 43 m
+    out, is the neighbour's, and the "deck split off a house" (52 returns at 3.4 m) was split off the neighbour's.
 NOT yet seen on a phone.
 
 What it does not answer: a stump the 2018 flight hit once or not at all cannot be found from the lidar (about 4
