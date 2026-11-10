@@ -2331,3 +2331,15 @@ HARD, run 259 (c31b209), the owner's two maps (home 191 x 88 m; work 224 x 246 m
 So NAIP does NOT sit on 3DEP to a foot: each year's flight sits differently, 0.8 to 3 m off on these two lots (inside
 its 4-6 m specification). But it is off by one slide per lot, which this measures to about 0.1-0.5 m.
 NOT built: NAIP as a background on the placement map, slid by its measured shift, the lidar's outlines over it.
+
+READ, NOT MEASURED HERE (2026-11-10, the owner: "Do some research to be sure there's not some reliable way to line up
+naip to 3dep perfectly every time... if it gets .1m or closer every time, I'm happy to just make naip the backbone"):
+  - Published automatic aerial-photo-to-lidar-intensity registration reaches about 2 pixels, not a tenth of one: Ye et
+    al. 2020 (structural features + 3D phase correlation, arXiv 2004.09811), RMSE 1.9 px on 0.2 m pictures (0.4 m),
+    against 2.2 px for mutual information and 2.4 px for cross-correlation; its stated limit is "poor structure
+    information". Parmehr et al. 2012 (weighted mutual information, ISPRS Annals I-7), 10 cm photo against 1 m lidar,
+    right in 90% of 200 m tiles, the failures on flat ground with little to hold. The field's stated goal is 1 pixel.
+  - NAIP here is 0.6 m pixels and the lidar 0.72 m between returns: 0.1 m is a sixth of a pixel of either. NAIP's
+    specification is 6 m at 95%; FSA's own checks against surveyed control found 3.2 m RMSE (Arizona 2007), and a
+    Minnesota report puts 80% of its error in the elevation model it was draped on, so it varies within a frame.
+  - So no known method gives 0.1 m every time; run 259's 0.1-0.5 m by one slide is at the level of the published best.
