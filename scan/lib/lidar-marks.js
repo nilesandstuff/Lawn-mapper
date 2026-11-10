@@ -380,6 +380,7 @@ export function lidarMarks(box, pts, { cell = CELL, debug = null } = {}) {
   // The ground under a crown is left out: the laser reaches it with what the leaves left, and it reads dark.
   const shaded = (p) => { const x = Math.floor(p.e), y = Math.floor(p.n); return crowns.has(`${x},${y}`) || crowns.has(`${x + 1},${y}`) || crowns.has(`${x - 1},${y}`) || crowns.has(`${x},${y + 1}`) || crowns.has(`${x},${y - 1}`); };
   const open = ground.filter((p) => Number.isFinite(p.b) && !shaded(p));
+  const openSet = new Set(open), notOpen = P.filter((p) => !openSet.has(p));
   const gb = open.map((p) => p.b).sort((a, b) => a - b);
   const q = (f) => gb[Math.min(gb.length - 1, Math.floor(gb.length * f))];
   const cuts = gb.length < 50 ? [] : [0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5].map(q);
@@ -411,7 +412,8 @@ export function lidarMarks(box, pts, { cell = CELL, debug = null } = {}) {
     for (const group of linked(part, Math.max(0.8, 1.6 * spacing), 0.25)) {
       // a drive, a walk or a patio, not a whole lawn or a road's length
       if (group.length * spacing * spacing > 1500) continue;
-      if (group.length * spacing * spacing < 8) continue;
+      // (run 254 on the owner's lot: nine slabs of 9-26 m2 kept, specks of dark ground) a drive is bigger
+      if (group.length * spacing * spacing < 20) continue;
       // one slab once: a group whose middle lies in a slab already found is the same slab in another band
       const mid = group.reduce((s2, p) => [s2[0] + p.e / group.length, s2[1] + p.n / group.length], [0, 0]);
       if (objects.slice(firstPaving).some((o) => o.ring && inRing(o.ring, mid))) continue;
@@ -423,9 +425,12 @@ export function lidarMarks(box, pts, { cell = CELL, debug = null } = {}) {
       // and it stands out from the ground right round it (a 2 m band outside) by twice a surface's noise
       const contrast = contrastOf(group, open, 2, spreadB);
       if (contrast < 2) { if (debug) debug.push({ kind: 'paving', n: group.length, area, square: false, why: 'too little contrast with the ground round it', middle: mid }); continue; }
+      // its outside is everything that is not it: the other ground, the ground under crowns and raised things (a
+      // drive against a house or under a tree's edge has its side set by those; run 254, without them, left the
+      // owner's drive's sides "unpinned")
       const inG = new Set(group);
-      add(group, [...rest, ...part.filter((p) => !inG.has(p))], 'paving', { minArea: 8, minSpan: 6, contrast,
-        edgeIn: open.filter((p, i) => raw[i]), edgeOut: open.filter((p, i) => !raw[i]) });
+      add(group, [...rest, ...part.filter((p) => !inG.has(p)), ...notOpen], 'paving', { minArea: 8, minSpan: 6, contrast,
+        edgeIn: open.filter((p, i) => raw[i]), edgeOut: [...open.filter((p, i) => !raw[i]), ...notOpen] });
     }
   }
   return { objects, corners, spacing: +spacing.toFixed(2) };
