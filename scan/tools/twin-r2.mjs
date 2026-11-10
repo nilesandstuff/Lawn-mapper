@@ -57,6 +57,15 @@ export async function writeObject(bucket, key, bytes, type = 'application/octet-
   throw new Error(`the object could not be written to ${bucket}`);
 }
 
+/** One object taken out of a bucket (gone already is fine). */
+export async function deleteObject(bucket, key) {
+  const token = process.env.CLOUDFLARE_API_TOKEN;
+  if (!token) throw new Error('no CLOUDFLARE_API_TOKEN');
+  const base = `${API}/accounts/${await account(token)}/r2/buckets/${bucket}`;
+  const r = await fetch(`${base}/objects/${key.split('/').map(encodeURIComponent).join('/')}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }).catch(() => null);
+  return !!(r && (r.ok || r.status === 404));
+}
+
 /** One object's bytes from a bucket (the main site's models among them), or null when it is not there. */
 export const CORPUS_BUCKET = 'lawn-mapper-corpus';
 export async function readObject(bucket, key) {

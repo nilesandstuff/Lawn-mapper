@@ -148,7 +148,8 @@ def match_roma(lid, raised, photo, inside, n=4000):
     H, W = lid.shape
     A = Image.fromarray((np.nan_to_num(lid, nan=0.5) * 255).astype(np.uint8)).convert("RGB")
     B = Image.fromarray(cv2.cvtColor(photo, cv2.COLOR_BGR2RGB))
-    model = roma_outdoor(device="cpu", coarse_res=448, upsample_res=672)
+    # no custom CUDA kernel on a CPU runner (run 226: "No module named 'local_corr'"), and full precision on a CPU
+    model = roma_outdoor(device="cpu", coarse_res=448, upsample_res=672, use_custom_corr=False, amp_dtype=torch.float32)
     warp, cert = model.match(A, B, device="cpu")
     m, c = model.sample(warp, cert, num=n)
     ka, kb = model.to_pixel_coordinates(m, H, W, H, W)
@@ -257,18 +258,26 @@ def main(d):
                 continue
             P, D = to_m(T), T[:, 2:4]
             lam = best_lambda(P, D)
+            ho = {m: held_out(m, P, D, lam) for m in ("none", "shift", "affine", "spline")}
             print(f"    {name}: the median shift {np.hypot(*np.median(D, 0)) * FT:.1f} ft; held out (five folds) -- "
-                  + "; ".join(f"{m} {summary(held_out(m, P, D, lam))}" for m in ("none", "shift", "affine", "spline"))
+                  + "; ".join(f"{m} {summary(e)}" for m, e in ho.items())
                   + f" (spline smoothing {lam})")
-            g = fit("spline", P, D, lam)
+            rms = {m: float(np.sqrt(np.nanmean(e ** 2))) for m, e in ho.items()}
+            method = min(("shift", "affine", "spline"), key=lambda m: rms[m])
+            # a stretch is kept only when it predicts matches it never saw clearly better than leaving the photo alone
+            # (run 226: the edge windows' 30 matches disagreed by 6 ft, and their spline was worse than none)
+            if not rms[method] < 0.8 * rms["none"]:
+                print(f"    {name}: no stretch beats none on held-out matches; nothing kept from it")
+                continue
+            g = fit(method, P, D, lam)
             for other, T2 in ties.items():
                 if other == name or len(T2) < 5:
                     continue
                 P2, D2 = to_m(T2), T2[:, 2:4]
                 cross = {m: np.linalg.norm(fit(m, P, D, lam)(P2) - D2, axis=1) for m in ("none", "shift", "affine", "spline")}
                 print(f"      fitted on {name}, scored on {other}'s matches: " + "; ".join(f"{m} {summary(e)}" for m, e in cross.items()))
-            if best_field is None or len(T) > best_field[2]:
-                best_field = (name, g, len(T))
+            if best_field is None or rms[method] < best_field[2]:
+                best_field = (f"{name}'s {method}", g, rms[method])
         if best_field:
             fields[src] = best_field[1]
             # the field on a 1 m grid over the photo, for the placement map (the photo stretched onto the lidar)
@@ -288,7 +297,7 @@ def main(d):
             warped = cv2.remap(im, sx.astype(np.float32), sy.astype(np.float32), cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
             cv2.imwrite(os.path.join(d, f"warped-{src}.png"), warped)
             mags = np.hypot(F[..., 0], F[..., 1]) * FT
-            print(f"    kept: {best_field[0]}'s spline; the stretch over the photo {np.percentile(mags, 5):.1f}-{np.percentile(mags, 95):.1f} ft (5th-95th percentile)")
+            print(f"    kept: {best_field[0]} (held out {best_field[2] * FT:.1f} ft RMS); the stretch over the photo {np.percentile(mags, 5):.1f}-{np.percentile(mags, 95):.1f} ft (5th-95th percentile)")
     json.dump(out, open(os.path.join(d, "warp.json"), "w"))
 
     # THE OWNER'S TEST: the same check points placed on Mapbox and on the county photo
@@ -297,7 +306,7 @@ def main(d):
         county, earlier = marks[-1], marks[:-1]
         cm = {m["id"]: np.array(m["map"], float) for m in county["marks"]}
         pairs = []
-        for w in earlier:
+        for w in reversed(earlier):          # the walk just before first: a point may have been dragged since
             for m in w["marks"]:
                 if m["id"] in cm:
                     pairs.append((m["id"], np.array(m["map"], float), cm[m["id"]]))
@@ -311,7 +320,8 @@ def main(d):
                 if "mapbox" in fields and "county" in fields:
                     a2 = a + fields["mapbox"](a[None])[0]; b2 = b + fields["county"](b[None])[0]
                     fixed.append(np.linalg.norm(a2 - b2))
-            line = f"The same {len(seen)} points placed on Mapbox (earlier walks) and on the county photo (the newest walk): apart {', '.join(f'{x * FT:.1f}' for x in raw)} ft"
+            far = sum(x > 9 for x in raw)       # 30 ft and more: dragged to another spot, not the same corner
+            line = (f"({far} of them more than 30 ft apart: moved to another spot between walks, not a photo's error) " if far else "") + f"The same {len(seen)} points placed on Mapbox (earlier walks) and on the county photo (the newest walk): apart {', '.join(f'{x * FT:.1f}' for x in raw)} ft"
             if fixed:
                 line += f"; after both photos are stretched onto the lidar: {', '.join(f'{x * FT:.1f}' for x in fixed)} ft"
             print(line + ".")
