@@ -88,7 +88,8 @@
       <button type="button" class="btn small" id="clear">Clear</button>
     </div>
     </details>
-    <div class="row-btns"><button type="button" class="btn primary" id="plan">Plan fastest route</button></div>
+    <div class="row-btns"><button type="button" class="btn primary" id="plan">Plan fastest route</button><button type="button" class="btn" id="planShare">Plan &amp; share</button></div>
+    <p class="hint" style="margin-top:8px">Plan &amp; share: anyone with the link can hop on, say when they'll be free, and take stops. No need to pick how many people.</p>
   </section>
 
   <section id="result" hidden aria-labelledby="resultH">
@@ -97,10 +98,12 @@
       <div class="totals">
         <div><span>Job time</span><b id="tJobs">-</b></div>
         <div><span>Driving</span><b id="tDrive">-</b></div>
-        <div class="all"><span>Total</span><b id="tAll">-</b></div>
+        <div><span>Total</span><b id="tAll">-</b></div>
+        <div><span>Left to do</span><b id="tLeft">-</b></div>
+        <div class="all"><span>Back at the shop about</span><b id="tFinish">-</b><span id="tProgress"></span></div>
       </div>
       <ul class="notes" id="notes"></ul>
-      <div class="row-btns"><button type="button" class="btn" id="shareOne">Share / get help</button><button type="button" class="btn" id="clearRoute">Clear route</button></div>
+      <div class="row-btns"><button type="button" class="btn" id="shareOne">Share: anyone can hop on</button><button type="button" class="btn" id="clearRoute">Clear route</button></div>
       <p class="share-link" id="shareOneOut" hidden></p>
     </div>
     <div class="card">

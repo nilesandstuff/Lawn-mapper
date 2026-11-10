@@ -11,6 +11,7 @@
  */
 
 import { formatMinutes } from './lib/parse.js';
+import { timeline } from './lib/eta.js';
 
 export const COLORS = ['#1f7a4d', '#2f6fde', '#c2410c', '#7c3aed', '#a16207', '#0e7490', '#be185d', '#4d7c0f', '#475569', '#b91c1c'];
 
@@ -143,8 +144,12 @@ export function liveTotals(doc, k, now = Date.now()) {
   const drive = todo.reduce((a, s) => a + (p.into?.[s]?.duration || 0), 0) + (todo.length ? p.back?.duration || 0 : 0);
   const saved = savedSec(todo.map((s) => p.into?.[s]));
   const area = p.stops.reduce((a, s) => a + (Number(doc.stops[s].sqft) || 0), 0);
-  const from = Math.max(now, p.readyAt || 0);
-  return { todo, done, jobs, drive, saved, area, back: todo.length ? from + (jobs * 60 + drive - saved) * 1000 : null };
+  // from the latest tick: there, then, its job done (lib/eta.js)
+  const lastTick = done.length ? Math.max(...done.map((s) => doc.stops[s].done.at)) : null;
+  const steps = todo.map((s) => ({ drive: p.into?.[s]?.duration || 0, job: doc.stops[s].minutes, saved: p.into?.[s]?.ride ? p.into[s].saved || 0 : 0 }));
+  const t = timeline(steps, todo.length ? p.back?.duration || 0 : 0, { lastTick, now, readyAt: p.readyAt });
+  const arrivals = new Map(todo.map((s, i) => [s, t.arrivals[i]]));
+  return { todo, done, jobs, drive, saved, area, arrivals, left: t.left, back: todo.length ? t.finish : null };
 }
 
 /** A live person's card: done stops ticked, the rest in order, Go buttons, their Google Maps trip. */
@@ -153,18 +158,19 @@ export function liveCard(doc, k, { me = null, open = true, now = Date.now() } = 
   const t = liveTotals(doc, k, now);
   const color = COLORS[k % COLORS.length];
   const status = t.todo.length
-    ? `${t.todo.length} to go · back about ${clockAt(t.back)}`
+    ? `${t.todo.length} to go · back at the shop about ${clockAt(t.back)}`
     : p.free ? 'free to help' : (t.done.length ? 'all done ✓' : 'no stops');
   const waiting = p.readyAt && p.readyAt > now ? ` · free from ${clockAt(p.readyAt)}` : '';
   const row = (s, i) => {
     const st = doc.stops[s];
     const leg = p.into?.[s];
+    const arrive = t.arrivals.get(s);
     return `<li class="${st.done ? 'done' : ''}" data-stop="${esc(s)}">
       <span class="num" style="background:${color}">${st.done ? '✓' : i + 1}</span>
       <div class="body">
         <div class="addr">${esc(st.address)}</div>
         <div class="meta">${esc([st.name, st.city].filter(Boolean).join(' · '))}${st.done ? ` · done ${clockAt(st.done.at)}${st.done.by ? ` by ${esc(st.done.by)}` : ''}` : ''}</div>
-        <div class="chips">${!st.done && leg ? chip(leg) : ''}${st.minutes != null ? `<span>${st.minutes}m job</span>` : ''}${st.sqft ? `<span>${sqft(st.sqft)}</span>` : ''}</div>
+        <div class="chips">${!st.done && arrive ? `<span class="eta">Arrive ${clockAt(arrive)}</span>` : ''}${!st.done && leg ? chip(leg) : ''}${st.minutes != null ? `<span>${st.minutes}m job</span>` : ''}${st.sqft ? `<span>${sqft(st.sqft)}</span>` : ''}</div>
       </div>
       ${st.done ? '' : `<a class="go" target="_blank" rel="noopener" href="${esc(nav(st.label || `${st.address}, ${st.city}`))}" aria-label="Directions">Go</a>`}
     </li>`;
@@ -179,7 +185,7 @@ export function liveCard(doc, k, { me = null, open = true, now = Date.now() } = 
   const trip = t.todo.length ? trips({ stops: t.todo.map((s) => doc.stops[s]) }, doc.shop) : [];
   return `<details class="card person${p.id === me ? ' me' : ''}" ${open ? 'open' : ''} data-person="${k}">
     <summary><h2><span class="dot" style="background:${color}"></span>${esc(p.name)}${p.id === me ? ' <small>(you)</small>' : ''} <small>${esc(status)}${waiting}</small></h2></summary>
-    <p class="meta">${t.todo.length ? `${formatMinutes(t.jobs)} of jobs and ${formatMinutes(Math.round(t.drive / 60))} of driving left${t.saved ? `, ${formatMinutes(Math.round(t.saved / 60))} saved riding` : ''}` : ''}${t.area ? `${t.todo.length ? ' · ' : ''}${sqft(t.area)}` : ''}</p>
+    <p class="meta">${t.todo.length ? `${formatMinutes(Math.round(t.left / 60000))} left: ${formatMinutes(t.jobs)} of jobs and ${formatMinutes(Math.round(t.drive / 60))} of driving${t.saved ? `, ${formatMinutes(Math.round(t.saved / 60))} saved riding` : ''}` : ''}${t.area ? `${t.todo.length ? ' · ' : ''}${sqft(t.area)}` : ''}</p>
     ${t.todo.length ? `<ol class="legs">${todoRows.join('')}</ol>
     <div class="gm">${trip.map((x) => `<a class="btn small" target="_blank" rel="noopener" href="${esc(x.href)}">Google Maps: ${esc(x.label)}</a>`).join('')}</div>` : ''}
     ${doneRows.length ? `<details class="done-list"><summary class="meta">${doneRows.length} done</summary><ol class="legs">${doneRows.join('')}</ol></details>` : ''}

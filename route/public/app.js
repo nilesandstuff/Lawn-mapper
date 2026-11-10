@@ -15,12 +15,13 @@
  * tuned against a real one.
  */
 
-import { addressVariants, formatMinutes, mergeStops, parseWords, sameStreet, slices } from './lib/parse.js';
+import { addressVariants, cityAtEnd, formatMinutes, mergeStops, parseWords, sameStreet, slices } from './lib/parse.js';
 import { pathCost, solvePath } from './lib/solve.js';
 import { kindOf, parseDocument, readDocument } from './lib/doc.js';
 import { parseMail } from './lib/mail.js';
 import { splitRoutes } from './lib/split.js';
 import { rideAdjust, rideLeg, rulesFrom } from './lib/ride.js';
+import { timeline } from './lib/eta.js';
 import { COLORS, drawPlan, personCard, thin, totals } from './people.js';
 import { elementsOf, fill, fromCache, MAX_PAIRS, prune, remember, toFetch } from './lib/cache.js';
 
@@ -518,6 +519,19 @@ async function geocode(q, near) {
   }
 }
 
+/**
+ * A stop read with no city (its name line's bullet lost): the city the map
+ * placed it in, taken off the end of the name if it is there.
+ */
+function fillCity(s, hit) {
+  if (s.city || !hit?.label) return;
+  const city = String(hit.label).split(',')[1]?.trim();
+  if (!city || /\d/.test(city)) return;
+  const split = cityAtEnd(s.name, [city]);
+  if (split) s.name = split.name;
+  s.city = city;
+}
+
 /** The stop on the map: as read, then with a street type added, until the answer names its street near the shop. */
 async function findStop(s, end) {
   let fallback = null;
@@ -568,7 +582,7 @@ async function plan() {
         const s = queue.shift();
         const hit = await findStop(s, end);
         if (!hit) s.error = 'Not found on the map near the shop. Check the spelling, or add Dr / St.';
-        else { delete s.error; found.push({ stop: s, hit }); }
+        else { delete s.error; fillCity(s, hit); found.push({ stop: s, hit }); }
       }
     }));
     store.set('stops', stops);
@@ -787,6 +801,14 @@ async function shareOne() {
   }
 }
 $('#shareOne').addEventListener('click', shareOne);
+
+/** Plan, then share it at once: anyone with the link hops on, however many come (share.js). */
+$('#planShare').addEventListener('click', async () => {
+  const before = result?.at;
+  await plan();
+  if (!result || result.at === before) return;
+  if (result.mode === 'split') await shareSplit(null); else await shareOne();
+});
 $('#splitSum').addEventListener('click', (e) => {
   const b = e.target.closest('[data-share]');
   if (b) shareSplit(Number(b.dataset.share));
@@ -868,7 +890,6 @@ function renderResult(scroll = false) {
   const notes = [`${r.stops.length} stop${r.stops.length === 1 ? '' : 's'}, ${miles(dist)} of driving.`];
   const rides = r.legs.filter((l) => l?.ride).length;
   if (rides) notes.push(`Riding between ${rides} pair${rides === 1 ? '' : 's'} of close stops saves ${formatMinutes(rideSaved)} (taken off the total).`);
-  notes.push(`Starting now, back at the shop about ${clock(Date.now() + (jobs + driveM - rideSaved) * 60000)}.`);
   if (r.saved >= 60) notes.push(`${mins(r.saved)} less driving than the order in the list.`);
   if (r.fetched != null) notes.push(`Drive times: ${r.reused.toLocaleString()} reused from this phone, ${r.fetched.toLocaleString()} new from Mapbox.`);
   const area = allStops.reduce((a, s) => a + (Number(s.sqft) || 0), 0);
@@ -890,7 +911,7 @@ function renderResult(scroll = false) {
       <div class="body">
         <div class="addr">${esc(s.address)}</div>
         <div class="meta">${esc([s.name, s.city].filter(Boolean).join(' · '))}</div>
-        <div class="chips">${legChip(leg)}${s.minutes != null ? `<span>${s.minutes}m job</span>` : ''}${s.sqft ? `<span>${sqft(s.sqft)}</span>` : ''}</div>
+        <div class="chips"><span class="eta" data-eta="${s.id}"></span>${legChip(leg)}${s.minutes != null ? `<span>${s.minutes}m job</span>` : ''}${s.sqft ? `<span>${sqft(s.sqft)}</span>` : ''}</div>
         ${shaky ? `<div class="found">Map's best guess: ${esc(s.hit.label)}</div>` : ''}
       </div>
       <a class="go" target="_blank" rel="noopener" href="${esc(nav(s.hit.label))}" aria-label="Directions to stop ${i + 1}">Go</a>
@@ -901,21 +922,54 @@ function renderResult(scroll = false) {
     <div class="chips"><span>Drive ${mins(back.duration || 0)} · ${miles(back.distance || 0)}</span></div></div>
     <a class="go" target="_blank" rel="noopener" href="${esc(nav(r.end.label))}" aria-label="Directions to the shop">Go</a></li>`);
   $('#legs').innerHTML = items.join('');
+  updateEta();
   $('#gmaps').innerHTML = googleLinks(r);
   drawMap(r);
   if (scroll) $('#stopsBox').open = false;
   if (scroll) $('#result').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
+/**
+ * The finish, and each stop's arrival, from where the day has got to
+ * (lib/eta.js): a tick means you were at that stop, its job done, then.
+ */
+function updateEta() {
+  const r = result;
+  if (!r || r.mode === 'split' || $('#result').hidden) return;
+  const now = Date.now();
+  const done = new Set(r.done || []);
+  const at = r.doneAt || {};
+  const ticks = Object.entries(at).filter(([id]) => done.has(Number(id))).map(([, t]) => t);
+  const lastTick = ticks.length ? Math.max(...ticks) : null;
+  const left = r.stops.map((s, i) => ({ s, leg: r.legs[i] || {} })).filter(({ s }) => !done.has(s.id));
+  const back = r.legs[r.stops.length] || {};
+  const t = timeline(left.map(({ s, leg }) => ({ drive: leg.duration || 0, job: s.minutes, saved: leg.ride ? leg.saved || 0 : 0 })), back.duration || 0, { lastTick, now });
+  const missingMin = r.missing.reduce((a, s) => a + (Number(s.minutes) || 0), 0);
+  $('#tFinish').textContent = clock(t.finish);
+  $('#tLeft').textContent = formatMinutes(Math.round(t.left / 60000));
+  const n = r.stops.length - left.length;
+  $('#tProgress').textContent = `${n} of ${r.stops.length} done${lastTick ? `, last at ${clock(lastTick)}` : ', starting now'}${missingMin ? ` (not counting ${r.missing.length} unrouted)` : ''}`;
+  const arrive = new Map(left.map(({ s }, k) => [s.id, t.arrivals[k]]));
+  for (const el of document.querySelectorAll('#legs [data-eta]')) {
+    const id = Number(el.dataset.eta);
+    el.textContent = done.has(id) ? (at[id] ? `Done ${clock(at[id])}` : 'Done') : `Arrive ${clock(arrive.get(id))}`;
+  }
+}
+setInterval(() => { if (document.visibilityState === 'visible') updateEta(); }, 30000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') updateEta(); });
+
 $('#legs').addEventListener('click', (e) => {
   const li = e.target.closest('li[data-id]');
   if (!li || !e.target.closest('.body') || !result) return;
   const id = Number(li.dataset.id);
   const done = new Set(result.done || []);
-  if (done.has(id)) done.delete(id); else done.add(id);
+  result.doneAt ||= {};
+  // a tick: you are at this stop, its job done, now
+  if (done.has(id)) { done.delete(id); delete result.doneAt[id]; } else { done.add(id); result.doneAt[id] = Date.now(); }
   result.done = [...done];
   store.set('result', result);
   li.classList.toggle('done', done.has(id));
+  updateEta();
 });
 
 renderStops();

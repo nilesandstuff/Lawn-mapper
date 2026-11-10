@@ -101,3 +101,36 @@ assert.deepEqual(addressVariants('2531 Willow Dr SW'), ['2531 Willow Dr SW']);
 assert.deepEqual(addressVariants('3581 Maple Cr SW'), ['3581 Maple Cr SW']);
 
 console.log(`route parse: ok (${stops.length} stops, ${formatMinutes(408)} of jobs)`);
+
+// ------------------------------------------------ the city, when OCR loses or mangles the bullet
+{
+  const { cityAtEnd } = await import('../lib/parse.js');
+  const words = fixture.words.map((w) => ({ ...w, bbox: { ...w.bbox } }));
+  // stop 0: bullet read as "e"; stop 4: gone; stop 9: stuck to the name; stop 15: read as "©"
+  const b = (i) => {
+    const nameWord = fixture.words.find((w) => w.text === stops[i].name.split(' ')[0] && w.bbox.y0 > 600 && fixture.words.some((x) => x.text === 'Byron' && Math.abs(x.bbox.y0 - w.bbox.y0) < 15));
+    return words.findIndex((w) => /^[+*«]$/.test(w.text) && Math.abs(w.bbox.y0 - nameWord.bbox.y0) < 20);
+  };
+  const [i0, i4, i9, i15] = [b(0), b(4), b(9), b(15)];
+  words[i0].text = 'e';
+  words[i9].text = '';
+  const last9 = words.findIndex((w, k) => k < i9 && w.bbox.y0 > words[i9].bbox.y0 - 20 && w.bbox.y0 < words[i9].bbox.y0 + 20 && w.bbox.x1 <= words[i9].bbox.x0 + 2 && w.text === stops[9].name.split(' ').at(-1));
+  if (last9 >= 0) words[last9].text += '«';
+  words[i15].text = '©';
+  const gone = words.filter((_, k) => k !== i4);
+  const got = parseWords(gone, fixture.width);
+  assert.equal(got.length, 19);
+  for (const i of [0, 4, 9, 15]) {
+    assert.equal(got[i].city, 'Byron Center', `stop ${i} city`);
+    assert.equal(got[i].name, stops[i].name, `stop ${i} name`);
+  }
+  // the pieces
+  assert.deepEqual(cityAtEnd('Pat Doe Byron Center'), { name: 'Pat Doe', city: 'Byron Center' });
+  assert.deepEqual(cityAtEnd('Pat Doe Byron Centre'), { name: 'Pat Doe', city: 'Byron Center' }, 'one slip forgiven');
+  assert.deepEqual(cityAtEnd('Kim & Lee Roe ~ Caledonia'), { name: 'Kim & Lee Roe', city: 'Caledonia' }, 'a speck dropped');
+  assert.deepEqual(cityAtEnd('Daks M Wayland'), { name: 'Daks M', city: 'Wayland' }, 'an initial kept');
+  assert.equal(cityAtEnd('Pat Doe'), null);
+  assert.equal(cityAtEnd('Wayland'), null, 'a city alone is not a name and a city');
+  assert.deepEqual(cityAtEnd('Pat Doe Fairview', ['Fairview']), { name: 'Pat Doe', city: 'Fairview' }, "this screenshot's own cities");
+  console.log('route parse (lost bullets): ok');
+}

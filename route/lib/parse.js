@@ -25,6 +25,59 @@
 const BADGE = /^(NOT|STARTED|COMPLETED?|IN|PROGRESS|SKIPPED|CANCELL?ED|SCHEDULED|PAUSED|DONE|EN|ROUTE|ON|SITE)$/i;
 /** How OCR reads the "•" between the name and the city. Never "." or "-": those are street abbreviations. */
 const BULLET = /^[•·«»+*●◦°¢]+$/;
+/**
+ * How else OCR reads the bullet, on a line already known to be the name line:
+ * a lone lowercase letter ("e", "o"), other specks, or the bullet stuck to a
+ * word ("Doe«" "«Town"). Only there: on an address line these would cut it.
+ */
+const LOOSE = /^([•·«»+*●◦°¢©®~=|:;^\-–—]+|[a-z])$/;
+const INLINE = /[•·«»●◦°¢©]/;
+
+/**
+ * Cities stops are in around here, for a name line whose bullet OCR lost:
+ * "Pat Doe Byron Center" ends in a city, so that is where it splits. The
+ * cities of the other stops on the same screenshot are tried too.
+ */
+export const KNOWN_CITIES = [
+  'Ada', 'Allegan', 'Allendale', 'Alto', 'Belding', 'Belmont', 'Byron Center', 'Caledonia', 'Cascade', 'Cedar Springs',
+  'Clarksville', 'Comstock Park', 'Conklin', 'Coopersville', 'Cutlerville', 'Delton', 'Dorr', 'Douglas', 'East Grand Rapids',
+  'Fennville', 'Ferrysburg', 'Freeport', 'Gaines', 'Grand Haven', 'Grand Rapids', 'Grandville', 'Greenville', 'Hamilton',
+  'Hastings', 'Holland', 'Hopkins', 'Hudsonville', 'Ionia', 'Jenison', 'Kalamazoo', 'Kent City', 'Kentwood', 'Lake Odessa',
+  'Lowell', 'Marne', 'Martin', 'Middleville', 'Moline', 'Muskegon', 'Nashville', 'Norton Shores', 'Otsego', 'Plainwell',
+  'Portage', 'Ravenna', 'Rockford', 'Saranac', 'Saugatuck', 'Shelbyville', 'Sparta', 'Spring Lake', 'Walker', 'Wayland',
+  'West Olive', 'Whitehall', 'Wyoming', 'Zeeland',
+];
+
+/** Letters apart: how many edits turn a into b (small words; OCR slips). */
+function edits(a, b) {
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j += 1) d[0][j] = j;
+  for (let i = 1; i <= a.length; i += 1) {
+    for (let j = 1; j <= b.length; j += 1) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  }
+  return d[a.length][b.length];
+}
+
+/**
+ * A name line with no bullet, split where it ends in a city: "Pat Doe Byron
+ * Centre" -> { name: 'Pat Doe', city: 'Byron Center' }, or null. A slip of
+ * one letter in six is forgiven; a stray speck before the city is dropped.
+ */
+export function cityAtEnd(text, cities = KNOWN_CITIES) {
+  const words = String(text || '').trim().split(/\s+/);
+  let best = null;
+  for (const city of cities) {
+    const n = city.split(' ').length;
+    if (words.length <= n) continue;
+    const tail = words.slice(-n).join(' ').toLowerCase().replace(/[^a-z ]/g, '');
+    const want = city.toLowerCase();
+    if (edits(tail, want) > Math.floor(want.length / 6)) continue;
+    if (!best || n > best.n) best = { n, city };
+  }
+  if (!best) return null;
+  const name = words.slice(0, -best.n).join(' ').replace(/\s+\S$/, (m) => (/^\s+[A-Z]$/.test(m) ? m : '')).replace(/[^A-Za-z0-9.')]+$/, '').trim();
+  return name ? { name, city: best.city } : null;
+}
 
 const cx = (w) => (w.bbox.x0 + w.bbox.x1) / 2;
 const cy = (w) => (w.bbox.y0 + w.bbox.y1) / 2;
@@ -76,13 +129,26 @@ const tidy = (s) => s.replace(/\s*,\s*/g, ' ').replace(/\s+/g, ' ').replace(/^[^
 const isWord = (t) => /[A-Za-z0-9&]/.test(t);
 
 /** One row's middle words split at the bullet, or null when it has none. */
-function splitAtBullet(words) {
+function splitAtBullet(words, loose = false) {
   for (let i = 1; i < words.length - 1; i += 1) {
     const w = words[i];
-    if (!BULLET.test(w.text.trim())) continue;
+    if (!(loose ? LOOSE : BULLET).test(w.text.trim())) continue;
     // a real bullet stands alone between two words; a speck inside a word's box is not one
     if (w.bbox.x0 < words[i - 1].bbox.x1 - 2 || w.bbox.x1 > words[i + 1].bbox.x0 + 2) continue;
     return [words.slice(0, i), words.slice(i + 1)];
+  }
+  if (loose) {
+    // stuck to a word: "Doe«" or "«Town" or "Doe«Town"
+    for (let i = 0; i < words.length; i += 1) {
+      const t = words[i].text;
+      const k = t.search(INLINE);
+      if (k < 0) continue;
+      const left = t.slice(0, k);
+      const right = t.slice(k + 1);
+      const before = [...words.slice(0, i), ...(left ? [{ ...words[i], text: left }] : [])];
+      const after = [...(right ? [{ ...words[i], text: right }] : []), ...words.slice(i + 1)];
+      if (before.length && after.length) return [before, after];
+    }
   }
   return null;
 }
@@ -146,7 +212,7 @@ export function parseWords(words, width) {
     }
     if (n < 0) continue;
     const address = tidy(rows.slice(i, n).map((r) => r.text).join(' '));
-    const parts = splitAtBullet(rows[n].words);
+    const parts = splitAtBullet(rows[n].words) || splitAtBullet(rows[n].words, true);
     const name = parts ? tidy(parts[0].map((w) => w.text).join(' ')) : rows[n].text;
     const city = parts ? tidy(parts[1].filter((w) => isWord(w.text)).map((w) => w.text).join(' ')) : '';
     const next = rows[n + 1] && !isStart(rows[n + 1]) ? rows[n + 1].text : '';
@@ -159,6 +225,13 @@ export function parseWords(words, width) {
     const bottom = k + 1 < stops.length ? stops[k + 1].top - lineH * 0.5 : Infinity;
     const t = joined.find((x) => x.cy >= top && x.cy < bottom && x.minutes != null);
     if (t) stops[k].minutes = t.minutes;
+  }
+  // name lines whose bullet OCR lost: split where they end in a city, this screenshot's cities first
+  const seen = [...new Set(stops.map((s) => s.city).filter(Boolean))];
+  for (const s of stops) {
+    if (s.city) continue;
+    const hit = cityAtEnd(s.name, seen) || cityAtEnd(s.name);
+    if (hit) { s.name = hit.name; s.city = hit.city; }
   }
   return stops.map(({ top, ...s }) => s);
 }

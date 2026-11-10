@@ -58,7 +58,7 @@ async function call(path, init = {}) {
 /* ------------------------------------------------------------ showing it */
 const meIndex = () => (doc ? doc.people.findIndex((p) => p.id === me) : -1);
 
-function render() {
+function render(withMap = true) {
   const n = doc.people.length;
   const now = Date.now();
   const working = doc.people.map((_, k) => liveTotals(doc, k, now)).filter((t) => t.back);
@@ -98,7 +98,7 @@ function render() {
   if (mi >= 0 && only == null) order.sort((a, b) => (a === mi ? -1 : b === mi ? 1 : 0));
   $('#people').innerHTML = order.map((k) => liveCard(doc, k, { me, open: only != null || k === mi || n <= 2, now })
     .replace('</summary>', `</summary>${mi < 0 && only === k ? `<div class="row-btns"><button type="button" class="btn small" data-me="${esc(doc.people[k].id)}">This is me</button></div>` : ''}`)).join('');
-  if (window.L) { $('#mapCard').hidden = false; map = drawLive(window.L, 'map', doc, only, map); }
+  if (window.L && withMap) { $('#mapCard').hidden = false; map = drawLive(window.L, 'map', doc, only, map); }
   noticeChanges();
 }
 
@@ -131,6 +131,8 @@ async function refresh() {
   }
 }
 setInterval(() => { if (document.visibilityState === 'visible') refresh(); }, 25000);
+// the estimates move with the clock: the cards again every 30 s, the map left as it is
+setInterval(() => { if (doc && !busy && document.visibilityState === 'visible') render(false); }, 30000);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refresh(); });
 
 /* ------------------------------------------------------------ ticks */
