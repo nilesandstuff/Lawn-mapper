@@ -260,7 +260,8 @@ function photoTools() {
   const box = $('#photo-tools'); if (!box) return;
   box.hidden = !st.photos?.kept;
   const s = $('#photo-stretched'), k = $('#photo-kept'), c = $('#photo-crisp');
-  s.hidden = !st.photos?.stretched;
+  s.hidden = !st.photos?.stretched || !!st.againMode; k.hidden = !!st.againMode;
+  againTools();
   k.classList.toggle('plain', st.photoChoice !== 'kept');
   s.classList.toggle('plain', st.photoChoice !== 'stretched');
   const crisp = pref('scan-crisp', '1') !== '0';
@@ -268,6 +269,30 @@ function photoTools() {
   $('#photo-why').textContent = st.photos?.stretched
     ? (st.photoChoice === 'stretched' ? 'Stretched onto the lidar: each spot moved to where the lidar measured it, so a corner on the ground is where it is on the ground.' : 'The photo as the map was traced on it. Aerial photos lean and stretch a little at the ground; "Stretched onto the lidar" corrects that.')
     : 'No stretched photo for this map yet.';
+}
+
+/** Place the set again on the other photo: switch photos, hide the first placements. */
+async function againStart() {
+  if (!st.points.length || !st.photos?.stretched) return;
+  st.againFrom = st.photoChoice;
+  setPref('scan-photo', st.photoChoice === 'stretched' ? 'kept' : 'stretched');
+  // a fresh round: earlier second placements on this other photo are cleared, so none is reused unseen
+  for (const p of st.points) delete p.again;
+  st.againMode = true; st.againShown = null; st.view = { s: 1, ox: 0, oy: 0 };
+  savePoints(); await showPhoto(); listPoints();
+  flash(`Now on the ${st.photoChoice === 'stretched' ? 'stretched' : 'traced'} photo: tap each point's spot again`);
+}
+async function againStop() {
+  st.againMode = false; st.againShown = null;
+  if (st.againFrom) setPref('scan-photo', st.againFrom);
+  await showPhoto(); listPoints();
+}
+function againTools() {
+  const a = $('#again'), d = $('#again-done'); if (!a || !d) return;
+  a.hidden = st.againMode || !st.points.length || !st.photos?.stretched;
+  d.hidden = !st.againMode;
+  const add = document.querySelectorAll('[data-add]'); add.forEach((b) => { b.hidden = !!st.againMode; });
+  const n = $('#new-set'); if (n) n.hidden = !!st.againMode;
 }
 
 function wirePhotoTools() {
@@ -309,6 +334,16 @@ const loadPoints = () => { try { st.points = JSON.parse(localStorage.getItem(KEY
 const savePoints = () => { try { localStorage.setItem(KEYP(), JSON.stringify(st.points)); } catch { /* this phone only */ } };
 const loadPins = () => { try { st.pins = JSON.parse(localStorage.getItem(KEYPIN()) || '[]'); } catch { st.pins = []; } };
 const savePins = () => { try { localStorage.setItem(KEYPIN(), JSON.stringify(st.pins.slice(-200))); } catch { /* this phone only */ } };
+/* PLACED AGAIN ON THE OTHER PHOTO (the owner, 2026-11-10): the same set of points placed a second time on the other
+   photo (as traced / stretched onto the lidar), without seeing the first placements, so the two can be compared
+   spot for spot. Each point keeps it as `again: { on, map }`. While placing again, the map shows only the second
+   placements; a tap places the next point still to do. */
+const againTodo = () => (st.points || []).find((p) => !p.again);
+function shownPoints() {
+  if (!st.againMode) return st.points;
+  if (!st.againShown) st.againShown = st.points.filter((p) => p.again).map((p) => ({ id: p.id, name: p.name, kind: p.kind, map: p.again.map, of: p }));
+  return st.againShown;
+}
 const nextName = (kind) => { const pre = kind === 'ref' ? 'R' : 'C'; let k = 1; while (st.points.some((p) => p.name === `${pre}${k}`)) k++; return `${pre}${k}`; };
 
 function drawMap() {
@@ -338,7 +373,7 @@ function drawMap() {
     if (label) { g.font = `bold ${15 * u}px system-ui, sans-serif`; g.fillStyle = '#fff'; g.strokeStyle = 'rgba(0,0,0,.85)'; g.lineWidth = 4 * u; g.strokeText(label, x + R + 4 * u, y - R * 0.4); g.fillText(label, x + R + 4 * u, y - R * 0.4); }
   };
   for (const p of st.pins) if (p.map) dot(p.map, CSS.pin, p.name, 7);
-  for (const p of st.points) dot(p.map, p.kind === 'ref' ? CSS.ref : CSS.check, p.name, 14, p === st.dragging);
+  for (const p of shownPoints()) dot(p.map, p.kind === 'ref' ? CSS.ref : CSS.check, p.name, 14, p === st.dragging);
   // WHILE DRAGGING, A MAGNIFIER: the photo round the point four times closer, in the top corner away from the finger
   if (st.dragging) {
     const [x, y] = px(st.dragging.map), k = cssK(), R = 70 * k, Z = 4;
@@ -374,6 +409,12 @@ function zoomAt(f, [x, y]) {
 }
 function listPoints() {
   const el = $('#points');
+  againTools();
+  if (st.againMode) {
+    const t = againTodo();
+    el.innerHTML = st.points.map((p) => `<li><span style="color:${p.kind === 'ref' ? CSS.ref : CSS.check};font-weight:600">${esc(p.name)}</span> ${p.again ? 'placed again' : p === t ? '<strong>tap its spot now</strong>' : 'to do'}</li>`).join('');
+    return;
+  }
   el.innerHTML = st.points.map((p) => `<li><span style="color:${p.kind === 'ref' ? CSS.ref : CSS.check};font-weight:600">${esc(p.name)}</span> ${p.kind === 'ref' ? 'reference' : 'check point'}</li>`).join('') || '<li class="dim">None yet. Tap the photo.</li>';
 }
 function wireMap() {
@@ -383,7 +424,7 @@ function wireMap() {
   const toBase = ([x, y]) => [(x - st.view.ox) / st.view.s, (y - st.view.oy) / st.view.s];
   const hitR = () => (24 * cssK()) / st.view.s; // about a fingertip, at any zoom
   // the nearest point within reach (two close together: the one under the finger)
-  const hitAt = (b) => { let best = null, bd = hitR(); for (const p of st.points) { const [x, y] = px(p.map), d = Math.hypot(x - b[0], y - b[1]); if (d < bd) { bd = d; best = p; } } return best; };
+  const hitAt = (b) => { let best = null, bd = hitR(); for (const p of shownPoints()) { const [x, y] = px(p.map), d = Math.hypot(x - b[0], y - b[1]); if (d < bd) { bd = d; best = p; } } return best; };
   cv.addEventListener('pointerdown', (ev) => {
     cv.setPointerCapture(ev.pointerId); ptrs.set(ev.pointerId, canvasXY(ev));
     if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch = { d0: Math.hypot(a[0] - b[0], a[1] - b[1]) || 1, s0: st.view.s, base: toBase([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]) }; if (drag) delete drag.grab; drag = null; st.dragging = null; pan = null; downAt = null; return; }
@@ -406,13 +447,20 @@ function wireMap() {
     ptrs.delete(ev.pointerId);
     if (pinch) { if (ptrs.size < 2) pinch = null; downAt = null; drag = null; pan = null; return; }
     const xy = canvasXY(ev);
-    if (drag && moved) { delete drag.grab; drag.on = st.photoChoice || undefined; drag = null; st.dragging = null; savePoints(); listPoints(); drawMap(); return; }
+    if (drag && moved) { delete drag.grab; if (drag.of) drag.of.again = { on: st.photoChoice || null, map: drag.map }; else drag.on = st.photoChoice || undefined; drag = null; st.dragging = null; savePoints(); listPoints(); drawMap(); return; }
     const tap = !cancelled && downAt && !moved;
     if (drag) delete drag.grab;
     drag = null; pan = null; downAt = null; st.dragging = null;
     if (!tap) { drawMap(); return; }
     const b = toBase(xy);
     if (hitAt(b)) return;
+    if (st.againMode) {
+      const t = againTodo(); if (!t) return;
+      t.again = { on: st.photoChoice || null, map: unpx(b) }; st.againShown = null;
+      savePoints(); listPoints(); drawMap();
+      if (!againTodo()) flash('Every point placed again. Tap "Done" to go back.');
+      return;
+    }
     st.points.push({ id: `${Date.now()}`, kind: st.adding, name: nextName(st.adding), map: unpx(b), on: st.photoChoice || undefined });
     savePoints(); listPoints(); drawMap();
   };
@@ -427,7 +475,18 @@ function wireMap() {
     st.adding = b.dataset.add;
     document.querySelectorAll('[data-add]').forEach((x) => { x.classList.toggle('plain', x !== b); });
   }));
-  $('#undo-point').addEventListener('click', () => { st.points.pop(); savePoints(); listPoints(); drawMap(); });
+  $('#undo-point').addEventListener('click', () => {
+    if (st.againMode) { const done = st.points.filter((p) => p.again); if (done.length) delete done[done.length - 1].again; st.againShown = null; }
+    else st.points.pop();
+    savePoints(); listPoints(); drawMap();
+  });
+  /* A NEW SET (the owner, 2026-11-10: new check points placed where they can be found again exactly) */
+  $('#new-set')?.addEventListener('click', () => {
+    if (st.points.length && !confirm(`Remove all ${st.points.length} points and start a new set?`)) return;
+    st.points = []; st.againMode = false; st.againShown = null; savePoints(); listPoints(); drawMap();
+  });
+  $('#again')?.addEventListener('click', () => againStart());
+  $('#again-done')?.addEventListener('click', () => againStop());
   $('#clear-pins').addEventListener('click', () => { st.pins = []; savePins(); drawMap(); });
 }
 
@@ -705,7 +764,7 @@ async function appBox() {
     <div class="tools" style="margin-top:6px"><a href="/api/app/apk"><button type="button">Get the app</button></a> <a href="/api/app/pair"><button type="button" class="plain">Open in the app</button></a></div>
     <p class="dim" style="margin:6px 0 0">First time: Get the app, open the download and allow installing from Chrome. Then Open in the app signs it in (once).</p>`;
 }
-const pointsKept = () => (st.points || []).map((p) => ({ id: p.id, name: p.name, kind: p.kind, map: p.map, on: p.on || null }));
+const pointsKept = () => (st.points || []).map((p) => ({ id: p.id, name: p.name, kind: p.kind, map: p.map, on: p.on || null, again: p.again || null }));
 
 function nextTarget() {
   // the point the owner picked on the mini map, until it is marked (2026-11-03: Mark "was demanding R2, which I had

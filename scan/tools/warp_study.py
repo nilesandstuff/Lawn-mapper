@@ -410,6 +410,25 @@ def main(d):
             print(line + ".")
         else:
             print("No point was placed both on Mapbox and on the county photo under the same name.")
+    # THE SAME SET PLACED ON BOTH PHOTOS (app.js "Place them again on the other photo", 2026-11-10): the photo as
+    # traced and the stretched one. Brought to the lidar's ground (the traced one by the field fitted now, the
+    # stretched one by taking off the model's shift), the two placements of each point should meet.
+    for w in sorted(marks, key=lambda w: int(w["walk"]) if str(w.get("walk", "")).isdigit() else 0)[::-1]:
+        both = [q for q in w.get("points") or [] if q.get("again") and {q.get("on"), q["again"].get("on")} == {"kept", "stretched"}]
+        if not both:
+            continue
+        src = photos and next(iter(photos))
+        f = fields.get("county") or fields.get(src)
+        raw, fixed = [], []
+        for q in both:
+            k, s_ = (q["map"], q["again"]["map"]) if q["on"] == "kept" else (q["again"]["map"], q["map"])
+            k, s_ = np.array(k, float), np.array(s_, float)
+            raw.append(np.linalg.norm(k - s_))
+            if f is not None:
+                fixed.append(np.linalg.norm(k + f(k[None])[0] - (s_ - np.array(SHIFT))))
+        print(f"  {len(both)} points placed on both photos (walk {w['walk']}): apart as placed {np.median(raw) * FT:.1f} ft median ({', '.join(f'{x * FT:.1f}' for x in raw)})"
+              + (f"; on the lidar's ground, the traced placement stretched by today's field: {np.median(fixed) * FT:.1f} ft median" if fixed else "; no field today to bring them together"))
+        break
     print(f"({time.time() - t0:.0f} s)")
 
 

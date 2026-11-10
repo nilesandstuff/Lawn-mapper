@@ -117,7 +117,9 @@ async function main() {
     const live = await json(BUCKET, `twins/${w}/live.json`);
     const checks = checkMarks(live?.marks);
     const refs = (live?.marks || []).filter((x) => x.kind === 'ref' && x.map);
-    walks.push({ walk: w, started: mt.started || null, marks: [...checks, ...refs].map((x) => ({ id: x.id, kind: x.kind, map: x.map, ar: x.ar || null })) });
+    // the points as placed on the photos, with any second placement on the other photo (app.js "Place them again")
+    const points = (live?.points || []).filter((x) => Array.isArray(x.map)).map((x) => ({ id: x.id, on: x.on || null, map: x.map, again: x.again?.map ? { on: x.again.on || null, map: x.again.map } : null }));
+    walks.push({ walk: w, started: mt.started || null, marks: [...checks, ...refs].map((x) => ({ id: x.id, kind: x.kind, map: x.map, ar: x.ar || null })), points });
   }
   writeFileSync(join(dir, 'marks.json'), JSON.stringify({ walks }));
   console.log(`Warp inputs: ${np.toLocaleString()} lidar returns (the model's shift onto a photo, ${Math.hypot(shift[0] * k, shift[1] * k).toFixed(2)} m, taken off); `

@@ -57,6 +57,21 @@ export function marksOf(dir) {
   return { checks, refs, T, resid };
 }
 
+/* AIM TO AIM (the owner, 2026-11-10: check points placed loosely on the photo hurt the scores). A spot aimed at in
+   both walks (the same point, so the same id) is one place on the ground: once the walk is placed on the earlier
+   one, its aim should land where the earlier walk's aim did, in the earlier walk's own frame. No photo in it. */
+function lastAims(live) {
+  const by = new Map();
+  for (const m of live?.marks || []) if (m.ar && m.id != null) by.set(m.id, m);
+  return by;
+}
+export function aimToAim(r, w, T) {
+  const a = lastAims(readJson(r.d, 'live.json')), b = lastAims(readJson(w.d, 'live.json'));
+  const out = [];
+  for (const [id, mb] of b) { const ma = a.get(id); if (!ma) continue; const p = place(T, ...mb.ar), q = place(r.T, ...ma.ar); out.push(Math.hypot(p[0] - q[0], p[1] - q[1]) * FT); }
+  return out;
+}
+
 const med = (a) => { const s = [...a].sort((x, y) => x - y); return s.length ? s[s.length >> 1] : NaN; };
 
 async function build(dir) {
@@ -114,6 +129,8 @@ function check(dirs) {
       const f = shapeFix(ref, w.pts);
       const e = f.T ? errs(w, f.T) : [];
       const own = errs(w, fitRigid(w.checks.map((m) => m.ar), w.checks.map((m) => m.map)));
+      const aims = f.T ? aimToAim(r, w, f.T) : [], aimsOwn = w.T ? aimToAim(r, w, w.T) : [];
+      if (aimsOwn.length) console.log(`    aim to aim (${aimsOwn.length} spots aimed at in both walks, no photo in it): the shape fix ${aims.length ? `${med(aims).toFixed(1)} ft (${aims.map((x) => x.toFixed(1)).join(', ')})` : '-'}; the two walks' own marks ${med(aimsOwn).toFixed(1)} ft`);
       console.log(`  ${w.meta.walk || w.d} placed by ${r.meta.walk || r.d}: ${f.ok ? 'PLACED' : 'not placed'} (landed ${f.landed ?? '-'}, standing ${f.standLanded ?? '-'}, next best ${f.second ?? '-'}, ${f.ms ?? '-'} ms): `
         + `${e.length ? `${med(e).toFixed(1)} ft (${e.map((x) => x.toFixed(1)).join(', ')})` : f.why}; its own marks' fit ${med(own).toFixed(1)} ft`);
       if (f.ok) meds.push(med(e));
