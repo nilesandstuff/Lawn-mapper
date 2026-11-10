@@ -338,6 +338,11 @@ export function lidarMarks(box, pts, { cell = CELL, debug = null } = {}) {
     // among trees still has its lawn, drive or deck on some sides; a shed deep in the woods is lost, and said so.
     const woods = woodsOf(group, crowns);
     if (woods > (kind === 'building' ? 0.7 : 0.5)) { if (debug) debug.push({ kind: 'in the woods', was: kind, n: group.length, woods: +woods.toFixed(2), top: +hsG[hsG.length >> 1].toFixed(1) }); continue; }
+    // a few returns at the edge of the woods (run 252 on the owner's lot: 15 things of 1.5-4 m2, 1 to 9 returns, 60 to
+    // 120 m out, crowns over 30-50% round them in a leaf-off flight that hits few crowns): a hot tub at 4 returns a m2
+    // is 15
+    const small = group.length * spacing * spacing < 10;
+    if (kind === 'object' && (group.length < 6 || (small && woods > 0.3))) { if (debug) debug.push({ kind: 'in the woods', was: 'small', n: group.length, woods: +woods.toFixed(2), top: +hsG[hsG.length >> 1].toFixed(1) }); continue; }
     const medOf = (l) => { const h = l.map((p) => p.h).sort((a, b) => a - b); return h[h.length >> 1]; };
     if (kind === 'building') {
       // A DECK AGAINST A HOUSE (the owner, 2026-11-10: "The deck showed up as building"): it touches the house, so it

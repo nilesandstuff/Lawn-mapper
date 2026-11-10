@@ -2265,7 +2265,24 @@ What answers it (scan/lib/lidar-marks.js, on the placement map's "Lidar" picture
 HARD, on synthetic yards at 4 returns a square metre (scan/test/lidar-marks.test.js): a two-level deck's ten corners
 0.0-0.3 ft (median 0.1); a 0.5 m stone wall's faces within 0.15 m, its ends 0.1 ft where the laser hits them and 4.4 ft
 where its last hits stop short (both said unsure); a drive by brightness overlapping the grass's 0.3-1.4 ft. A whole
-lot, 38,400 returns, in 2.6 s on a desktop. NOT yet run on the owner's lots; NOT yet seen on a phone.
+lot, 38,400 returns, in 2.6 s on a desktop.
+
+HARD, on the owner's lot (scan-deploy task "marks", scan/tools/marks-check.mjs; a box of 191 x 87 m, 125,588 returns,
+spacing 0.72 m). The owner's first look (435de21): the deck right, the drive short, shapes all over the woods, the deck
+called a building ("Not sure if thats solvable or worth solving").
+  - run 250 (b0e1985, solid things only): 0 buildings (the house left out as rough: a roof's slope read as rough), 39
+    things, 14 paving slabs. 14 s.
+  - run 251 (65f1c7f, roughness from the neighbours' mean; paving must stand out by 1.5 spreads from a 2 m band round
+    it; slabs over 1500 m2 skipped): 3 buildings, 50 things, 5 slabs (contrast 1.5-2.2). 3 s.
+  - run 252 (723a877, crowns over the ground 1-4 m round a thing: over 50% a thing, 70% a building, is the woods; a
+    level, deck-sized level 1.5 m+ under a building's roof is split off): 2 buildings, 25 things, 5 slabs; 27 left out
+    as in the woods (one of them a "building" of 38 returns at 3.9 m, crowns 0.93 round it); one deck split off a
+    building, 52 returns at 3.4 m, against the 141 m2 building at 7.2 m (the owner's house, by the deck).
+  - then, not re-run: a thing of under 6 returns is dropped, and one under 10 m2 with crowns over 30% round it (run 252
+    left 15 of 1.5-4 m2 there, 60-120 m out). Of run 252's 25 things that leaves about 10.
+  - The drive: which of the 5 slabs it is cannot be told from a public log (distances only: 49-113 m from the largest
+    building, which is not the house). The owner's look decides.
+NOT yet seen on a phone.
 
 What it does not answer: a stump the 2018 flight hit once or not at all cannot be found from the lidar (about 4
 returns a square metre; a 0.5 m stump is hit about once). The brick patio, if its brightness does not part from the
