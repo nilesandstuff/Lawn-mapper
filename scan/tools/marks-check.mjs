@@ -61,6 +61,7 @@ async function main() {
   console.log(`Paving candidates, each threshold's slabs over 8 m2: ${pv.length}`);
   for (const d of pv.filter((x) => x.square)) console.log(`  KEPT: ${d.n} returns, ${d.area} m2, contrast ${d.contrast}, ${far(d.middle)} (${d.why})`);
   for (const d of pv.sort((a, b) => b.n - a.n).slice(0, 15)) console.log(`  ${d.n} returns, ${d.area} m2, ${far(d.middle)}: ${d.square ? 'KEPT' : 'not kept'} (${d.why || 'not fitted'})`);
+  console.log(`Paving drawn: ${M.objects.filter((o) => o.kind === 'paving').map((o) => `${o.area} m2 ${o.traced ? 'traced' : 'straight-edged'}, ${far(o.middle)}`).join('; ') || 'none'}`);
   const why = {}; for (const d of pv) { const k = d.square ? 'kept' : (d.why || '').startsWith('held') ? 'not straight-edged' : d.why; why[k] = (why[k] || 0) + 1; }
   console.log(`Paving reasons: ${Object.entries(why).map(([k, v]) => `${k} ${v}`).join(', ')}`);
 }

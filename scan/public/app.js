@@ -295,7 +295,7 @@ function photoTools() {
   s.classList.toggle('plain', st.photoChoice !== 'stretched');
   const crisp = pref('scan-crisp', '1') !== '0';
   c.classList.toggle('plain', !crisp); c.setAttribute('aria-pressed', String(crisp));
-  if (st.photoChoice === 'lidar') { const M = st.lid.overlay?.picture?.marks; $('#photo-why').textContent = `The lidar itself. Raised things (roofs, decks, walls, sheds, hot tubs) have straight edges fitted to the laser's hits; paving the laser tells apart by brightness is dashed blue (its corners always less sure). A point snaps to a corner: a white dot is pinned to about a foot, a yellow ring is less sure (the laser's last hit may stop short), a white cross is a small thing's middle. In the walk, aim at that corner itself, at any height. The ground shows by brightness; trees are green outlines.${M ? ` ${M.corners.filter((c) => c.sure && onPhoto(c.at)).length} sure corners here.` : ''}`; return; }
+  if (st.photoChoice === 'lidar') { const M = st.lid.overlay?.picture?.marks; $('#photo-why').textContent = `The lidar itself. Raised things (roofs, decks, walls, sheds, hot tubs) have straight edges fitted to the laser's hits; paving the laser tells apart by brightness (darker than the grass) is dashed blue: its corners always less sure, and a curved drive or a road only traced, with no corners. A point snaps to a corner: a white dot is pinned to about a foot, a yellow ring is less sure (the laser's last hit may stop short), a white cross is a small thing's middle. In the walk, aim at that corner itself, at any height. The ground shows by brightness; trees are green outlines.${M ? ` ${M.corners.filter((c) => c.sure && onPhoto(c.at)).length} sure corners here.` : ''}`; return; }
   $('#photo-why').textContent = st.photos?.stretched
     ? (st.photoChoice === 'stretched' ? 'Stretched onto the lidar: each spot moved to where the lidar measured it, so a corner on the ground is where it is on the ground.' : 'The photo as the map was traced on it. Aerial photos lean and stretch a little at the ground; "Stretched onto the lidar" corrects that.')
     : 'No stretched photo for this map yet.';
@@ -444,11 +444,13 @@ function drawMap() {
  */
 /* Only what lies on the photo (the owner, 2026-11-10: "2 are off the lidar image so I can't tell what they are"): the
    corners are found over the lot and 20 m round it, the picture is drawn in the photo's frame. */
-const onPhoto = (at) => { const q = toPx(st.frame, st.origin, at, photoW(), photoH()); return q[0] >= 0 && q[1] >= 0 && q[0] <= photoW() && q[1] <= photoH(); };
+const onPhoto = (at) => { if (!at || !st.frame) return true; const q = toPx(st.frame, st.origin, at, photoW(), photoH()); return q[0] >= 0 && q[1] >= 0 && q[0] <= photoW() && q[1] <= photoH(); };
+// a thing's middle (2026-11-10: the worker did not send it, onPhoto threw, and nothing was drawn): its ring's otherwise
+const middleOf = (o) => o.middle || (o.ring?.length ? [o.ring.reduce((t, p) => t + p[0], 0) / o.ring.length, o.ring.reduce((t, p) => t + p[1], 0) / o.ring.length] : null);
 function lidarLines(g, u) {
   const M = st.lid.overlay?.picture?.marks; if (!M) return;
   for (const o of M.objects) {
-    if (!o.ring || o.ring.length < 3 || !onPhoto(o.middle)) continue;
+    if (!o.ring || o.ring.length < 3 || !onPhoto(middleOf(o))) continue;
     g.beginPath(); o.ring.forEach((p, i) => { const [x, y] = px(p); if (i) g.lineTo(x, y); else g.moveTo(x, y); }); g.closePath();
     if (o.kind === 'paving') { g.fillStyle = 'rgba(120,170,255,.22)'; g.fill(); g.setLineDash([5 * u, 3 * u]); g.lineWidth = 2 * u; g.strokeStyle = '#9cc4ff'; g.stroke(); g.setLineDash([]); continue; }
     g.fillStyle = o.kind === 'building' ? 'rgba(18,18,22,.85)' : o.top > 2.5 ? 'rgba(210,95,0,.7)' : 'rgba(255,150,40,.6)';

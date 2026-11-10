@@ -81,7 +81,31 @@ console.log('lidar-marks: ok');
   assert.ok(R2.corners.filter((c) => c.of === drv.id && c.kind === 'corner').every((c) => !c.sure), 'and no corner of it is said to be sure');
   assert.ok(!pv.some((o) => inRingT(o.ring, [20, 23])), 'the lighter grass is not paving');
   assert.ok(!pv.some((o) => o.middle[0] < 5), 'nor the ground under the woods');
+  // the road: no straight-edged slab within the box, but its outline traced, with no corners to snap to
+  const rd = pv.find((o) => inRingT(o.ring, [33.5, 15]));
+  assert.ok(rd && rd.traced, 'the road is traced');
+  assert.ok(!R2.corners.some((c) => c.of === rd.id), 'a traced outline offers no corners');
   console.log('lidar-marks (paving): ok');
+}
+
+// a big drive with a turnaround and a curved side, run into the road (the owner's, 2026-11-10): traced, both together
+{
+  let sd = 21; const r = () => { sd = (sd + 0x6d2b79f5) | 0; let t = Math.imul(sd ^ (sd >>> 15), 1 | sd); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const g = () => Math.sqrt(-2 * Math.log(r() + 1e-12)) * Math.cos(2 * Math.PI * r());
+  const Q = [];
+  const road = (e) => e >= 42 && e <= 49, turn = (e, n) => Math.hypot(e - 16, n - 20) <= 9, lane = (e, n) => e >= 16 && e <= 42 && n >= 16 && n <= 22;
+  for (let i = 0; i < 50 * 40 * 4; i++) {
+    const e = r() * 50, n = r() * 40;
+    const b = road(e) ? 40 : turn(e, n) || lane(e, n) ? 70 : 120;
+    Q.push({ e, n, b: b + 18 * g() });
+  }
+  const R4 = lidarMarks([0, 0, 50, 40], { n: Q.length, e: (i) => Q[i].e, nn: (i) => Q[i].n, hag: () => 0, bright: (i) => Q[i].b, kind: () => 0 });
+  const pv = R4.objects.filter((o) => o.kind === 'paving');
+  console.log(`curved drive: ${pv.map((o) => `${o.area} m2${o.traced ? ' traced' : ''}`).join('; ')}`);
+  assert.ok(pv.some((o) => inRingT(o.ring, [16, 20]) && inRingT(o.ring, [30, 19])), 'the curved drive and its run to the road are outlined');
+  assert.ok(pv.some((o) => inRingT(o.ring, [45.5, 5]) || inRingT(o.ring, [45.5, 35])), 'and the road');
+  assert.ok(!pv.some((o) => inRingT(o.ring, [5, 35]) || inRingT(o.ring, [30, 33])), 'not the grass');
+  console.log('lidar-marks (curved drive): ok');
 }
 
 // the woods and a house with a deck against it (the owner, 2026-11-10: shapes all over the woods, the deck a building)

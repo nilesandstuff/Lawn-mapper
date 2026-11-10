@@ -117,7 +117,7 @@ self.onmessage = async ({ data }) => {
     if (P) {
       try {
         const t0 = Date.now(), M = lidarMarks(box, P);
-        const marks = { objects: M.objects.map((o) => ({ id: o.id, kind: o.kind, ring: o.ring, top: o.top, area: o.area, square: o.square })), corners: M.corners, spacing: M.spacing };
+        const marks = { objects: M.objects.map((o) => ({ id: o.id, kind: o.kind, ring: o.ring, top: o.top, area: o.area, square: o.square, middle: o.middle, traced: !!o.traced })), corners: M.corners, spacing: M.spacing };
         self.postMessage({ marks, progress: `lidar marks: ${M.objects.length} things, ${M.corners.filter((c) => c.kind === 'corner').length} corners (${M.corners.filter((c) => c.sure).length} sure), ${Date.now() - t0} ms` });
       } catch (err) { self.postMessage({ progress: `the lidar's corners could not be found (${err.message})` }); }
     }

@@ -92,6 +92,9 @@ function simplifyIdx(ring, tol) {
   return [...keep].sort((x, y) => x - y);
 }
 
+/** Douglas-Peucker on a closed ring: the ring with only the corners that stray more than tol from a straight run. */
+export function simplifyRing(ring, tol) { return ring.length < 4 ? ring.slice() : simplifyIdx(ring, tol).map((i) => ring[i]); }
+
 /** The total-least-squares line through points: { c: centre, d: unit direction }. */
 function fitLine(pts) {
   let mx = 0, my = 0; for (const [x, y] of pts) { mx += x; my += y; } mx /= pts.length; my /= pts.length;

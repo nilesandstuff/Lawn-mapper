@@ -23,7 +23,7 @@
  * Returns { objects: [{ id, kind: 'building' | 'object', ring: [[e, n]], top, corners: [[e, n]], middle, area }],
  *           corners: [{ at: [e, n], of: id, kind: 'corner' | 'middle' }], spacing }
  */
-import { ringsOfMask, patchesOf, areaOf } from './outline.js';
+import { ringsOfMask, patchesOf, areaOf, simplifyRing } from './outline.js';
 
 const CELL = 0.25;
 /* A corner is "sure" when the edges through it were each set in a gap of returns no wider than twice this: the true
@@ -299,17 +299,33 @@ export function lidarMarks(box, pts, { cell = CELL, debug = null } = {}) {
     // closed over the random gaps between returns, and its holes filled: only its outline's topology is wanted
     return { mask: fillHoles(morph(morph(m, W, H, rad, 1), W, H, rad, 0), W, H, N), box, W, H };
   };
-  const add = (inside, outside, kind, { minArea = 4, minSpan = 3, edgeIn = null, edgeOut = null, woods = null, contrast = null } = {}) => {
-    if (inside.length < 3) return;
+  const add = (inside, outside, kind, { minArea = 4, minSpan = 3, edgeIn = null, edgeOut = null, woods = null, contrast = null, outline = false, traceOnly = false } = {}) => {
+    if (inside.length < 3) return false;
     const hs = inside.map((p) => p.h).sort((a, b) => a - b);
     const mid = inside.reduce((s, p) => [s[0] + p.e / inside.length, s[1] + p.n / inside.length], [0, 0]);
     // its size by its returns (one per spacing^2), and its length: a long thin thing (a wall) is outlined too
     const area = inside.length * spacing * spacing;
     let span = 0; for (let a = 0; a < 180; a += 15) { const t = (a * Math.PI) / 180, v = inside.map((p) => Math.cos(t) * p.e + Math.sin(t) * p.n); span = Math.max(span, Math.max(...v) - Math.min(...v)); }
     const local = area >= minArea || span >= minSpan ? maskOf(inside) : null;
-    const fit = local ? squareOutline(local.mask, local.box, local.W, local.H, cell, inside, outside, { minJog, reach, loose: kind === 'paving', edgeIn, edgeOut, view: box }) : null;
+    // (a slab of more than 1500 m2, the owner's drive run into the road, is not tried for straight sides: it has none)
+    const fit = local && !traceOnly && !(kind === 'paving' && area > 1500) ? squareOutline(local.mask, local.box, local.W, local.H, cell, inside, outside, { minJog, reach, loose: kind === 'paving', edgeIn, edgeOut, view: box }) : null;
     if (debug) debug.push({ kind, n: inside.length, area: +area.toFixed(1), fitted: !!fit, square: !!fit?.square, why: fit?.why || null, middle: mid, woods: woods == null ? null : +woods.toFixed(2), contrast: contrast == null ? null : +contrast.toFixed(1) });
-    if (kind === 'paving' && !fit?.square) return; // a patch of ground that is not a straight-edged slab is not a mark
+    if (kind === 'paving' && !fit?.square) {
+      // A DRIVE WITH A CURVED SIDE (the owner, 2026-11-10: "my driveway is pretty big, has a turnaround spot, and a
+      // large curved side... That would be fine if it merges with the road though, we do need to also get the road"):
+      // not straight-edged, so no corners, but its outline as traced (closed over the gaps between returns,
+      // straightened to within half a metre) is drawn to place points along by eye
+      if (!outline || !local) return false;
+      // smoothed by a metre (brightness is noisy at an edge: a ragged trace is no help to the eye)
+      const r1 = Math.max(1, Math.round(1 / cell)), smooth = morph(morph(local.mask, local.W, local.H, r1, 0), local.W, local.H, r1, 1);
+      const rings = ringsOfMask(smooth, local.W, local.H).map((r) => r.map(([x, y]) => [local.box[0] + x * cell, local.box[3] - y * cell])).filter((r) => areaOf(r) < 0);
+      if (!rings.length) return false;
+      rings.sort((a, b) => areaOf(a) - areaOf(b));
+      const ring = simplifyRing(rings[0], 0.5).map(([e, n]) => [+e.toFixed(2), +n.toFixed(2)]);
+      if (ring.length < 3) return false;
+      objects.push({ id: objects.length, kind, ring, top: 0, corners: [], middle: mid, area: +area.toFixed(1), square: false, traced: true });
+      return true;
+    }
     const id = objects.length;
     const cs = fit?.square ? fit.ring.filter((_, j) => fit.keep[j]) : [];
     const sureOf = fit?.square ? fit.sure.filter((_, j) => fit.keep[j]) : [];
@@ -317,6 +333,7 @@ export function lidarMarks(box, pts, { cell = CELL, debug = null } = {}) {
     cs.forEach((c, j) => corners.push({ at: c, of: id, kind: 'corner', within: Number.isFinite(sureOf[j]) ? +sureOf[j].toFixed(2) : null, sure: sureOf[j] <= SURE_M }));
     // a small thing (a hot tub, a stump, a post) is also marked by its middle: round, it has no corners
     if (!cs.length || area < 6) corners.push({ at: mid, of: id, kind: 'middle' });
+    return true;
   };
   const raised = P.filter((p) => p.raised), ground = P.filter((p) => !p.raised);
   const solidity = solidityOf(P, Math.max(1, 2.5 * spacing));
@@ -403,35 +420,51 @@ export function lidarMarks(box, pts, { cell = CELL, debug = null } = {}) {
   for (let i = 0; i < cuts.length; i++) for (let j = i + 1; j < cuts.length; j++) bands.push([cuts[i], cuts[j]]);
   bands.sort((a, b) => (a[1] - a[0]) - (b[1] - b[0]));
   for (const c of cuts) bands.push([-Infinity, c]);
-  const firstPaving = objects.length;
+  // every band's slabs are gathered first, then taken best first, each only where no better one already lies: the same
+  // drive turns up in many bands, a little bigger or smaller in each
   const tried = new Set(), med = (a) => { const s2 = a.map((p) => p.b).sort((x, y) => x - y); return s2[s2.length >> 1]; };
+  const cands = [];
   for (const [lo, hi] of bands) {
     // each return's side by the vote of its nearest ground returns: a dark speck in grass is grass
     const raw = open.map((p) => p.b > lo && p.b <= hi), lit = smoothVote(lists, raw);
-    const part = open.filter((p, i) => lit[i]), rest = open.filter((p, i) => !lit[i]);
+    const part = open.filter((p, i) => lit[i]);
     for (const group of linked(part, Math.max(0.8, 1.6 * spacing), 0.25)) {
-      // a drive, a walk or a patio, not a whole lawn or a road's length
-      if (group.length * spacing * spacing > 1500) continue;
+      const area = +(group.length * spacing * spacing).toFixed(1);
+      // a drive, a walk or a patio and the road it runs into, not a whole lawn
+      if (area > 4000) continue;
       // (run 254 on the owner's lot: nine slabs of 9-26 m2 kept, specks of dark ground) a drive is bigger
-      if (group.length * spacing * spacing < 20) continue;
-      // one slab once: a group whose middle lies in a slab already found is the same slab in another band
+      if (area < 20) continue;
       const mid = group.reduce((s2, p) => [s2[0] + p.e / group.length, s2[1] + p.n / group.length], [0, 0]);
-      if (objects.slice(firstPaving).some((o) => o.ring && inRing(o.ring, mid))) continue;
       const sig = `${group.length}:${Math.round(mid[0])}:${Math.round(mid[1])}`;
       if (tried.has(sig)) continue; tried.add(sig);
-      const area = +(group.length * spacing * spacing).toFixed(1);
       // darker than the lawn by a surface's noise or more: a patch of lighter grass is not paving
       if (med(group) > lawnB - spreadB) { if (debug) debug.push({ kind: 'paving', n: group.length, area, square: false, why: 'not darker than the lawn', middle: mid }); continue; }
       // and it stands out from the ground right round it (a 2 m band outside) by twice a surface's noise
       const contrast = contrastOf(group, open, 2, spreadB);
       if (contrast < 2) { if (debug) debug.push({ kind: 'paving', n: group.length, area, square: false, why: 'too little contrast with the ground round it', middle: mid }); continue; }
-      // its outside is everything that is not it: the other ground, the ground under crowns and raised things (a
-      // drive against a house or under a tree's edge has its side set by those; run 254, without them, left the
-      // owner's drive's sides "unpinned")
-      const inG = new Set(group);
-      add(group, [...rest, ...part.filter((p) => !inG.has(p)), ...notOpen], 'paving', { minArea: 8, minSpan: 6, contrast,
-        edgeIn: open.filter((p, i) => raw[i]), edgeOut: [...open.filter((p, i) => !raw[i]), ...notOpen] });
+      // how much of it is in the band itself, before the vote: a slab is mostly its own colour
+      const inBand = group.filter((p) => p.b > lo && p.b <= hi).length / group.length;
+      cands.push({ group, lo, hi, contrast, inBand, area, score: contrast * inBand * Math.sqrt(group.length) });
     }
+  }
+  cands.sort((a, b) => b.score - a.score);
+  // first the straight-edged slabs (they have corners), then, where none lies, the rest as traced outlines
+  const taken = new Set(), failed = [];
+  const free = (c) => { let shared = 0; for (const p of c.group) if (taken.has(p)) shared++; return shared <= 0.3 * c.group.length; };
+  for (const c of cands) {
+    if (!free(c)) continue;
+    // its outside is everything that is not it: the other ground, the ground under crowns and raised things (a drive
+    // against a house or under a tree's edge has its side set by those; run 254, without them, left the owner's
+    // drive's sides "unpinned")
+    const inG = new Set(c.group), raw = (p) => p.b > c.lo && p.b <= c.hi;
+    const ok = add(c.group, [...open.filter((p) => !inG.has(p)), ...notOpen], 'paving', { minArea: 8, minSpan: 6, contrast: c.contrast,
+      edgeIn: open.filter(raw), edgeOut: [...open.filter((p) => !raw(p)), ...notOpen] });
+    if (ok) for (const p of c.group) taken.add(p); else failed.push(c);
+  }
+  for (const c of failed) {
+    // mostly its own colour before the vote (a traced outline has no straight sides to vouch for it)
+    if (c.inBand < 0.6 || !free(c)) continue;
+    if (add(c.group, [], 'paving', { minArea: 8, minSpan: 6, contrast: c.contrast, outline: true, traceOnly: true })) for (const p of c.group) taken.add(p);
   }
   return { objects, corners, spacing: +spacing.toFixed(2) };
 }
