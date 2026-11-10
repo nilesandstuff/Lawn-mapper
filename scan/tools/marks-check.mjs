@@ -50,6 +50,7 @@ async function main() {
   console.log(`Left out as not solid (the laser went through, or every height): ${ns2.length}; sizes ${ns2.map((d) => `${d.n} returns (through ${d.through}, rough ${d.rough} m)`).slice(0, 15).join('; ')}`);
   const pv = debug.filter((d) => d.kind === 'paving');
   console.log(`Paving candidates, each threshold's slabs over 8 m2: ${pv.length}`);
+  for (const d of pv.filter((x) => x.square)) console.log(`  KEPT: ${d.n} returns, ${d.area} m2 (${d.why})`);
   for (const d of pv.sort((a, b) => b.n - a.n).slice(0, 15)) console.log(`  ${d.n} returns, ${d.area} m2: ${d.square ? 'KEPT' : 'not kept'} (${d.why || 'not fitted'})`);
 }
 

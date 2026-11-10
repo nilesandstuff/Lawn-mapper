@@ -210,7 +210,7 @@ function squareOutline(mask, box, W, H, cell, inside, outside, { minJog, reach, 
   // a paving slab is believed only when most of its sides were set by returns on both sides of them
   const pinned = real.filter((s) => Number.isFinite(s.gap)).length / Math.max(1, real.length);
   const why = `held ${held.toFixed(2)} strays ${strays.toFixed(2)} pinned ${pinned.toFixed(2)} sides ${sides.length}`;
-  return { ring, sure, keep, why, square: loose ? held >= 0.85 && strays <= 0.15 && pinned >= 0.6 && sides.length <= 12 : held >= 0.9 && strays <= 0.1 };
+  return { ring, sure, keep, why, square: loose ? held >= 0.85 && strays <= 0.15 && pinned >= 0.6 && sides.length <= 10 : held >= 0.9 && strays <= 0.1 };
 }
 
 /** Grown (v = 1) or taken back (v = 0) by a disc of rad cells. */
@@ -352,17 +352,26 @@ export function lidarMarks(box, pts, { cell = CELL, debug = null } = {}) {
   const thrs = gb.length < 50 ? [] : [otsu(gb), q(0.5), q(0.6), q(0.7), q(0.8), q(0.9)].filter((t) => t != null);
   const firstPaving = objects.length;
   const lists = thrs.length ? nearestLists(ground, 15, Math.max(1.2, 3 * spacing)) : null;
+  const tried = new Set(), spreadB = gb.length ? (q(0.75) - q(0.25)) / 1.35 : 1;
   for (const thr of thrs) {
     // each return's side by the vote of its nearest ground returns: a bright speck in grass is grass
     const lit = smoothVote(lists, ground.map((p) => p.b > thr));
     for (const bright of [true, false]) {
       const part = ground.filter((p, i) => lit[i] === bright), rest = ground.filter((p, i) => lit[i] !== bright);
       for (const group of linked(part, Math.max(0.8, 1.6 * spacing), 0.25)) {
+        // a drive, a walk or a patio, not a lawn (2026-11-10, the owner's lot: groups of thousands of m2 at every
+        // threshold, the lawn and the woods, each taking seconds to fit and none a slab)
+        if (group.length * spacing * spacing > 1500) continue;
         if (group.length * spacing * spacing < 8) continue;
         const inG = new Set(group);
         // one slab once: a group whose middle lies in a slab already found is the same slab at another threshold
         const mid = group.reduce((s2, p) => [s2[0] + p.e / group.length, s2[1] + p.n / group.length], [0, 0]);
         if (objects.slice(firstPaving).some((o) => o.ring && inRing(o.ring, mid))) continue;
+        const sig = `${group.length}:${Math.round(mid[0])}:${Math.round(mid[1])}`;
+        if (tried.has(sig)) continue; tried.add(sig);
+        // a slab stands out from the ground right round it: its brightness against a 2 m band outside, in the spread
+        // of brightness on the lot (a patch of lawn a little lighter than the rest does not)
+        if (contrastOf(group, ground, 2, spreadB) < 1.5) { if (debug) debug.push({ kind: 'paving', n: group.length, area: +(group.length * spacing * spacing).toFixed(1), square: false, why: 'too little contrast with the ground round it' }); continue; }
         add(group, [...rest, ...part.filter((p) => !inG.has(p))], 'paving', { minArea: 8, minSpan: 6,
           edgeIn: ground.filter((p) => (p.b > thr) === bright), edgeOut: ground.filter((p) => (p.b > thr) !== bright) });
       }
@@ -399,10 +408,13 @@ function solidityOf(P, reach) {
         const k = nearest(p, 3); if (k.length === 3 && k.every((q) => inG.has(q))) through++;
       }
     }
+    // how far each return stands from the mean of its raised neighbours: on a plane, a sloped roof's included, that
+    // is about nothing (the neighbours round it average to its own height); in brush it is a metre (2026-11-10: the
+    // owner's house was left out when this was the spread of the neighbours' heights, a roof's slope read as rough)
     const rs = [], step = Math.max(1, Math.floor(group.length / 200));
     for (let gi = 0; gi < group.length; gi += step) {
-      const p = group[gi], hs = nearest(p, 8).filter((q) => q.raised).map((q) => Math.abs(q.h - p.h)).sort((a, b) => a - b);
-      if (hs.length) rs.push(hs[hs.length >> 1]);
+      const p = group[gi], ns = nearest(p, 8).filter((q) => q.raised);
+      if (ns.length >= 3) rs.push(Math.abs(p.h - ns.reduce((t, q) => t + q.h, 0) / ns.length));
     }
     rs.sort((a, b) => a - b);
     return { through: through / group.length, rough: rs.length ? rs[rs.length >> 1] : 0 };
@@ -422,6 +434,26 @@ function nearestLists(ps, K, reach) {
 }
 /** Each point's label by the vote of its nearest. */
 const smoothVote = (lists, lab) => lists.map((l) => { let yes = 0; for (const j of l) if (lab[j]) yes++; return yes * 2 > l.length; });
+
+/**
+ * How a group of ground returns stands out from the ground round it: the difference of the median brightness of the
+ * group and of the other ground returns within band metres of it, in units of spread.
+ */
+function contrastOf(group, ground, band, spread) {
+  const inG = new Set(group), B = band, hash = new Set(), key = (x, y) => `${x},${y}`;
+  for (const p of group) hash.add(key(Math.floor(p.e / B), Math.floor(p.n / B)));
+  const ring = [];
+  for (const p of ground) {
+    if (inG.has(p)) continue;
+    const bx = Math.floor(p.e / B), by = Math.floor(p.n / B);
+    let near = false;
+    for (let dy = -1; dy <= 1 && !near; dy++) for (let dx = -1; dx <= 1; dx++) if (hash.has(key(bx + dx, by + dy))) { near = true; break; }
+    if (near) ring.push(p.b);
+  }
+  if (ring.length < 10) return 0;
+  const med = (a) => { const s2 = [...a].sort((x, y) => x - y); return s2[s2.length >> 1]; };
+  return Math.abs(med(group.map((p) => p.b)) - med(ring)) / Math.max(1e-9, spread);
+}
 
 /** Is a point inside a ring (even-odd)? */
 function inRing(ring, [x, y]) {
