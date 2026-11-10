@@ -166,7 +166,7 @@ export function lidarPicture(box, pts, cell = PICTURE_CELL, opts = {}) {
       if (O[k]) px = edge(O, k, r, c) ? [200, 90, 0] : [255, 150, 40];
       if (R[k]) px = edge(R, k, r, c) ? [255, 255, 255] : [20, 20, 22];
     }
-    if (T[k] && !R[k] && edge(T, k, r, c)) px = [40, 220, 80];
+    if (!opts.noTrees && T[k] && !R[k] && edge(T, k, r, c)) px = [40, 220, 80];
     rgba[k * 4] = px[0]; rgba[k * 4 + 1] = px[1]; rgba[k * 4 + 2] = px[2]; rgba[k * 4 + 3] = 255;
   }
   return { e0: box[0], n1: box[3], cell, W, H, rgba };

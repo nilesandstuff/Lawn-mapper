@@ -36,7 +36,7 @@ on:
         required: true
         default: tests
         type: choice
-        options: [tests, deploy, walks, twin, fix, place, depth, study, skyline, pavement, checks, repeat, register, walkfix, walkfixjs, reference, warp, marks]
+        options: [tests, deploy, walks, twin, fix, place, depth, study, skyline, pavement, checks, repeat, register, walkfix, walkfixjs, reference, warp, marks, naip]
       walk:
         description: 'For twin, fix or depth: the walk id, or latest'
         default: latest
@@ -398,6 +398,19 @@ jobs:
           set -o pipefail
           node scan/tools/marks-check.mjs "$WALK" | tee marks.txt
 
+      # DOES NAIP SIT ON THE LIDAR? (scan/tools/naip-check.mjs; SCAN-PLAN section 22): NAIP's near infrared against the
+      # lidar's ground brightness (both near infrared), patch by patch, after a planted slide. The walk input: walks
+      # comma separated, or "recent" (the newest walk on each of the last three maps). Dates and distances only.
+      - name: NAIP against the lidar
+        if: ${{ inputs.task == 'naip' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WALK: ${{ inputs.walk }}
+        run: |
+          set -o pipefail
+          node scan/tools/naip-check.mjs "${WALK:-recent}" | tee naip.txt
+
       - name: Photos stretched onto the lidar
         if: ${{ inputs.task == 'warp' }}
         env:
@@ -479,6 +492,7 @@ jobs:
             repeat) cat repeat.txt 2>/dev/null || echo "no repeat-walk study: see the step above" ;;
             warp) cat warp.txt 2>/dev/null || echo "no warp study: see the step above" ;;
             marks) cat marks.txt 2>/dev/null || echo "no marks check: see the step above" ;;
+            naip) cat naip.txt 2>/dev/null || echo "no NAIP check: see the step above" ;;
             walkfixjs) cat walkfix.txt 2>/dev/null || echo "no check: see the step above" ;;
             walkfix) grep -v '^Twin read' walkfix.txt 2>/dev/null | tail -40 || echo "no walk-to-walk study: see the step above" ;;
             reference) cat reference.txt 2>/dev/null || echo "no reference: see the step above" ;;
