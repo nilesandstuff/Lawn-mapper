@@ -25,6 +25,7 @@ import { walkPrior } from '/lib/walkfix.js';
 import { keepPoint, viewFromSem, newSemCount, noteSem, semSummary, newCrumbs, crumbDue, addCrumb, crumbMoves } from '/lib/semantics.js';
 import { newOutbox, idbStore, memoryStore, statusText } from '/lib/outbox.js';
 import { byDistance, nearestMap, mapLabel } from '/lib/maps-pick.js';
+import { enhance } from '/lib/enhance.js';
 import { viewToFit, followView, toScreen, zoomAt as miniZoom, pan as miniPan, edgeArrow } from '/lib/minimap.js';
 
 const $ = (s) => document.querySelector(s);
@@ -205,11 +206,74 @@ async function loadMap(id) {
   $('#mapnote').textContent = `Map opened (${[saved && !Number.isNaN(+saved) ? `saved ${saved.toLocaleDateString()}` : '', m.squareFeet ? `${Math.round(m.squareFeet).toLocaleString()} sq ft of lawn` : ''].filter(Boolean).join(', ') || 'no lawn traced yet'}).`;
   drawMap();
   startLidar(m);
-  st.photo = null;
+  st.photo = null; st.photos = { kept: null, stretched: null }; st.shown = {};
   const got = await keptPhoto(id);
-  if (got.photo) { st.photo = got.photo; st.frame = got.frame; }
+  if (got.photo) { st.photos.kept = got.photo; st.photoSrc = got.src; st.frame = got.frame; }
   $('#mapnote').textContent += ` Photo: ${got.note}.`;
+  if (got.photo) st.photos.stretched = await stretchedPhoto(id, got.src, got.photo);
+  await showPhoto();
+}
+
+/**
+ * THE PHOTO STRETCHED ONTO THE LIDAR, AND CRISPER (the owner, 2026-11-09: aerial photos are locally skewed at the
+ * ground and only the lidar is true to it; "run the photos through the same enhancement that the lawnmapper uses to
+ * make things crisper and easier to see"). docs/SCAN-PLAN.md section 17. The study (scan/tools/warp_study.py) keeps
+ * the map's own photo resampled so each pixel sits where the lidar put that spot, on the same frame and size, under
+ * refs/warp/<map>/. Laid where the page draws the lidar (the model's one shift onto the photo included), so a point
+ * placed on it is placed on the lidar's ground. Each point keeps which photo it was placed on (`on`).
+ */
+async function stretchedPhoto(id, src, kept) {
+  try {
+    const r = await fetch(`/api/scan/warp?map=${encodeURIComponent(id)}&file=warped-${src}.png`, { credentials: 'same-origin' });
+    if (!r.ok) return null;
+    const b = await createImageBitmap(await r.blob());
+    return b.width === kept.width && b.height === kept.height ? b : null; // another frame: not this photo's stretch
+  } catch { return null; }
+}
+
+const pref = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : v; } catch { return d; } };
+const setPref = (k, v) => { try { localStorage.setItem(k, v); } catch { /* this phone only */ } };
+
+/** The photo the placement map shows: as kept or stretched, crisper or not (lib/enhance.js, for the eye only). */
+async function showPhoto() {
+  const which = st.photos?.stretched && pref('scan-photo', 'stretched') === 'stretched' ? 'stretched' : 'kept';
+  const crisp = pref('scan-crisp', '1') !== '0';
+  const base = st.photos?.[which] || null;
+  st.photoChoice = base ? which : null;
+  const key = `${which}:${crisp ? 1 : 0}`;
+  if (base && crisp && !st.shown[key]) {
+    try {
+      const c = document.createElement('canvas'); c.width = base.width; c.height = base.height;
+      const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(base, 0, 0);
+      const im = g.getImageData(0, 0, c.width, c.height);
+      enhance(im.data, c.width, c.height);
+      g.putImageData(im, 0, 0);
+      st.shown[key] = await createImageBitmap(c);
+    } catch (e) { log(`crisper photo: ${e.message}`); }
+  }
+  st.photo = (crisp && st.shown[key]) || base;
+  photoTools();
   drawMap();
+}
+
+function photoTools() {
+  const box = $('#photo-tools'); if (!box) return;
+  box.hidden = !st.photos?.kept;
+  const s = $('#photo-stretched'), k = $('#photo-kept'), c = $('#photo-crisp');
+  s.hidden = !st.photos?.stretched;
+  k.classList.toggle('plain', st.photoChoice !== 'kept');
+  s.classList.toggle('plain', st.photoChoice !== 'stretched');
+  const crisp = pref('scan-crisp', '1') !== '0';
+  c.classList.toggle('plain', !crisp); c.setAttribute('aria-pressed', String(crisp));
+  $('#photo-why').textContent = st.photos?.stretched
+    ? (st.photoChoice === 'stretched' ? 'Stretched onto the lidar: each spot moved to where the lidar measured it, so a corner on the ground is where it is on the ground.' : 'The photo as the map was traced on it. Aerial photos lean and stretch a little at the ground; "Stretched onto the lidar" corrects that.')
+    : 'No stretched photo for this map yet.';
+}
+
+function wirePhotoTools() {
+  $('#photo-kept')?.addEventListener('click', () => { setPref('scan-photo', 'kept'); showPhoto(); });
+  $('#photo-stretched')?.addEventListener('click', () => { setPref('scan-photo', 'stretched'); showPhoto(); });
+  $('#photo-crisp')?.addEventListener('click', () => { setPref('scan-crisp', pref('scan-crisp', '1') !== '0' ? '0' : '1'); showPhoto(); });
 }
 
 /**
@@ -229,7 +293,7 @@ async function keptPhoto(id) {
     frame.height = Number.isFinite(frame.height) ? frame.height : frame.size;
     const src = r.headers.get('X-Photo-Source');
     const photo = await createImageBitmap(await r.blob());
-    return { photo, frame, note: `${src === 'county' ? 'the county photo' : 'the Mapbox photo'} the map was traced on, kept with the map` };
+    return { photo, frame, src: src === 'county' ? 'county' : 'mapbox', note: `${src === 'county' ? 'the county photo' : 'the Mapbox photo'} the map was traced on, kept with the map` };
   } catch (e) {
     return { photo: null, frame: null, note: `the map's own photo could not be loaded (${e.message}); reload to try again` };
   }
@@ -342,14 +406,14 @@ function wireMap() {
     ptrs.delete(ev.pointerId);
     if (pinch) { if (ptrs.size < 2) pinch = null; downAt = null; drag = null; pan = null; return; }
     const xy = canvasXY(ev);
-    if (drag && moved) { delete drag.grab; drag = null; st.dragging = null; savePoints(); listPoints(); drawMap(); return; }
+    if (drag && moved) { delete drag.grab; drag.on = st.photoChoice || undefined; drag = null; st.dragging = null; savePoints(); listPoints(); drawMap(); return; }
     const tap = !cancelled && downAt && !moved;
     if (drag) delete drag.grab;
     drag = null; pan = null; downAt = null; st.dragging = null;
     if (!tap) { drawMap(); return; }
     const b = toBase(xy);
     if (hitAt(b)) return;
-    st.points.push({ id: `${Date.now()}`, kind: st.adding, name: nextName(st.adding), map: unpx(b) });
+    st.points.push({ id: `${Date.now()}`, kind: st.adding, name: nextName(st.adding), map: unpx(b), on: st.photoChoice || undefined });
     savePoints(); listPoints(); drawMap();
   };
   cv.addEventListener('pointerup', (ev) => up(ev, false));
@@ -641,7 +705,7 @@ async function appBox() {
     <div class="tools" style="margin-top:6px"><a href="/api/app/apk"><button type="button">Get the app</button></a> <a href="/api/app/pair"><button type="button" class="plain">Open in the app</button></a></div>
     <p class="dim" style="margin:6px 0 0">First time: Get the app, open the download and allow installing from Chrome. Then Open in the app signs it in (once).</p>`;
 }
-const pointsKept = () => (st.points || []).map((p) => ({ id: p.id, name: p.name, kind: p.kind, map: p.map }));
+const pointsKept = () => (st.points || []).map((p) => ({ id: p.id, name: p.name, kind: p.kind, map: p.map, on: p.on || null }));
 
 function nextTarget() {
   // the point the owner picked on the mini map, until it is marked (2026-11-03: Mark "was demanding R2, which I had
@@ -1333,7 +1397,7 @@ function walkCard(s, open) {
   </details>`;
 }
 
-wire(); wireMap();
+wire(); wireMap(); wirePhotoTools();
 // for a browser test without a phone (?debug=1): the mini map's pieces, nothing else
 if (new URLSearchParams(location.search).get('debug') === '1') window.__scan = { st, mini, drawMini, arrows };
 main().catch((e) => { $('#status').textContent = `This page could not start: ${e.message}`; });

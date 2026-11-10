@@ -1998,3 +1998,26 @@ windows instead of once per frame.
 A test the owner's walks already allow: the same check points placed on Mapbox (the walks before 2026-11-09 evening)
 and on the county photo (that walk) are the two photos' disagreement, measured by eye at real objects; after both
 photos are warped to the lidar, the two placements of each point should come together.
+
+### SCAN-H33. The photos stretched onto the lidar, first run: the edge windows are too thin to stretch anything (2026-11-10)
+
+HARD (workflow S run 226, task warp, the owner's home map; 125,588 lidar returns, the model's shift onto a photo
+0.89 m, taken off; the county photo kept with the map, 1714x688, and Mapbox for the same frame; 0.25 m cells, 42%
+raised and masked out):
+  - The baseline matcher (edges by direction in overlapping 24 m windows, ground only) found 30 matches on the county
+    photo and 13 on Mapbox. Median shift 1.4 ft and 1.1 ft.
+  - Held out (five folds), county: none 5.7 ft RMS, shift 5.7, affine 6.4, spline 7.8. Mapbox: none 6.5, shift 6.7,
+    affine 8.7, spline 10.7. The matches disagree with one another by about 6 ft, and every fitted stretch predicts
+    unseen matches worse than leaving the photo alone. The matcher, not the warp, is what fails here: on a synthetic
+    lot with a known stretch the same code recovers it to a median 9 cm (95% 23 cm).
+  - RoMa did not run: its CUDA kernel was missing ("No module named 'local_corr'"). It is now built with
+    use_custom_corr=False.
+  - The same 4 points on Mapbox and on the county photo, as placed: 1.9, 122.3, 2.5, 0.8 ft apart; after the
+    (noise-fitted) stretches: 2.8, 123.8, 2.5, 1.3 ft. The 122 ft one is a point dragged to another spot between
+    walks, not a photo's error.
+  - Run 226 kept a spline it should not have. Since commit 93a3a8c a stretch is kept only when its held-out error is
+    under 0.8 of none's, and an older stretched photo is taken out when no new one is kept.
+
+The placement map has the switch already (2026-11-10): "Photo as traced" or "Stretched onto the lidar" (shown only
+when a stretch was kept), and "Crisper", which is Lawn Mapper's own enhancement (public/lib/enhance.js) copied in
+unchanged. Each point keeps which photo it was placed on (`on` in live.json's points).

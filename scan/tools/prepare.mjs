@@ -96,6 +96,8 @@ function main() {
   cpSync(join(scan, 'lib'), join(build, 'lib'), { recursive: true });
   /* THE LIDAR MODEL FILE FORMAT (public/lib/lidar-model.js, the core session's): the real file over scan/lib's Node re-export. */
   cpSync(join(root, 'public', 'lib', 'lidar-model.js'), join(build, 'lib', 'lidar-model.js'));
+  /* LAWN MAPPER'S PHOTO ENHANCEMENT (public/lib/enhance.js, imports nothing), for the placement map's "Crisper". */
+  cpSync(join(root, 'public', 'lib', 'enhance.js'), join(build, 'lib', 'enhance.js'));
   /* THE SHADE MAP'S OWN MODULES, unchanged, under /lib/shade/ (CLAUDE.md "One way to read lidar"): structures.js, the
      shared tree-versus-building rule, and what it imports (canopy.js, grid.js, ground.js, ept.js, las.js). All of
      them, so a module the features session adds to that chain is there too. */

@@ -91,6 +91,12 @@
         <button type="button" id="undo-point" class="plain">Remove the last</button>
         <button type="button" id="clear-pins" class="plain">Clear old pins</button>
       </div>
+      <div id="photo-tools" class="tools" hidden>
+        <button type="button" id="photo-kept" class="plain">Photo as traced</button>
+        <button type="button" id="photo-stretched" class="plain" hidden>Stretched onto the lidar</button>
+        <button type="button" id="photo-crisp" aria-pressed="true">Crisper</button>
+      </div>
+      <p id="photo-why" class="dim" style="margin:4px 0 0"></p>
       <div id="mapwrap"><canvas id="map" width="1280" height="1280"></canvas><div id="zoom"><button type="button" id="zin" aria-label="Zoom in">+</button><button type="button" id="zout" aria-label="Zoom out">&minus;</button><button type="button" id="zfit" aria-label="Show it all">&#x2922;</button></div></div>
       <ol id="points"></ol>
       <p id="lidar" class="dim">Reading the lidar…</p>

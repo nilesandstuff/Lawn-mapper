@@ -75,7 +75,29 @@ async function build(dir) {
 /* WALKREF_VARIANTS="cell,step;cell,step": the fix tried with other search cells (m) and turn steps (degrees) too. */
 const variants = () => (process.env.WALKREF_VARIANTS || '').split(';').map((x) => x.split(',').map(Number)).filter((v) => v.length === 2 && v.every((n) => n > 0));
 
+/* The live fix as it ran on the phone (live.json prev, scan/public/app.js prevKept): how often it was asked, when it
+   first placed the walk, why it last refused, and where its last fix put the walk's own check marks. */
+function liveFix(dirs) {
+  for (const d of dirs) {
+    const live = readJson(d, 'live.json') || {}, meta = readJson(d, 'meta.json') || {}, P = live.prev;
+    const name = meta.walk || d;
+    if (!P) { console.log(`  ${name}: no live fix kept (a walk from before the live fix, or no reference for its map)`); continue; }
+    if (P.reference === false) { console.log(`  ${name}: its map had no reference walk`); continue; }
+    const { checks, T } = marksOf(d);
+    let at = '';
+    if (P.fix?.T && checks.length) {
+      const e = checks.map((c) => { const p = place(P.fix.T, ...c.ar); return Math.hypot(p[0] - c.map[0], p[1] - c.map[1]) * FT; });
+      at = `; its last fix put the walk's ${checks.length} check marks ${med(e).toFixed(1)} ft from where they were placed (${e.map((x) => x.toFixed(1)).join(', ')})`;
+      if (T) { const turn = Math.abs(((P.fix.T.theta - T.theta + 3 * Math.PI) % (2 * Math.PI)) - Math.PI) * 180 / Math.PI; at += `, turned ${turn.toFixed(1)} degrees from the marks' own fit`; }
+    }
+    console.log(`  ${name}: live fix asked ${P.asks ?? '-'} times, placed ${P.ok ?? '-'} (first after ${P.firstOkM ?? '-'} m walked; last ${P.lastMs ?? '-'} ms)`
+      + `${P.fix ? `, last landed ${P.fix.landed} (next best ${P.fix.second}) after ${P.fix.walkedM} m` : ''}${P.lastWhy ? `; last refusal: ${P.lastWhy}` : ''}${at}.`);
+  }
+}
+
 function check(dirs) {
+  console.log('The live fix as it ran on the phone:');
+  liveFix(dirs);
   const walks = dirs.map((d) => ({ d, meta: readJson(d, 'meta.json') || {}, pts: twinPoints(d), ...marksOf(d) })).filter((w) => w.T && w.checks.length >= 3);
   console.log(`The page's own shape fix (scan/lib/walkref.js) on ${walks.length} walks; each placement scored on the placed walk's own check marks.`);
   const errs = (w, T) => w.checks.map((c) => { const p = place(T, ...c.ar); return Math.hypot(p[0] - c.map[0], p[1] - c.map[1]) * FT; });
