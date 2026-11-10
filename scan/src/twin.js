@@ -101,6 +101,25 @@ export async function twin(request, env, url, { isAdmin }) {
  * The admin only, like the twins: it is the yard's shape.
  */
 export const MAP = /^[0-9a-zA-Z_-]{1,64}$/;
+/**
+ * THE MAP'S PHOTO STRETCHED ONTO THE LIDAR (core session, 2026-11-10; docs/SCAN-PLAN.md section 17,
+ * scan/tools/warp_study.py and warp-keep.mjs): warp.json and warped-<photo>.png, kept under refs/warp/<map>/ by the
+ * study, read by the placement map. The admin only, like the reference. GET only: the study writes them through the
+ * Cloudflare API.
+ */
+const WARP_FILE = /^(warp\.json|warped-[a-z]+\.png)$/;
+export async function warp(request, env, url, { isAdmin }) {
+  if (url.pathname !== '/api/scan/warp') return null;
+  if (!(await isAdmin(request, env))) return json({ error: 'Not found' }, 404);
+  if (!env.TWIN) return json({ error: 'no-bucket' }, 503);
+  if (request.method !== 'GET') return json({ error: 'method' }, 405);
+  const map = url.searchParams.get('map') || '', file = url.searchParams.get('file') || '';
+  if (!MAP.test(map) || !WARP_FILE.test(file)) return json({ error: 'which map and file?' }, 400);
+  const o = await env.TWIN.get(`refs/warp/${map}/${file}`);
+  if (!o) return json({ error: 'Not found' }, 404);
+  return new Response(o.body, { headers: { 'Content-Type': file.endsWith('.json') ? 'application/json' : 'image/png', 'Cache-Control': 'private, no-store' } });
+}
+
 export const refKey = (map) => `refs/${map}.bin`;
 export async function reference(request, env, url, { isAdmin }) {
   if (url.pathname !== '/api/scan/reference') return null;

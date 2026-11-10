@@ -106,7 +106,8 @@ async function main() {
       photos.mapbox = { file: 'photo-mapbox.png', frame: { lng: frame.lng, lat: frame.lat, zoom: z, size: sw, height: sh }, w: info.width, h: info.height, kept: false };
     } else console.log(`Mapbox's photo could not be fetched (${r.status}).`);
   }
-  writeFileSync(join(dir, 'photos.json'), JSON.stringify({ map: meta.map, origin, k, photos }));
+  // the model's shift in the map's metres: the stretched photo is laid where the page draws the lidar, which is the model
+  writeFileSync(join(dir, 'photos.json'), JSON.stringify({ map: meta.map, origin, k, photos, shift: [shift[0] * k, shift[1] * k] }));
 
   // every walk on this map: its marks
   const walks = [];

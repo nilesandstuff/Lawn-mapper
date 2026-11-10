@@ -36,6 +36,7 @@ import numpy as np
 from scipy.interpolate import RBFInterpolator
 from scipy.ndimage import binary_dilation, gaussian_filter
 
+SHIFT = [0.0, 0.0]                   # the model's one shift onto the photo, in the map's metres (photos.json)
 FT = 3.28084
 CELL = 0.25          # m a pixel on the common grid
 R = 6378137.0
@@ -226,10 +227,12 @@ def main(d):
     t0 = time.time()
     info = json.load(open(os.path.join(d, "photos.json")))
     origin, photos = info["origin"], info["photos"]
+    global SHIFT
+    SHIFT = info.get("shift") or [0.0, 0.0]
     L = np.fromfile(os.path.join(d, "lidar.bin"), dtype="<f4").reshape(-1, 6).astype(np.float64)
     marks = json.load(open(os.path.join(d, "marks.json")))["walks"]
     print(f"Photos onto the lidar: {len(L):,} lidar returns; photos {', '.join(photos)}; {len(marks)} walks on the map.")
-    out = {"cell": 1.0, "photos": {}}
+    out = {"cell": 1.0, "photos": {}, "shift": SHIFT}
     fields = {}
     for src, p in photos.items():
         fr = Frame(p["frame"], p["w"], p["h"], origin)
@@ -277,6 +280,9 @@ def main(d):
             im = cv2.imread(os.path.join(d, p["file"]), cv2.IMREAD_COLOR)
             YY, XX = np.mgrid[0:p["h"], 0:p["w"]].astype(np.float64)
             E, N = fr.to_local(XX, YY)
+            # each output pixel is a place in the MODEL's frame (the page draws the lidar with the model's one shift onto
+            # the photo applied); the measured place is that less the shift, and the photo had it the field away from there
+            E, N = E - SHIFT[0], N - SHIFT[1]
             disp = best_field[1](np.c_[E.ravel(), N.ravel()]).reshape(E.shape + (2,))
             sx, sy = fr.to_px(E - disp[..., 0], N - disp[..., 1])
             warped = cv2.remap(im, sx.astype(np.float32), sy.astype(np.float32), cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
