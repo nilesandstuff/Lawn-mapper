@@ -32,7 +32,7 @@ export function parseStreet(text) {
   return { num, name, type, key: name.split(' ')[0] || '' };
 }
 
-/** The street type a label names ("... Alaska Avenue Southeast, ..." -> 'AVE'), or null. */
+/** The street type a label names ("... Juniper Avenue Southeast, ..." -> 'AVE'), or null. */
 export const typeOf = (label) => parseStreet(label).type;
 
 const tidy = (s) => String(s || '').trim().toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())
