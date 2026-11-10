@@ -17,16 +17,37 @@ const FS = 'precision mediump float; uniform vec4 c; void main(){ gl_FragColor =
 /* THE LIDAR'S OWN SHADERS (2026-11-07, the owner: real physical objects should hide the shapes): each fragment's
    distance along the camera's axis against the phone's own depth at that spot of the screen (occ, OCC_RANGE metres
    per 255, 0 = no depth there); a fragment farther than the real surface by OCC_MARGIN is not drawn */
-export const OCC_RANGE = 20, OCC_MARGIN = 0.3;
+/* (2026-11-10, the owner: "arcore has a native occlusion feature that works with depth api") ARCore's guide has no
+   switch for it: the depth picture goes to the shader, each drawn pixel is compared with it and faded over a soft
+   ramp. So here: the depth read between its four nearest cells (cells with no depth left out, so a hole never reads
+   as "something very near"), and a fragment fades out from a little behind the real surface (10 cm and 3% of the
+   distance, the depth's own error growing with it) to two and a half times that, where it is gone. The picture is the
+   app's smoothed one at its own size every frame (bridge 5, OCC_RANGE_FULL metres per 255) or, before that, 24 x 42
+   samples of the page's own depth four times a second (OCC_RANGE). */
+export const OCC_RANGE = 20, OCC_MARGIN = 0.3, OCC_RANGE_FULL = 51;
 const VS_L = 'attribute vec3 p; uniform mat4 mvp; uniform mat4 mv; varying float ez; void main(){ ez = -(mv * vec4(p, 1.0)).z; gl_Position = mvp * vec4(p, 1.0); }';
-const FS_L = `precision mediump float; uniform vec4 c; uniform sampler2D occ; uniform float useOcc; uniform vec4 vpr; varying float ez;
+const FS_L = `#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+uniform vec4 c; uniform sampler2D occ; uniform float useOcc; uniform vec4 vpr; uniform vec2 occSize; uniform float occRange; varying float ez;
 void main(){
+  float vis = 1.0;
   if (useOcc > 0.5) {
     vec2 uv = vec2((gl_FragCoord.x - vpr.x) / vpr.z, 1.0 - (gl_FragCoord.y - vpr.y) / vpr.w);
-    float d = texture2D(occ, uv).r * ${OCC_RANGE.toFixed(1)};
-    if (d > 0.01 && ez > d + ${OCC_MARGIN.toFixed(2)}) discard;
+    vec2 p = uv * occSize - 0.5, f = fract(p), s = 1.0 / occSize, b = (floor(p) + 0.5) * s;
+    float d00 = texture2D(occ, b).r, d10 = texture2D(occ, b + vec2(s.x, 0.0)).r, d01 = texture2D(occ, b + vec2(0.0, s.y)).r, d11 = texture2D(occ, b + s).r;
+    float w00 = (1.0 - f.x) * (1.0 - f.y) * step(0.002, d00), w10 = f.x * (1.0 - f.y) * step(0.002, d10), w01 = (1.0 - f.x) * f.y * step(0.002, d01), w11 = f.x * f.y * step(0.002, d11);
+    float w = w00 + w10 + w01 + w11;
+    if (w > 0.0) {
+      float d = (d00 * w00 + d10 * w10 + d01 * w01 + d11 * w11) / w * occRange;
+      float m = 0.1 + 0.03 * d;
+      vis = 1.0 - smoothstep(d + m, d + 2.5 * m, ez);
+    }
   }
-  gl_FragColor = c;
+  if (vis < 0.02) discard;
+  gl_FragColor = vec4(c.rgb, c.a * vis);
 }`;
 
 function compile(gl, type, src) {
@@ -74,7 +95,7 @@ export function makeDrawer(gl) {
   gl.attachShader(progL, compile(gl, gl.FRAGMENT_SHADER, FS_L));
   gl.linkProgram(progL);
   if (!gl.getProgramParameter(progL, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(progL) || 'program');
-  const L = { aP: gl.getAttribLocation(progL, 'p'), mvp: gl.getUniformLocation(progL, 'mvp'), mv: gl.getUniformLocation(progL, 'mv'), c: gl.getUniformLocation(progL, 'c'), occ: gl.getUniformLocation(progL, 'occ'), use: gl.getUniformLocation(progL, 'useOcc'), vpr: gl.getUniformLocation(progL, 'vpr') };
+  const L = { aP: gl.getAttribLocation(progL, 'p'), mvp: gl.getUniformLocation(progL, 'mvp'), mv: gl.getUniformLocation(progL, 'mv'), c: gl.getUniformLocation(progL, 'c'), occ: gl.getUniformLocation(progL, 'occ'), size: gl.getUniformLocation(progL, 'occSize'), range: gl.getUniformLocation(progL, 'occRange'), use: gl.getUniformLocation(progL, 'useOcc'), vpr: gl.getUniformLocation(progL, 'vpr') };
   const occTex = gl.createTexture();
   let occFor = null;
 
@@ -94,7 +115,7 @@ export function makeDrawer(gl) {
   }
 
   /** Draw with this frame's matrices. Leaves the GL state as found. */
-  /** occlusion: { w, h, data: Uint8Array w*h, rows from the screen's top, OCC_RANGE m per 255 } or null */
+  /** occlusion: { w, h, data: Uint8Array w*h, rows from the screen's top, range (default OCC_RANGE) m per 255 } or null */
   function draw({ view, proj, viewport, framebuffer = null, items = [], dots = [], statics = [], occlusion = null }) {
     if (!view || !proj || (!items.length && !dots.length && !statics.length)) return;
     const was = {
@@ -130,6 +151,7 @@ export function makeDrawer(gl) {
         occFor = occlusion;
       }
       const vpNow = viewport || { x: 0, y: 0, w: gl.drawingBufferWidth, h: gl.drawingBufferHeight };
+      if (useOcc) { gl.uniform2f(L.size, occlusion.w, occlusion.h); gl.uniform1f(L.range, occlusion.range || OCC_RANGE); }
       gl.uniform1i(L.occ, 0); gl.uniform1f(L.use, useOcc ? 1 : 0); gl.uniform4f(L.vpr, vpNow.x, vpNow.y, vpNow.w, vpNow.h);
       const pass = (colour) => {
         for (const s of lit) {

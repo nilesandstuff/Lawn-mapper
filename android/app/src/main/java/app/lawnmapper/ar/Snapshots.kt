@@ -39,6 +39,25 @@ class DepthSnapshot(
      * A grid over the screen, nx across and ny down, row by row: each cell's world point (or null where there is no
      * depth or the confidence is under minConf), its depth in metres as given (0 = a hole) and its confidence.
      */
+    /**
+     * WHAT HIDES THE DRAWING (bridge 5; the owner, 2026-11-10: real things should hide the lidar as ARCore's own
+     * occlusion does): this depth picture over the screen, nx across and ny down, one byte a cell (the distance over
+     * rangeM in 255 steps, at least 1; 0 = no depth there), base64. Sixty times lighter than gridJson, so the page
+     * can take ARCore's whole smoothed picture every frame as a texture (scan/lib/draw.js).
+     */
+    fun occB64(nx: Int, ny: Int, rangeM: Float): String {
+        val out = ByteArray(nx * ny)
+        for (j in 0 until ny) for (i in 0 until nx) {
+            val u = (i + 0.5f) / nx
+            val v = (j + 0.5f) / ny
+            val ix = min(w - 1, max(0, floor(map.s(u, v) * w).toInt()))
+            val iy = min(h - 1, max(0, floor(map.t(u, v) * h).toInt()))
+            val z = (mm[iy * w + ix].toInt() and 0xFFFF) / 1000f
+            out[j * nx + i] = if (z <= 0f) 0 else min(255, max(1, (z / rangeM * 255f).roundToInt())).toByte()
+        }
+        return Base64.encodeToString(out, Base64.NO_WRAP)
+    }
+
     fun gridJson(nx: Int, ny: Int, minConf: Int): String {
         val p = StringBuilder(nx * ny * 24)
         val d = StringBuilder(nx * ny * 6)

@@ -239,9 +239,10 @@ class ArEngine(private val send: (String) -> Unit) : GLSurfaceView.Renderer {
                 }
             }
         } catch (_: Exception) { }
-        // the smoothed depth only where there is no raw (the page uses raw when it has it), or always when Geospatial
-        // Depth is on (bridge 3): that one reaches 65 m from Google's Streetscape Geometry, where raw stops
-        if (!raw || bothDepths) try {
+        // the smoothed depth every frame (bridge 5): the page's points still come from raw when there is raw, and the
+        // smoothed picture is what hides the drawing behind real things (Bridge.occGrid). Before bridge 5 it was taken
+        // only where there was no raw, or when Geospatial Depth was on (bridge 3).
+        try {
             frame.acquireDepthImage16Bits().use { img -> depthSmooth = make("smooth", img, null) }
         } catch (_: Exception) { }
     }

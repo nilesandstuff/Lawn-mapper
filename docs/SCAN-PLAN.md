@@ -2127,3 +2127,15 @@ nearest sample, a hard cut. SPECULATION: most of what looks wrong about real thi
 coarseness; the smoothed depth image at its own size as a texture each frame needs the app to hand it over (a new
 bridge call and APK), not yet built.
 
+Built the same day (the owner: "I'd like that built"): the app's bridge 5 (android/, Bridge.occGrid and
+DepthSnapshot.occB64) hands the page ARCore's smoothed depth picture at its own size, one byte a cell, and takes
+that picture every frame, not only when there is no raw. The page asks for it about fifteen times a second and the
+lidar's shader (draw.js FS_L) reads it between its four nearest cells, holes left out, and fades a fragment out from
+10 cm + 3% of the distance behind the real surface to two and a half times that. Checked in a test browser: a wall
+5 m off is hidden behind a real thing 3 m off, drawn before one 10 m off, and drawn where there is no depth. NOT
+yet seen on a phone. With an older app the 24 x 42 samples remain, read the same new way.
+
+Not to be confused with what places a walk: the shape fix never needed the whole picture each frame. It keeps the
+walk's points one to a 10-20 cm cube, gathered from a coarse grid of each depth picture as the phone moves, and a
+few thousand such cubes are what is matched. A finer grid is kept with each picture taken (key-NNNN.depth).
+

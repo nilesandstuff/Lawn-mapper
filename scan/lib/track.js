@@ -408,6 +408,19 @@ const b64bytes = (s) => { const bin = atob(s); const u = new Uint8ClampedArray(b
    owner's west wall: almost no points on it, and the few there phantoms; almost none on the roof). The owner: "Save
    depth to 30m ... I'm not sure why live matching wouldn't be 30 either?" Both read to 30 m now (app.js LIVE_RANGE;
    the match's own rules still keep standing points within 3.5 m and ground within 6 m, locate.js). */
+/** The app's occGrid answer ("w,h,t,<base64>") as { w, h, t, range, data: Uint8Array }, or null. */
+export function occFromBridge(s, rangeM) {
+  try {
+    if (!s) return null;
+    const a = s.indexOf(','), b = s.indexOf(',', a + 1), c = s.indexOf(',', b + 1);
+    const w = +s.slice(0, a), h = +s.slice(a + 1, b), t = +s.slice(b + 1, c), bin = atob(s.slice(c + 1));
+    if (!(w > 0 && h > 0) || bin.length !== w * h) return null;
+    const data = new Uint8Array(w * h);
+    for (let i = 0; i < data.length; i++) data[i] = bin.charCodeAt(i);
+    return { w, h, t, range: rangeM, data };
+  } catch { return null; }
+}
+
 export function depthFromGrid(g, near = 0.4, far = 30) {
   if (!g) return null;
   const cell = (x, y) => Math.min(g.ny - 1, Math.max(0, Math.floor(y * g.ny))) * g.nx + Math.min(g.nx - 1, Math.max(0, Math.floor(x * g.nx)));
@@ -471,6 +484,8 @@ async function startNative({ canvas, onFrame, onEvent, nativeOptions = {}, nativ
         // a finer grid than the page's own, asked for once (the depth kept with each picture: app.js keyDepth)
         dense: (nx, ny) => { try { return depthFromGrid(JSON.parse(N.depthGrid(nx, ny, dep.kind, Math.round(dep.minConf * 255)))); } catch { return null; } },
         label: (x, y) => get()?.label?.(x, y) ?? null, labelConf: (x, y) => get()?.labelConf?.(x, y) ?? null, semDims: () => get()?.semDims ?? null,
+        // bridge 5: what hides the drawing, ARCore's smoothed depth picture at its own size, one byte a cell
+        occ: bridge >= 5 ? (rangeM) => occFromBridge(N.occGrid(0, 0, rangeM), rangeM) : null,
         // bridge 3, Geospatial Depth on: ARCore's smoothed depth, which Streetscape Geometry carries to 65 m
         geoDepth: bridge >= 3 && opt.streetscape ? () => { try { return depthFromGrid(JSON.parse(N.depthGrid(16, 28, 'smooth', 0)), 0.4, 65); } catch { return null; } } : null };
     })() : null;

@@ -51,6 +51,21 @@ class Bridge(private val a: MainActivity) {
     }
 
     /**
+     * Bridge 5: what hides the drawing (DepthSnapshot.occB64): ARCore's SMOOTHED depth picture (no holes; the raw one
+     * only if there is no smoothed yet) as "w,h,t,<base64 bytes>", rangeM metres over 255; "" when there is none.
+     * nx or ny 0 asks for the picture's own size as it lies on the screen.
+     */
+    @JavascriptInterface
+    fun occGrid(nx: Int, ny: Int, rangeM: Float): String {
+        val d = a.engine.depthSmooth ?: a.engine.depthRaw ?: return ""
+        // the depth picture lies in the camera's own (landscape) frame; upright on the screen its sides swap
+        val wide = d.w >= d.h
+        val w = (if (nx > 0) nx else if (wide) d.h else d.w).coerceIn(1, 400)
+        val h = (if (ny > 0) ny else if (wide) d.w else d.h).coerceIn(1, 400)
+        return "$w,$h,${d.t},${d.occB64(w, h, rangeM.coerceIn(1f, 200f))}"
+    }
+
+    /**
      * Bridge 2: an ARCore anchor at a session point; answers its id at once (made with the next frame), or -1 when too
      * many are held. Where ARCore puts each anchor comes with the frames: "anchors": [[id, x, y, z, state], ...].
      */

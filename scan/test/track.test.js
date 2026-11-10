@@ -52,3 +52,13 @@ assert.equal(depthTypeOf({ depthType: 'smooth' }), 'smooth');
 assert.match(depthTypeOf({ depthType: null }), /^not said/);
 assert.match(depthTypeOf({}), /^not said/);
 console.log('track: ok');
+
+// bridge 5: the app's occlusion picture ("w,h,t,<base64 bytes>") as the drawer takes it
+{
+  const { occFromBridge } = await import('../lib/track.js');
+  const bytes = Uint8Array.from([0, 1, 128, 255, 7, 9]);
+  const o = occFromBridge(`3,2,12.5,${Buffer.from(bytes).toString('base64')}`, 51);
+  assert.deepEqual([o.w, o.h, o.t, o.range], [3, 2, 12.5, 51]); assert.deepEqual(Array.from(o.data), Array.from(bytes));
+  assert.equal(occFromBridge('', 51), null); assert.equal(occFromBridge('3,3,1,AAAA', 51), null, 'a picture of the wrong size is refused');
+  console.log('track (occlusion picture): ok');
+}

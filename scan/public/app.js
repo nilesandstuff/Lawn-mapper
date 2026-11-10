@@ -10,7 +10,7 @@
  */
 import { detect, start, engineChoice, load8thWall } from '/lib/track.js';
 import { newWalk, step, dropPin, checkPin, measure, tapeFor, undo, far, summary, pinNow } from '/lib/walk.js';
-import { makeDrawer, lidarMeshes, OCC_RANGE } from '/lib/draw.js';
+import { makeDrawer, lidarMeshes, OCC_RANGE, OCC_RANGE_FULL } from '/lib/draw.js';
 import { lookMeshes } from '/lib/look.js';
 import { levelDist, toLocal } from '/lib/frames.js';
 import { frameFor, bboxOf, toPx, fromPx, ringsOf } from '/lib/photo.js';
@@ -125,6 +125,9 @@ async function main() {
       if (pend.length) { const n = document.createElement('p'); n.className = 'dim'; n.id = 'rec-pending'; n.textContent = `${pend.length} recording${pend.length === 1 ? '' : 's'} still on the phone, being sent (${Math.round(pend.reduce((a, x) => a + (x.sent || 0), 0) / 1e6)} of ${Math.round(pend.reduce((a, x) => a + x.bytes, 0) / 1e6)} MB so far; keep the app open on wifi).`; box.append(n); try { window.LawnARNative.sendRecordings(); } catch { /* none */ } }
     } else if (st.caps.native) {
       const n = document.createElement('p'); n.className = 'dim'; n.textContent = 'Recording walks for replay needs the app\'s next version: update it from the link above.'; box.append(n);
+    }
+    if (st.caps.native && (st.caps.native.bridge ?? 0) < 5) {
+      const n = document.createElement('p'); n.className = 'dim'; n.textContent = 'Real things hiding the lidar cleanly (the phone\'s full depth picture, every frame) needs the app\'s next version: update it from the link above.'; box.append(n);
     }
     /* RAW DEPTH ONLY, a test (2026-11-06): asked for raw first, the S21's Chrome gave smooth. Asked for raw alone,
        it either gives raw or no depth at all; the walk's log says which ("depth raw" or "depth -"). */
@@ -576,7 +579,7 @@ const log = (what) => { st.errors.push({ t: Date.now(), what }); if (st.errors.l
 async function startAR(engine) {
   const overlay = $('#overlay');
   st.walk = newWalk({ engine, phone: navigator.userAgent });
-  st.dy = null; st.dyFrom = null; st.gpsTrail = []; st.anchors = newAnchors(); st.nudge = null; st.depthFill = null; st.geoTrail = []; st.geoSeen = null; st.sem = newSemCount(); st.lastSem = null; st.semDims = null; st.occ = null; st.walkGround = new Map(); st.spikes = { pictures: 0, cells: 0, flagged: 0 }; st.walkAsk = null; st.walkAt = 0; st.walkStats = { asks: 0, ok: 0, lastWhy: null, firstOkM: null }; st.crumbs = newCrumbs();
+  st.dy = null; st.dyFrom = null; st.gpsTrail = []; st.anchors = newAnchors(); st.nudge = null; st.depthFill = null; st.geoTrail = []; st.geoSeen = null; st.sem = newSemCount(); st.lastSem = null; st.semDims = null; st.occ = null; st.occFull = 0; st.occAt = 0; st.walkGround = new Map(); st.spikes = { pictures: 0, cells: 0, flagged: 0 }; st.walkAsk = null; st.walkAt = 0; st.walkStats = { asks: 0, ok: 0, lastWhy: null, firstOkM: null }; st.crumbs = newCrumbs();
   st.walk.checks = [];
   st.L = newLocate();
   st.prevStand = new Map(); st.prevGround = new Map(); st.prevAsk = null; st.prevAt = 0; st.prevStats = { asks: 0, ok: 0, lastWhy: null, firstOkM: null, lastMs: null };
@@ -844,7 +847,7 @@ function onFrame(f) {
        measures it. Raw depth is 0 where the runtime is not confident; smooth fills every pixel. Indoors nearly all of
        a smooth picture is within range, so a high share of holes says raw. */
     // what the phone sees, as a small picture of distances, so a real wall or trunk hides the lidar behind it (draw.js)
-    if (f.depth.m) {
+    if (f.depth.m && !f.depth.occ) {
       const OW = 24, OH = 42, od = new Uint8Array(OW * OH);
       for (let j = 0; j < OH; j++) for (let i = 0; i < OW; i++) {
         const d = f.depth.m((i + 0.5) / OW, (j + 0.5) / OH);
@@ -1018,6 +1021,13 @@ function onFrame(f) {
         if (f.t - (st.agreeAt || 0) > 300) { st.agreeAt = f.t; st.agree = agreement(L, odo, st.lid.overlay.dist); }
         if (st.agree) { dots.push({ points: st.agree.on, color: [0, 0, 0, 0.95], r: 0.045 }); dots.push({ points: st.agree.off, color: [1, 0.25, 0.2, 0.7], r: 0.03 }); }
       } else st.agree = null;
+      /* WHAT HIDES THE LIDAR (bridge 5, 2026-11-10): ARCore's smoothed depth picture at its own size, about fifteen
+         times a second, straight to the shader (draw.js); the 24 x 42 samples above only with an older app */
+      if (f.depth?.occ && f.t - (st.occAt || 0) > 60) {
+        st.occAt = f.t;
+        const o = f.depth.occ(OCC_RANGE_FULL);
+        if (o) { if (!st.occFull) log(`occlusion: the app's smoothed depth, ${o.w}x${o.h}`); st.occFull = (st.occFull || 0) + 1; st.occ = { w: o.w, h: o.h, data: o.data, range: o.range, t: f.t }; }
+      }
       const occlusion = st.occ && f.t - st.occ.t < 1000 ? st.occ : null;
       st.drawer.d.draw({ view: f.view, proj: f.proj, viewport: f.viewport, framebuffer: f.framebuffer, items, dots, statics, occlusion });
     } catch (e) { if (!st.drawErr) { st.drawErr = true; log(`draw: ${e.message}`); } }
