@@ -1918,6 +1918,36 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
     never.ok === false && never.why === NOT_IN_SHADE_MAP && /shade map/.test(never.words) && gone.ok === false && /not found/.test(gone.why), JSON.stringify(never));
 }
 
+/* THE LIDAR DRAWN AT 0.5 M (fine-view.js; owner, 2026-11-09: "I would like to change [the view] to .5m"). */
+{
+  const { fineCells, fineRuns, fineRing } = await import('../public/shade/fine-view.js');
+  const lat = 43, k = mercScale(lat);
+  const grid = gridOver([0, 0, 4 / k, 4 / k], 1, lat);
+  /* A roof whose returns cover only the west half of one 1 m column (x 1.0-1.5), 6 m up; a branch 3.2 m up and one
+     4.1 m up in another half meter; ground everywhere (it draws nothing). */
+  const pts = [];
+  for (let e = 0.1; e < 4; e += 0.25) for (let n = 0.1; n < 4; n += 0.25) pts.push([e, n, 100, 2]);
+  for (let e = 1.05; e < 1.5; e += 0.1) for (let n = 2.05; n < 3; n += 0.1) pts.push([e, n, 106, 6]);
+  pts.push([3.2, 0.7, 103.2, 1], [3.2, 0.7, 104.1, 1]);
+  const cols = makeColumns(pts.length);
+  pts.forEach(([e, n, z, c], i) => { cols.x[i] = e / k; cols.y[i] = n / k; cols.z[i] = z; cols.cls[i] = c; cols.ret[i] = 1; cols.nret[i] = 1; });
+  const ground = new Float32Array(grid.w * grid.h).fill(100);
+  const fc = fineCells(cols, grid, null, ground);
+  const roofK = 1 * grid.w + 1, treeK = 3 * grid.w + 3;
+  const runs = fineRuns(fc, { kindAt: (kk) => (kk === roofK ? 'roof' : 'deciduous') });
+  const roofRuns = runs.filter((r) => r.k === roofK), treeRuns_ = runs.filter((r) => r.k === treeK);
+  const westHalf = roofRuns.every((r) => fineRing(fc, r.fi)[0][0] * k < 1.5 + 1e-6);
+  check('fine view: half-meter cells; a roof drawn only over the half meters its returns cover, solid from the ground to 6 m',
+    fc.f === 2 && fc.W === 8 && roofRuns.length === 2 && westHalf && roofRuns.every((r) => r.base === 0 && Math.abs(r.top - 6.5) < 1e-9),
+    `${roofRuns.length} roof cells, west half ${westHalf}, ${JSON.stringify(roofRuns.map((r) => [r.base, r.top]))}`);
+  check('fine view: a tree drawn where its returns are, two half-meter blocks with air between; no ground drawn',
+    treeRuns_.length === 2 && treeRuns_[0].base === 3 && treeRuns_[1].base === 4 && runs.length === 4, JSON.stringify(treeRuns_.map((r) => [r.base, r.top])));
+  const hidden = fineRuns(fc, { kindAt: (kk) => (kk === roofK ? 'roof' : 'deciduous'), gone: (kk) => kk === treeK, roofs: false });
+  const cutUp = fineRuns(fc, { kindAt: () => 'deciduous', cut: 3.5, cubeGone: (kk, over) => over > 6 });
+  check('fine view: an erased column, buildings switched off, a cut and an erased block all hide what they should',
+    hidden.length === 0 && cutUp.filter((r) => r.k === treeK).length === 1 && cutUp.filter((r) => r.k === roofK).length === 0, `${hidden.length}, ${cutUp.length}`);
+}
+
 /* ONE LEAF STATE PER LOT (passes.js; owner, 2026-10-29). */
 {
   check('passes: a point fired 9 May or in November is leaf-off; 11 May, July and an undated one are not',
