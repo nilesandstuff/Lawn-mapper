@@ -134,3 +134,18 @@ console.log(`route parse: ok (${stops.length} stops, ${formatMinutes(408)} of jo
   assert.deepEqual(cityAtEnd('Pat Doe Fairview', ['Fairview']), { name: 'Pat Doe', city: 'Fairview' }, "this screenshot's own cities");
   console.log('route parse (lost bullets): ok');
 }
+
+// ------------------------------------------------ long names that wrap (a real capture, names and streets made up)
+{
+  const wrapped = JSON.parse(readFileSync(new URL('./fixture-wrapped.json', import.meta.url)));
+  const got = parseWords(wrapped.words, wrapped.width);
+  assert.equal(got.length, 18, 'every card, the last one too (its city reaching under the badge, no time)');
+  assert.ok(got.every((s) => s.city), 'every stop has its city');
+  assert.ok(got.every((s) => s.service === 'Fert 6 Winterizer Application'), 'the city never taken for the service');
+  assert.equal(got[0].city, 'Caledonia', 'the bullet at the end of the line, the city on the next');
+  assert.equal(got[1].city, 'Caledonia', 'the bullet pushed under the badge');
+  assert.equal(got[16].city, 'Alto');
+  assert.equal(got[17].minutes, null, 'the last card shows no time');
+  assert.equal(got[10].minutes, 146, '2h 26m');
+  console.log('route parse (wrapped names): ok');
+}

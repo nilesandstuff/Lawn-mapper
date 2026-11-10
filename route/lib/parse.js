@@ -153,6 +153,16 @@ function splitAtBullet(words, loose = false) {
   return null;
 }
 
+const INLINE_END = /[•·«»+*●◦°¢©]+$/;
+/** A line whose last mark is the bullet: the name, with the city wrapped onto the next line. */
+function endsInBullet(words) {
+  const last = words[words.length - 1];
+  if (!last || words.length < 2) return false;
+  return BULLET.test(last.text.trim()) || (INLINE_END.test(last.text) && /[A-Za-z0-9]/.test(last.text));
+}
+/** A city on a line of its own: a few words, letters only. */
+const looksLikeCity = (t) => /^[A-Za-z][A-Za-z .'-]{1,30}$/.test(String(t).trim()) && String(t).trim().split(/\s+/).length <= 3;
+
 /**
  * The stops on one screenshot, top to bottom:
  *   [{ address, city, name, minutes, service }]
@@ -172,7 +182,10 @@ export function parseWords(words, width) {
   const middle = [];
   const times = [];
   for (const w of clean) {
-    if (w.bbox.x0 >= rightX || cx(w) > W * 0.8) {
+    // the right column: words starting in it, or a time far right. A long city that only reaches
+    // over (found 2026-11-10: "Caledonia" ending under the badge) stays in the middle
+    // (the bullet too: a long name pushes it under the badge, and it is never part of the right column)
+    if ((w.bbox.x0 >= rightX && !(BULLET.test(w.text.trim()) && cx(w) < W * 0.8)) || (cx(w) > W * 0.8 && readTime(w.text) != null)) {
       const t = readTime(w.text);
       // a bare "1h" may have its minutes in the next word
       if (/^\d{1,2}h$/i.test(w.text.trim())) times.push({ minutes: null, cy: cy(w), w, hours: t / 60 });
@@ -208,16 +221,23 @@ export function parseWords(words, width) {
     let n = -1;
     for (let j = i + 1; j < Math.min(rows.length, i + 4); j += 1) {
       if (j > i + 1 && isStart(rows[j])) break;
-      if (splitAtBullet(rows[j].words) || timeOn(rows[j])) { n = j; break; }
+      if (splitAtBullet(rows[j].words) || timeOn(rows[j]) || endsInBullet(rows[j].words)) { n = j; break; }
     }
     if (n < 0) continue;
     const address = tidy(rows.slice(i, n).map((r) => r.text).join(' '));
     const parts = splitAtBullet(rows[n].words) || splitAtBullet(rows[n].words, true);
-    const name = parts ? tidy(parts[0].map((w) => w.text).join(' ')) : rows[n].text;
-    const city = parts ? tidy(parts[1].filter((w) => isWord(w.text)).map((w) => w.text).join(' ')) : '';
-    const next = rows[n + 1] && !isStart(rows[n + 1]) ? rows[n + 1].text : '';
+    let name = parts ? tidy(parts[0].map((w) => w.text).join(' ')) : rows[n].text;
+    let city = parts ? tidy(parts[1].filter((w) => isWord(w.text)).map((w) => w.text).join(' ')) : '';
+    let after = n + 1;
+    // a long name wraps: "JTB DP 29 - 7931 Elm Ct •" then the city on a line of its own
+    if (!city && endsInBullet(rows[n].words) && rows[after] && !isStart(rows[after]) && looksLikeCity(rows[after].text)) {
+      name = tidy(rows[n].words.filter((w) => isWord(w.text)).map((w) => w.text.replace(INLINE_END, '')).join(' '));
+      city = rows[after].text;
+      after += 1;
+    }
+    const next = rows[after] && !isStart(rows[after]) ? rows[after].text : '';
     stops.push({ address, city, name, minutes: null, service: next, top: rows[i].y0 });
-    i = n;
+    i = after - 1;
   }
   // each time belongs to the card it sits in: from its address down to the next card's
   for (let k = 0; k < stops.length; k += 1) {
