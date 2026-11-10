@@ -2054,6 +2054,11 @@ pixels, 0.76 m of ground a pixel. Since commit after 30f353c RoMa runs on one 44
 point at the grid's own 0.25 m, and a kept field is held to its matches' box. All RoMa findings above were made on
 the squeezed frame and are to be read so.
 
+Run 239, RoMa on the 112 m tile at 0.25 m: the lidar with roofs blanked found 0.1 ft of the 4.9 ft planted move
+on both photos (it matches the blanks at any size); plain RoMa on the lidar said 272 and 327 ft; photo to photo
+found 8.9 ft of the 4.9 ft move, with none 10.5 ft RMS held out on the tile, roofs and trees counted. No matcher
+has passed a planted move, on the lidar or between photos, as of this run.
+
 THE MARKS (the owner, 2026-11-10): the check points placed so far were not placed to be found again exactly, and
 were dragged between walks. Every score made ON THE MARKS carries that error: the walk-to-walk shape fix's feet
 (SCAN-H32, run 224's gates, the 1.9 and 3.0 ft above), the marks' own fits, the Mapbox-vs-county mark test. Results

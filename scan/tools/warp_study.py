@@ -393,18 +393,22 @@ def main(d):
             W, H = int((float(e1) - x0) / CELL), int((y1 - float(n0)) / CELL)
             imc, inc = photo_on_grid(os.path.join(d, pc["file"]), fc, x0, y1, W, H)
             imm, inm = photo_on_grid(os.path.join(d, pm["file"]), fm, x0, y1, W, H)
-            T = match_roma(np.zeros((H, W)), np.zeros((H, W), bool), imm, inc & inm, a_photo=imc, x0=x0, y1=y1)
+            # ON THE GROUND ONLY, WITHOUT BLANKING (run 239: with roofs and trees counted, which lean differently in each
+            # photo, RoMa found 8.9 ft of a 4.9 ft planted move): both photos shown whole, and only the matches that
+            # land on bare ground by the lidar are kept (nothing 0.5 m up within 1 m)
+            _, up = lidar_rasters(L, x0, y1, W, H)
+            T = match_roma(np.zeros((H, W)), up, imm, inc & inm, a_photo=imc, x0=x0, y1=y1)
             if len(T) >= 12:
                 to_m = lambda T: np.c_[x0 + (T[:, 0] + 0.5) * CELL, y1 - (T[:, 1] + 0.5) * CELL]
                 P, D = to_m(T), T[:, 2:4]
                 lam = best_lambda(P, D)
-                print(f"  RoMa, Mapbox onto the county photo: {len(T)} matches, the median shift {np.hypot(*np.median(D, 0)) * FT:.1f} ft; held out -- "
+                print(f"  RoMa, Mapbox onto the county photo, matches on bare ground only: {len(T)} matches, the median shift {np.hypot(*np.median(D, 0)) * FT:.1f} ft; held out -- "
                       + "; ".join(f"{m} {summary(held_out(m, P, D, lam))}" for m in ("none", "shift", "affine", "spline")))
                 # the same planted shift as the lidar matchers get (the owner, 2026-11-10: photos stretched onto each
                 # other, for Lawn Mapper's line-up): Mapbox moved a known amount, and the fitted maps must differ by it
                 pe, pn = PLANT
                 imm2, inm2 = photo_on_grid(os.path.join(d, pm["file"]), fm, x0 + pe, y1 + pn, W, H)
-                T2 = match_roma(np.zeros((H, W)), np.zeros((H, W), bool), imm2, inc & inm2, a_photo=imc, x0=x0, y1=y1)
+                T2 = match_roma(np.zeros((H, W)), up, imm2, inc & inm2, a_photo=imc, x0=x0, y1=y1)
                 if len(T2) >= 12:
                     P2, D2 = to_m(T2), T2[:, 2:4]
                     lo, hi = P.min(0), P.max(0)
