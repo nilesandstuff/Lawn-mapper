@@ -2018,6 +2018,26 @@ raised and masked out):
   - Run 226 kept a spline it should not have. Since commit 93a3a8c a stretch is kept only when its held-out error is
     under 0.8 of none's, and an older stretched photo is taken out when no new one is kept.
 
+Runs 227 and 229 (RoMa on the CPU, use_custom_corr=False; the same map and inputs):
+  - Lidar brightness to photo: RoMa 107 matches on the county photo, 102 on Mapbox. They agree with one another
+    to 0.2-0.3 ft held out (spline), yet say the photo is 373 ft and 436 ft off, and fitted to them, the edge
+    windows' matches miss by 370 ft. RoMa's warp is smooth even where it is wrong, so agreement among one
+    matcher's own matches proves nothing. Run 227 kept that stretch; since commit 0c8394c no stretch is kept
+    whose matches' median says more than 3 m (10 ft), and run 229 kept none and took the old ones out.
+  - Photo to photo (Mapbox onto the county photo, same grid): RoMa 2,542 matches, median shift 1.0 ft; held out
+    none 3.6 ft RMS, shift 3.4, affine 2.6, spline 1.4 (95% 2.8). So the coordinates are read right, and RoMa
+    reads photos against photos well. What it cannot read is the lidar's ground brightness as a picture.
+  - Both photos disagree with each other by a smooth few feet (spline 1.4 ft held out against none 3.6): the
+    owner's point that the photos are not true at the ground, measured, at least between the two photos.
+  - CORRECTION: the walk these runs called "the county walk" (the newest on the map by its recorded start) was
+    1794162116852, from 2026-11-08. Tonight's home walk, its checks placed on the county photo, is 1794263367156;
+    the 4-point Mapbox-vs-county comparison above is between older walks and is not that test yet.
+
+SPECULATION, next: the lidar has to be made to look like a photo before a photo matcher can use it. A shaded
+relief of the ground plus intensity, or the shade map's own classes (roof, tree, ground, paving) drawn as a map;
+or MINIMA's RoMa, which was retrained on other-modality pictures (depth among them). Or match on shapes, not
+brightness: roof edges and walls from the lidar against the photo's edges, with the lean of a roof taken off.
+
 The placement map has the switch already (2026-11-10): "Photo as traced" or "Stretched onto the lidar" (shown only
 when a stretch was kept), and "Crisper", which is Lawn Mapper's own enhancement (public/lib/enhance.js) copied in
 unchanged. Each point keeps which photo it was placed on (`on` in live.json's points).
