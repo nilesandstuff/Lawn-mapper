@@ -9,6 +9,7 @@ let sent = { geocode: 0, matrix: 0, directions: 0 };
 let rateLimitOnce = false;
 async function mapbox(url) {
   const u = new URL(url);
+  if (u.hostname === 'geocoding.geo.census.gov') return Response.json({ result: { addressMatches: [] } }); // free, not metered
   if (rateLimitOnce) { rateLimitOnce = false; return new Response('slow down', { status: 429 }); }
   const ids = u.pathname.split('/').pop().split(';');
   if (u.pathname.includes('/geocode/')) {

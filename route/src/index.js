@@ -29,6 +29,9 @@ import { store, keyed } from './store.js';
 import { LimitError, meter, report } from './usage.js';
 import { inbox, receive } from './inbox.js';
 import { share } from './share.js';
+import { censusGeocode } from './census.js';
+import { sameStreet } from '../lib/parse.js';
+import { metres } from '../lib/ride.js';
 import { push } from './push.js';
 
 const json = (body, status = 200) => new Response(JSON.stringify(body), {
@@ -65,7 +68,15 @@ export async function api(request, env, url, fetcher = fetch) {
       const q = (url.searchParams.get('q') || '').trim();
       if (q.length < 4 || q.length > 200) return json({ error: 'Address too short or too long' }, 400);
       const near = (url.searchParams.get('near') || '').split(',').map(Number);
-      const hit = await geocode(fetcher, token, q, near.length === 2 && near.every(Number.isFinite) ? near : null, m);
+      const nearPt = near.length === 2 && near.every(Number.isFinite) ? near : null;
+      let hit = await geocode(fetcher, token, q, nearPt, m);
+      // Mapbox found nothing, or somewhere far off, or another street: ask the Census (src/census.js)
+      const far = (h) => nearPt && metres(h, { lng: nearPt[0], lat: nearPt[1] }) > 80000;
+      const street = q.split(',')[0];
+      if (!hit || far(hit) || !sameStreet(hit.label, street)) {
+        const second = await censusGeocode(fetcher, q).catch(() => null);
+        if (second && !far(second) && (!hit || far(hit) || sameStreet(second.label, street))) hit = second;
+      }
       return hit ? json(hit) : json({ error: 'Address not found' }, 404);
     }
     if ((url.pathname === '/api/matrix' || url.pathname === '/api/route') && request.method === 'POST') {

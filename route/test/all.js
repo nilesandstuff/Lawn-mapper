@@ -9,6 +9,7 @@ import './inbox.test.js';
 import './email-setup.test.js';
 import './split.test.js';
 import './ride.test.js';
+import './census.test.js';
 import './share.test.js';
 import './live.test.js';
 import './push.test.js';

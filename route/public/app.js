@@ -43,7 +43,7 @@ const store = {
 let stops = store.get('stops', []);
 let startMode = store.get('startMode', 'end');
 let result = store.get('result', null);
-const geoCache = store.get('geo', {});
+const geoCache = store.get('geo2', {});
 
 /* drive times kept on this phone, 60 days from last use (lib/cache.js) */
 const drives = store.get('drives', {});
@@ -510,7 +510,7 @@ async function geocode(q, near) {
     geoCache[key] = hit;
     const keys = Object.keys(geoCache);
     for (const k of keys.slice(0, Math.max(0, keys.length - 400))) delete geoCache[k];
-    store.set('geo', geoCache);
+    store.set('geo2', geoCache);
     return hit;
   } catch (e) {
     if (e.status === 404) return null;
@@ -883,7 +883,8 @@ function renderResult(scroll = false) {
   const nav = (label) => `https://www.google.com/maps/dir/?${new URLSearchParams({ api: '1', destination: label, travelmode: 'driving' })}`;
   const items = r.stops.map((s, i) => {
     const leg = r.legs[i] || {};
-    const shaky = s.hit.shaky;
+    // a guess, or the Census's answer (another street type, maybe): shown to check
+    const shaky = s.hit.shaky || s.hit.accuracy === 'census';
     return `<li class="${done.has(s.id) ? 'done' : ''}" data-id="${s.id}">
       <span class="num">${i + 1}</span>
       <div class="body">
