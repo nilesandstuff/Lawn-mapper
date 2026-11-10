@@ -18,6 +18,7 @@
  */
 
 import { buildCanopy } from './canopy.js';
+import { fineCells, fineRuns, fineRing } from './fine-view.js';
 import { treesModel } from './trees-model.js';
 import { seasonalCanopy, seasonalCanopyFor, muWithLeaves, leafCalendar, CROWN_ABOVE_M } from './seasonal.js';
 import { gridOver, cellOf } from './grid.js';
@@ -168,7 +169,15 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
     if (!(highRet[k] >= over)) highRet[k] = over;
   }
 
-  const st = { leaves: today ?? (leafOff ? 1 : null), roofs: true, cut: 0, active: true, erasing: false, size: SIZES_M[1], mode: 'tree', cubeVersion: 0 };
+  const st = { leaves: today ?? (leafOff ? 1 : null), roofs: true, cut: 0, active: true, erasing: false, size: SIZES_M[1], mode: 'tree', cubeVersion: 0, fine: true };
+  /* THE LIDAR AT 0.5 M (fine-view.js; owner, 2026-11-09): where the laser hit, half a meter at a time, in the 1 m
+     column's colour. The default picture; the 1 m blocks (what the light uses) come back with the switch, and while
+     erasing, since the erasers work on them. */
+  try { if (localStorage.getItem('lawnmapper.shade.treesFine') === '0') st.fine = false; } catch { /* not kept */ }
+  const fc = fineCells(cols, grid, shift, model.ground);
+  const leafyCol = new Uint8Array(grid.w * grid.h);
+  for (let k = 0; k < leafyCol.length; k++) for (let l = 0; l < model.nz; l++) if (season.muOn[k * model.nz + l] > season.muOff[k * model.nz + l]) { leafyCol[k] = 1; break; }
+  const FINE_ID = 'trees-fine';
   const er = erase ? new Erased(grid.w * grid.h, model.nz) : null;
   /* The canopy as drawn: the leaves as chosen (worked out once per choice,
      not per brush stroke: that was half of the lag), less the single blocks
@@ -215,6 +224,27 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
   const removed = ids.map(() => new Set());
   const CUBE_ID = 1 << 30; // single-cube features live above the runs' ids
   const bandOf = (m) => BANDS.findIndex((b) => m < b.below);
+  const showingFine = () => st.fine && !st.erasing;
+  /* The half-meter picture: rebuilt with each draw and after each stroke; hidden (the 1 m blocks shown) while erasing. */
+  function drawFine() {
+    const on = showingFine();
+    for (const id of ids) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on && st.active ? 'none' : (st.active ? 'visible' : 'none'));
+    if (!on) { if (map.getLayer(FINE_ID)) map.setLayoutProperty(FINE_ID, 'visibility', 'none'); return 0; }
+    const runsF = fineRuns(fc, {
+      kindAt: (k) => kindOf(season, k, !!leafyCol[k]),
+      gone: (k) => !!er?.mask[k],
+      cubeGone: (k, over) => { if (!er?.cubeCount) return false; const l = Math.floor((model.ground[k] + over - model.z0) / model.dz); return l >= 0 && l < model.nz && !!er.cubes[k * model.nz + l]; },
+      roofs: st.roofs, cut: st.cut,
+    });
+    const data = { type: 'FeatureCollection', features: runsF.map((r, i) => ({ type: 'Feature', id: i, geometry: { type: 'Polygon', coordinates: [fineRing(fc, r.fi).map((p) => fromMerc(p))] }, properties: { b: r.base + lift(r.k), t: r.top + lift(r.k), c: KIND_COLOR[r.kind] } })) };
+    if (map.getSource(FINE_ID)) map.getSource(FINE_ID).setData(data);
+    else {
+      map.addSource(FINE_ID, { type: 'geojson', data });
+      map.addLayer({ id: FINE_ID, type: 'fill-extrusion', source: FINE_ID, paint: { 'fill-extrusion-color': ['get', 'c'], 'fill-extrusion-base': ['get', 'b'], 'fill-extrusion-height': ['get', 't'], 'fill-extrusion-opacity': Math.min(1, 0.8 * solid()) } });
+    }
+    map.setLayoutProperty(FINE_ID, 'visibility', st.active ? 'visible' : 'none');
+    return runsF.length;
+  }
   function draw() {
     const runs = treeRuns(model, muNow(), season, { roofs: st.roofs, cutBelow: st.cut }).filter((r) => !er?.mask[r.k]);
     byCell.clear();
@@ -242,6 +272,7 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
       }
       map.removeFeatureState({ source: ids[i] });
     });
+    const fineCount = drawFine();
     for (const [id, on] of [['#tr-today', st.leaves !== null && st.leaves === today], ['#tr-full', st.leaves === 1], ['#tr-bare', st.leaves === 0]]) $(id).setAttribute('aria-pressed', String(on));
     const c = season.counts || {};
     const asFlown = season.inLeafColumns || 0;
@@ -249,7 +280,7 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
       : season.classified
         ? ` Columns: ${(c.deciduous || 0) - asFlown} deciduous, ${c.evergreen || 0} evergreen, ${asFlown ? `${asFlown} in leaf as flown, ` : ''}${c.roof || 0} building${c.structure ? `, ${c.structure} low structure` : ''}.`
         : ` Columns: ${c.deciduous || 0} tree, ${c.roof || 0} building${c.structure ? `, ${c.structure} low structure` : ''}.`;
-    say(`${runs.length.toLocaleString()} pieces drawn. ${leafOff
+    say(`${showingFine() ? `${fineCount.toLocaleString()} half-meter blocks drawn, where the laser hit; where the survey was sparse, trees look speckled, because that is all the laser caught (the light is worked out on 1 m blocks: untick "Laser blocks at 0.5 m" to see those; ${runs.length.toLocaleString()} pieces).` : `${runs.length.toLocaleString()} pieces drawn.`} ${leafOff
       ? `${flight === 'mixed' ? 'Part of the lidar here was flown with the leaves off and part in leaf; leaves are added only where the laser saw bare branches' : 'The lidar was flown with the leaves off'}${flownTo ? ` (to ${flownTo})` : ''}; ${st.leaves === 0 ? 'drawn bare, as flown' : `deciduous crowns drawn with ${Math.round(100 * st.leaves)}% of their summer leaves`}.`
       : flight === 'on' ? 'The lidar was flown in leaf: drawn as flown, no leaves added.' : 'The flight season is unknown: drawn as flown.'}${columns}`);
     eraseNote();
@@ -266,7 +297,11 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
   $('#tr-cut').onchange = () => { st.cut = Number($('#tr-cut').value) || 0; draw(); };
   /* How solid the blocks are drawn, kept on this device. */
   const solid = () => Number($('#tr-solid').value) / 100;
-  const applySolid = () => { ids.forEach((id, i) => { if (map.getLayer(id)) map.setPaintProperty(id, 'fill-extrusion-opacity', Math.min(1, bandAt(i).opacity * solid())); }); };
+  const applySolid = () => { ids.forEach((id, i) => { if (map.getLayer(id)) map.setPaintProperty(id, 'fill-extrusion-opacity', Math.min(1, bandAt(i).opacity * solid())); }); if (map.getLayer(FINE_ID)) map.setPaintProperty(FINE_ID, 'fill-extrusion-opacity', Math.min(1, 0.8 * solid())); };
+  if ($('#tr-fine')) {
+    $('#tr-fine').checked = st.fine;
+    $('#tr-fine').onchange = () => { st.fine = $('#tr-fine').checked; try { localStorage.setItem('lawnmapper.shade.treesFine', st.fine ? '1' : '0'); } catch { /* not kept */ } draw(); };
+  }
   try { const v = localStorage.getItem('lawnmapper.shade.treesSolid'); if (v) $('#tr-solid').value = v; } catch { /* not kept */ }
   $('#tr-solid').oninput = () => { applySolid(); try { localStorage.setItem('lawnmapper.shade.treesSolid', $('#tr-solid').value); } catch { /* not kept */ } };
   $('#tr-legend').innerHTML = Object.entries(KIND_COLOR).filter(([k]) => (leafOff ? k !== 'other' || season.inLeafColumns > 0 : k === 'other' || k === 'roof' || k === 'structure' || k === 'unknown'))
@@ -470,6 +505,7 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
     map.getContainer().classList.toggle('held', on);
     for (const h of [map.dragPan, map.touchZoomRotate, map.dragRotate]) on ? h.disable() : h.enable();
     if (!on) { hideCursor(); flush(); }
+    if (st.fine) draw(); // the 1 m blocks while erasing, the half-meter picture again after
   };
   if (er && $('#tr-erase')) {
     for (const ev of ['touchstart', 'touchmove']) map.getContainer().addEventListener(ev, holdTouch, { passive: false });
@@ -516,7 +552,11 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
       if (a.length || b.length) { st.cubeVersion++; draw(); }
     },
     /** The blocks shown or hidden (another step may show them beside its own picture). */
-    setVisible(on) { for (const id of ids) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none'); },
+    setVisible(on) {
+      const fine = showingFine();
+      for (const id of ids) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on && !fine ? 'visible' : 'none');
+      if (map.getLayer(FINE_ID)) map.setLayoutProperty(FINE_ID, 'visibility', on && fine ? 'visible' : 'none');
+    },
     /** Shown and listening, or hidden with the map left to another step. */
     setActive(on) {
       st.active = on;
@@ -530,6 +570,7 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
       map.off('click', onClick);
       for (const [ev, h] of [['mousedown', strokeStart], ['touchstart', strokeStart], ['mousemove', strokeMove], ['touchmove', strokeMove], ['mouseup', strokeEnd], ['touchend', strokeEnd], ['touchcancel', strokeEnd]]) map.off(ev, h);
       for (const id of ids) { if (map.getLayer(id)) map.removeLayer(id); if (map.getSource(id)) map.removeSource(id); }
+      if (map.getLayer(FINE_ID)) map.removeLayer(FINE_ID); if (map.getSource(FINE_ID)) map.removeSource(FINE_ID);
       sec.hidden = true;
     },
   };
