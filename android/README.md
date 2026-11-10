@@ -15,7 +15,11 @@ The page talks to ARCore through one bridge, `window.LawnARNative` (`Bridge.kt`)
 - What the app does with the camera is tuned from the page (`NATIVE_OPTIONS`, `NATIVE_DEPTH` in track.js): picture
   size and rate, depth kind and confidence, Geospatial rate.
 
-## The bridge (version 4)
+## The bridge (version 5)
+
+Since version 5 (2026-11-10): `occGrid(nx, ny, rangeM)`, ARCore's smoothed depth picture as "w,h,t,<base64>", one
+byte a cell (the distance over rangeM in 255 steps, 0 = none; nx or ny 0 = its own size), for hiding the drawing
+behind real things (scan/lib/draw.js); and the smoothed picture is taken every frame.
 
 Page to app: `info()`, `start(optionsJson)`, `stop()`, `setCross(x, y)`, `depthGrid(nx, ny, kind, minConf)`,
 `grab()`, `openExternal(url)`, `log(msg)`; since version 2 `anchor(x, y, z)` (an ARCore anchor's id, or -1) and
