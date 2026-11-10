@@ -36,6 +36,7 @@ import numpy as np
 from scipy.interpolate import RBFInterpolator
 from scipy.ndimage import binary_dilation, gaussian_filter
 
+MAX_STRETCH = 3.0    # m: no stretch kept whose matches' median says more (run 227)
 SHIFT = [0.0, 0.0]                   # the model's one shift onto the photo, in the map's metres (photos.json)
 FT = 3.28084
 CELL = 0.25          # m a pixel on the common grid
@@ -140,16 +141,26 @@ def match_windows(lid, raised, photo, inside, win=24.0, step=8.0, reach=3.0):
     return np.array(out) if out else np.zeros((0, 5))
 
 
-def match_roma(lid, raised, photo, inside, n=4000):
+_ROMA = None
+
+
+def match_roma(lid, raised, photo, inside, n=4000, a_photo=None):
+    """RoMa from the lidar's ground brightness (or, given a_photo, another photo on the same grid) to the photo."""
+    global _ROMA
     import torch
     from PIL import Image
     from romatch import roma_outdoor
     torch.set_num_threads(os.cpu_count() or 2)
     H, W = lid.shape
-    A = Image.fromarray((np.nan_to_num(lid, nan=0.5) * 255).astype(np.uint8)).convert("RGB")
+    if a_photo is not None:
+        A = Image.fromarray(cv2.cvtColor(a_photo, cv2.COLOR_BGR2RGB))
+    else:
+        A = Image.fromarray((np.nan_to_num(lid, nan=0.5) * 255).astype(np.uint8)).convert("RGB")
     B = Image.fromarray(cv2.cvtColor(photo, cv2.COLOR_BGR2RGB))
     # no custom CUDA kernel on a CPU runner (run 226: "No module named 'local_corr'"), and full precision on a CPU
-    model = roma_outdoor(device="cpu", coarse_res=448, upsample_res=672, use_custom_corr=False, amp_dtype=torch.float32)
+    if _ROMA is None:
+        _ROMA = roma_outdoor(device="cpu", coarse_res=448, upsample_res=672, use_custom_corr=False, amp_dtype=torch.float32)
+    model = _ROMA
     warp, cert = model.match(A, B, device="cpu")
     m, c = model.sample(warp, cert, num=n)
     ka, kb = model.to_pixel_coordinates(m, H, W, H, W)
@@ -269,6 +280,13 @@ def main(d):
             if not rms[method] < 0.8 * rms["none"]:
                 print(f"    {name}: no stretch beats none on held-out matches; nothing kept from it")
                 continue
+            # and only a believable one (run 227: RoMa's warp is smooth even where it is wrong, so its matches agreed
+            # with one another to 0.2 ft held out while saying the photo was 400 ft off; the owner's own marks put
+            # the two photos 1-3 ft apart)
+            big = float(np.median(np.hypot(D[:, 0], D[:, 1])))
+            if big > MAX_STRETCH:
+                print(f"    {name}: its matches say the photo is {big * FT:.0f} ft off, more than {MAX_STRETCH * FT:.0f} ft: not believable, nothing kept from it")
+                continue
             g = fit(method, P, D, lam)
             for other, T2 in ties.items():
                 if other == name or len(T2) < 5:
@@ -299,6 +317,30 @@ def main(d):
             mags = np.hypot(F[..., 0], F[..., 1]) * FT
             print(f"    kept: {best_field[0]} (held out {best_field[2] * FT:.1f} ft RMS); the stretch over the photo {np.percentile(mags, 5):.1f}-{np.percentile(mags, 95):.1f} ft (5th-95th percentile)")
     json.dump(out, open(os.path.join(d, "warp.json"), "w"))
+
+    # RoMa PHOTO TO PHOTO, the county photo against Mapbox on the same grid: a matcher that works and coordinates read
+    # right give the two photos' few-feet disagreement here; if this is sane and lidar-to-photo is not, the lidar's
+    # brightness is what RoMa cannot read (run 227)
+    if "county" in photos and "mapbox" in photos:
+        try:
+            pc, pm = photos["county"], photos["mapbox"]
+            fc, fm = Frame(pc["frame"], pc["w"], pc["h"], origin), Frame(pm["frame"], pm["w"], pm["h"], origin)
+            e0, n0 = fc.to_local(0, pc["h"]); e1, n1 = fc.to_local(pc["w"], 0)
+            x0, y1 = float(e0), float(n1)
+            W, H = int((float(e1) - x0) / CELL), int((y1 - float(n0)) / CELL)
+            imc, inc = photo_on_grid(os.path.join(d, pc["file"]), fc, x0, y1, W, H)
+            imm, inm = photo_on_grid(os.path.join(d, pm["file"]), fm, x0, y1, W, H)
+            T = match_roma(np.zeros((H, W)), np.zeros((H, W), bool), imm, inc & inm, a_photo=imc)
+            if len(T) >= 12:
+                to_m = lambda T: np.c_[x0 + (T[:, 0] + 0.5) * CELL, y1 - (T[:, 1] + 0.5) * CELL]
+                P, D = to_m(T), T[:, 2:4]
+                lam = best_lambda(P, D)
+                print(f"  RoMa, Mapbox onto the county photo: {len(T)} matches, the median shift {np.hypot(*np.median(D, 0)) * FT:.1f} ft; held out -- "
+                      + "; ".join(f"{m} {summary(held_out(m, P, D, lam))}" for m in ("none", "shift", "affine", "spline")))
+            else:
+                print(f"  RoMa, Mapbox onto the county photo: {len(T)} matches, too few")
+        except Exception as e:   # noqa: BLE001
+            print(f"  RoMa, Mapbox onto the county photo: could not run ({str(e)[:120]})")
 
     # THE OWNER'S TEST: the same check points placed on Mapbox and on the county photo
     if len(marks) >= 2:
