@@ -289,7 +289,7 @@ def main(d):
                 photo2, inside2 = photo_on_grid(os.path.join(d, p["file"]), fr, x0 + pe, y1 + pn, W, H)
                 g2 = match_roma(lid, raised, photo2, inside & inside2, ground_only=True)
                 got = np.median(g2[:, 2:4], 0) - np.median(g[:, 2:4], 0) if len(g2) >= 12 else np.array([np.nan, np.nan])
-                miss = float(np.hypot(got[0] - pe, got[1] - pn))
+                miss = float(min(np.hypot(got[0] - pe, got[1] - pn), np.hypot(got[0] + pe, got[1] + pn)))   # either sign
                 ok = np.isfinite(miss) and miss < 0.3
                 print(f"    RoMa ground only, the photo moved {np.hypot(pe, pn) * FT:.1f} ft on purpose: found "
                       + (f"{np.hypot(*got) * FT:.1f} ft of it, {miss * FT:.1f} ft off" if np.isfinite(miss) else "too few matches")
@@ -375,6 +375,20 @@ def main(d):
                 lam = best_lambda(P, D)
                 print(f"  RoMa, Mapbox onto the county photo: {len(T)} matches, the median shift {np.hypot(*np.median(D, 0)) * FT:.1f} ft; held out -- "
                       + "; ".join(f"{m} {summary(held_out(m, P, D, lam))}" for m in ("none", "shift", "affine", "spline")))
+                # the same planted shift as the lidar matchers get (the owner, 2026-11-10: photos stretched onto each
+                # other, for Lawn Mapper's line-up): Mapbox moved a known amount, and the fitted maps must differ by it
+                pe, pn = PLANT
+                imm2, inm2 = photo_on_grid(os.path.join(d, pm["file"]), fm, x0 + pe, y1 + pn, W, H)
+                T2 = match_roma(np.zeros((H, W)), np.zeros((H, W), bool), imm2, inc & inm2, a_photo=imc)
+                if len(T2) >= 12:
+                    P2, D2 = to_m(T2), T2[:, 2:4]
+                    gx, gy = np.meshgrid(np.linspace(x0, x0 + W * CELL, 12), np.linspace(y1 - H * CELL, y1, 8))
+                    Q = np.c_[gx.ravel(), gy.ravel()]
+                    got = np.median(fit("affine", P2, D2)(Q) - fit("affine", P, D)(Q), 0)
+                    miss = float(min(np.hypot(got[0] - pe, got[1] - pn), np.hypot(got[0] + pe, got[1] + pn)))
+                    print(f"    Mapbox moved {np.hypot(pe, pn) * FT:.1f} ft on purpose: RoMa found {np.hypot(*got) * FT:.1f} ft of it, {miss * FT:.1f} ft off ({len(T2)} matches)")
+                else:
+                    print(f"    Mapbox moved on purpose: {len(T2)} matches, too few")
             else:
                 print(f"  RoMa, Mapbox onto the county photo: {len(T)} matches, too few")
         except Exception as e:   # noqa: BLE001
