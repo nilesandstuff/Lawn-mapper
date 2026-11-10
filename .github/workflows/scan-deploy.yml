@@ -129,6 +129,10 @@ jobs:
           CUSTOM_DOMAIN: ${{ vars.CUSTOM_DOMAIN }}
         run: |
           node scan/tools/prepare.mjs
+          # the built page opened in a browser first (scan/tools/page-check.mjs): a page that throws is not deployed
+          npm install playwright --no-save --no-audit --no-fund > /dev/null 2>&1
+          npx playwright install --with-deps chromium > /dev/null 2>&1
+          node scan/tools/page-check.mjs
           if npx wrangler deploy --config scan/wrangler.toml > scan-deploy.log 2>&1; then
             tail -8 scan-deploy.log
             d=$(sed -n 's/^pattern = "\(.*\)"$/\1/p' scan/wrangler.toml)
