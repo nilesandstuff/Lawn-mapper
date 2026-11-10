@@ -68,3 +68,27 @@ console.log('lidar-marks: ok');
   assert.ok(R2.objects.filter((o) => o.kind === 'paving').length <= 2, 'the grass is not a slab with corners');
   console.log('lidar-marks (paving): ok');
 }
+
+// the woods and a house with a deck against it (the owner, 2026-11-10: shapes all over the woods, the deck a building)
+{
+  let sd = 9; const r = () => { sd = (sd + 0x6d2b79f5) | 0; let t = Math.imul(sd ^ (sd >>> 15), 1 | sd); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; // mulberry32: the LCG above lays 3-call points in stripes
+  const Q = [];
+  const house = (e, n) => e >= 5 && e <= 17 && n >= 5 && n <= 15;          // a pitched roof, eaves 4.5 m, ridge 7 m
+  const deck = (e, n) => e >= 17 && e <= 22 && n >= 7 && n <= 12;           // level, 3 m up, against the house
+  const woods = (e, n) => e >= 30;                                          // crowns over everything east of 30 m
+  const log = (e, n) => e >= 38 && e <= 41 && n >= 10 && n <= 12;           // a solid thing in the woods, 0.8 m
+  for (let i = 0; i < 50 * 25 * 4; i++) {
+    const e = r() * 50, n = r() * 25;
+    let h = 0, kind = 0;
+    if (house(e, n)) { h = 7 - 2.5 * Math.abs(n - 10) / 5; kind = 1; } else if (deck(e, n)) { h = 3; kind = 1; } else if (log(e, n)) { h = 0.8; kind = 3; }
+    Q.push({ e, n, h: h + (r() - 0.5) * 0.05, kind });
+    if (woods(e, n) && !log(e, n)) Q.push({ e, n, h: 8 + r() * 6, kind: 2 });
+  }
+  const R3 = lidarMarks([0, 0, 50, 25], { n: Q.length, e: (i) => Q[i].e, nn: (i) => Q[i].n, hag: (i) => Q[i].h, bright: () => 0, kind: (i) => Q[i].kind });
+  const bld = R3.objects.filter((o) => o.kind === 'building'), obj = R3.objects.filter((o) => o.kind === 'object');
+  assert.equal(bld.length, 1, 'one building, the house');
+  assert.ok(near(bld[0].middle, [11, 10]) < 1, 'the house outlined without its deck');
+  assert.ok(obj.some((o) => near(o.middle, [19.5, 9.5]) < 1 && Math.abs(o.top - 3) < 0.3), 'the deck a thing of its own');
+  assert.ok(!R3.objects.some((o) => o.middle[0] > 30), 'nothing in the woods');
+  console.log('lidar-marks (woods, deck): ok');
+}

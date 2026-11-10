@@ -46,11 +46,19 @@ async function main() {
     const cs = M.corners.filter((c) => c.kind === 'corner' && os.some((o) => o.id === c.of));
     console.log(`  ${kind}: ${os.length} (${os.filter((o) => o.square).length} squared), ${cs.length} corners, ${cs.filter((c) => c.sure).length} sure; sizes ${os.map((o) => `${o.area} m2 at ${o.top} m`).slice(0, 12).join(', ')}`);
   }
+  // where each thing is, as a distance from the biggest building's middle only (no place)
+  const house = M.objects.filter((o) => o.kind === 'building').sort((a, b) => b.area - a.area)[0];
+  const far = (at) => (house ? `${Math.hypot(at[0] - house.middle[0], at[1] - house.middle[1]).toFixed(0)} m from the house` : '');
+  for (const d of debug.filter((x) => x.kind === 'building' || x.kind === 'object').slice(0, 40)) console.log(`  ${d.kind} ${d.area} m2: ${far(d.middle)}, crowns round it ${d.woods}`);
+  const wd = debug.filter((d) => d.kind === 'in the woods');
+  console.log(`Left out as in the woods (crowns over the ground round it): ${wd.length}; ${wd.map((d) => `${d.was} ${d.n} returns at ${d.top} m (${d.woods})`).slice(0, 20).join('; ')}`);
+  const dk = debug.filter((d) => d.kind === 'deck off a house');
+  console.log(`Decks split off a house: ${dk.length}; ${dk.map((d) => `${d.n} returns at ${d.top} m`).join('; ')}`);
   const ns2 = debug.filter((d) => d.kind === 'not solid');
   console.log(`Left out as not solid (the laser went through, or every height): ${ns2.length}; sizes ${ns2.map((d) => `${d.n} returns (through ${d.through}, rough ${d.rough} m)`).slice(0, 15).join('; ')}`);
   const pv = debug.filter((d) => d.kind === 'paving');
   console.log(`Paving candidates, each threshold's slabs over 8 m2: ${pv.length}`);
-  for (const d of pv.filter((x) => x.square)) console.log(`  KEPT: ${d.n} returns, ${d.area} m2 (${d.why})`);
+  for (const d of pv.filter((x) => x.square)) console.log(`  KEPT: ${d.n} returns, ${d.area} m2, contrast ${d.contrast}, ${far(d.middle)} (${d.why})`);
   for (const d of pv.sort((a, b) => b.n - a.n).slice(0, 15)) console.log(`  ${d.n} returns, ${d.area} m2: ${d.square ? 'KEPT' : 'not kept'} (${d.why || 'not fitted'})`);
 }
 

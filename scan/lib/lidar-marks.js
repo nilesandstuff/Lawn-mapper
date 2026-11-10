@@ -262,13 +262,15 @@ function linked(ps, link, dh = Infinity) {
 export function lidarMarks(box, pts, { cell = CELL, debug = null } = {}) {
   const W = Math.max(1, Math.ceil((box[2] - box[0]) / cell)), H = Math.max(1, Math.ceil((box[3] - box[1]) / cell)), N = W * H;
   // every return in the box, raised (not a tree's) or not; a tree's own returns are left out altogether
-  const P = [];
+  const P = [], crowns = new Set(); // crowns: the 1 m cells a tree's crown (2 m or more up) covers
   for (let i = 0; i < pts.n; i++) {
     const e = pts.e(i), n = pts.nn(i);
-    if (e < box[0] || e >= box[2] || n <= box[1] || n > box[3]) continue;
+    if (e < box[0] - 5 || e >= box[2] + 5 || n <= box[1] - 5 || n > box[3] + 5) continue;
+    if ((e < box[0] || e >= box[2] || n <= box[1] || n > box[3]) && !(pts.kind(i) === 2 && pts.hag(i) >= 2)) continue;
     const h = pts.hag(i), kind = pts.kind(i);
     if (Number.isNaN(h)) continue;
-    if (h >= 0.3 && kind === 2) continue; // trees are not marks (SCAN-DIVERGENCES step 9)
+    if (h >= 0.3 && kind === 2) { if (h >= 2) crowns.add(`${Math.floor(e)},${Math.floor(n)}`); continue; } // trees are not marks (SCAN-DIVERGENCES step 9)
+    if (e < box[0] || e >= box[2] || n <= box[1] || n > box[3]) continue;
     P.push({ e, n, h, raised: h >= 0.3, bld: kind === 1, b: pts.bright(i) });
   }
   const areaM2 = (box[2] - box[0]) * (box[3] - box[1]);
@@ -297,7 +299,7 @@ export function lidarMarks(box, pts, { cell = CELL, debug = null } = {}) {
     // closed over the random gaps between returns, and its holes filled: only its outline's topology is wanted
     return { mask: fillHoles(morph(morph(m, W, H, rad, 1), W, H, rad, 0), W, H, N), box, W, H };
   };
-  const add = (inside, outside, kind, { minArea = 4, minSpan = 3, edgeIn = null, edgeOut = null } = {}) => {
+  const add = (inside, outside, kind, { minArea = 4, minSpan = 3, edgeIn = null, edgeOut = null, woods = null, contrast = null } = {}) => {
     if (inside.length < 3) return;
     const hs = inside.map((p) => p.h).sort((a, b) => a - b);
     const mid = inside.reduce((s, p) => [s[0] + p.e / inside.length, s[1] + p.n / inside.length], [0, 0]);
@@ -306,7 +308,7 @@ export function lidarMarks(box, pts, { cell = CELL, debug = null } = {}) {
     let span = 0; for (let a = 0; a < 180; a += 15) { const t = (a * Math.PI) / 180, v = inside.map((p) => Math.cos(t) * p.e + Math.sin(t) * p.n); span = Math.max(span, Math.max(...v) - Math.min(...v)); }
     const local = area >= minArea || span >= minSpan ? maskOf(inside) : null;
     const fit = local ? squareOutline(local.mask, local.box, local.W, local.H, cell, inside, outside, { minJog, reach, loose: kind === 'paving', edgeIn, edgeOut, view: box }) : null;
-    if (debug) debug.push({ kind, n: inside.length, area: +area.toFixed(1), fitted: !!fit, square: !!fit?.square, why: fit?.why || null });
+    if (debug) debug.push({ kind, n: inside.length, area: +area.toFixed(1), fitted: !!fit, square: !!fit?.square, why: fit?.why || null, middle: mid, woods: woods == null ? null : +woods.toFixed(2), contrast: contrast == null ? null : +contrast.toFixed(1) });
     if (kind === 'paving' && !fit?.square) return; // a patch of ground that is not a straight-edged slab is not a mark
     const id = objects.length;
     const cs = fit?.square ? fit.ring.filter((_, j) => fit.keep[j]) : [];
@@ -319,7 +321,7 @@ export function lidarMarks(box, pts, { cell = CELL, debug = null } = {}) {
   const raised = P.filter((p) => p.raised), ground = P.filter((p) => !p.raised);
   const solidity = solidityOf(P, Math.max(1, 2.5 * spacing));
   // 1. things: raised returns that touch; 2. within a thing, its levels: returns that touch at much the same height
-  for (const group of linked(raised, link)) {
+  for (let group of linked(raised, link)) {
     if (group.length < 3) continue;
     // SOLID THINGS ONLY (the owner, 2026-11-10: "lots of buildings and objects showing up in the woods... There are no
     // buildings, and not really anything out there that would be square. Just stumps and normal woods stuff"): a deck,
@@ -327,15 +329,35 @@ export function lidarMarks(box, pts, { cell = CELL, debug = null } = {}) {
     // crown's low branches let it through to the ground, and stand at every height
     const sol = solidity(group);
     if (sol.through > 0.15 || sol.rough > 0.35) { if (debug) debug.push({ kind: 'not solid', n: group.length, through: +sol.through.toFixed(2), rough: +sol.rough.toFixed(2) }); continue; }
-    const inG = new Set(group), others = P.filter((p) => !inG.has(p));
     // a building is tall: a deck the shade map calls a building (flat, high, no ground under it) is a thing here
     const hsG = group.map((p) => p.h).sort((a, b) => a - b), tall = hsG[hsG.length >> 1] >= 3.5;
-    const kind = tall && group.filter((p) => p.bld).length > group.length * 0.3 ? 'building' : 'object';
-    add(group, others, kind);
+    let kind = tall && group.filter((p) => p.bld).length > group.length * 0.3 ? 'building' : 'object';
+    // IN THE WOODS (the owner, 2026-11-10, again: "lots of buildings and objects showing up in the woods... Just stumps
+    // and normal woods stuff"; the first real run left 50 small things after the solidity test): a thing with tree
+    // crowns over most of the ground round it is brush, a log or a crown the shade map did not call a tree. A house
+    // among trees still has its lawn, drive or deck on some sides; a shed deep in the woods is lost, and said so.
+    const woods = woodsOf(group, crowns);
+    if (woods > (kind === 'building' ? 0.7 : 0.5)) { if (debug) debug.push({ kind: 'in the woods', was: kind, n: group.length, woods: +woods.toFixed(2), top: +hsG[hsG.length >> 1].toFixed(1) }); continue; }
+    const medOf = (l) => { const h = l.map((p) => p.h).sort((a, b) => a - b); return h[h.length >> 1]; };
+    if (kind === 'building') {
+      // A DECK AGAINST A HOUSE (the owner, 2026-11-10: "The deck showed up as building"): it touches the house, so it
+      // is in the house's group. A level of the house's group well below its roof, level itself (a roof is pitched)
+      // and deck-sized, is a thing of its own, and the house is outlined without it.
+      const levels = linked(group, link, 0.8).filter((l) => l.length >= 20);
+      const top = levels.length ? Math.max(...levels.map(medOf)) : 0;
+      const decks = levels.filter((l) => medOf(l) <= top - 1.5 && l.length * spacing * spacing <= 80 && slopeOf(l) < 5);
+      if (decks.length) {
+        const inD = new Set(decks.flat());
+        group = group.filter((p) => !inD.has(p));
+        for (const l of decks) { const inL = new Set(l); add(l, P.filter((p) => !inL.has(p)), 'object'); if (debug) debug.push({ kind: 'deck off a house', n: l.length, top: +medOf(l).toFixed(1) }); }
+        if (group.length < 3) continue;
+      }
+    }
+    const inG = new Set(group), others = P.filter((p) => !inG.has(p));
+    add(group, others, kind, { woods });
     if (kind !== 'object') continue;
     const levels = linked(group, link, 0.8).filter((l) => l.length >= 20);
     if (levels.length < 2) continue;
-    const medOf = (l) => { const h = l.map((p) => p.h).sort((a, b) => a - b); return h[h.length >> 1]; };
     const low = Math.min(...levels.map(medOf));
     for (const l of levels) {
       if (medOf(l) - low < 0.8) continue; // the lowest level is the whole thing's own outline
@@ -371,8 +393,9 @@ export function lidarMarks(box, pts, { cell = CELL, debug = null } = {}) {
         if (tried.has(sig)) continue; tried.add(sig);
         // a slab stands out from the ground right round it: its brightness against a 2 m band outside, in the spread
         // of brightness on the lot (a patch of lawn a little lighter than the rest does not)
-        if (contrastOf(group, ground, 2, spreadB) < 1.5) { if (debug) debug.push({ kind: 'paving', n: group.length, area: +(group.length * spacing * spacing).toFixed(1), square: false, why: 'too little contrast with the ground round it' }); continue; }
-        add(group, [...rest, ...part.filter((p) => !inG.has(p))], 'paving', { minArea: 8, minSpan: 6,
+        const contrast = contrastOf(group, ground, 2, spreadB);
+        if (contrast < 1.5) { if (debug) debug.push({ kind: 'paving', n: group.length, area: +(group.length * spacing * spacing).toFixed(1), square: false, why: 'too little contrast with the ground round it' }); continue; }
+        add(group, [...rest, ...part.filter((p) => !inG.has(p))], 'paving', { minArea: 8, minSpan: 6, contrast,
           edgeIn: ground.filter((p) => (p.b > thr) === bright), edgeOut: ground.filter((p) => (p.b > thr) !== bright) });
       }
     }
@@ -419,6 +442,34 @@ function solidityOf(P, reach) {
     rs.sort((a, b) => a - b);
     return { through: through / group.length, rough: rs.length ? rs[rs.length >> 1] : 0 };
   };
+}
+
+/**
+ * The share of the ground round a thing (1 to 4 m out from its returns, on 1 m cells) that tree crowns cover: in the
+ * woods, nearly all of it.
+ */
+function woodsOf(group, crowns) {
+  const own = new Set(group.map((p) => `${Math.floor(p.e)},${Math.floor(p.n)}`)), near = new Set(), ring = new Set();
+  for (const k of own) {
+    const [x, y] = k.split(',').map(Number);
+    for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) {
+      const d = Math.hypot(dx, dy), c = `${x + dx},${y + dy}`;
+      if (d <= 1.5) near.add(c); else if (d <= 4) ring.add(c);
+    }
+  }
+  let all = 0, covered = 0;
+  for (const c of ring) { if (near.has(c) || own.has(c)) continue; all++; if (crowns.has(c)) covered++; }
+  return all ? covered / all : 0;
+}
+
+/** How steep (degrees) the plane best fitted through a set of returns' heights is: a deck is level, a roof is not. */
+function slopeOf(ps) {
+  const n = ps.length, me = ps.reduce((t, p) => t + p.e, 0) / n, mn = ps.reduce((t, p) => t + p.n, 0) / n, mh = ps.reduce((t, p) => t + p.h, 0) / n;
+  let see = 0, snn = 0, sen = 0, seh = 0, snh = 0;
+  for (const p of ps) { const e = p.e - me, y = p.n - mn, h = p.h - mh; see += e * e; snn += y * y; sen += e * y; seh += e * h; snh += y * h; }
+  const det = see * snn - sen * sen; if (Math.abs(det) < 1e-9) return 0;
+  const a = (seh * snn - snh * sen) / det, b = (snh * see - seh * sen) / det;
+  return (Math.atan(Math.hypot(a, b)) * 180) / Math.PI;
 }
 
 /** Each point's K nearest (itself among them) within reach: indices. Found once, voted on at every threshold. */
