@@ -1,105 +1,108 @@
 {
   "ar-statewide": {
-    "at": "2026-11-09",
+    "at": "2026-11-10",
     "ok": true,
     "acres": 3.941
   },
   "az-statewide": {
-    "at": "2026-11-09",
+    "at": "2026-11-10",
     "ok": true,
     "acres": 5.006
   },
   "ct-statewide": {
-    "at": "2026-11-09",
+    "at": "2026-11-10",
     "ok": true,
     "acres": 0.242
   },
   "dc-statewide": {
-    "at": "2026-11-09",
+    "at": "2026-11-10",
     "ok": true,
     "acres": 0.037
   },
   "de-statewide": {
-    "at": "2026-11-09",
+    "at": "2026-11-10",
     "ok": true,
     "acres": 0.195
   },
   "id-statewide": {
-    "at": "2026-11-09",
+    "at": "2026-11-10",
     "ok": true,
     "acres": 1.93
   },
   "in-statewide": {
-    "at": "2026-11-09",
+    "at": "2026-11-10",
     "ok": true,
     "acres": 1.66
   },
   "md-statewide": {
-    "at": "2026-11-09",
+    "at": "2026-11-10",
     "ok": false,
     "down": true,
     "why": "MD's server did not answer 5 times running (HTTP 503) -- the endpoint is there, the service is not",
     "since": "2026-10-04",
-    "strikes": 38
+    "strikes": 39
   },
   "mn-statewide": {
-    "at": "2026-11-09",
-    "ok": true,
-    "acres": 1.406
+    "at": "2026-11-10",
+    "ok": false,
+    "down": true,
+    "why": "MN's server did not answer 5 times running (timed out) -- the endpoint is there, the service is not",
+    "since": "2026-11-10",
+    "strikes": 1
   },
   "nh-statewide": {
-    "at": "2026-11-09",
+    "at": "2026-11-10",
     "ok": true,
     "acres": 0.413
   },
   "ny-statewide": {
-    "at": "2026-11-09",
+    "at": "2026-11-10",
     "ok": true,
     "acres": 6.602
   },
   "oh-statewide": {
-    "at": "2026-11-09",
+    "at": "2026-11-10",
     "ok": false,
     "why": "0 of 25 points across OH returned a parcel (25 nothing, 0 under 0.01 ac, 0 over 100000 ac)",
     "since": "2026-10-04",
-    "strikes": 38
+    "strikes": 39
   },
   "or-statewide": {
-    "at": "2026-11-09",
+    "at": "2026-11-10",
     "ok": false,
     "why": "OR's server refused 5 times running (Token Required) -- an answer, and a permanent one",
     "since": "2026-10-04",
-    "strikes": 38
+    "strikes": 39
   },
   "tx-statewide": {
-    "at": "2026-11-09",
+    "at": "2026-11-10",
     "ok": false,
     "why": "TX's server refused 5 times running (Service not found) -- an answer, and a permanent one",
     "since": "2026-10-04",
-    "strikes": 38
+    "strikes": 39
   },
   "ut-statewide": {
-    "at": "2026-11-09",
+    "at": "2026-11-10",
     "ok": true,
     "acres": 25.768
   },
   "va-statewide": {
-    "at": "2026-11-09",
+    "at": "2026-11-10",
     "ok": true,
     "acres": 0.408
   },
   "vt-statewide": {
-    "at": "2026-11-09",
+    "at": "2026-11-10",
     "ok": true,
     "acres": 0.997
   },
   "wa-statewide": {
-    "at": "2026-11-09",
+    "at": "2026-11-10",
     "ok": true,
     "acres": 12.226
   },
   "wv-statewide": {
-    "at": "2026-11-09",
+    "at": "2026-11-10",
     "ok": true,
     "acres": 0.229
   },
@@ -1664,77 +1667,85 @@
     "acres": 0.102
   },
   "ga-atkinson": {
-    "at": "2026-09-21",
+    "at": "2026-11-10",
     "ok": true,
     "acres": 95.361
   },
   "ga-baldwin": {
-    "at": "2026-09-21",
+    "at": "2026-11-10",
     "ok": true,
     "acres": 0.649
   },
   "ga-barrow": {
-    "at": "2026-09-21",
+    "at": "2026-11-10",
     "ok": true,
     "acres": 0.317
   },
   "ga-bartow": {
-    "at": "2026-09-21",
+    "at": "2026-11-10",
     "ok": true,
     "acres": 10.035
   },
   "ga-ben-hill": {
-    "at": "2026-09-21",
+    "at": "2026-11-10",
     "ok": true,
     "acres": 31.86
   },
   "ga-berrien": {
-    "at": "2026-09-21",
+    "at": "2026-11-10",
     "ok": true,
     "acres": 117.077
   },
   "ga-bibb": {
-    "at": "2026-09-21",
+    "at": "2026-11-10",
     "ok": true,
     "acres": 3.412
   },
   "ga-bleckley": {
-    "at": "2026-09-21",
+    "at": "2026-11-10",
     "ok": false,
-    "why": "layer metadata: Invalid URL"
+    "why": "layer metadata: Invalid URL",
+    "since": "2026-11-10",
+    "strikes": 2
   },
   "ga-brooks": {
-    "at": "2026-09-21",
+    "at": "2026-11-10",
     "ok": true,
     "acres": 2.477
   },
   "ga-bryan": {
-    "at": "2026-09-21",
+    "at": "2026-11-10",
     "ok": false,
-    "why": "layer metadata: Service Parcels/MapServer not found "
+    "why": "layer metadata: Service Parcels/MapServer not found ",
+    "since": "2026-11-10",
+    "strikes": 2
   },
   "ga-bulloch": {
-    "at": "2026-09-21",
+    "at": "2026-11-10",
     "ok": true,
     "acres": 6.74
   },
   "ga-burke": {
-    "at": "2026-09-21",
+    "at": "2026-11-10",
     "ok": false,
-    "why": "layer metadata: Invalid URL"
+    "why": "layer metadata: Invalid URL",
+    "since": "2026-11-10",
+    "strikes": 2
   },
   "ga-camden": {
-    "at": "2026-09-21",
-    "ok": false,
-    "why": "layer metadata: Error handling service request :Could not find a service with the name 'Camden/MapServer/Camden_Parcels' in the configured clusters. Service may be stopped or ArcGIS Server may not be "
+    "at": "2026-11-10",
+    "ok": true,
+    "acres": 0.346
   },
   "ga-carroll": {
-    "at": "2026-09-21",
+    "at": "2026-11-10",
     "ok": false,
-    "why": "layer metadata: Invalid URL"
+    "why": "layer metadata: Invalid URL",
+    "since": "2026-11-10",
+    "strikes": 2
   },
   "ga-charlton": {
-    "at": "2026-09-21",
+    "at": "2026-11-10",
     "ok": true,
     "acres": 0.239
   },
@@ -1834,7 +1845,7 @@
     "why": "layer metadata: fetch failed"
   },
   "ma-statewide": {
-    "at": "2026-11-09",
+    "at": "2026-11-10",
     "ok": true,
     "acres": 0.169
   },
@@ -3565,7 +3576,7 @@
     "strikes": 2
   },
   "oh-lorain": {
-    "at": "2026-11-09",
+    "at": "2026-11-10",
     "ok": true,
     "acres": 0.242
   },
@@ -3926,7 +3937,7 @@
     "acres": 29.94
   },
   "sc-greenville": {
-    "at": "2026-11-09",
+    "at": "2026-11-10",
     "ok": true,
     "acres": 0.366
   },
@@ -5094,114 +5105,114 @@
     "acres": 61.002
   },
   "fl-statewide": {
-    "at": "2026-11-09",
+    "at": "2026-11-10",
     "ok": true,
     "acres": 5.346
   },
   "hi-statewide": {
-    "at": "2026-11-09",
+    "at": "2026-11-10",
     "ok": false,
     "why": "0 of 25 points across HI returned a parcel (25 nothing, 0 under 0.01 ac, 0 over 100000 ac)",
     "since": "2026-10-04",
-    "strikes": 38
+    "strikes": 39
   },
   "ia-statewide": {
-    "at": "2026-11-09",
+    "at": "2026-11-10",
     "ok": true,
     "acres": 9.885
   },
   "me-statewide": {
-    "at": "2026-11-09",
+    "at": "2026-11-10",
     "ok": false,
     "why": "7 hits but all within 76% x 38% of ME -- a local layer wearing a statewide name",
     "since": "2026-10-04",
-    "strikes": 38
+    "strikes": 39
   },
   "mt-statewide": {
-    "at": "2026-11-09",
+    "at": "2026-11-10",
     "ok": true,
     "acres": 4.969
   },
   "nc-statewide": {
-    "at": "2026-11-09",
+    "at": "2026-11-10",
     "ok": true,
     "acres": 4.51
   },
   "nj-statewide": {
-    "at": "2026-11-09",
+    "at": "2026-11-10",
     "ok": true,
     "acres": 0.164
   },
   "nv-statewide": {
-    "at": "2026-11-09",
+    "at": "2026-11-10",
     "ok": true,
     "acres": 240.92
   },
   "ri-statewide": {
-    "at": "2026-11-09",
+    "at": "2026-11-10",
     "ok": true,
     "acres": 0.116
   },
   "tn-statewide": {
-    "at": "2026-11-09",
+    "at": "2026-11-10",
     "ok": true,
     "acres": 2.03
   },
   "wi-statewide": {
-    "at": "2026-11-09",
+    "at": "2026-11-10",
     "ok": true,
     "acres": 4.437
   },
   "wy-statewide": {
-    "at": "2026-11-09",
+    "at": "2026-11-10",
     "ok": true,
     "acres": 40.626
   },
   "ks-johnson": {
-    "at": "2026-11-09",
+    "at": "2026-11-10",
     "ok": true,
     "acres": 0.332
   },
   "ks-leavenworth": {
-    "at": "2026-11-09",
+    "at": "2026-11-10",
     "ok": true,
     "acres": 2.529
   },
   "mi-washtenaw": {
-    "at": "2026-11-09",
+    "at": "2026-11-10",
     "ok": true,
     "acres": 0.05
   },
   "oh-athens": {
-    "at": "2026-11-09",
+    "at": "2026-11-10",
     "ok": true,
     "acres": 0.485
   },
   "oh-warren": {
-    "at": "2026-11-09",
+    "at": "2026-11-10",
     "ok": true,
     "acres": 62.727
   },
   "pa-delaware": {
-    "at": "2026-11-09",
+    "at": "2026-11-10",
     "ok": true,
     "acres": 0.383
   },
   "pa-lackawanna": {
-    "at": "2026-11-09",
+    "at": "2026-11-10",
     "ok": true,
     "acres": 2.007
   },
   "tn-knox": {
-    "at": "2026-11-09",
+    "at": "2026-11-10",
     "ok": false,
     "why": "its parcels are not in Tennessee (centred -99.73,33.62)",
     "since": "2026-10-24",
-    "strikes": 17,
+    "strikes": 18,
     "final": true
   },
   "tn-rutherford": {
-    "at": "2026-11-09",
+    "at": "2026-11-10",
     "ok": true,
     "acres": 0.164
   },
@@ -5241,12 +5252,12 @@
     "acres": 39.251
   },
   "pa-york": {
-    "at": "2026-11-09",
+    "at": "2026-11-10",
     "ok": true,
     "acres": 0.172
   },
   "ny-nassau": {
-    "at": "2026-11-09",
+    "at": "2026-11-10",
     "ok": true,
     "acres": 0.092
   }
