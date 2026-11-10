@@ -46,9 +46,10 @@ async function main() {
     const cs = M.corners.filter((c) => c.kind === 'corner' && os.some((o) => o.id === c.of));
     console.log(`  ${kind}: ${os.length} (${os.filter((o) => o.square).length} squared), ${cs.length} corners, ${cs.filter((c) => c.sure).length} sure; sizes ${os.map((o) => `${o.area} m2 at ${o.top} m`).slice(0, 12).join(', ')}`);
   }
-  // where each thing is, as a distance from the biggest building's middle only (no place)
-  const house = M.objects.filter((o) => o.kind === 'building').sort((a, b) => b.area - a.area)[0];
-  const far = (at) => (house ? `${Math.hypot(at[0] - house.middle[0], at[1] - house.middle[1]).toFixed(0)} m from the house` : '');
+  // where each thing is, as a distance from the traced lawn's middle only (no place; the biggest building on the
+  // owner's map is the neighbour's house)
+  const lp = lawn.flat(), lm = lp.length ? [lp.reduce((t, p) => t + p[0], 0) / lp.length, lp.reduce((t, p) => t + p[1], 0) / lp.length] : null;
+  const far = (at) => (lm && at ? `${Math.hypot(at[0] - lm[0], at[1] - lm[1]).toFixed(0)} m from the lawn's middle` : '');
   for (const d of debug.filter((x) => x.kind === 'building' || x.kind === 'object').slice(0, 40)) console.log(`  ${d.kind} ${d.area} m2: ${far(d.middle)}, crowns round it ${d.woods}`);
   const wd = debug.filter((d) => d.kind === 'in the woods');
   console.log(`Left out as in the woods (crowns over the ground round it): ${wd.length}; ${wd.map((d) => `${d.was} ${d.n} returns at ${d.top} m (${d.woods})`).slice(0, 20).join('; ')}`);
@@ -59,7 +60,9 @@ async function main() {
   const pv = debug.filter((d) => d.kind === 'paving');
   console.log(`Paving candidates, each threshold's slabs over 8 m2: ${pv.length}`);
   for (const d of pv.filter((x) => x.square)) console.log(`  KEPT: ${d.n} returns, ${d.area} m2, contrast ${d.contrast}, ${far(d.middle)} (${d.why})`);
-  for (const d of pv.sort((a, b) => b.n - a.n).slice(0, 15)) console.log(`  ${d.n} returns, ${d.area} m2: ${d.square ? 'KEPT' : 'not kept'} (${d.why || 'not fitted'})`);
+  for (const d of pv.sort((a, b) => b.n - a.n).slice(0, 15)) console.log(`  ${d.n} returns, ${d.area} m2, ${far(d.middle)}: ${d.square ? 'KEPT' : 'not kept'} (${d.why || 'not fitted'})`);
+  const why = {}; for (const d of pv) { const k = d.square ? 'kept' : (d.why || '').startsWith('held') ? 'not straight-edged' : d.why; why[k] = (why[k] || 0) + 1; }
+  console.log(`Paving reasons: ${Object.entries(why).map(([k, v]) => `${k} ${v}`).join(', ')}`);
 }
 
 main().catch((e) => { console.log(`Marks check: ${e.message}`); process.exit(1); });

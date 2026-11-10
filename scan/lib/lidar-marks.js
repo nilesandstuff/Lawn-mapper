@@ -210,7 +210,7 @@ function squareOutline(mask, box, W, H, cell, inside, outside, { minJog, reach, 
   // a paving slab is believed only when most of its sides were set by returns on both sides of them
   const pinned = real.filter((s) => Number.isFinite(s.gap)).length / Math.max(1, real.length);
   const why = `held ${held.toFixed(2)} strays ${strays.toFixed(2)} pinned ${pinned.toFixed(2)} sides ${sides.length}`;
-  return { ring, sure, keep, why, square: loose ? held >= 0.85 && strays <= 0.15 && pinned >= 0.6 && sides.length <= 10 : held >= 0.9 && strays <= 0.1 };
+  return { ring, sure, keep, why, square: loose ? held >= 0.8 && strays <= 0.15 && pinned >= 0.6 && sides.length <= 10 : held >= 0.9 && strays <= 0.1 };
 }
 
 /** Grown (v = 1) or taken back (v = 0) by a disc of rad cells. */
@@ -370,39 +370,62 @@ export function lidarMarks(box, pts, { cell = CELL, debug = null } = {}) {
       add(l, P.filter((p) => !inL.has(p)), 'object');
     }
   }
-  // 3. PAVING: the ground's returns parted by brightness (Otsu's threshold), each part's slabs (a drive, a walk, a patio)
-  // outlined the same way, the other ground as their outside; only straight-edged ones are kept
-  const gb = ground.map((p) => p.b).filter(Number.isFinite).sort((a, b) => a - b);
-  // (2026-11-10, the owner's drive, strong against the grass, was not found at the one threshold that parts the whole
-  // lot best, perhaps the lawn from the woods) so several: Otsu's, and the 50th to 90th percentiles of the ground's
+  // 3. PAVING: ground darker than the lawn. The owner, 2026-11-10, on the first slabs found (bright ones, at the 50th
+  // to 90th percentiles): "2 are my neighbor's grass... They actually pretty neatly outline the grass and don't overlap
+  // the driveway hardly at all, so you're onto something, it's just backwards... my driveway is concrete and the road is
+  // black top. Both show up darker than grass, blacktop shows up a little darker than concrete." Grass is bright to
+  // the laser (it is infrared); paving is darker, blacktop darkest. So the ground's returns are taken in bands of
+  // brightness (a concrete drive between the blacktop's and the grass's) and below cuts (both together), each band's
+  // slabs outlined as before, the other ground as their outside; only straight-edged ones are kept.
+  // The ground under a crown is left out: the laser reaches it with what the leaves left, and it reads dark.
+  const shaded = (p) => { const x = Math.floor(p.e), y = Math.floor(p.n); return crowns.has(`${x},${y}`) || crowns.has(`${x + 1},${y}`) || crowns.has(`${x - 1},${y}`) || crowns.has(`${x},${y + 1}`) || crowns.has(`${x},${y - 1}`); };
+  const open = ground.filter((p) => Number.isFinite(p.b) && !shaded(p));
+  const gb = open.map((p) => p.b).sort((a, b) => a - b);
   const q = (f) => gb[Math.min(gb.length - 1, Math.floor(gb.length * f))];
-  const thrs = gb.length < 50 ? [] : [otsu(gb), q(0.5), q(0.6), q(0.7), q(0.8), q(0.9)].filter((t) => t != null);
+  const cuts = gb.length < 50 ? [] : [0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5].map(q);
+  const lists = cuts.length ? nearestLists(open, 15, Math.max(1.2, 3 * spacing)) : null;
+  // the noise within one surface: how far a return's brightness is from its nearest neighbours' median (as a standard
+  // deviation). Not the lot's spread, which is wide when the paving is a good share of the ground
+  const lawnB = gb.length ? q(0.5) : 0;
+  let spreadB = 1;
+  if (lists) {
+    const dev = [];
+    for (let i = 0; i < open.length; i += Math.max(1, Math.floor(open.length / 4000))) {
+      const v = Array.from(lists[i], (j) => open[j].b).sort((a, b) => a - b);
+      dev.push(Math.abs(open[i].b - v[v.length >> 1]));
+    }
+    dev.sort((a, b) => a - b);
+    spreadB = Math.max(1e-9, 1.4826 * dev[dev.length >> 1]);
+  }
+  // narrow bands first (the purest slabs), then everything darker than a cut
+  const bands = [];
+  for (let i = 0; i < cuts.length; i++) for (let j = i + 1; j < cuts.length; j++) bands.push([cuts[i], cuts[j]]);
+  bands.sort((a, b) => (a[1] - a[0]) - (b[1] - b[0]));
+  for (const c of cuts) bands.push([-Infinity, c]);
   const firstPaving = objects.length;
-  const lists = thrs.length ? nearestLists(ground, 15, Math.max(1.2, 3 * spacing)) : null;
-  const tried = new Set(), spreadB = gb.length ? (q(0.75) - q(0.25)) / 1.35 : 1;
-  for (const thr of thrs) {
-    // each return's side by the vote of its nearest ground returns: a bright speck in grass is grass
-    const lit = smoothVote(lists, ground.map((p) => p.b > thr));
-    for (const bright of [true, false]) {
-      const part = ground.filter((p, i) => lit[i] === bright), rest = ground.filter((p, i) => lit[i] !== bright);
-      for (const group of linked(part, Math.max(0.8, 1.6 * spacing), 0.25)) {
-        // a drive, a walk or a patio, not a lawn (2026-11-10, the owner's lot: groups of thousands of m2 at every
-        // threshold, the lawn and the woods, each taking seconds to fit and none a slab)
-        if (group.length * spacing * spacing > 1500) continue;
-        if (group.length * spacing * spacing < 8) continue;
-        const inG = new Set(group);
-        // one slab once: a group whose middle lies in a slab already found is the same slab at another threshold
-        const mid = group.reduce((s2, p) => [s2[0] + p.e / group.length, s2[1] + p.n / group.length], [0, 0]);
-        if (objects.slice(firstPaving).some((o) => o.ring && inRing(o.ring, mid))) continue;
-        const sig = `${group.length}:${Math.round(mid[0])}:${Math.round(mid[1])}`;
-        if (tried.has(sig)) continue; tried.add(sig);
-        // a slab stands out from the ground right round it: its brightness against a 2 m band outside, in the spread
-        // of brightness on the lot (a patch of lawn a little lighter than the rest does not)
-        const contrast = contrastOf(group, ground, 2, spreadB);
-        if (contrast < 1.5) { if (debug) debug.push({ kind: 'paving', n: group.length, area: +(group.length * spacing * spacing).toFixed(1), square: false, why: 'too little contrast with the ground round it' }); continue; }
-        add(group, [...rest, ...part.filter((p) => !inG.has(p))], 'paving', { minArea: 8, minSpan: 6, contrast,
-          edgeIn: ground.filter((p) => (p.b > thr) === bright), edgeOut: ground.filter((p) => (p.b > thr) !== bright) });
-      }
+  const tried = new Set(), med = (a) => { const s2 = a.map((p) => p.b).sort((x, y) => x - y); return s2[s2.length >> 1]; };
+  for (const [lo, hi] of bands) {
+    // each return's side by the vote of its nearest ground returns: a dark speck in grass is grass
+    const raw = open.map((p) => p.b > lo && p.b <= hi), lit = smoothVote(lists, raw);
+    const part = open.filter((p, i) => lit[i]), rest = open.filter((p, i) => !lit[i]);
+    for (const group of linked(part, Math.max(0.8, 1.6 * spacing), 0.25)) {
+      // a drive, a walk or a patio, not a whole lawn or a road's length
+      if (group.length * spacing * spacing > 1500) continue;
+      if (group.length * spacing * spacing < 8) continue;
+      // one slab once: a group whose middle lies in a slab already found is the same slab in another band
+      const mid = group.reduce((s2, p) => [s2[0] + p.e / group.length, s2[1] + p.n / group.length], [0, 0]);
+      if (objects.slice(firstPaving).some((o) => o.ring && inRing(o.ring, mid))) continue;
+      const sig = `${group.length}:${Math.round(mid[0])}:${Math.round(mid[1])}`;
+      if (tried.has(sig)) continue; tried.add(sig);
+      const area = +(group.length * spacing * spacing).toFixed(1);
+      // darker than the lawn by a surface's noise or more: a patch of lighter grass is not paving
+      if (med(group) > lawnB - spreadB) { if (debug) debug.push({ kind: 'paving', n: group.length, area, square: false, why: 'not darker than the lawn', middle: mid }); continue; }
+      // and it stands out from the ground right round it (a 2 m band outside) by twice a surface's noise
+      const contrast = contrastOf(group, open, 2, spreadB);
+      if (contrast < 2) { if (debug) debug.push({ kind: 'paving', n: group.length, area, square: false, why: 'too little contrast with the ground round it', middle: mid }); continue; }
+      const inG = new Set(group);
+      add(group, [...rest, ...part.filter((p) => !inG.has(p))], 'paving', { minArea: 8, minSpan: 6, contrast,
+        edgeIn: open.filter((p, i) => raw[i]), edgeOut: open.filter((p, i) => !raw[i]) });
     }
   }
   return { objects, corners, spacing: +spacing.toFixed(2) };
@@ -516,23 +539,6 @@ function inRing(ring, [x, y]) {
   let c = false;
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) { const [xi, yi] = ring[i], [xj, yj] = ring[j]; if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c; }
   return c;
-}
-
-/** Otsu's threshold: the brightness that best parts a list into two groups (null when it does not part at all). */
-function otsu(vals) {
-  if (vals.length < 50) return null;
-  const s = [...vals].sort((a, b) => a - b), lo = s[Math.floor(s.length * 0.01)], hi = s[Math.floor(s.length * 0.99)];
-  if (!(hi > lo)) return null;
-  const B = 64, hist = new Float64Array(B);
-  for (const v of s) hist[Math.min(B - 1, Math.max(0, Math.floor(((v - lo) / (hi - lo)) * B)))]++;
-  let total = 0, sum = 0; for (let i = 0; i < B; i++) { total += hist[i]; sum += i * hist[i]; }
-  let w0 = 0, s0 = 0, best = -1, at = -1;
-  for (let i = 0; i < B - 1; i++) {
-    w0 += hist[i]; s0 += i * hist[i]; const w1 = total - w0; if (!w0 || !w1) continue;
-    const m0 = s0 / w0, m1 = (sum - s0) / w1, v = w0 * w1 * (m0 - m1) ** 2;
-    if (v > best) { best = v; at = i; }
-  }
-  return at < 0 ? null : lo + ((at + 1) / B) * (hi - lo);
 }
 
 /** The corner nearest a map point within reach (metres), or null. */

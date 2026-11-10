@@ -295,7 +295,7 @@ function photoTools() {
   s.classList.toggle('plain', st.photoChoice !== 'stretched');
   const crisp = pref('scan-crisp', '1') !== '0';
   c.classList.toggle('plain', !crisp); c.setAttribute('aria-pressed', String(crisp));
-  if (st.photoChoice === 'lidar') { const M = st.lid.overlay?.picture?.marks; $('#photo-why').textContent = `The lidar itself. Raised things (roofs, decks, walls, sheds, hot tubs) have straight edges fitted to the laser's hits; paving the laser tells apart by brightness is dashed blue (its corners always less sure). A point snaps to a corner: a white dot is pinned to about a foot, a yellow ring is less sure (the laser's last hit may stop short), a white cross is a small thing's middle. In the walk, aim at that corner itself, at any height. The ground shows by brightness; trees are green outlines.${M ? ` ${M.corners.filter((c) => c.sure).length} sure corners here.` : ''}`; return; }
+  if (st.photoChoice === 'lidar') { const M = st.lid.overlay?.picture?.marks; $('#photo-why').textContent = `The lidar itself. Raised things (roofs, decks, walls, sheds, hot tubs) have straight edges fitted to the laser's hits; paving the laser tells apart by brightness is dashed blue (its corners always less sure). A point snaps to a corner: a white dot is pinned to about a foot, a yellow ring is less sure (the laser's last hit may stop short), a white cross is a small thing's middle. In the walk, aim at that corner itself, at any height. The ground shows by brightness; trees are green outlines.${M ? ` ${M.corners.filter((c) => c.sure && onPhoto(c.at)).length} sure corners here.` : ''}`; return; }
   $('#photo-why').textContent = st.photos?.stretched
     ? (st.photoChoice === 'stretched' ? 'Stretched onto the lidar: each spot moved to where the lidar measured it, so a corner on the ground is where it is on the ground.' : 'The photo as the map was traced on it. Aerial photos lean and stretch a little at the ground; "Stretched onto the lidar" corrects that.')
     : 'No stretched photo for this map yet.';
@@ -442,16 +442,20 @@ function drawMap() {
  * foot, a hollow yellow ring when it does not (a wall's end the laser's last hit may stop short of); a small round
  * thing's middle a white cross. u: canvas pixels a screen pixel.
  */
+/* Only what lies on the photo (the owner, 2026-11-10: "2 are off the lidar image so I can't tell what they are"): the
+   corners are found over the lot and 20 m round it, the picture is drawn in the photo's frame. */
+const onPhoto = (at) => { const q = toPx(st.frame, st.origin, at, photoW(), photoH()); return q[0] >= 0 && q[1] >= 0 && q[0] <= photoW() && q[1] <= photoH(); };
 function lidarLines(g, u) {
   const M = st.lid.overlay?.picture?.marks; if (!M) return;
   for (const o of M.objects) {
-    if (!o.ring || o.ring.length < 3) continue;
+    if (!o.ring || o.ring.length < 3 || !onPhoto(o.middle)) continue;
     g.beginPath(); o.ring.forEach((p, i) => { const [x, y] = px(p); if (i) g.lineTo(x, y); else g.moveTo(x, y); }); g.closePath();
     if (o.kind === 'paving') { g.fillStyle = 'rgba(120,170,255,.22)'; g.fill(); g.setLineDash([5 * u, 3 * u]); g.lineWidth = 2 * u; g.strokeStyle = '#9cc4ff'; g.stroke(); g.setLineDash([]); continue; }
     g.fillStyle = o.kind === 'building' ? 'rgba(18,18,22,.85)' : o.top > 2.5 ? 'rgba(210,95,0,.7)' : 'rgba(255,150,40,.6)';
     g.fill(); g.lineWidth = 2 * u; g.strokeStyle = '#fff'; g.stroke();
   }
   for (const c of M.corners) {
+    if (!onPhoto(c.at)) continue;
     const [x, y] = px(c.at), r = 5 * u;
     if (c.kind === 'middle') { g.beginPath(); g.moveTo(x - r, y); g.lineTo(x + r, y); g.moveTo(x, y - r); g.lineTo(x, y + r); g.lineWidth = 2.5 * u; g.strokeStyle = '#fff'; g.stroke(); continue; }
     g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2);
@@ -464,7 +468,8 @@ function lidarLines(g, u) {
 function snapped(at) {
   if (st.photoChoice !== 'lidar') return { at, snap: null };
   const reach = (28 * cssK()) / st.view.s * (photoW() ? Math.abs(unpx([1, 0])[0] - unpx([0, 0])[0]) : 0);
-  const c = snapTo(st.lid.overlay?.picture?.marks, at, reach);
+  const M = st.lid.overlay?.picture?.marks;
+  const c = snapTo(M && { corners: M.corners.filter((k) => onPhoto(k.at)) }, at, reach);
   return c ? { at: c.at.slice(), snap: { kind: c.kind, of: c.of, sure: !!c.sure, within: c.within ?? null } } : { at, snap: null };
 }
 const snapWord = (sn) => (!sn ? 'not on a corner' : sn.kind === 'middle' ? 'on a small thing\'s middle' : sn.sure ? 'on a corner the laser pins (about a foot)' : `on a corner the laser does not pin${sn.within ? ` (within ${Math.round(sn.within * 3.281 * 10) / 10} ft)` : ''}`);

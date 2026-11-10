@@ -18,6 +18,7 @@ for (let i = 0; i < 40 * 30 * 4; i++) {
 }
 const pts = { n: P.length, e: (i) => P[i].e, nn: (i) => P[i].n, hag: (i) => P[i].h, bright: () => 0, kind: () => 3 };
 const M = lidarMarks([0, 0, 40, 30], pts);
+const inRingT = (ring, [x, y]) => { let c = false; for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) { const [xi, yi] = ring[i], [xj, yj] = ring[j]; if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c; } return c; };
 const near = (at, want) => Math.hypot(at[0] - want[0], at[1] - want[1]);
 const best = (want) => Math.min(...M.corners.map((c) => near(c.at, want)));
 
@@ -52,20 +53,34 @@ assert.equal(overDeck.length, 2); assert.ok(overDeck.some((o) => Math.abs(o.top 
 assert.ok(near(snapTo(M, [17.3, 4.8], 1).at, [17, 5]) < 0.45); assert.equal(snapTo(M, [2, 25], 1), null);
 console.log('lidar-marks: ok');
 
-// paving by the ground's brightness: a 6 x 14 m drive, brightness overlapping the grass's (as a real flight's does)
+// paving by the ground's brightness (the owner's lot, 2026-11-10: a concrete drive darker than the grass, meeting a
+// blacktop road darker still; a lighter patch of the neighbour's grass; the ground under the woods dark too), each
+// overlapping the next in brightness as a real flight's does
 {
-  let sd = 5; const r = () => ((sd = (sd * 1103515245 + 12345) % 2147483648) / 2147483648);
+  let sd = 5; const r = () => { sd = (sd + 0x6d2b79f5) | 0; let t = Math.imul(sd ^ (sd >>> 15), 1 | sd); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
   const g = () => Math.sqrt(-2 * Math.log(r() + 1e-12)) * Math.cos(2 * Math.PI * r());
   const Q = [];
-  for (let i = 0; i < 30 * 25 * 4; i++) { const e = r() * 30, n = r() * 25; const drive = e >= 8 && e <= 14 && n >= 5 && n <= 19; Q.push({ e, n, b: drive ? 120 + 25 * g() : 60 + 25 * g() }); }
-  const R2 = lidarMarks([0, 0, 30, 25], { n: Q.length, e: (i) => Q[i].e, nn: (i) => Q[i].n, hag: () => 0, bright: (i) => Q[i].b, kind: () => 0 });
-  const drive = R2.objects.find((o) => o.kind === 'paving' && near(o.middle, [11, 12]) < 2);
-  assert.ok(drive, 'the drive is found by its brightness');
-  const dc = [[8, 5], [14, 5], [14, 19], [8, 19]].map((w) => Math.min(...R2.corners.filter((c) => c.of === drive.id).map((c) => near(c.at, w))));
+  const drive = (e, n) => e >= 8 && e <= 14 && n >= 5 && n <= 19, road = (e, n) => e >= 30 && e <= 37;
+  const pale = (e, n) => e >= 16 && e <= 24 && n >= 20 && n <= 26, woods = (e, n) => e <= 5;
+  const lane = (e, n) => e >= 14 && e <= 30 && n >= 10 && n <= 14; // the drive's run out to the road
+  for (let i = 0; i < 40 * 30 * 4; i++) {
+    const e = r() * 40, n = r() * 30;
+    const b = road(e, n) ? 40 : drive(e, n) || lane(e, n) ? 75 : pale(e, n) ? 160 : woods(e, n) ? 50 : 120;
+    Q.push({ e, n, h: 0, b: b + 18 * g(), kind: 0 });
+    if (woods(e, n)) Q.push({ e, n, h: 9, b: 0, kind: 2 });
+  }
+  const R2 = lidarMarks([0, 0, 40, 30], { n: Q.length, e: (i) => Q[i].e, nn: (i) => Q[i].n, hag: (i) => Q[i].h, bright: (i) => Q[i].b, kind: (i) => Q[i].kind });
+  const pv = R2.objects.filter((o) => o.kind === 'paving');
+  console.log(`paving: ${pv.map((o) => `${o.area} m2 at ${o.middle.map((x) => x.toFixed(0))}`).join('; ')}`);
+  const drv = pv.find((o) => inRingT(o.ring, [11, 8]));
+  assert.ok(drv, 'the drive is found, darker than the grass');
+  const dc = [[8, 5], [14, 5], [8, 19], [14, 19]].map((w) => Math.min(...R2.corners.filter((c) => c.of === drv.id).map((c) => near(c.at, w))));
   console.log(`drive corners: ${dc.map((x) => (x * 3.281).toFixed(1)).join(', ')} ft off`);
-  assert.ok(dc.every((x) => x < 0.7), 'every drive corner within 0.7 m (brightness is noisy)');
-  assert.ok(R2.corners.filter((c) => c.of === drive.id && c.kind === 'corner').every((c) => !c.sure), 'and none is said to be sure');
-  assert.ok(R2.objects.filter((o) => o.kind === 'paving').length <= 2, 'the grass is not a slab with corners');
+  assert.ok(dc.every((x) => x < 0.7), 'its four outer corners within 0.7 m (brightness is noisy)');
+  assert.ok(!drv.ring.some(([e]) => e > 31), 'the drive is not run into the road');
+  assert.ok(R2.corners.filter((c) => c.of === drv.id && c.kind === 'corner').every((c) => !c.sure), 'and no corner of it is said to be sure');
+  assert.ok(!pv.some((o) => inRingT(o.ring, [20, 23])), 'the lighter grass is not paving');
+  assert.ok(!pv.some((o) => o.middle[0] < 5), 'nor the ground under the woods');
   console.log('lidar-marks (paving): ok');
 }
 
