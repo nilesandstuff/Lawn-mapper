@@ -2065,6 +2065,20 @@ a failing matcher looks like: it points at the study (how the move is planted, o
 tile). So the photo-to-photo result is INCONCLUSIVE, not a failure, until the study's own test is tested: the
 county photo against itself, still and moved (added after run 240).
 
+Run 241, the test tested: the county photo against itself on the tile. Still, RoMa says 0.00 ft; moved
+(+1.20, -0.90) m on purpose, RoMa says (+1.19, -0.90) m, on 3,997 and 4,000 matches. So the planted move, the tile
+and the reading of RoMa's answer are right to a centimetre, and RoMa measures a pure move of one photo exactly.
+What fails is RoMa ACROSS the two photos at 0.25 m: for the same 4.9 ft move it has now said 8.9, 9.7 and 12.0 ft
+(runs 239-241), and its bare-ground matches put Mapbox and the county photo 10.8 ft RMS apart (95% 20 ft) on the
+tile, where the owner's own placements of the same spots on both photos are 0.8-2.5 ft apart. Photo to photo with
+RoMa as it comes is NOT good enough at the foot level on this lot; run 240's "inconclusive" is settled against it.
+
+SPECULATION: at 0.25 m a cell the two photos differ in what a matcher sees most (shadows, leaf, season), and RoMa
+goes smoothly wrong as it did on the lidar; squeezed to 0.76 m (runs 229-238) its numbers were believable (median
+1.0-2.2 ft) but it found only half a planted move. A middle size, or matches kept only where both directions
+agree, or a matcher made for aerial pairs across seasons, are untried. The judge for any of them is the planted
+move first, then the owner's new marks placed on both photos.
+
 THE MARKS (the owner, 2026-11-10): the check points placed so far were not placed to be found again exactly, and
 were dragged between walks. Every score made ON THE MARKS carries that error: the walk-to-walk shape fix's feet
 (SCAN-H32, run 224's gates, the 1.9 and 3.0 ft above), the marks' own fits, the Mapbox-vs-county mark test. Results
