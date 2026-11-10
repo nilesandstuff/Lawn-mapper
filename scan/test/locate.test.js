@@ -24,6 +24,11 @@ const hitAt = (map, y = 0) => { const [u, v] = toAR(map); return { position: { x
   const c = checkError(L, { id: 'c1', kind: 'check', map: [20, 20] }, hitAt([20, 20.3]), 12);
   near(c.errorM, 0.3, 1e-9, 'the check is 0.3 m off'); assert.equal(c.by, 'refs');
   assert.match(status(L, 10), /2 reference marks/);
+  // the earlier walk comes first of all, marked references or not (the owner, 2026-11-10)
+  L.prev = { ok: true, T: { theta: 0.1, tx: 1, ty: 2, s: 1 }, landed: 0.4, walkedM: 30 };
+  assert.equal(fitSource(L, 10), 'earlier'); assert.equal(fitFor(L, 10).tx, 1);
+  assert.match(status(L, 10), /your earlier walk/);
+  L.prev = null; assert.equal(fitSource(L, 10), 'refs');
 }
 // the depth cloud: ground and standing points kept by cell, old ones dropped, the recent ones offered
 {

@@ -129,7 +129,8 @@ export async function reference(request, env, url, { isAdmin }) {
   if (!MAP.test(map)) return json({ error: 'which map?' }, 400);
   if (request.method === 'GET') {
     const o = await env.TWIN.get(refKey(map));
-    if (!o) return json({ error: 'Not found' }, 404);
+    // said in its own words: the page takes only this for "none", and tries again on any other 404 (2026-11-10)
+    if (!o) return json({ error: 'no reference' }, 404);
     return new Response(o.body, { headers: { 'Content-Type': 'application/octet-stream', 'Cache-Control': 'private, no-store', 'X-Reference-Walk': o.customMetadata?.walk || '' } });
   }
   if (request.method === 'PUT') {

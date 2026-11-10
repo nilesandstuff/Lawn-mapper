@@ -127,3 +127,19 @@ The owner: "lidar tree trunks are not reliable. I'm working on that with the sha
 them." scan/lib/lidar-load.js straightShapes drops every TREE and SOLID_TREE column from the solids the live fix and
 the after-the-walk fix may rest on (no trunk posts either); buildings, walls and STRUCTURE stay. The drawing is
 unchanged. `treesInMatch: true` (the tests) restores step 3b's posts. Goes when the shade map's trunks are trusted.
+
+## 10. How it is drawn in the camera: by kind, on 0.5 m, smoothed (2026-11-10)
+
+The owner: "roofs just look terrible... the lidar blocks show very faintly... roofs should be black, walls white,
+trees green, random objects orange. And displayed at .5m, with smoothing of course." scan/lib/look.js, for the eye
+only (nothing here is matched against, and nothing here decides what a column is):
+  - the same cells the match has (step 3's walls, step 2's solids, the roof's cells and heights of step 6) are put
+    on 0.5 m cells by kind: roof (a thin black sheet at the roof's height, not a block from the ground), wall (white,
+    ground to the roof's underside), other solid cells of a low structure or unknown (orange), a tree's solid cells
+    and its crown from the lowest leaf to its top (green);
+  - each kind is one surface: a corner shared by cells stands at the mean of their heights, so a gable slopes where
+    step 6's runs made stairs, and a crown rounds; sides stand only at the kind's own edge, in two tones;
+  - drawn at 60-82% where step 6's boxes were 12-26%. The faintness came with 2026-11-07's nearest-surface drawing
+    (draw.js): overlapping see-through boxes used to add up, and since then only the nearest one shows.
+A tree's crown is still the shade map's 1 m column; putting it on 0.5 m cells adds no detail, only the smoothing.
+Trees are drawn though they are not matched (step 9). Step 6's boxes remain only as the fallback for an old worker.

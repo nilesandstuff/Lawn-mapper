@@ -2095,3 +2095,35 @@ brightness: roof edges and walls from the lidar against the photo's edges, with 
 The placement map has the switch already (2026-11-10): "Photo as traced" or "Stretched onto the lidar" (shown only
 when a stretch was kept), and "Crisper", which is Lawn Mapper's own enhancement (public/lib/enhance.js) copied in
 unchanged. Each point keeps which photo it was placed on (`on` in live.json's points).
+
+## 18. The earlier walk first; why the walk of 2026-11-09 evening had none; the look; occlusion (owner, 2026-11-10)
+
+The owner: "2nd walk fits should be fit to the previous walks above all else, the other fits should just be
+fallback safeguards", and of the live fit that evening, "funny... I think some of the weirdness I observed in the
+live fit was from streetview/geospatial overriding the other fits."
+
+HARD:
+  - Shapes against pictures was settled for shapes (SCAN-H32) and the shape fix went live at 21:36 UTC on
+    2026-11-09 (section 16). The map's reference (walk 1794089603603) was kept at 20:35 UTC.
+  - The home walk at 22:29 UTC (1794263367156) never used it: its live.json says the page had no reference. So
+    the earlier walk did not place it and nothing overrode anything: with no references marked either, Street View
+    alone placed the whole walk (ARCore's own accuracy 0.9 m median), and its checks read 3-6 ft and 11 ft.
+  - Why the page had none is NOT known: it took any 404 for "none" for the whole session and recorded no reason.
+    The worker and the file format load in a test browser. Replayed afterwards, the shape fix would have refused
+    that walk anyway (landed 0.235 against the 0.30 gate; its best guess 12 ft off).
+
+Changed (commit of 2026-11-10): the earlier walk's fix comes first of all, marked references or not
+(locate.js prevFirst); the page takes only the site's own "no reference" for none, says anything else in the walk's
+log and tries again up to six times, and live.json's prev carries the reason; a reference made before every point
+of the map's current set is not used on that walk (a new set is a new start: that walk is placed by its own marks
+and becomes the next reference). The look of the lidar in the camera: docs/SCAN-DIVERGENCES.md step 10.
+
+OCCLUSION, read from ARCore's own guide (developers.google.com/ar/develop/java/depth/developer-guide): there is no
+switch; "native occlusion" is the session's depth image (Config.DepthMode.AUTOMATIC, acquireDepthImage16Bits, to
+about 65 m, the smoothed one with no holes) given to the fragment shader as a texture, each drawn pixel compared
+with it and faded over a soft ramp (the guide's DepthGetVisibility). The page does the same in kind (draw.js FS_L)
+but from 24 x 42 samples of the RAW depth (zero where unsure, so nothing is hidden there), four times a second,
+nearest sample, a hard cut. SPECULATION: most of what looks wrong about real things hiding the lidar is that
+coarseness; the smoothed depth image at its own size as a texture each frame needs the app to hand it over (a new
+bridge call and APK), not yet built.
+

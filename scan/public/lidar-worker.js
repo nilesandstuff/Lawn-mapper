@@ -15,6 +15,7 @@ import { toMerc } from '/lib/photo.js';
 import { register, MIN_LANDED } from '/lib/lidar.js';
 import { loadLidar } from '/lib/lidar-load.js';
 import { walkFix } from '/lib/walkfix.js';
+import { lookGrids } from '/lib/look.js';
 // THE SHARED TREE-VERSUS-BUILDING RULE'S MODULE (CLAUDE.md, "One way to read lidar"), copied into this site unchanged
 // at deploy time (scan/tools/prepare.mjs): its kind codes and wallsOf. The kinds themselves come from the model.
 const sharedRule = () => import('/lib/shade/structures.js');
@@ -82,6 +83,8 @@ self.onmessage = async ({ data }) => {
       }
     }
     const cellE = sgrid.cell * k, cellN = (sgrid.cellY || sgrid.cell) * k;
+    // each tree column's crown (lowest leaf to top), for how the lidar looks in the camera (lib/look.js)
+    const SN = sgrid.w * sgrid.h, crownLo = new Float32Array(SN).fill(NaN), crownHi = new Float32Array(SN).fill(NaN), isTree = new Uint8Array(SN);
     for (let r = 0; r < sgrid.h; r++) for (let c = 0; c < sgrid.w; c++) {
       const j = r * sgrid.w + c; if (kind[j] === K.NOTHING || kind[j] === K.BUILDING || !Number.isFinite(ground[j])) continue;
       const e = (sgrid.x0 + c * sgrid.cell - ox) * k, n = (sgrid.y1 - (r + 1) * (sgrid.cellY || sgrid.cell) - oy) * k;
@@ -92,11 +95,15 @@ self.onmessage = async ({ data }) => {
       else lo = Math.max(lo, floor);
       const hi = ground[j] + (top && Number.isFinite(top[j]) ? Math.min(80, top[j]) : 3);
       if (hi > lo) tall.push(e, n, lo, hi, kind[j] === K.BUILDING ? 1 : 0);
+      if (kind[j] === K.TREE || kind[j] === K.SOLID_TREE) { isTree[j] = 1; if (hi > lo) { crownLo[j] = lo; crownHi[j] = hi; } }
     }
     const dw = Math.ceil(G.W / 4), dh = Math.ceil(G.H / 4), dem1 = new Float32Array(dw * dh);
     for (let r = 0; r < dh; r++) for (let cc = 0; cc < dw; cc++) dem1[r * dw + cc] = G.dem[Math.min(G.H - 1, r * 4 + 2) * G.W + Math.min(G.W - 1, cc * 4 + 2)];
+    /* THE LOOK (the owner, 2026-11-10: roofs black, walls white, trees green, other objects orange, at 0.5 m and
+       smoothed): the same cells by kind on 0.5 m, for lib/look.js to make surfaces of. For the eye only. */
+    const show = lookGrids(G, roofAt, { w: sgrid.w, h: sgrid.h, e0: (sgrid.x0 - ox) * k, n1: (sgrid.y1 - oy) * k, cellE, cellN, tree: isTree, lo: crownLo, hi: crownHi });
     const solids = Float32Array.from(sol), tallA = Float32Array.from(tall), roofsA = Float32Array.from(roofRuns), dist = Float32Array.from(G.dist);
-    self.postMessage({ overlay: { box, cell: G.cell, solids, tall: tallA, roofRuns: roofsA, tallCell: cellE, dem1: { box, cell: G.cell * 4, W: dw, H: dh, data: dem1 }, dist: { box, cell: G.cell, W: G.W, H: G.H, data: dist } } }, [solids.buffer, tallA.buffer, roofsA.buffer, dem1.buffer, dist.buffer]);
+    self.postMessage({ overlay: { show, box, cell: G.cell, solids, tall: tallA, roofRuns: roofsA, tallCell: cellE, dem1: { box, cell: G.cell * 4, W: dw, H: dh, data: dem1 }, dist: { box, cell: G.cell, W: G.W, H: G.H, data: dist } } }, [solids.buffer, tallA.buffer, roofsA.buffer, dem1.buffer, dist.buffer]);
   } catch (err) {
     self.postMessage({ error: err.message || String(err) });
   }

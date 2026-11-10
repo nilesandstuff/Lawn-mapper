@@ -11,6 +11,7 @@
 import { detect, start, engineChoice, load8thWall } from '/lib/track.js';
 import { newWalk, step, dropPin, checkPin, measure, tapeFor, undo, far, summary, pinNow } from '/lib/walk.js';
 import { makeDrawer, lidarMeshes, OCC_RANGE } from '/lib/draw.js';
+import { lookMeshes } from '/lib/look.js';
 import { levelDist, toLocal } from '/lib/frames.js';
 import { frameFor, bboxOf, toPx, fromPx, ringsOf } from '/lib/photo.js';
 import { newLocate, mark, noteGround, addDepth, nextAsk, answer, fitFor, mapOf, sessionOf, checkError, nearestNamed, agreement, groundOffset, groundUnder, status as fixStatus, summaryOf } from '/lib/locate.js';
@@ -940,7 +941,7 @@ function onFrame(f) {
     if (flushDue(st.twin, now)) sendTwin(flush(st.twin, now, liveOf(L, w, { recordOnly: !!st.recordOnly, points: pointsKept(), gpsTrail: trailKept(), geoTrail: geoKept(), anchors: st.anchors ? anchorsKept(st.anchors) : null, prev: prevKept() })));
   }
   // PLACED BY THE MAP'S EARLIER WALK (walkref.js, SCAN-H32): every PREV_EVERY, this walk's points so far against it
-  if (st.ref?.ready && !st.prevAsk && f.tracking === 'normal' && Date.now() - st.prevAt > PREV_EVERY && st.prevStand.size >= REF_MIN_STAND) {
+  if (st.ref?.ready && !st.ref.stale && !st.prevAsk && f.tracking === 'normal' && Date.now() - st.prevAt > PREV_EVERY && st.prevStand.size >= REF_MIN_STAND) {
     const id = `p${Date.now()}`;
     st.prevAt = Date.now(); st.prevAsk = { id, odo }; st.prevStats.asks++;
     st.ref.worker.postMessage({ fix: { id, stand: [...st.prevStand.values()], ground: [...st.prevGround.values()] } });
@@ -985,8 +986,14 @@ function onFrame(f) {
       const statics = [], dots = [];
       if (st.lidarOn && T && st.lid.overlay && f.pose) {
         if (!st.lid.meshes || st.lid.meshes.gl !== f.gl) {
-          const m = lidarMeshes(st.lid.overlay);
-          st.lid.meshes = { gl: f.gl, solids: st.drawer.d.makeMesh(m.solids), canopy: st.drawer.d.makeMesh(m.canopy), roofs: st.drawer.d.makeMesh(m.roofs) };
+          /* THE LOOK (lib/look.js; the owner, 2026-11-10): black roofs, white walls, green trees, orange for other
+             objects, smooth surfaces on 0.5 m, drawn solidly. The old blue/green/orange boxes only if a worker from
+             before the look answered. */
+          if (st.lid.overlay.show) st.lid.meshes = { gl: f.gl, look: lookMeshes(st.lid.overlay.show).map((m) => ({ mesh: st.drawer.d.makeMesh(m.verts), color: m.color })) };
+          else {
+            const m = lidarMeshes(st.lid.overlay);
+            st.lid.meshes = { gl: f.gl, solids: st.drawer.d.makeMesh(m.solids), canopy: st.drawer.d.makeMesh(m.canopy), roofs: st.drawer.d.makeMesh(m.roofs) };
+          }
         }
         /* the height: the phone's own ground points against the lidar's ground at their own places (locate.js
            groundOffset), worked out twice a second and moved only when it changes by more than 10 cm, so a glance
@@ -1002,9 +1009,12 @@ function onFrame(f) {
         }
         const dy = st.dy ?? 0;
         const model = mapToSession(T, dy);
-        statics.push({ mesh: st.lid.meshes.solids, model, color: [0.35, 0.7, 1, 0.26], through: true });
-        statics.push({ mesh: st.lid.meshes.canopy, model, color: [0.3, 0.9, 0.4, 0.12], through: true });
-        statics.push({ mesh: st.lid.meshes.roofs, model, color: [1, 0.6, 0.3, 0.14], through: true });
+        if (st.lid.meshes.look) for (const m of st.lid.meshes.look) statics.push({ mesh: m.mesh, model, color: m.color, through: true });
+        else {
+          statics.push({ mesh: st.lid.meshes.solids, model, color: [0.35, 0.7, 1, 0.26], through: true });
+          statics.push({ mesh: st.lid.meshes.canopy, model, color: [0.3, 0.9, 0.4, 0.12], through: true });
+          statics.push({ mesh: st.lid.meshes.roofs, model, color: [1, 0.6, 0.3, 0.14], through: true });
+        }
         if (f.t - (st.agreeAt || 0) > 300) { st.agreeAt = f.t; st.agree = agreement(L, odo, st.lid.overlay.dist); }
         if (st.agree) { dots.push({ points: st.agree.on, color: [0, 0, 0, 0.95], r: 0.045 }); dots.push({ points: st.agree.off, color: [1, 0.25, 0.2, 0.7], r: 0.03 }); }
       } else st.agree = null;
@@ -1025,7 +1035,7 @@ function hud(f) {
   const target = st.points.length ? nextTarget() : null;
   const ag = st.agree ? ` · lidar dots: <strong>${st.agree.on.length}</strong> on, ${st.agree.off.length} off` : '';
   // the map's earlier walk (walkref.js): what its match is waiting for, until it places the walk
-  const prevLine = st.ref?.ready && !L.prev?.ok ? `<br><span class="dim">Earlier walk: ${esc(st.prevStats?.lastWhy || (st.prevStand?.size < REF_MIN_STAND ? `gathering points (${st.prevStand.size} of ${REF_MIN_STAND} on walls, fences and shrubs)` : 'matching…'))}</span>`
+  const prevLine = st.ref?.ready && !st.ref.stale && !L.prev?.ok ? `<br><span class="dim">Earlier walk: ${esc(st.prevStats?.lastWhy || (st.prevStand?.size < REF_MIN_STAND ? `gathering points (${st.prevStand.size} of ${REF_MIN_STAND} on walls, fences and shrubs)` : 'matching…'))}</span>`
     : st.ref?.error ? `<br><span class="dim">Earlier walk: ${esc(st.ref.error)}</span>` : '';
   const fixLine = st.origin ? `<br>${st.recordOnly ? '<strong>Recording only</strong>: no live lidar fix; the walk is placed afterwards (workflow S, task fix). ' : ''}${esc(st.lid.ready ? fixStatus(L, w.odo) : st.lid.error ? `No lidar (${st.lid.error}); references only: ${fixStatus(L, w.odo)}` : `Lidar: ${st.lid.progress || 'reading…'}`)}${ag}${target ? `<br>Next to mark: <strong style="color:${target.kind === 'ref' ? '#8ab4ff' : '#d9a6ff'}">${esc(target.name)}</strong> (aim where it meets the ground, within 10 ft, tap Mark; tap another point on the mini map to mark that one instead)` : ''}` : '';
   const last = st.errors.length && Date.now() - st.errors[st.errors.length - 1].t < 6000 && /engine|start/.test(st.errors[st.errors.length - 1].what) ? `<br><span class="bad">${esc(st.errors[st.errors.length - 1].what)}</span>` : '';
@@ -1316,16 +1326,35 @@ async function loadReference() {
   if (!st.map) { st.ref = null; return; }
   if (st.ref?.map === st.map && (st.ref.worker || st.ref.none)) return;
   st.ref?.worker?.terminate?.();
-  st.ref = { map: st.map, worker: null, ready: null, none: false, error: null };
+  const mine = st.ref = { map: st.map, worker: null, ready: null, none: false, error: null, tries: (st.refTries = (st.refTries || 0) + 1) };
+  /* (2026-11-10) the walk of 2026-11-09 evening was told "no reference" though one had been kept two hours before,
+     and nothing recorded why: any 404 counted as none, for the whole session. Now only the site's own "no reference"
+     is none; anything else is said in the log and tried again, a few times. */
+  const again = (why) => {
+    mine.error = why; log(`earlier walk: ${why}${mine.tries < 6 ? '; trying again' : ''}`);
+    if (mine.tries < 6) setTimeout(() => { if (st.ref === mine) { st.ref = null; loadReference(); } }, 20000);
+  };
   try {
     const r = await fetch(`/api/scan/reference?map=${encodeURIComponent(st.map)}`, { credentials: 'same-origin' });
-    if (r.status === 404) { st.ref.none = true; return; }
-    if (!r.ok) throw new Error(`the site answered ${r.status}`);
+    if (r.status === 404) {
+      const j = await r.json().catch(() => null);
+      if (j?.error === 'no reference') { st.ref.none = true; st.refTries = 0; log('earlier walk: none kept for this map yet'); return; }
+      return again('the site answered 404 without saying there is none (signed out, or a slip)');
+    }
+    if (!r.ok) return again(`the site answered ${r.status}`);
     const bytes = await r.arrayBuffer();
     const w = new Worker('/ref-worker.js', { type: 'module' });
     st.ref.worker = w;
     w.onmessage = ({ data }) => {
-      if (data.ready) { st.ref.ready = data.ready; log(`earlier walk read: ${data.ready.stand} standing and ${data.ready.ground} ground points`); }
+      if (data.ready) {
+        st.ref.ready = data.ready; st.refTries = 0;
+        /* A NEW SET OF POINTS IS A NEW START (2026-11-10): the reference stands where the marks of ITS walk put it.
+           When every point on the map was placed after it was made (the owner's "Start a new set"), this walk is
+           placed by its own marks and becomes the next reference; the old one would pull it onto the old marks. */
+        const pts = st.points || [];
+        st.ref.stale = pts.length > 0 && pts.every((q) => Number(q.id) > data.ready.at);
+        log(`earlier walk read: ${data.ready.stand} standing and ${data.ready.ground} ground points${st.ref.stale ? '; made before this set of points, so not used on this walk' : ''}`);
+      }
       if (data.error) { st.ref.error = data.error; log(`earlier walk: ${data.error}`); }
       if (data.fix && st.prevAsk && data.id === st.prevAsk.id) {
         const a = st.prevAsk; st.prevAsk = null;
@@ -1339,9 +1368,9 @@ async function loadReference() {
         } else st.prevStats.lastWhy = data.fix.why;
       }
     };
-    w.onerror = (e) => { st.ref.error = e.message || 'the earlier walk could not be matched'; };
+    w.onerror = (e) => { st.ref.error = e.message || 'the earlier walk could not be matched'; log(`earlier walk: ${st.ref.error}`); };
     w.postMessage({ ref: bytes }, [bytes]);
-  } catch (e) { st.ref.error = e.message; }
+  } catch (e) { again(e.message); }
 }
 
 /** This walk's standing things and ground, one point to a small cube, for the earlier walk's match. */
@@ -1359,7 +1388,8 @@ function keepForPrev(L, pts) {
 
 /** What the earlier walk's match did, for the walk's twin (live.json). */
 function prevKept() {
-  if (!st.ref || st.ref.none) return st.ref?.none ? { reference: false } : null;
+  if (!st.ref || st.ref.none) return st.ref?.none ? { reference: false, why: 'none kept for this map' } : null;
+  if (!st.ref.ready || st.ref.stale) return { reference: !!st.ref.ready, why: st.ref.stale ? 'made before this set of points' : st.ref.error || 'still loading', ...st.prevStats, fix: null };
   const P = st.L?.prev, r = (v) => (Number.isFinite(v) ? +v.toFixed(4) : null);
   return { reference: !!st.ref.ready, ...st.prevStats, fix: P ? { T: { theta: r(P.T.theta), tx: r(P.T.tx), ty: r(P.T.ty), s: 1 }, tz: r(P.tz), landed: P.landed, second: P.second, walkedM: r(P.walkedM) } : null };
 }

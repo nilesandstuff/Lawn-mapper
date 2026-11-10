@@ -224,9 +224,11 @@ export function holdAt(L, odo) {
    agreed with them (answer: REF_TOL_M), and the references come before the walk's placement. */
 const walkFirst = (L) => !!L.walk?.ok && new Set(refMarks(L).map((m) => m.id)).size < 2;
 /* (2026-11-09, SCAN-H32) placed by an earlier walk on the same map, by its shape (L.prev, walkref.js; the page sets it
-   when the landed share passes walkref.js GATE): first of all when fewer than two references are marked; marked
-   references still come first once there are two. */
-const prevFirst = (L) => !!L.prev?.ok && new Set(refMarks(L).map((m) => m.id)).size < 2;
+   when the landed share passes walkref.js GATE). FIRST OF ALL, whatever else is marked (the owner, 2026-11-10: "2nd
+   walk fits should be fit to the previous walks above all else, the other fits should just be fallback
+   safeguards"): references, the whole-walk placement, a lidar fix and Street View place the walk only until the
+   earlier walk does, or when the map has none. */
+const prevFirst = (L) => !!L.prev?.ok;
 export function fitFor(L, odo, now = Date.now()) {
   if (prevFirst(L)) return L.prev.T;
   if (walkFirst(L)) return L.walk.T;

@@ -97,7 +97,7 @@ function liveFix(dirs) {
     const live = readJson(d, 'live.json') || {}, meta = readJson(d, 'meta.json') || {}, P = live.prev;
     const name = meta.walk || d;
     if (!P) { console.log(`  ${name}: no live fix kept (a walk from before the live fix, or no reference for its map)`); continue; }
-    if (P.reference === false) { console.log(`  ${name}: its map had no reference walk`); continue; }
+    if (P.reference === false || P.why) { console.log(`  ${name}: the earlier walk was not used (${P.why || 'the page had no reference; why was not recorded before 2026-11-10'})`); if (!P.fix) continue; }
     const { checks, T } = marksOf(d);
     let at = '';
     if (P.fix?.T && checks.length) {
