@@ -2139,3 +2139,29 @@ Not to be confused with what places a walk: the shape fix never needed the whole
 walk's points one to a 10-20 cm cube, gathered from a coarse grid of each depth picture as the phone moves, and a
 few thousand such cubes are what is matched. A finer grid is kept with each picture taken (key-NNNN.depth).
 
+## 19. Points that moved by themselves; the walk's late upload; photo to photo is the way (owner, 2026-11-10)
+
+The owner, of the home walk of 2026-11-09 evening: a check point "moved from where I placed it, by a great
+distance... It could've been an accidental touch", another "2-3 feet off from where I thought I placed it"; and the
+walk "uploaded more data" when the map was opened the next morning.
+
+HARD (run 245, after the late upload): the walk's last parts arrived (its marks 4 before, 6 now; the points the
+shape fix sees changed, landed 0.196 where it was 0.235). Still not placed by the earlier walk. The first aim-to-aim
+reading (the same six spots aimed at in the walk of 2026-11-07 and this one, no photo in it): by the two walks' own
+marks 2.5 ft median; by the shape fix 2.7 ft median (2.7, 113.6, 5.2, 2.0, 0.8, 1.8). One spot is 110 ft from itself
+between the walks: a point of the same name that stood somewhere else on the map by then, as the owner saw.
+
+The placement map had two faults that move a point unasked, both fixed 2026-11-10: a finger coming down near a point
+and sliding moved the point where it meant to move the map; and a slide was 12 canvas pixels, about three screen
+pixels on a phone, so a plain touch on a point nudged it (feet, zoomed out). A point is now picked up only after the
+finger rests on it 280 ms, a slide is 10 screen pixels, and every move is said and logged with its distance. Whether
+these moved the owner's two points is not known; nothing recorded a move before.
+
+Also: the map's window is at least 1.25 times as tall as wide (a wide photo was a strip), and the magnifier shows the
+lawn's and the lot's lines.
+
+DIRECTION (the owner): a screen for tying the lidar to the photo by hand is "too manual" for the live site: not
+built. Photo to photo is wanted, for Lawn Mapper's line-up and so a point placed in the AR is at least off the same
+way on either photo. RoMa failed the planted move across the two photos (SCAN-H33); next is Lawn Mapper's own
+matcher (public/lib/register.js) under the same test, and RoMa at a middle size.
+

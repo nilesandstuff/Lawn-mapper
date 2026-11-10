@@ -331,8 +331,14 @@ async function keptPhoto(id) {
 /* The placement map: its drawing, zoom, points and touch (restored 2026-11-09: commit 280e271 had deleted this block
    with the old photo fetch, and the page stopped at its start screen). */
 const photoW = () => (st.photo ? st.photo.width : 1280), photoH = () => (st.photo ? st.photo.height : 1280);
-const px = (map) => toPx(st.frame, st.origin, map, photoW(), photoH());
-const unpx = (p) => fromPx(st.frame, st.origin, p, photoW(), photoH());
+/* A TALLER WINDOW (the owner, 2026-11-10: "make the map view larger, it's a pretty small window"): the canvas was the
+   photo's own shape, and a wide photo on a phone was a strip 160 px high. The canvas is now at least 1.25 times as
+   tall as it is wide, the photo in its middle (padY above it), so zoomed in there is a tall window to work in. */
+const MAP_TALL = 1.25;
+const mapH = () => Math.max(photoH(), Math.round(photoW() * MAP_TALL));
+const padY = () => (mapH() - photoH()) / 2;
+const px = (map) => { const q = toPx(st.frame, st.origin, map, photoW(), photoH()); return [q[0], q[1] + padY()]; };
+const unpx = (p) => fromPx(st.frame, st.origin, [p[0], p[1] - padY()], photoW(), photoH());
 const KEYP = () => `scan-points:${st.map}`, KEYPIN = () => `scan-pins:${st.map}`;
 const loadPoints = () => { try { st.points = JSON.parse(localStorage.getItem(KEYP()) || '[]'); } catch { st.points = []; } };
 const savePoints = () => { try { localStorage.setItem(KEYP(), JSON.stringify(st.points)); } catch { /* this phone only */ } };
@@ -352,22 +358,22 @@ const nextName = (kind) => { const pre = kind === 'ref' ? 'R' : 'C'; let k = 1; 
 
 function drawMap() {
   const cv = $('#map'); if (!cv || !st.frame) return;
-  const w = photoW(), h = photoH();
+  const w = photoW(), h = mapH(), y0 = padY();
   if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
   const g = cv.getContext('2d');
   g.setTransform(1, 0, 0, 1, 0, 0);
   g.fillStyle = '#2a332f'; g.fillRect(0, 0, w, h);
   g.setTransform(st.view.s, 0, 0, st.view.s, st.view.ox, st.view.oy);
   g.imageSmoothingEnabled = st.view.s < 6; // past the photo's own pixels, show them as they are
-  if (st.photo) g.drawImage(st.photo, 0, 0);
+  if (st.photo) g.drawImage(st.photo, 0, y0);
   /* SIZES IN SCREEN PIXELS (the owner, 2026-11-09: "the points aren't labeled, and they're really hard to drag
      around because they're so small"): the canvas is the photo's 2560 pixels shown about 400 wide, so a size in
      canvas pixels came out a sixth as big. u = canvas pixels per screen pixel at this zoom. */
   const u = cssK() / st.view.s;
-  const lw = 2 * u;
-  const ring = (r, color, dash) => { if (r.length < 2) return; g.beginPath(); r.forEach((p, i) => { const [x, y] = px(p); if (i) g.lineTo(x, y); else g.moveTo(x, y); }); g.closePath(); g.setLineDash(dash || []); g.strokeStyle = color; g.lineWidth = lw; g.stroke(); g.setLineDash([]); };
-  for (const r of st.parcel) ring(r, 'rgba(255,255,255,.8)', [6 * u, 4 * u]);
-  for (const r of st.lawn) ring(r, CSS.lawn);
+  const ring = (r, color, dash, lw) => { if (r.length < 2) return; g.beginPath(); r.forEach((p, i) => { const [x, y] = px(p); if (i) g.lineTo(x, y); else g.moveTo(x, y); }); g.closePath(); g.setLineDash(dash || []); g.strokeStyle = color; g.lineWidth = lw; g.stroke(); g.setLineDash([]); };
+  // the property line (dashed white) and the traced lawn, at a width of v canvas pixels a screen pixel
+  const traces = (v) => { for (const r of st.parcel) ring(r, 'rgba(255,255,255,.8)', [6 * v, 4 * v], 2 * v); for (const r of st.lawn) ring(r, CSS.lawn, null, 2 * v); };
+  traces(u);
   // a point: a ring with a fine cross at its exact spot (the photo shows through), and its name beside it
   const dot = (map, color, label, r = 9, chosen = false) => {
     const [x, y] = px(map), R = r * u;
@@ -388,7 +394,8 @@ function drawMap() {
     const zs = st.view.s * Z;
     g.imageSmoothingEnabled = zs < 6;
     g.setTransform(zs, 0, 0, zs, cx - x * zs, cy - y * zs);
-    if (st.photo) g.drawImage(st.photo, 0, 0);
+    if (st.photo) g.drawImage(st.photo, 0, y0);
+    traces(k / zs); // the lawn's and the lot's lines in the magnifier too (the owner, 2026-11-10)
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.beginPath(); g.moveTo(cx - R, cy); g.lineTo(cx + R, cy); g.moveTo(cx, cy - R); g.lineTo(cx, cy + R); g.lineWidth = 1.5 * k; g.strokeStyle = st.dragging.kind === 'ref' ? CSS.ref : CSS.check; g.stroke();
     g.restore();
@@ -423,7 +430,14 @@ function listPoints() {
 }
 function wireMap() {
   const cv = $('#map'), ptrs = new Map();
-  let drag = null, downAt = null, pan = null, pinch = null, moved = false;
+  let drag = null, downAt = null, pan = null, pinch = null, moved = false, downT = 0, dragFrom = null;
+  /* A POINT MOVES ONLY WHEN MEANT TO (the owner, 2026-11-10: a check point had "moved from where I placed it, by a
+     great distance... It could've been an accidental touch", another by 2-3 ft). Two faults: a finger that came down
+     near a point and slid moved the point where it meant to move the map, and "slid" was 12 CANVAS pixels, three
+     screen pixels on a phone, so a plain touch on a point nudged it by feet. Now a finger must rest on the point for
+     HOLD_MS before it picks it up (a slide before that moves the map), a slide is SLIDE screen pixels, and every move
+     is said, with how far. A mouse picks a point up at once. */
+  const HOLD_MS = 280, SLIDE = 10;
   const canvasXY = (ev) => { const r = cv.getBoundingClientRect(); return [((ev.clientX - r.left) / r.width) * cv.width, ((ev.clientY - r.top) / r.height) * cv.height]; };
   const toBase = ([x, y]) => [(x - st.view.ox) / st.view.s, (y - st.view.oy) / st.view.s];
   const hitR = () => (24 * cssK()) / st.view.s; // about a fingertip, at any zoom
@@ -434,23 +448,32 @@ function wireMap() {
     if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch = { d0: Math.hypot(a[0] - b[0], a[1] - b[1]) || 1, s0: st.view.s, base: toBase([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]) }; if (drag) delete drag.grab; drag = null; st.dragging = null; pan = null; downAt = null; return; }
     if (ptrs.size > 2) return;
     const xy = canvasXY(ev), b = toBase(xy);
-    downAt = xy; moved = false;
+    downAt = xy; moved = false; downT = ev.pointerType === 'mouse' ? -Infinity : performance.now();
     const hit = hitAt(b);
     // a point keeps where the finger took hold of it, so it moves beside the finger, not under it
-    if (hit) { const [hx, hy] = px(hit.map); drag = hit; drag.grab = [hx - b[0], hy - b[1]]; } else pan = { x: xy[0], y: xy[1], ox: st.view.ox, oy: st.view.oy };
+    pan = { x: xy[0], y: xy[1], ox: st.view.ox, oy: st.view.oy };
+    if (hit) { const [hx, hy] = px(hit.map); drag = hit; drag.grab = [hx - b[0], hy - b[1]]; dragFrom = hit.map.slice(); }
   });
   cv.addEventListener('pointermove', (ev) => {
     if (!ptrs.has(ev.pointerId)) return;
     ptrs.set(ev.pointerId, canvasXY(ev));
     if (pinch && ptrs.size >= 2) { const [a, b] = [...ptrs.values()], mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]; st.view.s = Math.max(1, Math.min(MAX_ZOOM, pinch.s0 * Math.hypot(a[0] - b[0], a[1] - b[1]) / pinch.d0)); st.view.ox = mid[0] - pinch.base[0] * st.view.s; st.view.oy = mid[1] - pinch.base[1] * st.view.s; clampView(); drawMap(); return; }
     const xy = canvasXY(ev);
-    if (downAt && Math.hypot(xy[0] - downAt[0], xy[1] - downAt[1]) > 12) moved = true;
+    if (downAt && !moved && Math.hypot(xy[0] - downAt[0], xy[1] - downAt[1]) > SLIDE * cssK()) {
+      moved = true;
+      // slid before the hold was up: the finger meant the map, not the point
+      if (drag && performance.now() - downT < HOLD_MS) { delete drag.grab; drag = null; }
+    }
     if (drag && moved) { const b = toBase(xy), gr = drag.grab || [0, 0]; drag.map = unpx([b[0] + gr[0], b[1] + gr[1]]); st.dragging = drag; st.dragLoupeLeft = xy[0] > cv.width / 2; drawMap(); } else if (pan && moved) { st.view.ox = pan.ox + xy[0] - pan.x; st.view.oy = pan.oy + xy[1] - pan.y; clampView(); drawMap(); }
   });
   const up = (ev, cancelled) => {
     ptrs.delete(ev.pointerId);
     if (pinch) { if (ptrs.size < 2) pinch = null; downAt = null; drag = null; pan = null; return; }
     const xy = canvasXY(ev);
+    if (drag && moved) {
+      const far = dragFrom ? Math.hypot(drag.map[0] - dragFrom[0], drag.map[1] - dragFrom[1]) * 3.281 : 0;
+      flash(`${drag.name} moved ${far < 10 ? far.toFixed(1) : Math.round(far)} ft`); log(`point ${drag.name} moved ${far.toFixed(1)} ft on the map`);
+    }
     if (drag && moved) { delete drag.grab; if (drag.of) drag.of.again = { on: st.photoChoice || null, map: drag.map }; else drag.on = st.photoChoice || undefined; drag = null; st.dragging = null; savePoints(); listPoints(); drawMap(); return; }
     const tap = !cancelled && downAt && !moved;
     if (drag) delete drag.grab;
