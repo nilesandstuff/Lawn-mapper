@@ -52,3 +52,25 @@ assert.ok(col('canopy')[1] > col('canopy')[0] && col('canopy')[1] > col('canopy'
 assert.ok(Object.values(LOOK).every((k) => Object.values(k).every((c) => c[3] >= 0.6)), 'drawn solidly, not faint');
 assert.ok(parts.every((p) => p.verts.length % 9 === 0));
 console.log('look: ok');
+
+// the lidar as a picture to place points on: the returns themselves, nothing guessed
+{
+  const { lidarPicture } = await import('../lib/look.js');
+  const P = [];
+  let seed = 3; const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+  for (let i = 0; i < 6000; i++) { const e = rnd() * 20, n = rnd() * 12; P.push({ e, n, hag: 0, b: e < 6 ? 0.9 : 0.2, kind: 0 }); }   // a drive (bright) west of grass
+  for (let i = 0; i < 700; i++) { const e = 10 + rnd() * 6, n = 4 + rnd() * 5; P.push({ e, n, hag: 3, b: 0.5, kind: 1 }); }          // a roof, 10..16 by 4..9
+  for (let i = 0; i < 300; i++) { const a = rnd() * 6.28, d = rnd() * 2; P.push({ e: 3 + d * Math.cos(a), n: 9 + d * Math.sin(a), hag: 5, b: 0.3, kind: 2 }); } // a crown
+  const pic = lidarPicture([0, 0, 20, 12], { n: P.length, e: (i) => P[i].e, nn: (i) => P[i].n, hag: (i) => P[i].hag, bright: (i) => P[i].b, kind: (i) => P[i].kind });
+  assert.equal(pic.W, 80); assert.equal(pic.H, 48); assert.equal(pic.rgba.length, 80 * 48 * 4);
+  const at = (e, n) => { const c = Math.floor(e / 0.25), r = Math.floor((12 - n) / 0.25), k = (r * 80 + c) * 4; return [pic.rgba[k], pic.rgba[k + 1], pic.rgba[k + 2]]; };
+  assert.ok(at(2, 2)[0] > at(8, 2)[0] + 60, 'paving reads brighter than grass');
+  assert.ok(at(13, 6.5).every((v) => v < 40), 'the roof is dark inside');
+  assert.ok(at(9, 6.5)[0] > 30 && at(9, 6.5)[0] === at(9, 6.5)[1], 'a metre outside the roof\'s returns is ground: no wider than its returns, no walls');
+  let white = 0; for (let e = 9.5; e < 10.6; e += 0.25) if (at(e, 6.5).every((v) => v === 255)) white++;
+  assert.ok(white >= 1, 'a white line at the roof\'s edge');
+  const g = at(3, 9); assert.ok(g[0] === g[1] && g[1] === g[2], 'under the crown the ground still shows');
+  let green = 0; for (let e = 0.5; e < 6; e += 0.25) { const p = at(e, 9); if (p[1] > 200 && p[0] < 80) green++; }
+  assert.ok(green >= 1 && green <= 6, 'the crown is a thin green line');
+  console.log('look (the lidar picture): ok');
+}

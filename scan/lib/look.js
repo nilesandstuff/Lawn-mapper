@@ -108,3 +108,62 @@ export function lookMeshes(show) {
   }
   return out;
 }
+
+/**
+ * THE LIDAR AS A PICTURE TO PLACE POINTS ON (core session, 2026-11-10; docs/SCAN-PLAN.md sections 17 and 20). The
+ * owner: "we can try placing points to lidar... currently we guess at walls, but I don't think we should if we're
+ * going this path", and, the night before, what would make it hard: blocks nobody can place a point on, canopies that
+ * hide the ground, roofs drawn wider than the buildings, few places to mark.
+ *
+ * So this is drawn from the laser's own returns on 0.25 m cells, and nothing is guessed:
+ *   the ground   its returns' brightness, smoothed between returns: paving against grass shows as it does in a photo
+ *   a roof       dark, only where returns of a building's column stand over the ground (closed over the gaps between
+ *                returns, then taken back in by the same amount, so it is no wider than its outermost returns);
+ *                NO WALLS: where a wall stands under the eaves is not something the laser saw
+ *   a tree       a thin green line round its crown; the ground under it stays in view
+ *   other things (a shed, a wall, bins) orange, the same way as a roof
+ *
+ * pts: { n, e(i), nn(i), hag(i) height over the ground, bright(i), kind(i): 1 building, 2 tree, 3 other, 0 none }.
+ * Returns { e0, n1, cell, W, H, rgba } with rows from the north.
+ */
+export const PICTURE_CELL = 0.25;
+export function lidarPicture(box, pts, cell = PICTURE_CELL) {
+  const W = Math.max(1, Math.ceil((box[2] - box[0]) / cell)), H = Math.max(1, Math.ceil((box[3] - box[1]) / cell)), N = W * H;
+  const sum = new Float32Array(N), cnt = new Float32Array(N), roof = new Uint8Array(N), tree = new Uint8Array(N), other = new Uint8Array(N);
+  for (let i = 0; i < pts.n; i++) {
+    const c = Math.floor((pts.e(i) - box[0]) / cell), r = Math.floor((box[3] - pts.nn(i)) / cell);
+    if (c < 0 || r < 0 || c >= W || r >= H) continue;
+    const k = r * W + c, h = pts.hag(i);
+    if (!(h > 0.3)) { if (h > -0.5 || Number.isNaN(h)) { sum[k] += pts.bright(i); cnt[k]++; } continue; }
+    const kind = pts.kind(i);
+    if (kind === 1 && h > 1.8) roof[k] = 1; else if (kind === 2) tree[k] = 1; else if (kind === 3) other[k] = 1;
+  }
+  // the ground's brightness between returns: a small blur where returns are near, a wide one across the gaps
+  const blur = (a, rad) => {
+    const t = new Float32Array(N), o = new Float32Array(N), w = 2 * rad + 1;
+    for (let r = 0; r < H; r++) { let s = 0; for (let c = -rad; c < W; c++) { if (c + rad < W) s += a[r * W + c + rad]; if (c - rad - 1 >= 0) s -= a[r * W + c - rad - 1]; if (c >= 0) t[r * W + c] = s / w; } }
+    for (let c = 0; c < W; c++) { let s = 0; for (let r = -rad; r < H; r++) { if (r + rad < H) s += t[(r + rad) * W + c]; if (r - rad - 1 >= 0) s -= t[(r - rad - 1) * W + c]; if (r >= 0) o[r * W + c] = s / w; } }
+    return o;
+  };
+  const twice = (a, rad) => blur(blur(a, rad), rad);
+  const s1 = twice(sum, 2), n1b = twice(cnt, 2), s2 = twice(sum, 8), n2 = twice(cnt, 8);
+  const g = new Float32Array(N), vals = [];
+  for (let k = 0; k < N; k++) { g[k] = n1b[k] > 0.02 ? s1[k] / n1b[k] : n2[k] > 1e-4 ? s2[k] / n2[k] : NaN; if (!Number.isNaN(g[k]) && k % 7 === 0) vals.push(g[k]); }
+  vals.sort((a, b) => a - b);
+  const lo = vals.length ? vals[Math.floor(vals.length * 0.02)] : 0, hi = vals.length ? vals[Math.floor(vals.length * 0.98)] : 1;
+  // closing: grown by rad cells, then taken back by rad, so gaps between returns fill and the edge stays where it was
+  const grow = (m, rad, v) => { const o = new Uint8Array(N); for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) { let hit = v ? 0 : 1; for (let dr = -rad; dr <= rad && hit !== v; dr++) for (let dc = -rad; dc <= rad; dc++) { if (dr * dr + dc * dc > rad * rad) continue; const rr = r + dr, cc = c + dc; const x = rr < 0 || cc < 0 || rr >= H || cc >= W ? 0 : m[rr * W + cc]; if (v ? x : !x) { hit = v; break; } } o[r * W + c] = hit; } return o; };
+  const close = (m, rad) => grow(grow(m, rad, 1), rad, 0);
+  const R = close(roof, 3), T = close(tree, 4), O = close(other, 2);
+  const edge = (m, k, r, c) => m[k] && (r === 0 || c === 0 || r === H - 1 || c === W - 1 || !m[k - 1] || !m[k + 1] || !m[k - W] || !m[k + W]);
+  const rgba = new Uint8ClampedArray(N * 4);
+  for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) {
+    const k = r * W + c, v = Number.isNaN(g[k]) ? 70 : 40 + 190 * Math.min(1, Math.max(0, (g[k] - lo) / Math.max(1e-6, hi - lo)));
+    let px = [v, v, v];
+    if (O[k]) px = edge(O, k, r, c) ? [200, 90, 0] : [255, 150, 40];
+    if (R[k]) px = edge(R, k, r, c) ? [255, 255, 255] : [20, 20, 22];   // a white line round a dark roof: its edge is what is aimed at
+    if (T[k] && !R[k] && edge(T, k, r, c)) px = [40, 220, 80];
+    rgba[k * 4] = px[0]; rgba[k * 4 + 1] = px[1]; rgba[k * 4 + 2] = px[2]; rgba[k * 4 + 3] = 255;
+  }
+  return { e0: box[0], n1: box[3], cell, W, H, rgba };
+}

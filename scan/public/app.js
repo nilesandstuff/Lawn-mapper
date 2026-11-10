@@ -216,6 +216,7 @@ async function loadMap(id) {
   $('#mapnote').textContent += ` Photo: ${got.note}.`;
   if (got.photo) st.photos.stretched = await stretchedPhoto(id, got.src, got.photo);
   await showPhoto();
+  lidarPhoto().catch((e) => log(`lidar picture: ${e.message}`)); // if the lidar was read before the photo came
 }
 
 /**
@@ -235,13 +236,34 @@ async function stretchedPhoto(id, src, kept) {
   } catch { return null; }
 }
 
+/**
+ * THE LIDAR AS A THIRD PICTURE TO PLACE POINTS ON (the owner, 2026-11-10: "we can try placing points to lidar. Make
+ * the change non-destructively so we can switch back"): lib/look.js lidarPicture, laid on the photo's own frame and
+ * size, so the point placer, the zoom and every point's place on the map are the same whichever picture is shown.
+ * One more choice beside the photo; nothing about the photo is changed, and each point keeps which it was placed on.
+ */
+async function lidarPhoto() {
+  const pic = st.lid.overlay?.picture, kept = st.photos?.kept;
+  if (!pic || !kept || !st.frame) return;
+  const small = document.createElement('canvas'); small.width = pic.W; small.height = pic.H;
+  small.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(pic.rgba), pic.W, pic.H), 0, 0);
+  const c = document.createElement('canvas'); c.width = kept.width; c.height = kept.height;
+  const g = c.getContext('2d'); g.fillStyle = '#2a332f'; g.fillRect(0, 0, c.width, c.height);
+  const a = toPx(st.frame, st.origin, [pic.e0, pic.n1], c.width, c.height), b = toPx(st.frame, st.origin, [pic.e0 + pic.W * pic.cell, pic.n1 - pic.H * pic.cell], c.width, c.height);
+  g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+  g.drawImage(small, a[0], a[1], b[0] - a[0], b[1] - a[1]);
+  st.photos.lidar = await createImageBitmap(c);
+  await showPhoto();
+}
+
 const pref = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : v; } catch { return d; } };
 const setPref = (k, v) => { try { localStorage.setItem(k, v); } catch { /* this phone only */ } };
 
 /** The photo the placement map shows: as kept or stretched, crisper or not (lib/enhance.js, for the eye only). */
 async function showPhoto() {
-  const which = st.photos?.stretched && pref('scan-photo', 'stretched') === 'stretched' ? 'stretched' : 'kept';
-  const crisp = pref('scan-crisp', '1') !== '0';
+  const want = pref('scan-photo', 'stretched');
+  const which = want === 'lidar' && st.photos?.lidar ? 'lidar' : st.photos?.stretched && want === 'stretched' ? 'stretched' : 'kept';
+  const crisp = which !== 'lidar' && pref('scan-crisp', '1') !== '0';   // the enhancement is for photos
   const base = st.photos?.[which] || null;
   st.photoChoice = base ? which : null;
   const key = `${which}:${crisp ? 1 : 0}`;
@@ -265,11 +287,14 @@ function photoTools() {
   box.hidden = !st.photos?.kept;
   const s = $('#photo-stretched'), k = $('#photo-kept'), c = $('#photo-crisp');
   s.hidden = !st.photos?.stretched || !!st.againMode; k.hidden = !!st.againMode;
+  const li = $('#photo-lidar'); if (li) { li.hidden = !st.photos?.lidar || !!st.againMode; li.classList.toggle('plain', st.photoChoice !== 'lidar'); }
+  c.hidden = st.photoChoice === 'lidar';
   againTools();
   k.classList.toggle('plain', st.photoChoice !== 'kept');
   s.classList.toggle('plain', st.photoChoice !== 'stretched');
   const crisp = pref('scan-crisp', '1') !== '0';
   c.classList.toggle('plain', !crisp); c.setAttribute('aria-pressed', String(crisp));
+  if (st.photoChoice === 'lidar') { $('#photo-why').textContent = 'The lidar itself: the ground by its brightness (paving shows), roofs dark with a white edge where the laser hit them (no walls: the laser did not see them), a green line round each tree, other things orange. A point placed here is placed on the lidar.'; return; }
   $('#photo-why').textContent = st.photos?.stretched
     ? (st.photoChoice === 'stretched' ? 'Stretched onto the lidar: each spot moved to where the lidar measured it, so a corner on the ground is where it is on the ground.' : 'The photo as the map was traced on it. Aerial photos lean and stretch a little at the ground; "Stretched onto the lidar" corrects that.')
     : 'No stretched photo for this map yet.';
@@ -301,6 +326,7 @@ function againTools() {
 
 function wirePhotoTools() {
   $('#photo-kept')?.addEventListener('click', () => { setPref('scan-photo', 'kept'); showPhoto(); });
+  $('#photo-lidar')?.addEventListener('click', () => { setPref('scan-photo', 'lidar'); showPhoto(); });
   $('#photo-stretched')?.addEventListener('click', () => { setPref('scan-photo', 'stretched'); showPhoto(); });
   $('#photo-crisp')?.addEventListener('click', () => { setPref('scan-crisp', pref('scan-crisp', '1') !== '0' ? '0' : '1'); showPhoto(); });
 }
@@ -528,7 +554,7 @@ function startLidar(m) {
     w.onmessage = ({ data }) => {
       if (data.progress) { st.lid.progress = data.progress; showLidar(); }
       if (data.ready) { st.lid.ready = data.ready; log(`lidar model read: ${data.ready.points} columns, ${data.ready.solid} solid cells, shift ${data.ready.shift}`); showLidar(); keepShadeFresh(m, data.ready); }
-      if (data.overlay) { st.lid.overlay = data.overlay; st.lid.meshes = null; log(`lidar overlay: ${data.overlay.solids.length / 4} solid cells, ${data.overlay.tall.length / 5} tall cells`); }
+      if (data.overlay) { st.lid.overlay = data.overlay; st.lid.meshes = null; lidarPhoto().catch((e) => log(`lidar picture: ${e.message}`)); log(`lidar overlay: ${data.overlay.solids.length / 4} solid cells, ${data.overlay.tall.length / 5} tall cells`); }
       if (data.error) { st.lid.error = data.error; log(`lidar: ${data.error}`); showLidar(); if (/no lidar model yet/.test(data.error)) keepShadeFresh(m, null); }
       if (data.walk && st.L && st.walkAsk && data.id === st.walkAsk.id) {
         const a = st.walkAsk; st.walkAsk = null;

@@ -2165,3 +2165,75 @@ built. Photo to photo is wanted, for Lawn Mapper's line-up and so a point placed
 way on either photo. RoMa failed the planted move across the two photos (SCAN-H33); next is Lawn Mapper's own
 matcher (public/lib/register.js) under the same test, and RoMa at a middle size.
 
+## 20. Where things stand, 2026-11-10: points placed on the lidar is being tried; what to come back to if it fails
+
+The owner, 2026-11-10: "Okay we can try placing points to lidar. Make the change non-destructively so we can switch
+back if we need... currently we guess at walls, but I don't think we should if we're going this path. Save all of
+your thoughts from the last handful of messages so we can pick back up in the same spot later if placing points on
+lidar turns out to be a dead end."
+
+### The chain today, and where the photo is in it
+
+  walk 1 on the map     its marks: where the crosshair hit each spot, fitted to where that spot was placed on the
+                        PHOTO (reference-build.mjs marksOf). Its points, so placed, are the map's reference.
+  walk 2, live          its shapes fitted to walk 1's shapes (walkref.js shapeFix), first of all (section 18).
+  the lidar in view     where the shade map put it: one shift onto the PHOTO (0.89 m on the owner's home map).
+So the walk and the lidar are each lined up to the photo, never to each other, and the photo's error at the ground
+(its size on the owner's lot NOT yet measured: section 19 and the note after SCAN-H33) is in both links.
+
+### What is being tried now: points placed on the lidar (non-destructive)
+
+The placement map has a third picture, "Lidar" (scan/lib/look.js lidarPicture), beside the photo as traced and the
+stretched photo. Same frame, same point placer and zoom; each point keeps which picture it was placed on (`on`:
+kept, stretched or lidar). Nothing about the photo or the points already placed is changed: switching back is the
+"Photo as traced" button. A point placed on it takes the photo out of the first link (walk 1 on the map).
+
+How it answers the owner's five difficulties of 2026-11-09 (section 17), and where it does not:
+  1. Blocks nobody can place on: 0.25 m cells from the returns themselves, the ground's brightness smoothed between
+     returns, the picture smoothed when zoomed. NOT done: edges fitted as straight lines with corners to snap to.
+  2. Canopies: a thin green line round each crown; the ground under it stays in view.
+  3. Roofs wider than buildings: a roof is drawn only where a building's returns stand over the ground, gaps
+     between returns closed and the edge taken back by the same amount. NO WALLS are drawn: the laser did not see
+     them. (The AR's 3D view and the match still use the shade map's wallsOf, 2 ft in from the roof's edge; not
+     changed, awaiting the owner's word.)
+  4. Marks on the ground beside raised things: not solved by a picture; only flat ground edges are safe marks.
+  5. Few candidates: paving edges by brightness are the hope. NOT yet seen on the owner's lot at this scale: whether
+     the 2018 flight's ground brightness shows the drive, walks and patio sharply enough is the first thing to look at.
+Not yet seen on a phone. If no sharp ground spot can be found in the picture, this is a dead end for the reason the
+owner gave on 2026-11-09 ("these may not be overcome").
+
+### What to come back to if it is a dead end, in the order thought best on 2026-11-10
+
+  A. THE LIDAR FITTED STRAIGHT TO WALK 1's 3D POINTS, after the walk (the owner's idea, 2026-11-10: "fit it to the
+     3d points from the phone (based only on strong matches like the roofs, and pavement with other stuff, excluding
+     trees, counting for weak matches"). Takes the photo out of both links. Offered, not built. What is known: the
+     whole walk fitted to the lidar at once afterwards gave 2.7-3.6 ft (SCAN-H25) and small_gicp could not move off
+     its start (SCAN-H31), but both were SCORED ON MARKS PLACED ON A PHOTO, so whether the lidar fit was worse than
+     the photo or only disagreed with it is unknown. The hard part: the laser sees roofs and ground from above, the
+     phone sees walls, eaves and ground from the side; an eave overhangs its wall by an unknown 1-2 ft and flat
+     ground does not hold a walk sideways. The fair test needs no photo: fit two walks to the lidar each on its own,
+     then compare where the crosshair hit the same spots (aim to aim).
+  B. PHOTO TO PHOTO (wanted by the owner for Lawn Mapper's line-up, and so a point is off the same way on either
+     photo). RoMa as it comes failed a planted move across Mapbox and the county photo (8.9, 9.7, 12.0 ft for
+     4.9 ft; SCAN-H33) though it reads a move of one photo against itself to a centimetre. Untried: Lawn Mapper's
+     own matcher (public/lib/register.js) under the same planted move; RoMa at a middle size (between 0.25 m and
+     0.76 m a pixel); matches kept only where both directions agree; a matcher made for aerial pairs.
+  C. PHOTO ONTO LIDAR, automatic: dead as tried (SCAN-H33: edge windows too few and 6 ft apart; RoMa on the
+     lidar's brightness hundreds of feet off; with roofs blanked it matches the blanks). A hand-tied version
+     (a person picks the same spots on both) was refused by the owner as "too manual" for the live site.
+
+### The tests that stand whatever is tried
+
+  - A PLANTED MOVE before any matcher's stretch is believed (warp_study.py; it is itself tested on a photo against
+    itself, run 241).
+  - AIM TO AIM for anything that places a walk (reference-build.mjs aimToAim): the same spots aimed at on two walks,
+    no photo in the score. First reading, on loose marks: 2.5 ft median between the walks of 2026-11-07 and 11-09.
+  - The owner's tolerance: 1.2 ft or less.
+
+### The owner's next walks (unchanged by any of this)
+
+At home and at work the next walk is a new first walk: "Start a new set", 3 to 5 points, all check points (no live
+fix is needed on it; Street View places the view and its "by geo" readings mean nothing), at spots that can be aimed
+at again exactly, never dragged. The walk after it is the test of the shape fit, scored aim to aim. With "Lidar"
+chosen on the placement map the points of the new set are placed on the lidar.
+
