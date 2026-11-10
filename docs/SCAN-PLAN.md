@@ -2033,6 +2033,26 @@ Runs 227 and 229 (RoMa on the CPU, use_custom_corr=False; the same map and input
     1794162116852, from 2026-11-08. Tonight's home walk, its checks placed on the county photo, is 1794263367156;
     the 4-point Mapbox-vs-county comparison above is between older walks and is not that test yet.
 
+Runs 235 and 236, RoMa on the ground only (the owner's idea, 2026-11-10: "We can only match against things at
+ground level. Because buildings lean... don't give the matcher anything above like 1m"): everything 0.5 m or more
+up, and 2.5 m round it, blanked in both pictures; the lidar's brightness evened out (CLAHE).
+  - Run 235: 3,230 matches on the county photo and 3,083 on Mapbox, median shift 0.2 ft, held out none 1.1-1.2 ft,
+    spline 0.5-0.6 ft. Kept, then doubted: RoMa puts the two photos 1.0-2.2 ft apart (median shift across runs),
+    which cannot hold if both sit within 0.2 ft of the lidar.
+  - Run 236, the photo moved 4.9 ft on purpose: ground-only RoMa found 0.2 ft of it (county) and 0.0 ft (Mapbox).
+    It matches the blanks, which sit in the same place in both pictures, not the ground. Refused; stored stretches
+    taken out. The planted-shift test stays in the study for every matcher that passes the other gates.
+  - So no matcher here has yet read the lidar's ground against a photo. The photos against each other: RoMa finds
+    a smooth 2-D warp between them in every run (none 3.6-6.6 ft RMS held out, affine 2.5-2.8, spline 1.3-1.5).
+
+THE MARKS (the owner, 2026-11-10): the check points placed so far were not placed to be found again exactly, and
+were dragged between walks. Every score made ON THE MARKS carries that error: the walk-to-walk shape fix's feet
+(SCAN-H32, run 224's gates, the 1.9 and 3.0 ft above), the marks' own fits, the Mapbox-vs-county mark test. Results
+that used no marks stand: RoMa on the lidar (hundreds of feet off), the planted-shift failure, photo against photo.
+The owner will place a new set, at ground-level corners found again exactly, and keep it. Since commit 901d98b a
+walk placed on an earlier walk is also scored aim to aim (where the crosshair hit the same spot in both walks, no
+photo in it), and a set can be placed again on the other photo. The owner: errors of 1.2 ft or less are tolerable.
+
 SPECULATION, next: the lidar has to be made to look like a photo before a photo matcher can use it. A shaded
 relief of the ground plus intensity, or the shade map's own classes (roof, tree, ground, paving) drawn as a map;
 or MINIMA's RoMa, which was retrained on other-modality pictures (depth among them). Or match on shapes, not
