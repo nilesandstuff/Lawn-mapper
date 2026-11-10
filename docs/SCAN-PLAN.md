@@ -2307,3 +2307,27 @@ returns a square metre; a 0.5 m stump is hit about once). The brick patio, if it
 grass. These may need the photo for their geometry (the owner: "If we have to use the imagery to guess at the specific
 geometry, that should be fine, because the skew shouldn't come into play on modestly sized driveways"): not built.
 
+
+## 22. Does NAIP sit on the lidar? (owner, 2026-11-10)
+
+The owner: "I just remembered that NAIP exists. Does naip line up neatly with 3dep? Naip isn't good enough for lawn
+traces but it's definitely good enough for placing points... Naip should be newer than 3dep right? That's what
+matters." NAIP's fourth band is near infrared, as the lidar's brightness is (1064 nm): grass bright, paving dark in
+both, so the two are matched as they are (scan/tools/naip-check.mjs, scan-deploy task naip): the lidar's ground
+picture on 0.25 m cells against each NAIP frame's band 4 over the same ground, patch by patch with
+public/lib/register.js, and again with NAIP slid a planted 1.25 m east, 1.0 m south.
+
+HARD, run 259 (c31b209), the owner's two maps (home 191 x 88 m; work 224 x 246 m). NAIP frames over both: 2022,
+2020, 2018, 2016 (0.6 m), 2014, 2012 (1 m); the newest in Planetary Computer is 2022.
+  - The matcher on the lidar against itself: the planted slide found to 0.00 m (556 and 1810 patches, all agree).
+  - The planted slide on top of NAIP: found to 0.03-0.5 m (median about 0.1 m; worst 0.48 m and 0.33 m off, on the
+    2020 frames). That is the measurement's own error, NAIP against lidar.
+  - Few patches agree: 8-36 of 155-751 (5%), against 100% lidar-to-lidar. The match is real (the planted slides come
+    back) but rests on a few places: most of either picture is lawn or canopy with nothing to hold.
+  - Home: 2022 0.60 m east, 0.54 m south (0.8 m, 2.7 ft); 2020 2.9 m east; 2018 0.7 m (not confident); the USGS
+    mosaic 0.24 m (not confident, 7 patches).
+  - Work: 2022 2.0 m west, 2.3 m north (3.0 m, 10 ft); 2020 1.9 m; 2018 1.6 m; the USGS mosaic 3.8 m.
+  - In every confident case one shift fits the agreeing patches to 0.16-0.20 m rms.
+So NAIP does NOT sit on 3DEP to a foot: each year's flight sits differently, 0.8 to 3 m off on these two lots (inside
+its 4-6 m specification). But it is off by one slide per lot, which this measures to about 0.1-0.5 m.
+NOT built: NAIP as a background on the placement map, slid by its measured shift, the lidar's outlines over it.
