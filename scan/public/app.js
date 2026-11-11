@@ -16,7 +16,7 @@ import { snapTo } from '/lib/lidar-marks.js';
 import { levelDist, toLocal, fromLocal } from '/lib/frames.js';
 import { frameFor, bboxOf, toPx, fromPx, ringsOf, toMerc } from '/lib/photo.js';
 import { newLocate, mark, noteGround, addDepth, nextAsk, answer, fitFor, mapOf, sessionOf, checkError, nearestNamed, agreement, groundOffset, groundUnder, status as fixStatus, summaryOf } from '/lib/locate.js';
-import { STAND as REF_STAND, MIN_STAND as REF_MIN_STAND, VOX as REF_VOX } from '/lib/walkref.js';
+import { STAND as REF_STAND, MIN_STAND as REF_MIN_STAND, VOX as REF_VOX, referenceFit, buildRef, encodeRef } from '/lib/walkref.js';
 import { leftOut, mapToSession } from '/lib/align.js';
 import { newTwin, addPoints, addPose, wantKey, addKey, flush, flushDue, liveOf } from '/lib/twin.js';
 import { newAnchors, viewOf, noteView, nudge, pitchOf, anchorsKept, SHOW_S } from '/lib/anchors.js';
@@ -212,6 +212,7 @@ async function loadMap(id) {
   $('#mapnote').textContent = `Map opened (${[saved && !Number.isNaN(+saved) ? `saved ${saved.toLocaleDateString()}` : '', m.squareFeet ? `${Math.round(m.squareFeet).toLocaleString()} sq ft of lawn` : ''].filter(Boolean).join(', ') || 'no lawn traced yet'}).`;
   drawMap();
   startLidar(m);
+  askReference();
   st.photo = null; st.photos = { kept: null, stretched: null }; st.shown = {};
   const got = await keptPhoto(id);
   if (got.photo) { st.photos.kept = got.photo; st.photoSrc = got.src; st.frame = got.frame; }
@@ -578,7 +579,7 @@ function zoomAt(f, [x, y]) {
 function listPoints() {
   const el = $('#points');
   const rn = $('#roof-note');
-  if (rn) { const R = st.lid?.roofs; rn.hidden = !R; if (R) rn.textContent = R.length ? `Roof corners (white diamonds): ${R.length} offered. Tap one to make it a reference; in the walk you aim up at that corner from two places and it marks itself. Two to four, on different sides of the house, are enough.` : 'No roof corner is offered on this map: none is pinned by the laser, under 15 ft up and within 15 ft of the lawn.'; }
+  if (rn) { const R = st.lid?.roofs; rn.hidden = !R; if (R) rn.textContent = R.length ? `Roof corners (white diamonds): ${R.length} offered. Tap one to make it a reference; in the walk you aim up at that corner from two places and it marks itself. Two to four, on different sides of the house, are enough.${R.some((c) => c.tier === 2) ? ` Fewer than three met the first rule (15 ft up, 15 ft from the lawn), so ${R.filter((c) => c.tier === 2).length} more are offered up to 18 ft up and 30 ft from the lawn.` : ''}` : 'No roof corner is offered on this map: none has two long straight roof edges, under 18 ft up and within 30 ft of the lawn.'; }
   againTools();
   if (st.againMode) {
     const t = againTodo();
@@ -778,7 +779,9 @@ async function startAR(engine) {
   st.walk.checks = [];
   st.L = newLocate();
   st.prevStand = new Map(); st.prevGround = new Map(); st.prevAsk = null; st.prevAt = 0; st.prevStats = { asks: 0, ok: 0, lastWhy: null, firstOkM: null, lastMs: null };
-  loadReference();
+  // the owner's choice at the start (2026-11-11): the saved walk places this one, or this one is a fresh reference
+  st.refUse = st.refMeta && refChoice() === 'saved';
+  if (st.refUse) loadReference(); else { st.ref?.worker?.terminate?.(); st.ref = st.map ? { map: st.map, worker: null, ready: null, none: true, error: null, fresh: !!st.refMeta } : null; log(st.refMeta ? 'earlier walk: not used (fresh chosen); this walk is kept as the new one' : 'earlier walk: none kept for this map; this walk is kept as it'); }
   mini.view = null; mini.mode = 'fit'; mini.locked = false; $('#arrows').innerHTML = '';
   st.surfCount = { grass: 0, pave: 0 };
   st.chosen = null; st.undoMarks = [];
@@ -1121,7 +1124,7 @@ function onFrame(f) {
         p.surf = surf || 'other'; pts.push(p); if (surf) st.surfCount[surf]++;
       }
       if (pts.length) addDepth(L, pts, odo, f.pose.position);
-      if (pts.length && st.ref?.ready) keepForPrev(L, pts);
+      if (pts.length && st.map) keepForPrev(L, pts); // every walk: it may place the next one (keepReference), or be placed by the last
     }
   }
   // the twin: the camera's track, a picture now and then, and what has piled up sent every 15 s
@@ -1529,6 +1532,13 @@ function finish() {
   const list = kept(); list.push(s); keep(list);
   renderResults(s.id); drawMap();
   post(s);
+  // kept as its map's reference, by itself (keepReference): said on the walk's card when it is known
+  if (L && !s.failed) {
+    const say = (text) => { const all = kept(), mine = all.find((x) => x.id === s.id); if (mine) { mine.reference = text; keep(all); renderResults(s.id); } };
+    say('Saving this walk as the map\'s reference…');
+    keepReference(L, String(w.startedAt)).then((text) => { say(text || ''); if (text) { log(text); flash(/^Saved/.test(text) ? 'Saved as this map\'s reference' : 'Not saved as the reference: see the walk\'s card'); } askReference(); })
+      .catch((e) => say(`NOT saved as the reference: ${e.message}`));
+  }
 }
 const r2 = (v) => (v == null ? null : +Number(v).toFixed(2)), r3 = (v) => (v == null ? null : +Number(v).toFixed(3));
 
@@ -1588,7 +1598,7 @@ async function loadReference() {
            When every point on the map was placed after it was made (the owner's "Start a new set"), this walk is
            placed by its own marks and becomes the next reference; the old one would pull it onto the old marks. */
         const pts = st.points || [];
-        st.ref.stale = pts.length > 0 && pts.every((q) => Number(q.id) > data.ready.at);
+        st.ref.stale = !st.refUse && pts.length > 0 && pts.every((q) => Number(q.id) > data.ready.at); // chosen at the start: used
         log(`earlier walk read: ${data.ready.stand} standing and ${data.ready.ground} ground points${st.ref.stale ? '; made before this set of points, so not used on this walk' : ''}`);
       }
       if (data.error) { st.ref.error = data.error; log(`earlier walk: ${data.error}`); }
@@ -1607,6 +1617,63 @@ async function loadReference() {
     w.onerror = (e) => { st.ref.error = e.message || 'the earlier walk could not be matched'; log(`earlier walk: ${st.ref.error}`); };
     w.postMessage({ ref: bytes }, [bytes]);
   } catch (e) { again(e.message); }
+}
+
+/**
+ * SAVED WALK OR FRESH (the owner, 2026-11-11: "when I start the 2nd walk, I can select the saved reference walk to use
+ * as the fix. Or select fresh to make a new reference walk"). Asked of the site when a map opens: is there a saved
+ * walk, and from when. With one, two buttons by Start; without, the first walk is kept by itself.
+ */
+const refChoice = () => (st.refPick === 'fresh' ? 'fresh' : 'saved');
+async function askReference() {
+  const box = $('#ref-choice'); if (!box) return;
+  st.refMeta = null; st.refPick = 'saved'; box.hidden = true;
+  const map = st.map; if (!map) return;
+  try {
+    const r = await fetch(`/api/scan/reference?map=${encodeURIComponent(map)}&meta=1`, { credentials: 'same-origin' });
+    if (r.ok) { const j = await r.json(); if (st.map === map) st.refMeta = j; }
+  } catch { /* offline: as if none; the walk still works */ }
+  drawRefChoice();
+}
+function drawRefChoice() {
+  const box = $('#ref-choice'); if (!box) return;
+  const M = st.refMeta;
+  box.hidden = false;
+  if (!M) { box.innerHTML = '<span class="dim">No walk is saved for this map: this walk, once its roof corners are marked, is saved to place the next one.</span>'; return; }
+  const when = M.at ? new Date(M.at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'earlier';
+  box.innerHTML = `<span class="dim" style="flex-basis:100%">A walk saved ${esc(when)} can place this one:</span><button type="button" id="ref-saved" class="${refChoice() === 'saved' ? '' : 'plain'}">Use the saved walk</button><button type="button" id="ref-fresh" class="${refChoice() === 'fresh' ? '' : 'plain'}">Fresh: this walk replaces it</button>`;
+  $('#ref-saved').addEventListener('click', () => { st.refPick = 'saved'; drawRefChoice(); });
+  $('#ref-fresh').addEventListener('click', () => { st.refPick = 'fresh'; drawRefChoice(); });
+}
+
+/**
+ * A WALK KEPT AS ITS MAP'S REFERENCE, BY ITSELF (the owner, 2026-11-11: "make it so that a first walk now automatically
+ * generates the comparison shape mesh for the 2nd walk"). At the walk's end, unless the saved walk was placing this
+ * one: the walk's own marks must agree with the map (walkref.js referenceFit: two roof corners the same distance
+ * apart as on the lidar within a foot, or three marks each within a foot), then its standing things and ground are
+ * put on the map by them and sent to the site, which keeps the one it replaces as a backup. Tried three times.
+ * Returns what happened, in words, for the walk's card.
+ */
+async function keepReference(L, walkId) {
+  const map = st.map;
+  if (!map) return null;
+  if (st.refUse) return 'Not saved as the reference: the saved walk was placing this one.';
+  if (st.recordOnly) return 'Not saved as the reference: a recording-only walk.';
+  const fit = referenceFit(L?.marks || []);
+  if (!fit.ok) return `NOT saved as the reference: ${fit.why}.`;
+  const stand = [...(st.prevStand?.values() || [])], ground = [...(st.prevGround?.values() || [])];
+  if (stand.length < REF_MIN_STAND) return `NOT saved as the reference: too little of the yard's standing things was seen (${stand.length} points of ${REF_MIN_STAND}).`;
+  const bytes = encodeRef(buildRef({ stand, ground }, fit.T, Date.now()));
+  const how = `${fit.n} ${fit.roof ? 'roof corners' : 'marks'} agreeing within ${(fit.worstM * 39.37).toFixed(0)} in`;
+  for (let k = 0; k < 3; k++) {
+    try {
+      const r = await fetch(`/api/scan/reference?map=${encodeURIComponent(map)}&walk=${encodeURIComponent(walkId)}`, { method: 'PUT', credentials: 'same-origin', body: bytes });
+      if (r.ok) return `Saved as this map's reference (${how}; ${stand.length.toLocaleString()} points of standing things, ${(bytes.length / 1e6).toFixed(1)} MB). The next walk here can use it.`;
+      if (r.status === 404 || r.status === 413) return `NOT saved as the reference: the site answered ${r.status}.`;
+    } catch { /* signal: again */ }
+    await new Promise((res) => setTimeout(res, 4000 * (k + 1)));
+  }
+  return 'NOT saved as the reference: it could not be sent (no signal?). Walk again with signal, or tell the core session.';
 }
 
 /** This walk's standing things and ground, one point to a small cube, for the earlier walk's match. */
@@ -1713,6 +1780,8 @@ function walkCard(s, open) {
     ${s.twin ? `<p>Twin: ${s.twin.points.toLocaleString()} points, ${s.twin.keys} picture${s.twin.keys === 1 ? '' : 's'}${s.twin.off ? ` <span class="warn">not kept: ${esc(s.twin.off)}</span>` : s.twin.failed ? ` <span class="warn">(${s.twin.failed} part${s.twin.failed === 1 ? '' : 's'} did not upload)</span>` : ''}. <a href="/twin.html?walk=${encodeURIComponent(s.id)}">See how it lines up</a> &middot; <a href="/inspect.html?walk=${encodeURIComponent(s.id)}">Inspect it</a></p>` : ''}
     ${s.app?.recording || st.recUp ? `<p class="dim" id="rec-up">${esc(recUpText() || 'Recording: being finished, then sent.')}</p>` : ''}${s.replayOf ? `<p class="dim">A replay of the walk of ${esc(new Date(+s.replayOf).toLocaleString())}.</p>` : ''}
     ${refs ? `<p class="dim">References: ${refs}.</p>` : ''}
+    ${s.reference ? `<p class="${/^NOT/.test(s.reference) ? 'warn' : 'ok'}">${esc(s.reference)}</p>` : ''}
+    ${(s.roofSights || []).length ? `<p class="dim">Roof corners: ${s.roofSights.map((r) => `${esc(r.name)} ${r.ok ? `marked from ${r.sights} aims ${r.turnDeg}&deg; apart (lines ${Math.round((r.missM || 0) * 39.37)} in apart, ${Math.abs(r.eaveOffM || 0).toFixed(1)} m off the lidar's eave)` : `not marked: ${esc(r.why || '')}`}`).join('; ')}.</p>` : ''}
     ${near ? `<p class="dim">Pins on the map: ${near}.</p>` : ''}
     ${checks ? `<table><tr><th>Check point</th><th>On the map</th><th>By</th></tr>${checks}</table>` : ''}
     ${pins ? `<table style="margin-top:8px"><tr><th>Pin</th><th>Aimed from</th><th>Off its spot when checked (as placed / *anchored)</th></tr>${pins}</table>` : '<p class="dim">No pins.</p>'}

@@ -96,7 +96,9 @@ export async function twin(request, env, url, { isAdmin }) {
  * marks, its points on the map, that places later walks by their shape. One per map, under refs/<map>.bin.
  *
  *   GET /api/scan/reference?map=   the reference (bytes), 404 when the map has none
- *   PUT /api/scan/reference?map=   a new one (scan/tools/reference-build.mjs writes it straight to the bucket too)
+ *   GET /api/scan/reference?map=&meta=1   { walk, at, bytes } without the bytes, 404 when none
+ *   PUT /api/scan/reference?map=&walk=   a new one (the page, at a walk's end; reference-build.mjs writes straight to
+ *                                        the bucket too); the one it replaces goes to refs/backup/<map>-<when>.bin
  *
  * The admin only, like the twins: it is the yard's shape.
  */
@@ -127,6 +129,12 @@ export async function reference(request, env, url, { isAdmin }) {
   if (!env.TWIN) return json({ error: 'no-bucket' }, 503);
   const map = url.searchParams.get('map') || '';
   if (!MAP.test(map)) return json({ error: 'which map?' }, 400);
+  if (request.method === 'GET' && url.searchParams.get('meta')) {
+    // is there one, and from when: for the choice at the start of a walk (the owner, 2026-11-11), without its bytes
+    const h = await env.TWIN.head(refKey(map));
+    if (!h) return json({ error: 'no reference' }, 404);
+    return json({ ok: true, map, walk: h.customMetadata?.walk || '', at: h.uploaded ? new Date(h.uploaded).getTime() : null, bytes: h.size });
+  }
   if (request.method === 'GET') {
     const o = await env.TWIN.get(refKey(map));
     // said in its own words: the page takes only this for "none", and tries again on any other 404 (2026-11-10)
@@ -136,6 +144,8 @@ export async function reference(request, env, url, { isAdmin }) {
   if (request.method === 'PUT') {
     const body = await request.arrayBuffer();
     if (body.byteLength > MAX_PART) return json({ error: `at most ${MAX_PART} bytes` }, 413);
+    // the one it replaces is kept beside it (the owner, 2026-11-11: "Fresh" replaces the saved walk, the old one a backup)
+    try { const old = await env.TWIN.get(refKey(map)); if (old) await env.TWIN.put(`refs/backup/${map}-${old.uploaded ? new Date(old.uploaded).getTime() : Date.now()}.bin`, old.body, { customMetadata: old.customMetadata || {} }); } catch { /* the new one is kept all the same */ }
     await env.TWIN.put(refKey(map), body, { httpMetadata: { contentType: 'application/octet-stream' }, customMetadata: { walk: url.searchParams.get('walk') || '' } });
     return json({ ok: true, map, bytes: body.byteLength });
   }

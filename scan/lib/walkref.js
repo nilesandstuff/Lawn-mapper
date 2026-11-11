@@ -69,6 +69,34 @@ export function voxel(points, vox = VOX) {
   return out;
 }
 
+/* ------------------------------------------------------------- may this walk be a reference? */
+export const REF_AGREE_M = 0.3;          // 1 ft: how well a walk's marks must agree with the map for it to be kept
+
+/**
+ * THE WALK'S OWN PLACEMENT, GOOD ENOUGH TO PLACE THE NEXT WALK? (the owner, 2026-11-11: a first walk makes the
+ * reference by itself, with nobody looking at it first, so this is the only gate.) marks: locate.js L.marks. Roof
+ * corners (by: 'ROOF') alone when there are two or more of them, their place being the lidar's own; otherwise every
+ * mark, three or more. The latest mark of each point.
+ *   three or more: one turn and shift through them; every mark within REF_AGREE_M of its place.
+ *   two: nothing to spare, so the one thing that can be checked is: the distance between the two as marked against
+ *        the distance between them on the map, within REF_AGREE_M.
+ * -> { ok, T, n, roof, worstM, why }
+ */
+export function referenceFit(marks) {
+  const last = new Map(); for (const m of marks || []) if (m.ar && m.map) last.set(m.id, m);
+  const all = [...last.values()], roofs = all.filter((m) => m.by === 'ROOF');
+  const use = roofs.length >= 2 ? roofs : all, roof = roofs.length >= 2;
+  if (use.length < 2 || (!roof && use.length < 3)) return { ok: false, n: use.length, roof, why: roof ? 'fewer than two roof corners marked' : `only ${use.length} mark${use.length === 1 ? '' : 's'}: two roof corners or three marks are needed` };
+  const T = fitRigid(use.map((m) => m.ar), use.map((m) => m.map));
+  let worst = 0;
+  if (use.length === 2) worst = Math.abs(Math.hypot(use[0].ar[0] - use[1].ar[0], use[0].ar[1] - use[1].ar[1]) - Math.hypot(use[0].map[0] - use[1].map[0], use[0].map[1] - use[1].map[1]));
+  else for (const m of use) { const p = place(T, m.ar[0], m.ar[1]); worst = Math.max(worst, Math.hypot(p[0] - m.map[0], p[1] - m.map[1])); }
+  const apart = Math.max(...use.flatMap((a) => use.map((b) => Math.hypot(a.map[0] - b.map[0], a.map[1] - b.map[1]))));
+  if (apart < 3) return { ok: false, T, n: use.length, roof, worstM: worst, why: 'the marks are within 10 ft of each other: too close together to turn the walk by' };
+  if (worst > REF_AGREE_M) return { ok: false, T, n: use.length, roof, worstM: worst, why: use.length === 2 ? `the two corners are ${(worst * 3.281).toFixed(1)} ft further apart or nearer as marked than on the lidar` : `a mark is ${(worst * 3.281).toFixed(1)} ft from its place after the best fit` };
+  return { ok: true, T, n: use.length, roof, worstM: worst, why: null };
+}
+
 /* ------------------------------------------------------------- the reference */
 /**
  * A reference from a walk placed by its marks: stand and ground [[u, v, y]] in its session, T its marks' turn and

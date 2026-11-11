@@ -27,6 +27,8 @@
 
 export const MAX_EAVE_M = 4.6;     // 15 ft: a single storey's eave, a porch's; not a second storey's
 export const NEAR_LAWN_M = 4.57;   // 15 ft from a lawn edge (the owner's number)
+export const LOOSE_EAVE_M = 5.5;   // 18 ft, and
+export const LOOSE_LAWN_M = 9.14;  // 30 ft: the looser distances, used only when the first give fewer than three corners
 export const MIN_SIDE_M = 2.5;
 export const HOLD_MS = 700;        // steady this long and the sight is taken
 export const STEADY_DEG = 0.7;     // the aim may wander this much while held
@@ -59,7 +61,19 @@ const COMPASS = ['north', 'north-east', 'east', 'south-east', 'south', 'south-we
  * Returns [{ at: [e, n], eaveM, of (the building's id), label ("north-east corner"), sure, lawnM, sidesM: [a, b] }],
  * the surest first.
  */
-export function roofCorners(marks, pts, lawn = [], { maxEaveM = MAX_EAVE_M, nearLawnM = NEAR_LAWN_M } = {}) {
+export function roofCorners(marks, pts, lawn = [], opts = {}) {
+  // THE OWNER'S TIERS (2026-11-11: "Still try to find 3 corners with the original requirement, then if there's not 3
+  // good corners we can go to the next best at the higher threshold. Then if there's really just [not] 3 good
+  // candidates at the next threshold, fall back to 2"): the original rules; with fewer than three, the looser
+  // distances' corners are added after them (tier 2); what the walk does with two is walkref.js referenceFit's.
+  if (opts.maxEaveM != null || opts.nearLawnM != null) return cornersWithin(marks, pts, lawn, opts);
+  const first = cornersWithin(marks, pts, lawn, {}).map((c) => ({ ...c, tier: 1 }));
+  if (first.length >= 3) return first;
+  const more = cornersWithin(marks, pts, lawn, { maxEaveM: LOOSE_EAVE_M, nearLawnM: LOOSE_LAWN_M })
+    .filter((c) => !first.some((f) => Math.hypot(f.at[0] - c.at[0], f.at[1] - c.at[1]) < 0.05)).map((c) => ({ ...c, tier: 2 }));
+  return [...first, ...more];
+}
+function cornersWithin(marks, pts, lawn = [], { maxEaveM = MAX_EAVE_M, nearLawnM = NEAR_LAWN_M } = {}) {
   const out = [];
   const roofs = [];
   for (let i = 0; i < pts.n; i++) if (pts.kind(i) === 1) { const h = pts.hag(i); if (h >= 1.5) roofs.push([pts.e(i), pts.nn(i), h]); }

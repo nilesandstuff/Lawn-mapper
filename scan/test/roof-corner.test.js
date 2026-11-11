@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import { roofCorners, newSight, sight, crossing, lookOf, HOLD_MS } from '../lib/roof-corner.js';
 import { lidarMarks } from '../lib/lidar-marks.js';
+import { referenceFit, place } from '../lib/walkref.js';
 
 const rng = (seed) => { let sd = seed; return () => { sd = (sd + 0x6d2b79f5) | 0; let t = Math.imul(sd ^ (sd >>> 15), 1 | sd); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; };
 
@@ -91,5 +92,29 @@ function run(S, places, { tremorDeg = 0.15, seed = 1 } = {}) {
   for (let seed = 1; seed <= 6; seed++) { const S = newSight({ eaveM: 3, groundY: 0 }); run(S, [{ pos: [0, 1.4, 0], aim: C, ms: 2500 }, { pos: [5.5, 1.4, -1], aim: C, ms: 2500 }, { pos: [8, 1.4, -4], aim: C, ms: 2500 }], { tremorDeg: 0.5, seed }); assert.ok(S.done?.ok, `seed ${seed}: marked (${S.done?.why || S.say})`); offs.push(Math.hypot(S.done.position.x - C[0], S.done.position.z - C[2])); }
   console.log(`a shakier hand, 6 tries: ${offs.map((v) => (v * 39.37).toFixed(1)).join(', ')} in off`);
   assert.ok(Math.max(...offs) < 0.12);
+}
+// MAY A WALK BE THE REFERENCE? (walkref.js referenceFit)
+{
+  const T0 = { theta: 0.6, tx: 12, ty: -7 }, inv = (m) => { const c = Math.cos(-T0.theta), s2 = Math.sin(-T0.theta), x = m[0] - T0.tx, y = m[1] - T0.ty; return [c * x - s2 * y, s2 * x + c * y]; };
+  const mk = (id, map, by, off = [0, 0]) => { const a = inv(map); return { id, map, ar: [a[0] + off[0], a[1] + off[1]], by }; };
+  const two = referenceFit([mk('a', [0, 0], 'ROOF'), mk('b', [12, 5], 'ROOF')]);
+  assert.ok(two.ok && two.roof && two.n === 2, 'two roof corners the right distance apart: kept');
+  const p = place(two.T, ...inv([6, 2])); assert.ok(Math.hypot(p[0] - 6, p[1] - 2) < 1e-6, 'and they place the walk');
+  assert.ok(!referenceFit([mk('a', [0, 0], 'ROOF'), mk('b', [12, 5], 'ROOF', [0.5, 0])]).ok, 'two corners marked 0.5 m too far apart: not kept');
+  assert.ok(!referenceFit([mk('a', [0, 0], 'ROOF'), mk('b', [1.5, 1], 'ROOF')]).ok, 'two corners 6 ft apart: too close to turn by');
+  assert.ok(!referenceFit([mk('a', [0, 0], 'ROOF')]).ok && !referenceFit([mk('a', [0, 0], 'DEPTH'), mk('b', [9, 3], 'DEPTH')]).ok, 'one corner, or two ground marks: not kept');
+  assert.ok(referenceFit([mk('a', [0, 0], 'DEPTH'), mk('b', [9, 3], 'DEPTH'), mk('c', [2, 11], 'DEPTH')]).ok, 'three marks that agree: kept');
+  assert.ok(!referenceFit([mk('a', [0, 0], 'ROOF'), mk('b', [9, 3], 'ROOF'), mk('c', [2, 11], 'ROOF', [1, 0])]).ok, 'three corners, one a metre out: not kept');
+  // a corner marked again: the later mark counts; ground marks are left out when two roof corners are there
+  assert.ok(referenceFit([mk('a', [0, 0], 'ROOF', [2, 0]), mk('a', [0, 0], 'ROOF'), mk('b', [12, 5], 'ROOF'), mk('c', [4, 4], 'DEPTH', [3, 3])]).ok, 'the later mark of a corner, and no ground marks');
+}
+// THE TIERS: with the original rules giving fewer than three, the looser distances' corners follow as tier 2
+{
+  const r = rng(8), P = [];
+  for (let i = 0; i < 40 * 40 * 4; i++) { const e = r() * 40, n = r() * 40, house = e >= 10 && e <= 24 && n >= 12 && n <= 24; P.push({ e, n, h: house ? 6.5 - 1.6 * Math.abs(n - 18) / 6 + (r() - 0.5) * 0.05 : (r() - 0.5) * 0.05, kind: house ? 1 : 0 }); }
+  const pts = { n: P.length, e: (i) => P[i].e, nn: (i) => P[i].n, hag: (i) => P[i].h, bright: () => 0, kind: (i) => P[i].kind };
+  const C = roofCorners(lidarMarks([0, 0, 40, 40], pts), pts, []);
+  console.log(`a house with eaves 16 ft up: ${C.length} corners, tiers ${C.map((c) => c.tier).join(', ')}`);
+  assert.ok(C.length >= 3 && C.every((c) => c.tier === 2), 'none under 15 ft, so the 18 ft tier is offered');
 }
 console.log('roof-corner: ok');
