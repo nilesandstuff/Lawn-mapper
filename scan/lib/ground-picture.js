@@ -8,7 +8,7 @@
  * of its own shade, well away from the middle, so blacktop still differs from concrete.
  *
  * How, per ground return (within 0.3 m of the shade map's ground under it, so hills are followed):
- *   1. its brightness is the median of its 7 nearest ground returns' (one return is noisy; a median keeps an edge);
+ *   1. its brightness is its own (with `median`: the median of its 7 nearest ground returns');
  *   2. the lot's two levels, light (grass) and dark (paving), by 2-means; the cut between them;
  *   3. HOW DARK IT IS, 0 to 1, against the light and dark levels found within 4 m of it: 0 at the light level, 1 at
  *      the dark, a half in between. Where everything within 4 m is on one side of the lot's cut it is 0 or 1 outright
@@ -16,7 +16,7 @@
  *      grass and a blacktop road's halfway between blacktop and grass.
  * Then on the fine grid each cell takes the distance-weighted mean of that number from its nearest returns, and is
  * dark where it passes a half: between a light return and a dark one the edge falls halfway, and through a middling
- * one. Specks under a square metre and a half are given to what surrounds them. Each cell is then shaded by the
+ * one. (With `specks`: areas under a square metre and a half are given to what surrounds them.) Each cell is then shaded by the
  * brightness of the returns round it on its own side of the edge: dark areas within 0-35% white, light ones within
  * 65-100%, so the edge stays hard and concrete still differs from blacktop. No ground return near (under
  * a roof, a dense crown): a flat mid grey.
@@ -32,7 +32,11 @@ const hashOf = (ps, B) => {
 };
 const medianOf = (a) => { const s = Float64Array.from(a).sort(); return s.length ? s[s.length >> 1] : NaN; };
 
-export function groundPicture(box, pts, { fine = 4, nearM = 4, maxCells = 1500 } = {}) {
+/* THE OWNER'S WAY IS THE DEFAULT (2026-11-11: "Please ask before directly contradicting plans I've laid out. Try it my
+   way"): each return keeps its own brightness and nothing is tidied. `median` (each return's brightness the median of
+   its 7 nearest) and `specks` (areas under 1.5 m2 given to what surrounds them) were the core session's additions,
+   made without asking; they are off unless asked for. */
+export function groundPicture(box, pts, { fine = 4, nearM = 4, maxCells = 1500, median = false, specks = false } = {}) {
   const G = [];
   for (let i = 0; i < pts.n; i++) {
     const e = pts.e(i), n = pts.nn(i);
@@ -58,7 +62,7 @@ export function groundPicture(box, pts, { fine = 4, nearM = 4, maxCells = 1500 }
     for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) for (const j of hash.get(`${bx + dx},${by + dy}`) || []) { const q = G[j], dd = (q.e - p.e) ** 2 + (q.n - p.n) ** 2; if (dd <= reach * reach) d.push([dd, j]); }
     return d;
   };
-  for (const p of G) { const d = near(p, B1, h1, B1).sort((a, b) => a[0] - b[0]).slice(0, 7); p.s = medianOf(d.map(([, j]) => G[j].b)); }
+  if (median) for (const p of G) { const d = near(p, B1, h1, B1).sort((a, b) => a[0] - b[0]).slice(0, 7); p.s = medianOf(d.map(([, j]) => G[j].b)); }
   // the noise left in it: a return against the median of its neighbours' smoothed values
   const dev = [];
   for (let i = 0; i < G.length; i += Math.max(1, Math.floor(G.length / 3000))) { const d = near(G[i], B1, h1, B1).sort((a, b) => a[0] - b[0]).slice(1, 8); if (d.length >= 3) dev.push(Math.abs(G[i].s - medianOf(d.map(([, j]) => G[j].s)))); }
@@ -123,7 +127,7 @@ export function groundPicture(box, pts, { fine = 4, nearM = 4, maxCells = 1500 }
     regions.push({ dark: dk, n, vals: [] });
   }
   const speck = 1.5 / (cell * cell);
-  for (let k = 0; k < N; k++) { const id = lab[k]; if (id >= 0 && regions[id].n < speck) dark[k] = regions[id].dark ? 0.49 : 0.51; }
+  if (specks) for (let k = 0; k < N; k++) { const id = lab[k]; if (id >= 0 && regions[id].n < speck) dark[k] = regions[id].dark ? 0.49 : 0.51; }
   // relabel after the specks are gone, and gather each area's returns
   lab.fill(-1); regions.length = 0;
   for (let k0 = 0; k0 < N; k0++) {

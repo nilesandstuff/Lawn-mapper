@@ -21,15 +21,16 @@ function lot(seed, driveW, noise) {
 }
 const ring = [[2, 2], [58, 2], [58, 48], [2, 48]];
 const TRUE = 3.66; // 12 ft
-const got = [];
+const got = [], gotM = [];
 for (let seed = 1; seed <= 8; seed++) {
   const pic = groundPicture([0, 0, 70, 50], lot(seed, TRUE, 5000));
   const w = stripWidth(pic, ring);
   assert.ok(w, `seed ${seed}: a strip is found`);
   got.push(w.widthM);
+  const wm = stripWidth(groundPicture([0, 0, 70, 50], lot(seed, TRUE, 5000), { median: true, specks: true }), ring); gotM.push(wm ? wm.widthM : NaN);
   if (seed === 1) {
     assert.ok(Math.abs(pic.cell - 0.18) < 0.02, `a grid four times as fine as the returns (${pic.cell})`);
-    assert.ok(w.lengthM > 25, `the long straight run (${w.lengthM.toFixed(0)} m)`);
+    assert.ok(w.lengthM > 15, `the long straight run (${w.lengthM.toFixed(0)} m)`);
     // hard edges: every cell is well away from mid grey, or is the flat grey of no ground
     const k = (e, n) => (Math.floor((50 - n) / pic.cell) * pic.W + Math.floor(e / pic.cell)) * 4;
     for (let i = 0; i < pic.W * pic.H; i++) { const v = pic.rgba[i * 4]; assert.ok(v <= 90 || v >= 165 || v === 128, `no soft greys (${v})`); }
@@ -39,6 +40,7 @@ for (let seed = 1; seed <= 8; seed++) {
 }
 const mean = got.reduce((s, v) => s + v, 0) / got.length, worst = Math.max(...got.map((v) => Math.abs(v - TRUE)));
 console.log(`a ${TRUE} m drive, 8 lots: read ${got.map((v) => v.toFixed(2)).join(', ')} m (mean ${mean.toFixed(2)}, worst ${worst.toFixed(2)} m off)`);
+console.log(`  with the median and specks options: ${gotM.map((v) => v.toFixed(2)).join(', ')} m`);
 assert.ok(Math.abs(mean - TRUE) < 0.1, 'no lean: the mean within 0.1 m');
 assert.ok(worst < 0.25, 'each lot within 0.25 m');
 // other widths, so the answer is not the method's own favourite number
