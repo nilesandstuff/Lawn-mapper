@@ -30,7 +30,7 @@
  * them too.
  */
 import { listMaps, getMap, upsertMap, userOwner } from './unified.js';
-import { alphaEnabled, startAlpha, pollAlpha, alphaMaskResponse } from './alpha.js';
+import { alphaEnabled, startAlpha, pollAlpha, alphaMaskResponse, cancelAlpha } from './alpha.js';
 import { countyServiceById } from './county.js';
 import { decodePng } from './png-probe.js';
 import { keepPhoto } from './map-photo.js';
@@ -65,6 +65,11 @@ export async function writeIndex(env) {
   await env.CORPUS.put(INDEX_KEY, JSON.stringify({ at: new Date().toISOString(), maps }, null, 1), { httpMetadata: { contentType: 'application/json' } });
 }
 
+/** Why a press was given up on after half an hour, from the last line the model server wrote about it. */
+export const stillWaitingWhy = (stage) => (/waiting for a gpu/i.test(String(stage || ''))
+  ? 'the GPU provider had no GPU free for half an hour (nothing is wrong with the map)'
+  : 'no answer in half an hour');
+
 /** A finished press's mask as the lawn mapper's shapes, or null. */
 async function shapesOf(env, pressId, frame) {
   const res = await alphaMaskResponse(env, pressId);
@@ -97,7 +102,15 @@ export async function finishTraces(env, selfOrigin = '', { build = true } = {}) 
       // the site's own address as the press was made on it (the kept answer's picture links are written with it)
       const ans = await pollAlpha(env, row.press, framed.origin || selfOrigin);
       if (ans.status === 'processing') {
-        if (Date.now() - Date.parse(row.created_at) > MAX_WAIT_MS) { await set('failed', 'no answer in half an hour'); await mark(env, owner, row.map_key, { status: 'failed', detail: 'no answer in half an hour' }); }
+        if (Date.now() - Date.parse(row.created_at) > MAX_WAIT_MS) {
+          const why = stillWaitingWhy(ans.detail);
+          await set('failed', why); await mark(env, owner, row.map_key, { status: 'failed', detail: why });
+          try { await cancelAlpha(env, row.press); } catch { /* it ends by itself */ } // nobody is waiting: do not pay for the read
+        } else if (ans.detail && ans.detail !== row.detail) {
+          // the model server's own line about where the lot has got to, for the page (2026-11-11: two presses sat
+          // at "working" for half an hour while the GPU provider had no GPU free, and the page could not say so)
+          await env.DB.prepare("UPDATE admin_traces SET detail = ?2 WHERE id = ?1 AND status = 'pending'").bind(row.id, String(ans.detail).slice(0, 300)).run();
+        }
         continue;
       }
       if (ans.status !== 'succeeded') { await set('failed', ans.detail); await mark(env, owner, row.map_key, { status: 'failed', detail: ans.detail || 'the trained model failed' }); continue; }
@@ -175,7 +188,7 @@ export async function handleAdminSaves(request, env, url, origin, ctx, json, me)
     const rows = (await env.DB.prepare('SELECT map_key, status, detail, finished_at FROM admin_traces WHERE user_id = ? ORDER BY created_at').bind(me.id).all()).results || [];
     const last = new Map(rows.map((r) => [r.map_key, r]));
     const lidarOf = (key) => { const r = last.get(key); return !r || r.status === 'pending' || r.status === 'failed' ? null : { status: r.status === 'lidar' ? 'waiting' : r.status === 'building' ? 'building' : r.status === 'done' ? 'done' : 'failed', detail: r.status === 'done' || r.status === 'lidar-failed' ? r.detail : null, at: r.finished_at }; };
-    return json({ maps: (await adminSavesOf(env, me)).map((m) => ({ ...brief(m), lidar: lidarOf(m.id) })) }, 200, origin);
+    return json({ maps: (await adminSavesOf(env, me)).map((m) => ({ ...brief(m), lidar: lidarOf(m.id), working: last.get(m.id)?.status === 'pending' ? last.get(m.id).detail || null : null })) }, 200, origin);
   }
 
   if (path === 'admin-saves/check' && request.method === 'POST') {

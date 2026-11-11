@@ -10,7 +10,7 @@ import { handleMaps } from '../worker/src/routes-maps.js';
 import { handleAdmin } from '../worker/src/routes-admin.js';
 import { findOrCreateUser, createSession } from '../worker/src/db.js';
 import { SESSION_COOKIE } from '../worker/src/auth.js';
-import { finishTraces, INDEX_KEY } from '../worker/src/admin-saves.js';
+import { finishTraces, INDEX_KEY, stillWaitingWhy } from '../worker/src/admin-saves.js';
 import worker from '../worker/src/index.js';
 
 let failures = 0;
@@ -121,6 +121,8 @@ globalThis.fetch = async (u, init) => {
   const m = (await maps(env, req(`/api/maps/one?id=${encodeURIComponent(tr.body.id)}`, { cookie: oc }))).body.map;
   check('a failed trace leaves the map, saying so', m?.adminSave === true && m.trace?.status === 'failed', JSON.stringify(m?.trace));
 }
+check('a press given up on blames the GPU provider when it had none free', /no GPU free/.test(stillWaitingWhy('Waiting for a GPU to come free -- the GPU provider is busy right now (29:40)'))
+  && stillWaitingWhy('Fetching the aerial photograph') === 'no answer in half an hour' && stillWaitingWhy(null) === 'no answer in half an hour');
 check('the Worker has its timer', typeof worker.scheduled === 'function' && typeof worker.fetch === 'function');
 globalThis.fetch = realFetch;
 console.log(failures ? `\n${failures} FAILED` : '\nadmin-saves: ok');

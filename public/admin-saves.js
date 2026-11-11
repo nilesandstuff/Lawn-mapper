@@ -11,7 +11,7 @@ const traceLine = (m) => {
   const t = m.trace;
   if (!t) return '<span class="dim">no trace</span>';
   if (t.status === 'done') return `<span class="ok">Traced</span>: ${Number(m.squareFeet || 0).toLocaleString()} sq ft in ${t.pieces ?? m.shapes} piece${(t.pieces ?? m.shapes) === 1 ? '' : 's'}`;
-  if (t.status === 'pending' || t.status === 'starting') return '<span class="warn">Turf Trace is working…</span> it finishes by itself, page open or not';
+  if (t.status === 'pending' || t.status === 'starting') return `<span class="warn">Turf Trace is working…</span> ${m.working ? `${esc(m.working)}. ` : ''}It finishes by itself, page open or not`;
   if (t.status === 'kept') return '<span class="ok">Edited by hand</span>: the trace was not laid over it';
   return `<span class="bad">Trace failed</span>${t.detail ? `: ${esc(t.detail)}` : ''}. Open it in the Lawn Mapper to trace it there.`;
 };
