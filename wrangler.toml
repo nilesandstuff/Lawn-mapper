@@ -71,6 +71,11 @@ bucket_name = "lawn-mapper-corpus"
 #   npx wrangler secret put MAPBOX_TOKEN
 #   npx wrangler secret put REPLICATE_TOKEN
 
+# The one-minute timer (worker/src/index.js scheduled): finishes an administrator's test trace when its page was
+# closed (worker/src/admin-saves.js). Nothing else runs on it.
+[triggers]
+crons = ["* * * * *"]
+
 # Normally you do NOT edit this block. CI appends it from the CUSTOM_DOMAIN
 # repository variable (tools/ci-prepare.js), which is why moving the site to a
 # new hostname is a one-field change and not a commit -- and why ci-prepare

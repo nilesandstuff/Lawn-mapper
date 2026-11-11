@@ -87,6 +87,7 @@ import {
   DEFAULT_EXCLUSIONS, DEFAULT_MODEL, defaultModelFor,
 } from './sam.js';
 import { alphaEnabled, startAlpha, pollAlpha, isAlphaId, alphaMaskResponse, alphaMaskParams } from './alpha.js';
+import { finishTraces } from './admin-saves.js';
 import { pressIdOf, openPress, releasePress, stopPrediction } from './presses.js';
 import { countPress, markRefunded } from './usage.js';
 import { covers, lawnMaskUrl, LANDCOVER_HOST, overlayCatalogue } from './landcover.js';
@@ -1527,6 +1528,11 @@ async function handleCancelPress(request, env, origin, ctx) {
 export default {
   async fetch(request, env, ctx) {
     return hardened(await handle(request, env, ctx), request);
+  },
+  /* THE ONE-MINUTE TIMER (wrangler.toml [triggers]; 2026-11-11): finishes the administrators' test traces whose page
+     was closed (admin-saves.js finishTraces). One small read when nothing waits; it never throws. */
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(finishTraces(env).catch(() => 0));
   },
 };
 

@@ -194,7 +194,10 @@ export async function sweepGuests(env) {
 /* ------------------------------------------------------------------- owners */
 
 /** An owner: { kind: 'user' | 'guest', id, max }. */
-export const userOwner = (user) => ({ kind: 'user', id: user.id, max: USER_MAX_MAPS });
+/* An administrator keeps more (2026-11-11): the admin saves (admin-saves.js) are test maps made by the dozen, and
+   upsertMap deletes whatever falls off the end of an owner's newest `max`. Every other account: fifty, as before. */
+export const ADMIN_MAX_MAPS = 500;
+export const userOwner = (user) => ({ kind: 'user', id: user.id, max: user?.role === 'admin' ? ADMIN_MAX_MAPS : USER_MAX_MAPS });
 export const guestOwner = (guest) => ({ kind: 'guest', id: guest.id, max: GUEST_MAX_MAPS });
 
 const T = (owner) => (owner.kind === 'user'

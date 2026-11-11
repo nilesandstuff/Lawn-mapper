@@ -155,11 +155,19 @@ async function main() {
 /* WHICH MAP (scan/lib/maps-pick.js; owner, 2026-11-07): the app cannot be handed a map by the dashboard (that opens
    in the browser), so the page picks one itself: the nearest saved map within reach of the phone's place opens by
    itself, otherwise a list, nearest first; Change map lists them again. */
-async function pickMap({ auto = true } = {}) {
+async function pickMap({ auto = true, own = false } = {}) {
   const note = $('#mapnote');
   note.textContent = 'Finding your maps…';
-  let maps = [];
-  try { maps = (await (await fetch('/api/maps', { credentials: 'same-origin' })).json())?.maps || []; } catch { maps = []; }
+  /* THE ADMIN SAVES FIRST (the owner, 2026-11-11: "The picker on the AR page will default to maps in the admin save
+     folder. And there will be an on page drop-down that allows me to pick from any of the admin saves"): the test
+     maps made from the Lawn Mapper's AI tab (worker/src/admin-saves.js), listed by /api/maps?admin=1. With none,
+     the account's own maps as before; "Your own maps" in the drop-down shows those instead. */
+  let maps = [], admin = [];
+  const ask = async (q) => { try { return (await (await fetch(`/api/maps${q}`, { credentials: 'same-origin' })).json())?.maps || []; } catch { return []; } };
+  if (!own) admin = (await ask('?admin=1')).filter((m) => m.adminSave === true);
+  st.adminMaps = admin;
+  maps = admin.length ? admin : await ask('');
+  drawAdminPick();
   if (!maps.length) { note.textContent = 'No saved maps for this account: tracking still works without one.'; return; }
   const here = await new Promise((resolve) => {
     if (!navigator.geolocation) { resolve(null); return; }
@@ -174,6 +182,16 @@ async function pickMap({ auto = true } = {}) {
   note.querySelectorAll('[data-map]').forEach((b) => b.addEventListener('click', () => openMap(b.dataset.map, 'as picked')));
 }
 
+/** The drop-down of admin saves (and a way back to the account's own maps), above the map note. */
+function drawAdminPick() {
+  const box = $('#admin-pick'); if (!box) return;
+  const A = st.adminMaps || [];
+  box.hidden = !A.length;
+  if (!A.length) return;
+  box.innerHTML = `<label>Admin saves: <select id="admin-map"><option value="">Pick one…</option>${A.map((m) => `<option value="${esc(m.id)}"${m.id === st.map ? ' selected' : ''}>${esc(mapLabel(m))}${m.trace?.status === 'done' ? '' : m.trace?.status ? ` (trace ${esc(m.trace.status)})` : ''}</option>`).join('')}<option value="__own">Your own maps…</option></select></label>`;
+  $('#admin-map').addEventListener('change', (e) => { const v = e.target.value; if (v === '__own') pickMap({ auto: false, own: true }); else if (v) openMap(v, 'picked from the admin saves'); });
+}
+
 async function openMap(id, how) {
   st.map = id;
   try { const u = new URL(location.href); u.searchParams.set('map', id); history.replaceState(null, '', u); } catch { /* the address bar can wait */ }
@@ -181,6 +199,9 @@ async function openMap(id, how) {
   if (back) back.href = `${(back.getAttribute('href') || '').split('?')[0]}?map=${encodeURIComponent(id)}`;
   try { await loadMap(id); $('#mapnote').textContent += ` Opened ${how}.`; } catch (e) { $('#mapnote').textContent = `The map could not be opened (${e.message}).`; }
   changeButton();
+  // the drop-down of admin saves, also when the map came by its link (the admin saves page) and nothing was picked
+  if (!st.adminMaps) { try { st.adminMaps = ((await (await fetch('/api/maps?admin=1', { credentials: 'same-origin' })).json())?.maps || []).filter((m) => m.adminSave === true); } catch { st.adminMaps = []; } }
+  drawAdminPick();
 }
 
 function changeButton() {

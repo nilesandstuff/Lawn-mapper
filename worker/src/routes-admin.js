@@ -34,6 +34,7 @@ import { corpusGaps, candidateScore, storeImage, captureImage } from './corpus.j
 import { storeCountyImage } from './county-picture.js';
 import { parcelGaps } from './gaps.js';
 import { countyServicesAt } from './county.js';
+import { handleAdminSaves } from './admin-saves.js';
 import { scoreMap } from './score.js';
 import {
   outlineKeys, idOfOutlineKey, applyReview, OUTLINE_PREFIX,
@@ -119,13 +120,13 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
       const me = await currentUser(request, env, ctx);
       if (!me || me.role !== 'admin') return hidden(json, origin);
     }
-    const admins = (await env.DB.prepare("SELECT id, email FROM users WHERE role = 'admin' ORDER BY created_at").all()).results || [];
+    const admins = (await env.DB.prepare("SELECT id, email, role FROM users WHERE role = 'admin' ORDER BY created_at").all()).results || [];
     console.log(`maps read by ${byKey ? 'key' : 'cookie'}: ${path}${url.searchParams.get('id') ? ' one map' : ''}`);
     if (path === 'saved-maps') {
       const maps = [];
       for (const a of admins) {
         for (const m of await listMaps(env, userOwner(a))) {
-          maps.push({ id: m.id, address: m.address || null, at: m.at, county: m.county || null, provider: m.provider || m.imageProvider || null, tools: Object.keys(m.tools || {}), owner: a.email });
+          maps.push({ id: m.id, address: m.address || null, at: m.at, county: m.county || null, provider: m.provider || m.imageProvider || null, tools: Object.keys(m.tools || {}), owner: a.email, adminSave: m.adminSave === true, trace: m.trace?.status || null });
         }
       }
       maps.sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
@@ -142,6 +143,10 @@ export async function handleAdmin(request, env, url, origin, ctx, json) {
 
   const me = await currentUser(request, env, ctx);
   if (!me || me.role !== 'admin') return hidden(json, origin);
+
+  /* The admin saves: a test map saved and traced in one press (admin-saves.js). */
+  const adminSaves = await handleAdminSaves(request, env, url, origin, ctx, json, me);
+  if (adminSaves) return adminSaves;
 
   /* ------------------------------------------------------------ overview */
   if (path === 'overview') {

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lawn Mapper — admin saves</title>
+<meta name="robots" content="noindex, nofollow">
+<!--
+  THE ADMIN SAVES (owner, 2026-11-11; worker/src/admin-saves.js): test maps saved and traced in one press from the AI
+  tab, listed apart from the account's own maps, each with a way into every tool. Nothing is gated in the markup: the
+  API answers 404 to anybody who is not an administrator, and this page then says so.
+-->
+<link href="/styles.css" rel="stylesheet">
+<link href="/console.css" rel="stylesheet">
+<style>
+  body { margin: 0; }
+  main { max-width: 760px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 20px; margin: 4px 0 2px; }
+  .save { border: 1px solid rgba(128,128,128,.35); border-radius: 10px; padding: 12px; margin: 10px 0; }
+  .save h2 { font-size: 16px; margin: 0 0 4px; }
+  .save p { margin: 2px 0; font-size: 14px; }
+  .links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .links a, button.small { display: inline-block; padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(128,128,128,.5); text-decoration: none; font-size: 14px; color: inherit; background: none; }
+  .dim { opacity: .7; }
+  .ok { color: #2f9e5f; } .warn { color: #c98a12; } .bad { color: #cc4b3f; }
+</style>
+</head>
+<body>
+<main>
+  <p><a href="/">&larr; Lawn Mapper</a></p>
+  <h1>Admin saves</h1>
+  <p class="dim">Test maps made with "Save as admin and auto trace" on the AI tab. They are not in your own list of saved maps.</p>
+  <p><button type="button" class="small" id="refresh">Refresh</button> <span id="note" class="dim"></span></p>
+  <div id="list"></div>
+</main>
+<script type="module" src="/admin-saves.js"></script>
+</body>
+</html>

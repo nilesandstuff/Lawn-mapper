@@ -7960,6 +7960,7 @@ function renderAccountSheet() {
       : 'Daily AI passes')
       + (bought ? `, plus ${bought.toLocaleString()} bought` : '');
   $('#account-admin').hidden = !me.admin;
+  { const b = $('#btn-admin-trace'); if (b) b.hidden = !me.admin; }
 }
 
 /**
@@ -8457,6 +8458,41 @@ function snapshotForSave() {
        it back under the outlines exactly (lookupCountyPhoto). */
     ...countyLineUp(),
   };
+}
+
+/**
+ * SAVE AS ADMIN AND AUTO TRACE (owner, 2026-11-11; worker/src/admin-saves.js): the lot as it is set up here (address,
+ * property line, the photo picked and lined up) saved as an ADMIN SAVE and sent to Turf Trace; the server puts the
+ * trace into the map whether or not this page stays open. Then the admin saves page. Administrators only: the button
+ * is hidden for everyone else and the route answers 404 to them.
+ *
+ * Its own id ("admin|..."), so it can never replace one of the account's ordinary maps; the same address pressed
+ * again is the same admin save, traced again.
+ */
+async function adminSaveAndTrace() {
+  const b = $('#btn-admin-trace');
+  if (!state.chosen || !state.frame) { setStatus('Choose an address first: the lot has to be on the map.'); return; }
+  const provider = effectiveProvider(state.provider), mode = saveMode();
+  const map = {
+    id: `admin|${saveKeyFor(state.chosen.label, 'alpha', mode)}`,
+    at: new Date().toISOString(),
+    address: state.chosen.label, lng: state.chosen.lng, lat: state.chosen.lat,
+    county: state.parcel?.properties?.county || null,
+    model: 'alpha', mode, provider,
+    edgeFt: state.edgeFt, confidence: state.confidence, fillGaps: { ...state.fillGaps }, handEdited: false,
+    squareFeet: 0, acres: 0,
+    frame: { ...state.frame }, parcel: state.parcel || null, shapes: [],
+    ...countyLineUp(),
+  };
+  const segment = { ...detectionRequest(state.frame, provider, 'alpha', []), parcel: state.parcel?.geometry || null, naipAlign: state.naipAlign || null };
+  b.disabled = true; setStatus('Saving as an admin save and starting Turf Trace…');
+  try {
+    const r = await api('/api/admin/admin-saves/trace', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ map, segment }), timeoutMs: 60000 });
+    setStatus(r.trace === 'pending' ? 'Saved. Turf Trace is working; it finishes by itself.' : `Saved, but Turf Trace did not start (${r.detail || 'no reason given'}).`);
+    location.href = '/admin-saves.html';
+  } catch (err) {
+    setStatus(`Could not save as an admin save: ${err.message || err}`);
+  } finally { b.disabled = false; }
 }
 
 /** Keep this measurement, replacing the one it supersedes. */
@@ -14363,6 +14399,7 @@ document.addEventListener('click', (e) => {
 });
 
 $('#btn-detect').addEventListener('click', () => detect());
+$('#btn-admin-trace')?.addEventListener('click', () => adminSaveAndTrace());
 $('#busy-cancel').addEventListener('click', () => giveUpOnDetection('cancel'));
 $('#busy-retry').addEventListener('click', () => giveUpOnDetection('retry'));
 

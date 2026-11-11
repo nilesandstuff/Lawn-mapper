@@ -63,6 +63,17 @@ Every answer carries `signedIn`, `guest` (true when the owner is a guest) and `m
 
 A guest's second map (`POST /api/maps` or `/api/maps/new`) answers **409** with `{ error: 'guest-limit', message }`: show the message and a way to sign in. Signing in keeps the map they have.
 
+## Admin saves: test maps made in one press (2026-11-11)
+
+For the administrator only; every other account's lists and saves are exactly what they were (tools/admin-saves.test.js checks that first). worker/src/admin-saves.js.
+
+- **Made** on the Lawn Mapper's AI tab by "Save as admin and auto trace" (a button only an administrator is shown): `POST /api/admin/admin-saves/trace` saves the lot as set up there (address, property line, the photo picked and lined up) with `adminSave: true` in its record, under an id of its own (`admin|...`, so it can never replace an ordinary map), and starts Turf Trace on its frame.
+- **The trace lands by itself.** The Worker's one-minute timer (`scheduled`, wrangler.toml `[triggers]`) asks about each press still waiting (table `admin_traces`) and writes the finished trace into the map: `shapes`, `squareFeet`, and `trace: { status: 'done' | 'pending' | 'failed' | 'kept', ... }`. The lawn is the raw trace; opened in the Lawn Mapper it is edited like any map, and stays an admin save.
+- **Listed apart.** For an administrator `GET /api/maps` leaves admin saves out and `GET /api/maps?admin=1` lists only them (both forwarded by the home, scan and water Workers like every `/api/maps` call). `GET /api/maps/one?id=` opens one like any map, so every tool works on it unchanged. The page `https://lawnmap.<home>/admin-saves.html` lists them with a link into each tool; the yard AR page picks from them first.
+- **An administrator keeps 500 maps**, not 50, so test maps cannot push real ones off the end.
+- **For sessions:** `GET /api/admin/saved-maps` (the key route above) marks each map `adminSave` and gives its `trace`; and every change rewrites `admin-saves/index.json` in the corpus bucket (private): `id`, `address`, `lng`, `lat`, `county`, `at`, `squareFeet`, `trace`, `tools`. Addresses stay there and in the database, never in the repository or a workflow's log.
+- **A tool that wants only the test maps** (the water map's measurements page) asks `GET /api/maps?admin=1`.
+
 ## What each tool keeps in its part
 
 Only what it needs to pick up where the person left off. Derived numbers that can be recomputed from the map and the lidar do not belong there.
