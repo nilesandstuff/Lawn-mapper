@@ -75,6 +75,15 @@ check("C is found from the frame, no labels", 0 < info["c"] < ic.MAX_C, str(info
 
 lay2, info2 = ic.layers(scene(timed=False), BBOX, CELL)
 check("no GPS time: the pulse layer is empty, the others stand", not info2["pulses_timed"] and not np.isfinite(lay2["intensity_pulse"]).any() and np.isfinite(lay2["intensity_group"]).any())
+# times shared between pulses (some flights): the open ground must come out exactly as the raw
+shared = pts.copy()
+shared[:, 7] = np.round(shared[:, 7], 1)  # a hundred pulses to a time
+lay4, info4 = ic.layers(shared, BBOX, CELL)
+open_cells = (c == 0) | (c == 3)
+check("shared times: a single return in the open is its own sum, to the digit",
+      np.allclose(lay4["intensity_pulse"][open_cells], raw_layer(shared)[open_cells], equal_nan=True) and info4["time_shared_share"] > 0.5,
+      str(info4))
+check("unshared times: the open is the raw there too", np.allclose(lay["intensity_pulse"][open_cells], lay["intensity"][open_cells], rtol=1e-5, equal_nan=True))
 lay3, _ = ic.layers(pts[:, :5], BBOX, CELL)
 check("narrow points: nothing is made up", not any(np.isfinite(v).any() for v in lay3.values()))
 check("auc: perfect, reversed, tied", ic.auc([2, 3], [0, 1]) == 1.0 and ic.auc([0, 1], [2, 3]) == 0.0 and ic.auc([1, 1], [1, 1]) == 0.5)

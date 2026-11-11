@@ -18,8 +18,9 @@ intensity ranked within its frame. Three corrections, each from fields every
           intensity on the first-of-many intensity, over cells with both a
           ground return; never negative).
   pulse   the pulse put back together: every return of a pulse (the same GPS
-          time) added up, and the sum given to its ground return. NaN
-          everywhere when the flight keeps no time.
+          time, and exactly as many points as the pulse has returns) added
+          up, and the sum given to its ground return; a single return is its
+          own sum. NaN everywhere when the flight keeps no time.
   group   no physics: each ground return ranked among the frame's ground
           returns with the same number of returns (1, 2, 3+), so a return
           that came through a crown is compared with others that did.
@@ -110,12 +111,28 @@ def layers(points, bbox, cell):
     out["intensity_lang"] = (g_mean + c * f_mean).astype(np.float32)
 
     # pulse: every return of the pulse added up (the same GPS time), given to its ground return
+    # A TIME IS NOT ALWAYS ONE PULSE (found 2026-11-11, the owner: "accuracy
+    # in the open shouldn't be affected. That strongly indicates that
+    # something went wrong"): on some flights a third or more of the points
+    # share a GPS time with points of OTHER pulses (Nebraska 2016 34%, Iowa
+    # 2019 42%, Will County 2014 15%), and the first version added strangers
+    # together -- single returns in the open included. So a time is taken as
+    # a pulse only when it holds exactly as many points as the pulse has
+    # returns; a single return is always its own sum; a split pulse whose
+    # time is shared is left out of the layer.
     if len(gps) and float(np.ptp(gps)) > 0:
         _, inv, counts = np.unique(gps, return_inverse=True, return_counts=True)
         total = np.bincount(inv, weights=inten)
-        out["intensity_pulse"] = cell_mean(total[inv[ground]])
+        whole = counts[inv] == nret
+        value = np.where(nret <= 1, inten, np.where(whole, total[inv], np.nan))
+        vg = value[ground]
+        ok = ~np.isnan(vg)
+        n_ok = np.bincount(gf[ok], minlength=size)
+        s_ok = np.bincount(gf[ok], weights=vg[ok], minlength=size)
+        out["intensity_pulse"] = np.where(n_ok > 0, s_ok / np.maximum(n_ok, 1), np.nan).reshape(gh, gw).astype(np.float32)
         info["pulses_timed"] = True
-        info["pulse_whole_share"] = float((counts[inv[ground]] >= nret[ground]).mean())
+        info["pulse_whole_share"] = float(ok.mean())
+        info["time_shared_share"] = float((counts[inv] > nret).mean())
 
     # group: ranked among the frame's ground returns with the same number of returns
     grp = np.clip(nret[ground], 1, 3).astype(np.int64)
@@ -258,5 +275,9 @@ def print_table(lots, infos):
     if multi:
         print(f"  Ground returns that shared their pulse with another return: middle lot {100 * np.median(multi):.0f}%.")
     if whole:
-        print(f"  Ground returns whose whole pulse was inside the frame: middle lot {100 * np.median(whole):.0f}%.")
+        print(f"  Ground returns whose pulse could be put together (or were single): middle lot {100 * np.median(whole):.0f}%.")
+    shared = [i["time_shared_share"] for i in infos if i.get("time_shared_share") is not None]
+    if shared:
+        print(f"  Points whose GPS time is shared with another pulse's: middle lot {100 * np.median(shared):.1f}%, "
+              f"{sum(1 for v in shared if v > 0.1)} lots over 10%.")
     return table

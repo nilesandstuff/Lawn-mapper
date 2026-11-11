@@ -614,8 +614,9 @@ def main():
             try:
                 extra = shifts.get(lawn_id)
                 extra_m = (extra["east"], extra["north"]) if extra else None
-                # wide points (S69) are kept apart: a five-column cache must never answer a wide read, nor the reverse
-                cache_file = (Path(points_cache) / f"{lawn_id}{'.wide' if lidar_sources.WIDE else ''}.npz") if points_cache else None
+                # wide points (S69) are never cached: a five-column cache must not answer a wide read, and the
+                # folder is banked in R2 (tools/bank.js) as the training reader's own
+                cache_file = (Path(points_cache) / f"{lawn_id}.npz") if points_cache and not lidar_sources.WIDE else None
                 # The frame's box is in the key: these files are banked per
                 # lot in R2 (tools/bank.js), where a re-drawn frame must read
                 # afresh rather than find the old frame's points.
@@ -762,6 +763,18 @@ def main():
             lo, hi = np.nanpercentile(inten_f, [2, 98])
             pic = np.where(np.isnan(inten_f), 0, 1 + np.clip((inten_f - lo) / max(hi - lo, 1e-6), 0, 1) * 254).astype(np.uint8)
             Image.fromarray(pic).save(out / f"{lawn_id}-intensity-fine.png")
+        # S69, FOR THE EYE (owner, 2026-11-11: "I want to see for myself how
+        # all 3 different strategies compare with control"): the three
+        # corrected brightness pictures at the same half-metre cells, each
+        # stretched as the raw one above is, beside it on the predictions page.
+        if s69_info is not None:
+            fine_s69, _ = intensity_canopy.layers(pts, bbox, FINE_CELL_M)
+            for key, name in (("intensity_lang", "lang"), ("intensity_pulse", "pulse"), ("intensity_group", "group")):
+                v = fill_surface(fine_s69[key], rounds=2)
+                if np.isfinite(v).any():
+                    lo, hi = np.nanpercentile(v, [2, 98])
+                    pic = np.where(np.isnan(v), 0, 1 + np.clip((v - lo) / max(hi - lo, 1e-6), 0, 1) * 254).astype(np.uint8)
+                    Image.fromarray(pic).save(out / f"{lawn_id}-intensity-{name}-fine.png")
 
         uc = seps["under canopy"]
         print(f"  {label} {str(p.get('year') or '—'):>4}  {rec['points_per_m2']:5.1f} pts/m²  "

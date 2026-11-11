@@ -570,6 +570,12 @@ export const LAYERS = [
   // ground, so a drive or kerb in it can be compared with the photo's.
   { id: 'lidarTall', label: 'lidar: outline of everything 2.5 m+ (half-metre cells)', colour: [255, 230, 0], on: true },
   { id: 'lidarGround', label: 'lidar: ground brightness (half-metre cells)', colour: [220, 220, 220], on: false, grey: true },
+  // S69 (owner, 2026-11-11): the same brightness corrected for the crown
+  // above it, three ways, to compare with the one above by eye. Only in a
+  // run made with `brightness: corrected`; absent, the page has no such box.
+  { id: 'lidarGroundLang', label: 'lidar: ground brightness + a share of the first return (S69 a)', colour: [220, 220, 220], on: false, grey: true },
+  { id: 'lidarGroundPulse', label: 'lidar: ground brightness, whole pulse added up (S69 b)', colour: [220, 220, 220], on: false, grey: true },
+  { id: 'lidarGroundGroup', label: 'lidar: ground brightness ranked by return count (S69 c)', colour: [220, 220, 220], on: false, grey: true },
   { id: 'void', label: 'lidar void / water', colour: [0, 188, 212], on: false },
   { id: 'mask', label: 'detector: raw answer', colour: TRACE, on: false },
   { id: 'added', label: 'stage 3: put back under trees', colour: ADDED, on: true },

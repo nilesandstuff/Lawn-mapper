@@ -1440,7 +1440,7 @@ async function publishRenderings(bucket, best, lawns, using, meta = {}) {
           refineRemoved: big(clipTo(r.refineRemoved)),
           line: big(L.within),
         },
-        greys: { lidarGround: big(L.lidarGround) },
+        greys: { lidarGround: big(L.lidarGround), ...Object.fromEntries(Object.entries(L.lidarMore || {}).map(([k, v]) => [k, big(v)])) },
       });
 
       /* Named by position, not by map id. The id contains the coordinates of
@@ -1910,6 +1910,7 @@ async function main() {
       let naipCanopy = null;
       let lidarTall = null;
       let lidarGround = null;
+      const lidarMore = {};
       if (lidarDir) {
         const file = join(lidarDir, `${row.id}-height.png`);
         if (existsSync(file)) {
@@ -1935,6 +1936,11 @@ async function main() {
         }
         const bright = join(lidarDir, `${row.id}-intensity-fine.png`);
         if (existsSync(bright)) lidarGround = greyMask(decoders.png.PNG.sync.read(readFileSync(bright)), G, GH);
+        // S69: the three corrected brightness pictures, when the run made them (LIDAR_WIDE)
+        for (const [key, name] of [['lang', 'lidarGroundLang'], ['pulse', 'lidarGroundPulse'], ['group', 'lidarGroundGroup']]) {
+          const f = join(lidarDir, `${row.id}-intensity-${key}-fine.png`);
+          if (existsSync(f)) lidarMore[name] = greyMask(decoders.png.PNG.sync.read(readFileSync(f)), G, GH);
+        }
       }
       const parcelGeom = parse(row.parcel);
       /*
@@ -2048,6 +2054,7 @@ async function main() {
         naipCanopy,
         lidarTall,
         lidarGround,
+        lidarMore,
         /*
          * THE TREE MODEL'S CANOPY PLUS WHAT TWO OTHER INSTRUMENTS AGREE IT
          * MISSED (H41): cells the lidar (2011-2020) AND NAIP-CHM (2021-2023)

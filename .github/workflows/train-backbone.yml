@@ -318,10 +318,17 @@ on:
         # whoever reads them. Every S67 run rebuilt all three for an hour
         # because the cache steps were wired to the CPU path alone. The
         # features are never cached for Modal: they are made and used there.
-        description: 'Reuse saved canopy / lidar / NAIP / features when nothing they depend on changed'
+        # 'brightness pictures' (S69, owner 2026-11-11: "I want to see for
+        # myself how all 3 different strategies compare with control"): the
+        # canopy, lidar and NAIP are made afresh with the lidar read WIDE
+        # (LIDAR_WIDE: return number, number of returns, GPS time), so the
+        # predictions page gets three corrected ground-brightness layers
+        # beside the raw one and the lidar step ends with their table. The
+        # saved features are still reused; nothing the model reads changes.
+        description: 'Reuse saved canopy / lidar / NAIP / features when nothing they depend on changed (brightness pictures: re-read the lidar with the S69 layers for the predictions page)'
         type: choice
         default: 'use'
-        options: ['use', 'rebuild']
+        options: ['use', 'rebuild', 'brightness pictures']
       gpu:
         # WHERE THE ARITHMETIC HAPPENS (owner, 2026-09-28). "modal" sends the
         # tree model, the backbone and the decoders to a GPU on Modal
@@ -720,7 +727,7 @@ jobs:
 
       - name: Reuse the backbone's features if saved
         id: feats
-        if: ${{ inputs.gpu != 'modal' && inputs.cache == 'use' }}
+        if: ${{ inputs.gpu != 'modal' && inputs.cache != 'rebuild' }}
         uses: actions/cache/restore@v4
         with:
           path: |
@@ -857,6 +864,7 @@ jobs:
           TILE_DIR: lidar-tiles
           POINTS_CACHE: lidar-points
           LIDAR_TILES_VIA: modal
+          LIDAR_WIDE: ${{ inputs.cache == 'brightness pictures' && '1' || '' }}
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
           LIDAR_SHIFTS: ${{ inputs.lidar_align == 'fit' && 'lidar-fit/lidar-shifts.json' || (inputs.lidar_align == 'saved' && 'tools/locked-lidar-shifts.json' || '') }}
@@ -864,7 +872,7 @@ jobs:
           # only uses were the shelved "lidar ∩ NAIP canopy" row and a
           # picture layer. NAIP_CHM=1 brings it back.
         run: |
-          (cd tools && python3 lidar_sources_test.py)
+          (cd tools && python3 lidar_sources_test.py && python3 intensity_canopy_test.py > /dev/null && echo "intensity_canopy: ok")
           python3 tools/lidar_frame.py
           rm -rf lidar-tiles
           echo "Raw points kept for $(ls lidar-points 2>/dev/null | wc -l) frames ($(du -sh lidar-points 2>/dev/null | cut -f1))."
@@ -879,7 +887,7 @@ jobs:
         run: node tools/bank.js save lidar-points lidar-points
 
       - name: Save the lidar's raw points for the next run
-        if: ${{ inputs.canopy != 'off' && steps.prep.outputs.cache-hit != 'true' && steps.points.outputs.cache-hit != 'true' }}
+        if: ${{ inputs.canopy != 'off' && steps.prep.outputs.cache-hit != 'true' && steps.points.outputs.cache-hit != 'true' && inputs.cache != 'brightness pictures' }}
         uses: actions/cache/save@v4
         with:
           path: lidar-points
@@ -1075,7 +1083,7 @@ jobs:
       # nothing in these folders (the shift and the jitter are applied in
       # train_decoder.py), so what they computed is good for any run.
       - name: Save the canopy, lidar and NAIP for later runs
-        if: ${{ inputs.canopy != 'off' && steps.prep.outputs.cache-hit != 'true' && inputs.naip_trial != 'without NDVI' }}
+        if: ${{ inputs.canopy != 'off' && steps.prep.outputs.cache-hit != 'true' && inputs.naip_trial != 'without NDVI' && inputs.cache != 'brightness pictures' }}
         uses: actions/cache/save@v4
         with:
           path: |
