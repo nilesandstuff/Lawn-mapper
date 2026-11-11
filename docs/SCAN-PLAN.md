@@ -2427,3 +2427,16 @@ HARD:
     Before the eave and lawn rules only 5 corners qualify on both buildings (the outline's other corners have an edge
     under 2.5 m); the house's north-west is out by its eave, 4.66 m against 4.6.
 NOT known: anything about it on a phone. No walk has used it.
+
+A FIRST WALK KEEPS ITSELF AS THE REFERENCE; SAVED OR FRESH AT THE START (owner, 2026-11-11; eb36462). For a day of
+return visits to the same stops. Agreed with the owner before building:
+  - corners in tiers: the original rules (15 ft up, 15 ft from the lawn); with fewer than three, corners up to 18 ft up
+    and 30 ft from the lawn follow (tier 2); with only two, they are used with a check;
+  - the only gate on an unseen reference (walkref.js referenceFit): two roof corners the same distance apart as marked
+    as on the lidar, within 1 ft; or three or more marks each within 1 ft of its place after the best fit; and the
+    marks 10 ft or more apart. Roof corners alone are used when two or more are marked;
+  - "Fresh" replaces the saved walk once the new one passes; the replaced one is kept under refs/backup/.
+Built in the page: the phone keeps the standing and ground points on every walk; at the end it builds the reference
+and sends it (three tries), and the walk's card says "Saved as this map's reference" or why not. A chosen saved walk
+is used even when the map's points are newer than it (the "stale" rule gives way to the owner's choice).
+NOT known: any of it on a phone. The roof marking and this have never run on a real walk.
