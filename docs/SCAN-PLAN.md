@@ -2364,3 +2364,14 @@ HARD:
     the lot: 10.1 m long, 17 cross-sections, median 3.86 m (12 ft 8 in), the middle half 3.75-4.03 m.
 NOT known: that the run measured is the drive (the log holds no place; 44% dark says the woods' floor reads dark too),
 and the true width (the owner's tape measure).
+
+THE OWNER'S WAY (2026-11-11: "Please ask before directly contradicting plans I've laid out. Try it my way"). The
+median of the 7 nearest and the speck removal were the core session's additions, made without asking: now options,
+off by default (3747af1). RULE: a change to a method the owner laid out is asked for first, not made and reported.
+  - Made-up lots, the owner's way: a 3.66 m drive read 3.71 m on average over 8 lots, worst 0.16 m off (with the
+    additions 3.64 m, worst 0.25 m); 2.7 m read 2.68; 5.0 m read 4.85.
+  - The owner's lot, run 262: a return's own noise 6556 against levels 47001 and 24197; 46% dark. The longest
+    straight dark run of one width inside the lot: 13.8 m long, 22 cross-sections, median 6.45 m (21 ft 2 in), the
+    middle half 6.39-6.61 m. Run 260, with the additions, found a different run: 10.1 m long, 3.86 m wide.
+  - So the two readings are of two different strips, and which (if either) is the drive is NOT known: the strip
+    finder (the longest straight run), not the picture, chose them, and the log holds no place.
