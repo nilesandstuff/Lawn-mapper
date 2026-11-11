@@ -8750,6 +8750,54 @@ is 130 sqft, so maybe the cutoff should be 100 sqft"),** on the condo,
 where grass islands between driveways run 100 to 150 sq ft. Same scope as
 above: the outline, not the scored mask.
 
+### S69. Ground brightness under a crown is dimmed by the crown: correct it before the decoder reads it? (owner, 2026-11-11 -- NOT MEASURED; literature read)
+
+The owner, looking at the lidar brightness picture with the trees removed:
+"the tree canopy was very visible. By the way it alters the brightness of
+the ground returns... that must mess with the turf Trace model's ability to
+see through the canopy." H34 measured the symptom (ground intensity: 0.77 to
+0.79 in the open, 0.45 under canopy, direction flipping lot to lot) and H97
+adopted the UNCORRECTED intensity, ranked within its frame, as a decoder
+input. Nothing here has measured a corrected one.
+
+What others have done (read 2026-11-11; none of it on our data):
+- Korpela, Hovi & Morsdorf 2012 (understory trees, discrete-return ALS):
+  second and third returns corrected by a multiplier that grows with the
+  intensity of the pulse's EARLIER returns, plus a term for the pulse's path
+  through the crown. Spread (CV) of second/third-return intensity fell from
+  68-84% to 45-74%; ground-against-species classification improved. They
+  call the task ill-posed in discrete-return data, and found that even
+  SINGLE returns under a crown lose up to 10-15% to hits too weak to
+  register; second returns differed by up to 60%.
+- Lang et al. 2020 (inundation under forest, bare-earth intensity): the
+  normalised ground image is G + C x F, the ground intensity plus a fixed
+  share of the first-return intensity, C fitted from two reference classes
+  so that canopy cover no longer shows. Their maps: 99.4-100% overall.
+- Hopkinson & Chasmer (canopy gap fraction from return intensities), and
+  the full-waveform attenuation corrections (Richter et al. 2014/2015,
+  Lindberg et al. 2012, Beer-Lambert): the same idea with the whole echo.
+- Kashani et al. 2015 (review): range, angle and gain corrections come
+  first; intensity is not comparable between sensors or flights without
+  them.
+
+Candidates, cheapest first, all from fields every 3DEP point carries
+(intensity, return number, number of returns, gps time to group a pulse):
+  (a) the Lang form per cell: ground intensity + C x the intensity of the
+      returns above it, C fitted per frame so open and covered lawn match;
+  (b) the pulse sum: every return of a pulse added up (grouped by gps
+      time), given to the ground cell;
+  (c) rank ground intensity within its own return-count group (single,
+      last of 2, last of 3+), so a covered cell is compared with covered
+      cells -- no physics, and what a ranked input (H97) may need most;
+  (d) single returns only (thinner; still 10-15% low per Korpela).
+THEORY, the owner's: the aim is a picture a trained decoder can read, not
+reflectance, so (c) or (a) may be enough where calibration would not be.
+TEST (free runner, no training): H34's under-canopy AUC and S38's
+intensity-against-errors table, raw against each candidate, on the locked
+lots. A candidate that lifts the under-canopy AUC clear of 0.45 on most
+lots, same direction, earns workflow 14 `refiner_trial: intensity` with it
+in place of `intensity_rank`, against the bar in the rules below.
+
 ### S68. Should a live press read LEAF-ON lidar, when the decoder has seen little? (owner, 2026-10-29) -- DECIDED 2026-10-29 by the owner ("I agree with your judgements about leaf on lidar"): the middle course, live only; training unchanged
 
 **The owner's question.** Ketchum's older survey (Southern Idaho 2018) has a
