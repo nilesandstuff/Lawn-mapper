@@ -2375,3 +2375,39 @@ off by default (3747af1). RULE: a change to a method the owner laid out is asked
     middle half 6.39-6.61 m. Run 260, with the additions, found a different run: 10.1 m long, 3.86 m wide.
   - So the two readings are of two different strips, and which (if either) is the drive is NOT known: the strip
     finder (the longest straight run), not the picture, chose them, and the log holds no place.
+
+## 24. The hard-edged ground picture failed; three options; roof corners first (owner, 2026-11-11)
+
+The owner, on section 23's picture: "My approach was better, but neither produced any sort of usable edge, the edges
+are far too noisy, so neither of your measurements are really relevant, because there are no parallel sides. So,
+okay, my plan is dead in the water." And the two problems as the owner states them: "it's too difficult for a human to
+pick out a spot for references by looking at lidar. Period. Unsolvable. But the imagery doesn't fit to lidar."
+The owner's three options, ranked by both: 2 first, then 1 where roofs do not reach, 3 for what is left.
+
+OPTION 1, KEPT FOR LATER ("save your notes on option 1 and we'll come back to it if we have to"). We pick, or help
+pick, the references by (a) recognisability (corners, edges by landmarks; or "pick any spot on this edge") and (b) how
+well the photo is known to fit the lidar at that spot; each point then carries a margin of error from that, the fit
+trusting a front-yard point tightly and a back-yard one loosely. Notes (SPECULATION, nothing built or measured):
+  - The confidence signal exists: public/lib/register.js matches the photo to the lidar's ground picture patch by
+    patch (section 22). An agreeing patch says the photo fits there AND how far it is off there (to about 0.2 m), so
+    no whole-picture fit is needed: a point in an agreeing patch takes that patch's own correction and a tight
+    margin; a point far from any takes a wide one.
+  - On the owner's two lots only about 5% of patches agreed (NAIP against lidar), mostly drive and road; a back yard
+    may have none. Not measured for the county photo or Mapbox against the lidar by this method.
+  - Choosing "recognisable" features automatically is the least sure part.
+  - The owner's two notes: (1) "preferably this option would show the points on county photos or mapbox... Naip is
+    pretty sparse for visual details"; (2) "if naip has to be used, then the user should pick the point... they freely
+    place points and we weight those points with the known level of certainty by location, and require more points
+    if the total level of certainty is too low".
+
+OPTION 2, BEING BUILT: 2-4 ROOF CORNERS AS THE REFERENCES ("Not walls, roof corners"). The photo leaves the problem:
+the corner's place is the lidar's own. The owner's requirements:
+  - marked by aiming UP at the corner itself ("straight down guess could be quite inaccurate, and vary unpredictably
+    between users");
+  - the user picks the corners, or is shown them, on the map the lawn was traced on;
+  - a limit on how high above the ground a chosen corner may be;
+  - a prescribed, checked procedure in AR, each step confirming its data, the mark made automatically when the corner
+    is read steadily and agrees with what it realistically should be; as few steps as possible, no long waits
+    ("Patience is a limited resource");
+  - corners within 15 ft of a lawn edge when there is one.
+OPTION 3: give up on perfect; minimise the error and say how large it may be.
