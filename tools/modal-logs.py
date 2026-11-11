@@ -55,6 +55,37 @@ def apps_matching(names):
     return sorted(found, key=lambda a: a[3], reverse=True)
 
 
+def presses():
+    """The newest lines the live server wrote about its lots (its progress Dict): the stage and how old it is.
+    A stage says what a lot is doing, never where it is."""
+    import time
+    r = modal("dict", "items", "lawn-mapper-alpha-progress", "100000", "--json")
+    if r.returncode != 0:
+        return [f"  (could not read the progress notes: {(r.stderr or r.stdout).strip()[:200]})"]
+    try:
+        rows = json.loads(r.stdout)
+    except json.JSONDecodeError:
+        return ["  (the progress notes were not JSON)"]
+    notes = []
+    for row in rows:
+        v = row.get("Value") or row.get("value")
+        if isinstance(v, str):
+            try:
+                v = json.loads(v.replace("'", '"'))
+            except Exception:  # noqa: BLE001
+                m = re.search(r"'stage': '([^']*)'.*?'at': ([0-9.]+)", v)
+                v = {"stage": m.group(1), "at": float(m.group(2))} if m else None
+        if isinstance(v, dict) and v.get("at"):
+            notes.append(v)
+    notes.sort(key=lambda n: n["at"], reverse=True)
+    out = []
+    for n in notes[:8]:
+        age = int(time.time() - n["at"])
+        out.append(f"  {age // 60:4d} min {age % 60:02d} s ago  {str(n.get('stage'))[:150]}"
+                   + (f"  (downloads {n['downloads']} s)" if n.get("downloads") is not None else ""))
+    return out or ["  (no progress notes)"]
+
+
 def main():
     apps = apps_matching(APPS)
     print(f"Apps on Modal matching {', '.join(APPS)}: {len(apps)}")
@@ -92,6 +123,10 @@ def main():
     if not errors:
         print("  No error lines in that window.")
     print(f"Everything is in the 'modal-logs' artifact ({OUT}).")
+    if "lawn-mapper-alpha" in APPS:
+        print("The live server's newest lots, newest first (what each last said it was doing):")
+        for l in presses():
+            print(l)
     if os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
             f.write(f"### Modal logs since {SINCE}\n\n{len(errors)} error line(s).\n\n```\n"
