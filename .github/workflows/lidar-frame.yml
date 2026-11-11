@@ -25,10 +25,20 @@ on:
   workflow_dispatch:
     inputs:
       lawns:
-        description: 'Which lawns: the frozen benchmark of 32 (comparable), every approved map (all), or only those since the freeze (new)'
+        description: 'Which lawns: the frozen benchmark of 32 (comparable), the locked training set, every approved map (all), or only those since the freeze (new)'
         type: choice
         default: 'benchmark'
-        options: ['benchmark', 'all', 'new']
+        options: ['benchmark', 'locked', 'all', 'new']
+      brightness:
+        # S69 (owner, 2026-11-11): the ground's brightness under a crown is
+        # dimmed by the crown. 'corrected' reads each point's return number,
+        # number of returns and GPS time as well, makes three corrected
+        # layers beside the raw one (tools/intensity_canopy.py) and ends the
+        # read with their table. It measures; no model reads them.
+        description: 'Ground brightness under the trees: as it is (off), or raw beside three corrections (S69)'
+        type: choice
+        default: 'off'
+        options: ['off', 'corrected']
       cell:
         # A QL2 collection is about two points and under one ground return a
         # square metre, so 1 m cells are mostly empty and 15 cm is out of the
@@ -83,6 +93,7 @@ jobs:
         run: |
           python3 canopy_test.py
           python3 lidar_test.py
+          python3 intensity_canopy_test.py
           python3 naip_chm_test.py
           python3 crowns_lidar_test.py
           node lidar-cover.test.js
@@ -125,6 +136,7 @@ jobs:
           # read over each frame (about 1.5 s). Workflow 23 only; workflow 14
           # does not read it.
           NAIP_CHM: '1'
+          LIDAR_WIDE: ${{ inputs.brightness == 'corrected' && '1' || '' }}
         run: |
           echo "About: $RUN_ABOUT"
           python3 tools/lidar_frame.py

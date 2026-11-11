@@ -487,14 +487,20 @@ def points_over(base, bbox, limit_nodes=400):
         x, y = np.asarray(las.x), np.asarray(las.y)
         m = (x >= bbox[0]) & (x <= bbox[2]) & (y >= bbox[1]) & (y <= bbox[3])
         if m.any():
-            parts.append(np.column_stack([
+            has_time = "gps_time" in las.point_format.dimension_names
+            cols = [
                 x[m], y[m], np.asarray(las.z)[m],
                 np.asarray(las.intensity)[m].astype(np.float64),
                 np.asarray(las.classification)[m].astype(np.float64),
-            ]))
-            if "gps_time" in las.point_format.dimension_names:
+            ]
+            if lidar_sources.WIDE:  # S69: the pulse's own fields, after the five everything reads by position
+                cols += [np.asarray(las.return_number)[m].astype(np.float64),
+                         np.asarray(las.number_of_returns)[m].astype(np.float64),
+                         np.asarray(las.gps_time)[m].astype(np.float64) if has_time else np.zeros(int(m.sum()))]
+            parts.append(np.column_stack(cols))
+            if has_time:
                 gps.append(np.asarray(las.gps_time)[m].astype(np.float64))
-    pts = np.vstack(parts) if parts else np.zeros((0, 5))
+    pts = np.vstack(parts) if parts else np.zeros((0, lidar_sources.NCOL))
     share, dated = lidar_sources.leaf_on_share(np.concatenate(gps) if gps else None)
     return pts, {"nodes": len(nodes), "mb": nbytes / 1e6, "points": int(len(pts)),
                  "ept_points": ept.get("points"), "leafOnShare": share, "dated": dated}
@@ -569,6 +575,7 @@ def main():
         print(f"Ground moves for {len(shifts)} lots from {shifts_file} (the rest: the datum move alone).\n")
     summary["ground_shifts"] = len(shifts)
     pooled = {k: {"under canopy": [[], []], "visible": [[], []]} for k in SEPARATED}
+    s69_lots, s69_infos = [], []
     t_all = time.time()
     # NAIP-CHM (E9), when asked: the index once, then a windowed read a frame.
     naip_files = {}
@@ -607,7 +614,8 @@ def main():
             try:
                 extra = shifts.get(lawn_id)
                 extra_m = (extra["east"], extra["north"]) if extra else None
-                cache_file = (Path(points_cache) / f"{lawn_id}.npz") if points_cache else None
+                # wide points (S69) are kept apart: a five-column cache must never answer a wide read, nor the reverse
+                cache_file = (Path(points_cache) / f"{lawn_id}{'.wide' if lidar_sources.WIDE else ''}.npz") if points_cache else None
                 # The frame's box is in the key: these files are banked per
                 # lot in R2 (tools/bank.js), where a re-drawn frame must read
                 # afresh rather than find the old frame's points.
@@ -646,6 +654,11 @@ def main():
         layers = layers_from(raster, cell)
         layers.update(understory_layers(*understory_counts(pts, bbox, cell, layers["ground_z"])))
         gh, gw = raster["n_all"].shape
+        s69_info = None
+        if lidar_sources.WIDE:  # S69: the ground's brightness corrected for the crown above it, three ways
+            import intensity_canopy
+            s69_layers, s69_info = intensity_canopy.layers(pts, bbox, cell)
+            layers.update(s69_layers)
 
         lab = np.asarray(Image.open(labels_file).convert("RGB"))
         truth = lab[:, :, 0] >= 128
@@ -712,6 +725,9 @@ def main():
                 pooled[k][lab_name][0].extend(layers[k][classes == a].tolist())
                 pooled[k][lab_name][1].extend(layers[k][classes == b].tolist())
 
+        if s69_info is not None:
+            s69_lots.append(intensity_canopy.lot_scores(classes, layers))
+            s69_infos.append(s69_info)
         np.savez_compressed(out / f"{lawn_id}.npz", classes=classes, **layers, **masks)
         for mk in masks:  # roof, void, lidar-canopy, and naip-canopy where it was read
             Image.fromarray(masks[mk].astype(np.uint8) * 255).save(out / f"{lawn_id}-{mk.replace('_', '-')}.png")
@@ -793,6 +809,10 @@ def main():
     print("\nRead 'under canopy' against 'visible': a layer that cannot tell lawn from")
     print("pavement in the open will not do it under a tree. Direction is in the number:")
     print("above 0.5 means lawn reads HIGHER on that layer, below means lower.")
+    if s69_lots:
+        import intensity_canopy
+        table = intensity_canopy.print_table(s69_lots, s69_infos)
+        summary["s69"] = {k: {q: {m: v[m] for m in ("pooled", "cells", "median", "lots", "above")} for q, v in t.items()} for k, t in table.items()}
     print_masks([(k, r) for k, r in summary["lawns"].items() if "skipped" not in r], cell)
     print_crowns([r for k, r in summary["lawns"].items() if "skipped" not in r])
     print_segments([r for k, r in summary["lawns"].items() if "skipped" not in r])

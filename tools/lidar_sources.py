@@ -452,11 +452,25 @@ def tile_records(path, bbox3857):
     return {k: (v[keep] if v is not None else None) for k, v in rec.items()}
 
 
+# WIDE POINTS (LIDAR_WIDE=1; S69, tools/intensity_canopy.py): three more
+# columns after the five every reader here uses by position -- return number,
+# number of returns, GPS time (0 where the flight keeps none) -- so a
+# measurement can put a pulse back together. Off, nothing changes: the live
+# server and training read five columns as before.
+WIDE = os.environ.get("LIDAR_WIDE") == "1"
+NCOL = 8 if WIDE else 5
+
+
 def _points_of(r):
-    """tile_records' arrays as (x, y, z m, intensity, class) rows."""
+    """tile_records' arrays as (x, y, z m, intensity, class) rows; WIDE adds (return, returns, gps time)."""
     if not len(r["x"]):
-        return np.zeros((0, 5))
-    return np.column_stack([r["x"], r["y"], r["z"], r["intensity"].astype(np.float64), r["cls"].astype(np.float64)])
+        return np.zeros((0, NCOL))
+    cols = [r["x"], r["y"], r["z"], r["intensity"].astype(np.float64), r["cls"].astype(np.float64)]
+    if WIDE:
+        gps = r.get("gps")
+        cols += [r["ret"].astype(np.float64), r["nret"].astype(np.float64),
+                 np.asarray(gps, dtype=np.float64) if gps is not None else np.zeros(len(r["x"]))]
+    return np.column_stack(cols)
 
 
 def tile_points(path, bbox3857):
@@ -825,7 +839,7 @@ def read_points(read_octree, bbox, epoch, tiles=None, tile_dir=None, extra_m=Non
                 parts.append(_points_of(r))
                 if r["gps"] is not None:
                     gps.append(r["gps"])
-            pts = np.vstack(parts) if parts else np.zeros((0, 5))
+            pts = np.vstack(parts) if parts else np.zeros((0, NCOL))
             info = {"nodes": len(tiles), "tiles": True, "mb": mb}
             info["leafOnShare"], info["dated"] = leaf_on_share(np.concatenate(gps) if gps else None)
         else:
