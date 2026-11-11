@@ -10,7 +10,7 @@
  * finished model (putModel, as PUT /api/maps/model does) and the shade part
  * with the lidar and line-up it chose (putTool), so the shade page and the AR
  * open the map as if it had been built there. The core session calls it for
- * an admin save whose trace is done (worker/src/admin-saves.js).
+ * an admin save whose trace is done (worker/src/admin-saves.js). Any map not flagged adminSave is refused.
  *
  *   await buildShadeOnServer(env, owner, key, { base: 'https://lawnmap.<home>' })
  *     -> { ok: true, model, part, seconds, build, lidar } | { ok: false, why }
@@ -22,6 +22,9 @@ export async function buildShadeOnServer(env, owner, key, { base } = {}) {
   if (!base) return { ok: false, why: 'no site origin' };
   const map = await getMap(env, owner, key);
   if (!map) return { ok: false, why: 'no such map' };
+  /* ADMIN SAVES ONLY (owner, 2026-11-11: "this is currently only for use by the admin save path. Visitors to the
+     public site won't ever send jobs to this special cloudflare container"): refused here whatever the caller. */
+  if (map.adminSave !== true) return { ok: false, why: 'not an admin save: the server build is for admin saves only' };
   let res;
   try {
     res = await env.SHADE_BUILDER.fetch('https://shade-builder/build', {

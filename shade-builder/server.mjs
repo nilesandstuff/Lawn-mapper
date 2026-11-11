@@ -46,6 +46,8 @@ export async function decodeImage(buf) {
 export async function buildMap({ map, base }, { fetchImpl = globalThis.fetch, onProgress = () => {} } = {}) {
   if (!map || typeof map !== 'object' || !Number.isFinite(map.lng) || !Number.isFinite(map.lat)) return { ok: false, why: 'no map record' };
   if (!/^https:\/\/[a-z0-9.-]+$/i.test(String(base || ''))) return { ok: false, why: 'no site origin' };
+  /* Admin saves only (owner, 2026-11-11): the main Worker checks too; this is the second lock. */
+  if (map.adminSave !== true) return { ok: false, why: 'not an admin save: the server build is for admin saves only' };
   let model = null, part = null;
   const fetchFn = async (u, init = {}) => {
     const url = String(u);
