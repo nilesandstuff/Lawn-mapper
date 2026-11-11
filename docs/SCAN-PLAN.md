@@ -2343,3 +2343,24 @@ naip to 3dep perfectly every time... if it gets .1m or closer every time, I'm ha
     specification is 6 m at 95%; FSA's own checks against surveyed control found 3.2 m RMSE (Arizona 2007), and a
     Minnesota report puts 80% of its error in the elevation model it was draped on, so it varies within a frame.
   - So no known method gives 0.1 m every time; run 259's 0.1-0.5 m by one slide is at the level of the published best.
+
+## 23. The owner's plan, step by step: NAIP as its own view; the lidar's ground alone, hard-edged (2026-11-11)
+
+The owner directs the steps. Step 0: NAIP selectable as a background, as delivered, NOT combined with the lidar
+("seperate views"). Step 1: "The automatic shapes aren't working... improve the viewability of the lidar. Split it by
+heights... ground level (regardless of where the ground is, so we have to follow hills). For now, just hide anything
+above ground level... preserve the hard edges... We don't need detail, we need precision", on a grid four times the
+lidar's, an edge put through the middling return of three, then each side given back some of its own shade away
+from the middle. The test: the width of the straight run of the owner's drive, known by tape measure.
+
+Built: scan/lib/ground-picture.js (groundPicture, stripWidth), the "Lidar ground" and "NAIP" buttons on the placement
+map, scan-deploy task drive (scan/tools/drive-width.mjs).
+
+HARD:
+  - Made-up lots at the owner's density (a return every 0.72 m), noise a seventh of the grass-to-concrete step: a
+    3.66 m drive read 3.64 m on average over 8 lots (3.43 to 3.91; worst 0.25 m off); 2.7 m read 2.66; 5.0 m read 5.12.
+  - The owner's lot, run 260 (cd4a8f1): picture 1037 x 474 cells of 0.184 m; levels light 46321, dark 25389, a
+    surface's own noise 707; 44% of the picture dark, 8% no ground. The longest straight dark run of one width inside
+    the lot: 10.1 m long, 17 cross-sections, median 3.86 m (12 ft 8 in), the middle half 3.75-4.03 m.
+NOT known: that the run measured is the drive (the log holds no place; 44% dark says the woods' floor reads dark too),
+and the true width (the owner's tape measure).
