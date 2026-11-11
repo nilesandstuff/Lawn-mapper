@@ -29,7 +29,7 @@
  * the corpus bucket (private): id, address, place, dates, trace, tools. /api/admin/saved-maps (the key route) marks
  * them too.
  */
-import { listMaps, getMap, upsertMap, userOwner } from './unified.js';
+import { listMaps, getMap, upsertMap, deleteMap, userOwner } from './unified.js';
 import { alphaEnabled, startAlpha, pollAlpha, alphaMaskResponse, cancelAlpha } from './alpha.js';
 import { countyServiceById } from './county.js';
 import { decodePng } from './png-probe.js';
@@ -189,6 +189,21 @@ export async function handleAdminSaves(request, env, url, origin, ctx, json, me)
     const last = new Map(rows.map((r) => [r.map_key, r]));
     const lidarOf = (key) => { const r = last.get(key); return !r || r.status === 'pending' || r.status === 'failed' ? null : { status: r.status === 'lidar' ? 'waiting' : r.status === 'building' ? 'building' : r.status === 'done' ? 'done' : 'failed', detail: r.status === 'done' || r.status === 'lidar-failed' ? r.detail : null, at: r.finished_at }; };
     return json({ maps: (await adminSavesOf(env, me)).map((m) => ({ ...brief(m), lidar: lidarOf(m.id), working: last.get(m.id)?.status === 'pending' ? last.get(m.id).detail || null : null })) }, 200, origin);
+  }
+
+  // DELETE /api/admin/admin-saves?id=   one admin save, every tool's part of it, its lidar file and its presses.
+  // Only a map marked as an admin save: an administrator's ordinary maps are deleted where they always were.
+  if (path === 'admin-saves' && request.method === 'DELETE') {
+    const key = url.searchParams.get('id');
+    if (!key) return json({ error: 'id required' }, 400, origin);
+    const map = await getMap(env, owner, key);
+    if (!map || !isAdminSave(map)) return json({ error: 'Not an admin save' }, 404, origin);
+    const waiting = (await env.DB.prepare("SELECT press FROM admin_traces WHERE user_id = ? AND map_key = ? AND status = 'pending'").bind(me.id, key).all()).results || [];
+    for (const w of waiting) { try { await cancelAlpha(env, w.press); } catch { /* it ends by itself */ } }
+    await env.DB.prepare('DELETE FROM admin_traces WHERE user_id = ? AND map_key = ?').bind(me.id, key).run();
+    await deleteMap(env, owner, key);
+    try { await writeIndex(env); } catch { /* the next change writes it */ }
+    return json({ ok: true }, 200, origin);
   }
 
   if (path === 'admin-saves/check' && request.method === 'POST') {

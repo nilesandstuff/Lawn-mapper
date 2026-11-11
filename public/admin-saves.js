@@ -40,7 +40,7 @@ async function load({ check = false } = {}) {
         <p>${traceLine(m)}</p>
         <p>${lidarLine(m)}</p>
         <p class="dim">Saved ${m.at ? esc(new Date(m.at).toLocaleString()) : ''}${m.county ? ` · ${esc(m.county)}` : ''}</p>
-        <div class="links">${toolLine(m, shown)}</div>
+        <div class="links">${toolLine(m, shown)}<button type="button" class="small del" data-id="${esc(m.id)}">Delete</button></div>
       </div>`).join('') : '<p>No admin saves yet. On the Lawn Mapper\'s AI tab, set up an address and press "Save as admin and auto trace".</p>';
     const waiting = maps.some((m) => (m.trace && (m.trace.status === 'pending' || m.trace.status === 'starting')) || (m.lidar && (m.lidar.status === 'waiting' || m.lidar.status === 'building')));
     note.textContent = waiting ? 'Checking again in a few seconds…' : `${maps.length} map${maps.length === 1 ? '' : 's'}`;
@@ -51,4 +51,18 @@ async function load({ check = false } = {}) {
   }
 }
 $('#refresh').addEventListener('click', () => load({ check: true }));
+// Delete asks once, by a second press on the same button (no dialog to dismiss on a phone).
+$('#list').addEventListener('click', async (e) => {
+  const b = e.target.closest('button.del');
+  if (!b) return;
+  if (b.dataset.sure !== '1') {
+    b.dataset.sure = '1'; b.textContent = 'Press again to delete';
+    setTimeout(() => { if (b.isConnected) { b.dataset.sure = ''; b.textContent = 'Delete'; } }, 5000);
+    return;
+  }
+  b.disabled = true; b.textContent = 'Deleting…';
+  try { await get(`/api/admin/admin-saves?id=${encodeURIComponent(b.dataset.id)}`, { method: 'DELETE' }); }
+  catch (err) { $('#note').textContent = `Could not delete (${err.message}).`; }
+  load();
+});
 load({ check: true });

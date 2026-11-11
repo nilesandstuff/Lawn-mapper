@@ -22,7 +22,7 @@ const HOST = 'https://lawnmap.example.test';
 const req = (path, { method = 'GET', body = null, cookie = '' } = {}) => new Request(`${HOST}${path}`, { method, headers: { Cookie: cookie, ...(body ? { 'Content-Type': 'application/json' } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
 const maps = async (env, r) => { const res = await handleMaps(r, env, new URL(r.url), '', ctx, json); return { status: res.status, body: await res.json() }; };
 const admin = async (env, r) => { const res = await handleAdmin(r, env, new URL(r.url), '', ctx, json); return { status: res.status, body: await res.json().catch(() => null) }; };
-const bucket = () => { const m = new Map(); return { m, async get(k) { const v = m.get(k); return v == null ? null : { body: v, async json() { return JSON.parse(typeof v === 'string' ? v : Buffer.from(v).toString('utf8')); }, async arrayBuffer() { return v.buffer; } }; }, async put(k, v) { m.set(k, typeof v === 'string' ? v : new Uint8Array(v)); }, async head(k) { return m.has(k) ? {} : null; }, async delete(k) { m.delete(k); } }; };
+const bucket = () => { const m = new Map(); return { m, async list({ prefix = '' } = {}) { return { objects: [...m.keys()].filter((k) => k.startsWith(prefix)).map((key) => ({ key })) }; }, async delete(k) { m.delete(k); }, async get(k) { const v = m.get(k); return v == null ? null : { body: v, async json() { return JSON.parse(typeof v === 'string' ? v : Buffer.from(v).toString('utf8')); }, async arrayBuffer() { return v.buffer; } }; }, async put(k, v) { m.set(k, typeof v === 'string' ? v : new Uint8Array(v)); }, async head(k) { return m.has(k) ? {} : null; }, async delete(k) { m.delete(k); } }; };
 const save = (over = {}) => ({ id: '1 elm st|alpha|find', address: '1 Elm St', lng: -85.1, lat: 42.1, squareFeet: 5000, shapes: [{ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [[[-85.1, 42.1], [-85.0999, 42.1], [-85.0999, 42.1001], [-85.1, 42.1]]] } }], ...over });
 
 const env = { DB: testDb(), ADMIN_EMAILS: 'owner@b.com', CORPUS: bucket(), ALPHA_URL: 'https://model.example.test/start', ALPHA_TOKEN: 't', MAPBOX_TOKEN: 'pk.test' };
@@ -120,6 +120,17 @@ globalThis.fetch = async (u, init) => {
   await finishTraces(env);
   const m = (await maps(env, req(`/api/maps/one?id=${encodeURIComponent(tr.body.id)}`, { cookie: oc }))).body.map;
   check('a failed trace leaves the map, saying so', m?.adminSave === true && m.trace?.status === 'failed', JSON.stringify(m?.trace));
+}
+/* deleting: an admin save goes, with its presses; an ordinary map is refused here */
+{
+  const id = '3 fail ln|alpha|find';
+  const own = (await maps(env, req('/api/maps', { cookie: oc }))).body.maps.find((m) => m.address === 'Own Home');
+  const no = await admin(env, req(`/api/admin/admin-saves?id=${encodeURIComponent(own.id)}`, { method: 'DELETE', cookie: oc }));
+  check('an ordinary map is not deleted from the admin saves page', no.status === 404 && (await maps(env, req('/api/maps', { cookie: oc }))).body.maps.some((m) => m.address === 'Own Home'));
+  const gone = await admin(env, req(`/api/admin/admin-saves?id=${encodeURIComponent(id)}`, { method: 'DELETE', cookie: oc }));
+  const left = (await admin(env, req('/api/admin/admin-saves', { cookie: oc }))).body.maps;
+  const rows = (await env.DB.prepare('SELECT COUNT(*) AS n FROM admin_traces WHERE map_key = ?').bind(id).first()).n;
+  check('an admin save is deleted with its presses', gone.status === 200 && !left.some((m) => m.id === id) && rows === 0, `${gone.status} ${left.length} ${rows}`);
 }
 check('a press given up on blames the GPU provider when it had none free', /no GPU free/.test(stillWaitingWhy('Waiting for a GPU to come free -- the GPU provider is busy right now (29:40)'))
   && stillWaitingWhy('Fetching the aerial photograph') === 'no answer in half an hour' && stillWaitingWhy(null) === 'no answer in half an hour');
