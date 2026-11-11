@@ -112,6 +112,21 @@ globalThis.fetch = async (u, init) => {
   check('the key route marks it', keyed.body.maps.find((m) => m.address === '9 Test Rd')?.adminSave === true && keyed.body.maps.find((m) => m.address === 'Own Home')?.adminSave === false);
   check('an administrator keeps more than fifty', (await maps(env, req('/api/maps', { cookie: oc }))).body.max === 500);
 }
+/* the trace stops at the property line, as the page's does: the same lawn square, a line down its middle */
+{
+  const parcel = { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [[[-85.31, 42.29], [-85.3, 42.29], [-85.3, 42.31], [-85.31, 42.31], [-85.31, 42.29]]] } };
+  const tr = await admin(env, req('/api/admin/admin-saves/trace', { method: 'POST', cookie: oc, body: { map: save({ id: '5 line ct|alpha|find', address: '5 Line Ct', lng: -85.3, lat: 42.3, shapes: [], squareFeet: 0, parcel }), segment: { lng: -85.3, lat: 42.3, zoom: 19, size: 640, height: 640, provider: 'mapbox' } } }));
+  await settle();
+  const call = `call-${started}`;
+  await env.CORPUS.put(`alpha/masks/${call}.png`, env.CORPUS.m.get('alpha/masks/call-1.png'));
+  await env.CORPUS.put(`alpha/masks/${call}.json`, JSON.stringify({ status: 'succeeded', mask: 'x', version: 'beta 7', uncertainty: 0.1, seconds: 12 }));
+  await finishTraces(env);
+  const m = (await maps(env, req(`/api/maps/one?id=${encodeURIComponent(tr.body.id)}`, { cookie: oc }))).body.map;
+  const xs = (m.shapes || []).flatMap((f) => f.geometry.coordinates[0].map((p) => p[0]));
+  const full = (await maps(env, req(`/api/maps/one?id=${encodeURIComponent('9 test rd|alpha|find')}`, { cookie: oc }))).body.map.squareFeet;
+  check('nothing is traced outside the property line', xs.length > 0 && Math.max(...xs) <= -85.3 + 3e-6 && m.squareFeet > full * 0.4 && m.squareFeet < full * 0.6, `${xs.length} corners, east-most ${Math.max(...xs)}, ${m.squareFeet} of ${full} sq ft`);
+  await admin(env, req(`/api/admin/admin-saves?id=${encodeURIComponent(tr.body.id)}`, { method: 'DELETE', cookie: oc }));
+}
 /* a press that fails says so in the map, and the map stays */
 {
   modelState = 'failed';

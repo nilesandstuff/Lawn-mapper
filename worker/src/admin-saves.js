@@ -35,8 +35,8 @@ import { countyServiceById } from './county.js';
 import { decodePng } from './png-probe.js';
 import { keepPhoto } from './map-photo.js';
 import { buildShadeOnServer } from './shade-server-build.js';
-import { maskToPolygons, areaTraceLimits, TRACE_TOLERANCE_M, MAX_TRACE_VERTICES } from '../../public/lib/mask.js';
-import { framePxToLngLat, metresPerPixel } from '../../public/lib/mercator.js';
+import { maskToPolygons, rasterizePolygon, areaTraceLimits, TRACE_TOLERANCE_M, MAX_TRACE_VERTICES } from '../../public/lib/mask.js';
+import { framePxToLngLat, lngLatToFramePx, metresPerPixel } from '../../public/lib/mercator.js';
 import { measure } from '../../public/lib/area.js';
 
 export const INDEX_KEY = 'admin-saves/index.json';
@@ -71,14 +71,21 @@ export const stillWaitingWhy = (stage) => (/waiting for a gpu/i.test(String(stag
   : 'no answer in half an hour');
 
 /** A finished press's mask as the lawn mapper's shapes, or null. */
-async function shapesOf(env, pressId, frame) {
+async function shapesOf(env, pressId, frame, parcel = null) {
   const res = await alphaMaskResponse(env, pressId);
   if (!res.ok) return null;
   const img = await decodePng(new Uint8Array(await res.arrayBuffer()), { maxPixels: 1 << 26 });
   if (!img) return null;
   const mpp = metresPerPixel(frame, img.width);
+  // CLIPPED TO THE PROPERTY LINE, as the page does (app.js parcelRaster): the model finds every lawn in the
+  // photograph, the neighbours' included (owner, 2026-11-11: an admin save "traced several outside of the
+  // property line" -- this step was the page's and had not come along). No line: no limit.
+  const g = parcel?.geometry || parcel;
+  const rings = g?.type === 'Polygon' ? g.coordinates : g?.type === 'MultiPolygon' ? g.coordinates[0] : null;
+  const clipMask = Array.isArray(rings) && rings.length
+    ? rasterizePolygon(rings, img.width, img.height, (ll) => lngLatToFramePx(frame, ll, img.width, img.height)) : null;
   const polygons = maskToPolygons(img, (x, y) => framePxToLngLat(frame, [x, y], img.width, img.height), {
-    tolerance: TRACE_TOLERANCE_M / mpp, maxVertices: MAX_TRACE_VERTICES, ...areaTraceLimits(mpp, img.width, img.height),
+    clipMask, tolerance: TRACE_TOLERANCE_M / mpp, maxVertices: MAX_TRACE_VERTICES, ...areaTraceLimits(mpp, img.width, img.height),
   });
   return (polygons || []).map((g) => ({ type: 'Feature', properties: {}, geometry: g.type === 'Feature' ? g.geometry : g }));
 }
@@ -115,10 +122,10 @@ export async function finishTraces(env, selfOrigin = '', { build = true } = {}) 
       }
       if (ans.status !== 'succeeded') { await set('failed', ans.detail); await mark(env, owner, row.map_key, { status: 'failed', detail: ans.detail || 'the trained model failed' }); continue; }
       const { origin: _o, ...frame } = framed;
-      const shapes = await shapesOf(env, row.press, frame);
-      if (!shapes) { await set('failed', 'the mask could not be read'); await mark(env, owner, row.map_key, { status: 'failed', detail: 'the mask could not be read' }); continue; }
       const map = await getMap(env, owner, row.map_key);
       if (!map) { await set('failed', 'the map is gone'); continue; }
+      const shapes = await shapesOf(env, row.press, frame, map.parcel || null);
+      if (!shapes) { await set('failed', 'the mask could not be read'); await mark(env, owner, row.map_key, { status: 'failed', detail: 'the mask could not be read' }); continue; }
       // a map already drawn on since the press (the owner opened it and traced) keeps its own lawn
       if (Array.isArray(map.shapes) && map.shapes.length && map.handEdited) { await set('lidar', 'the map was edited meanwhile: its own lawn kept'); await mark(env, owner, row.map_key, { status: 'kept', detail: 'edited meanwhile' }); continue; }
       const m = shapes.length ? measure({ type: 'FeatureCollection', features: shapes }) : { squareFeet: 0, acres: 0 };
