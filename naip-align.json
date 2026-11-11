@@ -1,0 +1,656 @@
+{
+ "-105.09292,40.01875:alpha:find": {
+  "east": -0.26,
+  "north": 0.7,
+  "scale": 1.0,
+  "how": "auto (edges 0.36 -> 0.38)"
+ },
+ "-105.13443,39.89326:manual:manual": {
+  "east": -0.78,
+  "north": -0.0,
+  "scale": 1.0,
+  "how": "auto (edges 0.51 -> 0.54)"
+ },
+ "-111.93092,40.58577:alpha:find": {
+  "east": 0.43,
+  "north": -1.08,
+  "scale": 1.0,
+  "how": "auto (edges 0.30 -> 0.41)"
+ },
+ "-112.83597,37.70577:sam3:find": {
+  "east": -2.12,
+  "north": -0.88,
+  "scale": 1.0,
+  "how": "auto (edges 0.26 -> 0.31)"
+ },
+ "-122.59407,48.03813:sam3:find": {
+  "east": 0.0,
+  "north": -0.0,
+  "scale": 1.0,
+  "how": "editor"
+ },
+ "-123.04884,48.97927:alpha:find": {
+  "east": 0.41,
+  "north": 4.66,
+  "scale": 1.0,
+  "how": "auto (edges 0.09 -> 0.24)"
+ },
+ "-70.99743,42.51353:alpha:find": {
+  "east": 1.3,
+  "north": 0.75,
+  "scale": 1.0,
+  "how": "auto (edges 0.29 -> 0.35)"
+ },
+ "-71.11028,42.49341:alpha:find": {
+  "east": 0.02,
+  "north": 0.67,
+  "scale": 1.0,
+  "how": "editor"
+ },
+ "-71.12122,42.71011:alpha:find": {
+  "east": 1.37,
+  "north": 1.21,
+  "scale": 1.0,
+  "how": "editor"
+ },
+ "-71.28902,42.40350:alpha:find": {
+  "east": 0.0,
+  "north": -0.0,
+  "scale": 1.0,
+  "how": "auto, left alone (edges 0.26)"
+ },
+ "-71.45962,42.28080:alpha:find": {
+  "east": -0.55,
+  "north": -0.19,
+  "scale": 1.0,
+  "how": "editor"
+ },
+ "-71.50260,41.64383:alpha:find": {
+  "east": 1.27,
+  "north": 2.91,
+  "scale": 1.0,
+  "how": "auto (edges 0.18 -> 0.24)"
+ },
+ "-72.17332,41.85107:sam3_exclude:exclude": {
+  "east": 0.0,
+  "north": -0.0,
+  "scale": 1.0,
+  "how": "auto, left alone (edges 0.22)"
+ },
+ "-74.07922,40.37016:sam3:find": {
+  "east": 0.0,
+  "north": -0.0,
+  "scale": 1.0,
+  "how": "auto, left alone (edges 0.96)"
+ },
+ "-74.90795,40.19277:alpha:find": {
+  "east": -0.78,
+  "north": 0.05,
+  "scale": 1.0,
+  "how": "auto (edges 0.58 -> 0.61)"
+ },
+ "-75.12517,40.14428:alpha:find": {
+  "east": 0.1,
+  "north": -0.33,
+  "scale": 1.0,
+  "how": "editor"
+ },
+ "-75.17892,39.87284:alpha:find": {
+  "east": -0.51,
+  "north": -0.33,
+  "scale": 1.0,
+  "how": "editor"
+ },
+ "-75.23157,39.73969:alpha:find": {
+  "east": 0.0,
+  "north": -0.0,
+  "scale": 1.0,
+  "how": "auto, left alone (edges 0.53)"
+ },
+ "-75.29166,39.75224:alpha:find": {
+  "east": -0.16,
+  "north": 0.21,
+  "scale": 1.0,
+  "how": "editor"
+ },
+ "-75.34553,38.73448:alpha:find": {
+  "east": 0.0,
+  "north": -0.0,
+  "scale": 1.0,
+  "how": "editor"
+ },
+ "-75.52344,40.60945:alpha:find": {
+  "east": 0.49,
+  "north": -0.42,
+  "scale": 1.0,
+  "how": "auto (edges 0.67 -> 0.70)"
+ },
+ "-75.63050,39.47810:alpha:find": {
+  "east": 0.0,
+  "north": -0.0,
+  "scale": 1.0,
+  "how": "auto, left alone (edges 0.73)"
+ },
+ "-76.75927,39.99529:alpha:find": {
+  "east": 1.05,
+  "north": 4.09,
+  "scale": 1.0,
+  "how": "auto (edges -0.05 -> 0.29)"
+ },
+ "-76.83871,40.32463:alpha:find": {
+  "east": 0.0,
+  "north": -0.0,
+  "scale": 1.0,
+  "how": "editor"
+ },
+ "-76.84146,42.47986:example:map-manualmanual": {
+  "east": 0.0,
+  "north": -0.0,
+  "scale": 1.0,
+  "how": "auto, left alone (edges 0.30)"
+ },
+ "-76.88650,39.64553:manual:manual": {
+  "east": -1.07,
+  "north": -0.16,
+  "scale": 1.0,
+  "how": "auto (edges 0.69 -> 0.77)"
+ },
+ "-76.89019,39.64422:manual:manual": {
+  "east": 0.0,
+  "north": -0.0,
+  "scale": 1.0,
+  "how": "auto, left alone (edges 0.25)"
+ },
+ "-77.21901,34.66301:sam3:find": {
+  "east": -1.26,
+  "north": -0.88,
+  "scale": 1.0,
+  "how": "auto (edges 0.42 -> 0.47)"
+ },
+ "-77.21907,38.78769:manual:manual": {
+  "east": -0.76,
+  "north": -0.69,
+  "scale": 1.0,
+  "how": "auto (edges 0.37 -> 0.40)"
+ },
+ "-77.23724,39.19168:sam3:find": {
+  "east": -0.74,
+  "north": -0.22,
+  "scale": 1.0,
+  "how": "auto (edges 0.10 -> 0.17)"
+ },
+ "-77.26011,39.21623:sam3_exclude:exclude": {
+  "east": -3.61,
+  "north": 0.01,
+  "scale": 1.0,
+  "how": "auto (edges 0.09 -> 0.43)"
+ },
+ "-77.40500,38.46195:sam3_exclude:exclude": {
+  "east": -1.76,
+  "north": -4.38,
+  "scale": 1.0,
+  "how": "auto (edges 0.40 -> 0.52)"
+ },
+ "-77.45907,38.72650:alpha:find": {
+  "east": -0.14,
+  "north": 0.02,
+  "scale": 1.0,
+  "how": "editor"
+ },
+ "-77.48013,34.73608:sam3:find": {
+  "east": -2.04,
+  "north": 0.47,
+  "scale": 1.0,
+  "how": "auto (edges 0.25 -> 0.35)"
+ },
+ "-77.48222,34.73669:sam3:find": {
+  "east": -1.81,
+  "north": 1.15,
+  "scale": 1.0,
+  "how": "auto (edges 0.16 -> 0.26)"
+ },
+ "-77.60251,38.77674:sam3:find": {
+  "east": 0.93,
+  "north": -0.11,
+  "scale": 1.015,
+  "how": "auto (edges 0.22 -> 0.25)"
+ },
+ "-77.60953,38.77517:sam3:find": {
+  "east": 2.45,
+  "north": 0.6,
+  "scale": 1.0,
+  "how": "auto (edges 0.20 -> 0.26)"
+ },
+ "-77.61167,38.77826:sam3:find": {
+  "east": 0.0,
+  "north": -0.0,
+  "scale": 1.0,
+  "how": "auto, left alone (edges 0.37)"
+ },
+ "-78.54605,33.87955:sam3:find": {
+  "east": 0.0,
+  "north": -0.0,
+  "scale": 1.0,
+  "how": "auto, left alone (edges 0.64)"
+ },
+ "-78.92586,36.03856:alpha:find": {
+  "east": 6.12,
+  "north": 1.86,
+  "scale": 1.0,
+  "how": "auto (edges -0.12 -> 0.17)"
+ },
+ "-79.98066,40.55172:alpha:find": {
+  "east": 0.0,
+  "north": -0.0,
+  "scale": 1.0,
+  "how": "auto, left alone (edges 0.54)"
+ },
+ "-80.55371,34.99379:sam3:find": {
+  "east": 0.0,
+  "north": -0.0,
+  "scale": 1.0,
+  "how": "auto, left alone (edges 0.60)"
+ },
+ "-80.65242,35.00238:sam3:find": {
+  "east": 2.15,
+  "north": 0.4,
+  "scale": 1.0,
+  "how": "auto (edges 0.42 -> 0.45)"
+ },
+ "-81.61955,41.11275:example:map-manualmanual": {
+  "east": 2.47,
+  "north": 0.51,
+  "scale": 1.0,
+  "how": "auto (edges 0.38 -> 0.43)"
+ },
+ "-81.62058,41.11245:sam3:find": {
+  "east": 0.0,
+  "north": -0.0,
+  "scale": 1.0,
+  "how": "auto, left alone (edges 0.97)"
+ },
+ "-83.19566,40.04976:manual:manual": {
+  "east": -1.41,
+  "north": 0.17,
+  "scale": 1.0,
+  "how": "auto (edges 0.67 -> 0.87)"
+ },
+ "-83.45285,42.40950:sam3:find": {
+  "east": -1.1,
+  "north": -0.13,
+  "scale": 1.015,
+  "how": "auto (edges 0.41 -> 0.45)"
+ },
+ "-83.71431,32.68209:manual:manual": {
+  "east": -0.97,
+  "north": -0.06,
+  "scale": 1.0,
+  "how": "auto (edges 0.61 -> 0.63)"
+ },
+ "-83.71486,32.68287:sam3_exclude:exclude": {
+  "east": -1.84,
+  "north": 0.08,
+  "scale": 1.0,
+  "how": "auto (edges 0.33 -> 0.41)"
+ },
+ "-83.95454,34.08553:sam3:find": {
+  "east": -4.91,
+  "north": -6.21,
+  "scale": 1.0,
+  "how": "auto (edges 0.09 -> 0.20)"
+ },
+ "-84.06045,33.94050:sam3:find": {
+  "east": 0.12,
+  "north": -1.55,
+  "scale": 1.0,
+  "how": "auto (edges 0.43 -> 0.46)"
+ },
+ "-84.18219,42.67372:alpha:find": {
+  "east": 0.4,
+  "north": -1.92,
+  "scale": 1.0,
+  "how": "auto (edges 0.34 -> 0.47)"
+ },
+ "-84.34646,33.86764:manual:manual": {
+  "east": 0.0,
+  "north": -0.0,
+  "scale": 1.0,
+  "how": "auto, left alone (edges 0.39)"
+ },
+ "-84.53477,38.97799:manual:manual": {
+  "east": 0.54,
+  "north": -1.46,
+  "scale": 1.0,
+  "how": "auto (edges 0.25 -> 0.31)"
+ },
+ "-84.53700,38.97534:sam3:find": {
+  "east": -1.05,
+  "north": 0.1,
+  "scale": 1.0,
+  "how": "auto (edges 0.38 -> 0.41)"
+ },
+ "-84.55432,42.66899:manual:manual": {
+  "east": -5.56,
+  "north": -0.23,
+  "scale": 1.0,
+  "how": "auto (edges -0.05 -> 0.03)"
+ },
+ "-85.22596,41.09165:sam3:find": {
+  "east": 0.0,
+  "north": -0.0,
+  "scale": 1.0,
+  "how": "auto, left alone (edges 0.53)"
+ },
+ "-85.54331,34.33089:manual:manual": {
+  "east": 0.0,
+  "north": -0.0,
+  "scale": 1.0,
+  "how": "auto, left alone (edges 0.23)"
+ },
+ "-85.57742,43.09564:sam3_exclude:exclude": {
+  "east": 1.3,
+  "north": 0.14,
+  "scale": 0.99,
+  "how": "auto (edges 0.47 -> 0.53)"
+ },
+ "-85.58069,43.05429:sam3:find": {
+  "east": 0.0,
+  "north": -0.0,
+  "scale": 1.0,
+  "how": "auto, left alone (edges 0.59)"
+ },
+ "-85.58216,43.08465:sam3:find": {
+  "east": 0.0,
+  "north": -0.0,
+  "scale": 1.0,
+  "how": "auto, left alone (edges 0.33)"
+ },
+ "-85.61014,43.03520:sam3_exclude:exclude": {
+  "east": 0.0,
+  "north": -0.0,
+  "scale": 1.0,
+  "how": "auto, left alone (edges 0.37)"
+ },
+ "-85.62621,43.05423:example:map-manualmanual": {
+  "east": 0.0,
+  "north": -0.0,
+  "scale": 1.0,
+  "how": "auto, left alone (edges 0.40)"
+ },
+ "-85.64033,43.07105:sam3:find": {
+  "east": 0.0,
+  "north": -0.0,
+  "scale": 1.0,
+  "how": "auto, left alone (edges 0.48)"
+ },
+ "-85.64651,42.81639:sam3:find": {
+  "east": -0.73,
+  "north": 0.09,
+  "scale": 1.0,
+  "how": "auto (edges 0.68 -> 0.73)"
+ },
+ "-85.67425,42.80681:sam3:find": {
+  "east": -1.2,
+  "north": -0.06,
+  "scale": 0.99,
+  "how": "auto (edges 0.63 -> 0.67)"
+ },
+ "-85.67808,38.04124:sam3:find": {
+  "east": 0.0,
+  "north": -0.0,
+  "scale": 1.0,
+  "how": "auto, left alone (edges 0.54)"
+ },
+ "-85.67816,38.04042:sam3:find": {
+  "east": -0.47,
+  "north": -0.63,
+  "scale": 1.0,
+  "how": "auto (edges 0.53 -> 0.57)"
+ },
+ "-85.67913,38.04131:sam3:find": {
+  "east": 0.0,
+  "north": -0.0,
+  "scale": 1.0,
+  "how": "auto, left alone (edges 0.66)"
+ },
+ "-85.68037,41.28833:example:map-manualmanual": {
+  "east": -1.02,
+  "north": -3.67,
+  "scale": 1.0,
+  "how": "auto (edges 0.21 -> 0.38)"
+ },
+ "-85.72400,42.87286:sam3:find": {
+  "east": 0.0,
+  "north": -0.0,
+  "scale": 1.0,
+  "how": "auto, left alone (edges 0.35)"
+ },
+ "-85.74709,42.87412:sam3:find": {
+  "east": 0.08,
+  "north": -0.61,
+  "scale": 1.0,
+  "how": "auto (edges 0.51 -> 0.53)"
+ },
+ "-85.81809,43.02488:sam3:find": {
+  "east": 0.0,
+  "north": -0.0,
+  "scale": 1.0,
+  "how": "auto, left alone (edges 0.43)"
+ },
+ "-85.82204,42.98126:sam3:find": {
+  "east": 0.0,
+  "north": -0.0,
+  "scale": 1.0,
+  "how": "auto, left alone (edges 0.52)"
+ },
+ "-85.87769,42.89148:alpha:find": {
+  "east": 6.2,
+  "north": -0.86,
+  "scale": 0.985,
+  "how": "auto (edges 0.05 -> 0.21)"
+ },
+ "-85.95191,42.78183:sam3:find": {
+  "east": -0.01,
+  "north": -0.71,
+  "scale": 1.0,
+  "how": "auto (edges 0.47 -> 0.50)"
+ },
+ "-86.18935,39.60427:alpha:find": {
+  "east": -0.26,
+  "north": -0.49,
+  "scale": 1.0,
+  "how": "editor"
+ },
+ "-86.43590,35.78178:alpha:find": {
+  "east": 0.0,
+  "north": -0.0,
+  "scale": 1.0,
+  "how": "auto, left alone (edges 0.60)"
+ },
+ "-87.15828,34.54738:manual:manual": {
+  "east": 0.0,
+  "north": -0.0,
+  "scale": 1.0,
+  "how": "auto, left alone (edges 0.44)"
+ },
+ "-87.16333,34.55359:manual:manual": {
+  "east": 1.41,
+  "north": -0.92,
+  "scale": 1.0,
+  "how": "auto (edges 0.35 -> 0.46)"
+ },
+ "-87.16411,34.55438:manual:manual": {
+  "east": 0.59,
+  "north": -0.87,
+  "scale": 1.0,
+  "how": "auto (edges 0.43 -> 0.47)"
+ },
+ "-87.51020,38.08274:alpha:find": {
+  "east": 0.0,
+  "north": -0.0,
+  "scale": 1.0,
+  "how": "auto, left alone (edges 0.48)"
+ },
+ "-87.95621,42.86220:alpha:find": {
+  "east": -0.93,
+  "north": 0.07,
+  "scale": 1.0,
+  "how": "editor"
+ },
+ "-88.05249,42.18937:alpha:find": {
+  "east": 1.36,
+  "north": 0.22,
+  "scale": 1.0,
+  "how": "auto (edges 0.45 -> 0.49)"
+ },
+ "-88.08293,41.49541:manual:manual": {
+  "east": -0.11,
+  "north": 1.19,
+  "scale": 1.0,
+  "how": "auto (edges 0.21 -> 0.27)"
+ },
+ "-88.08613,42.95706:example:map-manualmanual": {
+  "east": 0.0,
+  "north": -0.0,
+  "scale": 1.0,
+  "how": "auto, left alone (edges 0.44)"
+ },
+ "-88.08622,41.49477:manual:manual": {
+  "east": -3.0,
+  "north": -0.09,
+  "scale": 1.0,
+  "how": "auto (edges 0.37 -> 0.44)"
+ },
+ "-89.69384,38.60645:alpha:find": {
+  "east": -1.25,
+  "north": -0.5,
+  "scale": 1.0,
+  "how": "editor"
+ },
+ "-90.09404,29.68568:manual:manual": {
+  "east": -0.66,
+  "north": -0.73,
+  "scale": 1.0,
+  "how": "auto (edges 0.55 -> 0.58)"
+ },
+ "-90.09679,29.68626:manual:manual": {
+  "east": 0.0,
+  "north": -0.0,
+  "scale": 1.0,
+  "how": "auto, left alone (edges 0.40)"
+ },
+ "-90.09720,29.68990:manual:manual": {
+  "east": -3.13,
+  "north": 1.42,
+  "scale": 1.0,
+  "how": "auto (edges 0.35 -> 0.51)"
+ },
+ "-91.28631,42.44254:manual:manual": {
+  "east": 0.0,
+  "north": -0.0,
+  "scale": 1.0,
+  "how": "auto, left alone (edges 0.49)"
+ },
+ "-92.81531,41.03537:alpha:find": {
+  "east": -1.0,
+  "north": 0.69,
+  "scale": 1.0,
+  "how": "auto (edges 0.33 -> 0.37)"
+ },
+ "-93.29754,42.53715:manual:manual": {
+  "east": -1.11,
+  "north": -0.63,
+  "scale": 1.0,
+  "how": "auto (edges 0.42 -> 0.50)"
+ },
+ "-93.29807,42.53696:sam3:find": {
+  "east": -1.47,
+  "north": -0.59,
+  "scale": 1.0,
+  "how": "auto (edges 0.48 -> 0.64)"
+ },
+ "-94.16953,36.34423:alpha:find": {
+  "east": -0.61,
+  "north": 1.17,
+  "scale": 1.0,
+  "how": "auto (edges 0.47 -> 0.54)"
+ },
+ "-96.03718,41.12233:alpha:find": {
+  "east": 0.62,
+  "north": -0.98,
+  "scale": 1.0,
+  "how": "auto (edges 0.51 -> 0.59)"
+ },
+ "-96.10238,41.15862:manual:manual": {
+  "east": -0.82,
+  "north": -0.58,
+  "scale": 1.0,
+  "how": "auto (edges 0.47 -> 0.49)"
+ },
+ "-96.10307,41.15881:manual:manual": {
+  "east": 0.0,
+  "north": -0.0,
+  "scale": 1.0,
+  "how": "auto, left alone (edges 0.52)"
+ },
+ "-96.31024,30.59139:sam3:find": {
+  "east": 0.74,
+  "north": 0.01,
+  "scale": 1.0,
+  "how": "auto (edges 0.37 -> 0.39)"
+ },
+ "-96.61237,40.71458:manual:manual": {
+  "east": 0.0,
+  "north": -0.0,
+  "scale": 1.0,
+  "how": "auto, left alone (edges 0.33)"
+ },
+ "-96.87726,46.80986:sam3:find": {
+  "east": -0.74,
+  "north": -0.45,
+  "scale": 1.0,
+  "how": "auto (edges 0.57 -> 0.67)"
+ },
+ "-96.87732,46.81159:manual:manual": {
+  "east": -0.58,
+  "north": -0.48,
+  "scale": 1.0,
+  "how": "auto (edges 0.65 -> 0.70)"
+ },
+ "-96.88012,46.81036:manual:manual": {
+  "east": -0.79,
+  "north": -0.5,
+  "scale": 1.0,
+  "how": "auto (edges 0.70 -> 0.78)"
+ },
+ "-96.88309,46.81273:sam3:find": {
+  "east": -0.49,
+  "north": -0.85,
+  "scale": 1.0,
+  "how": "auto (edges 0.60 -> 0.68)"
+ },
+ "-96.88449,46.81280:manual:manual": {
+  "east": -0.29,
+  "north": -0.48,
+  "scale": 1.0,
+  "how": "auto (edges 0.55 -> 0.57)"
+ },
+ "-96.88525,46.81320:manual:manual": {
+  "east": -0.46,
+  "north": -0.71,
+  "scale": 1.0,
+  "how": "auto (edges 0.59 -> 0.68)"
+ },
+ "-96.88854,46.81110:sam3:find": {
+  "east": -0.67,
+  "north": -0.32,
+  "scale": 1.0,
+  "how": "auto (edges 0.69 -> 0.75)"
+ },
+ "-97.60852,35.63305:alpha:find": {
+  "east": 0.0,
+  "north": -0.0,
+  "scale": 1.0,
+  "how": "auto, left alone (edges 0.51)"
+ }
+}
