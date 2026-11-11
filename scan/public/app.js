@@ -13,8 +13,8 @@ import { newWalk, step, dropPin, checkPin, measure, tapeFor, undo, far, summary,
 import { makeDrawer, lidarMeshes, OCC_RANGE, OCC_RANGE_FULL } from '/lib/draw.js';
 import { lookMeshes } from '/lib/look.js';
 import { snapTo } from '/lib/lidar-marks.js';
-import { levelDist, toLocal } from '/lib/frames.js';
-import { frameFor, bboxOf, toPx, fromPx, ringsOf } from '/lib/photo.js';
+import { levelDist, toLocal, fromLocal } from '/lib/frames.js';
+import { frameFor, bboxOf, toPx, fromPx, ringsOf, toMerc } from '/lib/photo.js';
 import { newLocate, mark, noteGround, addDepth, nextAsk, answer, fitFor, mapOf, sessionOf, checkError, nearestNamed, agreement, groundOffset, groundUnder, status as fixStatus, summaryOf } from '/lib/locate.js';
 import { STAND as REF_STAND, MIN_STAND as REF_MIN_STAND, VOX as REF_VOX } from '/lib/walkref.js';
 import { leftOut, mapToSession } from '/lib/align.js';
@@ -218,6 +218,8 @@ async function loadMap(id) {
   if (got.photo) st.photos.stretched = await stretchedPhoto(id, got.src, got.photo);
   await showPhoto();
   lidarPhoto().catch((e) => log(`lidar picture: ${e.message}`)); // if the lidar was read before the photo came
+  groundPhoto().catch((e) => log(`lidar ground picture: ${e.message}`));
+  naipPhoto().catch((e) => log(`NAIP: ${e.message}`));
 }
 
 /**
@@ -257,14 +259,71 @@ async function lidarPhoto() {
   await showPhoto();
 }
 
+/**
+ * THE GROUND ALONE, HARD-EDGED (lib/ground-picture.js; the owner, 2026-11-11: "improve the viewability of the lidar...
+ * ground level... hide anything above... preserve the hard edges"): the worker's picture drawn in the photo's frame,
+ * unsmoothed so its edges stay where they are.
+ */
+async function groundPhoto() {
+  const pic = st.lid.ground, kept = st.photos?.kept;
+  if (!pic || !kept || !st.frame) return;
+  const small = document.createElement('canvas'); small.width = pic.W; small.height = pic.H;
+  small.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(pic.rgba), pic.W, pic.H), 0, 0);
+  const c = document.createElement('canvas'); c.width = kept.width; c.height = kept.height;
+  const g = c.getContext('2d'); g.fillStyle = '#2a332f'; g.fillRect(0, 0, c.width, c.height);
+  const a = toPx(st.frame, st.origin, [pic.e0, pic.n1], c.width, c.height), b = toPx(st.frame, st.origin, [pic.e0 + pic.W * pic.cell, pic.n1 - pic.H * pic.cell], c.width, c.height);
+  g.imageSmoothingEnabled = false;
+  g.drawImage(small, a[0], a[1], b[0] - a[0], b[1] - a[1]);
+  st.photos.ground = await createImageBitmap(c);
+  await showPhoto();
+}
+
+/**
+ * NAIP AS A BACKGROUND OF ITS OWN (the owner, 2026-11-11: "make the naip layer selectable as the background in the
+ * point placement. I don't want to combine naip with 3dep, seperate views"): the USDA's aerial photo as it is
+ * delivered, not slid onto the lidar (SCAN-PLAN section 22 measured it 0.8 m off the lidar at the owner's home and
+ * 3 m at work). The newest frame Microsoft's Planetary Computer holds that covers the whole photo frame; failing
+ * that, the USGS National Map's mosaic. Both free, no key, open to browsers (public/shade/naip.js reads them so).
+ */
+const NAIP_STAC = 'https://planetarycomputer.microsoft.com/api/stac/v1/search', NAIP_CROP = 'https://planetarycomputer.microsoft.com/api/data/v1/item/bbox';
+const NAIP_MOSAIC = 'https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPImagery/ImageServer/exportImage';
+async function naipPhoto() {
+  const kept = st.photos?.kept; if (!kept || !st.frame || st.photos.naip) return;
+  const W = kept.width, H = kept.height, frame = st.frame, photos = st.photos;
+  // the photo frame's corners in web mercator (the frame is a mercator square)
+  const ll = [[0, 0], [W, 0], [W, H], [0, H]].map((p) => fromLocal(st.origin, fromPx(frame, st.origin, p, W, H)));
+  const mc = ll.map(toMerc), bbox = [Math.min(...mc.map((p) => p[0])), Math.min(...mc.map((p) => p[1])), Math.max(...mc.map((p) => p[0])), Math.max(...mc.map((p) => p[1]))];
+  const inside = (pt, poly) => { let c = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const [xi, yi] = poly[i], [xj, yj] = poly[j]; if ((yi > pt[1]) !== (yj > pt[1]) && pt[0] < ((xj - xi) * (pt[1] - yi)) / (yj - yi) + xi) c = !c; } return c; };
+  let bmp = null, note = '';
+  try {
+    const res = await fetch(NAIP_STAC, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ collections: ['naip'], intersects: { type: 'Polygon', coordinates: [[...ll, ll[0]]] }, limit: 100 }) });
+    const items = res.ok ? ((await res.json())?.features || []) : [];
+    const f = items.filter((x) => ll.every((pt) => (x.geometry?.coordinates || []).some((poly) => inside(pt, poly)))).sort((a, b) => String(b.properties?.datetime).localeCompare(String(a.properties?.datetime)))[0];
+    if (f) {
+      const img = await fetch(`${NAIP_CROP}/${bbox.map((v) => v.toFixed(2)).join(',')}/${W}x${H}.png?collection=naip&item=${encodeURIComponent(f.id)}&assets=image&asset_bidx=image%7C1,2,3&coord_crs=EPSG:3857&dst_crs=EPSG:3857&resampling=bilinear`);
+      if (img.ok) { bmp = await createImageBitmap(await img.blob()); note = `flown ${String(f.properties?.datetime).slice(0, 10)}, ${f.properties?.gsd || '?'} m a pixel`; }
+    }
+  } catch (e) { log(`NAIP (frames): ${e.message}`); }
+  if (!bmp) {
+    try {
+      const img = await fetch(`${NAIP_MOSAIC}?bbox=${bbox.map((v) => v.toFixed(2)).join(',')}&bboxSR=3857&imageSR=3857&size=${W},${H}&format=png&bandIds=0,1,2&interpolation=RSP_BilinearInterpolation&f=image`);
+      if (img.ok) { bmp = await createImageBitmap(await img.blob()); note = 'the USGS mosaic, its newest'; }
+    } catch (e) { log(`NAIP (mosaic): ${e.message}`); }
+  }
+  if (!bmp || photos !== st.photos) return;
+  st.photos.naip = bmp; st.naipNote = note;
+  log(`NAIP: ${note}`);
+  await showPhoto();
+}
+
 const pref = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : v; } catch { return d; } };
 const setPref = (k, v) => { try { localStorage.setItem(k, v); } catch { /* this phone only */ } };
 
 /** The photo the placement map shows: as kept or stretched, crisper or not (lib/enhance.js, for the eye only). */
 async function showPhoto() {
   const want = pref('scan-photo', 'stretched');
-  const which = want === 'lidar' && st.photos?.lidar ? 'lidar' : st.photos?.stretched && want === 'stretched' ? 'stretched' : 'kept';
-  const crisp = which !== 'lidar' && pref('scan-crisp', '1') !== '0';   // the enhancement is for photos
+  const which = (want === 'lidar' || want === 'ground' || want === 'naip') && st.photos?.[want] ? want : st.photos?.stretched && want === 'stretched' ? 'stretched' : 'kept';
+  const crisp = which !== 'lidar' && which !== 'ground' && pref('scan-crisp', '1') !== '0';   // the enhancement is for photos
   const base = st.photos?.[which] || null;
   st.photoChoice = base ? which : null;
   const key = `${which}:${crisp ? 1 : 0}`;
@@ -289,13 +348,16 @@ function photoTools() {
   const s = $('#photo-stretched'), k = $('#photo-kept'), c = $('#photo-crisp');
   s.hidden = !st.photos?.stretched || !!st.againMode; k.hidden = !!st.againMode;
   const li = $('#photo-lidar'); if (li) { li.hidden = !st.photos?.lidar || !!st.againMode; li.classList.toggle('plain', st.photoChoice !== 'lidar'); }
-  c.hidden = st.photoChoice === 'lidar';
+  c.hidden = st.photoChoice === 'lidar' || st.photoChoice === 'ground';
+  for (const w of ['ground', 'naip']) { const b = $(`#photo-${w}`); if (b) { b.hidden = !st.photos?.[w] || !!st.againMode; b.classList.toggle('plain', st.photoChoice !== w); } }
   againTools();
   k.classList.toggle('plain', st.photoChoice !== 'kept');
   s.classList.toggle('plain', st.photoChoice !== 'stretched');
   const crisp = pref('scan-crisp', '1') !== '0';
   c.classList.toggle('plain', !crisp); c.setAttribute('aria-pressed', String(crisp));
   if (st.photoChoice === 'lidar') { const M = st.lid.overlay?.picture?.marks; $('#photo-why').textContent = `The lidar itself. Raised things (roofs, decks, walls, sheds, hot tubs) have straight edges fitted to the laser's hits; paving the laser tells apart by brightness (darker than the grass) is dashed blue: its corners always less sure, and a curved drive or a road only traced, with no corners. A point snaps to a corner: a white dot is pinned to about a foot, a yellow ring is less sure (the laser's last hit may stop short), a white cross is a small thing's middle. In the walk, aim at that corner itself, at any height. The ground shows by brightness; trees are green outlines.${M ? ` ${M.corners.filter((c) => c.sure && onPhoto(c.at)).length} sure corners here.` : ''}`; return; }
+  if (st.photoChoice === 'ground') { const L = st.lid.ground; $('#photo-why').textContent = `The lidar's ground alone, everything above it hidden (grey: no ground seen, under a roof or a thick crown). Hard-edged on purpose: light is grass, dark is paving (blacktop darker than concrete), each edge put halfway between the laser's light and dark hits. One hit every ${L ? (L.spacing * 3.281).toFixed(1) : '?'} ft, drawn on ${L ? (L.cell * 39.37).toFixed(0) : '?'} in cells.`; return; }
+  if (st.photoChoice === 'naip') { $('#photo-why').textContent = `NAIP, the USDA's aerial photo (${st.naipNote || ''}), as delivered: not moved onto the lidar.`; return; }
   $('#photo-why').textContent = st.photos?.stretched
     ? (st.photoChoice === 'stretched' ? 'Stretched onto the lidar: each spot moved to where the lidar measured it, so a corner on the ground is where it is on the ground.' : 'The photo as the map was traced on it. Aerial photos lean and stretch a little at the ground; "Stretched onto the lidar" corrects that.')
     : 'No stretched photo for this map yet.';
@@ -328,6 +390,8 @@ function againTools() {
 function wirePhotoTools() {
   $('#photo-kept')?.addEventListener('click', () => { setPref('scan-photo', 'kept'); showPhoto(); });
   $('#photo-lidar')?.addEventListener('click', () => { setPref('scan-photo', 'lidar'); showPhoto(); });
+  $('#photo-ground')?.addEventListener('click', () => { setPref('scan-photo', 'ground'); showPhoto(); });
+  $('#photo-naip')?.addEventListener('click', () => { setPref('scan-photo', 'naip'); showPhoto(); });
   $('#photo-stretched')?.addEventListener('click', () => { setPref('scan-photo', 'stretched'); showPhoto(); });
   $('#photo-crisp')?.addEventListener('click', () => { setPref('scan-crisp', pref('scan-crisp', '1') !== '0' ? '0' : '1'); showPhoto(); });
 }
@@ -601,6 +665,7 @@ function startLidar(m) {
     w.onmessage = ({ data }) => {
       if (data.progress) { st.lid.progress = data.progress; showLidar(); }
       if (data.ready) { st.lid.ready = data.ready; log(`lidar model read: ${data.ready.points} columns, ${data.ready.solid} solid cells, shift ${data.ready.shift}`); showLidar(); keepShadeFresh(m, data.ready); }
+      if (data.ground) { st.lid.ground = data.ground; groundPhoto().catch((e) => log(`lidar ground picture: ${e.message}`)); }
       if (data.marks && st.lid.overlay?.picture) { st.lid.overlay.picture.marks = data.marks; if (st.photoChoice === 'lidar') { photoTools(); drawMap(); } }
       if (data.overlay) { st.lid.overlay = data.overlay; st.lid.meshes = null; lidarPhoto().catch((e) => log(`lidar picture: ${e.message}`)); log(`lidar overlay: ${data.overlay.solids.length / 4} solid cells, ${data.overlay.tall.length / 5} tall cells`); }
       if (data.error) { st.lid.error = data.error; log(`lidar: ${data.error}`); showLidar(); if (/no lidar model yet/.test(data.error)) keepShadeFresh(m, null); }
@@ -652,7 +717,7 @@ async function keepShadeFresh(m, ready) {
   if (r?.ok) {
     log(`shade model rebuilt (build ${r.build}, ${r.fences ?? 0} fences, ${r.erased ?? 0} erasures kept)`);
     try { st.lid.worker?.terminate(); } catch { /* gone */ }
-    st.lid = { ...st.lid, worker: null, ready: null, error: null, progress: 'Reading the updated lidar…', overlay: null, meshes: null };
+    st.lid = { ...st.lid, worker: null, ready: null, error: null, progress: 'Reading the updated lidar…', overlay: null, meshes: null, ground: null };
     showLidar();
     startLidar(m);
     return;

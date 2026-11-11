@@ -36,7 +36,7 @@ on:
         required: true
         default: tests
         type: choice
-        options: [tests, deploy, walks, twin, fix, place, depth, study, skyline, pavement, checks, repeat, register, walkfix, walkfixjs, reference, warp, marks, naip]
+        options: [tests, deploy, walks, twin, fix, place, depth, study, skyline, pavement, checks, repeat, register, walkfix, walkfixjs, reference, warp, marks, naip, drive]
       walk:
         description: 'For twin, fix or depth: the walk id, or latest'
         default: latest
@@ -411,6 +411,18 @@ jobs:
           set -o pipefail
           node scan/tools/naip-check.mjs "${WALK:-recent}" | tee naip.txt
 
+      # THE DRIVE'S WIDTH ON THE HARD-EDGED GROUND PICTURE (scan/tools/drive-width.mjs; SCAN-PLAN section 23): the
+      # owner's test of the picture against a tape measure. Widths and lengths only.
+      - name: The drive's width on the ground picture
+        if: ${{ inputs.task == 'drive' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WALK: ${{ inputs.walk }}
+        run: |
+          set -o pipefail
+          node scan/tools/drive-width.mjs "$WALK" | tee drive.txt
+
       - name: Photos stretched onto the lidar
         if: ${{ inputs.task == 'warp' }}
         env:
@@ -493,6 +505,7 @@ jobs:
             warp) cat warp.txt 2>/dev/null || echo "no warp study: see the step above" ;;
             marks) cat marks.txt 2>/dev/null || echo "no marks check: see the step above" ;;
             naip) cat naip.txt 2>/dev/null || echo "no NAIP check: see the step above" ;;
+            drive) cat drive.txt 2>/dev/null || echo "no drive width: see the step above" ;;
             walkfixjs) cat walkfix.txt 2>/dev/null || echo "no check: see the step above" ;;
             walkfix) grep -v '^Twin read' walkfix.txt 2>/dev/null | tail -40 || echo "no walk-to-walk study: see the step above" ;;
             reference) cat reference.txt 2>/dev/null || echo "no reference: see the step above" ;;

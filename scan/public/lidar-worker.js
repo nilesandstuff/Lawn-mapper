@@ -17,6 +17,7 @@ import { loadLidar } from '/lib/lidar-load.js';
 import { walkFix } from '/lib/walkfix.js';
 import { lookGrids, lidarPicture } from '/lib/look.js';
 import { lidarMarks, returnsFrom } from '/lib/lidar-marks.js';
+import { groundPicture } from '/lib/ground-picture.js';
 // THE SHARED TREE-VERSUS-BUILDING RULE'S MODULE (CLAUDE.md, "One way to read lidar"), copied into this site unchanged
 // at deploy time (scan/tools/prepare.mjs): its kind codes and wallsOf. The kinds themselves come from the model.
 const sharedRule = () => import('/lib/shade/structures.js');
@@ -114,6 +115,13 @@ self.onmessage = async ({ data }) => {
     self.postMessage({ overlay: { show, picture, box, cell: G.cell, solids, tall: tallA, roofRuns: roofsA, tallCell: cellE, dem1: { box, cell: G.cell * 4, W: dw, H: dh, data: dem1 }, dist: { box, cell: G.cell, W: G.W, H: G.H, data: dist } } }, [solids.buffer, tallA.buffer, roofsA.buffer, dem1.buffer, dist.buffer]);
     // the raised things' straight edges and corners, to place points on (lib/lidar-marks.js): after the overlay, since
     // they take some seconds on a phone and the camera view needs none of them
+    // the ground alone, hard-edged (lib/ground-picture.js; the owner, 2026-11-11): after the overlay too
+    if (P) {
+      try {
+        const t0 = Date.now(), g = groundPicture(box, P);
+        self.postMessage({ ground: { e0: g.e0, n1: g.n1, cell: g.cell, W: g.W, H: g.H, rgba: g.rgba, spacing: g.spacing, levels: g.levels }, progress: `lidar ground picture: ${g.W} x ${g.H} cells of ${g.cell.toFixed(2)} m, ${Date.now() - t0} ms` }, [g.rgba.buffer]);
+      } catch (err) { self.postMessage({ progress: `the lidar's ground picture could not be made (${err.message})` }); }
+    }
     if (P) {
       try {
         const t0 = Date.now(), M = lidarMarks(box, P);
