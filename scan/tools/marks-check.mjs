@@ -13,6 +13,7 @@ import { readMap, readModel } from './twin-io.mjs';
 import { readObject, BUCKET } from './twin-r2.mjs';
 import { gridsFromModel } from '../lib/lidar-load.js';
 import { lidarMarks, returnsFrom } from '../lib/lidar-marks.js';
+import { roofCorners } from '../lib/roof-corner.js';
 import { ringsOf, toMerc } from '../lib/photo.js';
 import { toLocal } from '../lib/frames.js';
 
@@ -51,6 +52,10 @@ async function main() {
   const lp = lawn.flat(), lm = lp.length ? [lp.reduce((t, p) => t + p[0], 0) / lp.length, lp.reduce((t, p) => t + p[1], 0) / lp.length] : null;
   const far = (at) => (lm && at ? `${Math.hypot(at[0] - lm[0], at[1] - lm[1]).toFixed(0)} m from the lawn's middle` : '');
   for (const d of debug.filter((x) => x.kind === 'building' || x.kind === 'object').slice(0, 40)) console.log(`  ${d.kind} ${d.area} m2: ${far(d.middle)}, crowns round it ${d.woods}`);
+  // the roof corners a walk may take as references (lib/roof-corner.js), with and without the rules
+  const RC = roofCorners(M, P, lawn), RA = roofCorners(M, P, [], { maxEaveM: 99 });
+  console.log(`Roof corners offered: ${RC.length} (of ${RA.length} outward corners with long sides, before the eave-height and lawn rules): ${RC.map((c) => `${c.label} of the ${M.objects.find((o) => o.id === c.of)?.area} m2 building, eave ${c.eaveM} m, ${c.lawnM} m from the lawn, sides ${c.sidesM.join(' and ')} m, ${c.sure ? 'sure' : `within ${c.within ?? '?'} m`}`).join('; ') || 'none'}`);
+  console.log(`  all of them: ${RA.map((c) => `${M.objects.find((o) => o.id === c.of)?.area} m2 ${c.label} eave ${c.eaveM} m${c.sure ? ' sure' : ''}`).join('; ') || 'none'}`);
   const wd = debug.filter((d) => d.kind === 'in the woods');
   console.log(`Left out as in the woods (crowns over the ground round it): ${wd.length}; ${wd.map((d) => `${d.was} ${d.n} returns at ${d.top} m (${d.woods})`).slice(0, 20).join('; ')}`);
   const dk = debug.filter((d) => d.kind === 'deck off a house');

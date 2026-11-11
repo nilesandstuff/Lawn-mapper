@@ -28,6 +28,7 @@ import { keepPoint, viewFromSem, newSemCount, noteSem, semSummary, newCrumbs, cr
 import { newOutbox, idbStore, memoryStore, statusText } from '/lib/outbox.js';
 import { byDistance, nearestMap, mapLabel } from '/lib/maps-pick.js';
 import { enhance } from '/lib/enhance.js';
+import { newSight, sight } from '/lib/roof-corner.js';
 import { viewToFit, followView, toScreen, zoomAt as miniZoom, pan as miniPan, edgeArrow } from '/lib/minimap.js';
 
 const $ = (s) => document.querySelector(s);
@@ -475,6 +476,7 @@ function drawMap() {
     if (label) { g.font = `bold ${15 * u}px system-ui, sans-serif`; g.fillStyle = '#fff'; g.strokeStyle = 'rgba(0,0,0,.85)'; g.lineWidth = 4 * u; g.strokeText(label, x + R + 4 * u, y - R * 0.4); g.fillText(label, x + R + 4 * u, y - R * 0.4); }
   };
   for (const p of st.pins) if (p.map) dot(p.map, CSS.pin, p.name, 7);
+  roofMarks(g, u);
   for (const p of shownPoints()) dot(p.map, p.kind === 'ref' ? CSS.ref : CSS.check, p.name, 14, p === st.dragging);
   // WHILE DRAGGING, A MAGNIFIER: the photo round the point four times closer, in the top corner away from the finger
   if (st.dragging) {
@@ -530,6 +532,27 @@ function lidarLines(g, u) {
   }
 }
 
+/**
+ * THE ROOF CORNERS A WALK MAY TAKE AS REFERENCES (lib/roof-corner.js; the owner, 2026-11-11: "the user should either be
+ * able to pick the corners, or have them shown to them on the map that their lawn was traced on"): each offered
+ * corner as a white diamond, on whichever picture is showing, where the LIDAR has it (a photo's roof leans, so a
+ * diamond may sit a few feet off the roof's corner in the photo: it says which corner, not where the photo has it).
+ * A tap on one makes it a reference.
+ */
+const roofFree = () => (st.againMode ? [] : (st.lid.roofs || []).filter((c) => onPhoto(c.at) && !(st.points || []).some((p) => p.roof && Math.hypot(p.map[0] - c.at[0], p.map[1] - c.at[1]) < 0.3)));
+function roofMarks(g, u) {
+  for (const c of roofFree()) {
+    const [x, y] = px(c.at), r = 9 * u;
+    g.beginPath(); g.moveTo(x, y - r); g.lineTo(x + r, y); g.lineTo(x, y + r); g.lineTo(x - r, y); g.closePath();
+    g.fillStyle = 'rgba(255,255,255,.25)'; g.fill(); g.lineWidth = 2.5 * u; g.strokeStyle = '#000'; g.stroke(); g.lineWidth = 1.5 * u; g.strokeStyle = '#fff'; g.stroke();
+  }
+}
+function roofAt(b) {
+  const reach = 28 * cssK() / (st.view?.s || 1); let best = null, bd = reach;
+  for (const c of roofFree()) { const [x, y] = px(c.at), d = Math.hypot(x - b[0], y - b[1]); if (d < bd) { bd = d; best = c; } }
+  return best;
+}
+
 /** A point placed on the lidar view goes to the corner within a fingertip, when there is one. */
 function snapped(at) {
   if (st.photoChoice !== 'lidar') return { at, snap: null };
@@ -554,13 +577,15 @@ function zoomAt(f, [x, y]) {
 }
 function listPoints() {
   const el = $('#points');
+  const rn = $('#roof-note');
+  if (rn) { const R = st.lid?.roofs; rn.hidden = !R; if (R) rn.textContent = R.length ? `Roof corners (white diamonds): ${R.length} offered. Tap one to make it a reference; in the walk you aim up at that corner from two places and it marks itself. Two to four, on different sides of the house, are enough.` : 'No roof corner is offered on this map: none is pinned by the laser, under 15 ft up and within 15 ft of the lawn.'; }
   againTools();
   if (st.againMode) {
     const t = againTodo();
     el.innerHTML = st.points.map((p) => `<li><span style="color:${p.kind === 'ref' ? CSS.ref : CSS.check};font-weight:600">${esc(p.name)}</span> ${p.again ? 'placed again' : p === t ? '<strong>tap its spot now</strong>' : 'to do'}</li>`).join('');
     return;
   }
-  el.innerHTML = st.points.map((p) => `<li><span style="color:${p.kind === 'ref' ? CSS.ref : CSS.check};font-weight:600">${esc(p.name)}</span> ${p.kind === 'ref' ? 'reference' : 'check point'}${p.on === 'lidar' ? (p.snap ? (p.snap.kind === 'middle' ? ' · on a small thing\'s middle' : p.snap.sure ? ' · on a sure corner' : ' · on a less sure corner') : ' · on the lidar, not on a corner') : ''}</li>`).join('') || '<li class="dim">None yet. Tap the photo.</li>';
+  el.innerHTML = st.points.map((p) => `<li><span style="color:${p.kind === 'ref' ? CSS.ref : CSS.check};font-weight:600">${esc(p.name)}</span> ${p.roof ? `reference · the roof's ${esc(p.roof.label)}, ${Math.round(p.roof.eaveM * 3.281)} ft up (aim up at it in the walk, from two places)` : p.kind === 'ref' ? 'reference' : 'check point'}${p.on === 'lidar' ? (p.snap ? (p.snap.kind === 'middle' ? ' · on a small thing\'s middle' : p.snap.sure ? ' · on a sure corner' : ' · on a less sure corner') : ' · on the lidar, not on a corner') : ''}</li>`).join('') || '<li class="dim">None yet. Tap the photo.</li>';
 }
 function wireMap() {
   const cv = $('#map'), ptrs = new Map();
@@ -604,6 +629,7 @@ function wireMap() {
     ptrs.delete(ev.pointerId);
     if (pinch) { if (ptrs.size < 2) pinch = null; downAt = null; drag = null; pan = null; return; }
     const xy = canvasXY(ev);
+    if (drag && moved && drag.roof && dragFrom) { drag.map = dragFrom.slice(); delete drag.grab; drag = null; st.dragging = null; flash('A roof corner stays where the lidar has it. Delete it to choose another.'); drawMap(); return; }
     if (drag && moved && !drag.of && st.photoChoice === 'lidar') { const sp = snapped(drag.map); drag.map = sp.at; drag.snap = sp.snap || undefined; }
     if (drag && moved) {
       const far = dragFrom ? Math.hypot(drag.map[0] - dragFrom[0], drag.map[1] - dragFrom[1]) * 3.281 : 0;
@@ -622,6 +648,12 @@ function wireMap() {
       savePoints(); listPoints(); drawMap();
       if (!againTodo()) flash('Every point placed again. Tap "Done" to go back.');
       return;
+    }
+    const rc = roofAt(b);
+    if (rc) {
+      st.points.push({ id: `${Date.now()}`, kind: 'ref', name: nextName('ref'), map: rc.at.slice(), roof: { eaveM: rc.eaveM, label: rc.label, sure: rc.sure, within: rc.within } });
+      flash(`${st.points[st.points.length - 1].name}: the roof's ${rc.label}, ${Math.round(rc.eaveM * 3.281)} ft up`);
+      savePoints(); listPoints(); drawMap(); return;
     }
     const sp = snapped(unpx(b));
     st.points.push({ id: `${Date.now()}`, kind: st.adding, name: nextName(st.adding), map: sp.at, on: st.photoChoice || undefined, snap: sp.snap || undefined });
@@ -665,6 +697,7 @@ function startLidar(m) {
     w.onmessage = ({ data }) => {
       if (data.progress) { st.lid.progress = data.progress; showLidar(); }
       if (data.ready) { st.lid.ready = data.ready; log(`lidar model read: ${data.ready.points} columns, ${data.ready.solid} solid cells, shift ${data.ready.shift}`); showLidar(); keepShadeFresh(m, data.ready); }
+      if (data.roofs) { st.lid.roofs = data.roofs; log(`roof corners offered: ${data.roofs.length}`); drawMap(); listPoints(); }
       if (data.ground) { st.lid.ground = data.ground; groundPhoto().catch((e) => log(`lidar ground picture: ${e.message}`)); }
       if (data.marks && st.lid.overlay?.picture) { st.lid.overlay.picture.marks = data.marks; if (st.photoChoice === 'lidar') { photoTools(); drawMap(); } }
       if (data.overlay) { st.lid.overlay = data.overlay; st.lid.meshes = null; lidarPhoto().catch((e) => log(`lidar picture: ${e.message}`)); log(`lidar overlay: ${data.overlay.solids.length / 4} solid cells, ${data.overlay.tall.length / 5} tall cells`); }
@@ -717,7 +750,7 @@ async function keepShadeFresh(m, ready) {
   if (r?.ok) {
     log(`shade model rebuilt (build ${r.build}, ${r.fences ?? 0} fences, ${r.erased ?? 0} erasures kept)`);
     try { st.lid.worker?.terminate(); } catch { /* gone */ }
-    st.lid = { ...st.lid, worker: null, ready: null, error: null, progress: 'Reading the updated lidar…', overlay: null, meshes: null, ground: null };
+    st.lid = { ...st.lid, worker: null, ready: null, error: null, progress: 'Reading the updated lidar…', overlay: null, meshes: null, ground: null, roofs: null };
     showLidar();
     startLidar(m);
     return;
@@ -930,7 +963,7 @@ async function appBox() {
     <div class="tools" style="margin-top:6px"><a href="/api/app/apk"><button type="button">Get the app</button></a> <a href="/api/app/pair"><button type="button" class="plain">Open in the app</button></a></div>
     <p class="dim" style="margin:6px 0 0">First time: Get the app, open the download and allow installing from Chrome. Then Open in the app signs it in (once).</p>`;
 }
-const pointsKept = () => (st.points || []).map((p) => ({ id: p.id, name: p.name, kind: p.kind, map: p.map, on: p.on || null, again: p.again || null, snap: p.snap || null }));
+const pointsKept = () => (st.points || []).map((p) => ({ id: p.id, name: p.name, kind: p.kind, map: p.map, on: p.on || null, again: p.again || null, snap: p.snap || null, roof: p.roof || null }));
 
 function nextTarget() {
   // the point the owner picked on the mini map, until it is marked (2026-11-03: Mark "was demanding R2, which I had
@@ -949,6 +982,7 @@ function nextTarget() {
 }
 
 function onFrame(f) {
+  if (st.sight) { try { stepSight(f); } catch (e) { log(`roof sighting: ${e.message}`); st.sight = null; } }
   if (!st.walk) return;
   st.ar = f;
   if (f.events) replayActs(f); // a replay: what was done at this frame of the recorded walk
@@ -1213,9 +1247,9 @@ function hud(f) {
   const last = st.errors.length && Date.now() - st.errors[st.errors.length - 1].t < 6000 && /engine|start/.test(st.errors[st.errors.length - 1].what) ? `<br><span class="bad">${esc(st.errors[st.errors.length - 1].what)}</span>` : '';
   $('#hud').innerHTML = `${NAME[w.engine]} · ${tr} · walked ${Math.round(w.stats.walked * FT)} ft${pts} · ${aim} · ${w.pins.length} pin${w.pins.length === 1 ? '' : 's'}${w.pendingMeasure ? ' · <span class="warn">now aim at the second mark</span>' : ''}${fixLine}${prevLine}${st.nudge ? `<br><span class="warn">${esc(st.nudge.text)}</span>` : ''}${st.upStatus && (st.upStatus.pending > 3 || st.upStatus.off || (st.upStatus.pending && !st.upStatus.sending)) ? `<br><span class="dim">${esc(statusText(st.upStatus))}</span>` : ''}${last}`;
   const can = !!f.hit && f.tracking !== 'lost';
-  $('#pin').disabled = !can; $('#measure').disabled = !can; $('#check').disabled = !can || !w.pins.length; $('#mark').disabled = !can || !target;
+  $('#pin').disabled = !can; $('#measure').disabled = !can; $('#check').disabled = !can || !w.pins.length; $('#mark').disabled = !target || (target.roof ? f.tracking === 'lost' : !can);
   const again = target && L.marks.some((m) => m.id === target.id);
-  $('#mark').textContent = target ? `Mark ${target.name}${again ? ' again' : ''}` : 'Mark';
+  $('#mark').textContent = target ? (st.sight?.target.id === target.id ? `Cancel ${target.name}` : `Mark ${target.name}${target.roof ? ' (roof)' : ''}${again ? ' again' : ''}`) : 'Mark';
   if (f.t - (st.mapAt || 0) > 1000 && fitFor(L, w.odo)) { st.mapAt = f.t; drawMap(); }
 }
 
@@ -1379,9 +1413,39 @@ function doCheck(f, { replay = false } = {}) {
     const c = checkPin(st.walk, p, f.hit);
     flash(`Pin ${p.name}: ${ftIn(c.offLevelM)} off as placed${c.offAnchorLevelM != null ? `, ${ftIn(c.offAnchorLevelM)} as anchored` : ''} (${ftIn(c.walkedSinceM)} walked since)`);
 }
+/**
+ * A ROOF CORNER MARKED BY TWO AIMS (lib/roof-corner.js; the owner, 2026-11-11: a prescribed, checked procedure, the mark
+ * made automatically). Mark starts it; each frame goes to the sighting, whose words show in the middle of the view;
+ * when two sight lines cross at the eave it is marked with no tap. Mark again cancels.
+ */
+function startSight(f, target) {
+  if (st.sight?.target.id === target.id) { st.sight = null; $('#guide').hidden = true; flash(`${target.name}: cancelled`); return; }
+  const groundY = st.L.groundY ?? (f.pose ? f.pose.position.y - 1.4 : 0);
+  st.sight = { S: newSight({ eaveM: target.roof.eaveM, groundY }), target, rays: 0 };
+  log(`roof corner ${target.name} (${target.roof.label}, eave ${target.roof.eaveM} m): sighting started, ground y ${groundY.toFixed(2)}`);
+}
+function stepSight(f) {
+  const s = st.sight; if (!s) return;
+  sight(s.S, { t: f.t, pos: f.pose?.position, quat: f.pose?.quaternion, tracking: f.tracking });
+  const S = s.S, el = $('#guide');
+  if (S.rays.length !== s.rays) { s.rays = S.rays.length; try { navigator.vibrate?.(60); } catch { /* no buzz */ } }
+  el.hidden = false; $('#guide-say').textContent = `${s.target.name}, the roof's ${s.target.roof.label}: ${S.say}`; $('#guide-detail').textContent = S.detail || ''; $('#guide-bar').style.width = `${Math.round((S.progress || 0) * 100)}%`;
+  if (!S.done) return;
+  st.sight = null; setTimeout(() => { if (!st.sight) el.hidden = true; }, 1800);
+  (st.walk.roofSights ||= []).push({ name: s.target.name, ok: S.done.ok, why: S.done.why || null, sights: S.done.sights ?? S.rays.length, missM: S.done.missM != null ? +S.done.missM.toFixed(3) : null, turnDeg: S.done.turnDeg != null ? Math.round(S.done.turnDeg) : null, eaveOffM: S.done.eaveOffM != null ? +S.done.eaveOffM.toFixed(2) : null, steps: S.log });
+  if (!S.done.ok) { flash(`${s.target.name} not marked: ${S.done.why}`); log(`roof corner ${s.target.name} not marked: ${S.done.why}`); return; }
+  try { navigator.vibrate?.([60, 60, 120]); } catch { /* no buzz */ }
+  mark(st.L, s.target, { position: S.done.position, distance: S.done.distance, type: 'ROOF' }, st.walk.odo);
+  const n = new Set(st.L.marks.filter((m) => m.kind === 'ref').map((m) => m.id)).size;
+  flash(n >= 2 ? `${s.target.name} marked: lined up by ${n} references` : `${s.target.name} marked: one more reference lines the map up`);
+  log(`roof corner ${s.target.name} marked: ${S.done.sights} aims ${Math.round(S.done.turnDeg)} degrees apart, lines ${(S.done.missM * 100).toFixed(0)} cm apart, ${S.done.eaveOffM.toFixed(2)} m off the lidar's eave`);
+  st.undoMarks.push({ id: s.target.id, name: s.target.name, check: false, at: Date.now() });
+  st.chosen = null;
+}
 function doMark(f, { replay = false, target: tid = null } = {}) {
-    if (!f?.hit) return;
     const target = tid != null ? st.points.find((q) => q.id === tid) : nextTarget(); if (!target) return;
+    if (target.roof && f?.pose) { recordAct({ a: 'mark', target: target.id }); startSight(f, target); return; }
+    if (!f?.hit) return;
     if (!replay && far(f.hit) && Date.now() - st.farAt > FAR_AGAIN) { st.farAt = Date.now(); flash(`Aiming from ${ftIn(f.hit.distance)}: step closer, or tap again to mark anyway`); return; }
     recordAct({ a: 'mark', target: target.id });
     const odo = st.walk.odo;
@@ -1448,7 +1512,7 @@ function finish() {
   const crumbs = st.crumbs?.list.length && st.tracker?.anchorAt ? crumbMoves(st.crumbs, (h) => st.tracker.anchorAt(h)) : null;
   const refs = st.points.filter((p) => p.kind === 'ref').map((p) => ({ name: p.name, marks: L ? L.marks.filter((m) => m.id === p.id).length : 0, leftOutM: L ? r3(leftOut(L.marks.filter((m) => m.kind === 'ref'), p.id)) : null }));
   const s = summary(w, {
-    page: 'yard AR test v2', recordOnly: !!st.recordOnly, features: w.features || null, depthType: w.depthType || null, anchors: st.anchors ? anchorsKept(st.anchors) : null, depthFill: st.depthFill ? { frames: st.depthFill.frames, holes: +(st.depthFill.zero / Math.max(1, st.depthFill.cells)).toFixed(3), past8m: +(st.depthFill.far / Math.max(1, st.depthFill.cells)).toFixed(3), weak: +(st.depthFill.weak / Math.max(1, st.depthFill.cells)).toFixed(3), minConf: st.depthFill.minConf } : null, rawAsked: !!st.rawDepth, geo: geoSummary(), depthSpikes: st.spikes ? { ...st.spikes, share: +(st.spikes.flagged / Math.max(1, st.spikes.cells)).toFixed(4), recordOnly: true } : null, walkFix: st.walkStats ? { ...st.walkStats, share: L?.walk?.ok ? +L.walk.share.toFixed(3) : null, margin: L?.walk?.ok ? +L.walk.margin.toFixed(3) : null, walkedM: L?.walk?.ok ? Math.round(L.walk.walkedM) : null } : null, semantics: st.caps?.native ? { on: !!st.tracker?.semantics, dims: st.semDims || null, ...(semSummary(st.sem) || {}) } : null, crumbs: crumbs ? { n: crumbs.n, held: crumbs.held, lost: crumbs.lost, refused: crumbs.refused, medianM: crumbs.medianM, maxM: crumbs.maxM, maxLevelM: crumbs.maxLevelM, worstOdo: crumbs.worstOdo } : null, app: st.caps?.native ? { app: st.caps.native.app, bridge: st.caps.native.bridge, device: st.caps.native.device, camera: st.started?.camera ?? null, image: st.started?.image ?? null, modes: st.started?.modes ?? null, streetscape: st.started?.streetscape ?? null, streetError: st.started?.streetError ?? null, recording: st.started?.recording ?? null, recordError: st.started?.recordError ?? null, geoDepthPoints: st.geoDepthN || 0, grabW: st.grabW || null } : null, replayOf: st.replayOf || null, failed: w.failed || null, errors: st.errors.map((e) => e.what).slice(-30),
+    page: 'yard AR test v2', roofSights: w.roofSights || null, recordOnly: !!st.recordOnly, features: w.features || null, depthType: w.depthType || null, anchors: st.anchors ? anchorsKept(st.anchors) : null, depthFill: st.depthFill ? { frames: st.depthFill.frames, holes: +(st.depthFill.zero / Math.max(1, st.depthFill.cells)).toFixed(3), past8m: +(st.depthFill.far / Math.max(1, st.depthFill.cells)).toFixed(3), weak: +(st.depthFill.weak / Math.max(1, st.depthFill.cells)).toFixed(3), minConf: st.depthFill.minConf } : null, rawAsked: !!st.rawDepth, geo: geoSummary(), depthSpikes: st.spikes ? { ...st.spikes, share: +(st.spikes.flagged / Math.max(1, st.spikes.cells)).toFixed(4), recordOnly: true } : null, walkFix: st.walkStats ? { ...st.walkStats, share: L?.walk?.ok ? +L.walk.share.toFixed(3) : null, margin: L?.walk?.ok ? +L.walk.margin.toFixed(3) : null, walkedM: L?.walk?.ok ? Math.round(L.walk.walkedM) : null } : null, semantics: st.caps?.native ? { on: !!st.tracker?.semantics, dims: st.semDims || null, ...(semSummary(st.sem) || {}) } : null, crumbs: crumbs ? { n: crumbs.n, held: crumbs.held, lost: crumbs.lost, refused: crumbs.refused, medianM: crumbs.medianM, maxM: crumbs.maxM, maxLevelM: crumbs.maxLevelM, worstOdo: crumbs.worstOdo } : null, app: st.caps?.native ? { app: st.caps.native.app, bridge: st.caps.native.bridge, device: st.caps.native.device, camera: st.started?.camera ?? null, image: st.started?.image ?? null, modes: st.started?.modes ?? null, streetscape: st.started?.streetscape ?? null, streetError: st.started?.streetError ?? null, recording: st.started?.recording ?? null, recordError: st.started?.recordError ?? null, geoDepthPoints: st.geoDepthN || 0, grabW: st.grabW || null } : null, replayOf: st.replayOf || null, failed: w.failed || null, errors: st.errors.map((e) => e.what).slice(-30),
     references: refs, checks: (w.checks || []).map((c) => ({ ...c, errorM: r3(c.errorM), errorFixM: r3(c.errorFixM), errorRefsM: r3(c.errorRefsM), walkedSinceFixM: r2(c.walkedSinceFixM), aimM: r2(c.aimM), walkedM: r2(c.walkedM) })),
     pinsNear: w.pins.map((p) => ({ name: p.name, nearest: p.nearest ? { name: p.nearest.name, m: r2(p.nearest.m), byRefsM: r2(p.nearest.byRefsM) } : null })),
     fix: L ? summaryOf(L) : null, surfaceSeen: st.surfCount || null, lidar: st.lid.ready ? { points: st.lid.ready.points, solid: st.lid.ready.solid, shift: st.lid.ready.shift, rule: st.lid.ready.rule || null, structures: st.lid.ready.structures || null, tallCells: st.lid.overlay ? st.lid.overlay.tall.length / 5 : null } : st.lid.error ? { error: st.lid.error } : null,

@@ -63,6 +63,12 @@
   #bar button.side.off { opacity: .5; text-decoration: line-through; }
   #flash { position: absolute; left: 50%; top: 58%; transform: translateX(-50%); background: rgba(0,0,0,.7); padding: 6px 12px; border-radius: 8px; opacity: 0; transition: opacity .2s; white-space: nowrap; max-width: 92vw; }
   #flash.show { opacity: 1; }
+  #guide { position: absolute; left: 50%; top: 30%; transform: translateX(-50%); width: min(86vw, 420px); background: rgba(0,0,0,.72); border-radius: 12px; padding: 12px 14px; text-align: center; }
+  #guide[hidden] { display: none; }
+  #guide strong { display: block; font-size: 20px; line-height: 1.25; }
+  #guide span { display: block; font-size: 14px; color: #cfd8d3; margin-top: 4px; }
+  #guide i { display: block; height: 6px; border-radius: 3px; background: rgba(255,255,255,.2); margin-top: 8px; overflow: hidden; }
+  #guide i b { display: block; height: 100%; width: 0; background: #6fe39a; }
   /* the mini map (scan/lib/minimap.js): drag, pinch, double-tap to follow again */
   #mini { position: absolute; right: 8px; top: max(18vh, calc(110px + env(safe-area-inset-top))); width: 40vw; max-width: 220px; aspect-ratio: 1; border-radius: 10px; border: 1px solid rgba(255,255,255,.55); background: rgba(20,26,23,.55); touch-action: none; }
   #arrows { position: absolute; inset: 0; pointer-events: none; }
@@ -104,6 +110,7 @@
       </div>
       <p id="photo-why" class="dim" style="margin:4px 0 0"></p>
       <div id="mapwrap"><canvas id="map" width="1280" height="1280"></canvas><div id="zoom"><button type="button" id="zin" aria-label="Zoom in">+</button><button type="button" id="zout" aria-label="Zoom out">&minus;</button><button type="button" id="zfit" aria-label="Show it all">&#x2922;</button></div></div>
+      <p id="roof-note" class="dim" style="margin:4px 0 0" hidden></p>
       <ol id="points"></ol>
       <p id="lidar" class="dim">Reading the lidar…</p>
     </div>
@@ -134,6 +141,7 @@
   <div id="cross"></div>
   <div id="hud">Starting…</div>
   <div id="flash"></div>
+  <div id="guide" hidden><strong id="guide-say"></strong><span id="guide-detail"></span><i><b id="guide-bar"></b></i></div>
   <canvas id="mini" aria-label="Mini map: drag to move, pinch to zoom, double-tap to follow again"></canvas>
   <div id="arrows"></div>
   <div id="bar">
