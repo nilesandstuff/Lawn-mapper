@@ -76,6 +76,14 @@ bucket_name = "lawn-mapper-corpus"
 [triggers]
 crons = ["* * * * *"]
 
+# The shade builder (shade-builder/, the features session's: a Worker of its own whose Container runs the shade map's
+# lidar build, which needs more memory than a Worker has). worker/src/shade-server-build.js calls it for an admin
+# save whose trace is done (worker/src/admin-saves.js buildLidar). It must exist before this deploys: workflow
+# "B. Shade builder".
+[[services]]
+binding = "SHADE_BUILDER"
+service = "shade-builder"
+
 # Normally you do NOT edit this block. CI appends it from the CUSTOM_DOMAIN
 # repository variable (tools/ci-prepare.js), which is why moving the site to a
 # new hostname is a one-field change and not a commit -- and why ci-prepare

@@ -16,7 +16,8 @@
  *        saves the map as an admin save, starts Turf Trace (the trained model, alpha.js) on its frame, and remembers
  *        the press in admin_traces. Answers { id }.
  *   GET  /api/admin/admin-saves         the admin saves, newest first, each with its tools' dates and its trace
- *   POST /api/admin/admin-saves/check   finish any trace that is ready now (the page's Refresh; the timer does the same)
+ *   POST /api/admin/admin-saves/check   finish any trace that is ready now (the page's Refresh; the timer does the same,
+ *                                        and then builds the lidar: buildLidar)
  *
  * THE TRACE LANDS WITHOUT THE PAGE: the Worker's one-minute timer (index.js scheduled -> finishTraces) asks the model
  * server about each press still waiting; a finished one's mask (kept in R2 by alpha.js pollAlpha) is turned into
@@ -33,6 +34,7 @@ import { alphaEnabled, startAlpha, pollAlpha, alphaMaskResponse } from './alpha.
 import { countyServiceById } from './county.js';
 import { decodePng } from './png-probe.js';
 import { keepPhoto } from './map-photo.js';
+import { buildShadeOnServer } from './shade-server-build.js';
 import { maskToPolygons, areaTraceLimits, TRACE_TOLERANCE_M, MAX_TRACE_VERTICES } from '../../public/lib/mask.js';
 import { framePxToLngLat, metresPerPixel } from '../../public/lib/mercator.js';
 import { measure } from '../../public/lib/area.js';
@@ -80,7 +82,7 @@ async function shapesOf(env, pressId, frame) {
  * Every press still waiting: asked about once; a finished one written into its map. Called by the timer and by the
  * page's Refresh. Never throws: one bad row must not stop the others, and the timer must not fail the Worker.
  */
-export async function finishTraces(env, selfOrigin = '') {
+export async function finishTraces(env, selfOrigin = '', { build = true } = {}) {
   let rows = [];
   try { rows = (await env.DB.prepare("SELECT * FROM admin_traces WHERE status = 'pending' ORDER BY created_at LIMIT 10").all()).results || []; } catch { return 0; }
   let done = 0;
@@ -105,21 +107,52 @@ export async function finishTraces(env, selfOrigin = '') {
       const map = await getMap(env, owner, row.map_key);
       if (!map) { await set('failed', 'the map is gone'); continue; }
       // a map already drawn on since the press (the owner opened it and traced) keeps its own lawn
-      if (Array.isArray(map.shapes) && map.shapes.length && map.handEdited) { await set('done', 'the map was edited meanwhile: its own lawn kept'); await mark(env, owner, row.map_key, { status: 'kept', detail: 'edited meanwhile' }); continue; }
+      if (Array.isArray(map.shapes) && map.shapes.length && map.handEdited) { await set('lidar', 'the map was edited meanwhile: its own lawn kept'); await mark(env, owner, row.map_key, { status: 'kept', detail: 'edited meanwhile' }); continue; }
       const m = shapes.length ? measure({ type: 'FeatureCollection', features: shapes }) : { squareFeet: 0, acres: 0 };
       const { tools: _t, ...record } = map;
       await upsertMap(env, owner, { ...record, shapes, squareFeet: m.squareFeet, acres: m.acres, handEdited: false,
         model: 'alpha', modelVersion: ans.version || record.modelVersion || null, provider: frame.provider || record.provider || 'mapbox',
         frame: { ...(record.frame || {}), ...frame },
         trace: { status: 'done', at: new Date().toISOString(), press: row.press, pieces: shapes.length, uncertainty: ans.uncertainty ?? null, seconds: ans.seconds ?? null } });
-      await set('done', `${shapes.length} pieces`);
+      await set('lidar', `${shapes.length} pieces`); // traced; its lidar is built next (buildLidar)
       done++;
     } catch (err) {
       try { await set('failed', err.message); } catch { /* the next tick */ }
     }
   }
   if (rows.length) { try { await writeIndex(env); } catch { /* the next change writes it */ } }
+  if (build) { try { await buildLidar(env); } catch { /* the next tick */ } }
   return done;
+}
+
+/**
+ * THE LIDAR, BUILT WITH NO PAGE OPEN (the owner, 2026-11-11: "Ask the shade map to build a way where it runs on
+ * cloudflare so I don't need to leave the page open"; the features session's shade-server-build.js and its Container).
+ * A traced admin save (status 'lidar') is claimed ('building', so the next minute's timer cannot start it twice),
+ * built, and its row ends 'done' or 'lidar-failed' with what the builder said. One a tick: a build takes 15-60 s.
+ * The answer is kept on the ROW, not in the map's record: writing the record again would make the map newer than the
+ * model just built from it, and every tool would call the model out of date.
+ */
+export async function buildLidar(env) {
+  if (!env.SHADE_BUILDER) return null;
+  const now = () => new Date().toISOString();
+  // a build claimed twenty minutes ago and never finished (the Worker was replaced mid-build) is offered again once
+  await env.DB.prepare("UPDATE admin_traces SET status = 'lidar', detail = 'retried' WHERE status = 'building' AND finished_at < ?1 AND (detail IS NULL OR detail != 'retried')")
+    .bind(new Date(Date.now() - 20 * 60 * 1000).toISOString()).run();
+  const row = await env.DB.prepare("SELECT * FROM admin_traces WHERE status = 'lidar' ORDER BY created_at LIMIT 1").first();
+  if (!row) return null;
+  const claimed = await env.DB.prepare("UPDATE admin_traces SET status = 'building', finished_at = ?2 WHERE id = ?1 AND status = 'lidar'").bind(row.id, now()).run();
+  if (!claimed?.meta?.changes) return null;
+  const end = (status, detail) => env.DB.prepare('UPDATE admin_traces SET status = ?2, detail = ?3, finished_at = ?4 WHERE id = ?1').bind(row.id, status, String(detail || '').slice(0, 300), now()).run();
+  try {
+    const user = await env.DB.prepare('SELECT id, email, role FROM users WHERE id = ?').bind(row.user_id).first();
+    if (!user || user.role !== 'admin') { await end('lidar-failed', 'not an administrator any more'); return false; }
+    let base = ''; try { base = JSON.parse(row.frame)?.origin || ''; } catch { base = ''; }
+    const r = await buildShadeOnServer(env, userOwner(user), row.map_key, { base });
+    if (!r.ok) { await end('lidar-failed', r.why || 'the shade builder failed'); return false; }
+    await end('done', `lidar built in ${r.seconds ?? '?'} s (build ${r.build ?? '?'}${r.lidar ? `, ${typeof r.lidar === 'string' ? r.lidar : r.lidar.name || r.lidar.id || 'survey chosen'}` : ''})`);
+    return true;
+  } catch (err) { await end('lidar-failed', err.message); return false; }
 }
 
 /** A trace's state written into the map's own record, the rest of the record untouched. */
@@ -138,11 +171,15 @@ export async function handleAdminSaves(request, env, url, origin, ctx, json, me)
   const owner = userOwner(me);
 
   if (path === 'admin-saves' && request.method === 'GET') {
-    return json({ maps: (await adminSavesOf(env, me)).map((m) => brief(m)) }, 200, origin);
+    // each map's lidar, from its newest press (buildLidar keeps the answer on the row)
+    const rows = (await env.DB.prepare('SELECT map_key, status, detail, finished_at FROM admin_traces WHERE user_id = ? ORDER BY created_at').bind(me.id).all()).results || [];
+    const last = new Map(rows.map((r) => [r.map_key, r]));
+    const lidarOf = (key) => { const r = last.get(key); return !r || r.status === 'pending' || r.status === 'failed' ? null : { status: r.status === 'lidar' ? 'waiting' : r.status === 'building' ? 'building' : r.status === 'done' ? 'done' : 'failed', detail: r.status === 'done' || r.status === 'lidar-failed' ? r.detail : null, at: r.finished_at }; };
+    return json({ maps: (await adminSavesOf(env, me)).map((m) => ({ ...brief(m), lidar: lidarOf(m.id) })) }, 200, origin);
   }
 
   if (path === 'admin-saves/check' && request.method === 'POST') {
-    const done = await finishTraces(env, url.origin);
+    const done = await finishTraces(env, url.origin, { build: false }); // the lidar is the timer's: it takes a minute
     return json({ ok: true, finished: done }, 200, origin);
   }
 

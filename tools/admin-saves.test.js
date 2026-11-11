@@ -87,6 +87,18 @@ globalThis.fetch = async (u, init) => {
   const c = done.shapes[0].geometry.coordinates[0], xs = c.map((p) => p[0]), ys = c.map((p) => p[1]), mid = [(Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2];
   check('the lawn sits at the frame\'s middle', Math.abs(mid[0] + 85.1) < 2e-5 && Math.abs(mid[1] - 42.1) < 2e-5, mid.join());
   check('the timer has nothing more to do', await finishTraces(env) === 0);
+  // no builder bound: the row waits for its lidar, and the list says so
+  let l = (await admin(env, req('/api/admin/admin-saves', { cookie: oc }))).body.maps[0].lidar;
+  check('traced, its lidar is waiting', l?.status === 'waiting', JSON.stringify(l));
+  // the builder bound (a stand-in): one build, claimed once, its answer on the row and the model stored
+  let builds = 0;
+  const benv = { ...env, SHADE_BUILDER: { async fetch() { builds++; return json({ ok: true, seconds: 12, result: { build: 7 }, part: { data: { lidar: 'kept' }, basedOn: null }, model: Buffer.from('not a real model').toString('base64') }, 200); } } };
+  await finishTraces(benv); await finishTraces(benv);
+  l = (await admin(env, req('/api/admin/admin-saves', { cookie: oc }))).body.maps[0].lidar;
+  check('the builder is called once for it', builds === 1, `${builds}`);
+  check('and the list says what happened', l && (l.status === 'done' || l.status === 'failed') && !!l.detail, JSON.stringify(l));
+  const atAfter = (await maps(env, req(`/api/maps/one?id=${encodeURIComponent('9 test rd|alpha|find')}`, { cookie: oc }))).body.map.at;
+  check('the map\'s record is not written again by the build', atAfter === done.at, `${done.at} -> ${atAfter}`);
 
   // edited in the Lawn Mapper: the page's record has no flag, and it stays an admin save
   await maps(env, req('/api/maps', { method: 'POST', cookie: oc, body: save({ id: '9 test rd|alpha|find', address: '9 Test Rd', handEdited: true }) }));

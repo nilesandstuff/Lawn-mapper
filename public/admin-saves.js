@@ -15,6 +15,13 @@ const traceLine = (m) => {
   if (t.status === 'kept') return '<span class="ok">Edited by hand</span>: the trace was not laid over it';
   return `<span class="bad">Trace failed</span>${t.detail ? `: ${esc(t.detail)}` : ''}. Open it in the Lawn Mapper to trace it there.`;
 };
+const lidarLine = (m) => {
+  const l = m.lidar;
+  if (!l) return '<span class="dim">Lidar: built after the trace</span>';
+  if (l.status === 'done') return `<span class="ok">Lidar ready</span>${l.detail ? `: ${esc(l.detail)}` : ''}. The AR and the shade map can open it.`;
+  if (l.status === 'waiting' || l.status === 'building') return '<span class="warn">Lidar is being built on the server…</span> about a minute, page open or not';
+  return `<span class="bad">Lidar not built</span>${l.detail ? `: ${esc(l.detail)}` : ''}. Open it in the shade map to build it there.`;
+};
 const toolLine = (m, tools) => {
   const has = Object.keys(m.tools || {});
   return tools.map((t) => `<a href="${esc(t.url.replace('{id}', encodeURIComponent(m.id)))}">${esc(t.name)}${has.includes(t.id) ? ' &#10003;' : ''}</a>`).join('');
@@ -31,10 +38,11 @@ async function load({ check = false } = {}) {
     list.innerHTML = maps.length ? maps.map((m) => `<div class="save">
         <h2>${esc(m.address || m.id)}</h2>
         <p>${traceLine(m)}</p>
+        <p>${lidarLine(m)}</p>
         <p class="dim">Saved ${m.at ? esc(new Date(m.at).toLocaleString()) : ''}${m.county ? ` · ${esc(m.county)}` : ''}</p>
         <div class="links">${toolLine(m, shown)}</div>
       </div>`).join('') : '<p>No admin saves yet. On the Lawn Mapper\'s AI tab, set up an address and press "Save as admin and auto trace".</p>';
-    const waiting = maps.some((m) => m.trace && (m.trace.status === 'pending' || m.trace.status === 'starting'));
+    const waiting = maps.some((m) => (m.trace && (m.trace.status === 'pending' || m.trace.status === 'starting')) || (m.lidar && (m.lidar.status === 'waiting' || m.lidar.status === 'building')));
     note.textContent = waiting ? 'Checking again in a few seconds…' : `${maps.length} map${maps.length === 1 ? '' : 's'}`;
     if (waiting) timer = setTimeout(() => load({ check: true }), 8000);
   } catch (e) {
