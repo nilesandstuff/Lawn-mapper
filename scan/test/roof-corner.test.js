@@ -117,4 +117,37 @@ function run(S, places, { tremorDeg = 0.15, seed = 1 } = {}) {
   console.log(`a house with eaves 16 ft up: ${C.length} corners, tiers ${C.map((c) => c.tier).join(', ')}`);
   assert.ok(C.length >= 3 && C.every((c) => c.tier === 2), 'none under 15 ft, so the 18 ft tier is offered');
 }
+// A NEIGHBOUR'S ROOF: offered, marked offLot, and not counted toward three
+{
+  const r = rng(12), P = [];
+  for (let i = 0; i < 70 * 40 * 4; i++) {
+    const e = r() * 70, n = r() * 40;
+    const mine = e >= 10 && e <= 24 && n >= 12 && n <= 24, theirs = e >= 40 && e <= 52 && n >= 12 && n <= 22;
+    // mine: eaves 16 ft up (none under 15 ft); theirs: eaves 10 ft up, four good corners
+    P.push({ e, n, h: mine ? 6.5 - 1.6 * Math.abs(n - 18) / 6 + (r() - 0.5) * 0.05 : theirs ? 5.5 - 2.5 * Math.abs(n - 17) / 5 + (r() - 0.5) * 0.05 : (r() - 0.5) * 0.05, kind: mine || theirs ? 1 : 0 });
+  }
+  const pts = { n: P.length, e: (i) => P[i].e, nn: (i) => P[i].n, hag: (i) => P[i].h, bright: () => 0, kind: (i) => P[i].kind };
+  const M = lidarMarks([0, 0, 70, 40], pts), lot = [[[2, 2], [32, 2], [32, 38], [2, 38]]];
+  const C = roofCorners(M, pts, [], { lot });
+  const own = C.filter((c) => !c.offLot), other = C.filter((c) => c.offLot);
+  console.log(`with a neighbour's house: ${own.length} of the lot's own (tiers ${own.map((c) => c.tier).join(',')}), ${other.length} of the neighbour's (tiers ${other.map((c) => c.tier).join(',')})`);
+  assert.ok(other.length >= 3 && other.every((c) => c.at[0] > 35), 'the neighbour\'s corners are offered, and said to be off the lot');
+  assert.ok(own.length >= 3 && own.every((c) => c.tier === 2 && c.at[0] < 30), 'and do not count: the lot\'s own house still gets its looser tier');
+  const without = roofCorners(M, pts, [], {});
+  assert.ok(without.every((c) => c.tier === 1), 'with no property line given every building counts, as before');
+}
+// THE CAMERA'S DEPTH AGAINST WHAT IT SHOULD READ
+{
+  const at = { pos: { x: 0, y: 1.4, z: 0 }, quat: quatTo([0, 1.4, 0], C), tracking: 'normal' }, range = Math.hypot(C[0], C[1] - 1.4, C[2]);
+  const hold = (S, depths, ms = 1500) => { for (let t = 0; t < ms && !S.rays.length; t += 33) sight(S, { ...at, t, depths }); return S; };
+  let S = hold(newSight({ eaveM: 3, groundY: 0 }), [3, 3.1, 2.9, 3, 3.2]);
+  assert.equal(S.rays.length, 0, 'a branch 10 ft off in front of a corner 31 ft away: not taken');
+  assert.ok(/reads 10 ft/.test(S.detail) && /about 3[01] ft/.test(S.detail), S.detail);
+  S = hold(newSight({ eaveM: 3, groundY: 0 }), [range + 0.3, null, range - 0.2, null, range]);
+  assert.equal(S.rays.length, 1, 'the roof at the expected range with sky beside it: taken');
+  S = hold(newSight({ eaveM: 3, groundY: 0 }), [null, null, null, null, null]);
+  assert.equal(S.rays.length, 1, 'a camera that reads nothing there (sky all round a thin edge) does not hold it up');
+  S = hold(newSight({ eaveM: 3, groundY: 0 }), null);
+  assert.equal(S.rays.length, 1, 'nor does a phone with no depth');
+}
 console.log('roof-corner: ok');

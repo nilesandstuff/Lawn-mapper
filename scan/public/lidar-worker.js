@@ -129,7 +129,7 @@ self.onmessage = async ({ data }) => {
         const marks = { objects: M.objects.map((o) => ({ id: o.id, kind: o.kind, ring: o.ring, top: o.top, area: o.area, square: o.square, middle: o.middle, traced: !!o.traced })), corners: M.corners, spacing: M.spacing };
         // the roof corners a walk may take as its references (lib/roof-corner.js; the owner's option 2, 2026-11-11)
         let roofs = [];
-        try { roofs = roofCorners(M, P, data.load.lawn || []); } catch (err) { self.postMessage({ progress: `the roof corners could not be found (${err.message})` }); }
+        try { roofs = roofCorners(M, P, data.load.lawn || [], { lot: data.load.parcel || [] }); } catch (err) { self.postMessage({ progress: `the roof corners could not be found (${err.message})` }); }
         self.postMessage({ roofs });
         self.postMessage({ marks, progress: `lidar marks: ${M.objects.length} things, ${M.corners.filter((c) => c.kind === 'corner').length} corners (${M.corners.filter((c) => c.sure).length} sure), ${Date.now() - t0} ms` });
       } catch (err) { self.postMessage({ progress: `the lidar's corners could not be found (${err.message})` }); }

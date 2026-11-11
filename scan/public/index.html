@@ -21,6 +21,11 @@
   .ok { color: var(--ok); }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin: 12px 0; }
   .tools { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+  /* (2026-11-11) the admin saves' drop-down, with a long address in it, was wider than the phone: the whole page
+     grew sideways, and in AR the camera window was no longer the screen and the crosshair no longer its middle */
+  html, body { max-width: 100%; overflow-x: hidden; }
+  #admin-pick label { display: block; width: 100%; min-width: 0; }
+  #admin-pick select { display: block; width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; font-size: 16px; padding: 8px; margin-top: 4px; }
   button { font: inherit; border: 0; border-radius: 8px; padding: 10px 14px; background: var(--accent); color: #fff; cursor: pointer; }
   button.plain { background: transparent; color: var(--fg); border: 1px solid var(--line); }
   button:disabled { opacity: .45; cursor: default; }

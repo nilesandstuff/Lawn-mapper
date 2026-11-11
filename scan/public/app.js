@@ -600,14 +600,14 @@ function zoomAt(f, [x, y]) {
 function listPoints() {
   const el = $('#points');
   const rn = $('#roof-note');
-  if (rn) { const R = st.lid?.roofs; rn.hidden = !R; if (R) rn.textContent = R.length ? `Roof corners (white diamonds): ${R.length} offered. Tap one to make it a reference; in the walk you aim up at that corner from two places and it marks itself. Two to four, on different sides of the house, are enough.${R.some((c) => c.tier === 2) ? ` Fewer than three met the first rule (15 ft up, 15 ft from the lawn), so ${R.filter((c) => c.tier === 2).length} more are offered up to 18 ft up and 30 ft from the lawn.` : ''}` : 'No roof corner is offered on this map: none has two long straight roof edges, under 18 ft up and within 30 ft of the lawn.'; }
+  if (rn) { const R = st.lid?.roofs; rn.hidden = !R; if (R) rn.textContent = R.length ? `Roof corners (white diamonds): ${R.length} offered. Tap one to make it a reference; in the walk you aim up at that corner from two places and it marks itself. Two to four, on different sides of the house, are enough.${R.some((c) => c.offLot) ? ` ${R.filter((c) => c.offLot).length} are on a neighbour's building: usable, if you can stand where you see them.` : ''}${R.some((c) => c.tier === 2) ? ` Fewer than three met the first rule (15 ft up, 15 ft from the lawn), so ${R.filter((c) => c.tier === 2).length} more are offered up to 18 ft up and 30 ft from the lawn.` : ''}` : 'No roof corner is offered on this map: none has two long straight roof edges, under 18 ft up and within 30 ft of the lawn.'; }
   againTools();
   if (st.againMode) {
     const t = againTodo();
     el.innerHTML = st.points.map((p) => `<li><span style="color:${p.kind === 'ref' ? CSS.ref : CSS.check};font-weight:600">${esc(p.name)}</span> ${p.again ? 'placed again' : p === t ? '<strong>tap its spot now</strong>' : 'to do'}</li>`).join('');
     return;
   }
-  el.innerHTML = st.points.map((p) => `<li><span style="color:${p.kind === 'ref' ? CSS.ref : CSS.check};font-weight:600">${esc(p.name)}</span> ${p.roof ? `reference · the roof's ${esc(p.roof.label)}, ${Math.round(p.roof.eaveM * 3.281)} ft up (aim up at it in the walk, from two places)` : p.kind === 'ref' ? 'reference' : 'check point'}${p.on === 'lidar' ? (p.snap ? (p.snap.kind === 'middle' ? ' · on a small thing\'s middle' : p.snap.sure ? ' · on a sure corner' : ' · on a less sure corner') : ' · on the lidar, not on a corner') : ''}</li>`).join('') || '<li class="dim">None yet. Tap the photo.</li>';
+  el.innerHTML = st.points.map((p) => `<li><span style="color:${p.kind === 'ref' ? CSS.ref : CSS.check};font-weight:600">${esc(p.name)}</span> ${p.roof ? `reference · the roof's ${esc(p.roof.label)}, ${Math.round(p.roof.eaveM * 3.281)} ft up (in the walk: aim up at it from two places; it marks itself)` : p.kind === 'ref' ? 'reference' : 'check point'}${p.on === 'lidar' ? (p.snap ? (p.snap.kind === 'middle' ? ' · on a small thing\'s middle' : p.snap.sure ? ' · on a sure corner' : ' · on a less sure corner') : ' · on the lidar, not on a corner') : ''}</li>`).join('') || '<li class="dim">None yet. Tap the photo.</li>';
 }
 function wireMap() {
   const cv = $('#map'), ptrs = new Map();
@@ -673,8 +673,8 @@ function wireMap() {
     }
     const rc = roofAt(b);
     if (rc) {
-      st.points.push({ id: `${Date.now()}`, kind: 'ref', name: nextName('ref'), map: rc.at.slice(), roof: { eaveM: rc.eaveM, label: rc.label, sure: rc.sure, within: rc.within } });
-      flash(`${st.points[st.points.length - 1].name}: the roof's ${rc.label}, ${Math.round(rc.eaveM * 3.281)} ft up`);
+      st.points.push({ id: `${Date.now()}`, kind: 'ref', name: nextName('ref'), map: rc.at.slice(), roof: { eaveM: rc.eaveM, label: rc.label, sure: rc.sure, within: rc.within, offLot: !!rc.offLot } });
+      flash(`${st.points[st.points.length - 1].name}: ${rc.offLot ? "a neighbour's roof, its" : "the roof's"} ${rc.label}, ${Math.round(rc.eaveM * 3.281)} ft up`);
       savePoints(); listPoints(); drawMap(); return;
     }
     const sp = snapped(unpx(b));
@@ -736,7 +736,7 @@ function startLidar(m) {
       if (data.fix && st.L) { const f = answer(st.L, data.fix, data.id); if (f && st.L.log.at(-1)?.held === 'first') flash('You are here: the lidar found you'); }
     };
     w.onerror = (e) => { st.lid.error = e.message || 'the lidar reader failed'; showLidar(); };
-    w.postMessage({ load: { origin: st.origin, box, map: st.map, lawn: st.lawn } });
+    w.postMessage({ load: { origin: st.origin, box, map: st.map, lawn: st.lawn, parcel: st.parcel } });
   } catch (e) { st.lid.error = e.message; showLidar(); }
 }
 /**
@@ -798,7 +798,7 @@ async function startAR(engine) {
   st.walk = newWalk({ engine, phone: navigator.userAgent });
   st.dy = null; st.dyFrom = null; st.gpsTrail = []; st.anchors = newAnchors(); st.nudge = null; st.depthFill = null; st.geoTrail = []; st.geoSeen = null; st.sem = newSemCount(); st.lastSem = null; st.semDims = null; st.occ = null; st.occFull = 0; st.occAt = 0; st.walkGround = new Map(); st.spikes = { pictures: 0, cells: 0, flagged: 0 }; st.walkAsk = null; st.walkAt = 0; st.walkStats = { asks: 0, ok: 0, lastWhy: null, firstOkM: null }; st.crumbs = newCrumbs();
   st.walk.checks = [];
-  st.L = newLocate();
+  st.L = newLocate(); st.sight = null; st.sightPaused = false; st.sightEndedAt = 0;
   st.prevStand = new Map(); st.prevGround = new Map(); st.prevAsk = null; st.prevAt = 0; st.prevStats = { asks: 0, ok: 0, lastWhy: null, firstOkM: null, lastMs: null };
   // the owner's choice at the start (2026-11-11): the saved walk places this one, or this one is a fresh reference
   st.refUse = st.refMeta && refChoice() === 'saved';
@@ -1006,6 +1006,7 @@ function nextTarget() {
 }
 
 function onFrame(f) {
+  try { autoSight(f); } catch (e) { log(`roof sighting: ${e.message}`); }
   if (st.sight) { try { stepSight(f); } catch (e) { log(`roof sighting: ${e.message}`); st.sight = null; } }
   if (!st.walk) return;
   st.ar = f;
@@ -1273,7 +1274,7 @@ function hud(f) {
   const can = !!f.hit && f.tracking !== 'lost';
   $('#pin').disabled = !can; $('#measure').disabled = !can; $('#check').disabled = !can || !w.pins.length; $('#mark').disabled = !target || (target.roof ? f.tracking === 'lost' : !can);
   const again = target && L.marks.some((m) => m.id === target.id);
-  $('#mark').textContent = target ? (st.sight?.target.id === target.id ? `Cancel ${target.name}` : `Mark ${target.name}${target.roof ? ' (roof)' : ''}${again ? ' again' : ''}`) : 'Mark';
+  $('#mark').textContent = target ? (target.roof && !again ? (st.sightPaused ? `Go on with ${target.name}` : `Pause ${target.name} (roof)`) : `Mark ${target.name}${again ? ' again' : ''}`) : 'Mark';
   if (f.t - (st.mapAt || 0) > 1000 && fitFor(L, w.odo)) { st.mapAt = f.t; drawMap(); }
 }
 
@@ -1443,19 +1444,34 @@ function doCheck(f, { replay = false } = {}) {
  * when two sight lines cross at the eave it is marked with no tap. Mark again cancels.
  */
 function startSight(f, target) {
-  if (st.sight?.target.id === target.id) { st.sight = null; $('#guide').hidden = true; flash(`${target.name}: cancelled`); return; }
   const groundY = st.L.groundY ?? (f.pose ? f.pose.position.y - 1.4 : 0);
   st.sight = { S: newSight({ eaveM: target.roof.eaveM, groundY }), target, rays: 0 };
   log(`roof corner ${target.name} (${target.roof.label}, eave ${target.roof.eaveM} m): sighting started, ground y ${groundY.toFixed(2)}`);
 }
+/** The next unmarked roof corner's sighting, started by itself once the walk is tracking. */
+function autoSight(f) {
+  if (st.sight || st.sightPaused || !st.walk || !st.L || !f.pose || f.tracking !== 'normal') return;
+  if (Date.now() - (st.sightEndedAt || 0) < 2500) return; // a breath between corners, and after a refusal
+  const marked = new Set(st.L.marks.map((m) => m.id));
+  const chosen = st.chosen ? st.points.find((p) => p.id === st.chosen) : null;
+  const target = chosen?.roof && !marked.has(chosen.id) ? chosen : st.points.find((p) => p.roof && !marked.has(p.id));
+  if (target) startSight(f, target);
+}
 function stepSight(f) {
   const s = st.sight; if (!s) return;
-  sight(s.S, { t: f.t, pos: f.pose?.position, quat: f.pose?.quaternion, tracking: f.tracking });
+  // the camera's depth at the crosshair and just round it (range in metres, null where it reads nothing), for the
+  // sighting's check against where the corner should be
+  let depths = null;
+  if (f.depth?.at && f.pose) {
+    const c = f.pose.position;
+    depths = [[0.5, 0.5], [0.46, 0.5], [0.54, 0.5], [0.5, 0.47], [0.5, 0.53]].map(([x, y]) => { try { const p = f.depth.at(x, y); return p ? Math.hypot(p.x - c.x, p.y - c.y, p.z - c.z) : null; } catch { return null; } });
+  }
+  sight(s.S, { t: f.t, pos: f.pose?.position, quat: f.pose?.quaternion, tracking: f.tracking, depths });
   const S = s.S, el = $('#guide');
   if (S.rays.length !== s.rays) { s.rays = S.rays.length; try { navigator.vibrate?.(60); } catch { /* no buzz */ } }
   el.hidden = false; $('#guide-say').textContent = `${s.target.name}, the roof's ${s.target.roof.label}: ${S.say}`; $('#guide-detail').textContent = S.detail || ''; $('#guide-bar').style.width = `${Math.round((S.progress || 0) * 100)}%`;
   if (!S.done) return;
-  st.sight = null; setTimeout(() => { if (!st.sight) el.hidden = true; }, 1800);
+  st.sight = null; st.sightEndedAt = Date.now(); if (!S.done.ok) st.sightEndedAt += 4000; setTimeout(() => { if (!st.sight) el.hidden = true; }, 1800);
   (st.walk.roofSights ||= []).push({ name: s.target.name, ok: S.done.ok, why: S.done.why || null, sights: S.done.sights ?? S.rays.length, missM: S.done.missM != null ? +S.done.missM.toFixed(3) : null, turnDeg: S.done.turnDeg != null ? Math.round(S.done.turnDeg) : null, eaveOffM: S.done.eaveOffM != null ? +S.done.eaveOffM.toFixed(2) : null, steps: S.log });
   if (!S.done.ok) { flash(`${s.target.name} not marked: ${S.done.why}`); log(`roof corner ${s.target.name} not marked: ${S.done.why}`); return; }
   try { navigator.vibrate?.([60, 60, 120]); } catch { /* no buzz */ }
@@ -1468,7 +1484,14 @@ function stepSight(f) {
 }
 function doMark(f, { replay = false, target: tid = null } = {}) {
     const target = tid != null ? st.points.find((q) => q.id === tid) : nextTarget(); if (!target) return;
-    if (target.roof && f?.pose) { recordAct({ a: 'mark', target: target.id }); startSight(f, target); return; }
+    /* A ROOF CORNER MARKS ITSELF (the owner, 2026-11-11: "I was hoping we could do it automatically so nothing has to
+       be pressed (tapping adds a brief shake, and the user may be holding the phone awkwardly)"): autoSight starts the
+       sighting; this button only pauses it and lets it go on. */
+    if (target.roof) {
+      st.sightPaused = !st.sightPaused;
+      if (st.sightPaused) { st.sight = null; $('#guide').hidden = true; flash(`${target.name}: paused. Tap again to go on.`); } else flash(`${target.name}: aim up at the roof corner`);
+      return;
+    }
     if (!f?.hit) return;
     if (!replay && far(f.hit) && Date.now() - st.farAt > FAR_AGAIN) { st.farAt = Date.now(); flash(`Aiming from ${ftIn(f.hit.distance)}: step closer, or tap again to mark anyway`); return; }
     recordAct({ a: 'mark', target: target.id });

@@ -39,6 +39,8 @@ export const EAVE_TOL_M = 0.8;     // the crossing's height against the lidar's 
 export const MIN_UP_DEG = 8;       // an aim at a roof corner looks up
 export const NEAR_M = 1.5, FAR_M = 14; // how near and far the corner may be from the phone, on the level
 export const MAX_SIGHTS = 4;
+export const DEPTH_TOL = 0.35, DEPTH_TOL_M = 1.2; // the camera's depth against the expected range: within 35% or 1.2 m
+export const FIRST_KEEPS_MS = 60000; // a first aim with no second in a minute is let go (it may have been at something else)
 const STEP_M = 0.7;
 
 /* ---------------------------------------------------------------- which corners */
@@ -66,11 +68,21 @@ export function roofCorners(marks, pts, lawn = [], opts = {}) {
   // good corners we can go to the next best at the higher threshold. Then if there's really just [not] 3 good
   // candidates at the next threshold, fall back to 2"): the original rules; with fewer than three, the looser
   // distances' corners are added after them (tier 2); what the walk does with two is walkref.js referenceFit's.
+  //
+  // A NEIGHBOUR'S ROOF IS OFFERED BUT DOES NOT COUNT (the owner, after the first walk with them, 2026-11-11: "I kinda
+  // like the ability to use a neighbor's roof if needed. What is a problem is that it counts for the tier system...
+  // ignore neighbor's roofs for the sake of the tier rule, but still do the roof shapes and make them available").
+  // opts.lot: the property line's rings. A corner of a building whose middle is outside them is `offLot`; only the
+  // lot's own corners are counted against three.
   if (opts.maxEaveM != null || opts.nearLawnM != null) return cornersWithin(marks, pts, lawn, opts);
-  const first = cornersWithin(marks, pts, lawn, {}).map((c) => ({ ...c, tier: 1 }));
-  if (first.length >= 3) return first;
+  const lot = (opts.lot || []).filter((r) => r && r.length >= 3);
+  const inLot = (p) => !lot.length || lot.some((ring) => { let c = false; for (let i = 0, j2 = ring.length - 1; i < ring.length; j2 = i++) { const [xi, yi] = ring[i], [xj, yj] = ring[j2]; if ((yi > p[1]) !== (yj > p[1]) && p[0] < ((xj - xi) * (p[1] - yi)) / (yj - yi) + xi) c = !c; } return c; });
+  const mids = new Map((marks?.objects || []).map((o) => [o.id, o.middle || (o.ring?.length ? [o.ring.reduce((t, q) => t + q[0], 0) / o.ring.length, o.ring.reduce((t, q) => t + q[1], 0) / o.ring.length] : null)]));
+  const tag = (c, tier) => ({ ...c, tier, offLot: !(mids.get(c.of) ? inLot(mids.get(c.of)) : inLot(c.at)) });
+  const first = cornersWithin(marks, pts, lawn, {}).map((c) => tag(c, 1));
+  if (first.filter((c) => !c.offLot).length >= 3) return first;
   const more = cornersWithin(marks, pts, lawn, { maxEaveM: LOOSE_EAVE_M, nearLawnM: LOOSE_LAWN_M })
-    .filter((c) => !first.some((f) => Math.hypot(f.at[0] - c.at[0], f.at[1] - c.at[1]) < 0.05)).map((c) => ({ ...c, tier: 2 }));
+    .filter((c) => !first.some((f) => Math.hypot(f.at[0] - c.at[0], f.at[1] - c.at[1]) < 0.05)).map((c) => tag(c, 2));
   return [...first, ...more];
 }
 function cornersWithin(marks, pts, lawn = [], { maxEaveM = MAX_EAVE_M, nearLawnM = NEAR_LAWN_M } = {}) {
@@ -150,6 +162,10 @@ export function sight(S, f) {
   const reach = Number.isFinite(t) && t > 0 ? [o[0] + t * d[0], eaveY, o[2] + t * d[2]] : null;
   const levelTo = reach ? Math.hypot(reach[0] - o[0], reach[2] - o[2]) : NaN;
 
+  if (S.state === 'move' && S.rays.length === 1 && S.took && f.t - S.took > FIRST_KEEPS_MS) {
+    // a minute and no second aim: start again (the first may have been taken while the phone was held up at nothing)
+    S.rays = []; S.first = null; S.turnDeg = null; S.tries = 0; S.win = []; S.state = 'aim'; S.say = 'Aim at the roof corner and hold still'; S.detail = '';
+  }
   if (S.state === 'move') {
     // seen from how far round, against the first sight
     const c = S.first.reach, a = [S.first.o[0] - c[0], 0, S.first.o[2] - c[2]], b2 = [o[0] - c[0], 0, o[2] - c[2]];
@@ -171,6 +187,27 @@ export function sight(S, f) {
   if (levelTo > FAR_M) { S.win = []; S.detail = 'Too far: walk closer to the corner'; return S; }
   if (S.rays.length && S.turnDeg != null && S.turnDeg < TURN_DEG * 0.8) { S.state = 'move'; S.win = []; return S; }
   S.detail = '';
+  // WHAT THE CAMERA'S DEPTH READS THERE, AGAINST WHAT IT SHOULD (the owner, 2026-11-11: "getting live shape/depth
+  // readings and checking them against expectations"). f.depths: the range (m) read at the crosshair and just round
+  // it, null where the camera reads nothing (sky). A roof corner is an edge: something at about the range where this
+  // aim reaches the eave, and sky or something far beside it. Nothing near that range means the aim is on something
+  // else (a branch in front, a wall behind): said, and not taken. A phone that reads no depth at all is not held up.
+  const range = t;
+  const read = (f.depths || []).filter((v) => v != null && Number.isFinite(v) && v > 0);
+  S.depth = null;
+  if (f.depths && f.depths.length) {
+    const tol = Math.max(DEPTH_TOL_M, DEPTH_TOL * range);
+    const on = read.filter((v) => Math.abs(v - range) <= tol);
+    const edge = f.depths.some((v) => v == null || !Number.isFinite(v) || v <= 0 || v > range + tol);
+    const nearest = read.length ? read.reduce((a, b) => (Math.abs(b - range) < Math.abs(a - range) ? b : a)) : null;
+    S.depth = { range, read: nearest, on: on.length, edge };
+    if (read.length >= 3 && !on.length) {
+      S.win = [];
+      S.detail = `The camera reads ${(nearest * 3.281).toFixed(0)} ft there; this corner should be about ${(range * 3.281).toFixed(0)} ft away. Put the circle on the roof's corner itself.`;
+      return S;
+    }
+    S.detail = on.length ? `Reads ${(nearest * 3.281).toFixed(0)} ft, as expected (${(range * 3.281).toFixed(0)} ft)${edge ? ', with sky beside it' : ''}. Hold.` : 'Hold still…';
+  }
   // steady? every frame of the last HOLD_MS within STEADY_DEG and STEADY_M of this one
   S.win.push({ t: f.t, o, d });
   while (S.win.length && (angDeg(S.win[0].d, d) > STEADY_DEG || Math.hypot(...sub(S.win[0].o, o)) > STEADY_M)) S.win.shift();
