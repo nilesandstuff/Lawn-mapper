@@ -1969,6 +1969,15 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
       && JSON.stringify(shiftFrom([1, 2], { east: 0.5, north: 0.5, confident: false }, lat)) === '[1,2]' && Math.abs(shiftFrom([0, 0], { east: k, north: 0, confident: true }, lat)[0] - 1) < 1e-12);
 }
 
+/* THE SERVER'S SHADE BUILD FOR ADMIN SAVES (worker/src/shade-server-build.js; owner, 2026-11-11). */
+{
+  const { buildShadeOnServer } = await import('../worker/src/shade-server-build.js');
+  const unbound = await buildShadeOnServer({}, { kind: 'user', id: 1 }, 'k', { base: 'https://x' });
+  const noBase = await buildShadeOnServer({ SHADE_BUILDER: {} }, { kind: 'user', id: 1 }, 'k', {});
+  check('server build: without the builder bound, or without the site origin, it says so and touches nothing',
+    unbound.ok === false && /not bound/.test(unbound.why) && noBase.ok === false && /origin/.test(noBase.why));
+}
+
 /* ONE LEAF STATE PER LOT (passes.js; owner, 2026-10-29). */
 {
   check('passes: a point fired 9 May or in November is leaf-off; 11 May, July and an undated one are not',
