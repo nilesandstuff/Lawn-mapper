@@ -725,6 +725,9 @@
 
         <div class="tools">
           <button class="primary" id="btn-detect" disabled>Detect my lawn</button>
+          <!-- Administrators only (app.js shows it after /api/auth/me says so): a test map saved and sent to Turf
+               Trace in one press, finished by the server (worker/src/admin-saves.js). -->
+          <button class="ghost" id="btn-admin-trace" hidden>Save as admin and auto trace</button>
           <!-- The same Clear all as the Draw tab: a detection that went wrong is
                thrown away from where it was made, not a tab later. -->
           <button class="ghost" id="btn-clear-detect">Clear all</button>

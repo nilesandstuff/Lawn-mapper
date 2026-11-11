@@ -87,7 +87,12 @@ export async function handleMaps(request, env, url, origin, ctx, json) {
     if (request.method === 'GET') {
       // Signed out with no guest yet: nothing kept, which is an answer, not an error.
       if (!owner) return reply({ maps: [], ...who });
-      return reply({ maps: await listMaps(env, owner), ...who });
+      /* An administrator's ADMIN SAVES (admin-saves.js, 2026-11-11) are listed apart: left out here, and the only
+         ones with ?admin=1. Only an administrator can make one, so every other owner's list is what it was. */
+      const all = await listMaps(env, owner);
+      if (user?.role !== 'admin') return reply({ maps: all, ...who }); // everyone else: exactly as before
+      const wantAdmin = url.searchParams.get('admin') === '1';
+      return reply({ maps: all.filter((m) => (m.adminSave === true) === wantAdmin), ...who });
     }
     if (request.method === 'POST') {
       let body;
@@ -101,7 +106,13 @@ export async function handleMaps(request, env, url, origin, ctx, json) {
       const saved = [];
       let refused = 0;
       for (const map of incoming.slice(0, owner.max === GUEST_MAX_MAPS ? incoming.length : USER_MAX_MAPS)) {
-        const r = await upsertMap(env, owner, map);
+        /* An admin save edited in the Lawn Mapper stays one: the page's record does not carry the flag, so it is
+           taken from the record being replaced. Administrators only; nobody else's save is read first. */
+        let rec = map;
+        if (user?.role === 'admin' && map?.id) {
+          try { const old = await getMap(env, owner, String(map.id).trim()); if (old?.adminSave === true) rec = { ...map, adminSave: true, trace: old.trace }; } catch { /* saved as sent */ }
+        }
+        const r = await upsertMap(env, owner, rec);
         if (r.key) saved.push({ id: r.key, at: r.at });
         /* The photo it was traced on, kept with it the first time it is saved on that photo (map-photo.js; the
            owner, 2026-11-09: "The photo a map is traced on should be accessible indefinitely"). After the answer. */

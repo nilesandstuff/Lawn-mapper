@@ -1315,3 +1315,20 @@ CREATE TABLE IF NOT EXISTS shade_push_keys (
   created_at  TEXT,
   created_by  TEXT
 );
+
+-- ------------------------------------------------- the administrators' test traces
+-- ADMIN SAVES (worker/src/admin-saves.js, 2026-11-11): a test map saved and sent to Turf Trace in one press. One row
+-- per press, so the Worker's one-minute timer can put the finished trace into the map after the page is closed.
+-- A new table: no ALTER needed (CLAUDE.md, "Schema changes need two edits" is about columns on shipped tables).
+CREATE TABLE IF NOT EXISTS admin_traces (
+  id           TEXT PRIMARY KEY,
+  user_id      TEXT NOT NULL,
+  map_key      TEXT NOT NULL,
+  press        TEXT NOT NULL,      -- the trained model's call (alpha.js)
+  frame        TEXT NOT NULL,      -- the frame the mask is laid on, JSON
+  status       TEXT NOT NULL,      -- pending, done, failed
+  detail       TEXT,
+  created_at   TEXT NOT NULL,
+  finished_at  TEXT
+);
+CREATE INDEX IF NOT EXISTS admin_traces_status ON admin_traces(status, created_at);
