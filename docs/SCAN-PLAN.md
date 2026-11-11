@@ -2411,3 +2411,19 @@ the corner's place is the lidar's own. The owner's requirements:
     ("Patience is a limited resource");
   - corners within 15 ft of a lawn edge when there is one.
 OPTION 3: give up on perfect; minimise the error and say how large it may be.
+
+OPTION 2 BUILT (2fd1ae8; scan/lib/roof-corner.js, scan/test/roof-corner.test.js). The rules chosen where the owner
+left them open ("prescribe what you think is necessary and sensible"): eave 15 ft (4.6 m) or less; an outward corner
+of a building's squared outline with both edges 2.5 m or more; within 15 ft of a lawn edge. The marking uses SIGHT
+LINES, not depth: aim up at the corner and hold 0.7 s (taken by itself), step sideways until seen from 25 degrees
+round, aim and hold again; the lines must pass within 15 cm and cross within 0.8 m of the lidar's eave height; else
+one more aim, up to four. Why not depth: it is weakest at a thin roof edge against the sky.
+HARD:
+  - Made-up walks: a corner marked 0.1 in off with a 0.15 degree tremor, 0.1-0.4 in with 0.5 degrees, in 6 s; an aim
+    at the next corner along, or at a roof 3 m higher, is never marked. A person's steady aiming error (not tremor) is
+    NOT in these: a degree at 6 m is 10 cm.
+  - The owner's lot (run 264): 2 corners offered, both on the 474 m2 building: its north-east (eave 3.43 m, 3.7 m from
+    the lawn, edges 13.5 and 3.9 m, sure) and its south (eave 4.53 m, at the lawn, edges 4.4 and 5.9 m, not sure).
+    Before the eave and lawn rules only 5 corners qualify on both buildings (the outline's other corners have an edge
+    under 2.5 m); the house's north-west is out by its eave, 4.66 m against 4.6.
+NOT known: anything about it on a phone. No walk has used it.
