@@ -1016,6 +1016,50 @@ delineator -- turned out not to exist for our imagery. See H18's retraction.
 
 ## HARD FINDINGS — our own measurements
 
+### H134. CORRECTING THE GROUND'S BRIGHTNESS FOR THE CROWN ABOVE IT RECOVERS NOTHING, three ways, scored against the tracing: under canopy raw 0.55 pooled against 0.54 / 0.53 / 0.57; the crown still shows in the lawn after every one (S69, 2026-11-11)
+
+Workflow 23 run 43100442236, `lawns: locked` (104; 96 with a point cloud),
+`brightness: corrected`, 2 m cells, the octrees workflow 23 has always read
+(NOT the newest flights the live model reads), free runner, no model and no
+training. tools/intensity_canopy.py: the raw ground intensity (the control)
+beside (a) ground + C x first-of-many intensity, C fitted per frame without
+labels (Lang et al. 2020), (b) every return of a pulse added up by GPS time
+and given to its ground return, (c) each ground return ranked among the
+frame's ground returns with the same number of returns. Every layer read as
+each cell's rank within its own frame, as the decoder's input is (H97).
+Canopy is the tree model's mask; truth is the tracing with inferred marks.
+Pulses could be put together on all 96 lots.
+
+| AUC (pooled / middle lot / lots above 0.5) | raw (control) | (a) ground + C x first | (b) pulse sum | (c) rank by return count |
+|---|---|---|---|---|
+| under canopy, lawn v not (5,929 / 23,294 cells; 29 lots with 20+ a side) | 0.55 / 0.68 / 24 | 0.54 / 0.65 / 21 | 0.53 / 0.63 / 22 | 0.57 / 0.66 / 24 |
+| in the open, lawn v not (95 lots) | 0.77 / 0.82 / 90 | 0.76 / 0.79 / 88 | 0.70 / 0.77 / 84 | 0.77 / 0.81 / 89 |
+| whole lot, lawn v not (96 lots) | 0.76 / 0.81 / 91 | 0.74 / 0.78 / 90 | 0.66 / 0.76 / 82 | 0.75 / 0.80 / 91 |
+| the crown shows: covered lawn v open lawn (0.5 = gone; 52 lots) | 0.27 / 0.23 / 4 | 0.30 / 0.28 / 7 | 0.40 / 0.34 / 11 | 0.32 / 0.32 / 6 |
+
+Lot by lot against the control (better = AUC up by more than 0.01):
+under canopy (a) 7 better / 12 worse / 10 level, (b) 13 / 11 / 5,
+(c) 11 / 12 / 6; whole lot (a) 8 / 48 / 40, (b) 22 / 47 / 27, (c) 32 / 27 / 37.
+
+What it says:
+- **The owner's observation is measured:** covered lawn is darker than open
+  lawn on 48 lots of 52 (0.27 pooled). The crown is in the ground picture.
+- **No correction takes it out, and none brings the lawn signal back under
+  the trees.** The pulse sum moves the crown furthest (0.27 -> 0.40) and
+  pays for it in the open (0.77 -> 0.70) and over the lot (0.76 -> 0.66):
+  it mixes the leaves' own reflectance into the ground's. The other two
+  move nothing either way.
+- **Ranked within the frame, raw brightness under canopy is not H34's coin
+  toss:** 0.55 pooled, 0.68 on the middle lot, lawn brighter on 24 lots of
+  29. H34's 0.45 pooled raw values across flights and 32 lots; this is the
+  104 with each frame ranked. Weak, but the direction is mostly the open's.
+- Not measured: a decoder reading a corrected layer (the swap at scoring
+  with the canopy guesser off, or trained with it); the newest flights;
+  finer cells. WHY the corrections fail is not known: losses too weak to
+  leave a return (Korpela: 10-15% even on single returns), or the ground
+  under a crown being truly darker (shade-thinned grass, litter, soil),
+  which no correction should remove. Both are SPECULATION.
+
 ### H133. USGS'S REQUESTER-PAYS BUCKET (s3://usgs-lidar) HOLDS THE TILE-ONLY FLIGHTS AT THE SAME PATHS AS ROCKYWEB, AND SERVES A 70 MB TILE IN 1.1 s (62 MB/s, against rockyweb's 0.07-0.4) -- 2026-10-31
 
 Not a detector result: where the newest lidar can come from. Workflow 48
@@ -8750,7 +8794,7 @@ is 130 sqft, so maybe the cutoff should be 100 sqft"),** on the condo,
 where grass islands between driveways run 100 to 150 sq ft. Same scope as
 above: the outline, not the scored mask.
 
-### S69. Ground brightness under a crown is dimmed by the crown: correct it before the decoder reads it? (owner, 2026-11-11 -- NOT MEASURED; literature read)
+### S69. Ground brightness under a crown is dimmed by the crown: correct it before the decoder reads it? (owner, 2026-11-11 -- MEASURED AGAINST THE TRACING: FLAT, H134; not measured through a decoder)
 
 The owner, looking at the lidar brightness picture with the trees removed:
 "the tree canopy was very visible. By the way it alters the brightness of
@@ -10687,6 +10731,7 @@ deploy log says how many are locked and how many are waiting.
 
 | date | run | corpus | backbone | best | SAM | note |
 |---|---|---|---|---|---|---|
+| 2026-11-11 | 43100442236 | 104 (locked; 96 with lidar) | — (workflow 23, `brightness: corrected`, octrees, 2 m cells, no training) | — | — | **H134 / S69:** ground brightness corrected for the crown three ways against the raw control: under canopy 0.55 raw v 0.54 / 0.53 / 0.57; the crown still shows (0.27 -> 0.30 / 0.40 / 0.32); the pulse sum costs the open 0.77 -> 0.70. Flat. |
 | 2026-09-18 | 35404198905 | 24 | DINOv2 tiled 224px | 34.0% | 21.6% | ring first measured, negative |
 | 2026-09-19 | 35409315409 | 23 | Scale-MAE large 672px | 30.9% | 20.3% | eye-vs-colour gap 14.0 -> 3.5 |
 | 2026-09-19 | 35411040880 | 23 | Scale-MAE large 896px | **28.2%** | 20.3% | S1 confirmed; control identical, eye-only -8.2; combined rows worse (S7) |
