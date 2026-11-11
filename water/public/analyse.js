@@ -95,18 +95,20 @@ function heatFor({ month, id }) {
 
 /* A SURFACE-TEMPERATURE VISIT AGAINST THE MODEL (owner, 2026-11-09): the surface model (lib/heat.js) on the visit
    day's own weather (the weeks the plan reads), the air as the visitor measured it when they did, the ground as wet as
-   that day's rain-alone run has it; each cell's surface minus the air, at the afternoon peak (a visit 10 am-5 pm) or
+   that day's rain-alone run has it (or kept watered, when the visitor ticked the sprinklers); each cell's surface
+   minus the air, at the afternoon peak (a visit 10 am-5 pm) or
    before dawn (9 pm-8 am). Anything else (dusk, dawn) has no fair moment to compare with. */
-function surfCheck({ id, date, hour, airF }) {
+function surfCheck({ id, date, hour, airF, watered = false }) {
   const days = kept.week?.days || [];
   const day = days.find((d) => d.date === date);
   if (!kept.model || !day) { self.postMessage({ surfCheck: { id, error: kept.model ? 'the weather record does not reach that day' : 'the plan is not worked out yet' } }); return; }
   const mode = hour >= 10 && hour < 17 ? 'day' : hour >= 21 || hour < 8 ? 'night' : null;
   if (!mode) { self.postMessage({ surfCheck: { id, error: 'taken at dusk or dawn: no fair moment to compare with (the model gives the afternoon peak and before dawn)' } }); return; }
   const month = Number(date.slice(5, 7)) - 1;
-  // how wet the ground was that day, with rain alone (the water map does not know when sprinklers ran)
+  /* how wet the ground was that day: kept watered when the visitor ticked that the sprinklers ran in the 3 days
+     before (ks null: the grass uses all it wants), else rain alone, the stations' rain over the weeks before */
   let ks = null;
-  simulate(kept.model, days, { season: kept.season || null, record: (d, st) => {
+  if (!watered) simulate(kept.model, days, { season: kept.season || null, record: (d, st) => {
     if (days[d].date !== date) return;
     const m = kept.model;
     ks = Float32Array.from(st.Dr, (Dr, i) => (Dr <= m.raw[i] || !(m.taw[i] > m.raw[i]) ? 1 : Math.max(0, (m.taw[i] - Dr) / (m.taw[i] - m.raw[i]))));
@@ -126,7 +128,7 @@ function surfCheck({ id, date, hour, airF }) {
   const s = surfaceOfMonth(kept.model, h, { ks });
   const ta = mode === 'day' ? s.ta.day : s.ta.night;
   const dT = Float32Array.from(mode === 'day' ? s.day : s.night, (t) => t - ta);
-  self.postMessage({ surfCheck: { id, mode, ta, open: (mode === 'day' ? s.open.day : s.open.night) - ta, dT, ks, wind: s.wind, filled } }, [dT.buffer]);
+  self.postMessage({ surfCheck: { id, mode, ta, open: (mode === 'day' ? s.open.day : s.open.night) - ta, dT, ks, wind: s.wind, filled, watered: !!watered } }, [dT.buffer]);
 }
 
 /* THE PLAN ON THE PERSON'S OWN VALVES (owner, 2026-10-23: "a final step that gives exact watering recs by season

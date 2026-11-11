@@ -186,14 +186,15 @@ function earlierCard(visits) {
 /* ---------------------------------------------------------------- the visit and its draft */
 function newVisit() {
   st.visit = { id: uid(), at: Date.now(), dots: [], marks: [], savedAt: null, savedCount: 0 };
-  $('#weather').value = ''; $('#vnote').value = ''; $('#airf').value = '';
+  $('#weather').value = ''; $('#vnote').value = ''; $('#airf').value = ''; $('#sprinklers').checked = false;
   saveDraft(); refresh();
 }
 function saveDraft() {
   if (!st.visit || !st.property) return;
-  store.set(DRAFT, { property: st.property, visit: st.visit, weather: $('#weather').value, note: $('#vnote').value, airf: $('#airf').value });
+  store.set(DRAFT, { property: st.property, visit: st.visit, weather: $('#weather').value, note: $('#vnote').value, airf: $('#airf').value, sprinklers: $('#sprinklers').checked });
 }
 $('#weather').addEventListener('change', () => { if (st.visit) st.visit.dirty = true; saveDraft(); refresh(); });
+$('#sprinklers').addEventListener('change', () => { if (st.visit) st.visit.dirty = true; saveDraft(); refresh(); });
 $('#vnote').addEventListener('change', () => { if (st.visit) st.visit.dirty = true; saveDraft(); refresh(); });
 const unsaved = () => !!st.visit && (st.visit.dots.length > 0 || (st.visit.marks || []).length > 0) && (st.visit.dirty || st.visit.savedCount !== st.visit.dots.length);
 
@@ -245,7 +246,7 @@ $('#save').addEventListener('click', async () => {
   const v = st.visit, p = st.property;
   if (!v || !p || (!v.dots.length && !(v.marks || []).length)) return;
   $('#save').disabled = true; $('#save').textContent = 'Saving…';
-  const weather = $('#weather').value ? { lastTwoDays: $('#weather').value } : null;
+  const weather = $('#weather').value || $('#sprinklers').checked ? { ...($('#weather').value ? { lastTwoDays: $('#weather').value } : {}), ...($('#sprinklers').checked ? { sprinklers: true } : {}) } : null;
   const body = { id: v.id, at: v.at, lng: p.lng, lat: p.lat, parcel_pin: p.pin, county: p.county, map_id: p.mapId, placed_on: st.placedOn, air_f: surface() && $('#airf').value !== '' ? Number($('#airf').value) : null, meter: setup.meter || null, unit: setup.unit, depth_in: surface() || setup.depth === '' ? null : Number(setup.depth), note: $('#vnote').value.trim() || null, weather, readings: v.dots.map(({ n, spot, lng, lat, value, note, at }) => ({ n, spot, lng, lat, value, note, at })), marks: (v.marks || []).map(({ kind, lng, lat, note }) => ({ kind, lng, lat, note })) };
   try {
     const r = await fetch('/api/water/moisture', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -449,7 +450,8 @@ size(); draw();
 const draft = store.get(DRAFT);
 if ((draft?.visit?.dots?.length || draft?.visit?.marks?.length) && draft.property && (draft.visit.dirty || draft.visit.savedCount !== draft.visit.dots.length)) {
   st.visit = draft.visit;
-  $('#weather').value = draft.weather || ''; $('#vnote').value = draft.note || ''; $('#airf').value = draft.airf || '';
+  if (draft.weather === 'watered') { draft.weather = ''; draft.sprinklers = true; }
+  $('#weather').value = draft.weather || ''; $('#vnote').value = draft.note || ''; $('#airf').value = draft.airf || ''; $('#sprinklers').checked = !!draft.sprinklers;
   say('Bringing back the readings not yet saved…');
   load(draft.property.lng, draft.property.lat, { keepVisit: true }).then(() => say(`${st.visit.dots.length === 1 ? 'An unsaved reading from earlier is back: save it' : `${st.visit.dots.length} unsaved readings from earlier are back: save them`}, or start a new visit.`));
 }

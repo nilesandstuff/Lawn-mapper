@@ -1007,9 +1007,12 @@ function askSurf() {
     if (v.unit !== 'surface_f' || surfState.has(v.id)) continue;
     const t = new Date(v.at);
     surfState.set(v.id, { asked: true });
-    running.postMessage({ surfCheck: { id: v.id, date: localDate(v.at), hour: t.getHours() + t.getMinutes() / 60, airF: Number.isFinite(v.air_f) ? v.air_f : null } });
+    running.postMessage({ surfCheck: { id: v.id, date: localDate(v.at), hour: t.getHours() + t.getMinutes() / 60, airF: Number.isFinite(v.air_f) ? v.air_f : null, watered: wateredVisit(v) } });
   }
 }
+/* the visitor ticked that the sprinklers ran in the last 3 days (2026-11-11), or, before that, chose "the
+   sprinklers ran" in the one rain-or-watering menu */
+const wateredVisit = (v) => !!(v.weather?.sprinklers || v.weather?.lastTwoDays === 'watered');
 function surfIn(r) {
   surfState.set(r.id, r.error ? { error: r.error } : { data: r });
   if (view.plan) moistureCard(view.plan);
@@ -1037,12 +1040,12 @@ function surfCards() {
     fetch('/api/water/moisture/check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
       visit_id: v.id, rho, n: ok.length,
       spots: spots.map((s) => ({ n: s.n, value: s.value, wet: s.model, lawn: s.lawn ? 1 : 0 })),
-      settings: { date, irrigated: 'rain alone', season: `surface, ${m.mode === 'day' ? 'afternoon' : 'before dawn'}; air ${Math.round(air)} F` },
+      settings: { date, irrigated: m.watered ? 'watered' : 'rain alone', season: `surface, ${m.mode === 'day' ? 'afternoon' : 'before dawn'}; air ${Math.round(air)} F` },
     }) }).catch(() => {});
     const rows = spots.map((s) => `<tr><td>${s.n}</td><td>${s.value} °F</td><td>${f1(s.measured)}</td><td>${f1(s.model)}</td><td>${s.lawn ? 'lawn' : 'off the lawn'}</td><td>${s.wind === null ? '-' : `${Math.round(s.wind * 100)}%`}</td><td>${s.ks === null ? '-' : `${Math.round(s.ks * 100)}%`}</td><td>${esc(s.note || '')}</td></tr>`).join('');
     return `<details class="card"><summary>Surface temperatures of ${date} (${m.mode === 'day' ? 'afternoon' : 'before dawn'}): ${v.readings.length} spots, the model's rank against them ${rho === null ? '-' : rho.toFixed(2)}</summary>
       <p>Each spot as degrees above (+) or below (−) the air at ${Math.round(air)} °F${Number.isFinite(v.air_f) ? ', as you read it' : " (no air reading: the day's " + (m.mode === 'day' ? 'high' : 'low') + ' from the weather record)'}. Rank correlation over ${ok.length} lawn spots: <strong>${rho === null ? '-' : rho.toFixed(2)}</strong>. On average the spots read ${f1(mM)} °F against the air; the model has them at ${f1(mD)} °F (open, level, watered lawn ${f1(F(m.open))} °F).</p>
-      <p class="dim">The model on that day's own sunshine, humidity, cloud and wind, ${m.mode === 'day' ? "at the day's peak sun (a reading well before or after 1-2 pm comes cooler)" : 'before dawn'}, the ground as wet as rain alone left it that day (it does not know when sprinklers ran).${m.filled?.length ? ` Not yet in the record for that day, so estimated: ${esc(m.filled.join(', '))}.` : ''} An estimate: H82.</p>
+      <p class="dim">The model on that day's own sunshine, humidity, cloud and wind, ${m.mode === 'day' ? "at the day's peak sun (a reading well before or after 1-2 pm comes cooler)" : 'before dawn'}, ${m.watered ? 'the ground kept watered, since you ticked that the sprinklers ran (the grass using all the water it wants)' : "the ground as wet as that day's rain left it (the stations' rain over the 60 days before; tick the sprinklers on the readings page when they ran)"}.${m.filled?.length ? ` Not yet in the record for that day, so estimated: ${esc(m.filled.join(', '))}.` : ''} An estimate: H82.</p>
       <div style="overflow-x:auto"><table class="small"><tr><th>#</th><th>reading</th><th>vs air, °F</th><th>model, °F</th><th>where</th><th>wind</th><th>wetness</th><th>note</th></tr>${rows}</table></div></details>`;
   });
   return `<h2>Surface temperatures against the model</h2>${cards.join('')}`;

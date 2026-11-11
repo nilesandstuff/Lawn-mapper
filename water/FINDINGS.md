@@ -2622,6 +2622,15 @@ humidity from the night's low, its wind 2 m/s, and the card says which. Each spo
 Spearman rho over the lawn spots and the mean gap, measured against modelled; the numbers-only check is kept with
 the visit's. A made-up visit (random 56-66 F readings, 55 F air, 2026-11-08 at 2 pm on the owner's lot) ran through:
 the model put the lawn at +4.3 F over the air (open, level, watered +3.5 F). No real temperatures yet.
+2026-11-11, the owner: a "watered" box. The readings page's one rain-or-watering menu is now rain only, and a box
+"The sprinklers ran in the last 3 days" sits beside it; both go in the visit's weather JSON (lastTwoDays, sprinklers:
+true), no new column. A ticked visit is compared with the ground kept watered (Ks 1 everywhere) instead of the
+rain-alone run; a visit from before, whose menu said 'watered', counts as ticked. Rain needs no box: the rain-alone run
+already has the stations' rain for the 60 days up to the visit (a storm the stations missed is the one gap). The
+same made-up visit, ticked and not: identical model temperatures, as they should be in November, when rain alone
+leaves every lawn square at Ks 1. Watering moves the surface only where the soil was drying (H82: July, rain alone
+81-102 F against 81-83 F watered); wet leaves cool it for a few hours after any watering, which the model does not
+carry, so a reading within hours of the sprinklers is still not a fair one.
 
 ## SPECULATION
 
