@@ -7921,6 +7921,9 @@ function renderAccountButton() {
    * reads as a door for people who already have something.
    */
   const me = state.user;
+  /* "Save as admin and auto trace" on the AI tab, for an administrator. Set HERE, where the sign-in is first known:
+     it was set only when the account sheet was opened, so the owner never saw it (2026-11-11). */
+  { const b = $('#btn-admin-trace'); if (b) b.hidden = !(me && me.admin); }
   const label = $('#account-label');
   /* The whole sentence as the button's name: on a phone the long half is
      display:none and the short one aria-hidden, which left the button with
