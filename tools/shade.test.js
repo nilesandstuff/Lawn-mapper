@@ -1976,6 +1976,18 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   const noBase = await buildShadeOnServer({ SHADE_BUILDER: {} }, { kind: 'user', id: 1 }, 'k', {});
   check('server build: without the builder bound, or without the site origin, it says so and touches nothing',
     unbound.ok === false && /not bound/.test(unbound.why) && noBase.ok === false && /origin/.test(noBase.why));
+  /* A fake database answering one map, flagged or not; the builder must never be called for an ordinary map. */
+  const fakeEnv = (adminSave) => {
+    let called = 0;
+    const row = { key: 'k', user_id: 1, payload: JSON.stringify({ id: 'k', lng: -85.7, lat: 42.78, shapes: [], ...(adminSave ? { adminSave: true } : {}) }), updated_at: '2026-11-11', created_at: '2026-11-11' };
+    const stmt = { bind: () => stmt, first: async () => row, all: async () => ({ results: [] }), run: async () => ({}) };
+    return { env: { DB: { prepare: () => stmt }, SHADE_BUILDER: { fetch: async () => { called++; return new Response(JSON.stringify({ ok: false, why: 'test' })); } } }, calls: () => called };
+  };
+  const pub = fakeEnv(false), adm = fakeEnv(true);
+  const rPub = await buildShadeOnServer(pub.env, { kind: 'user', id: 1 }, 'k', { base: 'https://x' });
+  const rAdm = await buildShadeOnServer(adm.env, { kind: 'user', id: 1 }, 'k', { base: 'https://x' });
+  check('server build: an ordinary map is refused before the builder is called; an admin save goes to it',
+    rPub.ok === false && /admin saves only/.test(rPub.why) && pub.calls() === 0 && adm.calls() === 1, `${JSON.stringify(rPub)} / calls ${pub.calls()}, ${adm.calls()}; admin answer ${JSON.stringify(rAdm)}`);
 }
 
 /* ONE LEAF STATE PER LOT (passes.js; owner, 2026-10-29). */
