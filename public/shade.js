@@ -35,6 +35,7 @@ import { flagStrays } from './shade/structures.js';
 import { finishedModel, modelBytes } from './shade/model-out.js';
 import { readSurround } from './shade/surround.js';
 import { siteFromSave, siteBounds, partFits, asFeature } from './shade/site.js';
+import { MARGIN_M, alignFrame, lotOf, lotDensity as densityOver, modelBox, fitFrom, shiftFrom, MIN_DENSITY } from './shade/lineup.js';
 import { greenOver } from './shade/naip.js';
 import { lazDecoder, browserFactory } from './shade/laz.js';
 import { nad83Correction } from './shade/datum.js';
@@ -57,12 +58,11 @@ import { renderGrass } from './shade/grass-ui.js';
 import { ringAreaSqM, SQM_PER_SQFT } from './lib/area.js';
 
 const $ = (s) => document.querySelector(s);
-const MARGIN_M = 50;
+
 /** /shade-trees: the same page, drawing the trees instead of the light. */
 const TREES = typeof document !== 'undefined' && document.body?.dataset.mode === 'trees';
 /** /shade in steps (shade/steps.js): property, trees, shade, grass. The trees page has no steps. */
 const STEPPED = typeof document !== 'undefined' && !!document.querySelector('#steps');
-const ALIGN_M = 140; // the photo frame the match runs on, at least this wide
 /* The camera's leash (shade/leash.js): over the ground no further than this from the line, no higher than this. */
 const LEASH_M = 500, LEASH_ALT_M = 2000;
 /** The home domain the dashboard lives on (lawnmap.X -> X); none on workers.dev or a local host. */
@@ -404,17 +404,6 @@ function reportCountyFailure(site, frame, svc, kind, reason, services) {
   } catch { /* bookkeeping only */ }
 }
 
-/** A square frame centered on the site, at least ALIGN_M and the lot wide, at a whole-ish zoom. */
-function alignFrame(site, bounds) {
-  const k = mercScale(site.lat);
-  const [x0, y0] = toMerc([bounds[0], bounds[1]]), [x1, y1] = toMerc([bounds[2], bounds[3]]);
-  const spanM = Math.max(ALIGN_M, (Math.max(x1 - x0, y1 - y0) * k) + 20);
-  const mPerPxZ0 = (2 * Math.PI * 6378137 * k) / 512;
-  const zoom = Math.max(15, Math.min(19, Math.floor(Math.log2((1280 * mPerPxZ0) / spanM) * 100) / 100));
-  const [lng, lat] = fromMerc([(x0 + x1) / 2, (y0 + y1) / 2]);
-  return { lng, lat, zoom, size: 1280, height: 1280 };
-}
-
 /* ---------------------------------------------------------------- build */
 
 async function build(site) {
@@ -470,7 +459,6 @@ async function build(site) {
 
   /* The box: the lot plus the margin, and at least the photo frame. */
   const frame = alignFrame(site, bounds);
-  const fBox = gridBox(gridForFrame(frame, 1, 1));
   const [lx0, ly0] = toMerc([bounds[0], bounds[1]]), [lx1, ly1] = toMerc([bounds[2], bounds[3]]);
   /* Points a square meter over the lot itself. A HOLE IN THE SURVEY (a user's
      report, 2026-10-29: "unable to identify any trees" in Ketchum, Idaho):
@@ -480,13 +468,11 @@ async function build(site) {
      (QL3, 0.5 a square meter) the survey is taken as not covering the lot:
      the next one is tried, and with none the page says so instead of
      building an empty model. */
-  const lotM2 = Math.max(1, (lx1 - lx0) * (ly1 - ly0) * k * k);
-  const lotDensity = (c) => { let n = 0; for (let i = 0; i < c.n; i++) if (c.x[i] >= lx0 && c.x[i] <= lx1 && c.y[i] >= ly0 && c.y[i] <= ly1) n++; return n / lotM2; };
-  const MIN_DENSITY = 0.5;
+  const { lot: lotBox3857, lotM2 } = lotOf(bounds, site.lat);
+  const lotDensity = (c) => densityOver(c, lotBox3857, lotM2);
   if (keptUsed && lotDensity(cols) < MIN_DENSITY) { keptUsed = false; cols = null; cloud = null; flown = null; box = null; }
   const holes = [], failed = [];
-  const m = MARGIN_M / k;
-  if (!keptUsed) box = [Math.min(lx0 - m, fBox[0]), Math.min(ly0 - m, fBox[1]), Math.max(lx1 + m, fBox[2]), Math.max(ly1 + m, fBox[3])];
+  if (!keptUsed) box = modelBox(lotBox3857, frame, site.lat);
 
   for (const c of keptUsed ? [] : clouds.slice(0, 3)) {
     status(`Reading ${c.name}…`);
@@ -561,21 +547,19 @@ async function build(site) {
   } else if (onCounty && !onCounty.error) {
     /* Matched to the county photo where the county put it; the outline was
        drawn on it after the editor's line-up moved it, so add that move. */
-    const f = onCounty.fit;
-    used = { ...f, east: f.east === null ? null : f.east + move.east, north: f.north === null ? null : f.north + move.north };
+    used = fitFrom({ onCounty, onMapbox, move }); // shade/lineup.js, shared with rebuild.js
     usedName = t.title !== undefined
       ? `the county photo${t.title ? ` (${t.title})` : ''}, the clearest for this address, where the county put it`
       : `the county photo the map was traced on${t.align ? ', as the editor lined it up' : ' (saved without a line-up, so where the county put it)'}`;
   } else {
-    used = onMapbox.fit || null;
+    used = fitFrom({ onCounty: null, onMapbox });
     usedName = t.provider === 'county'
       ? `the Mapbox photo, because the county photo could not be read (${onCounty?.error || '?'})${t.align ? '' : '; the map was saved without a line-up, so its outline may sit up to about half a meter off this'}`
       : site.lawn.length ? 'the Mapbox photo the map was traced on' : 'the Mapbox photo';
   }
   const fit = used;
   if (onMapbox?.error) report.push(`<p class="warn">${esc(onMapbox.error)}</p>`);
-  const residual = fit?.confident ? [fit.east / k, fit.north / k] : [0, 0];
-  const shift = keptUsed ? kept.shift : [pre[0] + residual[0], pre[1] + residual[1]];
+  const shift = keptUsed ? kept.shift : shiftFrom(pre, fit, site.lat);
 
   /* Ground under every point, for heights and the drapes, on the 1 m grid:
      the same smooth surface the model stands on (ground.js), so the photo,
