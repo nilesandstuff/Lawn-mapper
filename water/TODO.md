@@ -131,6 +131,13 @@ SPECULATION), as always.
     thing for the things on the ground and the wider area beyond what the shade map gives." And: "still display
     the aerial image that the lawn map was traced on. The user doesn't need to see NAIP." NEXT, before the root
     draw.
+28. **Admin saves on the readings page** (owner via the core session, 2026-11-11: "it's not needed yet, but the
+    water map will also need this for its measurements page"). The core's admin saves (docs/MAPS.md "Admin
+    saves", 784369b): test maps the administrator makes in one press, Turf Trace landing in them by itself.
+    GET /api/maps?admin=1 lists only them (the water Worker already forwards /api/maps*), each with
+    `adminSave: true` and `trace: { status }`; /api/maps/one opens one like any map; lawnmap's
+    /admin-saves.html links into each tool. For the readings page: let the administrator pick an admin save
+    instead of a property found by GPS. Not started; wait for the owner's word.
 
 ## Rules (owner, 2026-10-27)
 
