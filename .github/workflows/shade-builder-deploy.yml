@@ -1,0 +1,42 @@
+name: "B. Shade builder"
+# The shade map's lidar build for admin saves, in a Cloudflare Container (shade-builder/; owner, 2026-11-11).
+# Its own Worker, reached only by the main Worker's service binding, so deploying it cannot roll the site back.
+# Redeploys by itself when the shade map's modules change on the default branch, so it builds what the page builds.
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/resume-previous-session-y94slo]
+    paths: ['shade-builder/**', 'public/shade/**', 'public/lib/**', '.github/workflows/shade-builder-deploy.yml']
+concurrency:
+  group: shade-builder
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Lay out the image (the shade map's modules, unchanged)
+        run: node shade-builder/prepare.mjs
+      - name: Check the server loads its modules (laz-perf, the decoders, the build)
+        run: |
+          cd shade-builder/app
+          npm install --omit=dev --no-audit --no-fund
+          SHADE_BUILDER_LISTEN=0 node -e "import('./server.mjs').then(async (m) => { const r = await m.buildMap({}); if (r.ok !== false) process.exit(1); console.log('modules load; an empty request answers:', r.why); })"
+      - name: Deploy the builder (Docker builds its container image here)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -o pipefail
+          npx wrangler deploy --config shade-builder/wrangler.toml 2>&1 | tee deploy.log
+      - name: The end of it
+        if: always()
+        run: |
+          echo
+          if [ "${{ job.status }}" = "success" ]; then echo "Shade builder: deployed (its container starts on the first build)."; else echo "Shade builder: NOT deployed -- see the deploy step. A token without the Containers permission fails there."; fi
+          echo "It is reached only through the main Worker's SHADE_BUILDER service binding; it has no public address."

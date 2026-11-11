@@ -1,0 +1,21 @@
+# THE SHADE BUILDER (owner, 2026-11-11): the shade map's lidar build for admin saves, in a Cloudflare Container,
+# reached only by the main Worker's service binding SHADE_BUILDER. Deployed by .github/workflows/shade-builder-deploy.yml
+# (prepare.mjs first, so app/ holds the shade modules). Needs the Workers Paid plan (Containers).
+name = "shade-builder"
+main = "worker.js"
+compatibility_date = "2025-09-01"
+workers_dev = false
+
+[[containers]]
+class_name = "ShadeBuilder"
+image = "./Dockerfile"
+instance_type = "basic"
+max_instances = 2
+
+[[durable_objects.bindings]]
+name = "SHADE_BUILDER_DO"
+class_name = "ShadeBuilder"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ShadeBuilder"]

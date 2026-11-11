@@ -1948,6 +1948,36 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
     hidden.length === 0 && cutUp.filter((r) => r.k === treeK).length === 1 && cutUp.filter((r) => r.k === roofK).length === 0, `${hidden.length}, ${cutUp.length}`);
 }
 
+/* WHICH LIDAR, OVER WHICH BOX, LINED UP HOW (lineup.js; shared by the page and the server's first build, 2026-11-11). */
+{
+  const { alignFrame, lotOf, lotDensity, modelBox, fitFrom, shiftFrom, MARGIN_M, MIN_DENSITY } = await import('../public/shade/lineup.js');
+  const lat = 42.78, k = mercScale(lat);
+  const site = { lat, lng: -85.7 };
+  const bounds = [-85.7005, 42.7797, -85.6995, 42.7803];
+  const frame = alignFrame(site, bounds);
+  const { lot, lotM2 } = lotOf(bounds, lat);
+  const box = modelBox(lot, frame, lat);
+  check('lineup: the photo frame is centred on the lot, 1280 px, zoom 15-19; the box holds the lot plus the margin and the frame',
+    Math.abs(frame.lng + 85.7) < 1e-9 && Math.abs(frame.lat - 42.78) < 1e-6 && frame.size === 1280 && frame.zoom >= 15 && frame.zoom <= 19
+      && box[0] <= lot[0] - MARGIN_M / k + 1e-6 && box[3] >= lot[3] + MARGIN_M / k - 1e-6 && lotM2 > 0);
+  const c = makeColumns(3); [[0, 0], [lot[0] + 1, lot[1] + 1], [lot[2] - 1, lot[3] - 1]].forEach(([x, y], i) => { c.x[i] = x; c.y[i] = y; });
+  check('lineup: points over the lot counted per square meter', Math.abs(lotDensity(c, lot, lotM2) - 2 / lotM2) < 1e-12 && MIN_DENSITY === 0.5);
+  const county = { fit: { east: 0.3, north: -0.2, confident: true } }, mapbox = { fit: { east: 1, north: 1, confident: true } };
+  const f1 = fitFrom({ onCounty: county, onMapbox: mapbox, move: { east: 0.1, north: 0.1 } }), f2 = fitFrom({ onCounty: { error: 'x' }, onMapbox: mapbox });
+  check('lineup: the county photo\'s match plus the editor\'s move wins; else Mapbox\'s; a loose match moves nothing',
+    Math.abs(f1.east - 0.4) < 1e-12 && Math.abs(f1.north + 0.1) < 1e-12 && f2.east === 1
+      && JSON.stringify(shiftFrom([1, 2], { east: 0.5, north: 0.5, confident: false }, lat)) === '[1,2]' && Math.abs(shiftFrom([0, 0], { east: k, north: 0, confident: true }, lat)[0] - 1) < 1e-12);
+}
+
+/* THE SERVER'S SHADE BUILD FOR ADMIN SAVES (worker/src/shade-server-build.js; owner, 2026-11-11). */
+{
+  const { buildShadeOnServer } = await import('../worker/src/shade-server-build.js');
+  const unbound = await buildShadeOnServer({}, { kind: 'user', id: 1 }, 'k', { base: 'https://x' });
+  const noBase = await buildShadeOnServer({ SHADE_BUILDER: {} }, { kind: 'user', id: 1 }, 'k', {});
+  check('server build: without the builder bound, or without the site origin, it says so and touches nothing',
+    unbound.ok === false && /not bound/.test(unbound.why) && noBase.ok === false && /origin/.test(noBase.why));
+}
+
 /* ONE LEAF STATE PER LOT (passes.js; owner, 2026-10-29). */
 {
   check('passes: a point fired 9 May or in November is leaf-off; 11 May, July and an undated one are not',
