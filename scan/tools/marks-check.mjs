@@ -68,6 +68,28 @@ async function main() {
   const tr = debug.filter((d) => d.kind === 'called a tree').sort((a, b) => b.m2 - a.m2);
   console.log(`Groups the shade map calls trees, 20 m2 or more: ${tr.length}; SOLID ones (a roof taken for a crown?): ${tr.filter((d) => d.solid).map((d) => `~${d.m2} m2 at ${d.top} m (through ${d.through}, rough ${d.rough})`).join('; ') || 'none'}`);
   console.log(`  the biggest of the rest: ${tr.filter((d) => !d.solid).slice(0, 6).map((d) => `~${d.m2} m2 at ${d.top} m (through ${d.through}, rough ${d.rough})`).join('; ') || 'none'}`);
+  /* WHICH STEP OF THE SHADE MAP'S RULE LOST A SOLID "TREE" (asked by the features session, 2026-11-12, whose rule it is):
+     over the patch's own columns, structures.js's reason for each (the model's `why`), their kinds, and what the
+     returns themselves say. Counts only; where the patch is stays out of the log. */
+  for (const d of tr.filter((x) => x.solid)) {
+    const A = model.arrays, cols = new Set(), by = (o, k) => { o[k] = (o[k] || 0) + 1; return o; };
+    let n = 0, firstOfMany = 0, last = 0, lastGround = 0, single = 0; const cls = {};
+    for (let i = 0; i < P.n; i++) {
+      if (!d.cells.has(`${Math.floor(P.e(i))},${Math.floor(P.nn(i))}`)) continue;
+      const j = P.col(i); if (j >= 0) cols.add(j);
+      n++;
+      const ret = A.ptRet ? A.ptRet[i] >> 4 : 0, of = A.ptRet ? A.ptRet[i] & 15 : 0, c = A.ptCls ? A.ptCls[i] : -1;
+      by(cls, c);
+      if (ret === 1 && of > 1) firstOfMany++;
+      if (of === 1) single++;
+      if (ret === of) { last++; if (c === 2) lastGround++; }
+    }
+    const why = {}, kinds = {};
+    for (const j of cols) { by(why, A.why ? A.why[j] : 'none'); by(kinds, A.kind ? A.kind[j] : 'none'); }
+    const pct = (a, b) => (b ? `${Math.round((100 * a) / b)}%` : '-');
+    console.log(`  the solid ~${d.m2} m2 patch: ${cols.size} columns; why codes ${JSON.stringify(why)}; kinds ${JSON.stringify(kinds)} (rule ${JSON.stringify(model.meta?.rule?.kinds || null)})`);
+    console.log(`    its ${n} returns (all heights, in its 1 m cells): first of several ${pct(firstOfMany, n)}, single ${pct(single, n)}, last returns ${last} of which class 2 (ground) ${pct(lastGround, last)}; classes ${JSON.stringify(cls)}`);
+  }
   const pv = debug.filter((d) => d.kind === 'paving');
   console.log(`Paving candidates, each threshold's slabs over 8 m2: ${pv.length}`);
   for (const d of pv.filter((x) => x.square)) console.log(`  KEPT: ${d.n} returns, ${d.area} m2, contrast ${d.contrast}, ${far(d.middle)} (${d.why})`);

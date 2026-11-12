@@ -350,7 +350,7 @@ export function lidarMarks(box, pts, { cell = CELL, debug = null } = {}) {
     for (const g of linked(treed, link)) {
       if (g.length * spacing * spacing < 20) continue;
       const sol = solT(g), hs = g.map((p) => p.h).sort((a, b) => a - b);
-      debug.push({ kind: 'called a tree', n: g.length, m2: Math.round(g.length * spacing * spacing), top: +hs[hs.length >> 1].toFixed(1), through: +sol.through.toFixed(2), rough: +sol.rough.toFixed(2), solid: sol.through <= 0.15 && sol.rough <= 0.35 });
+      debug.push({ kind: 'called a tree', cells: new Set(g.map((q) => `${Math.floor(q.e)},${Math.floor(q.n)}`)), n: g.length, m2: Math.round(g.length * spacing * spacing), top: +hs[hs.length >> 1].toFixed(1), through: +sol.through.toFixed(2), rough: +sol.rough.toFixed(2), solid: sol.through <= 0.15 && sol.rough <= 0.35 });
     }
   }
   for (let group of linked(raised, link)) {
@@ -622,6 +622,7 @@ export function returnsFrom(L) {
   const col = (i) => { const c = Math.floor(A.ptX[i] / cw), r = Math.floor(A.ptY[i] / ch); return c < 0 || r < 0 || c >= sgrid.w || r >= sgrid.h ? -1 : r * sgrid.w + c; };
   return {
     n: A.ptX.length,
+    col, // the shade grid's column a return falls in, -1 outside (the tools' checks read the model's own arrays by it)
     e: (i) => (sgrid.x0 + A.ptX[i] / 100 - ox) * k, nn: (i) => (sgrid.y1 - A.ptY[i] / 100 - oy) * k,
     hag: (i) => { const j = col(i); return j < 0 || !Number.isFinite(ground[j]) ? NaN : A.ptZ[i] / 100 - ground[j]; },
     bright: (i) => (A.ptI ? A.ptI[i] : 0),
