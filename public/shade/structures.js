@@ -247,6 +247,7 @@ export function columnStats(cols, model, { shift = null } = {}) {
   /* How many of a column's last echoes over 2 m lie within FLAT_SPREAD_M of its lowest (a roof's floor), and how many of
      its earlier echoes (of split pulses) do, against all of them (roofUnderCrown). */
   const lastFloor = new Uint16Array(N), earlierFloor = new Uint16Array(N), earlier = new Uint16Array(N);
+  const lastFloorTop = new Float32Array(N).fill(-Infinity); // the highest last echo on that floor: the roof's own top
   for (let i = 0; i < cols.n; i++) {
     if (NOISE.has(cols.cls[i])) continue;
     const k = cellOf(grid, cols.x[i], cols.y[i], shift);
@@ -254,7 +255,7 @@ export function columnStats(cols, model, { shift = null } = {}) {
     const over = cols.z[i] - ground[k];
     if (!(over > CROWN_ABOVE_M && over < MAX_OVER_M)) continue;
     const onFloor = cols.z[i] - lastLo[k] < FLAT_SPREAD_M;
-    if ((cols.ret[i] || 1) >= (cols.nret[i] || 1)) { if (onFloor) lastFloor[k]++; } else { earlier[k]++; if (onFloor) earlierFloor[k]++; }
+    if ((cols.ret[i] || 1) >= (cols.nret[i] || 1)) { if (onFloor) { lastFloor[k]++; if (cols.z[i] > lastFloorTop[k]) lastFloorTop[k] = cols.z[i]; } } else { earlier[k]++; if (onFloor) earlierFloor[k]++; }
   }
   /* The flight's own ground, for brightness relative to it: intensity is
      not comparable between flights (sensor, gain, altitude), so every use
@@ -262,7 +263,7 @@ export function columnStats(cols, model, { shift = null } = {}) {
   for (let i = 0; i < cols.n; i += 7) if (cols.cls[i] === 2 && cols.intensity?.[i]) groundI.push(cols.intensity[i]);
   groundI.sort((a, b) => a - b);
   const groundBright = groundI.length ? groundI[groundI.length >> 1] : 0;
-  return { above, multiAbove, lastGround, zLo, zHi, lastAbove, lastLo, lastHi, lastFloor, earlier, earlierFloor, top, firm, firmSingle, firmLeafOn, firmBright, groundBright };
+  return { above, multiAbove, lastGround, zLo, zHi, lastAbove, lastLo, lastHi, lastFloor, lastFloorTop, earlier, earlierFloor, top, firm, firmSingle, firmLeafOn, firmBright, groundBright };
 }
 
 /**
@@ -328,7 +329,9 @@ export function structuresOf(cols, model, { shift = null, stats = null, low = {}
       const xx = x + dx, yy = y + dy;
       if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
       const j = yy * w + xx;
-      if (kind[j] === BUILDING && Math.abs((zHi[j] - ground[j]) - (zHi[k] - ground[k])) <= EAVE_M) { eave[k] = 1; break; }
+      /* Not beside a roof under a crown (why 10): there both tops are the crown's, and the eave test would make the
+         crown's own edge a building; that roof's columns are found by their floor instead. */
+      if (kind[j] === BUILDING && why[j] !== 10 && Math.abs((zHi[j] - ground[j]) - (zHi[k] - ground[k])) <= EAVE_M) { eave[k] = 1; break; }
     }
   }
   for (let k = 0; k < N; k++) if (eave[k]) { kind[k] = BUILDING; why[k] = 3; }
@@ -352,7 +355,11 @@ export function structuresOf(cols, model, { shift = null, stats = null, low = {}
     else if (kind[k] === STRUCTURE) counts.structure++;
     else if (kind[k] === UNKNOWN) counts.unknown++;
   }
-  return { kind, why, stats: st, counts, green: lowInfo };
+  /* The roof's own height (m over the ground) under a crown (why 10): the crown above it is a tree's, for the light
+     (seasonal.js gives it leaves) and for the picture (drawn as a tree above this height). NaN elsewhere. */
+  const roofTop = new Float32Array(N).fill(NaN);
+  for (let k = 0; k < N; k++) if (why[k] === 10 && Number.isFinite(st.lastFloorTop[k])) roofTop[k] = st.lastFloorTop[k] - ground[k];
+  return { kind, why, stats: st, counts, green: lowInfo, roofTop };
 }
 
 /**

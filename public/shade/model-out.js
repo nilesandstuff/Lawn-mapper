@@ -67,6 +67,10 @@
  *   ptKind    Uint8  structures.js kind of its column, after erasures
  * meta.points = { n, spacingM: null (not thinned), frame, ... }.
  *
+ *   roof     Float32 w*h   a building's roof height over the ground: `top`,
+ *                          or under a crown (why 10) the roof's own, as
+ *                          `top` there is the crown's; NaN elsewhere
+ *
  * THE BLOCK AROUND (surround.js; core session, 2026-11-06, the AR's skyline):
  *   surroundGround, surroundTop  Float32 on their own grid (meta.surround:
  *                          the lot's box 100 m wider each way, 2 m cells),
@@ -145,6 +149,13 @@ export function finishedModel({ model, season, cols = null, shift = null, surrou
   const pts = cols ? keptPoints(cols, model, { shift, kind, erasedMask, erasedCubes }) : null;
   if (pts) Object.assign(arrays, pts.arrays);
   if (pts) meta.points = pts.meta;
+  /* A building's roof height (m over the ground): `top` for a building, the roof's own under a crown (structures.js
+     why 10, where `top` is the crown's); NaN for every other column. For a reader drawing buildings (the AR). */
+  if (built) {
+    const roof = new Float32Array(N).fill(NaN);
+    for (let k = 0; k < N; k++) if (kind[k] === BUILDING) roof[k] = Number.isFinite(season?.roofTop?.[k]) ? season.roofTop[k] : top[k];
+    arrays.roof = roof;
+  }
   if (surround) { arrays.surroundGround = Float32Array.from(surround.ground); arrays.surroundTop = Float32Array.from(surround.top); }
   if (own) { arrays.returns = own.returns; arrays.low = own.low; arrays.lowDx = own.lowDx; arrays.lowDy = own.lowDy; if (own.intensity) { arrays.intensity = own.intensity; arrays.gIntens = own.gIntens; } }
   return { meta, arrays };

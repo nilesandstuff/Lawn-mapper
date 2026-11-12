@@ -547,11 +547,30 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true, fil
       if (muLeaf > muOn[i]) muOn[i] = muLeaf;
     }
   }
+  /* THE CROWN OVER A ROOF (structures.js why 10, shade findings 36): the column is a building up to its roof, which stops
+     the light below it; above the roof it is the tree's crown, and takes its summer leaves as a crown does (the same
+     G Omega x LAD x depth, capped), spread where its branches are. Not on a crown the laser saw in leaf. */
+  const roofTop = built.roofTop || null;
+  if (roofTop) for (let k = 0; k < N; k++) {
+    if (!Number.isFinite(roofTop[k]) || inLeaf[k]) continue;
+    /* From the crown's lowest branch over the roof (leaves hang on branches, not in the air between roof and crown). */
+    let lo = ground[k] + roofTop[k] + 1.5;
+    if (branch) { for (let l = 0; l < nz; l++) { const zl = z0 + l * dz; if (zl + dz > lo && branch[k * nz + l] > 0) { lo = Math.max(lo, zl); break; } } }
+    const hi = zHi[k];
+    if (!(hi - lo >= dz)) continue;
+    const l0 = Math.max(0, Math.floor((lo - z0) / dz)), l1 = Math.min(nz - 1, Math.floor((hi - z0) / dz - 0.5));
+    if (l1 < l0) continue;
+    const tau = G_OMEGA * Math.min(LAD * ladScale * (hi - lo), laiMax);
+    const wts = new Float32Array(l1 - l0 + 1);
+    let sum = 0;
+    for (let l = l0; l <= l1; l++) { wts[l - l0] = (branch ? branch[k * nz + l] : 0) + 0.25; sum += wts[l - l0]; }
+    for (let l = l0; l <= l1; l++) { const i = k * nz + l, muLeaf = (tau * wts[l - l0] / sum) / dz; if (muLeaf > muOn[i]) muOn[i] = muLeaf; }
+  }
   const counts = { roof: 0, evergreen: ever, deciduous: 0, domed, structure: 0, unknown: built.counts.unknown };
   for (let k = 0; k < N; k++) { if (kind[k] === 1) counts.roof++; else if (kind[k] === 3) counts.deciduous++; else if (kind[k] === 4) counts.structure++; }
   let inLeafColumns = 0;
   for (let k = 0; k < N; k++) if (inLeaf[k] && kind[k] === 3) inLeafColumns++;
-  return { kind, clumps, clumpOf, muOn, muOff: mu, counts, classified: classify, leafyColumns: leafy, unfilled, inLeaf, inLeafColumns, unknown, built };
+  return { kind, clumps, clumpOf, muOn, muOff: mu, counts, classified: classify, leafyColumns: leafy, unfilled, inLeaf, inLeafColumns, unknown, built, roofTop };
 }
 
 /** The extinction coefficients with a share `f` (0 bare .. 1 in full leaf) of deciduous leaves out. */

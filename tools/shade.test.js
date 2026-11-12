@@ -2015,6 +2015,21 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   check('structures: a roof under a crown is a building (its last echoes stop on one flat surface); without the floor test it was a solid tree; a dense crown beside it stays a solid tree',
     on.kind[at(9, 10)] === BUILDING && on.why[at(9, 10)] === 10 && off.kind[at(9, 10)] === SOLID_TREE && on.kind[at(28, 10)] !== BUILDING,
     `roof ${on.kind[at(9, 10)]}/${on.why[at(9, 10)]} (was ${off.kind[at(9, 10)]}/${off.why[at(9, 10)]}); crown ${on.kind[at(28, 10)]}/${on.why[at(28, 10)]}`);
+  /* Above that roof it is the tree: its height kept, leaves added there in summer and not below, drawn as a tree. */
+  const season = seasonalCanopy(cols, buildCanopy(cols, grid));
+  const kk = at(9, 10), m2 = buildCanopy(cols, grid), nz = m2.nz;
+  const cubeAt = (over) => kk * nz + Math.floor((m2.ground[kk] + over - m2.z0) / m2.dz);
+  const { fineCells, fineRuns } = await import('../public/shade/fine-view.js');
+  const fc = fineCells(cols, grid, null, m2.ground);
+  const runs = fineRuns(fc, { kindAt: (j) => (on.kind[j] === BUILDING ? 'roof' : 'deciduous'), roofTopAt: (j) => season.roofTop[j] }).filter((r) => r.k === kk);
+  const { finishedModel, modelBytes } = await import('../public/shade/model-out.js');
+  const { unpackModel } = await import('../public/lib/lidar-model.js');
+  const file = (await unpackModel(await modelBytes(finishedModel({ model: m2, season, cols })))).arrays;
+  check('structures: a roof under a crown keeps its roof height (7 m); the crown above takes summer leaves, the roof below and the air between none; drawn solid to the roof and as a tree above; the file\'s roof is 7 m, its top the crown\'s',
+    Math.abs(on.roofTop[kk] - 7) < 0.05 && [16.5, 17.5, 18.5].some((h) => season.muOn[cubeAt(h)] > season.muOff[cubeAt(h)]) && season.muOn[cubeAt(3.5)] === season.muOff[cubeAt(3.5)] && season.muOn[cubeAt(11.5)] === season.muOff[cubeAt(11.5)]
+      && runs.some((r) => r.kind === 'roof' && Math.abs(r.top - 7) < 0.6 && r.base === 0) && runs.some((r) => r.kind === 'deciduous' && r.base >= 7)
+      && Math.abs(file.roof[kk] - 7) < 0.05 && file.top[kk] > 15 && Number.isNaN(file.roof[at(28, 10)]),
+    `roofTop ${on.roofTop[kk]}; leaves ${[16.5, 17.5, 11.5].map((h) => season.muOff[cubeAt(h)].toFixed(2) + '->' + season.muOn[cubeAt(h)].toFixed(2)).join(' ')}; runs ${JSON.stringify(runs.map((r) => [r.kind, r.base, r.top]))}; file roof ${file.roof[kk]} top ${file.top[kk]}`);
 }
 
 /* ONE LEAF STATE PER LOT (passes.js; owner, 2026-10-29). */

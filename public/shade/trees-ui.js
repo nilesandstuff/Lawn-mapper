@@ -104,16 +104,20 @@ export function treeRuns(model, mu, season, { roofs = true, cutBelow = 0 } = {})
   for (let k = 0; k < w * h; k++) {
     let leafy = false;
     if (season) for (let l = 0; l < nz && !leafy; l++) if (season.muOn[k * nz + l] > season.muOff[k * nz + l]) leafy = true;
-    const kind = kindOf(season, k, leafy);
-    if ((kind === 'roof' || kind === 'structure') && !roofs) continue;
+    const colKind = kindOf(season, k, leafy);
+    /* A roof under a crown (structures.js why 10): a building up to its roof, the tree's crown above it. */
+    const roofTop = season?.roofTop?.[k];
+    const crownOver = colKind === 'roof' && Number.isFinite(roofTop);
+    if ((colKind === 'roof' || colKind === 'structure') && !roofs && !crownOver) continue;
     let run = null;
     const close = () => { if (run) { run.mu /= run.n; delete run.n; out.push(run); run = null; } };
     for (let l = 0; l < nz; l++) {
       const m = mu[k * nz + l];
       const lo = z0 + l * dz - ground[k], hi = lo + dz;
-      if (!(m >= MIN_MU) || hi <= cutBelow) { close(); continue; }
+      const kind = crownOver && lo > roofTop ? 'deciduous' : colKind; // the cube holding the roof is the roof's
+      if (!(m >= MIN_MU) || hi <= cutBelow || (kind === 'roof' && !roofs)) { close(); continue; }
       const b = bandOf(m);
-      if (run && run.band !== b) close();
+      if (run && (run.band !== b || run.kind !== kind)) close();
       if (!run) run = { k, base: Math.max(0, lo, cutBelow), top: hi, mu: 0, n: 0, band: b, kind, l0: l, l1: l };
       run.top = hi; run.mu += m; run.n++; run.l1 = l;
     }
@@ -232,6 +236,7 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
     if (!on) { if (map.getLayer(FINE_ID)) map.setLayoutProperty(FINE_ID, 'visibility', 'none'); return 0; }
     const runsF = fineRuns(fc, {
       kindAt: (k) => kindOf(season, k, !!leafyCol[k]),
+      roofTopAt: (k) => season.roofTop?.[k],
       gone: (k) => !!er?.mask[k],
       cubeGone: (k, over) => { if (!er?.cubeCount) return false; const l = Math.floor((model.ground[k] + over - model.z0) / model.dz); return l >= 0 && l < model.nz && !!er.cubes[k * model.nz + l]; },
       roofs: st.roofs, cut: st.cut,
