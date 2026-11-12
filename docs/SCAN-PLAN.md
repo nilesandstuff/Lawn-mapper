@@ -2467,3 +2467,13 @@ weekend". Each line is the owner's, then what is known or guessed about it (gues
 
 Order is not decided. 2, 3 and 4 are one piece of work (the marking flow without a button); 1 is small; 5 needs a
 number; 6-8 need measuring before changing.
+
+WHAT THE OWNER'S SCREENSHOT OF THAT WALK SHOWS (2026-11-12; read from the picture, nothing run):
+  - The top box is five lines and the mini map sits over its right half and its last line.
+  - The marks in use were R1-R3 with "aim where it meets the ground, within 10 ft, tap Mark" and the button read
+    "Mark R3 again": the ORDINARY ground references, not roof corners. The automatic sighting only starts for a
+    roof-corner target, so on this walk a tap was needed by design. Whether the lot offered no roof corners, or
+    they were not picked as the references, is not known -- it decides what item 2 actually is.
+  - "Upload: sending 131 parts (4.3 MB)". So the upload is small in bytes and large in number of requests; a guess,
+    not measured: the slowness is the 131 separate sends on a phone connection, not the size.
+  - AR walls (orange) are drawn over a real block wall and cut off raggedly where the depth test hid them (item 5).
