@@ -131,3 +131,23 @@ console.log('lidar-marks: ok');
   assert.ok(!R3.objects.some((o) => o.middle[0] > 30), 'nothing in the woods');
   console.log('lidar-marks (woods, deck): ok');
 }
+
+// a garage with a pitched roof under 3.5 m, alone, and a level deck the shade map calls a roof, alone (the owner's
+// work lot, 2026-11-12: the garage came out an object and offered no roof corners)
+{
+  let sd = 5; const r = () => { sd = (sd + 0x6d2b79f5) | 0; let t = Math.imul(sd ^ (sd >>> 15), 1 | sd); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const Q = [];
+  const garage = (e, n) => e >= 5 && e <= 13 && n >= 5 && n <= 12;          // eaves 2.6 m, ridge 4.2 m: its middle return about 3.4 m
+  const deck = (e, n) => e >= 25 && e <= 31 && n >= 6 && n <= 11;           // level, 3 m up, nothing against it
+  for (let i = 0; i < 40 * 18 * 4; i++) {
+    const e = r() * 40, n = r() * 18;
+    let h = 0, kind = 0;
+    if (garage(e, n)) { h = 4.2 - 1.6 * Math.abs(n - 8.5) / 3.5; kind = 1; } else if (deck(e, n)) { h = 3; kind = 1; }
+    Q.push({ e, n, h: h + (r() - 0.5) * 0.05, kind });
+  }
+  const R4 = lidarMarks([0, 0, 40, 18], { n: Q.length, e: (i) => Q[i].e, nn: (i) => Q[i].n, hag: (i) => Q[i].h, bright: () => 0, kind: (i) => Q[i].kind });
+  const bld = R4.objects.filter((o) => o.kind === 'building'), obj = R4.objects.filter((o) => o.kind === 'object');
+  assert.ok(bld.length === 1 && near(bld[0].middle, [9, 8.5]) < 1, `the low garage is a building: ${bld.map((o) => o.middle.map((v) => v.toFixed(1))).join(' | ')}`);
+  assert.ok(obj.some((o) => near(o.middle, [28, 8.5]) < 1), 'the level deck stays a thing');
+  console.log('lidar-marks (low garage): ok');
+}

@@ -362,9 +362,16 @@ export function lidarMarks(box, pts, { cell = CELL, debug = null } = {}) {
     const sol = solidity(group);
     if (sol.through > 0.15 || sol.rough > 0.35) { if (debug) debug.push({ kind: 'not solid', n: group.length, through: +sol.through.toFixed(2), rough: +sol.rough.toFixed(2) }); continue; }
     // a building is tall: a deck the shade map calls a building (flat, high, no ground under it) is a thing here
-    const hsG = group.map((p) => p.h).sort((a, b) => a - b), tall = hsG[hsG.length >> 1] >= 3.5;
+    /* A LOW BUILDING WITH A PITCHED ROOF IS A BUILDING TOO (the owner's work lot, 2026-11-12: "a decently sized garage
+       with a regular roof" came out orange, an object, so it offered no roof corners; run 43156173646: ~54 m2, 94% of
+       its returns the shade map's roof, its middle return 3.3 m up, under the 3.5 m line). The line was drawn to keep
+       a deck out, and a deck is LEVEL: so under 3.5 m a roof still counts when its returns span a pitch (the middle
+       80% of them over 0.6 m of height) and its middle return is 2.2 m or more up. */
+    const hsG = group.map((p) => p.h).sort((a, b) => a - b), midH = hsG[hsG.length >> 1];
+    const pitch = hsG[Math.floor(hsG.length * 0.9)] - hsG[Math.floor(hsG.length * 0.1)];
+    const tall = midH >= 3.5 || (midH >= 2.2 && pitch >= 0.6);
     let kind = tall && group.filter((p) => p.bld).length > group.length * 0.3 ? 'building' : 'object';
-    if (debug) debug.push({ kind: 'classed', as: kind, n: group.length, m2: Math.round(group.length * spacing * spacing), top: +hsG[hsG.length >> 1].toFixed(1), bld: +(group.filter((p) => p.bld).length / group.length).toFixed(2) });
+    if (debug) debug.push({ kind: 'classed', as: kind, n: group.length, m2: Math.round(group.length * spacing * spacing), top: +hsG[hsG.length >> 1].toFixed(1), pitch: +pitch.toFixed(1), bld: +(group.filter((p) => p.bld).length / group.length).toFixed(2) });
     // IN THE WOODS (the owner, 2026-11-10, again: "lots of buildings and objects showing up in the woods... Just stumps
     // and normal woods stuff"; the first real run left 50 small things after the solidity test): a thing with tree
     // crowns over most of the ground round it is brush, a log or a crown the shade map did not call a tree. A house
