@@ -152,12 +152,17 @@ export function perfLines(p) {
   if (!p) return ['speed: not measured (a walk from before 2026-11-12)'];
   const s = p.stagesS || {}, f = p.frames, j = p.jitter, u = p.upload, d = p.device || {};
   const res = Object.entries(p.resources || {}).map(([k, o]) => `${k} ${o.n} files ${o.kb} KB${o.cached ? ` (${o.cached} from the phone's cache)` : ''} ${(o.ms / 1000).toFixed(1)} s, slowest ${(o.slowestMs / 1000).toFixed(1)} s`).join('; ');
-  const waits = Object.entries(p.waits || {}).map(([k, o]) => `${k} x${o.n} ${(o.ms / 1000).toFixed(1)} s (longest ${(o.longestMs / 1000).toFixed(1)} s)`).join('; ');
+  // the frame's parts (keys "frame: ..."): each one's share of the page's work, its usual cost and its worst
+  const parts = Object.entries(p.waits || {}).filter(([k]) => k.startsWith('frame: ')).sort((a, b) => b[1].ms - a[1].ms);
+  const partsMs = parts.reduce((t, [, o]) => t + o.ms, 0);
+  const where = parts.map(([k, o]) => `${k.slice(7)} ${partsMs ? Math.round((100 * o.ms) / partsMs) : 0}% (${(o.ms / Math.max(1, o.n)).toFixed(1)} ms a time x${o.n}, worst ${o.longestMs} ms)`).join('; ');
+  const waits = Object.entries(p.waits || {}).filter(([k]) => !k.startsWith('frame: ')).map(([k, o]) => `${k} x${o.n} ${(o.ms / 1000).toFixed(1)} s (longest ${(o.longestMs / 1000).toFixed(1)} s)`).join('; ');
   return [
     `speed, opening (seconds after the page began): ${Object.entries(s).map(([k, v]) => `${k} ${v}`).join(', ') || 'nothing marked'}`,
     `speed, downloads: ${res || 'none seen'}`,
     `speed, frames: ${f ? `${f.n} at ${f.perS ?? '?'} a second; gap between frames median ${f.gapMs.median} ms, 95% under ${f.gapMs.p95}, 99% under ${f.gapMs.p99}, worst ${f.gapMs.worst}; ${Math.round((f.longShare || 0) * 100)}% of gaps over ${LONG_MS} ms, ${f.stalls} stalls over ${STALL_MS} ms; the page's own work a frame median ${f.workMs.median} ms, 95% under ${f.workMs.p95}, worst ${f.workMs.worst} (${Math.round((f.workShare || 0) * 100)}% of the walk's time)` : 'no frames'}`,
     `speed, jitter: ${j ? `${j.stillMmPerFrame ? `held still ${j.stillS} s, its place moved median ${j.stillMmPerFrame.median} mm a frame, 95% under ${j.stillMmPerFrame.p95}, worst ${j.stillMmPerFrame.worst}` : 'never held still long enough to say'}; ${j.jumps} jumps over ${JUMP_M * 100} cm in one frame${j.jumps ? ` (worst ${j.jumpWorstCm} cm)` : ''}` : 'no poses'}`,
+    `speed, where a frame's time goes: ${where || 'not timed'}`,
     `speed, waits: ${waits || 'none timed'}`,
     `speed, upload: ${u ? `${u.sends} sends (${u.ok} taken, ${u.retried} to try again, ${u.refused} refused), ${u.kb} KB; a send median ${u.sendMs.median} ms, 95% under ${u.sendMs.p95}, worst ${u.sendMs.worst}; ${u.inSendsS} s inside sends${u.wallS != null ? `, ${u.wallS} s from the first part kept to ${u.finished ? 'the last gone' : 'now (NOT finished)'}` : ''}; ${u.kbPerS ?? '?'} KB a second while sending` : 'nothing sent'}`,
     `speed, phone: ${d.cores ?? '?'} cores, ${d.memoryGb ?? '?'} GB, connection ${d.net ?? '?'}${d.downMbps != null ? ` ${d.downMbps} Mbps` : ''}${d.heapMb != null ? `, page memory ${d.heapMb} MB` : ''}`,

@@ -1052,8 +1052,14 @@ function onFrame(f) {
   }
 }
 function frameWork(f) {
+  /* WHERE A FRAME'S TIME GOES (2026-11-12: the first timed walk put the page's own work at half the walk's time,
+     15 ms a frame and over 100 ms one frame in twenty). Each part of the frame's work is timed under its name. */
+  let lapAt = performance.now();
+  const lap = (name) => { const n = performance.now(); st.wperf?.time(`frame: ${name}`, n - lapAt); lapAt = n; };
+  st.lap = lap;
   try { autoSight(f); showNext(); } catch (e) { log(`roof sighting: ${e.message}`); }
   if (st.sight) { try { stepSight(f); } catch (e) { log(`roof sighting: ${e.message}`); st.sight = null; } }
+  lap('roof sighting');
   if (!st.walk) return;
   st.ar = f;
   if (f.events) replayActs(f); // a replay: what was done at this frame of the recorded walk
@@ -1066,6 +1072,7 @@ function frameWork(f) {
   }
   // the ground near the phone: the crosshair's depth when it is on the ground (0.8-2.5 m below the camera)
   if ((f.hit?.type === 'DEPTH' || /SURFACE$/.test(f.hit?.type || '')) && f.pose) { const drop = f.pose.position.y - f.hit.position.y; if (drop > 0.8 && drop < 2.5) noteGround(L, f.hit.position.y); }
+  lap('walk step');
   // the depth picture as points round the phone, four times a second; then, when it is time, a match
   if (f.geo) noteGeo(f, odo);
   if (f.sem) st.lastSem = { t: f.t, sem: f.sem };
@@ -1153,6 +1160,7 @@ function frameWork(f) {
       if (far.length) { st.geoDepthN = (st.geoDepthN || 0) + far.length; addPoints(st.twin, Date.now(), odo, far, L.groundY); }
     }
   }
+  lap('depth picture to points');
   // 8th Wall: no depth map, but its world points, at the same pace (scan/lib/track.js worldPointsOf); no camera
   // picture to colour them, so they go in as standing candidates too, each still needing two sightings
   if (!f.depth && f.world && f.pose && f.t - st.depthAt > DEPTH_EVERY) {
@@ -1160,6 +1168,7 @@ function frameWork(f) {
     addDepth(L, f.world, odo, f.pose.position);
     if (st.twin) addPoints(st.twin, Date.now(), odo, f.world, L.groundY);
   }
+  lap('world points');
   // THE GROUND'S COLOUR (scan/lib/surface.js): about once a second, the camera's picture read back, and the depth
   // under a grid of it labelled grass or paving, for the lawn-edge term of the match. The same read serves the twin.
   let grabbed = null;
@@ -1195,6 +1204,7 @@ function frameWork(f) {
       if (pts.length && st.map) keepForPrev(L, pts); // every walk: it may place the next one (keepReference), or be placed by the last
     }
   }
+  lap('camera picture read, ground colour');
   // the twin: the camera's track, a picture now and then, and what has piled up sent every 15 s
   if (st.twin && f.pose) {
     const now = Date.now();
@@ -1210,6 +1220,7 @@ function frameWork(f) {
     }
     if (flushDue(st.twin, now)) sendTwin(flush(st.twin, now, liveOf(L, w, { recordOnly: !!st.recordOnly, points: pointsKept(), gpsTrail: trailKept(), geoTrail: geoKept(), anchors: st.anchors ? anchorsKept(st.anchors) : null, prev: prevKept() })));
   }
+  lap('twin (track, pictures)');
   // PLACED BY THE MAP'S EARLIER WALK (walkref.js, SCAN-H32): every PREV_EVERY, this walk's points so far against it
   if (st.ref?.ready && !st.ref.stale && !st.prevAsk && f.tracking === 'normal' && Date.now() - st.prevAt > PREV_EVERY && st.prevStand.size >= REF_MIN_STAND) {
     const id = `p${Date.now()}`;
@@ -1233,6 +1244,7 @@ function frameWork(f) {
       }
     }
   }
+  lap('asks to the match workers');
   // draw
   if (f.gl && f.view && f.proj) {
     try {
@@ -1303,8 +1315,10 @@ function frameWork(f) {
     } catch (e) { if (!st.drawErr) { st.drawErr = true; log(`draw: ${e.message}`); } }
   }
   $('#cross').classList.toggle('hit', !!f.hit);
-  if (f.t - st.hudAt > 200) { st.hudAt = f.t; hud(f); }
+  lap('drawing the AR shapes');
+  if (f.t - st.hudAt > 200) { st.hudAt = f.t; hud(f); lap('top box'); }
   if (f.t - (st.miniAt || 0) > 120) { st.miniAt = f.t; try { drawMini(f); arrows(f); } catch (e) { log(`mini map: ${e.message}`); } }
+  lap('mini map and arrows');
 }
 
 function hud(f) {
@@ -1330,7 +1344,7 @@ function hud(f) {
   const again = target && L.marks.some((m) => m.id === target.id);
   $('#mark').hidden = !st.tapMode; $('#startover').hidden = !!st.tapMode;
   $('#mark').textContent = target ? (target.roof && !again ? (st.sightPaused ? `Go on with ${target.name}` : `Pause ${target.name} (roof)`) : `Mark ${target.name}${again ? ' again' : ''}`) : 'Mark';
-  if (f.t - (st.mapAt || 0) > 1000 && fitFor(L, w.odo)) { st.mapAt = f.t; drawMap(); }
+  if (f.t - (st.mapAt || 0) > 1000 && fitFor(L, w.odo)) { st.mapAt = f.t; const tm = performance.now(); drawMap(); st.wperf?.time('frame: placement map redrawn (hidden page)', performance.now() - tm); }
 }
 
 /** The lidar ground at a map point from the 1 m grid the worker sent; `fallback` off the grid. */
@@ -1716,8 +1730,9 @@ async function sendPart(p) {
   let out = 'retry';
   try { out = await sendPartNow(p); return out; } finally { wp.part(performance.now() - t0, p.body?.size ?? p.body?.byteLength ?? p.body?.length ?? 0, out); }
 }
+const SEND_TIMEOUT_MS = 60000;
 async function sendPartNow(p) {
-  const res = await fetch(`/api/scan/twin?walk=${encodeURIComponent(p.walk)}&part=${encodeURIComponent(p.name)}`, { method: 'PUT', headers: { 'Content-Type': p.type }, body: p.body });
+  const res = await fetch(`/api/scan/twin?walk=${encodeURIComponent(p.walk)}&part=${encodeURIComponent(p.name)}`, { method: 'PUT', headers: { 'Content-Type': p.type }, body: p.body, signal: AbortSignal.timeout(SEND_TIMEOUT_MS) }); // a send that hangs (one took 12 minutes) is let go and tried again
   if (res.ok) return 'ok';
   if (res.status === 503) { p.offWhy = 'the site has no twin bucket yet'; return 'off'; }
   if (res.status === 408 || res.status === 429 || res.status >= 500) return 'retry';

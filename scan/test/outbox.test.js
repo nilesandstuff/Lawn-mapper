@@ -87,4 +87,25 @@ const settle = async (n = 20) => { for (let i = 0; i < n; i++) await tick(); };
   assert.equal((await store.all()).length, 0);
 }
 assert.equal(sizeOf('abc'), 3); assert.equal(sizeOf(new ArrayBuffer(10)), 10); assert.equal(sizeOf(null), 0);
+// several at once, never more than `parallel`, and all of them go (2026-11-12: 25 minutes for a 4-minute walk, one at a time)
+{
+  const store = memoryStore(); let now = 0, most = 0, done = 0; const waits = [];
+  for (let i = 0; i < 10; i++) await store.put({ id: `w9/p${i}`, walk: 'w9', name: `p${i}`, type: 'x', body: 'abcd', at: i });
+  const ob = newOutbox({ store, parallel: 4, sleep: async () => {}, send: async () => { now++; most = Math.max(most, now); await new Promise((r) => waits.push(r)); now--; done++; return 'ok'; } });
+  ob.kick();
+  for (let round = 0; round < 12 && done < 10; round++) { await settle(); const w = waits.splice(0); for (const r of w) r(); await settle(); }
+  assert.equal(done, 10, 'every part went');
+  assert.equal(most, 4, `four at a time, no more (${most})`);
+  assert.equal((await store.all()).length, 0);
+}
+// one of a group must wait: the others of the group still land, the rest wait for the next round
+{
+  const store = memoryStore(); const got = []; let fail = true;
+  for (let i = 0; i < 6; i++) await store.put({ id: `w8/p${i}`, walk: 'w8', name: `p${i}`, type: 'x', body: 'ab', at: i });
+  const ob = newOutbox({ store, parallel: 3, sleep: async () => { fail = false; }, send: async (p) => { if (fail && p.name === 'p1') return 'retry'; got.push(p.name); return 'ok'; } });
+  ob.kick(); await settle(80);
+  assert.equal((await store.all()).length, 0, 'all gone after the wait');
+  assert.deepEqual(got.slice(0, 2).sort(), ['p0', 'p2'], 'the group\'s others landed before the wait');
+  assert.equal(got.filter((n) => n === 'p1').length, 1);
+}
 console.log('outbox: ok');

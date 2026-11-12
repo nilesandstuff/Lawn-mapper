@@ -62,7 +62,8 @@ export async function idbStore(name = 'yard-ar', table = 'outbox') {
  * The outbox. send(part) -> 'ok' | 'retry' | 'drop' | 'off' ('off': the site cannot take parts at all, e.g. no
  * bucket; everything stays on the phone). onChange(status) on every change.
  */
-export function newOutbox({ store, send, onChange = () => {}, now = () => Date.now(), sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
+export const PARALLEL = 4;
+export function newOutbox({ store, send, onChange = () => {}, now = () => Date.now(), sleep = (ms) => new Promise((r) => setTimeout(r, ms)), parallel = PARALLEL }) {
   const st = { pending: 0, bytes: 0, walks: 0, sending: false, waitingMs: 0, sent: 0, sentBytes: 0, dropped: 0, lastDrop: null, off: null, lastError: null, store: store.kind };
   let running = false, kickAgain = false, seq = 0;
   /* (2026-11-07, the owner's first outdoor walk in the app: its pins and its Street View trail never reached the
@@ -92,14 +93,22 @@ export function newOutbox({ store, send, onChange = () => {}, now = () => Date.n
         const all = await store.all();
         if (!all.length) break;
         st.sending = true; st.waitingMs = 0; await emit();
+        /* SEVERAL AT ONCE (2026-11-12, the first walk that timed itself: 407 parts, 18.5 MB, 25 minutes for a 4-minute
+           walk; a send took 0.65 s whatever its size, one after another -- 13 KB a second on a 10 Mbps connection).
+           The wait is the round trip, not the bytes, so `parallel` parts go together. A part that must wait stops
+           the round as before; the others of its group finish first. */
         let failed = false;
-        for (const item of all) {
+        const one = async (item) => {
           let r;
           try { r = await send(item); } catch (e) { r = 'retry'; st.lastError = e?.message || 'no connection'; }
-          if (r === 'ok') { await settle(item); st.sent++; st.sentBytes += sizeOf(item.body); st.lastError = null; backoff = 0; await emit(); continue; }
-          if (r === 'drop') { await settle(item); st.dropped++; st.lastDrop = `${item.name}: ${item.dropWhy || 'refused'}`; await emit(); continue; }
-          if (r === 'off') { st.off = item.offWhy || 'the site cannot take uploads'; break; }
-          failed = true; break; // 'retry': wait, then start again from the oldest
+          if (r === 'ok') { await settle(item); st.sent++; st.sentBytes += sizeOf(item.body); st.lastError = null; backoff = 0; await emit(); }
+          else if (r === 'drop') { await settle(item); st.dropped++; st.lastDrop = `${item.name}: ${item.dropWhy || 'refused'}`; await emit(); }
+          else if (r === 'off') st.off = item.offWhy || 'the site cannot take uploads';
+          return r;
+        };
+        for (let i = 0; i < all.length && !failed && !st.off; i += parallel) {
+          const rs = await Promise.all(all.slice(i, i + parallel).map(one));
+          if (rs.some((r) => r !== 'ok' && r !== 'drop' && r !== 'off')) failed = true; // 'retry': wait, then start again from the oldest
         }
         if (st.off) break;
         if (!failed) continue; // all sent: look again (more may have come meanwhile)

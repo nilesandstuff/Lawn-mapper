@@ -28,6 +28,7 @@ const check = (name, ok, detail = '') => { console.log(`${ok ? 'PASS' : 'FAIL'} 
   p.pose([0.12, 1.5, 0], s); s += 1 / 30;
   for (let i = 0; i < 30; i++) { p.pose([0.12 + i * 0.04, 1.5, 0], s); s += 1 / 30; }
   p.time('lidar shapes', 800); p.time('lidar shapes', 200);
+  p.time('frame: drawing', 30); p.time('frame: drawing', 10); p.time('frame: top box', 60);
   p.uploadOpen();
   for (let i = 0; i < 9; i++) p.part(900, 30000, 'ok');
   p.part(5000, 30000, 'retry');
@@ -43,7 +44,8 @@ const check = (name, ok, detail = '') => { console.log(`${ok ? 'PASS' : 'FAIL'} 
   const text = JSON.stringify(out);
   check('nothing in it the site would refuse (no coordinates, no addresses)', !/"(lng|lat|latitude|longitude|address)"/.test(text));
   const lines = perfLines(out);
-  check('the lines say it in words', lines.length === 7 && /median 33 ms/.test(lines[2]) && /1 jumps/.test(lines[3]) && /10 sends/.test(lines[5]), lines.join('\n'));
+  check('the lines say it in words', lines.length === 8 && /median 33 ms/.test(lines[2]) && /1 jumps/.test(lines[3]) && /10 sends/.test(lines[6]), lines.join('\n'));
+  check('a frame\'s parts are shared out, the biggest first', /top box 60% \(60\.0 ms a time x1, worst 60 ms\); drawing 40%/.test(lines[4]) && !/frame:/.test(lines[5]), lines[4]);
   check('an older walk says it was not measured', /not measured/.test(perfLines(null)[0]));
 }
 {

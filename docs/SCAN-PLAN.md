@@ -2604,3 +2604,12 @@ THE FIRST MEASURED WALK (the same one; scan/lib/perf.js):
     median 0.65 s, 95% under 4.6 s, one of 738 s; 12.9 KB a second while sending, on "4g, 10 Mbps". Sends go one
     at a time. That is item 8's answer: the wait is the one-at-a-time sending, not the size.
   - Opening: the lidar read 5.9 s after the page began; AR asked to first frame 1.1 s; 3.3 MB of API reads in 7.3 s.
+
+BUILT 2026-11-12, after section 26's numbers (not seen on a phone):
+  - THE UPLOAD GOES FOUR AT A TIME (scan/lib/outbox.js PARALLEL; it was one). A send that hangs is let go after
+    60 s and tried again (one took 738 s). Expected from the numbers: about a quarter of the 25 minutes; NOT
+    measured. If it is still slow, the next step is fewer, bigger parts (the server would take a bundle).
+  - EVERY PART OF A FRAME'S WORK IS TIMED UNDER ITS NAME ("speed, where a frame's time goes" in task `walks`): roof
+    sighting, walk step, depth picture to points, the camera picture read and ground colour, the twin, asks to the
+    match workers, drawing the AR shapes, the top box, the mini map and arrows, and the placement map redrawn once
+    a second behind the AR view. The next walk says which of them is the 51%; nothing is changed until it does.
