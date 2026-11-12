@@ -35,6 +35,7 @@ import { countyServiceById } from './county.js';
 import { decodePng } from './png-probe.js';
 import { keepPhoto } from './map-photo.js';
 import { buildShadeOnServer } from './shade-server-build.js';
+import { SHADE_BUILD } from '../../public/shade/build.js';
 import { maskToPolygons, rasterizePolygon, areaTraceLimits, TRACE_TOLERANCE_M, MAX_TRACE_VERTICES } from '../../public/lib/mask.js';
 import { framePxToLngLat, lngLatToFramePx, metresPerPixel } from '../../public/lib/mercator.js';
 import { measure } from '../../public/lib/area.js';
@@ -159,18 +160,33 @@ export async function buildLidar(env) {
   // a build claimed twenty minutes ago and never finished (the Worker was replaced mid-build) is offered again once
   await env.DB.prepare("UPDATE admin_traces SET status = 'lidar', detail = 'retried' WHERE status = 'building' AND finished_at < ?1 AND (detail IS NULL OR detail != 'retried')")
     .bind(new Date(Date.now() - 20 * 60 * 1000).toISOString()).run();
-  const row = await env.DB.prepare("SELECT * FROM admin_traces WHERE status = 'lidar' ORDER BY created_at LIMIT 1").first();
-  if (!row) return null;
-  const claimed = await env.DB.prepare("UPDATE admin_traces SET status = 'building', finished_at = ?2 WHERE id = ?1 AND status = 'lidar'").bind(row.id, now()).run();
+  let row = await env.DB.prepare("SELECT * FROM admin_traces WHERE status = 'lidar' ORDER BY created_at LIMIT 1").first();
+  /* A NEWER SHADE BUILD REBUILDS WHAT IS ALREADY BUILT (2026-11-12: the shade map's rule changed -- a roof under a
+     crown, SHADE_BUILD 2 -- and an admin save built at 1 kept its old model until someone opened it in a browser).
+     With nothing waiting, one finished save a tick whose answer does not name this build is built again; it is tried
+     once a build (a failure is written with the build's number, and the old model stays where it was). Only each
+     map's newest press. */
+  let again = null;
+  if (!row) {
+    row = await env.DB.prepare(`SELECT * FROM admin_traces t WHERE status = 'done' AND (detail IS NULL OR detail NOT LIKE ?1)
+      AND created_at = (SELECT MAX(created_at) FROM admin_traces x WHERE x.map_key = t.map_key AND x.user_id = t.user_id) ORDER BY created_at LIMIT 1`).bind(`%build ${SHADE_BUILD}%`).first();
+    if (!row) return null;
+    again = row.detail || '';
+  }
+  const claimed = await env.DB.prepare("UPDATE admin_traces SET status = 'building', finished_at = ?3 WHERE id = ?1 AND status = ?2").bind(row.id, again == null ? 'lidar' : 'done', now()).run();
   if (!claimed?.meta?.changes) return null;
-  const end = (status, detail) => env.DB.prepare('UPDATE admin_traces SET status = ?2, detail = ?3, finished_at = ?4 WHERE id = ?1').bind(row.id, status, String(detail || '').slice(0, 300), now()).run();
+  const finish = (status, detail) => env.DB.prepare('UPDATE admin_traces SET status = ?2, detail = ?3, finished_at = ?4 WHERE id = ?1').bind(row.id, status, String(detail || '').slice(0, 300), now()).run();
+  // a rebuild that fails leaves the save as it was: built, its older model still there
+  const end = again == null ? finish : (status, detail) => (status === 'done' ? finish('done', detail) : finish('done', `${again.slice(0, 150)}; not rebuilt at build ${SHADE_BUILD}: ${detail}`));
   try {
     const user = await env.DB.prepare('SELECT id, email, role FROM users WHERE id = ?').bind(row.user_id).first();
     if (!user || user.role !== 'admin') { await end('lidar-failed', 'not an administrator any more'); return false; }
     let base = ''; try { base = JSON.parse(row.frame)?.origin || ''; } catch { base = ''; }
     const r = await buildShadeOnServer(env, userOwner(user), row.map_key, { base });
     if (!r.ok) { await end('lidar-failed', r.why || 'the shade builder failed'); return false; }
-    await end('done', `lidar built in ${r.seconds ?? '?'} s (build ${r.build ?? '?'}${r.lidar ? `, ${typeof r.lidar === 'string' ? r.lidar : r.lidar.name || r.lidar.id || 'survey chosen'}` : ''})`);
+    // the builder's own build number, and this Worker's when they differ: a save is offered again only while its answer
+    // does not name this Worker's build, so a builder still on an older one is asked once, not every minute
+    await end('done', `lidar built in ${r.seconds ?? '?'} s (build ${r.build ?? '?'}${r.lidar ? `, ${typeof r.lidar === 'string' ? r.lidar : r.lidar.name || r.lidar.id || 'survey chosen'}` : ''})${Number(r.build) === SHADE_BUILD ? '' : `; asked at build ${SHADE_BUILD}`}`);
     return true;
   } catch (err) { await end('lidar-failed', err.message); return false; }
 }

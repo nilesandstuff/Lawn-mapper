@@ -97,6 +97,19 @@ globalThis.fetch = async (u, init) => {
   l = (await admin(env, req('/api/admin/admin-saves', { cookie: oc }))).body.maps[0].lidar;
   check('the builder is called once for it', builds === 1, `${builds}`);
   check('and the list says what happened', l && (l.status === 'done' || l.status === 'failed') && !!l.detail, JSON.stringify(l));
+  // a finished save whose answer names an older build is built again, once: the stand-in's answer (build 7, or a
+  // failure) is not this Worker's build either, and must not be asked for every minute
+  const KEY9 = '9 test rd|alpha|find';
+  await env.DB.prepare("UPDATE admin_traces SET status = 'done', detail = 'lidar built in 9 s (build 0)' WHERE map_key = ?").bind(KEY9).run();
+  const before = builds;
+  await finishTraces(benv); await finishTraces(benv); await finishTraces(benv);
+  check('a finished save at an older build is rebuilt once, not every minute', builds === before + 1, `${builds - before}`);
+  // a rebuild that fails leaves the save built
+  await env.DB.prepare("UPDATE admin_traces SET status = 'done', detail = 'lidar built in 9 s (build 0)' WHERE map_key = ?").bind(KEY9).run();
+  const fenv = { ...env, SHADE_BUILDER: { async fetch() { return json({ ok: false, why: 'no room' }, 200); } } };
+  await finishTraces(fenv); await finishTraces(fenv);
+  const fr = await env.DB.prepare("SELECT status, detail FROM admin_traces WHERE map_key = '9 test rd|alpha|find'").first();
+  check('a rebuild that fails leaves it built, saying so once', fr.status === 'done' && /not rebuilt at build \d+: no room/.test(fr.detail) && (fr.detail.match(/not rebuilt/g) || []).length === 1, JSON.stringify(fr));
   const atAfter = (await maps(env, req(`/api/maps/one?id=${encodeURIComponent('9 test rd|alpha|find')}`, { cookie: oc }))).body.map.at;
   check('the map\'s record is not written again by the build', atAfter === done.at, `${done.at} -> ${atAfter}`);
 
