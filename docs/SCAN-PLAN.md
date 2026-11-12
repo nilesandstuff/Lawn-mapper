@@ -2544,3 +2544,24 @@ THE HOUSE, AFTER BOTH MENDS (2026-11-12; task `marks`, runs 43164592655 and 4316
     model (the house: ~5.6 m, under a crown 15-19 m up); scan/lib/lidar-load.js draws a building to `roof` where
     given, `top` elsewhere. Live with their deploy (run 43168496396). The ~121 m2 patch is a stand of evergreens
     west of the house (they looked at the photo): a tree, closed. None of it seen on a phone.
+
+BUILT 2026-11-12, second lot (items 1-4 of section 25; none of it seen on a phone):
+  - THE TOP BOX IS SHORT: tracking, feet walked, "roof corners N of M", and trouble only when there is some (no
+    lidar, a nudge, an upload stuck or off, an engine error). The prompts and the flash are drawn OVER the mini map.
+  - ROOF CORNERS ONLY, NO MARK BUTTON; A SMALL RED "START OVER". Each chosen roof corner marks itself. Start over
+    (two taps within 3.5 s) clears this walk's marks, holds and fixes and asks for the first corner again.
+    THE OLD WAY IS KEPT AS A BACKUP MODE (the owner: "Save the old configuration though... We might need to add
+    back future support for ground references"): the start page's box "Backup mode: mark by tapping", remembered on
+    the phone (localStorage yard-ar-tap-mode). On, everything is as it was: the Mark button, ground references,
+    check points, the long top box. Off, ground references and check points are not asked for on the walk (they
+    can still be placed on the map and are kept).
+  - "NEXT: R3, 40 FT TO YOUR RIGHT" (scan/lib/guide.js whereIs). Once the map is lined up, the next corner's
+    sighting waits until the phone is within 16 m of it and facing it (60 degrees either side); until then the
+    middle of the view says how far and which way. Before the map is lined up (the first corners) the sighting
+    starts as before, with a line saying which corner is next.
+  - R1 OFF ITS CORNER, THE LIKELY CAUSE AND A MEND. The owner placed R1 on a corner of the lidar view, then changed
+    the map's property line in the Lawn Mapper, and came back to find it 1-2 ft off. The corners are found again
+    over the box the lawn and the lot make; a different box gives a different return spacing and grid, so a corner
+    can come out a foot or two away, and the point kept the old place. NOT REPRODUCED on that map (a guess that
+    fits what the owner did). Now a point that was put on a corner (it carries `snap` or `roof`) goes to the nearest
+    corner of the same sort within 1.5 m when the corners arrive, and says so (guide.js resnap, tested).

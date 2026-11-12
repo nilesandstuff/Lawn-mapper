@@ -29,7 +29,8 @@ import { newOutbox, idbStore, memoryStore, statusText } from '/lib/outbox.js';
 import { newPerf, resources as perfResources, perfLines } from '/lib/perf.js';
 import { byDistance, nearestMap, mapLabel } from '/lib/maps-pick.js';
 import { enhance } from '/lib/enhance.js';
-import { newSight, sight } from '/lib/roof-corner.js';
+import { newSight, sight, lookOf } from '/lib/roof-corner.js';
+import { whereIs, resnap, NEAR_SIGHT_M } from '/lib/guide.js';
 import { viewToFit, followView, toScreen, zoomAt as miniZoom, pan as miniPan, edgeArrow } from '/lib/minimap.js';
 
 const $ = (s) => document.querySelector(s);
@@ -70,6 +71,7 @@ const st = {
    own (how long opening took), and one a walk (frames, jitter, waits, its upload). Their numbers go in the walk's
    summary, which the site keeps and task `walks` prints. */
 const pagePerf = newPerf();
+try { st.tapMode = localStorage.getItem('yard-ar-tap-mode') === '1'; } catch { st.tapMode = false; }
 st.wperf = null;
 /** The walk's numbers with the page's opening and what was downloaded. Times, sizes and counts only. */
 function perfOf(wp) {
@@ -118,6 +120,14 @@ async function main() {
     lab.innerHTML = '<input type="checkbox" id="record-only"> Record only: no live lidar fix; the walk is fixed afterwards';
     box.append(lab);
     $('#record-only').addEventListener('change', (e) => { st.recordOnly = e.target.checked; });
+    /* THE OLD WAY, KEPT AS A BACKUP MODE (the owner, 2026-11-12: "remove the mark button entirely and replace with a
+       small red button that says start over" -- "Save the old configuration though, as a backup mode. We might need to
+       add back future support for ground references"). Off: roof corners only, each marks itself, no Mark button. On:
+       everything as it was -- the Mark button, ground references, check points, the long top box. */
+    const tap = document.createElement('label'); tap.className = 'dim'; tap.style.display = 'block'; tap.style.margin = '8px 0';
+    tap.innerHTML = `<input type="checkbox" id="tap-mode"${st.tapMode ? ' checked' : ''}> Backup mode: mark by tapping (ground references and check points, the Mark button)`;
+    box.append(tap);
+    $('#tap-mode').addEventListener('change', (e) => { st.tapMode = e.target.checked; try { localStorage.setItem('yard-ar-tap-mode', st.tapMode ? '1' : '0'); } catch { /* this visit only */ } });
     /* RECORDING AND REPLAY (the app's bridge 3; the owner, 2026-11-08: "so I don't have to keep doing the same walks
        over and over"): ARCore records the walk's camera and motion; it goes to the site after the walk, and any
        recorded walk can be run again through ARCore and this page from the couch. */
@@ -590,6 +600,17 @@ function roofAt(b) {
   return best;
 }
 
+/** Points that were put on a corner follow it when the corners are found again (lib/guide.js resnap): the map's lot or
+    lawn changed, so the box the corners are found over did, and a corner can come out a foot or two away. */
+function backOnCorners() {
+  if (st.walk || !st.points.length) return;
+  const r = resnap(st.points, st.lid.overlay?.picture?.marks?.corners || [], st.lid.roofs || []);
+  if (!r.moved.length) return;
+  savePoints(); listPoints(); drawMap();
+  log(`points put back on their corners: ${r.moved.map((m) => `${m.name} ${m.m} m`).join(', ')}`);
+  flash(`${r.moved.map((m) => m.name).join(', ')} moved back onto ${r.moved.length === 1 ? 'its corner' : 'their corners'} (the map's shapes changed)`);
+}
+
 /** A point placed on the lidar view goes to the corner within a fingertip, when there is one. */
 function snapped(at) {
   if (st.photoChoice !== 'lidar') return { at, snap: null };
@@ -734,9 +755,9 @@ function startLidar(m) {
     w.onmessage = ({ data }) => {
       if (data.progress) { st.lid.progress = data.progress; showLidar(); }
       if (data.ready) { pagePerf.stage('lidar read'); st.lid.ready = data.ready; log(`lidar model read: ${data.ready.points} columns, ${data.ready.solid} solid cells, shift ${data.ready.shift}`); showLidar(); keepShadeFresh(m, data.ready); }
-      if (data.roofs) { st.lid.roofs = data.roofs; log(`roof corners offered: ${data.roofs.length}`); drawMap(); listPoints(); }
+      if (data.roofs) { st.lid.roofs = data.roofs; log(`roof corners offered: ${data.roofs.length}`); backOnCorners(); drawMap(); listPoints(); }
       if (data.ground) { st.lid.ground = data.ground; groundPhoto().catch((e) => log(`lidar ground picture: ${e.message}`)); }
-      if (data.marks && st.lid.overlay?.picture) { st.lid.overlay.picture.marks = data.marks; if (st.photoChoice === 'lidar') { photoTools(); drawMap(); } }
+      if (data.marks && st.lid.overlay?.picture) { st.lid.overlay.picture.marks = data.marks; backOnCorners(); if (st.photoChoice === 'lidar') { photoTools(); drawMap(); } }
       if (data.overlay) { st.lid.overlay = data.overlay; st.lid.meshes = null; lidarPhoto().catch((e) => log(`lidar picture: ${e.message}`)); log(`lidar overlay: ${data.overlay.solids.length / 4} solid cells, ${data.overlay.tall.length / 5} tall cells`); }
       if (data.error) { st.lid.error = data.error; log(`lidar: ${data.error}`); showLidar(); if (/no lidar model yet/.test(data.error)) keepShadeFresh(m, null); }
       if (data.walk && st.L && st.walkAsk && data.id === st.walkAsk.id) {
@@ -1008,8 +1029,10 @@ const pointsKept = () => (st.points || []).map((p) => ({ id: p.id, name: p.name,
 function nextTarget() {
   // the point the owner picked on the mini map, until it is marked (2026-11-03: Mark "was demanding R2, which I had
   // just marked" when C1 was wanted)
-  if (st.chosen) { const c = st.points.find((p) => p.id === st.chosen); if (c) return c; st.chosen = null; }
+  if (st.chosen) { const c = st.points.find((p) => p.id === st.chosen); if (c && (st.tapMode || c.roof)) return c; st.chosen = null; }
   const markedIds = new Set(st.L.marks.map((m) => m.id));
+  // roof corners only, each marking itself (the default since 2026-11-12; the backup mode is everything below)
+  if (!st.tapMode) return st.points.find((p) => p.roof && !markedIds.has(p.id)) || null;
   const want = st.points.filter((p) => !markedIds.has(p.id));
   /* references first, so the map lines up early; but a record-only walk is lined up afterwards, and its references are
      optional (the owner, 2026-11-05: on a walk without references "it didn't let me actually mark the checkpoints") */
@@ -1029,7 +1052,7 @@ function onFrame(f) {
   }
 }
 function frameWork(f) {
-  try { autoSight(f); } catch (e) { log(`roof sighting: ${e.message}`); }
+  try { autoSight(f); showNext(); } catch (e) { log(`roof sighting: ${e.message}`); }
   if (st.sight) { try { stepSight(f); } catch (e) { log(`roof sighting: ${e.message}`); st.sight = null; } }
   if (!st.walk) return;
   st.ar = f;
@@ -1296,10 +1319,16 @@ function hud(f) {
     : st.ref?.error ? `<br><span class="dim">Earlier walk: ${esc(st.ref.error)}</span>` : '';
   const fixLine = st.origin ? `<br>${st.recordOnly ? '<strong>Recording only</strong>: no live lidar fix; the walk is placed afterwards (workflow S, task fix). ' : ''}${esc(st.lid.ready ? fixStatus(L, w.odo) : st.lid.error ? `No lidar (${st.lid.error}); references only: ${fixStatus(L, w.odo)}` : `Lidar: ${st.lid.progress || 'reading…'}`)}${ag}${target ? `<br>Next to mark: <strong style="color:${target.kind === 'ref' ? '#8ab4ff' : '#d9a6ff'}">${esc(target.name)}</strong> ${target.roof ? '(a roof corner: aim the circle up at it and hold still; it marks itself, no tap. Tap another point on the mini map to do that one instead)' : '(aim where it meets the ground, within 10 ft, tap Mark; tap another point on the mini map to mark that one instead)'}` : ''}` : '';
   const last = st.errors.length && Date.now() - st.errors[st.errors.length - 1].t < 6000 && /engine|start/.test(st.errors[st.errors.length - 1].what) ? `<br><span class="bad">${esc(st.errors[st.errors.length - 1].what)}</span>` : '';
-  $('#hud').innerHTML = `${NAME[w.engine]} · ${tr} · walked ${Math.round(w.stats.walked * FT)} ft${pts} · ${aim} · ${w.pins.length} pin${w.pins.length === 1 ? '' : 's'}${w.pendingMeasure ? ' · <span class="warn">now aim at the second mark</span>' : ''}${fixLine}${prevLine}${st.nudge ? `<br><span class="warn">${esc(st.nudge.text)}</span>` : ''}${st.upStatus && (st.upStatus.pending > 3 || st.upStatus.off || (st.upStatus.pending && !st.upStatus.sending)) ? `<br><span class="dim">${esc(statusText(st.upStatus))}</span>` : ''}${last}`;
+/* THE TOP BOX, SHORT (the owner, 2026-11-12: the mini map covered it; "shorten the dialog box by trimming wordiness
+     and info that isn't doing much"): tracking, how far walked, how the map is lined up, and trouble when there is
+     any. The backup mode keeps the long one. */
+  const roofsAll = st.points.filter((p) => p.roof), roofsDone = roofsAll.filter((p) => L.marks.some((m) => m.id === p.id)).length;
+  if (!st.tapMode) $('#hud').innerHTML = `${tr} · walked ${Math.round(w.stats.walked * FT)} ft${roofsAll.length ? ` · roof corners ${roofsDone} of ${roofsAll.length}` : st.points.length ? ' · <span class="warn">no roof corners chosen (pick diamonds on the lidar view, or use the backup mode)</span>' : ''}${st.origin && (st.lid.error || !st.lid.ready) ? `<br><span class="dim">${esc(st.lid.error ? `No lidar (${st.lid.error})` : `Lidar: ${st.lid.progress || 'reading…'}`)}</span>` : ''}${st.nudge ? `<br><span class="warn">${esc(st.nudge.text)}</span>` : ''}${st.upStatus && (st.upStatus.off || (st.upStatus.pending && !st.upStatus.sending)) ? `<br><span class="dim">${esc(statusText(st.upStatus))}</span>` : ''}${last}`;
+  else $('#hud').innerHTML = `${NAME[w.engine]} · ${tr} · walked ${Math.round(w.stats.walked * FT)} ft${pts} · ${aim} · ${w.pins.length} pin${w.pins.length === 1 ? '' : 's'}${w.pendingMeasure ? ' · <span class="warn">now aim at the second mark</span>' : ''}${fixLine}${prevLine}${st.nudge ? `<br><span class="warn">${esc(st.nudge.text)}</span>` : ''}${st.upStatus && (st.upStatus.pending > 3 || st.upStatus.off || (st.upStatus.pending && !st.upStatus.sending)) ? `<br><span class="dim">${esc(statusText(st.upStatus))}</span>` : ''}${last}`;
   const can = !!f.hit && f.tracking !== 'lost';
   $('#pin').disabled = !can; $('#measure').disabled = !can; $('#check').disabled = !can || !w.pins.length; $('#mark').disabled = !target || (target.roof ? f.tracking === 'lost' : !can);
   const again = target && L.marks.some((m) => m.id === target.id);
+  $('#mark').hidden = !st.tapMode; $('#startover').hidden = !!st.tapMode;
   $('#mark').textContent = target ? (target.roof && !again ? (st.sightPaused ? `Go on with ${target.name}` : `Pause ${target.name} (roof)`) : `Mark ${target.name}${again ? ' again' : ''}`) : 'Mark';
   if (f.t - (st.mapAt || 0) > 1000 && fitFor(L, w.odo)) { st.mapAt = f.t; drawMap(); }
 }
@@ -1428,6 +1457,7 @@ function wire() {
   $('#pin').addEventListener('click', () => doPin(st.ar));
   $('#check').addEventListener('click', () => doCheck(st.ar));
   $('#mark').addEventListener('click', () => doMark(st.ar));
+  $('#startover').addEventListener('click', startOver);
   $('#undo').addEventListener('click', () => doUndo());
   $('#measure').addEventListener('click', () => {
     const f = st.ar; if (!f?.hit) return;
@@ -1481,7 +1511,39 @@ function autoSight(f) {
   const marked = new Set(st.L.marks.map((m) => m.id));
   const chosen = st.chosen ? st.points.find((p) => p.id === st.chosen) : null;
   const target = chosen?.roof && !marked.has(chosen.id) ? chosen : st.points.find((p) => p.roof && !marked.has(p.id));
-  if (target) startSight(f, target);
+  st.nextHint = null;
+  if (!target) return;
+  /* NOT FROM ACROSS THE YARD (the owner, 2026-11-12: looking at a corner already done "goes through the prompts for
+     rescanning... It should say 'move on to next prompt X feet to the Y direction'"): once the map is lined up, the
+     next corner's sighting waits until the phone is within reach of it and facing it; until then the middle of the
+     view says how far and which way. Before the map is lined up there is nothing to steer by, so it starts as it did. */
+  const s = fitFor(st.L, st.walk.odo) ? sessionOf(st.L, target.map, st.walk.odo, st.L.groundY ?? f.pose.position.y - 1.4) : null;
+  if (s && f.pose.quaternion) {
+    const c = f.pose.position, w = whereIs([c.x, c.y, c.z], lookOf(f.pose.quaternion), [s.x, s.y, s.z]);
+    if (w.m > NEAR_SIGHT_M || !w.facing) { st.nextHint = { target, w, done: marked.size }; return; }
+  } else if (marked.size) flash(`Next: ${target.name}, the roof's ${target.roof.label}. Walk to it, then aim up at it.`);
+  startSight(f, target);
+}
+/** The middle of the view between corners: where the next one is, or that they are all done. */
+function showNext() {
+  const el = $('#guide'), h = st.nextHint;
+  if (st.sight || st.tapMode) return;
+  if (!h) { if (st.guideNext) { el.hidden = true; st.guideNext = false; } return; }
+  st.guideNext = true; el.hidden = false;
+  $('#guide-say').textContent = `Next: ${h.target.name}, ${h.w.ft} ft ${h.w.word}`;
+  $('#guide-detail').textContent = `The roof's ${h.target.roof.label}. It starts by itself when you face it from within ${Math.round(NEAR_SIGHT_M * FT)} ft.`;
+  $('#guide-bar').style.width = '0%';
+}
+/** Start over (the red button): this walk's marks and fixes gone, the first corner asked for again. Two taps. */
+function startOver() {
+  if (!st.walk || !st.L) return;
+  if (Date.now() - (st.startOverAt || 0) > 3500) { st.startOverAt = Date.now(); flash('Tap Start over again to clear this walk\'s marks'); return; }
+  st.startOverAt = 0;
+  const n = st.L.marks.length;
+  st.L.marks.length = 0; st.L.holds = []; st.L.fixes = []; st.L.streak = [];
+  st.undoMarks = []; st.sight = null; st.sightPaused = false; st.sightEndedAt = 0; st.chosen = null; st.nextHint = null;
+  $('#guide').hidden = true;
+  log(`start over: ${n} marks cleared`); flash('Started over: aim up at the first roof corner');
 }
 function stepSight(f) {
   const s = st.sight; if (!s) return;
@@ -1495,7 +1557,7 @@ function stepSight(f) {
   sight(s.S, { t: f.t, pos: f.pose?.position, quat: f.pose?.quaternion, tracking: f.tracking, depths });
   const S = s.S, el = $('#guide');
   if (S.rays.length !== s.rays) { s.rays = S.rays.length; try { navigator.vibrate?.(60); } catch { /* no buzz */ } }
-  el.hidden = false; $('#guide-say').textContent = `${s.target.name}, the roof's ${s.target.roof.label}: ${S.say}`; $('#guide-detail').textContent = S.detail || ''; $('#guide-bar').style.width = `${Math.round((S.progress || 0) * 100)}%`;
+  st.guideNext = false; el.hidden = false; $('#guide-say').textContent = `${s.target.name}, the roof's ${s.target.roof.label}: ${S.say}`; $('#guide-detail').textContent = S.detail || ''; $('#guide-bar').style.width = `${Math.round((S.progress || 0) * 100)}%`;
   if (!S.done) return;
   st.sight = null; st.sightEndedAt = Date.now(); if (!S.done.ok) st.sightEndedAt += 4000; setTimeout(() => { if (!st.sight) el.hidden = true; }, 1800);
   (st.walk.roofSights ||= []).push({ name: s.target.name, ok: S.done.ok, why: S.done.why || null, sights: S.done.sights ?? S.rays.length, missM: S.done.missM != null ? +S.done.missM.toFixed(3) : null, turnDeg: S.done.turnDeg != null ? Math.round(S.done.turnDeg) : null, eaveOffM: S.done.eaveOffM != null ? +S.done.eaveOffM.toFixed(2) : null, steps: S.log });

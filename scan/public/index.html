@@ -66,8 +66,14 @@
   #bar button { flex: 1 1 28%; padding: 14px 6px; font-size: 15px; }
   #bar button.side { flex: 0 0 auto; background: rgba(0,0,0,.6); border: 1px solid rgba(255,255,255,.4); }
   #bar button.side.off { opacity: .5; text-decoration: line-through; }
+  #bar button.side.danger { background: rgba(165,28,28,.88); border-color: #ff8a80; font-size: 13px; padding: 14px 8px; }
+  #bar button[hidden] { display: none; }
   #flash { position: absolute; left: 50%; top: 58%; transform: translateX(-50%); background: rgba(0,0,0,.7); padding: 6px 12px; border-radius: 8px; opacity: 0; transition: opacity .2s; white-space: nowrap; max-width: 92vw; }
   #flash.show { opacity: 1; }
+  /* the prompts and the flash sit over the mini map, never under it (the owner, 2026-11-12) */
+  #guide, #flash { z-index: 5; }
+  #hud { z-index: 3; }
+  #mini { z-index: 1; }
   #guide { position: absolute; left: 50%; top: 30%; transform: translateX(-50%); width: min(86vw, 420px); background: rgba(0,0,0,.72); border-radius: 12px; padding: 12px 14px; text-align: center; }
   #guide[hidden] { display: none; }
   #guide strong { display: block; font-size: 20px; line-height: 1.25; }
@@ -156,7 +162,8 @@
     <button type="button" id="lidar-toggle" class="side" aria-label="Show or hide the lidar">Lidar</button>
     <button type="button" id="undo" class="side">Undo</button>
     <button type="button" id="exit" class="side">Exit</button>
-    <button type="button" id="mark" disabled>Mark</button>
+    <button type="button" id="startover" class="side danger">Start over</button>
+    <button type="button" id="mark" disabled hidden>Mark</button>
     <button type="button" id="pin" disabled>Drop pin</button>
     <button type="button" id="check" disabled>Check pin</button>
     <button type="button" id="measure" disabled>Measure</button>
