@@ -152,9 +152,10 @@ for (const k of ['roadFt', 'yardFt', 'saveMin']) {
 
 /** A leg's chip: driving, or riding between close stops with the time it saves. */
 const legChip = (leg) => (leg?.ride
-  ? `<span>Ride ${mins(leg.duration || 0)} · saves ${Math.round((leg.saved || 0) / 60)}m</span>`
-  : `<span>Drive ${mins(leg?.duration || 0)} · ${miles(leg?.distance || 0)}</span>`);
-const savedMin = (legs) => Math.round(legs.reduce((a, l) => a + (l?.ride ? l.saved || 0 : 0), 0) / 60);
+  ? `<span>Ride ${mins(leg.duration || 0)} · no loading</span>`
+  : `<span>Drive ${mins(leg?.duration || 0)} · ${miles(leg?.distance || 0)}${leg?.load ? ` · +${Math.round(leg.load / 60)}m loading` : ''}</span>`);
+const loadMin = (legs) => Math.round(legs.reduce((a, l) => a + (l?.ride ? 0 : Number(l?.load) || 0), 0) / 60);
+const rideSavedMin = (legs) => Math.round(legs.reduce((a, l) => a + (l?.ride ? l.saved || 0 : 0), 0) / 60);
 
 /* how many people share the day (lib/split.js); with more than one, each starts at their first stop */
 let people = Math.max(1, Math.min(10, Number(store.get('people', 1)) || 1));
@@ -884,12 +885,16 @@ function renderResult(scroll = false) {
   $('#planned').textContent = `planned ${clock(r.at)}`;
   $('#tJobs').textContent = formatMinutes(jobs);
   $('#tDrive').textContent = formatMinutes(driveM);
-  const rideSaved = savedMin(r.legs);
-  $('#tAll').textContent = formatMinutes(jobs + driveM - rideSaved);
+  // driving between stops means loading up; riding between close ones does not (lib/ride.js)
+  const loading = loadMin(r.legs);
+  const rideSaved = rideSavedMin(r.legs);
+  $('#tAll').textContent = formatMinutes(jobs + driveM + loading);
 
   const notes = [`${r.stops.length} stop${r.stops.length === 1 ? '' : 's'}, ${miles(dist)} of driving.`];
   const rides = r.legs.filter((l) => l?.ride).length;
-  if (rides) notes.push(`Riding between ${rides} pair${rides === 1 ? '' : 's'} of close stops saves ${formatMinutes(rideSaved)} (taken off the total).`);
+  const loads = r.legs.filter((l) => !l?.ride && l?.load).length;
+  if (loads) notes.push(`Loading up to drive between stops: ${loads} time${loads === 1 ? '' : 's'}, ${formatMinutes(loading)} (in the total).`);
+  if (rides) notes.push(`Riding between ${rides} pair${rides === 1 ? '' : 's'} of close stops: no loading up, ${formatMinutes(rideSaved)} saved.`);
   if (r.saved >= 60) notes.push(`${mins(r.saved)} less driving than the order in the list.`);
   if (r.fetched != null) notes.push(`Drive times: ${r.reused.toLocaleString()} reused from this phone, ${r.fetched.toLocaleString()} new from Mapbox.`);
   const area = allStops.reduce((a, s) => a + (Number(s.sqft) || 0), 0);
@@ -943,12 +948,12 @@ function updateEta() {
   const lastTick = ticks.length ? Math.max(...ticks) : null;
   const left = r.stops.map((s, i) => ({ s, leg: r.legs[i] || {} })).filter(({ s }) => !done.has(s.id));
   const back = r.legs[r.stops.length] || {};
-  const t = timeline(left.map(({ s, leg }) => ({ drive: leg.duration || 0, job: s.minutes, saved: leg.ride ? leg.saved || 0 : 0 })), back.duration || 0, { lastTick, now });
+  const t = timeline(left.map(({ s, leg }) => ({ drive: leg.duration || 0, job: s.minutes, load: leg.ride ? 0 : Number(leg.load) || 0 })), back.duration || 0, { lastTick, now });
   const missingMin = r.missing.reduce((a, s) => a + (Number(s.minutes) || 0), 0);
   $('#tFinish').textContent = clock(t.finish);
   $('#tLeft').textContent = formatMinutes(Math.round(t.left / 60000));
   const n = r.stops.length - left.length;
-  $('#tProgress').textContent = `${n} of ${r.stops.length} done${lastTick ? `, last at ${clock(lastTick)}` : ', starting now'}${missingMin ? ` (not counting ${r.missing.length} unrouted)` : ''}`;
+  $('#tProgress').textContent = `${n} of ${r.stops.length} done${lastTick ? `, last at ${clock(lastTick)}` : ': not started, so counted from now'}${missingMin ? ` (not counting ${r.missing.length} unrouted)` : ''}`;
   const arrive = new Map(left.map(({ s }, k) => [s.id, t.arrivals[k]]));
   for (const el of document.querySelectorAll('#legs [data-eta]')) {
     const id = Number(el.dataset.eta);

@@ -6,14 +6,20 @@
  * for a person to ride their machine to that stop rather than load their
  * equipment back up and drive."
  *
- * So between two STOPS (never the shop or a start) that are close -- by the
- * road within `road` metres, or in a straight line within `yard` metres
- * (back-to-back lots, where the road round is long) -- the step costs its
- * travel minus `save` seconds: no loading up, no unloading. Through the
- * yards the travel is the walk across at riding pace, if that beats the
- * road. The step can come out below zero; the route finders (solve.js,
- * split.js) take that as it is, so close stops are drawn together, onto one
- * person and next to each other.
+ * So driving from one STOP to the next (never from the shop or a start, or
+ * home) costs the drive plus `save` seconds of loading up and unloading; and
+ * between two stops that are close -- by the road within `road` metres, or
+ * in a straight line within `yard` metres (back-to-back lots, where the road
+ * round is long) -- the machine is ridden instead: the ride, and no loading.
+ * Through the yards the ride is the walk across at riding pace, if that
+ * beats the road. Close stops are drawn together, onto one person and next
+ * to each other (solve.js, split.js).
+ *
+ * (Until 2026-11-12 the saving was taken off the close steps instead. A
+ * one-minute drive has no five minutes in it to take, so a day of
+ * neighbours came out shorter than its own job time: a route planned for
+ * 7h 23m showed 5h 53m. Loading counted on the driven steps is the same
+ * difference between riding and driving, and never less than the work.)
  */
 
 export const RIDE_DEFAULTS = { road: 305, yard: 70, save: 300 }; // 1,000 ft, 230 ft, 5 minutes
@@ -57,9 +63,10 @@ export function rideAdjust(D, M, points, isStop, rules = RIDE_DEFAULTS) {
       for (let j = 0; j < n; j += 1) {
         if (i === j || !isStop(j)) continue;
         const kind = closeness(points[i], points[j], M?.[i]?.[j], rules);
-        if (!kind) continue;
-        kinds[i][j] = kind;
-        out[i][j] = rideSeconds(points[i], points[j], kind, D[i][j]) - rules.save;
+        if (kind) {
+          kinds[i][j] = kind;
+          out[i][j] = rideSeconds(points[i], points[j], kind, D[i][j]);
+        } else if (D[i][j] != null) out[i][j] = D[i][j] + rules.save; // driven: load up, drive, unload
       }
     }
   }
@@ -67,13 +74,14 @@ export function rideAdjust(D, M, points, isStop, rules = RIDE_DEFAULTS) {
 }
 
 /**
- * A leg as shown: { duration, distance } and, when it is a ride between
- * close stops, ride: true and saved: the seconds it saves.
+ * A leg from one stop to the next, as shown: { duration, distance } and
+ * either load: the seconds of loading up a driven step costs, or, when the
+ * stops are close, ride: 'road' | 'yard' and saved: the loading it skips.
  */
 export function rideLeg(leg, a, b, rules = RIDE_DEFAULTS) {
   if (!leg || !a || !b || !rules?.save) return leg;
   const kind = closeness(a, b, leg.distance, rules);
-  if (!kind) return leg;
+  if (!kind) return { ...leg, load: rules.save };
   return { ...leg, duration: Math.round(rideSeconds(a, b, kind, leg.duration)), ride: kind, saved: rules.save };
 }
 
