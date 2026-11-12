@@ -14,6 +14,13 @@
  * road. The step can come out below zero; the route finders (solve.js,
  * split.js) take that as it is, so close stops are drawn together, onto one
  * person and next to each other.
+ *
+ * THE LOADING IS IN THE JOB TIME (owner, 2026-11-12: "The load time is
+ * actually factored into the job time. So the only time the routing needs to
+ * consider load time is when it's being cut out because of close stops").
+ * So a day of neighbours can rightly total less than its listed job times:
+ * each ride takes the loading out of the job it reaches. Do not add loading
+ * to driven steps -- that was tried (2026-11-12) and double-counted it.
  */
 
 export const RIDE_DEFAULTS = { road: 305, yard: 70, save: 300 }; // 1,000 ft, 230 ft, 5 minutes

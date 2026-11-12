@@ -948,7 +948,7 @@ function updateEta() {
   $('#tFinish').textContent = clock(t.finish);
   $('#tLeft').textContent = formatMinutes(Math.round(t.left / 60000));
   const n = r.stops.length - left.length;
-  $('#tProgress').textContent = `${n} of ${r.stops.length} done${lastTick ? `, last at ${clock(lastTick)}` : ', starting now'}${missingMin ? ` (not counting ${r.missing.length} unrouted)` : ''}`;
+  $('#tProgress').textContent = `${n} of ${r.stops.length} done${lastTick ? `, last at ${clock(lastTick)}` : ': not started, so counted from now'}${missingMin ? ` (not counting ${r.missing.length} unrouted)` : ''}`;
   const arrive = new Map(left.map(({ s }, k) => [s.id, t.arrivals[k]]));
   for (const el of document.querySelectorAll('#legs [data-eta]')) {
     const id = Number(el.dataset.eta);
