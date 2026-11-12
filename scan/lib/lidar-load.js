@@ -58,6 +58,11 @@ export function gridsFromModel(model, { origin, box, lawn = [], S, toMerc, cell 
   const [ox, oy] = toMerc(origin);
   const k = Math.cos((origin[1] * Math.PI) / 180);
   const kind = arrays.kind, { ground, mu, returns, low } = arrays, layers = meta.layers;
+  /* A BUILDING STANDS AS HIGH AS ITS ROOF (the shade map's `roof` array, build 3, 2026-11-12): `top` is a column's
+     highest return, which under a crown is the crown's (15-19 m over a 5.6 m house on the owner's work lot). Where
+     the model gives a roof height it is the building's; elsewhere, and in models without the array, `top` as before.
+     The shade map's own number, read as given: not a step of the AR's. */
+  const colTop = arrays.top && arrays.roof ? Float32Array.from(arrays.top, (t, j) => (Number.isFinite(arrays.roof[j]) ? arrays.roof[j] : t)) : arrays.top || null;
   const counts = { building: 0, tree: 0, solidTree: 0, structure: 0, unknown: 0, standing: 0 };
   const things1 = new Uint8Array(kind.length), bld1 = new Uint8Array(kind.length);
   /* SOLID FOR THE MATCH: a column with something of ITS OWN at the height the phone sees, 0.4-2.4 m over the ground
@@ -89,7 +94,7 @@ export function gridsFromModel(model, { origin, box, lawn = [], S, toMerc, cell 
      when the file has no per-cube returns. A building's wall is drawn to its top as before. */
   const standTop = new Float32Array(kind.length).fill(NaN);
   for (let j = 0; j < kind.length; j++) {
-    const t = arrays.top ? arrays.top[j] : NaN;
+    const t = colTop ? colTop[j] : NaN;
     if (!returns || !layers || !Number.isFinite(ground[j])) { standTop[j] = t; continue; }
     const base = j * layers.nz;
     let l = low && Number.isFinite(low[j]) ? Math.max(0, Math.floor((ground[j] + low[j] - layers.z0) / layers.dz)) : cubesOf(j)[0];
@@ -108,13 +113,13 @@ export function gridsFromModel(model, { origin, box, lawn = [], S, toMerc, cell 
   const dem = valuesOnGrid(arrays.ground, sgrid, box, cell, at, k);
   let things, bld, walls = null, shapes = null;
   if (straight) {
-    shapes = straightShapes({ sgrid, kind, K, things1, bld1, top: arrays.top, returns, ground, layers, ox, oy, k, box, cell, inset: S?.WALL_INSET_M ?? 0.61, lowDx: arrays.lowDx || null, lowDy: arrays.lowDy || null, treesInMatch });
+    shapes = straightShapes({ sgrid, kind, K, things1, bld1, top: colTop, returns, ground, layers, ox, oy, k, box, cell, inset: S?.WALL_INSET_M ?? 0.61, lowDx: arrays.lowDx || null, lowDy: arrays.lowDy || null, treesInMatch });
     ({ things, bld, walls } = shapes);
   } else {
     things = buildingsOnGrid(things1, sgrid, box, cell, at, k, 1);
     bld = buildingsOnGrid(bld1, sgrid, box, cell, at, k, 1);
   }
-  const topForDraw = arrays.top ? Float32Array.from(arrays.top, (t, j) => (bld1[j] ? t : standTop[j])) : null;
+  const topForDraw = colTop ? Float32Array.from(colTop, (t, j) => (bld1[j] ? t : standTop[j])) : null;
   const top = topForDraw ? valuesOnGrid(topForDraw, sgrid, box, cell, at, k) : null;
   /* A building's walls: the shade map's own rule, wallsOf (2 ft in from the roof's edge, the owner's number), run on
      its BUILDING columns. A STRUCTURE (a stone wall, a shed, bins) has no eaves and is solid at its own edge. */
@@ -126,7 +131,7 @@ export function gridsFromModel(model, { origin, box, lawn = [], S, toMerc, cell 
   // the lawn the owner traced: the lawn-edge term's field (scan/lib/surface.js), the AR's own
   const F = lawn.length ? lawnField(lawn, box, cell) : null;
   if (F && F.cells && F.W === G.W && F.H === G.H) G.lawnSd = F.sd;
-  if (arrays.top) G.wallTop = valuesOnGrid(arrays.top, sgrid, box, cell, at, k);
+  if (colTop) G.wallTop = valuesOnGrid(colTop, sgrid, box, cell, at, k);
   const ruleName = `the shade map's model of ${meta.at ? String(meta.at).slice(0, 10) : 'an unknown date'}${meta.photo ? ', low structures judged by the summer photo' : ''}${meta.erased ? `, ${meta.erased} columns erased by hand` : ''}`;
   return {
     G, k, ox, oy, counts: shapes ? { ...counts, ...shapes.counts } : counts, buildings: bld, footprint: walls, rule: ruleName + (shapes ? `, straightened (${shapes.counts.buildingsStraight} buildings, ${shapes.counts.wallLines} walls as lines, ${shapes.counts.treesIgnored ? `${shapes.counts.treesIgnored} tree columns ignored` : `${shapes.counts.trunks} trunks as posts`})` : ''),
