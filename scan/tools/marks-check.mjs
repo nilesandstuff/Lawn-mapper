@@ -62,6 +62,12 @@ async function main() {
   console.log(`Decks split off a house: ${dk.length}; ${dk.map((d) => `${d.n} returns at ${d.top} m`).join('; ')}`);
   const ns2 = debug.filter((d) => d.kind === 'not solid');
   console.log(`Left out as not solid (the laser went through, or every height): ${ns2.length}; sizes ${ns2.map((d) => `${d.n} returns (through ${d.through}, rough ${d.rough} m)`).slice(0, 15).join('; ')}`);
+  // each raised thing as it was classed: a building is 3.5 m or more up at its middle return AND over 30% of its returns the shade map's roof
+  const cl = debug.filter((d) => d.kind === 'classed' && d.m2 >= 15).sort((a, b) => b.m2 - a.m2).slice(0, 15);
+  console.log(`Raised solid things of 15 m2 or more, as classed: ${cl.map((d) => `${d.as} ~${d.m2} m2, middle return ${d.top} m up, ${Math.round(d.bld * 100)}% roof by the shade map`).join('; ') || 'none'}`);
+  const tr = debug.filter((d) => d.kind === 'called a tree').sort((a, b) => b.m2 - a.m2);
+  console.log(`Groups the shade map calls trees, 20 m2 or more: ${tr.length}; SOLID ones (a roof taken for a crown?): ${tr.filter((d) => d.solid).map((d) => `~${d.m2} m2 at ${d.top} m (through ${d.through}, rough ${d.rough})`).join('; ') || 'none'}`);
+  console.log(`  the biggest of the rest: ${tr.filter((d) => !d.solid).slice(0, 6).map((d) => `~${d.m2} m2 at ${d.top} m (through ${d.through}, rough ${d.rough})`).join('; ') || 'none'}`);
   const pv = debug.filter((d) => d.kind === 'paving');
   console.log(`Paving candidates, each threshold's slabs over 8 m2: ${pv.length}`);
   for (const d of pv.filter((x) => x.square)) console.log(`  KEPT: ${d.n} returns, ${d.area} m2, contrast ${d.contrast}, ${far(d.middle)} (${d.why})`);

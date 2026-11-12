@@ -263,13 +263,17 @@ export function lidarMarks(box, pts, { cell = CELL, debug = null } = {}) {
   const W = Math.max(1, Math.ceil((box[2] - box[0]) / cell)), H = Math.max(1, Math.ceil((box[3] - box[1]) / cell)), N = W * H;
   // every return in the box, raised (not a tree's) or not; a tree's own returns are left out altogether
   const P = [], crowns = new Set(); // crowns: the 1 m cells a tree's crown (2 m or more up) covers
+  const treed = []; // debug only: the returns the shade map calls a tree's, 2 m or more up (a roof it took for a crown shows here)
   for (let i = 0; i < pts.n; i++) {
     const e = pts.e(i), n = pts.nn(i);
     if (e < box[0] - 5 || e >= box[2] + 5 || n <= box[1] - 5 || n > box[3] + 5) continue;
     if ((e < box[0] || e >= box[2] || n <= box[1] || n > box[3]) && !(pts.kind(i) === 2 && pts.hag(i) >= 2)) continue;
     const h = pts.hag(i), kind = pts.kind(i);
     if (Number.isNaN(h)) continue;
-    if (h >= 0.3 && kind === 2) { if (h >= 2) crowns.add(`${Math.floor(e)},${Math.floor(n)}`); continue; } // trees are not marks (SCAN-DIVERGENCES step 9)
+    if (h >= 0.3 && kind === 2) { // trees are not marks (SCAN-DIVERGENCES step 9)
+      if (h >= 2) { crowns.add(`${Math.floor(e)},${Math.floor(n)}`); if (debug && e >= box[0] && e < box[2] && n > box[1] && n <= box[3]) treed.push({ e, n, h, raised: true, bld: false, b: 0 }); }
+      continue;
+    }
     if (e < box[0] || e >= box[2] || n <= box[1] || n > box[3]) continue;
     P.push({ e, n, h, raised: h >= 0.3, bld: kind === 1, b: pts.bright(i) });
   }
@@ -338,6 +342,17 @@ export function lidarMarks(box, pts, { cell = CELL, debug = null } = {}) {
   const raised = P.filter((p) => p.raised), ground = P.filter((p) => !p.raised);
   const solidity = solidityOf(P, Math.max(1, 2.5 * spacing));
   // 1. things: raised returns that touch; 2. within a thing, its levels: returns that touch at much the same height
+  /* A ROOF THE SHADE MAP TOOK FOR A CROWN (debug only; the owner, 2026-11-12: a house "does not have black OR orange
+     square on it"): a tree's returns are left out above, so a roof classed as a tree leaves nothing here to find. Its
+     returns are flat and stop the laser all the same, so the solid, sizeable groups among the tree's are listed. */
+  if (debug && treed.length) {
+    const solT = solidityOf([...ground, ...treed], Math.max(1, 2.5 * spacing));
+    for (const g of linked(treed, link)) {
+      if (g.length * spacing * spacing < 20) continue;
+      const sol = solT(g), hs = g.map((p) => p.h).sort((a, b) => a - b);
+      debug.push({ kind: 'called a tree', n: g.length, m2: Math.round(g.length * spacing * spacing), top: +hs[hs.length >> 1].toFixed(1), through: +sol.through.toFixed(2), rough: +sol.rough.toFixed(2), solid: sol.through <= 0.15 && sol.rough <= 0.35 });
+    }
+  }
   for (let group of linked(raised, link)) {
     if (group.length < 3) continue;
     // SOLID THINGS ONLY (the owner, 2026-11-10: "lots of buildings and objects showing up in the woods... There are no
@@ -349,6 +364,7 @@ export function lidarMarks(box, pts, { cell = CELL, debug = null } = {}) {
     // a building is tall: a deck the shade map calls a building (flat, high, no ground under it) is a thing here
     const hsG = group.map((p) => p.h).sort((a, b) => a - b), tall = hsG[hsG.length >> 1] >= 3.5;
     let kind = tall && group.filter((p) => p.bld).length > group.length * 0.3 ? 'building' : 'object';
+    if (debug) debug.push({ kind: 'classed', as: kind, n: group.length, m2: Math.round(group.length * spacing * spacing), top: +hsG[hsG.length >> 1].toFixed(1), bld: +(group.filter((p) => p.bld).length / group.length).toFixed(2) });
     // IN THE WOODS (the owner, 2026-11-10, again: "lots of buildings and objects showing up in the woods... Just stumps
     // and normal woods stuff"; the first real run left 50 small things after the solidity test): a thing with tree
     // crowns over most of the ground round it is brush, a log or a crown the shade map did not call a tree. A house
