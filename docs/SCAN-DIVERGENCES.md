@@ -143,3 +143,18 @@ only (nothing here is matched against, and nothing here decides what a column is
     (draw.js): overlapping see-through boxes used to add up, and since then only the nearest one shows.
 A tree's crown is still the shade map's 1 m column; putting it on 0.5 m cells adds no detail, only the smoothing.
 Trees are drawn though they are not matched (step 9). Step 6's boxes remain only as the fallback for an old worker.
+
+## 11. The marks: a building column's returns far over its roof are left out (2026-11-12)
+
+The shade map (build 2, structures.js roofUnderCrown) keeps a roof under a crown a BUILDING, column by column. The
+model's kind is the column's, so the crown's branches over that roof are a building's returns too. The placement
+map's marks (scan/lib/lidar-marks.js) group raised returns into things and ask each to be solid; with the branches
+in it the owner's house read "not solid" (2506 returns, 2.17 m rough) and still had no square after the shade map
+was mended.
+
+So, for the marks only: a building column's roof is its floor, the lowest of its returns 2 m or more up, and a
+return more than ROOF_OVER_M (2.5 m) above that is left out, as a tree's returns are (it still counts as crown for
+the "in the woods" test). A plain roof loses nothing: its returns in one column sit within a metre.
+
+It does not change the model, the match, or what the camera view draws. NOT CHECKED: what the camera view draws
+for such a column (its top may be the crown's, not the roof's); that is the model's `top`, the shade map's.

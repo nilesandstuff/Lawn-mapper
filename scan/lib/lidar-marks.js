@@ -30,6 +30,7 @@ const CELL = 0.25;
    corner is then within SURE_M of it (about 1 ft). A wall's end, where the laser's last hit on its top may be a metre
    or more short of the end, is often not. */
 export const SURE_M = 0.3;
+export const ROOF_OVER_M = 2.5; // a return this far over its building column's lowest raised return is a crown's, not the roof's
 
 
 const turn = (a, b, c) => {
@@ -264,9 +265,23 @@ export function lidarMarks(box, pts, { cell = CELL, debug = null } = {}) {
   // every return in the box, raised (not a tree's) or not; a tree's own returns are left out altogether
   const P = [], crowns = new Set(); // crowns: the 1 m cells a tree's crown (2 m or more up) covers
   const treed = []; // debug only: the returns the shade map calls a tree's, 2 m or more up (a roof it took for a crown shows here)
+  /* A ROOF UNDER A CROWN (2026-11-12; the shade map's roofUnderCrown, build 2, keeps such columns buildings): the
+     column is a building's, but the branches 8 m over the roof are in it too, and with them the house read "not
+     solid" (2506 returns, 2.17 m rough) and still got no square. A building column's roof is its floor: the lowest
+     of its returns 2 m or more up. Returns more than ROOF_OVER_M above that are the crown's and are left out, as a
+     tree's are. Only where the returns say which column they fall in (pts.col); a plain roof loses nothing (its
+     returns in one column sit within a metre). SCAN-DIVERGENCES section 11. */
+  const roofFloor = new Map();
+  if (pts.col) for (let i = 0; i < pts.n; i++) {
+    if (pts.kind(i) !== 1) continue;
+    const h = pts.hag(i); if (!(h >= 2)) continue;
+    const j = pts.col(i), f = roofFloor.get(j);
+    if (f == null || h < f) roofFloor.set(j, h);
+  }
   for (let i = 0; i < pts.n; i++) {
     const e = pts.e(i), n = pts.nn(i);
     if (e < box[0] - 5 || e >= box[2] + 5 || n <= box[1] - 5 || n > box[3] + 5) continue;
+    if (roofFloor.size && pts.kind(i) === 1) { const f = roofFloor.get(pts.col(i)); if (f != null && pts.hag(i) > f + ROOF_OVER_M) { if (pts.hag(i) >= 2) crowns.add(`${Math.floor(e)},${Math.floor(n)}`); continue; } }
     if ((e < box[0] || e >= box[2] || n <= box[1] || n > box[3]) && !(pts.kind(i) === 2 && pts.hag(i) >= 2)) continue;
     const h = pts.hag(i), kind = pts.kind(i);
     if (Number.isNaN(h)) continue;

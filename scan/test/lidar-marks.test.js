@@ -151,3 +151,25 @@ console.log('lidar-marks: ok');
   assert.ok(obj.some((o) => near(o.middle, [28, 8.5]) < 1), 'the level deck stays a thing');
   console.log('lidar-marks (low garage): ok');
 }
+
+// a house under a crown (the owner's work lot, 2026-11-12; the shade map keeps its columns buildings since build 2):
+// the branches over the roof are in the same columns and must not make the house "not solid"
+{
+  let sd = 11; const r = () => { sd = (sd + 0x6d2b79f5) | 0; let t = Math.imul(sd ^ (sd >>> 15), 1 | sd); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const Q = [];
+  const house = (e, n) => e >= 8 && e <= 20 && n >= 6 && n <= 16;           // a flat roof 7.4 m up
+  for (let i = 0; i < 30 * 22 * 4; i++) {
+    const e = r() * 30, n = r() * 22;
+    if (house(e, n)) {
+      Q.push({ e, n, h: 7.4 + (r() - 0.5) * 0.1, kind: 1 });
+      if (r() < 0.7) Q.push({ e, n, h: 13 + r() * 6, kind: 1 });            // the crown over it, in the building's columns
+    } else Q.push({ e, n, h: (r() - 0.5) * 0.05, kind: 0 });
+  }
+  const mk = (withCol) => ({ n: Q.length, e: (i) => Q[i].e, nn: (i) => Q[i].n, hag: (i) => Q[i].h, bright: () => 0, kind: (i) => Q[i].kind,
+    ...(withCol ? { col: (i) => Math.floor(Q[i].n) * 30 + Math.floor(Q[i].e) } : {}) });
+  const R5 = lidarMarks([0, 0, 30, 22], mk(true)), b5 = R5.objects.filter((o) => o.kind === 'building');
+  assert.ok(b5.length === 1 && near(b5[0].middle, [14, 11]) < 1 && Math.abs(b5[0].top - 7.4) < 0.5, `the house under the crown is one building at its roof's height: ${b5.map((o) => `${o.middle.map((v) => v.toFixed(1))} top ${o.top}`).join(' | ')}`);
+  const R6 = lidarMarks([0, 0, 30, 22], mk(false));
+  assert.ok(!R6.objects.some((o) => o.kind === 'building' && Math.abs(o.top - 7.4) < 0.5), 'without the columns the crown still spoils it (why the step is there)');
+  console.log('lidar-marks (house under a crown): ok');
+}
