@@ -2477,3 +2477,17 @@ WHAT THE OWNER'S SCREENSHOT OF THAT WALK SHOWS (2026-11-12; read from the pictur
   - "Upload: sending 131 parts (4.3 MB)". So the upload is small in bytes and large in number of requests; a guess,
     not measured: the slowness is the 131 separate sends on a phone connection, not the size.
   - AR walls (orange) are drawn over a real block wall and cut off raggedly where the depth test hid them (item 5).
+
+THE OWNER, AFTER THE SCREENSHOT (2026-11-12):
+  - The three references were ONE roof diamond and TWO orange corners.
+  - R1 is not on a corner: on the map it sits 1-2 ft from one. "I feel like i couldn't have tapped that close to
+    a corner without snapping to it... And I know I didn't drag it." The corner it should be on belongs to an
+    orange object, an outbuilding (a decent-sized garage with a regular roof). NOT DIAGNOSED: how a reference
+    lands near a corner and not on it (the snap's reach, a tap taken as free placement, or a move after).
+  - That garage is drawn as an orange object, not a building; and the house just north of it has NO square on it,
+    black or orange. Two faults in the marks, not in the walk: a roofed building classed as an object (so no roof
+    diamonds on it), and a house missed whole. To be looked at on that map's own points (an admin save).
+  - OCCLUSION, DECIDED: "a decently big offset... Maybe 2 feet. So only hide the ar if it sits 2 feet beyond the
+    actual depth."
+  - ANALYTICS, ASKED: "should we set up some sort of in-house analytics so we can measure the lag/jitter/load
+    times/etc." The phone is a Galaxy S21 Ultra, 8 GB. The session's answer: yes (below); not built.

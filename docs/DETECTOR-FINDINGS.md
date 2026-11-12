@@ -51,12 +51,12 @@ got here. Update it whenever the in-flight run changes.*
   brightness under a crown (S69, H134).** Against the tracing, three
   corrections recover nothing and the crown still shows; the first run's
   pulse-sum column was a bug the owner caught, mended and re-run. In hand:
-  (1) workflow 14 run 43114516633 (`cache: brightness pictures`, THE PLAN's
-  defaults) puts the three corrected layers on the predictions page beside
-  the raw one -- the owner wants to look for themselves; check it finished
-  and say so. (2) Not done, offered: count how many ground returns under a
-  crown shared their pulse (if few, there is nothing to add back -- a
-  guess). (3) Not built, the owner's test: the decoder answering held-out
+  (1) DONE: workflow 14 run 43114516633 finished; its predictions page has
+  the three corrected layers beside the raw one, and its table on the
+  newest flights is flat too (H134). The owner has not yet said what they
+  saw. (2) Half answered by that run: on the middle lot 11% of ground
+  returns shared their pulse, over the whole frame; UNDER A CROWN is still
+  not counted (if few there too, there is nothing to add back -- a guess). (3) Not built, the owner's test: the decoder answering held-out
   lots with the canopy guesser OFF, raw brightness (control) against each
   correction swapped in at scoring; a training run only if that is flat
   too, "but for now let's not".
@@ -1063,6 +1063,19 @@ others under 2%), and the sum added strangers together, single returns
 included. Now a time is a pulse only when it holds exactly as many points
 as the pulse has returns, and a single return is its own sum; the open
 reads 0.77 again. The (b) column above is the second run's.
+
+**THE SAME ON THE NEWEST FLIGHTS** (workflow 14 run 43114516633, `cache:
+brightness pictures`, THE PLAN's defaults, the lidar the live model reads;
+101 lots with lidar; pooled / middle lot): under canopy raw 0.54 / 0.69,
+(a) 0.54 / 0.67, (b) 0.51 / 0.64, (c) 0.56 / 0.66; in the open 0.79, 0.78,
+0.78, 0.79; whole lot 0.77, 0.75, 0.74, 0.76; the crown shows 0.26, 0.29,
+0.31, 0.31. Lot by lot under canopy (a) 7 better / 12 worse / 11 level,
+(b) 12 / 9 / 9, (c) 12 / 13 / 5. Flat again. What the read counted on the
+way: on the middle lot only 11% of ground returns shared their pulse with
+another return; C's middle 0.60, 12 lots at 0; a GPS time shared between
+pulses on 28 lots (over 10% of points). That run's predictions page carries
+the three layers beside the raw one, drawn on all 104 lots, for the owner
+to look at.
 
 What it says:
 - **The owner's observation is measured:** covered lawn is darker than open
@@ -10752,6 +10765,8 @@ deploy log says how many are locked and how many are waiting.
 
 | date | run | corpus | backbone | best | SAM | note |
 |---|---|---|---|---|---|---|
+| 2026-11-12 | 43114516633 | 104 (locked, 131u7jm) | THE PLAN's defaults, `cache: brightness pictures` (lidar read wide; nothing the model reads changes) | — (not read here) | — | **S69 / H134 on the newest flights:** under canopy raw 0.54 v 0.54 / 0.51 / 0.56; the crown shows 0.26 -> 0.29 / 0.31 / 0.31. Flat. The predictions page of this run draws the three corrected brightness layers. THE PLAN's row was not read from this run. |
+| 2026-11-11 | 43114511668 | 104 (locked; 96 with lidar) | — (workflow 23 again, pulse sum mended) | — | — | H134's pulse-sum column: the open 0.77 again (was 0.70, a shared GPS time taken for one pulse). |
 | 2026-11-11 | 43100442236 | 104 (locked; 96 with lidar) | — (workflow 23, `brightness: corrected`, octrees, 2 m cells, no training) | — | — | **H134 / S69:** ground brightness corrected for the crown three ways against the raw control: under canopy 0.55 raw v 0.54 / 0.52 / 0.57; the crown still shows (0.27 -> 0.30 / 0.32 / 0.32). Flat. The pulse-sum column is run 43114511668's: the first run's took a shared GPS time for one pulse. |
 | 2026-09-18 | 35404198905 | 24 | DINOv2 tiled 224px | 34.0% | 21.6% | ring first measured, negative |
 | 2026-09-19 | 35409315409 | 23 | Scale-MAE large 672px | 30.9% | 20.3% | eye-vs-colour gap 14.0 -> 3.5 |
