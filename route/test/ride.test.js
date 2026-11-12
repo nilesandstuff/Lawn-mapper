@@ -24,10 +24,8 @@ const { D: R, close } = rideAdjust(D, M, pts, (i) => i < 4);
 assert.equal(close(0, 1), 'road');
 assert.equal(close(2, 3), 'yard');
 assert.equal(close(0, 4), null, 'never to the shop');
-assert.ok(R[0][1] >= 0 && R[2][3] >= 0, 'a ride costs its time, never less than nothing');
-assert.equal(R[0][2], D[0][2] + 300, 'a driven step between stops: the drive and the loading');
-assert.equal(R[0][4], D[0][4], 'home to the shop: just the drive');
-assert.ok(R[0][1] < D[0][1] + 300 && R[2][3] < D[2][3] + 300, 'riding beats loading up and driving');
+assert.ok(R[0][1] < 0 && R[2][3] < 0, 'a close step costs less than nothing: the saving outweighs it');
+assert.equal(R[0][2], D[0][2], 'far steps unchanged');
 
 // one person: the close pairs come out next to each other
 const order = solvePath([[0, ...R[0].slice(0)], ...R.map((row) => [1e9, ...row])].map((row, i) => (i === 0 ? row.map((x, j) => (j === 0 ? 0 : j === 5 ? 1e9 : 0)) : row)));
@@ -40,15 +38,13 @@ assert.equal(Math.abs(pos(2) - pos(3)), 1, '2 and 3 together');
 const service = [1200, 1200, 1200, 1200, 0];
 const { routes } = splitRoutes(R, { stops: [0, 1, 2, 3], shop: 4, service, people: 2, timeMs: 300 });
 for (const pair of [[0, 1], [2, 3]]) assert.ok(routes.some((rt) => pair.every((s) => rt.includes(s))), `pair ${pair} on one route`);
-// never shorter than the work: a day of neighbours is its jobs and rides, not less
-for (const rt of routes) assert.ok(routeCost(R, rt, 4, service) >= rt.reduce((a, s) => a + service[s], 0), 'never less than the job time');
+assert.ok(routeCost(R, routes[0], 4, service) < routeCost(D, routes[0], 4, service), 'the saving counted');
 
 // a leg as shown
 const leg = rideLeg({ duration: 60, distance: 250 }, at(0, 0), at(250, 0));
 assert.equal(leg.ride, 'road');
 assert.equal(leg.saved, 300);
-assert.equal(leg.load, undefined, 'a ride: no loading');
-assert.deepEqual(rideLeg({ duration: 400, distance: 3000 }, at(0, 0), at(2500, 0)), { duration: 400, distance: 3000, load: 300 }, 'driven: loading up');
+assert.deepEqual(rideLeg({ duration: 400, distance: 3000 }, at(0, 0), at(2500, 0)), { duration: 400, distance: 3000 });
 const yard = rideLeg({ duration: 200, distance: 900 }, at(0, 0), at(0, 60));
 assert.equal(yard.ride, 'yard');
 assert.ok(yard.duration < 200, 'across the yards beats the road round');

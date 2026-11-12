@@ -21,9 +21,9 @@ const mins = (s) => `${Math.max(1, Math.round(s / 60))} min`;
 const sqft = (n) => `${Math.round(n).toLocaleString()} sq ft`;
 /** A leg's chip: driving, or riding between close stops (lib/ride.js) with the time it saves. */
 const chip = (leg) => (leg?.ride
-  ? `<span>Ride ${mins(leg.duration || 0)} · no loading</span>`
-  : `<span>Drive ${mins(leg?.duration || 0)} · ${miles(leg?.distance || 0)}${leg?.load ? ` · +${Math.round(leg.load / 60)}m loading` : ''}</span>`);
-const loadSec = (legs) => legs.reduce((a, l) => a + (l?.ride ? 0 : Number(l?.load) || 0), 0);
+  ? `<span>Ride ${mins(leg.duration || 0)} · saves ${Math.round((leg.saved || 0) / 60)}m</span>`
+  : `<span>Drive ${mins(leg?.duration || 0)} · ${miles(leg?.distance || 0)}</span>`);
+const savedSec = (legs) => legs.reduce((a, l) => a + (l?.ride ? l.saved || 0 : 0), 0);
 
 /** A person's job minutes, driving seconds, metres, and their whole day in minutes. */
 export function totals(person) {
@@ -31,8 +31,8 @@ export function totals(person) {
   const drive = person.legs.reduce((a, l) => a + (l.duration || 0), 0);
   const dist = person.legs.reduce((a, l) => a + (l.distance || 0), 0);
   const area = person.stops.reduce((a, s) => a + (Number(s.sqft) || 0), 0);
-  const load = loadSec(person.legs);
-  return { jobs, drive, dist, area, load, total: jobs + Math.round((drive + load) / 60) };
+  const saved = savedSec(person.legs);
+  return { jobs, drive, dist, area, saved, total: jobs + Math.round((drive - saved) / 60) };
 }
 
 const nav = (label) => `https://www.google.com/maps/dir/?${new URLSearchParams({ api: '1', destination: label, travelmode: 'driving' })}`;
@@ -55,7 +55,7 @@ export function trips(person, shop) {
 /** The short line for a person: "3 stops · 1h 05m jobs · 42 min driving · 1h 47m". */
 export function summary(person) {
   const t = totals(person);
-  return `${person.stops.length} stop${person.stops.length === 1 ? '' : 's'} · ${formatMinutes(t.jobs)} jobs · ${formatMinutes(Math.round(t.drive / 60))} driving · ${miles(t.dist)}${t.load ? ` · ${formatMinutes(Math.round(t.load / 60))} loading up` : ''}`;
+  return `${person.stops.length} stop${person.stops.length === 1 ? '' : 's'} · ${formatMinutes(t.jobs)} jobs · ${formatMinutes(Math.round(t.drive / 60))} driving · ${miles(t.dist)}${t.saved ? ` · ${formatMinutes(Math.round(t.saved / 60))} saved riding` : ''}`;
 }
 
 /**
@@ -142,14 +142,14 @@ export function liveTotals(doc, k, now = Date.now()) {
   const done = p.stops.filter((s) => doc.stops[s].done);
   const jobs = todo.reduce((a, s) => a + (Number(doc.stops[s].minutes) || 0), 0);
   const drive = todo.reduce((a, s) => a + (p.into?.[s]?.duration || 0), 0) + (todo.length ? p.back?.duration || 0 : 0);
-  const load = loadSec(todo.map((s) => p.into?.[s]));
+  const saved = savedSec(todo.map((s) => p.into?.[s]));
   const area = p.stops.reduce((a, s) => a + (Number(doc.stops[s].sqft) || 0), 0);
   // from the latest tick: there, then, its job done (lib/eta.js)
   const lastTick = done.length ? Math.max(...done.map((s) => doc.stops[s].done.at)) : null;
-  const steps = todo.map((s) => ({ drive: p.into?.[s]?.duration || 0, job: doc.stops[s].minutes, load: p.into?.[s]?.ride ? 0 : Number(p.into?.[s]?.load) || 0 }));
+  const steps = todo.map((s) => ({ drive: p.into?.[s]?.duration || 0, job: doc.stops[s].minutes, saved: p.into?.[s]?.ride ? p.into[s].saved || 0 : 0 }));
   const t = timeline(steps, todo.length ? p.back?.duration || 0 : 0, { lastTick, now, readyAt: p.readyAt });
   const arrivals = new Map(todo.map((s, i) => [s, t.arrivals[i]]));
-  return { todo, done, jobs, drive, load, area, arrivals, left: t.left, back: todo.length ? t.finish : null };
+  return { todo, done, jobs, drive, saved, area, arrivals, left: t.left, back: todo.length ? t.finish : null };
 }
 
 /** A live person's card: done stops ticked, the rest in order, Go buttons, their Google Maps trip. */
@@ -185,7 +185,7 @@ export function liveCard(doc, k, { me = null, open = true, now = Date.now() } = 
   const trip = t.todo.length ? trips({ stops: t.todo.map((s) => doc.stops[s]) }, doc.shop) : [];
   return `<details class="card person${p.id === me ? ' me' : ''}" ${open ? 'open' : ''} data-person="${k}">
     <summary><h2><span class="dot" style="background:${color}"></span>${esc(p.name)}${p.id === me ? ' <small>(you)</small>' : ''} <small>${esc(status)}${waiting}</small></h2></summary>
-    <p class="meta">${t.todo.length ? `${formatMinutes(Math.round(t.left / 60000))} left: ${formatMinutes(t.jobs)} of jobs and ${formatMinutes(Math.round(t.drive / 60))} of driving${t.load ? `, ${formatMinutes(Math.round(t.load / 60))} of loading up` : ''}` : ''}${t.area ? `${t.todo.length ? ' · ' : ''}${sqft(t.area)}` : ''}</p>
+    <p class="meta">${t.todo.length ? `${formatMinutes(Math.round(t.left / 60000))} left: ${formatMinutes(t.jobs)} of jobs and ${formatMinutes(Math.round(t.drive / 60))} of driving${t.saved ? `, ${formatMinutes(Math.round(t.saved / 60))} saved riding` : ''}` : ''}${t.area ? `${t.todo.length ? ' · ' : ''}${sqft(t.area)}` : ''}</p>
     ${t.todo.length ? `<ol class="legs">${todoRows.join('')}</ol>
     <div class="gm">${trip.map((x) => `<a class="btn small" target="_blank" rel="noopener" href="${esc(x.href)}">Google Maps: ${esc(x.label)}</a>`).join('')}</div>` : ''}
     ${doneRows.length ? `<details class="done-list"><summary class="meta">${doneRows.length} done</summary><ol class="legs">${doneRows.join('')}</ol></details>` : ''}

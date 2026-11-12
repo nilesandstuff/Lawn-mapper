@@ -65,7 +65,6 @@ const leg = (l) => {
   if (!l || !Number.isFinite(l.duration)) return null;
   const out = { duration: Math.round(l.duration * 10) / 10, distance: Math.round(Number(l.distance) || 0) };
   if (l.ride === 'road' || l.ride === 'yard') { out.ride = l.ride; out.saved = Math.max(0, Math.min(1800, Number(l.saved) || 0)); }
-  else if (Number(l.load) > 0) out.load = Math.min(1800, Number(l.load));
   return out;
 };
 const point = (p) => (p && Number.isFinite(p.lng) && Number.isFinite(p.lat) ? { lng: p.lng, lat: p.lat, label: str(p.label, 200) } : null);
