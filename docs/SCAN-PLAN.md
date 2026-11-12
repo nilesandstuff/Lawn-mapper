@@ -2529,3 +2529,14 @@ THE GARAGE AND THE HOUSE ON THE OWNER'S WORK LOT, LOOKED AT (2026-11-12; task `m
   - From that walk's own record: R2 (the roof diamond) marked itself, 2 aims 43 degrees apart, 0.04 m off the
     lidar's eave; R1 and R3 were ground references; no lidar fix was asked for all walk (0 asks); ARCore moved its
     own anchors a median 0.35 m, most 0.99 m.
+
+THE HOUSE, AFTER BOTH MENDS (2026-11-12; task `marks`, runs 43164592655 and 43164903441):
+  - The shade map's roofUnderCrown (build 2, the features session) made the house's columns buildings; the admin
+    save's model was rebuilt by the server (admin-saves.js now rebuilds a finished save when SHADE_BUILD goes up).
+    With that alone the house was a 2506-return group left out as "not solid" (2.17 m rough): the crown's branches
+    are in the building's columns.
+  - With the marks reading a building column by its roof (ROOF_OVER_M, SCAN-DIVERGENCES 11): a NEW BUILDING, ~333
+    m2, its middle return 5.2 m up, heights spanning 3.9 m, 96% roof by the shade map. The other buildings are as
+    they were (~154, ~128, ~53 the garage, ~33 m2). Not seen on a phone or in a picture: that this is the house is
+    its size, its height and that it appeared when the roof under the crown did.
+  - The ~121 m2 solid patch still called a tree is unchanged, same why codes: it was never the house.
