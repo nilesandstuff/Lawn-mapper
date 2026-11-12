@@ -50,31 +50,43 @@ export function fineCells(cols, grid, shift, ground, { fine = FINE_M, dz = FINE_
 /**
  * The blocks to draw: [{ fi, k, base, top (m over the ground), kind }].
  * `kindAt(k)` the 1 m column's drawn kind ('roof', 'structure', a tree's ...);
+ * `roofTopAt(k)` a roof under a crown's height (structures.js why 10), NaN elsewhere;
  * `gone(k)` true for an erased column; `cubeGone(k, zOver)` true where the
  * person erased the 1 m block at that height; `roofs` false hides buildings
  * and low structures; `cut` hides what is below that height.
  */
-export function fineRuns(fc, { kindAt, gone = () => false, cubeGone = () => false, roofs = true, cut = 0 } = {}) {
+export function fineRuns(fc, { kindAt, roofTopAt = () => NaN, gone = () => false, cubeGone = () => false, roofs = true, cut = 0 } = {}) {
   const out = [], dz = fc.dz;
   for (const c of fc.cells) {
     if (gone(c.k)) continue;
     const kind = kindAt(c.k);
     if (!kind) continue;
     const solid = kind === 'roof' || kind === 'structure';
-    if (solid && !roofs) continue;
-    if (solid) {
-      const top = (c.layers[c.layers.length - 1] + 1) * dz;
-      if (top > cut) out.push({ fi: c.fi, k: c.k, base: cut, top, kind });
-      continue;
+    /* A roof under a crown (structures.js why 10): solid up to its roof, the crown above drawn as the tree it is. */
+    const roofTop = kind === 'roof' ? roofTopAt(c.k) : NaN;
+    const crownOver = Number.isFinite(roofTop);
+    let layers = c.layers;
+    if (solid && crownOver) {
+      const under = layers.filter((l) => l * dz <= roofTop); // the layer holding the roof is the roof's
+      if (roofs && under.length) { const top = (under[under.length - 1] + 1) * dz; if (top > cut) out.push({ fi: c.fi, k: c.k, base: cut, top, kind }); }
+      layers = layers.filter((l) => l * dz > roofTop);
+    } else {
+      if (solid && !roofs) continue;
+      if (solid) {
+        const top = (layers[layers.length - 1] + 1) * dz;
+        if (top > cut) out.push({ fi: c.fi, k: c.k, base: cut, top, kind });
+        continue;
+      }
     }
+    const runKind = crownOver ? 'deciduous' : kind;
     let run = null;
     const close = () => { if (run) { out.push(run); run = null; } };
-    for (const l of c.layers) {
+    for (const l of layers) {
       const b = l * dz, t = b + dz;
       if (t <= cut || cubeGone(c.k, b + dz / 2)) { close(); continue; }
       if (run && Math.abs(run.top - b) < 1e-9) { run.top = t; continue; }
       close();
-      run = { fi: c.fi, k: c.k, base: Math.max(b, cut), top: t, kind };
+      run = { fi: c.fi, k: c.k, base: Math.max(b, cut), top: t, kind: runKind };
     }
     close();
   }

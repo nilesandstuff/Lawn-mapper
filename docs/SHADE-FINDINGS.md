@@ -1634,6 +1634,20 @@ crown columns read as building 612 before, 741 after, in 3 crowns:
     quarter. Most likely poultry houses, which would make the flip right; the
     photo is too blurred to say, so this is NOT established.
 
+THE SAME DAY, AFTER (the core session's question: the model's `top` there
+is the crown's): the column was a building to its top, so the trees view
+drew the crown over the house as black building (a tall black block at 0.5
+m), the summer canopy gave that crown no leaves, and the eave step made the
+crown's own edge a building (its top, the crown's, matched the "roof"'s).
+Now (SHADE_BUILD 3): structures.js keeps the roof's own height (roofTop,
+the highest last echo on the floor); seasonal.js gives the crown above it
+summer leaves as a crown, from its lowest branch over the roof up; the
+trees view draws the column as building up to the roof and tree above, in
+both views; the eave step ignores a roof under a crown; and the model file
+carries `roof` (a building's roof height; `top` there stays the crown's).
+The owner's work lot: 205 columns building (the 86 crown-edge "eaves"
+gone); roof heights median 5.6 m against the crown's 9.0 m.
+
 ## Speculation
 
 - FENCES (2026-10-27, IN USE, unmeasured; fences.js): drawn by the visitor
