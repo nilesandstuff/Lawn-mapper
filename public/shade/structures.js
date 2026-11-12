@@ -162,6 +162,19 @@ export const SOLID_TREE_SPLIT = 0.25; // a solid patch this split is a tree, not
 export const SOLID_TREE_MAX_M2 = 60; // or one smaller than this
 export const SOLID_SPECK_M2 = 4; // a solid patch smaller than this is always part of a tree
 export const SOLID_TREE_ROUGH_M = 0.55; // whose neighboring tops differ by this much (median)
+/* A ROOF UNDER A CROWN (2026-11-12; the owner's admin save: a house under a big tree read as a solid tree, so the AR
+   had nothing to mark on it). A crown over a roof splits the pulses (branches first, roof last), which the split test
+   above takes for a dense tree. What tells them apart is where the LAST echoes land: on a roof they stop on one flat
+   surface; in a dense crown they are scattered up and down. A column with ROOF_FLOOR_MIN or more last echoes over
+   2 m, ROOF_FLOOR_SHARE of them within FLAT_SPREAD_M of its lowest (a branch tip can end a pulse above the roof), has
+   a flat floor; a patch's flat-floored columns that join (sides or corners) into ROOF_FLOOR_M2 or more stay a
+   building. */
+export const ROOF_FLOOR_MIN = 2;
+export const ROOF_FLOOR_SHARE = 0.75;
+export const ROOF_FLOOR_M2 = 40;
+export const ROOF_FLOOR_ABOVE = 0.5; // and at most this share of its split pulses' earlier echoes sit on the floor itself: under a roof they come from the branches above it, in a dense conifer top from the needles at the same height
+export const ROOF_FLOOR_STEP_M = 1;
+export const ROOF_FLOOR_BUMP_M = 0.2; // and whose floor is planar: each column within this of its neighbours' mean (median); the roofs measured read 0.05-0.12 m // and whose floor steps by no more than this between neighbouring columns (median): a roof up to 45 degrees; a crown's cone is steeper
 export const EAVE_M = 2; // a crown column beside a roof, its top within this of the roof's, is an eave
 export const STRUCTURE_FLOOR_M = 1; // a low structure stands at least this tall
 export const STRUCTURE_MAX_M = 6; // and no taller (taller is a building's rules, or a tree)
@@ -185,6 +198,7 @@ export const WHY = Object.freeze({
   7: 'solid tree: a small patch with a rough top',
   8: 'low structure: every pulse came back once, as off a hard surface',
   9: 'unknown: the laser hit something here that no rule named; it stops light as the laser measured it',
+  10: 'building: a roof under a crown (the last echoes stop on one flat surface)',
 });
 
 /**
@@ -200,6 +214,7 @@ export function columnStats(cols, model, { shift = null } = {}) {
   const N = w * h;
   const above = new Uint16Array(N), multiAbove = new Uint16Array(N), lastGround = new Uint16Array(N);
   const zLo = new Float32Array(N).fill(Infinity), zHi = new Float32Array(N).fill(-Infinity);
+  const lastAbove = new Uint16Array(N), lastLo = new Float32Array(N).fill(Infinity), lastHi = new Float32Array(N).fill(-Infinity);
   const top = new Float32Array(N).fill(-Infinity), firm = new Uint16Array(N), firmSingle = new Uint16Array(N), firmLeafOn = new Uint16Array(N);
   const firmBright = new Float32Array(N); // mean intensity of the single echoes over 1 m (summed here, divided below)
   const groundI = [];
@@ -221,16 +236,33 @@ export function columnStats(cols, model, { shift = null } = {}) {
       if ((cols.nret[i] || 1) > 1) multiAbove[k]++;
       if (cols.z[i] < zLo[k]) zLo[k] = cols.z[i];
       if (cols.z[i] > zHi[k]) zHi[k] = cols.z[i];
+      if ((cols.ret[i] || 1) >= (cols.nret[i] || 1)) { // a pulse's last echo
+        lastAbove[k]++;
+        if (cols.z[i] < lastLo[k]) lastLo[k] = cols.z[i];
+        if (cols.z[i] > lastHi[k]) lastHi[k] = cols.z[i];
+      }
     }
   }
   for (let k = 0; k < N; k++) if (firmSingle[k]) firmBright[k] /= firmSingle[k];
+  /* How many of a column's last echoes over 2 m lie within FLAT_SPREAD_M of its lowest (a roof's floor), and how many of
+     its earlier echoes (of split pulses) do, against all of them (roofUnderCrown). */
+  const lastFloor = new Uint16Array(N), earlierFloor = new Uint16Array(N), earlier = new Uint16Array(N);
+  for (let i = 0; i < cols.n; i++) {
+    if (NOISE.has(cols.cls[i])) continue;
+    const k = cellOf(grid, cols.x[i], cols.y[i], shift);
+    if (k < 0 || !lastAbove[k]) continue;
+    const over = cols.z[i] - ground[k];
+    if (!(over > CROWN_ABOVE_M && over < MAX_OVER_M)) continue;
+    const onFloor = cols.z[i] - lastLo[k] < FLAT_SPREAD_M;
+    if ((cols.ret[i] || 1) >= (cols.nret[i] || 1)) { if (onFloor) lastFloor[k]++; } else { earlier[k]++; if (onFloor) earlierFloor[k]++; }
+  }
   /* The flight's own ground, for brightness relative to it: intensity is
      not comparable between flights (sensor, gain, altitude), so every use
      of it is per property, against this. */
   for (let i = 0; i < cols.n; i += 7) if (cols.cls[i] === 2 && cols.intensity?.[i]) groundI.push(cols.intensity[i]);
   groundI.sort((a, b) => a - b);
   const groundBright = groundI.length ? groundI[groundI.length >> 1] : 0;
-  return { above, multiAbove, lastGround, zLo, zHi, top, firm, firmSingle, firmLeafOn, firmBright, groundBright };
+  return { above, multiAbove, lastGround, zLo, zHi, lastAbove, lastLo, lastHi, lastFloor, earlier, earlierFloor, top, firm, firmSingle, firmLeafOn, firmBright, groundBright };
 }
 
 /**
@@ -244,7 +276,7 @@ export function columnStats(cols, model, { shift = null } = {}) {
  *           why (Uint8 per column, a key of WHY), stats (columnStats),
  *           counts: { building, tree, solidTree, structure, unknown } }.
  */
-export function structuresOf(cols, model, { shift = null, stats = null, low = {} } = {}) {
+export function structuresOf(cols, model, { shift = null, stats = null, low = {}, roofFloor = true } = {}) {
   const { w, h, ground } = model;
   const N = w * h;
   const st = stats || columnStats(cols, model, { shift });
@@ -279,7 +311,13 @@ export function structuresOf(cols, model, { shift = null, stats = null, low = {}
     steps.sort((p1, p2) => p1 - p2);
     const rough = steps.length ? steps[steps.length >> 1] : 0;
     const reason = a > 0 && m / a >= SOLID_TREE_SPLIT ? 5 : patch.length < SOLID_SPECK_M2 ? 6 : patch.length < SOLID_TREE_MAX_M2 && rough >= SOLID_TREE_ROUGH_M ? 7 : 0;
-    if (reason) for (const k of patch) { kind[k] = SOLID_TREE; why[k] = reason; }
+    if (!reason) continue;
+    /* A roof under a crown keeps its roof (see ROOF_FLOOR_M2): only for the split test, the one a crown over a roof fails. */
+    const keep = reason === 5 && roofFloor ? roofUnderCrown(patch, st, w) : null;
+    for (const k of patch) {
+      if (keep?.has(k)) { why[k] = 10; continue; }
+      kind[k] = SOLID_TREE; why[k] = reason;
+    }
   }
   /* 4. Eaves (decided against the buildings as they stand after 3, then set). */
   const eave = new Uint8Array(N);
@@ -315,6 +353,46 @@ export function structuresOf(cols, model, { shift = null, stats = null, low = {}
     else if (kind[k] === UNKNOWN) counts.unknown++;
   }
   return { kind, why, stats: st, counts, green: lowInfo };
+}
+
+/**
+ * The columns of `patch` that are a roof under a crown: a flat floor of last
+ * echoes (ROOF_FLOOR_MIN or more over 2 m, ROOF_FLOOR_SHARE of them within
+ * FLAT_SPREAD_M of the lowest; no more than ROOF_FLOOR_ABOVE of its split
+ * pulses' earlier echoes on that floor too), joined (sides or corners) into groups of
+ * ROOF_FLOOR_M2 or more whose floor steps by ROOF_FLOOR_STEP_M or less
+ * between neighbours and is planar to ROOF_FLOOR_BUMP_M (medians). A Set of
+ * columns.
+ */
+export function roofUnderCrown(patch, st, w) {
+  const { lastAbove, lastFloor, earlier, earlierFloor } = st;
+  const flat = new Set(patch.filter((k) => lastAbove[k] >= ROOF_FLOOR_MIN && lastFloor[k] >= ROOF_FLOOR_SHARE * lastAbove[k] && earlierFloor[k] <= ROOF_FLOOR_ABOVE * earlier[k]));
+  const keep = new Set(), seen = new Set();
+  for (const s0 of flat) {
+    if (seen.has(s0)) continue;
+    const group = [s0]; seen.add(s0);
+    for (let q = 0; q < group.length; q++) {
+      const k = group[q];
+      const x = k % w;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        if ((!dx && !dy) || x + dx < 0 || x + dx >= w) continue;
+        const j = k + dy * w + dx;
+        if (flat.has(j) && !seen.has(j)) { seen.add(j); group.push(j); }
+      }
+    }
+    if (group.length < ROOF_FLOOR_M2) continue;
+    const inGroup = new Set(group), steps = [];
+    for (const k of group) for (const j of [k + 1, k + w]) if (inGroup.has(j) && (j !== k + 1 || j % w !== 0)) steps.push(Math.abs(st.lastLo[k] - st.lastLo[j]));
+    steps.sort((p1, p2) => p1 - p2);
+    const bumps = [];
+    for (const k of group) {
+      const nb = [k - 1, k + 1, k - w, k + w].filter((j) => inGroup.has(j) && (j !== k - 1 || k % w !== 0) && (j !== k + 1 || j % w !== 0));
+      if (nb.length >= 3) bumps.push(Math.abs(st.lastLo[k] - nb.reduce((a, j) => a + st.lastLo[j], 0) / nb.length));
+    }
+    bumps.sort((p1, p2) => p1 - p2);
+    if (steps.length && steps[steps.length >> 1] <= ROOF_FLOOR_STEP_M && (!bumps.length || bumps[bumps.length >> 1] <= ROOF_FLOOR_BUMP_M)) for (const k of group) keep.add(k);
+  }
+  return keep;
 }
 
 /** 6. Low structures (see the head of this file), set in place on `kind` and `why`. */
