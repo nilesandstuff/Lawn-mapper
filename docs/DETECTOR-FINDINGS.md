@@ -47,6 +47,19 @@ changes and results from different corpora are not comparable.
 *Kept current so a fresh session can pick up without the conversation that
 got here. Update it whenever the in-flight run changes.*
 
+- **PAUSED, TO PICK UP (owner, 2026-11-11: "we'll get back to that"): ground
+  brightness under a crown (S69, H134).** Against the tracing, three
+  corrections recover nothing and the crown still shows; the first run's
+  pulse-sum column was a bug the owner caught, mended and re-run. In hand:
+  (1) workflow 14 run 43114516633 (`cache: brightness pictures`, THE PLAN's
+  defaults) puts the three corrected layers on the predictions page beside
+  the raw one -- the owner wants to look for themselves; check it finished
+  and say so. (2) Not done, offered: count how many ground returns under a
+  crown shared their pulse (if few, there is nothing to add back -- a
+  guess). (3) Not built, the owner's test: the decoder answering held-out
+  lots with the canopy guesser OFF, raw brightness (control) against each
+  correction swapped in at scoring; a training run only if that is flat
+  too, "but for now let's not".
 - **LIVE (2026-10-24): release v7, "beta version 7 (85%)"** -- DINOv3-sat,
   three decoders, every approved map and the pond maps, and the lots past
   90 m read whole at 10 cm (H121) on Modal. The condo complex: about 80 GPU

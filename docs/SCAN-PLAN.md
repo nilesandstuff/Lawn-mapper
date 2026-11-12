@@ -2440,3 +2440,30 @@ Built in the page: the phone keeps the standing and ground points on every walk;
 and sends it (three tries), and the walk's card says "Saved as this map's reference" or why not. A chosen saved walk
 is used even when the map's points are newer than it (the "stale" rule gives way to the owner's choice).
 NOT known: any of it on a phone. The roof marking and this have never run on a real walk.
+
+## 25. The first walk with roof corners and admin saves: what the owner found (2026-11-11) -- NOTES, NOTHING BUILT YET
+
+The owner walked a lot with the roof-corner marking and the automatic reference. To pick up "tomorrow or this
+weekend". Each line is the owner's, then what is known or guessed about it (guesses are marked).
+
+ 1. THE MINI MAP COVERS THE PROMPTS AND THE TOP BOX. Owner's fix: shorten the top box ("trimming wordiness and info
+    that isn't doing much"); bring the prompts to the top layer, above the mini map. (A screenshot was mentioned;
+    it did not reach the session.)
+ 2. IT STILL NEEDED A TAP ON MARK TO MOVE ON TO THE NEXT REFERENCE. The automatic start of the next unmarked roof
+    corner (autoSight, 7ba75b3) did not happen on the phone. Not diagnosed.
+ 3. LOOKING AT A CORNER ALREADY SCANNED RUNS THE RESCAN PROMPTS. It should say "move on to next prompt X feet to
+    the Y direction" -- a distance and a direction to the next unmarked corner.
+ 4. REMOVE THE MARK BUTTON ENTIRELY; a small red "Start over" button in its place.
+ 5. OCCLUSION IS TOO AGGRESSIVE. The AR walls sat almost exactly on the real walls, so a couple of inches of ARCore
+    drift hid them. (Guess: a tolerance, so the depth test hides a wall only when the real surface is clearly in
+    front of it, by more than the drift -- the size to be asked or measured.)
+ 6. SLOW TO OPEN THE FIRST TIME, with no sign anything was loading. (Guess: the lidar model and the page's
+    modules downloading; a progress line is the least of it.)
+ 7. LAGGY AND JITTERY: shapes sway, take a while to render, and the render distance is short. "Just needs some
+    optimization... Not sure on the specifics." Not profiled.
+ 8. LESS DATA BOTH WAYS, FOR SPEED. The first walk's upload was too slow to finish before dark, so the shape
+    matching against a saved walk was never tried. What is uploaded and how big is not measured here yet; that
+    measurement comes first.
+
+Order is not decided. 2, 3 and 4 are one piece of work (the marking flow without a button); 1 is small; 5 needs a
+number; 6-8 need measuring before changing.
