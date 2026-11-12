@@ -2565,3 +2565,42 @@ BUILT 2026-11-12, second lot (items 1-4 of section 25; none of it seen on a phon
     can come out a foot or two away, and the point kept the old place. NOT REPRODUCED on that map (a guess that
     fits what the owner did). Now a point that was put on a corner (it carries `snap` or `roof`) goes to the nearest
     corner of the same sort within 1.5 m when the corners arrive, and says so (guide.js resnap, tested).
+
+## 26. The first walks in the roof-corner mode, and the first walk that timed itself (owner, 2026-11-12)
+
+A new lot, a few walks. The owner: R2 would not mark ("I thought I did, then it asked again"); the prompts said to
+step to the side without saying which way; "there was a higher roof peak in view"; the later walks failed because
+the first had not marked. The fix shown as "pretty accurate" was Street View's (the record: 163 readings, ARCore's
+accuracy median 1.3 m, heading 2.7 degrees).
+
+WHAT THE WALK'S RECORD SAYS (task `walks`, walk of 18:33 UTC, 4 min, 243 ft):
+  - R1 marked: 2 aims 115 degrees apart, lines 6 cm apart, 0.10 m off the lidar's eave.
+  - R2 (eave 4.06 m) NOT marked: "they meet 3.9 ft below this roof's edge: not this corner". So the two aims DID
+    meet (within 15 cm of each other) -- at a real point 1.2 m lower than the eave the lidar gave. The ground under
+    the phone read -1.09 at that start against -1.38 / -1.39 at the others: 0.3 m of the 1.2. The rest is a guess:
+    the eave was the 20th percentile of roof returns within 2 m of the corner, which is a higher roof's wherever
+    one stands within 2 m and holds most of the returns. NOT VERIFIED on that corner's own returns.
+
+MENDED (scan/lib/roof-corner.js, scan/public/app.js; tested; not seen on a phone):
+  - The eave at a corner is its lowest roof level (eaveOf: the lowest 0.4 m band holding 4 returns or 8%), not a
+    share of everything within 2 m. Stray wall returns do not make a level.
+  - From the second corner on, the eave's height comes from the corners already marked (their own crossing, and the
+    lidar's difference between the two eaves, each over its own ground), not from the ground under the phone.
+  - Where the lined-up map puts the corner within 2.5 m of where the aims meet, the height may be off by 1.6 m, not
+    0.8: a real corner at the right place. (EXPECT_M, EAVE_TOL_PLACED_M.)
+  - "Step to your right: 3 more steps", then whichever way the phone has gone once it has moved a foot.
+  - A refusal stays on the screen 8 s with its reason in words ("your aims meet 3.9 ft below the roof edge the lidar
+    has for this corner. Aim at the corner of the higher roof edge there, or pick another corner").
+  - What is in view does not matter, only where the circle is; standing under the corner is the worst place (the
+    sighting wants the corner 5 to 45 ft off on the level).
+
+THE FIRST MEASURED WALK (the same one; scan/lib/perf.js):
+  - Frames: 20.4 a second; the gap between frames median 37 ms, 95% under 135 ms, worst 386; 26% of gaps over
+    50 ms; 11 stalls over 250 ms. THE PAGE'S OWN WORK IS HALF THE WALK'S TIME (51%): median 15 ms a frame, 95% under
+    105 ms, worst 368. So the lag is largely the page's, not ARCore's.
+  - Jitter: held still, the camera's place moves 1 mm a frame (95% under 2). But 204 jumps over 5 cm in one frame
+    (worst 19 cm) in four minutes: ARCore correcting itself, about once a second.
+  - Upload: 407 sends, 18.5 MB, 1475 s from the first part to the last (25 minutes for a 4-minute walk); a send
+    median 0.65 s, 95% under 4.6 s, one of 738 s; 12.9 KB a second while sending, on "4g, 10 Mbps". Sends go one
+    at a time. That is item 8's answer: the wait is the one-at-a-time sending, not the size.
+  - Opening: the lidar read 5.9 s after the page began; AR asked to first frame 1.1 s; 3.3 MB of API reads in 7.3 s.

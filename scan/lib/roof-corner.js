@@ -36,6 +36,8 @@ export const STEADY_M = 0.05;      // and the phone move this much
 export const TURN_DEG = 25;        // the second sight from at least this far round the corner
 export const MISS_M = 0.15;        // how near two sight lines must pass
 export const EAVE_TOL_M = 0.8;     // the crossing's height against the lidar's eave (a slope under the phone is in it)
+export const EAVE_TOL_PLACED_M = 1.6; // and when the crossing is where the lined-up map puts this corner (EXPECT_M): a real corner, at the right place
+export const EXPECT_M = 2.5;       // how near (on the level) the crossing must be to where the map puts the corner, for that
 export const MIN_UP_DEG = 8;       // an aim at a roof corner looks up
 export const NEAR_M = 1.5, FAR_M = 14; // how near and far the corner may be from the phone, on the level
 export const MAX_SIGHTS = 4;
@@ -105,7 +107,7 @@ function cornersWithin(marks, pts, lawn = [], { maxEaveM = MAX_EAVE_M, nearLawnM
       // the eave: the low roof returns within 2 m of the corner (the roof rises away from its edge)
       const hs = roofs.filter((r) => Math.hypot(r[0] - p[0], r[1] - p[1]) <= 2).map((r) => r[2]).sort((x, y) => x - y);
       if (hs.length < 3) continue;
-      const eaveM = hs[Math.floor(hs.length * 0.2)];
+      const eaveM = eaveOf(hs);
       if (eaveM > maxEaveM) continue;
       const lawnM = lawn.length ? Math.min(...lawn.map((r) => distToRing(r, p))) : null;
       if (lawnM != null && lawnM > nearLawnM) continue;
@@ -114,6 +116,23 @@ function cornersWithin(marks, pts, lawn = [], { maxEaveM = MAX_EAVE_M, nearLawnM
     }
   }
   return out.sort((x, y) => (y.sure - x.sure) || ((x.within ?? 9) - (y.within ?? 9)));
+}
+
+/**
+ * THE EAVE AT A CORNER IS ITS LOWEST ROOF, NOT A SHARE OF EVERYTHING NEAR IT (the owner's walk, 2026-11-12: R2's two
+ * aims met cleanly "3.9 ft below this roof's edge" and were refused; "there was a higher roof peak in view"). The
+ * eave was the 20th percentile of the roof returns within 2 m, so where a higher roof stands within 2 m of a lower
+ * one's corner and has most of the returns, the number was the higher roof's. Now: the lowest level that holds a
+ * real share of them (4 returns or 8%, within 0.4 m of each other; a wall's few stray returns at odd heights do
+ * not make a level), and the old percentile when no such level is found. hs: heights, sorted low to high.
+ */
+export function eaveOf(hs) {
+  const n = hs.length, need = Math.max(4, Math.ceil(n * 0.08));
+  for (let i = 0; i + need <= n; i++) {
+    let j = i; while (j < n && hs[j] <= hs[i] + 0.4) j++;
+    if (j - i >= need) return hs[i + ((j - i) >> 1)];
+  }
+  return hs[Math.floor(n * 0.2)];
 }
 
 /* ---------------------------------------------------------------- the sighting */
@@ -142,8 +161,11 @@ export function crossing(rays) {
 }
 
 /** A new sighting of one roof corner. eaveM: the lidar's eave height there; groundY: the ground's y in the session. */
-export function newSight({ eaveM, groundY }) {
-  return { eaveM, groundY, rays: [], win: [], state: 'aim', say: 'Aim at the roof corner and hold still', detail: '', first: null, tries: 0, done: null, log: [] };
+export function newSight({ eaveM, groundY, eaveY = null, expect = null }) {
+  // eaveY: the eave's height in the session when it is known better than "the ground under the phone + eaveM" (from a
+  // roof corner already marked: its own crossing, and the lidar's difference between the two eaves). expect: { x, z },
+  // where the lined-up map puts this corner, when there is a fit.
+  return { eaveM, groundY, eaveY, expect, rays: [], win: [], state: 'aim', say: 'Aim at the roof corner and hold still', detail: '', first: null, tries: 0, done: null, log: [] };
 }
 
 /**
@@ -158,7 +180,7 @@ export function sight(S, f) {
   const o = [f.pos.x, f.pos.y, f.pos.z], d = norm(lookOf(f.quat));
   const upDeg = (Math.asin(Math.max(-1, Math.min(1, d[1]))) * 180) / Math.PI;
   // where this aim reaches the eave's height: the corner, if the aim is on it
-  const eaveY = S.groundY + S.eaveM, t = d[1] > 1e-3 ? (eaveY - o[1]) / d[1] : NaN;
+  const eaveY = S.eaveY ?? S.groundY + S.eaveM, t = d[1] > 1e-3 ? (eaveY - o[1]) / d[1] : NaN;
   const reach = Number.isFinite(t) && t > 0 ? [o[0] + t * d[0], eaveY, o[2] + t * d[2]] : null;
   const levelTo = reach ? Math.hypot(reach[0] - o[0], reach[2] - o[2]) : NaN;
 
@@ -175,8 +197,14 @@ export function sight(S, f) {
     if (dist > FAR_M) { S.say = 'Too far: walk back toward the corner'; S.detail = ''; S.win = []; return S; }
     if (turned < TURN_DEG) {
       const need = 2 * dist * Math.sin(((TURN_DEG - turned) * Math.PI) / 360);
-      S.say = `Step sideways: about ${Math.max(1, Math.ceil(need / STEP_M))} more step${Math.ceil(need / STEP_M) > 1 ? 's' : ''}`;
-      S.detail = 'Either way round the corner. Keep it in view.'; S.win = []; return S;
+      // WHICH WAY (the owner, 2026-11-12: "It was saying to step to the side, but it didn't say which direction"):
+      // either works, so it names one and keeps to it -- the way the phone has already gone once it has moved a
+      // foot, to the right before that
+      const fo = S.first.o, right = norm([-(c[2] - fo[2]), 0, c[0] - fo[0]]), gone = (o[0] - fo[0]) * right[0] + (o[2] - fo[2]) * right[2];
+      if (!S.side || Math.abs(gone) > 0.3) S.side = gone < -0.3 ? 'left' : gone > 0.3 ? 'right' : S.side || 'right';
+      const steps = Math.max(1, Math.ceil(need / STEP_M));
+      S.say = `Step to your ${S.side}: ${steps} more step${steps > 1 ? 's' : ''}`;
+      S.detail = 'Walk round the corner in an arc, keeping the circle near it. Then aim at it again.'; S.win = []; return S;
     }
     S.state = 'aim'; S.say = 'Aim at the same roof corner and hold still'; S.detail = '';
   }
@@ -221,7 +249,7 @@ export function sight(S, f) {
   const ray = { o: mo, d: norm(md), t: f.t, reach };
   S.rays.push(ray); S.win = []; S.progress = 0; S.tries++;
   S.log.push({ t: f.t, upDeg: +upDeg.toFixed(1), levelM: +levelTo.toFixed(2) });
-  if (S.rays.length === 1) { S.first = ray; S.turnDeg = 0; S.state = 'move'; S.say = 'Got it. Now step sideways'; S.detail = 'Either way round the corner. Keep it in view.'; S.took = f.t; return S; }
+  if (S.rays.length === 1) { S.first = ray; S.turnDeg = 0; S.side = null; S.state = 'move'; S.say = 'Got it. Now step to your right'; S.detail = 'Or left, if a wall is in the way: walk round the corner in an arc, keeping it in view.'; S.took = f.t; return S; }
 
   // two or more: do they cross, at the eave?
   let rays = S.rays, X = crossing(rays);
@@ -236,14 +264,14 @@ export function sight(S, f) {
   const lv = X ? Math.min(...rays.map((r) => Math.hypot(X.p[0] - r.o[0], X.p[2] - r.o[2]))) : 0;
   const why = !X || X.behind ? 'the two aims do not meet in front of you'
     : miss > MISS_M ? `the aims pass ${(miss * 39.37).toFixed(0)} in apart: not the same spot`
-      : Math.abs(eaveOff) > EAVE_TOL_M ? `they meet ${Math.abs(eaveOff * 3.281).toFixed(1)} ft ${eaveOff > 0 ? 'above' : 'below'} this roof's edge: not this corner`
+      : Math.abs(eaveOff) > (S.expect && Math.hypot(X.p[0] - S.expect.x, X.p[2] - S.expect.z) <= EXPECT_M ? EAVE_TOL_PLACED_M : EAVE_TOL_M) ? `your aims meet ${Math.abs(eaveOff * 3.281).toFixed(1)} ft ${eaveOff > 0 ? 'above' : 'below'} the roof edge the lidar has for this corner. Aim at the corner of the ${eaveOff > 0 ? 'lower' : 'higher'} roof edge there, or pick another corner`
         : turn < TURN_DEG * 0.8 ? 'the two places are too close together'
           : lv < NEAR_M * 0.7 ? 'too close under the corner' : null;
   S.log.push({ t: f.t, sights: rays.length, missM: Number.isFinite(miss) ? +miss.toFixed(3) : null, eaveOffM: Number.isFinite(eaveOff) ? +eaveOff.toFixed(2) : null, turnDeg: +turn.toFixed(0), why });
   if (!why) { S.done = { ok: true, position: { x: X.p[0], y: X.p[1], z: X.p[2] }, missM: miss, sights: rays.length, turnDeg: turn, eaveOffM: eaveOff, distance: lv }; S.say = 'Marked'; S.detail = ''; return S; }
   if (S.tries >= MAX_SIGHTS) { S.done = { ok: false, why }; S.say = 'Could not mark this corner'; S.detail = why; return S; }
   // one more, from another place
-  S.first = rays[rays.length - 1]; S.turnDeg = 0; S.state = 'move';
-  S.say = 'Once more from another spot: step sideways'; S.detail = `That did not agree (${why}).`;
+  S.first = rays[rays.length - 1]; S.turnDeg = 0; S.side = null; S.state = 'move';
+  S.say = 'Once more from another spot: step to your right'; S.detail = `That did not agree (${why}).`;
   return S;
 }

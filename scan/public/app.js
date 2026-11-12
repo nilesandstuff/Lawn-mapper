@@ -1501,8 +1501,17 @@ function doCheck(f, { replay = false } = {}) {
  */
 function startSight(f, target) {
   const groundY = st.L.groundY ?? (f.pose ? f.pose.position.y - 1.4 : 0);
-  st.sight = { S: newSight({ eaveM: target.roof.eaveM, groundY }), target, rays: 0 };
-  log(`roof corner ${target.name} (${target.roof.label}, eave ${target.roof.eaveM} m): sighting started, ground y ${groundY.toFixed(2)}`);
+  /* THE EAVE'S HEIGHT FROM A CORNER ALREADY MARKED (2026-11-12: R2 refused 3.9 ft low on the owner's walk; the ground
+     under the phone had read 0.3 m different from one corner to the next, and a lot slopes): a marked roof corner's
+     crossing is that eave's height in the session, and the lidar knows how much higher or lower this eave is (each
+     one's ground + its height over it). The ground under the phone is only used for the first corner. */
+  const dem = st.lid.overlay?.dem1, abs = (p) => { const g = dem ? demAt(dem, p.map[0], p.map[1], NaN) : NaN; return Number.isFinite(g) ? g + p.roof.eaveM : NaN; };
+  const ys = [];
+  for (const m of st.L.marks) { if (m.by !== 'ROOF') continue; const p = st.points.find((q) => q.id === m.id); if (p?.roof && Number.isFinite(abs(p)) && Number.isFinite(abs(target))) ys.push(m.y + abs(target) - abs(p)); }
+  const eaveY = ys.length ? ys.reduce((a, b) => a + b, 0) / ys.length : null;
+  const at = fitFor(st.L, st.walk.odo) ? sessionOf(st.L, target.map, st.walk.odo, 0) : null;
+  st.sight = { S: newSight({ eaveM: target.roof.eaveM, groundY, eaveY, expect: at ? { x: at.x, z: at.z } : null }), target, rays: 0 };
+  log(`roof corner ${target.name} (${target.roof.label}, eave ${target.roof.eaveM} m): sighting started, ground y ${groundY.toFixed(2)}${eaveY != null ? `, eave y ${eaveY.toFixed(2)} from ${ys.length} marked (by the ground it would be ${(groundY + target.roof.eaveM).toFixed(2)})` : ''}${at ? ', the map places it' : ''}`);
 }
 /** The next unmarked roof corner's sighting, started by itself once the walk is tracking. */
 function autoSight(f) {
@@ -1559,7 +1568,9 @@ function stepSight(f) {
   if (S.rays.length !== s.rays) { s.rays = S.rays.length; try { navigator.vibrate?.(60); } catch { /* no buzz */ } }
   st.guideNext = false; el.hidden = false; $('#guide-say').textContent = `${s.target.name}, the roof's ${s.target.roof.label}: ${S.say}`; $('#guide-detail').textContent = S.detail || ''; $('#guide-bar').style.width = `${Math.round((S.progress || 0) * 100)}%`;
   if (!S.done) return;
-  st.sight = null; st.sightEndedAt = Date.now(); if (!S.done.ok) st.sightEndedAt += 4000; setTimeout(() => { if (!st.sight) el.hidden = true; }, 1800);
+  // a refusal stays up long enough to read, with its reason (the owner, 2026-11-12: "I thought I did, then it asked again")
+  st.sight = null; st.sightEndedAt = Date.now(); if (!S.done.ok) { st.sightEndedAt += 6000; $('#guide-say').textContent = `${s.target.name} was NOT marked`; $('#guide-detail').textContent = `${S.done.why}. It will ask again in a few seconds.`; }
+  setTimeout(() => { if (!st.sight && !st.guideNext) el.hidden = true; }, S.done.ok ? 1800 : 8000);
   (st.walk.roofSights ||= []).push({ name: s.target.name, ok: S.done.ok, why: S.done.why || null, sights: S.done.sights ?? S.rays.length, missM: S.done.missM != null ? +S.done.missM.toFixed(3) : null, turnDeg: S.done.turnDeg != null ? Math.round(S.done.turnDeg) : null, eaveOffM: S.done.eaveOffM != null ? +S.done.eaveOffM.toFixed(2) : null, steps: S.log });
   if (!S.done.ok) { flash(`${s.target.name} not marked: ${S.done.why}`); log(`roof corner ${s.target.name} not marked: ${S.done.why}`); return; }
   try { navigator.vibrate?.([60, 60, 120]); } catch { /* no buzz */ }

@@ -1,6 +1,6 @@
 // scan/lib/roof-corner.js: which roof corners, and marking one by two aims. node scan/test/roof-corner.test.js
 import assert from 'node:assert/strict';
-import { roofCorners, newSight, sight, crossing, lookOf, HOLD_MS } from '../lib/roof-corner.js';
+import { eaveOf, roofCorners, newSight, sight, crossing, lookOf, HOLD_MS } from '../lib/roof-corner.js';
 import { lidarMarks } from '../lib/lidar-marks.js';
 import { referenceFit, place } from '../lib/walkref.js';
 
@@ -62,7 +62,7 @@ function run(S, places, { tremorDeg = 0.15, seed = 1 } = {}) {
   const off = Math.hypot(S.done.position.x - C[0], S.done.position.z - C[2]);
   console.log(`marked ${(off * 39.37).toFixed(1)} in from the corner on the level, from ${S.done.sights} aims ${S.done.turnDeg.toFixed(0)} degrees apart, the lines ${(S.done.missM * 39.37).toFixed(1)} in apart, in ${(t / 1000).toFixed(1)} s`);
   assert.ok(off < 0.08, 'within 3 in of the corner');
-  assert.ok(said.some((s) => /sideways/.test(s)) && said[said.length - 1] === 'Marked');
+  assert.ok(said.some((s) => /Step to your (right|left)|step to your right/.test(s)) && said[said.length - 1] === 'Marked');
   assert.ok(t < 2 * 2000 + 2 * (HOLD_MS + 800), 'no waiting beyond the two holds');
 }
 {
@@ -151,3 +151,31 @@ function run(S, places, { tremorDeg = 0.15, seed = 1 } = {}) {
   assert.equal(S.rays.length, 1, 'nor does a phone with no depth');
 }
 console.log('roof-corner: ok');
+
+// THE OWNER'S WALK OF 2026-11-12: R2 refused, its aims meeting 3.9 ft below the eave the lidar gave
+{
+  // the eave at a corner: a low roof (2.9 m) with a higher one (4.1 m) within reach holding most of the returns
+  const low = Array.from({ length: 6 }, (_, i) => 2.85 + i * 0.02), high = Array.from({ length: 34 }, (_, i) => 4.0 + (i % 10) * 0.03);
+  const hs = [...low, ...high, 1.7, 2.2].sort((a, b) => a - b); // and two stray wall returns
+  assert.ok(Math.abs(eaveOf(hs) - 2.9) < 0.1, `the lower roof's eave, not the higher one's nor a wall's stray return (${eaveOf(hs)})`);
+  const plain = Array.from({ length: 30 }, (_, i) => 3 + i * 0.03);
+  assert.ok(Math.abs(eaveOf(plain) - 3.1) < 0.2, `a plain roof's eave is its low edge (${eaveOf(plain)})`);
+  assert.equal(eaveOf([2, 3, 4]), 2, 'too few returns for a level: the old share');
+
+  // a corner 1.2 m lower than the eave the lidar gave (4.2 m; the corner is at 3): refused alone, taken when the
+  // lined-up map puts the corner there
+  const places = [{ pos: [3, 1.4, -4.5], aim: C, ms: 1500 }, { pos: [7.5, 1.4, -5], aim: C, ms: 1500 }, { pos: [8.5, 1.4, -9], aim: C, ms: 1500 }, { pos: [6, 1.4, -11.5], aim: C, ms: 1500 }];
+  const A = newSight({ eaveM: 4.2, groundY: 0 }); run(A, places);
+  assert.ok(A.done && !A.done.ok && /below the roof edge the lidar has/.test(A.done.why), `refused, saying which way it is off (${A.done?.why}; ${A.say}; ${A.detail})`);
+  const B = newSight({ eaveM: 4.2, groundY: 0, expect: { x: C[0] + 1, z: C[2] - 1 } }); run(B, places);
+  assert.ok(B.done?.ok && Math.abs(B.done.eaveOffM + 1.2) < 0.1, `taken where the map places it (${B.done?.why || ''})`);
+  const B2 = newSight({ eaveM: 4.2, groundY: 0, expect: { x: C[0] + 6, z: C[2] } }); run(B2, places);
+  assert.ok(B2.done && !B2.done.ok, 'not where the map places it: still refused');
+  // the eave's height handed in (from a corner already marked) is used, not the ground under the phone
+  const D = newSight({ eaveM: 3, groundY: 0.9, eaveY: C[1] }); run(D, [{ pos: [0, 1.4, 0], aim: C, ms: 1500 }, { pos: [5.5, 1.4, -1], aim: C, ms: 1500 }]);
+  assert.ok(D.done?.ok, `the eave's own height beats a wrong ground (${D.done?.why || ''})`);
+  // the step has a direction, and it follows the way the phone goes
+  const E = newSight({ eaveM: 3, groundY: 0 }); const { said } = run(E, [{ pos: [0, 1.4, 0], aim: C, ms: 1500 }, { pos: [-5.5, 1.4, -1], aim: C, ms: 1500 }]);
+  assert.ok(said.some((x) => /Step to your left/.test(x)), `walking left, it says left (${said.join(' | ')})`);
+  console.log('roof-corner (the lower eave, the placed corner, the step\'s direction): ok');
+}
