@@ -2509,3 +2509,23 @@ BUILT 2026-11-12, from section 25 (the rest of it is still notes):
     picture and the page's drawing over it (a likely part of "sway") cannot be seen from the page.
   - OCCLUSION, TWO FEET (scan/lib/draw.js OCC_SLACK_M 0.61): a drawn surface is hidden only when it sits 2 ft (plus
     3% of the distance) behind what the phone's depth sees, gone 25 cm further. It was 10 cm. Not seen on a phone.
+
+THE GARAGE AND THE HOUSE ON THE OWNER'S WORK LOT, LOOKED AT (2026-11-12; task `marks` on that walk's map, runs
+43156173646 before and 43156467880 after; numbers only):
+  - THE GARAGE WAS AN OBJECT BY THIS SITE'S OWN RULE, MENDED. ~54 m2, 94% of its returns the shade map's roof, its
+    middle return 3.3 m up: under the 3.5 m line lidar-marks.js drew to keep decks out. Now, under 3.5 m, a roof
+    counts when its heights span a pitch (0.6 m over the middle 80% of its returns; this one 1.2 m) and its middle
+    return is 2.2 m or more up; a level deck stays a thing (test: "low garage"). After: a building, three outward
+    corners with eaves 2.8 m, one sure. NOT offered as roof corners on this map: three nearer the lawn already fill
+    the first tier (within 15 ft of the lawn, eave under 15 ft). Whether a corner that is not "offered" can still
+    be tapped as a roof corner is not checked.
+  - THE HOUSE IS A TREE TO THE SHADE MAP. One solid group among the returns structures.js calls trees: ~123 m2,
+    middle return 6 m up, roughness 0.32 m, the laser through on 11% (the real crowns there: roughness 1.1-2.7 m).
+    The marks leave a tree's returns out before anything is grouped, so nothing is drawn. Not worked round here
+    (CLAUDE.md: the AR never hides a shade-map fault); sent to the features session 2026-11-12. That it is the
+    house the owner means is inferred from its size and height, not seen.
+  - R1 OFF ITS CORNER: not diagnosed. A lead: snapped() only snaps on the lidar view (st.photoChoice === 'lidar');
+    a point placed on the photo, NAIP or ground view lands where the finger did.
+  - From that walk's own record: R2 (the roof diamond) marked itself, 2 aims 43 degrees apart, 0.04 m off the
+    lidar's eave; R1 and R3 were ground references; no lidar fix was asked for all walk (0 asks); ARCore moved its
+    own anchors a median 0.35 m, most 0.99 m.
