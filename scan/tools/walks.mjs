@@ -8,6 +8,7 @@
  */
 import { execFileSync } from 'node:child_process';
 import { DB_NAME, parseList } from './d1.mjs';
+import { perfLines } from '../lib/perf.js';
 
 const FT = 3.28084;
 const ftIn = (m) => { const inch = Math.round(m * FT * 12); return inch < 12 ? `${inch} in` : `${Math.floor(inch / 12)} ft ${inch % 12} in`; };
@@ -49,6 +50,7 @@ export function digest(s) {
     `drift log: ${s.crumbs ? `${s.crumbs.n} anchors (${s.crumbs.held} held, ${s.crumbs.lost} lost, ${s.crumbs.refused} refused); ARCore moved them median ${s.crumbs.medianM} m, most ${s.crumbs.maxM} m (level ${s.crumbs.maxLevelM} m) at ${s.crumbs.worstOdo} m walked` : 'none'}`,
     `views: ${s.anchors ? `skyline in ${s.anchors.views.sky} and pavement in ${s.anchors.views.pave} of ${s.anchors.views.frames} pictures read; nudges ${s.anchors.nudges.sky} skyline, ${s.anchors.nudges.pave} pavement` : 'not kept'}`,
     `twin: ${s.twin ? `${s.twin.points} points, ${s.twin.keys} pictures, ${s.twin.poses} poses${s.twin.off ? `, OFF ${s.twin.off}` : ''}` : 'none'}`,
+    ...perfLines(s.perf),
     `messages: ${(s.errors || []).slice(-12).join(' | ')}`,
   ];
 }

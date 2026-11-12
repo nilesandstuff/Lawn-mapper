@@ -2491,3 +2491,21 @@ THE OWNER, AFTER THE SCREENSHOT (2026-11-12):
     actual depth."
   - ANALYTICS, ASKED: "should we set up some sort of in-house analytics so we can measure the lag/jitter/load
     times/etc." The phone is a Galaxy S21 Ultra, 8 GB. The session's answer: yes (below); not built.
+
+BUILT 2026-11-12, from section 25 (the rest of it is still notes):
+  - THE STOPWATCH (scan/lib/perf.js, tests scan/test/perf.test.js; the owner: "yes build it but I want you to be
+    able to read the data"). Every walk's summary now carries `perf`: the opening's stages in seconds (map opened,
+    lidar read, earlier walk read, AR asked, first frame, lidar shapes drawn); what was downloaded by group (files,
+    KB, how many from the phone's cache, time, the slowest); frames (a second, the gap between frames median / 95%
+    / 99% / worst, the share over 50 ms, stalls over 250 ms, the page's own work a frame and its share of the
+    walk); jitter (how far the camera's place moves a frame while the phone is held still, and jumps over 5 cm in
+    one frame); waits (AR asked to first frame, the lidar's shapes built); the upload (sends, taken / to try again
+    / refused, KB, a send's median / 95% / worst, seconds inside sends and from the first part kept to the last
+    gone, KB a second); the phone (cores, GB, connection, page memory). Times, sizes and counts only; a request
+    is counted under a group's name, never its URL. WHERE TO READ IT: the walk's card on the phone ("Speed"), and
+    workflow "S. Yard AR tool", task `walks`, whose log prints seven "speed" lines a walk -- that is how a session
+    reads it. The summary is posted at the walk's end and again when the last part has gone, so the upload's
+    numbers are whole. NOT COVERED: a walk closed before it ends posts nothing; the delay between ARCore's camera
+    picture and the page's drawing over it (a likely part of "sway") cannot be seen from the page.
+  - OCCLUSION, TWO FEET (scan/lib/draw.js OCC_SLACK_M 0.61): a drawn surface is hidden only when it sits 2 ft (plus
+    3% of the distance) behind what the phone's depth sees, gone 25 cm further. It was 10 cm. Not seen on a phone.

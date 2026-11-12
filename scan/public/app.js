@@ -26,6 +26,7 @@ import { spikesIn } from '/lib/spikes.js';
 import { walkPrior } from '/lib/walkfix.js';
 import { keepPoint, viewFromSem, newSemCount, noteSem, semSummary, newCrumbs, crumbDue, addCrumb, crumbMoves } from '/lib/semantics.js';
 import { newOutbox, idbStore, memoryStore, statusText } from '/lib/outbox.js';
+import { newPerf, resources as perfResources, perfLines } from '/lib/perf.js';
 import { byDistance, nearestMap, mapLabel } from '/lib/maps-pick.js';
 import { enhance } from '/lib/enhance.js';
 import { newSight, sight } from '/lib/roof-corner.js';
@@ -65,6 +66,20 @@ const st = {
   walk: null, L: null, tracker: null, drawer: null, frame: null, hudAt: 0, farAt: 0, depthAt: 0, errors: [], lid: { worker: null, ready: null, error: null, progress: '', overlay: null, meshes: null }, gpsWatch: null,
   lidarOn: true, agree: null,
 };
+/* THE STOPWATCH (lib/perf.js; owner, 2026-11-12: "build it but I want you to be able to read the data"): the page's
+   own (how long opening took), and one a walk (frames, jitter, waits, its upload). Their numbers go in the walk's
+   summary, which the site keeps and task `walks` prints. */
+const pagePerf = newPerf();
+st.wperf = null;
+/** The walk's numbers with the page's opening and what was downloaded. Times, sizes and counts only. */
+function perfOf(wp) {
+  let res = {};
+  try { res = perfResources(performance.getEntriesByType('resource')); } catch { /* none */ }
+  const c = navigator.connection || {};
+  const device = { cores: navigator.hardwareConcurrency ?? null, memoryGb: navigator.deviceMemory ?? null, net: c.effectiveType ?? null, downMbps: c.downlink ?? null,
+    heapMb: performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1e6) : null };
+  return { ...(wp || pagePerf).summary({ device, resources: res }), stagesS: pagePerf.summary().stagesS };
+}
 // the photo frame and the AR frame are both "frame": keep the AR one apart
 st.ar = null;
 
@@ -148,7 +163,7 @@ async function main() {
     $('#why').textContent = 'Safari will ask for the camera and the motion sensors; both are needed. The engine downloads about 7 MB the first time.';
   }
   renderResults();
-  if (st.map) { await loadMap(st.map).catch((e) => { $('#mapnote').textContent = `The map could not be opened (${e.message}): tracking only, no references or lidar.`; }); changeButton(); }
+  if (st.map) { await loadMap(st.map).then(() => pagePerf.stage('map opened')).catch((e) => { $('#mapnote').textContent = `The map could not be opened (${e.message}): tracking only, no references or lidar.`; }); changeButton(); }
   else await pickMap().catch(() => { $('#mapnote').textContent = 'No map: open this page from the dashboard to use references and the lidar. Tracking still works.'; });
 }
 
@@ -718,7 +733,7 @@ function startLidar(m) {
     const box = pts.length ? [Math.min(...es) - 20, Math.min(...ns) - 20, Math.max(...es) + 20, Math.max(...ns) + 20] : [-60, -60, 60, 60];
     w.onmessage = ({ data }) => {
       if (data.progress) { st.lid.progress = data.progress; showLidar(); }
-      if (data.ready) { st.lid.ready = data.ready; log(`lidar model read: ${data.ready.points} columns, ${data.ready.solid} solid cells, shift ${data.ready.shift}`); showLidar(); keepShadeFresh(m, data.ready); }
+      if (data.ready) { pagePerf.stage('lidar read'); st.lid.ready = data.ready; log(`lidar model read: ${data.ready.points} columns, ${data.ready.solid} solid cells, shift ${data.ready.shift}`); showLidar(); keepShadeFresh(m, data.ready); }
       if (data.roofs) { st.lid.roofs = data.roofs; log(`roof corners offered: ${data.roofs.length}`); drawMap(); listPoints(); }
       if (data.ground) { st.lid.ground = data.ground; groundPhoto().catch((e) => log(`lidar ground picture: ${e.message}`)); }
       if (data.marks && st.lid.overlay?.picture) { st.lid.overlay.picture.marks = data.marks; if (st.photoChoice === 'lidar') { photoTools(); drawMap(); } }
@@ -795,6 +810,7 @@ const log = (what) => { st.errors.push({ t: Date.now(), what }); if (st.errors.l
 
 async function startAR(engine) {
   const overlay = $('#overlay');
+  pagePerf.stage('AR asked'); st.wperf = newPerf(); st.wperfAsked = performance.now(); st.wperfShapes = false;
   st.walk = newWalk({ engine, phone: navigator.userAgent });
   st.dy = null; st.dyFrom = null; st.gpsTrail = []; st.anchors = newAnchors(); st.nudge = null; st.depthFill = null; st.geoTrail = []; st.geoSeen = null; st.sem = newSemCount(); st.lastSem = null; st.semDims = null; st.occ = null; st.occFull = 0; st.occAt = 0; st.walkGround = new Map(); st.spikes = { pictures: 0, cells: 0, flagged: 0 }; st.walkAsk = null; st.walkAt = 0; st.walkStats = { asks: 0, ok: 0, lastWhy: null, firstOkM: null }; st.crumbs = newCrumbs();
   st.walk.checks = [];
@@ -1006,6 +1022,13 @@ function nextTarget() {
 }
 
 function onFrame(f) {
+  const t0 = performance.now();
+  if (st.wperf && st.wperfAsked != null) { st.wperf.time('AR asked to first frame', t0 - st.wperfAsked); st.wperfAsked = null; pagePerf.stage('first frame'); }
+  try { frameWork(f); } finally {
+    if (st.wperf && st.walk) { st.wperf.frame(t0, performance.now()); if (f.pose?.position && f.tracking !== false) st.wperf.pose(f.pose.position, t0 / 1000); }
+  }
+}
+function frameWork(f) {
   try { autoSight(f); } catch (e) { log(`roof sighting: ${e.message}`); }
   if (st.sight) { try { stepSight(f); } catch (e) { log(`roof sighting: ${e.message}`); st.sight = null; } }
   if (!st.walk) return;
@@ -1210,6 +1233,7 @@ function onFrame(f) {
       const statics = [], dots = [];
       if (st.lidarOn && T && st.lid.overlay && f.pose) {
         if (!st.lid.meshes || st.lid.meshes.gl !== f.gl) {
+          const tMesh = performance.now(); // the wait the eye sees as "shapes take a while to render"
           /* THE LOOK (lib/look.js; the owner, 2026-11-10): black roofs, white walls, green trees, orange for other
              objects, smooth surfaces on 0.5 m, drawn solidly. The old blue/green/orange boxes only if a worker from
              before the look answered. */
@@ -1218,6 +1242,8 @@ function onFrame(f) {
             const m = lidarMeshes(st.lid.overlay);
             st.lid.meshes = { gl: f.gl, solids: st.drawer.d.makeMesh(m.solids), canopy: st.drawer.d.makeMesh(m.canopy), roofs: st.drawer.d.makeMesh(m.roofs) };
           }
+          st.wperf?.time('lidar shapes built', performance.now() - tMesh);
+          if (st.wperf && !st.wperfShapes) { st.wperfShapes = true; pagePerf.stage('lidar shapes drawn'); }
         }
         /* the height: the phone's own ground points against the lidar's ground at their own places (locate.js
            groundOffset), worked out twice a second and moved only when it changes by more than 10 cm, so a glance
@@ -1565,6 +1591,7 @@ function finish() {
     fix: L ? summaryOf(L) : null, surfaceSeen: st.surfCount || null, lidar: st.lid.ready ? { points: st.lid.ready.points, solid: st.lid.ready.solid, shift: st.lid.ready.shift, rule: st.lid.ready.rule || null, structures: st.lid.ready.structures || null, tallCells: st.lid.overlay ? st.lid.overlay.tall.length / 5 : null } : st.lid.error ? { error: st.lid.error } : null,
   });
   s.id = `${w.startedAt}`; s.saved = null;
+  try { s.perf = perfOf(st.wperf); st.upPerf = { perf: st.wperf, id: s.id }; } catch (e) { log(`speed numbers: ${e.message}`); }
   if (st.twin) {
     sendTwin(flush(st.twin, Date.now(), liveOf(L, w, { ended: true, summary: s.id, crumbs: crumbs ? crumbs.list : null, walk: L?.walk?.ok ? { T: L.walk.T, share: L.walk.share, margin: L.walk.margin, walkedM: L.walk.walkedM, from: L.walk.from } : null, recordOnly: !!st.recordOnly, points: pointsKept(), gpsTrail: trailKept(), geoTrail: geoKept(), anchors: st.anchors ? anchorsKept(st.anchors) : null })));
     s.twin = { ...st.twin.counts, camera: st.twin.camera, off: st.twinUp.off };
@@ -1592,15 +1619,31 @@ const r2 = (v) => (v == null ? null : +Number(v).toFixed(2)), r3 = (v) => (v == 
    page opens. Walk summaries the site did not take are posted again then too. */
 async function startOutbox() {
   const store = (await idbStore().catch(() => null)) || memoryStore();
-  st.outbox = newOutbox({ store, send: sendPart, onChange: (u) => { st.upStatus = u; if (st.twinUp) { st.twinUp.off = u.off; st.twinUp.sent = u.sent; st.twinUp.failed = u.dropped; } renderUploads(); } });
+  st.outbox = newOutbox({ store, send: sendPart, onChange: (u) => { st.upStatus = u; uploadSettled(u); if (st.twinUp) { st.twinUp.off = u.off; st.twinUp.sent = u.sent; st.twinUp.failed = u.dropped; } renderUploads(); } });
   await st.outbox.refresh();
   st.outbox.kick();
   for (const w of kept().filter((x) => x.saved === false)) post(w);
   window.addEventListener('online', () => { st.outbox?.kick(); for (const w of kept().filter((x) => x.saved === false)) post(w); });
 }
 
+/** Everything gone: the finished walk's summary is posted again with its upload's numbers (it was posted at the walk's
+    end, before most parts had left). Once a walk. */
+function uploadSettled(u) {
+  const up = st.upPerf;
+  if (!up || up.told || u.pending || u.sending || st.walk) return;
+  up.perf.uploadDone(); up.told = true;
+  const all = kept(), mine = all.find((x) => x.id === up.id);
+  if (!mine) return;
+  try { mine.perf = { ...mine.perf, upload: up.perf.summary().upload }; keep(all); post(mine); } catch { /* the numbers can be lost; the walk cannot */ }
+}
+
 /** One part to the site: 'ok', 'retry' (no answer, 5xx, 408, 429), 'drop' (refused) or 'off' (no bucket). */
 async function sendPart(p) {
+  const t0 = performance.now(), wp = st.upPerf?.perf || st.wperf || pagePerf;
+  let out = 'retry';
+  try { out = await sendPartNow(p); return out; } finally { wp.part(performance.now() - t0, p.body?.size ?? p.body?.byteLength ?? p.body?.length ?? 0, out); }
+}
+async function sendPartNow(p) {
   const res = await fetch(`/api/scan/twin?walk=${encodeURIComponent(p.walk)}&part=${encodeURIComponent(p.name)}`, { method: 'PUT', headers: { 'Content-Type': p.type }, body: p.body });
   if (res.ok) return 'ok';
   if (res.status === 503) { p.offWhy = 'the site has no twin bucket yet'; return 'off'; }
@@ -1637,7 +1680,7 @@ async function loadReference() {
     st.ref.worker = w;
     w.onmessage = ({ data }) => {
       if (data.ready) {
-        st.ref.ready = data.ready; st.refTries = 0;
+        pagePerf.stage('earlier walk read'); st.ref.ready = data.ready; st.refTries = 0;
         /* A NEW SET OF POINTS IS A NEW START (2026-11-10): the reference stands where the marks of ITS walk put it.
            When every point on the map was placed after it was made (the owner's "Start a new set"), this walk is
            placed by its own marks and becomes the next reference; the old one would pull it onto the old marks. */
@@ -1764,6 +1807,7 @@ function sendTwin(parts) {
   if (!walk || !parts?.length) return;
   if (st.twinUp) st.twinUp.walk = walk;
   if (!st.outbox) { setTimeout(() => sendTwin(parts), 500); return; }
+  (st.wperf || st.upPerf?.perf)?.uploadOpen();
   for (const p of parts) st.outbox.add(walk, p.name, p.type, p.body).catch(() => {});
 }
 
@@ -1824,6 +1868,7 @@ function walkCard(s, open) {
     ${s.twin ? `<p>Twin: ${s.twin.points.toLocaleString()} points, ${s.twin.keys} picture${s.twin.keys === 1 ? '' : 's'}${s.twin.off ? ` <span class="warn">not kept: ${esc(s.twin.off)}</span>` : s.twin.failed ? ` <span class="warn">(${s.twin.failed} part${s.twin.failed === 1 ? '' : 's'} did not upload)</span>` : ''}. <a href="/twin.html?walk=${encodeURIComponent(s.id)}">See how it lines up</a> &middot; <a href="/inspect.html?walk=${encodeURIComponent(s.id)}">Inspect it</a></p>` : ''}
     ${s.app?.recording || st.recUp ? `<p class="dim" id="rec-up">${esc(recUpText() || 'Recording: being finished, then sent.')}</p>` : ''}${s.replayOf ? `<p class="dim">A replay of the walk of ${esc(new Date(+s.replayOf).toLocaleString())}.</p>` : ''}
     ${refs ? `<p class="dim">References: ${refs}.</p>` : ''}
+    ${s.perf ? `<details><summary class="dim">Speed (what the phone measured)</summary>${perfLines(s.perf).map((l) => `<p class="dim">${esc(l.replace(/^speed, /, ''))}</p>`).join('')}</details>` : ''}
     ${s.reference ? `<p class="${/^NOT/.test(s.reference) ? 'warn' : 'ok'}">${esc(s.reference)}</p>` : ''}
     ${(s.roofSights || []).length ? `<p class="dim">Roof corners: ${s.roofSights.map((r) => `${esc(r.name)} ${r.ok ? `marked from ${r.sights} aims ${r.turnDeg}&deg; apart (lines ${Math.round((r.missM || 0) * 39.37)} in apart, ${Math.abs(r.eaveOffM || 0).toFixed(1)} m off the lidar's eave)` : `not marked: ${esc(r.why || '')}`}`).join('; ')}.</p>` : ''}
     ${near ? `<p class="dim">Pins on the map: ${near}.</p>` : ''}

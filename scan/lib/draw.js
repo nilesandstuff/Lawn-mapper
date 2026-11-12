@@ -24,6 +24,12 @@ const FS = 'precision mediump float; uniform vec4 c; void main(){ gl_FragColor =
    distance, the depth's own error growing with it) to two and a half times that, where it is gone. The picture is the
    app's smoothed one at its own size every frame (bridge 5, OCC_RANGE_FULL metres per 255) or, before that, 24 x 42
    samples of the page's own depth four times a second (OCC_RANGE). */
+/* TWO FEET OF SLACK (the owner, 2026-11-12, after a walk whose AR walls sat "nearly perfectly lined with real walls,
+   which meant that if arcore budged even a couple inches, the ar walls would be hidden": "a decently big offset...
+   Maybe 2 feet. So only hide the ar if it sits 2 feet beyond the actual depth"). A fragment is drawn in full until it
+   is OCC_SLACK_M (plus 3% of the distance, the depth's own error) behind the real surface, and is gone OCC_FADE_M
+   further on. It was 10 cm. */
+export const OCC_SLACK_M = 0.61, OCC_FADE_M = 0.25;
 export const OCC_RANGE = 20, OCC_MARGIN = 0.3, OCC_RANGE_FULL = 51;
 const VS_L = 'attribute vec3 p; uniform mat4 mvp; uniform mat4 mv; varying float ez; void main(){ ez = -(mv * vec4(p, 1.0)).z; gl_Position = mvp * vec4(p, 1.0); }';
 const FS_L = `#ifdef GL_FRAGMENT_PRECISION_HIGH
@@ -42,8 +48,8 @@ void main(){
     float w = w00 + w10 + w01 + w11;
     if (w > 0.0) {
       float d = (d00 * w00 + d10 * w10 + d01 * w01 + d11 * w11) / w * occRange;
-      float m = 0.1 + 0.03 * d;
-      vis = 1.0 - smoothstep(d + m, d + 2.5 * m, ez);
+      float m = ${OCC_SLACK_M.toFixed(2)} + 0.03 * d;
+      vis = 1.0 - smoothstep(d + m, d + m + ${OCC_FADE_M.toFixed(2)}, ez);
     }
   }
   if (vis < 0.02) discard;

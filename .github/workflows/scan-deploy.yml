@@ -76,6 +76,7 @@ jobs:
       - name: Tests
         run: |
           node scan/test/frames.test.js
+          node scan/test/perf.test.js
           node scan/test/walk.test.js
           node scan/test/track.test.js
           node scan/test/worker.test.js
