@@ -12,5 +12,7 @@
  *
  *   1  2026-11-09  the first stamp: points, intensity, the surround, trunk
  *                  offsets, own returns, fences in the header
+ *   2  2026-11-12  structures.js: a roof under a crown stays a building
+ *                  (roofUnderCrown, why 10; shade findings 36)
  */
-export const SHADE_BUILD = 1;
+export const SHADE_BUILD = 2;

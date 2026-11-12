@@ -172,7 +172,9 @@ export const SOLID_TREE_ROUGH_M = 0.55; // whose neighboring tops differ by this
 export const ROOF_FLOOR_MIN = 2;
 export const ROOF_FLOOR_SHARE = 0.75;
 export const ROOF_FLOOR_M2 = 40;
-export const ROOF_FLOOR_STEP_M = 1; // and whose floor steps by no more than this between neighbouring columns (median): a roof up to 45 degrees; a crown's cone is steeper
+export const ROOF_FLOOR_ABOVE = 0.5; // and at most this share of its split pulses' earlier echoes sit on the floor itself: under a roof they come from the branches above it, in a dense conifer top from the needles at the same height
+export const ROOF_FLOOR_STEP_M = 1;
+export const ROOF_FLOOR_BUMP_M = 0.2; // and whose floor is planar: each column within this of its neighbours' mean (median); the roofs measured read 0.05-0.12 m // and whose floor steps by no more than this between neighbouring columns (median): a roof up to 45 degrees; a crown's cone is steeper
 export const EAVE_M = 2; // a crown column beside a roof, its top within this of the roof's, is an eave
 export const STRUCTURE_FLOOR_M = 1; // a low structure stands at least this tall
 export const STRUCTURE_MAX_M = 6; // and no taller (taller is a building's rules, or a tree)
@@ -242,14 +244,17 @@ export function columnStats(cols, model, { shift = null } = {}) {
     }
   }
   for (let k = 0; k < N; k++) if (firmSingle[k]) firmBright[k] /= firmSingle[k];
-  /* How many of a column's last echoes over 2 m lie within FLAT_SPREAD_M of its lowest: a roof's floor (roofUnderCrown). */
-  const lastFloor = new Uint16Array(N);
+  /* How many of a column's last echoes over 2 m lie within FLAT_SPREAD_M of its lowest (a roof's floor), and how many of
+     its earlier echoes (of split pulses) do, against all of them (roofUnderCrown). */
+  const lastFloor = new Uint16Array(N), earlierFloor = new Uint16Array(N), earlier = new Uint16Array(N);
   for (let i = 0; i < cols.n; i++) {
-    if (NOISE.has(cols.cls[i]) || (cols.ret[i] || 1) < (cols.nret[i] || 1)) continue;
+    if (NOISE.has(cols.cls[i])) continue;
     const k = cellOf(grid, cols.x[i], cols.y[i], shift);
     if (k < 0 || !lastAbove[k]) continue;
     const over = cols.z[i] - ground[k];
-    if (over > CROWN_ABOVE_M && over < MAX_OVER_M && cols.z[i] - lastLo[k] < FLAT_SPREAD_M) lastFloor[k]++;
+    if (!(over > CROWN_ABOVE_M && over < MAX_OVER_M)) continue;
+    const onFloor = cols.z[i] - lastLo[k] < FLAT_SPREAD_M;
+    if ((cols.ret[i] || 1) >= (cols.nret[i] || 1)) { if (onFloor) lastFloor[k]++; } else { earlier[k]++; if (onFloor) earlierFloor[k]++; }
   }
   /* The flight's own ground, for brightness relative to it: intensity is
      not comparable between flights (sensor, gain, altitude), so every use
@@ -257,7 +262,7 @@ export function columnStats(cols, model, { shift = null } = {}) {
   for (let i = 0; i < cols.n; i += 7) if (cols.cls[i] === 2 && cols.intensity?.[i]) groundI.push(cols.intensity[i]);
   groundI.sort((a, b) => a - b);
   const groundBright = groundI.length ? groundI[groundI.length >> 1] : 0;
-  return { above, multiAbove, lastGround, zLo, zHi, lastAbove, lastLo, lastHi, lastFloor, top, firm, firmSingle, firmLeafOn, firmBright, groundBright };
+  return { above, multiAbove, lastGround, zLo, zHi, lastAbove, lastLo, lastHi, lastFloor, earlier, earlierFloor, top, firm, firmSingle, firmLeafOn, firmBright, groundBright };
 }
 
 /**
@@ -353,13 +358,15 @@ export function structuresOf(cols, model, { shift = null, stats = null, low = {}
 /**
  * The columns of `patch` that are a roof under a crown: a flat floor of last
  * echoes (ROOF_FLOOR_MIN or more over 2 m, ROOF_FLOOR_SHARE of them within
- * FLAT_SPREAD_M of the lowest), joined (sides or corners) into groups of
+ * FLAT_SPREAD_M of the lowest; no more than ROOF_FLOOR_ABOVE of its split
+ * pulses' earlier echoes on that floor too), joined (sides or corners) into groups of
  * ROOF_FLOOR_M2 or more whose floor steps by ROOF_FLOOR_STEP_M or less
- * between neighbours (median). A Set of columns.
+ * between neighbours and is planar to ROOF_FLOOR_BUMP_M (medians). A Set of
+ * columns.
  */
 export function roofUnderCrown(patch, st, w) {
-  const { lastAbove, lastFloor } = st;
-  const flat = new Set(patch.filter((k) => lastAbove[k] >= ROOF_FLOOR_MIN && lastFloor[k] >= ROOF_FLOOR_SHARE * lastAbove[k]));
+  const { lastAbove, lastFloor, earlier, earlierFloor } = st;
+  const flat = new Set(patch.filter((k) => lastAbove[k] >= ROOF_FLOOR_MIN && lastFloor[k] >= ROOF_FLOOR_SHARE * lastAbove[k] && earlierFloor[k] <= ROOF_FLOOR_ABOVE * earlier[k]));
   const keep = new Set(), seen = new Set();
   for (const s0 of flat) {
     if (seen.has(s0)) continue;
@@ -377,7 +384,13 @@ export function roofUnderCrown(patch, st, w) {
     const inGroup = new Set(group), steps = [];
     for (const k of group) for (const j of [k + 1, k + w]) if (inGroup.has(j) && (j !== k + 1 || j % w !== 0)) steps.push(Math.abs(st.lastLo[k] - st.lastLo[j]));
     steps.sort((p1, p2) => p1 - p2);
-    if (steps.length && steps[steps.length >> 1] <= ROOF_FLOOR_STEP_M) for (const k of group) keep.add(k);
+    const bumps = [];
+    for (const k of group) {
+      const nb = [k - 1, k + 1, k - w, k + w].filter((j) => inGroup.has(j) && (j !== k - 1 || k % w !== 0) && (j !== k + 1 || j % w !== 0));
+      if (nb.length >= 3) bumps.push(Math.abs(st.lastLo[k] - nb.reduce((a, j) => a + st.lastLo[j], 0) / nb.length));
+    }
+    bumps.sort((p1, p2) => p1 - p2);
+    if (steps.length && steps[steps.length >> 1] <= ROOF_FLOOR_STEP_M && (!bumps.length || bumps[bumps.length >> 1] <= ROOF_FLOOR_BUMP_M)) for (const k of group) keep.add(k);
   }
   return keep;
 }

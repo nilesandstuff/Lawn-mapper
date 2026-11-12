@@ -1591,6 +1591,49 @@ over the cap the summer-leaf copy goes first, then `returns`. With `low`
 between 0.4 and 2.4 m as the test, 1,209 of the 3,750 stay solid. The
 AR's test and its drawing are the core session's to change (asked).
 
+
+### 36. A roof under a big tree read as a solid tree; where the last echoes land tells them apart (2026-11-12)
+
+The core session, 2026-11-12, from the owner's AR walk on an admin save at
+the owner's work: a house just north of a garage had no mark in the AR,
+because structures.js called it a tree. Rebuilt in the sandbox, the house's
+columns hold two layers: a flat roof about 7.4 m up (a lower one at 4.4-4.9
+m) and a large crown over it at 15-19.6 m. Step 2 made them buildings (no
+pulse reached the grass); step 3 then demoted the whole patch to solid
+tree, because 68% of its returns over 2 m came from split pulses (limit
+25%, SOLID_TREE_SPLIT) -- the branches over the roof, not the roof. A
+second house on the same lot, under trees too, was read the same way.
+
+FIX (structures.js roofUnderCrown, why 10): inside a patch the split test
+would demote, a column whose LAST echoes stop on one flat surface stays a
+building: 2+ last echoes over 2 m, three quarters within 1.5 m of the
+lowest (a branch tip can end a pulse above the roof), and at most half of
+its split pulses' earlier echoes on that floor itself (under a roof they
+come from the branches above; in a dense conifer top from the needles at
+the same height). Such columns joined (sides or corners) into 40 m2 or more,
+with a floor that steps 1 m or less between neighbours and is planar
+(each column within 0.2 m of its neighbours' mean, median), stay a
+building. Light: those columns are buildings now, so the crown over the
+roof is drawn as flown and gets no summer leaves (the roof already stops
+the sun below it).
+
+MEASURED. The owner's work lot: both houses become buildings (205 solid-tree
+and 86 tree-edge columns), nothing else changes. The labelled crowns
+(data/labelled-crowns.csv, 250 crowns on 49 lots; 9 lots did not load):
+crown columns read as building 612 before, 741 after, in 3 crowns:
+  - B27 (270 columns, 67 flipped): a dark roof under the trees in the
+    aerial photo, inside the labelled crown's circle -- right.
+  - C80 (7 columns, 5 flipped): part of a large flat-roofed building and
+    a roof in deep pine shade (single echoes, flat at 3.3-3.5 m) -- right
+    as far as the photo shows. A third group there, a dense conifer top flat
+    at 16 m, flipped before the earlier-echo test and no longer does.
+  - C21 (221 columns, 57 flipped; 1,175 on the lot, and 1,061 on its
+    neighbour C22): long flat strips 3.1-3.3 m up between red-clay lanes,
+    as planar as the owner's roofs (0.05 m), every return class 1, the
+    vegetation index under them (a November photo) below the lot's leafier
+    quarter. Most likely poultry houses, which would make the flip right; the
+    photo is too blurred to say, so this is NOT established.
+
 ## Speculation
 
 - FENCES (2026-10-27, IN USE, unmeasured; fences.js): drawn by the visitor
