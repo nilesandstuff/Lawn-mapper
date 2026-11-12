@@ -1990,6 +1990,33 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
     rPub.ok === false && /admin saves only/.test(rPub.why) && pub.calls() === 0 && adm.calls() === 1, `${JSON.stringify(rPub)} / calls ${pub.calls()}, ${adm.calls()}; admin answer ${JSON.stringify(rAdm)}`);
 }
 
+/* A ROOF UNDER A CROWN (structures.js roofUnderCrown; the owner's admin save, 2026-11-12: a house under a big tree read
+   as a solid tree). Two pulses a square meter. A 10 x 8 m roof 7 m up under a crown at 16-19 m: three pulses in four
+   split (the branch first, the roof last), the rest end on the roof; none reaches the ground. A dense crown beside it,
+   nothing through either, but its last echoes scattered from 3 to 12 m. */
+{
+  const { structuresOf, BUILDING, SOLID_TREE } = await import('../public/shade/structures.js');
+  const lat = 43, k = mercScale(lat);
+  const grid = gridOver([0, 0, 40 / k, 20 / k], 1, lat);
+  const pts = [];
+  let s = 1;
+  const rnd = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+  for (let e = 0.25; e < 40; e += 0.5) for (let n = 0.25; n < 20; n += 1) {
+    const roof = e > 4 && e < 14 && n > 6 && n < 14, crown = Math.hypot(e - 28, n - 10) < 6;
+    if (roof) { if (rnd() < 0.75) { pts.push([e, n, 116 + 3 * rnd(), 1, 1, 2], [e, n, 107, 1, 2, 2]); } else pts.push([e, n, 107, 1, 1, 1]); }
+    else if (crown) { pts.push([e, n, 112 + 4 * rnd(), 1, 1, 2], [e, n, 103 + 9 * rnd(), 1, 2, 2]); }
+    else pts.push([e, n, 100, 2, 1, 1]);
+  }
+  const cols = makeColumns(pts.length);
+  pts.forEach(([e, n, z, c, r, nr], i) => { cols.x[i] = e / k; cols.y[i] = n / k; cols.z[i] = z; cols.cls[i] = c; cols.ret[i] = r; cols.nret[i] = nr; });
+  const model = buildCanopy(cols, grid);
+  const at = (e, n) => Math.floor(20 - n) * grid.w + Math.floor(e);
+  const on = structuresOf(cols, model), off = structuresOf(cols, model, { roofFloor: false });
+  check('structures: a roof under a crown is a building (its last echoes stop on one flat surface); without the floor test it was a solid tree; a dense crown beside it stays a solid tree',
+    on.kind[at(9, 10)] === BUILDING && on.why[at(9, 10)] === 10 && off.kind[at(9, 10)] === SOLID_TREE && on.kind[at(28, 10)] !== BUILDING,
+    `roof ${on.kind[at(9, 10)]}/${on.why[at(9, 10)]} (was ${off.kind[at(9, 10)]}/${off.why[at(9, 10)]}); crown ${on.kind[at(28, 10)]}/${on.why[at(28, 10)]}`);
+}
+
 /* ONE LEAF STATE PER LOT (passes.js; owner, 2026-10-29). */
 {
   check('passes: a point fired 9 May or in November is leaf-off; 11 May, July and an undated one are not',
