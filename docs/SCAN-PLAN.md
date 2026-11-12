@@ -2540,3 +2540,7 @@ THE HOUSE, AFTER BOTH MENDS (2026-11-12; task `marks`, runs 43164592655 and 4316
     they were (~154, ~128, ~53 the garage, ~33 m2). Not seen on a phone or in a picture: that this is the house is
     its size, its height and that it appeared when the roof under the crown did.
   - The ~121 m2 solid patch still called a tree is unchanged, same why codes: it was never the house.
+  - 2026-11-12, later: the shade map's build 3 (the features session) gives every building a `roof` height in the
+    model (the house: ~5.6 m, under a crown 15-19 m up); scan/lib/lidar-load.js draws a building to `roof` where
+    given, `top` elsewhere. Live with their deploy (run 43168496396). The ~121 m2 patch is a stand of evergreens
+    west of the house (they looked at the photo): a tree, closed. None of it seen on a phone.
