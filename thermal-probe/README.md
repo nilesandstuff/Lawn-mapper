@@ -122,3 +122,23 @@ Findings from seven photos and one probe capture of the same propped scene (ice 
   was normal again. Calibration photos taken right after switching apps are left out.
 - UIRA-IR (AccuHeat's enhancement) does not change the stored Gray grid (same pixel noise, ~3 Gray, in all seven;
   the setting is not even recorded): display only.
+
+## HIKMICRO's temperature conversion, reproduced (2026-11-13)
+
+With the owner's permission HIKMICRO's thermometry libraries (libMTlib, libMicroTA) were decompiled with Ghidra
+and the SK01's conversion from Gray to temperature was rebuilt in Python from it and the camera's own factory
+calibration file (the block every AccuHeat photo carries). It reproduces every temperature AccuHeat stored in
+nine photos to 0.0001 C (points and area averages). The reimplementation and the calibration data stay out of
+this public repository (they are HIKMICRO-derived and carry the camera's serial); only these findings are here.
+
+- The chain is the standard radiometric one: Gray minus a per-frame base level, a quadratic response correction
+  whose coefficients depend on the sensor temperature, Planck's law inverted with four factory constants, then
+  emissivity, reflected temperature, and a LOWTRAN-style atmospheric transmission (distance, humidity).
+- The sensor temperature is metadata row 216 word [1], 14 bits x 0.02 C (28.42 C in a probe frame).
+- AccuHeat's per-frame base level is computed on the phone (it is zero in our raw frames). It falls ~88 Gray per
+  C of sensor temperature. The photo AccuHeat took just after our app had the camera (its "13 C low" one) is
+  reproduced exactly from its own base level: AccuHeat itself was wrong there, not our reading of it.
+- Linking our counts: Gray = k x (our counts above the shutter) + the shutter's Gray. Two photo/probe pairs give
+  k 0.94 and 0.88 and a shutter apparent temperature of 30.5-32 C against a sensor temperature of 28.4 C, with
+  0.8-1.2 C residuals; the scene (water cooling, ice moving) changed between the shots, so k and the shutter
+  temperature still need a static, temperature-stable scene to pin down.
