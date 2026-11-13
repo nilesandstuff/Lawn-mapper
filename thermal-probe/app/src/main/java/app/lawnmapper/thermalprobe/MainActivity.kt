@@ -573,8 +573,10 @@ class MainActivity : Activity() {
         if (uvc == null) { setStatus("Connect first."); return }
         val label = targetEdit.text.toString().trim().ifEmpty { "target" }
         val contact = num(contactEdit); val gun = num(gunEdit); val accu = num(accuEdit)
+        setStatus("Recording point ${pointCount + 1} ($label): hold on the target until it says saved.")
         Thread {
             flatFieldNow()
+            setStatus("Recording point ${pointCount + 1} ($label): hold still...")
             Thread.sleep(300)
             capture("cal-$label", 25)
             val scene = capName
@@ -593,7 +595,11 @@ class MainActivity : Activity() {
             val shown = String.format(Locale.US, "%2d %-12s known %s gun %s accu %s  delta %.0f  (up %d s)",
                 pointCount, label.take(12), contact, gun, accu, (sc?.get(0) ?: Double.NaN) - (sh?.get(0) ?: Double.NaN), up)
             log("calibration point: $line")
-            runOnUiThread { pointsView.append(shown + "\n") }
+            runOnUiThread {
+                pointsView.append(shown + "\n")
+                // the readings belong to this target only (run 9: the sky's IR-gun reading was kept for the grass)
+                contactEdit.setText(""); gunEdit.setText(""); accuEdit.setText("")
+            }
             setStatus("Point $pointCount saved ($label). Next target, or Save & share.")
         }.start()
     }

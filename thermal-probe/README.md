@@ -93,3 +93,6 @@ point are kept as .bin, so the fit can be redone on any box or the whole frame.
 Emissivity is not a camera setting here: the SK01 sends raw counts and the phone does all thermometry, so the
 grass emissivity (0.98), the reflected sky, and the view angle all belong in our own conversion, fitted from these
 points.
+- Run 9 (0.11, outdoors, very cold): three points saved: sky (IR gun -38 C) 2474 and 3352 counts below the
+  shutter (box sd 418 and 834: the sky in the box was not uniform), grass 2946 below. The grass point carries the
+  sky's IR-gun value (the field was not cleared; 0.12 clears the readings after each point).
