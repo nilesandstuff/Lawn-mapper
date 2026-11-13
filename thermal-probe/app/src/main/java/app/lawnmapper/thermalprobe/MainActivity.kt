@@ -249,7 +249,13 @@ class MainActivity : Activity() {
             val f = u.desc.formats.firstOrNull()
             val fr = f?.frames?.firstOrNull()
             if (f == null || fr == null) { setStatus("The camera listed no video format: send the file anyway (Save & share)."); return@Thread }
-            if (startStream(f, fr)) { Thread.sleep(500); flatFieldNow() }
+            if (startStream(f, fr)) {
+                Thread.sleep(500)
+                val vi = try { u.vendorInfo() } catch (e: Exception) { "vendor reads failed: $e" }
+                File(work, "vendor.txt").writeText(vi)
+                log(vi)
+                flatFieldNow()
+            }
         }.start()
     }
 

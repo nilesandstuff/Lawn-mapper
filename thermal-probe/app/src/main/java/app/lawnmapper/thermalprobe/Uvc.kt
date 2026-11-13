@@ -241,6 +241,33 @@ class Uvc(val device: UsbDevice, val conn: UsbDeviceConnection, val log: (String
         return conn.controlTransfer(0x21, 0x01, value, (xu shl 8) or desc.vcInterface, null, 0, 200)
     }
 
+    /** A vendor GET in the same style: wValue is the command number, as hal_usbcam_host_get_* send it. */
+    fun xuGet(value: Int, len: Int): ByteArray? {
+        val xu = desc.units.firstOrNull { it.kind == "extension unit" }?.id ?: 10
+        val b = ByteArray(len)
+        val n = conn.controlTransfer(0xA1, 0x81, value, (xu shl 8) or desc.vcInterface, b, len, 300)
+        return if (n < 0) null else b.copyOf(n)
+    }
+
+    /** Everything the HAL's read commands give (numbers and lengths from libusbCam_host.so), for the log. */
+    fun vendorInfo(): String {
+        val sb = StringBuilder("vendor reads (command: bytes):\n")
+        fun show(name: String, v: Int, len: Int) {
+            val r = xuGet(v, len)
+            val txt = r?.let { b -> String(b, Charsets.ISO_8859_1).filter { it.code in 32..126 } } ?: ""
+            sb.append("  $name ($v, $len): ${r?.let { hex(it) } ?: "failed"}${if (txt.length >= 3) "  \"$txt\"" else ""}\n")
+        }
+        show("product info", 13, 64); show("mcu version", 14, 48); show("serial?", 16, 16); show("info 17", 17, 8)
+        show("info 18", 18, 1); show("info 19", 19, 1); show("info 20", 20, 1); show("info 21", 21, 4)
+        show("workmode", 22, 1); show("update state", 23, 4); show("error code", 24, 1); show("bld version", 25, 48)
+        show("calib temp", 27, 4); show("rise-temp comp", 29, 40)
+        val c = xuCommand(6) // cavity temperature: a set of 6, then a get of 5
+        sb.append("  cavity temp request (6): $c\n")
+        Thread.sleep(50)
+        show("cavity temp", 5, 3); show("cavity temp (2)", 5, 2)
+        return sb.toString()
+    }
+
     fun shutter(open: Boolean): String {
         val a = xuCommand(if (open) 8 else 9)
         Thread.sleep(140)
