@@ -150,6 +150,10 @@ class MainActivity : Activity() {
             button("Close shutter") { shutterCmd(false) },
         ))
         root.addView(row(
+            button("Hik bind") { hikBind() },
+            button("Hik shutter") { hikShutter() },
+        ))
+        root.addView(row(
             button("Correct A") { correct(0x0000) },
             button("Correct B") { correct(0x0A00) },
         ))
@@ -258,7 +262,10 @@ class MainActivity : Activity() {
                 val vi = try { u.vendorInfo() } catch (e: Exception) { "vendor reads failed: $e" }
                 File(work, "vendor.txt").writeText(vi)
                 log(vi)
-                flatFieldNow()
+                val hb = try { u.hikBind() } catch (e: Exception) { "hik bind failed: $e" }
+                File(work, "hik-bind-connect.txt").writeText(hb)
+                log(hb)
+                setStatus("Connected and bound. Try Hik shutter.")
             }
         }.start()
     }
@@ -426,6 +433,26 @@ class MainActivity : Activity() {
     private fun shutterCmd(open: Boolean) {
         val u = uvc ?: run { setStatus("Connect first."); return }
         Thread { log(u.shutter(open)); setStatus(if (open) "Shutter opened." else "Shutter closed.") }.start()
+    }
+
+    private fun hikBind() {
+        val u = uvc ?: run { setStatus("Connect first."); return }
+        Thread {
+            val r = try { u.hikBind() } catch (e: Exception) { "hik bind failed: $e" }
+            File(work, "hik-bind-${System.currentTimeMillis() % 100000}.txt").writeText(r)
+            log(r); setStatus("Bind done (see the log).")
+        }.start()
+    }
+
+    /** The documented manual shutter; records 2 s of frames from the moment it is sent. */
+    private fun hikShutter() {
+        val u = uvc ?: run { setStatus("Connect first."); return }
+        Thread {
+            capture("hik-shutter", 50)
+            Thread.sleep(80)
+            val r = try { u.hikManualShutter() } catch (e: Exception) { "hik shutter failed: $e" }
+            log(r); setStatus("$r. Did it click?")
+        }.start()
     }
 
     /** HIKMICRO's manual correction (Uvc.manualCorrect); A as decoded, B aimed at extension unit 10. */

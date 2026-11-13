@@ -269,6 +269,89 @@ class Uvc(val device: UsbDevice, val conn: UsbDeviceConnection, val log: (String
     }
 
     /*
+     * THE HIK DEVICECONFIG PROTOCOL on the extension unit (wIndex = unit 10 << 8 | interface 0 = 0x0A00), as
+     * documented for the Topdon TC002C (a HIKMICRO-built camera) in github.com/3ricj/IRPanoView, MasterThermoDocs
+     * 02 (transport), 03 (session bind) and 09 (shutter); written here from those facts, not copied. Channels are
+     * wValue: 0x0500 select (2 bytes: phase, sub), 0x0100 misc, 0x0200 image, 0x0300 thermometry, 0x0400
+     * version, 0x0600 command state (1 byte, 1 = idle), 0x1700 capabilities. Requests: 0x85 PROBE (IN, 4 bytes,
+     * the first two a length), 0x81 GET (IN), 0x01 SET (OUT).
+     */
+    private fun xuIndex(): Int = ((desc.units.firstOrNull { it.kind == "extension unit" }?.id ?: 10) shl 8) or desc.vcInterface
+
+    fun hikProbe(wv: Int): ByteArray? {
+        val b = ByteArray(4)
+        val n = conn.controlTransfer(0xA1, 0x85, wv, xuIndex(), b, 4, 500)
+        return if (n < 0) null else b.copyOf(n)
+    }
+
+    fun hikGet(wv: Int, len: Int): ByteArray? {
+        val b = ByteArray(len)
+        val n = conn.controlTransfer(0xA1, 0x81, wv, xuIndex(), b, len, 1000)
+        return if (n < 0) null else b.copyOf(n)
+    }
+
+    fun hikSet(wv: Int, data: ByteArray): Int {
+        hikProbe(wv)
+        return conn.controlTransfer(0x21, 0x01, wv, xuIndex(), data, data.size, 1000)
+    }
+
+    fun hikSelect(phase: Int, sub: Int): Int {
+        hikProbe(0x0500)
+        return conn.controlTransfer(0x21, 0x01, 0x0500, xuIndex(), byteArrayOf(phase.toByte(), sub.toByte()), 2, 1000)
+    }
+
+    fun hikState(): Int { hikProbe(0x0600); return hikGet(0x0600, 1)?.firstOrNull()?.toInt()?.and(0xff) ?: -1 }
+
+    private fun probeLen(p: ByteArray?): Int = if (p != null && p.size >= 2) u16(p, 0) else -1
+
+    /** The bind sequence (MasterThermoDocs 03, step 3), every answer logged. */
+    fun hikBind(): String {
+        val sb = StringBuilder("hik bind (wIndex 0x${Integer.toHexString(xuIndex())}):\n")
+        fun show(name: String, b: ByteArray?) {
+            val txt = b?.let { x -> String(x, Charsets.ISO_8859_1).filter { it.code in 32..126 } } ?: ""
+            sb.append("  $name: ${b?.let { "${it.size} B ${hex(it, 0, minOf(it.size, 64))}" } ?: "failed"}${if (txt.length >= 4) "  \"${txt.take(80)}\"" else ""}\n")
+        }
+        // phase A: version, the select arm, short reads
+        show("probe 0x0400", hikProbe(0x0400))
+        show("version 0x0400", hikGet(0x0400, maxOf(1, minOf(64, probeLen(hikProbe(0x0400))))))
+        sb.append("  arm select 02 00: ${hikSelect(0x02, 0x00)}\n")
+        for (wv in listOf(0x0600, 0x0300, 0x0100)) {
+            val pl = probeLen(hikProbe(wv))
+            show(String.format("probe/get 0x%04x (probe len %d)", wv, pl), hikGet(wv, if (pl in 1..64) pl else 4))
+        }
+        // capability bursts, no select
+        for (k in 0 until 4) {
+            show("caps $k probe", hikProbe(0x1700)); show("caps $k head", hikGet(0x1700, 5))
+            hikProbe(0x1700); show("caps $k body", hikGet(0x1700, 265))
+        }
+        // hardware server, device info, capability refresh
+        sb.append("  select 01 04: ${hikSelect(0x01, 0x04)}\n"); hikProbe(0x0100); show("hardware server", hikGet(0x0100, 3))
+        sb.append("  select 01 01: ${hikSelect(0x01, 0x01)}\n"); hikProbe(0x0100); show("device info", hikGet(0x0100, 488))
+        sb.append("  select 17 1d: ${hikSelect(0x17, 0x1D)}\n")
+        hikProbe(0x1700); show("caps head", hikGet(0x1700, 5)); hikProbe(0x1700); show("caps body", hikGet(0x1700, 265))
+        sb.append("  command state: ${hikState()}\n")
+        // hardware server again, polled (3 = ready)
+        sb.append("  select 01 04: ${hikSelect(0x01, 0x04)}\n"); hikProbe(0x0100); show("hardware server", hikGet(0x0100, 3))
+        return sb.toString()
+    }
+
+    /** Manual shutter / one-shot NUC, control 0x7E9 (MasterThermoDocs 09): select 02 04, SET 0x0200 with
+     *  USB_COMMON_COND (12 bytes: size 12, channel 1), then poll the command state until idle. */
+    fun hikManualShutter(): String {
+        val sel = hikSelect(0x02, 0x04)
+        val cond = ByteArray(12).also { it[0] = 12; it[4] = 1 }
+        val set = hikSet(0x0200, cond)
+        val states = mutableListOf<Int>()
+        val end = System.currentTimeMillis() + 3000
+        while (System.currentTimeMillis() < end) {
+            val st = hikState(); states += st
+            if (st == 1 && states.size > 1) break
+            Thread.sleep(150)
+        }
+        return "hik manual shutter: select $sel, set $set, states $states"
+    }
+
+    /*
      * HIKMICRO's OWN PATH for the SK02 (VID 14526 / PID 388 go through com.guardexpert.microsensorsdk, which drives
      * the camera through libHCUSBSDK.so). USB_SET_IMAGE_MANUAL_CORRECT (command 2025, "one-touch manual
      * correction": the shutter closes, the reference is taken, it opens) is built by

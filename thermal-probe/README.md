@@ -56,3 +56,14 @@ build installs over the old one.
   shows a scene. Every vendor GET answers one 00 byte whatever is asked, which looks like a placeholder. The likely
   reason: AccuHeat logs in first (MicroSensorUVC.login with the device's fd, then libHCUSBSDK's USB_Login, which
   carries ECDH/AES machinery), and the camera may ignore commands until then. Not yet decoded.
+- Run 5 (0.5, AccuHeat opened first and closed, camera left plugged in): the probe saw the scene. The shutter is a
+  latch AccuHeat leaves open; the sensor and our stream are fine, only control is missing. Flat-field then
+  photographed the open scene (no shutter moved), which is the "burn-in" the owner saw.
+- The login is not a handshake for this camera: libHCUSBSDK's CUsbCommandLogin only runs the ACS login for device
+  types 1 and 2; for UVC thermal it just opens the device.
+- The same DeviceConfig protocol is documented for the Topdon TC002C (HIKMICRO-built) in
+  github.com/3ricj/IRPanoView, MasterThermoDocs (no licence file: its protocol facts are used, its code is not).
+  Extension unit wIndex 0x0A00; PROBE 0x85 / GET 0x81 / SET 0x01; channels 0x0500 select, 0x0200 image, 0x0600
+  state; a bind sequence before commands; manual shutter = select 02 04, SET 0x0200 with a 12-byte
+  USB_COMMON_COND (size 12, channel 1), poll 0x0600 until 1. The SK02's extension unit has the same channels (its
+  0x0400 reads "2.0"). Probe 0.6 binds on connect and adds Hik shutter.
