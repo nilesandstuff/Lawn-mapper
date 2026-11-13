@@ -75,3 +75,9 @@ build installs over the old one.
   offset 0x5C of USB_IMAGE_ENHANCEMENT_EX; 1 none, 2 close, 3 open, manual mode only) and SETs command 2080
   (route 02 05, channel 0x0200). Wire block 226 B (libHCUSBSDK ConvertData / ParseRecvData): 0x29 enabled,
   0x2A mode (1 auto, 2 manual), 0x2F shutter control. Probe 0.8: SK01 close / open / Read block; Flat-field uses it.
+- Run 7 (0.8, 2026-11-13): THE SHUTTER WORKS. SK01 close / open click; the camera answers the burn-prevention
+  write with no command state (0) and a 186-byte GET block that is all zeros but its first byte. Opening shows
+  in the stream 2 frames (~80 ms) after the command. Flat-field (close, 10 frames averaged, open) gives a clean
+  picture: the scene occupies rows 0-195 and columns 0-259 of the 264x222 frame; columns 260-263 and rows
+  196-221 are not picture (rows 196-216 near-constant, 218-221 metadata). Temporal noise with the shutter closed:
+  10.2 counts per pixel per frame. Counts-to-temperature calibration not yet done.
