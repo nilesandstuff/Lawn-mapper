@@ -52,3 +52,7 @@ build installs over the old one.
 - HIKMICRO's manual correction (USB_SET_IMAGE_MANUAL_CORRECT, 2025) decoded from libHCUSBSDK.so: SET_CUR (0x21,
   0x01), wValue 0x0200, wIndex 0, data 03 88 04 (ProtocolStrategyUvc10; CUsbDriverLibuvc reads wValue from setup
   bytes 4-5, wIndex from 6-7). The probe's Correct A sends exactly that; Correct B the same to wIndex 0x0A00.
+- Run 4 (0.5): both forms of the manual correction were accepted (3 bytes written) and nothing clicked; no frame
+  shows a scene. Every vendor GET answers one 00 byte whatever is asked, which looks like a placeholder. The likely
+  reason: AccuHeat logs in first (MicroSensorUVC.login with the device's fd, then libHCUSBSDK's USB_Login, which
+  carries ECDH/AES machinery), and the camera may ignore commands until then. Not yet decoded.
