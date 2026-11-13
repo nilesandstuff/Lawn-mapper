@@ -1,0 +1,68 @@
+# T. THERMAL PROBE (thermal session, 2026-11-13; thermal-probe/README.md).
+#
+# Builds the throwaway test app for the AccuMEMS SK02 thermal camera and publishes the APK as the GitHub release
+# "thermal-probe-latest", so the phone always downloads it from one fixed link:
+#   https://github.com/<owner>/<repo>/releases/download/thermal-probe-latest/thermal-probe.apk
+# Runs by itself when thermal-probe/ changes on a pushed branch (workflow_dispatch only works once this file is on
+# the default branch). It touches nothing else: not the Yard AR app, not the sites.
+name: "T. Thermal probe"
+
+on:
+  push:
+    paths:
+      - 'thermal-probe/**'
+      - '.github/workflows/thermal-probe.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: thermal-probe
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  app:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14.3'
+
+      - name: Build
+        run: |
+          set -o pipefail
+          echo "APP_NAME=0.${{ github.run_number }}" >> "$GITHUB_ENV"
+          gradle -p thermal-probe --no-daemon -q assembleDebug \
+            -PversionCode="${{ github.run_number }}" -PversionName="0.${{ github.run_number }}" 2>&1 | { grep -v '^w:' || true; } | tail -60
+          APK=thermal-probe/app/build/outputs/apk/debug/app-debug.apk
+          test -f "$APK"
+          cp "$APK" thermal-probe.apk
+          echo "APK_SIZE=$(du -k thermal-probe.apk | cut -f1)" >> "$GITHUB_ENV"
+
+      - name: Publish (release thermal-probe-latest)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete thermal-probe-latest --cleanup-tag -y 2>/dev/null || true
+          gh release create thermal-probe-latest thermal-probe.apk --prerelease --target "$GITHUB_SHA" \
+            --title "Thermal probe 0.${{ github.run_number }}" \
+            --notes "Test app for the SK02 thermal camera, built from ${GITHUB_SHA::7} on ${GITHUB_REF_NAME}. See thermal-probe/README.md."
+          echo "PUBLISHED=yes" >> "$GITHUB_ENV"
+
+      - name: The answer
+        if: always()
+        run: |
+          echo "--------------------------------------------------------------"
+          echo "Thermal probe: version ${APP_NAME:-?}, ${APK_SIZE:-?} KB."
+          if [ "${PUBLISHED:-}" = "yes" ]; then
+            echo "On the phone: https://github.com/${{ github.repository }}/releases/download/thermal-probe-latest/thermal-probe.apk"
+          else
+            echo "Not published (a step above failed)."
+          fi

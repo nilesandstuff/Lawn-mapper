@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- the AccuMEMS SK02 (VID 0x38BE, PID 0x0184) -->
+    <usb-device vendor-id="14526" product-id="388" />
+    <!-- any USB video device, so a similar camera can be probed too -->
+    <usb-device class="239" subclass="2" protocol="1" />
+</resources>
