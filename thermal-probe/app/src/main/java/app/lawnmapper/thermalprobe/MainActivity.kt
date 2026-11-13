@@ -150,6 +150,11 @@ class MainActivity : Activity() {
             button("Close shutter") { shutterCmd(false) },
         ))
         root.addView(row(
+            button("SK01 close") { sk01(2) },
+            button("SK01 open") { sk01(3) },
+            button("Read block") { readEnh() },
+        ))
+        root.addView(row(
             button("Hik bind") { hikBind() },
             button("Hik shutter") { hikShutter() },
         ))
@@ -265,7 +270,10 @@ class MainActivity : Activity() {
                 val hb = try { u.hikBind() } catch (e: Exception) { "hik bind failed: $e" }
                 File(work, "hik-bind-connect.txt").writeText(hb)
                 log(hb)
-                setStatus("Connected and bound. Try Hik shutter.")
+                val eb = try { u.enhRead() } catch (e: Exception) { null }
+                File(work, "enhancement-connect.txt").writeText("${eb?.size ?: -1} B ${eb?.let { hex(it) }}")
+                log("enhancement block on connect: ${eb?.size ?: -1} B")
+                setStatus("Connected and bound. Try SK01 close / open.")
             }
         }.start()
     }
@@ -435,6 +443,26 @@ class MainActivity : Activity() {
         Thread { log(u.shutter(open)); setStatus(if (open) "Shutter opened." else "Shutter closed.") }.start()
     }
 
+    private fun sk01(control: Int) {
+        val u = uvc ?: run { setStatus("Connect first."); return }
+        Thread {
+            capture(if (control == 2) "sk01-close" else "sk01-open", 25)
+            Thread.sleep(80)
+            val r = try { u.sk01Shutter(control) } catch (e: Exception) { "sk01 shutter failed: $e" }
+            log(r); setStatus("$r. Did it click?")
+        }.start()
+    }
+
+    private fun readEnh() {
+        val u = uvc ?: run { setStatus("Connect first."); return }
+        Thread {
+            val r = try { u.enhRead() } catch (e: Exception) { null }
+            val t = "enhancement block: ${r?.let { "${it.size} B ${hex(it)}" } ?: "failed"}"
+            File(work, "enhancement-${System.currentTimeMillis() % 100000}.txt").writeText(t)
+            log(t); setStatus("Block read (in the log).")
+        }.start()
+    }
+
     private fun hikBind() {
         val u = uvc ?: run { setStatus("Connect first."); return }
         Thread {
@@ -476,12 +504,12 @@ class MainActivity : Activity() {
     private fun flatFieldNow() {
         val u = uvc ?: return
         setStatus("Flat-field: closing the shutter...")
-        log(u.shutter(false))
+        log(u.sk01Shutter(2))
         Thread.sleep(400)
         synchronized(nucLock) { nucSum = null; nucCount = 0; nucLeft = 10 }
         capture("shutter", 10)
         waitForCapture(5000)
-        log(u.shutter(true))
+        log(u.sk01Shutter(3))
         Thread.sleep(300)
         setStatus("Flat-field done; the shutter is open. Aim, then tap a capture button.")
     }

@@ -67,3 +67,11 @@ build installs over the old one.
   state; a bind sequence before commands; manual shutter = select 02 04, SET 0x0200 with a 12-byte
   USB_COMMON_COND (size 12, channel 1), poll 0x0600 until 1. The SK02's extension unit has the same channels (its
   0x0400 reads "2.0"). Probe 0.6 binds on connect and adds Hik shutter.
+- Run 6 (0.7): the bind works (device info 488 B: APP_010012_BUILD_20260828, camera id 065356AA00, an AY1 / TJ11
+  module; hardware server 01 02 02). The TC002C manual shutter (select 02 04, SET 0x0200) was accepted but left the
+  command state at 9 and moved nothing.
+- The SK01 (owner's correction: it is the SK01, 192x144 native, not the SK02) drives its shutter through
+  burn prevention: libMicroDM AY1Version::setShutterControl(1..3) writes byBurnPreventionShutterControl (host
+  offset 0x5C of USB_IMAGE_ENHANCEMENT_EX; 1 none, 2 close, 3 open, manual mode only) and SETs command 2080
+  (route 02 05, channel 0x0200). Wire block 226 B (libHCUSBSDK ConvertData / ParseRecvData): 0x29 enabled,
+  0x2A mode (1 auto, 2 manual), 0x2F shutter control. Probe 0.8: SK01 close / open / Read block; Flat-field uses it.

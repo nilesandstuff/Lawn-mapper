@@ -335,6 +335,47 @@ class Uvc(val device: UsbDevice, val conn: UsbDeviceConnection, val log: (String
         return sb.toString()
     }
 
+    /*
+     * THE SK01'S SHUTTER (AY1 module, camera id 065356AA00), decoded 2026-11-13. HIKMICRO's driver
+     * (libMicroDM AY1Version::setShutterControl(mode 1..3)) writes the mode into byte 0x5C of a cached
+     * USB_IMAGE_ENHANCEMENT_EX and sends it: that byte is byBurnPreventionShutterControl (1 none, 2 close,
+     * 3 open; only in manual mode). SET is command 2080 (route 02 05, channel 0x0200); libHCUSBSDK's
+     * ConvertData packs the 516-byte struct into a 226-byte wire block in which 0x29 is
+     * byBurnPreventionEnabled (0/1), 0x2A byBurnPreventionMode (1 auto, 2 manual), 0x2F the shutter control.
+     * GET (2081) answers the same layout. So: read the block, change those three bytes, write it back.
+     */
+    fun enhRead(): ByteArray? {
+        hikSelect(0x02, 0x05)
+        val pl = probeLen(hikProbe(0x0200))
+        return hikGet(0x0200, if (pl in 1..1024) pl else 226)
+    }
+
+    var lastEnh: ByteArray? = null
+
+    fun sk01Shutter(control: Int): String {
+        val r = enhRead()
+        val buf = ByteArray(226)
+        if (r != null && r.size >= 0x30) {
+            System.arraycopy(r, 0, buf, 0, minOf(r.size, 226))
+            if (lastEnh == null) lastEnh = r.copyOf()
+        }
+        val before = if (r != null && r.size > 0x2f) String.format("en %d mode %d ctl %d", r[0x29].toInt(), r[0x2a].toInt(), r[0x2f].toInt()) else "short read"
+        buf[0x29] = 1; buf[0x2a] = 2; buf[0x2f] = control.toByte()
+        val sel = hikSelect(0x02, 0x05)
+        val set = hikSet(0x0200, buf)
+        val states = mutableListOf<Int>()
+        for (k in 0 until 10) { val st = hikState(); states += st; if (st == 1) break; Thread.sleep(100) }
+        return "sk01 shutter control $control: read ${r?.size ?: -1} B ($before), select $sel, set $set, states $states"
+    }
+
+    /** Back to how the camera was: the block as first read, burn prevention as it was. */
+    fun sk01Restore(): String {
+        val r = lastEnh ?: return "nothing to restore"
+        val buf = ByteArray(226); System.arraycopy(r, 0, buf, 0, minOf(r.size, 226))
+        hikSelect(0x02, 0x05)
+        return "sk01 restore: set ${hikSet(0x0200, buf)}, state ${hikState()}"
+    }
+
     /** Manual shutter / one-shot NUC, control 0x7E9 (MasterThermoDocs 09): select 02 04, SET 0x0200 with
      *  USB_COMMON_COND (12 bytes: size 12, channel 1), then poll the command state until idle. */
     fun hikManualShutter(): String {
