@@ -229,6 +229,25 @@ class Uvc(val device: UsbDevice, val conn: UsbDeviceConnection, val log: (String
             before?.let { hex(it) } ?: "-", after?.let { hex(it) } ?: "-")
     }
 
+    /*
+     * THE SHUTTER (decoded from HIKMICRO's libusbCam_host.so hal_usbcam_host_shutter_ctrl and libhikdsp.so
+     * ST_TurnOnShutter / ST_TurnOffShutter, 2026-11-13). A latching motor: a zero-length SET_CUR to the first
+     * extension unit with the COMMAND IN wValue (not selector<<8): 9 drives it closed, 8 drives it open, and 10,
+     * sent 140 ms later, releases the drive. It stays where it was left, which is why the first captures were of
+     * the closed shutter.
+     */
+    fun xuCommand(value: Int): Int {
+        val xu = desc.units.firstOrNull { it.kind == "extension unit" }?.id ?: 10
+        return conn.controlTransfer(0x21, 0x01, value, (xu shl 8) or desc.vcInterface, null, 0, 200)
+    }
+
+    fun shutter(open: Boolean): String {
+        val a = xuCommand(if (open) 8 else 9)
+        Thread.sleep(140)
+        val b = xuCommand(10)
+        return "shutter ${if (open) "open (8)" else "close (9)"}: $a, release (10): $b"
+    }
+
     // ---- choosing a stream ----
 
     fun commit(format: Int, frame: Int, interval: Long): Boolean {

@@ -20,8 +20,8 @@ Yard AR walk with ARCore's pose on every thermal frame?
 Kotlin, no libraries: Android's own USB host API speaks UVC (bulk streaming needs no libusb). `Uvc.kt` reads the
 descriptors, reads (never writes) every control the units list, negotiates a stream (probe/commit) and assembles
 frames from the bulk payloads. `MainActivity.kt` is one screen: Connect, a preview that guesses 16-bit pixels,
-labelled one-second captures (Sky, Hand, Ice water, Other), a survey of every format and size, one optional write
-(the zoom control set to 0x8004, a raw-mode command on some thermal cores), and Save & share, which zips everything
+labelled one-second captures (Sky, Hand, Ice water, Other), shutter open/close and a flat-field (Uvc.shutter:
+XU 10, wValue 8 open, 9 close, 10 release), and Save & share, which zips everything
 into Download/ThermalProbe.
 
 The zip holds `descriptors.hex` (every byte of the device's descriptors), `controls.txt`, `payload-headers.txt` (the
@@ -33,3 +33,16 @@ first 40 payloads' headers), `log.txt`, and for every capture a `.bin` (the fram
 Workflow "T. Thermal probe" builds on any push that changes `thermal-probe/` and publishes the APK as the release
 `thermal-probe-latest`. It is signed with `debug.keystore` here (a probe-only key, password "android"), so a new
 build installs over the old one.
+
+## Findings
+
+- Run 1 (0.2, 2026-11-13): the camera streams to our own app with no handshake: 264x222 16-bit little-endian, 25
+  fps, payloads with 16-byte headers (2 standard + 14 vendor bytes). Rows 215-221 and columns 256-263 are not
+  picture. The numbers are RAW detector counts: the phone app (HIKMICRO's libhikdsp / libifrnuc) does the
+  non-uniformity correction, and the shutter is driven by the host.
+- The hand and ice-water captures were identical but for a uniform drift of 12-40 counts, because the shutter was
+  closed the whole time: nothing told it to open. r216[1] and r216[5] rose steadily across the session (likely the
+  sensor warming up).
+- The shutter command, from libusbCam_host.so hal_usbcam_host_shutter_ctrl and libhikdsp.so ST_TurnOn/OffShutter:
+  a zero-length SET_CUR (bmRequestType 0x21, bRequest 1) to wIndex = (extension unit 10 << 8) | interface 0, with
+  the command in wValue: 9 close, 8 open, then 10 to release the drive 140 ms later.

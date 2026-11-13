@@ -40,15 +40,21 @@ import java.util.zip.ZipOutputStream
  *                     reads every descriptor and control and starts the camera's default stream.
  *   Sky / Hand / Ice water / Other
  *                     saves one second of raw frames, labelled.
- *   Survey formats    saves a few frames in every format and size the camera offers, then goes back.
- *   Raw-mode switch   writes 0x8004 to the camera's zoom control (the command some thermal cores use to switch to
- *                     16-bit temperatures), then saves a second of frames. Only after the plain captures.
+ *   Flat-field        closes the shutter, saves 10 frames of it (a "shutter" capture) and keeps their average as
+ *                     the offset the preview subtracts, then opens it. Done once by itself on connect.
+ *   Open / Close      drive the shutter (Uvc.shutter). The camera sends RAW detector counts: the shutter is
+ *                     the only uniform reference, and the phone, not the camera, does the correction.
  *   Save & share      zips everything into Downloads/ThermalProbe and opens the share sheet.
  *
  * Nothing is decoded for real here: the frames are saved as the camera sent them, and the preview only GUESSES that
  * they are 16-bit numbers, to have something to aim with.
  */
 class MainActivity : Activity() {
+
+    // the SK02's 264x222 frame: the picture in the first 215 rows and 256 columns (a guess from the first captures);
+    // the last rows and the columns past 256 carry numbers that are not picture (shown pink)
+    private val IMAGE_ROWS = 215
+    private val IMAGE_COLS = 256
 
     private val ACTION_USB = "app.lawnmapper.thermalprobe.USB_PERMISSION"
     private lateinit var usb: UsbManager
@@ -71,6 +77,13 @@ class MainActivity : Activity() {
     @Volatile private var curFrame: UvcFrame? = null
     private var lastPreview = 0L
     private val frameTimes = ArrayDeque<Long>()
+
+    // the flat-field: the shutter's average frame, subtracted in the preview
+    private val nucLock = Object()
+    @Volatile private var offset: FloatArray? = null
+    private var nucSum: DoubleArray? = null
+    private var nucCount = 0
+    private var nucLeft = 0
 
     // a capture in progress
     private val capLock = Object()
@@ -130,9 +143,12 @@ class MainActivity : Activity() {
         root.addView(labelEdit)
         root.addView(row(
             button("Other") { capture(labelEdit.text.toString().ifBlank { "other" }, 25) },
-            button("Survey formats") { survey() },
+            button("Flat-field") { flatField() },
         ))
-        root.addView(button("Raw-mode switch (after the others)") { rawModeSwitch() })
+        root.addView(row(
+            button("Open shutter") { shutterCmd(true) },
+            button("Close shutter") { shutterCmd(false) },
+        ))
         root.addView(logView)
         setContentView(ScrollView(this).apply { addView(root) })
 
@@ -233,7 +249,7 @@ class MainActivity : Activity() {
             val f = u.desc.formats.firstOrNull()
             val fr = f?.frames?.firstOrNull()
             if (f == null || fr == null) { setStatus("The camera listed no video format: send the file anyway (Save & share)."); return@Thread }
-            startStream(f, fr)
+            if (startStream(f, fr)) { Thread.sleep(500); flatFieldNow() }
         }.start()
     }
 
@@ -253,6 +269,22 @@ class MainActivity : Activity() {
     // ---------------- frames ----------------
 
     private fun onFrame(fd: UvcFrameData) {
+        synchronized(nucLock) {
+            if (nucLeft > 0) {
+                val b = fd.bytes
+                val n = b.size / 2
+                val sum = nucSum ?: DoubleArray(n).also { nucSum = it }
+                if (sum.size == n) {
+                    for (k in 0 until n) sum[k] += ((b[2 * k].toInt() and 0xff) or ((b[2 * k + 1].toInt() and 0xff) shl 8)).toDouble()
+                    nucCount++
+                }
+                nucLeft--
+                if (nucLeft == 0 && nucCount > 0) {
+                    offset = FloatArray(n) { (sum[it] / nucCount).toFloat() }
+                    nucSum = null
+                }
+            }
+        }
         synchronized(capLock) {
             val out = capOut
             if (out != null && capLeft > 0) {
@@ -288,26 +320,28 @@ class MainActivity : Activity() {
         if (w > 0 && b.size >= w * 2 && b.size % (w * 2) == 0) {
             // GUESS: 16-bit little-endian numbers, one per pixel; rows past the descriptor's height shown too
             val rows = b.size / (w * 2)
-            val v = IntArray(w * rows) { (b[2 * it].toInt() and 0xff) or ((b[2 * it + 1].toInt() and 0xff) shl 8) }
-            val imgRows = minOf(rows, fr.height)
-            // stretch between the 1st and 99th percentiles, so a few odd (metadata) values cannot flatten the picture
-            val sorted = v.copyOfRange(0, w * imgRows).also { it.sort() }
+            val raw = IntArray(w * rows) { (b[2 * it].toInt() and 0xff) or ((b[2 * it + 1].toInt() and 0xff) shl 8) }
+            val off = offset?.takeIf { it.size == raw.size }
+            // with a flat-field: counts above the shutter's (the scene); without: the raw counts
+            val v = if (off != null) IntArray(raw.size) { raw[it] - off[it].toInt() } else raw
+            val imgRows = minOf(rows, IMAGE_ROWS)
+            // stretch between the 1st and 99th percentiles, so a few odd values cannot flatten the picture
+            val sorted = IntArray(imgRows * minOf(w, IMAGE_COLS)) { v[(it / minOf(w, IMAGE_COLS)) * w + it % minOf(w, IMAGE_COLS)] }.also { it.sort() }
             val lo = sorted[sorted.size / 100]
             val hi = sorted[sorted.size - 1 - sorted.size / 100]
             val span = maxOf(1, hi - lo)
             val px = IntArray(w * rows) {
                 val g = ((v[it] - lo) * 255L / span).toInt().coerceIn(0, 255)
-                if (it >= w * imgRows) Color.rgb(g, 0, g) else Color.rgb(g, g, g)
+                if (it >= w * imgRows || it % w >= IMAGE_COLS) Color.rgb(g, 0, g) else Color.rgb(g, g, g)
             }
             bmp = Bitmap.createBitmap(px, w, rows, Bitmap.Config.ARGB_8888)
-            val cx = w / 2; val cy = imgRows / 2
-            var sum = 0L; var n = 0
-            for (dy in -1..1) for (dx in -1..1) { sum += v[(cy + dy) * w + cx + dx]; n++ }
-            val c = sum.toDouble() / n
-            text.append(String.format(Locale.US, "as 16-bit: 1%%-99%% %d..%d, centre %.0f (0x%04x)%s\n", lo, hi, c, c.toInt(),
-                if (rows > fr.height) ", ${rows - fr.height} extra rows (pink)" else ""))
-            text.append(String.format(Locale.US, "centre if K*32: %.1f C   K*64: %.1f C   K*16: %.1f C   K*10: %.1f C\n",
-                c / 32 - 273.15, c / 64 - 273.15, c / 16 - 273.15, c / 10 - 273.15))
+            val cx = minOf(w, IMAGE_COLS) / 2; val cy = imgRows / 2
+            var sum = 0L; var sumRaw = 0L; var n = 0
+            for (dy in -1..1) for (dx in -1..1) { sum += v[(cy + dy) * w + cx + dx]; sumRaw += raw[(cy + dy) * w + cx + dx]; n++ }
+            text.append(String.format(Locale.US, "%s, 1%%-99%% %d..%d\n", if (off != null) "flat-fielded" else "RAW (no flat-field yet)", lo, hi))
+            text.append(String.format(Locale.US, "centre: %.0f counts above shutter, raw %.0f\n", if (off != null) sum.toDouble() / n else Double.NaN, sumRaw.toDouble() / n))
+            if (rows > IMAGE_ROWS + 1) text.append(String.format(Locale.US, "meta: r215[4]=%d r215[5]=%d r216[1]=%d r216[5]=%d\n",
+                raw[215 * w + 4], raw[215 * w + 5], raw[216 * w + 1], raw[216 * w + 5]))
         } else {
             val rows = maxOf(1, b.size / maxOf(1, w))
             val px = IntArray(w * rows) { val g = b[it].toInt() and 0xff; Color.rgb(g, g, g) }
@@ -379,13 +413,28 @@ class MainActivity : Activity() {
         }.start()
     }
 
-    private fun rawModeSwitch() {
+    private fun shutterCmd(open: Boolean) {
         val u = uvc ?: run { setStatus("Connect first."); return }
-        Thread {
-            log(u.setZoomAbsolute(0x8004))
-            Thread.sleep(1500)
-            capture("after-8004", 25)
-        }.start()
+        Thread { log(u.shutter(open)); setStatus(if (open) "Shutter opened." else "Shutter closed.") }.start()
+    }
+
+    private fun flatField() {
+        if (uvc == null) { setStatus("Connect first."); return }
+        Thread { flatFieldNow() }.start()
+    }
+
+    /** Close, settle, save 10 frames as a "shutter" capture and average them as the offset, open. Off the UI thread. */
+    private fun flatFieldNow() {
+        val u = uvc ?: return
+        setStatus("Flat-field: closing the shutter...")
+        log(u.shutter(false))
+        Thread.sleep(400)
+        synchronized(nucLock) { nucSum = null; nucCount = 0; nucLeft = 10 }
+        capture("shutter", 10)
+        waitForCapture(5000)
+        log(u.shutter(true))
+        Thread.sleep(300)
+        setStatus("Flat-field done; the shutter is open. Aim, then tap a capture button.")
     }
 
     // ---------------- sharing ----------------
