@@ -268,6 +268,21 @@ class Uvc(val device: UsbDevice, val conn: UsbDeviceConnection, val log: (String
         return sb.toString()
     }
 
+    /*
+     * HIKMICRO's OWN PATH for the SK02 (VID 14526 / PID 388 go through com.guardexpert.microsensorsdk, which drives
+     * the camera through libHCUSBSDK.so). USB_SET_IMAGE_MANUAL_CORRECT (command 2025, "one-touch manual
+     * correction": the shutter closes, the reference is taken, it opens) is built by
+     * CUsbCommandConfig<2025>::Excute -> DoUvcCommonExcuteImpl(0x200, 4, 1): a packet of an 8-byte setup
+     * (21 01 .. .. 00 02 00 00) and 3 bytes (03 88 04); ProtocolStrategyUvc10 sends the 3 bytes as the data, and
+     * CUsbDriverLibuvc::DoControlDataSyncDetached reads wValue from setup bytes 4-5 and wIndex from 6-7. So:
+     * SET_CUR (0x21, 0x01), wValue 0x0200, wIndex 0, data 03 88 04. Decoded, not yet seen to work (2026-11-13).
+     */
+    fun manualCorrect(wIndex: Int): String {
+        val data = byteArrayOf(0x03, 0x88.toByte(), 0x04)
+        val n = conn.controlTransfer(0x21, 0x01, 0x0200, wIndex, data, data.size, 2000)
+        return String.format("manual correct (wValue 0x0200, wIndex 0x%04x, data 038804): %d", wIndex, n)
+    }
+
     fun shutter(open: Boolean): String {
         val a = xuCommand(if (open) 8 else 9)
         Thread.sleep(140)

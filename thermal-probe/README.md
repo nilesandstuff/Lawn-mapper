@@ -46,3 +46,9 @@ build installs over the old one.
 - The shutter command, from libusbCam_host.so hal_usbcam_host_shutter_ctrl and libhikdsp.so ST_TurnOn/OffShutter:
   a zero-length SET_CUR (bmRequestType 0x21, bRequest 1) to wIndex = (extension unit 10 << 8) | interface 0, with
   the command in wValue: 9 close, 8 open, then 10 to release the drive 140 ms later.
+- Run 3 (0.3): the libusbCam_host commands were accepted (8 and 9 returned 0) but 10 stalled and nothing moved.
+  That library is for other HIKMICRO cameras: AccuHeat's Java (decompiled with the owner's permission) sends VID
+  14526 / PID 388 through com.guardexpert.microsensorsdk, which drives the camera through libHCUSBSDK.so.
+- HIKMICRO's manual correction (USB_SET_IMAGE_MANUAL_CORRECT, 2025) decoded from libHCUSBSDK.so: SET_CUR (0x21,
+  0x01), wValue 0x0200, wIndex 0, data 03 88 04 (ProtocolStrategyUvc10; CUsbDriverLibuvc reads wValue from setup
+  bytes 4-5, wIndex from 6-7). The probe's Correct A sends exactly that; Correct B the same to wIndex 0x0A00.

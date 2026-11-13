@@ -149,6 +149,10 @@ class MainActivity : Activity() {
             button("Open shutter") { shutterCmd(true) },
             button("Close shutter") { shutterCmd(false) },
         ))
+        root.addView(row(
+            button("Correct A") { correct(0x0000) },
+            button("Correct B") { correct(0x0A00) },
+        ))
         root.addView(logView)
         setContentView(ScrollView(this).apply { addView(root) })
 
@@ -422,6 +426,18 @@ class MainActivity : Activity() {
     private fun shutterCmd(open: Boolean) {
         val u = uvc ?: run { setStatus("Connect first."); return }
         Thread { log(u.shutter(open)); setStatus(if (open) "Shutter opened." else "Shutter closed.") }.start()
+    }
+
+    /** HIKMICRO's manual correction (Uvc.manualCorrect); A as decoded, B aimed at extension unit 10. */
+    private fun correct(wIndex: Int) {
+        val u = uvc ?: run { setStatus("Connect first."); return }
+        Thread {
+            val r = u.manualCorrect(wIndex)
+            log(r)
+            setStatus("$r. Did it click?")
+            Thread.sleep(300)
+            capture(if (wIndex == 0) "after-correct-a" else "after-correct-b", 50)
+        }.start()
     }
 
     private fun flatField() {
