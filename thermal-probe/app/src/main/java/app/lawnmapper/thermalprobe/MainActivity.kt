@@ -70,6 +70,7 @@ class MainActivity : Activity() {
     private lateinit var targetEdit: EditText
     private lateinit var contactEdit: EditText
     private lateinit var gunEdit: EditText
+    private lateinit var accuEdit: EditText
     private lateinit var pointsView: TextView
     private var connectedAt = 0L
     private var pointCount = 0
@@ -141,9 +142,11 @@ class MainActivity : Activity() {
         }
 
         targetEdit = EditText(this).apply { hint = "target (e.g. ice water)"; setSingleLine() }
-        contactEdit = EditText(this).apply { hint = "contact thermometer C"; setSingleLine()
+        contactEdit = EditText(this).apply { hint = "known C (ice 0, air)"; setSingleLine()
             inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL or android.text.InputType.TYPE_NUMBER_FLAG_SIGNED }
         gunEdit = EditText(this).apply { hint = "IR gun C"; setSingleLine()
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL or android.text.InputType.TYPE_NUMBER_FLAG_SIGNED }
+        accuEdit = EditText(this).apply { hint = "AccuHeat C"; setSingleLine()
             inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL or android.text.InputType.TYPE_NUMBER_FLAG_SIGNED }
         pointsView = TextView(this).apply { textSize = 12f; typeface = android.graphics.Typeface.MONOSPACE }
         fun header(t: String) = TextView(this).apply { text = t; textSize = 15f; setPadding(0, 24, 0, 4); setTypeface(typeface, android.graphics.Typeface.BOLD) }
@@ -160,9 +163,9 @@ class MainActivity : Activity() {
 
         root.addView(header("Calibration"))
         root.addView(row(fill("ice water"), fill("cold water"), fill("room water"), fill("hot water")))
-        root.addView(row(fill("palm"), fill("sky"), fill("grass"), fill("tape")))
+        root.addView(row(fill("taped bottle"), fill("palm"), fill("sky"), fill("grass")))
         root.addView(targetEdit)
-        root.addView(fields(contactEdit, gunEdit))
+        root.addView(fields(contactEdit, gunEdit, accuEdit))
         root.addView(row(
             button("Record point") { recordPoint() },
             button("Warm-up log") { toggleWarmup() },
@@ -569,7 +572,7 @@ class MainActivity : Activity() {
     private fun recordPoint() {
         if (uvc == null) { setStatus("Connect first."); return }
         val label = targetEdit.text.toString().trim().ifEmpty { "target" }
-        val contact = num(contactEdit); val gun = num(gunEdit)
+        val contact = num(contactEdit); val gun = num(gunEdit); val accu = num(accuEdit)
         Thread {
             flatFieldNow()
             Thread.sleep(300)
@@ -580,15 +583,15 @@ class MainActivity : Activity() {
             pointCount++
             val up = (System.currentTimeMillis() - connectedAt) / 1000
             val line = String.format(Locale.US,
-                "{\"n\":%d,\"target\":\"%s\",\"contact_c\":%s,\"irgun_c\":%s,\"up_s\":%d,\"t\":%d,\"box\":%d," +
+                "{\"n\":%d,\"target\":\"%s\",\"known_c\":%s,\"irgun_c\":%s,\"accuheat_c\":%s,\"up_s\":%d,\"t\":%d,\"box\":%d," +
                 "\"shutter_raw\":%.2f,\"shutter_sd\":%.2f,\"scene_raw\":%.2f,\"scene_sd\":%.2f,\"delta\":%.2f," +
                 "\"shutter_capture\":\"%s\",\"scene_capture\":\"%s\"}",
-                pointCount, label.replace("\"", "'"), contact, gun, up, System.currentTimeMillis(), 2 * ROI + 1,
+                pointCount, label.replace("\"", "'"), contact, gun, accu, up, System.currentTimeMillis(), 2 * ROI + 1,
                 sh?.get(0) ?: Double.NaN, sh?.get(1) ?: Double.NaN, sc?.get(0) ?: Double.NaN, sc?.get(1) ?: Double.NaN,
                 (sc?.get(0) ?: Double.NaN) - (sh?.get(0) ?: Double.NaN), lastShutterCapture, scene)
             File(work, "calib.jsonl").appendText(line.replace("NaN", "null") + "\n")
-            val shown = String.format(Locale.US, "%2d %-12s ref %s / gun %s  delta %.0f  (up %d s)",
-                pointCount, label.take(12), contact, gun, (sc?.get(0) ?: Double.NaN) - (sh?.get(0) ?: Double.NaN), up)
+            val shown = String.format(Locale.US, "%2d %-12s known %s gun %s accu %s  delta %.0f  (up %d s)",
+                pointCount, label.take(12), contact, gun, accu, (sc?.get(0) ?: Double.NaN) - (sh?.get(0) ?: Double.NaN), up)
             log("calibration point: $line")
             runOnUiThread { pointsView.append(shown + "\n") }
             setStatus("Point $pointCount saved ($label). Next target, or Save & share.")

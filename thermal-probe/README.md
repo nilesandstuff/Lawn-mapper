@@ -85,7 +85,7 @@ build installs over the old one.
 ## Calibration mode (0.9)
 
 Record point: a fresh flat-field (shutter closed, 10 frames, opened), then one second of the target, and one line
-of calib.jsonl: the target, the contact thermometer and IR gun readings typed in, seconds since connect, and the
+of calib.jsonl: the target, the readings typed in (a known temperature: ice water 0 C or a taped sealed bottle at the air thermometer's reading; the IR gun; AccuHeat's spot reading of the same target, which is HIKMICRO's factory calibration of this camera), seconds since connect, and the
 11x11 box at the centre of the picture as raw counts for the shutter and for the scene, and their difference.
 Warm-up log repeats it every 30 s on one target, for the drift while the camera warms. Both captures of every
 point are kept as .bin, so the fit can be redone on any box or the whole frame.
