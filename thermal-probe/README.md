@@ -96,3 +96,29 @@ points.
 - Run 9 (0.11, outdoors, very cold): three points saved: sky (IR gun -38 C) 2474 and 3352 counts below the
   shutter (box sd 418 and 834: the sky in the box was not uniform), grass 2946 below. The grass point carries the
   sky's IR-gun value (the field was not cleared; 0.12 clears the readings after each point).
+
+## AccuHeat radiometric photos (2026-11-13)
+
+AccuHeat's original JPEGs carry HIKMICRO's data in APP2/APP3 segments tagged `42 40 00 83`: a JSON measurement
+record (temperatures in 1/8192 C, each with its "Gray"; emissivity, reflected and atmospheric temperature,
+distance), the 192x144 Gray grid as u16 at offset 90 of APP3 block 5 (followed by a copy of the frame's metadata
+row: the same fields as our row 216), a palette, ISP file names, and a 14.5 KB thermometry calibration block
+(APP2 block 2) that is identical in every photo: the camera's factory calibration. The photos and that block hold
+the camera's serial and stay out of this repository. Chat attachments may be re-encoded and lose all of this;
+originals go through Drive.
+
+Findings from seven photos and one probe capture of the same propped scene (ice water, hot water):
+- HIKMICRO's 192x144 is a 1:1 CROP of our 260x196 picture, at about column 35, row 24 (the centre). The SK01 has
+  pixels beyond its 192x144 that AccuHeat does not measure.
+- Pixel for pixel, Gray = ~0.9 x our flat-fielded counts + an offset (correlation 0.985-0.990; residual 0.7-1.2 C
+  including a minute of scene change between the shots; twice that without our flat-field). The offset moves with
+  the camera's state.
+- Gray-to-temperature is not fixed: the same Gray read 0.1 C in one photo and 0.25 C at 300 Gray lower in another;
+  the spacing is stable (~84 Gray per C between ice and ~50 C water).
+- Our metadata row 216 is the field HIKMICRO stores after the grid: [1] and [2] a sensor temperature that rises
+  as the camera warms (996 outdoors cold, 1238-1455 indoors), [0] filled by AccuHeat (the value at its last
+  shutter). The units are not yet known.
+- The first photo after our probe had used the camera read ~13 C low (hot water 35.9 C); a minute later AccuHeat
+  was normal again. Calibration photos taken right after switching apps are left out.
+- UIRA-IR (AccuHeat's enhancement) does not change the stored Gray grid (same pixel noise, ~3 Gray, in all seven;
+  the setting is not even recorded): display only.
