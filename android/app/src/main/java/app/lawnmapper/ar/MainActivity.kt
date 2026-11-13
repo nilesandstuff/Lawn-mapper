@@ -41,6 +41,8 @@ class MainActivity : Activity() {
     private lateinit var web: WebView
     private var session: Session? = null
     private var installRequested = false
+    /** Bridge 6: the page's count of parts waiting to be sent (Bridge.partsPending). */
+    @Volatile var partsLeft = 0
     private val base: String get() = BuildConfig.SCAN_URL.trimEnd('/')
     private val host: String get() = Uri.parse(base).host ?: ""
 
@@ -65,6 +67,8 @@ class MainActivity : Activity() {
             settings.setGeolocationEnabled(true)
             settings.userAgentString = "${settings.userAgentString} LawnAR/${BuildConfig.VERSION_NAME}"
             addJavascriptInterface(Bridge(this@MainActivity), "LawnARNative")
+            // the page's renderer keeps its priority when the app is not on screen, so an upload is not starved (bridge 6)
+            if (android.os.Build.VERSION.SDK_INT >= 26) setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
             webChromeClient = object : WebChromeClient() {
                 override fun onGeolocationPermissionsShowPrompt(origin: String?, callback: GeolocationPermissions.Callback?) {
                     callback?.invoke(origin, Uri.parse(origin ?: "").host == host, false)
@@ -283,7 +287,9 @@ class MainActivity : Activity() {
         super.onPause()
         gl.onPause()
         session?.pause()
-        web.onPause()
+        // bridge 6: a page with a walk's parts still to send is left running (PartsService keeps the process awake);
+        // paused, its upload stopped until the app was opened again (12 minutes on the owner's walk of 2026-11-12)
+        if (partsLeft == 0) web.onPause()
     }
 
     override fun onDestroy() {

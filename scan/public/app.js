@@ -1706,11 +1706,22 @@ const r2 = (v) => (v == null ? null : +Number(v).toFixed(2)), r3 = (v) => (v == 
    page opens. Walk summaries the site did not take are posted again then too. */
 async function startOutbox() {
   const store = (await idbStore().catch(() => null)) || memoryStore();
-  st.outbox = newOutbox({ store, send: sendPart, onChange: (u) => { st.upStatus = u; uploadSettled(u); if (st.twinUp) { st.twinUp.off = u.off; st.twinUp.sent = u.sent; st.twinUp.failed = u.dropped; } renderUploads(); } });
+  st.outbox = newOutbox({ store, send: sendPart, onChange: (u) => { st.upStatus = u; tellApp(u); uploadSettled(u); if (st.twinUp) { st.twinUp.off = u.off; st.twinUp.sent = u.sent; st.twinUp.failed = u.dropped; } renderUploads(); } });
   await st.outbox.refresh();
   st.outbox.kick();
   for (const w of kept().filter((x) => x.saved === false)) post(w);
   window.addEventListener('online', () => { st.outbox?.kick(); for (const w of kept().filter((x) => x.saved === false)) post(w); });
+}
+
+/** The app (bridge 6) is told how many parts wait, so it keeps this page running with the screen off while any do:
+    at once when they begin or end, every few seconds between. */
+function tellApp(u) {
+  const N = window.LawnARNative;
+  if (!N || typeof N.partsPending !== 'function') return;
+  const n = u.off ? 0 : u.pending || 0, now = Date.now(), was = st.toldApp || { n: 0, at: 0 };
+  if ((n > 0) === (was.n > 0) && now - was.at < 4000) return;
+  st.toldApp = { n, at: now };
+  try { N.partsPending(n, u.bytes || 0); } catch { /* an older app */ }
 }
 
 /** Everything gone: the finished walk's summary is posted again with its upload's numbers (it was posted at the walk's

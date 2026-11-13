@@ -89,6 +89,16 @@ class Bridge(private val a: MainActivity) {
     @JavascriptInterface
     fun record(json: String) { a.engine.record(json.take(4000)) }
 
+    /**
+     * Bridge 6: how many of a walk's parts the page still has to send, and their size. Above zero the app keeps the
+     * page running with the screen off or the app in the background (PartsService, a notification); zero lets it rest.
+     */
+    @JavascriptInterface
+    fun partsPending(n: Int, bytes: Double) {
+        a.partsLeft = maxOf(0, n)
+        PartsService.update(a.applicationContext, maxOf(0, n), bytes / 1e6)
+    }
+
     /** Bridge 3: recordings on the phone not yet sent to the site: [{ walk, bytes }]. */
     @JavascriptInterface
     fun pendingRecordings(): String = a.recorder.pending()

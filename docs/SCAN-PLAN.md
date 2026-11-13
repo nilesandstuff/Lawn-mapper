@@ -2613,3 +2613,12 @@ BUILT 2026-11-12, after section 26's numbers (not seen on a phone):
     sighting, walk step, depth picture to points, the camera picture read and ground colour, the twin, asks to the
     match workers, drawing the AR shapes, the top box, the mini map and arrows, and the placement map redrawn once
     a second behind the AR view. The next walk says which of them is the 51%; nothing is changed until it does.
+  - 2026-11-13, THE APP'S BRIDGE 6: A WALK'S PARTS GO WITH THE SCREEN OFF. The owner: the 12-minute hang "was
+    because my screen was off, maybe. I opened the app back up and it appeared to resume." The parts are sent by the
+    page, and the app paused the page whenever it left the screen (MainActivity.onPause); only the recording had a
+    background sender. So about half of section 26's 25 minutes was the pause, not the sending. Now the page tells
+    the app how many parts wait (Bridge.partsPending); above zero the app leaves the page running and holds a
+    foreground service with a notification and a wake lock (PartsService), and stops it at zero. An app swiped
+    away, or Android's daily limit for such a service, leaves the parts on the phone for the next open, as before.
+    Needs the new app (it offers its own update). NOT TRIED on a phone: whether Android keeps a hidden page's
+    requests going at full pace is the thing to see.

@@ -29,7 +29,7 @@ android {
         versionCode = prop("versionCode", "1").toInt()
         versionName = prop("versionName", "dev")
         // the bridge's own version: the page reads it and asks for an update when it needs a newer one
-        buildConfigField("int", "BRIDGE", "5")
+        buildConfigField("int", "BRIDGE", "6")
         buildConfigField("String", "SCAN_URL", "\"${prop("scanUrl", "https://scan.example.com")}\"")
         val key = prop("arcoreApiKey")
         buildConfigField("boolean", "GEO_KEY", if (key.isNotEmpty()) "true" else "false")

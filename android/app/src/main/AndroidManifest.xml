@@ -47,6 +47,12 @@
             </intent-filter>
         </activity>
 
+        <!-- bridge 6: keeps the page sending a walk's parts with the screen off (PartsService) -->
+        <service
+            android:name=".PartsService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
         <service
             android:name=".UploadService"
             android:exported="false"
