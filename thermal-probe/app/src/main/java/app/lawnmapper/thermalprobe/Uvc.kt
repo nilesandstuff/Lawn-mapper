@@ -299,7 +299,9 @@ class Uvc(val device: UsbDevice, val conn: UsbDeviceConnection, val log: (String
                 }
                 val hl = u8(buf, 0)
                 val info = u8(buf, 1)
-                if (hl < 2 || hl > 12 || hl > n) { // no valid header: keep the bytes, say so once in a while
+                // the SK02's headers are 16 bytes (2 standard + 14 of its own), more than the usual 12: any length the
+                // transfer can hold is accepted, with the end-of-header bit (0x80) as the check
+                if (hl < 2 || hl > n || info and 0x80 == 0) { // no valid header: keep the bytes
                     errors++
                     frame.write(buf, 0, n)
                     continue
@@ -313,6 +315,9 @@ class Uvc(val device: UsbDevice, val conn: UsbDeviceConnection, val log: (String
                 payloads++
                 frame.write(buf, hl, n - hl)
                 if (info and 0x02 != 0) emit()
+                // never grow without bound (the first build did, and ran out of memory): a frame past twice the
+                // promised size is cut and passed on as it is
+                if (maxFrame > 0 && frame.size() > 2 * maxFrame) { log("frame overran ${frame.size()} bytes; cut"); emit() }
             }
         }.also { it.name = "uvc-stream"; it.start() }
     }

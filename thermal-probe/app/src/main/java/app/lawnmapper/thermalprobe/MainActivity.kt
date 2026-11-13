@@ -290,8 +290,10 @@ class MainActivity : Activity() {
             val rows = b.size / (w * 2)
             val v = IntArray(w * rows) { (b[2 * it].toInt() and 0xff) or ((b[2 * it + 1].toInt() and 0xff) shl 8) }
             val imgRows = minOf(rows, fr.height)
-            var lo = Int.MAX_VALUE; var hi = Int.MIN_VALUE
-            for (k in 0 until w * imgRows) { if (v[k] < lo) lo = v[k]; if (v[k] > hi) hi = v[k] }
+            // stretch between the 1st and 99th percentiles, so a few odd (metadata) values cannot flatten the picture
+            val sorted = v.copyOfRange(0, w * imgRows).also { it.sort() }
+            val lo = sorted[sorted.size / 100]
+            val hi = sorted[sorted.size - 1 - sorted.size / 100]
             val span = maxOf(1, hi - lo)
             val px = IntArray(w * rows) {
                 val g = ((v[it] - lo) * 255L / span).toInt().coerceIn(0, 255)
@@ -302,10 +304,10 @@ class MainActivity : Activity() {
             var sum = 0L; var n = 0
             for (dy in -1..1) for (dx in -1..1) { sum += v[(cy + dy) * w + cx + dx]; n++ }
             val c = sum.toDouble() / n
-            text.append(String.format(Locale.US, "as 16-bit: min %d max %d, centre %.0f (0x%04x)%s\n", lo, hi, c, c.toInt(),
+            text.append(String.format(Locale.US, "as 16-bit: 1%%-99%% %d..%d, centre %.0f (0x%04x)%s\n", lo, hi, c, c.toInt(),
                 if (rows > fr.height) ", ${rows - fr.height} extra rows (pink)" else ""))
-            text.append(String.format(Locale.US, "centre if K*64: %.1f C   K*16: %.1f C   K*10: %.1f C\n",
-                c / 64 - 273.15, c / 16 - 273.15, c / 10 - 273.15))
+            text.append(String.format(Locale.US, "centre if K*32: %.1f C   K*64: %.1f C   K*16: %.1f C   K*10: %.1f C\n",
+                c / 32 - 273.15, c / 64 - 273.15, c / 16 - 273.15, c / 10 - 273.15))
         } else {
             val rows = maxOf(1, b.size / maxOf(1, w))
             val px = IntArray(w * rows) { val g = b[it].toInt() and 0xff; Color.rgb(g, g, g) }
