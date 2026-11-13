@@ -81,3 +81,15 @@ build installs over the old one.
   picture: the scene occupies rows 0-195 and columns 0-259 of the 264x222 frame; columns 260-263 and rows
   196-221 are not picture (rows 196-216 near-constant, 218-221 metadata). Temporal noise with the shutter closed:
   10.2 counts per pixel per frame. Counts-to-temperature calibration not yet done.
+
+## Calibration mode (0.9)
+
+Record point: a fresh flat-field (shutter closed, 10 frames, opened), then one second of the target, and one line
+of calib.jsonl: the target, the contact thermometer and IR gun readings typed in, seconds since connect, and the
+11x11 box at the centre of the picture as raw counts for the shutter and for the scene, and their difference.
+Warm-up log repeats it every 30 s on one target, for the drift while the camera warms. Both captures of every
+point are kept as .bin, so the fit can be redone on any box or the whole frame.
+
+Emissivity is not a camera setting here: the SK01 sends raw counts and the phone does all thermometry, so the
+grass emissivity (0.98), the reflected sky, and the view angle all belong in our own conversion, fitted from these
+points.

@@ -53,8 +53,9 @@ class MainActivity : Activity() {
 
     // the SK02's 264x222 frame: the picture in the first 215 rows and 256 columns (a guess from the first captures);
     // the last rows and the columns past 256 carry numbers that are not picture (shown pink)
-    private val IMAGE_ROWS = 215
-    private val IMAGE_COLS = 256
+    private val IMAGE_ROWS = 196 // measured run 7: rows 0-195 and columns 0-259 are picture
+    private val IMAGE_COLS = 260
+    private val ROI = 5 // the calibration box: (2*ROI+1)^2 pixels at the centre of the picture
 
     private val ACTION_USB = "app.lawnmapper.thermalprobe.USB_PERMISSION"
     private lateinit var usb: UsbManager
@@ -66,6 +67,14 @@ class MainActivity : Activity() {
     private lateinit var readout: TextView
     private lateinit var logView: TextView
     private lateinit var labelEdit: EditText
+    private lateinit var targetEdit: EditText
+    private lateinit var contactEdit: EditText
+    private lateinit var gunEdit: EditText
+    private lateinit var pointsView: TextView
+    private var connectedAt = 0L
+    private var pointCount = 0
+    @Volatile private var warmup = false
+    private var lastShutterCapture = ""
 
     private val logLines = StringBuilder()
     private val stamp = SimpleDateFormat("HH:mm:ss.SSS", Locale.US)
@@ -131,36 +140,45 @@ class MainActivity : Activity() {
             for (x in b) addView(x, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
         }
 
+        targetEdit = EditText(this).apply { hint = "target (e.g. ice water)"; setSingleLine() }
+        contactEdit = EditText(this).apply { hint = "contact thermometer C"; setSingleLine()
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL or android.text.InputType.TYPE_NUMBER_FLAG_SIGNED }
+        gunEdit = EditText(this).apply { hint = "IR gun C"; setSingleLine()
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL or android.text.InputType.TYPE_NUMBER_FLAG_SIGNED }
+        pointsView = TextView(this).apply { textSize = 12f; typeface = android.graphics.Typeface.MONOSPACE }
+        fun header(t: String) = TextView(this).apply { text = t; textSize = 15f; setPadding(0, 24, 0, 4); setTypeface(typeface, android.graphics.Typeface.BOLD) }
+        fun fill(t: String) = button(t) { targetEdit.setText(t) }
+        fun fields(vararg v: android.view.View) = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            for (x in v) addView(x, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+        }
+
         root.addView(status)
         root.addView(image, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         root.addView(readout)
-        root.addView(row(button("Connect") { connect() }, button("Save & share") { saveAndShare() }))
+        root.addView(row(button("Connect") { connect() }, button("Flat-field") { flatField() }, button("Save & share") { saveAndShare() }))
+
+        root.addView(header("Calibration"))
+        root.addView(row(fill("ice water"), fill("cold water"), fill("room water"), fill("hot water")))
+        root.addView(row(fill("palm"), fill("sky"), fill("grass"), fill("tape")))
+        root.addView(targetEdit)
+        root.addView(fields(contactEdit, gunEdit))
         root.addView(row(
-            button("Sky") { capture("sky", 25) },
-            button("Hand") { capture("hand", 25) },
-            button("Ice water") { capture("ice", 25) },
+            button("Record point") { recordPoint() },
+            button("Warm-up log") { toggleWarmup() },
         ))
+        root.addView(pointsView)
+
+        root.addView(header("Diagnostics"))
         root.addView(labelEdit)
         root.addView(row(
-            button("Other") { capture(labelEdit.text.toString().ifBlank { "other" }, 25) },
-            button("Flat-field") { flatField() },
-        ))
-        root.addView(row(
-            button("Open shutter") { shutterCmd(true) },
-            button("Close shutter") { shutterCmd(false) },
+            button("Capture 1 s") { capture(labelEdit.text.toString().ifBlank { "other" }, 25) },
+            button("Read block") { readEnh() },
         ))
         root.addView(row(
             button("SK01 close") { sk01(2) },
             button("SK01 open") { sk01(3) },
-            button("Read block") { readEnh() },
-        ))
-        root.addView(row(
             button("Hik bind") { hikBind() },
-            button("Hik shutter") { hikShutter() },
-        ))
-        root.addView(row(
-            button("Correct A") { correct(0x0000) },
-            button("Correct B") { correct(0x0A00) },
         ))
         root.addView(logView)
         setContentView(ScrollView(this).apply { addView(root) })
@@ -246,6 +264,7 @@ class MainActivity : Activity() {
         val conn = usb.openDevice(d) ?: run { setStatus("Android would not open the device."); return }
         val u = Uvc(d, conn, ::log)
         uvc = u
+        connectedAt = System.currentTimeMillis()
         log(String.format("opened %04x:%04x, serial %s", d.vendorId, d.productId, try { d.serialNumber } catch (_: Exception) { "?" }))
         u.claimAll()
         File(work, "descriptors.hex").writeText(hex(u.raw) + "\n")
@@ -273,7 +292,8 @@ class MainActivity : Activity() {
                 val eb = try { u.enhRead() } catch (e: Exception) { null }
                 File(work, "enhancement-connect.txt").writeText("${eb?.size ?: -1} B ${eb?.let { hex(it) }}")
                 log("enhancement block on connect: ${eb?.size ?: -1} B")
-                setStatus("Connected and bound. Try SK01 close / open.")
+                flatFieldNow()
+                setStatus("Connected, flat-fielded. Calibration: pick a target, type the readings, Record point.")
             }
         }.start()
     }
@@ -355,18 +375,24 @@ class MainActivity : Activity() {
             val lo = sorted[sorted.size / 100]
             val hi = sorted[sorted.size - 1 - sorted.size / 100]
             val span = maxOf(1, hi - lo)
+            val bx = minOf(w, IMAGE_COLS) / 2; val by = minOf(rows, IMAGE_ROWS) / 2
             val px = IntArray(w * rows) {
                 val g = ((v[it] - lo) * 255L / span).toInt().coerceIn(0, 255)
+                val xx = it % w; val yy = it / w
+                val onBox = (xx == bx - ROI - 1 || xx == bx + ROI + 1) && yy in by - ROI - 1..by + ROI + 1 ||
+                    (yy == by - ROI - 1 || yy == by + ROI + 1) && xx in bx - ROI - 1..bx + ROI + 1
+                if (onBox) return@IntArray Color.rgb(255, 40, 40)
                 if (it >= w * imgRows || it % w >= IMAGE_COLS) Color.rgb(g, 0, g) else Color.rgb(g, g, g)
             }
             bmp = Bitmap.createBitmap(px, w, rows, Bitmap.Config.ARGB_8888)
             val cx = minOf(w, IMAGE_COLS) / 2; val cy = imgRows / 2
             var sum = 0L; var sumRaw = 0L; var n = 0
-            for (dy in -1..1) for (dx in -1..1) { sum += v[(cy + dy) * w + cx + dx]; sumRaw += raw[(cy + dy) * w + cx + dx]; n++ }
+            for (dy in -ROI..ROI) for (dx in -ROI..ROI) { sum += v[(cy + dy) * w + cx + dx]; sumRaw += raw[(cy + dy) * w + cx + dx]; n++ }
             text.append(String.format(Locale.US, "%s, 1%%-99%% %d..%d\n", if (off != null) "flat-fielded" else "RAW (no flat-field yet)", lo, hi))
-            text.append(String.format(Locale.US, "centre: %.0f counts above shutter, raw %.0f\n", if (off != null) sum.toDouble() / n else Double.NaN, sumRaw.toDouble() / n))
-            if (rows > IMAGE_ROWS + 1) text.append(String.format(Locale.US, "meta: r215[4]=%d r215[5]=%d r216[1]=%d r216[5]=%d\n",
-                raw[215 * w + 4], raw[215 * w + 5], raw[216 * w + 1], raw[216 * w + 5]))
+            text.append(String.format(Locale.US, "box: %.0f counts above shutter, raw %.0f\n", if (off != null) sum.toDouble() / n else Double.NaN, sumRaw.toDouble() / n))
+            if (rows >= 222) text.append(String.format(Locale.US, "meta: r215[4]=%d r215[5]=%d r216[1]=%d r216[5]=%d  %s\n",
+                raw[215 * w + 4], raw[215 * w + 5], raw[216 * w + 1], raw[216 * w + 5],
+                if (connectedAt > 0) "up ${(System.currentTimeMillis() - connectedAt) / 1000} s" else ""))
         } else {
             val rows = maxOf(1, b.size / maxOf(1, w))
             val px = IntArray(w * rows) { val g = b[it].toInt() and 0xff; Color.rgb(g, g, g) }
@@ -508,10 +534,90 @@ class MainActivity : Activity() {
         Thread.sleep(400)
         synchronized(nucLock) { nucSum = null; nucCount = 0; nucLeft = 10 }
         capture("shutter", 10)
+        lastShutterCapture = capName
         waitForCapture(5000)
         log(u.sk01Shutter(3))
         Thread.sleep(300)
         setStatus("Flat-field done; the shutter is open. Aim, then tap a capture button.")
+    }
+
+    // ---------------- calibration ----------------
+
+    /** The box's mean and spread over the frames of a saved capture (raw counts). */
+    private fun boxStats(name: String): DoubleArray? {
+        val fr = curFrame ?: return null
+        val f = File(work, "$name.bin"); if (!f.exists()) return null
+        val b = f.readBytes(); val w = fr.width; val fsz = w * fr.height * 2
+        val nf = b.size / fsz; if (nf == 0) return null
+        val cx = minOf(w, IMAGE_COLS) / 2; val cy = IMAGE_ROWS / 2
+        var sum = 0.0; var sq = 0.0; var n = 0
+        for (k in 0 until nf) for (dy in -ROI..ROI) for (dx in -ROI..ROI) {
+            val i = k * fsz + 2 * ((cy + dy) * w + cx + dx)
+            val v = ((b[i].toInt() and 0xff) or ((b[i + 1].toInt() and 0xff) shl 8)).toDouble()
+            sum += v; sq += v * v; n++
+        }
+        val m = sum / n
+        return doubleArrayOf(m, Math.sqrt(maxOf(0.0, sq / n - m * m)), nf.toDouble())
+    }
+
+    private fun num(e: EditText): String = e.text.toString().trim().replace(',', '.').let { t -> t.toDoubleOrNull()?.toString() ?: "null" }
+
+    /**
+     * One calibration point: a fresh flat-field (the shutter's frames are the reference at this moment), then one
+     * second of the target in the box, saved with what the reference instruments read. One line of calib.jsonl each.
+     */
+    private fun recordPoint() {
+        if (uvc == null) { setStatus("Connect first."); return }
+        val label = targetEdit.text.toString().trim().ifEmpty { "target" }
+        val contact = num(contactEdit); val gun = num(gunEdit)
+        Thread {
+            flatFieldNow()
+            Thread.sleep(300)
+            capture("cal-$label", 25)
+            val scene = capName
+            waitForCapture(5000)
+            val sh = boxStats(lastShutterCapture); val sc = boxStats(scene)
+            pointCount++
+            val up = (System.currentTimeMillis() - connectedAt) / 1000
+            val line = String.format(Locale.US,
+                "{\"n\":%d,\"target\":\"%s\",\"contact_c\":%s,\"irgun_c\":%s,\"up_s\":%d,\"t\":%d,\"box\":%d," +
+                "\"shutter_raw\":%.2f,\"shutter_sd\":%.2f,\"scene_raw\":%.2f,\"scene_sd\":%.2f,\"delta\":%.2f," +
+                "\"shutter_capture\":\"%s\",\"scene_capture\":\"%s\"}",
+                pointCount, label.replace("\"", "'"), contact, gun, up, System.currentTimeMillis(), 2 * ROI + 1,
+                sh?.get(0) ?: Double.NaN, sh?.get(1) ?: Double.NaN, sc?.get(0) ?: Double.NaN, sc?.get(1) ?: Double.NaN,
+                (sc?.get(0) ?: Double.NaN) - (sh?.get(0) ?: Double.NaN), lastShutterCapture, scene)
+            File(work, "calib.jsonl").appendText(line.replace("NaN", "null") + "\n")
+            val shown = String.format(Locale.US, "%2d %-12s ref %s / gun %s  delta %.0f  (up %d s)",
+                pointCount, label.take(12), contact, gun, (sc?.get(0) ?: Double.NaN) - (sh?.get(0) ?: Double.NaN), up)
+            log("calibration point: $line")
+            runOnUiThread { pointsView.append(shown + "\n") }
+            setStatus("Point $pointCount saved ($label). Next target, or Save & share.")
+        }.start()
+    }
+
+    /** Every 30 s: a flat-field and a second of whatever the camera looks at, labelled warmup; for the drift. */
+    private fun toggleWarmup() {
+        if (uvc == null) { setStatus("Connect first."); return }
+        warmup = !warmup
+        setStatus(if (warmup) "Warm-up log ON: keep the camera on one target; a point every 30 s." else "Warm-up log off.")
+        if (!warmup) return
+        Thread {
+            while (warmup && uvc != null) {
+                val saved = targetEdit.text.toString()
+                runOnUiThread { if (saved.isBlank()) targetEdit.setText("warmup") }
+                Thread.sleep(200)
+                recordPointBlocking()
+                val end = System.currentTimeMillis() + 30_000
+                while (warmup && System.currentTimeMillis() < end) Thread.sleep(250)
+            }
+        }.start()
+    }
+
+    private fun recordPointBlocking() {
+        val before = pointCount
+        recordPoint()
+        val end = System.currentTimeMillis() + 15_000
+        while (pointCount == before && System.currentTimeMillis() < end) Thread.sleep(100)
     }
 
     // ---------------- sharing ----------------
