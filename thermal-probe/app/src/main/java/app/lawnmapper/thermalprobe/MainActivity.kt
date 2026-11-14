@@ -514,7 +514,8 @@ class MainActivity : Activity() {
     private fun readTablesWork(u: Uvc) {
         run {
             val sb = StringBuilder()
-            for ((type, name) in listOf(11 to "kmatrix", 14 to "kmatrix2", 4 to "badpixels", 5 to "vignetting", 10 to "nonsteady")) {
+            for ((type, name) in listOf(11 to "kmatrix", 14 to "kmatrix2", 4 to "badpixels", 5 to "vignetting", 10 to "nonsteady",
+                    7 to "background-table", 8 to "background", 9 to "coefficients")) {
                 setStatus("Reading camera table $name...")
                 val d = try { u.downloadFile(type, sb) } catch (e: Exception) { sb.append("type $type failed: $e\n"); null }
                 if (d != null) File(work, "camfile-$type-$name.bin").writeBytes(d)

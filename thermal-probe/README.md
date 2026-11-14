@@ -172,3 +172,8 @@ this public repository (they are HIKMICRO-derived and carry the camera's serial)
   from 1 to 553: the closed-shutter level rose 9679 -> 11296 as the camera warmed and up to 1050 pixels clipped
   at 16383 in the reference. 0.22 re-runs the dark-level loop at every flat-field (and on any clipping), and
   adds "Add AccuHeat photo", which puts photos from the phone into the next upload for a per-pixel comparison.
+- Run 11 (0.22, first AccuHeat comparison, static room scene): ours vs AccuHeat per pixel: correlation 0.957,
+  aligned within a pixel, but ours 4.8 C low, nearly uniformly (p5..p95 -5.3..-4.5 C). In Gray: AccuHeat =
+  0.881 x ours + offset with 19.7 Gray (~0.24 C) scatter, so the per-pixel gain table is right and a global gain
+  and offset remain: HIKMICRO's NUC (NUC_TECLESS30_Process) compensates with the sensor temperature history and
+  probably the camera's background/coefficient files (types 7, 8, 9), which 0.23 now downloads too.
