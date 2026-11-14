@@ -53,6 +53,8 @@ class MainActivity : Activity() {
 
     // the SK02's 264x222 frame: the picture in the first 215 rows and 256 columns (a guess from the first captures);
     // the last rows and the columns past 256 carry numbers that are not picture (shown pink)
+    private val UPLOAD_REPO = "nilesandstuff/thermal-private"
+    private val UPLOAD_BRANCH = "claude/thermal-camera-ar-integration-87dt2q"
     private val IMAGE_ROWS = 196 // measured run 7: rows 0-195 and columns 0-259 are picture
     private val IMAGE_COLS = 260
     private val ROI = 5 // the calibration box: (2*ROI+1)^2 pixels at the centre of the picture
@@ -67,6 +69,8 @@ class MainActivity : Activity() {
     private lateinit var readout: TextView
     private lateinit var logView: TextView
     private lateinit var labelEdit: EditText
+    private lateinit var tokenEdit: EditText
+    private var tokenRow: android.view.View? = null
     private lateinit var targetEdit: EditText
     private lateinit var contactEdit: EditText
     private lateinit var gunEdit: EditText
@@ -156,17 +160,34 @@ class MainActivity : Activity() {
             for (x in v) addView(x, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
         }
 
-        // a preview that leaves the buttons on screen (owner, 2026-11-14), and only what the workflow needs
+        // the preview, then the status and buttons right under it, and the log scrolling on its own below
+        // (owner, 2026-11-14: the status scrolled out of view; Android 15 draws under the navigation bar)
         val screenH = resources.displayMetrics.heightPixels
         labelEdit.hint = "label (optional)"
-        root.addView(status)
-        root.addView(image, LinearLayout.LayoutParams(MATCH_PARENT, (screenH * 0.45).toInt()))
+        tokenEdit = EditText(this).apply { hint = "GitHub token (once; repo thermal-private, contents read/write)"; setSingleLine()
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD }
+        val tokenRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(tokenEdit, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+            addView(button("Save token") { saveToken() }, LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT))
+            visibility = if (token().isEmpty()) android.view.View.VISIBLE else android.view.View.GONE
+        }
+        this.tokenRow = tokenRow
+        root.addView(image, LinearLayout.LayoutParams(MATCH_PARENT, (screenH * 0.42).toInt()))
         root.addView(readout)
-        root.addView(row(button("Connect") { connect() }, button("Capture 1 s") { capture(labelEdit.text.toString().ifBlank { "capture" }, 25) }))
+        root.addView(status)
+        root.addView(row(button("Connect") { connect() }, button("Capture 1 s") { captureFresh() }))
         root.addView(labelEdit)
-        root.addView(row(button("Flat-field") { flatField() }, button("Save & share") { saveAndShare() }))
-        root.addView(logView)
-        setContentView(ScrollView(this).apply { addView(root) })
+        root.addView(row(button("Flat-field") { flatField() }, button("Upload") { upload() }))
+        root.addView(tokenRow)
+        val logScroll = ScrollView(this).apply { addView(logView) }
+        root.addView(logScroll, LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f))
+        root.setOnApplyWindowInsetsListener { v, insets ->
+            @Suppress("DEPRECATION")
+            v.setPadding(24, 24 + insets.systemWindowInsetTop, 24, 24 + insets.systemWindowInsetBottom)
+            insets
+        }
+        setContentView(root)
 
         val filter = IntentFilter().apply { addAction(ACTION_USB); addAction(UsbManager.ACTION_USB_DEVICE_DETACHED) }
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
@@ -755,6 +776,76 @@ class MainActivity : Activity() {
         recordPoint()
         val end = System.currentTimeMillis() + 15_000
         while (pointCount == before && System.currentTimeMillis() < end) Thread.sleep(100)
+    }
+
+    /** A capture always taken right after its own shutter reference: the camera drifts within a minute. */
+    private fun captureFresh() {
+        if (uvc == null) { setStatus("Connect first."); return }
+        val label = labelEdit.text.toString().trim().ifBlank { "capture" }
+        Thread {
+            flatFieldNow()
+            capture(label, 25)
+            waitForCapture(5000)
+            setStatus("Captured \"$label\" (fresh reference). Capture again, or Upload.")
+        }.start()
+    }
+
+    // ---------------- upload to GitHub ----------------
+
+    private val prefs by lazy { getSharedPreferences("probe", MODE_PRIVATE) }
+    private fun token(): String = prefs.getString("github_token", "") ?: ""
+
+    private fun saveToken() {
+        val t = tokenEdit.text.toString().trim()
+        if (t.length < 20) { setStatus("That does not look like a GitHub token."); return }
+        prefs.edit().putString("github_token", t).apply()
+        tokenEdit.setText(""); tokenRow?.visibility = android.view.View.GONE
+        setStatus("Token saved on this phone. Upload sends zips to the private repository.")
+    }
+
+    /** Zip everything recorded since the last upload and put it in the private repository (data/uploads/). */
+    private fun upload() {
+        val t = token()
+        if (t.isEmpty()) { tokenRow?.visibility = android.view.View.VISIBLE; setStatus("Paste a GitHub token first (once)."); return }
+        Thread {
+            synchronized(capLock) { if (capOut != null) finishCapture() }
+            uvc?.let { File(work, "payload-headers.txt").writeText(synchronized(it.payloadLog) { it.payloadLog.toString() }) }
+            File(work, "log.txt").writeText(synchronized(logLines) { logLines.toString() })
+            val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
+            val zipFile = File(cacheDir, "upload-$stamp.zip")
+            ZipOutputStream(BufferedOutputStream(FileOutputStream(zipFile))).use { zip ->
+                for (f in work.listFiles()!!.sortedBy { it.name }) {
+                    zip.putNextEntry(ZipEntry(f.name)); f.inputStream().use { it.copyTo(zip) }; zip.closeEntry()
+                }
+            }
+            setStatus("Uploading ${zipFile.length() / 1024} KB...")
+            val b64 = android.util.Base64.encodeToString(zipFile.readBytes(), android.util.Base64.NO_WRAP)
+            val body = "{\"message\":\"Probe upload $stamp\",\"branch\":\"$UPLOAD_BRANCH\",\"content\":\"$b64\"}"
+            try {
+                val c = java.net.URL("https://api.github.com/repos/$UPLOAD_REPO/contents/data/uploads/probe-$stamp.zip").openConnection() as java.net.HttpURLConnection
+                c.requestMethod = "PUT"; c.doOutput = true; c.connectTimeout = 20000; c.readTimeout = 120000
+                c.setRequestProperty("Authorization", "Bearer $t")
+                c.setRequestProperty("Accept", "application/vnd.github+json")
+                c.setRequestProperty("Content-Type", "application/json")
+                c.outputStream.use { it.write(body.toByteArray()) }
+                val code = c.responseCode
+                if (code in 200..299) {
+                    log("uploaded data/uploads/probe-$stamp.zip (${zipFile.length() / 1024} KB)")
+                    // start the next upload fresh: the captures and logs are in the repository now
+                    work.listFiles()?.forEach { it.delete() }
+                    synchronized(logLines) { logLines.setLength(0) }
+                    zipFile.delete()
+                    setStatus("Uploaded probe-$stamp. Thanks!")
+                } else {
+                    val err = try { c.errorStream?.bufferedReader()?.readText()?.take(200) } catch (_: Exception) { null }
+                    log("upload failed: HTTP $code $err")
+                    setStatus("Upload failed (HTTP $code). The zip is kept; try again${if (code == 401 || code == 403) " or replace the token" else ""}.")
+                    if (code == 401) runOnUiThread { tokenRow?.visibility = android.view.View.VISIBLE }
+                }
+            } catch (e: Exception) {
+                log("upload failed: $e"); setStatus("Upload failed: ${e.message}. Check the connection and try again.")
+            }
+        }.start()
     }
 
     // ---------------- sharing ----------------

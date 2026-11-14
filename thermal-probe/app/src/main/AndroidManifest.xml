@@ -4,6 +4,8 @@
     <uses-feature android:name="android.hardware.usb.host" android:required="true" />
     <!-- Android gives a UVC device only to an app that holds the camera permission -->
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- to upload each zip to the owner's private GitHub repository -->
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <application
         android:label="Thermal Probe"

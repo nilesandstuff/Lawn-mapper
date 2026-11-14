@@ -162,3 +162,9 @@ this public repository (they are HIKMICRO-derived and carry the camera's serial)
   2155 reply echoes the search before the value (03 00 00 00 07 00 00 00), so uRdm was written as 7 instead of
   127 (bits 7). 0.20 reads it at offset 4, records the power-on values of the 19 registers first, turns the
   dark-level step round when the level does not move, and puts the power-on values back if it never settles.
+- Run 9 (0.20): the range setup worked: registers written, mode words 42/209, dark level 7113 at the first
+  step (target 8192 +-1500). Temperatures came out 18-27 C (median 22) but the camera warmed 6 C between the
+  reference and the capture 84 s later, so the scene drowned in drift.
+- 0.21: Capture takes its own shutter reference first; Upload puts the zip in the owner's private repository
+  (a GitHub token, entered once, kept in the app's private storage) where a runner summarises it; the status
+  sits by the buttons, the log scrolls by itself, and the layout keeps clear of the system bars.
