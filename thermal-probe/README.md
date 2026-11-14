@@ -177,3 +177,9 @@ this public repository (they are HIKMICRO-derived and carry the camera's serial)
   0.881 x ours + offset with 19.7 Gray (~0.24 C) scatter, so the per-pixel gain table is right and a global gain
   and offset remain: HIKMICRO's NUC (NUC_TECLESS30_Process) compensates with the sensor temperature history and
   probably the camera's background/coefficient files (types 7, 8, 9), which 0.23 now downloads too.
+- Analysis of run 11 (with the full HIKMICRO chain: K2 for range 2, vignetting correction with its running
+  alpha): the 0.88 "gain" was the vignetting shading; the remaining 4.6 C offset follows the shutter reference
+  (+142 Gray with the burst 5 s earlier, +467 with the later one): the sensor had not settled after the
+  dark-level step. AccuHeat's register state (read right after AccuHeat) equals ours except register 22 (7, not
+  127). 0.24: register 22 to 7 after the dark level (undone if the level leaves range), 30 s settling before
+  Ready, 16-frame references, and a second reference right after every capture.

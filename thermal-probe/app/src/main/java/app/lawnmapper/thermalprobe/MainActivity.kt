@@ -297,6 +297,7 @@ class MainActivity : Activity() {
                 readTablesWork(u)
                 setStatus("Setting up the camera: normal range...")
                 val ok = setNormalRangeWork(u)
+                if (ok) for (sec in 30 downTo 1) { setStatus("Letting the sensor settle: $sec s"); Thread.sleep(1000) }
                 flatFieldNow()
                 setStatus(if (ok) "Ready (${modeWords()}). Aim, then Capture 1 s." else "Connected, but the range setup failed (see the log). Save & share.")
             }
@@ -620,6 +621,15 @@ class MainActivity : Activity() {
                 setStatus("Range set; adjusting the dark level (shutter closed)...")
                 u.sk01Shutter(2); Thread.sleep(500)
                 val settled = vbAdjust(u, sb, 16)
+                if (settled) {
+                    // AccuHeat leaves register 22 at 7 (read from the camera right after AccuHeat, run 11), where
+                    // the range defaults give 127; it writes it after the dark level. Written alone it once saturated
+                    // the sensor (run 8, with register 8 unsettled), so check and undo.
+                    u.writeRegister(22, 7); Thread.sleep(600)
+                    val m22 = meanPictureRaw(8); val c22 = lastClipped
+                    sb.append(String.format(Locale.US, "register 22 = 7 (AccuHeat's): closed-shutter mean %.0f, clipped %d\n", m22, c22))
+                    if (c22 >= 20 || m22 > 15000 || m22 < 1000) { u.writeRegister(22, 127); sb.append("  out of range: register 22 back to 127\n") }
+                }
                 if (!settled) {
                     sb.append("dark level did not settle: putting back the power-on registers\n")
                     for ((t, v) in powerOnRegs) u.writeRegister(t, v)
@@ -710,8 +720,8 @@ class MainActivity : Activity() {
             val ok = try { vbAdjust(u, sb, 8) } catch (e: Exception) { sb.append("failed: $e\n"); false }
             log(sb.toString().trimEnd() + if (ok) "" else "\n  (not settled; reference taken anyway)")
         }
-        synchronized(nucLock) { nucSum = null; nucCount = 0; nucLeft = 10 }
-        capture("shutter", 10)
+        synchronized(nucLock) { nucSum = null; nucCount = 0; nucLeft = 16 }
+        capture("shutter", 16)
         lastShutterCapture = capName
         waitForCapture(5000)
         log(u.sk01Shutter(3))
@@ -812,7 +822,12 @@ class MainActivity : Activity() {
             flatFieldNow()
             capture(label, 25)
             waitForCapture(5000)
-            setStatus("Captured \"$label\" (fresh reference). Capture again, or Upload.")
+            uvc?.let { u ->
+                u.sk01Shutter(2); Thread.sleep(400)
+                capture("shutter-after", 16); waitForCapture(5000)
+                u.sk01Shutter(3); Thread.sleep(300)
+            }
+            setStatus("Captured \"$label\" (references before and after). Capture again, or Upload.")
         }.start()
     }
 
