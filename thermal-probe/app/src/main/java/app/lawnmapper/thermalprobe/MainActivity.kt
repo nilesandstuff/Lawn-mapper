@@ -180,6 +180,10 @@ class MainActivity : Activity() {
         ))
         root.addView(button("Read camera tables (gain, bad pixels, vignetting)") { readTables() })
         root.addView(row(
+            button("Read sensor registers") { readRegisters() },
+            button("Set normal range") { setNormalRange() },
+        ))
+        root.addView(row(
             button("SK01 close") { sk01(2) },
             button("SK01 open") { sk01(3) },
             button("Hik bind") { hikBind() },
@@ -318,6 +322,19 @@ class MainActivity : Activity() {
     // ---------------- frames ----------------
 
     private fun onFrame(fd: UvcFrameData) {
+        curFrame?.let { fr ->
+            val b = fd.bytes; val w = fr.width
+            if (b.size >= w * 222 * 2) {
+                lastRow216 = IntArray(24) { val i = 2 * (216 * w + it); (b[i].toInt() and 0xff) or ((b[i + 1].toInt() and 0xff) shl 8) }
+                synchronized(meanLock) {
+                    if (meanLeft > 0) {
+                        var sum = 0L; var n = 0
+                        for (y in 2 until 194 step 2) for (x in 4 until 260 step 2) { val i = 2 * (y * w + x); sum += (b[i].toInt() and 0xff) or ((b[i + 1].toInt() and 0xff) shl 8); n++ }
+                        meanSum += sum.toDouble() / n; meanN++; meanLeft--
+                    }
+                }
+            }
+        }
         synchronized(nucLock) {
             if (nucLeft > 0) {
                 val b = fd.bytes
@@ -501,6 +518,85 @@ class MainActivity : Activity() {
             log(sb.toString())
             setStatus("Camera tables read (see the log). Save & share.")
         }.start()
+    }
+
+    // the sensor mode (row 216 words 3 and 10: AccuHeat's range 2 reads 42 and ~209, the power-on state 33 and 303)
+    @Volatile private var lastRow216: IntArray? = null
+
+    private fun modeWords(): String = lastRow216?.let { "words 3/4/10 = ${it[3]}/${it[4]}/${it[10]}" } ?: "no frame yet"
+
+    private fun readRegisters() {
+        val u = uvc ?: run { setStatus("Connect first."); return }
+        Thread {
+            val sb = StringBuilder("sensor registers, before: ${modeWords()}\n"); u.extLog = sb
+            for (t in (1..32) + listOf(0x23, 0x24, 0x25)) {
+                val v = try { u.readRegister(t) } catch (e: Exception) { sb.append("  type $t: $e\n"); null }
+                sb.append("type $t = ${v ?: "?"}\n")
+            }
+            sb.append("responsivity k = ${u.responsivityK()}\n")
+            sb.append("rdm bits (gear 3) = ${u.rdmBits(3)}\n")
+            u.extLog = null
+            File(work, "registers-${System.currentTimeMillis() % 100000}.txt").writeText(sb.toString())
+            log(sb.toString()); setStatus("Registers read (in the log).")
+        }.start()
+    }
+
+    /** NORMAL_GEAR3 defaults (sensorType 1/2, gear 3) in AccuHeat's write order; -1 = filled per device. */
+    private val GEAR3 = linkedMapOf(1 to 5L, 2 to 220L, 5 to 3L, 7 to 2L, 8 to 16L, 9 to 42L, 10 to 2L, 14 to 0L, 15 to 59L,
+        16 to 0L, 17 to 60L, 18 to 286L, 19 to 0L, 20 to -1L, 12 to 164L, 13 to 170L, 21 to -1L, 6 to -1L, 22 to 127L)
+
+    /** AccuHeat's range-2 setup: the 19 registers with the camera's own adjustments, then the VB loop. */
+    private fun setNormalRange() {
+        val u = uvc ?: run { setStatus("Connect first."); return }
+        Thread {
+            val sb = StringBuilder("set normal range (gear 3), before: ${modeWords()}\n"); u.extLog = sb
+            try {
+                val k = u.responsivityK()
+                val rpoly = u.readRegister(0x23); val vebFine = u.readRegister(0x24); val vbPlat = u.readRegister(0x25)
+                val bits = u.rdmBits(3)
+                sb.append("k $k, factory 0x23=$rpoly 0x24=$vebFine 0x25=$vbPlat, rdm bits $bits\n")
+                if (rpoly == null || vebFine == null || vbPlat == null) { sb.append("factory values missing: not writing\n"); return@Thread }
+                val regs = LinkedHashMap(GEAR3)
+                val t0 = maxOf(regs[17]!!, regs[15]!!)
+                regs[2] = (t0 + (regs[2]!! - t0) * k).toLong()
+                regs[20] = rpoly; regs[21] = vebFine; regs[6] = vbPlat
+                if (bits != null && bits <= 32) regs[22] = if (bits == 32L) 0xFFFFFFFFL else (1L shl bits.toInt()) - 1
+                sb.append("writing ${regs}\n")
+                for ((t, v) in regs) u.writeRegister(t, v)
+                Thread.sleep(500)
+                sb.append("after the writes: ${modeWords()}\n")
+                // VB loop: shutter closed, mean raw of the picture toward 8192 (+-1500), register 8 in steps of 4
+                setStatus("Range set; adjusting the dark level (shutter closed)...")
+                u.sk01Shutter(2); Thread.sleep(500)
+                var vb = u.readRegister(8) ?: 16L
+                for (step in 0 until 12) {
+                    val m = meanPictureRaw(8)
+                    sb.append(String.format(Locale.US, "  VB step %d: register 8 = %d, closed-shutter mean %.0f\n", step, vb, m))
+                    if (Math.abs(m - 8192) <= 1500) break
+                    vb += if (m < 8192) -4 else 4
+                    if (vb < 0 || vb > 255) { sb.append("  register 8 out of range; stop\n"); break }
+                    u.writeRegister(8, vb); Thread.sleep(400)
+                }
+                u.sk01Shutter(3); Thread.sleep(300)
+                sb.append("done: ${modeWords()}\n")
+            } catch (e: Exception) { sb.append("failed: $e\n") } finally { u.extLog = null }
+            File(work, "set-range-${System.currentTimeMillis() % 100000}.txt").writeText(sb.toString())
+            log(sb.toString())
+            setStatus("Normal range set (${modeWords()}). Flat-field, then capture.")
+        }.start()
+    }
+
+    // the mean raw count of the picture over the next n frames (for the VB loop)
+    private val meanLock = Object()
+    @Volatile private var meanLeft = 0
+    private var meanSum = 0.0
+    private var meanN = 0
+
+    private fun meanPictureRaw(n: Int): Double {
+        synchronized(meanLock) { meanSum = 0.0; meanN = 0; meanLeft = n }
+        val end = System.currentTimeMillis() + 3000
+        while (System.currentTimeMillis() < end) { synchronized(meanLock) { if (meanLeft == 0) return if (meanN > 0) meanSum / meanN else Double.NaN }; Thread.sleep(30) }
+        return synchronized(meanLock) { if (meanN > 0) meanSum / meanN else Double.NaN }
     }
 
     private fun readEnh() {

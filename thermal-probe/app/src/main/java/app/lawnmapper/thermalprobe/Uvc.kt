@@ -427,6 +427,68 @@ class Uvc(val device: UsbDevice, val conn: UsbDeviceConnection, val log: (String
         return if (out.size() == size) out.toByteArray() else null
     }
 
+    /*
+     * SENSOR REGISTERS ("NucSmartData", 32 x u32), decoded from the decompiled AccuHeat libraries 2026-11-14.
+     * HIKMICRO puts the SK01's sensor into a temperature range by writing 19 registers (command 2148,
+     * channel 0x0200 sub 0x2D) and then holding the closed-shutter raw level near a target by stepping register 8.
+     * These commands use HIK's "external context" framing: announce a length, then send "02 01 00 00 00" + data.
+     *   read  (2147 sub 0x2D search type; 2150 sub 0x2E search 1 -> float k; 2155 sub 0x32 search gear -> bits):
+     *     SELECT 02 sub; OUT 0x0200 "01 04 00 00 00"; OUT 0x0200 "02 01 00 00 00" + u32 search; state;
+     *     PROBE + GET 0x0200 -> reply (u32 type, u32 value, ... for 2147).
+     *   write (2148): SELECT 02 2D; OUT 0x0200 "01 38 00 00 00"; OUT 0x0200 "02 01 00 00 00" + u32 type + u32
+     *     value + 48 zero bytes; state.
+     * The writes are runtime settings AccuHeat rewrites on every connect; unplugging resets the sensor.
+     */
+    var extLog: StringBuilder? = null
+
+    private fun extSend(sub: Int, data: ByteArray): String {
+        val sel = selectLen(0x02, sub)
+        val p1 = probeLen(hikProbe(0x0200))
+        val ann = byteArrayOf(1, (data.size and 0xff).toByte(), ((data.size shr 8) and 0xff).toByte(), 0, 0)
+        val a = conn.controlTransfer(0x21, 0x01, 0x0200, xuIndex(), padTo(ann, p1), maxOf(5, p1), 5000)
+        val p2 = probeLen(hikProbe(0x0200))
+        val body = byteArrayOf(2, 1, 0, 0, 0) + data
+        val b = conn.controlTransfer(0x21, 0x01, 0x0200, xuIndex(), padTo(body, p2), maxOf(body.size, p2), 5000)
+        hikProbe(0x0600)
+        val st = hikGet(0x0600, 1)?.firstOrNull()?.toInt()?.and(0xff) ?: -1
+        return "sel $sel p1 $p1 ann $a p2 $p2 body $b (${body.size} B) state $st"
+    }
+
+    private fun le32(v: Long) = byteArrayOf((v and 0xff).toByte(), ((v shr 8) and 0xff).toByte(), ((v shr 16) and 0xff).toByte(), ((v shr 24) and 0xff).toByte())
+
+    /** A search-and-read: returns the reply (header stripped when it carries the 02 01 00 00 00 chunk header). */
+    fun extRead(sub: Int, search: Long): ByteArray? {
+        val r = extSend(sub, le32(search))
+        val pl = probeLen(hikProbe(0x0200)).let { if (it in 1..512) it else 64 }
+        val g = hikGet(0x0200, pl)
+        extLog?.append(String.format("  read sub 0x%02x search %d: %s; reply %s\n", sub, search, r, g?.let { hex(it) } ?: "failed"))
+        if (g == null) return null
+        return if (g.size >= 9 && g[0].toInt() == 2 && g[1].toInt() == 1 && g[2].toInt() == 0 && g[3].toInt() == 0 && g[4].toInt() == 0) g.copyOfRange(5, g.size) else g
+    }
+
+    fun readRegister(type: Int): Long? {
+        val r = extRead(0x2D, type.toLong()) ?: return null
+        if (r.size < 8) return null
+        if (u32(r, 0) != type.toLong()) extLog?.append("  (reply type ${u32(r, 0)} != $type)\n")
+        return u32(r, 4)
+    }
+
+    fun writeRegister(type: Int, value: Long): String {
+        val data = le32(type.toLong()) + le32(value) + ByteArray(48)
+        val r = extSend(0x2D, data)
+        extLog?.append("  write type $type = $value: $r\n")
+        return r
+    }
+
+    fun responsivityK(): Float {
+        val r = extRead(0x2E, 1) ?: return 1f
+        if (r.size < 4) return 1f
+        val k = java.lang.Float.intBitsToFloat(u32(r, 0).toInt())
+        return if (k.isFinite() && k > 0.3f && k < 3f) k else 1f
+    }
+
+    fun rdmBits(gear: Int): Long? = extRead(0x32, gear.toLong())?.let { if (it.size >= 4) u32(it, 0) else null }
+
     /** Manual shutter / one-shot NUC, control 0x7E9 (MasterThermoDocs 09): select 02 04, SET 0x0200 with
      *  USB_COMMON_COND (12 bytes: size 12, channel 1), then poll the command state until idle. */
     fun hikManualShutter(): String {

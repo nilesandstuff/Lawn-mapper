@@ -146,3 +146,9 @@ this public repository (they are HIKMICRO-derived and carry the camera's serial)
   gain types 11/14, bad-pixel list 4, vignetting 5, non-steady-state 10) over HIK file transfer on channel
   0x1A00 (reads only; the two OUT packets say which file to send). The tables go into the zip and from there to
   the private repository, not this one.
+- 0.17 (2026-11-14): the SK01 powers up in a sensor mode AccuHeat never uses (row 216 words 3/10 = 33/303;
+  AccuHeat's range 2 reads 42/~209, range 0 45/205). AccuHeat sets the mode itself by writing 19 sensor
+  registers (HIK command 2148, channel 0x0200 sub 0x2D, "external context" framing) with the range's defaults
+  adjusted by the camera's own factory values, then holds the closed-shutter raw level near a target (8192 for
+  range 2) by stepping register 8. Read sensor registers (read-only) checks the framing; Set normal range does
+  AccuHeat's range-2 setup. Runtime settings only; unplugging resets them.
