@@ -456,14 +456,28 @@ class Uvc(val device: UsbDevice, val conn: UsbDeviceConnection, val log: (String
 
     private fun le32(v: Long) = byteArrayOf((v and 0xff).toByte(), ((v shr 8) and 0xff).toByte(), ((v shr 16) and 0xff).toByte(), ((v shr 24) and 0xff).toByte())
 
-    /** A search-and-read: returns the reply (header stripped when it carries the 02 01 00 00 00 chunk header). */
+    /** A search-and-read. The reply comes like a file download: a GET answers "01" + u32 length, then GETs
+     *  answer "02" + u32 chunk index + data until that many bytes have come (run 7, 2026-11-14). */
     fun extRead(sub: Int, search: Long): ByteArray? {
         val r = extSend(sub, le32(search))
-        val pl = probeLen(hikProbe(0x0200)).let { if (it in 1..512) it else 64 }
+        val pl = probeLen(hikProbe(0x0200)).let { if (it in 1..512) it else 5 }
         val g = hikGet(0x0200, pl)
-        extLog?.append(String.format("  read sub 0x%02x search %d: %s; reply %s\n", sub, search, r, g?.let { hex(it) } ?: "failed"))
-        if (g == null) return null
-        return if (g.size >= 9 && g[0].toInt() == 2 && g[1].toInt() == 1 && g[2].toInt() == 0 && g[3].toInt() == 0 && g[4].toInt() == 0) g.copyOfRange(5, g.size) else g
+        extLog?.append(String.format("  read sub 0x%02x search %d: %s; first reply %s\n", sub, search, r, g?.let { hex(it) } ?: "failed"))
+        if (g == null || g.size < 5) return null
+        if (g[0].toInt() != 1) return if (g[0].toInt() == 2 && g.size > 5) g.copyOfRange(5, g.size) else g
+        val total = u32(g, 1).toInt()
+        if (total <= 0 || total > 65536) return null
+        val out = java.io.ByteArrayOutputStream(total)
+        var n = 0
+        while (out.size() < total && n < 200) {
+            val cl = probeLen(hikProbe(0x0200)).let { if (it in 6..512) it else 512 }
+            val c = hikGet(0x0200, cl) ?: break
+            if (c.size <= 5) break
+            out.write(c, 5, minOf(c.size - 5, total - out.size())); n++
+        }
+        val d = out.toByteArray()
+        extLog?.append("    data ${d.size}/$total B: ${hex(d, 0, minOf(d.size, 24))}\n")
+        return if (d.size == total) d else null
     }
 
     fun readRegister(type: Int): Long? {

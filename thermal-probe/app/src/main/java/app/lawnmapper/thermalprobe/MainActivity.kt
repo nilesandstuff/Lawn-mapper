@@ -156,38 +156,15 @@ class MainActivity : Activity() {
             for (x in v) addView(x, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
         }
 
+        // a preview that leaves the buttons on screen (owner, 2026-11-14), and only what the workflow needs
+        val screenH = resources.displayMetrics.heightPixels
+        labelEdit.hint = "label (optional)"
         root.addView(status)
-        root.addView(image, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+        root.addView(image, LinearLayout.LayoutParams(MATCH_PARENT, (screenH * 0.45).toInt()))
         root.addView(readout)
-        root.addView(row(button("Connect") { connect() }, button("Flat-field") { flatField() }, button("Save & share") { saveAndShare() }))
-
-        root.addView(header("Calibration"))
-        root.addView(row(fill("ice water"), fill("cold water"), fill("room water"), fill("hot water")))
-        root.addView(row(fill("taped bottle"), fill("palm"), fill("sky"), fill("grass")))
-        root.addView(targetEdit)
-        root.addView(fields(contactEdit, gunEdit, accuEdit))
-        root.addView(row(
-            button("Record point") { recordPoint() },
-            button("Warm-up log") { toggleWarmup() },
-        ))
-        root.addView(pointsView)
-
-        root.addView(header("Diagnostics"))
+        root.addView(row(button("Connect") { connect() }, button("Capture 1 s") { capture(labelEdit.text.toString().ifBlank { "capture" }, 25) }))
         root.addView(labelEdit)
-        root.addView(row(
-            button("Capture 1 s") { capture(labelEdit.text.toString().ifBlank { "other" }, 25) },
-            button("Read block") { readEnh() },
-        ))
-        root.addView(button("Read camera tables (gain, bad pixels, vignetting)") { readTables() })
-        root.addView(row(
-            button("Read sensor registers") { readRegisters() },
-            button("Set normal range") { setNormalRange() },
-        ))
-        root.addView(row(
-            button("SK01 close") { sk01(2) },
-            button("SK01 open") { sk01(3) },
-            button("Hik bind") { hikBind() },
-        ))
+        root.addView(row(button("Flat-field") { flatField() }, button("Save & share") { saveAndShare() }))
         root.addView(logView)
         setContentView(ScrollView(this).apply { addView(root) })
 
@@ -291,17 +268,16 @@ class MainActivity : Activity() {
             if (f == null || fr == null) { setStatus("The camera listed no video format: send the file anyway (Save & share)."); return@Thread }
             if (startStream(f, fr)) {
                 Thread.sleep(500)
-                val vi = try { u.vendorInfo() } catch (e: Exception) { "vendor reads failed: $e" }
-                File(work, "vendor.txt").writeText(vi)
-                log(vi)
+                setStatus("Setting up the camera: bind...")
                 val hb = try { u.hikBind() } catch (e: Exception) { "hik bind failed: $e" }
                 File(work, "hik-bind-connect.txt").writeText(hb)
                 log(hb)
-                val eb = try { u.enhRead() } catch (e: Exception) { null }
-                File(work, "enhancement-connect.txt").writeText("${eb?.size ?: -1} B ${eb?.let { hex(it) }}")
-                log("enhancement block on connect: ${eb?.size ?: -1} B")
+                setStatus("Setting up the camera: reading its calibration tables...")
+                readTablesWork(u)
+                setStatus("Setting up the camera: normal range...")
+                val ok = setNormalRangeWork(u)
                 flatFieldNow()
-                setStatus("Connected, flat-fielded. Calibration: pick a target, type the readings, Record point.")
+                setStatus(if (ok) "Ready (${modeWords()}). Aim, then Capture 1 s." else "Connected, but the range setup failed (see the log). Save & share.")
             }
         }.start()
     }
@@ -507,7 +483,11 @@ class MainActivity : Activity() {
     /** The calibration tables HIKMICRO downloads from the camera (Uvc.downloadFile), saved into the zip. */
     private fun readTables() {
         val u = uvc ?: run { setStatus("Connect first."); return }
-        Thread {
+        Thread { readTablesWork(u) }.start()
+    }
+
+    private fun readTablesWork(u: Uvc) {
+        run {
             val sb = StringBuilder()
             for ((type, name) in listOf(11 to "kmatrix", 14 to "kmatrix2", 4 to "badpixels", 5 to "vignetting", 10 to "nonsteady")) {
                 setStatus("Reading camera table $name...")
@@ -516,8 +496,7 @@ class MainActivity : Activity() {
             }
             File(work, "download-log.txt").writeText(sb.toString())
             log(sb.toString())
-            setStatus("Camera tables read (see the log). Save & share.")
-        }.start()
+        }
     }
 
     // the sensor mode (row 216 words 3 and 10: AccuHeat's range 2 reads 42 and ~209, the power-on state 33 and 303)
@@ -548,14 +527,20 @@ class MainActivity : Activity() {
     /** AccuHeat's range-2 setup: the 19 registers with the camera's own adjustments, then the VB loop. */
     private fun setNormalRange() {
         val u = uvc ?: run { setStatus("Connect first."); return }
-        Thread {
+        Thread { setNormalRangeWork(u) }.start()
+    }
+
+    /** True when the 19 registers were written and the dark level settled. */
+    private fun setNormalRangeWork(u: Uvc): Boolean {
+        var ok = false
+        run {
             val sb = StringBuilder("set normal range (gear 3), before: ${modeWords()}\n"); u.extLog = sb
             try {
                 val k = u.responsivityK()
                 val rpoly = u.readRegister(0x23); val vebFine = u.readRegister(0x24); val vbPlat = u.readRegister(0x25)
                 val bits = u.rdmBits(3)
                 sb.append("k $k, factory 0x23=$rpoly 0x24=$vebFine 0x25=$vbPlat, rdm bits $bits\n")
-                if (rpoly == null || vebFine == null || vbPlat == null) { sb.append("factory values missing: not writing\n"); return@Thread }
+                if (rpoly == null || vebFine == null || vbPlat == null) throw IllegalStateException("factory values missing: nothing written")
                 val regs = LinkedHashMap(GEAR3)
                 val t0 = maxOf(regs[17]!!, regs[15]!!)
                 regs[2] = (t0 + (regs[2]!! - t0) * k).toLong()
@@ -579,11 +564,14 @@ class MainActivity : Activity() {
                 }
                 u.sk01Shutter(3); Thread.sleep(300)
                 sb.append("done: ${modeWords()}\n")
-            } catch (e: Exception) { sb.append("failed: $e\n") } finally { u.extLog = null }
-            File(work, "set-range-${System.currentTimeMillis() % 100000}.txt").writeText(sb.toString())
-            log(sb.toString())
-            setStatus("Normal range set (${modeWords()}). Flat-field, then capture.")
-        }.start()
+                ok = true
+            } catch (e: Exception) { sb.append("failed: $e\n") } finally {
+                u.extLog = null
+                File(work, "set-range-${System.currentTimeMillis() % 100000}.txt").writeText(sb.toString())
+                log(sb.toString())
+            }
+        }
+        return ok
     }
 
     // the mean raw count of the picture over the next n frames (for the VB loop)

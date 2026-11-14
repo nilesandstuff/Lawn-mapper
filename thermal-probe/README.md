@@ -152,3 +152,8 @@ this public repository (they are HIKMICRO-derived and carry the camera's serial)
   adjusted by the camera's own factory values, then holds the closed-shutter raw level near a target (8192 for
   range 2) by stepping register 8. Read sensor registers (read-only) checks the framing; Set normal range does
   AccuHeat's range-2 setup. Runtime settings only; unplugging resets them.
+- 0.19: register reads follow the reply framing seen in run 7 (a GET answers "01" + u32 length, then "02" +
+  index + data, like a file download). The screen is cut to what the workflow needs (owner, 2026-11-14):
+  preview (45% of the screen, upright), Connect, Capture 1 s with an optional label, Flat-field, Save & share,
+  log. Connect now does the whole setup: bind, read the camera tables, set the normal range (19 registers and
+  the dark-level loop), flat-field.
