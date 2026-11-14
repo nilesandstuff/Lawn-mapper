@@ -168,3 +168,7 @@ this public repository (they are HIKMICRO-derived and carry the camera's serial)
 - 0.21: Capture takes its own shutter reference first; Upload puts the zip in the owner's private repository
   (a GitHub token, entered once, kept in the app's private storage) where a runner summarises it; the status
   sits by the buttons, the log scrolls by itself, and the layout keeps clear of the system bars.
+- Run 10 (0.21, first GitHub upload): drift gone (0.15 C between reference and capture), but white dots grew
+  from 1 to 553: the closed-shutter level rose 9679 -> 11296 as the camera warmed and up to 1050 pixels clipped
+  at 16383 in the reference. 0.22 re-runs the dark-level loop at every flat-field (and on any clipping), and
+  adds "Add AccuHeat photo", which puts photos from the phone into the next upload for a per-pixel comparison.

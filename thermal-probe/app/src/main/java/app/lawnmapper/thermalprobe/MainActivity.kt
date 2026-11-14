@@ -178,7 +178,7 @@ class MainActivity : Activity() {
         root.addView(status)
         root.addView(row(button("Connect") { connect() }, button("Capture 1 s") { captureFresh() }))
         root.addView(labelEdit)
-        root.addView(row(button("Flat-field") { flatField() }, button("Upload") { upload() }))
+        root.addView(row(button("Flat-field") { flatField() }, button("Add AccuHeat photo") { pickPhoto() }, button("Upload") { upload() }))
         root.addView(tokenRow)
         val logScroll = ScrollView(this).apply { addView(logView) }
         root.addView(logScroll, LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f))
@@ -326,8 +326,12 @@ class MainActivity : Activity() {
                 synchronized(meanLock) {
                     if (meanLeft > 0) {
                         var sum = 0L; var n = 0
-                        for (y in 2 until 194 step 2) for (x in 4 until 260 step 2) { val i = 2 * (y * w + x); sum += (b[i].toInt() and 0xff) or ((b[i + 1].toInt() and 0xff) shl 8); n++ }
-                        meanSum += sum.toDouble() / n; meanN++; meanLeft--
+                        var clip = 0
+                        for (y in 2 until 194) for (x in 4 until 260) {
+                            val i = 2 * (y * w + x); val v = (b[i].toInt() and 0xff) or ((b[i + 1].toInt() and 0xff) shl 8)
+                            sum += v; n++; if (v >= 16383) clip++
+                        }
+                        meanSum += sum.toDouble() / n; meanN++; meanLeft--; lastClipped = clip
                     }
                 }
             }
@@ -542,6 +546,38 @@ class MainActivity : Activity() {
     }
 
     private val powerOnRegs = LinkedHashMap<Int, Long>()
+    @Volatile private var rangeSet = false
+
+    /**
+     * The dark-level loop, with the shutter already CLOSED: hold the mean raw level of the picture near 8192
+     * (AccuHeat's target for range 2; +-1500) and keep the brightest pixels off the 14-bit ceiling, by stepping
+     * register 8 in 4s. AccuHeat runs it on its shutter cycles; run 10 showed why: the closed-shutter level rose
+     * from 9679 to 11296 as the camera warmed 4.5 C and up to 1050 pixels clipped at 16383 (the white dots).
+     * The step direction follows AccuHeat (+4 when above the target) and turns round when nothing moves.
+     */
+    private fun vbAdjust(u: Uvc, sb: StringBuilder, maxSteps: Int): Boolean {
+        var vb = u.readRegister(8) ?: return false
+        var dir = 0
+        var lastErr = Double.NaN
+        var stuck = 0
+        for (step in 0 until maxSteps) {
+            val m = meanPictureRaw(8)
+            val clipped = lastClipped
+            val err = Math.abs(m - 8192)
+            sb.append(String.format(Locale.US, "  VB step %d: register 8 = %d, closed-shutter mean %.0f, clipped %d\n", step, vb, m, clipped))
+            if (err <= 1500 && clipped < 20) return true
+            val want = if (clipped >= 20 || m > 8192) 1 else -1
+            if (dir == 0) dir = want
+            else if (!lastErr.isNaN() && err >= lastErr - 1 && clipped >= lastClippedSeen) { if (++stuck >= 2) { dir = -dir; stuck = 0; sb.append("  no progress: turning round\n") } }
+            else stuck = 0
+            lastErr = err; lastClippedSeen = clipped
+            vb += 4L * dir
+            if (vb < 0 || vb > 255) { sb.append("  register 8 out of range; stop\n"); return false }
+            u.writeRegister(8, vb); Thread.sleep(400)
+        }
+        return false
+    }
+    private var lastClippedSeen = Int.MAX_VALUE
 
     /** NORMAL_GEAR3 defaults (sensorType 1/2, gear 3) in AccuHeat's write order; -1 = filled per device. */
     private val GEAR3 = linkedMapOf(1 to 5L, 2 to 220L, 5 to 3L, 7 to 2L, 8 to 16L, 9 to 42L, 10 to 2L, 14 to 0L, 15 to 59L,
@@ -582,24 +618,7 @@ class MainActivity : Activity() {
                 // and if the level never leaves saturation the power-on registers are put back.
                 setStatus("Range set; adjusting the dark level (shutter closed)...")
                 u.sk01Shutter(2); Thread.sleep(500)
-                var vb = u.readRegister(8) ?: 16L
-                var dir = 0
-                var lastErr = Double.NaN
-                var stuck = 0
-                var settled = false
-                for (step in 0 until 16) {
-                    val m = meanPictureRaw(8)
-                    val err = Math.abs(m - 8192)
-                    sb.append(String.format(Locale.US, "  VB step %d: register 8 = %d, closed-shutter mean %.0f\n", step, vb, m))
-                    if (err <= 1500) { settled = true; break }
-                    if (dir == 0) dir = if (m > 8192) 1 else -1
-                    else if (!lastErr.isNaN() && err >= lastErr - 1) { if (++stuck >= 2) { dir = -dir; stuck = 0; sb.append("  no progress: turning round\n") } }
-                    else stuck = 0
-                    lastErr = err
-                    vb += 4L * dir
-                    if (vb < 0 || vb > 255) { sb.append("  register 8 out of range; stop\n"); break }
-                    u.writeRegister(8, vb); Thread.sleep(400)
-                }
+                val settled = vbAdjust(u, sb, 16)
                 if (!settled) {
                     sb.append("dark level did not settle: putting back the power-on registers\n")
                     for ((t, v) in powerOnRegs) u.writeRegister(t, v)
@@ -608,7 +627,7 @@ class MainActivity : Activity() {
                 }
                 u.sk01Shutter(3); Thread.sleep(300)
                 sb.append("done: ${modeWords()}\n")
-                ok = true
+                ok = true; rangeSet = true
             } catch (e: Exception) { sb.append("failed: $e\n") } finally {
                 u.extLog = null
                 File(work, "set-range-${System.currentTimeMillis() % 100000}.txt").writeText(sb.toString())
@@ -621,6 +640,7 @@ class MainActivity : Activity() {
     // the mean raw count of the picture over the next n frames (for the VB loop)
     private val meanLock = Object()
     @Volatile private var meanLeft = 0
+    @Volatile private var lastClipped = 0
     private var meanSum = 0.0
     private var meanN = 0
 
@@ -684,6 +704,11 @@ class MainActivity : Activity() {
         setStatus("Flat-field: closing the shutter...")
         log(u.sk01Shutter(2))
         Thread.sleep(400)
+        if (rangeSet) {
+            val sb = StringBuilder("dark-level check:\n")
+            val ok = try { vbAdjust(u, sb, 8) } catch (e: Exception) { sb.append("failed: $e\n"); false }
+            log(sb.toString().trimEnd() + if (ok) "" else "\n  (not settled; reference taken anyway)")
+        }
         synchronized(nucLock) { nucSum = null; nucCount = 0; nucLeft = 10 }
         capture("shutter", 10)
         lastShutterCapture = capName
@@ -787,6 +812,30 @@ class MainActivity : Activity() {
             capture(label, 25)
             waitForCapture(5000)
             setStatus("Captured \"$label\" (fresh reference). Capture again, or Upload.")
+        }.start()
+    }
+
+    // ---------------- an AccuHeat photo, for comparison, rides along with the next upload ----------------
+
+    private fun pickPhoto() {
+        val i = Intent(Intent.ACTION_OPEN_DOCUMENT).apply { addCategory(Intent.CATEGORY_OPENABLE); type = "image/jpeg"; putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true) }
+        startActivityForResult(i, 7)
+    }
+
+    @Deprecated("startActivityForResult is enough here")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != 7 || resultCode != RESULT_OK || data == null) return
+        val uris = mutableListOf<android.net.Uri>()
+        data.clipData?.let { c -> for (k in 0 until c.itemCount) uris += c.getItemAt(k).uri } ?: data.data?.let { uris += it }
+        Thread {
+            var n = 0
+            for (uri in uris) {
+                val name = "accuheat-" + SimpleDateFormat("HHmmss", Locale.US).format(Date()) + "-" + (++n) + ".jpg"
+                contentResolver.openInputStream(uri)?.use { inp -> File(work, name).outputStream().use { inp.copyTo(it) } }
+                log("added $name (${File(work, name).length() / 1024} KB)")
+            }
+            setStatus("Added $n AccuHeat photo(s); they go with the next Upload.")
         }.start()
     }
 
