@@ -183,3 +183,8 @@ this public repository (they are HIKMICRO-derived and carry the camera's serial)
   dark-level step. AccuHeat's register state (read right after AccuHeat) equals ours except register 22 (7, not
   127). 0.24: register 22 to 7 after the dark level (undone if the level leaves range), 30 s settling before
   Ready, 16-frame references, and a second reference right after every capture.
+- Run 12 (0.24): register 22 = 7 after our setup saturated the sensor again (undone), and the capture then read
+  15 C below AccuHeat with the reference moving 1.3 C during it: AccuHeat's 7 works only with the rest of its
+  setup (likely its uploaded per-pixel offsets). UIRA-IR ruled out: two photos of one scene with it on and off
+  differ by noise only (13 Gray sd, correlation with the vignetting template -0.08). 0.25: if the camera
+  arrives in AccuHeat's state (words 42/7/209), the probe leaves the registers alone; its own setup keeps 127.

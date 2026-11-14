@@ -295,11 +295,24 @@ class MainActivity : Activity() {
                 log(hb)
                 setStatus("Setting up the camera: reading its calibration tables...")
                 readTablesWork(u)
-                setStatus("Setting up the camera: normal range...")
-                val ok = setNormalRangeWork(u)
-                if (ok) for (sec in 30 downTo 1) { setStatus("Letting the sensor settle: $sec s"); Thread.sleep(1000) }
+                // If AccuHeat has just used the camera, its full sensor setup is still in place (row 216 words
+                // 3/4/10 = 42/7/209, register 22 = 7, its own per-pixel offsets): leave it alone (run 12: copying
+                // register 22 = 7 into our own setup saturated the sensor and left it 15 C off).
+                val w = lastRow216
+                val accuheatState = w != null && w[3] == 42 && w[4] == 7 && w[10] == 209
+                val ok: Boolean
+                if (accuheatState) {
+                    log("camera already in AccuHeat's range-2 state (words 42/7/209): registers left as AccuHeat set them")
+                    File(work, "state.txt").writeText("accuheat-state\n${modeWords()}\n")
+                    ok = true
+                } else {
+                    setStatus("Setting up the camera: normal range...")
+                    ok = setNormalRangeWork(u)
+                    File(work, "state.txt").writeText("own-setup ${if (ok) "ok" else "failed"}\n${modeWords()}\n")
+                    if (ok) for (sec in 30 downTo 1) { setStatus("Letting the sensor settle: $sec s"); Thread.sleep(1000) }
+                }
                 flatFieldNow()
-                setStatus(if (ok) "Ready (${modeWords()}). Aim, then Capture 1 s." else "Connected, but the range setup failed (see the log). Save & share.")
+                setStatus(if (ok) "Ready (${if (accuheatState) "AccuHeat's setup" else "own setup"}, ${modeWords()}). Aim, then Capture 1 s." else "Connected, but the range setup failed (see the log). Save & share.")
             }
         }.start()
     }
@@ -621,15 +634,6 @@ class MainActivity : Activity() {
                 setStatus("Range set; adjusting the dark level (shutter closed)...")
                 u.sk01Shutter(2); Thread.sleep(500)
                 val settled = vbAdjust(u, sb, 16)
-                if (settled) {
-                    // AccuHeat leaves register 22 at 7 (read from the camera right after AccuHeat, run 11), where
-                    // the range defaults give 127; it writes it after the dark level. Written alone it once saturated
-                    // the sensor (run 8, with register 8 unsettled), so check and undo.
-                    u.writeRegister(22, 7); Thread.sleep(600)
-                    val m22 = meanPictureRaw(8); val c22 = lastClipped
-                    sb.append(String.format(Locale.US, "register 22 = 7 (AccuHeat's): closed-shutter mean %.0f, clipped %d\n", m22, c22))
-                    if (c22 >= 20 || m22 > 15000 || m22 < 1000) { u.writeRegister(22, 127); sb.append("  out of range: register 22 back to 127\n") }
-                }
                 if (!settled) {
                     sb.append("dark level did not settle: putting back the power-on registers\n")
                     for ((t, v) in powerOnRegs) u.writeRegister(t, v)
