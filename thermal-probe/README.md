@@ -142,3 +142,7 @@ this public repository (they are HIKMICRO-derived and carry the camera's serial)
   k 0.94 and 0.88 and a shutter apparent temperature of 30.5-32 C against a sensor temperature of 28.4 C, with
   0.8-1.2 C residuals; the scene (water cooling, ice moving) changed between the shots, so k and the shutter
   temperature still need a static, temperature-stable scene to pin down.
+- 0.13: Read camera tables downloads the calibration tables HIKMICRO's app fetches from the camera (per-pixel
+  gain types 11/14, bad-pixel list 4, vignetting 5, non-steady-state 10) over HIK file transfer on channel
+  0x1A00 (reads only; the two OUT packets say which file to send). The tables go into the zip and from there to
+  the private repository, not this one.

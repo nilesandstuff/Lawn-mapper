@@ -376,6 +376,57 @@ class Uvc(val device: UsbDevice, val conn: UsbDeviceConnection, val log: (String
         return "sk01 restore: set ${hikSet(0x0200, buf)}, state ${hikState()}"
     }
 
+    /*
+     * CALIBRATION FILE DOWNLOAD (HIKMICRO USB_FileTransfer_V20 download, command 0x1F8; decoded from the
+     * decompiled SDK 2026-11-14). Reads only: the two OUT packets on channel 0x1A00 only say which file to send.
+     *   A: SELECT 1A 01; SET 0x1A00 "01 02 00 00 00" (padded to the probe length); SET 0x1A00
+     *      "02 01 00 00 00 TT 01 00 00 00 00 00 00" (TT = file type); GET 0x0600 = 0 ok, 0x10 unsupported.
+     *   B: SELECT 1A 02; GET 0x1A00 (probe length, 5): the size is the u32 at bytes 1-4.
+     *   C: repeat GET 0x1A00 (probe length, at most 512) and keep bytes 5.. of each reply until size bytes.
+     * Types: 11 KMatrix (256x192 u16 Q15 gain), 14 KMatrix2, 4 bad-pixel list (u32: col bits 0-11, row
+     * 12-23, from 1), 5 vignetting (256x192 u16), 10 non-steady-state data.
+     */
+    private fun selectLen(phase: Int, sub: Int): Int {
+        val pl = probeLen(hikProbe(0x0500)).let { if (it in 1..512) it else 2 }
+        val d = ByteArray(pl); val full = byteArrayOf(phase.toByte(), sub.toByte(), 1, 0)
+        System.arraycopy(full, 0, d, 0, minOf(pl, 4))
+        return conn.controlTransfer(0x21, 0x01, 0x0500, xuIndex(), d, d.size, 5000)
+    }
+
+    private fun padTo(src: ByteArray, len: Int): ByteArray = if (len > src.size) src.copyOf(len) else src
+
+    fun downloadFile(type: Int, log: StringBuilder): ByteArray? {
+        val sa = selectLen(0x1A, 0x01)
+        val p1 = probeLen(hikProbe(0x1A00))
+        val s1 = conn.controlTransfer(0x21, 0x01, 0x1A00, xuIndex(), padTo(byteArrayOf(1, 2, 0, 0, 0), p1), maxOf(5, p1), 5000)
+        val p2 = probeLen(hikProbe(0x1A00))
+        val pkt = padTo(byteArrayOf(2, 1, 0, 0, 0, type.toByte(), 1, 0, 0, 0, 0, 0, 0), p2)
+        val s2 = conn.controlTransfer(0x21, 0x01, 0x1A00, xuIndex(), pkt, pkt.size, 5000)
+        hikProbe(0x0600)
+        val st = hikGet(0x0600, 1)?.firstOrNull()?.toInt()?.and(0xff) ?: -1
+        log.append("type $type: select 1A01 $sa, probe $p1, set1 $s1, probe $p2, set2 $s2 (${pkt.size} B), state $st\n")
+        if (st == 0x10) { log.append("  unsupported\n"); return null }
+        val sb = selectLen(0x1A, 0x02)
+        val pb = probeLen(hikProbe(0x1A00)).let { if (it in 1..512) it else 5 }
+        val sz = hikGet(0x1A00, pb)
+        log.append("  select 1A02 $sb, probe $pb, size reply ${sz?.let { hex(it) } ?: "failed"}\n")
+        if (sz == null || sz.size < 5) return null
+        val size = u32(sz, 1).toInt()
+        if (size <= 0 || size > 4 * 1024 * 1024) { log.append("  implausible size $size\n"); return null }
+        val out = java.io.ByteArrayOutputStream(size)
+        var chunks = 0
+        while (out.size() < size && chunks < 20000) {
+            val pl = probeLen(hikProbe(0x1A00)).let { if (it in 6..512) it else 512 }
+            val c = hikGet(0x1A00, pl) ?: run { log.append("  chunk $chunks failed after ${out.size()} B\n"); return null }
+            if (chunks < 3 || c.size <= 5) log.append("  chunk $chunks: ${c.size} B, head ${hex(c, 0, minOf(c.size, 12))}\n")
+            if (c.size <= 5) { log.append("  empty chunk; stop\n"); break }
+            out.write(c, 5, minOf(c.size - 5, size - out.size()))
+            chunks++
+        }
+        log.append("  got ${out.size()} of $size B in $chunks chunks\n")
+        return if (out.size() == size) out.toByteArray() else null
+    }
+
     /** Manual shutter / one-shot NUC, control 0x7E9 (MasterThermoDocs 09): select 02 04, SET 0x0200 with
      *  USB_COMMON_COND (12 bytes: size 12, channel 1), then poll the command state until idle. */
     fun hikManualShutter(): String {

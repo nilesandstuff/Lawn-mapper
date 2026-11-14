@@ -178,6 +178,7 @@ class MainActivity : Activity() {
             button("Capture 1 s") { capture(labelEdit.text.toString().ifBlank { "other" }, 25) },
             button("Read block") { readEnh() },
         ))
+        root.addView(button("Read camera tables (gain, bad pixels, vignetting)") { readTables() })
         root.addView(row(
             button("SK01 close") { sk01(2) },
             button("SK01 open") { sk01(3) },
@@ -479,6 +480,22 @@ class MainActivity : Activity() {
             Thread.sleep(80)
             val r = try { u.sk01Shutter(control) } catch (e: Exception) { "sk01 shutter failed: $e" }
             log(r); setStatus("$r. Did it click?")
+        }.start()
+    }
+
+    /** The calibration tables HIKMICRO downloads from the camera (Uvc.downloadFile), saved into the zip. */
+    private fun readTables() {
+        val u = uvc ?: run { setStatus("Connect first."); return }
+        Thread {
+            val sb = StringBuilder()
+            for ((type, name) in listOf(11 to "kmatrix", 14 to "kmatrix2", 4 to "badpixels", 5 to "vignetting", 10 to "nonsteady")) {
+                setStatus("Reading camera table $name...")
+                val d = try { u.downloadFile(type, sb) } catch (e: Exception) { sb.append("type $type failed: $e\n"); null }
+                if (d != null) File(work, "camfile-$type-$name.bin").writeBytes(d)
+            }
+            File(work, "download-log.txt").writeText(sb.toString())
+            log(sb.toString())
+            setStatus("Camera tables read (see the log). Save & share.")
         }.start()
     }
 
