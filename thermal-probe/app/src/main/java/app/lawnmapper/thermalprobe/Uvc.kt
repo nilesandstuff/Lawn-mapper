@@ -501,7 +501,8 @@ class Uvc(val device: UsbDevice, val conn: UsbDeviceConnection, val log: (String
         return if (k.isFinite() && k > 0.3f && k < 3f) k else 1f
     }
 
-    fun rdmBits(gear: Int): Long? = extRead(0x32, gear.toLong())?.let { if (it.size >= 4) u32(it, 0) else null }
+    /** 2155: the reply echoes the search (the gear) and then gives the bits (run 8: 03 00 00 00 07 00 00 00). */
+    fun rdmBits(gear: Int): Long? = extRead(0x32, gear.toLong())?.let { if (it.size >= 8) u32(it, 4) else null }
 
     /** Manual shutter / one-shot NUC, control 0x7E9 (MasterThermoDocs 09): select 02 04, SET 0x0200 with
      *  USB_COMMON_COND (12 bytes: size 12, channel 1), then poll the command state until idle. */

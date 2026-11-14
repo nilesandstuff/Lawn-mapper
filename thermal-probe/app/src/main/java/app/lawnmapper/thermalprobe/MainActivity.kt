@@ -122,7 +122,7 @@ class MainActivity : Activity() {
         work = File(cacheDir, "probe").apply { deleteRecursively(); mkdirs() }
 
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(24, 24, 24, 24) }
-        status = TextView(this).apply { textSize = 16f; text = "Plug in the thermal camera, then tap Connect." }
+        status = TextView(this).apply { textSize = 18f; setTypeface(typeface, android.graphics.Typeface.BOLD); text = "Plug in the thermal camera, then tap Connect." }
         image = ImageView(this).apply {
             adjustViewBounds = true
             scaleType = ImageView.ScaleType.FIT_CENTER
@@ -520,6 +520,8 @@ class MainActivity : Activity() {
         }.start()
     }
 
+    private val powerOnRegs = LinkedHashMap<Int, Long>()
+
     /** NORMAL_GEAR3 defaults (sensorType 1/2, gear 3) in AccuHeat's write order; -1 = filled per device. */
     private val GEAR3 = linkedMapOf(1 to 5L, 2 to 220L, 5 to 3L, 7 to 2L, 8 to 16L, 9 to 42L, 10 to 2L, 14 to 0L, 15 to 59L,
         16 to 0L, 17 to 60L, 18 to 286L, 19 to 0L, 20 to -1L, 12 to 164L, 13 to 170L, 21 to -1L, 6 to -1L, 22 to 127L)
@@ -546,21 +548,42 @@ class MainActivity : Activity() {
                 regs[2] = (t0 + (regs[2]!! - t0) * k).toLong()
                 regs[20] = rpoly; regs[21] = vebFine; regs[6] = vbPlat
                 if (bits != null && bits <= 32) regs[22] = if (bits == 32L) 0xFFFFFFFFL else (1L shl bits.toInt()) - 1
+                powerOnRegs.clear()
+                for (t in regs.keys) u.readRegister(t)?.let { powerOnRegs[t] = it }
+                sb.append("power-on values ${powerOnRegs}\n")
                 sb.append("writing ${regs}\n")
                 for ((t, v) in regs) u.writeRegister(t, v)
                 Thread.sleep(500)
                 sb.append("after the writes: ${modeWords()}\n")
-                // VB loop: shutter closed, mean raw of the picture toward 8192 (+-1500), register 8 in steps of 4
+                // VB loop: shutter closed, mean raw of the picture toward 8192 (+-1500), register 8 in steps of 4.
+                // AccuHeat steps +4 when the level is above the target and rolls back when the error grows; a
+                // saturated sensor (16383, run 8) gives no gradient, so the step turns round when nothing moves,
+                // and if the level never leaves saturation the power-on registers are put back.
                 setStatus("Range set; adjusting the dark level (shutter closed)...")
                 u.sk01Shutter(2); Thread.sleep(500)
                 var vb = u.readRegister(8) ?: 16L
-                for (step in 0 until 12) {
+                var dir = 0
+                var lastErr = Double.NaN
+                var stuck = 0
+                var settled = false
+                for (step in 0 until 16) {
                     val m = meanPictureRaw(8)
+                    val err = Math.abs(m - 8192)
                     sb.append(String.format(Locale.US, "  VB step %d: register 8 = %d, closed-shutter mean %.0f\n", step, vb, m))
-                    if (Math.abs(m - 8192) <= 1500) break
-                    vb += if (m < 8192) -4 else 4
+                    if (err <= 1500) { settled = true; break }
+                    if (dir == 0) dir = if (m > 8192) 1 else -1
+                    else if (!lastErr.isNaN() && err >= lastErr - 1) { if (++stuck >= 2) { dir = -dir; stuck = 0; sb.append("  no progress: turning round\n") } }
+                    else stuck = 0
+                    lastErr = err
+                    vb += 4L * dir
                     if (vb < 0 || vb > 255) { sb.append("  register 8 out of range; stop\n"); break }
                     u.writeRegister(8, vb); Thread.sleep(400)
+                }
+                if (!settled) {
+                    sb.append("dark level did not settle: putting back the power-on registers\n")
+                    for ((t, v) in powerOnRegs) u.writeRegister(t, v)
+                    u.sk01Shutter(3)
+                    throw IllegalStateException("dark level did not settle (see the steps above)")
                 }
                 u.sk01Shutter(3); Thread.sleep(300)
                 sb.append("done: ${modeWords()}\n")

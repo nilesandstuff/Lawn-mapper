@@ -157,3 +157,8 @@ this public repository (they are HIKMICRO-derived and carry the camera's serial)
   preview (45% of the screen, upright), Connect, Capture 1 s with an optional label, Flat-field, Save & share,
   log. Connect now does the whole setup: bind, read the camera tables, set the normal range (19 registers and
   the dark-level loop), flat-field.
+- Run 8 (0.19): the 19 register writes were accepted and the mode words switched to AccuHeat's 42/209, but the
+  sensor then saturated (every pixel 16383) and the dark-level loop could not pull it back. Cause found: the
+  2155 reply echoes the search before the value (03 00 00 00 07 00 00 00), so uRdm was written as 7 instead of
+  127 (bits 7). 0.20 reads it at offset 4, records the power-on values of the 19 registers first, turns the
+  dark-level step round when the level does not move, and puts the power-on values back if it never settles.
