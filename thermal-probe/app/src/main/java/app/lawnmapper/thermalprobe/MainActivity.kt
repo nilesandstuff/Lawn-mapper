@@ -403,7 +403,11 @@ class MainActivity : Activity() {
             bmp = Bitmap.createBitmap(px, w, rows, Bitmap.Config.ARGB_8888)
             text.append("not a whole number of 16-bit rows; shown as bytes\n")
         }
-        val scaled = Bitmap.createScaledBitmap(bmp, bmp.width * 3, bmp.height * 3, false)
+        // only the picture (rows 0-195, columns 0-259), turned 90 degrees clockwise: the sensor is landscape and
+        // AccuHeat shows it portrait the same way (its photos are stored landscape with EXIF orientation 6)
+        val pic = if (bmp.width >= IMAGE_COLS && bmp.height >= IMAGE_ROWS) Bitmap.createBitmap(bmp, 0, 0, IMAGE_COLS, IMAGE_ROWS) else bmp
+        val m = android.graphics.Matrix().apply { postScale(3f, 3f); postRotate(90f) }
+        val scaled = Bitmap.createBitmap(pic, 0, 0, pic.width, pic.height, m, false)
         runOnUiThread {
             image.setImageBitmap(scaled)
             readout.text = text.toString().trimEnd()
