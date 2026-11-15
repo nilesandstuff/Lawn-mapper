@@ -1485,6 +1485,8 @@ function wire() {
   $('#check').addEventListener('click', () => doCheck(st.ar));
   $('#mark').addEventListener('click', () => doMark(st.ar));
   $('#startover').addEventListener('click', startOver);
+  // the hint between corners, tapped: start the next corner here and now, wherever the map thinks it is
+  $('#guide').addEventListener('click', () => { if (st.guideNext && !st.sight) { st.sightNow = true; st.sightEndedAt = 0; log('next corner started by a tap on the hint'); } });
   $('#undo').addEventListener('click', () => doUndo());
   $('#measure').addEventListener('click', () => {
     const f = st.ar; if (!f?.hit) return;
@@ -1553,7 +1555,15 @@ function autoSight(f) {
      rescanning... It should say 'move on to next prompt X feet to the Y direction'"): once the map is lined up, the
      next corner's sighting waits until the phone is within reach of it and facing it; until then the middle of the
      view says how far and which way. Before the map is lined up there is nothing to steer by, so it starts as it did. */
-  const s = fitFor(st.L, st.walk.odo) ? sessionOf(st.L, target.map, st.walk.odo, st.L.groundY ?? f.pose.position.y - 1.4) : null;
+  /* ...BUT ONLY WHEN THE MAP IS LINED UP BY THE CORNERS THEMSELVES (the owner, 2026-11-15, at home: "The roof
+     scanning wont move on to the 2nd roof corner"). With one corner marked the walk is placed by something rougher
+     (Street View's position, an earlier walk), which can put the next corner yards from where it is; waiting to be
+     "within reach and facing it" by that placement can then wait for ever. So the waiting begins with two corners
+     marked; before that the next corner starts at once, as it did. And the wait can always be skipped: a tap on the
+     hint in the middle of the view starts the corner where the phone is (st.sightNow). */
+  const lined = marked.size >= 2 && fitSource(st.L, st.walk.odo) !== 'geo';
+  const s = lined && !st.sightNow && fitFor(st.L, st.walk.odo) ? sessionOf(st.L, target.map, st.walk.odo, st.L.groundY ?? f.pose.position.y - 1.4) : null;
+  st.sightNow = false;
   if (s && f.pose.quaternion) {
     const c = f.pose.position, w = whereIs([c.x, c.y, c.z], lookOf(f.pose.quaternion), [s.x, s.y, s.z]);
     if (w.m > NEAR_SIGHT_M || !w.facing) { st.nextHint = { target, w, done: marked.size }; return; }
@@ -1567,7 +1577,7 @@ function showNext() {
   if (!h) { if (st.guideNext) { el.hidden = true; st.guideNext = false; } return; }
   st.guideNext = true; el.hidden = false;
   $('#guide-say').textContent = `Next: ${h.target.name}, ${h.w.ft} ft ${h.w.word}`;
-  $('#guide-detail').textContent = `The roof's ${h.target.roof.label}. It starts by itself when you face it from within ${Math.round(NEAR_SIGHT_M * FT)} ft.`;
+  $('#guide-detail').textContent = `The roof's ${h.target.roof.label}. It starts by itself when you face it from within ${Math.round(NEAR_SIGHT_M * FT)} ft. Already there? Tap here to start it now.`;
   $('#guide-bar').style.width = '0%';
 }
 /** Start over (the red button): this walk's marks and fixes gone, the first corner asked for again. Two taps. */
