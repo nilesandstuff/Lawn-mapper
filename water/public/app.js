@@ -1007,7 +1007,7 @@ function moistureCard(p) {
    the map has one) in its own database (src/truth.js), freezes the weather of its minutes there, and scores every
    walk the current model version has not scored yet (lib/surfacenow.js through the worker's walkCheck). The card sets
    the versions side by side. The admin only: anyone else's truth request answers 404 and nothing shows. */
-const walkState = { asked: false, admin: false, truth: [], why: null, busy: null, pending: new Map(), n: 0 };
+const walkState = { asked: false, admin: false, truth: [], why: null, busy: null, pending: new Map(), n: 0, waiting: 0, failed: [] };
 const pinOf = (site) => site?.parcel?.properties?.pin || site?.parcel?.properties?.PIN || site?.parcel?.properties?.parcel_pin || null;
 function walkIn(r) { const k = walkState.pending.get(r.id); if (k) { walkState.pending.delete(r.id); k(r); } }
 const askWorker = (msg) => new Promise((resolve) => { const id = `walk${++walkState.n}`; walkState.pending.set(id, resolve); running.postMessage({ walkCheck: { ...msg, id } }); });
@@ -1029,7 +1029,11 @@ async function askWalks() {
     else walkState.why = r.status === 404 ? null : `the walks answered ${r.status}`;
   } catch { walkState.why = 'the walks did not answer'; }
   const done = new Set(walkState.truth.filter((w) => w.results?.some((x) => x.model === MODEL_VERSION && x.kind === 'surface')).map((w) => w.walk));
-  const todo = list.filter((w) => w.walk && !done.has(w.walk)).slice(-12);
+  /* the core's list (docs/MAPS.md): a walk not yet turned into temperatures has ok null ("not converted yet"), a
+     failed one ok false with its error; only the converted ones are opened */
+  walkState.waiting = list.filter((w) => w.ok === null || w.ok === undefined).length;
+  walkState.failed = list.filter((w) => w.ok === false).map((w) => w.error || 'no reason given');
+  const todo = list.filter((w) => w.walk && w.ok === true && !done.has(w.walk)).slice(-12);
   for (const [k, item] of todo.entries()) {
     walkState.busy = `Checking thermal walk ${k + 1} of ${todo.length} against the model…`;
     if (view.plan) moistureCard(view.plan);
@@ -1089,7 +1093,10 @@ function walkCards() {
   const f1 = (x) => (x === null || x === undefined || !Number.isFinite(x) ? '-' : `${x > 0 ? '+' : ''}${x.toFixed(1)}`);
   const walks = walkState.truth.filter((w) => w.kinds.includes('surface'));
   const head = '<h2>Thermal walks against the model</h2>';
-  if (!walks.length) return walkState.busy ? `${head}<div class="card">${esc(walkState.busy)}</div>` : walkState.why ? `${head}<div class="card dim">No thermal walks compared (${esc(walkState.why)}).</div>` : '';
+  const queue = [walkState.waiting ? `${walkState.waiting === 1 ? 'One walk is' : `${walkState.waiting} walks are`} still being turned into temperatures (the converter looks for new walks every 2 hours).` : '',
+    walkState.failed.length ? `${walkState.failed.length === 1 ? 'One walk' : `${walkState.failed.length} walks`} could not be converted: ${esc(walkState.failed.slice(0, 3).join('; '))}.` : ''].filter(Boolean).join(' ');
+  const queueCard = queue ? `<div class="card dim">${queue}</div>` : '';
+  if (!walks.length) return walkState.busy ? `${head}<div class="card">${esc(walkState.busy)}</div>` : queue || walkState.why ? `${head}${queueCard}${walkState.why ? `<div class="card dim">No thermal walks compared (${esc(walkState.why)}).</div>` : ''}` : '';
   // every model version's score over the walks it has scored: the current one first
   const versions = [...new Set(walks.flatMap((w) => w.results.map((r) => r.model)))].sort((a, b) => (a === MODEL_VERSION ? -1 : b === MODEL_VERSION ? 1 : b.localeCompare(a)));
   const pooled = versions.map((v) => {
@@ -1111,7 +1118,7 @@ function walkCards() {
       <p>Measured minus modelled, each half-meter square at its own minute, seen within 60° of straight down: mean ${f1(F(r.bias))} °F, typical miss (RMS) ${F(r.rmse)?.toFixed(1) ?? '-'} °F, rank correlation ${Number.isFinite(r.rho) ? r.rho.toFixed(2) : '-'}. In the sun ${f1(F(sh.sun?.bias))} °F over ${sh.sun?.n ?? 0}; in the shade ${f1(F(sh.shade?.bias))} °F over ${sh.shade?.n ?? 0}. Seen at a slant: 60-70° ${f1(F(b['60-70']?.bias))} °F over ${b['60-70']?.n ?? 0}, 70-80° ${f1(F(b['70-80']?.bias))} °F over ${b['70-80']?.n ?? 0} (against the model, so their difference from the straight-down readings is the angle's own effect).</p>
       <p class="dim">The model at mid-walk: air ${Number.isFinite(o.ta) ? Math.round(o.ta * 1.8 + 32) : '-'} °F (${esc(u.air || '-')}), sun ${Number.isFinite(o.el) ? Math.round(o.el) : '-'}° up, sunshine ${Number.isFinite(o.ghi) ? Math.round(o.ghi) : '-'} W/m² (${esc(o.from || '-')}), cloud ${Number.isFinite(o.cloud) ? Math.round(o.cloud * 100) : '-'}% (${esc(u.cloud || '-')}); open, level, watered lawn ${Number.isFinite(o.ts) ? Math.round(o.ts * 1.8 + 32) : '-'} °F. The ground ${esc(u.wet || '-')}. Weather: ${src}. ${d.offLawn ? `${d.offLawn} squares off the lawn left out.` : ''} Model: ${esc(r.model)}.</p></details>`;
   }).join('');
-  return `${head}${walkState.busy ? `<div class="card">${esc(walkState.busy)}</div>` : ''}${pooled ? `<div class="card"><p>Every walk on this property, pooled, by model version (measured minus modelled, °F):</p><div style="overflow-x:auto"><table class="small"><tr><th>model</th><th>walks</th><th>squares</th><th>mean</th><th>RMS</th><th>median rank</th></tr>${pooled}</table></div></div>` : ''}${rows}`;
+  return `${head}${walkState.busy ? `<div class="card">${esc(walkState.busy)}</div>` : ''}${queueCard}${pooled ? `<div class="card"><p>Every walk on this property, pooled, by model version (measured minus modelled, °F):</p><div style="overflow-x:auto"><table class="small"><tr><th>model</th><th>walks</th><th>squares</th><th>mean</th><th>RMS</th><th>median rank</th></tr>${pooled}</table></div></div>` : ''}${rows}`;
 }
 
 /* SURFACE TEMPERATURES AGAINST THE MODEL (owner, 2026-11-09): each surface-temperature visit (the readings page, an
@@ -1274,7 +1281,7 @@ const valveAsk = { n: 0, waiting: new Map() };
 
 async function run(site) {
   running?.terminate();
-  walkState.asked = false; walkState.admin = false; walkState.truth = []; walkState.why = null; walkState.busy = null; walkState.pending.clear();
+  walkState.asked = false; walkState.admin = false; walkState.truth = []; walkState.why = null; walkState.busy = null; walkState.pending.clear(); walkState.waiting = 0; walkState.failed = [];
   view.site = site; view.data = null; view.plan = null;
   zoom.s = 1; zoom.tx = 0; zoom.ty = 0; $('#view').style.transform = '';
   $('#result').hidden = true; $('#plan').innerHTML = ''; $('#hill').innerHTML = ''; $('#streams').innerHTML = ''; if ($('#groundwater')) $('#groundwater').innerHTML = '';
