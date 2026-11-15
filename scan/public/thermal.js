@@ -60,6 +60,8 @@ function render() {
     else text = `ready${s.walk ? ` · ${s.kept} frames${s.dropped ? ` (${s.dropped} lost)` : ''} · ${mb(s.bytes)} MB` : ''}${s.refAgoS != null ? ` · reference ${s.refAgoS} s ago` : ''}`;
     if (s.state === 'ready' && walk.on && !s.walk) text += ' <span class="bad">· NOT recording this walk</span>';
     if (s.state === 'ready' && s.walk && !walk.sky.length && !s.busy) text += '<br><span class="go">Take the sky shot first. Note the air temperature (thermometer, in shade).</span>';
+    // how a thermal walk must look (the thermal session, 2026-11-15, under the water session's 60 degree cut)
+    if (s.state === 'ready' && s.walk && walk.sky.length && !s.busy) text += '<br><span style="color:#cfd8d3">Aim at the grass a couple of steps ahead, sweep slowly side to side, strips about 12 ft apart.</span>';
     if (walk.note && Date.now() < walk.noteUntil) text += `<br>${walk.note}`;
     $('#thermal-say').innerHTML = `<b>Thermal</b> ${text}`;
     const can = s.state === 'ready' && !s.busy && !!s.walk;
