@@ -8,7 +8,8 @@
  * event; nothing else in the page knows of it.
  *
  * What it does: a small box in the AR view saying what the camera is doing (setting up, settling, ready, taking its
- * shutter reference), a Sky shot button (the phone straight up at open sky for 2 s, at the walk's start and end) and
+ * shutter reference), a Sky sweep button (10 s: the phone up at the sky, turned slowly once around, ending straight up; at the walk's
+ * start and end; the thermal runner maps the sky's dome from it, for the cloud cover) and
  * a Sweep button (5 s past something hot, for the timing). The frames are kept and sent by the app itself
  * (ThermalCamera.kt); nothing is turned into a temperature on the phone.
  */
@@ -33,7 +34,7 @@ document.head.append(css);
 
 const box = document.createElement('div');
 box.id = 'thermal';
-box.innerHTML = '<span id="thermal-say"></span><div class="btns"><button type="button" id="thermal-sky">Sky shot</button><button type="button" id="thermal-sweep">Sweep</button><button type="button" id="thermal-angle">Angle check</button></div>';
+box.innerHTML = '<span id="thermal-say"></span><div class="btns"><button type="button" id="thermal-sky">Sky sweep</button><button type="button" id="thermal-sweep">Sweep</button><button type="button" id="thermal-angle">Angle check</button></div>';
 document.querySelector('#overlay')?.append(box);
 const send = document.createElement('div');
 send.id = 'thermal-send'; send.hidden = true;
@@ -54,12 +55,12 @@ function render() {
     else if (s.state === 'setup') text = `setting up: ${s.detail}…`;
     else if (s.state === 'settling') text = `settling, ${s.secs} s`;
     else if (s.state === 'failed' || s.state === 'unplugged') text = `<span class="bad">${s.detail}</span>`;
-    else if (s.busy === 'sky') text = '<span class="go">SKY SHOT: hold it pointing straight up</span>';
+    else if (s.busy === 'sky') text = s.skyLeftS > 0 ? `<span class="go">SKY: turn slowly once around, phone up at the sky; end straight up. ${s.skyLeftS} s</span>` : '<span class="go">SKY: keep the phone up at the sky… (shutter reference)</span>';
     else if (s.busy === 'sweep') text = '<span class="go">SWEEP: 5 s, left and right past the hot thing</span>';
     else if (s.busy === 'reference') text = 'shutter reference…';
     else text = `ready${s.walk ? ` · ${s.kept} frames${s.dropped ? ` (${s.dropped} lost)` : ''} · ${mb(s.bytes)} MB` : ''}${s.refAgoS != null ? ` · reference ${s.refAgoS} s ago` : ''}`;
     if (s.state === 'ready' && walk.on && !s.walk) text += ' <span class="bad">· NOT recording this walk</span>';
-    if (s.state === 'ready' && s.walk && !walk.sky.length && !s.busy) text += '<br><span class="go">Take the sky shot first. Note the air temperature (thermometer, in shade).</span>';
+    if (s.state === 'ready' && s.walk && !walk.sky.length && !s.busy) text += '<br><span class="go">Do the sky sweep first. Note the air temperature (thermometer, in shade).</span>';
     // how a thermal walk should look (2026-11-15: the water session takes readings out to 80 degrees off straight
     // down, in angle bands, so the walker need not keep to narrow strips)
     if (s.state === 'ready' && s.walk && walk.sky.length && !s.busy) text += '<br><span style="color:#cfd8d3">Aim at the grass ahead and sweep slowly side to side. Within about 25 ft counts; closer and steeper down reads best.</span>';
@@ -69,7 +70,7 @@ function render() {
     $('#thermal-sky').disabled = !can; $('#thermal-sweep').disabled = !can;
     $('#thermal-angle').disabled = !(s.state === 'ready' && !!s.walk) || typeof T.mark !== 'function';
     $('#thermal-angle').textContent = walk.angle ? 'End angle check' : 'Angle check';
-    $('#thermal-sky').textContent = walk.sky.length ? 'Sky shot (end)' : 'Sky shot';
+    $('#thermal-sky').textContent = walk.sky.length ? 'Sky sweep (end)' : 'Sky sweep';
     // a walk that began before the camera was ready: its file starts as soon as there is a camera
     if (walk.on && !s.walk && s.state !== 'none' && s.state !== 'asking') { try { T.startWalk(walk.id); } catch { /* next time */ } }
   }
@@ -84,10 +85,10 @@ send.addEventListener('click', () => { try { T.sendWaiting(); } catch { /* gone 
 $('#thermal-sky').addEventListener('click', () => {
   const s = read();
   if (!s) return;
-  if (s.upDeg == null) { say('The sky shot needs the AR running, to know which way is up.'); return; }
-  if (s.upDeg > 20) { say(`Point the phone's camera straight up (now ${s.upDeg}° off), at open sky: no trees, roof edge or your own head in view. Then tap again and hold still.`, 9000); return; }
+  if (s.upDeg == null) { say('The sky sweep needs the AR running, to know which way is up.'); return; }
+  if (s.upDeg > 65) { say('Point the phone up at the sky first (well above the horizon), standing clear of trees and roofs. Then tap again.', 9000); return; }
   const label = walk.sky.length ? 'end' : 'start';
-  if (T.skyShot(label)) { walk.sky.push(label); say('Hold it there: a shutter reference, then 2 s of sky.', 8000); } else say('Not now: the camera is busy. Try again in a moment.');
+  if (T.skyShot(label)) { walk.sky.push(label); say('Keep it up at the sky. When it says turn: slowly once around, then straight up. Stand clear of trees and roofs.', 12000); } else say('Not now: the camera is busy. Try again in a moment.');
 });
 $('#thermal-sweep').addEventListener('click', () => {
   if (T.sweep()) { walk.sweeps++; say('Sweep the view left and right across something hot (a mug about 3 ft away), 3 or 4 times.', 6000); } else say('Not now: the camera is busy.');
@@ -175,7 +176,7 @@ function askNotes(id, started) {
     <select name="unit"><option value="F">°F</option><option value="C">°C</option></select><br>
     <label><input type="checkbox" name="wet"> The grass was wet (dew, rain, sprinklers)</label><br>
     <label><input type="checkbox" name="spr"> Sprinklers ran in the last 3 days</label><br>
-    <label>Sky <select name="cloud"><option value="">?</option><option>clear</option><option>broken</option><option>overcast</option></select></label><br>
+    <label>Sky (optional: the sky sweep measures it) <select name="cloud"><option value="">?</option><option>clear</option><option>broken</option><option>overcast</option></select></label><br>
     <button type="submit" style="margin-top:8px;padding:10px 16px">Save</button> <button type="button" name="skip" style="margin-top:8px;padding:10px 16px">Skip</button>`;
   document.body.append(f);
   const toC = (v, unit) => { const x = parseFloat(v); return Number.isFinite(x) ? +(unit === 'F' ? (x - 32) / 1.8 : x).toFixed(1) : null; };

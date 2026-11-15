@@ -34,7 +34,7 @@ import java.util.concurrent.Executors
  *   a shutter reference: close, 400 ms, the dark-level loop, 16 frames, open (each move released after 200 ms, inside
  *     Uvc.shutterControl). Every 30 s for the first 3 minutes after the camera connects, then every 45 s.
  *   kept while a walk records (ThermalFile; the thermal session's answers of 2026-11-15): 2 frames a second while
- *     walking, and every frame (25 a second) only for a reference's 16 frames, a sky shot (2 s) and a timing sweep
+ *     walking, and every frame (25 a second) only for a reference's 16 frames, a sky sweep (10 s) and a timing sweep
  *     (5 s); each with its time (elapsedRealtimeNanos) and the number of the reference before it. Of each frame, rows
  *     0-216 and columns 0-259 (the picture, the blind reference rows and the metadata row), the same crop for every
  *     kind of frame; never binned, never averaged. Packed without loss as differences from the latest reference's
@@ -59,8 +59,12 @@ class ThermalCamera(private val app: Context, private val base: String) {
         const val EARLY_FOR_MS = 180_000L           // the first 3 minutes after it connects
         const val REFERENCE_FRAMES = 16
         const val KEEP_EVERY = 12           // of 25 frames a second: about 2 kept
-        const val SKY_WITHIN_DEG = 20.0     // a sky shot: the phone camera within this of straight up
-        const val SKY_MS = 2000L
+        // THE SKY SWEEP (the thermal session, 2026-11-15, after the owner asked for cloud cover from the camera
+        // instead of typing it): about 10 s, the phone up at the sky and turned slowly once around, ending straight
+        // up; its runner makes a map of the sky's dome from the frames and poses. The camera must be at least 25
+        // degrees above the horizon (65 from straight up) to begin.
+        const val SKY_WITHIN_DEG = 65.0
+        const val SKY_MS = 10_000L
         const val SWEEP_MS = 5000L
         // frame types in the file
         const val SCENE = 0; const val REFERENCE = 1; const val SKY = 2; const val SWEEP = 3; const val SHUTTER = 4
@@ -105,6 +109,8 @@ class ThermalCamera(private val app: Context, private val base: String) {
     @Volatile private var baseSeq = 0
     @Volatile private var wantBase = false
     @Volatile private var upDeg = Double.NaN     // the phone camera's angle from straight up, from ARCore
+    @Volatile private var skyFrames = 0          // ARCore frames in the sky sweep, and those high enough
+    @Volatile private var skyHigh = 0
 
     // the walk being recorded
     @Volatile private var file: ThermalFile? = null
@@ -326,7 +332,7 @@ class ThermalCamera(private val app: Context, private val base: String) {
         return ok
     }
 
-    // ---------------- references, the sky shot, the timing sweep ----------------
+    // ---------------- references, the sky sweep, the timing sweep ----------------
 
     /** The probe's flatFieldNow: close, 400 ms, the dark-level loop, 16 frames, open. On the work thread. */
     private fun reference(u: Uvc) {
@@ -360,8 +366,9 @@ class ThermalCamera(private val app: Context, private val base: String) {
         }
     }
 
-    /** A sky shot ("start" or "end"): a fresh reference, then 2 s of every frame, the phone pointing straight up
-     *  (within 20 degrees, by ARCore's pose; refused otherwise, and when ARCore is not running to say). */
+    /** A sky sweep ("start" or "end"): a fresh reference, then 10 s of every frame while the walker turns once around
+     *  with the phone up at the sky (refused when the camera is under 25 degrees above the horizon, or ARCore is
+     *  not running to say). */
     fun skyShot(label: String): Boolean {
         if (!(upDeg <= SKY_WITHIN_DEG)) return false
         return timed("sky", label.take(12), SKY_MS, true) { skyUntil = it }
@@ -380,11 +387,13 @@ class ThermalCamera(private val app: Context, private val base: String) {
                 if (fresh) reference(u)
                 val t0 = SystemClock.elapsedRealtimeNanos()
                 val up0 = upDeg
+                skyFrames = 0; skyHigh = 0
                 until(t0 + ms * 1_000_000)
                 Thread.sleep(ms)
                 file?.json(JSONObject().put("k", what).put("label", label).put("t0_ns", t0).put("t1_ns", t0 + ms * 1_000_000)
                     .put("up_deg_start", if (up0.isNaN()) JSONObject.NULL else Math.round(up0 * 10) / 10.0)
-                    .put("up_deg_end", if (upDeg.isNaN()) JSONObject.NULL else Math.round(upDeg * 10) / 10.0))
+                    .put("up_deg_end", if (upDeg.isNaN()) JSONObject.NULL else Math.round(upDeg * 10) / 10.0)
+                    .put("high_share", if (what == "sky" && skyFrames > 0) Math.round(100.0 * skyHigh / skyFrames) / 100.0 else JSONObject.NULL))
             } catch (e: Exception) { note("$what failed: $e") } finally { busy = null }
         }
         return true
@@ -490,6 +499,7 @@ class ThermalCamera(private val app: Context, private val base: String) {
             val z = pose.zAxis
             upDeg = Math.toDegrees(Math.acos((-z[1]).toDouble().coerceIn(-1.0, 1.0)))
         }
+        if (SystemClock.elapsedRealtimeNanos() < skyUntil) { skyFrames++; if (upDeg <= SKY_WITHIN_DEG) skyHigh++ }
         val f = file ?: return
         if (pose != null) f.pose(timestampNs, SystemClock.elapsedRealtimeNanos(), pose, tracking)
     }
@@ -500,7 +510,8 @@ class ThermalCamera(private val app: Context, private val base: String) {
             .put("present", uvc != null || present()).put("setup", setup).put("fps", Math.round(fps * 10) / 10.0).put("seen", seen)
             .put("refs", refIndex).put("refAgoS", if (lastRefAt > 0) (SystemClock.elapsedRealtime() - lastRefAt) / 1000 else JSONObject.NULL)
             .put("walk", walk ?: JSONObject.NULL).put("kept", f?.frames ?: 0).put("poses", f?.poses ?: 0).put("dropped", f?.dropped ?: 0).put("bytes", f?.bytes ?: 0)
-            .put("upDeg", if (upDeg.isNaN()) JSONObject.NULL else Math.round(upDeg)).put("upload", uploads.status()).toString()
+            .put("upDeg", if (upDeg.isNaN()) JSONObject.NULL else Math.round(upDeg))
+            .put("skyLeftS", maxOf(0L, (skyUntil - SystemClock.elapsedRealtimeNanos()) / 1_000_000_000L)).put("upload", uploads.status()).toString()
     }
 
     /** The setup's log, for the page to show when something failed (no table bytes, no serial number). */

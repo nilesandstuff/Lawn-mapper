@@ -14,7 +14,7 @@ class ThermalBridge(private val cam: ThermalCamera) {
     /** Keep frames for this walk; false when no camera is connected. */
     @JavascriptInterface fun startWalk(walk: String): Boolean = cam.startWalk(walk)
     @JavascriptInterface fun endWalk() { cam.endWalk() }
-    /** A fresh reference, then 2 s of every frame with the phone pointing straight up; label "start" or "end". */
+    /** A fresh reference, then the 10 s sky sweep (every frame); label "start" or "end". */
     @JavascriptInterface fun skyShot(label: String): Boolean = cam.skyShot(label)
     /** 5 s of every frame, for the timing sweep past something hot. */
     @JavascriptInterface fun sweep(): Boolean = cam.sweep()

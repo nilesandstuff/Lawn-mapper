@@ -44,7 +44,9 @@ once the site has it). Little-endian throughout.
            setup   the camera became ready (again, after an unplug): tables, setup, words, elapsed_ns
            range   the range setup's outcome and its log (when the app set the range itself)
            ref     a shutter reference: index, t0_ns, t1_ns, frames, dark_level, log, words
-           sky     a sky shot: label (start | end), t0_ns, t1_ns, up_deg_start, up_deg_end
+           sky     a sky sweep (10 s, the phone up at the sky and turned once around, ending straight up):
+                   label (start | end), t0_ns, t1_ns, up_deg_start, up_deg_end (degrees from straight up),
+                   high_share (the share of the sweep with the camera 25 degrees or more above the horizon)
            sweep   a timing sweep: t0_ns, t1_ns
            mark    what (angle-start | angle-end: the walker's angle check, one patch watched while walking
                    up to it), elapsed_ns
@@ -69,7 +71,7 @@ once the site has it). Little-endian throughout.
            f32 qx qy qz qw  its rotation
            u8   tracking (1 = ARCore was tracking)
 
-Kept: about 2 frames a second while walking (every 12th), and every frame for a reference's 16, a sky shot (2 s) and
+Kept: about 2 frames a second while walking (every 12th), and every frame for a reference's 16, a sky sweep (10 s) and
 a sweep (5 s). A file cut short (the app closed mid-walk) ends in a partial record; everything before it is whole.
 
 ## Where the walk sits on the map: twins/<walk>/thermal-placement.json
