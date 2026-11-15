@@ -88,9 +88,36 @@ $('#thermal-sweep').addEventListener('click', () => {
   if (T.sweep()) { walk.sweeps++; say('Sweep the view left and right across something hot (a mug about 3 ft away), 3 or 4 times.', 6000); } else say('Not now: the camera is busy.');
 });
 
+/* WHERE THE WALK SITS ON THE MAP, for the thermal session's runner (its answer of 2026-11-15: "the per-second table
+   is what I want"): once a second, the page's level fit in effect and the ground's height, by ARCore's own frame
+   time; at the walk's end, with the lidar's ground grid and the lawn's outline in the same metres, as the twin part
+   thermal-placement.json (private bucket). The shape is in android/app/src/dev/README.md. */
+const place = { ask: null, send: null, samples: [], timer: null };
+const r4 = (v) => (Number.isFinite(v) ? +v.toFixed(4) : null);
+function samplePlace() {
+  const p = place.ask?.();
+  if (!p || !Number.isFinite(p.t)) return;
+  place.samples.push({ ar_ns: Math.round(p.t * 1e6), theta: +p.theta.toFixed(6), tx: r4(p.tx), ty: r4(p.ty), s: +p.s.toFixed(6), groundY: r4(p.groundY), dy: r4(p.dy), dyFrom: p.dyFrom, by: p.by, odo: r4(p.odo), tracking: !!p.tracking });
+}
+function sendPlace(d) {
+  if (!place.send || !place.samples.length) return 0;
+  const g = d.ground;
+  place.send('thermal-placement.json', JSON.stringify({
+    format: 1, walk: String(d.walk), map: d.map,
+    // only for the weather: rounded to a tenth of a degree
+    coarse: d.origin ? { lng: +d.origin[0].toFixed(1), lat: +d.origin[1].toFixed(1) } : null,
+    samples: place.samples,
+    ground: g ? { e0: r4(g.box[0]), n1: r4(g.box[3]), cell: g.cell, W: g.W, H: g.H, h: Array.from(g.data, (v) => (Number.isFinite(v) ? +v.toFixed(2) : null)) } : null,
+    outline: { rings: (d.lawn || []).map((ring) => ring.map(([e, n]) => [r4(e), r4(n)])) },
+  }));
+  return place.samples.length;
+}
+
 document.addEventListener('yard-walk', (e) => {
   const d = e.detail || {};
   if (d.phase === 'start' && !d.replay) {
+    place.ask = d.placement || null; place.send = d.send || null; place.samples = [];
+    clearInterval(place.timer); place.timer = setInterval(samplePlace, 1000);
     walk.id = String(d.walk); walk.on = true; walk.sky = []; walk.sweeps = 0; walk.note = '';
     try { T.connect(); T.startWalk(walk.id); } catch { /* no camera: the walk goes on without it */ }
   } else if (d.phase === 'end' && walk.on) {
@@ -98,7 +125,9 @@ document.addEventListener('yard-walk', (e) => {
     walk.on = false;
     try { T.endWalk(); } catch { /* gone */ }
     // counts only, for the walk's summary
-    if (s?.walk && d.add) d.add.thermal = { frames: s.kept, poses: s.poses, dropped: s.dropped, mb: +mb(s.bytes), references: s.refs, setup: s.setup, sky: walk.sky, sweeps: walk.sweeps };
+    clearInterval(place.timer); samplePlace();
+    const placed = s?.walk ? sendPlace(d) : 0;
+    if (s?.walk && d.add) d.add.thermal = { placed, frames: s.kept, poses: s.poses, dropped: s.dropped, mb: +mb(s.bytes), references: s.refs, setup: s.setup, sky: walk.sky, sweeps: walk.sweeps };
   }
   render();
 });

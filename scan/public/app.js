@@ -15,7 +15,7 @@ import { lookMeshes } from '/lib/look.js';
 import { snapTo } from '/lib/lidar-marks.js';
 import { levelDist, toLocal, fromLocal } from '/lib/frames.js';
 import { frameFor, bboxOf, toPx, fromPx, ringsOf, toMerc } from '/lib/photo.js';
-import { newLocate, mark, noteGround, addDepth, nextAsk, answer, fitFor, mapOf, sessionOf, checkError, nearestNamed, agreement, groundOffset, groundUnder, status as fixStatus, summaryOf } from '/lib/locate.js';
+import { newLocate, mark, noteGround, addDepth, nextAsk, answer, fitFor, fitSource, mapOf, sessionOf, checkError, nearestNamed, agreement, groundOffset, groundUnder, status as fixStatus, summaryOf } from '/lib/locate.js';
 import { STAND as REF_STAND, MIN_STAND as REF_MIN_STAND, VOX as REF_VOX, referenceFit, buildRef, encodeRef } from '/lib/walkref.js';
 import { leftOut, mapToSession } from '/lib/align.js';
 import { newTwin, addPoints, addPose, wantKey, addKey, flush, flushDue, liveOf } from '/lib/twin.js';
@@ -847,7 +847,7 @@ async function startAR(engine) {
   st.twin = newTwin({ walk: `${st.walk.startedAt}`, map: st.map || null, engine, started: st.walk.startedAt });
   st.twinUp = { queue: [], busy: false, off: null, sent: 0, failed: 0 };
   // for what only a dev build adds (the thermal camera, public/thermal.js): a walk began
-  document.dispatchEvent(new CustomEvent('yard-walk', { detail: { phase: 'start', walk: `${st.walk.startedAt}`, replay: !!st.replayOf } }));
+  document.dispatchEvent(new CustomEvent('yard-walk', { detail: { phase: 'start', walk: `${st.walk.startedAt}`, replay: !!st.replayOf, placement: placementNow, send: (name, body) => sendTwin([{ name, type: 'application/json', body }]) } }));
   st.errors = []; st.ar = null; st.drawer = null;
   overlay.hidden = false; document.body.classList.add('in-ar');
   $('#hud').textContent = engine === '8thwall' ? 'Loading the engine… then the phone asks for the camera and the motion sensors.' : 'Starting…';
@@ -1350,6 +1350,17 @@ function hud(f) {
 }
 
 /** The lidar ground at a map point from the 1 m grid the worker sent; `fallback` off the grid. */
+/** Where the walk sits on the map at this moment, for a dev-only extra that asks (public/thermal.js): the latest
+    frame's time, the level fit in effect (align.js apply: session (x, -z) -> map east, north), what it came from, the
+    session's height of the ground under the phone, and dy (session y = the lidar ground's height + dy). */
+function placementNow() {
+  const w = st.walk, L = st.L, f = st.ar;
+  if (!w || !L || !f) return null;
+  const T = fitFor(L, w.odo);
+  if (!T) return null;
+  return { t: f.t, theta: T.theta, tx: T.tx, ty: T.ty, s: T.s ?? 1, by: fitSource(L, w.odo), groundY: L.groundY ?? null, dy: st.dyFrom ? st.dy : null, dyFrom: st.dyFrom || null, odo: w.odo, tracking: f.tracking !== false && f.tracking !== 'lost' };
+}
+
 function demAt(g, e, n, fallback) {
   if (!g) return fallback;
   const c = Math.floor((e - g.box[0]) / g.cell), r = Math.floor((g.box[3] - n) / g.cell);
@@ -1681,7 +1692,7 @@ function finish() {
   });
   s.id = `${w.startedAt}`; s.saved = null;
   // ...and ended: what a dev-only extra says of the walk (counts) is kept in its summary
-  { const add = {}; document.dispatchEvent(new CustomEvent('yard-walk', { detail: { phase: 'end', walk: s.id, add } })); if (Object.keys(add).length) s.extras = add; }
+  { const add = {}; document.dispatchEvent(new CustomEvent('yard-walk', { detail: { phase: 'end', walk: s.id, add, map: st.map || null, origin: st.origin || null, lawn: st.lawn || [], ground: st.lid?.overlay?.dem1 || null } })); if (Object.keys(add).length) s.extras = add; }
   try { s.perf = perfOf(st.wperf); st.upPerf = { perf: st.wperf, id: s.id }; } catch (e) { log(`speed numbers: ${e.message}`); }
   if (st.twin) {
     sendTwin(flush(st.twin, Date.now(), liveOf(L, w, { ended: true, summary: s.id, crumbs: crumbs ? crumbs.list : null, walk: L?.walk?.ok ? { T: L.walk.T, share: L.walk.share, margin: L.walk.margin, walkedM: L.walk.walkedM, from: L.walk.from } : null, recordOnly: !!st.recordOnly, points: pointsKept(), gpsTrail: trailKept(), geoTrail: geoKept(), anchors: st.anchors ? anchorsKept(st.anchors) : null })));

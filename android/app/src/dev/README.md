@@ -70,5 +70,26 @@ once the site has it). Little-endian throughout.
 Kept: about 2 frames a second while walking (every 12th), and every frame for a reference's 16, a sky shot (2 s) and
 a sweep (5 s). A file cut short (the app closed mid-walk) ends in a partial record; everything before it is whole.
 
-How ARCore's world becomes the map's east/north/up metres is not in this file: it is in the walk's twin
-(`twins/<walk>/live.json`), written by the page. docs/SCAN-PLAN.md section 27.
+## Where the walk sits on the map: twins/<walk>/thermal-placement.json
+
+Written by the page (scan/public/thermal.js) at the walk's end, for the thermal runner. JSON:
+
+    format 1, walk, map
+    coarse   { lng, lat } rounded to 0.1 degree, for the weather only
+    samples  about one a second: { ar_ns, theta, tx, ty, s, groundY, dy, dyFrom, by, odo, tracking }
+    ground   { e0, n1, cell, W, H, h }   the lidar's ground, metres; h is W*H numbers, row 0 the NORTH edge, each
+             row west to east; cell (r, c) covers east e0 + c*cell .. and north n1 - r*cell downward; null = no value
+    outline  { rings: [[[e, n], ...]] }   the traced lawn
+
+For an ARCore world point (x, y, z) at ARCore time ar_ns (the 'P' records' first number), with the sample nearest
+in time (or interpolated):
+
+    u = x,  v = -z
+    east  = s * (cos(theta) * u - sin(theta) * v) + tx
+    north = s * (sin(theta) * u + cos(theta) * v) + ty          (scan/lib/align.js apply)
+    height above the lidar's ground = y - dy - h(east, north)   when dy is not null
+    else height above the ground under the phone = y - groundY
+
+East and north are metres from the map's own origin (the same metres as ground and outline). `by` says what the fit
+came from at that moment (earlier, walk, fix, refs, geo): a guide to how well the stretch is placed. `s` is the
+fit's scale between ARCore's metres and the map's; it applies to positions only.
