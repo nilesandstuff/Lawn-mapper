@@ -903,48 +903,89 @@ class MainActivity : Activity() {
         setStatus("Token saved on this phone. Upload sends zips to the private repository.")
     }
 
-    /** Zip everything recorded since the last upload and put it in the private repository (data/uploads/). */
+    /**
+     * Zip everything recorded since the last upload and put it in the private repository (data/uploads/).
+     * Big zips go in parts of 15 MB (one 36 MB zip failed: the contents API takes the file base64 in one JSON
+     * body); a failed upload resumes with the same name and skips the parts already there. A runner joins them.
+     */
     private fun upload() {
         val t = token()
         if (t.isEmpty()) { tokenRow?.visibility = android.view.View.VISIBLE; setStatus("Paste a GitHub token first (once)."); return }
         Thread {
             synchronized(capLock) { if (capOut != null) finishCapture() }
             uvc?.let { File(work, "payload-headers.txt").writeText(synchronized(it.payloadLog) { it.payloadLog.toString() }) }
-            val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
+            // a pending (failed) upload keeps its name, so its parts already sent are not sent again
+            val stamp = prefs.getString("pending_upload", null) ?: SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date()).also { prefs.edit().putString("pending_upload", it).apply() }
             val zipFile = File(cacheDir, "upload-$stamp.zip")
-            ZipOutputStream(BufferedOutputStream(FileOutputStream(zipFile))).use { zip ->
-                for (f in work.listFiles()!!.sortedBy { it.name }) {
-                    zip.putNextEntry(ZipEntry(f.name)); f.inputStream().use { it.copyTo(zip) }; zip.closeEntry()
+            val listFile = File(cacheDir, "upload-$stamp.list")
+            if (!zipFile.exists() || !listFile.exists()) {
+                val files = work.listFiles()!!.sortedBy { it.name }
+                ZipOutputStream(BufferedOutputStream(FileOutputStream(zipFile))).use { zip ->
+                    for (f in files) { zip.putNextEntry(ZipEntry(f.name)); f.inputStream().use { it.copyTo(zip) }; zip.closeEntry() }
+                }
+                listFile.writeText(files.joinToString("\n") { it.name })
+            }
+            val total = zipFile.length()
+            val partSize = 15L * 1024 * 1024
+            val parts = if (total <= partSize) 1 else ((total + partSize - 1) / partSize).toInt()
+            var allOk = true
+            for (k in 0 until parts) {
+                val path = if (parts == 1) "data/uploads/probe-$stamp.zip" else String.format(Locale.US, "data/uploads/probe-%s.zip.part%02d-of-%02d", stamp, k + 1, parts)
+                if (exists(t, path)) { log("already uploaded: $path"); continue }
+                val len = minOf(partSize, total - k * partSize).toInt()
+                val bytes = ByteArray(len)
+                java.io.RandomAccessFile(zipFile, "r").use { it.seek(k * partSize); it.readFully(bytes) }
+                setStatus(if (parts == 1) "Uploading ${total / 1024} KB..." else "Uploading part ${k + 1} of $parts (${len / 1024} KB)...")
+                var code = -1; var err: String? = null
+                for (attempt in 1..3) {
+                    try { code = putFile(t, path, bytes, "Probe upload $stamp${if (parts > 1) " part ${k + 1}/$parts" else ""}") } catch (e: Exception) { err = e.toString() }
+                    if (code in 200..299) break
+                    Thread.sleep(3000L * attempt)
+                }
+                if (code !in 200..299) {
+                    allOk = false
+                    log("upload of $path failed: HTTP $code ${err ?: ""}")
+                    setStatus("Upload failed at part ${k + 1} of $parts (HTTP $code). Tap Upload again to resume${if (code == 401 || code == 403) ", or replace the token" else ""}.")
+                    if (code == 401) runOnUiThread { tokenRow?.visibility = android.view.View.VISIBLE }
+                    break
                 }
             }
-            setStatus("Uploading ${zipFile.length() / 1024} KB...")
-            val b64 = android.util.Base64.encodeToString(zipFile.readBytes(), android.util.Base64.NO_WRAP)
-            val body = "{\"message\":\"Probe upload $stamp\",\"branch\":\"$UPLOAD_BRANCH\",\"content\":\"$b64\"}"
-            try {
-                val c = java.net.URL("https://api.github.com/repos/$UPLOAD_REPO/contents/data/uploads/probe-$stamp.zip").openConnection() as java.net.HttpURLConnection
-                c.requestMethod = "PUT"; c.doOutput = true; c.connectTimeout = 20000; c.readTimeout = 120000
-                c.setRequestProperty("Authorization", "Bearer $t")
-                c.setRequestProperty("Accept", "application/vnd.github+json")
-                c.setRequestProperty("Content-Type", "application/json")
-                c.outputStream.use { it.write(body.toByteArray()) }
-                val code = c.responseCode
-                if (code in 200..299) {
-                    log("uploaded data/uploads/probe-$stamp.zip (${zipFile.length() / 1024} KB)")
-                    // start the next upload fresh: the captures and logs are in the repository now
-                    work.listFiles()?.forEach { it.delete() }
-                    synchronized(logLines) { logLines.setLength(0) }
-                    zipFile.delete()
-                    setStatus("Uploaded probe-$stamp. Thanks!")
-                } else {
-                    val err = try { c.errorStream?.bufferedReader()?.readText()?.take(200) } catch (_: Exception) { null }
-                    log("upload failed: HTTP $code $err")
-                    setStatus("Upload failed (HTTP $code). The zip is kept; try again${if (code == 401 || code == 403) " or replace the token" else ""}.")
-                    if (code == 401) runOnUiThread { tokenRow?.visibility = android.view.View.VISIBLE }
-                }
-            } catch (e: Exception) {
-                log("upload failed: $e"); setStatus("Upload failed: ${e.message}. Check the connection and try again.")
+            if (allOk) {
+                log("uploaded probe-$stamp (${total / 1024} KB in $parts part${if (parts > 1) "s" else ""})")
+                // only what went into the zip: recordings made after a failed attempt wait for the next upload
+                listFile.readLines().filter { it.isNotBlank() && it != "log.txt" }.forEach { File(work, it).delete() }
+                File(work, "log.txt").writeText("")
+                synchronized(logLines) { logLines.setLength(0) }
+                zipFile.delete(); listFile.delete(); prefs.edit().remove("pending_upload").apply()
+                setStatus("Uploaded probe-$stamp${if (parts > 1) " ($parts parts)" else ""}. Thanks!")
             }
         }.start()
+    }
+
+    private fun api(t: String, path: String): java.net.HttpURLConnection =
+        (java.net.URL("https://api.github.com/repos/$UPLOAD_REPO/contents/$path?ref=$UPLOAD_BRANCH").openConnection() as java.net.HttpURLConnection).apply {
+            setRequestProperty("Authorization", "Bearer $t"); setRequestProperty("Accept", "application/vnd.github+json")
+            connectTimeout = 20000; readTimeout = 180000
+        }
+
+    private fun exists(t: String, path: String): Boolean = try {
+        val c = api(t, path); c.requestMethod = "HEAD"; c.responseCode == 200
+    } catch (_: Exception) { false }
+
+    private fun putFile(t: String, path: String, bytes: ByteArray, message: String): Int {
+        val c = (java.net.URL("https://api.github.com/repos/$UPLOAD_REPO/contents/$path").openConnection() as java.net.HttpURLConnection).apply {
+            requestMethod = "PUT"; doOutput = true; connectTimeout = 20000; readTimeout = 180000
+            setRequestProperty("Authorization", "Bearer $t"); setRequestProperty("Accept", "application/vnd.github+json")
+            setRequestProperty("Content-Type", "application/json")
+        }
+        val b64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+        c.outputStream.use { o ->
+            o.write("{\"message\":\"$message\",\"branch\":\"$UPLOAD_BRANCH\",\"content\":\"".toByteArray())
+            o.write(b64.toByteArray()); o.write("\"}".toByteArray())
+        }
+        val code = c.responseCode
+        if (code !in 200..299) log("PUT $path: HTTP $code ${try { c.errorStream?.bufferedReader()?.readText()?.take(200) } catch (_: Exception) { null }}")
+        return code
     }
 
     // ---------------- sharing ----------------
