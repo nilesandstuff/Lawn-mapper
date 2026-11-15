@@ -96,7 +96,27 @@ export function roofCorners(marks, pts, lawn = [], opts = {}) {
  * length or the building's squareness; still an outward corner with roof returns beside it).
  */
 export function roofCornersAny(marks, pts) {
-  return cornersWithin(marks, pts, [], { maxEaveM: Infinity, nearLawnM: Infinity, any: true }).map((c) => ({ ...c, picked: true }));
+  /* (the same day: the owner's R2 and R3 sat on corners the outlines drew and were still passed over.) So this does
+     not go by the outline's own vertices, their turn or their sides at all: EVERY corner the marks found on a
+     building (the very corners a tap snaps to), with the eave from the roof returns within 2 m, else 4 m, else 7 m of
+     it, and as a last resort the building's own top. */
+  const roofs = [];
+  for (let i = 0; i < pts.n; i++) if (pts.kind(i) === 1) { const h = pts.hag(i); if (h >= 1.5) roofs.push([pts.e(i), pts.nn(i), h]); }
+  const objs = new Map((marks?.objects || []).map((o) => [o.id, o]));
+  const out = [];
+  for (const c of marks?.corners || []) {
+    const o = objs.get(c.of);
+    if (!o || c.kind !== 'corner' || (o.kind !== 'building' && !(o.top >= 1.5))) continue;   // a building, or anything standing 5 ft up
+    const p = c.at;
+    let hs = [];
+    for (const r of [2, 4, 7]) { hs = roofs.filter((q) => Math.hypot(q[0] - p[0], q[1] - p[1]) <= r).map((q) => q[2]).sort((x, y) => x - y); if (hs.length >= 3) break; }
+    const eaveM = hs.length >= 3 ? eaveOf(hs) : Number.isFinite(o.top) ? o.top : null;
+    if (!(eaveM > 0)) continue;
+    const ring = o.ring || [], mid = o.middle || (ring.length ? [ring.reduce((t, q) => t + q[0], 0) / ring.length, ring.reduce((t, q) => t + q[1], 0) / ring.length] : p);
+    const ang = (Math.atan2(p[0] - mid[0], p[1] - mid[1]) * 180) / Math.PI;
+    out.push({ at: [+p[0].toFixed(2), +p[1].toFixed(2)], eaveM: +eaveM.toFixed(2), of: o.id, label: `${COMPASS[Math.round(((ang + 360) % 360) / 45) % 8]} corner`, sure: !!c.sure, within: c.within ?? null, picked: true });
+  }
+  return out;
 }
 function cornersWithin(marks, pts, lawn = [], { maxEaveM = MAX_EAVE_M, nearLawnM = NEAR_LAWN_M, any = false } = {}) {
   const out = [];
