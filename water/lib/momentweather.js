@@ -15,8 +15,9 @@
  *          2 km grid, about 20 minutes behind, archived from April 2025 (the research agent, 2026-11-15; verified).
  *          The MEASURED sunshine the moment needs, though a 2 km, 10-minute value cannot see one cloud's shadow
  *          cross the lawn.
- *   HRRR   Open-Meteo's Historical Forecast API: NOAA's 3 km HRRR every 15 minutes (air, humidity, 10 m wind,
- *          sunshine), archived from 2018; the fallback for what the station and the satellite lack.
+ *   HRRR   Open-Meteo's Historical Forecast API, its best model for the place (NOAA's 3 km HRRR every 15 minutes in
+ *          the US until Open-Meteo retires it at the end of November 2026, then its successor): air, humidity,
+ *          10 m wind, sunshine; the fallback for what the station and the satellite lack.
  *          Both Open-Meteo sources are free for non-commercial use, 10,000 calls a day COUNTED BY ADDRESS, and a
  *          shared server address (this sandbox; a Cloudflare Worker) is refused once its neighbours have spent the
  *          day's share (seen 2026-11-15). So the PAGE fetches them, from the admin's own address, and hands the
@@ -112,7 +113,7 @@ export function openMeteoUrls(lat, lng, t0, t1) {
   const a = ymdUtc(t0 - 36e5), b = ymdUtc(t1 + 36e5), at = `latitude=${lat.toFixed(4)}&longitude=${lng.toFixed(4)}&start_date=${a}&end_date=${b}&timezone=GMT`;
   return {
     sat: `https://satellite-api.open-meteo.com/v1/archive?${at}&hourly=shortwave_radiation&models=satellite_radiation_seamless&temporal_resolution=native`,
-    hrrr: `https://historical-forecast-api.open-meteo.com/v1/forecast?${at}&minutely_15=temperature_2m,relative_humidity_2m,wind_speed_10m,shortwave_radiation&models=gfs_hrrr&wind_speed_unit=ms`,
+    hrrr: `https://historical-forecast-api.open-meteo.com/v1/forecast?${at}&minutely_15=temperature_2m,relative_humidity_2m,wind_speed_10m,shortwave_radiation&models=best_match&wind_speed_unit=ms`,
   };
 }
 export function parseOpenMeteo(j, src, t0 = -Infinity, t1 = Infinity) {
@@ -151,7 +152,7 @@ export async function weatherOfMoment(stations, lat, lng, t0, t1, { fetchFn = fe
   const more = cleanRows(extra?.rows, t0, t1, pad);
   for (const src of ['sat', 'hrrr']) {
     const n = more.filter((r) => r.src === src).length;
-    if (n) sources.push({ name: src === 'sat' ? 'Open-Meteo satellite sunshine (GOES, 2 km, 10 min; CC BY 4.0)' : 'Open-Meteo HRRR (3 km, 15 min; CC BY 4.0)', km: null, rows: n, has: src === 'sat' ? 'sunshine' : 'air, humidity, wind, sunshine (model)' });
+    if (n) sources.push({ name: src === 'sat' ? 'Open-Meteo satellite sunshine (GOES, 2 km, 10 min; CC BY 4.0)' : 'Open-Meteo best model (HRRR in the US, 15 min; CC BY 4.0)', km: null, rows: n, has: src === 'sat' ? 'sunshine' : 'air, humidity, wind, sunshine (model)' });
   }
   for (const s of nearestStations(stations, lat, lng, 3, { year: new Date(t0).getUTCFullYear() })) {
     try {

@@ -3,12 +3,17 @@
  *
  * Owner, 2026-10-18: both a typical-year plan and a "this week" adjustment.
  *
- *   past      NASA POWER daily (power.larc.nasa.gov, no key, open to browsers): temperatures,
- *             humidity, wind at 2 m, sunshine, rain. A coarse grid (about 50 km) that misses
- *             local storms (FINDINGS H4), so a user's own gauge totals override its rain. It
- *             runs 3-4 days behind; the days between come from the nearest NWS station.
- *   typical   ten whole years of POWER days: the water balance runs over all of them, and the
- *             plan for a month is what those ten Junes (say) needed.
+ *   past      OPEN-METEO (owner, 2026-11-15: "no plans to commercialize any aspect of the site, so let's pull
+ *             the trigger on the finer resolution"; its free API is for non-commercial use, data CC BY 4.0,
+ *             named on the page): the recent weeks from its forecast API's past days (its best model for the
+ *             place: NOAA's 3 km HRRR and NBM in the US) up to yesterday, so no lag; temperatures, humidity,
+ *             10 m wind (to 2 m, FAO-56 eq. 47), sunshine. Before 2026-11-15 NASA POWER daily (about 50 km,
+ *             3-4 days behind, the days between from the nearest NWS station): now the fallback when
+ *             Open-Meteo does not answer (its free share is counted by address: 10,000 calls a day).
+ *             The RAIN stays PRISM's (4 km, from the gauges; below), and a user's own gauge totals override it.
+ *   typical   ten whole years of daily weather from Open-Meteo's historical archive (ECMWF IFS 9 km and
+ *             ERA5-Land 11 km, its best match; POWER as the fallback): the water balance runs over all of them,
+ *             and the plan for a month is what those ten Junes (say) needed.
  *   coming    the NWS forecast grid (api.weather.gov): hourly temperature, humidity, wind,
  *             sky cover and rain amounts, a week ahead.
  *
@@ -19,6 +24,9 @@
 import { penmanMonteith, hargreaves, ra, rsFromCover, dayOfYear } from './et.js';
 
 const POWER = 'https://power.larc.nasa.gov/api/temporal/daily/point';
+export const OM_ARCHIVE = 'https://archive-api.open-meteo.com/v1/archive';
+export const OM_FORECAST = 'https://api.open-meteo.com/v1/forecast';
+const OM_DAILY = 'temperature_2m_max,temperature_2m_min,relative_humidity_2m_mean,wind_speed_10m_mean,shortwave_radiation_sum,precipitation_sum';
 const NWS = 'https://api.weather.gov';
 const ymd = (d) => d.toISOString().slice(0, 10);
 const compact = (s) => s.replace(/-/g, '');
@@ -53,14 +61,43 @@ export async function powerDays(lat, lng, start, end, fetchFn = fetch) {
   return { days, elev };
 }
 
-/** The ten whole years before this one, from POWER: the typical-year runs. */
+/** Open-Meteo's daily answer as days (wind at 10 m taken to 2 m; its rain kept until PRISM's replaces it). */
+export function openMeteoDaysOf(j, lat, { src = 'open-meteo', until = null } = {}) {
+  const d = j?.daily, elev = Number.isFinite(j?.elevation) ? j.elevation : 200;
+  if (!d?.time?.length) return { days: [], elev };
+  const v = (k, i) => { const x = d[k]?.[i]; return Number.isFinite(x) ? x : null; };
+  const days = d.time.map((date, i) => ({
+    date, tmax: v('temperature_2m_max', i), tmin: v('temperature_2m_min', i), rh: v('relative_humidity_2m_mean', i),
+    wind: v('wind_speed_10m_mean', i) === null ? null : v('wind_speed_10m_mean', i) * TO_2M, rs: v('shortwave_radiation_sum', i), rain: v('precipitation_sum', i), src,
+  })).filter((x) => x.tmax !== null && x.tmin !== null && (!until || x.date < until));
+  for (const x of days) x.et0 = et0For(x, lat, elev);
+  return { days, elev };
+}
+/** Open-Meteo's historical archive, start to end ('YYYY-MM-DD'), the place's own time zone. */
+export async function openMeteoArchive(lat, lng, start, end, fetchFn = fetch) {
+  const res = await fetchFn(`${OM_ARCHIVE}?latitude=${lat.toFixed(4)}&longitude=${lng.toFixed(4)}&start_date=${start}&end_date=${end}&daily=${OM_DAILY}&wind_speed_unit=ms&timezone=auto`);
+  if (!res.ok) throw new Error(`Open-Meteo's archive answered ${res.status}`);
+  return openMeteoDaysOf(await res.json(), lat, { src: 'open-meteo archive' });
+}
+/** Open-Meteo's recent days (its best model, archived forecasts) for the last `back` days, up to yesterday. */
+export async function openMeteoRecent(lat, lng, back, fetchFn = fetch) {
+  const res = await fetchFn(`${OM_FORECAST}?latitude=${lat.toFixed(4)}&longitude=${lng.toFixed(4)}&past_days=${Math.min(92, Math.max(1, back))}&forecast_days=1&daily=${OM_DAILY}&wind_speed_unit=ms&timezone=auto`);
+  if (!res.ok) throw new Error(`Open-Meteo answered ${res.status}`);
+  const j = await res.json();
+  const today = j?.daily?.time?.[j.daily.time.length - 1] || null; // forecast_days=1: the last day is today
+  return { ...openMeteoDaysOf(j, lat, { src: 'open-meteo (3 km in the US)', until: today }), today };
+}
+
+/** The ten whole years before this one (Open-Meteo, else POWER), rain from PRISM: the typical-year runs. */
 export async function typicalYears(lat, lng, { years = 10, now = new Date(), fetchFn = fetch } = {}) {
   const y1 = now.getUTCFullYear() - 1, y0 = y1 - years + 1;
-  const [power, prism] = await Promise.all([
-    powerDays(lat, lng, `${y0}-01-01`, `${y1}-12-31`, fetchFn),
+  const [om, prism] = await Promise.all([
+    openMeteoArchive(lat, lng, `${y0}-01-01`, `${y1}-12-31`, fetchFn).catch(() => null),
     prismRain(lat, lng, `${y0}-01-01`, `${y1}-12-31`, fetchFn).catch(() => null),
   ]);
-  return { ...power, rainFrom: withPrism(power.days, prism) };
+  // Open-Meteo needs most of the ten years; else NASA POWER as before
+  const base = om && om.days.length > years * 330 ? { ...om, weatherFrom: 'Open-Meteo (9-11 km)' } : { ...(await powerDays(lat, lng, `${y0}-01-01`, `${y1}-12-31`, fetchFn)), weatherFrom: 'NASA POWER (about 50 km)' };
+  return { ...base, rainFrom: withPrism(base.days, prism, base.weatherFrom.startsWith('Open') ? 'Open-Meteo' : 'NASA POWER') };
 }
 
 /* ------------------------------------------------------------ RAIN BY THE HOUR */
@@ -137,11 +174,11 @@ export async function prismRain(lat, lng, start, end, fetchFn = fetch) {
 }
 
 /** Put PRISM's rain on the days it has; -> which source the rain came from. */
-function withPrism(days, prism) {
-  if (!prism || !prism.size) return 'NASA POWER';
+function withPrism(days, prism, otherwise = 'NASA POWER') {
+  if (!prism || !prism.size) return otherwise;
   let n = 0;
   for (const d of days) if (prism.has(d.date)) { d.rain = prism.get(d.date); d.src = `${d.src} + PRISM rain`; n++; }
-  return n ? 'PRISM (4 km, from the rain gauges)' : 'NASA POWER';
+  return n ? 'PRISM (4 km, from the rain gauges)' : otherwise;
 }
 
 /* ---------------------------------------------------------------- the NWS */
@@ -228,10 +265,13 @@ export async function nwsObserved(stationsUrl, start, tz, lat, fetchFn = fetch) 
  */
 export async function thisWeek(lat, lng, { back = 14, now = new Date(), gauge = {}, fetchFn = fetch } = {}) {
   const start = ymd(new Date(now.getTime() - back * 864e5));
-  const [power, prism] = await Promise.all([
-    powerDays(lat, lng, start, ymd(now), fetchFn).catch(() => ({ days: [] })),
+  const [om, prism] = await Promise.all([
+    openMeteoRecent(lat, lng, back, fetchFn).catch(() => null),
     prismRain(lat, lng, start, ymd(now), fetchFn).catch(() => null),
   ]);
+  // Open-Meteo's recent days (to yesterday, no lag); else NASA POWER (3-4 days behind) as before
+  const power = om && om.days.length >= Math.min(back, 7) ? om : await powerDays(lat, lng, start, ymd(now), fetchFn).catch(() => ({ days: [] }));
+  const weatherFrom = power === om ? 'Open-Meteo (3 km in the US)' : 'NASA POWER';
   withPrism(power.days, prism);
   const past = power.days.filter((d) => d.rain !== null);
   const fc = await nwsForecast(lat, lng, fetchFn).catch(() => null);
@@ -241,6 +281,16 @@ export async function thisWeek(lat, lng, { back = 14, now = new Date(), gauge = 
     const ob = await nwsObserved(fc.stations, Date.parse(`${lastPast}T00:00:00Z`) + 864e5, fc.tz, lat, fetchFn).catch(() => ({ days: [] }));
     const today = fc.days[0]?.date;
     filled = ob.days.filter((d) => d.date > lastPast && (!today || d.date < today));
+  }
+  /* Open-Meteo's rain is a model's: on its recent days PRISM has not reached yet (it runs a day behind), the nearest
+     station's measured rain goes first, as it did for POWER's missing days */
+  if (power === om && fc?.stations) {
+    const bare = past.filter((d) => !/PRISM/.test(d.src));
+    if (bare.length) {
+      const ob = await nwsObserved(fc.stations, Date.parse(`${bare[0].date}T00:00:00Z`), fc.tz, lat, fetchFn).catch(() => ({ days: [] }));
+      const byDate = new Map(ob.days.filter((d) => d.rain !== null).map((d) => [d.date, d]));
+      for (const d of bare) { const o = byDate.get(d.date); if (o) { d.rain = o.rain; d.src += ` + ${o.src} rain`; } }
+    }
   }
   const coming = fc ? fc.days.filter((d) => d.date > lastPast) : [];
   // PRISM reaches the days the station fills too (it runs a day behind; POWER three or four)
@@ -262,7 +312,7 @@ export async function thisWeek(lat, lng, { back = 14, now = new Date(), gauge = 
   for (const d of days) if (gauge[d.date] !== undefined) { d.rain = gauge[d.date]; d.src += ' + gauge'; }
   // how fast the recent rains fell (IEMRE's hours, scaled to the day's total); without them, daily totals
   const hourly = await addRainHours(days.filter((d) => d.date < (fc?.days[0]?.date ?? ymd(now))), lat, lng, { fetchFn }).catch(() => 0);
-  return { days, today: fc?.days[0]?.date ?? ymd(now), hourly };
+  return { days, today: fc?.days[0]?.date ?? ymd(now), hourly, weatherFrom };
 }
 
 /**

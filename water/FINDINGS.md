@@ -2671,6 +2671,29 @@ noise, 2026-11-08 2 pm, 55 F walker's air, a 40% sweep) ran through the real pag
 58 F, the station 24 km away; HRRR refused from the sandbox's address and skipped. The numbers mean nothing (the
 temperatures were invented); the path does. NO REAL WALK YET (the core's /api/maps/thermal is not built).
 
+### H86. The weather from Open-Meteo instead of NASA POWER: closer to two airports, about 12% more ET0 (water session, 2026-11-15)
+
+The owner: "Currently there are no plans to commercialize any aspect of the site, so let's pull the trigger on the
+finer resolution" (Open-Meteo's free API is for non-commercial use; data CC BY 4.0, named on the page and in the paper).
+lib/weather.js: typicalYears reads Open-Meteo's historical archive (best match: ECMWF IFS 9 km, ERA5-Land 11 km),
+thisWeek its forecast API's past days (its best model: HRRR and NBM, 3 km in the US) up to yesterday; temperatures,
+mean humidity, 10 m wind (x 0.748 to 2 m), sunshine; ET0 by FAO-56 as before. NASA POWER is the fallback (most of the
+ten years missing, or fewer than a week of recent days). The RAIN stays PRISM's; on the newest days PRISM has not
+reached, the nearest NWS station's measured rain goes before Open-Meteo's model rain. test/weather.test.js.
+AGAINST MEASURED WEATHER (IEM ASOS, May-September 2024, 153 days each; daily max/min, mean RH, mean wind to 2 m), mean
+absolute error, Open-Meteo against POWER:
+  GRR  temperature 0.88 against 1.06 C (bias +0.03 against -0.38), RH 3.0 against 5.2 points, wind 0.44 against 0.31 m/s
+  MKG  temperature 1.91 against 2.53 C (bias -1.19 against -1.20), RH 8.5 against 8.3 points, wind 0.27 against 0.80 m/s
+(LAN and AZO answered no usable days.) Open-Meteo is closer on temperature at both, on humidity at GRR, on wind at MKG.
+Two stations, one season: a lean, not a settlement.
+THE CHANGE IN DEMAND: ten years (2016-2025) at a point near the owner's lot, ET0 883 mm a year from Open-Meteo against
+787 from POWER (+12%); July 4.74 against 4.39 mm/day (+8%), May 3.72 against 3.26, September 2.94 against 2.85;
+mostly the air: May RH 66 against 75%, July tmax 28.2 against 27.1 C. The plan's summer amounts rise about as much.
+The open question the paper already carries (section 5: the model's June-July ET0 15-20% above Enviroweather's
+figures) WIDENS by about 8% in July; FAO-56 on stations' own measured weather sits at or above the model's, and
+Open-Meteo matched those stations better, so the higher figure may be the closer one (SPECULATION until a station's
+own PM ET0 is set against both over a season).
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge

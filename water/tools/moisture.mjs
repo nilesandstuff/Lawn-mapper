@@ -1,8 +1,13 @@
 /**
- * THE SOIL MOISTURE READINGS SO FAR (water session, 2026-11-02): what the /moisture page has kept in the water
- * database, visit by visit. The repository and its workflow logs are public, so this prints numbers only: visits are
- * #1, #2... in the order they were taken, with no place, parcel number or map id. Run by the workflow's "moisture"
- * task; the check of the model against these readings comes later, on the same footing.
+ * THE READINGS AGAINST THE MODEL (water session, 2026-11-02; the thermal walks added 2026-11-15, when the owner asked
+ * for "a more stable way to evaluate the readings rather than a token and scratch space... Like a GitHub workflow? I'd
+ * save Claude usage that way too"): what the water database holds, read straight from it here, in CI -- the readings
+ * page's visits (soil moisture and surface temperature), the water map's checks of the model against them, and the
+ * thermal walks with every model version's score. The checks themselves are worked out in the admin's browser when
+ * the map is opened (the same code as the page shows); this gathers them. The repository and its workflow logs are
+ * public, so this prints numbers only: visits are #1, #2... in the order they were taken, walks W1, W2..., with no
+ * place, parcel number or map id. Run by the workflow's "readings" task (also "moisture"); the end of the log is the
+ * summary.
  *
  *   CLOUDFLARE_API_TOKEN=.. CLOUDFLARE_ACCOUNT_ID=.. node water/tools/moisture.mjs
  */
@@ -35,7 +40,53 @@ for (const c of checks) {
   const k = visits.findIndex((v) => v.id === c.visit_id);
   let det = {}; try { det = JSON.parse(c.detail || '{}'); } catch { /* none */ }
   const st = det.settings || {}, spots = det.spots || [];
+  if (visits[k]?.unit === 'surface_f') {
+    // a surface-temperature visit: each spot's surface minus the air, measured and modelled (F)
+    console.log(`#${k + 1}  SURFACE  checked ${new Date(c.checked).toISOString().slice(0, 16)}  ${st.season || ''}  rho ${f(c.rho)} over ${c.n} lawn spots`);
+    console.log('   n  reading_F  model_vs_air_F  lawn');
+    for (const s of spots) console.log(`  ${String(s.n).padStart(2)}  ${String(s.value).padStart(8)}  ${f(s.wet, 1).padStart(13)}  ${String(s.lawn ?? '-').padStart(4)}`);
+    continue;
+  }
   console.log(`#${k + 1}  checked ${new Date(c.checked).toISOString().slice(0, 16)}  model date ${st.date || '?'}  rho ${f(c.rho)} over ${c.n} lawn spots  root zone ${st.rootMm ?? '?'} mm  probe ${st.depth_in ?? '?'} in`);
   console.log('   n  reading  wet   lawn off_m cells zone peak_month_need_mm');
   for (const s of spots) console.log(`  ${String(s.n).padStart(2)}  ${String(s.value).padStart(6)}  ${f(s.wet).padStart(5)}  ${String(s.lawn ?? s.kind ?? '-').padStart(4)}  ${f(s.off, 1).padStart(4)}  ${String(s.cells ?? '-').padStart(4)}  ${String(s.zone ?? '-').padStart(3)}  ${s.need === null || s.need === undefined ? '-' : Math.round(s.need)}`);
+}
+
+// THE THERMAL WALKS (src/truth.js): each walk tied to its property, every model version's score kept
+let walks = [], results = [], weather = [];
+try {
+  walks = query('SELECT walk, map_id, parcel_pin, started, ended, kinds, notes FROM truth_walks ORDER BY started');
+  results = query('SELECT walk, model, kind, checked, n, bias, rmse, rho, detail FROM truth_results ORDER BY checked');
+  weather = query('SELECT walk, sources FROM truth_weather');
+} catch { /* no tables yet */ }
+const F = (c) => (c === null || c === undefined ? '-' : (c * 1.8 > 0 ? '+' : '') + (c * 1.8).toFixed(1));
+console.log('=====');
+console.log(walks.length ? 'THE THERMAL WALKS AGAINST THE MODEL (measured minus modelled, F; each half-meter square at its own minute)' : 'No thermal walk yet.');
+const wprops = new Map();
+walks.forEach((w, k) => {
+  const key = w.parcel_pin || w.map_id;
+  if (!wprops.has(key)) wprops.set(key, wprops.size + 1);
+  let notes = {}; try { notes = JSON.parse(w.notes || '{}') || {}; } catch { /* none */ }
+  const src = (() => { try { return JSON.parse(weather.find((x) => x.walk === w.walk)?.sources || '[]').map((x) => x.name.split(' (')[0] + (Number.isFinite(x.km) ? ` ${x.km} km` : '')).join(', '); } catch { return ''; } })();
+  const mins = w.ended ? Math.round((w.ended - w.started) / 6e4) : '?';
+  console.log(`W${k + 1}  ${new Date(w.started).toISOString().slice(0, 16)}Z  property ${wprops.get(key)}  ${mins} min  ${w.kinds || '-'}  sprinklers ${notes.sprinklers ?? '-'}  wet ${notes.wet ?? '-'}  sky cloud ${notes.sky?.cloud_fraction ?? '-'}  weather: ${src || 'not fetched yet'}`);
+  for (const r of results.filter((x) => x.walk === w.walk)) {
+    let d = {}; try { d = JSON.parse(r.detail || '{}') || {}; } catch { /* none */ }
+    const sh = d.sunShade || {}, b = d.bands || {};
+    console.log(`    ${r.model}  ${r.kind}: n ${r.n}  mean ${F(r.bias)}  RMS ${r.rmse === null ? '-' : (r.rmse * 1.8).toFixed(1)}  rho ${f(r.rho)}  | sun ${F(sh.sun?.bias)} (${sh.sun?.n ?? 0})  shade ${F(sh.shade?.bias)} (${sh.shade?.n ?? 0})  | 60-70 ${F(b['60-70']?.bias)} (${b['60-70']?.n ?? 0})  70-80 ${F(b['70-80']?.bias)} (${b['70-80']?.n ?? 0})`);
+  }
+});
+// pooled by model version: the line to read first when the model changes
+const versions = [...new Set(results.filter((r) => r.kind === 'surface').map((r) => r.model))];
+if (versions.length) {
+  console.log('=====');
+  console.log('EVERY WALK POOLED, BY MODEL VERSION (surface; mean and RMS in F, weighted by squares)');
+  for (const v of versions) {
+    const rs = results.filter((r) => r.model === v && r.kind === 'surface' && r.n > 0);
+    const n = rs.reduce((a, r) => a + r.n, 0);
+    if (!n) continue;
+    const bias = rs.reduce((a, r) => a + r.bias * r.n, 0) / n, rms = Math.sqrt(rs.reduce((a, r) => a + r.rmse ** 2 * r.n, 0) / n);
+    const rhos = rs.map((r) => r.rho).filter(Number.isFinite).sort((a, b) => a - b);
+    console.log(`  ${v}: ${rs.length} walks, ${n} squares, mean ${F(bias)}, RMS ${(rms * 1.8).toFixed(1)}, median rho ${rhos.length ? rhos[rhos.length >> 1].toFixed(2) : '-'}`);
+  }
 }

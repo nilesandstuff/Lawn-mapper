@@ -243,7 +243,7 @@ async function plan(inputs = {}) {
     zones: p.zones, zoneOf: p.zoneOf, kinds: p.kinds, needMm: p.needMm, soilAt: p.soilAt, multiplier: p.multiplier, rootIn: p.rootIn, needMonth: p.needMonth, wetFromWatering: p.wetFromWatering, wetAnyway: p.wetAnyway, dryShare: p.dryShare,
     roofs: p.roofs, soil: p.soil, weather: p.weather, thisWeek: p.thisWeek, years: p.years, topsoil: p.topsoil,
     standIn: kept.standIn, seconds: (Date.now() - t0) / 1000, shaded: p.shaded, lightByMonth: p.lightByMonth, ownRadiation: p.ownRadiation, fences: p.fences, treeCool: p.treeCool, yardWind: p.yardWind, windInfo: kept.windInfo || null, windJuly: kept.windMonths ? kept.windMonths[6].slice() : null, localWind: kept.wind || null, lightInfo: kept.lightInfo || null, sunShare: p.sunShare,
-    seasonDays: kept.season ? kept.season.size : null, grass, roots: p.roots, mode: p.mode, kc: p.kc, stress: p.stress, rainFrom: kept.rainFrom, rainShaped: kept.rainShaped || 0, rainStation: kept.rainShaped ? kept.wind.station : null, texture: p.texture,
+    seasonDays: kept.season ? kept.season.size : null, grass, roots: p.roots, mode: p.mode, kc: p.kc, stress: p.stress, rainFrom: kept.rainFrom, weatherFrom: kept.weatherFrom, weekFrom: kept.week?.weatherFrom || null, rainShaped: kept.rainShaped || 0, rainStation: kept.rainShaped ? kept.wind.station : null, texture: p.texture,
     trees: p.trees, treeMm: p.treeMm,
     trouble: Object.values(kept.sources || {}).filter(Boolean), groundwater: p.groundwater, perched: p.perched, snapshots: p.snapshots || null,
   };
@@ -394,7 +394,7 @@ async function start(site, inputs) {
   } catch (e) { kept.groundwater = null; self.postMessage({ groundwaterError: e.message || String(e) }); }
   if (!kept.groundwater && !kept.dem) self.postMessage({ groundwaterError: 'the USGS 10 m ground did not answer' });
   const typ = await typicalP;
-  kept.typical = typ.days; kept.rainFrom = typ.rainFrom;
+  kept.typical = typ.days; kept.rainFrom = typ.rainFrom; kept.weatherFrom = typ.weatherFrom || 'NASA POWER (about 50 km)';
   kept.week = await weekP;
   kept.wind = await windP;
   kept.soilDays = await soilTempP;
