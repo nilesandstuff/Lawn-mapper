@@ -85,7 +85,15 @@ export function roofCorners(marks, pts, lawn = [], opts = {}) {
   if (first.filter((c) => !c.offLot).length >= 3) return first;
   const more = cornersWithin(marks, pts, lawn, { maxEaveM: LOOSE_EAVE_M, nearLawnM: LOOSE_LAWN_M })
     .filter((c) => !first.some((f) => Math.hypot(f.at[0] - c.at[0], f.at[1] - c.at[1]) < 0.05)).map((c) => tag(c, 2));
-  return [...first, ...more];
+  const two = [...first, ...more];
+  /* A THIRD TIER (the owner, 2026-11-15, with one diamond on their own lot and their other two points on corners
+     the tiers had passed over: "it is the only diamond on my property so this shouldn't be an issue in the first
+     place because of the tier system"). The tiers are there so a lot always has corners to use; when the first two
+     still leave the lot with fewer than three, every other corner the marks found on a building is offered too
+     (roofCornersAny: no limit on the eave, the lawn's distance, the side or the squareness). */
+  if (two.filter((c) => !c.offLot).length >= 3) return two;
+  const rest = roofCornersAny(marks, pts).filter((c) => !two.some((f) => Math.hypot(f.at[0] - c.at[0], f.at[1] - c.at[1]) < 0.3)).map((c) => tag(c, 3));
+  return [...two, ...rest];
 }
 /**
  * EVERY BUILDING CORNER THAT HAS AN EAVE, offered or not (the owner, 2026-11-15, after four walks that marked R1 and
