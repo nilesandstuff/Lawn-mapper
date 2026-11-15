@@ -38,9 +38,10 @@ once the site has it). Little-endian throughout.
     then records:  u8 kind   u32 length   payload
 
     'J'  JSON (UTF-8), field k:
-           start   format, walk, wall_ms, elapsed_ns, width, rows, camera_width, camera_rows, keep_every,
+           start   format, walk, wall_ms, elapsed_ns, width, rows, camera_width, camera_rows, keep_every, crop [first row, last row, first col, last col],
+                   base, tables (sha256 of each calibration table by type: a fingerprint, never the table),
                    setup (vendor | own), state, words (row 216's first 24 words), phone, android
-           setup   the camera became ready (again, after an unplug): setup, words, elapsed_ns
+           setup   the camera became ready (again, after an unplug): tables, setup, words, elapsed_ns
            range   the range setup's outcome and its log (when the app set the range itself)
            ref     a shutter reference: index, t0_ns, t1_ns, frames, dark_level, log, words
            sky     a sky shot: label (start | end), t0_ns, t1_ns, up_deg_start, up_deg_end

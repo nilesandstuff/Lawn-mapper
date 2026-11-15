@@ -190,7 +190,7 @@ class ThermalCamera(private val app: Context, private val base: String) {
                 }
                 if (uvc !== u) return@execute
                 if (!ok) { set("failed", "The camera's range setup failed. Unplug it, plug it back in, and try again."); return@execute }
-                file?.json(JSONObject().put("k", "setup").put("setup", setup).put("words", words()).put("elapsed_ns", SystemClock.elapsedRealtimeNanos()))
+                file?.json(JSONObject().put("k", "setup").put("tables", synchronized(tableHashes) { JSONObject(tableHashes.toString()) }).put("setup", setup).put("words", words()).put("elapsed_ns", SystemClock.elapsedRealtimeNanos()))
                 reference(u)
                 set("ready")
                 main.removeCallbacks(tick); main.postDelayed(tick, 1000)
@@ -225,15 +225,22 @@ class ThermalCamera(private val app: Context, private val base: String) {
     // ---------------- the camera's setup (the probe's readTablesWork / setNormalRangeWork / vbAdjust) ----------------
 
     private fun readTables(u: Uvc) {
-        for ((type, name) in listOf(11 to "kmatrix", 14 to "kmatrix2", 4 to "badpixels", 5 to "vignetting", 10 to "nonsteady",
+        for ((type, name) in listOf(11 to "kmatrix", 14 to "kmatrix2", 4 to "badpixels", 5 to "vignetting",
                 7 to "background-table", 8 to "background", 9 to "coefficients")) {
             // the transfer's own log quotes the tables' first bytes: thrown away, only the outcome is noted
             val d = try { u.downloadFile(type, StringBuilder()) } catch (e: Exception) { null }
-            if (d != null) File(tables, "camfile-$type-$name.bin").writeBytes(d)
+            if (d != null) {
+                File(tables, "camfile-$type-$name.bin").writeBytes(d)
+                // a fingerprint only (the thermal session, 2026-11-15): its runner checks these against the copy it
+                // already holds, so the tables themselves never leave the phone
+                val h = java.security.MessageDigest.getInstance("SHA-256").digest(d).joinToString("") { "%02x".format(it) }
+                synchronized(tableHashes) { tableHashes.put("$type", h) }
+            }
             note("table $type $name: ${if (d != null) "${d.size} bytes" else "not read"}")
         }
     }
 
+    private val tableHashes = JSONObject()
     private fun words(): JSONArray = JSONArray().also { a -> lastRow216?.forEach { a.put(it) } }
     private fun modeWords(): String = lastRow216?.let { "words 3/4/10 = ${it[3]}/${it[4]}/${it[10]}" } ?: "no frame yet"
 
@@ -444,7 +451,9 @@ class ThermalCamera(private val app: Context, private val base: String) {
         val f = ThermalFile(File(uploads.dir, "$safe.bin"))
         f.json(JSONObject().put("k", "start").put("format", 1).put("walk", safe)
             .put("wall_ms", System.currentTimeMillis()).put("elapsed_ns", SystemClock.elapsedRealtimeNanos())
-            .put("width", KEEP_COLS).put("rows", KEEP_ROWS).put("camera_width", width).put("camera_rows", ROWS).put("keep_every", KEEP_EVERY).put("setup", setup).put("state", state).put("words", words())
+            .put("width", KEEP_COLS).put("rows", KEEP_ROWS).put("camera_width", width).put("camera_rows", ROWS).put("keep_every", KEEP_EVERY)
+            .put("crop", JSONArray(listOf(0, KEEP_ROWS - 1, 0, KEEP_COLS - 1))).put("base", "first frame of reference")
+            .put("tables", synchronized(tableHashes) { JSONObject(tableHashes.toString()) }).put("setup", setup).put("state", state).put("words", words())
             .put("phone", "${Build.MANUFACTURER} ${Build.MODEL}").put("android", Build.VERSION.SDK_INT))
         baseFrame = null; baseSeq = 0   // a file's frames are packed only against a frame in that file
         uploads.writing = safe
