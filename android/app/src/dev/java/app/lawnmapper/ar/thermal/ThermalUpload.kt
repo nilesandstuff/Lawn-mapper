@@ -13,7 +13,7 @@ import java.net.URLEncoder
 
 /**
  * DEV ONLY -- A WALK'S THERMAL FILE, SENT (src/dev/README.md). The way a walk's ARCore recording goes (Recorder.kt):
- * in 8 MB pieces to the scan site's /api/scan/recording/* with &file=thermal, the page's own sign-in cookie, into
+ * in 8 MB pieces to the scan site's /api/scan/recording routes with &file=thermal, the page's own sign-in cookie, into
  * the walk's twin in the private bucket as twins/<walk>/thermal.bin; resumable (the upload's id and the pieces the
  * site has are kept beside the file); taken off the phone once the site has it whole. A file left by a walk that was
  * cut short, or not yet sent, goes when the app next opens.
