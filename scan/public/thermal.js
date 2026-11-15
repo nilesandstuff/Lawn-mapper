@@ -59,7 +59,7 @@ function render() {
     else if (s.busy === 'reference') text = 'shutter reference…';
     else text = `ready${s.walk ? ` · ${s.kept} frames${s.dropped ? ` (${s.dropped} lost)` : ''} · ${mb(s.bytes)} MB` : ''}${s.refAgoS != null ? ` · reference ${s.refAgoS} s ago` : ''}`;
     if (s.state === 'ready' && walk.on && !s.walk) text += ' <span class="bad">· NOT recording this walk</span>';
-    if (s.state === 'ready' && s.walk && !walk.sky.length && !s.busy) text += '<br><span class="go">Take the sky shot first.</span>';
+    if (s.state === 'ready' && s.walk && !walk.sky.length && !s.busy) text += '<br><span class="go">Take the sky shot first. Note the air temperature (thermometer, in shade).</span>';
     if (walk.note && Date.now() < walk.noteUntil) text += `<br>${walk.note}`;
     $('#thermal-say').innerHTML = `<b>Thermal</b> ${text}`;
     const can = s.state === 'ready' && !s.busy && !!s.walk;
@@ -102,6 +102,52 @@ document.addEventListener('yard-walk', (e) => {
   }
   render();
 });
+
+/* THE WALKER'S OWN NOTES, asked for by the water session (2026-11-15) for each thermal walk: the air temperature
+   from a thermometer in the shade at chest height at the start and the end (not the phone's own sensor, which runs
+   hot), whether the grass was wet, whether sprinklers ran in the last 3 days, and the cloud. Asked when the walk
+   ends; kept on this phone until the site has them, as the walk's twin part thermal-notes.json. */
+const NOTES = 'yard-ar-thermal-notes';
+const waitingNotes = () => { try { return JSON.parse(localStorage.getItem(NOTES) || '[]'); } catch { return []; } };
+const keepNotes = (list) => { try { localStorage.setItem(NOTES, JSON.stringify(list.slice(-8))); } catch { /* this phone only */ } };
+async function sendNotes() {
+  for (const n of waitingNotes()) {
+    try {
+      const res = await fetch(`/api/scan/twin?walk=${encodeURIComponent(n.walk)}&part=thermal-notes.json`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(n), credentials: 'same-origin' });
+      if (res.ok || (res.status >= 400 && res.status < 500 && ![401, 403, 404, 408, 429].includes(res.status))) keepNotes(waitingNotes().filter((x) => x.walk !== n.walk));
+    } catch { /* no signal: next time */ }
+  }
+}
+function askNotes(id, started) {
+  document.querySelector('#thermal-notes')?.remove();
+  const f = document.createElement('form');
+  f.id = 'thermal-notes';
+  f.style.cssText = 'position:fixed;left:8px;right:8px;bottom:calc(8px + env(safe-area-inset-bottom));z-index:7;background:#1c2420;border:1px solid rgba(255,170,80,.7);border-radius:10px;padding:12px;font-size:15px;line-height:1.5;color:#fff';
+  f.innerHTML = `<strong style="color:#ffb066">Thermal walk: a few notes</strong><br>
+    <span style="font-size:13px;color:#cfd8d3">Air temperature from a thermometer in the shade at chest height (not the phone).</span><br>
+    <label>At the start <input name="a0" inputmode="decimal" size="5"></label> <label>at the end <input name="a1" inputmode="decimal" size="5"></label>
+    <select name="unit"><option value="F">°F</option><option value="C">°C</option></select><br>
+    <label><input type="checkbox" name="wet"> The grass was wet (dew, rain, sprinklers)</label><br>
+    <label><input type="checkbox" name="spr"> Sprinklers ran in the last 3 days</label><br>
+    <label>Sky <select name="cloud"><option value="">?</option><option>clear</option><option>broken</option><option>overcast</option></select></label><br>
+    <button type="submit" style="margin-top:8px;padding:10px 16px">Save</button> <button type="button" name="skip" style="margin-top:8px;padding:10px 16px">Skip</button>`;
+  document.body.append(f);
+  const toC = (v, unit) => { const x = parseFloat(v); return Number.isFinite(x) ? +(unit === 'F' ? (x - 32) / 1.8 : x).toFixed(1) : null; };
+  f.elements.skip.addEventListener('click', () => f.remove());
+  f.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const unit = f.elements.unit.value, now = Date.now();
+    const air = [[f.elements.a0.value, started], [f.elements.a1.value, now]].map(([v, at]) => ({ T: toC(v, unit), at })).filter((x) => x.T != null);
+    keepNotes([...waitingNotes().filter((x) => x.walk !== id), { walk: id, air, entered: { a0: f.elements.a0.value, a1: f.elements.a1.value, unit }, wet: f.elements.wet.checked, sprinklers: f.elements.spr.checked, cloud: f.elements.cloud.value || null, savedAt: now }]);
+    f.remove();
+    sendNotes();
+  });
+}
+document.addEventListener('yard-walk', (e) => {
+  const d = e.detail || {};
+  if (d.phase === 'end' && d.add?.thermal) askNotes(String(d.walk), Number(d.walk) || Date.now());
+});
+sendNotes();
 
 setInterval(render, 1000);
 render();
