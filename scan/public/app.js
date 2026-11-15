@@ -660,7 +660,7 @@ function zoomAt(f, [x, y]) {
 function listPoints() {
   const el = $('#points');
   const rn = $('#roof-note');
-  if (rn) { const R = st.lid?.roofs; rn.hidden = !R; if (R) rn.textContent = R.length ? `Roof corners (white diamonds): ${R.length} offered. Tap one to make it a reference; in the walk you aim up at that corner from two places and it marks itself. Two to four, on different sides of the house, are enough.${R.some((c) => c.offLot) ? ` ${R.filter((c) => c.offLot).length} are on a neighbour's building: usable, if you can stand where you see them.` : ''}${R.some((c) => c.tier === 2) ? ` Fewer than three met the first rule (15 ft up, 15 ft from the lawn), so ${R.filter((c) => c.tier === 2).length} more are offered up to 18 ft up and 30 ft from the lawn.` : ''}${R.some((c) => c.tier === 3) ? ` The lot still had fewer than three, so ${R.filter((c) => c.tier === 3).length} more are offered: every other building corner the lidar found (their roof heights are less exact).` : ''}` : 'No roof corner is offered on this map: none has two long straight roof edges, under 18 ft up and within 30 ft of the lawn.'; }
+  if (rn) { const R = st.lid?.roofs; rn.hidden = !R; if (R) rn.textContent = R.length ? `Roof corners: ${R.filter((c) => !c.offLot).length} sure (white diamonds) on your lot${R.some((c) => c.offLot) ? `, and ${R.filter((c) => c.offLot).length} on a neighbour's building (usable if you can stand where you see them; not counted as yours)` : ''}. The circles are the less sure corners: they can be chosen too, and two of them do for one diamond. Tap one to make it a reference; in the walk you aim up at it from two places and it marks itself.${R.some((c) => c.tier === 2) ? ` Fewer than three met the first rule (15 ft up, 15 ft from the lawn), so ${R.filter((c) => c.tier === 2).length} more are offered up to 18 ft up and 30 ft from the lawn.` : ''}` : 'No roof corner is offered on this map: none has two long straight roof edges, under 18 ft up and within 30 ft of the lawn.'; }
   againTools();
   if (st.againMode) {
     const t = againTodo();
@@ -1094,6 +1094,24 @@ function frameWork(f) {
   st.ar = f;
   if (f.events) replayActs(f); // a replay: what was done at this frame of the recorded walk
   const w = st.walk, L = st.L, odo = w.odo;
+  /* THE PHONE'S OWN TRACKING JUMPED (the owner's walk at home, 2026-11-15: three corners marked, the map lined up
+     well, and "maybe 50 feet later it got some sort of new fix that completely ruined the fix". The log has no new
+     fix at all: no lidar fix, no earlier walk, no whole-walk placement. It has ARCore losing its place twice, a
+     7.6 s stall, and its position moving 2.6 m between two frames). When ARCore moves the phone more than a metre in
+     one frame, everything marked before sits in a frame that has shifted, and no fit of those marks is right any
+     more. So: say so, ask for a roof corner again, and once two are sighted afresh let the old marks go. */
+  if (L && f.pose?.position && f.tracking === 'normal') {
+    const p = f.pose.position, q = st.lastTracked;
+    // more than a metre between two frames, and faster than anyone walks (6 m a second): a jump, not a stride after a stall
+    const moved = q ? Math.hypot(p.x - q.x, p.y - q.y, p.z - q.z) : 0, dt = q ? Math.max(1, f.t - q.t) : 0;
+    if (q && dt < 1500 && moved > 1 && moved / (dt / 1000) > 6 && L.marks.some((m) => m.by === 'ROOF')) {
+      L.stale = { odo, at: Date.now(), m: Math.hypot(p.x - q.x, p.y - q.y, p.z - q.z) };
+      st.sight = null; st.sightEndedAt = 0;
+      log(`the phone's tracking jumped ${L.stale.m.toFixed(1)} m in one frame at ${Math.round(odo * FT)} ft walked: the roof corners are asked for again`);
+      flash('The phone lost its place. Aim at a roof corner again.');
+    }
+    st.lastTracked = { x: p.x, y: p.y, z: p.z, t: f.t };
+  }
   const warnings = step(w, { t: f.t, pos: f.pose?.position, quat: f.pose?.quaternion, tracking: f.tracking, reset: f.reset, points: f.points });
   for (const x of warnings) {
     if (x === 'lost') flash('Lost its place: look around slowly');
@@ -1567,16 +1585,27 @@ function startSight(f, target) {
   for (const m of st.L.marks) { if (m.by !== 'ROOF') continue; const p = st.points.find((q) => q.id === m.id); if (p?.roof && Number.isFinite(abs(p)) && Number.isFinite(abs(target))) ys.push(m.y + abs(target) - abs(p)); }
   const eaveY = ys.length ? ys.reduce((a, b) => a + b, 0) / ys.length : null;
   const at = fitFor(st.L, st.walk.odo) ? sessionOf(st.L, target.map, st.walk.odo, 0) : null;
-  st.sight = { S: newSight({ eaveM: target.roof.eaveM, groundY, eaveY, expect: at ? { x: at.x, z: at.z } : null }), target, rays: 0 };
+  st.sight = { S: newSight({ eaveM: target.roof.eaveM, groundY, eaveY, expect: at ? { x: at.x, z: at.z } : null, loose: !!target.roof.picked || target.roof.sure === false }), target, rays: 0 };
   log(`roof corner ${target.name} (${target.roof.label}, eave ${target.roof.eaveM} m): sighting started, ground y ${groundY.toFixed(2)}${eaveY != null ? `, eave y ${eaveY.toFixed(2)} from ${ys.length} marked (by the ground it would be ${(groundY + target.roof.eaveM).toFixed(2)})` : ''}${at ? ', the map places it' : ''}`);
 }
 /** The next unmarked roof corner's sighting, started by itself once the walk is tracking. */
 function autoSight(f) {
   if (st.sight || st.sightPaused || !st.walk || !st.L || !f.pose || f.tracking !== 'normal') return;
   if (Date.now() - (st.sightEndedAt || 0) < 2500) return; // a breath between corners, and after a refusal
-  const marked = new Set(st.L.marks.map((m) => m.id));
+  // after the phone's tracking jumped (L.stale), only the corners sighted since count as marked: the nearest is asked first
+  const stale = st.L.stale;
+  const marked = new Set(st.L.marks.filter((m) => !stale || m.odo > stale.odo).map((m) => m.id));
   const chosen = st.chosen ? st.points.find((p) => p.id === st.chosen) : null;
-  const target = chosen?.roof && !marked.has(chosen.id) ? chosen : st.points.find((p) => p.roof && !marked.has(p.id));
+  let target = chosen?.roof && !marked.has(chosen.id) ? chosen : st.points.find((p) => p.roof && !marked.has(p.id));
+  if (stale && target && !chosen && f.pose) {
+    let bd = Infinity;
+    for (const p of st.points) {
+      if (!p.roof || marked.has(p.id)) continue;
+      const q = fitFor(st.L, st.walk.odo) ? sessionOf(st.L, p.map, st.walk.odo, 0) : null;
+      const d = q ? Math.hypot(q.x - f.pose.position.x, q.z - f.pose.position.z) : Infinity;
+      if (d < bd) { bd = d; target = p; }
+    }
+  }
   st.nextHint = null;
   /* NO ROOF CORNER LEFT TO ASK FOR (the owner at home, 2026-11-15: R1 marked, then nothing, four walks running; the
      map's other points, R2 and R3, were most likely ground points put there before the roof corners existed, which
@@ -1598,7 +1627,7 @@ function autoSight(f) {
      "within reach and facing it" by that placement can then wait for ever. So the waiting begins with two corners
      marked; before that the next corner starts at once, as it did. And the wait can always be skipped: a tap on the
      hint in the middle of the view starts the corner where the phone is (st.sightNow). */
-  const lined = marked.size >= 2 && fitSource(st.L, st.walk.odo) !== 'geo';
+  const lined = !stale && marked.size >= 2 && fitSource(st.L, st.walk.odo) !== 'geo';
   const s = lined && !st.sightNow && fitFor(st.L, st.walk.odo) ? sessionOf(st.L, target.map, st.walk.odo, st.L.groundY ?? f.pose.position.y - 1.4) : null;
   st.sightNow = false;
   if (s && f.pose.quaternion) {
@@ -1658,6 +1687,11 @@ function stepSight(f) {
   if (!S.done.ok) { flash(`${s.target.name} not marked: ${S.done.why}`); log(`roof corner ${s.target.name} not marked: ${S.done.why}`); return; }
   try { navigator.vibrate?.([60, 60, 120]); } catch { /* no buzz */ }
   mark(st.L, s.target, { position: S.done.position, distance: S.done.distance, type: 'ROOF' }, st.walk.odo);
+  // after a tracking jump: two corners sighted afresh, and the marks from before it are let go
+  if (st.L.stale) {
+    const since = new Set(st.L.marks.filter((m) => m.odo > st.L.stale.odo).map((m) => m.id));
+    if (since.size >= 2) { const n0 = st.L.marks.length; st.L.marks = st.L.marks.filter((m) => m.odo > st.L.stale.odo); log(`lined up afresh after the jump: ${n0 - st.L.marks.length} earlier marks let go`); st.L.stale = null; }
+  }
   const n = new Set(st.L.marks.filter((m) => m.kind === 'ref').map((m) => m.id)).size;
   flash(n >= 2 ? `${s.target.name} marked: lined up by ${n} references` : `${s.target.name} marked: one more reference lines the map up`);
   log(`roof corner ${s.target.name} marked: ${S.done.sights} aims ${Math.round(S.done.turnDeg)} degrees apart, lines ${(S.done.missM * 100).toFixed(0)} cm apart, ${S.done.eaveOffM.toFixed(2)} m off the lidar's eave`);

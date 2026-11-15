@@ -85,15 +85,13 @@ export function roofCorners(marks, pts, lawn = [], opts = {}) {
   if (first.filter((c) => !c.offLot).length >= 3) return first;
   const more = cornersWithin(marks, pts, lawn, { maxEaveM: LOOSE_EAVE_M, nearLawnM: LOOSE_LAWN_M })
     .filter((c) => !first.some((f) => Math.hypot(f.at[0] - c.at[0], f.at[1] - c.at[1]) < 0.05)).map((c) => tag(c, 2));
-  const two = [...first, ...more];
-  /* A THIRD TIER (the owner, 2026-11-15, with one diamond on their own lot and their other two points on corners
-     the tiers had passed over: "it is the only diamond on my property so this shouldn't be an issue in the first
-     place because of the tier system"). The tiers are there so a lot always has corners to use; when the first two
-     still leave the lot with fewer than three, every other corner the marks found on a building is offered too
-     (roofCornersAny: no limit on the eave, the lawn's distance, the side or the squareness). */
-  if (two.filter((c) => !c.offLot).length >= 3) return two;
-  const rest = roofCornersAny(marks, pts).filter((c) => !two.some((f) => Math.hypot(f.at[0] - c.at[0], f.at[1] - c.at[1]) < 0.3)).map((c) => tag(c, 3));
-  return [...two, ...rest];
+  /* NOT A THIRD TIER OF DIAMONDS (tried for an hour on 2026-11-15 and taken back the same day; the owner: "A diamond
+     is supposed to represent a high confidence corner. Circles are low confidence... 2 low confidence corners are
+     as good as 1 high confidence corner. And if there's not enough high confidence corners, the rules get loosened
+     a little"). The diamonds stay the sure corners the two tiers choose. Every other building corner is a circle
+     on the lidar view and can be chosen all the same (roofCornersAny; the page makes a point put on one a roof
+     corner). */
+  return [...first, ...more];
 }
 /**
  * EVERY BUILDING CORNER THAT HAS AN EAVE, offered or not (the owner, 2026-11-15, after four walks that marked R1 and
@@ -200,11 +198,13 @@ export function crossing(rays) {
 }
 
 /** A new sighting of one roof corner. eaveM: the lidar's eave height there; groundY: the ground's y in the session. */
-export function newSight({ eaveM, groundY, eaveY = null, expect = null }) {
+export function newSight({ eaveM, groundY, eaveY = null, expect = null, loose = false }) {
   // eaveY: the eave's height in the session when it is known better than "the ground under the phone + eaveM" (from a
   // roof corner already marked: its own crossing, and the lidar's difference between the two eaves). expect: { x, z },
   // where the lined-up map puts this corner, when there is a fit.
-  return { eaveM, groundY, eaveY, expect, rays: [], win: [], state: 'aim', say: 'Aim at the roof corner and hold still', detail: '', first: null, tries: 0, done: null, log: [] };
+  // loose: a corner the lidar is less sure of (a circle, not a diamond): its eave height is rougher, so the
+  // crossing's height is held to the wider tolerance wherever it lands (the owner's R3, 2026-11-15: refused 2.9 ft off)
+  return { eaveM, groundY, eaveY, expect, loose, rays: [], win: [], state: 'aim', say: 'Aim at the roof corner and hold still', detail: '', first: null, tries: 0, done: null, log: [] };
 }
 
 /**
@@ -242,8 +242,10 @@ export function sight(S, f) {
       const fo = S.first.o, right = norm([-(c[2] - fo[2]), 0, c[0] - fo[0]]), gone = (o[0] - fo[0]) * right[0] + (o[2] - fo[2]) * right[2];
       if (!S.side || Math.abs(gone) > 0.3) S.side = gone < -0.3 ? 'left' : gone > 0.3 ? 'right' : S.side || 'right';
       const steps = Math.max(1, Math.ceil(need / STEP_M));
+      // EITHER WAY (the owner, 2026-11-15: "it told me to take 3 steps to the right... 3 times. I couldn't go further
+      // right"): the other side does as well, and backing away from the corner makes each step count for more
       S.say = `Step to your ${S.side}: ${steps} more step${steps > 1 ? 's' : ''}`;
-      S.detail = 'Walk round the corner in an arc, keeping the circle near it. Then aim at it again.'; S.win = []; return S;
+      S.detail = `No room? Go ${S.side === 'right' ? 'left' : 'right'} instead: either side works. Keep the circle near the corner, then aim at it again.`; S.win = []; return S;
     }
     S.state = 'aim'; S.say = 'Aim at the same roof corner and hold still'; S.detail = '';
   }
@@ -303,7 +305,7 @@ export function sight(S, f) {
   const lv = X ? Math.min(...rays.map((r) => Math.hypot(X.p[0] - r.o[0], X.p[2] - r.o[2]))) : 0;
   const why = !X || X.behind ? 'the two aims do not meet in front of you'
     : miss > MISS_M ? `the aims pass ${(miss * 39.37).toFixed(0)} in apart: not the same spot`
-      : Math.abs(eaveOff) > (S.expect && Math.hypot(X.p[0] - S.expect.x, X.p[2] - S.expect.z) <= EXPECT_M ? EAVE_TOL_PLACED_M : EAVE_TOL_M) ? `your aims meet ${Math.abs(eaveOff * 3.281).toFixed(1)} ft ${eaveOff > 0 ? 'above' : 'below'} the roof edge the lidar has for this corner. Aim at the corner of the ${eaveOff > 0 ? 'lower' : 'higher'} roof edge there, or pick another corner`
+      : Math.abs(eaveOff) > (S.expect && Math.hypot(X.p[0] - S.expect.x, X.p[2] - S.expect.z) <= EXPECT_M ? EAVE_TOL_PLACED_M : S.loose ? EAVE_TOL_PLACED_M : EAVE_TOL_M) ? `your aims meet ${Math.abs(eaveOff * 3.281).toFixed(1)} ft ${eaveOff > 0 ? 'above' : 'below'} the roof edge the lidar has for this corner. Aim at the corner of the ${eaveOff > 0 ? 'lower' : 'higher'} roof edge there, or pick another corner`
         : turn < TURN_DEG * 0.8 ? 'the two places are too close together'
           : lv < NEAR_M * 0.7 ? 'too close under the corner' : null;
   S.log.push({ t: f.t, sights: rays.length, missM: Number.isFinite(miss) ? +miss.toFixed(3) : null, eaveOffM: Number.isFinite(eaveOff) ? +eaveOff.toFixed(2) : null, turnDeg: +turn.toFixed(0), why });

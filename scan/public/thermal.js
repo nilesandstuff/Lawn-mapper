@@ -7,10 +7,9 @@
  * the Android app; the store build has no such thing), and tells it of a walk's start and end with a "yard-walk"
  * event; nothing else in the page knows of it.
  *
- * What it does: a small box in the AR view saying what the camera is doing (setting up, settling, ready, taking its
- * shutter reference), a Sky sweep button (10 s: the phone up at the sky, turned slowly once around, ending straight up; at the walk's
- * start and end; the thermal runner maps the sky's dome from it, for the cloud cover) and
- * a Sweep button (5 s past something hot, for the timing). The frames are kept and sent by the app itself
+ * What it does: a small box in the AR view with one short line saying what to do now. The sky scan (10 s: the phone
+ * up at the sky, turned slowly once around; the thermal runner maps the sky's dome from it, for the cloud cover)
+ * starts by itself when the phone is pointed at the sky. Two optional checks sit under "More". The frames are kept and sent by the app itself
  * (ThermalCamera.kt); nothing is turned into a temperature on the phone.
  */
 const T = window.LawnARThermal;
@@ -27,71 +26,105 @@ css.textContent = `
   #thermal div.btns { display: flex; gap: 6px; margin-top: 6px; }
   #thermal button { flex: 1; padding: 8px 6px; font-size: 13px; background: rgba(0,0,0,.6); border: 1px solid rgba(255,255,255,.4); color: #fff; border-radius: 6px; }
   #thermal button[disabled] { opacity: .45; }
+  #thermal .big { font-size: 17px; font-weight: 600; }
+  #thermal .dim { color: #cfd8d3; }
+  #thermal #thermal-go { display: block; width: 100%; margin-top: 6px; padding: 10px; font-size: 15px; }
+  #thermal #thermal-go[hidden], #thermal #thermal-more[hidden], #thermal a[hidden] { display: none; }
+  #thermal a { display: inline-block; margin-top: 4px; color: #ffb066; text-decoration: underline; }
+  #thermal #thermal-more button { display: block; width: 100%; margin-top: 8px; }
+  #thermal #thermal-more small { display: block; color: #cfd8d3; }
   #thermal-send { position: fixed; left: 8px; bottom: calc(8px + env(safe-area-inset-bottom)); z-index: 6; background: rgba(0,0,0,.75); color: #ffb066;
     border-radius: 8px; padding: 6px 10px; font-size: 13px; }
 `;
 document.head.append(css);
 
+/* GUIDED, NOT A ROW OF BUTTONS (the owner, 2026-11-15, after the first thermal walk: "the sky sweep instructions were
+   incredibly unclear, too wordy... the thermal buttons didn't make sense and have unclear purposes. Make it more
+   guided and automatic"). One short line saying what to do now, at most one button, and the sky scan starts by
+   itself when the phone is pointed at the sky. The two optional checks sit under "More", each with its purpose. */
 const box = document.createElement('div');
 box.id = 'thermal';
-box.innerHTML = '<span id="thermal-say"></span><div class="btns"><button type="button" id="thermal-sky">Sky sweep</button><button type="button" id="thermal-sweep">Sweep</button><button type="button" id="thermal-angle">Angle check</button></div>';
+box.innerHTML = `<div id="thermal-say"></div><button type="button" id="thermal-go" hidden></button>
+  <a id="thermal-more-link" hidden>More</a>
+  <div id="thermal-more" hidden>
+    <button type="button" id="thermal-sky2">Sky scan again</button><small>At the end of the walk: shows if the clouds changed.</small>
+    <button type="button" id="thermal-sweep">Timing check</button><small>5 s: wave the phone past something hot (a mug). Once is enough, ever.</small>
+    <button type="button" id="thermal-angle">Angle check</button><small>Keep one sunny patch in view and walk up to it from 25 ft.</small>
+  </div>`;
 document.querySelector('#overlay')?.append(box);
 const send = document.createElement('div');
 send.id = 'thermal-send'; send.hidden = true;
 document.body.append(send);
 const $ = (q) => box.querySelector(q);
 
-const walk = { id: null, on: false, sky: [], sweeps: 0, angle: false, angles: 0, note: '', noteUntil: 0 };
-const say = (text, ms = 6000) => { walk.note = text; walk.noteUntil = Date.now() + ms; render(); };
+const walk = { id: null, on: false, sky: [], sweeps: 0, angle: false, angles: 0, note: '', noteUntil: 0, upFor: 0, doneAt: 0, more: false };
+const say = (text, ms = 5000) => { walk.note = text; walk.noteUntil = Date.now() + ms; render(); };
+const SKY_AUTO_DEG = 30;   // the sky scan starts by itself with the phone this near straight up (a roof corner is aimed at lower)
+
+function startSky() {
+  const label = walk.sky.length ? 'end' : 'start';
+  if (!T.skyShot(label)) return false;
+  walk.sky.push(label); walk.upFor = 0;
+  return true;
+}
 
 function render() {
   const s = read();
   if (!s) return;
   const inWalk = !document.querySelector('#overlay')?.hidden;
   if (inWalk) {
-    let text;
-    if (s.state === 'none') text = s.present ? 'camera found: tap to connect' : 'no camera plugged in';
-    else if (s.state === 'asking') text = s.detail;
-    else if (s.state === 'setup') text = `setting up: ${s.detail}…`;
-    else if (s.state === 'settling') text = `settling, ${s.secs} s`;
-    else if (s.state === 'failed' || s.state === 'unplugged') text = `<span class="bad">${s.detail}</span>`;
-    else if (s.busy === 'sky') text = s.skyLeftS > 0 ? `<span class="go">SKY: turn slowly once around, phone up at the sky; end straight up. ${s.skyLeftS} s</span>` : '<span class="go">SKY: keep the phone up at the sky… (shutter reference)</span>';
-    else if (s.busy === 'sweep') text = '<span class="go">SWEEP: 5 s, left and right past the hot thing</span>';
-    else if (s.busy === 'reference') text = 'shutter reference…';
-    else text = `ready${s.walk ? ` · ${s.kept} frames${s.dropped ? ` (${s.dropped} lost)` : ''} · ${mb(s.bytes)} MB` : ''}${s.refAgoS != null ? ` · reference ${s.refAgoS} s ago` : ''}`;
-    if (s.state === 'ready' && walk.on && !s.walk) text += ' <span class="bad">· NOT recording this walk</span>';
-    if (s.state === 'ready' && s.walk && !walk.sky.length && !s.busy) text += '<br><span class="go">Do the sky sweep first. Note the air temperature (thermometer, in shade).</span>';
-    // how a thermal walk should look (2026-11-15: the water session takes readings out to 80 degrees off straight
-    // down, in angle bands, so the walker need not keep to narrow strips)
-    if (s.state === 'ready' && s.walk && walk.sky.length && !s.busy) text += '<br><span style="color:#cfd8d3">Aim at the grass ahead and sweep slowly side to side. Within about 25 ft counts; closer and steeper down reads best.</span>';
+    let text = '', go = null;
+    const rec = s.state === 'ready' && !!s.walk;
+    if (s.state === 'none') text = s.present ? 'Tap to connect the camera' : 'No camera plugged in';
+    else if (s.state === 'asking') text = 'Allow the USB camera';
+    else if (s.state === 'setup' || s.state === 'settling') text = `Warming up${s.state === 'settling' ? `: ${s.secs} s` : '…'}`;
+    else if (s.state === 'failed' || s.state === 'unplugged') text = `<span class="bad">${s.state === 'unplugged' ? 'Camera unplugged: plug it back in' : 'Camera setup failed: unplug it and plug it back in'}</span>`;
+    else if (s.busy === 'sky') text = s.skyLeftS > 0 ? `<span class="go big">Turn around slowly · ${s.skyLeftS}</span>` : '<span class="go big">Keep pointing at the sky…</span>';
+    else if (s.busy === 'sweep') text = '<span class="go big">Wave it past the hot thing · 5 s</span>';
+    else if (walk.angle) { text = '<span class="go">Angle check: keep the patch in view, walk up to it</span>'; go = 'Done'; }
+    else if (!rec) text = walk.on ? '<span class="bad">Not recording this walk</span>' : 'Ready';
+    else if (!walk.sky.length) {
+      // the first thing on a thermal walk: the sky scan, started by pointing the phone at the sky
+      text = s.busy === 'reference' ? 'One moment…' : '<span class="go big">Point the phone at the sky</span><br><span class="dim">Open sky, away from trees and the roof. It starts by itself.</span>';
+      if (!s.busy && s.upDeg != null && s.upDeg <= SKY_AUTO_DEG) { if (++walk.upFor >= 2) startSky(); } else walk.upFor = 0;
+    } else if (Date.now() - walk.doneAt < 4000) text = '<span class="go big">Sky scan done ✓</span>';
+    else text = `Recording ✓ <span class="dim">${s.kept} frames</span><br><span class="dim">Aim at the grass ahead, sweep side to side.</span>`;
     if (walk.note && Date.now() < walk.noteUntil) text += `<br>${walk.note}`;
+    // the moment a sky scan ends
+    if (walk.wasSky && s.busy !== 'sky') walk.doneAt = Date.now();
+    walk.wasSky = s.busy === 'sky';
     $('#thermal-say').innerHTML = `<b>Thermal</b> ${text}`;
-    const can = s.state === 'ready' && !s.busy && !!s.walk;
-    $('#thermal-sky').disabled = !can; $('#thermal-sweep').disabled = !can;
-    $('#thermal-angle').disabled = !(s.state === 'ready' && !!s.walk) || typeof T.mark !== 'function';
-    $('#thermal-angle').textContent = walk.angle ? 'End angle check' : 'Angle check';
-    $('#thermal-sky').textContent = walk.sky.length ? 'Sky sweep (end)' : 'Sky sweep';
+    const g = $('#thermal-go'); g.hidden = !go; if (go) g.textContent = go;
+    const canMore = rec && walk.sky.length > 0 && !s.busy && !walk.angle;
+    $('#thermal-more-link').hidden = !canMore;
+    $('#thermal-more-link').textContent = walk.more ? 'Less' : 'More';
+    $('#thermal-more').hidden = !(canMore && walk.more);
+    $('#thermal-angle').disabled = typeof T.mark !== 'function';
     // a walk that began before the camera was ready: its file starts as soon as there is a camera
     if (walk.on && !s.walk && s.state !== 'none' && s.state !== 'asking') { try { T.startWalk(walk.id); } catch { /* next time */ } }
   }
   const u = s.upload || {};
   const left = u.waiting || 0;
-  send.hidden = !left && !u.error;
-  if (!send.hidden) send.textContent = u.sending ? `Thermal file: ${mb(u.sending.sent)} of ${mb(u.sending.total)} MB sent` : u.error ? `Thermal file not sent yet (${String(u.error).slice(0, 60)}); tap to try again` : `Thermal file waiting (${mb(u.bytes || 0)} MB)`;
+  send.hidden = true;   // the page's one upload box (app.js renderUploads) says it now
+  void left;
 }
 
 $('#thermal-say').addEventListener('click', () => { const s = read(); if (s && (s.state === 'none' || s.state === 'failed')) { try { T.connect(); } catch { /* gone */ } render(); } });
-send.addEventListener('click', () => { try { T.sendWaiting(); } catch { /* gone */ } });
-$('#thermal-sky').addEventListener('click', () => {
+$('#thermal-more-link').addEventListener('click', () => { walk.more = !walk.more; render(); });
+$('#thermal-sky2').addEventListener('click', () => {
   const s = read();
-  if (!s) return;
-  if (s.upDeg == null) { say('The sky sweep needs the AR running, to know which way is up.'); return; }
-  if (s.upDeg > 65) { say('Point the phone up at the sky first (well above the horizon), standing clear of trees and roofs. Then tap again.', 9000); return; }
-  const label = walk.sky.length ? 'end' : 'start';
-  if (T.skyShot(label)) { walk.sky.push(label); say('Keep it up at the sky. When it says turn: slowly once around, then straight up. Stand clear of trees and roofs.', 12000); } else say('Not now: the camera is busy. Try again in a moment.');
+  walk.more = false;
+  if (!s || s.upDeg == null || s.upDeg > 65) { say('Point the phone at the sky first, then tap again.'); return; }
+  if (!startSky()) say('One moment, then try again.');
+  render();
 });
 $('#thermal-sweep').addEventListener('click', () => {
-  if (T.sweep()) { walk.sweeps++; say('Sweep the view left and right across something hot (a mug about 3 ft away), 3 or 4 times.', 6000); } else say('Not now: the camera is busy.');
+  walk.more = false;
+  if (T.sweep()) walk.sweeps++; else say('One moment, then try again.');
+  render();
+});
+$('#thermal-go').addEventListener('click', () => {
+  if (walk.angle) { try { T.mark('angle-end'); } catch { /* gone */ } walk.angle = false; say('Angle check kept ✓'); }
 });
 
 /* WHERE THE WALK SITS ON THE MAP, for the thermal session's runner (its answer of 2026-11-15: "the per-second table
@@ -125,11 +158,9 @@ function sendPlace(d) {
 /* THE ANGLE CHECK the water session asked for (2026-11-15; optional, one minute, best on an afternoon walk): on open,
    sunny lawn, keep the camera on one patch while walking toward it from about 25 ft until standing over it. */
 $('#thermal-angle').addEventListener('click', () => {
-  if (!walk.angle) {
-    if (!T.mark('angle-start')) { say('Not recording.'); return; }
-    walk.angle = true; walk.angles++;
-    say('Pick a patch of open, sunny lawn about 25 ft away. Keep the camera on it and walk up until you stand over it, then tap End angle check.', 15000);
-  } else { T.mark('angle-end'); walk.angle = false; say('Angle check kept.'); }
+  walk.more = false;
+  if (!T.mark('angle-start')) { say('Not recording.'); return; }
+  walk.angle = true; walk.angles++;
   render();
 });
 
@@ -138,7 +169,7 @@ document.addEventListener('yard-walk', (e) => {
   if (d.phase === 'start' && !d.replay) {
     place.ask = d.placement || null; place.send = d.send || null; place.samples = [];
     clearInterval(place.timer); place.timer = setInterval(samplePlace, 1000);
-    walk.id = String(d.walk); walk.on = true; walk.sky = []; walk.sweeps = 0; walk.angle = false; walk.angles = 0; walk.note = '';
+    walk.id = String(d.walk); walk.on = true; walk.sky = []; walk.sweeps = 0; walk.angle = false; walk.angles = 0; walk.note = ''; walk.upFor = 0; walk.doneAt = 0; walk.more = false; walk.wasSky = false;
     try { T.connect(); T.startWalk(walk.id); } catch { /* no camera: the walk goes on without it */ }
   } else if (d.phase === 'end' && walk.on) {
     const s = read();
@@ -199,5 +230,5 @@ document.addEventListener('yard-walk', (e) => {
 });
 sendNotes();
 
-setInterval(render, 1000);
+setInterval(render, 500);
 render();
