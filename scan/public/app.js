@@ -133,7 +133,7 @@ async function main() {
        recorded walk can be run again through ARCore and this page from the couch. */
     if ((st.caps.native?.bridge ?? 0) >= 3) {
       const rec = document.createElement('label'); rec.className = 'dim'; rec.style.display = 'block'; rec.style.margin = '8px 0';
-      rec.innerHTML = '<input type="checkbox" id="record-arcore" checked> Record this walk for replay (ARCore\'s camera and motion; sent to the site after the walk, about 100-300 MB, best on wifi)';
+      rec.innerHTML = '<input type="checkbox" id="record-arcore" checked> Record this walk for replay (a video of the whole walk with its motion: it can be over 100 MB a MINUTE (135 MB for a 1 minute walk, 2026-11-15), sent after the walk; untick it to send only the walk\'s points and pictures, a few MB)';
       box.append(rec);
       $('#record-arcore').addEventListener('change', (e) => { st.recordOff = !e.target.checked; });
       const fr = document.createElement('label'); fr.className = 'dim'; fr.style.display = 'block'; fr.style.margin = '8px 0';
@@ -1935,11 +1935,52 @@ function sendTwin(parts) {
   for (const p of parts) st.outbox.add(walk, p.name, p.type, p.body).catch(() => {});
 }
 
-/** The upload line on the page (and in the HUD while walking, when anything waits). */
+/** EVERYTHING STILL ON ITS WAY TO THE SITE, IN ONE PLACE (the owner, 2026-11-15: "The upload stuff is very unclear
+    and fragmented... The top of the page shows an upload status that apparently isn't actually the upload? The actual
+    upload progress is extremely hard to find"). Three things leave the phone after a walk, each by its own sender: the
+    walk's points and pictures (the page's outbox), the replay recording (the app, a video of the whole walk: by far
+    the biggest) and, in the dev build, the thermal camera's file. The top line said only the first. Now one box at
+    the top lists all three with what is left of each, and says in one line whether anything is left at all. */
 function renderUploads() {
   const el = $('#uploads');
-  if (el) el.textContent = st.upStatus ? statusText(st.upStatus) : '';
+  if (!el) return;
+  const mb = (b) => (b >= 1e7 ? `${Math.round(b / 1e6)} MB` : b >= 1e5 ? `${(b / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1e3))} KB`);
+  const rows = [];
+  let left = 0, trouble = false;
+  // 1. the walk's points, track and pictures
+  const u = st.upStatus;
+  if (u) {
+    if (u.off) { rows.push(['Walk data (points, pictures)', `off: ${u.off}; ${u.pending} parts kept on this phone`]); trouble = true; }
+    else if (u.pending) { left += u.bytes || 0; rows.push(['Walk data (points, pictures)', `${mb(u.bytes || 0)} left in ${u.pending} part${u.pending === 1 ? '' : 's'}${u.sending ? ', sending' : `, waiting to try again${u.lastError ? ` (${u.lastError})` : ''}`}`]); if (!u.sending) trouble = true; }
+    else rows.push(['Walk data (points, pictures)', `all sent${u.sent ? ` (${mb(u.sentBytes || 0)} this visit)` : ''}${u.dropped ? `; ${u.dropped} refused by the site` : ''}`]);
+  }
+  // 2. the replay recordings (the app sends them; a video of the walk, about 100-300 MB)
+  const N = window.LawnARNative;
+  if (N && typeof N.pendingRecordings === 'function') {
+    let pend = [];
+    try { pend = JSON.parse(N.pendingRecordings()) || []; } catch { pend = []; }
+    const live = st.recUp && !st.recUp.done ? st.recUp : null;
+    let total = 0, sent = 0;
+    for (const r of pend) { total += r.bytes || 0; sent += live && String(live.walk) === String(r.walk) ? live.sent || 0 : r.sent || 0; }
+    if (pend.length) { left += Math.max(0, total - sent); rows.push([`Replay recording${pend.length === 1 ? '' : 's'} (video of the walk)`, `${mb(sent)} of ${mb(total)} sent${pend.length > 1 ? `, ${pend.length} recordings` : ''}${live?.error ? `; stopped (${String(live.error).slice(0, 50)}), tried again when the app opens` : ''}`]); if (live?.error) trouble = true; }
+    else rows.push(['Replay recordings (video of the walk)', 'all sent']);
+  }
+  // 3. dev only: the thermal camera's file
+  if (window.LawnARThermal) {
+    let t = null;
+    try { t = JSON.parse(window.LawnARThermal.status())?.upload || null; } catch { t = null; }
+    if (t) {
+      if (t.waiting) { const s2 = t.sending; left += s2 ? Math.max(0, (t.bytes || 0) - (s2.sent || 0)) : t.bytes || 0; rows.push(['Thermal camera file', `${s2 ? `${mb(s2.sent || 0)} of ${mb(s2.total || 0)} sent` : `${mb(t.bytes || 0)} waiting`}${t.error ? `; stopped (${String(t.error).slice(0, 50)})` : ''}`]); if (t.error) trouble = true; }
+      else rows.push(['Thermal camera file', 'all sent']);
+    }
+  }
+  if (!rows.length) { el.textContent = ''; el.className = 'dim'; return; }
+  el.className = left ? 'uploads busy' : 'uploads';
+  const head = left ? `Uploading: ${mb(left)} still to send. Keep the app open${trouble ? ' (something is waiting to try again)' : ''}.` : 'Uploads: everything is on the site.';
+  el.innerHTML = `<strong>${esc(head)}</strong>${rows.map(([k, v]) => `<br><span>${esc(k)}:</span> ${esc(v)}`).join('')}`;
+  // while walking, the HUD's own line (app.js hud) says the walk data only; this box is the page's
 }
+setInterval(() => { try { renderUploads(); } catch { /* next time */ } }, 2000);
 
 /** A walk to the site's own database (scan/src/walks.js); failing that it stays on this phone. */
 async function post(s) {
