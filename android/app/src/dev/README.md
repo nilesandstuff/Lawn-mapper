@@ -40,7 +40,7 @@ once the site has it). Little-endian throughout.
     'J'  JSON (UTF-8), field k:
            start   format, walk, wall_ms, elapsed_ns, width, rows, camera_width, camera_rows, keep_every, crop [first row, last row, first col, last col],
                    base, tables (sha256 of each calibration table by type: a fingerprint, never the table),
-                   setup (vendor | own), state, words (row 216's first 24 words), phone, android
+                   setup (vendor | own), state, words (row 216's first 24 words), app (the app's version), phone, android
            setup   the camera became ready (again, after an unplug): tables, setup, words, elapsed_ns
            range   the range setup's outcome and its log (when the app set the range itself)
            ref     a shutter reference: index, t0_ns, t1_ns, frames, dark_level, log, words

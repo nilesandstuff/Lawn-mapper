@@ -12,6 +12,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import com.google.ar.core.Pose
+import app.lawnmapper.ar.BuildConfig
 import app.lawnmapper.thermalprobe.Uvc
 import app.lawnmapper.thermalprobe.UvcFrameData
 import org.json.JSONArray
@@ -454,7 +455,7 @@ class ThermalCamera(private val app: Context, private val base: String) {
             .put("width", KEEP_COLS).put("rows", KEEP_ROWS).put("camera_width", width).put("camera_rows", ROWS).put("keep_every", KEEP_EVERY)
             .put("crop", JSONArray(listOf(0, KEEP_ROWS - 1, 0, KEEP_COLS - 1))).put("base", "first frame of reference")
             .put("tables", synchronized(tableHashes) { JSONObject(tableHashes.toString()) }).put("setup", setup).put("state", state).put("words", words())
-            .put("phone", "${Build.MANUFACTURER} ${Build.MODEL}").put("android", Build.VERSION.SDK_INT))
+            .put("app", BuildConfig.VERSION_NAME).put("phone", "${Build.MANUFACTURER} ${Build.MODEL}").put("android", Build.VERSION.SDK_INT))
         baseFrame = null; baseSeq = 0   // a file's frames are packed only against a frame in that file
         uploads.writing = safe
         walk = safe; file = f
