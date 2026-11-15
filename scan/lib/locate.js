@@ -12,6 +12,7 @@
  */
 import { level, levelDist } from './frames.js';
 import { apply, unapply, fitAt } from './align.js';
+import { goodPart } from './refkeep.js';
 import { geoPrior, geoFit } from './geo.js';
 
 export const FIX_REACH = 20;   // m of walk a lidar fix stands for
@@ -61,7 +62,34 @@ export function mark(L, ref, hit, odo) {
   L.marks.push(m);
   return m;
 }
-const refMarks = (L) => L.marks.filter((m) => m.kind === 'ref');
+/* THE REFERENCES THAT AGREE (2026-11-15; the owner's walk at home: R1, R2, R3 marked, the map lined up well after R3,
+   and "maybe 50 feet later it got some sort of new fix that completely ruined the fix"). There was no new fix. R2 and
+   R3 agreed with the map to an inch and R1 sat 9 ft from its place; the fit weighs each mark by how recently it was
+   made (align.js walkWeight), so R3 ruled just after it was marked, and as the walk went on R1's wrong place came
+   back into it. Now, with three or more points marked, the ones that do not agree with the rest (refkeep.js
+   goodPart: the largest group agreeing within 1.5 ft) are left out of the fit; leftOutOf says which, so the walk can
+   ask for them again. Two marks have nothing to be checked against and are used as they are. */
+function agreeing(L) {
+  const refs = L.marks.filter((m) => m.kind === 'ref');
+  if (L._agree?.n === L.marks.length) return L._agree;
+  const ids = new Set(refs.map((m) => m.id));
+  let out = { n: L.marks.length, refs, left: [] };
+  if (ids.size >= 3) {
+    const g = goodPart(refs);
+    if (g.ok) {
+      // the points that agree; and of a point marked more than once, an earlier mark only if it agrees too (a corner
+      // sighted again because it was wrong must not keep its wrong mark in the fit)
+      const keep = new Set(g.ids), latest = new Map(); for (const m of refs) latest.set(m.id, m);
+      const near = (m) => { const q = apply(g.T, m.ar); return Math.hypot(q[0] - m.map[0], q[1] - m.map[1]) <= 0.45; };
+      out = { n: L.marks.length, refs: refs.filter((m) => keep.has(m.id) && (latest.get(m.id) === m || near(m))), left: g.left };
+    }
+  }
+  L._agree = out;
+  return out;
+}
+const refMarks = (L) => agreeing(L).refs;
+/** The ids of the marked references left out of the fit for disagreeing with the others. */
+export const leftOutOf = (L) => agreeing(L).left;
 /** The references' fit for a moment of the walk, or null before two different references are marked. */
 export const refFit = (L, odo) => fitAt(refMarks(L), odo);
 

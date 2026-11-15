@@ -15,8 +15,9 @@ import { lookMeshes } from '/lib/look.js';
 import { snapTo } from '/lib/lidar-marks.js';
 import { levelDist, toLocal, fromLocal } from '/lib/frames.js';
 import { frameFor, bboxOf, toPx, fromPx, ringsOf, toMerc } from '/lib/photo.js';
-import { newLocate, mark, noteGround, addDepth, nextAsk, answer, fitFor, fitSource, mapOf, sessionOf, checkError, nearestNamed, agreement, groundOffset, groundUnder, status as fixStatus, summaryOf } from '/lib/locate.js';
-import { STAND as REF_STAND, MIN_STAND as REF_MIN_STAND, VOX as REF_VOX, referenceFit, buildRef, encodeRef } from '/lib/walkref.js';
+import { newLocate, mark, noteGround, addDepth, nextAsk, answer, fitFor, fitSource, leftOutOf, mapOf, sessionOf, checkError, nearestNamed, agreement, groundOffset, groundUnder, status as fixStatus, summaryOf } from '/lib/locate.js';
+import { STAND as REF_STAND, MIN_STAND as REF_MIN_STAND, VOX as REF_VOX, referenceFit, buildRef, encodeRef, decodeRef } from '/lib/walkref.js';
+import { goodPart, partOf, mergeRef } from '/lib/refkeep.js';
 import { leftOut, mapToSession } from '/lib/align.js';
 import { newTwin, addPoints, addPose, wantKey, addKey, flush, flushDue, liveOf } from '/lib/twin.js';
 import { newAnchors, viewOf, noteView, nudge, pitchOf, anchorsKept, SHOW_S } from '/lib/anchors.js';
@@ -863,7 +864,7 @@ async function startAR(engine) {
   st.walk = newWalk({ engine, phone: navigator.userAgent });
   st.dy = null; st.dyFrom = null; st.gpsTrail = []; st.anchors = newAnchors(); st.nudge = null; st.depthFill = null; st.geoTrail = []; st.geoSeen = null; st.sem = newSemCount(); st.lastSem = null; st.semDims = null; st.occ = null; st.occFull = 0; st.occAt = 0; st.walkGround = new Map(); st.spikes = { pictures: 0, cells: 0, flagged: 0 }; st.walkAsk = null; st.walkAt = 0; st.walkStats = { asks: 0, ok: 0, lastWhy: null, firstOkM: null }; st.crumbs = newCrumbs();
   st.walk.checks = [];
-  st.L = newLocate(); st.sight = null; st.sightPaused = false; st.sightEndedAt = 0; st.roofsDone = null;
+  st.L = newLocate(); st.sight = null; st.sightPaused = false; st.sightEndedAt = 0; st.roofsDone = null; st.resighted = new Set(); st.resightOf = null;
   st.prevStand = new Map(); st.prevGround = new Map(); st.prevAsk = null; st.prevAt = 0; st.prevStats = { asks: 0, ok: 0, lastWhy: null, firstOkM: null, lastMs: null };
   // the owner's choice at the start (2026-11-11): the saved walk places this one, or this one is a fresh reference
   st.refUse = st.refMeta && refChoice() === 'saved';
@@ -1106,6 +1107,7 @@ function frameWork(f) {
     const moved = q ? Math.hypot(p.x - q.x, p.y - q.y, p.z - q.z) : 0, dt = q ? Math.max(1, f.t - q.t) : 0;
     if (q && dt < 1500 && moved > 1 && moved / (dt / 1000) > 6 && L.marks.some((m) => m.by === 'ROOF')) {
       L.stale = { odo, at: Date.now(), m: Math.hypot(p.x - q.x, p.y - q.y, p.z - q.z) };
+      (L.jumps ||= []).push(odo);   // where the walk's frame broke: a kept part of the walk ends there (refkeep.js)
       st.sight = null; st.sightEndedAt = 0;
       log(`the phone's tracking jumped ${L.stale.m.toFixed(1)} m in one frame at ${Math.round(odo * FT)} ft walked: the roof corners are asked for again`);
       flash('The phone lost its place. Aim at a roof corner again.');
@@ -1597,6 +1599,14 @@ function autoSight(f) {
   const marked = new Set(st.L.marks.filter((m) => !stale || m.odo > stale.odo).map((m) => m.id));
   const chosen = st.chosen ? st.points.find((p) => p.id === st.chosen) : null;
   let target = chosen?.roof && !marked.has(chosen.id) ? chosen : st.points.find((p) => p.roof && !marked.has(p.id));
+  /* A CORNER THAT DISAGREES WITH THE OTHERS IS ASKED FOR AGAIN, ONCE (locate.js leftOutOf; the owner's R1 at home sat
+     9 ft from where R2 and R3 put it): when every corner is marked and one was left out of the fit, it is the next
+     target, so the walk ends with all of them agreeing instead of carrying a wrong one. */
+  if (!target && !stale) {
+    const again = leftOutOf(st.L).find((id) => !(st.resighted ||= new Set()).has(id));
+    const p = again != null ? st.points.find((q) => q.id === again && q.roof) : null;
+    if (p) { target = p; st.resightOf = p.id; }
+  }
   if (stale && target && !chosen && f.pose) {
     let bd = Infinity;
     for (const p of st.points) {
@@ -1611,7 +1621,7 @@ function autoSight(f) {
      map's other points, R2 and R3, were most likely ground points put there before the roof corners existed, which
      this mode never asks for because they need a tap). Say so, instead of going quiet: what is done, and what the
      other points need. */
-  if (!target) {
+  if (!target && !leftOutOf(st.L).some((id) => !(st.resighted ||= new Set()).has(id))) {
     const roofs = st.points.filter((p) => p.roof), others = st.points.filter((p) => !p.roof && p.kind === 'ref' && !marked.has(p.id));
     st.roofsDone = marked.size && roofs.length ? { n: roofs.length, others: others.map((p) => p.name) } : null;
     return;
@@ -1634,6 +1644,7 @@ function autoSight(f) {
     const c = f.pose.position, w = whereIs([c.x, c.y, c.z], lookOf(f.pose.quaternion), [s.x, s.y, s.z]);
     if (w.m > NEAR_SIGHT_M || !w.facing) { st.nextHint = { target, w, done: marked.size }; return; }
   } else if (marked.size) flash(`Next: ${target.name}, the roof's ${target.roof.label}. Walk to it, then aim up at it.`);
+  if (st.resightOf === target.id) { (st.resighted ||= new Set()).add(target.id); st.resightOf = null; flash(`${target.name} does not agree with the other corners: aim at it once more.`); log(`roof corner ${target.name} left out of the fit (it disagrees with the others): asked for again`); }
   startSight(f, target);
 }
 /** The middle of the view between corners: where the next one is, or that they are all done. */
@@ -1948,18 +1959,33 @@ function drawRefChoice() {
 async function keepReference(L, walkId) {
   const map = st.map;
   if (!map) return null;
-  if (st.refUse) return 'Not saved as the reference: the saved walk was placing this one.';
-  if (st.recordOnly) return 'Not saved as the reference: a recording-only walk.';
-  const fit = referenceFit(L?.marks || []);
-  if (!fit.ok) return `NOT saved as the reference: ${fit.why}.`;
-  const stand = [...(st.prevStand?.values() || [])], ground = [...(st.prevGround?.values() || [])];
-  if (stand.length < REF_MIN_STAND) return `NOT saved as the reference: too little of the yard's standing things was seen (${stand.length} points of ${REF_MIN_STAND}).`;
-  const bytes = encodeRef(buildRef({ stand, ground }, fit.T, Date.now()));
-  const how = `${fit.n} ${fit.roof ? 'roof corners' : 'marks'} agreeing within ${(fit.worstM * 39.37).toFixed(0)} in`;
+  if (st.recordOnly) return 'Not saved as the reference: a testing-only walk (the box on the start page).';
+  /* KEEP WHAT IS GOOD, AND BUILD ON IT (lib/refkeep.js; the owner, 2026-11-15: "This will literally never work if an
+     entire walk has to be pixel perfect every time. Keep what is good... Future walks should build upon that
+     reference so they get better each time and uncertainty gets corrected"). The part of the walk its agreeing roof
+     corners vouch for is added to the map's reference and corrects it where this walk saw the yard. A walk with no
+     such corners, but placed by the reference itself, only fills in what the reference had nothing of. */
+  const g = goodPart(L?.marks || [], L?.jumps || []);
+  const byRef = !g.ok && st.refUse && L?.prev?.ok ? L.prev : null;
+  if (!g.ok && !byRef) return `NOT saved as the reference: ${g.why}.`;
+  const lo = g.ok ? g.lo : -Infinity, hi = g.ok ? g.hi : Infinity, T = g.ok ? g.T : byRef.T;
+  const stand = partOf([...(st.prevStand?.values() || [])], lo, hi), ground = partOf([...(st.prevGround?.values() || [])], lo, hi);
+  if (stand.length < REF_MIN_STAND) return `NOT saved as the reference: too little of the yard's standing things was seen in the part that can be trusted (${stand.length} points of ${REF_MIN_STAND}).`;
+  const add = buildRef({ stand, ground }, T, Date.now());
+  // the map's earlier reference, to add to (none: this part is the reference)
+  let old = null;
+  try { const r = await fetch(`/api/scan/reference?map=${encodeURIComponent(map)}`, { credentials: 'same-origin' }); if (r.ok) old = decodeRef(new Uint8Array(await r.arrayBuffer())); } catch { /* none read: saved as it is */ }
+  const m = mergeRef(old, add, g.ok ? 'correct' : 'extend');
+  if (!g.ok && !m.added) return 'The reference already covers everything this walk saw: nothing to add.';
+  const bytes = encodeRef(m.ref);
+  const ftOf = (v) => `${Math.round(v * FT)} ft`;
+  const what = g.ok
+    ? `${g.n} roof corners agreeing within ${(g.worstM * 39.37).toFixed(0)} in${g.left.length ? `; ${g.left.length} that disagreed left out, so the walk ${lo > -Infinity ? `from ${ftOf(lo)} walked` : 'from its start'}${hi < Infinity ? ` to ${ftOf(hi)}` : ''} is kept` : ''}`
+    : 'placed by the saved reference, so it only fills in what that had nothing of';
   for (let k = 0; k < 3; k++) {
     try {
       const r = await fetch(`/api/scan/reference?map=${encodeURIComponent(map)}&walk=${encodeURIComponent(walkId)}`, { method: 'PUT', credentials: 'same-origin', body: bytes });
-      if (r.ok) return `Saved as this map's reference (${how}; ${stand.length.toLocaleString()} points of standing things, ${(bytes.length / 1e6).toFixed(1)} MB). The next walk here can use it.`;
+      if (r.ok) return `Saved ${old ? 'into' : 'as'} this map's reference (${what}): ${m.added.toLocaleString()} points from this walk${old ? `, ${m.replaced.toLocaleString()} earlier ones corrected, ${m.kept.toLocaleString()} kept` : ''}. The next walk here builds on it.`;
       if (r.status === 404 || r.status === 413) return `NOT saved as the reference: the site answered ${r.status}.`;
     } catch { /* signal: again */ }
     await new Promise((res) => setTimeout(res, 4000 * (k + 1)));
@@ -1974,9 +2000,11 @@ function keepForPrev(L, pts) {
     if (g == null || !Number.isFinite(g)) continue;
     const h = p.y - g, u = p.x, v = -p.z;
     const which = Math.abs(h) < 0.15 ? st.prevGround : h >= REF_STAND[0] && h <= REF_STAND[1] ? st.prevStand : null;
-    if (!which || which.size >= PREV_MAX) continue;
+    if (!which) continue;
     const k = `${Math.floor(u / REF_VOX)},${Math.floor(v / REF_VOX)},${Math.floor(p.y / REF_VOX)}`;
-    if (!which.has(k)) which.set(k, [u, v, p.y]);
+    // with how far the walk had gone when it was seen (refkeep.js partOf keeps a stretch of the walk); a cell seen
+    // again keeps the later sight, so what was seen before a tracking jump gives way to what was seen after
+    if (which.has(k) || which.size < PREV_MAX) which.set(k, [u, v, p.y, st.walk?.odo ?? 0]);
   }
 }
 

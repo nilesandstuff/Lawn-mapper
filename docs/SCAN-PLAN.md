@@ -2668,3 +2668,34 @@ UPDATE, the same day (2026-11-15), all agreed between the three sessions and bui
     wet, sprinklers, cloud optional) are the twin part thermal-notes.json.
   - GET /api/maps/thermal (main site, admin only) hands the water map a map's walks: scan/src/thermal.js puts a
     walk together, the main Worker adds the frame (docs/MAPS.md). The water map already asks for it.
+
+## 28. The first thermal walk at home: what went wrong, and "keep what is good" (owner, 2026-11-15)
+
+The owner: "Today's experience was very disheartening." "This will literally never work if an entire walk has to
+be pixel perfect every time. Keep what is good... Future walks should build upon that reference so they get
+better each time and uncertainty gets corrected rather than contributing to some sort of ongoing error." And, on
+the corners: "A diamond is supposed to represent a high confidence corner. Circles are low confidence... 2 low
+confidence corners are as good as 1 high confidence corner. And if there's not enough high confidence corners, the
+rules get loosened a little" (fewer than three on the lot; a neighbour's are offered and never counted).
+
+WHAT THE WALKS SHOWED (walk 1794780697283, 6 min, 447 ft, three corners):
+  - Four walks marked R1 and went quiet: R2 and R3 were on circles (less sure corners), which the walk treated as
+    points it never asks for. A point on any building corner is now a roof corner (roof-corner.js roofCornersAny),
+    sighted with the wider eave tolerance; a third tier of diamonds was tried for an hour and taken back.
+  - "50 feet later a new fix ruined the fix": there was no new fix. R2 and R3 agreed with the map to an INCH; R1
+    (the diamond) sat 9 ft from its place. The fit weighs marks by how recently they were made, so R3 ruled just
+    after it was marked and R1's wrong place came back in as the walk went on. (My first reading, a tracking jump
+    between the corners, was wrong: the one jump, 8.2 ft, came at 418 ft walked, after all three.) Now the marks
+    that disagree with the largest agreeing group are left out of the live fit (locate.js agreeing, leftOutOf) and
+    the corner left out is asked for once more.
+  - A tracking jump of over a metre in one frame now says so, asks for a corner again, and lets the old marks go
+    once two are sighted afresh.
+  - Nothing was kept as a reference (rule: every mark within 1 ft). Now lib/refkeep.js: the largest agreeing
+    group of marks, the stretch of the walk they vouch for, added to the map's reference; a part placed by roof
+    corners corrects the reference where it saw the yard, a walk placed only by the reference fills in what it
+    lacked. Today's walk kept by hand (task reference): R2 and R3, the walk from 67 ft to 418 ft walked, 17,039 of
+    18,680 standing points.
+  - Thermal: recorded (712 frames, 49 MB, sky sweep, a timing sweep). The box is now one guided line; the sky
+    scan starts by itself when the phone points at the sky.
+  - Uploads: one box for everything; the replay recording is off unless ticked (135 MB for a minute).
+NOT TRIED ON A PHONE: any of the above. NOT KNOWN: why R1's sighting was 9 ft out (its eave read 0.76 m low).

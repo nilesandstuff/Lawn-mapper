@@ -222,4 +222,20 @@ const hitAt = (map, y = 0) => { const [u, v] = toAR(map); return { position: { x
   assert.equal(groundOffset(L, 5, T, () => NaN), null, 'off the lidar: none');
   assert.equal(groundOffset(newLocate(), 5, T, dem), null, 'no ground points: none');
 }
+
+// THE REFERENCES THAT AGREE (2026-11-15): three corners marked, one 9 ft from where the other two put it. The fit is
+// the two that agree, however far the walk goes on; the odd one is named, and once marked again rightly it counts.
+{ const { newLocate: nl, mark: mk, refFit: rf, leftOutOf: lo } = await import('../lib/locate.js');
+  const L = nl();
+  const P = (id, map) => ({ id, kind: 'ref', map });
+  const hit = (u, v) => ({ position: { x: u, y: 3, z: -v }, distance: 5, type: 'ROOF' });
+  mk(L, P('R1', [0, 0]), hit(2.7, 0.3), 10);      // wrong: 2.7 m off
+  mk(L, P('R2', [10, 0]), hit(10, 0), 30);
+  assert.deepEqual(lo(L), [], 'two marks: nothing to check them against');
+  mk(L, P('R3', [10, 8]), hit(10, 8), 68);
+  assert.deepEqual(lo(L), ['R1'], 'the one that disagrees');
+  for (const odo of [68, 85, 140]) { const T = rf(L, odo); assert.ok(Math.abs(T.theta) < 1e-6 && Math.hypot(T.tx, T.ty) < 1e-6, `the fit is R2 and R3's at ${odo} m walked`); }
+  mk(L, P('R1', [0, 0]), hit(0, 0), 150);         // sighted again, rightly
+  assert.deepEqual(lo(L), [], 'all three agree now');
+  const T = rf(L, 150); assert.ok(Math.abs(T.theta) < 1e-6 && Math.hypot(T.tx, T.ty) < 1e-6, 'and its wrong first mark is not in the fit'); }
 console.log('locate: ok');
