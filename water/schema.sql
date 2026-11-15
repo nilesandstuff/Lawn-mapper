@@ -80,3 +80,38 @@ CREATE TABLE IF NOT EXISTS moisture_checks (
   n INTEGER,                        -- how many lawn spots went into rho
   detail TEXT                       -- JSON: per spot { n, value, wet, zone, kind, need } and the run's settings
 );
+
+-- GROUND TRUTH BY PROPERTY (2026-11-15, src/truth.js): the Yard AR walks (thermal now, soil moisture and wind to
+-- come), each tied for good to its map and parcel, the weather of its minutes frozen, and every comparison kept per
+-- model version so the accumulated walks can be scored again as the model changes. No addresses, no coordinates.
+CREATE TABLE IF NOT EXISTS truth_walks (
+  walk TEXT PRIMARY KEY,            -- the walk's id, as the core's /api/maps/thermal names it
+  map_id TEXT NOT NULL,             -- the map it was walked on
+  parcel_pin TEXT,                  -- the parcel, when known: every map of one property
+  source TEXT,                      -- 'thermal' (the Yard AR app's thermal camera) and later others
+  started INTEGER NOT NULL,         -- ms
+  ended INTEGER,
+  kinds TEXT,                       -- what it measured: surface, moisture, wind (comma separated)
+  notes TEXT,                       -- the walker's notes and the sky sweep's summary, JSON
+  seen INTEGER                      -- when the water map first saw it
+);
+CREATE INDEX IF NOT EXISTS truth_walks_map ON truth_walks (map_id);
+CREATE INDEX IF NOT EXISTS truth_walks_pin ON truth_walks (parcel_pin);
+CREATE TABLE IF NOT EXISTS truth_weather (
+  walk TEXT PRIMARY KEY,
+  fetched INTEGER,                  -- when it was fetched and frozen
+  sources TEXT,                     -- JSON: [{ name, km, rows, has }], never a station's position
+  series TEXT                       -- JSON: [{ t, ta, rh, wind, cloud, ghi }]
+);
+CREATE TABLE IF NOT EXISTS truth_results (
+  walk TEXT NOT NULL,
+  model TEXT NOT NULL,              -- the model version that made the prediction
+  kind TEXT NOT NULL,               -- surface | moisture | wind
+  checked INTEGER,
+  n INTEGER,                        -- records compared
+  bias REAL,                        -- measured minus modelled, mean (C for surface)
+  rmse REAL,
+  rho REAL,                         -- rank correlation over the records
+  detail TEXT,                      -- JSON: by angle band, by sun and shade, the settings
+  PRIMARY KEY (walk, model, kind)
+);

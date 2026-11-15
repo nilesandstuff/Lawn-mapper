@@ -157,8 +157,13 @@ SPECULATION), as always.
     (5 degree bins 10-90), cloud_fraction (above 45 degrees; its thresholds PROVISIONAL, in sky.rules), cloud_T,
     clear_T, below_range_share, at, band, n_pixels, elev_covered, high_share, label, rules }; cloud_fraction is the
     night cloud to use (still band brightness, not longwave); the typed cloud is an optional override. A walk's
-    twins/<walk>/thermal/status.json says ok or its error; the runner looks for new walks every 2 hours. Not started;
-    waits for the format to settle and the first walk.
+    twins/<walk>/thermal/status.json says ok or its error; the runner looks for new walks every 2 hours. THE WATER
+    SIDE BUILT 2026-11-15 (FINDINGS H85): lib/surfacenow.js, src/truth.js (walks by property, frozen weather, results
+    per model version), lib/momentweather.js (station, satellite sunshine, HRRR), the walk card. Waits for the core's
+    /api/maps/thermal and the first real walk. THE LIVE APP'S WEATHER (owner: finer, kept cheap): Open-Meteo is the
+    upgrade while the site is free (non-commercial terms); about $29-99 a month once it is a product, or NOAA's
+    URMA from AWS in a scheduled workflow to stay free. An on-site Ecowitt station (about $205, the WH51L joins its
+    gateway) would give the lawn's own sunshine minute by minute. Both for the owner to decide.
 
 ## Rules (owner, 2026-10-27)
 

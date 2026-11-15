@@ -38,6 +38,9 @@ import { windShare } from '/lib/balance.js';
 import { leafCalendar } from '/lib/shade/seasonal.js';
 import { cleanFences, fencesOnGrid } from '/lib/shade/fences.js';
 import { toMerc as toMercS } from '/lib/shade/ept.js';
+import { momentOf, surfaceNowAt, openNow, MODEL_VERSION } from '/lib/surfacenow.js';
+import { atMoment } from '/lib/momentweather.js';
+import { spearman } from '/lib/rank.js';
 
 const kept = { r: null, lawn: null, standIn: false, soil: null, typical: null, week: null, lng: null, lat: null, season: null, climate: null, light: null };
 
@@ -91,6 +94,97 @@ function heatFor({ month, id }) {
   const surf = { wetDay: wet.day, wetNight: wet.night, dryDay: dry.day, dryNight: dry.night, wind: wet.wind, ks: Float32Array.from(ks), ta: wet.ta, open: wet.open, peakW: wet.peakW, hours: wet.hours, wind2: wet.wind2, windByMonth: !!kept.model.windAtMonths };
   self.postMessage({ heat: { id, month, weather: h.weather, inSeason: h.inSeason, sunny: h.sunny, open: h.open, ground: g, night: h.night, air: h.air, surf, ownRadiation: !!kept.model.rad, fences: !!kept.model.fenceHeat, trees: !!kept.model.canopy } },
     [g.sun.buffer, g.sky.buffer, g.fence.buffer, g.paving.buffer, g.net.buffer, h.night.buffer, h.air.buffer, surf.wetDay.buffer, surf.wetNight.buffer, surf.dryDay.buffer, surf.dryNight.buffer, surf.wind.buffer, surf.ks.buffer]);
+}
+
+/* A THERMAL WALK AGAINST THE MODEL (owner, 2026-11-15; lib/surfacenow.js). Each record is one 0.5 m square seen in
+   one pass and one angle band (the thermal session's grid.json, the shape agreed 2026-11-15), its place already turned
+   into lng/lat and checked against the trace by the page. Each is set against the surface the model gives at the
+   record's own minute: the sun where it stood, the direct beam's share through the canopy at that spot at that minute
+   (the light worker, asked again), the air as the walker read it (else the station's), the station's humidity and
+   wind, and the cloud from the sky sweep (else the station's sky cover); the ground as wet as that day's rain left it,
+   or watered when the walker said the sprinklers ran. -> { id, model, n, bias, rmse, rho, bands, sunShade, open,
+   records: Float32Array of predictions, settings } */
+const toC = (r) => (r && Number.isFinite(r.T) ? (r.unit === 'F' ? ((r.T - 32) * 5) / 9 : r.T) : null);
+async function walkCheck({ id, records, series, notes }) {
+  const m = kept.model;
+  if (!m || !kept.lightRes) { self.postMessage({ walkCheck: { id, error: m ? 'the shade is not worked out on this map' : 'the plan is not worked out yet' } }); return; }
+  const g = kept.lightRes.grid, W = g.W, H = g.H, cell = (g.bbox[2] - g.bbox[0]) / W;
+  const lat = kept.lat, lng = kept.lng;
+  // each record's place on the light worker's grid (the shade map's gridOver over the same box) and its cell
+  const pts = new Float64Array(records.length * 3), idx = new Int32Array(records.length).fill(-1);
+  records.forEach((r, k) => {
+    const [X, Y] = toMercS([r.lng, r.lat]);
+    const gx = (X - g.bbox[0]) / cell, gy = (g.bbox[3] - Y) / cell;
+    pts[3 * k] = gx; pts[3 * k + 1] = gy; pts[3 * k + 2] = r.tm;
+    if (gx >= 0 && gy >= 0 && gx < W && gy < H) idx[k] = Math.floor(gy) * W + Math.floor(gx);
+  });
+  let beams;
+  const L = lightSession(kept.lightRes, kept.lightSite, kept.climate);
+  try {
+    await L.build(L.edits.erased);
+    beams = (await L.ask({ type: 'samples', pts, heightM: 0.1 })).T; // the grass's top, as the shade map's field readings ask at a phone's height
+  } catch (e) { self.postMessage({ walkCheck: { id, error: `the shade at those minutes: ${e?.message || e}` } }); return; } finally { L.close(); }
+  // how wet the ground was: watered when the walker said so, else that day's rain-alone run
+  const date = new Date(records.length ? records[0].tm : Date.now()).toISOString().slice(0, 10);
+  let ks = null, wet = 'watered (the sprinklers ran)';
+  if (!notes?.sprinklers) {
+    const days = kept.week?.days || [];
+    if (days.some((d) => d.date === date)) {
+      simulate(m, days, { season: kept.season || null, record: (d, st) => {
+        if (days[d].date !== date) return;
+        ks = Float32Array.from(st.Dr, (Dr, i) => (Dr <= m.raw[i] || !(m.taw[i] > m.raw[i]) ? 1 : Math.max(0, (m.taw[i] - Dr) / (m.taw[i] - m.raw[i]))));
+      } });
+      wet = 'as that day\'s rain left it';
+    } else wet = 'watered (the weather record does not reach that day)';
+  }
+  // the walker's air: straight-line between their readings; the sky sweep's cloud
+  const airs = (notes?.air || []).map((a) => ({ t: a.at, T: toC(a) })).filter((a) => Number.isFinite(a.t) && Number.isFinite(a.T)).sort((a, b) => a.t - b.t);
+  const airAt = (t) => {
+    if (!airs.length) return null;
+    if (airs.length === 1 || t <= airs[0].t) return airs[0].T;
+    for (let k = 1; k < airs.length; k++) if (t <= airs[k].t) return airs[k - 1].T + ((airs[k].T - airs[k - 1].T) * (t - airs[k - 1].t)) / (airs[k].t - airs[k - 1].t);
+    return airs[airs.length - 1].T;
+  };
+  const sweep = notes?.sky && Number.isFinite(notes.sky.cloud_fraction) ? notes.sky.cloud_fraction : null;
+  const typed = { clear: 0, broken: 0.6, overcast: 1 }[notes?.cloud];
+  const memo = new Map();
+  const weatherAt = (t) => {
+    const key = Math.round(t / 6e4);
+    if (memo.has(key)) return memo.get(key);
+    const s = atMoment(series || [], t);
+    const ta = airAt(t) ?? s.ta;
+    /* the cloud for the sky's longwave: the walker's word, the sky sweep, else by day the satellite's sunshine against
+       the clear sky (momentOf works it out when no cloud is given), else the station's sky cover */
+    const cloud = Number.isFinite(typed) ? typed : sweep ?? (Number.isFinite(s.ghi) ? null : s.cloud);
+    const w = Number.isFinite(ta) ? momentOf({ t, lat, lng, ta, rh: Number.isFinite(s.rh) ? s.rh : 70, wind: s.wind, ghi: s.ghi, cloud }) : null;
+    memo.set(key, w);
+    return w;
+  };
+  const pred = new Float32Array(records.length).fill(NaN);
+  const anyGhi = (series || []).some((r) => Number.isFinite(r.ghi));
+  const used = { air: airs.length ? 'the walker\'s thermometer' : 'the station', cloud: Number.isFinite(typed) ? 'the walker\'s word' : sweep !== null ? 'the sky sweep' : anyGhi ? 'from the satellite\'s sunshine by day' : 'the station\'s sky cover', wet };
+  records.forEach((r, k) => {
+    const w = weatherAt(r.tm), i = idx[k];
+    if (!w || i < 0) return;
+    const month = new Date(r.tm).getUTCMonth();
+    pred[k] = surfaceNowAt(m, i, beams[k], w, { month, ks: ks ? ks[i] : 1 }).ts;
+  });
+  const stats = (ks2) => {
+    const d = ks2.map((k) => records[k].T - pred[k]);
+    if (!d.length) return { n: 0 };
+    const bias = d.reduce((a, b) => a + b, 0) / d.length;
+    return { n: d.length, bias, rmse: Math.sqrt(d.reduce((a, b) => a + b * b, 0) / d.length), rho: spearman(ks2.map((k) => records[k].T), ks2.map((k) => pred[k])) };
+  };
+  const ok = records.map((_, k) => k).filter((k) => Number.isFinite(pred[k]) && Number.isFinite(records[k].T));
+  const bands = {};
+  for (const b of ['0-60', '60-70', '70-80']) bands[b] = stats(ok.filter((k) => (records[k].band || '0-60') === b));
+  const main = ok.filter((k) => (records[k].band || '0-60') === '0-60');
+  const sunShade = { sun: stats(main.filter((k) => beams[k] >= 0.5)), shade: stats(main.filter((k) => beams[k] < 0.2)) };
+  const mid = records.length ? records[Math.floor(records.length / 2)].tm : Date.now();
+  const wMid = weatherAt(mid);
+  const out = { id, model: MODEL_VERSION, ...stats(main), bands, sunShade, used,
+    open: wMid ? { ts: openNow(wMid, m.params).ts, ta: wMid.ta, ghi: wMid.ghi, cloud: wMid.cloud, el: wMid.el, from: wMid.from } : null, pred };
+  self.postMessage({ walkCheck: out }, [pred.buffer]);
 }
 
 /* A SURFACE-TEMPERATURE VISIT AGAINST THE MODEL (owner, 2026-11-09): the surface model (lib/heat.js) on the visit
@@ -323,6 +417,7 @@ async function start(site, inputs) {
     site.cloudSeason = r.cloud?.season || null;
     site.green = r.green || null;
     const lit = await again(() => lawnLight(res, site, kept.climate, kept.season), 2).catch((e) => { kept.shadeWhy = e?.message || String(e); return null; });
+    kept.lightRes = res; kept.lightSite = site; // a walk's moments ask the light worker again (walkCheck)
     kept.light = lit?.summer || null; kept.lightMonths = lit?.months || null; kept.radiation = lit?.radiation || null;
     // the fences' longwave on the lawn (H49): the shade map's fences, seen from each lawn cell
     // EACH SPOT'S OWN WIND (H50): what stands upwind of it, by direction, weighted by the station's daytime wind
@@ -425,14 +520,38 @@ async function start(site, inputs) {
  */
 const MONTH_START = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365]; // day indices, as climate.js dayIndex
 
-function lawnLight(res, site, climate, season) {
-  const g = res.grid, N = g.W * g.H;
+/* THE LIGHT WORKER, SET UP ONCE (the plan's months; a walk's moments): its worker, one question at a time, and the
+   canopy built as the plan builds it. -> { ask, build(erased), edits, passes, close } */
+function lightSession(res, site, climate) {
+  const g = res.grid;
   const w = new Worker('/lib/shade/light-worker.js', { type: 'module' });
   // one message out, the next answer back (the worker answers in order)
   let waiting = null;
   w.onmessage = ({ data: m }) => { if (!waiting || m.type === 'progress') return; const k = waiting; waiting = null; if (m.type === 'error') k.reject(new Error(m.message)); else k.resolve(m); };
   w.onerror = (e) => { if (waiting) { const k = waiting; waiting = null; k.reject(new Error(e.message || 'the light worker stopped')); } };
   const ask = (msg) => new Promise((resolve, reject) => { waiting = { resolve, reject }; w.postMessage(msg); });
+  /* ONE LEAF STATE OVER THE LOT (the shade map's passes.js, 2026-10-29): a survey's passes can be months apart, one
+     in leaf and one not; each point carries its day (lib/las.js leafOfMs, set in ept.js cropRecords). Over the
+     analysis box, one state wins where the larger pass alone covers it, and the other pass's points are left out;
+     otherwise 'mixed' and the canopy judges column by column. The same call the shade page makes, on the same points. */
+  const passes = onePass(res.points, g.bbox, Math.cos((site.lat * Math.PI) / 180));
+  /* THE SUMMER CANOPY (FINDINGS H44): as the shade map draws it -- a leaf-off flight's crowns given their leaves
+     back from this place's typical temperatures (light-worker.js 'seasonal'; before 2026-10-27 the water map
+     asked for the crowns as flown, bare branches on a November flight) -- and without the trees and branches
+     erased on the shade map. */
+  const edits = erasedOn(site.shadeEdits, { W: g.W, H: g.H, bbox: g.bbox });
+  const build = (erased) => ask({ type: 'build', cols: passes.cols, box: g.bbox, lat: site.lat, lng: site.lng, shift: null, lot: polygonsOf(site.lawn), lawn: polygonsOf(site.lawn),
+    green: site.green || null, // the summer photo's green: the shade map's low-structure rule needs it (2026-11-04; set on site by start, as cloudSeason is)
+    canopy: 'seasonal', flight: site.cloudSeason || null, tMean: Array.isArray(climate?.tMean) ? climate.tMean : null, erased, erasedCubes: edits.cubes,
+    // the fences drawn on the shade map (its part, v 3): their shade too, as the shade map works it out
+    fences: site.shadeEdits?.fences?.length ? site.shadeEdits.fences : undefined });
+  return { ask, build, edits, passes, close: () => w.terminate() };
+}
+
+function lawnLight(res, site, climate, season) {
+  const g = res.grid, N = g.W * g.H;
+  const L = lightSession(res, site, climate);
+  const { ask, build, edits, passes } = L;
   const perCell = (m, scale = 1) => {
     const a = new Float32Array(N).fill(1);
     if (!m.dli || !(m.openDli > 0)) return null;
@@ -446,21 +565,6 @@ function lawnLight(res, site, climate, season) {
   // the same climate with all of the sun as beam, or all of it as sky: the share each cell gets of each (its sky view)
   const beamOnly = { ...climate, diffuse: new Array(365).fill(0) }, skyOnly = { ...climate, diffuse: new Array(365).fill(1) };
   const months = async (clim) => { const out = []; for (let mo = 0; mo < 12; mo++) { const a = perCell(await ask({ type: 'period', days: monthDays(mo), climate: clim })); if (!a) return null; out.push(a); } return out; };
-  /* ONE LEAF STATE OVER THE LOT (the shade map's passes.js, 2026-10-29): a survey's passes can be months apart, one
-     in leaf and one not; each point carries its day (lib/las.js leafOfMs, set in ept.js cropRecords). Over the
-     analysis box, one state wins where the larger pass alone covers it, and the other pass's points are left out;
-     otherwise 'mixed' and the canopy judges column by column. The same call the shade page makes, on the same points. */
-  const passes = onePass(res.points, g.bbox, Math.cos((site.lat * Math.PI) / 180));
-  const build = (erased) => ask({ type: 'build', cols: passes.cols, box: g.bbox, lat: site.lat, lng: site.lng, shift: null, lot: polygonsOf(site.lawn), lawn: polygonsOf(site.lawn),
-    green: site.green || null, // the summer photo's green: the shade map's low-structure rule needs it (2026-11-04; set on site by start, as cloudSeason is)
-    canopy: 'seasonal', flight: site.cloudSeason || null, tMean: Array.isArray(climate?.tMean) ? climate.tMean : null, erased, erasedCubes: edits.cubes,
-    // the fences drawn on the shade map (its part, v 3): their shade too, as the shade map works it out
-    fences: site.shadeEdits?.fences?.length ? site.shadeEdits.fences : undefined });
-  /* THE SUMMER CANOPY (FINDINGS H44): as the shade map draws it -- a leaf-off flight's crowns given their leaves
-     back from this place's typical temperatures (light-worker.js 'seasonal'; before 2026-10-27 the water map
-     asked for the crowns as flown, bare branches on a November flight) -- and without the trees and branches
-     erased on the shade map. */
-  const edits = erasedOn(site.shadeEdits, { W: g.W, H: g.H, bbox: g.bbox });
   const work = (async () => {
     const m = await build(edits.erased);
     if (m.w !== g.W || m.h !== g.H) throw new Error('the shade grid is not the water grid');
@@ -492,7 +596,7 @@ function lawnLight(res, site, climate, season) {
     return { summer, months: byMonth, radiation };
   })();
   const timer = new Promise((_, reject) => setTimeout(() => reject(new Error('the shade took too long')), 240000));
-  return Promise.race([work, timer]).finally(() => w.terminate());
+  return Promise.race([work, timer]).finally(() => L.close());
 }
 
 self.onmessage = async ({ data }) => {
@@ -502,9 +606,11 @@ self.onmessage = async ({ data }) => {
     else if (data.valvePlan) valvePlan(data.valvePlan);
     else if (data.heat) heatFor(data.heat);
     else if (data.surfCheck) surfCheck(data.surfCheck);
+    else if (data.walkCheck) await walkCheck(data.walkCheck);
   } catch (e) {
     if (data?.heat) { self.postMessage({ heat: { id: data.heat.id, error: e.message || String(e) } }); return; }
     if (data?.surfCheck) { self.postMessage({ surfCheck: { id: data.surfCheck.id, error: e.message || String(e) } }); return; }
+    if (data?.walkCheck) { self.postMessage({ walkCheck: { id: data.walkCheck.id, error: e.message || String(e) } }); return; }
     if (data?.valvePlan) { self.postMessage({ valvePlan: { id: data.valvePlan.id, error: e.message || String(e) } }); return; }
     self.postMessage(kept.r ? { planError: e.message || String(e) } : { error: e.message || String(e) });
   }

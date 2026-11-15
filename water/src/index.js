@@ -31,6 +31,7 @@
 
 import { readings } from './readings.js';
 import { moisture } from './moisture.js';
+import { truth } from './truth.js';
 import { handleStreams } from './streams.js';
 
 export const PROXIED = ['/api/geocode', '/api/parcel', '/api/imagery', '/api/county-imagery', '/api/shade/lidar', '/api/water/layers', '/api/shade/climate',
@@ -107,6 +108,9 @@ export default {
     if (wet) return wet;
     // the national stream map, fetched and kept at the edge by this site (src/streams.js)
     if (url.pathname === '/api/water/streams') return handleStreams(request, url, ctx);
+    // the ground-truth walks by property (src/truth.js; owner, 2026-11-15)
+    const walked = await truth(request, env, url, { isAdmin });
+    if (walked) return walked;
     const kept = await readings(request, env, url, { isAdmin });
     if (kept) return kept;
     if (!url.pathname.startsWith('/api/')) {

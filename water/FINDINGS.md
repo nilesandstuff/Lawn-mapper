@@ -2632,6 +2632,45 @@ leaves every lawn square at Ks 1. Watering moves the surface only where the soil
 81-102 F against 81-83 F watered); wet leaves cool it for a few hours after any watering, which the model does not
 carry, so a reading within hours of the sprinklers is still not a fair one.
 
+### H85. Thermal walks by property, and the surface at the walk's own minute: built, unmeasured (water session, 2026-11-15)
+
+The owner: "split up by property, so that any walk is permanently associated to a property so we can make refinements
+to the surface temperature predictions and compare the accuracy across the accumulated walks", "once a walk comes in,
+we'll have the current weather data we need for the time and place of the walk", and finer weather "at least for the
+ground truth comparisons" (low cost allowed there, the live app kept cheap).
+- THE MODEL AT A MINUTE (lib/surfacenow.js, MODEL_VERSION 'surface-now 1 (2026-11-15)'): heat.js's balance with the
+  moment's own inputs: the sun's position (shade sun.js); the direct beam's share at the spot at that minute through
+  the canopy as it stood that day (the light worker's 'samples', asked again: analyse.js lightSession, split out of
+  lawnLight unchanged); measured sunshine split by Erbs (1982), else the clear sky under cloud (Kasten & Czeplak
+  1980); the sky's longwave by Brutsaert (1975) clear and Crawford & Duchon (1999) cloud, the unseen sky radiating
+  at the air's temperature; the month's diffuse shares, wind shelter, fences and paving as before; G 0.1 / 0.5 of
+  Rn; Priestley-Taylor LE x Ks by day, none by night. test/surfacenow.test.js: a clear July noon 948 W/m2; watered
+  grass +1.0 C over 28 C air, Ks 0.2 +27 C, shaded +0.1 C; a clear night -3.6 C, overcast 0.0 C.
+  NOT IN IT: the slope for the beam at the minute (level ground; the month model has it), heat stored in the soil
+  from the hours before, dew, a stable night's still air.
+- THE STORE (src/truth.js; schema truth_walks, truth_weather, truth_results; new tables, no ALTER needed): a walk is
+  tied for good to its map and, when the map has one, its parcel; its notes (the walker's air readings, wet grass,
+  sprinklers, cloud, the sky sweep's summary, the angle cut, the camera) kept without coordinates; the weather of its
+  minutes FROZEN at first comparison (?refresh=1 to fetch again); every comparison kept per walk, per kind (surface
+  now, moisture and wind to come) and per model version. test/truth.test.js on node:sqlite with the real schema.
+- THE WEATHER OF THE MOMENT (lib/momentweather.js), from the research agent's survey (2026-11-15): the nearest
+  ASOS station (IEM, free; air, humidity, 10 m wind to 2 m, sky cover as a cloud fraction), Open-Meteo's satellite
+  sunshine (GOES GHI, 2 km, 10 min, archived from April 2025, free non-commercial, CC BY 4.0) and its HRRR (3 km,
+  15 min). Each quantity from its best source (PREFER: the air the walker's, then the station's; sunshine the
+  satellite's; HRRR where nothing measured answers). OPEN-METEO'S FREE SHARE IS COUNTED BY ADDRESS: this sandbox was
+  refused after a few calls on 2026-11-15 ("Daily API request limit exceeded") and a Worker's address is shared too,
+  so the PAGE fetches Open-Meteo from the admin's own address and hands the rows to the Worker, which checks them,
+  adds the station's and freezes them. Its HRRR model is to be discontinued at the end of November 2026 per
+  Open-Meteo (NOAA's RRFS replaces it); the satellite and the station are the sources that matter here.
+- THE CARD (app.js walkCards; the admin only): every walk of the property pooled by model version (mean, RMS, median
+  rank, measured minus modelled, F), and each walk: sun against shade, the angle bands against the model (their
+  difference from 0-60 degrees is the angle's own effect), what was used for air, cloud and wetness, the sources.
+A MADE-UP WALK on the owner's map (scratchpad only: 3,544 records over the traced lawn, a smooth gradient plus
+noise, 2026-11-08 2 pm, 55 F walker's air, a 40% sweep) ran through the real page with the store on a local SQLite:
+2,759 lawn squares at 0-60 degrees scored, measured sunshine 434 W/m2 from the satellite at mid-walk, the open lawn
+58 F, the station 24 km away; HRRR refused from the sandbox's address and skipped. The numbers mean nothing (the
+temperatures were invented); the path does. NO REAL WALK YET (the core's /api/maps/thermal is not built).
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge

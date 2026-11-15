@@ -32,6 +32,9 @@ import { KINDS as LAYER_KINDS, FIELD_WORDS, typeWords, hasCounty, keepCounty, as
 import { sectorName } from '/lib/wind.js';
 import { SPECIES, groupOf } from '/lib/roots.js';
 import { spearman } from '/lib/rank.js';
+import { fromLocal } from '/lib/ar-align.js';
+import { MODEL_VERSION } from '/lib/surfacenow.js';
+import { openMeteoUrls, parseOpenMeteo } from '/lib/momentweather.js';
 
 const $ = (s) => document.querySelector(s);
 const R = 6378137;
@@ -992,8 +995,123 @@ function moistureCard(p) {
       <p class="dim">Readings ${vs[0] ?? '-'} to ${vs[vs.length - 1] ?? '-'}; the model's wetness ${f2(ws[0])} to ${f2(ws[ws.length - 1])} (the root zone's water over what it holds at field capacity, with rain alone), each spot the mean of the lawn squares within ${NEAR_M} m of it. A spot is on the lawn when it is on the traced lawn or within ${ON_TRACE_M} m of it${offs ? ` (${offs} of these sit just off the trace: the photo a dot is put on and the one the lawn was traced on can differ by about that much)` : ''}. ${wet ? '' : 'The weather record does not reach this date, so the model has no wetness for it.'}</p>
       <div style="overflow-x:auto"><table class="small"><tr><th>#</th><th>reading</th><th>model</th><th>where</th><th>area</th><th>peak-month need, in</th><th>note</th></tr>${rows}</table></div></details>`;
   });
-  el.innerHTML = `${cards.length ? `<h2>Soil moisture readings against the model</h2>${cards.join('')}` : ''}${surfCards()}${trunksNote()}`;
+  el.innerHTML = `${cards.length ? `<h2>Soil moisture readings against the model</h2>${cards.join('')}` : ''}${surfCards()}${walkCards()}${trunksNote()}`;
   askSurf();
+  askWalks();
+}
+
+/* THERMAL WALKS AGAINST THE MODEL, BY PROPERTY (owner, 2026-11-15: "split up by property, so that any walk is
+   permanently associated to a property so we can make refinements to the surface temperature predictions and compare
+   the accuracy across the accumulated walks"). The walks are the core's (GET /api/maps/thermal, the Yard AR app's
+   thermal camera, the grid the water session asked for); the water map ties each to this map (and its parcel, when
+   the map has one) in its own database (src/truth.js), freezes the weather of its minutes there, and scores every
+   walk the current model version has not scored yet (lib/surfacenow.js through the worker's walkCheck). The card sets
+   the versions side by side. The admin only: anyone else's truth request answers 404 and nothing shows. */
+const walkState = { asked: false, admin: false, truth: [], why: null, busy: null, pending: new Map(), n: 0 };
+const pinOf = (site) => site?.parcel?.properties?.pin || site?.parcel?.properties?.PIN || site?.parcel?.properties?.parcel_pin || null;
+function walkIn(r) { const k = walkState.pending.get(r.id); if (k) { walkState.pending.delete(r.id); k(r); } }
+const askWorker = (msg) => new Promise((resolve) => { const id = `walk${++walkState.n}`; walkState.pending.set(id, resolve); running.postMessage({ walkCheck: { ...msg, id } }); });
+async function truthList(site) {
+  const pin = pinOf(site);
+  const r = await fetch(`/api/water/truth?map=${encodeURIComponent(site.mapId)}${pin ? `&pin=${encodeURIComponent(pin)}` : ''}`, { signal: AbortSignal.timeout(8000) });
+  if (!r.ok) return null;
+  return (await r.json()).walks || [];
+}
+async function askWalks() {
+  const site = view.site;
+  if (walkState.asked || !running || !view.plan || !site?.mapId) return;
+  walkState.asked = true;
+  try { const t = await truthList(site); if (!t) return; walkState.admin = true; walkState.truth = t; } catch { return; }
+  let list = [];
+  try {
+    const r = await fetch(`/api/maps/thermal?id=${encodeURIComponent(site.mapId)}`, { signal: AbortSignal.timeout(8000) });
+    if (r.ok) list = (await r.json()).walks || [];
+    else walkState.why = r.status === 404 ? null : `the walks answered ${r.status}`;
+  } catch { walkState.why = 'the walks did not answer'; }
+  const done = new Set(walkState.truth.filter((w) => w.results?.some((x) => x.model === MODEL_VERSION && x.kind === 'surface')).map((w) => w.walk));
+  const todo = list.filter((w) => w.walk && !done.has(w.walk)).slice(-12);
+  for (const [k, item] of todo.entries()) {
+    walkState.busy = `Checking thermal walk ${k + 1} of ${todo.length} against the model…`;
+    if (view.plan) moistureCard(view.plan);
+    try { await checkWalk(site, item.walk); } catch (e) { walkState.why = `walk ${item.walk}: ${e?.message || e}`; }
+  }
+  walkState.busy = null;
+  try { walkState.truth = (await truthList(site)) || walkState.truth; } catch { /* keep what we had */ }
+  if (view.plan) moistureCard(view.plan);
+}
+async function checkWalk(site, walkId) {
+  const id = encodeURIComponent(site.mapId), wid = encodeURIComponent(walkId);
+  const r = await fetch(`/api/maps/thermal?id=${id}&walk=${wid}`, { signal: AbortSignal.timeout(20000) });
+  if (!r.ok) throw new Error(`the walk answered ${r.status}`);
+  const walk = await r.json();
+  const recs = Array.isArray(walk.records) ? walk.records : [];
+  const kinds = [recs.length ? 'surface' : null, Array.isArray(walk.moisture) && walk.moisture.length ? 'moisture' : null, Array.isArray(walk.wind) && walk.wind.length ? 'wind' : null].filter(Boolean);
+  const sky = walk.sky ? { kind: walk.sky.kind, T_zenith: walk.sky.T_zenith ?? walk.sky.T, cloud_fraction: walk.sky.cloud_fraction, clear_T: walk.sky.clear_T, high_share: walk.sky.high_share } : null;
+  const notes = { air: walk.air || null, wet: walk.wet ?? null, sprinklers: walk.sprinklers ?? null, cloud: walk.cloud ?? null, sky, cut: walk.cut || null, camera: walk.camera || null };
+  const started = walk.started ?? recs[0]?.t0, ended = walk.ended ?? recs[recs.length - 1]?.t1 ?? null;
+  const reg = await fetch('/api/water/truth/walk', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ walk: walk.walk || walkId, map_id: site.mapId, parcel_pin: pinOf(site), source: 'thermal', started, ended, kinds, notes }) });
+  if (!reg.ok) throw new Error(`could not keep the walk (${reg.status})`);
+  if (!recs.length) return;
+  /* the weather of its minutes, frozen the first time: the satellite's sunshine and the HRRR from Open-Meteo, fetched
+     here from this browser's own address (its free share is counted by address: lib/momentweather.js), handed to
+     the water Worker, which adds the airport station's reports and keeps them all (the place is sent, not kept) */
+  let weather = null;
+  const wr = await fetch(`/api/water/truth/weather?walk=${wid}`, { signal: AbortSignal.timeout(10000) });
+  if (wr.ok) weather = await wr.json();
+  else {
+    const urls = openMeteoUrls(site.lat, site.lng, started, ended ?? started + 9e5), rows = [];
+    for (const [src, u] of Object.entries(urls)) {
+      try { const r = await fetch(u, { signal: AbortSignal.timeout(20000) }); if (r.ok) rows.push(...parseOpenMeteo(await r.json(), src, started - 36e5, (ended ?? started) + 36e5)); } catch { /* the station alone */ }
+    }
+    const pr = await fetch('/api/water/truth/weather', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ walk: walk.walk || walkId, lat: site.lat, lng: site.lng, extra: { rows } }), signal: AbortSignal.timeout(30000) });
+    weather = pr.ok ? await pr.json() : { series: rows, sources: [] };
+  }
+  // each record onto the map, kept when it is on the lawn (the trace, with the moisture check's allowance)
+  const origin = [walk.frame?.lng ?? site.lng, walk.frame?.lat ?? site.lat], trace = site.lawn || [];
+  const on = [];
+  for (const x of recs) {
+    if (!Number.isFinite(x.e) || !Number.isFinite(x.n) || !Number.isFinite(x.T) || !Number.isFinite(x.tm)) continue;
+    const [lng, lat] = fromLocal(origin, [x.e, x.n]);
+    const off = offLawnM([lng, lat], trace);
+    const lawn = off === null ? view.plan?.kinds?.[cellAt([lng, lat])] === 1 : off <= ON_TRACE_M;
+    if (lawn) on.push({ lng, lat, tm: x.tm, T: x.T, band: x.band || '0-60' });
+  }
+  const res = await askWorker({ records: on, series: weather.series || [], notes });
+  if (res.error) throw new Error(res.error);
+  await fetch('/api/water/truth/result', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+    walk: walk.walk || walkId, model: res.model, kind: 'surface', n: res.n, bias: res.bias, rmse: res.rmse, rho: res.rho,
+    detail: { bands: res.bands, sunShade: res.sunShade, used: res.used, open: res.open, offLawn: recs.length - on.length, weather: weather.sources || [] },
+  }) });
+}
+function walkCards() {
+  if (!walkState.admin) return '';
+  const F = (c) => (Number.isFinite(c) ? c * 1.8 : null);
+  const f1 = (x) => (x === null || x === undefined || !Number.isFinite(x) ? '-' : `${x > 0 ? '+' : ''}${x.toFixed(1)}`);
+  const walks = walkState.truth.filter((w) => w.kinds.includes('surface'));
+  const head = '<h2>Thermal walks against the model</h2>';
+  if (!walks.length) return walkState.busy ? `${head}<div class="card">${esc(walkState.busy)}</div>` : walkState.why ? `${head}<div class="card dim">No thermal walks compared (${esc(walkState.why)}).</div>` : '';
+  // every model version's score over the walks it has scored: the current one first
+  const versions = [...new Set(walks.flatMap((w) => w.results.map((r) => r.model)))].sort((a, b) => (a === MODEL_VERSION ? -1 : b === MODEL_VERSION ? 1 : b.localeCompare(a)));
+  const pooled = versions.map((v) => {
+    const rs = walks.map((w) => w.results.find((r) => r.model === v && r.kind === 'surface')).filter((r) => r && r.n > 0);
+    const n = rs.reduce((a, r) => a + r.n, 0);
+    if (!n) return null;
+    const bias = rs.reduce((a, r) => a + r.bias * r.n, 0) / n, rmse = Math.sqrt(rs.reduce((a, r) => a + r.rmse ** 2 * r.n, 0) / n);
+    const rhos = rs.map((r) => r.rho).filter(Number.isFinite).sort((a, b) => a - b);
+    return `<tr><td>${esc(v)}${v === MODEL_VERSION ? ' (now)' : ''}</td><td>${rs.length}</td><td>${n}</td><td>${f1(F(bias))}</td><td>${F(rmse)?.toFixed(1) ?? '-'}</td><td>${rhos.length ? rhos[Math.floor(rhos.length / 2)].toFixed(2) : '-'}</td></tr>`;
+  }).filter(Boolean).join('');
+  const rows = walks.slice().reverse().map((w) => {
+    const r = w.results.find((x) => x.model === MODEL_VERSION && x.kind === 'surface');
+    const when = new Date(w.started).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    const mins = w.ended ? Math.round((w.ended - w.started) / 6e4) : null;
+    if (!r) return `<div class="card dim">Walk of ${esc(when)}: not scored by the current model yet.</div>`;
+    const d = r.detail || {}, sh = d.sunShade || {}, b = d.bands || {}, u = d.used || {}, o = d.open || {};
+    const src = (d.weather || []).map((x) => (Number.isFinite(x.km) ? `${esc(x.name)} ${x.km} km away` : esc(x.name))).join('; ') || 'no weather source answered';
+    return `<details class="card"><summary>Walk of ${esc(when)}${mins ? ` (${mins} min)` : ''}: ${r.n} lawn squares, off by ${f1(F(r.bias))} °F on average, rank ${Number.isFinite(r.rho) ? r.rho.toFixed(2) : '-'}</summary>
+      <p>Measured minus modelled, each half-meter square at its own minute, seen within 60° of straight down: mean ${f1(F(r.bias))} °F, typical miss (RMS) ${F(r.rmse)?.toFixed(1) ?? '-'} °F, rank correlation ${Number.isFinite(r.rho) ? r.rho.toFixed(2) : '-'}. In the sun ${f1(F(sh.sun?.bias))} °F over ${sh.sun?.n ?? 0}; in the shade ${f1(F(sh.shade?.bias))} °F over ${sh.shade?.n ?? 0}. Seen at a slant: 60-70° ${f1(F(b['60-70']?.bias))} °F over ${b['60-70']?.n ?? 0}, 70-80° ${f1(F(b['70-80']?.bias))} °F over ${b['70-80']?.n ?? 0} (against the model, so their difference from the straight-down readings is the angle's own effect).</p>
+      <p class="dim">The model at mid-walk: air ${Number.isFinite(o.ta) ? Math.round(o.ta * 1.8 + 32) : '-'} °F (${esc(u.air || '-')}), sun ${Number.isFinite(o.el) ? Math.round(o.el) : '-'}° up, sunshine ${Number.isFinite(o.ghi) ? Math.round(o.ghi) : '-'} W/m² (${esc(o.from || '-')}), cloud ${Number.isFinite(o.cloud) ? Math.round(o.cloud * 100) : '-'}% (${esc(u.cloud || '-')}); open, level, watered lawn ${Number.isFinite(o.ts) ? Math.round(o.ts * 1.8 + 32) : '-'} °F. The ground ${esc(u.wet || '-')}. Weather: ${src}. ${d.offLawn ? `${d.offLawn} squares off the lawn left out.` : ''} Model: ${esc(r.model)}.</p></details>`;
+  }).join('');
+  return `${head}${walkState.busy ? `<div class="card">${esc(walkState.busy)}</div>` : ''}${pooled ? `<div class="card"><p>Every walk on this property, pooled, by model version (measured minus modelled, °F):</p><div style="overflow-x:auto"><table class="small"><tr><th>model</th><th>walks</th><th>squares</th><th>mean</th><th>RMS</th><th>median rank</th></tr>${pooled}</table></div></div>` : ''}${rows}`;
 }
 
 /* SURFACE TEMPERATURES AGAINST THE MODEL (owner, 2026-11-09): each surface-temperature visit (the readings page, an
@@ -1156,6 +1274,7 @@ const valveAsk = { n: 0, waiting: new Map() };
 
 async function run(site) {
   running?.terminate();
+  walkState.asked = false; walkState.admin = false; walkState.truth = []; walkState.why = null; walkState.busy = null; walkState.pending.clear();
   view.site = site; view.data = null; view.plan = null;
   zoom.s = 1; zoom.tx = 0; zoom.ty = 0; $('#view').style.transform = '';
   $('#result').hidden = true; $('#plan').innerHTML = ''; $('#hill').innerHTML = ''; $('#streams').innerHTML = ''; if ($('#groundwater')) $('#groundwater').innerHTML = '';
@@ -1191,6 +1310,7 @@ async function run(site) {
       else if (data.valvePlan) { const w = valveAsk.waiting.get(data.valvePlan.id); valveAsk.waiting.delete(data.valvePlan.id); if (w) { if (data.valvePlan.error) w.reject(new Error(data.valvePlan.error)); else w.resolve(data.valvePlan); } }
       else if (data.heat) { heatIn(data.heat); }
       else if (data.surfCheck) { surfIn(data.surfCheck); }
+      else if (data.walkCheck) { walkIn(data.walkCheck); }
       else if (data.groundwaterError) { view.groundwaterError = data.groundwaterError; }
       else if (data.plan) { view.heat = null; if (mapView === 'heat') askHeat(); idle('plan'); if (!view.hillIn) busy('hill', 'Reading the land round the lawn (water from uphill)…'); view.plan = data.plan; needScale(); heads.planIn?.(); $('#saved').textContent = savedNote; if (!heads.active) planReport(data.plan); else moistureCard(data.plan); legend(); draw(); }
       else if (data.planError) { idle('plan'); idle('hill'); $('#saved').textContent = `The watering plan could not be worked out: ${data.planError}`; }
