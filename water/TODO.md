@@ -153,9 +153,11 @@ SPECULATION), as always.
     the bands, angleCheck: [{ t0, t1 }], about 1-2 MB per 10-minute walk. ITS CAVEAT: position coarsens at steep
     angles (a 0.7 degree aim error moves the spot 3 cm at 30, 14 cm at 70, about 50 cm at 80 degrees), so a 70-80
     record's place is good to about one cell: compare those over 1 m cells or a neighbourhood. THE SKY (owner's
-    wish, 2026-11-15): a ~10 s sweep of the dome gives sky: { T_zenith, T_by_elevation, cloud_fraction, cloud_T,
-    clear_T_or_below_range, at, band, n_pixels }; cloud_fraction is the night cloud to use (still band brightness,
-    not longwave); the typed cloud is an optional override. Not started;
+    wish, 2026-11-15): a ~10 s sweep of the dome; grid.json sky: { kind: sweep|shot, T, T_zenith, T_by_elevation
+    (5 degree bins 10-90), cloud_fraction (above 45 degrees; its thresholds PROVISIONAL, in sky.rules), cloud_T,
+    clear_T, below_range_share, at, band, n_pixels, elev_covered, high_share, label, rules }; cloud_fraction is the
+    night cloud to use (still band brightness, not longwave); the typed cloud is an optional override. A walk's
+    twins/<walk>/thermal/status.json says ok or its error; the runner looks for new walks every 2 hours. Not started;
     waits for the format to settle and the first walk.
 
 ## Rules (owner, 2026-10-27)
