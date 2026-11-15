@@ -75,10 +75,16 @@ jobs:
           # a quiet build prints nothing, and grep with nothing to pass on exits 1: hence the || true above
           echo "APP_CODE=$CODE" >> "$GITHUB_ENV"
           echo "APP_NAME=$NAME" >> "$GITHUB_ENV"
-          gradle -p android --no-daemon -q assembleRelease \
+          # the thermal camera is the dev build's alone: nothing under src/main may name it, and the store build
+          # must compile without it (android/app/src/dev/README.md)
+          if grep -rn "lawnmapper.ar.thermal\|thermalprobe" android/app/src/main android/app/src/store; then echo "src/main or src/store names the dev-only thermal code"; exit 1; fi
+          gradle -p android --no-daemon -q compileStoreReleaseKotlin \
+            -PscanUrl="https://$SCAN_DOMAIN" -PversionCode="$CODE" -PversionName="$NAME" 2>&1 | { grep -v '^w:' || true; } | tail -20
+          echo "Store build (no thermal camera): compiles"
+          gradle -p android --no-daemon -q assembleDevRelease \
             -PscanUrl="https://$SCAN_DOMAIN" -PversionCode="$CODE" -PversionName="$NAME" \
             -PkeystorePath="$RUNNER_TEMP/release.jks" -PkeystorePass="$KEY_PASS" -ParcoreApiKey="$ARCORE_API_KEY" 2>&1 | { grep -v '^w:' || true; } | tail -40
-          APK=android/app/build/outputs/apk/release/app-release.apk
+          APK=android/app/build/outputs/apk/dev/release/app-dev-release.apk
           test -f "$APK"
           BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
           "$BT/apksigner" verify "$APK" && echo "Signed: yes"
@@ -90,7 +96,7 @@ jobs:
         run: |
           BRIDGE=$(grep -o 'buildConfigField("int", "BRIDGE", "[0-9]*")' android/app/build.gradle.kts | grep -o '"[0-9]*")' | tr -dc 0-9)
           node -e "require('fs').writeFileSync('version.json', JSON.stringify({ code: +process.env.APP_CODE, name: process.env.APP_NAME, bridge: +process.argv[1], at: new Date().toISOString(), commit: process.env.GITHUB_SHA.slice(0, 7) }))" "$BRIDGE"
-          node scan/tools/app-r2.mjs put app/lawn-ar.apk android/app/build/outputs/apk/release/app-release.apk application/vnd.android.package-archive
+          node scan/tools/app-r2.mjs put app/lawn-ar.apk android/app/build/outputs/apk/dev/release/app-dev-release.apk application/vnd.android.package-archive
           node scan/tools/app-r2.mjs put app/version.json version.json application/json
           echo "PUBLISHED=yes" >> "$GITHUB_ENV"
 

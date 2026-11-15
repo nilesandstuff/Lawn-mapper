@@ -141,6 +141,7 @@ class ArEngine(private val send: (String) -> Unit) : GLSurfaceView.Renderer {
         lastTs = ts
         val cam = frame.camera
         val tracking = cam.trackingState == TrackingState.TRACKING
+        Extras.arFrame(ts, cam.pose, tracking)   // the dev build's thermal camera keeps ARCore's raw pose and clock (nothing in the store build)
         val now = System.currentTimeMillis()
         if (tracking && now - lastDepth >= options.depthEveryMs) { lastDepth = now; snapDepth(frame) }
         if (tracking && !pictureBusy && now - lastPicture >= options.pictureEveryMs) { lastPicture = now; snapPicture(frame) }

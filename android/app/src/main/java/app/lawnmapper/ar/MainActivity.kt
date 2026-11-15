@@ -97,12 +97,15 @@ class MainActivity : Activity() {
         engine.onPlaybackEnd = { status -> event("{\"type\":\"playbackEnd\",\"status\":${quote(status)}}") }
         // a recording an earlier walk could not send (no signal, the app closed): sent now
         web.postDelayed({ recorder.sendAll() }, 5000)
+        // what only the dev build has (the USB thermal camera; src/dev/README.md); nothing in the store build
+        try { Extras.install(this, web, base); Extras.intent(this, intent) } catch (e: Exception) { android.util.Log.w("LawnAR", "extras: ${e.message}") }
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
         open(intent)
+        Extras.intent(this, intent)
     }
 
     /** The pairing link, or the page. */
@@ -294,6 +297,7 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         recorder.sink = null   // a send in the background carries on, with no page to tell
+        Extras.destroy()
         session?.close()
         session = null
         web.destroy()

@@ -35,4 +35,13 @@ assert.equal(got.headers.get('Content-Type'), 'video/mp4');
 assert.equal((await got.arrayBuffer()).byteLength, PIECE + 1000);
 assert.deepEqual((await (await call(env('admin'), 'GET', '/api/scan/recordings')).json()).recordings.map((r) => r.walk), ['w1']);
 assert.equal((await call(env('admin'), 'GET', '/api/scan/recording?walk=w2')).status, 404);
+
+// the thermal camera's file (dev only) goes the same way, under its own name; nothing else may be named
+assert.equal((await call(env('admin'), 'POST', '/api/scan/recording/start?walk=w1&file=../meta.json')).status, 400, 'only the files it knows');
+const t = await (await call(env('admin'), 'POST', '/api/scan/recording/start?walk=w1&file=thermal')).json();
+const tp = await (await call(env('admin'), 'PUT', `/api/scan/recording/part?walk=w1&file=thermal&upload=${t.upload}&n=1`, b)).json();
+await call(env('admin'), 'POST', `/api/scan/recording/done?walk=w1&file=thermal&upload=${t.upload}`, JSON.stringify({ parts: [tp] }));
+assert.ok(objs.has('twins/w1/thermal.bin'), 'beside the twin');
+assert.equal((await (await call(env('admin'), 'GET', '/api/scan/recording?walk=w1&file=thermal')).arrayBuffer()).byteLength, 1000);
+assert.equal((await (await call(env('admin'), 'GET', '/api/scan/recording?walk=w1')).arrayBuffer()).byteLength, PIECE + 1000, 'the recording untouched');
 console.log('recording: ok');

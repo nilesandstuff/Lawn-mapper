@@ -11,6 +11,10 @@
  *   GET  /api/scan/recording?walk=                  the MP4
  *   GET  /api/scan/recordings                       the walks that have one, newest first: [{ walk, bytes, at }]
  *
+ * A SECOND FILE BESIDE IT (2026-11-15; DEV ONLY, the thermal camera: android/app/src/dev/README.md): start, part and
+ * done take &file=thermal and write twins/<walk>/thermal.bin the same way (GET /api/scan/recording?walk=&file=thermal
+ * reads it back). Nothing else may be named.
+ *
  * The admin only, every method (the app sends the page's own sign-in cookie). Never printed by any workflow: the
  * recording is the yard on video, with its Geospatial position.
  */
@@ -18,7 +22,9 @@ import { WALK } from './twin.js';
 
 export const PIECE = 8 * 1024 * 1024;   // R2: every piece but the last the same size, 5 MiB at least
 export const NAME = 'recording.mp4';
-export const keyOf = (walk) => `twins/${walk}/${NAME}`;
+/** The files this route may write beside a walk: the recording, and (dev only) the thermal camera's frames. */
+export const FILES = { recording: { name: NAME, type: 'video/mp4' }, thermal: { name: 'thermal.bin', type: 'application/octet-stream' } };
+export const keyOf = (walk, file = 'recording') => `twins/${walk}/${FILES[file].name}`;
 const json = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 
 export async function recording(request, env, url, { isAdmin }) {
@@ -38,16 +44,18 @@ export async function recording(request, env, url, { isAdmin }) {
   }
   const walk = url.searchParams.get('walk');
   if (!WALK.test(walk || '')) return json({ error: 'which walk?' }, 400);
-  const key = keyOf(walk);
+  const file = url.searchParams.get('file') || 'recording';
+  if (!Object.hasOwn(FILES, file)) return json({ error: 'which file?' }, 400);
+  const key = keyOf(walk, file);
   if (p === '/api/scan/recording') {
     if (request.method !== 'GET') return json({ error: 'method' }, 405);
     const o = await env.TWIN.get(key);
     if (!o) return json({ error: 'Not found' }, 404);
-    return new Response(o.body, { headers: { 'Content-Type': 'video/mp4', 'Content-Length': String(o.size ?? ''), 'Cache-Control': 'private, no-store' } });
+    return new Response(o.body, { headers: { 'Content-Type': FILES[file].type, 'Content-Length': String(o.size ?? ''), 'Cache-Control': 'private, no-store' } });
   }
   const upload = url.searchParams.get('upload');
   if (p === '/api/scan/recording/start' && request.method === 'POST') {
-    const mp = await env.TWIN.createMultipartUpload(key, { httpMetadata: { contentType: 'video/mp4' } });
+    const mp = await env.TWIN.createMultipartUpload(key, { httpMetadata: { contentType: FILES[file].type } });
     return json({ upload: mp.uploadId, piece: PIECE });
   }
   if (!upload) return json({ error: 'which upload?' }, 400);

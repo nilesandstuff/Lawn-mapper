@@ -1,0 +1,24 @@
+package app.lawnmapper.ar.thermal
+
+import android.webkit.JavascriptInterface
+
+/**
+ * DEV ONLY -- what the page can ask of the thermal camera, as window.LawnARThermal (scan/public/thermal.js, which
+ * loads only when this exists). Absent from the store build.
+ */
+class ThermalBridge(private val cam: ThermalCamera) {
+    /** { state, detail, secs, busy, present, setup, fps, seen, refs, refAgoS, walk, kept, dropped, bytes, upload } */
+    @JavascriptInterface fun status(): String = cam.status()
+    /** Look for the camera and set it up (also done when it is plugged in and when the app opens). */
+    @JavascriptInterface fun connect() { cam.connect() }
+    /** Keep frames for this walk; false when no camera is connected. */
+    @JavascriptInterface fun startWalk(walk: String): Boolean = cam.startWalk(walk)
+    @JavascriptInterface fun endWalk() { cam.endWalk() }
+    /** A fresh reference, then 2 s of every frame with the phone pointing straight up; label "start" or "end". */
+    @JavascriptInterface fun skyShot(label: String): Boolean = cam.skyShot(label)
+    /** 5 s of every frame, for the timing sweep past something hot. */
+    @JavascriptInterface fun sweep(): Boolean = cam.sweep()
+    @JavascriptInterface fun sendWaiting() { cam.uploads.sendAll() }
+    /** The setup's notes, when it failed. */
+    @JavascriptInterface fun log(): String = cam.log()
+}

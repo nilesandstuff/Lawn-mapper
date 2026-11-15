@@ -5,6 +5,8 @@
  * loaded into a WebView over the camera. So a change to what the app does is a deploy of the scan site, not a new
  * APK; the APK changes only when the bridge between the two needs something new (BRIDGE below).
  *
+ * TWO BUILDS, dev and store (productFlavors below): the dev one carries the USB thermal camera, the store one cannot.
+ *
  * Built by workflow "A. Android app" (.github/workflows/android.yml); the inputs come as Gradle properties:
  *   -PscanUrl=https://scan.<home domain>   the page it opens (never written into the repository)
  *   -PversionCode=<n> -PversionName=<s>      from the workflow run
@@ -34,6 +36,17 @@ android {
         val key = prop("arcoreApiKey")
         buildConfigField("boolean", "GEO_KEY", if (key.isNotEmpty()) "true" else "false")
         manifestPlaceholders["arcoreApiKey"] = key
+    }
+
+    /* TWO BUILDS (2026-11-15; the owner: "thermal will not be packaged in the public release app... keep the code
+       neatly marked so that it's not accidentally copied over to the production version"):
+         dev    what the owner installs today: everything, plus src/dev/ (the USB thermal camera; src/dev/README.md)
+         store  what a Play Store release is built from: src/store/ in its place, which holds an empty Extras.kt
+       Workflow "A. Android app" builds dev. Nothing under src/main/ may import from src/dev/. */
+    flavorDimensions += "kind"
+    productFlavors {
+        create("dev") { dimension = "kind" }
+        create("store") { dimension = "kind" }
     }
 
     signingConfigs {

@@ -846,6 +846,8 @@ async function startAR(engine) {
   // the walk's twin (scan/lib/twin.js): its points, track and pictures go up to the site as it goes (src/twin.js)
   st.twin = newTwin({ walk: `${st.walk.startedAt}`, map: st.map || null, engine, started: st.walk.startedAt });
   st.twinUp = { queue: [], busy: false, off: null, sent: 0, failed: 0 };
+  // for what only a dev build adds (the thermal camera, public/thermal.js): a walk began
+  document.dispatchEvent(new CustomEvent('yard-walk', { detail: { phase: 'start', walk: `${st.walk.startedAt}`, replay: !!st.replayOf } }));
   st.errors = []; st.ar = null; st.drawer = null;
   overlay.hidden = false; document.body.classList.add('in-ar');
   $('#hud').textContent = engine === '8thwall' ? 'Loading the engine… then the phone asks for the camera and the motion sensors.' : 'Starting…';
@@ -1678,6 +1680,8 @@ function finish() {
     fix: L ? summaryOf(L) : null, surfaceSeen: st.surfCount || null, lidar: st.lid.ready ? { points: st.lid.ready.points, solid: st.lid.ready.solid, shift: st.lid.ready.shift, rule: st.lid.ready.rule || null, structures: st.lid.ready.structures || null, tallCells: st.lid.overlay ? st.lid.overlay.tall.length / 5 : null } : st.lid.error ? { error: st.lid.error } : null,
   });
   s.id = `${w.startedAt}`; s.saved = null;
+  // ...and ended: what a dev-only extra says of the walk (counts) is kept in its summary
+  { const add = {}; document.dispatchEvent(new CustomEvent('yard-walk', { detail: { phase: 'end', walk: s.id, add } })); if (Object.keys(add).length) s.extras = add; }
   try { s.perf = perfOf(st.wperf); st.upPerf = { perf: st.wperf, id: s.id }; } catch (e) { log(`speed numbers: ${e.message}`); }
   if (st.twin) {
     sendTwin(flush(st.twin, Date.now(), liveOf(L, w, { ended: true, summary: s.id, crumbs: crumbs ? crumbs.list : null, walk: L?.walk?.ok ? { T: L.walk.T, share: L.walk.share, margin: L.walk.margin, walkedM: L.walk.walkedM, from: L.walk.from } : null, recordOnly: !!st.recordOnly, points: pointsKept(), gpsTrail: trailKept(), geoTrail: geoKept(), anchors: st.anchors ? anchorsKept(st.anchors) : null })));
@@ -1983,4 +1987,6 @@ wire(); wireMap(); wirePhotoTools();
 // for a browser test without a phone (?debug=1): the mini map's pieces, nothing else
 if (new URLSearchParams(location.search).get('debug') === '1') window.__scan = { st, mini, drawMini, arrows };
 main().catch((e) => { $('#status').textContent = `This page could not start: ${e.message}`; });
+// DEV ONLY: the USB thermal camera, when the app is the dev build (public/thermal.js; the store build offers no such thing)
+if (window.LawnARThermal) import('/thermal.js').catch((e) => log(`thermal: ${e.message}`));
 if (/iPhone|iPad|iPod/.test(navigator.userAgent)) setTimeout(() => { if (st.has8w) load8thWall(ENGINE_URL).catch(() => {}); }, 1500);
