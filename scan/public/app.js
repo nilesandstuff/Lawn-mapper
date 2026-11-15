@@ -117,7 +117,7 @@ async function main() {
      references still line the camera view up meanwhile. */
   if (pick.offered.length) {
     const lab = document.createElement('label'); lab.className = 'dim'; lab.style.display = 'block'; lab.style.margin = '8px 0';
-    lab.innerHTML = '<input type="checkbox" id="record-only"> Record only: no live lidar fix; the walk is fixed afterwards';
+    lab.innerHTML = '<input type="checkbox" id="record-only"> Testing only: skip the live lidar fix (the walk is placed afterwards on the server, and is NOT kept as the map\'s reference). Leave this off for a normal walk';
     box.append(lab);
     $('#record-only').addEventListener('change', (e) => { st.recordOnly = e.target.checked; });
     /* THE OLD WAY, KEPT AS A BACKUP MODE (the owner, 2026-11-12: "remove the mark button entirely and replace with a
