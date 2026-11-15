@@ -2622,3 +2622,35 @@ BUILT 2026-11-12, after section 26's numbers (not seen on a phone):
     away, or Android's daily limit for such a service, leaves the parts on the phone for the next open, as before.
     Needs the new app (it offers its own update). NOT TRIED on a phone: whether Android keeps a hidden page's
     requests going at full pace is the thing to see.
+
+## 27. The USB thermal camera on a walk -- DEV ONLY (owner, 2026-11-14/15)
+
+The owner: "The goal here is to take ground truth measurements to verify the surface temperature predictions of
+the water model." "thermal will not be packaged in the public release app that we eventually release some day. So
+keep the code neatly marked so that it's not accidentally copied over to the production version." "don't guess at
+anything that you haven't been directly told by the thermal session." Three sessions: the thermal session knows
+the camera and owns the conversion to temperature (private repository); the water session says what grid it wants;
+the core session records the walk and carries the files.
+
+WHAT IS BUILT (2026-11-15), NOT YET TRIED ON THE PHONE:
+  - The app has two builds, dev and store (android/app/build.gradle.kts). Everything thermal is in
+    android/app/src/dev/ (README.md there: the rules, where each part came from, and the file format). The store
+    build compiles without it on every run of workflow "A. Android app".
+  - The dev build finds the camera when it is plugged in or the app opens, runs the thermal session's connect
+    sequence (about 35 s when it must set the range itself), takes a shutter reference every 30 s for 3 minutes
+    and then every 45 s, and while a walk records keeps about 2 raw frames a second, every frame for a reference,
+    a sky shot (2 s) and a timing sweep (5 s), with ARCore's raw camera pose at every ARCore frame.
+  - The walk's file goes to twins/<walk>/thermal.bin (private bucket) by the recording routes with &file=thermal.
+  - On the page: scan/public/thermal.js, a small box at the left of the AR view with Sky shot and Sweep buttons.
+    The walk's summary gains extras.thermal (counts); task "walks" prints them.
+  - Nothing is a temperature on the phone. The calibration tables stay in the app's private storage.
+
+NOT BUILT YET:
+  - How ARCore's world becomes the map's east/north/up for the thermal runner: proposed to the thermal session as
+    twins/<walk>/thermal/placement.json (the level fit sampled each second) with the ground grid and the lawn
+    outline beside it. Waiting for its answer.
+  - How the thermal runner reads the bucket (an R2 key in the private repository) and how it is started (hourly
+    poll, or a dispatch from the scan Worker with a GitHub token): both the owner's to grant.
+  - The water session's grid (cell size, numbers per cell, route): asked 2026-11-15, not yet answered.
+  - The thermal upload has no foreground service of its own: it holds a wake lock, and a send cut off carries on
+    when the app next opens.
