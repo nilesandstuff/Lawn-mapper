@@ -269,9 +269,9 @@ class Uvc(val device: UsbDevice, val conn: UsbDeviceConnection, val log: (String
     }
 
     /*
-     * THE vendor DEVICECONFIG PROTOCOL on the extension unit (wIndex = unit 10 << 8 | interface 0 = 0x0A00), as
-     * documented for the Topdon TC002C (a the vendor-built camera) in github.com/3ricj/IRPanoView, MasterThermoDocs
-     * 02 (transport), 03 (session bind) and 09 (shutter); written here from those facts, not copied. Channels are
+     * THE VENDOR'S DEVICE-CONFIG PROTOCOL on the extension unit (wIndex = unit 10 << 8 | interface 0 = 0x0A00), as
+     * documented publicly for a related camera (transport, session bind and shutter); written here from those
+     * facts, not copied. Channels are
      * wValue: 0x0500 select (2 bytes: phase, sub), 0x0100 misc, 0x0200 image, 0x0300 thermometry, 0x0400
      * version, 0x0600 command state (1 byte, 1 = idle), 0x1700 capabilities. Requests: 0x85 PROBE (IN, 4 bytes,
      * the first two a length), 0x81 GET (IN), 0x01 SET (OUT).
