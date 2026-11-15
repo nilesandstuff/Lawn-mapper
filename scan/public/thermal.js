@@ -112,6 +112,9 @@ function sendPlace(d) {
     format: 1, walk: String(d.walk), map: d.map,
     // only for the weather: rounded to a tenth of a degree
     coarse: d.origin ? { lng: +d.origin[0].toFixed(1), lat: +d.origin[1].toFixed(1) } : null,
+    // the map's own point, what east and north are measured from: for the site to hand the water map the walk's
+    // frame (private bucket only; the thermal runner does not use it)
+    origin: d.origin || null,
     samples: place.samples,
     ground: g ? { e0: r4(g.box[0]), n1: r4(g.box[3]), cell: g.cell, W: g.W, H: g.H, h: Array.from(g.data, (v) => (Number.isFinite(v) ? +v.toFixed(2) : null)) } : null,
     outline: { rings: (d.lawn || []).map((ring) => ring.map(([e, n]) => [r4(e), r4(n)])) },

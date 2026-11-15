@@ -17,6 +17,7 @@
  *   GET    /api/maps/one?id=      one map with every tool's data
  *   POST   /api/maps/new          a map started by another tool (address, point, line)
  *   POST   /api/maps/tool?id=&tool=   one tool's part: { data, basedOn }
+ *   GET    /api/maps/thermal?id=[&walk=]  DEV ONLY: the map's thermal camera walks, from the yard AR site (admin only)
  *   PUT    /api/maps/model?id=&tool=  the finished lidar model, a binary file (public/lib/lidar-model.js), kept gzipped
  *   GET    /api/maps/model?id=&tool=  the kept (gzipped) bytes; read with unpackModel; 404 until written
  *   GET    /api/maps/photo?id=    the photo the map was traced on, kept with it (map-photo.js); X-Photo-Frame
@@ -196,6 +197,33 @@ export async function handleMaps(request, env, url, origin, ctx, json) {
     headers.set('X-Photo-Source', obj.customMetadata?.source || '');
     if (obj.customMetadata?.at) headers.set('X-Photo-At', obj.customMetadata.at);
     return withCookies(new Response(request.method === 'HEAD' ? null : obj.body, { status: 200, headers }), cookies);
+  }
+
+  /* ---------------------------------------------------- /api/maps/thermal */
+  /* DEV ONLY (2026-11-15; docs/SCAN-PLAN.md section 27): the owner's thermal camera walks of a map, for the water
+     map to check its surface temperatures against. The walks live in the yard AR site's private bucket; that site
+     puts a walk together (scan/src/thermal.js, admin only, asked over the SCAN service binding with the visitor's
+     own cookie) and this adds the map's own lng/lat as the frame of its east/north metres. */
+  if (path === '/api/maps/thermal') {
+    const key = url.searchParams.get('id');
+    if (!key) return reply({ error: 'id required' }, 400);
+    if (request.method !== 'GET') return reply({ error: 'GET' }, 405);
+    const map = owner ? await getMap(env, owner, key) : null;
+    if (!map) return reply({ error: 'no-map', ...who }, 404);
+    if (!env.SCAN) return reply({ error: 'no-scan' }, 404);
+    const walk = url.searchParams.get('walk');
+    const q = `map=${encodeURIComponent(key)}${walk != null ? `&walk=${encodeURIComponent(walk)}` : ''}`;
+    let res;
+    try { res = await env.SCAN.fetch(new Request(`https://scan.internal/api/scan/thermal?${q}`, { headers: { Cookie: request.headers.get('Cookie') || '', Accept: 'application/json' } })); } catch { return reply({ error: 'scan-unreachable' }, 502); }
+    const body = await res.json().catch(() => null);
+    if (!res.ok || !body) return reply(body || { error: 'Not found' }, res.status === 200 ? 502 : res.status);
+    if (walk != null) {
+      // the map's point as it was when the walk was made, if the walk kept it; else the map's point now
+      const o = Array.isArray(body.origin) ? body.origin : [map.lng, map.lat];
+      body.frame = { lng: o[0], lat: o[1], cellM: 0.5, axes: 'east,north metres' };
+      delete body.origin;
+    }
+    return reply(body);
   }
 
   if (path === '/api/maps/model') {

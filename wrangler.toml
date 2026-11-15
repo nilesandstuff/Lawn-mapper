@@ -84,6 +84,13 @@ crons = ["* * * * *"]
 binding = "SHADE_BUILDER"
 service = "shade-builder"
 
+# The yard AR site's Worker (scan/), for GET /api/maps/thermal: a map's thermal camera walks are kept in that site's
+# private bucket, and the water map reads them through here (worker/src/routes-maps.js; DEV ONLY data, admin only).
+# It exists already (workflow "S. Yard AR tool"); it has a binding to this Worker too, which Cloudflare allows.
+[[services]]
+binding = "SCAN"
+service = "lawn-scan"
+
 # Normally you do NOT edit this block. CI appends it from the CUSTOM_DOMAIN
 # repository variable (tools/ci-prepare.js), which is why moving the site to a
 # new hostname is a one-field change and not a commit -- and why ci-prepare

@@ -33,7 +33,7 @@ export function checkPart(walk, part) {
 }
 
 
-export async function twin(request, env, url, { isAdmin }) {
+export async function twin(request, env, url, { isAdmin, noteThermal = null }) {
   const p = url.pathname;
   if (p !== '/api/scan/twin' && p !== '/api/scan/twins') return null;
   if (!(await isAdmin(request, env))) return json({ error: 'Not found' }, 404);
@@ -62,6 +62,8 @@ export async function twin(request, env, url, { isAdmin }) {
     const body = await request.arrayBuffer();
     if (body.byteLength > MAX_PART) return json({ error: `a part is at most ${MAX_PART} bytes` }, 413);
     await env.TWIN.put(keyOf(walk, part), body, { httpMetadata: { contentType: typeOf(part) } });
+    // dev only: a thermal walk's placement says which map it is of (thermal.js keeps that, for the water map)
+    if (part === 'thermal-placement.json' && noteThermal) await noteThermal(env, walk, body);
     return json({ ok: true, walk, part, bytes: body.byteLength });
   }
   if (request.method === 'GET') {

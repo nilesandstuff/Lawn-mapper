@@ -80,6 +80,7 @@ Written by the page (scan/public/thermal.js) at the walk's end, for the thermal 
 
     format 1, walk, map
     coarse   { lng, lat } rounded to 0.1 degree, for the weather only
+    origin   [lng, lat], the map's own point (what east and north are measured from); for the site, not the runner
     samples  about one a second: { ar_ns, theta, tx, ty, s, groundY, dy, dyFrom, by, odo, tracking }
     ground   { e0, n1, cell, W, H, h }   the lidar's ground, metres; h is W*H numbers, row 0 the NORTH edge, each
              row west to east; cell (r, c) covers east e0 + c*cell .. and north n1 - r*cell downward; null = no value

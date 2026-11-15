@@ -87,6 +87,7 @@ jobs:
           node scan/test/photo.test.js
           node scan/test/lidar.test.js
           node scan/test/twin.test.js
+          node scan/test/thermal.test.js
           node scan/test/minimap.test.js
           node scan/test/surface.test.js
           node scan/test/outline.test.js

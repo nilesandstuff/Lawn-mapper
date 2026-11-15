@@ -2654,3 +2654,17 @@ NOT BUILT YET:
   - The water session's grid (cell size, numbers per cell, route): asked 2026-11-15, not yet answered.
   - The thermal upload has no foreground service of its own: it holds a wake lock, and a send cut off carries on
     when the app next opens.
+
+UPDATE, the same day (2026-11-15), all agreed between the three sessions and built; still NOT tried on the phone:
+  - The thermal session reviewed the port line by line and found no error. Its converter reads thermal.bin and
+    thermal-placement.json (the page's level fit each second, the lidar ground, the lawn outline) from the bucket
+    and writes twins/<walk>/thermal/grid.json and status.json; it runs on Cloudflare, every 15 minutes (its word).
+  - The calibration tables never leave the phone: only a sha256 of each is in the walk's file.
+  - The water session takes readings out to 80 degrees off straight down and 10 m, in angle bands 0-60, 60-70,
+    70-80 (its 60 degree cut "was a guess"); position at 70-80 is good to about one 0.5 m cell.
+  - The sky shot became a 10 s SKY SWEEP (the owner: cloud cover from the camera, not typed); the sky's
+    temperature is an 8-14 um brightness temperature, a cloud index, not incoming longwave.
+  - An Angle check button marks one patch watched while walking up to it; the walker's notes (air temperature,
+    wet, sprinklers, cloud optional) are the twin part thermal-notes.json.
+  - GET /api/maps/thermal (main site, admin only) hands the water map a map's walks: scan/src/thermal.js puts a
+    walk together, the main Worker adds the frame (docs/MAPS.md). The water map already asks for it.
