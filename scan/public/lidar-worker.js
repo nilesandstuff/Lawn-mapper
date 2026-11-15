@@ -18,7 +18,7 @@ import { walkFix } from '/lib/walkfix.js';
 import { lookGrids, lidarPicture } from '/lib/look.js';
 import { lidarMarks, returnsFrom } from '/lib/lidar-marks.js';
 import { groundPicture } from '/lib/ground-picture.js';
-import { roofCorners } from '/lib/roof-corner.js';
+import { roofCorners, roofCornersAny } from '/lib/roof-corner.js';
 // THE SHARED TREE-VERSUS-BUILDING RULE'S MODULE (CLAUDE.md, "One way to read lidar"), copied into this site unchanged
 // at deploy time (scan/tools/prepare.mjs): its kind codes and wallsOf. The kinds themselves come from the model.
 const sharedRule = () => import('/lib/shade/structures.js');
@@ -130,7 +130,10 @@ self.onmessage = async ({ data }) => {
         // the roof corners a walk may take as its references (lib/roof-corner.js; the owner's option 2, 2026-11-11)
         let roofs = [];
         try { roofs = roofCorners(M, P, data.load.lawn || [], { lot: data.load.parcel || [] }); } catch (err) { self.postMessage({ progress: `the roof corners could not be found (${err.message})` }); }
-        self.postMessage({ roofs });
+        // ...and every building corner with an eave, for a point the owner puts on one that was not offered
+        let roofsAny = [];
+        try { roofsAny = roofCornersAny(M, P); } catch (err) { /* the offered ones still stand */ }
+        self.postMessage({ roofs, roofsAny });
         self.postMessage({ marks, progress: `lidar marks: ${M.objects.length} things, ${M.corners.filter((c) => c.kind === 'corner').length} corners (${M.corners.filter((c) => c.sure).length} sure), ${Date.now() - t0} ms` });
       } catch (err) { self.postMessage({ progress: `the lidar's corners could not be found (${err.message})` }); }
     }

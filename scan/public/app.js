@@ -606,11 +606,33 @@ function roofAt(b) {
     lawn changed, so the box the corners are found over did, and a corner can come out a foot or two away. */
 function backOnCorners() {
   if (st.walk || !st.points.length) return;
-  const r = resnap(st.points, st.lid.overlay?.picture?.marks?.corners || [], st.lid.roofs || []);
+  const r = resnap(st.points, st.lid.overlay?.picture?.marks?.corners || [], st.lid.roofsAny?.length ? st.lid.roofsAny : st.lid.roofs || []);
   if (!r.moved.length) return;
   savePoints(); listPoints(); drawMap();
   log(`points put back on their corners: ${r.moved.map((m) => `${m.name} ${m.m} m`).join(', ')}`);
   flash(`${r.moved.map((m) => m.name).join(', ')} moved back onto ${r.moved.length === 1 ? 'its corner' : 'their corners'} (the map's shapes changed)`);
+}
+
+/* A POINT ON A ROOF CORNER IS A ROOF CORNER, DIAMOND OR NOT (the owner, 2026-11-15: "They're all roof corners but
+   they're not diamonds... There shouldn't [be] ground points, we never talked about that"). The diamonds are only
+   the corners the tiers offer; a reference put on any other building corner was kept as a ground point, which the
+   walk never asks for, so R1 was marked and then nothing. Any building corner whose eave the lidar can tell
+   (roof-corner.js roofCornersAny) makes the point a roof corner: when it is placed, and for the points already on
+   the map when the lidar is read. */
+const roofNear = (at, reach = 0.6) => { let best = null, bd = reach; for (const c of st.lid.roofsAny || []) { const d = Math.hypot(c.at[0] - at[0], c.at[1] - at[1]); if (d <= bd) { bd = d; best = c; } } return best; };
+const roofOf = (rc) => ({ eaveM: rc.eaveM, label: rc.label, sure: rc.sure, within: rc.within, offLot: !!rc.offLot, picked: !!rc.picked });
+function roofsFromPoints() {
+  if (st.walk) return;
+  const made = [];
+  for (const p of st.points || []) {
+    if (p.roof || p.kind !== 'ref' || !p.map) continue;
+    const rc = roofNear(p.map);
+    if (rc) { p.roof = roofOf(rc); p.map = rc.at.slice(); made.push(p.name); }
+  }
+  if (!made.length) return;
+  savePoints();
+  log(`points on roof corners made roof corners: ${made.join(', ')}`);
+  flash(`${made.join(', ')}: on a roof corner, so ${made.length === 1 ? 'it is' : 'they are'} sighted like R1`);
 }
 
 /** A point placed on the lidar view goes to the corner within a fingertip, when there is one. */
@@ -716,8 +738,12 @@ function wireMap() {
       savePoints(); listPoints(); drawMap(); return;
     }
     const sp = snapped(unpx(b));
-    st.points.push({ id: `${Date.now()}`, kind: st.adding, name: nextName(st.adding), map: sp.at, on: st.photoChoice || undefined, snap: sp.snap || undefined });
-    if (st.photoChoice === 'lidar') flash(`${st.points[st.points.length - 1].name} ${snapWord(sp.snap)}`);
+    // a reference put on a building corner that has an eave is a roof corner, offered as a diamond or not
+    const anyRoof = st.adding === 'ref' ? roofNear(sp.at) : null;
+    st.points.push({ id: `${Date.now()}`, kind: st.adding, name: nextName(st.adding), map: anyRoof ? anyRoof.at.slice() : sp.at, on: st.photoChoice || undefined, snap: sp.snap || undefined, roof: anyRoof ? roofOf(anyRoof) : undefined });
+    if (anyRoof) flash(`${st.points[st.points.length - 1].name}: a roof corner (${anyRoof.label}, ${Math.round(anyRoof.eaveM * 3.281)} ft up)`);
+    else if (st.adding === 'ref' && !st.tapMode) flash(`${st.points[st.points.length - 1].name} is NOT on a roof corner the lidar knows: the walk will not ask for it. Put it on a building's corner.`);
+    else if (st.photoChoice === 'lidar') flash(`${st.points[st.points.length - 1].name} ${snapWord(sp.snap)}`);
     savePoints(); listPoints(); drawMap();
   };
   cv.addEventListener('pointerup', (ev) => up(ev, false));
@@ -757,7 +783,7 @@ function startLidar(m) {
     w.onmessage = ({ data }) => {
       if (data.progress) { st.lid.progress = data.progress; showLidar(); }
       if (data.ready) { pagePerf.stage('lidar read'); st.lid.ready = data.ready; log(`lidar model read: ${data.ready.points} columns, ${data.ready.solid} solid cells, shift ${data.ready.shift}`); showLidar(); keepShadeFresh(m, data.ready); }
-      if (data.roofs) { st.lid.roofs = data.roofs; log(`roof corners offered: ${data.roofs.length}`); backOnCorners(); drawMap(); listPoints(); }
+      if (data.roofs) { st.lid.roofs = data.roofs; st.lid.roofsAny = data.roofsAny || []; log(`roof corners offered: ${data.roofs.length} (of ${st.lid.roofsAny.length} building corners with an eave)`); backOnCorners(); roofsFromPoints(); drawMap(); listPoints(); }
       if (data.ground) { st.lid.ground = data.ground; groundPhoto().catch((e) => log(`lidar ground picture: ${e.message}`)); }
       if (data.marks && st.lid.overlay?.picture) { st.lid.overlay.picture.marks = data.marks; backOnCorners(); if (st.photoChoice === 'lidar') { photoTools(); drawMap(); } }
       if (data.overlay) { st.lid.overlay = data.overlay; st.lid.meshes = null; lidarPhoto().catch((e) => log(`lidar picture: ${e.message}`)); log(`lidar overlay: ${data.overlay.solids.length / 4} solid cells, ${data.overlay.tall.length / 5} tall cells`); }
@@ -1590,7 +1616,7 @@ function showNext() {
     // every roof corner is marked, but the map is not lined up by them (one corner), or other points wait unasked
     st.guideNext = false; el.hidden = false;
     $('#guide-say').textContent = d.n < 2 ? 'Only 1 roof corner on this map: it needs 2' : `All ${d.n} roof corners marked`;
-    $('#guide-detail').textContent = `${d.others.length ? `${d.others.join(', ')} on your map ${d.others.length === 1 ? 'is a ground point, not a roof corner' : 'are ground points, not roof corners'}: this mode does not ask for ${d.others.length === 1 ? 'it' : 'them'}. ` : ''}${d.n < 2 ? 'Exit, open the map\'s lidar view and tap a second roof corner (a diamond), then walk again. ' : ''}${d.others.length ? 'Or tick "Backup mode" on the start page to mark ground points by tapping.' : ''}`;
+    $('#guide-detail').textContent = `${d.others.length ? `${d.others.join(', ')} on your map ${d.others.length === 1 ? 'is' : 'are'} not on a building corner the lidar can tell the roof's height at, so ${d.others.length === 1 ? 'it cannot' : 'they cannot'} be sighted. ` : ''}Exit, and on the map's lidar view put ${d.n < 2 ? 'a second point' : 'the points'} on a building's corner (it says "a roof corner" when it takes).`;
     $('#guide-bar').style.width = '100%';
     return;
   }

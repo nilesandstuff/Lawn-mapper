@@ -87,18 +87,29 @@ export function roofCorners(marks, pts, lawn = [], opts = {}) {
     .filter((c) => !first.some((f) => Math.hypot(f.at[0] - c.at[0], f.at[1] - c.at[1]) < 0.05)).map((c) => tag(c, 2));
   return [...first, ...more];
 }
-function cornersWithin(marks, pts, lawn = [], { maxEaveM = MAX_EAVE_M, nearLawnM = NEAR_LAWN_M } = {}) {
+/**
+ * EVERY BUILDING CORNER THAT HAS AN EAVE, offered or not (the owner, 2026-11-15, after four walks that marked R1 and
+ * then went quiet: "They're all roof corners but they're not diamonds"). The diamonds are the corners the tiers
+ * choose; the owner had put R2 and R3 on roof corners the tiers had passed over, and the walk treated them as ground
+ * points and never asked for them. A point put on ANY building corner whose eave the lidar can tell is a roof
+ * corner: this is the list those are found in (no limit on the eave's height, the distance to the lawn, the side's
+ * length or the building's squareness; still an outward corner with roof returns beside it).
+ */
+export function roofCornersAny(marks, pts) {
+  return cornersWithin(marks, pts, [], { maxEaveM: Infinity, nearLawnM: Infinity, any: true }).map((c) => ({ ...c, picked: true }));
+}
+function cornersWithin(marks, pts, lawn = [], { maxEaveM = MAX_EAVE_M, nearLawnM = NEAR_LAWN_M, any = false } = {}) {
   const out = [];
   const roofs = [];
   for (let i = 0; i < pts.n; i++) if (pts.kind(i) === 1) { const h = pts.hag(i); if (h >= 1.5) roofs.push([pts.e(i), pts.nn(i), h]); }
   for (const o of marks?.objects || []) {
-    if (o.kind !== 'building' || !o.ring || o.ring.length < 4 || !o.square) continue;
+    if (o.kind !== 'building' || !o.ring || o.ring.length < 4 || (!o.square && !any)) continue;
     const ring = o.ring, sign = Math.sign(areaOf(ring)) || 1, n = ring.length;
     const mid = o.middle || [ring.reduce((t, p) => t + p[0], 0) / n, ring.reduce((t, p) => t + p[1], 0) / n];
     for (let i = 0; i < n; i++) {
       const p = ring[i], a = ring[(i + n - 1) % n], b = ring[(i + 1) % n];
       const la = Math.hypot(p[0] - a[0], p[1] - a[1]), lb = Math.hypot(b[0] - p[0], b[1] - p[1]);
-      if (la < MIN_SIDE_M || lb < MIN_SIDE_M) continue;
+      if (!any && (la < MIN_SIDE_M || lb < MIN_SIDE_M)) continue;
       // turning outward: the same way round as the whole outline
       const cross = (p[0] - a[0]) * (b[1] - p[1]) - (p[1] - a[1]) * (b[0] - p[0]);
       if (Math.sign(cross) !== sign) continue;

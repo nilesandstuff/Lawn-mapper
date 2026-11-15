@@ -1,6 +1,6 @@
 // scan/lib/roof-corner.js: which roof corners, and marking one by two aims. node scan/test/roof-corner.test.js
 import assert from 'node:assert/strict';
-import { eaveOf, roofCorners, newSight, sight, crossing, lookOf, HOLD_MS } from '../lib/roof-corner.js';
+import { eaveOf, roofCorners, roofCornersAny, newSight, sight, crossing, lookOf, HOLD_MS } from '../lib/roof-corner.js';
 import { lidarMarks } from '../lib/lidar-marks.js';
 import { referenceFit, place } from '../lib/walkref.js';
 
@@ -18,6 +18,11 @@ const rng = (seed) => { let sd = seed; return () => { sd = (sd + 0x6d2b79f5) | 0
   const M = lidarMarks([0, 0, 60, 40], pts);
   const lawn = [[[2, 2], [30, 2], [30, 22], [22.5, 22], [22.5, 8], [9.5, 8], [9.5, 22], [2, 22]]]; // a U round the house's south
   const all = roofCorners(M, pts, []), near = roofCorners(M, pts, lawn);
+  // every building corner with an eave, offered or not: at least the offered ones, each marked as picked
+  { const any = roofCornersAny(M, pts);
+    assert.ok(any.length >= all.length, 'no fewer than the offered');
+    assert.ok(all.every((c) => any.some((k) => Math.hypot(k.at[0] - c.at[0], k.at[1] - c.at[1]) < 0.05)), 'the offered corners are among them');
+    assert.ok(any.every((c) => c.picked && Number.isFinite(c.eaveM)), 'each with its eave'); }
   const at = (c, w) => Math.hypot(c.at[0] - w[0], c.at[1] - w[1]);
   console.log(`corners offered: ${all.length} with no lawn, ${near.length} by the lawn: ${near.map((c) => `${c.label} (eave ${c.eaveM} m, ${c.lawnM} m from the lawn${c.sure ? ', sure' : ''})`).join('; ')}`);
   assert.equal(all.length, 4, 'the house\'s four corners; none of the barn\'s (its eaves are 6 m up)');
