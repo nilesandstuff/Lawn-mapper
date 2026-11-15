@@ -138,6 +138,17 @@ SPECULATION), as always.
     `adminSave: true` and `trace: { status }`; /api/maps/one opens one like any map; lawnmap's
     /admin-saves.html links into each tool. For the readings page: let the administrator pick an admin save
     instead of a property found by GPS. Not started; wait for the owner's word.
+29. **Thermal walks: the lawn's surface temperature mapped on an AR walk** (owner via the core session,
+    2026-11-15: "take ground truth measurements to verify the surface temperature predictions of the water model").
+    The core and a thermal session build the capture (a USB-C thermal camera in the Yard AR app's development build;
+    a private runner turns frames into temperatures, emissivity 0.98, a sky shot for the sky's reflection). The
+    water session answered the shape (2026-11-15): 0.5 m cells in the map's local metres; one record per cell per
+    pass (t0, t1, tm, T, sd, k, view angle, distance; steep and far readings dropped); per walk the sky shot, the
+    owner's air readings at start and end, wet grass, sprinklers, cloud; one private JSON per walk, read at
+    GET /api/maps/thermal?id=&walk= (and a list without walk). THE WATER SIDE'S PART: a "surface at this minute"
+    model (lib/heat.js's balance with the beam at the reading's own time through the shade map's canopy, and the
+    sky shot in place of the estimated sky radiation), and a comparison card like the readings page's. Not started;
+    waits for the format to settle and the first walk.
 
 ## Rules (owner, 2026-10-27)
 
