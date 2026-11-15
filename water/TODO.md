@@ -149,7 +149,10 @@ SPECULATION), as always.
     GET /api/maps/thermal?id=&walk= (and a list without walk). THE WATER SIDE'S PART: a "surface at this minute"
     model (lib/heat.js's balance with the beam at the reading's own time through the shade map's canopy, the sky
     shot as a cloud index at night: it is an 8-14 um brightness temperature, NOT the broadband sky, the thermal
-    session's correction), and a comparison card like the readings page's. Not started;
+    session's correction), and a comparison card like the readings page's. BUILT on the thermal side (2026-11-15):
+    the bands, angleCheck: [{ t0, t1 }], about 1-2 MB per 10-minute walk. ITS CAVEAT: position coarsens at steep
+    angles (a 0.7 degree aim error moves the spot 3 cm at 30, 14 cm at 70, about 50 cm at 80 degrees), so a 70-80
+    record's place is good to about one cell: compare those over 1 m cells or a neighbourhood. Not started;
     waits for the format to settle and the first walk.
 
 ## Rules (owner, 2026-10-27)
