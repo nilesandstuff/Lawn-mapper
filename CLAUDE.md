@@ -309,3 +309,22 @@ message to you says so -- these are the rules:
     features session.
 
   water session     session_01BRMHw2UgvcLy5957Rsxivs   branch claude/feature-water-tool
+
+## The thermal session, and the thermal camera in the Yard AR app (DEV ONLY)
+
+Since 2026-11-14 a FOURTH session works on the owner's USB thermal camera. Its probe app lives in thermal-probe/
+on its own branch; everything derived from the vendor's software (the conversion to temperature, calibration) is
+in the owner's PRIVATE repository, never here. The core session does not edit thermal-probe/.
+
+  thermal session   session_0191moPH4j2kFueVujqHQpVn   branch claude/thermal-camera-ar-integration-87dt2q
+
+The owner, 2026-11-15: "thermal will not be packaged in the public release app that we eventually release some
+day. So keep the code neatly marked so that it's not accidentally copied over to the production version." and
+"don't guess at anything that you haven't been directly told by the thermal session."
+
+So: the Yard AR app has two builds, dev and store. Everything thermal is in android/app/src/dev/ (its README.md
+has the rules and the file format), scan/public/thermal.js, and &file=thermal on the scan site's recording
+routes. Nothing under android/app/src/main/ may name it. No vendor, app or model names in public files; the
+camera's calibration tables (they carry its serial number) never leave the app's private storage for anywhere
+public and are never logged. A question about the camera is asked of the thermal session, not answered by a
+guess. docs/SCAN-PLAN.md section 27 says what is built and what waits.
