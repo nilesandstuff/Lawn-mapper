@@ -85,6 +85,15 @@ async function main() {
   const token = process.env.CLOUDFLARE_API_TOKEN;
   if (!token) throw new Error('no CLOUDFLARE_API_TOKEN');
   const base = `${API}/accounts/${await account(token)}/r2/buckets/${BUCKET}`;
+  // "refs": which maps have a reference walk kept (the owner, 2026-11-15: "Have any walks been saved as references???").
+  // Dates and sizes only: a map's id is a place, and this is printed in a public log.
+  if (cmd === 'refs') {
+    const all = await list(base, token, 'refs/');
+    const now = all.filter((o) => !o.key.startsWith('refs/backup/')), old = all.filter((o) => o.key.startsWith('refs/backup/'));
+    console.log(`\nReference walks kept: ${now.length} map${now.length === 1 ? '' : 's'} have one (${old.length} replaced earlier ones kept as backups).`);
+    now.sort((a, b) => new Date(b.last_modified) - new Date(a.last_modified)).forEach((o, i) => console.log(`  map ${i + 1}: saved ${new Date(o.last_modified).toISOString()}, ${(o.size / 1e6).toFixed(1)} MB`));
+    return;
+  }
   // "latest": the walk whose twin was written to last (so nobody copies an id off a phone)
   if (walk === 'latest') {
     const all = await list(base, token, 'twins/');

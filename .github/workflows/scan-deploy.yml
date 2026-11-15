@@ -174,7 +174,9 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: BRIEF=1 N=6 node scan/tools/walks.mjs | tee walks.txt
+        run: |
+          BRIEF=1 N=6 node scan/tools/walks.mjs | tee walks.txt
+          node scan/tools/twin-r2.mjs refs | tee -a walks.txt
 
       - name: A walk's twin against the lidar
         if: ${{ inputs.task == 'twin' }}
