@@ -46,6 +46,8 @@ once the site has it). Little-endian throughout.
            ref     a shutter reference: index, t0_ns, t1_ns, frames, dark_level, log, words
            sky     a sky shot: label (start | end), t0_ns, t1_ns, up_deg_start, up_deg_end
            sweep   a timing sweep: t0_ns, t1_ns
+           mark    what (angle-start | angle-end: the walker's angle check, one patch watched while walking
+                   up to it), elapsed_ns
            unplug  elapsed_ns
            end     elapsed_ns, frames, dropped
     'F'  a frame: a 38-byte head, then the bytes

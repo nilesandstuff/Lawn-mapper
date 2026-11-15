@@ -465,6 +465,13 @@ class ThermalCamera(private val app: Context, private val base: String) {
         return true
     }
 
+    /** Something the walker marked (the page's angle check: "angle-start", "angle-end"), kept with its time. */
+    fun mark(what: String): Boolean {
+        val f = file ?: return false
+        f.json(JSONObject().put("k", "mark").put("what", what.take(24)).put("elapsed_ns", SystemClock.elapsedRealtimeNanos()))
+        return true
+    }
+
     /** The walk is over: the file closed and sent (ThermalUpload). */
     fun endWalk() {
         val f = file ?: return

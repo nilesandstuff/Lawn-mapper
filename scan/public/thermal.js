@@ -33,14 +33,14 @@ document.head.append(css);
 
 const box = document.createElement('div');
 box.id = 'thermal';
-box.innerHTML = '<span id="thermal-say"></span><div class="btns"><button type="button" id="thermal-sky">Sky shot</button><button type="button" id="thermal-sweep">Sweep</button></div>';
+box.innerHTML = '<span id="thermal-say"></span><div class="btns"><button type="button" id="thermal-sky">Sky shot</button><button type="button" id="thermal-sweep">Sweep</button><button type="button" id="thermal-angle">Angle check</button></div>';
 document.querySelector('#overlay')?.append(box);
 const send = document.createElement('div');
 send.id = 'thermal-send'; send.hidden = true;
 document.body.append(send);
 const $ = (q) => box.querySelector(q);
 
-const walk = { id: null, on: false, sky: [], sweeps: 0, note: '', noteUntil: 0 };
+const walk = { id: null, on: false, sky: [], sweeps: 0, angle: false, angles: 0, note: '', noteUntil: 0 };
 const say = (text, ms = 6000) => { walk.note = text; walk.noteUntil = Date.now() + ms; render(); };
 
 function render() {
@@ -60,12 +60,15 @@ function render() {
     else text = `ready${s.walk ? ` · ${s.kept} frames${s.dropped ? ` (${s.dropped} lost)` : ''} · ${mb(s.bytes)} MB` : ''}${s.refAgoS != null ? ` · reference ${s.refAgoS} s ago` : ''}`;
     if (s.state === 'ready' && walk.on && !s.walk) text += ' <span class="bad">· NOT recording this walk</span>';
     if (s.state === 'ready' && s.walk && !walk.sky.length && !s.busy) text += '<br><span class="go">Take the sky shot first. Note the air temperature (thermometer, in shade).</span>';
-    // how a thermal walk must look (the thermal session, 2026-11-15, under the water session's 60 degree cut)
-    if (s.state === 'ready' && s.walk && walk.sky.length && !s.busy) text += '<br><span style="color:#cfd8d3">Aim at the grass a couple of steps ahead, sweep slowly side to side, strips about 12 ft apart.</span>';
+    // how a thermal walk should look (2026-11-15: the water session takes readings out to 80 degrees off straight
+    // down, in angle bands, so the walker need not keep to narrow strips)
+    if (s.state === 'ready' && s.walk && walk.sky.length && !s.busy) text += '<br><span style="color:#cfd8d3">Aim at the grass ahead and sweep slowly side to side. Within about 30 ft counts; closer and steeper down reads best.</span>';
     if (walk.note && Date.now() < walk.noteUntil) text += `<br>${walk.note}`;
     $('#thermal-say').innerHTML = `<b>Thermal</b> ${text}`;
     const can = s.state === 'ready' && !s.busy && !!s.walk;
     $('#thermal-sky').disabled = !can; $('#thermal-sweep').disabled = !can;
+    $('#thermal-angle').disabled = !(s.state === 'ready' && !!s.walk) || typeof T.mark !== 'function';
+    $('#thermal-angle').textContent = walk.angle ? 'End angle check' : 'Angle check';
     $('#thermal-sky').textContent = walk.sky.length ? 'Sky shot (end)' : 'Sky shot';
     // a walk that began before the camera was ready: its file starts as soon as there is a camera
     if (walk.on && !s.walk && s.state !== 'none' && s.state !== 'asking') { try { T.startWalk(walk.id); } catch { /* next time */ } }
@@ -115,21 +118,33 @@ function sendPlace(d) {
   return place.samples.length;
 }
 
+/* THE ANGLE CHECK the water session asked for (2026-11-15; optional, one minute, best on an afternoon walk): on open,
+   sunny lawn, keep the camera on one patch while walking toward it from about 25 ft until standing over it. */
+$('#thermal-angle').addEventListener('click', () => {
+  if (!walk.angle) {
+    if (!T.mark('angle-start')) { say('Not recording.'); return; }
+    walk.angle = true; walk.angles++;
+    say('Pick a patch of open, sunny lawn about 25 ft away. Keep the camera on it and walk up until you stand over it, then tap End angle check.', 15000);
+  } else { T.mark('angle-end'); walk.angle = false; say('Angle check kept.'); }
+  render();
+});
+
 document.addEventListener('yard-walk', (e) => {
   const d = e.detail || {};
   if (d.phase === 'start' && !d.replay) {
     place.ask = d.placement || null; place.send = d.send || null; place.samples = [];
     clearInterval(place.timer); place.timer = setInterval(samplePlace, 1000);
-    walk.id = String(d.walk); walk.on = true; walk.sky = []; walk.sweeps = 0; walk.note = '';
+    walk.id = String(d.walk); walk.on = true; walk.sky = []; walk.sweeps = 0; walk.angle = false; walk.angles = 0; walk.note = '';
     try { T.connect(); T.startWalk(walk.id); } catch { /* no camera: the walk goes on without it */ }
   } else if (d.phase === 'end' && walk.on) {
     const s = read();
+    if (walk.angle) { try { T.mark('angle-end'); } catch { /* gone */ } walk.angle = false; }
     walk.on = false;
     try { T.endWalk(); } catch { /* gone */ }
     // counts only, for the walk's summary
     clearInterval(place.timer); samplePlace();
     const placed = s?.walk ? sendPlace(d) : 0;
-    if (s?.walk && d.add) d.add.thermal = { placed, frames: s.kept, poses: s.poses, dropped: s.dropped, mb: +mb(s.bytes), references: s.refs, setup: s.setup, sky: walk.sky, sweeps: walk.sweeps };
+    if (s?.walk && d.add) d.add.thermal = { placed, frames: s.kept, poses: s.poses, dropped: s.dropped, mb: +mb(s.bytes), references: s.refs, setup: s.setup, sky: walk.sky, sweeps: walk.sweeps, angleChecks: walk.angles };
   }
   render();
 });

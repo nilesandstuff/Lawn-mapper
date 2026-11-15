@@ -18,6 +18,8 @@ class ThermalBridge(private val cam: ThermalCamera) {
     @JavascriptInterface fun skyShot(label: String): Boolean = cam.skyShot(label)
     /** 5 s of every frame, for the timing sweep past something hot. */
     @JavascriptInterface fun sweep(): Boolean = cam.sweep()
+    /** A mark in the walk's file with its time ("angle-start", "angle-end"); false when no walk is recording. */
+    @JavascriptInterface fun mark(what: String): Boolean = cam.mark(what)
     @JavascriptInterface fun sendWaiting() { cam.uploads.sendAll() }
     /** The setup's notes, when it failed. */
     @JavascriptInterface fun log(): String = cam.log()
