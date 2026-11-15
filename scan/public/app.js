@@ -1797,7 +1797,7 @@ function finish() {
   post(s);
   // kept as its map's reference, by itself (keepReference): said on the walk's card when it is known
   if (L && !s.failed) {
-    const say = (text) => { const all = kept(), mine = all.find((x) => x.id === s.id); if (mine) { mine.reference = text; keep(all); renderResults(s.id); } };
+    const say = (text) => { const all = kept(), mine = all.find((x) => x.id === s.id); if (mine) { mine.reference = text; keep(all); renderResults(s.id); if (text && !/^Saving/.test(text)) post(mine); } };   // posted again with the verdict, so the walks log says why (the owner, 2026-11-15)
     say('Saving this walk as the map\'s reference…');
     keepReference(L, String(w.startedAt)).then((text) => { say(text || ''); if (text) { log(text); flash(/^Saved/.test(text) ? 'Saved as this map\'s reference' : 'Not saved as the reference: see the walk\'s card'); } askReference(); })
       .catch((e) => say(`NOT saved as the reference: ${e.message}`));
