@@ -62,7 +62,7 @@ function render() {
     if (s.state === 'ready' && s.walk && !walk.sky.length && !s.busy) text += '<br><span class="go">Take the sky shot first. Note the air temperature (thermometer, in shade).</span>';
     // how a thermal walk should look (2026-11-15: the water session takes readings out to 80 degrees off straight
     // down, in angle bands, so the walker need not keep to narrow strips)
-    if (s.state === 'ready' && s.walk && walk.sky.length && !s.busy) text += '<br><span style="color:#cfd8d3">Aim at the grass ahead and sweep slowly side to side. Within about 30 ft counts; closer and steeper down reads best.</span>';
+    if (s.state === 'ready' && s.walk && walk.sky.length && !s.busy) text += '<br><span style="color:#cfd8d3">Aim at the grass ahead and sweep slowly side to side. Within about 25 ft counts; closer and steeper down reads best.</span>';
     if (walk.note && Date.now() < walk.noteUntil) text += `<br>${walk.note}`;
     $('#thermal-say').innerHTML = `<b>Thermal</b> ${text}`;
     const can = s.state === 'ready' && !s.busy && !!s.walk;
