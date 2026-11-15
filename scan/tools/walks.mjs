@@ -51,6 +51,7 @@ export function digest(s) {
     `views: ${s.anchors ? `skyline in ${s.anchors.views.sky} and pavement in ${s.anchors.views.pave} of ${s.anchors.views.frames} pictures read; nudges ${s.anchors.nudges.sky} skyline, ${s.anchors.nudges.pave} pavement` : 'not kept'}`,
     `twin: ${s.twin ? `${s.twin.points} points, ${s.twin.keys} pictures, ${s.twin.poses} poses${s.twin.off ? `, OFF ${s.twin.off}` : ''}` : 'none'}`,
     ...(s.extras?.thermal ? [`thermal (dev only): ${s.extras.thermal.frames} frames, ${s.extras.thermal.poses ?? '-'} poses, ${s.extras.thermal.mb} MB, ${s.extras.thermal.references} references, ${s.extras.thermal.dropped} lost; setup ${s.extras.thermal.setup || '-'}; sky shots ${(s.extras.thermal.sky || []).join(', ') || 'none'}; sweeps ${s.extras.thermal.sweeps ?? 0}`] : []),
+    ...(s.pointKinds ? [`points on the map: ${s.pointKinds}`] : []),
     ...perfLines(s.perf),
     `messages: ${(s.errors || []).slice(-12).join(' | ')}`,
   ];

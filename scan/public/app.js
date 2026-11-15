@@ -133,8 +133,10 @@ async function main() {
        recorded walk can be run again through ARCore and this page from the couch. */
     if ((st.caps.native?.bridge ?? 0) >= 3) {
       const rec = document.createElement('label'); rec.className = 'dim'; rec.style.display = 'block'; rec.style.margin = '8px 0';
-      rec.innerHTML = '<input type="checkbox" id="record-arcore" checked> Record this walk for replay (a video of the whole walk with its motion: it can be over 100 MB a MINUTE (135 MB for a 1 minute walk, 2026-11-15), sent after the walk; untick it to send only the walk\'s points and pictures, a few MB)';
+      rec.innerHTML = '<input type="checkbox" id="record-arcore"> Record this walk for replay (a video of the whole walk with its motion: it can be over 100 MB a MINUTE (135 MB for a 1 minute walk, 2026-11-15), sent after the walk; untick it to send only the walk\'s points and pictures, a few MB)';
       box.append(rec);
+      // off unless ticked (the owner, 2026-11-15: "Make the replay recording off by default"; 135 MB for a minute)
+      st.recordOff = true;
       $('#record-arcore').addEventListener('change', (e) => { st.recordOff = !e.target.checked; });
       const fr = document.createElement('label'); fr.className = 'dim'; fr.style.display = 'block'; fr.style.margin = '8px 0';
       fr.innerHTML = '<input type="checkbox" id="full-res"> Full-resolution camera (1920x1080, pictures kept 1080 wide; the recording is about 2 GB for 8 minutes)';
@@ -835,7 +837,7 @@ async function startAR(engine) {
   st.walk = newWalk({ engine, phone: navigator.userAgent });
   st.dy = null; st.dyFrom = null; st.gpsTrail = []; st.anchors = newAnchors(); st.nudge = null; st.depthFill = null; st.geoTrail = []; st.geoSeen = null; st.sem = newSemCount(); st.lastSem = null; st.semDims = null; st.occ = null; st.occFull = 0; st.occAt = 0; st.walkGround = new Map(); st.spikes = { pictures: 0, cells: 0, flagged: 0 }; st.walkAsk = null; st.walkAt = 0; st.walkStats = { asks: 0, ok: 0, lastWhy: null, firstOkM: null }; st.crumbs = newCrumbs();
   st.walk.checks = [];
-  st.L = newLocate(); st.sight = null; st.sightPaused = false; st.sightEndedAt = 0;
+  st.L = newLocate(); st.sight = null; st.sightPaused = false; st.sightEndedAt = 0; st.roofsDone = null;
   st.prevStand = new Map(); st.prevGround = new Map(); st.prevAsk = null; st.prevAt = 0; st.prevStats = { asks: 0, ok: 0, lastWhy: null, firstOkM: null, lastMs: null };
   // the owner's choice at the start (2026-11-11): the saved walk places this one, or this one is a fresh reference
   st.refUse = st.refMeta && refChoice() === 'saved';
@@ -1550,7 +1552,16 @@ function autoSight(f) {
   const chosen = st.chosen ? st.points.find((p) => p.id === st.chosen) : null;
   const target = chosen?.roof && !marked.has(chosen.id) ? chosen : st.points.find((p) => p.roof && !marked.has(p.id));
   st.nextHint = null;
-  if (!target) return;
+  /* NO ROOF CORNER LEFT TO ASK FOR (the owner at home, 2026-11-15: R1 marked, then nothing, four walks running; the
+     map's other points, R2 and R3, were most likely ground points put there before the roof corners existed, which
+     this mode never asks for because they need a tap). Say so, instead of going quiet: what is done, and what the
+     other points need. */
+  if (!target) {
+    const roofs = st.points.filter((p) => p.roof), others = st.points.filter((p) => !p.roof && p.kind === 'ref' && !marked.has(p.id));
+    st.roofsDone = marked.size && roofs.length ? { n: roofs.length, others: others.map((p) => p.name) } : null;
+    return;
+  }
+  st.roofsDone = null;
   /* NOT FROM ACROSS THE YARD (the owner, 2026-11-12: looking at a corner already done "goes through the prompts for
      rescanning... It should say 'move on to next prompt X feet to the Y direction'"): once the map is lined up, the
      next corner's sighting waits until the phone is within reach of it and facing it; until then the middle of the
@@ -1574,6 +1585,15 @@ function autoSight(f) {
 function showNext() {
   const el = $('#guide'), h = st.nextHint;
   if (st.sight || st.tapMode) return;
+  const d = st.roofsDone;
+  if (!h && d && (d.n < 2 || d.others.length)) {
+    // every roof corner is marked, but the map is not lined up by them (one corner), or other points wait unasked
+    st.guideNext = false; el.hidden = false;
+    $('#guide-say').textContent = d.n < 2 ? 'Only 1 roof corner on this map: it needs 2' : `All ${d.n} roof corners marked`;
+    $('#guide-detail').textContent = `${d.others.length ? `${d.others.join(', ')} on your map ${d.others.length === 1 ? 'is a ground point, not a roof corner' : 'are ground points, not roof corners'}: this mode does not ask for ${d.others.length === 1 ? 'it' : 'them'}. ` : ''}${d.n < 2 ? 'Exit, open the map\'s lidar view and tap a second roof corner (a diamond), then walk again. ' : ''}${d.others.length ? 'Or tick "Backup mode" on the start page to mark ground points by tapping.' : ''}`;
+    $('#guide-bar').style.width = '100%';
+    return;
+  }
   if (!h) { if (st.guideNext) { el.hidden = true; st.guideNext = false; } return; }
   st.guideNext = true; el.hidden = false;
   $('#guide-say').textContent = `Next: ${h.target.name}, ${h.w.ft} ft ${h.w.word}`;
@@ -1587,7 +1607,7 @@ function startOver() {
   st.startOverAt = 0;
   const n = st.L.marks.length;
   st.L.marks.length = 0; st.L.holds = []; st.L.fixes = []; st.L.streak = [];
-  st.undoMarks = []; st.sight = null; st.sightPaused = false; st.sightEndedAt = 0; st.chosen = null; st.nextHint = null;
+  st.undoMarks = []; st.sight = null; st.sightPaused = false; st.sightEndedAt = 0; st.chosen = null; st.nextHint = null; st.roofsDone = null;
   $('#guide').hidden = true;
   log(`start over: ${n} marks cleared`); flash('Started over: aim up at the first roof corner');
 }
@@ -1695,7 +1715,7 @@ function finish() {
   const crumbs = st.crumbs?.list.length && st.tracker?.anchorAt ? crumbMoves(st.crumbs, (h) => st.tracker.anchorAt(h)) : null;
   const refs = st.points.filter((p) => p.kind === 'ref').map((p) => ({ name: p.name, marks: L ? L.marks.filter((m) => m.id === p.id).length : 0, leftOutM: L ? r3(leftOut(L.marks.filter((m) => m.kind === 'ref'), p.id)) : null }));
   const s = summary(w, {
-    page: 'yard AR test v2', roofSights: w.roofSights || null, recordOnly: !!st.recordOnly, features: w.features || null, depthType: w.depthType || null, anchors: st.anchors ? anchorsKept(st.anchors) : null, depthFill: st.depthFill ? { frames: st.depthFill.frames, holes: +(st.depthFill.zero / Math.max(1, st.depthFill.cells)).toFixed(3), past8m: +(st.depthFill.far / Math.max(1, st.depthFill.cells)).toFixed(3), weak: +(st.depthFill.weak / Math.max(1, st.depthFill.cells)).toFixed(3), minConf: st.depthFill.minConf } : null, rawAsked: !!st.rawDepth, geo: geoSummary(), depthSpikes: st.spikes ? { ...st.spikes, share: +(st.spikes.flagged / Math.max(1, st.spikes.cells)).toFixed(4), recordOnly: true } : null, walkFix: st.walkStats ? { ...st.walkStats, share: L?.walk?.ok ? +L.walk.share.toFixed(3) : null, margin: L?.walk?.ok ? +L.walk.margin.toFixed(3) : null, walkedM: L?.walk?.ok ? Math.round(L.walk.walkedM) : null } : null, semantics: st.caps?.native ? { on: !!st.tracker?.semantics, dims: st.semDims || null, ...(semSummary(st.sem) || {}) } : null, crumbs: crumbs ? { n: crumbs.n, held: crumbs.held, lost: crumbs.lost, refused: crumbs.refused, medianM: crumbs.medianM, maxM: crumbs.maxM, maxLevelM: crumbs.maxLevelM, worstOdo: crumbs.worstOdo } : null, app: st.caps?.native ? { app: st.caps.native.app, bridge: st.caps.native.bridge, device: st.caps.native.device, camera: st.started?.camera ?? null, image: st.started?.image ?? null, modes: st.started?.modes ?? null, streetscape: st.started?.streetscape ?? null, streetError: st.started?.streetError ?? null, recording: st.started?.recording ?? null, recordError: st.started?.recordError ?? null, geoDepthPoints: st.geoDepthN || 0, grabW: st.grabW || null } : null, replayOf: st.replayOf || null, failed: w.failed || null, errors: st.errors.map((e) => e.what).slice(-30),
+    page: 'yard AR test v2', pointKinds: st.points.map((p) => `${p.name}:${p.roof ? 'roof' : p.kind}`).join(' '), roofSights: w.roofSights || null, recordOnly: !!st.recordOnly, features: w.features || null, depthType: w.depthType || null, anchors: st.anchors ? anchorsKept(st.anchors) : null, depthFill: st.depthFill ? { frames: st.depthFill.frames, holes: +(st.depthFill.zero / Math.max(1, st.depthFill.cells)).toFixed(3), past8m: +(st.depthFill.far / Math.max(1, st.depthFill.cells)).toFixed(3), weak: +(st.depthFill.weak / Math.max(1, st.depthFill.cells)).toFixed(3), minConf: st.depthFill.minConf } : null, rawAsked: !!st.rawDepth, geo: geoSummary(), depthSpikes: st.spikes ? { ...st.spikes, share: +(st.spikes.flagged / Math.max(1, st.spikes.cells)).toFixed(4), recordOnly: true } : null, walkFix: st.walkStats ? { ...st.walkStats, share: L?.walk?.ok ? +L.walk.share.toFixed(3) : null, margin: L?.walk?.ok ? +L.walk.margin.toFixed(3) : null, walkedM: L?.walk?.ok ? Math.round(L.walk.walkedM) : null } : null, semantics: st.caps?.native ? { on: !!st.tracker?.semantics, dims: st.semDims || null, ...(semSummary(st.sem) || {}) } : null, crumbs: crumbs ? { n: crumbs.n, held: crumbs.held, lost: crumbs.lost, refused: crumbs.refused, medianM: crumbs.medianM, maxM: crumbs.maxM, maxLevelM: crumbs.maxLevelM, worstOdo: crumbs.worstOdo } : null, app: st.caps?.native ? { app: st.caps.native.app, bridge: st.caps.native.bridge, device: st.caps.native.device, camera: st.started?.camera ?? null, image: st.started?.image ?? null, modes: st.started?.modes ?? null, streetscape: st.started?.streetscape ?? null, streetError: st.started?.streetError ?? null, recording: st.started?.recording ?? null, recordError: st.started?.recordError ?? null, geoDepthPoints: st.geoDepthN || 0, grabW: st.grabW || null } : null, replayOf: st.replayOf || null, failed: w.failed || null, errors: st.errors.map((e) => e.what).slice(-30),
     references: refs, checks: (w.checks || []).map((c) => ({ ...c, errorM: r3(c.errorM), errorFixM: r3(c.errorFixM), errorRefsM: r3(c.errorRefsM), walkedSinceFixM: r2(c.walkedSinceFixM), aimM: r2(c.aimM), walkedM: r2(c.walkedM) })),
     pinsNear: w.pins.map((p) => ({ name: p.name, nearest: p.nearest ? { name: p.nearest.name, m: r2(p.nearest.m), byRefsM: r2(p.nearest.byRefsM) } : null })),
     fix: L ? summaryOf(L) : null, surfaceSeen: st.surfCount || null, lidar: st.lid.ready ? { points: st.lid.ready.points, solid: st.lid.ready.solid, shift: st.lid.ready.shift, rule: st.lid.ready.rule || null, structures: st.lid.ready.structures || null, tallCells: st.lid.overlay ? st.lid.overlay.tall.length / 5 : null } : st.lid.error ? { error: st.lid.error } : null,
