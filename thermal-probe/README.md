@@ -60,15 +60,24 @@ The probe's temperatures minus the vendor app's, per pixel, photos taken just af
 for the first capture, +0.16 / +0.00 C for the second; p5..p95 within +-0.1 C of each median; pictures aligned
 to the pixel (correlation 0.992-0.994); the shutter reference moved 0.06-0.10 C across each capture.
 
-## Alignment (0.31)
+## Pointing (2026-11-15)
 
-"Align shot" takes thermal frames and a phone-camera still at the same moment (main back camera, autofocus
-off at the hyperfocal distance as ARCore keeps it, stabilisation and distortion correction off; the still's JSON
-holds what the camera reports about its lens). Photographing a printed 9 x 7 checkerboard (25 mm squares) from
-10-20 angles lets a runner in the private repository calibrate the thermal lens and the rotation and offset
-between the two cameras (OpenCV).
+The need is to know where the thermal camera looks, to about a foot at 4-30 ft, not to overlay it on the phone
+picture. "Align shot" takes thermal frames and a phone-camera still at the same moment (main back camera,
+autofocus at the hyperfocal distance as ARCore keeps it, stabilisation and distortion correction off). A heated
+checkerboard is photographed from 0.7 to 6 m; the board's exact pose comes from its corners in the phone photo
+and its centre from the hot patch in the thermal frame, one match per shot. A runner in the private repository
+fits the thermal camera's rotation and field of view, with the lens-to-lens distance measured by ruler (152 mm).
+
+Result (19 shots with an exact pose, two boards):
+- field of view 46.5 x 35.8 deg (f = 298 px on the 256 x 192 corrected image, centre assumed at the middle);
+- the thermal camera points within 1.8 deg of the phone camera; lens offset x +15.0, y +2.6 cm in the phone
+  camera's frame (x along the sensor's long side, y down, z out of the lens);
+- residual 0.7 deg median; how far a pixel's spot could move when shots are left out: 0.07 / 0.16 / 0.31 /
+  0.52 ft at 4 / 10 / 20 / 30 ft (median; worst corner p90 1.1 ft at 30 ft). Lens distortion is not modelled.
+
+The camera only plugs in one useful way (facing out, beside the phone camera), so the orientation is fixed.
 
 ## Next
 
-Alignment of the thermal camera to the phone camera (field of view, distortion, and the offset between the two
-lenses), then the integration into the Yard AR app's walk recording (core session).
+The integration into the Yard AR app's walk recording (core session).
