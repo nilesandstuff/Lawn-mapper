@@ -143,11 +143,13 @@ SPECULATION), as always.
     The core and a thermal session build the capture (a USB-C thermal camera in the Yard AR app's development build;
     a private runner turns frames into temperatures, emissivity 0.98, a sky shot for the sky's reflection). The
     water session answered the shape (2026-11-15): 0.5 m cells in the map's local metres; one record per cell per
-    pass (t0, t1, tm, T, sd, k, view angle, distance; steep and far readings dropped); per walk the sky shot, the
+    pass and angle band (0-60, 60-70, 70-80 degrees off straight down, out to 10 m; t0, t1, tm, T, sd, k, view angle,
+    distance), the cut to be set from the data, with an optional "angle check" walk-up; per walk the sky shot, the
     owner's air readings at start and end, wet grass, sprinklers, cloud; one private JSON per walk, read at
     GET /api/maps/thermal?id=&walk= (and a list without walk). THE WATER SIDE'S PART: a "surface at this minute"
-    model (lib/heat.js's balance with the beam at the reading's own time through the shade map's canopy, and the
-    sky shot in place of the estimated sky radiation), and a comparison card like the readings page's. Not started;
+    model (lib/heat.js's balance with the beam at the reading's own time through the shade map's canopy, the sky
+    shot as a cloud index at night: it is an 8-14 um brightness temperature, NOT the broadband sky, the thermal
+    session's correction), and a comparison card like the readings page's. Not started;
     waits for the format to settle and the first walk.
 
 ## Rules (owner, 2026-10-27)
