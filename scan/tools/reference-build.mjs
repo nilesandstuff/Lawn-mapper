@@ -11,9 +11,11 @@
  */
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { buildRef, encodeRef, shapeFix, fitRigid, place, STAND } from '../lib/walkref.js';
+import { buildRef, encodeRef, decodeRef, shapeFix, fitRigid, place, STAND } from '../lib/walkref.js';
+import { goodPart, partOf, mergeRef } from '../lib/refkeep.js';
+import { readTrack } from '../lib/twin.js';
 import { checkMarks } from '../lib/postfix.js';
-import { writeObject, BUCKET } from './twin-r2.mjs';
+import { writeObject, readObject, BUCKET } from './twin-r2.mjs';
 
 const FT = 3.28084;
 const DROP = new Set([2, 10, 11]);   // label + 1: sky, vehicle, person
@@ -35,8 +37,9 @@ export function twinPoints(dir) {
       const l = four ? lab[i * 4] : three ? lab[i * 3] : 0;
       if (DROP.has(l)) continue;
       const h = y - g;
-      if (Math.abs(h) < 0.15) ground.push([x, -z, y]);
-      else if (h >= STAND[0] && h <= STAND[1]) stand.push([x, -z, y]);
+      const odo = a[i * 6 + 1];   // m walked when the point was seen (refkeep.js partOf)
+      if (Math.abs(h) < 0.15) ground.push([x, -z, y, odo]);
+      else if (h >= STAND[0] && h <= STAND[1]) stand.push([x, -z, y, odo]);
     }
   }
   return { stand, ground };
@@ -85,6 +88,50 @@ async function build(dir) {
   await writeObject(BUCKET, `refs/${meta.map}.bin`, bytes, 'application/octet-stream');
   console.log(`Reference kept for the walk's map: ${ref.stand.length / 3} standing and ${ref.ground.length / 3} ground points `
     + `(${(bytes.length / 1e6).toFixed(1)} MB), placed by ${checks.length + refs.length} marks (the marks' own fit: median ${(med(resid) * FT).toFixed(1)} ft).`);
+}
+
+/** Where the phone's tracking jumped, from the walk's track: more than a metre between two poses, faster than anyone
+ *  walks (6 m a second). -> the odometer readings (m walked). */
+export function jumpsOf(dir) {
+  const out = [];
+  let q = null;
+  for (const f of readdirSync(dir).filter((x) => /^track-\d{4}\.bin$/.test(x)).sort()) {
+    const b = readFileSync(join(dir, f));
+    for (const r of readTrack(b.buffer.slice(b.byteOffset, b.byteOffset + Math.floor(b.byteLength / 4) * 4))) {
+      if (r.tracking !== 'normal') continue;
+      if (q) { const d = Math.hypot(r.pos.x - q.pos.x, r.pos.y - q.pos.y, r.pos.z - q.pos.z), dt = Math.max(0.001, r.t - q.t); if (d > 1 && dt < 1.5 && d / dt > 6) out.push({ odo: r.odo, m: d }); }
+      q = r;
+    }
+  }
+  return out;
+}
+
+/* KEEP WHAT IS GOOD (lib/refkeep.js; the owner, 2026-11-15): the part of the walk its agreeing marks vouch for, added
+   to the map's reference, correcting it where this walk saw the yard. Counts and distances only. */
+async function keep(dir) {
+  const meta = readJson(dir, 'meta.json') || {}, live = readJson(dir, 'live.json') || {};
+  if (!meta.map) throw new Error('the walk has no map');
+  const jumps = jumpsOf(dir);
+  console.log(`The walk's marks: ${(live.marks || []).length}; the phone's tracking jumped ${jumps.length} time${jumps.length === 1 ? '' : 's'}${jumps.length ? ` (${jumps.map((j) => `${(j.m * FT).toFixed(1)} ft at ${Math.round(j.odo * FT)} ft walked`).join(', ')})` : ''}.`);
+  for (const m of live.marks || []) console.log(`  mark at ${Math.round((m.odo || 0) * FT)} ft walked${m.by ? ` (${m.by})` : ''}`);
+  const g = goodPart(live.marks || [], jumps.map((j) => j.odo));
+  if (!g.ok) throw new Error(`nothing of this walk can be kept: ${g.why}`);
+  const pts = twinPoints(dir);
+  const part = { stand: partOf(pts.stand, g.lo, g.hi), ground: partOf(pts.ground, g.lo, g.hi) };
+  const ft = (v) => (v === -Infinity ? 'the start' : v === Infinity ? 'the end' : `${Math.round(v * FT)} ft walked`);
+  console.log(`Kept: ${g.n} of the marks agree within ${(g.worstM * 39.37).toFixed(0)} in${g.left.length ? ` (${g.left.length} left out)` : ''}; the walk from ${ft(g.lo)} to ${ft(g.hi)}: `
+    + `${part.stand.length} of ${pts.stand.length} standing points, ${part.ground.length} of ${pts.ground.length} ground points.`);
+  if (part.stand.length < 200) throw new Error(`too little of the yard in that part (${part.stand.length} standing points)`);
+  if (process.env.DRY) { console.log('A dry run: nothing written.'); return; }
+  const add = buildRef(part, g.T, Date.now());
+  const key = `refs/${meta.map}.bin`;
+  const oldBytes = await readObject(BUCKET, key).catch(() => null), old = oldBytes ? decodeRef(oldBytes) : null;
+  const m = mergeRef(old, add, 'correct');
+  if (oldBytes) await writeObject(BUCKET, `refs/backup/${meta.map}-${Date.now()}.bin`, oldBytes, 'application/octet-stream');
+  const bytes = encodeRef(m.ref);
+  await writeObject(BUCKET, key, bytes, 'application/octet-stream', { walk: String(meta.walk || '') });
+  console.log(`Reference ${old ? 'added to' : 'made'}: ${m.added} points from this walk${old ? `, ${m.replaced} of the earlier ones replaced where this walk saw the yard, ${m.kept} kept` : ''}; `
+    + `now ${m.ref.stand.length / 3} standing and ${m.ref.ground.length / 3} ground points (${(bytes.length / 1e6).toFixed(1)} MB).`);
 }
 
 /* WALKREF_VARIANTS="cell,step;cell,step": the fix tried with other search cells (m) and turn steps (degrees) too. */
@@ -141,6 +188,6 @@ function check(dirs) {
 
 const [cmd, ...rest] = process.argv.slice(2);
 if (process.argv[1]?.endsWith('reference-build.mjs')) {
-  (cmd === 'build' ? build(rest[0] || 'twin') : cmd === 'check' ? Promise.resolve(check(rest)) : Promise.reject(new Error('build <dir> or check <dir> <dir>...')))
+  (cmd === 'build' ? build(rest[0] || 'twin') : cmd === 'keep' ? keep(rest[0] || 'twin') : cmd === 'check' ? Promise.resolve(check(rest)) : Promise.reject(new Error('build <dir> or check <dir> <dir>...')))
     .catch((e) => { console.log(`Reference: ${e.message}`); process.exit(1); });
 }

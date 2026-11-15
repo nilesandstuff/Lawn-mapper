@@ -87,6 +87,7 @@ jobs:
           node scan/test/photo.test.js
           node scan/test/lidar.test.js
           node scan/test/twin.test.js
+          node scan/test/refkeep.test.js
           node scan/test/thermal.test.js
           node scan/test/minimap.test.js
           node scan/test/surface.test.js
@@ -480,8 +481,11 @@ jobs:
           NO_PICTURES: '1'
         run: |
           set -o pipefail
+          # "<walk>:dry" says what would be kept and writes nothing
+          if [[ "$WALK" == *:dry ]]; then export DRY=1; WALK="${WALK%:dry}"; fi
           node scan/tools/twin-r2.mjs get "$WALK" twin | tee reference.txt
-          node scan/tools/reference-build.mjs build twin | tee -a reference.txt
+          # keep: the part of the walk its agreeing marks vouch for, added to the map's reference (lib/refkeep.js)
+          node scan/tools/reference-build.mjs keep twin | tee -a reference.txt
 
       - name: Repeat walks against each other
         if: ${{ inputs.task == 'repeat' }}
