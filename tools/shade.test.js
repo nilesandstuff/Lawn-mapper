@@ -2048,7 +2048,8 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
     else if (n > 5 && n <= 10 && e > 2 && e < 18) { if ((e + n) % 1 < 0.5) { add(e, n, 107.5 + ((e * 13 + n) % 1.5), 1, 1, 2, 9000 + ((e * 5) % 1) * 8000); add(e, n, 100.05, 2, 2, 2, 36000); } else add(e, n, 100, 2, 1, 1, 38000); } // the crown, the ground under it
     else add(e, n, 100, 2, 1, 1, 38000);
   }
-  /* the eave under the crown: single echoes off the roof in the first two rows south of it (n 8-10), at roof brightness */
+  /* the eave under the crown: single echoes off the roof in the first two rows south of it (n 8-10), at roof brightness;
+     the second row is turned only by a second pass (EDGE_PASSES is 1) */
   for (const e of [5.5, 6.5, 7.5, 8.5]) { add(e, 9.6, 104.3 + (e - 4) * 0.13, 1, 1, 1, 8100); add(e, 8.6, 104.1 + (e - 4) * 0.13, 1, 1, 1, 7600); }
   add(12.5, 9.6, 104.5 + 8.5 * 0.13, 1, 1, 1, 20000); // as bright as leaves: not a roof
   const cols = makeColumns(pts.length);
@@ -2056,11 +2057,12 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   const model = buildCanopy(cols, grid);
   const at = (e, n) => Math.floor(16 - n) * grid.w + Math.floor(e);
   const on = structuresOf(cols, model), off = structuresOf(cols, model, { edges: false });
-  const eave = [5.5, 6.5, 7.5, 8.5].flatMap((e) => [at(e, 9.6), at(e, 8.6)]);
-  check('structures: a roof edge under a crown keeps its roof (single echoes at the roof\'s height and brightness), two columns out; the crown beyond and a leaf-bright echo stay trees; without the step they were trees',
-    eave.every((j) => on.kind[j] === BUILDING && on.why[j] === 11) && eave.every((j) => off.kind[j] !== BUILDING) && on.kind[at(6.5, 6.5)] === TREE && on.kind[at(12.5, 9.6)] !== BUILDING
-      && eave.every((j) => Math.abs(on.roofTop[j] - 4.5) < 0.8),
-    `eave ${eave.map((j) => on.kind[j] + '/' + on.why[j]).join(' ')}; off ${eave.map((j) => off.kind[j]).join('')}; crown ${on.kind[at(6.5, 6.5)]}; bright ${on.kind[at(12.5, 9.6)]}/${on.why[at(12.5, 9.6)]}; roofTop ${eave.map((j) => on.roofTop[j]?.toFixed(1)).join(' ')}`);
+  const eave = [5.5, 6.5, 7.5, 8.5].map((e) => at(e, 9.6)), second = [5.5, 6.5, 7.5, 8.5].map((e) => at(e, 8.6));
+  const two = structuresOf(cols, model, { edges: { passes: 2 } });
+  check('structures: a roof edge under a crown keeps its roof (single echoes at the roof\'s height and brightness), one column out (two when asked); the crown beyond and a leaf-bright echo stay trees; without the step they were trees',
+    eave.every((j) => on.kind[j] === BUILDING && on.why[j] === 11) && eave.every((j) => off.kind[j] !== BUILDING) && second.every((j) => on.kind[j] === TREE && two.kind[j] === BUILDING && two.why[j] === 11)
+      && on.kind[at(6.5, 6.5)] === TREE && on.kind[at(12.5, 9.6)] !== BUILDING && eave.every((j) => Math.abs(on.roofTop[j] - 4.5) < 0.8),
+    `eave ${eave.map((j) => on.kind[j] + '/' + on.why[j]).join(' ')}; second ${second.map((j) => on.kind[j] + '|' + two.kind[j]).join(' ')}; off ${eave.map((j) => off.kind[j]).join('')}; crown ${on.kind[at(6.5, 6.5)]}; bright ${on.kind[at(12.5, 9.6)]}/${on.why[at(12.5, 9.6)]}; roofTop ${eave.map((j) => on.roofTop[j]?.toFixed(1)).join(' ')}`);
 }
 
 /* ONE LEAF STATE PER LOT (passes.js; owner, 2026-10-29). */

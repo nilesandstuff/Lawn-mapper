@@ -16,5 +16,7 @@
  *                  (roofUnderCrown, why 10; shade findings 36)
  *   3  2026-11-12  the crown over such a roof: summer leaves above the roof,
  *                  drawn as a tree there, no eaves from it; the file's `roof`
+ *   4  2026-11-16  structures.js: a roof edge under a crown stays a building
+ *                  (edgeUnderCrown, why 11; shade findings 37)
  */
-export const SHADE_BUILD = 3;
+export const SHADE_BUILD = 4;

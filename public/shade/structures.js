@@ -184,11 +184,17 @@ export const EAVE_M = 2; // a crown column beside a roof, its top within this of
    (a hard surface stops the whole pulse) at that roof's height -- from EDGE_BELOW_M under it (a roof slopes down to
    its eave) to EDGE_ABOVE_M over it -- as bright as this property's own roofs (the owner: "we should be able to see
    past that with the lidar brightness and the fact that returns get through"; calibrated per property, the middle
-   80% of the buildings' single echoes, widened by EDGE_BRIGHT_SLACK). Up to EDGE_PASSES columns out from the roof. */
-export const EDGE_BELOW_M = 1.5;
-export const EDGE_ABOVE_M = 0.5;
-export const EDGE_BRIGHT_SLACK = 0.25;
-export const EDGE_PASSES = 2;
+   60% of the buildings' single echoes, widened by EDGE_BRIGHT_SLACK). One column out from a roof the main rule called
+   (EDGE_FROM_WHY: a flat roof, its eave, a roof under a crown; not "nothing got through", nor an edge this step found). Measured on the 49 labelled lots (shade findings 37):
+   the looser first draft (1.5 m under, 0.5 over, the middle 80% widened 25%, two columns out, from any building)
+   turned 2,820 columns, 157 of them inside labelled crowns; these settings turn 1,676, 74 in crowns, and the
+   photos put the turned columns on roof outlines. */
+export const EDGE_BELOW_M = 0.8;
+export const EDGE_ABOVE_M = 0.4;
+export const EDGE_BRIGHT_BAND = Object.freeze([0.2, 0.8]);
+export const EDGE_BRIGHT_SLACK = 0.1;
+export const EDGE_PASSES = 1;
+export const EDGE_FROM_WHY = Object.freeze([1, 3, 10]);
 export const STRUCTURE_FLOOR_M = 1; // a low structure stands at least this tall
 export const STRUCTURE_MAX_M = 6; // and no taller (taller is a building's rules, or a tree)
 export const STRUCTURE_MIN_CELLS = 4; // a patch of at least this many hard columns
@@ -349,7 +355,7 @@ export function structuresOf(cols, model, { shift = null, stats = null, low = {}
     }
   }
   for (let k = 0; k < N; k++) if (eave[k]) { kind[k] = BUILDING; why[k] = 3; }
-  /* 4b. A roof edge under a crown (see EDGE_PASSES). */
+  /* 4b. A roof edge under a crown (see EDGE_BELOW_M). */
   const edgeTop = edges === false ? null : edgeUnderCrown(cols, model, kind, why, st, { shift, ...(typeof edges === 'object' ? edges : {}) });
   const lowInfo = lowStructures(kind, why, st, w, h, low);
   /* 7. NOTHING THE LASER HIT IS LEFT OUT (owner, 2026-11-04: "every thing
@@ -420,11 +426,11 @@ export function roofUnderCrown(patch, st, w) {
 }
 
 /**
- * Step 4b, a roof edge under a crown (see EDGE_PASSES): tree columns beside a
+ * Step 4b, a roof edge under a crown (see EDGE_BELOW_M): tree columns beside a
  * building made buildings (why 11) in place. Returns their roof heights (m
  * over the ground; NaN elsewhere), so the crown above them stays a tree's.
  */
-export function edgeUnderCrown(cols, model, kind, why, st, { shift = null, below = EDGE_BELOW_M, above = EDGE_ABOVE_M, slack = EDGE_BRIGHT_SLACK, passes = EDGE_PASSES, band = [0.1, 0.9], fromWhy = null } = {}) {
+export function edgeUnderCrown(cols, model, kind, why, st, { shift = null, below = EDGE_BELOW_M, above = EDGE_ABOVE_M, slack = EDGE_BRIGHT_SLACK, passes = EDGE_PASSES, band = EDGE_BRIGHT_BAND, fromWhy = EDGE_FROM_WHY } = {}) {
   const { grid, w, h, ground } = model;
   const N = w * h;
   const roofH = new Float32Array(N).fill(NaN);

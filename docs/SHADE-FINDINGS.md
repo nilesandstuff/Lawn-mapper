@@ -1648,6 +1648,64 @@ carries `roof` (a building's roof height; `top` there stays the crown's).
 The owner's work lot: 205 columns building (the 86 crown-edge "eaves"
 gone); roof heights median 5.6 m against the crown's 9.0 m.
 
+### 37. A roof edge under a crown read as a tree; a single echo at the roof's height and brightness keeps it (2026-11-16)
+
+The owner's house: a crown touching the roof cut a notch about 3.7 x 1.7 m
+out of a garage corner, so the AR sighted the wrong corner. The core
+session printed the model's columns there (workflow "S. Yard AR tool", task
+marks, job 133094499842). Along the eave, 1 m columns straddle the edge and
+hold the crown's echoes at 7-9 m, a pulse or two that reached the ground
+beside the roof, and a SINGLE echo off the roof at 4.2-5.3 m. That is too few
+returns for the flat rule, and "nothing got through" fails, so step 1 called
+them trees (why 4). The eave step compares tops, which are the crown's.
+Brightness separates the echoes: the roof echoes in the eave row are
+6,360-9,381; the building's 596 singles have a median of 8,427, and the lot's
+ground has a median of 38,137. The row beyond holds echoes at roof height too,
+but they are dark (2,544, 2,067): a branch, not the roof.
+
+FIX (structures.js edgeUnderCrown, why 11, after the eave step). A tree
+column beside a building is made a building when it holds a single echo
+that meets all three tests:
+  - it is from 0.8 m under to 0.4 m over the roof beside it;
+  - it is within the middle 60% of the property's own building singles'
+    brightness, widened 10%;
+  - the roof beside it was found by the main rule (flat roof, eave, or roof
+    under a crown).
+The step goes one column out. The column keeps the echo's height as its
+roof (roofTop), so the crown above it stays a tree, as in finding 36.
+
+MEASURED on the labelled crowns (49 lots; columns newly building on the
+whole lot / inside a labelled crown's circle):
+
+| Settings | Lot | Crown |
+|---|---|---|
+| first draft: 1.5 m under, 0.5 m over, middle 80% widened 25%, two columns out, from any building | 2,820 | 157 |
+| only from the main rule's roofs | 2,814 | 155 |
+| and 0.8 m under, 0.4 m over | 2,563 | 118 |
+| and the middle 60%, not widened | 1,724 | 90 |
+| and one column out | 1,459 | 65 |
+| the same, widened 10% (CHOSEN) | 1,676 | 74 |
+| the middle 80%, not widened | 1,835 | 79 |
+
+Every setting touches 48 of the 49 lots, because almost every roof has an
+edge column that step 1 got wrong. The aerial photo with the turned columns
+drawn over it was looked at for the two lots with the most. B32, a school,
+turns 301 columns in one variant: they lie along the roof outlines, most of
+them in the open, not under trees. B16, houses, turns 65: they too lie along
+house outlines, plus a few cells that widen a conifer row and a small tree
+which the model ALREADY called a building. So the step mostly fixes roof
+edges, under a crown or not. Where step 1 had already made a tree a building,
+it widens that mistake by a column. The 10% widening was chosen over none so
+that the notch's brightest roof echo (9,381, above the building median by
+11%) is not left out; without the widening it would sit at the top edge of
+the band.
+
+NOT YET MEASURED: the owner's house itself. The print's numbers say row 5
+of the window (three columns) turns and row 6 (dark echoes) stays a tree. So
+the step should close the notch to about 1 m wide rather than all of it.
+SHADE_BUILD 4, so the AR rebuilds the model; the core session's marks run on
+the walk is the check.
+
 ## Speculation
 
 - FENCES (2026-10-27, IN USE, unmeasured; fences.js): drawn by the visitor
