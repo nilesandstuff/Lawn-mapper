@@ -350,7 +350,7 @@ export function structuresOf(cols, model, { shift = null, stats = null, low = {}
   }
   for (let k = 0; k < N; k++) if (eave[k]) { kind[k] = BUILDING; why[k] = 3; }
   /* 4b. A roof edge under a crown (see EDGE_PASSES). */
-  const edgeTop = edges === false ? null : edgeUnderCrown(cols, model, kind, why, st, { shift });
+  const edgeTop = edges === false ? null : edgeUnderCrown(cols, model, kind, why, st, { shift, ...(typeof edges === 'object' ? edges : {}) });
   const lowInfo = lowStructures(kind, why, st, w, h, low);
   /* 7. NOTHING THE LASER HIT IS LEFT OUT (owner, 2026-11-04: "every thing
      that the lidar hits should be recognized"), and what no rule can name
@@ -424,11 +424,11 @@ export function roofUnderCrown(patch, st, w) {
  * building made buildings (why 11) in place. Returns their roof heights (m
  * over the ground; NaN elsewhere), so the crown above them stays a tree's.
  */
-export function edgeUnderCrown(cols, model, kind, why, st, { shift = null } = {}) {
+export function edgeUnderCrown(cols, model, kind, why, st, { shift = null, below = EDGE_BELOW_M, above = EDGE_ABOVE_M, slack = EDGE_BRIGHT_SLACK, passes = EDGE_PASSES, band = [0.1, 0.9], fromWhy = null } = {}) {
   const { grid, w, h, ground } = model;
   const N = w * h;
   const roofH = new Float32Array(N).fill(NaN);
-  for (let k = 0; k < N; k++) if (kind[k] === BUILDING) roofH[k] = why[k] === 10 && Number.isFinite(st.lastFloorTop?.[k]) ? st.lastFloorTop[k] - ground[k] : st.zHi[k] - ground[k];
+  for (let k = 0; k < N; k++) if (kind[k] === BUILDING && (!fromWhy || fromWhy.includes(why[k]))) roofH[k] = why[k] === 10 && Number.isFinite(st.lastFloorTop?.[k]) ? st.lastFloorTop[k] - ground[k] : st.zHi[k] - ground[k];
   /* The single echoes over 2 m in tree columns (candidates), and the buildings' own brightness. */
   const singles = new Map(), bright = [];
   for (let i = 0; i < cols.n; i++) {
@@ -447,11 +447,11 @@ export function edgeUnderCrown(cols, model, kind, why, st, { shift = null } = {}
   let lo = -Infinity, hi = Infinity;
   if (bright.length >= 20) {
     bright.sort((p, q) => p - q);
-    const p10 = bright[Math.floor(bright.length * 0.1)], p90 = bright[Math.floor(bright.length * 0.9)];
-    lo = p10 * (1 - EDGE_BRIGHT_SLACK); hi = p90 * (1 + EDGE_BRIGHT_SLACK);
+    const pLo = bright[Math.floor(bright.length * band[0])], pHi = bright[Math.floor(bright.length * band[1])];
+    lo = pLo * (1 - slack); hi = pHi * (1 + slack);
   }
   const out = new Float32Array(N).fill(NaN);
-  for (let pass = 0; pass < EDGE_PASSES; pass++) {
+  for (let pass = 0; pass < passes; pass++) {
     const set = [];
     for (const [k, a] of singles) {
       if (kind[k] !== TREE) continue;
@@ -464,7 +464,7 @@ export function edgeUnderCrown(cols, model, kind, why, st, { shift = null } = {}
         if (!Number.isFinite(r)) continue;
         for (let q = 0; q < a.length; q += 2) {
           const over = a[q], I = a[q + 1];
-          if (over < r - EDGE_BELOW_M || over > r + EDGE_ABOVE_M) continue;
+          if (over < r - below || over > r + above) continue;
           if (I && (I < lo || I > hi)) continue;
           if (!(best >= over)) best = over;
         }
