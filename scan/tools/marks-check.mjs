@@ -37,6 +37,8 @@ async function main() {
   for (let i = 0; i < P.n; i++) { const h = P.hag(i), e = P.e(i), n = P.nn(i); if (Math.abs(h) < 0.3 && e >= box[0] && e < box[2] && n > box[1] && n <= box[3]) gb.push(P.bright(i)); }
   gb.sort((a, b) => a - b);
   const pc = (f) => gb[Math.min(gb.length - 1, Math.floor(gb.length * f))];
+  // which shade build made this model, and when (the file's own header): a print of an old model proves nothing
+  console.log(`The model: shade build ${model.meta?.build ?? '?'}, made ${model.meta?.at ? new Date(model.meta.at).toISOString() : model.meta?.builtAt || '?'}; header fields ${Object.keys(model.meta || {}).join(', ')}.`);
   console.log(`Box ${(box[2] - box[0]).toFixed(0)} x ${(box[3] - box[1]).toFixed(0)} m; ${P.n.toLocaleString()} returns in the model, ${gb.length.toLocaleString()} on the ground in the box.`);
   console.log(`The ground's brightness, percentiles 5/25/50/75/95: ${[0.05, 0.25, 0.5, 0.75, 0.95].map(pc).join(' / ')}`);
   const debug = [], t0 = Date.now();
