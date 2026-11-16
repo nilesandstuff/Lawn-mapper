@@ -40,10 +40,13 @@ function setUp(base) {
     constructor(url) {
       const path = String(url).startsWith('/lib/') ? join(ROOT, 'lib', String(url).slice(5)) : join(ROOT, 'public', String(url).replace(/^\//, ''));
       this.t = new NodeWorker(new URL('./boot-worker.mjs', import.meta.url), { workerData: { file: path, root: ROOT }, resourceLimits: { maxOldGenerationSizeMb: 768 } });
-      this.t.on('message', (d) => this.onmessage?.({ data: d }));
-      this.t.on('error', (e) => this.onerror?.({ message: e?.message || String(e) }));
+      const debug = process.env.WATER_BUILDER_DEBUG === '1';
+      this.t.on('message', (d) => { if (debug) console.log('light worker ->', d?.type); this.onmessage?.({ data: d }); });
+      this.t.on('error', (e) => { if (debug) console.log('light worker error', e?.message); this.onerror?.({ message: e?.message || String(e) }); });
+      this.t.on('exit', (c) => { if (debug) console.log('light worker exit', c); });
+      this.debug = debug;
     }
-    postMessage(m) { this.t.postMessage(m); }
+    postMessage(m) { if (this.debug) console.log('light worker <-', m?.type); this.t.postMessage(m); }
     terminate() { this.t.terminate(); }
   };
   ready = import(pathToFileURL(join(ROOT, 'public/analyse.js')).href);

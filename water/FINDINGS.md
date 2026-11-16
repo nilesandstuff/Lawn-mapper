@@ -2728,6 +2728,31 @@ outlines. The water map reads its roofs through that module (roofs.js shadeRoofs
 link to it, copied at build), so its roofs gain the same edges from this deploy; the default settings, unchanged.
 Not re-measured on the Chesapeake squares (owner, 2026-11-04: no Chesapeake re-check for roofs); the water tests pass.
 
+### H89. Walks scored with no page open: the water builder (water session, 2026-11-16)
+
+The owner declined a robot browser and asked the core session for "a better automatic fix, hopefully similar to the
+way the shade map does it"; the core proposed and the owner said "Yes" to: a water builder Container, pushes from the
+main site's timer over service bindings to named entrypoints, no token and no robot session.
+- THE PUSHES: the water Worker's entrypoint Internal (src/worker.js) takes modelChanged(id, modelAt) and
+  walkReady(id, walk) and keeps them in kit_jobs (src/jobs.js); the main site's Internal (saveOf, thermalOf,
+  adminSaves; the core session's half) gives the record and the walk. Both bindings switch on as each half deploys.
+- THE BUILDER (water/builder/): the page's own analysis worker (public/analyse.js) and the shade light worker, run
+  in Node, unchanged (headless.mjs: self, Worker as worker_threads, '/lib/' paths, fetch to the live site's public
+  routes), in a Cloudflare Container fronted by a Durable Object (the shade builder's pattern: workers_dev false,
+  one instance, /health build check). So a walk is scored exactly as opening its map scores it. STAGE 1: the canopy
+  from the lidar as the page builds it today; stage 2 (to-do 27) moves the page and the builder together to the shade
+  map's finished model (the light worker cannot load one yet: asked of the features session).
+- THE TIMER (src/autoscore.js, every five minutes): one queued walk a run, kept as a page keeps it (truth.js putWalk,
+  putWeather, putResult; weather frozen once); not converted yet waits up to two days; a failed conversion is kept with
+  its reason; a changed shade model queues its map's walks again; every six hours a sweep catches lost pushes.
+- A BUG ON THE WAY: the light worker thread dropped the "build" message sent before its module had loaded, and the
+  plan went on without shade after two four-minute timeouts. Early messages are now held and delivered in order;
+  a plan with a shade fault is refused (no score rather than a full-sun one).
+On a public corpus lot with a stand-in lawn and a made-up walk (3,000 records at 0.5 m, 11 C air, 30% sky sweep): the
+plan with its shade in 27 s, the walk scored in 31 s in all (2,293 lawn squares at 0-60 degrees, 652 at 60-70; 179 in
+sun, 1,608 in shade at that November minute), sunshine 145 W/m2 measured by the satellite, Open-Meteo answering from
+this sandbox today. Test data; the numbers mean nothing but the path. test/autoscore.test.js.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge

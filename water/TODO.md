@@ -165,6 +165,8 @@ SPECULATION), as always.
     upgrade while the site is free (non-commercial terms); about $29-99 a month once it is a product, or NOAA's
     URMA from AWS in a scheduled workflow to stay free. An on-site Ecowitt station (about $205, the WH51L joins its
     gateway) would give the lawn's own sunshine minute by minute. Both for the owner to decide.
+    NO PAGE OPEN (2026-11-16, H89): the water builder Container scores a walk as soon as it is converted. NEXT:
+    stage 2 with to-do 27 (the light worker loading the shade map's finished model: asked of the features session).
 
 ## Rules (owner, 2026-10-27)
 
