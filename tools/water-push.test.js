@@ -32,6 +32,11 @@ calls.length = 0; saves = [{ id: 'home', modelAt: '2026-11-16T19:00:00.000Z' }];
 const flaky = { ...env, WATER: { ...WATER, modelChanged: async () => { throw new Error('down'); } } };
 assert.equal((await pushWater(flaky, t0 + 15 * 60000, list)).pushed, 0);
 assert.equal((await pushWater(env, t0 + 20 * 60000, list)).pushed, 1, 'sent when the water site answers again');
+// refused ({ queued: false }): not counted as sent, so tried again
+calls.length = 0; saves = [{ id: 'home', modelAt: '2026-11-16T20:00:00.000Z' }];
+const refusing = { ...env, WATER: { ...WATER, modelChanged: async () => ({ queued: false, error: 'which map?' }) } };
+assert.equal((await pushWater(refusing, t0 + 25 * 60000, list)).pushed, 0, 'a refusal is not sent');
+assert.equal((await pushWater(env, t0 + 30 * 60000, list)).pushed, 1, 'and goes again when taken');
 // no water binding yet: nothing, and no error
 assert.equal((await pushWater({ CORPUS: bucket(), DB: {} }, t0, list)).pushed, 0);
 console.log('water push: ok');

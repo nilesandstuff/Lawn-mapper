@@ -69,7 +69,7 @@ shade model's gzipped bytes as `GET /api/maps/model?tool=shade` returns them. `t
 private entrypoint (binding `SCAN_INTERNAL`). `adminSaves()`: `[{ id, modelAt, at }]`. And the other way, from the
 one-minute timer every five minutes (worker/src/water-push.js), to the water Worker's `Internal` over binding `WATER`:
 `modelChanged(id, modelAt)` when an admin save's shade model's time changes, `walkReady(id, walk)` when a walk's
-converted grid lands, each sent once (remembered in the private bucket, `water-push/state.json`).
+converted grid lands, each sent once it is taken (an answer `{ queued: false }` is tried again), remembered in the private bucket (`water-push/state-v2.json`).
 
 **Reading the owner's maps from a session with no cookie** (2026-10-21): `GET /api/admin/saved-maps` (the administrators' maps, newest first: `id`, `address`, `at`, `county`, `provider`, `tools` as a list of tool ids, `owner`) and `GET /api/admin/saved-maps/one?id=` (exactly what `/api/maps/one` returns, plus `owner`), with `Authorization: Bearer <MAPS_READ_TOKEN>` -- a Worker secret the deploy applies from the repository secret of the same name. A missing or wrong key answers 404 like every admin route. Read-only; a signed-in administrator can call them without the key.
 

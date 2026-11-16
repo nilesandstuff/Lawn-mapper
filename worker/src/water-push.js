@@ -9,14 +9,19 @@
  *   - pushWater, from the one-minute timer every five minutes: WATER.modelChanged(id, modelAt) for each admin save
  *     whose shade model's time changed since the last push (a server build, a browser save, an erasure alike), and
  *     WATER.walkReady(id, walk) for each walk whose converted grid landed since. What was pushed is remembered in the
- *     private bucket (water-push/state.json), so a push is sent once; the water side's daily sweep of adminSaves()
+ *     private bucket (water-push/state-v2.json), so a push is sent once; the water side's daily sweep of adminSaves()
  *     catches any lost on the way.
  *
  * Kept free of the Workers runtime's own modules so the tests (Node) can run it; internal.js holds the entrypoint.
  */
 import { listMaps, getMap, userOwner, getModel } from './unified.js';
 
-export const PUSH_KEY = 'water-push/state.json';
+// v2 (2026-11-16): the water site refused the first pushes ({ queued: false }: its id check was too narrow, since
+// fixed) and they had been counted as sent; a fresh record sends everything again
+export const PUSH_KEY = 'water-push/state-v2.json';
+// an answer of { queued: false } is not sent: it is tried again the next time (the water site's daily sweep is still
+// the backstop for anything it never takes)
+const taken = (r) => !(r && r.queued === false);
 export const PUSH_EVERY_MIN = 5;
 
 async function admins(env) {
@@ -82,7 +87,7 @@ export async function pushWater(env, now = Date.now(), list = adminSavesList) {
   const saves = await list(env);
   for (const s of saves) {
     if (!s.modelAt || state.models[s.id] === s.modelAt) continue;
-    try { await env.WATER.modelChanged(s.id, s.modelAt); state.models[s.id] = s.modelAt; pushed++; changed = true; } catch { /* the next time */ }
+    try { if (taken(await env.WATER.modelChanged(s.id, s.modelAt))) { state.models[s.id] = s.modelAt; pushed++; changed = true; } } catch { /* the next time */ }
   }
   if (env.SCAN_INTERNAL) {
     const ids = new Set(saves.map((s) => String(s.id)));
@@ -91,7 +96,7 @@ export async function pushWater(env, now = Date.now(), list = adminSavesList) {
     for (const r of ready || []) {
       const k = `${r.map}/${r.walk}`;
       if (!ids.has(String(r.map)) || state.walks[k] === r.at) continue;
-      try { await env.WATER.walkReady(r.map, r.walk); state.walks[k] = r.at; pushed++; changed = true; } catch { /* the next time */ }
+      try { if (taken(await env.WATER.walkReady(r.map, r.walk))) { state.walks[k] = r.at; pushed++; changed = true; } } catch { /* the next time */ }
     }
   }
   if (changed) await env.CORPUS.put(PUSH_KEY, JSON.stringify({ ...state, at: new Date(now).toISOString() }), { httpMetadata: { contentType: 'application/json' } });

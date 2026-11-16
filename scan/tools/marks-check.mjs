@@ -21,6 +21,15 @@ async function main() {
   const walk = process.argv[2];
   if (!walk) throw new Error('which walk? (its map is the one looked at)');
   const meta = JSON.parse(Buffer.from(await readObject(BUCKET, `twins/${walk}/meta.json`)).toString('utf8'));
+  /* THE WALK'S THERMAL FILING (2026-11-16, the water session: its sweep sees no walks on any admin save). Yes/no only,
+     and the map's id described, never printed: its length, whether the yard AR site's map rule takes it, and which
+     other characters it holds. */
+  {
+    const id = String(meta.map || ''), other = [...new Set(id.replace(/[0-9a-zA-Z_-]/g, ''))].map((c) => JSON.stringify(c)).join(' ');
+    const has = async (k) => { try { return (await readObject(BUCKET, k)) != null; } catch { return null; } };
+    const [place, notes, status, grid, index] = await Promise.all([has(`twins/${walk}/thermal-placement.json`), has(`twins/${walk}/thermal-notes.json`), has(`twins/${walk}/thermal/status.json`), has(`twins/${walk}/thermal/grid.json`), has(`thermal-index/${id}/${walk}`)]);
+    console.log(`Thermal filing of this walk: placement ${place}, notes ${notes}, converted status ${status}, grid ${grid}; filed under its map (thermal-index) ${index}. The map's id: ${id.length} characters, the site's map rule ${/^[0-9a-zA-Z_-]{1,64}$/.test(id) ? 'takes it' : 'REFUSES it'}${other ? `; characters beyond letters, digits, _ and -: ${other}` : ''}.`);
+  }
   const m = await readMap(meta.map);
   const model = await readModel(meta.map, m.ownerId);
   const origin = [m.lng, m.lat];
