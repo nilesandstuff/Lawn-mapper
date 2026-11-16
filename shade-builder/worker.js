@@ -6,8 +6,17 @@
  * SHADE_BUILDER, with POST /build { map, base } (worker/src/shade-server-build.js).
  * The container: the "basic" instance (1 GiB, a quarter of a CPU), internet
  * on (the lidar, the photos), stopped after five idle minutes.
+ *
+ * ONE IMAGE, ONE BUILD (2026-11-16): a container already running when a new
+ * builder is deployed keeps its old image until it stops, and answered a
+ * rebuild at the old SHADE_BUILD minutes after the deploy (the owner's house,
+ * build 4). So before each build the running container's /health build is
+ * compared with the one this Worker was deployed with (app/, laid out by
+ * prepare.mjs from the same commit), and a container on another build is
+ * destroyed and started again from the new image.
  */
 import { DurableObject } from 'cloudflare:workers';
+import { SHADE_BUILD } from './app/public/shade/build.js';
 
 const PORT = 8080;
 const IDLE_MS = 5 * 60 * 1000;
@@ -31,6 +40,10 @@ export class ShadeBuilder extends DurableObject {
 
   async start() {
     const c = this.ctx.container;
+    if (c.running && (await this.buildOf(c)) !== SHADE_BUILD) {
+      try { await c.destroy(); } catch { /* already stopping */ }
+      for (let i = 0; i < 150 && c.running; i++) await new Promise((ok) => setTimeout(ok, 200));
+    }
     if (!c.running) c.start({ ...(c.images?.base ? { image: c.images.base } : {}), enableInternet: true });
     this.ctx.waitUntil(c.monitor().catch((e) => console.error('shade builder container stopped:', e)));
     await c.setInactivityTimeout(IDLE_MS);
@@ -40,6 +53,15 @@ export class ShadeBuilder extends DurableObject {
       await new Promise((ok) => setTimeout(ok, 200));
     }
     throw new Error('the shade builder did not come up on its port');
+  }
+
+  /** The running container's SHADE_BUILD (its /health), or null when it does not say. */
+  async buildOf(c) {
+    try {
+      const r = await c.getTcpPort(PORT).fetch('http://container/health', { signal: AbortSignal.timeout(2000) });
+      const j = await r.json().catch(() => null);
+      return Number.isFinite(j?.build) ? j.build : null;
+    } catch { return null; }
   }
 }
 
