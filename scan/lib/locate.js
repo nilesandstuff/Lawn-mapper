@@ -12,7 +12,7 @@
  */
 import { level, levelDist } from './frames.js';
 import { apply, unapply, fitAt } from './align.js';
-import { goodPart } from './refkeep.js';
+import { goodPart, allowedOf } from './refkeep.js';
 import { geoPrior, geoFit } from './geo.js';
 
 export const FIX_REACH = 20;   // m of walk a lidar fix stands for
@@ -58,7 +58,10 @@ export const LOG_MAX = 150;
 
 /** A reference (or check point) aimed at in AR: pairs its map place with the session's level position at this moment of the walk. */
 export function mark(L, ref, hit, odo) {
-  const m = { id: ref.id, kind: ref.kind || 'ref', map: ref.map, ar: level(hit.position), y: hit.position.y, odo, aim: hit.distance ?? null, by: hit.type || null };
+  // tol: how far the map's own corner may be from the real one (refkeep.js allowedOf): the roof corner's `within` when
+  // the returns pinned its sides, else 0.7 x the lidar's return spacing (L.spacing, set by the page), else unknown
+  const w = ref.roof?.within, tol = Number.isFinite(w) ? w : Number.isFinite(ref.tol) ? ref.tol : Number.isFinite(L.spacing) ? +(0.7 * L.spacing).toFixed(2) : null;
+  const m = { id: ref.id, kind: ref.kind || 'ref', map: ref.map, ar: level(hit.position), y: hit.position.y, odo, aim: hit.distance ?? null, by: hit.type || null, tol };
   L.marks.push(m);
   return m;
 }
@@ -67,7 +70,7 @@ export function mark(L, ref, hit, odo) {
    R3 agreed with the map to an inch and R1 sat 9 ft from its place; the fit weighs each mark by how recently it was
    made (align.js walkWeight), so R3 ruled just after it was marked, and as the walk went on R1's wrong place came
    back into it. Now, with three or more points marked, the ones that do not agree with the rest (refkeep.js
-   goodPart: the largest group agreeing within 1.5 ft) are left out of the fit; leftOutOf says which, so the walk can
+   goodPart: the largest group agreeing within each corner's own uncertainty, 1.5 ft at least) are left out of the fit; leftOutOf says which, so the walk can
    ask for them again. Two marks have nothing to be checked against and are used as they are. */
 function agreeing(L) {
   const refs = L.marks.filter((m) => m.kind === 'ref');
@@ -80,7 +83,7 @@ function agreeing(L) {
       // the points that agree; and of a point marked more than once, an earlier mark only if it agrees too (a corner
       // sighted again because it was wrong must not keep its wrong mark in the fit)
       const keep = new Set(g.ids), latest = new Map(); for (const m of refs) latest.set(m.id, m);
-      const near = (m) => { const q = apply(g.T, m.ar); return Math.hypot(q[0] - m.map[0], q[1] - m.map[1]) <= 0.45; };
+      const near = (m) => { const q = apply(g.T, m.ar); return Math.hypot(q[0] - m.map[0], q[1] - m.map[1]) <= allowedOf(m); };
       out = { n: L.marks.length, refs: refs.filter((m) => keep.has(m.id) && (latest.get(m.id) === m || near(m))), left: g.left };
     }
   }

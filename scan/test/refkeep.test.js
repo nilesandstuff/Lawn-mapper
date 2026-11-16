@@ -1,6 +1,6 @@
 // Keep what is good of a walk, and build on it (lib/refkeep.js).
 import assert from 'node:assert/strict';
-import { goodPart, partOf, mergeRef, agreement, AGREE_M } from '../lib/refkeep.js';
+import { goodPart, partOf, mergeRef, agreement, AGREE_M, allowedOf } from '../lib/refkeep.js';
 
 // a walk turned 30 degrees and shifted from the map
 const th = 0.5, c = Math.cos(th), s = Math.sin(th);
@@ -106,3 +106,20 @@ console.log('refkeep: ok');
   const v1 = new Uint8Array(24 + 12); { const dv = new DataView(v1.buffer); dv.setUint32(0, 0x46455257, true); dv.setUint32(4, 1, true); dv.setUint32(8, 1, true); new Float32Array(v1.buffer, 24).set([1, 2, 3]); }
   const d1 = decodeRef(v1); assert.deepEqual([...d1.stand], [1, 2, 3]); assert.deepEqual(d1.P, { theta: 0, tx: 0, ty: 0 }); }
 console.log('refkeep (shape and place): ok');
+
+// PLANNING IN THE OUTLINE'S ERROR (the owner, 2026-11-16): a corner 0.75 m from where the outline puts it, the size
+// of an outline's own error on a sparse flight. Held to a flat 1.5 ft it is thrown out as a bad aim; allowed its own
+// corner's uncertainty (0.5 m: 0.7 x the owner's 0.72 m return spacing) it is kept. A corner 3 m off is out either way.
+{ const T = (m, tol) => ({ ...m, tol });
+  const flat = [M('a', [0, 0], 5), M('b', [12, 0], 20), M('c', [12, 9], 40, 0.75, 0)];
+  const g0 = goodPart(flat);
+  assert.ok(g0.ok && !g0.whole && g0.left.length === 1, `with no uncertainty the three cannot all agree, one is left out: ${JSON.stringify(g0.left)}`);
+  const g1 = goodPart(flat.map((m) => T(m, 0.5)));
+  assert.ok(g1.ok && g1.whole && g1.left.length === 0, `allowed its corner's uncertainty it is kept: ${JSON.stringify(g1.left)} worst ${g1.worstM?.toFixed(2)}`);
+  const far = [M('a', [0, 0], 5), M('b', [12, 0], 20), M('c', [12, 9], 40, 3, 0)].map((m) => T(m, 0.5));
+  const g2 = goodPart(far);
+  assert.ok(g2.ok && !g2.whole && g2.left.length === 1 && g2.left[0] === 'c', `a corner 3 m off is still out: ${JSON.stringify(g2.left)}`);
+  assert.equal(allowedOf({}), AGREE_M, 'no uncertainty known: 1.5 ft, as before');
+  assert.equal(allowedOf({ tol: 0.1 }), AGREE_M, 'never less than 1.5 ft');
+  console.log(`refkeep (each corner its own uncertainty): ok (0.75 m off: one left out at a flat 1.5 ft, all kept at ${allowedOf({ tol: 0.5 }).toFixed(2)} m)`);
+}

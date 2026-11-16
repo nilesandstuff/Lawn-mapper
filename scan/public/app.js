@@ -786,6 +786,7 @@ function startLidar(m) {
       if (data.ready) { pagePerf.stage('lidar read'); st.lid.ready = data.ready; log(`lidar model read: ${data.ready.points} columns, ${data.ready.solid} solid cells, shift ${data.ready.shift}`); showLidar(); keepShadeFresh(m, data.ready); }
       if (data.roofs) { st.lid.roofs = data.roofs; st.lid.roofsAny = data.roofsAny || []; log(`roof corners offered: ${data.roofs.length} (of ${st.lid.roofsAny.length} building corners with an eave)`); backOnCorners(); roofsFromPoints(); drawMap(); listPoints(); }
       if (data.ground) { st.lid.ground = data.ground; groundPhoto().catch((e) => log(`lidar ground picture: ${e.message}`)); }
+      if (data.marks && st.L) st.L.spacing = data.marks.spacing ?? st.L.spacing;   // each mark's own allowance (locate.js mark)
       if (data.marks && st.lid.overlay?.picture) { st.lid.overlay.picture.marks = data.marks; backOnCorners(); if (st.photoChoice === 'lidar') { photoTools(); drawMap(); } }
       if (data.overlay) { st.lid.overlay = data.overlay; st.lid.meshes = null; lidarPhoto().catch((e) => log(`lidar picture: ${e.message}`)); log(`lidar overlay: ${data.overlay.solids.length / 4} solid cells, ${data.overlay.tall.length / 5} tall cells`); }
       if (data.error) { st.lid.error = data.error; log(`lidar: ${data.error}`); showLidar(); if (/no lidar model yet/.test(data.error)) keepShadeFresh(m, null); }
@@ -864,7 +865,7 @@ async function startAR(engine) {
   st.walk = newWalk({ engine, phone: navigator.userAgent });
   st.dy = null; st.dyFrom = null; st.gpsTrail = []; st.anchors = newAnchors(); st.nudge = null; st.depthFill = null; st.geoTrail = []; st.geoSeen = null; st.sem = newSemCount(); st.lastSem = null; st.semDims = null; st.occ = null; st.occFull = 0; st.occAt = 0; st.walkGround = new Map(); st.spikes = { pictures: 0, cells: 0, flagged: 0 }; st.walkAsk = null; st.walkAt = 0; st.walkStats = { asks: 0, ok: 0, lastWhy: null, firstOkM: null }; st.crumbs = newCrumbs();
   st.walk.checks = [];
-  st.L = newLocate(); st.sight = null; st.sightPaused = false; st.sightEndedAt = 0; st.roofsDone = null; st.resighted = new Set(); st.resightOf = null;
+  st.L = newLocate(); st.L.spacing = st.lid.overlay?.picture?.marks?.spacing ?? null; st.sight = null; st.sightPaused = false; st.sightEndedAt = 0; st.roofsDone = null; st.resighted = new Set(); st.resightOf = null;
   st.prevStand = new Map(); st.prevGround = new Map(); st.prevAsk = null; st.prevAt = 0; st.prevStats = { asks: 0, ok: 0, lastWhy: null, firstOkM: null, lastMs: null };
   // the owner's choice at the start (2026-11-11): the saved walk places this one, or this one is a fresh reference
   st.refUse = st.refMeta && refChoice() === 'saved';

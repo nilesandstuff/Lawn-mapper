@@ -23,7 +23,17 @@
  */
 import { fitRigid, place, VOX } from './walkref.js';
 
-export const AGREE_M = 0.45;       // 1.5 ft: how well the marks of a kept part agree with the map
+export const AGREE_M = 0.45;       // 1.5 ft: how well the marks of a kept part agree with the map, at the least
+/* PLANNING IN THE OUTLINE'S ERROR (the owner, 2026-11-16: "since I know we'll never be able to get the outlines
+   perfect, are we essentially planning in the error?... we just need to find the best fit overall, and not the best
+   fit per individual corner"). The fit was already the best overall; but the test that throws a corner out as marked
+   wrong held every corner to a flat 1.5 ft, the size of an outline's own error on a sparse flight (the owner's lot:
+   returns 2.4 ft apart), so a good sighting of a slightly-off outline corner could be thrown out as a bad aim (R3 on
+   2026-11-15). Now each mark is allowed its own corner's uncertainty (m.tol: the corner's `within` when its sides were
+   pinned by the returns, else 0.7 x the return spacing, how far a corner set from two sides each halfway across a
+   gap can sit) plus AIM_M for the aim, never less than AGREE_M. A corner off by metres (R1, 9 ft) is still out. */
+export const AIM_M = 0.15;
+export const allowedOf = (m, floor = AGREE_M) => Math.max(floor, Number.isFinite(m?.tol) ? AIM_M + m.tol : floor);
 export const MIN_APART_M = 3;      // the part's marks at least this far apart: nearer, they cannot turn the walk
 export const FOOT_M = 1;           // the squares a new part's ground is counted in, for what it replaces
 export const MAX_STAND = 60000, MAX_GROUND = 30000;   // walkref.js's own limits
@@ -32,13 +42,17 @@ const lastOfEach = (marks) => { const by = new Map(); for (const m of marks || [
 
 /** How a group of marks agrees: the worst distance from its place after their own best fit (two: the difference of
  *  the distance between them as walked and on the map), and the fit. */
-export function agreement(group) {
+export function agreement(group, floor = AGREE_M) {
   const T = fitRigid(group.map((m) => m.ar), group.map((m) => m.map));
-  let worst = 0;
-  if (group.length === 2) worst = Math.abs(Math.hypot(group[0].ar[0] - group[1].ar[0], group[0].ar[1] - group[1].ar[1]) - Math.hypot(group[0].map[0] - group[1].map[0], group[0].map[1] - group[1].map[1]));
-  else for (const m of group) { const p = place(T, m.ar[0], m.ar[1]); worst = Math.max(worst, Math.hypot(p[0] - m.map[0], p[1] - m.map[1])); }
+  // worst: metres; over: the worst as a share of what that mark is allowed (allowedOf), over 1 meaning it disagrees
+  let worst = 0, over = 0;
+  if (group.length === 2) {
+    worst = Math.abs(Math.hypot(group[0].ar[0] - group[1].ar[0], group[0].ar[1] - group[1].ar[1]) - Math.hypot(group[0].map[0] - group[1].map[0], group[0].map[1] - group[1].map[1]));
+    const t = (m) => (Number.isFinite(m.tol) ? m.tol : 0);
+    over = worst / Math.max(floor, AIM_M + Math.hypot(t(group[0]), t(group[1])));
+  } else for (const m of group) { const p = place(T, m.ar[0], m.ar[1]), r = Math.hypot(p[0] - m.map[0], p[1] - m.map[1]); worst = Math.max(worst, r); over = Math.max(over, r / allowedOf(m, floor)); }
   const apart = Math.max(...group.flatMap((a) => group.map((b) => Math.hypot(a.map[0] - b.map[0], a.map[1] - b.map[1]))));
-  return { T, worst, apart };
+  return { T, worst, over, apart };
 }
 
 /**
@@ -56,8 +70,8 @@ export function goodPart(marks, jumps = [], { agree = AGREE_M } = {}) {
   for (let mask = 3; mask < 1 << n; mask++) {
     const g = pool.filter((_, i) => mask & (1 << i));
     if (g.length < 2) continue;
-    const a = agreement(g);
-    if (a.worst > agree || a.apart < MIN_APART_M) continue;
+    const a = agreement(g, agree);
+    if (a.over > 1 || a.apart < MIN_APART_M) continue;
     const last = g[g.length - 1].odo;
     if (!best || g.length > best.g.length || (g.length === best.g.length && (last > best.last + 1e-9 || (Math.abs(last - best.last) <= 1e-9 && a.worst < best.a.worst)))) best = { g, a, last };
   }
