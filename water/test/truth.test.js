@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { truth, cleanWalk } from '../src/truth.js';
 import { moisture } from '../src/moisture.js';
+import { enqueue, waiting, settle, cleanJob } from '../src/jobs.js';
 import { parseAsosMoment, atMoment, parseOpenMeteo, cleanRows, weatherOfMoment } from '../lib/momentweather.js';
 
 let passed = 0;
@@ -145,6 +146,20 @@ await test('a map\'s soil readings move to another map (an admin save), their ol
   await call(env, 'POST', '/api/water/truth/walk', { walk: 'wa', map_id: 'admin|7', started: T0, kinds: ['surface'] });
   await call(env, 'POST', '/api/water/truth/walk', { walk: 'wb', map_id: 'x', started: T0 + 1, kinds: ['surface'] });
   assert.equal((await (await call(env, 'GET', '/api/water/truth?all=1')).json()).walks.length, 2);
+});
+
+await test('the no-page queue: pushes kept at once, models before walks, a repeat queued again', async () => {
+  const env = { DB: d1() };
+  assert.match(cleanJob('walk', 'admin|7', {}).error, /walk id/);
+  assert.match(cleanJob('nope', 'admin|7').error, /kind/);
+  assert.equal((await enqueue(env, 'walk', 'admin|7', { walk: '1794790000000' })).queued, true);
+  assert.equal((await enqueue(env, 'model', 'admin|7', { modelAt: '2026-11-16T10:00:00Z' })).queued, true);
+  assert.deepEqual((await waiting(env)).map((j) => j.kind), ['model', 'walk']);
+  await settle(env, 'model|admin|7|', 'done', 'kit 1.2 MB');
+  assert.deepEqual((await waiting(env)).map((j) => j.kind), ['walk']);
+  await enqueue(env, 'model', 'admin|7', { modelAt: '2026-11-17T10:00:00Z' });
+  const again = (await waiting(env)).find((j) => j.kind === 'model');
+  assert.equal(again.model_at, '2026-11-17T10:00:00Z'); assert.equal(again.tries, 0);
 });
 
 console.log(`\n${passed} passed`);

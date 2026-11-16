@@ -115,3 +115,17 @@ CREATE TABLE IF NOT EXISTS truth_results (
   detail TEXT,                      -- JSON: by angle band, by sun and shade, the settings
   PRIMARY KEY (walk, model, kind)
 );
+
+-- THE NO-PAGE SCORING'S QUEUE (2026-11-16, src/jobs.js): what the main site's timer pushes over its binding (an admin
+-- save's shade model landed, a thermal walk converted), kept before it is worked on. No addresses, no coordinates.
+CREATE TABLE IF NOT EXISTS kit_jobs (
+  key TEXT PRIMARY KEY,             -- kind|map|walk
+  kind TEXT NOT NULL,               -- model (the map's scoring kit to build) or walk (a walk to score)
+  map_id TEXT NOT NULL,
+  walk TEXT,
+  model_at TEXT,                    -- the shade model's X-Model-At, for a model job
+  queued INTEGER,
+  state TEXT,                       -- queued, done, failed
+  tries INTEGER,
+  detail TEXT                       -- why it failed, or what it made
+);

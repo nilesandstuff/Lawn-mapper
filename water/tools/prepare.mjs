@@ -26,7 +26,7 @@ export function waterDomainFor(custom) {
 export function wranglerFor(domain, lawnmap, adminOnly = false, d1Id = null) {
   return `# Written by water/tools/prepare.mjs at deploy time. Not checked in.
 name = "lawn-water"
-main = "src/index.js"
+main = "src/worker.js"
 compatibility_date = "2025-09-01"
 
 [assets]
@@ -42,6 +42,14 @@ run_worker_first = true
 [[services]]
 binding = "LAWNMAP"
 service = "lawn-mapper"
+
+# THE MAIN SITE'S PRIVATE SIDE (2026-11-16): its named entrypoint Internal (saveOf, modelOf, thermalOf, adminSaves),
+# admin saves only, for the walks scored with no page open (src/worker.js). Commented out until the core session's
+# half is deployed: a binding to an entrypoint that does not exist yet would fail this deploy.
+${process.env.MAIN_INTERNAL === '1' ? '' : '# '}[[services]]
+${process.env.MAIN_INTERNAL === '1' ? '' : '# '}binding = "MAIN"
+${process.env.MAIN_INTERNAL === '1' ? '' : '# '}service = "lawn-mapper"
+${process.env.MAIN_INTERNAL === '1' ? '' : '# '}entrypoint = "Internal"
 
 [vars]
 LAWNMAP_HOST = "${lawnmap}"
