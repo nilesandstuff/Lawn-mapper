@@ -69,15 +69,24 @@ async function scoreOne(env, job, base) {
   return { state: 'done', why: `${r.n} squares` };
 }
 
-/** Every admin save's converted walks the current model has not scored: queued. -> how many */
+/** Every admin save's converted walks the current model has not scored: queued.
+ *  -> { saves, walks, converted, waiting, failed, scored, queued } (counts only, for the timer's log) */
 export async function sweep(env) {
-  if (!env.MAIN || !env.DB) return 0;
+  const out = { saves: 0, walks: 0, converted: 0, waiting: 0, failed: 0, scored: 0, queued: 0 };
+  if (!env.MAIN || !env.DB) return out;
   const saves = (await env.MAIN.adminSaves().catch(() => null)) || [];
   const scored = new Set(((await env.DB.prepare("SELECT walk FROM truth_results WHERE model = ? AND kind = 'surface'").bind(MODEL_VERSION).all()).results || []).map((r) => r.walk));
-  let n = 0;
+  out.saves = saves.length;
   for (const s of saves) {
     const list = (await env.MAIN.thermalOf(s.id, null).catch(() => null))?.walks || [];
-    for (const w of list) if (w.ok === true && w.walk && !scored.has(String(w.walk))) { await enqueue(env, 'walk', s.id, { walk: String(w.walk) }); n++; }
+    for (const w of list) {
+      out.walks++;
+      if (w.ok === false) { out.failed++; continue; }
+      if (w.ok !== true) { out.waiting++; continue; }
+      out.converted++;
+      if (scored.has(String(w.walk))) { out.scored++; continue; }
+      if (w.walk) { await enqueue(env, 'walk', s.id, { walk: String(w.walk) }); out.queued++; }
+    }
   }
-  return n;
+  return out;
 }

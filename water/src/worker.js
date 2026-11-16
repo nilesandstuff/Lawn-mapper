@@ -30,8 +30,8 @@ async function scheduled(controller, env, ctx) {
     } catch { /* the log is a convenience */ }
   };
   if ((at.getUTCHours() % 6 === 0 && at.getUTCMinutes() < 5) || empty) {
-    const n = await sweep(env).catch((e) => `failed (${e?.message || e})`);
-    await log(`sweep${env.MAIN ? '' : ' (no MAIN binding)'}: ${n} walks queued`);
+    const n = await sweep(env).catch((e) => ({ error: e?.message || String(e) }));
+    await log(`sweep${env.MAIN ? '' : ' (no MAIN binding)'}: ${n.error ? `failed (${n.error})` : `${n.saves} admin saves, ${n.walks} walks (${n.converted} converted, ${n.waiting} waiting, ${n.failed} failed; ${n.scored} already scored), ${n.queued} queued`}`);
   }
   const done = await runQueue(env).catch((e) => [{ state: 'error', why: String(e?.message || e) }]);
   if (done.length) await log(done.map((d) => `${d.state}${d.why ? ` (${d.why})` : ''}`).join('; '));

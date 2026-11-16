@@ -84,7 +84,8 @@ await test('a changed shade model queues the map\'s converted walks again; the s
   assert.equal(out[0].state, 'done');
   assert.equal((await env.DB.prepare("SELECT count(*) AS n FROM kit_jobs WHERE kind = 'walk' AND state = 'queued'").first()).n, 1);
   const env2 = { DB: d1(), MAIN: main(), WATER_BUILDER: builder([]) };
-  assert.equal(await sweep(env2), 1);
+  const sw = await sweep(env2);
+  assert.equal(sw.queued, 1); assert.equal(sw.saves, 1); assert.equal(sw.converted, 1);
 });
 
 await test('the shared walk placement and site: off-lawn records dropped, the settings read back', async () => {
