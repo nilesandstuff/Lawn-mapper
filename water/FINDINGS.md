@@ -3145,10 +3145,9 @@ measures the three together. The readings so far (H76) say shade runs drier than
 
 ### S30. Why the model ran about 4 F warm on the first walks (2026-11-16, with H91)
 
-Unmeasured candidates, in no settled order: (1) the camera's own offset (its makers give +-2 C, 3.6 F; the thermal
-session's calibration is against the vendor app, not a reference body); (2) November soil colder than the air: the
+THE CAMERA IS NOT ONE (owner, 2026-11-16: "the thermal camera is accurate, no further testing is needed"): its
+readings are taken as true, and the gap is the model's. Unmeasured candidates, in no settled order: (2) November soil colder than the air: the
 model has no heat stored in the ground (G is a share of Rn, FAO-56 hourly), so a cold soil that pulls the grass
 surface below the air is not in it, and the shaded squares -- with less sun to outweigh the soil -- being further off
 fits that; (3) the sky: the night and dusk cooling uses Brutsaert's clear sky with the sweep's cloud, and an overcast
-dusk (W1) still came out 5 F warm. A walk with a reference target (a cup of water beside the thermometer) would
-separate (1) from the rest; a summer walk would weaken (2).
+dusk (W1) still came out 5 F warm. A summer walk would weaken (2); a still, clear night would test (3).
