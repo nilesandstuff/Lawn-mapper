@@ -34,7 +34,7 @@ export function scanDomainFor(custom) {
 export function wranglerFor(domain, lawnmap, adminOnly = true, d1Id = null, r2 = null) {
   return `# Written by scan/tools/prepare.mjs at deploy time. Not checked in.
 name = "lawn-scan"
-main = "src/index.js"
+main = "src/entry.js"
 compatibility_date = "2025-09-01"
 
 [assets]

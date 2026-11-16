@@ -51,7 +51,16 @@ export async function thermal(request, env, url, { isAdmin }) {
   if (!(await isAdmin(request, env))) return json({ error: 'Not found' }, 404);
   if (!env.TWIN) return json({ error: 'no-bucket' }, 503);
   if (request.method !== 'GET') return json({ error: 'method' }, 405);
-  const map = url.searchParams.get('map'), walk = url.searchParams.get('walk');
+  const r = await thermalData(env, url.searchParams.get('map'), url.searchParams.get('walk'));
+  return json(r.body, r.status);
+}
+
+/** A map's walks (walk null) or one walk, as { status, body }: the admin route above and the private entrypoint
+ *  (index.js Internal, reached only by the main Worker's binding, for the water site's scoring with no page open)
+ *  both answer from here. */
+export async function thermalData(env, map, walk = null) {
+  const json = (body, status = 200) => ({ body, status });
+  if (!env.TWIN) return json({ error: 'no-bucket' }, 503);
   if (!MAP.test(map || '')) return json({ error: 'which map?' }, 400);
   if (walk == null) {
     const walks = [];
@@ -74,4 +83,24 @@ export async function thermal(request, env, url, { isAdmin }) {
   const [grid, notes, status] = await Promise.all([read(env, keyOf(walk, 'thermal/grid.json')), read(env, keyOf(walk, 'thermal-notes.json')), read(env, keyOf(walk, 'thermal/status.json'))]);
   if (!grid) return json({ error: status?.error || 'not converted yet', walk, map, status: status || null }, 404);
   return json(walkOf(walk, map, grid, notes, status, idx.origin || null));
+}
+
+/** Every walk whose converted grid has landed: [{ map, walk, at }], `at` the time its status was written. For the main
+ *  Worker's timer, which tells the water site of each new one (worker/src/internal.js pushWater). */
+export async function convertedWalks(env) {
+  if (!env.TWIN) return [];
+  const out = [];
+  let cursor;
+  do {
+    const page = await env.TWIN.list({ prefix: 'thermal-index/', cursor, limit: 1000 });
+    for (const o of page.objects) {
+      const [, map, walk] = o.key.split('/');
+      if (!MAP.test(map || '') || !WALK.test(walk || '')) continue;
+      const st = await env.TWIN.head(keyOf(walk, 'thermal/status.json'));
+      const grid = st ? await env.TWIN.head(keyOf(walk, 'thermal/grid.json')) : null;
+      if (st && grid) out.push({ map, walk, at: (st.uploaded || grid.uploaded || new Date(0)).toISOString() });
+    }
+    cursor = page.truncated ? page.cursor : undefined;
+  } while (cursor);
+  return out;
 }

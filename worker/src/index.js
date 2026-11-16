@@ -34,6 +34,7 @@
  *   ASSETS           -- the static site in public/
  */
 
+import { pushWater } from './water-push.js';
 import { countyServicesAt, countyChoicesAt, countyServiceById } from './county.js';
 import { encodePng } from './tile-mosaic.js';
 import { lookupParcel, lookupNeighbours, unreachedCounties, esriToGeoJSON, touchingNeighbours } from './parcel.js';
@@ -1533,6 +1534,9 @@ export default {
      was closed (admin-saves.js finishTraces). One small read when nothing waits; it never throws. */
   async scheduled(event, env, ctx) {
     ctx.waitUntil(finishTraces(env).catch(() => 0));
+    // and every five minutes, the water site told of each admin save's new shade model and each new thermal walk
+    // (water-push.js), so it scores them with no page open
+    ctx.waitUntil(pushWater(env, event?.scheduledTime || Date.now()).catch(() => 0));
   },
 };
 

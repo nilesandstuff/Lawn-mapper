@@ -1,5 +1,5 @@
 name = "lawn-mapper"
-main = "worker/src/index.js"
+main = "worker/src/entry.js"   # the site (index.js) and its private entrypoint for the water site (internal.js)
 compatibility_date = "2025-09-01"
 
 # The site in public/ ships with the Worker as static assets. Assets are
@@ -90,6 +90,14 @@ service = "shade-builder"
 [[services]]
 binding = "SCAN"
 service = "lawn-scan"
+
+# The same Worker's PRIVATE entrypoint (scan/src/internal.js; 2026-11-16): a map's thermal walks with no cookie, for
+# the water site's scoring with no page open (worker/src/water-push.js). It has no address on the internet. It must be
+# deployed before this (workflow "S. Yard AR tool", task deploy).
+[[services]]
+binding = "SCAN_INTERNAL"
+service = "lawn-scan"
+entrypoint = "Internal"
 
 # Normally you do NOT edit this block. CI appends it from the CUSTOM_DOMAIN
 # repository variable (tools/ci-prepare.js), which is why moving the site to a

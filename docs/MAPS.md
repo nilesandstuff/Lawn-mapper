@@ -60,6 +60,17 @@ Every answer carries `signedIn`, `guest` (true when the owner is a guest) and `m
 | `GET /api/maps/photo?id=` | **The photo the map was traced on**, kept with the map (worker/src/map-photo.js; the owner, 2026-11-09: "The photo a map is traced on should be accessible indefinitely"): the saved frame at the corpus's capture scale, as the editor showed it (a county photo with the editor's line-up applied, else Mapbox). Taken when the map is saved on a photo it does not have yet (after the answer), and never fetched again while the map stays on that photo; a map saved before 2026-11-09 gets it on first ask (the corpus's copy taken at Finish when there is one). `X-Photo-Frame` (JSON: `lng`, `lat`, `zoom`, `size`, `height`; lay it down with public/lib photo.js `toPx`), `X-Photo-Source` (`county` or `mapbox`), `X-Photo-At`. 404 for a map not the asker's or saved without a frame; 502 when the photo it was saved on cannot be had (never another photo in its place). Deleting the map deletes it. |
 | `DELETE /api/maps?id=` | A map and every tool's part of it, its models included. |
 
+**The private entrypoint, for the water site's scoring with no page open** (2026-11-16, the owner said yes): the main
+Worker exports `Internal` (worker/src/internal.js), reached only by the water Worker's binding `MAIN` (entrypoint
+`Internal`); it has no address on the internet and asks for no cookie, and it answers for **admin saves only** (anything
+else is `null`). `saveOf(id)`: the record as `GET /api/maps/one` gives it. `modelOf(id)`: `{ bytes, modelAt }`, the
+shade model's gzipped bytes as `GET /api/maps/model?tool=shade` returns them. `thermalOf(id, walk)`: as
+`GET /api/maps/thermal` (walk null: the walks; a walk: that walk with its frame), read from the yard AR site's own
+private entrypoint (binding `SCAN_INTERNAL`). `adminSaves()`: `[{ id, modelAt, at }]`. And the other way, from the
+one-minute timer every five minutes (worker/src/water-push.js), to the water Worker's `Internal` over binding `WATER`:
+`modelChanged(id, modelAt)` when an admin save's shade model's time changes, `walkReady(id, walk)` when a walk's
+converted grid lands, each sent once (remembered in the private bucket, `water-push/state.json`).
+
 **Reading the owner's maps from a session with no cookie** (2026-10-21): `GET /api/admin/saved-maps` (the administrators' maps, newest first: `id`, `address`, `at`, `county`, `provider`, `tools` as a list of tool ids, `owner`) and `GET /api/admin/saved-maps/one?id=` (exactly what `/api/maps/one` returns, plus `owner`), with `Authorization: Bearer <MAPS_READ_TOKEN>` -- a Worker secret the deploy applies from the repository secret of the same name. A missing or wrong key answers 404 like every admin route. Read-only; a signed-in administrator can call them without the key.
 
 A guest's second map (`POST /api/maps` or `/api/maps/new`) answers **409** with `{ error: 'guest-limit', message }`: show the message and a way to sign in. Signing in keeps the map they have.
