@@ -419,6 +419,24 @@ async function main() {
   const state = (await getJson(`${PREFIX}_state.json`)) || { v: 1, services: {} };
   state.services ||= {};
   const now = Date.now();
+  /* WHY THE FAILED ONES FAILED (REPORT=yes; the one-week check, 2026-11-16: the log counts them by kind and no more).
+     Each parcel service that could not be copied, grouped by kind and by the server's own message, with every web
+     address and host taken out (the log is public: no county is named). Nothing is copied. */
+  if (/^(1|yes|true)$/i.test(process.env.REPORT || '')) {
+    const groups = new Map();
+    for (const svc of services) {
+      if (svc.water) continue;
+      const f = state.services[svc.key]?.failed;
+      if (!f) continue;
+      const why = String(f.why || '').replace(/https?:\/\/\S+/g, '[address]').replace(/\b[\w-]+(\.[\w-]+)+\.(gov|us|com|org|net|io)\b/gi, '[host]').trim() || '(no message)';
+      const k = `${f.kind} | ${why}`;
+      if (!groups.has(k)) groups.set(k, { n: 0, last: f.at });
+      const g = groups.get(k); g.n++; if (f.at > g.last) g.last = f.at;
+    }
+    console.log(`Parcel services that could not be copied, by kind and the server's message (addresses taken out):`);
+    for (const [k, g] of [...groups].sort((a, b) => b[1].n - a[1].n)) console.log(`  ${g.n} x ${k} (last tried ${g.last.slice(0, 10)})`);
+    return;
+  }
   const todo = order(services, state, now);
   const totals = { squares: 0, parcels: 0, bytes: 0, services: 0, failed: {} };
   if (services.some((x) => x.water)) {
