@@ -213,3 +213,22 @@ console.log('lidar-marks: ok');
   assert.ok(east.some((u) => Math.abs(u - 8) < 0.3) && east.some((u) => Math.abs(u - 10) < 0.3), `both walls kept: ${east}`);
   console.log('lidar-marks (a diagonal is one step): ok');
 }
+
+// a wide gap beside a roof (the owner's west wall, 2026-11-16): no returns for 1.3 m past the eave (the wall's own
+// returns not counted, a shadow, a dark patio), then ground. The edge is near the roof, not halfway across the gap.
+{
+  let sd = 31; const r = () => { sd = (sd + 0x6d2b79f5) | 0; let t = Math.imul(sd ^ (sd >>> 15), 1 | sd); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const Q = [];
+  for (let i = 0; i < 30 * 22 * 4; i++) {
+    const e = r() * 30, n = r() * 22;
+    if (e >= 8 && e <= 18 && n >= 4 && n <= 18) Q.push({ e, n, h: 5 + (r() - 0.5) * 0.1, kind: 1 });
+    else if (e > 18 && e < 19.3 && n >= 4 && n <= 18) continue;
+    else Q.push({ e, n, h: (r() - 0.5) * 0.05, kind: 0 });
+  }
+  const R8 = lidarMarks([0, 0, 30, 22], { n: Q.length, e: (i) => Q[i].e, nn: (i) => Q[i].n, hag: (i) => Q[i].h, bright: () => 0, kind: (i) => Q[i].kind });
+  const b8 = R8.objects.find((o) => o.kind === 'building' && o.ring);
+  const east = Math.max(...b8.ring.map((p) => p[0]));
+  console.log(`a 1.3 m gap past the eave: the edge at ${east.toFixed(2)} m (roof to 18)`);
+  assert.ok(east < 18.5, `near the roof, not halfway across the gap: ${east.toFixed(2)}`);
+  console.log('lidar-marks (a wide gap is not half roof): ok');
+}

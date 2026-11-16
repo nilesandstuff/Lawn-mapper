@@ -213,7 +213,7 @@ function refineSide(s, inside, outside, reach, noise = 0.05) {
     return { at: outUp ? Math.max(...xs) + 0.1 : Math.min(...xs) - 0.1, gap: Infinity };
   }
   near.sort((a, b) => a[0] - b[0]);
-  let bestErr = Infinity, bestAt = s.at, bestGap = Infinity;
+  let bestErr = Infinity, bestAt = s.at, bestGap = Infinity, bestI = -1;
   // a cut between near[i-1] and near[i]: inside below it when the outside lies above. Its errors: outside returns below
   // it and inside returns above it (or the other way round), counted from running totals
   const totIn = near.reduce((t, x) => t + x[1], 0), totOut = near.length - totIn;
@@ -223,7 +223,17 @@ function refineSide(s, inside, outside, reach, noise = 0.05) {
     const err = outUp ? outBelow + (totIn - inBelow) : inBelow + (totOut - outBelow);
     const at = i === 0 ? near[0][0] - 0.1 : i === near.length ? near[near.length - 1][0] + 0.1 : (near[i - 1][0] + near[i][0]) / 2;
     const gap = i === 0 || i === near.length ? Infinity : near[i][0] - near[i - 1][0];
-    if (err < bestErr || (err === bestErr && Math.abs(at - s.at) < Math.abs(bestAt - s.at))) { bestErr = err; bestAt = at; bestGap = gap; }
+    if (err < bestErr || (err === bestErr && Math.abs(at - s.at) < Math.abs(bestAt - s.at))) { bestErr = err; bestAt = at; bestGap = gap; bestI = i; }
+  }
+  /* A WIDE GAP IS NOT HALF ROOF (the owner's west wall, 2026-11-16: with the house's own wall returns no longer counted
+     outside, the nearest outside return stood well out, and halfway across put the wall 0.8 m beyond the photo's).
+     Returns fall about one spacing apart (reach is three), so the edge lies within half a spacing beyond the last
+     return of this thing; past that, a gap is ground nobody's laser reached, not roof. */
+  const cap = reach / 6;
+  if (bestI > 0 && bestI < near.length) {
+    const lo = near[bestI - 1], hi = near[bestI];
+    if (outUp && lo[1] && !hi[1]) bestAt = Math.min(bestAt, lo[0] + cap);
+    if (!outUp && hi[1] && !lo[1]) bestAt = Math.max(bestAt, hi[0] - cap);
   }
   // the gap the side was set in: the true edge is somewhere in it, so half of it is how sure the side is; a side with
   // returns on the wrong side of it (brightness that does not part cleanly) is not sure however small the gap
