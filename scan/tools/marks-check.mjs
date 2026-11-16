@@ -155,31 +155,28 @@ async function main() {
       for (let i = 0; i < P.n; i++) { if (P.kind(i) !== 1 || P.hag(i) < 2 || !A.ptRet || (A.ptRet[i] & 15) !== 1) continue; if (inRing(P.e(i), P.nn(i))) hb.push(P.bright(i)); }
       hb.sort((x, y) => x - y);
       console.log(`The building's single echoes over 2 m: ${hb.length}, intensity median ${hb.length ? hb[hb.length >> 1] : '-'}, p20 ${hb.length ? hb[Math.floor(hb.length * 0.2)] : '-'}, p80 ${hb.length ? hb[Math.floor(hb.length * 0.8)] : '-'} (its own band, p20 x 0.9 to p80 x 1.1: ${hb.length ? `${Math.round(hb[Math.floor(hb.length * 0.2)] * 0.9)} to ${Math.round(hb[Math.floor(hb.length * 0.8)] * 1.1)}` : '-'}); the lot's ground median (meta.own.intensityMedian) ${model.meta?.own?.intensityMedian ?? '-'}.`);
-      /* THE EAST EDGE METRE BY METRE (the owner, 2026-11-16: "the front (East) of the house is still too flat"; their
-         aerial photo shows the garage furthest out, the middle about 2 m in, the north part about 3 m in). For each 1 m
-         slice north to south across the building: its outline's east edge, the eastmost roof return (the shade map's
-         kind 1, 2 m or more up) and its height, and the raised returns that are not roof east of that, with their
-         heights and kinds. Metres from the building's own middle only. */
+      /* EACH EDGE METRE BY METRE (the owner, 2026-11-16: "the front (East) of the house is still too flat", and "don't
+         forget to reference the aerial image I provided"). For each side of the building, each 1 m slice across it: the
+         outline's edge, the outermost roof return (the shade map's kind 1, 2 m or more up) and its height, and the
+         raised returns that are not roof beyond it, with heights and kinds. Distances are metres OUT from the building's
+         own middle on that side (east and north as they are; west and south as metres west and south). */
       {
         const R = house.ring, mx = house.middle[0], my = house.middle[1];
-        const ns = R.map((p) => p[1]), n0 = Math.floor(Math.min(...ns)), n1 = Math.ceil(Math.max(...ns));
-        const eastOf = (n) => { let best = -Infinity; for (let i = 0, k2 = R.length - 1; i < R.length; k2 = i++) { const [xi, yi] = R[i], [xj, yj] = R[k2]; if ((yi > n) !== (yj > n)) best = Math.max(best, xi + ((n - yi) * (xj - xi)) / (yj - yi)); } return best; };
-        console.log(`East edge of the ${house.area} m2 building, 1 m slices north to south (metres east of its middle): outline | eastmost roof return (height) | raised non-roof returns east of it: east, height, kind`);
-        for (let n = n1 - 1; n >= n0; n--) {
-          const lo = n, hi = n + 1, oe = eastOf(n + 0.5);
-          let re = -Infinity, rh = NaN; const extra = [];
-          for (let i = 0; i < P.n; i++) {
-            const pn = P.nn(i); if (pn < lo || pn >= hi) continue;
-            const pe = P.e(i); if (pe < oe - 6 || pe > oe + 4) continue;
-            if (P.kind(i) === 1 && P.hag(i) >= 2 && pe > re) { re = pe; rh = P.hag(i); }
+        const sides = { east: [(e, n) => n - my, (e, n) => e - mx], west: [(e, n) => n - my, (e, n) => mx - e], north: [(e, n) => e - mx, (e, n) => n - my], south: [(e, n) => e - mx, (e, n) => my - n] };
+        for (const [side, [A, X]] of Object.entries(sides)) {
+          const RA = R.map(([e, n]) => [A(e, n), X(e, n)]);
+          const as = RA.map((p) => p[0]), a0 = Math.floor(Math.min(...as)), a1 = Math.ceil(Math.max(...as));
+          const outAt = (a) => { let best = -Infinity; for (let i = 0, k2 = RA.length - 1; i < RA.length; k2 = i++) { const [ai, xi] = RA[i], [aj, xj] = RA[k2]; if ((ai > a) !== (aj > a)) best = Math.max(best, xi + ((a - ai) * (xj - xi)) / (aj - ai)); } return best; };
+          const along = side === 'east' || side === 'west' ? 'north of the middle' : 'east of the middle';
+          console.log(`${side[0].toUpperCase()}${side.slice(1)} edge of the ${house.area} m2 building, 1 m slices (each labelled by metres ${along}): outline | outermost roof return (height) | raised non-roof returns beyond it: out, height, kind`);
+          const P2 = []; for (let i = 0; i < P.n; i++) P2.push([A(P.e(i), P.nn(i)), X(P.e(i), P.nn(i)), P.hag(i), P.kind(i)]);
+          for (let a = a1 - 1; a >= a0; a--) {
+            const ox = outAt(a + 0.5);
+            let rx = -Infinity, rh = NaN; const extra = [];
+            for (const [pa, px, h, k] of P2) { if (pa < a || pa >= a + 1 || px < ox - 6 || px > ox + 4) continue; if (k === 1 && h >= 2 && px > rx) { rx = px; rh = h; } }
+            for (const [pa, px, h, k] of P2) { if (pa < a || pa >= a + 1 || px <= rx || px > ox + 4 || !(h >= 0.3) || (k === 1 && h >= 2)) continue; extra.push(`${px.toFixed(1)} ${h.toFixed(1)} k${k}`); }
+            console.log(`  ${String(a).padStart(3)}: ${Number.isFinite(ox) ? ox.toFixed(1) : '-'} | ${Number.isFinite(rx) ? `${rx.toFixed(1)} (${rh.toFixed(1)})` : '-'} | ${extra.slice(0, 6).join(', ') || 'none'}${extra.length > 6 ? ` (+${extra.length - 6})` : ''}`);
           }
-          for (let i = 0; i < P.n; i++) {
-            const pn = P.nn(i); if (pn < lo || pn >= hi) continue;
-            const pe = P.e(i), h = P.hag(i); if (pe <= re || pe > oe + 4 || !(h >= 0.3)) continue;
-            if (P.kind(i) === 1 && h >= 2) continue;
-            extra.push(`${(pe - mx).toFixed(1)} ${h.toFixed(1)} k${P.kind(i)}`);
-          }
-          console.log(`  n ${(lo - my).toFixed(0).padStart(3)}: ${Number.isFinite(oe) ? (oe - mx).toFixed(1) : '-'} | ${Number.isFinite(re) ? `${(re - mx).toFixed(1)} (${rh.toFixed(1)})` : '-'} | ${extra.slice(0, 8).join(', ') || 'none'}${extra.length > 8 ? ` (+${extra.length - 8})` : ''}`);
         }
       }
       // the whole grid's building singles (the brightness band edgeUnderCrown reads, asked for by the features session,
