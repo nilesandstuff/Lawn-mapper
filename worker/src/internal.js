@@ -7,8 +7,8 @@ import { findAdminSave, adminSavesList, modelOfSave, thermalOfSave } from './wat
 export class Internal extends WorkerEntrypoint {
   /** The admin save's record as GET /api/maps/one gives it, or null. */
   async saveOf(id) { return (await findAdminSave(this.env, id))?.map ?? null; }
-  /** { bytes (gzipped, as GET /api/maps/model?tool=shade returns), modelAt }, or null. */
-  async modelOf(id) { return modelOfSave(this.env, id); }
+  /** { bytes (gzipped, as GET /api/maps/model?tool=shade returns), modelAt }, or null. part 1..8: an overflow part. */
+  async modelOf(id, part = 0) { return modelOfSave(this.env, id, part); }
   /** walk null: the save's walks, as GET /api/maps/thermal?id= returns; a walk: that walk, as with &walk=. */
   async thermalOf(id, walk = null) { return thermalOfSave(this.env, id, walk); }
   /** [{ id, modelAt, at }] for every admin save (the water side's daily sweep). */

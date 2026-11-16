@@ -320,7 +320,18 @@ export async function deleteMap(env, owner, key) {
      MODEL_MAX_UPLOAD  what may come in: under the 100 MB request body Cloudflare takes on a Free or Pro zone
      MODEL_MAX_STORED  what is kept, gzipped: room for a lot many times the owner's, inside the Worker's memory */
 const modelPrefix = async (owner, key) => `models/${owner.kind}/${owner.id}/${await hash(key)}/`;
-export async function modelKey(owner, key, tool) { return `${await modelPrefix(owner, key)}${tool}.bin`; }
+export async function modelKey(owner, key, tool, part = 0) { return `${await modelPrefix(owner, key)}${tool}${part ? `.${part}` : ''}.bin`; }
+/* OVERFLOW PARTS (the owner, 2026-11-16: "Id think it would be better to make an overflow file rather than remove data
+   outright"): a model too big for one object keeps what does not fit in parts 1..MODEL_MAX_PARTS, each itself a
+   lidar-model file, checked and limited like the main one, stored as <tool>.<N>.bin beside <tool>.bin. The main
+   file's header lists its parts (public/lib/lidar-model.js); a part an older, bigger save left behind is not listed,
+   so it is ignored. Deleting the map sweeps the prefix, parts and all. */
+export const MODEL_MAX_PARTS = 8;
+/** A part number from a request: 0 for the main file (none given), 1..MODEL_MAX_PARTS, or null when it is not one. */
+export function modelPart(v) {
+  if (v == null || v === '' || v === 0 || v === '0') return 0;
+  return /^[1-9]$/.test(String(v)) && Number(v) <= MODEL_MAX_PARTS ? Number(v) : null;
+}
 export const MODEL_MAX_UPLOAD = 95 * 1024 * 1024;
 export const MODEL_MAX_STORED = 48 * 1024 * 1024;
 const MAGIC = [0x4c, 0x4d, 0x44, 0x4c]; // "LMDL"
@@ -362,8 +373,9 @@ export async function storedModelBytes(body, { maxIn = MODEL_MAX_UPLOAD, maxOut 
   return { bytes, gzipped: !gz };
 }
 
-export async function putModel(env, owner, key, tool, body, contentLength = 0) {
+export async function putModel(env, owner, key, tool, body, contentLength = 0, part = 0) {
   if (!isTool(tool)) return { error: 'unknown-tool' };
+  if (modelPart(part) == null) return { error: 'bad-part', max: MODEL_MAX_PARTS };
   if (!env.CORPUS) return { error: 'no-bucket' };
   if (contentLength > MODEL_MAX_UPLOAD) return { error: 'too-big', max: MODEL_MAX_UPLOAD };
   const { table, col } = T(owner);
@@ -372,14 +384,14 @@ export async function putModel(env, owner, key, tool, body, contentLength = 0) {
   const got = await storedModelBytes(body);
   if (got.error) return got;
   const t = nowIso();
-  await env.CORPUS.put(await modelKey(owner, key, tool), got.bytes, { httpMetadata: { contentType: 'application/gzip' }, customMetadata: { at: t, tool } });
-  return { tool, at: t, bytes: got.bytes.byteLength, gzippedHere: got.gzipped };
+  await env.CORPUS.put(await modelKey(owner, key, tool, part), got.bytes, { httpMetadata: { contentType: 'application/gzip' }, customMetadata: { at: t, tool, ...(part ? { part: String(part) } : {}) } });
+  return { tool, ...(part ? { part } : {}), at: t, bytes: got.bytes.byteLength, gzippedHere: got.gzipped };
 }
 
 /** The model's R2 object, or null. */
-export async function getModel(env, owner, key, tool) {
-  if (!isTool(tool) || !env.CORPUS) return null;
-  return env.CORPUS.get(await modelKey(owner, key, tool));
+export async function getModel(env, owner, key, tool, part = 0) {
+  if (!isTool(tool) || !env.CORPUS || modelPart(part) == null) return null;
+  return env.CORPUS.get(await modelKey(owner, key, tool, part));
 }
 
 export async function deleteModels(env, owner, key) {

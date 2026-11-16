@@ -54,11 +54,11 @@ export async function adminSavesList(env) {
   return out;
 }
 
-/** An admin save's shade model: { bytes (gzipped, as GET /api/maps/model returns), modelAt }, or null. */
-export async function modelOfSave(env, id) {
+/** An admin save's shade model, or one of its overflow parts (1..8): { bytes (gzipped, as GET /api/maps/model returns), modelAt }, or null. */
+export async function modelOfSave(env, id, part = 0) {
   const f = await findAdminSave(env, id);
   if (!f) return null;
-  const o = await getModel(env, f.owner, f.map.id, 'shade');
+  const o = await getModel(env, f.owner, f.map.id, 'shade', part);
   if (!o) return null;
   return { bytes: await o.arrayBuffer(), modelAt: o.customMetadata?.at || null };
 }

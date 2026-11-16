@@ -191,8 +191,21 @@ let guestCookie;
   check('only a tool may write one', badTool.status === 400);
   const noMap = await raw(`/api/maps/model?id=nope&tool=shade`, 'PUT', gc, bytes);
   check('and only for a map the owner has', noMap.status === 404);
+  // OVERFLOW PARTS (the owner, 2026-11-16: an overflow file rather than data left out): &part=1..8, each a model file
+  // of its own beside the main one, checked the same way; no part is the main file, as before
+  const pPut = await raw(`/api/maps/model?id=${id}&tool=shade&part=2`, 'PUT', gc, packed);
+  const pj2 = await pPut.json();
+  check('a part is kept beside the main file', pPut.status === 200 && pj2.part === 2 && [...store.keys()].some((k) => k.endsWith('/shade.2.bin')), JSON.stringify(pj2));
+  const pGot = await raw(`/api/maps/model?id=${id}&tool=shade&part=2`, 'GET', gc);
+  const mGot = await raw(`/api/maps/model?id=${id}&tool=shade`, 'GET', gc);
+  check('read back by its number, the main file untouched', pGot.status === 200 && new Uint8Array(await pGot.arrayBuffer()).byteLength === packed.byteLength && mGot.status === 200);
+  check('a part not written is 404', (await raw(`/api/maps/model?id=${id}&tool=shade&part=3`, 'GET', gc)).status === 404);
+  const badParts = [];
+  for (const v of [9, '01', 'x', '-1']) badParts.push((await raw(`/api/maps/model?id=${id}&tool=shade&part=${v}`, 'GET', gc)).status);
+  check('part 9, 01, a word or -1 is refused', badParts.every((st) => st === 400) && (await raw(`/api/maps/model?id=${id}&tool=shade&part=9`, 'PUT', gc, packed)).status === 400, badParts.join(','));
+  check('a part that is not a model is refused', (await raw(`/api/maps/model?id=${id}&tool=shade&part=1`, 'PUT', gc, new TextEncoder().encode('nope'))).status === 400);
   const gone = await call(env3, req(`/api/maps?id=${id}`, { method: 'DELETE', cookie: gc }));
-  check('deleting the map deletes its model', gone.res.status === 200 && store.size === 0);
+  check('deleting the map deletes its model, parts and all', gone.res.status === 200 && store.size === 0);
   const noBucket = await handleMaps(new Request(`${HOST}/api/maps/model?id=${id}&tool=shade`, { method: 'PUT', headers: { Cookie: gc }, body: bytes }), { DB: env3.DB }, new URL(`${HOST}/api/maps/model?id=${id}&tool=shade`), "", ctx, json);
   check("without a bucket the site says so", noBucket.status === 503 || noBucket.status === 404, `${noBucket.status} ${await noBucket.text()}`);
 }

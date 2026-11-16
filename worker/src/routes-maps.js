@@ -30,7 +30,7 @@ import { currentUser } from './auth.js';
 import { accountsEnabled } from './db.js';
 import {
   USER_MAX_MAPS, GUEST_MAX_MAPS, findGuest, newGuest, userOwner, guestOwner,
-  listMaps, getMap, upsertMap, deleteMap, putTool, toolsFor, putModel, getModel,
+  listMaps, getMap, upsertMap, deleteMap, putTool, toolsFor, putModel, getModel, modelPart,
 } from './unified.js';
 import { keepPhoto, mapPhoto } from './map-photo.js';
 
@@ -230,15 +230,18 @@ export async function handleMaps(request, env, url, origin, ctx, json) {
     const key = url.searchParams.get('id');
     const tool = url.searchParams.get('tool');
     if (!key || !tool) return reply({ error: 'id and tool required' }, 400);
+    // &part=N (1..8): an overflow part of a model too big for one object (unified.js MODEL_MAX_PARTS); none: the main file
+    const part = modelPart(url.searchParams.get('part'));
+    if (part == null) return reply({ error: 'bad-part', message: 'part is 1 to 8, or left out for the main file' }, 400);
     if (request.method === 'PUT' || request.method === 'POST') {
-      const r = owner ? await putModel(env, owner, key, tool, request.body, Number(request.headers.get('Content-Length') || 0)) : { error: 'no-map' };
+      const r = owner ? await putModel(env, owner, key, tool, request.body, Number(request.headers.get('Content-Length') || 0), part) : { error: 'no-map' };
       if (r.error === 'no-map') return reply({ error: 'no-map', ...who }, 404);
       if (r.error === 'no-bucket') return reply({ error: 'no-bucket', message: 'the site has no bucket for models' }, 503);
       if (r.error) return reply(r, r.error === 'too-big' ? 413 : 400);
       return reply({ ...r, ...who });
     }
     if (request.method === 'GET' || request.method === 'HEAD') {
-      const obj = owner ? await getModel(env, owner, key, tool) : null;
+      const obj = owner ? await getModel(env, owner, key, tool, part) : null;
       if (!obj) return reply({ error: 'no-model', ...who }, 404);
       const headers = new Headers({ 'Content-Type': 'application/octet-stream', 'Cache-Control': 'private, no-store', 'Content-Length': String(obj.size) });
       if (obj.customMetadata?.at) headers.set('X-Model-At', obj.customMetadata.at);
