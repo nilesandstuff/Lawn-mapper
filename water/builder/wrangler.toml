@@ -9,7 +9,9 @@ workers_dev = false
 [[containers]]
 class_name = "WaterBuilder"
 image = "./Dockerfile"
-instance_type = "basic"
+# "standard-1": 4 GiB, half a CPU. "basic" (1 GiB) lost its connection mid-plan on the owner's lot (2026-11-16): the
+# analysis holds the lidar points and the shade thread a copy of them. Billed only while a walk is worked out.
+instance_type = "standard-1"
 max_instances = 1
 
 [[durable_objects.bindings]]

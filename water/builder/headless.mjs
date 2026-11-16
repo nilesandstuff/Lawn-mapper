@@ -39,7 +39,7 @@ function setUp(base) {
   globalThis.Worker = class {
     constructor(url) {
       const path = String(url).startsWith('/lib/') ? join(ROOT, 'lib', String(url).slice(5)) : join(ROOT, 'public', String(url).replace(/^\//, ''));
-      this.t = new NodeWorker(new URL('./boot-worker.mjs', import.meta.url), { workerData: { file: path, root: ROOT }, resourceLimits: { maxOldGenerationSizeMb: 768 } });
+      this.t = new NodeWorker(new URL('./boot-worker.mjs', import.meta.url), { workerData: { file: path, root: ROOT }, resourceLimits: { maxOldGenerationSizeMb: 1280 } });
       const debug = process.env.WATER_BUILDER_DEBUG === '1';
       this.t.on('message', (d) => { if (debug) console.log('light worker ->', d?.type); this.onmessage?.({ data: d }); });
       this.t.on('error', (e) => { if (debug) console.log('light worker error', e?.message); this.onerror?.({ message: e?.message || String(e) }); });
