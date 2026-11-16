@@ -400,6 +400,27 @@ export function lidarMarks(box, pts, { cell = CELL, debug = null } = {}) {
     if (kind === 'object' && (group.length < 6 || (small && woods > 0.3))) { if (debug) debug.push({ kind: 'in the woods', was: 'small', n: group.length, woods: +woods.toFixed(2), top: +hsG[hsG.length >> 1].toFixed(1) }); continue; }
     const medOf = (l) => { const h = l.map((p) => p.h).sort((a, b) => a - b); return h[h.length >> 1]; };
     if (kind === 'building') {
+      /* WHAT THE SHADE MAP DOES NOT CALL ROOF IS NOT THE HOUSE (the owner's own lot, 2026-11-16: "The black shape
+         that's circled in yellow is all deck, pool, and hot tub. The actual roof line is the teal line. The part with
+         the red squiggle is not roof at all... 2 10 foot shrubs and woodchips"; it misled them into marking the wrong
+         corner as R1, 9 ft out). The house came out as one 482 m2 building of which the shade map itself called
+         only 69% roof: everything raised and solid that touches the house was in its group, and the deck rule below
+         only takes a level, deck-sized (80 m2) piece. So first: a connected part of the group that the shade map
+         does not call roof, 10 m2 or more, and lower than the house's own eave, is a thing of its own, and the house
+         is outlined from the rest. The tree-versus-building rule stays the shade map's (public/shade/structures.js);
+         this only stops overruling it. */
+      const roofH = group.filter((p) => p.bld).map((p) => p.h).sort((x, y) => x - y);
+      const eaveH = roofH.length ? roofH[Math.floor(roofH.length * 0.1)] : Infinity;
+      const notRoof = group.filter((p) => !p.bld);
+      if (roofH.length && notRoof.length >= 14) {
+        const parts = linked(notRoof, link, Infinity).filter((l) => l.length * spacing * spacing >= 10 && medOf(l) <= eaveH - 0.5);
+        if (parts.length) {
+          const out = new Set(parts.flat());
+          group = group.filter((p) => !out.has(p));
+          for (const l of parts) { const inL = new Set(l); add(l, P.filter((p) => !inL.has(p)), 'object'); if (debug) debug.push({ kind: 'not roof, off a house', n: l.length, m2: Math.round(l.length * spacing * spacing), top: +medOf(l).toFixed(1) }); }
+          if (group.length < 3) continue;
+        }
+      }
       // A DECK AGAINST A HOUSE (the owner, 2026-11-10: "The deck showed up as building"): it touches the house, so it
       // is in the house's group. A level of the house's group well below its roof, level itself (a roof is pitched)
       // and deck-sized, is a thing of its own, and the house is outlined without it.

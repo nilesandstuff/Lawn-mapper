@@ -59,6 +59,7 @@ async function main() {
   const wd = debug.filter((d) => d.kind === 'in the woods');
   console.log(`Left out as in the woods (crowns over the ground round it): ${wd.length}; ${wd.map((d) => `${d.was} ${d.n} returns at ${d.top} m (${d.woods})`).slice(0, 20).join('; ')}`);
   const dk = debug.filter((d) => d.kind === 'deck off a house');
+  { const nr = debug.filter((x) => x.kind === 'not roof, off a house'); console.log(`Parts of a house the shade map does not call roof, split off: ${nr.length}; ${nr.map((d) => `~${d.m2} m2 at ${d.top} m`).join('; ')}`); }
   console.log(`Decks split off a house: ${dk.length}; ${dk.map((d) => `${d.n} returns at ${d.top} m`).join('; ')}`);
   const ns2 = debug.filter((d) => d.kind === 'not solid');
   console.log(`Left out as not solid (the laser went through, or every height): ${ns2.length}; sizes ${ns2.map((d) => `${d.n} returns (through ${d.through}, rough ${d.rough} m)`).slice(0, 15).join('; ')}`);
