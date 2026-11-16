@@ -1727,6 +1727,13 @@ it: with its own band the eave turns, with the grid's it did not. Run on the
 print's own numbers (the garage's band about 7,000-9,500), row 5's three
 columns turn.
 
+MEASURED ON THE OWNER'S HOUSE, build 5: the core session's marks print, run
+43824412439, model made at 07:23 UTC. Window row 5, cols 7-9 are now 1/11,
+roofs at 4.2, 4.9 and 5.3 m, and row 6 stays 2/4. That is the prediction from
+the print, column for column. The core's outline of the house now has its
+south-west corner (367.4 m2; the notch is gone) and offers 3 roof corners
+where it offered 1.
+
 ## Speculation
 
 - FENCES (2026-10-27, IN USE, unmeasured; fences.js): drawn by the visitor
