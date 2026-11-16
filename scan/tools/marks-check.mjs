@@ -142,6 +142,33 @@ async function main() {
       for (let i = 0; i < P.n; i++) { if (P.kind(i) !== 1 || P.hag(i) < 2 || !A.ptRet || (A.ptRet[i] & 15) !== 1) continue; if (inRing(P.e(i), P.nn(i))) hb.push(P.bright(i)); }
       hb.sort((x, y) => x - y);
       console.log(`The building's single echoes over 2 m: ${hb.length}, intensity median ${hb.length ? hb[hb.length >> 1] : '-'}; the lot's ground median (meta.own.intensityMedian) ${model.meta?.own?.intensityMedian ?? '-'}.`);
+      /* THE EAST EDGE METRE BY METRE (the owner, 2026-11-16: "the front (East) of the house is still too flat"; their
+         aerial photo shows the garage furthest out, the middle about 2 m in, the north part about 3 m in). For each 1 m
+         slice north to south across the building: its outline's east edge, the eastmost roof return (the shade map's
+         kind 1, 2 m or more up) and its height, and the raised returns that are not roof east of that, with their
+         heights and kinds. Metres from the building's own middle only. */
+      {
+        const R = house.ring, mx = house.middle[0], my = house.middle[1];
+        const ns = R.map((p) => p[1]), n0 = Math.floor(Math.min(...ns)), n1 = Math.ceil(Math.max(...ns));
+        const eastOf = (n) => { let best = -Infinity; for (let i = 0, k2 = R.length - 1; i < R.length; k2 = i++) { const [xi, yi] = R[i], [xj, yj] = R[k2]; if ((yi > n) !== (yj > n)) best = Math.max(best, xi + ((n - yi) * (xj - xi)) / (yj - yi)); } return best; };
+        console.log(`East edge of the ${house.area} m2 building, 1 m slices north to south (metres east of its middle): outline | eastmost roof return (height) | raised non-roof returns east of it: east, height, kind`);
+        for (let n = n1 - 1; n >= n0; n--) {
+          const lo = n, hi = n + 1, oe = eastOf(n + 0.5);
+          let re = -Infinity, rh = NaN; const extra = [];
+          for (let i = 0; i < P.n; i++) {
+            const pn = P.nn(i); if (pn < lo || pn >= hi) continue;
+            const pe = P.e(i); if (pe < oe - 6 || pe > oe + 4) continue;
+            if (P.kind(i) === 1 && P.hag(i) >= 2 && pe > re) { re = pe; rh = P.hag(i); }
+          }
+          for (let i = 0; i < P.n; i++) {
+            const pn = P.nn(i); if (pn < lo || pn >= hi) continue;
+            const pe = P.e(i), h = P.hag(i); if (pe <= re || pe > oe + 4 || !(h >= 0.3)) continue;
+            if (P.kind(i) === 1 && h >= 2) continue;
+            extra.push(`${(pe - mx).toFixed(1)} ${h.toFixed(1)} k${P.kind(i)}`);
+          }
+          console.log(`  n ${(lo - my).toFixed(0).padStart(3)}: ${Number.isFinite(oe) ? (oe - mx).toFixed(1) : '-'} | ${Number.isFinite(re) ? `${(re - mx).toFixed(1)} (${rh.toFixed(1)})` : '-'} | ${extra.slice(0, 8).join(', ') || 'none'}${extra.length > 8 ? ` (+${extra.length - 8})` : ''}`);
+        }
+      }
       // the whole grid's building singles (the brightness band edgeUnderCrown reads, asked for by the features session,
       // 2026-11-16): kind 1, not noise, return 1 of 1, 2-40 m up; and split by the column's why
       {
