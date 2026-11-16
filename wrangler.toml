@@ -99,6 +99,14 @@ binding = "SCAN_INTERNAL"
 service = "lawn-scan"
 entrypoint = "Internal"
 
+# The water site's PRIVATE entrypoint (water/, its own Worker; live since 2026-11-16, water deploy of 513bbc0): the timer
+# tells it of each admin save's new shade model and each new thermal walk (worker/src/water-push.js), so it scores them
+# with no page open. No address on the internet.
+[[services]]
+binding = "WATER"
+service = "lawn-water"
+entrypoint = "Internal"
+
 # Normally you do NOT edit this block. CI appends it from the CUSTOM_DOMAIN
 # repository variable (tools/ci-prepare.js), which is why moving the site to a
 # new hostname is a one-field change and not a commit -- and why ci-prepare
