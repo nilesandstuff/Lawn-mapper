@@ -105,10 +105,15 @@ globalThis.fetch = async (u, init) => {
   await finishTraces(benv); await finishTraces(benv); await finishTraces(benv);
   check('a finished save at an older build is rebuilt once, not every minute', builds === before + 1, `${builds - before}`);
   // ...but a builder that answered an older build (its container still on the old image) is asked again half an hour on
-  await env.DB.prepare("UPDATE admin_traces SET finished_at = ? WHERE map_key = ?").bind(new Date(Date.now() - 31 * 60 * 1000).toISOString(), KEY9).run();
-  const before2 = builds;
-  await finishTraces(benv); await finishTraces(benv);
-  check('a save an older builder answered is asked again after half an hour, once', builds === before2 + 1, `${builds - before2}`);
+  { const { SHADE_BUILD } = await import('../public/shade/build.js');
+    const stale = `lidar built in 9 s (build ${SHADE_BUILD - 1}); asked at build ${SHADE_BUILD}`;
+    await env.DB.prepare('UPDATE admin_traces SET status = ?, detail = ?, finished_at = ? WHERE map_key = ?').bind('done', stale, new Date().toISOString(), KEY9).run();
+    const b0 = builds;
+    await finishTraces(benv); await finishTraces(benv);
+    check('a save an older builder has just answered is not asked again at once', builds === b0, `${builds - b0}`);
+    await env.DB.prepare('UPDATE admin_traces SET status = ?, detail = ?, finished_at = ? WHERE map_key = ?').bind('done', stale, new Date(Date.now() - 31 * 60 * 1000).toISOString(), KEY9).run();
+    await finishTraces(benv);
+    check('and is asked again half an hour on', builds === b0 + 1, `${builds - b0}`); }
   // a rebuild that fails leaves the save built
   await env.DB.prepare("UPDATE admin_traces SET status = 'done', detail = 'lidar built in 9 s (build 0)' WHERE map_key = ?").bind(KEY9).run();
   const fenv = { ...env, SHADE_BUILDER: { async fetch() { return json({ ok: false, why: 'no room' }, 200); } } };
