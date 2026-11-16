@@ -184,7 +184,7 @@ function refineSide(s, inside, outside, reach, noise = 0.05) {
 }
 
 /** One thing's outline, square to its own grid, each side set by the returns, and its corners. */
-function squareOutline(mask, box, W, H, cell, inside, outside, { minJog, reach, loose = false, edgeIn = null, edgeOut = null, view = null }) {
+function squareOutline(mask, box, W, H, cell, inside, outside, { minJog, jogWide = minJog, reach, loose = false, edgeIn = null, edgeOut = null, view = null }) {
   if (inside.length < 6) return null;
   // only the returns near this thing matter to it (the lot has tens of thousands)
   {
@@ -208,17 +208,38 @@ function squareOutline(mask, box, W, H, cell, inside, outside, { minJog, reach, 
   const rings = ringsOfMask(m, w, h).map((r) => r.map(([x, y]) => [u0 + x * cell, v1 - y * cell])).filter((r) => areaOf(r) < 0);
   if (!rings.length) return null;
   rings.sort((a, b) => areaOf(a) - areaOf(b));
-  const droppedUV = [], sides = squareOff(rings[0], minJog, droppedUV);
-  if (sides.length < 4) return null;
   // the sides are set by edgeIn/edgeOut when given (paving: the returns' own brightness, not the smoothed vote that
   // found the slab, which leans outward at a noisy edge)
   const inUV = (edgeIn || inside).map((p) => rot(p)), outUV = (edgeOut || outside).map((p) => rot(p));
-  // twice: the second time each side runs between its neighbours as the first pass set them, so a wall's end is looked
-  // for across the wall's real width, not the rough outline's
-  for (let pass = 0; pass < 2; pass++) {
-    if (pass) sides.forEach((s, i) => { s.from = sides[(i + sides.length - 1) % sides.length].at; s.to = sides[(i + 1) % sides.length].at; });
-    for (const s of sides) { const r = refineSide(s, inUV, outUV, reach, loose ? 0.2 : 0.05); s.at = r.at; s.gap = r.gap; s.err = r.err ?? 0; }
-  }
+  const droppedUV = [];
+  const fitWith = (jog) => {
+    droppedUV.length = 0;
+    let ss = squareOff(rings[0], jog, droppedUV);
+    if (ss.length < 4) return null;
+    const dir = (x) => Math.sign(x.to - x.from), was = ss.map(dir);
+    const join = () => ss.forEach((x, i) => { x.from = ss[(i + ss.length - 1) % ss.length].at; x.to = ss[(i + 1) % ss.length].at; });
+    const set = (x) => { const r = refineSide(x, inUV, outUV, reach, loose ? 0.2 : 0.05); x.at = r.at; x.gap = r.gap; x.err = r.err ?? 0; };
+    // twice: the second time each side runs between its neighbours as the first pass set them, so a wall's end is
+    // looked for across the wall's real width, not the rough outline's
+    for (let pass = 0; pass < 2; pass++) { if (pass) join(); ss.forEach(set); }
+    join();
+    // a side the returns turned round (its two neighbours set past each other) is an outline that crosses itself
+    if (loose) return ss;
+    if (ss.some((x, i) => dir(x) && dir(x) !== was[i])) return null;
+    // a step the returns then set at under 0.3 m is no step: its two sides are one wall
+    for (let guard = 0; guard < 100 && ss.length > 4; guard++) {
+      const n = ss.length, k = ss.findIndex((x, i) => Math.abs(x.to - x.from) < 0.3 && dir(ss[(i + n - 1) % n]) === dir(ss[(i + 1) % n]));
+      if (k < 0) break;
+      const A = ss[(k + n - 1) % n], B = ss[(k + 1) % n], la = Math.abs(A.to - A.from), lb = Math.abs(B.to - B.from);
+      A.at = (A.at * la + B.at * lb) / (la + lb || 1);
+      ss = ss.filter((x) => x !== ss[k] && x !== B);
+      join(); set(A); join();
+    }
+    return ss.length >= 4 ? ss : null;
+  };
+  // the finer step first; when the returns will not hold it (a low, ragged thing), the coarser one
+  const sides = fitWith(minJog) || (jogWide > minJog ? fitWith(jogWide) : null);
+  if (!sides) return null;
   // corners: where each side meets the next
   const ring = sides.map((s, i) => { const nx = sides[(i + 1) % sides.length]; return s.axis === 'v' ? back([nx.at, s.at]) : back([s.at, nx.at]); });
   // square enough to mark by its corners when the outline holds the thing's returns and keeps the ground's out
@@ -323,7 +344,7 @@ export function lidarMarks(box, pts, { cell = CELL, debug = null } = {}) {
   }
   const areaM2 = (box[2] - box[0]) * (box[3] - box[1]);
   const spacing = 1 / Math.sqrt(Math.max(0.3, P.length / Math.max(1, areaM2)));
-  const reach = Math.max(1.5, 3 * spacing), minJog = Math.max(0.6, 0.9 * spacing), link = Math.max(1.2, 3 * spacing);
+  const reach = Math.max(1.5, 3 * spacing), minJog = Math.max(0.6, 0.9 * spacing), jogWide = Math.max(0.75, 1.6 * spacing), link = Math.max(1.2, 3 * spacing);
   const grow = Math.max(0.35, 0.75 * spacing);
   const objects = [], corners = [];
   // a thing's rough cells: every cell within `grow` of one of its returns (only its topology is used; each side is then
@@ -356,7 +377,7 @@ export function lidarMarks(box, pts, { cell = CELL, debug = null } = {}) {
     let span = 0; for (let a = 0; a < 180; a += 15) { const t = (a * Math.PI) / 180, v = inside.map((p) => Math.cos(t) * p.e + Math.sin(t) * p.n); span = Math.max(span, Math.max(...v) - Math.min(...v)); }
     const local = area >= minArea || span >= minSpan ? maskOf(inside) : null;
     // (a slab of more than 1500 m2, the owner's drive run into the road, is not tried for straight sides: it has none)
-    const fit = local && !traceOnly && !(kind === 'paving' && area > 1500) ? squareOutline(local.mask, local.box, local.W, local.H, cell, inside, outside, { minJog, reach, loose: kind === 'paving', edgeIn, edgeOut, view: box }) : null;
+    const fit = local && !traceOnly && !(kind === 'paving' && area > 1500) ? squareOutline(local.mask, local.box, local.W, local.H, cell, inside, outside, { minJog: kind === 'building' ? minJog : jogWide, jogWide, reach, loose: kind === 'paving', edgeIn, edgeOut, view: box }) : null;
     if (debug) debug.push({ kind, n: inside.length, area: +area.toFixed(1), fitted: !!fit, square: !!fit?.square, why: fit?.why || null, turn: fit?.turn ?? null, sides: fit?.ring?.length ?? null, dropped: fit?.dropped || null, minJog: fit?.minJog ?? null, middle: mid, woods: woods == null ? null : +woods.toFixed(2), contrast: contrast == null ? null : +contrast.toFixed(1) });
     if (kind === 'paving' && !fit?.square) {
       // A DRIVE WITH A CURVED SIDE (the owner, 2026-11-10: "my driveway is pretty big, has a turnaround spot, and a
