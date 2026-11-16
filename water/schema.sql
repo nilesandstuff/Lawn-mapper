@@ -129,3 +129,10 @@ CREATE TABLE IF NOT EXISTS kit_jobs (
   tries INTEGER,
   detail TEXT                       -- why it failed, or what it made
 );
+
+-- THE NO-PAGE SCORING'S OWN LOG (2026-11-16, src/worker.js scheduled): each sweep and each run's outcome, numbers and
+-- states only, so the readings report (tools/moisture.mjs) can show what the timer did. Kept to the last 200 lines.
+CREATE TABLE IF NOT EXISTS kit_log (
+  at INTEGER,
+  what TEXT
+);

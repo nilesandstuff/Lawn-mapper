@@ -20,9 +20,21 @@ export class Internal extends WorkerEntrypoint {
    sweep for walks a push missed (src/autoscore.js). Logs say counts and states only. */
 async function scheduled(controller, env, ctx) {
   const at = new Date(controller.scheduledTime || Date.now());
-  if (at.getUTCHours() % 6 === 0 && at.getUTCMinutes() < 5) console.log(`sweep: ${await sweep(env).catch(() => 0)} walks queued`);
+  // the sweep every six hours, and at once while the queue has never held a job (a backlog the pushes lost)
+  const empty = !(await env.DB?.prepare('SELECT 1 AS x FROM kit_jobs LIMIT 1').first().catch(() => null));
+  const log = async (what) => {
+    console.log(what);
+    try {
+      await env.DB.prepare('INSERT INTO kit_log (at, what) VALUES (?, ?)').bind(Date.now(), String(what).slice(0, 500)).run();
+      await env.DB.prepare('DELETE FROM kit_log WHERE at < (SELECT MIN(at) FROM (SELECT at FROM kit_log ORDER BY at DESC LIMIT 200))').run();
+    } catch { /* the log is a convenience */ }
+  };
+  if ((at.getUTCHours() % 6 === 0 && at.getUTCMinutes() < 5) || empty) {
+    const n = await sweep(env).catch((e) => `failed (${e?.message || e})`);
+    await log(`sweep${env.MAIN ? '' : ' (no MAIN binding)'}: ${n} walks queued`);
+  }
   const done = await runQueue(env).catch((e) => [{ state: 'error', why: String(e?.message || e) }]);
-  if (done.length) console.log(done.map((d) => `${d.state}${d.why ? ` (${d.why})` : ''}`).join('; '));
+  if (done.length) await log(done.map((d) => `${d.state}${d.why ? ` (${d.why})` : ''}`).join('; '));
 }
 
 export default { ...site, scheduled };

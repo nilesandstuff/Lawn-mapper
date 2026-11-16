@@ -35,6 +35,13 @@ function builder(calls) {
   return { fetch: async (u, init) => { const b = JSON.parse(init.body); calls.push(b); return new Response(JSON.stringify({ ok: true, placed: { started: T0, ended: T0 + 6e5, kinds: ['surface'], notes: { sprinklers: false }, offLawn: 1 }, weather: { sources: [{ name: 'ASOS TST', km: 9 }], series: [{ src: 'asos', t: T0, ta: 12 }] }, result: { model: MODEL_VERSION, n: 1, bias: 0.4, rmse: 0.9, rho: null, bands: {}, sunShade: {}, used: {}, open: {} } })); } };
 }
 
+await test('an admin save\'s id of any characters is queued (a narrower check once lost the pushes)', async () => {
+  const env = { DB: d1() };
+  assert.equal((await enqueue(env, 'model', 'admin|someone@example.com|lot 7', { modelAt: 'x' })).queued, true);
+  assert.equal((await enqueue(env, 'walk', 'admin|a/b', { walk: '1794790000000' })).queued, true);
+  assert.equal((await enqueue(env, 'walk', 'bad\nid', { walk: '1' })).queued, false);
+});
+
 await test('the water site\'s own origin from the main site\'s host', async () => {
   assert.equal(waterBase({ LAWNMAP_HOST: 'lawnmap.example.com' }), 'https://water.example.com');
 });

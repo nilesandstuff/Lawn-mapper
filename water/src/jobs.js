@@ -8,7 +8,9 @@
  * Pure over env.DB; no addresses, no coordinates.
  */
 
-const ID = /^[\w|.:-]{1,120}$/;
+// any id the main site gives (an admin save's is admin|...), without control characters; until 2026-11-16 a narrower
+// pattern refused real ids, answered { queued: false }, and the main site counted the push as sent
+const ID = /^[^\u0000-\u001f\u007f]{1,200}$/;
 
 /** A job, checked. kind 'model' (a map's scoring kit to build) or 'walk' (a walk to score). -> { row } or { error } */
 export function cleanJob(kind, mapId, { walk = null, modelAt = null } = {}, now = Date.now()) {

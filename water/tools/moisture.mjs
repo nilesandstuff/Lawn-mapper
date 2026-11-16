@@ -101,3 +101,6 @@ else {
   console.log(`THE NO-PAGE SCORING: maps ${count('model', 'done')} done, ${count('model', 'queued')} queued, ${count('model', 'failed')} failed; walks ${count('walk', 'done')} scored, ${count('walk', 'queued')} queued, ${count('walk', 'failed')} failed`);
   for (const j of jobs.filter((x) => x.state !== 'done' || x.kind === 'walk').slice(-12)) console.log(`  ${j.kind} ${j.state}, ${j.tries} tr${j.tries === 1 ? 'y' : 'ies'}, queued ${new Date(j.queued).toISOString().slice(0, 16)}Z${j.detail ? `: ${String(j.detail).replace(/-?\d{1,3}\.\d{4,}/g, '?')}` : ''}`);
 }
+let klog = [];
+try { klog = query('SELECT at, what FROM kit_log ORDER BY at DESC LIMIT 12'); } catch { /* no table yet */ }
+if (klog.length) { console.log('THE TIMER\'S LAST RUNS (newest first):'); for (const l of klog) console.log(`  ${new Date(l.at).toISOString().slice(0, 16)}Z  ${String(l.what).replace(/-?\d{1,3}\.\d{4,}/g, '?')}`); }
