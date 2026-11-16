@@ -14,7 +14,7 @@
 import { fromLocal } from './frames.js';
 import { buildGrids, buildingsOnGrid, valuesOnGrid } from './lidar.js';
 import { lawnField } from './surface.js';
-import { unpackModel, modelUsable } from './lidar-model.js';
+import { loadModel, modelUsable } from './lidar-model.js';
 import { BANDS } from './locate.js';
 import { ringsOfMask, straighten, offsetRing, fillRings, lineOfPatch, postOf, patchesOf, areaOf, drawSegment } from './outline.js';
 
@@ -26,13 +26,14 @@ export const WALL_HALF_M = 0.15;    // a long thin structure (a wall, a fence) a
 export const MODEL_PATH = (map, tool = 'shade') => `/api/maps/model?id=${encodeURIComponent(map)}&tool=${tool}`;
 export const NO_MODEL = 'this map has no lidar model yet: open it in the shade map first, which builds and saves it';
 
-/** The model's bytes from the site (same origin on the scan site: its Worker passes /api/maps/* to Lawn Mapper). */
+/** The model from the site (same origin on the scan site: its Worker passes /api/maps/* to Lawn Mapper), joined with
+ *  its overflow parts when a big lot's model has any (lidar-model.js loadModel; the owner, 2026-11-16: "an overflow
+ *  file rather than remove data outright"). */
 export async function fetchModel(map, { fetchFn = fetch, base = '' } = {}) {
   if (!map) throw new Error('no map: the page was opened without one');
-  const res = await fetchFn(`${base}${MODEL_PATH(map)}`, { credentials: 'same-origin' });
-  if (res.status === 404) throw new Error(NO_MODEL);
-  if (!res.ok) throw new Error(`the lidar model could not be read (${res.status})`);
-  const m = await unpackModel(await res.arrayBuffer());
+  let m;
+  try { m = await loadModel(fetchFn, `${base}${MODEL_PATH(map)}`, { credentials: 'same-origin' }); } catch (err) { throw new Error(`the lidar model could not be read (${String(err.message).replace(/^lidar-model: /, '')})`); }
+  if (!m) throw new Error(NO_MODEL);
   if (!modelUsable(m)) throw new Error('the lidar model is incomplete (no grid, ground or kinds)');
   return m;
 }

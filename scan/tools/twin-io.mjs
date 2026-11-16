@@ -5,7 +5,7 @@
  * (twin-check.mjs) and the after-the-walk fix (post-fix.mjs). Neither prints a key or a coordinate.
  */
 import { createHash } from 'node:crypto';
-import { unpackModel, modelUsable } from '../lib/lidar-model.js';
+import { unpackModel, mergeOverflow, modelUsable } from '../lib/lidar-model.js';
 import { readObject, CORPUS_BUCKET } from './twin-r2.mjs';
 
 /** The saved map with its tools' parts: from the database when the runner has the Cloudflare token (the site's edge
@@ -33,10 +33,17 @@ export async function readMap(id, site, key) {
  *  bucket by the key routes-maps.js writes it under (unified.js modelKey), since the site answers the runner 403. */
 export async function readModel(mapKey, ownerId) {
   if (!ownerId) throw new Error('the model needs the map\'s owner');
-  const key = `models/user/${ownerId}/${createHash('sha256').update(String(mapKey)).digest('hex')}/shade.bin`;
-  const bytes = await readObject(CORPUS_BUCKET, key);
+  const dir = `models/user/${ownerId}/${createHash('sha256').update(String(mapKey)).digest('hex')}`;
+  const unpack = (b) => unpackModel(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength));
+  const bytes = await readObject(CORPUS_BUCKET, `${dir}/shade.bin`);
   if (!bytes) throw new Error('this map has no lidar model yet: open it in the shade map first, which builds and saves it');
-  const m = await unpackModel(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+  let m = await unpack(bytes);
+  // a big lot's overflow parts (shade.<N>.bin beside it, unified.js modelKey), joined as the page joins them
+  const list = m.meta?.overflow || [];
+  if (list.length) {
+    const parts = await Promise.all(list.map(async (o) => { const b = await readObject(CORPUS_BUCKET, `${dir}/shade.${o.part}.bin`); if (!b) throw new Error(`the model's overflow part ${o.part} is missing`); return unpack(b); }));
+    m = mergeOverflow(m, parts);
+  }
   if (!modelUsable(m)) throw new Error('the lidar model is incomplete');
   return m;
 }
