@@ -212,20 +212,21 @@ function squareOutline(mask, box, W, H, cell, inside, outside, { minJog, jogWide
   // found the slab, which leans outward at a noisy edge)
   const inUV = (edgeIn || inside).map((p) => rot(p)), outUV = (edgeOut || outside).map((p) => rot(p));
   const droppedUV = [];
-  const fitWith = (jog) => {
+  let jogUsed = minJog;
+  const fitWith = (jog, strict) => {
+    jogUsed = jog;
     droppedUV.length = 0;
     let ss = squareOff(rings[0], jog, droppedUV);
     if (ss.length < 4) return null;
-    const dir = (x) => Math.sign(x.to - x.from), was = ss.map(dir);
+    const dir = (x) => Math.sign(x.to - x.from);
+    ss.forEach((x) => { x.was = dir(x); });
     const join = () => ss.forEach((x, i) => { x.from = ss[(i + ss.length - 1) % ss.length].at; x.to = ss[(i + 1) % ss.length].at; });
     const set = (x) => { const r = refineSide(x, inUV, outUV, reach, loose ? 0.2 : 0.05); x.at = r.at; x.gap = r.gap; x.err = r.err ?? 0; };
     // twice: the second time each side runs between its neighbours as the first pass set them, so a wall's end is
     // looked for across the wall's real width, not the rough outline's
     for (let pass = 0; pass < 2; pass++) { if (pass) join(); ss.forEach(set); }
     join();
-    // a side the returns turned round (its two neighbours set past each other) is an outline that crosses itself
     if (loose) return ss;
-    if (ss.some((x, i) => dir(x) && dir(x) !== was[i])) return null;
     // a step the returns then set at under 0.3 m is no step: its two sides are one wall
     for (let guard = 0; guard < 100 && ss.length > 4; guard++) {
       const n = ss.length, k = ss.findIndex((x, i) => Math.abs(x.to - x.from) < 0.3 && dir(ss[(i + n - 1) % n]) === dir(ss[(i + 1) % n]));
@@ -235,10 +236,13 @@ function squareOutline(mask, box, W, H, cell, inside, outside, { minJog, jogWide
       ss = ss.filter((x) => x !== ss[k] && x !== B);
       join(); set(A); join();
     }
+    // a side the returns turned round (its two neighbours set past each other) is an outline that crosses itself:
+    // the finer step is not taken then
+    if (strict && ss.some((x) => { const o = x.was; return dir(x) && o && dir(x) !== o; })) return null;
     return ss.length >= 4 ? ss : null;
   };
   // the finer step first; when the returns will not hold it (a low, ragged thing), the coarser one
-  const sides = fitWith(minJog) || (jogWide > minJog ? fitWith(jogWide) : null);
+  const sides = (jogWide > minJog ? fitWith(minJog, true) : null) || fitWith(jogWide, false);
   if (!sides) return null;
   // corners: where each side meets the next
   const ring = sides.map((s, i) => { const nx = sides[(i + 1) % sides.length]; return s.axis === 'v' ? back([nx.at, s.at]) : back([s.at, nx.at]); });
@@ -261,7 +265,7 @@ function squareOutline(mask, box, W, H, cell, inside, outside, { minJog, jogWide
   const why = `held ${held.toFixed(2)} strays ${strays.toFixed(2)} pinned ${pinned.toFixed(2)} sides ${sides.length}`;
   // the steps the squaring took out (a bay shallower than minJog goes this way): how deep, and where
   const dropped = droppedUV.map((d) => ({ len: d.len, at: back(d.uv) }));
-  return { turn: +((t * 180) / Math.PI).toFixed(1), dropped, minJog, ring, sure, keep, why, square: loose ? held >= 0.8 && strays <= 0.15 && pinned >= 0.6 && sides.length <= 10 : held >= 0.9 && strays <= 0.1 };
+  return { turn: +((t * 180) / Math.PI).toFixed(1), dropped, minJog: jogUsed, ring, sure, keep, why, square: loose ? held >= 0.8 && strays <= 0.15 && pinned >= 0.6 && sides.length <= 10 : held >= 0.9 && strays <= 0.1 };
 }
 
 /** Grown (v = 1) or taken back (v = 0) by a disc of rad cells. */
