@@ -113,7 +113,18 @@ async function keep(dir) {
   if (!meta.map) throw new Error('the walk has no map');
   const jumps = jumpsOf(dir);
   console.log(`The walk's marks: ${(live.marks || []).length}; the phone's tracking jumped ${jumps.length} time${jumps.length === 1 ? '' : 's'}${jumps.length ? ` (${jumps.map((j) => `${(j.m * FT).toFixed(1)} ft at ${Math.round(j.odo * FT)} ft walked`).join(', ')})` : ''}.`);
-  for (const m of live.marks || []) console.log(`  mark at ${Math.round((m.odo || 0) * FT)} ft walked${m.by ? ` (${m.by})` : ''}`);
+  for (const m of live.marks || []) console.log(`  mark at ${Math.round((m.odo || 0) * FT)} ft walked${m.by ? ` (${m.by})` : ''}, its corner's own allowance ${Number.isFinite(m.tol) ? `${(m.tol * FT).toFixed(1)} ft` : 'not recorded'}`);
+  /* HOW FAR APART, WALKED AND ON THE MAP (2026-11-16: "no two of the 3 marks agree with the map to 1.5 ft"): for each
+     pair of the last mark of each corner, the distance between them as the phone walked it and as the lidar outline
+     has it. A distance, never a place. */
+  {
+    const last = new Map(); for (const m of live.marks || []) if (m?.ar && m?.map) last.set(m.id, m);
+    const L = [...last.values()], d = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+    for (let i = 0; i < L.length; i++) for (let j = i + 1; j < L.length; j++) {
+      const w = d(L[i].ar, L[j].ar), mp = d(L[i].map, L[j].map);
+      console.log(`  corners ${i + 1} and ${j + 1}: ${(w * FT).toFixed(1)} ft apart as walked, ${(mp * FT).toFixed(1)} ft on the map's outline: ${((w - mp) * FT).toFixed(1)} ft ${w > mp ? 'longer' : 'shorter'} on the ground (${(100 * (w - mp) / mp).toFixed(1)}%)`);
+    }
+  }
   const g = goodPart(live.marks || [], jumps.map((j) => j.odo));
   if (!g.ok) throw new Error(`nothing of this walk can be kept: ${g.why}`);
   const pts = twinPoints(dir);
