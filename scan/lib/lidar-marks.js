@@ -236,6 +236,18 @@ function squareOutline(mask, box, W, H, cell, inside, outside, { minJog, jogWide
       ss = ss.filter((x) => x !== ss[k] && x !== B);
       join(); set(A); join();
     }
+    // a SLIT (or a sliver standing out): an end under half a metre wide between two arms each over twice as long, on
+    // a wall that carries straight on past it. An empty column inside a roof draws one (the owner's house, build 5:
+    // 0.3 m wide, 6.3 m deep); a thin wall's own ends are not this (it has no wall running on past them)
+    for (let guard = 0; guard < 50 && ss.length >= 8; guard++) {
+      const n = ss.length, L = (x) => Math.abs(x.to - x.from), g = (i) => ss[((i % n) + n) % n];
+      const k = ss.findIndex((x, i) => L(x) < 0.5 && dir(g(i - 1)) !== dir(g(i + 1)) && Math.min(L(g(i - 1)), L(g(i + 1))) > 2 * L(x) && Math.abs(g(i - 2).at - g(i + 2).at) < 0.5);
+      if (k < 0) break;
+      const A = g(k - 2), B = g(k + 2), la = L(A), lb = L(B), gone = new Set([g(k - 1), ss[k], g(k + 1), B]);
+      A.at = (A.at * la + B.at * lb) / (la + lb || 1);
+      ss = ss.filter((x) => !gone.has(x));
+      join(); set(A); join();
+    }
     // a side the returns turned round (its two neighbours set past each other) is an outline that crosses itself:
     // the finer step is not taken then
     if (strict && ss.some((x) => { const o = x.was; return dir(x) && o && dir(x) !== o; })) return null;
