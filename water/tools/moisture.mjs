@@ -90,3 +90,14 @@ if (versions.length) {
     console.log(`  ${v}: ${rs.length} walks, ${n} squares, mean ${F(bias)}, RMS ${(rms * 1.8).toFixed(1)}, median rho ${rhos.length ? rhos[rhos.length >> 1].toFixed(2) : '-'}`);
   }
 }
+
+// THE NO-PAGE SCORING'S QUEUE (src/jobs.js, src/autoscore.js): what the main site pushed and what became of it
+let jobs = [];
+try { jobs = query('SELECT kind, state, tries, detail, queued FROM kit_jobs ORDER BY queued'); } catch { /* no table yet */ }
+console.log('=====');
+if (!jobs.length) console.log('No job from the main site yet (the no-page scoring).');
+else {
+  const count = (k, st) => jobs.filter((j) => j.kind === k && j.state === st).length;
+  console.log(`THE NO-PAGE SCORING: maps ${count('model', 'done')} done, ${count('model', 'queued')} queued, ${count('model', 'failed')} failed; walks ${count('walk', 'done')} scored, ${count('walk', 'queued')} queued, ${count('walk', 'failed')} failed`);
+  for (const j of jobs.filter((x) => x.state !== 'done' || x.kind === 'walk').slice(-12)) console.log(`  ${j.kind} ${j.state}, ${j.tries} tr${j.tries === 1 ? 'y' : 'ies'}, queued ${new Date(j.queued).toISOString().slice(0, 16)}Z${j.detail ? `: ${String(j.detail).replace(/-?\d{1,3}\.\d{4,}/g, '?')}` : ''}`);
+}
