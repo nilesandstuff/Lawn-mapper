@@ -293,8 +293,19 @@ function squareOutline(mask, box, W, H, cell, inside, outside, { minJog, jogWide
       ss = ss.filter((x) => !gone.has(x));
       join(); set(A); join();
     }
-    // a side the returns turned round (its two neighbours set past each other) is an outline that crosses itself:
-    // the finer step is not taken then
+    // a side the returns turned round (its two neighbours set past each other) is an outline that crosses itself
+    // THERE: that one side goes and its two neighbours become one wall, and only an outline still crossing itself
+    // after that is refused (one bad spot on the north-west of the owner's house had thrown away the whole finer
+    // outline, and with it the east wall's steps, run 43894671559)
+    for (let guard = 0; guard < 50 && ss.length > 4; guard++) {
+      const n = ss.length, k = ss.findIndex((x, i) => dir(x) && x.was && dir(x) !== x.was && ss[(i + n - 1) % n].axis === ss[(i + 1) % n].axis);
+      if (k < 0) break;
+      const A = ss[(k + n - 1) % n], B = ss[(k + 1) % n], la = Math.abs(A.to - A.from), lb = Math.abs(B.to - B.from);
+      A.at = (A.at * la + B.at * lb) / (la + lb || 1);
+      ss = ss.filter((x) => x !== ss[k] && x !== B);
+      join(); set(A); join();
+    }
+    // the finer step is not taken when it still crosses itself
     st.set = ss.map((x) => ({ ...x }));
     if (strict && ss.some((x) => { const o = x.was; return dir(x) && o && dir(x) !== o; })) { st.refused = `turned round: ${ss.filter((x) => dir(x) && x.was && dir(x) !== x.was).map((x) => `${x.axis}=${x.at.toFixed(1)} ${x.from.toFixed(1)}..${x.to.toFixed(1)}`).join(', ')}`; return null; }
     return ss.length >= 4 ? ss : null;

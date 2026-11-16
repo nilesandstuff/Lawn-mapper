@@ -65,6 +65,7 @@ async function main() {
       const [mx, my] = d.middle, f = (p) => `${(p[0] - mx).toFixed(1)},${(p[1] - my).toFixed(1)}`;
       const east = d.trace.raw.filter((p) => p[0] - mx > 2);
       console.log(`    traced ring, east of +2 m (${east.length} of ${d.trace.raw.length} corners): ${east.map(f).join(' ')}`);
+      console.log(`    traced ring, whole, to the centimetre: ${d.trace.raw.map((p) => `${(p[0] - mx).toFixed(2)},${(p[1] - my).toFixed(2)}`).join(' ')}`);
       for (const g of d.trace.stages) {
         const ns = (list) => list.filter(([a, b]) => a[0] - mx > 2 && b[0] - mx > 2).map(([a, b]) => `${f(a)}>${f(b)}`).join(' ');
         console.log(`    try at ${g.jog.toFixed(2)} m: ${g.refused ? `REFUSED (${g.refused})` : 'kept'}; squared, east part: ${ns(g.squared)}`);
