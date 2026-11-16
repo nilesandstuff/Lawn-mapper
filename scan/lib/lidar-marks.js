@@ -101,7 +101,7 @@ function mainTurn(ps) {
 
 /** A staircase ring squared off: steps shorter than minJog removed, the two sides they joined set at their
  *  length-weighted mean. ring: [[u, v]] with only right angles. Returns sides [{ axis: 'u' | 'v', at, from, to }]. */
-function squareOff(ring, minJog) {
+function squareOff(ring, minJog, dropped = null) {
   // the ring as sides: each a run along u (constant v) or along v (constant u)
   let sides = [];
   for (let i = 0; i < ring.length; i++) {
@@ -121,6 +121,7 @@ function squareOff(ring, minJog) {
     sides.forEach((s, i) => { if (len(s) < m && dir(sides[(i + n0 - 1) % n0]) === dir(sides[(i + 1) % n0])) { m = len(s); k = i; } });
     if (k < 0) break;
     const n = sides.length, A = sides[(k + n - 1) % n], B = sides[(k + 1) % n];
+    if (dropped) { const S = sides[k], mid = (S.from + S.to) / 2; dropped.push({ len: len(S), uv: S.axis === 'v' ? [mid, S.at] : [S.at, mid] }); }
     const w = len(A) + len(B) || 1, at = (A.at * len(A) + B.at * len(B)) / w;
     const merged = { axis: A.axis, at, from: A.from, to: B.to };
     const keep = sides.filter((_, i) => i !== k && i !== (k + n - 1) % n && i !== (k + 1) % n);
@@ -207,7 +208,7 @@ function squareOutline(mask, box, W, H, cell, inside, outside, { minJog, reach, 
   const rings = ringsOfMask(m, w, h).map((r) => r.map(([x, y]) => [u0 + x * cell, v1 - y * cell])).filter((r) => areaOf(r) < 0);
   if (!rings.length) return null;
   rings.sort((a, b) => areaOf(a) - areaOf(b));
-  const sides = squareOff(rings[0], minJog);
+  const droppedUV = [], sides = squareOff(rings[0], minJog, droppedUV);
   if (sides.length < 4) return null;
   // the sides are set by edgeIn/edgeOut when given (paving: the returns' own brightness, not the smoothed vote that
   // found the slab, which leans outward at a noisy edge)
@@ -237,7 +238,9 @@ function squareOutline(mask, box, W, H, cell, inside, outside, { minJog, reach, 
   // a paving slab is believed only when most of its sides were set by returns on both sides of them
   const pinned = real.filter((s) => Number.isFinite(s.gap)).length / Math.max(1, real.length);
   const why = `held ${held.toFixed(2)} strays ${strays.toFixed(2)} pinned ${pinned.toFixed(2)} sides ${sides.length}`;
-  return { turn: +((t * 180) / Math.PI).toFixed(1), ring, sure, keep, why, square: loose ? held >= 0.8 && strays <= 0.15 && pinned >= 0.6 && sides.length <= 10 : held >= 0.9 && strays <= 0.1 };
+  // the steps the squaring took out (a bay shallower than minJog goes this way): how deep, and where
+  const dropped = droppedUV.map((d) => ({ len: d.len, at: back(d.uv) }));
+  return { turn: +((t * 180) / Math.PI).toFixed(1), dropped, minJog, ring, sure, keep, why, square: loose ? held >= 0.8 && strays <= 0.15 && pinned >= 0.6 && sides.length <= 10 : held >= 0.9 && strays <= 0.1 };
 }
 
 /** Grown (v = 1) or taken back (v = 0) by a disc of rad cells. */
@@ -354,7 +357,7 @@ export function lidarMarks(box, pts, { cell = CELL, debug = null } = {}) {
     const local = area >= minArea || span >= minSpan ? maskOf(inside) : null;
     // (a slab of more than 1500 m2, the owner's drive run into the road, is not tried for straight sides: it has none)
     const fit = local && !traceOnly && !(kind === 'paving' && area > 1500) ? squareOutline(local.mask, local.box, local.W, local.H, cell, inside, outside, { minJog, reach, loose: kind === 'paving', edgeIn, edgeOut, view: box }) : null;
-    if (debug) debug.push({ kind, n: inside.length, area: +area.toFixed(1), fitted: !!fit, square: !!fit?.square, why: fit?.why || null, turn: fit?.turn ?? null, sides: fit?.ring?.length ?? null, middle: mid, woods: woods == null ? null : +woods.toFixed(2), contrast: contrast == null ? null : +contrast.toFixed(1) });
+    if (debug) debug.push({ kind, n: inside.length, area: +area.toFixed(1), fitted: !!fit, square: !!fit?.square, why: fit?.why || null, turn: fit?.turn ?? null, sides: fit?.ring?.length ?? null, dropped: fit?.dropped || null, minJog: fit?.minJog ?? null, middle: mid, woods: woods == null ? null : +woods.toFixed(2), contrast: contrast == null ? null : +contrast.toFixed(1) });
     if (kind === 'paving' && !fit?.square) {
       // A DRIVE WITH A CURVED SIDE (the owner, 2026-11-10: "my driveway is pretty big, has a turnaround spot, and a
       // large curved side... That would be fine if it merges with the road though, we do need to also get the road"):

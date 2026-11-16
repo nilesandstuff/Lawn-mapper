@@ -59,6 +59,7 @@ async function main() {
   for (const d of debug.filter((x) => (x.kind === 'building' || x.kind === 'object') && x.area >= 15)) {
     const o = M.objects.find((q) => q.kind === d.kind && Math.abs(q.area - d.area) < 0.05);
     console.log(`  shape ${d.kind} ${d.area} m2: turned ${d.turn ?? '-'} degrees, ${d.sides ?? '-'} sides${o?.ring ? `: ${o.ring.map((p) => `${(p[0] - o.middle[0]).toFixed(1)},${(p[1] - o.middle[1]).toFixed(1)}`).join(' ')}` : ''}`);
+    if (d.dropped && d.kind === 'building') { const big = d.dropped.filter((x) => x.len >= 0.5); console.log(`    steps under ${d.minJog?.toFixed(2)} m squared away: ${d.dropped.length}, of which ${big.length} are 0.5 m or deeper: ${big.map((x) => `${x.len.toFixed(2)} m at ${(x.at[0] - d.middle[0]).toFixed(1)},${(x.at[1] - d.middle[1]).toFixed(1)}`).join('; ') || 'none'}`); }
   }
   // the roof corners a walk may take as references (lib/roof-corner.js), with and without the rules
   const RC = roofCorners(M, P, lawn), RA = roofCorners(M, P, [], { maxEaveM: 99 });
