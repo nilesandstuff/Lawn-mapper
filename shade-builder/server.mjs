@@ -4,7 +4,7 @@
  * server, run in a Cloudflare Container (shade-builder/worker.js): the build
  * needs about 180 MB on a medium lot, more than a Worker's 128 MB.
  *
- *   GET  /health                 -> ok
+ *   GET  /health                 -> { ok, build } (build.js SHADE_BUILD, as baked into this image)
  *   POST /build { map, base }    -> { ok, why?, result, part: { data, basedOn } | null, model: base64 gzip }
  *
  * `map` is the saved map's record as the main Worker's getMap gives it (with
@@ -26,6 +26,7 @@ const require = createRequire(import.meta.url);
 const jpeg = require('jpeg-js');
 const { PNG } = require('pngjs');
 const { rebuildModel } = await import('./public/shade/rebuild.js');
+const { SHADE_BUILD } = await import('./public/shade/build.js');
 const { lazDecoder } = await import('./public/shade/laz.js');
 
 /* laz-perf (the browser's copy) in Node, as tools/shade-site.js loads it: its own globals hidden, the wasm handed in. */
@@ -65,7 +66,7 @@ let busy = Promise.resolve();
 const server = http.createServer(async (req, res) => {
   const send = (status, body) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(body)); };
   try {
-    if (req.method === 'GET' && req.url === '/health') return send(200, { ok: true });
+    if (req.method === 'GET' && req.url === '/health') return send(200, { ok: true, build: SHADE_BUILD });
     if (req.method === 'POST' && req.url === '/build') {
       const chunks = []; for await (const c of req) chunks.push(c);
       const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
