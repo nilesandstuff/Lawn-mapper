@@ -176,6 +176,25 @@ export const ROOF_FLOOR_ABOVE = 0.5; // and at most this share of its split puls
 export const ROOF_FLOOR_STEP_M = 1;
 export const ROOF_FLOOR_BUMP_M = 0.2; // and whose floor is planar: each column within this of its neighbours' mean (median); the roofs measured read 0.05-0.12 m // and whose floor steps by no more than this between neighbouring columns (median): a roof up to 45 degrees; a crown's cone is steeper
 export const EAVE_M = 2; // a crown column beside a roof, its top within this of the roof's, is an eave
+/* A ROOF EDGE UNDER A CROWN (2026-11-16; the owner's house: a crown touching the roof cut a 3.7 x 1.7 m notch out of
+   the garage, so the AR sighted the wrong corner). Along an eave under a crown the 1 m columns straddle the edge and
+   hold two or three returns: the crown's, a pulse that reached the ground beside the roof, and a single echo off the
+   roof. Too few for the flat rule, and "nothing got through" fails, so step 1 calls them trees, and the eave step
+   compares tops, which are the crown's. A tree column beside a building keeps the roof when it holds a SINGLE echo
+   (a hard surface stops the whole pulse) at that roof's height -- from EDGE_BELOW_M under it (a roof slopes down to
+   its eave) to EDGE_ABOVE_M over it -- as bright as this property's own roofs (the owner: "we should be able to see
+   past that with the lidar brightness and the fact that returns get through"; calibrated per property, the middle
+   60% of the buildings' single echoes, widened by EDGE_BRIGHT_SLACK). One column out from a roof the main rule called
+   (EDGE_FROM_WHY: a flat roof, its eave, a roof under a crown; not "nothing got through", nor an edge this step found). Measured on the 49 labelled lots (shade findings 37):
+   the looser first draft (1.5 m under, 0.5 over, the middle 80% widened 25%, two columns out, from any building)
+   turned 2,820 columns, 157 of them inside labelled crowns; these settings turn 1,676, 74 in crowns, and the
+   photos put the turned columns on roof outlines. */
+export const EDGE_BELOW_M = 0.8;
+export const EDGE_ABOVE_M = 0.4;
+export const EDGE_BRIGHT_BAND = Object.freeze([0.2, 0.8]);
+export const EDGE_BRIGHT_SLACK = 0.1;
+export const EDGE_PASSES = 1;
+export const EDGE_FROM_WHY = Object.freeze([1, 3, 10]);
 export const STRUCTURE_FLOOR_M = 1; // a low structure stands at least this tall
 export const STRUCTURE_MAX_M = 6; // and no taller (taller is a building's rules, or a tree)
 export const STRUCTURE_MIN_CELLS = 4; // a patch of at least this many hard columns
@@ -199,6 +218,7 @@ export const WHY = Object.freeze({
   8: 'low structure: every pulse came back once, as off a hard surface',
   9: 'unknown: the laser hit something here that no rule named; it stops light as the laser measured it',
   10: 'building: a roof under a crown (the last echoes stop on one flat surface)',
+  11: 'building: a roof edge under a crown (a single echo at the roof beside it, as bright as its roofs)',
 });
 
 /**
@@ -277,7 +297,7 @@ export function columnStats(cols, model, { shift = null } = {}) {
  *           why (Uint8 per column, a key of WHY), stats (columnStats),
  *           counts: { building, tree, solidTree, structure, unknown } }.
  */
-export function structuresOf(cols, model, { shift = null, stats = null, low = {}, roofFloor = true } = {}) {
+export function structuresOf(cols, model, { shift = null, stats = null, low = {}, roofFloor = true, edges = true } = {}) {
   const { w, h, ground } = model;
   const N = w * h;
   const st = stats || columnStats(cols, model, { shift });
@@ -335,6 +355,8 @@ export function structuresOf(cols, model, { shift = null, stats = null, low = {}
     }
   }
   for (let k = 0; k < N; k++) if (eave[k]) { kind[k] = BUILDING; why[k] = 3; }
+  /* 4b. A roof edge under a crown (see EDGE_BELOW_M). */
+  const edgeTop = edges === false ? null : edgeUnderCrown(cols, model, kind, why, st, { shift, ...(typeof edges === 'object' ? edges : {}) });
   const lowInfo = lowStructures(kind, why, st, w, h, low);
   /* 7. NOTHING THE LASER HIT IS LEFT OUT (owner, 2026-11-04: "every thing
      that the lidar hits should be recognized"), and what no rule can name
@@ -359,6 +381,7 @@ export function structuresOf(cols, model, { shift = null, stats = null, low = {}
      (seasonal.js gives it leaves) and for the picture (drawn as a tree above this height). NaN elsewhere. */
   const roofTop = new Float32Array(N).fill(NaN);
   for (let k = 0; k < N; k++) if (why[k] === 10 && Number.isFinite(st.lastFloorTop[k])) roofTop[k] = st.lastFloorTop[k] - ground[k];
+  if (edgeTop) for (let k = 0; k < N; k++) if (why[k] === 11 && Number.isFinite(edgeTop[k])) roofTop[k] = edgeTop[k];
   return { kind, why, stats: st, counts, green: lowInfo, roofTop };
 }
 
@@ -400,6 +423,64 @@ export function roofUnderCrown(patch, st, w) {
     if (steps.length && steps[steps.length >> 1] <= ROOF_FLOOR_STEP_M && (!bumps.length || bumps[bumps.length >> 1] <= ROOF_FLOOR_BUMP_M)) for (const k of group) keep.add(k);
   }
   return keep;
+}
+
+/**
+ * Step 4b, a roof edge under a crown (see EDGE_BELOW_M): tree columns beside a
+ * building made buildings (why 11) in place. Returns their roof heights (m
+ * over the ground; NaN elsewhere), so the crown above them stays a tree's.
+ */
+export function edgeUnderCrown(cols, model, kind, why, st, { shift = null, below = EDGE_BELOW_M, above = EDGE_ABOVE_M, slack = EDGE_BRIGHT_SLACK, passes = EDGE_PASSES, band = EDGE_BRIGHT_BAND, fromWhy = EDGE_FROM_WHY } = {}) {
+  const { grid, w, h, ground } = model;
+  const N = w * h;
+  const roofH = new Float32Array(N).fill(NaN);
+  for (let k = 0; k < N; k++) if (kind[k] === BUILDING && (!fromWhy || fromWhy.includes(why[k]))) roofH[k] = why[k] === 10 && Number.isFinite(st.lastFloorTop?.[k]) ? st.lastFloorTop[k] - ground[k] : st.zHi[k] - ground[k];
+  /* The single echoes over 2 m in tree columns (candidates), and the buildings' own brightness. */
+  const singles = new Map(), bright = [];
+  for (let i = 0; i < cols.n; i++) {
+    if (NOISE.has(cols.cls[i]) || (cols.nret[i] || 1) !== 1) continue;
+    const k = cellOf(grid, cols.x[i], cols.y[i], shift);
+    if (k < 0) continue;
+    const over = cols.z[i] - ground[k];
+    if (!(over > CROWN_ABOVE_M && over < MAX_OVER_M)) continue;
+    const I = cols.intensity?.[i] || 0;
+    if (kind[k] === BUILDING) { if (I) bright.push(I); continue; }
+    if (kind[k] !== TREE) continue;
+    let a = singles.get(k);
+    if (!a) { a = []; singles.set(k, a); }
+    a.push(over, I);
+  }
+  let lo = -Infinity, hi = Infinity;
+  if (bright.length >= 20) {
+    bright.sort((p, q) => p - q);
+    const pLo = bright[Math.floor(bright.length * band[0])], pHi = bright[Math.floor(bright.length * band[1])];
+    lo = pLo * (1 - slack); hi = pHi * (1 + slack);
+  }
+  const out = new Float32Array(N).fill(NaN);
+  for (let pass = 0; pass < passes; pass++) {
+    const set = [];
+    for (const [k, a] of singles) {
+      if (kind[k] !== TREE) continue;
+      const x = k % w, y = (k / w) | 0;
+      let best = NaN;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const xx = x + dx, yy = y + dy;
+        if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+        const r = roofH[yy * w + xx];
+        if (!Number.isFinite(r)) continue;
+        for (let q = 0; q < a.length; q += 2) {
+          const over = a[q], I = a[q + 1];
+          if (over < r - below || over > r + above) continue;
+          if (I && (I < lo || I > hi)) continue;
+          if (!(best >= over)) best = over;
+        }
+      }
+      if (Number.isFinite(best)) set.push([k, best]);
+    }
+    if (!set.length) break;
+    for (const [k, r] of set) { kind[k] = BUILDING; why[k] = 11; roofH[k] = r; out[k] = r; }
+  }
+  return out;
 }
 
 /** 6. Low structures (see the head of this file), set in place on `kind` and `why`. */
