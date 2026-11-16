@@ -323,7 +323,7 @@ export function lidarMarks(box, pts, { cell = CELL, debug = null } = {}) {
   }
   const areaM2 = (box[2] - box[0]) * (box[3] - box[1]);
   const spacing = 1 / Math.sqrt(Math.max(0.3, P.length / Math.max(1, areaM2)));
-  const reach = Math.max(1.5, 3 * spacing), minJog = Math.max(0.75, 1.6 * spacing), link = Math.max(1.2, 3 * spacing);
+  const reach = Math.max(1.5, 3 * spacing), minJog = Math.max(0.6, 0.9 * spacing), link = Math.max(1.2, 3 * spacing);
   const grow = Math.max(0.35, 0.75 * spacing);
   const objects = [], corners = [];
   // a thing's rough cells: every cell within `grow` of one of its returns (only its topology is used; each side is then
