@@ -405,6 +405,8 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           WALK: ${{ inputs.walk }}
+          # for marks: "e,n" metres from the biggest building's middle, a window of the shade model's columns there
+          WINDOW: ${{ inputs.calib }}
         run: |
           set -o pipefail
           node scan/tools/marks-check.mjs "$WALK" | tee marks.txt

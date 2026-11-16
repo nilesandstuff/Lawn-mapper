@@ -97,6 +97,50 @@ async function main() {
     console.log(`  the solid ~${d.m2} m2 patch: ${cols.size} columns; why codes ${JSON.stringify(why)}; kinds ${JSON.stringify(kinds)} (rule ${JSON.stringify(model.meta?.rule?.kinds || null)})`);
     console.log(`    its ${n} returns (all heights, in its 1 m cells): first of several ${pct(firstOfMany, n)}, single ${pct(single, n)}, last returns ${last} of which class 2 (ground) ${pct(lastGround, last)}; classes ${JSON.stringify(cls)}`);
   }
+  /* A WINDOW OF THE SHADE MODEL'S OWN COLUMNS (asked by the features session, 2026-11-16: a roof corner under a crown
+     that touches the roof is missing from the owner's house). WINDOW="e,n": metres east and north of the biggest
+     building's own middle, the window's centre. Heights over the ground and grid offsets only: no place in it. */
+  if (process.env.WINDOW && /^-?[\d.]+,-?[\d.]+$/.test(process.env.WINDOW.trim())) {
+    const [we, wn] = process.env.WINDOW.trim().split(',').map(Number);
+    const house = M.objects.filter((o) => o.kind === 'building' && o.ring).sort((x, y) => y.area - x.area)[0];
+    const A = model.arrays, sg = model.meta.grid;
+    if (house) {
+      const te = house.middle[0] + we, tn = house.middle[1] + wn;
+      let jc = -1, bd = Infinity;
+      for (let i = 0; i < P.n; i++) { const d = (P.e(i) - te) ** 2 + (P.nn(i) - tn) ** 2; if (d < bd && P.col(i) >= 0) { bd = d; jc = P.col(i); } }
+      const cc = jc % sg.w, rc = (jc / sg.w) | 0, c0 = cc - 8, r0 = rc - 6;
+      const inRing = (e, n) => { let c = false; const R = house.ring; for (let i = 0, k2 = R.length - 1; i < R.length; k2 = i++) { const [xi, yi] = R[i], [xj, yj] = R[k2]; if ((yi > n) !== (yj > n) && e < ((xj - xi) * (n - yi)) / (yj - yi) + xi) c = !c; } return c; };
+      // each column's returns, and where it is (its returns' middle) for the outline test
+      const per = new Map();
+      for (let i = 0; i < P.n; i++) {
+        const j = P.col(i); if (j < 0) continue;
+        const c = j % sg.w, r = (j / sg.w) | 0; if (c < c0 || c >= c0 + 16 || r < r0 || r >= r0 + 12) continue;
+        if (!per.has(j)) per.set(j, { e: 0, n: 0, k: 0, lastGround: 0, rets: [] });
+        const q = per.get(j), h = P.hag(i), ret = A.ptRet ? A.ptRet[i] >> 4 : 0, of = A.ptRet ? A.ptRet[i] & 15 : 0, cl = A.ptCls ? A.ptCls[i] : -1;
+        q.e += P.e(i); q.n += P.nn(i); q.k++;
+        if (ret === of && (cl === 2 || Math.abs(h) < 0.5)) q.lastGround++;
+        if (h > 0.3) q.rets.push(`${h.toFixed(1)} ${of === 1 ? 's' : `${ret}/${of}`} c${cl} i${P.bright(i)}`);
+      }
+      const f1 = (v) => (Number.isFinite(v) ? v.toFixed(1) : '-');
+      console.log(`Shade model columns round a point ${we} m east, ${wn} m north of the ${house.area} m2 building's middle: 16 columns west to east, 12 rows north to south (column ${(sg.cell * G.k).toFixed(2)} m). Each: kind/why top roof lastGround, * inside the building's outline as drawn.`);
+      for (let r = r0; r < r0 + 12; r++) {
+        const row = [];
+        for (let c = c0; c < c0 + 16; c++) {
+          const j = r * sg.w + c, q = per.get(j), ok = c >= 0 && r >= 0 && c < sg.w && r < sg.h;
+          if (!ok) { row.push('off'); continue; }
+          const top = A.top ? A.top[j] : NaN, roof = A.roof ? A.roof[j] : NaN;   // as the model keeps them
+          row.push(`${A.kind ? A.kind[j] : '-'}/${A.why ? A.why[j] : '-'} ${f1(top)} ${f1(roof)} ${q ? q.lastGround : 0}${q && inRing(q.e / q.k, q.n / q.k) ? '*' : ''}`);
+        }
+        console.log(`  row ${r - r0}: ${row.join(' | ')}`);
+      }
+      console.log(`Kinds: ${JSON.stringify(model.meta?.rule?.kinds || null)}. The returns over 0.3 m of the 5 x 5 columns in the middle (rows 4-8, columns 6-10), height then single or return/of, class, intensity:`);
+      for (let r = rc - 2; r <= rc + 2; r++) for (let c = cc - 2; c <= cc + 2; c++) { const q = per.get(r * sg.w + c); console.log(`  row ${r - r0} col ${c - c0}: ${q && q.rets.length ? q.rets.join(', ') : 'none'}`); }
+      const hb = [];
+      for (let i = 0; i < P.n; i++) { if (P.kind(i) !== 1 || P.hag(i) < 2 || !A.ptRet || (A.ptRet[i] & 15) !== 1) continue; if (inRing(P.e(i), P.nn(i))) hb.push(P.bright(i)); }
+      hb.sort((x, y) => x - y);
+      console.log(`The building's single echoes over 2 m: ${hb.length}, intensity median ${hb.length ? hb[hb.length >> 1] : '-'}; the lot's ground median (meta.own.intensityMedian) ${model.meta?.own?.intensityMedian ?? '-'}.`);
+    }
+  }
   const pv = debug.filter((d) => d.kind === 'paving');
   console.log(`Paving candidates, each threshold's slabs over 8 m2: ${pv.length}`);
   for (const d of pv.filter((x) => x.square)) console.log(`  KEPT: ${d.n} returns, ${d.area} m2, contrast ${d.contrast}, ${far(d.middle)} (${d.why})`);
