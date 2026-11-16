@@ -51,6 +51,17 @@ ${process.env.MAIN_INTERNAL === '1' ? '' : '# '}binding = "MAIN"
 ${process.env.MAIN_INTERNAL === '1' ? '' : '# '}service = "lawn-mapper"
 ${process.env.MAIN_INTERNAL === '1' ? '' : '# '}entrypoint = "Internal"
 
+# THE WATER BUILDER (2026-11-16, water/builder/): the water map worked out with no page open, for an admin save's walks.
+# Bound once it exists (the workflow's task builder; WITH_BUILDER is set by the deploy step when it finds it).
+${process.env.WITH_BUILDER === '1' ? '' : '# '}[[services]]
+${process.env.WITH_BUILDER === '1' ? '' : '# '}binding = "WATER_BUILDER"
+${process.env.WITH_BUILDER === '1' ? '' : '# '}service = "water-builder"
+
+# THE TIMER (src/worker.js scheduled): the walks queued by the main site's pushes, scored one a run; the sweep every
+# six hours. Doing nothing costs one small database read.
+[triggers]
+crons = ["*/5 * * * *"]
+
 [vars]
 LAWNMAP_HOST = "${lawnmap}"
 # Open to everyone (owner, 2026-10-23: "Make the water map accessible to everyone now"); admin only

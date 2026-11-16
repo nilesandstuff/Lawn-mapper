@@ -7,6 +7,7 @@
 import { WorkerEntrypoint } from 'cloudflare:workers';
 import site from './index.js';
 import { enqueue } from './jobs.js';
+import { runQueue, sweep } from './autoscore.js';
 
 export class Internal extends WorkerEntrypoint {
   /** An admin save's shade model landed or was rebuilt: its scoring kit is to be (re)built. */
@@ -15,4 +16,13 @@ export class Internal extends WorkerEntrypoint {
   async walkReady(id, walk) { return enqueue(this.env, 'walk', id, { walk }); }
 }
 
-export default site;
+/* THE TIMER (every five minutes, tools/prepare.mjs [triggers]): one queued walk scored a run; every six hours, the
+   sweep for walks a push missed (src/autoscore.js). Logs say counts and states only. */
+async function scheduled(controller, env, ctx) {
+  const at = new Date(controller.scheduledTime || Date.now());
+  if (at.getUTCHours() % 6 === 0 && at.getUTCMinutes() < 5) console.log(`sweep: ${await sweep(env).catch(() => 0)} walks queued`);
+  const done = await runQueue(env).catch((e) => [{ state: 'error', why: String(e?.message || e) }]);
+  if (done.length) console.log(done.map((d) => `${d.state}${d.why ? ` (${d.why})` : ''}`).join('; '));
+}
+
+export default { ...site, scheduled };

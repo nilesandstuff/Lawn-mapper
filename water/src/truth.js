@@ -71,6 +71,33 @@ async function stationList(env, url) {
   return r.json();
 }
 
+/* THE SAME WRITES FOR THE NO-PAGE SCORING (src/worker.js, 2026-11-16): a walk, its frozen weather and its result
+   kept exactly as the routes below keep them, so a walk scored by the builder reads the same as one scored by a page. */
+export async function putWalk(env, body) {
+  const { row, error } = cleanWalk(body);
+  if (error) return { error };
+  await env.DB.prepare(`INSERT INTO truth_walks (${WALK_COLS.join(', ')}) VALUES (${WALK_COLS.map(() => '?').join(', ')})
+    ON CONFLICT(walk) DO UPDATE SET map_id = excluded.map_id, parcel_pin = COALESCE(excluded.parcel_pin, truth_walks.parcel_pin), source = excluded.source,
+    started = excluded.started, ended = excluded.ended, kinds = excluded.kinds, notes = COALESCE(excluded.notes, truth_walks.notes)`).bind(...WALK_COLS.map((c) => row[c])).run();
+  return { ok: true };
+}
+export async function putWeather(env, walk, sources, series) {
+  const kept = await env.DB.prepare('SELECT walk FROM truth_weather WHERE walk = ?').bind(walk).first();
+  if (kept) return { ok: true, frozen: true }; // the first weather of a walk stays
+  await env.DB.prepare('INSERT INTO truth_weather (walk, fetched, sources, series) VALUES (?, ?, ?, ?)').bind(walk, Date.now(), JSON.stringify(sources || []), JSON.stringify(series || [])).run();
+  return { ok: true };
+}
+export async function frozenWeather(env, walk) {
+  const kept = await env.DB.prepare('SELECT * FROM truth_weather WHERE walk = ?').bind(walk).first();
+  return kept ? { sources: JSON.parse(kept.sources || '[]'), series: JSON.parse(kept.series || '[]') } : null;
+}
+export async function putResult(env, body) {
+  const { row, error } = cleanResult(body);
+  if (error) return { error };
+  await env.DB.prepare(`INSERT OR REPLACE INTO truth_results (${RESULT_COLS.join(', ')}) VALUES (${RESULT_COLS.map(() => '?').join(', ')})`).bind(...RESULT_COLS.map((c) => row[c])).run();
+  return { ok: true };
+}
+
 /** The routes, or null. isAdmin(request, env) -> bool. weatherFn for tests. */
 export async function truth(request, env, url, { isAdmin, weatherFn = weatherOfMoment, fetchFn = fetch } = {}) {
   if (url.pathname !== '/api/water/truth' && !url.pathname.startsWith('/api/water/truth/')) return null;

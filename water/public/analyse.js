@@ -595,7 +595,8 @@ function lawnLight(res, site, climate, season) {
     }
     return { summer, months: byMonth, radiation };
   })();
-  const timer = new Promise((_, reject) => setTimeout(() => reject(new Error('the shade took too long')), 240000));
+  // four minutes in a browser; the water builder (builder/headless.mjs), on a slower shared CPU, sets its own
+  const timer = new Promise((_, reject) => setTimeout(() => reject(new Error('the shade took too long')), globalThis.WATER_SHADE_MS || 240000));
   return Promise.race([work, timer]).finally(() => L.close());
 }
 

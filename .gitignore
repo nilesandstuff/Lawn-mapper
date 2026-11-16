@@ -19,3 +19,6 @@ browser-test.png
 # Written at deploy time by scan/tools/prepare.mjs (the engine binary is copied there, never committed)
 scan/build/
 scan/wrangler.toml
+
+# the water builder image layout (water/builder/prepare.mjs), made at deploy time
+water/builder/app/

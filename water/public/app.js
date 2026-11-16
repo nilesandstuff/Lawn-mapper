@@ -32,7 +32,8 @@ import { KINDS as LAYER_KINDS, FIELD_WORDS, typeWords, hasCounty, keepCounty, as
 import { sectorName } from '/lib/wind.js';
 import { SPECIES, groupOf } from '/lib/roots.js';
 import { spearman } from '/lib/rank.js';
-import { fromLocal } from '/lib/ar-align.js';
+import { walkRecords, offLawnM, ON_TRACE_M } from '/lib/walkrecords.js';
+import { siteOf, inputsOf } from '/lib/siteof.js';
 import { MODEL_VERSION } from '/lib/surfacenow.js';
 import { openMeteoUrls, parseOpenMeteo } from '/lib/momentweather.js';
 
@@ -84,19 +85,7 @@ async function siteFromMap(id) {
   if (!res.ok || !j?.map) throw new Error(j?.error || `The map would not open (${res.status}).`);
   const s = j.map;
   if (!Number.isFinite(s.lng) || !Number.isFinite(s.lat)) throw new Error('That map has no location yet. Finish it in Lawn Mapper first.');
-  return {
-    label: s.address || 'your map', lng: s.lng, lat: s.lat,
-    parcel: asFeature(s.parcel),
-    lawn: (s.shapes || []).map(asFeature).filter(Boolean),
-    // the shade map's cloud, box and shift, when it has worked on this map: the same cells as its part
-    lidar: s.tools?.shade?.data?.lidar || null,
-    // the trees and branches erased on the shade map: gone from the water map's shade too
-    shadeEdits: s.tools?.shade?.data?.grid ? { grid: s.tools.shade.data.grid, erased: s.tools.shade.data.erased || [], cubes: s.tools.shade.data.cubes || [], fences: Array.isArray(s.tools.shade.data.fences) ? s.tools.shade.data.fences : null } : null,
-    mapId: id, at: s.at || null,
-    // the photo the lawn was traced on (owner 2026-10-19: a county photo if one was saved, Mapbox if Mapbox)
-    tracedOn: tracedOn(s),
-    water: s.tools?.water?.data || null,
-  };
+  return siteOf(s, id); // lib/siteof.js: the builder reads a map the same way
 }
 
 /* ------------------------------------------------------------- the photo */
@@ -913,32 +902,10 @@ const localDate = (ms) => new Date(ms).toLocaleDateString('en-CA');
    one the lawn was traced on, are good to about half a meter, so a spot within ON_TRACE_M of the traced lawn is on
    it, the distance shown. The model's wetness at a spot is the mean over the lawn cells within NEAR_M of it (a 1 m
    grid read at one point hangs on which side of a cell line the tap fell), else the nearest lawn cell within SNAP_M. */
-const ON_TRACE_M = 0.6, NEAR_M = 1.0, SNAP_M = 2.0;
+const NEAR_M = 1.0, SNAP_M = 2.0; // ON_TRACE_M: lib/walkrecords.js
 
 /** Meters from a point to the traced lawn (0 inside it); null with no trace. features: GeoJSON, lng/lat. */
-function offLawnM([lng, lat], features) {
-  if (!features?.length) return null;
-  const k = Math.cos((lat * Math.PI) / 180), [px, py] = toMerc([lng, lat]);
-  let inside = false, best = Infinity;
-  for (const f of features) {
-    const g = f.geometry || f, polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : [];
-    for (const poly of polys) {
-      let inPoly = false;
-      poly.forEach((ring, ri) => {
-        const pts = ring.map(toMerc); let c = false;
-        for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
-          const [xi, yi] = pts[i], [xj, yj] = pts[j];
-          if ((yi > py) !== (yj > py) && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) c = !c;
-          const ex = xj - xi, ey = yj - yi, L = ex * ex + ey * ey, t = L ? Math.max(0, Math.min(1, ((px - xi) * ex + (py - yi) * ey) / L)) : 0;
-          best = Math.min(best, Math.hypot(px - xi - t * ex, py - yi - t * ey) * k);
-        }
-        if (ri === 0) inPoly = c; else if (c) inPoly = false;
-      });
-      if (inPoly) inside = true;
-    }
-  }
-  return inside ? 0 : best;
-}
+/* offLawnM: lib/walkrecords.js (shared with the builder since 2026-11-16) */
 
 function moistureCard(p) {
   let el = $('#moisture-check');
@@ -1057,11 +1024,8 @@ async function checkWalk(site, walkId) {
   const r = await fetch(`/api/maps/thermal?id=${id}&walk=${wid}`, { signal: AbortSignal.timeout(20000) });
   if (!r.ok) throw new Error(`the walk answered ${r.status}`);
   const walk = await r.json();
+  const { records: on, offLawn, kinds, notes, started, ended } = walkRecords(walk, site, { lawnAt: (p) => view.plan?.kinds?.[cellAt(p)] === 1 });
   const recs = Array.isArray(walk.records) ? walk.records : [];
-  const kinds = [recs.length ? 'surface' : null, Array.isArray(walk.moisture) && walk.moisture.length ? 'moisture' : null, Array.isArray(walk.wind) && walk.wind.length ? 'wind' : null].filter(Boolean);
-  const sky = walk.sky ? { kind: walk.sky.kind, T_zenith: walk.sky.T_zenith ?? walk.sky.T, cloud_fraction: walk.sky.cloud_fraction, clear_T: walk.sky.clear_T, high_share: walk.sky.high_share } : null;
-  const notes = { air: walk.air || null, wet: walk.wet ?? null, sprinklers: walk.sprinklers ?? null, cloud: walk.cloud ?? null, sky, cut: walk.cut || null, camera: walk.camera || null };
-  const started = walk.started ?? recs[0]?.t0, ended = walk.ended ?? recs[recs.length - 1]?.t1 ?? null;
   const reg = await fetch('/api/water/truth/walk', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ walk: walk.walk || walkId, map_id: site.mapId, parcel_pin: pinOf(site), source: 'thermal', started, ended, kinds, notes }) });
   if (!reg.ok) throw new Error(`could not keep the walk (${reg.status})`);
   if (!recs.length) return;
@@ -1079,21 +1043,11 @@ async function checkWalk(site, walkId) {
     const pr = await fetch('/api/water/truth/weather', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ walk: walk.walk || walkId, lat: site.lat, lng: site.lng, extra: { rows } }), signal: AbortSignal.timeout(30000) });
     weather = pr.ok ? await pr.json() : { series: rows, sources: [] };
   }
-  // each record onto the map, kept when it is on the lawn (the trace, with the moisture check's allowance)
-  const origin = [walk.frame?.lng ?? site.lng, walk.frame?.lat ?? site.lat], trace = site.lawn || [];
-  const on = [];
-  for (const x of recs) {
-    if (!Number.isFinite(x.e) || !Number.isFinite(x.n) || !Number.isFinite(x.T) || !Number.isFinite(x.tm)) continue;
-    const [lng, lat] = fromLocal(origin, [x.e, x.n]);
-    const off = offLawnM([lng, lat], trace);
-    const lawn = off === null ? view.plan?.kinds?.[cellAt([lng, lat])] === 1 : off <= ON_TRACE_M;
-    if (lawn) on.push({ lng, lat, tm: x.tm, T: x.T, band: x.band || '0-60' });
-  }
   const res = await askWorker({ records: on, series: weather.series || [], notes });
   if (res.error) throw new Error(res.error);
   await fetch('/api/water/truth/result', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
     walk: walk.walk || walkId, model: res.model, kind: 'surface', n: res.n, bias: res.bias, rmse: res.rmse, rho: res.rho,
-    detail: { bands: res.bands, sunShade: res.sunShade, used: res.used, open: res.open, offLawn: recs.length - on.length, weather: weather.sources || [] },
+    detail: { bands: res.bands, sunShade: res.sunShade, used: res.used, open: res.open, offLawn, weather: weather.sources || [] },
   }) });
 }
 function walkCards() {
@@ -1294,21 +1248,11 @@ async function run(site) {
   view.site = site; view.data = null; view.plan = null;
   zoom.s = 1; zoom.tx = 0; zoom.ty = 0; $('#view').style.transform = '';
   $('#result').hidden = true; $('#plan').innerHTML = ''; $('#hill').innerHTML = ''; $('#streams').innerHTML = ''; if ($('#groundwater')) $('#groundwater').innerHTML = '';
-  const kept = site.water || {};
-  inputs.downspouts = Array.isArray(kept.downspouts) ? kept.downspouts : [];
-  inputs.gutters = Array.isArray(kept.gutters) ? kept.gutters : [];
-  inputs.areas = Array.isArray(kept.areas) ? kept.areas : [];
+  Object.assign(inputs, inputsOf(site.water)); // lib/siteof.js: the builder reads the same settings
   added.length = 0;
-  inputs.topsoil = !!kept.topsoil;
-  inputs.species = Array.isArray(kept.species) ? kept.species.filter((id) => SPECIES[id]) : [];
-  inputs.grass = inputs.species.length ? groupOf(inputs.species) : kept.grass === 'warm' ? 'warm' : 'cool';
-  inputs.texture = ''; // the soil is the survey's (owner 2026-10-19: no override)
-  inputs.layers = kept.layers && typeof kept.layers === 'object' ? kept.layers : null;
-  inputs.wind = kept.wind && typeof kept.wind === 'object' ? kept.wind : null;
   view.layers = null; view.layersRaw = null; view.layerPicked = null; view.layersError = '';
   $('#topsoil').checked = inputs.topsoil;
   restored = false;
-  inputs.mode = ['normal', 'deficit', 'dormancy'].includes(kept.mode) ? kept.mode : 'normal';
   modeBoxes();
   speciesBoxes();
   setMode(null);
@@ -1360,7 +1304,7 @@ async function run(site) {
   view.photo = saved.photo; view.photoShift = saved.shift; view.photoName = saved.name;
   if (!view.photo) { $('#show-photo').checked = false; view.photo = { width: 1280, height: 1280 }; view.photoName = 'no photo (it would not load)'; }
   $('#result').hidden = false;
-  const asking = await heads.open(kept.irrigation);
+  const asking = await heads.open((site.water || {}).irrigation);
   restoredNow();
   $('#result').classList.toggle('heads-on', asking);
   headsCard();
