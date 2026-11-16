@@ -1706,6 +1706,27 @@ the step should close the notch to about 1 m wide rather than all of it.
 SHADE_BUILD 4, so the AR rebuilds the model; the core session's marks run on
 the walk is the check.
 
+BUILD 4 ON THE OWNER'S HOUSE, the same day (the core session's marks prints:
+model build 4, made 05:28 UTC): row 5 did NOT turn. The step ran and its
+height test passed; the brightness band shut them out. The band came from
+every building's singles on the grid: 5,517, median 16,218, band 11,162 to
+29,790. The owner's house is a dark roof, its own 612 singles a median of
+8,427 (about the grid's p10), so its eave echoes (8,427, 6,360, 9,381) all
+fell below the band. Splitting the grid's singles by why changed nothing
+(p20 12,084 to 12,561), so the cause was which building, not which why.
+Across the 49 labelled lots, the median of why-1 roofs fell inside the whole
+grid's band on every lot, which is why the corpus never showed this.
+
+FIX (SHADE_BUILD 5): each building, meaning its columns joined by sides or
+corners, gets its own band from its own singles. The grid's band is used only
+when a building has fewer than 20. A tree column is judged by the building of
+the roof beside it. On the labelled lots this changes almost nothing: 1,671
+columns turned (1,676 with the grid's band), 75 of them inside labelled crowns
+(74). A test now holds a dark garage beside a bright building that outnumbers
+it: with its own band the eave turns, with the grid's it did not. Run on the
+print's own numbers (the garage's band about 7,000-9,500), row 5's three
+columns turn.
+
 ## Speculation
 
 - FENCES (2026-10-27, IN USE, unmeasured; fences.js): drawn by the visitor

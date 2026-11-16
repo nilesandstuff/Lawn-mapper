@@ -2065,6 +2065,37 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
     `eave ${eave.map((j) => on.kind[j] + '/' + on.why[j]).join(' ')}; second ${second.map((j) => on.kind[j] + '|' + two.kind[j]).join(' ')}; off ${eave.map((j) => off.kind[j]).join('')}; crown ${on.kind[at(6.5, 6.5)]}; bright ${on.kind[at(12.5, 9.6)]}/${on.why[at(12.5, 9.6)]}; roofTop ${eave.map((j) => on.roofTop[j]?.toFixed(1)).join(' ')}`);
 }
 
+/* A DARK ROOF AMONG BRIGHT ONES (the owner's house, 2026-11-16, build 4: its roof's singles a median 8,427, the grid's
+   buildings' 16,218, so a band from the whole grid, 11,162-29,790, turned no column of its eave). The same garage and
+   crown as above, beside a big bright building (singles at 25,000) that outnumbers it: each building is judged by
+   its own singles, so the eave turns; by the whole grid's, it did not. */
+{
+  const { structuresOf, BUILDING, TREE } = await import('../public/shade/structures.js');
+  const lat = 43, k = mercScale(lat);
+  const grid = gridOver([0, 0, 40 / k, 16 / k], 1, lat);
+  const pts = [];
+  const add = (e, n, z, c, r, nr, I) => pts.push([e, n, z, c, r, nr, I]);
+  for (let e = 0.25; e < 20; e += 0.5) for (let n = 0.25; n < 16; n += 0.5) {
+    if (e > 4 && e < 16 && n > 10 && n < 16) add(e, n, 104.4 + (e - 4) * 0.13, 1, 1, 1, 7800 + ((e * 7 + n * 3) % 1) * 1200);
+    else if (n > 5 && n <= 10 && e > 2 && e < 18) { if ((e + n) % 1 < 0.5) { add(e, n, 107.5 + ((e * 13 + n) % 1.5), 1, 1, 2, 9000 + ((e * 5) % 1) * 8000); add(e, n, 100.05, 2, 2, 2, 36000); } else add(e, n, 100, 2, 1, 1, 38000); }
+    else add(e, n, 100, 2, 1, 1, 38000);
+  }
+  for (let e = 20.125; e < 40; e += 0.25) for (let n = 0.125; n < 16; n += 0.25) {
+    if (e > 22 && e < 38) add(e, n, 106, 1, 1, 1, 24000 + ((e * 4 + n * 4) % 2) * 1000); // the bright building
+    else add(e, n, 100, 2, 1, 1, 38000);
+  }
+  for (const e of [5.5, 6.5, 7.5, 8.5]) add(e, 9.6, 104.3 + (e - 4) * 0.13, 1, 1, 1, 8100);
+  const cols = makeColumns(pts.length);
+  pts.forEach(([e, n, z, c, r, nr, I], i) => { cols.x[i] = e / k; cols.y[i] = n / k; cols.z[i] = z; cols.cls[i] = c; cols.ret[i] = r; cols.nret[i] = nr; cols.intensity[i] = I; });
+  const model = buildCanopy(cols, grid);
+  const at = (e, n) => Math.floor(16 - n) * grid.w + Math.floor(e);
+  const own = structuresOf(cols, model), whole = structuresOf(cols, model, { edges: { perBuilding: false } });
+  const eave = [5.5, 6.5, 7.5, 8.5].map((e) => at(e, 9.6));
+  check('structures: a dark roof\'s eave under a crown beside a bright building: judged by its own roof\'s brightness it turns; by the whole grid\'s it did not; the bright building stays a building',
+    eave.every((j) => own.kind[j] === BUILDING && own.why[j] === 11) && eave.every((j) => whole.kind[j] === TREE) && own.kind[at(30, 8)] === BUILDING && own.kind[at(6.5, 6.5)] === TREE,
+    `own ${eave.map((j) => own.kind[j] + '/' + own.why[j]).join(' ')}; whole ${eave.map((j) => whole.kind[j]).join('')}; bright ${own.kind[at(30, 8)]}`);
+}
+
 /* ONE LEAF STATE PER LOT (passes.js; owner, 2026-10-29). */
 {
   check('passes: a point fired 9 May or in November is leaf-off; 11 May, July and an undated one are not',

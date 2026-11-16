@@ -183,8 +183,9 @@ export const EAVE_M = 2; // a crown column beside a roof, its top within this of
    compares tops, which are the crown's. A tree column beside a building keeps the roof when it holds a SINGLE echo
    (a hard surface stops the whole pulse) at that roof's height -- from EDGE_BELOW_M under it (a roof slopes down to
    its eave) to EDGE_ABOVE_M over it -- as bright as this property's own roofs (the owner: "we should be able to see
-   past that with the lidar brightness and the fact that returns get through"; calibrated per property, the middle
-   60% of the buildings' single echoes, widened by EDGE_BRIGHT_SLACK). One column out from a roof the main rule called
+   past that with the lidar brightness and the fact that returns get through"; calibrated per building, the middle
+   60% of the single echoes of the building the roof beside it belongs to, widened by EDGE_BRIGHT_SLACK; the whole
+   grid's when that building has fewer than EDGE_BRIGHT_MIN). One column out from a roof the main rule called
    (EDGE_FROM_WHY: a flat roof, its eave, a roof under a crown; not "nothing got through", nor an edge this step found). Measured on the 49 labelled lots (shade findings 37):
    the looser first draft (1.5 m under, 0.5 over, the middle 80% widened 25%, two columns out, from any building)
    turned 2,820 columns, 157 of them inside labelled crowns; these settings turn 1,676, 74 in crowns, and the
@@ -193,6 +194,7 @@ export const EDGE_BELOW_M = 0.8;
 export const EDGE_ABOVE_M = 0.4;
 export const EDGE_BRIGHT_BAND = Object.freeze([0.2, 0.8]);
 export const EDGE_BRIGHT_SLACK = 0.1;
+export const EDGE_BRIGHT_MIN = 20; // single echoes a building needs for a band of its own (fewer: the whole grid's)
 export const EDGE_PASSES = 1;
 export const EDGE_FROM_WHY = Object.freeze([1, 3, 10]);
 export const STRUCTURE_FLOOR_M = 1; // a low structure stands at least this tall
@@ -430,13 +432,32 @@ export function roofUnderCrown(patch, st, w) {
  * building made buildings (why 11) in place. Returns their roof heights (m
  * over the ground; NaN elsewhere), so the crown above them stays a tree's.
  */
-export function edgeUnderCrown(cols, model, kind, why, st, { shift = null, below = EDGE_BELOW_M, above = EDGE_ABOVE_M, slack = EDGE_BRIGHT_SLACK, passes = EDGE_PASSES, band = EDGE_BRIGHT_BAND, fromWhy = EDGE_FROM_WHY, brightWhy = null } = {}) {
+export function edgeUnderCrown(cols, model, kind, why, st, { shift = null, below = EDGE_BELOW_M, above = EDGE_ABOVE_M, slack = EDGE_BRIGHT_SLACK, passes = EDGE_PASSES, band = EDGE_BRIGHT_BAND, fromWhy = EDGE_FROM_WHY, brightWhy = null, perBuilding = true } = {}) {
   const { grid, w, h, ground } = model;
   const N = w * h;
   const roofH = new Float32Array(N).fill(NaN);
   for (let k = 0; k < N; k++) if (kind[k] === BUILDING && (!fromWhy || fromWhy.includes(why[k]))) roofH[k] = why[k] === 10 && Number.isFinite(st.lastFloorTop?.[k]) ? st.lastFloorTop[k] - ground[k] : st.zHi[k] - ground[k];
-  /* The single echoes over 2 m in tree columns (candidates), and the buildings' own brightness. */
-  const singles = new Map(), bright = [];
+  /* Each building (its columns joined by sides or corners) and its own single echoes' brightness: a dark roof among
+     bright ones is judged by its own (the owner's house, 2026-11-16: its roof's singles a median 8,427 on a grid whose
+     buildings' were 16,218, so a band from the whole grid, 11,162-29,790, left out every echo of its eave). */
+  const comp = new Int32Array(N).fill(-1);
+  let nComp = 0;
+  for (let s0 = 0; s0 < N; s0++) {
+    if (kind[s0] !== BUILDING || comp[s0] >= 0) continue;
+    const id = nComp++, q = [s0];
+    comp[s0] = id;
+    for (let i = 0; i < q.length; i++) {
+      const k = q[i], x = k % w, y = (k / w) | 0;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const xx = x + dx, yy = y + dy;
+        if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+        const j = yy * w + xx;
+        if (kind[j] === BUILDING && comp[j] < 0) { comp[j] = id; q.push(j); }
+      }
+    }
+  }
+  /* The single echoes over 2 m in tree columns (candidates), and each building's own brightness. */
+  const singles = new Map(), brightOf = Array.from({ length: nComp }, () => []), bright = [];
   for (let i = 0; i < cols.n; i++) {
     if (NOISE.has(cols.cls[i]) || (cols.nret[i] || 1) !== 1) continue;
     const k = cellOf(grid, cols.x[i], cols.y[i], shift);
@@ -444,41 +465,44 @@ export function edgeUnderCrown(cols, model, kind, why, st, { shift = null, below
     const over = cols.z[i] - ground[k];
     if (!(over > CROWN_ABOVE_M && over < MAX_OVER_M)) continue;
     const I = cols.intensity?.[i] || 0;
-    if (kind[k] === BUILDING) { if (I && (!brightWhy || brightWhy.includes(why[k]))) bright.push(I); continue; }
+    if (kind[k] === BUILDING) { if (I && (!brightWhy || brightWhy.includes(why[k]))) { bright.push(I); brightOf[comp[k]].push(I); } continue; }
     if (kind[k] !== TREE) continue;
     let a = singles.get(k);
     if (!a) { a = []; singles.set(k, a); }
     a.push(over, I);
   }
-  let lo = -Infinity, hi = Infinity;
-  if (bright.length >= 20) {
-    bright.sort((p, q) => p - q);
-    const pLo = bright[Math.floor(bright.length * band[0])], pHi = bright[Math.floor(bright.length * band[1])];
-    lo = pLo * (1 - slack); hi = pHi * (1 + slack);
-  }
+  const bandOf = (list) => {
+    if (list.length < EDGE_BRIGHT_MIN) return null;
+    list.sort((p, q) => p - q);
+    return [list[Math.floor(list.length * band[0])] * (1 - slack), list[Math.floor(list.length * band[1])] * (1 + slack)];
+  };
+  /* A building with too few singles of its own is judged by the whole grid's; with too few there either, by height alone. */
+  const gridBand = bandOf(bright) || [-Infinity, Infinity];
+  const bands = brightOf.map((list) => (perBuilding ? bandOf(list) : null) || gridBand);
   const out = new Float32Array(N).fill(NaN);
   for (let pass = 0; pass < passes; pass++) {
     const set = [];
     for (const [k, a] of singles) {
       if (kind[k] !== TREE) continue;
       const x = k % w, y = (k / w) | 0;
-      let best = NaN;
+      let best = NaN, bestC = -1;
       for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
         const xx = x + dx, yy = y + dy;
         if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
         const r = roofH[yy * w + xx];
         if (!Number.isFinite(r)) continue;
+        const [lo, hi] = bands[comp[yy * w + xx]] || gridBand;
         for (let q = 0; q < a.length; q += 2) {
           const over = a[q], I = a[q + 1];
           if (over < r - below || over > r + above) continue;
           if (I && (I < lo || I > hi)) continue;
-          if (!(best >= over)) best = over;
+          if (!(best >= over)) { best = over; bestC = comp[yy * w + xx]; }
         }
       }
-      if (Number.isFinite(best)) set.push([k, best]);
+      if (Number.isFinite(best)) set.push([k, best, bestC]);
     }
     if (!set.length) break;
-    for (const [k, r] of set) { kind[k] = BUILDING; why[k] = 11; roofH[k] = r; out[k] = r; }
+    for (const [k, r, c] of set) { kind[k] = BUILDING; why[k] = 11; roofH[k] = r; out[k] = r; comp[k] = c; }
   }
   return out;
 }
