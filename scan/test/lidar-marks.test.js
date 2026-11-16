@@ -173,3 +173,29 @@ console.log('lidar-marks: ok');
   assert.ok(!R6.objects.some((o) => o.kind === 'building' && Math.abs(o.top - 7.4) < 0.5), 'without the columns the crown still spoils it (why the step is there)');
   console.log('lidar-marks (house under a crown): ok');
 }
+
+// planting beds against a wall (the owner's house, 2026-11-16: "the front (East) of the house is still too flat"):
+// a garage 2 m further out than the rest of the east wall, and a bed of shrubs, 9 m2, filling
+// the step, 0.6-2.0 m high. The outline follows the roof, not the shrubs.
+{
+  let sd = 23; const r = () => { sd = (sd + 0x6d2b79f5) | 0; let t = Math.imul(sd ^ (sd >>> 15), 1 | sd); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const Q = [];
+  const house = (e, n) => (e >= 8 && e <= 18 && n >= 4 && n <= 18) || (e >= 8 && e <= 20 && n >= 4 && n <= 9);   // roof 5 m up
+  const bed = (e, n) => e > 18.3 && e <= 19.8 && n >= 10 && n <= 16;                                          // shrubs in the step
+  for (let i = 0; i < 30 * 22 * 4; i++) {
+    const e = r() * 30, n = r() * 22;
+    // pitched: 2.6 m at the east eave, rising west to 5 m (the shrubs join the house by its low eave, as at home)
+    if (house(e, n)) Q.push({ e, n, h: Math.min(5, 2.6 + 0.5 * ((n <= 9 ? 20 : 18) - e)) + (r() - 0.5) * 0.1, kind: 1 });
+    else if (bed(e, n)) Q.push({ e, n, h: 0.6 + r() * 1.4, kind: 3 });
+    else Q.push({ e, n, h: (r() - 0.5) * 0.05, kind: 0 });
+  }
+  const R7 = lidarMarks([0, 0, 30, 22], { n: Q.length, e: (i) => Q[i].e, nn: (i) => Q[i].n, hag: (i) => Q[i].h, bright: () => 0, kind: (i) => Q[i].kind });
+  const b7 = R7.objects.filter((o) => o.kind === 'building');
+  assert.ok(b7.length === 1 && b7[0].ring, `one building, outlined: ${b7.length}`);
+  const R = b7[0].ring, eastAt = (n) => Math.max(...R.map((p, i) => { const q = R[(i + 1) % R.length]; return (p[1] > n) !== (q[1] > n) ? p[0] + ((n - p[1]) * (q[0] - p[0])) / (q[1] - p[1]) : -Infinity; }));
+  const north = eastAt(13), south = eastAt(6.5);
+  console.log(`beside the shrubs: east wall ${north.toFixed(2)} m (roof 18), the garage's ${south.toFixed(2)} m (roof 20)`);
+  assert.ok(Math.abs(north - 18) < 0.6, `the east wall by the shrubs follows the roof: ${north.toFixed(2)}`);
+  assert.ok(Math.abs(south - 20) < 0.6, `the garage keeps its wall: ${south.toFixed(2)}`);
+  console.log('lidar-marks (shrubs against a wall): ok');
+}

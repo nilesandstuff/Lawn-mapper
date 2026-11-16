@@ -508,8 +508,26 @@ export function lidarMarks(box, pts, { cell = CELL, debug = null } = {}) {
         if (group.length < 3) continue;
       }
     }
-    const inG = new Set(group), others = P.filter((p) => !inG.has(p));
-    add(group, others, kind, { woods });
+    const inG = new Set(group);
+    let others = P.filter((p) => !inG.has(p)), inside = group;
+    /* A HOUSE IS OUTLINED BY ITS ROOF (the owner, 2026-11-16: "the front (East) of the house is still too flat",
+       beside their aerial photo: the garage furthest out, the middle about 2 m in, the north part about 3 m in). The
+       roof's own returns said so (run 43890881660: the last roof return 5.2-5.6 m east of the middle along the middle
+       wing, 4.2-5.0 at the inset, 4.4 at the north part, 7.0-7.6 at the garage), but planting beds against that wall,
+       0.6-1.9 m high and under 10 m2 a piece, touched the house and were in its group, so the outline ran the garage's
+       line all the way north. So the outline is traced from the roof returns (the shade map's roof, 2 m or more up),
+       and what of the group stands below the eave is OUTSIDE it: a laser from above cannot reach under an overhang,
+       so a low return means no roof over that spot. Only when the roof is most of the group (else the old way). */
+    if (kind === 'building') {
+      const roofs = group.filter((p) => p.bld && p.h >= 2);
+      if (roofs.length >= Math.max(20, 0.5 * group.length)) {
+        const rh = roofs.map((p) => p.h).sort((x, y) => x - y), eave = rh[Math.floor(rh.length * 0.1)];
+        const inR = new Set(roofs);
+        others = others.concat(group.filter((p) => !inR.has(p) && p.h < eave - 0.5));
+        inside = roofs;
+      }
+    }
+    add(inside, others, kind, { woods });
     if (kind !== 'object') continue;
     const levels = linked(group, link, 0.8).filter((l) => l.length >= 20);
     if (levels.length < 2) continue;
