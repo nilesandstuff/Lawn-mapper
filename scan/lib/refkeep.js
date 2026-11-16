@@ -117,3 +117,68 @@ export function mergeRef(old, add, mode = 'correct') {
   const ref = { stand: join(a.stand, o.stand, MAX_STAND), ground: join(a.ground, o.ground, MAX_GROUND), at: add.at };
   return { ref, replaced: count(old) - count(o), added: count(a), kept: count(o) };
 }
+
+/* ------------------------------------------------- the shape, and where it is (walkref.js, version 2) */
+/* The owner, 2026-11-16: "The shape of a lawn (the mesh) and the literal position of the lawn in the world are 2
+   different things. The uncertainty lies in the intersection of those 2. So we should treat them as separate things,
+   so error in one doesn't poison the other."
+   A reference is the yard's SHAPE (points in a frame of their own) and P, the turn and shift that puts the shape on
+   the map. A walk gives up to two separate things:
+     F  the walk on the shape, from matching its points to the shape (walkref.js shapeFix): adds to the SHAPE only;
+     C  the walk on the map, from its agreeing roof corners (goodPart): with F, one more reading of P = C o F^-1,
+        and P is the weighted middle of every reading so far. The shape is not touched by it.
+   A walk with corners but no match to the shape can only be added through P (shape = P^-1 o C): it fills what the
+   shape lacked and corrects nothing, because it reached the shape through the very thing that is uncertain. */
+const rot = (th, [x, y]) => { const c = Math.cos(th), s = Math.sin(th); return [c * x - s * y, s * x + c * y]; };
+/** A after B: the turn and shift that does B, then A. */
+export function compose(A, B) { const t = rot(A.theta, [B.tx, B.ty]); return { theta: A.theta + B.theta, tx: t[0] + A.tx, ty: t[1] + A.ty, s: 1 }; }
+export function invert(T) { const t = rot(-T.theta, [T.tx, T.ty]); return { theta: -T.theta, tx: -t[0], ty: -t[1], s: 1 }; }
+
+/** The middle of the readings of P ([{ theta, tx, ty, w }]) about the shape's pivot ([x, y]): the turn's weighted
+ *  mean, and the shift that puts the pivot at the weighted mean of where the readings put it. */
+export function placementOf(seen, pivot = [0, 0]) {
+  let sw = 0, sc = 0, ss = 0, px = 0, py = 0;
+  for (const o of seen) { const w = o.w > 0 ? o.w : 1; sw += w; sc += w * Math.cos(o.theta); ss += w * Math.sin(o.theta); const q = place(o, pivot[0], pivot[1]); px += w * q[0]; py += w * q[1]; }
+  if (!sw) return { theta: 0, tx: 0, ty: 0, s: 1 };
+  const theta = Math.atan2(ss, sc), r = rot(theta, pivot);
+  return { theta, tx: px / sw - r[0], ty: py / sw - r[1], s: 1 };
+}
+
+const moved = (pts, T) => pts.map((p) => { const q = place(T, p[0], p[1]); return [q[0], q[1], p[2]]; });
+const flat = (pts, max) => { const a = []; const step = Math.max(1, Math.ceil(pts.length / max)); for (let i = 0; i < pts.length; i += step) a.push(pts[i][0], pts[i][1], pts[i][2]); return Float32Array.from(a); };
+const middle = (ref) => { let x = 0, y = 0, n = 0; for (const a of [ref.stand, ref.ground]) for (let i = 0; i + 2 < a.length; i += 3) { x += a[i]; y += a[i + 1]; n++; } return n ? [x / n, y / n] : [0, 0]; };
+
+/**
+ * A walk's part added to the map's reference. old: decodeRef's, or null. part: { stand, ground } [[u, v, y]] in the
+ * walk's frame. C: the walk on the map by its agreeing corners (goodPart's T), or null. F: the walk on the shape
+ * (the shape match's Ts), or null. w: the weight of this walk's reading of P (its corners).
+ * -> { ref, how, added, replaced, kept, movedM } or { ref: null, why }
+ */
+export function updateRef(old, part, { C = null, F = null, w = 1, at = Date.now() } = {}) {
+  const has = old && (old.stand.length + old.ground.length) > 0;
+  if (!has) {
+    if (!C) return { ref: null, why: 'the map has no reference yet, and this walk has no two roof corners that agree to make one' };
+    // the first: the shape is the walk as its corners put it, and P is "as it is"
+    const ref = { stand: flat(moved(part.stand, C), MAX_STAND), ground: flat(moved(part.ground, C), MAX_GROUND), at, P: { theta: 0, tx: 0, ty: 0 }, seen: [{ theta: 0, tx: 0, ty: 0, w, at }], walks: 1 };
+    ref.pivot = middle(ref);
+    return { ref, how: 'made', added: (ref.stand.length + ref.ground.length) / 3, replaced: 0, kept: 0, movedM: 0 };
+  }
+  const pivot = old.pivot || middle(old);
+  // onto the shape: by the match when there is one (it corrects the shape where the walk saw); else through P
+  const toShape = F || (C ? compose(invert(old.P), C) : null);
+  if (!toShape) return { ref: null, why: 'this walk has neither a match to the saved shape nor two roof corners that agree' };
+  const add = { stand: flat(moved(part.stand, toShape), MAX_STAND), ground: flat(moved(part.ground, toShape), MAX_GROUND), at };
+  const m = mergeRef(old, add, F ? 'correct' : 'extend');
+  // where the shape is: one more reading when the walk has both its corners and its match
+  const seen = [...(old.seen || [])];
+  if (!seen.length) seen.push({ ...old.P, w: 1, at: old.at || 0 });   // a version 1 reference: its place as it was, one reading
+  let P = old.P, movedM = 0;
+  if (F && C) {
+    seen.push({ ...compose(C, invert(F)), w, at });
+    P = placementOf(seen.slice(-40), pivot);
+    const a = place(old.P, pivot[0], pivot[1]), b = place(P, pivot[0], pivot[1]);
+    movedM = Math.hypot(a[0] - b[0], a[1] - b[1]);
+  }
+  const ref = { ...m.ref, P: { theta: P.theta, tx: P.tx, ty: P.ty }, seen: seen.slice(-40).map((o) => ({ theta: o.theta, tx: o.tx, ty: o.ty, w: o.w, at: o.at })), pivot, walks: (old.walks || 1) + 1 };
+  return { ref, how: F && C ? 'shape and place' : F ? 'shape only' : 'filled in through its place', added: m.added, replaced: m.replaced, kept: m.kept, movedM };
+}

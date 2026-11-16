@@ -12,7 +12,7 @@
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { buildRef, encodeRef, decodeRef, shapeFix, fitRigid, place, STAND } from '../lib/walkref.js';
-import { goodPart, partOf, mergeRef } from '../lib/refkeep.js';
+import { goodPart, partOf, updateRef } from '../lib/refkeep.js';
 import { readTrack } from '../lib/twin.js';
 import { checkMarks } from '../lib/postfix.js';
 import { writeObject, readObject, BUCKET } from './twin-r2.mjs';
@@ -123,15 +123,19 @@ async function keep(dir) {
     + `${part.stand.length} of ${pts.stand.length} standing points, ${part.ground.length} of ${pts.ground.length} ground points.`);
   if (part.stand.length < 200) throw new Error(`too little of the yard in that part (${part.stand.length} standing points)`);
   if (process.env.DRY) { console.log('A dry run: nothing written.'); return; }
-  const add = buildRef(part, g.T, Date.now());
   const key = `refs/${meta.map}.bin`;
   const oldBytes = await readObject(BUCKET, key).catch(() => null), old = oldBytes ? decodeRef(oldBytes) : null;
-  const m = mergeRef(old, add, 'correct');
+  // the walk on the saved shape, when there is one and the match holds (walkref.js shapeFix): the shape and where it
+  // is are kept apart (refkeep.js updateRef)
+  let F = null;
+  if (old) { const f = shapeFix(old, part); if (f.ok) F = f.T; console.log(`Matched to the saved shape: ${f.ok ? `yes (landed ${f.landed}, next best ${f.second})` : `no (${f.why})`}.`); }
+  const u = updateRef(old, part, { C: g.T, F, w: g.n });
+  if (!u.ref) throw new Error(u.why);
   if (oldBytes) await writeObject(BUCKET, `refs/backup/${meta.map}-${Date.now()}.bin`, oldBytes, 'application/octet-stream');
-  const bytes = encodeRef(m.ref);
+  const bytes = encodeRef(u.ref);
   await writeObject(BUCKET, key, bytes, 'application/octet-stream', { walk: String(meta.walk || '') });
-  console.log(`Reference ${old ? 'added to' : 'made'}: ${m.added} points from this walk${old ? `, ${m.replaced} of the earlier ones replaced where this walk saw the yard, ${m.kept} kept` : ''}; `
-    + `now ${m.ref.stand.length / 3} standing and ${m.ref.ground.length / 3} ground points (${(bytes.length / 1e6).toFixed(1)} MB).`);
+  console.log(`Reference: ${u.how}. ${u.added} points from this walk${old ? `, ${u.replaced} earlier ones corrected, ${u.kept} kept; where the shape sits on the map moved ${(u.movedM * 39.37).toFixed(0)} in (${u.ref.seen.length} readings)` : ''}; `
+    + `now ${u.ref.stand.length / 3} standing and ${u.ref.ground.length / 3} ground points (${(bytes.length / 1e6).toFixed(1)} MB), from ${u.ref.walks} walk${u.ref.walks === 1 ? '' : 's'}.`);
 }
 
 /* WALKREF_VARIANTS="cell,step;cell,step": the fix tried with other search cells (m) and turn steps (degrees) too. */

@@ -7,6 +7,7 @@
  * Out: { ready: { stand, ground, at } } or { error }; { fix, id } (walkref.js shapeFix's answer)
  */
 import { decodeRef, shapeFix } from '/lib/walkref.js';
+import { compose } from '/lib/refkeep.js';
 
 let REF = null;
 
@@ -18,6 +19,9 @@ self.onmessage = ({ data }) => {
   if (data.fix) {
     let fix;
     try { fix = shapeFix(REF, data.fix); } catch (err) { fix = { ok: false, why: `the match failed: ${err.message}` }; }
+    // the match is to the yard's SHAPE; where that shape is on the map is the reference's own P (walkref.js, version 2).
+    // T stays what the page has always been given, the walk on the MAP; Ts is the walk on the shape.
+    if (fix?.T) { fix.Ts = fix.T; fix.T = compose(REF.P, fix.T); }
     self.postMessage({ fix, id: data.fix.id });
   }
 };

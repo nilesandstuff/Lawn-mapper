@@ -60,3 +60,49 @@ assert.equal(goodPart([M('a', [0, 0], 5)]).ok, false);
   // no earlier reference: the part is the reference
   assert.equal(mergeRef(null, add).added, 3); }
 console.log('refkeep: ok');
+
+// THE SHAPE, AND WHERE IT IS, KEPT APART (2026-11-16)
+{ const { compose, invert, placementOf, updateRef } = await import('../lib/refkeep.js');
+  const { place, encodeRef, decodeRef } = await import('../lib/walkref.js');
+  const near = (a, b, tol = 1e-6) => Math.abs(a - b) <= tol;
+  const A = { theta: 0.4, tx: 3, ty: -2 }, B = { theta: -1.1, tx: 0.5, ty: 7 };
+  { const p = place(compose(A, B), 2, 5), q = place(A, ...place(B, 2, 5)); assert.ok(near(p[0], q[0]) && near(p[1], q[1]), 'compose: B, then A'); }
+  { const p = place(compose(invert(A), A), 2, 5); assert.ok(near(p[0], 2) && near(p[1], 5), 'invert undoes'); }
+  { const P = placementOf([{ theta: 0.1, tx: 1, ty: 0, w: 1 }, { theta: 0.3, tx: 3, ty: 0, w: 1 }]); assert.ok(near(P.theta, 0.2) && near(P.tx, 2), 'the middle of two readings'); }
+
+  // a yard: a grid of standing points and ground, as a first walk saw it (its own frame turned and shifted)
+  const yard = []; for (let x = 0; x < 12; x += 0.5) for (let y = 0; y < 8; y += 0.5) yard.push([x, y]);
+  const W1 = { theta: 0.3, tx: 5, ty: 1 };                       // walk 1's frame -> the map (true)
+  const inWalk = (W, pts) => pts.map(([e, n]) => { const q = place(invert(W), e, n); return [q[0], q[1], 1]; });
+  const part1 = { stand: inWalk(W1, yard), ground: inWalk(W1, yard).map((p) => [p[0], p[1], 0]) };
+  const first = updateRef(null, part1, { C: W1, at: 1 });
+  assert.equal(first.how, 'made'); assert.equal(first.ref.seen.length, 1);
+  assert.equal(updateRef(null, part1, {}).ref, null, 'no reference and no corners: nothing to make one from');
+  // it survives being written and read
+  const back = decodeRef(encodeRef(first.ref));
+  assert.equal(back.stand.length, first.ref.stand.length); assert.deepEqual(back.P, first.ref.P); assert.equal(back.seen.length, 1); assert.ok(back.pivot);
+
+  // walk 2: matched to the shape exactly (F), but its corners put it 0.6 m east of where walk 1's did
+  const W2 = { theta: -0.8, tx: -2, ty: 4 };
+  const part2 = { stand: inWalk(W2, yard), ground: [] };
+  const F = W2;                                                   // the shape frame is the map frame of walk 1, so the true match is W2
+  const C = { theta: W2.theta, tx: W2.tx + 0.6, ty: W2.ty };
+  const u = updateRef(back, part2, { C, F, at: 2 });
+  assert.equal(u.how, 'shape and place');
+  // THE SHAPE DID NOT MOVE: its points are where they were (walk 2 saw the same things in the same places)
+  { const a = [...back.stand].slice(0, 30), b = [...u.ref.stand]; assert.ok(a.every((v, i) => i % 3 === 2 || b.some((x) => Math.abs(x - v) < 0.26)), 'the shape is the shape'); }
+  // WHERE IT IS moved half way: two readings, 0.6 m apart
+  assert.ok(near(u.movedM, 0.3, 1e-3), `the place moved to the middle of the two readings (${u.movedM})`);
+  assert.equal(u.ref.seen.length, 2); assert.equal(u.ref.walks, 2);
+  // walk 3: matched to the shape, no corners: the shape may gain, the place does not move
+  const s = updateRef(u.ref, part2, { F, at: 3 });
+  assert.equal(s.how, 'shape only'); assert.deepEqual(s.ref.P, u.ref.P); assert.equal(s.ref.seen.length, 2);
+  // walk 4: corners, no match: put on the shape through its place, filling only what the shape lacked
+  const far = { stand: inWalk(W2, [[40, 40], [40.5, 40]]), ground: [] };
+  const f = updateRef(u.ref, far, { C: W2, at: 4 });
+  assert.equal(f.how, 'filled in through its place'); assert.equal(f.replaced, 0); assert.equal(f.added, 2); assert.deepEqual(f.ref.P, u.ref.P);
+  assert.equal(updateRef(u.ref, far, {}).ref, null);
+  // a version 1 reference (points already on the map): reads as "no turn, no shift", and can be built on
+  const v1 = new Uint8Array(24 + 12); { const dv = new DataView(v1.buffer); dv.setUint32(0, 0x46455257, true); dv.setUint32(4, 1, true); dv.setUint32(8, 1, true); new Float32Array(v1.buffer, 24).set([1, 2, 3]); }
+  const d1 = decodeRef(v1); assert.deepEqual([...d1.stand], [1, 2, 3]); assert.deepEqual(d1.P, { theta: 0, tx: 0, ty: 0 }); }
+console.log('refkeep (shape and place): ok');

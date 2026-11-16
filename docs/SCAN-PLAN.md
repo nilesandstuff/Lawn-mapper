@@ -2699,3 +2699,15 @@ WHAT THE WALKS SHOWED (walk 1794780697283, 6 min, 447 ft, three corners):
     scan starts by itself when the phone points at the sky.
   - Uploads: one box for everything; the replay recording is off unless ticked (135 MB for a minute).
 NOT TRIED ON A PHONE: any of the above. NOT KNOWN: why R1's sighting was 9 ft out (its eave read 0.76 m low).
+
+THE SHAPE AND WHERE IT IS, KEPT APART (the owner, 2026-11-16: "The shape of a lawn (the mesh) and the literal
+position of the lawn in the world are 2 different things. The uncertainty lies in the intersection of those 2. So
+we should treat them as separate things, so error in one doesn't poison the other"). The reference file is now
+version 2 (walkref.js encodeRef): the points are the yard's SHAPE in a frame of their own, and a note carries P, the
+turn and shift that puts the shape on the map, with every reading of P so far. A later walk matched to the shape
+adds to the shape and never moves it on the map; when it also has agreeing roof corners they give one more reading
+of P (the weighted middle of all readings), which never bends the shape; corners with no match only fill in what
+the shape lacked (refkeep.js updateRef). The page is still handed the walk on the MAP (ref-worker.js composes P).
+Also from the owner the same day: R1 was 9 ft out because the lidar view misled them into the wrong corner (a
+straight wall drawn with a corner in it; a deck, pool and hot tub drawn as a building; two tall shrubs and wood
+chips drawn as roof). The screenshots did not arrive; to be looked at in the shade map's model first.

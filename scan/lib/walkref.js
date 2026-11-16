@@ -111,25 +111,48 @@ export function buildRef({ stand, ground }, T, at = Date.now()) {
   return { stand: out(stand, MAX_STAND), ground: out(ground, MAX_GROUND), at };
 }
 
-/** The reference as bytes: 'WREF', u32 version 1, u32 stand count, u32 ground count, f64 at, then the points. */
+/**
+ * The reference as bytes: 'WREF', u32 version, u32 stand count, u32 ground count, f64 at, then (version 2) u32 the
+ * length of a JSON note and the note padded to 4 bytes, then the points.
+ *
+ * VERSION 2: THE SHAPE AND WHERE IT IS ARE KEPT APART (the owner, 2026-11-16: "The shape of a lawn (the mesh) and the
+ * literal position of the lawn in the world are 2 different things. The uncertainty lies in the intersection of
+ * those 2. So we should treat them as separate things, so error in one doesn't poison the other"). The points are the
+ * yard's SHAPE, in a frame of their own; the note carries P, the turn and shift that puts that shape on the map, and
+ * `seen`, every reading of P a walk's roof corners have given (refkeep.js). A later walk is matched to the shape
+ * (shapeFix), which never moves the shape on the map; its roof corners give one more reading of P, which never bends
+ * the shape. Version 1 files (the points already on the map) read as P = no turn, no shift.
+ */
 export function encodeRef(ref) {
   const ns = ref.stand.length / 3, ng = ref.ground.length / 3;
-  const buf = new ArrayBuffer(24 + (ns + ng) * 12), dv = new DataView(buf);
-  dv.setUint32(0, MAGIC, true); dv.setUint32(4, 1, true); dv.setUint32(8, ns, true); dv.setUint32(12, ng, true);
+  const note = new TextEncoder().encode(JSON.stringify({ P: ref.P || { theta: 0, tx: 0, ty: 0 }, seen: ref.seen || [], pivot: ref.pivot || null, walks: ref.walks || 1 }));
+  const pad = (4 - (note.length % 4)) % 4, off = 28 + note.length + pad;
+  const buf = new ArrayBuffer(off + (ns + ng) * 12), dv = new DataView(buf);
+  dv.setUint32(0, MAGIC, true); dv.setUint32(4, 2, true); dv.setUint32(8, ns, true); dv.setUint32(12, ng, true);
   dv.setFloat64(16, ref.at || 0, true);
-  const f = new Float32Array(buf, 24);
+  dv.setUint32(24, note.length, true);
+  new Uint8Array(buf, 28, note.length).set(note);
+  const f = new Float32Array(buf, off);
   f.set(ref.stand, 0); f.set(ref.ground, ns * 3);
   return new Uint8Array(buf);
 }
 export function decodeRef(bytes) {
-  const u = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-  const buf = u.byteOffset % 4 === 0 ? u.buffer : u.slice().buffer, off = u.byteOffset % 4 === 0 ? u.byteOffset : 0;
-  const dv = new DataView(buf, off);
+  const u0 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  const u = u0.byteOffset % 4 === 0 ? u0 : u0.slice();
+  const dv = new DataView(u.buffer, u.byteOffset, u.byteLength);
   if (u.length < 24 || dv.getUint32(0, true) !== MAGIC) return null;
-  const ns = dv.getUint32(8, true), ng = dv.getUint32(12, true);
-  if (u.length < 24 + (ns + ng) * 12) return null;
-  const f = new Float32Array(buf, off + 24, (ns + ng) * 3);
-  return { stand: f.slice(0, ns * 3), ground: f.slice(ns * 3), at: dv.getFloat64(16, true) };
+  const ver = dv.getUint32(4, true), ns = dv.getUint32(8, true), ng = dv.getUint32(12, true);
+  let off = 24, note = {};
+  if (ver >= 2) {
+    if (u.length < 28) return null;
+    const n = dv.getUint32(24, true);
+    if (u.length < 28 + n) return null;
+    try { note = JSON.parse(new TextDecoder().decode(u.subarray(28, 28 + n))); } catch { return null; }
+    off = 28 + n + ((4 - (n % 4)) % 4);
+  }
+  if (u.length < off + (ns + ng) * 12) return null;
+  const f = new Float32Array(u.buffer, u.byteOffset + off, (ns + ng) * 3);
+  return { stand: f.slice(0, ns * 3), ground: f.slice(ns * 3), at: dv.getFloat64(16, true), P: note.P || { theta: 0, tx: 0, ty: 0 }, seen: note.seen || [], pivot: note.pivot || null, walks: note.walks || 1 };
 }
 
 /* ------------------------------------------------------------- FFT (radix 2) */
