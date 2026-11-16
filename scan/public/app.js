@@ -1995,7 +1995,8 @@ async function keepReference(L, walkId) {
     try {
       const r = await fetch(`/api/scan/reference?map=${encodeURIComponent(map)}&walk=${encodeURIComponent(walkId)}`, { method: 'PUT', credentials: 'same-origin', body: bytes });
       if (r.ok) return `Saved ${old ? 'into' : 'as'} this map's reference (${what}). The next walk here builds on it.`;
-      if (r.status === 404 || r.status === 413) return `NOT saved as the reference: the site answered ${r.status}.`;
+      // the site refused it (not the signal): say what it said, and do not try again
+      if (r.status >= 400 && r.status < 500) { let why = ''; try { why = (await r.json())?.error || ''; } catch { /* none */ } return `NOT saved as the reference: the site refused it (${r.status}${why ? `, ${why}` : ''}). Tell the core session.`; }
     } catch { /* signal: again */ }
     await new Promise((res) => setTimeout(res, 4000 * (k + 1)));
   }

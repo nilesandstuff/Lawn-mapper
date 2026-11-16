@@ -104,7 +104,11 @@ export async function twin(request, env, url, { isAdmin, noteThermal = null }) {
  *
  * The admin only, like the twins: it is the yard's shape.
  */
-export const MAP = /^[0-9a-zA-Z_-]{1,64}$/;
+/* A MAP'S ID (2026-11-16): letters, digits, _ and - up to 64 refused the owner's home map, an admin save whose id is 86
+   characters with |, spaces and commas, so its walks' references were never sent ("could not be sent (no signal?)")
+   nor read back at a walk's start. Anything without a control character or a slash (which would split the key); the
+   key is refs/<id>.bin as written, as reference-build.mjs and warp-keep.mjs write it. Never printed. */
+export const MAP = /^[^\x00-\x1f\x7f/]{1,256}$/;
 /**
  * THE MAP'S PHOTO STRETCHED ONTO THE LIDAR (core session, 2026-11-10; docs/SCAN-PLAN.md section 17,
  * scan/tools/warp_study.py and warp-keep.mjs): warp.json and warped-<photo>.png, kept under refs/warp/<map>/ by the
