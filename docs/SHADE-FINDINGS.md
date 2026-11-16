@@ -1744,13 +1744,26 @@ through to the ground, and nothing stands above them (top 3.3 m). The
 height test passed; the brightness test kept them out. Most likely it is a
 gutter, fascia or flashing: bright, at the eave's height. NOT established.
 
-CHANGE (SHADE_BUILD 6; asked of the owner before it ships): where nothing in
+CHANGE (SHADE_BUILD 6; the owner said yes, 2026-11-16): where nothing in
 the column stands over the roof's height plus 0.4 m, there is no leaf to tell
 the roof from, so brightness is not tested (EDGE_BARE). Under a crown the
 band still applies. On the 49 labelled lots: 2,269 columns turned (1,671
 before), 84 of them in labelled crowns (75). The aerial photos of B15 and B12, with the turned columns drawn on them,
 put the new ones on roof edges and corners; a few widen a
 conifer row the model already called a building.
+
+A HOLE IN A ROOF (same build; the owner said yes). The core session found two
+on the owner's house: a 1 m column with no return at all, with roof on both
+sides of it, which the outline drew as a slit. On the 49 labelled lots, 220
+columns with no return have roof on all four sides, among 50,189 building
+columns. They are mostly on the sparse flights (B15 57, B16 45, B08 22, B09 21).
+In the light, canopy.js already lent most of them their neighbours' pulses:
+on those three lots the median hole let no light through straight down from
+8 m to 1 m, but some let through up to 43%. Such a column is now a building
+(roofHoles, why 12) at its neighbours' mean roof height, and seasonal.js makes
+it solid from the grass to that height. Three-sided ones stay empty (a notch
+or courtyard can be real). Both changes together, on the 49 lots: 2,490
+columns made building (1,671 at build 5), 90 in labelled crowns (75).
 
 ## Speculation
 

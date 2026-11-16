@@ -21,6 +21,7 @@
  *   5  2026-11-16  edgeUnderCrown: each building's own brightness, not the
  *                  grid's (a dark roof among bright ones; findings 37)
  *   6  2026-11-16  edgeUnderCrown: no brightness test where nothing stands
- *                  over the roof's height (a bright gutter; findings 37)
+ *                  over the roof's height (a bright gutter); a hole in a roof
+ *                  is roof (roofHoles, why 12); findings 37
  */
 export const SHADE_BUILD = 6;

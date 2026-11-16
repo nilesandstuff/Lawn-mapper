@@ -223,6 +223,7 @@ export const WHY = Object.freeze({
   9: 'unknown: the laser hit something here that no rule named; it stops light as the laser measured it',
   10: 'building: a roof under a crown (the last echoes stop on one flat surface)',
   11: 'building: a roof edge under a crown (a single echo at the roof beside it, as bright as its roofs)',
+  12: 'building: a hole in a roof (no return at all, roof on all four sides)',
 });
 
 /**
@@ -301,7 +302,7 @@ export function columnStats(cols, model, { shift = null } = {}) {
  *           why (Uint8 per column, a key of WHY), stats (columnStats),
  *           counts: { building, tree, solidTree, structure, unknown } }.
  */
-export function structuresOf(cols, model, { shift = null, stats = null, low = {}, roofFloor = true, edges = true } = {}) {
+export function structuresOf(cols, model, { shift = null, stats = null, low = {}, roofFloor = true, edges = true, holes = true } = {}) {
   const { w, h, ground } = model;
   const N = w * h;
   const st = stats || columnStats(cols, model, { shift });
@@ -361,6 +362,8 @@ export function structuresOf(cols, model, { shift = null, stats = null, low = {}
   for (let k = 0; k < N; k++) if (eave[k]) { kind[k] = BUILDING; why[k] = 3; }
   /* 4b. A roof edge under a crown (see EDGE_BELOW_M). */
   const edgeTop = edges === false ? null : edgeUnderCrown(cols, model, kind, why, st, { shift, ...(typeof edges === 'object' ? edges : {}) });
+  /* 4c. A hole in a roof (see roofHoles). */
+  const holeTop = holes ? roofHoles(kind, why, st, ground, w, h, edgeTop) : null;
   const lowInfo = lowStructures(kind, why, st, w, h, low);
   /* 7. NOTHING THE LASER HIT IS LEFT OUT (owner, 2026-11-04: "every thing
      that the lidar hits should be recognized"), and what no rule can name
@@ -386,6 +389,7 @@ export function structuresOf(cols, model, { shift = null, stats = null, low = {}
   const roofTop = new Float32Array(N).fill(NaN);
   for (let k = 0; k < N; k++) if (why[k] === 10 && Number.isFinite(st.lastFloorTop[k])) roofTop[k] = st.lastFloorTop[k] - ground[k];
   if (edgeTop) for (let k = 0; k < N; k++) if (why[k] === 11 && Number.isFinite(edgeTop[k])) roofTop[k] = edgeTop[k];
+  if (holeTop) for (let k = 0; k < N; k++) if (why[k] === 12 && Number.isFinite(holeTop[k])) roofTop[k] = holeTop[k];
   return { kind, why, stats: st, counts, green: lowInfo, roofTop };
 }
 
@@ -509,6 +513,34 @@ export function edgeUnderCrown(cols, model, kind, why, st, { shift = null, below
     if (!set.length) break;
     for (const [k, r, c] of set) { kind[k] = BUILDING; why[k] = 11; roofH[k] = r; out[k] = r; comp[k] = c; }
   }
+  return out;
+}
+
+/**
+ * Step 4c, A HOLE IN A ROOF (owner, 2026-11-16: "yes"; the core session found two on the owner's house, each a 1 m
+ * column with no return at all between roof on both sides, from the AR's outline). A sparse flight leaves some 1 m
+ * columns of a roof with no return; with nothing in them they were NOTHING, so the model showed a hole in the roof
+ * and its outline a slit. canopy.js already lends most of them their neighbours' pulses (on the three lots with the
+ * most, half let no light through), but some passed up to 43% of the light. A column with no return over the grass
+ * whose four side neighbours are all buildings is made a building (why 12) at its neighbours' mean roof height
+ * (returned, NaN elsewhere; its `top` set to it). Three-sided ones are left: a notch or a courtyard can be real. On
+ * the 49 labelled lots: 220 such columns, among 50,189 building columns.
+ */
+export function roofHoles(kind, why, st, ground, w, h, edgeTop = null) {
+  const N = w * h;
+  const roofOf = (j) => (why[j] === 10 && Number.isFinite(st.lastFloorTop?.[j]) ? st.lastFloorTop[j] - ground[j] : why[j] === 11 && edgeTop && Number.isFinite(edgeTop[j]) ? edgeTop[j] : st.zHi[j] - ground[j]);
+  const out = new Float32Array(N).fill(NaN);
+  const set = [];
+  for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
+    const k = y * w + x;
+    if (kind[k] !== NOTHING || Number.isFinite(st.top[k]) && st.top[k] > -1e9) continue;
+    const nb = [k - 1, k + 1, k - w, k + w];
+    if (!nb.every((j) => kind[j] === BUILDING)) continue;
+    let s = 0, n = 0;
+    for (const j of nb) { const r = roofOf(j); if (Number.isFinite(r)) { s += r; n++; } }
+    if (n) set.push([k, s / n]);
+  }
+  for (const [k, r] of set) { kind[k] = BUILDING; why[k] = 12; out[k] = r; st.top[k] = r; }
   return out;
 }
 

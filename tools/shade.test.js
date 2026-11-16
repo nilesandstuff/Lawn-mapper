@@ -2125,6 +2125,32 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
     `bare ${bare.map((j) => on.kind[j] + '/' + on.why[j]).join(' ')}; covered ${covered.map((j) => on.kind[j] + '/' + on.why[j]).join(' ')}; before ${bare.map((j) => off.kind[j]).join('')}`);
 }
 
+/* A HOLE IN A ROOF (structures.js roofHoles, why 12; owner, 2026-11-16: "yes"). A flat roof 4 m up with one 1 m column
+   that holds no return at all, and a notch at its edge (roof on three sides): the hole becomes roof at its neighbours'
+   height, solid in the light from the grass to the roof; the notch stays open. */
+{
+  const { structuresOf, BUILDING, NOTHING } = await import('../public/shade/structures.js');
+  const lat = 43, k = mercScale(lat);
+  const grid = gridOver([0, 0, 16 / k, 16 / k], 1, lat);
+  const hole = (e, n) => Math.floor(e) === 7 && Math.floor(n) === 8, notch = (e, n) => Math.floor(e) === 11 && Math.floor(n) === 8;
+  const pts = [];
+  for (let e = 0.25; e < 16; e += 0.5) for (let n = 0.25; n < 16; n += 0.5) {
+    if (hole(e, n) || notch(e, n)) continue; // no return at all
+    if (e > 3 && e < 12 && n > 4 && n < 12) pts.push([e, n, 104, 1]); else pts.push([e, n, 100, 2]);
+  }
+  const cols = makeColumns(pts.length);
+  pts.forEach(([e, n, z, c], i) => { cols.x[i] = e / k; cols.y[i] = n / k; cols.z[i] = z; cols.cls[i] = c; cols.ret[i] = 1; cols.nret[i] = 1; cols.intensity[i] = c === 1 ? 8000 : 38000; });
+  const model = buildCanopy(cols, grid);
+  const at = (e, n) => Math.floor(16 - n) * grid.w + Math.floor(e);
+  const on = structuresOf(cols, model), off = structuresOf(cols, model, { holes: false });
+  const season = seasonalCanopy(cols, buildCanopy(cols, grid));
+  const kh = at(7.5, 8.5), { nz, dz, z0 } = model;
+  const solid = [1.5, 2.5, 3.5].every((hgt) => season.muOff[kh * nz + Math.floor((model.ground[kh] + hgt - z0) / dz)] >= 4);
+  check('structures: a 1 m column with no return inside a roof is roof (why 12) at its neighbours\' height and solid below it; a notch open on one side stays empty; without the step the hole was nothing',
+    on.kind[kh] === BUILDING && on.why[kh] === 12 && Math.abs(on.roofTop[kh] - 4) < 0.1 && solid && on.kind[at(11.5, 8.5)] === NOTHING && off.kind[kh] === NOTHING,
+    `hole ${on.kind[kh]}/${on.why[kh]} roof ${on.roofTop[kh]} solid ${solid}; notch ${on.kind[at(11.5, 8.5)]}; before ${off.kind[kh]}`);
+}
+
 /* ONE LEAF STATE PER LOT (passes.js; owner, 2026-10-29). */
 {
   check('passes: a point fired 9 May or in November is leaf-off; 11 May, July and an undated one are not',
