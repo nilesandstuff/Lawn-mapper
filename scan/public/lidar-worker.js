@@ -112,6 +112,9 @@ self.onmessage = async ({ data }) => {
       P = returnsFrom(L);
       if (P) picture = lidarPicture(box, P, undefined, { noRaised: true });
     } catch (err) { self.postMessage({ progress: `the lidar picture could not be made (${err.message})` }); }
+    // A MODEL WITH NO RETURNS (2026-11-16: over 48 MB the shade map's file now leaves the points out before the summer
+    // leaves, public/shade/model-out.js): no outlines and no roof corners can be made; the page says so
+    if (!P) self.postMessage({ noReturns: true });
     const solids = Float32Array.from(sol), tallA = Float32Array.from(tall), roofsA = Float32Array.from(roofRuns), dist = Float32Array.from(G.dist);
     self.postMessage({ overlay: { show, picture, box, cell: G.cell, solids, tall: tallA, roofRuns: roofsA, tallCell: cellE, dem1: { box, cell: G.cell * 4, W: dw, H: dh, data: dem1 }, dist: { box, cell: G.cell, W: G.W, H: G.H, data: dist } } }, [solids.buffer, tallA.buffer, roofsA.buffer, dem1.buffer, dist.buffer]);
     // the raised things' straight edges and corners, to place points on (lib/lidar-marks.js): after the overlay, since

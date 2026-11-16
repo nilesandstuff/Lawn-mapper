@@ -778,11 +778,12 @@ function wireMap() {
 function startLidar(m) {
   try {
     const w = new Worker('/lidar-worker.js', { type: 'module' });
-    st.lid.worker = w;
+    st.lid.worker = w; st.lid.noReturns = false;
     const pts = [...st.lawn.flat(), ...st.parcel.flat()], es = pts.map((p) => p[0]), ns = pts.map((p) => p[1]);
     const box = pts.length ? [Math.min(...es) - 20, Math.min(...ns) - 20, Math.max(...es) + 20, Math.max(...ns) + 20] : [-60, -60, 60, 60];
     w.onmessage = ({ data }) => {
       if (data.progress) { st.lid.progress = data.progress; showLidar(); }
+      if (data.noReturns) { st.lid.noReturns = true; showLidar(); }
       if (data.ready) { pagePerf.stage('lidar read'); st.lid.ready = data.ready; log(`lidar model read: ${data.ready.points} columns, ${data.ready.solid} solid cells, shift ${data.ready.shift}`); showLidar(); keepShadeFresh(m, data.ready); }
       if (data.roofs) { st.lid.roofs = data.roofs; st.lid.roofsAny = data.roofsAny || []; log(`roof corners offered: ${data.roofs.length} (of ${st.lid.roofsAny.length} building corners with an eave)`); backOnCorners(); roofsFromPoints(); drawMap(); listPoints(); }
       if (data.ground) { st.lid.ground = data.ground; groundPhoto().catch((e) => log(`lidar ground picture: ${e.message}`)); }
@@ -838,7 +839,7 @@ async function keepShadeFresh(m, ready) {
   if (r?.ok) {
     log(`shade model rebuilt (build ${r.build}, ${r.fences ?? 0} fences, ${r.erased ?? 0} erasures kept)`);
     try { st.lid.worker?.terminate(); } catch { /* gone */ }
-    st.lid = { ...st.lid, worker: null, ready: null, error: null, progress: 'Reading the updated lidar…', overlay: null, meshes: null, ground: null, roofs: null };
+    st.lid = { ...st.lid, worker: null, ready: null, error: null, progress: 'Reading the updated lidar…', noReturns: false, overlay: null, meshes: null, ground: null, roofs: null };
     showLidar();
     startLidar(m);
     return;
@@ -852,6 +853,8 @@ function showLidar() {
   el.textContent = st.lid.error ? `The lidar could not be read (${st.lid.error}): references only.`
     : st.lid.ready ? `Lidar ready: the shade map's model, ${st.lid.ready.points.toLocaleString()} columns, ${st.lid.ready.solid.toLocaleString()} solid cells (walls, fences, trunks), lined up by ${st.lid.ready.shift}; buildings by ${st.lid.ready.rule || 'the AR copy'}${st.lid.ready.lawnEdge ? '; the lawn\'s edges matched too' : ''}${st.lid.ready.structures ? ` (${st.lid.ready.structures.building.toLocaleString()} m² of building)` : ''}.`
       : st.lid.progress || 'Reading the lidar…';
+  // a lot so big that the shade map's file kept no lidar returns: nothing to outline or take corners from
+  if (st.lid.noReturns && !st.lid.error) el.textContent += ' The lidar model kept no returns for this lot (it is too big to keep them all), so no outlines or roof corners are offered: put the references on the photo instead.';
 }
 
 /* --------------------------------------------------------------- the AR */
