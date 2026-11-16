@@ -145,3 +145,15 @@ console.log('refkeep (shape and place): ok');
   assert.ok(Math.abs(far2.s - 1.07) < 1e-9, `held at 7%: ${far2.s}`);
   console.log(`refkeep (the phone's own scale): ok (3% short: found ${((g.T.s - 1) * 100).toFixed(1)}%; turn-and-shift alone left ${(worstRigid * 3.281).toFixed(1)} ft)`);
 }
+
+// A CORNER SIGHTED AGAIN (2026-11-16, the 1:55 pm walk): R1 at 4 m walked sat 1.7 m off once the phone had drifted;
+// sighted afresh at 45 m it agrees with R2. The part kept starts after the old mark, not at the walk's start.
+{ const R = (id, map, ar, odo) => ({ id, map, ar, odo, by: 'ROOF' });
+  const g = goodPart([R('R1', [0, 0], [0, 0], 4), R('R2', [19.6, 0], [21.3, 0], 32), R('R1', [0, 0], [1.7, 0], 45)]);
+  assert.ok(g.ok && g.n === 2, 'the pair agrees on the fresh sighting');
+  assert.equal(g.lo, 18, 'the part starts half way between the old mark and the first agreeing one');
+  assert.equal(g.hi, Infinity);
+  assert.equal(g.whole, false);
+  const h = goodPart([R('R1', [0, 0], [0, 0], 4), R('R2', [19.6, 0], [19.6, 0], 32), R('R1', [0, 0], [0.1, 0], 45)]);
+  assert.equal(h.lo, -Infinity, 'an earlier mark that agrees too bounds nothing');
+  console.log('refkeep (a corner sighted again): ok'); }

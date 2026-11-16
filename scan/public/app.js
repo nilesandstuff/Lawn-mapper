@@ -1653,7 +1653,8 @@ function autoSight(f) {
     const c = f.pose.position, w = whereIs([c.x, c.y, c.z], lookOf(f.pose.quaternion), [s.x, s.y, s.z]);
     if (w.m > NEAR_SIGHT_M || !w.facing) { st.nextHint = { target, w, done: marked.size }; return; }
   } else if (marked.size) flash(`Next: ${target.name}, the roof's ${target.roof.label}. Walk to it, then aim up at it.`);
-  if (st.resightOf === target.id) { (st.resighted ||= new Set()).add(target.id); st.resightOf = null; flash(`${target.name} does not agree with the other corners: aim at it once more.`); log(`roof corner ${target.name} left out of the fit (it disagrees with the others): asked for again`); }
+  if (st.resightOf === target.id) { (st.resighted ||= new Set()).add(target.id); st.resightOf = null; const two = new Set(st.L.marks.filter((m) => m.kind === 'ref').map((m) => m.id)).size === 2;
+    flash(two ? `${target.name} and the next corner are not the distance apart the map has them (the phone may have drifted between them): aim at ${target.name} once more.` : `${target.name} does not agree with the other corners: aim at it once more.`); log(`roof corner ${target.name} left out of the fit (it disagrees with the others): asked for again`); }
   startSight(f, target);
 }
 /** The middle of the view between corners: where the next one is, or that they are all done. */

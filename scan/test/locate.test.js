@@ -231,11 +231,26 @@ const hitAt = (map, y = 0) => { const [u, v] = toAR(map); return { position: { x
   const hit = (u, v) => ({ position: { x: u, y: 3, z: -v }, distance: 5, type: 'ROOF' });
   mk(L, P('R1', [0, 0]), hit(2.7, 0.3), 10);      // wrong: 2.7 m off
   mk(L, P('R2', [10, 0]), hit(10, 0), 30);
-  assert.deepEqual(lo(L), [], 'two marks: nothing to check them against');
+  assert.deepEqual(lo(L), ['R1'], 'two marks 2.7 m nearer than the map has them: the first is asked for again');
   mk(L, P('R3', [10, 8]), hit(10, 8), 68);
   assert.deepEqual(lo(L), ['R1'], 'the one that disagrees');
   for (const odo of [68, 85, 140]) { const T = rf(L, odo); assert.ok(Math.abs(T.theta) < 1e-6 && Math.hypot(T.tx, T.ty) < 1e-6, `the fit is R2 and R3's at ${odo} m walked`); }
   mk(L, P('R1', [0, 0]), hit(0, 0), 150);         // sighted again, rightly
   assert.deepEqual(lo(L), [], 'all three agree now');
   const T = rf(L, 150); assert.ok(Math.abs(T.theta) < 1e-6 && Math.hypot(T.tx, T.ty) < 1e-6, 'and its wrong first mark is not in the fit'); }
+// TWO CORNERS THAT DISAGREE (2026-11-16, the 1:55 pm walk): the phone drifted 1.7 m between them. The first is
+// asked for again; sighted afresh in the drifted frame, the pair agrees, and its old mark leaves the fit.
+{ const { newLocate: nl, mark: mk, refFit: rf, leftOutOf: lo } = await import('../lib/locate.js');
+  const L = nl();
+  const P = (id, map) => ({ id, kind: 'ref', map });
+  const hit = (u, v) => ({ position: { x: u, y: 3, z: -v }, distance: 5, type: 'ROOF' });
+  mk(L, P('R1', [0, 0]), hit(0, 0), 4);
+  mk(L, P('R2', [19.6, 0]), hit(21.3, 0), 32);    // 21.3 m walked against 19.6 on the map
+  assert.deepEqual(lo(L), ['R1'], 'the first of two that disagree');
+  assert.ok(rf(L, 32), 'both still place the walk until then');
+  mk(L, P('R1', [0, 0]), hit(1.7, 0), 45);        // sighted again: in the drifted frame, 19.6 m from R2
+  assert.deepEqual(lo(L), [], 'the pair agrees now');
+  const T = rf(L, 45); assert.ok(Math.abs(T.theta) < 1e-6 && Math.abs(T.tx + 1.7) < 1e-6 && Math.abs(T.ty) < 1e-6, 'and R1\'s first mark is not in the fit');
+  const M = nl(); mk(M, P('R1', [0, 0]), hit(0, 0), 4); mk(M, P('R2', [19.6, 0]), hit(19.9, 0), 32);
+  assert.deepEqual(lo(M), [], 'two that agree within the allowance (0.3 m) are left alone'); }
 console.log('locate: ok');

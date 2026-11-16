@@ -82,11 +82,17 @@ export function goodPart(marks, jumps = [], { agree = AGREE_M } = {}) {
   const J = [...jumps].filter(Number.isFinite).sort((a, b) => a - b);
   // before the part: the nearest tracking jump before its first mark; else, when a mark that disagrees came before
   // it, half way between that mark and the part's first
-  const before = out.filter((m) => m.odo < first).pop(), after = out.find((m) => m.odo > last);
+  /* A CORNER SIGHTED AGAIN BECAUSE IT DISAGREED (locate.js agreeing, 2026-11-16): its earlier mark, where it still
+     disagrees with the part's fit, bounds the part like a mark that disagrees: the phone's frame then was not the
+     frame the part is placed in. */
+  const T = best.a.T, stale = (marks || []).filter((m) => m?.ar && m?.map && Number.isFinite(m.odo) && inIds.has(m.id) && !best.g.includes(m)
+    && (!roof || m.by === 'ROOF') && (() => { const p = place(T, m.ar[0], m.ar[1]); return Math.hypot(p[0] - m.map[0], p[1] - m.map[1]) > allowedOf(m, agree); })());
+  const bounds = [...out, ...stale].sort((a, b) => a.odo - b.odo);
+  const before = bounds.filter((m) => m.odo < first).pop(), after = bounds.find((m) => m.odo > last);
   const jb = J.filter((j) => j <= first).pop(), ja = J.find((j) => j >= last);
   const lo = jb != null && (!before || jb >= before.odo) ? jb : before ? (before.odo + first) / 2 : jb ?? -Infinity;
   const hi = ja != null && (!after || ja <= after.odo) ? ja : after ? (after.odo + last) / 2 : ja ?? Infinity;
-  return { ok: true, T: best.a.T, ids: best.g.map((m) => m.id), n: best.g.length, roof, worstM: best.a.worst, lo, hi, whole: !out.length && lo === -Infinity && hi === Infinity, left: out.map((m) => m.id), why: null };
+  return { ok: true, T: best.a.T, ids: best.g.map((m) => m.id), n: best.g.length, roof, worstM: best.a.worst, lo, hi, whole: !bounds.length && lo === -Infinity && hi === Infinity, left: out.map((m) => m.id), why: null };
 }
 
 /** The walk's points ([u, v, y, odo]) walked within lo..hi. A point with no odometer reading is kept only when the
