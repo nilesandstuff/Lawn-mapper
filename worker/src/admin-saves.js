@@ -168,8 +168,16 @@ export async function buildLidar(env) {
      map's newest press. */
   let again = null;
   if (!row) {
-    row = await env.DB.prepare(`SELECT * FROM admin_traces t WHERE status = 'done' AND (detail IS NULL OR detail NOT LIKE ?1)
-      AND created_at = (SELECT MAX(created_at) FROM admin_traces x WHERE x.map_key = t.map_key AND x.user_id = t.user_id) ORDER BY created_at LIMIT 1`).bind(`%build ${SHADE_BUILD}%`).first();
+    /* A BUILDER STILL ON THE OLD BUILD IS ASKED AGAIN, HALF AN HOUR ON (2026-11-16; found by the features session:
+       the owner's home save stayed at build 3 after SHADE_BUILD went to 4. The builder's container was still
+       running its old image when the first tick after the deploy reached it, it answered build 3, the answer was
+       written "(build 3 ...); asked at build 4", and "asked at build 4" itself matched the test for "already at
+       this build", so the save was never offered again). Built at this build: "(build N". A failure at this build:
+       "not rebuilt at build N", once. Asked at this build but answered by an older builder: again after 30 minutes. */
+    row = await env.DB.prepare(`SELECT * FROM admin_traces t WHERE status = 'done'
+      AND (detail IS NULL OR (detail NOT LIKE ?1 AND detail NOT LIKE ?2 AND (detail NOT LIKE ?3 OR finished_at < ?4)))
+      AND created_at = (SELECT MAX(created_at) FROM admin_traces x WHERE x.map_key = t.map_key AND x.user_id = t.user_id) ORDER BY created_at LIMIT 1`)
+      .bind(`%(build ${SHADE_BUILD}%`, `%not rebuilt at build ${SHADE_BUILD}%`, `%asked at build ${SHADE_BUILD}%`, new Date(Date.now() - 30 * 60 * 1000).toISOString()).first();
     if (!row) return null;
     again = row.detail || '';
   }
