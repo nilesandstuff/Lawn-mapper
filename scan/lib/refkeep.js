@@ -21,7 +21,7 @@
  *
  * Pure; marks are locate.js L.marks ({ id, ar: [u, v], map: [e, n], odo, by }).
  */
-import { fitRigid, place, VOX } from './walkref.js';
+import { fitRigid, fitSimilar, place, VOX } from './walkref.js';
 
 export const AGREE_M = 0.45;       // 1.5 ft: how well the marks of a kept part agree with the map, at the least
 /* PLANNING IN THE OUTLINE'S ERROR (the owner, 2026-11-16: "since I know we'll never be able to get the outlines
@@ -43,7 +43,8 @@ const lastOfEach = (marks) => { const by = new Map(); for (const m of marks || [
 /** How a group of marks agrees: the worst distance from its place after their own best fit (two: the difference of
  *  the distance between them as walked and on the map), and the fit. */
 export function agreement(group, floor = AGREE_M) {
-  const T = fitRigid(group.map((m) => m.ar), group.map((m) => m.map));
+  // three or more marks spread out: the phone's own scale is fitted too (walkref.js fitSimilar), within 7%
+  const T = fitSimilar(group.map((m) => m.ar), group.map((m) => m.map));
   // worst: metres; over: the worst as a share of what that mark is allowed (allowedOf), over 1 meaning it disagrees
   let worst = 0, over = 0;
   if (group.length === 2) {

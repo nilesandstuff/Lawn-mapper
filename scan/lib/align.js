@@ -12,6 +12,8 @@
  * Two or more such pairs give the turn and shift (and report the scale as a check, without using it).
  */
 
+import { MAX_SCALE, SCALE_SPREAD_M } from './walkref.js';
+
 /** AR (u, v) -> map (e, n), with the fit's scale (T.s, 1 when it has none). */
 export function apply(T, [u, v]) {
   const k = T.s ?? 1, c = Math.cos(T.theta) * k, s = Math.sin(T.theta) * k;
@@ -29,7 +31,7 @@ export function unapply(T, [e, n]) {
  * pairs: [{ ar: [u, v], map: [e, n], w? }] (at least 2 apart; w a weight, 1 if left out). -> { theta (radians, AR to
  * map), tx, ty, s: 1, scale (the spreads' ratio: 1 if AR and the map agree on distance), residuals, rms, n } or null.
  */
-export function fitRigid(pairs) {
+export function fitRigid(pairs, { scaled = false } = {}) {
   if (!pairs || pairs.length < 2) return null;
   const n = pairs.length, wOf = (p) => (Number.isFinite(p.w) && p.w > 0 ? p.w : 1);
   let W = 0, au = 0, av = 0, be = 0, bn = 0;
@@ -42,9 +44,16 @@ export function fitRigid(pairs) {
     sa += w * (ax * ax + ay * ay); sb += w * (bx * bx + by * by);
   }
   if (sa < 1e-6 * W || sb < 1e-6 * W) return null;
-  const theta = Math.atan2(sxy, sxx), c = Math.cos(theta), s = Math.sin(theta);
+  const theta = Math.atan2(sxy, sxx);
+  /* THE PHONE'S OWN SCALE (walkref.js fitSimilar says why): with three or more places spread SCALE_SPREAD_M or more,
+     the fit also scales, within 1 +/- MAX_SCALE; fewer or closer, it only turns and shifts, as before */
+  let spread = 0;
+  for (const p of pairs) for (const q of pairs) spread = Math.max(spread, Math.hypot(p.map[0] - q.map[0], p.map[1] - q.map[1]));
+  const places = new Set(pairs.map((p) => `${p.map[0].toFixed(2)},${p.map[1].toFixed(2)}`)).size;
+  const k = scaled && places >= 3 && spread >= SCALE_SPREAD_M ? Math.min(1 + MAX_SCALE, Math.max(1 - MAX_SCALE, Math.hypot(sxx, sxy) / sa)) : 1;
+  const c = Math.cos(theta) * k, s = Math.sin(theta) * k;
   const tx = be - (c * au - s * av), ty = bn - (s * au + c * av);
-  const T = { theta, tx, ty, s: 1, scale: Math.sqrt(sb / sa) };
+  const T = { theta, tx, ty, s: k, scale: Math.sqrt(sb / sa) };
   T.residuals = pairs.map(({ ar, map }) => { const [e, nn] = apply(T, ar); return Math.hypot(e - map[0], nn - map[1]); });
   T.rms = Math.sqrt(pairs.reduce((a, p, i) => a + wOf(p) * T.residuals[i] ** 2, 0) / W);
   T.n = n;
@@ -62,7 +71,7 @@ export const walkWeight = (d, L = DRIFT_L) => 1 / (1 + (Math.abs(d) / L) ** 4);
 export function fitAt(marks, odo, L = DRIFT_L) {
   const places = new Set(marks.map((m) => `${m.map[0].toFixed(2)},${m.map[1].toFixed(2)}`));
   if (places.size < 2) return null;
-  return fitRigid(marks.map((m) => ({ ar: m.ar, map: m.map, w: walkWeight(odo - m.odo, L) })));
+  return fitRigid(marks.map((m) => ({ ar: m.ar, map: m.map, w: walkWeight(odo - m.odo, L) })), { scaled: true });
 }
 
 /**

@@ -130,7 +130,7 @@ async function keep(dir) {
   const pts = twinPoints(dir);
   const part = { stand: partOf(pts.stand, g.lo, g.hi), ground: partOf(pts.ground, g.lo, g.hi) };
   const ft = (v) => (v === -Infinity ? 'the start' : v === Infinity ? 'the end' : `${Math.round(v * FT)} ft walked`);
-  console.log(`Kept: ${g.n} of the marks agree within ${(g.worstM * 39.37).toFixed(0)} in${g.left.length ? ` (${g.left.length} left out)` : ''}; the walk from ${ft(g.lo)} to ${ft(g.hi)}: `
+  console.log(`Kept: ${g.n} of the marks agree within ${(g.worstM * 39.37).toFixed(0)} in${g.left.length ? ` (${g.left.length} left out)` : ''}${g.T?.s && g.T.s !== 1 ? `, the phone's distances scaled ${((g.T.s - 1) * 100).toFixed(1)}% to the map's` : ''}; the walk from ${ft(g.lo)} to ${ft(g.hi)}: `
     + `${part.stand.length} of ${pts.stand.length} standing points, ${part.ground.length} of ${pts.ground.length} ground points.`);
   if (part.stand.length < 200) throw new Error(`too little of the yard in that part (${part.stand.length} standing points)`);
   if (process.env.DRY) { console.log('A dry run: nothing written.'); return; }

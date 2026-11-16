@@ -55,3 +55,16 @@ const refs = [[0, 0], [15, 3], [4, 20], [-10, 8]];
   near(x, u, 1e-5, 'x = u'); near(zz, -v, 1e-5, 'z = -v'); near(y, 101.7, 1e-5, 'height plus dy (a 32-bit matrix)');
 }
 console.log('align: ok');
+
+// the live fit takes the phone's own scale too (walkref.js fitSimilar says why): three corners, the phone 3% short
+{
+  const { fitAt, apply } = await import('../lib/align.js');
+  const k = 0.97, ar = ([e, n]) => [k * e + 4, k * n - 1];
+  const marks = [[0, 0], [21, 3], [-10, 50]].map((map, i) => ({ map, ar: ar(map), odo: i * 50 }));
+  const T = fitAt(marks, 100, 1e6);
+  assert.ok(Math.abs(T.s - 1 / k) < 0.005, `scale ${T.s}`);
+  assert.ok(Math.max(...marks.map((m) => { const p = apply(T, m.ar); return Math.hypot(p[0] - m.map[0], p[1] - m.map[1]); })) < 0.01, 'every corner lands on its place');
+  const two = fitAt(marks.slice(0, 2), 100, 1e6);
+  assert.equal(two.s, 1, 'two corners: turn and shift only');
+  console.log('align (the phone\'s own scale, live): ok');
+}

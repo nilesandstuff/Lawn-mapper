@@ -36,7 +36,7 @@ const MAGIC = 0x46455257;                // 'WREF'
 
 /* ------------------------------------------------------------- geometry */
 export const place = (T, u, v) => {
-  const c = Math.cos(T.theta), s = Math.sin(T.theta);
+  const k = T.s ?? 1, c = Math.cos(T.theta) * k, s = Math.sin(T.theta) * k;
   return [c * u - s * v + T.tx, s * u + c * v + T.ty];
 };
 
@@ -53,6 +53,30 @@ export function fitRigid(a, b) {
   }
   const th = Math.atan2(sxy, sxx), c = Math.cos(th), s = Math.sin(th);
   return { theta: th, tx: bx - (c * ax - s * ay), ty: by - (s * ax + c * ay), s: 1 };
+}
+
+/* THE PHONE'S OWN SCALE (2026-11-16, the owner's walk at home: three roof corners 70 to 172 ft apart all came out
+   2-4% SHORTER as walked than on the lidar outline, -3.0, -5.3 and -2.8 ft; a phone with no depth sensor under-measures
+   distance by a few per cent, and a fit that may only turn and shift turned that into 5 ft of disagreement and threw
+   good corners out). One turn, shift and SCALE taking a onto b, the scale held within 1 +/- MAX_SCALE, and only when
+   the points are spread SCALE_SPREAD_M or more (closer, the scale is noise): else the rigid fit. */
+export const MAX_SCALE = 0.07, SCALE_SPREAD_M = 15;
+export function fitSimilar(a, b) {
+  const n = a.length;
+  let spread = 0;
+  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) spread = Math.max(spread, Math.hypot(b[i][0] - b[j][0], b[i][1] - b[j][1]));
+  if (n < 3 || spread < SCALE_SPREAD_M) return fitRigid(a, b);
+  let ax = 0, ay = 0, bx = 0, by = 0;
+  for (let i = 0; i < n; i++) { ax += a[i][0]; ay += a[i][1]; bx += b[i][0]; by += b[i][1]; }
+  ax /= n; ay /= n; bx /= n; by /= n;
+  let sxx = 0, sxy = 0, sa = 0;
+  for (let i = 0; i < n; i++) {
+    const p = a[i][0] - ax, q = a[i][1] - ay, r = b[i][0] - bx, t = b[i][1] - by;
+    sxx += p * r + q * t; sxy += p * t - q * r; sa += p * p + q * q;
+  }
+  const th = Math.atan2(sxy, sxx), k = Math.min(1 + MAX_SCALE, Math.max(1 - MAX_SCALE, Math.hypot(sxx, sxy) / (sa || 1)));
+  const c = Math.cos(th) * k, s = Math.sin(th) * k;
+  return { theta: th, tx: bx - (c * ax - s * ay), ty: by - (s * ax + c * ay), s: k };
 }
 
 const thinTo = (a, n) => (a.length <= n ? a : a.filter((_, i) => i % Math.ceil(a.length / n) === 0));

@@ -111,15 +111,37 @@ console.log('refkeep (shape and place): ok');
 // of an outline's own error on a sparse flight. Held to a flat 1.5 ft it is thrown out as a bad aim; allowed its own
 // corner's uncertainty (0.5 m: 0.7 x the owner's 0.72 m return spacing) it is kept. A corner 3 m off is out either way.
 { const T = (m, tol) => ({ ...m, tol });
-  const flat = [M('a', [0, 0], 5), M('b', [12, 0], 20), M('c', [12, 9], 40, 0.75, 0)];
+  // (corners under 15 m apart: no scale is fitted, so this is the corners' own allowance alone)
+  const flat = [M('a', [0, 0], 5), M('b', [11, 0], 20), M('c', [11, 8], 40, 0.75, 0)];
   const g0 = goodPart(flat);
   assert.ok(g0.ok && !g0.whole && g0.left.length === 1, `with no uncertainty the three cannot all agree, one is left out: ${JSON.stringify(g0.left)}`);
   const g1 = goodPart(flat.map((m) => T(m, 0.5)));
   assert.ok(g1.ok && g1.whole && g1.left.length === 0, `allowed its corner's uncertainty it is kept: ${JSON.stringify(g1.left)} worst ${g1.worstM?.toFixed(2)}`);
-  const far = [M('a', [0, 0], 5), M('b', [12, 0], 20), M('c', [12, 9], 40, 3, 0)].map((m) => T(m, 0.5));
+  const far = [M('a', [0, 0], 5), M('b', [11, 0], 20), M('c', [11, 8], 40, 3, 0)].map((m) => T(m, 0.5));
   const g2 = goodPart(far);
   assert.ok(g2.ok && !g2.whole && g2.left.length === 1 && g2.left[0] === 'c', `a corner 3 m off is still out: ${JSON.stringify(g2.left)}`);
   assert.equal(allowedOf({}), AGREE_M, 'no uncertainty known: 1.5 ft, as before');
   assert.equal(allowedOf({ tol: 0.1 }), AGREE_M, 'never less than 1.5 ft');
   console.log(`refkeep (each corner its own uncertainty): ok (0.75 m off: one left out at a flat 1.5 ft, all kept at ${allowedOf({ tol: 0.5 }).toFixed(2)} m)`);
+}
+
+// THE PHONE'S OWN SCALE (the owner's walk, 2026-11-16: three roof corners 21, 38 and 52 m apart, every distance 2-4%
+// SHORTER as walked than on the lidar outline). Fitted, within 7%, with three or more corners spread 15 m or more: the
+// three agree, with no allowance at all. Held to turn-and-shift, as before, they did not.
+{ const { fitRigid, fitSimilar } = await import('../lib/walkref.js');
+  const k = 0.97, th2 = 0.4, c2 = Math.cos(th2), s2 = Math.sin(th2);
+  const ar = ([e, n]) => [k * (c2 * e + s2 * n) + 3, k * (-s2 * e + c2 * n) - 2];      // the map, turned, shifted and 3% short
+  const S = (id, map, odo) => ({ id, map, ar: ar(map), odo, by: 'ROOF' });
+  const marks = [S('R1', [0, 0], 5), S('R2', [21, 3], 60), S('R3', [-10, 50], 170)];
+  const g = goodPart(marks);
+  assert.ok(g.ok && g.whole && g.left.length === 0, `3% short, all three agree: ${JSON.stringify(g.left)} ${g.why || ''}`);
+  assert.ok(Math.abs(g.T.s - 1 / k) < 0.005, `the phone's scale found: ${g.T.s}`);
+  const rigid = fitRigid(marks.map((m) => m.ar), marks.map((m) => m.map));
+  const worstRigid = Math.max(...marks.map((m) => { const c = Math.cos(rigid.theta), s = Math.sin(rigid.theta); const p = [c * m.ar[0] - s * m.ar[1] + rigid.tx, s * m.ar[0] + c * m.ar[1] + rigid.ty]; return Math.hypot(p[0] - m.map[0], p[1] - m.map[1]); }));
+  assert.ok(worstRigid > AGREE_M, `turn-and-shift alone leaves ${worstRigid.toFixed(2)} m: why they were thrown out`);
+  // close together, no scale (noise); and never past 7%
+  assert.equal(fitSimilar([[0, 0], [5, 0], [0, 5]], [[0, 0], [5.5, 0], [0, 5.5]]).s, 1, 'corners within 15 m: no scale');
+  const far2 = fitSimilar([[0, 0], [50, 0], [0, 50]], [[0, 0], [60, 0], [0, 60]]);
+  assert.ok(Math.abs(far2.s - 1.07) < 1e-9, `held at 7%: ${far2.s}`);
+  console.log(`refkeep (the phone's own scale): ok (3% short: found ${((g.T.s - 1) * 100).toFixed(1)}%; turn-and-shift alone left ${(worstRigid * 3.281).toFixed(1)} ft)`);
 }
