@@ -120,14 +120,17 @@ function collapseRuns(sides, minJog) {
     let j = i + 1;
     while (j < n && !L[j]) j++;
     const N = j === n ? out[0] : S[j], run = S.slice(i + 1, j);
-    // only a DIAGONAL: the run's corners all within half a metre of the straight line from where it leaves one wall to
-    // where it meets the next, that line slanting (20-70 degrees) and 1.5 m or more long. A jagged wall that turns a
+    // only a DIAGONAL: the run's corners all near the straight line from where it leaves one wall to where it meets
+    // the next. Between two parallel walls, within a quarter of its length and half a metre at least (the owner's
+    // bulged 0.56 m off a 4 m line); between two walls square to each other, within half a metre (a jagged wall running
+    // round a real corner can look like a long diagonal: the L deck test's ran 12.9 m with its inside corner 3.1 m
+    // off the line), that line slanting (20-70 degrees) and 1.5 m or more long. A jagged wall that turns a
     // real corner bends far from that line (an inside corner of an L, its legs metres long), and a jagged straight
     // wall's line is not slanting.
     const end = (s, k) => (s.axis === 'u' ? [s.at, k] : [k, s.at]);
     const X = end(P, P.to), Y = end(N, N.from), dx = Y[0] - X[0], dy = Y[1] - X[1], D = Math.hypot(dx, dy);
     const ang = D > 0 ? (Math.atan2(Math.abs(dy), Math.abs(dx)) * 180) / Math.PI : 0;
-    const diagonal = run.length >= 2 && D >= 1.5 && ang >= 20 && ang <= 70 && run.every((s) => { const q = end(s, s.to); return Math.abs((q[0] - X[0]) * dy - (q[1] - X[1]) * dx) / D <= 0.5; });
+    const diagonal = run.length >= 2 && D >= 1.5 && ang >= 20 && ang <= 70 && run.every((s) => { const q = end(s, s.to); return Math.abs((q[0] - X[0]) * dy - (q[1] - X[1]) * dx) / D <= (P.axis === N.axis ? Math.max(0.5, 0.25 * D) : 0.5); });
     if (!diagonal) { out.push(...run); i = j; continue; }
     if (P.axis !== N.axis) {
       P.to = N.at; N.from = P.at;
