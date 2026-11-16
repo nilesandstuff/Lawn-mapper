@@ -2769,6 +2769,23 @@ the builder move to it together: the page through GET /api/maps/model?id=&tool=s
 where a map has no shade model), the builder through the main site's modelOf. The water map's own reading of the ground
 and the wider area (hollows, paving, wind obstacles) stays its own (the owner's split, 2026-11-05).
 
+### H91. The first two real thermal walks, scored with no page open: the model about 4 F warm, rank 0.48 (water session, 2026-11-16)
+
+Scored by the water builder (H89) after three fixes on the day: the core's AR site filing walks under ids with spaces
+and commas (57849dd), the builder image's linked modules copied in as files (455faa4), and a 4 GiB instance (af1220e;
+the 1 GiB one lost its connection mid-plan on a real lot). Model surface-now 1 (2026-11-15). Measured minus modelled,
+F, half-metre squares at their own minute; the readings report (workflow task readings) prints them:
+  W1  2026-11-15 22:15 UTC (dusk), 3 min, overcast (sky sweep cloud 1.0): 159 squares at 0-60 degrees, all in shade
+      at that minute; mean -5.1, RMS 5.1, rank - (too uniform); 60-70 degrees -5.7 (269), 70-80 -6.0 (718).
+  W2  2026-11-16 18:56 UTC (early afternoon), 4 min, sky sweep cloud 0.58: 741 squares; mean -3.7, RMS 4.9,
+      RANK 0.48; in sun -3.0 (451), in shade -5.6 (224); 60-70 degrees -3.5 (1,134), 70-80 -3.9 (2,102).
+  Pooled: 2 walks, 900 squares, mean -3.9 F, RMS 4.9 F.
+WHAT THIS SAYS, AS MEASURED: the model's surface is warmer than the camera's by about 4-5 F on both walks, by day and
+at dusk; on the afternoon walk it ranks the squares in the right order more often than not (0.48); its shaded squares
+are further off than its sunny ones (-5.6 against -3.0); the steeper bands differ from straight-down by under 1 F, so
+the angle effect on this grass is small at these numbers. Two short November walks on two lots: a first look, not a
+calibration. The weather each was scored on is frozen with it (H85).
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge
@@ -3126,3 +3143,12 @@ it is about 3 times H83's, at the bottom about a fifth. It added 16% to the owne
 The probe transect in research-trees.md (0.5R to 3R, north and south of one maple and one spruce, over a dry week)
 measures the three together. The readings so far (H76) say shade runs drier than the model has it even with the draw.
 
+### S30. Why the model ran about 4 F warm on the first walks (2026-11-16, with H91)
+
+Unmeasured candidates, in no settled order: (1) the camera's own offset (its makers give +-2 C, 3.6 F; the thermal
+session's calibration is against the vendor app, not a reference body); (2) November soil colder than the air: the
+model has no heat stored in the ground (G is a share of Rn, FAO-56 hourly), so a cold soil that pulls the grass
+surface below the air is not in it, and the shaded squares -- with less sun to outweigh the soil -- being further off
+fits that; (3) the sky: the night and dusk cooling uses Brutsaert's clear sky with the sweep's cloud, and an overcast
+dusk (W1) still came out 5 F warm. A walk with a reference target (a cup of water beside the thermometer) would
+separate (1) from the rest; a summer walk would weaken (2).
