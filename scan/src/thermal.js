@@ -12,17 +12,24 @@
  * which forwards here over a service binding. Which walks belong to a map: noteWalk() leaves a small object
  * thermal-index/<map>/<walk> when the walk's thermal-placement.json arrives (twin.js PUT).
  */
-import { WALK, MAP, keyOf } from './twin.js';
+import { WALK, keyOf } from './twin.js';
+
+/* ANY MAP'S ID (2026-11-16): the site's map rule (twin.js MAP: letters, digits, _ and -, up to 64) refused the owner's
+   home map, an admin save whose id is 86 characters with |, spaces and commas, so its thermal walk was converted but
+   never filed under it, and the water site saw no walks at all. A map's id here is anything without control characters
+   (and no slash, which would split the key), and it is written into the bucket's keys encoded. Never printed. */
+export const MAP_ID = /^[^\x00-\x1f\x7f/]{1,256}$/;
+export const mapKey = (map) => encodeURIComponent(map);
 
 const json = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
-const indexKey = (map, walk) => `thermal-index/${map}/${walk}`;
+const indexKey = (map, walk) => `thermal-index/${mapKey(map)}/${walk}`;
 const read = async (env, key) => { try { const o = await env.TWIN.get(key); return o ? JSON.parse(await o.text()) : null; } catch { return null; } };
 
 /** A walk's thermal-placement.json has arrived: remember which map it belongs to. Never throws. */
 export async function noteWalk(env, walk, body) {
   try {
     const p = JSON.parse(new TextDecoder().decode(body)), map = p?.map;
-    if (typeof map !== 'string' || !MAP.test(map) || !WALK.test(walk)) return null;
+    if (typeof map !== 'string' || !MAP_ID.test(map) || !WALK.test(walk)) return null;
     // the map's own point when the walk was made: what the walk's east/north metres are measured from, kept in
     // case the map is moved later (private bucket; never printed)
     const origin = Array.isArray(p.origin) && p.origin.length === 2 && p.origin.every(Number.isFinite) ? p.origin : null;
@@ -61,12 +68,12 @@ export async function thermal(request, env, url, { isAdmin }) {
 export async function thermalData(env, map, walk = null) {
   const json = (body, status = 200) => ({ body, status });
   if (!env.TWIN) return json({ error: 'no-bucket' }, 503);
-  if (!MAP.test(map || '')) return json({ error: 'which map?' }, 400);
+  if (!MAP_ID.test(map || '')) return json({ error: 'which map?' }, 400);
   if (walk == null) {
     const walks = [];
     let cursor;
     do {
-      const page = await env.TWIN.list({ prefix: `thermal-index/${map}/`, cursor, limit: 1000 });
+      const page = await env.TWIN.list({ prefix: `thermal-index/${mapKey(map)}/`, cursor, limit: 1000 });
       for (const o of page.objects) walks.push(o.key.split('/')[2]);
       cursor = page.truncated ? page.cursor : undefined;
     } while (cursor);
@@ -94,8 +101,9 @@ export async function convertedWalks(env) {
   do {
     const page = await env.TWIN.list({ prefix: 'thermal-index/', cursor, limit: 1000 });
     for (const o of page.objects) {
-      const [, map, walk] = o.key.split('/');
-      if (!MAP.test(map || '') || !WALK.test(walk || '')) continue;
+      const [, enc, walk] = o.key.split('/');
+      let map = null; try { map = decodeURIComponent(enc || ''); } catch { map = null; }
+      if (!MAP_ID.test(map || '') || !WALK.test(walk || '')) continue;
       const st = await env.TWIN.head(keyOf(walk, 'thermal/status.json'));
       const grid = st ? await env.TWIN.head(keyOf(walk, 'thermal/grid.json')) : null;
       if (st && grid) out.push({ map, walk, at: (st.uploaded || grid.uploaded || new Date(0)).toISOString() });

@@ -94,6 +94,27 @@ async function main() {
     now.sort((a, b) => new Date(b.last_modified) - new Date(a.last_modified)).forEach((o, i) => console.log(`  map ${i + 1}: saved ${new Date(o.last_modified).toISOString()}, ${(o.size / 1e6).toFixed(1)} MB`));
     return;
   }
+  // "thermal-index": every walk with a thermal placement filed under its map (2026-11-16: the site's old map rule
+  // refused the owner's home map's id, so its walk was converted but never filed and the water site saw none). The
+  // key holds the id encoded (scan/src/thermal.js mapKey). Counts only: a map's id is a place, and this log is public.
+  if (cmd === 'thermal-index') {
+    const placed = (await list(base, token, 'twins/')).filter((o) => /^twins\/[^/]+\/thermal-placement\.json$/.test(o.key));
+    const have = new Set((await list(base, token, 'thermal-index/')).map((o) => o.key));
+    let filed = 0, already = 0, bad = 0;
+    for (const o of placed) {
+      const w = o.key.split('/')[1];
+      let p = null; try { p = JSON.parse(Buffer.from(await readObject(BUCKET, o.key)).toString('utf8')); } catch { p = null; }
+      const map = p?.map;
+      if (typeof map !== 'string' || !/^[^\x00-\x1f\x7f/]{1,256}$/.test(map) || !walkOk(w)) { bad++; continue; }
+      const key = `thermal-index/${encodeURIComponent(map)}/${w}`;
+      if (have.has(key)) { already++; continue; }
+      const origin = Array.isArray(p.origin) && p.origin.length === 2 && p.origin.every(Number.isFinite) ? p.origin : null;
+      await writeObject(BUCKET, key, Buffer.from(JSON.stringify({ walk: w, map, origin, at: Date.now() })), 'application/json');
+      filed++;
+    }
+    console.log(`\nThermal walks filed under their maps: ${placed.length} walks with a placement; ${filed} filed now, ${already} already filed, ${bad} unreadable.`);
+    return;
+  }
   // "latest": the walk whose twin was written to last (so nobody copies an id off a phone)
   if (walk === 'latest') {
     const all = await list(base, token, 'twins/');

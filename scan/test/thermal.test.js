@@ -53,3 +53,22 @@ const bad = await call('/api/scan/thermal?map=m1&walk=1763000900000');
 assert.equal(bad.status, 404); assert.equal((await bad.json()).error, 'tables differ');
 assert.equal((await call('/api/scan/thermal?map=m1', true, 'POST')).status, 405);
 console.log('thermal: ok');
+
+// ANY MAP'S ID (2026-11-16): an admin save's id holds |, spaces and commas (the owner's home map: 86 characters). It is
+// filed (encoded in the key), listed, read back, and returned whole by convertedWalks; a slash or a control character
+// is still refused.
+{
+  const { thermalData, convertedWalks } = await import('../src/thermal.js');
+  const id = 'user|12345|Somewhere Rd, Sometown, ST 00000|' + 'x'.repeat(40);
+  TWIN.head = async (k) => (objs.has(k) ? { uploaded: new Date('2026-11-15T23:00:00Z') } : null);
+  assert.equal(await noteWalk(env, '1763100000000', enc({ map: id, origin: [-85.5, 42.5] })), id, 'filed under its own id');
+  assert.ok([...objs.keys()].some((k) => k.startsWith('thermal-index/') && k.endsWith('/1763100000000') && !k.slice(14).includes(' ')), 'the id encoded in the key');
+  assert.deepEqual((await thermalData(env, id)).body.walks.map((x) => x.walk), ['1763100000000'], 'listed under it');
+  objs.set('twins/1763100000000/thermal/grid.json', JSON.stringify({ records: [{ e: 0, n: 0, T: 20 }] }));
+  objs.set('twins/1763100000000/thermal/status.json', JSON.stringify({ ok: true, records: 1 }));
+  assert.equal((await thermalData(env, id, '1763100000000')).body.records.length, 1, 'read back');
+  assert.ok((await convertedWalks(env)).some((x) => x.map === id && x.walk === '1763100000000'), 'returned with its id whole');
+  assert.equal(await noteWalk(env, '1763100000001', enc({ map: 'a/b' })), null, 'a slash is refused');
+  assert.equal((await thermalData(env, 'a\nb')).status, 400, 'a control character is refused');
+  console.log('thermal (any map id): ok');
+}
