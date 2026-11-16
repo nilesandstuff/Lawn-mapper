@@ -580,14 +580,17 @@ export function lidarMarks(box, pts, { cell = CELL, debug = null } = {}) {
        wing, 4.2-5.0 at the inset, 4.4 at the north part, 7.0-7.6 at the garage), but planting beds against that wall,
        0.6-1.9 m high and under 10 m2 a piece, touched the house and were in its group, so the outline ran the garage's
        line all the way north. So the outline is traced from the roof returns (the shade map's roof, 2 m or more up),
-       and what of the group stands below the eave is OUTSIDE it: a laser from above cannot reach under an overhang,
-       so a low return means no roof over that spot. Only when the roof is most of the group (else the old way). */
+       and what of the group stands below the eave and is not the shade map's building (shrubs, beds, steps) is
+       OUTSIDE it: a laser from above does not reach under an overhang, so such a return means no roof over that spot. Only when the roof is most of the group (else the old way). */
     if (kind === 'building') {
       const roofs = group.filter((p) => p.bld && p.h >= 2);
       if (roofs.length >= Math.max(20, 0.5 * group.length)) {
         const rh = roofs.map((p) => p.h).sort((x, y) => x - y), eave = rh[Math.floor(rh.length * 0.1)];
         const inR = new Set(roofs);
-        others = others.concat(group.filter((p) => !inR.has(p) && p.h < eave - 0.5));
+        // but a low return the shade map calls building is the house's own WALL, which a slanting laser does reach
+        // under the overhang (the owner's garage, its gable end: wall returns 0.3-1.8 m up at 13.7 m, the roof's edge at
+        // 14.3, the photo's 14.4; counted outside, they pulled the edge in by the overhang): it counts neither way
+        others = others.concat(group.filter((p) => !inR.has(p) && !p.bld && p.h < eave - 0.5));
         inside = roofs;
       }
     }
