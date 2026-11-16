@@ -2753,6 +2753,22 @@ plan with its shade in 27 s, the walk scored in 31 s in all (2,293 lawn squares 
 sun, 1,608 in shade at that November minute), sunshine 145 W/m2 measured by the satellite, Open-Meteo answering from
 this sandbox today. Test data; the numbers mean nothing but the path. test/autoscore.test.js.
 
+### H90. The live water map ran without its shade for 14 minutes; stage 2 is the target (water session, 2026-11-16)
+
+THE OUTAGE: the features session's light-worker 'model' message (9ae24aa, merged 2026-11-16) made
+public/shade/light-worker.js import ../lib/lidar-model.js. The water site carries lib/shade/ as links to the shade map's
+files but water/lib/lib/ held only mask.js, so the water deploy of 63cf978 (19:12 UTC) shipped a light worker whose
+import failed: every water plan opened from 19:12 to 19:26 UTC ran with the lawn in full sun (the trouble list said
+the shade could not be worked out). Fixed in d78d900 (the link added, deployed 19:26). test/imports.test.js now fails
+the deploy when any relative import in the water library does not resolve (checked: it fails without the link). The
+water builder's image (f5c1e7e) predates the change and was not affected.
+STAGE 2 IS THE TARGET, NOT AN OPTION (the core session, 2026-11-16, citing the owner's rule of 2026-11-04: every tool
+reads the shade map's finished model, none rebuilds the lidar): the light worker's 'model' message now exists
+(features session; same 'built' answer and state as 'build', identical sun hours on its test lot). The water page and
+the builder move to it together: the page through GET /api/maps/model?id=&tool=shade (the canopy from the lidar only
+where a map has no shade model), the builder through the main site's modelOf. The water map's own reading of the ground
+and the wider area (hollows, paving, wind obstacles) stays its own (the owner's split, 2026-11-05).
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge
