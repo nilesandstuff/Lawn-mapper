@@ -2719,6 +2719,15 @@ thermal walk comes in... I tried to do that, but I'm not seeing the things you s
 Checked in a phone-sized browser against the real store code on SQLite with made-up maps: the move (1 visit, 27
 readings) and the hidden run's start. The hidden run itself is the water map unchanged; not run here on a real map.
 
+### H88. The shared roof rule's new edge step, carried in (water session, 2026-11-16)
+
+The features session (2026-11-16, d9e8b99, shade findings 37): public/shade/structures.js gained edgeUnderCrown (WHY
+11): a tree column one out from a roof, holding a single echo 0.8 m under to 0.4 m over the roof and within the
+property's building singles' brightness, becomes building -- 1,676 columns on its 49 labelled lots, mostly roof
+outlines. The water map reads its roofs through that module (roofs.js shadeRoofs, H77; lib/shade/structures.js is a
+link to it, copied at build), so its roofs gain the same edges from this deploy; the default settings, unchanged.
+Not re-measured on the Chesapeake squares (owner, 2026-11-04: no Chesapeake re-check for roofs); the water tests pass.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge
