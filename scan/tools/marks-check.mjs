@@ -87,6 +87,20 @@ async function main() {
   const RC = roofCorners(M, P, lawn), RA = roofCorners(M, P, [], { maxEaveM: 99 });
   console.log(`Roof corners offered: ${RC.length} (of ${RA.length} outward corners with long sides, before the eave-height and lawn rules): ${RC.map((c) => `${c.label} of the ${M.objects.find((o) => o.id === c.of)?.area} m2 building, eave ${c.eaveM} m, ${c.lawnM} m from the lawn, sides ${c.sidesM.join(' and ')} m, ${c.sure ? 'sure' : `within ${c.within ?? '?'} m`}`).join('; ') || 'none'}`);
   console.log(`  all of them: ${RA.map((c) => `${M.objects.find((o) => o.id === c.of)?.area} m2 ${c.label} eave ${c.eaveM} m${c.sure ? ' sure' : ''}`).join('; ') || 'none'}`);
+  /* THE WALK'S MARKED POINTS AGAINST TODAY'S OUTLINES (2026-11-16, the 1:55 pm walk: two roof corners 5.7 ft farther
+     apart as walked than on the map, 8.8%, far past the phone's own scale). Each point, where the owner tapped it, to
+     the nearest corner of today's outlines and of the roof corners on offer. Distances only. */
+  try {
+    const live = JSON.parse(Buffer.from(await readObject(BUCKET, `twins/${walk}/live.json`)).toString('utf8'));
+    const last = new Map(); for (const mk of live.marks || []) if (mk?.map) last.set(mk.id, mk);
+    const verts = M.objects.flatMap((o) => (o.ring || []).map((p) => ({ p, o })));
+    const ftOf = (v) => (v * 3.281).toFixed(1);
+    for (const [id, mk] of last) {
+      const nv = verts.map((v) => ({ ...v, d: Math.hypot(v.p[0] - mk.map[0], v.p[1] - mk.map[1]) })).sort((x, y) => x.d - y.d)[0];
+      const nr = RA.map((c) => ({ c, d: Math.hypot(c.at[0] - mk.map[0], c.at[1] - mk.map[1]) })).sort((x, y) => x.d - y.d)[0];
+      console.log(`  marked point ${id}: ${nv ? `${ftOf(nv.d)} ft from the nearest corner of today's outlines (the ${nv.o.area} m2 ${nv.o.kind})` : 'no outline'}; ${nr ? `${ftOf(nr.d)} ft from the nearest roof corner on offer (${nr.c.label}, eave ${nr.c.eaveM} m)` : 'no roof corner'}`);
+    }
+  } catch (err) { console.log(`  (the walk's marks could not be read: ${err.message})`); }
   const wd = debug.filter((d) => d.kind === 'in the woods');
   console.log(`Left out as in the woods (crowns over the ground round it): ${wd.length}; ${wd.map((d) => `${d.was} ${d.n} returns at ${d.top} m (${d.woods})`).slice(0, 20).join('; ')}`);
   const dk = debug.filter((d) => d.kind === 'deck off a house');
