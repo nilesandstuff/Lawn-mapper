@@ -44,8 +44,8 @@ binding = "LAWNMAP"
 service = "lawn-mapper"
 
 # THE MAIN SITE'S PRIVATE SIDE (2026-11-16): its named entrypoint Internal (saveOf, modelOf, thermalOf, adminSaves),
-# admin saves only, for the walks scored with no page open (src/worker.js). Commented out until the core session's
-# half is deployed: a binding to an entrypoint that does not exist yet would fail this deploy.
+# admin saves only, for the walks scored with no page open (src/worker.js). On when MAIN_INTERNAL is '1' (the workflow
+# sets it: the core session's half is live since 2026-11-16).
 ${process.env.MAIN_INTERNAL === '1' ? '' : '# '}[[services]]
 ${process.env.MAIN_INTERNAL === '1' ? '' : '# '}binding = "MAIN"
 ${process.env.MAIN_INTERNAL === '1' ? '' : '# '}service = "lawn-mapper"

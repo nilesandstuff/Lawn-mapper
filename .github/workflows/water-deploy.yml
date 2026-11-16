@@ -86,8 +86,8 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CUSTOM_DOMAIN: ${{ vars.CUSTOM_DOMAIN }}
-          # the main site's private side (its Internal entrypoint): '1' once the core session's half is deployed
-          MAIN_INTERNAL: '0'
+          # the main site's private side (its Internal entrypoint, live since 2026-11-16, the core's 7d1c134)
+          MAIN_INTERNAL: '1'
         run: |
           # bound to the water builder once it exists (task builder): a binding to a missing Worker would fail the deploy
           if npx wrangler deployments list --name water-builder > /dev/null 2>&1; then export WITH_BUILDER=1; echo "the water builder exists: bound"; else echo "no water builder yet: run the task builder"; fi
