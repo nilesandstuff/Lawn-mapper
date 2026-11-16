@@ -185,7 +185,8 @@ export const EAVE_M = 2; // a crown column beside a roof, its top within this of
    its eave) to EDGE_ABOVE_M over it -- as bright as this property's own roofs (the owner: "we should be able to see
    past that with the lidar brightness and the fact that returns get through"; calibrated per building, the middle
    60% of the single echoes of the building the roof beside it belongs to, widened by EDGE_BRIGHT_SLACK; the whole
-   grid's when that building has fewer than EDGE_BRIGHT_MIN). One column out from a roof the main rule called
+   grid's when that building has fewer than EDGE_BRIGHT_MIN; not at all where nothing in the column stands over the
+   roof's height, EDGE_BARE: no leaf there to tell the roof from, and a gutter or fascia can be twice as bright). One column out from a roof the main rule called
    (EDGE_FROM_WHY: a flat roof, its eave, a roof under a crown; not "nothing got through", nor an edge this step found). Measured on the 49 labelled lots (shade findings 37):
    the looser first draft (1.5 m under, 0.5 over, the middle 80% widened 25%, two columns out, from any building)
    turned 2,820 columns, 157 of them inside labelled crowns; these settings turn 1,676, 74 in crowns, and the
@@ -194,6 +195,7 @@ export const EDGE_BELOW_M = 0.8;
 export const EDGE_ABOVE_M = 0.4;
 export const EDGE_BRIGHT_BAND = Object.freeze([0.2, 0.8]);
 export const EDGE_BRIGHT_SLACK = 0.1;
+export const EDGE_BARE = true; // a column with nothing over the roof's height is not judged by brightness (see edgeUnderCrown)
 export const EDGE_BRIGHT_MIN = 20; // single echoes a building needs for a band of its own (fewer: the whole grid's)
 export const EDGE_PASSES = 1;
 export const EDGE_FROM_WHY = Object.freeze([1, 3, 10]);
@@ -432,7 +434,7 @@ export function roofUnderCrown(patch, st, w) {
  * building made buildings (why 11) in place. Returns their roof heights (m
  * over the ground; NaN elsewhere), so the crown above them stays a tree's.
  */
-export function edgeUnderCrown(cols, model, kind, why, st, { shift = null, below = EDGE_BELOW_M, above = EDGE_ABOVE_M, slack = EDGE_BRIGHT_SLACK, passes = EDGE_PASSES, band = EDGE_BRIGHT_BAND, fromWhy = EDGE_FROM_WHY, brightWhy = null, perBuilding = true } = {}) {
+export function edgeUnderCrown(cols, model, kind, why, st, { shift = null, below = EDGE_BELOW_M, above = EDGE_ABOVE_M, slack = EDGE_BRIGHT_SLACK, passes = EDGE_PASSES, band = EDGE_BRIGHT_BAND, fromWhy = EDGE_FROM_WHY, brightWhy = null, perBuilding = true, bareEdge = EDGE_BARE } = {}) {
   const { grid, w, h, ground } = model;
   const N = w * h;
   const roofH = new Float32Array(N).fill(NaN);
@@ -492,10 +494,13 @@ export function edgeUnderCrown(cols, model, kind, why, st, { shift = null, below
         const r = roofH[yy * w + xx];
         if (!Number.isFinite(r)) continue;
         const [lo, hi] = bands[comp[yy * w + xx]] || gridBand;
+        /* Nothing over the roof's height in this column (no crown above it): no leaf to tell the roof from, so a
+           single at the roof's height is the roof's edge however bright (a gutter, a fascia; bareEdge). */
+        const bare = bareEdge && st.zHi[k] - ground[k] <= r + above;
         for (let q = 0; q < a.length; q += 2) {
           const over = a[q], I = a[q + 1];
           if (over < r - below || over > r + above) continue;
-          if (I && (I < lo || I > hi)) continue;
+          if (I && !bare && (I < lo || I > hi)) continue;
           if (!(best >= over)) { best = over; bestC = comp[yy * w + xx]; }
         }
       }

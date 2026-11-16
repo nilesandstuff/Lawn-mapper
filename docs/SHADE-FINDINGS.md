@@ -1734,6 +1734,24 @@ the print, column for column. The core's outline of the house now has its
 south-west corner (367.4 m2; the notch is gone) and offers 3 roof corners
 where it offered 1.
 
+THE GARAGE'S EAST EDGE, the same day, build 5 (core prints, runs 43890881660
+and 43899642085). The owner's photo shows the east wall straight; the model's
+south half of it stood 1 m in. There the column beyond the garage's eave (the
+eave 3.7 m up, why 3) holds single echoes at 3.2-3.3 m, class 1, at
+14,946-22,578. That is about twice the garage's own band (7,012-10,319; its
+621 singles have a median of 8,427). Each of those columns also holds a pulse
+through to the ground, and nothing stands above them (top 3.3 m). The
+height test passed; the brightness test kept them out. Most likely it is a
+gutter, fascia or flashing: bright, at the eave's height. NOT established.
+
+CHANGE (SHADE_BUILD 6; asked of the owner before it ships): where nothing in
+the column stands over the roof's height plus 0.4 m, there is no leaf to tell
+the roof from, so brightness is not tested (EDGE_BARE). Under a crown the
+band still applies. On the 49 labelled lots: 2,269 columns turned (1,671
+before), 84 of them in labelled crowns (75). The aerial photos of B15 and B12, with the turned columns drawn on them,
+put the new ones on roof edges and corners; a few widen a
+conifer row the model already called a building.
+
 ## Speculation
 
 - FENCES (2026-10-27, IN USE, unmeasured; fences.js): drawn by the visitor
