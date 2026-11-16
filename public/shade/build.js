@@ -18,5 +18,7 @@
  *                  drawn as a tree there, no eaves from it; the file's `roof`
  *   4  2026-11-16  structures.js: a roof edge under a crown stays a building
  *                  (edgeUnderCrown, why 11; shade findings 37)
+ *   5  2026-11-16  edgeUnderCrown: each building's own brightness, not the
+ *                  grid's (a dark roof among bright ones; findings 37)
  */
-export const SHADE_BUILD = 4;
+export const SHADE_BUILD = 5;
