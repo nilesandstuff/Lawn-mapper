@@ -116,3 +116,49 @@ export function modelUsable(m) {
   const g = m?.meta?.grid, n = g ? g.w * g.h : 0;
   return Boolean(n && m.arrays.ground?.length === n && m.arrays.kind?.length === n);
 }
+
+/**
+ * OVERFLOW (owner, 2026-11-16: "I'd think it would be better to make an overflow file rather than remove data
+ * outright"). A model over the server's 48 MB is kept as a main file plus overflow parts, each a model file of its
+ * own (public/shade/model-out.js modelFiles): meta.overflow in the main file lists { part, arrays, points: [from,
+ * to] }, and each part's meta.overflowOf is the main file's `at`. mergeOverflow joins them; loadModel fetches them.
+ */
+export function mergeOverflow(main, parts) {
+  const list = main.meta.overflow || [];
+  if (!list.length) return main;
+  const arrays = { ...main.arrays };
+  const byPart = new Map(parts.filter(Boolean).map((p) => [p.meta.part, p]));
+  const pointRuns = [];
+  for (const o of list) {
+    const p = byPart.get(o.part);
+    if (!p || p.meta.overflowOf !== main.meta.at) throw new Error(`lidar-model: overflow part ${o.part} is missing or from another save`);
+    if (o.points) pointRuns.push({ from: o.points[0], to: o.points[1], arrays: p.arrays });
+    else for (const name of o.arrays) arrays[name] = p.arrays[name];
+  }
+  if (pointRuns.length) {
+    const n = Math.max(...pointRuns.map((r) => r.to));
+    for (const name of Object.keys(pointRuns[0].arrays)) {
+      const T = pointRuns[0].arrays[name].constructor, out = new T(n);
+      for (const r of pointRuns) out.set(r.arrays[name], r.from);
+      arrays[name] = out;
+    }
+  }
+  const { overflow, ...meta } = main.meta;
+  return { meta: { ...meta, joined: list.length }, arrays };
+}
+
+/** GET a model and its overflow parts (url is the main file's, e.g. /api/maps/model?id=&tool=shade) -> one { meta, arrays }, or null on 404. */
+export async function loadModel(fetchFn, url, init = {}) {
+  const res = await fetchFn(url, init);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`lidar-model: ${res.status}`);
+  const main = await unpackModel(await res.arrayBuffer());
+  const list = main.meta.overflow || [];
+  if (!list.length) return main;
+  const parts = await Promise.all(list.map(async (o) => {
+    const r = await fetchFn(`${url}${url.includes('?') ? '&' : '?'}part=${o.part}`, init);
+    if (!r.ok) throw new Error(`lidar-model: overflow part ${o.part}: ${r.status}`);
+    return unpackModel(await r.arrayBuffer());
+  }));
+  return mergeOverflow(main, parts);
+}

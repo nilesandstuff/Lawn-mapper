@@ -32,7 +32,7 @@ import { pointsIn, toMerc, fromMerc, mercScale } from './shade/ept.js';
 import { flightOf } from './shade/find.js';
 import { onePass } from './shade/passes.js';
 import { flagStrays } from './shade/structures.js';
-import { finishedModel, modelBytes } from './shade/model-out.js';
+import { finishedModel, modelFiles, putModelFiles } from './shade/model-out.js';
 import { readSurround } from './shade/surround.js';
 import { siteFromSave, siteBounds, partFits, asFeature } from './shade/site.js';
 import { MARGIN_M, alignFrame, lotOf, lotDensity as densityOver, modelBox, fitFrom, shiftFrom, MIN_DENSITY } from './shade/lineup.js';
@@ -190,9 +190,9 @@ function saveModelFile({ now = false } = {}) {
   modelTimer = setTimeout(async () => {
     try {
       const fin = finishedModel({ ...view.trees.finished(), surround: view.surround || null, fences: view.fences || [], lidar: view.model?.lidar || null, flown: view.model?.flown || null, photo: view.model?.green?.frame || null, basedOn: site.map.at || null });
-      const bytes = await modelBytes(fin); // gzipped (lidar-model.js packModel)
-      const res = await fetch(`/api/maps/model?id=${encodeURIComponent(site.map.id)}&tool=shade`, { method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/octet-stream' }, body: bytes });
-      if (!res.ok) track('model', `refused ${res.status}`); else track('model', `${Math.round(bytes.byteLength / 1024)} KB`);
+      const files = await modelFiles(fin); // gzipped (lidar-model.js packModel); over 48 MB, overflow parts beside it
+      const res = await putModelFiles(fetch, '', site.map.id, files);
+      if (!res.ok) track('model', `refused ${res.status}${res.part ? ` (part ${res.part})` : ''}`); else track('model', `${Math.round(res.bytes / 1024)} KB${res.parts ? ` in ${res.parts + 1} files` : ''}`);
     } catch (e) { track('model', `failed: ${String(e.message).slice(0, 60)}`); }
   }, now ? 0 : 1000);
 }

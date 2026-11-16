@@ -52,7 +52,7 @@ import { gridOver } from './grid.js';
 import { treesModel } from './trees-model.js';
 import { Erased } from './erase.js';
 import { readSurround } from './surround.js';
-import { finishedModel, modelBytes } from './model-out.js';
+import { finishedModel, modelFiles, putModelFiles } from './model-out.js';
 import { lazDecoder, browserFactory } from './laz.js';
 import { nad83Correction } from './datum.js';
 import { alignToPhoto } from './align.js';
@@ -197,9 +197,9 @@ export async function rebuildModel(mapId, { onProgress = () => {}, signal = null
       model, season, cols, shift, surround: sur, fences: part?.fences || [], erasedMask, erasedCubes,
       lidar: lidarRec, flown: flown ? { start: flown.start, mid: flown.mid, end: flown.end } : null, photo: green?.frame || null, basedOn: site.map.at || null, now,
     });
-    const bytes = await modelBytes(fin);
-    const put = await fetchFn(`${base}/api/maps/model?id=${encodeURIComponent(mapId)}&tool=shade`, { method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/octet-stream' }, body: bytes });
-    if (!put.ok) return { ok: false, why: `the model was not saved (${put.status})` };
+    const files = await modelFiles(fin);
+    const put = await putModelFiles(fetchFn, base, mapId, files);
+    if (!put.ok) return { ok: false, why: `the model was not saved (${put.status}${put.part ? `, overflow part ${put.part}` : ''})` };
     /* A first build keeps its lidar and line-up in the map's shade part, as the page does (shade.js shadePart), so
        the shade page reads the same cloud, box and shift next time and the person's edits there fit this grid. */
     let partSaved = null;
@@ -213,7 +213,7 @@ export async function rebuildModel(mapId, { onProgress = () => {}, signal = null
       const r = await fetchFn(`${base}/api/maps/tool?id=${encodeURIComponent(mapId)}&tool=shade`, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data, basedOn: site.map.at || null }) });
       partSaved = r.ok;
     }
-    return { ok: true, at: fin.meta.at, build: SHADE_BUILD, bytes: bytes.byteLength, erased: fin.meta.erased, fences: fin.meta.fences.length, first: !hasKept, partSaved, lidar: { name: lidarRec.name, fit: lidarRec.fit } };
+    return { ok: true, at: fin.meta.at, build: SHADE_BUILD, bytes: put.bytes, parts: files.parts.length, erased: fin.meta.erased, fences: fin.meta.fences.length, first: !hasKept, partSaved, lidar: { name: lidarRec.name, fit: lidarRec.fit } };
   } catch (e) {
     return { ok: false, why: String(e?.message || e) };
   }

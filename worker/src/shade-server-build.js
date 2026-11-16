@@ -33,7 +33,15 @@ export async function buildShadeOnServer(env, owner, key, { base } = {}) {
   } catch (e) { return { ok: false, why: `the shade builder did not answer: ${String(e?.message || e).slice(0, 120)}` }; }
   const out = await res.json().catch(() => null);
   if (!out?.ok || !out.model) return { ok: false, why: out?.why || `the shade builder answered ${res.status}` };
-  const bytes = Uint8Array.from(atob(out.model), (c) => c.charCodeAt(0));
+  /* Overflow parts first (a model over 48 MB, model-out.js modelFiles), the main file last, as the page does. */
+  const b64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+  const overflow = Array.isArray(out.parts) ? out.parts : [];
+  for (let i = 0; i < overflow.length; i++) {
+    const pb = b64(overflow[i]);
+    const r = await putModel(env, owner, key, 'shade', new Response(pb).body, pb.length, { part: i + 1 });
+    if (r.error) return { ok: false, why: `overflow part ${i + 1} was not stored: ${r.error}` };
+  }
+  const bytes = b64(out.model);
   const model = await putModel(env, owner, key, 'shade', new Response(bytes).body, bytes.length);
   if (model.error) return { ok: false, why: `the model was not stored: ${model.error}` };
   const part = out.part?.data ? await putTool(env, owner, key, 'shade', out.part.data, out.part.basedOn) : null;
