@@ -2096,6 +2096,61 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
     `own ${eave.map((j) => own.kind[j] + '/' + own.why[j]).join(' ')}; whole ${eave.map((j) => whole.kind[j]).join('')}; bright ${own.kind[at(30, 8)]}`);
 }
 
+/* A BRIGHT EDGE WITH NOTHING ABOVE IT (the owner's garage, east side, 2026-11-16, build 5: beside a roof 3.7 m up whose
+   singles are ~7,000, a column of single echoes at 3.2-3.3 m twice as bright -- a gutter or fascia -- and a pulse
+   through to the ground, so a tree; the brightness band kept it out). With nothing over the roof's height in the
+   column there is no leaf to tell it from, so it turns; the same bright echo under a crown stays a tree. */
+{
+  const { structuresOf, BUILDING, TREE } = await import('../public/shade/structures.js');
+  const lat = 43, k = mercScale(lat);
+  const grid = gridOver([0, 0, 20 / k, 12 / k], 1, lat);
+  const pts = [];
+  const add = (e, n, z, c, r, nr, I) => pts.push([e, n, z, c, r, nr, I]);
+  for (let e = 0.25; e < 20; e += 0.5) for (let n = 0.25; n < 12; n += 0.5) {
+    if (e > 2 && e < 9 && n > 2 && n < 10) add(e, n, 103.7, 1, 1, 1, 6800 + ((e * 3 + n * 7) % 1) * 800); // the garage, flat at 3.7 m
+    else if (e > 9 && e < 10 && n > 2 && n < 10) { if (n % 1 < 0.5) add(e, n, 103.6, 1, 1, 1, 7000); else { add(e, n, 103.6, 1, 1, 2, 7000); add(e, n, 100.02, 2, 2, 2, 36000); } } // its edge column, an eave (step 4)
+    else if (!(e > 9 && e < 11 && n > 2 && n < 10)) add(e, n, 100, 2, 1, 1, 38000);
+  }
+  /* the east edge, x 10-11: at n 3-5 a bright single at 3.3 m and a pulse through to the ground; at n 7-9 the same under a crown at 7 m */
+  for (const n of [3.5, 4.5, 5.5]) { add(10.3, n, 103.3, 1, 1, 1, 22000); add(10.7, n, 103.25, 1, 1, 2, 21000); add(10.7, n, 100.02, 2, 2, 2, 36000); }
+  for (const n of [7.5, 8.5, 9.5]) { add(10.3, n, 103.3, 1, 1, 1, 22000); add(10.7, n, 107, 1, 1, 2, 12000); add(10.7, n, 100.02, 2, 2, 2, 36000); }
+  const cols = makeColumns(pts.length);
+  pts.forEach(([e, n, z, c, r, nr, I], i) => { cols.x[i] = e / k; cols.y[i] = n / k; cols.z[i] = z; cols.cls[i] = c; cols.ret[i] = r; cols.nret[i] = nr; cols.intensity[i] = I; });
+  const model = buildCanopy(cols, grid);
+  const at = (e, n) => Math.floor(12 - n) * grid.w + Math.floor(e);
+  const on = structuresOf(cols, model), off = structuresOf(cols, model, { edges: { bareEdge: false } });
+  const bare = [3.5, 4.5, 5.5].map((n) => at(10.5, n)), covered = [7.5, 8.5, 9.5].map((n) => at(10.5, n));
+  check('structures: a bright single at a roof\'s edge height with nothing above it (a gutter), beside an eave, turns to building; under a crown the same echo stays a tree; with the brightness test alone it was a tree',
+    bare.every((j) => on.kind[j] === BUILDING && on.why[j] === 11) && covered.every((j) => on.kind[j] === TREE) && bare.every((j) => off.kind[j] === TREE),
+    `bare ${bare.map((j) => on.kind[j] + '/' + on.why[j]).join(' ')}; covered ${covered.map((j) => on.kind[j] + '/' + on.why[j]).join(' ')}; before ${bare.map((j) => off.kind[j]).join('')}`);
+}
+
+/* A HOLE IN A ROOF (structures.js roofHoles, why 12; owner, 2026-11-16: "yes"). A flat roof 4 m up with one 1 m column
+   that holds no return at all, and a notch at its edge (roof on three sides): the hole becomes roof at its neighbours'
+   height, solid in the light from the grass to the roof; the notch stays open. */
+{
+  const { structuresOf, BUILDING, NOTHING } = await import('../public/shade/structures.js');
+  const lat = 43, k = mercScale(lat);
+  const grid = gridOver([0, 0, 16 / k, 16 / k], 1, lat);
+  const hole = (e, n) => Math.floor(e) === 7 && Math.floor(n) === 8, notch = (e, n) => Math.floor(e) === 11 && Math.floor(n) === 8;
+  const pts = [];
+  for (let e = 0.25; e < 16; e += 0.5) for (let n = 0.25; n < 16; n += 0.5) {
+    if (hole(e, n) || notch(e, n)) continue; // no return at all
+    if (e > 3 && e < 12 && n > 4 && n < 12) pts.push([e, n, 104, 1]); else pts.push([e, n, 100, 2]);
+  }
+  const cols = makeColumns(pts.length);
+  pts.forEach(([e, n, z, c], i) => { cols.x[i] = e / k; cols.y[i] = n / k; cols.z[i] = z; cols.cls[i] = c; cols.ret[i] = 1; cols.nret[i] = 1; cols.intensity[i] = c === 1 ? 8000 : 38000; });
+  const model = buildCanopy(cols, grid);
+  const at = (e, n) => Math.floor(16 - n) * grid.w + Math.floor(e);
+  const on = structuresOf(cols, model), off = structuresOf(cols, model, { holes: false });
+  const season = seasonalCanopy(cols, buildCanopy(cols, grid));
+  const kh = at(7.5, 8.5), { nz, dz, z0 } = model;
+  const solid = [1.5, 2.5, 3.5].every((hgt) => season.muOff[kh * nz + Math.floor((model.ground[kh] + hgt - z0) / dz)] >= 4);
+  check('structures: a 1 m column with no return inside a roof is roof (why 12) at its neighbours\' height and solid below it; a notch open on one side stays empty; without the step the hole was nothing',
+    on.kind[kh] === BUILDING && on.why[kh] === 12 && Math.abs(on.roofTop[kh] - 4) < 0.1 && solid && on.kind[at(11.5, 8.5)] === NOTHING && off.kind[kh] === NOTHING,
+    `hole ${on.kind[kh]}/${on.why[kh]} roof ${on.roofTop[kh]} solid ${solid}; notch ${on.kind[at(11.5, 8.5)]}; before ${off.kind[kh]}`);
+}
+
 /* ONE LEAF STATE PER LOT (passes.js; owner, 2026-10-29). */
 {
   check('passes: a point fired 9 May or in November is leaf-off; 11 May, July and an undated one are not',

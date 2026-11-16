@@ -1727,6 +1727,44 @@ it: with its own band the eave turns, with the grid's it did not. Run on the
 print's own numbers (the garage's band about 7,000-9,500), row 5's three
 columns turn.
 
+MEASURED ON THE OWNER'S HOUSE, build 5: the core session's marks print, run
+43824412439, model made at 07:23 UTC. Window row 5, cols 7-9 are now 1/11,
+roofs at 4.2, 4.9 and 5.3 m, and row 6 stays 2/4. That is the prediction from
+the print, column for column. The core's outline of the house now has its
+south-west corner (367.4 m2; the notch is gone) and offers 3 roof corners
+where it offered 1.
+
+THE GARAGE'S EAST EDGE, the same day, build 5 (core prints, runs 43890881660
+and 43899642085). The owner's photo shows the east wall straight; the model's
+south half of it stood 1 m in. There the column beyond the garage's eave (the
+eave 3.7 m up, why 3) holds single echoes at 3.2-3.3 m, class 1, at
+14,946-22,578. That is about twice the garage's own band (7,012-10,319; its
+621 singles have a median of 8,427). Each of those columns also holds a pulse
+through to the ground, and nothing stands above them (top 3.3 m). The
+height test passed; the brightness test kept them out. Most likely it is a
+gutter, fascia or flashing: bright, at the eave's height. NOT established.
+
+CHANGE (SHADE_BUILD 6; the owner said yes, 2026-11-16): where nothing in
+the column stands over the roof's height plus 0.4 m, there is no leaf to tell
+the roof from, so brightness is not tested (EDGE_BARE). Under a crown the
+band still applies. On the 49 labelled lots: 2,269 columns turned (1,671
+before), 84 of them in labelled crowns (75). The aerial photos of B15 and B12, with the turned columns drawn on them,
+put the new ones on roof edges and corners; a few widen a
+conifer row the model already called a building.
+
+A HOLE IN A ROOF (same build; the owner said yes). The core session found two
+on the owner's house: a 1 m column with no return at all, with roof on both
+sides of it, which the outline drew as a slit. On the 49 labelled lots, 220
+columns with no return have roof on all four sides, among 50,189 building
+columns. They are mostly on the sparse flights (B15 57, B16 45, B08 22, B09 21).
+In the light, canopy.js already lent most of them their neighbours' pulses:
+on those three lots the median hole let no light through straight down from
+8 m to 1 m, but some let through up to 43%. Such a column is now a building
+(roofHoles, why 12) at its neighbours' mean roof height, and seasonal.js makes
+it solid from the grass to that height. Three-sided ones stay empty (a notch
+or courtyard can be real). Both changes together, on the 49 lots: 2,490
+columns made building (1,671 at build 5), 90 in labelled crowns (75).
+
 ## Speculation
 
 - FENCES (2026-10-27, IN USE, unmeasured; fences.js): drawn by the visitor

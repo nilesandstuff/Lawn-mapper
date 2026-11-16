@@ -430,6 +430,15 @@ export function seasonalCanopy(cols, model, { shift = null, classify = true, fil
       if (mid > GRASS_M && mid < hTop && mu[k * nz + l] < SOLID_MU) mu[k * nz + l] = SOLID_MU;
     }
   }
+  /* A HOLE IN A ROOF IS ROOF (structures.js why 12): solid from the grass to its neighbours' roof height, as a roof is
+     (canopy.js lent most of them enough of their neighbours' pulses already, not all). Changes mu (the leaf-off state too). */
+  for (let k = 0; k < N; k++) {
+    if (built.why[k] !== 12 || !Number.isFinite(built.roofTop?.[k])) continue;
+    for (let l = 0; l < nz; l++) {
+      const mid = z0 + (l + 0.5) * dz - ground[k];
+      if (mid > GRASS_M && mid < built.roofTop[k] && mu[k * nz + l] < SOLID_MU) mu[k * nz + l] = SOLID_MU;
+    }
+  }
   const muOn = Float32Array.from(mu);
   /* Crown top per column: the tallest crown return within 2 m (a pit-free
      canopy height model). One column at 2-8 points a square meter holds a

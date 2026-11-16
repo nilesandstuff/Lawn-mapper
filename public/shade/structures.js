@@ -185,7 +185,8 @@ export const EAVE_M = 2; // a crown column beside a roof, its top within this of
    its eave) to EDGE_ABOVE_M over it -- as bright as this property's own roofs (the owner: "we should be able to see
    past that with the lidar brightness and the fact that returns get through"; calibrated per building, the middle
    60% of the single echoes of the building the roof beside it belongs to, widened by EDGE_BRIGHT_SLACK; the whole
-   grid's when that building has fewer than EDGE_BRIGHT_MIN). One column out from a roof the main rule called
+   grid's when that building has fewer than EDGE_BRIGHT_MIN; not at all where nothing in the column stands over the
+   roof's height, EDGE_BARE: no leaf there to tell the roof from, and a gutter or fascia can be twice as bright). One column out from a roof the main rule called
    (EDGE_FROM_WHY: a flat roof, its eave, a roof under a crown; not "nothing got through", nor an edge this step found). Measured on the 49 labelled lots (shade findings 37):
    the looser first draft (1.5 m under, 0.5 over, the middle 80% widened 25%, two columns out, from any building)
    turned 2,820 columns, 157 of them inside labelled crowns; these settings turn 1,676, 74 in crowns, and the
@@ -194,6 +195,7 @@ export const EDGE_BELOW_M = 0.8;
 export const EDGE_ABOVE_M = 0.4;
 export const EDGE_BRIGHT_BAND = Object.freeze([0.2, 0.8]);
 export const EDGE_BRIGHT_SLACK = 0.1;
+export const EDGE_BARE = true; // a column with nothing over the roof's height is not judged by brightness (see edgeUnderCrown)
 export const EDGE_BRIGHT_MIN = 20; // single echoes a building needs for a band of its own (fewer: the whole grid's)
 export const EDGE_PASSES = 1;
 export const EDGE_FROM_WHY = Object.freeze([1, 3, 10]);
@@ -221,6 +223,7 @@ export const WHY = Object.freeze({
   9: 'unknown: the laser hit something here that no rule named; it stops light as the laser measured it',
   10: 'building: a roof under a crown (the last echoes stop on one flat surface)',
   11: 'building: a roof edge under a crown (a single echo at the roof beside it, as bright as its roofs)',
+  12: 'building: a hole in a roof (no return at all, roof on all four sides)',
 });
 
 /**
@@ -299,7 +302,7 @@ export function columnStats(cols, model, { shift = null } = {}) {
  *           why (Uint8 per column, a key of WHY), stats (columnStats),
  *           counts: { building, tree, solidTree, structure, unknown } }.
  */
-export function structuresOf(cols, model, { shift = null, stats = null, low = {}, roofFloor = true, edges = true } = {}) {
+export function structuresOf(cols, model, { shift = null, stats = null, low = {}, roofFloor = true, edges = true, holes = true } = {}) {
   const { w, h, ground } = model;
   const N = w * h;
   const st = stats || columnStats(cols, model, { shift });
@@ -359,6 +362,8 @@ export function structuresOf(cols, model, { shift = null, stats = null, low = {}
   for (let k = 0; k < N; k++) if (eave[k]) { kind[k] = BUILDING; why[k] = 3; }
   /* 4b. A roof edge under a crown (see EDGE_BELOW_M). */
   const edgeTop = edges === false ? null : edgeUnderCrown(cols, model, kind, why, st, { shift, ...(typeof edges === 'object' ? edges : {}) });
+  /* 4c. A hole in a roof (see roofHoles). */
+  const holeTop = holes ? roofHoles(kind, why, st, ground, w, h, edgeTop) : null;
   const lowInfo = lowStructures(kind, why, st, w, h, low);
   /* 7. NOTHING THE LASER HIT IS LEFT OUT (owner, 2026-11-04: "every thing
      that the lidar hits should be recognized"), and what no rule can name
@@ -384,6 +389,7 @@ export function structuresOf(cols, model, { shift = null, stats = null, low = {}
   const roofTop = new Float32Array(N).fill(NaN);
   for (let k = 0; k < N; k++) if (why[k] === 10 && Number.isFinite(st.lastFloorTop[k])) roofTop[k] = st.lastFloorTop[k] - ground[k];
   if (edgeTop) for (let k = 0; k < N; k++) if (why[k] === 11 && Number.isFinite(edgeTop[k])) roofTop[k] = edgeTop[k];
+  if (holeTop) for (let k = 0; k < N; k++) if (why[k] === 12 && Number.isFinite(holeTop[k])) roofTop[k] = holeTop[k];
   return { kind, why, stats: st, counts, green: lowInfo, roofTop };
 }
 
@@ -432,7 +438,7 @@ export function roofUnderCrown(patch, st, w) {
  * building made buildings (why 11) in place. Returns their roof heights (m
  * over the ground; NaN elsewhere), so the crown above them stays a tree's.
  */
-export function edgeUnderCrown(cols, model, kind, why, st, { shift = null, below = EDGE_BELOW_M, above = EDGE_ABOVE_M, slack = EDGE_BRIGHT_SLACK, passes = EDGE_PASSES, band = EDGE_BRIGHT_BAND, fromWhy = EDGE_FROM_WHY, brightWhy = null, perBuilding = true } = {}) {
+export function edgeUnderCrown(cols, model, kind, why, st, { shift = null, below = EDGE_BELOW_M, above = EDGE_ABOVE_M, slack = EDGE_BRIGHT_SLACK, passes = EDGE_PASSES, band = EDGE_BRIGHT_BAND, fromWhy = EDGE_FROM_WHY, brightWhy = null, perBuilding = true, bareEdge = EDGE_BARE } = {}) {
   const { grid, w, h, ground } = model;
   const N = w * h;
   const roofH = new Float32Array(N).fill(NaN);
@@ -492,10 +498,13 @@ export function edgeUnderCrown(cols, model, kind, why, st, { shift = null, below
         const r = roofH[yy * w + xx];
         if (!Number.isFinite(r)) continue;
         const [lo, hi] = bands[comp[yy * w + xx]] || gridBand;
+        /* Nothing over the roof's height in this column (no crown above it): no leaf to tell the roof from, so a
+           single at the roof's height is the roof's edge however bright (a gutter, a fascia; bareEdge). */
+        const bare = bareEdge && st.zHi[k] - ground[k] <= r + above;
         for (let q = 0; q < a.length; q += 2) {
           const over = a[q], I = a[q + 1];
           if (over < r - below || over > r + above) continue;
-          if (I && (I < lo || I > hi)) continue;
+          if (I && !bare && (I < lo || I > hi)) continue;
           if (!(best >= over)) { best = over; bestC = comp[yy * w + xx]; }
         }
       }
@@ -504,6 +513,34 @@ export function edgeUnderCrown(cols, model, kind, why, st, { shift = null, below
     if (!set.length) break;
     for (const [k, r, c] of set) { kind[k] = BUILDING; why[k] = 11; roofH[k] = r; out[k] = r; comp[k] = c; }
   }
+  return out;
+}
+
+/**
+ * Step 4c, A HOLE IN A ROOF (owner, 2026-11-16: "yes"; the core session found two on the owner's house, each a 1 m
+ * column with no return at all between roof on both sides, from the AR's outline). A sparse flight leaves some 1 m
+ * columns of a roof with no return; with nothing in them they were NOTHING, so the model showed a hole in the roof
+ * and its outline a slit. canopy.js already lends most of them their neighbours' pulses (on the three lots with the
+ * most, half let no light through), but some passed up to 43% of the light. A column with no return over the grass
+ * whose four side neighbours are all buildings is made a building (why 12) at its neighbours' mean roof height
+ * (returned, NaN elsewhere; its `top` set to it). Three-sided ones are left: a notch or a courtyard can be real. On
+ * the 49 labelled lots: 220 such columns, among 50,189 building columns.
+ */
+export function roofHoles(kind, why, st, ground, w, h, edgeTop = null) {
+  const N = w * h;
+  const roofOf = (j) => (why[j] === 10 && Number.isFinite(st.lastFloorTop?.[j]) ? st.lastFloorTop[j] - ground[j] : why[j] === 11 && edgeTop && Number.isFinite(edgeTop[j]) ? edgeTop[j] : st.zHi[j] - ground[j]);
+  const out = new Float32Array(N).fill(NaN);
+  const set = [];
+  for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
+    const k = y * w + x;
+    if (kind[k] !== NOTHING || Number.isFinite(st.top[k]) && st.top[k] > -1e9) continue;
+    const nb = [k - 1, k + 1, k - w, k + w];
+    if (!nb.every((j) => kind[j] === BUILDING)) continue;
+    let s = 0, n = 0;
+    for (const j of nb) { const r = roofOf(j); if (Number.isFinite(r)) { s += r; n++; } }
+    if (n) set.push([k, s / n]);
+  }
+  for (const [k, r] of set) { kind[k] = BUILDING; why[k] = 12; out[k] = r; st.top[k] = r; }
   return out;
 }
 
