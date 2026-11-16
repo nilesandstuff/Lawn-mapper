@@ -261,18 +261,16 @@ export function ownReturns(cols, model, { shift = null, erasedMask = null, erase
 /**
  * The bytes to PUT: the file gzipped (lidar-model.js packModel). Over
  * `maxBytes` gzipped (the server's MODEL_MAX_STORED, worker/src/unified.js),
- * muOn is left out first (no reader uses it yet), then the per-cube
- * `returns` (`low` stays), then the points; the file is still written.
+ * the per-cube `returns` are left out first (`low` stays), then the points,
+ * and muOn last: the summer leaves are the light's (the water map reads the
+ * light from this file, light-worker.js 'model', 2026-11-16), and without them
+ * a deciduous tree would cast its winter shade all summer. The file is still
+ * written. (Until 2026-11-16 muOn went first, when nothing read it.)
  */
 export async function modelBytes(finished, { maxBytes = 48 * 1024 * 1024 } = {}) {
   let meta = finished.meta, arrays = finished.arrays;
   let bytes = await packModel(meta, arrays);
   const LEFT_OUT = 'left out: the file would be over the size the server takes';
-  if (bytes.byteLength > maxBytes && arrays.muOn) {
-    const { muOn, ...rest } = arrays;
-    arrays = rest; meta = { ...meta, leaves: { ...meta.leaves, muOn: LEFT_OUT } };
-    bytes = await packModel(meta, arrays);
-  }
   if (bytes.byteLength > maxBytes && arrays.returns) {
     const { returns, ...rest } = arrays;
     arrays = rest; meta = { ...meta, own: { ...meta.own, returns: LEFT_OUT } };
@@ -281,6 +279,11 @@ export async function modelBytes(finished, { maxBytes = 48 * 1024 * 1024 } = {})
   if (bytes.byteLength > maxBytes && arrays.ptX) {
     const { ptX, ptY, ptZ, ptI, ptCls, ptRet, ptKind, ...rest } = arrays;
     arrays = rest; meta = { ...meta, points: { ...meta.points, n: 0, leftOut: LEFT_OUT } };
+    bytes = await packModel(meta, arrays);
+  }
+  if (bytes.byteLength > maxBytes && arrays.muOn) {
+    const { muOn, ...rest } = arrays;
+    arrays = rest; meta = { ...meta, leaves: { ...meta.leaves, muOn: LEFT_OUT } };
     bytes = await packModel(meta, arrays);
   }
   return bytes;
