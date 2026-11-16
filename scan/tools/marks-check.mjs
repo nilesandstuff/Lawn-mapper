@@ -142,6 +142,21 @@ async function main() {
       for (let i = 0; i < P.n; i++) { if (P.kind(i) !== 1 || P.hag(i) < 2 || !A.ptRet || (A.ptRet[i] & 15) !== 1) continue; if (inRing(P.e(i), P.nn(i))) hb.push(P.bright(i)); }
       hb.sort((x, y) => x - y);
       console.log(`The building's single echoes over 2 m: ${hb.length}, intensity median ${hb.length ? hb[hb.length >> 1] : '-'}; the lot's ground median (meta.own.intensityMedian) ${model.meta?.own?.intensityMedian ?? '-'}.`);
+      // the whole grid's building singles (the brightness band edgeUnderCrown reads, asked for by the features session,
+      // 2026-11-16): kind 1, not noise, return 1 of 1, 2-40 m up; and split by the column's why
+      {
+        const all = [], byWhy = {};
+        for (let i = 0; i < P.n; i++) {
+          if (P.kind(i) !== 1 || !A.ptRet || A.ptRet[i] !== 0x11) continue;
+          const cl = A.ptCls ? A.ptCls[i] : -1; if (cl === 7 || cl === 18) continue;
+          const h = P.hag(i); if (!(h > 2 && h < 40)) continue;
+          const j = P.col(i), w = j >= 0 && A.why ? A.why[j] : -1, b = P.bright(i);
+          all.push(b); (byWhy[w] = byWhy[w] || []).push(b);
+        }
+        const q = (v) => { v.sort((x, y) => x - y); const at = (f) => v[Math.min(v.length - 1, Math.floor(f * v.length))]; return v.length ? `${v.length} singles, intensity p10 ${at(0.1)}, p20 ${at(0.2)}, p50 ${at(0.5)}, p80 ${at(0.8)}, p90 ${at(0.9)}` : 'none'; };
+        console.log(`Building singles over the whole grid (kind 1, not class 7 or 18, return 1 of 1, 2-40 m up): ${q(all)}`);
+        for (const w of Object.keys(byWhy).sort((x, y) => x - y)) console.log(`  in why-${w} columns: ${q(byWhy[w])}`);
+      }
     }
   }
   const pv = debug.filter((d) => d.kind === 'paving');
