@@ -51,11 +51,24 @@ export function digest(s) {
     `views: ${s.anchors ? `skyline in ${s.anchors.views.sky} and pavement in ${s.anchors.views.pave} of ${s.anchors.views.frames} pictures read; nudges ${s.anchors.nudges.sky} skyline, ${s.anchors.nudges.pave} pavement` : 'not kept'}`,
     `twin: ${s.twin ? `${s.twin.points} points, ${s.twin.keys} pictures, ${s.twin.poses} poses${s.twin.off ? `, OFF ${s.twin.off}` : ''}` : 'none'}`,
     ...(s.extras?.thermal ? [`thermal (dev only): ${s.extras.thermal.frames} frames, ${s.extras.thermal.poses ?? '-'} poses, ${s.extras.thermal.mb} MB, ${s.extras.thermal.references} references, ${s.extras.thermal.dropped} lost; setup ${s.extras.thermal.setup || '-'}; sky shots ${(s.extras.thermal.sky || []).join(', ') || 'none'}; sweeps ${s.extras.thermal.sweeps ?? 0}`] : []),
+    ...(s.roofSights?.length ? [`roof sightings: ${sightLine(s.roofSights)}`] : []),
     ...(s.reference ? [`reference: ${s.reference}`] : []),
     ...(s.pointKinds ? [`points on the map: ${s.pointKinds}`] : []),
     ...perfLines(s.perf),
     `messages: ${(s.errors || []).slice(-12).join(' | ')}`,
   ];
+}
+
+/**
+ * Each roof corner's sighting as the page logged it (app.js roofSights): every aim taken (how far up, and how far off
+ * level its line reached the eave's height), then how the aims met. Distances and angles only.
+ */
+export function sightLine(rs) {
+  return rs.map((r) => {
+    const aims = (r.steps || []).filter((x) => x.upDeg != null).map((x) => `${x.upDeg} deg up, eave reached ${x.levelM} m off`).join(', ');
+    const meets = (r.steps || []).filter((x) => x.sights != null).map((x) => `${x.sights} aims ${x.turnDeg} deg apart, lines ${x.missM} m apart, ${x.eaveOffM} m off the eave${x.why ? ` (${x.why})` : ''}`).join('; ');
+    return `${r.name} ${r.ok ? 'marked' : `NOT marked (${r.why})`}: aims ${aims || '-'}; met ${meets || '-'}`;
+  }).join(' | ');
 }
 
 /** The rows out of `wrangler d1 execute --json`. */
