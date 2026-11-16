@@ -1782,9 +1782,10 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
       && arrays.muOn.every((v, i) => v >= arrays.mu[i] - 1e-6) && Math.abs(arrays.top[at(2.5, 25.5)]) < 0.3 && columnAt(meta.grid, (7.5 / k) + grid.x0, grid.y1 - 22.5 / k) === at(7.5, 7.5),
     `kinds ${arrays.kind[at(7.5, 7.5)]} ${arrays.kind[at(19.5, 20.5)]} ${arrays.kind[at(20.5, 20.5)]}; roof top ${arrays.top[at(7.5, 7.5)]}; open top ${arrays.top[at(2.5, 25.5)]}; cube ${arrays.mu[at(18.5, 20.5) * model.nz + 6]}; erased col zero ${arrays.mu.subarray(at(20.5, 20.5) * model.nz, (at(20.5, 20.5) + 1) * model.nz).every((v) => v === 0)}; muOn>=mu ${arrays.muOn.every((v, i) => v >= arrays.mu[i] - 1e-6)}; columnAt ${columnAt(meta.grid, (7.5 / k) + grid.x0, grid.y1 - 22.5 / k)} vs ${at(7.5, 7.5)}`);
   const small = await modelBytes(fin, { maxBytes: bytes.byteLength - 1 }), smallM = await unpackModel(small);
-  check('model file: over the size the server takes (gzipped), the summer-leaf cubes are left out and the file still written', small.byteLength < bytes.byteLength && !smallM.arrays.muOn && modelUsable(smallM) && /left out/.test(smallM.meta.leaves.muOn));
+  check('model file: over the size the server takes (gzipped), the per-cube own returns are left out first (the lowest return stays); the summer leaves and the points are kept; the file still written',
+    small.byteLength < bytes.byteLength && !smallM.arrays.returns && smallM.arrays.low?.length === grid.w * grid.h && smallM.arrays.muOn && smallM.arrays.ptX && modelUsable(smallM) && /left out/.test(smallM.meta.own.returns));
   const tiny = await unpackModel(await modelBytes(fin, { maxBytes: 1 }));
-  check('model file: still over, the per-cube own returns go next; the lowest return stays', !tiny.arrays.muOn && !tiny.arrays.returns && tiny.arrays.low?.length === grid.w * grid.h && /left out/.test(tiny.meta.own.returns) && modelUsable(tiny));
+  check('model file: still over, the points go next and the summer leaves last (the light needs them)', !tiny.arrays.returns && !tiny.arrays.ptX && !tiny.arrays.muOn && /left out/.test(tiny.meta.leaves.muOn) && modelUsable(tiny));
 
   /* WHAT THE LASER HIT IN THIS VERY METRE (the AR's blue walls, 2026-11-04): a
      sparse flight (one return a square metre, so every column is pooled with

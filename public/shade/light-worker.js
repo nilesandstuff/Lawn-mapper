@@ -184,7 +184,7 @@ function build(m) {
  * `bytes` (the file, gzipped or not) or `file` ({ meta, arrays }, unpacked). The file's mu is the canopy as flown
  * with the leaf-off seasons' work done (branch floors, low structures, erasures) and muOn the same in full summer
  * leaf, which are exactly build()'s season.muOff and season.muOn; its fences come from the file unless `fences` is
- * given. Seasons need muOn in the file (the largest files drop it first) and a calendar (tMean); otherwise the
+ * given. Seasons need muOn in the file (only a file over the server's 48 MB loses it, and last) and a calendar; otherwise the
  * canopy is the laser's as flown. 'solid' is not offered: the file keeps no opaque copy.
  */
 async function buildFromModel(m) {
