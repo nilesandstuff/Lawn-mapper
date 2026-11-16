@@ -430,7 +430,7 @@ export function roofUnderCrown(patch, st, w) {
  * building made buildings (why 11) in place. Returns their roof heights (m
  * over the ground; NaN elsewhere), so the crown above them stays a tree's.
  */
-export function edgeUnderCrown(cols, model, kind, why, st, { shift = null, below = EDGE_BELOW_M, above = EDGE_ABOVE_M, slack = EDGE_BRIGHT_SLACK, passes = EDGE_PASSES, band = EDGE_BRIGHT_BAND, fromWhy = EDGE_FROM_WHY } = {}) {
+export function edgeUnderCrown(cols, model, kind, why, st, { shift = null, below = EDGE_BELOW_M, above = EDGE_ABOVE_M, slack = EDGE_BRIGHT_SLACK, passes = EDGE_PASSES, band = EDGE_BRIGHT_BAND, fromWhy = EDGE_FROM_WHY, brightWhy = null } = {}) {
   const { grid, w, h, ground } = model;
   const N = w * h;
   const roofH = new Float32Array(N).fill(NaN);
@@ -444,7 +444,7 @@ export function edgeUnderCrown(cols, model, kind, why, st, { shift = null, below
     const over = cols.z[i] - ground[k];
     if (!(over > CROWN_ABOVE_M && over < MAX_OVER_M)) continue;
     const I = cols.intensity?.[i] || 0;
-    if (kind[k] === BUILDING) { if (I) bright.push(I); continue; }
+    if (kind[k] === BUILDING) { if (I && (!brightWhy || brightWhy.includes(why[k]))) bright.push(I); continue; }
     if (kind[k] !== TREE) continue;
     let a = singles.get(k);
     if (!a) { a = []; singles.set(k, a); }
