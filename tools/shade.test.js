@@ -2151,6 +2151,45 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
     `hole ${on.kind[kh]}/${on.why[kh]} roof ${on.roofTop[kh]} solid ${solid}; notch ${on.kind[at(11.5, 8.5)]}; before ${off.kind[kh]}`);
 }
 
+/* THE LIGHT FROM THE FINISHED FILE (light-worker.js 'model'; the water session, 2026-11-16: every tool reads the shade
+   map's finished model, none rebuilds the lidar). A roof and a crown, built from the points ('build') and from the
+   file the shade map would save of the same canopy ('model'): the same sun hours, day and months, in leaf and out. */
+{
+  const { finishedModel, modelBytes } = await import('../public/shade/model-out.js');
+  const lat = 43, k = mercScale(lat), box = [0, 0, 30 / k, 30 / k];
+  const grid = gridOver(box, 1, lat);
+  const pts = [];
+  for (let e = 0.25; e < 30; e += 0.5) for (let n = 0.25; n < 30; n += 0.5) {
+    const roof = e > 4 && e < 10 && n > 4 && n < 10, r = Math.hypot(e - 20, n - 20);
+    if (roof) pts.push([e, n, 104, 6, 1, 1]);
+    else if (r < 4 && (e * 7 + n * 13) % 1 < 0.5) pts.push([e, n, 108 - r, 1, 1, 2], [e, n, 100, 2, 2, 2]);
+    else pts.push([e, n, 100, 2, 1, 1]);
+  }
+  const cols = makeColumns(pts.length);
+  pts.forEach(([e, n, z, c, r, nr], i) => { cols.x[i] = e / k; cols.y[i] = n / k; cols.z[i] = z; cols.cls[i] = c; cols.ret[i] = r; cols.nret[i] = nr; });
+  const model = buildCanopy(cols, grid), season = seasonalCanopy(cols, model, { classify: true });
+  const bytes = await modelBytes(finishedModel({ model, season, cols }));
+  const got = [];
+  globalThis.self = { postMessage: (msg) => got.push(msg) };
+  await import('../public/shade/light-worker.js?model-test');
+  const ask = async (msg) => { got.length = 0; self.onmessage({ data: msg }); for (let i = 0; i < 200 && !got.some((g) => g.type === 'built' || g.type === 'error' || g.type === msg.type); i++) await new Promise((r) => setTimeout(r, 10)); return got.find((g) => g.type !== 'progress'); };
+  const tMean = Array.from({ length: 365 }, (_, d) => 10 - 14 * Math.cos(2 * Math.PI * (d - 15) / 365));
+  const base = { lat, lng: -85, heightM: 0, canopy: 'seasonal', tMean };
+  const day = Date.UTC(2025, 6, 1, 12), dayW = Date.UTC(2025, 0, 15, 12);
+  const a = await ask({ ...base, type: 'build', cols, box, shift: null, flight: 'off' });
+  const aDay = await ask({ type: 'day', dayMs: day }), aWin = await ask({ type: 'day', dayMs: dayW }), aMon = await ask({ type: 'months', year: 2025 });
+  const b = await ask({ ...base, type: 'model', bytes });
+  const bDay = await ask({ type: 'day', dayMs: day }), bWin = await ask({ type: 'day', dayMs: dayW }), bMon = await ask({ type: 'months', year: 2025 });
+  const maxDiff = (p, q) => { let d = 0; for (let i = 0; i < p.length; i++) d = Math.max(d, Math.abs(p[i] - q[i])); return d; };
+  const monDiff = Math.max(...aMon.rows.map((r, i) => Math.abs(r.sunHours - bMon.rows[i].sunHours)));
+  const kindsSame = a.kinds.every((v, i) => v === b.kinds[i]);
+  check("light worker: the finished file gives the same light as the points ('model' against 'build'): sun hours (shaded and open alike) in July and January and the months within 0.05 h, the same kinds, seasonal both ways",
+    a.type === 'built' && b.type === 'built' && a.canopy === 'seasonal' && b.canopy === 'seasonal' && aDay.sunHours.length === bDay.sunHours.length
+      && Math.min(...aDay.sunHours) < Math.max(...aDay.sunHours) - 2 && maxDiff(aDay.sunHours, bDay.sunHours) < 0.05 && maxDiff(aWin.sunHours, bWin.sunHours) < 0.05 && monDiff < 0.05 && kindsSame,
+    `${a.type}/${b.type} ${a.canopy}/${b.canopy}${b.message ? ' ' + b.message : ''}; July ${aDay.sunHours && bDay.sunHours ? maxDiff(aDay.sunHours, bDay.sunHours).toFixed(3) : '-'}; January ${aWin.sunHours && bWin.sunHours ? maxDiff(aWin.sunHours, bWin.sunHours).toFixed(3) : '-'}; months ${monDiff?.toFixed?.(3)}; kinds same ${kindsSame}`);
+  delete globalThis.self;
+}
+
 /* ONE LEAF STATE PER LOT (passes.js; owner, 2026-10-29). */
 {
   check('passes: a point fired 9 May or in November is leaf-off; 11 May, July and an undated one are not',
