@@ -59,6 +59,18 @@ async function main() {
   for (const d of debug.filter((x) => (x.kind === 'building' || x.kind === 'object') && x.area >= 15)) {
     const o = M.objects.find((q) => q.kind === d.kind && Math.abs(q.area - d.area) < 0.05);
     console.log(`  shape ${d.kind} ${d.area} m2: turned ${d.turn ?? '-'} degrees, ${d.sides ?? '-'} sides${o?.ring ? `: ${o.ring.map((p) => `${(p[0] - o.middle[0]).toFixed(1)},${(p[1] - o.middle[1]).toFixed(1)}`).join(' ')}` : ''}`);
+    // THE SQUARING STAGE BY STAGE on the biggest building's east side (the owner, 2026-11-16: the east is too flat):
+    // the traced staircase, then each try's sides as squared and as set by the returns, and why a try was refused
+    if (d.trace && d.kind === 'building' && d === debug.filter((x) => x.kind === 'building' && x.trace).sort((a, b) => b.area - a.area)[0]) {
+      const [mx, my] = d.middle, f = (p) => `${(p[0] - mx).toFixed(1)},${(p[1] - my).toFixed(1)}`;
+      const east = d.trace.raw.filter((p) => p[0] - mx > 2);
+      console.log(`    traced ring, east of +2 m (${east.length} of ${d.trace.raw.length} corners): ${east.map(f).join(' ')}`);
+      for (const g of d.trace.stages) {
+        const ns = (list) => list.filter(([a, b]) => a[0] - mx > 2 && b[0] - mx > 2).map(([a, b]) => `${f(a)}>${f(b)}`).join(' ');
+        console.log(`    try at ${g.jog.toFixed(2)} m: ${g.refused ? `REFUSED (${g.refused})` : 'kept'}; squared, east part: ${ns(g.squared)}`);
+        if (g.set.length) console.log(`      set by the returns, east part: ${ns(g.set)}`);
+      }
+    }
     if (d.dropped && d.kind === 'building') { const big = d.dropped.filter((x) => x.len >= 0.5); console.log(`    steps under ${d.minJog?.toFixed(2)} m squared away: ${d.dropped.length}, of which ${big.length} are 0.5 m or deeper: ${big.map((x) => `${x.len.toFixed(2)} m at ${(x.at[0] - d.middle[0]).toFixed(1)},${(x.at[1] - d.middle[1]).toFixed(1)}`).join('; ') || 'none'}`); }
   }
   // the roof corners a walk may take as references (lib/roof-corner.js), with and without the rules

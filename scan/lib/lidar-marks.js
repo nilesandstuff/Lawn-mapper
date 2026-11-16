@@ -217,7 +217,8 @@ function squareOutline(mask, box, W, H, cell, inside, outside, { minJog, jogWide
     jogUsed = jog;
     droppedUV.length = 0;
     let ss = squareOff(rings[0], jog, droppedUV);
-    if (ss.length < 4) return null;
+    const st = { jog, squared: ss.map((x) => ({ ...x })) }; stages.push(st);
+    if (ss.length < 4) { st.refused = 'under 4 sides'; return null; }
     const dir = (x) => Math.sign(x.to - x.from);
     ss.forEach((x) => { x.was = dir(x); });
     const join = () => ss.forEach((x, i) => { x.from = ss[(i + ss.length - 1) % ss.length].at; x.to = ss[(i + 1) % ss.length].at; });
@@ -250,10 +251,12 @@ function squareOutline(mask, box, W, H, cell, inside, outside, { minJog, jogWide
     }
     // a side the returns turned round (its two neighbours set past each other) is an outline that crosses itself:
     // the finer step is not taken then
-    if (strict && ss.some((x) => { const o = x.was; return dir(x) && o && dir(x) !== o; })) return null;
+    st.set = ss.map((x) => ({ ...x }));
+    if (strict && ss.some((x) => { const o = x.was; return dir(x) && o && dir(x) !== o; })) { st.refused = `turned round: ${ss.filter((x) => dir(x) && x.was && dir(x) !== x.was).map((x) => `${x.axis}=${x.at.toFixed(1)} ${x.from.toFixed(1)}..${x.to.toFixed(1)}`).join(', ')}`; return null; }
     return ss.length >= 4 ? ss : null;
   };
   // the finer step first; when the returns will not hold it (a low, ragged thing), the coarser one
+  const stages = [];
   const sides = (jogWide > minJog ? fitWith(minJog, true) : null) || fitWith(jogWide, false);
   if (!sides) return null;
   // corners: where each side meets the next
@@ -277,7 +280,10 @@ function squareOutline(mask, box, W, H, cell, inside, outside, { minJog, jogWide
   const why = `held ${held.toFixed(2)} strays ${strays.toFixed(2)} pinned ${pinned.toFixed(2)} sides ${sides.length}`;
   // the steps the squaring took out (a bay shallower than minJog goes this way): how deep, and where
   const dropped = droppedUV.map((d) => ({ len: d.len, at: back(d.uv) }));
-  return { turn: +((t * 180) / Math.PI).toFixed(1), dropped, minJog: jogUsed, ring, sure, keep, why, square: loose ? held >= 0.8 && strays <= 0.15 && pinned >= 0.6 && sides.length <= 10 : held >= 0.9 && strays <= 0.1 };
+  // what the squaring did, stage by stage, back on the map's axes (for marks-check's trace of one building)
+  const backSide = (x) => (x.axis === 'v' ? [back([x.from, x.at]), back([x.to, x.at])] : [back([x.at, x.from]), back([x.at, x.to])]);
+  const trace = { raw: rings[0].map(back), stages: stages.map((g) => ({ jog: g.jog, refused: g.refused || null, squared: g.squared.map(backSide), set: (g.set || []).map(backSide) })) };
+  return { turn: +((t * 180) / Math.PI).toFixed(1), trace, dropped, minJog: jogUsed, ring, sure, keep, why, square: loose ? held >= 0.8 && strays <= 0.15 && pinned >= 0.6 && sides.length <= 10 : held >= 0.9 && strays <= 0.1 };
 }
 
 /** Grown (v = 1) or taken back (v = 0) by a disc of rad cells. */
@@ -394,7 +400,7 @@ export function lidarMarks(box, pts, { cell = CELL, debug = null } = {}) {
     const local = area >= minArea || span >= minSpan ? maskOf(inside) : null;
     // (a slab of more than 1500 m2, the owner's drive run into the road, is not tried for straight sides: it has none)
     const fit = local && !traceOnly && !(kind === 'paving' && area > 1500) ? squareOutline(local.mask, local.box, local.W, local.H, cell, inside, outside, { minJog: kind === 'building' ? minJog : jogWide, jogWide, reach, loose: kind === 'paving', edgeIn, edgeOut, view: box }) : null;
-    if (debug) debug.push({ kind, n: inside.length, area: +area.toFixed(1), fitted: !!fit, square: !!fit?.square, why: fit?.why || null, turn: fit?.turn ?? null, sides: fit?.ring?.length ?? null, dropped: fit?.dropped || null, minJog: fit?.minJog ?? null, middle: mid, woods: woods == null ? null : +woods.toFixed(2), contrast: contrast == null ? null : +contrast.toFixed(1) });
+    if (debug) debug.push({ kind, n: inside.length, area: +area.toFixed(1), fitted: !!fit, square: !!fit?.square, why: fit?.why || null, turn: fit?.turn ?? null, sides: fit?.ring?.length ?? null, dropped: fit?.dropped || null, minJog: fit?.minJog ?? null, trace: fit?.trace || null, middle: mid, woods: woods == null ? null : +woods.toFixed(2), contrast: contrast == null ? null : +contrast.toFixed(1) });
     if (kind === 'paving' && !fit?.square) {
       // A DRIVE WITH A CURVED SIDE (the owner, 2026-11-10: "my driveway is pretty big, has a turnaround spot, and a
       // large curved side... That would be fine if it merges with the road though, we do need to also get the road"):
