@@ -60,6 +60,32 @@ function edgeTurn(inside, outside, reach) {
   return best;
 }
 
+/**
+ * THE TURN A THING'S OWN EDGES SHOW (2026-11-16; the owner's house came out "rotated like 15 degrees" and its deck
+ * "rotated and 35-40 degrees off" once the two were outlined apart). mainTurn takes the turn of the smallest box round
+ * the returns, which is right for a plain rectangle and wrong for anything else: an L-shaped house, a deck with a
+ * round pool on its corner. A thing's straight edges are the better witness: turned onto their own grid, the cells
+ * of its rim pile up in a few rows and columns (a whole wall in one). So: the turn at which the rim's cells, counted
+ * along both axes, are most piled up (the sum of the squares of the counts). mask: the thing's cells (maskOf).
+ */
+function rimTurn(mask, box, W, H, cell) {
+  const rim = [];
+  for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) {
+    if (!mask[r * W + c]) continue;
+    if (r === 0 || c === 0 || r === H - 1 || c === W - 1 || !mask[r * W + c - 1] || !mask[r * W + c + 1] || !mask[(r - 1) * W + c] || !mask[(r + 1) * W + c]) rim.push([box[0] + (c + 0.5) * cell, box[3] - (r + 0.5) * cell]);
+  }
+  if (rim.length < 24) return null;
+  const bin = 1.5 * cell;
+  let best = 0, top = -1;
+  for (let a = 0; a < 90; a += 0.5) {
+    const t = (a * Math.PI) / 180, c = Math.cos(t), s = Math.sin(t), U = new Map(), V = new Map();
+    for (const [e, n] of rim) { const u = Math.floor((c * e + s * n) / bin), v = Math.floor((-s * e + c * n) / bin); U.set(u, (U.get(u) || 0) + 1); V.set(v, (V.get(v) || 0) + 1); }
+    let sc = 0; for (const k of U.values()) sc += k * k; for (const k of V.values()) sc += k * k;
+    if (sc > top) { top = sc; best = t; }
+  }
+  return best;
+}
+
 /** The turn (radians, 0..pi/2) that puts a cloud of points in its smallest box: a deck's or a wall's own grid. */
 function mainTurn(ps) {
   let best = 0, area = Infinity;
@@ -168,7 +194,7 @@ function squareOutline(mask, box, W, H, cell, inside, outside, { minJog, reach, 
     if (edgeIn) edgeIn = edgeIn.filter(near);
     if (edgeOut) edgeOut = edgeOut.filter(near);
   }
-  const t = loose ? edgeTurn(inside, outside, reach) : mainTurn(inside), c = Math.cos(t), sn = Math.sin(t);
+  const t = loose ? edgeTurn(inside, outside, reach) : rimTurn(mask, box, W, H, cell) ?? mainTurn(inside), c = Math.cos(t), sn = Math.sin(t);
   const rot = (p) => [c * p.e + sn * p.n, -sn * p.e + c * p.n], back = ([u, v]) => [c * u - sn * v, sn * u + c * v];
   // the thing's cells, turned onto its own grid
   const cellsUV = [];
@@ -211,7 +237,7 @@ function squareOutline(mask, box, W, H, cell, inside, outside, { minJog, reach, 
   // a paving slab is believed only when most of its sides were set by returns on both sides of them
   const pinned = real.filter((s) => Number.isFinite(s.gap)).length / Math.max(1, real.length);
   const why = `held ${held.toFixed(2)} strays ${strays.toFixed(2)} pinned ${pinned.toFixed(2)} sides ${sides.length}`;
-  return { ring, sure, keep, why, square: loose ? held >= 0.8 && strays <= 0.15 && pinned >= 0.6 && sides.length <= 10 : held >= 0.9 && strays <= 0.1 };
+  return { turn: +((t * 180) / Math.PI).toFixed(1), ring, sure, keep, why, square: loose ? held >= 0.8 && strays <= 0.15 && pinned >= 0.6 && sides.length <= 10 : held >= 0.9 && strays <= 0.1 };
 }
 
 /** Grown (v = 1) or taken back (v = 0) by a disc of rad cells. */
@@ -328,7 +354,7 @@ export function lidarMarks(box, pts, { cell = CELL, debug = null } = {}) {
     const local = area >= minArea || span >= minSpan ? maskOf(inside) : null;
     // (a slab of more than 1500 m2, the owner's drive run into the road, is not tried for straight sides: it has none)
     const fit = local && !traceOnly && !(kind === 'paving' && area > 1500) ? squareOutline(local.mask, local.box, local.W, local.H, cell, inside, outside, { minJog, reach, loose: kind === 'paving', edgeIn, edgeOut, view: box }) : null;
-    if (debug) debug.push({ kind, n: inside.length, area: +area.toFixed(1), fitted: !!fit, square: !!fit?.square, why: fit?.why || null, middle: mid, woods: woods == null ? null : +woods.toFixed(2), contrast: contrast == null ? null : +contrast.toFixed(1) });
+    if (debug) debug.push({ kind, n: inside.length, area: +area.toFixed(1), fitted: !!fit, square: !!fit?.square, why: fit?.why || null, turn: fit?.turn ?? null, sides: fit?.ring?.length ?? null, middle: mid, woods: woods == null ? null : +woods.toFixed(2), contrast: contrast == null ? null : +contrast.toFixed(1) });
     if (kind === 'paving' && !fit?.square) {
       // A DRIVE WITH A CURVED SIDE (the owner, 2026-11-10: "my driveway is pretty big, has a turnaround spot, and a
       // large curved side... That would be fine if it merges with the road though, we do need to also get the road"):
@@ -413,11 +439,19 @@ export function lidarMarks(box, pts, { cell = CELL, debug = null } = {}) {
       const eaveH = roofH.length ? roofH[Math.floor(roofH.length * 0.1)] : Infinity;
       const notRoof = group.filter((p) => !p.bld);
       if (roofH.length && notRoof.length >= 14) {
-        const parts = linked(notRoof, link, Infinity).filter((l) => l.length * spacing * spacing >= 10 && medOf(l) <= eaveH - 0.5);
+        // by level too (a deck at 4 ft and the shrubs against the wall at 8 ft are two things: joined, the shrubs
+        // drew a tail on the deck that is not there)
+        const parts = linked(notRoof, link, 0.8).filter((l) => l.length * spacing * spacing >= 10 && medOf(l) <= eaveH - 0.5);
         if (parts.length) {
           const out = new Set(parts.flat());
           group = group.filter((p) => !out.has(p));
-          for (const l of parts) { const inL = new Set(l); add(l, P.filter((p) => !inL.has(p)), 'object'); if (debug) debug.push({ kind: 'not roof, off a house', n: l.length, m2: Math.round(l.length * spacing * spacing), top: +medOf(l).toFixed(1) }); }
+          for (const l of parts) {
+            // and only a SOLID part is drawn as a thing (a deck stops the laser; shrubs let it through, or stand at
+            // every height): the rest is simply not the house
+            const sl = solidity(l), solid = sl.through <= 0.15 && sl.rough <= 0.35;
+            if (solid) { const inL = new Set(l); add(l, P.filter((p) => !inL.has(p)), 'object'); }
+            if (debug) debug.push({ kind: 'not roof, off a house', n: l.length, m2: Math.round(l.length * spacing * spacing), top: +medOf(l).toFixed(1), solid, through: +sl.through.toFixed(2), rough: +sl.rough.toFixed(2) });
+          }
           if (group.length < 3) continue;
         }
       }

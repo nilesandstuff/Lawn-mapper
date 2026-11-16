@@ -52,6 +52,12 @@ async function main() {
   const lp = lawn.flat(), lm = lp.length ? [lp.reduce((t, p) => t + p[0], 0) / lp.length, lp.reduce((t, p) => t + p[1], 0) / lp.length] : null;
   const far = (at) => (lm && at ? `${Math.hypot(at[0] - lm[0], at[1] - lm[1]).toFixed(0)} m from the lawn's middle` : '');
   for (const d of debug.filter((x) => x.kind === 'building' || x.kind === 'object').slice(0, 40)) console.log(`  ${d.kind} ${d.area} m2: ${far(d.middle)}, crowns round it ${d.woods}`);
+  // each building's and big thing's own grid and outline, as a SHAPE (metres east and north of its own middle: not
+  // a place), so the drawing can be compared with a photo without anyone opening the page
+  for (const d of debug.filter((x) => (x.kind === 'building' || x.kind === 'object') && x.area >= 15)) {
+    const o = M.objects.find((q) => q.kind === d.kind && Math.abs(q.area - d.area) < 0.05);
+    console.log(`  shape ${d.kind} ${d.area} m2: turned ${d.turn ?? '-'} degrees, ${d.sides ?? '-'} sides${o?.ring ? `: ${o.ring.map((p) => `${(p[0] - o.middle[0]).toFixed(1)},${(p[1] - o.middle[1]).toFixed(1)}`).join(' ')}` : ''}`);
+  }
   // the roof corners a walk may take as references (lib/roof-corner.js), with and without the rules
   const RC = roofCorners(M, P, lawn), RA = roofCorners(M, P, [], { maxEaveM: 99 });
   console.log(`Roof corners offered: ${RC.length} (of ${RA.length} outward corners with long sides, before the eave-height and lawn rules): ${RC.map((c) => `${c.label} of the ${M.objects.find((o) => o.id === c.of)?.area} m2 building, eave ${c.eaveM} m, ${c.lawnM} m from the lawn, sides ${c.sidesM.join(' and ')} m, ${c.sure ? 'sure' : `within ${c.within ?? '?'} m`}`).join('; ') || 'none'}`);
@@ -59,7 +65,7 @@ async function main() {
   const wd = debug.filter((d) => d.kind === 'in the woods');
   console.log(`Left out as in the woods (crowns over the ground round it): ${wd.length}; ${wd.map((d) => `${d.was} ${d.n} returns at ${d.top} m (${d.woods})`).slice(0, 20).join('; ')}`);
   const dk = debug.filter((d) => d.kind === 'deck off a house');
-  { const nr = debug.filter((x) => x.kind === 'not roof, off a house'); console.log(`Parts of a house the shade map does not call roof, split off: ${nr.length}; ${nr.map((d) => `~${d.m2} m2 at ${d.top} m`).join('; ')}`); }
+  { const nr = debug.filter((x) => x.kind === 'not roof, off a house'); console.log(`Parts of a house the shade map does not call roof, split off: ${nr.length}; ${nr.map((d) => `~${d.m2} m2 at ${d.top} m (${d.solid ? 'solid: drawn' : `not solid: not drawn; through ${d.through}, rough ${d.rough}`})`).join('; ')}`); }
   console.log(`Decks split off a house: ${dk.length}; ${dk.map((d) => `${d.n} returns at ${d.top} m`).join('; ')}`);
   const ns2 = debug.filter((d) => d.kind === 'not solid');
   console.log(`Left out as not solid (the laser went through, or every height): ${ns2.length}; sizes ${ns2.map((d) => `${d.n} returns (through ${d.through}, rough ${d.rough} m)`).slice(0, 15).join('; ')}`);
