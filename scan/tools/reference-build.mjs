@@ -12,7 +12,7 @@
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { buildRef, encodeRef, decodeRef, shapeFix, fitRigid, place, STAND } from '../lib/walkref.js';
-import { keepPlan, placeWalk, updateRef, AS_IS } from '../lib/refkeep.js';
+import { keepPlan, placeWalk, matchUsable, updateRef, AS_IS } from '../lib/refkeep.js';
 import { readTrack } from '../lib/twin.js';
 import { checkMarks } from '../lib/postfix.js';
 import { writeObject, readObject, BUCKET } from './twin-r2.mjs';
@@ -138,9 +138,17 @@ async function keep(dir) {
   // the walk on the saved shape, when there is one and the match holds (walkref.js shapeFix): the shape and where it
   // is are kept apart (refkeep.js updateRef)
   let F = null;
-  if (old) { const f = shapeFix(old, pts); if (f.ok) F = f.T; console.log(`Matched to the saved shape: ${f.ok ? `yes (landed ${f.landed}, next best ${f.second})` : `no (${f.why})`}.`); }
+  const J = jumps.map((j) => j.odo);
+  if (old) {
+    const f = shapeFix(old, pts), usable = !plan.ok || matchUsable(plan, J);
+    if (f.ok && usable) F = f.T;
+    console.log(`Matched to the saved shape: ${f.ok ? `yes (landed ${f.landed}, next best ${f.second})${usable ? '' : `, but not used: the walk ${J.length ? 'jumped' : 'drifted'}, so its corners place it, stretch by stretch`}` : `no (${f.why})`}.`);
+  }
   if (!plan.ok && !F) throw new Error(`nothing places this walk: ${plan.why}, and no match to a saved shape`);
-  const part = F ? pts : { stand: placeWalk(pts.stand, plan.use, plan.C), ground: placeWalk(pts.ground, plan.use, plan.C) };
+  const ps = F ? null : placeWalk(pts.stand, plan.use, plan.C, J), pg = F ? null : placeWalk(pts.ground, plan.use, plan.C, J);
+  if (!F && ps.left + pg.left) console.log(`Not placed: ${ps.left + pg.left} points seen after a tracking jump with no corners sighted after it.`);
+  const part = F ? pts : { stand: ps.pts, ground: pg.pts };
+  if (part.stand.length < 200) throw new Error(`too little of the yard could be placed (${part.stand.length} standing points)`);
   const u = updateRef(old, part, { C: F ? (plan.ok ? plan.C : null) : AS_IS, F, w: plan.agree ? g.n : 1 });
   if (process.env.DRY) { console.log(`A dry run: nothing written (it would be: ${u.ref ? u.how : `refused, ${u.why}`}).`); return; }
   if (!u.ref) throw new Error(u.why);

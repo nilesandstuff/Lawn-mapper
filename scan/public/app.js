@@ -17,7 +17,7 @@ import { levelDist, toLocal, fromLocal } from '/lib/frames.js';
 import { frameFor, bboxOf, toPx, fromPx, ringsOf, toMerc } from '/lib/photo.js';
 import { newLocate, mark, noteGround, addDepth, nextAsk, answer, fitFor, fitSource, leftOutOf, mapOf, sessionOf, checkError, nearestNamed, agreement, groundOffset, groundUnder, status as fixStatus, summaryOf } from '/lib/locate.js';
 import { STAND as REF_STAND, MIN_STAND as REF_MIN_STAND, VOX as REF_VOX, referenceFit, buildRef, encodeRef, decodeRef } from '/lib/walkref.js';
-import { keepPlan, placeWalk, updateRef, cornersShort, AS_IS as REF_AS_IS } from '/lib/refkeep.js';
+import { keepPlan, placeWalk, matchUsable, updateRef, cornersShort, AS_IS as REF_AS_IS } from '/lib/refkeep.js';
 import { leftOut, mapToSession } from '/lib/align.js';
 import { newTwin, addPoints, addPose, wantKey, addKey, flush, flushDue, liveOf } from '/lib/twin.js';
 import { newAnchors, viewOf, noteView, nudge, pitchOf, anchorsKept, SHOW_S } from '/lib/anchors.js';
@@ -2003,11 +2003,15 @@ async function keepReference(L, walkId) {
   /* THE SHAPE AND WHERE IT IS, APART (refkeep.js updateRef; the owner, 2026-11-16). F: this walk on the saved shape,
      by the match that placed it (when the saved reference was in use): it adds to the shape, and with the corners'
      fit C gives one more reading of where the shape is. Without F, the walk goes in already placed on the map. */
-  const F = st.refUse && L?.prev?.ok && L.prev.Ts ? L.prev.Ts : null;
+  const jumps = L?.jumps || [];
+  const F = st.refUse && L?.prev?.ok && L.prev.Ts && (!plan.ok || matchUsable(plan, jumps)) ? L.prev.Ts : null;
   if (!plan.ok && !F) return `NOT saved as the reference: ${plan.why}.`;
   const rawStand = [...(st.prevStand?.values() || [])], rawGround = [...(st.prevGround?.values() || [])];
   if (rawStand.length < REF_MIN_STAND) return `NOT saved as the reference: too little of the yard's standing things was seen (${rawStand.length} points of ${REF_MIN_STAND}).`;
-  const part = F ? { stand: rawStand, ground: rawGround } : { stand: placeWalk(rawStand, plan.use, plan.C), ground: placeWalk(rawGround, plan.use, plan.C) };
+  const ps = F ? null : placeWalk(rawStand, plan.use, plan.C, jumps), pg = F ? null : placeWalk(rawGround, plan.use, plan.C, jumps);
+  const part = F ? { stand: rawStand, ground: rawGround } : { stand: ps.pts, ground: pg.pts };
+  const unplaced = F ? 0 : ps.left + pg.left;
+  if (part.stand.length < REF_MIN_STAND) return `NOT saved as the reference: the phone's tracking jumped and no roof corner was sighted after it, so only ${part.stand.length} standing points could be placed (of ${REF_MIN_STAND}). Aim at a roof corner again after the phone loses its place.`;
   const C = F ? (plan.ok ? plan.C : null) : REF_AS_IS;
   // the map's earlier reference, to build on (none, or "Fresh" chosen at the start: this walk makes it)
   let old = null;
@@ -2020,10 +2024,11 @@ async function keepReference(L, walkId) {
   const corners = !plan.ok ? 'no two roof corners'
     : plan.agree ? `${names} roof corners agreeing within ${(plan.g.worstM * 39.37).toFixed(0)} in`
       : `${names} roof corners, not all agreeing with the map; each part of the walk placed by the corners sighted nearest it`;
-  const what = u.how === 'made' ? `the first for this map: ${corners}`
+  const jumpNote = unplaced ? `; ${unplaced.toLocaleString()} points seen after the phone's tracking jumped, with no corners sighted after it, could not be placed` : '';
+  const what = (u.how === 'made' ? `the first for this map: ${corners}`
     : u.how === 'shape and place' ? `${corners}. The yard's shape gained ${u.added.toLocaleString()} points (${u.replaced.toLocaleString()} corrected); where it sits on the map moved ${(u.movedM * 39.37).toFixed(0)} in, the middle of ${u.ref.seen.length} walks' corners`
     : u.how === 'shape only' ? `matched to the saved shape, which gained ${u.added.toLocaleString()} points; where it sits on the map is unchanged (${corners})`
-    : `${corners}, but no match to the saved shape, so it only filled in ${u.added.toLocaleString()} points the shape lacked`;
+    : `${corners}; placed by its corners rather than matched to the saved shape, so it filled in ${u.added.toLocaleString()} points the shape lacked`) + jumpNote;
   try {
     const r = await fetch(`/api/scan/reference?map=${encodeURIComponent(map)}&walk=${encodeURIComponent(walkId)}`, { method: 'PUT', credentials: 'same-origin', body: bytes, signal: AbortSignal.timeout(SEND_TIMEOUT_MS) });
     if (r.ok) return `Saved ${old ? 'into' : 'as'} this map's reference (${what}). The next walk here builds on it.`;

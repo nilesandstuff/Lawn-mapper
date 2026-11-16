@@ -154,7 +154,7 @@ console.log('refkeep (shape and place): ok');
   const marks = [R('R1', [0, 0], [0, 0], 4), R('R2', [19.6, 0], [21.3, 0], 32), R('R1', [0, 0], [1.7, 0], 45)];
   const k = keepPlan(marks);
   assert.ok(k.ok && k.use.length === 3, 'every mark places the walk, the first R1 too');
-  const [early, late] = placeWalk([[2, 1, 0.5, 4], [3.7, 1, 0.5, 46]], k.use, k.C);   // the post, seen at 4 m and at 46 m
+  const { pts: [early, late] } = placeWalk([[2, 1, 0.5, 4], [3.7, 1, 0.5, 46]], k.use, k.C);   // the post, seen at 4 m and at 46 m
   assert.ok(Math.hypot(early[0] - 2, early[1] - 1) < 0.15, `seen at the start, placed by the first R1: ${early}`);
   assert.ok(Math.hypot(late[0] - 2, late[1] - 1) < 0.15, `seen at the end, placed by the fresh R1: ${late}`);
   // two corners that disagree and were never sighted again: kept all the same
@@ -165,6 +165,17 @@ console.log('refkeep (shape and place): ok');
   const k3 = keepPlan(M3);
   assert.ok(k3.ok && k3.use.every((m) => m.id !== 'a'), 'the wrong aim places nothing');
   assert.equal(keepPlan([R('a', [0, 0], [0, 0], 4)]).ok, false, 'one corner cannot place a walk');
+  // a tracking jump at 60 m: the stretch after it has no corners of its own, so it is left out, not placed 8 ft off
+  const j = placeWalk([[2, 1, 0.5, 10], [5, 5, 0.5, 70], [1, 1, 0.5, 80], [9, 9, 0.5, NaN]], k.use, k.C, [60]);
+  assert.equal(j.pts.length, 1); assert.equal(j.left, 3, 'after the jump, and one with no reading, left out');
+  // marks on both sides of the jump: each stretch by its own
+  const J2 = [R('a', [0, 0], [0, 0], 5), R('b', [10, 0], [10, 0], 20), R('a', [0, 0], [3, 0], 70), R('b', [10, 0], [13, 0], 80)];
+  const jp = placeWalk([[1, 0, 0, 10], [4, 0, 0, 75]], J2, null, [60]).pts;
+  assert.ok(Math.abs(jp[0][0] - 1) < 1e-6 && Math.abs(jp[1][0] - 1) < 1e-6, `each stretch placed by its own corners: ${jp}`);
+  const { matchUsable } = await import('../lib/refkeep.js');
+  assert.equal(matchUsable(two), false, 'a walk that drifted is not placed whole by the shape match');
+  assert.equal(matchUsable(k3, [60]), false, 'nor one whose frame jumped');
+  assert.equal(matchUsable(k3), true);
   console.log('refkeep (every walk kept): ok'); }
 
 // ENOUGH CORNERS, BEFORE THE WALK (2026-11-16)

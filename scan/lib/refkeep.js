@@ -114,11 +114,36 @@ export function keepPlan(marks, jumps = []) {
   if (!C) return { ok: false, use, C: null, agree: false, g, why: 'its corners could not be fitted' };
   return { ok: true, use, C, agree: g.ok && !g.left.length, g, why: null };
 }
-export function placeWalk(points, use, C) {
-  const byOdo = new Map();
-  const fitFor = (odo) => { const k = Math.round(odo); if (!byOdo.has(k)) byOdo.set(k, fitAt(use, k) || C); return byOdo.get(k); };
-  return (points || []).map((p) => { const T = Number.isFinite(p[3]) ? fitFor(p[3]) : C; const q = place(T, p[0], p[1]); return [q[0], q[1], p[2]]; });
+/* ACROSS A TRACKING JUMP (the owner's home walk of 2026-11-15: the phone's place jumped 8.2 ft at 418 ft walked, and
+   every corner was marked before it). A jump is not drift: after it the phone works in another frame, which no mark
+   made before it can place. So each stretch between jumps is placed by its own corners (the walk asks for them again
+   after a jump: app.js, L.stale); a stretch with fewer than two of its own is left out, and counted. Without jumps
+   the whole walk is one stretch. -> { pts: [[e, n, y]], left: points not placed } */
+export function placeWalk(points, use, C, jumps = []) {
+  const J = [...(jumps || [])].filter(Number.isFinite).sort((a, b) => a - b);
+  const segOf = (odo) => { let k = 0; while (k < J.length && J[k] <= odo) k++; return k; };
+  const key = (m) => `${m.map[0].toFixed(2)},${m.map[1].toFixed(2)}`;
+  const bySeg = new Map();
+  for (const m of use) { const k = segOf(m.odo); if (!bySeg.has(k)) bySeg.set(k, []); bySeg.get(k).push(m); }
+  const placeable = (k) => new Set((bySeg.get(k) || []).map(key)).size >= 2;
+  const fits = new Map(), pts = [];
+  let left = 0;
+  for (const p of points || []) {
+    let T = null;
+    if (Number.isFinite(p[3])) {
+      const k = segOf(p[3]);
+      if (placeable(k)) { const b = `${k}:${Math.round(p[3])}`; if (!fits.has(b)) fits.set(b, fitAt(bySeg.get(k), Math.round(p[3]))); T = fits.get(b); }
+    } else if (!J.length) T = C;
+    if (!T) { left++; continue; }
+    const q = place(T, p[0], p[1]); pts.push([q[0], q[1], p[2]]);
+  }
+  return { pts, left };
 }
+/* THE SAVED SHAPE'S MATCH (F) PLACES THE WALK WHOLE, rigidly, so it is used only for a walk whose corners agree and
+   whose frame never broke: a walk that drifted (the 1:55 pm walk, 2026-11-16: its corners 5.7 ft farther apart than
+   the map has them) or jumped goes in placed by its corners instead, stretch by stretch, filling what the shape
+   lacked rather than overwriting it. */
+export const matchUsable = (plan, jumps = []) => !!plan?.g?.ok && !(jumps || []).some(Number.isFinite);
 export const AS_IS = { theta: 0, tx: 0, ty: 0, s: 1 };
 /* ENOUGH CORNERS, BEFORE THE WALK (the owner, 2026-11-16: "the corner selection process should include a check, so a
    walk isn't refused after the walk for not having enough corners"). points: the map's points ({ roof, map }). Null
