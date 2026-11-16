@@ -146,14 +146,32 @@ console.log('refkeep (shape and place): ok');
   console.log(`refkeep (the phone's own scale): ok (3% short: found ${((g.T.s - 1) * 100).toFixed(1)}%; turn-and-shift alone left ${(worstRigid * 3.281).toFixed(1)} ft)`);
 }
 
-// A CORNER SIGHTED AGAIN (2026-11-16, the 1:55 pm walk): R1 at 4 m walked sat 1.7 m off once the phone had drifted;
-// sighted afresh at 45 m it agrees with R2. The part kept starts after the old mark, not at the walk's start.
-{ const R = (id, map, ar, odo) => ({ id, map, ar, odo, by: 'ROOF' });
-  const g = goodPart([R('R1', [0, 0], [0, 0], 4), R('R2', [19.6, 0], [21.3, 0], 32), R('R1', [0, 0], [1.7, 0], 45)]);
-  assert.ok(g.ok && g.n === 2, 'the pair agrees on the fresh sighting');
-  assert.equal(g.lo, 18, 'the part starts half way between the old mark and the first agreeing one');
-  assert.equal(g.hi, Infinity);
-  assert.equal(g.whole, false);
-  const h = goodPart([R('R1', [0, 0], [0, 0], 4), R('R2', [19.6, 0], [19.6, 0], 32), R('R1', [0, 0], [0.1, 0], 45)]);
-  assert.equal(h.lo, -Infinity, 'an earlier mark that agrees too bounds nothing');
-  console.log('refkeep (a corner sighted again): ok'); }
+// EVERY WALK IS KEPT (2026-11-16, the 1:55 pm walk): R1 at 4 m walked, R2 at 32 m 1.7 m farther than the map has
+// it (the phone drifted), R1 sighted again at 45 m. Nothing is cut: the whole walk is placed, each part by the marks
+// sighted nearest it, so a post seen beside R1 at the start and the same post seen at the end land together.
+{ const { keepPlan, placeWalk } = await import('../lib/refkeep.js');
+  const R = (id, map, ar, odo) => ({ id, map, ar, odo, by: 'ROOF' });
+  const marks = [R('R1', [0, 0], [0, 0], 4), R('R2', [19.6, 0], [21.3, 0], 32), R('R1', [0, 0], [1.7, 0], 45)];
+  const k = keepPlan(marks);
+  assert.ok(k.ok && k.use.length === 3, 'every mark places the walk, the first R1 too');
+  const [early, late] = placeWalk([[2, 1, 0.5, 4], [3.7, 1, 0.5, 46]], k.use, k.C);   // the post, seen at 4 m and at 46 m
+  assert.ok(Math.hypot(early[0] - 2, early[1] - 1) < 0.15, `seen at the start, placed by the first R1: ${early}`);
+  assert.ok(Math.hypot(late[0] - 2, late[1] - 1) < 0.15, `seen at the end, placed by the fresh R1: ${late}`);
+  // two corners that disagree and were never sighted again: kept all the same
+  const two = keepPlan([R('R1', [0, 0], [0, 0], 4), R('R2', [19.6, 0], [21.3, 0], 32)]);
+  assert.ok(two.ok && !two.agree, 'kept, though its two corners disagree');
+  // a corner far off the others, never sighted again (a wrong aim): it places nothing
+  const M3 = [R('a', [0, 0], [2.7, 0.3], 10), R('b', [10, 0], [10, 0], 30), R('c', [10, 8], [10, 8], 68)];
+  const k3 = keepPlan(M3);
+  assert.ok(k3.ok && k3.use.every((m) => m.id !== 'a'), 'the wrong aim places nothing');
+  assert.equal(keepPlan([R('a', [0, 0], [0, 0], 4)]).ok, false, 'one corner cannot place a walk');
+  console.log('refkeep (every walk kept): ok'); }
+
+// ENOUGH CORNERS, BEFORE THE WALK (2026-11-16)
+{ const { cornersShort } = await import('../lib/refkeep.js');
+  const C = (x, y) => ({ roof: { eaveM: 3 }, map: [x, y] });
+  assert.match(cornersShort([]), /No roof corner/);
+  assert.match(cornersShort([C(0, 0), { kind: 'ref', map: [9, 9] }]), /Only one roof corner/, 'a ground point is not a roof corner');
+  assert.match(cornersShort([C(0, 0), C(1, 1)]), /only 5 ft apart/);
+  assert.equal(cornersShort([C(0, 0), C(19.6, 0)]), null);
+  console.log('refkeep (enough corners before the walk): ok'); }

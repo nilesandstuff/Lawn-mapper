@@ -22,6 +22,7 @@
  * Pure; marks are locate.js L.marks ({ id, ar: [u, v], map: [e, n], odo, by }).
  */
 import { fitRigid, fitSimilar, place, VOX } from './walkref.js';
+import { fitAt } from './align.js';
 
 export const AGREE_M = 0.45;       // 1.5 ft: how well the marks of a kept part agree with the map, at the least
 /* PLANNING IN THE OUTLINE'S ERROR (the owner, 2026-11-16: "since I know we'll never be able to get the outlines
@@ -82,17 +83,53 @@ export function goodPart(marks, jumps = [], { agree = AGREE_M } = {}) {
   const J = [...jumps].filter(Number.isFinite).sort((a, b) => a - b);
   // before the part: the nearest tracking jump before its first mark; else, when a mark that disagrees came before
   // it, half way between that mark and the part's first
-  /* A CORNER SIGHTED AGAIN BECAUSE IT DISAGREED (locate.js agreeing, 2026-11-16): its earlier mark, where it still
-     disagrees with the part's fit, bounds the part like a mark that disagrees: the phone's frame then was not the
-     frame the part is placed in. */
-  const T = best.a.T, stale = (marks || []).filter((m) => m?.ar && m?.map && Number.isFinite(m.odo) && inIds.has(m.id) && !best.g.includes(m)
-    && (!roof || m.by === 'ROOF') && (() => { const p = place(T, m.ar[0], m.ar[1]); return Math.hypot(p[0] - m.map[0], p[1] - m.map[1]) > allowedOf(m, agree); })());
-  const bounds = [...out, ...stale].sort((a, b) => a.odo - b.odo);
-  const before = bounds.filter((m) => m.odo < first).pop(), after = bounds.find((m) => m.odo > last);
+  const before = out.filter((m) => m.odo < first).pop(), after = out.find((m) => m.odo > last);
   const jb = J.filter((j) => j <= first).pop(), ja = J.find((j) => j >= last);
   const lo = jb != null && (!before || jb >= before.odo) ? jb : before ? (before.odo + first) / 2 : jb ?? -Infinity;
   const hi = ja != null && (!after || ja <= after.odo) ? ja : after ? (after.odo + last) / 2 : ja ?? Infinity;
-  return { ok: true, T: best.a.T, ids: best.g.map((m) => m.id), n: best.g.length, roof, worstM: best.a.worst, lo, hi, whole: !bounds.length && lo === -Infinity && hi === Infinity, left: out.map((m) => m.id), why: null };
+  return { ok: true, T: best.a.T, ids: best.g.map((m) => m.id), n: best.g.length, roof, worstM: best.a.worst, lo, hi, whole: !out.length && lo === -Infinity && hi === Infinity, left: out.map((m) => m.id), why: null };
+}
+
+/* EVERY WALK IS KEPT (the owner, 2026-11-16: "When I do a walk, i want it to be saved as a reference... Always" and,
+   of a corner sighted again, "A repeat corner check should be a refinement, not throwing away other data"). goodPart
+   still says which marks agree, and the walk still asks again for one that does not (locate.js); but what is kept is
+   no longer the stretch the agreeing marks vouch for. It is the whole walk, every part of it placed by the marks
+   sighted nearest it in the walk (align.js fitAt, the fit the live page uses: a mark far back in the walk counts for
+   less, because the phone drifts). A corner sighted twice keeps both marks: the first places the walk around it, in
+   the phone's frame of that moment, and the second the walk around it. Only a corner that disagrees with all the
+   others and was never sighted again (goodPart's `left`) places nothing; it is a wrong aim, not a drift.
+
+   keepPlan  -> { ok, use: the marks that place the walk, C: one fit for the whole walk (goodPart's when the marks
+                agree), agree, g: goodPart's answer, why }
+   placeWalk the walk's points on the map, each by the fit for the moment it was seen. */
+export function keepPlan(marks, jumps = []) {
+  const all = (marks || []).filter((m) => m?.ar && m?.map && Number.isFinite(m.odo));
+  const key = (m) => `${m.map[0].toFixed(2)},${m.map[1].toFixed(2)}`;
+  const roofs = all.filter((m) => m.by === 'ROOF'), pool = new Set(roofs.map(key)).size >= 2 ? roofs : all;
+  const g = goodPart(marks, jumps), left = new Set(g.ok ? g.left : []);
+  const use = pool.filter((m) => !left.has(m.id));
+  if (new Set(use.map(key)).size < 2) return { ok: false, use, C: null, agree: false, g, why: 'fewer than two roof corners were marked' };
+  const odos = use.map((m) => m.odo).sort((a, b) => a - b), mid = odos[odos.length >> 1];
+  const C = g.ok ? g.T : fitAt(use, mid);
+  if (!C) return { ok: false, use, C: null, agree: false, g, why: 'its corners could not be fitted' };
+  return { ok: true, use, C, agree: g.ok && !g.left.length, g, why: null };
+}
+export function placeWalk(points, use, C) {
+  const byOdo = new Map();
+  const fitFor = (odo) => { const k = Math.round(odo); if (!byOdo.has(k)) byOdo.set(k, fitAt(use, k) || C); return byOdo.get(k); };
+  return (points || []).map((p) => { const T = Number.isFinite(p[3]) ? fitFor(p[3]) : C; const q = place(T, p[0], p[1]); return [q[0], q[1], p[2]]; });
+}
+export const AS_IS = { theta: 0, tx: 0, ty: 0, s: 1 };
+/* ENOUGH CORNERS, BEFORE THE WALK (the owner, 2026-11-16: "the corner selection process should include a check, so a
+   walk isn't refused after the walk for not having enough corners"). points: the map's points ({ roof, map }). Null
+   when two roof corners at least MIN_APART_M apart are chosen; else what to do, in the owner's words. */
+export function cornersShort(points) {
+  const roofs = (points || []).filter((p) => p?.roof && Array.isArray(p.map));
+  if (roofs.length < 2) return `${roofs.length ? 'Only one roof corner is chosen' : 'No roof corner is chosen'}: a walk needs two to be kept as this map's reference. On the lidar view, tap ${roofs.length ? 'one more building corner' : 'two building corners'} (the white diamonds are surest), well apart.`;
+  let far = 0;
+  for (const a of roofs) for (const b of roofs) far = Math.max(far, Math.hypot(a.map[0] - b.map[0], a.map[1] - b.map[1]));
+  if (far < MIN_APART_M) return `The roof corners chosen are only ${(far * 3.281).toFixed(0)} ft apart: too close to line the walk up. Choose two at least ${Math.ceil(MIN_APART_M * 3.281)} ft apart, the farther the better.`;
+  return null;
 }
 
 /** The walk's points ([u, v, y, odo]) walked within lo..hi. A point with no odometer reading is kept only when the

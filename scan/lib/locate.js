@@ -12,7 +12,7 @@
  */
 import { level, levelDist } from './frames.js';
 import { apply, unapply, fitAt } from './align.js';
-import { goodPart, allowedOf, agreement as pairAgreement } from './refkeep.js';
+import { goodPart, agreement as pairAgreement } from './refkeep.js';
 import { geoPrior, geoFit } from './geo.js';
 
 export const FIX_REACH = 20;   // m of walk a lidar fix stands for
@@ -79,7 +79,11 @@ export function mark(L, ref, hit, odo) {
    disagreed by 0.76 m at the second, 0.14 m on the earlier walk). When the two disagree (refkeep.js agreement, the
    test the reference is kept by), the one marked FIRST is named, so the walk asks for it again: sighted afresh, it
    is in the same drifted frame as the second, and the pair agrees. Both are still used until then (two are the
-   fewest that place a walk), and once the pair agrees, the first one's old mark leaves the fit. */
+   fewest that place a walk).
+   A CORNER SIGHTED AGAIN KEEPS ITS FIRST MARK (the owner, 2026-11-16: "A repeat corner check should be a refinement,
+   not throwing away other data"). Both stay in the fit; align.js fitAt already counts a mark for less the farther
+   back in the walk it was made, so the fresh one rules from where it was made on, and the first still places the
+   stretch of the walk it was made in (refkeep.js placeWalk does the same for the reference). */
 function agreeing(L) {
   const refs = L.marks.filter((m) => m.kind === 'ref');
   if (L._agree?.n === L.marks.length) return L._agree;
@@ -88,19 +92,13 @@ function agreeing(L) {
   if (ids.size === 2) {
     const latest = new Map(); for (const m of refs) latest.set(m.id, m);
     const [a, b] = [...latest.values()].sort((p, q) => p.odo - q.odo), g = pairAgreement([a, b]);
-    if (g.over > 1) out = { n: L.marks.length, refs: [a, b], left: [a.id] };
-    else {
-      const near = (m) => { const q = apply(g.T, m.ar); return Math.hypot(q[0] - m.map[0], q[1] - m.map[1]) <= allowedOf(m); };
-      out = { n: L.marks.length, refs: refs.filter((m) => latest.get(m.id) === m || near(m)), left: [] };
-    }
+    out = { n: L.marks.length, refs, left: g.over > 1 ? [a.id] : [] };
   } else if (ids.size >= 3) {
     const g = goodPart(refs);
     if (g.ok) {
-      // the points that agree; and of a point marked more than once, an earlier mark only if it agrees too (a corner
-      // sighted again because it was wrong must not keep its wrong mark in the fit)
-      const keep = new Set(g.ids), latest = new Map(); for (const m of refs) latest.set(m.id, m);
-      const near = (m) => { const q = apply(g.T, m.ar); return Math.hypot(q[0] - m.map[0], q[1] - m.map[1]) <= allowedOf(m); };
-      out = { n: L.marks.length, refs: refs.filter((m) => keep.has(m.id) && (latest.get(m.id) === m || near(m))), left: g.left };
+      // the points that agree, every mark of each (a corner sighted again keeps its first mark: see above)
+      const keep = new Set(g.ids);
+      out = { n: L.marks.length, refs: refs.filter((m) => keep.has(m.id)), left: g.left };
     }
   }
   L._agree = out;

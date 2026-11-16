@@ -12,7 +12,7 @@
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { buildRef, encodeRef, decodeRef, shapeFix, fitRigid, place, STAND } from '../lib/walkref.js';
-import { goodPart, partOf, updateRef } from '../lib/refkeep.js';
+import { keepPlan, placeWalk, updateRef, AS_IS } from '../lib/refkeep.js';
 import { readTrack } from '../lib/twin.js';
 import { checkMarks } from '../lib/postfix.js';
 import { writeObject, readObject, BUCKET } from './twin-r2.mjs';
@@ -125,22 +125,24 @@ async function keep(dir) {
       console.log(`  corners ${i + 1} and ${j + 1}: ${(w * FT).toFixed(1)} ft apart as walked, ${(mp * FT).toFixed(1)} ft on the map's outline: ${((w - mp) * FT).toFixed(1)} ft ${w > mp ? 'longer' : 'shorter'} on the ground (${(100 * (w - mp) / mp).toFixed(1)}%)`);
     }
   }
-  const g = goodPart(live.marks || [], jumps.map((j) => j.odo));
-  if (!g.ok) throw new Error(`nothing of this walk can be kept: ${g.why}`);
+  /* EVERY WALK IS KEPT (refkeep.js keepPlan, as the page does it since 2026-11-16): the whole walk, each part placed
+     by the roof corners sighted nearest it; corners that disagree no longer stop it. */
+  const plan = keepPlan(live.marks || [], jumps.map((j) => j.odo));
+  const g = plan.g;
   const pts = twinPoints(dir);
-  const part = { stand: partOf(pts.stand, g.lo, g.hi), ground: partOf(pts.ground, g.lo, g.hi) };
-  const ft = (v) => (v === -Infinity ? 'the start' : v === Infinity ? 'the end' : `${Math.round(v * FT)} ft walked`);
-  console.log(`Kept: ${g.n} of the marks agree within ${(g.worstM * 39.37).toFixed(0)} in${g.left.length ? ` (${g.left.length} left out)` : ''}${g.T?.s && g.T.s !== 1 ? `, the phone's distances scaled ${((g.T.s - 1) * 100).toFixed(1)}% to the map's` : ''}; the walk from ${ft(g.lo)} to ${ft(g.hi)}: `
-    + `${part.stand.length} of ${pts.stand.length} standing points, ${part.ground.length} of ${pts.ground.length} ground points.`);
-  if (part.stand.length < 200) throw new Error(`too little of the yard in that part (${part.stand.length} standing points)`);
-  if (process.env.DRY) { console.log('A dry run: nothing written.'); return; }
+  console.log(`Its corners: ${plan.ok ? `${new Set(plan.use.map((m) => m.id)).size} place the walk (${plan.use.length} marks)` : `none can (${plan.why})`}; ${g.ok ? `${g.n} agree within ${(g.worstM * 39.37).toFixed(0)} in${g.left.length ? `, ${g.left.length} left out` : ''}${g.T?.s && g.T.s !== 1 ? `, the phone's distances scaled ${((g.T.s - 1) * 100).toFixed(1)}% to the map's` : ''}` : `they do not agree (${g.why}): each part of the walk placed by the corners sighted nearest it`}. `
+    + `The whole walk: ${pts.stand.length} standing points, ${pts.ground.length} ground points.`);
+  if (pts.stand.length < 200) throw new Error(`too little of the yard (${pts.stand.length} standing points)`);
   const key = `refs/${meta.map}.bin`;
   const oldBytes = await readObject(BUCKET, key).catch(() => null), old = oldBytes ? decodeRef(oldBytes) : null;
   // the walk on the saved shape, when there is one and the match holds (walkref.js shapeFix): the shape and where it
   // is are kept apart (refkeep.js updateRef)
   let F = null;
-  if (old) { const f = shapeFix(old, part); if (f.ok) F = f.T; console.log(`Matched to the saved shape: ${f.ok ? `yes (landed ${f.landed}, next best ${f.second})` : `no (${f.why})`}.`); }
-  const u = updateRef(old, part, { C: g.T, F, w: g.n });
+  if (old) { const f = shapeFix(old, pts); if (f.ok) F = f.T; console.log(`Matched to the saved shape: ${f.ok ? `yes (landed ${f.landed}, next best ${f.second})` : `no (${f.why})`}.`); }
+  if (!plan.ok && !F) throw new Error(`nothing places this walk: ${plan.why}, and no match to a saved shape`);
+  const part = F ? pts : { stand: placeWalk(pts.stand, plan.use, plan.C), ground: placeWalk(pts.ground, plan.use, plan.C) };
+  const u = updateRef(old, part, { C: F ? (plan.ok ? plan.C : null) : AS_IS, F, w: plan.agree ? g.n : 1 });
+  if (process.env.DRY) { console.log(`A dry run: nothing written (it would be: ${u.ref ? u.how : `refused, ${u.why}`}).`); return; }
   if (!u.ref) throw new Error(u.why);
   if (oldBytes) await writeObject(BUCKET, `refs/backup/${meta.map}-${Date.now()}.bin`, oldBytes, 'application/octet-stream');
   const bytes = encodeRef(u.ref);

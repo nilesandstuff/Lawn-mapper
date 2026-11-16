@@ -17,7 +17,7 @@ import { levelDist, toLocal, fromLocal } from '/lib/frames.js';
 import { frameFor, bboxOf, toPx, fromPx, ringsOf, toMerc } from '/lib/photo.js';
 import { newLocate, mark, noteGround, addDepth, nextAsk, answer, fitFor, fitSource, leftOutOf, mapOf, sessionOf, checkError, nearestNamed, agreement, groundOffset, groundUnder, status as fixStatus, summaryOf } from '/lib/locate.js';
 import { STAND as REF_STAND, MIN_STAND as REF_MIN_STAND, VOX as REF_VOX, referenceFit, buildRef, encodeRef, decodeRef } from '/lib/walkref.js';
-import { goodPart, partOf, updateRef } from '/lib/refkeep.js';
+import { keepPlan, placeWalk, updateRef, cornersShort, AS_IS as REF_AS_IS } from '/lib/refkeep.js';
 import { leftOut, mapToSession } from '/lib/align.js';
 import { newTwin, addPoints, addPose, wantKey, addKey, flush, flushDue, liveOf } from '/lib/twin.js';
 import { newAnchors, viewOf, noteView, nudge, pitchOf, anchorsKept, SHOW_S } from '/lib/anchors.js';
@@ -862,7 +862,24 @@ function showLidar() {
 function flash(text) { const f = $('#flash'); f.textContent = text; f.classList.add('show'); clearTimeout(flash.t); flash.t = setTimeout(() => f.classList.remove('show'), 2400); }
 const log = (what) => { st.errors.push({ t: Date.now(), what }); if (st.errors.length > 80) st.errors.shift(); };
 
-async function startAR(engine) {
+async function startAR(engine, { anyway = false } = {}) {
+  /* NO WALK THAT CANNOT BE KEPT (refkeep.js cornersShort; the owner, 2026-11-16): two roof corners, well apart, are
+     checked here, before the walk, not found missing after it. A replay, a testing-only walk and the backup mode are
+     not held up; "Start anyway" starts it knowing it will not be kept. */
+  // the roof corners are known once the lidar is read (a point becomes a roof corner on it): until then, say so
+  const short = !anyway && st.map && !st.replayOf && !st.recordOnly && !st.tapMode
+    ? (st.lid?.error ? `This map has no lidar (${st.lid.error}), so it has no roof corners to line a walk up by.` : st.lid?.noReturns ? 'The lidar model kept no returns for this lot, so it offers no roof corners to line a walk up by.' : !st.lid?.ready || !st.lid.roofs ? 'The lidar is still being read: the roof corners are checked once it is. Try again in a moment.' : cornersShort(st.points))
+    : null;
+  if (short) {
+    const box = $('#start'), old = box.querySelector('.corners-short'); if (old) old.remove();
+    const card = document.createElement('div'); card.className = 'card corners-short';
+    card.innerHTML = `<strong>Choose the roof corners first</strong><p>${esc(short)}</p>`;
+    const go = document.createElement('button'); go.type = 'button'; go.className = 'plain'; go.textContent = 'Start anyway (this walk will not be kept as the reference)';
+    go.addEventListener('click', () => { card.remove(); startAR(engine, { anyway: true }); });
+    card.append(go); box.prepend(card); card.scrollIntoView?.({ block: 'center' });
+    flash('Choose two roof corners first');
+    return;
+  }
   const overlay = $('#overlay');
   pagePerf.stage('AR asked'); st.wperf = newPerf(); st.wperfAsked = performance.now(); st.wperfShapes = false;
   st.walk = newWalk({ engine, phone: navigator.userAgent });
@@ -1820,7 +1837,7 @@ function finish() {
   if (L && !s.failed) {
     const say = (text) => { const all = kept(), mine = all.find((x) => x.id === s.id); if (mine) { mine.reference = text; keep(all); renderResults(s.id); if (text && !/^Saving/.test(text)) post(mine); } };   // posted again with the verdict, so the walks log says why (the owner, 2026-11-15)
     say('Saving this walk as the map\'s reference…');
-    keepReference(L, String(w.startedAt)).then((text) => { say(text || ''); if (text) { log(text); flash(/^Saved/.test(text) ? 'Saved as this map\'s reference' : 'Not saved as the reference: see the walk\'s card'); } askReference(); })
+    keepReference(L, String(w.startedAt)).then((text) => { say(text || ''); if (text) { log(text); flash(/^Saved/.test(text) ? 'Saved as this map\'s reference' : /^Kept on the phone/.test(text) ? 'Kept as this map\'s reference: it goes up when there is signal' : /^The reference already/.test(text) ? 'The reference already had all of this walk' : 'Not saved as the reference: see the walk\'s card'); } askReference(); })
       .catch((e) => say(`NOT saved as the reference: ${e.message}`));
   }
 }
@@ -1869,7 +1886,10 @@ async function sendPart(p) {
 }
 const SEND_TIMEOUT_MS = 60000;
 async function sendPartNow(p) {
-  const res = await fetch(`/api/scan/twin?walk=${encodeURIComponent(p.walk)}&part=${encodeURIComponent(p.name)}`, { method: 'PUT', headers: { 'Content-Type': p.type }, body: p.body, signal: AbortSignal.timeout(SEND_TIMEOUT_MS) }); // a send that hangs (one took 12 minutes) is let go and tried again
+  // a map's reference that could not leave at the walk's end (keepReference) goes to its own route
+  const ref = /^ref:/.test(p.name) ? p.name.slice(4) : null;
+  const url = ref != null ? `/api/scan/reference?map=${encodeURIComponent(ref)}&walk=${encodeURIComponent(p.walk)}` : `/api/scan/twin?walk=${encodeURIComponent(p.walk)}&part=${encodeURIComponent(p.name)}`;
+  const res = await fetch(url, { method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': p.type }, body: p.body, signal: AbortSignal.timeout(SEND_TIMEOUT_MS) }); // a send that hangs (one took 12 minutes) is let go and tried again
   if (res.ok) return 'ok';
   if (res.status === 503) { p.offWhy = 'the site has no twin bucket yet'; return 'off'; }
   if (res.status === 408 || res.status === 429 || res.status >= 500) return 'retry';
@@ -1975,38 +1995,46 @@ async function keepReference(L, walkId) {
      reference so they get better each time and uncertainty gets corrected"). The part of the walk its agreeing roof
      corners vouch for is added to the map's reference and corrects it where this walk saw the yard. A walk with no
      such corners, but placed by the reference itself, only fills in what the reference had nothing of. */
-  const g = goodPart(L?.marks || [], L?.jumps || []);
-  /* THE SHAPE AND WHERE IT IS, APART (refkeep.js updateRef; the owner, 2026-11-16). C: this walk on the map, by its
-     agreeing corners. F: this walk on the saved shape, by the match that placed it (when the saved reference was in
-     use). With F the walk adds to the shape; with both it also gives one more reading of where the shape is. */
-  const C = g.ok ? g.T : null, F = st.refUse && L?.prev?.ok && L.prev.Ts ? L.prev.Ts : null;
-  if (!C && !F) return `NOT saved as the reference: ${g.why}.`;
-  const lo = g.ok ? g.lo : -Infinity, hi = g.ok ? g.hi : Infinity;
-  const stand = partOf([...(st.prevStand?.values() || [])], lo, hi), ground = partOf([...(st.prevGround?.values() || [])], lo, hi);
-  if (stand.length < REF_MIN_STAND) return `NOT saved as the reference: too little of the yard's standing things was seen in the part that can be trusted (${stand.length} points of ${REF_MIN_STAND}).`;
+  /* EVERY WALK IS KEPT (refkeep.js keepPlan; the owner, 2026-11-16: "When I do a walk, i want it to be saved as a
+     reference... Always"). The whole walk, each part of it placed by the roof corners sighted nearest it in the walk
+     (a corner sighted twice keeps both marks). Corners that disagree are asked for again during the walk (locate.js);
+     at its end they no longer stop it being kept. Two corners are checked before the walk starts (startWalk). */
+  const plan = keepPlan(L?.marks || [], L?.jumps || []);
+  /* THE SHAPE AND WHERE IT IS, APART (refkeep.js updateRef; the owner, 2026-11-16). F: this walk on the saved shape,
+     by the match that placed it (when the saved reference was in use): it adds to the shape, and with the corners'
+     fit C gives one more reading of where the shape is. Without F, the walk goes in already placed on the map. */
+  const F = st.refUse && L?.prev?.ok && L.prev.Ts ? L.prev.Ts : null;
+  if (!plan.ok && !F) return `NOT saved as the reference: ${plan.why}.`;
+  const rawStand = [...(st.prevStand?.values() || [])], rawGround = [...(st.prevGround?.values() || [])];
+  if (rawStand.length < REF_MIN_STAND) return `NOT saved as the reference: too little of the yard's standing things was seen (${rawStand.length} points of ${REF_MIN_STAND}).`;
+  const part = F ? { stand: rawStand, ground: rawGround } : { stand: placeWalk(rawStand, plan.use, plan.C), ground: placeWalk(rawGround, plan.use, plan.C) };
+  const C = F ? (plan.ok ? plan.C : null) : REF_AS_IS;
   // the map's earlier reference, to build on (none, or "Fresh" chosen at the start: this walk makes it)
   let old = null;
   if (st.refUse || !st.refMeta) { try { const r = await fetch(`/api/scan/reference?map=${encodeURIComponent(map)}`, { credentials: 'same-origin' }); if (r.ok) old = decodeRef(new Uint8Array(await r.arrayBuffer())); } catch { /* none read */ } }
-  const u = updateRef(old, { stand, ground }, { C, F, w: g.ok ? g.n : 1 });
+  const u = updateRef(old, part, { C, F, w: plan.agree ? plan.g.n : 1 });
   if (!u.ref) return `NOT saved as the reference: ${u.why}.`;
   if (u.how === 'shape only' && !u.added) return 'The reference already has everything this walk saw: nothing to add.';
   const bytes = encodeRef(u.ref);
-  const ftOf = (v) => `${Math.round(v * FT)} ft`;
-  const corners = g.ok ? `${g.n} roof corners agreeing within ${(g.worstM * 39.37).toFixed(0)} in${g.left.length ? `; ${g.left.length} that disagreed left out, so the walk ${lo > -Infinity ? `from ${ftOf(lo)} walked` : 'from its start'}${hi < Infinity ? ` to ${ftOf(hi)}` : ''} is kept` : ''}` : 'no agreeing roof corners';
+  const names = new Set(plan.use.map((m) => m.id)).size;
+  const corners = !plan.ok ? 'no two roof corners'
+    : plan.agree ? `${names} roof corners agreeing within ${(plan.g.worstM * 39.37).toFixed(0)} in`
+      : `${names} roof corners, not all agreeing with the map; each part of the walk placed by the corners sighted nearest it`;
   const what = u.how === 'made' ? `the first for this map: ${corners}`
     : u.how === 'shape and place' ? `${corners}. The yard's shape gained ${u.added.toLocaleString()} points (${u.replaced.toLocaleString()} corrected); where it sits on the map moved ${(u.movedM * 39.37).toFixed(0)} in, the middle of ${u.ref.seen.length} walks' corners`
     : u.how === 'shape only' ? `matched to the saved shape, which gained ${u.added.toLocaleString()} points; where it sits on the map is unchanged (${corners})`
     : `${corners}, but no match to the saved shape, so it only filled in ${u.added.toLocaleString()} points the shape lacked`;
-  for (let k = 0; k < 3; k++) {
-    try {
-      const r = await fetch(`/api/scan/reference?map=${encodeURIComponent(map)}&walk=${encodeURIComponent(walkId)}`, { method: 'PUT', credentials: 'same-origin', body: bytes });
-      if (r.ok) return `Saved ${old ? 'into' : 'as'} this map's reference (${what}). The next walk here builds on it.`;
-      // the site refused it (not the signal): say what it said, and do not try again
-      if (r.status >= 400 && r.status < 500) { let why = ''; try { why = (await r.json())?.error || ''; } catch { /* none */ } return `NOT saved as the reference: the site refused it (${r.status}${why ? `, ${why}` : ''}). Tell the core session.`; }
-    } catch { /* signal: again */ }
-    await new Promise((res) => setTimeout(res, 4000 * (k + 1)));
-  }
-  return 'NOT saved as the reference: it could not be sent (no signal?). Walk again with signal, or tell the core session.';
+  try {
+    const r = await fetch(`/api/scan/reference?map=${encodeURIComponent(map)}&walk=${encodeURIComponent(walkId)}`, { method: 'PUT', credentials: 'same-origin', body: bytes, signal: AbortSignal.timeout(SEND_TIMEOUT_MS) });
+    if (r.ok) return `Saved ${old ? 'into' : 'as'} this map's reference (${what}). The next walk here builds on it.`;
+    // the site refused it (not the signal): say what it said
+    if (r.status >= 400 && r.status < 500 && r.status !== 401 && r.status !== 403 && r.status !== 404 && r.status !== 408 && r.status !== 429) { let why = ''; try { why = (await r.json())?.error || ''; } catch { /* none */ } return `NOT saved as the reference: the site refused it (${r.status}${why ? `, ${why}` : ''}). Tell the core session.`; }
+  } catch { /* no signal: the outbox has it */ }
+  /* NO SIGNAL IS NOT A REFUSAL (the 1:48 pm walk, 2026-11-16: a good walk lost to a weak signal). The reference waits
+     in the outbox with the walk's own parts, kept on the phone, and goes up when there is signal, this visit or the
+     next time the page opens (sendPartNow, a part named "ref:"). */
+  if (st.outbox) { try { await st.outbox.add(walkId, `ref:${map}`, 'application/octet-stream', bytes); return `Kept on the phone as this map's reference (${what}); it goes up with the walk's other parts when there is signal.`; } catch { /* the phone's store refused */ } }
+  return 'NOT saved as the reference: it could not be sent and the phone could not hold it. Tell the core session.';
 }
 
 /** This walk's standing things and ground, one point to a small cube, for the earlier walk's match. */

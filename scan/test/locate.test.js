@@ -237,9 +237,9 @@ const hitAt = (map, y = 0) => { const [u, v] = toAR(map); return { position: { x
   for (const odo of [68, 85, 140]) { const T = rf(L, odo); assert.ok(Math.abs(T.theta) < 1e-6 && Math.hypot(T.tx, T.ty) < 1e-6, `the fit is R2 and R3's at ${odo} m walked`); }
   mk(L, P('R1', [0, 0]), hit(0, 0), 150);         // sighted again, rightly
   assert.deepEqual(lo(L), [], 'all three agree now');
-  const T = rf(L, 150); assert.ok(Math.abs(T.theta) < 1e-6 && Math.hypot(T.tx, T.ty) < 1e-6, 'and its wrong first mark is not in the fit'); }
+  const T = rf(L, 150); assert.ok(Math.abs(T.theta) < 1e-3 && Math.hypot(T.tx, T.ty) < 0.01, 'and its first mark, kept, counts for almost nothing 140 m later'); }
 // TWO CORNERS THAT DISAGREE (2026-11-16, the 1:55 pm walk): the phone drifted 1.7 m between them. The first is
-// asked for again; sighted afresh in the drifted frame, the pair agrees, and its old mark leaves the fit.
+// asked for again; sighted afresh in the drifted frame, the pair agrees. Its first mark is kept: it places the start.
 { const { newLocate: nl, mark: mk, refFit: rf, leftOutOf: lo } = await import('../lib/locate.js');
   const L = nl();
   const P = (id, map) => ({ id, kind: 'ref', map });
@@ -250,7 +250,8 @@ const hitAt = (map, y = 0) => { const [u, v] = toAR(map); return { position: { x
   assert.ok(rf(L, 32), 'both still place the walk until then');
   mk(L, P('R1', [0, 0]), hit(1.7, 0), 45);        // sighted again: in the drifted frame, 19.6 m from R2
   assert.deepEqual(lo(L), [], 'the pair agrees now');
-  const T = rf(L, 45); assert.ok(Math.abs(T.theta) < 1e-6 && Math.abs(T.tx + 1.7) < 1e-6 && Math.abs(T.ty) < 1e-6, 'and R1\'s first mark is not in the fit');
+  const T = rf(L, 45); assert.ok(Math.abs(T.theta) < 1e-6 && Math.abs(T.tx + 1.7) < 0.02 && Math.abs(T.ty) < 1e-6, `from the fresh sighting on, the fresh mark rules: ${T.tx}`);
+  const T0 = rf(L, 4); assert.ok(Math.abs(T0.tx) < 0.3, `at the start, the first mark still places the walk: ${T0.tx}`);
   const M = nl(); mk(M, P('R1', [0, 0]), hit(0, 0), 4); mk(M, P('R2', [19.6, 0]), hit(19.9, 0), 32);
   assert.deepEqual(lo(M), [], 'two that agree within the allowance (0.3 m) are left alone'); }
 console.log('locate: ok');
