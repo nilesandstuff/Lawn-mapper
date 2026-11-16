@@ -1765,6 +1765,18 @@ it solid from the grass to that height. Three-sided ones stay empty (a notch
 or courtyard can be real). Both changes together, on the 49 lots: 2,490
 columns made building (1,671 at build 5), 90 in labelled crowns (75).
 
+MEASURED ON THE OWNER'S HOUSE, build 6 (core print, run 43920278743, model
+made at 16:53 UTC). Along the garage's east edge, rows 4-5 turned to 1/11 at
+3.3 m, as predicted. Row 7 stays a solid tree (3/6). Row 6 did NOT turn,
+because its west neighbour is itself an empty column, so no roof touches it.
+That empty column in turn was not filled, because it has the tree on its east.
+Each blocks the other: one metre, left as it is. The core session's outline
+against the owner's aerial photo: the garage's east wall now runs whole at
+7.4 m from the house's middle (photo 7.6; at build 5 its south half stood
+1 m in). The north-east part is at 4.7 (4.6), the middle wing at 5.8 (5.9)
+and the garage's south end at -14.0 (about -14.4). Within 0.4 m everywhere
+except one stretch of the west wall, which the core session is looking at.
+
 ## Speculation
 
 - FENCES (2026-10-27, IN USE, unmeasured; fences.js): drawn by the visitor

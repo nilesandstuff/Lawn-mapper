@@ -11,6 +11,10 @@
  *     fences? (the drawn fences, fences.js records: upright planes in the
  *     light, their pale faces' reflection added to the DLI) }
  *       -> { type: 'built', ..., kinds, counts, calendar }
+ *   { type: 'model', bytes | file, lat, lng, lot, lawn, heightM?, canopy?: 'seasonal' | 'measured', tMean?,
+ *     erased?, erasedCubes?, fences? (else the file's) }
+ *       -> the same 'built', from the shade map's finished file instead of
+ *          the points (see buildFromModel)
  *   { type: 'now', t }            -> { type: 'now', T (per point), leaves }
  *   { type: 'day', dayMs }        -> { type: 'day', sunHours, beamHours, dli, openDli, leaves, ... }
  *   { type: 'months', year }      -> { type: 'months', rows: [{ month, dli, openDli, sunHours, leaves }] }
@@ -45,6 +49,7 @@ import { sunPath, sunAt, solarNoon } from './sun.js';
 import { growingSeason, dliOn, PAR_MOL_PER_MJ } from './climate.js';
 import { rasterizePolygon } from '../lib/mask.js';
 import { cleanFences, fencesOnGrid } from './fences.js';
+import { unpackModel } from '../lib/lidar-model.js';
 
 let S = null; // the current property
 
@@ -101,6 +106,7 @@ self.onmessage = (ev) => {
   const m = ev.data;
   try {
     if (m.type === 'build') build(m);
+    else if (m.type === 'model') { buildFromModel(m).catch((e) => self.postMessage({ type: 'error', message: String(e?.message || e), id: m.id })); }
     else if (m.type === 'now') {
       const s = sunAt(S.m.lat, S.m.lng, m.t);
       const f = leavesOn(dayOfYear(m.t));
@@ -168,6 +174,57 @@ function build(m) {
   const calendar = m.tMean ? leafCalendar(m.tMean, m.tMeanTypical ? { typical: m.tMeanTypical } : {}) : null;
   const season = !solidMode ? seasonalCanopy(m.cols, model, { shift: m.shift, classify: leafOffFlight, green: m.green || null }) : null;
   const seasonal = m.canopy === 'seasonal' && leafOffFlight && calendar && season;
+  finish(m, grid, model, season, calendar, seasonal, solidMode, leafOffFlight);
+}
+
+/**
+ * THE FINISHED MODEL, NOT THE POINTS (the water session, 2026-11-16, for its builder and page: the owner's rule of
+ * 2026-11-04, every tool reads the shade map's finished file and none rebuilds the lidar). The same state and the
+ * same 'built' answer as 'build', from the file the shade map saved (lidar-model.js; GET /api/maps/model?tool=shade):
+ * `bytes` (the file, gzipped or not) or `file` ({ meta, arrays }, unpacked). The file's mu is the canopy as flown
+ * with the leaf-off seasons' work done (branch floors, low structures, erasures) and muOn the same in full summer
+ * leaf, which are exactly build()'s season.muOff and season.muOn; its fences come from the file unless `fences` is
+ * given. Seasons need muOn in the file (the largest files drop it first) and a calendar (tMean); otherwise the
+ * canopy is the laser's as flown. 'solid' is not offered: the file keeps no opaque copy.
+ */
+async function buildFromModel(m) {
+  const file = m.file || (await unpackModel(m.bytes));
+  const { meta, arrays } = file;
+  if (!meta?.grid || !meta?.layers || !arrays?.mu || !arrays?.ground) throw new Error('not a shade model file');
+  const g = meta.grid, { z0, dz, nz } = meta.layers;
+  const grid = { w: g.w, h: g.h, x0: g.x0, y1: g.y1, cell: g.cell, cellY: g.cellY || g.cell, lat: g.lat };
+  const N = g.w * g.h;
+  const mu = Float32Array.from(arrays.mu), muOn = arrays.muOn ? Float32Array.from(arrays.muOn) : null;
+  /* The highest block anything stands in, as canopy.js keeps it (rays stop there). */
+  let top = z0;
+  for (let k = 0; k < N; k++) for (let l = nz - 1; l >= 0; l--) {
+    const i = k * nz + l;
+    if (mu[i] > 0 || (muOn && muOn[i] > 0)) { if (z0 + (l + 1) * dz > top) top = z0 + (l + 1) * dz; break; }
+  }
+  const model = { grid, w: g.w, h: g.h, nz, dz, z0, ground: Float32Array.from(arrays.ground), mu, top };
+  /* The trees step's kinds (1 building, 2 evergreen, 3 deciduous, 4 low structure, 0 else) from the file's
+     structures.js kinds: a solid tree is evergreen where the summer copy added no leaves to it. */
+  const kind = new Uint8Array(N);
+  for (let k = 0; k < N; k++) {
+    const sk = arrays.kind?.[k];
+    if (sk === 1) kind[k] = 1;
+    else if (sk === 2) kind[k] = 3;
+    else if (sk === 4) kind[k] = 4;
+    else if (sk === 3) {
+      let leafy = false;
+      if (muOn) for (let l = 0; l < nz && !leafy; l++) if (muOn[k * nz + l] > mu[k * nz + l]) leafy = true;
+      kind[k] = leafy ? 3 : 2;
+    }
+  }
+  const calendar = m.tMean ? leafCalendar(m.tMean, m.tMeanTypical ? { typical: m.tMeanTypical } : {}) : null;
+  const season = { muOff: mu, muOn: muOn || mu, kind, counts: meta.counts || null, classified: true, inLeafColumns: 0 };
+  const seasonal = m.canopy !== 'measured' && muOn && calendar ? season : null;
+  const fences = m.fences ?? meta.fences ?? [];
+  finish({ ...m, fences }, grid, model, season, calendar, seasonal, false, !!muOn);
+}
+
+/** What 'build' and 'model' share once the canopy stands: erasures, fences, the lot, the points, the sky view, the answer. */
+function finish(m, grid, model, season, calendar, seasonal, solidMode, leafOffFlight) {
   /* ERASED COLUMNS (the trees step's eraser, erase.js): whatever stood in
      them is gone from the model in every season -- open air down to the
      grass, so a felled tree casts nothing and its ground is lit. */
