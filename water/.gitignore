@@ -1,2 +1,4 @@
 build/
 wrangler.toml
+# the water builder's own config is checked in (water/builder/; the site's is written at deploy time)
+!builder/wrangler.toml

@@ -1,0 +1,21 @@
+# THE WATER BUILDER (owner, 2026-11-16): the water map worked out with no page open, in a Cloudflare Container, reached
+# only by the water Worker's service binding WATER_BUILDER. Deployed by .github/workflows/water-deploy.yml (task
+# builder; prepare.mjs first, so app/ holds the water map's code). Needs the Workers Paid plan (Containers).
+name = "water-builder"
+main = "worker.js"
+compatibility_date = "2025-09-01"
+workers_dev = false
+
+[[containers]]
+class_name = "WaterBuilder"
+image = "./Dockerfile"
+instance_type = "basic"
+max_instances = 1
+
+[[durable_objects.bindings]]
+name = "WATER_BUILDER_DO"
+class_name = "WaterBuilder"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["WaterBuilder"]
