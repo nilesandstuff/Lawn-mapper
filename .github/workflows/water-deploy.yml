@@ -113,6 +113,14 @@ jobs:
           node water/builder/prepare.mjs
           (cd water/builder/app && npm install --omit=dev --no-audit --no-fund > /dev/null)
           WATER_BUILDER_LISTEN=0 node -e "import('./water/builder/app/builder/server.mjs').then((m) => m.score({}).then((r) => { if (r.ok !== false) process.exit(1); console.log('the builder loads its modules; an empty request answers:', r.why); }))"
+          # the image itself, started as Cloudflare starts it: it must answer /health on 8080 within a minute
+          docker build -q -t water-builder-check water/builder > /dev/null
+          docker run -d --rm -p 8080:8080 --name wbcheck water-builder-check > /dev/null
+          ok=0; for i in $(seq 1 60); do if curl -fsS localhost:8080/health 2>/dev/null; then ok=1; echo; break; fi; sleep 1; done
+          echo "the container's own log:"; docker logs wbcheck 2>&1 | tail -15
+          docker stop wbcheck > /dev/null 2>&1 || true
+          if [ "$ok" != 1 ]; then echo "BUILDER_STATE=the image did not answer /health when run: see its log above" >> "$GITHUB_ENV"; exit 1; fi
+          echo "the image answers /health when run"
           if npx wrangler deploy --config water/builder/wrangler.toml 2>&1 | tee builder-deploy.log | tail -12; then
             echo "BUILDER_STATE=deployed: now run the task deploy, which binds the water site to it" >> "$GITHUB_ENV"
           else
