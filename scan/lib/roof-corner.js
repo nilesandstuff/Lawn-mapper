@@ -39,6 +39,13 @@ export const EAVE_TOL_M = 0.8;     // the crossing's height against the lidar's 
 export const EAVE_TOL_PLACED_M = 1.6; // and when the crossing is where the lined-up map puts this corner (EXPECT_M): a real corner, at the right place
 export const EXPECT_M = 2.5;       // how near (on the level) the crossing must be to where the map puts the corner, for that
 export const MIN_UP_DEG = 8;       // an aim at a roof corner looks up
+/* A LOW CORNER (the owner, 2026-11-16, R3 on a stone wall about 6 ft tall: "The device angle wasn't as steep... So I had
+   to bring my phone to the ground and look up. It also told me I was too close"). Under LOW_EAVE_M the aim may be
+   nearly level, up or down (a wall top below the phone is aimed down at), only not so flat that where it meets the
+   top's height is lost (LOW_AIM_DEG), and the phone may stand closer (LOW_NEAR_M). */
+export const LOW_EAVE_M = 2.5, LOW_AIM_DEG = 2, LOW_NEAR_M = 0.8;
+const isLow = (S) => S.eaveM < LOW_EAVE_M;
+const nearOf = (S) => (isLow(S) ? LOW_NEAR_M : NEAR_M);
 export const NEAR_M = 1.5, FAR_M = 14; // how near and far the corner may be from the phone, on the level
 export const MAX_SIGHTS = 4;
 export const DEPTH_TOL = 0.35, DEPTH_TOL_M = 1.2; // the camera's depth against the expected range: within 35% or 1.2 m
@@ -219,7 +226,8 @@ export function sight(S, f) {
   const o = [f.pos.x, f.pos.y, f.pos.z], d = norm(lookOf(f.quat));
   const upDeg = (Math.asin(Math.max(-1, Math.min(1, d[1]))) * 180) / Math.PI;
   // where this aim reaches the eave's height: the corner, if the aim is on it
-  const eaveY = S.eaveY ?? S.groundY + S.eaveM, t = d[1] > 1e-3 ? (eaveY - o[1]) / d[1] : NaN;
+  // (a low corner may be aimed at downward: then the top's height is below the phone and t is positive all the same)
+  const eaveY = S.eaveY ?? S.groundY + S.eaveM, t = Math.abs(d[1]) > 1e-3 ? (eaveY - o[1]) / d[1] : NaN;
   const reach = Number.isFinite(t) && t > 0 ? [o[0] + t * d[0], eaveY, o[2] + t * d[2]] : null;
   const levelTo = reach ? Math.hypot(reach[0] - o[0], reach[2] - o[2]) : NaN;
 
@@ -232,7 +240,7 @@ export function sight(S, f) {
     const c = S.first.reach, a = [S.first.o[0] - c[0], 0, S.first.o[2] - c[2]], b2 = [o[0] - c[0], 0, o[2] - c[2]];
     const turned = angDeg(a, b2), dist = Math.hypot(b2[0], b2[2]);
     S.turnDeg = turned;
-    if (dist < NEAR_M) { S.say = 'Too close: back away from the corner'; S.detail = ''; S.win = []; return S; }
+    if (dist < nearOf(S)) { S.say = 'Too close: back away from the corner'; S.detail = ''; S.win = []; return S; }
     if (dist > FAR_M) { S.say = 'Too far: walk back toward the corner'; S.detail = ''; S.win = []; return S; }
     if (turned < TURN_DEG) {
       const need = 2 * dist * Math.sin(((TURN_DEG - turned) * Math.PI) / 360);
@@ -251,8 +259,8 @@ export function sight(S, f) {
   }
 
   // aiming: is it an aim at a roof corner at all?
-  if (upDeg < MIN_UP_DEG) { S.win = []; S.detail = 'Tilt up: the circle goes on the corner of the roof itself'; return S; }
-  if (!reach || levelTo < NEAR_M) { S.win = []; S.detail = 'Too close under it: step back a little'; return S; }
+  if (isLow(S) ? Math.abs(upDeg) < LOW_AIM_DEG : upDeg < MIN_UP_DEG) { S.win = []; S.detail = isLow(S) ? 'Hold the phone a little lower and aim up at the top corner' : 'Tilt up: the circle goes on the corner of the roof itself'; return S; }
+  if (!reach || levelTo < nearOf(S)) { S.win = []; S.detail = 'Too close under it: step back a little'; return S; }
   if (levelTo > FAR_M) { S.win = []; S.detail = 'Too far: walk closer to the corner'; return S; }
   if (S.rays.length && S.turnDeg != null && S.turnDeg < TURN_DEG * 0.8) { S.state = 'move'; S.win = []; return S; }
   S.detail = '';
@@ -277,6 +285,9 @@ export function sight(S, f) {
     }
     S.detail = on.length ? `Reads ${(nearest * 3.281).toFixed(0)} ft, as expected (${(range * 3.281).toFixed(0)} ft)${edge ? ', with sky beside it' : ''}. Hold.` : 'Hold still…';
   }
+  // an aim DOWN at a low corner's top only when the camera's depth says it is on it: looking down, the foot of the wall
+  // or the ground in front of it is just as steady an aim, and only the depth tells them apart
+  if (isLow(S) && upDeg < 0 && !(S.depth && S.depth.on > 0)) { S.win = []; S.detail = 'Hold the phone a little below the top and aim up at its corner'; return S; }
   // steady? every frame of the last HOLD_MS within STEADY_DEG and STEADY_M of this one
   S.win.push({ t: f.t, o, d });
   while (S.win.length && (angDeg(S.win[0].d, d) > STEADY_DEG || Math.hypot(...sub(S.win[0].o, o)) > STEADY_M)) S.win.shift();
@@ -307,7 +318,7 @@ export function sight(S, f) {
     : miss > MISS_M ? `the aims pass ${(miss * 39.37).toFixed(0)} in apart: not the same spot`
       : Math.abs(eaveOff) > (S.expect && Math.hypot(X.p[0] - S.expect.x, X.p[2] - S.expect.z) <= EXPECT_M ? EAVE_TOL_PLACED_M : S.loose ? EAVE_TOL_PLACED_M : EAVE_TOL_M) ? `your aims meet ${Math.abs(eaveOff * 3.281).toFixed(1)} ft ${eaveOff > 0 ? 'above' : 'below'} the roof edge the lidar has for this corner. Aim at the corner of the ${eaveOff > 0 ? 'lower' : 'higher'} roof edge there, or pick another corner`
         : turn < TURN_DEG * 0.8 ? 'the two places are too close together'
-          : lv < NEAR_M * 0.7 ? 'too close under the corner' : null;
+          : lv < nearOf(S) * 0.7 ? 'too close under the corner' : null;
   S.log.push({ t: f.t, sights: rays.length, missM: Number.isFinite(miss) ? +miss.toFixed(3) : null, eaveOffM: Number.isFinite(eaveOff) ? +eaveOff.toFixed(2) : null, turnDeg: +turn.toFixed(0), why });
   if (!why) { S.done = { ok: true, position: { x: X.p[0], y: X.p[1], z: X.p[2] }, missM: miss, sights: rays.length, turnDeg: turn, eaveOffM: eaveOff, distance: lv }; S.say = 'Marked'; S.detail = ''; return S; }
   if (S.tries >= MAX_SIGHTS) { S.done = { ok: false, why }; S.say = 'Could not mark this corner'; S.detail = why; return S; }

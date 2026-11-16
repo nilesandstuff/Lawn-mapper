@@ -30,7 +30,7 @@ import { newOutbox, idbStore, memoryStore, statusText } from '/lib/outbox.js';
 import { newPerf, resources as perfResources, perfLines } from '/lib/perf.js';
 import { byDistance, nearestMap, mapLabel } from '/lib/maps-pick.js';
 import { enhance } from '/lib/enhance.js';
-import { newSight, sight, lookOf } from '/lib/roof-corner.js';
+import { newSight, sight, lookOf, LOW_EAVE_M } from '/lib/roof-corner.js';
 import { whereIs, resnap, NEAR_SIGHT_M } from '/lib/guide.js';
 import { viewToFit, followView, toScreen, zoomAt as miniZoom, pan as miniPan, edgeArrow } from '/lib/minimap.js';
 
@@ -1589,10 +1589,15 @@ function startSight(f, target) {
   const dem = st.lid.overlay?.dem1, abs = (p) => { const g = dem ? demAt(dem, p.map[0], p.map[1], NaN) : NaN; return Number.isFinite(g) ? g + p.roof.eaveM : NaN; };
   const ys = [];
   for (const m of st.L.marks) { if (m.by !== 'ROOF') continue; const p = st.points.find((q) => q.id === m.id); if (p?.roof && Number.isFinite(abs(p)) && Number.isFinite(abs(target))) ys.push(m.y + abs(target) - abs(p)); }
-  const eaveY = ys.length ? ys.reduce((a, b) => a + b, 0) / ys.length : null;
+  /* BUT NOT FOR A LOW CORNER (the owner, 2026-11-16, R3 on a 6 ft stone wall: "the scanning only worked when i pointed
+     the cursor 2 feet down the wall from the actual top"; the estimate from the marked roofs was 0.77 m under the
+     ground's): a wall's top is near the ground the phone stands on, which the phone reads well there, while the lidar's
+     coarse ground beside a wall (one side higher than the other, often) is the rough part of that estimate */
+  const low = target.roof.eaveM < LOW_EAVE_M;
+  const eaveY = ys.length && !low ? ys.reduce((a, b) => a + b, 0) / ys.length : null;
   const at = fitFor(st.L, st.walk.odo) ? sessionOf(st.L, target.map, st.walk.odo, 0) : null;
   st.sight = { S: newSight({ eaveM: target.roof.eaveM, groundY, eaveY, expect: at ? { x: at.x, z: at.z } : null, loose: !!target.roof.picked || target.roof.sure === false }), target, rays: 0 };
-  log(`roof corner ${target.name} (${target.roof.label}, eave ${target.roof.eaveM} m): sighting started, ground y ${groundY.toFixed(2)}${eaveY != null ? `, eave y ${eaveY.toFixed(2)} from ${ys.length} marked (by the ground it would be ${(groundY + target.roof.eaveM).toFixed(2)})` : ''}${at ? ', the map places it' : ''}`);
+  log(`roof corner ${target.name} (${target.roof.label}, eave ${target.roof.eaveM} m): sighting started, ground y ${groundY.toFixed(2)}${eaveY != null ? `, eave y ${eaveY.toFixed(2)} from ${ys.length} marked (by the ground it would be ${(groundY + target.roof.eaveM).toFixed(2)})` : low && ys.length ? `, a low corner: eave y ${(groundY + target.roof.eaveM).toFixed(2)} by the ground (the marked ones would say ${(ys.reduce((a, b) => a + b, 0) / ys.length).toFixed(2)})` : ''}${at ? ', the map places it' : ''}`);
 }
 /** The next unmarked roof corner's sighting, started by itself once the walk is tracking. */
 function autoSight(f) {

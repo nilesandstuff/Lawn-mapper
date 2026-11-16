@@ -92,6 +92,31 @@ function run(S, places, { tremorDeg = 0.15, seed = 1 } = {}) {
   assert.ok(!S.done?.ok, 'a corner at the wrong height is not this corner');
 }
 {
+  // A LOW CORNER (the owner, 2026-11-16, R3 on a stone wall about 6 ft tall): its top 1.8 m up, aimed at from chest
+  // height a few metres off, the aim nearly level (1.8 m and 2.3 m tops, phone at 1.4 m: 3-10 degrees up, under the roof rule's 8 at 1.8)
+  for (const top of [1.8, 2.3]) {
+    const W = [C[0], top, C[2]], S = newSight({ eaveM: top, groundY: 0 });
+    const { said } = run(S, [{ pos: [0, 1.4, 0], aim: W, ms: 1500 }, { pos: [5.5, 1.4, -1], aim: W, ms: 1500 }]);
+    assert.ok(S.done?.ok, `a ${top} m top marked from chest height (${S.done?.why || said[said.length - 1]})`);
+    const off = Math.hypot(S.done.position.x - W[0], S.done.position.z - W[2]);
+    assert.ok(off < 0.1 && Math.abs(S.done.position.y - top) < 0.1, `at the top corner: ${off.toFixed(2)} m on the level, ${S.done.position.y.toFixed(2)} high`);
+    assert.ok(!said.some((x) => /Tilt up/.test(x)), 'never told to tilt up');
+  }
+  // a top level with the phone (1.55 m, the phone at 1.4): too flat to place; it says to hold the phone lower
+  const F = newSight({ eaveM: 1.55, groundY: 0 }), fs = run(F, [{ pos: [0, 1.4, 0], aim: [C[0], 1.55, C[2]], ms: 1500 }]);
+  assert.ok(F.rays.length === 0 && /a little lower/.test(F.detail), `too flat: ${F.detail}`);
+  void fs;
+  // a top below the phone, aimed down at, with no depth to say the aim is on it: not taken (the wall's foot is as steady)
+  const D = newSight({ eaveM: 1.1, groundY: 0 });
+  run(D, [{ pos: [0, 1.4, 0], aim: [C[0], 1.1, C[2]], ms: 1500 }]);
+  assert.equal(D.rays.length, 0, 'a downward aim needs the depth');
+  // and a roof eave still wants the aim up: a nearly level aim at a 3 m eave is not taken
+  const R = newSight({ eaveM: 3, groundY: 0 });
+  run(R, [{ pos: [0, 1.4, 0], aim: [C[0] + 30, 1.6, C[2]], ms: 1500 }]);
+  assert.equal(R.rays.length, 0, 'a roof corner keeps its tilt rule');
+  console.log('roof-corner (a low corner: a wall top near or under the phone): ok');
+}
+{
   // a shakier hand (0.5 degrees): still marked, a little less exactly
   const offs = [];
   for (let seed = 1; seed <= 6; seed++) { const S = newSight({ eaveM: 3, groundY: 0 }); run(S, [{ pos: [0, 1.4, 0], aim: C, ms: 2500 }, { pos: [5.5, 1.4, -1], aim: C, ms: 2500 }, { pos: [8, 1.4, -4], aim: C, ms: 2500 }], { tremorDeg: 0.5, seed }); assert.ok(S.done?.ok, `seed ${seed}: marked (${S.done?.why || S.say})`); offs.push(Math.hypot(S.done.position.x - C[0], S.done.position.z - C[2])); }
