@@ -16,11 +16,11 @@ export class Internal extends WorkerEntrypoint {
   async walkReady(id, walk) { return enqueue(this.env, 'walk', id, { walk }); }
 }
 
-/* THE TIMER (every five minutes, tools/prepare.mjs [triggers]): one queued walk scored a run; every six hours, the
+/* THE TIMER (every five minutes, tools/prepare.mjs [triggers]): one queued walk scored a run; every hour, the
    sweep for walks a push missed (src/autoscore.js). Logs say counts and states only. */
 async function scheduled(controller, env, ctx) {
   const at = new Date(controller.scheduledTime || Date.now());
-  // the sweep every six hours, and at once while the queue has never held a job (a backlog the pushes lost)
+  // the sweep every hour, and at once while the queue has never held a job (a backlog the pushes lost)
   const empty = !(await env.DB?.prepare('SELECT 1 AS x FROM kit_jobs LIMIT 1').first().catch(() => null));
   const log = async (what) => {
     console.log(what);
@@ -29,7 +29,7 @@ async function scheduled(controller, env, ctx) {
       await env.DB.prepare('DELETE FROM kit_log WHERE at < (SELECT MIN(at) FROM (SELECT at FROM kit_log ORDER BY at DESC LIMIT 200))').run();
     } catch { /* the log is a convenience */ }
   };
-  if ((at.getUTCHours() % 6 === 0 && at.getUTCMinutes() < 5) || empty) {
+  if (at.getUTCMinutes() < 5 || empty) { // hourly: a dozen small calls to the main site
     const n = await sweep(env).catch((e) => ({ error: e?.message || String(e) }));
     await log(`sweep${env.MAIN ? '' : ' (no MAIN binding)'}: ${n.error ? `failed (${n.error})` : `${n.saves} admin saves, ${n.walks} walks (${n.converted} converted, ${n.waiting} waiting, ${n.failed} failed; ${n.scored} already scored), ${n.queued} queued`}`);
   }

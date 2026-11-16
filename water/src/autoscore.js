@@ -8,7 +8,7 @@
  *   model   an admin save's shade model changed: its walks are scored again (stage 1: the builder works the map out
  *           from the lidar as the page does; stage 2, to-do 27, from the finished model)
  * One walk a run: a map is worked out in minutes, and the next run carries on. A walk not converted yet waits (up to two
- * days of tries); a failure is kept with its reason. Every six hours a sweep asks the main site for every admin save's
+ * days of tries); a failure is kept with its reason. Every hour a sweep asks the main site for every admin save's
  * converted walks and queues any the current model has not scored, so a lost push is caught.
  */
 import { waiting, settle, enqueue } from './jobs.js';
