@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { truth, cleanWalk } from '../src/truth.js';
+import { moisture } from '../src/moisture.js';
 import { parseAsosMoment, atMoment, parseOpenMeteo, cleanRows, weatherOfMoment } from '../lib/momentweather.js';
 
 let passed = 0;
@@ -125,6 +126,25 @@ await test('Open-Meteo answers read: the satellite\'s sunshine at its interval\'
   assert.ok(Math.abs(h.find((x) => x.ta === 11).wind - 4 * 0.748) < 0.01);
   assert.equal(h.find((x) => x.ghi === 280).t, Date.UTC(2026, 10, 20, 17, 52, 30));
   assert.deepEqual(cleanRows([{ src: 'sat', t: 5, ghi: 10 }], 0, 10).map((x) => x.ghi), [10]);
+});
+
+await test('a map\'s soil readings move to another map (an admin save), their old checks cleared; all walks listed', async () => {
+  const env = { DB: d1() };
+  const m = (method, path, body) => moisture(new Request(`https://water.test${path}`, { method, body: body ? JSON.stringify(body) : undefined }), env, new URL(`https://water.test${path}`), admin);
+  for (const id of ['visit-0001', 'visit-0002']) assert.equal((await m('POST', '/api/water/moisture', { id, at: T0, lng: -85.6, lat: 42.9, map_id: 'old', unit: 'scale', readings: [{ lng: -85.6, lat: 42.9, value: 30 }] })).status, 200);
+  await m('POST', '/api/water/moisture', { id: 'visit-0003', at: T0, lng: -85.6, lat: 42.9, map_id: 'other', unit: 'scale', readings: [{ lng: -85.6, lat: 42.9, value: 31 }] });
+  await m('POST', '/api/water/moisture/check', { visit_id: 'visit-0001', rho: 0.3, n: 1, spots: [{ n: 1, value: 30, wet: 0.5, lawn: 1 }], settings: {} });
+  assert.equal((await m('POST', '/api/water/moisture/move', { from: 'old', to: 'old' })).status, 400);
+  const r = await (await m('POST', '/api/water/moisture/move', { from: 'old', to: 'admin|7' })).json();
+  assert.equal(r.moved, 2);
+  const now = await (await m('GET', '/api/water/moisture?map=admin%7C7&checks=1')).json();
+  assert.deepEqual(now.visits.map((v) => v.id).sort(), ['visit-0001', 'visit-0002']);
+  assert.equal(now.visits[0].readings.length, 1, 'the readings go with their visit');
+  assert.ok(now.visits.every((v) => v.check === null), 'the old map\'s checks cleared');
+  assert.equal((await (await m('GET', '/api/water/moisture?map=other')).json()).visits.length, 1, 'another map untouched');
+  await call(env, 'POST', '/api/water/truth/walk', { walk: 'wa', map_id: 'admin|7', started: T0, kinds: ['surface'] });
+  await call(env, 'POST', '/api/water/truth/walk', { walk: 'wb', map_id: 'x', started: T0 + 1, kinds: ['surface'] });
+  assert.equal((await (await call(env, 'GET', '/api/water/truth?all=1')).json()).walks.length, 2);
 });
 
 console.log(`\n${passed} passed`);

@@ -90,11 +90,14 @@ async function propertyAt(lng, lat) {
     }
   } catch { /* no property line: the point alone */ }
   try {
-    const r = await fetch('/api/maps');
-    const maps = r.ok ? (await r.json())?.maps || [] : [];
+    /* the saved map here: the administrator's test maps (admin saves, GET /api/maps?admin=1; owner, 2026-11-16: "make
+       it so that the measurements are tied to those admin saves") before the ordinary ones */
+    const [r, t] = await Promise.all([fetch('/api/maps'), fetch('/api/maps?admin=1').catch(() => null)]);
+    const tests = t?.ok ? ((await t.json())?.maps || []).map((m) => ({ ...m, test: true })) : [];
+    const maps = [...tests, ...(r.ok ? (await r.json())?.maps || [] : [])];
     const near = maps.filter((m) => Number.isFinite(m.lng) && Number.isFinite(m.lat))
       .map((m) => ({ m, d: metres([lng, lat], [m.lng, m.lat]), inside: out.ring ? inRing([m.lng, m.lat], out.ring) : false }))
-      .filter((x) => x.inside || x.d < 40).sort((a, b) => b.inside - a.inside || a.d - b.d)[0];
+      .filter((x) => x.inside || x.d < 40).sort((a, b) => b.inside - a.inside || !!b.m.test - !!a.m.test || a.d - b.d)[0];
     if (near) out.mapId = near.m.id;
     if (out.mapId) {
       // the saved map itself: the traced lawn, and the photo it was traced on

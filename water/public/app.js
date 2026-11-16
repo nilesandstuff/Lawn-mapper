@@ -46,6 +46,11 @@ const AREA_COLOR = { deck: '#a1887f', pavers: '#bf360c', solid: '#212121', roof:
 const ZONE_RGB = [[46, 134, 222], [230, 126, 34], [142, 68, 173], [22, 160, 133]];
 const HOME = document.documentElement.dataset.home || '';
 const mapId = new URLSearchParams(location.search).get('map');
+/* RUN BY THE MEASUREMENTS PAGE (/measurements; owner, 2026-11-16: "make it so I don't want to have to open each map
+   every time a thermal walk comes in"): ?auto=1 in a hidden frame works the map out as usual -- the readings' checks
+   and the thermal walks are scored and kept as they are when the map is opened -- then tells the page it is done. */
+const AUTO = new URLSearchParams(location.search).get('auto') === '1';
+function autoDone(info) { if (AUTO && window.parent !== window) window.parent.postMessage({ type: 'water-auto', map: mapId, ...info }, location.origin); }
 
 /* WHAT IS LOADING, IN SIGHT (owner, 2026-10-24: "give a more obvious indication that something is loading, don't
    lock the UI, but display something that says what's loading in an obvious spot"): every piece of work the page
@@ -940,7 +945,9 @@ function moistureCard(p) {
   if (!el) { $('#groundwater')?.insertAdjacentHTML('afterend', '<div id="moisture-check"></div>'); el = $('#moisture-check'); }
   if (!el) return;
   const d = view.data, visits = (view.moisture || []).filter((v) => v.unit !== 'surface_f'), trace = view.site?.lawn || [];
-  if ((!visits.length && !(view.moisture || []).some((v) => v.unit === 'surface_f')) || !d?.grid || !p?.kinds) { el.innerHTML = ''; return; }
+  /* no readings on this map: still the thermal walks (until 2026-11-16 this returned before them, so a map with walks
+     and no readings -- the owner's first admin save -- never showed or scored its walks) */
+  if ((!visits.length && !(view.moisture || []).some((v) => v.unit === 'surface_f')) || !d?.grid || !p?.kinds) { el.innerHTML = `${walkCards()}${trunksNote()}`; askWalks(); return; }
   const { W, H, bbox } = d.grid, dx = d.shift.east / d.grid.k, dy = d.shift.north / d.grid.k;
   const cw = (bbox[2] - bbox[0]) / W, ch = (bbox[3] - bbox[1]) / H;
   const snaps = new Map((p.snapshots || []).map((s) => [s.date, s.wet]));
@@ -1021,7 +1028,7 @@ async function askWalks() {
   const site = view.site;
   if (walkState.asked || !running || !view.plan || !site?.mapId) return;
   walkState.asked = true;
-  try { const t = await truthList(site); if (!t) return; walkState.admin = true; walkState.truth = t; } catch { return; }
+  try { const t = await truthList(site); if (!t) { autoDone({ ok: false, why: 'not signed in as the admin' }); return; } walkState.admin = true; walkState.truth = t; } catch { autoDone({ ok: false, why: 'the walks store did not answer' }); return; }
   let list = [];
   try {
     const r = await fetch(`/api/maps/thermal?id=${encodeURIComponent(site.mapId)}`, { signal: AbortSignal.timeout(8000) });
@@ -1042,6 +1049,8 @@ async function askWalks() {
   walkState.busy = null;
   try { walkState.truth = (await truthList(site)) || walkState.truth; } catch { /* keep what we had */ }
   if (view.plan) moistureCard(view.plan);
+  // the surface visits' checks come back from the worker a little after; give them time before saying done
+  setTimeout(() => autoDone({ ok: true, scored: todo.length, waiting: walkState.waiting, failed: walkState.failed.length, why: walkState.why }), 10000);
 }
 async function checkWalk(site, walkId) {
   const id = encodeURIComponent(site.mapId), wid = encodeURIComponent(walkId);
@@ -1320,7 +1329,7 @@ async function run(site) {
       else if (data.walkCheck) { walkIn(data.walkCheck); }
       else if (data.groundwaterError) { view.groundwaterError = data.groundwaterError; }
       else if (data.plan) { view.heat = null; if (mapView === 'heat') askHeat(); idle('plan'); if (!view.hillIn) busy('hill', 'Reading the land round the lawn (water from uphill)…'); view.plan = data.plan; needScale(); heads.planIn?.(); $('#saved').textContent = savedNote; if (!heads.active) planReport(data.plan); else moistureCard(data.plan); legend(); draw(); }
-      else if (data.planError) { idle('plan'); idle('hill'); $('#saved').textContent = `The watering plan could not be worked out: ${data.planError}`; }
+      else if (data.planError) { idle('plan'); idle('hill'); $('#saved').textContent = `The watering plan could not be worked out: ${data.planError}`; autoDone({ ok: false, why: `the plan: ${data.planError}` }); }
       else if (data.hill) { view.hillIn = true; idle('hill'); hillReport(data.hill); }
       else if (data.streams) { streamsReport(data.streams); }
       else if (data.wind) { inputs.wind = data.wind; keep(); }
@@ -1604,7 +1613,7 @@ function speciesBoxes() {
 }
 
 async function guarded(fn) {
-  try { await fn(); } catch (e) { clearBusy(); status(e.message || String(e), 'bad'); }
+  try { await fn(); } catch (e) { clearBusy(); status(e.message || String(e), 'bad'); autoDone({ ok: false, why: e.message || String(e) }); }
 }
 
 /* THE MAP TO OPEN (owner, 2026-10-23): a menu of the person's saved maps whose lawn and shade map are done (lib/
@@ -1614,8 +1623,10 @@ async function fillMapMenu() {
   const sel = $('#map-pick'), none = $('#map-none');
   let maps = [];
   try {
-    const res = await fetch('/api/maps', { credentials: 'same-origin' });
-    maps = res.ok ? openable((await res.json())?.maps) : [];
+    // the administrator's test maps (admin saves) come only when asked for (docs/MAPS.md); anyone else gets none
+    const [res, tests] = await Promise.all([fetch('/api/maps', { credentials: 'same-origin' }), fetch('/api/maps?admin=1', { credentials: 'same-origin' }).catch(() => null)]);
+    const adminSaves = tests?.ok ? (await tests.json())?.maps || [] : [];
+    maps = res.ok ? openable((await res.json())?.maps, adminSaves) : openable([], adminSaves);
   } catch { maps = []; }
   const dash = `${HOME}/dashboard`;
   if (!maps.length) {

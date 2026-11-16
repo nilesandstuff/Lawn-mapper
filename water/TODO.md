@@ -137,7 +137,8 @@ SPECULATION), as always.
     GET /api/maps?admin=1 lists only them (the water Worker already forwards /api/maps*), each with
     `adminSave: true` and `trace: { status }`; /api/maps/one opens one like any map; lawnmap's
     /admin-saves.html links into each tool. For the readings page: let the administrator pick an admin save
-    instead of a property found by GPS. Not started; wait for the owner's word.
+    instead of a property found by GPS. DONE 2026-11-16 (FINDINGS H87): the readings page and the water map's menu
+    take the test maps first; the measurements page moves readings onto them and keeps them up to date.
 29. **Thermal walks: the lawn's surface temperature mapped on an AR walk** (owner via the core session,
     2026-11-15: "take ground truth measurements to verify the surface temperature predictions of the water model").
     The core and a thermal session build the capture (a USB-C thermal camera in the Yard AR app's development build;

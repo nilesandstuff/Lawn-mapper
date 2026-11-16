@@ -144,8 +144,18 @@ test('the map menu offers the saved maps whose lawn and shade map are both done,
     { id: 'c', address: 'C', lng: -85, lat: 42, squareFeet: 3000, tools: {} },
     { id: 'd', address: 'D', lng: -85, lat: 42, squareFeet: 900, tools: { shade: { updatedAt: '2026-10-21' }, water: { updatedAt: '2026-10-22' } } },
   ];
-  assert.deepEqual(openable(maps), [{ id: 'a', label: 'A · 5,200 sq ft' }, { id: 'd', label: 'D · 900 sq ft' }]);
+  assert.deepEqual(openable(maps), [{ id: 'a', test: false, label: 'A · 5,200 sq ft' }, { id: 'd', test: false, label: 'D · 900 sq ft' }]);
   assert.deepEqual(openable(null), []);
+});
+
+test('the administrator\'s test maps (admin saves) come first, ready once the lawn is traced, never twice', () => {
+  const saves = [
+    { id: 'admin|1', adminSave: true, address: 'T', lng: -85, lat: 42, squareFeet: 4100, tools: {} },
+    { id: 'admin|2', adminSave: true, address: 'U', lng: -85, lat: 42, squareFeet: 0, trace: { status: 'pending' } },
+  ];
+  const maps = [{ id: 'a', address: 'A', lng: -85, lat: 42, squareFeet: 5200, tools: { shade: { updatedAt: '2026-10-20' } } }, saves[0]];
+  assert.deepEqual(openable(maps, saves).map((m) => [m.id, m.test]), [['admin|1', true], ['a', false]]);
+  assert.match(openable([], saves)[0].label, /^Test map: T/);
 });
 
 let failed = 0;

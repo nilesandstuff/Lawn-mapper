@@ -10,6 +10,10 @@
  *   GET    /api/water/moisture?map=     the visits made on one saved map, oldest first (the water map's check)
  *   DELETE /api/water/moisture?id=      one visit and its readings
  *   POST   /api/water/moisture/check    the water map's check of the model against a visit: numbers only
+ *   POST   /api/water/moisture/move     { from, to, ids? }: visits moved from one saved map to another (owner, 2026-11-16:
+ *                                       "retroactively reassigning my 27 soil moisture measurements to the admin
+ *                                       save"); their old checks go too, worked out again on the new map
+ *   GET    /api/water/moisture?checks=1 also the water map's checks, for the measurements page
  * (The key-gated /api/water/moisture/export of 2026-11-04 is gone, 2026-11-15: its key lived in a sandbox that was
  * wiped, and the owner asked for a steadier way. The water workflow's "readings" task reads the database instead,
  * water/tools/moisture.mjs, and prints numbers only.)
@@ -101,9 +105,26 @@ export function toCsv(rows) {
 
 /** The routes, or null when the request is not one of them. isAdmin(request, env) -> bool. */
 export async function moisture(request, env, url, { isAdmin }) {
-  if (url.pathname !== '/api/water/moisture' && url.pathname !== '/api/water/moisture/check') return null;
+  if (url.pathname !== '/api/water/moisture' && url.pathname !== '/api/water/moisture/check' && url.pathname !== '/api/water/moisture/move') return null;
   if (!(await isAdmin(request, env))) return json({ error: 'Not found' }, 404);
   if (!env.DB) return json({ error: 'no-database', note: 'the water database is not set up yet' }, 503);
+  if (url.pathname === '/api/water/moisture/move') {
+    if (request.method !== 'POST') return json({ error: 'method' }, 405);
+    let b = null;
+    try { b = await request.json(); } catch { /* below */ }
+    const from = typeof b?.from === 'string' ? b.from.slice(0, 120) : null, to = typeof b?.to === 'string' ? b.to.slice(0, 120) : null;
+    if (!from || !to || from === to) return json({ error: 'from and to: two different map ids' }, 400);
+    const ids = Array.isArray(b.ids) ? b.ids.filter((x) => typeof x === 'string').slice(0, 500) : null;
+    const which = ids?.length
+      ? (await env.DB.prepare(`SELECT id FROM moisture_visits WHERE map_id = ? AND id IN (${ids.map(() => '?').join(', ')})`).bind(from, ...ids).all()).results || []
+      : (await env.DB.prepare('SELECT id FROM moisture_visits WHERE map_id = ?').bind(from).all()).results || [];
+    if (!which.length) return json({ ok: true, moved: 0 });
+    const q = which.map(() => '?').join(', '), vid = which.map((r) => r.id);
+    let checksGone = true;
+    await env.DB.prepare(`UPDATE moisture_visits SET map_id = ? WHERE id IN (${q})`).bind(to, ...vid).run();
+    try { await env.DB.prepare(`DELETE FROM moisture_checks WHERE visit_id IN (${q})`).bind(...vid).run(); } catch { checksGone = false; }
+    return json({ ok: true, moved: vid.length, checksCleared: checksGone });
+  }
   if (url.pathname === '/api/water/moisture/check') {
     if (request.method !== 'POST') return json({ error: 'method' }, 405);
     let body = null;
@@ -147,6 +168,12 @@ export async function moisture(request, env, url, { isAdmin }) {
     const by = new Map(visits.map((v) => [v.id, { ...v, weather: v.weather ? JSON.parse(v.weather) : null, readings: [], marks: [] }]));
     for (const r of rows) by.get(r.visit_id)?.readings.push(r);
     for (const m of await marksOf(env, ids)) by.get(m.visit_id)?.marks.push(m);
+    if (url.searchParams.get('checks') === '1') {
+      let checks = [];
+      try { checks = (await env.DB.prepare('SELECT visit_id, checked, rho, n FROM moisture_checks').all()).results || []; } catch { /* none yet */ }
+      const cBy = new Map(checks.map((c) => [c.visit_id, c]));
+      for (const v of by.values()) v.check = cBy.get(v.id) || null;
+    }
     return json({ visits: [...by.values()] });
   }
   if (request.method === 'DELETE') {

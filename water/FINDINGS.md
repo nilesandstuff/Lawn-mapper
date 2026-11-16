@@ -2694,6 +2694,31 @@ figures) WIDENS by about 8% in July; FAO-56 on stations' own measured weather si
 Open-Meteo matched those stations better, so the higher figure may be the closer one (SPECULATION until a station's
 own PM ET0 is set against both over a season).
 
+### H87. Admin saves are the measurements' maps; a measurements page brings them up to date (water session, 2026-11-16)
+
+The owner: "the water map isn't recognizing that the shade maps done through the admin save route are actually
+finished", "make it so that the measurements are tied to those admin saves... retroactively reassigning my 27 soil
+moisture measurements", "make an admin page for this", and "I don't want to have to open each map every time a
+thermal walk comes in... I tried to do that, but I'm not seeing the things you said id see".
+- WHY ADMIN SAVES LOOKED UNFINISHED: for the administrator GET /api/maps leaves admin saves out (docs/MAPS.md); the
+  water map's menu and the readings page asked that list alone, so a test map never counted as done and readings
+  taken on the lot went onto the ordinary map. Both now also ask GET /api/maps?admin=1 and put the test maps first;
+  one is ready once its lawn is traced (lib/maps.js ready: the water map reads the lidar itself). test/advice.test.js.
+- WHY THE WALK SHOWED NOTHING: moistureCard returned before the walks when the map had no readings -- and the test
+  map had none, its readings being on the ordinary map -- so the walk card was never drawn and the walk never scored.
+  Fixed: the walks show and are scored on any map.
+- MOVING READINGS: POST /api/water/moisture/move { from, to } moves a map's visits (readings and marks go with
+  them; the old map's checks are cleared, to be worked out again on the new map). test/truth.test.js on SQLite.
+- THE MEASUREMENTS PAGE (/measurements, the admin only): every map's visits with their checks and every thermal walk
+  with the core's conversion status (converted, waiting, failed) and the current model's score, the test maps first;
+  readings on an ordinary map within 80 m of a test map are offered a one-tap move; and on opening it runs each test
+  map that has a converted walk not yet scored by the current model, or an unchecked visit, in a hidden frame
+  (/?map=..&auto=1, app.js autoDone), one after another: one page, not each map. NOT unattended: a scheduled run
+  without any page open would need the whole water map headless in CI, which the zone's 403 to GitHub's runners and
+  the map records' sign-in stand in the way of; not built.
+Checked in a phone-sized browser against the real store code on SQLite with made-up maps: the move (1 visit, 27
+readings) and the hidden run's start. The hidden run itself is the water map unchanged; not run here on a real map.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge

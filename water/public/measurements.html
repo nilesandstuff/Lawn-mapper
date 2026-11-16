@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en" data-home="__HOME__">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Water Measurements</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<style>
+  :root { --bg: #f6f8f7; --surface: #fcfcfb; --fg: #17201c; --dim: #5d6b64; --line: #d9e1dd; --accent: #1f6fd1; --bad: #c62828; --good: #2e7d32; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg: #101513; --surface: #1a1a19; --fg: #e7eeea; --dim: #9aa8a1; --line: #2c3631; --accent: #6aa8ff; --bad: #ff6b6b; --good: #7fd18a; }
+  }
+  :root[data-theme="dark"] { --bg: #101513; --surface: #1a1a19; --fg: #e7eeea; --dim: #9aa8a1; --line: #2c3631; --accent: #6aa8ff; --bad: #ff6b6b; --good: #7fd18a; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  main { max-width: 960px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 1.4rem; margin: 6px 0 2px; }
+  h2 { font-size: 1.05rem; margin: 0 0 6px; }
+  h3 { font-size: .95rem; margin: 10px 0 4px; }
+  .dim { color: var(--dim); font-size: 13px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin-top: 14px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 5px 6px; border-top: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--dim); font-weight: 600; }
+  .scroll { overflow-x: auto; }
+  button { font: inherit; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--accent); background: transparent; color: var(--accent); cursor: pointer; }
+  button:disabled { opacity: .5; cursor: default; }
+  a { color: var(--accent); }
+  .ok { color: var(--good); } .bad { color: var(--bad); }
+  #runner { position: absolute; width: 1px; height: 1px; border: 0; left: -10px; top: -10px; }
+</style>
+</head>
+<body>
+<main>
+  <p class="dim" style="margin:0"><a href="/">&larr; Lawn Water</a> · <a href="/admin">Water admin</a> · <a href="/moisture">Readings page</a> · <a id="saves" href="#">Admin saves</a></p>
+  <h1>Measurements</h1>
+  <p class="dim">Every soil moisture reading, surface temperature and thermal walk, by map, against the model. Your test maps (admin saves) come first. Opening this page also brings each test map up to date: new thermal walks are scored and unchecked readings are checked, one map after another, here in the background. You don't need to open each map.</p>
+  <div class="card" id="work"><h2>Bringing the maps up to date</h2><p class="dim" id="work-say">Reading what is kept…</p><ul id="work-list" class="dim"></ul></div>
+  <div id="move"></div>
+  <div id="maps"></div>
+  <iframe id="runner" title="the water map, worked out in the background" aria-hidden="true"></iframe>
+</main>
+<script type="module" src="/measurements.js"></script>
+</body>
+</html>

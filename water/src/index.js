@@ -96,6 +96,14 @@ export default {
       out.headers.set('Cache-Control', 'private, no-store');
       return out;
     }
+    // the measurements overview (public/measurements.html; owner, 2026-11-16): the admin only, whether or not the site is open
+    if (url.pathname === '/measurements' || url.pathname === '/measurements.html' || url.pathname === '/measurements.js') {
+      if (!(await isAdmin(request, env))) return url.pathname === '/measurements.js' ? notFound() : notOpenYet(env.LAWNMAP_HOST?.split('.').slice(1).join('.'));
+      const res = await env.ASSETS.fetch(new Request(new URL(url.pathname === '/measurements.js' ? '/measurements.js' : '/measurements', url), request));
+      const out = new Response(res.body, res);
+      out.headers.set('Cache-Control', 'private, no-store');
+      return out;
+    }
     // the soil moisture readings page (public/moisture.html; owner, 2026-11-02): the admin only, whether or not the site is open
     if (url.pathname === '/moisture' || url.pathname === '/moisture.html' || url.pathname === '/moisture.js') {
       if (!(await isAdmin(request, env))) return url.pathname === '/moisture.js' ? notFound() : notOpenYet(env.LAWNMAP_HOST?.split('.').slice(1).join('.'));

@@ -287,6 +287,14 @@ test('the old readings export is gone: nothing answers there, key or not', async
   assert.equal(await moisture(new Request(u, { headers: { 'X-Export-Key': 'anything' } }), env, u, { isAdmin: async () => false }), null);
 });
 
+test('the measurements page is the admin\'s only, open site or not', async () => {
+  const open = env('ok', { ADMIN_ONLY: '0' });
+  for (const p of ['/measurements', '/measurements.html', '/measurements.js']) assert.equal((await get(p, '', open)).status, 404, p);
+  for (const p of ['/measurements', '/measurements.js']) assert.equal((await get(p, 'lm_session=user', open)).status, 404, p);
+  assert.equal((await get('/measurements', 'lm_session=admin', open)).status, 200);
+  assert.match((await get('/measurements', 'lm_session=admin', open)).headers.get('Cache-Control'), /no-store/);
+});
+
 test('the moisture page is the admin\'s only, open site or not', async () => {
   const open = env('ok', { ADMIN_ONLY: '0' });
   for (const p of ['/moisture', '/moisture.html', '/moisture.js']) assert.equal((await get(p, '', open)).status, 404, p);

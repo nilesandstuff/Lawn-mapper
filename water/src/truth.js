@@ -16,6 +16,7 @@
  *                  piled up are scored again whenever the model changes, and the versions set side by side
  *
  *   GET    /api/water/truth?map=&pin=          a property's walks, each with its weather's source and its results
+ *   GET    /api/water/truth?all=1              every walk (the measurements page)
  *   POST   /api/water/truth/walk               a walk seen for the first time (or its notes updated)
  *   GET    /api/water/truth/weather?walk=         the walk's frozen weather (404 'not fetched yet' before it is)
  *   POST   /api/water/truth/weather               { walk, lat, lng, extra: { rows } }: the first time, the station's
@@ -124,10 +125,10 @@ export async function truth(request, env, url, { isAdmin, weatherFn = weatherOfM
       return json({ ok: true });
     }
     if (request.method !== 'GET') return json({ error: 'method' }, 405);
-    const map = url.searchParams.get('map'), pin = url.searchParams.get('pin');
-    if (!map && !pin) return json({ error: 'map or pin' }, 400);
+    const map = url.searchParams.get('map'), pin = url.searchParams.get('pin'), all = url.searchParams.get('all') === '1';
+    if (!map && !pin && !all) return json({ error: 'map or pin' }, 400);
     // the property: its parcel when known (every map of it), else the map
-    const walks = (pin
+    const walks = (all ? await env.DB.prepare('SELECT * FROM truth_walks ORDER BY started DESC LIMIT 500').all() : pin
       ? await env.DB.prepare('SELECT * FROM truth_walks WHERE parcel_pin = ? OR map_id = ? ORDER BY started').bind(pin, map || '').all()
       : await env.DB.prepare('SELECT * FROM truth_walks WHERE map_id = ? ORDER BY started').bind(map).all()).results || [];
     if (!walks.length) return json({ walks: [] });
