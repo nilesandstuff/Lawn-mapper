@@ -388,8 +388,9 @@ async function waterLayersToCopy() {
   return out;
 }
 
-/** Which services this run works on, best first: never copied, then a copy under way, then the oldest copy. */
-function order(services, state, now) {
+/** Which services this run works on, best first: parcel services never copied or under way, then water layers never
+ *  copied or under way, then the oldest copies of either. */
+export function order(services, state, now) {
   const age = (k) => state.services[k];
   const stale = (s) => {
     const st = age(s.key);
@@ -400,8 +401,13 @@ function order(services, state, now) {
   };
   const area = (s) => (s.box[2] - s.box[0]) * (s.box[3] - s.box[1]);
   const rank = (s) => { const st = age(s.key); return !st ? 0 : st.round && !st.done ? 1 : 2; };
-  // parcels before water layers, rank for rank: the parcel line is what every tool needs first
-  return services.filter(stale).sort((a, b) => rank(a) - rank(b) || Number(!!a.water) - Number(!!b.water)
+  /* PARCELS BEFORE WATER LAYERS, ALL OF THEM (the one-week check, 2026-11-16): ordered rank first, a parcel service
+     half copied (rank 1) waited behind every water layer never copied (rank 0), and with 8,500 water layers in the
+     catalogue the same 98 parcel services sat "under way" for five days (runs from 2026-11-12: 0 to 99,000 parcels a
+     run, where they had copied 12 million). The parcel line is what every tool needs first: every parcel service
+     never copied or under way goes first, then the water layers likewise, then the oldest copies of either. */
+  const tier = (s) => (rank(s) < 2 ? (s.water ? 1 : 0) : 2);
+  return services.filter(stale).sort((a, b) => tier(a) - tier(b) || rank(a) - rank(b)
     || (rank(a) === 2 ? Date.parse(age(a.key).done || 0) - Date.parse(age(b.key).done || 0) : area(a) - area(b)));
 }
 

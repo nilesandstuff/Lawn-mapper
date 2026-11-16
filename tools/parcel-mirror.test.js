@@ -130,3 +130,14 @@ await test("a county's published parcel file: the newest public parcel file here
 });
 
 console.log(`\n${passed} passed`);
+
+// the copy's order (tools/parcel-mirror.mjs): a parcel service half copied goes before a water layer never copied
+{
+  const { order } = await import('./parcel-mirror.mjs');
+  const now = Date.parse('2026-11-16T00:00:00Z'), box = [0, 0, 1, 1];
+  const services = [{ key: 'w-new', water: true, box }, { key: 'p-half', box }, { key: 'p-new', box }, { key: 'p-old', box }, { key: 'w-half', water: true, box }];
+  const state = { services: { 'p-half': { round: '2026-11-11T00:00:00Z' }, 'w-half': { round: '2026-11-15T00:00:00Z' }, 'p-old': { round: '2026-10-01T00:00:00Z', done: '2026-10-02T00:00:00Z' } } };
+  const got = order(services, state, now).map((s) => s.key);
+  assert.deepEqual(got, ['p-new', 'p-half', 'w-new', 'w-half', 'p-old'], `the order: ${got}`);
+  console.log('parcel copy order: parcels first, then water layers, then the oldest copies: ok');
+}
