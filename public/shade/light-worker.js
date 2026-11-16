@@ -191,6 +191,8 @@ async function buildFromModel(m) {
   const file = m.file || (await unpackModel(m.bytes));
   const { meta, arrays } = file;
   if (!meta?.grid || !meta?.layers || !arrays?.mu || !arrays?.ground) throw new Error('not a shade model file');
+  /* A model over 48 MB keeps some arrays in overflow files (model-out.js modelFiles): join them first. */
+  if (meta.overflow?.length) throw new Error('this model has overflow files: read it with lidar-model.js loadModel and pass the joined `file`');
   const g = meta.grid, { z0, dz, nz } = meta.layers;
   const grid = { w: g.w, h: g.h, x0: g.x0, y1: g.y1, cell: g.cell, cellY: g.cellY || g.cell, lat: g.lat };
   const N = g.w * g.h;

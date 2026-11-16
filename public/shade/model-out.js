@@ -259,32 +259,71 @@ export function ownReturns(cols, model, { shift = null, erasedMask = null, erase
 }
 
 /**
- * The bytes to PUT: the file gzipped (lidar-model.js packModel). Over
- * `maxBytes` gzipped (the server's MODEL_MAX_STORED, worker/src/unified.js),
- * the per-cube `returns` are left out first (`low` stays), then the points,
- * and muOn last: the summer leaves are the light's (the water map reads the
- * light from this file, light-worker.js 'model', 2026-11-16), and without them
- * a deciduous tree would cast its winter shade all summer. The file is still
- * written. (Until 2026-11-16 muOn went first, when nothing read it.)
+ * THE FILES TO PUT (owner, 2026-11-16: "I'd think it would be better to make an overflow file rather than remove
+ * data outright"): { main, parts }, each gzipped (lidar-model.js packModel). Under `maxBytes` gzipped (the server's
+ * MODEL_MAX_STORED, worker/src/unified.js) everything is in `main` and `parts` is empty. Over it, nothing is left
+ * out: the per-cube `returns` move to an overflow part first, then the points (split over as many parts as they
+ * need), and only then, if the main file is still over, the summer leaves (muOn). Each part is a model file of its
+ * own (meta.overflowOf = the main file's `at`, meta.part = N); the main file's meta.overflow lists them
+ * ({ part, arrays, points: [from, to] }) and lidar-model.js loadModel joins them back. Parts go up first, the main
+ * file last (putModelFiles), so a reader never sees a main file whose parts are not there yet.
  */
-export async function modelBytes(finished, { maxBytes = 48 * 1024 * 1024 } = {}) {
-  let meta = finished.meta, arrays = finished.arrays;
-  let bytes = await packModel(meta, arrays);
-  const LEFT_OUT = 'left out: the file would be over the size the server takes';
-  if (bytes.byteLength > maxBytes && arrays.returns) {
-    const { returns, ...rest } = arrays;
-    arrays = rest; meta = { ...meta, own: { ...meta.own, returns: LEFT_OUT } };
-    bytes = await packModel(meta, arrays);
+export async function modelFiles(finished, { maxBytes = 48 * 1024 * 1024 } = {}) {
+  const meta = finished.meta;
+  let arrays = { ...finished.arrays };
+  let main = await packModel(meta, arrays);
+  if (main.byteLength <= maxBytes) return { main, parts: [] };
+  const parts = [], overflow = [];
+  const partMeta = (n, extra = {}) => ({ v: meta.v, tool: meta.tool, at: meta.at, overflowOf: meta.at, part: n, grid: meta.grid, ...extra });
+  const take = (names) => { const out = {}; for (const n of names) if (arrays[n]) { out[n] = arrays[n]; delete arrays[n]; } return out; };
+  const repack = async () => { main = await packModel({ ...meta, overflow }, arrays); return main.byteLength <= maxBytes; };
+  /* 1. The per-cube own returns. */
+  if (arrays.returns) {
+    const moved = take(['returns']);
+    parts.push(await packModel(partMeta(parts.length + 1), moved));
+    overflow.push({ part: parts.length, arrays: ['returns'] });
+    if (await repack()) return { main, parts };
   }
-  if (bytes.byteLength > maxBytes && arrays.ptX) {
-    const { ptX, ptY, ptZ, ptI, ptCls, ptRet, ptKind, ...rest } = arrays;
-    arrays = rest; meta = { ...meta, points: { ...meta.points, n: 0, leftOut: LEFT_OUT } };
-    bytes = await packModel(meta, arrays);
+  /* 2. The points, in runs that each fit. */
+  const PT = ['ptX', 'ptY', 'ptZ', 'ptI', 'ptCls', 'ptRet', 'ptKind'];
+  if (arrays.ptX) {
+    const pts = take(PT), n = pts.ptX.length;
+    let from = 0, run = n;
+    while (from < n) {
+      const to = Math.min(n, from + run);
+      const slice = {};
+      for (const k of PT) if (pts[k]) slice[k] = pts[k].subarray(from, to);
+      const bytes = await packModel(partMeta(parts.length + 1, { points: [from, to] }), slice);
+      if (bytes.byteLength > maxBytes && to - from > 1) { run = Math.ceil((to - from) / 2); continue; }
+      parts.push(bytes);
+      overflow.push({ part: parts.length, arrays: PT.filter((k) => pts[k]), points: [from, to] });
+      from = to;
+    }
+    if (await repack()) return { main, parts };
   }
-  if (bytes.byteLength > maxBytes && arrays.muOn) {
-    const { muOn, ...rest } = arrays;
-    arrays = rest; meta = { ...meta, leaves: { ...meta.leaves, muOn: LEFT_OUT } };
-    bytes = await packModel(meta, arrays);
+  /* 3. Only then the summer leaves. */
+  if (arrays.muOn) {
+    const moved = take(['muOn']);
+    parts.push(await packModel(partMeta(parts.length + 1), moved));
+    overflow.push({ part: parts.length, arrays: ['muOn'] });
+    await repack();
   }
-  return bytes;
+  return { main, parts };
+}
+
+/** The main file alone, for a model known to fit (tests, small lots); with overflow it lists parts not sent. */
+export async function modelBytes(finished, opts) { return (await modelFiles(finished, opts)).main; }
+
+/** PUT a model's files for map `mapId`: the overflow parts first (&part=N), the main file last. { ok, status, bytes }. */
+export async function putModelFiles(fetchFn, base, mapId, { main, parts }) {
+  const url = `${base}/api/maps/model?id=${encodeURIComponent(mapId)}&tool=shade`;
+  const put = (body, part) => fetchFn(part ? `${url}&part=${part}` : url, { method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/octet-stream' }, body });
+  let bytes = 0;
+  for (let i = 0; i < parts.length; i++) {
+    const r = await put(parts[i], i + 1);
+    if (!r.ok) return { ok: false, status: r.status, part: i + 1, bytes };
+    bytes += parts[i].byteLength;
+  }
+  const r = await put(main, 0);
+  return { ok: r.ok, status: r.status, bytes: bytes + main.byteLength, parts: parts.length };
 }
