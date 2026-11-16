@@ -154,7 +154,7 @@ async function main() {
       const hb = [];
       for (let i = 0; i < P.n; i++) { if (P.kind(i) !== 1 || P.hag(i) < 2 || !A.ptRet || (A.ptRet[i] & 15) !== 1) continue; if (inRing(P.e(i), P.nn(i))) hb.push(P.bright(i)); }
       hb.sort((x, y) => x - y);
-      console.log(`The building's single echoes over 2 m: ${hb.length}, intensity median ${hb.length ? hb[hb.length >> 1] : '-'}; the lot's ground median (meta.own.intensityMedian) ${model.meta?.own?.intensityMedian ?? '-'}.`);
+      console.log(`The building's single echoes over 2 m: ${hb.length}, intensity median ${hb.length ? hb[hb.length >> 1] : '-'}, p20 ${hb.length ? hb[Math.floor(hb.length * 0.2)] : '-'}, p80 ${hb.length ? hb[Math.floor(hb.length * 0.8)] : '-'} (its own band, p20 x 0.9 to p80 x 1.1: ${hb.length ? `${Math.round(hb[Math.floor(hb.length * 0.2)] * 0.9)} to ${Math.round(hb[Math.floor(hb.length * 0.8)] * 1.1)}` : '-'}); the lot's ground median (meta.own.intensityMedian) ${model.meta?.own?.intensityMedian ?? '-'}.`);
       /* THE EAST EDGE METRE BY METRE (the owner, 2026-11-16: "the front (East) of the house is still too flat"; their
          aerial photo shows the garage furthest out, the middle about 2 m in, the north part about 3 m in). For each 1 m
          slice north to south across the building: its outline's east edge, the eastmost roof return (the shade map's
