@@ -1,6 +1,6 @@
 // scan/lib/lidar-marks.js: straight edges and corners from the laser's returns. node scan/test/lidar-marks.test.js
 import assert from 'node:assert/strict';
-import { lidarMarks, snapTo } from '../lib/lidar-marks.js';
+import { lidarMarks, snapTo, squareOff } from '../lib/lidar-marks.js';
 
 let seed = 11; const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
 // a 40 x 30 m patch at about 4 returns a square metre (the owner's 2018 flight), returns scattered at random
@@ -198,4 +198,18 @@ console.log('lidar-marks: ok');
   assert.ok(Math.abs(north - 18) < 0.6, `the east wall by the shrubs follows the roof: ${north.toFixed(2)}`);
   assert.ok(Math.abs(south - 20) < 0.6, `the garage keeps its wall: ${south.toFixed(2)}`);
   console.log('lidar-marks (shrubs against a wall): ok');
+}
+
+// a diagonal under a crown (the owner's east wall, 2026-11-16): a wall at 8 m, a staircase of 0.25 m steps down to a
+// wall at 10 m, as a crown over the step leaves it traced. It is one step, not a reason to average the two walls.
+{
+  const ring = [[0, 20], [8, 20], [8, 10.25]];
+  for (let k = 0; k < 8; k++) ring.push([8 + 0.25 * k, 10 - 0.25 * k], [8 + 0.25 * (k + 1), 10 - 0.25 * k]);
+  ring.splice(3, 0, [8, 10]);
+  ring.push([10, 0], [0, 0]);
+  const r = ring.filter((p, i) => { const q = ring[(i + ring.length - 1) % ring.length]; return p[0] !== q[0] || p[1] !== q[1]; });
+  const sides = squareOff(r, 0.65), east = sides.filter((x) => x.axis === 'u' && x.at > 5).map((x) => +x.at.toFixed(2));
+  console.log(`diagonal step: east walls at ${east.join(', ')} m`);
+  assert.ok(east.some((u) => Math.abs(u - 8) < 0.3) && east.some((u) => Math.abs(u - 10) < 0.3), `both walls kept: ${east}`);
+  console.log('lidar-marks (a diagonal is one step): ok');
 }

@@ -99,9 +99,52 @@ function mainTurn(ps) {
   return best;
 }
 
+/* A DIAGONAL IS ONE STEP, NOT MANY (the owner, 2026-11-16: "the front (East) of the house is still too flat"). Where a
+   crown hangs over a roof's edge the traced edge runs diagonally, a staircase of cell-sized steps; removed smallest
+   first, each merging its two neighbours at their mean, such a staircase drags the walls either side of it together
+   (the owner's east wall: the middle wing at 6.2 m, the inset at 5.6 and the garage at 7.8 were averaged into one at
+   6.6, run 43892711587). So first: between two sides at least minJog long, a run of two or more short ones is
+   replaced by what it stands for. Between two parallel walls offset by minJog or more, one step at the run's middle;
+   between two square to each other, the two walls carried on to where they meet (a crown over a corner hides the
+   corner, not the roof). A run between parallel walls nearly in line is noise on one wall and is left to the step
+   removal below. */
+function collapseRuns(sides, minJog) {
+  const n = sides.length, len = (s) => Math.abs(s.to - s.from), long = sides.map((s) => len(s) >= minJog);
+  if (long.filter(Boolean).length < 4) return sides;
+  const start = long.indexOf(true);
+  const S = sides.slice(start).concat(sides.slice(0, start)).map((s) => ({ ...s })), L = long.slice(start).concat(long.slice(0, start));
+  const out = [];
+  for (let i = 0; i < n;) {
+    const P = S[i];
+    out.push(P);
+    let j = i + 1;
+    while (j < n && !L[j]) j++;
+    const N = j === n ? out[0] : S[j], run = S.slice(i + 1, j);
+    // only a DIAGONAL: the run's corners all within half a metre of the straight line from where it leaves one wall to
+    // where it meets the next, that line slanting (20-70 degrees) and 1.5 m or more long. A jagged wall that turns a
+    // real corner bends far from that line (an inside corner of an L, its legs metres long), and a jagged straight
+    // wall's line is not slanting.
+    const end = (s, k) => (s.axis === 'u' ? [s.at, k] : [k, s.at]);
+    const X = end(P, P.to), Y = end(N, N.from), dx = Y[0] - X[0], dy = Y[1] - X[1], D = Math.hypot(dx, dy);
+    const ang = D > 0 ? (Math.atan2(Math.abs(dy), Math.abs(dx)) * 180) / Math.PI : 0;
+    const diagonal = run.length >= 2 && D >= 1.5 && ang >= 20 && ang <= 70 && run.every((s) => { const q = end(s, s.to); return Math.abs((q[0] - X[0]) * dy - (q[1] - X[1]) * dx) / D <= 0.5; });
+    if (!diagonal) { out.push(...run); i = j; continue; }
+    if (P.axis !== N.axis) {
+      P.to = N.at; N.from = P.at;
+    } else if (Math.abs(P.at - N.at) >= minJog) {
+      const mid = (P.to + N.from) / 2;
+      P.to = mid;
+      out.push({ axis: P.axis === 'u' ? 'v' : 'u', at: mid, from: P.at, to: N.at });
+      N.from = mid;
+    } else out.push(...run);
+    i = j;
+  }
+  return out.length >= 4 ? out : sides;
+}
+
 /** A staircase ring squared off: steps shorter than minJog removed, the two sides they joined set at their
  *  length-weighted mean. ring: [[u, v]] with only right angles. Returns sides [{ axis: 'u' | 'v', at, from, to }]. */
-function squareOff(ring, minJog, dropped = null) {
+export function squareOff(ring, minJog, dropped = null) {
   // the ring as sides: each a run along u (constant v) or along v (constant u)
   let sides = [];
   for (let i = 0; i < ring.length; i++) {
@@ -113,6 +156,7 @@ function squareOff(ring, minJog, dropped = null) {
   }
   if (sides.length > 1 && sides[0].axis === sides[sides.length - 1].axis) { sides[0].from = sides[sides.length - 1].from; sides.pop(); }
   const len = (s) => Math.abs(s.to - s.from);
+  sides = collapseRuns(sides, minJog);
   for (let guard = 0; guard < 400 && sides.length > 4; guard++) {
     // a STEP is a short side between two that run on the same way; between two that run back (a wall's end, a U-turn)
     // a short side is the thing's own end and stays
