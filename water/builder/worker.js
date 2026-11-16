@@ -32,15 +32,19 @@ export class WaterBuilder extends DurableObject {
       try { await c.destroy(); } catch { /* already stopping */ }
       for (let i = 0; i < 150 && c.running; i++) await new Promise((ok) => setTimeout(ok, 200));
     }
-    if (!c.running) c.start({ enableInternet: true });
-    this.ctx.waitUntil(c.monitor().catch((e) => console.error('water builder container stopped:', e)));
+    this.exit = null;
+    if (!c.running) c.start({ ...(c.images?.base ? { image: c.images.base } : {}), enableInternet: true });
+    // why the container stopped, if it does: said in the error the water Worker keeps (its readings report shows it)
+    this.ctx.waitUntil(c.monitor().then(() => { this.exit = 'the container exited'; }).catch((e) => { this.exit = `the container stopped: ${String(e?.message || e).slice(0, 200)}`; console.error('water builder container stopped:', e); }));
     await c.setInactivityTimeout(IDLE_MS);
     const port = c.getTcpPort(PORT);
-    for (let i = 0; i < 300; i++) {
-      try { const r = await port.fetch('http://container/health', { signal: AbortSignal.timeout(1000) }); await r.body?.cancel(); if (r.ok) return; } catch { /* not up yet */ }
+    let last = '';
+    for (let i = 0; i < 900; i++) { // up to three minutes: a first start pulls the image
+      if (this.exit) break;
+      try { const r = await port.fetch('http://container/health', { signal: AbortSignal.timeout(1000) }); await r.body?.cancel(); if (r.ok) return; last = `health answered ${r.status}`; } catch (e) { last = String(e?.message || e).slice(0, 120); }
       await new Promise((ok) => setTimeout(ok, 200));
     }
-    throw new Error('the water builder did not come up on its port');
+    throw new Error(`the water builder did not come up on its port (${this.exit || last || 'no answer'}; running: ${c.running})`);
   }
   async buildOf(c) {
     try {
