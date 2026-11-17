@@ -208,6 +208,15 @@ SPECULATION), as always.
     lib/declination.js, the World Magnetic Model 2025, checked against its 100 test values), T in 0.1 C with
     saturated pixels null. Not yet: turning a placed photo
     to the way the owner faced (placeThermalSnap takes a heading; the page does not ask for one).
+32. **Field readings lined up by place; a test map made for a lot that has none** (owner, 2026-11-17: "Line the
+    readings up by the location... Do this automatically so I don't have to do it", and readings taken where there is
+    no test map yet are "pinned to an address, and then cued up to have an admin map made for them later"). BUILT:
+    the hourly sweep puts every visit on the test map whose property line holds its readings (lib/lineup.js,
+    src/autoscore.js lineUpVisits), takes it off a test map of another lot, and clears its old check; the rest keep
+    their parcel number and are listed on the measurements page as waiting, with the address looked up there and a
+    link that opens Lawn Mapper on it to make the test map. WAITING ON THE CORE: a call on the main site's Internal
+    entrypoint to make the whole-property admin save of a place by itself (asked 2026-11-17), so a waiting lot gets
+    its test map with no press at all.
 
 ## Rules (owner, 2026-10-27)
 

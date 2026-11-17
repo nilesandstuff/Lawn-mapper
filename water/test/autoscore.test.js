@@ -132,4 +132,23 @@ await test('weather frozen before the station and the satellite were in is fetch
   assert.equal((await sweep(env)).soil, 0, 'already queued: not again');
 });
 
+await test('every field visit lined up by place: onto the test map of its lot, off a map 4 km away; checks cleared', async () => {
+  const env = { DB: d1(), MAIN: main(), WATER_BUILDER: builder([]) };
+  const put = async (id, map, lng, lat) => {
+    await env.DB.prepare("INSERT INTO moisture_visits (id, at, saved, unit, map_id) VALUES (?, 1, 1, 'soil_f', ?)").bind(id, map).run();
+    await env.DB.prepare('INSERT INTO moisture_readings (id, visit_id, n, lng, lat, value) VALUES (?, ?, 1, ?, ?, 50)').bind(`${id}-1`, id, lng, lat).run();
+  };
+  await put('here', 'plain-map', -85.00001, 42.00001);
+  await put('away', 'admin|1', -85.05, 42);
+  await env.DB.prepare("INSERT INTO moisture_checks (visit_id, checked, rho, n, detail) VALUES ('away', 1, null, 0, '{}')").run();
+  const sw = await sweep(env);
+  assert.equal(sw.lined, 1); assert.equal(sw.unpinned, 1); assert.equal(sw.waitingVisits, 1);
+  assert.equal((await env.DB.prepare("SELECT map_id FROM moisture_visits WHERE id = 'here'").first()).map_id, 'admin|1');
+  assert.equal((await env.DB.prepare("SELECT map_id FROM moisture_visits WHERE id = 'away'").first()).map_id, null);
+  assert.equal(await env.DB.prepare("SELECT visit_id FROM moisture_checks WHERE visit_id = 'away'").first(), null);
+  assert.equal(sw.soil, 1, 'the moved soil visit queued for its check on its own map');
+  const again = await sweep(env);
+  assert.equal(again.lined + again.unpinned, 0, 'nothing moves twice');
+});
+
 console.log(`\n${passed} passed`);

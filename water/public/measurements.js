@@ -21,7 +21,6 @@ $('#saves').href = HOME ? `${HOME.replace('://', '://lawnmap.')}/admin-saves.htm
 const getJson = async (u, ms = 10000) => { const r = await fetch(u, { credentials: 'same-origin', signal: AbortSignal.timeout(ms) }); return r.ok ? r.json() : null; };
 const day = (t) => new Date(t).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
 const when = (t) => new Date(t).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-const metres = (a, b) => { const k = Math.cos((a[1] * Math.PI) / 180); return Math.hypot((a[0] - b[0]) * 111320 * k, (a[1] - b[1]) * 111320); };
 const F = (c) => (Number.isFinite(c) ? `${c * 1.8 > 0 ? '+' : ''}${(c * 1.8).toFixed(1)}` : '-');
 
 const state = { tests: [], plain: [], visits: [], walks: [], core: new Map(), work: new Map() };
@@ -57,35 +56,36 @@ function needs(id) {
 }
 
 function render() {
-  /* READINGS NOT ON A TEST MAP, offered a move to one (owner, 2026-11-16 and 2026-11-17: "take quick measurements in
-     the field, and then we can associate it with an admin map later"): those kept on an ordinary map, grouped by map,
-     and those taken where no saved map was, grouped by day and place; each with the test maps nearest first. */
+  /* READINGS WAITING FOR A TEST MAP (owner, 2026-11-17: "Line the readings up by the location... Do this
+     automatically", and readings taken where no test map is yet are "pinned to an address, and then cued up to have an
+     admin map made for them later"). The hourly sweep puts every visit on the test map of the lot it was taken on
+     (lib/lineup.js); what is left here has no test map of its lot yet, grouped by parcel (else by day and place). The
+     address is looked up on this screen to show and to open Lawn Mapper on; it is never kept. */
   const groups = new Map();
   for (const v of state.visits) {
     if (!v.readings?.length && !v.marks?.length) continue;
     if (v.map_id && isAdminSave(mapOf(v.map_id) || { id: v.map_id })) continue;
-    const key = v.map_id ? `map:${v.map_id}` : `none:${new Date(v.at).toLocaleDateString('en-CA')}:${Number(v.lng).toFixed(3)},${Number(v.lat).toFixed(3)}`;
-    if (!groups.has(key)) groups.set(key, { from: v.map_id || null, visits: [] });
+    const key = v.parcel_pin ? `pin:${v.parcel_pin}` : `none:${new Date(v.at).toLocaleDateString('en-CA')}:${Number(v.lng).toFixed(3)},${Number(v.lat).toFixed(3)}`;
+    if (!groups.has(key)) groups.set(key, { pin: v.parcel_pin || null, visits: [] });
     groups.get(key).visits.push(v);
   }
   const KIND = (u) => UNIT_WORDS[u] || 'meter';
-  const moves = [...groups.values()].map((g) => {
-    const v0 = g.visits[0], at = [v0.lng, v0.lat];
-    const opts = state.tests.filter((m) => Number.isFinite(m.lng) && Number.isFinite(m.lat)).map((m) => ({ m, d: at.every(Number.isFinite) ? metres(at, [m.lng, m.lat]) : Infinity })).sort((a, b) => a.d - b.d);
-    return { ...g, opts, readings: g.visits.reduce((a, v) => a + (v.readings?.length || 0), 0), kinds: [...new Set(g.visits.map((v) => KIND(v.unit)))] };
-  }).filter((x) => x.opts.length);
-  $('#move').innerHTML = moves.map((x, k) => `<div class="card"><h2>${x.from ? 'Readings on an ordinary map' : 'Readings on no map yet'}</h2>
-    <p>${x.visits.length} set${x.visits.length === 1 ? '' : 's'} of readings (${x.readings}: ${esc(x.kinds.join(', '))}) from ${day(Math.min(...x.visits.map((v) => v.at)))}${x.from ? `, kept on <b>${esc(nameOf(x.from))}</b>` : ', taken where no saved map was'}. Move them to a test map? Their checks are worked out again there.</p>
-    <select id="move-to-${k}">${x.opts.map((o) => `<option value="${esc(o.m.id)}">${esc(o.m.address || 'a test map')}${Number.isFinite(o.d) ? ` (${o.d < 1000 ? `${Math.round(o.d)} m` : `${(o.d / 1000).toFixed(1)} km`} away)` : ''}</option>`).join('')}</select>
-    <button data-move="${k}">Move</button> <span class="dim" id="move-say-${k}"></span></div>`).join('');
-  document.querySelectorAll('[data-move]').forEach((b) => { b.onclick = async () => {
-    const x = moves[Number(b.dataset.move)], say = $(`#move-say-${b.dataset.move}`), to = $(`#move-to-${b.dataset.move}`).value;
-    b.disabled = true; say.textContent = 'Moving…';
-    const r = await fetch('/api/water/moisture/move', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from: x.from, to, ids: x.visits.map((v) => v.id) }) });
-    const j = r.ok ? await r.json() : null;
-    say.textContent = j ? `Moved ${j.moved}.` : `Not moved (${r.status}).`;
-    if (j) { await load(); render(); work(); }
-  }; });
+  const waits = [...groups.values()].map((g) => {
+    const pts = g.visits.flatMap((v) => (v.readings || []).filter((r) => Number.isFinite(r.lng) && Number.isFinite(r.lat)).map((r) => [r.lng, r.lat]));
+    const at = pts.length ? [pts.reduce((a, p) => a + p[0], 0) / pts.length, pts.reduce((a, p) => a + p[1], 0) / pts.length] : [g.visits[0].lng, g.visits[0].lat];
+    return { ...g, at, readings: g.visits.reduce((a, v) => a + (v.readings?.length || 0), 0), kinds: [...new Set(g.visits.map((v) => KIND(v.unit)))] };
+  });
+  const LAWNMAP = HOME ? HOME.replace('://', '://lawnmap.') : '';
+  $('#move').innerHTML = waits.length ? `<div class="card"><h2>Readings waiting for a test map</h2>
+    <p class="dim">Readings go onto the test map of the lot they were taken on by themselves, within the hour. These lots have none yet: make one (Lawn Mapper, "Mark whole property as lawn and admin save") and they are moved onto it and checked.</p>
+    ${waits.map((x, k) => `<p>${x.visits.length} set${x.visits.length === 1 ? '' : 's'} of readings (${x.readings}: ${esc(x.kinds.join(', '))}) from ${day(Math.min(...x.visits.map((v) => v.at)))}${x.pin ? '' : ', with no county property line found'} · <span id="wait-at-${k}" class="dim">finding the address…</span></p>`).join('')}</div>` : '';
+  waits.forEach(async (x, k) => {
+    const el = $(`#wait-at-${k}`);
+    if (!x.at.every(Number.isFinite)) { el.textContent = 'no place kept'; return; }
+    const j = await getJson(`/api/parcel?lng=${x.at[0]}&lat=${x.at[1]}`).catch(() => null);
+    const address = j?.parcel?.properties?.address || null;
+    el.innerHTML = address ? `${esc(address)} · <a href="${LAWNMAP}/?address=${encodeURIComponent(address)}" target="_blank" rel="noopener">make its test map</a>` : 'no address found here';
+  });
 
   // map by map: the test maps first, then any ordinary map with something on it
   const ids = [...state.tests.map((m) => m.id), ...[...new Set([...state.visits.map((v) => v.map_id), ...state.walks.map((w) => w.map_id)])].filter((id) => id && !state.tests.some((m) => m.id === id))];

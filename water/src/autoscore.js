@@ -14,6 +14,7 @@
 import { waiting, settle, enqueue } from './jobs.js';
 import { putWalk, putWeather, frozenWeather, putResult } from './truth.js';
 import { MODEL_VERSION, SCORING } from '../lib/surfacenow.js';
+import { lineUp, saveShape } from '../lib/lineup.js';
 
 const pinOf = (record) => record?.parcel?.properties?.pin || record?.parcel?.properties?.PIN || null;
 const converted = (w) => w && Array.isArray(w.records) && w.records.length > 0;
@@ -100,7 +101,7 @@ async function soilOne(env, job, base) {
 /** Every admin save's converted walks the current model has not scored: queued.
  *  -> { saves, walks, converted, waiting, failed, scored, queued } (counts only, for the timer's log) */
 export async function sweep(env) {
-  const out = { saves: 0, walks: 0, converted: 0, waiting: 0, failed: 0, scored: 0, queued: 0, refetched: 0, soil: 0 };
+  const out = { saves: 0, walks: 0, converted: 0, waiting: 0, failed: 0, scored: 0, queued: 0, refetched: 0, soil: 0, lined: 0, waitingVisits: 0, unpinned: 0 };
   if (!env.MAIN || !env.DB) return out;
   const saves = (await env.MAIN.adminSaves().catch(() => null)) || [];
   // scored: by this model, and carrying all a result now carries (SCORING: a walk scored before the station's score is scored again)
@@ -131,6 +132,8 @@ export async function sweep(env) {
     if (early) await env.DB.prepare('DELETE FROM truth_weather WHERE walk = ?').bind(r.walk).run();
     await enqueue(env, 'walk', r.map_id, { walk: String(r.walk) }); out.refetched++;
   }
+  // every field visit put on the test map of the lot it was taken on, before the soil checks below look for them
+  Object.assign(out, await lineUpVisits(env, saves).catch(() => ({ lined: 0, waitingVisits: 0, unpinned: 0 })));
   // the field page's soil temperatures on a test map, not yet checked by this model
   const saveIds = new Set(saves.map((x) => String(x.id)));
   const soil = (await env.DB.prepare(`SELECT v.id, v.map_id, c.detail FROM moisture_visits v LEFT JOIN moisture_checks c ON c.visit_id = v.id WHERE v.unit = 'soil_f' AND v.map_id IS NOT NULL`).all()).results || [];
@@ -142,5 +145,31 @@ export async function sweep(env) {
     if ((job?.state === 'failed' && (d0?.check || 1) >= SOIL_CHECK) || job?.state === 'queued') continue; // a failed check is not tried again every hour
     await enqueue(env, 'soil', v.map_id, { walk: v.id }); out.soil++;
   }
+  return out;
+}
+
+/**
+ * THE FIELD READINGS ON THE TEST MAP OF THE LOT THEY WERE TAKEN ON (owner, 2026-11-17: "Line the readings up by the
+ * location... Do this automatically so I don't have to do it"; lib/lineup.js says how). A moved visit's old check is
+ * cleared, so it is checked again on its own map. -> { lined (moved onto a test map), waitingVisits (no test map of
+ * their lot yet), unpinned (taken off a test map of another lot) }: counts only, for the timer's log.
+ */
+export async function lineUpVisits(env, saves) {
+  const out = { lined: 0, waitingVisits: 0, unpinned: 0 };
+  const shapes = [];
+  for (const s of saves) { const rec = await env.MAIN.saveOf(s.id).catch(() => null); if (rec) shapes.push(saveShape(String(s.id), rec)); }
+  const visits = (await env.DB.prepare('SELECT id, map_id, parcel_pin, lng, lat FROM moisture_visits').all()).results || [];
+  const byVisit = new Map();
+  for (const r of (await env.DB.prepare('SELECT visit_id, lng, lat FROM moisture_readings').all()).results || []) {
+    if (!byVisit.has(r.visit_id)) byVisit.set(r.visit_id, []);
+    byVisit.get(r.visit_id).push(r);
+  }
+  const { moves, waiting: unhoused } = lineUp(visits.map((v) => ({ ...v, readings: byVisit.get(v.id) || [] })), shapes);
+  for (const m of moves) {
+    await env.DB.prepare('UPDATE moisture_visits SET map_id = ? WHERE id = ?').bind(m.to, m.id).run();
+    try { await env.DB.prepare('DELETE FROM moisture_checks WHERE visit_id = ?').bind(m.id).run(); } catch { /* no checks table yet */ }
+    if (m.to) out.lined++; else out.unpinned++;
+  }
+  out.waitingVisits = unhoused.length;
   return out;
 }

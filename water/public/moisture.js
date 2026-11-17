@@ -118,7 +118,7 @@ async function propertyAt(lng, lat) {
     const near = maps.filter((m) => Number.isFinite(m.lng) && Number.isFinite(m.lat))
       .map((m) => ({ m, d: metres([lng, lat], [m.lng, m.lat]), inside: out.ring ? inRing([m.lng, m.lat], out.ring) : false }))
       .filter((x) => x.inside || x.d < 40).sort((a, b) => !!b.m.test - !!a.m.test || b.inside - a.inside || a.d - b.d)[0]; // a test map first, even when an ordinary map's pin is the one inside the line (2026-11-17)
-    if (near) out.mapId = near.m.id;
+    if (near) { out.mapId = near.m.id; out.test = !!near.m.test; }
     if (out.mapId) {
       // the saved map itself: the traced lawn, and the photo it was traced on
       const one = await fetch(`/api/maps/one?id=${encodeURIComponent(out.mapId)}`);
@@ -176,7 +176,7 @@ async function load(lng, lat, { keepVisit = false } = {}) {
   hint(''); say('Finding the property line…');
   const p = await propertyAt(lng, lat);
   st.property = p;
-  say(p.ring ? `${p.label || 'Property found'}${p.pin ? ` (parcel ${p.pin})` : ''}${p.mapId ? ' · a saved map is on it' : ''}` : 'No county property line here: readings keep their place on the photo alone.');
+  say(p.ring ? `${p.label || 'Property found'}${p.pin ? ` (parcel ${p.pin})` : ''}${p.mapId && p.test ? ' · its test map is on it' : ' · no test map of this lot yet: the readings wait for one and go onto it by themselves'}` : 'No county property line here: readings keep their place on the photo alone.');
   st.frame = frameFor(p);
   hint('Loading the photo…');
   try { const sp = await savedPhoto(st.frame, p.tracedOn); st.photo = sp.photo; st.photoShift = sp.shift; st.placedOn = sp.placedOn; hint(''); if (p.lawn?.length) say(`${$('#status').textContent} · ${sp.name}, the traced lawn in green`); } catch (e) { st.photo = null; hint(e.message); }
