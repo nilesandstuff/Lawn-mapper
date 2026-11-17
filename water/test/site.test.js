@@ -305,6 +305,30 @@ test('readings on no map are moved to a test map by their ids; a map\'s readings
   assert.equal((await (await post({ from: 'plain', to: 'admin|1' })).json()).moved, 1);
 });
 
+test('single thermal photos: the admin only; a placement checked and passed on to the main site', async () => {
+  const { snaps, cleanPlace } = await import('../src/snaps.js');
+  const placed = [];
+  const MAIN = {
+    thermalSnaps: async (saveId, opts) => [{ id: 'snap-1794790000000', at: 1794790000000, map: saveId, placed: false, converted: !!opts }],
+    thermalSnap: async (id) => (id === 'snap-1794790000000' ? { id, at: 1, place: null, snap: null } : null),
+    thermalSnapPng: async () => ({ bytes: new Uint8Array([137, 80, 78, 71]), type: 'image/png' }),
+    placeThermalSnap: async (id, place) => { placed.push({ id, place }); return { ok: true, place }; },
+  };
+  const env = { MAIN }, admin = { isAdmin: async () => true }, nobody = { isAdmin: async () => false };
+  const go = (path, init, who = admin) => { const u = new URL(`https://water.example.com${path}`); return snaps(new Request(u, init), env, u, who); };
+  assert.equal(await go('/api/water/other', {}), null);
+  assert.equal((await go('/api/water/snaps', {}, nobody)).status, 404);
+  assert.equal((await (await go('/api/water/snaps?map=admin%7C1&since=5', {})).json()).snaps[0].map, 'admin|1');
+  assert.equal((await go('/api/water/snaps/one?id=../x', {})).status, 400);
+  assert.equal((await go('/api/water/snaps/one?id=snap-1794790000001', {})).status, 404);
+  assert.equal((await go('/api/water/snaps/png?id=snap-1794790000000', {})).headers.get('Content-Type'), 'image/png');
+  assert.ok(cleanPlace({ id: 'snap-1794790000000', lng: 200, lat: 1 }).error);
+  const r = await go('/api/water/snaps/place', { method: 'POST', body: JSON.stringify({ id: 'snap-1794790000000', lng: -85.5, lat: 42.9, heading: 90, saveId: 'admin|1' }) });
+  assert.equal(r.status, 200);
+  assert.deepEqual(placed[0], { id: 'snap-1794790000000', place: { lng: -85.5, lat: 42.9, heading: 90, saveId: 'admin|1', note: null } });
+  assert.equal((await snaps(new Request('https://water.example.com/api/water/snaps'), {}, new URL('https://water.example.com/api/water/snaps'), admin)).status, 503, 'no MAIN binding');
+});
+
 test('the old readings export is gone: nothing answers there, key or not', async () => {
   const { moisture } = await import('../src/moisture.js');
   const env = { DB: moistureDb() };

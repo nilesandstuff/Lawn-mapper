@@ -13,6 +13,7 @@
  */
 
 import { tracedOn, lineUpAt } from '/lib/shade/traced.js';
+import { isAdminSave } from '/lib/maps.js';
 
 const $ = (s) => document.querySelector(s);
 const R = 6378137;
@@ -187,6 +188,7 @@ async function load(lng, lat, { keepVisit = false } = {}) {
   earlierCard(visits.filter((v) => v.id !== st.visit.id));
   $('#movepin').disabled = false; $('#newvisit').disabled = false; $('#marktrunk').disabled = false;
   fit(); refresh();
+  loadSnaps();
   if (!$('#hint').textContent) hint('Tap the lawn where you took a reading.');
 }
 
@@ -409,6 +411,13 @@ function draw() {
     ctx.fillStyle = '#000'; ctx.font = '700 12px system-ui'; ctx.fillText(String(d.n), x, y + 0.5);
     ctx.font = '600 11px system-ui'; ctx.fillStyle = 'rgba(0,0,0,.7)'; ctx.fillRect(x - 17, y + 14, 34, 14); ctx.fillStyle = '#fff'; ctx.fillText(`${d.value}${unitWord(d.kind || 'moisture')}`, x, y + 21);
   }
+  // thermal photos placed on this visit: a dark square where the owner stood
+  for (const sn of st.snaps || []) {
+    if (!sn.where) continue;
+    const [x, y] = screenOf(pxOf(sn.where));
+    ctx.fillStyle = '#263238'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.fillRect(x - 9, y - 9, 18, 18); ctx.strokeRect(x - 9, y - 9, 18, 18);
+    ctx.fillStyle = '#fff'; ctx.font = '700 10px system-ui'; ctx.fillText('IR', x, y + 0.5);
+  }
   // where the phone is
   if (st.me) {
     const [x, y] = screenOf(pxOf([st.me.lng, st.me.lat]));
@@ -466,6 +475,7 @@ $('#me').addEventListener('click', () => {
 async function tap(at) {
   if (!st.frame) return;
   const place = placeOf(photoAt(at));
+  if (st.placing) { await placeSnap(st.placing, place); return; }
   if (st.movingPin) {
     st.movingPin = false; $('#movepin').classList.remove('on'); hint('');
     // readings already taken stay with this visit (the pin is usually moved off a neighbour's lot at the start)
@@ -487,6 +497,76 @@ async function tap(at) {
   if (old) return ask({ old, lng: old.lng, lat: old.lat });
   ask({ lng: place[0], lat: place[1] });
 }
+
+/* ---------------------------------------------------------------- single thermal photos (DEV ONLY: the app's camera)
+   The owner, 2026-11-17: "add individual thermal pics that I manually place". In the Yard AR app's development build
+   this page is opened inside the app, which offers its thermal camera as window.LawnARThermal (the core session,
+   docs/MAPS.md): snap() takes one photo (about 4 s), status() says when it is done. The photo is then placed by a tap
+   where the owner stood; photos taken from the app's own start page today show here to be placed too. The water
+   Worker passes the place on to the main site (src/snaps.js), tied to the test map when the property has one. */
+const thermal = () => (typeof window.LawnARThermal?.snap === 'function' ? window.LawnARThermal : null);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const adminMap = () => (st.property?.mapId && isAdminSave({ id: st.property.mapId }) ? st.property.mapId : null);
+st.snaps = []; st.placing = null;
+const snapTime = (t) => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+async function loadSnaps() {
+  const since = new Date(); since.setHours(0, 0, 0, 0);
+  try {
+    const r = await fetch(`/api/water/snaps?${adminMap() ? `map=${encodeURIComponent(adminMap())}&` : ''}since=${since.getTime() - 864e5}`);
+    if (!r.ok) return;
+    const got = (await r.json()).snaps || [];
+    const mine = new Map(st.snaps.map((s) => [s.id, s]));
+    st.snaps = got.filter((s) => !s.placed || mine.get(s.id)?.at0).map((s) => ({ ...s, ...(mine.get(s.id)?.at0 ? { at0: mine.get(s.id).at0 } : {}) }));
+    for (const s of mine.values()) if (!st.snaps.some((x) => x.id === s.id)) st.snaps.push(s);
+  } catch { /* none to show */ }
+  snapCard();
+}
+function snapCard() {
+  const el = $('#snaps');
+  el.hidden = !st.snaps.length;
+  el.innerHTML = `<strong>Thermal photos</strong> <span class="dim small">tap Place, then where you stood when you took it</span><ul class="small" style="margin:6px 0;padding-left:20px">${st.snaps.map((s) => `<li>${snapTime(s.at)}: ${s.placed ? 'placed' : '<b>not placed</b>'}${s.converted ? ` · <a href="/api/water/snaps/png?id=${encodeURIComponent(s.id)}" target="_blank" rel="noopener">see it</a>` : ' · not turned into temperatures yet'} <button class="plain" data-snap="${esc(s.id)}">${s.placed ? 'Move' : 'Place'}</button></li>`).join('')}</ul>`;
+  el.querySelectorAll('[data-snap]').forEach((b) => { b.onclick = () => startPlacing(b.dataset.snap); });
+}
+function startPlacing(id) {
+  st.placing = id; st.marking = false; st.movingPin = false;
+  hint('Tap where you stood when you took the thermal photo.');
+}
+async function placeSnap(id, [lng, lat]) {
+  st.placing = null; hint('');
+  const s = st.snaps.find((x) => x.id === id);
+  try {
+    const r = await fetch('/api/water/snaps/place', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, lng, lat, saveId: adminMap() }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || `the server said ${r.status}`);
+    if (s) { s.placed = true; s.at0 = s.at0 || s.at; s.where = [lng, lat]; }
+    say(`Thermal photo placed${adminMap() ? ' on the test map' : ''}.`);
+  } catch (e) { say(`The photo was not placed (${e.message}): tap Place to try again.`, true); }
+  snapCard(); draw();
+}
+if (thermal()) $('#snapbtn').hidden = false;
+$('#snapbtn').addEventListener('click', async () => {
+  const T = thermal(); if (!T) return;
+  let s0 = {}; try { s0 = JSON.parse(T.status()); } catch { /* below */ }
+  if (s0.state !== 'ready') { say(`The thermal camera is not ready yet (${s0.state || 'not answering'}).`, true); return; }
+  const airs = (st.visit?.dots || []).filter((d) => d.kind === 'air').map((d) => d.value);
+  const airF = $('#airf').value !== '' ? Number($('#airf').value) : airs.length ? airs[airs.length - 1] : null;
+  const p = st.property;
+  let r = {};
+  try { r = JSON.parse(T.snap(JSON.stringify({ map: adminMap(), coarse: p ? { lng: p.lng, lat: p.lat } : null, air_C: Number.isFinite(airF) ? (airF - 32) / 1.8 : null, emissivity: 0.98, label: 'field readings page' }))); } catch (e) { r = { ok: false, why: e.message }; }
+  if (!r.ok) { say(`No photo: ${r.why || 'the app said no'}.`, true); return; }
+  $('#snapbtn').disabled = true; say('Hold still: taking the thermal photo (about 4 seconds)…');
+  const t0 = Date.now(); let done = null;
+  while (Date.now() - t0 < 30000) {
+    await sleep(500);
+    let s = {}; try { s = JSON.parse(T.status()); } catch { continue; }
+    if (s.snap === r.id) { done = true; break; }
+    if (s.snapError && s.busy !== 'snap') { done = s.snapError; break; }
+  }
+  $('#snapbtn').disabled = false;
+  if (done !== true) { say(`The photo did not finish: ${done || 'it took too long'}.`, true); return; }
+  st.snaps.unshift({ id: r.id, at: Date.now(), placed: false, converted: false });
+  say('Thermal photo taken. Now tap where you stood.'); snapCard(); startPlacing(r.id);
+});
 
 /* ---------------------------------------------------------------- start: an unsaved draft comes back */
 window.addEventListener('resize', () => { if (st.frame) { const r0 = { ...st.view }; size(); st.view = r0; draw(); } else { size(); draw(); } });

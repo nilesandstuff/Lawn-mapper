@@ -63,6 +63,7 @@
     <button class="plain" data-kind="soil">🪱 Soil temp</button>
     <button class="plain" data-kind="air">☁ Air temp</button>
     <button class="plain" data-kind="wind">🍃 Wind</button>
+    <button class="plain" id="snapbtn" hidden>📷 Thermal photo</button>
   </div>
   <div class="row" id="soil-depth-box" hidden><label for="sdepth" style="margin:0">Soil thermometer depth, inches</label><input id="sdepth" type="number" inputmode="decimal" step="0.5" min="0.5" max="24" style="width:6em"></div>
   <div id="mapwrap">
@@ -101,6 +102,7 @@
     <input id="vnote" placeholder="e.g. mowed yesterday, front zone just ran">
   </div>
 
+  <div class="card" id="snaps" hidden></div>
   <details class="card" id="setup">
     <summary>Moisture meter</summary>
     <label for="meter">Which meter</label>

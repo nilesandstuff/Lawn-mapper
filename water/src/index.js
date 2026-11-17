@@ -32,6 +32,7 @@
 import { readings } from './readings.js';
 import { moisture } from './moisture.js';
 import { truth } from './truth.js';
+import { snaps } from './snaps.js';
 import { handleStreams } from './streams.js';
 
 export const PROXIED = ['/api/geocode', '/api/parcel', '/api/imagery', '/api/county-imagery', '/api/shade/lidar', '/api/water/layers', '/api/shade/climate',
@@ -128,6 +129,9 @@ export default {
     // the ground-truth walks by property (src/truth.js; owner, 2026-11-15)
     const walked = await truth(request, env, url, { isAdmin });
     if (walked) return walked;
+    // single thermal photos, placed by hand (src/snaps.js; owner, 2026-11-17; DEV ONLY on the app's side)
+    const snapped = await snaps(request, env, url, { isAdmin });
+    if (snapped) return snapped;
     const kept = await readings(request, env, url, { isAdmin });
     if (kept) return kept;
     if (!url.pathname.startsWith('/api/')) {

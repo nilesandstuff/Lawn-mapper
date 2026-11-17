@@ -113,12 +113,14 @@ function lawnCellNear(p, field = null) {
 
 /* ------------------------------------------------------------ the readings */
 async function loadReadings() {
-  const [mo, th] = await Promise.all([getJson(`/api/water/moisture?map=${encodeURIComponent(S.id)}`), getJson(`/api/maps/thermal?id=${encodeURIComponent(S.id)}`)]);
+  const [mo, th, sn] = await Promise.all([getJson(`/api/water/moisture?map=${encodeURIComponent(S.id)}`), getJson(`/api/maps/thermal?id=${encodeURIComponent(S.id)}`), getJson(`/api/water/snaps?map=${encodeURIComponent(S.id)}&loose=0`)]);
   S.visits = (mo?.visits || []).filter((v) => v.readings?.length);
   const walks = (th?.walks || []).filter((w) => w.ok === true && w.walk);
   S.events.surface = [
     ...walks.map((w) => ({ key: `walk:${w.walk}`, kind: 'walk', walk: w.walk, t: w.started ?? null, label: `Thermal walk${Number.isFinite(w.started) ? `, ${when(w.started)}` : ''}${Number.isFinite(w.records) ? ` (${w.records} records)` : ''}` })),
     ...S.visits.filter((v) => v.unit === 'surface_f').map((v) => ({ key: `visit:${v.id}`, kind: 'visit', visit: v, t: v.at, label: `Surface readings, ${when(v.at)} (${v.readings.length})` })),
+    // single thermal photos placed on this map (src/snaps.js; DEV ONLY on the app's side)
+    ...(sn?.snaps || []).filter((x) => x.placed).map((x) => ({ key: `snap:${x.id}`, kind: 'snap', id: x.id, t: x.at, label: `Thermal photo, ${when(x.at)}${x.converted ? '' : ' (not turned into temperatures yet)'}` })),
   ].sort((a, b) => (b.t ?? 0) - (a.t ?? 0));
   // the field page's other kinds (2026-11-17): the soil's temperature at a depth, the wind; the air as each moment's note
   S.events.soil = S.visits.filter((v) => v.unit === 'soil_f').map((v) => ({ key: `visit:${v.id}`, kind: 'visit', visit: v, t: v.at, depthCm: Number.isFinite(v.depth_in) ? v.depth_in * 2.54 : 5, label: `Soil temperatures at ${v.depth_in ?? '?'} in, ${when(v.at)} (${v.readings.length})` })).sort((a, b) => b.t - a.t);
@@ -149,6 +151,41 @@ async function loadWalk(ev) {
   S.walkKey = ev.walk; // the worker keeps the last walk it checked: a record's factors come from it
   const out = { key: ev.walk, series: weather.series || [], records, res, notes, mid: records.length ? records[Math.floor(records.length / 2)].tm : started };
   S.walks.set(ev.walk, out);
+  return out;
+}
+
+/* A SINGLE THERMAL PHOTO ON THE GROUND (src/snaps.js; the converter's grid, docs/MAPS.md): each pixel's angle from
+   straight down and bearing from north, from where the owner stood, the phone taken as PHONE_M up; half-metre squares
+   by the mean of the pixels in them (three or more), as a walk's records are. A heading the owner set turns the
+   bearings by the difference from the photo's own middle. */
+const PHONE_M = 1.4, MAX_ANG = 72;
+const flat = (a) => (Array.isArray(a) && Array.isArray(a[0]) ? a.flat() : Array.isArray(a) ? a : a && typeof a === 'object' && a.length !== undefined ? Array.from(a) : []);
+async function loadSnap(ev) {
+  S.snapCache = S.snapCache || new Map();
+  if (S.snapCache.has(ev.id)) return S.snapCache.get(ev.id);
+  busy('Reading the thermal photo…');
+  const one = await getJson(`/api/water/snaps/one?id=${encodeURIComponent(ev.id)}`, 30000);
+  if (!one) throw new Error('the photo did not answer');
+  if (!one.place || !Number.isFinite(one.place.lng)) throw new Error('the photo is not placed yet: place it on the field readings page');
+  if (!one.snap) throw new Error('the photo is not turned into temperatures yet');
+  const T = flat(one.snap.T), A = flat(one.snap.ang), Z = flat(one.snap.az), M = one.snap.mask ? flat(one.snap.mask) : null;
+  const mid = Math.floor(T.length / 2), turn = Number.isFinite(one.place.heading) && Number.isFinite(Z[mid]) ? one.place.heading - Z[mid] : 0;
+  const R = Math.PI / 180, k = Math.cos(one.place.lat * R), bins = new Map();
+  let n = 0;
+  for (let i = 0; i < T.length; i++) {
+    if ((M && !M[i]) || !Number.isFinite(T[i]) || !Number.isFinite(A[i]) || !Number.isFinite(Z[i]) || A[i] >= MAX_ANG) continue;
+    const d = PHONE_M * Math.tan(A[i] * R), az = (Z[i] + turn) * R;
+    const key = `${Math.round((d * Math.sin(az)) / 0.5)},${Math.round((d * Math.cos(az)) / 0.5)}`;
+    const b = bins.get(key) || { s: 0, c: 0 }; b.s += T[i]; b.c++; bins.set(key, b); n++;
+  }
+  const items = [];
+  for (const [key, b] of bins) {
+    if (b.c < 3) continue;
+    const [ex, ny] = key.split(',').map(Number);
+    items.push({ lng: one.place.lng + (ex * 0.5) / (111320 * k), lat: one.place.lat + (ny * 0.5) / 111320, m: b.s / b.c });
+  }
+  const out = { at: one.at, items, n, air: Number.isFinite(one.air_C) ? one.air_C : null };
+  S.snapCache.set(ev.id, out);
   return out;
 }
 
@@ -219,6 +256,16 @@ async function show() {
       S.check = { n: w.res.n, bias: w.res.bias, rmse: w.res.rmse, rho: w.res.rho, used: w.res.used, v1: w.res.v1, station: w.res.station };
       const mm = momentFor(w.mid);
       if (mm) S.field = mm.surface; else $('#whole').hidden = false;
+    } else if (v === 'surface' && ev.kind === 'snap') {
+      // a thermal photo: its pixels laid on the ground from where it was taken, half-metre squares, against the moment
+      const ph = await loadSnap(ev);
+      const m = await momentAt(ph.at);
+      S.ctx = { type: 'moment', t: ph.at, squares: true };
+      S.field = m.surface;
+      S.items = ph.items.map((x) => { const i = lawnCellNear([x.lng, x.lat], m.surface); return { ...x, p: i >= 0 ? m.surface[i] : NaN, i }; });
+      S.check = { ...statsOf(S.items), used: { soil: m.used, air: 'Open-Meteo\'s archived hour' }, w: m.w };
+      if (Number.isFinite(ph.air)) S.check.airPhoto = ph.air;
+      S.check.photoNote = `The photo laid on the ground from where you stood, the phone taken as ${PHONE_M} m up; pixels more than ${MAX_ANG}° from straight down left out (${ph.n} pixels in ${ph.items.length} squares).`;
     } else if (v === 'surface' && ev.kind === 'visit') {
       const m = await momentAt(ev.t);
       S.ctx = { type: 'moment', t: ev.t };
@@ -287,7 +334,7 @@ function summary() {
   if (Number.isFinite(c.airRead)) tiles.push(['Air you read then', fmt(c.airRead, 'temp')]);
   if (c.rho !== undefined) tiles.push(['Same order? (rank, 1 = yes)', Number.isFinite(c.rho) ? c.rho.toFixed(2) : '-']);
   if (c.station && Number.isFinite(c.station.bias) && c.station.air && !/same as the score/.test(c.station.air)) tiles.push(['The live map\'s own prediction', `${fmt(c.station.bias, 'dtemp')}, RMS ${fmt(c.station.rmse, 'dtemp').replace('+', '')}`]);
-  if (c.w) tiles.push(['Air', fmt(c.w.ta, 'temp')], ['Open wind', fmt(c.w.wind, 'speed')], ['Sunshine', fmt(c.w.ghi, 'flux')]);
+  if (c.w) tiles.push(['Air (the model\'s hour)', fmt(c.w.ta, 'temp')], ['Open wind', fmt(c.w.wind, 'speed')], ['Sunshine', fmt(c.w.ghi, 'flux')]);
   const notes = [];
   if (c.used?.soil) notes.push(`Soil: ${c.used.soil}.`);
   if (c.used?.air) notes.push(`Air: ${c.used.air}.`);
@@ -295,6 +342,8 @@ function summary() {
   if (c.station && Number.isFinite(c.station.airMid) && Number.isFinite(c.station.airWalker)) notes.push(`At mid-walk: air yours ${fmt(c.station.airWalker, 'temp')}, the station's ${fmt(c.station.airMid, 'temp')}; cloud yours ${fmt(c.station.cloudWalker, 'share')}, the live map's ${fmt(c.station.cloudMid, 'share')}. The live map's own prediction is what it can do; the one on your readings says how good the model is.`);
   if (c.v1 && Number.isFinite(c.v1.bias)) notes.push(`Without the soil columns (version 1): off by ${fmt(c.v1.bias, 'dtemp')} on average, rank ${Number.isFinite(c.v1.rho) ? c.v1.rho.toFixed(2) : '-'}.`);
   if (v === 'surface' && S.ctx?.type === 'walk') notes.push('Squares viewed 0–60° from straight down. Each is set against the model at its own minute.');
+  if (c.photoNote) notes.push(c.photoNote);
+  if (Number.isFinite(c.airPhoto)) notes.push(`The air given with the photo: ${fmt(c.airPhoto, 'temp')}.`);
   if (v === 'wind' && Number.isFinite(c.n) && c.n) notes.push('Your readings are at chest height; the model gives 2 m, about 8% more over open grass.');
   if (v === 'moisture' && c.unit) notes.push(`Readings in ${c.unit === 'vwc' ? '% water' : 'the meter\'s own scale'}; the model gives the share of the root zone\'s usable water, so only their order is compared.`);
   el.innerHTML = `<div class="big">${tiles.map(([k, val]) => `<div><span class="dim">${esc(k)}</span><b>${esc(val)}</b></div>`).join('')}</div>${notes.length ? `<p class="dim">${esc(notes.join(' '))}</p>` : ''}`;
@@ -349,7 +398,7 @@ function draw() {
   const pxPerM = (() => { const k = Math.cos((S.site.lat * Math.PI) / 180), a = toPx(frame, photo, toMerc([S.site.lng, S.site.lat])), b = toPx(frame, photo, toMerc([S.site.lng + 1 / (111320 * k), S.site.lat])); return Math.abs(b[0] - a[0]); })();
   const valOf = (x) => (S.layer === 'measured' ? x.m : S.layer === 'model' ? x.p : x.m - x.p);
   if (sc && S.items.length && !(S.layer === 'model' && S.view === 'moisture')) {
-    const walk = S.ctx?.type === 'walk', size = walk ? Math.max(2, 0.5 * pxPerM) : Math.max(1.2 * pxPerM, C.w / 40);
+    const walk = S.ctx?.type === 'walk' || S.ctx?.squares, size = walk ? Math.max(2, 0.5 * pxPerM) : Math.max(1.2 * pxPerM, C.w / 40);
     for (const x of S.items) {
       const val = valOf(x); if (!Number.isFinite(val)) continue;
       const [px, py] = toPx(frame, photo, toMerc([x.lng, x.lat]));

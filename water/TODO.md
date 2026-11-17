@@ -196,7 +196,15 @@ SPECULATION), as always.
     thermalOf, with a call to save the placement. THE WATER SIDE, once the core names its methods: the photo shows up
     unplaced on the field page's visit of that day and the owner drops it where he stood (and turns it to the way he
     faced); the explorer draws it as its own layer and sets its middle against the model's surface at that minute.
-    Waiting on the core (it waits on the thermal session's answers about frames and the shutter).
+    BUILT ON BOTH SIDES (2026-11-17; the core's commit 75f3f20, the water side the same day): the field page, opened
+    inside the app's dev build, shows a "Thermal photo" button (window.LawnARThermal.snap; the air read is sent with
+    it), then asks for a tap where the owner stood; photos taken from the app's start page today are listed there to
+    place (src/snaps.js over MAIN: thermalSnaps, thermalSnap, thermalSnapPng, placeThermalSnap). The explorer lists
+    a map's placed photos under Thermal surface, lays each pixel on the ground from the converter's angle from
+    straight down and bearing (the phone taken as 1.4 m up, pixels past 72 degrees left out) in half-metre squares,
+    and sets them against the model at the photo's minute. WAITS ON: the thermal session's converter for photos (until
+    it runs a photo reads "not turned into temperatures yet"), and a first real photo. Not yet: turning a placed photo
+    to the way the owner faced (placeThermalSnap takes a heading; the page does not ask for one).
 
 ## Rules (owner, 2026-10-27)
 
