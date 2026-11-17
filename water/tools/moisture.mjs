@@ -57,7 +57,7 @@ let walks = [], results = [], weather = [];
 try {
   walks = query('SELECT walk, map_id, parcel_pin, started, ended, kinds, notes FROM truth_walks ORDER BY started');
   results = query('SELECT walk, model, kind, checked, n, bias, rmse, rho, detail FROM truth_results ORDER BY checked');
-  weather = query('SELECT walk, sources FROM truth_weather');
+  weather = query('SELECT walk, sources, series FROM truth_weather');
 } catch { /* no tables yet */ }
 const F = (c) => (c === null || c === undefined ? '-' : (c * 1.8 > 0 ? '+' : '') + (c * 1.8).toFixed(1));
 console.log('=====');
@@ -70,6 +70,18 @@ walks.forEach((w, k) => {
   const src = (() => { try { return JSON.parse(weather.find((x) => x.walk === w.walk)?.sources || '[]').map((x) => x.name.split(' (')[0] + (Number.isFinite(x.km) ? ` ${x.km} km` : '')).join(', '); } catch { return ''; } })();
   const mins = w.ended ? Math.round((w.ended - w.started) / 6e4) : '?';
   console.log(`W${k + 1}  ${new Date(w.started).toISOString().slice(0, 16)}Z  property ${wprops.get(key)}  ${mins} min  ${w.kinds || '-'}  sprinklers ${notes.sprinklers ?? '-'}  wet ${notes.wet ?? '-'}  sky cloud ${notes.sky?.cloud_fraction ?? '-'}  weather: ${src || 'not fetched yet'}`);
+  /* THE AIR (owner, 2026-11-17: "my observed air temp was cooler than the weather station"): the walker's thermometer
+     against the airport station and Open-Meteo's model at the walk's middle, and which one the score used */
+  {
+    let series = []; try { series = JSON.parse(weather.find((x) => x.walk === w.walk)?.series || '[]') || []; } catch { /* none */ }
+    const mid = w.ended ? (w.started + w.ended) / 2 : w.started;
+    const near = (src) => series.filter((r) => r.src === src && Number.isFinite(r.ta)).sort((a, b) => Math.abs(a.t - mid) - Math.abs(b.t - mid))[0] || null;
+    const st = near('asos'), om = near('hrrr');
+    const airs = (notes.air || []).map((a) => (Number.isFinite(a?.T) ? (a.unit === 'F' ? a.T : a.T * 1.8 + 32) : null)).filter(Number.isFinite);
+    const fF = (c) => (c === null ? '-' : `${(c * 1.8 + 32).toFixed(1)} F`);
+    const used = (() => { try { return JSON.parse(results.filter((x) => x.walk === w.walk).at(-1)?.detail || '{}')?.used?.air || '-'; } catch { return '-'; } })();
+    console.log(`    air: walker ${airs.length ? airs.map((x) => `${x.toFixed(1)} F`).join(' / ') : 'not read'}  | station ${st ? fF(st.ta) : '-'}${st ? ` (${Math.round(Math.abs(st.t - mid) / 6e4)} min off)` : ''}  | Open-Meteo ${om ? fF(om.ta) : '-'}  | the score used: ${used}`);
+  }
   for (const r of results.filter((x) => x.walk === w.walk)) {
     let d = {}; try { d = JSON.parse(r.detail || '{}') || {}; } catch { /* none */ }
     const sh = d.sunShade || {}, b = d.bands || {};

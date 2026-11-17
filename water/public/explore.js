@@ -34,9 +34,10 @@ const day = (t) => new Date(t).toLocaleDateString([], { month: 'short', day: 'nu
 const busy = (s) => { $('#busy').textContent = s || ''; };
 
 /* COLOURS (the dataviz method): one hue light to dark for a magnitude, two hues through grey for measured minus
-   modelled. Orange for temperatures, blue for water, teal for wind. */
+   modelled. Temperatures dark (cool) to white (hot), as a thermal camera's white-hot; blue for water, teal for wind. */
 const RAMPS = {
-  temp: ['#fde4d3', '#f9b98f', '#f08a52', '#d95926', '#a8401a', '#6e2a10'],
+  // dark is cool (and shady), white is hot: a thermal camera's "white hot" (owner, 2026-11-17)
+  temp: ['#3b1607', '#7a2e10', '#c2491c', '#ec7a3f', '#f8b98a', '#fff4ea'],
   water: ['#cde2fb', '#9ec5f4', '#6da7ec', '#3987e5', '#256abf', '#0d366b'],
   wind: ['#d2f1e6', '#9fe0c8', '#5fc9a6', '#1baf7a', '#127f59', '#0a4f38'],
   diff: ['#256abf', '#86b6ef', '#f0efec', '#f19a7c', '#d03b3b'],
