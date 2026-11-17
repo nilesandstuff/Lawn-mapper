@@ -2839,6 +2839,24 @@ the records say warmer, by 2.6 F at dusk and 9.5 F in the afternoon sun. How and
 recorded with the walk. A thermometer in sunlight reads high, and the model's surface follows the air it is given
 almost degree for degree, so the afternoon walk's air is a candidate for part of its 3 F (S30); not measured.
 
+### H95. Both walks scored on the walker's air and on the station's (water session, 2026-11-17)
+
+The owner, 2026-11-17: the thermometer "was kept in shade for several minutes and I waited for the reading to
+stabilize"; "we should score it both ways... the prediction can't be any more accurate than the station's". Every
+walk is now scored twice (SCORING 2): the walker's air at each record's minute, and the airport station's alone (the
+station's humidity, wind and the cloud the same in both; the soil columns' weeks on Open-Meteo's air in both).
+Re-scored by the builder 12:02 and 12:09 UTC. Model surface-now 2. Measured minus modelled, F:
+  W1  dusk, overcast, property 1: walker's air (44.6 F) mean -6.0, RMS 6.0, rank 0.32; station's (40.8 F at
+      mid-walk) mean -4.0, RMS 4.0, rank 0.37.
+  W2  early afternoon, property 2: walker's air (59.4 F) mean -3.0, RMS 4.3, rank 0.49; station's (50.3 F) mean +3.8,
+      RMS 4.9, rank 0.49; sun +3.6, shade +3.4.
+  Pooled, 900 squares: walker's -3.5 (RMS 4.6); station's +2.4 (RMS 4.7).
+WHAT THIS SAYS, AS MEASURED: the air given moves the model's surface about 0.7 F per F (W2: 9.1 F of air, 6.8 F of
+surface). On the station's air the afternoon walk turns from 3 F warm to 4 F cool, so the live map (station air only)
+missed it by about as much as it does on the walker's air, in the other direction; the ranking of the squares is the
+same either way (0.49), since the air is one number for the whole lot. The dusk walk stays warm on either air (4-6 F).
+The lot's own air was warmer than the stations 24 km away on both walks (2.6 F, 9.1-9.5 F). Two walks, two lots.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge
