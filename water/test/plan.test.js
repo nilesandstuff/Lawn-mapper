@@ -467,6 +467,17 @@ test('Overture: PMTiles tile ids follow the spec, a vector tile decodes, a road 
   assert.ok(b >= 90 && b <= 110, `building ${b} cells`);
 });
 
+test('a whole property marked as lawn keeps the paving the survey finds inside it; a traced lawn wins over paving as before', () => {
+  const res = lot({ roofs: [] });
+  const N = res.grid.W * res.grid.H;
+  const paved = new Float32Array(N); for (let i = 0; i < N; i += 7) paved[i] = 1;
+  const days = summer(150);
+  const opts = { lawnMask: new Uint8Array(N).fill(1), paved, soil: { units: [loam] }, typical: days };
+  const traced = waterPlan(res, opts), whole = waterPlan(res, { ...opts, lawnIsLot: true });
+  assert.equal(traced.kinds.filter((k) => k === 3).length, 0);
+  assert.equal(whole.kinds.filter((k) => k === 3).length, Math.ceil(N / 7));
+});
+
 test('zone lines move only where a change reaches: a 3 x 3 m bed on flat ground moves about its own area', () => {
   const res = lot({ roofs: [] });
   const g = res.grid;

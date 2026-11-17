@@ -15,6 +15,9 @@ export function siteOf(s, id) {
     label: s.address || 'your map', lng: s.lng, lat: s.lat,
     parcel: asFeature(s.parcel),
     lawn: (s.shapes || []).map(asFeature).filter(Boolean),
+    /* THE WHOLE PROPERTY MARKED AS LAWN (the core's admin save, 2026-11-17: trace.status 'whole', no trace drawn): the
+       lawn is the property line, so the roofs and the paving the survey finds inside it win over it (lib/plan.js) */
+    wholeLot: s.trace?.status === 'whole' || s.model === 'whole-property',
     // the shade map's cloud, box and shift, when it has worked on this map: the same cells as its part
     lidar: s.tools?.shade?.data?.lidar || null,
     // the trees and branches erased on the shade map: gone from the water map's shade too

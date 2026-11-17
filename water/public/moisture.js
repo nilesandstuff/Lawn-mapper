@@ -117,7 +117,7 @@ async function propertyAt(lng, lat) {
     const maps = [...tests, ...(r.ok ? (await r.json())?.maps || [] : [])];
     const near = maps.filter((m) => Number.isFinite(m.lng) && Number.isFinite(m.lat))
       .map((m) => ({ m, d: metres([lng, lat], [m.lng, m.lat]), inside: out.ring ? inRing([m.lng, m.lat], out.ring) : false }))
-      .filter((x) => x.inside || x.d < 40).sort((a, b) => b.inside - a.inside || !!b.m.test - !!a.m.test || a.d - b.d)[0];
+      .filter((x) => x.inside || x.d < 40).sort((a, b) => !!b.m.test - !!a.m.test || b.inside - a.inside || a.d - b.d)[0]; // a test map first, even when an ordinary map's pin is the one inside the line (2026-11-17)
     if (near) out.mapId = near.m.id;
     if (out.mapId) {
       // the saved map itself: the traced lawn, and the photo it was traced on

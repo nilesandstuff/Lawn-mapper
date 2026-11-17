@@ -57,7 +57,10 @@ export function walkRecords(walk, site, { lawnAt = () => false } = {}) {
     usable++;
     const [lng, lat] = fromLocal(origin, [x.e, x.n]);
     const off = offLawnM([lng, lat], trace);
-    if (off === null ? lawnAt([lng, lat]) : off <= ON_TRACE_M) records.push({ lng, lat, tm: x.tm, T: x.T, band: x.band || '0-60' });
+    /* on the lawn by the trace (within ON_TRACE_M of it); with no trace, by the plan's own lawn cells; and on a whole
+       property marked as lawn (site.wholeLot, 2026-11-17) by both: the property line holds driveways and patios too */
+    const on = off === null ? lawnAt([lng, lat]) : off <= ON_TRACE_M && (!site.wholeLot || lawnAt([lng, lat]));
+    if (on) records.push({ lng, lat, tm: x.tm, T: x.T, band: x.band || '0-60' });
   }
   return { records, offLawn: usable - records.length, kinds, notes, started, ended };
 }

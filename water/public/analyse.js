@@ -72,7 +72,7 @@ function planWith(inputs = {}, zoneOf = null) {
   const grass = inputs.grass === 'warm' ? 'warm' : 'cool';
   kept.season = seasonFor(grass);
   return waterPlan(r.result, {
-    lawnMask: kept.lawn, paved: r.impervious ? r.impervious.paved : null, soil: kept.soil, placement: kept.placement || null,
+    lawnMask: kept.lawn, lawnIsLot: !!kept.wholeLot, paved: r.impervious ? r.impervious.paved : null, soil: kept.soil, placement: kept.placement || null,
     topsoil: !!inputs.topsoil, downspouts: inputs.downspouts || [], gutters: inputs.gutters || [],
     typical: kept.typical, week: kept.week, season: kept.season, species: inputs.species || null, mode: inputs.mode || 'normal', soilTemp: { byDate: kept.soilDays || null, typical: kept.climate?.tSoil || null }, light: kept.light, lightMonths: kept.lightMonths || null, radiation: kept.radiation || null, fenceHeat: kept.fenceHeat || null, windMonths: kept.windMonths || null, shadeKinds: kept.shadeKinds || null, grass,
     texture: inputs.texture || null, parcelMask: r.parcelMask || null, areas: inputs.areas || [], zoneOf, groundwater: kept.groundwater || null,
@@ -508,6 +508,7 @@ async function again(fn, tries = 3) {
 }
 
 async function start(site, inputs) {
+  kept.wholeLot = !!site.wholeLot; // the whole property marked as lawn: its paving stays paving (lib/plan.js)
   const io = await workerIo('/lib');
   const pickCloud = async (lng, lat) => {
     const res = await fetch(`/api/shade/lidar?lng=${lng}&lat=${lat}`);

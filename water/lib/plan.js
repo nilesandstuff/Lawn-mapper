@@ -56,7 +56,7 @@ const DEFAULT_SOIL = { name: 'no survey soil here (a loam assumed)', drainage: '
  *   topsoil (bool), downspouts, gutters, typical (days), week ({ days, today }), light (Float32Array | null),
  *   zoneOf (Int16Array, the user's own zones, optional), params
  */
-export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, topsoil = false, downspouts = [], gutters = [], typical, week = null, light = null, lightMonths = null, radiation = null, fenceHeat = null, windMonths = null, shadeKinds = null, season = null, grass = 'cool', species = null, soilTemp = null, mode = 'normal', placement = null, texture = null, parcelMask = null, areas = [], zoneOf: userZones = null, groundwater = null, snapshots = null, leafShare = null, params: given = null } = {}) {
+export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, topsoil = false, downspouts = [], gutters = [], typical, week = null, light = null, lightMonths = null, radiation = null, fenceHeat = null, windMonths = null, shadeKinds = null, season = null, grass = 'cool', species = null, soilTemp = null, mode = 'normal', placement = null, texture = null, parcelMask = null, areas = [], zoneOf: userZones = null, groundwater = null, snapshots = null, leafShare = null, lawnIsLot = false, params: given = null } = {}) {
   // warm-season turf (owner 2026-10-18): FAO-56's p 0.5 in place of cool-season's 0.4
   // the level's crop coefficient from the owner's table by species (roots.js kcFor; FINDINGS H54), unless params were given whole
   const kc = kcFor(species, grass, mode);
@@ -67,6 +67,9 @@ export function waterPlan(res, { lawnMask, paved = null, soil = { units: [] }, t
   const kinds = new Uint8Array(N);
   for (let i = 0; i < N; i++) {
     if (res.wall[i]) kinds[i] = KIND.roof;
+    // a lawn traced by hand is the person's word and wins over the paving the survey finds; a whole property marked as
+    // lawn (lawnIsLot, 2026-11-17) is not a trace, so the paving inside it stays paving
+    else if (lawnIsLot && paved && paved[i] >= 0.5) kinds[i] = KIND.paved;
     else if (lawnMask?.[i]) kinds[i] = KIND.lawn;
     else if (paved && paved[i] >= 0.5) kinds[i] = KIND.paved;
     else kinds[i] = KIND.other;

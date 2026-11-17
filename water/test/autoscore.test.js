@@ -108,6 +108,14 @@ await test('the shared walk placement and site: off-lawn records dropped, the se
   assert.deepEqual(inputsOf(null).species, []);
 });
 
+await test('a whole property marked as lawn: its walk records count only on the plan\'s own lawn cells; the flag read from the save', async () => {
+  const whole = siteOf({ ...record, trace: { status: 'whole' } }, 'admin|1');
+  assert.equal(whole.wholeLot, true); assert.equal(siteOf(record, 'admin|1').wholeLot, false);
+  assert.equal(walkRecords(walkJson, whole, { lawnAt: () => false }).records.length, 0, 'on the line but on paving');
+  assert.equal(walkRecords(walkJson, whole, { lawnAt: () => true }).records.length, 1);
+  assert.equal(walkRecords(walkJson, siteOf(record, 'admin|1'), { lawnAt: () => false }).records.length, 1, 'a traced lawn: the trace decides, as before');
+});
+
 await test('weather frozen before the station and the satellite were in is fetched again; a soil visit on a test map is queued once', async () => {
   const { completeWeather } = await import('../src/autoscore.js');
   assert.equal(completeWeather({ sources: [{ name: 'Open-Meteo best model (HRRR)' }] }), false);
