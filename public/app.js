@@ -7924,6 +7924,7 @@ function renderAccountButton() {
   /* "Save as admin and auto trace" on the AI tab, for an administrator. Set HERE, where the sign-in is first known:
      it was set only when the account sheet was opened, so the owner never saw it (2026-11-11). */
   { const b = $('#btn-admin-trace'); if (b) b.hidden = !(me && me.admin); }
+  { const b = $('#btn-admin-whole'); if (b) b.hidden = !(me && me.admin); }
   const label = $('#account-label');
   /* The whole sentence as the button's name: on a phone the long half is
      display:none and the short one aria-hidden, which left the button with
@@ -7964,6 +7965,7 @@ function renderAccountSheet() {
       + (bought ? `, plus ${bought.toLocaleString()} bought` : '');
   $('#account-admin').hidden = !me.admin;
   { const b = $('#btn-admin-trace'); if (b) b.hidden = !me.admin; }
+  { const b = $('#btn-admin-whole'); if (b) b.hidden = !me.admin; }
 }
 
 /**
@@ -8492,6 +8494,41 @@ async function adminSaveAndTrace() {
   try {
     const r = await api('/api/admin/admin-saves/trace', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ map, segment }), timeoutMs: 60000 });
     setStatus(r.trace === 'pending' ? 'Saved. Turf Trace is working; it finishes by itself.' : `Saved, but Turf Trace did not start (${r.detail || 'no reason given'}).`);
+    location.href = '/admin-saves.html';
+  } catch (err) {
+    setStatus(`Could not save as an admin save: ${err.message || err}`);
+  } finally { b.disabled = false; }
+}
+
+/**
+ * MARK WHOLE PROPERTY AS LAWN AND ADMIN SAVE (the owner, 2026-11-17): the property line itself as the lawn, saved as an
+ * admin save with no trace; its lidar is built by the server as a traced save's is. Administrators only, like the
+ * button above it. The same address pressed again is the same admin save.
+ */
+async function adminSaveWhole() {
+  const b = $('#btn-admin-whole');
+  if (!state.chosen || !state.frame) { setStatus('Choose an address first: the lot has to be on the map.'); return; }
+  const g = state.parcel?.geometry;
+  const polys = g?.type === 'Polygon' ? [g.coordinates] : g?.type === 'MultiPolygon' ? g.coordinates : [];
+  if (!polys.length) { setStatus('This lot has no property line to mark as lawn.'); return; }
+  const shapes = polys.map((coordinates) => ({ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates } }));
+  const m = measureLawn({ type: 'FeatureCollection', features: shapes });
+  const provider = effectiveProvider(state.provider), mode = saveMode();
+  const map = {
+    id: `admin|${saveKeyFor(state.chosen.label, 'alpha', mode)}`,
+    at: new Date().toISOString(),
+    address: state.chosen.label, lng: state.chosen.lng, lat: state.chosen.lat,
+    county: state.parcel?.properties?.county || null,
+    model: 'whole-property', mode, provider,
+    edgeFt: state.edgeFt, confidence: state.confidence, fillGaps: { ...state.fillGaps }, handEdited: false,
+    squareFeet: m.squareFeet, acres: m.acres,
+    frame: { ...state.frame }, parcel: state.parcel || null, shapes,
+    ...countyLineUp(),
+  };
+  b.disabled = true; setStatus('Saving the whole property as lawn, as an admin save…');
+  try {
+    await api('/api/admin/admin-saves/whole', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ map }), timeoutMs: 60000 });
+    setStatus('Saved: the whole property as lawn. Its lidar is built by itself.');
     location.href = '/admin-saves.html';
   } catch (err) {
     setStatus(`Could not save as an admin save: ${err.message || err}`);
@@ -14403,6 +14440,7 @@ document.addEventListener('click', (e) => {
 
 $('#btn-detect').addEventListener('click', () => detect());
 $('#btn-admin-trace')?.addEventListener('click', () => adminSaveAndTrace());
+$('#btn-admin-whole')?.addEventListener('click', () => adminSaveWhole());
 $('#busy-cancel').addEventListener('click', () => giveUpOnDetection('cancel'));
 $('#busy-retry').addEventListener('click', () => giveUpOnDetection('retry'));
 

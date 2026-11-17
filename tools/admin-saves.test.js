@@ -170,6 +170,27 @@ globalThis.fetch = async (u, init) => {
   const rows = (await env.DB.prepare('SELECT COUNT(*) AS n FROM admin_traces WHERE map_key = ?').bind(id).first()).n;
   check('an admin save is deleted with its presses', gone.status === 200 && !left.some((m) => m.id === id) && rows === 0, `${gone.status} ${left.length} ${rows}`);
 }
+/* ------------------------------------------------ the whole property as lawn (2026-11-17) */
+{
+  const id = '12 lot ln|alpha|find';
+  const lot = { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [[[-85.2, 42.2], [-85.1999, 42.2], [-85.1999, 42.2001], [-85.2, 42.2001], [-85.2, 42.2]]] } };
+  const bad = await admin(env, req('/api/admin/admin-saves/whole', { method: 'POST', cookie: oc, body: { map: save({ id, address: '12 Lot Ln', shapes: [] }) } }));
+  check('no property line: refused', bad.status === 400, `${bad.status}`);
+  const theirs = await admin(env, req('/api/admin/admin-saves/whole', { method: 'POST', cookie: pc, body: { map: save({ id, address: '12 Lot Ln', shapes: [lot] }) } }));
+  check('a 404 to a regular user', theirs.status === 404, `${theirs.status}`);
+  // a trace of the same lot still working: called off, so it cannot lay itself over the whole-lot lawn
+  await admin(env, req('/api/admin/admin-saves/trace', { method: 'POST', cookie: oc, body: { map: save({ id, address: '12 Lot Ln', shapes: [], squareFeet: 0 }), segment: { lng: -85.2, lat: 42.2, zoom: 19, size: 640, height: 640, provider: 'mapbox' } } }));
+  await settle();
+  const w = await admin(env, req('/api/admin/admin-saves/whole', { method: 'POST', cookie: oc, body: { map: save({ id, address: '12 Lot Ln', shapes: [lot], squareFeet: 1234 }) } }));
+  await settle();
+  check('the whole property saved as an admin save', w.status === 200 && w.body.trace === 'whole', JSON.stringify(w.body));
+  const one = (await maps(env, req(`/api/maps/one?id=${encodeURIComponent(id)}`, { cookie: oc }))).body.map;
+  check('its lawn is the property line', one?.shapes?.length === 1 && one.shapes[0].geometry.coordinates[0].length === 5 && one.trace?.status === 'whole' && one.adminSave === true, JSON.stringify(one?.trace));
+  const rows = (await env.DB.prepare("SELECT status, press FROM admin_traces WHERE map_key = ? ORDER BY created_at").bind(id).all()).results;
+  check('the pending trace called off, and its lidar queued like a traced save\'s', rows.some((r) => r.status === 'failed' && r.press !== 'whole') && rows.some((r) => r.status === 'lidar' && r.press === 'whole'), JSON.stringify(rows));
+  const list = await admin(env, req('/api/admin/admin-saves', { cookie: oc }));
+  check('the admin saves page lists it', list.body.maps.some((m) => m.id === id && m.trace?.status === 'whole'));
+}
 check('a press given up on blames the GPU provider when it had none free', /no GPU free/.test(stillWaitingWhy('Waiting for a GPU to come free -- the GPU provider is busy right now (29:40)'))
   && stillWaitingWhy('Fetching the aerial photograph') === 'no answer in half an hour' && stillWaitingWhy(null) === 'no answer in half an hour');
 check('the Worker has its timer', typeof worker.scheduled === 'function' && typeof worker.fetch === 'function');

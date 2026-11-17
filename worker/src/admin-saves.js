@@ -242,6 +242,32 @@ export async function handleAdminSaves(request, env, url, origin, ctx, json, me)
     return json({ ok: true, finished: done }, 200, origin);
   }
 
+  /* THE WHOLE PROPERTY AS LAWN (the owner, 2026-11-17: a button "Mark whole property as lawn and admin save" beside
+     the one above). The lawn is the property line itself, sent by the page as the map's shapes; no Turf Trace. Its
+     row starts at 'lidar', so the timer builds its lidar like a traced save's (buildLidar). */
+  if (path === 'admin-saves/whole' && request.method === 'POST') {
+    let body = null;
+    try { body = await request.json(); } catch { body = null; }
+    const map = body?.map;
+    if (!map?.id || !map?.address) return json({ error: 'a map with an id and an address is needed' }, 400, origin);
+    const shapes = Array.isArray(map.shapes) ? map.shapes.filter((f) => f?.geometry?.type === 'Polygon' && Array.isArray(f.geometry.coordinates?.[0]) && f.geometry.coordinates[0].length >= 4) : [];
+    if (!shapes.length) return json({ error: 'the property line is needed (the lot has no parcel outline)' }, 400, origin);
+    const at = new Date().toISOString();
+    const record = { ...map, shapes, adminSave: true, handEdited: false, trace: { status: 'whole', at } };
+    delete record.tools;
+    const saved = await upsertMap(env, owner, record);
+    if (!saved.key) return json({ error: saved.error || 'the map could not be saved' }, 400, origin);
+    if (ctx?.waitUntil) ctx.waitUntil(keepPhoto(env, owner, saved.key, record).catch(() => {}));
+    // a trace of the same lot still working would lay itself over this lawn when it finished: it is called off
+    await env.DB.prepare("UPDATE admin_traces SET status = 'failed', detail = 'replaced by the whole property as lawn', finished_at = ?3 WHERE map_key = ?1 AND user_id = ?2 AND status = 'pending'")
+      .bind(saved.key, me.id, at).run();
+    await env.DB.prepare(
+      "INSERT INTO admin_traces (id, user_id, map_key, press, frame, status, detail, created_at) VALUES (?, ?, ?, 'whole', ?, 'lidar', 'whole property as lawn', ?)"
+    ).bind(crypto.randomUUID(), me.id, saved.key, JSON.stringify({ origin: url.origin }), at).run();
+    if (ctx?.waitUntil) ctx.waitUntil(writeIndex(env).catch(() => {}));
+    return json({ id: saved.key, trace: 'whole' }, 200, origin);
+  }
+
   if (path === 'admin-saves/trace' && request.method === 'POST') {
     let body = null;
     try { body = await request.json(); } catch { body = null; }
