@@ -118,16 +118,16 @@ async function hostTurn(url, fn) {
   }
 }
 export class Refused extends Error {}
-async function ask(url, params, { post = false } = {}) {
+async function ask(url, params, { post = false, tries = 3, timeoutMs = TIMEOUT_MS } = {}) {
   return hostTurn(url, async () => {
     let last = null;
-    for (let t = 0; t < 3; t++) {
+    for (let t = 0; t < tries; t++) {
       if (t) await sleep(3000 * 2 ** t);
       try {
         const body = new URLSearchParams({ f: 'json', ...params });
         const r = post
-          ? await fetch(url, { method: 'POST', body, headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json', 'User-Agent': UA }, signal: AbortSignal.timeout(TIMEOUT_MS) })
-          : await fetch(`${url}?${body}`, { headers: { Accept: 'application/json', 'User-Agent': UA }, signal: AbortSignal.timeout(TIMEOUT_MS) });
+          ? await fetch(url, { method: 'POST', body, headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json', 'User-Agent': UA }, signal: AbortSignal.timeout(timeoutMs) })
+          : await fetch(`${url}?${body}`, { headers: { Accept: 'application/json', 'User-Agent': UA }, signal: AbortSignal.timeout(timeoutMs) });
         // an answer that is not used is still read to its end: left half read, Node's fetch (undici) can fail an
         // assertion when the server closes the socket, and that ends the whole run (the probe of 2026-11-17)
         if (!r.ok) { last = `http ${r.status}`; await r.arrayBuffer().catch(() => {}); if (r.status === 403 || r.status === 401) throw new Refused(last); if (r.status < 500 && r.status !== 429) break; continue; }
@@ -240,6 +240,8 @@ async function probeFailed(list) {
   console.log(`Asking the ${list.length} failed services what they will answer:`);
   // a request that breaks inside Node's own fetch is said and skipped, not the end of the probe
   process.on('uncaughtException', (e) => console.log(`  (a request broke inside Node: ${e?.code || e?.name || 'error'})`));
+  // each question once, 20 s at most: the probe says what answers, it does not wait out a server that is down
+  const Q = { tries: 1, timeoutMs: 20000 };
   let n = 0;
   for (const svc of list) {
     n++;
@@ -250,17 +252,17 @@ async function probeFailed(list) {
     const tryIt = async (fn) => { try { return await fn(); } catch (x) { return { ok: false, why: x instanceof Refused ? String(x.message) : 'threw' }; } };
     const as = (j, pick) => (j.error ? { ok: false, why: j.error } : { ok: true, n: pick(j) });
     r.info = await tryIt(async () => {
-      const j = await ask(`${ep.service}/${ep.layer}`, {});
+      const j = await ask(`${ep.service}/${ep.layer}`, {}, Q);
       if (j.error) return { ok: false, why: j.error };
       const wk = j.extent?.spatialReference?.latestWkid ?? j.extent?.spatialReference?.wkid ?? j.sourceSpatialReference?.wkid;
       return { ok: true, paging: !!j.advancedQueryCapabilities?.supportsPagination, max: j.maxRecordCount ?? null, sr: wk === 4326 ? 'geographic' : wk === 3857 || wk === 102100 ? 'web mercator' : wk ? 'projected' : 'no reference' };
     });
     const where = ep.where || '1=1';
-    r.count = await tryIt(async () => as(await ask(url, { where, returnCountOnly: 'true' }), (j) => j.count));
-    r.idsAll = await tryIt(async () => as(await ask(url, { where, returnIdsOnly: 'true' }, { post: true }), (j) => (j.objectIds || []).length));
-    r.tiny = await tryIt(async () => as(await ask(url, { where, returnIdsOnly: 'true', ...envelope([cx - d, cy - d, cx + d, cy + d]) }), (j) => (j.objectIds || []).length));
-    r.point = await tryIt(async () => as(await ask(url, { where, returnIdsOnly: 'true', inSR: '4326', spatialRel: 'esriSpatialRelIntersects', geometryType: 'esriGeometryPoint', geometry: `${cx},${cy}` }), (j) => (j.objectIds || []).length));
-    r.offset = await tryIt(async () => as(await ask(url, { where, outFields: ep.fields?.pin || '', returnGeometry: 'true', outSR: '4326', resultOffset: '0', resultRecordCount: '10' }), (j) => (j.features || []).length));
+    r.count = await tryIt(async () => as(await ask(url, { where, returnCountOnly: 'true' }, Q), (j) => j.count));
+    r.idsAll = await tryIt(async () => as(await ask(url, { where, returnIdsOnly: 'true' }, { ...Q, post: true }), (j) => (j.objectIds || []).length));
+    r.tiny = await tryIt(async () => as(await ask(url, { where, returnIdsOnly: 'true', ...envelope([cx - d, cy - d, cx + d, cy + d]) }, Q), (j) => (j.objectIds || []).length));
+    r.point = await tryIt(async () => as(await ask(url, { where, returnIdsOnly: 'true', inSR: '4326', spatialRel: 'esriSpatialRelIntersects', geometryType: 'esriGeometryPoint', geometry: `${cx},${cy}` }, Q), (j) => (j.objectIds || []).length));
+    r.offset = await tryIt(async () => as(await ask(url, { where, outFields: ep.fields?.pin || '', returnGeometry: 'true', outSR: '4326', resultOffset: '0', resultRecordCount: '10' }, Q), (j) => (j.features || []).length));
     console.log(probeLine(n, r));
   }
 }
