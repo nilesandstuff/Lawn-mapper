@@ -350,17 +350,28 @@ async function writeSquare(svc, tx, ty, parcels, old) {
  */
 const FILE_TYPES = ['File Geodatabase', 'Shapefile', 'GeoPackage'];
 const FILE_MAX = 2e9;
-async function findFile(svc) {
+/* WHERE TO LOOK (2026-11-17: the three login-only services had no file found, and the log could not say whether a
+   portal was even named). A server names its portal at /rest/info, but one that wants a login may not answer that
+   either. So also: a service hosted on ArcGIS Online, its own organisation's items on ArcGIS Online (orgid keeps it to
+   that county); and an ArcGIS Enterprise server, the portal at its usual address on the same host. Why none was found
+   is kept (svc.fileWhy) for the report. */
+export async function findFile(svc) {
   const service = svc.cfg.service;
   const root = service.replace(/\/rest\/services\/.*$/i, '');
-  const info = await ask(`${root}/rest/info`, {}).catch(() => null);
-  const portal = info?.owningSystemUrl;
-  if (!portal) return null;
   const org = /services\d*\.arcgis\.com\/([^/]+)\//i.exec(service)?.[1];
+  const info = await ask(`${root}/rest/info`, {}).catch(() => null);
+  const portals = [...new Set([info?.owningSystemUrl, org ? 'https://www.arcgis.com' : null, org ? null : `${new URL(root).origin}/portal`].filter(Boolean).map((u) => u.replace(/\/$/, '')))];
   const q = `parcel AND access:public AND (${FILE_TYPES.map((t) => `type:"${t}"`).join(' OR ')})${org ? ` AND orgid:${org}` : ''}`;
-  const found = await ask(`${portal.replace(/\/$/, '')}/sharing/rest/search`, { q, num: '50', sortField: 'modified', sortOrder: 'desc' }).catch(() => null);
-  const it = pickFile(found?.results, svc.box);
-  return it ? { url: `${portal.replace(/\/$/, '')}/sharing/rest/content/items/${it.id}/data`, modified: it.modified, type: it.type } : null;
+  let searched = 0;
+  for (const portal of portals) {
+    const found = await ask(`${portal}/sharing/rest/search`, { q, num: '50', sortField: 'modified', sortOrder: 'desc' }).catch(() => null);
+    if (!found || found.error || !Array.isArray(found.results)) continue;
+    searched++;
+    const it = pickFile(found.results, svc.box);
+    if (it) return { url: `${portal}/sharing/rest/content/items/${it.id}/data`, modified: it.modified, type: it.type };
+  }
+  svc.fileWhy = searched ? `${searched} portal${searched === 1 ? '' : 's'} searched: no public parcel file for its area` : `no portal answered (${portals.length} tried${info?.owningSystemUrl ? '' : '; the server names none'})`;
+  return null;
 }
 
 /** Of a portal's search results, the parcel file for a service's box: the newest public one, or null. */
@@ -517,7 +528,7 @@ async function main() {
       if (svc.water) continue;
       const S = state.services[svc.key];
       if (!S?.failed) continue;
-      const why = S.fileFailed ? String(S.fileFailed.why || '').replace(/https?:\/\/\S+/g, '[address]').replace(/\b[\w-]+(\.[\w-]+)+\.(gov|us|com|org|net|io)\b/gi, '[host]').trim() : 'no public parcel file found on its portal, no portal named, or not looked for';
+      const why = S.fileFailed ? String(S.fileFailed.why || '').replace(/https?:\/\/\S+/g, '[address]').replace(/\b[\w-]+(\.[\w-]+)+\.(gov|us|com|org|net|io)\b/gi, '[host]').trim() : 'not looked for (failed before 2026-11-17, or out of time)';
       files.set(why, (files.get(why) || 0) + 1);
     }
     if (files.size) { console.log('Their county\'s published file:'); for (const [k, n] of [...files].sort((a, b) => b[1] - a[1])) console.log(`  ${n} x ${k}`); }
@@ -589,6 +600,7 @@ async function main() {
         if (!svc.water && kind !== 'out of time' && elapsed() < BUDGET_MS) {
           try {
             const file = await findFile(svc);
+            if (!file) st.fileFailed = { at: new Date().toISOString(), why: svc.fileWhy || 'none found' };
             if (file) {
               const got = await copyFromFile(svc, st, file);
               st.done = new Date().toISOString();

@@ -210,3 +210,35 @@ console.log(`\n${passed} passed`);
   } finally { globalThis.fetch = realFetch; }
 }
 console.log(`parcel-mirror fallbacks: ${passed} passed`);
+
+/* WHERE TO LOOK FOR THE PUBLISHED FILE (2026-11-17): a login-only service on ArcGIS Online whose server names no
+   portal is looked for in its own organisation's items there; why none was found is kept. */
+{
+  const M = await import('./parcel-mirror.mjs');
+  const realFetch = globalThis.fetch;
+  const asked = [];
+  const json = (j) => new Response(JSON.stringify(j), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  try {
+    await test('a login-only service on ArcGIS Online: its organisation searched there', async () => {
+      globalThis.fetch = async (u) => {
+        const url = new URL(u); asked.push(url.host + url.pathname);
+        if (/rest\/info/.test(url.pathname)) return json({ error: { code: 499, message: 'Token Required' } });
+        if (url.host === 'www.arcgis.com') {
+          assert.match(url.searchParams.get('q'), /orgid:ORG1/);
+          return json({ results: [{ id: 'abc', type: 'File Geodatabase', access: 'public', title: 'Parcels', modified: 5, extent: [[0, 0], [1, 1]] }] });
+        }
+        return json({ results: [] });
+      };
+      const svc = { cfg: { service: 'https://services3.arcgis.com/ORG1/arcgis/rest/services/Parcels/FeatureServer' }, box: [0.2, 0.2, 0.4, 0.4] };
+      const f = await M.findFile(svc);
+      assert.equal(f?.url, 'https://www.arcgis.com/sharing/rest/content/items/abc/data');
+    });
+    await test('none found: why is kept', async () => {
+      globalThis.fetch = async (u) => (/rest\/info/.test(String(u)) ? json({}) : json({ results: [] }));
+      const svc = { cfg: { service: 'https://gis.example.test/arcgis/rest/services/Parcels/MapServer' }, box: [0, 0, 1, 1] };
+      assert.equal(await M.findFile(svc), null);
+      assert.match(svc.fileWhy, /1 portal searched: no public parcel file/);
+    });
+  } finally { globalThis.fetch = realFetch; }
+}
+console.log(`parcel-mirror published file: ${passed} passed`);
