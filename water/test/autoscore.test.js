@@ -88,6 +88,18 @@ await test('a changed shade model queues the map\'s converted walks again; the s
   assert.equal(sw.queued, 1); assert.equal(sw.saves, 1); assert.equal(sw.converted, 1);
 });
 
+await test('a walk scored before the station\'s second score is queued again; one carrying it is not', async () => {
+  const { MODEL_VERSION, SCORING } = await import('../lib/surfacenow.js');
+  const put = (env, detail) => env.DB.prepare('INSERT OR REPLACE INTO truth_results (walk, model, kind, checked, n, bias, rmse, rho, detail) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').bind('w1', MODEL_VERSION, 'surface', 1, 5, 0, 1, 0.5, JSON.stringify(detail)).run();
+  const old = { DB: d1(), MAIN: main(), WATER_BUILDER: builder([]) };
+  await put(old, { bands: {} });
+  assert.equal((await sweep(old)).queued, 1);
+  const now = { DB: d1(), MAIN: main(), WATER_BUILDER: builder([]) };
+  await put(now, { scoring: SCORING, station: { n: 5 } });
+  const sw = await sweep(now);
+  assert.equal(sw.queued, 0); assert.equal(sw.scored, 1);
+});
+
 await test('the shared walk placement and site: off-lawn records dropped, the settings read back', async () => {
   const site = siteOf(record, 'admin|1');
   const p = walkRecords(walkJson, site);

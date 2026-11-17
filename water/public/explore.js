@@ -207,7 +207,7 @@ async function show() {
       const w = await loadWalk(ev);
       S.ctx = { type: 'walk', walk: w, t: w.mid };
       S.items = w.records.map((r, k) => ({ lng: r.lng, lat: r.lat, m: r.T, p: w.res.pred[k], k, band: r.band || '0-60' })).filter((x) => x.band === '0-60');
-      S.check = { n: w.res.n, bias: w.res.bias, rmse: w.res.rmse, rho: w.res.rho, used: w.res.used, v1: w.res.v1 };
+      S.check = { n: w.res.n, bias: w.res.bias, rmse: w.res.rmse, rho: w.res.rho, used: w.res.used, v1: w.res.v1, station: w.res.station };
       const mk = Math.round(w.mid / 6e4);
       if (S.moments.has(mk)) S.field = S.moments.get(mk).surface; else $('#whole').hidden = false;
     } else if (v === 'surface' && ev.kind === 'visit') {
@@ -265,11 +265,13 @@ function summary() {
   if (Number.isFinite(c.bias)) tiles.push(['Measured − model, average', fmt(c.bias, 'dtemp')]);
   if (Number.isFinite(c.rmse)) tiles.push(['Typical miss (RMS)', fmt(c.rmse, 'dtemp').replace('+', '')]);
   if (c.rho !== undefined) tiles.push(['Same order? (rank, 1 = yes)', Number.isFinite(c.rho) ? c.rho.toFixed(2) : '-']);
+  if (c.station && Number.isFinite(c.station.bias) && c.station.air && !/same as the score/.test(c.station.air)) tiles.push(['On the station\'s air instead', `${fmt(c.station.bias, 'dtemp')}, RMS ${fmt(c.station.rmse, 'dtemp').replace('+', '')}`]);
   if (c.w) tiles.push(['Air', fmt(c.w.ta, 'temp')], ['Open wind', fmt(c.w.wind, 'speed')], ['Sunshine', fmt(c.w.ghi, 'flux')]);
   const notes = [];
   if (c.used?.soil) notes.push(`Soil: ${c.used.soil}.`);
   if (c.used?.air) notes.push(`Air: ${c.used.air}.`);
   if (c.used?.cloud) notes.push(`Cloud: ${c.used.cloud}.`);
+  if (c.station && Number.isFinite(c.station.airMid) && Number.isFinite(c.station.airWalker)) notes.push(`The air at mid-walk: yours ${fmt(c.station.airWalker, 'temp')}, the station's ${fmt(c.station.airMid, 'temp')}. The live map has only the station's, so its score is what the live map can do; yours says how good the model is.`);
   if (c.v1 && Number.isFinite(c.v1.bias)) notes.push(`Without the soil columns (version 1): off by ${fmt(c.v1.bias, 'dtemp')} on average, rank ${Number.isFinite(c.v1.rho) ? c.v1.rho.toFixed(2) : '-'}.`);
   if (v === 'surface' && S.ctx?.type === 'walk') notes.push('Squares viewed 0–60° from straight down. Each is set against the model at its own minute.');
   if (v === 'moisture' && c.unit) notes.push(`Readings in ${c.unit === 'vwc' ? '% water' : 'the meter\'s own scale'}; the model gives the share of the root zone\'s usable water, so only their order is compared.`);

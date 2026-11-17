@@ -38,7 +38,7 @@ import { windShare } from '/lib/balance.js';
 import { leafCalendar } from '/lib/shade/seasonal.js';
 import { cleanFences, fencesOnGrid } from '/lib/shade/fences.js';
 import { toMerc as toMercS } from '/lib/shade/ept.js';
-import { momentOf, surfaceNowAt, openNow, forcingAt, MODEL_VERSION } from '/lib/surfacenow.js';
+import { momentOf, surfaceNowAt, openNow, forcingAt, MODEL_VERSION, SCORING } from '/lib/surfacenow.js';
 import { atMoment, spinWeatherUrl, spinHours, SPIN_DAYS } from '/lib/momentweather.js';
 import { fitAnnual, spinColumns, columnProps, stepColumn, skinParts, CENTRES } from '/lib/soiltemp.js';
 import { surfaceExplain, soilExplain, windExplain, moistureExplain } from '/lib/explain.js';
@@ -236,17 +236,19 @@ async function walkCheck({ id, records, series, notes }) {
   };
   const sweep = notes?.sky && Number.isFinite(notes.sky.cloud_fraction) ? notes.sky.cloud_fraction : null;
   const typed = { clear: 0, broken: 0.6, overcast: 1 }[notes?.cloud];
-  const memo = new Map();
-  const weatherAt = (t) => {
-    const key = Math.round(t / 6e4);
-    if (memo.has(key)) return memo.get(key);
+  const memo = new Map(), memoSt = new Map();
+  /* the moment's weather with the walker's air (byStation false) or, for the second score, the station's alone: the
+     live map only ever has the station's, so that score is what it can do; the walker's says how good the model is */
+  const weatherAt = (t, byStation = false) => {
+    const key = Math.round(t / 6e4), M = byStation ? memoSt : memo;
+    if (M.has(key)) return M.get(key);
     const s = atMoment(series || [], t);
-    const ta = airAt(t) ?? s.ta;
+    const ta = byStation ? s.ta : airAt(t) ?? s.ta;
     /* the cloud for the sky's longwave: the walker's word, the sky sweep, else by day the satellite's sunshine against
        the clear sky (momentOf works it out when no cloud is given), else the station's sky cover */
     const cloud = Number.isFinite(typed) ? typed : sweep ?? (Number.isFinite(s.ghi) ? null : s.cloud);
     const w = Number.isFinite(ta) ? momentOf({ t, lat, lng, ta, rh: Number.isFinite(s.rh) ? s.rh : 70, wind: s.wind, ghi: s.ghi, cloud }) : null;
-    memo.set(key, w);
+    M.set(key, w);
     return w;
   };
   const pred = new Float32Array(records.length).fill(NaN), was = new Float32Array(records.length).fill(NaN);
@@ -259,6 +261,14 @@ async function walkCheck({ id, records, series, notes }) {
     was[k] = surfaceNowAt(m, i, beams[k], w, { month, ks: ks ? ks[i] : 1 }).ts;
     const s = spotAt(cols, i, beams[k], w, r.tm, ks ? ks[i] : null);
     pred[k] = s ? s.ts : was[k];
+  });
+  // the second score: the station's air at every record (only differs when the walker read the air)
+  const predSt = airs.length ? new Float32Array(records.length).fill(NaN) : pred;
+  if (airs.length) records.forEach((r, k) => {
+    const w = weatherAt(r.tm, true), i = idx[k];
+    if (!w || i < 0) return;
+    const s = spotAt(cols, i, beams[k], w, r.tm, ks ? ks[i] : null);
+    predSt[k] = s ? s.ts : surfaceNowAt(m, i, beams[k], w, { month: new Date(r.tm).getUTCMonth(), ks: ks ? ks[i] : 1 }).ts;
   });
   kept.walkCtx = { id, records, idx, beams, weatherAt, ks, cols, was, used };
   const stats = (ks2, P = pred) => {
@@ -278,7 +288,11 @@ async function walkCheck({ id, records, series, notes }) {
   // the same walk under version 1, beside it: the before and after of the soil columns
   const wasOk = main.filter((k) => Number.isFinite(was[k]));
   const v1 = cols.spun ? { model: 'surface-now 1 (2026-11-15)', ...stats(wasOk, was), sun: stats(wasOk.filter((k) => beams[k] >= 0.5), was), shade: stats(wasOk.filter((k) => beams[k] < 0.2), was) } : null;
-  const out = { id, model: MODEL_VERSION, ...stats(main), bands, sunShade, used, v1,
+  const stOk = main.filter((k) => Number.isFinite(predSt[k]));
+  const wSt = weatherAt(mid, true);
+  const station = { air: airs.length ? 'the station\'s, nearest each minute' : 'the station\'s (the walker read no air: the same as the score)', airMid: wSt ? wSt.ta : null, airWalker: wMid ? wMid.ta : null,
+    ...stats(stOk, predSt), sun: stats(stOk.filter((k) => beams[k] >= 0.5), predSt), shade: stats(stOk.filter((k) => beams[k] < 0.2), predSt) };
+  const out = { id, model: MODEL_VERSION, scoring: SCORING, ...stats(main), bands, sunShade, used, v1, station,
     open: wMid ? { ts: openNow(wMid, m.params).ts, ta: wMid.ta, ghi: wMid.ghi, cloud: wMid.cloud, el: wMid.el, from: wMid.from } : null, pred: Float32Array.from(pred) };
   self.postMessage({ walkCheck: out }, [out.pred.buffer]);
 }

@@ -35,7 +35,7 @@ import { SPECIES, groupOf } from '/lib/roots.js';
 import { spearman } from '/lib/rank.js';
 import { walkRecords, offLawnM, ON_TRACE_M } from '/lib/walkrecords.js';
 import { siteOf, inputsOf } from '/lib/siteof.js';
-import { MODEL_VERSION } from '/lib/surfacenow.js';
+import { MODEL_VERSION, SCORING } from '/lib/surfacenow.js';
 import { openMeteoUrls, parseOpenMeteo } from '/lib/momentweather.js';
 
 const $ = (s) => document.querySelector(s);
@@ -951,7 +951,7 @@ async function askWalks() {
     if (r.ok) list = (await r.json()).walks || [];
     else walkState.why = r.status === 404 ? null : `the walks answered ${r.status}`;
   } catch { walkState.why = 'the walks did not answer'; }
-  const done = new Set(walkState.truth.filter((w) => w.results?.some((x) => x.model === MODEL_VERSION && x.kind === 'surface')).map((w) => w.walk));
+  const done = new Set(walkState.truth.filter((w) => w.results?.some((x) => x.model === MODEL_VERSION && x.kind === 'surface' && (x.detail?.scoring || 1) >= SCORING)).map((w) => w.walk));
   /* the core's list (docs/MAPS.md): a walk not yet turned into temperatures has ok null ("not converted yet"), a
      failed one ok false with its error; only the converted ones are opened */
   walkState.waiting = list.filter((w) => w.ok === null || w.ok === undefined).length;
@@ -996,7 +996,7 @@ async function checkWalk(site, walkId) {
   if (res.error) throw new Error(res.error);
   await fetch('/api/water/truth/result', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
     walk: walk.walk || walkId, model: res.model, kind: 'surface', n: res.n, bias: res.bias, rmse: res.rmse, rho: res.rho,
-    detail: { bands: res.bands, sunShade: res.sunShade, used: res.used, open: res.open, v1: res.v1 || null, offLawn, weather: weather.sources || [] },
+    detail: { bands: res.bands, sunShade: res.sunShade, used: res.used, open: res.open, v1: res.v1 || null, station: res.station || null, scoring: res.scoring || 1, offLawn, weather: weather.sources || [] },
   }) });
 }
 function walkCards() {
@@ -1028,7 +1028,7 @@ function walkCards() {
     const src = (d.weather || []).map((x) => (Number.isFinite(x.km) ? `${esc(x.name)} ${x.km} km away` : esc(x.name))).join('; ') || 'no weather source answered';
     return `<details class="card"><summary>Walk of ${esc(when)}${mins ? ` (${mins} min)` : ''}: ${r.n} lawn squares, off by ${f1(F(r.bias))} °F on average, rank ${Number.isFinite(r.rho) ? r.rho.toFixed(2) : '-'}</summary>
       <p>Measured minus modelled, each half-meter square at its own minute, seen within 60° of straight down: mean ${f1(F(r.bias))} °F, typical miss (RMS) ${F(r.rmse)?.toFixed(1) ?? '-'} °F, rank correlation ${Number.isFinite(r.rho) ? r.rho.toFixed(2) : '-'}. In the sun ${f1(F(sh.sun?.bias))} °F over ${sh.sun?.n ?? 0}; in the shade ${f1(F(sh.shade?.bias))} °F over ${sh.shade?.n ?? 0}. Seen at a slant: 60-70° ${f1(F(b['60-70']?.bias))} °F over ${b['60-70']?.n ?? 0}, 70-80° ${f1(F(b['70-80']?.bias))} °F over ${b['70-80']?.n ?? 0} (against the model, so their difference from the straight-down readings is the angle's own effect).</p>
-      <p class="dim">The model at mid-walk: air ${Number.isFinite(o.ta) ? Math.round(o.ta * 1.8 + 32) : '-'} °F (${esc(u.air || '-')}), sun ${Number.isFinite(o.el) ? Math.round(o.el) : '-'}° up, sunshine ${Number.isFinite(o.ghi) ? Math.round(o.ghi) : '-'} W/m² (${esc(o.from || '-')}), cloud ${Number.isFinite(o.cloud) ? Math.round(o.cloud * 100) : '-'}% (${esc(u.cloud || '-')}); open, level, watered lawn ${Number.isFinite(o.ts) ? Math.round(o.ts * 1.8 + 32) : '-'} °F. The ground ${esc(u.wet || '-')}. Weather: ${src}. ${d.offLawn ? `${d.offLawn} squares off the lawn left out.` : ''} Soil heat: ${esc(u.soil || 'none (G a share of Rn)')}.${d.v1 && Number.isFinite(d.v1.bias) ? ` Without it (version 1) the same walk was off by ${f1(F(d.v1.bias))} °F, rank ${Number.isFinite(d.v1.rho) ? d.v1.rho.toFixed(2) : '-'}.` : ''} Model: ${esc(r.model)}.</p></details>`;
+      <p class="dim">The model at mid-walk: air ${Number.isFinite(o.ta) ? Math.round(o.ta * 1.8 + 32) : '-'} °F (${esc(u.air || '-')}), sun ${Number.isFinite(o.el) ? Math.round(o.el) : '-'}° up, sunshine ${Number.isFinite(o.ghi) ? Math.round(o.ghi) : '-'} W/m² (${esc(o.from || '-')}), cloud ${Number.isFinite(o.cloud) ? Math.round(o.cloud * 100) : '-'}% (${esc(u.cloud || '-')}); open, level, watered lawn ${Number.isFinite(o.ts) ? Math.round(o.ts * 1.8 + 32) : '-'} °F. The ground ${esc(u.wet || '-')}. Weather: ${src}. ${d.offLawn ? `${d.offLawn} squares off the lawn left out.` : ''} Soil heat: ${esc(u.soil || 'none (G a share of Rn)')}.${d.station && Number.isFinite(d.station.bias) && !/same as the score/.test(d.station.air || '') ? ` On the station's air instead of yours: off by ${f1(F(d.station.bias))} °F, RMS ${F(d.station.rmse)?.toFixed(1) ?? '-'}.` : ''}${d.v1 && Number.isFinite(d.v1.bias) ? ` Without it (version 1) the same walk was off by ${f1(F(d.v1.bias))} °F, rank ${Number.isFinite(d.v1.rho) ? d.v1.rho.toFixed(2) : '-'}.` : ''} Model: ${esc(r.model)}.</p></details>`;
   }).join('');
   return `${head}${walkState.busy ? `<div class="card">${esc(walkState.busy)}</div>` : ''}${queueCard}${pooled ? `<div class="card"><p>Every walk on this property, pooled, by model version (measured minus modelled, °F):</p><div style="overflow-x:auto"><table class="small"><tr><th>model</th><th>walks</th><th>squares</th><th>mean</th><th>RMS</th><th>median rank</th></tr>${pooled}</table></div></div>` : ''}${rows}`;
 }

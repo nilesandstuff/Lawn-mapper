@@ -13,7 +13,7 @@
  */
 import { waiting, settle, enqueue } from './jobs.js';
 import { putWalk, putWeather, frozenWeather, putResult } from './truth.js';
-import { MODEL_VERSION } from '../lib/surfacenow.js';
+import { MODEL_VERSION, SCORING } from '../lib/surfacenow.js';
 
 const pinOf = (record) => record?.parcel?.properties?.pin || record?.parcel?.properties?.PIN || null;
 const converted = (w) => w && Array.isArray(w.records) && w.records.length > 0;
@@ -64,7 +64,7 @@ async function scoreOne(env, job, base) {
   if (kept.error) return { state: 'failed', why: kept.error };
   if (!frozen && o.weather?.series?.length) await putWeather(env, job.walk, o.weather.sources, o.weather.series);
   const res2 = await putResult(env, { walk: job.walk, model: r.model, kind: 'surface', n: r.n, bias: r.bias, rmse: r.rmse, rho: r.rho,
-    detail: { bands: r.bands, sunShade: r.sunShade, used: r.used, open: r.open, v1: r.v1 || null, offLawn: p.offLawn, weather: (frozen || o.weather)?.sources || [], by: 'the water builder' } });
+    detail: { bands: r.bands, sunShade: r.sunShade, used: r.used, open: r.open, v1: r.v1 || null, station: r.station || null, scoring: r.scoring || 1, offLawn: p.offLawn, weather: (frozen || o.weather)?.sources || [], by: 'the water builder' } });
   if (res2.error) return { state: 'failed', why: res2.error };
   return { state: 'done', why: `${r.n} squares` };
 }
@@ -75,7 +75,8 @@ export async function sweep(env) {
   const out = { saves: 0, walks: 0, converted: 0, waiting: 0, failed: 0, scored: 0, queued: 0 };
   if (!env.MAIN || !env.DB) return out;
   const saves = (await env.MAIN.adminSaves().catch(() => null)) || [];
-  const scored = new Set(((await env.DB.prepare("SELECT walk FROM truth_results WHERE model = ? AND kind = 'surface'").bind(MODEL_VERSION).all()).results || []).map((r) => r.walk));
+  // scored: by this model, and carrying all a result now carries (SCORING: a walk scored before the station's score is scored again)
+  const scored = new Set(((await env.DB.prepare("SELECT walk FROM truth_results WHERE model = ? AND kind = 'surface' AND COALESCE(json_extract(detail, '$.scoring'), 1) >= ?").bind(MODEL_VERSION, SCORING).all()).results || []).map((r) => r.walk));
   out.saves = saves.length;
   for (const s of saves) {
     const list = (await env.MAIN.thermalOf(s.id, null).catch(() => null))?.walks || [];
