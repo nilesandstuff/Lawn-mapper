@@ -98,3 +98,31 @@ in time (or interpolated):
 East and north are metres from the map's own origin (the same metres as ground and outline). `by` says what the fit
 came from at that moment (earlier, walk, fix, refs, geo): a guide to how well the stretch is placed. `s` is the
 fit's scale between ARCore's metres and the map's; it applies to positions only.
+
+## A single thermal photo: twins/snap-<ms>/ (2026-11-17)
+
+The owner: "it would be nice to add individual thermal pics that I manually place." The thermal session's answers
+of 2026-11-17 set what is kept: `ThermalCamera.snap` takes a fresh shutter reference, then 1 s of EVERY frame (about
+25; its converter averages them), then a second reference for the drift across the shot -- about 4 s, the owner
+holding still for the middle second. Not during a walk.
+
+The file is the walk's format above, under an id a walk cannot have (`snap-<wall ms>`), with these differences: the
+`start` note carries `snap` (the id) in place of `walk` and `keep_every` 1; the burst's frames are type 0 (scene); and
+before `end` a note
+
+    snap   id, t0_ns, t1_ns (the burst), rotation
+
+`rotation` (Rotation.kt: the phone's own rotation-vector sensor, as ARCore may not be running): `q` [w, x, y, z] the
+reading nearest the burst's middle, `at_ns`, `accuracy_deg` (the sensor's estimate of the heading's error, or null),
+`display_rotation` (0, 90, 180, 270), `sensor`, and `samples` [{ t_ns, q }] over the burst. 'P' records are there too
+when ARCore happens to be running.
+
+Its notes, `<id>.snapmeta` on the phone, go up as the twin part `thermal-snap.json` ONLY once `thermal.bin` is whole on
+the site (the thermal session's converter starts on them): `{ kind: "snap", format: 1, id, at (wall ms), map (or
+null), coarse { lng, lat } rounded to 0.1 degree (only for the weather; or null), air_C (typed; or null), emissivity
+(0.98 grass, 0.95 bare soil or mulch; or null), label (or null), rotation (as above), t0_ns, t1_ns, frames, dropped,
+app }`.
+
+The converter writes `thermal/snap.json` and `thermal/snap.png` (and `thermal/status.json`); where the owner stood is
+`thermal-snap-place.json`, written by the site when the water page places it (scan/src/thermal-snap.js; the private
+calls in docs/MAPS.md).

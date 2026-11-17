@@ -66,6 +66,10 @@ class ThermalCamera(private val app: Context, private val base: String) {
         const val SKY_WITHIN_DEG = 65.0
         const val SKY_MS = 10_000L
         const val SWEEP_MS = 5000L
+        // A SINGLE PHOTO (the thermal session, 2026-11-17: the probe's "Capture 1 s", measured against the vendor's
+        // app at +0.0 to +0.4 C): a fresh reference, 1 s of every frame (about 25, averaged by its converter), a
+        // second reference for the drift across the shot. About 4 s; the owner holds still for the middle second.
+        const val SNAP_MS = 1000L
         // frame types in the file
         const val SCENE = 0; const val REFERENCE = 1; const val SKY = 2; const val SWEEP = 3; const val SHUTTER = 4
     }
@@ -100,6 +104,9 @@ class ThermalCamera(private val app: Context, private val base: String) {
     @Volatile private var shutterBusy = false
     @Volatile private var skyUntil = 0L          // every frame kept until this time (elapsedRealtimeNanos)
     @Volatile private var sweepUntil = 0L
+    @Volatile private var burstUntil = 0L        // a single photo's second: every frame kept
+    @Volatile private var lastSnap: String? = null
+    @Volatile private var snapError: String? = null
     @Volatile private var lastRefAt = 0L         // elapsedRealtime ms
     @Volatile private var fps = 0.0
     private val times = ArrayDeque<Long>()
@@ -427,7 +434,7 @@ class ThermalCamera(private val app: Context, private val base: String) {
         val isRef = refLeft > 0
         if (isRef) refLeft--
         val type = when { isRef -> REFERENCE; shutterBusy -> SHUTTER; t < skyUntil -> SKY; t < sweepUntil -> SWEEP; else -> SCENE }
-        val every = type == REFERENCE || type == SKY || type == SWEEP
+        val every = type == REFERENCE || type == SKY || type == SWEEP || (type == SCENE && t < burstUntil)
         if (!every && n % KEEP_EVERY != 0) return
         if (b.size < w * KEEP_ROWS * 2 || w < KEEP_COLS) return   // not a whole frame: not kept
         // rows 0-216, columns 0-259, as they came
@@ -450,6 +457,79 @@ class ThermalCamera(private val app: Context, private val base: String) {
             i += 2
         }
         f.frame(type, n, refIndex, baseSeq, crop, fd, KEEP_COLS, KEEP_ROWS)
+    }
+
+    // ---------------- a single photo ----------------
+
+    /**
+     * A single thermal photo, kept like a walk's file under an id a walk cannot have (snap-<ms>): a fresh reference,
+     * 1 s of every frame, a second reference, and the phone's full orientation over that second (Rotation: the
+     * rotation-vector quaternion and the display's rotation; the thermal session turns it into each pixel's angle off
+     * straight down and its compass bearing). Its notes (the page's map, coarse place, air, emissivity, label) wait
+     * beside the file as <id>.snapmeta and go up only once thermal.bin is whole (ThermalUpload), so the converter
+     * never starts on half a photo. Not during a walk: the walk's file is the one being written.
+     */
+    fun snap(json: String): String {
+        val no = { why: String -> JSONObject().put("ok", false).put("why", why).toString() }
+        val u = uvc ?: return no(if (present()) "the camera is not connected yet" else "no thermal camera plugged in")
+        if (state != "ready") return no("the camera is not ready yet")
+        if (file != null) return no("a walk is recording: take photos outside a walk")
+        if (busy != null) return no("one moment: the camera is busy")
+        val o = try { JSONObject(json) } catch (_: Exception) { JSONObject() }
+        val wall = System.currentTimeMillis()
+        val id = "snap-$wall"
+        busy = "snap"; snapError = null
+        work.execute {
+            var f: ThermalFile? = null
+            val rot = Rotation(app)
+            try {
+                if (uvc !== u) throw IllegalStateException("the camera was unplugged")
+                rot.start()
+                val tf = ThermalFile(File(uploads.dir, "$id.bin"))
+                f = tf
+                tf.json(JSONObject().put("k", "start").put("format", 1).put("snap", id)
+                    .put("wall_ms", wall).put("elapsed_ns", SystemClock.elapsedRealtimeNanos())
+                    .put("width", KEEP_COLS).put("rows", KEEP_ROWS).put("camera_width", width).put("camera_rows", ROWS).put("keep_every", 1)
+                    .put("crop", JSONArray(listOf(0, KEEP_ROWS - 1, 0, KEEP_COLS - 1))).put("base", "first frame of reference")
+                    .put("tables", synchronized(tableHashes) { JSONObject(tableHashes.toString()) }).put("setup", setup).put("state", state).put("words", words())
+                    .put("app", BuildConfig.VERSION_NAME).put("phone", "${Build.MANUFACTURER} ${Build.MODEL}").put("android", Build.VERSION.SDK_INT))
+                baseFrame = null; baseSeq = 0
+                uploads.writing = id
+                file = tf
+                reference(u)                                   // just before
+                val t0 = SystemClock.elapsedRealtimeNanos()
+                burstUntil = t0 + SNAP_MS * 1_000_000
+                Thread.sleep(SNAP_MS)
+                val t1 = SystemClock.elapsedRealtimeNanos()
+                burstUntil = 0
+                val r = rot.over(t0, t1)
+                reference(u)                                   // just after
+                tf.json(JSONObject().put("k", "snap").put("id", id).put("t0_ns", t0).put("t1_ns", t1).put("rotation", r))
+                tf.json(JSONObject().put("k", "end").put("elapsed_ns", SystemClock.elapsedRealtimeNanos()).put("frames", tf.frames).put("dropped", tf.dropped))
+                val num = { k: String, lo: Double, hi: Double -> val v = o.optDouble(k, Double.NaN); if (v.isNaN() || v < lo || v > hi) JSONObject.NULL else v }
+                val c = o.optJSONObject("coarse")
+                val coarse = if (c != null && c.has("lng") && c.has("lat")) JSONObject().put("lng", Math.round(c.optDouble("lng") * 10) / 10.0).put("lat", Math.round(c.optDouble("lat") * 10) / 10.0) else JSONObject.NULL
+                val meta = JSONObject().put("kind", "snap").put("format", 1).put("id", id).put("at", wall)
+                    .put("map", o.optString("map", "").take(256).ifEmpty { null } ?: JSONObject.NULL)
+                    .put("coarse", coarse).put("air_C", num("air_C", -50.0, 60.0)).put("emissivity", num("emissivity", 0.5, 1.0))
+                    .put("label", o.optString("label", "").take(80).ifEmpty { null } ?: JSONObject.NULL)
+                    .put("rotation", r).put("t0_ns", t0).put("t1_ns", t1).put("frames", tf.frames).put("dropped", tf.dropped).put("app", BuildConfig.VERSION_NAME)
+                File(uploads.dir, "$id.snapmeta").writeText(meta.toString())
+                lastSnap = id
+            } catch (e: Exception) {
+                note("snap failed: $e"); snapError = e.message ?: e.javaClass.simpleName
+            } finally {
+                rot.stop()
+                burstUntil = 0
+                file = null
+                busy = null
+                val tf = f
+                val failed = snapError != null
+                // a photo that failed half way is not sent: its file is thrown away once it is closed
+                if (tf != null) tf.close { if (failed) File(uploads.dir, "$id.bin").delete(); uploads.writing = null; uploads.sendAll() } else uploads.writing = null
+            }
+        }
+        return JSONObject().put("ok", true).put("id", id).toString()
     }
 
     // ---------------- a walk ----------------
@@ -511,7 +591,8 @@ class ThermalCamera(private val app: Context, private val base: String) {
             .put("refs", refIndex).put("refAgoS", if (lastRefAt > 0) (SystemClock.elapsedRealtime() - lastRefAt) / 1000 else JSONObject.NULL)
             .put("walk", walk ?: JSONObject.NULL).put("kept", f?.frames ?: 0).put("poses", f?.poses ?: 0).put("dropped", f?.dropped ?: 0).put("bytes", f?.bytes ?: 0)
             .put("upDeg", if (upDeg.isNaN()) JSONObject.NULL else Math.round(upDeg))
-            .put("skyLeftS", maxOf(0L, (skyUntil - SystemClock.elapsedRealtimeNanos()) / 1_000_000_000L)).put("upload", uploads.status()).toString()
+            .put("skyLeftS", maxOf(0L, (skyUntil - SystemClock.elapsedRealtimeNanos()) / 1_000_000_000L))
+            .put("snap", lastSnap ?: JSONObject.NULL).put("snapError", snapError ?: JSONObject.NULL).put("upload", uploads.status()).toString()
     }
 
     /** The setup's log, for the page to show when something failed (no table bytes, no serial number). */

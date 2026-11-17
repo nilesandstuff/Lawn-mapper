@@ -312,6 +312,8 @@ class MainActivity : Activity() {
                     }
                 }
                 setDownloadListener { u, _, _, _, _ -> openExternal(u) }
+                // what only the dev build adds to the readings page too (src/dev/README.md); nothing in the store build
+                try { Extras.readings(this) } catch (e: Exception) { android.util.Log.w("LawnAR", "extras: ${e.message}") }
                 loadUrl(url)
             }
             val back = android.widget.Button(this).apply {

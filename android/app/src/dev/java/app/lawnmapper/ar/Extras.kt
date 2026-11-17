@@ -9,7 +9,7 @@ import app.lawnmapper.ar.thermal.ThermalCamera
 
 /**
  * DEV ONLY -- THE DEV BUILD'S EXTRAS: THE USB THERMAL CAMERA (src/dev/README.md). The store build compiles
- * src/store/.../Extras.kt instead, which does nothing. MainActivity and ArEngine call these four and know nothing
+ * src/store/.../Extras.kt instead, which does nothing. MainActivity and ArEngine call these five and know nothing
  * else of the camera.
  */
 object Extras {
@@ -29,6 +29,10 @@ object Extras {
     }
 
     fun arFrame(timestampNs: Long, pose: Pose?, tracking: Boolean) { cam?.arFrame(timestampNs, pose, tracking) }
+
+    /** The water site's readings page in the app (MainActivity.showReadings, before it loads): the same camera there,
+     *  so a single thermal photo can be taken from the readings page itself (ThermalBridge.snap). */
+    fun readings(w: WebView) { cam?.let { w.addJavascriptInterface(ThermalBridge(it), "LawnARThermal") } }
 
     fun destroy() { cam?.close(); cam = null }
 }

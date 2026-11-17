@@ -72,6 +72,19 @@ one-minute timer every five minutes (worker/src/water-push.js), to the water Wor
 `modelChanged(id, modelAt)` when an admin save's shade model's time changes, `walkReady(id, walk)` when a walk's
 converted grid lands, each sent once it is taken (an answer `{ queued: false }` is tried again), remembered in the private bucket (`water-push/state-v2.json`).
 
+**DEV ONLY: single thermal photos** (2026-11-17; the owner: "individual thermal pics that I manually place"), over the
+same `Internal`, for the water site's readings page. A photo is taken in the dev build of the Yard AR app (its start
+page, or the readings page opened in the app, through `window.LawnARThermal.snap(json)`: json `{ map, coarse: { lng,
+lat }, air_C, emissivity, label }`, all optional), kept in the yard AR site's private bucket under an id walks cannot
+have (`snap-<ms>`), converted by the thermal session's runner in the camera's own view, and placed afterwards by the
+owner. `thermalSnaps(saveId, { since, until, loose })`: `[{ id, at, map, placed, converted }]`, newest first (the save's
+photos and, unless `loose: false`, those placed nowhere yet; saveId null: all). `thermalSnap(id)`: `{ id, at, map, label,
+air_C, emissivity, rotation: { q: [w, x, y, z], display_rotation, accuracy_deg, samples }, place, snap, status }`, `snap`
+being the converter's `{ kind, at, T, mask, ang, az, emissivity, air_used, reflected, notes }` (null until it has run).
+`thermalSnapPng(id)`: `{ bytes, type }`, the converter's preview, or null. `placeThermalSnap(id, { lng, lat, heading,
+saveId, note })`: where the owner stood (heading optional, degrees from north); saveId ties the photo to that save's map.
+Coordinates stay in the private bucket and are never printed.
+
 **Reading the owner's maps from a session with no cookie** (2026-10-21): `GET /api/admin/saved-maps` (the administrators' maps, newest first: `id`, `address`, `at`, `county`, `provider`, `tools` as a list of tool ids, `owner`) and `GET /api/admin/saved-maps/one?id=` (exactly what `/api/maps/one` returns, plus `owner`), with `Authorization: Bearer <MAPS_READ_TOKEN>` -- a Worker secret the deploy applies from the repository secret of the same name. A missing or wrong key answers 404 like every admin route. Read-only; a signed-in administrator can call them without the key.
 
 A guest's second map (`POST /api/maps` or `/api/maps/new`) answers **409** with `{ error: 'guest-limit', message }`: show the message and a way to sign in. Signing in keeps the map they have.

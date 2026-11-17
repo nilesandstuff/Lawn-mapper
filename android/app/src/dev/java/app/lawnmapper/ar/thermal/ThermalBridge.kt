@@ -21,6 +21,12 @@ class ThermalBridge(private val cam: ThermalCamera) {
     /** A mark in the walk's file with its time ("angle-start", "angle-end"); false when no walk is recording. */
     @JavascriptInterface fun mark(what: String): Boolean = cam.mark(what)
     @JavascriptInterface fun sendWaiting() { cam.uploads.sendAll() }
+    /**
+     * A single thermal photo (ThermalCamera.snap): about 4 s, the owner holding still for the middle second. json, all
+     * optional: { map, coarse: { lng, lat } (rounded to 0.1 here), air_C, emissivity, label }. Answers
+     * { ok, id } at once, or { ok: false, why }; status() says when it is done (snap, snapError).
+     */
+    @JavascriptInterface fun snap(json: String): String = cam.snap(json)
     /** The setup's notes, when it failed. */
     @JavascriptInterface fun log(): String = cam.log()
 }

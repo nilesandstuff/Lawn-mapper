@@ -230,5 +230,51 @@ document.addEventListener('yard-walk', (e) => {
 });
 sendNotes();
 
-setInterval(render, 500);
+/* A SINGLE THERMAL PHOTO (the owner, 2026-11-17: "it would be nice to add individual thermal pics that I manually
+   place. That way I can quickly get a thermal pic or 2 in addition to whatever other readings I can manage quickly").
+   Taken here on the start page, outside a walk: about 4 s, the phone held still for the middle second (the app takes
+   a shutter reference before and after; ThermalCamera.snap). Placed afterwards on the water site's readings page,
+   where it waits unplaced. A place rounded to a tenth of a degree goes with it, only for the weather's air
+   temperature. */
+const snapCard = document.createElement('div');
+snapCard.className = 'card';
+snapCard.id = 'thermal-snap';
+snapCard.innerHTML = `<strong>Thermal photo</strong>
+  <p class="dim" style="margin:4px 0">One picture of the ground, placed later on the readings page. About 4 seconds: aim, then hold still when it says.</p>
+  <label>What it is of <input name="label" maxlength="80" placeholder="front lawn, sunny patch"></label><br>
+  <label>Surface <select name="em"><option value="0.98">grass</option><option value="0.95">bare soil or mulch</option></select></label>
+  <label>Air <input name="air" inputmode="decimal" size="4"></label> <select name="unit"><option value="F">°F</option><option value="C">°C</option></select><br>
+  <button type="button" name="take" style="margin-top:8px">Take a thermal photo</button>
+  <div class="dim" id="thermal-snap-say" style="margin-top:6px"></div>`;
+document.querySelector('#start')?.after(snapCard);
+const snapSay = (t) => { snapCard.querySelector('#thermal-snap-say').innerHTML = t; };
+const snapState = { id: null, startedAt: 0 };
+let coarse = null;
+try { navigator.geolocation?.getCurrentPosition((p) => { coarse = { lng: +p.coords.longitude.toFixed(1), lat: +p.coords.latitude.toFixed(1) }; }, () => {}, { enableHighAccuracy: false, maximumAge: 600000, timeout: 20000 }); } catch { /* none */ }
+snapCard.querySelector('[name=take]').addEventListener('click', () => {
+  const f = (n) => snapCard.querySelector(`[name=${n}]`);
+  const a = parseFloat(f('air').value), unit = f('unit').value;
+  const air = Number.isFinite(a) ? +(unit === 'F' ? (a - 32) / 1.8 : a).toFixed(1) : null;
+  let r = null;
+  try { r = JSON.parse(T.snap(JSON.stringify({ label: f('label').value.trim() || null, emissivity: +f('em').value, air_C: air, coarse }))); } catch { r = { ok: false, why: 'this app cannot take one: update it' }; }
+  if (!r?.ok) { snapSay(`<span class="bad">Not taken: ${r?.why || 'unknown'}</span>`); return; }
+  snapState.id = r.id; snapState.startedAt = Date.now();
+});
+function renderSnap() {
+  const s = read();
+  if (!s) return;
+  const b = snapCard.querySelector('[name=take]');
+  const ready = s.state === 'ready' && !s.walk;
+  b.disabled = !ready || s.busy === 'snap';
+  if (snapState.id && s.busy === 'snap') {
+    const t = (Date.now() - snapState.startedAt) / 1000;
+    snapSay(t < 1.5 ? '<b>Aim at the ground…</b>' : t < 3 ? '<b style="color:#6fe39a">Hold still</b>' : 'Finishing…');
+  } else if (snapState.id && s.snap === snapState.id) {
+    snapSay(`<span style="color:#6fe39a">Taken ✓</span> It goes up with the thermal files${s.upload?.waiting ? ` (${s.upload.waiting} waiting)` : ''}; place it on the readings page.`);
+  } else if (snapState.id && s.snapError) snapSay(`<span class="bad">Not taken: ${s.snapError}</span>`);
+  else if (!ready) snapSay(s.walk ? 'Not during a walk.' : s.state === 'none' ? (s.present ? 'Tap to connect the camera: start a walk, or plug it in again.' : 'No thermal camera plugged in.') : `The camera is ${s.state === 'settling' ? `settling: ${s.secs} s` : s.state}.`);
+  else if (!snapState.id) snapSay('');
+}
+
+setInterval(() => { render(); renderSnap(); }, 500);
 render();

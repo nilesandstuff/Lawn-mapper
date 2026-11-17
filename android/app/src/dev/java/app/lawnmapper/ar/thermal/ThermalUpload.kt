@@ -30,17 +30,36 @@ class ThermalUpload(private val app: Context, private val base: String, val dir:
 
     fun status(): JSONObject {
         val w = waiting()
-        return JSONObject().put("waiting", w.size).put("bytes", w.sumOf { it.length() }).put("sending", now ?: JSONObject.NULL).put("error", error ?: JSONObject.NULL)
+        return JSONObject().put("waiting", w.size + metas().size).put("bytes", w.sumOf { it.length() }).put("sending", now ?: JSONObject.NULL).put("error", error ?: JSONObject.NULL)
+    }
+
+    /* A SINGLE PHOTO'S NOTES (ThermalCamera.snap): <id>.snapmeta beside the file, sent as the twin part
+       thermal-snap.json only once its thermal.bin is whole on the site (the .bin is gone from the phone then), so the
+       thermal session's converter, which starts on the notes, never starts on half a photo. */
+    private fun metas(): List<File> = dir.listFiles { f -> f.name.endsWith(".snapmeta") && !File(dir, f.nameWithoutExtension + ".bin").exists() && f.nameWithoutExtension != writing }?.sortedBy { it.lastModified() } ?: emptyList()
+
+    private fun sendMeta(f: File) {
+        val id = f.nameWithoutExtension
+        val body = f.readBytes()
+        val c = open("/api/scan/twin?walk=${URLEncoder.encode(id, "UTF-8")}&part=thermal-snap.json", "PUT")
+        c.doOutput = true; c.setFixedLengthStreamingMode(body.size)
+        c.setRequestProperty("Content-Type", "application/json")
+        c.outputStream.use { it.write(body) }
+        readJson(c)
+        f.delete()
     }
 
     fun sendAll() {
-        synchronized(this) { if (sending || waiting().isEmpty()) return; sending = true }
+        synchronized(this) { if (sending || (waiting().isEmpty() && metas().isEmpty())) return; sending = true }
         Thread {
             val wake = (app.getSystemService(Context.POWER_SERVICE) as PowerManager).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "lawnar:thermal")
             try {
                 wake.acquire(3600 * 1000L)
                 for (f in waiting()) {
                     try { send(f); error = null } catch (e: Exception) { error = e.message ?: e.javaClass.simpleName; break }
+                }
+                if (error == null) for (m in metas()) {
+                    try { sendMeta(m) } catch (e: Exception) { error = e.message ?: e.javaClass.simpleName; break }
                 }
             } finally {
                 now = null; sending = false

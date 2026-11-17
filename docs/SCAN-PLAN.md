@@ -2669,6 +2669,15 @@ UPDATE, the same day (2026-11-15), all agreed between the three sessions and bui
   - GET /api/maps/thermal (main site, admin only) hands the water map a map's walks: scan/src/thermal.js puts a
     walk together, the main Worker adds the frame (docs/MAPS.md). The water map already asks for it.
 
+SINGLE THERMAL PHOTOS (2026-11-17; the owner: "individual thermal pics that I manually place"), agreed with the thermal
+and water sessions the same day and built, NOT YET TRIED ON THE PHONE: the dev build's "Take a thermal photo" on the
+app's start page (and window.LawnARThermal.snap on the readings page opened in the app): a fresh reference, 1 s of
+every frame, a second reference, the phone's full orientation; kept as twins/snap-<ms>/ with its notes sent only once
+the frames are whole (android/app/src/dev/README.md). The thermal session converts it in the camera's own view; the
+owner places it on the water site's readings page (the private calls in docs/MAPS.md). WAITS: the thermal session's
+converter for snaps, and the readings page's side (water session). The sun protection the thermal session proposed
+(close the shutter when the sun is in view) is not built.
+
 ## 28. The first thermal walk at home: what went wrong, and "keep what is good" (owner, 2026-11-15)
 
 The owner: "Today's experience was very disheartening." "This will literally never work if an entire walk has to

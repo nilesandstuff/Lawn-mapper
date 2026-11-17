@@ -18,6 +18,7 @@ import { walks } from './walks.js';
 import { twin, reference, warp } from './twin.js';
 import { recording } from './recording.js';
 import { thermal, noteWalk } from './thermal.js';
+import { noteSnap } from './thermal-snap.js';
 import { app, appCookieUpgrade } from './app.js';
 
 /** GETs passed on to Lawn Mapper for the page's own use (the photo and the lidar come in phase 2). */
@@ -101,7 +102,7 @@ export default {
     // DEV ONLY: a map's thermal walks, for the water map (src/thermal.js): the admin only
     const heat = await thermal(request, env, url, { isAdmin });
     if (heat) return heat;
-    const twinned = await twin(request, env, url, { isAdmin, noteThermal: noteWalk });
+    const twinned = await twin(request, env, url, { isAdmin, noteThermal: noteWalk, noteSnap });
     if (twinned) return twinned;
     // a walk's ARCore recording, for replay (src/recording.js): the admin only, the same way
     const recorded = await recording(request, env, url, { isAdmin });

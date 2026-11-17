@@ -13,4 +13,22 @@ export class Internal extends WorkerEntrypoint {
   async thermalOf(id, walk = null) { return thermalOfSave(this.env, id, walk); }
   /** [{ id, modelAt, at }] for every admin save (the water side's daily sweep). */
   async adminSaves() { return adminSavesList(this.env); }
+  /* DEV ONLY: SINGLE THERMAL PHOTOS (the owner, 2026-11-17; the yard AR site's src/thermal-snap.js), for the water
+     site's readings page. A photo belongs to no map until the owner places it; saveId names an admin save. */
+  /** [{ id, at, map, placed, converted }], newest first: the save's photos and those placed nowhere yet, or all. */
+  async thermalSnaps(saveId = null, opts = {}) {
+    if (!this.env.SCAN_INTERNAL) return [];
+    const f = saveId == null ? null : await findAdminSave(this.env, saveId);
+    if (saveId != null && !f) return [];
+    return this.env.SCAN_INTERNAL.thermalSnaps(f ? f.map.id : null, opts);
+  }
+  async thermalSnap(id) { return this.env.SCAN_INTERNAL ? this.env.SCAN_INTERNAL.thermalSnap(id) : null; }
+  async thermalSnapPng(id) { return this.env.SCAN_INTERNAL ? this.env.SCAN_INTERNAL.thermalSnapPng(id) : null; }
+  /** { lng, lat, heading?, saveId?, note? } -> { ok, place } or { error }: saveId ties the photo to that save's map. */
+  async placeThermalSnap(id, place = {}) {
+    if (!this.env.SCAN_INTERNAL) return { error: 'no scan site' };
+    let map = null;
+    if (place.saveId != null) { const f = await findAdminSave(this.env, place.saveId); if (!f) return { error: 'which save?' }; map = f.map.id; }
+    return this.env.SCAN_INTERNAL.placeThermalSnap(id, { lng: place.lng, lat: place.lat, heading: place.heading ?? null, map, note: place.note ?? null });
+  }
 }

@@ -89,6 +89,7 @@ jobs:
           node scan/test/twin.test.js
           node scan/test/refkeep.test.js
           node scan/test/thermal.test.js
+          node scan/test/thermal-snap.test.js
           node scan/test/reference-route.test.js
           node scan/test/minimap.test.js
           node scan/test/surface.test.js

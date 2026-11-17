@@ -19,7 +19,7 @@
 const json = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 
 export const MAX_PART = 8 * 1024 * 1024;
-export const PART = /^(meta|live|end|splat|fixed|inspect|consensus|thermal-notes|thermal-placement)\.json$|^inspect-points\.bin$|^(cloud|track|labels)-\d{4}\.bin$|^keys-\d{4}\.json$|^key-\d{4}\.(jpg|depth)$|^splat\.splat$|^splat-compare\.jpg$|^mesh\.bin$/;
+export const PART = /^(meta|live|end|splat|fixed|inspect|consensus|thermal-notes|thermal-placement|thermal-snap)\.json$|^inspect-points\.bin$|^(cloud|track|labels)-\d{4}\.bin$|^keys-\d{4}\.json$|^key-\d{4}\.(jpg|depth)$|^splat\.splat$|^splat-compare\.jpg$|^mesh\.bin$/;
 export const WALK = /^[0-9a-zA-Z_-]{1,40}$/;
 const TYPES = { json: 'application/json', bin: 'application/octet-stream', jpg: 'image/jpeg' };
 export const typeOf = (part) => TYPES[part.split('.').pop()] || 'application/octet-stream';
@@ -33,7 +33,7 @@ export function checkPart(walk, part) {
 }
 
 
-export async function twin(request, env, url, { isAdmin, noteThermal = null }) {
+export async function twin(request, env, url, { isAdmin, noteThermal = null, noteSnap = null }) {
   const p = url.pathname;
   if (p !== '/api/scan/twin' && p !== '/api/scan/twins') return null;
   if (!(await isAdmin(request, env))) return json({ error: 'Not found' }, 404);
@@ -64,6 +64,8 @@ export async function twin(request, env, url, { isAdmin, noteThermal = null }) {
     await env.TWIN.put(keyOf(walk, part), body, { httpMetadata: { contentType: typeOf(part) } });
     // dev only: a thermal walk's placement says which map it is of (thermal.js keeps that, for the water map)
     if (part === 'thermal-placement.json' && noteThermal) await noteThermal(env, walk, body);
+    // dev only: a single thermal photo's notes, sent once its frames are whole (thermal-snap.js lists it)
+    if (part === 'thermal-snap.json' && noteSnap) await noteSnap(env, walk, body);
     return json({ ok: true, walk, part, bytes: body.byteLength });
   }
   if (request.method === 'GET') {
