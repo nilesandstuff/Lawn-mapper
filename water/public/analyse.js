@@ -284,6 +284,12 @@ async function walkCheck({ id, records, series, notes }) {
   for (const b of ['0-60', '60-70', '70-80']) bands[b] = stats(ok.filter((k) => (records[k].band || '0-60') === b));
   const main = ok.filter((k) => (records[k].band || '0-60') === '0-60');
   const sunShade = { sun: stats(main.filter((k) => beams[k] >= 0.5)), shade: stats(main.filter((k) => beams[k] < 0.2)) };
+  /* BY DISTANCE FROM PAVING (owner, 2026-11-17: what paving does to the grass beside it, "a pretty big gap in the
+     model"): each square's distance to the nearest paved cell of the plan (driveways, walks, patios; kinds 3 and 4),
+     in bands, both scores; the model's own edge term is S8's estimate, so these bands are its test */
+  const dist = pavingDistance(m.kinds, W, H, cell * Math.cos((lat * Math.PI) / 180));
+  const EDGE = [['0-1 m', 0, 1], ['1-3 m', 1, 3], ['3-7 m', 3, 7], ['7+ m', 7, Infinity]];
+  const edge = Object.fromEntries(EDGE.map(([name, lo, hi]) => { const ks = main.filter((k) => idx[k] >= 0 && dist[idx[k]] >= lo && dist[idx[k]] < hi); return [name, { ...stats(ks), live: stats(ks.filter((k) => Number.isFinite(predSt[k])), predSt), sun: stats(ks.filter((k) => beams[k] >= 0.5)) }]; }));
   const mid = records.length ? records[Math.floor(records.length / 2)].tm : Date.now();
   const wMid = weatherAt(mid);
   used.soil = cols.used;
@@ -294,9 +300,28 @@ async function walkCheck({ id, records, series, notes }) {
   const wSt = weatherAt(mid, true);
   const station = { air: 'the live map\'s: the station\'s air, humidity and wind, the cloud from the satellite\'s sunshine (else the station\'s sky cover)', cloudMid: wSt ? wSt.cloud : null, cloudWalker: wMid ? wMid.cloud : null, airMid: wSt ? wSt.ta : null, airWalker: wMid ? wMid.ta : null,
     ...stats(stOk, predSt), sun: stats(stOk.filter((k) => beams[k] >= 0.5), predSt), shade: stats(stOk.filter((k) => beams[k] < 0.2), predSt) };
-  const out = { id, model: MODEL_VERSION, scoring: SCORING, ...stats(main), bands, sunShade, used, v1, station,
+  const out = { id, model: MODEL_VERSION, scoring: SCORING, ...stats(main), bands, sunShade, edge, used, v1, station,
     open: wMid ? { ts: openNow(wMid, m.params).ts, ta: wMid.ta, ghi: wMid.ghi, cloud: wMid.cloud, el: wMid.el, from: wMid.from } : null, pred: Float32Array.from(pred) };
   self.postMessage({ walkCheck: out }, [out.pred.buffer]);
+}
+
+/** Each cell's distance (m) to the nearest paved cell (kinds 3, 4), to 30 m: two chamfer passes over the grid. */
+function pavingDistance(kinds, W, H, cellM) {
+  const D = new Float32Array(W * H).fill(Infinity), d1 = cellM, d2 = cellM * Math.SQRT2;
+  for (let i = 0; i < W * H; i++) if (kinds[i] === 3 || kinds[i] === 4) D[i] = 0;
+  for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) {
+    const i = r * W + c; let v = D[i];
+    if (c > 0) v = Math.min(v, D[i - 1] + d1);
+    if (r > 0) { v = Math.min(v, D[i - W] + d1); if (c > 0) v = Math.min(v, D[i - W - 1] + d2); if (c < W - 1) v = Math.min(v, D[i - W + 1] + d2); }
+    D[i] = v;
+  }
+  for (let r = H - 1; r >= 0; r--) for (let c = W - 1; c >= 0; c--) {
+    const i = r * W + c; let v = D[i];
+    if (c < W - 1) v = Math.min(v, D[i + 1] + d1);
+    if (r < H - 1) { v = Math.min(v, D[i + W] + d1); if (c < W - 1) v = Math.min(v, D[i + W + 1] + d2); if (c > 0) v = Math.min(v, D[i + W - 1] + d2); }
+    D[i] = v;
+  }
+  return D;
 }
 
 /* THE EXPLORER'S MOMENT (owner, 2026-11-17; public/explore.js): every lawn spot at one time -- its grass surface, its

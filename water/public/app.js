@@ -996,7 +996,7 @@ async function checkWalk(site, walkId) {
   if (res.error) throw new Error(res.error);
   await fetch('/api/water/truth/result', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
     walk: walk.walk || walkId, model: res.model, kind: 'surface', n: res.n, bias: res.bias, rmse: res.rmse, rho: res.rho,
-    detail: { bands: res.bands, sunShade: res.sunShade, used: res.used, open: res.open, v1: res.v1 || null, station: res.station || null, scoring: res.scoring || 1, offLawn, weather: weather.sources || [] },
+    detail: { bands: res.bands, sunShade: res.sunShade, edge: res.edge || null, used: res.used, open: res.open, v1: res.v1 || null, station: res.station || null, scoring: res.scoring || 1, offLawn, weather: weather.sources || [] },
   }) });
 }
 function walkCards() {

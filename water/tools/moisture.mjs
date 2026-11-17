@@ -97,6 +97,8 @@ walks.forEach((w, k) => {
     console.log(`    ${r.model}  ${r.kind}: n ${r.n}  mean ${F(r.bias)}  RMS ${r.rmse === null ? '-' : (r.rmse * 1.8).toFixed(1)}  rho ${f(r.rho)}  | sun ${F(sh.sun?.bias)} (${sh.sun?.n ?? 0})  shade ${F(sh.shade?.bias)} (${sh.shade?.n ?? 0})  | 60-70 ${F(b['60-70']?.bias)} (${b['60-70']?.n ?? 0})  70-80 ${F(b['70-80']?.bias)} (${b['70-80']?.n ?? 0})`);
     // the same walk on the station's air (scoring 2, 2026-11-17): what the live map, which has only the station's, can do
     const st = d.station;
+    // by distance from paving (2026-11-17): the grass beside a driveway against the model's edge term (S8)
+    if (d.edge) console.log(`      from paving: ${Object.entries(d.edge).map(([b, x]) => `${b} ${F(x.bias)} (${x.n || 0}${x.sun?.n ? `, sun ${F(x.sun.bias)}` : ''})`).join('  ')}  | live map: ${Object.entries(d.edge).map(([b, x]) => `${b} ${F(x.live?.bias)}`).join('  ')}`);
     if (st && Number.isFinite(st.bias)) console.log(`      the live map's own (station air, satellite cloud): mean ${F(st.bias)}  RMS ${(st.rmse * 1.8).toFixed(1)}  rho ${f(st.rho)}  | sun ${F(st.sun?.bias)}  shade ${F(st.shade?.bias)}  | the air at mid-walk: walker ${Number.isFinite(st.airWalker) ? (st.airWalker * 1.8 + 32).toFixed(1) : '-'} F, station ${Number.isFinite(st.airMid) ? (st.airMid * 1.8 + 32).toFixed(1) : '-'} F`);
   }
 });
