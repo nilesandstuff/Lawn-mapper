@@ -246,7 +246,8 @@ async function walkCheck({ id, records, series, notes }) {
     const ta = byStation ? s.ta : airAt(t) ?? s.ta;
     /* the cloud for the sky's longwave: the walker's word, the sky sweep, else by day the satellite's sunshine against
        the clear sky (momentOf works it out when no cloud is given), else the station's sky cover */
-    const cloud = Number.isFinite(typed) ? typed : sweep ?? (Number.isFinite(s.ghi) ? null : s.cloud);
+    // the live map's run (byStation) has neither the walker's word nor the sweep: the satellite's sunshine, else the station's sky cover
+    const cloud = !byStation && Number.isFinite(typed) ? typed : (!byStation ? sweep : null) ?? (Number.isFinite(s.ghi) ? null : s.cloud);
     const w = Number.isFinite(ta) ? momentOf({ t, lat, lng, ta, rh: Number.isFinite(s.rh) ? s.rh : 70, wind: s.wind, ghi: s.ghi, cloud }) : null;
     M.set(key, w);
     return w;
@@ -262,9 +263,10 @@ async function walkCheck({ id, records, series, notes }) {
     const s = spotAt(cols, i, beams[k], w, r.tm, ks ? ks[i] : null);
     pred[k] = s ? s.ts : was[k];
   });
-  // the second score: the station's air at every record (only differs when the walker read the air)
-  const predSt = airs.length ? new Float32Array(records.length).fill(NaN) : pred;
-  if (airs.length) records.forEach((r, k) => {
+  /* the second score: the live map's own prediction -- nothing of the walker's in it but the walk's time and place:
+     the station's air, humidity and wind, the cloud from the satellite's sunshine (else the station's sky cover) */
+  const predSt = new Float32Array(records.length).fill(NaN);
+  records.forEach((r, k) => {
     const w = weatherAt(r.tm, true), i = idx[k];
     if (!w || i < 0) return;
     const s = spotAt(cols, i, beams[k], w, r.tm, ks ? ks[i] : null);
@@ -290,7 +292,7 @@ async function walkCheck({ id, records, series, notes }) {
   const v1 = cols.spun ? { model: 'surface-now 1 (2026-11-15)', ...stats(wasOk, was), sun: stats(wasOk.filter((k) => beams[k] >= 0.5), was), shade: stats(wasOk.filter((k) => beams[k] < 0.2), was) } : null;
   const stOk = main.filter((k) => Number.isFinite(predSt[k]));
   const wSt = weatherAt(mid, true);
-  const station = { air: airs.length ? 'the station\'s, nearest each minute' : 'the station\'s (the walker read no air: the same as the score)', airMid: wSt ? wSt.ta : null, airWalker: wMid ? wMid.ta : null,
+  const station = { air: 'the live map\'s: the station\'s air, humidity and wind, the cloud from the satellite\'s sunshine (else the station\'s sky cover)', cloudMid: wSt ? wSt.cloud : null, cloudWalker: wMid ? wMid.cloud : null, airMid: wSt ? wSt.ta : null, airWalker: wMid ? wMid.ta : null,
     ...stats(stOk, predSt), sun: stats(stOk.filter((k) => beams[k] >= 0.5), predSt), shade: stats(stOk.filter((k) => beams[k] < 0.2), predSt) };
   const out = { id, model: MODEL_VERSION, scoring: SCORING, ...stats(main), bands, sunShade, used, v1, station,
     open: wMid ? { ts: openNow(wMid, m.params).ts, ta: wMid.ta, ghi: wMid.ghi, cloud: wMid.cloud, el: wMid.el, from: wMid.from } : null, pred: Float32Array.from(pred) };

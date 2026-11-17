@@ -98,7 +98,7 @@ function render() {
       const r = t?.results?.find((x) => x.model === MODEL_VERSION && x.kind === 'surface');
       const status = !c ? (t ? 'kept here' : '-') : c.ok === true ? `<span class="ok">converted</span>${Number.isFinite(c.records) ? `, ${c.records} records` : ''}` : c.ok === false ? `<span class="bad">could not be converted</span>: ${esc(c.error || '')}` : 'waiting to be turned into temperatures (every 2 hours)';
       const st = r?.detail?.station;
-      const score = r ? `${r.n} squares, off by ${F(r.bias)} °F on average (RMS ${Number.isFinite(r.rmse) ? (r.rmse * 1.8).toFixed(1) : '-'}), rank ${Number.isFinite(r.rho) ? r.rho.toFixed(2) : '-'}${st && Number.isFinite(st.bias) && !/same as the score/.test(st.air || '') ? `<br><span class="dim">on the station's air instead: off by ${F(st.bias)} °F, RMS ${(st.rmse * 1.8).toFixed(1)}</span>` : ''}` : c?.ok === true ? '<span class="dim">not scored yet</span>' : '-';
+      const score = r ? `${r.n} squares, off by ${F(r.bias)} °F on average (RMS ${Number.isFinite(r.rmse) ? (r.rmse * 1.8).toFixed(1) : '-'}), rank ${Number.isFinite(r.rho) ? r.rho.toFixed(2) : '-'}${st && Number.isFinite(st.bias) && !/same as the score/.test(st.air || '') ? `<br><span class="dim">the live map's own prediction (station air, satellite cloud): off by ${F(st.bias)} °F, RMS ${(st.rmse * 1.8).toFixed(1)}</span>` : ''}` : c?.ok === true ? '<span class="dim">not scored yet</span>' : '-';
       const started = t?.started ?? c?.started;
       return `<tr><td>${Number.isFinite(started) ? when(started) : esc(wid)}</td><td>${status}</td><td>${score}</td></tr>`;
     }).join('');

@@ -39,8 +39,10 @@ import { sunAt, clearSky, SOLAR_CONSTANT } from './shade/sun.js';
 export const MODEL_VERSION = 'surface-now 2, soil columns (2026-11-17)';
 /* WHAT A WALK'S RESULT CARRIES, apart from the model (a walk whose result is older is scored again, with no change of
    model): 1, the scores; 2 (2026-11-17), the same walk scored again with the station's air in place of the walker's
-   (the owner: "we should score it both ways... the prediction can't be any more accurate than the station's"). */
-export const SCORING = 2;
+   (the owner: "we should score it both ways... the prediction can't be any more accurate than the station's"); 3 (the
+   same day), that second score made the live map's own prediction: the cloud too from the satellite or the station,
+   not the walker's word or sky sweep (the owner: "have the station run be the same as the live map prediction"). */
+export const SCORING = 3;
 /* version 1 (2026-11-15): G as a share of Rn (FAO-56 hourly), no heat stored in the ground. Version 2: each spot's own
    soil column, spun up over the weeks before (lib/soiltemp.js, FINDINGS H92); version 1 stays as surfaceNowAt for a
    walk with no hourly weather to spin up from. */

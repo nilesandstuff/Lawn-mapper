@@ -88,7 +88,7 @@ walks.forEach((w, k) => {
     console.log(`    ${r.model}  ${r.kind}: n ${r.n}  mean ${F(r.bias)}  RMS ${r.rmse === null ? '-' : (r.rmse * 1.8).toFixed(1)}  rho ${f(r.rho)}  | sun ${F(sh.sun?.bias)} (${sh.sun?.n ?? 0})  shade ${F(sh.shade?.bias)} (${sh.shade?.n ?? 0})  | 60-70 ${F(b['60-70']?.bias)} (${b['60-70']?.n ?? 0})  70-80 ${F(b['70-80']?.bias)} (${b['70-80']?.n ?? 0})`);
     // the same walk on the station's air (scoring 2, 2026-11-17): what the live map, which has only the station's, can do
     const st = d.station;
-    if (st && Number.isFinite(st.bias)) console.log(`      on the station's air: mean ${F(st.bias)}  RMS ${(st.rmse * 1.8).toFixed(1)}  rho ${f(st.rho)}  | sun ${F(st.sun?.bias)}  shade ${F(st.shade?.bias)}  | the air at mid-walk: walker ${Number.isFinite(st.airWalker) ? (st.airWalker * 1.8 + 32).toFixed(1) : '-'} F, station ${Number.isFinite(st.airMid) ? (st.airMid * 1.8 + 32).toFixed(1) : '-'} F`);
+    if (st && Number.isFinite(st.bias)) console.log(`      the live map's own (station air, satellite cloud): mean ${F(st.bias)}  RMS ${(st.rmse * 1.8).toFixed(1)}  rho ${f(st.rho)}  | sun ${F(st.sun?.bias)}  shade ${F(st.shade?.bias)}  | the air at mid-walk: walker ${Number.isFinite(st.airWalker) ? (st.airWalker * 1.8 + 32).toFixed(1) : '-'} F, station ${Number.isFinite(st.airMid) ? (st.airMid * 1.8 + 32).toFixed(1) : '-'} F`);
   }
 });
 // pooled by model version: the line to read first when the model changes
@@ -105,7 +105,7 @@ if (versions.length) {
     console.log(`  ${v}: ${rs.length} walks, ${n} squares, mean ${F(bias)}, RMS ${(rms * 1.8).toFixed(1)}, median rho ${rhos.length ? rhos[rhos.length >> 1].toFixed(2) : '-'}  (the walker's air)`);
     const sts = rs.map((r) => { try { return JSON.parse(r.detail || '{}')?.station; } catch { return null; } }).filter((x) => x && x.n > 0 && Number.isFinite(x.bias));
     const ns = sts.reduce((a, x) => a + x.n, 0);
-    if (ns) console.log(`  ${' '.repeat(v.length)}  ${sts.length} walks, ${ns} squares, mean ${F(sts.reduce((a, x) => a + x.bias * x.n, 0) / ns)}, RMS ${(Math.sqrt(sts.reduce((a, x) => a + x.rmse ** 2 * x.n, 0) / ns) * 1.8).toFixed(1)}  (the station's air)`);
+    if (ns) console.log(`  ${' '.repeat(v.length)}  ${sts.length} walks, ${ns} squares, mean ${F(sts.reduce((a, x) => a + x.bias * x.n, 0) / ns)}, RMS ${(Math.sqrt(sts.reduce((a, x) => a + x.rmse ** 2 * x.n, 0) / ns) * 1.8).toFixed(1)}  (the live map's own prediction)`);
   }
 }
 
