@@ -2811,6 +2811,20 @@ builder's code): the spin-up adds 2-4 s; at 2 pm in mid-November the soil column
 version 1's, at 10 pm under a clear sky 1.4 C (2.5 F) below. Whether it closes H91's 4-5 F on the real walks is the
 next entry: both walks are re-scored by the builder under the new version.
 
+### H93. The soil columns on the two real walks: the afternoon walk closer, the dusk walk further off (water session, 2026-11-17)
+
+Both walks re-scored by the builder at 03:03 and 03:10 UTC under surface-now 2 (H92); the same frozen weather as H91.
+Measured minus modelled, F (version 1 -> version 2):
+  W1  dusk, overcast, all squares in shade: mean -5.1 -> -6.0, RMS 5.1 -> 6.0; rank - -> 0.32 (version 1's squares
+      were too alike to rank; the columns now differ spot to spot); 60-70 degrees -5.7 -> -6.5, 70-80 -6.0 -> -6.8.
+  W2  early afternoon, partly cloudy: mean -3.7 -> -3.0, RMS 4.9 -> 4.3, rank 0.48 -> 0.49; sun -3.0 -> -2.8 (451),
+      SHADE -5.6 -> -4.1 (224); 60-70 -3.5 -> -2.8, 70-80 -3.9 -> -3.3.
+  Pooled, 900 squares: mean -3.9 -> -3.5, RMS 4.9 -> 4.6, median rank 0.48 -> 0.49.
+WHAT THIS SAYS, AS MEASURED: the soil columns took a fifth off the afternoon walk's gap and most of the gap between
+its shaded and sunny squares (2.6 F -> 1.3 F), but made the overcast dusk walk 0.9 F worse: at dusk the modelled
+soil gives back more heat than the old fixed share did, so the model's soil under that lawn is warmer than the
+camera's surface allows. Two November walks; the model is still 3-6 F warm. Nothing was tuned to them.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge
@@ -3175,4 +3189,10 @@ readings are taken as true, and the gap is the model's. Unmeasured candidates, i
 model has no heat stored in the ground (G is a share of Rn, FAO-56 hourly), so a cold soil that pulls the grass
 surface below the air is not in it, and the shaded squares -- with less sun to outweigh the soil -- being further off
 fits that; (3) the sky: the night and dusk cooling uses Brutsaert's clear sky with the sweep's cloud, and an overcast
-dusk (W1) still came out 5 F warm. A summer walk would weaken (2); a still, clear night would test (3). (2) is IN THE MODEL since 2026-11-17 (H92, each spot's soil column); whether it was the cause is measured by re-scoring both walks.
+dusk (W1) still came out 5 F warm. A summer walk would weaken (2); a still, clear night would test (3). (2) is IN THE MODEL since 2026-11-17 (H92, each spot's soil column); whether it was the cause is measured by re-scoring both walks. MEASURED (H93): it explains part of the afternoon
+walk and the shade's extra gap there, not the dusk walk, which got worse. Still unmeasured, in no settled order: (4) the
+still air of evening: ra stays the neutral 208/u2, while a calm, stable dusk carries less of the air's heat down to
+the grass, so the model's surface cools too slowly after sunset -- it would act most on W1; (5) the turf and thatch
+insulate the soil from the surface more than IFS's 10 W/m2/K (a lower conductance cools the skin faster at night and
+lets less of the soil's heat up); (6) the spin-up's soil itself too warm (Open-Meteo's archived air, or the IEMRE
+wave the column starts on). A soil thermometer at 2 in read during a walk would separate (5)-(6) from (4).
