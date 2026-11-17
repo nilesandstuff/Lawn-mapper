@@ -304,8 +304,14 @@ async function walkCheck({ id, records, series, notes }) {
    for the weather. Kept (kept.moment) so a tapped spot's factors come back at once (explain). */
 const lerpDepth = (T, z) => { for (let k = 1; k < CENTRES.length; k++) if (z <= CENTRES[k]) { const a = (z - CENTRES[k - 1]) / (CENTRES[k] - CENTRES[k - 1]); return T[k - 1] + a * (T[k] - T[k - 1]); } return T[T.length - 1]; };
 async function moment({ id, t, sprinklers = false, depthCm = null }) {
+  const r = await momentCore({ t, sprinklers, depthCm });
+  if (r.error) { self.postMessage({ moment: { id, error: r.error } }); return; }
+  const { w, used, surface, soil5, soil10, wind, soilD } = r;
+  self.postMessage({ moment: { id, t, w: { ta: w.ta, rh: w.rh, wind: w.wind, ghi: w.ghi, cloud: w.cloud, el: w.el }, used, surface, soil5, soil10, wind, soilD, depthCm } }, [surface.buffer, soil5.buffer, soil10.buffer, wind.buffer, ...(soilD ? [soilD.buffer] : [])]);
+}
+async function momentCore({ t, sprinklers = false, depthCm = null }) {
   const m = kept.model;
-  if (!m || !kept.lightRes) { self.postMessage({ moment: { id, error: m ? 'the shade is not worked out on this map' : 'the plan is not worked out yet' } }); return; }
+  if (!m || !kept.lightRes) return { error: m ? 'the shade is not worked out on this map' : 'the plan is not worked out yet' };
   const g = kept.lightRes.grid, N = g.W * g.H, W = g.W;
   const kinds = m.kinds;
   const cells = []; for (let i = 0; i < N; i++) if (kinds[i] === 1) cells.push(i);
@@ -319,10 +325,10 @@ async function moment({ id, t, sprinklers = false, depthCm = null }) {
     beams = (await L.ask({ type: 'samples', pts: q, heightM: 0.1 })).T;
     cols = await columnsTo(L, cells, tEnd, { sprinklers, wantDate: new Date(t).toISOString().slice(0, 10) });
   } finally { L.close(); }
-  if (!cols.spun) { self.postMessage({ moment: { id, error: `the soil columns: ${cols.why}` } }); return; }
+  if (!cols.spun) return { error: `the soil columns: ${cols.why}` };
   // the moment's own weather: the hour it falls in, from the same archived hours
   const hr = spinHours(cols.raw, tEnd, tEnd + 36e5).hours[0];
-  if (!hr) { self.postMessage({ moment: { id, error: 'Open-Meteo has no weather for that hour yet' } }); return; }
+  if (!hr) return { error: 'Open-Meteo has no weather for that hour yet' };
   const w = momentOf({ t, lat: kept.lat, lng: kept.lng, ta: hr.ta, rh: hr.rh, wind: hr.wind, ghi: hr.ghi, cloud: hr.cloud });
   const surface = new Float32Array(N).fill(NaN), soil5 = new Float32Array(N).fill(NaN), soil10 = new Float32Array(N).fill(NaN), wind = new Float32Array(N).fill(NaN);
   const soilD = Number.isFinite(depthCm) ? new Float32Array(N).fill(NaN) : null; // a reading's own depth (the field page's soil thermometer)
@@ -332,8 +338,32 @@ async function moment({ id, t, sprinklers = false, depthCm = null }) {
     surface[i] = s.ts; soil5[i] = lerpDepth(s.T, 0.05); soil10[i] = lerpDepth(s.T, 0.10); wind[i] = s.f.u2;
     if (soilD) soilD[i] = lerpDepth(s.T, depthCm / 100);
   });
-  kept.moment = { id, t, w, cells, beams, cols, sprinklers };
-  self.postMessage({ moment: { id, t, w: { ta: w.ta, rh: w.rh, wind: w.wind, ghi: w.ghi, cloud: w.cloud, el: w.el }, used: cols.used, surface, soil5, soil10, wind, soilD, depthCm } }, [surface.buffer, soil5.buffer, soil10.buffer, wind.buffer, ...(soilD ? [soilD.buffer] : [])]);
+  kept.moment = { t, w, cells, beams, cols, sprinklers };
+  return { w, used: cols.used, surface, soil5, soil10, wind, soilD };
+}
+
+/* POINT READINGS AGAINST THE MODEL (the water builder's soil check, 2026-11-17; src/autoscore.js): readings taken at
+   one time -- a soil thermometer at depthCm, or the grass surface -- each set against the nearest lawn spot's model
+   (within two cells, as the explorer). points: [{ n, lng, lat, value (C) }] -> { n, bias, rmse, rho, spots, used } */
+async function pointsAt({ id, t, depthCm = null, points = [], view = 'soil' }) {
+  const r = await momentCore({ t, depthCm: view === 'soil' ? depthCm : null });
+  if (r.error) { self.postMessage({ pointsAt: { id, error: r.error } }); return; }
+  const field = view === 'soil' ? r.soilD : r.surface, g = kept.lightRes.grid, W = g.W, H = g.H, cell = (g.bbox[2] - g.bbox[0]) / W;
+  const spots = points.map((p) => {
+    const [X, Y] = toMercS([p.lng, p.lat]);
+    const c0 = Math.floor((X - g.bbox[0]) / cell), r0 = Math.floor((g.bbox[3] - Y) / cell);
+    let best = -1, bd = Infinity;
+    for (let rr = r0 - 2; rr <= r0 + 2; rr++) for (let cc = c0 - 2; cc <= c0 + 2; cc++) {
+      if (rr < 0 || cc < 0 || rr >= H || cc >= W) continue;
+      const i = rr * W + cc, dd = (rr - r0) ** 2 + (cc - c0) ** 2;
+      if (Number.isFinite(field[i]) && dd < bd) { bd = dd; best = i; }
+    }
+    return { n: p.n, value: p.value, model: best >= 0 ? field[best] : null };
+  });
+  const ok = spots.filter((x) => Number.isFinite(x.model) && Number.isFinite(x.value)), d = ok.map((x) => x.value - x.model);
+  const bias = d.length ? d.reduce((a, b) => a + b, 0) / d.length : null;
+  self.postMessage({ pointsAt: { id, view, depthCm, n: ok.length, bias, rmse: d.length ? Math.sqrt(d.reduce((a, b) => a + b * b, 0) / d.length) : null,
+    rho: ok.length >= 3 ? spearman(ok.map((x) => x.value), ok.map((x) => x.model)) : null, spots, used: r.used, air: r.w.ta, model: MODEL_VERSION } });
 }
 
 /** A spot's month shelter and the sky it sees, as forcingAt reads them. */
@@ -820,11 +850,12 @@ self.onmessage = async ({ data }) => {
     else if (data.moment) await moment(data.moment);
     else if (data.explain) explain(data.explain);
     else if (data.moistureAt) moistureAt(data.moistureAt);
+    else if (data.pointsAt) await pointsAt(data.pointsAt);
   } catch (e) {
     if (data?.heat) { self.postMessage({ heat: { id: data.heat.id, error: e.message || String(e) } }); return; }
     if (data?.surfCheck) { self.postMessage({ surfCheck: { id: data.surfCheck.id, error: e.message || String(e) } }); return; }
     if (data?.walkCheck) { self.postMessage({ walkCheck: { id: data.walkCheck.id, error: e.message || String(e) } }); return; }
-    for (const key of ['moment', 'explain', 'moistureAt']) if (data?.[key]) { self.postMessage({ [key]: { id: data[key].id, error: e.message || String(e) } }); return; }
+    for (const key of ['moment', 'explain', 'moistureAt', 'pointsAt']) if (data?.[key]) { self.postMessage({ [key]: { id: data[key].id, error: e.message || String(e) } }); return; }
     if (data?.valvePlan) { self.postMessage({ valvePlan: { id: data.valvePlan.id, error: e.message || String(e) } }); return; }
     self.postMessage(kept.r ? { planError: e.message || String(e) } : { error: e.message || String(e) });
   }

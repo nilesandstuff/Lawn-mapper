@@ -40,6 +40,15 @@ for (const c of checks) {
   const k = visits.findIndex((v) => v.id === c.visit_id);
   let det = {}; try { det = JSON.parse(c.detail || '{}'); } catch { /* none */ }
   const st = det.settings || {}, spots = det.spots || [];
+  if (visits[k]?.unit === 'soil_f' || det.kind === 'soil') {
+    // a field visit's soil thermometer against the model's soil at that depth and time (the water builder, 2026-11-17)
+    const F1 = (c) => (c === null || c === undefined ? '-' : (c * 1.8 > 0 ? '+' : '') + (c * 1.8).toFixed(1));
+    const toF = (c) => (c === null || c === undefined ? '-' : (c * 1.8 + 32).toFixed(1));
+    console.log(`#${k + 1}  SOIL TEMPERATURE at ${det.depth_in ?? '?'} in  checked ${new Date(c.checked).toISOString().slice(0, 16)}  ${det.model || ''}  n ${c.n}  measured - model ${F1(det.bias)} F  RMS ${det.rmse === null || det.rmse === undefined ? '-' : (det.rmse * 1.8).toFixed(1)} F  rho ${f(c.rho)}  the model's air ${toF(det.air)} F`);
+    console.log('   n  reading_F  model_F');
+    for (const s of spots) console.log(`  ${String(s.n).padStart(2)}  ${toF(s.value).padStart(8)}  ${toF(s.model).padStart(7)}`);
+    continue;
+  }
   if (visits[k]?.unit === 'surface_f') {
     // a surface-temperature visit: each spot's surface minus the air, measured and modelled (F)
     console.log(`#${k + 1}  SURFACE  checked ${new Date(c.checked).toISOString().slice(0, 16)}  ${st.season || ''}  rho ${f(c.rho)} over ${c.n} lawn spots`);

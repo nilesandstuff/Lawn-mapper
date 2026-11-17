@@ -31,18 +31,35 @@ async function weatherFor(lat, lng, t0, t1) {
   return weatherOfMoment(stations, lat, lng, t0, t1, { extra: { rows } });
 }
 
-export async function score({ record, id, walk, base, weather: frozen = null }) {
-  if (!record || !walk || !base) return { ok: false, why: 'record, walk and base are needed' };
-  if (!Number.isFinite(record.lng) || !Number.isFinite(record.lat)) return { ok: false, why: 'the map has no place' };
+/** The map worked out (kept: a second request while it is still being worked out waits for the same one), or why not. */
+async function mapFor(record, id, base) {
+  if (!Number.isFinite(record?.lng) || !Number.isFinite(record?.lat)) return { why: 'the map has no place' };
   const site = siteOf(record, id);
   const key = `${id}|${record.at || ''}|${JSON.stringify(record.shapes || []).length}`;
-  // the promise is kept, so a second request while a map is still being worked out waits for the same one
   if (!open.has(key)) { open.clear(); open.set(key, openMap({ site, inputs: inputsOf(site.water), base })); }
   let run;
   try { run = await open.get(key); } catch (e) { open.delete(key); throw e; }
   // a plan without its shade would score every square as in full sun: no score rather than a wrong one
   const shadeTrouble = (run.plan.trouble || []).find((t) => /shade/.test(t));
-  if (shadeTrouble) { open.delete(key); return { ok: false, why: shadeTrouble }; }
+  if (shadeTrouble) { open.delete(key); return { why: shadeTrouble }; }
+  return { run, site };
+}
+
+/* A VISIT'S POINT READINGS (2026-11-17: the field page's soil thermometer): { record, id, base, visit: { at,
+   depth_in, readings: [{ n, lng, lat, value (F) }] }, view } -> { ok, result: the worker's pointsAt } */
+export async function points({ record, id, base, visit, view = 'soil' }) {
+  if (!record || !visit || !base) return { ok: false, why: 'record, visit and base are needed' };
+  const { run, why } = await mapFor(record, id, base);
+  if (!run) return { ok: false, why };
+  const pts = (visit.readings || []).filter((r) => Number.isFinite(r.lng) && Number.isFinite(r.value)).map((r) => ({ n: r.n, lng: r.lng, lat: r.lat, value: (r.value - 32) / 1.8 }));
+  const result = await run.ask('pointsAt', { t: visit.at, depthCm: Number.isFinite(visit.depth_in) ? visit.depth_in * 2.54 : 7.5, points: pts, view });
+  return result.error ? { ok: false, why: result.error } : { ok: true, result };
+}
+
+export async function score({ record, id, walk, base, weather: frozen = null }) {
+  if (!record || !walk || !base) return { ok: false, why: 'record, walk and base are needed' };
+  const { run, site, why } = await mapFor(record, id, base);
+  if (!run) return { ok: false, why };
   const lawnAt = ([lng, lat]) => { const k = run.cellAt?.([lng, lat]); return k >= 0 && run.plan.kinds?.[k] === 1; };
   const placed = walkRecords(walk, site, { lawnAt });
   if (!placed.records.length) return { ok: false, why: `no record of the walk lands on the lawn (${placed.offLawn} off it)`, placed: { ...placed, records: undefined } };
@@ -64,6 +81,12 @@ const server = http.createServer(async (req, res) => {
       let b = ''; for await (const c of req) b += c;
       const t = Date.now(), out = await score(JSON.parse(b || '{}'));
       console.log(`score ${out.ok ? 'ok' : 'failed'} in ${Math.round((Date.now() - t) / 1000)} s${out.result ? `, ${out.result.n} squares` : ''}`);
+      return send(200, out);
+    }
+    if (req.method === 'POST' && req.url === '/points') {
+      let b = ''; for await (const c of req) b += c;
+      const t = Date.now(), out = await points(JSON.parse(b || '{}'));
+      console.log(`points ${out.ok ? 'ok' : 'failed'} in ${Math.round((Date.now() - t) / 1000)} s${out.result ? `, ${out.result.n} spots` : ''}`);
       return send(200, out);
     }
     send(404, { ok: false, why: 'not found' });

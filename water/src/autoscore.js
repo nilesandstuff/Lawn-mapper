@@ -21,6 +21,13 @@ const converted = (w) => w && Array.isArray(w.records) && w.records.length > 0;
 /** The water site's own origin, from the main site's host: lawnmap.<home> -> https://water.<home>. */
 export const waterBase = (env) => `https://water.${String(env.LAWNMAP_HOST || '').split('.').slice(1).join('.')}`;
 
+/* THE WEATHER OF A WALK SETTLES BEFORE IT IS FROZEN (2026-11-17: the owner's third walk was scored 14 minutes after it
+   ended, before the airport station's next hourly report and the satellite's sunshine were out, and its weather was
+   frozen with the weather model's alone). A walk's weather is frozen once it holds both, or once SETTLE_MS have passed;
+   until then the walk is scored on what there is and scored again by the hourly sweep. */
+export const SETTLE_MS = 6 * 36e5;
+export const completeWeather = (w) => { const s = w?.sources || []; return s.some((x) => /^ASOS/.test(x?.name || '')) && s.some((x) => /satellite/i.test(x?.name || '')); };
+
 /** Work the queue: at most `max` walks scored. -> [{ key, state, why }] */
 export async function runQueue(env, { max = 1, base = waterBase(env) } = {}) {
   const out = [];
@@ -40,7 +47,7 @@ export async function runQueue(env, { max = 1, base = waterBase(env) } = {}) {
     if (scored >= max) break;
     if (!env.WATER_BUILDER) { out.push({ key: job.key, state: 'queued', why: 'the water builder is not bound yet' }); break; }
     scored++;
-    const r = await scoreOne(env, job, base).catch((e) => ({ state: 'retry', why: String(e?.message || e) }));
+    const r = await (job.kind === 'soil' ? soilOne(env, job, base) : scoreOne(env, job, base)).catch((e) => ({ state: 'retry', why: String(e?.message || e) }));
     if (r.state === 'done') await settle(env, job.key, 'done', r.why);
     else if (r.state === 'failed' || job.tries >= (r.state === 'wait' ? 576 : 3)) await settle(env, job.key, 'failed', r.why);
     else await settle(env, job.key, 'queued', r.why); // tries + 1, back in the queue
@@ -62,17 +69,35 @@ async function scoreOne(env, job, base) {
   const p = o.placed || {}, r = o.result || {};
   const kept = await putWalk(env, { walk: job.walk, map_id: job.map_id, parcel_pin: pinOf(record), source: 'thermal', started: p.started, ended: p.ended, kinds: p.kinds, notes: p.notes });
   if (kept.error) return { state: 'failed', why: kept.error };
-  if (!frozen && o.weather?.series?.length) await putWeather(env, job.walk, o.weather.sources, o.weather.series);
+  if (!frozen && o.weather?.series?.length && (completeWeather(o.weather) || Date.now() > (p.ended ?? p.started ?? 0) + SETTLE_MS)) await putWeather(env, job.walk, o.weather.sources, o.weather.series);
   const res2 = await putResult(env, { walk: job.walk, model: r.model, kind: 'surface', n: r.n, bias: r.bias, rmse: r.rmse, rho: r.rho,
     detail: { bands: r.bands, sunShade: r.sunShade, used: r.used, open: r.open, v1: r.v1 || null, station: r.station || null, scoring: r.scoring || 1, offLawn: p.offLawn, weather: (frozen || o.weather)?.sources || [], by: 'the water builder' } });
   if (res2.error) return { state: 'failed', why: res2.error };
   return { state: 'done', why: `${r.n} squares` };
 }
 
+/* A FIELD VISIT'S SOIL TEMPERATURES AGAINST THE MODEL (2026-11-17): the builder sets each reading against the model's
+   soil at the reading's depth and the visit's time (public/analyse.js pointsAt); kept as the visit's check, numbers
+   only, as the readings page's moisture checks are, so the readings report can print it. */
+async function soilOne(env, job, base) {
+  const record = await env.MAIN.saveOf(job.map_id);
+  if (!record) return { state: 'failed', why: 'not an admin save, or no longer there' };
+  const v = await env.DB.prepare('SELECT id, at, depth_in, unit FROM moisture_visits WHERE id = ?').bind(job.walk).first();
+  if (!v || v.unit !== 'soil_f') return { state: 'failed', why: 'no soil temperature visit by that id' };
+  const readings = (await env.DB.prepare('SELECT n, lng, lat, value FROM moisture_readings WHERE visit_id = ? ORDER BY n').bind(v.id).all()).results || [];
+  const res = await env.WATER_BUILDER.fetch('https://water-builder/points', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ record, id: job.map_id, base, visit: { at: v.at, depth_in: v.depth_in, readings }, view: 'soil' }) });
+  const o = await res.json().catch(() => null);
+  if (!o?.ok) return { state: 'retry', why: o?.why || `the builder answered ${res.status}` };
+  const r = o.result;
+  const detail = { kind: 'soil', model: r.model, depth_in: v.depth_in, bias: r.bias, rmse: r.rmse, air: r.air, used: r.used, by: 'the water builder', spots: (r.spots || []).map((x) => ({ n: x.n, value: x.value, model: x.model })) };
+  await env.DB.prepare('INSERT OR REPLACE INTO moisture_checks (visit_id, checked, rho, n, detail) VALUES (?, ?, ?, ?, ?)').bind(v.id, Date.now(), Number.isFinite(r.rho) ? r.rho : null, r.n, JSON.stringify(detail)).run();
+  return { state: 'done', why: `${r.n} soil readings` };
+}
+
 /** Every admin save's converted walks the current model has not scored: queued.
  *  -> { saves, walks, converted, waiting, failed, scored, queued } (counts only, for the timer's log) */
 export async function sweep(env) {
-  const out = { saves: 0, walks: 0, converted: 0, waiting: 0, failed: 0, scored: 0, queued: 0 };
+  const out = { saves: 0, walks: 0, converted: 0, waiting: 0, failed: 0, scored: 0, queued: 0, refetched: 0, soil: 0 };
   if (!env.MAIN || !env.DB) return out;
   const saves = (await env.MAIN.adminSaves().catch(() => null)) || [];
   // scored: by this model, and carrying all a result now carries (SCORING: a walk scored before the station's score is scored again)
@@ -88,6 +113,31 @@ export async function sweep(env) {
       if (scored.has(String(w.walk))) { out.scored++; continue; }
       if (w.walk) { await enqueue(env, 'walk', s.id, { walk: String(w.walk) }); out.queued++; }
     }
+  }
+  /* weather frozen too early, or not frozen yet (SETTLE_MS above): a walk of the last ten days, two hours or more after
+     it ended, scored again on its weather fetched afresh */
+  const now = Date.now();
+  const young = (await env.DB.prepare(`SELECT w.walk, w.map_id, w.started, w.ended, tw.walk AS fw, tw.sources, tw.fetched FROM truth_walks w LEFT JOIN truth_weather tw ON tw.walk = w.walk
+    WHERE COALESCE(w.ended, w.started) > ? AND EXISTS (SELECT 1 FROM truth_results r WHERE r.walk = w.walk)`).bind(now - 10 * 864e5).all()).results || [];
+  for (const r of young) {
+    const end = r.ended ?? r.started;
+    if (now < end + 2 * 36e5) continue;
+    let sources = []; try { sources = JSON.parse(r.sources || '[]'); } catch { /* none */ }
+    const early = r.fw && !completeWeather({ sources }) && r.fetched < end + SETTLE_MS;
+    if (r.fw && !early) continue;
+    if (early) await env.DB.prepare('DELETE FROM truth_weather WHERE walk = ?').bind(r.walk).run();
+    await enqueue(env, 'walk', r.map_id, { walk: String(r.walk) }); out.refetched++;
+  }
+  // the field page's soil temperatures on a test map, not yet checked by this model
+  const saveIds = new Set(saves.map((x) => String(x.id)));
+  const soil = (await env.DB.prepare(`SELECT v.id, v.map_id, c.detail FROM moisture_visits v LEFT JOIN moisture_checks c ON c.visit_id = v.id WHERE v.unit = 'soil_f' AND v.map_id IS NOT NULL`).all()).results || [];
+  for (const v of soil) {
+    if (!saveIds.has(String(v.map_id))) continue;
+    let model = null; try { model = JSON.parse(v.detail || 'null')?.model ?? null; } catch { /* none */ }
+    if (model === MODEL_VERSION) continue;
+    const job = await env.DB.prepare('SELECT state FROM kit_jobs WHERE key = ?').bind(`soil|${v.map_id}|${v.id}`).first();
+    if (job?.state === 'failed' || job?.state === 'queued') continue; // a failed check is not tried again every hour
+    await enqueue(env, 'soil', v.map_id, { walk: v.id }); out.soil++;
   }
   return out;
 }

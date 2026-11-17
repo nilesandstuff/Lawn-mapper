@@ -108,4 +108,20 @@ await test('the shared walk placement and site: off-lawn records dropped, the se
   assert.deepEqual(inputsOf(null).species, []);
 });
 
+await test('weather frozen before the station and the satellite were in is fetched again; a soil visit on a test map is queued once', async () => {
+  const { completeWeather } = await import('../src/autoscore.js');
+  assert.equal(completeWeather({ sources: [{ name: 'Open-Meteo best model (HRRR)' }] }), false);
+  assert.equal(completeWeather({ sources: [{ name: 'ASOS GRR' }, { name: 'Open-Meteo satellite sunshine (GOES)' }] }), true);
+  const env = { DB: d1(), MAIN: main(), WATER_BUILDER: builder([]) };
+  const end = Date.now() - 3 * 36e5;
+  await env.DB.prepare("INSERT INTO truth_walks (walk, map_id, source, started, ended) VALUES ('w9', 'admin|1', 'thermal', ?, ?)").bind(end - 3e5, end).run();
+  await env.DB.prepare("INSERT INTO truth_weather (walk, fetched, sources, series) VALUES ('w9', ?, ?, '[]')").bind(end + 6e5, JSON.stringify([{ name: 'Open-Meteo best model' }])).run();
+  await env.DB.prepare("INSERT INTO truth_results (walk, model, kind, checked, n) VALUES ('w9', 'x', 'surface', 1, 5)").run();
+  await env.DB.prepare("INSERT INTO moisture_visits (id, at, saved, unit, map_id) VALUES ('soilvisit1', 1, 1, 'soil_f', 'admin|1')").run();
+  const sw = await sweep(env);
+  assert.equal(sw.refetched, 1); assert.equal(sw.soil, 1);
+  assert.equal(await env.DB.prepare("SELECT walk FROM truth_weather WHERE walk = 'w9'").first(), null, 'the early weather dropped');
+  assert.equal((await sweep(env)).soil, 0, 'already queued: not again');
+});
+
 console.log(`\n${passed} passed`);
