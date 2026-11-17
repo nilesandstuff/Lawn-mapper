@@ -2828,6 +2828,17 @@ THE TWO WALKS ARE ON TWO DIFFERENT PROPERTIES (W1 property 1, W2 property 2): du
 with one lot against another (its turf, thatch, soil, the station 24 km off). Nothing here separates time of day from
 place; a dusk and an afternoon walk on the same lot would.
 
+### H94. The walker's air on the two walks was WARMER than the station's, and it is what the scores used (water session, 2026-11-17)
+
+The readings report (task readings) now sets the walker's thermometer beside the airport station and Open-Meteo at
+each walk's middle. W1 (dusk): walker 44.6 / 44.6 F, station 42.0 F (24 min off), Open-Meteo 43.0 F. W2 (early
+afternoon, partly sunny): walker 59.5 / 59.2 F, station 50.0 F (3 min off), Open-Meteo 50.7 F. Both scores (H91, H93)
+used the walker's thermometer at each record's minute, as designed (the station's humidity and wind beside it); the
+soil columns' 45 days before use Open-Meteo's air. The owner remembered the walker's air as cooler than the station;
+the records say warmer, by 2.6 F at dusk and 9.5 F in the afternoon sun. How and where the air was read is not
+recorded with the walk. A thermometer in sunlight reads high, and the model's surface follows the air it is given
+almost degree for degree, so the afternoon walk's air is a candidate for part of its 3 F (S30); not measured.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge
