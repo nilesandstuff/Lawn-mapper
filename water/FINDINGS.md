@@ -2786,6 +2786,31 @@ are further off than its sunny ones (-5.6 against -3.0); the steeper bands diffe
 the angle effect on this grass is small at these numbers. Two short November walks on two lots: a first look, not a
 calibration. The weather each was scored on is frozen with it (H85).
 
+### H92. Each spot's own soil column, tied both ways to the surface: built and checked on made-up walks (water session, 2026-11-17)
+
+The owner, 2026-11-17: "We don't currently have any sort of modelling of soil temperature differences between spots.
+Soil temps certainly affect surface temperatures, and surface temps affect soil temps. So we have to find out how to
+model that feedback loop." A research survey the same day (ECMWF IFS/HTESSEL, CLM5, PALM, Noah-MP and the turf
+literature) chose what the large land models do, and that is what was built (lib/soiltemp.js; model surface-now 2,
+soil columns): 8 layers 2, 3, 5, 10, 15, 25, 40, 50 cm to 1.5 m; backward Euler, one-hour steps, a tridiagonal solve
+per spot; a skin with no heat capacity tied to the top layer by 10 W/m2/K (IFS low vegetation) and solved together
+with it, 5% of the net sunshine straight to the top layer; conductivity Johansen (as CLM5 writes it), heat capacity
+de Vries, field capacity, wilting and pore space Saxton & Rawls 2006 from the survey's root-zone texture; the root
+zone as full as the daily water account has it, field capacity below; the bottom held to the year's wave fitted to
+IEMRE's 4-inch series, damped and delayed to 1.5 m (2.4 m annual damping depth); every column started on that wave
+45 days before the walk and run on Open-Meteo's archived hours (historical-forecast API, best_match) with the spot's
+own beam each daylight hour (light worker 'samples', leaves by day of year), Ks and wetness each day, its own wind.
+At each record the column is carried from the walk's hour to the record's minute under the moment's own forcing.
+Version 1 (G a share of Rn) is still worked out on every walk and kept beside it in the result (detail.v1).
+MEASURED SO FAR, ONLY ON THE PROPERTIES AND MADE-UP INPUTS (test/soiltemp.test.js, 11 tests): Saxton & Rawls'
+loam reproduced (wilting 0.12, field capacity 0.27, saturation 0.45); a loam's conductivity 0.9 drier to 2.0 W/m/K
+wet; the day's swing damped with a depth of 10-20 cm; a cycle's heat in equal to the heat out at the bottom within
+3 W/m2; one-hour steps within 0.8 C RMS of quarter-hour ones; 30 days at a fifth of the sun leave the 10 cm layer
+over 1 C colder than full sun and the surface colder at night. On a corpus lot with a made-up walk (headless, the
+builder's code): the spin-up adds 2-4 s; at 2 pm in mid-November the soil column's surface came out 0.1-0.3 C below
+version 1's, at 10 pm under a clear sky 1.4 C (2.5 F) below. Whether it closes H91's 4-5 F on the real walks is the
+next entry: both walks are re-scored by the builder under the new version.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge
@@ -3150,4 +3175,4 @@ readings are taken as true, and the gap is the model's. Unmeasured candidates, i
 model has no heat stored in the ground (G is a share of Rn, FAO-56 hourly), so a cold soil that pulls the grass
 surface below the air is not in it, and the shaded squares -- with less sun to outweigh the soil -- being further off
 fits that; (3) the sky: the night and dusk cooling uses Brutsaert's clear sky with the sweep's cloud, and an overcast
-dusk (W1) still came out 5 F warm. A summer walk would weaken (2); a still, clear night would test (3).
+dusk (W1) still came out 5 F warm. A summer walk would weaken (2); a still, clear night would test (3). (2) is IN THE MODEL since 2026-11-17 (H92, each spot's soil column); whether it was the cause is measured by re-scoring both walks.

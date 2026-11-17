@@ -38,8 +38,9 @@ import { windShare } from '/lib/balance.js';
 import { leafCalendar } from '/lib/shade/seasonal.js';
 import { cleanFences, fencesOnGrid } from '/lib/shade/fences.js';
 import { toMerc as toMercS } from '/lib/shade/ept.js';
-import { momentOf, surfaceNowAt, openNow, MODEL_VERSION } from '/lib/surfacenow.js';
-import { atMoment } from '/lib/momentweather.js';
+import { momentOf, surfaceNowAt, openNow, forcingAt, MODEL_VERSION } from '/lib/surfacenow.js';
+import { atMoment, spinWeatherUrl, spinHours, SPIN_DAYS } from '/lib/momentweather.js';
+import { fitAnnual, spinColumns, columnProps, stepColumn } from '/lib/soiltemp.js';
 import { spearman } from '/lib/rank.js';
 
 const kept = { r: null, lawn: null, standIn: false, soil: null, typical: null, week: null, lng: null, lat: null, season: null, climate: null, light: null };
@@ -118,25 +119,62 @@ async function walkCheck({ id, records, series, notes }) {
     pts[3 * k] = gx; pts[3 * k + 1] = gy; pts[3 * k + 2] = r.tm;
     if (gx >= 0 && gy >= 0 && gx < W && gy < H) idx[k] = Math.floor(gy) * W + Math.floor(gx);
   });
-  let beams;
+  /* THE SOIL COLUMNS' WEEKS (FINDINGS H92): the hours before the walk, and the year's soil wave for the bottom and
+     the start. Without them the walk is scored as version 1 was (G a share of Rn), and the result says so. */
+  const tFirst = records.reduce((a, r) => Math.min(a, r.tm), Infinity);
+  const tEnd = Math.floor(tFirst / 36e5) * 36e5, tStart = tEnd - SPIN_DAYS * 864e5;
+  const cells = [...new Set(Array.from(idx).filter((i) => i >= 0))];
+  let spinW = null, fit = null, spinWhy = null;
+  try {
+    fit = kept.soilDays ? fitAnnual([...kept.soilDays].map(([date, v]) => ({ date, t: v[0] }))) : null;
+    if (!fit) throw new Error('the area\'s soil temperature record (IEMRE) did not answer');
+    const res = await fetch(spinWeatherUrl(lat, lng, tEnd));
+    if (!res.ok) throw new Error(`Open-Meteo's archived hours answered ${res.status}`);
+    const { hours, gaps } = spinHours(await res.json(), tStart, tEnd);
+    if (hours.length < SPIN_DAYS * 24 * 0.9 || gaps > SPIN_DAYS * 24 * 0.1) throw new Error(`Open-Meteo's archived hours had ${hours.length} of ${SPIN_DAYS * 24}`);
+    spinW = { hours, gaps, w: hours.map((h) => momentOf({ t: h.t + 18e5, lat, lng, ta: h.ta, rh: h.rh, wind: h.wind, ghi: h.ghi, cloud: h.cloud })) };
+  } catch (e) { spinWhy = e?.message || String(e); spinW = null; }
+  let beams, spinBeam = null;
   const L = lightSession(kept.lightRes, kept.lightSite, kept.climate);
   try {
     await L.build(L.edits.erased);
     beams = (await L.ask({ type: 'samples', pts, heightM: 0.1 })).T; // the grass's top, as the shade map's field readings ask at a phone's height
+    if (spinW && cells.length) {
+      /* each spot's direct beam at each daylight hour's middle: every day while that is under 400,000 rays, else every
+         few days (the hour's beam taken from the nearest day asked: the sun moves under a degree a day) */
+      const lit = spinW.hours.map((h, k) => k).filter((k) => spinW.w[k].el > 0);
+      const stride = Math.max(1, Math.ceil((cells.length * lit.length) / 400000));
+      const asked = lit.filter((k) => Math.floor((spinW.hours[k].t - tStart) / 864e5) % stride === 0);
+      const q = new Float64Array(asked.length * cells.length * 3);
+      let p = 0;
+      for (const k of asked) for (const i of cells) { q[p++] = (i % W) + 0.5; q[p++] = Math.floor(i / W) + 0.5; q[p++] = spinW.hours[k].t + 18e5; }
+      const got = (await L.ask({ type: 'samples', pts: q, heightM: 0.1 })).T;
+      const row = new Map(asked.map((k, a) => [k, a]));
+      // an hour not asked: the same hour of the nearest day that was
+      spinBeam = (k, c) => {
+        if (spinW.w[k].el <= 0) return 0;
+        let a = row.get(k);
+        for (let d = 1; a === undefined && d <= stride; d++) a = row.get(k - 24 * d) ?? row.get(k + 24 * d);
+        return a === undefined ? 1 : got[a * cells.length + c];
+      };
+    }
   } catch (e) { self.postMessage({ walkCheck: { id, error: `the shade at those minutes: ${e?.message || e}` } }); return; } finally { L.close(); }
   // how wet the ground was: watered when the walker said so, else that day's rain-alone run
   const date = new Date(records.length ? records[0].tm : Date.now()).toISOString().slice(0, 10);
   let ks = null, wet = 'watered (the sprinklers ran)';
-  if (!notes?.sprinklers) {
-    const days = kept.week?.days || [];
-    if (days.some((d) => d.date === date)) {
-      simulate(m, days, { season: kept.season || null, record: (d, st) => {
-        if (days[d].date !== date) return;
-        ks = Float32Array.from(st.Dr, (Dr, i) => (Dr <= m.raw[i] || !(m.taw[i] > m.raw[i]) ? 1 : Math.max(0, (m.taw[i] - Dr) / (m.taw[i] - m.raw[i]))));
-      } });
-      wet = 'as that day\'s rain left it';
-    } else wet = 'watered (the weather record does not reach that day)';
+  /* each day's water for the columns' spots: how much the ground holds back from evaporating (Ks) and how full the
+     root zone is (the soil's conductivity and heat capacity follow it) */
+  const dayKs = new Map(), dayFull = new Map();
+  const days = kept.week?.days || [];
+  if (days.length) {
+    simulate(m, days, { season: kept.season || null, record: (d, st) => {
+      const kOf = (i) => (st.Dr[i] <= m.raw[i] || !(m.taw[i] > m.raw[i]) ? 1 : Math.max(0, (m.taw[i] - st.Dr[i]) / (m.taw[i] - m.raw[i])));
+      dayKs.set(days[d].date, Float32Array.from(cells, kOf));
+      dayFull.set(days[d].date, Float32Array.from(cells, (i) => (m.taw[i] > 0 ? Math.max(0, 1 - st.Dr[i] / m.taw[i]) : 1)));
+      if (days[d].date === date && !notes?.sprinklers) ks = Float32Array.from(st.Dr, (_, i) => kOf(i));
+    } });
   }
+  if (!notes?.sprinklers) wet = days.some((d) => d.date === date) ? 'as that day\'s rain left it' : 'watered (the weather record does not reach that day)';
   // the walker's air: straight-line between their readings; the sky sweep's cloud
   const airs = (notes?.air || []).map((a) => ({ t: a.at, T: toC(a) })).filter((a) => Number.isFinite(a.t) && Number.isFinite(a.T)).sort((a, b) => a.t - b.t);
   const airAt = (t) => {
@@ -160,20 +198,45 @@ async function walkCheck({ id, records, series, notes }) {
     memo.set(key, w);
     return w;
   };
-  const pred = new Float32Array(records.length).fill(NaN);
+  /* THE SPIN-UP (lib/soiltemp.js): every spot's column from the year's wave, hour by hour to the walk's hour, its own
+     shade, its own water (watered for the three days before when the walker ticked the sprinklers) */
+  let spun = null;
+  const cOf = new Map(cells.map((i, c) => [i, c]));
+  const texOf = (i) => m.soils?.[m.soilAt?.[i]]?.rz?.texture || null;
+  const dayOfMs = (t) => new Date(t).toISOString().slice(0, 10);
+  const nearDay = (map, d) => { if (map.has(d)) return map.get(d); let best = null, bd = Infinity; for (const k of map.keys()) { const x = Math.abs(Date.parse(k) - Date.parse(d)); if (x < bd) { bd = x; best = k; } } return best === null ? null : map.get(best); };
+  const watered = (t) => !!notes?.sprinklers && t >= tEnd - 3 * 864e5;
+  const propsMemo = cells.map(() => ({ d: null, p: null }));
+  const propsAt = (c, t) => {
+    const d = dayOfMs(t), memo = propsMemo[c];
+    if (memo.d !== d) { const full = watered(t) ? 1 : nearDay(dayFull, d)?.[c] ?? 1; memo.d = d; memo.p = columnProps(texOf(cells[c]), m.rootCm?.[cells[c]] ?? 15, full); }
+    return memo.p;
+  };
+  const ksAt = (c, t) => (watered(t) ? 1 : nearDay(dayKs, dayOfMs(t))?.[c] ?? 1);
+  if (spinW && spinBeam) {
+    spun = spinColumns({ n: cells.length, hours: spinW.hours, fit,
+      propsOf: (c, k) => propsAt(c, spinW.hours[k].t),
+      forcing: (c, k) => forcingAt(m, cells[c], spinBeam(k, c), spinW.w[k], { month: new Date(spinW.hours[k].t).getUTCMonth(), ks: ksAt(c, spinW.hours[k].t) }) });
+  }
+  const pred = new Float32Array(records.length).fill(NaN), was = new Float32Array(records.length).fill(NaN);
   const anyGhi = (series || []).some((r) => Number.isFinite(r.ghi));
   const used = { air: airs.length ? 'the walker\'s thermometer' : 'the station', cloud: Number.isFinite(typed) ? 'the walker\'s word' : sweep !== null ? 'the sky sweep' : anyGhi ? 'from the satellite\'s sunshine by day' : 'the station\'s sky cover', wet };
   records.forEach((r, k) => {
     const w = weatherAt(r.tm), i = idx[k];
     if (!w || i < 0) return;
     const month = new Date(r.tm).getUTCMonth();
-    pred[k] = surfaceNowAt(m, i, beams[k], w, { month, ks: ks ? ks[i] : 1 }).ts;
+    was[k] = surfaceNowAt(m, i, beams[k], w, { month, ks: ks ? ks[i] : 1 }).ts;
+    if (!spun) { pred[k] = was[k]; return; }
+    // the column carried from the walk's hour to the record's own minute under the moment's own forcing
+    const c = cOf.get(i), col = Float64Array.from(spun.T[c]);
+    const f = forcingAt(m, i, beams[k], w, { month, ks: ks ? ks[i] : ksAt(c, r.tm) });
+    pred[k] = stepColumn(col, propsAt(c, r.tm), { ...f, tBottom: spun.tBottomAt(r.tm) }, Math.max(60, (r.tm - spun.t) / 1000)).ts;
   });
-  const stats = (ks2) => {
-    const d = ks2.map((k) => records[k].T - pred[k]);
+  const stats = (ks2, P = pred) => {
+    const d = ks2.map((k) => records[k].T - P[k]);
     if (!d.length) return { n: 0 };
     const bias = d.reduce((a, b) => a + b, 0) / d.length;
-    return { n: d.length, bias, rmse: Math.sqrt(d.reduce((a, b) => a + b * b, 0) / d.length), rho: spearman(ks2.map((k) => records[k].T), ks2.map((k) => pred[k])) };
+    return { n: d.length, bias, rmse: Math.sqrt(d.reduce((a, b) => a + b * b, 0) / d.length), rho: spearman(ks2.map((k) => records[k].T), ks2.map((k) => P[k])) };
   };
   const ok = records.map((_, k) => k).filter((k) => Number.isFinite(pred[k]) && Number.isFinite(records[k].T));
   const bands = {};
@@ -182,7 +245,12 @@ async function walkCheck({ id, records, series, notes }) {
   const sunShade = { sun: stats(main.filter((k) => beams[k] >= 0.5)), shade: stats(main.filter((k) => beams[k] < 0.2)) };
   const mid = records.length ? records[Math.floor(records.length / 2)].tm : Date.now();
   const wMid = weatherAt(mid);
-  const out = { id, model: MODEL_VERSION, ...stats(main), bands, sunShade, used,
+  used.soil = spun ? `each spot's own soil column, ${SPIN_DAYS} days spun up from Open-Meteo's archived hours${spinW.gaps ? ` (${spinW.gaps} hours missing, the hour before carried)` : ''}, the bottom from the area's soil temperature record`
+    : `none: G a share of Rn, as version 1 (${spinWhy || 'no spots on the shade grid'})`;
+  // the same walk under version 1, beside it: the before and after of the soil columns
+  const wasOk = main.filter((k) => Number.isFinite(was[k]));
+  const v1 = spun ? { model: 'surface-now 1 (2026-11-15)', ...stats(wasOk, was), sun: stats(wasOk.filter((k) => beams[k] >= 0.5), was), shade: stats(wasOk.filter((k) => beams[k] < 0.2), was) } : null;
+  const out = { id, model: MODEL_VERSION, ...stats(main), bands, sunShade, used, v1,
     open: wMid ? { ts: openNow(wMid, m.params).ts, ta: wMid.ta, ghi: wMid.ghi, cloud: wMid.cloud, el: wMid.el, from: wMid.from } : null, pred };
   self.postMessage({ walkCheck: out }, [pred.buffer]);
 }

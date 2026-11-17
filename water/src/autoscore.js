@@ -64,7 +64,7 @@ async function scoreOne(env, job, base) {
   if (kept.error) return { state: 'failed', why: kept.error };
   if (!frozen && o.weather?.series?.length) await putWeather(env, job.walk, o.weather.sources, o.weather.series);
   const res2 = await putResult(env, { walk: job.walk, model: r.model, kind: 'surface', n: r.n, bias: r.bias, rmse: r.rmse, rho: r.rho,
-    detail: { bands: r.bands, sunShade: r.sunShade, used: r.used, open: r.open, offLawn: p.offLawn, weather: (frozen || o.weather)?.sources || [], by: 'the water builder' } });
+    detail: { bands: r.bands, sunShade: r.sunShade, used: r.used, open: r.open, v1: r.v1 || null, offLawn: p.offLawn, weather: (frozen || o.weather)?.sources || [], by: 'the water builder' } });
   if (res2.error) return { state: 'failed', why: res2.error };
   return { state: 'done', why: `${r.n} squares` };
 }

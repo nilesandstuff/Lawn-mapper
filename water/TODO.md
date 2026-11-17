@@ -167,6 +167,9 @@ SPECULATION), as always.
     gateway) would give the lawn's own sunshine minute by minute. Both for the owner to decide.
     NO PAGE OPEN (2026-11-16, H89): the water builder Container scores a walk as soon as it is converted. NEXT:
     stage 2 with to-do 27 (the light worker loading the shade map's finished model: asked of the features session).
+    FIRST WALKS (H91) 4-5 F warm; SOIL COLUMNS (2026-11-17, H92): each spot's own soil spun up over 45 days, tied both
+    ways to the surface, version 1 kept beside it. Later, if the walks still ask for it: a stable night's still air
+    (ra), sideways heat between spots, thatch thicker than half an inch.
 
 ## Rules (owner, 2026-10-27)
 

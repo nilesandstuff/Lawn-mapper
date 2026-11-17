@@ -36,7 +36,10 @@ import { sunAt, clearSky, SOLAR_CONSTANT } from './shade/sun.js';
 
 /** Kept with every comparison (src/truth.js truth_results): change it whenever the model's arithmetic changes, so
  *  the walks already scored can be scored again and the versions compared. */
-export const MODEL_VERSION = 'surface-now 1 (2026-11-15)';
+export const MODEL_VERSION = 'surface-now 2, soil columns (2026-11-17)';
+/* version 1 (2026-11-15): G as a share of Rn (FAO-56 hourly), no heat stored in the ground. Version 2: each spot's own
+   soil column, spun up over the weeks before (lib/soiltemp.js, FINDINGS H92); version 1 stays as surfaceNowAt for a
+   walk with no hourly weather to spin up from. */
 
 const SIGMA = 5.67e-8, EMIS = 0.98, RHO_CP = 1.2 * 1005;
 const RAD = Math.PI / 180;
@@ -115,6 +118,35 @@ export function surfaceNowAt(model, i, T, w, { month, ks = 1, elevM = 200 } = {}
   const t = Ta + air, kd = 4 * EMIS * SIGMA * (t + 273.15) ** 3;
   const dT = air + (rn - g - le) / (RHO_CP / ra + kd);
   return { ts: Ta + dT, dT, parts: { sw, lw, fence, paving, rn, g, le }, u2, air };
+}
+
+/**
+ * THE MOMENT'S ENERGY AT ONE SPOT, without the ground's part (for the soil columns, lib/soiltemp.js): the same terms
+ * surfaceNowAt uses. -> { swNet, rnIso (net radiation were the skin at the local air's temperature, fences and paving
+ * in), ta (the local air: the trees' cooling in), ra, beta (Ks x Priestley-Taylor's share by day, 0 by night), u2 }
+ */
+export function forcingAt(model, i, T, w, { month, ks = 1, elevM = 200 } = {}) {
+  const params = model.params;
+  const R = model.rad ? model.rad[month] : null;
+  const Dpar = R ? R.parD[i] : 1, Dnir = R ? R.nirD[i] : 1;
+  const FH = model.fenceHeat;
+  const V = R ? (FH ? Math.max(0, R.parD[i] - FH.reflSky[i]) : R.parD[i]) : 1;
+  const tb = Math.max(0, Math.min(1, Number.isFinite(T) ? T : 1));
+  const swNet = (1 - params.albedoPar) * 0.5 * (w.beam * tb + w.sky * Dpar) + (1 - params.albedoNir) * 0.5 * (w.beam * tb ** params.nirExp + w.sky * Dnir);
+  const up = w.el > 0;
+  const sunny = up && w.clear > 0 ? Math.min(1, w.ghi / w.clear / (params.clearRef || 0.75)) : 0;
+  const air = model.canopy ? -params.airCoolC * model.canopy[i] * sunny : 0;
+  const ta = w.ta + air, bb = SIGMA * (ta + 273.15) ** 4;
+  const fence = FH ? w.beam * FH.beam[month][i] + w.sky * (FH.skyM ? FH.skyM[month][i] : FH.sky[i]) : 0;
+  const P = 101.3 * ((293 - 0.0065 * elevM) / 293) ** 5.26, gamma = 0.000665 * P, D = satSlope(ta);
+  const ptShare = 1.26 * (D / (D + gamma));
+  const edge = model.edgeHeat ? model.edgeHeat[i] : 1;
+  const openRn = (1 - params.albedoPar) * 0.5 * (w.beam + w.sky) + (1 - params.albedoNir) * 0.5 * (w.beam + w.sky) + EMIS * (w.lsky - bb);
+  const paving = up ? (edge - 1) * (params.kc ?? 0.8) * ptShare * Math.max(0, 0.9 * openRn) : 0;
+  const rnIso = swNet + EMIS * (V * w.lsky + (1 - V) * bb - bb) + fence + paving;
+  const winds = model.winds || [1], at = model.windAtMonths ? model.windAtMonths[month] : model.windAt;
+  const u2 = Math.max(0.5, w.wind * (winds[at ? at[i] : 0] ?? 1));
+  return { swNet, rnIso, ta, ra: 208 / u2, beta: up ? Math.max(0, Math.min(1, ks)) * ptShare : 0, u2, air };
 }
 
 /** Open, level, watered lawn in the open wind at the same moment: the reference the card sets each spot against. */

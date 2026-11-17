@@ -169,3 +169,36 @@ export async function weatherOfMoment(stations, lat, lng, t0, t1, { fetchFn = fe
   if (!series.length) throw new Error('no station answered for that time');
   return { sources, series };
 }
+
+/* THE WEEKS BEFORE A WALK, HOUR BY HOUR (the soil columns' spin-up, lib/soiltemp.js, FINDINGS H92): Open-Meteo's
+   archived model runs (HRRR in the US), air, humidity, wind, sunshine and cloud. */
+export const SPIN_DAYS = 45;
+export function spinWeatherUrl(lat, lng, t, days = SPIN_DAYS) {
+  const a = ymdUtc(t - (days + 1) * 864e5), b = ymdUtc(t);
+  return `https://historical-forecast-api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lng.toFixed(4)}&start_date=${a}&end_date=${b}&timezone=GMT&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,shortwave_radiation,cloud_cover&models=best_match&wind_speed_unit=ms`;
+}
+/**
+ * The hours from t0 to t1 (ms; t0 on the hour), each [t, t + 1 h): the air, humidity and wind the mean of the two
+ * stamps either end, the sunshine the mean over the hour (Open-Meteo stamps it at the hour's end), the cloud at the
+ * end; an hour with no answer carries the last one's (gap counted). -> { hours: [{ t, ta, rh, wind, ghi, cloud }], gaps }
+ */
+export function spinHours(j, t0, t1) {
+  const H = j?.hourly;
+  const at = new Map();
+  (H?.time || []).forEach((x, k) => {
+    const tt = Date.parse(`${x}:00Z`);
+    if (Number.isFinite(tt)) at.set(tt, { ta: H.temperature_2m?.[k], rh: H.relative_humidity_2m?.[k], u: H.wind_speed_10m?.[k], ghi: H.shortwave_radiation?.[k], cloud: H.cloud_cover?.[k] });
+  });
+  const num = (v) => (Number.isFinite(v) ? v : null);
+  const mean = (a, b) => (num(a) !== null && num(b) !== null ? (a + b) / 2 : num(a) ?? num(b));
+  const hours = [];
+  let last = null, gaps = 0;
+  for (let t = t0; t < t1; t += 36e5) {
+    const p = at.get(t) || {}, q = at.get(t + 36e5) || {};
+    const ta = mean(p.ta, q.ta), rh = mean(p.rh, q.rh), u = mean(p.u, q.u);
+    let row = ta === null ? null : { t, ta, rh: rh ?? 70, wind: u === null ? null : u * TO_2M, ghi: num(q.ghi), cloud: num(q.cloud) === null ? null : q.cloud / 100 };
+    if (!row) { gaps++; row = last ? { ...last, t } : null; }
+    if (row) { hours.push(row); last = row; }
+  }
+  return { hours, gaps };
+}
