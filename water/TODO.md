@@ -203,7 +203,10 @@ SPECULATION), as always.
     a map's placed photos under Thermal surface, lays each pixel on the ground from the converter's angle from
     straight down and bearing (the phone taken as 1.4 m up, pixels past 72 degrees left out) in half-metre squares,
     and sets them against the model at the photo's minute. WAITS ON: the thermal session's converter for photos (until
-    it runs a photo reads "not turned into temperatures yet"), and a first real photo. Not yet: turning a placed photo
+    it runs a photo reads "not turned into temperatures yet"), and a first real photo. The converter's layout as the core
+    passed it on the same day: ang and az every 4th pixel (step), az from MAGNETIC north (turned to true north by
+    lib/declination.js, the World Magnetic Model 2025, checked against its 100 test values), T in 0.1 C with
+    saturated pixels null. Not yet: turning a placed photo
     to the way the owner faced (placeThermalSnap takes a heading; the page does not ask for one).
 
 ## Rules (owner, 2026-10-27)

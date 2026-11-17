@@ -24,6 +24,7 @@ import { fmt } from '/lib/explain.js';
 import { openMeteoUrls, parseOpenMeteo } from '/lib/momentweather.js';
 import { spearman } from '/lib/rank.js';
 import { isMoistureUnit } from '/lib/maps.js';
+import { trueBearing } from '/lib/declination.js';
 import { frameFor, savedPhoto, toPx, toMerc, pxToLngLat } from '/frame.js';
 
 const $ = (s) => document.querySelector(s);
@@ -154,12 +155,15 @@ async function loadWalk(ev) {
   return out;
 }
 
-/* A SINGLE THERMAL PHOTO ON THE GROUND (src/snaps.js; the converter's grid, docs/MAPS.md): each pixel's angle from
-   straight down and bearing from north, from where the owner stood, the phone taken as PHONE_M up; half-metre squares
-   by the mean of the pixels in them (three or more), as a walk's records are. A heading the owner set turns the
-   bearings by the difference from the photo's own middle. */
+/* A SINGLE THERMAL PHOTO ON THE GROUND (src/snaps.js; the thermal session's converter, as the core passed it on
+   2026-11-17): T and mask the full grid (0.1 C; a saturated pixel null, mask 0); ang (degrees from straight down) and
+   az (degrees clockwise from MAGNETIC north, az_ref saying which) every step-th pixel (step 4: 48 x 64), so each
+   pixel takes its block's. Each laid on the ground from where the owner stood, the phone taken as PHONE_M up, its
+   bearing turned to true north by the local declination (lib/declination.js, the World Magnetic Model); half-metre
+   squares by the mean of the pixels in them (three or more), as a walk's records are. A heading the owner set turns
+   the bearings by its difference from the photo's own middle. */
 const PHONE_M = 1.4, MAX_ANG = 72;
-const flat = (a) => (Array.isArray(a) && Array.isArray(a[0]) ? a.flat() : Array.isArray(a) ? a : a && typeof a === 'object' && a.length !== undefined ? Array.from(a) : []);
+const rowsOf = (a, cols) => (Array.isArray(a) && Array.isArray(a[0]) ? { flat: a.flat(), cols: a[0].length } : { flat: Array.isArray(a) ? a : a && a.length !== undefined ? Array.from(a) : [], cols });
 async function loadSnap(ev) {
   S.snapCache = S.snapCache || new Map();
   if (S.snapCache.has(ev.id)) return S.snapCache.get(ev.id);
@@ -167,16 +171,25 @@ async function loadSnap(ev) {
   const one = await getJson(`/api/water/snaps/one?id=${encodeURIComponent(ev.id)}`, 30000);
   if (!one) throw new Error('the photo did not answer');
   if (!one.place || !Number.isFinite(one.place.lng)) throw new Error('the photo is not placed yet: place it on the field readings page');
-  if (!one.snap) throw new Error('the photo is not turned into temperatures yet');
-  const T = flat(one.snap.T), A = flat(one.snap.ang), Z = flat(one.snap.az), M = one.snap.mask ? flat(one.snap.mask) : null;
-  const mid = Math.floor(T.length / 2), turn = Number.isFinite(one.place.heading) && Number.isFinite(Z[mid]) ? one.place.heading - Z[mid] : 0;
+  const sn = one.snap;
+  if (!sn) throw new Error('the photo is not turned into temperatures yet');
+  const step = Number.isFinite(sn.step) && sn.step > 0 ? sn.step : 1;
+  const Tg = rowsOf(sn.T, sn.w || sn.width || 256), cols = Tg.cols, T = Tg.flat, rows = Math.round(T.length / cols);
+  const Mg = sn.mask ? rowsOf(sn.mask, cols).flat : null;
+  const acols = Math.ceil(cols / step), Ag = rowsOf(sn.ang, acols), Zg = rowsOf(sn.az, acols);
+  const at = (G, r, c) => G.flat[Math.min(Math.floor(r / step), Math.floor(G.flat.length / G.cols) - 1) * G.cols + Math.min(Math.floor(c / step), G.cols - 1)];
+  const magnetic = !/true/i.test(String(sn.az_ref || 'magnetic'));
+  const toTrue = (z) => (magnetic ? trueBearing(z, one.place.lat, one.place.lng, one.at) : z);
+  const midZ = at(Zg, rows / 2, cols / 2), turn = Number.isFinite(one.place.heading) && Number.isFinite(midZ) ? one.place.heading - toTrue(midZ) : 0;
+  const decl = magnetic ? trueBearing(0, one.place.lat, one.place.lng, one.at) : 0;
   const R = Math.PI / 180, k = Math.cos(one.place.lat * R), bins = new Map();
   let n = 0;
-  for (let i = 0; i < T.length; i++) {
-    if ((M && !M[i]) || !Number.isFinite(T[i]) || !Number.isFinite(A[i]) || !Number.isFinite(Z[i]) || A[i] >= MAX_ANG) continue;
-    const d = PHONE_M * Math.tan(A[i] * R), az = (Z[i] + turn) * R;
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    const i = r * cols + c, t = T[i], a = at(Ag, r, c), z = at(Zg, r, c);
+    if ((Mg && !Mg[i]) || !Number.isFinite(t) || !Number.isFinite(a) || !Number.isFinite(z) || a >= MAX_ANG) continue;
+    const d = PHONE_M * Math.tan(a * R), az = (z + decl + turn) * R;
     const key = `${Math.round((d * Math.sin(az)) / 0.5)},${Math.round((d * Math.cos(az)) / 0.5)}`;
-    const b = bins.get(key) || { s: 0, c: 0 }; b.s += T[i]; b.c++; bins.set(key, b); n++;
+    const b = bins.get(key) || { s: 0, c: 0 }; b.s += t; b.c++; bins.set(key, b); n++;
   }
   const items = [];
   for (const [key, b] of bins) {
@@ -184,7 +197,8 @@ async function loadSnap(ev) {
     const [ex, ny] = key.split(',').map(Number);
     items.push({ lng: one.place.lng + (ex * 0.5) / (111320 * k), lat: one.place.lat + (ny * 0.5) / 111320, m: b.s / b.c });
   }
-  const out = { at: one.at, items, n, air: Number.isFinite(one.air_C) ? one.air_C : null };
+  const air = Number.isFinite(one.air_C) ? one.air_C : Number.isFinite(sn.air_used) ? sn.air_used : null;
+  const out = { at: one.at, items, n, air, declination: magnetic ? ((decl + 540) % 360) - 180 : 0, headingAcc: sn.rotation_accuracy_deg ?? one.rotation?.accuracy_deg ?? null };
   S.snapCache.set(ev.id, out);
   return out;
 }
@@ -265,7 +279,7 @@ async function show() {
       S.items = ph.items.map((x) => { const i = lawnCellNear([x.lng, x.lat], m.surface); return { ...x, p: i >= 0 ? m.surface[i] : NaN, i }; });
       S.check = { ...statsOf(S.items), used: { soil: m.used, air: 'Open-Meteo\'s archived hour' }, w: m.w };
       if (Number.isFinite(ph.air)) S.check.airPhoto = ph.air;
-      S.check.photoNote = `The photo laid on the ground from where you stood, the phone taken as ${PHONE_M} m up; pixels more than ${MAX_ANG}° from straight down left out (${ph.n} pixels in ${ph.items.length} squares).`;
+      S.check.photoNote = `The photo laid on the ground from where you stood, the phone taken as ${PHONE_M} m up; pixels more than ${MAX_ANG}° from straight down left out (${ph.n} pixels in ${ph.items.length} squares). The compass turned to true north by ${Math.abs(ph.declination).toFixed(1)}° ${ph.declination < 0 ? 'west' : 'east'} (the World Magnetic Model)${Number.isFinite(ph.headingAcc) ? `; the phone's heading good to about ${Math.round(ph.headingAcc)}°` : ''}.`;
     } else if (v === 'surface' && ev.kind === 'visit') {
       const m = await momentAt(ev.t);
       S.ctx = { type: 'moment', t: ev.t };
