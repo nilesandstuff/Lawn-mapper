@@ -2824,6 +2824,9 @@ WHAT THIS SAYS, AS MEASURED: the soil columns took a fifth off the afternoon wal
 its shaded and sunny squares (2.6 F -> 1.3 F), but made the overcast dusk walk 0.9 F worse: at dusk the modelled
 soil gives back more heat than the old fixed share did, so the model's soil under that lawn is warmer than the
 camera's surface allows. Two November walks; the model is still 3-6 F warm. Nothing was tuned to them.
+THE TWO WALKS ARE ON TWO DIFFERENT PROPERTIES (W1 property 1, W2 property 2): dusk against afternoon is confounded
+with one lot against another (its turf, thatch, soil, the station 24 km off). Nothing here separates time of day from
+place; a dusk and an afternoon walk on the same lot would.
 
 ## SPECULATION
 
