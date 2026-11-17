@@ -141,8 +141,8 @@ console.log(`\n${passed} passed`);
   assert.deepEqual(got, ['p-new', 'p-half', 'w-new', 'w-half', 'p-old'], `the order: ${got}`);
   console.log('parcel copy order: parcels first, then water layers, then the oldest copies: ok');
   // failed yesterday: before the fallbacks existed, tried again now; since them, in three days; a water layer as before
-  const t = Date.parse('2026-11-17T14:00:00Z');
-  const F = { services: { 'p-before': { round: '2026-11-16T00:00:00Z', failed: { at: '2026-11-17T03:00:00Z' } }, 'p-since': { round: '2026-11-17T08:00:00Z', failed: { at: '2026-11-17T09:00:00Z' } }, 'w-before': { round: '2026-11-16T00:00:00Z', failed: { at: '2026-11-17T03:00:00Z' } } } };
+  const t = Date.parse('2026-11-17T21:00:00Z');
+  const F = { services: { 'p-before': { round: '2026-11-16T00:00:00Z', failed: { at: '2026-11-17T03:00:00Z' } }, 'p-since': { round: '2026-11-17T08:00:00Z', failed: { at: '2026-11-17T20:00:00Z' } }, 'w-before': { round: '2026-11-16T00:00:00Z', failed: { at: '2026-11-17T03:00:00Z' } } } };
   const again = order([{ key: 'p-before', box }, { key: 'p-since', box }, { key: 'w-before', water: true, box }], F, t).map((s) => s.key);
   assert.deepEqual(again, ['p-before'], `retried now: ${again}`);
   console.log('parcel copy order: failures from before the fallbacks retried at once: ok');
@@ -256,3 +256,44 @@ console.log(`parcel-mirror published file: ${passed} passed`);
   assert.equal(l, '  service 2: description ok (pagination no, max 2000, projected); count ok 9; ids, no area error 500; tiny box ok 0; point -; ten by count, no area refused 499');
   console.log('parcel-mirror probe line: ok');
 }
+
+/* THE WHOLE LAYER BY ITS IDS (2026-11-17): a server that refuses every square but answers its count and every id with
+   no area gives its parcels whole, each into the squares it touches; a list cut short is refused, not half copied. */
+{
+  const M = await import('./parcel-mirror.mjs');
+  const realFetch = globalThis.fetch;
+  const lots = Array.from({ length: 300 }, (_, i) => ({ id: i + 1, x: (i % 30) * 0.03 + 0.01, y: Math.floor(i / 30) * 0.04 + 0.01 }));   // x 0.01..0.88: two squares
+  const outside = { id: 999, x: 5.2, y: 5.2 };   // a statewide layer's parcel far away
+  const all = [...lots, outside];
+  const feat = (l) => ({ attributes: { PIN: `P${l.id}` }, geometry: { rings: [[[l.x, l.y], [l.x, l.y + 0.001], [l.x + 0.001, l.y + 0.001], [l.x + 0.001, l.y], [l.x, l.y]]] } });
+  let cut = false;
+  globalThis.fetch = async (u, init = {}) => {
+    const q = init.body ? new URLSearchParams(String(init.body)) : new URL(u).searchParams;
+    const json = (j) => new Response(JSON.stringify(j), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    if (q.get('geometry')) return json({ error: { code: 500, message: 'Error performing query operation' } });
+    if (q.get('returnCountOnly') === 'true') return json({ count: all.length });
+    if (q.get('returnIdsOnly') === 'true') return json({ objectIds: (cut ? all.slice(0, 200) : all).map((l) => l.id) });
+    const ids = (q.get('objectIds') || '').split(',').map(Number);
+    return json({ features: all.filter((l) => ids.includes(l.id)).map(feat) });
+  };
+  const ep = { service: 'https://example.test/arcgis/rest/services/P/MapServer', layer: 0, fields: { pin: 'PIN' } };
+  try {
+    await test('a server that refuses squares gives its whole layer by ids, each parcel in its square', async () => {
+      await assert.rejects(M.fetchSquare({ page: 1000, box: [0, 0, 1, 0.5] }, ep, [0, 0, 0.5, 0.5]), (e) => e.kind === 'ids', 'squares refused');
+      const wrote = new Map();
+      const st = { squares: {} };
+      const got = await M.wholeLayer({ key: 'k1', page: 100, box: [0, 0, 1, 0.5] }, ep, st, async (svc, tx, ty, parcels) => { wrote.set(`${tx}_${ty}`, parcels.map((p) => p.pin)); return { n: parcels.length, mask: 'm', bytes: 1 }; });
+      assert.equal(got.n, 300, 'every parcel in the county, none from outside it');
+      assert.equal(got.squares, 6, 'every square of the box is written (one ending on an edge counts the next row and column, as squaresOf always has)');
+      assert.equal(wrote.get('0_0').length + wrote.get('1_0').length, 300);
+      assert.ok(wrote.get('0_0').includes('P1') && wrote.get('1_0').includes('P30'), 'each in its own square');
+      assert.ok(st.squares['0_0'].whole && st.squares['1_0'].whole);
+    });
+    await test('a list of ids cut short at the server\'s limit is refused, not half copied', async () => {
+      cut = true;
+      await assert.rejects(M.wholeLayer({ key: 'k2', page: 100, box: [0, 0, 1, 0.5] }, ep, { squares: {} }, async () => ({ n: 0, mask: '', bytes: 0 })), (e) => e.kind === 'whole' && /cut short/.test(e.message));
+      cut = false;
+    });
+  } finally { globalThis.fetch = realFetch; }
+}
+console.log(`parcel-mirror whole layer: ${passed} passed`);

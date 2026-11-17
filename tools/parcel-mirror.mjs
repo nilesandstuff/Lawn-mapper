@@ -37,7 +37,7 @@ export const TILE = 0.5;                       // degrees: 10 x 10 cells
 const PER = Math.round(TILE / CELL);
 const MAX_AGE_DAYS = Number(process.env.MAX_AGE_DAYS || 30);
 const RETRY_FAILED_DAYS = 3;
-export const FALLBACKS_AT = '2026-11-17T04:00:00Z';   // smaller squares, pages by count, halved pages, the wider file search
+export const FALLBACKS_AT = '2026-11-17T19:30:00Z';   // smaller squares, pages by count, halved pages, the wider file search, the whole layer by ids
 const BUDGET_MS = Math.min(320, Number(process.env.BUDGET_MIN) || 320) * 60e3;
 const HARD_MS = BUDGET_MS + 25 * 60e3;         // squares still going then are dropped, not half-written
 const SERVICES_AT_ONCE = Number(process.env.AT_ONCE || 8);
@@ -225,7 +225,6 @@ export async function byOffset(svc, url, endpoint, box, outFields) {
   return out;
 }
 
-/** One square of one service: every parcel in it, each with its rings and number. Throws with a kind on failure. */
 /* WHAT A FAILING SERVER WILL ANSWER (PROBE=yes with REPORT=yes; 2026-11-17: 13 servers still answered 500 or 400 to a
    square's ids in quarters down to 7 km and to pages by count). Each failed service's first endpoint is asked: its
    own description, a count of everything, every id with no area, a tiny box (about 1 km) at the middle of its
@@ -267,6 +266,66 @@ async function probeFailed(list) {
   }
 }
 
+/*
+ * THE WHOLE LAYER BY ITS IDS (the probe of 2026-11-17: 8 of the failing servers answered every other question -- their
+ * description, a count, every id with no area, a tiny box, a point -- and failed only a square of the county, even an
+ * eighth of one). Every id of the layer at once, with no area; the parcels by those ids in pages (pageOf: the other
+ * method, then halves); each parcel into the squares its box touches, kept on the disk per square so a county of
+ * 900,000 parcels is never all in memory; then each square written as a copied square is. Only when the server's
+ * count and its list of ids agree (a list cut short at the server's own limit would leave parcels out unsaid) and
+ * the count is at most WHOLE_MAX. Returns { n, bytes, squares } or throws { kind: 'whole' }.
+ */
+export const WHOLE_MAX = 3_000_000;
+export async function wholeLayer(svc, endpoint, st, write = writeSquare) {
+  const url = `${endpoint.service}/${endpoint.layer}/query`, where = endpoint.where || '1=1';
+  const fail = (why) => Object.assign(new Error(why), { kind: 'whole' });
+  const c = await ask(url, { where, returnCountOnly: 'true' });
+  if (c.error || !Number.isFinite(c.count)) throw fail(`no count (${c.error || 'none'})`);
+  if (c.count > WHOLE_MAX) throw fail(`${c.count} parcels: too many to take whole`);
+  let ids = await ask(url, { where, returnIdsOnly: 'true' }, { post: true });
+  if (ids.error) ids = await ask(url, { where, returnIdsOnly: 'true' });
+  if (ids.error) throw fail(`no ids (${ids.error})`);
+  const all = (ids.objectIds || []).slice().sort((a, b) => a - b);
+  if (all.length !== c.count) throw fail(`${all.length} ids for ${c.count} parcels: the list is cut short`);
+  const pin = endpoint.fields?.pin;
+  const base = { outFields: pin || '', returnGeometry: 'true', outSR: '4326' };
+  const work = join(tmpdir(), `parcel-whole-${process.pid}-${String(svc.key).replace(/[^\w-]/g, '_')}`);
+  mkdirSync(work, { recursive: true });
+  try {
+    const files = new Map();
+    const fileOf = (id) => { if (!files.has(id)) files.set(id, createWriteStream(join(work, `${id}.jsonl`))); return files.get(id); };
+    const [bw, bs, be, bn] = svc.box;
+    for (let i = 0; i < all.length;) {
+      if (elapsed() > HARD_MS) throw Object.assign(new Error('out of time'), { kind: 'time' });
+      const batch = all.slice(i, i + svc.page);
+      for (const f of await pageOf(svc, url, base, batch)) {
+        const rings = f.geometry?.rings;
+        if (!Array.isArray(rings) || !rings.length) continue;
+        let w = Infinity, s = Infinity, e = -Infinity, n = -Infinity;
+        for (const ring of rings) for (const [x, y] of ring) { if (x < w) w = x; if (x > e) e = x; if (y < s) s = y; if (y > n) n = y; }
+        if (!(e >= bw && w <= be && n >= bs && s <= bn)) continue;   // a statewide layer's parcel outside this county
+        const line = `${JSON.stringify({ pin: pin ? f.attributes?.[pin] ?? null : null, rings })}\n`;
+        for (let tx = Math.floor(w / TILE); tx <= Math.floor(e / TILE); tx++) for (let ty = Math.floor(s / TILE); ty <= Math.floor(n / TILE); ty++) fileOf(squareId(tx, ty)).write(line);
+      }
+      i += batch.length;
+    }
+    await Promise.all([...files.values()].map((f) => new Promise((ok) => f.end(ok))));
+    let n = 0, bytes = 0;
+    const at = new Date().toISOString();
+    for (const [tx, ty] of squaresOf(svc.box)) {
+      const id = squareId(tx, ty), parcels = [];
+      if (files.has(id)) for await (const line of createInterface({ input: createReadStream(join(work, `${id}.jsonl`)) })) if (line) parcels.push(JSON.parse(line));
+      const got = await write(svc, tx, ty, parcels, st.squares?.[id]);
+      (st.squares ||= {})[id] = { at, n: got.n, mask: got.mask, whole: true };
+      n += got.n; bytes += got.bytes;
+    }
+    return { n, bytes, squares: squaresOf(svc.box).length };
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+}
+
+/** One square of one service: every parcel in it, each with its rings and number. Throws with a kind on failure. */
 export async function fetchSquare(svc, endpoint, box) {
   const url = `${endpoint.service}/${endpoint.layer}/query`;
   const pin = endpoint.fields?.pin;
@@ -579,9 +638,12 @@ async function main() {
       files.set(why, (files.get(why) || 0) + 1);
     }
     if (files.size) { console.log('Their county\'s published file:'); for (const [k, n] of [...files].sort((a, b) => b[1] - a[1])) console.log(`  ${n} x ${k}`); }
-    const how = { split: 0, offset: 0 };
-    for (const svc of services) { const src = state.services[svc.key]?.source; if (src?.split) how.split++; if (src?.offset) how.offset++; }
-    console.log(`Copied with the fallbacks of 2026-11-17: ${how.split} asked for in smaller squares, ${how.offset} by pages of a count.`);
+    const how = { split: 0, offset: 0, whole: 0 };
+    for (const svc of services) { const src = state.services[svc.key]?.source; if (src?.split) how.split++; if (src?.offset) how.offset++; if (src?.whole) how.whole++; }
+    console.log(`Copied with the fallbacks of 2026-11-17: ${how.split} asked for in smaller squares, ${how.offset} by pages of a count, ${how.whole} taken whole by their ids.`);
+    const wholeWhy = new Map();
+    for (const svc of services) { const S = state.services[svc.key]; if (S?.failed && S.wholeFailed) { const k = String(S.wholeFailed.why).replace(/\d{4,}/g, 'N'); wholeWhy.set(k, (wholeWhy.get(k) || 0) + 1); } }
+    if (wholeWhy.size) { console.log('Not taken whole by their ids:'); for (const [k, n] of [...wholeWhy].sort((a, b) => b[1] - a[1])) console.log(`  ${n} x ${k}`); }
     if (/^(1|yes|true)$/i.test(process.env.PROBE || '')) await probeFailed(services.filter((x) => !x.water && state.services[x.key]?.failed));
     return;
   }
@@ -614,6 +676,7 @@ async function main() {
       st.squares ||= {};
       delete st.failed;
       delete st.fileFailed;
+      delete st.wholeFailed;
       const squares = squaresOf(svc.box);
       const endpoints = svc.endpoints;
       let ep = st.endpoint != null ? endpoints[st.endpoint] || endpoints[0] : endpoints[0];
@@ -644,6 +707,22 @@ async function main() {
         }
       } catch (e) {
         const kind = e instanceof Refused ? 'refused' : e.kind === 'time' ? 'out of time' : e.kind === 'ids' ? 'ids not given' : e.kind === 'page' ? 'a page failed' : 'error';
+        // the server cannot be copied square by square, but may give its whole layer by ids (wholeLayer)
+        if (!svc.water && (kind === 'ids not given' || kind === 'a page failed') && elapsed() < BUDGET_MS) {
+          try {
+            const got = await wholeLayer(svc, ep, st);
+            st.done = new Date().toISOString();
+            st.count = got.n;
+            st.source = { kind: 'server', whole: true, because: kind };
+            totals.squares += got.squares; totals.parcels += got.n; totals.bytes += got.bytes;
+            totals.services++; totals.whole = (totals.whole || 0) + 1;
+            save();
+            continue;
+          } catch (we) {
+            if (we.kind === 'time') { totals.failed['out of time'] = (totals.failed['out of time'] || 0) + 1; continue; }
+            st.wholeFailed = { at: new Date().toISOString(), why: String(we.message || we).slice(0, 120) };
+          }
+        }
         // the server cannot be copied: the same parcels as the county publishes them for download, when it does
         if (!svc.water && kind !== 'out of time' && elapsed() < BUDGET_MS) {
           try {
@@ -695,6 +774,7 @@ async function main() {
   const failed = Object.entries(totals.failed).map(([k, n]) => `${n} ${k}`).join(', ');
   console.log(`This run: ${totals.squares} squares, ${totals.parcels.toLocaleString()} parcels, ${(totals.bytes / 1e6).toFixed(1)} MB written; `
     + `${totals.services} services finished${totals.water ? `, and ${totals.water} water layers (${(totals.features || 0).toLocaleString()} features)` : ''}${totals.fromFile ? ` (${totals.fromFile} from the county's published file, its server refusing)` : ''}`
+    + `${totals.whole ? ` (${totals.whole} taken whole by their ids, their servers refusing squares)` : ''}`
     + `${totals.fileFailed ? `; ${totals.fileFailed} published file${totals.fileFailed === 1 ? '' : 's'} could not be read` : ''}`
     + `${failed ? `; stopped on ${failed}` : ''}. (${Math.round(elapsed() / 60e3)} min)`);
   console.log(`The copy now: ${summary.copied} of ${summary.services} services copied whole (${summary.parcels.toLocaleString()} parcels), `
