@@ -386,13 +386,29 @@ async function pointsAt({ id, t, depthCm = null, points = [], view = 'soil' }) {
       const i = rr * W + cc, dd = (rr - r0) ** 2 + (cc - c0) ** 2;
       if (Number.isFinite(field[i]) && dd < bd) { bd = dd; best = i; }
     }
-    const metres = best >= 0 ? Math.sqrt(bd) * cell * Math.cos((kept.lat * Math.PI) / 180) : null;
-    return { n: p.n, value: p.value, model: best >= 0 && bd <= 8 ? field[best] : null, lawnM: metres === null ? null : Math.round(metres * 10) / 10, inGrid, kind: inGrid ? m.kinds[r0 * W + c0] : null };
+    const k = Math.cos((kept.lat * Math.PI) / 180), metres = best >= 0 ? Math.sqrt(bd) * cell * k : null;
+    // off the map's box: by how far (metres only), so a reading on the wrong map shows as one
+    const boxM = inGrid ? 0 : Math.round(Math.hypot(Math.max(0, g.bbox[0] - X, X - g.bbox[2]), Math.max(0, g.bbox[1] - Y, Y - g.bbox[3])) * k);
+    return { n: p.n, value: p.value, model: best >= 0 && bd <= 8 ? field[best] : null, lawnM: metres === null ? null : Math.round(metres * 10) / 10, inGrid, boxM, kind: inGrid ? m.kinds[r0 * W + c0] : null };
   });
   const ok = spots.filter((x) => Number.isFinite(x.model) && Number.isFinite(x.value)), d = ok.map((x) => x.value - x.model);
   const bias = d.length ? d.reduce((a, b) => a + b, 0) / d.length : null;
   self.postMessage({ pointsAt: { id, view, depthCm, n: ok.length, bias, rmse: d.length ? Math.sqrt(d.reduce((a, b) => a + b * b, 0) / d.length) : null,
     rho: ok.length >= 3 ? spearman(ok.map((x) => x.value), ok.map((x) => x.model)) : null, spots, used: r.used, air: r.w.ta, model: MODEL_VERSION } });
+}
+
+/* WHICH CELL KIND EACH POINT IS ON (the builder's walk placement, 2026-11-17: a whole property saved as lawn counts a
+   record only on the plan's own lawn cells): { points: [[lng, lat]] } -> { kinds: [kind or null] }, on the light
+   worker's grid as walkCheck places a record */
+function cellsAt({ id, points = [] }) {
+  const m = kept.model, g = kept.lightRes?.grid;
+  if (!m || !g) { self.postMessage({ cellsAt: { id, error: 'the plan is not worked out yet' } }); return; }
+  const W = g.W, H = g.H, cell = (g.bbox[2] - g.bbox[0]) / W;
+  const kinds = points.map(([lng, lat]) => {
+    const [X, Y] = toMercS([lng, lat]), c = Math.floor((X - g.bbox[0]) / cell), r = Math.floor((g.bbox[3] - Y) / cell);
+    return c >= 0 && r >= 0 && c < W && r < H ? m.kinds[r * W + c] : null;
+  });
+  self.postMessage({ cellsAt: { id, kinds } });
 }
 
 /** A spot's month shelter and the sky it sees, as forcingAt reads them. */
@@ -881,11 +897,12 @@ self.onmessage = async ({ data }) => {
     else if (data.explain) explain(data.explain);
     else if (data.moistureAt) moistureAt(data.moistureAt);
     else if (data.pointsAt) await pointsAt(data.pointsAt);
+    else if (data.cellsAt) cellsAt(data.cellsAt);
   } catch (e) {
     if (data?.heat) { self.postMessage({ heat: { id: data.heat.id, error: e.message || String(e) } }); return; }
     if (data?.surfCheck) { self.postMessage({ surfCheck: { id: data.surfCheck.id, error: e.message || String(e) } }); return; }
     if (data?.walkCheck) { self.postMessage({ walkCheck: { id: data.walkCheck.id, error: e.message || String(e) } }); return; }
-    for (const key of ['moment', 'explain', 'moistureAt', 'pointsAt']) if (data?.[key]) { self.postMessage({ [key]: { id: data[key].id, error: e.message || String(e) } }); return; }
+    for (const key of ['moment', 'explain', 'moistureAt', 'pointsAt', 'cellsAt']) if (data?.[key]) { self.postMessage({ [key]: { id: data[key].id, error: e.message || String(e) } }); return; }
     if (data?.valvePlan) { self.postMessage({ valvePlan: { id: data.valvePlan.id, error: e.message || String(e) } }); return; }
     self.postMessage(kept.r ? { planError: e.message || String(e) } : { error: e.message || String(e) });
   }

@@ -60,8 +60,18 @@ export async function score({ record, id, walk, base, weather: frozen = null }) 
   if (!record || !walk || !base) return { ok: false, why: 'record, walk and base are needed' };
   const { run, site, why } = await mapFor(record, id, base);
   if (!run) return { ok: false, why };
-  const lawnAt = ([lng, lat]) => { const k = run.cellAt?.([lng, lat]); return k >= 0 && run.plan.kinds?.[k] === 1; };
-  const placed = walkRecords(walk, site, { lawnAt });
+  /* the plan's own lawn cells, asked of the worker for every place a record falls (two passes: walkRecords' lawnAt is
+     synchronous). Until 2026-11-17 this called a run.cellAt the builder never had, so every record on a map with no
+     trace, or on a whole property saved as lawn, counted as off the lawn. */
+  const pts = [];
+  walkRecords(walk, site, { lawnAt: (p) => { pts.push(p); return false; } });
+  const kindAt = new Map();
+  if (pts.length) {
+    const r = await run.ask('cellsAt', { points: pts });
+    if (r.error) return { ok: false, why: `the lawn cells: ${r.error}` };
+    pts.forEach((p, k) => kindAt.set(`${p[0]},${p[1]}`, r.kinds[k]));
+  }
+  const placed = walkRecords(walk, site, { lawnAt: ([lng, lat]) => kindAt.get(`${lng},${lat}`) === 1 });
   if (!placed.records.length) return { ok: false, why: `no record of the walk lands on the lawn (${placed.offLawn} off it)`, placed: { ...placed, records: undefined } };
   const t0 = placed.started ?? placed.records[0].tm, t1 = placed.ended ?? placed.records[placed.records.length - 1].tm;
   // the weather a page or an earlier run froze for this walk, else fetched now (and frozen by the Worker)

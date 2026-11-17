@@ -17,6 +17,10 @@ const { query } = await import('../../tools/corpus-db.js');
 const visits = query('SELECT id, at, parcel_pin, unit, depth_in, meter, weather, map_id FROM moisture_visits ORDER BY at');
 const rows = query('SELECT visit_id, spot, value FROM moisture_readings');
 const props = new Map(), spotsSeen = new Map();
+// which walk's map a visit is on (W1, W2... as numbered below), so a visit and a walk at the same lot read as one
+let walkMaps = [];
+try { walkMaps = query('SELECT map_id FROM truth_walks ORDER BY started').map((w) => w.map_id); } catch { /* no table yet */ }
+const onWalks = (id) => { const ws = walkMaps.map((m, k) => (id && m === id ? `W${k + 1}` : null)).filter(Boolean); return ws.length ? `  the map of ${ws.join(', ')}` : ''; };
 console.log(`${visits.length} visit${visits.length === 1 ? '' : 's'}, ${rows.length} reading${rows.length === 1 ? '' : 's'}.`);
 console.log('=====');
 visits.forEach((v, k) => {
@@ -26,7 +30,7 @@ visits.forEach((v, k) => {
   for (const x of r) spotsSeen.set(x.spot, true);
   const u = { vwc: '%', scale: ' (scale)', surface_f: ' F surface', soil_f: ' F soil', airtemp_f: ' F air', wind_mph: ' mph wind' }[v.unit] || '';
   const w = (() => { try { return JSON.parse(v.weather || 'null')?.lastTwoDays || '-'; } catch { return '-'; } })();
-  console.log(`#${k + 1}  ${new Date(v.at).toISOString().slice(0, 10)}  property ${props.get(v.parcel_pin || v.id)}  ${r.length} readings  ${vals.length ? `${vals[0]}-${vals[vals.length - 1]}${u}, median ${vals[vals.length >> 1]}` : ''}  depth ${v.depth_in ?? '?'} in  re-read ${again}  last 2 days: ${w}${v.map_id ? '  (a saved map)' : ''}`);
+  console.log(`#${k + 1}  ${new Date(v.at).toISOString().slice(0, 10)}  property ${props.get(v.parcel_pin || v.id)}  ${r.length} readings  ${vals.length ? `${vals[0]}-${vals[vals.length - 1]}${u}, median ${vals[vals.length >> 1]}` : ''}  depth ${v.depth_in ?? '?'} in  re-read ${again}  last 2 days: ${w}${v.map_id ? '  (a saved map)' : ''}${onWalks(v.map_id)}`);
 });
 console.log(`${props.size} propert${props.size === 1 ? 'y' : 'ies'}; ${spotsSeen.size} spots.`);
 
@@ -45,8 +49,8 @@ for (const c of checks) {
     const F1 = (c) => (c === null || c === undefined ? '-' : (c * 1.8 > 0 ? '+' : '') + (c * 1.8).toFixed(1));
     const toF = (c) => (c === null || c === undefined ? '-' : (c * 1.8 + 32).toFixed(1));
     console.log(`#${k + 1}  SOIL TEMPERATURE at ${det.depth_in ?? '?'} in  checked ${new Date(c.checked).toISOString().slice(0, 16)}  ${det.model || ''}  n ${c.n}  measured - model ${F1(det.bias)} F  RMS ${det.rmse === null || det.rmse === undefined ? '-' : (det.rmse * 1.8).toFixed(1)} F  rho ${f(c.rho)}  the model's air ${toF(det.air)} F`);
-    console.log('   n  reading_F  model_F  to_lawn_m  on_grid  cell_kind');
-    for (const s of spots) console.log(`  ${String(s.n).padStart(2)}  ${toF(s.value).padStart(8)}  ${toF(s.model).padStart(7)}  ${String(s.lawnM ?? '-').padStart(9)}  ${String(s.inGrid ?? '-').padStart(7)}  ${String(s.kind ?? '-').padStart(9)}`);
+    console.log('   n  reading_F  model_F  to_lawn_m  on_grid  off_box_m  cell_kind');
+    for (const s of spots) console.log(`  ${String(s.n).padStart(2)}  ${toF(s.value).padStart(8)}  ${toF(s.model).padStart(7)}  ${String(s.lawnM ?? '-').padStart(9)}  ${String(s.inGrid ?? '-').padStart(7)}  ${String(s.boxM ?? '-').padStart(9)}  ${String(s.kind ?? '-').padStart(9)}`);
     continue;
   }
   if (visits[k]?.unit === 'surface_f') {

@@ -26,8 +26,9 @@ export const waterBase = (env) => `https://water.${String(env.LAWNMAP_HOST || ''
    frozen with the weather model's alone). A walk's weather is frozen once it holds both, or once SETTLE_MS have passed;
    until then the walk is scored on what there is and scored again by the hourly sweep. */
 export const SETTLE_MS = 6 * 36e5;
-/** What a soil check carries (2, 2026-11-17: each reading's distance to the nearest lawn spot the model works out). */
-export const SOIL_CHECK = 2;
+/** What a soil check carries (2, 2026-11-17: each reading's distance to the nearest lawn spot the model works out; 3: and
+ *  how far off the map's box it is, the first check having found every spot off it). */
+export const SOIL_CHECK = 3;
 export const completeWeather = (w) => { const s = w?.sources || []; return s.some((x) => /^ASOS/.test(x?.name || '')) && s.some((x) => /satellite/i.test(x?.name || '')); };
 
 /** Work the queue: at most `max` walks scored. -> [{ key, state, why }] */
@@ -91,7 +92,7 @@ async function soilOne(env, job, base) {
   const o = await res.json().catch(() => null);
   if (!o?.ok) return { state: 'retry', why: o?.why || `the builder answered ${res.status}` };
   const r = o.result;
-  const detail = { kind: 'soil', check: SOIL_CHECK, model: r.model, depth_in: v.depth_in, bias: r.bias, rmse: r.rmse, air: r.air, used: r.used, by: 'the water builder', spots: (r.spots || []).map((x) => ({ n: x.n, value: x.value, model: x.model, lawnM: x.lawnM ?? null, inGrid: x.inGrid ?? null, kind: x.kind ?? null })) };
+  const detail = { kind: 'soil', check: SOIL_CHECK, model: r.model, depth_in: v.depth_in, bias: r.bias, rmse: r.rmse, air: r.air, used: r.used, by: 'the water builder', spots: (r.spots || []).map((x) => ({ n: x.n, value: x.value, model: x.model, lawnM: x.lawnM ?? null, inGrid: x.inGrid ?? null, boxM: x.boxM ?? null, kind: x.kind ?? null })) };
   await env.DB.prepare('INSERT OR REPLACE INTO moisture_checks (visit_id, checked, rho, n, detail) VALUES (?, ?, ?, ?, ?)').bind(v.id, Date.now(), Number.isFinite(r.rho) ? r.rho : null, r.n, JSON.stringify(detail)).run();
   return { state: 'done', why: `${r.n} soil readings` };
 }
