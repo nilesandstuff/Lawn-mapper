@@ -128,8 +128,12 @@ async function ask(url, params, { post = false } = {}) {
         const r = post
           ? await fetch(url, { method: 'POST', body, headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json', 'User-Agent': UA }, signal: AbortSignal.timeout(TIMEOUT_MS) })
           : await fetch(`${url}?${body}`, { headers: { Accept: 'application/json', 'User-Agent': UA }, signal: AbortSignal.timeout(TIMEOUT_MS) });
-        if (!r.ok) { last = `http ${r.status}`; if (r.status === 403 || r.status === 401) throw new Refused(last); if (r.status < 500 && r.status !== 429) break; continue; }
-        const j = await r.json();
+        // an answer that is not used is still read to its end: left half read, Node's fetch (undici) can fail an
+        // assertion when the server closes the socket, and that ends the whole run (the probe of 2026-11-17)
+        if (!r.ok) { last = `http ${r.status}`; await r.arrayBuffer().catch(() => {}); if (r.status === 403 || r.status === 401) throw new Refused(last); if (r.status < 500 && r.status !== 429) break; continue; }
+        const text = await r.text();
+        let j;
+        try { j = JSON.parse(text); } catch { last = 'not JSON'; continue; }
         if (j.error) {
           const code = Number(j.error.code);
           if (code === 499 || code === 498 || code === 403 || /token/i.test(j.error.message || '')) throw new Refused(`refused ${code}`);
@@ -234,6 +238,8 @@ export function probeLine(n, r) {
 }
 async function probeFailed(list) {
   console.log(`Asking the ${list.length} failed services what they will answer:`);
+  // a request that breaks inside Node's own fetch is said and skipped, not the end of the probe
+  process.on('uncaughtException', (e) => console.log(`  (a request broke inside Node: ${e?.code || e?.name || 'error'})`));
   let n = 0;
   for (const svc of list) {
     n++;
