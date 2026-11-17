@@ -141,3 +141,72 @@ console.log(`\n${passed} passed`);
   assert.deepEqual(got, ['p-new', 'p-half', 'w-new', 'w-half', 'p-old'], `the order: ${got}`);
   console.log('parcel copy order: parcels first, then water layers, then the oldest copies: ok');
 }
+
+/* WHAT STILL FAILED AFTER A WEEK (2026-11-17, tools/parcel-mirror.mjs): a server that cannot list a big square's ids
+   is asked in quarters; one that gives no ids at all is paged by count; a failed page goes by the other method, then
+   in halves. A fake ArcGIS server, by fetch. */
+{
+  const M = await import('./parcel-mirror.mjs');
+  const realFetch = globalThis.fetch;
+  // parcels on a grid over the square [0, 0, 0.5, 0.5]: id i at (i % 20, i / 20) * 0.025
+  const lots = Array.from({ length: 400 }, (_, i) => ({ id: i + 1, x: (i % 20) * 0.025 + 0.01, y: Math.floor(i / 20) * 0.025 + 0.01 }));
+  const feat = (l) => ({ attributes: { PIN: `P${l.id}` }, geometry: { rings: [[[l.x, l.y], [l.x, l.y + 0.001], [l.x + 0.001, l.y + 0.001], [l.x + 0.001, l.y], [l.x, l.y]]] } });
+  const serve = (opts) => async (u, init = {}) => {
+    const q = init.body ? new URLSearchParams(String(init.body)) : new URL(u).searchParams;
+    const post = !!init.body, json = (j) => new Response(JSON.stringify(j), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    opts.calls.push({ post, ids: q.get('returnIdsOnly') === 'true', n: (q.get('objectIds') || '').split(',').filter(Boolean).length, offset: q.get('resultOffset') });
+    const g = q.get('geometry') ? JSON.parse(q.get('geometry')) : null;
+    const inBox = (l) => !g || (l.x >= g.xmin && l.x <= g.xmax && l.y >= g.ymin && l.y <= g.ymax);
+    if (q.get('returnIdsOnly') === 'true') {
+      if (opts.noIds) return json({ error: { code: 400, message: 'Unable to complete operation.' } });
+      const span = g.xmax - g.xmin;
+      if (span > opts.maxSpan) return json({ error: { code: 500, message: 'Error performing query operation' } });
+      return json({ objectIds: lots.filter(inBox).map((l) => l.id) });
+    }
+    if (q.get('resultOffset') != null) {
+      if (opts.noOffset) return json({ error: { code: 400, message: 'Pagination is not supported.' } });
+      const k = +q.get('resultOffset'), n = +q.get('resultRecordCount'), hit = lots.filter(inBox);
+      return json({ features: hit.slice(k, k + n).map(feat), exceededTransferLimit: k + n < hit.length });
+    }
+    const ids = (q.get('objectIds') || '').split(',').map(Number);
+    if (opts.getMax && !post && ids.length > opts.getMax) return new Response('not found', { status: 404 });
+    if (opts.pageMax && ids.length > opts.pageMax) return json({ error: { code: 500, message: 'too many' } });
+    return json({ features: lots.filter((l) => ids.includes(l.id)).map(feat) });
+  };
+  const ep = { service: 'https://example.test/arcgis/rest/services/Parcels/MapServer', layer: 0, fields: { pin: 'PIN' } };
+  const svc = () => ({ page: 1000, box: [0, 0, 0.5, 0.5] });
+  try {
+    await test('a square too big to list at once is asked for in quarters', async () => {
+      const o = { calls: [], maxSpan: 0.13 }; globalThis.fetch = serve(o);
+      const s = svc(), got = await M.fetchSquare(s, ep, [0, 0, 0.5, 0.5]);
+      assert.equal(got.parcels.length, 400); assert.equal(new Set(got.parcels.map((p) => p.pin)).size, 400, 'none twice from neighbouring quarters');
+      assert.equal(s.split, 2);
+    });
+    await test('a square too big even in eighths ends after one chain of quarters, not all 85', async () => {
+      const o = { calls: [], maxSpan: 0.01, noOffset: true }; globalThis.fetch = serve(o);
+      await assert.rejects(M.fetchSquare(svc(), ep, [0, 0, 0.5, 0.5]), (e) => e.kind === 'ids' && /by pages/.test(e.message));
+      assert.ok(o.calls.filter((c) => c.ids).length <= 2 * (M.SPLIT_DEPTH + 1), `${o.calls.filter((c) => c.ids).length} id questions`);
+    });
+    await test('no ids at all: the parcels by pages of a count', async () => {
+      const o = { calls: [], noIds: true, maxSpan: 9 }; globalThis.fetch = serve(o);
+      const s = { ...svc(), page: 150 }, got = await M.fetchSquare(s, ep, [0, 0, 0.5, 0.5]);
+      assert.equal(got.parcels.length, 400); assert.equal(s.offset, true);
+      assert.equal(o.calls.filter((c) => c.offset != null).length, 3, 'three pages of 150');
+    });
+    await test('a page refused by GET (a long address, 404) goes by POST', async () => {
+      const o = { calls: [], maxSpan: 9, getMax: 100 }; globalThis.fetch = serve(o);
+      const s = { ...svc(), get: true, page: 300 }, got = await M.fetchSquare(s, ep, [0, 0, 0.5, 0.5]);
+      assert.equal(got.parcels.length, 400); assert.equal(s.get, false, 'POST from then on');
+    });
+    await test('a page too big for the server goes in halves, and the page size stays smaller', async () => {
+      const o = { calls: [], maxSpan: 9, pageMax: 130 }; globalThis.fetch = serve(o);
+      const s = svc(), got = await M.fetchSquare(s, ep, [0, 0, 0.5, 0.5]);
+      assert.equal(got.parcels.length, 400); assert.ok(s.page <= 130 && s.page >= M.PAGE_MIN, `page ${s.page}`);
+    });
+    await test('what may be asked again smaller', () => {
+      for (const w of ['error 500', 'error 400', 'timeout', 'error -2147467259', 'http 503', 'http 522']) assert.ok(M.splittable(w), w);
+      for (const w of ['http 404', 'error 404', 'unreachable', 'http 406', 'refused 499', '']) assert.ok(!M.splittable(w), w);
+    });
+  } finally { globalThis.fetch = realFetch; }
+}
+console.log(`parcel-mirror fallbacks: ${passed} passed`);

@@ -116,7 +116,7 @@ async function hostTurn(url, fn) {
     s.queue.shift()?.();
   }
 }
-class Refused extends Error {}
+export class Refused extends Error {}
 async function ask(url, params, { post = false } = {}) {
   return hostTurn(url, async () => {
     let last = null;
@@ -145,50 +145,126 @@ async function ask(url, params, { post = false } = {}) {
   });
 }
 
-/** One square of one service: every parcel in it, each with its rings and number. Throws with a kind on failure. */
-async function fetchSquare(svc, endpoint, box) {
-  const url = `${endpoint.service}/${endpoint.layer}/query`;
-  const [w, s, e, n] = box;
-  const idq = {
-    where: endpoint.where || '1=1', returnIdsOnly: 'true', inSR: '4326', spatialRel: 'esriSpatialRelIntersects',
-    geometryType: 'esriGeometryEnvelope', geometry: JSON.stringify({ xmin: w, ymin: s, xmax: e, ymax: n, spatialReference: { wkid: 4326 } }),
-  };
+/*
+ * WHAT STILL FAILED AFTER A WEEK (the report of 2026-11-16; the owner: "use your best judgement"). Of 49 services:
+ *   - the square's ids not given (error 500 x9, error 400 x8, timeouts, ArcGIS's -2147467259): most such servers can
+ *     list a smaller square. ArcGIS answers "400 Unable to complete operation" as readily as a 500 to a query too big
+ *     for it. So the square is asked for in quarters, down to SPLIT_DEPTH (0.5 degrees to about 7 km); a quarter that
+ *     still fails ends it, so a server that is simply down costs four tries, not 85.
+ *   - still no ids: the parcels in pages by count (resultOffset), which needs no list of ids at all.
+ *   - a page failed (http 404 x8: a long list of ids in the address, which IIS answers 404; error 500, error 400): the
+ *     page by the other method (POST for GET), then in halves, down to PAGE_MIN.
+ * A service that has moved (404 on the ids) is the registry's: its nightly search finds the new address
+ * (tools/verify-counties.js movedOnServer) and the next try here uses it.
+ */
+export const SPLIT_DEPTH = 3;
+export const PAGE_MIN = 25;
+/** An error a smaller question may get past: not a service gone, refused, or unreachable. */
+export const splittable = (why) => !/http 40[1346]|error 40[1346]\b|unreachable|refused|skip/i.test(String(why || '')) && !!why;
+/** A box in quarters: south-west, south-east, north-west, north-east. */
+export const quarters = ([w, s, e, n]) => { const x = (w + e) / 2, y = (s + n) / 2; return [[w, s, x, y], [x, s, e, y], [w, y, x, n], [x, y, e, n]]; };
+
+const envelope = ([w, s, e, n]) => ({ inSR: '4326', spatialRel: 'esriSpatialRelIntersects', geometryType: 'esriGeometryEnvelope', geometry: JSON.stringify({ xmin: w, ymin: s, xmax: e, ymax: n, spatialReference: { wkid: 4326 } }) });
+
+/** The object ids in a box, the box in quarters where the server cannot list it whole. Throws { kind: 'ids' }. */
+export async function idsOf(svc, url, endpoint, box, depth = 0) {
+  const idq = { where: endpoint.where || '1=1', returnIdsOnly: 'true', ...envelope(box) };
   // POST first (a page of ids is too long for some servers' URLs); a server that will not take POST, by GET
   let ids = svc.get ? { error: 'skip' } : await ask(url, idq, { post: true });
   if (ids.error) { ids = await ask(url, idq); if (!ids.error) { svc.get = true; svc.page = Math.min(svc.page, 300); } }
-  if (ids.error) throw Object.assign(new Error(ids.error), { kind: 'ids' });
-  const all = (ids.objectIds || []).slice().sort((a, b) => a - b);
-  const pin = endpoint.fields?.pin;
-  const out = [];
-  for (let i = 0; i < all.length; i += svc.page) {
-    const page = svc.page;
+  if (!ids.error) return ids.objectIds || [];
+  if (depth < SPLIT_DEPTH && splittable(ids.error)) {
+    const out = new Set();
+    for (const q of quarters(box)) for (const id of await idsOf(svc, url, endpoint, q, depth + 1)) out.add(id);
+    svc.split = Math.max(svc.split || 0, depth + 1);
+    return [...out];
+  }
+  throw Object.assign(new Error(ids.error), { kind: 'ids' });
+}
+
+/** A page of features asked for by id: by the other method when one fails, then in halves. Throws { kind: 'page' }. */
+async function pageOf(svc, url, base, batch) {
+  const q = { ...base, objectIds: batch.join(',') };
+  const tries = [!svc.get, svc.get];   // the method in use, then the other
+  let last = null;
+  for (const post of tries) {
+    let j = svc.precise !== false ? await ask(url, { ...q, geometryPrecision: '7' }, { post }) : { error: 'skip' };
+    if (j.error) { const k = await ask(url, q, { post }); if (!k.error && svc.precise === undefined) svc.precise = false; j = k; }
+    if (!j.error) {
+      if (svc.precise === undefined) svc.precise = true;
+      if (post === svc.get) { svc.get = !post; if (svc.get) svc.page = Math.min(svc.page, 300); }   // the other method answered: it is the one used now
+      return j.features || [];
+    }
+    last = j.error;
+  }
+  if (batch.length > PAGE_MIN) {
+    const h = Math.ceil(batch.length / 2);
+    const a = await pageOf(svc, url, base, batch.slice(0, h)), b = await pageOf(svc, url, base, batch.slice(h));
+    svc.page = Math.max(PAGE_MIN, Math.min(svc.page, h));
+    return [...a, ...b];
+  }
+  throw Object.assign(new Error(last), { kind: 'page' });
+}
+
+/** Every feature in a box by pages of a count (resultOffset): no list of ids needed. Throws { kind: 'offset' }. */
+export async function byOffset(svc, url, endpoint, box, outFields) {
+  const n = Math.min(svc.page, PAGE_MAX), out = [];
+  for (let k = 0, pages = 0; pages < 5000; k += n, pages++) {
     if (elapsed() > HARD_MS) throw Object.assign(new Error('out of time'), { kind: 'time' });
-    const batch = all.slice(i, i + page);
+    const j = await ask(url, { where: endpoint.where || '1=1', ...envelope(box), outFields, returnGeometry: 'true', outSR: '4326', resultOffset: String(k), resultRecordCount: String(n), ...(svc.water ? { maxAllowableOffset: '0.000005' } : {}) }, { post: !svc.get });
+    if (j.error) throw Object.assign(new Error(j.error), { kind: 'offset' });
+    const f = j.features || [];
+    out.push(...f);
+    if (!f.length || (!j.exceededTransferLimit && f.length < n)) break;
+  }
+  return out;
+}
+
+/** One square of one service: every parcel in it, each with its rings and number. Throws with a kind on failure. */
+export async function fetchSquare(svc, endpoint, box) {
+  const url = `${endpoint.service}/${endpoint.layer}/query`;
+  const pin = endpoint.fields?.pin;
+  const outFields = svc.water ? '*' : pin || '';
+  let features = [], asked = 0;
+  let all = null;
+  try { all = (await idsOf(svc, url, endpoint, box)).slice().sort((a, b) => a - b); } catch (e) {
+    if (e instanceof Refused || e.kind !== 'ids') throw e;
+    // no ids, even in quarters: the parcels by pages of a count instead
+    try { features = await byOffset(svc, url, endpoint, box, outFields); svc.offset = true; } catch (o) {
+      if (o instanceof Refused || o.kind === 'time') throw o;
+      throw Object.assign(new Error(`${e.message}; by pages: ${o.message}`), { kind: 'ids' });
+    }
+  }
+  if (all) {
+    asked = all.length;
     const base = {
-      objectIds: batch.join(','), outFields: svc.water ? '*' : pin || '', returnGeometry: 'true', outSR: '4326',
+      outFields, returnGeometry: 'true', outSR: '4326',
       // a water layer as the water route shows it: shapes simplified to about half a metre (water-layers.js queryUrl)
       ...(svc.water ? { maxAllowableOffset: '0.000005' } : {}),
     };
-    const post = !svc.get;
-    let j = svc.precise !== false ? await ask(url, { ...base, geometryPrecision: '7' }, { post }) : { error: 'skip' };
-    if (j.error) { j = await ask(url, base, { post }); if (!j.error && svc.precise === undefined) svc.precise = false; }
-    if (j.error) throw Object.assign(new Error(j.error), { kind: 'page' });
-    if (svc.precise === undefined) svc.precise = true;
-    for (const f of j.features || []) {
-      if (svc.water) {
-        // a water layer's feature: its shape (area, line or points) and its tidied attributes, in the number's place
-        const g = f.geometry || {};
-        const parts = g.rings ? ['a', g.rings] : g.paths ? ['l', g.paths] : Number.isFinite(g.x) ? ['p', [[[g.x, g.y]]]]
-          : Array.isArray(g.points) ? ['p', g.points.map((q) => [q])] : null;
-        if (parts) out.push({ pin: JSON.stringify({ g: parts[0], a: tidyAttributes(f.attributes) }), rings: parts[1] });
-        continue;
-      }
-      const rings = f.geometry?.rings;
-      if (!Array.isArray(rings) || !rings.length) continue;
-      out.push({ pin: pin ? f.attributes?.[pin] ?? null : null, rings });
+    // the page size can shrink inside pageOf: each step moves on by the batch just fetched
+    for (let i = 0; i < all.length;) {
+      if (elapsed() > HARD_MS) throw Object.assign(new Error('out of time'), { kind: 'time' });
+      const batch = all.slice(i, i + svc.page);
+      features.push(...await pageOf(svc, url, base, batch));
+      i += batch.length;
     }
+  } else asked = features.length;
+  const out = [];
+  for (const f of features) {
+    if (svc.water) {
+      // a water layer's feature: its shape (area, line or points) and its tidied attributes, in the number's place
+      const g = f.geometry || {};
+      const parts = g.rings ? ['a', g.rings] : g.paths ? ['l', g.paths] : Number.isFinite(g.x) ? ['p', [[[g.x, g.y]]]]
+        : Array.isArray(g.points) ? ['p', g.points.map((q) => [q])] : null;
+      if (parts) out.push({ pin: JSON.stringify({ g: parts[0], a: tidyAttributes(f.attributes) }), rings: parts[1] });
+      continue;
+    }
+    const rings = f.geometry?.rings;
+    if (!Array.isArray(rings) || !rings.length) continue;
+    out.push({ pin: pin ? f.attributes?.[pin] ?? null : null, rings });
   }
-  return { parcels: out, asked: all.length };
+  return { parcels: out, asked };
 }
 
 /* ---------------------------------------------------------------- the squares */
@@ -435,6 +511,19 @@ async function main() {
     }
     console.log(`Parcel services that could not be copied, by kind and the server's message (addresses taken out):`);
     for (const [k, g] of [...groups].sort((a, b) => b[1].n - a[1].n)) console.log(`  ${g.n} x ${k} (last tried ${g.last.slice(0, 10)})`);
+    // the county's published file, for those it was looked for: found and unreadable, or none found
+    const files = new Map();
+    for (const svc of services) {
+      if (svc.water) continue;
+      const S = state.services[svc.key];
+      if (!S?.failed) continue;
+      const why = S.fileFailed ? String(S.fileFailed.why || '').replace(/https?:\/\/\S+/g, '[address]').replace(/\b[\w-]+(\.[\w-]+)+\.(gov|us|com|org|net|io)\b/gi, '[host]').trim() : 'no public parcel file found on its portal, no portal named, or not looked for';
+      files.set(why, (files.get(why) || 0) + 1);
+    }
+    if (files.size) { console.log('Their county\'s published file:'); for (const [k, n] of [...files].sort((a, b) => b[1] - a[1])) console.log(`  ${n} x ${k}`); }
+    const how = { split: 0, offset: 0 };
+    for (const svc of services) { const src = state.services[svc.key]?.source; if (src?.split) how.split++; if (src?.offset) how.offset++; }
+    console.log(`Copied with the fallbacks of 2026-11-17: ${how.split} asked for in smaller squares, ${how.offset} by pages of a count.`);
     return;
   }
   const todo = order(services, state, now);
@@ -490,7 +579,7 @@ async function main() {
         }
         if (squares.every(([tx, ty]) => { const q = st.squares[squareId(tx, ty)]; return q && Date.parse(q.at) >= Date.parse(st.round); })) {
           st.done = new Date().toISOString();
-          st.source = { kind: 'server' };
+          st.source = { kind: 'server', ...(svc.split ? { split: svc.split } : {}), ...(svc.offset ? { offset: true } : {}) };
           st.count = squares.reduce((s, [tx, ty]) => s + (st.squares[squareId(tx, ty)]?.n || 0), 0);
           if (svc.water) totals.water = (totals.water || 0) + 1; else totals.services++;
         }
