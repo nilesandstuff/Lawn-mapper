@@ -248,3 +248,11 @@ console.log(`parcel-mirror fallbacks: ${passed} passed`);
   } finally { globalThis.fetch = realFetch; }
 }
 console.log(`parcel-mirror published file: ${passed} passed`);
+
+// the probe's line says what answered and nothing of where (PROBE=yes)
+{
+  const { probeLine } = await import('./parcel-mirror.mjs');
+  const l = probeLine(2, { info: { ok: true, paging: false, max: 2000, sr: 'projected' }, count: { ok: true, n: 9 }, idsAll: { ok: false, why: 'error 500' }, tiny: { ok: true, n: 0 }, point: null, offset: { ok: false, why: 'refused 499' } });
+  assert.equal(l, '  service 2: description ok (pagination no, max 2000, projected); count ok 9; ids, no area error 500; tiny box ok 0; point -; ten by count, no area refused 499');
+  console.log('parcel-mirror probe line: ok');
+}

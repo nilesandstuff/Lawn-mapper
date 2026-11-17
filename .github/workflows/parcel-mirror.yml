@@ -19,6 +19,9 @@ on:
       report:
         description: 'Only list why the services that could not be copied failed (yes), copying nothing'
         default: 'no'
+      probe:
+        description: 'With report=yes: also ask each failed service a few kinds of question and say which it answers (yes)'
+        default: 'no'
 
 concurrency:
   group: parcel-mirror
@@ -45,6 +48,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           BUDGET_MIN: ${{ inputs.minutes || '320' }}
           REPORT: ${{ inputs.report || 'no' }}
+          PROBE: ${{ inputs.probe || 'no' }}
         run: node tools/parcel-mirror.mjs | tee copy.txt
       - name: The answer
         if: always()

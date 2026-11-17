@@ -222,6 +222,43 @@ export async function byOffset(svc, url, endpoint, box, outFields) {
 }
 
 /** One square of one service: every parcel in it, each with its rings and number. Throws with a kind on failure. */
+/* WHAT A FAILING SERVER WILL ANSWER (PROBE=yes with REPORT=yes; 2026-11-17: 13 servers still answered 500 or 400 to a
+   square's ids in quarters down to 7 km and to pages by count). Each failed service's first endpoint is asked: its
+   own description, a count of everything, every id with no area, a tiny box (about 1 km) at the middle of its
+   county, a point there (what the site asks of it, and the nightly registry check), and a page of ten with no area.
+   One line each, numbered, saying only what answered: no address, host, county or coordinate. */
+export function probeLine(n, r) {
+  const say = (x) => (x == null ? '-' : x.ok ? `ok${x.n != null ? ` ${x.n}` : ''}` : x.why);
+  return `  service ${n}: description ${say(r.info)}${r.info?.ok ? ` (pagination ${r.info.paging ? 'yes' : 'no'}, max ${r.info.max ?? '?'}, ${r.info.sr})` : ''}; `
+    + `count ${say(r.count)}; ids, no area ${say(r.idsAll)}; tiny box ${say(r.tiny)}; point ${say(r.point)}; ten by count, no area ${say(r.offset)}`;
+}
+async function probeFailed(list) {
+  console.log(`Asking the ${list.length} failed services what they will answer:`);
+  let n = 0;
+  for (const svc of list) {
+    n++;
+    const ep = svc.endpoints?.[0];
+    if (!ep) { console.log(`  service ${n}: no endpoint`); continue; }
+    const url = `${ep.service}/${ep.layer}/query`, [w, s0, e, nn] = svc.box, cx = (w + e) / 2, cy = (s0 + nn) / 2, d = 0.005;
+    const r = {};
+    const tryIt = async (fn) => { try { return await fn(); } catch (x) { return { ok: false, why: x instanceof Refused ? String(x.message) : 'threw' }; } };
+    const as = (j, pick) => (j.error ? { ok: false, why: j.error } : { ok: true, n: pick(j) });
+    r.info = await tryIt(async () => {
+      const j = await ask(`${ep.service}/${ep.layer}`, {});
+      if (j.error) return { ok: false, why: j.error };
+      const wk = j.extent?.spatialReference?.latestWkid ?? j.extent?.spatialReference?.wkid ?? j.sourceSpatialReference?.wkid;
+      return { ok: true, paging: !!j.advancedQueryCapabilities?.supportsPagination, max: j.maxRecordCount ?? null, sr: wk === 4326 ? 'geographic' : wk === 3857 || wk === 102100 ? 'web mercator' : wk ? 'projected' : 'no reference' };
+    });
+    const where = ep.where || '1=1';
+    r.count = await tryIt(async () => as(await ask(url, { where, returnCountOnly: 'true' }), (j) => j.count));
+    r.idsAll = await tryIt(async () => as(await ask(url, { where, returnIdsOnly: 'true' }, { post: true }), (j) => (j.objectIds || []).length));
+    r.tiny = await tryIt(async () => as(await ask(url, { where, returnIdsOnly: 'true', ...envelope([cx - d, cy - d, cx + d, cy + d]) }), (j) => (j.objectIds || []).length));
+    r.point = await tryIt(async () => as(await ask(url, { where, returnIdsOnly: 'true', inSR: '4326', spatialRel: 'esriSpatialRelIntersects', geometryType: 'esriGeometryPoint', geometry: `${cx},${cy}` }), (j) => (j.objectIds || []).length));
+    r.offset = await tryIt(async () => as(await ask(url, { where, outFields: ep.fields?.pin || '', returnGeometry: 'true', outSR: '4326', resultOffset: '0', resultRecordCount: '10' }), (j) => (j.features || []).length));
+    console.log(probeLine(n, r));
+  }
+}
+
 export async function fetchSquare(svc, endpoint, box) {
   const url = `${endpoint.service}/${endpoint.layer}/query`;
   const pin = endpoint.fields?.pin;
@@ -537,6 +574,7 @@ async function main() {
     const how = { split: 0, offset: 0 };
     for (const svc of services) { const src = state.services[svc.key]?.source; if (src?.split) how.split++; if (src?.offset) how.offset++; }
     console.log(`Copied with the fallbacks of 2026-11-17: ${how.split} asked for in smaller squares, ${how.offset} by pages of a count.`);
+    if (/^(1|yes|true)$/i.test(process.env.PROBE || '')) await probeFailed(services.filter((x) => !x.water && state.services[x.key]?.failed));
     return;
   }
   const todo = order(services, state, now);
