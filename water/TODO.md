@@ -171,6 +171,23 @@ SPECULATION), as always.
     ways to the surface, version 1 kept beside it. Later, if the walks still ask for it: a stable night's still air
     (ra), sideways heat between spots, thatch thicker than half an inch.
 
+30. **The model explorer for everyone** (owner, 2026-11-17: "I will also want a view in the public model that allows
+    that same view-all-variables behind the predictions... we can add that part to the todo list so that you aren't
+    overextended (and so I'm not overextended in terms of verifying the live site)"). THE ADMIN'S VERSION IS BUILT
+    (2026-11-17): /explore?map=, opened from the measurements page; views thermal surface, soil temperature (2 and
+    4 in), wind and moisture; measured / model / measured minus model over the photo; a tapped spot's reading, the
+    model's prediction and every factor behind it. BUILT TO CARRY OVER: the numbers and words are lib/explain.js
+    (pure, tested), the model's side is the analysis worker's own messages (moment, explain, moistureAt; walkCheck
+    for a walk), the photo is public/frame.js (shared with the water map), and the page assumes no readings (their
+    routes answer the admin only, so a public visitor gets the model side alone). WHAT IS LEFT: (1) src/index.js
+    serves /explore to anyone who can open the map (the site's own ADMIN_ONLY rule, as the water map); (2) a way in
+    from the water map itself (a "What's behind this?" button beside the views, or tapping a spot on the Heat view
+    opening this page at that spot and month); (3) the words checked for a reader who is not the developer (the
+    group notes are written for the owner); (4) the public moment's cost: each one fetches Open-Meteo's archived
+    hours (one call) and traces about 400,000 rays in the visitor's browser (2-10 s), fine on a phone but worth a
+    note; (5) the moisture view's model side for a visitor with no readings: the date picker reaches the 60 days of
+    weather the plan holds. Ask the owner which entry point before building it.
+
 ## Rules (owner, 2026-10-27)
 
 - **The white paper stays true to the live model** (owner, 2026-11-02: "remember to continuously add to it if

@@ -146,7 +146,7 @@ export function forcingAt(model, i, T, w, { month, ks = 1, elevM = 200 } = {}) {
   const rnIso = swNet + EMIS * (V * w.lsky + (1 - V) * bb - bb) + fence + paving;
   const winds = model.winds || [1], at = model.windAtMonths ? model.windAtMonths[month] : model.windAt;
   const u2 = Math.max(0.5, w.wind * (winds[at ? at[i] : 0] ?? 1));
-  return { swNet, rnIso, ta, ra: 208 / u2, beta: up ? Math.max(0, Math.min(1, ks)) * ptShare : 0, u2, air };
+  return { swNet, rnIso, ta, ra: 208 / u2, beta: up ? Math.max(0, Math.min(1, ks)) * ptShare : 0, u2, air, fence, paving };
 }
 
 /** Open, level, watered lawn in the open wind at the same moment: the reference the card sets each spot against. */

@@ -23,4 +23,19 @@ for (const f of files) {
 }
 assert.deepEqual(missing, [], `imports that do not resolve:\n${missing.join('\n')}`);
 console.log(`ok  ${n} relative imports in ${files.length} library files all resolve`);
-console.log('\n1 passed');
+/* ...and every page's own imports from the site's root ('/lib/...' the library, '/frame.js' a page module beside it):
+   the explorer (2026-11-17) shares public/frame.js with the water map */
+const pub = resolve(lib, '../public');
+const pageMissing = [];
+let np = 0;
+for (const f of readdirSync(pub).filter((x) => /\.m?js$/.test(x))) {
+  const src = readFileSync(join(pub, f), 'utf8');
+  for (const m of src.matchAll(/(?:^|\n)\s*(?:import|export)\s[^'"]*?from\s+['"](\/[^'"]+)['"]/g)) {
+    np++;
+    const p = m[1].startsWith('/lib/') ? join(lib, m[1].slice(5)) : join(pub, m[1].slice(1));
+    if (!existsSync(p)) pageMissing.push(`${f} -> ${m[1]}`);
+  }
+}
+assert.deepEqual(pageMissing, [], `page imports that do not resolve:\n${pageMissing.join('\n')}`);
+console.log(`ok  ${np} imports in the pages all resolve`);
+console.log('\n2 passed');

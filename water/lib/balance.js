@@ -451,7 +451,8 @@ export function buildModel(res, { kinds, soilAt, soils, roofTo, light = null, li
  * irrigate(dayIndex, state) -> Float32Array of mm per cell to apply that day, or null. The state it
  * sees: { Dr (depletion, mm), grav, month, inSeason }.
  * start: { Dr: Float32Array } to begin from (default: every cell at field capacity).
- * record(dayIndex, state, flags) is called after each day (optional).
+ * record(dayIndex, state, flags) is called after each day (optional); state also carries tot (the running totals),
+ * etFactor (that day's water-use factor per cell) and et0 (that day's reference ET, mm).
  *
  * -> totals per cell over the run: irrigation, et, drained (below the roots), ranOff (left the cell
  *    on the surface), wetDays, dryDays, seasonDays; and the end state.
@@ -656,7 +657,8 @@ export function simulate(model, days, { irrigate = null, start = null, record = 
       }
     }
     if (inSeason) tot.seasonDays++;
-    if (record) record(d, { Dr, grav, pond, month, inSeason, date: day.date, P: PS });
+    // tot (the running totals) and etFactor (the day's water-use factor) for a spot's explanation (public/explore.js)
+    if (record) record(d, { Dr, grav, pond, month, inSeason, date: day.date, P: PS, tot, etFactor, et0 });
   }
   // back to the working root zone, for what reads the model after the run (the zones' depths)
   if (rootNow !== 1) for (let i = 0; i < N; i++) { const t = model.tawFull[i]; if (taw[i] > 0) Dr[i] *= t / taw[i]; taw[i] = t; raw[i] = model.pTex[i] * t; satRoom[i] = params.satRoomFrac * model.rootCm[i] * 10; }

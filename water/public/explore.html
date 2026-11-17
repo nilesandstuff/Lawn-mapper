@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en" data-home="__HOME__">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Model Explorer</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<style>
+  :root { --bg: #f6f8f7; --surface: #fcfcfb; --fg: #17201c; --dim: #5d6b64; --line: #d9e1dd; --accent: #1f6fd1; --bad: #c62828; --good: #2e7d32; --chip: #e8eeeb; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg: #101513; --surface: #1a1a19; --fg: #e7eeea; --dim: #9aa8a1; --line: #2c3631; --accent: #6aa8ff; --bad: #ff6b6b; --good: #7fd18a; --chip: #24302b; }
+  }
+  :root[data-theme="dark"] { --bg: #101513; --surface: #1a1a19; --fg: #e7eeea; --dim: #9aa8a1; --line: #2c3631; --accent: #6aa8ff; --bad: #ff6b6b; --good: #7fd18a; --chip: #24302b; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  main { max-width: 980px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 1.3rem; margin: 6px 0 2px; }
+  h2 { font-size: 1rem; margin: 0 0 6px; }
+  .dim { color: var(--dim); font-size: 13px; }
+  a { color: var(--accent); }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin-top: 12px; }
+  .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .tabs button, .layers button { font: inherit; font-size: 14px; padding: 7px 11px; border-radius: 999px; border: 1px solid var(--line); background: var(--chip); color: var(--fg); cursor: pointer; }
+  .tabs button[aria-pressed="true"], .layers button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:disabled { opacity: .45; cursor: default; }
+  button.act { font: inherit; font-size: 14px; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--accent); background: transparent; color: var(--accent); cursor: pointer; }
+  select, input { font: inherit; font-size: 14px; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); max-width: 100%; }
+  #stage { position: relative; margin-top: 10px; border-radius: 10px; overflow: auto; background: #222; max-height: 78vh; }
+  #view { display: block; width: 100%; height: auto; touch-action: manipulation; cursor: crosshair; }
+  #legend { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-top: 8px; flex-wrap: wrap; }
+  #legend .bar { flex: 1 1 100px; max-width: 220px; height: 12px; border-radius: 3px; border: 1px solid var(--line); }
+  #busy { margin-top: 8px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
+  td { padding: 4px 6px; border-top: 1px solid var(--line); vertical-align: top; }
+  td.v { text-align: right; white-space: nowrap; font-weight: 600; }
+  td .dim { display: block; font-size: 12px; }
+  details { margin-top: 8px; }
+  summary { cursor: pointer; font-weight: 600; }
+  .big { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin: 6px 0; }
+  .big div { background: var(--chip); border-radius: 8px; padding: 8px 10px; }
+  .big b { display: block; font-size: 1.25rem; }
+  .bad { color: var(--bad); }
+</style>
+</head>
+<body>
+<main>
+  <p class="dim" style="margin:0"><a href="/measurements">&larr; Measurements</a> · <a id="open-map" href="/">Open its water map</a></p>
+  <h1 id="title">Model explorer</h1>
+  <p class="dim">Every reading on this map beside what the model predicts for the same spot and moment, and everything that goes into that prediction. Tap a spot on the map.</p>
+  <div class="card">
+    <div class="row tabs" id="tabs" role="group" aria-label="What to look at">
+      <button data-view="surface" aria-pressed="true">Thermal surface</button>
+      <button data-view="soil" aria-pressed="false">Soil temperature</button>
+      <button data-view="wind" aria-pressed="false">Wind</button>
+      <button data-view="moisture" aria-pressed="false">Moisture</button>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <label class="dim" for="when">When</label> <select id="when"></select>
+      <input id="pick" type="datetime-local" hidden> <input id="pick-day" type="date" hidden>
+      <span id="depth-box" hidden><select id="depth"><option value="5">2 in down</option><option value="10" selected>4 in down</option></select></span>
+    </div>
+    <div class="row layers" id="layers" style="margin-top:10px" role="group" aria-label="Which layer">
+      <button data-layer="measured" aria-pressed="true">Measured</button>
+      <button data-layer="model" aria-pressed="false">Model</button>
+      <button data-layer="diff" aria-pressed="false">Measured − model</button>
+      <button class="act" id="whole" hidden>Model the whole lawn at this minute</button>
+    </div>
+    <p class="dim" id="busy">Opening the map…</p>
+    <div id="summary"></div>
+  </div>
+  <div id="stage"><canvas id="view" aria-label="The lawn with the selected layer; tap a spot for its factors"></canvas></div>
+  <div id="legend"></div>
+  <div class="card" id="spot"><p class="dim">Tap a spot on the map to see its reading, the model's prediction and what goes into it.</p></div>
+</main>
+<script type="module" src="/explore.js"></script>
+</body>
+</html>

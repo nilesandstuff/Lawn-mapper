@@ -81,6 +81,13 @@ export async function openMap({ site, inputs, base, minutes = 60 }) {
       self.onmessage({ data: { walkCheck: { id, records, series, notes } } });
       return p;
     },
+    /** any other question the page asks its worker (moment, explain, moistureAt: public/explore.js), by its key */
+    async ask(key, body, ms = 10 * 6e4) {
+      const id = `builder${++n}`;
+      const p = waitFor((m) => (m?.[key]?.id === id ? m[key] : undefined), ms);
+      self.onmessage({ data: { [key]: { id, ...body } } });
+      return p;
+    },
     close() { /* the light worker threads end with each check; the process ends with the job */ },
   };
 }

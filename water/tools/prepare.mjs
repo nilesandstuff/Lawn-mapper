@@ -93,7 +93,7 @@ function main() {
   mkdirSync(build, { recursive: true });
   cpSync(join(water, 'public'), build, { recursive: true });
   const home = lawnmap.split('.').slice(1).join('.');
-  for (const f of ['index.html', 'admin.html', 'measurements.html']) {
+  for (const f of ['index.html', 'admin.html', 'measurements.html', 'explore.html']) {
     const page = join(build, f);
     writeFileSync(page, readFileSync(page, 'utf8').split('__LAWNMAP__').join(`https://${lawnmap}`).split('__HOME__').join(`https://${home}`));
   }

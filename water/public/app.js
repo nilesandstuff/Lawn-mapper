@@ -24,6 +24,7 @@
  */
 
 import { tracedOn, lineUpAt } from '/lib/shade/traced.js';
+import { R, toMerc, fromMerc, worldSize, mercToWorld, frameFor, photoOf, savedPhoto, toPx } from '/frame.js';
 import { boxFor } from '/lib/site.js';
 import { sprinklers } from '/heads.js';
 import { viewer3d, groundMesh } from '/view3d.js';
@@ -38,7 +39,6 @@ import { MODEL_VERSION } from '/lib/surfacenow.js';
 import { openMeteoUrls, parseOpenMeteo } from '/lib/momentweather.js';
 
 const $ = (s) => document.querySelector(s);
-const R = 6378137;
 const view = { photo: null, data: null, frame: null, site: null, plan: null };
 const inputs = { downspouts: [], gutters: [], areas: [], topsoil: false, grass: 'cool', species: [], mode: 'normal', texture: '' };
 let mode = null, pending = null; // 'from' | 'to' (a downspout) | 'gutter' | 'area'
@@ -90,58 +90,7 @@ async function siteFromMap(id) {
 
 /* ------------------------------------------------------------- the photo */
 
-const toMerc = ([lng, lat]) => [(lng * Math.PI / 180) * R, Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI / 180) / 2)) * R];
-const fromMerc = ([x, y]) => [(x / R) * 180 / Math.PI, (2 * Math.atan(Math.exp(y / R)) - Math.PI / 2) * 180 / Math.PI];
-const worldSize = (zoom) => 512 * 2 ** zoom;
-const mercToWorld = ([x, y], zoom) => [((x + Math.PI * R) / (2 * Math.PI * R)) * worldSize(zoom), ((Math.PI * R - y) / (2 * Math.PI * R)) * worldSize(zoom)];
-
-/** One Mapbox frame (Lawn Mapper's /api/imagery) covering the analysis box. */
-function frameFor(bbox, lat) {
-  const k = Math.cos(lat * Math.PI / 180);
-  const spanM = Math.max(bbox[2] - bbox[0], bbox[3] - bbox[1]) * k;
-  const mPerPxZ0 = (2 * Math.PI * R * k) / 512;
-  const zoom = Math.max(15, Math.min(20, Math.floor(Math.log2((1280 * mPerPxZ0) / spanM) * 100) / 100));
-  const [lng, clat] = fromMerc([(bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2]);
-  return { lng, lat: clat, zoom, size: 1280, height: 1280 };
-}
-
-async function photoOf(frame, provider = 'mapbox', svc = null) {
-  const q = new URLSearchParams({ lng: frame.lng, lat: frame.lat, zoom: frame.zoom, size: frame.size, height: frame.height, provider });
-  if (svc != null) q.set('svc', svc);
-  const res = await fetch(`/api/imagery?${q}`);
-  if (!res.ok) throw new Error(`the ${provider === 'county' ? 'county' : 'Mapbox'} photo would not load (${res.status})`);
-  return createImageBitmap(await res.blob());
-}
-
-/**
- * The photo the map was saved on (lib/shade/traced.js, the shade map's own reading of a save): a county
- * photo moved by the editor's line-up onto the web map's ground, where the lawn was traced over it; Mapbox
- * otherwise, or when the county's will not load. -> { photo, shift: [px, py] to draw it at, name }
- */
-async function savedPhoto(frame, site) {
-  const t = site.tracedOn || { provider: 'mapbox' };
-  if (t.provider === 'county') {
-    try {
-      const photo = await photoOf(frame, 'county', t.svc);
-      const move = lineUpAt(t, [frame.lng, frame.lat]);
-      const k = Math.cos((frame.lat * Math.PI) / 180), s = (worldSize(frame.zoom) / (2 * Math.PI * R)) * (photo.width / frame.size);
-      return { photo, shift: [(move.east / k) * s, -(move.north / k) * s], name: `the county photo the map was saved on${t.align ? ', where the editor lined it up' : ''}` };
-    } catch (e) {
-      const photo = await photoOf(frame).catch(() => null);
-      return { photo, shift: [0, 0], name: `Mapbox's photo (the county photo the map was saved on would not load: ${e.message})` };
-    }
-  }
-  return { photo: await photoOf(frame).catch(() => null), shift: [0, 0], name: "Mapbox's photo" };
-}
-
-/** EPSG:3857 -> pixel on the photo. */
-function toPx(frame, img, xy) {
-  const c = mercToWorld(toMerc([frame.lng, frame.lat]), frame.zoom);
-  const w = mercToWorld(xy, frame.zoom);
-  const s = img.width / frame.size;
-  return [(w[0] - c[0]) * s + img.width / 2, (w[1] - c[1]) * s + img.height / 2];
-}
-
+// the photo's helpers: public/frame.js (shared with the explorer)
 /* -------------------------------------------------------------- drawing */
 
 /* ONE VIEW AT A TIME (owner, 2026-10-23: "Break up the different views into their respective categories, so

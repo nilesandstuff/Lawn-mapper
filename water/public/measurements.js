@@ -111,7 +111,7 @@ function render() {
     }).join('');
     const state1 = w ? `<p class="dim">${esc(w)}</p>` : '';
     return `<div class="card"><h2>${esc(nameOf(id))}</h2>${m && !lawnDone(m) ? '<p class="dim">Its lawn is not traced yet.</p>' : ''}${state1}
-      <p class="dim"><a href="/?map=${encodeURIComponent(id)}">Open its water map</a></p>
+      <p><a class="open" href="/explore?map=${encodeURIComponent(id)}"><b>Open the readings and the model</b></a> <span class="dim">· <a href="/?map=${encodeURIComponent(id)}">its water map</a></span></p>
       ${vs.length ? `<h3>Readings</h3><div class="scroll"><table><tr><th>visit</th><th>what</th><th>spots</th><th>range</th><th>the model against them</th></tr>${visitRows}</table></div>` : ''}
       ${walkRows ? `<h3>Thermal walks</h3><div class="scroll"><table><tr><th>walk</th><th>conversion</th><th>the model against it (now: ${esc(MODEL_VERSION)})</th></tr>${walkRows}</table></div>` : ''}
       ${pooled ? `<h3>Every walk pooled, by model version</h3><ul class="dim">${pooled}</ul>` : ''}

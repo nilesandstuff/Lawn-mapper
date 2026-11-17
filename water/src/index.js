@@ -104,6 +104,15 @@ export default {
       out.headers.set('Cache-Control', 'private, no-store');
       return out;
     }
+    /* the model explorer (public/explore.html; owner, 2026-11-17): the admin only for now, whether or not the site is open;
+       TODO 30 opens it to everyone (the readings' own routes stay the admin's, so the public sees the model side alone) */
+    if (url.pathname === '/explore' || url.pathname === '/explore.html' || url.pathname === '/explore.js') {
+      if (!(await isAdmin(request, env))) return url.pathname === '/explore.js' ? notFound() : notOpenYet(env.LAWNMAP_HOST?.split('.').slice(1).join('.'));
+      const res = await env.ASSETS.fetch(new Request(new URL(url.pathname === '/explore.js' ? '/explore.js' : '/explore', url), request));
+      const out = new Response(res.body, res);
+      out.headers.set('Cache-Control', 'private, no-store');
+      return out;
+    }
     // the soil moisture readings page (public/moisture.html; owner, 2026-11-02): the admin only, whether or not the site is open
     if (url.pathname === '/moisture' || url.pathname === '/moisture.html' || url.pathname === '/moisture.js') {
       if (!(await isAdmin(request, env))) return url.pathname === '/moisture.js' ? notFound() : notOpenYet(env.LAWNMAP_HOST?.split('.').slice(1).join('.'));

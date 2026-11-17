@@ -295,6 +295,14 @@ test('the measurements page is the admin\'s only, open site or not', async () =>
   assert.match((await get('/measurements', 'lm_session=admin', open)).headers.get('Cache-Control'), /no-store/);
 });
 
+test('the model explorer is the admin\'s only for now, open site or not (TODO 30 opens it)', async () => {
+  const open = env('ok', { ADMIN_ONLY: '0' });
+  for (const p of ['/explore', '/explore.html', '/explore.js']) assert.equal((await get(p, '', open)).status, 404, p);
+  for (const p of ['/explore', '/explore.js']) assert.equal((await get(p, 'lm_session=user', open)).status, 404, p);
+  assert.equal((await get('/explore?map=x', 'lm_session=admin', open)).status, 200);
+  assert.match((await get('/explore', 'lm_session=admin', open)).headers.get('Cache-Control'), /no-store/);
+});
+
 test('the moisture page is the admin\'s only, open site or not', async () => {
   const open = env('ok', { ADMIN_ONLY: '0' });
   for (const p of ['/moisture', '/moisture.html', '/moisture.js']) assert.equal((await get(p, '', open)).status, 404, p);

@@ -166,3 +166,12 @@ export function spinColumns({ n, hours, forcing, propsOf, fit }) {
   });
   return { T, t: hours.length ? hours[hours.length - 1].t + 36e5 : t0, skipped, tBottomAt: (t) => annualAt(fit, zb, t) };
 }
+
+/** The skin's energy at a moment, from the forcing, the top layer t1 and the skin ts that came of them (W/m2; the
+ *  shares sum to nothing): net radiation at the skin, into the ground, to the air, to evaporation. */
+export function skinParts(t1, f, ts) {
+  const kR = 4 * EMIS * SIGMA * (f.ta + 273.15) ** 3, kH = RHO_CP / f.ra;
+  const rn = f.rnIso - SW_TO_SOIL * f.swNet - kR * (ts - f.ta);
+  const g = LAMBDA_SKIN * (ts - t1), h = kH * (ts - f.ta);
+  return { rn, g, h, le: rn - g - h, swSoil: SW_TO_SOIL * f.swNet };
+}
