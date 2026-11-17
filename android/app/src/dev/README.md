@@ -121,7 +121,7 @@ Its notes, `<id>.snapmeta` on the phone, go up as the twin part `thermal-snap.js
 the site (the thermal session's converter starts on them): `{ kind: "snap", format: 1, id, at (wall ms), map (or
 null), coarse { lng, lat } rounded to 0.1 degree (only for the weather; or null), air_C (typed; or null), emissivity
 (0.98 grass, 0.95 bare soil or mulch; or null), label (or null), rotation (as above), t0_ns, t1_ns, frames, dropped,
-app }`.
+app, sensor_orientation (the phone's back camera's Camera2 SENSOR_ORIENTATION in degrees, or null) }`.
 
 The converter writes `thermal/snap.json` and `thermal/snap.png` (and `thermal/status.json`); where the owner stood is
 `thermal-snap-place.json`, written by the site when the water page places it (scan/src/thermal-snap.js; the private

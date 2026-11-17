@@ -514,6 +514,9 @@ class ThermalCamera(private val app: Context, private val base: String) {
                     .put("coarse", coarse).put("air_C", num("air_C", -50.0, 60.0)).put("emissivity", num("emissivity", 0.5, 1.0))
                     .put("label", o.optString("label", "").take(80).ifEmpty { null } ?: JSONObject.NULL)
                     .put("rotation", r).put("t0_ns", t0).put("t1_ns", t1).put("frames", tf.frames).put("dropped", tf.dropped).put("app", BuildConfig.VERSION_NAME)
+                    // which way the phone's back camera sensor is mounted (the thermal session, 2026-11-17: it rolls the
+                    // picture by this instead of assuming 90 degrees)
+                    .put("sensor_orientation", backSensorOrientation() ?: JSONObject.NULL)
                 File(uploads.dir, "$id.snapmeta").writeText(meta.toString())
                 lastSnap = id
             } catch (e: Exception) {
@@ -531,6 +534,14 @@ class ThermalCamera(private val app: Context, private val base: String) {
         }
         return JSONObject().put("ok", true).put("id", id).toString()
     }
+
+    /** The back camera's SENSOR_ORIENTATION (Camera2), degrees; null when it cannot be read. Needs no permission. */
+    private fun backSensorOrientation(): Int? = try {
+        val cm = app.getSystemService(Context.CAMERA_SERVICE) as android.hardware.camera2.CameraManager
+        cm.cameraIdList.map { cm.getCameraCharacteristics(it) }
+            .firstOrNull { it.get(android.hardware.camera2.CameraCharacteristics.LENS_FACING) == android.hardware.camera2.CameraCharacteristics.LENS_FACING_BACK }
+            ?.get(android.hardware.camera2.CameraCharacteristics.SENSOR_ORIENTATION)
+    } catch (_: Exception) { null }
 
     // ---------------- a walk ----------------
 
