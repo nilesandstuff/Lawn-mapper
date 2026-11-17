@@ -2857,6 +2857,20 @@ missed it by about as much as it does on the walker's air, in the other directio
 same either way (0.49), since the air is one number for the whole lot. The dusk walk stays warm on either air (4-6 F).
 The lot's own air was warmer than the stations 24 km away on both walks (2.6 F, 9.1-9.5 F). Two walks, two lots.
 
+### H96. The second score made the live map's own prediction (station air and satellite cloud) (water session, 2026-11-17)
+
+The owner: "have the station run be the same as the live map prediction". From SCORING 3 the second score has nothing
+of the walker's in it but the time and place: the station's air, humidity and wind, and the cloud from the satellite's
+sunshine (else the station's sky cover), not the walker's word or sky sweep. Re-scored 15:03 and 15:11 UTC. Measured
+minus modelled, F, live map's own (the walker's-air score, H95, unchanged beside it):
+  W1  dusk, overcast by the sweep (cloud 1.0): mean +1.5, RMS 1.8, rank 0.35 (walker's air and sweep: -6.0, RMS 6.0).
+  W2  early afternoon: mean +4.1, RMS 5.1, rank 0.49; sun +3.9, shade +3.8 (walker's: -3.0, RMS 4.3).
+  Pooled, 900 squares: +3.7, RMS 4.7 (walker's: -3.5, RMS 4.6).
+WHAT THIS SAYS, AS MEASURED: at the overcast dusk the live map came within 1.5 F, closer than on the walker's own air
+and sky; on the afternoon walk it ran 4 F cool, the lot's air 9 F above the station's. Between H95 and this, the
+walker's cloud against the live map's moved W1 by about 5.5 F (the air by 3.8 F of it at most): the sky's cloud is
+as large an input at dusk as the air. Two walks, two lots; nothing tuned.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge
