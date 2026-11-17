@@ -3,6 +3,7 @@
    ADMIN SAVES ONLY (anything else is null). Kept apart from index.js, which the tests run in Node. */
 import { WorkerEntrypoint } from 'cloudflare:workers';
 import { findAdminSave, adminSavesList, modelOfSave, thermalOfSave } from './water-push.js';
+import { makeWholeSave } from './admin-saves.js';
 
 export class Internal extends WorkerEntrypoint {
   /** The admin save's record as GET /api/maps/one gives it, or null. */
@@ -25,6 +26,9 @@ export class Internal extends WorkerEntrypoint {
   async thermalSnap(id) { return this.env.SCAN_INTERNAL ? this.env.SCAN_INTERNAL.thermalSnap(id) : null; }
   async thermalSnapPng(id) { return this.env.SCAN_INTERNAL ? this.env.SCAN_INTERNAL.thermalSnapPng(id) : null; }
   /** { lng, lat, heading?, saveId?, note? } -> { ok, place } or { error }: saveId ties the photo to that save's map. */
+  /** A whole-property admin save at a point, made with no press (admin-saves.js makeWholeSave): the admin save that
+   *  already holds the point, or a new one of the parcel there. -> { id, created } or { error }. */
+  async makeWholeSave(lng, lat) { return makeWholeSave(this.env, Number(lng), Number(lat)); }
   async placeThermalSnap(id, place = {}) {
     if (!this.env.SCAN_INTERNAL) return { error: 'no scan site' };
     let map = null;

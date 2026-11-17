@@ -10,7 +10,7 @@ import { handleMaps } from '../worker/src/routes-maps.js';
 import { handleAdmin } from '../worker/src/routes-admin.js';
 import { findOrCreateUser, createSession } from '../worker/src/db.js';
 import { SESSION_COOKIE } from '../worker/src/auth.js';
-import { finishTraces, INDEX_KEY, stillWaitingWhy } from '../worker/src/admin-saves.js';
+import { finishTraces, INDEX_KEY, stillWaitingWhy, makeWholeSave, inGeometry, frameAround } from '../worker/src/admin-saves.js';
 import worker from '../worker/src/index.js';
 
 let failures = 0;
@@ -190,6 +190,28 @@ globalThis.fetch = async (u, init) => {
   check('the pending trace called off, and its lidar queued like a traced save\'s', rows.some((r) => r.status === 'failed' && r.press !== 'whole') && rows.some((r) => r.status === 'lidar' && r.press === 'whole'), JSON.stringify(rows));
   const list = await admin(env, req('/api/admin/admin-saves', { cookie: oc }));
   check('the admin saves page lists it', list.body.maps.some((m) => m.id === id && m.trace?.status === 'whole'));
+}
+/* ------------------------------------------------ a whole-property save with no press (2026-11-17, the water sweep) */
+{
+  const sq = (x, y, d) => ({ type: 'Polygon', coordinates: [[[x, y], [x + d, y], [x + d, y + d], [x, y + d], [x, y]]] });
+  check('a point in a lot, and in its hole', inGeometry(sq(0, 0, 1), 0.5, 0.5) && !inGeometry(sq(0, 0, 1), 1.5, 0.5)
+    && !inGeometry({ type: 'Polygon', coordinates: [sq(0, 0, 1).coordinates[0], [[0.4, 0.4], [0.6, 0.4], [0.6, 0.6], [0.4, 0.6], [0.4, 0.4]]] }, 0.5, 0.5));
+  const f = frameAround(sq(-85.3, 42.3, 0.0005));
+  check('a frame round a lot: its middle, zoom 17 to 20', Math.abs(f.lng + 85.29975) < 1e-9 && f.zoom >= 17 && f.zoom <= 20 && f.size === 640, JSON.stringify(f));
+  let asked = 0;
+  const lot = { type: 'Feature', geometry: sq(-85.3, 42.3, 0.0005), properties: { county: 'Test County', pin: '41-1', address: '7 Field Rd' } };
+  const lookup = async () => { asked++; return lot; };
+  check('no point, no save', (await makeWholeSave(env, NaN, 1, { lookup })).error === 'lng and lat are needed');
+  check('a point in no parcel: said so', (await makeWholeSave(env, 10, 10, { lookup: async () => null })).error === 'no parcel found at that point');
+  const a = await makeWholeSave(env, -85.29975, 42.30025, { lookup });
+  await settle();
+  check('a lot with no admin save: one made, its lawn the property line', a.created === true && /^admin\|7 field rd, test county\|alpha\|find$/.test(a.id), JSON.stringify(a));
+  const one = (await maps(env, req(`/api/maps/one?id=${encodeURIComponent(a.id)}`, { cookie: oc }))).body.map;
+  check('owned by the administrator, a whole-property save made by the sweep', one?.adminSave === true && one.trace?.status === 'whole' && one.trace?.auto === 'field readings' && one.shapes?.length === 1 && one.squareFeet > 0, JSON.stringify(one?.trace));
+  const row = await env.DB.prepare("SELECT status, press, frame FROM admin_traces WHERE map_key = ?").bind(a.id).first();
+  check('its lidar queued, with the site\'s own origin', row?.status === 'lidar' && row.press === 'whole' && JSON.parse(row.frame).origin === HOST, JSON.stringify(row));
+  const b = await makeWholeSave(env, -85.2998, 42.3001, { lookup });
+  check('asked again inside the same lot: the same save, nothing new, no lookup', b.created === false && b.id === a.id && asked === 1, JSON.stringify(b));
 }
 check('a press given up on blames the GPU provider when it had none free', /no GPU free/.test(stillWaitingWhy('Waiting for a GPU to come free -- the GPU provider is busy right now (29:40)'))
   && stillWaitingWhy('Fetching the aerial photograph') === 'no answer in half an hour' && stillWaitingWhy(null) === 'no answer in half an hour');

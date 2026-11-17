@@ -39,6 +39,7 @@ import { SHADE_BUILD } from '../../public/shade/build.js';
 import { maskToPolygons, rasterizePolygon, areaTraceLimits, TRACE_TOLERANCE_M, MAX_TRACE_VERTICES } from '../../public/lib/mask.js';
 import { framePxToLngLat, lngLatToFramePx, metresPerPixel } from '../../public/lib/mercator.js';
 import { measure } from '../../public/lib/area.js';
+import { lookupParcel } from './parcel.js';
 
 export const INDEX_KEY = 'admin-saves/index.json';
 const MAX_WAIT_MS = 30 * 60 * 1000; // a press not answered in half an hour has failed
@@ -199,6 +200,86 @@ export async function buildLidar(env) {
   } catch (err) { await end('lidar-failed', err.message); return false; }
 }
 
+/** The whole property as lawn, saved as an admin save (the button's route and makeWholeSave): the record, its photo,
+ *  any trace of the same lot still working called off, and its row at 'lidar' so the timer builds its lidar.
+ *  -> upsertMap's { key } or { error }. */
+async function saveWhole(env, owner, userId, map, siteOrigin, later = () => {}) {
+  const at = new Date().toISOString();
+  const record = { ...map, adminSave: true, handEdited: false, trace: { status: 'whole', at, ...(map.trace?.auto ? { auto: map.trace.auto } : {}) } };
+  delete record.tools;
+  const saved = await upsertMap(env, owner, record);
+  if (!saved.key) return saved;
+  later(keepPhoto(env, owner, saved.key, record).catch(() => {}));
+  // a trace of the same lot still working would lay itself over this lawn when it finished: it is called off
+  await env.DB.prepare("UPDATE admin_traces SET status = 'failed', detail = 'replaced by the whole property as lawn', finished_at = ?3 WHERE map_key = ?1 AND user_id = ?2 AND status = 'pending'")
+    .bind(saved.key, userId, at).run();
+  await env.DB.prepare(
+    "INSERT INTO admin_traces (id, user_id, map_key, press, frame, status, detail, created_at) VALUES (?, ?, ?, 'whole', ?, 'lidar', 'whole property as lawn', ?)"
+  ).bind(crypto.randomUUID(), userId, saved.key, JSON.stringify({ origin: siteOrigin }), at).run();
+  later(writeIndex(env).catch(() => {}));
+  return saved;
+}
+
+const inRing = (ring, x, y) => { let c = false; for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) { const [xi, yi] = ring[i], [xj, yj] = ring[j]; if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c; } return c; };
+/** Is the point inside the GeoJSON Polygon or MultiPolygon (holes counted)? */
+export function inGeometry(g, x, y) {
+  const polys = g?.type === 'Polygon' ? [g.coordinates] : g?.type === 'MultiPolygon' ? g.coordinates : [];
+  return polys.some((rings) => Array.isArray(rings?.[0]) && inRing(rings[0], x, y) && !rings.slice(1).some((h) => inRing(h, x, y)));
+}
+/** A 640 px frame round a parcel's box, as the lawn mapper's: centre and the closest zoom (17-20) it fits in. */
+export function frameAround(g) {
+  let w = Infinity, s = Infinity, e = -Infinity, n = -Infinity;
+  const polys = g?.type === 'Polygon' ? [g.coordinates] : g?.type === 'MultiPolygon' ? g.coordinates : [];
+  for (const rings of polys) for (const [x, y] of rings[0] || []) { if (x < w) w = x; if (x > e) e = x; if (y < s) s = y; if (y > n) n = y; }
+  if (!Number.isFinite(w)) return null;
+  const lat = (s + n) / 2, lng = (w + e) / 2, k = Math.cos((lat * Math.PI) / 180);
+  const spanM = Math.max((e - w) * 111320 * k, (n - s) * 110540, 10);
+  const zoom = Math.max(17, Math.min(20, Math.floor(Math.log2((156543.03 * k * 640) / (spanM * 1.3)))));
+  return { lng, lat, zoom, size: 640, height: 640 };
+}
+
+/**
+ * MAKE A WHOLE-PROPERTY ADMIN SAVE AT A POINT, with no press (the water session for the owner, 2026-11-17: field
+ * readings taken where there is no admin save yet "need to be pinned to an address, and then cued up to have an
+ * admin map made for them later"; "Do this automatically so I don't have to do it"). Reached only over the main
+ * Worker's private entrypoint (internal.js makeWholeSave), from the water site's hourly sweep, at most once a day a
+ * lot. An admin save whose property line already holds the point is the answer (nothing new is made); else the parcel
+ * there, looked up as /api/parcel does, saved as the button "Mark whole property as lawn and admin save" saves it,
+ * owned by the first administrator. -> { id, created } or { error }. Coordinates are never logged.
+ */
+export async function makeWholeSave(env, lng, lat, { lookup } = {}) {
+  if (!Number.isFinite(lng) || !Number.isFinite(lat) || Math.abs(lng) > 180 || Math.abs(lat) > 90) return { error: 'lng and lat are needed' };
+  const admin = ((await env.DB.prepare("SELECT id, email, role FROM users WHERE role = 'admin' ORDER BY created_at").all()).results || [])[0];
+  if (!admin) return { error: 'no administrator' };
+  const owner = userOwner(admin);
+  for (const m of await listMaps(env, owner)) {
+    if (m?.adminSave !== true) continue;
+    const full = m.parcel ? m : await getMap(env, owner, m.id);
+    if (inGeometry(full?.parcel?.geometry, lng, lat)) return { id: m.id, created: false };
+  }
+  const parcel = await (lookup || lookupParcel)(lng, lat, {});
+  if (!parcel?.geometry || !inGeometry(parcel.geometry, lng, lat)) return { error: 'no parcel found at that point' };
+  const frame = frameAround(parcel.geometry);
+  if (!frame) return { error: 'the parcel has no outline' };
+  // the site's own origin, for the lidar builder: the one the administrator's own presses came from
+  const row = await env.DB.prepare("SELECT frame FROM admin_traces WHERE frame LIKE '%origin%' ORDER BY created_at DESC LIMIT 1").first();
+  let siteOrigin = null; try { siteOrigin = row ? JSON.parse(row.frame).origin || null : null; } catch { siteOrigin = null; }
+  const polys = parcel.geometry.type === 'Polygon' ? [parcel.geometry.coordinates] : parcel.geometry.coordinates;
+  const shapes = polys.map((coordinates) => ({ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates } }));
+  const m = measure({ type: 'FeatureCollection', features: shapes });
+  const label = parcel.properties?.address ? `${parcel.properties.address}${parcel.properties.county ? `, ${parcel.properties.county}` : ''}` : `Parcel ${parcel.properties?.pin || 'without a number'}${parcel.properties?.county ? `, ${parcel.properties.county}` : ''}`;
+  const map = {
+    id: `admin|${label.trim().toLowerCase()}|alpha|find`, at: new Date().toISOString(),
+    address: label, lng: frame.lng, lat: frame.lat, county: parcel.properties?.county || null,
+    model: 'whole-property', mode: 'find', provider: 'mapbox', handEdited: false,
+    squareFeet: m.squareFeet, acres: m.acres, frame, parcel, shapes, trace: { auto: 'field readings' },
+  };
+  const later = [];
+  const saved = await saveWhole(env, owner, admin.id, map, siteOrigin, (p) => later.push(p));
+  await Promise.allSettled(later);
+  return saved.key ? { id: saved.key, created: true } : { error: saved.error || 'the map could not be saved' };
+}
+
 /** A trace's state written into the map's own record, the rest of the record untouched. */
 async function mark(env, owner, key, trace) {
   const map = await getMap(env, owner, key);
@@ -252,19 +333,8 @@ export async function handleAdminSaves(request, env, url, origin, ctx, json, me)
     if (!map?.id || !map?.address) return json({ error: 'a map with an id and an address is needed' }, 400, origin);
     const shapes = Array.isArray(map.shapes) ? map.shapes.filter((f) => f?.geometry?.type === 'Polygon' && Array.isArray(f.geometry.coordinates?.[0]) && f.geometry.coordinates[0].length >= 4) : [];
     if (!shapes.length) return json({ error: 'the property line is needed (the lot has no parcel outline)' }, 400, origin);
-    const at = new Date().toISOString();
-    const record = { ...map, shapes, adminSave: true, handEdited: false, trace: { status: 'whole', at } };
-    delete record.tools;
-    const saved = await upsertMap(env, owner, record);
+    const saved = await saveWhole(env, owner, me.id, { ...map, shapes }, url.origin, (p) => ctx?.waitUntil?.(p));
     if (!saved.key) return json({ error: saved.error || 'the map could not be saved' }, 400, origin);
-    if (ctx?.waitUntil) ctx.waitUntil(keepPhoto(env, owner, saved.key, record).catch(() => {}));
-    // a trace of the same lot still working would lay itself over this lawn when it finished: it is called off
-    await env.DB.prepare("UPDATE admin_traces SET status = 'failed', detail = 'replaced by the whole property as lawn', finished_at = ?3 WHERE map_key = ?1 AND user_id = ?2 AND status = 'pending'")
-      .bind(saved.key, me.id, at).run();
-    await env.DB.prepare(
-      "INSERT INTO admin_traces (id, user_id, map_key, press, frame, status, detail, created_at) VALUES (?, ?, ?, 'whole', ?, 'lidar', 'whole property as lawn', ?)"
-    ).bind(crypto.randomUUID(), me.id, saved.key, JSON.stringify({ origin: url.origin }), at).run();
-    if (ctx?.waitUntil) ctx.waitUntil(writeIndex(env).catch(() => {}));
     return json({ id: saved.key, trace: 'whole' }, 200, origin);
   }
 

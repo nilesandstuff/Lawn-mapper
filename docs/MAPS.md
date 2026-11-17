@@ -85,6 +85,14 @@ being the converter's `{ kind, at, T, mask, ang, az, emissivity, air_used, refle
 saveId, note })`: where the owner stood (heading optional, degrees from north); saveId ties the photo to that save's map.
 Coordinates stay in the private bucket and are never printed.
 
+**A whole-property admin save with no press** (2026-11-17; the owner: readings taken where there is no admin save
+yet "need to be pinned to an address, and then cued up to have an admin map made for them later", "Do this
+automatically"), over the same `Internal`: `makeWholeSave(lng, lat)` -> `{ id, created }` or `{ error }`. An admin save
+whose property line already holds the point is the answer (`created: false`, nothing new, no parcel lookup); else the
+parcel there (looked up as `/api/parcel` does) saved as the Lawn Mapper's "Mark whole property as lawn and admin save"
+saves it (the parcel line as the lawn, trace `{ status: 'whole', auto: 'field readings' }`, its lidar built by the
+timer), owned by the first administrator. The water site's hourly sweep calls it at most once a day a lot.
+
 **Reading the owner's maps from a session with no cookie** (2026-10-21): `GET /api/admin/saved-maps` (the administrators' maps, newest first: `id`, `address`, `at`, `county`, `provider`, `tools` as a list of tool ids, `owner`) and `GET /api/admin/saved-maps/one?id=` (exactly what `/api/maps/one` returns, plus `owner`), with `Authorization: Bearer <MAPS_READ_TOKEN>` -- a Worker secret the deploy applies from the repository secret of the same name. A missing or wrong key answers 404 like every admin route. Read-only; a signed-in administrator can call them without the key.
 
 A guest's second map (`POST /api/maps` or `/api/maps/new`) answers **409** with `{ error: 'guest-limit', message }`: show the message and a way to sign in. Signing in keeps the map they have.
