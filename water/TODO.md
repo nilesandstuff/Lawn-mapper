@@ -188,6 +188,16 @@ SPECULATION), as always.
     note; (5) the moisture view's model side for a visitor with no readings: the date picker reaches the 60 days of
     weather the plan holds. Ask the owner which entry point before building it.
 
+31. **Single thermal photos, placed by hand** (owner, 2026-11-17: "add individual thermal pics that I manually place...
+    a thermal pic or 2 in addition to whatever other readings I can manage quickly"). THE CORE'S PLAN (its answer,
+    2026-11-17): a "Thermal photo" button in the Yard AR page's thermal box, dev build only, no walk needed; the raw
+    frame kept like a walk's (the scan site's private bucket, a "snap" record with time, tilt, heading and the open
+    map), turned into a grid by the thermal session's converter off the phone; listed and read over MAIN beside
+    thermalOf, with a call to save the placement. THE WATER SIDE, once the core names its methods: the photo shows up
+    unplaced on the field page's visit of that day and the owner drops it where he stood (and turns it to the way he
+    faced); the explorer draws it as its own layer and sets its middle against the model's surface at that minute.
+    Waiting on the core (it waits on the thermal session's answers about frames and the shutter).
+
 ## Rules (owner, 2026-10-27)
 
 - **The white paper stays true to the live model** (owner, 2026-11-02: "remember to continuously add to it if
