@@ -1,6 +1,6 @@
 // scan/src/app.js: the Android app's routes (pairing, version, download). node scan/test/app.test.js
 import assert from 'node:assert/strict';
-import { app, cookieOf, code, intentFor, pairCookie, apkName, APP_PACKAGE, PAIR_MS } from '../src/app.js';
+import { app, cookieOf, code, intentFor, pairCookie, apkName, APP_PACKAGE, PAIR_MS, appCookieUpgrade, homeDomainOf } from '../src/app.js';
 import { engineChoice, depthFromGrid } from '../lib/track.js';
 
 // cookies and codes
@@ -10,6 +10,18 @@ assert.equal(cookieOf(req('/', 'a=1'), 'lm_session'), null);
 assert.match(code(), /^[0-9a-f]{48}$/);
 assert.ok(intentFor('ab').startsWith('intent://signin?t=ab#Intent;scheme=lawnar;') && intentFor('ab').includes(`package=${APP_PACKAGE}`));
 assert.ok(pairCookie('s').includes('HttpOnly') && pairCookie('s').includes('Secure') && !pairCookie('s', false).includes('Secure'));
+// the whole home domain's (2026-11-17, bridge 7: the water site's readings page in the app)
+assert.match(pairCookie('s', true, 'scan.example.org'), /; Domain=example\.org/);
+assert.ok(!/Domain=/.test(pairCookie('s', true, 'localhost')) && !/Domain=/.test(pairCookie('s')), 'no parent: host-only');
+assert.equal(homeDomainOf('scan.a.example.org'), 'a.example.org');
+{
+  const req = (ua, cookie) => new Request('https://scan.example.org/?app=1', { headers: { 'User-Agent': ua, Cookie: cookie } });
+  const u = new URL('https://scan.example.org/?app=1');
+  assert.match(appCookieUpgrade(req('Mozilla LawnAR/1.40', 'x=1; lm_session=abcDEF123_-xyz'), u), /^lm_session=abcDEF123_-xyz; .*Domain=example\.org/);
+  assert.equal(appCookieUpgrade(req('Mozilla Chrome', 'lm_session=abcDEF123_-xyz'), u), null, 'only the app');
+  assert.equal(appCookieUpgrade(req('Mozilla LawnAR/1.40', 'lm_session_old=abcDEF123_-xyz'), u), null, 'only its own cookie');
+  assert.equal(appCookieUpgrade(req('Mozilla LawnAR/1.40', 'lm_session=abcDEF123_-xyz'), new URL('https://scan.example.org/')), null, 'only the app page');
+}
 
 // a D1 stand-in: one table, the three statements app.js uses
 function fakeDb() {

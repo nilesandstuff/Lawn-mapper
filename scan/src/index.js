@@ -18,7 +18,7 @@ import { walks } from './walks.js';
 import { twin, reference, warp } from './twin.js';
 import { recording } from './recording.js';
 import { thermal, noteWalk } from './thermal.js';
-import { app } from './app.js';
+import { app, appCookieUpgrade } from './app.js';
 
 /** GETs passed on to Lawn Mapper for the page's own use (the photo and the lidar come in phase 2). */
 export const PROXIED = ['/api/imagery', '/api/parcel', '/api/shade/lidar', '/api/lidar/tiles'];
@@ -79,7 +79,11 @@ export default {
     }
     if (!url.pathname.startsWith('/api/')) {
       const res = await env.ASSETS.fetch(request);
-      return env.ADMIN_ONLY === '1' ? privately(res, url.pathname) : res;
+      const out = env.ADMIN_ONLY === '1' ? privately(res, url.pathname) : new Response(res.body, res);
+      // the app's sign-in, for the whole home domain (src/app.js appCookieUpgrade: the readings page, bridge 7)
+      const up = appCookieUpgrade(request, url);
+      if (up) out.headers.append('Set-Cookie', up);
+      return out;
     }
     // the Android app (src/app.js): its build, its download and its pairing
     const appRoute = await app(request, env, url);

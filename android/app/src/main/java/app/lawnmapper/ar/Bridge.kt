@@ -39,6 +39,10 @@ class Bridge(private val a: MainActivity) {
     @JavascriptInterface
     fun stop(): String { a.runOnUiThread { a.stopAr() }; return "ok" }
 
+    /** Bridge 7: the water site's readings page, over the AR view (MainActivity.showReadings); Back returns. */
+    @JavascriptInterface
+    fun readings(): String { a.runOnUiThread { a.showReadings(true) }; return "ok" }
+
     /** Where on the screen (0..1, 0..1) the crosshair is, for the hit test sent with each frame. */
     @JavascriptInterface
     fun setCross(x: Float, y: Float) { a.engine.crossX = x; a.engine.crossY = y }

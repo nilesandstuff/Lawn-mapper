@@ -45,7 +45,22 @@ export const intentFor = (t) => `intent://signin?t=${t}#Intent;scheme=lawnar;pac
 /** The APK's file name: yard-ar-<version>.apk (just yard-ar.apk when the version is unknown). */
 export const apkName = (v) => `yard-ar${v?.name && /^[0-9A-Za-z._-]{1,20}$/.test(String(v.name)) ? `-${v.name}` : ''}.apk`;
 
-export const pairCookie = (session, secure = true) => `${SESSION}=${session}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${30 * 86400}${secure ? '; Secure' : ''}`;
+/* THE WHOLE HOME DOMAIN'S (2026-11-17, bridge 7: the app opens the water site's readings page too, water.<home>, which
+   asks Lawn Mapper who this is with the visitor's cookie). scan.<home> -> Domain=<home>, as the main site's own
+   sign-in does (worker/src/unified.js sharedCookie); a host with no parent keeps it host-only. */
+export const homeDomainOf = (host) => { const p = String(host || '').toLowerCase().split('.').filter(Boolean); return p.length >= 3 ? p.slice(1).join('.') : null; };
+export const pairCookie = (session, secure = true, host = null) => { const d = homeDomainOf(host); return `${SESSION}=${session}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${30 * 86400}${d ? `; Domain=${d}` : ''}${secure ? '; Secure' : ''}`; };
+/** The app's sign-in, made the whole home domain's when the app opens the page: an app paired before 2026-11-17 has a
+ *  cookie for the scan site alone. The first session cookie the request carries, or null when it is not the app. */
+export function appCookieUpgrade(request, url) {
+  if (!/\bLawnAR\//.test(request.headers.get('User-Agent') || '') || url.searchParams.get('app') !== '1') return null;
+  if (!homeDomainOf(url.host)) return null;
+  for (const part of (request.headers.get('Cookie') || '').split(';')) {
+    const at = part.indexOf('=');
+    if (at > 0 && part.slice(0, at).trim() === SESSION) { const v = part.slice(at + 1).trim(); if (/^[A-Za-z0-9._~-]{8,400}$/.test(v)) return pairCookie(v, url.protocol === 'https:', url.host); }
+  }
+  return null;
+}
 
 function page(title, body, status = 200) {
   return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title}</title><meta name="robots" content="noindex">
@@ -92,7 +107,7 @@ export async function app(request, env, url) {
     const row = await env.DB.prepare('SELECT session, expires FROM app_pairs WHERE token = ?').bind(t).first();
     await env.DB.prepare('DELETE FROM app_pairs WHERE token = ?').bind(t).run();
     if (!row || row.expires < Date.now()) return page('Pair the app', '<h1>That pairing link has expired</h1><p>On the Yard AR page in Chrome, tap "Open in the app" again (a link lasts five minutes and works once).</p>', 410);
-    return new Response(null, { status: 302, headers: { Location: '/?app=1', 'Set-Cookie': pairCookie(row.session, url.protocol === 'https:'), 'Cache-Control': 'no-store' } });
+    return new Response(null, { status: 302, headers: { Location: '/?app=1', 'Set-Cookie': pairCookie(row.session, url.protocol === 'https:', url.host), 'Cache-Control': 'no-store' } });
   }
 
   return json({ error: 'Not found' }, 404);

@@ -45,6 +45,17 @@ class MainActivity : Activity() {
     @Volatile var partsLeft = 0
     private val base: String get() = BuildConfig.SCAN_URL.trimEnd('/')
     private val host: String get() = Uri.parse(base).host ?: ""
+    /* THE READINGS PAGE IN THE APP (bridge 7; the owner, 2026-11-17: "display the readings page on a separate
+       page/tab in the app so I don't need to flip back and forth between the browser and the app"). The water site's
+       field readings (water.<home>/moisture), in a second WebView over the AR view, opened by the page's Readings
+       button and closed by Back or the bar at its top. Its address is the scan site's with "water." for "scan."
+       (both are the home domain's: scan/tools/prepare.mjs, water/tools/prepare.mjs); the sign-in is the same,
+       the pairing's cookie being the whole home domain's (scan/src/app.js pairCookie). */
+    private val readingsUrl: String? get() = if (host.startsWith("scan.")) "https://water.${host.removePrefix("scan.")}/moisture" else null
+    private val readingsHost: String get() = Uri.parse(readingsUrl ?: "").host ?: ""
+    private var readings: WebView? = null
+    private var readingsBox: View? = null
+    private lateinit var root: FrameLayout
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -86,10 +97,11 @@ class MainActivity : Activity() {
             setDownloadListener { url, _, _, _, _ -> openExternal(url) }
         }
         WebView.setWebContentsDebuggingEnabled(true)
-        setContentView(FrameLayout(this).apply {
+        root = FrameLayout(this).apply {
             addView(gl, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
             addView(web, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
-        })
+        }
+        setContentView(root)
         askPermissions()
         open(intent)
         recorder = Recorder.of(this, base)
@@ -274,6 +286,51 @@ class MainActivity : Activity() {
         event("{\"type\":\"end\"}")
     }
 
+    /** The readings page shown over the AR view (made the first time; kept, with what is typed in it, after), or hidden. */
+    @SuppressLint("SetJavaScriptEnabled")
+    fun showReadings(show: Boolean) {
+        val url = readingsUrl ?: return
+        if (!show) { readingsBox?.visibility = View.GONE; return }
+        if (readings == null) {
+            val w = WebView(this).apply {
+                setBackgroundColor(Color.WHITE)
+                settings.javaScriptEnabled = true
+                settings.domStorageEnabled = true
+                settings.setGeolocationEnabled(true)
+                settings.userAgentString = "${settings.userAgentString} LawnAR/${BuildConfig.VERSION_NAME}"
+                webChromeClient = object : WebChromeClient() {
+                    override fun onGeolocationPermissionsShowPrompt(origin: String?, callback: GeolocationPermissions.Callback?) {
+                        callback?.invoke(origin, Uri.parse(origin ?: "").host == readingsHost, false)
+                    }
+                }
+                webViewClient = object : WebViewClient() {
+                    override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                        val u = request?.url ?: return false
+                        if (u.scheme == "https" && u.host == readingsHost) return false
+                        openExternal(u.toString())
+                        return true
+                    }
+                }
+                setDownloadListener { u, _, _, _, _ -> openExternal(u) }
+                loadUrl(url)
+            }
+            val back = android.widget.Button(this).apply {
+                text = "\u2190 Yard AR"
+                isAllCaps = false
+                setOnClickListener { showReadings(false) }
+            }
+            val box = android.widget.LinearLayout(this).apply {
+                orientation = android.widget.LinearLayout.VERTICAL
+                setBackgroundColor(Color.WHITE)
+                addView(back, android.widget.LinearLayout.LayoutParams(android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT))
+                addView(w, android.widget.LinearLayout.LayoutParams(android.widget.LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+            }
+            root.addView(box, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+            readings = w; readingsBox = box
+        }
+        readingsBox?.visibility = View.VISIBLE
+    }
+
     fun openExternal(url: String) {
         try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Exception) { }
     }
@@ -283,6 +340,7 @@ class MainActivity : Activity() {
         try { session?.resume() } catch (_: Exception) { }
         gl.onResume()
         web.onResume()
+        readings?.onResume()
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LAYOUT_STABLE
     }
 
@@ -293,6 +351,7 @@ class MainActivity : Activity() {
         // bridge 6: a page with a walk's parts still to send is left running (PartsService keeps the process awake);
         // paused, its upload stopped until the app was opened again (12 minutes on the owner's walk of 2026-11-12)
         if (partsLeft == 0) web.onPause()
+        readings?.onPause()
     }
 
     override fun onDestroy() {
@@ -301,11 +360,14 @@ class MainActivity : Activity() {
         session?.close()
         session = null
         web.destroy()
+        readings?.destroy()
         super.onDestroy()
     }
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
+        val r = readings
+        if (readingsBox?.visibility == View.VISIBLE && r != null) { if (r.canGoBack()) r.goBack() else showReadings(false); return }
         if (web.canGoBack()) web.goBack() else @Suppress("DEPRECATION") super.onBackPressed()
     }
 }

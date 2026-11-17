@@ -113,6 +113,15 @@ async function main() {
     b.addEventListener('click', () => startAR(e));
     box.append(b);
   }
+  /* THE READINGS PAGE, IN THE APP (bridge 7; the owner, 2026-11-17: "display the readings page on a separate page/tab
+     in the app so I don't need to flip back and forth between the browser and the app"): the water site's field
+     readings open over this page; Back, or the bar at its top, comes back here. */
+  if ((st.caps.native?.bridge ?? 0) >= 7 && typeof window.LawnARNative?.readings === 'function') {
+    const r = document.createElement('button');
+    r.type = 'button'; r.className = 'plain'; r.textContent = 'Readings (soil, temperature, wind)';
+    r.addEventListener('click', () => { try { window.LawnARNative.readings(); } catch { flash('This app cannot open the readings page: update it'); } });
+    box.append(r);
+  }
   /* RECORD FIRST, FIX AFTERWARDS (owner, 2026-11-05): no live lidar fix on this walk; it is recorded (points, track,
      pictures, marks, pins) and placed afterwards on a GitHub runner (workflow "S. Yard AR tool", task fix). The
      references still line the camera view up meanwhile. */
