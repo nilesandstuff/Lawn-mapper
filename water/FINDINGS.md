@@ -2871,6 +2871,31 @@ and sky; on the afternoon walk it ran 4 F cool, the lot's air 9 F above the stat
 walker's cloud against the live map's moved W1 by about 5.5 F (the air by 3.8 F of it at most): the sky's cloud is
 as large an input at dusk as the air. Two walks, two lots; nothing tuned.
 
+### H97. The third walk scored on the plan's own lawn; grass by distance from paving on all three (water session, 2026-11-17)
+
+W3 (the owner's third lot, a whole property saved as lawn, early afternoon, cloud 0.40 by the sweep) could not be
+scored until 23:03 UTC: the builder's walk placement called a lookup it never had, so on a whole-property save every
+record counted as off the lawn (fixed: the analysis worker's cellsAt). Now 1394 squares (14 on paving dropped).
+Measured minus modelled, F:
+  W3  walker's air (59.2 F): mean +0.6, RMS 6.6, rank 0.59; sun +1.1 (846), shade -2.1 (356).
+      live map's own (station 53.0 F): mean +5.3, RMS 8.3, rank 0.60; sun +5.6, shade +3.2.
+      Its weather is not yet frozen (not complete when scored; the sweep fetches it again until 6 h after the walk).
+  Pooled, three walks, 2294 squares: walker's air -1.0, RMS 5.9; the live map's own +4.7, RMS 7.1.
+W1 and W2 unchanged by the re-score.
+THE GRASS BY DISTANCE FROM PAVING (SCORING 5; chamfer distance to paving and pavers cells; walker's-air score;
+squares in brackets):
+  W1 dusk, all shade:  0-1 m -6.9 (2)   1-3 m -6.8 (28)   3-7 m -6.0 (72)   7+ m -5.5 (57)
+  W2 afternoon, sun:   0-1 m -0.7       1-3 m -1.8        3-7 m -3.2        7+ m -2.8     (all: -3.4 / -2.9 / -3.0 / -2.8)
+  W3 afternoon, sun:   0-1 m none       1-3 m +3.2 (68)   3-7 m -1.7        7+ m +1.2     (all: - / +3.2 / -1.2 / +0.6)
+WHAT THIS SAYS, AS MEASURED: on both sunny walks the sunny grass nearest paving read about 2 F warmer, against the
+model, than sunny grass 7 m and more away (W2 within 1 m, W3 at 1-3 m), over the model's own paving term. Not a
+smooth fall with distance (W3's 3-7 m band runs the other way), the near bands are small, and at dusk (W1) the grass
+near paving was if anything cooler than the model. Two sunny walks, two lots: a hint the edge term is short in sun,
+not a measured size.
+THE SOIL THERMOMETER (check 3): the visit attached to W3's map (5 readings, 41-50 F, with the 52.3 F air reading)
+lies about 4.1-4.2 km from that map's box, so no reading can be compared; the other soil visit of the day (42-51 F)
+is not on a test map. The two look swapped in the move; nothing about the model is learned from them yet.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge
