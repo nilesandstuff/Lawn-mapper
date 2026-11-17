@@ -348,17 +348,21 @@ async function momentCore({ t, sprinklers = false, depthCm = null }) {
 async function pointsAt({ id, t, depthCm = null, points = [], view = 'soil' }) {
   const r = await momentCore({ t, depthCm: view === 'soil' ? depthCm : null });
   if (r.error) { self.postMessage({ pointsAt: { id, error: r.error } }); return; }
-  const field = view === 'soil' ? r.soilD : r.surface, g = kept.lightRes.grid, W = g.W, H = g.H, cell = (g.bbox[2] - g.bbox[0]) / W;
+  const m = kept.model, field = view === 'soil' ? r.soilD : r.surface, g = kept.lightRes.grid, W = g.W, H = g.H, cell = (g.bbox[2] - g.bbox[0]) / W;
   const spots = points.map((p) => {
     const [X, Y] = toMercS([p.lng, p.lat]);
     const c0 = Math.floor((X - g.bbox[0]) / cell), r0 = Math.floor((g.bbox[3] - Y) / cell);
+    const inGrid = c0 >= 0 && r0 >= 0 && c0 < W && r0 < H;
+    // the nearest lawn spot the model works out: within two cells it is the reading's; the distance either way (to 15 m),
+    // so a reading the check cannot use says why (off the lawn, or the map's box), in metres only
     let best = -1, bd = Infinity;
-    for (let rr = r0 - 2; rr <= r0 + 2; rr++) for (let cc = c0 - 2; cc <= c0 + 2; cc++) {
+    for (let rr = r0 - 15; rr <= r0 + 15; rr++) for (let cc = c0 - 15; cc <= c0 + 15; cc++) {
       if (rr < 0 || cc < 0 || rr >= H || cc >= W) continue;
       const i = rr * W + cc, dd = (rr - r0) ** 2 + (cc - c0) ** 2;
       if (Number.isFinite(field[i]) && dd < bd) { bd = dd; best = i; }
     }
-    return { n: p.n, value: p.value, model: best >= 0 ? field[best] : null };
+    const metres = best >= 0 ? Math.sqrt(bd) * cell * Math.cos((kept.lat * Math.PI) / 180) : null;
+    return { n: p.n, value: p.value, model: best >= 0 && bd <= 8 ? field[best] : null, lawnM: metres === null ? null : Math.round(metres * 10) / 10, inGrid, kind: inGrid ? m.kinds[r0 * W + c0] : null };
   });
   const ok = spots.filter((x) => Number.isFinite(x.model) && Number.isFinite(x.value)), d = ok.map((x) => x.value - x.model);
   const bias = d.length ? d.reduce((a, b) => a + b, 0) / d.length : null;

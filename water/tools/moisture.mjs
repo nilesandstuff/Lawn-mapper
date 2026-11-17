@@ -45,8 +45,8 @@ for (const c of checks) {
     const F1 = (c) => (c === null || c === undefined ? '-' : (c * 1.8 > 0 ? '+' : '') + (c * 1.8).toFixed(1));
     const toF = (c) => (c === null || c === undefined ? '-' : (c * 1.8 + 32).toFixed(1));
     console.log(`#${k + 1}  SOIL TEMPERATURE at ${det.depth_in ?? '?'} in  checked ${new Date(c.checked).toISOString().slice(0, 16)}  ${det.model || ''}  n ${c.n}  measured - model ${F1(det.bias)} F  RMS ${det.rmse === null || det.rmse === undefined ? '-' : (det.rmse * 1.8).toFixed(1)} F  rho ${f(c.rho)}  the model's air ${toF(det.air)} F`);
-    console.log('   n  reading_F  model_F');
-    for (const s of spots) console.log(`  ${String(s.n).padStart(2)}  ${toF(s.value).padStart(8)}  ${toF(s.model).padStart(7)}`);
+    console.log('   n  reading_F  model_F  to_lawn_m  on_grid  cell_kind');
+    for (const s of spots) console.log(`  ${String(s.n).padStart(2)}  ${toF(s.value).padStart(8)}  ${toF(s.model).padStart(7)}  ${String(s.lawnM ?? '-').padStart(9)}  ${String(s.inGrid ?? '-').padStart(7)}  ${String(s.kind ?? '-').padStart(9)}`);
     continue;
   }
   if (visits[k]?.unit === 'surface_f') {

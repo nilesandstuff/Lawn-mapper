@@ -26,6 +26,8 @@ export const waterBase = (env) => `https://water.${String(env.LAWNMAP_HOST || ''
    frozen with the weather model's alone). A walk's weather is frozen once it holds both, or once SETTLE_MS have passed;
    until then the walk is scored on what there is and scored again by the hourly sweep. */
 export const SETTLE_MS = 6 * 36e5;
+/** What a soil check carries (2, 2026-11-17: each reading's distance to the nearest lawn spot the model works out). */
+export const SOIL_CHECK = 2;
 export const completeWeather = (w) => { const s = w?.sources || []; return s.some((x) => /^ASOS/.test(x?.name || '')) && s.some((x) => /satellite/i.test(x?.name || '')); };
 
 /** Work the queue: at most `max` walks scored. -> [{ key, state, why }] */
@@ -89,7 +91,7 @@ async function soilOne(env, job, base) {
   const o = await res.json().catch(() => null);
   if (!o?.ok) return { state: 'retry', why: o?.why || `the builder answered ${res.status}` };
   const r = o.result;
-  const detail = { kind: 'soil', model: r.model, depth_in: v.depth_in, bias: r.bias, rmse: r.rmse, air: r.air, used: r.used, by: 'the water builder', spots: (r.spots || []).map((x) => ({ n: x.n, value: x.value, model: x.model })) };
+  const detail = { kind: 'soil', check: SOIL_CHECK, model: r.model, depth_in: v.depth_in, bias: r.bias, rmse: r.rmse, air: r.air, used: r.used, by: 'the water builder', spots: (r.spots || []).map((x) => ({ n: x.n, value: x.value, model: x.model, lawnM: x.lawnM ?? null, inGrid: x.inGrid ?? null, kind: x.kind ?? null })) };
   await env.DB.prepare('INSERT OR REPLACE INTO moisture_checks (visit_id, checked, rho, n, detail) VALUES (?, ?, ?, ?, ?)').bind(v.id, Date.now(), Number.isFinite(r.rho) ? r.rho : null, r.n, JSON.stringify(detail)).run();
   return { state: 'done', why: `${r.n} soil readings` };
 }
@@ -133,10 +135,10 @@ export async function sweep(env) {
   const soil = (await env.DB.prepare(`SELECT v.id, v.map_id, c.detail FROM moisture_visits v LEFT JOIN moisture_checks c ON c.visit_id = v.id WHERE v.unit = 'soil_f' AND v.map_id IS NOT NULL`).all()).results || [];
   for (const v of soil) {
     if (!saveIds.has(String(v.map_id))) continue;
-    let model = null; try { model = JSON.parse(v.detail || 'null')?.model ?? null; } catch { /* none */ }
-    if (model === MODEL_VERSION) continue;
+    let d0 = null; try { d0 = JSON.parse(v.detail || 'null'); } catch { /* none */ }
+    if (d0?.model === MODEL_VERSION && (d0?.check || 1) >= SOIL_CHECK) continue;
     const job = await env.DB.prepare('SELECT state FROM kit_jobs WHERE key = ?').bind(`soil|${v.map_id}|${v.id}`).first();
-    if (job?.state === 'failed' || job?.state === 'queued') continue; // a failed check is not tried again every hour
+    if ((job?.state === 'failed' && (d0?.check || 1) >= SOIL_CHECK) || job?.state === 'queued') continue; // a failed check is not tried again every hour
     await enqueue(env, 'soil', v.map_id, { walk: v.id }); out.soil++;
   }
   return out;
