@@ -37,6 +37,7 @@ export const TILE = 0.5;                       // degrees: 10 x 10 cells
 const PER = Math.round(TILE / CELL);
 const MAX_AGE_DAYS = Number(process.env.MAX_AGE_DAYS || 30);
 const RETRY_FAILED_DAYS = 3;
+export const FALLBACKS_AT = '2026-11-17T04:00:00Z';   // smaller squares, pages by count, halved pages, the wider file search
 const BUDGET_MS = Math.min(320, Number(process.env.BUDGET_MIN) || 320) * 60e3;
 const HARD_MS = BUDGET_MS + 25 * 60e3;         // squares still going then are dropped, not half-written
 const SERVICES_AT_ONCE = Number(process.env.AT_ONCE || 8);
@@ -482,7 +483,8 @@ export function order(services, state, now) {
   const stale = (s) => {
     const st = age(s.key);
     if (!st) return true;
-    if (st.failed && now - Date.parse(st.failed.at) < RETRY_FAILED_DAYS * 864e5) return false;
+    // a parcel service that failed before the fallbacks of 2026-11-17 existed is tried with them at once, not in 3 days
+    if (st.failed && now - Date.parse(st.failed.at) < RETRY_FAILED_DAYS * 864e5 && (s.water || Date.parse(st.failed.at) >= Date.parse(FALLBACKS_AT))) return false;
     if (st.round && !st.done) return true;
     return !st.done || now - Date.parse(st.done) > MAX_AGE_DAYS * 864e5;
   };

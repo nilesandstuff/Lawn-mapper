@@ -140,6 +140,12 @@ console.log(`\n${passed} passed`);
   const got = order(services, state, now).map((s) => s.key);
   assert.deepEqual(got, ['p-new', 'p-half', 'w-new', 'w-half', 'p-old'], `the order: ${got}`);
   console.log('parcel copy order: parcels first, then water layers, then the oldest copies: ok');
+  // failed yesterday: before the fallbacks existed, tried again now; since them, in three days; a water layer as before
+  const t = Date.parse('2026-11-17T14:00:00Z');
+  const F = { services: { 'p-before': { round: '2026-11-16T00:00:00Z', failed: { at: '2026-11-17T03:00:00Z' } }, 'p-since': { round: '2026-11-17T08:00:00Z', failed: { at: '2026-11-17T09:00:00Z' } }, 'w-before': { round: '2026-11-16T00:00:00Z', failed: { at: '2026-11-17T03:00:00Z' } } } };
+  const again = order([{ key: 'p-before', box }, { key: 'p-since', box }, { key: 'w-before', water: true, box }], F, t).map((s) => s.key);
+  assert.deepEqual(again, ['p-before'], `retried now: ${again}`);
+  console.log('parcel copy order: failures from before the fallbacks retried at once: ok');
 }
 
 /* WHAT STILL FAILED AFTER A WEEK (2026-11-17, tools/parcel-mirror.mjs): a server that cannot list a big square's ids
