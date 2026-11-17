@@ -10,7 +10,8 @@
  *   GET    /api/water/moisture?map=     the visits made on one saved map, oldest first (the water map's check)
  *   DELETE /api/water/moisture?id=      one visit and its readings
  *   POST   /api/water/moisture/check    the water map's check of the model against a visit: numbers only
- *   POST   /api/water/moisture/move     { from, to, ids? }: visits moved from one saved map to another (owner, 2026-11-16:
+ *   POST   /api/water/moisture/move     { from, to, ids? }: visits moved from one saved map to another, or (from null,
+ *                                       ids given) from no map at all (owner, 2026-11-16:
  *                                       "retroactively reassigning my 27 soil moisture measurements to the admin
  *                                       save"); their old checks go too, worked out again on the new map
  *   GET    /api/water/moisture?checks=1 also the water map's checks, for the measurements page
@@ -24,7 +25,11 @@
 const json = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 const num = (v, lo, hi) => { const x = Number(v); return v !== null && v !== '' && Number.isFinite(x) && x >= lo && x <= hi ? x : null; };
 const txt = (v, n = 120) => (v == null || v === '' ? null : String(v).slice(0, n));
-const UNITS = ['vwc', 'scale', 'surface_f', 'other']; // surface_f: the grass surface's temperature, F (2026-11-09)
+/* surface_f: the grass surface's temperature, F (2026-11-09); soil_f: the soil's at depth_in, F; airtemp_f: the air's, F,
+   in the shade at chest height; wind_mph: the wind at chest height, mph (2026-11-17: the owner, "make it so I can take
+   wind, air temp, and soil temp readings as well"). A field visit with several kinds is saved as one visit per kind. */
+export const UNITS = ['vwc', 'scale', 'surface_f', 'other', 'soil_f', 'airtemp_f', 'wind_mph'];
+const RANGES = { surface_f: [-40, 200, "F is not a lawn's surface"], soil_f: [-20, 130, 'F is not a soil temperature'], airtemp_f: [-40, 130, 'F is not an air temperature'], wind_mph: [0, 100, 'mph is not a wind at chest height'] };
 
 export const VISIT_COLS = ['id', 'at', 'saved', 'lng', 'lat', 'parcel_pin', 'county', 'map_id', 'meter', 'unit', 'depth_in', 'note', 'weather', 'placed_on', 'air_f'];
 export const READING_COLS = ['id', 'visit_id', 'n', 'spot', 'at', 'lng', 'lat', 'value', 'note'];
@@ -55,7 +60,8 @@ export function cleanVisit(b, now = Date.now()) {
     const lng = num(r?.lng, -180, 180), lat = num(r?.lat, -90, 90), value = num(r?.value, -1000, 100000);
     if (lng === null || lat === null || value === null) return { error: `reading ${k + 1}: needs a place and a number` };
     if (unit === 'vwc' && (value < 0 || value > 100)) return { error: `reading ${k + 1}: ${value}% is not a soil moisture` };
-    if (unit === 'surface_f' && (value < -40 || value > 200)) return { error: `reading ${k + 1}: ${value} F is not a lawn's surface` };
+    const rg = RANGES[unit];
+    if (rg && (value < rg[0] || value > rg[1])) return { error: `reading ${k + 1}: ${value} ${rg[2]}` };
     readings.push({ id: `${id}:${k + 1}`, visit_id: id, n: num(r.n, 0, 100000) ?? k + 1, spot: txt(r.spot, 64), at: num(r.at, 1.5e12, now + 864e5) ?? now, lng, lat, value, note: txt(r.note, 500) });
   }
   // marks (2026-11-04): tree trunks the visitor stood at, ground truth for the water map's trunk finder (lib/trunks.js)
@@ -113,11 +119,16 @@ export async function moisture(request, env, url, { isAdmin }) {
     let b = null;
     try { b = await request.json(); } catch { /* below */ }
     const from = typeof b?.from === 'string' ? b.from.slice(0, 120) : null, to = typeof b?.to === 'string' ? b.to.slice(0, 120) : null;
-    if (!from || !to || from === to) return json({ error: 'from and to: two different map ids' }, 400);
-    const ids = Array.isArray(b.ids) ? b.ids.filter((x) => typeof x === 'string').slice(0, 500) : null;
-    const which = ids?.length
-      ? (await env.DB.prepare(`SELECT id FROM moisture_visits WHERE map_id = ? AND id IN (${ids.map(() => '?').join(', ')})`).bind(from, ...ids).all()).results || []
-      : (await env.DB.prepare('SELECT id FROM moisture_visits WHERE map_id = ?').bind(from).all()).results || [];
+    const ids = Array.isArray(b?.ids) ? b.ids.filter((x) => typeof x === 'string').slice(0, 500) : null;
+    /* from null: readings taken where no saved map was (the field page, 2026-11-17: "take quick measurements in the
+       field, and then we can associate it with an admin map later"), named by their visit ids */
+    const loose = b?.from === null && ids?.length;
+    if (!to || (!from && !loose) || from === to) return json({ error: 'to, and from (a map id, or null with the visits\' ids): two different maps' }, 400);
+    const which = loose
+      ? (await env.DB.prepare(`SELECT id FROM moisture_visits WHERE map_id IS NULL AND id IN (${ids.map(() => '?').join(', ')})`).bind(...ids).all()).results || []
+      : ids?.length
+        ? (await env.DB.prepare(`SELECT id FROM moisture_visits WHERE map_id = ? AND id IN (${ids.map(() => '?').join(', ')})`).bind(from, ...ids).all()).results || []
+        : (await env.DB.prepare('SELECT id FROM moisture_visits WHERE map_id = ?').bind(from).all()).results || [];
     if (!which.length) return json({ ok: true, moved: 0 });
     const q = which.map(() => '?').join(', '), vid = which.map((r) => r.id);
     let checksGone = true;

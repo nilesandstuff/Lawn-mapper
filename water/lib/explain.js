@@ -116,6 +116,7 @@ export function fmt(v, kind, { f = true } = {}) {
     case 'flux': return `${Math.round(v)} W/m²`;
     case 'share': return `${Math.round(v * 100)}%`;
     case 'speed': return f ? `${(v * 2.237).toFixed(1)} mph` : `${v.toFixed(1)} m/s`;
+    case 'dspeed': return f ? `${v > 0 ? '+' : ''}${(v * 2.237).toFixed(1)} mph` : `${v > 0 ? '+' : ''}${v.toFixed(1)} m/s`;
     case 'mm': return f ? `${(v / 25.4).toFixed(2)} in` : `${v.toFixed(1)} mm`;
     case 'cm': return f ? `${(v / 2.54).toFixed(0)} in` : `${Math.round(v)} cm`;
     case 'deg': return `${Math.round(v)}°`;

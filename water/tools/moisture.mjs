@@ -24,7 +24,7 @@ visits.forEach((v, k) => {
   const r = rows.filter((x) => x.visit_id === v.id), vals = r.map((x) => x.value).sort((a, b) => a - b);
   const again = r.filter((x) => spotsSeen.has(x.spot)).length;
   for (const x of r) spotsSeen.set(x.spot, true);
-  const u = v.unit === 'vwc' ? '%' : v.unit === 'scale' ? ' (scale)' : '';
+  const u = { vwc: '%', scale: ' (scale)', surface_f: ' F surface', soil_f: ' F soil', airtemp_f: ' F air', wind_mph: ' mph wind' }[v.unit] || '';
   const w = (() => { try { return JSON.parse(v.weather || 'null')?.lastTwoDays || '-'; } catch { return '-'; } })();
   console.log(`#${k + 1}  ${new Date(v.at).toISOString().slice(0, 10)}  property ${props.get(v.parcel_pin || v.id)}  ${r.length} readings  ${vals.length ? `${vals[0]}-${vals[vals.length - 1]}${u}, median ${vals[vals.length >> 1]}` : ''}  depth ${v.depth_in ?? '?'} in  re-read ${again}  last 2 days: ${w}${v.map_id ? '  (a saved map)' : ''}`);
 });

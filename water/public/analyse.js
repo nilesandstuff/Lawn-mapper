@@ -303,7 +303,7 @@ async function walkCheck({ id, records, series, notes }) {
    soil at 2 and 4 inches and its wind -- from the same pieces a walk is scored with, on Open-Meteo's archived hours
    for the weather. Kept (kept.moment) so a tapped spot's factors come back at once (explain). */
 const lerpDepth = (T, z) => { for (let k = 1; k < CENTRES.length; k++) if (z <= CENTRES[k]) { const a = (z - CENTRES[k - 1]) / (CENTRES[k] - CENTRES[k - 1]); return T[k - 1] + a * (T[k] - T[k - 1]); } return T[T.length - 1]; };
-async function moment({ id, t, sprinklers = false }) {
+async function moment({ id, t, sprinklers = false, depthCm = null }) {
   const m = kept.model;
   if (!m || !kept.lightRes) { self.postMessage({ moment: { id, error: m ? 'the shade is not worked out on this map' : 'the plan is not worked out yet' } }); return; }
   const g = kept.lightRes.grid, N = g.W * g.H, W = g.W;
@@ -325,13 +325,15 @@ async function moment({ id, t, sprinklers = false }) {
   if (!hr) { self.postMessage({ moment: { id, error: 'Open-Meteo has no weather for that hour yet' } }); return; }
   const w = momentOf({ t, lat: kept.lat, lng: kept.lng, ta: hr.ta, rh: hr.rh, wind: hr.wind, ghi: hr.ghi, cloud: hr.cloud });
   const surface = new Float32Array(N).fill(NaN), soil5 = new Float32Array(N).fill(NaN), soil10 = new Float32Array(N).fill(NaN), wind = new Float32Array(N).fill(NaN);
+  const soilD = Number.isFinite(depthCm) ? new Float32Array(N).fill(NaN) : null; // a reading's own depth (the field page's soil thermometer)
   cells.forEach((i, c) => {
     const s = spotAt(cols, i, beams[c], w, t, cols.ksFull ? cols.ksFull[i] : null);
     if (!s) return;
     surface[i] = s.ts; soil5[i] = lerpDepth(s.T, 0.05); soil10[i] = lerpDepth(s.T, 0.10); wind[i] = s.f.u2;
+    if (soilD) soilD[i] = lerpDepth(s.T, depthCm / 100);
   });
   kept.moment = { id, t, w, cells, beams, cols, sprinklers };
-  self.postMessage({ moment: { id, t, w: { ta: w.ta, rh: w.rh, wind: w.wind, ghi: w.ghi, cloud: w.cloud, el: w.el }, used: cols.used, surface, soil5, soil10, wind } }, [surface.buffer, soil5.buffer, soil10.buffer, wind.buffer]);
+  self.postMessage({ moment: { id, t, w: { ta: w.ta, rh: w.rh, wind: w.wind, ghi: w.ghi, cloud: w.cloud, el: w.el }, used: cols.used, surface, soil5, soil10, wind, soilD, depthCm } }, [surface.buffer, soil5.buffer, soil10.buffer, wind.buffer, ...(soilD ? [soilD.buffer] : [])]);
 }
 
 /** A spot's month shelter and the sky it sees, as forcingAt reads them. */

@@ -23,6 +23,7 @@ import { boxFor } from '/lib/site.js';
 import { fmt } from '/lib/explain.js';
 import { openMeteoUrls, parseOpenMeteo } from '/lib/momentweather.js';
 import { spearman } from '/lib/rank.js';
+import { isMoistureUnit } from '/lib/maps.js';
 import { frameFor, savedPhoto, toPx, toMerc, pxToLngLat } from '/frame.js';
 
 const $ = (s) => document.querySelector(s);
@@ -51,14 +52,14 @@ const gradient = (ramp) => `linear-gradient(90deg, ${RAMPS[ramp].join(', ')})`;
 
 const VIEWS = {
   surface: { label: 'Thermal surface', kind: 'temp', ramp: 'temp', measured: true },
-  soil: { label: 'Soil temperature', kind: 'temp', ramp: 'temp', measured: false },
-  wind: { label: 'Wind', kind: 'speed', ramp: 'wind', measured: false },
+  soil: { label: 'Soil temperature', kind: 'temp', ramp: 'temp', measured: true },
+  wind: { label: 'Wind', kind: 'speed', ramp: 'wind', measured: true },
   moisture: { label: 'Moisture', kind: 'share', ramp: 'water', measured: true },
 };
 
 const S = {
   id: new URLSearchParams(location.search).get('map'), site: null, worker: null, d: null, plan: null, photo: null, frame: null, shift: [0, 0],
-  view: 'surface', layer: 'measured', depth: 10, events: { surface: [], moisture: [] }, when: null,
+  view: 'surface', layer: 'measured', depth: 10, events: { surface: [], moisture: [], soil: [], wind: [] }, airs: [], when: null,
   walks: new Map(), moments: new Map(), moist: new Map(), visits: [], items: [], field: null, check: null, selected: null, ready: false,
 };
 
@@ -119,7 +120,11 @@ async function loadReadings() {
     ...walks.map((w) => ({ key: `walk:${w.walk}`, kind: 'walk', walk: w.walk, t: w.started ?? null, label: `Thermal walk${Number.isFinite(w.started) ? `, ${when(w.started)}` : ''}${Number.isFinite(w.records) ? ` (${w.records} records)` : ''}` })),
     ...S.visits.filter((v) => v.unit === 'surface_f').map((v) => ({ key: `visit:${v.id}`, kind: 'visit', visit: v, t: v.at, label: `Surface readings, ${when(v.at)} (${v.readings.length})` })),
   ].sort((a, b) => (b.t ?? 0) - (a.t ?? 0));
-  S.events.moisture = S.visits.filter((v) => v.unit !== 'surface_f').map((v) => ({ key: `visit:${v.id}`, kind: 'visit', visit: v, t: v.at, date: localDate(v.at), label: `Moisture readings, ${day(v.at)} (${v.readings.length})` })).sort((a, b) => b.t - a.t);
+  // the field page's other kinds (2026-11-17): the soil's temperature at a depth, the wind; the air as each moment's note
+  S.events.soil = S.visits.filter((v) => v.unit === 'soil_f').map((v) => ({ key: `visit:${v.id}`, kind: 'visit', visit: v, t: v.at, depthCm: Number.isFinite(v.depth_in) ? v.depth_in * 2.54 : 5, label: `Soil temperatures at ${v.depth_in ?? '?'} in, ${when(v.at)} (${v.readings.length})` })).sort((a, b) => b.t - a.t);
+  S.events.wind = S.visits.filter((v) => v.unit === 'wind_mph').map((v) => ({ key: `visit:${v.id}`, kind: 'visit', visit: v, t: v.at, label: `Wind readings, ${when(v.at)} (${v.readings.length})` })).sort((a, b) => b.t - a.t);
+  S.airs = S.visits.filter((v) => v.unit === 'airtemp_f').flatMap((v) => v.readings.map((r) => ({ t: r.at || v.at, c: (r.value - 32) / 1.8 })));
+  S.events.moisture = S.visits.filter((v) => isMoistureUnit(v.unit)).map((v) => ({ key: `visit:${v.id}`, kind: 'visit', visit: v, t: v.at, date: localDate(v.at), label: `Moisture readings, ${day(v.at)} (${v.readings.length})` })).sort((a, b) => b.t - a.t);
 }
 
 /** A walk's records, its weather (frozen with it when it was scored; else Open-Meteo's, fetched here) and the model's
@@ -148,14 +153,18 @@ async function loadWalk(ev) {
 }
 
 /* ------------------------------------------------------------ the model's layers */
-async function momentAt(t) {
-  const key = Math.round(t / 6e4);
+/* a moment by its minute (and the soil depth asked, when a reading's own); the worker keeps the last one it worked out,
+   whatever its depth, so S.momentKey is the minute alone */
+const mkey = (t, depthCm = null) => `${Math.round(t / 6e4)}${depthCm ? `@${depthCm.toFixed(1)}` : ''}`;
+const momentFor = (t) => { const m = String(Math.round(t / 6e4)); for (const [k, v] of S.moments) if (k.split('@')[0] === m) return v; return null; };
+async function momentAt(t, depthCm = null) {
+  const key = mkey(t, depthCm);
   if (S.moments.has(key)) return S.moments.get(key);
   busy('The model over the whole lawn at that minute (each spot\'s soil spun up over the 45 days before)…');
-  const m = await ask('moment', { t });
+  const m = await ask('moment', { t, depthCm });
   if (m.error) throw new Error(m.error);
   S.moments.set(key, m);
-  S.momentKey = key;
+  S.momentKey = Math.round(t / 6e4);
   return m;
 }
 async function moistureOn(date) {
@@ -172,7 +181,7 @@ function whenOptions() {
   const v = S.view, sel = $('#when');
   let evs = v === 'surface' ? S.events.surface : v === 'moisture' ? S.events.moisture : [];
   // soil and wind: the readings' moments as ready-made times
-  if (v === 'soil' || v === 'wind') evs = S.events.surface.filter((e) => Number.isFinite(e.t)).map((e) => ({ ...e, key: `time:${e.t}`, kind: 'time', label: `At the ${e.kind === 'walk' ? 'walk' : 'readings'} of ${when(e.t)}` }));
+  if (v === 'soil' || v === 'wind') evs = [...S.events[v], ...S.events.surface.filter((e) => Number.isFinite(e.t)).map((e) => ({ ...e, key: `time:${e.t}`, kind: 'time', label: `At the ${e.kind === 'walk' ? 'walk' : 'readings'} of ${when(e.t)}` }))];
   sel.innerHTML = [...evs.map((e) => `<option value="${esc(e.key)}">${esc(e.label)}</option>`), `<option value="pick">${v === 'moisture' ? 'Pick a day…' : 'Pick a time…'}</option>`].join('');
   S.whenList = evs;
   sel.value = evs.length ? evs[0].key : 'pick';
@@ -193,7 +202,7 @@ async function show() {
   const v = S.view, ev = currentWhen();
   $('#pick').hidden = !($('#when').value === 'pick' && v !== 'moisture');
   $('#pick-day').hidden = !($('#when').value === 'pick' && v === 'moisture');
-  $('#depth-box').hidden = v !== 'soil';
+  $('#depth-box').hidden = v !== 'soil' || ev?.kind === 'visit';
   S.items = []; S.field = null; S.check = null; S.selected = null; S.ctx = null;
   $('#spot').innerHTML = '<p class="dim">Tap a spot on the map to see its reading, the model\'s prediction and what goes into it.</p>';
   const hasReadings = VIEWS[v].measured && ev && ev.kind !== 'time' && ev.kind !== 'day';
@@ -208,8 +217,8 @@ async function show() {
       S.ctx = { type: 'walk', walk: w, t: w.mid };
       S.items = w.records.map((r, k) => ({ lng: r.lng, lat: r.lat, m: r.T, p: w.res.pred[k], k, band: r.band || '0-60' })).filter((x) => x.band === '0-60');
       S.check = { n: w.res.n, bias: w.res.bias, rmse: w.res.rmse, rho: w.res.rho, used: w.res.used, v1: w.res.v1, station: w.res.station };
-      const mk = Math.round(w.mid / 6e4);
-      if (S.moments.has(mk)) S.field = S.moments.get(mk).surface; else $('#whole').hidden = false;
+      const mm = momentFor(w.mid);
+      if (mm) S.field = mm.surface; else $('#whole').hidden = false;
     } else if (v === 'surface' && ev.kind === 'visit') {
       const m = await momentAt(ev.t);
       S.ctx = { type: 'moment', t: ev.t };
@@ -227,12 +236,23 @@ async function show() {
         const ok = S.items.filter((x) => Number.isFinite(x.p));
         S.check = { n: ok.length, rho: spearman(ok.map((x) => x.m), ok.map((x) => x.p)), unit: ev.visit.unit };
       }
+    } else if (ev.kind === 'visit') {
+      // soil temperatures at their own depth, or wind readings: each against the same spot's model at that minute
+      const m = await momentAt(ev.t, v === 'soil' ? ev.depthCm : null);
+      S.ctx = { type: 'moment', t: ev.t, depthCm: ev.depthCm };
+      S.field = v === 'wind' ? m.wind : m.soilD;
+      S.items = ev.visit.readings.filter((r) => Number.isFinite(r.lng) && Number.isFinite(r.value)).map((r) => { const i = lawnCellNear([r.lng, r.lat], S.field); return { lng: r.lng, lat: r.lat, m: v === 'wind' ? r.value / 2.237 : (r.value - 32) / 1.8, p: i >= 0 ? S.field[i] : NaN, i, n: r.n, note: r.note }; });
+      S.check = { ...statsOf(S.items), used: { soil: m.used }, w: m.w, kind: v === 'wind' ? 'dspeed' : 'dtemp' };
     } else {
       const m = await momentAt(ev.t);
       S.ctx = { type: 'moment', t: ev.t };
       S.field = v === 'wind' ? m.wind : S.depth === 5 ? m.soil5 : m.soil10;
       S.check = { used: { soil: m.used }, w: m.w };
     }
+    // the air you read near that time, beside the model's (the air readings on the field page)
+    const tc = S.ctx?.type === 'walk' ? S.ctx.t : S.ctx?.t;
+    const near = Number.isFinite(tc) ? S.airs.filter((a) => Math.abs(a.t - tc) <= 2 * 36e5) : [];
+    if (S.check && near.length) S.check.airRead = near.reduce((a, x) => a + x.c, 0) / near.length;
     busy('');
   } catch (e) { busy(`Not worked out: ${e.message || e}`); }
   layerButtons(hasReadings);
@@ -262,8 +282,9 @@ function summary() {
   if (!c) { el.innerHTML = ''; return; }
   const tiles = [];
   if (Number.isFinite(c.n) && c.n) tiles.push(['Spots compared', String(c.n)]);
-  if (Number.isFinite(c.bias)) tiles.push(['Measured − model, average', fmt(c.bias, 'dtemp')]);
-  if (Number.isFinite(c.rmse)) tiles.push(['Typical miss (RMS)', fmt(c.rmse, 'dtemp').replace('+', '')]);
+  if (Number.isFinite(c.bias)) tiles.push(['Measured − model, average', fmt(c.bias, c.kind || 'dtemp')]);
+  if (Number.isFinite(c.rmse)) tiles.push(['Typical miss (RMS)', fmt(c.rmse, c.kind || 'dtemp').replace('+', '')]);
+  if (Number.isFinite(c.airRead)) tiles.push(['Air you read then', fmt(c.airRead, 'temp')]);
   if (c.rho !== undefined) tiles.push(['Same order? (rank, 1 = yes)', Number.isFinite(c.rho) ? c.rho.toFixed(2) : '-']);
   if (c.station && Number.isFinite(c.station.bias) && c.station.air && !/same as the score/.test(c.station.air)) tiles.push(['The live map\'s own prediction', `${fmt(c.station.bias, 'dtemp')}, RMS ${fmt(c.station.rmse, 'dtemp').replace('+', '')}`]);
   if (c.w) tiles.push(['Air', fmt(c.w.ta, 'temp')], ['Open wind', fmt(c.w.wind, 'speed')], ['Sunshine', fmt(c.w.ghi, 'flux')]);
@@ -274,6 +295,7 @@ function summary() {
   if (c.station && Number.isFinite(c.station.airMid) && Number.isFinite(c.station.airWalker)) notes.push(`At mid-walk: air yours ${fmt(c.station.airWalker, 'temp')}, the station's ${fmt(c.station.airMid, 'temp')}; cloud yours ${fmt(c.station.cloudWalker, 'share')}, the live map's ${fmt(c.station.cloudMid, 'share')}. The live map's own prediction is what it can do; the one on your readings says how good the model is.`);
   if (c.v1 && Number.isFinite(c.v1.bias)) notes.push(`Without the soil columns (version 1): off by ${fmt(c.v1.bias, 'dtemp')} on average, rank ${Number.isFinite(c.v1.rho) ? c.v1.rho.toFixed(2) : '-'}.`);
   if (v === 'surface' && S.ctx?.type === 'walk') notes.push('Squares viewed 0–60° from straight down. Each is set against the model at its own minute.');
+  if (v === 'wind' && Number.isFinite(c.n) && c.n) notes.push('Your readings are at chest height; the model gives 2 m, about 8% more over open grass.');
   if (v === 'moisture' && c.unit) notes.push(`Readings in ${c.unit === 'vwc' ? '% water' : 'the meter\'s own scale'}; the model gives the share of the root zone\'s usable water, so only their order is compared.`);
   el.innerHTML = `<div class="big">${tiles.map(([k, val]) => `<div><span class="dim">${esc(k)}</span><b>${esc(val)}</b></div>`).join('')}</div>${notes.length ? `<p class="dim">${esc(notes.join(' '))}</p>` : ''}`;
 }
@@ -292,7 +314,7 @@ function scaleOf() {
   let lo = vals[Math.floor(vals.length * 0.02)], hi = vals[Math.ceil(vals.length * 0.98) - 1];
   if (L === 'diff') { const m = Math.max(Math.abs(lo), Math.abs(hi), 0.5); lo = -m; hi = m; }
   if (hi - lo < 1e-6) { lo -= 0.5; hi += 0.5; }
-  const kind = L === 'diff' ? 'dtemp' : L === 'measured' && v === 'moisture' ? 'num' : VIEWS[v].kind;
+  const kind = L === 'diff' ? (v === 'wind' ? 'dspeed' : 'dtemp') : L === 'measured' && v === 'moisture' ? 'num' : VIEWS[v].kind;
   return { lo, hi, ramp: L === 'diff' ? 'diff' : VIEWS[v].ramp, kind };
 }
 
@@ -393,12 +415,12 @@ async function tap(ev) {
     // a moment's spot: make sure the worker's moment is this one (the walk's whole-lawn layer, or this time)
     const t = S.ctx?.type === 'walk' ? S.ctx.walk.mid : S.ctx?.t;
     if (!Number.isFinite(t)) { $('#spot').innerHTML = '<p class="dim">Nothing worked out at this spot yet. For a walk, tap a square it covered, or model the whole lawn.</p>'; return; }
-    const key = Math.round(t / 6e4);
-    if (!S.moments.has(key)) { $('#spot').innerHTML = '<p class="dim">Tap a square the walk covered, or model the whole lawn at this minute first.</p>'; return; }
+    const key = Math.round(t / 6e4), mo = momentFor(t);
+    if (!mo) { $('#spot').innerHTML = '<p class="dim">Tap a square the walk covered, or model the whole lawn at this minute first.</p>'; return; }
     if (S.momentKey !== key) { await ask('moment', { t }); S.momentKey = key; }
-    const i = item ? item.i : lawnCellNear(at, S.moments.get(key).surface);
+    const i = item ? item.i : lawnCellNear(at, mo.surface);
     if (i < 0) { $('#spot').innerHTML = '<p class="dim">Not on the lawn the model works out.</p>'; return; }
-    res = await ask('explain', { view: v === 'surface' ? 'surface' : v, i, depthCm: S.depth, reading: item ? item.m : null });
+    res = await ask('explain', { view: v === 'surface' ? 'surface' : v, i, depthCm: S.ctx?.depthCm || S.depth, reading: item ? item.m : null });
   }
   S.selected = { at: item ? [item.lng, item.lat] : at };
   draw();
@@ -409,11 +431,11 @@ function spotCard(r, item) {
   const el = $('#spot');
   if (!r || r.error) { el.innerHTML = `<p class="dim">${esc(r?.error || 'Nothing came back for that spot.')}</p>`; return; }
   const moist = r.view === 'moisture';
-  const reading = item ? (moist ? `${item.m}${item.unit === 'vwc' ? '% water' : ' on the meter'}` : fmt(item.m, 'temp')) : null;
+  const reading = item ? (moist ? `${item.m}${item.unit === 'vwc' ? '% water' : ' on the meter'}` : fmt(item.m, r.kind)) : null;
   const tiles = [];
   if (reading !== null) tiles.push(['Reading', reading]);
   tiles.push([`Model: ${r.label.toLowerCase()}`, fmt(r.value, r.kind)]);
-  if (reading !== null && !moist && Number.isFinite(item.m) && Number.isFinite(r.value)) tiles.push(['Measured − model', fmt(item.m - r.value, 'dtemp')]);
+  if (reading !== null && !moist && Number.isFinite(item.m) && Number.isFinite(r.value)) tiles.push(['Measured − model', fmt(item.m - r.value, r.kind === 'speed' ? 'dspeed' : 'dtemp')]);
   for (const o of r.others || []) tiles.push([o.label, fmt(o.v, o.kind)]);
   const groups = (r.groups || []).map((gr, n) => `<details${n < 3 ? ' open' : ''}><summary>${esc(gr.title)}</summary>${gr.note ? `<p class="dim">${esc(gr.note)}</p>` : ''}<table>${gr.rows.map((x) => `<tr><td>${esc(x.label)}${x.note ? `<span class="dim">${esc(x.note)}</span>` : ''}</td><td class="v">${esc(fmt(x.v, x.kind))}</td></tr>`).join('')}</table></details>`).join('');
   el.innerHTML = `<h2>${item?.n ? `Spot ${esc(item.n)}` : 'This spot'}${Number.isFinite(r.t) ? `, ${esc(when(r.t))}` : S.ctx?.date ? `, ${esc(day(Date.parse(`${S.ctx.date}T12:00:00`)))}` : ''}</h2>

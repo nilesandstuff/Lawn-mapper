@@ -4,6 +4,7 @@
  */
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import worker, { upstreamFor, isAdmin } from '../src/index.js';
 import { readings, cleanReading, toCsv } from '../src/readings.js';
@@ -247,6 +248,13 @@ test('moisture readings: the admin keeps a visit, saves it again whole, reads a 
   const sv = cleanVisit({ ...visit, unit: 'surface_f', air_f: 81, readings: [{ lng: 1, lat: 1, value: 96.5 }] });
   assert.equal(sv.visit.unit, 'surface_f'); assert.equal(sv.visit.air_f, 81); assert.equal(sv.readings[0].value, 96.5);
   assert.ok(cleanVisit({ ...visit, unit: 'surface_f', readings: [{ lng: 1, lat: 1, value: 250 }] }).error, '250 F is no lawn');
+  // the field page's other kinds (2026-11-17): soil temperature at a depth, the air, the wind; each its own visit
+  const soil = cleanVisit({ ...visit, id: `${visit.id}-soil2in`, unit: 'soil_f', depth_in: 2, readings: [{ lng: 1, lat: 1, value: 47 }] });
+  assert.equal(soil.visit.unit, 'soil_f'); assert.equal(soil.visit.depth_in, 2); assert.equal(soil.visit.id, `${visit.id}-soil2in`);
+  assert.equal(cleanVisit({ ...visit, unit: 'airtemp_f', readings: [{ lng: 1, lat: 1, value: 55 }] }).visit.unit, 'airtemp_f');
+  assert.equal(cleanVisit({ ...visit, unit: 'wind_mph', readings: [{ lng: 1, lat: 1, value: 3.5 }] }).visit.unit, 'wind_mph');
+  assert.ok(cleanVisit({ ...visit, unit: 'wind_mph', readings: [{ lng: 1, lat: 1, value: -2 }] }).error, 'no negative wind');
+  assert.ok(cleanVisit({ ...visit, unit: 'soil_f', readings: [{ lng: 1, lat: 1, value: 160 }] }).error, '160 F is no soil');
   // the meter's own scale may go past 100
   assert.ok(cleanVisit({ ...visit, unit: 'scale', readings: [{ lng: 1, lat: 1, value: 250 }] }).visit);
 });
@@ -278,6 +286,23 @@ test('the water map\'s check of the model against a visit: by map id for the adm
   for (const bad of ['-85.6', '42.8', 'porch', 'map-abc', 'somewhere']) assert.ok(!kept.includes(bad), `no ${bad} kept`);
   assert.equal(env.DB.checks[0].rho, 0.41);
   assert.equal((await moisture(new Request(cu, { method: 'POST', body: JSON.stringify({ ...check, visit_id: 'x' }) }), env, cu, admin)).status, 400);
+});
+
+test('readings on no map are moved to a test map by their ids; a map\'s readings by its id', async () => {
+  const { moisture } = await import('../src/moisture.js');
+  const { DatabaseSync } = await import('node:sqlite');
+  const db = new DatabaseSync(':memory:');
+  db.exec(readFileSync(new URL('../schema.sql', import.meta.url), 'utf8'));
+  const prep = (sql) => { let a = []; const st = { bind: (...x) => { a = x; return st; }, run: async () => { db.prepare(sql).run(...a); return {}; }, all: async () => ({ results: db.prepare(sql).all(...a) }), first: async () => db.prepare(sql).get(...a) ?? null }; return st; };
+  const env = { DB: { prepare: prep, batch: async (sts) => { for (const x of sts) await x.run(); } } };
+  db.exec("INSERT INTO moisture_visits (id, at, saved, unit, map_id) VALUES ('a1234567', 1, 1, 'soil_f', NULL), ('b1234567', 1, 1, 'scale', NULL), ('c1234567', 1, 1, 'scale', 'plain')");
+  const u = new URL('https://water.example.com/api/water/moisture/move'), admin = { isAdmin: async () => true };
+  const post = (b) => moisture(new Request(u, { method: 'POST', body: JSON.stringify(b) }), env, u, admin);
+  assert.equal((await post({ from: null, to: 'admin|1' })).status, 400, 'no map and no ids: refused');
+  assert.equal((await (await post({ from: null, to: 'admin|1', ids: ['a1234567'] })).json()).moved, 1);
+  assert.equal(db.prepare("SELECT map_id FROM moisture_visits WHERE id = 'a1234567'").get().map_id, 'admin|1');
+  assert.equal(db.prepare("SELECT map_id FROM moisture_visits WHERE id = 'b1234567'").get().map_id, null, 'only the ids named');
+  assert.equal((await (await post({ from: 'plain', to: 'admin|1' })).json()).moved, 1);
 });
 
 test('the old readings export is gone: nothing answers there, key or not', async () => {

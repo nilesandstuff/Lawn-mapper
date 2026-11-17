@@ -25,3 +25,9 @@ export function openable(maps, adminSaves = []) {
   const tests = (Array.isArray(adminSaves) ? adminSaves : []).filter(ok).map((m) => (seen.add(String(m.id)), one(m, true)));
   return [...tests, ...(Array.isArray(maps) ? maps : []).filter((m) => ok(m) && !seen.has(String(m.id))).map((m) => one(m, isAdminSave(m)))];
 }
+
+/** The readings page's units (src/moisture.js UNITS): soil moisture's own, and the rest by kind (2026-11-17: soil
+ *  temperature, air temperature and wind beside them). Each check reads only its own kind. */
+export const MOISTURE_UNITS = ['vwc', 'scale', 'other'];
+export const isMoistureUnit = (u) => MOISTURE_UNITS.includes(u || 'other');
+export const UNIT_WORDS = { vwc: '% water', scale: 'meter scale', other: 'meter', surface_f: '°F surface', soil_f: '°F soil', airtemp_f: '°F air', wind_mph: 'mph wind' };

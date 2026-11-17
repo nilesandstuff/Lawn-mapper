@@ -22,6 +22,8 @@
   button.on { outline: 3px solid var(--warn); outline-offset: 2px; }
   button:disabled { opacity: .45; cursor: default; }
   button.big { flex: 1; padding: 14px; font-size: 1.05rem; }
+  .kinds button { padding: 8px 10px; font-size: .95rem; }
+  .kinds button[aria-pressed="true"] { background: var(--accent); color: #fff; border-color: var(--accent); }
   #status { min-height: 1.4em; margin: 4px 0; }
   #status.bad { color: var(--bad); }
   #mapwrap { position: relative; width: 100%; height: 62vh; min-height: 320px; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: #2a332f; touch-action: none; user-select: none; -webkit-user-select: none; }
@@ -45,8 +47,8 @@
 </head>
 <body>
 <main>
-  <h1>Soil moisture readings</h1>
-  <p class="dim small" style="margin:2px 0 0">Spot readings with a hand meter, to check the water model against the ground.</p>
+  <h1>Field readings</h1>
+  <p class="dim small" style="margin:2px 0 0">Quick spot readings to check the water model against the ground: soil moisture, the grass surface's temperature, the soil's, the air's and the wind. Pick what you are reading, then tap where.</p>
 
   <div class="row">
     <button id="locate" class="big">📍 Find this property</button>
@@ -55,6 +57,14 @@
   </div>
   <p id="status" class="small dim"></p>
 
+  <div class="row kinds" id="kinds" role="group" aria-label="What you are reading">
+    <button class="plain" data-kind="moisture">💧 Moisture</button>
+    <button class="plain" data-kind="surface">🌡 Surface</button>
+    <button class="plain" data-kind="soil">🪱 Soil temp</button>
+    <button class="plain" data-kind="air">☁ Air temp</button>
+    <button class="plain" data-kind="wind">🍃 Wind</button>
+  </div>
+  <div class="row" id="soil-depth-box" hidden><label for="sdepth" style="margin:0">Soil thermometer depth, inches</label><input id="sdepth" type="number" inputmode="decimal" step="0.5" min="0.5" max="24" style="width:6em"></div>
   <div id="mapwrap">
     <canvas id="map"></canvas>
     <div id="side">
@@ -92,14 +102,13 @@
   </div>
 
   <details class="card" id="setup">
-    <summary>Meter</summary>
+    <summary>Moisture meter</summary>
     <label for="meter">Which meter</label>
     <input id="meter" placeholder="make and model">
     <label for="unit">What it reads</label>
     <select id="unit">
       <option value="vwc">% water by volume (VWC)</option>
       <option value="scale">the meter's own % or scale (not calibrated to true water content)</option>
-      <option value="surface_f">surface temperature, °F (infrared thermometer or thermal camera, emissivity 0.98)</option>
       <option value="other">something else</option>
     </select>
     <label for="depth" id="depth-label">How deep the probe goes (inches)</label>

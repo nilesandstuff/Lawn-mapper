@@ -12,7 +12,7 @@
  * opening it would. The addresses are shown here only, in the administrator's browser; nothing is sent anywhere new.
  */
 import { MODEL_VERSION } from '/lib/surfacenow.js';
-import { isAdminSave, lawnDone } from '/lib/maps.js';
+import { isAdminSave, lawnDone, isMoistureUnit, UNIT_WORDS } from '/lib/maps.js';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -51,29 +51,37 @@ const nameOf = (id) => { const m = mapOf(id); return m ? `${isAdminSave(m) ? 'Te
 function needs(id) {
   const scored = new Set(state.walks.filter((w) => w.map_id === id && w.results?.some((r) => r.model === MODEL_VERSION && r.kind === 'surface')).map((w) => w.walk));
   const walks = (state.core.get(id) || []).filter((w) => w.ok === true && !scored.has(w.walk)).length;
-  const visits = state.visits.filter((v) => v.map_id === id && v.readings?.length && !v.check).length;
+  // the visits a map's own check covers (soil moisture, surface temperature); the rest are the explorer's, with no check to wait for
+  const visits = state.visits.filter((v) => v.map_id === id && v.readings?.length && !v.check && (isMoistureUnit(v.unit) || v.unit === 'surface_f')).length;
   return { walks, visits };
 }
 
 function render() {
-  // readings on an ordinary map near a test map: offered a move
-  const byMap = new Map();
-  for (const v of state.visits) { if (!v.map_id) continue; const a = byMap.get(v.map_id) || []; a.push(v); byMap.set(v.map_id, a); }
-  const moves = [];
-  for (const [id, vs] of byMap) {
-    if (isAdminSave(mapOf(id) || { id })) continue;
-    const at = [vs[0].lng, vs[0].lat];
-    if (!at.every(Number.isFinite)) continue;
-    const near = state.tests.filter((m) => Number.isFinite(m.lng) && Number.isFinite(m.lat)).map((m) => ({ m, d: metres(at, [m.lng, m.lat]) })).filter((x) => x.d < 80).sort((a, b) => a.d - b.d)[0];
-    if (near) moves.push({ from: id, to: near.m.id, d: near.d, n: vs.length, readings: vs.reduce((a, v) => a + (v.readings?.length || 0), 0) });
+  /* READINGS NOT ON A TEST MAP, offered a move to one (owner, 2026-11-16 and 2026-11-17: "take quick measurements in
+     the field, and then we can associate it with an admin map later"): those kept on an ordinary map, grouped by map,
+     and those taken where no saved map was, grouped by day and place; each with the test maps nearest first. */
+  const groups = new Map();
+  for (const v of state.visits) {
+    if (!v.readings?.length && !v.marks?.length) continue;
+    if (v.map_id && isAdminSave(mapOf(v.map_id) || { id: v.map_id })) continue;
+    const key = v.map_id ? `map:${v.map_id}` : `none:${new Date(v.at).toLocaleDateString('en-CA')}:${Number(v.lng).toFixed(3)},${Number(v.lat).toFixed(3)}`;
+    if (!groups.has(key)) groups.set(key, { from: v.map_id || null, visits: [] });
+    groups.get(key).visits.push(v);
   }
-  $('#move').innerHTML = moves.map((x, k) => `<div class="card"><h2>Readings on an ordinary map</h2>
-    <p>${x.n} visit${x.n === 1 ? '' : 's'} (${x.readings} readings) are kept on <b>${esc(nameOf(x.from))}</b>. Your test map <b>${esc(mapOf(x.to)?.address || 'a test map')}</b> is ${Math.round(x.d)} m away. Move them to the test map? Their checks will be worked out again there.</p>
-    <button data-move="${k}">Move to the test map</button> <span class="dim" id="move-say-${k}"></span></div>`).join('');
+  const KIND = (u) => UNIT_WORDS[u] || 'meter';
+  const moves = [...groups.values()].map((g) => {
+    const v0 = g.visits[0], at = [v0.lng, v0.lat];
+    const opts = state.tests.filter((m) => Number.isFinite(m.lng) && Number.isFinite(m.lat)).map((m) => ({ m, d: at.every(Number.isFinite) ? metres(at, [m.lng, m.lat]) : Infinity })).sort((a, b) => a.d - b.d);
+    return { ...g, opts, readings: g.visits.reduce((a, v) => a + (v.readings?.length || 0), 0), kinds: [...new Set(g.visits.map((v) => KIND(v.unit)))] };
+  }).filter((x) => x.opts.length);
+  $('#move').innerHTML = moves.map((x, k) => `<div class="card"><h2>${x.from ? 'Readings on an ordinary map' : 'Readings on no map yet'}</h2>
+    <p>${x.visits.length} set${x.visits.length === 1 ? '' : 's'} of readings (${x.readings}: ${esc(x.kinds.join(', '))}) from ${day(Math.min(...x.visits.map((v) => v.at)))}${x.from ? `, kept on <b>${esc(nameOf(x.from))}</b>` : ', taken where no saved map was'}. Move them to a test map? Their checks are worked out again there.</p>
+    <select id="move-to-${k}">${x.opts.map((o) => `<option value="${esc(o.m.id)}">${esc(o.m.address || 'a test map')}${Number.isFinite(o.d) ? ` (${o.d < 1000 ? `${Math.round(o.d)} m` : `${(o.d / 1000).toFixed(1)} km`} away)` : ''}</option>`).join('')}</select>
+    <button data-move="${k}">Move</button> <span class="dim" id="move-say-${k}"></span></div>`).join('');
   document.querySelectorAll('[data-move]').forEach((b) => { b.onclick = async () => {
-    const x = moves[Number(b.dataset.move)], say = $(`#move-say-${b.dataset.move}`);
+    const x = moves[Number(b.dataset.move)], say = $(`#move-say-${b.dataset.move}`), to = $(`#move-to-${b.dataset.move}`).value;
     b.disabled = true; say.textContent = 'Moving…';
-    const r = await fetch('/api/water/moisture/move', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from: x.from, to: x.to }) });
+    const r = await fetch('/api/water/moisture/move', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from: x.from, to, ids: x.visits.map((v) => v.id) }) });
     const j = r.ok ? await r.json() : null;
     say.textContent = j ? `Moved ${j.moved}.` : `Not moved (${r.status}).`;
     if (j) { await load(); render(); work(); }
@@ -89,7 +97,7 @@ function render() {
     const m = mapOf(id), w = state.work.get(id);
     const visitRows = vs.map((v) => {
       const vals = (v.readings || []).map((r) => r.value).sort((a, b) => a - b);
-      const unit = v.unit === 'surface_f' ? '°F surface' : v.unit === 'vwc' ? '% water' : 'meter scale';
+      const unit = UNIT_WORDS[v.unit] || 'meter';
       const chk = v.check ? `rank ${Number.isFinite(v.check.rho) ? v.check.rho.toFixed(2) : '-'} over ${v.check.n} lawn spots` : '<span class="dim">not checked yet</span>';
       return `<tr><td>${day(v.at)}</td><td>${esc(unit)}</td><td>${v.readings?.length || 0}${v.marks?.length ? ` (+${v.marks.length} marks)` : ''}</td><td>${vals.length ? `${vals[0]}–${vals[vals.length - 1]}` : '-'}</td><td>${chk}</td></tr>`;
     }).join('');

@@ -28,7 +28,7 @@ import { R, toMerc, fromMerc, worldSize, mercToWorld, frameFor, photoOf, savedPh
 import { boxFor } from '/lib/site.js';
 import { sprinklers } from '/heads.js';
 import { viewer3d, groundMesh } from '/view3d.js';
-import { openable } from '/lib/maps.js';
+import { openable, isMoistureUnit } from '/lib/maps.js';
 import { KINDS as LAYER_KINDS, FIELD_WORDS, typeWords, hasCounty, keepCounty, askBox, compact, freshEnough, summary as layerSummary, pick as layerPick, intakesNear } from '/lib/layers.js';
 import { sectorName } from '/lib/wind.js';
 import { SPECIES, groupOf } from '/lib/roots.js';
@@ -860,7 +860,7 @@ function moistureCard(p) {
   let el = $('#moisture-check');
   if (!el) { $('#groundwater')?.insertAdjacentHTML('afterend', '<div id="moisture-check"></div>'); el = $('#moisture-check'); }
   if (!el) return;
-  const d = view.data, visits = (view.moisture || []).filter((v) => v.unit !== 'surface_f'), trace = view.site?.lawn || [];
+  const d = view.data, visits = (view.moisture || []).filter((v) => isMoistureUnit(v.unit)), trace = view.site?.lawn || []; // soil moisture only: the soil temperature, air and wind visits (2026-11-17) are the explorer's
   /* no readings on this map: still the thermal walks (until 2026-11-16 this returned before them, so a map with walks
      and no readings -- the owner's first admin save -- never showed or scored its walks) */
   if ((!visits.length && !(view.moisture || []).some((v) => v.unit === 'surface_f')) || !d?.grid || !p?.kinds) { el.innerHTML = `${walkCards()}${trunksNote()}`; askWalks(); return; }

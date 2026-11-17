@@ -36,19 +36,38 @@ const st = {
 };
 
 /* ---------------------------------------------------------------- the meter's setup, kept on the phone */
-const setup = { meter: '', unit: 'scale', depth: '', ...(store.get(SETUP) || {}) }; // most hand meters under $200 read a relative %, not true water content
-$('#meter').value = setup.meter; $('#unit').value = setup.unit; $('#depth').value = setup.depth;
+const setup = { meter: '', unit: 'scale', depth: '', kind: 'moisture', soilDepth: '2', ...(store.get(SETUP) || {}) }; // most hand meters under $200 read a relative %, not true water content
+if (setup.unit === 'surface_f') { setup.unit = 'scale'; setup.kind = 'surface'; } // before 2026-11-17 a surface visit was a meter setting
+$('#meter').value = setup.meter; $('#unit').value = setup.unit; $('#depth').value = setup.depth; $('#sdepth').value = setup.soilDepth;
 for (const id of ['meter', 'unit', 'depth']) $(`#${id}`).addEventListener('change', () => { setup[id] = $(`#${id}`).value; store.set(SETUP, setup); unitShown(); });
+$('#sdepth').addEventListener('change', () => { setup.soilDepth = $('#sdepth').value; store.set(SETUP, setup); });
 if (!setup.meter) $('#setup').open = true;
-const surface = () => setup.unit === 'surface_f';
-const unitWord = () => (setup.unit === 'vwc' ? '%' : surface() ? '°F' : '');
-/* SURFACE TEMPERATURE VISITS (owner, 2026-11-09: an infrared thermometer or a thermal camera, and a cheap thermometer
-   for the air): no probe depth; the air's temperature for the visit instead */
+/* WHAT A READING IS (owner, 2026-11-17: "Same page actually but just make it so I can take wind, air temp, and soil temp
+   readings as well. The point of the page being to be able to take quick measurements in the field, and then we can
+   associate it with an admin map later"). Each dot carries its kind; a visit with several kinds is saved as one visit
+   per kind (the moisture one keeps the visit's id, the others add a suffix), so every check reads only its own. */
+const KINDS = {
+  moisture: { unit: () => setup.unit, word: () => (setup.unit === 'vwc' ? '%' : ''), colour: '#ff9800', suffix: '', ask: () => (setup.unit === 'vwc' ? '% water by volume' : setup.unit === 'scale' ? "the meter's own % or scale" : 'the reading') },
+  surface: { unit: () => 'surface_f', word: () => '°F', colour: '#ef5350', suffix: '-surf', lo: -40, hi: 200, ask: () => "the grass surface, °F (infrared thermometer or thermal camera, emissivity 0.98)" },
+  soil: { unit: () => 'soil_f', word: () => '°F', colour: '#a1887f', suffix: '-soil', lo: -20, hi: 130, ask: () => `the soil at ${setup.soilDepth || '?'} in, °F (push the probe in and wait for it to settle)` },
+  air: { unit: () => 'airtemp_f', word: () => '°F', colour: '#42a5f5', suffix: '-air', lo: -40, hi: 130, ask: () => 'the air, °F: in the shade at chest height, after it settles' },
+  wind: { unit: () => 'wind_mph', word: () => ' mph', colour: '#26a69a', suffix: '-wind', lo: 0, hi: 100, ask: () => 'the wind, mph: at chest height, its average over about half a minute' },
+};
+const kindOfUnit = (u) => (u === 'surface_f' ? 'surface' : u === 'soil_f' ? 'soil' : u === 'airtemp_f' ? 'air' : u === 'wind_mph' ? 'wind' : 'moisture');
+const kindNow = () => (KINDS[setup.kind] ? setup.kind : 'moisture');
+const surface = () => kindNow() === 'surface';
+const unitWord = (k = kindNow()) => KINDS[k].word();
+/* SURFACE TEMPERATURE READINGS (owner, 2026-11-09: an infrared thermometer or a thermal camera, and a cheap
+   thermometer for the air): the air's temperature for the visit too (or the visit's air readings) */
 function unitShown() {
-  $('#air-box').hidden = !surface();
-  $('#depth').hidden = surface(); $('#depth-label').hidden = surface();
+  const k = kindNow();
+  document.querySelectorAll('#kinds [data-kind]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.kind === k)));
+  $('#air-box').hidden = !(k === 'surface' || (st?.visit?.dots || []).some((d) => d.kind === 'surface'));
+  $('#soil-depth-box').hidden = k !== 'soil';
+  if (st?.visits) st.old = oldSpots(st.visits.filter((v) => v.id !== st.visit?.id && kindOfUnit(v.unit) === k));
   if (typeof refresh === 'function' && st?.visit) refresh();
 }
+document.querySelectorAll('#kinds [data-kind]').forEach((b) => b.addEventListener('click', () => { setup.kind = b.dataset.kind; store.set(SETUP, setup); unitShown(); hint(`Reading ${b.textContent.replace(/^\S+\s/, '').toLowerCase()}: tap where.`); }));
 unitShown();
 $('#airf').addEventListener('change', () => { if (st.visit) { st.visit.dirty = true; saveDraft(); refresh(); } });
 
@@ -163,7 +182,8 @@ async function load(lng, lat, { keepVisit = false } = {}) {
   if (!keepVisit || !st.visit) newVisit();
   else saveDraft();
   const visits = await earlierAt(p.pin);
-  st.old = oldSpots(visits.filter((v) => v.id !== st.visit.id && (v.unit === 'surface_f') === surface())); // a temperature visit's spots apart from a moisture visit's
+  st.visits = visits;
+  st.old = oldSpots(visits.filter((v) => v.id !== st.visit.id && !v.id.startsWith(`${st.visit.id}-`) && kindOfUnit(v.unit) === kindNow())); // each kind's spots apart
   earlierCard(visits.filter((v) => v.id !== st.visit.id));
   $('#movepin').disabled = false; $('#newvisit').disabled = false; $('#marktrunk').disabled = false;
   fit(); refresh();
@@ -205,7 +225,8 @@ function refresh() {
   const v = st.visit, n = v ? v.dots.length : 0;
   const nm = (v?.marks || []).length;
   $('#count').textContent = [n ? `${n} reading${n === 1 ? '' : 's'}` : '', nm ? `${nm} trunk${nm === 1 ? '' : 's'} marked` : ''].filter(Boolean).join(', ');
-  $('#list').innerHTML = v ? v.dots.map((d, k) => `<li>${d.value}${unitWord()}${d.again ? ' <span class="dim small">(same spot as before)</span>' : ''}${d.note ? ` <span class="dim small">${esc(d.note)}</span>` : ''}<button class="plain" data-k="${k}">edit</button></li>`).join('') : '';
+  $('#air-box').hidden = !(kindNow() === 'surface' || (v?.dots || []).some((d) => d.kind === 'surface'));
+  $('#list').innerHTML = v ? v.dots.map((d, k) => `<li>${d.value}${unitWord(d.kind || 'moisture')}${d.kind && d.kind !== 'moisture' ? ` <span class="dim small">${d.kind === 'soil' ? `soil, ${d.depth ?? '?'} in` : d.kind}</span>` : ''}${d.again ? ' <span class="dim small">(same spot as before)</span>' : ''}${d.note ? ` <span class="dim small">${esc(d.note)}</span>` : ''}<button class="plain" data-k="${k}">edit</button></li>`).join('') : '';
   $('#save').disabled = !unsaved();
   $('#save').textContent = !n && !nm ? 'Save readings' : unsaved() ? `Save ${n ? `${n} reading${n === 1 ? '' : 's'}` : ''}${n && nm ? ' and ' : ''}${nm ? `${nm} trunk${nm === 1 ? '' : 's'}` : ''}` : 'Saved';
   $('#saved').textContent = v?.savedAt ? `Saved at ${new Date(v.savedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}${unsaved() ? ': newer readings are on this phone only until you save again.' : '.'}` : n ? 'On this phone only until saved.' : '';
@@ -220,7 +241,8 @@ function ask(what) {
   asking = what;
   const v = st.visit, d = what.edit !== undefined ? v.dots[what.edit] : null;
   $('#asktitle').textContent = d ? `Reading ${d.n}` : `Reading ${v.dots.length + 1}`;
-  $('#askwhere').textContent = what.old ? `The spot read on ${new Date(what.old.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} (${what.old.value}${what.old.unit === 'vwc' ? '%' : what.old.unit === 'surface_f' ? ' °F' : ''} then)` : setup.unit === 'vwc' ? '% water by volume' : setup.unit === 'scale' ? "the meter's own % or scale" : surface() ? 'the grass surface, °F' : '';
+  const kd = d ? d.kind || 'moisture' : kindNow();
+  $('#askwhere').textContent = what.old ? `The spot read on ${new Date(what.old.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} (${what.old.value}${unitWord(kindOfUnit(what.old.unit))} then): ${KINDS[kd].ask()}` : KINDS[kd].ask();
   $('#val').value = d ? d.value : ''; $('#rnote').value = d?.note || '';
   $('#askdel').hidden = !d;
   $('#ask').showModal();
@@ -234,11 +256,12 @@ $('#ask').addEventListener('close', () => {
   else if (how === 'ok') {
     const value = Number($('#val').value);
     if (!Number.isFinite(value) || $('#val').value === '') return;
-    if (setup.unit === 'vwc' && (value < 0 || value > 100)) { say(`${value}% is not a soil moisture: not kept.`, true); return; }
-    if (surface() && (value < -40 || value > 200)) { say(`${value} °F is not a lawn's surface: not kept.`, true); return; }
+    const kd = w.edit !== undefined ? v.dots[w.edit].kind || 'moisture' : kindNow(), K = KINDS[kd];
+    if (kd === 'moisture' && setup.unit === 'vwc' && (value < 0 || value > 100)) { say(`${value}% is not a soil moisture: not kept.`, true); return; }
+    if (Number.isFinite(K.lo) && (value < K.lo || value > K.hi)) { say(`${value}${K.word()} does not look right for that: not kept.`, true); return; }
     const note = $('#rnote').value.trim() || null;
     if (w.edit !== undefined) Object.assign(v.dots[w.edit], { value, note });
-    else v.dots.push({ n: v.dots.length + 1, spot: w.old ? w.old.spot : uid(), again: !!w.old, lng: w.lng, lat: w.lat, value, note, at: Date.now() });
+    else v.dots.push({ n: v.dots.length + 1, kind: kd, depth: kd === 'soil' ? Number(setup.soilDepth) || null : null, spot: w.old ? w.old.spot : uid(), again: !!w.old, lng: w.lng, lat: w.lat, value, note, at: Date.now() });
     v.dirty = true;
   }
   saveDraft(); refresh();
@@ -250,13 +273,31 @@ $('#save').addEventListener('click', async () => {
   if (!v || !p || (!v.dots.length && !(v.marks || []).length)) return;
   $('#save').disabled = true; $('#save').textContent = 'Saving…';
   const weather = $('#weather').value || $('#sprinklers').checked ? { ...($('#weather').value ? { lastTwoDays: $('#weather').value } : {}), ...($('#sprinklers').checked ? { sprinklers: true } : {}) } : null;
-  const body = { id: v.id, at: v.at, lng: p.lng, lat: p.lat, parcel_pin: p.pin, county: p.county, map_id: p.mapId, placed_on: st.placedOn, air_f: surface() && $('#airf').value !== '' ? Number($('#airf').value) : null, meter: setup.meter || null, unit: setup.unit, depth_in: surface() || setup.depth === '' ? null : Number(setup.depth), note: $('#vnote').value.trim() || null, weather, readings: v.dots.map(({ n, spot, lng, lat, value, note, at }) => ({ n, spot, lng, lat, value, note, at })), marks: (v.marks || []).map(({ kind, lng, lat, note }) => ({ kind, lng, lat, note })) };
+  /* one visit per kind (a soil temperature at another depth is its own visit too): the moisture readings keep the
+     visit's id, so a visit saved before 2026-11-17 is replaced, not doubled; the trunks ride with the first */
+  const groups = new Map();
+  for (const d of v.dots) {
+    const kd = d.kind || 'moisture', key = kd === 'soil' ? `soil:${d.depth ?? ''}` : kd;
+    if (!groups.has(key)) groups.set(key, { kind: kd, depth: d.depth ?? null, dots: [] });
+    groups.get(key).dots.push(d);
+  }
+  if (!groups.size) groups.set('moisture', { kind: 'moisture', depth: null, dots: [] });
+  const airs = v.dots.filter((d) => d.kind === 'air').map((d) => d.value);
+  const airF = $('#airf').value !== '' ? Number($('#airf').value) : airs.length ? airs.reduce((a, b) => a + b, 0) / airs.length : null;
+  const bodies = [...groups.entries()].map(([key, g], k) => ({ id: g.kind === 'moisture' ? v.id : `${v.id}${KINDS[g.kind].suffix}${g.kind === 'soil' && g.depth ? `${String(g.depth).replace('.', 'p')}in` : ''}`, at: v.at, lng: p.lng, lat: p.lat, parcel_pin: p.pin, county: p.county, map_id: p.mapId, placed_on: st.placedOn,
+    air_f: airF, meter: g.kind === 'moisture' ? setup.meter || null : null, unit: KINDS[g.kind].unit(), depth_in: g.kind === 'moisture' ? (setup.depth === '' ? null : Number(setup.depth)) : g.kind === 'soil' ? g.depth : null,
+    note: $('#vnote').value.trim() || null, weather, readings: g.dots.map(({ n, spot, lng, lat, value, note, at }) => ({ n, spot, lng, lat, value, note, at })),
+    marks: k === 0 ? (v.marks || []).map(({ kind, lng, lat, note }) => ({ kind, lng, lat, note })) : [] }));
   try {
-    const r = await fetch('/api/water/moisture', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(j.error || `the server said ${r.status}`);
+    let nR = 0, nM = 0;
+    for (const body of bodies) {
+      const r = await fetch('/api/water/moisture', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || `the server said ${r.status}`);
+      nR += j.readings || 0; nM += j.marks || 0;
+    }
     v.savedAt = Date.now(); v.savedCount = v.dots.length; v.dirty = false;
-    saveDraft(); say(`Saved ${j.readings} reading${j.readings === 1 ? '' : 's'}${j.marks ? ` and ${j.marks} trunk${j.marks === 1 ? '' : 's'}` : ''}.`);
+    saveDraft(); say(`Saved ${nR} reading${nR === 1 ? '' : 's'}${nM ? ` and ${nM} trunk${nM === 1 ? '' : 's'}` : ''}${bodies.length > 1 ? `, as ${bodies.length} sets (one per kind${bodies.some((b) => b.unit === 'soil_f') ? ' and soil depth' : ''})` : ''}.`);
   } catch (e) {
     say(`Not saved (${e.message}). The readings are kept on this phone: try again when there is signal.`, true);
   }
@@ -364,9 +405,9 @@ function draw() {
   // this visit's readings
   for (const d of st.visit?.dots || []) {
     const [x, y] = screenOf(pxOf([d.lng, d.lat]));
-    ctx.fillStyle = '#ff9800'; ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, 12, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = KINDS[d.kind || 'moisture'].colour; ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, 12, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     ctx.fillStyle = '#000'; ctx.font = '700 12px system-ui'; ctx.fillText(String(d.n), x, y + 0.5);
-    ctx.font = '600 11px system-ui'; ctx.fillStyle = 'rgba(0,0,0,.7)'; ctx.fillRect(x - 17, y + 14, 34, 14); ctx.fillStyle = '#fff'; ctx.fillText(`${d.value}${unitWord()}`, x, y + 21);
+    ctx.font = '600 11px system-ui'; ctx.fillStyle = 'rgba(0,0,0,.7)'; ctx.fillRect(x - 17, y + 14, 34, 14); ctx.fillStyle = '#fff'; ctx.fillText(`${d.value}${unitWord(d.kind || 'moisture')}`, x, y + 21);
   }
   // where the phone is
   if (st.me) {
@@ -453,6 +494,7 @@ size(); draw();
 const draft = store.get(DRAFT);
 if ((draft?.visit?.dots?.length || draft?.visit?.marks?.length) && draft.property && (draft.visit.dirty || draft.visit.savedCount !== draft.visit.dots.length)) {
   st.visit = draft.visit;
+  for (const d of st.visit.dots || []) if (!d.kind) d.kind = 'moisture'; // a draft from before 2026-11-17
   if (draft.weather === 'watered') { draft.weather = ''; draft.sprinklers = true; }
   $('#weather').value = draft.weather || ''; $('#vnote').value = draft.note || ''; $('#airf').value = draft.airf || ''; $('#sprinklers').checked = !!draft.sprinklers;
   say('Bringing back the readings not yet saved…');
