@@ -1994,6 +1994,14 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   check('lineup: the county photo\'s match plus the editor\'s move wins; else Mapbox\'s; a loose match moves nothing',
     Math.abs(f1.east - 0.4) < 1e-12 && Math.abs(f1.north + 0.1) < 1e-12 && f2.east === 1
       && JSON.stringify(shiftFrom([1, 2], { east: 0.5, north: 0.5, confident: false }, lat)) === '[1,2]' && Math.abs(shiftFrom([0, 0], { east: k, north: 0, confident: true }, lat)[0] - 1) < 1e-12);
+  /* An unsure county match: a lined-up county photo sits on Mapbox's ground, so Mapbox's confident match stands in; without a line-up it does not. */
+  const unsure = { fit: { east: 0.9, north: 0.9, confident: false, why: 'loose' } };
+  const f3 = fitFrom({ onCounty: unsure, onMapbox: mapbox, move: { east: 0.1, north: 0.1 }, linedUp: true });
+  const f4 = fitFrom({ onCounty: unsure, onMapbox: mapbox, move: { east: 0.1, north: 0.1 }, linedUp: false });
+  const f5 = fitFrom({ onCounty: unsure, onMapbox: { fit: { east: 1, north: 1, confident: false } }, linedUp: true });
+  check('lineup: an unsure county match on a lined-up photo takes Mapbox\'s confident match (no line-up move added); without a line-up, or with Mapbox unsure too, the datum alone; the answer says which photo',
+    f3.on === 'mapbox' && f3.confident && f3.east === 1 && f3.north === 1 && f4.on === 'county' && !f4.confident && f5.on === 'county' && !f5.confident && f1.on === 'county' && f2.on === 'mapbox',
+    `f3 ${f3.on} ${f3.east}; f4 ${f4.on} ${f4.confident}; f5 ${f5.on}`);
 }
 
 /* THE SERVER'S SHADE BUILD FOR ADMIN SAVES (worker/src/shade-server-build.js; owner, 2026-11-11). */

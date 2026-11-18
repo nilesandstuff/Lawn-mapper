@@ -51,13 +51,25 @@ export function modelBox(lot, frame, lat) {
  * The photo match applied: the county photo's where it was read (its fit plus
  * the editor's line-up `move` at the frame's center, since the outline was
  * drawn on the moved photo), else Mapbox's. Null when neither measured one.
+ * `on` says which photo the answer came from.
+ *
+ * AN UNSURE COUNTY MATCH (the core session's trace of the alignment chain,
+ * 2026-11-18): the county photo was read but its match was not confident, so
+ * the datum alone would stand. When the editor lined that photo up (`linedUp`:
+ * the line-up moved it onto Mapbox's ground, traced.js) and Mapbox's own match
+ * WAS confident, Mapbox's answer is the same ground and is used instead. Not
+ * without a line-up: then the outline sits on the county's own placement, which
+ * can be half a meter off Mapbox's.
  */
-export function fitFrom({ onCounty = null, onMapbox = null, move = { east: 0, north: 0 } } = {}) {
+export function fitFrom({ onCounty = null, onMapbox = null, move = { east: 0, north: 0 }, linedUp = false } = {}) {
   if (onCounty && !onCounty.error) {
     const f = onCounty.fit;
-    return { ...f, east: f.east === null ? null : f.east + move.east, north: f.north === null ? null : f.north + move.north };
+    if (!f?.confident && linedUp && onMapbox?.fit?.confident) {
+      return { ...onMapbox.fit, on: 'mapbox', why: `${onMapbox.fit.why}; the county photo's match was unsure (${f?.why || '?'}), and its line-up put it on Mapbox's ground` };
+    }
+    return { ...f, on: 'county', east: f.east === null ? null : f.east + move.east, north: f.north === null ? null : f.north + move.north };
   }
-  return onMapbox?.fit || null;
+  return onMapbox?.fit ? { ...onMapbox.fit, on: 'mapbox' } : null;
 }
 
 /** The cloud's shift: the datum's `pre` plus the measured residual when the match was confident (3857 units). */
