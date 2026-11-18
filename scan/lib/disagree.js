@@ -25,7 +25,7 @@ export const THIN = 1.6;        // a patch this many cells wide at most, per cel
 const PAVE = new Set(['road', 'sidewalk']);
 
 /**
- * pts: [{ e, n, h (m over the phone's ground), label, conf }] on the map (metres round its origin).
+ * pts: [{ e, n, h (m over the phone's ground), label, conf, i (optional: the caller's index, kept on patches) }] on the map (metres round its origin).
  * model: { solid(e, n) -> bool (anything of the model's there: what the phone's standing points may agree with),
  *          standing(e, n) -> bool (solid AT THE PHONE'S HEIGHT, what the phone should not see the ground through;
  *          solid when absent), kind(e, n) -> string|null, lawn(e, n) -> bool|null }.
@@ -39,7 +39,7 @@ export function disagree(pts, model) {
     const c = at(p.e, p.n);
     // every sure label counts toward a standing cell's name (2026-11-18: named only by the standing kinds, most
     // patches came out "unlabelled" on a walk whose points were all labelled)
-    if (p.h > 0.4 && p.h < 2.4) { c.stand++; if (sure) c.by[sure] = (c.by[sure] || 0) + 1; else c.none = (c.none || 0) + 1; }
+    if (p.h > 0.4 && p.h < 2.4) { c.stand++; if (p.i != null) (c.idx || (c.idx = [])).push(p.i); if (sure) c.by[sure] = (c.by[sure] || 0) + 1; else c.none = (c.none || 0) + 1; }
     else if (Math.abs(p.h) < 0.2) { c.ground++; if (sure === 'terrain') c.grass++; else if (sure && PAVE.has(sure)) c.pave++; }
   }
   const mid = (c) => [(c.x + 0.5) * CELL, (c.y + 0.5) * CELL];
@@ -86,6 +86,8 @@ export function disagree(pts, model) {
     const len = Math.hypot(Math.max(...xs) - Math.min(...xs) + 1, Math.max(...ys) - Math.min(...ys) + 1) * CELL;
     const names = {}; for (const c of got) names[c.name] = (names[c.name] || 0) + 1;
     out.extra.patches.push({ cells: got.length, lengthM: +len.toFixed(1), line: got.length >= 3 && got.length <= len * THIN, label: Object.entries(names).sort((a, b) => b[1] - a[1])[0][0] });
+    // which of the caller's points (those given an index i) the patch is made of: for the segment trial, never printed
+    const idx = got.flatMap((c) => c.idx || []); if (idx.length) out.extra.patches[out.extra.patches.length - 1].idx = idx;
   }
   out.extra.patches.sort((a, b) => b.cells - a.cells);
   return out;

@@ -9,7 +9,7 @@
  *
  *   CLOUDFLARE_API_TOKEN=... node scan/tools/disagree.mjs twin
  */
-import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { toMerc, ringsOf } from '../lib/photo.js';
 import { toLocal } from '../lib/frames.js';
@@ -62,12 +62,13 @@ const fits = new Map();
 const fitFor = (odo) => { const k = Math.round(odo); if (!fits.has(k)) fits.set(k, fitAt(plan.use, k) || plan.C); return fits.get(k); };
 const pts = [];
 let far = 0, spikes = 0;
-for (const r of recs) {
+for (let i = 0; i < recs.length; i++) {
+  const r = recs[i];
   if (r.spike) { spikes++; continue; }
   const cam = camAt(r.t);
   if (cam && Math.hypot(r.x - cam.x, r.y - cam.y, r.z - cam.z) > RANGE_M) { far++; continue; }
   const [e, n] = apply(fitFor(r.odo), [r.x, -r.z]);
-  pts.push({ e, n, h: r.y - r.ground, label: r.label, conf: r.conf });
+  pts.push({ e, n, h: r.y - r.ground, label: r.label, conf: r.conf, i });
 }
 console.log(`Used: ${pts.length.toLocaleString()} points seen within ${Math.round(RANGE_M * 3.281)} ft of the phone (${far.toLocaleString()} farther left out, ${spikes} spikes); labelled ${Math.round((100 * pts.filter((p) => p.label).length) / Math.max(1, pts.length))}%.`);
 
@@ -87,4 +88,8 @@ if (m.trace?.status === 'whole') console.log('This map\'s lawn is the whole prop
 // what the phone's standing points may agree with: the match's solid cells, or any column the model calls a tree, a
 // structure, a building or unknown (the match leaves crowns out; a trunk or a shrub under one is still the model's)
 const anything = (e, n) => solid(e, n) || !['nothing', null].includes(kind(e + 0.5 - (e - Math.floor(e)), n + 0.5 - (n - Math.floor(n))));
-for (const l of lines(disagree(pts, { solid: anything, standing: solid, kind, lawn }))) console.log(l);
+const result = disagree(pts, { solid: anything, standing: solid, kind, lawn });
+for (const l of lines(result)) console.log(l);
+// for the segment trial (scan/tools/segment_study.py): each patch as the indexes of its points in the twin's own
+// records. Kept in the run's folder only; no place in it.
+if (process.env.CELLS_OUT) writeFileSync(process.env.CELLS_OUT, JSON.stringify(result.extra.patches.map((p) => ({ cells: p.cells, lengthM: p.lengthM, line: p.line, label: p.label, idx: p.idx || [] }))));

@@ -1,0 +1,505 @@
+"""
+SEGMENT FIRST, NAME AFTER: A TRIAL ON ONE WALK (core session, 2026-11-18; docs/SCAN-PLAN.md section 29, the thesis).
+
+The owner: "That model may not actually solve the labelling, but it could be useful for sorting the unlabeled stuff by
+segmenting it... Also might be very helpful for producing smoother shapes", and, the same day: "If this doesn't work
+maybe we should try a simpler 2D segmentation... Maybe a combo segmentation and classifier if one exists."
+
+The model the owner found (SAMPart3D, arXiv 2411.07184) cuts ONE clean object into parts: it renders views of a mesh,
+runs Segment Anything on each and lifts the shapes back into 3D. A walk is a yard of points, not a mesh, but it
+already holds what that recipe needs: pictures, where the phone was for each, and depth points. So this runs the
+recipe on the walk's own pictures, and compares:
+
+  by shape alone     the standing points grouped by touching (0.2 m cubes). Free; no picture is read.
+  panoptic           a picture model that cuts AND names in one pass (Mask2Former, ADE20K: fence, wall, tree, plant,
+                     grass, road, building, car ...). The owner's "combo". Free on the runner's CPU.
+  SAM objects/parts  Segment Anything's shapes (Modal's GPU, scan/tools/segment_modal.py: paid, asked first), read
+                     twice: the largest shape at each pixel (objects), the smallest (parts).
+
+THE LIFT (the same for every picture model): each point is put into each picture that saw it (inside the frame, within
+RANGE of the camera, not hidden behind nearer points), and takes that picture's shape there. Two shapes from two
+pictures are ONE thing when, on the points both pictures saw, they share at least half (IOU). A point belongs to the
+thing most of its pictures voted for. The picture is read "as kept" (SCAN-H7, measured).
+
+    python scan/tools/segment_study.py twin                       by shape alone
+    python scan/tools/segment_study.py twin --panoptic            + the panoptic model, here on the CPU
+    python scan/tools/segment_study.py twin --masks out/masks.npz + what segment_modal.py brought back
+    python scan/tools/segment_study.py --selftest                 the lift on a made-up scene
+
+With twin/disagree-cells.json (scan/tools/disagree.mjs, CELLS_OUT): what each patch the phone saw and the lidar lacks
+turns out to be. Prints COUNTS, SIZES AND NAMES ONLY: no coordinate, no place. The top-down pictures it writes
+(segments-*.png, about the walk's own middle) go to the private bucket, never to the log.
+"""
+
+import json
+import os
+import re
+import sys
+import time
+
+import numpy as np
+
+RANGE = 8.0      # m: a picture speaks for points this near its camera (the phone's depth is noisy past that)
+ZCELL = 8        # px: the cell of the hidden-behind test
+MIN_PTS = 15     # a shape with fewer points in a picture says nothing
+IOU = 0.5        # two pictures' shapes are one thing when they share this much of what both saw
+PAIR_MIN = 30    # points two pictures must both see to be compared
+STAND = 0.3      # m over the ground: standing
+VOX = 0.2        # m: "touching", for the grouping by shape alone
+PIECE_MIN = 30   # points: a thing smaller than this is not listed
+PIC_MAX = int(os.environ.get("PIC_MAX", "120"))  # pictures read on the CPU (evenly through the walk)
+LABELS = ['unlabeled', 'sky', 'building', 'tree', 'road', 'sidewalk', 'terrain', 'structure', 'object', 'vehicle', 'person', 'water']
+PAN_MODEL = "facebook/mask2former-swin-large-ade-panoptic"
+FT = 3.281
+
+
+# ---------------------------------------------------------------- the twin
+
+def read_twin(d):
+    """-> recs (N, 6) [t, odo, x, y, z, ground], labs (N, 4) uint8, keys (those whose picture is there, by time)."""
+    recs, labs = [], []
+    for n in sorted(x for x in os.listdir(d) if re.fullmatch(r"cloud-\d+\.bin", x)):
+        a = np.fromfile(os.path.join(d, n), dtype="<f4")
+        a = a[: len(a) // 6 * 6].reshape(-1, 6)
+        l = np.zeros((len(a), 4), np.uint8)
+        lp = os.path.join(d, n.replace("cloud-", "labels-"))
+        if os.path.exists(lp):
+            raw = np.fromfile(lp, dtype=np.uint8)
+            if len(raw) == 4 * len(a):
+                l = raw.reshape(-1, 4)
+        recs.append(a)
+        labs.append(l)
+    keys = []
+    for n in sorted(x for x in os.listdir(d) if re.fullmatch(r"keys-\d+\.json", x)):
+        with open(os.path.join(d, n)) as f:
+            keys += json.load(f)
+    keys = sorted((k for k in keys if os.path.exists(os.path.join(d, k["name"]))), key=lambda k: k["t"])
+    if not recs:
+        return np.zeros((0, 6), np.float32), np.zeros((0, 4), np.uint8), keys
+    return np.concatenate(recs), np.concatenate(labs), keys
+
+
+# ---------------------------------------------------------------- the lift
+
+def project(xyz1, key, W, H):
+    """Each point's pixel in a picture ("as kept"), its range, and whether it is in the frame and near enough."""
+    V = np.linalg.inv(np.array(key["view"], dtype=np.float64).reshape(4, 4).T)
+    P = np.array(key["proj"], dtype=np.float64).reshape(4, 4).T
+    cam = xyz1 @ V.T
+    z = -cam[:, 2]
+    clip = cam @ P.T
+    w = np.where(np.abs(clip[:, 3]) < 1e-9, 1e-9, clip[:, 3])
+    nx, ny = clip[:, 0] / w, clip[:, 1] / w
+    ok = (z > 0.3) & (z < RANGE) & (np.abs(nx) < 0.98) & (np.abs(ny) < 0.98)
+    px = np.clip(((nx + 1) / 2 * W).astype(np.int64), 0, W - 1)
+    py = np.clip(((1 - ny) / 2 * H).astype(np.int64), 0, H - 1)
+    return px, py, z, ok
+
+
+def seen(px, py, z, ok, W, H):
+    """The points a picture really saw: not hidden behind nearer points of its cell. -> sorted indexes."""
+    idx = np.flatnonzero(ok)
+    if not len(idx):
+        return idx
+    cw = W // ZCELL + 1
+    cell = (py[idx] // ZCELL) * cw + px[idx] // ZCELL
+    zmin = np.full((H // ZCELL + 1) * cw, np.inf)
+    np.minimum.at(zmin, cell, z[idx])
+    return idx[z[idx] <= zmin[cell] * 1.1 + 0.2]
+
+
+def lift(xyz, keys, idmaps):
+    """idmaps[p]: (h, w) ints, 0 none (any size: scaled to the picture). -> vis[p] sorted point indexes the picture
+    saw, ms[p] its shape id at each (0 none; shapes under MIN_PTS points dropped)."""
+    xyz1 = np.concatenate([xyz.astype(np.float64), np.ones((len(xyz), 1))], 1)
+    vis, ms = [], []
+    for k, m in zip(keys, idmaps):
+        h, w = m.shape
+        px, py, z, ok = project(xyz1, k, w, h)
+        v = seen(px, py, z, ok, w, h)
+        ids = m[py[v], px[v]].astype(np.int64)
+        n = np.bincount(ids, minlength=int(m.max()) + 1)
+        ids[n[ids] < MIN_PTS] = 0
+        vis.append(v)
+        ms.append(ids)
+    return vis, ms
+
+
+def merge(vis, ms, cams=None):
+    """Shapes of different pictures joined when they share IOU of what both pictures saw. -> off (each picture's
+    first node), comp (node -> thing), joined (share of shapes joined to another picture's)."""
+    K = [int(m.max()) + 1 if len(m) else 1 for m in ms]
+    off = np.concatenate([[0], np.cumsum(K)])
+    parent = np.arange(off[-1])
+
+    def find(a):
+        while parent[a] != a:
+            parent[a] = parent[parent[a]]
+            a = parent[a]
+        return a
+
+    P = len(vis)
+    for p in range(P):
+        if len(vis[p]) < PAIR_MIN:
+            continue
+        for q in range(p + 1, P):
+            if len(vis[q]) < PAIR_MIN or (cams is not None and np.linalg.norm(cams[p] - cams[q]) > 2 * RANGE):
+                continue
+            _, ip, iq = np.intersect1d(vis[p], vis[q], assume_unique=True, return_indices=True)
+            if len(ip) < PAIR_MIN:
+                continue
+            a, b = ms[p][ip], ms[q][iq]
+            na, nb = np.bincount(a, minlength=K[p]), np.bincount(b, minlength=K[q])
+            both = (a > 0) & (b > 0)
+            if not both.any():
+                continue
+            u, c = np.unique(a[both] * K[q] + b[both], return_counts=True)
+            ua, ub = u // K[q], u % K[q]
+            good = (c >= 10) & (c / (na[ua] + nb[ub] - c) >= IOU)
+            for x, y in zip(ua[good], ub[good]):
+                rx, ry = find(off[p] + x), find(off[q] + y)
+                if rx != ry:
+                    parent[ry] = rx
+    comp = np.array([find(i) for i in range(off[-1])])
+    used = np.zeros(off[-1], bool)
+    for p in range(P):
+        used[off[p] + np.unique(ms[p][ms[p] > 0])] = True
+    sizes = np.bincount(comp[used], minlength=off[-1])
+    joined = float((sizes[comp[used]] > 1).mean()) if used.any() else 0.0
+    return off, comp, joined
+
+
+def vote(n_points, vis, ms, off, comp):
+    """Each point's thing by the vote of its pictures. -> piece (N,) (-1 none), purity (mean share of a point's votes
+    that went to its thing, over points with two or more), votes [(point, node)] for naming."""
+    pts, nodes = [], []
+    for p in range(len(vis)):
+        on = ms[p] > 0
+        pts.append(vis[p][on])
+        nodes.append(off[p] + ms[p][on])
+    pts, nodes = np.concatenate(pts) if pts else np.zeros(0, np.int64), np.concatenate(nodes) if nodes else np.zeros(0, np.int64)
+    piece = np.full(n_points, -1, np.int64)
+    if not len(pts):
+        return piece, 0.0, pts, nodes
+    c = comp[nodes]
+    u, cnt = np.unique(pts * (comp.max() + 1) + c, return_counts=True)
+    up, uc = u // (comp.max() + 1), u % (comp.max() + 1)
+    order = np.lexsort((-cnt, up))
+    first = np.concatenate([[True], up[order][1:] != up[order][:-1]])
+    win_p, win_c, win_n = up[order][first], uc[order][first], cnt[order][first]
+    piece[win_p] = win_c
+    total = np.bincount(pts, minlength=n_points)[win_p]
+    many = total >= 2
+    purity = float((win_n[many] / total[many]).mean()) if many.any() else 0.0
+    return piece, purity, pts, nodes
+
+
+def by_shape(xyz, h):
+    """The standing points grouped by touching (VOX cubes, corners count). -> piece (N,), -1 for the rest."""
+    from scipy import ndimage
+    piece = np.full(len(xyz), -1, np.int64)
+    idx = np.flatnonzero(np.isfinite(h) & (h > STAND))
+    if not len(idx):
+        return piece
+    v = np.floor(xyz[idx] / VOX).astype(np.int64)
+    v -= v.min(0)
+    grid = np.zeros(tuple(v.max(0) + 1), bool)
+    grid[v[:, 0], v[:, 1], v[:, 2]] = True
+    lab, _ = ndimage.label(grid, structure=np.ones((3, 3, 3)))
+    piece[idx] = lab[v[:, 0], v[:, 1], v[:, 2]]
+    return piece
+
+
+# ---------------------------------------------------------------- what a thing is like
+
+def describe(xyz, h, idx):
+    """A thing's size about its own middle: length and thickness on the ground, how high it stands."""
+    e, n = xyz[idx, 0], -xyz[idx, 2]
+    hh = h[idx][np.isfinite(h[idx])]
+    c = np.stack([e - e.mean(), n - n.mean()], 1)
+    if len(idx) >= 3:
+        _, vec = np.linalg.eigh(np.cov(c.T) + 1e-9 * np.eye(2))
+        a, b = c @ vec[:, 1], c @ vec[:, 0]
+        length, thick = np.percentile(a, 98) - np.percentile(a, 2), np.percentile(b, 98) - np.percentile(b, 2)
+    else:
+        length = thick = 0.0
+    lo, top = (float(np.percentile(hh, 5)), float(np.percentile(hh, 95))) if len(hh) else (0.0, 0.0)
+    standing = float((hh > STAND).mean()) if len(hh) else 0.0
+    if standing < 0.3:
+        shape = "flat"
+    elif length >= 2 and thick <= max(0.8, length / 5) and top <= 2.8:
+        shape = "line"
+    elif top > 3:
+        shape = "tall"
+    else:
+        shape = "thing"
+    return {"n": int(len(idx)), "length": float(length), "thick": float(thick), "lo": lo, "top": top, "standing": standing, "shape": shape}
+
+
+def says(d):
+    return f"{d['shape']} {d['length'] * FT:.0f} ft long, {d['thick'] * FT:.0f} ft thick, {max(0, d['top']) * FT:.0f} ft high"
+
+
+def feet(ds):
+    return ", ".join("%.0f ft" % (d["length"] * FT) for d in sorted(ds, key=lambda d: -d["length"])[:5])
+
+
+def top_of(counts, least=0.0):
+    if not counts:
+        return None, 0.0
+    tot = sum(counts.values())
+    k = max(counts, key=counts.get)
+    return (k, counts[k] / tot) if counts[k] / tot >= least else (None, counts[k] / tot)
+
+
+def report(name, piece, xyz, h, labs, patches, classes=None, extra=""):
+    """One way of cutting the walk up, as lines. classes: {piece id: {class name: votes}} when the model names."""
+    out = [f"== {name} =={extra}"]
+    stand = np.isfinite(h) & (h > STAND)
+    ids, cnt = np.unique(piece[piece >= 0], return_counts=True)
+    big = ids[cnt >= PIECE_MIN]
+    if not len(big):
+        return out + ["  nothing: no thing of 30 points or more."], {}
+    desc = {int(i): describe(xyz, h, np.flatnonzero(piece == i)) for i in big}
+    standing = {i: d for i, d in desc.items() if d["shape"] != "flat"}
+    in_piece = np.isin(piece, big)
+    s_in = int((stand & in_piece).sum())
+    biggest = max((int((stand & (piece == i)).sum()) for i in standing), default=0)
+    out.append(f"  {len(big)} things of {PIECE_MIN} points or more ({len(standing)} standing, {len(big) - len(standing)} flat); "
+               f"{100 * s_in / max(1, stand.sum()):.0f}% of the standing points are in one; the biggest standing thing holds {100 * biggest / max(1, stand.sum()):.0f}% of them.")
+    kinds = {}
+    for i, d in standing.items():
+        kinds.setdefault(d["shape"], []).append(d)
+    for k in ("line", "tall", "thing"):
+        if k in kinds:
+            ds = sorted(kinds[k], key=lambda d: -d["length"])
+            out.append(f"  {len(ds)} {k}{'s' if len(ds) > 1 else ''}: " + ", ".join("%.0fx%.0f ft, %.0f high" % (d["length"] * FT, d["thick"] * FT, max(0, d["top"]) * FT) for d in ds[:10]) + (" ..." if len(ds) > 10 else ""))
+    if classes:
+        byc = {}
+        for i, d in standing.items():
+            c, share = top_of(classes.get(i, {}), 0.5)
+            byc.setdefault(c or "no clear name", []).append(d)
+        out.append("  the standing things, by the model's name: " + "; ".join(
+            f"{len(ds)} {c} ({feet(ds)})" for c, ds in sorted(byc.items(), key=lambda kv: -len(kv[1]))))
+    # the phone's own labels inside each standing thing: is a thing one label, or a mix?
+    lab_pure = []
+    for i in standing:
+        l = labs[(piece == i) & stand, 0]
+        l = l[l > 0]
+        if len(l) >= 10:
+            lab_pure.append(np.bincount(l).max() / len(l))
+    if lab_pure:
+        out.append(f"  the phone's label inside a standing thing: its commonest label covers {100 * np.mean(lab_pure):.0f}% of the thing on average.")
+    for j, pt in enumerate(patches):
+        idx = np.array([i for i in pt.get("idx", []) if i < len(piece)], np.int64)
+        if not len(idx):
+            continue
+        pc = piece[idx]
+        u, c = np.unique(pc[pc >= 0], return_counts=True)
+        keep = [(int(a), int(b)) for a, b in sorted(zip(u, c), key=lambda t: -t[1]) if a in desc and b >= 0.1 * len(idx)]
+        head = f"  patch {j + 1} ({pt['cells']} m2{', a line ' + str(round(pt['lengthM'] * FT)) + ' ft' if pt.get('line') else ''}, the phone said {pt['label']}): "
+        if not keep:
+            out.append(head + f"in no thing ({100 * (pc >= 0).mean():.0f}% of its points in any).")
+            continue
+        a, b = keep[0]
+        nm = ""
+        if classes:
+            c, share = top_of(classes.get(a, {}))
+            nm = f"; the model calls it {c} ({100 * share:.0f}% of votes)" if c else ""
+        out.append(head + f"{len(keep)} thing{'s' if len(keep) > 1 else ''}; the main one holds {100 * b / len(idx):.0f}% of it: a {says(desc[a])}{nm}.")
+    return out, desc
+
+
+def picture(path, xyz, h, piece, big):
+    """From above, about the walk's own middle: the ground grey, each thing its own colour."""
+    from PIL import Image
+    e, n = xyz[:, 0], -xyz[:, 2]
+    ok = np.isfinite(e) & np.isfinite(n)
+    if not ok.any():
+        return
+    e0, n0 = np.median(e[ok]), np.median(n[ok])
+    r = max(5.0, float(np.percentile(np.hypot(e[ok] - e0, n[ok] - n0), 99)))
+    S = 1000
+    x = np.clip(((e - e0) / r * 0.5 + 0.5) * (S - 1), 0, S - 1).astype(np.int64)
+    y = np.clip((0.5 - (n - n0) / r * 0.5) * (S - 1), 0, S - 1).astype(np.int64)
+    img = np.full((S, S, 3), 255, np.uint8)
+    rng = np.random.default_rng(3)
+    pal = rng.integers(30, 220, size=(int(piece.max()) + 2, 3)).astype(np.uint8)
+    flat = ok & ~(np.isin(piece, big) & np.isfinite(h) & (h > STAND))
+    img[y[flat], x[flat]] = (205, 205, 205)
+    on = ok & np.isin(piece, big) & np.isfinite(h) & (h > STAND)
+    for dy in (0, 1):
+        for dx in (0, 1):
+            img[np.clip(y[on] + dy, 0, S - 1), np.clip(x[on] + dx, 0, S - 1)] = pal[piece[on]]
+    Image.fromarray(img).save(path)
+
+
+# ---------------------------------------------------------------- the picture models
+
+def panoptic_maps(imgs, device="cpu", log=print):
+    """Mask2Former (ADE20K panoptic) on each picture. -> idmaps [(H, W) uint16, 0 none], names [{id: class}]."""
+    import torch
+    from transformers import AutoImageProcessor, Mask2FormerForUniversalSegmentation
+    proc = AutoImageProcessor.from_pretrained(PAN_MODEL)
+    model = Mask2FormerForUniversalSegmentation.from_pretrained(PAN_MODEL).to(device).eval()
+    maps, names = [], []
+    t0 = time.time()
+    for i, im in enumerate(imgs):
+        with torch.no_grad():
+            o = model(**proc(images=im, return_tensors="pt").to(device))
+        r = proc.post_process_panoptic_segmentation(o, target_sizes=[(im.height, im.width)])[0]
+        seg = r["segmentation"].cpu().numpy()
+        m = np.zeros(seg.shape, np.uint16)
+        nm = {}
+        for j, s in enumerate(r["segments_info"]):
+            m[seg == s["id"]] = j + 1
+            nm[j + 1] = model.config.id2label[s["label_id"]].split(",")[0].strip()
+        maps.append(m)
+        names.append(nm)
+        if i == 4:
+            log(f"  the panoptic model: {(time.time() - t0) / 5:.1f} s a picture on {device}")
+    return maps, names
+
+
+def run_lift(tag, xyz, h, labs, keys, maps, names, patches, cams, out_dir):
+    t0 = time.time()
+    vis, ms = lift(xyz, keys, maps)
+    off, comp, joined = merge(vis, ms, cams)
+    piece, purity, vp, vn = vote(len(xyz), vis, ms, off, comp)
+    classes = None
+    if names:
+        node_class = {}
+        for p, nm in enumerate(names):
+            for i, c in nm.items():
+                node_class[int(off[p] + i)] = c
+        classes = {}
+        win = piece[vp]
+        ok = comp[vn] == win
+        for pc, nd in zip(win[ok], vn[ok]):
+            c = node_class.get(int(nd))
+            if c:
+                d = classes.setdefault(int(pc), {})
+                d[c] = d.get(c, 0) + 1
+    saw = np.zeros(len(xyz), bool)
+    for v in vis:
+        saw[v] = True
+    extra = f" ({len(keys)} pictures; {100 * saw.mean():.0f}% of the points were in a picture; {100 * joined:.0f}% of the shapes were joined to another picture's; a point's pictures agree {100 * purity:.0f}%; {time.time() - t0:.0f} s)"
+    lines, desc = report(tag, piece, xyz, h, labs, patches, classes, extra)
+    try:
+        picture(os.path.join(out_dir, f"segments-{re.sub(r'[^a-z]+', '-', tag.lower()).strip('-')}.png"), xyz, h, piece, np.array(list(desc)))
+    except Exception as e:  # a picture that cannot be drawn does not lose the numbers
+        lines.append(f"  (no picture: {type(e).__name__})")
+    return lines
+
+
+# ---------------------------------------------------------------- the self test
+
+def selftest():
+    """A made-up yard: a floor, a fence and a post, eight cameras round it; the 'picture model' is the truth drawn
+    into each picture with ids shuffled per picture. The lift must give the fence and the post back as two things."""
+    rng = np.random.default_rng(1)
+    floor = np.stack([rng.uniform(-4, 4, 6000), np.zeros(6000), rng.uniform(-4, 4, 6000)], 1)
+    fence = np.stack([rng.uniform(-2, 2, 3000), rng.uniform(0.35, 1.5, 3000), np.full(3000, 1.0) + rng.normal(0, 0.02, 3000)], 1)
+    post = np.stack([rng.normal(2.5, 0.08, 800), rng.uniform(0.35, 2.0, 800), rng.normal(-1.5, 0.08, 800)], 1)
+    xyz = np.concatenate([floor, fence, post]).astype(np.float32)
+    truth = np.concatenate([np.zeros(6000, int), np.ones(3000, int), np.full(800, 2)])
+    h = xyz[:, 1].astype(np.float64)
+    W, H, f = 240, 320, 1.2
+    proj = [f * H / W, 0, 0, 0, 0, f, 0, 0, 0, 0, -1.0002, -1, 0, 0, -0.02, 0]
+    keys, maps, cams = [], [], []
+    for i in range(8):
+        a = i * np.pi / 4
+        eye = np.array([5.5 * np.sin(a), 1.4, 5.5 * np.cos(a)])
+        zc = eye - np.array([0, 0.7, 0])
+        zc /= np.linalg.norm(zc)
+        xc = np.cross([0, 1, 0], zc)
+        xc /= np.linalg.norm(xc)
+        yc = np.cross(zc, xc)
+        M = np.eye(4)
+        M[:3, 0], M[:3, 1], M[:3, 2], M[:3, 3] = xc, yc, zc, eye
+        k = {"view": M.T.reshape(-1).tolist(), "proj": proj}
+        xyz1 = np.concatenate([xyz.astype(np.float64), np.ones((len(xyz), 1))], 1)
+        px, py, z, ok = project(xyz1, k, W, H)
+        m = np.zeros((H, W), np.uint16)
+        perm = rng.permutation(3) + 1
+        order = np.argsort(-z)
+        for j in order[ok[order]]:
+            m[max(0, py[j] - 1):py[j] + 2, max(0, px[j] - 1):px[j] + 2] = perm[truth[j]]
+        keys.append(k)
+        maps.append(m)
+        cams.append(eye)
+    vis, ms = lift(xyz, keys, maps)
+    off, comp, joined = merge(vis, ms, np.array(cams))
+    piece, purity, _, _ = vote(len(xyz), vis, ms, off, comp)
+    fence_p, post_p = np.bincount(piece[truth == 1][piece[truth == 1] >= 0]).argmax(), np.bincount(piece[truth == 2][piece[truth == 2] >= 0]).argmax()
+    assert fence_p != post_p, "the fence and the post are one thing"
+    assert (piece[truth == 1] == fence_p).mean() > 0.85, f"the fence is in pieces: {(piece[truth == 1] == fence_p).mean():.2f}"
+    assert (piece[truth == 2] == post_p).mean() > 0.7, f"the post is in pieces: {(piece[truth == 2] == post_p).mean():.2f}"
+    assert (piece[truth == 0] == fence_p).mean() < 0.05, "the floor was taken into the fence"
+    d = describe(xyz, h, np.flatnonzero(piece == fence_p))
+    assert d["shape"] == "line" and 3.3 < d["length"] < 4.4, f"the fence is not a 4 m line: {d}"
+    g = by_shape(xyz, h)
+    assert len(np.unique(g[g >= 0])) == 2, "by shape alone: two standing things"
+    lines, _ = report("self test", piece, xyz, h, np.zeros((len(xyz), 4), np.uint8), [{"cells": 3, "lengthM": 4, "line": True, "label": "terrain", "idx": np.flatnonzero(truth == 1)[:500].tolist()}])
+    assert any("patch 1" in l and "line" in l for l in lines), lines
+    print(f"segment lift self test: ok (joined {joined:.2f}, pictures agree {purity:.2f})")
+
+
+# ---------------------------------------------------------------- main
+
+def main():
+    args = sys.argv[1:]
+    if "--selftest" in args:
+        return selftest()
+    d = next((a for a in args if not a.startswith("--")), "twin")
+    masks = args[args.index("--masks") + 1] if "--masks" in args else None
+    recs, labs, keys = read_twin(d)
+    if len(recs) < 1000:
+        print(f"Only {len(recs)} points: nothing to cut up.")
+        return
+    spike = (labs[:, 3] & 1) > 0
+    xyz, h = recs[:, 2:5].copy(), (recs[:, 3] - recs[:, 5]).astype(np.float64)
+    xyz[spike] = np.nan
+    h[spike] = np.nan
+    patches = []
+    pf = os.path.join(d, "disagree-cells.json")
+    if os.path.exists(pf):
+        with open(pf) as f:
+            patches = json.load(f)
+    stand = np.isfinite(h) & (h > STAND)
+    print(f"The walk: {len(recs):,} points ({int(stand.sum()):,} standing over {STAND * FT:.0f} ft), {len(keys)} pictures; {len(patches)} patches the phone saw and the lidar lacks.")
+    labs_named = labs[stand, 0]
+    cnt = np.bincount(labs_named, minlength=len(LABELS) + 1)
+    print("The phone's own labels on the standing points: " + ", ".join(f"{LABELS[i - 1]} {100 * cnt[i] / max(1, cnt.sum()):.0f}%" for i in np.argsort(-cnt) if i > 0 and cnt[i] / max(1, cnt.sum()) >= 0.02) + (f", none {100 * cnt[0] / max(1, cnt.sum()):.0f}%" if cnt[0] else "") + ".")
+
+    xyz0 = np.nan_to_num(xyz, nan=1e6)
+    g = by_shape(xyz, h)
+    lines, desc = report("By shape alone (touching, no picture)", g, xyz, h, labs, patches)
+    print("\n".join(lines))
+    try:
+        picture(os.path.join(d, "segments-shape.png"), xyz, h, g, np.array(list(desc)))
+    except Exception as e:
+        print(f"  (no picture: {type(e).__name__})")
+
+    cams = np.array([np.array(k["view"], dtype=np.float64).reshape(4, 4).T[:3, 3] for k in keys]) if keys else None
+    if masks:
+        z = np.load(masks, allow_pickle=False)
+        names_all = json.loads(str(z["names"])) if "names" in z else None
+        sel = [keys[i] for i in z["pics"]]
+        c = cams[z["pics"]]
+        if "pan" in z:
+            print("\n".join(run_lift("Panoptic (cuts and names)", xyz0, h, labs, sel, list(z["pan"]), [{int(a): b for a, b in nm.items()} for nm in names_all], patches, c, d)))
+        if "obj" in z:
+            print("\n".join(run_lift("SAM objects (largest shape)", xyz0, h, labs, sel, list(z["obj"]), None, patches, c, d)))
+            print("\n".join(run_lift("SAM parts (smallest shape)", xyz0, h, labs, sel, list(z["part"]), None, patches, c, d)))
+    elif "--panoptic" in args and keys:
+        from PIL import Image
+        pick = np.unique(np.linspace(0, len(keys) - 1, num=min(PIC_MAX, len(keys))).astype(int))
+        sel = [keys[i] for i in pick]
+        imgs = [Image.open(os.path.join(d, k["name"])).convert("RGB") for k in sel]
+        maps, names = panoptic_maps(imgs)
+        print("\n".join(run_lift("Panoptic (cuts and names)", xyz0, h, labs, sel, maps, names, patches, cams[pick], d)))
+
+
+if __name__ == "__main__":
+    main()

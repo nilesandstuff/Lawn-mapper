@@ -36,7 +36,7 @@ on:
         required: true
         default: tests
         type: choice
-        options: [tests, deploy, walks, twin, disagree, fix, place, depth, study, skyline, pavement, checks, repeat, register, walkfix, walkfixjs, reference, warp, marks, naip, drive, thermalindex]
+        options: [tests, deploy, walks, twin, disagree, segment, fix, place, depth, study, skyline, pavement, checks, repeat, register, walkfix, walkfixjs, reference, warp, marks, naip, drive, thermalindex]
       walk:
         description: 'For twin, fix or depth: the walk id, or latest'
         default: latest
@@ -261,10 +261,33 @@ jobs:
       # CAN THE SKYLINE PLACE A WALK (scan/tools/skyline_study.py, SCAN-H11 option 1): the sky in each picture against
       # the shade map's model seen from every placement; scored against the check points. CPU, free.
       - name: Run actions/setup-python@v5 (skyline)
-        if: ${{ inputs.task == 'skyline' || inputs.task == 'pavement' || inputs.task == 'place' || inputs.task == 'checks' || inputs.task == 'register' || inputs.task == 'walkfix' }}
+        if: ${{ inputs.task == 'skyline' || inputs.task == 'pavement' || inputs.task == 'place' || inputs.task == 'checks' || inputs.task == 'register' || inputs.task == 'walkfix' || inputs.task == 'segment' }}
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      # SEGMENT FIRST, NAME AFTER (scan/tools/segment_study.py, 2026-11-18; docs/SCAN-PLAN.md section 29): the walk's
+      # standing points grouped by shape alone, and by a picture model that cuts and names in one pass, lifted onto the
+      # points; what each patch of the disagreement report turns out to be. CPU, free. Counts, sizes and names only;
+      # the top-down pictures go to the private bucket.
+      - name: A walk cut into things
+        if: ${{ inputs.task == 'segment' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          MAPS_READ_TOKEN: ${{ secrets.MAPS_READ_TOKEN }}
+          SITE: https://${{ vars.CUSTOM_DOMAIN }}
+          WALK: ${{ inputs.walk }}
+          CELLS_OUT: twin/disagree-cells.json
+        run: |
+          set -o pipefail
+          pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+          pip install --quiet "transformers>=4.45,<5" pillow numpy scipy
+          python scan/tools/segment_study.py --selftest
+          node scan/tools/twin-r2.mjs get "$WALK" twin | tee segment.txt
+          node scan/tools/disagree.mjs twin | tee -a segment.txt
+          python scan/tools/segment_study.py twin --panoptic 2>&1 | grep -v -i "key-[0-9]" | tee -a segment.txt
+          node scan/tools/twin-r2.mjs put "$WALK" twin/segments-*.png | tee -a segment.txt
+
       - name: A walk's skyline against the lidar
         if: ${{ inputs.task == 'skyline' }}
         env:
@@ -540,6 +563,7 @@ jobs:
             walks) cat walks.txt 2>/dev/null || echo "no walks read: see the step above" ;;
             twin) cat twin.txt 2>/dev/null || echo "no twin check: see the step above" ;;
             disagree) cat disagree.txt 2>/dev/null || echo "no report: see the step above" ;;
+            segment) grep -v '^Twin read' segment.txt 2>/dev/null | tail -60 || echo "no segment trial: see the step above" ;;
             fix) cat fix.txt 2>/dev/null || echo "no fix: see the step above" ;;
             study) cat study.txt 2>/dev/null || echo "no study: see the step above" ;;
             skyline) cat skyline.txt 2>/dev/null || echo "no skyline study: see the step above" ;;

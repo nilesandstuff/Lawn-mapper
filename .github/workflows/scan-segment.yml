@@ -1,0 +1,73 @@
+# S3. A WALK'S PICTURES THROUGH SEGMENT ANYTHING (core session, 2026-11-18; docs/SCAN-PLAN.md section 29). The trial
+# of "segment first, name after": Segment Anything and a panoptic model on each picture of one walk, on Modal's GPU
+# (scan/tools/segment_modal.py), lifted onto the walk's points on this runner (scan/tools/segment_study.py) and set
+# against the disagreement report's patches. MODAL IS PAID: run only when the owner has said yes, with the number of
+# runs and a rough cost. The log carries counts, sizes and names only; the top-down pictures go to the private bucket.
+name: "S3. Yard AR segments"
+
+on:
+  workflow_dispatch:
+    inputs:
+      walk:
+        description: "The walk's id (the number in its twin page's address)"
+        required: true
+      gpu:
+        description: "Modal GPU"
+        default: "L4"
+
+permissions:
+  contents: read
+
+jobs:
+  segment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: npm ci --no-audit --no-fund
+
+      - name: The walk's twin, and where it disagrees with the lidar
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          MAPS_READ_TOKEN: ${{ secrets.MAPS_READ_TOKEN }}
+          SITE: https://${{ vars.CUSTOM_DOMAIN }}
+          WALK: ${{ inputs.walk }}
+          CELLS_OUT: twin/disagree-cells.json
+        run: |
+          set -o pipefail
+          pip install --quiet modal numpy scipy pillow
+          python scan/tools/segment_study.py --selftest
+          node scan/tools/twin-r2.mjs get "$WALK" twin | tee segment.txt
+          node scan/tools/disagree.mjs twin | tee -a segment.txt
+
+      - name: The pictures' shapes, on Modal's GPU
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+          MODAL_GPU: ${{ inputs.gpu }}
+        run: |
+          set -o pipefail
+          modal run scan/tools/segment_modal.py --src twin --out out 2>&1 | grep -v -i "key-[0-9]" | tee -a segment.txt
+
+      - name: Lifted onto the walk's points
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WALK: ${{ inputs.walk }}
+        run: |
+          set -o pipefail
+          python scan/tools/segment_study.py twin --masks out/masks.npz 2>&1 | tee -a segment.txt
+          node scan/tools/twin-r2.mjs put "$WALK" twin/segments-*.png | tee -a segment.txt
+
+      - name: The answer
+        if: always()
+        run: |
+          echo "--------------------------------------------------------------"
+          grep -v '^Twin read' segment.txt 2>/dev/null | tail -70 || echo "no segment trial: see the steps above"
