@@ -136,6 +136,21 @@ if (versions.length) {
   console.log(`STORED RECORDS THE PAGES READ: ${results.length} results, ${walks.length} walks; ${bad.length ? `${bad.length} that do not parse: ${bad.join('; ')}` : 'all parse'}`);
 }
 
+// WHICH MAP EACH WALK AND VISIT IS FILED UNDER (2026-11-18: the measurements page showed two cards for "a map no
+// longer in your list" and offered scored walks again): each map id as a short hash and its length (an id holds an
+// address, so never the id), and whether it is one of the test maps the hourly sweep scores (kit_jobs' model rows)
+{
+  const { createHash } = await import('node:crypto');
+  const h = (id) => (id ? createHash('sha256').update(String(id)).digest('hex').slice(0, 8) : '-');
+  let saveIds = new Set();
+  try { saveIds = new Set(query("SELECT map_id FROM kit_jobs WHERE kind = 'model'").map((r) => r.map_id)); } catch { /* none */ }
+  const pre = (id) => [...saveIds].some((sid) => id && sid !== id && sid.startsWith(id));
+  console.log('=====');
+  console.log(`MAP IDS (hash, length, a test map the sweep knows; "cut" = the start of a longer test map id): ${saveIds.size} test maps known`);
+  walks.forEach((w, k) => console.log(`  W${k + 1}  ${h(w.map_id)}  ${String(w.map_id || '').length}  ${saveIds.has(w.map_id) ? 'test map' : pre(w.map_id) ? 'CUT' : 'not a test map'}`));
+  visits.forEach((v, k) => console.log(`  #${k + 1}  ${h(v.map_id)}  ${String(v.map_id || '').length}  ${!v.map_id ? 'no map' : saveIds.has(v.map_id) ? 'test map' : pre(v.map_id) ? 'CUT' : 'not a test map'}`));
+}
+
 // THE NO-PAGE SCORING'S QUEUE (src/jobs.js, src/autoscore.js): what the main site pushed and what became of it
 let jobs = [];
 try { jobs = query('SELECT kind, state, tries, detail, queued FROM kit_jobs ORDER BY queued'); } catch { /* no table yet */ }
