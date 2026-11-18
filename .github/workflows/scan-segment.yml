@@ -63,8 +63,10 @@ jobs:
           WALK: ${{ inputs.walk }}
         run: |
           set -o pipefail
-          python scan/tools/segment_study.py twin --masks out/masks.npz 2>&1 | tee -a segment.txt
-          node scan/tools/twin-r2.mjs put "$WALK" twin/segments-*.png | tee -a segment.txt
+          # the shapes are kept beside the twin, so the lift and its pictures can be redone without the GPU
+          cp out/masks.npz twin/segments-masks.npz
+          python scan/tools/segment_study.py twin --masks twin/segments-masks.npz 2>&1 | tee -a segment.txt
+          node scan/tools/twin-r2.mjs put "$WALK" twin/segments-* | tee -a segment.txt
 
       - name: The answer
         if: always()

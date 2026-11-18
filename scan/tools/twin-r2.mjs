@@ -15,7 +15,7 @@ export const BUCKET = 'lawn-scan-twins';
 const API = 'https://api.cloudflare.com/client/v4';
 
 export const walkOk = (w) => /^[0-9a-zA-Z_-]{1,40}$/.test(w || '');
-const TYPES = { json: 'application/json', jpg: 'image/jpeg', splat: 'application/octet-stream', bin: 'application/octet-stream', png: 'image/png' };
+const TYPES = { json: 'application/json', jpg: 'image/jpeg', splat: 'application/octet-stream', bin: 'application/octet-stream', png: 'image/png', npz: 'application/octet-stream' };
 
 async function account(token) {
   if (process.env.CLOUDFLARE_ACCOUNT_ID) return process.env.CLOUDFLARE_ACCOUNT_ID;
@@ -129,7 +129,7 @@ async function main() {
   if (cmd === 'get') {
     const dir = rest[0] || 'twin';
     mkdirSync(dir, { recursive: true });
-    const objs = (await list(base, token, `twins/${walk}/`)).filter((o) => !/\/splat[.-]/.test(o.key) && !/\/segments-[a-z-]+\.png$/.test(o.key) && !/\/recording\.mp4$/.test(o.key) && !(process.env.NO_PICTURES && /\/key-\d+\.jpg$/.test(o.key)));
+    const objs = (await list(base, token, `twins/${walk}/`)).filter((o) => !/\/splat[.-]/.test(o.key) && !(!process.env.WITH_SEGMENTS && /\/segments-/.test(o.key)) && !/\/segments-[a-z-]+\.(png|jpg)$/.test(o.key) && !/\/recording\.mp4$/.test(o.key) && !(process.env.NO_PICTURES && /\/key-\d+\.jpg$/.test(o.key)));
     let bytes = 0, failed = 0;
     const why = {};
     // backs off on a refusal: four place runs at once (8 requests each, retried at once) lost 218 of 566 parts to

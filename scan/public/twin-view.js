@@ -40,6 +40,36 @@ async function main() {
   place();
   if (st.keys.length) { $('#pics').hidden = false; $('#pic-at').max = String(st.keys.length - 1); showPic(0); }
   if (names.includes('splat.splat')) showSplat(parts);
+  showSegments(names).catch(() => {});
+}
+
+/** The segment trial's sheets of pictures (scan/tools/segment_study.py), when the walk has them: the patches first,
+ *  then the walk, then the views from above. */
+const SEG_TITLES = { 'segments-patches.jpg': 'The patches the lidar lacks', 'segments-walk.jpg': 'Eight pictures through the walk' };
+async function showSegments(names) {
+  const order = (n) => (n === 'segments-patches.jpg' ? 0 : n === 'segments-walk.jpg' ? 1 : 2);
+  const got = names.filter((n) => /^segments-[a-z-]+\.(png|jpg)$/.test(n)).sort((a, b) => order(a) - order(b) || a.localeCompare(b));
+  if (!got.length) return;
+  $('#segments').hidden = false;
+  for (const n of got) {
+    const r = await part(n);
+    if (!r.ok) continue;
+    const url = URL.createObjectURL(await r.blob());
+    const wrap = document.createElement('div');
+    const sheet = n.endsWith('.jpg');
+    const title = document.createElement('p');
+    title.style.cssText = 'margin:.8rem 0 .3rem;font-weight:600';
+    title.textContent = SEG_TITLES[n] || `From above: ${n.slice(9, -4).replace(/-/g, ' ')}`;
+    const box = document.createElement('div');
+    box.style.cssText = 'overflow-x:auto;border-radius:8px';
+    const a = document.createElement('a');
+    a.href = url; a.target = '_blank'; a.rel = 'noopener';
+    const img = document.createElement('img');
+    img.src = url; img.alt = title.textContent;
+    img.style.cssText = sheet ? 'display:block;width:auto;max-width:none;height:auto;min-width:100%' : 'display:block;width:100%;max-width:560px';
+    a.append(img); box.append(a); wrap.append(title, box);
+    $('#segments-list').append(wrap);
+  }
 }
 
 /** The splat made from this walk by workflow S2 (scan/tools/splat_modal.py), when there is one. */

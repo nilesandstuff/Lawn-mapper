@@ -278,15 +278,22 @@ jobs:
           SITE: https://${{ vars.CUSTOM_DOMAIN }}
           WALK: ${{ inputs.walk }}
           CELLS_OUT: twin/disagree-cells.json
+          WITH_SEGMENTS: '1'
         run: |
           set -o pipefail
-          pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
-          pip install --quiet "transformers>=4.45,<5" pillow numpy scipy
+          pip install --quiet pillow numpy scipy
           python scan/tools/segment_study.py --selftest
           node scan/tools/twin-r2.mjs get "$WALK" twin | tee segment.txt
           node scan/tools/disagree.mjs twin | tee -a segment.txt
-          python scan/tools/segment_study.py twin --panoptic 2>&1 | grep -v -i "key-[0-9]" | tee -a segment.txt
-          node scan/tools/twin-r2.mjs put "$WALK" twin/segments-*.png | tee -a segment.txt
+          # the shapes workflow S3 brought back from the GPU, when the walk has them: lifted again here, free
+          if [ -f twin/segments-masks.npz ]; then
+            python scan/tools/segment_study.py twin --masks twin/segments-masks.npz 2>&1 | tee -a segment.txt
+          else
+            pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+            pip install --quiet "transformers>=4.45,<5"
+            python scan/tools/segment_study.py twin --panoptic 2>&1 | grep -v -i "key-[0-9]" | tee -a segment.txt
+          fi
+          node scan/tools/twin-r2.mjs put "$WALK" twin/segments-*.png twin/segments-*.jpg | tee -a segment.txt
 
       - name: A walk's skyline against the lidar
         if: ${{ inputs.task == 'skyline' }}

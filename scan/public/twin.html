@@ -56,6 +56,11 @@
       <input type="range" id="pic-at" min="0" max="0" value="0" aria-label="Which picture">
       <img id="pic" alt="What the camera saw">
     </div>
+    <div class="card" id="segments" hidden>
+      <strong>Cut into things</strong> <span class="dim">the segment trial (docs/SCAN-PLAN.md section 29)</span>
+      <p class="dim" style="font-size:.9rem">Each row: what the camera saw, then the same picture as each model cut it. One thing keeps its colour from picture to picture. Pink dots: a patch the phone saw standing and the lidar lacks. Slide sideways; tap a sheet to open it by itself.</p>
+      <div id="segments-list"></div>
+    </div>
     <div class="card" id="splat" hidden>
       <strong>Splat</strong> <span class="dim" id="splat-numbers"></span>
       <p class="dim" style="font-size:.9rem">Left: what the camera saw. Right: the splat's picture from the same spot.</p>

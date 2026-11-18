@@ -451,7 +451,121 @@ def run_lift(tag, xyz, h, labs, keys, maps, names, patches, cams, out_dir):
         picture(os.path.join(out_dir, f"segments-{re.sub(r'[^a-z]+', '-', tag.lower()).strip('-')}.png"), xyz, h, piece, np.array(list(desc)))
     except Exception as e:  # a picture that cannot be drawn does not lose the numbers
         lines.append(f"  (no picture: {type(e).__name__})")
-    return lines
+    return lines, {"tag": tag.split(" (")[0], "keys": keys, "maps": maps, "names": names, "off": off, "comp": comp}
+
+
+# ---------------------------------------------------------------- for the owner's eyes
+
+def _font(size=15):
+    from PIL import ImageFont
+    try:
+        return ImageFont.load_default(size=size)
+    except TypeError:
+        return ImageFont.load_default()
+
+
+def overlay(img, m, off_p, comp, names_p):
+    """A picture with a model's shapes over it: each shape in the colour of the THING it was lifted into (so one
+    thing keeps its colour from picture to picture), edges dark, the model's name on the bigger shapes."""
+    from PIL import Image, ImageDraw
+    a = np.asarray(img.convert("RGB"), dtype=np.float32)
+    if m.shape != a.shape[:2]:
+        m = np.asarray(Image.fromarray(m.astype(np.uint16)).resize((a.shape[1], a.shape[0]), Image.NEAREST))
+    pal = np.random.default_rng(7).integers(40, 255, size=(4096, 3)).astype(np.float32)
+    thing = comp[off_p + m.astype(np.int64)] % 4096
+    on = m > 0
+    out = a.copy()
+    out[on] = 0.45 * a[on] + 0.55 * pal[thing[on]]
+    out[~on] *= 0.45
+    edge = np.zeros(m.shape, bool)
+    edge[:, 1:] |= m[:, 1:] != m[:, :-1]
+    edge[1:, :] |= m[1:, :] != m[:-1, :]
+    out[edge] = 20
+    im = Image.fromarray(out.astype(np.uint8))
+    if names_p:
+        dr, f = ImageDraw.Draw(im), _font(14)
+        for i, c in names_p.items():
+            ys, xs = np.nonzero(m == i)
+            if len(xs) >= 0.012 * m.size:
+                x, y = int(np.median(xs)), int(np.median(ys))
+                dr.text((x + 1, y + 1), c, fill=(0, 0, 0), font=f, anchor="mm")
+                dr.text((x, y), c, fill=(255, 255, 255), font=f, anchor="mm")
+    return im
+
+
+def sheets(d, xyz0, patches, views):
+    """Two sheets of pictures, kept beside the twin in the private bucket and shown on the twin page (admin only):
+    segments-patches.jpg  one row per patch the phone saw and the lidar lacks: the picture that saw most of it, the
+                          patch's points dotted on it, and the same picture as each model cut it
+    segments-walk.jpg     eight pictures through the walk, plain and as each model cut them"""
+    from PIL import Image, ImageDraw
+    if not views:
+        return []
+    keys = views[0]["keys"]
+    xyz1 = np.concatenate([xyz0.astype(np.float64), np.ones((len(xyz0), 1))], 1)
+    f, HEAD = _font(16), 26
+    cols = ["the camera"] + [v["tag"] for v in views]
+
+    def row(p, dots=None, title=""):
+        k = keys[p]
+        img = Image.open(os.path.join(d, k["name"])).convert("RGB")
+        W, H = img.size
+        first = img.copy()
+        if dots is not None and len(dots):
+            px, py, z, ok = project(xyz1[dots], k, W, H)
+            dr = ImageDraw.Draw(first)
+            for x, y in zip(px[ok], py[ok]):
+                dr.ellipse((x - 2, y - 2, x + 2, y + 2), fill=(255, 0, 255))
+        cells = [first]
+        for v in views:
+            cell = overlay(img, v["maps"][p], v["off"][p], v["comp"], v["names"][p] if v["names"] else None)
+            if dots is not None and len(dots):
+                dr = ImageDraw.Draw(cell)
+                for x, y in zip(px[ok][::3], py[ok][::3]):
+                    dr.point((x, y), fill=(255, 0, 255))
+            cells.append(cell)
+        strip = Image.new("RGB", (W * len(cells), H + 2 * HEAD), (255, 255, 255))
+        dr = ImageDraw.Draw(strip)
+        dr.text((6, 4), title, fill=(0, 0, 0), font=f)
+        for i, c in enumerate(cells):
+            strip.paste(c, (i * W, 2 * HEAD))
+            dr.text((i * W + 6, HEAD + 4), cols[i], fill=(90, 90, 90), font=f)
+        return strip
+
+    def stack(rows, path):
+        if not rows:
+            return None
+        W = max(r.width for r in rows)
+        out = Image.new("RGB", (W, sum(r.height for r in rows)), (255, 255, 255))
+        y = 0
+        for r in rows:
+            out.paste(r, (0, y))
+            y += r.height
+        if W > 2400:
+            out = out.resize((2400, round(out.height * 2400 / W)))
+        out.save(path, quality=82)
+        return os.path.basename(path)
+
+    made = []
+    rows = []
+    for j, pt in enumerate(patches):
+        idx = np.array([i for i in pt.get("idx", []) if i < len(xyz0)], np.int64)
+        if not len(idx):
+            continue
+        best, best_n = None, 0
+        for p, k in enumerate(keys):
+            m = views[0]["maps"][p]
+            px, py, z, ok = project(xyz1[idx], k, m.shape[1], m.shape[0])
+            # the patch whole and not at the far edge of what the picture can speak for
+            n = int(ok.sum()) - (0 if not ok.any() else int(0.02 * ok.sum() * np.median(z[ok])))
+            if n > best_n:
+                best, best_n = p, n
+        if best is not None:
+            rows.append(row(best, idx, f"patch {j + 1} ({pt['cells']} m2, phone: {pt['label']})"))
+    made.append(stack(rows, os.path.join(d, "segments-patches.jpg")))
+    pick = np.unique(np.linspace(0, len(keys) - 1, num=min(8, len(keys))).astype(int))
+    made.append(stack([row(int(p), None, f"picture {int(p) + 1} of {len(keys)}") for p in pick], os.path.join(d, "segments-walk.jpg")))
+    return [m for m in made if m]
 
 
 # ---------------------------------------------------------------- the self test
@@ -499,6 +613,7 @@ def selftest():
     vis, ms = lift(xyz, keys, maps)
     off, comp, joined = merge(vis, ms, np.array(cams))
     piece, purity, _, _ = vote(len(xyz), vis, ms, off, comp)
+    assert overlay(__import__("PIL.Image", fromlist=["x"]).new("RGB", (W, H)), maps[0], off[0], comp, {1: "fence"}).size == (W, H)
     fence_p, post_p = np.bincount(piece[truth == 1][piece[truth == 1] >= 0]).argmax(), np.bincount(piece[truth == 2][piece[truth == 2] >= 0]).argmax()
     assert fence_p != post_p, "the fence and the post are one thing"
     assert (piece[truth == 1] == fence_p).mean() > 0.85, f"the fence is in pieces: {(piece[truth == 1] == fence_p).mean():.2f}"
@@ -561,23 +676,36 @@ def main():
         print(f"  (no picture: {type(e).__name__})")
 
     cams = np.array([k["c2w"][:3, 3] for k in keys]) if keys else None
+    views = []
+
+    def go(tag, sel, maps, names, c):
+        lines, view = run_lift(tag, xyz0, h, labs, sel, maps, names, patches, c, d)
+        print("\n".join(lines))
+        views.append(view)
+
     if masks:
         z = np.load(masks, allow_pickle=False)
         names_all = json.loads(str(z["names"])) if "names" in z else None
         sel = [keys[i] for i in z["pics"]]
         c = cams[z["pics"]]
         if "pan" in z:
-            print("\n".join(run_lift("Panoptic (cuts and names)", xyz0, h, labs, sel, list(z["pan"]), [{int(a): b for a, b in nm.items()} for nm in names_all], patches, c, d)))
+            go("Panoptic (cuts and names)", sel, list(z["pan"]), [{int(a): b for a, b in nm.items()} for nm in names_all], c)
         if "obj" in z:
-            print("\n".join(run_lift("SAM objects (largest shape)", xyz0, h, labs, sel, list(z["obj"]), None, patches, c, d)))
-            print("\n".join(run_lift("SAM parts (smallest shape)", xyz0, h, labs, sel, list(z["part"]), None, patches, c, d)))
+            go("SAM objects (largest shape)", sel, list(z["obj"]), None, c)
+            go("SAM parts (smallest shape)", sel, list(z["part"]), None, c)
     elif "--panoptic" in args and keys:
         from PIL import Image
         pick = np.unique(np.linspace(0, len(keys) - 1, num=min(PIC_MAX, len(keys))).astype(int))
         sel = [keys[i] for i in pick]
         imgs = [Image.open(os.path.join(d, k["name"])).convert("RGB") for k in sel]
         maps, names = panoptic_maps(imgs)
-        print("\n".join(run_lift("Panoptic (cuts and names)", xyz0, h, labs, sel, maps, names, patches, cams[pick], d)))
+        go("Panoptic (cuts and names)", sel, maps, names, cams[pick])
+    try:
+        made = sheets(d, xyz0, patches, views)
+        if made:
+            print(f"Pictures for the twin page: {', '.join(made)} (private; see the walk's twin page).")
+    except Exception as e:  # the pictures are for looking; the numbers above stand without them
+        print(f"(no sheets of pictures: {type(e).__name__}: {str(e)[:120]})")
 
 
 if __name__ == "__main__":
