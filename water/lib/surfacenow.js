@@ -42,7 +42,7 @@ export const MODEL_VERSION = 'surface-now 2, soil columns (2026-11-17)';
    (the owner: "we should score it both ways... the prediction can't be any more accurate than the station's"); 3 (the
    same day), that second score made the live map's own prediction: the cloud too from the satellite or the station,
    not the walker's word or sky sweep (the owner: "have the station run be the same as the live map prediction"). */
-export const SCORING = 6; // 4 (2026-11-17): a whole property marked as lawn keeps its paving, and its walk records on the plan's lawn only; 5 (the same day): bands by distance from paving; 6 (2026-11-18): every square kept with its factors and knob sensitivities (truth_squares)
+export const SCORING = 7; // 4 (2026-11-17): a whole property marked as lawn keeps its paving, and its walk records on the plan's lawn only; 5 (the same day): bands by distance from paving; 6 (2026-11-18): every square kept with its factors and knob sensitivities (truth_squares); 7: how the map's lidar was lined up (detail.align)
 /* version 1 (2026-11-15): G as a share of Rn (FAO-56 hourly), no heat stored in the ground. Version 2: each spot's own
    soil column, spun up over the weeks before (lib/soiltemp.js, FINDINGS H92); version 1 stays as surfaceNowAt for a
    walk with no hourly weather to spin up from. */

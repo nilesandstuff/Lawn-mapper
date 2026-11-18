@@ -80,7 +80,7 @@ async function scoreOne(env, job, base) {
   if (kept.error) return { state: 'failed', why: kept.error };
   if (!frozen && o.weather?.series?.length && (completeWeather(o.weather) || Date.now() > (p.ended ?? p.started ?? 0) + SETTLE_MS)) await putWeather(env, job.walk, o.weather.sources, o.weather.series);
   const res2 = await putResult(env, { walk: job.walk, model: r.model, kind: 'surface', n: r.n, bias: r.bias, rmse: r.rmse, rho: r.rho,
-    detail: { bands: r.bands, sunShade: r.sunShade, edge: r.edge || null, used: r.used, open: r.open, v1: r.v1 || null, station: r.station || null, scoring: r.scoring || 1, offLawn: p.offLawn, weather: (frozen || o.weather)?.sources || [], by: 'the water builder' } });
+    detail: { bands: r.bands, sunShade: r.sunShade, edge: r.edge || null, used: r.used, open: r.open, v1: r.v1 || null, station: r.station || null, scoring: r.scoring || 1, align: alignOf(record), offLawn: p.offLawn, weather: (frozen || o.weather)?.sources || [], by: 'the water builder' } });
   if (res2.error) return { state: 'failed', why: res2.error };
   // every square with its factors and sensitivities, for the residual analysis (tools/residuals.py)
   if (r.diag?.rows?.length) await env.DB.prepare('INSERT OR REPLACE INTO truth_squares (walk, model, scoring, checked, n, data) VALUES (?, ?, ?, ?, ?, ?)')
@@ -238,4 +238,13 @@ export async function mendIds(env, saveIds) {
     }
   }
   return n;
+}
+
+/** How a save's lidar was lined up with its photo (the core session, 2026-11-18: "the first thing to correlate with
+ *  your prediction errors"): the shade part's fit and the size of its shift, the photo's provider; numbers and words
+ *  only. A fit that is not confident means the lidar is on the datum alone. */
+export function alignOf(record) {
+  const l = record?.tools?.shade?.data?.lidar || null, f = l?.fit || null, k = Math.cos(((record?.lat || 0) * Math.PI) / 180);
+  const m = Array.isArray(l?.shift) ? Math.round(Math.hypot(l.shift[0], l.shift[1]) * k * 100) / 100 : null;
+  return { shade: !!l, confident: f ? !!f.confident : null, why: f?.why ? String(f.why).slice(0, 80) : null, shiftM: m, provider: record?.provider || null, lineup: !!record?.countyAlign, trace: record?.trace?.status || null };
 }

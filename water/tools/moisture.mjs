@@ -97,6 +97,7 @@ walks.forEach((w, k) => {
   }
   for (const r of results.filter((x) => x.walk === w.walk)) {
     let d = {}; try { d = JSON.parse(r.detail || '{}') || {}; } catch { /* none */ }
+    if (d.align) console.log(`      the map: lidar ${d.align.shade ? (d.align.confident === true ? 'fitted to the photo' : d.align.confident === false ? `on the datum alone (fit not confident${d.align.why ? `: ${d.align.why}` : ''})` : 'shift kept, no fit recorded') : 'no shade part'}, moved ${d.align.shiftM ?? '-'} m; photo ${d.align.provider || '-'}${d.align.lineup ? ' with a line-up' : ''}; lawn ${d.align.trace || '-'}`);
     const sh = d.sunShade || {}, b = d.bands || {};
     console.log(`    ${r.model}  ${r.kind}: n ${r.n}  mean ${F(r.bias)}  RMS ${r.rmse === null ? '-' : (r.rmse * 1.8).toFixed(1)}  rho ${f(r.rho)}  | sun ${F(sh.sun?.bias)} (${sh.sun?.n ?? 0})  shade ${F(sh.shade?.bias)} (${sh.shade?.n ?? 0})  | 60-70 ${F(b['60-70']?.bias)} (${b['60-70']?.n ?? 0})  70-80 ${F(b['70-80']?.bias)} (${b['70-80']?.n ?? 0})`);
     // the same walk on the station's air (scoring 2, 2026-11-17): what the live map, which has only the station's, can do

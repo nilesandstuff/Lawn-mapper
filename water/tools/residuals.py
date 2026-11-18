@@ -275,6 +275,39 @@ def main(path):
         reach[lab] = cors
         print(f"  {lab:16s} " + '  '.join(f"{lo:g}-{hi:g} m {c:+.2f}" for (lo, hi), c in zip(bins, cors)))
 
+    # 7. SLID
+    print('=====')
+    print('7. THE WALK SLID OVER THE MODEL: each walk\'s measured squares against the model\'s a few metres east and north of them')
+    print('   (a clear best away from 0,0 = the walk or the map laid off by that much; flat = placement is not the trouble)')
+    slid = []
+    for k in range(W):
+        m = np.where(ok & (g == k))[0]
+        xs = np.unique(np.round(T['x'][m], 2))
+        step = np.min(np.diff(xs)) if len(xs) > 1 else 1.0
+        cx, cy = np.round(T['x'][m] / step).astype(int), np.round(T['y'][m] / step).astype(int)
+        cells = {}
+        for a, b, me, pr in zip(cx, cy, T['meas'][m], T['pred'][m]):
+            c = cells.setdefault((a, b), [0.0, 0.0, 0]); c[0] += me; c[1] += pr; c[2] += 1
+        meas = {c: v[0] / v[2] for c, v in cells.items()}
+        pred = {c: v[1] / v[2] for c, v in cells.items()}
+        lagN = int(round(4 / step))
+        out = []
+        for de in range(-lagN, lagN + 1):
+            for dn in range(-lagN, lagN + 1):
+                # the model's square de east and dn north of where the reading was laid (rows run south)
+                d = np.array([meas[c] - pred[(c[0] + de, c[1] - dn)] for c in meas if (c[0] + de, c[1] - dn) in pred])
+                if len(d) >= 0.5 * len(meas):
+                    out.append((float(np.std(d)), de * step, dn * step, len(d)))
+        if not out:
+            print(f"  {names[k]}: too few squares side by side"); continue
+        zero = next(o for o in out if o[1] == 0 and o[2] == 0)
+        best = min(out)
+        rank = sorted(out)[:3]
+        gain = 1 - best[0] / zero[0]
+        slid.append((names[k], best, gain))
+        print(f"  {names[k]} ({len(meas)} model squares of {step:.2g} m): as laid, spread {F*zero[0]:.1f} F; best {F*best[0]:.1f} F at {best[1]:+.0f} m east, {best[2]:+.0f} m north ({gain:.0%} less)"
+              f"; next best: " + ', '.join(f"{F*o[0]:.1f} at ({o[1]:+.0f}, {o[2]:+.0f})" for o in rank[1:]))
+
     # SUMMARY
     print('=====')
     print('WHERE THE MODEL COMES SHORT (summary)')
@@ -293,6 +326,11 @@ def main(path):
     far = [b for (b, c) in zip(bins, near) if np.isfinite(c) and c > 0.2]
     if far:
         print(f"  Errors stay alike out to about {far[-1][1]:g} m after the knobs: something at that scale is not in the model (a surface, a shade, a wet patch).")
+    for n_, b_, g_ in slid:
+        if g_ >= 0.1 and (b_[1] or b_[2]):
+            print(f"  PLACEMENT: {n_} fits {g_:.0%} better slid {b_[1]:+.0f} m east, {b_[2]:+.0f} m north: the walk or the map may be laid off by about that.")
+    if slid and not any(g_ >= 0.1 and (b_[1] or b_[2]) for _, b_, g_ in slid):
+        print('  PLACEMENT: no walk fits much better slid over the model (under 10% each): the patches are not a simple offset.')
     print(f"  {W} walk{'s' if W != 1 else ''}: every 'held out' number above rests on {'that one' if W == 1 else 'these'}; a sunny walk and a dull one on the same lot would test it best.")
 
 

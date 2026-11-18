@@ -701,7 +701,11 @@ async function start(site, inputs) {
     const cm = (g.bbox[2] - g.bbox[0]) / g.W, wide = [g.bbox[0] - PAD * cm, g.bbox[1] - PAD * cm, g.bbox[2] + PAD * cm, g.bbox[3] + PAD * cm];
     // a tile-only flight not yet on the server: a minute's wait at most, then the wind goes without the wide box (it has the shade map's grid)
     const [pts, ov] = await Promise.all([pointsIn(url, wide, io, { spacingM: 1.8, lat, tries: 12 }), overtureFor(wide).catch(() => null)]);
-    return obstacleGrid(pts.cols, wide, lat, 4, { buildings: ov?.buildings || null });
+    /* the wide box's points moved onto the web map's ground like the lawn's own (the shade map's kept shift, 3857
+       units; the core session, 2026-11-18: this box was gridded unmoved, about a metre off, the wind's obstacles only) */
+    const sh = Array.isArray(site.lidar?.shift) ? site.lidar.shift : null;
+    const cols = sh && (sh[0] || sh[1]) ? { ...pts.cols, x: Float64Array.from(pts.cols.x, (v) => v + sh[0]), y: Float64Array.from(pts.cols.y, (v) => v + sh[1]) } : pts.cols;
+    return obstacleGrid(cols, wide, lat, 4, { buildings: ov?.buildings || null });
   })().catch(() => null);
   const reported = new Uint8Array(g.W * g.H);
   // 2: a lawn hollow (on the traced lawn, when there is one); 1: any other reported spot
