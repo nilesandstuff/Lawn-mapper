@@ -1,6 +1,6 @@
 {
   "foundBy": "tools/find-parcels.js",
-  "foundAt": "2026-11-17",
+  "foundAt": "2026-11-18",
   "note": "Candidates only, from parcel_gaps. Nothing here is coverage until verify-counties.js says so.",
   "candidates": [
     {
@@ -240,6 +240,44 @@
           "fields": {
             "pin": "PIN",
             "address": "LOCATION"
+          }
+        }
+      ]
+    },
+    {
+      "key": "pa-cumberland",
+      "name": "Cumberland County, PA",
+      "fips": "42041",
+      "service": "https://services6.arcgis.com/2yV7RkwOU8zZaabr/arcgis/rest/services/Base_Layers/FeatureServer",
+      "layer": 5,
+      "layerName": "Cumberland County Parcels",
+      "fields": {
+        "pin": "PIN",
+        "address": "SITUS"
+      },
+      "fallbacks": [
+        {
+          "service": "https://services6.arcgis.com/AeK6BQGLudnIXSmq/arcgis/rest/services/CumberlandCounty_TaxParcels202109/FeatureServer",
+          "layer": 0,
+          "fields": {
+            "pin": "PIN",
+            "address": "SITUS"
+          }
+        },
+        {
+          "service": "https://services3.arcgis.com/n57TaxATizczF7nd/arcgis/rest/services/Cumberland_County_Parcels_2022/FeatureServer",
+          "layer": 0,
+          "fields": {
+            "pin": "Account",
+            "address": null
+          }
+        },
+        {
+          "service": "https://services6.arcgis.com/2yV7RkwOU8zZaabr/arcgis/rest/services/Base_Layers/FeatureServer",
+          "layer": 2,
+          "fields": {
+            "pin": "PIN",
+            "address": "ADDRESS"
           }
         }
       ]
