@@ -2798,3 +2798,48 @@ SO, ADDED TO THE READING ABOVE:
     off a mesh plus rendered views (SAM masks lifted into 3D), with a few minutes of GPU work per object; it says
     nothing of outdoor scenes. Its idea carries over (2D masks from the walk's own pictures, lifted onto the walk's
     points, grouped at more than one grain); whether its code runs on a yard is unmeasured. A GPU means Modal: ask first.
+
+## 30. Segment first, name after: the trial (owner, 2026-11-18)
+
+The owner: "Yea plan the trial", then "If this doesn't work maybe we should try a simpler 2D segmentation... Maybe
+a combo segmentation and classifier if one exists", then "we can just use my eyes to evaluate the performance. You
+just have to find a way to display that to me." Modal: three runs approved, about $1-2 in all.
+
+WHAT WAS BUILT. scan/tools/segment_study.py (the lift, the report, the sheets of pictures; `--selftest` on a made-up
+yard), scan/tools/segment_modal.py (Segment Anything and the panoptic model on Modal's GPU), workflow S task
+`segment` (free: by shape alone and the panoptic model on the CPU; re-lifts the GPU's kept shapes when a walk has
+them), workflow S3 (Modal, paid). The twin page shows the sheets under "Cut into things". The recipe is the linked
+paper's, on a walk instead of a mesh: a picture model cuts each picture; each point takes the shape it falls in, in
+every picture that saw it; two pictures' shapes are one thing when they share half of what both saw; a point belongs
+to the thing most of its pictures voted for.
+
+HARD (the work walk, 289 pictures, 56,167 points seen within 20 ft; runs of 2026-11-18):
+
+- THE APP KEEPS A PICTURE'S POSE AS SESSION-TO-CAMERA (ARCore's view matrix); the web page's walks kept
+  camera-to-session. Read the app's way the cameras sit 9 in from the track; read the old way, 128 ft. Read the old
+  way, 2% of the points fell in a picture. segment_study.py pose_keys takes whichever reading fits the track.
+  THE OLDER PICTURE TOOLS ASSUME THE OLD WAY: skyline_study.py, pavement_study.py, skyline-prep.mjs, twin-check.mjs
+  (all made on web walks, 2026-11-04 to 11-06: unaffected then) and depth_run.py and walk_fix_study.py (2026-11-09,
+  after the app: NOT YET CHECKED which walks they read; a result of theirs on an app walk is suspect until it is).
+- The lift holds together: 47% of all points (nearly every near one) were in a picture; a point's pictures agree
+  98% (panoptic), 96% (SAM objects), 90% (SAM parts); 85 / 68 / 62% of shapes joined another picture's.
+- The nine patches "seen, not in the lidar" (16 m2): three, the two 9 ft "lines" among them, are thin sheets leaning
+  7-8 degrees from level, 2-5 in thick, 1.3-1.9 ft over what the phone took for the ground. The phone's label is
+  terrain, the panoptic model's is earth, and both SAM readings put them in flat ground pieces. One is a thin sheet
+  6-7 ft up that both labellers call sky. Five have too few points to say.
+- By shape alone is too coarse: one blob holds 82% of the standing points. SAM objects likewise (82%). SAM parts
+  separates most: 15 standing things (4 lines: 25x2, 23x1, 12x1, 11x0 ft; 3 tall; 8 others), the biggest holding
+  58%. The panoptic model gives 5 standing things and names them: 2 wall (28 ft, 12 ft), 1 building, 2 sky.
+- Cost: Segment Anything (ViT-H) took 1,577 s on an L4 for 289 pictures (5.3 s a picture; the panoptic model 0.5 s
+  on the GPU, 1.5-2.5 s on the free CPU). About $0.40 a run. The first image build took 22 min (not GPU time).
+
+SPECULATION (not measured):
+
+- That the three level patches are ground the phone read as standing (a bank or slope, or the ground height it
+  keeps under each point being off by over a foot there), and so not something the lidar lacks. The owner's eyes on
+  the sheets (pink dots) are the check. If so, the disagreement report's "standing" test needs the local ground, and
+  its 72% agreement on this walk is an underestimate.
+- That thin things named "sky" (a pole, a trunk, an eave) are a pose-timing miss of a few pixels, not the model.
+- That SAM parts' extra lines are real fences or walls rather than one wall cut in two.
+
+NOT DONE YET: the second walk; the published model itself on one object cut from a walk; the owner's verdict.
