@@ -2720,3 +2720,47 @@ the shape lacked (refkeep.js updateRef). The page is still handed the walk on th
 Also from the owner the same day: R1 was 9 ft out because the lidar view misled them into the wrong corner (a
 straight wall drawn with a corner in it; a deck, pool and hot tub drawn as a building; two tall shrubs and wood
 chips drawn as roof). The screenshots did not arrive; to be looked at in the shade map's model first.
+
+## 29. THE THESIS: one representation of the yard, built from the lidar's truth and the AR's truth (owner, 2026-11-18)
+
+Saved at the owner's word ("Please save this message so far and my previous message as the thesis for this part of
+the project"). Both messages, as written.
+
+The first, 2026-11-18:
+
+> So, the way that I'm thinking about this is kind of irrespective of the lidar positioning. It would admittedly be a
+> complex thing to build... Basically a new 3D space that isn't tied to lidar or aerial directly. Instead it's a new 3D
+> environment that is informed by lidar and our existing maps but is itself seen as the ultimate truth. So it's
+> anchored to lidar at points of high certainty agreement... I think the vast majority of lidar fit problems comes
+> with the fact that lidar only estimates the real world shapes... So we're trying to pair lidar shapes with real
+> shapes, when instead we could be like "these points in the real world equates to these spots on the lidar... But the
+> overall shape looks different, so instead of trying to fit the shapes, let's map the lidar onto the real shapes"
+
+The second, the same day, making it exact:
+
+> I want to be clear about the "warp the lidar" thing. Because if I'm not mistaken, lidar has no spatial distortion, so
+> the distance between points is absolute. The problem that I think ar can solve is that ar sees at finer resolution.
+> So we're estimating where a roof edge sits, and the shape of the roof... But there's a pretty big margin of error
+> where that edge really is... With the AR, we see we those edges actually are, so we can say "okay, the roof measures
+> x feet too wide according to the lidar, but know we know it's actually Y feet wide. There was another corner that the
+> lidar missed, so let's add that in. And the walk drift a few feet when walking into the backyard, but the lidar says
+> there should be a roof corner within X feet of this spot, so let's look there and get our bearings back. Okay yup,
+> the corner was 1 feet from where the lidar thought it was... Now we actually know where it is for sure, so in the
+> future we can compare with that rather than guessing"
+>
+> So basically it's a new representation of reality that blends lidar truth with AR truth, and they build upon each
+> other and have feedback loops that leverage each other's margin of error.
+
+WHAT FOLLOWS FROM IT (the core session's reading, to be corrected by the owner):
+  - The lidar is NOT bent. Its distances are absolute; what is uncertain is where an edge falls between its returns
+    (the outline's own margin: the corner's `within`, else 0.7 of the return spacing). The AR's margin is the other
+    kind: fine close up, drifting over a walk. Each is used where it is the surer.
+  - The representation holds FEATURES, each with where it is and how sure: a roof corner the lidar proposed and a
+    walk confirmed (and by how much it moved), a corner the lidar missed, a fence it never saw. A confirmed feature
+    replaces the guess: later walks are compared with it, not with the lidar's estimate.
+  - A walk that has drifted finds its bearings again at the next feature the representation expects near it.
+  - On labels: the owner has found a model on Hugging Face that may better Google's scene semantics (not yet named).
+
+THE ORDER (owner, 2026-11-18: "Yes, proceed with the order you described"): the disagreement report (built:
+scan/lib/disagree.js, task `disagree`), sharpened; then fences; then the stitched space. The parcel copy is left as it
+is for now.

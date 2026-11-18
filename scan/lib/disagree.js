@@ -22,7 +22,6 @@ export const GROUND_MIN = 12;   // ground points in a cell before the phone "saw
 export const NEAR_M = 1;        // the other side's answer this near is agreement
 export const SURE = 0.5;        // a label's confidence
 export const THIN = 1.6;        // a patch this many cells wide at most, per cell of length, is a line
-const STAND = new Set(['building', 'structure', 'object', 'tree']);
 const PAVE = new Set(['road', 'sidewalk']);
 
 /**
@@ -38,7 +37,9 @@ export function disagree(pts, model) {
     if (!Number.isFinite(p.e) || !Number.isFinite(p.n) || !Number.isFinite(p.h)) continue;
     const sure = p.label && (p.conf == null || p.conf >= SURE) ? p.label : null;
     const c = at(p.e, p.n);
-    if (p.h > 0.4 && p.h < 2.4) { c.stand++; if (sure && STAND.has(sure)) c.by[sure] = (c.by[sure] || 0) + 1; }
+    // every sure label counts toward a standing cell's name (2026-11-18: named only by the standing kinds, most
+    // patches came out "unlabelled" on a walk whose points were all labelled)
+    if (p.h > 0.4 && p.h < 2.4) { c.stand++; if (sure) c.by[sure] = (c.by[sure] || 0) + 1; else c.none = (c.none || 0) + 1; }
     else if (Math.abs(p.h) < 0.2) { c.ground++; if (sure === 'terrain') c.grass++; else if (sure && PAVE.has(sure)) c.pave++; }
   }
   const mid = (c) => [(c.x + 0.5) * CELL, (c.y + 0.5) * CELL];
@@ -59,7 +60,7 @@ export function disagree(pts, model) {
       else {
         out.extra.cells++; extra.push(c);
         const top = Object.entries(c.by).sort((a, b) => b[1] - a[1])[0];
-        const name = top && top[1] >= c.stand * 0.3 ? top[0] : 'unlabelled';
+        const name = (c.none || 0) > c.stand * 0.7 ? 'unlabelled' : top && top[1] >= c.stand * 0.3 ? top[0] : 'mixed labels';
         out.extra.by[name] = (out.extra.by[name] || 0) + 1; c.name = name;
       }
     } else if ((model.standing || model.solid)(e, n) && !seenNear(c)) {
