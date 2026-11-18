@@ -464,7 +464,7 @@ def _font(size=15):
         return ImageFont.load_default()
 
 
-def overlay(img, m, off_p, comp, names_p):
+def overlay(img, m, off_p, comp, names_p, k_p=None):
     """A picture with a model's shapes over it: each shape in the colour of the THING it was lifted into (so one
     thing keeps its colour from picture to picture), edges dark, the model's name on the bigger shapes."""
     from PIL import Image, ImageDraw
@@ -472,7 +472,10 @@ def overlay(img, m, off_p, comp, names_p):
     if m.shape != a.shape[:2]:
         m = np.asarray(Image.fromarray(m.astype(np.uint16)).resize((a.shape[1], a.shape[0]), Image.NEAREST))
     pal = np.random.default_rng(7).integers(40, 255, size=(4096, 3)).astype(np.float32)
-    thing = comp[off_p + m.astype(np.int64)] % 4096
+    # a shape no point fell in was never lifted (its id may be past this picture's nodes): a colour of its own
+    ids = m.astype(np.int64)
+    lifted = ids < (k_p if k_p is not None else len(comp) - off_p)
+    thing = np.where(lifted, comp[np.minimum(off_p + ids, len(comp) - 1)], 2000 + ids) % 4096
     on = m > 0
     out = a.copy()
     out[on] = 0.45 * a[on] + 0.55 * pal[thing[on]]
@@ -518,7 +521,7 @@ def sheets(d, xyz0, patches, views):
                 dr.ellipse((x - 2, y - 2, x + 2, y + 2), fill=(255, 0, 255))
         cells = [first]
         for v in views:
-            cell = overlay(img, v["maps"][p], v["off"][p], v["comp"], v["names"][p] if v["names"] else None)
+            cell = overlay(img, v["maps"][p], v["off"][p], v["comp"], v["names"][p] if v["names"] else None, int(v["off"][p + 1] - v["off"][p]))
             if dots is not None and len(dots):
                 dr = ImageDraw.Draw(cell)
                 for x, y in zip(px[ok][::3], py[ok][::3]):
