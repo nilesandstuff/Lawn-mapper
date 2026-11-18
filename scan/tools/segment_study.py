@@ -51,6 +51,24 @@ PIECE_MIN = 30   # points: a thing smaller than this is not listed
 PIC_MAX = int(os.environ.get("PIC_MAX", "120"))  # pictures read on the CPU (evenly through the walk)
 LABELS = ['unlabeled', 'sky', 'building', 'tree', 'road', 'sidewalk', 'terrain', 'structure', 'object', 'vehicle', 'person', 'water']
 PAN_MODEL = "facebook/mask2former-swin-large-ade-panoptic"
+# A SMALL MODEL THAT ONLY NAMES (the owner, 2026-11-18, after judging the sheets by eye -- SAM objects cut best, the
+# panoptic model named well: "Rather than combining the 2 models, would there be a lighter model that can just name
+# the objects?"). CLIP: a picture-and-words model, here its smallest; each SAM shape is cut out of its picture and
+# set against these words, and takes the nearest. The words are ours to choose, a yard's.
+NAME_MODEL = "openai/clip-vit-base-patch32"
+WORDS = {
+    "lawn": "a mown grass lawn", "bare soil": "bare soil or dirt", "gravel": "gravel", "mulch": "a mulch bed",
+    "leaves": "fallen leaves on the ground", "pavement": "asphalt or concrete pavement", "sidewalk": "a concrete sidewalk",
+    "fence": "a fence", "hedge": "a hedge", "shrub": "a shrub or bush", "arborvitae": "an arborvitae, a tall narrow evergreen shrub",
+    "tree trunk": "a tree trunk", "tree": "a tree's branches and leaves", "flower bed": "a flower bed",
+    "house wall": "the siding of a house wall", "brick wall": "a brick wall", "roof": "the roof of a building", "window": "a window",
+    "door": "a door", "garage door": "a garage door", "shed": "a garden shed", "deck": "a wooden deck", "stairs": "outdoor steps",
+    "retaining wall": "a low retaining wall", "car": "a car", "truck": "a truck", "trailer": "a trailer",
+    "bin": "a trash bin", "pole": "a pole or post", "mailbox": "a mailbox", "furniture": "patio furniture",
+    "play set": "playground equipment", "machine": "an air conditioner or utility box", "hose": "a garden hose or spigot",
+    "sky": "the sky", "person": "a person",
+}
+NAME_AREA = 0.004   # of the picture: a shape smaller than this is not named
 FT = 3.281
 
 
@@ -374,9 +392,12 @@ def picture(path, xyz, h, piece, big):
     """From above, about the walk's own middle: the ground grey, each thing its own colour."""
     from PIL import Image
     e, n = xyz[:, 0], -xyz[:, 2]
-    ok = np.isfinite(e) & np.isfinite(n)
+    # (the lifts hand their left-out points over as far away, not as NaN: 2026-11-18 the views from above of the
+    # picture models came out blank, every point squeezed into the middle by them)
+    ok = np.isfinite(e) & np.isfinite(n) & (np.abs(e) < 1e5) & (np.abs(n) < 1e5)
     if not ok.any():
         return
+    e, n = np.where(ok, e, 0.0), np.where(ok, n, 0.0)
     e0, n0 = np.median(e[ok]), np.median(n[ok])
     r = max(5.0, float(np.percentile(np.hypot(e[ok] - e0, n[ok] - n0), 99)))
     S = 1000
@@ -421,6 +442,48 @@ def panoptic_maps(imgs, device="cpu", log=print):
         if i == 4:
             log(f"  the panoptic model: {(time.time() - t0) / 5:.1f} s a picture on {device}")
     return maps, names
+
+
+def name_maps(imgs, maps, device="cpu", log=print):
+    """Each shape of each picture named by CLIP: the shape cut out with its surroundings greyed, and the same cut
+    as it is (what is round a thing says what it is), set against WORDS. -> names [{id: word}]."""
+    import torch
+    from PIL import Image
+    from transformers import CLIPModel, CLIPProcessor
+    proc = CLIPProcessor.from_pretrained(NAME_MODEL)
+    model = CLIPModel.from_pretrained(NAME_MODEL).to(device).eval()
+    keys = list(WORDS)
+    with torch.no_grad():
+        t = model.get_text_features(**proc(text=[f"a photo of {WORDS[k]}" for k in keys], return_tensors="pt", padding=True).to(device))
+        t = t / t.norm(dim=-1, keepdim=True)
+    names, t0, done = [], time.time(), 0
+    for im, m in zip(imgs, maps):
+        a = np.asarray(im.convert("RGB"))
+        if m.shape != a.shape[:2]:
+            m = np.asarray(Image.fromarray(m.astype(np.uint16)).resize((a.shape[1], a.shape[0]), Image.NEAREST))
+        ids, cnt = np.unique(m[m > 0], return_counts=True)
+        ids = ids[cnt >= NAME_AREA * m.size]
+        crops = []
+        for i in ids:
+            ys, xs = np.nonzero(m == i)
+            py, px = int(0.15 * (ys.max() - ys.min() + 1)) + 4, int(0.15 * (xs.max() - xs.min() + 1)) + 4
+            y0, y1, x0, x1 = max(0, ys.min() - py), min(a.shape[0], ys.max() + py + 1), max(0, xs.min() - px), min(a.shape[1], xs.max() + px + 1)
+            cut = a[y0:y1, x0:x1]
+            grey = cut.copy()
+            grey[m[y0:y1, x0:x1] != i] = 127
+            crops += [Image.fromarray(grey), Image.fromarray(cut)]
+        nm = {}
+        for b in range(0, len(crops), 64):
+            with torch.no_grad():
+                f = model.get_image_features(**proc(images=crops[b:b + 64], return_tensors="pt").to(device))
+            f = f / f.norm(dim=-1, keepdim=True)
+            sim = (f @ t.T).reshape(-1, 2, len(keys)).mean(1)
+            for j, w in enumerate(sim.argmax(1).tolist()):
+                nm[int(ids[b // 2 + j])] = keys[w]
+        names.append(nm)
+        done += len(ids)
+    log(f"  the naming model: {done:,} shapes named in {time.time() - t0:.0f} s on {device}")
+    return names
 
 
 def run_lift(tag, xyz, h, labs, keys, maps, names, patches, cams, out_dir):
@@ -694,7 +757,11 @@ def main():
         if "pan" in z:
             go("Panoptic (cuts and names)", sel, list(z["pan"]), [{int(a): b for a, b in nm.items()} for nm in names_all], c)
         if "obj" in z:
-            go("SAM objects (largest shape)", sel, list(z["obj"]), None, c)
+            obj_names = None
+            if "--name" in args:
+                from PIL import Image
+                obj_names = name_maps([Image.open(os.path.join(d, k["name"])).convert("RGB") for k in sel], list(z["obj"]))
+            go("SAM objects" + (", named by a small model" if obj_names else " (largest shape)"), sel, list(z["obj"]), obj_names, c)
             go("SAM parts (smallest shape)", sel, list(z["part"]), None, c)
     elif "--panoptic" in args and keys:
         from PIL import Image
@@ -704,7 +771,8 @@ def main():
         maps, names = panoptic_maps(imgs)
         go("Panoptic (cuts and names)", sel, maps, names, cams[pick])
     try:
-        made = sheets(d, xyz0, patches, views)
+        # SAM parts is left off the sheets (the owner, 2026-11-18: "too fine, it marks individual bricks")
+        made = sheets(d, xyz0, patches, [v for v in views if not v["tag"].startswith("SAM parts")])
         if made:
             print(f"Pictures for the twin page: {', '.join(made)} (private; see the walk's twin page).")
     except Exception as e:  # the pictures are for looking; the numbers above stand without them

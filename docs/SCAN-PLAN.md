@@ -2862,5 +2862,35 @@ differs by walk; the panoptic model's cut is the coarsest but the only one that 
 shapes' own geometry on the patches (earth, grass, tree). A cut by SAM named by the panoptic vote may be the
 combination; not tried.
 
-NOT DONE YET: the published model itself on one object cut from a walk (its own script and estimate; not run); the
-owner's verdict; which walks depth_run.py and walk_fix_study.py read.
+THE OWNER'S VERDICT, BY EYE ON THE SHEETS (2026-11-18). HARD: these are the owner's own words on what the pictures show.
+
+- The patches, work walk: "All but 2 are just regular ground or a real slope. This area has some rolling slopes that
+  can be +-2 feet ish, that I'm sure don't show on lidar, but for the most part they're pretty smooth slopes and it
+  doesn't look much like the the pink dots are really correlated with any of the steep slopes." The two that are
+  not ground: "1 has the dots on both sides of an open garage door and a hose spigot"; "1 has dots on the roof edge
+  (of that same building), the same edge where R1 is. And there's more dots that are genuinely on the sky."
+  The other property: the dots "appear to all fall on the ground, or an arborvitae."
+  So of 12 patches on two walks, the phone's "seen standing, not in the lidar" was ground nearly every time: the
+  report's standing test (height over the ground the page kept under each point) is what is wrong, not the lidar.
+  One patch is a real thing the lidar model lacks at that height (the arborvitae), one is a doorway's sides.
+- The panoptic model's names: "pretty good. I believe that every object that lacks a label, is correctly labeled in
+  one or more of the other photos. There were some actual errors, but not worrisome". One "error" is the world
+  having changed: "a large patch of ground that was recently graded and turf was removed... leveled out to become
+  a new parking lot" (so the walk is newer than the lidar and the trace there).
+- The cut: "sam objects wins. Narrowly for most shots, but by a wider margin in a particularly busy scene" (tree
+  branches, a fence line and a house behind: "segment everything really well in a way that would be much more
+  useful for our purposes"). Its two faults: it "segmented individual leaves on the ground, whereas panoptic just
+  called the whole thing ground", and it "entirely missed one section of an abor vitae that was at the edge of the
+  frame and only viewed from one angle, whereas panoptic got all of the arborvitae." Panoptic "a very close second".
+  "Sam parts is too fine, it marks individual bricks on a brick wall and every seperate part of a car body."
+  (My reading of the numbers had SAM parts ahead on the work walk: wrong. The count of things is not the measure.)
+- Next, the owner: "Rather than combining the 2 models, would there be a lighter model that can just name the
+  objects?" Built the same day: CLIP (its smallest), each SAM-objects shape cut out of its picture and set against
+  a list of a yard's words (segment_study.py WORDS, name_maps; `--name`); free on the runner from the kept shapes.
+  Not yet judged.
+- A fault of mine the owner found: "the view from above cards printed nothing for the segmentation models" (the
+  left-out points, handed over as far away, squeezed the drawing to a dot). Fixed.
+
+NOT DONE YET: the owner's eyes on the small model's names; the disagreement report's standing test on the local
+ground (the patches above); the published model itself on one object (not run; with SAM objects judged good on
+whole scenes it may not be needed); which walks depth_run.py and walk_fix_study.py read.

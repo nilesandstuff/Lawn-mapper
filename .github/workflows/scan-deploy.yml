@@ -286,11 +286,12 @@ jobs:
           node scan/tools/twin-r2.mjs get "$WALK" twin | tee segment.txt
           node scan/tools/disagree.mjs twin | tee -a segment.txt
           # the shapes workflow S3 brought back from the GPU, when the walk has them: lifted again here, free
+          pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+          pip install --quiet "transformers>=4.45,<5"
           if [ -f twin/segments-masks.npz ]; then
-            python scan/tools/segment_study.py twin --masks twin/segments-masks.npz 2>&1 | tee -a segment.txt
+            # ... and its Segment Anything shapes named by a small model (CLIP), here on the CPU
+            python scan/tools/segment_study.py twin --masks twin/segments-masks.npz --name 2>&1 | grep -v -i "key-[0-9]" | tee -a segment.txt
           else
-            pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
-            pip install --quiet "transformers>=4.45,<5"
             python scan/tools/segment_study.py twin --panoptic 2>&1 | grep -v -i "key-[0-9]" | tee -a segment.txt
           fi
           node scan/tools/twin-r2.mjs put "$WALK" twin/segments-*.png twin/segments-*.jpg | tee -a segment.txt
