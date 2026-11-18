@@ -47,7 +47,14 @@ assert.match(text, /27 ft structure/); assert.ok(!/\d+\.\d{4}/.test(text), 'no c
   for (let i = 0; i < 400; i++) { const e = (i % 20) * 0.1, n = Math.floor(i / 20) * 0.1; recs.push({ e, n, y: 1.1 + 0.1 * e, t: 70, ground: 0 }); }
   // a point with nothing round it keeps the kept ground
   recs.push({ e: 50, n: 50, y: 2, t: 1, ground: 1.5 });
+  // noisy ground, as the phone's depth is: a wide patch with heights scattered 10 cm about level and one point in
+  // twenty well below it; none of it may read as standing
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const gauss = () => Math.sqrt(-2 * Math.log(rnd() + 1e-12)) * Math.cos(2 * Math.PI * rnd());
+  const n0 = recs.length;
+  for (let i = 0; i < 4000; i++) recs.push({ e: 100 + rnd() * 5, n: rnd() * 5, y: 3 + 0.1 * gauss() - (i % 20 === 0 ? 0.6 * rnd() : 0), t: 1, ground: 3 });
   const h = heights(recs);
+  { const up = [...h.slice(n0, n0 + 4000)].filter((v) => v > 0.4).length; assert.ok(up < 20, `noisy ground stays ground (${up} of 4000 read as standing)`); }
   assert.ok(h.slice(0, 400).every((v) => Math.abs(v) < 0.2), 'the slope is ground, though the kept height put it half a metre up');
   assert.ok([...h.slice(400, 600)].filter((v) => v > 0.4).length > 100, 'the fence still stands over it');
   assert.ok(h.slice(600, 1000).every((v) => Math.abs(v) < 0.2), 'the second pass, drifted up, is ground too');

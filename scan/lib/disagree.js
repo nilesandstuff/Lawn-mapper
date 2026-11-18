@@ -97,25 +97,43 @@ export function disagree(pts, model) {
  * HEIGHT OVER THE GROUND THE WALK ITSELF SAW NEARBY (2026-11-18). The report first took each point's height over
  * the ground height the page kept under it while walking; the owner looked at every patch "seen, not in the lidar"
  * on two walks and found ground nearly every time ("All but 2 are just regular ground or a real slope"; "pink dots
- * appear to all fall on the ground, or an arborvitae"). So the ground is taken from the points instead: on GROUND_CELL
- * squares, the low edge (5th percentile, GROUND_PTS points or more) of the heights seen there IN THE SAME STRETCH OF
- * THE WALK (GROUND_SECS: tracking drifts in height, and the same spot seen twice sits at two heights), and a point's
- * ground is the lowest of those over its square and the eight round it. With none of them, the kept height stands.
+ * appear to all fall on the ground, or an arborvitae"). So the ground is taken from the points instead.
+ *
+ * On GROUND_CELL squares, IN ONE STRETCH OF THE WALK (GROUND_SECS: tracking drifts in height, and the same spot seen
+ * twice sits at two heights), a square's ground is its LOWEST SUBSTANTIAL LAYER: the lowest 0.1 m band that, with
+ * the band above it, holds GROUND_SHARE of the square's points (GROUND_PTS or more). A point's ground is the MEDIAN
+ * of that over its square and the eight round it, in its stretch and the ones before and after. With none, the kept
+ * height stands.
+ *
+ * (The first try, the same day, took the 5th percentile of each square and the LOWEST of the 27: on the real walks
+ * the phone's depth noise below the ground dragged it down, and ground read as standing -- 96 m2 of standing became
+ * 348 on one walk. A lowest-of-many is a noise detector. The test now has noise in it.)
  *
  * recs: [{ e, n, y (session height), t (s), ground (the kept height) }] -> Float64Array of heights.
  */
-export const GROUND_CELL = 0.5, GROUND_PTS = 8, GROUND_SECS = 20;
+export const GROUND_CELL = 0.5, GROUND_PTS = 8, GROUND_SECS = 20, GROUND_SHARE = 0.2, GROUND_BAND = 0.1;
 export function heights(recs) {
   const key = (r, dx = 0, dy = 0, dt = 0) => `${Math.floor(r.e / GROUND_CELL) + dx},${Math.floor(r.n / GROUND_CELL) + dy},${Math.floor(r.t / GROUND_SECS) + dt}`;
   const cols = new Map();
   for (const r of recs) { if (!Number.isFinite(r.y) || !Number.isFinite(r.e)) continue; const k = key(r); let c = cols.get(k); if (!c) cols.set(k, c = []); c.push(r.y); }
   const low = new Map();
-  for (const [k, ys] of cols) { if (ys.length < GROUND_PTS) continue; ys.sort((a, b) => a - b); low.set(k, ys[Math.floor(ys.length * 0.05)]); }
+  for (const [k, ys] of cols) {
+    if (ys.length < GROUND_PTS) continue;
+    ys.sort((a, b) => a - b);
+    // the lowest band that, with the one above, holds GROUND_SHARE of the square: a window of 2 bands slid up the sorted heights
+    let hi = 0, got = null;
+    for (let lo = 0; lo < ys.length && got == null; lo++) {
+      while (hi < ys.length && ys[hi] < ys[lo] + 2 * GROUND_BAND) hi++;
+      if (hi - lo >= GROUND_SHARE * ys.length) got = ys[lo + ((hi - lo) >> 1)];
+    }
+    if (got != null) low.set(k, got);
+  }
   const out = new Float64Array(recs.length);
   recs.forEach((r, i) => {
-    let g = Infinity;
-    for (let dt = -1; dt <= 1; dt++) for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const v = low.get(key(r, dx, dy, dt)); if (v != null && v < g) g = v; }
-    out[i] = r.y - (g === Infinity ? r.ground : g);
+    const near = [];
+    for (let dt = -1; dt <= 1; dt++) for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const v = low.get(key(r, dx, dy, dt)); if (v != null) near.push(v); }
+    near.sort((a, b) => a - b);
+    out[i] = r.y - (near.length ? near[near.length >> 1] : r.ground);
   });
   return out;
 }
