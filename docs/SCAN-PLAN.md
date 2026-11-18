@@ -2842,4 +2842,25 @@ SPECULATION (not measured):
 - That thin things named "sky" (a pole, a trunk, an eave) are a pose-timing miss of a few pixels, not the model.
 - That SAM parts' extra lines are real fences or walls rather than one wall cut in two.
 
-NOT DONE YET: the second walk; the published model itself on one object cut from a walk; the owner's verdict.
+THE SECOND WALK (the other property, 2026-11-18 afternoon; a web-page walk: 84 pictures 640 wide, no labels). HARD:
+
+- Its pictures' poses are camera-to-session (1 in from the track; the other reading 104 ft): both ways of keeping a
+  pose are in the bucket, and pose_keys told them apart on both walks.
+- 83% of the points were in a picture. A point's pictures agree 97% (panoptic), 88% (SAM objects), 87% (SAM parts).
+- Standing things: by shape alone 12 (biggest 48% of the standing points); panoptic 8, named 3 tree, 2 house,
+  1 building, 2 sky (biggest 35%); SAM objects 20 (biggest 31%); SAM parts 95 (biggest 12%): on this walk the parts
+  reading cuts far finer than a yard's things (16 "talls" about 10 ft long and 11-16 ft high read like one wall or
+  one crown in pieces).
+- Its three patches: the 19 ft "line" (8 m2) is a sheet leaning 12 degrees from level, 14 in thick, 1.4-2.6 ft over
+  the phone's ground; the panoptic model calls the piece it mostly falls in grass, and both SAM readings put about
+  half of it in flat ground. One patch 7-7.7 ft up is in a thing 8x7 ft, 9 ft high that the panoptic model calls
+  tree (100% of votes): a crown's underside the lidar model lacks at that height, or a bough. One has too few points.
+- Cost: 605 s on the L4 (7.2 s a picture at 640 wide). Modal for the trial so far: 1,577 + 1,525 + 605 s, about $0.95.
+
+SPECULATION after two walks (for the owner's eyes to settle): the grain wanted is between SAM's two readings and
+differs by walk; the panoptic model's cut is the coarsest but the only one that names, and its names agree with the
+shapes' own geometry on the patches (earth, grass, tree). A cut by SAM named by the panoptic vote may be the
+combination; not tried.
+
+NOT DONE YET: the published model itself on one object cut from a walk (its own script and estimate; not run); the
+owner's verdict; which walks depth_run.py and walk_fix_study.py read.
