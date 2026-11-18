@@ -45,6 +45,7 @@ MIN_PTS = 15     # a shape with fewer points in a picture says nothing
 IOU = 0.5        # two pictures' shapes are one thing when they share this much of what both saw
 PAIR_MIN = 30    # points two pictures must both see to be compared
 STAND = 0.3      # m over the ground: standing
+NEAR = 6.0       # m: a point counts when the phone was this near as it saw it (disagree.mjs RANGE_M)
 VOX = 0.2        # m: "touching", for the grouping by shape alone
 PIECE_MIN = 30   # points: a thing smaller than this is not listed
 PIC_MAX = int(os.environ.get("PIC_MAX", "120"))  # pictures read on the CPU (evenly through the walk)
@@ -79,11 +80,49 @@ def read_twin(d):
     return np.concatenate(recs), np.concatenate(labs), keys
 
 
+def read_track(d):
+    """-> (M, 4) [t, x, y, z] by time: where the camera was, five times a second."""
+    tr = []
+    for n in sorted(x for x in os.listdir(d) if re.fullmatch(r"track-\d+\.bin", x)):
+        a = np.fromfile(os.path.join(d, n), dtype="<f4")
+        tr.append(a[: len(a) // 10 * 10].reshape(-1, 10)[:, [0, 2, 3, 4]])
+    if not tr:
+        return np.zeros((0, 4))
+    tr = np.concatenate(tr).astype(np.float64)
+    return tr[np.argsort(tr[:, 0])]
+
+
+def cam_at(track, t):
+    """The camera's place at each time t (the nearest pose)."""
+    i = np.clip(np.searchsorted(track[:, 0], t), 1, len(track) - 1)
+    i = np.where(np.abs(track[i - 1, 0] - t) < np.abs(track[i, 0] - t), i - 1, i)
+    return track[i, 1:4]
+
+
+def pose_keys(keys, track):
+    """Each key gets "c2w", its camera-to-session matrix. A picture's `view` was kept two ways: the web page's WebXR
+    walks kept the camera's own matrix (camera to session); the app's walks keep ARCore's VIEW matrix (session to
+    camera; found here 2026-11-18, when 2% of an app walk's points fell in its pictures). Whichever puts the cameras
+    where the track says they were is the one. -> 'camera to session' | 'session to camera' | 'unknown (no track)'."""
+    Ms = [np.array(k["view"], dtype=np.float64).reshape(4, 4).T for k in keys]
+    which = "unknown (no track)"
+    inv = False
+    if len(track) >= 2 and keys:
+        want = cam_at(track, np.array([k["t"] for k in keys]))
+        as_is = np.median(np.linalg.norm(np.array([M[:3, 3] for M in Ms]) - want, axis=1))
+        turned = np.median(np.linalg.norm(np.array([np.linalg.inv(M)[:3, 3] for M in Ms]) - want, axis=1))
+        inv = turned < as_is
+        which = f"{'session to camera (the app)' if inv else 'camera to session'}; the cameras then sit {min(as_is, turned) * 39.37:.0f} in from the track (the other reading: {max(as_is, turned) * FT:.0f} ft)"
+    for k, M in zip(keys, Ms):
+        k["c2w"] = np.linalg.inv(M) if inv else M
+    return which
+
+
 # ---------------------------------------------------------------- the lift
 
 def project(xyz1, key, W, H):
     """Each point's pixel in a picture ("as kept"), its range, and whether it is in the frame and near enough."""
-    V = np.linalg.inv(np.array(key["view"], dtype=np.float64).reshape(4, 4).T)
+    V = np.linalg.inv(key["c2w"])
     P = np.array(key["proj"], dtype=np.float64).reshape(4, 4).T
     cam = xyz1 @ V.T
     z = -cam[:, 2]
@@ -299,7 +338,7 @@ def report(name, piece, xyz, h, labs, patches, classes=None, extra=""):
         keep = [(int(a), int(b)) for a, b in sorted(zip(u, c), key=lambda t: -t[1]) if a in desc and b >= 0.1 * len(idx)]
         head = f"  patch {j + 1} ({pt['cells']} m2{', a line ' + str(round(pt['lengthM'] * FT)) + ' ft' if pt.get('line') else ''}, the phone said {pt['label']}): "
         if not keep:
-            out.append(head + f"in no thing ({100 * (pc >= 0).mean():.0f}% of its points in any).")
+            out.append(head + (f"only in bits under {PIECE_MIN} points." if (pc >= 0).mean() > 0.5 else f"in no thing ({100 * (pc >= 0).mean():.0f}% of its points in any)."))
             continue
         a, b = keep[0]
         nm = ""
@@ -340,6 +379,8 @@ def panoptic_maps(imgs, device="cpu", log=print):
     """Mask2Former (ADE20K panoptic) on each picture. -> idmaps [(H, W) uint16, 0 none], names [{id: class}]."""
     import torch
     from transformers import AutoImageProcessor, Mask2FormerForUniversalSegmentation
+    from transformers.utils import logging as hf_logging
+    hf_logging.set_verbosity_error()
     proc = AutoImageProcessor.from_pretrained(PAN_MODEL)
     model = Mask2FormerForUniversalSegmentation.from_pretrained(PAN_MODEL).to(device).eval()
     maps, names = [], []
@@ -417,7 +458,7 @@ def selftest():
         yc = np.cross(zc, xc)
         M = np.eye(4)
         M[:3, 0], M[:3, 1], M[:3, 2], M[:3, 3] = xc, yc, zc, eye
-        k = {"view": M.T.reshape(-1).tolist(), "proj": proj}
+        k = {"view": np.linalg.inv(M).T.reshape(-1).tolist() if i % 2 else M.T.reshape(-1).tolist(), "proj": proj, "t": float(i), "c2w": M}
         xyz1 = np.concatenate([xyz.astype(np.float64), np.ones((len(xyz), 1))], 1)
         px, py, z, ok = project(xyz1, k, W, H)
         m = np.zeros((H, W), np.uint16)
@@ -428,6 +469,12 @@ def selftest():
         keys.append(k)
         maps.append(m)
         cams.append(eye)
+    track = np.array([[float(i), *cams[i]] for i in range(8)])
+    for want_inv in (False, True):
+        ks = [{"view": (np.linalg.inv(k["c2w"]) if want_inv else k["c2w"]).T.reshape(-1).tolist(), "t": k["t"]} for k in keys]
+        said = pose_keys(ks, track)
+        assert said.startswith("session to camera" if want_inv else "camera to session"), said
+        assert all(np.allclose(a["c2w"], b["c2w"], atol=1e-6) for a, b in zip(ks, keys)), "the pose was not put right"
     vis, ms = lift(xyz, keys, maps)
     off, comp, joined = merge(vis, ms, np.array(cams))
     piece, purity, _, _ = vote(len(xyz), vis, ms, off, comp)
@@ -457,17 +504,23 @@ def main():
     if len(recs) < 1000:
         print(f"Only {len(recs)} points: nothing to cut up.")
         return
-    spike = (labs[:, 3] & 1) > 0
+    track = read_track(d)
     xyz, h = recs[:, 2:5].copy(), (recs[:, 3] - recs[:, 5]).astype(np.float64)
-    xyz[spike] = np.nan
-    h[spike] = np.nan
+    # left out, as the disagreement report leaves them out: spikes, Google's far street geometry (not measured by
+    # the camera), and points the phone was more than NEAR from when it saw them
+    drop = ((labs[:, 3] & 3) > 0)
+    if len(track) >= 2:
+        drop |= np.linalg.norm(xyz - cam_at(track, recs[:, 0].astype(np.float64)), axis=1) > NEAR
+    xyz[drop] = np.nan
+    h[drop] = np.nan
+    print(f"Pictures' poses: {pose_keys(keys, track)}.")
     patches = []
     pf = os.path.join(d, "disagree-cells.json")
     if os.path.exists(pf):
         with open(pf) as f:
             patches = json.load(f)
     stand = np.isfinite(h) & (h > STAND)
-    print(f"The walk: {len(recs):,} points ({int(stand.sum()):,} standing over {STAND * FT:.0f} ft), {len(keys)} pictures; {len(patches)} patches the phone saw and the lidar lacks.")
+    print(f"The walk: {len(recs):,} points, {int((~drop).sum()):,} seen within {NEAR * FT:.0f} ft ({int(stand.sum()):,} standing over {STAND * FT:.0f} ft), {len(keys)} pictures; {len(patches)} patches the phone saw and the lidar lacks.")
     labs_named = labs[stand, 0]
     cnt = np.bincount(labs_named, minlength=len(LABELS) + 1)
     print("The phone's own labels on the standing points: " + ", ".join(f"{LABELS[i - 1]} {100 * cnt[i] / max(1, cnt.sum()):.0f}%" for i in np.argsort(-cnt) if i > 0 and cnt[i] / max(1, cnt.sum()) >= 0.02) + (f", none {100 * cnt[0] / max(1, cnt.sum()):.0f}%" if cnt[0] else "") + ".")
@@ -481,7 +534,7 @@ def main():
     except Exception as e:
         print(f"  (no picture: {type(e).__name__})")
 
-    cams = np.array([np.array(k["view"], dtype=np.float64).reshape(4, 4).T[:3, 3] for k in keys]) if keys else None
+    cams = np.array([k["c2w"][:3, 3] for k in keys]) if keys else None
     if masks:
         z = np.load(masks, allow_pickle=False)
         names_all = json.loads(str(z["names"])) if "names" in z else None
