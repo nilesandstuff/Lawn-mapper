@@ -50,10 +50,13 @@ const nameOf = (id) => { const m = mapOf(id); return m ? `${isAdminSave(m) ? 'Te
 /** What a map still needs from the water map: walks converted but not scored by the current model; visits unchecked. */
 function needs(id) {
   const scored = new Set(state.walks.filter((w) => w.map_id === id && w.results?.some((r) => r.model === MODEL_VERSION && r.kind === 'surface')).map((w) => w.walk));
-  const walks = state.walksRead ? (state.core.get(id) || []).filter((w) => w.ok === true && !scored.has(w.walk)).length : 0;
+  const open = state.walksRead ? (state.core.get(id) || []).filter((w) => w.ok === true && !scored.has(w.walk)) : [];
+  const walks = open.length;
+  // why each is offered (2026-11-18: two walks the hourly scoring had scored were offered here), shown beside it
+  const why = open.map((w) => { const t = state.walks.find((x) => String(x.walk) === String(w.walk)); return !t ? 'no score kept for it' : t.map_id !== id ? 'its score is kept under another map' : `scored only by ${[...new Set((t.results || []).map((r) => r.model))].join(', ') || 'nothing'}`; });
   // the visits a map's own check covers (soil moisture, surface temperature); the rest are the explorer's, with no check to wait for
   const visits = state.visits.filter((v) => v.map_id === id && v.readings?.length && !v.check && (isMoistureUnit(v.unit) || v.unit === 'surface_f')).length;
-  return { walks, visits };
+  return { walks, visits, why };
 }
 
 function render() {
@@ -151,7 +154,7 @@ async function work() {
   const unread = state.walksRead ? '' : ' The walks\' scores could not be read just now, so none is offered here; the hourly scoring keeps them up to date.';
   if (!todo.length) { $('#work-say').textContent = `Every test map is up to date.${unread}`; list.innerHTML = ''; working = false; return; }
   $('#work-say').textContent = `${todo.length} test map${todo.length === 1 ? '' : 's'} to bring up to date. Keep this page open; each takes a minute or two.`;
-  list.innerHTML = todo.map((x) => `<li id="w-${esc(x.m.id).replace(/[^\w-]/g, '_')}">${esc(nameOf(x.m.id))}: ${[x.n.walks ? `${x.n.walks} walk${x.n.walks === 1 ? '' : 's'} to score` : '', x.n.visits ? `${x.n.visits} visit${x.n.visits === 1 ? '' : 's'} to check` : ''].filter(Boolean).join(', ')}</li>`).join('');
+  list.innerHTML = todo.map((x) => `<li id="w-${esc(x.m.id).replace(/[^\w-]/g, '_')}">${esc(nameOf(x.m.id))}: ${[x.n.walks ? `${x.n.walks} walk${x.n.walks === 1 ? '' : 's'} to score <span class="dim">(${esc(x.n.why.join('; '))})</span>` : '', x.n.visits ? `${x.n.visits} visit${x.n.visits === 1 ? '' : 's'} to check` : ''].filter(Boolean).join(', ')}</li>`).join('');
   for (const x of todo) {
     const li = document.getElementById(`w-${x.m.id.replace(/[^\w-]/g, '_')}`);
     if (li) li.insertAdjacentHTML('beforeend', ' · <b>working…</b>');
