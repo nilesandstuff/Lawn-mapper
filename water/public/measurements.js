@@ -77,7 +77,7 @@ function render() {
   });
   const LAWNMAP = HOME ? HOME.replace('://', '://lawnmap.') : '';
   $('#move').innerHTML = waits.length ? `<div class="card"><h2>Readings waiting for a test map</h2>
-    <p class="dim">Readings go onto the test map of the lot they were taken on by themselves, within the hour. These lots have none yet: make one (Lawn Mapper, "Mark whole property as lawn and admin save") and they are moved onto it and checked.</p>
+    <p class="dim">Readings go onto the test map of the lot they were taken on by themselves, within the hour, and a lot with none gets one made (the whole property as lawn). These are still waiting: the hour has not come round, or the county had no property line there. The link makes one by hand.</p>
     ${waits.map((x, k) => `<p>${x.visits.length} set${x.visits.length === 1 ? '' : 's'} of readings (${x.readings}: ${esc(x.kinds.join(', '))}) from ${day(Math.min(...x.visits.map((v) => v.at)))}${x.pin ? '' : ', with no county property line found'} · <span id="wait-at-${k}" class="dim">finding the address…</span></p>`).join('')}</div>` : '';
   waits.forEach(async (x, k) => {
     const el = $(`#wait-at-${k}`);

@@ -151,4 +151,22 @@ await test('every field visit lined up by place: onto the test map of its lot, o
   assert.equal(again.lined + again.unpinned, 0, 'nothing moves twice');
 });
 
+await test('a lot with field readings and no test map gets one made, once a day, and the readings go onto it', async () => {
+  const made = [];
+  const far = { id: 'admin|far', adminSave: true, lng: -85.05, lat: 42, parcel: { type: 'Polygon', coordinates: [[[-85.0502, 41.9998], [-85.0498, 41.9998], [-85.0498, 42.0002], [-85.0502, 42.0002], [-85.0502, 41.9998]]] } };
+  const env = { DB: d1(), WATER_BUILDER: builder([]), MAIN: { ...main(),
+    saveOf: async (id) => (id === 'admin|1' ? record : id === 'admin|far' && made.length ? far : null),
+    adminSaves: async () => [{ id: 'admin|1', modelAt: 'x' }, ...(made.length ? [{ id: 'admin|far', modelAt: null }] : [])],
+    makeWholeSave: async (lng, lat) => { made.push([lng, lat]); return { id: 'admin|far', created: true }; } } };
+  await env.DB.prepare("INSERT INTO moisture_visits (id, at, saved, unit, map_id, parcel_pin) VALUES ('farvisit', 1, 1, 'airtemp_f', NULL, 'PIN-9')").run();
+  await env.DB.prepare("INSERT INTO moisture_readings (id, visit_id, n, lng, lat, value) VALUES ('farvisit-1', 'farvisit', 1, -85.05, 42, 52)").run();
+  const sw = await sweep(env);
+  assert.equal(sw.made, 1); assert.equal(sw.lined, 1); assert.equal(sw.waitingVisits, 0);
+  assert.equal((await env.DB.prepare("SELECT map_id FROM moisture_visits WHERE id = 'farvisit'").first()).map_id, 'admin|far');
+  await env.DB.prepare("UPDATE moisture_visits SET map_id = NULL WHERE id = 'farvisit'").run();
+  env.MAIN.saveOf = async (id) => (id === 'admin|1' ? record : null); // as if the new save had not come back
+  const again = await sweep(env);
+  assert.equal(made.length, 1, 'not asked again the same day'); assert.equal(again.made, 0);
+});
+
 console.log(`\n${passed} passed`);

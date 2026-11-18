@@ -214,9 +214,9 @@ SPECULATION), as always.
     the hourly sweep puts every visit on the test map whose property line holds its readings (lib/lineup.js,
     src/autoscore.js lineUpVisits), takes it off a test map of another lot, and clears its old check; the rest keep
     their parcel number and are listed on the measurements page as waiting, with the address looked up there and a
-    link that opens Lawn Mapper on it to make the test map. WAITING ON THE CORE: a call on the main site's Internal
-    entrypoint to make the whole-property admin save of a place by itself (asked 2026-11-17), so a waiting lot gets
-    its test map with no press at all.
+    link that opens Lawn Mapper on it to make the test map. And since 2026-11-18 (the core's makeWholeSave over MAIN)
+    the sweep makes the whole-property test map of a waiting lot itself, once a day at most per lot (lot_saves), and
+    lines the readings onto it at once; the link is left for a lot the county has no property line for. DONE.
 
 ## Rules (owner, 2026-10-27)
 

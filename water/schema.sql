@@ -136,3 +136,13 @@ CREATE TABLE IF NOT EXISTS kit_log (
   at INTEGER,
   what TEXT
 );
+
+-- A TEST MAP ASKED FOR A LOT THAT HAD NONE (2026-11-18, src/autoscore.js lineUpVisits): field readings taken where no
+-- admin save was, and the main site's makeWholeSave asked to make one, once a day at most per lot. lot: the parcel
+-- number, else the place to four decimals (this private database only, never a log).
+CREATE TABLE IF NOT EXISTS lot_saves (
+  lot TEXT PRIMARY KEY,
+  tried INTEGER,                    -- when it was last asked
+  made TEXT,                        -- the admin save's id, once there is one
+  why TEXT                          -- why not, when it was refused
+);
