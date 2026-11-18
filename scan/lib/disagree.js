@@ -93,6 +93,33 @@ export function disagree(pts, model) {
   return out;
 }
 
+/**
+ * HEIGHT OVER THE GROUND THE WALK ITSELF SAW NEARBY (2026-11-18). The report first took each point's height over
+ * the ground height the page kept under it while walking; the owner looked at every patch "seen, not in the lidar"
+ * on two walks and found ground nearly every time ("All but 2 are just regular ground or a real slope"; "pink dots
+ * appear to all fall on the ground, or an arborvitae"). So the ground is taken from the points instead: on GROUND_CELL
+ * squares, the low edge (5th percentile, GROUND_PTS points or more) of the heights seen there IN THE SAME STRETCH OF
+ * THE WALK (GROUND_SECS: tracking drifts in height, and the same spot seen twice sits at two heights), and a point's
+ * ground is the lowest of those over its square and the eight round it. With none of them, the kept height stands.
+ *
+ * recs: [{ e, n, y (session height), t (s), ground (the kept height) }] -> Float64Array of heights.
+ */
+export const GROUND_CELL = 0.5, GROUND_PTS = 8, GROUND_SECS = 20;
+export function heights(recs) {
+  const key = (r, dx = 0, dy = 0, dt = 0) => `${Math.floor(r.e / GROUND_CELL) + dx},${Math.floor(r.n / GROUND_CELL) + dy},${Math.floor(r.t / GROUND_SECS) + dt}`;
+  const cols = new Map();
+  for (const r of recs) { if (!Number.isFinite(r.y) || !Number.isFinite(r.e)) continue; const k = key(r); let c = cols.get(k); if (!c) cols.set(k, c = []); c.push(r.y); }
+  const low = new Map();
+  for (const [k, ys] of cols) { if (ys.length < GROUND_PTS) continue; ys.sort((a, b) => a - b); low.set(k, ys[Math.floor(ys.length * 0.05)]); }
+  const out = new Float64Array(recs.length);
+  recs.forEach((r, i) => {
+    let g = Infinity;
+    for (let dt = -1; dt <= 1; dt++) for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const v = low.get(key(r, dx, dy, dt)); if (v != null && v < g) g = v; }
+    out[i] = r.y - (g === Infinity ? r.ground : g);
+  });
+  return out;
+}
+
 /** The report as lines: counts, lengths and shares only, never a place. */
 export function lines(r) {
   const pct = (a, b) => (b ? `${Math.round((100 * a) / b)}%` : '-');

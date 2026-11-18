@@ -18,7 +18,7 @@ import { readMap, readModel } from './twin-io.mjs';
 import { readCloud, readLabels, readTrack } from '../lib/twin.js';
 import { keepPlan } from '../lib/refkeep.js';
 import { fitAt, apply } from '../lib/align.js';
-import { disagree, lines } from '../lib/disagree.js';
+import { disagree, lines, heights } from '../lib/disagree.js';
 
 const RANGE_M = 6;
 
@@ -68,7 +68,15 @@ for (let i = 0; i < recs.length; i++) {
   const cam = camAt(r.t);
   if (cam && Math.hypot(r.x - cam.x, r.y - cam.y, r.z - cam.z) > RANGE_M) { far++; continue; }
   const [e, n] = apply(fitFor(r.odo), [r.x, -r.z]);
-  pts.push({ e, n, h: r.y - r.ground, label: r.label, conf: r.conf, i });
+  pts.push({ e, n, y: r.y, t: r.t, ground: r.ground, label: r.label, conf: r.conf, i });
+}
+// each point's height over the ground the walk itself saw nearby (lib/disagree.js heights), not over the height
+// the page kept under it: the owner found the first report's patches to be ground
+{
+  const hs = heights(pts);
+  let was = 0, now = 0;
+  pts.forEach((p, k) => { const old = p.y - p.ground; p.h = hs[k]; if (old > 0.4 && old < 2.4) { was++; if (!(p.h > 0.4 && p.h < 2.4)) now++; } });
+  console.log(`Heights: over the ground the walk itself saw nearby; ${now.toLocaleString()} of the ${was.toLocaleString()} points the kept ground height called standing are not standing by it.`);
 }
 console.log(`Used: ${pts.length.toLocaleString()} points seen within ${Math.round(RANGE_M * 3.281)} ft of the phone (${far.toLocaleString()} farther left out, ${spikes} spikes); labelled ${Math.round((100 * pts.filter((p) => p.label).length) / Math.max(1, pts.length))}%.`);
 

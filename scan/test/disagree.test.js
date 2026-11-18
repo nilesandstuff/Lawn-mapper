@@ -34,4 +34,23 @@ assert.equal(disagree([...Array(10)].map(() => ({ e: 0.5, n: 11.5, h: 1, label: 
 assert.equal(disagree([{ e: 50.5, n: 50.5, h: 1, label: 'tree', conf: 1 }], model).looked, 0);
 const text = lines(r).join('\n');
 assert.match(text, /27 ft structure/); assert.ok(!/\d+\.\d{4}/.test(text), 'no coordinate-like numbers');
+
+// heights over the ground the walk itself saw
+{
+  const { heights } = await import('../lib/disagree.js');
+  const recs = [];
+  // a slope the kept ground height missed by half a metre: every point is ground
+  for (let i = 0; i < 400; i++) { const e = (i % 20) * 0.1, n = Math.floor(i / 20) * 0.1; recs.push({ e, n, y: 0.5 + 0.1 * e, t: 1, ground: 0 }); }
+  // a fence over it: 1.2 m of points above the slope at e = 1
+  for (let i = 0; i < 200; i++) recs.push({ e: 1.02, n: (i % 20) * 0.1, y: 0.6 + 0.1 + 1.2 * ((i % 10) / 10), t: 1, ground: 0 });
+  // the same slope seen again a minute later, 0.6 m higher (drift): still ground
+  for (let i = 0; i < 400; i++) { const e = (i % 20) * 0.1, n = Math.floor(i / 20) * 0.1; recs.push({ e, n, y: 1.1 + 0.1 * e, t: 70, ground: 0 }); }
+  // a point with nothing round it keeps the kept ground
+  recs.push({ e: 50, n: 50, y: 2, t: 1, ground: 1.5 });
+  const h = heights(recs);
+  assert.ok(h.slice(0, 400).every((v) => Math.abs(v) < 0.2), 'the slope is ground, though the kept height put it half a metre up');
+  assert.ok([...h.slice(400, 600)].filter((v) => v > 0.4).length > 100, 'the fence still stands over it');
+  assert.ok(h.slice(600, 1000).every((v) => Math.abs(v) < 0.2), 'the second pass, drifted up, is ground too');
+  assert.equal(h[1000], 0.5, 'alone: the kept ground height');
+}
 console.log('disagree: ok');
