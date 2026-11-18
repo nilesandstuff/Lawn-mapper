@@ -2891,6 +2891,34 @@ THE OWNER'S VERDICT, BY EYE ON THE SHEETS (2026-11-18). HARD: these are the owne
 - A fault of mine the owner found: "the view from above cards printed nothing for the segmentation models" (the
   left-out points, handed over as far away, squeezed the drawing to a dot). Fixed.
 
-NOT DONE YET: the owner's eyes on the small model's names; the disagreement report's standing test on the local
-ground (the patches above); the published model itself on one object (not run; with SAM objects judged good on
+THE SMALL NAMING MODEL, FIRST NUMBERS (2026-11-18, free, from the kept shapes). HARD: 2,179 shapes named in 129 s
+on the runner's CPU (work walk), 732 in 69 s (the other). Standing things by its name -- work walk: 2 retaining wall
+(28 ft, 12 ft; the panoptic model: wall), 1 garage door, 1 house wall, 3 with no clear name (the three biggest);
+the other property: 6 house wall, 2 garage door, 2 machine, 2 tree, 2 shrub, 1 pole, 1 bin, 1 trailer, 1 deck,
+1 sky, 1 unclear; the arborvitae patch "shrub" with 98% of its votes (panoptic: tree). Whether the names are RIGHT is
+not measured: the owner's eyes on the sheets.
+
+THE STANDING TEST ON THE WALK'S OWN GROUND: TRIED TWICE, NOT USED (2026-11-18). HARD:
+
+                                  standing m2   in the lidar   seen, not in the lidar
+  work walk    kept ground            57            72%          16 m2, 9 patches
+               lowest of 27 lows      80            71%          23 m2, 7 patches
+               layer + median         54            72%          15 m2, 4 patches (two "terrain" lines, 21 and 10 ft)
+  the other    kept ground            96            90%          10 m2, 3 patches
+               lowest of 27 lows     348            63%         128 m2, 5 patches
+               layer + median        125            74%          32 m2, 4 patches (one of 27 m2)
+
+  The first (each square's 5th percentile, the lowest of the 27 round a point) followed the depth's noise below the
+  ground. The second (each square's lowest layer holding a fifth of its points, the median of the squares) is no
+  better than the kept ground on the work walk and worse on the other. lib/disagree.js heights is kept and tested;
+  disagree.mjs is back on the kept ground and prints how many points heights would move.
+  So the patches the owner saw as ground are NOT explained by the kept ground height alone: with the ground taken
+  from the walk's own points they are still there. SPECULATION: they are sheets of depth points floating a foot or
+  two over the true ground (the phone's depth, not its ground), which no ground estimate made from the same points
+  can remove; what does tell them apart is what the picture says they are (terrain, earth, grass, lawn: every
+  labeller agreed on them). That is the thesis's own answer: a patch is standing only if its thing is not named
+  ground. Not built.
+
+NOT DONE YET: the owner's eyes on the small model's names; the report's "standing" by what a thing is named, where
+a walk has been cut into things; the published model itself on one object (not run; with SAM objects judged good on
 whole scenes it may not be needed); which walks depth_run.py and walk_fix_study.py read.

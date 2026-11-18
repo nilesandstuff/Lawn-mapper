@@ -70,13 +70,14 @@ for (let i = 0; i < recs.length; i++) {
   const [e, n] = apply(fitFor(r.odo), [r.x, -r.z]);
   pts.push({ e, n, y: r.y, t: r.t, ground: r.ground, label: r.label, conf: r.conf, i });
 }
-// each point's height over the ground the walk itself saw nearby (lib/disagree.js heights), not over the height
-// the page kept under it: the owner found the first report's patches to be ground
+// THE HEIGHT IS OVER THE GROUND THE PAGE KEPT UNDER EACH POINT. Taking it over the ground the walk's own points show
+// nearby (lib/disagree.js heights) was tried twice on 2026-11-18 and made the report no better on one walk and worse
+// on the other (docs/SCAN-PLAN.md section 30), so it is not used; how many points it would move is still printed.
 {
   const hs = heights(pts);
-  let was = 0, now = 0;
-  pts.forEach((p, k) => { const old = p.y - p.ground; p.h = hs[k]; if (old > 0.4 && old < 2.4) { was++; if (!(p.h > 0.4 && p.h < 2.4)) now++; } });
-  console.log(`Heights: over the ground the walk itself saw nearby; ${now.toLocaleString()} of the ${was.toLocaleString()} points the kept ground height called standing are not standing by it.`);
+  let was = 0, moved = 0;
+  pts.forEach((p, k) => { p.h = p.y - p.ground; if (p.h > 0.4 && p.h < 2.4) { was++; if (!(hs[k] > 0.4 && hs[k] < 2.4)) moved++; } });
+  console.log(`Heights: over the ground the page kept under each point (the walk's own ground nearby would un-stand ${moved.toLocaleString()} of ${was.toLocaleString()} standing points; tried, not used).`);
 }
 console.log(`Used: ${pts.length.toLocaleString()} points seen within ${Math.round(RANGE_M * 3.281)} ft of the phone (${far.toLocaleString()} farther left out, ${spikes} spikes); labelled ${Math.round((100 * pts.filter((p) => p.label).length) / Math.max(1, pts.length))}%.`);
 
