@@ -2931,6 +2931,22 @@ patches 2-4 m across that none of the model's own factors explain, on any lot. T
 is that enclosed squares (little sky) read warmer than modelled and open ones cooler. Three walks, three lots, one
 of them all shade; nothing tuned. Why is S31.
 
+### H100. Each walk slid over the model: placement explains a quarter of the spread at most (water session, 2026-11-18)
+
+S31's first candidate, tested on the squares already kept (tools/residuals.py section 7: each walk's measured squares
+against the model's squares 0-4 m east and north of them; a planted 2 m offset on made-up walks is found, 74% less
+spread). The real walks, 12:05 UTC, spread of measured minus modelled within the walk:
+  W1  as laid 0.6 F; best 0.6 F at (0, -1 m): 6% less.   (62 model squares, all shade)
+  W2  as laid 2.9 F; best 2.5 F at (-1, +1 m): 14% less; the next best within a metre of it.
+  W3  as laid 6.6 F; best 5.1 F at (-2, -1 m): 23% less; the next best within a metre of it.
+RULED OUT BY READING THE CODE: the walk scorer and the page do place a reading alike. The water map moves the lidar's
+points by the shade map's kept shift before gridding (lib/lowspots.js), so its grid's own shift is zero; the page's
+extra subtraction is of zero. (S31 named this as a suspect.)
+WHAT THIS SAYS, AS MEASURED: the best of 81 offsets always beats zero a little, so 6% and 14% are not evidence; W3's
+23% at about 2 m, with its neighbours agreeing, may be a real offset of the walk on that lot (the AR's own place, or
+the map's line-up; each score now records how its map's lidar was lined up, SCORING 7). Even there three quarters
+of the spread remains: the patches of H99 are mostly not a simple offset.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge
