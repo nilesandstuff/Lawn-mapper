@@ -41,6 +41,7 @@ import { toMerc as toMercS } from '/lib/shade/ept.js';
 import { momentOf, surfaceNowAt, openNow, forcingAt, MODEL_VERSION, SCORING } from '/lib/surfacenow.js';
 import { atMoment, spinWeatherUrl, spinHours, SPIN_DAYS } from '/lib/momentweather.js';
 import { fitAnnual, spinColumns, columnProps, stepColumn, skinParts, CENTRES } from '/lib/soiltemp.js';
+import { NUDGES, KNOBS, SOIL_NUDGE_C, BEAM_NUDGE, SQUARE_COLS, rowOf } from '/lib/residuals.js';
 import { surfaceExplain, soilExplain, windExplain, moistureExplain } from '/lib/explain.js';
 import { spearman } from '/lib/rank.js';
 
@@ -290,6 +291,29 @@ async function walkCheck({ id, records, series, notes }) {
   const dist = pavingDistance(m.kinds, W, H, cell * Math.cos((lat * Math.PI) / 180));
   const EDGE = [['0-1 m', 0, 1], ['1-3 m', 1, 3], ['3-7 m', 3, 7], ['7+ m', 7, Infinity]];
   const edge = Object.fromEntries(EDGE.map(([name, lo, hi]) => { const ks = main.filter((k) => idx[k] >= 0 && dist[idx[k]] >= lo && dist[idx[k]] < hi); return [name, { ...stats(ks), live: stats(ks.filter((k) => Number.isFinite(predSt[k])), predSt), sun: stats(ks.filter((k) => beams[k] >= 0.5)) }]; }));
+  /* EVERY SQUARE, WITH WHAT WENT INTO IT AND HOW FAR EACH KNOB WOULD MOVE IT (2026-11-18, lib/residuals.js; read by
+     tools/residuals.py): the walker's-air run, the main band. x, y: metres across the plan's grid, not a place. */
+  const cellM = cell * Math.cos((lat * Math.PI) / 180), t0w = records.length ? records.reduce((a, r) => Math.min(a, r.tm), Infinity) : 0;
+  const diagRows = [];
+  for (const k of main) {
+    const i = idx[k], r = records[k], w = weatherAt(r.tm), kk = ks ? ks[i] : null;
+    const s = spotAt(cols, i, beams[k], w, r.tm, kk);
+    if (!s) continue;
+    const T0 = cols.spun.T[s.c], dt = Math.max(60, (r.tm - cols.spun.t) / 1000);
+    const run = (f, dT = 0) => stepColumn(Float64Array.from(T0, (v) => v + dT), s.props, { ...f, tBottom: s.tBottom }, dt).ts;
+    const base = run(s.f), J = {};
+    for (const n of NUDGES) J[n.key] = run(n.apply(s.f)) - base;
+    J.soil = run(s.f, SOIL_NUDGE_C) - base;
+    const up = beams[k] <= 1 - BEAM_NUDGE, sb = spotAt(cols, i, beams[k] + (up ? BEAM_NUDGE : -BEAM_NUDGE), w, r.tm, kk);
+    J.shade = sb ? (up ? sb.ts - s.ts : s.ts - sb.ts) : 0;
+    const tex = cols.texOf(i) || {}, month = new Date(r.tm).getUTCMonth();
+    const o = { meas: r.T, pred: pred[k], predSt: predSt[k], v1: was[k], min: (r.tm - t0w) / 6e4, el: w.el, ghi: w.ghi, cloud: w.cloud, ta: w.ta, wind: w.wind, rh: w.rh,
+      beam: beams[k], sky: skyAt(m, i, month), shelter: shelterAt(m, i, month), canopy: m.canopy ? m.canopy[i] : 0, edge: m.edgeHeat ? m.edgeHeat[i] : 1, pavingM: Math.min(30, dist[i]), kind: m.kinds[i],
+      swNet: s.f.swNet, rnIso: s.f.rnIso, ra: s.f.ra, beta: s.f.beta, fence: s.f.fence, paving: s.f.paving, air: s.f.air, u2: s.f.u2, t1: T0[0], lambda1: s.props[0]?.lambda,
+      sand: tex.sand, clay: tex.clay, rootCm: m.rootCm ? m.rootCm[i] : null, full: cols.fullAt(s.c, r.tm), x: (i % W) * cellM, y: Math.floor(i / W) * cellM };
+    diagRows.push([...rowOf(o, SQUARE_COLS), ...KNOBS.map((q) => (Number.isFinite(J[q]) ? Math.round(J[q] * 10000) / 10000 : 0))]);
+  }
+  const diag = { cols: [...SQUARE_COLS, ...KNOBS.map((q) => `J_${q}`)], rows: diagRows };
   const mid = records.length ? records[Math.floor(records.length / 2)].tm : Date.now();
   const wMid = weatherAt(mid);
   used.soil = cols.used;
@@ -301,7 +325,7 @@ async function walkCheck({ id, records, series, notes }) {
   const station = { air: 'the live map\'s: the station\'s air, humidity and wind, the cloud from the satellite\'s sunshine (else the station\'s sky cover)', cloudMid: wSt ? wSt.cloud : null, cloudWalker: wMid ? wMid.cloud : null, airMid: wSt ? wSt.ta : null, airWalker: wMid ? wMid.ta : null,
     ...stats(stOk, predSt), sun: stats(stOk.filter((k) => beams[k] >= 0.5), predSt), shade: stats(stOk.filter((k) => beams[k] < 0.2), predSt) };
   const out = { id, model: MODEL_VERSION, scoring: SCORING, ...stats(main), bands, sunShade, edge, used, v1, station,
-    open: wMid ? { ts: openNow(wMid, m.params).ts, ta: wMid.ta, ghi: wMid.ghi, cloud: wMid.cloud, el: wMid.el, from: wMid.from } : null, pred: Float32Array.from(pred) };
+    open: wMid ? { ts: openNow(wMid, m.params).ts, ta: wMid.ta, ghi: wMid.ghi, cloud: wMid.cloud, el: wMid.el, from: wMid.from } : null, pred: Float32Array.from(pred), diag };
   self.postMessage({ walkCheck: out }, [out.pred.buffer]);
 }
 

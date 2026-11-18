@@ -77,6 +77,9 @@ async function scoreOne(env, job, base) {
   const res2 = await putResult(env, { walk: job.walk, model: r.model, kind: 'surface', n: r.n, bias: r.bias, rmse: r.rmse, rho: r.rho,
     detail: { bands: r.bands, sunShade: r.sunShade, edge: r.edge || null, used: r.used, open: r.open, v1: r.v1 || null, station: r.station || null, scoring: r.scoring || 1, offLawn: p.offLawn, weather: (frozen || o.weather)?.sources || [], by: 'the water builder' } });
   if (res2.error) return { state: 'failed', why: res2.error };
+  // every square with its factors and sensitivities, for the residual analysis (tools/residuals.py)
+  if (r.diag?.rows?.length) await env.DB.prepare('INSERT OR REPLACE INTO truth_squares (walk, model, scoring, checked, n, data) VALUES (?, ?, ?, ?, ?, ?)')
+    .bind(job.walk, r.model, r.scoring || 1, Date.now(), r.diag.rows.length, JSON.stringify(r.diag)).run().catch(() => null);
   return { state: 'done', why: `${r.n} squares` };
 }
 

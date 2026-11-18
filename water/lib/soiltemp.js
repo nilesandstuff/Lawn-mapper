@@ -83,8 +83,9 @@ export function startColumn(fit, t) { return Float64Array.from(CENTRES, (z) => a
  */
 export function stepColumn(T, props, f, dt = 3600) {
   const N = T.length;
-  const kR = 4 * EMIS * SIGMA * (f.ta + 273.15) ** 3, kH = RHO_CP / f.ra, L = LAMBDA_SKIN, b1 = 1 - Math.max(0, Math.min(0.95, f.beta));
-  const rn = f.rnIso - SW_TO_SOIL * f.swNet; // the skin's own share
+  // f.lambdaSkin / f.swToSoil: the residual analysis's nudges (2026-11-18, analyse.js walkCheck), else the constants
+  const kR = 4 * EMIS * SIGMA * (f.ta + 273.15) ** 3, kH = RHO_CP / f.ra, L = f.lambdaSkin ?? LAMBDA_SKIN, b1 = 1 - Math.max(0, Math.min(0.95, f.beta));
+  const sw0 = f.swToSoil ?? SW_TO_SOIL, rn = f.rnIso - sw0 * f.swNet; // the skin's own share
   const D = kH + b1 * (kR + L);
   // G = g0 + g1 T1 (the skin solved with the top layer): from (1 - beta)(Rn - G) = H
   const g0 = L * ((b1 * (rn - L * f.ta)) / D + f.ta), g1 = -L * (kH + b1 * kR) / D;
@@ -99,7 +100,7 @@ export function stepColumn(T, props, f, dt = 3600) {
     c[k] = k < N - 1 ? -K[k] : 0;
     d[k] = cap * T[k];
   }
-  b[0] -= g1; d[0] += g0 + SW_TO_SOIL * f.swNet;
+  b[0] -= g1; d[0] += g0 + sw0 * f.swNet;
   d[N - 1] += K[N - 1] * f.tBottom;
   // Thomas
   for (let k = 1; k < N; k++) { const m = a[k] / b[k - 1]; b[k] -= m * c[k - 1]; d[k] -= m * d[k - 1]; }

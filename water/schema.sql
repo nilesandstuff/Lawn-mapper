@@ -146,3 +146,16 @@ CREATE TABLE IF NOT EXISTS lot_saves (
   made TEXT,                        -- the admin save's id, once there is one
   why TEXT                          -- why not, when it was refused
 );
+
+-- EVERY SCORED SQUARE OF A WALK (2026-11-18, public/analyse.js walkCheck's diag; read by tools/residuals.py): measured,
+-- both predictions, what went into them and how far each of the model's knobs would move them (lib/residuals.js).
+-- data: { cols, rows } as JSON. x, y in it are metres across the plan's grid, not a place.
+CREATE TABLE IF NOT EXISTS truth_squares (
+  walk TEXT NOT NULL,
+  model TEXT NOT NULL,
+  scoring INTEGER,
+  checked INTEGER,
+  n INTEGER,
+  data TEXT,
+  PRIMARY KEY (walk, model)
+);

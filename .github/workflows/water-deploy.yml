@@ -49,7 +49,7 @@ on:
         required: true
         default: tests
         type: choice
-        options: [tests, deploy, builder, readings, limits, corpus, surfaces, impervious, paving-sam, flair, baro, lowspots, moisture]
+        options: [tests, deploy, builder, readings, analysis, limits, corpus, surfaces, impervious, paving-sam, flair, baro, lowspots, moisture]
 
 permissions:
   contents: read
@@ -71,7 +71,7 @@ jobs:
           node water/test/site.test.js
           node water/test/plan.test.js
           node water/test/heads.test.js
-          node water/test/hydraulics.test.js && node water/test/layout.test.js && node water/test/measured.test.js && node water/test/advice.test.js && node water/test/layers.test.js && node water/test/view3d.test.js && node water/test/wind.test.js && node water/test/roots.test.js && node water/test/soilplace.test.js && node water/test/streams.test.js && node water/test/ar-align.test.js && node water/test/ar-lidar.test.js && node water/test/groundwater.test.js && node water/test/perched.test.js && node water/test/heat.test.js && node water/test/treeroots.test.js && node water/test/trunks.test.js && node water/test/surfacenow.test.js && node water/test/soiltemp.test.js && node water/test/explain.test.js && node water/test/declination.test.js && node water/test/lineup.test.js && node water/test/truth.test.js && node water/test/weather.test.js && node water/test/autoscore.test.js && node water/test/imports.test.js
+          node water/test/hydraulics.test.js && node water/test/layout.test.js && node water/test/measured.test.js && node water/test/advice.test.js && node water/test/layers.test.js && node water/test/view3d.test.js && node water/test/wind.test.js && node water/test/roots.test.js && node water/test/soilplace.test.js && node water/test/streams.test.js && node water/test/ar-align.test.js && node water/test/ar-lidar.test.js && node water/test/groundwater.test.js && node water/test/perched.test.js && node water/test/heat.test.js && node water/test/treeroots.test.js && node water/test/trunks.test.js && node water/test/surfacenow.test.js && node water/test/soiltemp.test.js && node water/test/explain.test.js && node water/test/declination.test.js && node water/test/lineup.test.js && node water/test/residuals.test.js && node water/test/truth.test.js && node water/test/weather.test.js && node water/test/autoscore.test.js && node water/test/imports.test.js
 
       - name: The water database (gauge readings)
         if: ${{ inputs.task == 'deploy' }}
@@ -205,6 +205,16 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: node water/tools/moisture.mjs | tee moisture.txt
 
+      - name: Where the model comes short (every scored square)
+        if: ${{ inputs.task == 'analysis' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          pip install -q numpy scikit-learn
+          node water/tools/residuals.mjs > residuals.json
+          python3 water/tools/residuals.py residuals.json | tee analysis.txt
+
       - name: Low spots on the owner's lots
         if: ${{ inputs.task == 'lowspots' }}
         env:
@@ -224,6 +234,7 @@ jobs:
             flair)    sed -n '/=====/,$p' flair.txt 2>/dev/null || echo "no summary: see the step above" ;;
             baro)     sed -n '/=====/,$p' baro.txt 2>/dev/null || echo "no summary: see the step above" ;;
             lowspots) cat lowspots.txt 2>/dev/null || echo "no lots run: see the step above" ;;
+            analysis) sed -n '/WHERE THE MODEL COMES SHORT/,$p' analysis.txt 2>/dev/null || echo "no analysis: see the step above" ;;
             moisture|readings) cat moisture.txt 2>/dev/null || echo "no readings read: see the step above" ;;
             deploy)   echo "Water site: ${WATER_STATE:-not deployed -- see the steps above}" ;;
             builder)  echo "Water builder: ${BUILDER_STATE:-not deployed -- see the steps above}" ;;
