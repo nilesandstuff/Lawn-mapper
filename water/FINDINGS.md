@@ -2907,6 +2907,30 @@ rank 0.97 (the model's air 55.0 F, Open-Meteo's archived hours). Spot by spot, r
 the probe spread them by 9 F. One lot, one visit, five spots, a probe the owner doubts ("some concerns about the
 accuracy of the soil probe thermometer"); nothing tuned.
 
+### H99. The first residual analysis over every scored square: the error is patches a few metres across, not a setting (water session, 2026-11-18)
+
+The owner: "come up with a way to actually track the trends in how the model is different from the measurements...
+So far we're just guessing." Built: every square of a walk kept with what went into its prediction and how far each
+of 12 pieces of the physics, nudged alone, would move it (lib/residuals.js, truth_squares, SCORING 6), and the
+workflow's "analysis" task (tools/residuals.py). Checked first on made-up walks with a fault planted (sunshine 15% too
+high, and a 5 m warm patch): it gave 15.3% back and the patch's size. First run on the real walks, 05:25 UTC:
+3 walks, 3 lots, 2294 squares, on the walker's air.
+  - 16% of the mean square error is a per-walk offset, 84% is spread within lots (RMS 5.4 F). On the live map's own
+    prediction 45% is the offset (the station's air).
+  - IN SPACE: two squares' errors correlate +0.72 at 0.5-2 m apart, +0.42 at 2-4 m, +0.14 at 4-8 m, none past 8 m.
+    After the best mix of knobs: +0.71, +0.57, +0.27, +0.07.
+  - THE KNOBS: all together explain 15% of the within-lot error and cut a walk they were not fitted on by 1.5%. The
+    best alone (net longwave) cuts it 4%, at a size no physics allows (about nine times the longwave). Several
+    cannot be told apart on these walks (wind~evaporation, sun~sun through the turf, air~soil: correlation 1.00).
+  - TRENDS every walk agrees on: the less sky a square sees, the more it reads above the model (lowest fifth of sky
+    view +2.8 F, highest -1.4 F; rank -0.31, 3 of 3 walks); the same with canopy (3 of 3, weaker) and direct sun (3 of
+    3: no beam -0.7 F... full sun +0.5 F).
+  - A LEARNED MODEL (boosted trees on 27 factors) fitted on two lots explains less than nothing on the third (-15%).
+WHAT THIS SAYS, AS MEASURED: no change to a constant, the same everywhere, accounts for the error; most of it sits in
+patches 2-4 m across that none of the model's own factors explain, on any lot. The one pattern all three walks share
+is that enclosed squares (little sky) read warmer than modelled and open ones cooler. Three walks, three lots, one
+of them all shade; nothing tuned. Why is S31.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge
@@ -3278,3 +3302,19 @@ the grass, so the model's surface cools too slowly after sunset -- it would act 
 insulate the soil from the surface more than IFS's 10 W/m2/K (a lower conductance cools the skin faster at night and
 lets less of the soil's heat up); (6) the spin-up's soil itself too warm (Open-Meteo's archived air, or the IEMRE
 wave the column starts on). A soil thermometer at 2 in read during a walk would separate (5)-(6) from (4).
+
+### S31. What the 2-4 m patches of H99 might be (2026-11-18; none measured)
+
+Candidates, each with the test that would tell:
+  - THE WALK LAID A LITTLE OFF THE MAP. A record a metre or two from where it was read puts a shadow's edge, a tree's
+    footprint or a paving edge on the wrong squares, and that makes patches of exactly this size. One known cause to
+    rule out first: the page places a reading with the lidar's alignment shift (res.shift) and the walk scorer
+    (analyse.js walkCheck) and pointsAt place theirs without it. Test: score each walk again slid by -3..+3 m east and
+    north; a clear best away from zero is a placement error, and its size.
+  - THE SURROUNDINGS ARE WARMER THAN THE AIR. The model has trees, walls and fences at the air's temperature; in sun
+    they run above it, which would warm exactly the low-sky squares (the trend of H99). Test: the sky-view trend
+    should vanish on an overcast or dusk walk (W1, all shade, is one: its trend alone).
+  - SOMETHING ON THE GROUND THE MODEL DOES NOT KNOW: thin or dormant grass, bare soil, leaf litter, mulch (November).
+    Test: the walk's own photos at the worst patches.
+  - THE CAMERA'S VIEW: a square seen at a slant, or with a wall or trunk in it. Test: the residual by view angle
+    within the main band, and by pass.
