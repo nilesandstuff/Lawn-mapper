@@ -2764,3 +2764,37 @@ WHAT FOLLOWS FROM IT (the core session's reading, to be corrected by the owner):
 THE ORDER (owner, 2026-11-18: "Yes, proceed with the order you described"): the disagreement report (built:
 scan/lib/disagree.js, task `disagree`), sharpened; then fences; then the stitched space. The parcel copy is left as it
 is for now.
+
+THE THESIS, CONTINUED (owner, 2026-11-18, after reading the core session's interpretation: "your interpretation is in
+line with what I was saying. One part you left out"):
+
+> I want the output to be a whole new 3D object. Created FROM lidar and AR, the original raw data from both live
+> outside of it... So we're not destroying any original data, and the original data can be built upon or changed
+> (like a new lidar flight) without breaking anything... So this new 3D space can only ever be improved by being fed
+> more data. This will probably be very resource intensive.
+>
+> Oh and one more detail. The plan is that this new 3d space can serve as the environment that the shade map and
+> water map work in. They're geographically connected by the lidar, and the existing data sources fill in gaps in the
+> AR, so it improves the accuracy of the features.
+
+And on the model the owner found (https://huggingface.co/papers/2411.07184, "SAMPart3D: Segment Any Part in 3D
+Objects"):
+
+> That model may not actually solve the labelling, but it could be useful for sorting the unlabeled stuff by
+> segmenting it... So we can say "we don't know it is yet, we just know it's not turf, and it's this shape. But it
+> says that half of the points are road, so this whole shape is probably road". Also might be very helpful for
+> producing smoother shapes.
+
+SO, ADDED TO THE READING ABOVE:
+  - The representation is a DERIVED object, rebuilt from its sources and never the only copy of anything: the lidar
+    (the shade map's model, and the returns), every walk's twin, the maps. A new flight or a new walk is one more
+    source; rebuilding with it can only add or sharpen, and nothing is lost if a build is thrown away.
+  - It is the environment the shade map and the water map are to work in. The lidar ties it to the earth; where no
+    walk has looked, the lidar and the existing maps are what it holds.
+  - SEGMENT FIRST, NAME AFTER: a shape is found as a shape, then named by the vote of the labels on its points
+    ("half of the points are road, so this whole shape is probably road"), or kept as "not turf, this shape" until
+    something names it.
+  - What the paper is, as read 2026-11-18 (not tried): it splits ONE 3D OBJECT into parts, from a point cloud sampled
+    off a mesh plus rendered views (SAM masks lifted into 3D), with a few minutes of GPU work per object; it says
+    nothing of outdoor scenes. Its idea carries over (2D masks from the walk's own pictures, lifted onto the walk's
+    points, grouped at more than one grain); whether its code runs on a yard is unmeasured. A GPU means Modal: ask first.
