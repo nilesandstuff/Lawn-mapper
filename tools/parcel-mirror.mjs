@@ -286,12 +286,18 @@ async function probeFailed(list) {
  * the count is at most WHOLE_MAX. Returns { n, bytes, squares } or throws { kind: 'whole' }.
  */
 export const WHOLE_MAX = 3_000_000;
+export const WHOLE_PAGE_MS = 3000;   // a page of parcels by id, with the pause between pages, at the slow end of what servers take
+/** Can a layer of `count` parcels be taken whole, `page` at a time, before the run's hard stop? */
+export const wholeFits = (count, page, elapsedMs, hardMs) => elapsedMs + Math.ceil(count / Math.max(1, page)) * WHOLE_PAGE_MS < hardMs;
 export async function wholeLayer(svc, endpoint, st, write = writeSquare) {
   const url = `${endpoint.service}/${endpoint.layer}/query`, where = endpoint.where || '1=1';
   const fail = (why) => Object.assign(new Error(why), { kind: 'whole' });
   const c = await ask(url, { where, returnCountOnly: 'true' });
   if (c.error || !Number.isFinite(c.count)) throw fail(`no count (${c.error || 'none'})`);
   if (c.count > WHOLE_MAX) throw fail(`${c.count} parcels: too many to take whole`);
+  // not begun when it cannot finish in the time left: cut off, its pages (on this runner's disk) would be lost, and the
+  // next run, which takes services that failed first, begins it with the whole run ahead of it
+  if (!wholeFits(c.count, svc.page, elapsed(), HARD_MS)) throw Object.assign(new Error('out of time'), { kind: 'time' });
   let ids = await ask(url, { where, returnIdsOnly: 'true' }, { post: true });
   if (ids.error) ids = await ask(url, { where, returnIdsOnly: 'true' });
   if (ids.error) throw fail(`no ids (${ids.error})`);

@@ -321,3 +321,13 @@ console.log(`parcel-mirror whole layer: ${passed} passed`);
   } finally { globalThis.fetch = realFetch; }
 }
 console.log(`parcel-mirror no number: ${passed} passed`);
+
+// a layer taken whole is begun only when it can finish before the run's hard stop (2026-11-18)
+{
+  const { wholeFits } = await import('./parcel-mirror.mjs');
+  const min = 60e3;
+  assert.equal(wholeFits(921301, 1000, 10 * min, 345 * min), true, '921,301 parcels at the start of a run: about 46 minutes');
+  assert.equal(wholeFits(921301, 1000, 320 * min, 345 * min), false, 'the same with 25 minutes left: left for the next run');
+  assert.equal(wholeFits(9792, 1000, 340 * min, 345 * min), true, 'a small one fits in the last minutes');
+  console.log('parcel-mirror whole layer fits: ok');
+}
