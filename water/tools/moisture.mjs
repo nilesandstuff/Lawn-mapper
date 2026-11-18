@@ -124,6 +124,18 @@ if (versions.length) {
   }
 }
 
+// WHAT THE PAGES READ BACK (2026-11-18: the measurements page listed two scored walks as still to score): every stored
+// JSON field the GET /api/water/truth route parses, checked here; one that does not parse fails the whole route
+{
+  const bad = [];
+  const tryParse = (v) => { if (v === null || v === undefined || v === '') return true; try { JSON.parse(v); return true; } catch { return false; } };
+  for (const w of walks) if (!tryParse(w.notes)) bad.push(`walk W${walks.indexOf(w) + 1} notes (${String(w.notes).length} chars)`);
+  for (const x of weather) if (!tryParse(x.sources)) bad.push(`weather sources of W${walks.findIndex((w) => w.walk === x.walk) + 1}`);
+  for (const r of results) if (!tryParse(r.detail)) bad.push(`result of W${walks.findIndex((w) => w.walk === r.walk) + 1}, ${r.kind}, ${r.model} (${String(r.detail).length} chars)`);
+  console.log('=====');
+  console.log(`STORED RECORDS THE PAGES READ: ${results.length} results, ${walks.length} walks; ${bad.length ? `${bad.length} that do not parse: ${bad.join('; ')}` : 'all parse'}`);
+}
+
 // THE NO-PAGE SCORING'S QUEUE (src/jobs.js, src/autoscore.js): what the main site pushed and what became of it
 let jobs = [];
 try { jobs = query('SELECT kind, state, tries, detail, queued FROM kit_jobs ORDER BY queued'); } catch { /* no table yet */ }

@@ -162,11 +162,13 @@ export async function truth(request, env, url, { isAdmin, weatherFn = weatherOfM
     const ids = walks.map((w) => w.walk), q = ids.map(() => '?').join(', ');
     const weather = (await env.DB.prepare(`SELECT walk, fetched, sources FROM truth_weather WHERE walk IN (${q})`).bind(...ids).all()).results || [];
     const results = (await env.DB.prepare(`SELECT * FROM truth_results WHERE walk IN (${q}) ORDER BY checked`).bind(...ids).all()).results || [];
-    const wBy = new Map(weather.map((r) => [r.walk, { fetched: r.fetched, sources: JSON.parse(r.sources || '[]') }]));
+    // a stored field that does not parse (cut short when kept) is read as missing, not a failure of every walk's list
+    const parse = (v, d = null) => { if (!v) return d; try { return JSON.parse(v); } catch { return d; } };
+    const wBy = new Map(weather.map((r) => [r.walk, { fetched: r.fetched, sources: parse(r.sources, []) }]));
     return json({ walks: walks.map((w) => ({
-      ...w, kinds: w.kinds ? w.kinds.split(',') : [], notes: w.notes ? JSON.parse(w.notes) : null,
+      ...w, kinds: w.kinds ? w.kinds.split(',') : [], notes: parse(w.notes),
       weather: wBy.get(w.walk) || null,
-      results: results.filter((r) => r.walk === w.walk).map((r) => ({ ...r, detail: r.detail ? JSON.parse(r.detail) : null })),
+      results: results.filter((r) => r.walk === w.walk).map((r) => ({ ...r, detail: parse(r.detail) })),
     })) });
   }
   return json({ error: 'Not found' }, 404);

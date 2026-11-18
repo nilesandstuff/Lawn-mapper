@@ -34,6 +34,7 @@ async function load() {
   state.plain = (plain?.maps || []).filter((m) => m?.id && !isAdminSave(m));
   state.visits = mo?.visits || [];
   state.walks = tr?.walks || [];
+  state.walksRead = !!tr; // the scores could not be read: no walk is offered as still to score (2026-11-18)
   // the core's thermal walks, map by map (the test maps; the ordinary maps only when a walk is already known there)
   const ids = new Set([...state.tests.map((m) => m.id), ...state.walks.map((w) => w.map_id)]);
   await Promise.all([...ids].map(async (id) => {
@@ -49,7 +50,7 @@ const nameOf = (id) => { const m = mapOf(id); return m ? `${isAdminSave(m) ? 'Te
 /** What a map still needs from the water map: walks converted but not scored by the current model; visits unchecked. */
 function needs(id) {
   const scored = new Set(state.walks.filter((w) => w.map_id === id && w.results?.some((r) => r.model === MODEL_VERSION && r.kind === 'surface')).map((w) => w.walk));
-  const walks = (state.core.get(id) || []).filter((w) => w.ok === true && !scored.has(w.walk)).length;
+  const walks = state.walksRead ? (state.core.get(id) || []).filter((w) => w.ok === true && !scored.has(w.walk)).length : 0;
   // the visits a map's own check covers (soil moisture, surface temperature); the rest are the explorer's, with no check to wait for
   const visits = state.visits.filter((v) => v.map_id === id && v.readings?.length && !v.check && (isMoistureUnit(v.unit) || v.unit === 'surface_f')).length;
   return { walks, visits };
@@ -147,7 +148,8 @@ async function work() {
   working = true; again = false;
   const todo = state.tests.filter((m) => lawnDone(m)).map((m) => ({ m, n: needs(m.id) })).filter((x) => x.n.walks || x.n.visits);
   const list = $('#work-list');
-  if (!todo.length) { $('#work-say').textContent = 'Every test map is up to date.'; list.innerHTML = ''; working = false; return; }
+  const unread = state.walksRead ? '' : ' The walks\' scores could not be read just now, so none is offered here; the hourly scoring keeps them up to date.';
+  if (!todo.length) { $('#work-say').textContent = `Every test map is up to date.${unread}`; list.innerHTML = ''; working = false; return; }
   $('#work-say').textContent = `${todo.length} test map${todo.length === 1 ? '' : 's'} to bring up to date. Keep this page open; each takes a minute or two.`;
   list.innerHTML = todo.map((x) => `<li id="w-${esc(x.m.id).replace(/[^\w-]/g, '_')}">${esc(nameOf(x.m.id))}: ${[x.n.walks ? `${x.n.walks} walk${x.n.walks === 1 ? '' : 's'} to score` : '', x.n.visits ? `${x.n.visits} visit${x.n.visits === 1 ? '' : 's'} to check` : ''].filter(Boolean).join(', ')}</li>`).join('');
   for (const x of todo) {
