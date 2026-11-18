@@ -37,7 +37,7 @@ export const TILE = 0.5;                       // degrees: 10 x 10 cells
 const PER = Math.round(TILE / CELL);
 const MAX_AGE_DAYS = Number(process.env.MAX_AGE_DAYS || 30);
 const RETRY_FAILED_DAYS = 3;
-export const FALLBACKS_AT = '2026-11-17T19:30:00Z';   // smaller squares, pages by count, halved pages, the wider file search, the whole layer by ids
+export const FALLBACKS_AT = '2026-11-18T05:40:00Z';   // smaller squares, pages by count, halved pages, the wider file search, the whole layer by ids (every endpoint), pages without the number, waiting out a 429
 const BUDGET_MS = Math.min(320, Number(process.env.BUDGET_MIN) || 320) * 60e3;
 const HARD_MS = BUDGET_MS + 25 * 60e3;         // squares still going then are dropped, not half-written
 const SERVICES_AT_ONCE = Number(process.env.AT_ONCE || 8);
@@ -138,6 +138,9 @@ async function ask(url, params, { post = false, tries = 3, timeoutMs = TIMEOUT_M
           const code = Number(j.error.code);
           if (code === 499 || code === 498 || code === 403 || /token/i.test(j.error.message || '')) throw new Refused(`refused ${code}`);
           last = `error ${j.error.code ?? ''}`.trim();
+          // too many requests, said in the answer rather than the status (2026-11-18: one county's server): waited
+          // out and asked again, as an http 429 is
+          if (code === 429) { await sleep(10000); continue; }
           return { error: last };
         }
         return j;
@@ -201,6 +204,13 @@ async function pageOf(svc, url, base, batch) {
       return j.features || [];
     }
     last = j.error;
+  }
+  /* WITHOUT THE PARCEL NUMBER (2026-11-18: three servers answered every page "error 400", halved down to 25; the field
+     the registry names for the parcel number is the likeliest cause, so the page is asked once more for the shapes
+     alone). The parcels are copied with no number rather than not at all; it is kept on the service (svc.noPin). */
+  if (base.outFields && !svc.water && /error 400|http 400/.test(String(last))) {
+    const bare = await pageOf(svc, url, { ...base, outFields: '' }, batch).catch(() => null);
+    if (bare) { svc.noPin = true; return bare; }
   }
   if (batch.length > PAGE_MIN) {
     const h = Math.ceil(batch.length / 2);

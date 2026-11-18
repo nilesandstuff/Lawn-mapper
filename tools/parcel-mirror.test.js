@@ -141,8 +141,8 @@ console.log(`\n${passed} passed`);
   assert.deepEqual(got, ['p-new', 'p-half', 'w-new', 'w-half', 'p-old'], `the order: ${got}`);
   console.log('parcel copy order: parcels first, then water layers, then the oldest copies: ok');
   // failed yesterday: before the fallbacks existed, tried again now; since them, in three days; a water layer as before
-  const t = Date.parse('2026-11-17T21:00:00Z');
-  const F = { services: { 'p-before': { round: '2026-11-16T00:00:00Z', failed: { at: '2026-11-17T03:00:00Z' } }, 'p-since': { round: '2026-11-17T08:00:00Z', failed: { at: '2026-11-17T20:00:00Z' } }, 'w-before': { round: '2026-11-16T00:00:00Z', failed: { at: '2026-11-17T03:00:00Z' } } } };
+  const t = Date.parse('2026-11-18T07:00:00Z');
+  const F = { services: { 'p-before': { round: '2026-11-16T00:00:00Z', failed: { at: '2026-11-17T03:00:00Z' } }, 'p-since': { round: '2026-11-17T08:00:00Z', failed: { at: '2026-11-18T06:00:00Z' } }, 'w-before': { round: '2026-11-16T00:00:00Z', failed: { at: '2026-11-17T03:00:00Z' } } } };
   const again = order([{ key: 'p-before', box }, { key: 'p-since', box }, { key: 'w-before', water: true, box }], F, t).map((s) => s.key);
   assert.deepEqual(again, ['p-before'], `retried now: ${again}`);
   console.log('parcel copy order: failures from before the fallbacks retried at once: ok');
@@ -297,3 +297,27 @@ console.log(`parcel-mirror published file: ${passed} passed`);
   } finally { globalThis.fetch = realFetch; }
 }
 console.log(`parcel-mirror whole layer: ${passed} passed`);
+
+/* WITHOUT THE PARCEL NUMBER (2026-11-18): a server that answers every page "error 400" when asked for the number field
+   gives the shapes alone, copied with no number rather than not at all. */
+{
+  const M = await import('./parcel-mirror.mjs');
+  const realFetch = globalThis.fetch;
+  const lots = Array.from({ length: 60 }, (_, i) => ({ id: i + 1, x: 0.01 + (i % 10) * 0.04, y: 0.01 + Math.floor(i / 10) * 0.05 }));
+  globalThis.fetch = async (u, init = {}) => {
+    const q = init.body ? new URLSearchParams(String(init.body)) : new URL(u).searchParams;
+    const json = (j) => new Response(JSON.stringify(j), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    if (q.get('returnIdsOnly') === 'true') return json({ objectIds: lots.map((l) => l.id) });
+    if (q.get('outFields')) return json({ error: { code: 400, message: 'Invalid field' } });
+    const ids = (q.get('objectIds') || '').split(',').map(Number);
+    return json({ features: lots.filter((l) => ids.includes(l.id)).map((l) => ({ attributes: {}, geometry: { rings: [[[l.x, l.y], [l.x, l.y + 0.001], [l.x + 0.001, l.y + 0.001], [l.x, l.y]]] } })) });
+  };
+  try {
+    await test('pages refused for the number field: the shapes alone, no number', async () => {
+      const s = { page: 1000, box: [0, 0, 0.5, 0.5] };
+      const got = await M.fetchSquare(s, { service: 'https://example.test/arcgis/rest/services/P/MapServer', layer: 0, fields: { pin: 'BADFIELD' } }, [0, 0, 0.5, 0.5]);
+      assert.equal(got.parcels.length, 60); assert.ok(got.parcels.every((p) => p.pin === null)); assert.equal(s.noPin, true);
+    });
+  } finally { globalThis.fetch = realFetch; }
+}
+console.log(`parcel-mirror no number: ${passed} passed`);
