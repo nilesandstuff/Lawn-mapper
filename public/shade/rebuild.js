@@ -163,9 +163,9 @@ export async function rebuildModel(mapId, { onProgress = () => {}, signal = null
       const onMapbox = await match('mapbox');
       const onCounty = t.provider === 'county' ? await match('county', t.svc) : null;
       const move = t.provider === 'county' ? lineUpAt(t, [frame.lng, frame.lat]) : { east: 0, north: 0 };
-      const fit = fitFrom({ onCounty, onMapbox, move });
+      const fit = fitFrom({ onCounty, onMapbox, move, linedUp: !!t.align });
       shift = shiftFrom(pre, fit, lat);
-      lidarRec = { url: cloud.url, name: cloud.name, epoch: cloud.epoch, box, shift, fit: fit ? { east: fit.east, north: fit.north, confident: !!fit.confident, why: fit.why } : null, at: now.toISOString() };
+      lidarRec = { url: cloud.url, name: cloud.name, epoch: cloud.epoch, box, shift, fit: fit ? { east: fit.east, north: fit.north, confident: !!fit.confident, why: fit.why, on: fit.on || null } : null, at: now.toISOString() };
     }
     const unit = cloud?.unit || null;
     const lidarUrl = abs(lidarRec.url);

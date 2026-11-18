@@ -547,10 +547,12 @@ async function build(site) {
   } else if (onCounty && !onCounty.error) {
     /* Matched to the county photo where the county put it; the outline was
        drawn on it after the editor's line-up moved it, so add that move. */
-    used = fitFrom({ onCounty, onMapbox, move }); // shade/lineup.js, shared with rebuild.js
-    usedName = t.title !== undefined
-      ? `the county photo${t.title ? ` (${t.title})` : ''}, the clearest for this address, where the county put it`
-      : `the county photo the map was traced on${t.align ? ', as the editor lined it up' : ' (saved without a line-up, so where the county put it)'}`;
+    used = fitFrom({ onCounty, onMapbox, move, linedUp: !!t.align }); // shade/lineup.js, shared with rebuild.js
+    usedName = used?.on === 'mapbox'
+      ? 'the Mapbox photo, because the county photo\'s match was unsure and the editor\'s line-up put that photo on Mapbox\'s ground'
+      : t.title !== undefined
+        ? `the county photo${t.title ? ` (${t.title})` : ''}, the clearest for this address, where the county put it`
+        : `the county photo the map was traced on${t.align ? ', as the editor lined it up' : ' (saved without a line-up, so where the county put it)'}`;
   } else {
     used = fitFrom({ onCounty: null, onMapbox });
     usedName = t.provider === 'county'
@@ -636,7 +638,7 @@ async function build(site) {
   view.model = {
     green, flown: flown ? { start: flown.start, mid: flown.mid, end: flown.end } : null,
     cols, box, shift, baseZ, ground, fit, season: u?.season ?? null, flownTo: u?.end ? day(u.end) : null,
-    lidar: keptUsed ? kept : { url: cloud.url, name: cloud.name, epoch: cloud.epoch, box, shift, fit: fit ? { east: fit.east, north: fit.north, confident: !!fit.confident, why: fit.why } : null, at: new Date().toISOString() },
+    lidar: keptUsed ? kept : { url: cloud.url, name: cloud.name, epoch: cloud.epoch, box, shift, fit: fit ? { east: fit.east, north: fit.north, confident: !!fit.confident, why: fit.why, on: fit.on || null } : null, at: new Date().toISOString() },
   };
 
   /* The block around the lot, coarsely, for the AR's skyline (shade/surround.js): read while the trees are built, and
