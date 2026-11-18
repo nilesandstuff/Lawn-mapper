@@ -132,6 +132,8 @@ export async function sweep(env) {
     if (early) await env.DB.prepare('DELETE FROM truth_weather WHERE walk = ?').bind(r.walk).run();
     await enqueue(env, 'walk', r.map_id, { walk: String(r.walk) }); out.refetched++;
   }
+  // walks and visits filed under a map id cut short (at 80 or 64 characters, before 2026-11-18): the full id restored
+  out.mended = await mendIds(env, saves.map((x) => String(x.id))).catch(() => 0);
   // every field visit put on the test map of the lot it was taken on, before the soil checks below look for them
   Object.assign(out, await lineUpVisits(env, saves).catch(() => ({ lined: 0, waitingVisits: 0, unpinned: 0, made: 0, notMade: 0 })));
   // the field page's soil temperatures on a test map, not yet checked by this model
@@ -198,4 +200,21 @@ export async function lineUpVisits(env, saves, { make = true } = {}) {
     }
   }
   return out;
+}
+
+/** Map ids cut short when they were kept (truth.js at 80, moisture.js at 64, until 2026-11-18): where a kept id is the
+ *  start of exactly one test map's id, the full id is put back. -> how many rows were mended */
+export async function mendIds(env, saveIds) {
+  let n = 0;
+  for (const [table, col] of [['truth_walks', 'map_id'], ['moisture_visits', 'map_id']]) {
+    const ids = (await env.DB.prepare(`SELECT DISTINCT ${col} AS id FROM ${table} WHERE ${col} IS NOT NULL`).all()).results || [];
+    for (const { id } of ids) {
+      if (saveIds.includes(id) || id.length < 60) continue;
+      const full = saveIds.filter((s) => s.length > id.length && s.startsWith(id));
+      if (full.length !== 1) continue;
+      const r = await env.DB.prepare(`UPDATE ${table} SET ${col} = ? WHERE ${col} = ?`).bind(full[0], id).run();
+      n += r?.meta?.changes ?? 1;
+    }
+  }
+  return n;
 }

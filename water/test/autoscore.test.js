@@ -169,4 +169,17 @@ await test('a lot with field readings and no test map gets one made, once a day,
   assert.equal(made.length, 1, 'not asked again the same day'); assert.equal(again.made, 0);
 });
 
+await test('a map id longer than 80 characters is kept whole; one cut short before is mended to the test map\'s', async () => {
+  const { cleanWalk } = await import('../src/truth.js');
+  const long = `admin|${'a long address, a county, a state'.repeat(3)}|alpha|find`;
+  assert.equal(cleanWalk({ walk: 'w1', map_id: long, started: T0 }).row.map_id, long);
+  const env = { DB: d1(), MAIN: { ...main(), adminSaves: async () => [{ id: long, modelAt: 'x' }], saveOf: async () => null, thermalOf: async () => ({ walks: [] }) }, WATER_BUILDER: builder([]) };
+  await env.DB.prepare("INSERT INTO truth_walks (walk, map_id, source, started) VALUES ('wcut', ?, 'thermal', 1)").bind(long.slice(0, 80)).run();
+  await env.DB.prepare("INSERT INTO truth_walks (walk, map_id, source, started) VALUES ('wshort', 'plain-map', 'thermal', 1)").run();
+  const sw = await sweep(env);
+  assert.equal(sw.mended, 1);
+  assert.equal((await env.DB.prepare("SELECT map_id FROM truth_walks WHERE walk = 'wcut'").first()).map_id, long);
+  assert.equal((await env.DB.prepare("SELECT map_id FROM truth_walks WHERE walk = 'wshort'").first()).map_id, 'plain-map');
+});
+
 console.log(`\n${passed} passed`);

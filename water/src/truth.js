@@ -39,7 +39,8 @@ const T_MIN = 1.5e12, T_MAX = 4e12;
 /** A posted walk, checked. -> { row } or { error } */
 export function cleanWalk(b, now = Date.now()) {
   if (!b || typeof b !== 'object') return { error: 'no walk' };
-  const walk = txt(b.walk, 80), map_id = txt(b.map_id, 80);
+  // a map id holds the lot's address and runs past 80 characters (2026-11-18: two walks were filed under ids cut at 80)
+  const walk = txt(b.walk, 80), map_id = txt(b.map_id, 300);
   if (!walk || !/^[\w.:-]+$/.test(walk)) return { error: 'walk id required (letters, digits, - _ . :)' };
   if (!map_id) return { error: 'map_id required: a walk belongs to a property for good' };
   const started = num(b.started, T_MIN, T_MAX), ended = num(b.ended, T_MIN, T_MAX);

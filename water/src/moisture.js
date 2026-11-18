@@ -49,7 +49,7 @@ export function cleanVisit(b, now = Date.now()) {
   const visit = {
     id, at: num(b.at, 1.5e12, now + 864e5) ?? now, saved: now,
     lng: num(b.lng, -180, 180), lat: num(b.lat, -90, 90),
-    parcel_pin: txt(b.parcel_pin, 64), county: txt(b.county, 64), map_id: txt(b.map_id, 64),
+    parcel_pin: txt(b.parcel_pin, 64), county: txt(b.county, 64), map_id: txt(b.map_id, 300), // a map id holds the lot's address: 64 cut some (2026-11-18)
     meter: txt(b.meter, 80), unit, depth_in: num(b.depth_in, 0, 48), note: txt(b.note, 2000),
     weather: b.weather ? txt(JSON.stringify(b.weather), 4000) : null,
     placed_on: txt(b.placed_on, 40), // the photo the dots were put on: 'county:<svc>' (the one the lawn was traced on) or 'mapbox'
@@ -118,7 +118,7 @@ export async function moisture(request, env, url, { isAdmin }) {
     if (request.method !== 'POST') return json({ error: 'method' }, 405);
     let b = null;
     try { b = await request.json(); } catch { /* below */ }
-    const from = typeof b?.from === 'string' ? b.from.slice(0, 120) : null, to = typeof b?.to === 'string' ? b.to.slice(0, 120) : null;
+    const from = typeof b?.from === 'string' ? b.from.slice(0, 300) : null, to = typeof b?.to === 'string' ? b.to.slice(0, 300) : null;
     const ids = Array.isArray(b?.ids) ? b.ids.filter((x) => typeof x === 'string').slice(0, 500) : null;
     /* from null: readings taken where no saved map was (the field page, 2026-11-17: "take quick measurements in the
        field, and then we can associate it with an admin map later"), named by their visit ids */
