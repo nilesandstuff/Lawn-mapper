@@ -2896,6 +2896,17 @@ THE SOIL THERMOMETER (check 3): the visit attached to W3's map (5 readings, 41-5
 lies about 4.1-4.2 km from that map's box, so no reading can be compared; the other soil visit of the day (42-51 F)
 is not on a test map. The two look swapped in the move; nothing about the model is learned from them yet.
 
+### H98. The first soil thermometer readings against the soil columns: rank 0.97, 2 F warm of the model (water session, 2026-11-18)
+
+Once the readings were lined up by place (lib/lineup.js; the visit H97 found on W3's map had been taken at another lot,
+4 km away, and the day's other soil visit was the one taken on W3's lot), check 3 at 00:06 UTC: five spots at 3 in,
+on W3's lot, about the walk's time, all on the plan's own lawn cells. Measured minus modelled: mean +2.2 F, RMS 3.6 F,
+rank 0.97 (the model's air 55.0 F, Open-Meteo's archived hours). Spot by spot, read / modelled F: 50 / 46.0,
+51 / 46.2, 51 / 46.4, 44 / 44.2, 42 / 43.9: the three warm spots read 4-5 F above the model, the two cool ones within
+2 F. WHAT THIS SAYS, AS MEASURED: the columns put the five spots in the right order and spread them by 2.5 F where
+the probe spread them by 9 F. One lot, one visit, five spots, a probe the owner doubts ("some concerns about the
+accuracy of the soil probe thermometer"); nothing tuned.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge
