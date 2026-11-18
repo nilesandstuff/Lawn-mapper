@@ -907,12 +907,7 @@ function moistureCard(p) {
     const say = rho === null ? 'Too few readings on lawn to rank.' : `Rank correlation, reading against the model's wetness, over ${lawn.length} lawn spots: <strong>${rho.toFixed(2)}</strong> (1 = the same order, 0 = no relation, -1 = the reverse).`;
     const flat = ws.length && ws[ws.length - 1] - ws[0] < 0.05 ? ' The model has every one of these spots within 5% of each other, so it predicts no pattern here to rank against.' : '';
     const offs = spots.filter((s) => s.off !== null && s.off > 0).length;
-    // numbers only to the server: no point, no note, no map id
-    fetch('/api/water/moisture/check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-      visit_id: v.id, rho, n: lawn.length,
-      spots: spots.map((s) => ({ n: s.n, value: s.value, wet: s.wet, zone: s.zone, kind: s.kind, need: s.need, lawn: s.lawn ? 1 : 0, off: s.off, cells: s.cells })),
-      settings: { date, depth_in: v.depth_in, rootMm: p.rootIn ? Math.round(p.rootIn * 25.4) : null, season: p.mode || null, irrigated: 'rain alone', onTraceM: ON_TRACE_M, nearM: NEAR_M },
-    }) }).catch(() => {});
+    // the check itself is kept by the hourly scoring (src/autoscore.js, 2026-11-18); this card only shows it worked out here
     return `<details class="card"><summary>Readings of ${date}: ${v.readings.length} spots, the model's rank against them ${rho === null ? '-' : rho.toFixed(2)}</summary>
       <p>${say}${flat} Against the peak month's watering need instead (sun, trees, slope): ${rhoNeed === null ? '-' : rhoNeed.toFixed(2)}.</p>
       <p class="dim">Readings ${vs[0] ?? '-'} to ${vs[vs.length - 1] ?? '-'}; the model's wetness ${f2(ws[0])} to ${f2(ws[ws.length - 1])} (the root zone's water over what it holds at field capacity, with rain alone), each spot the mean of the lawn squares within ${NEAR_M} m of it. A spot is on the lawn when it is on the traced lawn or within ${ON_TRACE_M} m of it${offs ? ` (${offs} of these sit just off the trace: the photo a dot is put on and the one the lawn was traced on can differ by about that much)` : ''}. ${wet ? '' : 'The weather record does not reach this date, so the model has no wetness for it.'}</p>
@@ -956,7 +951,10 @@ async function askWalks() {
      failed one ok false with its error; only the converted ones are opened */
   walkState.waiting = list.filter((w) => w.ok === null || w.ok === undefined).length;
   walkState.failed = list.filter((w) => w.ok === false).map((w) => w.error || 'no reason given');
-  const todo = list.filter((w) => w.walk && w.ok === true && !done.has(w.walk)).slice(-12);
+  /* walks are scored by the hourly scoring alone since 2026-11-18 (owner: "I don't want anything to have to run in the
+     browser"): it keeps every square for the residual analysis, which a page's score did not. Unscored ones wait. */
+  walkState.unscored = list.filter((w) => w.walk && w.ok === true && !done.has(w.walk)).length;
+  const todo = [];
   for (const [k, item] of todo.entries()) {
     walkState.busy = `Checking thermal walk ${k + 1} of ${todo.length} against the model…`;
     if (view.plan) moistureCard(view.plan);
@@ -1006,6 +1004,7 @@ function walkCards() {
   const walks = walkState.truth.filter((w) => w.kinds.includes('surface'));
   const head = '<h2>Thermal walks against the model</h2>';
   const queue = [walkState.waiting ? `${walkState.waiting === 1 ? 'One walk is' : `${walkState.waiting} walks are`} still being turned into temperatures (the converter looks for new walks every 2 hours).` : '',
+    walkState.unscored ? `${walkState.unscored === 1 ? 'One walk is' : `${walkState.unscored} walks are`} waiting to be scored: the hourly scoring does it, with no page open.` : '',
     walkState.failed.length ? `${walkState.failed.length === 1 ? 'One walk' : `${walkState.failed.length} walks`} could not be converted: ${esc(walkState.failed.slice(0, 3).join('; '))}.` : ''].filter(Boolean).join(' ');
   const queueCard = queue ? `<div class="card dim">${queue}</div>` : '';
   if (!walks.length) return walkState.busy ? `${head}<div class="card">${esc(walkState.busy)}</div>` : queue || walkState.why ? `${head}${queueCard}${walkState.why ? `<div class="card dim">No thermal walks compared (${esc(walkState.why)}).</div>` : ''}` : '';
@@ -1074,11 +1073,6 @@ function surfCards() {
     const mean = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : null);
     const mM = mean(ok.map((s) => s.measured)), mD = mean(ok.map((s) => s.model));
     const f1 = (x) => (x === null || x === undefined ? '-' : `${x > 0 ? '+' : ''}${x.toFixed(1)}`);
-    fetch('/api/water/moisture/check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-      visit_id: v.id, rho, n: ok.length,
-      spots: spots.map((s) => ({ n: s.n, value: s.value, wet: s.model, lawn: s.lawn ? 1 : 0 })),
-      settings: { date, irrigated: m.watered ? 'watered' : 'rain alone', season: `surface, ${m.mode === 'day' ? 'afternoon' : 'before dawn'}; air ${Math.round(air)} F` },
-    }) }).catch(() => {});
     const rows = spots.map((s) => `<tr><td>${s.n}</td><td>${s.value} °F</td><td>${f1(s.measured)}</td><td>${f1(s.model)}</td><td>${s.lawn ? 'lawn' : 'off the lawn'}</td><td>${s.wind === null ? '-' : `${Math.round(s.wind * 100)}%`}</td><td>${s.ks === null ? '-' : `${Math.round(s.ks * 100)}%`}</td><td>${esc(s.note || '')}</td></tr>`).join('');
     return `<details class="card"><summary>Surface temperatures of ${date} (${m.mode === 'day' ? 'afternoon' : 'before dawn'}): ${v.readings.length} spots, the model's rank against them ${rho === null ? '-' : rho.toFixed(2)}</summary>
       <p>Each spot as degrees above (+) or below (−) the air at ${Math.round(air)} °F${Number.isFinite(v.air_f) ? ', as you read it' : " (no air reading: the day's " + (m.mode === 'day' ? 'high' : 'low') + ' from the weather record)'}. Rank correlation over ${ok.length} lawn spots: <strong>${rho === null ? '-' : rho.toFixed(2)}</strong>. On average the spots read ${f1(mM)} °F against the air; the model has them at ${f1(mD)} °F (open, level, watered lawn ${f1(F(m.open))} °F).</p>

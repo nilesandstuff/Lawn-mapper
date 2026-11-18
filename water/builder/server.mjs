@@ -51,6 +51,12 @@ export async function points({ record, id, base, visit, view = 'soil' }) {
   if (!record || !visit || !base) return { ok: false, why: 'record, visit and base are needed' };
   const { run, why } = await mapFor(record, id, base);
   if (!run) return { ok: false, why };
+  /* soil moisture and surface temperature (2026-11-18: the checks the page used to work out, analyse.js visitCheck) */
+  if (view === 'visit') {
+    const result = await run.ask('visitCheck', { unit: visit.unit, at: visit.at, depth_in: visit.depth_in ?? null, air_f: visit.air_f ?? null, watered: !!visit.watered,
+      readings: (visit.readings || []).filter((r) => Number.isFinite(r.lng) && Number.isFinite(r.value)).map((r) => ({ n: r.n, lng: r.lng, lat: r.lat, value: r.value })) });
+    return result.error ? { ok: false, why: result.error, final: !!result.final } : { ok: true, result };
+  }
   const pts = (visit.readings || []).filter((r) => Number.isFinite(r.lng) && Number.isFinite(r.value)).map((r) => ({ n: r.n, lng: r.lng, lat: r.lat, value: (r.value - 32) / 1.8 }));
   const result = await run.ask('pointsAt', { t: visit.at, depthCm: Number.isFinite(visit.depth_in) ? visit.depth_in * 2.54 : 7.5, points: pts, view });
   return result.error ? { ok: false, why: result.error } : { ok: true, result };

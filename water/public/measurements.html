@@ -29,7 +29,6 @@
   select { font: inherit; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); max-width: 100%; margin: 4px 0; }
   a { color: var(--accent); }
   .ok { color: var(--good); } .bad { color: var(--bad); }
-  #runner { position: absolute; width: 1px; height: 1px; border: 0; left: -10px; top: -10px; }
 </style>
 </head>
 <body>
@@ -37,10 +36,9 @@
   <p class="dim" style="margin:0"><a href="/">&larr; Lawn Water</a> · <a href="/admin">Water admin</a> · <a href="/moisture">Readings page</a> · <a id="saves" href="#">Admin saves</a></p>
   <h1>Measurements</h1>
   <p class="dim">Every soil moisture reading, surface temperature and thermal walk, by map, against the model. Your test maps (admin saves) come first. Opening this page also brings each test map up to date: new thermal walks are scored and unchecked readings are checked, one map after another, here in the background. You don't need to open each map.</p>
-  <div class="card" id="work"><h2>Bringing the maps up to date</h2><p class="dim" id="work-say">Reading what is kept…</p><ul id="work-list" class="dim"></ul></div>
+  <div class="card" id="work"><h2>Scoring</h2><p class="dim" id="work-say">Reading what is kept…</p><ul id="work-list" class="dim"></ul></div>
   <div id="move"></div>
   <div id="maps"></div>
-  <iframe id="runner" title="the water map, worked out in the background" aria-hidden="true"></iframe>
 </main>
 <script type="module" src="/measurements.js"></script>
 </body>

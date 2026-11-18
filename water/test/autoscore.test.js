@@ -126,8 +126,13 @@ await test('weather frozen before the station and the satellite were in is fetch
   await env.DB.prepare("INSERT INTO truth_weather (walk, fetched, sources, series) VALUES ('w9', ?, ?, '[]')").bind(end + 6e5, JSON.stringify([{ name: 'Open-Meteo best model' }])).run();
   await env.DB.prepare("INSERT INTO truth_results (walk, model, kind, checked, n) VALUES ('w9', 'x', 'surface', 1, 5)").run();
   await env.DB.prepare("INSERT INTO moisture_visits (id, at, saved, unit, map_id) VALUES ('soilvisit1', 1, 1, 'soil_f', 'admin|1')").run();
+  await env.DB.prepare("INSERT INTO moisture_readings (id, visit_id, n, lng, lat, value) VALUES ('soilvisit1-1', 'soilvisit1', 1, -85, 42, 50)").run();
+  // a soil moisture visit checked by a page before (no check number) is checked again here; one with marks alone is not
+  await env.DB.prepare("INSERT INTO moisture_visits (id, at, saved, unit, map_id) VALUES ('wetvisit1', 1, 1, 'scale', 'admin|1'), ('marksonly', 1, 1, 'scale', 'admin|1')").run();
+  await env.DB.prepare("INSERT INTO moisture_readings (id, visit_id, n, lng, lat, value) VALUES ('wetvisit1-1', 'wetvisit1', 1, -85, 42, 40)").run();
+  await env.DB.prepare("INSERT INTO moisture_checks (visit_id, checked, rho, n, detail) VALUES ('wetvisit1', 1, 0.2, 1, '{\"spots\":[]}')").run();
   const sw = await sweep(env);
-  assert.equal(sw.refetched, 1); assert.equal(sw.soil, 1);
+  assert.equal(sw.refetched, 1); assert.equal(sw.soil, 2);
   assert.equal(await env.DB.prepare("SELECT walk FROM truth_weather WHERE walk = 'w9'").first(), null, 'the early weather dropped');
   assert.equal((await sweep(env)).soil, 0, 'already queued: not again');
 });

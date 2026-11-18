@@ -15,6 +15,7 @@ import { waiting, settle, enqueue } from './jobs.js';
 import { putWalk, putWeather, frozenWeather, putResult } from './truth.js';
 import { MODEL_VERSION, SCORING } from '../lib/surfacenow.js';
 import { lineUp, saveShape, placeOf } from '../lib/lineup.js';
+import { isMoistureUnit } from '../lib/maps.js';
 
 const pinOf = (record) => record?.parcel?.properties?.pin || record?.parcel?.properties?.PIN || null;
 const converted = (w) => w && Array.isArray(w.records) && w.records.length > 0;
@@ -30,6 +31,10 @@ export const SETTLE_MS = 6 * 36e5;
 /** What a soil check carries (2, 2026-11-17: each reading's distance to the nearest lawn spot the model works out; 3: and
  *  how far off the map's box it is, the first check having found every spot off it). */
 export const SOIL_CHECK = 3;
+/** The soil moisture and surface temperature checks, worked out here since 2026-11-18 (owner: "I don't want anything to
+ *  have to run in the browser"); a check a page kept before carries no number and is worked out again once. */
+export const VISIT_CHECK = 1;
+const CHECKED_UNIT = (u) => u === 'soil_f' || u === 'surface_f' || isMoistureUnit(u);
 export const completeWeather = (w) => { const s = w?.sources || []; return s.some((x) => /^ASOS/.test(x?.name || '')) && s.some((x) => /satellite/i.test(x?.name || '')); };
 
 /** Work the queue: at most `max` walks scored. -> [{ key, state, why }] */
@@ -89,16 +94,25 @@ async function scoreOne(env, job, base) {
 async function soilOne(env, job, base) {
   const record = await env.MAIN.saveOf(job.map_id);
   if (!record) return { state: 'failed', why: 'not an admin save, or no longer there' };
-  const v = await env.DB.prepare('SELECT id, at, depth_in, unit FROM moisture_visits WHERE id = ?').bind(job.walk).first();
-  if (!v || v.unit !== 'soil_f') return { state: 'failed', why: 'no soil temperature visit by that id' };
+  const v = await env.DB.prepare('SELECT id, at, depth_in, unit, air_f, weather FROM moisture_visits WHERE id = ?').bind(job.walk).first();
+  if (!v || !CHECKED_UNIT(v.unit)) return { state: 'failed', why: 'no visit by that id that the model is checked against' };
   const readings = (await env.DB.prepare('SELECT n, lng, lat, value FROM moisture_readings WHERE visit_id = ? ORDER BY n').bind(v.id).all()).results || [];
-  const res = await env.WATER_BUILDER.fetch('https://water-builder/points', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ record, id: job.map_id, base, visit: { at: v.at, depth_in: v.depth_in, readings }, view: 'soil' }) });
+  const soil = v.unit === 'soil_f';
+  let wx = null; try { wx = JSON.parse(v.weather || 'null'); } catch { /* none */ }
+  const visit = { at: v.at, depth_in: v.depth_in, unit: v.unit, air_f: v.air_f, watered: !!(wx?.sprinklers || wx?.lastTwoDays === 'watered'), readings };
+  const res = await env.WATER_BUILDER.fetch('https://water-builder/points', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ record, id: job.map_id, base, visit, view: soil ? 'soil' : 'visit' }) });
   const o = await res.json().catch(() => null);
+  if (!o?.ok && o?.final) { // no fair comparison (a surface visit at dusk): kept as checked, with why, and not tried again
+    await env.DB.prepare('INSERT OR REPLACE INTO moisture_checks (visit_id, checked, rho, n, detail) VALUES (?, ?, NULL, 0, ?)').bind(v.id, Date.now(), JSON.stringify({ kind: 'visit', check: VISIT_CHECK, by: 'the water builder', why: o.why, spots: [], settings: {} })).run();
+    return { state: 'done', why: `not compared: ${o.why}` };
+  }
   if (!o?.ok) return { state: 'retry', why: o?.why || `the builder answered ${res.status}` };
   const r = o.result;
-  const detail = { kind: 'soil', check: SOIL_CHECK, model: r.model, depth_in: v.depth_in, bias: r.bias, rmse: r.rmse, air: r.air, used: r.used, by: 'the water builder', spots: (r.spots || []).map((x) => ({ n: x.n, value: x.value, model: x.model, lawnM: x.lawnM ?? null, inGrid: x.inGrid ?? null, boxM: x.boxM ?? null, kind: x.kind ?? null })) };
+  const detail = soil
+    ? { kind: 'soil', check: SOIL_CHECK, model: r.model, depth_in: v.depth_in, bias: r.bias, rmse: r.rmse, air: r.air, used: r.used, by: 'the water builder', spots: (r.spots || []).map((x) => ({ n: x.n, value: x.value, model: x.model, lawnM: x.lawnM ?? null, inGrid: x.inGrid ?? null, boxM: x.boxM ?? null, kind: x.kind ?? null })) }
+    : { kind: 'visit', check: VISIT_CHECK, by: 'the water builder', spots: r.spots || [], settings: r.settings || {} };
   await env.DB.prepare('INSERT OR REPLACE INTO moisture_checks (visit_id, checked, rho, n, detail) VALUES (?, ?, ?, ?, ?)').bind(v.id, Date.now(), Number.isFinite(r.rho) ? r.rho : null, r.n, JSON.stringify(detail)).run();
-  return { state: 'done', why: `${r.n} soil readings` };
+  return { state: 'done', why: `${r.n} ${soil ? 'soil readings' : 'readings on the lawn'}` };
 }
 
 /** Every admin save's converted walks the current model has not scored: queued.
@@ -139,15 +153,19 @@ export async function sweep(env) {
   out.mended = await mendIds(env, saves.map((x) => String(x.id))).catch(() => 0);
   // every field visit put on the test map of the lot it was taken on, before the soil checks below look for them
   Object.assign(out, await lineUpVisits(env, saves).catch(() => ({ lined: 0, waitingVisits: 0, unpinned: 0, made: 0, notMade: 0 })));
-  // the field page's soil temperatures on a test map, not yet checked by this model
+  // the field page's visits on a test map that the model is checked against (soil temperature, soil moisture, surface
+  // temperature), not yet checked here, or by an older check
   const saveIds = new Set(saves.map((x) => String(x.id)));
-  const soil = (await env.DB.prepare(`SELECT v.id, v.map_id, c.detail FROM moisture_visits v LEFT JOIN moisture_checks c ON c.visit_id = v.id WHERE v.unit = 'soil_f' AND v.map_id IS NOT NULL`).all()).results || [];
-  for (const v of soil) {
-    if (!saveIds.has(String(v.map_id))) continue;
+  const vs = (await env.DB.prepare('SELECT v.id, v.map_id, v.unit, c.detail FROM moisture_visits v LEFT JOIN moisture_checks c ON c.visit_id = v.id WHERE v.map_id IS NOT NULL').all()).results || [];
+  for (const v of vs) {
+    if (!saveIds.has(String(v.map_id)) || !CHECKED_UNIT(v.unit)) continue;
     let d0 = null; try { d0 = JSON.parse(v.detail || 'null'); } catch { /* none */ }
-    if (d0?.model === MODEL_VERSION && (d0?.check || 1) >= SOIL_CHECK) continue;
-    const job = await env.DB.prepare('SELECT state FROM kit_jobs WHERE key = ?').bind(`soil|${v.map_id}|${v.id}`).first();
-    if ((job?.state === 'failed' && (d0?.check || 1) >= SOIL_CHECK) || job?.state === 'queued') continue; // a failed check is not tried again every hour
+    const soil = v.unit === 'soil_f', want = soil ? SOIL_CHECK : VISIT_CHECK;
+    const has = d0 && (soil ? d0.model === MODEL_VERSION : true) ? d0.check || (soil ? 1 : 0) : -1;
+    if (has >= want) continue;
+    if (!(await env.DB.prepare('SELECT 1 AS x FROM moisture_readings WHERE visit_id = ? LIMIT 1').bind(v.id).first())) continue; // marks alone: nothing to check
+    const job = await env.DB.prepare('SELECT state, queued FROM kit_jobs WHERE key = ?').bind(`soil|${v.map_id}|${v.id}`).first();
+    if (job?.state === 'queued' || (job?.state === 'failed' && Date.now() - job.queued < 864e5)) continue; // a failed check is tried again a day later, not every hour
     await enqueue(env, 'soil', v.map_id, { walk: v.id }); out.soil++;
   }
   return out;

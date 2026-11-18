@@ -55,7 +55,7 @@ function needs(id) {
   // why each is offered (2026-11-18: two walks the hourly scoring had scored were offered here), shown beside it
   const why = open.map((w) => { const t = state.walks.find((x) => String(x.walk) === String(w.walk)); return !t ? 'no score kept for it' : t.map_id !== id ? 'its score is kept under another map' : `scored only by ${[...new Set((t.results || []).map((r) => r.model))].join(', ') || 'nothing'}`; });
   // the visits a map's own check covers (soil moisture, surface temperature); the rest are the explorer's, with no check to wait for
-  const visits = state.visits.filter((v) => v.map_id === id && v.readings?.length && !v.check && (isMoistureUnit(v.unit) || v.unit === 'surface_f')).length;
+  const visits = state.visits.filter((v) => v.map_id === id && v.readings?.length && !v.check && (isMoistureUnit(v.unit) || v.unit === 'surface_f' || v.unit === 'soil_f')).length;
   return { walks, visits, why };
 }
 
@@ -133,40 +133,17 @@ function render() {
   $('#maps').innerHTML = cards || '<div class="card dim">No measurements yet.</div>';
 }
 
-/* one test map in the hidden frame, as opening it would: resolves with the frame's word, or a timeout */
-function runOne(id) {
-  return new Promise((resolve) => {
-    const frame = $('#runner');
-    const done = (info) => { window.removeEventListener('message', hear); clearTimeout(timer); frame.src = 'about:blank'; resolve(info); };
-    const hear = (e) => { if (e.origin === location.origin && e.data?.type === 'water-auto' && e.data.map === id) done(e.data); };
-    const timer = setTimeout(() => done({ ok: false, why: 'took longer than 8 minutes' }), 8 * 60000);
-    window.addEventListener('message', hear);
-    frame.src = `/?map=${encodeURIComponent(id)}&auto=1`;
-  });
-}
-
-let working = false, again = false;
-async function work() {
-  if (working) { again = true; return; } // a move while working: one more round when this one ends
-  working = true; again = false;
-  const todo = state.tests.filter((m) => lawnDone(m)).map((m) => ({ m, n: needs(m.id) })).filter((x) => x.n.walks || x.n.visits);
-  const list = $('#work-list');
-  const unread = state.walksRead ? '' : ' The walks\' scores could not be read just now, so none is offered here; the hourly scoring keeps them up to date.';
-  if (!todo.length) { $('#work-say').textContent = `Every test map is up to date.${unread}`; list.innerHTML = ''; working = false; return; }
-  $('#work-say').textContent = `${todo.length} test map${todo.length === 1 ? '' : 's'} to bring up to date. Keep this page open; each takes a minute or two.`;
-  list.innerHTML = todo.map((x) => `<li id="w-${esc(x.m.id).replace(/[^\w-]/g, '_')}">${esc(nameOf(x.m.id))}: ${[x.n.walks ? `${x.n.walks} walk${x.n.walks === 1 ? '' : 's'} to score <span class="dim">(${esc(x.n.why.join('; '))})</span>` : '', x.n.visits ? `${x.n.visits} visit${x.n.visits === 1 ? '' : 's'} to check` : ''].filter(Boolean).join(', ')}</li>`).join('');
-  for (const x of todo) {
-    const li = document.getElementById(`w-${x.m.id.replace(/[^\w-]/g, '_')}`);
-    if (li) li.insertAdjacentHTML('beforeend', ' · <b>working…</b>');
-    const r = await runOne(x.m.id);
-    const said = r.ok ? `done${r.scored ? `: ${r.scored} walk${r.scored === 1 ? '' : 's'} scored` : ''}${r.waiting ? `, ${r.waiting} waiting to be converted` : ''}` : `not done (${r.why || 'no reason'})`;
-    state.work.set(x.m.id, `Last brought up to date ${when(Date.now())}: ${said}.`);
-    if (li) li.innerHTML = `${esc(nameOf(x.m.id))}: ${esc(said)}`;
-  }
-  $('#work-say').textContent = 'Finished. The numbers below are the latest.';
-  await load(); render();
-  working = false;
-  if (again) work();
+/* WHAT IS STILL WAITING (2026-11-18, owner: "I don't want anything to have to run in the browser like that"): nothing
+   is worked out here any more. The hourly scoring scores every walk and checks every set of readings on a test map
+   with no page open; this says what it has not reached yet. */
+function work() {
+  const todo = state.tests.map((m) => ({ m, n: needs(m.id) })).filter((x) => x.n.walks || x.n.visits);
+  const walks = todo.reduce((a, x) => a + x.n.walks, 0), visits = todo.reduce((a, x) => a + x.n.visits, 0);
+  const unread = state.walksRead ? '' : ' The walks\' scores could not be read just now.';
+  $('#work-say').textContent = todo.length
+    ? `Waiting for the hourly scoring: ${[walks ? `${walks} walk${walks === 1 ? '' : 's'}` : '', visits ? `${visits} set${visits === 1 ? '' : 's'} of readings` : ''].filter(Boolean).join(' and ')}. It runs by itself at the top of each hour; nothing needs this page open.${unread}`
+    : `Everything is scored. New walks and readings are scored by themselves within the hour.${unread}`;
+  $('#work-list').innerHTML = todo.map((x) => `<li>${esc(nameOf(x.m.id))}: ${[x.n.walks ? `${x.n.walks} walk${x.n.walks === 1 ? '' : 's'} <span class="dim">(${esc(x.n.why.join('; '))})</span>` : '', x.n.visits ? `${x.n.visits} set${x.n.visits === 1 ? '' : 's'} of readings` : ''].filter(Boolean).join(', ')}</li>`).join('');
 }
 
 (async () => {

@@ -44,6 +44,7 @@ import { fitAnnual, spinColumns, columnProps, stepColumn, skinParts, CENTRES } f
 import { NUDGES, KNOBS, SOIL_NUDGE_C, BEAM_NUDGE, SQUARE_COLS, rowOf } from '/lib/residuals.js';
 import { surfaceExplain, soilExplain, windExplain, moistureExplain } from '/lib/explain.js';
 import { spearman } from '/lib/rank.js';
+import { offLawnM, ON_TRACE_M } from '/lib/walkrecords.js';
 
 const kept = { r: null, lawn: null, standIn: false, soil: null, typical: null, week: null, lng: null, lat: null, season: null, climate: null, light: null };
 
@@ -497,12 +498,18 @@ function moistureAt({ id, date, i = null, reading = null, unit = null, days: bac
    that day's rain-alone run has it (or kept watered, when the visitor ticked the sprinklers); each cell's surface
    minus the air, at the afternoon peak (a visit 10 am-5 pm) or
    before dawn (9 pm-8 am). Anything else (dusk, dawn) has no fair moment to compare with. */
-function surfCheck({ id, date, hour, airF, watered = false }) {
+function surfCheck(q) {
+  const r = surfCore(q);
+  if (r.error) { self.postMessage({ surfCheck: { id: q.id, error: r.error } }); return; }
+  self.postMessage({ surfCheck: { id: q.id, ...r } }, [r.dT.buffer]);
+}
+/** surfCheck's working, for the page's message and the server's visit check alike. -> { error } or the fields */
+function surfCore({ date, hour, airF, watered = false }) {
   const days = kept.week?.days || [];
   const day = days.find((d) => d.date === date);
-  if (!kept.model || !day) { self.postMessage({ surfCheck: { id, error: kept.model ? 'the weather record does not reach that day' : 'the plan is not worked out yet' } }); return; }
+  if (!kept.model || !day) return { error: kept.model ? 'the weather record does not reach that day' : 'the plan is not worked out yet' };
   const mode = hour >= 10 && hour < 17 ? 'day' : hour >= 21 || hour < 8 ? 'night' : null;
-  if (!mode) { self.postMessage({ surfCheck: { id, error: 'taken at dusk or dawn: no fair moment to compare with (the model gives the afternoon peak and before dawn)' } }); return; }
+  if (!mode) return { error: 'taken at dusk or dawn: no fair moment to compare with (the model gives the afternoon peak and before dawn)' };
   const month = Number(date.slice(5, 7)) - 1;
   /* how wet the ground was that day: kept watered when the visitor ticked that the sprinklers ran in the 3 days
      before (ks null: the grass uses all it wants), else rain alone, the stations' rain over the weeks before */
@@ -523,11 +530,73 @@ function surfCheck({ id, date, hour, airF, watered = false }) {
   const one = { ...day, rs, rh, wind: Number.isFinite(day.wind) ? day.wind : 2, ...(air !== null ? (mode === 'day' ? { tmax: air } : { tmin: air }) : {}) };
   const filled = [!Number.isFinite(day.rs) && (Number.isFinite(day.cover) ? 'sunshine from the cloud cover' : 'sunshine from the day\'s temperature range'), !Number.isFinite(day.rh) && 'humidity from the night\'s low', !Number.isFinite(day.wind) && 'wind 2 m/s'].filter(Boolean);
   const h = heatOfMonth(kept.model, [one], month, { season: kept.season || null });
-  if (!h) { self.postMessage({ surfCheck: { id, error: 'that day has no sunshine, humidity or wind in the record' } }); return; }
+  if (!h) return { error: 'that day has no sunshine, humidity or wind in the record' };
   const s = surfaceOfMonth(kept.model, h, { ks });
   const ta = mode === 'day' ? s.ta.day : s.ta.night;
   const dT = Float32Array.from(mode === 'day' ? s.day : s.night, (t) => t - ta);
-  self.postMessage({ surfCheck: { id, mode, ta, open: (mode === 'day' ? s.open.day : s.open.night) - ta, dT, ks, wind: s.wind, filled, watered: !!watered } }, [dT.buffer]);
+  return { mode, ta, open: (mode === 'day' ? s.open.day : s.open.night) - ta, dT, ks, wind: s.wind, filled, watered: !!watered };
+}
+
+/* A FIELD VISIT'S READINGS AGAINST THE MODEL, WITH NO PAGE (owner, 2026-11-18: "I don't want anything to have to run
+   in the browser like that"): the two checks the water map's page worked out when it was open (public/app.js
+   moistureCard and surfCards), here for the water builder (builder/server.mjs points) -- the same rules, the same
+   record kept (moisture_checks). Soil moisture: each reading against the root zone's water on its day, rain alone, the
+   mean of the lawn cells within NEAR_M of it, else the nearest within SNAP_M. Surface temperature: each reading minus
+   the air against surfCore's. The day and hour are the lot's own, by its longitude (the page used the phone's clock).
+   -> { visitCheck: { id, rho, n, spots, settings } } */
+const NEAR_M = 1.0, SNAP_M = 2.0;
+function visitCheck({ id, unit, at, depth_in = null, air_f = null, watered = false, readings = [] }) {
+  const m = kept.model, res = kept.lightRes, site = kept.lightSite;
+  if (!m || !res) { self.postMessage({ visitCheck: { id, error: m ? 'the shade is not worked out on this map' : 'the plan is not worked out yet' } }); return; }
+  const g = res.grid, W = g.W, H = g.H, bbox = g.bbox, dx = (res.shift?.east || 0) / g.k, dy = (res.shift?.north || 0) / g.k;
+  const cw = (bbox[2] - bbox[0]) / W, ch = (bbox[3] - bbox[1]) / H, trace = site?.lawn || [];
+  const local = new Date(at + (kept.lng / 15) * 36e5), date = local.toISOString().slice(0, 10), hour = local.getUTCHours() + local.getUTCMinutes() / 60;
+  const place = (r) => { const [x, y] = toMercS([r.lng, r.lat]); return { gx: (x - dx - bbox[0]) / cw, gy: (bbox[3] - (y - dy)) / ch, k: Math.cos((r.lat * Math.PI) / 180) }; };
+  const cellOf = (q) => { const c = Math.floor(q.gx), r = Math.floor(q.gy); return c >= 0 && c < W && r >= 0 && r < H ? r * W + c : -1; };
+  // on the lawn by the trace (within ON_TRACE_M); with no trace by the cell; a whole property saved as lawn by both
+  const onLawn = (off, kind) => (off === null ? kind === 1 : off <= ON_TRACE_M && (!kept.wholeLot || kind === 1));
+  if (unit === 'surface_f') {
+    const sc = surfCore({ date, hour, airF: air_f, watered });
+    if (sc.error) { self.postMessage({ visitCheck: { id, error: sc.error, final: true } }); return; }
+    const air = Number.isFinite(air_f) ? air_f : sc.ta * 1.8 + 32;
+    const spots = readings.map((r) => {
+      const i = cellOf(place(r)), off = offLawnM([r.lng, r.lat], trace), kind = i >= 0 ? m.kinds[i] : null;
+      return { n: r.n, value: r.value, measured: r.value - air, wet: i >= 0 && Number.isFinite(sc.dT[i]) ? sc.dT[i] * 1.8 : null, lawn: onLawn(off, kind) ? 1 : 0, off, kind };
+    });
+    const ok = spots.filter((x) => x.lawn && x.wet !== null);
+    self.postMessage({ visitCheck: { id, rho: spearman(ok.map((x) => x.measured), ok.map((x) => x.wet)), n: ok.length, spots,
+      settings: { date, irrigated: sc.watered ? 'watered' : 'rain alone', season: `surface, ${sc.mode === 'day' ? 'afternoon' : 'before dawn'}; air ${Math.round(air)} F` } } });
+    return;
+  }
+  const days = kept.week?.days || [], dAt = days.findIndex((d) => d.date === date);
+  let wet = null;
+  if (dAt >= 0) simulate(m, days, { season: kept.season || null, record: (d, st) => {
+    if (d !== dAt) return;
+    wet = new Float32Array(W * H).fill(NaN);
+    for (let c = 0; c < W * H; c++) if (m.kinds[c] === 1 && m.taw[c] > 0) wet[c] = (m.taw[c] - st.Dr[c] + st.grav[c] + st.pond[c]) / m.taw[c];
+  } });
+  const P = kept.planKept || {};
+  const spots = readings.map((r) => {
+    const q = place(r), i0 = cellOf(q), c0 = Math.floor(q.gx), r0 = Math.floor(q.gy), reach = Math.ceil(SNAP_M / (cw * q.k)) + 1, near = [];
+    let best = null;
+    for (let rr = r0 - reach; rr <= r0 + reach; rr++) for (let cc = c0 - reach; cc <= c0 + reach; cc++) {
+      if (cc < 0 || cc >= W || rr < 0 || rr >= H) continue;
+      const i = rr * W + cc;
+      if (m.kinds[i] !== 1 || !wet || !Number.isFinite(wet[i])) continue;
+      const dist = Math.hypot((cc + 0.5 - q.gx) * cw, (rr + 0.5 - q.gy) * ch) * q.k;
+      if (dist <= NEAR_M) near.push(i);
+      if (dist <= SNAP_M && (!best || dist < best.dist)) best = { i, dist };
+    }
+    const cells = near.length ? near : best ? [best.i] : [], zones = new Map();
+    for (const i of cells) if (P.zoneOf && P.zoneOf[i] >= 0) zones.set(P.zoneOf[i], (zones.get(P.zoneOf[i]) || 0) + 1);
+    const mean = (f) => { const v = cells.map(f).filter(Number.isFinite); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+    const off = offLawnM([r.lng, r.lat], trace), kind = i0 >= 0 ? m.kinds[i0] : null;
+    return { n: r.n, value: r.value, wet: cells.length ? mean((i) => wet[i]) : null, need: cells.length && P.needMm ? mean((i) => P.needMm[i]) : null,
+      zone: zones.size ? [...zones.entries()].sort((a, b) => b[1] - a[1])[0][0] : null, kind, lawn: onLawn(off, kind) ? 1 : 0, off, cells: cells.length };
+  });
+  const lawn = spots.filter((x) => x.lawn && x.wet !== null);
+  self.postMessage({ visitCheck: { id, rho: spearman(lawn.map((x) => x.value), lawn.map((x) => x.wet)), n: lawn.length, spots, reaches: dAt >= 0,
+    settings: { date, depth_in, rootMm: P.rootIn ? Math.round(P.rootIn * 25.4) : null, season: P.mode || null, irrigated: 'rain alone', onTraceM: ON_TRACE_M, nearM: NEAR_M } } });
 }
 
 /* THE PLAN ON THE PERSON'S OWN VALVES (owner, 2026-10-23: "a final step that gives exact watering recs by season
@@ -542,6 +611,7 @@ async function plan(inputs = {}) {
   const t0 = Date.now();
   const p = planWith(inputs);
   kept.model = p.model; // the heat view's (heatFor): the plan's own model, never sent to the page
+  kept.planKept = { zoneOf: p.zoneOf ? p.zoneOf.slice() : null, needMm: p.needMm ? p.needMm.slice() : null, rootIn: p.rootIn, mode: p.mode }; // the server's visit check (visitCheck)
   kept.ksRain = null; // how wet the ground runs with rain alone, month by month: worked out again on the heat view's first ask
   const grass = p.grass;
   const out = {
@@ -922,11 +992,12 @@ self.onmessage = async ({ data }) => {
     else if (data.moistureAt) moistureAt(data.moistureAt);
     else if (data.pointsAt) await pointsAt(data.pointsAt);
     else if (data.cellsAt) cellsAt(data.cellsAt);
+    else if (data.visitCheck) visitCheck(data.visitCheck);
   } catch (e) {
     if (data?.heat) { self.postMessage({ heat: { id: data.heat.id, error: e.message || String(e) } }); return; }
     if (data?.surfCheck) { self.postMessage({ surfCheck: { id: data.surfCheck.id, error: e.message || String(e) } }); return; }
     if (data?.walkCheck) { self.postMessage({ walkCheck: { id: data.walkCheck.id, error: e.message || String(e) } }); return; }
-    for (const key of ['moment', 'explain', 'moistureAt', 'pointsAt', 'cellsAt']) if (data?.[key]) { self.postMessage({ [key]: { id: data[key].id, error: e.message || String(e) } }); return; }
+    for (const key of ['moment', 'explain', 'moistureAt', 'pointsAt', 'cellsAt', 'visitCheck']) if (data?.[key]) { self.postMessage({ [key]: { id: data[key].id, error: e.message || String(e) } }); return; }
     if (data?.valvePlan) { self.postMessage({ valvePlan: { id: data.valvePlan.id, error: e.message || String(e) } }); return; }
     self.postMessage(kept.r ? { planError: e.message || String(e) } : { error: e.message || String(e) });
   }
