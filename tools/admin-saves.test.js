@@ -10,7 +10,7 @@ import { handleMaps } from '../worker/src/routes-maps.js';
 import { handleAdmin } from '../worker/src/routes-admin.js';
 import { findOrCreateUser, createSession } from '../worker/src/db.js';
 import { SESSION_COOKIE } from '../worker/src/auth.js';
-import { finishTraces, INDEX_KEY, stillWaitingWhy, makeWholeSave, inGeometry, frameAround } from '../worker/src/admin-saves.js';
+import { finishTraces, INDEX_KEY, stillWaitingWhy, makeWholeSave, inGeometry, frameAround, tracedFrame } from '../worker/src/admin-saves.js';
 import worker from '../worker/src/index.js';
 
 let failures = 0;
@@ -212,6 +212,15 @@ globalThis.fetch = async (u, init) => {
   check('its lidar queued, with the site\'s own origin', row?.status === 'lidar' && row.press === 'whole' && JSON.parse(row.frame).origin === HOST, JSON.stringify(row));
   const b = await makeWholeSave(env, -85.2998, 42.3001, { lookup });
   check('asked again inside the same lot: the same save, nothing new, no lookup', b.created === false && b.id === a.id && asked === 1, JSON.stringify(b));
+}
+/* ------------------------------------------------ the county photo's line-up applied to a trace (2026-11-18) */
+{
+  const f = { lng: -85.5, lat: 42.5, zoom: 19, size: 640, height: 640, provider: 'county' };
+  const moved = tracedFrame(f, { countyAlign: { east: 2, north: -1.5, scale: 1 }, frame: f });
+  const mE = (moved.lng - f.lng) * Math.PI / 180 * 6378137 * Math.cos(42.5 * Math.PI / 180), mN = (moved.lat - f.lat) * Math.PI / 180 * 6378137;
+  check('a trace on a lined-up county photo is laid where the photo was shown (2 m east, 1.5 m south)', Math.abs(mE - 2) < 1e-6 && Math.abs(mN + 1.5) < 1e-6 && moved.zoom === 19, `${mE} ${mN}`);
+  check('a Mapbox trace, or a county one with no line-up, is not moved', tracedFrame({ ...f, provider: 'mapbox' }, { countyAlign: { east: 2, north: 1, scale: 1 } }).lng === f.lng && tracedFrame(f, { countyAlign: null }) === f);
+  check('a scale changes the ground a pixel covers', Math.abs(tracedFrame(f, { countyAlign: { east: 0, north: 0, scale: 2 }, frame: f }).zoom - 18) < 1e-9);
 }
 check('a press given up on blames the GPU provider when it had none free', /no GPU free/.test(stillWaitingWhy('Waiting for a GPU to come free -- the GPU provider is busy right now (29:40)'))
   && stillWaitingWhy('Fetching the aerial photograph') === 'no answer in half an hour' && stillWaitingWhy(null) === 'no answer in half an hour');

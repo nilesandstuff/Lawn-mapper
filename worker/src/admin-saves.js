@@ -72,6 +72,27 @@ export const stillWaitingWhy = (stage) => (/waiting for a gpu/i.test(String(stag
   ? 'the GPU provider had no GPU free for half an hour (nothing is wrong with the map)'
   : 'no answer in half an hour');
 
+/*
+ * THE COUNTY PHOTO'S LINE-UP, APPLIED TO THE TRACE (2026-11-18; the owner asked whether lidar misalignment could be
+ * behind the water map's errors). A county photo is drawn moved onto Mapbox's ground (the map's countyAlign: metres
+ * east and north, and a scale about the saved frame's centre), and the editor traces a detection against that moved
+ * frame (app.js alignedFrame) so the lawn lands where the photo showed it. This route laid the mask on the county's
+ * own unmoved frame instead, while the shade build lines the lidar up with the MOVED photo: so an admin save traced
+ * on a lined-up county photo had its lawn off from its lidar by the line-up, up to 4 m. The frame the mask is laid
+ * on is now moved the same way; the frame kept in the record stays the photo's own.
+ */
+export function tracedFrame(frame, map) {
+  const a = map?.countyAlign;
+  if (frame?.provider !== 'county' || !a || ![a.east, a.north, a.scale].every(Number.isFinite)) return frame;
+  const R = 6378137, rad = Math.PI / 180, k = Math.cos(frame.lat * rad);
+  // the scale is about the SAVED frame's centre (public/shade/traced.js lineUpAt): a press frame centred elsewhere
+  // moves by that much more
+  const c = map.frame && Number.isFinite(map.frame.lng) && Number.isFinite(map.frame.lat) ? map.frame : frame;
+  const east = a.east + (a.scale - 1) * (frame.lng - c.lng) * rad * R * k;
+  const north = a.north + (a.scale - 1) * (frame.lat - c.lat) * rad * R;
+  return { ...frame, lng: frame.lng + (east / (R * k)) / rad, lat: frame.lat + (north / R) / rad, zoom: frame.zoom - Math.log2(a.scale || 1) };
+}
+
 /** A finished press's mask as the lawn mapper's shapes, or null. */
 async function shapesOf(env, pressId, frame, parcel = null) {
   const res = await alphaMaskResponse(env, pressId);
@@ -126,7 +147,7 @@ export async function finishTraces(env, selfOrigin = '', { build = true } = {}) 
       const { origin: _o, ...frame } = framed;
       const map = await getMap(env, owner, row.map_key);
       if (!map) { await set('failed', 'the map is gone'); continue; }
-      const shapes = await shapesOf(env, row.press, frame, map.parcel || null);
+      const shapes = await shapesOf(env, row.press, tracedFrame(frame, map), map.parcel || null);
       if (!shapes) { await set('failed', 'the mask could not be read'); await mark(env, owner, row.map_key, { status: 'failed', detail: 'the mask could not be read' }); continue; }
       // a map already drawn on since the press (the owner opened it and traced) keeps its own lawn
       if (Array.isArray(map.shapes) && map.shapes.length && map.handEdited) { await set('lidar', 'the map was edited meanwhile: its own lawn kept'); await mark(env, owner, row.map_key, { status: 'kept', detail: 'edited meanwhile' }); continue; }
