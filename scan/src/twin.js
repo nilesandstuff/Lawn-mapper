@@ -48,6 +48,8 @@ export async function twin(request, env, url, { isAdmin, noteThermal = null, not
         const w = o.key.split('/')[1];
         const x = walks.get(w) || { walk: w, parts: 0, bytes: 0, keys: 0, uploaded: 0 };
         x.parts++; x.bytes += o.size; if (/\/key-\d+\.jpg$/.test(o.key)) x.keys++;
+        // a study kept beside the walk (the segment trial's sheets, docs/SCAN-PLAN.md 30): the start page links to it
+        if (/\/segments-[a-z-]+\.jpg$/.test(o.key)) x.segments = (x.segments || 0) + 1;
         x.uploaded = Math.max(x.uploaded, Date.parse(o.uploaded) || 0);
         walks.set(w, x);
       }

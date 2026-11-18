@@ -70,6 +70,7 @@ async function showSegments(names) {
     a.append(img); box.append(a); wrap.append(title, box);
     $('#segments-list').append(wrap);
   }
+  if (location.hash === '#segments') $('#segments').scrollIntoView();
 }
 
 /** The splat made from this walk by workflow S2 (scan/tools/splat_modal.py), when there is one. */
