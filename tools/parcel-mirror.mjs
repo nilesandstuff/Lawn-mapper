@@ -710,7 +710,13 @@ async function main() {
         // the server cannot be copied square by square, but may give its whole layer by ids (wholeLayer)
         if (!svc.water && (kind === 'ids not given' || kind === 'a page failed') && elapsed() < BUDGET_MS) {
           try {
-            const got = await wholeLayer(svc, ep, st);
+            // each of the service's endpoints in turn, the one in use first (the probe asked the first; the copy may be
+            // on another that answers nothing at all)
+            let got = null, whyNot = null;
+            for (const e of [ep, ...svc.endpoints.filter((x) => x !== ep)]) {
+              try { got = await wholeLayer(svc, e, st); st.endpoint = svc.endpoints.indexOf(e); break; } catch (x) { if (x.kind === 'time') throw x; whyNot = x; }
+            }
+            if (!got) throw whyNot;
             st.done = new Date().toISOString();
             st.count = got.n;
             st.source = { kind: 'server', whole: true, because: kind };
