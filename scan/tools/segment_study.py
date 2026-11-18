@@ -349,6 +349,27 @@ def report(name, piece, xyz, h, labs, patches, classes=None, extra=""):
     return out, desc
 
 
+def sheet(xyz, h, idx):
+    """A patch's own shape, whatever it was cut into: the flat sheet that fits its points best, how far that leans
+    from level and how thick the points are about it. Level and thin is ground the phone took for standing (a bank,
+    a slope, a kerb, or its ground height being off); upright and thin is a fence or a wall; thick is a lump."""
+    P = xyz[idx].astype(np.float64)
+    P = P[np.isfinite(P).all(1)]
+    if len(P) < 20:
+        return None
+    c = P - P.mean(0)
+    w, v = np.linalg.eigh(np.cov(c.T))
+    nrm = v[:, 0]
+    lean = float(np.degrees(np.arccos(min(1.0, abs(nrm[1])))))
+    d = c @ nrm
+    thick = float(np.percentile(d, 95) - np.percentile(d, 5))
+    hh = h[idx][np.isfinite(h[idx])]
+    lo, hi = float(np.percentile(hh, 5)), float(np.percentile(hh, 95))
+    kind = "level and thin: ground read as standing (a bank, a slope, or the ground height off)" if lean < 35 and thick <= 0.3 else \
+           "upright and thin: a fence or a wall" if lean > 60 and thick <= 0.35 else "a lump (a shrub, a pile, an object)"
+    return f"its points fit a sheet leaning {lean:.0f} deg from level, {thick * 12 * FT:.0f} in thick, {lo * FT:.1f}-{hi * FT:.1f} ft over the phone's ground -> {kind}"
+
+
 def picture(path, xyz, h, piece, big):
     """From above, about the walk's own middle: the ground grey, each thing its own colour."""
     from PIL import Image
@@ -525,6 +546,11 @@ def main():
     cnt = np.bincount(labs_named, minlength=len(LABELS) + 1)
     print("The phone's own labels on the standing points: " + ", ".join(f"{LABELS[i - 1]} {100 * cnt[i] / max(1, cnt.sum()):.0f}%" for i in np.argsort(-cnt) if i > 0 and cnt[i] / max(1, cnt.sum()) >= 0.02) + (f", none {100 * cnt[0] / max(1, cnt.sum()):.0f}%" if cnt[0] else "") + ".")
 
+    if patches:
+        print("== The patches' own shapes (no cutting, no picture) ==")
+        for j, pt in enumerate(patches):
+            said = sheet(xyz, h, np.array([i for i in pt.get("idx", []) if i < len(xyz)], np.int64))
+            print(f"  patch {j + 1} ({pt['cells']} m2, the phone said {pt['label']}): {said or 'too few points'}.")
     xyz0 = np.nan_to_num(xyz, nan=1e6)
     g = by_shape(xyz, h)
     lines, desc = report("By shape alone (touching, no picture)", g, xyz, h, labs, patches)
