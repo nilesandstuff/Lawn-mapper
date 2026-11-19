@@ -1321,6 +1321,8 @@ function frameWork(f) {
         g.blob.then((b) => b && sendTwin([{ name, type: 'image/jpeg', body: b }]), () => {});
         const dep = keyDepth(f, name);
         if (dep) sendTwin([dep]);
+        const sdep = keySmooth(f, name);
+        if (sdep) sendTwin([sdep]);
       }
     }
     if (flushDue(st.twin, now)) sendTwin(flush(st.twin, now, liveOf(L, w, { recordOnly: !!st.recordOnly, points: pointsKept(), gpsTrail: trailKept(), geoTrail: geoKept(), anchors: st.anchors ? anchorsKept(st.anchors) : null, prev: prevKept() })));
@@ -2114,6 +2116,29 @@ function keyDepth(f, name) {
       if (d > 0 && d < 65) { a[2 + j * nx + i] = Math.round(d * 1000); n++; }
     }
     return n ? { name: name.replace(/\.jpg$/, '.depth'), type: 'application/octet-stream', body: new Blob([a.buffer]) } : null;
+  } catch { return null; }
+}
+
+/** THE FILLED-IN DEPTH OF A PICTURE JUST TAKEN: key-NNNN.sdepth, in key-NNNN.depth's format (2026-11-19). The .depth
+ *  grid is the camera's own measured depth at the live confidence cut, and on the walks of 2026-11-18 it had a
+ *  distance under only a fifth of its cells: 4,915 of one walk's 5,671 shapes had no depth under them, so they could
+ *  not be matched from photo to photo or placed in 3D. ARCore also keeps a SMOOTHED depth with no holes (what hides
+ *  the drawing behind real things). It is less sure, so it is kept apart and never read as measurement: a study may
+ *  use it to say which shape of one photo is which shape of the next. The app only (bridge 5). */
+function keySmooth(f, name) {
+  try {
+    const D = f.depth?.smooth ? f.depth.smooth(KEY_DEPTH.nx, KEY_DEPTH.ny) : null;
+    if (!D?.at || !f.pose) return null;
+    const { nx, ny } = KEY_DEPTH, c = f.pose.position, a = new Uint16Array(2 + nx * ny);
+    a[0] = nx; a[1] = ny;
+    let n = 0;
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      const p = D.at((i + 0.5) / nx, (j + 0.5) / ny);
+      if (!p) continue;
+      const d = Math.hypot(p.x - c.x, p.y - c.y, p.z - c.z);
+      if (d > 0 && d < 65) { a[2 + j * nx + i] = Math.round(d * 1000); n++; }
+    }
+    return n ? { name: name.replace(/\.jpg$/, '.sdepth'), type: 'application/octet-stream', body: new Blob([a.buffer]) } : null;
   } catch { return null; }
 }
 

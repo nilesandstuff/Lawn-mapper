@@ -32,6 +32,7 @@ async function main() {
 
 /** A shape's name: its own if it was given one in this photo ("" = said to have none), else its thing's. */
 const nameOf = (p, id) => { const own = S.shapes[`${p}:${id}`]; return own != null ? own : S.names[S.seg.pictures[p].shapes[id]?.[0]] || ''; };
+const PLACED = 8;   // depth cells under a shape for it to have a place in 3D (name_prep.py CELLS_MIN)
 const colourOf = (thing) => { let x = (Number(thing) * 2654435761) >>> 0; return [80 + (x & 127), 80 + ((x >> 8) & 127), 80 + ((x >> 16) & 127)]; };
 
 async function show(p) {
@@ -61,9 +62,10 @@ function draw() {
     const id = at(x, y), k = (y * W + x) * 4;
     if (!id) { o[k] *= 0.5; o[k + 1] *= 0.5; o[k + 2] *= 0.5; continue; }
     const edge = (x + 1 < W && at(x + 1, y) !== id) || (y + 1 < H && at(x, y + 1) !== id) || (x > 0 && at(x - 1, y) !== id) || (y > 0 && at(x, y - 1) !== id);
-    const named = !!nameOf(S.p, id), picked = S.pick === id;
-    if (edge) { const e = picked ? [255, 60, 220] : named ? [255, 255, 255] : [250, 204, 21]; o[k] = e[0]; o[k + 1] = e[1]; o[k + 2] = e[2]; }
-    else { const c = colourOf(pic.shapes[id]?.[0] ?? id), a = picked ? 0.55 : 0.3; o[k] = o[k] * (1 - a) + c[0] * a; o[k + 1] = o[k + 1] * (1 - a) + c[1] * a; o[k + 2] = o[k + 2] * (1 - a) + c[2] * a; }
+    const named = !!nameOf(S.p, id), picked = S.pick === id, placed = (pic.shapes[id]?.[2] || 0) >= PLACED;
+    // a shape with no depth under it cannot be put into 3D, whatever it is called: drawn quietly, naming it optional
+    if (edge) { const e = picked ? [255, 60, 220] : named ? [255, 255, 255] : placed ? [250, 204, 21] : [120, 130, 150]; o[k] = e[0]; o[k + 1] = e[1]; o[k + 2] = e[2]; }
+    else { const c = colourOf(pic.shapes[id]?.[0] ?? id), a = picked ? 0.55 : placed ? 0.3 : 0.08; o[k] = o[k] * (1 - a) + c[0] * a; o[k + 1] = o[k + 1] * (1 - a) + c[1] * a; o[k + 2] = o[k + 2] * (1 - a) + c[2] * a; }
     if ((x & 7) === 0 && (y & 7) === 0) {
       // how far inside its shape this pixel is, roughly: the shortest of four walks to its edge
       let r = 0; while (r < 60 && x + r + 4 < W && x - r - 4 >= 0 && y + r + 4 < H && y - r - 4 >= 0 && at(x + r + 4, y) === id && at(x - r - 4, y) === id && at(x, y + r + 4) === id && at(x, y - r - 4) === id) r += 4;
@@ -76,15 +78,15 @@ function draw() {
 }
 
 function tally() {
-  const T = S.seg.things, all = Object.keys(T).filter((t) => T[t].photos > 1 || T[t].pixels > 3000), named = all.filter((t) => S.names[t]);
-  $('#status').textContent = `${named.length} of ${all.length} things named (${Object.keys(T).length - all.length} more are small and seen once); ${Object.keys(S.shapes).length} set right in one photo. Matched ${S.seg.lift}.`;
+  const T = S.seg.things, all = Object.keys(T).filter((t) => T[t].points >= PLACED), named = all.filter((t) => S.names[t]);
+  $('#status').textContent = `${named.length} of ${all.length} things named. (${(Object.keys(T).length - all.length).toLocaleString()} more shapes, outlined in grey, have no depth under them: they cannot be placed in 3D, so naming them is up to you.) ${Object.keys(S.shapes).length} set right in one photo.`;
 }
 
 function sheet(id) {
   S.pick = id; S.whole = true;
   const pic = S.seg.pictures[S.p], [thing, px, pts] = pic.shapes[id] || [null, 0, 0], T = S.seg.things[thing] || { photos: 1, points: 0 };
   $('#s-title').textContent = nameOf(S.p, id) ? `Named: ${nameOf(S.p, id)}` : 'Not named yet';
-  $('#s-info').textContent = `This shape is ${Math.round((100 * px) / (S.w * S.h))}% of the photo of the photo. The tools matched it as one thing across ${T.photos} photo${T.photos === 1 ? '' : 's'}.`;
+  $('#s-info').textContent = `This shape is ${Math.round((100 * px) / (S.w * S.h))}% of the photo of the photo. ${pts >= PLACED ? `The tools matched it as one thing across ${T.photos} photo${T.photos === 1 ? '' : 's'}.` : 'It has no depth under it, so it has no place in 3D yet.'}`;
   const box = $('#s-names'); box.innerHTML = '';
   for (const w of S.words) { const b = document.createElement('button'); b.type = 'button'; b.className = 'name'; b.textContent = w; b.addEventListener('click', () => give(w)); box.append(b); }
   $('#s-all').classList.add('on'); $('#s-one').classList.remove('on');
@@ -132,11 +134,11 @@ function wire() {
   $('#unnamed').addEventListener('click', () => {
     const P = S.seg.pictures; let best = null;
     for (let q = 0; q < P.length; q++) for (const [id, [thing, px]] of Object.entries(P[q].shapes)) {
-      if (S.names[thing] || S.shapes[`${q}:${id}`] != null) continue;
+      if (S.names[thing] || S.shapes[`${q}:${id}`] != null || (S.seg.things[thing]?.points || 0) < PLACED) continue;
       const score = (S.seg.things[thing]?.points || 0) * 1e6 + px;
       if (!best || score > best.score) best = { q, id: Number(id), score };
     }
-    if (!best) { $('#saved').textContent = 'Every thing has a name.'; return; }
+    if (!best) { $('#saved').textContent = 'Every thing that has a place in 3D has a name.'; return; }
     show(best.q).then(() => sheet(best.id));
   });
   window.addEventListener('beforeunload', (e) => { if (S.dirty) { e.preventDefault(); e.returnValue = ''; } });

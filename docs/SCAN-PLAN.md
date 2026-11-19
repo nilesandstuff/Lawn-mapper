@@ -3197,3 +3197,14 @@ BUILT (all tried in a headless browser on a made-up walk; none yet on a phone or
 
 NOT BUILT: step 3 (the names and the kept points together in the 3D view, areas filled in between the dots, set on
 the aerial photo). It waits for the owner's erasing and naming.
+
+HARD, the naming made ready on the two app walks (runs 415-420): tidying halves the shapes (W 11,580 -> 5,671;
+P 12,091 -> 6,353). Matched across photos by the walk's kept points, 17 (W) and 22 (P) things were seen in more
+than one photo; by each photo's own depth grid, 70 and 59, holding 7% and 3% of the shapes. WHY (W): the depth grid
+kept with a photo has a distance under 1,727 of its 9,216 cells (19%); 4,915 of the 5,671 shapes have fewer than 8
+depth cells under them; of the 756 that have, 45% find a shape of a neighbouring photo sharing half of what both
+see, 47% meet none (the neighbour has no depth there). So most shapes of a photo cannot be placed in 3D at all with
+what these walks kept. The naming page shows those in grey and counts only the placed ones as things to name.
+
+BUILT for the next walks: key-NNNN.sdepth, ARCore's smoothed depth (no holes) kept beside each photo's measured
+depth, never read as measurement, for matching shapes from photo to photo. NOT YET WALKED.
