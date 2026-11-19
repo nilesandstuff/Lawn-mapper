@@ -3083,3 +3083,51 @@ radiance, wind blocking, permeability, whether it's permanent/fixed or mobile." 
 BY KIND (studies.py KIND: built, fence, grass, bare ground, paved, plant, movable, water, sky), the names themselves
 still written on the pictures; "the namers disagree widely" above is by exact word and overstates it. The classes
 the owner describes (shadow, heat, wind, permeability, fixed or mobile) are not drawn up yet.
+
+### 32, continued: both app walks through every study (2026-11-19, the owner still away)
+
+MODAL TALLY for the trial, start to here: shapes 1,577 + 1,525 + 605 + 1,413 s; names 275 + 510 + 470 s; 6,375 s of
+an L4 in all, about $1.50 of the $10 allowed.
+
+Walks: W = the work walk (289 pictures); P = the 1:55 pm app walk at the other property (266 pictures; its two
+corners do not agree with the map, which the report says). The Chrome walk there is no longer studied.
+
+HARD:
+
+- THE REPORT, keep-by-name against the old way. W: 72% -> 98% of standing things in the lidar, 16 m2 in 9 patches ->
+  2 m2 in 1. P: 69% (85 of 123 m2), 38 m2 in 8 patches -> 95% (119 of 125 m2), 6 m2 in 3 patches (3 m2 tree, a 10 ft
+  line of structure, 1 m2 building); 44,050 points used (39,396 within 20 ft before); 391 m2 looked at.
+- THE LIFT BY EACH PICTURE'S OWN DEPTH, both walks: the biggest standing thing holds 34% (W) and 12% (P) of the
+  standing points at 26, 50 and 80 ft alike, against 71% and 47% by the old hidden-behind test at 26 ft. In a
+  picture at 26 / 50 / 80 ft: W 72 / 77 / 81%, P 70 / 74 / 78% of the used points (97% by the old test); in a thing:
+  W 58 / 63 / 67%, P 41 / 47 / 51% (84 and 82%). Letting the old test speak where a picture's depth is empty ("fill")
+  brings 98-99% into a picture and the running-together straight back (79% and 46%): not used.
+- THE NAMERS, BY KIND, on things cut by SAM objects and lifted by depth to 80 ft (W 33 things, 12 standing; P 55, 28).
+  How often two namers give a thing the same kind:
+                        W      P
+    panoptic - clipseg  87%    87%
+    clipseg - owl       83%    88%
+    panoptic - owl      70%    88%
+    marked with others  62-70% 71-76%
+    phone with others   39-48% 83-88%
+  The phone's labels name few shapes (624 and 499 of about 2,200) and on W call two trees "terrain" and one "sky";
+  on P they agree with the picture models. Marked CLIP is the odd one out on both walks.
+  The 103 ft thing on W: every namer says built (building, wall, house, shed), 86-100% of its votes.
+  GPU time for 266-289 pictures: CLIPSeg about 250 s, OWLv2 140-180 s, marked CLIP 70-75 s.
+- FEWER PICTURES (P, depth lift): every 2nd picture loses 37% of the points that had a kind, every 3rd 51%, every
+  4th 64%, every 6th 83%; where both give a kind it is the same one 89-98% of the time. Thinning the pictures does
+  not change what things are called; it loses the points only the dropped pictures saw.
+- THE GROUND (points the phone called ground, 20 in squares): W 814 squares, 47% seen in two stretches or more,
+  186 more than 5 in off the 16 ft round them (101 of those seen twice or more), 2.3 ft from the low to the high
+  twentieth. P 805 squares, 57%, 88 (57), 3.6 ft.
+
+SPECULATION, each put to the owner as a question on its study card:
+
+- That CLIPSeg or the panoptic vote is the namer to keep (they agree with each other and with OWLv2 most); that
+  marked CLIP is the one to drop. Agreement is not correctness: only eyes say which is RIGHT.
+- That the phone's labels are too thin and too wrong on trees to name things alone, though good enough for the
+  keep-by-name rule's ground / built split.
+- That the squares of ground more than 5 in off their surroundings are real bumps where seen twice, and kerbs,
+  edges or drift otherwise.
+- That the depth lift's lost points (a third to a half not in any thing) are mostly ground the pictures' depth
+  grids do not cover, which matters little for naming standing things and much for a map of the ground.
