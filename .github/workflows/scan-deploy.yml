@@ -298,7 +298,9 @@ jobs:
           node scan/tools/twin-r2.mjs get "$WALK" twin | tee name.txt
           node scan/tools/disagree.mjs twin > /dev/null || true
           python scan/tools/name_prep.py twin 2>&1 | tee -a name.txt
-          node scan/tools/twin-r2.mjs put "$WALK" twin/seg.json twin/seg-[0-9]*.png | grep -c "kept (" | sed 's/^/Parts kept: /' | tee -a name.txt
+          node scan/tools/twin-r2.mjs put "$WALK" twin/seg.json twin/seg-[0-9]*.png > put.txt || true
+          echo "Parts kept: $(grep -c ': kept (' put.txt), not kept: $(grep -c 'NOT kept' put.txt) $(grep 'NOT kept' put.txt | sed 's/.*NOT kept//' | sort | uniq -c | tr '\n' ' ')" | tee -a name.txt
+          ! grep -q 'NOT kept' put.txt
 
       # SEGMENT FIRST, NAME AFTER (scan/tools/segment_study.py, 2026-11-18; docs/SCAN-PLAN.md section 29): the walk's
       # standing points grouped by shape alone, and by a picture model that cuts and names in one pass, lifted onto the

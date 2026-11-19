@@ -154,9 +154,14 @@ async function main() {
     for (const f of rest) {
       if (!existsSync(f)) continue; // a pattern that matched nothing (twin/study-*)
       const name = basename(f), body = readFileSync(f);
-      const r = await fetch(`${base}/objects/twins/${encodeURIComponent(walk)}/${encodeURIComponent(name)}`, { method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'Content-Type': TYPES[name.split('.').pop()] || 'application/octet-stream' }, body });
-      console.log(`${name}: ${r.ok ? `kept (${(body.length / 1e6).toFixed(1)} MB)` : `NOT kept (${r.status})`}`);
-      if (!r.ok) process.exitCode = 1;
+      // tried again on a refusal: one 5xx among 267 parts failed two naming runs on 2026-11-19
+      let r = null;
+      for (let t = 0; t < 5 && !r?.ok; t++) {
+        if (t) await new Promise((ok) => setTimeout(ok, 1500 * 2 ** (t - 1)));
+        r = await fetch(`${base}/objects/twins/${encodeURIComponent(walk)}/${encodeURIComponent(name)}`, { method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'Content-Type': TYPES[name.split('.').pop()] || 'application/octet-stream' }, body }).catch(() => null);
+      }
+      console.log(`${name}: ${r?.ok ? `kept (${(body.length / 1e6).toFixed(1)} MB)` : `NOT kept (${r?.status || 'no answer'})`}`);
+      if (!r?.ok) process.exitCode = 1;
     }
   } else throw new Error('get or put');
 }
