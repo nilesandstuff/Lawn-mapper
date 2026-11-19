@@ -55,6 +55,10 @@ def dense_match(sel, obj, depths):
 
     cells = np.zeros(off[-1], np.int64)
     pts, ids = [], []
+    # what the matching met, for the log: a walk whose shapes will not match should say why
+    D = {"cells": 0, "shaped": 0, "framed": 0, "agree": 0, "both": 0, "pairs": 0}
+    best = np.zeros(off[-1])            # each shape's best share with any shape of another photo
+    hold = np.zeros(off[-1])            # ... and the most of it that lies inside one
     for p, (k, m, dg) in enumerate(zip(sel, obj, depths)):
         if dg is None:
             pts.append(None)
@@ -72,6 +76,8 @@ def dense_match(sel, obj, depths):
         pts.append(world)
         ids.append(sid)
         cells[off[p]:off[p + 1]] = np.bincount(sid, minlength=K[p])
+        D["cells"] += len(sid)
+        D["shaped"] += int((sid > 0).sum())
     was = S.RANGE
     S.RANGE = 1e9
     try:
@@ -88,6 +94,9 @@ def dense_match(sel, obj, depths):
                 rng = np.linalg.norm(pts[p] - sel[q]["c2w"][:3, 3], axis=1)
                 dd = dq[np.clip(py * dq.shape[0] // h, 0, dq.shape[0] - 1), np.clip(px * dq.shape[1] // w, 0, dq.shape[1] - 1)]
                 both = ok & (dd > 0) & (np.abs(dd - rng) <= np.maximum(0.25, 0.08 * dd))
+                D["pairs"] += 1
+                D["framed"] += int(ok.sum())
+                D["agree"] += int(both.sum())
                 if both.sum() < CELLS_MIN:
                     continue
                 a, b = ids[p][both], obj[q][py[both], px[both]].astype(np.int64)
@@ -95,15 +104,27 @@ def dense_match(sel, obj, depths):
                 on = (a > 0) & (b > 0)
                 if not on.any():
                     continue
+                D["both"] += int(on.sum())
                 uq, c = np.unique(a[on] * K[q] + b[on], return_counts=True)
                 ua, ub = uq // K[q], uq % K[q]
-                good = (c >= CELLS_MIN) & (c / (na[ua] + nb[ub] - c) >= SHARE)
+                share = c / (na[ua] + nb[ub] - c)
+                big = c >= CELLS_MIN
+                np.maximum.at(best, off[p] + ua[big], share[big])
+                np.maximum.at(hold, off[p] + ua[big], (c / na[ua])[big])
+                good = big & (share >= SHARE)
                 for x, y in zip(ua[good], ub[good]):
                     rx, ry = find(off[p] + x), find(off[q] + y)
                     if rx != ry:
                         parent[ry] = rx
     finally:
         S.RANGE = was
+    has = cells >= CELLS_MIN
+    n = max(1, int(has.sum()))
+    print(f"Matching by depth: {D['cells'] / max(1, len(sel)):.0f} depth cells a photo, {100 * D['shaped'] / max(1, D['cells']):.0f}% of them under a shape. Put into a neighbouring photo, "
+          f"{100 * D['framed'] / max(1, D['cells'] * 2 * REACH):.0f}% fall inside it and {100 * D['agree'] / max(1, D['framed']):.0f}% of those meet its depth; {100 * D['both'] / max(1, D['agree']):.0f}% of those lie under a shape in both.")
+    print(f"  Of the {n:,} shapes with {CELLS_MIN} cells or more: best share with a shape of another photo {SHARE:g} or more: {100 * (best[has] >= SHARE).sum() / n:.0f}%; 0.3-{SHARE:g}: {100 * ((best[has] >= 0.3) & (best[has] < SHARE)).sum() / n:.0f}%; "
+          f"under 0.3: {100 * ((best[has] > 0) & (best[has] < 0.3)).sum() / n:.0f}%; met no shape: {100 * (best[has] == 0).sum() / n:.0f}%. Lying 70% or more inside one shape of another photo: {100 * (hold[has] >= 0.7).sum() / n:.0f}%. "
+          f"Shapes under {CELLS_MIN} cells (too small or no depth under them): {int((~has).sum() - len(sel)):,}.")
     return off, np.array([find(i) for i in range(off[-1])]), cells
 
 
