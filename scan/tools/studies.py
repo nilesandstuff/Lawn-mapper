@@ -104,8 +104,12 @@ def name_clipseg(imgs, maps, device="cpu", log=print):
         heat = []
         for b in range(0, len(phrases), 12):
             ph = phrases[b:b + 12]
+            inp = proc(text=ph, images=[im] * len(ph), padding=True, return_tensors="pt").to(device)
             with torch.no_grad():
-                lg = model(**proc(text=ph, images=[im] * len(ph), padding=True, return_tensors="pt").to(device)).logits
+                try:      # the model's pictures are 352 wide and its eye was trained at 224: older libraries must be told
+                    lg = model(**inp, interpolate_pos_encoding=True).logits
+                except TypeError:
+                    lg = model(**inp).logits
             heat.append(torch.sigmoid(lg).cpu().numpy().reshape(len(ph), lg.shape[-2], lg.shape[-1]))
         heat = np.concatenate(heat)                                    # (words, 352, 352)
         small = np.asarray(Image.fromarray(m.astype(np.uint16)).resize((heat.shape[2], heat.shape[1]), Image.NEAREST))
@@ -302,8 +306,8 @@ def study_names(d, names_file=None, sid="names", pictures=10):
                 dd = cls.setdefault(int(pc), {})
                 dd[c] = dd.get(c, 0) + 1
         per[nm] = cls
-        named = sum(len(x) for x in names)
         shapes = sum(len(shapes_of(m)) for m in obj)
+        named = sum(len(set(x) & set(shapes_of(m))) for x, m in zip(names, obj))
         tally = {}
         for i in standing:
             c, share = S.top_of(cls.get(i, {}), 0.5)
@@ -418,9 +422,10 @@ def read_depth(path):
     return a[2:].reshape(int(a[1]), int(a[0])).astype(np.float32) / 1000.0
 
 
-def lift_by_depth(xyz0, keys, maps, depths, reach):
+def lift_by_depth(xyz0, keys, maps, depths, reach, fill=0.0):
     """As segment_study.lift, but a picture speaks for a point only where the picture's own depth reads the point's
-    distance (within 8% or 0.25 m): what it saw, not what lay behind it."""
+    distance (within 8% or 0.25 m): what it saw, not what lay behind it. fill > 0: where the picture's depth is EMPTY
+    at a point's pixel and the point is within `fill` metres, the points' own hidden-behind test speaks instead."""
     xyz1 = np.concatenate([xyz0.astype(np.float64), np.ones((len(xyz0), 1))], 1)
     vis, ms = [], []
     was = S.RANGE
@@ -440,6 +445,10 @@ def lift_by_depth(xyz0, keys, maps, depths, reach):
             gx = np.clip((px[idx] * dg.shape[1] // w), 0, dg.shape[1] - 1)
             dd = dg[gy, gx]
             good = (dd > 0) & (np.abs(dd - rng) <= np.maximum(0.25, 0.08 * dd))
+            if fill > 0:
+                near = np.zeros(len(xyz0), bool)
+                near[S.seen(px, py, z, ok & (z < fill), w, h)] = True
+                good |= (dd <= 0) & near[idx]
             v = idx[good]
             ids = m[py[v], px[v]].astype(np.int64)
             c = np.bincount(ids, minlength=int(m.max()) + 1)
@@ -477,7 +486,8 @@ def study_reach(d, sid="reach"):
     for tag, fn in (("26 ft, hidden-behind by the points", lambda: S.lift(w["xyz0"], sel, obj)),
                     ("26 ft, by each picture's own depth", lambda: lift_by_depth(w["xyz0"], sel, obj, depths, 8.0)),
                     ("50 ft, by each picture's own depth", lambda: lift_by_depth(w["xyz0"], sel, obj, depths, 15.2)),
-                    ("80 ft, by each picture's own depth", lambda: lift_by_depth(w["xyz0"], sel, obj, depths, 24.4))):
+                    ("80 ft, by each picture's own depth", lambda: lift_by_depth(w["xyz0"], sel, obj, depths, 24.4)),
+                    ("80 ft by depth, and within 26 ft the old test where the depth is empty", lambda: lift_by_depth(w["xyz0"], sel, obj, depths, 24.4, 8.0))):
         vis, ms = fn()
         off, comp, joined = S.merge(vis, ms, cams)
         piece, purity, vp, vn = S.vote(len(w["xyz0"]), vis, ms, off, comp)
