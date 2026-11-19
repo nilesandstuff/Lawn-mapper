@@ -3162,3 +3162,38 @@ is not. Not measured; the owner's eyes on the best-guess card's grey points say 
 WHERE THIS LEAVES THE CUT (my reading, the owner's to confirm on the cards): SAM objects for the cut; each picture's
 own depth for the lift, to 80 ft; kinds by the vote of the namers that see the whole picture (CLIPSeg, the panoptic
 model, OWLv2), marked CLIP dropped; the phone's label for points in no thing and for the keep-by-name rule.
+
+## 33. The owner settles it by hand: every point in 3D, the things named, then the two together (owner, 2026-11-19)
+
+The owner, on the studies: names that baffle ("a building being labeled a tree, the sky being called a shed, a
+clearly visible and well segmented roller machine and skid steer both being called mulch"); the cut too fine
+("Clouds, rocks, and non-uniform patches of turf are all segmented separately"); the views from above of "limited
+usefulness because they aren't displayed on any image" and too sparse ("if a section is segmented and named, and has
+depth points, we should be able to connect the dots to map it"); and: "it feels like we're really close to making
+some big progress but we're a bit bogged down on how you're thinking about some things". The owner's plan, in order:
+"- build a full 3D render of every single point, not filtered, and I could view it in a 3d viewer and an inspect
+button that allows me to see the picture associated with that spot, then I can erase the bad ones point by point...
+the view should have a fairly shallow depth of field... - you let me name all of the segments. I'll name them in the
+terms that actually put things into categories that are useful to us and you can see how everything matches and how
+to rectify the lift from different distances. - then after that, we combine the names and segments with the points in
+that 3d viewer and we can see how the final product actually looks and what could be improved."
+
+HARD, what was wrong in the sheets: a shape's name was written at the middle of its pixels, which for ground wrapped
+round a machine is on the machine (fixed: written at the shape's own deepest point). The core session has never
+seen a photo of these walks (they are private; a log carries numbers only): every "names study" claim about
+rightness was the owner's to make, and agreement between namers was mistaken for a lead.
+
+BUILT (all tried in a headless browser on a made-up walk; none yet on a phone or a real walk by the core session):
+- segment_study.tidy_shapes: a shape under 0.5% of the picture, 60% ringed by one bigger shape or by uncut ground, is
+  folded into it; shapes 80% sky by the panoptic model become one sky, set aside. Applied to the kept shapes.
+- STEP 1, scan/public/cloud.html (+ scan/tools/view_prep.py, task `view`): every record of the twin in 3D, coloured
+  from the photo taken when it was seen (W 93%, P 94% coloured); a band of focus at the centre's distance, 1-60 ft
+  deep, outside which nothing can be touched; tap to centre; Inspect shows the photo with the point circled; Erase /
+  Bring back / Undo; erased.bin beside the twin, which disagree.mjs, segment_study.py and studies.py leave out.
+- STEP 2, scan/public/name.html (+ scan/tools/name_prep.py, task `name`): each photo with its shapes; a name goes
+  to the THING (the lift's match across photos) and so shows in every photo; "only this shape, in this photo" sets
+  one right where the match was wrong. seg-names.json: names by thing, the per-shape corrections (the lift's
+  mistakes, each with its photo), the owner's own words.
+
+NOT BUILT: step 3 (the names and the kept points together in the 3D view, areas filled in between the dots, set on
+the aerial photo). It waits for the owner's erasing and naming.

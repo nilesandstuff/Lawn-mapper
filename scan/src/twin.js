@@ -19,7 +19,7 @@
 const json = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 
 export const MAX_PART = 8 * 1024 * 1024;
-export const PART = /^(meta|live|end|splat|fixed|inspect|consensus|thermal-notes|thermal-placement|thermal-snap|view)\.json$|^(inspect-points|view-rgb|erased)\.bin$|^(cloud|track|labels|weak|weaklabels)-\d{4}\.bin$|^keys-\d{4}\.json$|^key-\d{4}\.(jpg|depth)$|^splat\.splat$|^splat-compare\.jpg$|^mesh\.bin$|^segments-[a-z-]{1,40}\.(png|jpg)$|^study-[a-z0-9]{1,24}(\.json|-[a-z0-9-]{1,60}\.(png|jpg))$/;
+export const PART = /^(meta|live|end|splat|fixed|inspect|consensus|thermal-notes|thermal-placement|thermal-snap|view|seg|seg-names)\.json$|^(inspect-points|view-rgb|erased)\.bin$|^(cloud|track|labels|weak|weaklabels)-\d{4}\.bin$|^keys-\d{4}\.json$|^key-\d{4}\.(jpg|depth)$|^splat\.splat$|^splat-compare\.jpg$|^mesh\.bin$|^seg-\d{4}\.png$|^segments-[a-z-]{1,40}\.(png|jpg)$|^study-[a-z0-9]{1,24}(\.json|-[a-z0-9-]{1,60}\.(png|jpg))$/;
 export const WALK = /^[0-9a-zA-Z_-]{1,40}$/;
 const TYPES = { json: 'application/json', bin: 'application/octet-stream', jpg: 'image/jpeg', png: 'image/png' };
 export const typeOf = (part) => TYPES[part.split('.').pop()] || 'application/octet-stream';
@@ -51,6 +51,7 @@ export async function twin(request, env, url, { isAdmin, noteThermal = null, not
         // a study kept beside the walk (the segment trial's sheets, docs/SCAN-PLAN.md 30): the start page links to it
         if (/\/segments-[a-z-]+\.jpg$/.test(o.key)) x.segments = (x.segments || 0) + 1;
         if (/\/study-[a-z0-9]+\.json$/.test(o.key)) x.studies = (x.studies || 0) + 1;
+        if (/\/seg\.json$/.test(o.key)) x.nameable = true;
         x.uploaded = Math.max(x.uploaded, Date.parse(o.uploaded) || 0);
         walks.set(w, x);
       }

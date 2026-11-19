@@ -129,7 +129,7 @@ async function main() {
   if (cmd === 'get') {
     const dir = rest[0] || 'twin';
     mkdirSync(dir, { recursive: true });
-    const objs = (await list(base, token, `twins/${walk}/`)).filter((o) => !/\/splat[.-]/.test(o.key) && !(!process.env.WITH_SEGMENTS && /\/segments-/.test(o.key)) && !/\/study-/.test(o.key) && !/\/segments-[a-z-]+\.(png|jpg)$/.test(o.key) && !/\/recording\.mp4$/.test(o.key) && !(process.env.NO_PICTURES && /\/key-\d+\.jpg$/.test(o.key)));
+    const objs = (await list(base, token, `twins/${walk}/`)).filter((o) => !/\/splat[.-]/.test(o.key) && !(!process.env.WITH_SEGMENTS && /\/segments-/.test(o.key)) && !/\/study-/.test(o.key) && !/\/seg-\d+\.png$/.test(o.key) && !/\/segments-[a-z-]+\.(png|jpg)$/.test(o.key) && !/\/recording\.mp4$/.test(o.key) && !(process.env.NO_PICTURES && /\/key-\d+\.jpg$/.test(o.key)));
     let bytes = 0, failed = 0;
     const why = {};
     // backs off on a refusal: four place runs at once (8 requests each, retried at once) lost 218 of 566 parts to

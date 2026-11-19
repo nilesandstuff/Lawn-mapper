@@ -23,6 +23,7 @@ async function main() {
   if (!walkId) return listTwins();
   $('#inspect-link').href = `/inspect.html?walk=${encodeURIComponent(walkId)}`;
   { const c = $('#cloud-link'); if (c) c.href = `/cloud.html?walk=${encodeURIComponent(walkId)}`; }
+  { const c = $('#name-link'); if (c) c.href = `/name.html?walk=${encodeURIComponent(walkId)}`; }
   const { parts } = await getJSON(`/api/scan/twin?walk=${encodeURIComponent(walkId)}`);
   if (!parts.length) { $('#status').textContent = 'No twin was kept for this walk.'; return; }
   const names = parts.map((p) => p.name).sort();

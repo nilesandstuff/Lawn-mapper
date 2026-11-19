@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Name the things in a walk</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; font: 15px/1.4 system-ui, sans-serif; background: #0b1220; color: #e2e8f0; }
+  main { max-width: 760px; margin: 0 auto; padding: 10px; }
+  a { color: #7dd3fc; }
+  #pic { width: 100%; border-radius: 10px; display: block; touch-action: manipulation; background: #05080f; }
+  .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0; }
+  button, input[type=text] { font: inherit; padding: 9px 12px; border-radius: 8px; border: 1px solid #334155; background: #1e293b; color: #e2e8f0; }
+  button.on { background: #0369a1; border-color: #38bdf8; }
+  button.name { background: #14532d; border-color: #22c55e; }
+  input[type=range] { flex: 1; min-width: 160px; }
+  .dim { color: #94a3b8; font-size: .86rem; }
+  #sheet { background: #111a2c; border: 1px solid #334155; border-radius: 10px; padding: 10px; margin: 8px 0; }
+  details { margin: 8px 0; } summary { cursor: pointer; }
+</style>
+</head>
+<body>
+<main>
+  <p><a href="/">&larr; Yard AR</a> &middot; <a id="twin-link" href="/twin.html">This walk's twin and studies</a> &middot; <a id="cloud-link" href="/cloud.html">Every point in 3D</a></p>
+  <strong>Name the things in this walk</strong> <span class="dim" id="status">Reading…</span>
+  <div class="row">
+    <button type="button" id="prev">&larr;</button>
+    <input type="range" id="at" min="0" max="0" value="0" aria-label="Which photo">
+    <button type="button" id="next">&rarr;</button>
+    <span class="dim" id="which"></span>
+  </div>
+  <canvas id="pic"></canvas>
+  <div class="row">
+    <button type="button" id="unnamed">Next unnamed thing</button>
+    <button type="button" id="plain">Hide the shapes</button>
+    <span class="dim" id="saved"></span>
+  </div>
+  <div id="sheet" hidden>
+    <strong id="s-title"></strong>
+    <p class="dim" id="s-info"></p>
+    <div class="row" id="s-names"></div>
+    <div class="row">
+      <input type="text" id="s-new" placeholder="a new name" maxlength="40" autocapitalize="none">
+      <button type="button" id="s-add">Use it</button>
+    </div>
+    <div class="row">
+      <button type="button" id="s-all" class="on">The whole thing, in every photo</button>
+      <button type="button" id="s-one">Only this shape, in this photo</button>
+    </div>
+    <div class="row">
+      <button type="button" id="s-clear">No name</button>
+      <button type="button" id="s-close">Close</button>
+    </div>
+  </div>
+  <details>
+    <summary>How this works</summary>
+    <p class="dim">Each photo is shown with the shapes it was cut into. Tap a shape and give it a name: your own words, the categories that matter to you. Names you have used become buttons.</p>
+    <p class="dim">A name goes to the whole <b>thing</b>: the same wall, shed or tree as the tools matched it across photos. So naming it once names it everywhere, and it shows on the other photos as you move through them.</p>
+    <p class="dim">Where a name has landed on something it should not (the tools matched two different things as one), tap that shape, choose "Only this shape, in this photo", and give it its right name. Every such correction tells the tools exactly where their matching went wrong and from how far.</p>
+    <p class="dim">A white outline is named; a yellow one is not yet. Saved by itself a few seconds after each change.</p>
+  </details>
+</main>
+<script type="module" src="/name-view.js"></script>
+</body>
+</html>
