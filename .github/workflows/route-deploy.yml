@@ -52,6 +52,39 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: node route/tools/kv.mjs
 
+      # Route Reader, the Android helper (route/android): built here, served beside the planner at
+      # /route-reader.apk with its setup page at /app. If it does not build, the planner still deploys.
+      - name: 'Route Reader: Java'
+        if: ${{ github.event_name == 'push' || inputs.task == 'deploy' }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: 'Route Reader: Gradle'
+        if: ${{ github.event_name == 'push' || inputs.task == 'deploy' }}
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14.3'
+      - name: 'Route Reader: signing key'
+        if: ${{ github.event_name == 'push' || inputs.task == 'deploy' }}
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          OUT: ${{ runner.temp }}/route-reader.p12
+        run: node route/tools/apk-key.mjs
+      - name: 'Route Reader: build'
+        if: ${{ (github.event_name == 'push' || inputs.task == 'deploy') && env.RR_KEYSTORE != '' }}
+        continue-on-error: true
+        env:
+          CUSTOM_DOMAIN: ${{ vars.CUSTOM_DOMAIN }}
+        run: |
+          d=$(node -e "import('./route/tools/prepare.mjs').then((m) => console.log(m.routeDomainFor(process.env.CUSTOM_DOMAIN) || ''))")
+          cd route/android
+          gradle --no-daemon --console=plain assembleRelease -PplannerUrl="https://$d" -PbuildNumber=${{ github.run_number }} > ../../route-reader.log 2>&1 || { tail -40 ../../route-reader.log; exit 1; }
+          tail -3 ../../route-reader.log
+          ls -la app/build/outputs/apk/release/
+
       - name: Deploy the route planner
         if: ${{ github.event_name == 'push' || inputs.task == 'deploy' }}
         env:
@@ -61,6 +94,14 @@ jobs:
           MAPBOX: ${{ secrets.MAPBOX_SERVER_TOKEN || secrets.MAPBOX_TOKEN }}
         run: |
           node route/tools/prepare.mjs
+          apk=route/android/app/build/outputs/apk/release/app-release.apk
+          if [ -f "$apk" ]; then
+            cp "$apk" route/build/route-reader.apk
+            node -e "const fs=require('fs');fs.writeFileSync('route/build/route-reader.json',JSON.stringify({version:'1.${{ github.run_number }}',bytes:fs.statSync('route/build/route-reader.apk').size,built:new Date().toISOString()}))"
+            echo "ROUTE_APK=Route Reader 1.${{ github.run_number }} is on the setup page, /app" >> "$GITHUB_ENV"
+          else
+            echo "ROUTE_APK=Route Reader did not build: see its steps above (the planner deployed without it)" >> "$GITHUB_ENV"
+          fi
           if npx wrangler deploy --config route/wrangler.toml > route-deploy.log 2>&1; then
             tail -8 route-deploy.log
           else
@@ -111,6 +152,7 @@ jobs:
             echo "Route planner: ${ROUTE_STATE:-not deployed -- see the steps above}"
             [ -n "$ROUTE_NOTE" ] && echo "  but $ROUTE_NOTE" || true
             [ -n "$ROUTE_EMAIL" ] && echo "$ROUTE_EMAIL" || true
+            [ -n "$ROUTE_APK" ] && echo "$ROUTE_APK" || true
           else
             echo "Route planner tests: ${{ job.status }}"
           fi

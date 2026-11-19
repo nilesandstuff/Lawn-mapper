@@ -19,6 +19,7 @@ import { addressVariants, cityAtEnd, formatMinutes, mergeStops, parseWords, same
 import { pathCost, solvePath } from './lib/solve.js';
 import { kindOf, parseDocument, readDocument } from './lib/doc.js';
 import { parseMail } from './lib/mail.js';
+import { handoffStops } from './lib/handoff.js';
 import { splitRoutes } from './lib/split.js';
 import { rideAdjust, rideLeg, rulesFrom } from './lib/ride.js';
 import { timeline } from './lib/eta.js';
@@ -76,6 +77,8 @@ let inboxKey = store.get('inboxKey', '');
   const k = new URLSearchParams(location.hash.slice(1)).get('inbox');
   if (k) { inboxKey = k; store.set('inboxKey', k); }
 }
+/* what Route Reader (the Android helper) read arrives as #handoff=<id>; read before the hash is rewritten */
+const handoffId = new URLSearchParams(location.hash.slice(1)).get('handoff');
 
 const endInput = $('#end');
 function setEnd(v, fromHash = false) {
@@ -972,7 +975,32 @@ $('#legs').addEventListener('click', (e) => {
   updateEta();
 });
 
+/**
+ * The pages Route Reader read on an Android phone (src/handoff.js): text
+ * read as a screenshot would be (lib/handoff.js), screenshots read as
+ * screenshots. If nothing comes of it, the reading's code is shown, so what
+ * the app saw can be looked at.
+ */
+async function loadHandoff(id) {
+  say('Opening what Route Reader read…');
+  let h;
+  try {
+    const res = await fetch(`/api/handoff/${encodeURIComponent(id)}`);
+    h = await res.json();
+    if (!res.ok) throw new Error(h.error || `The planner said ${res.status}`);
+  } catch (e) { say(e.message, true); return; }
+  const pages = (h.pages?.length || 0) + (h.images?.length || 0);
+  const n = await load(async () => {
+    const lists = [];
+    if (h.pages?.length) lists.push(handoffStops(h));
+    if (h.images?.length) lists.push(await readScreenshots(h.images.map((b, i) => asFile(`page-${i + 1}.jpg`, 'image/jpeg', b64bytes(b)))));
+    return lists.length > 1 ? merge(lists) : lists[0] || [];
+  }, { source: `the ${pages} page${pages === 1 ? '' : 's'} Route Reader read` });
+  if (!n) say(`Route Reader read ${pages} page${pages === 1 ? '' : 's'} but no stops came out of them. Send this code to have it looked at: ${id}`, true);
+}
+
 renderStops();
 renderResult();
 if (result) $('#stopsBox').open = false;
 loadInbox();
+if (handoffId) loadHandoff(handoffId);

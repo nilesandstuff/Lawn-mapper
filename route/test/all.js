@@ -12,6 +12,8 @@ import './ride.test.js';
 import './eta.test.js';
 import './census.test.js';
 import './county.test.js';
+import './handoff.test.js';
+import './apk-key.test.js';
 import './share.test.js';
 import './live.test.js';
 import './push.test.js';

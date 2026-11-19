@@ -107,3 +107,23 @@ key kept in KV ("push-vapid", set with the route key); the phone's service
 worker fetches the message from the Worker. On iPhone, notifications need the
 route added to the home screen (Share -> Add to Home Screen) and opened from
 there; the manifest starts the icon at that route.
+
+## Route Reader, the Android helper (`android/`, `lib/handoff.js`, `src/handoff.js`)
+
+For people who don't take long screenshots: an Android app with an
+accessibility service that floats a "Read route" button over other apps. A
+tap scrolls the job list to the top, then reads it page by page to the
+bottom (pages overlap, repeats dropped), and opens the planner with the
+stops. It reads the screen's TEXT with where it sits, which the planner
+reads exactly as it reads a screenshot (`lib/handoff.js` -> `parseWords`); an
+app that shows no text is screenshotted page by page instead (Android 11+).
+
+What was read goes to the Worker (`POST /api/handoff`, kept a day) and the
+planner opens with `#handoff=<id>`; when nothing comes of it, the planner
+shows the id, and `GET /api/handoff` (route key) lists the recent ones.
+
+Built by the deploy (Java 17, Gradle, the runner's Android SDK), signed with
+one key kept in KV (`tools/apk-key.mjs`) so updates install over each other,
+and served at `/route-reader.apk` with its setup page at `/app`. Plain
+Android, no libraries. Local build: `ANDROID_HOME=... gradle assembleRelease`
+in `android/` (an example planner address unless `-PplannerUrl` is given).

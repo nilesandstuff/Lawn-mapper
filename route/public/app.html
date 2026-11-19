@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Route Reader</title>
+<meta name="description" content="Route Reader for Android: one button reads the job list and opens it in the route planner. Download and set up, step by step.">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#1f7a4d">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+<style>
+  .steps { counter-reset: step; list-style: none; padding: 0; margin: 0; }
+  .steps > li { counter-increment: step; position: relative; padding: 2px 0 14px 46px; }
+  .steps > li::before { content: counter(step); position: absolute; left: 0; top: 0; width: 32px; height: 32px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; font-weight: 700; }
+  .steps b { color: var(--ink); }
+  .steps p { margin: 4px 0; }
+  .say { display: inline-block; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 0 6px; font-weight: 600; color: var(--ink); }
+  .tip { font-size: 14px; color: var(--muted); }
+  .big { font-size: 18px; min-height: 58px; }
+  .version { font-size: 13px; color: var(--muted); text-align: center; margin-top: 8px; }
+  h2 { margin-top: 4px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <a class="home-link" href="/">Route Planner</a>
+    <h1>Route Reader</h1>
+    <p>For Android phones. Open your job list, tap one green button, and the route planner opens with all the stops. No long screenshots.</p>
+  </header>
+
+  <section class="card">
+    <a class="btn primary big" id="download" href="/route-reader.apk" download>Download Route Reader</a>
+    <p class="version" id="version">Android 8 or newer.</p>
+  </section>
+
+  <section class="card">
+    <h2>Set it up (once)</h2>
+    <p class="tip">Do this the first time only. It takes about 3 minutes. The exact words differ a little between phones.</p>
+    <ol class="steps">
+      <li>
+        <p><b>Download it.</b> Tap <span class="say">Download Route Reader</span> above.</p>
+        <p class="tip">If Chrome says the file might be harmful, tap <span class="say">Download anyway</span>. It says that about every app that doesn't come from the Play Store.</p>
+      </li>
+      <li>
+        <p><b>Install it.</b> Tap <span class="say">Open</span> on the download message (or find <span class="say">route-reader.apk</span> in your Downloads and tap it), then <span class="say">Install</span>.</p>
+        <p class="tip">If it says Chrome isn't allowed to install apps: tap <span class="say">Settings</span>, switch on <span class="say">Allow from this source</span>, go back, and tap <span class="say">Install</span>.</p>
+        <p class="tip">If Play Protect warns you: tap <span class="say">More details</span>, then <span class="say">Install anyway</span>. (If it offers to scan the app, you can say no.)</p>
+      </li>
+      <li>
+        <p><b>Open Route Reader</b> and tap <span class="say">1. Turn on Route Reader</span>.</p>
+        <p>In the list that opens, find <span class="say">Route Reader</span> (it may be inside <span class="say">Installed apps</span> or <span class="say">Downloaded apps</span>), tap it, switch it <b>on</b>, and tap <span class="say">Allow</span>.</p>
+      </li>
+      <li>
+        <p><b>If the switch is greyed out</b>, or it says <span class="say">Restricted setting</span>: Android blocks this for apps not from the Play Store until you allow it.</p>
+        <p>In Route Reader, tap <span class="say">If it is greyed out: allow restricted settings</span>. On the App info screen, tap the <b>three dots</b> at the top right, then <span class="say">Allow restricted settings</span>, and enter your PIN if asked. Then do step 3 again.</p>
+        <p class="tip">No three dots? Try step 3 once first (so Android shows the warning), then come back here.</p>
+      </li>
+      <li>
+        <p><b>Done.</b> Route Reader now says it is ON, and a green <span class="say">Read route</span> button floats over your apps.</p>
+      </li>
+    </ol>
+  </section>
+
+  <section class="card">
+    <h2>Every day</h2>
+    <ol class="steps">
+      <li><p>Open the app with today's jobs, on the <b>list</b> of jobs.</p></li>
+      <li><p>Tap the green <span class="say">Read route</span> button.</p></li>
+      <li><p><b>Wait, and don't touch the screen.</b> It scrolls to the top, then down to the bottom, reading as it goes.</p></li>
+      <li><p>The route planner opens with the stops. Check them, then tap <span class="say">Plan fastest route</span>.</p></li>
+    </ol>
+    <p class="tip">The button is in the way? Drag it up or down.</p>
+  </section>
+
+  <section class="card">
+    <h2>If something's wrong</h2>
+    <p class="tip"><b>No green button:</b> Route Reader has been switched off. Open it and do step 3 again. Some phones switch helper apps off to save battery: Settings, Apps, Route Reader, Battery, <span class="say">Unrestricted</span>.</p>
+    <p class="tip"><b>Stops missing or wrong:</b> fix them in the planner. If no stops come out at all, the planner shows a code. Send that code to whoever looks after this.</p>
+    <p class="tip"><b>A new version:</b> download and install it the same way. It installs over the old one; you may need to switch it on again (step 3).</p>
+    <p class="tip">Route Reader does nothing until you tap its button. It reads only the screen you are on, and sends what it read to the route planner, which keeps it for a day.</p>
+  </section>
+</main>
+<script>
+  // the version on the download, written by the deploy beside the app
+  fetch('/route-reader.json', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).then((v) => {
+    if (!v) { document.getElementById('version').textContent = 'The download is not ready yet. Try again later.'; document.getElementById('download').removeAttribute('href'); return; }
+    const mb = (v.bytes / 1048576).toFixed(1);
+    document.getElementById('version').textContent = `Version ${v.version}, ${mb} MB, built ${new Date(v.built).toLocaleDateString()}. Android 8 or newer.`;
+  }).catch(() => {});
+</script>
+</body>
+</html>

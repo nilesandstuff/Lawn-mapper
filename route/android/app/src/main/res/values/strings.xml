@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Route Reader</string>
+    <string name="service_description">Shows a Read route button over your apps. When you tap it, Route Reader scrolls the list on screen from top to bottom, reads the jobs on it, and opens them in the route planner. It does nothing until you tap the button.</string>
+</resources>

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A green circle with a route line: start dot, bend, end dot. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#1F7A4D" android:pathData="M54,4a50,50 0,1 1,0 100a50,50 0,1 1,0 -100z" />
+    <path android:strokeColor="#FFFFFF" android:strokeWidth="7" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M34,74 L34,54 Q34,44 44,44 L64,44 Q74,44 74,34 L74,30" />
+    <path android:fillColor="#FFFFFF" android:pathData="M34,70a8,8 0,1 1,0 16a8,8 0,1 1,0 -16z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M74,22a8,8 0,1 1,0 16a8,8 0,1 1,0 -16z" />
+</vector>
