@@ -227,6 +227,15 @@ def name_marked(imgs, maps, device="cpu", log=print, model_id=CLIP_BIG):
     return out
 
 
+def tidied(z):
+    """The kept SAM-objects shapes, tidied as the owner asked (segment_study.tidy_shapes): small shapes folded into
+    what rings them, clouds and sky made one and set aside."""
+    pan_names = [{int(a): b for a, b in nm.items()} for nm in json.loads(str(z["names"]))] if "names" in z else None
+    obj, _, n0, n1 = S.tidy_all(list(z["obj"]), list(z["pan"]) if "pan" in z else None, pan_names)
+    print(f"Shapes tidied: {n0:,} in the pictures -> {n1:,}.")
+    return obj
+
+
 # ---------------------------------------------------------------- a study, kept
 
 def keep(d, sid, title, what, eyes, numbers, sheets):
@@ -299,7 +308,7 @@ def study_names(d, names_file=None, sid="names", pictures=10):
         return
     z = np.load(mf, allow_pickle=False)
     sel = [w["keys"][i] for i in z["pics"]]
-    obj = list(z["obj"])
+    obj = tidied(z)
     cams = np.array([k["c2w"][:3, 3] for k in sel])
     pan_names = [{int(a): b for a, b in nm.items()} for nm in json.loads(str(z["names"]))]
     namers = {"panoptic": S.name_by_vote(obj, list(z["pan"]), pan_names)}
@@ -654,7 +663,7 @@ def study_reach(d, sid="reach"):
         return
     z = np.load(mf, allow_pickle=False)
     sel = [w["keys"][i] for i in z["pics"]]
-    obj = list(z["obj"])
+    obj = tidied(z)
     cams = np.array([k["c2w"][:3, 3] for k in sel])
     depths = [read_depth(p) if os.path.exists(p) else None for p in (os.path.join(d, k["name"].replace(".jpg", ".depth")) for k in sel)]
     have = sum(x is not None for x in depths)
@@ -713,7 +722,7 @@ def study_best(d, names_file=None, sid="best"):
         return
     z = np.load(mf, allow_pickle=False)
     sel = [w["keys"][i] for i in z["pics"]]
-    obj = list(z["obj"])
+    obj = tidied(z)
     cams = np.array([k["c2w"][:3, 3] for k in sel])
     pan_names = [{int(a): b for a, b in nm.items()} for nm in json.loads(str(z["names"]))]
     namers = {"panoptic": S.name_by_vote(obj, list(z["pan"]), pan_names)}
@@ -817,7 +826,7 @@ def study_thin(d, sid="thin"):
         return
     z = np.load(mf, allow_pickle=False)
     sel = [w["keys"][i] for i in z["pics"]]
-    obj, pan = list(z["obj"]), list(z["pan"])
+    obj, pan = tidied(z), list(z["pan"])
     pan_names = [{int(a): b for a, b in nm.items()} for nm in json.loads(str(z["names"]))]
     names = S.name_by_vote(obj, pan, pan_names)
     depths = [read_depth(p) if os.path.exists(p) else None for p in (os.path.join(d, k["name"].replace(".jpg", ".depth")) for k in sel)]

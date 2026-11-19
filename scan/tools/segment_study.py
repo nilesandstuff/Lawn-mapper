@@ -456,6 +456,78 @@ def name_by_vote(maps, name_maps, names):
     return out
 
 
+FOLD_AREA = 0.005   # of the picture: a shape smaller than this, ringed by one other shape, is folded into it
+FOLD_RING = 0.6     # ... when that one shape (or the unshaped ground) is this share of what touches it
+SKY_SHARE = 0.8     # a shape this much sky by the whole-picture model is sky: clouds are not things
+
+
+def tidy_shapes(m, pan=None, pan_names=None):
+    """THE OWNER, LOOKING AT THE SHEETS (2026-11-19): "Clouds, rocks, and non-uniform patches of turf are all segmented
+    separately... we should fold in shapes of a certain size, when they're surrounded by a bigger shape. Size
+    measured in pixels. So it would only segment a rock if it's a big rock or if you're really close to it. (...
+    it might be a handy feature to have sprinkler heads automatically segmented and named by looking directly at
+    it)", and of clouds: "we wouldn't [want] to be labelling trees as sky in an attempt to avoid segmenting clouds."
+    One picture's shapes -> the same with (1) every shape the whole-picture model calls sky (SKY_SHARE of its pixels)
+    made ONE sky shape, so a cloud is sky and a tree against the sky stays a tree; (2) each small shape (under
+    FOLD_AREA of the picture) folded into whatever rings it, when one neighbour is FOLD_RING of its edge: a bigger
+    shape, or nothing (ground the cut left unshaped). Smallest first, so a pebble on a rock on gravel goes all the way.
+    -> (map, sky id or 0, shapes folded)."""
+    from scipy import ndimage
+    m = m.astype(np.int32).copy()
+    sky_id = 0
+    if pan is not None and pan_names:
+        sky_ids = [int(k) for k, v in pan_names.items() if v == "sky"]
+        if sky_ids:
+            sky = np.isin(pan, sky_ids)
+            if sky.any():
+                ids, cnt = np.unique(m[m > 0], return_counts=True)
+                in_sky = np.bincount(m[sky & (m > 0)], minlength=int(m.max()) + 1)
+                sky_id = int(m.max()) + 1
+                hit = [int(i) for i, c in zip(ids, cnt) if in_sky[i] >= SKY_SHARE * c]
+                if hit:
+                    m[np.isin(m, hit)] = sky_id
+                m[sky & (m == 0)] = sky_id
+    folded = 0
+    cap = FOLD_AREA * m.size
+    boxes = ndimage.find_objects(m)
+    sizes = np.bincount(m.ravel())
+    for i in np.argsort(sizes):
+        if i == 0 or i == sky_id or sizes[i] == 0 or sizes[i] >= cap or boxes[i - 1] is None:
+            continue
+        sl = tuple(slice(max(0, a.start - 3), a.stop + 3) for a in boxes[i - 1])
+        sub = m[sl]
+        on = sub == i
+        if not on.any():
+            continue
+        ring = ndimage.binary_dilation(on, iterations=2) & ~on
+        if not ring.any():
+            continue
+        near = np.bincount(sub[ring])
+        top = int(near.argmax())
+        if near[top] >= FOLD_RING * ring.sum() and (top == 0 or sizes[top] > sizes[i]):
+            sub[on] = top
+            if top:
+                sizes[top] += sizes[i]
+            sizes[i] = 0
+            folded += 1
+    return m.astype(np.uint16), sky_id, folded
+
+
+def tidy_all(obj, pan, pan_names):
+    """Every picture's shapes tidied (tidy_shapes). -> (maps, [sky id per picture], shapes before, after)."""
+    out, skies, before, after = [], [], 0, 0
+    for i, m in enumerate(obj):
+        before += len(np.unique(m)) - 1
+        t, sky, _ = tidy_shapes(m, pan[i] if pan is not None else None, pan_names[i] if pan_names else None)
+        if sky:
+            t = t.copy()
+            t[t == sky] = 0                       # sky is no thing: nothing is lifted from it, nothing named in it
+        out.append(t)
+        skies.append(sky)
+        after += len(np.unique(t)) - 1
+    return out, skies, before, after
+
+
 def join_named(piece, xyz, classes):
     """THE OWNER'S STONE WALL (2026-11-18): seen close, each block is a shape of its own; seen from afar, the wall is
     one. "Do post processing on shapes... that are touching". Things whose votes give them the SAME NAME and whose
@@ -572,10 +644,19 @@ def overlay(img, m, off_p, comp, names_p, k_p=None):
     im = Image.fromarray(out.astype(np.uint8))
     if names_p:
         dr, f = ImageDraw.Draw(im), _font(14)
+        from scipy import ndimage
         for i, c in names_p.items():
-            ys, xs = np.nonzero(m == i)
-            if len(xs) >= 0.012 * m.size:
-                x, y = int(np.median(xs)), int(np.median(ys))
+            on = m == i
+            if on.sum() >= 0.012 * m.size:
+                # the name is written at the shape's own deepest point. (Until 2026-11-19 it was written at the
+                # middle of the shape's pixels, which for ground wrapped round a machine is ON THE MACHINE: the
+                # owner saw "a clearly visible and well segmented roller machine and skid steer both being called
+                # mulch" -- the ground's name, on them.)
+                ys, xs = np.nonzero(on)
+                y0, x0 = ys.min(), xs.min()
+                box = np.pad(on[y0:ys.max() + 1, x0:xs.max() + 1], 1)
+                yy, xx = np.unravel_index(int(ndimage.distance_transform_edt(box).argmax()), box.shape)
+                x, y = int(x0 + xx - 1), int(y0 + yy - 1)
                 dr.text((x + 1, y + 1), c, fill=(0, 0, 0), font=f, anchor="mm")
                 dr.text((x, y), c, fill=(255, 255, 255), font=f, anchor="mm")
     return im
@@ -713,6 +794,18 @@ def selftest():
     assert len(np.unique(g[g >= 0])) == 2, "by shape alone: two standing things"
     lines, _ = report("self test", piece, xyz, h, np.zeros((len(xyz), 4), np.uint8), [{"cells": 3, "lengthM": 4, "line": True, "label": "terrain", "idx": np.flatnonzero(truth == 1)[:500].tolist()}])
     assert any("patch 1" in l and "line" in l for l in lines), lines
+    # tidying one picture: pebbles on unshaped gravel go; a small knot inside a wall joins the wall; a cloud is sky
+    tm = np.zeros((200, 200), np.uint16)
+    tm[100:200, 0:120] = 1                 # a wall
+    tm[130:140, 40:50] = 2                 # a block in it (100 px of 40,000: small)
+    tm[60:66, 20:26] = 3                   # a pebble on unshaped ground
+    tm[0:15, 0:60] = 4                     # a cloud
+    tm[40:95, 130:190] = 5                 # a big thing by itself: stays
+    tpan = np.zeros((200, 200), np.uint16)
+    tpan[0:30, :] = 1
+    tt, sky, folded = tidy_shapes(tm, tpan, {1: "sky"})
+    assert tt[135, 45] == 1 and tt[62, 22] == 0 and tt[60, 160] == 5 and folded == 2, "the block joins the wall, the pebble goes, the big thing stays"
+    assert sky and tt[5, 5] == sky and tt[5, 150] == sky, "the cloud and the bare sky are one sky"
     # the owner's stone wall: two halves of the fence and the post, each a thing; the halves share a name and touch
     halves = np.full(len(xyz), -1, np.int64)
     halves[(truth == 1) & (xyz[:, 0] < 0)] = 5
@@ -795,8 +888,10 @@ def main():
             go("Panoptic (cuts and names)", sel, list(z["pan"]), [{int(a): b for a, b in nm.items()} for nm in names_all], c)
         if "obj" in z:
             pan_names = [{int(a): b for a, b in nm.items()} for nm in names_all] if names_all and "pan" in z else None
-            obj_names = name_by_vote(list(z["obj"]), list(z["pan"]), pan_names) if pan_names else None
-            go("SAM objects" + (", named by the panoptic model's vote" if obj_names else " (largest shape)"), sel, list(z["obj"]), obj_names, c)
+            obj, _, n0, n1 = tidy_all(list(z["obj"]), list(z["pan"]) if "pan" in z else None, pan_names)
+            print(f"SAM objects tidied (small shapes folded into what rings them, sky made one and set aside): {n0:,} shapes in the pictures -> {n1:,}.")
+            obj_names = name_by_vote(obj, list(z["pan"]), pan_names) if pan_names else None
+            go("SAM objects" + (", named by the panoptic model's vote" if obj_names else " (largest shape)"), sel, obj, obj_names, c)
             go("SAM parts (smallest shape)", sel, list(z["part"]), None, c)
     elif "--panoptic" in args and keys:
         from PIL import Image
