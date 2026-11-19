@@ -3131,3 +3131,16 @@ SPECULATION, each put to the owner as a question on its study card:
   edges or drift otherwise.
 - That the depth lift's lost points (a third to a half not in any thing) are mostly ground the pictures' depth
   grids do not cover, which matters little for naming standing things and much for a map of the ground.
+
+HARD, later the same afternoon (free runs 406-407):
+
+- FEWER PICTURES on W too: every 2nd picture loses 15% of the points that had a kind, every 3rd 21%, every 4th 36%,
+  every 6th 42%; the same kind where both give one 89-98%. W loses less than P (37 / 51 / 64 / 83%): a slower walk
+  with more looks at each thing. On both, the kinds hold and the cover goes.
+- THE BEST GUESS FROM ABOVE on P (things' kinds by the namers' vote, the phone's label for points in no thing): of
+  44,050 points 51% take a kind from their thing and 49% from the phone's label; none is left without. 105 of 111
+  things got their kind from two or more namers agreeing. Points by kind: grass 71%, built 17%, paved 5%, plant 5%,
+  fence 1%. Where a point has both, the thing's kind and the phone's label agree on 90%.
+
+SPECULATION: that the best-guess picture is the place. It is the first whole picture of a yard made from a walk
+alone; whether the grass / paved / built split in it is RIGHT is the owner's to say (study card "best").
