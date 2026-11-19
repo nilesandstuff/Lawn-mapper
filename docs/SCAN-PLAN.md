@@ -3076,3 +3076,10 @@ SPECULATION (for the owner's eyes, in the studies' own lists):
   points in one picture.
 - Marked CLIP's "shed" for most standing things reads like a habit of the model, not a seeing.
 - The 103 ft thing at 80 ft may be the building-and-wall the owner described, rightly one thing.
+
+THE OWNER, DURING THE SIX HOURS (2026-11-19): "building, wall, and shed are essentially synonyms for our purposes. At
+some point we'll break individual names into distinct classes based on how it affects a lawn in terms of shadow, heat
+radiance, wind blocking, permeability, whether it's permanent/fixed or mobile." So from here the namers are compared
+BY KIND (studies.py KIND: built, fence, grass, bare ground, paved, plant, movable, water, sky), the names themselves
+still written on the pictures; "the namers disagree widely" above is by exact word and overstates it. The classes
+the owner describes (shadow, heat, wind, permeability, fixed or mobile) are not drawn up yet.

@@ -62,6 +62,33 @@ WORDS = {
     "hose": "garden hose", "sky": "sky", "person": "person",
 }
 NAME_AREA = 0.004      # of the picture: a shape smaller than this is not named
+# WHAT KIND OF THING A NAME IS (the owner, 2026-11-19, on the namers saying building, wall and shed of the same
+# things: "building, wall, and shed are essentially synonyms for our purposes. At some point we'll break individual
+# names into distinct classes based on how it affects a lawn in terms of shadow, heat radiance, wind blocking,
+# permeability, whether it's permanent/fixed or mobile."). Until those classes are drawn up, the namers are compared
+# and the maps coloured by these few kinds; the names themselves stay written on the pictures.
+KIND = {name: kind for kind, names in {
+    "built": ["building", "house", "wall", "stone wall", "brick wall", "garage door", "door", "window", "roof", "shed", "structure", "deck", "steps", "stairs", "stairway", "awning", "bridge"],
+    "fence": ["fence", "railing"],
+    "grass": ["lawn", "grass", "terrain", "field"],
+    "bare ground": ["soil", "earth", "mulch", "leaves", "gravel", "sand", "dirt track", "land", "ground", "rock"],
+    "paved": ["pavement", "concrete", "sidewalk", "road", "path", "floor"],
+    "plant": ["tree", "trunk", "shrub", "hedge", "evergreen", "flowers", "plant", "palm", "flower"],
+    "movable": ["car", "truck", "trailer", "bin", "furniture", "hose", "machine", "person", "vehicle", "object", "mailbox", "pole", "van", "bus", "bench", "chair", "table"],
+    "water": ["water"],
+    "sky": ["sky"],
+}.items() for name in names}
+KIND_COL = {"built": (200, 80, 60), "fence": (150, 90, 190), "grass": (120, 190, 90), "bare ground": (150, 120, 80), "paved": (120, 120, 130),
+            "plant": (30, 120, 50), "movable": (60, 120, 220), "water": (60, 190, 220), "sky": (255, 0, 255)}
+
+
+def kinds_of(counts):
+    """A thing's votes by name -> its votes by kind (a name of no known kind keeps itself)."""
+    out = {}
+    for name, n in counts.items():
+        k = KIND.get(name, name)
+        out[k] = out.get(k, 0) + n
+    return out
 CLIPSEG = "CIDAS/clipseg-rd64-refined"
 OWL = "google/owlv2-base-patch16-ensemble"
 CLIP_BIG = "openai/clip-vit-large-patch14"
@@ -314,19 +341,29 @@ def study_names(d, names_file=None, sid="names", pictures=10):
         named = sum(len(set(x) & set(shapes_of(m))) for x, m in zip(names, obj))
         tally = {}
         for i in standing:
-            c, share = S.top_of(cls.get(i, {}), 0.5)
-            tally[c or "no clear name"] = tally.get(c or "no clear name", 0) + 1
-        numbers.append(f"{nm}: named {named:,} of {shapes:,} shapes in the pictures; the standing things: " + ", ".join(f"{v} {k}" for k, v in sorted(tally.items(), key=lambda kv: -kv[1])) + ".")
+            c, share = S.top_of(kinds_of(cls.get(i, {})), 0.5)
+            tally[c or "no clear kind"] = tally.get(c or "no clear kind", 0) + 1
+        numbers.append(f"{nm}: named {named:,} of {shapes:,} shapes in the pictures; the standing things BY KIND: " + ", ".join(f"{v} {k}" for k, v in sorted(tally.items(), key=lambda kv: -kv[1])) + ".")
     # where the namers agree on a thing and where they do not
     rows_txt = []
     for i in standing[:14]:
         said = []
         for nm in namers:
             c, share = S.top_of(per[nm].get(i, {}))
-            said.append(f"{nm} {c or '-'}{f' {100 * share:.0f}%' if c else ''}")
+            k, ks = S.top_of(kinds_of(per[nm].get(i, {})))
+            said.append(f"{nm} {k or '-'}{f' {100 * ks:.0f}% (mostly {c})' if k else ''}")
         rows_txt.append(f"  a {S.says(desc[i])}: " + "; ".join(said))
-    numbers.append("The biggest standing things, by each namer (its top name and that name's share of its votes):")
+    numbers.append("The biggest standing things, by each namer (its top KIND, that kind's share of its votes, and the name it used most):")
     numbers += rows_txt
+    # how often two namers give a thing the same kind, over every thing both gave a clear kind (half its votes)
+    kind_of = {nm: {i: S.top_of(kinds_of(per[nm].get(i, {})), 0.5)[0] for i in big} for nm in namers}
+    nms = list(namers)
+    for a_i, a in enumerate(nms):
+        for b in nms[a_i + 1:]:
+            both = [i for i in big if kind_of[a][i] and kind_of[b][i]]
+            if both:
+                same = sum(kind_of[a][i] == kind_of[b][i] for i in both)
+                numbers.append(f"  {a} and {b} give the same kind to {same} of the {len(both)} things both are clear on ({100 * same / len(both):.0f}%).")
     for line in numbers:
         print(line)
     # the sheet: the same pictures, the same cut, each namer's names written on it
@@ -339,10 +376,10 @@ def study_names(d, names_file=None, sid="names", pictures=10):
     sheets = [{"file": stack(rows, os.path.join(d, f"study-{sid}-pictures.jpg")), "title": "The same pictures and the same cut, named by each namer"}]
     for nm in namers:
         f = f"study-{sid}-above-{nm}.png"
-        named_map(os.path.join(d, f), w["xyz0"], piece, per[nm], f"From above, every thing coloured by the name {nm} gave it")
+        named_map(os.path.join(d, f), w["xyz0"], piece, {pc: kinds_of(c) for pc, c in per[nm].items()}, f"From above, every thing coloured by the KIND of name {nm} gave it")
         sheets.append({"file": f, "title": f"From above, named by: {nm}"})
     eyes = [
-        "Which column's names are right most often? (Only you can say what each thing really is.)",
+        "Which column's names are right most often? Building, wall and shed count as the same (your note): judge by kind of thing, not the exact word.",
         "In the views from above (one per namer): which one looks most like the place: lawn, paving, buildings and walls, trees where they really are?",
         "The stone wall seen close: are its blocks each named a wall of some kind, and by which namer?",
         "Is any namer good on the ground (lawn, gravel, pavement, soil) and another good on standing things? A mix by kind of thing may beat any one.",
@@ -363,7 +400,7 @@ def named_map(path, xyz0, piece, cls, title):
     name = {pc: S.top_of(c, 0.5)[0] for pc, c in cls.items()}
     words = sorted({v for v in name.values() if v})
     rng = np.random.default_rng(11)
-    fixed = {"grass": (120, 190, 90), "lawn": (120, 190, 90), "terrain": (120, 190, 90), "earth": (150, 120, 80), "soil": (150, 120, 80), "road": (90, 90, 100), "pavement": (90, 90, 100),
+    fixed = {**KIND_COL, "lawn": (120, 190, 90), "terrain": (120, 190, 90), "earth": (150, 120, 80), "soil": (150, 120, 80), "road": (90, 90, 100), "pavement": (90, 90, 100),
              "sidewalk": (170, 170, 180), "concrete": (170, 170, 180), "building": (200, 80, 60), "house": (200, 80, 60), "wall": (230, 150, 60), "stone wall": (230, 150, 60), "structure": (230, 150, 60),
              "tree": (30, 120, 50), "plant": (60, 160, 60), "shrub": (60, 160, 60), "fence": (150, 90, 190), "sky": (255, 0, 255), "car": (60, 120, 220), "gravel": (190, 180, 150)}
     col = {wd: fixed.get(wd, tuple(int(x) for x in rng.integers(40, 230, 3))) for wd in words}
