@@ -296,7 +296,7 @@ jobs:
             python scan/tools/segment_study.py twin --panoptic 2>&1 | grep -v -i "key-[0-9]" | tee -a segment.txt
           fi
           # the studies, each under its own name (scan/tools/studies.py): nothing overwrites another
-          python scan/tools/studies.py twin --study "${STUDIES:-names,map,reach}" 2>&1 | tee -a segment.txt
+          python scan/tools/studies.py twin --study "${STUDIES:-names,map,reach,relief}" 2>&1 | tee -a segment.txt
           node scan/tools/twin-r2.mjs put "$WALK" twin/segments-*.png twin/segments-*.jpg twin/study-* | tee -a segment.txt
 
       - name: A walk's skyline against the lidar

@@ -377,13 +377,30 @@ def study_names(d, names_file=None, sid="names", pictures=10):
         cells = [img] + [S.overlay(img, obj[p], off[p], comp, namers[nm][p], int(off[p + 1] - off[p])) for nm in namers]
         rows.append(strip(cells, ["the camera"] + list(namers), f"picture {int(p) + 1} of {len(sel)}"))
     sheets = [{"file": stack(rows, os.path.join(d, f"study-{sid}-pictures.jpg")), "title": "The same pictures and the same cut, named by each namer"}]
-    for nm in namers:
-        f = f"study-{sid}-above-{nm}.png"
+    # every namer one vote a thing (its clear kind): the kind most of them give it
+    maj = {}
+    for i in big:
+        votes = {}
+        for nm in namers:
+            k = kind_of[nm][i]
+            if k:
+                votes[k] = votes.get(k, 0) + 1
+        if votes:
+            top = max(votes.values())
+            win = [k for k, v in votes.items() if v == top]
+            if len(win) == 1 and top >= 2:
+                maj[i] = {win[0]: 1}
+    per["most namers"] = maj
+    agree_all = sum(1 for i in standing if i in maj)
+    numbers.append(f"Most namers together (a kind two or more namers give a thing, and more than give it any other): {agree_all} of the {len(standing)} standing things get one.")
+    for nm in list(namers) + ["most namers"]:
+        f = f"study-{sid}-above-{re.sub(r'[^a-z0-9]+', '-', nm)}.png"
         named_map(os.path.join(d, f), w["xyz0"], piece, {pc: kinds_of(c) for pc, c in per[nm].items()}, f"From above, every thing coloured by the KIND of name {nm} gave it")
         sheets.append({"file": f, "title": f"From above, named by: {nm}"})
     eyes = [
         "Which column's names are right most often? Building, wall and shed count as the same (your note): judge by kind of thing, not the exact word.",
         "In the views from above (one per namer): which one looks most like the place: lawn, paving, buildings and walls, trees where they really are?",
+        "The last view from above is the kind most namers agree on. Is it better than any single namer's view, or does it just leave more grey?",
         "The stone wall seen close: are its blocks each named a wall of some kind, and by which namer?",
         "Is any namer good on the ground (lawn, gravel, pavement, soil) and another good on standing things? A mix by kind of thing may beat any one.",
     ]
@@ -503,6 +520,84 @@ def study_map(d, sid="map"):
          [{"file": f"study-{sid}-labels.png", "title": "By the phone's label"}, {"file": f"study-{sid}-rule.png", "title": "What the rule did"}])
 
 
+# ---------------------------------------------------------------- study: relief
+
+def study_relief(d, sid="relief"):
+    """THE GROUND'S HIGH AND LOW SPOTS, FROM ABOVE (the owner: "legitimate low spots and permanent mounds do exist in
+    lawns... Itd be nice to map legitimate low spots and high spots"). The ground-named points the rule used, on
+    0.5 m squares: each square's middle height, set against the middle height of the 5 m round it (local bumps and
+    dips, inches), and against the whole walk (the lie of the land, feet). A square seen in one stretch only is
+    drawn pale: the rule says a bump needs two looks."""
+    from PIL import Image, ImageDraw
+    from scipy import ndimage
+    w = load(d)
+    if w["verdict"] is None:
+        print("No verdicts for this walk: no relief study.")
+        return
+    labs, xyz, t = w["labs"], w["xyz"], w["recs"][:, 0]
+    ground = np.isin(labs[:, 0], [S.LABELS.index(x) + 1 for x in ("terrain", "road", "sidewalk")]) & (w["verdict"] <= 2)
+    if ground.sum() < 500:
+        print("Too few ground-named points: no relief study.")
+        return
+    C = 0.5
+    e, n, y = xyz[ground, 0], -xyz[ground, 2], xyz[ground, 1]
+    ix, iy = np.floor(e / C).astype(int), np.floor(n / C).astype(int)
+    ix -= ix.min()
+    iy -= iy.min()
+    W, H = ix.max() + 1, iy.max() + 1
+    order = np.lexsort((y, iy * W + ix))
+    cell = (iy * W + ix)[order]
+    ys, ts = y[order], np.floor(t[ground][order] / 20)
+    first = np.flatnonzero(np.concatenate([[True], cell[1:] != cell[:-1]]))
+    last = np.concatenate([first[1:], [len(cell)]])
+    med = np.full(W * H, np.nan)
+    looks = np.zeros(W * H, int)
+    for a, b in zip(first, last):
+        if b - a >= 6:
+            med[cell[a]] = ys[(a + b) // 2]
+            looks[cell[a]] = len(np.unique(ts[a:b]))
+    med, looks = med.reshape(H, W), looks.reshape(H, W)
+    have = np.isfinite(med)
+    wide = ndimage.generic_filter(med, np.nanmedian, size=11, mode="constant", cval=np.nan)
+    local = (med - wide) * 39.37                         # inches over the 5 m round it
+    whole = (med - np.nanpercentile(med, 10)) * FT       # feet over the walk's low ground
+    K = max(2, min(8, 1400 // max(W, H)))
+
+    def draw(val, lim, unit, title):
+        img = np.full((H * K, W * K, 3), 255, np.uint8)
+        v = np.clip(val / lim, -1, 1)
+        for r in range(H):
+            for c in range(W):
+                if not have[r, c] or not np.isfinite(v[r, c]):
+                    continue
+                x = v[r, c]
+                col = np.array([255, 255 - 200 * x, 255 - 200 * x]) if x >= 0 else np.array([255 + 200 * x, 255 + 200 * x, 255])
+                if looks[r, c] < 2:
+                    col = 0.55 * 255 + 0.45 * col      # one look only: pale
+                img[(H - 1 - r) * K:(H - r) * K, c * K:(c + 1) * K] = col.astype(np.uint8)
+        pad = Image.new("RGB", (max(W * K, 900), H * K + 90), (255, 255, 255))
+        pad.paste(Image.fromarray(img), (0, 90))
+        dr, f = ImageDraw.Draw(pad), S._font(18)
+        dr.text((10, 6), title, fill=(0, 0, 0), font=f)
+        dr.text((10, 30), f"red: up to {lim:g} {unit} higher; blue: up to {lim:g} {unit} lower; white: level. Pale: seen in one stretch of the walk only.", fill=(90, 90, 90), font=f)
+        dr.text((10, 54), f"each square 20 in; {W * C * FT:.0f} x {H * C * FT:.0f} ft", fill=(90, 90, 90), font=f)
+        return pad
+
+    draw(local, 8.0, "in", "Bumps and dips: each square of ground against the 16 ft round it").save(os.path.join(d, f"study-{sid}-local.png"))
+    draw(whole - np.nanmedian(whole[have]), 3.0, "ft", "The lie of the land: each square against the walk's middle ground height").save(os.path.join(d, f"study-{sid}-whole.png"))
+    two = have & (looks >= 2)
+    numbers = [f"{int(have.sum()):,} squares of ground (20 in), {int(two.sum()):,} seen in two stretches or more ({100 * two.sum() / max(1, have.sum()):.0f}%).",
+               f"Against the 16 ft round it: {int((np.abs(local[have]) > 5).sum()):,} squares more than 5 in off ({int((np.abs(local[two]) > 5).sum()):,} of them seen twice or more).",
+               f"The ground the walk saw spans {np.nanpercentile(whole[have], 95) - np.nanpercentile(whole[have], 5):.1f} ft from its low twentieth to its high twentieth."]
+    for line in numbers:
+        print(line)
+    eyes = ["Bumps and dips: do the red and blue patches sit where the lawn really has mounds and low spots, or along kerbs, edges, and where the phone's depth wandered?",
+            "The lie of the land: does the broad red-to-blue trend match the way the ground really slopes? If it tilts the wrong way or steps suddenly, that is the phone's height drifting along the walk, not the ground.",
+            "Are the pale squares (one look only) noisier than the solid ones? If so the two-looks rule for bumps is doing its job."]
+    keep(d, sid, "The ground's high and low spots, from above", "Only points the phone called ground (terrain, road, sidewalk) and the rule kept. No lidar is used: this is the walk's own ground.", eyes, numbers,
+         [{"file": f"study-{sid}-local.png", "title": "Bumps and dips (inches, against the 16 ft round each square)"}, {"file": f"study-{sid}-whole.png", "title": "The lie of the land (feet)"}])
+
+
 # ---------------------------------------------------------------- study: reach
 
 def read_depth(path):
@@ -614,6 +709,8 @@ def main():
             study_map(d)
         elif one == "reach":
             study_reach(d)
+        elif one == "relief":
+            study_relief(d)
 
 
 if __name__ == "__main__":
