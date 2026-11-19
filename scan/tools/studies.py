@@ -698,6 +698,64 @@ def study_reach(d, sid="reach"):
     keep(d, sid, "The lift with a longer reach", "The cut is SAM objects. A picture names a point only if it saw it. First by the old test (the nearest point in a patch of the picture), then by the picture's own depth, at three reaches.", eyes, numbers, sheets)
 
 
+# ---------------------------------------------------------------- study: fewer pictures
+
+def study_thin(d, sid="thin"):
+    """HOW MANY PICTURES DOES THE CUT NEED? Segment Anything is the cost (5-7 s a picture on a GPU; a walk keeps a
+    picture a second). The kept shapes of every 2nd, 3rd, 4th and 6th picture, lifted as the full set is, and each
+    point's KIND then set against what the full set gave it. Numbers only: nothing here needs a person's eyes."""
+    w = load(d)
+    mf = os.path.join(d, "segments-masks.npz")
+    if not os.path.exists(mf):
+        print("No kept shapes for this walk: no fewer-pictures study.")
+        return
+    z = np.load(mf, allow_pickle=False)
+    sel = [w["keys"][i] for i in z["pics"]]
+    obj, pan = list(z["obj"]), list(z["pan"])
+    pan_names = [{int(a): b for a, b in nm.items()} for nm in json.loads(str(z["names"]))]
+    names = S.name_by_vote(obj, pan, pan_names)
+    depths = [read_depth(p) if os.path.exists(p) else None for p in (os.path.join(d, k["name"].replace(".jpg", ".depth")) for k in sel)]
+    by_depth = sum(x is not None for x in depths) >= 0.8 * len(sel)
+    used = int((~w["drop"]).sum())
+
+    def run(step):
+        ix = list(range(0, len(sel), step))
+        ks, ms_, nm, dp = [sel[i] for i in ix], [obj[i] for i in ix], [names[i] for i in ix], [depths[i] for i in ix]
+        cams = np.array([k["c2w"][:3, 3] for k in ks])
+        vis, ms = lift_by_depth(w["xyz0"], ks, ms_, dp, 24.4) if by_depth else S.lift(w["xyz0"], ks, ms_)
+        off, comp, joined = S.merge(vis, ms, cams)
+        piece, purity, vp, vn = S.vote(len(w["xyz0"]), vis, ms, off, comp)
+        node = {}
+        for p, d1 in enumerate(nm):
+            for i, c in d1.items():
+                node[int(off[p] + i)] = KIND.get(c, c)
+        cls = {}
+        ok = comp[vn] == piece[vp]
+        for pc, nd in zip(piece[vp][ok], vn[ok]):
+            c = node.get(int(nd))
+            if c:
+                dd = cls.setdefault(int(pc), {})
+                dd[c] = dd.get(c, 0) + 1
+        kind = np.full(len(piece), "", dtype=object)
+        for pc, c in cls.items():
+            k, share = S.top_of(c, 0.5)
+            if k:
+                kind[piece == pc] = k
+        return len(ix), piece, kind
+
+    n0, piece0, kind0 = run(1)
+    numbers = [f"{len(sel)} pictures kept with shapes (one a second of walking, at most); {used:,} points used. The lift: {'by each picture own depth, 80 ft' if by_depth else '26 ft'}.",
+               f"every picture ({n0}): {100 * (piece0 >= 0).sum() / used:.0f}% of the points in a thing, {100 * (kind0 != '').sum() / used:.0f}% given a kind."]
+    for step in (2, 3, 4, 6):
+        n, piece, kind = run(step)
+        both = (kind0 != "") & (kind != "")
+        numbers.append(f"every {step}{'nd' if step == 2 else 'rd' if step == 3 else 'th'} picture ({n}): {100 * (piece >= 0).sum() / used:.0f}% of the points in a thing, {100 * (kind != '').sum() / used:.0f}% given a kind; "
+                       f"of the points both give a kind, {100 * (kind0[both] == kind[both]).mean() if both.any() else 0:.0f}% get the same one; {100 * ((kind0 != '') & (kind == '')).sum() / max(1, (kind0 != '').sum()):.0f}% of the full set's kinded points lose theirs.")
+    for line in numbers:
+        print(line)
+    keep(d, sid, "How many pictures does the cut need", "The same walk cut from fewer of its pictures, against the cut from all of them. Kinds by the panoptic vote. Numbers only.", [], numbers, [])
+
+
 def main():
     args = sys.argv[1:]
     d = next((a for a in args if not a.startswith("--") and (args.index(a) == 0 or not args[args.index(a) - 1].startswith("--"))), "twin")
@@ -711,6 +769,8 @@ def main():
             study_reach(d)
         elif one == "relief":
             study_relief(d)
+        elif one == "thin":
+            study_thin(d)
 
 
 if __name__ == "__main__":

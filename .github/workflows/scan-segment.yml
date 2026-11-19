@@ -77,7 +77,7 @@ jobs:
           # the shapes and the names are kept beside the twin, so the lift, the studies and their pictures can be
           # redone without the GPU
           python scan/tools/segment_study.py twin --masks twin/segments-masks.npz 2>&1 | tee -a segment.txt
-          python scan/tools/studies.py twin --study names,map,reach,relief 2>&1 | tee -a segment.txt
+          python scan/tools/studies.py twin --study names,map,reach,relief,thin 2>&1 | tee -a segment.txt
           node scan/tools/twin-r2.mjs put "$WALK" twin/segments-* twin/study-* | tee -a segment.txt
 
       - name: The answer
