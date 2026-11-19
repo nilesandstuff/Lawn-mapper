@@ -314,7 +314,10 @@ def study_names(d, names_file=None, sid="names", pictures=10):
     # things apart where the points' own test ran them together); else the 26 ft lift
     depths = [read_depth(p) if os.path.exists(p) else None for p in (os.path.join(d, k["name"].replace(".jpg", ".depth")) for k in sel)]
     by_depth = sum(x is not None for x in depths) >= 0.8 * len(sel)
-    vis, ms = lift_by_depth(w["xyz0"], sel, obj, depths, 24.4, 8.0) if by_depth else S.lift(w["xyz0"], sel, obj)
+    # (not the "fill" variant: letting the points' own test speak where a picture's depth is empty brought the
+    # running-together straight back -- the biggest standing thing 12% by depth alone, 46% with the fill, on the
+    # second app walk, 2026-11-19)
+    vis, ms = lift_by_depth(w["xyz0"], sel, obj, depths, 24.4) if by_depth else S.lift(w["xyz0"], sel, obj)
     off, comp, joined = S.merge(vis, ms, cams)
     piece, purity, vp, vn = S.vote(len(w["xyz0"]), vis, ms, off, comp)
     stand = np.isfinite(w["h"]) & (w["h"] > S.STAND)
