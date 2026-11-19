@@ -57,7 +57,7 @@ image = (
 )
 
 
-@app.function(image=image, gpu=GPU, timeout=45 * 60)
+@app.function(image=image, gpu=GPU, timeout=75 * 60)
 def segment(pictures: list) -> dict:
     import numpy as np
     import torch
@@ -157,6 +157,11 @@ def main(src: str = "twin", out: str = "out"):
     if len(keys) < 8:
         print(f"Only {len(keys)} pictures: nothing to segment.")
         sys.exit(1)
+    # a long walk's pictures, thinned evenly to PIC_MAX: Segment Anything takes 5-7 s a picture, and the function
+    # stops itself at 75 minutes (a 45-minute limit was nearly met by one walk on 2026-11-19)
+    cap = int(os.environ.get("PIC_MAX", "420"))
+    pick = np.unique(np.linspace(0, len(keys) - 1, num=min(cap, len(keys))).astype(int))
+    keys = [keys[i] for i in pick]
     pictures = []
     for k in keys:
         with open(os.path.join(src, k["name"]), "rb") as f:
@@ -168,5 +173,5 @@ def main(src: str = "twin", out: str = "out"):
         print(f"No shapes: {r['error']}")
         sys.exit(1)
     z = np.load(io.BytesIO(r["npz"]), allow_pickle=False)
-    np.savez_compressed(os.path.join(out, "masks.npz"), obj=z["obj"], part=z["part"], pan=z["pan"], names=z["names"], pics=np.arange(len(keys)))
+    np.savez_compressed(os.path.join(out, "masks.npz"), obj=z["obj"], part=z["part"], pan=z["pan"], names=z["names"], pics=pick)
     print("SEGMENT " + json.dumps(r["numbers"]))
