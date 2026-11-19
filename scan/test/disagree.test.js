@@ -60,4 +60,25 @@ assert.match(text, /27 ft structure/); assert.ok(!/\d+\.\d{4}/.test(text), 'no c
   assert.ok(h.slice(600, 1000).every((v) => Math.abs(v) < 0.2), 'the second pass, drifted up, is ground too');
   assert.equal(h[1000], 0.5, 'alone: the kept ground height');
 }
+
+// seen from more than one place: a wall seen from two stretches is confirmed; a clump read short in one stretch,
+// which the other stretch's lines pass through on their way to the wall, is seen past
+{
+  const { carve, seenPast, confirmed, groundLooks } = await import('../lib/disagree.js');
+  const L = [];
+  for (let i = 0; i < 2400; i++) { const z = (i % 60) * 0.05, y = Math.floor(i / 60) * 0.025; L.push({ c: [0, 1.4, 1], p: [10, y, z], t: 1 }); L.push({ c: [0, 1.4, 2], p: [10, y + 0.03, z + 0.03], t: 30 }); }
+  const n0 = L.length;
+  for (let i = 0; i < 60; i++) L.push({ c: [0, 1.4, 1], p: [5, 0.8 + (i % 6) * 0.05, 1.6 + Math.floor(i / 6) * 0.05], t: 2 });   // the clump: half the distance, one stretch
+  const c = carve(L);
+  let ok = 0; for (let i = 0; i < n0; i++) if (confirmed(c, i)) ok++;
+  assert.ok(ok > 0.9 * n0, `the wall, seen twice, is confirmed (${ok} of ${n0})`);
+  let past = 0; for (let i = n0; i < L.length; i++) if (seenPast(c, i)) past++;
+  assert.ok(past > 40, `the clump is seen past (${past} of 60)`);
+  // the ground by more than one look: two looks 4 cm apart, a third square seen once
+  const R = [];
+  for (let i = 0; i < 40; i++) { R.push({ e: 0.1, n: 0.1, y: 1 + (i % 4) * 0.01, t: 1 }); R.push({ e: 0.1, n: 0.1, y: 1.04 + (i % 4) * 0.01, t: 50 }); R.push({ e: 3, n: 3, y: 2, t: 1 }); }
+  const g = groundLooks(R);
+  assert.deepEqual([g.squares, g.one, g.two, g.more], [2, 1, 1, 0]);
+  assert.ok(g.spread.length === 2 && Math.abs(g.spread[0] - 0.02) < 0.011, `two looks 4 cm apart: each 2 cm from the middle (${g.spread})`);
+}
 console.log('disagree: ok');

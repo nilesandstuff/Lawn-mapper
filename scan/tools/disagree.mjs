@@ -18,7 +18,7 @@ import { readMap, readModel } from './twin-io.mjs';
 import { readCloud, readLabels, readTrack } from '../lib/twin.js';
 import { keepPlan } from '../lib/refkeep.js';
 import { fitAt, apply } from '../lib/align.js';
-import { disagree, lines, heights } from '../lib/disagree.js';
+import { disagree, lines, heights, carve, seenPast, confirmed, groundLooks, NEAR_M } from '../lib/disagree.js';
 
 const RANGE_M = 6;
 
@@ -32,7 +32,7 @@ const recs = [];
 for (const f of readdirSync(dir).filter((x) => /^cloud-\d+\.bin$/.test(x)).sort()) {
   const part = readCloud(buf(f)), lp = f.replace('cloud-', 'labels-');
   const lab = existsSync(join(dir, lp)) ? readLabels(buf(lp), part.length) : null;
-  part.forEach((r, i) => { r.label = lab?.[i]?.label ?? null; r.conf = lab?.[i]?.conf ?? null; r.spike = !!lab?.[i]?.spike; });
+  part.forEach((r, i) => { r.label = lab?.[i]?.label ?? null; r.conf = lab?.[i]?.conf ?? null; r.spike = !!lab?.[i]?.spike; r.geo = !!lab?.[i]?.geoDepth; });
   recs.push(...part);
 }
 const track = [];
@@ -60,15 +60,19 @@ console.log(`The model: the shade map's, ${model.meta?.at ? String(model.meta.at
 if (!plan.ok) process.exit(0);
 const fits = new Map();
 const fitFor = (odo) => { const k = Math.round(odo); if (!fits.has(k)) fits.set(k, fitAt(plan.use, k) || plan.C); return fits.get(k); };
-const pts = [];
+const pts = [], every = []; // pts: within RANGE_M (the report); every: every measured point with its camera (the study below)
 let far = 0, spikes = 0;
 for (let i = 0; i < recs.length; i++) {
   const r = recs[i];
   if (r.spike) { spikes++; continue; }
   const cam = camAt(r.t);
-  if (cam && Math.hypot(r.x - cam.x, r.y - cam.y, r.z - cam.z) > RANGE_M) { far++; continue; }
+  const dist = cam ? Math.hypot(r.x - cam.x, r.y - cam.y, r.z - cam.z) : null;
   const [e, n] = apply(fitFor(r.odo), [r.x, -r.z]);
-  pts.push({ e, n, y: r.y, t: r.t, ground: r.ground, label: r.label, conf: r.conf, i });
+  const pt = { e, n, y: r.y, t: r.t, ground: r.ground, label: r.label, conf: r.conf, i };
+  // Google's street geometry past 25 m is not a measurement of the camera's: never part of the study
+  if (cam && !r.geo) every.push({ ...pt, h: r.y - r.ground, dist, c: [cam.x, cam.y, cam.z], p: [r.x, r.y, r.z] });
+  if (dist != null && dist > RANGE_M) { far++; continue; }
+  pts.push(pt);
 }
 // THE HEIGHT IS OVER THE GROUND THE PAGE KEPT UNDER EACH POINT. Taking it over the ground the walk's own points show
 // nearby (lib/disagree.js heights) was tried twice on 2026-11-18 and made the report no better on one walk and worse
@@ -99,6 +103,42 @@ if (m.trace?.status === 'whole') console.log('This map\'s lawn is the whole prop
 const anything = (e, n) => solid(e, n) || !['nothing', null].includes(kind(e + 0.5 - (e - Math.floor(e)), n + 0.5 - (n - Math.floor(n))));
 const result = disagree(pts, { solid: anything, standing: solid, kind, lawn });
 for (const l of lines(result)) console.log(l);
+
+/* HOW FAR CAN THE PHONE'S DEPTH BE TRUSTED, AND DOES A SECOND LOOK TELL REAL FROM NOISE (2026-11-19; lib/disagree.js
+   carve says why, in the owner's words). Every measured point at every distance, asked of the rest of the walk. */
+{
+  const t0 = Date.now(), C = carve(every), FT = 3.281;
+  const inLidar = (p) => { for (let dy = -NEAR_M; dy <= NEAR_M; dy += 1) for (let dx = -NEAR_M; dx <= NEAR_M; dx += 1) if (anything(p.e + dx, p.n + dy)) return true; return false; };
+  const pc = (a, b) => (b ? `${Math.round((100 * a) / b)}%` : '-');
+  console.log(`BY DISTANCE FROM THE PHONE (every measured point, ${every.length.toLocaleString()}; a second look = another ${5} s stretch of the walk saw the same foot-wide cube; ${((Date.now() - t0) / 1000).toFixed(0)} s):`);
+  const bands = [[0, 10], [10, 20], [20, 40], [40, 60], [60, 80], [80, 1e9]];
+  for (const [a, b] of bands) {
+    let n = 0, two = 0, past = 0, conf = 0, st = 0, stIn = 0, stC = 0, stCIn = 0, stX = 0, stXIn = 0;
+    every.forEach((p, k) => {
+      const d = p.dist * FT; if (d < a || d >= b) return;
+      n++; if (C.views[k] >= 2) two++; if (seenPast(C, k)) past++; const ok = confirmed(C, k); if (ok) conf++;
+      if (p.h > 0.4 && p.h < 2.4) { const hit = inLidar(p); st++; if (hit) stIn++; if (ok) { stC++; if (hit) stCIn++; } else { stX++; if (hit) stXIn++; } }
+    });
+    if (!n) continue;
+    console.log(`  ${a}-${b > 1e6 ? '' : b} ft${b > 1e6 ? ' and over' : ''}: ${n.toLocaleString()} points; a second look ${pc(two, n)}, seen past ${pc(past, n)}, confirmed ${pc(conf, n)}. Standing ones in the lidar within 1 m: all ${pc(stIn, st)} of ${st.toLocaleString()}; confirmed ${pc(stCIn, stC)} of ${stC.toLocaleString()}; not confirmed ${pc(stXIn, stX)} of ${stX.toLocaleString()}.`);
+  }
+  // the report again on every confirmed point out to 80 ft, beside the one above (within 20 ft, confirmed or not)
+  const FAR_M = 80 / FT, wide = every.filter((p, k) => p.dist <= FAR_M && confirmed(C, k));
+  console.log(`THE SAME REPORT ON EVERY CONFIRMED POINT OUT TO 80 FT (${wide.length.toLocaleString()} points; above: ${pts.length.toLocaleString()} within ${Math.round(RANGE_M * FT)} ft, confirmed or not):`);
+  for (const l of lines(disagree(wide, { solid: anything, standing: solid, kind, lawn })).slice(0, 6)) console.log(`  ${l}`);
+  // the patches above: were their points confirmed, or seen past?
+  const at = new Map(every.map((p, k) => [p.i, k]));
+  result.extra.patches.forEach((pt, j) => {
+    const ks = (pt.idx || []).map((i) => at.get(i)).filter((k) => k != null); if (!ks.length) return;
+    console.log(`  patch ${j + 1} (${pt.cells} m2, ${pt.label}): ${pc(ks.filter((k) => confirmed(C, k)).length, ks.length)} of its points confirmed, ${pc(ks.filter((k) => seenPast(C, k)).length, ks.length)} seen past, ${pc(ks.filter((k) => C.views[k] < 2).length, ks.length)} seen in one stretch only.`);
+  });
+  // the ground by more than one look
+  const inch = (m) => (m * 39.37).toFixed(1), q = (a, f) => (a.length ? a[Math.min(a.length - 1, Math.floor(a.length * f))] : NaN);
+  for (const [name, set] of [[`within ${Math.round(RANGE_M * FT)} ft`, every.filter((p) => p.dist <= RANGE_M)], ['out to 80 ft', every.filter((p) => p.dist <= FAR_M)]]) {
+    const g = groundLooks(set);
+    console.log(`THE GROUND BY MORE THAN ONE LOOK (${name}): ${g.squares.toLocaleString()} squares of 20 in; seen in one stretch ${pc(g.one, g.squares)}, two ${pc(g.two, g.squares)}, three or more ${pc(g.more, g.squares)}. Where looked at twice or more, a look sits a median ${inch(q(g.spread, 0.5))} in from its square's middle height (three in four within ${inch(q(g.spread, 0.75))} in, nine in ten within ${inch(q(g.spread, 0.9))} in).`);
+  }
+}
 // for the segment trial (scan/tools/segment_study.py): each patch as the indexes of its points in the twin's own
 // records. Kept in the run's folder only; no place in it.
 if (process.env.CELLS_OUT) writeFileSync(process.env.CELLS_OUT, JSON.stringify(result.extra.patches.map((p) => ({ cells: p.cells, lengthM: p.lengthM, line: p.line, label: p.label, idx: p.idx || [] }))));

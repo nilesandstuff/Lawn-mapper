@@ -138,6 +138,97 @@ export function heights(recs) {
   return out;
 }
 
+/**
+ * SEEN FROM MORE THAN ONE PLACE (2026-11-19). The owner, on the phone's depth: "it correctly calls the distance up to
+ * like 60-80 feet... BUT there's some jitter, occasionally, where it can get stuck at like half the distance, then
+ * take a second of moving the camera around to get the right distance... there's depth noise, like with the ground,
+ * but the noise tends to be clustered, and can be seen past with a change of position." And of the ground:
+ * "Perhaps consensus/majority votes from different angles?"
+ *
+ * So each point is asked two things of the rest of the walk, on CUBE cubes (depth_audit.py's judge, SCAN-H26, here
+ * for every point at every distance):
+ *   views   how many separate stretches of the walk (VIEW_SECS) saw something in its cube
+ *   free    how many sight lines of OTHER stretches passed through its cube on their way to something farther
+ * A point is "seen past" when free > 2 x the points seen in its cube; "confirmed" when views >= 2 and not seen past.
+ *
+ * lines: [{ c: [x, y, z] (the camera), p: [x, y, z] (the point), t (s) }] in one frame. -> { views, free, seen } arrays.
+ */
+export const CUBE = 0.3, CARVE_STEP = 0.15, VIEW_SECS = 5;
+export function carve(lines) {
+  const K = (x, y, z) => (Math.floor(x / CUBE) + 4096) * 67108864 + (Math.floor(y / CUBE) + 4096) * 8192 + (Math.floor(z / CUBE) + 4096);
+  const view = (t) => Math.floor(t / VIEW_SECS);
+  const seen = new Map(), views = new Map(), free = new Map();
+  const end = new Float64Array(lines.length);
+  lines.forEach((l, i) => {
+    const k = end[i] = K(l.p[0], l.p[1], l.p[2]);
+    seen.set(k, (seen.get(k) || 0) + 1);
+    let v = views.get(k); if (!v) views.set(k, v = new Set()); v.add(view(l.t));
+  });
+  // free: a cube a line crosses well short of its end, counted once per line, kept per stretch so a point's own
+  // stretch does not vouch against it
+  for (const l of lines) {
+    const d = [l.p[0] - l.c[0], l.p[1] - l.c[1], l.p[2] - l.c[2]], r = Math.hypot(d[0], d[1], d[2]);
+    if (!(r > 3 * CUBE)) continue;
+    const v = view(l.t);
+    let last = -1;
+    for (let s = CUBE; s < r - 2 * CUBE; s += CARVE_STEP) {
+      const k = K(l.c[0] + (d[0] * s) / r, l.c[1] + (d[1] * s) / r, l.c[2] + (d[2] * s) / r);
+      if (k === last) continue; last = k;
+      if (!seen.has(k)) continue;           // only cubes that hold a point are asked about
+      let f = free.get(k); if (!f) free.set(k, f = new Map());
+      f.set(v, (f.get(v) || 0) + 1);
+    }
+  }
+  const out = { views: new Int32Array(lines.length), free: new Int32Array(lines.length), seen: new Int32Array(lines.length) };
+  lines.forEach((l, i) => {
+    const k = end[i], v = view(l.t), f = free.get(k);
+    out.views[i] = views.get(k).size; out.seen[i] = seen.get(k);
+    let n = 0; if (f) for (const [fv, c] of f) if (fv !== v) n += c;
+    out.free[i] = n;
+  });
+  return out;
+}
+export const seenPast = (c, i) => c.free[i] > 2 * c.seen[i];
+export const confirmed = (c, i) => c.views[i] >= 2 && !seenPast(c, i);
+
+/**
+ * THE GROUND, BY MORE THAN ONE LOOK (2026-11-19; the owner: "legitimate low spots and permanent mounds do exist in
+ * lawns... Itd be nice to map legitimate low spots and high spots. Perhaps consensus/majority votes from different
+ * angles?"). Each GROUND_CELL square's ground (its lowest substantial layer, as heights() takes it) is found
+ * separately for each stretch of the walk (GROUND_SECS) that saw it. How far those looks agree is the size of bump
+ * the walk could map: -> { squares, one, two, more, spread: sorted differences (m) between each look and its
+ * square's median, for squares with two looks or more }.
+ */
+export function groundLooks(recs) {
+  const cols = new Map();
+  for (const r of recs) {
+    if (!Number.isFinite(r.y) || !Number.isFinite(r.e)) continue;
+    const k = `${Math.floor(r.e / GROUND_CELL)},${Math.floor(r.n / GROUND_CELL)}`, v = Math.floor(r.t / GROUND_SECS);
+    let c = cols.get(k); if (!c) cols.set(k, c = new Map());
+    let ys = c.get(v); if (!ys) c.set(v, ys = []); ys.push(r.y);
+  }
+  const out = { squares: 0, one: 0, two: 0, more: 0, spread: [] };
+  for (const c of cols.values()) {
+    const lows = [];
+    for (const ys of c.values()) {
+      if (ys.length < GROUND_PTS) continue;
+      ys.sort((a, b) => a - b);
+      let hi = 0, got = null;
+      for (let lo = 0; lo < ys.length && got == null; lo++) { while (hi < ys.length && ys[hi] < ys[lo] + 2 * GROUND_BAND) hi++; if (hi - lo >= GROUND_SHARE * ys.length) got = ys[lo + ((hi - lo) >> 1)]; }
+      if (got != null) lows.push(got);
+    }
+    if (!lows.length) continue;
+    out.squares++;
+    if (lows.length === 1) { out.one++; continue; }
+    if (lows.length === 2) out.two++; else out.more++;
+    lows.sort((a, b) => a - b);
+    const med = lows.length % 2 ? lows[lows.length >> 1] : (lows[lows.length / 2 - 1] + lows[lows.length / 2]) / 2;
+    for (const v of lows) out.spread.push(Math.abs(v - med));
+  }
+  out.spread.sort((a, b) => a - b);
+  return out;
+}
+
 /** The report as lines: counts, lengths and shares only, never a place. */
 export function lines(r) {
   const pct = (a, b) => (b ? `${Math.round((100 * a) / b)}%` : '-');

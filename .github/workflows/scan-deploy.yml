@@ -289,8 +289,8 @@ jobs:
           pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
           pip install --quiet "transformers>=4.45,<5"
           if [ -f twin/segments-masks.npz ]; then
-            # ... and its Segment Anything shapes named by a small model (CLIP), here on the CPU
-            python scan/tools/segment_study.py twin --masks twin/segments-masks.npz --name 2>&1 | grep -v -i "key-[0-9]" | tee -a segment.txt
+            # ... and its Segment Anything shapes named by the vote of the panoptic model's pixels
+            python scan/tools/segment_study.py twin --masks twin/segments-masks.npz 2>&1 | grep -v -i "key-[0-9]" | tee -a segment.txt
           else
             python scan/tools/segment_study.py twin --panoptic 2>&1 | grep -v -i "key-[0-9]" | tee -a segment.txt
           fi
