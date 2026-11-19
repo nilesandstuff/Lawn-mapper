@@ -3,6 +3,10 @@ package app.routereader
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.content.Intent
+import android.content.SharedPreferences
+import android.content.pm.PackageManager
+import android.provider.Settings
+import android.widget.Toast
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Path
@@ -50,15 +54,53 @@ class ReaderService : AccessibilityService() {
     private var params: WindowManager.LayoutParams? = null
     @Volatile private var busy = false
 
+    /*
+     * WHERE THE BUTTON SHOWS (owner, 2026-11-19: "the button also won't go away"). Over the job list
+     * app only: the app of the first read that went to the planner, kept in "app". Before that, over
+     * any app but the home screen. A long press hides it until that app is left and opened again.
+     */
+    private val prefs: SharedPreferences by lazy { getSharedPreferences(PREFS, MODE_PRIVATE) }
+    private val prefsChanged = SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> updateVisibility() }
+    private var current: String? = null
+    private var hiddenFor: String? = null
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         showButton()
+        prefs.registerOnSharedPreferenceChangeListener(prefsChanged)
+        current = rootInActiveWindow?.packageName?.toString()
+        updateVisibility()
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) { /* acts only on its button */ }
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
+        val pkg = event.packageName?.toString() ?: return
+        // the shade, a keyboard, or this app's own windows do not change which app you are in
+        if (pkg == packageName || pkg == "com.android.systemui" || isKeyboard(pkg)) return
+        if (pkg != current) {
+            current = pkg
+            if (hiddenFor != null && hiddenFor != pkg) hiddenFor = null
+        }
+        updateVisibility()
+    }
+
+    private fun isKeyboard(pkg: String) =
+        Settings.Secure.getString(contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD)?.startsWith("$pkg/") == true
+
+    private fun homeApp(): String? = packageManager
+        .resolveActivity(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), PackageManager.MATCH_DEFAULT_ONLY)
+        ?.activityInfo?.packageName
+
+    private fun updateVisibility() {
+        val app = prefs.getString(KEY_APP, null)
+        val here = current
+        val show = !busy && hiddenFor == null && here != null && (if (app != null) here == app else here != homeApp())
+        main.post { button?.visibility = if (show || busy) View.VISIBLE else View.GONE }
+    }
     override fun onInterrupt() {}
 
     override fun onDestroy() {
+        runCatching { prefs.unregisterOnSharedPreferenceChangeListener(prefsChanged) }
         button?.let { runCatching { (getSystemService(WINDOW_SERVICE) as WindowManager).removeView(it) } }
         button = null
         super.onDestroy()
@@ -94,20 +136,35 @@ class ReaderService : AccessibilityService() {
             x = (12 * density).toInt()
             y = (resources.displayMetrics.heightPixels * 0.62).toInt()
         }
-        // drag it out of the way; a tap without moving reads the route
+        // drag it out of the way; a tap without moving reads the route; a long press hides it
         var downY = 0f
         var startY = 0
         var moved = false
+        var longPressed = false
+        val hide = Runnable {
+            longPressed = true
+            hiddenFor = current
+            updateVisibility()
+            Toast.makeText(this, "Read route hidden. It comes back when you open this app again.", Toast.LENGTH_LONG).show()
+        }
         view.setOnTouchListener { v, e ->
             when (e.action) {
-                MotionEvent.ACTION_DOWN -> { downY = e.rawY; startY = lp.y; moved = false; true }
+                MotionEvent.ACTION_DOWN -> {
+                    downY = e.rawY; startY = lp.y; moved = false; longPressed = false
+                    main.postDelayed(hide, 700)
+                    true
+                }
                 MotionEvent.ACTION_MOVE -> {
                     val dy = e.rawY - downY
-                    if (abs(dy) > 12 * density) moved = true
+                    if (abs(dy) > 12 * density) { moved = true; main.removeCallbacks(hide) }
                     if (moved) { lp.y = (startY + dy).toInt().coerceAtLeast(0); wm.updateViewLayout(v, lp) }
                     true
                 }
-                MotionEvent.ACTION_UP -> { if (!moved) readRoute(); true }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    main.removeCallbacks(hide)
+                    if (!moved && !longPressed && e.action == MotionEvent.ACTION_UP) readRoute()
+                    true
+                }
                 else -> false
             }
         }
@@ -139,6 +196,8 @@ class ReaderService : AccessibilityService() {
                 }
                 say("Sending…")
                 val id = Handoff.send(BuildConfig.PLANNER_URL, result)
+                // the first read that reached the planner names the job list app: the button shows over it only
+                if (prefs.getString(KEY_APP, null) == null) prefs.edit().putString(KEY_APP, result.app).apply()
                 val url = "${BuildConfig.PLANNER_URL}/#handoff=$id"
                 startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 say("Read route")
@@ -205,6 +264,8 @@ class ReaderService : AccessibilityService() {
     }
 
     companion object {
+        const val PREFS = "reader"
+        const val KEY_APP = "app"
         fun boundsOf(n: AccessibilityNodeInfo): Rect = Rect().also { n.getBoundsInScreen(it) }
     }
 }

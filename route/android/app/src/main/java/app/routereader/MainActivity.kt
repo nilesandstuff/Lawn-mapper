@@ -22,6 +22,8 @@ import android.widget.TextView
 class MainActivity : Activity() {
 
     private lateinit var status: TextView
+    private lateinit var where: TextView
+    private lateinit var everywhere: Button
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -51,6 +53,15 @@ class MainActivity : Activity() {
         col.addView(text("On the App info screen, tap the three dots at the top right, then Allow restricted settings. Then come back and do step 1 again.", 14f))
         col.addView(text("How to use it", 20f, true))
         col.addView(text("1. Open the app with today's jobs, on the list of jobs.\n2. Tap the green Read route button.\n3. Wait: it scrolls to the top, then down to the bottom, reading as it goes. Don't touch the screen.\n4. The route planner opens with the stops. Check them, then plan.\n\nDrag the button up or down if it is in the way.", 15f))
+        col.addView(text("Where the button shows", 20f, true))
+        where = text("", 15f)
+        col.addView(where)
+        everywhere = button("Show it over every app again") {
+            getSharedPreferences(ReaderService.PREFS, MODE_PRIVATE).edit().remove(ReaderService.KEY_APP).apply()
+            onResume()
+        }
+        col.addView(everywhere)
+        col.addView(text("To hide the button for now, press and hold it. It comes back when you open that app again.", 14f))
         col.addView(button("Open the route planner") { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(BuildConfig.PLANNER_URL))) })
         col.addView(text("Version ${BuildConfig.VERSION_NAME}", 12f))
         setContentView(ScrollView(this).apply { setBackgroundColor(Color.parseColor("#F4F6F5")); addView(col) })
@@ -62,6 +73,10 @@ class MainActivity : Activity() {
         status.text = if (on) "Route Reader is ON. Look for the green Read route button." else "Route Reader is OFF. Turn it on below."
         status.setTextColor(Color.parseColor(if (on) "#1F7A4D" else "#B3261E"))
         status.gravity = Gravity.START
+        val app = getSharedPreferences(ReaderService.PREFS, MODE_PRIVATE).getString(ReaderService.KEY_APP, null)
+        val label = app?.let { runCatching { packageManager.getApplicationLabel(packageManager.getApplicationInfo(it, 0)).toString() }.getOrDefault(it) }
+        where.text = if (label != null) "Only over $label (the app it first read)." else "Over every app, until its first read: then only over that app."
+        everywhere.visibility = if (app != null) android.view.View.VISIBLE else android.view.View.GONE
     }
 
     private fun isOn(): Boolean {

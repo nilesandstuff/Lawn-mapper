@@ -22,7 +22,7 @@
  * beside it; every line between is more of the address ("SW", "Drive SW").
  */
 
-const BADGE = /^(NOT|STARTED|COMPLETED?|IN|PROGRESS|SKIPPED|CANCELL?ED|SCHEDULED|PAUSED|DONE|EN|ROUTE|ON|SITE)$/i;
+const BADGE = /^(NOT|STARTED|COMPLETED?|FINISHED|IN|PROGRESS|SKIPPED|CANCELL?ED|SCHEDULED|PAUSED|DONE|EN|ROUTE|ON|SITE|HOLD|PENDING|DISPATCHED|ARRIVED|INCOMPLETE)$/i;
 /** How OCR reads the "•" between the name and the city. Never "." or "-": those are street abbreviations. */
 const BULLET = /^[•·«»+*●◦°¢]+$/;
 /**

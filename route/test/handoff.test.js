@@ -46,6 +46,32 @@ assert.deepEqual(stops.map((s) => [s.address, s.name, s.city, s.minutes]), [
   ['2433 Cedar Ridge Dr SW', 'Riley Ives', 'Alto', null],
 ]);
 
+// as a real phone sent it (2026-11-19, names made up): each text view's box the whole row, the badge
+// FINISHED, and the Finish Day bar floating over the foot of the list
+{
+  const row = (top, address, who, time) => [
+    { t: '7', l: 194, tp: top + 31, r: 215, b: top + 83 },
+    { t: address, l: 288, tp: top, r: 826, b: top + 58 },
+    { t: who, l: 288, tp: top + 58, r: 952, b: top + 107 },
+    { t: 'FINISHED', l: 850, tp: top - 1, r: 1044, b: top + 59 },
+    { t: time, l: 976, tp: top + 58, r: 1044, b: top + 104 },
+    { t: 'Fert 6 Winterizer Application', l: 288, tp: top + 155, r: 867, b: top + 201 },
+  ];
+  const real = { width: 1080, pages: [{ items: [
+    { t: 'Completed', l: 710, tp: 548, r: 909, b: 683 },
+    ...row(731, '3581 Maple Dr', 'Avery Hartley-Longname • Fairview', '22m'),
+    ...row(1087, '9018 E Cedar Drive', 'Sam & Dana Roe-Whitfield • Fairview', '27m'),
+    ...row(2155, '8355 10th Ave', 'Kim Low • Fairview', '22m'),
+    { t: 'Finish Day', l: 24, tp: 2100, r: 1056, b: 2244 },
+  ] }] };
+  const got = handoffStops(real);
+  assert.deepEqual(got.map((x) => [x.address, x.name, x.city, x.minutes]), [
+    ['3581 Maple Dr', 'Avery Hartley-Longname', 'Fairview', 22],
+    ['9018 E Cedar Drive', 'Sam & Dana Roe-Whitfield', 'Fairview', 27],
+    ['8355 10th Ave', 'Kim Low', 'Fairview', 22],
+  ], 'the city kept though the box runs under the badge; the Finish Day bar not read into an address');
+}
+
 // the Worker keeps it a day under an id; the recent ones for the route key only
 const data = new Map();
 const kv = {
