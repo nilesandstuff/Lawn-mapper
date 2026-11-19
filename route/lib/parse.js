@@ -22,7 +22,7 @@
  * beside it; every line between is more of the address ("SW", "Drive SW").
  */
 
-const BADGE = /^(NOT|STARTED|COMPLETED?|FINISHED|IN|PROGRESS|SKIPPED|CANCELL?ED|SCHEDULED|PAUSED|DONE|EN|ROUTE|ON|SITE|HOLD|PENDING|DISPATCHED|ARRIVED|INCOMPLETE)$/i;
+const BADGE = /^(NOT|STARTED|COMPLETED?|FINISHED|WORKING|IN|PROGRESS|SKIPPED|CANCELL?ED|SCHEDULED|PAUSED|DONE|EN|ROUTE|ON|SITE|HOLD|PENDING|DISPATCHED|ARRIVED|INCOMPLETE)$/i;
 /** How OCR reads the "•" between the name and the city. Never "." or "-": those are street abbreviations. */
 const BULLET = /^[•·«»+*●◦°¢]+$/;
 /**
@@ -164,6 +164,29 @@ function endsInBullet(words) {
 const looksLikeCity = (t) => /^[A-Za-z][A-Za-z .'-]{1,30}$/.test(String(t).trim()) && String(t).trim().split(/\s+/).length <= 3;
 
 /**
+ * Where the cards' text starts: the leftmost column at which two or more
+ * words beginning with letters start (the names, the service lines). The
+ * checkbox and the numbered pin lie left of it. Found 2026-11-19: on My
+ * Schedule without checkboxes the text starts at 14% of the width, not 27%,
+ * and a fixed edge cut every house number off. Unfound: a quarter across.
+ */
+function contentLeft(words, W) {
+  const buckets = new Map();
+  for (const w of words) {
+    if (!/^[A-Za-z]{3,}/.test(w.text.trim()) || cx(w) > W * 0.6 || w.bbox.x0 < W * 0.04) continue;
+    const k = Math.round(w.bbox.x0 / (W * 0.01));
+    buckets.set(k, (buckets.get(k) || 0) + 1);
+  }
+  const cols = [...buckets].filter(([, n]) => n >= 2).map(([k]) => k).sort((a, b) => a - b);
+  // a column and its neighbour bucket are one column
+  for (const k of cols) {
+    const n = (buckets.get(k) || 0) + (buckets.get(k + 1) || 0);
+    if (n >= 2) return k * W * 0.01;
+  }
+  return W * 0.26;
+}
+
+/**
  * The stops on one screenshot, top to bottom:
  *   [{ address, city, name, minutes, service }]
  * minutes is null where no time was read.
@@ -171,17 +194,26 @@ const looksLikeCity = (t) => /^[A-Za-z][A-Za-z .'-]{1,30}$/.test(String(t).trim(
  *   words  [{ text, bbox: { x0, y0, x1, y1 } }] in image pixels
  *   width  the image's width in the same pixels
  */
-export function parseWords(words, width) {
+export function parseWords(words, width, { exact = false } = {}) {
   const W = width || Math.max(...words.map((w) => w.bbox.x1));
   const clean = words.filter((w) => w.text && w.text.trim());
   // the badge column starts where "NOT" / "COMPLETED" do; without any, about three quarters across
   const badgeX = median(clean.filter((w) => BADGE.test(w.text.trim()) && cx(w) > W * 0.5).map((w) => w.bbox.x0));
   const rightX = badgeX != null ? badgeX - W * 0.01 : W * 0.72;
-  const leftX = W * 0.24;
+  const leftX = contentLeft(clean, W) - W * 0.02;
 
   const middle = [];
   const times = [];
   for (const w of clean) {
+    // EXACT TEXT (Route Reader's pages, read from Android, not OCR): nothing is a misread, so only
+    // times are taken from the right; statuses are already gone (lib/handoff.js); all else is middle
+    if (exact) {
+      const t = cx(w) > W * 0.6 ? readTime(w.text) : null;
+      if (/^\d{1,2}h$/i.test(w.text.trim()) && cx(w) > W * 0.6) times.push({ minutes: null, cy: cy(w), w, hours: t / 60 });
+      else if (t != null) times.push({ minutes: t, cy: cy(w), w });
+      else if (cx(w) >= leftX && !(BADGE.test(w.text.trim()) && w.bbox.x0 > W * 0.5)) middle.push(w);
+      continue;
+    }
     // the right column: words starting in it, or a time far right. A long city that only reaches
     // over (found 2026-11-10: "Caledonia" ending under the badge) stays in the middle
     // (the bullet too: a long name pushes it under the badge, and it is never part of the right column)

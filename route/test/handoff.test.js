@@ -61,7 +61,8 @@ assert.deepEqual(stops.map((s) => [s.address, s.name, s.city, s.minutes]), [
     { t: 'Completed', l: 710, tp: 548, r: 909, b: 683 },
     ...row(731, '3581 Maple Dr', 'Avery Hartley-Longname • Fairview', '22m'),
     ...row(1087, '9018 E Cedar Drive', 'Sam & Dana Roe-Whitfield • Fairview', '27m'),
-    ...row(2155, '8355 10th Ave', 'Kim Low • Fairview', '22m'),
+    ...row(1443, '8355 10th Ave', 'Kim Low • Fairview', '22m'),
+    ...row(2155, '1900 Sandy Dr', 'Under The Bar • Fairview', '20m'), // behind Finish Day: read on the next page
     { t: 'Finish Day', l: 24, tp: 2100, r: 1056, b: 2244 },
   ] }] };
   const got = handoffStops(real);
@@ -69,7 +70,49 @@ assert.deepEqual(stops.map((s) => [s.address, s.name, s.city, s.minutes]), [
     ['3581 Maple Dr', 'Avery Hartley-Longname', 'Fairview', 22],
     ['9018 E Cedar Drive', 'Sam & Dana Roe-Whitfield', 'Fairview', 27],
     ['8355 10th Ave', 'Kim Low', 'Fairview', 22],
-  ], 'the city kept though the box runs under the badge; the Finish Day bar not read into an address');
+  ], 'the city kept though the box runs under the badge; nothing read from under the Finish Day bar');
+}
+
+// My Schedule with no checkboxes (the text starts further left), a job being WORKED pinned at the foot
+// with Visit 3 of 4 and Complete Work, a card cut to a sliver behind it; then the next page
+{
+  const row = (top, n, address, who, status, time) => [
+    { t: String(n), l: 62, tp: top + 31, r: 83, b: top + 83 },
+    { t: address, l: 156, tp: top, r: 756, b: top + 58 },
+    { t: who, l: 156, tp: top + 58, r: 952, b: top + 107 },
+    { t: status, l: 780, tp: top - 1, r: 1044, b: top + 59 },
+    { t: time, l: 976, tp: top + 58, r: 1044, b: top + 104 },
+    { t: 'Fert 6 Winterizer Application', l: 156, tp: top + 155, r: 867, b: top + 201 },
+  ];
+  const pinned = [
+    { t: 'Visit 3 of 4', l: 0, tp: 1798, r: 1080, b: 1911 },
+    { t: '6', l: 56, tp: 1964, r: 77, b: 2016 },
+    { t: '2531 Willow Dr', l: 132, tp: 1953, r: 828, b: 2005 },
+    { t: 'Kim Low • Fairview', l: 132, tp: 2005, r: 828, b: 2062 },
+    { t: 'Invisible', l: 876, tp: 2006, r: 1056, b: 2052 },
+    { t: 'Complete Work', l: 24, tp: 2100, r: 1056, b: 2244 },
+  ];
+  const worked = { width: 1080, pages: [
+    { items: [
+      { t: 'Menu', l: 48, tp: 132, r: 157, b: 190 }, { t: 'My Schedule', l: 153, tp: 548, r: 386, b: 683 },
+      ...row(731, 1, '3581 Maple Dr', 'Pat Doe • Fairview', 'NOT STARTED', '20m'),
+      ...row(1087, 4, '4644 Oak Ct', 'Sam Roe • Fairview', 'PAUSED', '22m'),
+      ...row(1443, 6, '2531 Willow Dr', 'Kim Low • Fairview', 'WORKING', '22m'),
+      { t: '8671 Elm dr', l: 156, tp: 1752, r: 756, b: 1768 }, { t: 'NOT STARTED', l: 780, tp: 1751, r: 1044, b: 1768 },
+      ...pinned,
+    ] },
+    { items: [
+      ...row(507, 6, '2531 Willow Dr', 'Kim Low • Fairview', 'WORKING', '22m'),
+      ...row(816, 13, '8671 Elm dr', 'Riley Ives • Georgetown Twp', 'SKIPPED', '20m'),
+      ...pinned,
+    ] },
+  ] };
+  assert.deepEqual(handoffStops(worked).map((x) => [x.address, x.name, x.city, x.minutes]), [
+    ['3581 Maple Dr', 'Pat Doe', 'Fairview', 20],
+    ['4644 Oak Ct', 'Sam Roe', 'Fairview', 22],
+    ['2531 Willow Dr', 'Kim Low', 'Fairview', 22],
+    ['8671 Elm dr', 'Riley Ives', 'Georgetown Twp', 20],
+  ], 'every status ignored; the house numbers kept though the text starts further left; the pinned job once');
 }
 
 // the Worker keeps it a day under an id; the recent ones for the route key only
