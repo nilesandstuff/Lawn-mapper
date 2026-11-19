@@ -192,6 +192,67 @@ export const seenPast = (c, i) => c.free[i] > 2 * c.seen[i];
 export const confirmed = (c, i) => c.views[i] >= 2 && !seenPast(c, i);
 
 /**
+ * WHICH POINTS TO KEEP: EVERY ONE THAT ITS NAME MAKES LIKELY; A SECOND LOOK ONLY FOR THE ODD ONES (2026-11-19).
+ * The owner, on the study of the second look (docs/SCAN-PLAN.md 31): "my last round of thoughts were too strict...
+ * We should keep more points, and only strictly require a second look confirmation for anomalous points that don't
+ * have a name. We can leverage the segmentation (and probably even just the google scene semantics for a faster live
+ * processing?) to add context to points to determine what is likely an anomaly... - we can assume that any point
+ * that sits like 5 inches higher/lower than a neighbor on a grass lawn is probably an anomaly and smooth that out
+ * unless it's confirmed from a different angle. - buildings have a wider margin, maybe 5 feet. - trees can be all
+ * over the place. Not certain on the best way to handle that."
+ *
+ * So, by what a point is named (kindOf: Google's scene label today; a cut-into-things name can stand in):
+ *   ground    (terrain, road, sidewalk) kept. More than GROUND_ODD from the middle height of the ground-named
+ *             points round it (the 0.5 m squares about it, the same stretch of the walk): a real bump when CONFIRMED,
+ *             else SMOOTHED to that middle height.
+ *   built     (building, structure) kept when BUILT_NEAR other built-named points lie within BUILT_REACH; alone,
+ *             only when confirmed.
+ *   tree      kept, wherever it is.
+ *   no name   (none, unlabeled, object, vehicle, person, sky, water) kept only when confirmed.
+ * A point the recording marked weak (depth under the live confidence cut) needs confirming whatever its name.
+ *
+ * pts: [{ e, n, y, t, label, weak }], C: carve() of the same points in the same order.
+ * -> { verdict: Uint8Array (KEEP, BUMP, SMOOTHED, TENTATIVE), y: Float64Array (the height to use), kind: [], tally }
+ */
+export const GROUND_ODD = 0.13, BUILT_REACH = 1.5, BUILT_NEAR = 4, KEEP = 0, BUMP = 1, SMOOTHED = 2, TENTATIVE = 3;
+const KIND = { terrain: 'ground', road: 'ground', sidewalk: 'ground', building: 'built', structure: 'built', tree: 'tree' };
+export const kindOf = (label) => KIND[label] || 'none';
+export function judge(pts, C, kind = (p) => kindOf(p.label)) {
+  const kinds = pts.map(kind);
+  const gk = (p, dx = 0, dy = 0, dt = 0) => `${Math.floor(p.e / GROUND_CELL) + dx},${Math.floor(p.n / GROUND_CELL) + dy},${Math.floor(p.t / GROUND_SECS) + dt}`;
+  const bk = (p, dx = 0, dy = 0) => `${Math.floor(p.e / BUILT_REACH) + dx},${Math.floor(p.n / BUILT_REACH) + dy}`;
+  const ground = new Map(), built = new Map();
+  pts.forEach((p, i) => {
+    if (kinds[i] === 'ground' && Number.isFinite(p.y)) { const k = gk(p); let a = ground.get(k); if (!a) ground.set(k, a = []); a.push(p.y); }
+    if (kinds[i] === 'built') built.set(bk(p), (built.get(bk(p)) || 0) + 1);
+  });
+  const out = { verdict: new Uint8Array(pts.length), y: new Float64Array(pts.length), kind: kinds,
+    tally: { ground: 0, bump: 0, smoothed: 0, built: 0, builtAlone: 0, tree: 0, noName: 0, noNameUnconfirmed: 0, weakUnconfirmed: 0 } };
+  const T = out.tally;
+  pts.forEach((p, i) => {
+    const ok = confirmed(C, i);
+    out.y[i] = p.y;
+    if (p.weak && !ok) { T.weakUnconfirmed++; out.verdict[i] = TENTATIVE; return; }
+    if (kinds[i] === 'ground') {
+      T.ground++;
+      const near = [];
+      for (let dt = -1; dt <= 1; dt++) for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const a = ground.get(gk(p, dx, dy, dt)); if (a) for (const v of a) near.push(v); }
+      if (near.length < 6) return;                    // nothing to be odd against: kept as it is
+      near.sort((a, b) => a - b);
+      const mid = near[near.length >> 1];
+      if (Math.abs(p.y - mid) <= GROUND_ODD) return;
+      if (ok) { T.bump++; out.verdict[i] = BUMP; } else { T.smoothed++; out.verdict[i] = SMOOTHED; out.y[i] = mid; }
+    } else if (kinds[i] === 'built') {
+      T.built++;
+      let n = 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) n += built.get(bk(p, dx, dy)) || 0;
+      if (n < BUILT_NEAR && !ok) { T.builtAlone++; out.verdict[i] = TENTATIVE; }
+    } else if (kinds[i] === 'tree') T.tree++;
+    else { T.noName++; if (!ok) { T.noNameUnconfirmed++; out.verdict[i] = TENTATIVE; } }
+  });
+  return out;
+}
+
+/**
  * THE GROUND, BY MORE THAN ONE LOOK (2026-11-19; the owner: "legitimate low spots and permanent mounds do exist in
  * lawns... Itd be nice to map legitimate low spots and high spots. Perhaps consensus/majority votes from different
  * angles?"). Each GROUND_CELL square's ground (its lowest substantial layer, as heights() takes it) is found

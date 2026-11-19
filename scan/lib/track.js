@@ -483,6 +483,8 @@ async function startNative({ canvas, onFrame, onEvent, nativeOptions = {}, nativ
       return { at: (x, y) => get()?.at(x, y) ?? null, m: (x, y) => get()?.m(x, y) ?? NaN, conf: (x, y) => get()?.conf(x, y) ?? null, minConf: dep.minConf, shot: () => get()?.t ?? null,
         // a finer grid than the page's own, asked for once (the depth kept with each picture: app.js keyDepth)
         dense: (nx, ny) => { try { return depthFromGrid(JSON.parse(N.depthGrid(nx, ny, dep.kind, Math.round(dep.minConf * 255)))); } catch { return null; } },
+        // every cell the camera gave a depth for, the weak ones too, on the app's own grid (the twin's wider look: app.js)
+        all: () => { try { const g = depthFromGrid(JSON.parse(N.depthGrid(dep.nx, dep.ny, dep.kind, 0))); return g ? { ...g, nx: dep.nx, ny: dep.ny } : null; } catch { return null; } },
         label: (x, y) => get()?.label?.(x, y) ?? null, labelConf: (x, y) => get()?.labelConf?.(x, y) ?? null, semDims: () => get()?.semDims ?? null,
         // bridge 5: what hides the drawing, ARCore's smoothed depth picture at its own size, one byte a cell
         occ: bridge >= 5 ? (rangeM) => occFromBridge(N.occGrid(0, 0, rangeM), rangeM) : null,

@@ -52,6 +52,7 @@ const CSS = { ref: '#2f7cf6', check: '#a54bd8', pin: '#e53935', lawn: '#4cc38a' 
 const LIDAR_LIVE = (() => { try { return new URLSearchParams(location.search).get('lidarfix') === '1'; } catch { return false; } })();
 const FAR_AGAIN = 3000;
 const DEPTH_EVERY = 250;
+const TWIN_WIDE_EVERY = 1000; // ms between the twin's wider looks (every cell of the app's depth grid, weak ones flagged)
 const LIVE_RANGE = 30; // m: the live match and the walk's ground take depth this near, as far as the twin keeps it (track.js; 8 until 2026-11-08)
 const WALK_EVERY = 10000; // ms between placements of the whole walk (walkfix.js)
 const PREV_EVERY = 15000; // ms between matches against the map's earlier walk (walkref.js, SCAN-H32)
@@ -1227,7 +1228,31 @@ function frameWork(f) {
       if (!st.walkGround.has(k)) st.walkGround.set(k, [+p.x.toFixed(3), +(-p.z).toFixed(3), +p.y.toFixed(3)]);
     }
     addDepth(L, near, odo, f.pose.position, { standing: false }); // standing points come from the colour pass below
-    if (st.twin) addPoints(st.twin, Date.now(), odo, pts, L.groundY);
+    if (st.twin) addPoints(st.twin, Date.now(), odo, pts, L.groundY, cam);
+    /* THE TWIN'S OWN, WIDER LOOK (2026-11-19; docs/SCAN-PLAN.md 31; the owner: "We should keep more points"). The
+       points above are 16 x 28 rays of the picture at the live confidence cut. Once every TWIN_WIDE_EVERY the twin
+       also takes every cell of the app's own grid, the weak ones too (flagged: they count only when seen again from
+       another place), with Google's label on each. Recorded only: nothing live reads them. */
+    if (st.twin && f.depth.all && Date.now() - (st.twinWideAt || 0) >= TWIN_WIDE_EVERY) {
+      st.twinWideAt = Date.now();
+      try {
+        const A = f.depth.all(), wide = [];
+        // every other cell each way, the other ones next time: a quarter of the grid a look, so the phone's memory
+        // and the upload grow by about what the live points already cost, not by nine times
+        const o = (st.twinWideN = (st.twinWideN || 0) + 1) & 3, oi = o & 1, oj = o >> 1;
+        if (A) for (let j = oj; j < A.ny; j += 2) for (let i = oi; i < A.nx; i += 2) {
+          const x = (i + 0.5) / A.nx, y = (j + 0.5) / A.ny, p = A.at(x, y);
+          if (!p) continue;
+          const l = lab && A.label ? A.label(x, y) : null, lc = l && A.labelConf ? A.labelConf(x, y) : null;
+          if (!keepPoint(l, lc)) continue;
+          if (l) { p.label = l; p.lconf = lc; }
+          const c = A.conf ? A.conf(x, y) : null;
+          if (c != null) { p.dconf = c; if (f.depth.minConf != null && c < f.depth.minConf) p.weak = true; }
+          wide.push(p);
+        }
+        if (wide.length) addPoints(st.twin, Date.now(), odo, wide, L.groundY, cam);
+      } catch { /* the wider look is extra: a walk never stops for it */ }
+    }
     /* GEOSPATIAL DEPTH (bridge 3, where Google has VPS): ARCore's smoothed depth carried to 65 m by Streetscape
        Geometry, kept in the twin past where the camera's own depth reaches (25 m), flagged, and not matched live:
        it is Google's buildings and terrain placed by the Geospatial pose, not something the camera measured */
@@ -1237,7 +1262,7 @@ function frameWork(f) {
         const p = gd.at((i + 0.5) / 16, (j + 0.5) / 28);
         if (p && Math.hypot(p.x - cam.x, p.y - cam.y, p.z - cam.z) > 25) { p.geoDepth = true; far.push(p); }
       }
-      if (far.length) { st.geoDepthN = (st.geoDepthN || 0) + far.length; addPoints(st.twin, Date.now(), odo, far, L.groundY); }
+      if (far.length) { st.geoDepthN = (st.geoDepthN || 0) + far.length; addPoints(st.twin, Date.now(), odo, far, L.groundY, cam); }
     }
   }
   lap('depth picture to points');
@@ -1246,7 +1271,7 @@ function frameWork(f) {
   if (!f.depth && f.world && f.pose && f.t - st.depthAt > DEPTH_EVERY) {
     st.depthAt = f.t;
     addDepth(L, f.world, odo, f.pose.position);
-    if (st.twin) addPoints(st.twin, Date.now(), odo, f.world, L.groundY);
+    if (st.twin) addPoints(st.twin, Date.now(), odo, f.world, L.groundY, f.pose.position);
   }
   lap('world points');
   // THE GROUND'S COLOUR (scan/lib/surface.js): about once a second, the camera's picture read back, and the depth

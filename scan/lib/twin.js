@@ -14,6 +14,9 @@
  *                   Streetscape Geometry past 25 m, not measured by the camera)]. Only written when a point of
  *                   that part had any of them; a reader takes a missing or short part as none. (Triples on the
  *                   walks of the evening of 2026-11-08 before the flags.)
+ *   weak-NNNN.bin   (the app, since 2026-11-19) depth points under the live confidence cut, in the cloud's format,
+ *                   with weaklabels-NNNN.bin in the labels' format (flag 4). Kept apart so nothing that reads the
+ *                   cloud sees them: a study counts one only when it was seen again from another place.
  *   track-NNNN.bin  the camera, five times a second: Float32 [t, odo, x, y, z, qx, qy, qz, qw, tracking 0|1|2].
  *   key-NNNN.jpg    camera pictures (WebXR's camera-access), at most one a second and only after moving 0.3 m or
  *                   turning 10 degrees, each with its pose and projection in keys-NNNN.json: what a later Gaussian
@@ -32,6 +35,12 @@ import { apply } from './align.js';
 
 export const VOXEL = 0.05;           // m: one point kept per cube this size
 export const VOXEL_MAX = 3e6;        // cubes remembered; past this every point is kept
+/* A SECOND LOOK IS KEPT (2026-11-19; docs/SCAN-PLAN.md 31). One point a cube for the whole walk meant a spot seen again
+   exactly where it was first seen left nothing in the file, so "was this seen from more than one place" was
+   undercounted, and that is what tells a real thing from the depth's clustered noise (the owner: it "can be seen
+   past with a change of position"). A cube's point is now kept AGAIN when the camera stands in another LOOK_MOVE
+   cube than at its last keeping, LOOKS_MAX times at most, flagged 8. Standing still still adds nothing. */
+export const LOOKS_MAX = 3, LOOK_MOVE = 1.5;
 export const POSE_EVERY = 200;       // ms between camera poses
 export const KEY_EVERY = 1000;       // ms at least between pictures
 export const KEY_MOVE = 0.3, KEY_TURN = 10; // m, degrees: what counts as having moved for a new picture
@@ -42,27 +51,46 @@ export const LABELS = ['unlabeled', 'sky', 'building', 'tree', 'road', 'sidewalk
 export const FLUSH_EVERY = 15000;    // ms between uploads of what has piled up
 
 export function newTwin({ walk, map = null, engine = null, started = Date.now() } = {}) {
-  return { walk: String(walk), map, engine, started, cloud: [], labels: [], labelled: false, track: [], keys: [], vox: new Set(), seq: { cloud: 0, track: 0, key: 0 }, lastPose: -Infinity, lastKey: null, flushedAt: started, counts: { points: 0, poses: 0, keys: 0, parts: 0, failed: 0 }, camera: null };
+  return { walk: String(walk), map, engine, started, cloud: [], labels: [], labelled: false, weak: [], weakLabels: [], track: [], keys: [], vox: new Map(), seq: { cloud: 0, track: 0, key: 0 }, lastPose: -Infinity, lastKey: null, flushedAt: started, counts: { points: 0, poses: 0, keys: 0, parts: 0, failed: 0 }, camera: null };
 }
 
 const sec = (tw, now) => (now - tw.started) / 1000;
 
-/** Depth points ({x, y, z} in the session frame) seen at `now`, `odo` metres into the walk, over ground height gy. */
-export function addPoints(tw, now, odo, pts, gy = NaN) {
+/** Depth points ({x, y, z} in the session frame) seen at `now`, `odo` metres into the walk, over ground height gy,
+ *  from where the camera stood (cam {x, y, z}; without it a cube is kept once, as before 2026-11-19). */
+export function addPoints(tw, now, odo, pts, gy = NaN, cam = null) {
   let n = 0;
   const t = sec(tw, now), full = tw.vox.size >= VOXEL_MAX;
+  const LOOK = 1048576; // a cube's value: looks x LOOK + the camera's cube at the last look (20 bits)
+  const camCell = cam && Number.isFinite(cam.x) ? (((Math.floor(cam.x / LOOK_MOVE) * 73856093) ^ (Math.floor(cam.y / LOOK_MOVE) * 19349663) ^ (Math.floor(cam.z / LOOK_MOVE) * 83492791)) >>> 0) % LOOK : -1;
   for (const p of pts) {
     if (!p || !Number.isFinite(p.x)) continue;
+    let again = false;
     if (!full) {
-      const k = `${Math.floor(p.x / VOXEL)},${Math.floor(p.y / VOXEL)},${Math.floor(p.z / VOXEL)}`;
-      if (tw.vox.has(k)) continue;
-      tw.vox.add(k);
+      const k = `${p.weak ? 'w' : ''}${Math.floor(p.x / VOXEL)},${Math.floor(p.y / VOXEL)},${Math.floor(p.z / VOXEL)}`;
+      const was = tw.vox.get(k);
+      if (was !== undefined) {
+        // seen before: again only from another place, and never Google's street shapes (not the camera's)
+        if (camCell < 0 || p.geoDepth || was >= LOOKS_MAX * LOOK || was % LOOK === camCell) continue;
+        tw.vox.set(k, (Math.floor(was / LOOK) + 1) * LOOK + camCell);
+        again = true; tw.counts.again = (tw.counts.again || 0) + 1;
+      } else tw.vox.set(k, LOOK + Math.max(0, camCell));
     }
-    tw.cloud.push(t, odo, p.x, p.y, p.z, p.g ?? gy ?? NaN); n++; // p.g: the ground the page took under it (locate.js addDepth)
     const li = p.label ? LABELS.indexOf(p.label) : -1;
     const byte = (v) => (Number.isFinite(v) ? Math.max(0, Math.min(255, Math.round(v * 255))) : 0);
-    tw.labels.push(li + 1, li >= 0 ? byte(p.lconf) : 0, byte(p.dconf), (p.spike ? 1 : 0) | (p.geoDepth ? 2 : 0));
-    if (li >= 0 || Number.isFinite(p.dconf) || p.spike || p.geoDepth) tw.labelled = true;
+    const flags = (p.spike ? 1 : 0) | (p.geoDepth ? 2 : 0) | (p.weak ? 4 : 0) | (again ? 8 : 0);
+    if (p.weak) {
+      // WEAK DEPTH (under the live confidence cut) goes to parts of its own, weak-NNNN.bin and weaklabels-NNNN.bin,
+      // in the cloud's and the labels' formats: nothing that reads the cloud (the fixes, the references, the twin
+      // page) sees it; only a study that asks for it does, and counts a weak point when it was seen again
+      tw.weak.push(t, odo, p.x, p.y, p.z, p.g ?? gy ?? NaN);
+      tw.weakLabels.push(li + 1, li >= 0 ? byte(p.lconf) : 0, byte(p.dconf), flags);
+      tw.counts.weak = (tw.counts.weak || 0) + 1;
+      continue;
+    }
+    tw.cloud.push(t, odo, p.x, p.y, p.z, p.g ?? gy ?? NaN); n++; // p.g: the ground the page took under it (locate.js addDepth)
+    tw.labels.push(li + 1, li >= 0 ? byte(p.lconf) : 0, byte(p.dconf), flags);
+    if (li >= 0 || Number.isFinite(p.dconf) || p.spike || p.geoDepth || again) tw.labelled = true;
   }
   tw.counts.points += n;
   return n;
@@ -102,7 +130,7 @@ export function addKey(tw, now, odo, pos, quat, { w, h, proj, view }) {
 }
 
 /** Is it time to send what has piled up? */
-export const flushDue = (tw, now) => now - tw.flushedAt >= FLUSH_EVERY && (tw.cloud.length || tw.track.length || tw.keys.length);
+export const flushDue = (tw, now) => now - tw.flushedAt >= FLUSH_EVERY && (tw.cloud.length || tw.track.length || tw.keys.length || tw.weak.length);
 
 /** What has piled up, as parts to upload: [{ name, type, body }]; the piles are emptied. `live` is the state so far. */
 export function flush(tw, now, live = null) {
@@ -117,6 +145,12 @@ export function flush(tw, now, live = null) {
     if (tw.labelled) out.push({ name: `labels-${k}.bin`, type: 'application/octet-stream', body: Uint8Array.from(tw.labels).buffer });
     tw.cloud = []; tw.labels = []; tw.labelled = false;
   }
+  if (tw.weak.length) {
+    const k = pad((tw.seq.weak = (tw.seq.weak || 0) + 1) - 1);
+    out.push({ name: `weak-${k}.bin`, type: 'application/octet-stream', body: Float32Array.from(tw.weak).buffer });
+    out.push({ name: `weaklabels-${k}.bin`, type: 'application/octet-stream', body: Uint8Array.from(tw.weakLabels).buffer });
+    tw.weak = []; tw.weakLabels = [];
+  }
   if (tw.track.length) { out.push({ name: `track-${pad(tw.seq.track++)}.bin`, type: 'application/octet-stream', body: Float32Array.from(tw.track).buffer }); tw.track = []; }
   if (tw.keys.length) { out.push({ name: `keys-${pad(tw.seq.key++)}.json`, type: 'application/json', body: JSON.stringify(tw.keys) }); tw.keys = []; }
   if (live) out.push({ name: 'live.json', type: 'application/json', body: JSON.stringify(live) });
@@ -125,7 +159,7 @@ export function flush(tw, now, live = null) {
   tw.counts.parts += out.length;
   return out;
 }
-export const metaOf = (tw) => ({ walk: tw.walk, map: tw.map, engine: tw.engine, depthType: tw.depthType || null, started: new Date(tw.started).toISOString(), camera: tw.camera, voxelM: VOXEL, cloudRecord: ['t', 'odo', 'x', 'y', 'z', 'ground'], labelRecord: ['label + 1 (0 none)', 'label confidence x 255', 'depth confidence x 255 (0 not given)', 'flags (1 spike, 2 geospatial depth)'], labels: LABELS, trackRecord: ['t', 'odo', 'x', 'y', 'z', 'qx', 'qy', 'qz', 'qw', 'tracking'] });
+export const metaOf = (tw) => ({ walk: tw.walk, map: tw.map, engine: tw.engine, depthType: tw.depthType || null, started: new Date(tw.started).toISOString(), camera: tw.camera, voxelM: VOXEL, cloudRecord: ['t', 'odo', 'x', 'y', 'z', 'ground'], labelRecord: ['label + 1 (0 none)', 'label confidence x 255', 'depth confidence x 255 (0 not given)', 'flags (1 spike, 2 geospatial depth, 4 weak: depth under the live confidence cut, 8 seen again from another place)'], labels: LABELS, trackRecord: ['t', 'odo', 'x', 'y', 'z', 'qx', 'qy', 'qz', 'qw', 'tracking'] });
 
 /**
  * The state worth keeping as it stands: the lidar's kept fixes and the references' marks (each with its moment of
@@ -159,7 +193,7 @@ export function readLabels(buf, records) {
   const u = new Uint8Array(buf);
   if (u.length !== records * LABEL_REC) return null;
   const out = [];
-  for (let i = 0; i < u.length; i += LABEL_REC) out.push({ label: u[i] ? LABELS[u[i] - 1] ?? null : null, conf: u[i] ? u[i + 1] / 255 : null, depthConf: u[i + 2] ? u[i + 2] / 255 : null, spike: !!(u[i + 3] & 1), geoDepth: !!(u[i + 3] & 2) });
+  for (let i = 0; i < u.length; i += LABEL_REC) out.push({ label: u[i] ? LABELS[u[i] - 1] ?? null : null, conf: u[i] ? u[i + 1] / 255 : null, depthConf: u[i + 2] ? u[i + 2] / 255 : null, spike: !!(u[i + 3] & 1), geoDepth: !!(u[i + 3] & 2), weak: !!(u[i + 3] & 4), again: !!(u[i + 3] & 8) });
   return out;
 }
 /** A track part back as records: [{ t, odo, pos, quat, tracking }]. */

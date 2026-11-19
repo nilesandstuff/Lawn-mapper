@@ -19,7 +19,7 @@
 const json = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 
 export const MAX_PART = 8 * 1024 * 1024;
-export const PART = /^(meta|live|end|splat|fixed|inspect|consensus|thermal-notes|thermal-placement|thermal-snap)\.json$|^inspect-points\.bin$|^(cloud|track|labels)-\d{4}\.bin$|^keys-\d{4}\.json$|^key-\d{4}\.(jpg|depth)$|^splat\.splat$|^splat-compare\.jpg$|^mesh\.bin$|^segments-[a-z-]{1,40}\.(png|jpg)$/;
+export const PART = /^(meta|live|end|splat|fixed|inspect|consensus|thermal-notes|thermal-placement|thermal-snap)\.json$|^inspect-points\.bin$|^(cloud|track|labels|weak|weaklabels)-\d{4}\.bin$|^keys-\d{4}\.json$|^key-\d{4}\.(jpg|depth)$|^splat\.splat$|^splat-compare\.jpg$|^mesh\.bin$|^segments-[a-z-]{1,40}\.(png|jpg)$/;
 export const WALK = /^[0-9a-zA-Z_-]{1,40}$/;
 const TYPES = { json: 'application/json', bin: 'application/octet-stream', jpg: 'image/jpeg', png: 'image/png' };
 export const typeOf = (part) => TYPES[part.split('.').pop()] || 'application/octet-stream';

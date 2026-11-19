@@ -81,4 +81,29 @@ assert.match(text, /27 ft structure/); assert.ok(!/\d+\.\d{4}/.test(text), 'no c
   assert.deepEqual([g.squares, g.one, g.two, g.more], [2, 1, 1, 0]);
   assert.ok(g.spread.length === 2 && Math.abs(g.spread[0] - 0.02) < 0.011, `two looks 4 cm apart: each 2 cm from the middle (${g.spread})`);
 }
+
+// which points to keep: by name, a second look only for the odd ones
+{
+  const { judge, KEEP, BUMP, SMOOTHED, TENTATIVE } = await import('../lib/disagree.js');
+  const P = [], C = { views: [], free: [], seen: [] };
+  const add = (p, views = 1, free = 0) => { P.push(p); C.views.push(views); C.free.push(free); C.seen.push(1); return P.length - 1; };
+  for (let i = 0; i < 60; i++) add({ e: (i % 10) * 0.1, n: Math.floor(i / 10) * 0.1, y: 1 + (i % 3) * 0.01, t: 1, label: 'terrain' });   // a lawn, seen once
+  const float = add({ e: 0.5, n: 0.3, y: 1.4, t: 1, label: 'terrain' });                 // 16 in over it, seen once: smoothed
+  const mound = add({ e: 0.5, n: 0.3, y: 1.4, t: 1, label: 'terrain' }, 2);             // the same, confirmed: a bump
+  for (let i = 0; i < 6; i++) add({ e: 10 + i * 0.2, n: 0, y: 2 + i * 0.3, t: 1, label: 'building' });  // a wall, seen once: kept
+  const lone = add({ e: 30, n: 30, y: 2, t: 1, label: 'building' });                    // "building" alone, seen once
+  const crown = add({ e: 40, n: 0, y: 6, t: 1, label: 'tree' });
+  const odd = add({ e: 50, n: 0, y: 1.5, t: 1, label: null });                          // no name, seen once
+  const oddTwice = add({ e: 52, n: 0, y: 1.5, t: 1, label: 'object' }, 2);
+  const through = add({ e: 54, n: 0, y: 1.5, t: 1, label: null }, 2, 5);                // seen twice but seen past
+  const weak = add({ e: 0.2, n: 0.2, y: 1, t: 1, label: 'terrain', weak: true });
+  const J = judge(P, { views: Int32Array.from(C.views), free: Int32Array.from(C.free), seen: Int32Array.from(C.seen) });
+  assert.ok([...J.verdict.slice(0, 60)].every((v) => v === KEEP), 'a lawn seen once is kept: its name makes it likely');
+  assert.equal(J.verdict[float], SMOOTHED); assert.ok(Math.abs(J.y[float] - 1.01) < 0.02, 'smoothed to the ground round it');
+  assert.equal(J.verdict[mound], BUMP, 'confirmed from elsewhere: a real high spot');
+  assert.ok([...J.verdict.slice(mound + 1, mound + 7)].every((v) => v === KEEP), 'a wall keeps its points on a wide margin');
+  assert.equal(J.verdict[lone], TENTATIVE); assert.equal(J.verdict[crown], KEEP);
+  assert.equal(J.verdict[odd], TENTATIVE); assert.equal(J.verdict[oddTwice], KEEP); assert.equal(J.verdict[through], TENTATIVE);
+  assert.equal(J.verdict[weak], TENTATIVE, 'weak depth needs confirming whatever its name');
+}
 console.log('disagree: ok');

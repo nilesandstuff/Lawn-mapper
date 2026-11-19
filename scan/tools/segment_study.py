@@ -39,13 +39,14 @@ import time
 
 import numpy as np
 
-RANGE = 8.0      # m: a picture speaks for points this near its camera (the phone's depth is noisy past that)
+RANGE = 24.4     # m (80 ft): a picture speaks for points this near its camera (8 m before 2026-11-19: SCAN-PLAN 31)
 ZCELL = 8        # px: the cell of the hidden-behind test
 MIN_PTS = 15     # a shape with fewer points in a picture says nothing
 IOU = 0.5        # two pictures' shapes are one thing when they share this much of what both saw
 PAIR_MIN = 30    # points two pictures must both see to be compared
 STAND = 0.3      # m over the ground: standing
-NEAR = 6.0       # m: a point counts when the phone was this near as it saw it (disagree.mjs RANGE_M)
+NEAR = 6.0       # m: without the report's verdicts (judged.bin), a point counts when the phone was this near
+JOIN_VOX = 0.25  # m: two things of one name whose points come this near are one thing
 VOX = 0.2        # m: "touching", for the grouping by shape alone
 PIECE_MIN = 30   # points: a thing smaller than this is not listed
 PIC_MAX = int(os.environ.get("PIC_MAX", "120"))  # pictures read on the CPU (evenly through the walk)
@@ -451,6 +452,55 @@ def name_by_vote(maps, name_maps, names):
     return out
 
 
+def join_named(piece, xyz, classes):
+    """THE OWNER'S STONE WALL (2026-11-18): seen close, each block is a shape of its own; seen from afar, the wall is
+    one. "Do post processing on shapes... that are touching". Things whose votes give them the SAME NAME and whose
+    points come within JOIN_VOX of each other are one thing. -> piece (renumbered), classes (summed), joins made."""
+    name = {pc: top_of(c, 0.5)[0] for pc, c in classes.items()}
+    named = np.array([pc for pc, nm in name.items() if nm], np.int64)
+    idx = np.flatnonzero(np.isin(piece, named) & (np.abs(xyz[:, 0]) < 1e5))
+    if not len(idx):
+        return piece, classes, 0
+    v = np.floor(xyz[idx] / JOIN_VOX).astype(np.int64)
+    v -= v.min(0)
+    S = v.max(0) + 3
+    code = ((v[:, 0] + 1) * S[1] + v[:, 1] + 1) * S[2] + v[:, 2] + 1
+    u, first = np.unique(np.stack([code, piece[idx]], 1), axis=0, return_index=True)   # each (cube, thing) once
+    cubes = {}
+    for c, pc in u:
+        cubes.setdefault(int(c), []).append(int(pc))
+    parent = {int(pc): int(pc) for pc in named}
+
+    def find(a):
+        while parent[a] != a:
+            parent[a] = parent[parent[a]]
+            a = parent[a]
+        return a
+    offs = [(dx * S[1] + dy) * S[2] + dz for dx in (-1, 0, 1) for dy in (-1, 0, 1) for dz in (-1, 0, 1)]
+    joins = 0
+    for c, pcs in cubes.items():
+        for o in offs:
+            for b in cubes.get(c + int(o), ()):
+                for a in pcs:
+                    if a != b and name[a] == name[b]:
+                        ra, rb = find(a), find(b)
+                        if ra != rb:
+                            parent[rb] = ra
+                            joins += 1
+    if not joins:
+        return piece, classes, 0
+    out = piece.copy()
+    lut = {pc: find(pc) for pc in parent}
+    sel = np.isin(piece, named)
+    out[sel] = np.array([lut[int(x)] for x in piece[sel]], np.int64)
+    merged = {}
+    for pc, c in classes.items():
+        d = merged.setdefault(lut.get(pc, pc), {})
+        for k, n in c.items():
+            d[k] = d.get(k, 0) + n
+    return out, merged, joins
+
+
 def run_lift(tag, xyz, h, labs, keys, maps, names, patches, cams, out_dir):
     t0 = time.time()
     vis, ms = lift(xyz, keys, maps)
@@ -470,10 +520,13 @@ def run_lift(tag, xyz, h, labs, keys, maps, names, patches, cams, out_dir):
             if c:
                 d = classes.setdefault(int(pc), {})
                 d[c] = d.get(c, 0) + 1
+    joins = 0
+    if classes:
+        piece, classes, joins = join_named(piece, xyz, classes)
     saw = np.zeros(len(xyz), bool)
     for v in vis:
         saw[v] = True
-    extra = f" ({len(keys)} pictures; {100 * saw.mean():.0f}% of the points were in a picture; {100 * joined:.0f}% of the shapes were joined to another picture's; a point's pictures agree {100 * purity:.0f}%; {time.time() - t0:.0f} s)"
+    extra = f" ({len(keys)} pictures; {100 * saw.mean():.0f}% of the points were in a picture; {100 * joined:.0f}% of the shapes were joined to another picture's; a point's pictures agree {100 * purity:.0f}%; {joins} touching things of one name joined; {time.time() - t0:.0f} s)"
     lines, desc = report(tag, piece, xyz, h, labs, patches, classes, extra)
     try:
         picture(os.path.join(out_dir, f"segments-{re.sub(r'[^a-z]+', '-', tag.lower()).strip('-')}.png"), xyz, h, piece, np.array(list(desc)))
@@ -656,6 +709,14 @@ def selftest():
     assert len(np.unique(g[g >= 0])) == 2, "by shape alone: two standing things"
     lines, _ = report("self test", piece, xyz, h, np.zeros((len(xyz), 4), np.uint8), [{"cells": 3, "lengthM": 4, "line": True, "label": "terrain", "idx": np.flatnonzero(truth == 1)[:500].tolist()}])
     assert any("patch 1" in l and "line" in l for l in lines), lines
+    # the owner's stone wall: two halves of the fence and the post, each a thing; the halves share a name and touch
+    halves = np.full(len(xyz), -1, np.int64)
+    halves[(truth == 1) & (xyz[:, 0] < 0)] = 5
+    halves[(truth == 1) & (xyz[:, 0] >= 0)] = 6
+    halves[truth == 2] = 7
+    jp, jc, joins = join_named(halves, xyz.astype(np.float64), {5: {"fence": 9, "wall": 1}, 6: {"fence": 4}, 7: {"fence": 3}})
+    assert joins == 1 and len(np.unique(jp[truth == 1])) == 1 and jp[truth == 2][0] == 7, "touching halves of one name are one thing; the post, apart, is not"
+    assert jc[int(jp[truth == 1][0])] == {"fence": 13, "wall": 1}, jc
     print(f"segment lift self test: ok (joined {joined:.2f}, pictures agree {purity:.2f})")
 
 
@@ -676,7 +737,14 @@ def main():
     # left out, as the disagreement report leaves them out: spikes, Google's far street geometry (not measured by
     # the camera), and points the phone was more than NEAR from when it saw them
     drop = ((labs[:, 3] & 3) > 0)
-    if len(track) >= 2:
+    jf = os.path.join(d, "judged.bin")
+    if os.path.exists(jf) and os.path.getsize(jf) == len(recs):
+        # the report's own verdicts (lib/disagree.js judge, the owner's rule of 2026-11-19): every measured point out
+        # to 80 ft that its name makes likely; the odd and the nameless only with a second look
+        v = np.fromfile(jf, dtype=np.uint8)
+        drop |= (v == 255) | (v == 3)
+        print(f"Points by the report's verdicts: {int((~drop).sum()):,} used out to 80 ft ({int((v == 3).sum()):,} seen once and odd or nameless: left out).")
+    elif len(track) >= 2:
         drop |= np.linalg.norm(xyz - cam_at(track, recs[:, 0].astype(np.float64)), axis=1) > NEAR
     xyz[drop] = np.nan
     h[drop] = np.nan
@@ -687,7 +755,7 @@ def main():
         with open(pf) as f:
             patches = json.load(f)
     stand = np.isfinite(h) & (h > STAND)
-    print(f"The walk: {len(recs):,} points, {int((~drop).sum()):,} seen within {NEAR * FT:.0f} ft ({int(stand.sum()):,} standing over {STAND * FT:.0f} ft), {len(keys)} pictures; {len(patches)} patches the phone saw and the lidar lacks.")
+    print(f"The walk: {len(recs):,} points, {int((~drop).sum()):,} used ({int(stand.sum()):,} standing over {STAND * FT:.0f} ft), {len(keys)} pictures; {len(patches)} patches the phone saw and the lidar lacks.")
     labs_named = labs[stand, 0]
     cnt = np.bincount(labs_named, minlength=len(LABELS) + 1)
     print("The phone's own labels on the standing points: " + ", ".join(f"{LABELS[i - 1]} {100 * cnt[i] / max(1, cnt.sum()):.0f}%" for i in np.argsort(-cnt) if i > 0 and cnt[i] / max(1, cnt.sum()) >= 0.02) + (f", none {100 * cnt[0] / max(1, cnt.sum()):.0f}%" if cnt[0] else "") + ".")

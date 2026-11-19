@@ -79,15 +79,39 @@ console.log('twin viewer sums: ok');
   assert.ok(labels, 'a labels part with the cloud part');
   assert.ok(PART.test('labels-0000.bin'), 'the site keeps it');
   const recs = readCloud(cloud.body);
-  assert.deepEqual(readLabels(labels.body, recs.length), [{ label: null, conf: null, depthConf: null, spike: false, geoDepth: false }, { label: 'building', conf: 204 / 255, depthConf: 77 / 255, spike: true, geoDepth: false }, { label: 'sky', conf: 0, depthConf: null, spike: false, geoDepth: false }]);
+  assert.deepEqual(readLabels(labels.body, recs.length), [{ label: null, conf: null, depthConf: null, spike: false, geoDepth: false, weak: false, again: false }, { label: 'building', conf: 204 / 255, depthConf: 77 / 255, spike: true, geoDepth: false, weak: false, again: false }, { label: 'sky', conf: 0, depthConf: null, spike: false, geoDepth: false, weak: false, again: false }]);
   assert.equal(readLabels(labels.body, recs.length + 1), null, 'a part of the wrong length is not trusted');
   assert.deepEqual(LABELS, (await import('../lib/track.js')).SEM_LABELS, 'the same labels, in the same order, as the app sends');
   addPoints(tw, T0 + 30000, 2, [{ x: 5, y: 0, z: 0 }]);
   assert.deepEqual(flush(tw, T0 + 40000).map((p) => p.name), ['cloud-0001.bin'], 'no labels part when nothing was labelled');
   addPoints(tw, T0 + 50000, 3, [{ x: 9, y: 0, z: 0, dconf: 0.9 }]);
   const p3 = flush(tw, T0 + 60000);
-  assert.deepEqual(readLabels(p3[1].body, 1), [{ label: null, conf: null, depthConf: 230 / 255, spike: false, geoDepth: false }], 'depth confidence alone writes the part');
+  assert.deepEqual(readLabels(p3[1].body, 1), [{ label: null, conf: null, depthConf: 230 / 255, spike: false, geoDepth: false, weak: false, again: false }], 'depth confidence alone writes the part');
   addPoints(tw, T0 + 70000, 4, [{ x: 40, y: 0, z: 0, geoDepth: true }]);
   assert.equal(readLabels(flush(tw, T0 + 80000)[1].body, 1)[0].geoDepth, true, 'a Geospatial Depth point is flagged');
+}
+const { PART: PART_RE } = await import('../src/twin.js');
+const PART_OK = (n) => PART_RE.test(n);
+// a second look is kept, from another place only; weak depth goes to parts of its own (2026-11-19)
+{
+  const { LOOKS_MAX, readLabels } = await import('../lib/twin.js');
+  const T0 = 1_000_000, tw = newTwin({ walk: 'w', started: T0 });
+  const spot = () => [{ x: 5, y: 1, z: 5 }];
+  assert.equal(addPoints(tw, T0 + 100, 0, spot(), 0, { x: 0, y: 1.4, z: 0 }), 1, 'the first look');
+  assert.equal(addPoints(tw, T0 + 200, 0, spot(), 0, { x: 0.2, y: 1.4, z: 0.1 }), 0, 'standing still adds nothing');
+  assert.equal(addPoints(tw, T0 + 300, 0, spot()), 0, 'nor a look with no camera given (the old rule)');
+  assert.equal(addPoints(tw, T0 + 5000, 3, spot(), 0, { x: 3, y: 1.4, z: 0 }), 1, 'from another place: kept again');
+  for (let i = 2; i < 8; i++) addPoints(tw, T0 + 5000 + i * 1000, 3 + i, spot(), 0, { x: 3 * i, y: 1.4, z: 0 });
+  assert.equal(tw.counts.points, LOOKS_MAX, 'and no more than LOOKS_MAX times');
+  assert.equal(addPoints(tw, T0 + 20000, 9, [{ x: 40, y: 0, z: 0, geoDepth: true }], 0, { x: 0, y: 1.4, z: 0 }), 1);
+  assert.equal(addPoints(tw, T0 + 21000, 9, [{ x: 40, y: 0, z: 0, geoDepth: true }], 0, { x: 9, y: 1.4, z: 0 }), 0, "Google's street shapes are never kept again");
+  assert.equal(addPoints(tw, T0 + 22000, 9, [{ x: 7, y: 1, z: 7, weak: true, dconf: 0.1, label: 'terrain', lconf: 0.9 }], 0, { x: 0, y: 1.4, z: 0 }), 0, 'weak depth is not a cloud point');
+  assert.equal(addPoints(tw, T0 + 23000, 9, [{ x: 7, y: 1, z: 7, dconf: 0.6 }], 0, { x: 0, y: 1.4, z: 0 }), 1, 'and does not stand in the way of a sure one in the same cube');
+  const parts = flush(tw, T0 + 30000), names = parts.map((p) => p.name);
+  assert.ok(names.includes('weak-0000.bin') && names.includes('weaklabels-0000.bin') && PART_OK('weak-0000.bin') && PART_OK('weaklabels-0000.bin'), 'weak depth in parts of its own, which the site keeps');
+  const cloud = readCloud(parts.find((p) => p.name === 'cloud-0000.bin').body), labs = readLabels(parts.find((p) => p.name === 'labels-0000.bin').body, cloud.length);
+  assert.deepEqual(labs.map((l) => l.again), [false, true, true, false, false], 'the looks after the first are flagged');
+  const w = readLabels(parts.find((p) => p.name === 'weaklabels-0000.bin').body, 1)[0];
+  assert.ok(w.weak && w.label === 'terrain' && readCloud(parts.find((p) => p.name === 'weak-0000.bin').body).length === 1);
 }
 console.log('twin labels: ok');

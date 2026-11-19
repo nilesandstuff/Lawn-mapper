@@ -40,6 +40,7 @@ jobs:
           SITE: https://${{ vars.CUSTOM_DOMAIN }}
           WALK: ${{ inputs.walk }}
           CELLS_OUT: twin/disagree-cells.json
+          JUDGE_OUT: twin/judged.bin
         run: |
           set -o pipefail
           pip install --quiet modal numpy scipy pillow
