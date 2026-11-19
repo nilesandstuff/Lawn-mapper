@@ -39,7 +39,11 @@ import time
 
 import numpy as np
 
-RANGE = 24.4     # m (80 ft): a picture speaks for points this near its camera (8 m before 2026-11-19: SCAN-PLAN 31)
+# m: a picture speaks for points this near its camera. 8 m (26 ft). At 24.4 m (80 ft), tried 2026-11-19, the lift
+# fell apart: nearly every standing point ended in ONE thing 174 ft long on one walk and 85 ft on the other (the
+# hidden-behind test is too loose at range, and a pose a little off puts a far shape on the wrong points). A longer
+# reach needs each picture's own depth to say what it saw; until then LIFT_RANGE is for trying it.
+RANGE = float(os.environ.get("LIFT_RANGE", "8"))
 ZCELL = 8        # px: the cell of the hidden-behind test
 MIN_PTS = 15     # a shape with fewer points in a picture says nothing
 IOU = 0.5        # two pictures' shapes are one thing when they share this much of what both saw
