@@ -698,6 +698,106 @@ def study_reach(d, sid="reach"):
     keep(d, sid, "The lift with a longer reach", "The cut is SAM objects. A picture names a point only if it saw it. First by the old test (the nearest point in a patch of the picture), then by the picture's own depth, at three reaches.", eyes, numbers, sheets)
 
 
+# ---------------------------------------------------------------- study: the best guess
+
+def study_best(d, names_file=None, sid="best"):
+    """ONE MAP FROM ABOVE, EVERYTHING PUT TOGETHER (2026-11-19). The thesis (docs/SCAN-PLAN.md 29) wants one picture of
+    the yard built from what is known. Here, from a walk alone: each point takes the KIND of the thing it was lifted
+    into (the cut: SAM objects; the lift: each picture's own depth, 80 ft; the kind: what most namers give the thing,
+    else the heat-map namer's, else the panoptic vote's); a point in no thing takes the kind of the phone's own
+    label; a point with neither is grey. Beside it, the same with the things alone, to show what each part adds."""
+    w = load(d)
+    mf = os.path.join(d, "segments-masks.npz")
+    if not os.path.exists(mf):
+        print("No kept shapes for this walk: no best-guess study.")
+        return
+    z = np.load(mf, allow_pickle=False)
+    sel = [w["keys"][i] for i in z["pics"]]
+    obj = list(z["obj"])
+    cams = np.array([k["c2w"][:3, 3] for k in sel])
+    pan_names = [{int(a): b for a, b in nm.items()} for nm in json.loads(str(z["names"]))]
+    namers = {"panoptic": S.name_by_vote(obj, list(z["pan"]), pan_names)}
+    names_file = names_file or os.path.join(d, "segments-names.json")
+    if os.path.exists(names_file):
+        with open(names_file) as f:
+            for k, v in json.load(f).items():
+                namers[k] = [{int(a): b for a, b in nm.items()} for nm in v]
+    depths = [read_depth(p) if os.path.exists(p) else None for p in (os.path.join(d, k["name"].replace(".jpg", ".depth")) for k in sel)]
+    by_depth = sum(x is not None for x in depths) >= 0.8 * len(sel)
+    vis, ms = lift_by_depth(w["xyz0"], sel, obj, depths, 24.4) if by_depth else S.lift(w["xyz0"], sel, obj)
+    off, comp, joined = S.merge(vis, ms, cams)
+    piece, purity, vp, vn = S.vote(len(w["xyz0"]), vis, ms, off, comp)
+    ok = comp[vn] == piece[vp]
+    kind_by = {}
+    for nm, names in namers.items():
+        node = {int(off[p] + i): KIND.get(c, c) for p, d1 in enumerate(names) for i, c in d1.items()}
+        cls = {}
+        for pc, nd in zip(piece[vp][ok], vn[ok]):
+            c = node.get(int(nd))
+            if c:
+                dd = cls.setdefault(int(pc), {})
+                dd[c] = dd.get(c, 0) + 1
+        kind_by[nm] = {pc: S.top_of(c, 0.5)[0] for pc, c in cls.items()}
+    things = {}
+    how = {"most namers": 0, "clipseg": 0, "panoptic": 0}
+    for pc in np.unique(piece[piece >= 0]):
+        votes = {}
+        for nm in kind_by:
+            k = kind_by[nm].get(int(pc))
+            if k:
+                votes[k] = votes.get(k, 0) + 1
+        top = max(votes.values()) if votes else 0
+        win = [k for k, v in votes.items() if v == top]
+        if top >= 2 and len(win) == 1:
+            things[int(pc)] = win[0]
+            how["most namers"] += 1
+        elif kind_by.get("clipseg", {}).get(int(pc)):
+            things[int(pc)] = kind_by["clipseg"][int(pc)]
+            how["clipseg"] += 1
+        elif kind_by["panoptic"].get(int(pc)):
+            things[int(pc)] = kind_by["panoptic"][int(pc)]
+            how["panoptic"] += 1
+    used = ~w["drop"]
+    kind = np.full(len(piece), "", dtype=object)
+    for pc, k in things.items():
+        kind[piece == pc] = k
+    from_things = kind != ""
+    phone = np.array([KIND.get(S.LABELS[l - 1], "") if l else "" for l in w["labs"][:, 0]], dtype=object)
+    phone[phone == "sky"] = ""                       # a point is never sky
+    fill = used & ~from_things & (phone != "")
+    both = kind.copy()
+    both[fill] = phone[fill]
+
+    def draw(kinds, path, title):
+        fake_piece = np.full(len(kinds), -1, np.int64)
+        cls, ids = {}, {}
+        for k in np.unique(kinds[used & (kinds != "")]):
+            ids[k] = len(ids)
+            cls[ids[k]] = {k: 1}
+            fake_piece[used & (kinds == k)] = ids[k]
+        fake_piece[used & (kinds == "")] = len(ids)          # grey: no kind
+        named_map(path, w["xyz0"], fake_piece, cls, title)
+
+    draw(both, os.path.join(d, f"study-{sid}-all.png"), "The best guess: every point's kind (things first, the phone's label where no thing)")
+    draw(kind, os.path.join(d, f"study-{sid}-things.png"), "The things alone (grey: in no thing, or a thing with no clear kind)")
+    n_used = int(used.sum())
+    tally = {}
+    for k in both[used]:
+        tally[k or "no kind"] = tally.get(k or "no kind", 0) + 1
+    numbers = [f"{n_used:,} points used. A kind from the thing it is in: {100 * (used & from_things).sum() / n_used:.0f}%; from the phone's label instead: {100 * fill.sum() / n_used:.0f}%; none: {100 * (used & (both == '')).sum() / n_used:.0f}%.",
+               "Things given their kind by: " + ", ".join(f"{v} {k}" for k, v in how.items()) + f"; {len(np.unique(piece[piece >= 0])) - len(things)} things left without one.",
+               "Points by kind: " + ", ".join(f"{k} {100 * v / n_used:.0f}%" for k, v in sorted(tally.items(), key=lambda kv: -kv[1])) + ".",
+               f"Where a point has a kind both ways, the thing's kind and the phone's label agree on {100 * ((kind == phone) & from_things & (phone != '') & used).sum() / max(1, (from_things & (phone != '') & used).sum()):.0f}% of them."]
+    for line in numbers:
+        print(line)
+    eyes = ["Is the first picture the place, seen from above? Where is it wrong: grass drawn as paving, a wall missing, a tree where there is none?",
+            "Compare it with the second (things alone): does filling in from the phone's label add true ground, or does it paint over things the cut had right?",
+            "Is paved against grass against bare ground right? That split is what the lawn's edge would be redrawn from.",
+            "What is still missing that you know is there and walked past?"]
+    keep(d, sid, "The best guess of the yard, from above", "Everything put together from one walk: the cut (SAM objects), the lift (each picture's own depth, 80 ft), kinds by the namers' vote, and the phone's own label for points in no thing. No lidar, no trace.", eyes, numbers,
+         [{"file": f"study-{sid}-all.png", "title": "The best guess: every point's kind"}, {"file": f"study-{sid}-things.png", "title": "The things alone"}])
+
+
 # ---------------------------------------------------------------- study: fewer pictures
 
 def study_thin(d, sid="thin"):
@@ -771,6 +871,8 @@ def main():
             study_relief(d)
         elif one == "thin":
             study_thin(d)
+        elif one == "best":
+            study_best(d)
 
 
 if __name__ == "__main__":
