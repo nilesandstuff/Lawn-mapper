@@ -2922,3 +2922,74 @@ THE STANDING TEST ON THE WALK'S OWN GROUND: TRIED TWICE, NOT USED (2026-11-18). 
 NOT DONE YET: the owner's eyes on the small model's names; the report's "standing" by what a thing is named, where
 a walk has been cut into things; the published model itself on one object (not run; with SAM objects judged good on
 whole scenes it may not be needed); which walks depth_run.py and walk_fix_study.py read.
+
+## 31. How far the phone's depth can be trusted, and the second look (owner, 2026-11-19)
+
+The owner, having judged the sheets: SAM objects is the cut; the small naming model's names "very bad. Irrevocably
+bad"; and: "the view from above map looks thinner that i think it should... Are we throwing out depth info too
+aggressively? Looking at the hit test, it correctly calls the distance up to like 60-80 feet... BUT there's some
+jitter, occasionally, where it can get stuck at like half the distance, then take a second of moving the camera
+around to get the right distance... there's depth noise, like with the ground, but the noise tends to be clustered,
+and can be seen past with a change of position. Really study that last paragraph, both in regards to the view
+distance, and maybe it can offer insights into how to solve the ground. P.s. ... legitimate low spots and permanent
+mounds do exist in lawns... Itd be nice to map legitimate low spots and high spots. Perhaps consensus/majority votes
+from different angles?" And of naming: a stone wall cut into blocks up close and whole from afar, so "A. Have some
+sort of consensus mechanism between different angles... B. Do post processing on shapes with (very) similar
+geometry that are touching or in a steady repeating pattern".
+
+BUILT (free): lib/disagree.js carve (each point asked of the rest of the walk: a SECOND LOOK = another 5 s stretch
+saw the same 0.3 m cube; SEEN PAST = other stretches' sight lines crossed its cube more than twice as often as
+anything was seen there; CONFIRMED = a second look and not seen past -- SCAN-H26's judge, for every point at every
+distance) and groundLooks (each 0.5 m square's ground found separately per 20 s stretch). disagree.mjs prints them.
+segment_study.py name_by_vote: a SAM shape takes the name most of its own pixels got from the whole-picture model.
+
+HARD (runs 392-393, head c0d69d3; work walk = an app walk, the other = a web-page walk):
+
+- WHAT THE 20 FT CUT THREW AWAY WAS MOSTLY NOT THE CAMERA'S DEPTH. Work walk: of 119,923 stored points only 63,538
+  are the camera's own measurements; the other 56,385 are Google's street geometry past 25 m (flag 2) and spikes.
+  Of the camera's: 39,473 within 10 ft, 16,922 at 10-20, 3,856 at 20-40, 1,379 at 40-60, 911 at 60-80, 997 past 80.
+  So 11% of the measured points lie past 20 ft. The other walk: 49,438 / 35,553 / 12,650 (none past 40 ft): 13%.
+  The view from above is thin because the walk RECORDS few far points (48 x 84 rays a frame at confidence 0.2 and
+  up, one point kept per 5 cm cube for the whole walk), more than because the tools cut them.
+- FAR POINTS ARE NOT WORSE BY THIS MEASURE. Standing points with the lidar's anything within 1 m: work walk 98% at
+  0-10 ft, 97% at 10-20, 97% at 20-40, 99% at 40-60, 97% at 60-80, 94% past 80; the other 100 / 98 / 97%.
+  (A lenient measure: most standing points are on buildings; it does not say a far point is right to a foot.)
+- A SECOND LOOK: work walk 67% of points at 0-10 ft, 79% at 10-20, 53% at 20-40, 46% at 40-60, 25% at 60-80, 11%
+  past 80; the other 53 / 54 / 29%. Seen past: 7-11% in every band on both walks.
+- CONFIRMED POINTS ALONE, OUT TO 80 FT, GIVE A FAR CLEANER REPORT:
+                    points    looked at   standing in the lidar   seen, not in the lidar
+    work, within 20 ft  56,251    302 m2      72% (41 of 57 m2)        16 m2 in 9 patches
+    work, confirmed     38,086    195 m2      95% (70 of 74 m2)         4 m2 in 2 (2 terrain, 2 sky)
+    other, within 20 ft 84,355    392 m2      90% (86 of 96 m2)        10 m2 in 3 (a 19 ft "line")
+    other, confirmed    45,228    241 m2      98% (65 of 66 m2)         1 m2 in 1
+  The patches the owner saw to be ground were single looks: of the work walk's nine, six have 83-100% of their
+  points seen in one stretch only, one (patch 7) is 100% seen past, and one (patch 1) is 84% confirmed; the other
+  property's 19 ft line is 60% seen past and 77% one stretch. The price: a third of the looked-at area is lost
+  (302 to 195 m2, 392 to 241), because 41-49% of the near points were seen in one stretch only.
+- THE GROUND BY MORE THAN ONE LOOK. Within 20 ft, work walk: 764 squares, 78% seen in one stretch, 17% in two, 6%
+  in three or more; where two or more, a look sits a median 2.8 in from the square's middle height (three in four
+  within 6.0 in, nine in ten within 9.0). The other: 1,241 squares, 90 / 8 / 2%; median 2.5 in (6.2, 16.1).
+- NAMES BY THE PANOPTIC VOTE on SAM objects' standing things: work walk 2 wall (28 ft, 12 ft), 2 house, 1 building,
+  1 unclear (18 ft), 1 sky; the other 7 house, 4 tree, 3 building, 2 grass, 2 sky, 1 wall, 1 unclear (24 ft).
+  Not yet judged by the owner.
+
+WHAT THE NUMBERS ALLOW ME TO SAY: the owner's reading is right that the noise is of a kind a second look removes
+(the false patches go; agreement 72 to 95% and 90 to 98%), and right that distance is not the thing to cut on.
+A rolling slope of +-2 ft is well above what two looks disagree by (3 in median, 6 in for three in four); a 6 in
+bump is not, yet.
+
+SPECULATION:
+- "A second look" is UNDERCOUNTED by the recording: one point is kept per 5 cm cube for the whole walk, so a spot
+  seen again exactly where it was seen first adds nothing to the file. Keeping a point again when another stretch
+  sees the same cube (or a count) would let confirmation cost much less area. Not measured.
+- The phone's hit test reaching 60-80 ft and the recorded depth thinning past 20 ft are two different things in
+  ARCore (the crosshair is its own hit test, SCAN-H26; the cloud is raw depth at confidence 0.2 and up on a 48 x 84
+  grid). Whether far raw depth exists at lower confidence and survives a second look is not measured: the twin
+  does not keep what the cut removed.
+- Whether name_by_vote names a wall's blocks "wall" up close (the owner's stone wall) is for the owner's eyes.
+
+NEXT, IN ORDER: (1) the report and the lift on confirmed points instead of the 20 ft cut, unconfirmed ones shown as
+tentative, not thrown away; (2) the recording keeps second looks (and far, weaker depth, flagged) so confirmation
+has more to work with -- a change to what every walk stores, so asked of the owner first; (3) touching things of
+one name joined (the owner's B); a thing's name by the vote of every picture that saw it is already how the lift
+names (the owner's A).
