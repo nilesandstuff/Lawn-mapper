@@ -84,7 +84,7 @@ function sheet(id) {
   S.pick = id; S.whole = true;
   const pic = S.seg.pictures[S.p], [thing, px, pts] = pic.shapes[id] || [null, 0, 0], T = S.seg.things[thing] || { photos: 1, points: 0 };
   $('#s-title').textContent = nameOf(S.p, id) ? `Named: ${nameOf(S.p, id)}` : 'Not named yet';
-  $('#s-info').textContent = `This shape is ${Math.round((100 * px) / (S.w * S.h))}% of the photo with ${pts.toLocaleString()} of the walk's points in it. The tools matched it as one thing across ${T.photos} photo${T.photos === 1 ? '' : 's'} (${T.points.toLocaleString()} points).`;
+  $('#s-info').textContent = `This shape is ${Math.round((100 * px) / (S.w * S.h))}% of the photo of the photo. The tools matched it as one thing across ${T.photos} photo${T.photos === 1 ? '' : 's'}.`;
   const box = $('#s-names'); box.innerHTML = '';
   for (const w of S.words) { const b = document.createElement('button'); b.type = 'button'; b.className = 'name'; b.textContent = w; b.addEventListener('click', () => give(w)); box.append(b); }
   $('#s-all').classList.add('on'); $('#s-one').classList.remove('on');
