@@ -2993,3 +2993,45 @@ tentative, not thrown away; (2) the recording keeps second looks (and far, weake
 has more to work with -- a change to what every walk stores, so asked of the owner first; (3) touching things of
 one name joined (the owner's B); a thing's name by the vote of every picture that saw it is already how the lift
 names (the owner's A).
+
+### 31, continued: keep more points, by name (owner, 2026-11-19)
+
+The owner, on the study above: "my last round of thoughts were too strict... We should keep more points, and only
+strictly require a second look confirmation for anomalous points that don't have a name. We can leverage the
+segmentation (and probably even just the google scene semantics for a faster live processing?) to add context...
+- any point that sits like 5 inches higher/lower than a neighbor on a grass lawn is probably an anomaly and smooth
+that out unless it's confirmed from a different angle. - buildings have a wider margin, maybe 5 feet. - trees can be
+all over the place. Not certain on the best way to handle that." On the lidar as the benchmark: "It should be
+lenient, because lidar is coarse, misses some objects entirely (especially trees) and the environment could've
+changed since the lidar was flown." On naming: "The panoptic naming on sam was not great either. (Panoptic naming
+itself isn't great) Maybe I was too quick to discard that small namer given it wasn't given a chance with the whole
+image context." And yes to all three next steps.
+
+BUILT: lib/disagree.js judge (ground-named kept, over 5 in off its ground-named surroundings smoothed unless
+confirmed, then a real high or low spot; built kept with 4 built points within 5 ft, else only confirmed; tree kept;
+nameless only confirmed; weak depth only confirmed), used by the report out to 80 ft, a ground-named point being
+ground whatever its height; its verdicts handed to the lift (judged.bin). segment_study.py join_named (things of one
+name within 10 in of each other are one). The recording (twin.js addPoints, app.js): a cube's point kept again when
+the camera stands in another 1.5 m cube, three times at most (flag 8); once a second a quarter of the app's own
+48 x 84 depth grid (the live points are 16 x 28 rays), its weak cells to weak-NNNN.bin / weaklabels-NNNN.bin, which
+nothing but a study reads. Deployed 2026-11-19 (run 396). NOT YET WALKED: no phone has run it.
+
+HARD (runs 397-402):
+
+- Work walk (Google's labels on every point): 59,037 points used (56,251 before); looked at 376 m2 (302); standing
+  things in the lidar 98%, 99 of 101 m2 (72%, 41 of 57); seen and not in the lidar 2 m2 in 1 patch, the roof edge
+  labelled sky (16 m2 in 9). Of 34,667 ground-named points 2,175 were smoothed and 1,068 confirmed as high or low
+  spots (152 squares of 20 in); 13 built points left out; 3,800 nameless seen once left out.
+- The other walk (no labels: every point nameless): the same as confirmed-only, 45,228 points, 241 m2, 98%.
+  The rule gives nothing to a walk without names: it needs the cut-into-things names in the labels' place.
+- THE LIFT AT 80 FT FAILED: with a picture speaking for points out to 24.4 m, nearly every standing point ended in
+  one thing (174 x 82 ft on the work walk, holding 99-100%; 85 x 76 ft on the other, 98%). Back at 8 m the things
+  are apart again (SAM objects: work 6 standing, the biggest 71%; the other 9 standing, the biggest 37%).
+- Joining: 21 touching things of one name joined on the work walk, 46 on the other (SAM objects).
+
+SPECULATION: the lift fails at range because its hidden-behind test (the nearest point in an 8-pixel cell, 10% and
+0.2 m of slack) passes points behind a surface at 20 m, and a pose a little off moves a far shape by feet. Each
+picture's own depth grid (key-NNNN.depth) saying what it saw is the test to try; not built.
+
+NEXT: the small namer shown the whole picture with the shape marked (the owner's second thought on it); names from
+the things in the Google labels' place for walks without them; the lift's reach by each picture's own depth.
