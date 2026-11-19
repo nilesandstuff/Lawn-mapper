@@ -759,7 +759,11 @@ def study_best(d, names_file=None, sid="best"):
             how["panoptic"] += 1
     used = ~w["drop"]
     kind = np.full(len(piece), "", dtype=object)
+    sky_pts = 0
     for pc, k in things.items():
+        if k == "sky":            # a point is never sky: a thing the namers call sky is a roof edge, a wire, a bare
+            sky_pts += int((piece == pc).sum())   # crown or depth gone wrong against the sky: left without a kind
+            continue
         kind[piece == pc] = k
     from_things = kind != ""
     phone = np.array([KIND.get(S.LABELS[l - 1], "") if l else "" for l in w["labs"][:, 0]], dtype=object)
@@ -786,6 +790,7 @@ def study_best(d, names_file=None, sid="best"):
         tally[k or "no kind"] = tally.get(k or "no kind", 0) + 1
     numbers = [f"{n_used:,} points used. A kind from the thing it is in: {100 * (used & from_things).sum() / n_used:.0f}%; from the phone's label instead: {100 * fill.sum() / n_used:.0f}%; none: {100 * (used & (both == '')).sum() / n_used:.0f}%.",
                "Things given their kind by: " + ", ".join(f"{v} {k}" for k, v in how.items()) + f"; {len(np.unique(piece[piece >= 0])) - len(things)} things left without one.",
+               f"{sky_pts:,} points sit in things the namers call sky ({100 * sky_pts / n_used:.0f}%): a point is never sky, so they take the phone's label if it has one, else none.",
                "Points by kind: " + ", ".join(f"{k} {100 * v / n_used:.0f}%" for k, v in sorted(tally.items(), key=lambda kv: -kv[1])) + ".",
                f"Where a point has a kind both ways, the thing's kind and the phone's label agree on {100 * ((kind == phone) & from_things & (phone != '') & used).sum() / max(1, (from_things & (phone != '') & used).sum()):.0f}% of them."]
     for line in numbers:
@@ -793,7 +798,8 @@ def study_best(d, names_file=None, sid="best"):
     eyes = ["Is the first picture the place, seen from above? Where is it wrong: grass drawn as paving, a wall missing, a tree where there is none?",
             "Compare it with the second (things alone): does filling in from the phone's label add true ground, or does it paint over things the cut had right?",
             "Is paved against grass against bare ground right? That split is what the lawn's edge would be redrawn from.",
-            "What is still missing that you know is there and walked past?"]
+            "What is still missing that you know is there and walked past?",
+            "Grey points are ones nothing could name, many of them in things the namers called sky. Are they roof edges and treetops (real, just unnamed) or points floating where nothing is?"]
     keep(d, sid, "The best guess of the yard, from above", "Everything put together from one walk: the cut (SAM objects), the lift (each picture's own depth, 80 ft), kinds by the namers' vote, and the phone's own label for points in no thing. No lidar, no trace.", eyes, numbers,
          [{"file": f"study-{sid}-all.png", "title": "The best guess: every point's kind"}, {"file": f"study-{sid}-things.png", "title": "The things alone"}])
 
