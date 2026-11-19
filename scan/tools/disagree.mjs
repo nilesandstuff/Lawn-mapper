@@ -69,11 +69,15 @@ console.log(`The model: the shade map's, ${model.meta?.at ? String(model.meta.at
 if (!plan.ok) process.exit(0);
 const fits = new Map();
 const fitFor = (odo) => { const k = Math.round(odo); if (!fits.has(k)) fits.set(k, fitAt(plan.use, k) || plan.C); return fits.get(k); };
+// the points the owner erased by hand in the 3D view (scan/public/cloud.html; erased.bin: indexes into these records)
+const gone = new Set(existsSync(join(dir, 'erased.bin')) ? new Uint32Array(buf('erased.bin')) : []);
+if (gone.size) console.log(`Erased by hand in the 3D view: ${gone.size.toLocaleString()} points, left out.`);
 const pts = [], every = []; // pts: within RANGE_M (the report); every: every measured point with its camera (the study below)
 let far = 0, spikes = 0;
 for (let i = 0; i < recs.length; i++) {
   const r = recs[i];
   if (r.spike) { spikes++; continue; }
+  if (gone.has(i)) continue;
   const cam = camAt(r.t);
   const dist = cam ? Math.hypot(r.x - cam.x, r.y - cam.y, r.z - cam.z) : null;
   const [e, n] = apply(fitFor(r.odo), [r.x, -r.z]);

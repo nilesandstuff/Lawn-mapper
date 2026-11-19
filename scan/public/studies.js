@@ -30,7 +30,7 @@ async function studies() {
   }));
   rows.sort((a, b) => (b.at || 0) - (a.at || 0));
   document.getElementById('studies-list').innerHTML = rows.map(({ t, place, at }) =>
-    `<li style="margin:.35rem 0"><a href="/twin.html?walk=${encodeURIComponent(t.walk)}#${t.studies ? 'studies' : 'segments'}">${t.studies ? `${t.studies} stud${t.studies === 1 ? 'y' : 'ies'}` : 'Cut into things'}</a> <span class="dim">: ${esc(place)}, walked ${at ? esc(new Date(at).toLocaleString()) : esc(t.walk)}</span></li>`).join('');
+    `<li style="margin:.35rem 0"><a href="/twin.html?walk=${encodeURIComponent(t.walk)}#${t.studies ? 'studies' : 'segments'}">${t.studies ? `${t.studies} stud${t.studies === 1 ? 'y' : 'ies'}` : 'Cut into things'}</a> &middot; <a href="/cloud.html?walk=${encodeURIComponent(t.walk)}">every point in 3D</a> <span class="dim">: ${esc(place)}, walked ${at ? esc(new Date(at).toLocaleString()) : esc(t.walk)}</span></li>`).join('');
   document.getElementById('studies').hidden = false;
 }
 studies().catch(() => {});

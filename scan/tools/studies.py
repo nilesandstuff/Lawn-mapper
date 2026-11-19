@@ -261,6 +261,7 @@ def load(d):
     elif len(track) >= 2:
         drop |= np.linalg.norm(xyz - S.cam_at(track, recs[:, 0].astype(np.float64)), axis=1) > S.NEAR
     S.pose_keys(keys, track)
+    drop |= S.erased(d, len(recs))
     xyz0 = np.where(drop[:, None], 1e6, xyz)
     h = np.where(drop, np.nan, h)
     return {"recs": recs, "labs": labs, "keys": keys, "track": track, "xyz": xyz, "xyz0": xyz0, "h": h, "drop": drop, "verdict": verdict}

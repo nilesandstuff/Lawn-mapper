@@ -91,6 +91,17 @@ def read_twin(d):
     return np.concatenate(recs), np.concatenate(labs), keys
 
 
+def erased(d, n):
+    """The points the owner erased by hand in the 3D view (scan/public/cloud.html; twin part erased.bin: indexes
+    into the records, the cloud's first). -> (n,) bool for the cloud's records."""
+    out = np.zeros(n, bool)
+    f = os.path.join(d, "erased.bin")
+    if os.path.exists(f):
+        idx = np.fromfile(f, dtype="<u4")
+        out[idx[idx < n]] = True
+    return out
+
+
 def read_track(d):
     """-> (M, 4) [t, x, y, z] by time: where the camera was, five times a second."""
     tr = []
@@ -843,6 +854,10 @@ def main():
         print(f"Points by the report's verdicts: {int((~drop).sum()):,} used out to 80 ft ({int((v == 3).sum()):,} seen once and odd or nameless: left out).")
     elif len(track) >= 2:
         drop |= np.linalg.norm(xyz - cam_at(track, recs[:, 0].astype(np.float64)), axis=1) > NEAR
+    gone = erased(d, len(recs))
+    if gone.any():
+        print(f"Erased by hand in the 3D view: {int(gone.sum()):,} points, left out.")
+        drop |= gone
     xyz[drop] = np.nan
     h[drop] = np.nan
     print(f"Pictures' poses: {pose_keys(keys, track)}.")

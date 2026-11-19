@@ -1,0 +1,339 @@
+/**
+ * EVERY POINT OF A WALK, IN 3D, TO BE LOOKED AT, INSPECTED AND ERASED BY HAND (core session, 2026-11-19).
+ *
+ * The owner, after a day of studies whose pictures did not settle what was real: "build a full 3D render of every
+ * single point, not filtered, and I could view it in a 3d viewer and an inspect button that allows me to see the
+ * picture associated with that spot, then I can erase the bad ones point by point. Then you'll get the absolute best
+ * possible idea of what's real and what's not so we can settle it once and for all. Important: the view should have
+ * a fairly shallow depth of field so I can erase things without accidentally deleted things in the foreground and
+ * background."
+ *
+ * EVERY record of the twin is drawn: the cloud's (cloud-NNNN.bin) and then the weak ones (weak-NNNN.bin), Google's
+ * street shapes and spikes too; nothing is filtered. THE ORDER OF RECORDS is that order, parts by name, and it is what
+ * an index in erased.bin means (scan/tools/view_prep.py says the same).
+ *
+ * IN FOCUS: a band of the scene at the distance of the view's centre from the eye, as deep as the slider says. Only
+ * points in it are solid, and only they can be inspected or erased. Tapping a point makes it the centre.
+ *
+ * ERASED is a list kept beside the walk (twin part erased.bin, Uint32 indexes); nothing of the walk is deleted.
+ * Admin only: every route this reads answers nobody else.
+ */
+import * as THREE from 'three';
+import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js';
+import { LABELS } from '/lib/twin.js';
+
+const $ = (s) => document.querySelector(s);
+const walk = new URLSearchParams(location.search).get('walk');
+const FT = 3.281;
+const part = (name, init) => fetch(`/api/scan/twin?walk=${encodeURIComponent(walk)}&part=${encodeURIComponent(name)}`, { credentials: 'same-origin', ...init });
+const LABEL_COL = { terrain: [120, 190, 90], road: [110, 110, 125], sidewalk: [185, 185, 195], building: [215, 90, 70], structure: [235, 160, 70], tree: [40, 150, 70],
+  object: [170, 110, 210], vehicle: [80, 140, 235], water: [70, 200, 230], sky: [255, 0, 255], person: [255, 255, 255], unlabeled: [150, 150, 150] };
+const SOURCE = [['measured by the camera', [150, 175, 200]], ['seen again from another place', [90, 210, 120]], ['weak depth', [245, 160, 50]], ["Google's street shapes", [175, 110, 235]], ['a spike', [255, 70, 70]]];
+
+const D = { n: 0, pos: null, t: null, ground: null, label: null, lconf: null, dconf: null, flags: null, rgb: null, state: null, keys: [], track: [], c2w: [], view: null };
+const U = { mode: 'look', undo: [], dirty: false, saveTimer: 0, inspect: null, pointers: new Map(), stroke: null };
+let renderer, scene, camera, controls, points, material;
+
+async function main() {
+  if (!walk) { $('#status').textContent = 'Which walk? Open this from a walk\'s twin page.'; return; }
+  $('#twin-link').href = `/twin.html?walk=${encodeURIComponent(walk)}`;
+  const j = await (await fetch(`/api/scan/twin?walk=${encodeURIComponent(walk)}`, { credentials: 'same-origin' })).json();
+  const names = (j.parts || []).map((p) => p.name).sort();
+  if (!names.length) { $('#status').textContent = 'No twin was kept for this walk.'; return; }
+  const buf = async (n) => (await part(n)).arrayBuffer();
+  const clouds = [], labs = [];
+  for (const [pre, lab] of [['cloud-', 'labels-'], ['weak-', 'weaklabels-']]) {
+    for (const n of names.filter((x) => new RegExp(`^${pre}\\d+\\.bin$`).test(x))) {
+      $('#status').textContent = `Reading ${n}…`;
+      const f = new Float32Array(await buf(n)), recs = Math.floor(f.length / 6), ln = n.replace(pre, lab);
+      let u = names.includes(ln) ? new Uint8Array(await buf(ln)) : null;
+      if (u && u.length !== recs * 4) u = null;
+      clouds.push(f.subarray(0, recs * 6)); labs.push(u || new Uint8Array(recs * 4));
+      if (pre === 'weak-' && !u) labs[labs.length - 1].fill(0);
+      if (pre === 'weak-') { const L = labs[labs.length - 1]; for (let i = 0; i < recs; i++) L[i * 4 + 3] |= 4; }
+    }
+  }
+  const N = D.n = clouds.reduce((a, f) => a + f.length / 6, 0);
+  D.pos = new Float32Array(N * 3); D.t = new Float32Array(N); D.ground = new Float32Array(N);
+  D.label = new Uint8Array(N); D.lconf = new Uint8Array(N); D.dconf = new Uint8Array(N); D.flags = new Uint8Array(N); D.state = new Float32Array(N);
+  let k = 0;
+  clouds.forEach((f, ci) => {
+    const L = labs[ci];
+    for (let i = 0; i < f.length / 6; i++, k++) {
+      D.t[k] = f[i * 6]; D.pos[k * 3] = f[i * 6 + 2]; D.pos[k * 3 + 1] = f[i * 6 + 3]; D.pos[k * 3 + 2] = f[i * 6 + 4]; D.ground[k] = f[i * 6 + 5];
+      D.label[k] = L[i * 4]; D.lconf[k] = L[i * 4 + 1]; D.dconf[k] = L[i * 4 + 2]; D.flags[k] = L[i * 4 + 3];
+    }
+  });
+  for (const n of names.filter((x) => /^keys-\d+\.json$/.test(x))) D.keys.push(...(await (await part(n)).json()));
+  D.keys = D.keys.filter((q) => names.includes(q.name)).sort((a, b) => a.t - b.t);
+  for (const n of names.filter((x) => /^track-\d+\.bin$/.test(x))) { const f = new Float32Array(await buf(n)); for (let i = 0; i + 10 <= f.length; i += 10) D.track.push([f[i], f[i + 2], f[i + 3], f[i + 4]]); }
+  D.track.sort((a, b) => a[0] - b[0]);
+  if (names.includes('view.json')) D.view = await (await part('view.json')).json().catch(() => null);
+  if (names.includes('view-rgb.bin')) { const u = new Uint8Array(await buf('view-rgb.bin')); if (u.length === N * 4) D.rgb = u; }
+  if (names.includes('erased.bin')) { const e = new Uint32Array(await buf('erased.bin')); for (const i of e) if (i < N) D.state[i] = 1; }
+  poses();
+  build();
+  const g = count(2), w = count(4), sp = count(1);
+  $('#status').textContent = `${N.toLocaleString()} points: every one the walk kept (${g.toLocaleString()} are Google's street shapes, ${w.toLocaleString()} weak depth, ${sp} spikes), ${D.keys.length} photos.${D.rgb ? '' : ' Not yet coloured from the photos: that is made by a run (task view).'}`;
+  note();
+}
+const count = (bit) => { let c = 0; for (let i = 0; i < D.n; i++) if (D.flags[i] & bit) c++; return c; };
+
+/** Each photo's camera-to-session matrix. The web page's walks kept it; the app keeps ARCore's view matrix, its
+ *  inverse (docs/SCAN-PLAN.md 30): whichever puts the cameras where the track says they were is the one. */
+function poses() {
+  const at = (t) => { let lo = 0, hi = D.track.length - 1; while (lo < hi) { const m = (lo + hi) >> 1; if (D.track[m][0] < t) lo = m + 1; else hi = m; } return D.track[lo]; };
+  const Ms = D.keys.map((q) => new THREE.Matrix4().fromArray(q.view));
+  let asIs = 0, turned = 0, n = 0;
+  if (D.track.length > 1) for (let i = 0; i < Ms.length; i += Math.max(1, Math.floor(Ms.length / 40))) {
+    const tr = at(D.keys[i].t), a = new THREE.Vector3().setFromMatrixPosition(Ms[i]), b = new THREE.Vector3().setFromMatrixPosition(Ms[i].clone().invert());
+    const w = new THREE.Vector3(tr[1], tr[2], tr[3]); asIs += a.distanceTo(w); turned += b.distanceTo(w); n++;
+  }
+  const inv = n ? turned < asIs : D.view?.pose === 'session to camera';
+  D.c2w = Ms.map((M) => (inv ? M.clone().invert() : M));
+}
+
+function build() {
+  const stage = $('#stage');
+  renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
+  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  stage.prepend(renderer.domElement);
+  scene = new THREE.Scene(); scene.background = new THREE.Color(0x05080f);
+  camera = new THREE.PerspectiveCamera(60, 1, 0.05, 2000);
+  // the walk's own middle: the median of the points the camera measured
+  const mid = (o) => { const a = []; for (let i = 0; i < D.n; i += 7) if (!(D.flags[i] & 2)) a.push(D.pos[i * 3 + o]); a.sort((x, y) => x - y); return a.length ? a[a.length >> 1] : 0; };
+  const c = new THREE.Vector3(mid(0), mid(1), mid(2));
+  camera.position.copy(c).add(new THREE.Vector3(0, 7, 11));
+  controls = new OrbitControls(camera, renderer.domElement);
+  controls.target.copy(c); controls.enableDamping = true; controls.dampingFactor = 0.12; controls.screenSpacePanning = true; controls.maxDistance = 400; controls.minDistance = 0.3;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(D.pos, 3));
+  geo.setAttribute('tint', new THREE.BufferAttribute(new Float32Array(D.n * 3), 3));
+  geo.setAttribute('state', new THREE.BufferAttribute(D.state, 1));
+  geo.setAttribute('kind', new THREE.BufferAttribute(Float32Array.from(D.flags, (f) => (f & 2 ? 1 : 0)), 1));
+  material = new THREE.ShaderMaterial({
+    uniforms: { size: { value: 6 }, focus: { value: 10 }, band: { value: 1 }, outside: { value: 1 }, showErased: { value: 0 }, google: { value: 1 }, px: { value: 1 } },
+    vertexShader: `
+      attribute vec3 tint; attribute float state; attribute float kind;
+      uniform float size, focus, band, outside, showErased, google, px;
+      varying vec3 vC;
+      void main() {
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        float d = -mv.z;
+        bool inFocus = abs(d - focus) <= band;
+        bool gone = (state > 0.5 && showErased < 0.5) || (kind > 0.5 && google < 0.5) || (!inFocus && outside < 0.5) || d < 0.05;
+        vC = state > 0.5 ? vec3(1.0, 0.15, 0.15) : (inFocus ? tint : mix(vec3(0.02, 0.03, 0.06), tint, 0.28));
+        gl_Position = gone ? vec4(2.0, 2.0, 2.0, 1.0) : projectionMatrix * mv;
+        gl_PointSize = inFocus ? clamp(size * px * 3.0 / max(d, 0.4), 2.0 * px, 16.0 * px) : 1.5 * px;
+      }`,
+    fragmentShader: 'varying vec3 vC; void main() { gl_FragColor = vec4(vC, 1.0); }',
+  });
+  points = new THREE.Points(geo, material); points.frustumCulled = false; scene.add(points);
+  // where the phone went: a thin line, so the walk can be found in the cloud
+  if (D.track.length > 1) {
+    const tp = new Float32Array(D.track.length * 3); D.track.forEach((r, i) => { tp[i * 3] = r[1]; tp[i * 3 + 1] = r[2]; tp[i * 3 + 2] = r[3]; });
+    const tg = new THREE.BufferGeometry(); tg.setAttribute('position', new THREE.BufferAttribute(tp, 3));
+    scene.add(new THREE.Line(tg, new THREE.LineBasicMaterial({ color: 0x22d3ee })));
+  }
+  colour(); wire(); resize(); window.addEventListener('resize', resize);
+  renderer.setAnimationLoop(() => {
+    controls.update();
+    material.uniforms.focus.value = camera.position.distanceTo(controls.target);
+    renderer.render(scene, camera);
+  });
+}
+function resize() {
+  const s = $('#stage'), w = s.clientWidth, h = s.clientHeight;
+  renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+  material.uniforms.px.value = renderer.getPixelRatio();
+}
+
+function colour() {
+  const how = $('#colour').value, c = points.geometry.attributes.tint.array;
+  for (let i = 0; i < D.n; i++) {
+    let r = 150, g = 150, b = 150;
+    const f = D.flags[i];
+    if (how === 'picture') { if (D.rgb && D.rgb[i * 4 + 3]) { r = D.rgb[i * 4]; g = D.rgb[i * 4 + 1]; b = D.rgb[i * 4 + 2]; } else if (f & 2) { r = 120; g = 80; b = 170; } else { r = g = b = 110; } }
+    else if (how === 'label') { [r, g, b] = D.label[i] ? LABEL_COL[LABELS[D.label[i] - 1]] || [150, 150, 150] : [95, 95, 95]; }
+    else if (how === 'height') { const h = D.pos[i * 3 + 1] - D.ground[i]; if (Number.isFinite(h)) { const x = Math.max(0, Math.min(1, h / 3)); r = 40 + 215 * x; g = 200 - 120 * Math.abs(x - 0.5) * 2; b = 255 - 215 * x; } }
+    else { [r, g, b] = SOURCE[f & 1 ? 4 : f & 2 ? 3 : f & 4 ? 2 : f & 8 ? 1 : 0][1]; }
+    c[i * 3] = r / 255; c[i * 3 + 1] = g / 255; c[i * 3 + 2] = b / 255;
+  }
+  points.geometry.attributes.tint.needsUpdate = true;
+  const sw = (col, name) => `<span style="display:inline-block;width:.8em;height:.8em;background:rgb(${col.join(',')});border-radius:2px;margin:0 .25em 0 .7em"></span>${name}`;
+  $('#legend').innerHTML = how === 'label' ? Object.entries(LABEL_COL).map(([n, col]) => sw(col, n)).join('') + sw([95, 95, 95], 'none')
+    : how === 'source' ? SOURCE.map(([n, col]) => sw(col, n)).join('')
+    : how === 'height' ? 'blue at the ground the phone took, through green, to red 10 ft over it'
+    : 'each point in the colour of the photo taken when it was seen; grey where no photo saw it; purple: Google\'s street shapes';
+}
+
+/** The points under a place on the screen (x, y in CSS pixels of the stage), within r pixels, IN FOCUS only (and of
+ *  the kind asked: erased ones for bringing back, the rest otherwise). fn(index, distance on screen squared). */
+const M = new THREE.Matrix4(), MV = new THREE.Matrix4();
+function under(x, y, r, wantErased, fn) {
+  const s = $('#stage'), w = s.clientWidth, h = s.clientHeight;
+  MV.copy(camera.matrixWorldInverse); M.multiplyMatrices(camera.projectionMatrix, MV);
+  const e = M.elements, v = MV.elements, focus = material.uniforms.focus.value, half = material.uniforms.band.value, g = material.uniforms.google.value > 0.5, r2 = r * r, P = D.pos;
+  for (let i = 0; i < D.n; i++) {
+    if ((D.state[i] > 0.5) !== wantErased) continue;
+    if (!g && (D.flags[i] & 2)) continue;
+    const X = P[i * 3], Y = P[i * 3 + 1], Z = P[i * 3 + 2];
+    const d = -(v[2] * X + v[6] * Y + v[10] * Z + v[14]);
+    if (Math.abs(d - focus) > half) continue;
+    const cw = e[3] * X + e[7] * Y + e[11] * Z + e[15]; if (cw <= 0) continue;
+    const sx = ((e[0] * X + e[4] * Y + e[8] * Z + e[12]) / cw * 0.5 + 0.5) * w, sy = (0.5 - (e[1] * X + e[5] * Y + e[9] * Z + e[13]) / cw * 0.5) * h;
+    const q = (sx - x) * (sx - x) + (sy - y) * (sy - y);
+    if (q <= r2) fn(i, q);
+  }
+}
+/** The nearest point to a tap, in focus or (for Look's "make this the centre") anywhere in front of the eye. */
+function pick(x, y, anywhere = false) {
+  let best = -1, bq = Infinity;
+  if (!anywhere) { under(x, y, 26, false, (i, q) => { if (q < bq) { bq = q; best = i; } }); return best; }
+  const half = material.uniforms.band.value; material.uniforms.band.value = 1e9;
+  let bd = Infinity;
+  under(x, y, 18, false, (i) => { const d = camera.position.distanceToSquared(new THREE.Vector3(D.pos[i * 3], D.pos[i * 3 + 1], D.pos[i * 3 + 2])); if (d < bd) { bd = d; best = i; } });
+  material.uniforms.band.value = half;
+  return best;
+}
+
+function setState(idx, v) { for (const i of idx) D.state[i] = v; points.geometry.attributes.state.needsUpdate = true; U.dirty = true; note(); clearTimeout(U.saveTimer); U.saveTimer = setTimeout(save, 4000); }
+function note() {
+  let e = 0; for (let i = 0; i < D.n; i++) if (D.state[i] > 0.5) e++;
+  const say = { look: 'Look: turn with one finger, move and zoom with two; tap a point to make it the centre.', inspect: 'Inspect: tap a point in focus to see its photo.', erase: 'Erase: drag over points in focus.', restore: 'Bring back: drag over red points in focus.' }[U.mode];
+  $('#say').textContent = `${say} ${e.toLocaleString()} erased.`;
+}
+async function save() {
+  if (!U.dirty) return;
+  const idx = []; for (let i = 0; i < D.n; i++) if (D.state[i] > 0.5) idx.push(i);
+  $('#saved').textContent = 'saving…';
+  try {
+    const r = await part('erased.bin', { method: 'PUT', body: Uint32Array.from(idx).buffer });
+    if (!r.ok) throw new Error(String(r.status));
+    U.dirty = false; $('#saved').textContent = `saved (${idx.length.toLocaleString()} erased)`;
+  } catch (err) { $('#saved').textContent = `NOT saved (${err.message}); it will be tried again`; U.saveTimer = setTimeout(save, 8000); }
+}
+
+function mode(m) {
+  U.mode = m;
+  document.querySelectorAll('[data-mode]').forEach((b) => b.classList.toggle('on', b.dataset.mode === m));
+  const look = m === 'look';
+  controls.touches.ONE = look ? THREE.TOUCH.ROTATE : null;        // two fingers still move and zoom in every mode
+  controls.mouseButtons.LEFT = look ? THREE.MOUSE.ROTATE : null;
+  if (m === 'restore' && !$('#erased').checked) { $('#erased').checked = true; material.uniforms.showErased.value = 1; }
+  $('#ring').style.display = 'none';
+  note();
+}
+
+function wire() {
+  document.querySelectorAll('[data-mode]').forEach((b) => b.addEventListener('click', () => mode(b.dataset.mode)));
+  const dof = () => { const ft = Number($('#dof').value); material.uniforms.band.value = ft / FT / 2; $('#dof-say').textContent = `${ft} ft deep`; };
+  $('#dof').addEventListener('input', dof); dof();
+  $('#size').addEventListener('input', () => { material.uniforms.size.value = Number($('#size').value); });
+  $('#colour').addEventListener('change', colour);
+  $('#outside').addEventListener('change', (e) => { material.uniforms.outside.value = e.target.checked ? 1 : 0; });
+  $('#google').addEventListener('change', (e) => { material.uniforms.google.value = e.target.checked ? 1 : 0; });
+  $('#erased').addEventListener('change', (e) => { material.uniforms.showErased.value = e.target.checked ? 1 : 0; });
+  $('#undo').addEventListener('click', () => { const s = U.undo.pop(); if (s) setState(s.idx, s.was); });
+  $('#save').addEventListener('click', () => { U.dirty = true; save(); });
+  window.addEventListener('beforeunload', (e) => { if (U.dirty) { e.preventDefault(); e.returnValue = ''; } });
+
+  const el = renderer.domElement, ring = $('#ring');
+  const at = (e) => { const r = el.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+  const brush = (x, y) => {
+    const r = Number($('#brush').value), want = U.mode === 'restore', got = [];
+    under(x, y, r, want, (i) => got.push(i));
+    if (got.length) { U.stroke.idx.push(...got); setState(got, want ? 0 : 1); }
+    ring.style.display = 'block'; ring.style.width = ring.style.height = `${2 * r}px`; ring.style.left = `${x - r}px`; ring.style.top = `${y - r}px`;
+  };
+  el.addEventListener('pointerdown', (e) => {
+    U.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, t: performance.now(), moved: false });
+    if (U.pointers.size > 1) { if (U.stroke) endStroke(); return; }             // a second finger: moving the view, not erasing
+    if (U.mode === 'erase' || U.mode === 'restore') { U.stroke = { idx: [], was: U.mode === 'restore' ? 1 : 0 }; brush(...at(e)); }
+  });
+  el.addEventListener('pointermove', (e) => {
+    const p = U.pointers.get(e.pointerId); if (!p) return;
+    if (Math.hypot(e.clientX - p.x, e.clientY - p.y) > 8) p.moved = true;
+    if (U.stroke && U.pointers.size === 1) brush(...at(e));
+  });
+  const endStroke = () => { if (U.stroke?.idx.length) U.undo.push(U.stroke); U.stroke = null; ring.style.display = 'none'; };
+  const up = (e) => {
+    const p = U.pointers.get(e.pointerId); U.pointers.delete(e.pointerId);
+    if (U.stroke) { endStroke(); return; }
+    if (!p || p.moved || performance.now() - p.t > 450 || U.pointers.size) return;   // a tap, with one finger
+    const [x, y] = at(e);
+    if (U.mode === 'look') { const i = pick(x, y, true); if (i >= 0) controls.target.set(D.pos[i * 3], D.pos[i * 3 + 1], D.pos[i * 3 + 2]); }
+    else if (U.mode === 'inspect') { const i = pick(x, y); if (i >= 0) inspect(i); }
+  };
+  el.addEventListener('pointerup', up); el.addEventListener('pointercancel', (e) => { U.pointers.delete(e.pointerId); endStroke(); });
+
+  $('#p-close').addEventListener('click', () => { $('#panel').hidden = true; U.inspect = null; });
+  $('#p-prev').addEventListener('click', () => U.inspect && showPhoto(U.inspect.i, U.inspect.k - 1));
+  $('#p-next').addEventListener('click', () => U.inspect && showPhoto(U.inspect.i, U.inspect.k + 1));
+  $('#p-erase').addEventListener('click', () => { if (!U.inspect) return; U.undo.push({ idx: [U.inspect.i], was: 0 }); setState([U.inspect.i], 1); $('#panel').hidden = true; });
+}
+
+/** Is point i inside photo k's frame, in front of its camera? */
+function inPhoto(i, k) {
+  const v = new THREE.Vector4(D.pos[i * 3], D.pos[i * 3 + 1], D.pos[i * 3 + 2], 1).applyMatrix4(D.c2w[k].clone().invert());
+  if (v.z > -0.1) return false;
+  const c = v.applyMatrix4(new THREE.Matrix4().fromArray(D.keys[k].proj));
+  return Math.abs(c.x / c.w) <= 0.98 && Math.abs(c.y / c.w) <= 0.98;
+}
+
+/** One point: what the walk knows of it, and the photo taken when it was seen, the point marked on it. */
+function inspect(i) {
+  // the photo nearest in time in which the point can be seen (inside the frame, in front of the camera); failing
+  // any within 20 s, the nearest in time
+  let k = 0, bd = Infinity, kin = -1, bin = Infinity;
+  D.keys.forEach((q, j) => {
+    const d = Math.abs(q.t - D.t[i]);
+    if (d < bd) { bd = d; k = j; }
+    if (d < bin && d <= 20 && inPhoto(i, j)) { bin = d; kin = j; }
+  });
+  if (kin >= 0) k = kin;
+  const f = D.flags[i], h = D.pos[i * 3 + 1] - D.ground[i];
+  const tr = D.track.length ? D.track.reduce((a, r) => (Math.abs(r[0] - D.t[i]) < Math.abs(a[0] - D.t[i]) ? r : a)) : null;
+  const far = tr ? Math.hypot(D.pos[i * 3] - tr[1], D.pos[i * 3 + 1] - tr[2], D.pos[i * 3 + 2] - tr[3]) : null;
+  const mm = Math.floor(D.t[i] / 60), ss = Math.floor(D.t[i] % 60);
+  $('#p-title').textContent = `Point ${i.toLocaleString()}`;
+  $('#p-info').textContent = [
+    `seen ${mm}:${String(ss).padStart(2, '0')} into the walk`,
+    far != null ? `${(far * FT).toFixed(0)} ft from the phone then` : null,
+    Number.isFinite(h) ? `${(h * FT).toFixed(1)} ft over the ground the phone took` : null,
+    D.label[i] ? `the phone called it ${LABELS[D.label[i] - 1]} (${Math.round(D.lconf[i] / 2.55)}% sure)` : 'no label from the phone',
+    D.dconf[i] ? `depth ${Math.round(D.dconf[i] / 2.55)}% sure` : null,
+    f & 2 ? "Google's street shape, not measured by the camera" : f & 4 ? 'weak depth' : null, f & 8 ? 'seen again from another place' : null, f & 1 ? 'flagged a spike' : null,
+  ].filter(Boolean).join('; ') + '.';
+  $('#panel').hidden = false;
+  showPhoto(i, k);
+  $('#panel').scrollIntoView({ block: 'nearest' });
+}
+async function showPhoto(i, k) {
+  if (!D.keys.length) { $('#p-info').textContent += ' This walk kept no photos.'; return; }
+  k = Math.max(0, Math.min(D.keys.length - 1, k));
+  U.inspect = { i, k };
+  const q = D.keys[k], cv = $('#p-pic'), g = cv.getContext('2d');
+  try {
+    const bmp = await createImageBitmap(await (await part(q.name)).blob());
+    if (U.inspect.i !== i || U.inspect.k !== k) return;
+    cv.width = bmp.width; cv.height = bmp.height; g.drawImage(bmp, 0, 0);
+    // the point in this photo: as the tools project it (the photo is read "as kept", SCAN-H7)
+    const v = new THREE.Vector4(D.pos[i * 3], D.pos[i * 3 + 1], D.pos[i * 3 + 2], 1).applyMatrix4(D.c2w[k].clone().invert());
+    const dt = q.t - D.t[i];
+    let where = 'behind the camera in this photo';
+    if (v.z < -0.1) {
+      const c = v.clone().applyMatrix4(new THREE.Matrix4().fromArray(q.proj)), nx = c.x / c.w, ny = c.y / c.w;
+      if (Math.abs(nx) <= 1 && Math.abs(ny) <= 1) {
+        const px = (nx + 1) / 2 * bmp.width, py = (1 - ny) / 2 * bmp.height;
+        g.lineWidth = Math.max(2, bmp.width / 160);
+        for (const [col, r] of [['#000', bmp.width / 22 + 2], ['#ff2bd6', bmp.width / 22]]) { g.strokeStyle = col; g.beginPath(); g.arc(px, py, r, 0, 7); g.stroke(); }
+        g.fillStyle = '#ff2bd6'; g.beginPath(); g.arc(px, py, Math.max(2, bmp.width / 200), 0, 7); g.fill();
+        where = `${(-v.z * FT).toFixed(0)} ft from this photo's camera`;
+      } else where = 'outside this photo';
+    }
+    $('#p-title').textContent = `Point ${i.toLocaleString()} — photo ${k + 1} of ${D.keys.length}, taken ${Math.abs(dt) < 0.5 ? 'as it was seen' : `${Math.abs(dt).toFixed(0)} s ${dt < 0 ? 'before' : 'after'} it was seen`}; the point is ${where}`;
+  } catch { $('#p-title').textContent = `Point ${i.toLocaleString()}: that photo could not be read`; }
+}
+
+main().catch((e) => { $('#status').textContent = `Could not read the walk: ${e.message}`; });
