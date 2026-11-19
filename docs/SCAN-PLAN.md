@@ -3144,3 +3144,21 @@ HARD, later the same afternoon (free runs 406-407):
 
 SPECULATION: that the best-guess picture is the place. It is the first whole picture of a yard made from a walk
 alone; whether the grass / paved / built split in it is RIGHT is the owner's to say (study card "best").
+
+HARD, the final redraw (runs 409-410, head e1d491d):
+
+- THE BEST GUESS ON W: of 59,037 points 54% take a kind from their thing, 33% from the phone's label, 13% none: 7,720
+  points sit in things the namers call sky, and 8,003 of W's used points carry the phone's label sky. Points by kind:
+  built 47%, grass 21%, none 13%, paved 12%, bare ground 5%, plant 1%, movable 1%. Where a point has a kind both ways
+  the thing's kind and the phone's label agree on 48% (P: 90%). 93 of 104 things got their kind from two or more
+  namers agreeing. P unchanged (no thing called sky there).
+- One upload of an old sheet was refused once by the bucket (503); the studies were kept. The old sheets now go up
+  last and cannot fail a run.
+
+SPECULATION: W's "sky" points (a seventh of the walk) are roof edges and the tops of tall things with the sky behind
+them, where the phone's label picture and its depth do not sit on each other; W is a walk among tall buildings and P
+is not. Not measured; the owner's eyes on the best-guess card's grey points say whether they are real edges.
+
+WHERE THIS LEAVES THE CUT (my reading, the owner's to confirm on the cards): SAM objects for the cut; each picture's
+own depth for the lift, to 80 ft; kinds by the vote of the namers that see the whole picture (CLIPSeg, the panoptic
+model, OWLv2), marked CLIP dropped; the phone's label for points in no thing and for the keep-by-name rule.
