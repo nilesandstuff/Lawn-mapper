@@ -118,13 +118,16 @@ def dense_match(sel, obj, depths):
                         parent[ry] = rx
     finally:
         S.RANGE = was
-    has = cells >= CELLS_MIN
+    present = np.zeros(off[-1], bool)
+    for p, m in enumerate(obj):
+        present[off[p] + np.unique(m[m > 0])] = True
+    has = present & (cells >= CELLS_MIN)
     n = max(1, int(has.sum()))
     print(f"Matching by depth: {D['cells'] / max(1, len(sel)):.0f} depth cells a photo, {100 * D['shaped'] / max(1, D['cells']):.0f}% of them under a shape. Put into a neighbouring photo, "
           f"{100 * D['framed'] / max(1, D['cells'] * 2 * REACH):.0f}% fall inside it and {100 * D['agree'] / max(1, D['framed']):.0f}% of those meet its depth; {100 * D['both'] / max(1, D['agree']):.0f}% of those lie under a shape in both.")
     print(f"  Of the {n:,} shapes with {CELLS_MIN} cells or more: best share with a shape of another photo {SHARE:g} or more: {100 * (best[has] >= SHARE).sum() / n:.0f}%; 0.3-{SHARE:g}: {100 * ((best[has] >= 0.3) & (best[has] < SHARE)).sum() / n:.0f}%; "
           f"under 0.3: {100 * ((best[has] > 0) & (best[has] < 0.3)).sum() / n:.0f}%; met no shape: {100 * (best[has] == 0).sum() / n:.0f}%. Lying 70% or more inside one shape of another photo: {100 * (hold[has] >= 0.7).sum() / n:.0f}%. "
-          f"Shapes under {CELLS_MIN} cells (too small or no depth under them): {int((~has).sum() - len(sel)):,}.")
+          f"Shapes under {CELLS_MIN} cells (too small or no depth under them): {int((present & ~has).sum()):,}.")
     return off, np.array([find(i) for i in range(off[-1])]), cells
 
 
