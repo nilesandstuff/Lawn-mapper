@@ -3035,3 +3035,44 @@ picture's own depth grid (key-NNNN.depth) saying what it saw is the test to try;
 
 NEXT: the small namer shown the whole picture with the shape marked (the owner's second thought on it); names from
 the things in the Google labels' place for walks without them; the lift's reach by each picture's own depth.
+
+## 32. Six hours of experiments, each a study of its own (owner away, 2026-11-19)
+
+The owner: "I'm going to busy for the next 6 hours. Please use that time to experiment. You're allowed up to $10 of
+modal usage. Make to sure to clearly flag inferences you make from looking at data that should have human eyes to
+confirm, then show them to me later so I can make those judgements. And note that with the current way the studies
+are being displayed to me, overwrites the previous study of that walk". Also: a building and a 6-8 ft stone wall
+that touch, perhaps 80 ft together, named "building" or "wall" as one thing "would be fine... a general
+classification is useful until a more detailed view is able to dissect it"; and the other property's Chrome walk
+"was simply a mistake": the app walk there (1:55 pm) is the one to study.
+
+BUILT: scan/tools/studies.py (a study = study-<id>.json + its sheets beside the twin, shown as a card of its own on
+the twin page with a "for your eyes" list; the start page counts a walk's studies). Studies: `names` (who names a
+SAM-objects shape best: panoptic vote, the phone's labels, CLIPSeg heat, OWLv2 boxes, CLIP on a marked wide cut;
+the last three on Modal, workflow S3 what=names), `map` (the keep-by-name rule's points from above), `reach` (the
+lift where a picture speaks only for what its own depth grid saw, at 26, 50, 80 ft).
+
+MODAL TALLY: before today about $0.95 (shapes on two walks, three runs). Today: names on the work walk 275 s
+(about $0.06).
+
+HARD (work walk, run S3 #4, head f29d5a2):
+
+- THE PICTURES' OWN DEPTH KEEPS THINGS APART, AT ANY REACH. The lift by the old hidden-behind test at 26 ft: 97% of
+  the used points in a picture, 84% in a thing, the biggest standing thing holds 71% of the standing points (50 ft
+  long). By each picture's own depth grid (284 of 289 pictures have one): at 26 ft 72% / 58%, biggest 34% (18 ft
+  long); at 50 ft 77% / 63%, 34% (36 ft); at 80 ft 81% / 67%, 34% (103 ft); a point's pictures agree 97 / 97 / 95%.
+  So the 80 ft failure of section 31 was the test, not the distance. The cost is the points a picture's depth grid
+  is empty over (a quarter of them).
+- THE NAMERS DISAGREE WIDELY. Of 2,179 shapes (0.4% of a picture or more): CLIP on a marked cut names all, OWLv2
+  1,472, the phone's labels 751. On the eight biggest standing things: the phone says building on five at 98-100%
+  of its votes (and structure, sky); the panoptic vote house / building / wall; OWLv2 house, wall, shed, hose;
+  marked CLIP shed (four of eight), fence, garage door, trailer, stone wall. Only the owner can say which is right.
+  CLIPSeg failed on Modal's library (it wants to be told its picture is 352 wide); fixed, not yet run.
+- OWLv2 178 s and marked CLIP 76 s for 289 pictures on an L4: cheap enough to run on every walk.
+
+SPECULATION (for the owner's eyes, in the studies' own lists):
+- The phone's labels may be the steadiest namer for standing things at the coarse grain the owner says is enough
+  ("building" for a building and its wall), and free; it names few shapes because few shapes hold eight labelled
+  points in one picture.
+- Marked CLIP's "shed" for most standing things reads like a habit of the model, not a seeing.
+- The 103 ft thing at 80 ft may be the building-and-wall the owner described, rightly one thing.

@@ -282,8 +282,12 @@ def study_names(d, names_file=None, sid="names", pictures=10):
         with open(names_file) as f:
             for k, v in json.load(f).items():
                 namers[k] = [{int(a): b for a, b in nm.items()} for nm in v]
-    # the one lift (the cut is the same whoever names it), then each namer's vote on its things
-    vis, ms = S.lift(w["xyz0"], sel, obj)
+    # the one lift (the cut is the same whoever names it), then each namer's vote on its things. Where the pictures
+    # kept their own depth, a picture speaks only for what that depth saw, out to 80 ft (the reach study: that keeps
+    # things apart where the points' own test ran them together); else the 26 ft lift
+    depths = [read_depth(p) if os.path.exists(p) else None for p in (os.path.join(d, k["name"].replace(".jpg", ".depth")) for k in sel)]
+    by_depth = sum(x is not None for x in depths) >= 0.8 * len(sel)
+    vis, ms = lift_by_depth(w["xyz0"], sel, obj, depths, 24.4, 8.0) if by_depth else S.lift(w["xyz0"], sel, obj)
     off, comp, joined = S.merge(vis, ms, cams)
     piece, purity, vp, vn = S.vote(len(w["xyz0"]), vis, ms, off, comp)
     stand = np.isfinite(w["h"]) & (w["h"] > S.STAND)
@@ -291,7 +295,7 @@ def study_names(d, names_file=None, sid="names", pictures=10):
     big = [int(i) for i in ids[cnt >= S.PIECE_MIN]]
     desc = {i: S.describe(w["xyz0"], w["h"], np.flatnonzero(piece == i)) for i in big}
     standing = sorted((i for i in big if desc[i]["shape"] != "flat"), key=lambda i: -desc[i]["n"])
-    numbers = [f"{len(sel)} pictures; {len(big)} things of {S.PIECE_MIN} points or more, {len(standing)} of them standing."]
+    numbers = [f"{len(sel)} pictures; {len(big)} things of {S.PIECE_MIN} points or more, {len(standing)} of them standing. The lift: {'each picture speaks for what its own depth saw, out to 80 ft' if by_depth else 'the 26 ft lift (these pictures kept no depth of their own)'}."]
     per = {}
     for nm, names in namers.items():
         node = {}
@@ -333,14 +337,61 @@ def study_names(d, names_file=None, sid="names", pictures=10):
         cells = [img] + [S.overlay(img, obj[p], off[p], comp, namers[nm][p], int(off[p + 1] - off[p])) for nm in namers]
         rows.append(strip(cells, ["the camera"] + list(namers), f"picture {int(p) + 1} of {len(sel)}"))
     sheets = [{"file": stack(rows, os.path.join(d, f"study-{sid}-pictures.jpg")), "title": "The same pictures and the same cut, named by each namer"}]
+    for nm in namers:
+        f = f"study-{sid}-above-{nm}.png"
+        named_map(os.path.join(d, f), w["xyz0"], piece, per[nm], f"From above, every thing coloured by the name {nm} gave it")
+        sheets.append({"file": f, "title": f"From above, named by: {nm}"})
     eyes = [
         "Which column's names are right most often? (Only you can say what each thing really is.)",
+        "In the views from above (one per namer): which one looks most like the place: lawn, paving, buildings and walls, trees where they really are?",
         "The stone wall seen close: are its blocks each named a wall of some kind, and by which namer?",
         "Is any namer good on the ground (lawn, gravel, pavement, soil) and another good on standing things? A mix by kind of thing may beat any one.",
     ]
     if "phone" in namers:
         eyes.append("The phone column costs nothing and could run live. Is it good enough to use by itself for the keep-by-name rule?")
     keep(d, sid, "Who names a shape best", "The cut is SAM objects throughout. Each column is one namer; every namer sees the whole picture. A shape with no name written is one the namer left unnamed (or too small).", eyes, numbers, sheets)
+
+
+def named_map(path, xyz0, piece, cls, title):
+    """From above: each point in the colour of its thing's name (the name with half its votes or more; grey where a
+    thing has no clear name), the commonest names in a legend."""
+    from PIL import Image, ImageDraw
+    e, n = xyz0[:, 0], -xyz0[:, 2]
+    ok = (np.abs(e) < 1e5) & (piece >= 0)
+    if not ok.any():
+        return
+    name = {pc: S.top_of(c, 0.5)[0] for pc, c in cls.items()}
+    words = sorted({v for v in name.values() if v})
+    rng = np.random.default_rng(11)
+    fixed = {"grass": (120, 190, 90), "lawn": (120, 190, 90), "terrain": (120, 190, 90), "earth": (150, 120, 80), "soil": (150, 120, 80), "road": (90, 90, 100), "pavement": (90, 90, 100),
+             "sidewalk": (170, 170, 180), "concrete": (170, 170, 180), "building": (200, 80, 60), "house": (200, 80, 60), "wall": (230, 150, 60), "stone wall": (230, 150, 60), "structure": (230, 150, 60),
+             "tree": (30, 120, 50), "plant": (60, 160, 60), "shrub": (60, 160, 60), "fence": (150, 90, 190), "sky": (255, 0, 255), "car": (60, 120, 220), "gravel": (190, 180, 150)}
+    col = {wd: fixed.get(wd, tuple(int(x) for x in rng.integers(40, 230, 3))) for wd in words}
+    e0, n0 = np.median(e[ok]), np.median(n[ok])
+    r = max(5.0, float(np.percentile(np.hypot(e[ok] - e0, n[ok] - n0), 99.5)))
+    SZ = 1400
+    x = np.clip(((e - e0) / r * 0.5 + 0.5) * (SZ - 1), 0, SZ - 1).astype(int)
+    y = np.clip((0.5 - (n - n0) / r * 0.5) * (SZ - 1), 0, SZ - 1).astype(int)
+    img = np.full((SZ, SZ, 3), 255, np.uint8)
+    cols = np.full((len(e), 3), 200, np.uint8)
+    count = {}
+    for pc in np.unique(piece[ok]):
+        wd = name.get(int(pc))
+        on = piece == pc
+        if wd:
+            cols[on] = col[wd]
+            count[wd] = count.get(wd, 0) + int((on & ok).sum())
+    for dy in (0, 1):
+        for dx in (0, 1):
+            img[np.clip(y[ok] + dy, 0, SZ - 1), np.clip(x[ok] + dx, 0, SZ - 1)] = cols[ok]
+    im = Image.fromarray(img)
+    dr, f = ImageDraw.Draw(im), S._font(18)
+    dr.text((10, 8), title, fill=(0, 0, 0), font=f)
+    dr.text((10, 32), f"{2 * r * FT:.0f} ft across; grey: in a thing with no clear name", fill=(90, 90, 90), font=f)
+    for k, (wd, c) in enumerate(sorted(count.items(), key=lambda kv: -kv[1])[:16]):
+        dr.rectangle((10, 62 + 24 * k, 28, 80 + 24 * k), fill=col[wd])
+        dr.text((36, 60 + 24 * k), f"{wd} ({c:,} points)", fill=(0, 0, 0), font=f)
+    im.save(path)
 
 
 # ---------------------------------------------------------------- study: map
