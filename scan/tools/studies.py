@@ -502,7 +502,7 @@ def study_reach(d, sid="reach"):
         used = int((~w["drop"]).sum())
         numbers.append(f"{tag}: {100 * saw.sum() / max(1, used):.0f}% of the used points were in a picture, {100 * (piece >= 0).sum() / max(1, used):.0f}% ended in a thing; {len(big)} things ({len(st)} standing); "
                        f"the biggest standing thing holds {100 * biggest / max(1, stand.sum()):.0f}% of the standing points and is {max((desc[i]['length'] for i in st), default=0) * FT:.0f} ft long; a point's pictures agree {100 * purity:.0f}%.")
-        f = f"study-{sid}-{re.sub(r'[^a-z0-9]+', '-', tag.lower()).strip('-')}.png"
+        f = f"study-{sid}-{re.sub(r'[^a-z0-9]+', '-', tag.lower()).strip('-')[:48].strip('-')}.png"   # the site serves names this short
         S.picture(os.path.join(d, f), w["xyz0"], w["h"], piece, np.array(list(desc)))
         sheets.append({"file": f, "title": f"From above: {tag}"})
     for line in numbers:
