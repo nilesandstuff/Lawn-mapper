@@ -15,7 +15,7 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&l
 
 async function studies() {
   const { twins } = await get('/api/scan/twins');
-  const studied = (twins || []).filter((t) => t.segments > 0);
+  const studied = (twins || []).filter((t) => t.segments > 0 || t.studies > 0);
   if (!studied.length) return;
   const walks = await get('/api/scan/walks').catch(() => ({ walks: [] }));
   const when = new Map((walks.walks || []).map((w) => [w.id, w]));
@@ -30,7 +30,7 @@ async function studies() {
   }));
   rows.sort((a, b) => (b.at || 0) - (a.at || 0));
   document.getElementById('studies-list').innerHTML = rows.map(({ t, place, at }) =>
-    `<li style="margin:.35rem 0"><a href="/twin.html?walk=${encodeURIComponent(t.walk)}#segments">Cut into things</a> <span class="dim">: ${esc(place)}, walked ${at ? esc(new Date(at).toLocaleString()) : esc(t.walk)}</span></li>`).join('');
+    `<li style="margin:.35rem 0"><a href="/twin.html?walk=${encodeURIComponent(t.walk)}#${t.studies ? 'studies' : 'segments'}">${t.studies ? `${t.studies} stud${t.studies === 1 ? 'y' : 'ies'}` : 'Cut into things'}</a> <span class="dim">: ${esc(place)}, walked ${at ? esc(new Date(at).toLocaleString()) : esc(t.walk)}</span></li>`).join('');
   document.getElementById('studies').hidden = false;
 }
 studies().catch(() => {});

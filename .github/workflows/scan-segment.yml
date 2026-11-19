@@ -11,6 +11,9 @@ on:
       walk:
         description: "The walk's id (the number in its twin page's address)"
         required: true
+      what:
+        description: "shapes (Segment Anything + panoptic on the pictures) or names (the whole-picture namers on kept shapes)"
+        default: "shapes"
       gpu:
         description: "Modal GPU"
         default: "L4"
@@ -41,6 +44,7 @@ jobs:
           WALK: ${{ inputs.walk }}
           CELLS_OUT: twin/disagree-cells.json
           JUDGE_OUT: twin/judged.bin
+          WITH_SEGMENTS: '1'
         run: |
           set -o pipefail
           pip install --quiet modal numpy scipy pillow
@@ -55,7 +59,13 @@ jobs:
           MODAL_GPU: ${{ inputs.gpu }}
         run: |
           set -o pipefail
-          modal run scan/tools/segment_modal.py --src twin --out out 2>&1 | grep -v -i "key-[0-9]" | tee -a segment.txt
+          if [ "${{ inputs.what }}" = "names" ]; then
+            modal run scan/tools/segment_modal.py::names --src twin --out out 2>&1 | grep -v -i "key-[0-9]" | tee -a segment.txt
+            cp out/segments-names.json twin/segments-names.json
+          else
+            modal run scan/tools/segment_modal.py::main --src twin --out out 2>&1 | grep -v -i "key-[0-9]" | tee -a segment.txt
+            cp out/masks.npz twin/segments-masks.npz
+          fi
 
       - name: Lifted onto the walk's points
         env:
@@ -64,10 +74,11 @@ jobs:
           WALK: ${{ inputs.walk }}
         run: |
           set -o pipefail
-          # the shapes are kept beside the twin, so the lift and its pictures can be redone without the GPU
-          cp out/masks.npz twin/segments-masks.npz
+          # the shapes and the names are kept beside the twin, so the lift, the studies and their pictures can be
+          # redone without the GPU
           python scan/tools/segment_study.py twin --masks twin/segments-masks.npz 2>&1 | tee -a segment.txt
-          node scan/tools/twin-r2.mjs put "$WALK" twin/segments-* | tee -a segment.txt
+          python scan/tools/studies.py twin --study names,map,reach 2>&1 | tee -a segment.txt
+          node scan/tools/twin-r2.mjs put "$WALK" twin/segments-* twin/study-* | tee -a segment.txt
 
       - name: The answer
         if: always()

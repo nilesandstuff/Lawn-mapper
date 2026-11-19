@@ -129,7 +129,7 @@ async function main() {
   if (cmd === 'get') {
     const dir = rest[0] || 'twin';
     mkdirSync(dir, { recursive: true });
-    const objs = (await list(base, token, `twins/${walk}/`)).filter((o) => !/\/splat[.-]/.test(o.key) && !(!process.env.WITH_SEGMENTS && /\/segments-/.test(o.key)) && !/\/segments-[a-z-]+\.(png|jpg)$/.test(o.key) && !/\/recording\.mp4$/.test(o.key) && !(process.env.NO_PICTURES && /\/key-\d+\.jpg$/.test(o.key)));
+    const objs = (await list(base, token, `twins/${walk}/`)).filter((o) => !/\/splat[.-]/.test(o.key) && !(!process.env.WITH_SEGMENTS && /\/segments-/.test(o.key)) && !/\/study-/.test(o.key) && !/\/segments-[a-z-]+\.(png|jpg)$/.test(o.key) && !/\/recording\.mp4$/.test(o.key) && !(process.env.NO_PICTURES && /\/key-\d+\.jpg$/.test(o.key)));
     let bytes = 0, failed = 0;
     const why = {};
     // backs off on a refusal: four place runs at once (8 requests each, retried at once) lost 218 of 566 parts to
@@ -152,6 +152,7 @@ async function main() {
     if (!objs.length) { console.log('No twin under that walk.'); process.exit(1); }
   } else if (cmd === 'put') {
     for (const f of rest) {
+      if (!existsSync(f)) continue; // a pattern that matched nothing (twin/study-*)
       const name = basename(f), body = readFileSync(f);
       const r = await fetch(`${base}/objects/twins/${encodeURIComponent(walk)}/${encodeURIComponent(name)}`, { method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'Content-Type': TYPES[name.split('.').pop()] || 'application/octet-stream' }, body });
       console.log(`${name}: ${r.ok ? `kept (${(body.length / 1e6).toFixed(1)} MB)` : `NOT kept (${r.status})`}`);

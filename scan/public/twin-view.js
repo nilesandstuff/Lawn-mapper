@@ -40,7 +40,45 @@ async function main() {
   place();
   if (st.keys.length) { $('#pics').hidden = false; $('#pic-at').max = String(st.keys.length - 1); showPic(0); }
   if (names.includes('splat.splat')) showSplat(parts);
+  showStudies(names).catch(() => {});
   showSegments(names).catch(() => {});
+}
+
+/** THE STUDIES OF THIS WALK (scan/tools/studies.py), each a card of its own, newest first: what it is, WHAT NEEDS A
+ *  PERSON'S EYES (the guesses the session could not settle from numbers), its numbers, its pictures. */
+async function showStudies(names) {
+  const ids = names.map((n) => /^study-([a-z0-9]+)\.json$/.exec(n)?.[1]).filter(Boolean);
+  const all = [];
+  for (const id of ids) { try { const r = await part(`study-${id}.json`); if (r.ok) all.push(await r.json()); } catch { /* skipped */ } }
+  all.sort((a, b) => String(b.made || '').localeCompare(String(a.made || '')));
+  const host = $('#studies-here');
+  for (const s of all) {
+    const card = document.createElement('div'); card.className = 'card'; card.id = `study-${s.id}`;
+    const el = (tag, text, css) => { const e = document.createElement(tag); if (text != null) e.textContent = text; if (css) e.style.cssText = css; return e; };
+    card.append(el('strong', `Study: ${s.title || s.id}`), el('span', ` ${s.made || ''}`, 'color:#64748b;font-size:.85rem'));
+    if (s.what) card.append(el('p', s.what, 'font-size:.92rem;margin:.4rem 0'));
+    if (s.eyes?.length) {
+      card.append(el('p', 'For your eyes (I could not settle these from numbers):', 'font-weight:600;margin:.6rem 0 .2rem'));
+      const ul = el('ul', null, 'margin:.2rem 0 .6rem;padding-left:1.1rem'); for (const q of s.eyes) ul.append(el('li', q, 'margin:.25rem 0')); card.append(ul);
+    }
+    for (const sh of s.sheets || []) {
+      if (!names.includes(sh.file)) continue;
+      const r = await part(sh.file); if (!r.ok) continue;
+      const url = URL.createObjectURL(await r.blob());
+      const box = el('div', null, 'overflow-x:auto;border-radius:8px'), a = document.createElement('a'), img = document.createElement('img');
+      a.href = url; a.target = '_blank'; a.rel = 'noopener'; img.src = url; img.alt = sh.title || sh.file;
+      img.style.cssText = sh.file.endsWith('.jpg') ? 'display:block;width:auto;max-width:none;height:auto;min-width:100%' : 'display:block;width:100%;max-width:720px';
+      a.append(img); box.append(a); card.append(el('p', sh.title || sh.file, 'margin:.8rem 0 .3rem;font-weight:600'), box);
+    }
+    if (s.numbers?.length) {
+      const det = document.createElement('details'); det.append(el('summary', 'The numbers', 'margin-top:.6rem;cursor:pointer'));
+      const pre = el('pre', s.numbers.join('\n'), 'white-space:pre-wrap;font-size:.8rem'); det.append(pre); card.append(det);
+    }
+    host.append(card);
+  }
+  const want = /^#study-([a-z0-9]+)$/.exec(location.hash)?.[1];
+  if (want) document.getElementById(`study-${want}`)?.scrollIntoView();
+  else if (location.hash === '#studies' && all.length) host.scrollIntoView();
 }
 
 /** The segment trial's sheets of pictures (scan/tools/segment_study.py), when the walk has them: the patches first,

@@ -31,10 +31,19 @@ PAN_MODEL = "facebook/mask2former-swin-large-ade-panoptic"
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 
+NAMER_MODELS = ("CIDAS/clipseg-rd64-refined", "google/owlv2-base-patch16-ensemble", "openai/clip-vit-large-patch14")
+
+
 def fetch():
     from huggingface_hub import snapshot_download
     for m in (SAM_MODEL, PAN_MODEL):
         snapshot_download(m, allow_patterns=["*.json", "*.safetensors", "*.txt"])
+
+
+def fetch_namers():
+    from huggingface_hub import snapshot_download
+    for m in NAMER_MODELS:
+        snapshot_download(m, allow_patterns=["*.json", "*.safetensors", "*.txt", "*.bin"], ignore_patterns=["tf_*", "flax_*", "*.msgpack", "*.h5"])
 
 
 app = modal.App("lawn-scan-segment")
@@ -42,7 +51,9 @@ image = (
     modal.Image.debian_slim(python_version="3.11")
     .pip_install("torch==2.4.1", "torchvision==0.19.1", "transformers==4.46.3", "numpy<2", "pillow", "scipy", "huggingface_hub")
     .run_function(fetch)
+    .run_function(fetch_namers)
     .add_local_file(os.path.join(HERE, "segment_study.py"), "/root/segment_study.py")
+    .add_local_file(os.path.join(HERE, "studies.py"), "/root/studies.py")
 )
 
 
@@ -86,6 +97,55 @@ def segment(pictures: list) -> dict:
     return {"npz": buf.getvalue(), "numbers": {"pictures": len(imgs), "size": [imgs[0].width, imgs[0].height], "samShapesAPicture": round(float(np.mean(counts)), 1),
                                                  "panopticShapesAPicture": round(float(np.mean([len(n) for n in names])), 1), "panopticSeconds": round(t_pan),
                                                  "seconds": round(time.time() - t0), "gpu": GPU, "notes": notes}}
+
+
+@app.function(image=image, gpu=GPU, timeout=40 * 60)
+def name_shapes(pictures: list, obj_npz: bytes) -> dict:
+    """The whole-picture namers of studies.py on each picture's SAM-objects shapes (2026-11-19). The pictures and the
+    shapes only; no pose, no point, no place. -> { clipseg, owl, marked: [{shape id: name}] per picture, numbers }."""
+    import numpy as np
+    from PIL import Image
+    sys.path.insert(0, "/root")
+    import studies as T
+
+    t0 = time.time()
+    imgs = [Image.open(io.BytesIO(b)).convert("RGB") for b in pictures]
+    obj = list(np.load(io.BytesIO(obj_npz), allow_pickle=False)["obj"])
+    notes, out = [], {}
+    for key, fn in (("clipseg", T.name_clipseg), ("owl", T.name_owl), ("marked", T.name_marked)):
+        try:
+            out[key] = [{str(k): v for k, v in d.items()} for d in fn(imgs, obj, "cuda", notes.append)]
+        except Exception as e:  # one namer failing does not lose the others
+            notes.append(f"{key} failed: {type(e).__name__}: {str(e)[:160]}")
+    out["numbers"] = {"pictures": len(imgs), "seconds": round(time.time() - t0), "gpu": GPU, "notes": notes}
+    return out
+
+
+@app.local_entrypoint()
+def names(src: str = "twin", out: str = "out"):
+    import numpy as np
+    sys.path.insert(0, HERE)
+    from segment_study import read_twin
+    _, _, keys = read_twin(src)
+    mf = os.path.join(src, "segments-masks.npz")
+    if not os.path.exists(mf):
+        print("No kept shapes for this walk: run the shapes first.")
+        sys.exit(1)
+    z = np.load(mf, allow_pickle=False)
+    sel = [keys[i] for i in z["pics"]]
+    pictures = []
+    for k in sel:
+        with open(os.path.join(src, k["name"]), "rb") as f:
+            pictures.append(f.read())
+    buf = io.BytesIO()
+    np.savez_compressed(buf, obj=z["obj"])
+    print(f"Sending {len(pictures)} pictures and their shapes ({(sum(len(b) for b in pictures) + buf.tell()) / 1e6:.1f} MB) to the GPU ({GPU}) to be named.")
+    r = name_shapes.remote(pictures, buf.getvalue())
+    os.makedirs(out, exist_ok=True)
+    numbers = r.pop("numbers")
+    with open(os.path.join(out, "segments-names.json"), "w") as f:
+        json.dump(r, f)
+    print("NAMES " + json.dumps(numbers) + f" kept: {', '.join(sorted(r))}")
 
 
 @app.local_entrypoint()
