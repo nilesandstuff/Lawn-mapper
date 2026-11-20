@@ -3332,3 +3332,21 @@ sheets from above; the other property's walk is no longer a test walk; the owner
 movable things are not chased; a record's `ground` column is not to be trusted on a slope (it lags), so heights
 over the ground come from the walk's own ground; dense depth for trees moves up.
 SPECULATION: the dome at the roof corners is depth taken while the phone pointed up at them. Not looked at.
+
+## 38. The owner's-lot walk, classes only; the photos' own depth joined (2026-11-20)
+
+MODAL, of the $15 of 2026-11-20: run S3 #8 (classes only, 592 pictures, L4, 78 s of the function; the panoptic
+model 0.5 s a picture) -- about $0.02 by the L4's rate; say $0.05 with start-up. RUNNING TOTAL about $0.05.
+
+HARD (owner's-lot walk of 2026-11-19, 11 min, 1,275 ft, thermal, 592 pictures):
+  - 296,713 cloud records, of which 279,659 are the smoothed depth past 25 m ("Geospatial Depth on"); 57,389 weak
+    records. The walk's summary: depth holes 68% of samples.
+  - Kept points that take a kind: 16,937 -- grass 16,597, plant 340, built 0.
+  - With the weak records by the phone's label (the 3D view): grass 58,919, plant 6,128, paved 3,482, built 3,004.
+WHAT THIS SHOWS: on this walk nearly everything that stands was measured only weakly or not at all; what the rule
+keeps is lawn. The kept-point cloud cannot be the map of a yard by itself.
+
+BUILT: scan/tools/dense_prep.py + cloud.html?dense=1 -- every depth cell of every photo put into space with its
+photo's colour and its pixel's class, merged in 3 in cubes, counted by how many photos saw it; the smoothed depth
+(key-NNNN.sdepth, walks from 2026-11-20) only where the camera measured none, and marked. NOT YET SEEN by the owner.
+Classes-only mode of the GPU job (segment_modal.py --no-sam): Segment Anything is not needed for the vote.

@@ -42,7 +42,25 @@ async function main() {
   if (!names.length) { $('#status').textContent = 'No twin was kept for this walk.'; return; }
   const buf = async (n) => (await part(n)).arrayBuffer();
   const clouds = [], labs = [];
-  for (const [pre, lab] of [['cloud-', 'labels-'], ['weak-', 'weaklabels-']]) {
+  /* THE PHOTOS' OWN DEPTH, JOINED (scan/tools/dense_prep.py, 2026-11-20; ?dense=1): every depth cell of every photo
+     put into space with its photo's colour and its pixel's kind, merged in 3 in cubes. Not the walk's own records,
+     so nothing here can be erased. A point: Float32 x, y, z, t; Uint8 r, g, b, kind, photos that saw it, source
+     (1 the phone's smoothed depth), 0, 0. */
+  let DENSE = null;
+  const wantDense = new URLSearchParams(location.search).get('dense');
+  { const dl = $('#dense-link'); if (dl) { dl.href = `/cloud.html?walk=${encodeURIComponent(walk)}${wantDense ? '' : '&dense=1'}`; dl.textContent = wantDense ? "The walk's own points" : "The photos' own depth, joined"; dl.hidden = !names.includes('view-dense.bin'); } }
+  if (wantDense && names.includes('view-dense.bin')) {
+    $('#status').textContent = 'Reading the photos\' depth…';
+    const b = await buf('view-dense.bin'), n = Math.floor(b.byteLength / 24), dv = new DataView(b);
+    const f = new Float32Array(n * 6), L = new Uint8Array(n * 4), rgb = new Uint8Array(n * 4), kind = new Uint8Array(n);
+    for (let i = 0, o = 0; i < n; i++, o += 24) {
+      f[i * 6] = dv.getFloat32(o + 12, true); f[i * 6 + 2] = dv.getFloat32(o, true); f[i * 6 + 3] = dv.getFloat32(o + 4, true); f[i * 6 + 4] = dv.getFloat32(o + 8, true); f[i * 6 + 5] = NaN;
+      rgb[i * 4] = dv.getUint8(o + 16); rgb[i * 4 + 1] = dv.getUint8(o + 17); rgb[i * 4 + 2] = dv.getUint8(o + 18); rgb[i * 4 + 3] = 1; kind[i] = dv.getUint8(o + 19);
+      L[i * 4 + 3] = (dv.getUint8(o + 21) ? 4 : 0) | (dv.getUint8(o + 20) > 1 ? 8 : 0);
+    }
+    clouds.push(f); labs.push(L); DENSE = { rgb, kind };
+  }
+  if (!DENSE) for (const [pre, lab] of [['cloud-', 'labels-'], ['weak-', 'weaklabels-']]) {
     for (const n of names.filter((x) => new RegExp(`^${pre}\\d+\\.bin$`).test(x))) {
       $('#status').textContent = `Reading ${n}…`;
       const f = new Float32Array(await buf(n)), recs = Math.floor(f.length / 6), ln = n.replace(pre, lab);
@@ -69,9 +87,10 @@ async function main() {
   for (const n of names.filter((x) => /^track-\d+\.bin$/.test(x))) { const f = new Float32Array(await buf(n)); for (let i = 0; i + 10 <= f.length; i += 10) D.track.push([f[i], f[i + 2], f[i + 3], f[i + 4]]); }
   D.track.sort((a, b) => a[0] - b[0]);
   if (names.includes('view.json')) D.view = await (await part('view.json')).json().catch(() => null);
-  if (names.includes('view-rgb.bin')) { const u = new Uint8Array(await buf('view-rgb.bin')); if (u.length === N * 4) D.rgb = u; }
-  if (names.includes('view-kind.bin')) { const u = new Uint8Array(await buf('view-kind.bin')); if (u.length === N) D.kind = u; }
-  if (names.includes('erased.bin')) { const e = new Uint32Array(await buf('erased.bin')); for (const i of e) if (i < N) D.state[i] = 1; }
+  if (DENSE) { D.rgb = DENSE.rgb; D.kind = DENSE.kind; U.readonly = true; }
+  if (!DENSE && names.includes('view-rgb.bin')) { const u = new Uint8Array(await buf('view-rgb.bin')); if (u.length === N * 4) D.rgb = u; }
+  if (!DENSE && names.includes('view-kind.bin')) { const u = new Uint8Array(await buf('view-kind.bin')); if (u.length === N) D.kind = u; }
+  if (!DENSE && names.includes('erased.bin')) { const e = new Uint32Array(await buf('erased.bin')); for (const i of e) if (i < N) D.state[i] = 1; }
   poses();
   build();
   const g = count(2), w = count(4), sp = count(1);
@@ -211,7 +230,7 @@ function note() {
   $('#say').textContent = `${say} ${e.toLocaleString()} erased.`;
 }
 async function save() {
-  if (!U.dirty) return;
+  if (!U.dirty || U.readonly) return;
   const idx = []; for (let i = 0; i < D.n; i++) if (D.state[i] > 0.5) idx.push(i);
   $('#saved').textContent = 'saving…';
   try {

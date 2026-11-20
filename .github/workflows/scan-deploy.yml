@@ -284,7 +284,8 @@ jobs:
           node scan/tools/twin-r2.mjs get "$WALK" twin | tee view.txt
           node scan/tools/disagree.mjs twin > /dev/null || true
           python scan/tools/view_prep.py twin 2>&1 | grep -v '^Shapes tidied' | tee -a view.txt
-          node scan/tools/twin-r2.mjs put "$WALK" twin/view-rgb.bin twin/view.json twin/view-kind.bin | tee -a view.txt
+          python scan/tools/dense_prep.py twin 2>&1 | grep -v '^Shapes tidied' | tee -a view.txt
+          node scan/tools/twin-r2.mjs put "$WALK" twin/view-rgb.bin twin/view.json twin/view-kind.bin twin/view-dense.bin | tee -a view.txt
 
       # THE OWNER NAMES THE THINGS (scan/public/name.html; 2026-11-19): the kept shapes of each photo, tidied, and the thing
       # the lift made of each, kept beside the twin for the page. CPU, free. Counts only.
