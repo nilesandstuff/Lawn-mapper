@@ -3390,3 +3390,9 @@ measured depth is not known from these two walks.
 THE BUCKET (twin-r2.mjs sizes): 80 walks, 6.11 GB; full recordings 4.04 GB in 18 walks (one of 2.2 GB, 2026-11-08).
 The owner asked whether to delete them ("we've never actually used them"); recommended: the 17 from before
 2026-11-20; WAITING FOR THE OWNER'S YES. Nothing deleted.
+
+MODAL, 2026-11-20 evening: a third classes run (S3 #11, today's walk) sat in the GPU step over 8 minutes and was
+cancelled by the watcher. Three of four runs of that job hung today; the logs of cancelled jobs could not be read,
+so WHY IS NOT KNOWN. RUNNING TOTAL of the $15: at most about $0.60 (unknown; nothing if the GPU never started).
+NO MORE RUNS OF THAT JOB until the cause is found. Instead: scan/tools/classes_cpu.py, task `classes` of workflow
+S: the same picture model on the free CPU runner, then the vote and both clouds for the 3D view.
