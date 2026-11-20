@@ -32,7 +32,7 @@ const recs = [];
 for (const f of readdirSync(dir).filter((x) => /^cloud-\d+\.bin$/.test(x)).sort()) {
   const part = readCloud(buf(f)), lp = f.replace('cloud-', 'labels-');
   const lab = existsSync(join(dir, lp)) ? readLabels(buf(lp), part.length) : null;
-  part.forEach((r, i) => { r.label = lab?.[i]?.label ?? null; r.conf = lab?.[i]?.conf ?? null; r.spike = !!lab?.[i]?.spike; r.geo = !!lab?.[i]?.geoDepth; r.weak = !!lab?.[i]?.weak; });
+  part.forEach((r, i) => { r.label = lab?.[i]?.label ?? null; r.conf = lab?.[i]?.conf ?? null; r.dconf = lab?.[i]?.depthConf ?? null; r.spike = !!lab?.[i]?.spike; r.geo = !!lab?.[i]?.geoDepth; r.weak = !!lab?.[i]?.weak; });
   recs.push(...part);
 }
 const cloudN = recs.length; // the cloud's own records come first: the segment trial indexes them
@@ -165,7 +165,7 @@ for (const l of lines(result)) console.log(l);
   const gp = [];
   every.forEach((p, k) => {
     if (J.kind[k] !== 'ground' || p.weak || p.dist > 8) return;
-    gp.push({ e: p.e, n: p.n, t: p.t, y: p.y, odo: recs[p.i].odo, dist: p.dist, sx: p.p[0], sz: -p.p[2], conf: p.conf, lidar: lidarGroundAt(sh.ground, sh.sgrid, L.ox, L.oy, L.k, p.e, p.n) });
+    gp.push({ e: p.e, n: p.n, t: p.t, y: p.y, odo: recs[p.i].odo, dist: p.dist, sx: p.p[0], sz: -p.p[2], conf: recs[p.i].dconf ?? 0, lidar: lidarGroundAt(sh.ground, sh.sgrid, L.ox, L.oy, L.k, p.e, p.n) });
   });
   const P = pinPlan(gp);
   const say = (name, v) => console.log(`  ${name}: a column of ground is ${inch(v.thick)} in thick (a quarter over ${inch(v.thick75)}); two visits to one spot differ by ${inch(v.visits)} in (a quarter over ${inch(v.visits75)}; ${v.twice} columns seen twice); one visit is ${inch(v.one)} in thick. ${v.columns} columns.`);
