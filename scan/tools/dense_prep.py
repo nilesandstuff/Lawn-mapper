@@ -61,6 +61,16 @@ def main():
                     if kk in T.VOTE_KINDS and int(j) < len(lut):
                         lut[int(j)] = T.VOTE_KINDS.index(kk)
                 kind_maps[int(i)] = lut[m]
+    # what the walk kept beside its photos (a walk whose joined cloud is thin should say why)
+    have = {ext: [os.path.join(d, k["name"].replace(".jpg", ext)) for k in keys if os.path.exists(os.path.join(d, k["name"].replace(".jpg", ext)))] for ext in (".depth", ".sdepth", ".rdepth")}
+    fill = {}
+    for ext in (".depth", ".sdepth"):
+        g = [T.read_depth(f) for f in have[ext][:: max(1, len(have[ext]) // 60)]]
+        g = [x for x in g if x is not None]
+        fill[ext] = 100 * float(np.mean([(x > 0).mean() for x in g])) if g else 0.0
+    posed = sum("c2w" in k for k in keys)
+    print(f"Beside its {len(keys)} photos ({posed} with a pose) the walk kept: the measured depth for {len(have['.depth'])} (a distance under {fill['.depth']:.0f}% of a photo's cells), "
+          f"the smoothed depth for {len(have['.sdepth'])} ({fill['.sdepth']:.0f}%), the uncut raw depth for {len(have['.rdepth'])}; classes for {len(kind_maps)}.")
     SKY = T.VOTE_KINDS.index("sky")
     P, C, K, PH, TT, SM = [], [], [], [], [], []
     n_raw = n_smooth = photos = 0
