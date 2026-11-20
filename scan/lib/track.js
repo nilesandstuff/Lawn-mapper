@@ -393,7 +393,13 @@ export function nativeInfo() {
 }
 
 /** What the app is asked for (Bridge.start): the picture's width and quality, how often depth, pictures, Geospatial. */
-export const NATIVE_OPTIONS = { grabW: 480, jpegQ: 80, depthEveryMs: 200, pictureEveryMs: 700, geoEveryMs: 1000, semEveryMs: 500, anchorsEveryMs: 1000, depth: true, geospatial: true, semantics: true, planes: true, streetscape: true };
+export const NATIVE_OPTIONS = { grabW: 480, jpegQ: 80, depthEveryMs: 200, pictureEveryMs: 700, geoEveryMs: 1000, semEveryMs: 500, anchorsEveryMs: 1000, depth: true, geospatial: true, semantics: true, planes: true, streetscape: false };
+/* GEOSPATIAL DEPTH OFF (streetscape: false, 2026-11-20). With it on, ARCore draws Street View's building and
+   terrain meshes INTO its depth pictures. Measured on the owner's-lot walk of 2026-11-19 (docs/SCAN-PLAN.md 39): the
+   smoothed depth kept beside 587 photos read 125-150 ft nearly everywhere (4% of it within 39 ft), 279,659 of the
+   walk's 296,713 cloud records were that depth past 25 m, and the owner saw "phantom sky points... even just 6-10
+   feet off the ground" in them. The Street View POSE (geospatial: true) stays. ?street=1 on the page turns the
+   meshes back on for a walk (app.js). */
 /** ARCore's Scene Semantics labels by their number (developers.google.com/ar/reference/c/group/ar-semantics). */
 export const SEM_LABELS = ['unlabeled', 'sky', 'building', 'tree', 'road', 'sidewalk', 'terrain', 'structure', 'object', 'vehicle', 'person', 'water'];
 /** The depth the page reads: raw (holes where ARCore is unsure), points kept at this confidence (0..1) and up. */

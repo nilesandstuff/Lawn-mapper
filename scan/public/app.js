@@ -921,7 +921,8 @@ async function startAR(engine, { anyway = false } = {}) {
       // come from ARCore at their own sizes whichever is chosen.
       // A replay of a full-resolution walk may be asked to keep its pictures 480 wide, so one walk compares the two
       // (the owner, 2026-11-08: "Do we know that 480 is actually good enough?"); ARCore still plays the 1920x1080 mode.
-      nativeOptions: (st.replayOf ? st.replayImage === '1920x1080' : st.fullRes) ? { cameraImage: 'largest', grabW: st.replayOf && st.replaySmall ? 480 : 1080 } : {} });
+      nativeOptions: { ...((st.replayOf ? st.replayImage === '1920x1080' : st.fullRes) ? { cameraImage: 'largest', grabW: st.replayOf && st.replaySmall ? 480 : 1080 } : {}),
+        ...(new URLSearchParams(location.search).get('street') === '1' ? { streetscape: true } : {}) } });
     st.grabW = (st.replayOf ? st.replayImage === '1920x1080' : st.fullRes) && !(st.replayOf && st.replaySmall) ? 1080 : 480;
     st.walk.features = st.tracker.features;
     // GPS, only as a place to start the lidar search from; kept in memory, never in the copy

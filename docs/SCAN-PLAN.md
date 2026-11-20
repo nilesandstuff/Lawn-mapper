@@ -3350,3 +3350,24 @@ BUILT: scan/tools/dense_prep.py + cloud.html?dense=1 -- every depth cell of ever
 photo's colour and its pixel's class, merged in 3 in cubes, counted by how many photos saw it; the smoothed depth
 (key-NNNN.sdepth, walks from 2026-11-20) only where the camera measured none, and marked. NOT YET SEEN by the owner.
 Classes-only mode of the GPU job (segment_modal.py --no-sam): Segment Anything is not needed for the vote.
+
+## 39. Geospatial Depth turned off; what the owner's-lot walk kept beside its photos (2026-11-20; runs 442-445)
+
+MODAL: two classes runs on the 6-minute owner's-lot walk (S3 #9, #10) sat in the GPU step 20 and 8 minutes and were
+cancelled (the same job on the 11-minute walk took 108 s); what they cost is not known here -- at most about $0.40
+if the GPU ran throughout. RUNNING TOTAL of the $15: at most about $0.45. WHY THEY HUNG IS NOT KNOWN; do not send
+that walk again before finding out.
+
+HARD (owner's-lot walk of 2026-11-19, 11 min, 592 photos, Geospatial Depth on):
+  - Beside its photos the walk kept the measured depth for 32 (25% of a photo's cells filled; distances 5 / 6 / 11
+    ft low / middle / high) and the smoothed depth for 587 (100% filled; 125 / 133 / 150 ft; 4% within 39 ft).
+  - The joined cloud (dense_prep.py): 26 photos by measured depth, 22 by smoothed; 565 photos' smoothed depth had
+    nothing within 39 ft. 35,968 points: grass 34,789, plant 908.
+  - The work walk (289 photos, no smoothed depth kept then): measured depth beside 282; joined cloud 94,260 points
+    against 47,810 kept: built 32,235, grass 30,162, bare ground 26,826, plant 1,281.
+WHAT THIS SHOWS: with Geospatial Depth on, the smoothed depth kept with a photo is not the camera's: it reads
+125-150 ft almost everywhere. And on this walk the camera had measured depth at the moment of a photo for 5% of
+photos. WHY SO FEW IS NOT KNOWN (the walk's summary says depth holes 68%; it was a thermal walk; neither is shown
+to be the cause).
+DECIDED: Geospatial Depth off by default (track.js NATIVE_OPTIONS streetscape: false; ?street=1 turns it on). The
+Street View pose stays on. NOT YET WALKED.
