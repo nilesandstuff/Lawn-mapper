@@ -72,6 +72,27 @@ def main():
                     rgb[idx[ok], 3] = 1
         finally:
             S.RANGE = was
+    # EACH POINT'S KIND (studies.voted, docs/SCAN-PLAN.md 36), for the view's "kind" colours: the owner, 2026-11-20:
+    # "the 3d view is much better than the views from above". One byte a record, an index into studies.VOTE_KINDS,
+    # 0 none (not kept, or nothing spoke for it). The weak records take the phone's own label.
+    kinds = np.zeros(len(recs), np.uint8)
+    try:
+        import studies as T
+        w = T.load(d)
+        kind = T.voted(d, w)[0]
+        kinds[: len(kind)] = kind[:n_cloud]
+        if len(recs) > n_cloud:
+            wl = []
+            for n in sorted(x for x in os.listdir(d) if re.fullmatch(r"weaklabels-\d+\.bin", x)):
+                wl.append(np.fromfile(os.path.join(d, n), dtype=np.uint8).reshape(-1, 4))
+            wl = np.concatenate(wl) if wl else np.zeros((0, 4), np.uint8)
+            if len(wl) == len(recs) - n_cloud:
+                lut = np.array([T.VOTE_KINDS.index(T.PHONE_KIND[x]) if x in T.PHONE_KIND else 0 for x in range(256)], np.uint8)
+                kinds[n_cloud:] = np.where(wl[:, 1] >= 128, lut[wl[:, 0]], 0)
+        kinds.tofile(os.path.join(d, "view-kind.bin"))
+        print("Kinds for the view: " + ", ".join(f"{T.VOTE_KINDS[k]} {int((kinds == k).sum()):,}" for k in np.argsort(-np.bincount(kinds, minlength=len(T.VOTE_KINDS))) if k and (kinds == k).any()) + f"; none {int((kinds == 0).sum()):,}.")
+    except Exception as e:
+        print(f"Kinds for the view: not made ({type(e).__name__}: {str(e)[:100]}).")
     rgb.tofile(os.path.join(d, "view-rgb.bin"))
     with open(os.path.join(d, "view.json"), "w") as f:
         json.dump({"records": int(len(recs)), "cloud": int(n_cloud), "weak": int(len(recs) - n_cloud), "coloured": int(rgb[:, 3].sum()),
