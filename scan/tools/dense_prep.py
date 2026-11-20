@@ -68,12 +68,17 @@ def main():
         g = [T.read_depth(f) for f in have[ext][:: max(1, len(have[ext]) // 60)]]
         g = [x for x in g if x is not None]
         fill[ext] = 100 * float(np.mean([(x > 0).mean() for x in g])) if g else 0.0
+        if g:
+            allv = np.concatenate([x[x > 0] for x in g]) if any((x > 0).any() for x in g) else np.zeros(1)
+            print(f"  {ext[1:]}: {len(g)} sampled; distances low / middle / high {np.percentile(allv, 10) * S.FT:.0f} / {np.median(allv) * S.FT:.0f} / {np.percentile(allv, 90) * S.FT:.0f} ft; within {FAR_SMOOTH * S.FT:.0f} ft {100 * (allv <= FAR_SMOOTH).mean():.0f}%.")
     posed = sum("c2w" in k for k in keys)
     print(f"Beside its {len(keys)} photos ({posed} with a pose) the walk kept: the measured depth for {len(have['.depth'])} (a distance under {fill['.depth']:.0f}% of a photo's cells), "
           f"the smoothed depth for {len(have['.sdepth'])} ({fill['.sdepth']:.0f}%), the uncut raw depth for {len(have['.rdepth'])}; classes for {len(kind_maps)}.")
     SKY = T.VOTE_KINDS.index("sky")
     P, C, K, PH, TT, SM = [], [], [], [], [], []
     n_raw = n_smooth = photos = 0
+    used = {0: 0, 1: 0}
+    why = {"no file or unreadable": 0, "nothing within reach": 0, "all sky": 0}
     for i, k in enumerate(keys):
         if "c2w" not in k:
             continue
@@ -83,6 +88,7 @@ def main():
             f = base.replace(".jpg", ext)
             dg = T.read_depth(f) if os.path.exists(f) else None
             if dg is None:
+                why["no file or unreadable"] += smooth
                 continue
             if smooth:
                 raw = T.read_depth(base.replace(".jpg", ".depth")) if os.path.exists(base.replace(".jpg", ".depth")) else None
@@ -90,6 +96,7 @@ def main():
                     dg = np.where(raw > 0, 0, dg)          # the smoothed depth only where the camera measured none
             dg = np.where(dg <= far, dg, 0)
             if not (dg > 0).any():
+                why["nothing within reach"] += smooth
                 continue
             if img is None:
                 img = np.asarray(Image.open(base).convert("RGB"))
@@ -99,10 +106,13 @@ def main():
             km = kind_maps.get(i)
             kd = km[np.clip(py * km.shape[0] // H, 0, km.shape[0] - 1), np.clip(px * km.shape[1] // W, 0, km.shape[1] - 1)] if km is not None else np.zeros(len(px), np.uint8)
             ok = kd != SKY
+            used[smooth] += 1
+            why["all sky"] += smooth * int(not ok.any())
             P.append(xyz[ok]); C.append(img[py[ok], px[ok]]); K.append(kd[ok]); PH.append(np.full(int(ok.sum()), i, np.int32))
             TT.append(np.full(int(ok.sum()), k["t"], np.float32)); SM.append(np.full(int(ok.sum()), smooth, np.uint8))
             n_raw += 0 if smooth else int(ok.sum())
             n_smooth += int(ok.sum()) if smooth else 0
+    print(f"  Photos used: {used[0]} by their measured depth, {used[1]} by their smoothed depth; smoothed depth not used: " + ", ".join(f"{k} {v}" for k, v in why.items()) + ".")
     if not P:
         print("The photos kept no depth of their own: no joined cloud.")
         return
