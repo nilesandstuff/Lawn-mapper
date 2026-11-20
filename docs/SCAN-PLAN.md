@@ -3371,3 +3371,22 @@ photos. WHY SO FEW IS NOT KNOWN (the walk's summary says depth holes 68%; it was
 to be the cause).
 DECIDED: Geospatial Depth off by default (track.js NATIVE_OPTIONS streetscape: false; ?street=1 turns it on). The
 Street View pose stays on. NOT YET WALKED.
+
+## 40. The first walk with Geospatial Depth off (owner's lot, 2026-11-20, 11 min, 1,072 ft, no thermal; runs 447-449)
+
+HARD (against the owner's-lot walk of 2026-11-19, section 39; both about 11 minutes, 575 and 592 photos):
+  - Beside its photos: the measured depth for 567 of 575 (it was 32 of 592); the smoothed depth for 574, middle
+    distance 10 ft, 82% within 39 ft (it was 133 ft, 4%); the uncut raw depth (key-NNNN.rdepth) for 574.
+  - The walk's summary: depth holes 21% of samples (68%); "Geospatial Depth off; ARCore recording on".
+  - Cloud records 160,539 and weak 262,643 (296,713, of which 279,659 the far smoothed depth, and 57,389).
+    Kept points 157,913 (16,944).
+  - The 3D view's kinds (kept points by the vote where there are classes, weak records by the phone's label; no
+    classes yet for this walk): grass 202,910, plant 110,245, built 54,176, paved 22,964.
+  - The joined cloud: 574 photos, 1,116,044 measured cells and 3,141,298 smoothed; 1,308,649 points of 3 in; 57%
+    seen by two photos or more; 61% seen only by the smoothed depth. The page is sent 330,000.
+NOT SEPARATED: two things changed between the walks (Geospatial Depth off; no thermal). Which one restored the
+measured depth is not known from these two walks.
+
+THE BUCKET (twin-r2.mjs sizes): 80 walks, 6.11 GB; full recordings 4.04 GB in 18 walks (one of 2.2 GB, 2026-11-08).
+The owner asked whether to delete them ("we've never actually used them"); recommended: the 17 from before
+2026-11-20; WAITING FOR THE OWNER'S YES. Nothing deleted.
