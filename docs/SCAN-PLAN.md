@@ -3243,3 +3243,28 @@ SPECULATION:
   - The grass with no shape where it is plainest is the over-half-a-picture rule. Not checked on a photo.
   - building + ground on one point is a far photo's big shape (wall and the ground at its foot in one) named ground
     or building; whether the cut, the lift or the name is at fault needs the owner's eyes on those shapes.
+
+## 35. The ground's levels: pinned to the lidar, and made to agree with itself (2026-11-20; runs 429-432)
+
+scan/lib/pin.js. The measure throughout is the walk against itself: how far two visits (20 s apart) to one 1.6 ft
+column of ground differ. W = the work walk, P = the other property. Modal spent of the $15 of 2026-11-20: $0.
+
+HARD:
+  - AS WALKED: visits differ by 5.6 in (W, 71 columns) and 5.5 in (P, 107); one visit alone is 4.4 / 4.9 in thick.
+  - PINNED TO THE LIDAR (one offset per 39 ft of walking, from ground seen within 13 ft): W 1.3 in, P 6.7 in
+    (worse). Pinned by every other stretch and judged on those left out: W 7.6 -> 6.4 in (24 columns), P 14.0 ->
+    13.8 (6 columns). Against the lidar the walk's height wanders 15.9 in (W) and 46.6 in (P) between stretches.
+  - MADE TO AGREE WITH ITSELF, NO LIDAR (one offset per 10 ft, columns seen from two stretches tied, solved on half
+    the columns and judged on the other half): W 5.9 -> 2.6 in (36 columns); at 20 ft 3.5, at 39 ft 4.4.
+    P 5.7 -> 5.3 in (50 columns): nothing. Solved on every column: W 2.6 in, P 5.2 in.
+  - One visit's own thickness does not change under any of these (4.3-5.4 in).
+
+WHAT THIS SHOWS: on W the levels are mostly the phone's height drifting, and the walk can take it out of itself
+without the lidar (proved on columns it was not solved on). The lidar pin's 1.3 in on W is partly the pin forcing
+both visits to one surface: it did not carry to stretches left out. On P a slowly changing height offset explains
+none of it.
+
+SPECULATION (P): the phone's place drifting sideways on sloping ground, or its tilt, or the placement on the map
+differing between visits; each would move a column's height without a height drift. Not tested. And the 4-5 in
+of one visit is the depth itself (it was 7 in thick within 6 ft of the camera and 16 in at 6-12 ft on W, section
+34), which no offset can touch.
