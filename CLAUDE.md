@@ -211,6 +211,23 @@ to hide a shade-map fault (the phantom columns under canopies are being fixed
 in the shade map, 2026-11-04). The core session does not edit the shade map's
 files to make this happen; it asks.
 
+## The yard AR work: the core session leads (owner, 2026-11-20)
+
+"I'm fine with you taking the wheel and trying anything logical to make it work... this AR work is beyond me...
+So you can take the lead and tell me what you need from me." The course is docs/SCAN-REVIEW.md. Three things
+changed with it:
+
+  - THE AR MAY READ THE LIDAR ITS OWN WAY. "You are allowed to break my rule about only getting lidar from the
+    shade map. It's quite possible that you'll have to utilize/interpret the lidar in ways that won't be applicable
+    to the shade model, so the shade model shouldn't have to change to suit the AR." Still listed in
+    docs/SCAN-DIVERGENCES.md, and the shade map's files are still not the core session's to edit.
+  - THE LIDAR IS A BLUNT TOOL. "we've had a lot of difficulties in matching it to the lidar. That doesn't mean
+    don't try it... It just means that you shouldn't treat it as perfect." Prove a lidar-based step by the walk
+    agreeing with itself, not by it agreeing with the lidar.
+  - MODAL FOR THE AR WORK: $15 from 2026-11-20, no asking run by run. Keep the running total in docs/SCAN-PLAN.md;
+    when it is spent, stop and ask ("I'll tell you when/if you can get a new allotment"). Every other use of
+    Modal still asks first.
+
 ## One way to read lidar (owner, 2026-11-03)
 
 "I want as much cohesiveness between the different ways to read lidar as

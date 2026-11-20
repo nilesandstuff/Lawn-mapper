@@ -157,6 +157,31 @@ for (const l of lines(result)) console.log(l);
     console.log(`THE GROUND BY MORE THAN ONE LOOK (${name}): ${g.squares.toLocaleString()} squares of 20 in; seen in one stretch ${pc(g.one, g.squares)}, two ${pc(g.two, g.squares)}, three or more ${pc(g.more, g.squares)}. Where looked at twice or more, a look sits a median ${inch(q(g.spread, 0.5))} in from its square's middle height (three in four within ${inch(q(g.spread, 0.75))} in, nine in ten within ${inch(q(g.spread, 0.9))} in).`);
   }
 }
+// THE WALK'S HEIGHTS PINNED TO THE LIDAR'S GROUND (scan/lib/pin.js, 2026-11-20): does sliding each stretch of the walk
+// onto the lidar close the levels the owner saw? Judged by the walk against itself, not against the lidar.
+{
+  const { pinPlan, levels, lidarGroundAt, PIN_M, PIN_NEAR_M } = await import('../lib/pin.js');
+  const sh = L.shade, IN = 39.37, inch = (m) => (Number.isFinite(m) ? (m * IN).toFixed(1) : '-');
+  const gp = [];
+  every.forEach((p, k) => {
+    if (J.kind[k] !== 'ground' || p.weak || p.dist > 8) return;
+    gp.push({ e: p.e, n: p.n, t: p.t, y: p.y, odo: recs[p.i].odo, dist: p.dist, lidar: lidarGroundAt(sh.ground, sh.sgrid, L.ox, L.oy, L.k, p.e, p.n) });
+  });
+  const P = pinPlan(gp);
+  const say = (name, v) => console.log(`  ${name}: a column of ground is ${inch(v.thick)} in thick (a quarter over ${inch(v.thick75)}); two visits to one spot differ by ${inch(v.visits)} in (a quarter over ${inch(v.visits75)}; ${v.twice} columns seen twice); one visit is ${inch(v.one)} in thick. ${v.columns} columns.`);
+  console.log(`THE WALK PINNED TO THE LIDAR'S GROUND: ${gp.length.toLocaleString()} ground points within 26 ft; ${P.pinned} stretches of ${(PIN_M * 3.281).toFixed(0)} ft pinned by ground seen within ${(PIN_NEAR_M * 3.281).toFixed(0)} ft.`);
+  if (P.pinned >= 2) {
+    const sp = P.stretches.map((x) => x.spread).sort((a, b) => a - b), steps = P.stretches.slice(1).map((x, i) => Math.abs(x.off - P.stretches[i].off)).sort((a, b) => a - b);
+    console.log(`  Against the lidar the walk's height wanders over ${inch(P.drift)} in from stretch to stretch (the middle step between neighbours ${inch(steps[steps.length >> 1])} in); inside a stretch the walk's ground lies ${inch(sp[sp.length >> 1])} in thick about the lidar's.`);
+    say('AS WALKED', levels(gp.map((p) => ({ ...p, h: p.y }))));
+    say('PINNED', levels(gp.map((p) => ({ ...p, h: p.y - P.off(p.odo) }))));
+    say('(each point less the lidar under it, for comparison: the lidar\'s own shape is in this)', levels(gp.map((p) => ({ ...p, h: p.y - p.lidar }))));
+    // half the stretches pin, the other half are judged: is the offset a property of the walk or a fit to noise?
+    const odd = pinPlan(gp.filter((p) => Math.floor(p.odo / PIN_M) % 2 === 1));
+    if (odd.pinned >= 2) say('PINNED BY EVERY OTHER STRETCH ONLY, judged on the stretches left out', levels(gp.filter((p) => Math.floor(p.odo / PIN_M) % 2 === 0).map((p) => ({ ...p, h: p.y - odd.off(p.odo) }))));
+    say('(the same left-out stretches as walked)', levels(gp.filter((p) => Math.floor(p.odo / PIN_M) % 2 === 0).map((p) => ({ ...p, h: p.y }))));
+  } else console.log('  Too little near ground to pin it.');
+}
 // for the segment trial (scan/tools/segment_study.py): each patch as the indexes of its points in the twin's own
 // records. Kept in the run's folder only; no place in it.
 if (process.env.CELLS_OUT) writeFileSync(process.env.CELLS_OUT, JSON.stringify(result.extra.patches.map((p) => ({ cells: p.cells, lengthM: p.lengthM, line: p.line, label: p.label, idx: (p.idx || []).filter((i) => i < cloudN) }))));
