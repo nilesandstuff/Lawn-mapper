@@ -299,6 +299,9 @@ jobs:
           node scan/tools/twin-r2.mjs get "$WALK" twin | tee learn.txt
           node scan/tools/disagree.mjs twin > /dev/null || true
           python scan/tools/owner_study.py twin 2>&1 | grep -v '^Shapes tidied' | tee -a learn.txt
+          # the kinds voted onto the walk, from above, for the owner's eyes (studies.py study_vote)
+          python scan/tools/studies.py twin --study vote 2>&1 | grep -v '^Shapes tidied' | tee -a learn.txt
+          node scan/tools/twin-r2.mjs put "$WALK" twin/study-vote.json twin/study-vote-points.png twin/study-vote-filled.png | grep -c ': kept (' | sed 's/^/Study parts kept: /' | tee -a learn.txt
       - name: A walk's shapes made ready to be named
         if: ${{ inputs.task == 'name' }}
         env:

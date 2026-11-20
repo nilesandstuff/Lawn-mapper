@@ -881,6 +881,155 @@ def study_thin(d, sid="thin"):
     keep(d, sid, "How many pictures does the cut need", "The same walk cut from fewer of its pictures, against the cut from all of them. Kinds by the panoptic vote. Numbers only.", [], numbers, [])
 
 
+# ---------------------------------------------------------------- study: vote (2026-11-20)
+
+VOTE_KINDS = ["none", "built", "fence", "grass", "bare ground", "paved", "plant", "movable", "water", "sky"]
+PHONE_KIND = {3: "built", 8: "built", 4: "plant", 5: "paved", 6: "paved", 7: "grass", 9: "movable", 10: "movable"}  # label + 1
+
+
+def voted(d, w, reach=24.4):
+    """NAME PIXELS, NOT SHAPES; VOTE ONTO THE POINTS (docs/SCAN-REVIEW.md A; measured in docs/SCAN-PLAN.md 36: 97%
+    of the owner's own names with ground as one kind, 89% with the kinds of ground apart; movable things not found).
+    Every pixel of every photo has a class from the picture model that cuts and names in one pass; a kept point takes
+    the vote of every photo whose own depth saw it, nearer looks weighing more. THE PHONE'S OWN LABEL speaks for
+    buildings and plants (98-100% right) and wherever the vote is silent; the vote says which ground (the phone has
+    no bare ground). -> kind (n,) index into VOTE_KINDS, 0 none; pic, phone: each voter alone; margin of the vote."""
+    n = len(w["xyz0"])
+    phone = np.array([VOTE_KINDS.index(PHONE_KIND[x]) if x in PHONE_KIND else 0 for x in range(256)])[w["labs"][:, 0]]
+    phone = np.where(w["labs"][:, 1] >= 128, phone, 0)
+    pic, margin = np.zeros(n, np.int64), np.zeros(n)
+    mf = os.path.join(d, "segments-masks.npz")
+    if os.path.exists(mf):
+        z = np.load(mf, allow_pickle=False)
+        if "pan" in z and "names" in z:
+            sel = [w["keys"][i] for i in z["pics"]]
+            maps = []
+            for m, nm in zip(z["pan"], json.loads(str(z["names"]))):
+                lut = np.zeros(int(m.max()) + 1, np.uint16)
+                for i, name in nm.items():
+                    k = KIND.get(name)
+                    if k in VOTE_KINDS and int(i) < len(lut):
+                        lut[int(i)] = VOTE_KINDS.index(k)
+                maps.append(lut[m])
+            depths = [read_depth(p) if os.path.exists(p) else None for p in (os.path.join(d, k["name"].replace(".jpg", ".depth")) for k in sel)]
+            was = S.MIN_PTS
+            S.MIN_PTS = 1
+            try:
+                vis, ms = lift_by_depth(w["xyz0"], sel, maps, depths, reach)
+            finally:
+                S.MIN_PTS = was
+            pv = np.zeros((n, len(VOTE_KINDS)))
+            for k, v, ids in zip(sel, vis, ms):
+                if len(v):
+                    rng = np.linalg.norm(w["xyz0"][v] - k["c2w"][:3, 3], axis=1)
+                    np.add.at(pv, (v, ids), 1.0 / (1.0 + (rng / 6.0) ** 2))
+            pv[:, 0] = 0
+            pv[:, VOTE_KINDS.index("sky")] = 0
+            tot = pv.sum(1)
+            pic = np.where(tot > 0, pv.argmax(1), 0)
+            margin = np.where(tot > 0, pv.max(1) / np.maximum(tot, 1e-9), 0)
+    stand = np.isin(phone, [VOTE_KINDS.index("built"), VOTE_KINDS.index("plant")])
+    kind = np.where(stand, phone, np.where(pic > 0, pic, phone))
+    kind[w["drop"]] = 0
+    return kind, pic, phone, margin
+
+
+def study_vote(d, sid="vote"):
+    """The walk from above, every kept point in the colour of its voted kind; and the ground filled in between the
+    dots (the owner, 2026-11-19: "if a section is segmented and named, and has depth points, we should be able to
+    connect the dots to map it"): 20 in squares, each the kind most of its ground points voted, a square with none
+    taking its neighbours' within 40 in."""
+    from PIL import Image, ImageDraw
+    w = load(d)
+    kind, pic, phone, margin = voted(d, w)
+    xyz = w["xyz"]
+    e, n = xyz[:, 0], -xyz[:, 2]
+    used = kind > 0
+    if used.sum() < 100:
+        print("Too few named points for the vote's map.")
+        return
+    e0, n0 = np.median(e[used]), np.median(n[used])
+    r = max(5.0, float(np.percentile(np.hypot(e[used] - e0, n[used] - n0), 99.5)))
+    SZ = 1400
+    X = np.clip(((e - e0) / r * 0.5 + 0.5) * (SZ - 1), 0, SZ - 1).astype(int)
+    Y = np.clip((0.5 - (n - n0) / r * 0.5) * (SZ - 1), 0, SZ - 1).astype(int)
+    ground_k = [VOTE_KINDS.index(k) for k in ("grass", "bare ground", "paved", "water")]
+    order = ground_k + [VOTE_KINDS.index(k) for k in ("movable", "fence", "plant", "built")]
+    counts = {k: int((kind == k).sum()) for k in order}
+    legend = [(f"{VOTE_KINDS[k]} ({counts[k]:,} points)", KIND_COL[VOTE_KINDS[k]]) for k in sorted(order, key=lambda k: -counts[k]) if counts[k]]
+
+    def finish(img, title, sub):
+        im = Image.fromarray(img)
+        dr, f = ImageDraw.Draw(im), S._font(18)
+        dr.text((10, 8), title, fill=(0, 0, 0), font=f)
+        dr.text((10, 32), sub, fill=(90, 90, 90), font=f)
+        for i, (name, col) in enumerate(legend):
+            dr.rectangle((10, 62 + 24 * i, 28, 80 + 24 * i), fill=col)
+            dr.text((36, 60 + 24 * i), name, fill=(0, 0, 0), font=f)
+        return im
+
+    img = np.full((SZ, SZ, 3), 255, np.uint8)
+    for k in order:
+        on = kind == k
+        for dy in (0, 1):
+            for dx in (0, 1):
+                img[np.clip(Y[on] + dy, 0, SZ - 1), np.clip(X[on] + dx, 0, SZ - 1)] = KIND_COL[VOTE_KINDS[k]]
+    finish(img, "Every kept point by its voted kind", f"{2 * r * FT:.0f} ft across; the walk's own middle at the centre").save(os.path.join(d, f"study-{sid}-points.png"))
+    # the ground filled in: squares of 0.5 m
+    C = 0.5
+    G = int(np.ceil(2 * r / C))
+    gi = np.clip(((e - e0 + r) / C).astype(int), 0, G - 1)
+    gj = np.clip(((n0 + r - n) / C).astype(int), 0, G - 1)
+    votes = np.zeros((G, G, len(VOTE_KINDS)), np.int32)
+    low = np.isfinite(w["h"]) & (np.abs(np.nan_to_num(w["h"], nan=9)) < 0.4)
+    for k in ground_k:
+        on = (kind == k) & low
+        np.add.at(votes, (gj[on], gi[on], k), 1)
+    cell = np.where(votes.sum(2) >= 3, votes.argmax(2), 0)
+    measured = int((cell > 0).sum())
+    filled = cell.copy()
+    for _ in range(2):                       # a square with none takes its neighbours' (twice: 40 in)
+        nb = np.zeros((G, G, len(VOTE_KINDS)), np.int32)
+        for dy in (-1, 0, 1):
+            for dx in (-1, 0, 1):
+                sh = np.roll(np.roll(filled, dy, 0), dx, 1)
+                for k in ground_k:
+                    nb[..., k] += sh == k
+        take = (filled == 0) & (nb.sum(2) >= 3)
+        filled = np.where(take, nb.argmax(2), filled)
+    stand = np.zeros((G, G), np.int32)
+    for k in (VOTE_KINDS.index("movable"), VOTE_KINDS.index("fence"), VOTE_KINDS.index("plant"), VOTE_KINDS.index("built")):
+        on = (kind == k) & ~low
+        c = np.zeros((G, G), np.int32)
+        np.add.at(c, (gj[on], gi[on]), 1)
+        stand = np.where(c >= 3, k, stand)
+    img2 = np.full((SZ, SZ, 3), 255, np.uint8)
+    yy, xx = np.mgrid[0:SZ, 0:SZ]
+    cj, ci = np.clip(yy * G // SZ, 0, G - 1), np.clip(xx * G // SZ, 0, G - 1)
+    for k in ground_k:
+        col = np.array(KIND_COL[VOTE_KINDS[k]])
+        img2[filled[cj, ci] == k] = (0.45 * col + 0.55 * 255).astype(np.uint8)   # filled in: pale
+        img2[cell[cj, ci] == k] = col                                             # measured: full
+    for k in np.unique(stand[stand > 0]):
+        img2[stand[cj, ci] == k] = KIND_COL[VOTE_KINDS[k]]
+    finish(img2, "The ground filled in between the dots, and what stands on it", f"{2 * r * FT:.0f} ft across; 20 in squares; pale: no ground point there, taken from the squares beside it").save(os.path.join(d, f"study-{sid}-filled.png"))
+    area = lambda m: m * C * C * 10.764  # noqa: E731
+    numbers = [f"{int(used.sum()):,} kept points take a kind: " + ", ".join(x[0] for x in legend) + ".",
+               f"The picture model's vote speaks for {100 * (pic[~w['drop']] > 0).mean():.0f}% of the kept points, the phone's own label for {100 * (phone[~w['drop']] > 0).mean():.0f}%.",
+               f"Ground squares with points of their own: {measured:,} ({area(measured):,.0f} sq ft); filled in from beside them: {int((filled > 0).sum()) - measured:,} more ({area(int((filled > 0).sum()) - measured):,.0f} sq ft).",
+               "Ground by kind, measured and filled in: " + ", ".join(f"{VOTE_KINDS[k]} {area(int((filled == k).sum())):,.0f} sq ft" for k in ground_k if (filled == k).any()) + "."]
+    for line in numbers:
+        print(line)
+    eyes = ["Is each kind of ground where it really is: grass on the lawn, bare ground on the soil and gravel, paved on the drive?",
+            "Where the map says bare ground but it is grass (thin or dormant), or the other way: is the border in the right place?",
+            "Buildings and trees: do they stand where they should, and is anything that stands missing (a fence, a wall, a shed)?",
+            "Blue (movable things: machinery, vehicles, bins): neither voter finds these well yet. Are the blue patches real things, and which real things are missing?",
+            "The pale squares were filled in from their neighbours: is the filling believable, or does it spread a kind where it should not?"]
+    keep(d, sid, "Kinds voted onto the walk, no shapes matched",
+         "Every photo's pixels carry a class; each point takes the vote of the photos that saw it, and the phone's own label for buildings and plants. No shape is matched to any other. The second sheet fills the ground in between the points.",
+         eyes, numbers, [{"file": f"study-{sid}-points.png", "title": "Every kept point by kind"}, {"file": f"study-{sid}-filled.png", "title": "The ground filled in"}])
+
+
 def main():
     args = sys.argv[1:]
     d = next((a for a in args if not a.startswith("--") and (args.index(a) == 0 or not args[args.index(a) - 1].startswith("--"))), "twin")
@@ -898,6 +1047,8 @@ def main():
             study_thin(d)
         elif one == "best":
             study_best(d)
+        elif one == "vote":
+            study_vote(d)
 
 
 if __name__ == "__main__":
