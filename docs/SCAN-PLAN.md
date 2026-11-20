@@ -3268,3 +3268,39 @@ SPECULATION (P): the phone's place drifting sideways on sloping ground, or its t
 differing between visits; each would move a column's height without a height drift. Not tested. And the 4-5 in
 of one visit is the depth itself (it was 7 in thick within 6 ft of the camera and 16 in at 6-12 ft on W, section
 34), which no offset can touch.
+
+## 36. Pixel classes voted onto the points; the ground from near depth (2026-11-20; runs 433-435)
+
+Modal spent of the $15 of 2026-11-20: $0.
+
+A. NAME PIXELS, NOT SHAPES (owner_study.py vote_part; W only, the walk the owner named). Every photo's pixels
+   already carry a class from the picture model that cuts and names in one pass (Mask2Former, ADE20K, kept with
+   the shapes); each kept point takes the vote of every photo whose own depth saw it, nearer looks weighing more.
+   No shape is matched to another. THE ANSWER: the 13,572 points carrying exactly one of the owner's names (the
+   easier points: where two of the owner's names fell on a point it is left out).
+HARD:
+  - Reach: the vote speaks for 77% of the walk's 47,810 kept points (3 photos a point in the middle), the phone's
+    own label for 98%, one or the other for 100%.
+  - Right, with ground as one kind: the phone's label 97%, the vote 97%. With grass, bare ground and paved apart:
+    both 89%.
+  - By the owner's kind (phone / vote): built 98 / 99%; plant 100 / 97%; grass 99 / 84%; bare ground 0 / 87%;
+    movable 20 / 0%.
+  - Where the vote differs: grass -> bare ground 981 points, movable -> bare ground 139, bare ground -> paved 79.
+  - Keeping only votes two thirds or more one kind: 98% / 90%, for 97% of the answer.
+WHAT THIS SHOWS: buildings, plants and ground-as-a-whole are named right on nearly every point with no shape
+matching at all, by either voter. The phone cannot tell bare ground (it has no such class); the picture model
+can. NEITHER NAMES MOVABLE THINGS (machinery, bins, vehicles on this walk): that is the open naming problem.
+SPECULATION: grass called bare ground is thin or dormant grass and the border the owner said the cut and they
+disagreed on; needs their eyes.
+
+B. THE GROUND (scan/lib/pin.js; disagree.mjs). Two visits to one column, as section 35.
+HARD:
+  - In the phone's own frame (not placed on the map): W 5.7 in, P 5.1 in as walked: the same as on the map. The
+    placing on the map is not the cause. Made to agree with itself there, judged on columns left out: W 2.1 in,
+    P 5.1 in.
+  - Only ground seen within 6 ft: visits differ by 4.1 in (W, 18 columns) and 3.5 in (P, 16 columns), from 5.6 and
+    5.5; a column is 3.5 / 4.2 in thick, from 5.0 / 6.9. Adding depth confidence 0.6 or more leaves too few columns
+    seen twice to say (7 and 10).
+WHAT THIS SHOWS: on P the visits disagree less when only near ground is used, and no height offset helps: there
+the levels are mostly depth read from far, not drift. On W they are mostly drift. A walk needs both: near ground
+only, then made to agree with itself. NOT YET RUN TOGETHER. The columns seen twice from near are few (16-18).
