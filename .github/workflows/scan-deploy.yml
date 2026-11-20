@@ -182,6 +182,7 @@ jobs:
         run: |
           BRIEF=1 N=6 node scan/tools/walks.mjs | tee walks.txt
           node scan/tools/twin-r2.mjs refs | tee -a walks.txt
+          node scan/tools/twin-r2.mjs sizes | tee -a walks.txt
 
       - name: A walk's twin against the lidar
         if: ${{ inputs.task == 'twin' }}

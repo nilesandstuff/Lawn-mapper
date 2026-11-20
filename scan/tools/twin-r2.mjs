@@ -97,6 +97,27 @@ async function main() {
   // "thermal-index": every walk with a thermal placement filed under its map (2026-11-16: the site's old map rule
   // refused the owner's home map's id, so its walk was converted but never filed and the water site saw none). The
   // key holds the id encoded (scan/src/thermal.js mapKey). Counts only: a map's id is a place, and this log is public.
+  // HOW MUCH THE BUCKET HOLDS, WALK BY WALK (2026-11-20; the owner: the full recordings are "probably over 5 GB... and
+  // we've never actually used them"). Sizes and counts only.
+  if (cmd === 'sizes') {
+    const by = new Map();
+    let other = 0;
+    for (const o of await list(base, token, '')) {
+      const m = /^twins\/([^/]+)\/(.+)$/.exec(o.key);
+      if (!m) { other += o.size || 0; continue; }
+      const w = by.get(m[1]) || { all: 0, rec: 0, pics: 0, thermal: 0, n: 0 };
+      w.all += o.size || 0; w.n++;
+      if (/^recording\./.test(m[2])) w.rec += o.size || 0;
+      else if (/^key-\d+\.jpg$/.test(m[2])) w.pics++;
+      else if (/^thermal/.test(m[2])) w.thermal += o.size || 0;
+      by.set(m[1], w);
+    }
+    const mb = (b) => (b / 1e6).toFixed(0), rows = [...by.entries()].sort((a, b) => (a[0] < b[0] ? 1 : -1));
+    const tot = rows.reduce((a, [, w]) => a + w.all, 0), rec = rows.reduce((a, [, w]) => a + w.rec, 0);
+    console.log(`\nTHE TWIN BUCKET: ${rows.length} walks, ${(tot / 1e9).toFixed(2)} GB; of that the full recordings ${(rec / 1e9).toFixed(2)} GB in ${rows.filter(([, w]) => w.rec).length} walks; everything outside the walks ${mb(other)} MB.`);
+    for (const [id, w] of rows) console.log(`  ${/^\d{13}$/.test(id) ? new Date(Number(id)).toISOString().slice(0, 16) : 'undated'}  walk ${id}: ${mb(w.all)} MB (${w.n} parts, ${w.pics} photos)${w.rec ? `, recording ${mb(w.rec)} MB` : ''}${w.thermal ? `, thermal ${mb(w.thermal)} MB` : ''}`);
+    return;
+  }
   if (cmd === 'thermal-index') {
     const placed = (await list(base, token, 'twins/')).filter((o) => /^twins\/[^/]+\/thermal-placement\.json$/.test(o.key));
     const have = new Set((await list(base, token, 'thermal-index/')).map((o) => o.key));
