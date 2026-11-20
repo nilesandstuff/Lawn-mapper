@@ -1321,6 +1321,8 @@ function frameWork(f) {
         g.blob.then((b) => b && sendTwin([{ name, type: 'image/jpeg', body: b }]), () => {});
         const dep = keyDepth(f, name);
         if (dep) sendTwin([dep]);
+        const rdep = keyRaw(f, name);
+        if (rdep) sendTwin([rdep]);
         const sdep = keySmooth(f, name);
         if (sdep) sendTwin([sdep]);
       }
@@ -2139,6 +2141,28 @@ function keySmooth(f, name) {
       if (d > 0 && d < 65) { a[2 + j * nx + i] = Math.round(d * 1000); n++; }
     }
     return n ? { name: name.replace(/\.jpg$/, '.sdepth'), type: 'application/octet-stream', body: new Blob([a.buffer]) } : null;
+  } catch { return null; }
+}
+
+/** THE RAW DEPTH OF A PICTURE WITH NOTHING THROWN AWAY: key-NNNN.rdepth (the owner, 2026-11-20: "Every photo is
+ *  supposed to have depth. That's why we switched to the raw depth API"). key-NNNN.depth is the raw depth too, but
+ *  at the live confidence cut and to 30 m, and that left a distance under a fifth of its cells. This keeps every
+ *  cell the camera gave, to 65 m, with how sure it was: Uint16 [nx, ny, nx*ny distances in mm (0 none), nx*ny
+ *  confidences x 255]. A study chooses its cut afterwards. */
+function keyRaw(f, name) {
+  try {
+    const D = f.depth?.rawAll ? f.depth.rawAll(KEY_DEPTH.nx, KEY_DEPTH.ny) : null;
+    if (!D?.at || !f.pose) return null;
+    const { nx, ny } = KEY_DEPTH, c = f.pose.position, a = new Uint16Array(2 + 2 * nx * ny);
+    a[0] = nx; a[1] = ny;
+    let n = 0;
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      const x = (i + 0.5) / nx, y = (j + 0.5) / ny, p = D.at(x, y);
+      if (!p) continue;
+      const d = Math.hypot(p.x - c.x, p.y - c.y, p.z - c.z);
+      if (d > 0 && d < 65) { a[2 + j * nx + i] = Math.round(d * 1000); a[2 + nx * ny + j * nx + i] = Math.round(255 * (D.conf(x, y) ?? 0)); n++; }
+    }
+    return n ? { name: name.replace(/\.jpg$/, '.rdepth'), type: 'application/octet-stream', body: new Blob([a.buffer]) } : null;
   } catch { return null; }
 }
 

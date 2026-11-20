@@ -483,6 +483,8 @@ async function startNative({ canvas, onFrame, onEvent, nativeOptions = {}, nativ
       return { at: (x, y) => get()?.at(x, y) ?? null, m: (x, y) => get()?.m(x, y) ?? NaN, conf: (x, y) => get()?.conf(x, y) ?? null, minConf: dep.minConf, shot: () => get()?.t ?? null,
         // a finer grid than the page's own, asked for once (the depth kept with each picture: app.js keyDepth)
         dense: (nx, ny) => { try { return depthFromGrid(JSON.parse(N.depthGrid(nx, ny, dep.kind, Math.round(dep.minConf * 255)))); } catch { return null; } },
+        // the RAW depth with nothing thrown away: every cell the camera gave, any confidence, to 65 m (app.js keyRaw)
+        rawAll: (nx, ny) => { try { return depthFromGrid(JSON.parse(N.depthGrid(nx, ny, dep.kind, 0)), 0.4, 65); } catch { return null; } },
         // ARCore's SMOOTHED depth (filled in everywhere, to 65 m), for the grid kept with each picture (app.js keySmooth)
         smooth: bridge >= 5 ? (nx, ny) => { try { return depthFromGrid(JSON.parse(N.depthGrid(nx, ny, 'smooth', 0)), 0.4, 65); } catch { return null; } } : null,
         // every cell the camera gave a depth for, the weak ones too, on the app's own grid (the twin's wider look: app.js)
