@@ -3396,3 +3396,17 @@ cancelled by the watcher. Three of four runs of that job hung today; the logs of
 so WHY IS NOT KNOWN. RUNNING TOTAL of the $15: at most about $0.60 (unknown; nothing if the GPU never started).
 NO MORE RUNS OF THAT JOB until the cause is found. Instead: scan/tools/classes_cpu.py, task `classes` of workflow
 S: the same picture model on the free CPU runner, then the vote and both clouds for the 3D view.
+
+## 41. Today's walk classed on the free runner; the old recordings deleted (2026-11-20; runs 450-451)
+
+HARD:
+  - The picture model on GitHub's CPU runner: 2.1 s a picture, 575 pictures in 1,239 s (21 minutes), free. Modal is
+    not needed for classes.
+  - Today's walk (section 40), the 3D view's kinds: grass 199,074, plant 110,800, built 55,442, paved 22,385, bare
+    ground 4,443, movable 1,266; none 29,744 (of 423,182 records).
+  - Its joined cloud, the 330,000 points sent to the page of 1,184,441: grass 199,054, built 46,585, plant 29,461,
+    bare ground 25,538, paved 24,579, movable 1,877, fence 963; no kind 1,923. Seen by two photos or more 55%; seen
+    only by the smoothed depth 61%.
+  - The 17 full recordings from before 2026-11-20 were deleted on the owner's yes (3.98 GB); two of 2026-11-20 stay
+    (0.82 GB).
+NOT YET SEEN by the owner; nothing here says whether the kinds are right on this walk.
