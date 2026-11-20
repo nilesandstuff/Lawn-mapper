@@ -118,6 +118,30 @@ async function main() {
     for (const [id, w] of rows) console.log(`  ${/^\d{13}$/.test(id) ? new Date(Number(id)).toISOString().slice(0, 16) : 'undated'}  walk ${id}: ${mb(w.all)} MB (${w.n} parts, ${w.pics} photos)${w.rec ? `, recording ${mb(w.rec)} MB` : ''}${w.thermal ? `, thermal ${mb(w.thermal)} MB` : ''}`);
     return;
   }
+  // THE OLD FULL RECORDINGS DELETED (the owner, 2026-11-20: "Yes delete the old full recordings"; 4 GB in 17 walks, never
+  // opened, all made with Geospatial Depth on). Only twins/<walk>/recording.*, only walks begun before BEFORE (a date),
+  // listed before anything goes, and nothing goes if the list is longer than MOST. Sizes and dates only.
+  if (cmd === 'prune-recordings') {
+    const before = Date.parse(process.env.BEFORE || ''), most = Number(process.env.MOST || 0);
+    if (!Number.isFinite(before) || !most) throw new Error('BEFORE (a date) and MOST (how many at most) are needed');
+    const all = (await list(base, token, 'twins/')).filter((o) => /^twins\/\d{13}\/recording\.[a-z0-9]+$/.test(o.key));
+    const go = all.filter((o) => Number(o.key.split('/')[1]) < before), stay = all.filter((o) => !go.includes(o));
+    const gb = (a) => (a.reduce((x, o) => x + (o.size || 0), 0) / 1e9).toFixed(2);
+    console.log(`\nFull recordings: ${all.length} kept in the bucket (${gb(all)} GB). Begun before ${new Date(before).toISOString().slice(0, 10)}: ${go.length} (${gb(go)} GB); from then on: ${stay.length} (${gb(stay)} GB), which stay.`);
+    for (const o of go) console.log(`  to go: ${new Date(Number(o.key.split('/')[1])).toISOString().slice(0, 16)}  ${((o.size || 0) / 1e6).toFixed(0)} MB`);
+    for (const o of stay) console.log(`  stays: ${new Date(Number(o.key.split('/')[1])).toISOString().slice(0, 16)}  ${((o.size || 0) / 1e6).toFixed(0)} MB`);
+    if (go.length > most) { console.log(`That is more than the ${most} expected: NOTHING deleted.`); process.exit(1); }
+    if (process.env.CONFIRM !== 'delete') { console.log('Listed only (no CONFIRM=delete): nothing deleted.'); return; }
+    let done = 0, failed = 0;
+    for (const o of go) {
+      const r = await fetch(`${base}/objects/${o.key.split('/').map(encodeURIComponent).join('/')}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }).catch(() => null);
+      if (r?.ok) done++; else { failed++; console.log(`  NOT deleted (${r?.status || 'no answer'}): the recording of ${new Date(Number(o.key.split('/')[1])).toISOString().slice(0, 16)}`); }
+    }
+    const left = (await list(base, token, 'twins/')).filter((o) => /^twins\/\d{13}\/recording\.[a-z0-9]+$/.test(o.key));
+    console.log(`Deleted ${done} recordings${failed ? `, ${failed} could NOT be deleted` : ''}. Full recordings now in the bucket: ${left.length} (${gb(left)} GB).`);
+    if (failed) process.exitCode = 1;
+    return;
+  }
   if (cmd === 'thermal-index') {
     const placed = (await list(base, token, 'twins/')).filter((o) => /^twins\/[^/]+\/thermal-placement\.json$/.test(o.key));
     const have = new Set((await list(base, token, 'thermal-index/')).map((o) => o.key));

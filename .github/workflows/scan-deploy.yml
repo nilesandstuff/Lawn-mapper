@@ -36,7 +36,7 @@ on:
         required: true
         default: tests
         type: choice
-        options: [tests, deploy, walks, twin, disagree, segment, view, classes, name, learn, fix, place, depth, study, skyline, pavement, checks, repeat, register, walkfix, walkfixjs, reference, warp, marks, naip, drive, thermalindex]
+        options: [tests, deploy, walks, twin, disagree, segment, view, classes, prunerecordings, name, learn, fix, place, depth, study, skyline, pavement, checks, repeat, register, walkfix, walkfixjs, reference, warp, marks, naip, drive, thermalindex]
       walk:
         description: 'For twin, fix or depth: the walk id, or latest'
         default: latest
@@ -290,6 +290,20 @@ jobs:
 
       # THE OWNER NAMES THE THINGS (scan/public/name.html; 2026-11-19): the kept shapes of each photo, tidied, and the thing
       # the lift made of each, kept beside the twin for the page. CPU, free. Counts only.
+      # THE OLD FULL RECORDINGS DELETED (the owner's yes, 2026-11-20; twin-r2.mjs prune-recordings): only the video files
+      # of walks begun before 2026-11-20, listed first, refused if more than 17. Dates and sizes only.
+      - name: The old full recordings deleted
+        if: ${{ inputs.task == 'prunerecordings' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          BEFORE: '2026-11-20T00:00:00Z'
+          MOST: '17'
+          CONFIRM: delete
+        run: |
+          set -o pipefail
+          node scan/tools/twin-r2.mjs prune-recordings | tee prune.txt
+
       # A WALK'S CLASSES ON THE FREE RUNNER (scan/tools/classes_cpu.py, 2026-11-20): the picture model on the CPU, the
       # kinds voted onto the points, both clouds made ready for the 3D view. Slow (seconds a picture), free. Counts only.
       - name: A walk's pictures given their classes, and its 3D view made ready
@@ -667,6 +681,7 @@ jobs:
             twin) cat twin.txt 2>/dev/null || echo "no twin check: see the step above" ;;
             disagree) cat disagree.txt 2>/dev/null || echo "no report: see the step above" ;;
             view) cat view.txt 2>/dev/null || echo "no 3D view: see the step above" ;;
+            prunerecordings) cat prune.txt 2>/dev/null || echo "nothing listed: see the step above" ;;
             classes) cat classes.txt 2>/dev/null || echo "no classes: see the step above" ;;
             learn) cat learn.txt 2>/dev/null || echo "nothing learned: see the step above" ;;
             name) cat name.txt 2>/dev/null || echo "nothing made ready to name: see the step above" ;;
