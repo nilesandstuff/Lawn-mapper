@@ -3304,3 +3304,31 @@ HARD:
 WHAT THIS SHOWS: on P the visits disagree less when only near ground is used, and no height offset helps: there
 the levels are mostly depth read from far, not drift. On W they are mostly drift. A walk needs both: near ground
 only, then made to agree with itself. NOT YET RUN TOGETHER. The columns seen twice from near are few (16-18).
+
+## 37. The owner's eyes on section 36, and what follows (2026-11-20)
+
+THE OWNER (their judgements; the core session has seen no picture):
+  - Views from above are hard to read; the 3D view is "much better". On the other property the views from above
+    show a shape unlike the yard's true layout while the 3D view looks right. That walk may have been a thermal
+    walk spoiled by the sky view (looking up and turning); its ground drift is "really bad": "maybe we should stop
+    looking at that one". A long, thorough walk at the owner's lot (2026-11-19, thermal, sky view BEFORE the roof
+    corners, the fix kept) is the one to use instead.
+  - The panoptic model cuts the ground better than Segment Anything, and its own names on ground beat the other
+    namers on SAM's shapes; CLIPSeg has a slight edge among those. The phone's labels are not bad, only sparse.
+  - Machinery and equipment are probably not important to name: the work walk has far more than a normal lawn.
+  - The "Street View shapes" have many phantom sky points, some only 6-10 ft off the ground, wherever sky shows.
+  - The voted kinds on the work walk look "pretty good" with three faults: a cone or dome of built dots at the
+    corners used for the roof fixes; one place where ground bled over into a wall; trees and trunks overwhelmingly
+    absent.
+  - When the camera itself changes height (walking down a hill) the phone takes a while to settle a new ground
+    plane (their reading of the hit-test cursor).
+
+HARD (from the code): the points flagged "Google's street geometry" are the phone's SMOOTHED depth past 25 m,
+taken when Streetscape is on (app.js, depth.geoDepth). So the phantom sky points are what the smoothed depth does
+against the sky.
+
+DECIDED (the core session leads, CLAUDE.md): kinds go into the 3D view as a colour mode (view-kind.bin), not more
+sheets from above; the other property's walk is no longer a test walk; the owner's-lot walk is cut and voted next;
+movable things are not chased; a record's `ground` column is not to be trusted on a slope (it lags), so heights
+over the ground come from the walk's own ground; dense depth for trees moves up.
+SPECULATION: the dome at the roof corners is depth taken while the phone pointed up at them. Not looked at.
