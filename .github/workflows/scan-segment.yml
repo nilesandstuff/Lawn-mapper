@@ -12,7 +12,7 @@ on:
         description: "The walk's id (the number in its twin page's address)"
         required: true
       what:
-        description: "shapes (Segment Anything + panoptic on the pictures) or names (the whole-picture namers on kept shapes)"
+        description: "classes (the panoptic model alone: cheap, all the vote needs), shapes (Segment Anything + panoptic) or names (the whole-picture namers on kept shapes)"
         default: "shapes"
       gpu:
         description: "Modal GPU"
@@ -62,12 +62,30 @@ jobs:
           if [ "${{ inputs.what }}" = "names" ]; then
             modal run scan/tools/segment_modal.py::names --src twin --out out 2>&1 | grep -v -i "key-[0-9]" | tee -a segment.txt
             cp out/segments-names.json twin/segments-names.json
+          elif [ "${{ inputs.what }}" = "classes" ]; then
+            modal run scan/tools/segment_modal.py::main --src twin --out out --no-sam 2>&1 | grep -v -i "key-[0-9]" | tee -a segment.txt
+            cp out/masks.npz twin/segments-masks.npz
           else
             modal run scan/tools/segment_modal.py::main --src twin --out out 2>&1 | grep -v -i "key-[0-9]" | tee -a segment.txt
             cp out/masks.npz twin/segments-masks.npz
           fi
 
+      # CLASSES ONLY: kept beside the twin, voted onto the points, made ready for the 3D view (no lift, no shapes matched)
+      - name: Classes voted onto the walk's points
+        if: ${{ inputs.what == 'classes' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WALK: ${{ inputs.walk }}
+        run: |
+          set -o pipefail
+          node scan/tools/twin-r2.mjs put "$WALK" twin/segments-masks.npz | tee -a segment.txt
+          python scan/tools/view_prep.py twin 2>&1 | grep -v '^Shapes tidied' | tee -a segment.txt
+          python scan/tools/studies.py twin --study vote 2>&1 | grep -v '^Shapes tidied' | tee -a segment.txt
+          node scan/tools/twin-r2.mjs put "$WALK" twin/view-rgb.bin twin/view.json twin/view-kind.bin twin/study-vote.json twin/study-vote-points.png twin/study-vote-filled.png | tee -a segment.txt
+
       - name: Lifted onto the walk's points
+        if: ${{ inputs.what != 'classes' }}
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

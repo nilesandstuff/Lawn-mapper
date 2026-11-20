@@ -58,7 +58,7 @@ image = (
 
 
 @app.function(image=image, gpu=GPU, timeout=75 * 60)
-def segment(pictures: list) -> dict:
+def segment(pictures: list, sam: bool = True) -> dict:
     import numpy as np
     import torch
     from PIL import Image
@@ -72,9 +72,16 @@ def segment(pictures: list) -> dict:
     pan, names = panoptic_maps(imgs, "cuda", notes.append)
     t_pan = time.time() - t0
 
-    gen = pipeline("mask-generation", model=SAM_MODEL, device=0)
+    # CLASSES ONLY (2026-11-20; docs/SCAN-PLAN.md 36): the kinds are voted from the panoptic model's pixels and no shape
+    # is matched to another, so Segment Anything (5-7 s a picture, nearly all of this job's cost) is not needed. The
+    # panoptic model's own shapes stand in for `obj` so the file reads as before.
+    gen = pipeline("mask-generation", model=SAM_MODEL, device=0) if sam else None
     obj, part, counts = [], [], []
-    for im in imgs:
+    if not sam:
+        obj = [np.asarray(p).astype(np.uint16) for p in pan]
+        part = [np.zeros_like(o) for o in obj]
+        counts = [len(n) for n in names]
+    for im in (imgs if sam else []):
         with torch.no_grad():
             masks = gen(im, points_per_batch=64, pred_iou_thresh=0.88, stability_score_thresh=0.92)["masks"]
         masks = [np.asarray(m, bool) for m in masks]
@@ -149,7 +156,7 @@ def names(src: str = "twin", out: str = "out"):
 
 
 @app.local_entrypoint()
-def main(src: str = "twin", out: str = "out"):
+def main(src: str = "twin", out: str = "out", sam: bool = True):
     import numpy as np
     sys.path.insert(0, HERE)
     from segment_study import read_twin
@@ -159,7 +166,7 @@ def main(src: str = "twin", out: str = "out"):
         sys.exit(1)
     # a long walk's pictures, thinned evenly to PIC_MAX: Segment Anything takes 5-7 s a picture, and the function
     # stops itself at 75 minutes (a 45-minute limit was nearly met by one walk on 2026-11-19)
-    cap = int(os.environ.get("PIC_MAX", "420"))
+    cap = int(os.environ.get("PIC_MAX", "420" if sam else "1200"))
     pick = np.unique(np.linspace(0, len(keys) - 1, num=min(cap, len(keys))).astype(int))
     keys = [keys[i] for i in pick]
     pictures = []
@@ -167,7 +174,7 @@ def main(src: str = "twin", out: str = "out"):
         with open(os.path.join(src, k["name"]), "rb") as f:
             pictures.append(f.read())
     print(f"Sending {len(pictures)} pictures ({sum(len(b) for b in pictures) / 1e6:.1f} MB) to the GPU ({GPU}).")
-    r = segment.remote(pictures)
+    r = segment.remote(pictures, sam)
     os.makedirs(out, exist_ok=True)
     if r.get("error"):
         print(f"No shapes: {r['error']}")
