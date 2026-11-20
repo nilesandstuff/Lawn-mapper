@@ -3208,3 +3208,38 @@ what these walks kept. The naming page shows those in grey and counts only the p
 
 BUILT for the next walks: key-NNNN.sdepth, ARCore's smoothed depth (no holes) kept beside each photo's measured
 depth, never read as measurement, for matching shapes from photo to photo. NOT YET WALKED.
+
+## 34. What the owner's hands say (2026-11-20; scan/tools/owner_study.py, task learn, runs 427-428)
+
+The owner named 799 of the work walk's 5,671 shapes and erased 12,750 points in the 3D view, and reported: the
+ground lies in several distinct levels and the true one could not be told; false points beside a roof edge come in
+sky-blue; most photos had no shape for the grass where it was plainest; grass, gravel and ground names spilled into
+each other where the cut and the lift disagreed on a border. Their key: tree / evergreen tree (alone) / ground
+(with bare soil and gravel) / grass (alone) / building, wall / machine-equipment (with barrels) / vehicle; a shape
+holding unlike things gets no name. Recording: each photo now also keeps the raw depth uncut with its confidence
+(key-NNNN.rdepth) and the smoothed depth (key-NNNN.sdepth), the owner's choice; NOT YET WALKED.
+
+HARD (work walk W unless said; P = the other property, no names or erasing there yet):
+  - The picture model's names under the owner's: tree 91% tree, evergreen tree 100% tree, vehicle 88% car or truck,
+    building 91% building/wall/house, grass 56% grass + 37% earth, bare dirt 73% earth. Poor: machine/equipment
+    (building 30%, earth 25%), dumpster (building 75%), ground (earth 44%, wall 20%, building 16%).
+  - 52% of the kept points take one of the owner's names. THE PHONE'S OWN LABELS on those points: grass -> terrain
+    97%; tree -> tree 98%; building -> building or structure 95%; bare dirt -> sidewalk or road 86%.
+  - 45% of the named points take TWO names: building + ground 6,033, grass + ground 5,016, building + wall 193.
+    Points named ground carry building or structure labels on 24% and reach 28 in up.
+  - Erased against the points left within 5 ft: the phone called it sky 73% v 1%; sky-blue in the photo 71% v 5%;
+    lightness 145 v 84; middle height 5.6 ft v 0. Same distance (9 ft), near the same confidence (0.61 v 0.68).
+  - GROUND in 1.6 ft columns (W 256, P 220): one level in 55% (P 43%), two 29% (35%), three or more 16% (23%);
+    levels 4.7 in (5.5) apart. Columns seen on two passes 20 s apart (80; 113): the passes' ground levels differ by
+    5.8 in (5.1); within one pass the ground is 3.8 in (4.3) thick. The fullest level is the lowest in 24% (48%).
+    A column's middle point sits -0.1 in (+0.2) from its fullest level; over 1 in above it in 12% (22%) of columns.
+    Spread grows with the camera's distance on W (7, 16, 21 in at under 6, 6-12, 12-25 ft), less on P (9, 13, 11).
+    Lightness of colour and depth confidence go opposite ways on the two walks: no rule in either.
+  - Shapes over half a picture are dropped when the pictures are cut (segment_modal.py).
+
+SPECULATION:
+  - The levels are mostly the phone's own height drifting between visits to the same spot (the pass-to-pass 5-6 in
+    is the size of the gap between levels). Not shown: nobody has lined the passes up and looked again.
+  - The grass with no shape where it is plainest is the over-half-a-picture rule. Not checked on a photo.
+  - building + ground on one point is a far photo's big shape (wall and the ground at its foot in one) named ground
+    or building; whether the cut, the lift or the name is at fault needs the owner's eyes on those shapes.
