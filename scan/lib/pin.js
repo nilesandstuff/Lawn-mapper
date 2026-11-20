@@ -83,3 +83,53 @@ export function levels(pts, { col = 0.5, gap = 20, least = 40, visit = 12 } = {}
   }
   return { columns: thick.length, thick: median(thick), thick75: thick.length ? pctl(Float64Array.from(thick).sort(), 0.75) : NaN, twice: visits.length, visits: median(visits), visits75: visits.length ? pctl(Float64Array.from(visits).sort(), 0.75) : NaN, one: median(one) };
 }
+
+/**
+ * THE WALK MADE TO AGREE WITH ITSELF, NO LIDAR (2026-11-20). Pinned to the lidar, the work walk's two visits to a
+ * spot came from 5.6 in apart to 1.3, but stretches left out of the pinning gained little (7.6 to 6.4) and the other
+ * property's walk got WORSE (5.5 to 6.7; its height wandered 47 in against the lidar, which is the placement or
+ * the lidar, not the phone). So: one unknown height offset for each `stretch` metres of walking; wherever one
+ * column of ground was seen from two stretches, their offsets must make its two levels equal; neighbours in the
+ * walk are held together loosely (the phone drifts slowly); solved by least squares.
+ * pts: [{ e, n, y, odo }] ground points; use(colKey) -> false leaves a column out of the solving (to judge it after).
+ * -> { off(odo), stretches, ties, drift }
+ */
+export function selfPlan(pts, { stretch = 6, col = 0.5, least = 8, smooth = 0.3, use = () => true } = {}) {
+  const cols = new Map();
+  let S = 0;
+  for (const p of pts) {
+    if (!Number.isFinite(p.y)) continue;
+    const s = Math.floor(p.odo / stretch); if (s + 1 > S) S = s + 1;
+    const k = `${Math.floor(p.e / col)},${Math.floor(p.n / col)}`;
+    if (!use(k)) continue;
+    let c = cols.get(k); if (!c) cols.set(k, c = new Map());
+    let a = c.get(s); if (!a) c.set(s, a = []); a.push(p.y);
+  }
+  if (S < 2) return { off: () => 0, stretches: S, ties: 0, drift: 0 };
+  const A = Array.from({ length: S }, () => new Float64Array(S)), b = new Float64Array(S);
+  let ties = 0;
+  const tie = (i, j, d, w) => { A[i][i] += w; A[j][j] += w; A[i][j] -= w; A[j][i] -= w; b[i] += w * d; b[j] -= w * d; };
+  for (const c of cols.values()) {
+    const ms = [...c.entries()].filter(([, a]) => a.length >= least).map(([s, a]) => [s, median(a), a.length]);
+    for (let i = 0; i < ms.length; i++) for (let j = i + 1; j < ms.length; j++) {
+      // off_i - off_j = m_i - m_j: taking each stretch's offset off its heights leaves the two levels equal
+      tie(ms[i][0], ms[j][0], ms[i][1] - ms[j][1], Math.min(ms[i][2], ms[j][2], 60) / 60); ties++;
+    }
+  }
+  for (let i = 0; i + 1 < S; i++) tie(i, i + 1, 0, smooth);
+  for (let i = 0; i < S; i++) A[i][i] += 1e-6;        // the whole walk's level is free: held near nought
+  // Gaussian elimination (S is the walk's length over `stretch`: tens)
+  const x = new Float64Array(S), M = A.map((r, i) => Float64Array.from([...r, b[i]]));
+  for (let i = 0; i < S; i++) {
+    let p = i; for (let r = i + 1; r < S; r++) if (Math.abs(M[r][i]) > Math.abs(M[p][i])) p = r;
+    [M[i], M[p]] = [M[p], M[i]];
+    if (Math.abs(M[i][i]) < 1e-12) continue;
+    for (let r = i + 1; r < S; r++) { const f = M[r][i] / M[i][i]; if (f) for (let c = i; c <= S; c++) M[r][c] -= f * M[i][c]; }
+  }
+  for (let i = S - 1; i >= 0; i--) { let s = M[i][S]; for (let c = i + 1; c < S; c++) s -= M[i][c] * x[c]; x[i] = Math.abs(M[i][i]) < 1e-12 ? 0 : s / M[i][i]; }
+  const off = (odo) => {
+    const f = odo / stretch - 0.5, i = Math.max(0, Math.min(S - 1, Math.floor(f))), j = Math.min(S - 1, i + 1), t = Math.max(0, Math.min(1, f - i));
+    return x[i] + t * (x[j] - x[i]);
+  };
+  return { off, stretches: S, ties, drift: Math.max(...x) - Math.min(...x) };
+}

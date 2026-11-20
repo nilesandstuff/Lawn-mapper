@@ -160,7 +160,7 @@ for (const l of lines(result)) console.log(l);
 // THE WALK'S HEIGHTS PINNED TO THE LIDAR'S GROUND (scan/lib/pin.js, 2026-11-20): does sliding each stretch of the walk
 // onto the lidar close the levels the owner saw? Judged by the walk against itself, not against the lidar.
 {
-  const { pinPlan, levels, lidarGroundAt, PIN_M, PIN_NEAR_M } = await import('../lib/pin.js');
+  const { pinPlan, selfPlan, levels, lidarGroundAt, PIN_M, PIN_NEAR_M } = await import('../lib/pin.js');
   const sh = L.shade, IN = 39.37, inch = (m) => (Number.isFinite(m) ? (m * IN).toFixed(1) : '-');
   const gp = [];
   every.forEach((p, k) => {
@@ -180,7 +180,18 @@ for (const l of lines(result)) console.log(l);
     const odd = pinPlan(gp.filter((p) => Math.floor(p.odo / PIN_M) % 2 === 1));
     if (odd.pinned >= 2) say('PINNED BY EVERY OTHER STRETCH ONLY, judged on the stretches left out', levels(gp.filter((p) => Math.floor(p.odo / PIN_M) % 2 === 0).map((p) => ({ ...p, h: p.y - odd.off(p.odo) }))));
     say('(the same left-out stretches as walked)', levels(gp.filter((p) => Math.floor(p.odo / PIN_M) % 2 === 0).map((p) => ({ ...p, h: p.y }))));
-  } else console.log('  Too little near ground to pin it.');
+  } else console.log('  Too little near ground to pin it.');  // WITHOUT THE LIDAR: the walk made to agree with itself, solved on half its columns and judged on the other half
+  {
+    const colOf = (p) => `${Math.floor(p.e / 0.5)},${Math.floor(p.n / 0.5)}`, held = (k) => (Number(k.split(',')[0]) & 1) === 0;
+    for (const st of [3, 6, 12]) {
+      const Q = selfPlan(gp, { stretch: st, use: (k) => !held(k) });
+      const out = gp.filter((p) => held(colOf(p)));
+      if (st === 3) say('THE COLUMNS LEFT OUT, as walked', levels(out.map((p) => ({ ...p, h: p.y }))));
+      say(`MADE TO AGREE WITH ITSELF (no lidar), one offset each ${(st * 3.281).toFixed(0)} ft, ${Q.ties.toLocaleString()} ties, drift found ${inch(Q.drift)} in; judged on the columns left out`, levels(out.map((p) => ({ ...p, h: p.y - Q.off(p.odo) }))));
+    }
+    const Q = selfPlan(gp, { stretch: 6 });
+    say('... solved on every column (what would be used)', levels(gp.map((p) => ({ ...p, h: p.y - Q.off(p.odo) }))));
+  }
 }
 // for the segment trial (scan/tools/segment_study.py): each patch as the indexes of its points in the twin's own
 // records. Kept in the run's folder only; no place in it.

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { pinPlan, levels, lidarGroundAt } from '../lib/pin.js';
+import { pinPlan, levels, lidarGroundAt, selfPlan } from '../lib/pin.js';
 
 // a walk over a gentle slope whose height drifts 15 cm between its first and second visit to the same ground
 {
@@ -17,6 +17,14 @@ import { pinPlan, levels, lidarGroundAt } from '../lib/pin.js';
   assert.ok(after.visits < 0.04, `pinned, they agree (${after.visits.toFixed(3)})`);
   assert.ok(P.pinned >= 5 && Math.abs(P.drift - 0.15) < 0.04, 'the drift found is the drift put in');
   assert.equal(pinPlan([]).off(10), 0, 'a walk with no ground is left as it is');
+  // without the lidar: solved on half the columns, judged on the other half
+  const held = (k) => (Number(k.split(',')[0]) & 1) === 0;
+  const Q = selfPlan(pts, { use: (k) => !held(k) });
+  const colOf = (p) => `${Math.floor(p.e / 0.5)},${Math.floor(p.n / 0.5)}`;
+  const out = pts.filter((p) => held(colOf(p)));
+  const b4 = levels(out.map((p) => ({ ...p, h: p.y }))), aft = levels(out.map((p) => ({ ...p, h: p.y - Q.off(p.odo) })));
+  assert.ok(b4.visits > 0.1 && aft.visits < 0.04, `the walk agrees with itself on columns it was not solved on (${aft.visits.toFixed(3)})`);
+  assert.ok(Math.abs(Q.drift - 0.15) < 0.05, `and finds the drift (${Q.drift.toFixed(3)})`);
 }
 // between four columns the lidar's ground is the mean of them
 {
