@@ -262,6 +262,15 @@ def load(d):
         drop |= np.linalg.norm(xyz - S.cam_at(track, recs[:, 0].astype(np.float64)), axis=1) > S.NEAR
     S.pose_keys(keys, track)
     drop |= S.erased(d, len(recs))
+    # SKY (the owner, 2026-11-20; docs/SCAN-PLAN.md section 34): what the phone called sky, and what is sky-blue in
+    # its photo where the phone gave it no name of ground, building or tree (71% of the points erased by hand were
+    # sky-blue, 5% of those left beside them)
+    drop |= labs[:, 0] == 2
+    vf = os.path.join(d, "view-rgb.bin")
+    if os.path.exists(vf) and os.path.getsize(vf) >= 4 * len(recs):
+        c = np.fromfile(vf, dtype=np.uint8, count=4 * len(recs)).reshape(-1, 4).astype(int)
+        blue = (c[:, 3] == 1) & (c[:, 2] > c[:, 0] + 20) & (c[:, 2] >= c[:, 1])
+        drop |= blue & ~np.isin(labs[:, 0], (3, 4, 5, 6, 7, 8))
     xyz0 = np.where(drop[:, None], 1e6, xyz)
     h = np.where(drop, np.nan, h)
     return {"recs": recs, "labs": labs, "keys": keys, "track": track, "xyz": xyz, "xyz0": xyz0, "h": h, "drop": drop, "verdict": verdict}

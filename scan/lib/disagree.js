@@ -208,7 +208,8 @@ export const confirmed = (c, i) => c.views[i] >= 2 && !seenPast(c, i);
  *   built     (building, structure) kept when BUILT_NEAR other built-named points lie within BUILT_REACH; alone,
  *             only when confirmed.
  *   tree      kept, wherever it is.
- *   no name   (none, unlabeled, object, vehicle, person, sky, water) kept only when confirmed.
+ *   no name   (none, unlabeled, object, vehicle, person, water) kept only when confirmed.
+ *   sky       never kept, confirmed or not (2026-11-20).
  * A point the recording marked weak (depth under the live confidence cut) needs confirming whatever its name.
  *
  * pts: [{ e, n, y, t, label, weak }], C: carve() of the same points in the same order.
@@ -227,11 +228,14 @@ export function judge(pts, C, kind = (p) => kindOf(p.label)) {
     if (kinds[i] === 'built') built.set(bk(p), (built.get(bk(p)) || 0) + 1);
   });
   const out = { verdict: new Uint8Array(pts.length), y: new Float64Array(pts.length), kind: kinds,
-    tally: { ground: 0, bump: 0, smoothed: 0, built: 0, builtAlone: 0, tree: 0, noName: 0, noNameUnconfirmed: 0, weakUnconfirmed: 0 } };
+    tally: { ground: 0, bump: 0, smoothed: 0, built: 0, builtAlone: 0, tree: 0, noName: 0, noNameUnconfirmed: 0, weakUnconfirmed: 0, sky: 0 } };
   const T = out.tally;
   pts.forEach((p, i) => {
     const ok = confirmed(C, i);
     out.y[i] = p.y;
+    // SKY IS NEVER A THING (the owner, 2026-11-20, after erasing 12,750 points by hand: the phone had called 73% of
+    // them sky, against 1% of the points left standing beside them; docs/SCAN-PLAN.md section 34). Seen twice or not.
+    if (p.label === 'sky') { T.sky++; out.verdict[i] = TENTATIVE; return; }
     if (p.weak && !ok) { T.weakUnconfirmed++; out.verdict[i] = TENTATIVE; return; }
     if (kinds[i] === 'ground') {
       T.ground++;

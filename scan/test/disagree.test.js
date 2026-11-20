@@ -107,3 +107,12 @@ assert.match(text, /27 ft structure/); assert.ok(!/\d+\.\d{4}/.test(text), 'no c
   assert.equal(J.verdict[weak], TENTATIVE, 'weak depth needs confirming whatever its name');
 }
 console.log('disagree: ok');
+
+// sky is never kept, even seen twice (the owner's erasing, 2026-11-20)
+{
+  const { judge } = await import('../lib/disagree.js');
+  const pts = [{ e: 0, n: 0, y: 3, t: 0, label: 'sky' }, { e: 0, n: 0, y: 3, t: 0, label: 'tree' }];
+  const j = judge(pts, { views: Int32Array.from([2, 2]), free: Int32Array.from([0, 0]), seen: Int32Array.from([1, 1]) });
+  if (j.verdict[0] !== 3 || j.tally.sky !== 1 || j.verdict[1] !== 0) throw new Error('sky must never be kept');
+  console.log('sky never kept: ok');
+}
