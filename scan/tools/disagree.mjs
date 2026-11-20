@@ -165,7 +165,7 @@ for (const l of lines(result)) console.log(l);
   const gp = [];
   every.forEach((p, k) => {
     if (J.kind[k] !== 'ground' || p.weak || p.dist > 8) return;
-    gp.push({ e: p.e, n: p.n, t: p.t, y: p.y, odo: recs[p.i].odo, dist: p.dist, lidar: lidarGroundAt(sh.ground, sh.sgrid, L.ox, L.oy, L.k, p.e, p.n) });
+    gp.push({ e: p.e, n: p.n, t: p.t, y: p.y, odo: recs[p.i].odo, dist: p.dist, sx: p.p[0], sz: -p.p[2], conf: p.conf, lidar: lidarGroundAt(sh.ground, sh.sgrid, L.ox, L.oy, L.k, p.e, p.n) });
   });
   const P = pinPlan(gp);
   const say = (name, v) => console.log(`  ${name}: a column of ground is ${inch(v.thick)} in thick (a quarter over ${inch(v.thick75)}); two visits to one spot differ by ${inch(v.visits)} in (a quarter over ${inch(v.visits75)}; ${v.twice} columns seen twice); one visit is ${inch(v.one)} in thick. ${v.columns} columns.`);
@@ -188,6 +188,18 @@ for (const l of lines(result)) console.log(l);
       const out = gp.filter((p) => held(colOf(p)));
       if (st === 3) say('THE COLUMNS LEFT OUT, as walked', levels(out.map((p) => ({ ...p, h: p.y }))));
       say(`MADE TO AGREE WITH ITSELF (no lidar), one offset each ${(st * 3.281).toFixed(0)} ft, ${Q.ties.toLocaleString()} ties, drift found ${inch(Q.drift)} in; judged on the columns left out`, levels(out.map((p) => ({ ...p, h: p.y - Q.off(p.odo) }))));
+    }
+    // IS IT THE PLACING ON THE MAP? The same, in the phone's own frame: each point where the phone had it, not where
+    // the roof corners put it (a visit placed a foot off on a slope reads as a height difference)
+    const own = gp.map((p) => ({ ...p, e: p.sx, n: p.sz }));
+    say("IN THE PHONE'S OWN FRAME (not placed on the map), as walked", levels(own.map((p) => ({ ...p, h: p.y }))));
+    { const Qs = selfPlan(own, { stretch: 3, use: (k) => !held(k) }), out = own.filter((p) => held(colOf(p)));
+      say("... the columns left out, as walked", levels(out.map((p) => ({ ...p, h: p.y }))));
+      say("... made to agree with itself, judged on the columns left out", levels(out.map((p) => ({ ...p, h: p.y - Qs.off(p.odo) })))); }
+    // HOW THIN CAN ONE VISIT BE? Only ground seen near and surely
+    for (const [nm, f] of [['within 6 ft', (p) => p.dist <= 1.83], ['within 6 ft, depth confidence 0.6 or more', (p) => p.dist <= 1.83 && p.conf >= 0.6], ['within 10 ft, confidence 0.6 or more', (p) => p.dist <= 3.05 && p.conf >= 0.6]]) {
+      const sub = gp.filter(f);
+      say(`ONLY GROUND SEEN ${nm.toUpperCase()} (${sub.length.toLocaleString()} points)`, levels(sub.map((p) => ({ ...p, h: p.y })), { least: 20, visit: 8 }));
     }
     const Q = selfPlan(gp, { stretch: 6 });
     say('... solved on every column (what would be used)', levels(gp.map((p) => ({ ...p, h: p.y - Q.off(p.odo) }))));

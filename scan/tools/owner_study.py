@@ -138,6 +138,96 @@ def names_part(d, w):
 S_LABELS = ["unlabeled", "sky", "building", "tree", "road", "sidewalk", "terrain", "structure", "object", "vehicle", "person", "water"]
 
 
+KINDS = ["none", "built", "fence", "grass", "bare ground", "paved", "plant", "movable", "water", "sky"]
+OWN_KIND = {"building": "built", "wall": "built", "tree": "plant", "evergreen tree": "plant", "vegetation": "plant", "grass": "grass",
+            "ground": "bare ground", "bare dirt": "bare ground", "concrete": "paved", "machine/equipment": "movable", "vehicle": "movable",
+            "dumpster": "movable", "fence": "fence"}
+PHONE_KIND = {3: "built", 8: "built", 4: "plant", 5: "paved", 6: "paved", 7: "grass", 9: "movable", 10: "movable"}  # label + 1
+COARSE = {"grass": "ground", "bare ground": "ground", "paved": "ground"}
+
+
+def vote_part(d, w, votes, order):
+    """NAME PIXELS, NOT SHAPES; VOTE INTO THE POINTS (docs/SCAN-REVIEW.md A), scored against the owner's names.
+    Every pixel of every photo already has a class from the picture model that cuts and names in one pass (kept with
+    the shapes); a point takes the vote of every photo whose own depth saw it, nearer looks weighing more. No shape
+    is matched to any other. THE ANSWER: the points that took exactly ONE of the owner's names (so the easier ones:
+    where two of the owner's names fell on a point it is left out)."""
+    mf = os.path.join(d, "segments-masks.npz")
+    z = np.load(mf, allow_pickle=False)
+    if "pan" not in z or "names" not in z:
+        print("VOTE: the picture model's classes were not kept for this walk.")
+        return
+    sel = [w["keys"][i] for i in z["pics"]]
+    pan_names = [{int(a): b for a, b in nm.items()} for nm in json.loads(str(z["names"]))]
+    maps = []
+    for m, nm in zip(z["pan"], pan_names):
+        lut = np.zeros(int(m.max()) + 1, np.uint16)
+        for i, name in nm.items():
+            k = T.KIND.get(name)
+            if k in KINDS and i < len(lut):
+                lut[i] = KINDS.index(k)
+        maps.append(lut[m])
+    depths = [T.read_depth(p) if os.path.exists(p) else None for p in (os.path.join(d, k["name"].replace(".jpg", ".depth")) for k in sel)]
+    was = S.MIN_PTS
+    S.MIN_PTS = 1
+    try:
+        vis, ms = T.lift_by_depth(w["xyz0"], sel, maps, depths, 24.4)
+    finally:
+        S.MIN_PTS = was
+    n = len(w["xyz0"])
+    pv = np.zeros((n, len(KINDS)))
+    looks = np.zeros(n, np.int32)
+    for k, v, ids in zip(sel, vis, ms):
+        if not len(v):
+            continue
+        rng = np.linalg.norm(w["xyz0"][v] - k["c2w"][:3, 3], axis=1)
+        np.add.at(pv, (v, ids), 1.0 / (1.0 + (rng / 6.0) ** 2))
+        np.add.at(looks, v, 1)
+    pv[:, 0] = 0
+    pv[:, KINDS.index("sky")] = 0
+    pic = np.where(pv.sum(1) > 0, pv.argmax(1), 0)
+    margin = np.where(pv.sum(1) > 0, pv.max(1) / np.maximum(pv.sum(1), 1e-9), 0)
+    phone = np.array([KINDS.index(PHONE_KIND[x]) if x in PHONE_KIND else 0 for x in range(256)])[w["labs"][:, 0]]
+    phone = np.where(w["labs"][:, 1] >= 128, phone, 0)
+    # the answer
+    truth = np.zeros(n, np.int32)
+    one = (votes > 0).sum(1) == 1
+    top = votes.argmax(1)
+    for j, name in enumerate(order):
+        k = OWN_KIND.get(name)
+        if k:
+            truth[one & (top == j + 1)] = KINDS.index(k)
+    have = truth > 0
+    kept = ~w["drop"]
+    print(f"VOTE: {int(have.sum()):,} points carry exactly one of the owner's names (the answer). Of the walk's {int(kept.sum()):,} kept points the picture model's vote reaches {pct((kept & (pic > 0)).sum(), kept.sum())} (seen by {np.median(looks[kept & (pic > 0)]) if (kept & (pic > 0)).any() else 0:.0f} photos in the middle), the phone's own label {pct((kept & (phone > 0)).sum(), kept.sum())}, either {pct((kept & ((pic > 0) | (phone > 0))).sum(), kept.sum())}.")
+    co = np.array([KINDS.index("grass") if COARSE.get(k) else i for i, k in enumerate(KINDS)])   # ground of any kind as one
+
+    def score(name, guess):
+        said = have & (guess > 0)
+        fine = (guess[said] == truth[said]).mean() if said.any() else float("nan")
+        coarse = (co[guess[said]] == co[truth[said]]).mean() if said.any() else float("nan")
+        per = []
+        for k in ("built", "plant", "grass", "bare ground", "paved", "movable"):
+            t = said & (truth == KINDS.index(k))
+            if t.sum() >= 30:
+                per.append(f"{k} {100 * (guess[t] == truth[t]).mean():.0f}% of {int(t.sum()):,}")
+        print(f"  {name}: speaks for {pct(said.sum(), have.sum())} of the answer; right {100 * coarse:.0f}% with ground as one kind, {100 * fine:.0f}% with grass, bare ground and paved apart. By the owner's kind: " + "; ".join(per))
+    score("the phone's own label", phone)
+    score("the picture model's vote", pic)
+    score("... where its vote is two thirds or more one kind", np.where(margin >= 0.67, pic, 0))
+    both = np.where(pic > 0, pic, phone)
+    score("the vote, the phone's label where the vote is silent", both)
+    # the phone says WHAT STANDS (built, plant) well; the picture says WHICH GROUND: phone first for standing things
+    stand = np.isin(phone, [KINDS.index("built"), KINDS.index("plant")])
+    score("the phone for buildings and plants, the vote for the rest", np.where(stand, phone, both))
+    wrong = have & (pic > 0) & (pic != truth)
+    if wrong.any():
+        pairs = {}
+        for a, b in zip(truth[wrong], pic[wrong]):
+            pairs[(KINDS[a], KINDS[b])] = pairs.get((KINDS[a], KINDS[b]), 0) + 1
+        print("  Where the vote differs from the owner (owner's -> the vote's): " + "; ".join(f"{a} -> {b}: {c:,}" for (a, b), c in sorted(pairs.items(), key=lambda x: -x[1])[:8]))
+
+
 def all_records(d):
     recs, n_cloud = V.records(d)
     labs = []
@@ -324,7 +414,9 @@ def main():
     d = sys.argv[1] if len(sys.argv) > 1 else "twin"
     w = T.load(d)
     try:
-        names_part(d, w)
+        got = names_part(d, w)
+        if got:
+            vote_part(d, w, *got)
     except Exception as e:  # the other two parts must still be read
         print(f"NAMES: could not be read ({type(e).__name__}: {str(e)[:120]}).")
     recs, labs, rgb, n_cloud = all_records(d)
