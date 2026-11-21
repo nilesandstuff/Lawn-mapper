@@ -136,17 +136,21 @@ function build() {
   // the smoothed depth saw. Hidden until asked for.
   geo.setAttribute('kind', new THREE.BufferAttribute(Float32Array.from(D.flags, (f, i) => (f & 2 ? 1 : (f & 4) && D.dconf[i] < 13 ? 2 : 0)), 1));
   material = new THREE.ShaderMaterial({
-    uniforms: { size: { value: 6 }, focus: { value: 10 }, band: { value: 1 }, outside: { value: 1 }, showErased: { value: 0 }, google: { value: 1 }, unsure: { value: 0 }, px: { value: 1 } },
+    uniforms: { size: { value: 6 }, focus: { value: 10 }, band: { value: 1 }, outside: { value: 1 }, showErased: { value: 0 }, google: { value: 1 }, unsure: { value: 0 }, sharp: { value: 0 }, px: { value: 1 } },
     vertexShader: `
       attribute vec3 tint; attribute float state; attribute float kind;
-      uniform float size, focus, band, outside, showErased, google, unsure, px;
+      uniform float size, focus, band, outside, showErased, google, unsure, sharp, px;
       varying vec3 vC;
       void main() {
         vec4 mv = modelViewMatrix * vec4(position, 1.0);
         float d = -mv.z;
-        bool inFocus = abs(d - focus) <= band;
+        // THE FOCUS BAND IS FOR ERASING AND INSPECTING, NOT FOR LOOKING (2026-11-21). Out of focus a point is drawn
+        // small and at a quarter of its colour; a lawn's own greens at a quarter are the background's black, so on
+        // a real walk everything outside the band vanished and the owner saw "only a very small slice of the walk".
+        // In Look every point is drawn whole (sharp 0).
+        bool inFocus = sharp < 0.5 || abs(d - focus) <= band;
         bool gone = (state > 0.5 && showErased < 0.5) || (kind > 0.5 && kind < 1.5 && google < 0.5) || (kind > 1.5 && unsure < 0.5) || (!inFocus && outside < 0.5) || d < 0.05;
-        vC = state > 0.5 ? vec3(1.0, 0.15, 0.15) : (inFocus ? tint : mix(vec3(0.02, 0.03, 0.06), tint, 0.28));
+        vC = state > 0.5 ? vec3(1.0, 0.15, 0.15) : (inFocus ? tint : mix(vec3(0.10, 0.11, 0.14), tint * 0.6 + 0.06, 0.6));
         gl_Position = gone ? vec4(2.0, 2.0, 2.0, 1.0) : projectionMatrix * mv;
         gl_PointSize = inFocus ? clamp(size * px * 3.0 / max(d, 0.4), 2.0 * px, 16.0 * px) : 1.5 * px;
       }`,
@@ -247,6 +251,7 @@ async function save() {
 
 function mode(m) {
   U.mode = m;
+  if (material) material.uniforms.sharp.value = m === 'look' ? 0 : 1;
   document.querySelectorAll('[data-mode]').forEach((b) => b.classList.toggle('on', b.dataset.mode === m));
   const look = m === 'look';
   controls.touches.ONE = look ? THREE.TOUCH.ROTATE : null;        // two fingers still move and zoom in every mode

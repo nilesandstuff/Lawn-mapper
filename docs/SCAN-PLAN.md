@@ -3429,3 +3429,21 @@ view; asked.
 CHANGED: the 3D view hides "depth the phone was not sure of" (weak, confidence under 0.05; in the joined view, seen
 only by the smoothed depth) until asked for; the wider look no longer records cells under 0.05 (the per-photo
 uncut raw depth still holds them); the joined cloud covers the whole walk evenly (its cubes grow until it fits).
+
+## 43. "Only a very small slice of the walk has anything": the 3D view's focus band (2026-11-21; run 455)
+
+THE OWNER (three screenshots): in both views the path spans the yard and the points fill one small slice; from the
+side, with the unsure depth shown, points 60 ft below the path. "There's no way that's ARCore's or my phone's fault."
+HARD (today's walk): the track lies 202 x 142 ft (the middle 90%), the cloud's records 180 x 131 ft, the joined
+points 225 x 152 ft, the photos' cameras at 297 places looking 315 ways; the cloud's records come from every minute
+(7,400 to 23,200 a minute). THE DATA IS WHOLE. The fault was the page: outside the focus band a point was drawn
+small and at 28% of its colour, and a lawn's greens at 28% are the background's black. Reproduced headless on a
+made-up walk of this size with lawn colours; with a bright colour the dimmed points showed, which is why the
+earlier tests missed it.
+CHANGED: in Look every point is drawn whole; the focus band belongs to Inspect, Erase and Bring back, where the
+out-of-focus colour is now lighter; the band's slider reaches 200 ft.
+THE POINTS BELOW THE PATH are the weak records with depth confidence under 0.05 (section 42): no measurement.
+NOT EXPLAINED: the single fan in the joined view's screenshot has a point on the path; a flat band cannot. Seen
+again after this change, it is a different fault.
+ALSO: run 455 failed to read 4 photos from the bucket, and the kinds for the view were then not made (the classes
+are numbered by photo); the kinds file of the run before stays in place.
