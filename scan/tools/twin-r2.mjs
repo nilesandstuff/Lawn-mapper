@@ -179,10 +179,14 @@ async function main() {
     const why = {};
     // backs off on a refusal: four place runs at once (8 requests each, retried at once) lost 218 of 566 parts to
     // the API's rate limit on 2026-11-08
-    await pool(objs, 6, async (o) => {
+    // a walk of 2,500 parts met the API's rate limit even so (21 parts refused seven times each, 2026-11-21, and the
+    // 3D view was then made from a walk with a part missing): fewer at once, more tries, a longer wait on a 429
+    let wait429 = 0;
+    await pool(objs, 4, async (o) => {
       let last = 'no answer';
-      for (let t = 0; t < 7; t++) {
-        if (t) await new Promise((ok) => setTimeout(ok, Math.min(30000, 1000 * 2 ** (t - 1)) * (0.75 + Math.random() / 2)));
+      for (let t = 0; t < 12; t++) {
+        if (t) await new Promise((ok) => setTimeout(ok, (last === '429' ? Math.min(90000, 5000 * 2 ** Math.min(t - 1, 4)) : Math.min(30000, 1000 * 2 ** (t - 1))) * (0.75 + Math.random() / 2)));
+        if (last === '429') wait429++;
         const r = await fetch(`${base}/objects/${o.key.split('/').map(encodeURIComponent).join('/')}`, { headers: { Authorization: `Bearer ${token}` } }).catch(() => null);
         const b = r?.ok ? await r.arrayBuffer().then((x) => Buffer.from(x), () => null) : null;
         if (b) { writeFileSync(join(dir, basename(o.key)), b); bytes += b.length; return; }
@@ -195,6 +199,9 @@ async function main() {
     console.log(`Twin read: ${objs.length - failed} parts, ${(bytes / 1e6).toFixed(1)} MB, ${pics} pictures${failed ? `, ${failed} could not be read (${Object.entries(why).map(([k, n]) => `${n} x ${k}`).join(', ')})` : ''}.`);
     if (!existsSync(join(dir, 'meta.json')) && objs.some((o) => /\/meta\.json$/.test(o.key))) { console.log('The twin\'s meta.json could not be read: run it again.'); process.exit(1); }
     if (!objs.length) { console.log('No twin under that walk.'); process.exit(1); }
+    // STRICT: a step that MAKES something from the whole walk (the 3D view's files, the classes) must not run on a
+    // walk with parts missing
+    if (process.env.STRICT && failed) { console.log(`STRICT: ${failed} parts could not be read: nothing is made from a walk with parts missing. Run it again.`); process.exit(1); }
   } else if (cmd === 'put') {
     for (const f of rest) {
       if (!existsSync(f)) continue; // a pattern that matched nothing (twin/study-*)

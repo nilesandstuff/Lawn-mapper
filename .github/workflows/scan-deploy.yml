@@ -282,7 +282,7 @@ jobs:
         run: |
           set -o pipefail
           pip install --quiet pillow numpy scipy
-          node scan/tools/twin-r2.mjs get "$WALK" twin | tee view.txt
+          STRICT=1 node scan/tools/twin-r2.mjs get "$WALK" twin | tee view.txt
           node scan/tools/disagree.mjs twin > /dev/null || true
           python scan/tools/view_prep.py twin 2>&1 | grep -v '^Shapes tidied' | tee -a view.txt
           python scan/tools/dense_prep.py twin 2>&1 | grep -v '^Shapes tidied' | tee -a view.txt
@@ -322,7 +322,7 @@ jobs:
           pip install --quiet pillow numpy scipy
           pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
           pip install --quiet "transformers>=4.45,<5"
-          node scan/tools/twin-r2.mjs get "$WALK" twin | tee classes.txt
+          STRICT=1 node scan/tools/twin-r2.mjs get "$WALK" twin | tee classes.txt
           node scan/tools/disagree.mjs twin > /dev/null || true
           python scan/tools/classes_cpu.py twin 2>&1 | grep -v -i "key-[0-9]" | tee -a classes.txt
           node scan/tools/twin-r2.mjs put "$WALK" twin/segments-masks.npz | tee -a classes.txt
