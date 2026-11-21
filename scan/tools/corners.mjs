@@ -29,9 +29,13 @@ async function main() {
   const ids = (arg ? arg.split(',') : lastWalks(40)).map((s) => s.trim()).filter(walkOk);
   console.log(`\nTHE ROOF CORNERS' DISTANCES, PHONE AGAINST MAP: ${ids.length} walks looked at.`);
   const maps = new Map();
-  let none = 0, few = 0;
+  let none = 0, few = 0, unread = 0;
   for (const id of ids) {
-    const [lb, mb] = await Promise.all([readObject(BUCKET, `twins/${id}/live.json`).catch(() => null), readObject(BUCKET, `twins/${id}/meta.json`).catch(() => null)]);
+    // asked again, slowly, when the bucket refuses (run 479 read 4 walks of 40 while another run was downloading a big
+    // walk: a refusal looked like "kept no twin"). null = truly not there; undefined = could not be read.
+    const read = async (key) => { for (let t = 0; t < 6; t++) { try { return await readObject(BUCKET, key); } catch { await new Promise((ok) => setTimeout(ok, 5000 * 2 ** t)); } } return undefined; };
+    const lb = await read(`twins/${id}/live.json`), mb = lb ? await read(`twins/${id}/meta.json`) : null;
+    if (lb === undefined) { unread++; continue; }
     if (!lb) { none++; continue; }
     let live, meta;
     try { live = JSON.parse(lb.toString()); meta = mb ? JSON.parse(mb.toString()) : {}; } catch { none++; continue; }
@@ -41,7 +45,7 @@ async function main() {
     if (!maps.has(key)) maps.set(key, []);
     maps.get(key).push({ id, when: (meta.started || '').slice(0, 10), odo: live.odo || 0, ...r });
   }
-  console.log(`  ${none} kept no twin, ${few} marked fewer than two corners; ${[...maps.values()].reduce((a, v) => a + v.length, 0)} walks on ${maps.size} map${maps.size === 1 ? '' : 's'} are read.`);
+  console.log(`  ${unread ? `${unread} COULD NOT BE READ (the bucket refused); ` : ''}${none} kept no twin, ${few} marked fewer than two corners; ${[...maps.values()].reduce((a, v) => a + v.length, 0)} walks on ${maps.size} map${maps.size === 1 ? '' : 's'} are read.`);
   console.log('  Each line: phone minus map. PLUS = the phone found the two corners farther apart than the map has them.');
   let mi = 0;
   const scales = [];
