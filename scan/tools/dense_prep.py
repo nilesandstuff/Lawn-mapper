@@ -57,7 +57,7 @@ def main():
             for i, m, nm in zip(z["pics"], z["pan"], json.loads(str(z["names"]))):
                 lut = np.zeros(int(m.max()) + 1, np.uint8)
                 for j, name in nm.items():
-                    kk = T.KIND.get(name)
+                    kk = "tree" if name in T.TREE_NAMES else T.KIND.get(name)
                     if kk in T.VOTE_KINDS and int(j) < len(lut):
                         lut[int(j)] = T.VOTE_KINDS.index(kk)
                 kind_maps[int(i)] = lut[m]

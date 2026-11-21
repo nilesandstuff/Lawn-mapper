@@ -188,7 +188,7 @@ function resize() {
 /* KINDS (scan/tools/studies.py VOTE_KINDS, in its order; view-kind.bin): what each kept point is by the vote of the
    photos that saw it and the phone's own label -- no shape matched to another (docs/SCAN-PLAN.md 36). */
 const KIND_COL = [['none', [70, 70, 70]], ['built', [200, 80, 60]], ['fence', [150, 90, 190]], ['grass', [120, 190, 90]], ['bare ground', [150, 120, 80]], ['paved', [150, 150, 165]],
-  ['plant', [30, 140, 60]], ['movable', [60, 120, 220]], ['water', [60, 190, 220]], ['sky', [255, 0, 255]]];
+  ['plant (shrubs, beds)', [150, 215, 60]], ['movable', [60, 120, 220]], ['water', [60, 190, 220]], ['sky', [255, 0, 255]], ['tree', [20, 110, 50]]];
 function colour() {
   const how = $('#colour').value, c = points.geometry.attributes.tint.array;
   for (let i = 0; i < D.n; i++) {
@@ -196,7 +196,7 @@ function colour() {
     const f = D.flags[i];
     if (how === 'picture') { if (D.rgb && D.rgb[i * 4 + 3]) { r = D.rgb[i * 4]; g = D.rgb[i * 4 + 1]; b = D.rgb[i * 4 + 2]; } else if (f & 2) { r = 120; g = 80; b = 170; } else { r = g = b = 110; } }
     else if (how === 'label') { [r, g, b] = D.label[i] ? LABEL_COL[LABELS[D.label[i] - 1]] || [150, 150, 150] : [95, 95, 95]; }
-    else if (how === 'kind') { [r, g, b] = D.kind ? KIND_COL[D.kind[i]][1] : [95, 95, 95]; }
+    else if (how === 'kind') { [r, g, b] = D.kind ? (KIND_COL[D.kind[i]] || KIND_COL[0])[1] : [95, 95, 95]; }
     else if (how === 'height') { const h = D.pos[i * 3 + 1] - D.ground[i]; if (Number.isFinite(h)) { const x = Math.max(0, Math.min(1, h / 3)); r = 40 + 215 * x; g = 200 - 120 * Math.abs(x - 0.5) * 2; b = 255 - 215 * x; } }
     else { [r, g, b] = SOURCE[f & 1 ? 4 : f & 2 ? 3 : f & 4 ? 2 : f & 8 ? 1 : 0][1]; }
     c[i * 3] = r / 255; c[i * 3 + 1] = g / 255; c[i * 3 + 2] = b / 255;
@@ -204,7 +204,7 @@ function colour() {
   points.geometry.attributes.tint.needsUpdate = true;
   const sw = (col, name) => `<span style="display:inline-block;width:.8em;height:.8em;background:rgb(${col.join(',')});border-radius:2px;margin:0 .25em 0 .7em"></span>${name}`;
   $('#legend').innerHTML = how === 'label' ? Object.entries(LABEL_COL).map(([n, col]) => sw(col, n)).join('') + sw([95, 95, 95], 'none')
-    : how === 'kind' ? (D.kind ? KIND_COL.slice(1, 9).map(([n, col]) => sw(col, n)).join('') + sw(KIND_COL[0][1], 'not kept, or nothing named it') : 'kinds are not made for this walk yet')
+    : how === 'kind' ? (D.kind ? [...KIND_COL.slice(1, 9), KIND_COL[10]].map(([n, col]) => sw(col, n)).join('') + sw(KIND_COL[0][1], 'not kept, or nothing named it') : 'kinds are not made for this walk yet')
     : how === 'source' ? SOURCE.map(([n, col]) => sw(col, n)).join('')
     : how === 'height' ? 'blue at the ground the phone took, through green, to red 10 ft over it'
     : 'each point in the colour of the photo taken when it was seen; grey where no photo saw it; purple: Google\'s street shapes';

@@ -3466,3 +3466,26 @@ path. The focus band, the stale files and the unsure depth were real faults and 
 CHANGED: a walk made ready for the 3D view is listed; the list says each walk's photos; the 3D page says which walk
 it shows. LESSON: before sending the owner to look at a thing, check from their side that it can be reached, and
 have the page say what it is showing.
+
+## 44. The owner's eyes on the walk of 2026-11-20, both views (2026-11-21)
+
+THE OWNER (their judgements): "Both maps are indeed very promising. The phone's own depth definitely has a fuller
+scene, by a lot... some parts do genuinely look quite a bit like a 3D image." In both views:
+  - the garage corner 20-25 ft east of roof corner R2 was looked at twice and shows as TWO SEPARATE WALLS: drift;
+  - hills seem somewhat smoothed: the one real hill is about 6 ft of height and reads 4.5-5 ft in the points (not
+    said with full confidence);
+  - bare tree branches are basically absent, though much looked at (no evergreens in the yard): "would be nice to
+    map bare trees, but that's not the highest priority... it should go on a to-do list";
+  - labels: trees and trunks should be apart from other plants; the power and cable box at the north edge by the
+    road was called movable.
+DONE AT ONCE: "tree" is a kind of its own (studies.VOTE_KINDS, last, so kept files still read), from the phone's
+tree label and the picture model's tree/trunk names; "plant" is what is left (shrubs, beds).
+TO DO, in this order (the core session leads):
+  1. THE DOUBLE WALL: poses mended from the pictures themselves where a place is seen twice (features matched
+     between the two visits, the poses adjusted with the phone's own as the starting point; CPU, free), then the
+     joined cloud made again and the owner's eyes on that corner. The measure: scan/lib/pin.js levels(), and the
+     same corner.
+  2. THE HILL: its height in the points against the lidar's (the lidar is good at 6 ft of hill), free.
+  3. Bare branches: the dense-depth trial (MapAnything, paid, within the allotment) on this walk.
+  4. Fixed things that are not buildings (utility boxes): a kind for them when the owner's lawn-effect classes
+     are drawn up.
