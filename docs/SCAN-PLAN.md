@@ -3539,3 +3539,23 @@ NEXT: the pictures themselves. Features matched between the photos of the two vi
 second camera really stood against the first, with no need for depth to be dense; from those, the poses along the
 walk are adjusted (the same least squares as here, with turning as well as sliding). CPU, free. If that is not
 enough: the dense-depth model with pose correction, within the Modal allotment.
+
+## 46. The owner on trees, photo counts, and what the two garage walls may be (2026-11-21)
+
+THE OWNER: the tree kind "swallowed some real plant labels": shrubs, tall ornamental grasses and perennials are
+now called trees. And two thoughts, "not commands": the garage was first seen "between checking r2 and r3. So maybe
+that explains the 'drift'... it's a total change in the fix"; and "i wonder if we should treat second views of the
+same spot as a check on orientation/position/drift rather than overwriting new info on the same spot?... subsequent
+views of the same spot could just add noise by putting the exact same points in similar, but probably not
+identical, spots."
+HARD (the code): a point's place in the twin and in the 3D view is ARCore's own session frame; the roof-corner fix
+places the walk on the MAP and moves no point in that frame. So a change of fix cannot by itself draw two walls in
+the 3D view. But ARCore's own place can jump (earlier walks logged "the phone's tracking jumped 2.1 m in one
+frame"), and the one clear slide here is 79 in: 2.0 m.
+HARD (photo counts): the walk of 2026-11-19 was 11 min and 1,275 ft with 592 photos; that of 2026-11-20 11 min and
+1,072 ft with 575. A photo is kept about once a second of moving, so the counts follow the minutes.
+DONE: a tree is growth that tops out 6.5 ft or more over the ground beside it, its trunk with it; lower growth is
+a plant (studies.tree_or_plant, in the walk's kinds and the joined cloud). mend_study.py --jumps (task `jumps`)
+reads the poses for steps no walker makes.
+ADOPTED AS A RULE: a second sighting of a place is first a CHECK on where the phone thinks it is; it is joined into
+the cloud only once the two agree (or one is chosen), never laid over the first as it comes.

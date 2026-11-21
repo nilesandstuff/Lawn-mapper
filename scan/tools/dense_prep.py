@@ -161,6 +161,9 @@ def main():
     t0 = np.full(n, np.inf)
     np.minimum.at(t0, inv, TT)
     keep = np.arange(n)[:CAP]
+    TR, PL = T.VOTE_KINDS.index("tree"), T.VOTE_KINDS.index("plant")
+    veg = np.isin(kind, (TR, PL))
+    kind[veg] = np.where(T.tree_or_plant(pos, veg)[veg], TR, PL)   # a tree is tall; lower growth is a plant
     rec = np.zeros(len(keep), dtype=[("p", "<f4", 3), ("t", "<f4"), ("c", "u1", 3), ("kind", "u1"), ("looks", "u1"), ("src", "u1"), ("pad", "u1", 2)])
     rec["p"], rec["t"], rec["c"], rec["kind"] = pos[keep], t0[keep], np.clip(col[keep], 0, 255), kind[keep]
     rec["looks"], rec["src"] = np.minimum(looks[keep], 255), smooth_only[keep]

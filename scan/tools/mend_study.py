@@ -99,8 +99,28 @@ def main():
     if len(track) < 10:
         print("No track: nothing to mend.")
         return
-    kind_maps = {}
-    mf = os.path.join(d, "segments-masks.npz")
+    # DID THE PHONE'S OWN PLACE JUMP? (the owner, 2026-11-21: the garage was first seen "between checking r2 and r3. So
+    # maybe... it's not actual drift, it's a total change in the fix.") The fix on the map does not move a point in
+    # this frame, but ARCore itself can jump when it thinks it knows a place again. Every step between two poses
+    # taken within half a second, against how far a person walks in that time.
+    dt = np.diff(track[:, 0])
+    stp = np.linalg.norm(np.diff(track[:, 1:4], axis=0), axis=1)
+    near = (dt > 0) & (dt < 0.5)
+    if not near.any():
+        near = dt > 0
+    big = np.flatnonzero(near & (stp > 0.4))
+    seg0 = np.concatenate([[0], np.cumsum(stp)])
+    print(f"JUMPS: {len(track):,} poses; a step between two poses half a second apart or less is {np.median(stp[near]) * 39.37:.1f} in in the middle, 99 in 100 under {np.percentile(stp[near], 99) * 39.37:.0f} in, the most {stp[near].max() * 39.37:.0f} in. Steps over 16 in: {len(big)}.")
+    for i in big[:12]:
+        dv = track[i + 1, 1:4] - track[i, 1:4]
+        print(f"    a jump of {stp[i] * 39.37:.0f} in ({np.hypot(dv[0], dv[2]) * 39.37:.0f} flat, {dv[1] * 39.37:+.0f} in height) at {track[i, 0] / 60:.1f} min, {seg0[i] * S.FT:.0f} ft walked.")
+    # gaps in the poses themselves (the phone's tracking lost, or the page stalled)
+    gaps = np.flatnonzero(dt > 1.5)
+    if len(gaps):
+        print("    gaps in the poses: " + ", ".join(f"{dt[i]:.1f} s at {track[i, 0] / 60:.1f} min (moved {stp[i] * 39.37:.0f} in across it)" for i in gaps[:10]) + ".")
+    if "--jumps" in args:
+        return
+
     if os.path.exists(mf):
         z = np.load(mf, allow_pickle=False)
         if "pan" in z and "names" in z:

@@ -89,6 +89,9 @@ def main():
             if len(wl) == len(recs) - n_cloud:
                 lut = np.array([T.VOTE_KINDS.index(T.PHONE_KIND[x]) if x in T.PHONE_KIND else 0 for x in range(256)], np.uint8)
                 kinds[n_cloud:] = np.where(wl[:, 1] >= 128, lut[wl[:, 0]], 0)
+                TR, PL = T.VOTE_KINDS.index("tree"), T.VOTE_KINDS.index("plant")
+                veg = np.isin(kinds, (TR, PL))
+                kinds[veg] = np.where(T.tree_or_plant(recs[:, 2:5].astype(np.float64), veg)[veg], TR, PL)
         kinds.tofile(os.path.join(d, "view-kind.bin"))
         print("Kinds for the view: " + ", ".join(f"{T.VOTE_KINDS[k]} {int((kinds == k).sum()):,}" for k in np.argsort(-np.bincount(kinds, minlength=len(T.VOTE_KINDS))) if k and (kinds == k).any()) + f"; none {int((kinds == 0).sum()):,}.")
     except Exception as e:

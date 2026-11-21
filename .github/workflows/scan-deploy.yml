@@ -36,7 +36,7 @@ on:
         required: true
         default: tests
         type: choice
-        options: [tests, deploy, walks, twin, disagree, segment, view, classes, mend, prunerecordings, name, learn, fix, place, depth, study, skyline, pavement, checks, repeat, register, walkfix, walkfixjs, reference, warp, marks, naip, drive, thermalindex]
+        options: [tests, deploy, walks, twin, disagree, segment, view, classes, mend, jumps, prunerecordings, name, learn, fix, place, depth, study, skyline, pavement, checks, repeat, register, walkfix, walkfixjs, reference, warp, marks, naip, drive, thermalindex]
       walk:
         description: 'For twin, fix or depth: the walk id, or latest'
         default: latest
@@ -263,7 +263,7 @@ jobs:
       # CAN THE SKYLINE PLACE A WALK (scan/tools/skyline_study.py, SCAN-H11 option 1): the sky in each picture against
       # the shade map's model seen from every placement; scored against the check points. CPU, free.
       - name: Run actions/setup-python@v5 (skyline)
-        if: ${{ inputs.task == 'skyline' || inputs.task == 'pavement' || inputs.task == 'place' || inputs.task == 'checks' || inputs.task == 'register' || inputs.task == 'walkfix' || inputs.task == 'segment' || inputs.task == 'view' || inputs.task == 'classes' || inputs.task == 'mend' || inputs.task == 'name' || inputs.task == 'learn' }}
+        if: ${{ inputs.task == 'skyline' || inputs.task == 'pavement' || inputs.task == 'place' || inputs.task == 'checks' || inputs.task == 'register' || inputs.task == 'walkfix' || inputs.task == 'segment' || inputs.task == 'view' || inputs.task == 'classes' || inputs.task == 'mend' || inputs.task == 'jumps' || inputs.task == 'name' || inputs.task == 'learn' }}
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -303,6 +303,20 @@ jobs:
         run: |
           set -o pipefail
           node scan/tools/twin-r2.mjs prune-recordings | tee prune.txt
+
+      # DID THE PHONE'S OWN PLACE JUMP? (mend_study.py --jumps, 2026-11-21): the walk's poses only. Quick, free.
+      - name: A walk's poses looked over for jumps
+        if: ${{ inputs.task == 'jumps' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WALK: ${{ inputs.walk }}
+          NO_PICTURES: '1'
+        run: |
+          set -o pipefail
+          pip install --quiet pillow numpy scipy
+          node scan/tools/twin-r2.mjs get "$WALK" twin | tee jumps.txt
+          python scan/tools/mend_study.py twin --jumps 2>&1 | grep -v '^Shapes tidied' | tee -a jumps.txt
 
       # A WALK MENDED BY ITSELF (scan/tools/mend_study.py, 2026-11-21): where two stretches of the walk saw one place, the
       # second slid onto the first; half the slides solve, the other half judge. CPU, free. Numbers only.
@@ -705,6 +719,7 @@ jobs:
             disagree) cat disagree.txt 2>/dev/null || echo "no report: see the step above" ;;
             view) cat view.txt 2>/dev/null || echo "no 3D view: see the step above" ;;
             prunerecordings) cat prune.txt 2>/dev/null || echo "nothing listed: see the step above" ;;
+            jumps) cat jumps.txt 2>/dev/null || echo "no poses read: see the step above" ;;
             mend) cat mend.txt 2>/dev/null || echo "nothing mended: see the step above" ;;
             classes) cat classes.txt 2>/dev/null || echo "no classes: see the step above" ;;
             learn) cat learn.txt 2>/dev/null || echo "nothing learned: see the step above" ;;

@@ -890,6 +890,38 @@ TREE_NAMES = {"tree", "trunk", "palm", "evergreen"}   # the picture model's name
 PHONE_KIND = {3: "built", 8: "built", 4: "tree", 5: "paved", 6: "paved", 7: "grass", 9: "movable", 10: "movable"}  # label + 1
 
 
+TREE_TALL = 2.0   # m: growth this tall over the ground beside it is a tree; lower is a plant (a shrub, a bed, tall grass)
+
+
+def tree_or_plant(xyz, veg, col=0.75):
+    """A TREE IS TALL (the owner, 2026-11-21: "the tree labels swallowed some real plant labels. There are some
+    shrubs, tall ornamental grasses, and perennial ornamental plants, that are now called trees"). The phone calls
+    every growing thing "tree" and the picture model is free with the word, so the word alone cannot say. Of the
+    points that are growth (veg), those in a 2.5 ft column whose growth tops out TREE_TALL or more over the lowest
+    points round it are tree -- the trunk under a crown with them -- and the rest are plant.
+    -> bool (n,), true where a growth point is a tree's."""
+    out = np.zeros(len(xyz), bool)
+    ok = np.isfinite(xyz).all(1) & (np.abs(xyz) < 1e5).all(1)
+    if not (veg & ok).any():
+        return out
+    ci = np.floor(xyz[:, 0] / col).astype(np.int64)
+    cj = np.floor(xyz[:, 2] / col).astype(np.int64)
+    ci -= ci[ok].min(); cj -= cj[ok].min()
+    W, H = int(ci[ok].max()) + 3, int(cj[ok].max()) + 3
+    top = np.full((W, H), -np.inf)
+    low = np.full((W, H), np.inf)
+    v = veg & ok
+    np.maximum.at(top, (ci[v] + 1, cj[v] + 1), xyz[v, 1])
+    np.minimum.at(low, (ci[ok] + 1, cj[ok] + 1), xyz[ok, 1])
+    base = low.copy()                      # the lowest point in the column or the eight round it
+    for dx in (-1, 0, 1):
+        for dz in (-1, 0, 1):
+            base = np.minimum(base, np.roll(np.roll(low, dx, 0), dz, 1))
+    tall = (top - base) >= TREE_TALL
+    out[v] = tall[ci[v] + 1, cj[v] + 1]
+    return out
+
+
 def voted(d, w, reach=24.4):
     """NAME PIXELS, NOT SHAPES; VOTE ONTO THE POINTS (docs/SCAN-REVIEW.md A; measured in docs/SCAN-PLAN.md 36: 97%
     of the owner's own names with ground as one kind, 89% with the kinds of ground apart; movable things not found).
@@ -934,6 +966,9 @@ def voted(d, w, reach=24.4):
     stand = np.isin(phone, [VOTE_KINDS.index("built"), VOTE_KINDS.index("tree")])
     kind = np.where(stand, phone, np.where(pic > 0, pic, phone))
     kind[w["drop"]] = 0
+    TR, PL = VOTE_KINDS.index("tree"), VOTE_KINDS.index("plant")
+    veg = np.isin(kind, (TR, PL))
+    kind[veg] = np.where(tree_or_plant(w["xyz"], veg)[veg], TR, PL)
     return kind, pic, phone, margin
 
 
