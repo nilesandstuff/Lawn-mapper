@@ -3569,3 +3569,21 @@ WHAT THIS SHOWS: there is no single jump of the size of the two garage walls. Wh
 came on over the walk, or in steps of a yard or less.
 HARD, tree and plant by height: the walk's kinds tree 105,557, plant 5,243 (they were 110,699 and 101); the joined
 cloud tree 67,023, plant 4,071 (62,610 and 8,484). NOT SEEN by the owner yet.
+
+## 47. The owner's suspicion of the walk's start, and a way to try it by eye (2026-11-21)
+
+THE OWNER: "I still can't shake the suspicion that it was somehow related to being between r2 and r3. Because the
+live fix did jump a noticeable amount once r3 was checked... Could it have been that the jump wasn't in the phone's
+position, but where we're mapping the points?... MAYBE we should discard the points that have been collected
+before all references have been marked?"
+HARD (the code, read again for this): a depth point is made by the app from the camera's pose in ARCORE'S SESSION
+FRAME and kept as it is (app.js addPoints <- f.depth.at); the roof-corner fix is applied only when a walk is put
+on the MAP, and the 3D view draws the session frame. So the fix jumping at R3 moved the lidar drawing on the phone
+and moved NO kept point. What the owner saw jump at R3 is real and is the map placement.
+SPECULATION (the core session's): the owner's timing may still be right for another reason: a phone's tracking is
+least settled in a session's first minute or two, so what is seen then can lie off from what is seen later.
+NOT TESTED by numbers.
+BUILT so the owner can try it: the 3D view has a slider "Hide the walk's start" (what was seen before a minute of
+the walk is not drawn; in the joined cloud a point's time is when it was LAST seen, so only what the start alone
+saw goes), and says at what minute each roof corner was marked. If hiding the start to just past the last corner
+leaves ONE garage wall, the remedy the owner proposes is the right one for now.

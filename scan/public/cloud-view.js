@@ -143,16 +143,17 @@ function build() {
   geo.setAttribute('position', new THREE.BufferAttribute(D.pos, 3));
   geo.setAttribute('tint', new THREE.BufferAttribute(new Float32Array(D.n * 3), 3));
   geo.setAttribute('state', new THREE.BufferAttribute(D.state, 1));
+  geo.setAttribute('tsec', new THREE.BufferAttribute(D.t, 1));
   // 1: Google's street shapes. 2: DEPTH THE PHONE WAS NOT SURE OF -- a weak record with depth confidence under 0.05
   // (2026-11-21: on the first walk that kept them they were 208,184 of 423,182 records, reaching 60 ft from the camera
   // and 53 ft above it, and the owner saw "a bubble... dozens of meters tall"), or in the joined cloud a point only
   // the smoothed depth saw. Hidden until asked for.
   geo.setAttribute('kind', new THREE.BufferAttribute(Float32Array.from(D.flags, (f, i) => (f & 2 ? 1 : (f & 4) && D.dconf[i] < 13 ? 2 : 0)), 1));
   material = new THREE.ShaderMaterial({
-    uniforms: { size: { value: 6 }, focus: { value: 10 }, band: { value: 1 }, outside: { value: 1 }, showErased: { value: 0 }, google: { value: 1 }, unsure: { value: 0 }, sharp: { value: 0 }, px: { value: 1 } },
+    uniforms: { size: { value: 6 }, focus: { value: 10 }, band: { value: 1 }, outside: { value: 1 }, showErased: { value: 0 }, google: { value: 1 }, unsure: { value: 0 }, sharp: { value: 0 }, tmin: { value: -1 }, px: { value: 1 } },
     vertexShader: `
-      attribute vec3 tint; attribute float state; attribute float kind;
-      uniform float size, focus, band, outside, showErased, google, unsure, sharp, px;
+      attribute vec3 tint; attribute float state; attribute float kind; attribute float tsec;
+      uniform float size, focus, band, outside, showErased, google, unsure, sharp, tmin, px;
       varying vec3 vC;
       void main() {
         vec4 mv = modelViewMatrix * vec4(position, 1.0);
@@ -162,7 +163,7 @@ function build() {
         // a real walk everything outside the band vanished and the owner saw "only a very small slice of the walk".
         // In Look every point is drawn whole (sharp 0).
         bool inFocus = sharp < 0.5 || abs(d - focus) <= band;
-        bool gone = (state > 0.5 && showErased < 0.5) || (kind > 0.5 && kind < 1.5 && google < 0.5) || (kind > 1.5 && unsure < 0.5) || (!inFocus && outside < 0.5) || d < 0.05;
+        bool gone = tsec < tmin || (state > 0.5 && showErased < 0.5) || (kind > 0.5 && kind < 1.5 && google < 0.5) || (kind > 1.5 && unsure < 0.5) || (!inFocus && outside < 0.5) || d < 0.05;
         vC = state > 0.5 ? vec3(1.0, 0.15, 0.15) : (inFocus ? tint : mix(vec3(0.10, 0.11, 0.14), tint * 0.6 + 0.06, 0.6));
         gl_Position = gone ? vec4(2.0, 2.0, 2.0, 1.0) : projectionMatrix * mv;
         gl_PointSize = inFocus ? clamp(size * px * 3.0 / max(d, 0.4), 2.0 * px, 16.0 * px) : 1.5 * px;
@@ -220,9 +221,10 @@ const M = new THREE.Matrix4(), MV = new THREE.Matrix4();
 function under(x, y, r, wantErased, fn) {
   const s = $('#stage'), w = s.clientWidth, h = s.clientHeight;
   MV.copy(camera.matrixWorldInverse); M.multiplyMatrices(camera.projectionMatrix, MV);
-  const e = M.elements, v = MV.elements, focus = material.uniforms.focus.value, half = material.uniforms.band.value, g = material.uniforms.google.value > 0.5, uns = material.uniforms.unsure.value > 0.5, r2 = r * r, P = D.pos;
+  const e = M.elements, v = MV.elements, focus = material.uniforms.focus.value, half = material.uniforms.band.value, g = material.uniforms.google.value > 0.5, uns = material.uniforms.unsure.value > 0.5, tm = material.uniforms.tmin.value, r2 = r * r, P = D.pos;
   for (let i = 0; i < D.n; i++) {
     if ((D.state[i] > 0.5) !== wantErased) continue;
+    if (D.t[i] < tm) continue;
     if (!g && (D.flags[i] & 2)) continue;
     if (!uns && (D.flags[i] & 4) && D.dconf[i] < 13 && !(D.flags[i] & 2)) continue;
     const X = P[i * 3], Y = P[i * 3 + 1], Z = P[i * 3 + 2];
@@ -251,11 +253,13 @@ function setState(idx, v) { for (const i of idx) D.state[i] = v; points.geometry
 function tally() {
   if (!material || !$('#tally')) return;
   const g = material.uniforms.google.value > 0.5, u = material.uniforms.unsure.value > 0.5, se = material.uniforms.showErased.value > 0.5;
-  let shown = 0, hg = 0, hu = 0, he = 0, bad = 0;
+  let shown = 0, hg = 0, hu = 0, he = 0, bad = 0, ht = 0;
+  const tm0 = material.uniforms.tmin.value;
   const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
   for (let i = 0; i < D.n; i++) {
     const f = D.flags[i], x = D.pos[i * 3], y = D.pos[i * 3 + 1], z = D.pos[i * 3 + 2];
     if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) { bad++; continue; }
+    if (D.t[i] < tm0) { ht++; continue; }
     if (D.state[i] > 0.5 && !se) { he++; continue; }
     if (f & 2) { if (!g) { hg++; continue; } } else if ((f & 4) && D.dconf[i] < 13 && !u) { hu++; continue; }
     shown++;
@@ -264,7 +268,7 @@ function tally() {
   const ft = (j) => (shown ? Math.round((hi[j] - lo[j]) * FT) : 0);
   let tl = [Infinity, Infinity], th = [-Infinity, -Infinity];
   for (const q of D.track) { if (q[1] < tl[0]) tl[0] = q[1]; if (q[1] > th[0]) th[0] = q[1]; if (q[3] < tl[1]) tl[1] = q[3]; if (q[3] > th[1]) th[1] = q[3]; }
-  $('#tally').textContent = `Drawn now: ${shown.toLocaleString()} of ${D.n.toLocaleString()} points, lying ${ft(0)} x ${ft(2)} ft and ${ft(1)} ft high. Hidden: ${hu.toLocaleString()} unsure depth, ${hg.toLocaleString()} Google's, ${he.toLocaleString()} erased${bad ? `, ${bad.toLocaleString()} with no place` : ''}. `
+  $('#tally').textContent = `Drawn now: ${shown.toLocaleString()} of ${D.n.toLocaleString()} points, lying ${ft(0)} x ${ft(2)} ft and ${ft(1)} ft high. Hidden: ${hu.toLocaleString()} unsure depth, ${hg.toLocaleString()} Google's, ${he.toLocaleString()} erased${ht ? `, ${ht.toLocaleString()} seen before the minute chosen` : ''}${bad ? `, ${bad.toLocaleString()} with no place` : ''}. `
     + `This walk: ${/^\d{13}$/.test(walk) ? new Date(Number(walk)).toLocaleString() : walk}, ${D.keys.length} photos. The path: ${D.track.length.toLocaleString()} poses, ${D.track.length ? Math.round((th[0] - tl[0]) * FT) : 0} x ${D.track.length ? Math.round((th[1] - tl[1]) * FT) : 0} ft. Read: ${U.read || ''}. Page of 21 Nov, c.`;
 }
 function note() {
@@ -304,6 +308,27 @@ function wire() {
   $('#colour').addEventListener('change', colour);
   $('#outside').addEventListener('change', (e) => { material.uniforms.outside.value = e.target.checked ? 1 : 0; });
   $('#google').addEventListener('change', (e) => { material.uniforms.google.value = e.target.checked ? 1 : 0; tally(); });
+  /* HIDE THE WALK'S START (2026-11-21; the owner: the garage was first seen "between checking r2 and r3"; "MAYBE we
+     should discard the points that have been collected before all references have been marked?"). A slider hides
+     what was seen before a minute of the walk, so that can be tried by eye; the page says when each roof corner was
+     marked. In the joined cloud a point's time is when it was LAST seen, so only what the start alone saw goes. */
+  { const el = $('#from'), say = $('#from-say');
+    if (el && say) {
+      const end = D.track.length ? D.track[D.track.length - 1][0] : 0;
+      el.max = String(Math.max(1, Math.ceil(end / 6)));           // tenths of a minute
+      let marksSay = '';
+      part('live.json').then((r) => (r.ok ? r.json() : null)).then((j) => {
+        const ms = (j?.marks || []).filter((m) => Number.isFinite(m.odo));
+        if (!ms.length || D.track.length < 2) return;
+        let odo = 0; const at = [[0, D.track[0][0]]];
+        for (let i = 1; i < D.track.length; i++) { odo += Math.hypot(D.track[i][1] - D.track[i - 1][1], D.track[i][2] - D.track[i - 1][2], D.track[i][3] - D.track[i - 1][3]); at.push([odo, D.track[i][0]]); }
+        const when = (o) => { let k = 0; while (k < at.length - 1 && at[k][0] < o) k++; return at[k][1]; };
+        marksSay = ' Roof corners marked at ' + ms.map((m) => `${(when(m.odo) / 60).toFixed(1)} min (${m.id})`).join(', ') + '.';
+        upd();
+      }).catch(() => {});
+      const upd = () => { const min = Number(el.value) / 10; material.uniforms.tmin.value = min > 0 ? min * 60 : -1; say.textContent = (min > 0 ? `hiding what was seen before ${min.toFixed(1)} min` : 'the whole walk') + ` of ${(end / 60).toFixed(1)} min.` + marksSay; tally(); };
+      el.addEventListener('input', upd); upd();
+    } }
   $('#unsure')?.addEventListener('change', (e) => { material.uniforms.unsure.value = e.target.checked ? 1 : 0; tally(); });
   $('#erased').addEventListener('change', (e) => { material.uniforms.showErased.value = e.target.checked ? 1 : 0; });
   $('#undo').addEventListener('click', () => { const s = U.undo.pop(); if (s) setState(s.idx, s.was); });

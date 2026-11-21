@@ -158,8 +158,10 @@ def main():
     kind = np.where(kv.sum(1) > 0, kv.argmax(1), 0).astype(np.uint8)
     looks = np.bincount(np.unique(inv.astype(np.int64) * (PH.max() + 1) + PH) // (PH.max() + 1), minlength=n)
     smooth_only = np.bincount(inv, 1 - SM, n) == 0
-    t0 = np.full(n, np.inf)
-    np.minimum.at(t0, inv, TT)
+    # a point's time is when it was LAST seen: the page can hide the walk's start, and then only what the start alone
+    # saw should go
+    t0 = np.full(n, -np.inf)
+    np.maximum.at(t0, inv, TT)
     keep = np.arange(n)[:CAP]
     TR, PL = T.VOTE_KINDS.index("tree"), T.VOTE_KINDS.index("plant")
     veg = np.isin(kind, (TR, PL))
