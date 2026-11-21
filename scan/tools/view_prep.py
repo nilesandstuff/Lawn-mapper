@@ -123,6 +123,19 @@ def main():
                 mins = (recs[:, 0] // 60).astype(int)
                 c = np.bincount(mins[hi], minlength=mins.max() + 1)
                 print("  Records over 15 ft above the camera, by the minute of the walk: " + ", ".join(f"{i}: {int(v):,}" for i, v in enumerate(c)) + f" (of {int(hi.sum()):,}).")
+            # HOW WIDE EACH LIES (2026-11-21: in the 3D view the owner sees the path wide and the points in one small
+            # slice of it): widths only, east-west and north-south and in height, the middle 90%.
+            def wide(a):
+                return " x ".join(f"{(np.percentile(a[:, j], 95) - np.percentile(a[:, j], 5)) * S.FT:.0f}" for j in (0, 2, 1)) + " ft (two ways flat, then height)"
+            is_cloud = np.arange(len(recs)) < n_cloud
+            sure = ~is_cloud & (la[:, 2] >= 13)
+            print(f"  HOW WIDE: the track {wide(track[:, 1:4])}; the cloud's records {wide(recs[is_cloud, 2:5])}; the weak ones with confidence 0.05 and up ({int(sure.sum()):,}) {wide(recs[sure, 2:5]) if sure.sum() > 20 else '-'}; all the weak ones {wide(recs[~is_cloud, 2:5]) if (~is_cloud).sum() > 20 else '-'}.")
+            mins = (recs[:, 0] // 60).astype(int)
+            print("  The cloud's records by the minute they were seen: " + ", ".join(f"{i}: {int(v):,}" for i, v in enumerate(np.bincount(mins[is_cloud], minlength=mins.max() + 1)))
+                  + "; the track's poses by the minute: " + ", ".join(f"{i}: {int(v):,}" for i, v in enumerate(np.bincount((track[:, 0] // 60).astype(int)))) + ".")
+            again = (la[:, 3] & 8) > 0
+            print(f"  The cloud's records seen again from another place: {int((is_cloud & again).sum()):,}; the same spot (2 in cube) holding more than one of the cloud's records: "
+                  f"{100 * (1 - len(np.unique(np.floor(recs[is_cloud, 2:5] / 0.05).astype(np.int64), axis=0)) / max(1, int(is_cloud.sum()))):.0f}% of them are repeats.")
             t_half = np.percentile(np.hypot(track[:, 1] - np.median(track[:, 1]), track[:, 3] - np.median(track[:, 3])), 90)
             print(f"  The track reaches {t_half * S.FT:.0f} ft from its middle (9 in 10 of its poses); the records' middle distance from it, flat on the ground: {np.median(spanxz) * S.FT:.0f} ft; within 15 ft of the track's middle {100 * (spanxz < 4.57).mean():.0f}%.")
     except Exception as e:

@@ -145,6 +145,12 @@ def main():
     rec = np.zeros(len(keep), dtype=[("p", "<f4", 3), ("t", "<f4"), ("c", "u1", 3), ("kind", "u1"), ("looks", "u1"), ("src", "u1"), ("pad", "u1", 2)])
     rec["p"], rec["t"], rec["c"], rec["kind"] = pos[keep], t0[keep], np.clip(col[keep], 0, 255), kind[keep]
     rec["looks"], rec["src"] = np.minimum(looks[keep], 255), smooth_only[keep]
+    def wide(a):
+        return " x ".join(f"{(np.percentile(a[:, j], 95) - np.percentile(a[:, j], 5)) * S.FT:.0f}" for j in (0, 2, 1)) + " ft (two ways flat, then height)"
+    cams = np.array([k["c2w"][:3, 3] for k in keys if "c2w" in k])
+    print(f"  HOW WIDE: the photos' cameras {wide(cams)}; the track {wide(w['track'][:, 1:4]) if len(w['track']) > 5 else '-'}; the joined points {wide(pos[keep])}; those the camera measured {wide(pos[keep][~smooth_only[keep]]) if (~smooth_only[keep]).sum() > 20 else '-'}.")
+    turn = np.array([k["c2w"][:3, 2] for k in keys if "c2w" in k])
+    print(f"  The photos look {len(np.unique(np.round(turn, 1), axis=0))} different ways (to a tenth); the photos' cameras sit at {len(np.unique(np.round(cams, 0), axis=0))} different places (to 3 ft).")
     rec.tofile(os.path.join(d, "view-dense.bin"))
     by = np.bincount(kind[keep], minlength=nk)
     print(f"The photos' own depth, joined: {photos} photos gave {n_raw:,} measured cells and {n_smooth:,} from the smoothed depth (within {FAR * S.FT:.0f} / {FAR_SMOOTH * S.FT:.0f} ft, sky left out); "
