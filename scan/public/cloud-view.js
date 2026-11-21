@@ -25,7 +25,10 @@ import { LABELS } from '/lib/twin.js';
 const $ = (s) => document.querySelector(s);
 const walk = new URLSearchParams(location.search).get('walk');
 const FT = 3.281;
-const part = (name, init) => fetch(`/api/scan/twin?walk=${encodeURIComponent(walk)}&part=${encodeURIComponent(name)}`, { credentials: 'same-origin', ...init });
+// A PART THAT IS MADE AGAIN (the view's files, the erasing) is never taken from the browser's own store: the site
+// let a part be kept an hour, so a walk prepared again was shown from its first, wrong file (2026-11-21).
+const FRESH = /^(view|erased|seg|study|judged)/;
+const part = (name, init) => fetch(`/api/scan/twin?walk=${encodeURIComponent(walk)}&part=${encodeURIComponent(name)}`, { credentials: 'same-origin', ...(FRESH.test(name) ? { cache: 'no-store' } : {}), ...init });
 const LABEL_COL = { terrain: [120, 190, 90], road: [110, 110, 125], sidewalk: [185, 185, 195], building: [215, 90, 70], structure: [235, 160, 70], tree: [40, 150, 70],
   object: [170, 110, 210], vehicle: [80, 140, 235], water: [70, 200, 230], sky: [255, 0, 255], person: [255, 255, 255], unlabeled: [150, 150, 150] };
 const SOURCE = [['measured by the camera', [150, 175, 200]], ['seen again from another place', [90, 210, 120]], ['weak depth', [245, 160, 50]], ["Google's street shapes", [175, 110, 235]], ['a spike', [255, 70, 70]]];
@@ -42,6 +45,7 @@ async function main() {
   if (!names.length) { $('#status').textContent = 'No twin was kept for this walk.'; return; }
   const buf = async (n) => (await part(n)).arrayBuffer();
   const clouds = [], labs = [];
+  const got = { cloud: 0, weak: 0, labels: 0, failed: 0 };
   /* THE PHOTOS' OWN DEPTH, JOINED (scan/tools/dense_prep.py, 2026-11-20; ?dense=1): every depth cell of every photo
      put into space with its photo's colour and its pixel's kind, merged in 3 in cubes. Not the walk's own records,
      so nothing here can be erased. A point: Float32 x, y, z, t; Uint8 r, g, b, kind, photos that saw it, source
@@ -63,7 +67,11 @@ async function main() {
   if (!DENSE) for (const [pre, lab] of [['cloud-', 'labels-'], ['weak-', 'weaklabels-']]) {
     for (const n of names.filter((x) => new RegExp(`^${pre}\\d+\\.bin$`).test(x))) {
       $('#status').textContent = `Reading ${n}…`;
-      const f = new Float32Array(await buf(n)), recs = Math.floor(f.length / 6), ln = n.replace(pre, lab);
+      let ab = null;
+      for (let t = 0; t < 3 && !ab; t++) { const r = await part(n).catch(() => null); if (r?.ok) { const x = await r.arrayBuffer().catch(() => null); if (x && x.byteLength % 24 === 0) ab = x; } }
+      if (!ab) { got.failed++; continue; }
+      got[pre === 'cloud-' ? 'cloud' : 'weak']++;
+      const f = new Float32Array(ab), recs = Math.floor(f.length / 6), ln = n.replace(pre, lab);
       let u = names.includes(ln) ? new Uint8Array(await buf(ln)) : null;
       if (u && u.length !== recs * 4) u = null;
       clouds.push(f.subarray(0, recs * 6)); labs.push(u || new Uint8Array(recs * 4));
@@ -71,6 +79,7 @@ async function main() {
       if (pre === 'weak-') { const L = labs[labs.length - 1]; for (let i = 0; i < recs; i++) L[i * 4 + 3] |= 4; }
     }
   }
+  U.read = DENSE ? 'the joined cloud, one file' : `${got.cloud} cloud parts, ${got.weak} weak parts${got.failed ? `, ${got.failed} PARTS COULD NOT BE READ` : ''}`;
   const N = D.n = clouds.reduce((a, f) => a + f.length / 6, 0);
   D.pos = new Float32Array(N * 3); D.t = new Float32Array(N); D.ground = new Float32Array(N);
   D.label = new Uint8Array(N); D.lconf = new Uint8Array(N); D.dconf = new Uint8Array(N); D.flags = new Uint8Array(N); D.state = new Float32Array(N);
@@ -233,7 +242,29 @@ function pick(x, y, anywhere = false) {
 }
 
 function setState(idx, v) { for (const i of idx) D.state[i] = v; points.geometry.attributes.state.needsUpdate = true; U.dirty = true; note(); clearTimeout(U.saveTimer); U.saveTimer = setTimeout(save, 4000); }
+/** WHAT IS DRAWN, COUNTED BY THE SHADER'S OWN RULES (2026-11-21: the owner saw one small slice of a walk whose points
+ *  span the yard; the page itself now says what it holds and what it hides, and how wide each lies). */
+function tally() {
+  if (!material || !$('#tally')) return;
+  const g = material.uniforms.google.value > 0.5, u = material.uniforms.unsure.value > 0.5, se = material.uniforms.showErased.value > 0.5;
+  let shown = 0, hg = 0, hu = 0, he = 0, bad = 0;
+  const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+  for (let i = 0; i < D.n; i++) {
+    const f = D.flags[i], x = D.pos[i * 3], y = D.pos[i * 3 + 1], z = D.pos[i * 3 + 2];
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) { bad++; continue; }
+    if (D.state[i] > 0.5 && !se) { he++; continue; }
+    if (f & 2) { if (!g) { hg++; continue; } } else if ((f & 4) && D.dconf[i] < 13 && !u) { hu++; continue; }
+    shown++;
+    if (x < lo[0]) lo[0] = x; if (x > hi[0]) hi[0] = x; if (y < lo[1]) lo[1] = y; if (y > hi[1]) hi[1] = y; if (z < lo[2]) lo[2] = z; if (z > hi[2]) hi[2] = z;
+  }
+  const ft = (j) => (shown ? Math.round((hi[j] - lo[j]) * FT) : 0);
+  let tl = [Infinity, Infinity], th = [-Infinity, -Infinity];
+  for (const q of D.track) { if (q[1] < tl[0]) tl[0] = q[1]; if (q[1] > th[0]) th[0] = q[1]; if (q[3] < tl[1]) tl[1] = q[3]; if (q[3] > th[1]) th[1] = q[3]; }
+  $('#tally').textContent = `Drawn now: ${shown.toLocaleString()} of ${D.n.toLocaleString()} points, lying ${ft(0)} x ${ft(2)} ft and ${ft(1)} ft high. Hidden: ${hu.toLocaleString()} unsure depth, ${hg.toLocaleString()} Google's, ${he.toLocaleString()} erased${bad ? `, ${bad.toLocaleString()} with no place` : ''}. `
+    + `The path: ${D.track.length.toLocaleString()} poses, ${D.track.length ? Math.round((th[0] - tl[0]) * FT) : 0} x ${D.track.length ? Math.round((th[1] - tl[1]) * FT) : 0} ft. Read: ${U.read || ''}. Page of 21 Nov, c.`;
+}
 function note() {
+  tally();
   let e = 0; for (let i = 0; i < D.n; i++) if (D.state[i] > 0.5) e++;
   const say = { look: 'Look: turn with one finger, move and zoom with two; tap a point to make it the centre.', inspect: 'Inspect: tap a point in focus to see its photo.', erase: 'Erase: drag over points in focus.', restore: 'Bring back: drag over red points in focus.' }[U.mode];
   $('#say').textContent = `${say} ${e.toLocaleString()} erased.`;
@@ -268,8 +299,8 @@ function wire() {
   $('#size').addEventListener('input', () => { material.uniforms.size.value = Number($('#size').value); });
   $('#colour').addEventListener('change', colour);
   $('#outside').addEventListener('change', (e) => { material.uniforms.outside.value = e.target.checked ? 1 : 0; });
-  $('#google').addEventListener('change', (e) => { material.uniforms.google.value = e.target.checked ? 1 : 0; });
-  $('#unsure')?.addEventListener('change', (e) => { material.uniforms.unsure.value = e.target.checked ? 1 : 0; });
+  $('#google').addEventListener('change', (e) => { material.uniforms.google.value = e.target.checked ? 1 : 0; tally(); });
+  $('#unsure')?.addEventListener('change', (e) => { material.uniforms.unsure.value = e.target.checked ? 1 : 0; tally(); });
   $('#erased').addEventListener('change', (e) => { material.uniforms.showErased.value = e.target.checked ? 1 : 0; });
   $('#undo').addEventListener('click', () => { const s = U.undo.pop(); if (s) setState(s.idx, s.was); });
   $('#save').addEventListener('click', () => { U.dirty = true; save(); });

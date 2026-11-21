@@ -3447,3 +3447,12 @@ NOT EXPLAINED: the single fan in the joined view's screenshot has a point on the
 again after this change, it is a different fault.
 ALSO: run 455 failed to read 4 photos from the bucket, and the kinds for the view were then not made (the classes
 are numbered by photo); the kinds file of the run before stays in place.
+
+SECTION 43, CORRECTED (2026-11-21, later): drawing every point whole in Look DID NOT cure it; the owner's next
+screenshots (the new page, slider to 200 ft) still showed one fan in the joined view and one blob in the walk's own.
+So the focus band was at most part of it. FOUND SINCE: the site let a twin part be kept by the browser an hour
+(Cache-Control max-age=3600), so a walk prepared again was shown from its FIRST files -- the first joined cloud was
+the cubes most photos saw, the place the phone stood longest, which fits one fan. Now no-store for parts that are
+made again. NOT EXPLAINED: the blob in the walk's own view (its parts are not made again). The page now says under
+the picture what it read, what it draws and hides and how wide each lies ("Drawn now: ..."), and reads each part up
+to three times, counting those it could not read. WAITING for that line from the owner's phone.

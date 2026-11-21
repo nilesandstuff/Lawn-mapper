@@ -76,7 +76,9 @@ export async function twin(request, env, url, { isAdmin, noteThermal = null, not
     if (part) {
       const o = await env.TWIN.get(keyOf(walk, part));
       if (!o) return json({ error: 'Not found' }, 404);
-      return new Response(o.body, { headers: { 'Content-Type': typeOf(part), 'Cache-Control': 'private, max-age=3600' } });
+      // a part that is made again (the 3D view's files, the erasing, the names, the studies) is never kept by the
+      // browser: kept an hour, a walk prepared again was shown from its first file (2026-11-21)
+      return new Response(o.body, { headers: { 'Content-Type': typeOf(part), 'Cache-Control': /^(view|erased|seg|study|judged|live|meta)/.test(part) ? 'private, no-store' : 'private, max-age=3600' } });
     }
     const parts = [];
     let cursor;
