@@ -12,7 +12,7 @@
 import { execFileSync } from 'node:child_process';
 import { BUCKET, readObject, walkOk } from './twin-r2.mjs';
 import { DB_NAME } from './d1.mjs';
-import { walkPairs, acrossWalks, cornerLean, shareCorners } from '../lib/corners.js';
+import { walkPairs, acrossWalks, cornerLean, shareCorners, axesOf, offsetOf } from '../lib/corners.js';
 
 const IN = 39.3701, FT = 3.28084;
 const inch = (m) => `${m >= 0 ? '+' : '-'}${Math.abs(m * IN).toFixed(0)} in`;
@@ -63,6 +63,11 @@ async function main() {
       for (const a of w.again) console.log(`    ${L(a.key)} marked again after ${Math.round(a.walkedM * FT)} ft: the phone had it ${(a.movedM * IN).toFixed(0)} in from where it had it before`);
     }
     scales.push(...walks.filter((w) => w.scale && w.scale.n >= 3).map((w) => w.scale.k));
+    // every walk's pairs together: is it one percentage, a map stretched one way, or a fixed shortfall?
+    const all = walks.flatMap((w) => w.pairs), pc = (k) => `${((k - 1) * 100).toFixed(1)}%`;
+    const ax = axesOf(all), off = offsetOf(all);
+    if (ax) console.log(`  ALL ITS PAIRS TOGETHER (${ax.n}, wild ones left out): one scale ${pc(ax.k)} leaves ${(ax.oneRmsM * IN).toFixed(0)} in; a scale each way, east-west ${pc(ax.kE)} and north-south ${pc(ax.kN)}, leaves ${(ax.rmsM * IN).toFixed(0)} in.`);
+    if (off) console.log(`  OR A FIXED SHORTFALL (the wall under the eave, not the roof's corner): the phone ${pc(off.k)} and ${(off.cM * IN).toFixed(0)} in short on every pair, leaves ${(off.rmsM * IN).toFixed(0)} in.`);
     if (walks.length < 2) { console.log('  One walk only: nothing to tell the phone\'s drift from the map\'s corners.'); continue; }
     const A = acrossWalks(walks);
     console.log('  THE SAME PAIR OVER THE WALKS:');

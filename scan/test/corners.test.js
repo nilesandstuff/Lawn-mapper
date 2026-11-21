@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { walkPairs, acrossWalks, cornerLean, cornerKey, scaleOf, shareCorners } from '../lib/corners.js';
+import { walkPairs, acrossWalks, cornerLean, cornerKey, scaleOf, shareCorners, axesOf, offsetOf } from '../lib/corners.js';
 
 // three corners on the map; the roof's real corner C is 0.4 m farther along x than the map has it
 const MAP = { A: [0, 0], B: [10, 0], C: [10, 8] };
@@ -51,4 +51,16 @@ test('a corner a few inches off in another walk is the same corner', () => {
   const a = walkPairs(walk(0.2, [1, 2])), m2 = walk(-1, [3, 3]).map((m) => ({ ...m, map: [m.map[0] + 0.07, m.map[1] - 0.05] })), b = walkPairs(m2);
   assert.equal(shareCorners([a, b]), 3);
   assert.ok(acrossWalks([a, b]).every((p) => p.n === 2));
+});
+
+test('a map stretched 4% east-west only is told from one scale, and a fixed shortfall from a percentage', () => {
+  const C = [[0, 0], [30, 2], [28, 25], [-3, 22], [12, 40]];
+  const stretched = C.map((c, i) => ({ id: i, map: [c[0] * 1.04, c[1]], ar: turn(c, 0.4, [2, 2]), odo: i * 10, by: 'ROOF' }));
+  const ax = axesOf(walkPairs(stretched).pairs);
+  assert.ok(Math.abs(ax.kE - 1 / 1.04) < 1e-6 && Math.abs(ax.kN - 1) < 1e-6);
+  assert.ok(ax.rmsM < 1e-6 && ax.oneRmsM > 0.05);
+  const pairs = [10, 20, 30, 40, 60].map((m) => ({ mapM: m, phoneM: m - 0.8, diffM: -0.8 }));
+  const off = offsetOf(pairs);
+  assert.ok(Math.abs(off.k - 1) < 1e-9 && Math.abs(off.cM - 0.8) < 1e-9);
+  assert.equal(axesOf([{ mapM: 10, phoneM: 10, diffM: 0, dE: 10, dN: 0 }, { mapM: 20, phoneM: 20, diffM: 0, dE: 20, dN: 0 }, { mapM: 5, phoneM: 5, diffM: 0, dE: 5, dN: 0 }]), null);
 });

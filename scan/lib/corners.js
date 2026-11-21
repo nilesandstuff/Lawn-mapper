@@ -30,7 +30,7 @@ export function walkPairs(marks) {
     let best = null;
     for (const p of by.get(keys[i])) for (const q of by.get(keys[j])) { const w = Math.abs(p.odo - q.odo); if (!best || w < best.w) best = { p, q, w }; }
     const mapM = d2(best.p.map, best.q.map), phoneM = d2(best.p.ar, best.q.ar);
-    pairs.push({ a: keys[i], b: keys[j], mapM, phoneM, diffM: phoneM - mapM, walkedM: best.w });
+    pairs.push({ a: keys[i], b: keys[j], mapM, phoneM, diffM: phoneM - mapM, walkedM: best.w, dE: best.q.map[0] - best.p.map[0], dN: best.q.map[1] - best.p.map[1] });
   }
   for (const [key, list] of by) {
     const s = [...list].sort((a, b) => a.odo - b.odo);
@@ -51,6 +51,43 @@ export function scaleOf(pairs) {
   const k = P.reduce((a, p) => a + p.phoneM * p.mapM, 0) / P.reduce((a, p) => a + p.mapM * p.mapM, 0);
   const restM = P.map((p) => p.phoneM / k - p.mapM), rms = (v) => Math.sqrt(v.reduce((a, x) => a + x * x, 0) / v.length);
   return { k, n: P.length, restM, rmsM: rms(restM), rawRmsM: rms(P.map((p) => p.diffM)) };
+}
+
+/**
+ * IS THE MAP STRETCHED ONE WAY? (2026-11-21: the phone read every map short, but by a different percentage on
+ * different maps and on different pairs of one map.) Over many pairs, phone^2 = (kE x dE)^2 + (kN x dN)^2 has two
+ * unknowns, the phone's scale against the map's east-west and against its north-south; a map whose metres are right
+ * gives the same number for both. Pairs far out (over `wild` of their length) are left out: a wrong aim, not a
+ * scale. -> { kE, kN, n, rmsM (what is left), oneRmsM (what one scale for both leaves), k } or null when the pairs
+ * do not span both ways.
+ */
+export function axesOf(pairs, { wild = 0.15 } = {}) {
+  const P = (pairs || []).filter((p) => p.mapM > 3 && Number.isFinite(p.dE) && Math.abs(p.diffM) < wild * p.mapM);
+  if (P.length < 3) return null;
+  let a = 0, b = 0, c = 0, u = 0, v = 0;
+  for (const p of P) { const x = p.dE * p.dE, y = p.dN * p.dN, z = p.phoneM * p.phoneM; a += x * x; b += x * y; c += y * y; u += x * z; v += y * z; }
+  const det = a * c - b * b;
+  if (!(det > 1e-6 * a * c)) return null;
+  const A = (u * c - v * b) / det, B = (a * v - b * u) / det;
+  if (!(A > 0 && B > 0)) return null;
+  const kE = Math.sqrt(A), kN = Math.sqrt(B), rms = (f) => Math.sqrt(P.reduce((t, p) => t + f(p) ** 2, 0) / P.length);
+  const k = P.reduce((t, p) => t + p.phoneM * p.mapM, 0) / P.reduce((t, p) => t + p.mapM * p.mapM, 0);
+  return { kE, kN, k, n: P.length, rmsM: rms((p) => p.phoneM - Math.hypot(kE * p.dE, kN * p.dN)), oneRmsM: rms((p) => p.phoneM - k * p.mapM) };
+}
+
+/**
+ * OR IS IT A FIXED AMOUNT? The map's corners are the roof's; if the phone's aim lands on the wall under the eave,
+ * every pair reads short by about the same length whatever its own. phone = k x map - c, by least squares over the
+ * pairs (same ones as axesOf). -> { k, cM, n, rmsM } or null when the pairs are all of one length.
+ */
+export function offsetOf(pairs, { wild = 0.15 } = {}) {
+  const P = (pairs || []).filter((p) => p.mapM > 3 && Math.abs(p.diffM) < wild * p.mapM);
+  if (P.length < 3) return null;
+  const n = P.length, mx = P.reduce((t, p) => t + p.mapM, 0) / n, my = P.reduce((t, p) => t + p.phoneM, 0) / n;
+  const sxx = P.reduce((t, p) => t + (p.mapM - mx) ** 2, 0), sxy = P.reduce((t, p) => t + (p.mapM - mx) * (p.phoneM - my), 0);
+  if (!(sxx > 25 * n)) return null;
+  const k = sxy / sxx, cM = k * mx - my;
+  return { k, cM, n, rmsM: Math.sqrt(P.reduce((t, p) => t + (p.phoneM - k * p.mapM + cM) ** 2, 0) / n) };
 }
 
 /**
