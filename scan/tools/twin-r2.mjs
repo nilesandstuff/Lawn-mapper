@@ -29,7 +29,15 @@ async function list(base, token, prefix) {
   const out = [];
   let cursor = '';
   do {
-    const j = await (await fetch(`${base}/objects?prefix=${encodeURIComponent(prefix)}&per_page=1000${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`, { headers: { Authorization: `Bearer ${token}` } })).json();
+    // the listing is asked again when the API refuses it or answers with nothing: two runs reading one large walk at
+    // once met the rate limit, and the second died here on an empty answer (run 475, 2026-11-21)
+    let j = null;
+    for (let t = 0; t < 8 && !j; t++) {
+      if (t) await new Promise((ok) => setTimeout(ok, Math.min(60000, 4000 * 2 ** (t - 1))));
+      const r = await fetch(`${base}/objects?prefix=${encodeURIComponent(prefix)}&per_page=1000${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`, { headers: { Authorization: `Bearer ${token}` } }).catch(() => null);
+      j = r?.ok ? await r.json().catch(() => null) : null;
+    }
+    if (!j) throw new Error('the bucket would not list its parts (asked eight times)');
     if (!j.success) throw new Error(`the list failed: ${JSON.stringify(j.errors || '').slice(0, 200)}`);
     out.push(...(j.result || []));
     cursor = j.result_info?.is_truncated ? j.result_info.cursor : '';
