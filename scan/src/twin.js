@@ -52,6 +52,7 @@ export async function twin(request, env, url, { isAdmin, noteThermal = null, not
         if (/\/segments-[a-z-]+\.jpg$/.test(o.key)) x.segments = (x.segments || 0) + 1;
         if (/\/study-[a-z0-9]+\.json$/.test(o.key)) x.studies = (x.studies || 0) + 1;
         if (/\/seg\.json$/.test(o.key)) x.nameable = true;
+        if (/\/view\.json$/.test(o.key)) x.viewable = true; // made ready for the 3D view (cloud.html)
         x.uploaded = Math.max(x.uploaded, Date.parse(o.uploaded) || 0);
         walks.set(w, x);
       }

@@ -261,7 +261,7 @@ function tally() {
   let tl = [Infinity, Infinity], th = [-Infinity, -Infinity];
   for (const q of D.track) { if (q[1] < tl[0]) tl[0] = q[1]; if (q[1] > th[0]) th[0] = q[1]; if (q[3] < tl[1]) tl[1] = q[3]; if (q[3] > th[1]) th[1] = q[3]; }
   $('#tally').textContent = `Drawn now: ${shown.toLocaleString()} of ${D.n.toLocaleString()} points, lying ${ft(0)} x ${ft(2)} ft and ${ft(1)} ft high. Hidden: ${hu.toLocaleString()} unsure depth, ${hg.toLocaleString()} Google's, ${he.toLocaleString()} erased${bad ? `, ${bad.toLocaleString()} with no place` : ''}. `
-    + `The path: ${D.track.length.toLocaleString()} poses, ${D.track.length ? Math.round((th[0] - tl[0]) * FT) : 0} x ${D.track.length ? Math.round((th[1] - tl[1]) * FT) : 0} ft. Read: ${U.read || ''}. Page of 21 Nov, c.`;
+    + `This walk: ${/^\d{13}$/.test(walk) ? new Date(Number(walk)).toLocaleString() : walk}, ${D.keys.length} photos. The path: ${D.track.length.toLocaleString()} poses, ${D.track.length ? Math.round((th[0] - tl[0]) * FT) : 0} x ${D.track.length ? Math.round((th[1] - tl[1]) * FT) : 0} ft. Read: ${U.read || ''}. Page of 21 Nov, c.`;
 }
 function note() {
   tally();

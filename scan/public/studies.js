@@ -15,7 +15,11 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&l
 
 async function studies() {
   const { twins } = await get('/api/scan/twins');
-  const studied = (twins || []).filter((t) => t.segments > 0 || t.studies > 0);
+  // A WALK MADE READY FOR THE 3D VIEW IS LISTED TOO (2026-11-21). The list showed only walks with a study or a cut
+  // kept beside them; the walk of 2026-11-20 had neither, so it was not here, and the owner, sent to "today's walk",
+  // opened the newest one that was: the day before's. An evening of a wrong viewer was the right viewer on the
+  // wrong walk.
+  const studied = (twins || []).filter((t) => t.segments > 0 || t.studies > 0 || t.viewable);
   if (!studied.length) return;
   const walks = await get('/api/scan/walks').catch(() => ({ walks: [] }));
   const when = new Map((walks.walks || []).map((w) => [w.id, w]));
@@ -30,7 +34,7 @@ async function studies() {
   }));
   rows.sort((a, b) => (b.at || 0) - (a.at || 0));
   document.getElementById('studies-list').innerHTML = rows.map(({ t, place, at }) =>
-    `<li style="margin:.35rem 0"><a href="/twin.html?walk=${encodeURIComponent(t.walk)}#${t.studies ? 'studies' : 'segments'}">${t.studies ? `${t.studies} stud${t.studies === 1 ? 'y' : 'ies'}` : 'Cut into things'}</a> &middot; <a href="/cloud.html?walk=${encodeURIComponent(t.walk)}">every point in 3D</a>${t.nameable ? ` &middot; <a href="/name.html?walk=${encodeURIComponent(t.walk)}">name the things</a>` : ''} <span class="dim">: ${esc(place)}, walked ${at ? esc(new Date(at).toLocaleString()) : esc(t.walk)}</span></li>`).join('');
+    `<li style="margin:.35rem 0"><a href="/twin.html?walk=${encodeURIComponent(t.walk)}${t.studies ? '#studies' : t.segments ? '#segments' : ''}">${t.studies ? `${t.studies} stud${t.studies === 1 ? 'y' : 'ies'}` : t.segments ? 'Cut into things' : 'Its twin'}</a> &middot; <a href="/cloud.html?walk=${encodeURIComponent(t.walk)}">every point in 3D</a>${t.nameable ? ` &middot; <a href="/name.html?walk=${encodeURIComponent(t.walk)}">name the things</a>` : ''} <span class="dim">: ${esc(place)}, walked ${at ? esc(new Date(at).toLocaleString()) : esc(t.walk)}${t.keys ? `, ${t.keys} photos` : ''}</span></li>`).join('');
   document.getElementById('studies').hidden = false;
 }
 studies().catch(() => {});

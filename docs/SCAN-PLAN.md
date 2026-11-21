@@ -3456,3 +3456,13 @@ the cubes most photos saw, the place the phone stood longest, which fits one fan
 made again. NOT EXPLAINED: the blob in the walk's own view (its parts are not made again). The page now says under
 the picture what it read, what it draws and hides and how wide each lies ("Drawn now: ..."), and reads each part up
 to three times, counting those it could not read. WAITING for that line from the owner's phone.
+
+SECTIONS 42-43, SETTLED (2026-11-21): THE OWNER WAS ON THE WRONG WALK, AND THE CORE SESSION SENT THEM THERE. The
+page's own line read "354,102 points ... 279,614 Google's ... 2,481 poses ... joined cloud 35,968": the walk of
+2026-11-19 (section 39), not the one of 2026-11-20 (423,182 records, 1,783 poses). The start page's list showed
+only walks with a study or a cut beside them; the new walk had neither and was not listed. Everything seen fits the
+older walk: 17,000 camera points (the blob), a joined cloud from 26 photos (the fan), the unsure points under the
+path. The focus band, the stale files and the unsure depth were real faults and stay mended, but none was this.
+CHANGED: a walk made ready for the 3D view is listed; the list says each walk's photos; the 3D page says which walk
+it shows. LESSON: before sending the owner to look at a thing, check from their side that it can be reached, and
+have the page say what it is showing.
