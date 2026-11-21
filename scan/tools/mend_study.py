@@ -35,7 +35,7 @@ STRETCH = 6.0     # m of walking that share one offset
 APART = 3         # stretches apart (walking) before two sightings count as two visits
 FAR = 12.0        # m: only depth this near is used (the phone's depth worsens with distance)
 VOX = 0.15        # m: the cubes the sliding counts in
-REACH = 3.0       # m: how far a stretch may be slid, flat (1.8 until run 463, where one slide lay at that limit)
+REACH = 2.4       # m: how far a stretch may be slid, flat (1.8 in run 463: one slide at the limit; 3.0 in run 465: one believed, the rest unclear)
 REACH_UP = 0.9    # m: ... and in height
 CLEAR = 1.15      # the best slide must hold this many times the points of the best one elsewhere
 LEAST = 150       # points of the second stretch that must land in the first's cubes
@@ -191,6 +191,33 @@ def main():
         print(f"    a believed slide, stretches {b__ - a_} apart ({(b__ - a_) * STRETCH * S.FT:.0f} ft of walking): {np.hypot(dd[0], dd[2]) * 39.37:.0f} in flat, {dd[1] * 39.37:+.0f} in in height; {best:,} points land, {zero:,} did before sliding.")
     if unclear:
         print(f"    the unclear ones' best slides were {', '.join(f'{u * 39.37:.0f}' for u in sorted(unclear))} in flat.")
+    # ARCORE'S OWN RECORD OF ITS DRIFT (2026-11-21). The app drops an anchor every 10 m of walking and at the walk's end
+    # keeps where ARCore then holds each (live.json crumbs: at0 when dropped, at at the end; scan/lib/semantics.js).
+    # ARCore moves an anchor when it corrects its map, so at - at0 is its own answer to "how far has this stretch of
+    # the walk drifted". Used here as the mending, and checked against the slides this study found by itself.
+    crumbs = None
+    try:
+        crumbs = (json.load(open(os.path.join(d, "live.json"))) or {}).get("crumbs")
+    except Exception:
+        crumbs = None
+    if crumbs:
+        co = np.array([c["odo"] for c in crumbs], dtype=np.float64)
+        cm = np.array([[c["at"][k] - c["at0"][k] for k in "xyz"] for c in crumbs], dtype=np.float64)
+        order = np.argsort(co)
+        co, cm = co[order], cm[order]
+        flatm, upm = np.hypot(cm[:, 0], cm[:, 2]), cm[:, 1]
+        print(f"  ARCORE'S OWN ANCHORS: {len(co)} along the walk (one each 33 ft); it moved them {np.median(np.linalg.norm(cm, axis=1)) * 39.37:.0f} in in the middle, the most {np.linalg.norm(cm, axis=1).max() * 39.37:.0f} in; flat the most {flatm.max() * 39.37:.0f} in; in height {upm.min() * 39.37:+.0f} to {upm.max() * 39.37:+.0f} in.")
+        centre = (np.arange(n) + 0.5) * STRETCH
+        c_arc = np.stack([np.interp(centre, co, cm[:, k]) for k in range(3)], 1)
+        for a_, b__, dd, _, best, zero in ties:
+            pr = c_arc[b__] - c_arc[a_]
+            print(f"    a believed slide of {np.hypot(dd[0], dd[2]) * 39.37:.0f} in flat, {dd[1] * 39.37:+.0f} in height: ARCore's anchors say {np.hypot(pr[0], pr[2]) * 39.37:.0f} in flat, {pr[1] * 39.37:+.0f} in height; what they leave of it {np.linalg.norm(dd - pr) * 39.37:.0f} in (of {np.linalg.norm(dd) * 39.37:.0f}).")
+        if "--write" in args:
+            with open(os.path.join(d, "mend.json"), "w") as f:
+                json.dump({"stretchM": STRETCH, "offsets": np.round(c_arc, 4).tolist(), "ties": 0, "from": "ARCore's own anchors", "judged": False}, f)
+            print("  Offsets kept (mend.json), from ARCore's anchors.")
+        return
+    print("  No anchors kept with this walk (live.json crumbs).")
     if len(ties) < 2:
         print("  Too few believed slides to mend the walk.")
         return

@@ -3515,3 +3515,12 @@ reading 4.5-5 ft (SPECULATION: not shown to be the same thing).
 NEXT (run now): the search widened to 10 ft flat and 3 ft in height; with fewer than six believed slides the walk
 is mended from all of them, NOT JUDGED BY NUMBERS, and the mended joined cloud goes to the 3D view (?dense=2) for
 the owner's eyes on the garage corner.
+
+SECTION 45, third run (run 465; the search widened to 10 ft flat, 3 ft in height):
+HARD: believed slides 1 (79 in flat, +24 in in height; 457 points land, 94 before); not clear 4 (best 48, 53, 60,
+116 in). No mending made.
+WHAT THIS SHOWS: sliding what stands is not a sure enough measure on this walk: a wider search made it less sure,
+not more. The slides it does believe agree on the size (4.5 to 6.5 ft flat, 1 to 2 ft in height).
+NEXT: ARCore's own record. The app drops an anchor every 10 m and the walk's live.json keeps where ARCore held each
+at the end (crumbs: at0, at). at - at0 is ARCore's own account of its drift along the walk; mend_study.py now uses
+it as the mending, prints it beside the believed slides, and the mended cloud is built from it.
