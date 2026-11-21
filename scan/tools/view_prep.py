@@ -93,6 +93,40 @@ def main():
         print("Kinds for the view: " + ", ".join(f"{T.VOTE_KINDS[k]} {int((kinds == k).sum()):,}" for k in np.argsort(-np.bincount(kinds, minlength=len(T.VOTE_KINDS))) if k and (kinds == k).any()) + f"; none {int((kinds == 0).sum()):,}.")
     except Exception as e:
         print(f"Kinds for the view: not made ({type(e).__name__}: {str(e)[:100]}).")
+    # WHERE THE RECORDS LIE (2026-11-21; the owner: "the points are mostly all stacked vertically in a bubble in what
+    # seems to be the front yard... dozens of meters tall"): the cloud's and the weak ones apart, by how sure the depth
+    # was, how far from the camera and how far above it.
+    try:
+        la = []
+        for pat, lp in ((r"cloud-\d+\.bin", "labels-"), (r"weak-\d+\.bin", "weaklabels-")):
+            for n in sorted(x for x in os.listdir(d) if re.fullmatch(pat, x)):
+                cnt = os.path.getsize(os.path.join(d, n)) // 24
+                f = os.path.join(d, lp + n.split("-")[1])
+                raw = np.fromfile(f, dtype=np.uint8) if os.path.exists(f) else np.zeros(0, np.uint8)
+                la.append(raw.reshape(-1, 4) if len(raw) == 4 * cnt else np.zeros((cnt, 4), np.uint8))
+        la = np.concatenate(la) if la else np.zeros((0, 4), np.uint8)
+        if len(track) >= 2 and len(la) == len(recs):
+            cam = S.cam_at(track, recs[:, 0].astype(np.float64))
+            rng, up = np.linalg.norm(recs[:, 2:5] - cam, axis=1), recs[:, 3] - cam[:, 1]
+            spanxz = np.hypot(recs[:, 2] - np.median(track[:, 1]), recs[:, 4] - np.median(track[:, 3]))
+            for name, m in (("the cloud's", np.arange(len(recs)) < n_cloud), ("the weak ones", np.arange(len(recs)) >= n_cloud)):
+                for sub, mm in (("all", m), ("depth confidence under 0.05", m & (la[:, 2] < 13)), ("0.05 to 0.2", m & (la[:, 2] >= 13) & (la[:, 2] < 51)), ("0.2 and up", m & (la[:, 2] >= 51))):
+                    if mm.sum() < 50:
+                        continue
+                    q = lambda a, f: np.percentile(a[mm], f) * S.FT  # noqa: E731
+                    print(f"  WHERE {name} records lie, {sub} ({int(mm.sum()):,}): from the camera {q(rng, 10):.0f} / {q(rng, 50):.0f} / {q(rng, 90):.0f} ft (low / middle / high); "
+                          f"above the camera {q(up, 10):.0f} / {q(up, 50):.0f} / {q(up, 90):.0f} / {q(up, 99):.0f} ft (.. / highest 1%); over 15 ft above it {100 * (up[mm] > 4.57).mean():.0f}%; "
+                          f"called sky {100 * (la[mm, 0] == 2).mean():.0f}%, tree {100 * (la[mm, 0] == 4).mean():.0f}%; flags: Google's {100 * ((la[mm, 3] & 2) > 0).mean():.0f}%.")
+            # is one stretch of the walk to blame? the records over 15 ft above the camera, by the minute they were seen
+            hi = up > 4.57
+            if hi.sum() > 100:
+                mins = (recs[:, 0] // 60).astype(int)
+                c = np.bincount(mins[hi], minlength=mins.max() + 1)
+                print("  Records over 15 ft above the camera, by the minute of the walk: " + ", ".join(f"{i}: {int(v):,}" for i, v in enumerate(c)) + f" (of {int(hi.sum()):,}).")
+            t_half = np.percentile(np.hypot(track[:, 1] - np.median(track[:, 1]), track[:, 3] - np.median(track[:, 3])), 90)
+            print(f"  The track reaches {t_half * S.FT:.0f} ft from its middle (9 in 10 of its poses); the records' middle distance from it, flat on the ground: {np.median(spanxz) * S.FT:.0f} ft; within 15 ft of the track's middle {100 * (spanxz < 4.57).mean():.0f}%.")
+    except Exception as e:
+        print(f"  Where the records lie: not worked out ({type(e).__name__}: {str(e)[:100]}).")
     rgb.tofile(os.path.join(d, "view-rgb.bin"))
     with open(os.path.join(d, "view.json"), "w") as f:
         json.dump({"records": int(len(recs)), "cloud": int(n_cloud), "weak": int(len(recs) - n_cloud), "coloured": int(rgb[:, 3].sum()),
