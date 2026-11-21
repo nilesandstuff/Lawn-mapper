@@ -108,12 +108,24 @@ def main():
     near = (dt > 0) & (dt < 0.5)
     if not near.any():
         near = dt > 0
-    big = np.flatnonzero(near & (stp > 0.4))
+    # a walker covers 16-22 in between two poses, so the bar is 30 in; the LARGEST are printed, not the first by time
+    # (run 467 printed twelve ordinary steps and not the 39 in one)
+    big = np.flatnonzero(near & (stp > 0.76))
+    big = big[np.argsort(-stp[big])]
     seg0 = np.concatenate([[0], np.cumsum(stp)])
-    print(f"JUMPS: {len(track):,} poses; a step between two poses half a second apart or less is {np.median(stp[near]) * 39.37:.1f} in in the middle, 99 in 100 under {np.percentile(stp[near], 99) * 39.37:.0f} in, the most {stp[near].max() * 39.37:.0f} in. Steps over 16 in: {len(big)}.")
+    print(f"JUMPS: {len(track):,} poses; a step between two poses half a second apart or less is {np.median(stp[near]) * 39.37:.1f} in in the middle, 99 in 100 under {np.percentile(stp[near], 99) * 39.37:.0f} in, the most {stp[near].max() * 39.37:.0f} in. Steps over 30 in: {len(big)}.")
     for i in big[:12]:
         dv = track[i + 1, 1:4] - track[i, 1:4]
         print(f"    a jump of {stp[i] * 39.37:.0f} in ({np.hypot(dv[0], dv[2]) * 39.37:.0f} flat, {dv[1] * 39.37:+.0f} in height) at {track[i, 0] / 60:.1f} min, {seg0[i] * S.FT:.0f} ft walked.")
+    # a step OUT OF LINE with the walking round it (a walker's steps follow each other; a jump does not): each step
+    # against the mean of the two before and the two after
+    if len(stp) > 8:
+        v = np.diff(track[:, 1:4], axis=0)
+        around = (np.roll(v, 1, 0) + np.roll(v, 2, 0) + np.roll(v, -1, 0) + np.roll(v, -2, 0)) / 4
+        off = np.linalg.norm(v - around, axis=1)
+        off[:2] = 0; off[-2:] = 0
+        odd = np.argsort(-off)[:6]
+        print("    the steps most out of line with the walking round them: " + ", ".join(f"{off[i] * 39.37:.0f} in at {track[i, 0] / 60:.1f} min" for i in odd if off[i] > 0.3) + ".")
     # gaps in the poses themselves (the phone's tracking lost, or the page stalled)
     gaps = np.flatnonzero(dt > 1.5)
     if len(gaps):
