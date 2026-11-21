@@ -162,6 +162,8 @@ def main():
     if "--jumps" in args:
         return
 
+    kind_maps = {}
+    mf = os.path.join(d, "segments-masks.npz")
     if os.path.exists(mf):
         z = np.load(mf, allow_pickle=False)
         if "pan" in z and "names" in z:
