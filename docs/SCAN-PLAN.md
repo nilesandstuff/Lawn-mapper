@@ -3669,3 +3669,55 @@ stops the lidar being drawn is not checked.
 SO, the order of work: (1) a walk made consistent with itself after it ends (the start cut, the jumps taken back,
 then second sightings as checks); (2) its place on the map found afterwards and kept for the next walk; (3) the
 live view cut down to what tells the walker how the tracking is doing.
+
+## 50. The roof corners' distances, phone against map, over the walks (2026-11-21)
+
+The owner: "frequent disagreement between the reference points... measure the exact distances between the corners
+of my roofs to see if our lidar shapes are good or not." Task `corners` (scan/tools/corners.mjs, scan/lib/corners.js):
+the distance between two marked corners as the phone had it (its own frame, no placing of the walk) against the
+distance between the same two corners on the placement map. Run 480: the last 40 walks; 20 marked two corners or
+more, on 6 maps.
+
+HARD:
+  - THE PHONE READS SHORT OF THE MAP IN EVERY WALK WITH THREE CORNERS (15 of 15): -1.1% to -6.9%, middle -2.3%.
+  - BY A DIFFERENT AMOUNT ON DIFFERENT MAPS, AND STEADILY ON EACH. The owner's lot (10 walks): -4.2, -5.0, -5.1,
+    -6.3, -6.9% in the five walks whose marks all hold (two more, -1.3 and -1.5%, each hold one mark 20 ft out, a
+    wrong aim: their pairs are off 150 in with or without the scale). The work lot (3 walks): -1.8, -2.2, -2.3%.
+    Two other maps: -2.1, -2.4% and -1.6%. One more: -5.0% and -1.1% (the second fits no scale: 26 in left).
+  - WITH ITS ONE SCALE TAKEN OUT, A WALK'S PAIRS AGREE WITH THE MAP TO 3-13 in (3, 5, 5, 9, 10 in on the owner's
+    lot; 3, 9, 13 in on the work lot). As measured they are off 28-58 in.
+  - The same pair over the walks, owner's lot: 23.0 ft on the map read -12 to -16 in in six walks; 88.7 ft read
+    -53 to -78 in in six; 76.9 ft read -25 to -62 in in six. So about in proportion to the length (5%, 6%, 4%),
+    not one fixed shortfall.
+  - Today's big walk (2,373 ft, tracking jumps and all): -6.3%, 3 in left. Its three first marks were made in the
+    first 157 ft, before any jump.
+  - A corner marked again: 6-29 in from where the phone had it before, after 360-830 ft of walking (five cases);
+    82 in after 834 ft on the 2026-11-20 walk; and 414 and 691 in on two walks of 2026-11-18 (a wrong aim or a jump,
+    not drift).
+  - The map's metres are the plain sphere's (scan/lib/frames.js toLocal, radius 6,378,137 m both ways): against the
+    real earth that is under 0.3% either way. Not the cause.
+
+Known before: the water session's test page measured the phone 3.6% and 4.4% short on two walks (water/FINDINGS.md);
+SCAN-H13 (walk of 2026-11-05) found AR distances 0.0% from the map's between four check marks placed on the photo
+(ground marks, not roof corners).
+
+NOT KNOWN: which of the two is off. Nothing here has been checked against a tape.
+
+SPECULATION (none of it measured):
+  - One phone would be short by one percentage everywhere if the fault were its own; it is 5% at the owner's lot and
+    2% at three others. That leans to something about the place: the map's corners (the lidar there is the 2016
+    county flight, about 3 points a square metre, so a roof's edge is known to a point spacing at best, and a roof
+    found a cell too wide all round reads long between corners), or what the aim lands on.
+  - THE EAVES. The map's corners are the roof's. If the phone's aim lands on the wall or the gutter line under the
+    corner, every pair reads short by about twice the overhang, a fixed length. The owner's lot pairs look more like
+    a percentage than a fixed length, but three pairs cannot tell the two apart well.
+  - ARCore's own scale varying from session to session by several percent is possible (visual-inertial scale is
+    weakest in slow walking) but would not sort itself by map.
+  - The owner's "6 ft hill reads 4.5-5 ft" is the same direction but four times the size; not explained by this.
+
+WHAT WOULD SETTLE IT: one length by tape or laser between two of the owner's roof corners (or one wall, eave end
+to eave end, and separately the wall itself corner to corner). Asked of the owner 2026-11-21.
+
+WHAT IT MEANS MEANWHILE: the live fit already lets the phone's scale move up to 7% once three corners are marked
+15 m apart (walkref.js MAX_SCALE); with two corners it cannot, and a 5% difference over 90 ft is 4.5 ft of
+"disagreement between the reference points". That alone is enough to explain most of what the owner sees.
