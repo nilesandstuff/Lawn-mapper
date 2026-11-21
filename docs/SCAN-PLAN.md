@@ -3603,3 +3603,9 @@ DECIDED (the owner's remedy): what a walk sees before every roof corner has been
 TO LOOK INTO: why the start lies off (the first minute against the rest: by how much, and does it happen on the
 other walks); the points that stay at the first wall's place late in the walk; walks that mark no corners have no
 cut at all.
+
+SECTION 47, the start left out (run 472, walk of 2026-11-20):
+HARD: every roof corner had been marked once at 1.7 min; 80 of 575 photos are before it. Kept points 125,660 (they
+were 157,913). The joined cloud from 495 photos: 309,147 points of 8 in (grass 148,301, tree 82,111, built 34,821,
+bare ground 18,197, paved 13,803, plant 4,560, fence 1,403, movable 874). The walk's kinds: grass 193,560, tree
+102,404, built 38,500, paved 19,133, plant 4,487, bare ground 2,331; none 61,770.
