@@ -3524,3 +3524,18 @@ not more. The slides it does believe agree on the size (4.5 to 6.5 ft flat, 1 to
 NEXT: ARCore's own record. The app drops an anchor every 10 m and the walk's live.json keeps where ARCore held each
 at the end (crumbs: at0, at). at - at0 is ARCore's own account of its drift along the walk; mend_study.py now uses
 it as the mending, prints it beside the believed slides, and the mended cloud is built from it.
+
+SECTION 45, fourth run (run 466; ARCore's own anchors as the mending):
+HARD: 32 anchors along the walk (one each 33 ft). At the walk's end ARCore had moved them 0 in in the middle, 15 in
+at most (flat 15 in at most; in height -0 to +3 in). For the one believed slide (79 in flat, +24 in in height)
+the anchors say 0 in flat, +0 in height: they leave 82 of its 82 in. The cloud "mended" from the anchors is
+therefore the joined cloud all but unchanged (view-mended.bin is kept; it is NOT a mending worth the owner's eyes).
+WHAT THIS SHOWS: ARCORE DID NOT CORRECT THIS WALK'S DRIFT. Its anchors hardly moved, while the walk's two sightings
+of a place lie 4.5-6.5 ft apart (the slides) and the owner sees two garage walls. The drift is one ARCore never
+noticed: it did not recognise the place the second time.
+NOT KNOWN: whether the believed slides are exactly right (one to three of them, the rest unclear); only that their
+size agrees with what the owner sees.
+NEXT: the pictures themselves. Features matched between the photos of the two visits to a place give how the
+second camera really stood against the first, with no need for depth to be dense; from those, the poses along the
+walk are adjusted (the same least squares as here, with turning as well as sliding). CPU, free. If that is not
+enough: the dense-depth model with pose correction, within the Modal allotment.
