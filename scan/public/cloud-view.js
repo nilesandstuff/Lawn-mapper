@@ -130,18 +130,22 @@ function build() {
   geo.setAttribute('position', new THREE.BufferAttribute(D.pos, 3));
   geo.setAttribute('tint', new THREE.BufferAttribute(new Float32Array(D.n * 3), 3));
   geo.setAttribute('state', new THREE.BufferAttribute(D.state, 1));
-  geo.setAttribute('kind', new THREE.BufferAttribute(Float32Array.from(D.flags, (f) => (f & 2 ? 1 : 0)), 1));
+  // 1: Google's street shapes. 2: DEPTH THE PHONE WAS NOT SURE OF -- a weak record with depth confidence under 0.05
+  // (2026-11-21: on the first walk that kept them they were 208,184 of 423,182 records, reaching 60 ft from the camera
+  // and 53 ft above it, and the owner saw "a bubble... dozens of meters tall"), or in the joined cloud a point only
+  // the smoothed depth saw. Hidden until asked for.
+  geo.setAttribute('kind', new THREE.BufferAttribute(Float32Array.from(D.flags, (f, i) => (f & 2 ? 1 : (f & 4) && D.dconf[i] < 13 ? 2 : 0)), 1));
   material = new THREE.ShaderMaterial({
-    uniforms: { size: { value: 6 }, focus: { value: 10 }, band: { value: 1 }, outside: { value: 1 }, showErased: { value: 0 }, google: { value: 1 }, px: { value: 1 } },
+    uniforms: { size: { value: 6 }, focus: { value: 10 }, band: { value: 1 }, outside: { value: 1 }, showErased: { value: 0 }, google: { value: 1 }, unsure: { value: 0 }, px: { value: 1 } },
     vertexShader: `
       attribute vec3 tint; attribute float state; attribute float kind;
-      uniform float size, focus, band, outside, showErased, google, px;
+      uniform float size, focus, band, outside, showErased, google, unsure, px;
       varying vec3 vC;
       void main() {
         vec4 mv = modelViewMatrix * vec4(position, 1.0);
         float d = -mv.z;
         bool inFocus = abs(d - focus) <= band;
-        bool gone = (state > 0.5 && showErased < 0.5) || (kind > 0.5 && google < 0.5) || (!inFocus && outside < 0.5) || d < 0.05;
+        bool gone = (state > 0.5 && showErased < 0.5) || (kind > 0.5 && kind < 1.5 && google < 0.5) || (kind > 1.5 && unsure < 0.5) || (!inFocus && outside < 0.5) || d < 0.05;
         vC = state > 0.5 ? vec3(1.0, 0.15, 0.15) : (inFocus ? tint : mix(vec3(0.02, 0.03, 0.06), tint, 0.28));
         gl_Position = gone ? vec4(2.0, 2.0, 2.0, 1.0) : projectionMatrix * mv;
         gl_PointSize = inFocus ? clamp(size * px * 3.0 / max(d, 0.4), 2.0 * px, 16.0 * px) : 1.5 * px;
@@ -199,10 +203,11 @@ const M = new THREE.Matrix4(), MV = new THREE.Matrix4();
 function under(x, y, r, wantErased, fn) {
   const s = $('#stage'), w = s.clientWidth, h = s.clientHeight;
   MV.copy(camera.matrixWorldInverse); M.multiplyMatrices(camera.projectionMatrix, MV);
-  const e = M.elements, v = MV.elements, focus = material.uniforms.focus.value, half = material.uniforms.band.value, g = material.uniforms.google.value > 0.5, r2 = r * r, P = D.pos;
+  const e = M.elements, v = MV.elements, focus = material.uniforms.focus.value, half = material.uniforms.band.value, g = material.uniforms.google.value > 0.5, uns = material.uniforms.unsure.value > 0.5, r2 = r * r, P = D.pos;
   for (let i = 0; i < D.n; i++) {
     if ((D.state[i] > 0.5) !== wantErased) continue;
     if (!g && (D.flags[i] & 2)) continue;
+    if (!uns && (D.flags[i] & 4) && D.dconf[i] < 13 && !(D.flags[i] & 2)) continue;
     const X = P[i * 3], Y = P[i * 3 + 1], Z = P[i * 3 + 2];
     const d = -(v[2] * X + v[6] * Y + v[10] * Z + v[14]);
     if (Math.abs(d - focus) > half) continue;
@@ -259,6 +264,7 @@ function wire() {
   $('#colour').addEventListener('change', colour);
   $('#outside').addEventListener('change', (e) => { material.uniforms.outside.value = e.target.checked ? 1 : 0; });
   $('#google').addEventListener('change', (e) => { material.uniforms.google.value = e.target.checked ? 1 : 0; });
+  $('#unsure')?.addEventListener('change', (e) => { material.uniforms.unsure.value = e.target.checked ? 1 : 0; });
   $('#erased').addEventListener('change', (e) => { material.uniforms.showErased.value = e.target.checked ? 1 : 0; });
   $('#undo').addEventListener('click', () => { const s = U.undo.pop(); if (s) setState(s.idx, s.was); });
   $('#save').addEventListener('click', () => { U.dirty = true; save(); });

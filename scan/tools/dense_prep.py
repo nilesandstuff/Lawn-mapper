@@ -117,11 +117,19 @@ def main():
         print("The photos kept no depth of their own: no joined cloud.")
         return
     P, C, K, PH, TT, SM = np.concatenate(P), np.concatenate(C).astype(np.float64), np.concatenate(K), np.concatenate(PH), np.concatenate(TT), np.concatenate(SM)
-    q = np.floor(P / VOX).astype(np.int64)
-    q -= q.min(0)
-    key = (q[:, 0] * (q[:, 1].max() + 1) + q[:, 1]) * (q[:, 2].max() + 1) + q[:, 2]
-    uq, inv = np.unique(key, return_inverse=True)
-    n = len(uq)
+    # EVENLY, NOT BY WHO SAW IT MOST (2026-11-21): the page takes CAP points. Choosing those most photos saw kept the
+    # place the phone stood longest (the roof corners being marked) and dropped the rest of the yard; the owner saw
+    # "a bubble". So the cubes grow until the whole walk fits.
+    vox = VOX
+    while True:
+        q = np.floor(P / vox).astype(np.int64)
+        q -= q.min(0)
+        key = (q[:, 0] * (q[:, 1].max() + 1) + q[:, 1]) * (q[:, 2].max() + 1) + q[:, 2]
+        uq, inv = np.unique(key, return_inverse=True)
+        n = len(uq)
+        if n <= CAP or vox > 0.5:
+            break
+        vox *= 1.2
     cnt = np.bincount(inv, minlength=n).astype(np.float64)
     pos = np.stack([np.bincount(inv, P[:, j], n) / cnt for j in range(3)], 1)
     col = np.stack([np.bincount(inv, C[:, j], n) / cnt for j in range(3)], 1)
@@ -133,16 +141,14 @@ def main():
     smooth_only = np.bincount(inv, 1 - SM, n) == 0
     t0 = np.full(n, np.inf)
     np.minimum.at(t0, inv, TT)
-    keep = np.arange(n)
-    if n > CAP:
-        keep = np.sort(np.argsort(-(looks * 1000 + cnt))[:CAP])
+    keep = np.arange(n)[:CAP]
     rec = np.zeros(len(keep), dtype=[("p", "<f4", 3), ("t", "<f4"), ("c", "u1", 3), ("kind", "u1"), ("looks", "u1"), ("src", "u1"), ("pad", "u1", 2)])
     rec["p"], rec["t"], rec["c"], rec["kind"] = pos[keep], t0[keep], np.clip(col[keep], 0, 255), kind[keep]
     rec["looks"], rec["src"] = np.minimum(looks[keep], 255), smooth_only[keep]
     rec.tofile(os.path.join(d, "view-dense.bin"))
     by = np.bincount(kind[keep], minlength=nk)
     print(f"The photos' own depth, joined: {photos} photos gave {n_raw:,} measured cells and {n_smooth:,} from the smoothed depth (within {FAR * S.FT:.0f} / {FAR_SMOOTH * S.FT:.0f} ft, sky left out); "
-          f"{n:,} points of {VOX * 39.37:.0f} in, {len(keep):,} kept for the page; seen by two photos or more {100 * (looks[keep] >= 2).mean():.0f}%, by five or more {100 * (looks[keep] >= 5).mean():.0f}%; only the smoothed depth saw {100 * smooth_only[keep].mean():.0f}%.")
+          f"{n:,} points of {vox * 39.37:.0f} in, {len(keep):,} kept for the page; seen by two photos or more {100 * (looks[keep] >= 2).mean():.0f}%, by five or more {100 * (looks[keep] >= 5).mean():.0f}%; only the smoothed depth saw {100 * smooth_only[keep].mean():.0f}%.")
     print("  By kind: " + ", ".join(f"{T.VOTE_KINDS[j]} {int(by[j]):,}" for j in np.argsort(-by) if j and by[j]) + f"; no kind {int(by[0]):,}.")
     print(f"  Against it, the walk's own kept points: {int((~w['drop']).sum()):,}.")
 

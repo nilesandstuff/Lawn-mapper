@@ -3410,3 +3410,22 @@ HARD:
   - The 17 full recordings from before 2026-11-20 were deleted on the owner's yes (3.98 GB); two of 2026-11-20 stay
     (0.82 GB).
 NOT YET SEEN by the owner; nothing here says whether the kinds are right on this walk.
+
+## 42. The "bubble" in today's 3D view (2026-11-21; run 452)
+
+THE OWNER: "the points are mostly all stacked vertically in a bubble in what seems to be the front yard... dozens
+of meters tall", while the path looked right.
+HARD (today's walk, 423,182 records):
+  - The cloud's 160,539: 5 / 8 / 18 ft from the camera (low / middle / high); 1% over 15 ft above it.
+  - The weak 262,643: 6 / 16 / 56 ft; 9% over 15 ft above the camera, the highest 1% 48 ft above it. Of them 208,184
+    have depth confidence under 0.05 (6 / 18 / 60 ft; 11% over 15 ft up; 53 ft). Those over 15 ft up are spread
+    over the walk's minutes, not one stretch.
+  - All records, flat on the ground: middle distance 61 ft from the track's middle; 6% within 15 ft of it. So the
+    walk's own records are NOT one bubble.
+  - The joined cloud sent the page the 330,000 cubes most photos saw, of 1.18 million.
+SPECULATION: what the owner saw was the joined view, and choosing by most-seen kept the place the phone stood
+longest (the roof corners). Or the walk's own view with the no-confidence points reaching 60 ft. NOT KNOWN which
+view; asked.
+CHANGED: the 3D view hides "depth the phone was not sure of" (weak, confidence under 0.05; in the joined view, seen
+only by the smoothed depth) until asked for; the wider look no longer records cells under 0.05 (the per-photo
+uncut raw depth still holds them); the joined cloud covers the whole walk evenly (its cubes grow until it fits).

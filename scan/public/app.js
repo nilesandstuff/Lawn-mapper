@@ -52,6 +52,7 @@ const CSS = { ref: '#2f7cf6', check: '#a54bd8', pin: '#e53935', lawn: '#4cc38a' 
 const LIDAR_LIVE = (() => { try { return new URLSearchParams(location.search).get('lidarfix') === '1'; } catch { return false; } })();
 const FAR_AGAIN = 3000;
 const DEPTH_EVERY = 250;
+const TWIN_WIDE_MIN = 0.05;   // the least depth confidence the twin's wider look keeps (the per-photo .rdepth keeps every cell)
 const TWIN_WIDE_EVERY = 1000; // ms between the twin's wider looks (every cell of the app's depth grid, weak ones flagged)
 const LIVE_RANGE = 30; // m: the live match and the walk's ground take depth this near, as far as the twin keeps it (track.js; 8 until 2026-11-08)
 const WALK_EVERY = 10000; // ms between placements of the whole walk (walkfix.js)
@@ -1248,6 +1249,9 @@ function frameWork(f) {
           if (!keepPoint(l, lc)) continue;
           if (l) { p.label = l; p.lconf = lc; }
           const c = A.conf ? A.conf(x, y) : null;
+          // a cell the phone gave next to no confidence is not a measurement: on the first walk that kept them
+          // (2026-11-20) they were half the walk's records, reaching 60 ft from the camera and 53 ft over it
+          if (c != null && c < TWIN_WIDE_MIN) continue;
           if (c != null) { p.dconf = c; if (f.depth.minConf != null && c < f.depth.minConf) p.weak = true; }
           wide.push(p);
         }
