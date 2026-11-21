@@ -126,6 +126,35 @@ def main():
         off[:2] = 0; off[-2:] = 0
         odd = np.argsort(-off)[:6]
         print("    the steps most out of line with the walking round them: " + ", ".join(f"{off[i] * 39.37:.0f} in at {track[i, 0] / 60:.1f} min" for i in odd if off[i] > 0.3) + ".")
+    # THE JUMPS AS STEPS TO TAKE BACK (2026-11-21, the walk of that day: the page logged the phone's tracking jumping
+    # 1.5 m and 4.1 m in one frame, and the poses show both). Where a step lies more than JUMP_M out of line with
+    # the walking round it, the part out of line is the jump; everything seen AFTER it is moved back by it, so the
+    # walk runs on unbroken. Whether the phone was right before the jump or after it is not known from this: the
+    # judge is the places seen twice.
+    JUMP_M = 0.9
+    steps = []
+    if len(stp) > 8:
+        v = np.diff(track[:, 1:4], axis=0)
+        # the MIDDLE of the four steps round it, not their mean: a jump must not colour its neighbours' ordinary steps
+        around = np.median(np.stack([np.roll(v, 1, 0), np.roll(v, 2, 0), np.roll(v, -1, 0), np.roll(v, -2, 0)]), axis=0)
+        out = v - around
+        offn = np.linalg.norm(out, axis=1)
+        offn[:2] = 0; offn[-2:] = 0
+        for i in np.flatnonzero(offn > JUMP_M):
+            if steps and track[i, 0] - steps[-1]["t"] < 2.0:      # one jump seen over two or three poses
+                steps[-1]["d"] = (np.array(steps[-1]["d"]) + out[i]).tolist()
+            else:
+                steps.append({"t": float(track[i, 0]), "d": out[i].tolist()})
+        for st in steps:
+            dj = np.array(st["d"])
+            print(f"    A JUMP TO TAKE BACK: {np.linalg.norm(dj) * 39.37:.0f} in ({np.hypot(dj[0], dj[2]) * 39.37:.0f} flat, {dj[1] * 39.37:+.0f} in height) at {st['t'] / 60:.1f} min.")
+    def jump_shift(t):
+        """What to add to a point seen at time t: the jumps before it, taken back."""
+        c = np.zeros(3)
+        for st in steps:
+            if st["t"] < t:
+                c -= np.array(st["d"])
+        return c
     # gaps in the poses themselves (the phone's tracking lost, or the page stalled)
     gaps = np.flatnonzero(dt > 1.5)
     if len(gaps):
@@ -227,6 +256,19 @@ def main():
     # keeps where ARCore then holds each (live.json crumbs: at0 when dropped, at at the end; scan/lib/semantics.js).
     # ARCore moves an anchor when it corrects its map, so at - at0 is its own answer to "how far has this stretch of
     # the walk drifted". Used here as the mending, and checked against the slides this study found by itself.
+    # THE JUMPS TAKEN BACK, judged at the places seen twice: for each believed slide, what is left of it
+    if steps:
+        seg_o = np.concatenate([[0], np.cumsum(np.linalg.norm(np.diff(track[:, 1:4], axis=0), axis=1))])
+        t_of = lambda s_: float(np.interp((s_ + 0.5) * STRETCH, seg_o, track[:, 0]))  # noqa: E731
+        print(f"  THE JUMPS TAKEN BACK ({len(steps)}), judged by the slides this study found by itself:")
+        for a_, b__, dd, _, best, zero in ties:
+            pr = jump_shift(t_of(b__)) - jump_shift(t_of(a_))
+            n_between = sum(1 for st in steps if t_of(a_) < st["t"] < t_of(b__))
+            print(f"    a slide of {np.hypot(dd[0], dd[2]) * 39.37:.0f} in flat, {dd[1] * 39.37:+.0f} in height ({n_between} jump{'s' if n_between != 1 else ''} between its two sightings, at {t_of(a_) / 60:.1f} and {t_of(b__) / 60:.1f} min): taking the jumps back leaves {np.linalg.norm(dd - pr) * 39.37:.0f} in of its {np.linalg.norm(dd) * 39.37:.0f}.")
+        if "--write" in args:
+            with open(os.path.join(d, "mend.json"), "w") as f:
+                json.dump({"steps": steps, "from": "the jumps in the poses, taken back", "judged": False}, f)
+            print("  Kept (mend.json): the jumps, to be taken back.")
     crumbs = None
     try:
         crumbs = (json.load(open(os.path.join(d, "live.json"))) or {}).get("crumbs")
@@ -244,7 +286,7 @@ def main():
         for a_, b__, dd, _, best, zero in ties:
             pr = c_arc[b__] - c_arc[a_]
             print(f"    a believed slide of {np.hypot(dd[0], dd[2]) * 39.37:.0f} in flat, {dd[1] * 39.37:+.0f} in height: ARCore's anchors say {np.hypot(pr[0], pr[2]) * 39.37:.0f} in flat, {pr[1] * 39.37:+.0f} in height; what they leave of it {np.linalg.norm(dd - pr) * 39.37:.0f} in (of {np.linalg.norm(dd) * 39.37:.0f}).")
-        if "--write" in args:
+        if "--write" in args and not steps:
             with open(os.path.join(d, "mend.json"), "w") as f:
                 json.dump({"stretchM": STRETCH, "offsets": np.round(c_arc, 4).tolist(), "ties": 0, "from": "ARCore's own anchors", "judged": False}, f)
             print("  Offsets kept (mend.json), from ARCore's anchors.")

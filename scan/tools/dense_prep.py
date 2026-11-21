@@ -85,12 +85,24 @@ def main():
             print("No mending kept for this walk: no mended cloud.")
             return
         M = json.load(open(mj))
+        if "steps" in M:
+            # the jumps in the poses, taken back: everything seen after a jump is moved back by it
+            jsteps = [(float(x["t"]), np.array(x["d"], dtype=np.float64)) for x in M["steps"]]
+            def shift(t):
+                c = np.zeros(3)
+                for tj, dj in jsteps:
+                    if tj < t:
+                        c -= dj
+                return c
+            M = {"offsets": [[0, 0, 0]], "stretchM": 1.0}
         offs, step = np.array(M["offsets"], dtype=np.float64), float(M["stretchM"])
         seg = np.concatenate([[0], np.cumsum(np.linalg.norm(np.diff(w["track"][:, 1:4], axis=0), axis=1))])
-        def shift(t):
+        def shift_by_stretch(t):
             f = np.interp(t, w["track"][:, 0], seg) / step - 0.5
             i = int(np.clip(np.floor(f), 0, len(offs) - 1)); j = min(len(offs) - 1, i + 1)
             return offs[i] + np.clip(f - i, 0, 1) * (offs[j] - offs[i])
+        if "steps" not in json.load(open(mj)):
+            shift = shift_by_stretch
     SKY = T.VOTE_KINDS.index("sky")
     P, C, K, PH, TT, SM = [], [], [], [], [], []
     n_raw = n_smooth = photos = 0

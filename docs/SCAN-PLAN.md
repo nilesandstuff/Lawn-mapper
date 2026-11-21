@@ -3609,3 +3609,28 @@ HARD: every roof corner had been marked once at 1.7 min; 80 of 575 photos are be
 were 157,913). The joined cloud from 495 photos: 309,147 points of 8 in (grass 148,301, tree 82,111, built 34,821,
 bare ground 18,197, paved 13,803, plant 4,560, fence 1,403, movable 874). The walk's kinds: grass 193,560, tree
 102,404, built 38,500, paved 19,133, plant 4,487, bare ground 2,331; none 61,770.
+
+## 48. The big walk of 2026-11-21 (owner's lot, 19 min, 2,373 ft, 900 photos): the phone's tracking jumped
+
+THE OWNER: the live fix "got messed up a few times" (they think by walking round trees and looking up), mostly
+righted itself, and was "decently off" at the end; one toast said the walk had lost its place and to look back at
+R2, which they ignored because the lidar drawing looked good; they stopped on purpose several times for overlap.
+A first walk the same hour took an earlier walk as its reference, gave a bad fix at once, and was ended.
+HARD (the walk's own summary): Geospatial Depth off; depth holes 14% of samples; 253,626 points, 900 photos, 3,263
+poses; "the phone's tracking jumped 1.5 m in one frame at 515 ft walked" and "4.1 m in one frame at 1119 ft
+walked", the corners asked for again each time; 48 anchors, ARCore moved them 0.18 m in the middle, 1.59 m at most;
+kept as the map's reference from 3 roof corners agreeing within 3 in, 25,619 points after the jump not placed (no
+corner sighted after it). The first walk (1 min, 50 ft): merged into the earlier reference, "where it sits on the
+map moved 675 in".
+HARD (the poses, run 474): 3,232 poses; a step is 7.3 in in the middle, the most 67 in between poses half a second
+apart or less. The largest: 67 in at 7.5 min (936 ft walked), 57 in at 4.4 min (531 ft), 39 in at 2.5 min, 31 in at
+0.7 min. Most out of line with the walking round them: 157 in at 9.1 min, 67 in at 8.1 min, 63 in at 7.5 min, 50
+in at 7.7 min, 46 in at 4.4 min. Gaps in the poses of 1.6-2.0 s at 4.8, 6.2, 7.5, 7.7 and 8.1 min.
+WHAT THIS SHOWS: this walk has real jumps of the phone's own place: about 5 ft at 4.4 min and about 13 ft at 9.1
+min (the summary's two), and steps of 4-5.5 ft out of line at 7.5-8.1 min beside gaps in the poses. Unlike the map
+fix, these move every point seen after them. Friday's walk had none (most 39 in): its fault was its first minute.
+NOT KNOWN: whether the phone was right before a jump or after it; whether the gaps cause the jumps.
+BUILT: mend_study.py finds each jump (a step more than 35 in out of line with the middle of the four steps round
+it), keeps them (mend.json steps), and the mended joined cloud moves everything seen after a jump back by it; the
+slides the study finds at places seen twice say what the taking-back leaves. NOT YET RUN on this walk.
+MODAL: nothing spent since section 41 (at most about $0.60 of the $15).
