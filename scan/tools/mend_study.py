@@ -35,8 +35,8 @@ STRETCH = 6.0     # m of walking that share one offset
 APART = 3         # stretches apart (walking) before two sightings count as two visits
 FAR = 12.0        # m: only depth this near is used (the phone's depth worsens with distance)
 VOX = 0.15        # m: the cubes the sliding counts in
-REACH = 1.8       # m: how far a stretch may be slid, flat
-REACH_UP = 0.6    # m: ... and in height
+REACH = 3.0       # m: how far a stretch may be slid, flat (1.8 until run 463, where one slide lay at that limit)
+REACH_UP = 0.9    # m: ... and in height
 CLEAR = 1.15      # the best slide must hold this many times the points of the best one elsewhere
 LEAST = 150       # points of the second stretch that must land in the first's cubes
 
@@ -191,8 +191,19 @@ def main():
         print(f"    a believed slide, stretches {b__ - a_} apart ({(b__ - a_) * STRETCH * S.FT:.0f} ft of walking): {np.hypot(dd[0], dd[2]) * 39.37:.0f} in flat, {dd[1] * 39.37:+.0f} in in height; {best:,} points land, {zero:,} did before sliding.")
     if unclear:
         print(f"    the unclear ones' best slides were {', '.join(f'{u * 39.37:.0f}' for u in sorted(unclear))} in flat.")
-    if len(ties) < 4:
-        print("  Too few believed slides to mend the walk or to judge a mending.")
+    if len(ties) < 2:
+        print("  Too few believed slides to mend the walk.")
+        return
+    if len(ties) < 6:
+        # too few to hold half back and judge: mended from all of them, and the judge is the owner's eyes on the
+        # places seen twice (the 3D view's mended cloud)
+        c = solve(n, [(a, b_, dd, wt) for a, b_, dd, wt, _, _ in ties])
+        left = np.array([np.linalg.norm(dd - (c[b_] - c[a])) for a, b_, dd, _, _, _ in ties])
+        print(f"  Too few believed slides to hold half back and judge. MENDED FROM ALL {len(ties)} (not judged here): what is left of each slide after mending {', '.join(f'{x * 39.37:.0f}' for x in left)} in; the walk's whole drift found {np.linalg.norm(c.max(0) - c.min(0)) * 39.37:.0f} in ({(c[:, 1].max() - c[:, 1].min()) * 39.37:.0f} in of it height).")
+        if "--write" in args:
+            with open(os.path.join(d, "mend.json"), "w") as f:
+                json.dump({"stretchM": STRETCH, "offsets": np.round(c, 4).tolist(), "ties": len(ties), "judged": False}, f)
+            print("  Offsets kept (mend.json).")
         return
     mag = np.array([np.linalg.norm(t[2]) for t in ties])
     flat = np.array([np.hypot(t[2][0], t[2][2]) for t in ties])

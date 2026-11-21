@@ -321,7 +321,11 @@ jobs:
           pip install --quiet pillow numpy scipy
           STRICT=1 node scan/tools/twin-r2.mjs get "$WALK" twin | tee mend.txt
           node scan/tools/disagree.mjs twin > /dev/null || true
-          python scan/tools/mend_study.py twin 2>&1 | grep -v '^Shapes tidied' | tee -a mend.txt
+          python scan/tools/mend_study.py twin --write 2>&1 | grep -v '^Shapes tidied' | tee -a mend.txt
+          if [ -f twin/mend.json ]; then
+            python scan/tools/dense_prep.py twin --mended 2>&1 | grep -v '^Shapes tidied\|^  depth:\|^  sdepth:\|^Beside' | tee -a mend.txt
+            node scan/tools/twin-r2.mjs put "$WALK" twin/mend.json twin/view-mended.bin | tee -a mend.txt
+          fi
 
       # A WALK'S CLASSES ON THE FREE RUNNER (scan/tools/classes_cpu.py, 2026-11-20): the picture model on the CPU, the
       # kinds voted onto the points, both clouds made ready for the 3D view. Slow (seconds a picture), free. Counts only.

@@ -3500,3 +3500,18 @@ WHAT THIS SHOWS: the walk was one loop with little walked twice (as the core ses
 second sightings to mend it by; and a slide over a lawn has no clear best place.
 CHANGED for the next run: the classes are read; the sliding is on what stands, the height from the ground both saw;
 stretches 59 ft apart count; depth to 39 ft; each believed slide printed.
+
+SECTION 45, second run (run 463; classes read, sliding on what stands, height from the ground both saw):
+HARD: 1,096,800 depth cells within 39 ft, 19% on things that stand (205,695). Pairs of stretches 59 ft or more of
+walking apart that saw one place: 9; too little of it standing 4; not clear 2 (best slides 13 and 48 in);
+BELIEVED 3:
+  - stretches 46 apart (906 ft of walking): 54 in flat, +12 in in height; 553 points land (75 before sliding);
+  - stretches 45 apart (886 ft):            60 in flat, +23 in;          2,541 land (609 before);
+  - stretches 11 apart (217 ft):            72 in flat, +26 in;            442 land (94 before).
+The search reached 71 in flat: the third lies AT that limit and may be more. Three are too few to hold half back.
+WHAT THIS SHOWS: where this walk saw a place twice the two sightings lie 4.5 to 6 ft apart flat and 1 to 2 ft apart
+in height. That is the size of the owner's two garage walls, and height drift of that size fits a 6 ft hill
+reading 4.5-5 ft (SPECULATION: not shown to be the same thing).
+NEXT (run now): the search widened to 10 ft flat and 3 ft in height; with fewer than six believed slides the walk
+is mended from all of them, NOT JUDGED BY NUMBERS, and the mended joined cloud goes to the 3D view (?dense=2) for
+the owner's eyes on the garage corner.

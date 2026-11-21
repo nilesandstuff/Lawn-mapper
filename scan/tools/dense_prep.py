@@ -74,6 +74,23 @@ def main():
     posed = sum("c2w" in k for k in keys)
     print(f"Beside its {len(keys)} photos ({posed} with a pose) the walk kept: the measured depth for {len(have['.depth'])} (a distance under {fill['.depth']:.0f}% of a photo's cells), "
           f"the smoothed depth for {len(have['.sdepth'])} ({fill['.sdepth']:.0f}%), the uncut raw depth for {len(have['.rdepth'])}; classes for {len(kind_maps)}.")
+    # THE MENDED CLOUD (--mended; scan/tools/mend_study.py's mend.json): each photo's points moved by its stretch's
+    # offset, between stretches' middles interpolated
+    mended = "--mended" in sys.argv
+    out_name = "view-mended.bin" if mended else "view-dense.bin"
+    shift = None
+    if mended:
+        mj = os.path.join(d, "mend.json")
+        if not os.path.exists(mj) or len(w["track"]) < 10:
+            print("No mending kept for this walk: no mended cloud.")
+            return
+        M = json.load(open(mj))
+        offs, step = np.array(M["offsets"], dtype=np.float64), float(M["stretchM"])
+        seg = np.concatenate([[0], np.cumsum(np.linalg.norm(np.diff(w["track"][:, 1:4], axis=0), axis=1))])
+        def shift(t):
+            f = np.interp(t, w["track"][:, 0], seg) / step - 0.5
+            i = int(np.clip(np.floor(f), 0, len(offs) - 1)); j = min(len(offs) - 1, i + 1)
+            return offs[i] + np.clip(f - i, 0, 1) * (offs[j] - offs[i])
     SKY = T.VOTE_KINDS.index("sky")
     P, C, K, PH, TT, SM = [], [], [], [], [], []
     n_raw = n_smooth = photos = 0
@@ -103,6 +120,8 @@ def main():
                 photos += 1
             H, W = img.shape[:2]
             xyz, px, py, _ = cells(k, dg, W, H)
+            if shift is not None:
+                xyz = xyz + shift(k["t"])
             km = kind_maps.get(i)
             kd = km[np.clip(py * km.shape[0] // H, 0, km.shape[0] - 1), np.clip(px * km.shape[1] // W, 0, km.shape[1] - 1)] if km is not None else np.zeros(len(px), np.uint8)
             ok = kd != SKY
@@ -151,9 +170,9 @@ def main():
     print(f"  HOW WIDE: the photos' cameras {wide(cams)}; the track {wide(w['track'][:, 1:4]) if len(w['track']) > 5 else '-'}; the joined points {wide(pos[keep])}; those the camera measured {wide(pos[keep][~smooth_only[keep]]) if (~smooth_only[keep]).sum() > 20 else '-'}.")
     turn = np.array([k["c2w"][:3, 2] for k in keys if "c2w" in k])
     print(f"  The photos look {len(np.unique(np.round(turn, 1), axis=0))} different ways (to a tenth); the photos' cameras sit at {len(np.unique(np.round(cams, 0), axis=0))} different places (to 3 ft).")
-    rec.tofile(os.path.join(d, "view-dense.bin"))
+    rec.tofile(os.path.join(d, out_name))
     by = np.bincount(kind[keep], minlength=nk)
-    print(f"The photos' own depth, joined: {photos} photos gave {n_raw:,} measured cells and {n_smooth:,} from the smoothed depth (within {FAR * S.FT:.0f} / {FAR_SMOOTH * S.FT:.0f} ft, sky left out); "
+    print(("MENDED. " if mended else "") + f"The photos' own depth, joined: {photos} photos gave {n_raw:,} measured cells and {n_smooth:,} from the smoothed depth (within {FAR * S.FT:.0f} / {FAR_SMOOTH * S.FT:.0f} ft, sky left out); "
           f"{n:,} points of {vox * 39.37:.0f} in, {len(keep):,} kept for the page; seen by two photos or more {100 * (looks[keep] >= 2).mean():.0f}%, by five or more {100 * (looks[keep] >= 5).mean():.0f}%; only the smoothed depth saw {100 * smooth_only[keep].mean():.0f}%.")
     print("  By kind: " + ", ".join(f"{T.VOTE_KINDS[j]} {int(by[j]):,}" for j in np.argsort(-by) if j and by[j]) + f"; no kind {int(by[0]):,}.")
     print(f"  Against it, the walk's own kept points: {int((~w['drop']).sum()):,}.")

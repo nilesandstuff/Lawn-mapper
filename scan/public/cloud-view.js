@@ -52,10 +52,14 @@ async function main() {
      (1 the phone's smoothed depth), 0, 0. */
   let DENSE = null;
   const wantDense = new URLSearchParams(location.search).get('dense');
-  { const dl = $('#dense-link'); if (dl) { dl.href = `/cloud.html?walk=${encodeURIComponent(walk)}${wantDense ? '' : '&dense=1'}`; dl.textContent = wantDense ? "The walk's own points" : "The photos' own depth, joined"; dl.hidden = !names.includes('view-dense.bin'); } }
-  if (wantDense && names.includes('view-dense.bin')) {
+  // ?dense=1 the joined cloud; ?dense=2 the same MENDED (the walk's drift taken out of itself, mend_study.py)
+  const denseFile = wantDense === '2' ? 'view-mended.bin' : 'view-dense.bin';
+  { const dl = $('#dense-link'); if (dl) {
+    const next = !wantDense ? ['1', "The photos' own depth, joined"] : wantDense === '1' && names.includes('view-mended.bin') ? ['2', 'The same, mended for drift'] : ['', "The walk's own points"];
+    dl.href = `/cloud.html?walk=${encodeURIComponent(walk)}${next[0] ? `&dense=${next[0]}` : ''}`; dl.textContent = next[1]; dl.hidden = !names.includes('view-dense.bin'); } }
+  if (wantDense && names.includes(denseFile)) {
     $('#status').textContent = 'Reading the photos\' depth…';
-    const b = await buf('view-dense.bin'), n = Math.floor(b.byteLength / 24), dv = new DataView(b);
+    const b = await buf(denseFile), n = Math.floor(b.byteLength / 24), dv = new DataView(b);
     const f = new Float32Array(n * 6), L = new Uint8Array(n * 4), rgb = new Uint8Array(n * 4), kind = new Uint8Array(n);
     for (let i = 0, o = 0; i < n; i++, o += 24) {
       f[i * 6] = dv.getFloat32(o + 12, true); f[i * 6 + 2] = dv.getFloat32(o, true); f[i * 6 + 3] = dv.getFloat32(o + 4, true); f[i * 6 + 4] = dv.getFloat32(o + 8, true); f[i * 6 + 5] = NaN;
@@ -79,7 +83,7 @@ async function main() {
       if (pre === 'weak-') { const L = labs[labs.length - 1]; for (let i = 0; i < recs; i++) L[i * 4 + 3] |= 4; }
     }
   }
-  U.read = DENSE ? 'the joined cloud, one file' : `${got.cloud} cloud parts, ${got.weak} weak parts${got.failed ? `, ${got.failed} PARTS COULD NOT BE READ` : ''}`;
+  U.read = DENSE ? (wantDense === '2' ? 'the joined cloud MENDED, one file' : 'the joined cloud, one file') : `${got.cloud} cloud parts, ${got.weak} weak parts${got.failed ? `, ${got.failed} PARTS COULD NOT BE READ` : ''}`;
   const N = D.n = clouds.reduce((a, f) => a + f.length / 6, 0);
   D.pos = new Float32Array(N * 3); D.t = new Float32Array(N); D.ground = new Float32Array(N);
   D.label = new Uint8Array(N); D.lconf = new Uint8Array(N); D.dconf = new Uint8Array(N); D.flags = new Uint8Array(N); D.state = new Float32Array(N);
