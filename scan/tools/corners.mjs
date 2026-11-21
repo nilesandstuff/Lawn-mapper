@@ -12,7 +12,7 @@
 import { execFileSync } from 'node:child_process';
 import { BUCKET, readObject, walkOk } from './twin-r2.mjs';
 import { DB_NAME } from './d1.mjs';
-import { walkPairs, acrossWalks, cornerLean } from '../lib/corners.js';
+import { walkPairs, acrossWalks, cornerLean, shareCorners } from '../lib/corners.js';
 
 const IN = 39.3701, FT = 3.28084;
 const inch = (m) => `${m >= 0 ? '+' : '-'}${Math.abs(m * IN).toFixed(0)} in`;
@@ -44,17 +44,21 @@ async function main() {
   console.log(`  ${none} kept no twin, ${few} marked fewer than two corners; ${[...maps.values()].reduce((a, v) => a + v.length, 0)} walks on ${maps.size} map${maps.size === 1 ? '' : 's'} are read.`);
   console.log('  Each line: phone minus map. PLUS = the phone found the two corners farther apart than the map has them.');
   let mi = 0;
+  const scales = [];
   for (const walks of [...maps.values()].sort((a, b) => b.length - a.length)) {
     mi++;
     const letters = new Map();
     const L = (k) => { if (!letters.has(k)) letters.set(k, String.fromCharCode(65 + letters.size % 26) + (letters.size >= 26 ? Math.floor(letters.size / 26) : '')); return letters.get(k); };
     walks.sort((a, b) => a.id.localeCompare(b.id));
-    console.log(`\n== map ${mi}: ${walks.length} walk${walks.length === 1 ? '' : 's'}`);
+    const distinct = shareCorners(walks);
+    console.log(`\n== map ${mi}: ${walks.length} walk${walks.length === 1 ? '' : 's'}, ${distinct} different corners marked over them`);
     for (const w of walks) {
       console.log(`  walk ${w.id} (${w.when}, ${Math.round(w.odo * FT)} ft walked): ${w.corners.length} corners`);
       for (const p of w.pairs) console.log(`    ${L(p.a)}-${L(p.b)}: map ${ft(p.mapM)}, phone ${ft(p.phoneM)}, ${inch(p.diffM)} (${Math.round(p.walkedM * FT)} ft walked between the marks)`);
+      if (w.scale) console.log(`    THE PHONE'S SCALE against the map's: ${((w.scale.k - 1) * 100).toFixed(1)}% (${w.scale.k < 1 ? 'the phone measures short' : 'the phone measures long'}); the pairs are off ${(w.scale.rawRmsM * IN).toFixed(0)} in as measured, ${(w.scale.rmsM * IN).toFixed(0)} in with that scale taken out.`);
       for (const a of w.again) console.log(`    ${L(a.key)} marked again after ${Math.round(a.walkedM * FT)} ft: the phone had it ${(a.movedM * IN).toFixed(0)} in from where it had it before`);
     }
+    scales.push(...walks.filter((w) => w.scale && w.scale.n >= 3).map((w) => w.scale.k));
     if (walks.length < 2) { console.log('  One walk only: nothing to tell the phone\'s drift from the map\'s corners.'); continue; }
     const A = acrossWalks(walks);
     console.log('  THE SAME PAIR OVER THE WALKS:');
@@ -65,6 +69,10 @@ async function main() {
     const t = { map: 0, phone: 0, agree: 0, once: 0 };
     for (const p of A) t[p.verdict]++;
     console.log(`  In all: ${t.agree} pairs agree, ${t.map} are off the same way in every walk (the map), ${t.phone} differ between walks (the phone), ${t.once} read once.`);
+  }
+  if (scales.length) {
+    const v = scales.map((k) => (k - 1) * 100).sort((a, b) => a - b);
+    console.log(`\nTHE PHONE'S SCALE OVER EVERY WALK WITH THREE CORNERS OR MORE (${v.length}): ${v.map((x) => x.toFixed(1)).join(', ')} %. Middle ${v[v.length >> 1].toFixed(1)}%. MINUS = the phone measures short of the map.`);
   }
 }
 

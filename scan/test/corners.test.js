@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { walkPairs, acrossWalks, cornerLean, cornerKey } from '../lib/corners.js';
+import { walkPairs, acrossWalks, cornerLean, cornerKey, scaleOf, shareCorners } from '../lib/corners.js';
 
 // three corners on the map; the roof's real corner C is 0.4 m farther along x than the map has it
 const MAP = { A: [0, 0], B: [10, 0], C: [10, 8] };
@@ -37,4 +37,18 @@ test('a corner marked twice: the nearest marks make the pair, and the move betwe
   assert.ok(Math.abs(r.again[0].movedM - 1.5) < 1e-9);
   assert.equal(r.again[0].walkedM, 195);
   assert.equal(walkPairs([{ id: 1, map: [0, 0], ar: [NaN, 0], odo: 1 }]).pairs.length, 0);
+});
+
+test('a phone that measures 3% short is a scale, and nothing is left once it is taken out', () => {
+  const m = Object.keys(MAP).map((k, i) => ({ id: k, map: MAP[k], ar: turn([MAP[k][0] * 0.97, MAP[k][1] * 0.97], 0.7, [4, 4]), odo: 10 * i, by: 'ROOF' }));
+  const sc = walkPairs(m).scale;
+  assert.ok(Math.abs(sc.k - 0.97) < 1e-9);
+  assert.ok(sc.rmsM < 1e-9 && sc.rawRmsM > 0.2);
+  assert.equal(scaleOf([{ mapM: 5, phoneM: 5, diffM: 0 }]), null);
+});
+
+test('a corner a few inches off in another walk is the same corner', () => {
+  const a = walkPairs(walk(0.2, [1, 2])), m2 = walk(-1, [3, 3]).map((m) => ({ ...m, map: [m.map[0] + 0.07, m.map[1] - 0.05] })), b = walkPairs(m2);
+  assert.equal(shareCorners([a, b]), 3);
+  assert.ok(acrossWalks([a, b]).every((p) => p.n === 2));
 });

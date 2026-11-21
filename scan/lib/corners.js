@@ -36,7 +36,44 @@ export function walkPairs(marks) {
     const s = [...list].sort((a, b) => a.odo - b.odo);
     for (let i = 1; i < s.length; i++) again.push({ key, movedM: d2(s[i].ar, s[i - 1].ar), walkedM: s[i].odo - s[i - 1].odo });
   }
-  return { corners: keys, pairs, again };
+  return { corners: keys, at: new Map(keys.map((k) => [k, by.get(k)[0].map])), pairs, again, scale: scaleOf(pairs) };
+}
+
+/**
+ * THE PHONE'S SCALE AGAINST THE MAP'S, from one walk's pairs: the one number k that best makes phone = k x map
+ * (least squares over the pairs, so the long pairs count most). k under 1: the phone measures short. -> { k, n,
+ * restM: what each pair is still off by with the scale taken out (phone / k - map), rmsM, rawRmsM } or null under
+ * two pairs. Drift between the marks goes into the rest, not into k, unless it is all one way.
+ */
+export function scaleOf(pairs) {
+  const P = (pairs || []).filter((p) => p.mapM > 1);
+  if (P.length < 2) return null;
+  const k = P.reduce((a, p) => a + p.phoneM * p.mapM, 0) / P.reduce((a, p) => a + p.mapM * p.mapM, 0);
+  const restM = P.map((p) => p.phoneM / k - p.mapM), rms = (v) => Math.sqrt(v.reduce((a, x) => a + x * x, 0) / v.length);
+  return { k, n: P.length, restM, rmsM: rms(restM), rawRmsM: rms(P.map((p) => p.diffM)) };
+}
+
+/**
+ * The same roof corner in several walks does not always carry the same map place to the centimetre (the page finds
+ * the lidar's corners afresh, and a corner can land a few inches off). So the walks' corners are gathered: a corner
+ * within `tol` of one already met is that one. Rewrites each walk's pairs (and again, corners) with the shared
+ * names, in place; -> the number of distinct corners.
+ */
+export function shareCorners(walks, tol = 0.6) {
+  const met = [];
+  for (const w of walks) {
+    const name = new Map();
+    for (const [k, at] of w.at || []) {
+      let hit = met.find((c) => d2(c.at, at) <= tol);
+      if (!hit) { hit = { id: `c${String(met.length).padStart(3, '0')}`, at }; met.push(hit); }
+      name.set(k, hit.id);
+    }
+    const n = (k) => name.get(k) || k;
+    w.pairs = w.pairs.map((p) => { const [a, b] = [n(p.a), n(p.b)].sort(); return { ...p, a, b }; }).filter((p) => p.a !== p.b);
+    w.again = w.again.map((a) => ({ ...a, key: n(a.key) }));
+    w.corners = [...new Set(w.corners.map(n))];
+  }
+  return met.length;
 }
 
 const median = (v) => { const s = [...v].sort((a, b) => a - b); return s.length ? (s.length % 2 ? s[s.length >> 1] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2) : NaN; };
