@@ -3634,3 +3634,23 @@ BUILT: mend_study.py finds each jump (a step more than 35 in out of line with th
 it), keeps them (mend.json steps), and the mended joined cloud moves everything seen after a jump back by it; the
 slides the study finds at places seen twice say what the taking-back leaves. NOT YET RUN on this walk.
 MODAL: nothing spent since section 41 (at most about $0.60 of the $15).
+
+## 49. The owner's direction: a walk consistent with itself comes first (2026-11-21)
+
+THE OWNER ("a vibe-based guess... ignore it if you disagree"; the core session agrees and adopts it): "the number 1
+most important thing is that a walk is consistent with itself. Live fixes really don't matter at all in the first
+walk (except in a diagnostic sense for me to get insight into how the tracking is behaving... if there's another
+simpler way you could give that real time feedback, great. (E.g. showing the marked corners rather than the
+lidar... I don't think we'll need to show the lidar in the live view on the public production version of AR.) We
+can always fix the location to the map in post processing, so that it's locked in on the next walk." And: during
+the walk "there were some laggy moments where the view froze for .5-1 ish second."
+HARD: the walk of 2026-11-21 has gaps in its poses of 1.6-2.0 s at 4.8, 6.2, 7.5, 7.7 and 8.1 min, and steps 4-5.5
+ft out of line at 7.5-8.1 min (section 48). On earlier walks the page's own work took about half of each frame's
+time, the lidar's drawing 22-28% of that and the twin 18-29% (the walks' summaries).
+SPECULATION: the page's stalls starve the phone's tracking or make a walker's ordinary movement look like a jump;
+a lighter live view (the marked corners, a tracking-health line, no lidar drawing or live matching) would have
+fewer of both. Not tested. The start page already has a "record only" box (no live lidar fix); whether it also
+stops the lidar being drawn is not checked.
+SO, the order of work: (1) a walk made consistent with itself after it ends (the start cut, the jumps taken back,
+then second sightings as checks); (2) its place on the map found afterwards and kept for the next walk; (3) the
+live view cut down to what tells the walker how the tracking is doing.
