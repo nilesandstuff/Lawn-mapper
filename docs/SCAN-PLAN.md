@@ -3635,6 +3635,21 @@ it), keeps them (mend.json steps), and the mended joined cloud moves everything 
 slides the study finds at places seen twice say what the taking-back leaves. NOT YET RUN on this walk.
 MODAL: nothing spent since section 41 (at most about $0.60 of the $15).
 
+HARD, the walk made ready for the 3D view (run 476, free CPU runner, 66 min: 28 min reading 4,004 parts under the
+bucket's rate limit, 37 min of classes at 2.5 s a photo):
+  - 900 photos given classes, 4.3 shapes a photo. Measured depth kept for 887 photos (a distance under 19% of a
+    photo's cells), smoothed for 899, uncut raw for 899.
+  - The walk's own points: 251,890 kept and 97,311 weak. From the camera 7 / 12 / 25 ft (low / middle / high); 2%
+    over 15 ft above it; none flagged Google's (Geospatial Depth off). Track 206 x 130 x 7 ft, the points
+    184 x 121 x 18 ft. No bubble, no 100 ft readings.
+  - Kinds voted: grass 121,405, tree 69,328, built 57,483, plant 28,332, paved 17,054, bare ground 6,802, movable
+    752, fence 59; none 47,986.
+  - The start cut: the 73 photos before every roof corner was marked once (1.5 min).
+  - The photos' own depth joined: 827 photos, 302,329 points of 11 in; seen by two photos or more 43%; only the
+    smoothed depth saw 73% of them.
+  - Minutes 6 to 8 kept few points (7,135 / 245 / 4,082 against 18,000 to 32,000 in the minutes before): the same
+    minutes as the gaps and the 67 in step in the poses. What the phone was doing then is not known.
+
 ## 49. The owner's direction: a walk consistent with itself comes first (2026-11-21)
 
 THE OWNER ("a vibe-based guess... ignore it if you disagree"; the core session agrees and adopts it): "the number 1
