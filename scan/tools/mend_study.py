@@ -32,13 +32,13 @@ import studies as T        # noqa: E402
 import dense_prep as DP    # noqa: E402
 
 STRETCH = 6.0     # m of walking that share one offset
-APART = 4         # stretches apart (walking) before two sightings count as two visits
-FAR = 9.0         # m: only depth this near is used (the phone's depth worsens with distance)
+APART = 3         # stretches apart (walking) before two sightings count as two visits
+FAR = 12.0        # m: only depth this near is used (the phone's depth worsens with distance)
 VOX = 0.15        # m: the cubes the sliding counts in
 REACH = 1.8       # m: how far a stretch may be slid, flat
 REACH_UP = 0.6    # m: ... and in height
-CLEAR = 1.25      # the best slide must hold this many times the points of the best one elsewhere
-LEAST = 250       # points of the second stretch that must land in the first's cubes
+CLEAR = 1.15      # the best slide must hold this many times the points of the best one elsewhere
+LEAST = 150       # points of the second stretch that must land in the first's cubes
 
 
 def odo_at(track, t):
@@ -139,8 +139,17 @@ def main():
     ST = {s: np.concatenate(v) for s, v in stand.items()}
     print(f"MENDING: {sum(len(v) for v in P.values()):,} measured depth cells within {FAR * S.FT:.0f} ft, in {len(P)} stretches of {STRETCH * S.FT:.0f} ft; {100 * np.mean(np.concatenate(list(ST.values()))):.0f}% of them on things that stand.")
     rng = np.random.default_rng(3)
-    coarse = {s: set(map(tuple, np.unique(np.floor(v / 1.0).astype(np.int64), axis=0))) for s, v in P.items()}
-    ties, tried, weak = [], 0, 0
+    # WHAT STANDS says where a stretch lies flat (a lawn slides over itself anywhere; a wall does not): the sliding is
+    # done on the standing points, and the height then taken from the ground both saw (run 462: sliding everything,
+    # 8 of 10 slides were not clear, and the classes had not been read, so nothing was known to be ground).
+    have_kinds = bool(kind_maps)
+    PS = {s: (P[s][ST[s]] if have_kinds else P[s]) for s in P}
+    PG = {s: (P[s][~ST[s]] if have_kinds else P[s][:0]) for s in P}
+    coarse = {s: set(map(tuple, np.unique(np.floor(v / 1.0).astype(np.int64), axis=0))) for s, v in PS.items() if len(v)}
+    for s in P:
+        coarse.setdefault(s, set())
+    print(f"  Classes read for {len(kind_maps)} photos; the sliding uses {'the standing points only' if have_kinds else 'every point (no classes)'}: {sum(len(v) for v in PS.values()):,}.")
+    ties, tried, weak, thin, unclear = [], 0, 0, 0, []
     for a in sorted(P):
         # of the later stretches that saw the same place, the eight sharing most of it (a walk of 50 stretches would
         # otherwise ask for a thousand slidings)
@@ -153,8 +162,9 @@ def main():
                 c = np.floor(v / 1.0).astype(np.int64)
                 keep = np.fromiter(((x, y, z_) in both for x, y, z_ in c), bool, len(c))
                 return v[keep]
-            A, B = near(P[a]), near(P[b_])
-            if len(A) < 800 or len(B) < 800:
+            A, B = near(PS[a]), near(PS[b_])
+            if len(A) < 400 or len(B) < 400:
+                thin += 1
                 continue
             r = slide(A, B, rng)
             if r is None:
@@ -162,9 +172,25 @@ def main():
             dd, best, zero, elsewhere = r
             if best < LEAST or best < CLEAR * max(1, elsewhere):
                 weak += 1
+                unclear.append(float(np.hypot(dd[0], dd[2])))
                 continue
+            # the height from the ground both saw, once slid flat
+            if len(PG[a]) > 200 and len(PG[b_]) > 200:
+                ca = {}
+                for x, y, z_ in PG[a]:
+                    ca.setdefault((int(x // 0.5), int(z_ // 0.5)), []).append(y)
+                cb = {}
+                for x, y, z_ in PG[b_] + (dd[0], 0, dd[2]):
+                    cb.setdefault((int(x // 0.5), int(z_ // 0.5)), []).append(y)
+                dif = [np.median(ca[k]) - np.median(cb[k]) for k in ca.keys() & cb.keys() if len(ca[k]) >= 8 and len(cb[k]) >= 8]
+                if len(dif) >= 15:
+                    dd = np.array([dd[0], float(np.median(dif)), dd[2]])
             ties.append((a, b_, dd, min(1.0, best / 2000), best, zero))
-    print(f"  Pairs of stretches walked {APART * STRETCH * S.FT:.0f} ft or more apart that saw one place: {tried}; believed slides {len(ties)} (not clear enough: {weak}).")
+    print(f"  Pairs of stretches walked {APART * STRETCH * S.FT:.0f} ft or more apart that saw one place: {tried}; too little of it standing: {thin}; believed slides {len(ties)}; not clear enough: {weak}.")
+    for a_, b__, dd, _, best, zero in ties:
+        print(f"    a believed slide, stretches {b__ - a_} apart ({(b__ - a_) * STRETCH * S.FT:.0f} ft of walking): {np.hypot(dd[0], dd[2]) * 39.37:.0f} in flat, {dd[1] * 39.37:+.0f} in in height; {best:,} points land, {zero:,} did before sliding.")
+    if unclear:
+        print(f"    the unclear ones' best slides were {', '.join(f'{u * 39.37:.0f}' for u in sorted(unclear))} in flat.")
     if len(ties) < 4:
         print("  Too few believed slides to mend the walk or to judge a mending.")
         return

@@ -315,6 +315,7 @@ jobs:
           SITE: https://${{ vars.CUSTOM_DOMAIN }}
           WALK: ${{ inputs.walk }}
           JUDGE_OUT: twin/judged.bin
+          WITH_SEGMENTS: '1'
         run: |
           set -o pipefail
           pip install --quiet pillow numpy scipy

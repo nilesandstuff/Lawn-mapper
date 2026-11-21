@@ -3489,3 +3489,14 @@ TO DO, in this order (the core session leads):
   3. Bare branches: the dense-depth trial (MapAnything, paid, within the allotment) on this walk.
   4. Fixed things that are not buildings (utility boxes): a kind for them when the owner's lawn-effect classes
      are drawn up.
+
+## 45. The walk mended by itself in three directions, first run (2026-11-21; run 462; scan/tools/mend_study.py)
+
+HARD (walk of 2026-11-20): 1,095,199 measured depth cells within 30 ft in 59 stretches of 20 ft. Pairs of stretches
+79 ft or more of walking apart that saw one place (12 shared 3 ft cubes or more): 16. Believed slides 2; not clear
+enough 8. TOO FEW TO MEND OR TO JUDGE. The classes were not read in that run (the step did not ask for the kept
+shapes), so every point counted as standing and lawn slid over lawn.
+WHAT THIS SHOWS: the walk was one loop with little walked twice (as the core session had asked), so there are few
+second sightings to mend it by; and a slide over a lawn has no clear best place.
+CHANGED for the next run: the classes are read; the sliding is on what stands, the height from the ground both saw;
+stretches 59 ft apart count; depth to 39 ft; each believed slide printed.
