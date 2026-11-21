@@ -36,7 +36,7 @@ on:
         required: true
         default: tests
         type: choice
-        options: [tests, deploy, walks, twin, disagree, segment, view, classes, mend, jumps, prunerecordings, name, learn, fix, place, depth, study, skyline, pavement, checks, repeat, register, walkfix, walkfixjs, reference, warp, marks, naip, drive, thermalindex]
+        options: [tests, deploy, walks, twin, disagree, segment, view, classes, mend, jumps, corners, prunerecordings, name, learn, fix, place, depth, study, skyline, pavement, checks, repeat, register, walkfix, walkfixjs, reference, warp, marks, naip, drive, thermalindex]
       walk:
         description: 'For twin, fix or depth: the walk id, or latest'
         default: latest
@@ -77,6 +77,7 @@ jobs:
         run: |
           node scan/test/frames.test.js
           node scan/test/pin.test.js
+          node scan/test/corners.test.js
           node scan/test/perf.test.js
           node scan/test/guide.test.js
           node scan/test/walk.test.js
@@ -303,6 +304,20 @@ jobs:
         run: |
           set -o pipefail
           node scan/tools/twin-r2.mjs prune-recordings | tee prune.txt
+
+      # THE ROOF CORNERS' DISTANCES, PHONE AGAINST MAP (scan/tools/corners.mjs, 2026-11-21; the owner: "measure the exact
+      # distances between the corners of my roofs to see if our lidar shapes are good or not"). Each walk's two small
+      # files only. The walk input: walks comma separated, or latest for the last 40. Distances only, no places.
+      - name: The roof corners' distances over the walks
+        if: ${{ inputs.task == 'corners' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WALKS: ${{ inputs.walk }}
+        run: |
+          set -o pipefail
+          if [ "$WALKS" = "latest" ]; then WALKS=""; fi
+          node scan/tools/corners.mjs "$WALKS" | tee corners.txt
 
       # DID THE PHONE'S OWN PLACE JUMP? (mend_study.py --jumps, 2026-11-21): the walk's poses only. Quick, free.
       - name: A walk's poses looked over for jumps
