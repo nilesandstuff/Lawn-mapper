@@ -3559,3 +3559,13 @@ a plant (studies.tree_or_plant, in the walk's kinds and the joined cloud). mend_
 reads the poses for steps no walker makes.
 ADOPTED AS A RULE: a second sighting of a place is first a CHECK on where the phone thinks it is; it is joined into
 the cloud only once the two agree (or one is chosen), never laid over the first as it comes.
+
+SECTION 46, measured (runs 467-468, walk of 2026-11-20):
+HARD, jumps: 1,783 poses (about 0.37 s apart). A step between two poses is 4.5 in in the middle, 99 in 100 under
+22 in, THE MOST 39 in. No step of 2 m. (The check's bar of 16 in is a walker's own step in that time, so its "101
+steps over 16 in" are walking; the twelve it printed are the first by time, not the largest.) Gaps in the poses:
+three of 1.6-1.7 s, the phone moving 7-12 in across each.
+WHAT THIS SHOWS: there is no single jump of the size of the two garage walls. Whatever put them 4.5-6.5 ft apart
+came on over the walk, or in steps of a yard or less.
+HARD, tree and plant by height: the walk's kinds tree 105,557, plant 5,243 (they were 110,699 and 101); the joined
+cloud tree 67,023, plant 4,071 (62,610 and 8,484). NOT SEEN by the owner yet.
