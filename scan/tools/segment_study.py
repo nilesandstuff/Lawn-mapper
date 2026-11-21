@@ -102,6 +102,34 @@ def erased(d, n):
     return out
 
 
+def start_cut(d, recs):
+    """THE WALK'S START IS LEFT OUT (the owner, 2026-11-21: "MAYBE we should discard the points that have been
+    collected before all references have been marked?"; tried by eye in the 3D view: on the walk of 2026-11-20 the
+    second garage wall was what the first minute saw, and hiding the start left one wall). The cut is the moment
+    every roof corner had been marked ONCE (live.json marks, each with the metres walked; a corner asked for again
+    later does not move it). -> seconds into the walk, or 0 when the walk kept no marks.
+    Why the start lies off is NOT KNOWN (docs/SCAN-PLAN.md 47: the map fix moves no point; a phone's tracking is
+    least settled when a session is young)."""
+    try:
+        with open(os.path.join(d, "live.json")) as f:
+            marks = [m for m in (json.load(f) or {}).get("marks", []) if m.get("odo") is not None and m.get("id") is not None]
+    except Exception:
+        return 0.0
+    if not marks or len(recs) < 10:
+        return 0.0
+    ids = {m["id"] for m in marks}
+    seen, odo = set(), None
+    for m in sorted(marks, key=lambda m: m["odo"]):
+        seen.add(m["id"])
+        if seen == ids:
+            odo = float(m["odo"])
+            break
+    if odo is None:
+        return 0.0
+    o = np.argsort(recs[:, 1])
+    return float(np.interp(odo, recs[o, 1], recs[o, 0]))
+
+
 def read_track(d):
     """-> (M, 4) [t, x, y, z] by time: where the camera was, five times a second."""
     tr = []

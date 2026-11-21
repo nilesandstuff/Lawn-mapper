@@ -96,8 +96,12 @@ def main():
     n_raw = n_smooth = photos = 0
     used = {0: 0, 1: 0}
     why = {"no file or unreadable": 0, "nothing within reach": 0, "all sky": 0}
+    cut = w.get("cut", 0.0)
+    early = sum(1 for k in keys if k["t"] < cut)
+    if cut > 0:
+        print(f"  The walk's start is left out: the {early} photos taken before every roof corner had been marked once ({cut / 60:.1f} min).")
     for i, k in enumerate(keys):
-        if "c2w" not in k:
+        if "c2w" not in k or k["t"] < cut:
             continue
         base = os.path.join(d, k["name"])
         img = None

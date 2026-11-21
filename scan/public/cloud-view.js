@@ -327,6 +327,10 @@ function wire() {
         upd();
       }).catch(() => {});
       const upd = () => { const min = Number(el.value) / 10; material.uniforms.tmin.value = min > 0 ? min * 60 : -1; say.textContent = (min > 0 ? `hiding what was seen before ${min.toFixed(1)} min` : 'the whole walk') + ` of ${(end / 60).toFixed(1)} min.` + marksSay; tally(); };
+      // by default the walk's start is hidden, to when every roof corner had been marked once (view.json startCutS;
+      // segment_study.start_cut): the owner's remedy of 2026-11-21, tried by eye on the walk of 2026-11-20
+      const cutS = Number(D.view?.startCutS) || 0;
+      if (cutS > 0) { el.value = String(Math.ceil(cutS / 6)); marksSay += ' The start is hidden by default: slide to nought for the whole walk.'; }
       el.addEventListener('input', upd); upd();
     } }
   $('#unsure')?.addEventListener('change', (e) => { material.uniforms.unsure.value = e.target.checked ? 1 : 0; tally(); });

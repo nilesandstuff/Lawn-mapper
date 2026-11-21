@@ -3587,3 +3587,19 @@ BUILT so the owner can try it: the 3D view has a slider "Hide the walk's start" 
 the walk is not drawn; in the joined cloud a point's time is when it was LAST seen, so only what the start alone
 saw goes), and says at what minute each roof corner was marked. If hiding the start to just past the last corner
 leaves ONE garage wall, the remedy the owner proposes is the right one for now.
+
+SECTION 47, TRIED BY THE OWNER'S EYES (2026-11-21, the walk of 2026-11-20, the walk's own points):
+THE OWNER: with the whole walk shown, two garage walls; with what was seen before 7.5 min hidden, one. Then: "Most
+of the second wall, the deeper inset wall, are not present when the cutoff is set to 1.6 minutes. In fact, they
+disappear when the cutoff is set to just 1 minute." Roof corners were marked at 0.1, 0.6 and 1.5 min (one asked
+for again at 7.6). A few points stay at the first wall's place even late in the walk (not looked into). The walk
+was one loop facing the house, then one facing away: few places got a second look.
+WHAT THIS SHOWS: the second wall is what the walk's FIRST MINUTE saw. It is the start that lies off, not drift
+gathered over the whole walk. The owner's suspicion of the time before the references were marked is borne out by
+the timing; the cause is NOT KNOWN (the map fix moves no point, section 47).
+DECIDED (the owner's remedy): what a walk sees before every roof corner has been marked once is left out
+(segment_study.start_cut): of the kept points, of the joined cloud's photos, and hidden by default in the 3D view
+(the slider brings it back). The records themselves are kept whole in the twin.
+TO LOOK INTO: why the start lies off (the first minute against the rest: by how much, and does it happen on the
+other walks); the points that stay at the first wall's place late in the walk; walks that mark no corners have no
+cut at all.

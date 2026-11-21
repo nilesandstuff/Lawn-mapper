@@ -262,6 +262,8 @@ def load(d):
         drop |= np.linalg.norm(xyz - S.cam_at(track, recs[:, 0].astype(np.float64)), axis=1) > S.NEAR
     S.pose_keys(keys, track)
     drop |= S.erased(d, len(recs))
+    cut = S.start_cut(d, recs)                 # the walk's start, before every roof corner was marked once
+    drop |= recs[:, 0] < cut
     # SKY (the owner, 2026-11-20; docs/SCAN-PLAN.md section 34): what the phone called sky, and what is sky-blue in
     # its photo where the phone gave it no name of ground, building or tree (71% of the points erased by hand were
     # sky-blue, 5% of those left beside them)
@@ -273,7 +275,7 @@ def load(d):
         drop |= blue & ~np.isin(labs[:, 0], (3, 4, 5, 6, 7, 8))
     xyz0 = np.where(drop[:, None], 1e6, xyz)
     h = np.where(drop, np.nan, h)
-    return {"recs": recs, "labs": labs, "keys": keys, "track": track, "xyz": xyz, "xyz0": xyz0, "h": h, "drop": drop, "verdict": verdict}
+    return {"cut": cut, "recs": recs, "labs": labs, "keys": keys, "track": track, "xyz": xyz, "xyz0": xyz0, "h": h, "drop": drop, "verdict": verdict}
 
 
 def strip(cells, titles, head=""):

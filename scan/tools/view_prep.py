@@ -145,7 +145,7 @@ def main():
         print(f"  Where the records lie: not worked out ({type(e).__name__}: {str(e)[:100]}).")
     rgb.tofile(os.path.join(d, "view-rgb.bin"))
     with open(os.path.join(d, "view.json"), "w") as f:
-        json.dump({"records": int(len(recs)), "cloud": int(n_cloud), "weak": int(len(recs) - n_cloud), "coloured": int(rgb[:, 3].sum()),
+        json.dump({"startCutS": round(float(S.start_cut(d, recs[:n_cloud])), 1), "records": int(len(recs)), "cloud": int(n_cloud), "weak": int(len(recs) - n_cloud), "coloured": int(rgb[:, 3].sum()),
                    "pose": "session to camera" if which.startswith("session to camera") else "camera to session", "pictures": len(keys)}, f)
     print(f"3D view made ready: {len(recs):,} records ({n_cloud:,} of the cloud, {len(recs) - n_cloud:,} weak); {int(rgb[:, 3].sum()):,} coloured from {len(keys)} pictures ({100 * rgb[:, 3].mean():.0f}%). Pictures' poses: {which}.")
 
