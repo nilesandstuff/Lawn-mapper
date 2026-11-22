@@ -241,6 +241,18 @@ THE GOAL OF THE YARD AR TOOL (the owner, 2026-11-22: "Just a reminder of the goa
   - "each walk uses the shape reference to get a fix, and adds to future shape references. But only overwrites
     existing reference shapes if there's a high degree of confidence that the new info is actually better."
 
+ADDED TO THE ROADMAP BY THE OWNER, 2026-11-22 ("fit this in whenever and however you need to"):
+
+  - THE AR REFINES THE LIDAR'S SHAPES FOR THE SHADE MAP AND THE WATER MAP. "Not directly writing over the lidar
+    shapes... But offering a new 3d environment with finer details, where it's available. And since the AR maps are
+    inherently incomplete, it needs to be filled in by lidar in order for the shade map and water map to use it."
+    So: one fused model, the AR's finer shapes where a walk saw them and the lidar everywhere else, offered to the
+    other tools beside the lidar model, never in place of it. (The water session's view, for the record: the lidar's
+    frame is the truth for where a thing on the ground is; the aerial photo is a backdrop.)
+  - RESOURCE CONSERVATION ON OUR END, "presumably a more distant goal": "Doing as much processing and storage on the
+    user's device as possible. To minimize data transfer requirements, server storage costs, and CPU (gpu?) usage on
+    our end." A choice between two ways of doing a thing should lean to the one the phone can do by itself.
+
 "However you accomplish all of that is up to you, work through it in the order that makes sense to you and you can
 prioritize the more feasible things if you get stuck on the harder ones." Where the work stands against each line of
 this is kept at the top of docs/SCAN-REVIEW.md; update it when a line moves.
