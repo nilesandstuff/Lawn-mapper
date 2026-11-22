@@ -25,7 +25,7 @@ import { surfaceOf } from '/lib/surface.js';
 import { geoReading } from '/lib/geo.js';
 import { spikesIn } from '/lib/spikes.js';
 import { walkPrior } from '/lib/walkfix.js';
-import { KINDS, kindOf, addSightings, standing, decodeThings, encodeThings, pairGutters, forRecord } from '/lib/things.js';
+import { KINDS, kindOf, addSightings, standing, decodeThings, encodeThings, pairGutters, forRecord, takeAway, putBack } from '/lib/things.js';
 import { keepPoint, viewFromSem, newSemCount, noteSem, semSummary, newCrumbs, crumbDue, addCrumb, crumbMoves } from '/lib/semantics.js';
 import { newOutbox, idbStore, memoryStore, statusText } from '/lib/outbox.js';
 import { newPerf, resources as perfResources, perfLines } from '/lib/perf.js';
@@ -47,6 +47,7 @@ const BRIDGE_NEEDED = 1;
 const COLOR = { dot: [0.3, 1, 0.6, 0.9], dotPlane: [1, 0.8, 0.2, 0.9], pin: [0.9, 0.22, 0.2, 0.95], placed: [0.9, 0.22, 0.2, 0.45], mark: [0.35, 0.6, 1, 0.95], ref: [0.25, 0.5, 1, 0.9], check: [0.75, 0.3, 0.9, 0.9], where: [1, 1, 1, 0.95] };
 const THING_COL = { sprinkler: [0.1, 0.85, 0.95, 0.95], 'gutter-top': [1, 0.75, 0.1, 0.95], 'gutter-out': [1, 0.45, 0.1, 0.95], other: [0.85, 0.85, 0.85, 0.95] };
 const CSS = { ref: '#2f7cf6', check: '#a54bd8', pin: '#e53935', lawn: '#4cc38a' };
+const THING_CSS = { sprinkler: '#1ad9f2', 'gutter-top': '#ffbf1a', 'gutter-out': '#ff731a', other: '#d9d9d9' };
 /* THE LIVE LIDAR FIX IS SET ASIDE (the owner, 2026-11-09: "let's go back to just placing references manually and set
    aside everything about getting a live fix from lidar and finding the best fit after a walk... it looks like automatic
    lidar alignment is just too difficult to make work"; SCAN-H28-H31). The walk is placed by its reference marks; the
@@ -279,6 +280,7 @@ async function loadMap(id) {
   drawMap();
   startLidar(m);
   askReference();
+  askThings();
   st.photo = null; st.photos = { kept: null, stretched: null }; st.shown = {};
   const got = await keptPhoto(id);
   if (got.photo) { st.photos.kept = got.photo; st.photoSrc = got.src; st.frame = got.frame; }
@@ -543,6 +545,8 @@ function drawMap() {
     if (label) { g.font = `bold ${15 * u}px system-ui, sans-serif`; g.fillStyle = '#fff'; g.strokeStyle = 'rgba(0,0,0,.85)'; g.lineWidth = 4 * u; g.strokeText(label, x + R + 4 * u, y - R * 0.4); g.fillText(label, x + R + 4 * u, y - R * 0.4); }
   };
   for (const p of st.pins) if (p.map) dot(p.map, CSS.pin, p.name, 7);
+  // the things placed on earlier walks (things.js), by their ids, so the list under the map says which is which
+  for (const t of st.placed || []) if (!t.gone && t.at) dot(t.at, THING_CSS[t.kind] || '#ddd', t.id, 7);
   roofMarks(g, u);
   for (const p of shownPoints()) dot(p.map, p.kind === 'ref' ? CSS.ref : CSS.check, p.name, 14, p === st.dragging);
   // WHILE DRAGGING, A MAGNIFIER: the photo round the point four times closer, in the top corner away from the finger
@@ -2018,6 +2022,63 @@ function gradeOfFix(L, odo) {
   if (src === 'refs' || corners >= 2) { if (corners - left >= 3 && !left) return 'corners3'; if (src === 'earlier') return 'earlier'; if (corners - left >= 2) return 'corners2'; }
   return src === 'earlier' ? 'earlier' : 'unsure';
 }
+/* SHARED WITH THE MAP'S RECORD (docs/MAPS.md, the scan tool's part; the owner, 2026-11-22: "Yes. Ask the water map
+   how it wants that", and the water session's answer): each thing's present place, for the water map to OFFER. The
+   scan tool's part is read first so nothing else in it is lost. A failure here loses nothing: the things are kept
+   on the scan site and go into the record at the next walk's end. -> what happened, in words. */
+async function shareThings(things) {
+  const map = st.map;
+  try {
+    const had = st.site?.tools?.scan?.data && typeof st.site.tools.scan.data === 'object' ? st.site.tools.scan.data : {};
+    const data = { ...had, things: forRecord(things, (at) => fromLocal(st.origin, at)), thingsAt: new Date().toISOString() };
+    const rr = await fetch(`/api/maps/tool?id=${encodeURIComponent(map)}&tool=scan`, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data, basedOn: st.site?.at || null }), signal: AbortSignal.timeout(SEND_TIMEOUT_MS) });
+    if (rr.ok && st.site) st.site.tools = { ...(st.site.tools || {}), scan: { ...(st.site.tools?.scan || {}), data } };
+    return rr.ok ? '; shared with the map for the water map' : `; NOT yet shared with the map's record (the site answered ${rr.status})`;
+  } catch { return '; NOT yet shared with the map\'s record (no signal)'; }
+}
+
+/* THE THINGS PLACED ON THIS MAP, LISTED UNDER THE START BUTTONS (2026-11-22; the walk in the rain left the same gutter
+   pinned twice 6-7 ft apart and the page had no way to take one away). Each by its id (the same id is on the map
+   above), what it is, what vouched for its place and how many times it was sighted; "Take away" marks it gone (kept,
+   not deleted: "Put back" undoes it), and the list is kept and shared with the map's record again. */
+const GRADE_WORDS = { corners3: 'three roof corners agreed', earlier: 'placed by the earlier walk', corners2: 'two roof corners', unsure: 'the walk\'s place was unsure' };
+async function askThings() {
+  const box = $('#things-list'); if (!box) return;
+  st.placed = []; box.hidden = true;
+  const map = st.map; if (!map) return;
+  try {
+    const r = await fetch(`/api/scan/things?map=${encodeURIComponent(map)}`, { credentials: 'same-origin' });
+    if (r.ok && st.map === map) st.placed = decodeThings(await r.text());
+  } catch { /* no signal: none listed */ }
+  drawThings(); drawMap();
+}
+function drawThings(note = '') {
+  const box = $('#things-list'); if (!box) return;
+  const all = st.placed || [];
+  box.hidden = !all.length;
+  if (!all.length) return;
+  const row = (t) => `<li${t.gone ? ' class="dim"' : ''}><b>${esc(t.id)}</b> ${esc(kindOf(t.kind)?.short || t.kind)}${t.pair ? ` (downspout ${esc(t.pair)})` : ''}: ${t.gone ? 'taken away' : `${esc(GRADE_WORDS[t.grade] || t.grade || '')}, sighted ${(t.seen || []).length}x`} <button type="button" class="plain" data-thing="${esc(t.id)}" data-do="${t.gone ? 'back' : 'away'}">${t.gone ? 'Put back' : 'Take away'}</button></li>`;
+  box.innerHTML = `<p class="dim" style="margin:8px 0 2px">Placed on this map on earlier walks (each is on the map above by its id):</p><ul style="margin:0;padding-left:1.1rem;line-height:2.1">${all.map(row).join('')}</ul>${note ? `<p class="dim" style="margin:2px 0">${esc(note)}</p>` : ''}`;
+  for (const b of box.querySelectorAll('button[data-thing]')) b.addEventListener('click', () => {
+    // two taps to take one away: a slip of the thumb on a phone should not
+    if (b.dataset.do === 'away' && !b.dataset.sure) { b.dataset.sure = '1'; b.textContent = 'Tap again to take it away'; return; }
+    changeThing(b.dataset.thing, b.dataset.do);
+  });
+}
+async function changeThing(id, what) {
+  const map = st.map; if (!map) return;
+  drawThings('Saving...');
+  // read again first: a walk on another phone may have added to the list since this page opened
+  let old;
+  try { const r = await fetch(`/api/scan/things?map=${encodeURIComponent(map)}`, { credentials: 'same-origin' }); if (!r.ok) throw new Error(`the site answered ${r.status}`); old = decodeThings(await r.text()); } catch (e) { drawThings(`Not changed: ${e.message || 'no signal'}.`); return; }
+  const next = pairGutters(what === 'away' ? takeAway(old, id, 'by hand') : putBack(old, id));
+  const r = await fetch(`/api/scan/things?map=${encodeURIComponent(map)}`, { method: 'PUT', credentials: 'same-origin', body: encodeThings(next), signal: AbortSignal.timeout(SEND_TIMEOUT_MS) }).catch(() => null);
+  if (!r?.ok) { drawThings(`Not changed: ${r ? `the site answered ${r.status}` : 'no signal'}.`); return; }
+  st.placed = next;
+  const shared = await shareThings(next);
+  drawThings(`${id} ${what === 'away' ? 'taken away' : 'put back'}${shared}.`); drawMap();
+}
+
 /** The pins given a kind, put into the map's things. Returns what happened, in words, or null when none was placed. */
 async function keepThings(L, w) {
   const map = st.map, pins = (w?.pins || []).filter((p) => p.kind && kindOf(p.kind));
@@ -2044,18 +2105,8 @@ async function keepThings(L, w) {
   const r = await fetch(`/api/scan/things?map=${encodeURIComponent(map)}&walk=${encodeURIComponent(String(w.startedAt))}`, { method: 'PUT', credentials: 'same-origin', body: encodeThings(u.things), signal: AbortSignal.timeout(SEND_TIMEOUT_MS) }).catch(() => null);
   if (!r?.ok) return `The things placed were NOT kept: ${r ? `the site answered ${r.status}` : 'no signal'}.`;
   const unsure = add.filter((a) => a.grade === 'unsure').length;
-  /* SHARED WITH THE MAP'S RECORD (docs/MAPS.md, the scan tool's part; the owner, 2026-11-22: "Yes. Ask the water map
-     how it wants that", and the water session's answer): each thing's present place, for the water map to OFFER. The
-     scan tool's part is read first so nothing else in it is lost. A failure here loses nothing: the things are kept
-     on the scan site and go into the record at the next walk's end. */
-  let shared = '';
-  try {
-    const had = st.site?.tools?.scan?.data && typeof st.site.tools.scan.data === 'object' ? st.site.tools.scan.data : {};
-    const data = { ...had, things: forRecord(u.things, (at) => fromLocal(st.origin, at)), thingsAt: new Date().toISOString() };
-    const rr = await fetch(`/api/maps/tool?id=${encodeURIComponent(map)}&tool=scan`, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data, basedOn: st.site?.at || null }), signal: AbortSignal.timeout(SEND_TIMEOUT_MS) });
-    shared = rr.ok ? '; shared with the map for the water map' : `; NOT yet shared with the map's record (the site answered ${rr.status})`;
-    if (rr.ok && st.site) st.site.tools = { ...(st.site.tools || {}), scan: { ...(st.site.tools?.scan || {}), data } };
-  } catch { shared = '; NOT yet shared with the map\'s record (no signal)'; }
+  const shared = await shareThings(u.things);
+  st.placed = u.things; drawThings();
   return `Things kept with the map: ${u.added} new, ${u.again} sighted again${u.moved.length ? ` (${u.moved.length} moved, the most ${Math.round(Math.max(...u.moved.map((m) => m.m)) * 39.37)} in)` : ''}${unsure ? `; ${unsure} placed while the walk's own place on the map was unsure` : ''}${shared}.`;
 }
 

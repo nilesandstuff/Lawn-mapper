@@ -126,6 +126,11 @@ export function takeAway(things, id, walk) {
   return (things || []).map((t) => (t.id === id ? { ...t, gone: { walk: String(walk || ''), t: Date.now() } } : t));
 }
 
+/** A thing taken away put back, as it was. -> the things. */
+export function putBack(things, id) {
+  return (things || []).map((t) => { if (t.id !== id || !t.gone) return t; const o = { ...t }; delete o.gone; return o; });
+}
+
 /** The things still there. */
 export const standing = (things) => (things || []).filter((t) => t?.at && !t.gone && kindOf(t.kind));
 

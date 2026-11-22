@@ -1,6 +1,6 @@
 // The things a person places in a yard (lib/things.js).
 import assert from 'node:assert/strict';
-import { addSightings, placeOf, takeAway, standing, decodeThings, encodeThings, KINDS, kindOf, pairGutters, forRecord } from '../lib/things.js';
+import { addSightings, placeOf, takeAway, putBack, standing, decodeThings, encodeThings, KINDS, kindOf, pairGutters, forRecord } from '../lib/things.js';
 
 const S = (kind, at, grade, walk = 'w1', h = 0) => ({ kind, at, h, walk, grade, t: 1 });
 
@@ -30,6 +30,7 @@ assert.equal(q.things.length, 3);
 // taken away: marked, not deleted; sighted again it is back
 let g = takeAway(r.things, 't2', 'w5');
 assert.equal(standing(g).length, 2); assert.equal(g.length, 3);
+assert.equal(standing(putBack(g, 't2')).length, 3); assert.equal(putBack(g, 't1')[0], g[0], 'one not taken away is left as it is');
 g = addSightings(g, [S('sprinkler', [9.1, 4], 'corners3', 'w6')]).things;
 assert.equal(standing(g).length, 3);
 

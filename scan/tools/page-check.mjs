@@ -17,11 +17,17 @@ const T = { '.js': 'text/javascript', '.html': 'text/html', '.wasm': 'applicatio
 // a 2 x 2 PNG, for the map's photo
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR4nGNkYPj/n4GBgYGJAQoAHxcCAr7oQnUAAAAASUVORK5CYII=', 'base64');
 
+let THINGS = { v: 1, things: [{ id: 't1', kind: 'gutter-out', at: [1, 1], h: 0.1, grade: 'corners3', seen: [{ at: [1, 1], h: 0.1, walk: 'w', grade: 'corners3', t: 1 }] }, { id: 't4', kind: 'gutter-out', at: [3, 1], h: 0.1, grade: 'unsure', seen: [{ at: [3, 1], h: 0.1, walk: 'w', grade: 'unsure', t: 1 }] }] }, PUTS = 0;
 const srv = http.createServer((q, s) => {
   const u = new URL(q.url, 'http://x');
   const json = (o, code = 200) => { s.statusCode = code; s.setHeader('Content-Type', 'application/json'); s.end(JSON.stringify(o)); };
   if (u.pathname === '/api/maps/one') return json({ map: { id: 'check', lng: -100, lat: 40, shapes: [], at: 1 } });
   if (u.pathname === '/api/maps/photo') { s.setHeader('X-Photo-Frame', JSON.stringify({ lng: -100, lat: 40, zoom: 19, size: 640 })); s.setHeader('X-Photo-Source', 'county'); s.setHeader('Content-Type', 'image/png'); return s.end(PNG); }
+  // the map's placed things (2026-11-22): two gutter outlets, listed under the start buttons with "Take away"
+  if (u.pathname === '/api/scan/things') {
+    if (q.method === 'PUT') { let b = ''; q.on('data', (c) => { b += c; }); q.on('end', () => { THINGS = JSON.parse(b); PUTS++; json({ ok: true }); }); return; }
+    return json(THINGS);
+  }
   if (u.pathname.startsWith('/api/')) return json({ error: 'Not found' }, 404);
   const f = join(B, u.pathname === '/' ? 'index.html' : u.pathname);
   if (!f.startsWith(B) || !existsSync(f)) { s.statusCode = 404; return s.end(); }
@@ -49,11 +55,23 @@ async function main() {
           const err = await pg.evaluate((src) => new Promise((ok) => { const k = new Worker(src, { type: 'module' }); const t = setTimeout(() => ok(null), 2500); k.onerror = (e) => { clearTimeout(t); ok(e.message || 'would not load'); }; }), w);
           if (err) faults.push(`${w}: ${err}`);
         }
+        // the placed things: listed, and one taken away with two taps (kept as gone, not deleted) and put back
+        const rows = () => pg.evaluate(() => [...document.querySelectorAll('#things-list li')].map((li) => li.textContent.replace(/\s+/g, ' ').trim()));
+        const tap = (id) => pg.evaluate((i) => document.querySelector(`#things-list button[data-thing="${i}"]`)?.click(), id);
+        const r0 = await rows();
+        if (r0.length !== 2 || !/t4 gutter outlet/.test(r0[1])) faults.push(`${path}: the placed things are not listed (${JSON.stringify(r0)})`);
+        else {
+          await tap('t4'); await tap('t4'); await pg.waitForTimeout(800);
+          const r1 = await rows(), gone = THINGS.things.find((t) => t.id === 't4')?.gone;
+          if (!gone || THINGS.things.length !== 2 || !/taken away.*Put back/.test(r1[1] || '')) faults.push(`${path}: "Take away" did not mark the thing gone and keep it (${JSON.stringify(r1)}; ${PUTS} saves)`);
+          await tap('t4'); await pg.waitForTimeout(800);
+          if (THINGS.things.find((t) => t.id === 't4')?.gone || !/Take away/.test((await rows())[1] || '')) faults.push(`${path}: "Put back" did not bring the thing back`);
+        }
       }
       await pg.close();
     }
   } finally { await br.close(); srv.close(); }
   if (faults.length) { console.log(`The built page does NOT run in a browser; not deploying:\n  ${faults.join('\n  ')}`); process.exit(1); }
-  console.log('The built page runs in a browser: it opens with and without a map, and both workers load.');
+  console.log('The built page runs in a browser: it opens with and without a map, both workers load, and a placed thing can be taken away and put back.');
 }
 main().catch((e) => { console.log(`Page check could not run: ${e.message}`); process.exit(1); });

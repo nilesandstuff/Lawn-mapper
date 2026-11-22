@@ -4171,6 +4171,10 @@ BUILT (2026-11-22):
     step, about two reads a second); the twin's time is logged in three parts (a picture; its three depth grids;
     what piled up made ready to send). NOT MEASURED on a walk yet.
 
-NOT DONE: no way on the page to take a placed thing away or to say two are one (the two late gutter things from this
-walk stand in the map's record); the phone's scale is taken from the reference though it differed by 0.8% between
+  - The things placed on a map are LISTED on the start page under the Start buttons, each by its id (the same id is
+    on the placement map), with "Take away" (two taps; marked gone, kept, "Put back" undoes it), saved and shared
+    with the map's record again. Checked in a browser with stand-in answers (page-check.mjs); NOT SEEN ON A PHONE.
+
+NOT DONE: no way to say two placed things are one, or to move one (the two late gutter things from this walk stand in
+the map's record until the owner takes them away); the phone's scale is taken from the reference though it differed by 0.8% between
 two walks of one lot; the height drift is not looked at by any rule; a walk that drifts is refused, not mended.
