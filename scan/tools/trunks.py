@@ -115,7 +115,8 @@ own middle and its own width, so lean, taper and a fork's first split survive. A
 PLAN = 0.15               # m: the plan grid
 SPAN = 1.2                # m of height a column's points must span
 LEVELS = 5                # of 0.25 m, at the least
-NARROW, LONG = 0.75, 1.0  # m: a trunk's footprint, the short way and the long way, at the most
+NARROW, LONG = 1.2, 1.6   # m: the footprint of ALL its sightings together, the short way and the long way, at the most
+TALL = 2.4                # m over the ground: something stands this tall at a tree; a shrub does not
 SLICE = 0.25              # m of height to a slice
 TOP = 4.0                 # m over the ground: as high as a trunk is followed
 
@@ -143,16 +144,31 @@ def read_walk(d):
 
 
 def find_in_walk(recs, kind, flags, cut_s=0.0):
+    """THE THIRD PASS (2026-11-22, after the owner's eyes on the second: one false match, "a shrub"; "more real trees
+    were marked"; "a handful of real trees that were given a very good look from multiple angles were missed"; and
+    "I've got trees that are as small as 4 inches in diameter, some that are close to 2 foot... Tree trunks can be even
+    bigger than those, by a lot").
+      - A trunk seen from several sides at several moments is SMEARED by the walk's own drift (two sightings of one
+        place lie 6-20 in apart, section 48), and a 2 ft trunk so seen is 3 ft across: the second pass threw it out as
+        too wide. The footprint may now be 4 ft by 5 ft, and the trunk's shape is taken from its ONE BEST SIGHTING
+        (the moment with the most points), so the slices are a trunk as it was seen once, not a smear.
+      - A SHRUB IS SHORT: something must stand 8 ft or more over the ground at the trunk (its own stem, or its crown).
+      - STANDING FREE is asked of what is round it that is NOT itself a column: a row of young trees 3 ft apart are
+        each other's neighbours, not a thicket.
+    -> the trunks, and the counts."""
     NOT = [KINDS.index(k) for k in ("built", "fence", "grass", "bare ground", "paved", "movable", "water", "sky")]
-    t, x, y, z, g = recs[:, 0], recs[:, 2].astype(np.float64), recs[:, 3].astype(np.float64), recs[:, 4].astype(np.float64), recs[:, 5].astype(np.float64)
-    h = y - g
-    ok = np.isfinite(h) & np.isfinite(x) & np.isfinite(z) & (t >= cut_s) & ((flags & 3) == 0) & (h >= 0.2) & (h <= TOP)
+    t_, x_, y_, z_, g_ = recs[:, 0].astype(np.float64), recs[:, 2].astype(np.float64), recs[:, 3].astype(np.float64), recs[:, 4].astype(np.float64), recs[:, 5].astype(np.float64)
+    h_ = y_ - g_
+    base = np.isfinite(h_) & np.isfinite(x_) & np.isfinite(z_) & (t_ >= cut_s) & ((flags & 3) == 0)
     if kind is not None:
-        ok &= ~np.isin(kind, NOT)
+        base &= ~np.isin(kind, NOT)
+    ok = base & (h_ >= 0.2) & (h_ <= TOP)
+    up = base & (h_ >= TALL) & (h_ <= 20)                      # what stands tall: a stem's upper part, a crown
     st = {"points": int(len(recs)), "standing": int(ok.sum()), "kinds": kind is not None}
     if ok.sum() < 50:
         return [], st
-    x, z, h, g, t = x[ok], z[ok], h[ok], g[ok], t[ok]
+    ux, uz = x_[up], z_[up]
+    x, z, h, g, t = x_[ok], z_[ok], h_[ok], g_[ok], t_[ok]
     ci, cj = np.floor(x / PLAN).astype(np.int64), np.floor(z / PLAN).astype(np.int64)
     ci -= ci.min(); cj -= cj.min()
     W, H = int(ci.max()) + 1, int(cj.max()) + 1
@@ -170,49 +186,66 @@ def find_in_walk(recs, kind, flags, cut_s=0.0):
     grid = ndimage.binary_closing(np.pad(col.reshape(W, H), 1), structure=np.ones((3, 3), bool))[1:-1, 1:-1] | col.reshape(W, H)
     lab, n = ndimage.label(grid, structure=np.ones((3, 3), int))
     of = lab.reshape(-1)[key]
-    out, wide, crowded = [], 0, 0
+    in_col = grid.reshape(-1)[key]
+    out, wide, crowded, short, thin = [], 0, 0, 0, 0
     for k in range(1, n + 1):
         m = of == k
         if m.sum() < 12:
+            thin += 1
             continue
-        px, pz, ph = x[m], z[m], h[m]
-        # the footprint along its own long way (a leaning trunk is long one way and narrow the other)
-        c0 = np.array([px.mean(), pz.mean()])
+        px, pz, ph, pt = x[m], z[m], h[m], t[m]
+        c0 = np.array([np.median(px), np.median(pz)])
         q = np.stack([px, pz], 1) - c0
-        w_, v_ = np.linalg.eigh(np.cov(q.T) + 1e-9 * np.eye(2))
-        a = q @ v_
-        ext = np.sort(np.ptp(a, axis=0))
+        _, v_ = np.linalg.eigh(np.cov(q.T) + 1e-9 * np.eye(2))
+        ext = np.sort(np.ptp(q @ v_, axis=0))
         if ext[0] > NARROW or ext[1] > LONG:
             wide += 1
             continue
-        # followed up from the group: every point within 0.5 m of the trunk's line, slice by slice
-        slices, c = [], np.median(np.stack([px[ph < 0.9], pz[ph < 0.9]], 1), axis=0) if (ph < 0.9).any() else c0
+        # a shrub is short: something stands TALL or more over the ground within a metre of it
+        if not ((np.hypot(ux - c0[0], uz - c0[1]) < 1.0).sum() >= 3):
+            short += 1
+            continue
+        # its sightings: the group's points in time, a new sighting after 20 s without one; the best has the most points
+        o = np.argsort(pt)
+        brk = np.flatnonzero(np.diff(pt[o]) > 20)
+        seg = np.split(o, brk + 1)
+        best = max(seg, key=len)
+        if len(best) < 8:
+            thin += 1
+            continue
+        t0, t1 = pt[best].min() - 3, pt[best].max() + 3
+        lowb = best[ph[best] < 1.2] if (ph[best] < 1.2).any() else best
+        c = np.median(np.stack([px[lowb], pz[lowb]], 1), axis=0)
+        cents = [np.median(np.stack([px[sg], pz[sg]], 1), axis=0) for sg in seg if len(sg) >= 8]
+        apart = float(max(np.hypot(*(cc - c)) for cc in cents)) if len(cents) > 1 else 0.0
+        # standing free: at stem height, what is round it that is not itself a column is less than the trunk itself
+        r_own = max(0.35, ext[0] / 2 + 0.1)
+        dd = np.hypot(x - c0[0], z - c0[1])
+        stem = (h >= 0.3) & (h <= 1.2)
+        own, ring = int((stem & (dd < r_own)).sum()), int((stem & ~in_col & (dd >= r_own + 0.15) & (dd < r_own + 0.6)).sum())
+        if ring > own:
+            crowded += 1
+            continue
+        # the trunk as its best sighting saw it: every point of that moment within 0.5 m of the line, slice by slice
+        now = (t >= t0) & (t <= t1)
+        slices, cc = [], c.copy()
         for s0 in np.arange(0.2, TOP, SLICE):
-            near = (h >= s0) & (h < s0 + SLICE) & (np.hypot(x - c[0], z - c[1]) < 0.5)
+            near = now & (h >= s0) & (h < s0 + SLICE) & (np.hypot(x - cc[0], z - cc[1]) < 0.5)
             if near.sum() < 3:
                 if s0 > 0.9 and slices and s0 - slices[-1][0] > 2 * SLICE:
                     break
                 continue
-            c = np.median(np.stack([x[near], z[near]], 1), axis=0)
-            r = float(np.percentile(np.hypot(x[near] - c[0], z[near] - c[1]), 80))
-            slices.append([round(float(s0), 2), round(float(c[0]), 2), round(float(c[1]), 2), round(max(0.02, r), 2)])
-        if len(slices) < LEVELS:
+            cc = np.median(np.stack([x[near], z[near]], 1), axis=0)
+            r = float(np.percentile(np.hypot(x[near] - cc[0], z[near] - cc[1]), 80))
+            slices.append([round(float(s0), 2), round(float(cc[0]), 2), round(float(cc[1]), 2), round(max(0.02, r), 2)])
+        if len(slices) < LEVELS - 1:
+            thin += 1
             continue
-        # A TRUNK STANDS FREE at stem height: round it, 1.5 to 3 ft out, there is less standing than in the trunk itself.
-        # A stem inside a hedge or a thicket fails this, and so does a piece of a hedge that passed for narrow.
-        b = np.array(slices[0][1:3])
-        dd = np.hypot(x - b[0], z - b[1])
-        stem = (h >= 0.3) & (h <= 1.2)
-        own, ring = int((stem & (dd < 0.35)).sum()), int((stem & (dd >= 0.45) & (dd < 0.9)).sum())
-        if ring > own:
-            crowded += 1
-            continue
-        top = slices[-1][0] + SLICE
         lean = float(np.hypot(slices[-1][1] - slices[0][1], slices[-1][2] - slices[0][2]))
-        out.append({"y": round(float(np.median(g[m])), 2), "x": slices[0][1], "z": slices[0][2], "slices": slices, "seenTo": round(float(top), 2),
-                    "across": round(float(2 * np.median([s[3] for s in slices[: max(3, len(slices) // 2)]])), 2), "lean": round(lean, 2),
-                    "points": int(m.sum()), "moments": int(len(np.unique(np.floor(t[m] / 5))))})
-    st.update({"groups": int(n), "tooWide": wide, "crowded": crowded})
+        out.append({"y": round(float(np.median(g[m])), 2), "x": slices[0][1], "z": slices[0][2], "slices": slices, "seenTo": round(float(slices[-1][0] + SLICE), 2),
+                    "across": round(float(2 * np.median([s_[3] for s_ in slices[: max(3, len(slices) // 2)]])), 2), "lean": round(lean, 2),
+                    "points": int(m.sum()), "sightings": int(len(cents) or 1), "apart": round(apart, 2), "footprint": round(float(ext[1]), 2)})
+    st.update({"groups": int(n), "tooWide": wide, "crowded": crowded, "short": short, "thin": thin})
     return out, st
 
 
@@ -227,17 +260,19 @@ def main_walk(d, out=None):
     trunks, st = find_in_walk(recs, kind, flags, cut)
     print(f"TREE TRUNKS in the walk's own points: {st['points']:,} kept points, {st['standing']:,} standing 8 in to 13 ft over their own ground after the start cut ({cut / 60:.1f} min)"
           f"{', ground, paving and building left out by the voted kinds' if st['kinds'] else ' (no voted kinds with this walk: everything standing is tried)'}.")
-    print(f"  Plan cells (6 in) that are a column, {SPAN * FT:.0f} ft of height in {LEVELS} levels or more: {st.get('columnCells', 0):,}; groups of them {st.get('groups', 0)}; "
-          f"too wide to be a trunk {st.get('tooWide', 0)}; not standing free (in a hedge or thicket) {st.get('crowded', 0)}; TRUNKS {len(trunks)}.")
+    print(f"  Plan cells (6 in) that are a column, {SPAN * FT:.0f} ft of height in {LEVELS} levels or more: {st.get('columnCells', 0):,}; groups of them {st.get('groups', 0)}: "
+          f"too few points {st.get('thin', 0)}; too wide even for a trunk seen from all sides {st.get('tooWide', 0)}; nothing standing {TALL * FT:.0f} ft at it (a shrub) {st.get('short', 0)}; "
+          f"not standing free {st.get('crowded', 0)}; TRUNKS {len(trunks)}.")
     if trunks:
-        acr = sorted(t["across"] for t in trunks); tops = sorted(t["seenTo"] for t in trunks); mom = sorted(t["moments"] for t in trunks); lean = sorted(t["lean"] for t in trunks)
         mid = len(trunks) // 2
-        print(f"  The trunks: across {acr[0] * 39.37:.0f} / {acr[mid] * 39.37:.0f} / {acr[-1] * 39.37:.0f} in (least / middle / most); followed up to {tops[0] * FT:.0f} / {tops[mid] * FT:.0f} / {tops[-1] * FT:.0f} ft; "
-              f"leaning {lean[0] * 39.37:.0f} / {lean[mid] * 39.37:.0f} / {lean[-1] * 39.37:.0f} in over that; seen at {mom[0]} / {mom[mid]} / {mom[-1]} moments of the walk (5 s each); "
-              f"{sum(len(t['slices']) for t in trunks)} slices in all.")
+        acr = sorted(t["across"] for t in trunks); tops = sorted(t["seenTo"] for t in trunks); sg = sorted(t["sightings"] for t in trunks)
+        ap = sorted(t["apart"] for t in trunks if t["sightings"] > 1); fp = sorted(t["footprint"] for t in trunks)
+        print(f"  The trunks, each as its best sighting saw it: across {acr[0] * 39.37:.0f} / {acr[mid] * 39.37:.0f} / {acr[-1] * 39.37:.0f} in (least / middle / most); followed up to {tops[0] * FT:.0f} / {tops[mid] * FT:.0f} / {tops[-1] * FT:.0f} ft; "
+              f"seen at {sg[0]} / {sg[mid]} / {sg[-1]} separate times; all their sightings together {fp[0] * 39.37:.0f} / {fp[mid] * 39.37:.0f} / {fp[-1] * 39.37:.0f} in across"
+              + (f"; one trunk's sightings lie up to {ap[0] * 39.37:.0f} / {ap[len(ap) // 2] * 39.37:.0f} / {ap[-1] * 39.37:.0f} in apart (the walk's own drift at a trunk)" if ap else "") + f"; {sum(len(t['slices']) for t in trunks)} slices in all.")
     out = out or os.path.join(d, "trunks.json")
     with open(out, "w") as f:
-        json.dump({"v": 2, "from": "the walk's own points", "frame": "the walk's own (ARCore session), metres; y up", "startCutS": cut, "sliceM": SLICE, "trunks": trunks, "stats": st}, f)
+        json.dump({"v": 3, "from": "the walk's own points, each trunk as its best sighting saw it", "frame": "the walk's own (ARCore session), metres; y up", "startCutS": cut, "sliceM": SLICE, "trunks": trunks, "stats": st}, f)
     print(f"  Kept: {os.path.basename(out)} ({len(trunks)} trunks, each as slices [height over the ground, x, z, radius]; places not printed).")
 
 
