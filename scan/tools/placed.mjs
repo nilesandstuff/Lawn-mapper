@@ -60,6 +60,34 @@ async function main() {
       + (A && B ? `; on the map by the corners' one fit ${ftIn(Math.hypot(A[0] - B[0], A[1] - B[1]))}` : '') + '. If they are one thing, that is the walk\'s own drift between the two.');
   }
 
+  // 2b. IS IT ONE STEADY SLIDE? Each pair above is one place seen twice: (where, when) and (where, later). If the walk
+  // slid at a steady rate per foot walked, one pair's slide foretells the others'. The pairs: a plain pin on a corner
+  // against that corner's mark, and each thing pinned twice. In the walk's own frame; rates and leftovers only.
+  const pairs = [];
+  for (const p of pins.filter((q) => !q.kind)) {
+    let best = null;
+    for (const m of first.values()) { const d = Math.hypot(p.at.x - m.ar[0], -p.at.z - m.ar[1]); if (!best || d < best.d) best = { m, d }; }
+    if (best && best.d < 6) pairs.push({ name: `${p.name} on its corner`, o0: best.m.odo, o1: p.odo, v: [p.at.x - best.m.ar[0], -p.at.z - best.m.ar[1]] });
+  }
+  { const seen = new Set();
+    for (let i = 0; i < kinded.length; i++) for (let j = i + 1; j < kinded.length; j++) {
+      const a = kinded[i], b = kinded[j];
+      if (a.kind !== b.kind || seen.has(j) || lvl(a.at, b.at) > 8) continue;
+      seen.add(j);
+      pairs.push({ name: `${a.name}/${b.name}`, o0: a.odo, o1: b.odo, v: [b.at.x - a.at.x, -(b.at.z - a.at.z)] });
+    } }
+  if (pairs.length >= 2) {
+    console.log(`  IS IT ONE STEADY SLIDE? ${pairs.length} places seen twice.`);
+    for (const p of pairs) console.log(`    ${p.name}: slid ${ftIn(Math.hypot(...p.v))} over ${Math.round((p.o1 - p.o0) * FT)} ft of walking = ${(Math.hypot(...p.v) * IN / ((p.o1 - p.o0) * FT) * 100).toFixed(1)} in per 100 ft.`);
+    // each pair foretold by the others' mean rate (a vector per metre walked), the walk's own frame
+    for (let i = 0; i < pairs.length; i++) {
+      const others = pairs.filter((_, j) => j !== i);
+      const r = [0, 1].map((k) => others.reduce((a, q) => a + q.v[k] / (q.o1 - q.o0), 0) / others.length);
+      const p = pairs[i], pred = [r[0] * (p.o1 - p.o0), r[1] * (p.o1 - p.o0)];
+      console.log(`    ${p.name} foretold by the others' steady slide: ${ftIn(Math.hypot(p.v[0] - pred[0], p.v[1] - pred[1]))} left of its ${ftIn(Math.hypot(...p.v))}.`);
+    }
+  }
+
   // 3. what was kept with the map
   if (meta?.map) {
     const b = await readObject(BUCKET, `things/${meta.map}.json`).catch(() => null);
