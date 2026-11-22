@@ -27,7 +27,7 @@ const walk = new URLSearchParams(location.search).get('walk');
 const FT = 3.281;
 // A PART THAT IS MADE AGAIN (the view's files, the erasing) is never taken from the browser's own store: the site
 // let a part be kept an hour, so a walk prepared again was shown from its first, wrong file (2026-11-21).
-const FRESH = /^(view|erased|seg|study|judged|trunks)/;
+const FRESH = /^(view|erased|seg|study|judged|trunks|owner-)/;
 const part = (name, init) => fetch(`/api/scan/twin?walk=${encodeURIComponent(walk)}&part=${encodeURIComponent(name)}`, { credentials: 'same-origin', ...(FRESH.test(name) ? { cache: 'no-store' } : {}), ...init });
 const LABEL_COL = { terrain: [120, 190, 90], road: [110, 110, 125], sidewalk: [185, 185, 195], building: [215, 90, 70], structure: [235, 160, 70], tree: [40, 150, 70],
   object: [170, 110, 210], vehicle: [80, 140, 235], water: [70, 200, 230], sky: [255, 0, 255], person: [255, 255, 255], unlabeled: [150, 150, 150] };
@@ -101,6 +101,10 @@ async function main() {
   D.track.sort((a, b) => a[0] - b[0]);
   if (names.includes('view.json')) D.view = await (await part('view.json')).json().catch(() => null);
   // the tree trunks found in the joined cloud (scan/tools/trunks.py): the walk's own frame, drawn as brown posts
+  // THE OWNER'S OWN TRUNKS (owner-trunks.json): where the owner tapped "a tree trunk is here", the truth the trunk
+  // finder is tuned against (scan/tools/trunks.py scores itself on them). The walk's own frame, like the points.
+  D.marks = [];
+  if (names.includes('owner-trunks.json')) { const oj = await (await part('owner-trunks.json')).json().catch(() => null); if (Array.isArray(oj?.trunks)) D.marks = oj.trunks.filter((p) => Array.isArray(p) && p.length === 3 && p.every(Number.isFinite)); }
   if (names.includes('trunks.json')) { const tj = await (await part('trunks.json')).json().catch(() => null); D.trunks = tj?.trunks || []; D.trunkSlice = tj?.sliceM || 0.25; }
   if (DENSE) { D.rgb = DENSE.rgb; D.kind = DENSE.kind; U.readonly = true; }
   if (!DENSE && names.includes('view-rgb.bin')) { const u = new Uint8Array(await buf('view-rgb.bin')); if (u.length === N * 4) D.rgb = u; }
@@ -188,6 +192,7 @@ function build() {
       const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 10), mat); m.position.set(t.x, t.y + h / 2, t.z); scene.add(m);
     }
   }
+  markGroup = new THREE.Group(); scene.add(markGroup); drawMarks();
   // where the phone went: a thin line, so the walk can be found in the cloud
   if (D.track.length > 1) {
     const tp = new Float32Array(D.track.length * 3); D.track.forEach((r, i) => { tp[i * 3] = r[1]; tp[i * 3 + 1] = r[2]; tp[i * 3 + 2] = r[3]; });
@@ -285,14 +290,40 @@ function tally() {
   const ft = (j) => (shown ? Math.round((hi[j] - lo[j]) * FT) : 0);
   let tl = [Infinity, Infinity], th = [-Infinity, -Infinity];
   for (const q of D.track) { if (q[1] < tl[0]) tl[0] = q[1]; if (q[1] > th[0]) th[0] = q[1]; if (q[3] < tl[1]) tl[1] = q[3]; if (q[3] > th[1]) th[1] = q[3]; }
-  $('#tally').textContent = `${D.trunks ? `Tree trunks found: ${D.trunks.length} (brown, drawn as seen). ` : ''}Drawn now: ${shown.toLocaleString()} of ${D.n.toLocaleString()} points, lying ${ft(0)} x ${ft(2)} ft and ${ft(1)} ft high. Hidden: ${hu.toLocaleString()} unsure depth, ${hg.toLocaleString()} Google's, ${he.toLocaleString()} erased${ht ? `, ${ht.toLocaleString()} seen before the minute chosen` : ''}${bad ? `, ${bad.toLocaleString()} with no place` : ''}. `
+  $('#tally').textContent = `${D.trunks ? `Tree trunks found: ${D.trunks.length} (brown, drawn as seen)${(D.marks || []).length ? `; you marked ${D.marks.length} (green)` : ''}. ` : ''}Drawn now: ${shown.toLocaleString()} of ${D.n.toLocaleString()} points, lying ${ft(0)} x ${ft(2)} ft and ${ft(1)} ft high. Hidden: ${hu.toLocaleString()} unsure depth, ${hg.toLocaleString()} Google's, ${he.toLocaleString()} erased${ht ? `, ${ht.toLocaleString()} seen before the minute chosen` : ''}${bad ? `, ${bad.toLocaleString()} with no place` : ''}. `
     + `This walk: ${/^\d{13}$/.test(walk) ? new Date(Number(walk)).toLocaleString() : walk}, ${D.keys.length} photos. The path: ${D.track.length.toLocaleString()} poses, ${D.track.length ? Math.round((th[0] - tl[0]) * FT) : 0} x ${D.track.length ? Math.round((th[1] - tl[1]) * FT) : 0} ft. Read: ${U.read || ''}. Page of 21 Nov, c.`;
 }
+/* MARK TRUNKS (the owner, 2026-11-22: "I can tap trunks if you need me to"). In this mode a tap on a point puts a green
+   ball there: "a tree trunk stands here". A tap within 20 in of a ball takes it away. Kept by itself beside the walk
+   (owner-trunks.json), in either view (the walk's own points and the joined cloud share a frame). */
+let markGroup = null;
+function drawMarks() {
+  if (!markGroup) return;
+  while (markGroup.children.length) markGroup.remove(markGroup.children[0]);
+  const mat = new THREE.MeshBasicMaterial({ color: 0x22ff66 });
+  for (const [x, y, z] of D.marks || []) { const m = new THREE.Mesh(new THREE.SphereGeometry(0.13, 12, 10), mat); m.position.set(x, y, z); markGroup.add(m); }
+}
+function toggleMark(i) {
+  const p = [D.pos[i * 3], D.pos[i * 3 + 1], D.pos[i * 3 + 2]];
+  const near = (D.marks || []).findIndex((q) => Math.hypot(q[0] - p[0], q[2] - p[2]) < 0.5);
+  if (near >= 0) D.marks.splice(near, 1); else D.marks.push(p.map((v) => +v.toFixed(3)));
+  drawMarks(); note();
+  clearTimeout(U.markTimer); U.markTimer = setTimeout(saveMarks, 900);
+}
+async function saveMarks() {
+  $('#saved').textContent = 'saving your trunks…';
+  try {
+    const r = await part('owner-trunks.json', { method: 'PUT', body: JSON.stringify({ v: 1, frame: "the walk's own, metres", at: new Date().toISOString(), trunks: D.marks }) });
+    if (!r.ok) throw new Error(String(r.status));
+    $('#saved').textContent = `your ${D.marks.length} trunk${D.marks.length === 1 ? '' : 's'} saved`;
+  } catch (err) { $('#saved').textContent = `your trunks NOT saved (${err.message}); trying again`; U.markTimer = setTimeout(saveMarks, 8000); }
+}
+
 function note() {
   tally();
   let e = 0; for (let i = 0; i < D.n; i++) if (D.state[i] > 0.5) e++;
-  const say = { look: 'Look: turn with one finger, move and zoom with two; tap a point to make it the centre.', inspect: 'Inspect: tap a point in focus to see its photo.', erase: 'Erase: drag over points in focus.', restore: 'Bring back: drag over red points in focus.' }[U.mode];
-  $('#say').textContent = `${say} ${e.toLocaleString()} erased.`;
+  const say = { look: 'Look: turn with one finger, move and zoom with two; tap a point to make it the centre.', inspect: 'Inspect: tap a point in focus to see its photo.', erase: 'Erase: drag over points in focus.', restore: 'Bring back: drag over red points in focus.', trunk: 'Mark trunks: tap a tree trunk, low on the trunk, to put a green ball on it; tap a ball to take it away. Two fingers still move the view.' }[U.mode];
+  $('#say').textContent = U.mode === 'trunk' ? `${say} ${(D.marks || []).length} marked.` : `${say} ${e.toLocaleString()} erased.`;
 }
 async function save() {
   if (!U.dirty || U.readonly) return;
@@ -382,6 +413,7 @@ function wire() {
     const [x, y] = at(e);
     if (U.mode === 'look') { const i = pick(x, y, true); if (i >= 0) controls.target.set(D.pos[i * 3], D.pos[i * 3 + 1], D.pos[i * 3 + 2]); }
     else if (U.mode === 'inspect') { const i = pick(x, y); if (i >= 0) inspect(i); }
+    else if (U.mode === 'trunk') { const i = pick(x, y, true); if (i >= 0) toggleMark(i); }
   };
   el.addEventListener('pointerup', up); el.addEventListener('pointercancel', (e) => { U.pointers.delete(e.pointerId); endStroke(); });
 

@@ -249,6 +249,33 @@ def find_in_walk(recs, kind, flags, cut_s=0.0):
     return out, st
 
 
+def main_walk_why(recs, kind, flags, cut_s, at):
+    """For each place (x, z) the owner marked and the finder missed: how many of the walk's kept points stand within
+    2 ft of it at stem height, and of what voted kinds, in words. -> { reason: count }"""
+    NOT = [KINDS.index(k) for k in ("built", "fence", "grass", "bare ground", "paved", "movable", "water", "sky")]
+    t, x, y, z, g = recs[:, 0], recs[:, 2].astype(np.float64), recs[:, 3].astype(np.float64), recs[:, 4].astype(np.float64), recs[:, 5].astype(np.float64)
+    h = y - g
+    fin = np.isfinite(h) & np.isfinite(x) & np.isfinite(z)
+    out = {}
+    for px, pz in at:
+        near = fin & (np.hypot(x - px, z - pz) < 0.6) & (h >= 0.2) & (h <= TOP)
+        n = int(near.sum())
+        if n < 12:
+            r = "under 12 points there at all"
+        elif int((near & (t < cut_s)).sum()) > 0.6 * n:
+            r = "seen only before the start cut"
+        elif kind is not None and int((near & np.isin(kind, NOT)).sum()) > 0.6 * n:
+            ks = kind[near & np.isin(kind, NOT)]
+            r = f"voted {KINDS[int(np.bincount(ks).argmax())]}, not tree"
+        elif int((near & ((flags & 3) != 0)).sum()) > 0.6 * n:
+            r = "flagged as spikes"
+        else:
+            span = float(h[near].max() - h[near].min())
+            r = "points there, but not a column (under 4 ft of height)" if span < SPAN else "a column there that a rule turned away (too wide, not free, too few points or short)"
+        out[r] = out.get(r, 0) + 1
+    return out
+
+
 def main_walk(d, out=None):
     recs, kind, flags = read_walk(d)
     cut = 0.0
@@ -270,6 +297,27 @@ def main_walk(d, out=None):
         print(f"  The trunks, each as its best sighting saw it: across {acr[0] * 39.37:.0f} / {acr[mid] * 39.37:.0f} / {acr[-1] * 39.37:.0f} in (least / middle / most); followed up to {tops[0] * FT:.0f} / {tops[mid] * FT:.0f} / {tops[-1] * FT:.0f} ft; "
               f"seen at {sg[0]} / {sg[mid]} / {sg[-1]} separate times; all their sightings together {fp[0] * 39.37:.0f} / {fp[mid] * 39.37:.0f} / {fp[-1] * 39.37:.0f} in across"
               + (f"; one trunk's sightings lie up to {ap[0] * 39.37:.0f} / {ap[len(ap) // 2] * 39.37:.0f} / {ap[-1] * 39.37:.0f} in apart (the walk's own drift at a trunk)" if ap else "") + f"; {sum(len(t['slices']) for t in trunks)} slices in all.")
+    # AGAINST THE OWNER'S OWN TRUNKS (owner-trunks.json: where the owner tapped "a tree trunk is here" in the 3D view,
+    # the walk's own frame). A found trunk within 2.5 ft on the level of a tapped one is that tree. Counts only.
+    of = os.path.join(d, "owner-trunks.json")
+    if os.path.exists(of):
+        try:
+            own = [p for p in (json.load(open(of)).get("trunks") or []) if len(p) == 3]
+        except Exception:
+            own = []
+        if own:
+            O = np.array([[p[0], p[2]] for p in own])
+            Fd = np.array([[t["x"], t["z"]] for t in trunks]) if trunks else np.zeros((0, 2))
+            dm = np.hypot(O[:, None, 0] - Fd[None, :, 0], O[:, None, 1] - Fd[None, :, 1]) if len(Fd) else np.zeros((len(O), 0))
+            hit_o = (dm.min(1) <= 0.75) if len(Fd) else np.zeros(len(O), bool)
+            hit_f = (dm.min(0) <= 0.75) if len(Fd) else np.zeros(0, bool)
+            near = sorted(float(x) for x in dm.min(1)[hit_o]) if hit_o.any() else []
+            print(f"  AGAINST THE OWNER'S OWN {len(own)} TRUNKS: found {int(hit_o.sum())} of them, missed {int((~hit_o).sum())}; of the {len(trunks)} found, {int((~hit_f).sum())} are at no trunk the owner marked."
+                  + (f" Where found, {near[len(near) // 2] * 39.37:.0f} in from the owner's tap in the middle, {near[-1] * 39.37:.0f} at the most." if near else ""))
+            # why each missed one was missed: what the finder had at that place
+            if (~hit_o).any():
+                why = main_walk_why(recs, kind, flags, cut, O[~hit_o])
+                print("  The missed ones, by what stood at the owner's tap: " + ", ".join(f"{k} {v}" for k, v in sorted(why.items(), key=lambda kv: -kv[1])) + ".")
     out = out or os.path.join(d, "trunks.json")
     with open(out, "w") as f:
         json.dump({"v": 3, "from": "the walk's own points, each trunk as its best sighting saw it", "frame": "the walk's own (ARCore session), metres; y up", "startCutS": cut, "sliceM": SLICE, "trunks": trunks, "stats": st}, f)

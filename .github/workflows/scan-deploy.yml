@@ -333,7 +333,7 @@ jobs:
           set -o pipefail
           pip install --quiet numpy scipy
           # the walk's own kept points (the second try, 2026-11-22: the joined cloud was a miss), their kinds, the start cut
-          node scan/tools/twin-r2.mjs parts "$WALK" twin 'cloud-*' 'labels-*' view-kind.bin view.json start.json | tee trunks.txt
+          node scan/tools/twin-r2.mjs parts "$WALK" twin 'cloud-*' 'labels-*' view-kind.bin view.json start.json owner-trunks.json | tee trunks.txt
           python scan/tools/trunks.py twin twin/trunks.json | tee -a trunks.txt
           node scan/tools/twin-r2.mjs put "$WALK" twin/trunks.json | tee -a trunks.txt
 

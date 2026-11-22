@@ -4106,3 +4106,10 @@ own scatter round a thin thing), not in the method. (2) one trunk's sightings up
 drift measured at a fixed object: the same size as section 48's 6-20 in. (3) 11 groups fail "standing free" and 12
 have too few points: if well-seen trees are still missed, those two are where they are.
 NOT CHECKED: the owner's eyes on the third pass.
+
+THE OWNER'S OWN TRUNKS AS THE TRUTH (2026-11-22; the owner: "I can tap trunks if you need me to"). The 3D view has a
+mode "Mark trunks": a tap on a point puts a green ball there ("a tree trunk stands here"), a tap on a ball takes it
+away; kept by itself beside the walk (owner-trunks.json, the walk's own frame). trunks.py then scores itself: of the
+owner's trunks how many it found (one within 2.5 ft on the level), how many of its own are at no marked trunk, and
+for each one missed WHAT STOOD THERE in the walk's points (too few points; voted built or fence; points but no
+column; a column a rule turned away). Until the owner has marked a walk's trunks there is no number here.
