@@ -323,10 +323,14 @@ export function shapeFix(ref, walk, { cell = SEARCH_CELL, step = TURN_STEP, marg
   const pin = prior?.pin?.ar && prior?.pin?.map ? prior.pin : null;
   const bx = pin ? pin.ar[0] * K : mx, by = pin ? pin.ar[1] * K : my;   // the point of the walk whose landing is bounded
   const pc = pin ? pin.map : prior?.T ? place({ s: 1, ...prior.T }, mx / K, my / K) : null;
-  const pR = prior ? Math.max(cell, prior.searchM || (pin ? 1.5 : 8)) : Infinity, pDeg = prior && !pin ? Math.max(step, prior.searchDeg || 15) : Infinity;
+  // which way the walk is turned: the prior's own T when there is no pin; with a pin, `prior.theta` when the page has
+  // the phone's heading (Street View's, geo.js: run 502 showed a corner alone brings the first fix only 50 ft earlier,
+  // because it says nothing of the turn); else every turn
+  const pTheta = pin ? (Number.isFinite(prior.theta) ? prior.theta : null) : prior?.T ? prior.T.theta : null;
+  const pR = prior ? Math.max(cell, prior.searchM || (pin ? 1.5 : 8)) : Infinity, pDeg = pTheta != null ? Math.max(step, prior.searchDeg || 15) : Infinity;
   for (let deg = 0; deg < 360; deg += step) {
     const th = (deg * Math.PI) / 180, c = Math.cos(th), s = Math.sin(th);
-    if (pc && !pin && turnOff(th, prior.T.theta) > pDeg + step) continue;
+    if (pc && pTheta != null && turnOff(th, pTheta) > pDeg + step) continue;
     Wre.fill(0); Wim.fill(0);
     let qx0 = Infinity, qy0 = Infinity;
     const Q = ws.map((p) => { const q = [c * p[0] - s * p[1], s * p[0] + c * p[1]]; qx0 = Math.min(qx0, q[0]); qy0 = Math.min(qy0, q[1]); return q; });
@@ -409,7 +413,7 @@ export function shapeFix(ref, walk, { cell = SEARCH_CELL, step = TURN_STEP, marg
   }
   if (pc) {
     // what the refining did with it must still lie by the prior
-    for (let i = results.length - 1; i >= 0; i--) { const q = place(results[i].T, bx, by); if (Math.hypot(q[0] - pc[0], q[1] - pc[1]) > 1.5 * pR || (!pin && turnOff(results[i].T.theta, prior.T.theta) > pDeg + 5)) results.splice(i, 1); }
+    for (let i = results.length - 1; i >= 0; i--) { const q = place(results[i].T, bx, by); if (Math.hypot(q[0] - pc[0], q[1] - pc[1]) > 1.5 * pR || (pTheta != null && turnOff(results[i].T.theta, pTheta) > pDeg + 5)) results.splice(i, 1); }
   }
   if (!results.length) return { ok: false, why: pin ? 'nothing of the earlier walk matches with that corner where it should be' : 'nothing of the earlier walk matches near where GPS has this one', stand: stand.length, ms: Date.now() - t0 };
   results.sort((a, b) => b.landed - a.landed);

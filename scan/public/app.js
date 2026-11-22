@@ -1361,7 +1361,10 @@ function frameWork(f) {
     // where GPS or Street View has the walk, as a LOOSE bound (at least 15 m and 25 degrees): tight, it shut the
     // right answer out (run 491); loose, it only forbids the far side of the yard
     const pr = walkPrior(st.gpsTrail, st.geoTrail);
-    const prior = cornerMark ? { pin: { ar: cornerMark.ar, map: cornerMark.map }, searchM: 1.5 }
+    // with a corner, the phone's own heading too when Street View has one (geo.js: theta with its accuracy): the
+    // corner says where, the heading says which way round
+    const hd = (() => { const g = (st.geoTrail || []).filter((r) => Number.isFinite(r.theta) && Number.isFinite(r.yawAcc) && r.yawAcc <= 20).slice(-5); if (!g.length) return null; return { theta: Math.atan2(g.reduce((a, r) => a + Math.sin(r.theta), 0), g.reduce((a, r) => a + Math.cos(r.theta), 0)), searchDeg: Math.max(15, 2 * Math.max(...g.map((r) => r.yawAcc))) }; })();
+    const prior = cornerMark ? { pin: { ar: cornerMark.ar, map: cornerMark.map }, searchM: 1.5, ...(hd || {}) }
       : pr ? { T: { theta: pr.T.theta, tx: pr.T.tx, ty: pr.T.ty }, searchM: Math.max(15, 2 * pr.searchM), searchDeg: Math.max(25, 2 * pr.searchDeg) } : null;
     st.ref.worker.postMessage({ fix: { id, stand: [...st.prevStand.values()], ground: [...st.prevGround.values()], prior } });
   }

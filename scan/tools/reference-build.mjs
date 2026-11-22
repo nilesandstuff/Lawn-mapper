@@ -290,8 +290,16 @@ async function against(dirs) {
     // twice over: without a corner (from 60 m, a loose GPS bound), and WITH THE LATEST CORNER MARKED SO FAR as a pin
     // (from 15 m; the corner used as the pin is then no judge of that fix: it is shown in brackets)
     const refs = (live.marks || []).filter((m) => m?.ar && m?.map && m.kind === 'ref').sort((a, b) => a.odo - b.odo);
-    for (const withPin of [false, true]) {
-      console.log(`   ${withPin ? 'WITH ONE CORNER (the latest marked so far) as a pin, from 49 ft:' : 'WITHOUT a corner, from 197 ft:'}`);
+    // the phone's heading at a moment of the walk: Street View's own reading of how the session is turned on the map
+    // (live.json geoTrail, theta with its yawAcc), the middle of the last five good ones
+    const headingAt = (lim) => {
+      const g = (live.geoTrail || []).filter((r) => (r.odo ?? 0) <= lim && Number.isFinite(r.theta) && Number.isFinite(r.yawAcc) && r.yawAcc <= 20).slice(-5);
+      if (!g.length) return null;
+      const th = Math.atan2(g.reduce((a, r) => a + Math.sin(r.theta), 0), g.reduce((a, r) => a + Math.cos(r.theta), 0));
+      return { theta: th, searchDeg: Math.max(15, 2 * Math.max(...g.map((r) => r.yawAcc))) };
+    };
+    for (const withPin of [false, true, 'heading']) {
+      console.log(`   ${withPin === 'heading' ? 'WITH ONE CORNER AND THE PHONE\'S OWN HEADING (Street View\'s), from 49 ft to 394 ft:' : withPin ? 'WITH ONE CORNER (the latest marked so far) as a pin, from 49 ft to 394 ft:' : 'WITHOUT a corner, from 197 ft:'}`);
       let before = null, used = 0, usedBad = 0, firstUsed = null;
       for (let upTo = withPin ? 15 : 60; ; upTo += 15) {
         const last = upTo >= total;
@@ -301,7 +309,9 @@ async function against(dirs) {
         if (withPin && !pinM) { if (last) break; continue; }
         const part = { stand: pts.stand.filter((p) => (p[3] || 0) <= lim), ground: pts.ground.filter((p) => (p[3] || 0) <= lim) };
         const prior = walkPrior((live.gpsTrail || []).filter(within), (live.geoTrail || []).filter(within));
-        const loose = pinM ? { pin: { ar: pinM.ar, map: pinM.map }, searchM: 1.5 } : prior ? { T: prior.T, searchM: Math.max(15, 2 * prior.searchM), searchDeg: Math.max(25, 2 * prior.searchDeg) } : null;
+        const hd = withPin === 'heading' ? headingAt(lim) : null;
+        if (withPin === 'heading' && !hd) { if (last || upTo >= 120) break; continue; }
+        const loose = pinM ? { pin: { ar: pinM.ar, map: pinM.map }, searchM: 1.5, ...(hd || {}) } : prior ? { T: prior.T, searchM: Math.max(15, 2 * prior.searchM), searchDeg: Math.max(25, 2 * prior.searchDeg) } : null;
         const f = shapeFix(ref, part, loose ? { prior: loose } : {});
         const judges = marks.filter((m) => !pinM || m.id !== pinM.id);
         const e = f.T ? judges.map((m) => { const p = onMap(f.T, m.ar); return Math.hypot(p[0] - m.map[0], p[1] - m.map[1]) * 39.37; }) : [];
@@ -309,7 +319,7 @@ async function against(dirs) {
         if (confirmed) { used++; if (firstUsed == null) firstUsed = last ? total : upTo; if (e.length && Math.min(...e) > 60) usedBad++; }
         console.log(`    at ${last ? `its end (${Math.round(total * FT)} ft)` : `${Math.round(upTo * FT)} ft`}: ${f.ok ? (confirmed ? 'USED (two alike)' : 'a match, waiting for the next to agree') : f.T ? 'refused' : 'nothing'}${f.landed != null ? ` (landed ${f.landed}, next best ${f.second ?? '-'}${loose ? '' : ', no GPS yet'})` : ''}${e.length ? `: the other corners ${e.map((x) => x.toFixed(0)).join(', ')} in out` : f.why ? `: ${f.why}` : ''}`);
         before = f.ok ? f.T : null;
-        if (last) break;
+        if (last || (withPin && upTo >= 120)) break;
       }
       console.log(`    -> used ${used} time${used === 1 ? '' : 's'}${used ? `, first at ${Math.round(firstUsed * FT)} ft, ${usedBad} of them with every judging corner over 5 ft out` : ''}.`);
     }

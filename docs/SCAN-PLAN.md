@@ -4053,3 +4053,20 @@ BUILT (scan/lib/things.js pairGutters, forRecord; app.js keepThings; docs/MAPS.m
 things are kept on the scan site, the scan tool's part of the map's record is written: { things: [{ id, kind, lng,
 lat, e, n, h, grade, seen, last, gone?, pair? }], thingsAt }. A gutter outlet takes the nearest gutter top within
 4 m that has none. Nothing else in the scan tool's part is lost (it is read first). NOT SEEN ON A PHONE.
+
+HARD, section 57's one corner as a pin (run 502, the same three walks; the corner used as the pin is no judge of its
+own fix):
+  - 2026-11-19 walk: at 49 and 98 ft the match was RIGHT (the other corners 6 and 31 in out) but refused for too
+    small a lead (0.08, 0.09); a first match at 148 ft, USED from 197 ft (246 without a corner).
+  - 2026-11-20 walk: right at 49 ft (the good corner 50 in), not confirmed at 98 (by then the latest corner was the
+    one marked 36 ft wrong: refused, as it should be); USED from 246 ft (295 without). Late in the walk, with the
+    first corner marked again 82 in from where it was as the pin, refused (landed 0.13): the fix already held stays.
+  - 2026-11-18 walk (193 ft): never used, with or without (its matches 23 to 1,691 in out).
+  - Used fixes with every judging corner over 5 ft out: 0.
+WHAT IT SAYS: one corner brings the first fix about 50 ft earlier (200-250 ft instead of 250-300), and uses no wrong
+fix. It does not make the start usable by itself: a corner says where one point is and nothing of which way the
+walk is turned. The lead cannot be relaxed to let the early right answers through: the wrong ones' leads (0.06-0.07)
+overlap theirs (0.08-0.09), and two wrong ones in a row agreed with each other.
+BEING TRIED: the corner AND the phone's own heading (Street View's reading of how the session is turned, geo.js
+theta with its accuracy): where, and which way round. And the plain answer for a walk's first steps stays what walk
+1 does: TWO corners place a walk at once, with no shape needed.
