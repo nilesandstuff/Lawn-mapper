@@ -4143,6 +4143,16 @@ HARD (task `placed`, scan/tools/placed.mjs, runs 508 and 511; the walk's own fra
     page's own work 54% of the walk's time, of it the twin (track, pictures) 37%, the camera's picture read 25%,
     drawing 18%, depth to points 15%. 98 MB went up over 4g while walking.
 
+  - Its poses (task `jumps`, run 509): 1,969 poses; steps over 30 in between two poses half a second apart: 5 (the
+    most 45 in). Seven steps of 36-80 in out of line with the walking round them, at 5.0, 6.2, 8.7, 9.1, 9.4, 9.5 and
+    10.2 min; gaps of 1.6-1.9 s in the poses at 8.7, 9.1, 9.3, 9.5 and 10.2 min, the phone moved 2-15 in across each.
+    NOT YET JUDGED whether they are jumps at all: see the speculation below.
+  - The reference of the owner's lot made afresh (run 510): from the walk of 2026-11-20 alone, its three corners
+    within 3 in, 36,434 standing and 23,819 ground points, the phone's scale 6.7% kept with it; the one it replaced
+    (2 walks, 11,312 standing and 16,832 ground points) kept as a backup.
+  - What the earlier walk's fit did during the walk is NOT KNOWN: the walk's last live state dropped it (fixed
+    2026-11-22: kept at the end too, with every confirmed fix as the walk went).
+
 WHAT IT SAYS: corners that agree prove the walk was right WHERE AND WHEN THEY WERE MARKED, and nothing about the walk
 1,000 ft later. Section 53's rule needed a second half: the walk must come back to itself.
 
@@ -4152,9 +4162,15 @@ SPECULATION (nothing here is measured):
     what it saw at the start. One walk cannot tell them apart. NOT the page's freezes, by the app's code: ARCore's
     update runs on the drawing thread every frame whether or not the page takes the frame (ArEngine.kt) -- read from
     the code, not measured.
-  - That the live shift the owner saw was this drift and not the earlier walk's fit moving. The walk's live state
-    kept the earlier walk's fit without its scale (fixed 2026-11-22); `placed` now prints where that fit put the
-    walk's own corners.
+  - That the live shift the owner saw was this drift and not the earlier walk's fit moving (see HARD: not known).
+  - That the seven "jumps" are the page's stalls and not the phone's tracking. A pose is stamped with the time the
+    page handled it; after a stall of 1.7 s the page first handles the frame that was waiting (the phone hardly
+    moved: "2 in across it") and then a fresh one, a fraction of a second later by its clock and 1.7 s of walking
+    away: about 80 in at a walker's pace, which is the size of the largest. The judge is the walker's own pins
+    (mend_study.py --jumps: each place aimed at twice, as walked and with the jumps taken back).
+  - That the slide is the phone's SCALE moving during the walk. The phone reads this lot 5.9% short on this walk and
+    6.7% on the last one; a scale that wanders by a part in a hundred over a 1,000 ft round would not close by
+    several feet, and would not be one steady slide. Nothing measures the scale along a walk yet.
 
 BUILT (2026-11-22):
   - refkeep.js closingOf: a plain pin within 4 m of a corner's first mark, 30 m or more of walking later (or a
