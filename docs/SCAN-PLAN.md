@@ -3984,3 +3984,57 @@ across, these are as likely the smoothed depth's smear round a trunk, or a shrub
 owner's eyes on the brown posts are the first judge. If they are mostly wrong, the cause is the material (11 in
 cells, three quarters of them smoothed depth), and the next try is the photos' own measured depth near the ground
 at a finer cell, tree-kind only, asking for two photos at the least.
+
+THE OWNER'S EYES ON THE FIRST TRY (2026-11-22): "The brown posts are a complete miss. It looks like there's only 1
+brown post that may be pointing to an actual tree trunk... it may or may not be just a lucky guess. There's a handful
+of true trunks that got a very very good view and they're highly visible when viewing the depth points." And: "Rather
+than making whole new posts, should we just rasterize the shapes of the actual observed trunks so the[y] maintain
+dimensions and orientation?" The first try is a MISS; the joined cloud is not the material for trunks.
+THE SECOND TRY (trunks.py find_in_walk): the walk's OWN kept points (what the camera measured, each with the phone's
+ground under it), ground, paving and building left out by the voted kinds; a 6 in plan cell is a column when its
+points span 4 ft of height in five levels; touching columns are a group; a group narrow enough is a trunk if it also
+STANDS FREE at stem height (less standing 1.5-3 ft round it than in it). Kept AS SEEN: a slice every 10 in of height
+with its own middle and width (trunks.json v2); the 3D view draws the slices. On a made-up yard: three trunks found,
+one leaning 20 in, at 9, 15 and 24 in across for true 6, 12 and 20; a hedge, a wall and a fence post left out.
+HARD (run 500, the big walk): 251,890 kept points, 43,766 standing 8 in to 13 ft over their own ground after the
+start cut; 386 column cells in 44 groups; 8 too wide, 17 not standing free, 7 TRUNKS: 15 / 22 / 31 in across (least
+/ middle / most), followed up to 6 / 7 / 11 ft, leaning 7 / 14 / 25 in over that, seen at 3 / 6 / 10 moments of the
+walk; 62 slices in all.
+NOT CHECKED: the owner's eyes again. JUDGEMENT: better founded than the first (measured points, several moments
+each), but 15-31 in across is fat for the trunks the owner describes (4-6 in ones among them), and a lean of 25 in
+over 7 ft may be two sightings of one trunk a foot apart (the walk's own drift) and not a lean.
+
+## 57. The owner's notes of 2026-11-22, and what was decided
+
+  - THE PHONE'S SCALE IS A NUMBER TO WATCH ("We should watch that number in future tests, and especially on future
+    phones"). It is printed by task `corners` for every walk, kept with a map's reference (`phone`), and since today
+    said on each walk's card when its corners agree. One phone so far: 4.2-6.9% at the owner's lot, 1.6-2.4% at three
+    other places.
+  - SKY-BLUE POINTS ON A ROOF'S EDGE (the owner's screenshot: points on a roof corner coloured sky blue; "Are we
+    filtering out sky blue depth points when seen at a certain angle?"). What is so: the prepared views and the
+    studies drop a point that the phone called sky, or that is sky-blue in its photo AND that the phone did not call
+    ground, building or tree (studies.py load). No angle is in it. A roof-edge point the phone called building is
+    kept, whatever its colour. A CORNER MARK is not filtered at all: it is the depth under the crosshair. So the
+    filter does not bear on the corners' distances. SPECULATION: a depth cell on a roof's edge covers roof and sky
+    both, so the edge's points take the sky's colour and may sit a cell out from the edge; that would make a roof
+    read a few inches LARGE, the opposite way from the phone's shortfall.
+  - ONE LONG WALK OR TWO (front and back)? Not for drift: the big walk came back to itself within 6-20 in over 12
+    minutes and 1,500 ft (48). What lies off is a walk's first two minutes, and height. ARCore's own anchors moved
+    about nothing on one walk and 0.18 m in the middle on the other (they follow ARCore's own corrections; no help).
+    ADOPTED INSTEAD: mark the first corner again at the END of a walk. It costs ten seconds and gives every walk a
+    measured closing error (the white post against the corner).
+  - NO FIX BEFORE 200 ft "is actually a bit of a problem. Would 1 corner reference fix that?" Built: the latest
+    marked corner pins the match (walkref.js prior.pin: every turn, but only placements that put that corner within
+    1.5 m of its place), and with a corner marked the match is asked from the start. Tried on earlier walks: below.
+  - PLACED THINGS TO THE WATER MAP: "Yes. Ask the water map how it wants that." Asked (a Routine into the water
+    session, 2026-11-22 16:39 UTC), with the owner's words on fusing AR, lidar and aerial.
+  - "SHOULD WE RASTERIZE SHAPES so the data is cleaner/smoother, and takes less resources to store and process?
+    Hundreds of thousands of points seems like it is inefficient." YES, and it is the goal's "shape mesh". JUDGEMENT,
+    the form it should take, each part a raster of what was seen and not a guess drawn over it:
+      ground     one height to a square (a grid, about 10 in), with how many sightings and their spread;
+      walls      flat pieces: where, which way they face, how high, where they end;
+      trunks     slices, as now; crowns and shrubs, a coarse block grid;
+      things     points with a kind (55).
+    A yard is then tens of kilobytes instead of megabytes, and matching a new walk to it is matching to surfaces.
+    The points stay in the twin; the shape is made from them and can be made again. Not built; the trunks are the
+    first piece of it.
