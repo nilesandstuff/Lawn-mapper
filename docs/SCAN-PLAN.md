@@ -3681,6 +3681,13 @@ slides against later stretches is over the larger of 24 in and twice the rest of
 the last such stretch (start.json beside the twin; the larger of it and the corners' cut is used; view.json's
 startCutS moved up). Its answer on this walk: the next mend run.
 
+HARD (run 484, the rule above on this walk): the bar 26 in, the rest of the walk's middle slide 13 in. By stretch:
+0.4 min 38 in OFF, 0.7 17, 0.8 19, 0.9 35 OFF, 1.0 42 OFF, 1.1 40 OFF, 1.2 24, 1.4 46 OFF, 1.6 74 OFF, 1.8 26,
+1.9 18, 3.3 12, 3.4 11, 3.6 6, 4.2 53 OFF, 4.3 17, 4.4 21. THE CUT BY THE PLACES SEEN TWICE: 1.6 min (80 photos
+left out), against the corners' 1.5 and the owner's eyes' 1.8; the stretch at 1.8 min sits exactly on the bar. One
+stretch at 4.2 min is off by itself (53 in) and is not cut. The steps judged on the 28 places seen on both sides of
+one: 22 in apart as walked, 95 in with the steps taken back: NOT taken back, as it should be.
+
 ## 49. The owner's direction: a walk consistent with itself comes first (2026-11-21)
 
 THE OWNER ("a vibe-based guess... ignore it if you disagree"; the core session agrees and adopts it): "the number 1
