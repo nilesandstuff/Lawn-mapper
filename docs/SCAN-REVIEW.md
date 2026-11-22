@@ -6,6 +6,27 @@ refinements that we should consider. Just a really thorough examination of how w
 Three kinds of statement, kept apart: MEASURED HERE (docs/SCAN-PLAN.md 30-34), FROM SOURCES (web research of
 2026-11-20, four threads; a source's own claim is not our measurement), and JUDGEMENT (the core session's, untested).
 
+## 0. The goal, and where the work stands against it (kept current; last 2026-11-22)
+
+The goal is the owner's, word for word in CLAUDE.md ("THE GOAL OF THE YARD AR TOOL"). Each line of it, and what is
+actually so (MEASURED unless marked; section numbers are docs/SCAN-PLAN.md's):
+
+| The goal | Where it stands |
+|---|---|
+| First walk: a baseline fix to the lidar | Two or three roof corners place a walk. The phone reads their distances about 5% short of the map at the owner's lot and 2% elsewhere (50); with three corners the fit may scale, with two it cannot. Which side is off is not settled. |
+| First walk: a shape mesh for later walks | Not a mesh yet. What is kept: the walk's standing and ground points as the map's reference (walkref.js), and for the viewer a joined cloud of 11 in cells with a kind each (dense_prep.py). A walk comes back to itself within 6-20 in across 12 minutes once its first 1.5-2 minutes are left out (48). |
+| Walk 2 on: fixed by the reference's shapes | Built (the live shape fix from an earlier walk) but NOT proven: the one time it was watched (2026-11-21, first short walk) it moved the walk 675 in, off a reference saved from two corners that disagreed. A reference must be judged before it is used. |
+| Place sprinkler heads, gutters | Not built. The page has plain pins and tape measures; none carries a kind or is kept with the map. |
+| Fences, trees placed by themselves | Kinds are voted onto points: grass, built, paved, tree against plant by height (36, 44). Fences get almost no points (59 of 350,000 on the big walk). Trunks are not picked out. Bare branches get nearly no depth at all: the phone's depth does not see them. |
+| Lawn trace refined, missing buildings, slope | Not built. The ground comes out in levels about 5 in apart; a 6 ft hill read 4.5-5 ft to the owner's eye (not measured). |
+| Each walk adds to the reference; overwrites only when surely better | The merge exists (refkeep.js mergeRef, updateRef); "surely better" is not yet a measured rule. |
+
+JUDGEMENT, the order that follows from it: (1) one walk agreeing with itself, start cut and all, as a kept SHAPE
+(the first row's mesh), because every later row stands on it; (2) a reference judged before it is trusted, then
+walk 2 fixed by it and scored by its own corners; (3) the things a person places (sprinkler heads, gutters), which
+need only (2); (4) trunks and fences from the classes; (5) trace, buildings, slope. Bare branches wait on a depth
+the phone does not give (a depth model on the photos is the one lead).
+
 ## 1. Where the present approach strains
 
 MEASURED HERE

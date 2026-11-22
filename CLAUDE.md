@@ -228,6 +228,23 @@ changed with it:
     when it is spent, stop and ask ("I'll tell you when/if you can get a new allotment"). Every other use of
     Modal still asks first.
 
+THE GOAL OF THE YARD AR TOOL (the owner, 2026-11-22: "Just a reminder of the goal, commit this to memory"):
+
+  - THE FIRST WALK "establishes a baseline fix to the lidar and a shape mesh that can be referenced for future
+    walks."
+  - WALK 2 AND ON:
+      - "uses the shapes from the reference to track to orient the user within a lawn";
+      - "can place sprinkler heads, gutters (where they connect to the roof and where they let out)";
+      - "automatically place fences, trees (atleast the trunks, but ideally the branches as well...)" -- few points
+        land on bare branches even after sideways panning loops round a tree;
+      - "automatically refine the lawn trace, add missing buildings, refine slope/gradients".
+  - "each walk uses the shape reference to get a fix, and adds to future shape references. But only overwrites
+    existing reference shapes if there's a high degree of confidence that the new info is actually better."
+
+"However you accomplish all of that is up to you, work through it in the order that makes sense to you and you can
+prioritize the more feasible things if you get stuck on the harder ones." Where the work stands against each line of
+this is kept at the top of docs/SCAN-REVIEW.md; update it when a line moves.
+
 ## One way to read lidar (owner, 2026-11-03)
 
 "I want as much cohesiveness between the different ways to read lidar as
