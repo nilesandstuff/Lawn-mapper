@@ -1142,11 +1142,13 @@ function frameWork(f) {
     // more than a metre between two frames, and faster than anyone walks (6 m a second): a jump, not a stride after a stall
     const moved = q ? Math.hypot(p.x - q.x, p.y - q.y, p.z - q.z) : 0, dt = q ? Math.max(1, f.t - q.t) : 0;
     if (q && dt < 1500 && moved > 1 && moved / (dt / 1000) > 6 && L.marks.some((m) => m.by === 'ROOF')) {
-      L.stale = { odo, at: Date.now(), m: Math.hypot(p.x - q.x, p.y - q.y, p.z - q.z) };
-      (L.jumps ||= []).push(odo);   // where the walk's frame broke: a kept part of the walk ends there (refkeep.js)
-      st.sight = null; st.sightEndedAt = 0;
-      log(`the phone's tracking jumped ${L.stale.m.toFixed(1)} m in one frame at ${Math.round(odo * FT)} ft walked: the roof corners are asked for again`);
-      flash('The phone lost its place. Aim at a roof corner again.');
+      /* A STEP IS NOTED, AND NOTHING IS ASKED (2026-11-22; docs/SCAN-PLAN.md 48). On the big walk of 2026-11-21 the
+         places seen before and after eight such steps lay 6-20 in apart as walked, and 149-162 in with the steps
+         taken back: the steps were the phone putting itself right. So the walk is no longer cut there, the corners
+         are not asked for again, and the earlier marks are kept. The step is logged and counted (L.steps). */
+      const m = Math.hypot(p.x - q.x, p.y - q.y, p.z - q.z);
+      (L.steps ||= []).push({ odo, m });
+      log(`the phone's tracking stepped ${m.toFixed(1)} m in one frame at ${Math.round(odo * FT)} ft walked (noted; nothing asked)`);
     }
     st.lastTracked = { x: p.x, y: p.y, z: p.z, t: f.t };
   }
@@ -1299,7 +1301,11 @@ function frameWork(f) {
       const now = performance.now() / 1000;
       if (st.nudge && (view[st.nudge.kind] || now > st.nudge.until)) st.nudge = null;
       const n = nudge(st.anchors, odo, now);
-      if (n) { st.nudge = { ...n, until: now + SHOW_S }; flash(n.text); }
+      /* NOT SAID ANY MORE (the owner, 2026-11-22: "should we get rid of the prompt that periodically says to look at
+         a roof or driveway edge?"). The nudges fed an after-the-walk placement by skyline and pavement that no longer
+         places walks (the corners do), and a walk's first job is to agree with itself. The views are still counted
+         in the summary; nudge() is still called so the counts of what WOULD have been asked are kept. */
+      void n;
     }
     if (grabbed?.pixels && f.depth) {
       const pts = [], { w: gw, h: gh, pixels } = grabbed;

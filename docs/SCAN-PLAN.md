@@ -3807,5 +3807,16 @@ Changed:
   - every marked corner is drawn as a WHITE post where the phone had it at the moment it was marked, moved by no
     fit and no map. Back at a corner later in the walk, a white post off the real corner is the walk's own drift,
     seen by the walker. The blue posts (where the fit puts each corner) are as before.
+Also taken out the same day (the owner: "should we get rid of the prompt that periodically says to look at a roof or
+driveway edge?"):
+  - the nudges "Look up at a roofline against the sky" and "Point the camera at the driveway, road, sidewalk or
+    patio" (scan/lib/anchors.js, 2026-11-06). They fed an after-the-walk placement by skyline and pavement that no
+    longer places walks. The views are still counted in the walk's summary; nothing is said.
+  - "The phone lost its place. Aim at a roof corner again." after a one-frame step. Section 48: those steps were
+    the phone putting itself right. The step is logged and counted (L.steps); the walk is no longer cut there
+    (L.jumps stays empty, so a kept reference is placed as one walk), the corners are not asked for again and the
+    earlier marks are kept. NOT MEASURED on any walk but the one of 2026-11-21: the walk of 2026-11-15 (a step of
+    8.2 ft at 418 ft, the reason the cut was built) has not been judged the same way.
+  - Kept: "Lost its place: look around slowly", which is ARCore saying it is not tracking at all.
 Not yet: a tracking-health line in the top box (steps and freezes as they happen); the page's messages that ask the
 walker to re-mark a corner after a "jump" (section 48: those steps were the phone putting itself right).
