@@ -3852,3 +3852,25 @@ ALLOWED INSTEAD: what the owner already did (lengths read off the county's ortho
 eyes and the ruler in Google Earth itself, which is its own product used as meant; Microsoft's US building
 footprints and Overture's buildings (both ODbL, from imagery; neither states how well a roof corner is placed); a
 tape.
+
+## 53. A reference only from corners that vouch for it (2026-11-22)
+
+WHAT HAPPENED (from the corner study's own numbers, section 50; HARD): on 2026-11-20 the owner's lot's two walks each
+held one corner marked about 20 ft from its place (the 23.0 ft pair read 43.5 and 43.8 ft). The rule that says
+which corners agree (refkeep.js goodPart) tried the three together (fail), then each pair by the difference of its
+length walked and on the map, allowed about 34 in there. The RIGHT pair, 88.7 ft apart, read 68 in short (the phone's
+5%, section 50) and failed; a pair holding the WRONG corner read 25 in short and passed. The walk was placed by it and
+went into the map's reference. On 2026-11-21 the first short walk, matched to that reference, was "moved 675 in".
+CHANGED:
+  - two marks also agree when the walked length is the map's less up to 7% (walkref.js MAX_SCALE, what the
+    three-corner fit already allowed), or over it by up to 2%;
+  - three corners out by a metre or more together, with two different pairs sharing a corner each passing: NOTHING
+    is vouched for ("it cannot be told which corner was marked wrong"). It truly cannot, from lengths: the wrong
+    corner sat the right distance from the third;
+  - a walk nothing vouches for is not put into the reference by its corners (app.js keepReference, and
+    reference-build.mjs keep). The walk itself is kept as before. This narrows the owner's rule of 2026-11-16
+    ("saved as a reference... Always") by the goal's rule of 2026-11-22 (overwrite only when surely better);
+  - reference-build.mjs `fresh` (task reference, walk "<id>:fresh"): a map's reference made afresh from one walk
+    with three corners all agreeing, its start left out, not cut at the phone's steps; the old one backed up.
+NOT YET: telling WHICH corner is wrong. The lengths cannot; the earlier walks' own lengths cannot either (same
+symmetry); the walk's standing points against the lidar's walls, or against a good reference's shape, could.

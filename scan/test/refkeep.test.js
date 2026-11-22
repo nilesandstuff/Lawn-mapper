@@ -31,6 +31,20 @@ const M = (id, map, odo, dx = 0, dy = 0) => ({ id, map, ar: toAr(map, dx, dy), o
   assert.deepEqual(partOf(pts, g.lo, g.hi).map((p) => p[0]), [1, 2], 'walked after the jump; one with no reading left out');
   assert.equal(partOf(pts, -Infinity, Infinity).length, 4, 'the whole walk keeps them all'); }
 
+// THREE CORNERS, ONE MARKED AT THE WRONG PLACE (2026-11-20, the owner's lot): the phone 6% short, so the right pair
+// read 5 ft short; the wrong corner sat the right distance from one of the others. It cannot be told which is wrong.
+{ const k = 0.94, D = [0, 0], F = [7, 0], G = [20, 18];
+  const L = Math.hypot(F[0] - G[0], F[1] - G[1]) * 0.97, Fwrong = [G[0] * k + L * Math.cos(-2.75), G[1] * k + L * Math.sin(-2.75)];   // the right distance from G, 20 ft from its place
+  const mk = (id, map, ar, odo) => ({ id, kind: 'ref', by: 'ROOF', map, ar, odo });
+  const g = goodPart([mk('D', D, [D[0] * k, D[1] * k], 5), mk('F', F, Fwrong, 20), mk('G', G, [G[0] * k, G[1] * k], 60)]);
+  assert.equal(g.ok, false); assert.equal(g.ambiguous, true);
+  // the same three, all marked right: one fit with the phone's scale, nothing left out
+  const ok = goodPart([mk('D', D, [D[0] * k, D[1] * k], 5), mk('F', F, [F[0] * k, F[1] * k], 20), mk('G', G, [G[0] * k, G[1] * k], 60)]);
+  assert.equal(ok.ok, true); assert.equal(ok.n, 3); assert.deepEqual(ok.left, []);
+  // two corners alone, 6% short over 27 m: they agree (they used not to)
+  const two = goodPart([mk('D', D, [D[0] * k, D[1] * k], 5), mk('G', G, [G[0] * k, G[1] * k], 60)]);
+  assert.equal(two.ok, true); }
+
 // two groups the same size: the later one
 { const g = goodPart([M('a', [0, 0], 5), M('b', [10, 0], 15), M('c', [10, 8], 40, 3, 0), M('d', [0, 8], 60, 3, 0)]);
   assert.deepEqual(g.ids, ['c', 'd']); assert.equal(g.lo, (15 + 40) / 2); }

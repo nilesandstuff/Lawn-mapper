@@ -192,11 +192,13 @@ async function keep(dir) {
     console.log(`Matched to the saved shape: ${f.ok ? `yes (landed ${f.landed}, next best ${f.second})${usable ? '' : `, but not used: the walk ${J.length ? 'jumped' : 'drifted'}, so its corners place it, stretch by stretch`}` : `no (${f.why})`}.`);
   }
   if (!plan.ok && !F) throw new Error(`nothing places this walk: ${plan.why}, and no match to a saved shape`);
+  // only what its corners vouch for (the page's own rule since 2026-11-22: app.js keepReference)
+  if (!F && !g.ok) throw new Error(`not put into the reference: ${g.why}`);
   const ps = F ? null : placeWalk(pts.stand, plan.use, plan.C, J), pg = F ? null : placeWalk(pts.ground, plan.use, plan.C, J);
   if (!F && ps.left + pg.left) console.log(`Not placed: ${ps.left + pg.left} points seen after a tracking jump with no corners sighted after it.`);
   const part = F ? pts : { stand: ps.pts, ground: pg.pts };
   if (part.stand.length < 200) throw new Error(`too little of the yard could be placed (${part.stand.length} standing points)`);
-  const u = updateRef(old, part, { C: F ? (plan.ok ? plan.C : null) : AS_IS, F, w: plan.agree ? g.n : 1 });
+  const u = updateRef(old, part, { C: F ? (plan.ok && g.ok ? plan.C : null) : AS_IS, F, w: plan.agree ? g.n : 1 });
   if (process.env.DRY) { console.log(`A dry run: nothing written (it would be: ${u.ref ? u.how : `refused, ${u.why}`}).`); return; }
   if (!u.ref) throw new Error(u.why);
   if (oldBytes) await writeObject(BUCKET, `refs/backup/${meta.map}-${Date.now()}.bin`, oldBytes, 'application/octet-stream');

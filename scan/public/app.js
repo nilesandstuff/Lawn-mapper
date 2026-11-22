@@ -2062,13 +2062,19 @@ async function keepReference(L, walkId) {
   const jumps = L?.jumps || [];
   const F = st.refUse && L?.prev?.ok && L.prev.Ts && (!plan.ok || matchUsable(plan, jumps)) ? L.prev.Ts : null;
   if (!plan.ok && !F) return `NOT saved as the reference: ${plan.why}.`;
+  /* ONLY WHAT ITS CORNERS VOUCH FOR (the goal, 2026-11-22: a reference is overwritten "only... if there's a high
+     degree of confidence that the new info is actually better"). A walk whose corners disagree so that none can be
+     told right (refkeep.js goodPart) is not put into the reference by them: the walk of 2026-11-20 was, by a corner
+     marked 20 ft from its place, and the next walk matched to it was moved 675 in. Matched to the saved shape (F) it
+     may still add to the shape; its corners then say nothing of where the shape sits. */
+  if (!F && !plan.g?.ok) return `NOT saved as the reference: ${plan.g?.why || 'its roof corners do not agree with the map'}. The walk itself is kept.`;
   const rawStand = [...(st.prevStand?.values() || [])], rawGround = [...(st.prevGround?.values() || [])];
   if (rawStand.length < REF_MIN_STAND) return `NOT saved as the reference: too little of the yard's standing things was seen (${rawStand.length} points of ${REF_MIN_STAND}).`;
   const ps = F ? null : placeWalk(rawStand, plan.use, plan.C, jumps), pg = F ? null : placeWalk(rawGround, plan.use, plan.C, jumps);
   const part = F ? { stand: rawStand, ground: rawGround } : { stand: ps.pts, ground: pg.pts };
   const unplaced = F ? 0 : ps.left + pg.left;
   if (part.stand.length < REF_MIN_STAND) return `NOT saved as the reference: the phone's tracking jumped and no roof corner was sighted after it, so only ${part.stand.length} standing points could be placed (of ${REF_MIN_STAND}). Aim at a roof corner again after the phone loses its place.`;
-  const C = F ? (plan.ok ? plan.C : null) : REF_AS_IS;
+  const C = F ? (plan.ok && plan.g?.ok ? plan.C : null) : REF_AS_IS;
   // the map's earlier reference, to build on (none, or "Fresh" chosen at the start: this walk makes it)
   let old = null;
   if (st.refUse || !st.refMeta) { try { const r = await fetch(`/api/scan/reference?map=${encodeURIComponent(map)}`, { credentials: 'same-origin' }); if (r.ok) old = decodeRef(new Uint8Array(await r.arrayBuffer())); } catch { /* none read */ } }

@@ -21,7 +21,7 @@
  *
  * Pure; marks are locate.js L.marks ({ id, ar: [u, v], map: [e, n], odo, by }).
  */
-import { fitRigid, fitSimilar, place, VOX } from './walkref.js';
+import { fitRigid, fitSimilar, place, VOX, MAX_SCALE } from './walkref.js';
 import { fitAt } from './align.js';
 
 export const AGREE_M = 0.45;       // 1.5 ft: how well the marks of a kept part agree with the map, at the least
@@ -33,6 +33,7 @@ export const AGREE_M = 0.45;       // 1.5 ft: how well the marks of a kept part 
    2026-11-15). Now each mark is allowed its own corner's uncertainty (m.tol: the corner's `within` when its sides were
    pinned by the returns, else 0.7 x the return spacing, how far a corner set from two sides each halfway across a
    gap can sit) plus AIM_M for the aim, never less than AGREE_M. A corner off by metres (R1, 9 ft) is still out. */
+export const GROSS_M = 1;         // three corners out by this much together: one of them is at the wrong place, not a little off
 export const AIM_M = 0.15;
 export const allowedOf = (m, floor = AGREE_M) => Math.max(floor, Number.isFinite(m?.tol) ? AIM_M + m.tol : floor);
 export const MIN_APART_M = 3;      // the part's marks at least this far apart: nearer, they cannot turn the walk
@@ -52,6 +53,14 @@ export function agreement(group, floor = AGREE_M) {
     worst = Math.abs(Math.hypot(group[0].ar[0] - group[1].ar[0], group[0].ar[1] - group[1].ar[1]) - Math.hypot(group[0].map[0] - group[1].map[0], group[0].map[1] - group[1].map[1]));
     const t = (m) => (Number.isFinite(m.tol) ? m.tol : 0);
     over = worst / Math.max(floor, AIM_M + Math.hypot(t(group[0]), t(group[1])));
+    /* THE PHONE MEASURES SHORT (docs/SCAN-PLAN.md 50: 2% short of the map at three places, 5% at the owner's lot, steady
+       walk after walk). Two corners 89 ft apart then read 4-6 ft short and failed this test every time, while on
+       2026-11-20 a pair holding a corner marked 20 ft from its place passed it by chance and placed the walk. So two
+       marks also agree when the walked length is the map's less up to MAX_SCALE (the same 7% the three-corner fit
+       allows), or over it by no more than 2%. */
+    const mapLen = Math.hypot(group[0].map[0] - group[1].map[0], group[0].map[1] - group[1].map[1]);
+    const ratio = mapLen > 0 ? (mapLen + (Math.hypot(group[0].ar[0] - group[1].ar[0], group[0].ar[1] - group[1].ar[1]) - mapLen)) / mapLen : 1;
+    if (ratio >= 1 - MAX_SCALE && ratio <= 1.02) over = Math.min(over, 1);
   } else for (const m of group) { const p = place(T, m.ar[0], m.ar[1]), r = Math.hypot(p[0] - m.map[0], p[1] - m.map[1]); worst = Math.max(worst, r); over = Math.max(over, r / allowedOf(m, floor)); }
   const apart = Math.max(...group.flatMap((a) => group.map((b) => Math.hypot(a.map[0] - b.map[0], a.map[1] - b.map[1]))));
   return { T, worst, over, apart };
@@ -78,6 +87,24 @@ export function goodPart(marks, jumps = [], { agree = AGREE_M } = {}) {
     if (!best || g.length > best.g.length || (g.length === best.g.length && (last > best.last + 1e-9 || (Math.abs(last - best.last) <= 1e-9 && a.worst < best.a.worst)))) best = { g, a, last };
   }
   if (!best) return { ok: false, n: use.length, roof, why: `no two of the ${use.length} marks agree with the map to ${(agree * 3.281).toFixed(1)} ft` };
+  /* WHICH CORNER IS WRONG CANNOT ALWAYS BE TOLD (2026-11-22). Three corners, one marked at the wrong place: the three
+     together fail, and TWO different pairs can each pass (the wrong corner may sit the right distance from one of the
+     others). Picking the later pair, as before, picked the wrong one on 2026-11-20, and the walk placed by it went
+     into the owner's lot's reference. When the best that agrees is a pair and another pair with a different corner
+     in it agrees as well, nothing is vouched for: the answer is "they disagree, and it cannot be told which". */
+  // (three corners exactly: with four, one wrong leaves three that agree together, and two pairs are a walk that drifted)
+  // and only when the three are out by a metre or more together: under that, whichever pair is taken the walk sits
+  // within the outline's own error, and the old answer (the pair, one corner left out) stands
+  if (best.g.length === 2 && pool.length === 3 && agreement(pool, agree).worst >= GROSS_M) {
+    const mine = new Set(best.g.map((m) => m.id));
+    for (let i = 0; i < pool.length; i++) for (let j = i + 1; j < pool.length; j++) {
+      // only a pair that SHARES one corner with the best: two pairs with no corner in common are two stretches of a
+      // walk that drifted between them, each right for its own stretch (the later one is kept, as before)
+      if (mine.has(pool[i].id) === mine.has(pool[j].id)) continue;
+      const a = agreement([pool[i], pool[j]], agree);
+      if (a.over <= 1 && a.apart >= MIN_APART_M) return { ok: false, n: use.length, roof, ambiguous: true, why: `its ${use.length} corners disagree, and two different pairs of them each agree with the map: it cannot be told which corner was marked wrong` };
+    }
+  }
   const inIds = new Set(best.g.map((m) => m.id)), out = use.filter((m) => !inIds.has(m.id));
   const first = best.g[0].odo, last = best.g[best.g.length - 1].odo;
   const J = [...jumps].filter(Number.isFinite).sort((a, b) => a - b);
