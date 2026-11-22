@@ -3796,3 +3796,16 @@ not enough for the long pair by itself unless the photo is off the same way.
 WHAT IT MEANS MEANWHILE: the live fit already lets the phone's scale move up to 7% once three corners are marked
 15 m apart (walkref.js MAX_SCALE); with two corners it cannot, and a 5% difference over 90 ft is 4.5 ft of
 "disagreement between the reference points". That alone is enough to explain most of what the owner sees.
+
+## 51. The live view made lighter (2026-11-22)
+
+The owner (section 49): the first walk's live fix does not matter; show the marked corners rather than the lidar.
+What was already so: the live lidar MATCH has been off since 2026-11-09 (only `?lidarfix=1` turns it on), so nothing
+was being fitted during a walk. What was still on: the lidar's shapes DRAWN in the camera through the corners' fit.
+Changed:
+  - the lidar's shapes are not drawn unless the Lidar button is pressed (or `?lidar=1`);
+  - every marked corner is drawn as a WHITE post where the phone had it at the moment it was marked, moved by no
+    fit and no map. Back at a corner later in the walk, a white post off the real corner is the walk's own drift,
+    seen by the walker. The blue posts (where the fit puts each corner) are as before.
+Not yet: a tracking-health line in the top box (steps and freezes as they happen); the page's messages that ask the
+walker to re-mark a corner after a "jump" (section 48: those steps were the phone putting itself right).

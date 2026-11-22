@@ -43,7 +43,7 @@ const NAME = { webxr: "Chrome's AR (WebXR)", '8thwall': '8th Wall', native: 'the
 /* THE ANDROID APP (android/, 2026-11-07): the bridge version this page needs (Bridge.kt; build.gradle.kts BRIDGE). A
    page needing more than the installed app has says so and offers the update; otherwise the app needs nothing new. */
 const BRIDGE_NEEDED = 1;
-const COLOR = { dot: [0.3, 1, 0.6, 0.9], dotPlane: [1, 0.8, 0.2, 0.9], pin: [0.9, 0.22, 0.2, 0.95], placed: [0.9, 0.22, 0.2, 0.45], mark: [0.35, 0.6, 1, 0.95], ref: [0.25, 0.5, 1, 0.9], check: [0.75, 0.3, 0.9, 0.9] };
+const COLOR = { dot: [0.3, 1, 0.6, 0.9], dotPlane: [1, 0.8, 0.2, 0.9], pin: [0.9, 0.22, 0.2, 0.95], placed: [0.9, 0.22, 0.2, 0.45], mark: [0.35, 0.6, 1, 0.95], ref: [0.25, 0.5, 1, 0.9], check: [0.75, 0.3, 0.9, 0.9], where: [1, 1, 1, 0.95] };
 const CSS = { ref: '#2f7cf6', check: '#a54bd8', pin: '#e53935', lawn: '#4cc38a' };
 /* THE LIVE LIDAR FIX IS SET ASIDE (the owner, 2026-11-09: "let's go back to just placing references manually and set
    aside everything about getting a live fix from lidar and finding the best fit after a walk... it looks like automatic
@@ -68,7 +68,10 @@ const st = {
   caps: null, has8w: false, map: new URLSearchParams(location.search).get('map'), site: null, origin: null, lawn: [], parcel: [], frame: null, photo: null,
   points: [], adding: 'ref', view: { s: 1, ox: 0, oy: 0 }, pins: [],
   walk: null, L: null, tracker: null, drawer: null, frame: null, hudAt: 0, farAt: 0, depthAt: 0, errors: [], lid: { worker: null, ready: null, error: null, progress: '', overlay: null, meshes: null }, gpsWatch: null,
-  lidarOn: true, agree: null,
+  /* THE LIDAR IS NOT DRAWN IN THE CAMERA UNLESS ASKED (the owner, 2026-11-21: "the number 1 most important thing is
+     that a walk is consistent with itself. Live fixes really don't matter at all in the first walk... Showing the
+     marked corners rather than the lidar"). The Lidar button, or ?lidar=1, shows it as before. */
+  lidarOn: (() => { try { return new URLSearchParams(location.search).get('lidar') === '1'; } catch { return false; } })(), agree: null,
 };
 /* THE STOPWATCH (lib/perf.js; owner, 2026-11-12: "build it but I want you to be able to read the data"): the page's
    own (how long opening took), and one a walk (frames, jitter, waits, its upload). Their numbers go in the walk's
@@ -1373,6 +1376,9 @@ function frameWork(f) {
       // the references and check points where the fit puts them: on the real corner when the fix is right
       const T = fitFor(L, odo);
       if (T) for (const p of st.points) { const s = sessionOf(L, p.map, odo, L.groundY ?? (f.pose ? f.pose.position.y - 1.4 : 0)); if (s && f.pose && levelDist(s, f.pose.position) < 30) items.push({ kind: 'mark', at: s, color: p.kind === 'ref' ? COLOR.ref : COLOR.check }); }
+      /* EACH CORNER WHERE IT WAS MARKED (white; 2026-11-22): the phone's own place for it at that moment, moved by no
+         fit and no map. Coming back to a corner, a white post off the real corner is the walk's own drift, seen. */
+      if (f.pose) for (const m of L.marks) { if (!m.ar) continue; const at = { x: m.ar[0], y: m.y ?? 0, z: -m.ar[1] }; if (levelDist(at, f.pose.position) < 30) items.push({ kind: 'mark', at, color: COLOR.where }); }
       if (w.pendingMeasure) items.push({ kind: 'mark', at: w.pendingMeasure.a, color: COLOR.mark });
       if (f.hit) items.push({ kind: 'dot', at: f.hit.position, color: f.hit.type === 'DEPTH' ? COLOR.dot : COLOR.dotPlane });
       // THE LIDAR IN THE CAMERA (owner, 2026-11-03: "so that I can see how it's lining up... mostly transparent, but
@@ -1825,6 +1831,7 @@ function doUndo() {
 function wireRest() {
   $('#exit').addEventListener('click', () => { if (st.tracker) st.tracker.stop(); else finish(); });
   $('#move').addEventListener('click', () => $('#overlay').classList.toggle('bar-low'));
+  $('#lidar-toggle').classList.toggle('off', !st.lidarOn);
   $('#lidar-toggle').addEventListener('click', () => { st.lidarOn = !st.lidarOn; $('#lidar-toggle').classList.toggle('off', !st.lidarOn); flash(st.lidarOn ? 'Lidar shown' : 'Lidar hidden'); });
 }
 
