@@ -1,6 +1,6 @@
 // The things a person places in a yard (lib/things.js).
 import assert from 'node:assert/strict';
-import { addSightings, placeOf, takeAway, standing, decodeThings, encodeThings, KINDS, kindOf } from '../lib/things.js';
+import { addSightings, placeOf, takeAway, standing, decodeThings, encodeThings, KINDS, kindOf, pairGutters, forRecord } from '../lib/things.js';
 
 const S = (kind, at, grade, walk = 'w1', h = 0) => ({ kind, at, h, walk, grade, t: 1 });
 
@@ -37,4 +37,22 @@ assert.equal(standing(g).length, 3);
 assert.deepEqual(decodeThings(encodeThings(g)).map((t) => t.id), ['t1', 't2', 't3']);
 assert.deepEqual(decodeThings('{"v":2,"things":[]}'), []); assert.deepEqual(decodeThings('not json'), []);
 assert.equal(placeOf([]), null); assert.ok(kindOf('sprinkler') && !kindOf('nope') && KINDS.length === 4);
+// A DOWNSPOUT IS A PAIR: an outlet takes the nearest top within 4 m that has none; the pair stays; an outlet alone stays alone
+{ let d = addSightings([], [S('gutter-top', [0, 0], 'corners3', 'w1', 2.7), S('gutter-top', [10, 0], 'corners3', 'w1', 2.7), S('gutter-out', [0.4, 0.5], 'corners3', 'w1', 0.1), S('gutter-out', [10.2, 3], 'corners3', 'w1', 0.1), S('gutter-out', [30, 30], 'corners3', 'w1', 0.1)]).things;
+  d = pairGutters(d);
+  const by = Object.fromEntries(d.map((t) => [t.id, t.pair || null]));
+  assert.equal(by.t1, by.t3); assert.equal(by.t2, by.t4); assert.notEqual(by.t1, by.t2); assert.equal(by.t5, null);
+  assert.deepEqual(pairGutters(d).map((t) => t.pair || null), d.map((t) => t.pair || null), 'made again, the pairs stay');
+  // the top of the first pair taken away: its outlet is alone again, and takes a new top placed there later
+  let e = pairGutters(takeAway(d, 't1', 'w2'));
+  assert.equal(e.find((t) => t.id === 't3').pair, undefined);
+  e = pairGutters(addSightings(e, [S('gutter-top', [0.1, 2.5], 'corners3', 'w3', 2.7)]).things);
+  assert.ok(e.find((t) => t.id === 't3').pair && e.find((t) => t.id === 't3').pair === e.find((t) => t.id === 't6').pair);
+  // as the map's record holds them: the present place only, in degrees and in the map's metres
+  const rec = forRecord(d, ([east, north]) => [-80 + east / 85000, 40 + north / 111000]);
+  assert.equal(rec.length, 5);
+  const one = rec.find((t) => t.id === 't4');
+  assert.deepEqual(Object.keys(one).sort(), ['e', 'grade', 'h', 'id', 'kind', 'last', 'lat', 'lng', 'n', 'pair', 'seen']);
+  assert.equal(one.e, 10.2); assert.equal(one.seen, 1); assert.ok(Math.abs(one.lat - (40 + 3 / 111000)) < 1e-6);
+  assert.ok(JSON.stringify(forRecord(takeAway(d, 't5', 'w9'), (p) => p)).includes('"gone":true')); }
 console.log('things: ok');

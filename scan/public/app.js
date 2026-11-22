@@ -25,7 +25,7 @@ import { surfaceOf } from '/lib/surface.js';
 import { geoReading } from '/lib/geo.js';
 import { spikesIn } from '/lib/spikes.js';
 import { walkPrior } from '/lib/walkfix.js';
-import { KINDS, kindOf, addSightings, standing, decodeThings, encodeThings } from '/lib/things.js';
+import { KINDS, kindOf, addSightings, standing, decodeThings, encodeThings, pairGutters, forRecord } from '/lib/things.js';
 import { keepPoint, viewFromSem, newSemCount, noteSem, semSummary, newCrumbs, crumbDue, addCrumb, crumbMoves } from '/lib/semantics.js';
 import { newOutbox, idbStore, memoryStore, statusText } from '/lib/outbox.js';
 import { newPerf, resources as perfResources, perfLines } from '/lib/perf.js';
@@ -2025,10 +2025,23 @@ async function keepThings(L, w) {
   let old = [];
   try { const r = await fetch(`/api/scan/things?map=${encodeURIComponent(map)}`, { credentials: 'same-origin' }); if (r.ok) old = decodeThings(await r.text()); else return `The things placed were NOT kept: the site answered ${r.status}.`; } catch { return 'The things placed were NOT kept: no signal. (They are in the walk\'s own record.)'; }
   const u = addSightings(old, add);
+  u.things = pairGutters(u.things);   // a gutter's outlet with its top: a downspout (things.js)
   const r = await fetch(`/api/scan/things?map=${encodeURIComponent(map)}&walk=${encodeURIComponent(String(w.startedAt))}`, { method: 'PUT', credentials: 'same-origin', body: encodeThings(u.things), signal: AbortSignal.timeout(SEND_TIMEOUT_MS) }).catch(() => null);
   if (!r?.ok) return `The things placed were NOT kept: ${r ? `the site answered ${r.status}` : 'no signal'}.`;
   const unsure = add.filter((a) => a.grade === 'unsure').length;
-  return `Things kept with the map: ${u.added} new, ${u.again} sighted again${u.moved.length ? ` (${u.moved.length} moved, the most ${Math.round(Math.max(...u.moved.map((m) => m.m)) * 39.37)} in)` : ''}${unsure ? `; ${unsure} placed while the walk's own place on the map was unsure` : ''}.`;
+  /* SHARED WITH THE MAP'S RECORD (docs/MAPS.md, the scan tool's part; the owner, 2026-11-22: "Yes. Ask the water map
+     how it wants that", and the water session's answer): each thing's present place, for the water map to OFFER. The
+     scan tool's part is read first so nothing else in it is lost. A failure here loses nothing: the things are kept
+     on the scan site and go into the record at the next walk's end. */
+  let shared = '';
+  try {
+    const had = st.site?.tools?.scan?.data && typeof st.site.tools.scan.data === 'object' ? st.site.tools.scan.data : {};
+    const data = { ...had, things: forRecord(u.things, (at) => fromLocal(st.origin, at)), thingsAt: new Date().toISOString() };
+    const rr = await fetch(`/api/maps/tool?id=${encodeURIComponent(map)}&tool=scan`, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data, basedOn: st.site?.at || null }), signal: AbortSignal.timeout(SEND_TIMEOUT_MS) });
+    shared = rr.ok ? '; shared with the map for the water map' : `; NOT yet shared with the map's record (the site answered ${rr.status})`;
+    if (rr.ok && st.site) st.site.tools = { ...(st.site.tools || {}), scan: { ...(st.site.tools?.scan || {}), data } };
+  } catch { shared = '; NOT yet shared with the map\'s record (no signal)'; }
+  return `Things kept with the map: ${u.added} new, ${u.again} sighted again${u.moved.length ? ` (${u.moved.length} moved, the most ${Math.round(Math.max(...u.moved.map((m) => m.m)) * 39.37)} in)` : ''}${unsure ? `; ${unsure} placed while the walk's own place on the map was unsure` : ''}${shared}.`;
 }
 
 /* ------------------------------------------------ the map's earlier walk */

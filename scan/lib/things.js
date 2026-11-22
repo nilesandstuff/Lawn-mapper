@@ -81,6 +81,46 @@ export function addSightings(things, add, { sameM = SAME_M } = {}) {
   return { things: out, added, again, moved };
 }
 
+/* A DOWNSPOUT IS A PAIR (the water session, 2026-11-22: "please tie it to its gutter-top (a shared pair id). The water
+   map's downspout is exactly that pair: { from: where it leaves the roof, to: where it lets out }"). A gutter outlet
+   takes the nearest gutter top within PAIR_M on the level that has no outlet yet; both then carry the same `pair`.
+   A pair once made stays (the ids are kept with the things); an outlet with no top near stays alone, and says so. */
+export const PAIR_M = 4;
+export function pairGutters(things) {
+  const out = (things || []).map((t) => ({ ...t }));
+  const live = out.filter((t) => t.at && !t.gone);
+  const taken = new Set(live.filter((t) => t.pair).map((t) => `${t.kind}:${t.pair}`));
+  let next = out.reduce((a, t) => Math.max(a, Number(String(t.pair || '').replace(/\D/g, '')) || 0), 0) + 1;
+  // a pair whose other half is gone or missing is undone, so the one left can pair again
+  for (const t of live) if (t.pair && !live.some((o) => o !== t && o.pair === t.pair)) { taken.delete(`${t.kind}:${t.pair}`); delete t.pair; }
+  const tops = live.filter((t) => t.kind === 'gutter-top'), outs = live.filter((t) => t.kind === 'gutter-out' && !t.pair);
+  // the nearest pairs first, so two outlets do not fight over one top by the order they were placed in
+  const cand = [];
+  for (const o of outs) for (const g of tops) { if (g.pair) continue; const d = Math.hypot(o.at[0] - g.at[0], o.at[1] - g.at[1]); if (d <= PAIR_M) cand.push([d, o, g]); }
+  cand.sort((a, b) => a[0] - b[0]);
+  for (const [, o, g] of cand) { if (o.pair || g.pair) continue; const id = `d${next++}`; o.pair = id; g.pair = id; }
+  return out;
+}
+
+/**
+ * THE THINGS AS THE MAP'S RECORD HOLDS THEM (the scan tool's part, POST /api/maps/tool?tool=scan, docs/MAPS.md; the
+ * water session asked for this shape, 2026-11-22): each thing's PRESENT place only, not its sightings.
+ *   { id, kind, lng, lat, e, n, h, grade, seen (how many sightings), last (ISO, the newest sighting), gone?, pair? }
+ * e, n: the map's own metres east and north of its origin (the lidar's frame, which the water map treats as the truth
+ * for a thing on the ground); lng, lat from them. toLngLat: ([e, n]) -> [lng, lat]. The newest RECORD_MAX of them.
+ */
+export const RECORD_MAX = 300;
+export function forRecord(things, toLngLat) {
+  const r6 = (x) => +(+x).toFixed(7);
+  return (things || []).filter((t) => t?.at && kindOf(t.kind)).map((t) => {
+    const ll = toLngLat(t.at), newest = Math.max(0, ...(t.seen || []).map((s) => s.t || 0));
+    const o = { id: t.id, kind: t.kind, lng: r6(ll[0]), lat: r6(ll[1]), e: t.at[0], n: t.at[1], h: t.h ?? null, grade: t.grade || 'unsure', seen: (t.seen || []).length, last: newest ? new Date(newest).toISOString() : null };
+    if (t.gone) o.gone = true;
+    if (t.pair) o.pair = t.pair;
+    return o;
+  }).sort((a, b) => String(b.last || '').localeCompare(String(a.last || ''))).slice(0, RECORD_MAX);
+}
+
 /** A thing taken away by a walk: marked, not deleted. -> the things. */
 export function takeAway(things, id, walk) {
   return (things || []).map((t) => (t.id === id ? { ...t, gone: { walk: String(walk || ''), t: Date.now() } } : t));

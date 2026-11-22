@@ -4038,3 +4038,18 @@ over 7 ft may be two sightings of one trunk a foot apart (the walk's own drift) 
     A yard is then tens of kilobytes instead of megabytes, and matching a new walk to it is matching to surfaces.
     The points stay in the twin; the shape is made from them and can be made again. Not built; the trunks are the
     first piece of it.
+
+## 58. Placed things shared with the map's record, for the water map (2026-11-22)
+
+The owner: "Yes. Ask the water map how it wants that." THE WATER SESSION'S ANSWER (its words, 2026-11-22; SPECULATION
+until built on its side): read them from the scan tool's own part of the map's record, so every signed-in map has
+them and not only admin saves; heads as points only (what a head is, is chosen in the water map); a gutter's outlet
+tied to its top by a shared pair id (its downspout is { from, to }); it will OFFER them, never overwrite a thing
+placed by hand; "which is the truth for a thing on the ground: THE LIDAR'S FRAME", the photo a backdrop only. It has
+measured nothing direct on photo against lidar at ground level (its H100: one lot's thermal walks fit 2 m west and
+1 m south better; H97/H98: a dot on one photo against a trace on another, about 0.5 m), and asks for the same roof
+corners tapped by hand on the photo on a walk whose three corners agree.
+BUILT (scan/lib/things.js pairGutters, forRecord; app.js keepThings; docs/MAPS.md "scan"): at a walk's end, after the
+things are kept on the scan site, the scan tool's part of the map's record is written: { things: [{ id, kind, lng,
+lat, e, n, h, grade, seen, last, gone?, pair? }], thingsAt }. A gutter outlet takes the nearest gutter top within
+4 m that has none. Nothing else in the scan tool's part is lost (it is read first). NOT SEEN ON A PHONE.
