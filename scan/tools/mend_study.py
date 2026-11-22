@@ -91,6 +91,35 @@ def solve(n, ties, smooth=0.5):
     return np.linalg.solve(A, b)
 
 
+def start_by_overlaps(ties, t_of, t_end, first=300.0, least=0.6):
+    """-> seconds, or None when nothing says the start lies off. Prints what it found."""
+    flat = lambda t: float(np.hypot(t[2][0], t[2][2]))  # noqa: E731
+    rest = [flat(t) for t in ties if t_of(t[0]) >= first]
+    base = float(np.median(rest)) if len(rest) >= 5 else float(np.median([flat(t) for t in ties])) if ties else 0.0
+    bar = max(least, 2 * base)
+    by = {}
+    for t in ties:
+        if t_of(t[0]) < first and t_of(t[1]) - t_of(t[0]) > 45:
+            by.setdefault(t[0], []).append(flat(t))
+    if not by:
+        print("  THE START, by the places seen twice: no early stretch was seen again; nothing to say.")
+        return None
+    order = sorted(by)
+    off = [float(np.median(by[a])) > bar for a in order]
+    print("  THE START, by the places seen twice (a stretch's middle flat slide against later ones; the bar is "
+          f"{bar * 39.37:.0f} in, the rest of the walk's middle {base * 39.37:.0f} in): "
+          + ", ".join(f"{t_of(a) / 60:.1f} min {np.median(by[a]) * 39.37:.0f} in{' OFF' if o else ''}" for a, o in zip(order, off)) + ".")
+    cut = None
+    for i in range(len(order)):
+        if off[i] and sum(off[: i + 1]) * 2 >= i + 1:
+            cut = t_end(order[i])
+    if cut is None:
+        print("  The start does not lie off by this measure.")
+    else:
+        print(f"  THE START LIES OFF UP TO {cut / 60:.1f} min by the places seen twice.")
+    return cut
+
+
 def main():
     args = sys.argv[1:]
     d = next((a for a in args if not a.startswith("--")), "twin")
@@ -258,10 +287,31 @@ def main():
     # keeps where ARCore then holds each (live.json crumbs: at0 when dropped, at at the end; scan/lib/semantics.js).
     # ARCore moves an anchor when it corrects its map, so at - at0 is its own answer to "how far has this stretch of
     # the walk drifted". Used here as the mending, and checked against the slides this study found by itself.
+    seg_o = np.concatenate([[0], np.cumsum(np.linalg.norm(np.diff(track[:, 1:4], axis=0), axis=1))])
+    t_of = lambda s_: float(np.interp((s_ + 0.5) * STRETCH, seg_o, track[:, 0]))  # noqa: E731
+    # THE START CUT, BY THE PLACES SEEN TWICE (2026-11-22). The corners' rule put the big walk's cut at 1.5 min; the
+    # owner's eyes put it at 1.8 ("removed most of the phantom wall points... there were phantom walls AFTER r3"),
+    # and the slides here show the first 2 min lying 17-92 in from the next loop while later minutes lie 6-20 in from
+    # each other. So: a stretch of the first five minutes is OFF when the middle of its flat slides against later
+    # stretches is over the larger of 24 in and twice the middle slide of the rest of the walk. The cut is the end
+    # of the last such stretch, so long as at least half the stretches before it that could be judged are off too.
+    cut = start_by_overlaps(ties, t_of, lambda s_: float(np.interp((s_ + 1) * STRETCH, seg_o, track[:, 0])))
+    if cut is not None and "--write" in args:
+        with open(os.path.join(d, "start.json"), "w") as f:
+            json.dump({"startCutS": round(cut, 1), "by": "the places seen twice (mend_study.py)"}, f)
+        vf = os.path.join(d, "view.json")
+        if os.path.exists(vf):
+            try:
+                v = json.load(open(vf))
+                if cut > float(v.get("startCutS") or 0):
+                    v["startCutS"] = round(cut, 1)
+                    v["startCutBy"] = "overlaps"
+                    json.dump(v, open(vf, "w"))
+                    print(f"  The 3D view's start cut is now {cut / 60:.1f} min (view.json).")
+            except Exception:
+                pass
     # THE JUMPS TAKEN BACK, judged at the places seen twice: for each believed slide, what is left of it
     if steps:
-        seg_o = np.concatenate([[0], np.cumsum(np.linalg.norm(np.diff(track[:, 1:4], axis=0), axis=1))])
-        t_of = lambda s_: float(np.interp((s_ + 0.5) * STRETCH, seg_o, track[:, 0]))  # noqa: E731
         print(f"  THE JUMPS TAKEN BACK ({len(steps)}), judged by the slides this study found by itself:")
         for a_, b__, dd, _, best, zero in ties:
             pr = jump_shift(t_of(b__)) - jump_shift(t_of(a_))

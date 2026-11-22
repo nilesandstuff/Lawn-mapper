@@ -110,13 +110,20 @@ def start_cut(d, recs):
     later does not move it). -> seconds into the walk, or 0 when the walk kept no marks.
     Why the start lies off is NOT KNOWN (docs/SCAN-PLAN.md 47: the map fix moves no point; a phone's tracking is
     least settled when a session is young)."""
+    # the places seen twice may put it later (mend_study.py start_by_overlaps keeps start.json; 2026-11-22)
+    more = 0.0
+    try:
+        with open(os.path.join(d, "start.json")) as f:
+            more = float((json.load(f) or {}).get("startCutS") or 0)
+    except Exception:
+        more = 0.0
     try:
         with open(os.path.join(d, "live.json")) as f:
             marks = [m for m in (json.load(f) or {}).get("marks", []) if m.get("odo") is not None and m.get("id") is not None]
     except Exception:
-        return 0.0
+        return more
     if not marks or len(recs) < 10:
-        return 0.0
+        return more
     ids = {m["id"] for m in marks}
     seen, odo = set(), None
     for m in sorted(marks, key=lambda m: m["odo"]):
@@ -125,9 +132,9 @@ def start_cut(d, recs):
             odo = float(m["odo"])
             break
     if odo is None:
-        return 0.0
+        return more
     o = np.argsort(recs[:, 1])
-    return float(np.interp(odo, recs[o, 1], recs[o, 0]))
+    return max(more, float(np.interp(odo, recs[o, 1], recs[o, 0])))
 
 
 def read_track(d):

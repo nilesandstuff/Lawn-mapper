@@ -355,6 +355,7 @@ jobs:
             python scan/tools/dense_prep.py twin --mended 2>&1 | grep -v '^Shapes tidied\|^  depth:\|^  sdepth:\|^Beside' | tee -a mend.txt
             node scan/tools/twin-r2.mjs put "$WALK" twin/mend.json twin/view-mended.bin | tee -a mend.txt
           fi
+          if [ -f twin/start.json ]; then node scan/tools/twin-r2.mjs put "$WALK" twin/start.json twin/view.json | tee -a mend.txt; fi
 
       # A WALK'S CLASSES ON THE FREE RUNNER (scan/tools/classes_cpu.py, 2026-11-20): the picture model on the CPU, the
       # kinds voted onto the points, both clouds made ready for the 3D view. Slow (seconds a picture), free. Counts only.

@@ -3671,6 +3671,16 @@ walk's. Not checked.
 WHAT FOLLOWS: (1) the start cut should be judged per walk by the places seen twice, not only by the corners'
 marks; here about 2 min rather than 1.5. (2) The summary's "tracking jumped" count is not a count of faults.
 
+THE OWNER'S EYES ON IT (2026-11-22): "Setting the slider to remove points after 1.8 minutes removed most of the
+phantom wall points. Of particular interest is the fact that there were phantom walls AFTER r3 (i double scanned the
+north wall of the house)." And of the height differences: "at one point the lidar fix seemed to be showing up too
+high. Especially at the end." So the corners' rule (1.5 min) cut too early here, and the height drift is seen from
+the walker's side too (still not measured apart from the study's own slope effect).
+BUILT ON IT: mend_study.py start_by_overlaps: a stretch of the first five minutes is off when the middle of its flat
+slides against later stretches is over the larger of 24 in and twice the rest of the walk's; the cut is the end of
+the last such stretch (start.json beside the twin; the larger of it and the corners' cut is used; view.json's
+startCutS moved up). Its answer on this walk: the next mend run.
+
 ## 49. The owner's direction: a walk consistent with itself comes first (2026-11-21)
 
 THE OWNER ("a vibe-based guess... ignore it if you disagree"; the core session agrees and adopts it): "the number 1
@@ -3774,6 +3784,14 @@ to walls), more at the owner's house than elsewhere; or its scale is simply a fe
 session. A straight length walked and marked at both ends on open ground (a known length of drive or fence) would
 tell tracking-on-the-straight from tracking-round-the-house.
 WHAT IT COSTS IF LEFT: lengths 2-5% short are areas 4-10% small.
+
+THE OWNER'S THIRD POSSIBILITY (2026-11-22): "a combination of roof corners not being marked consistently perfectly
+due to depth [and] lidar error that varies by corner... Which can be hidden by the total measured distance." Fair,
+and with three corners it cannot be ruled out from the pairs alone: three lengths cannot separate six unknowns.
+What bears on it: the marks repeat (the 23 ft pair -12 to -16 in in six walks, so the marking is steady to a few
+inches, though steady is not the same as right); and the photo has the long pair within 0.7-1.2 ft of the lidar's,
+against the phone's 4.4-4.9 ft. So a per-corner lidar error of about a foot is likely real and part of it; it is
+not enough for the long pair by itself unless the photo is off the same way.
 
 WHAT IT MEANS MEANWHILE: the live fit already lets the phone's scale move up to 7% once three corners are marked
 15 m apart (walkref.js MAX_SCALE); with two corners it cannot, and a 5% difference over 90 ft is 4.5 ft of
