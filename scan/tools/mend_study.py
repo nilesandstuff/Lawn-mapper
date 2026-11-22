@@ -188,6 +188,62 @@ def main():
     gaps = np.flatnonzero(dt > 1.5)
     if len(gaps):
         print("    gaps in the poses: " + ", ".join(f"{dt[i]:.1f} s at {track[i, 0] / 60:.1f} min (moved {stp[i] * 39.37:.0f} in across it)" for i in gaps[:10]) + ".")
+    # THE JUMPS JUDGED BY THE WALKER'S OWN PINS (2026-11-22, the walk in the rain: the owner pinned one gutter's two ends
+    # at the walk's start and again at its end, and put a plain pin on the first roof corner late in the walk). Each
+    # is ONE PLACE aimed at twice; how far apart the phone had it as walked, and with the jumps before each sighting
+    # taken back. No map and no lidar in it. A jump that was the phone going wrong brings the two together; one that
+    # was the phone putting itself right drives them apart.
+    try:
+        with open(os.path.join(d, "live.json")) as f:
+            live = json.load(f) or {}
+    except (OSError, ValueError):
+        live = {}
+    recs = w.get("recs")
+    if steps and recs is not None and len(recs) > 10 and (live.get("pins") or live.get("marks")):
+        o = np.argsort(recs[:, 1], kind="stable")
+        t_at = lambda odo: float(np.interp(odo, recs[o, 1], recs[o, 0]))  # noqa: E731
+        pins = [p for p in live.get("pins") or [] if p.get("at") and p.get("odo") is not None]
+        first = {}
+        for m in live.get("marks") or []:
+            if m.get("kind") == "ref" and m.get("ar") and m.get("id") not in first:
+                first[m["id"]] = m
+        pairs = []
+        for p in pins:
+            if p.get("kind"):
+                continue
+            best = min(first.values(), key=lambda m: np.hypot(p["at"]["x"] - m["ar"][0], -p["at"]["z"] - m["ar"][1]), default=None)
+            if best is not None and np.hypot(p["at"]["x"] - best["ar"][0], -p["at"]["z"] - best["ar"][1]) < 6:
+                pairs.append((f"{p['name']} on its corner", np.array([best["ar"][0], -best["ar"][1]]), best["odo"], np.array([p["at"]["x"], p["at"]["z"]]), p["odo"]))
+        seen = set()
+        for i, a in enumerate(pins):
+            for j in range(i + 1, len(pins)):
+                b = pins[j]
+                if not a.get("kind") or a.get("kind") != b.get("kind") or j in seen:
+                    continue
+                A, B = np.array([a["at"]["x"], a["at"]["z"]]), np.array([b["at"]["x"], b["at"]["z"]])
+                if np.linalg.norm(A - B) > 8:
+                    continue
+                seen.add(j)
+                pairs.append((f"{a['name']}/{b['name']}", A, a["odo"], B, b["odo"]))
+        if pairs:
+            def flat(t):
+                c = jump_shift(t)
+                return np.array([c[0], c[2]])
+            print(f"  THE JUMPS JUDGED BY THE WALKER'S OWN PINS ({len(pairs)} places aimed at twice; on the level, the walk's own frame):")
+            was, now = [], []
+            for name, A, oa, B, ob in pairs:
+                ta, tb = t_at(oa), t_at(ob)
+                n_b = sum(1 for st in steps if min(ta, tb) < st["t"] < max(ta, tb))
+                d0 = np.linalg.norm(B - A)
+                d1 = np.linalg.norm((B + flat(tb)) - (A + flat(ta)))
+                was.append(d0); now.append(d1)
+                print(f"    {name} (aimed at {ta / 60:.1f} and {tb / 60:.1f} min, {n_b} jump{'s' if n_b != 1 else ''} between): {d0 * 39.37:.0f} in apart as walked, {d1 * 39.37:.0f} in with the jumps taken back.")
+                # and each jump by itself: which of them, taken back alone, brings this place together
+                for st in steps:
+                    if min(ta, tb) < st["t"] < max(ta, tb):
+                        dj = np.array([st["d"][0], st["d"][2]]) * (1 if tb > ta else -1)
+                        print(f"        the jump at {st['t'] / 60:.1f} min alone: {np.linalg.norm((B - dj) - A) * 39.37:.0f} in.")
+            print(f"    In the middle: {np.median(was) * 39.37:.0f} in as walked, {np.median(now) * 39.37:.0f} in with the jumps taken back. " + ("THE JUMPS WERE THE PHONE GOING WRONG (taking them back brings the pins together)." if np.median(now) < 0.6 * np.median(was) else "The jumps do NOT explain the pins' drift (taking them back does not bring them together)." if np.median(now) > 0.9 * np.median(was) else "The jumps explain part of the pins' drift."))
     if "--jumps" in args:
         return
 
