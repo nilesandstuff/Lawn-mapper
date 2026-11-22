@@ -3827,3 +3827,28 @@ driveway edge?"):
   - Kept: "Lost its place: look around slowly", which is ARCore saying it is not tracking at all.
 Not yet: a tracking-health line in the top box (steps and freezes as they happen); the page's messages that ask the
 walker to re-mark a corner after a "jump" (section 48: those steps were the phone putting itself right).
+
+## 52. Google's 3D building shapes as a yardstick: not allowed (2026-11-22)
+
+The owner: "Google earth building shapes for my property are really really good, especially the roof... some way to
+call that via api so we can compare our roof shapes with theirs (not for the live app)." Read before anything was
+sent or spent. Nothing was requested from Google.
+
+FROM SOURCES (Google's own pages, read 2026-11-22; a source's words, not ours):
+  - The mesh is the Map Tiles API's Photorealistic 3D Tiles (OGC 3D Tiles, .glb leaves). 1,000 free events a month,
+    then $6 per 1,000; one house would be 50-200 requests, so about nothing.
+  - Its policy: "You may not use Map Tiles API for any non-visualization use cases, such as: Image analysis; Machine
+    interpretation; Object detection or identification; Geodata extraction or resale; Offline uses, including for
+    any of the above". And: own 3D objects may be overlaid "as long as the 3D objects aren't extracted, traced, or
+    otherwise derived by hand or machine from Photorealistic 3D Tiles."
+    developers.google.com/maps/documentation/tile/policies
+  - The platform terms 3.2.3(a): "Customer will not export, extract, or otherwise scrape Google Maps Content for use
+    outside the Services." cloud.google.com/maps-platform/terms
+  - ARCore's Streetscape Geometry (the meshes the app could be handed at run time): buildings are footprints "extruded
+    upwards to a flat top", from Street View; the Google APIs terms forbid permanent copies. Weak for roofs anyway.
+JUDGEMENT: measuring roof corners off those tiles and setting them against our lidar is the geodata extraction the
+policy names. No exemption for private, one-house, unshipped use was found. NOT DONE, and not to be done.
+ALLOWED INSTEAD: what the owner already did (lengths read off the county's orthophoto, section 50); the owner's own
+eyes and the ruler in Google Earth itself, which is its own product used as meant; Microsoft's US building
+footprints and Overture's buildings (both ODbL, from imagery; neither states how well a roof corner is placed); a
+tape.

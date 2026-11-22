@@ -106,6 +106,53 @@ export function jumpsOf(dir) {
   return out;
 }
 
+/* THE MAP'S REFERENCE MADE AFRESH FROM ONE GOOD WALK (2026-11-22). The owner's lot's reference had taken in a walk
+   placed by a corner marked 20 ft from its place (2026-11-20), and the next walk matched to it was moved 675 in. The
+   goal's rule: a reference is overwritten "only... if there's a high degree of confidence that the new info is
+   actually better." So this is for a walk that has earned it, and it refuses any other:
+     - three roof corners or more, ALL agreeing with the map after their one best fit (refkeep.js goodPart, nothing
+       left out);
+     - the walk's start left out, up to the cut the places seen twice gave (start.json, view.json: mend_study.py);
+     - the walk is NOT cut at the phone's one-frame steps: on the walk this was built for they were the phone putting
+       itself right (docs/SCAN-PLAN.md 48).
+   The reference it replaces is kept as a backup. Counts and distances only. */
+async function fresh(dir) {
+  const meta = readJson(dir, 'meta.json') || {}, live = readJson(dir, 'live.json') || {};
+  if (!meta.map) throw new Error('the walk has no map');
+  const plan = keepPlan(live.marks || [], []), g = plan.g;
+  const corners = new Set((plan.use || []).map((m) => m.id)).size;
+  if (!plan.ok || !plan.agree || corners < 3) throw new Error(`not good enough to replace a reference: ${!plan.ok ? plan.why : corners < 3 ? `${corners} corners place it, three wanted` : `${g.left?.length || 0} of its corners disagree with the others`}`);
+  console.log(`Its corners: ${corners} agree within ${(g.worstM * 39.37).toFixed(0)} in after one fit${g.T?.s && g.T.s !== 1 ? ` (the phone's distances scaled ${((g.T.s - 1) * 100).toFixed(1)}% to the map's)` : ''}.`);
+  // the start cut, seconds -> metres walked, by the track
+  const cutS = Math.max(0, ...['start.json', 'view.json'].map((f) => Number(readJson(dir, f)?.startCutS) || 0));
+  let cutOdo = 0;
+  if (cutS > 0) {
+    for (const f of readdirSync(dir).filter((x) => /^track-\d{4}\.bin$/.test(x)).sort()) {
+      const b = readFileSync(join(dir, f));
+      for (const r of readTrack(b.buffer.slice(b.byteOffset, b.byteOffset + Math.floor(b.byteLength / 4) * 4))) if (r.t <= cutS && Number.isFinite(r.odo)) cutOdo = Math.max(cutOdo, r.odo);
+    }
+  }
+  const all = twinPoints(dir);
+  const pts = { stand: all.stand.filter((p) => p[3] >= cutOdo), ground: all.ground.filter((p) => p[3] >= cutOdo) };
+  console.log(`The walk: ${all.stand.length} standing and ${all.ground.length} ground points; its start left out up to ${(cutS / 60).toFixed(1)} min (${Math.round(cutOdo * FT)} ft walked): ${pts.stand.length} and ${pts.ground.length} kept.`);
+  if (pts.stand.length < 200) throw new Error(`too little of the yard (${pts.stand.length} standing points)`);
+  const ps = placeWalk(pts.stand, plan.use, plan.C, []), pg = placeWalk(pts.ground, plan.use, plan.C, []);
+  const u = updateRef(null, { stand: ps.pts, ground: pg.pts }, { C: AS_IS, F: null, w: g.n });
+  if (!u.ref) throw new Error(u.why);
+  const key = `refs/${meta.map}.bin`;
+  const oldBytes = await readObject(BUCKET, key).catch(() => null), old = oldBytes ? decodeRef(oldBytes) : null;
+  if (old) {
+    // how the walk sits on the reference it would replace: said, never used
+    const f = shapeFix(old, pts);
+    console.log(`The reference it replaces: ${old.stand.length / 3} standing and ${old.ground.length / 3} ground points from ${old.walks} walk${old.walks === 1 ? '' : 's'}. This walk matched to its shape: ${f.ok ? `yes (landed ${f.landed}, next best ${f.second})` : `no (${f.why})`}.`);
+  } else console.log('No reference was kept for this map before.');
+  if (process.env.DRY) { console.log('A dry run: nothing written.'); return; }
+  if (oldBytes) await writeObject(BUCKET, `refs/backup/${meta.map}-${Date.now()}.bin`, oldBytes, 'application/octet-stream');
+  const bytes = encodeRef(u.ref);
+  await writeObject(BUCKET, key, bytes, 'application/octet-stream', { walk: String(meta.walk || '') });
+  console.log(`Reference MADE AFRESH from this walk alone: ${u.ref.stand.length / 3} standing and ${u.ref.ground.length / 3} ground points (${(bytes.length / 1e6).toFixed(1)} MB)${oldBytes ? '; the one it replaced is kept as a backup' : ''}.`);
+}
+
 /* KEEP WHAT IS GOOD (lib/refkeep.js; the owner, 2026-11-15): the part of the walk its agreeing marks vouch for, added
    to the map's reference, correcting it where this walk saw the yard. Counts and distances only. */
 async function keep(dir) {
@@ -213,6 +260,6 @@ function check(dirs) {
 
 const [cmd, ...rest] = process.argv.slice(2);
 if (process.argv[1]?.endsWith('reference-build.mjs')) {
-  (cmd === 'build' ? build(rest[0] || 'twin') : cmd === 'keep' ? keep(rest[0] || 'twin') : cmd === 'check' ? Promise.resolve(check(rest)) : Promise.reject(new Error('build <dir> or check <dir> <dir>...')))
+  (cmd === 'build' ? build(rest[0] || 'twin') : cmd === 'keep' ? keep(rest[0] || 'twin') : cmd === 'fresh' ? fresh(rest[0] || 'twin') : cmd === 'check' ? Promise.resolve(check(rest)) : Promise.reject(new Error('build <dir> or check <dir> <dir>...')))
     .catch((e) => { console.log(`Reference: ${e.message}`); process.exit(1); });
 }

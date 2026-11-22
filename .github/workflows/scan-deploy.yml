@@ -706,9 +706,11 @@ jobs:
           set -o pipefail
           # "<walk>:dry" says what would be kept and writes nothing
           if [[ "$WALK" == *:dry ]]; then export DRY=1; WALK="${WALK%:dry}"; fi
+          # "<walk>:fresh" (or ":fresh:dry"): the map's reference made afresh from this walk alone, if it has earned it
+          HOW=keep; if [[ "$WALK" == *:fresh ]]; then HOW=fresh; WALK="${WALK%:fresh}"; fi
           node scan/tools/twin-r2.mjs get "$WALK" twin | tee reference.txt
           # keep: the part of the walk its agreeing marks vouch for, added to the map's reference (lib/refkeep.js)
-          node scan/tools/reference-build.mjs keep twin | tee -a reference.txt
+          node scan/tools/reference-build.mjs "$HOW" twin | tee -a reference.txt
 
       - name: Repeat walks against each other
         if: ${{ inputs.task == 'repeat' }}
