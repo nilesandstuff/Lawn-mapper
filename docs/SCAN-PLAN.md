@@ -3697,6 +3697,13 @@ HARD:
   - The map's metres are the plain sphere's (scan/lib/frames.js toLocal, radius 6,378,137 m both ways): against the
     real earth that is under 0.3% either way. Not the cause.
 
+  - NOT A MAP STRETCHED ONE WAY, AND NOT THE EAVES (run 482, every pair of a map together, wild ones left out).
+    Owner's lot, 21 pairs: one scale -5.4% leaves 18 in; a scale each way (east-west -4.0%, north-south -5.6%)
+    leaves 18 in; a percentage plus a fixed shortfall comes out -5.6% and 2 in the other way, leaves 18 in. Work lot,
+    9 pairs: -2.1% leaves 10 in; each way -2.0 / -3.0% leaves 9 in; fixed shortfall 4 in, leaves 10 in. The map with
+    30 pairs: -2.3% leaves 17 in; each way -1.9 / -3.1%, 17 in; fixed 4 in, 17 in. Neither idea fits better than
+    the plain percentage anywhere. (The eaves guess below is answered: a fixed shortfall is 2-4 in, not feet.)
+
 Known before: the water session's test page measured the phone 3.6% and 4.4% short on two walks (water/FINDINGS.md);
 SCAN-H13 (walk of 2026-11-05) found AR distances 0.0% from the map's between four check marks placed on the photo
 (ground marks, not roof corners).
