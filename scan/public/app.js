@@ -1291,7 +1291,12 @@ function frameWork(f) {
   // THE GROUND'S COLOUR (scan/lib/surface.js): about once a second, the camera's picture read back, and the depth
   // under a grid of it labelled grass or paving, for the lawn-edge term of the match. The same read serves the twin.
   let grabbed = null;
-  if (f.grab && f.pose && f.tracking === 'normal' && f.t - (st.colourAt || 0) > COLOUR_EVERY) {
+  /* ONE READ OF THE CAMERA'S PICTURE SERVES BOTH (2026-11-22, the walk in the rain: 12 frames a second, the picture
+     read and the twin 62% of the page's own work). The colour was read every 0.9 s and a picture for the twin taken
+     every 1 s or more, each with its own read, so the two fell out of step and the camera's picture was read about
+     twice a second. A picture wanted for the twin now brings the colour's read with it. */
+  const keyNow = !!(st.twin && f.pose && f.grab && f.tracking === 'normal' && !st.twinUp?.off && wantKey(st.twin, Date.now(), f.pose.position, f.pose.quaternion));
+  if (f.grab && f.pose && f.tracking === 'normal' && (keyNow || f.t - (st.colourAt || 0) > COLOUR_EVERY)) {
     st.colourAt = f.t;
     grabbed = f.grab();
     /* ANCHOR NUDGES (scan/lib/anchors.js): does this picture show a roofline against the sky, or pavement? After
@@ -1332,22 +1337,24 @@ function frameWork(f) {
   if (st.twin && f.pose) {
     const now = Date.now();
     addPose(st.twin, now, odo, f.pose.position, f.pose.quaternion, f.tracking);
-    if (f.grab && f.tracking === 'normal' && !st.twinUp.off && wantKey(st.twin, now, f.pose.position, f.pose.quaternion)) {
+    if (keyNow) {
       const g = grabbed || f.grab();
       if (g) {
         const name = addKey(st.twin, now, odo, f.pose.position, f.pose.quaternion, g);
         g.blob.then((b) => b && sendTwin([{ name, type: 'image/jpeg', body: b }]), () => {});
+        lap('twin: track, a picture');
         const dep = keyDepth(f, name);
         if (dep) sendTwin([dep]);
         const rdep = keyRaw(f, name);
         if (rdep) sendTwin([rdep]);
         const sdep = keySmooth(f, name);
         if (sdep) sendTwin([sdep]);
+        lap('twin: a picture\'s three depth grids');
       }
     }
     if (flushDue(st.twin, now)) sendTwin(flush(st.twin, now, liveOf(L, w, { recordOnly: !!st.recordOnly, points: pointsKept(), gpsTrail: trailKept(), geoTrail: geoKept(), anchors: st.anchors ? anchorsKept(st.anchors) : null, prev: prevKept() })));
   }
-  lap('twin (track, pictures)');
+  lap('twin: track, and every 15 s what piled up made ready to send');
   // PLACED BY THE MAP'S EARLIER WALK (walkref.js, SCAN-H32): every PREV_EVERY, this walk's points so far against it
   /* NOT IN THE WALK'S FIRST 200 ft (2026-11-22, runs 490-491: matched on its first 100 ft a walk was placed 50-95 ft
      wrong every time, and called good; from 200 ft, stretched to the map's metres, 3-40 in). */
