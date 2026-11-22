@@ -2235,7 +2235,7 @@ function prevKept() {
   if (!st.ref || st.ref.none) return st.ref?.none ? { reference: false, why: 'none kept for this map' } : null;
   if (!st.ref.ready || st.ref.stale) return { reference: !!st.ref.ready, why: st.ref.stale ? 'made before this set of points' : st.ref.error || 'still loading', ...st.prevStats, fix: null };
   const P = st.L?.prev, r = (v) => (Number.isFinite(v) ? +v.toFixed(4) : null);
-  return { reference: !!st.ref.ready, ...st.prevStats, fix: P ? { T: { theta: r(P.T.theta), tx: r(P.T.tx), ty: r(P.T.ty), s: 1 }, tz: r(P.tz), landed: P.landed, second: P.second, walkedM: r(P.walkedM) } : null };
+  return { reference: !!st.ref.ready, ...st.prevStats, fix: P ? { T: { theta: r(P.T.theta), tx: r(P.T.tx), ty: r(P.T.ty), s: r(P.T.s ?? 1) }, tz: r(P.tz), landed: P.landed, second: P.second, walkedM: r(P.walkedM) } : null };
 }
 
 /** The depth grid of a picture just taken: key-NNNN.depth (see KEY_DEPTH), or null when there is no depth. */

@@ -102,7 +102,23 @@ async function main() {
   }
   // 4. what placed the walk as it went
   const fx = live.fixes?.length || 0, hd = live.holds?.length || 0;
-  console.log(`  As it went: ${fx} lidar fixes, ${hd} holds${live.walk ? ', a whole-walk fit' : ''}; the earlier walk's shape ${live.prev ? 'placed it' : 'is not recorded in the walk\'s live state'}.`);
+  // 4b. THE EARLIER WALK'S SHAPE: did it place this walk, from when, and where does ITS fit put this walk's own corner
+  // marks against their map places? Once it is confirmed it is the fit the page draws by (locate.js fitFor), so this
+  // is what the person saw the corners do. (Walks before 2026-11-22 kept the fit without its scale: the corners' own
+  // scale stands in for it, and the line says so.)
+  { const P = live.prev;
+    if (P && P.reference === false) console.log(`  The earlier walk's shape: none kept for this map when the walk was made.`);
+    else if (P) {
+      console.log(`  The earlier walk's shape: asked ${P.asks ?? '?'} times, confirmed ${P.ok ?? '?'}${P.firstOkM != null ? `, first at ${Math.round(P.firstOkM * FT)} ft walked` : ''}${P.fix ? `; the last one confirmed at ${Math.round((P.fix.walkedM || 0) * FT)} ft, landed ${P.fix.landed}` : '; NEVER PLACED THE WALK'}${!P.fix && P.lastWhy ? ` (${P.lastWhy})` : ''}.`);
+      if (P.fix?.T) {
+        const stand = (P.fix.T.s ?? 1) === 1 && g.ok && g.T?.s;
+        const F = { ...P.fix.T, s: stand ? g.T.s : (P.fix.T.s ?? 1) };
+        const off = [...first.values()].map((m) => { const q = place(F, m.ar[0], m.ar[1]); return Math.hypot(q[0] - m.map[0], q[1] - m.map[1]); });
+        if (off.length) console.log(`    BY THAT FIT (what the page drew by once it was confirmed${stand ? '; its scale was not kept, the corners\' own stands in' : ''}), this walk's ${off.length} corner marks sit ${off.map(ftIn).join(', ')} from their places on the map.`);
+      }
+    } else console.log(`  The earlier walk's shape: nothing recorded in the walk's live state.`);
+  }
+  console.log(`  As it went: ${fx} lidar fixes, ${hd} holds${live.walk ? ', a whole-walk fit' : ''}.`);
 }
 
 main().catch((e) => { console.log(`Placed: ${e.message}`); process.exit(1); });
