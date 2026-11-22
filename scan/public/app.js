@@ -17,7 +17,7 @@ import { levelDist, toLocal, fromLocal } from '/lib/frames.js';
 import { frameFor, bboxOf, toPx, fromPx, ringsOf, toMerc } from '/lib/photo.js';
 import { newLocate, mark, noteGround, addDepth, nextAsk, answer, fitFor, fitSource, leftOutOf, mapOf, sessionOf, checkError, nearestNamed, agreement, groundOffset, groundUnder, status as fixStatus, summaryOf } from '/lib/locate.js';
 import { STAND as REF_STAND, MIN_STAND as REF_MIN_STAND, VOX as REF_VOX, referenceFit, buildRef, encodeRef, decodeRef, sameFix } from '/lib/walkref.js';
-import { keepPlan, placeWalk, matchUsable, updateRef, cornersShort, AS_IS as REF_AS_IS } from '/lib/refkeep.js';
+import { keepPlan, placeWalk, matchUsable, updateRef, cornersShort, AS_IS as REF_AS_IS , closingOf, CLOSE_M } from '/lib/refkeep.js';
 import { leftOut, mapToSession } from '/lib/align.js';
 import { newTwin, addPoints, addPose, wantKey, addKey, flush, flushDue, liveOf } from '/lib/twin.js';
 import { newAnchors, viewOf, noteView, nudge, pitchOf, anchorsKept, SHOW_S } from '/lib/anchors.js';
@@ -2016,11 +2016,18 @@ async function keepThings(L, w) {
   const map = st.map, pins = (w?.pins || []).filter((p) => p.kind && kindOf(p.kind));
   if (!map || !L || !pins.length) return null;
   const add = [];
+  const closing = closingOf(L.marks || [], w?.pins || []);
   for (const p of pins) {
     const at = mapOf(L, pinNow(p), p.odo);
     if (!at) continue;
     const g = groundUnder(L, p.at);
-    add.push({ kind: p.kind, at, h: Number.isFinite(g) ? p.at.y - g : null, walk: String(w.startedAt), grade: gradeOfFix(L, p.odo), aimM: p.aim, t: Date.now() });
+    /* A corner vouches for what was placed NEAR it in the walk, not 900 ft later: placed by corners more than 60 m of
+       walking from the nearest corner mark, in a walk that has not shown it came back to itself, a thing is 'unsure'
+       (2026-11-22: the same gutter ends pinned at a walk's start and its end landed 6-7 ft apart, both 'corners3'). */
+    let grade = gradeOfFix(L, p.odo);
+    const nearM = Math.min(...(L.marks || []).filter((m) => m.kind === 'ref').map((m) => Math.abs(p.odo - m.odo)), Infinity);
+    if (grade.startsWith('corners') && nearM > 60 && !(closing && closing.m <= CLOSE_M)) grade = 'unsure';
+    add.push({ kind: p.kind, at, h: Number.isFinite(g) ? p.at.y - g : null, walk: String(w.startedAt), grade, aimM: p.aim, t: Date.now() });
   }
   if (!add.length) return `The ${pins.length} thing${pins.length === 1 ? '' : 's'} placed could NOT be kept: this walk has no place on the map (mark two roof corners).`;
   let old = [];
@@ -2166,6 +2173,12 @@ async function keepReference(L, walkId) {
      marked 20 ft from its place, and the next walk matched to it was moved 675 in. Matched to the saved shape (F) it
      may still add to the shape; its corners then say nothing of where the shape sits. */
   if (!F && !plan.g?.ok) return `NOT saved as the reference: ${plan.g?.why || 'its roof corners do not agree with the map'}. The walk itself is kept.`;
+  /* AND ONLY A WALK THAT CAME BACK TO ITSELF (refkeep.js closingOf; the walk in the rain, 2026-11-22: corners agreeing
+     within 7 in at its start, 6 ft 11 in out at the same corner 930 ft later, and it corrected 45,000 points of the
+     reference). Where the walk gives a reading of its own closing (a plain pin on a marked corner late in the walk, or
+     a corner marked again) and it is over CLOSE_M, the walk is not put into the reference. */
+  const closing = closingOf(L?.marks || [], st.walk?.pins || []);
+  if (closing && closing.m > CLOSE_M) return `NOT saved as the reference: the walk did not come back to itself (${ftIn(closing.m)} out at ${closing.by}, after ${Math.round(closing.walkedM * FT)} ft of walking). The walk itself is kept.`;
   const rawStand = [...(st.prevStand?.values() || [])], rawGround = [...(st.prevGround?.values() || [])];
   if (rawStand.length < REF_MIN_STAND) return `NOT saved as the reference: too little of the yard's standing things was seen (${rawStand.length} points of ${REF_MIN_STAND}).`;
   const ps = F ? null : placeWalk(rawStand, plan.use, plan.C, jumps), pg = F ? null : placeWalk(rawGround, plan.use, plan.C, jumps);
@@ -2191,7 +2204,7 @@ async function keepReference(L, walkId) {
     : `${corners}; placed by its corners rather than matched to the saved shape, so it filled in ${u.added.toLocaleString()} points the shape lacked`) + jumpNote;
   try {
     const r = await fetch(`/api/scan/reference?map=${encodeURIComponent(map)}&walk=${encodeURIComponent(walkId)}`, { method: 'PUT', credentials: 'same-origin', body: bytes, signal: AbortSignal.timeout(SEND_TIMEOUT_MS) });
-    if (r.ok) return `Saved ${old ? 'into' : 'as'} this map's reference (${what}). The next walk here builds on it.`;
+    if (r.ok) return `Saved ${old ? 'into' : 'as'} this map's reference (${what}${closing ? `; the walk closed within ${ftIn(closing.m)} at ${closing.by}` : '; the walk gave no reading of its own closing: a plain pin on the first corner at the end would'}). The next walk here builds on it.`;
     // the site refused it (not the signal): say what it said
     if (r.status >= 400 && r.status < 500 && r.status !== 401 && r.status !== 403 && r.status !== 404 && r.status !== 408 && r.status !== 429) { let why = ''; try { why = (await r.json())?.error || ''; } catch { /* none */ } return `NOT saved as the reference: the site refused it (${r.status}${why ? `, ${why}` : ''}). Tell the core session.`; }
   } catch { /* no signal: the outbox has it */ }

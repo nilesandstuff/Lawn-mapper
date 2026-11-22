@@ -12,7 +12,7 @@
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { buildRef, encodeRef, decodeRef, shapeFix, fitRigid, place, STAND, sameFix } from '../lib/walkref.js';
-import { keepPlan, placeWalk, matchUsable, updateRef, AS_IS } from '../lib/refkeep.js';
+import { keepPlan, placeWalk, matchUsable, updateRef, AS_IS, closingOf, CLOSE_M } from '../lib/refkeep.js';
 import { readTrack } from '../lib/twin.js';
 import { checkMarks } from '../lib/postfix.js';
 import { walkPrior } from '../lib/walkfix.js';
@@ -194,6 +194,8 @@ async function keep(dir) {
   }
   if (!plan.ok && !F) throw new Error(`nothing places this walk: ${plan.why}, and no match to a saved shape`);
   // only what its corners vouch for (the page's own rule since 2026-11-22: app.js keepReference)
+  // and only a walk that came back to itself, where it gives a reading (refkeep.js closingOf)
+  { const c = closingOf(live.marks || [], live.pins || []); if (c) console.log(`Its own closing: ${(c.m * 39.37).toFixed(0)} in out at ${c.by}, after ${Math.round(c.walkedM * FT)} ft of walking.`); if (c && c.m > CLOSE_M) throw new Error('not put into the reference: the walk did not come back to itself'); }
   if (!F && !g.ok) throw new Error(`not put into the reference: ${g.why}`);
   const ps = F ? null : placeWalk(pts.stand, plan.use, plan.C, J), pg = F ? null : placeWalk(pts.ground, plan.use, plan.C, J);
   if (!F && ps.left + pg.left) console.log(`Not placed: ${ps.left + pg.left} points seen after a tracking jump with no corners sighted after it.`);

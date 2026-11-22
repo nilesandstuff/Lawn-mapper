@@ -117,6 +117,31 @@ export function goodPart(marks, jumps = [], { agree = AGREE_M } = {}) {
   return { ok: true, T: best.a.T, ids: best.g.map((m) => m.id), n: best.g.length, roof, worstM: best.a.worst, lo, hi, whole: !out.length && lo === -Infinity && hi === Infinity, left: out.map((m) => m.id), why: null };
 }
 
+/* DID THE WALK COME BACK TO ITSELF? (2026-11-22, the walk in the rain: its three corners, all marked in its first steps,
+   agreed within 7 in, and 930 ft later a pin put on the first corner sat 6 ft 11 in from the mark; the same gutter
+   ends pinned twice lay 5 ft 7 in and 6 ft 3 in apart. The corners vouched for the walk's START and nothing else, and
+   the walk went into the map's reference, correcting 45,000 of its points.)
+   closingOf: the walk's closing error where it can be read: a PLAIN pin put within CLOSE_REACH_M of where a corner was
+   marked, CLOSE_AFTER_M or more of walking later (the owner's way: "I placed a point... on r1"), or a corner marked
+   again that much later. -> { m, walkedM, by } (the worst there is), or null when the walk gives no reading.
+   marks: L.marks ({ id, ar: [u, v], odo, kind }); pins: the walk's ({ at: { x, y, z }, odo, kind? }). */
+export const CLOSE_M = 1;          // m: a walk that closes worse than this is not put into a reference
+export const CLOSE_REACH_M = 4, CLOSE_AFTER_M = 30;
+export function closingOf(marks, pins) {
+  const M = (marks || []).filter((m) => m?.ar && Number.isFinite(m.odo) && (m.kind || 'ref') === 'ref');
+  const first = new Map(); for (const m of M) if (!first.has(m.id)) first.set(m.id, m);
+  let worst = null;
+  const take = (m, walkedM, by) => { if (!worst || m > worst.m) worst = { m, walkedM, by }; };
+  for (const p of pins || []) {
+    if (p?.kind || !p?.at || !Number.isFinite(p.odo)) continue;
+    let best = null;
+    for (const m of first.values()) { const d = Math.hypot(p.at.x - m.ar[0], -p.at.z - m.ar[1]); if (p.odo - m.odo >= CLOSE_AFTER_M && d <= CLOSE_REACH_M && (!best || d < best.d)) best = { d, m }; }
+    if (best) take(best.d, p.odo - best.m.odo, 'a pin on a corner');
+  }
+  for (const m of M) { const f = first.get(m.id); if (f !== m && m.odo - f.odo >= CLOSE_AFTER_M) take(Math.hypot(m.ar[0] - f.ar[0], m.ar[1] - f.ar[1]), m.odo - f.odo, 'a corner marked again'); }
+  return worst;
+}
+
 /* EVERY WALK IS KEPT (the owner, 2026-11-16: "When I do a walk, i want it to be saved as a reference... Always" and,
    of a corner sighted again, "A repeat corner check should be a refinement, not throwing away other data"). goodPart
    still says which marks agree, and the walk still asks again for one that does not (locate.js); but what is kept is

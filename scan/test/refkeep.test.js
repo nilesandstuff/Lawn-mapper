@@ -1,6 +1,6 @@
 // Keep what is good of a walk, and build on it (lib/refkeep.js).
 import assert from 'node:assert/strict';
-import { goodPart, partOf, mergeRef, agreement, AGREE_M, allowedOf } from '../lib/refkeep.js';
+import { goodPart, partOf, mergeRef, agreement, AGREE_M, allowedOf, closingOf, CLOSE_M } from '../lib/refkeep.js';
 
 // a walk turned 30 degrees and shifted from the map
 const th = 0.5, c = Math.cos(th), s = Math.sin(th);
@@ -200,3 +200,16 @@ console.log('refkeep (shape and place): ok');
   assert.match(cornersShort([C(0, 0), C(1, 1)]), /only 5 ft apart/);
   assert.equal(cornersShort([C(0, 0), C(19.6, 0)]), null);
   console.log('refkeep (enough corners before the walk): ok'); }
+
+// DID THE WALK COME BACK TO ITSELF? A plain pin on a corner 280 m later, 2.1 m from its mark: the closing error. A pin
+// given a kind, a pin far from any corner, and a pin put down straight after the mark say nothing.
+{ const marks = [{ id: 'R1', kind: 'ref', ar: [0, 0], odo: 2 }, { id: 'R2', kind: 'ref', ar: [7, 0], odo: 8 }];
+  const pin = (x, z, odo, kind) => ({ at: { x, y: 0, z }, odo, kind });
+  const c = closingOf(marks, [pin(1.5, -1.5, 285), pin(0.2, 0, 300, 'sprinkler'), pin(40, 40, 310), pin(0.1, 0, 5)]);
+  assert.ok(c && Math.abs(c.m - Math.hypot(1.5, 1.5)) < 1e-9 && Math.round(c.walkedM) === 283 && c.by === 'a pin on a corner');
+  assert.ok(c.m > CLOSE_M);
+  assert.equal(closingOf(marks, [pin(0.2, 0, 300, 'sprinkler'), pin(40, 40, 310)]), null);
+  // a corner marked again late: the same reading
+  const again = closingOf([...marks, { id: 'R1', kind: 'ref', ar: [0.3, 0.4], odo: 200 }], []);
+  assert.ok(again && Math.abs(again.m - 0.5) < 1e-9 && again.by === 'a corner marked again');
+  console.log('refkeep (did the walk come back to itself): ok'); }
