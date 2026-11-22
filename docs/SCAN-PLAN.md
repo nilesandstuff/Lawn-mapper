@@ -4070,3 +4070,17 @@ overlap theirs (0.08-0.09), and two wrong ones in a row agreed with each other.
 BEING TRIED: the corner AND the phone's own heading (Street View's reading of how the session is turned, geo.js
 theta with its accuracy): where, and which way round. And the plain answer for a walk's first steps stays what walk
 1 does: TWO corners place a walk at once, with no shape needed.
+
+HARD, the corner with the phone's own heading (run 503, the same walks, to 394 ft): the first fix USED at 197 ft
+(2026-11-19 walk), 246 ft (2026-11-20 walk), never (2026-11-18 walk): THE SAME as with the corner alone. No wrong fix
+used in either pinned block. The heading changed a few early answers (one right at 49 ft where the corner alone was
+refused; one wrong) but none of them was confirmed by the next. NOT USED on the page: no gain measured. The library
+keeps it (walkref.js prior.theta).
+WHAT SHIPS (2026-11-22): the latest marked corner pins the match, and with a corner the match is asked from the start.
+On these walks that is a first fix at about 200-250 ft walked instead of 250-300. WHAT IT DOES NOT DO: give a fix in
+a walk's first 150 ft. Two corners do, as on a first walk.
+JUDGEMENT on why the start resists: in its first 100 ft a walk has seen a few walls and some lawn, and a few walls
+fit a yard in several places about as well as in the right one. More of the same matching will not change that; what
+would is something that tells places apart at a glance, which the points do not: the photos. Matching a new walk's
+first photos to the reference walk's photos (what a person does on arriving) is the lead, and the photos of a
+reference walk are kept (900 of them for the owner's lot). Not built.
