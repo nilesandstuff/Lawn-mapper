@@ -3650,6 +3650,27 @@ bucket's rate limit, 37 min of classes at 2.5 s a photo):
   - Minutes 6 to 8 kept few points (7,135 / 245 / 4,082 against 18,000 to 32,000 in the minutes before): the same
     minutes as the gaps and the 67 in step in the poses. What the phone was doing then is not known.
 
+HARD, the mending run (run 481; 109 stretches of 20 ft, 536,939 standing points, 76 believed slides of 210 pairs):
+  - THE "JUMPS" WERE THE PHONE PUTTING ITSELF RIGHT. Eight steps (38-157 in, at 4.4 to 9.1 min) were taken back and
+    judged at the places seen twice. Every place seen before all eight and again after them lay 6-20 in apart AS
+    WALKED (3.3-3.6 min against 15.5-15.7 min: 6, 6, 6, 8, 13, 19 in; 1.1 against 9.2 min: 8 in) and 149-162 in
+    apart with the steps taken back. Taking them back is wrong, and is no longer done: mend_study.py now judges the
+    steps on the places seen across them and keeps them only if those end nearer.
+  - So over 12 minutes and about 1,500 ft of walking, across every tracking step, THE WALK COMES BACK TO ITSELF
+    WITHIN 6-20 in where it was looked at.
+  - Where it does not: places seen at 1.0-2.0 min and again at 2.5-4.9 min lie 17-92 in apart flat (middle about
+    45 in): the early minutes against the next loop, the same sign as the 2026-11-20 walk's first minute, but
+    reaching past the 1.5 min start cut to about 2 min. And between 5.5 and 7.5 min, and 10.0 and 11.2 min, places
+    seen a minute apart lie 0-24 in apart flat but 12-35 in apart in height.
+  - All 76 slides: 27 in apart in the middle as walked (flat 18, height 10). Mended by sliding stretches (half
+    solve, half judge): 29 -> 21 in on the 38 held out, better for 58% of them. A small gain.
+  - The mended view kept (view-mended.bin, 300,523 points) is from those slid stretches, NOT from the jumps.
+SPECULATION: the height differences of 30-35 in between sightings a minute apart may be the study's own (a
+stretch's height is taken from the ground both saw, and on a slope two stretches see different ground), not the
+walk's. Not checked.
+WHAT FOLLOWS: (1) the start cut should be judged per walk by the places seen twice, not only by the corners'
+marks; here about 2 min rather than 1.5. (2) The summary's "tracking jumped" count is not a count of faults.
+
 ## 49. The owner's direction: a walk consistent with itself comes first (2026-11-21)
 
 THE OWNER ("a vibe-based guess... ignore it if you disagree"; the core session agrees and adopts it): "the number 1

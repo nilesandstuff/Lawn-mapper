@@ -267,10 +267,22 @@ def main():
             pr = jump_shift(t_of(b__)) - jump_shift(t_of(a_))
             n_between = sum(1 for st in steps if t_of(a_) < st["t"] < t_of(b__))
             print(f"    a slide of {np.hypot(dd[0], dd[2]) * 39.37:.0f} in flat, {dd[1] * 39.37:+.0f} in height ({n_between} jump{'s' if n_between != 1 else ''} between its two sightings, at {t_of(a_) / 60:.1f} and {t_of(b__) / 60:.1f} min): taking the jumps back leaves {np.linalg.norm(dd - pr) * 39.37:.0f} in of its {np.linalg.norm(dd) * 39.37:.0f}.")
-        if "--write" in args:
+        # THE JUDGE (run 481, the big walk of 2026-11-21): eight steps were taken back and every place seen on both
+        # sides of them went from 6-13 in apart to 149-162 in. The steps were the phone PUTTING ITSELF RIGHT, not
+        # going wrong. So the steps are kept only when the places seen across them end nearer than they were.
+        across = [(np.linalg.norm(dd - (jump_shift(t_of(b__)) - jump_shift(t_of(a_)))), np.linalg.norm(dd)) for a_, b__, dd, _, _, _ in ties if any(t_of(a_) < st["t"] < t_of(b__) for st in steps)]
+        if across:
+            aft, bef = np.median([x[0] for x in across]) * 39.37, np.median([x[1] for x in across]) * 39.37
+            good = aft < bef
+            print(f"  THE JUMPS JUDGED on the {len(across)} places seen on both sides of one: {bef:.0f} in apart as walked, {aft:.0f} in apart with the jumps taken back. " + ("Taken back." if good else "NOT TAKEN BACK: the phone's steps were it putting itself right, and the walk is nearer itself with them than without."))
+        else:
+            good = False
+            print("  THE JUMPS could not be judged (no place was seen on both sides of one): not taken back.")
+        if good and "--write" in args:
             with open(os.path.join(d, "mend.json"), "w") as f:
-                json.dump({"steps": steps, "from": "the jumps in the poses, taken back", "judged": False}, f)
+                json.dump({"steps": steps, "from": "the jumps in the poses, taken back", "judged": True}, f)
             print("  Kept (mend.json): the jumps, to be taken back.")
+            return
     crumbs = None
     try:
         crumbs = (json.load(open(os.path.join(d, "live.json"))) or {}).get("crumbs")
