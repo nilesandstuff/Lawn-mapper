@@ -40,6 +40,7 @@ async function main() {
     let live, meta;
     try { live = JSON.parse(lb.toString()); meta = mb ? JSON.parse(mb.toString()) : {}; } catch { none++; continue; }
     const r = walkPairs(live.marks || []);
+    r.aims = (live.marks || []).map((m) => m.aim).filter((a) => Number.isFinite(a) && a > 0);
     if (r.corners.length < 2) { few++; continue; }
     const key = String(meta.map ?? '?');
     if (!maps.has(key)) maps.set(key, []);
@@ -59,6 +60,7 @@ async function main() {
     for (const w of walks) {
       console.log(`  walk ${w.id} (${w.when}, ${Math.round(w.odo * FT)} ft walked): ${w.corners.length} corners`);
       for (const p of w.pairs) console.log(`    ${L(p.a)}-${L(p.b)}: map ${ft(p.mapM)}, phone ${ft(p.phoneM)}, ${inch(p.diffM)} (${Math.round(p.walkedM * FT)} ft walked between the marks)`);
+      if (w.aims.length) console.log(`    aimed from ${w.aims.map((a) => (a * FT).toFixed(0)).join(', ')} ft (the phone to each corner as it was marked)`);
       if (w.scale) console.log(`    THE PHONE'S SCALE against the map's: ${((w.scale.k - 1) * 100).toFixed(1)}% (${w.scale.k < 1 ? 'the phone measures short' : 'the phone measures long'}); the pairs are off ${(w.scale.rawRmsM * IN).toFixed(0)} in as measured, ${(w.scale.rmsM * IN).toFixed(0)} in with that scale taken out.`);
       for (const a of w.again) console.log(`    ${L(a.key)} marked again after ${Math.round(a.walkedM * FT)} ft: the phone had it ${(a.movedM * IN).toFixed(0)} in from where it had it before`);
     }

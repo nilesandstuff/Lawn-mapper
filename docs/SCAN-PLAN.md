@@ -3725,6 +3725,20 @@ SPECULATION (none of it measured):
 WHAT WOULD SETTLE IT: one length by tape or laser between two of the owner's roof corners (or one wall, eave end
 to eave end, and separately the wall itself corner to corner). Asked of the owner 2026-11-21.
 
+THE OWNER'S MEASUREMENT (2026-11-22, on the county's orthorectified photo; no tape or laser to hand): the long pair
+"87.5-88 feet... measured in a straight line over the house", the short pair "22-22.5 feet". Against it:
+  - the lidar map has them 88.7 and 23.0 ft: 0.7-1.2 ft and 0.5-1.0 ft LONGER than the photo (about 1% and 2-4%);
+  - the phone had them 83.1 ft (median of six walks) and 21.9 ft: 4.4-4.9 ft and 0.1-0.6 ft SHORTER than the photo
+    (about 5.3% and 0.5-2.7%).
+So on the long pair the photo sides with the lidar map: THE PHONE IS THE ONE THAT IS SHORT, by about 5%, and the
+map's corners are perhaps a foot wide of the roof (a point spacing of that lidar). HARD as far as two readings off
+a photo go: a roof's edge in an orthophoto leans with its height, though two corners at one height lean alike.
+NOT EXPLAINED: why the same phone is 2% short at three other places; and the short pair, which the phone and the
+photo nearly agree on.
+SPECULATION: a corner is marked by the depth under the crosshair. If that depth reads short at range, each marked
+corner is pulled toward where the phone stood, and pairs read short by an amount that depends on how far away the
+walker aims from, which differs by place. The marks keep that distance (`aim`); task corners now prints it.
+
 WHAT IT MEANS MEANWHILE: the live fit already lets the phone's scale move up to 7% once three corners are marked
 15 m apart (walkref.js MAX_SCALE); with two corners it cannot, and a 5% difference over 90 ft is 4.5 ft of
 "disagreement between the reference points". That alone is enough to explain most of what the owner sees.
