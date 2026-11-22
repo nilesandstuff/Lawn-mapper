@@ -254,7 +254,12 @@ function lookups(points3) {
  * This walk placed on the reference. walk: { stand: [[u, v, y]], ground: [[u, v, y]] } in its session.
  * -> { ok, T: { theta, tx, ty, s }, tz, landed, second, stand, ms, why }
  */
-export function shapeFix(ref, walk, { cell = SEARCH_CELL, step = TURN_STEP, margin = MARGIN, gate = GATE, standGate = STAND_GATE, minStand = MIN_STAND } = {}) {
+/* A PRIOR (2026-11-22). Run 490: the walk's first 100 ft matched by shape alone was called PLACED at 50-95 ft from the
+   truth on three walks of three (landed 0.41-0.52, the next best 0.40-0.49): a yard's first few walls fit many places.
+   `prior` { T, searchM, searchDeg } (walkfix.js walkPrior: where GPS or Street View has the phone's trail) keeps the
+   search to turns within searchDeg of it and to placements that put the walk's middle within searchM of where the
+   prior does. Without it the search is the whole reference, as before. */
+export function shapeFix(ref, walk, { cell = SEARCH_CELL, step = TURN_STEP, margin = MARGIN, gate = GATE, standGate = STAND_GATE, minStand = MIN_STAND, prior = null } = {}) {
   const t0 = Date.now();
   const stand = voxel(walk.stand || []), ground = voxel(walk.ground || []);
   if (!ref || ref.stand.length < 300) return { ok: false, why: 'no reference for this map yet' };
@@ -286,8 +291,11 @@ export function shapeFix(ref, walk, { cell = SEARCH_CELL, step = TURN_STEP, marg
   fft2(Are, Aim, N);
   const cands = [];
   const Wre = new Float64Array(N * N), Wim = new Float64Array(N * N);
+  const turnOff = (a, b) => Math.abs((((a - b) * 180) / Math.PI + 540) % 360 - 180);
+  const pc = prior?.T ? place({ s: 1, ...prior.T }, mx, my) : null, pR = prior ? Math.max(cell, prior.searchM || 8) : Infinity, pDeg = prior ? Math.max(step, prior.searchDeg || 15) : Infinity;
   for (let deg = 0; deg < 360; deg += step) {
     const th = (deg * Math.PI) / 180, c = Math.cos(th), s = Math.sin(th);
+    if (pc && turnOff(th, prior.T.theta) > pDeg + step) continue;
     Wre.fill(0); Wim.fill(0);
     let qx0 = Infinity, qy0 = Infinity;
     const Q = ws.map((p) => { const q = [c * p[0] - s * p[1], s * p[0] + c * p[1]]; qx0 = Math.min(qx0, q[0]); qy0 = Math.min(qy0, q[1]); return q; });
@@ -307,7 +315,20 @@ export function shapeFix(ref, walk, { cell = SEARCH_CELL, step = TURN_STEP, marg
     }
     fft2(Wre, Wim, N, true);
     let best = -Infinity, bk = 0;
-    for (let k = 0; k < N * N; k++) if (Wre[k] > best) { best = Wre[k]; bk = k; }
+    if (!pc) { for (let k = 0; k < N * N; k++) if (Wre[k] > best) { best = Wre[k]; bk = k; } }
+    else {
+      // only the offsets that put the walk's middle within pR of where the prior puts it
+      const cqx = c * mx - s * my, cqy = s * mx + c * my;
+      const cc0 = Math.round((pc[0] - cqx - x0 + qx0) / cell), r0 = Math.round((pc[1] - cqy - y0 + qy0) / cell), R = Math.ceil(pR / cell);
+      for (let dr = -R; dr <= R; dr++) for (let dc = -R; dc <= R; dc++) {
+        if (dr * dr + dc * dc > R * R) continue;
+        const rr = r0 + dr, cc2 = cc0 + dc;
+        if (rr <= -nW || cc2 <= -nW || rr > N - nW || cc2 > N - nW) continue;
+        const k = ((rr + N) % N) * N + ((cc2 + N) % N);
+        if (Wre[k] > best) { best = Wre[k]; bk = k; }
+      }
+      if (best === -Infinity) continue;
+    }
     let r = Math.floor(bk / N), cc = bk % N;
     if (r > N - nW) r -= N;
     if (cc > N - nW) cc -= N;
@@ -355,6 +376,11 @@ export function shapeFix(ref, walk, { cell = SEARCH_CELL, step = TURN_STEP, marg
     const L = landedOf(T, tz);
     results.push({ T, tz, landed: L.all, standLanded: L.stand });
   }
+  if (pc) {
+    // what the refining did with it must still lie by the prior
+    for (let i = results.length - 1; i >= 0; i--) { const q = place(results[i].T, mx, my); if (Math.hypot(q[0] - pc[0], q[1] - pc[1]) > 1.5 * pR || turnOff(results[i].T.theta, prior.T.theta) > pDeg + 5) results.splice(i, 1); }
+  }
+  if (!results.length) return { ok: false, why: 'nothing of the earlier walk matches near where GPS has this one', stand: stand.length, ms: Date.now() - t0 };
   results.sort((a, b) => b.landed - a.landed);
   const best = results[0];
   const other = results.find((r) => Math.hypot(r.T.tx - best.T.tx, r.T.ty - best.T.ty) > 2

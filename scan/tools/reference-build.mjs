@@ -15,6 +15,7 @@ import { buildRef, encodeRef, decodeRef, shapeFix, fitRigid, place, STAND } from
 import { keepPlan, placeWalk, matchUsable, updateRef, AS_IS } from '../lib/refkeep.js';
 import { readTrack } from '../lib/twin.js';
 import { checkMarks } from '../lib/postfix.js';
+import { walkPrior } from '../lib/walkfix.js';
 import { writeObject, readObject, BUCKET } from './twin-r2.mjs';
 
 const FT = 3.28084;
@@ -285,9 +286,23 @@ async function against(dirs) {
     for (const upTo of [30, 60, 120, Infinity]) {
       if (Number.isFinite(upTo) && upTo >= total) continue;
       const part = { stand: pts.stand.filter((p) => (p[3] || 0) <= upTo), ground: pts.ground.filter((p) => (p[3] || 0) <= upTo) };
-      const f = shapeFix(ref, part);
-      const e = f.T ? marks.map((m) => { const p = onMap(f.T, m.ar); return Math.hypot(p[0] - m.map[0], p[1] - m.map[1]) * 39.37; }) : [];
-      console.log(`    ${Number.isFinite(upTo) ? `its first ${Math.round(upTo * FT)} ft` : 'the whole walk'} (${part.stand.length} standing points): ${f.ok ? 'PLACED' : f.T ? 'a match, not sure enough to use' : 'not placed'}${f.landed != null ? ` (landed ${f.landed}, next best ${f.second ?? '-'}${f.T?.s && f.T.s !== 1 ? `, scaled ${((f.T.s - 1) * 100).toFixed(1)}%` : ''})` : ''}${e.length ? `: its corners land ${e.map((x) => x.toFixed(0)).join(', ')} in from the map's` : f.why ? `: ${f.why}` : ''}`);
+      const within = (g) => !Number.isFinite(upTo) || (g.odo ?? 0) <= upTo;
+      const prior = walkPrior((live.gpsTrail || []).filter(within), (live.geoTrail || []).filter(within));
+      // four ways: by shape alone, as the page does now; kept to where GPS has the walk; and each with the walk first
+      // stretched to the map's metres by the phone's shortfall there (REF_SCALE: the reference is in map metres, a
+      // new walk in the phone's, 5-7% smaller at the owner's lot)
+      const K = Number(process.env.REF_SCALE) || 1;
+      const ways = [['shape alone', null, 1], ['by GPS', prior, 1]];
+      if (K !== 1) ways.push([`shape alone, stretched ${((K - 1) * 100).toFixed(1)}%`, null, K], [`by GPS, stretched ${((K - 1) * 100).toFixed(1)}%`, prior, K]);
+      console.log(`    ${Number.isFinite(upTo) ? `its first ${Math.round(upTo * FT)} ft` : 'the whole walk'} (${part.stand.length} standing points; ${prior ? `prior from ${prior.from}, search ${prior.searchM.toFixed(0)} m and ${prior.searchDeg.toFixed(0)} degrees` : 'no GPS prior'}):`);
+      for (const [name, pr, k] of ways) {
+        if (name.startsWith('by GPS') && !pr) continue;
+        const sc = (pts3) => (k === 1 ? pts3 : pts3.map((p) => [p[0] * k, p[1] * k, p[2] * k, p[3]]));
+        const prK = pr && k !== 1 ? { ...pr, T: { ...pr.T, s: 1 / k } } : pr;   // the prior was fitted in the phone's metres
+        const f = shapeFix(ref, { stand: sc(part.stand), ground: sc(part.ground) }, prK ? { prior: prK } : {});
+        const e = f.T ? marks.map((m) => { const p = onMap(f.T, [m.ar[0] * k, m.ar[1] * k]); return Math.hypot(p[0] - m.map[0], p[1] - m.map[1]) * 39.37; }) : [];
+        console.log(`      ${name}: ${f.ok ? 'PLACED' : f.T ? 'a match, not sure enough to use' : 'not placed'}${f.landed != null ? ` (landed ${f.landed}, next best ${f.second ?? '-'})` : ''}${e.length ? `: its corners land ${e.map((x) => x.toFixed(0)).join(', ')} in from the map's` : f.why ? `: ${f.why}` : ''}`);
+      }
     }
   }
 }

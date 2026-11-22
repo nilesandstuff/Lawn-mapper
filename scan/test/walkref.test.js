@@ -69,3 +69,21 @@ const Tf = fitRigid(pts, pts.map(([u, v]) => place(T, u, v)));
 assert.ok(Math.abs(Tf.theta - 0.3) < 1e-9 && Math.abs(Tf.tx - 2) < 1e-9);
 assert.equal(voxel([[0, 0, 0], [0.05, 0.05, 0.05], [1, 1, 1]]).length, 2);
 console.log('walkref: ok');
+
+// A PRIOR (2026-11-22): kept to where GPS has the walk, the match finds the same place; told the walk is 50 m away
+// or a quarter turn round, it finds nothing rather than something wrong.
+{ const { shapeFix: fix, buildRef: mk } = await import('../lib/walkref.js');
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const stand = [], ground = [];
+  const wall = (x0, y0, x1, y1) => { const n = Math.ceil(Math.hypot(x1 - x0, y1 - y0) / 0.1); for (let i = 0; i <= n; i++) for (let h = 0.4; h < 3; h += 0.2) stand.push([x0 + (x1 - x0) * i / n + (rnd() - 0.5) * 0.05, y0 + (y1 - y0) * i / n + (rnd() - 0.5) * 0.05, h]); };
+  wall(0, 0, 12, 0); wall(12, 0, 12, 7); wall(12, 7, 5, 7); wall(5, 7, 5, 10); wall(5, 10, 0, 10); wall(0, 10, 0, 0); wall(25, 20, 31, 20); wall(31, 20, 31, 26); wall(-10, -8, 40, -8);
+  for (let i = 0; i < 6000; i++) ground.push([rnd() * 60 - 15, rnd() * 45 - 12, 0]);
+  const ref = mk({ stand, ground }, { theta: 0, tx: 0, ty: 0, s: 1 }, 1);
+  const th = -0.7, c = Math.cos(th), s = Math.sin(th), mv = (p) => [c * (p[0] - 3) - s * (p[1] + 2), s * (p[0] - 3) + c * (p[1] + 2), p[2]];
+  const walk = { stand: stand.map(mv), ground: ground.map(mv) };
+  const P = (T) => ({ prior: { T: { ...T, s: 1 }, searchM: 8, searchDeg: 15 } });
+  const near = fix(ref, walk, P({ theta: 0.8, tx: 5, ty: -4 }));
+  if (!(near.ok && Math.abs(near.T.theta - 0.7) < 0.02 && Math.hypot(near.T.tx - 3, near.T.ty + 2) < 0.2)) throw new Error(`a prior near the truth: ${JSON.stringify(near.T)}`);
+  if (fix(ref, walk, P({ theta: 0.7, tx: 45, ty: 30 })).ok) throw new Error('a prior 50 m off still placed the walk');
+  if (fix(ref, walk, P({ theta: 0.7 + Math.PI / 2, tx: 3, ty: -2 })).ok) throw new Error('a prior a quarter turn off still placed the walk');
+  console.log('walkref (a prior keeps the search near it): ok'); }

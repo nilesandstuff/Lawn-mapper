@@ -710,7 +710,7 @@ jobs:
           if [[ "$WALK" == *:against ]]; then
             dirs=""
             for W in $(echo "${WALK%:against}" | tr ',' ' '); do node scan/tools/twin-r2.mjs get "$W" "w-$W" > /dev/null; dirs="$dirs w-$W"; done
-            node scan/tools/reference-build.mjs against $dirs | tee reference.txt
+            REF_SCALE="${{ inputs.calib }}" node scan/tools/reference-build.mjs against $dirs | tee reference.txt
             exit 0
           fi
           # "<walk>:fresh" (or ":fresh:dry"): the map's reference made afresh from this walk alone, if it has earned it
