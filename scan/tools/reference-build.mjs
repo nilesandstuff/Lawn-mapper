@@ -287,23 +287,32 @@ async function against(dirs) {
     // a loose GPS bound when there is one, and USED only when two in a row agree (walkref.js sameFix)
     const errOf = (T) => marks.map((m) => { const p = onMap(T, m.ar); return Math.hypot(p[0] - m.map[0], p[1] - m.map[1]) * 39.37; });
     const mid = (() => { let x = 0, y = 0; for (const p of pts.stand) { x += p[0]; y += p[1]; } return pts.stand.length ? [x / pts.stand.length, y / pts.stand.length] : [0, 0]; })();
-    let before = null, used = 0, usedBad = 0;
-    for (let upTo = 60; ; upTo += 15) {
-      const last = upTo >= total;
-      const lim = last ? Infinity : upTo;
-      const within = (g) => (g.odo ?? 0) <= lim;
-      const part = { stand: pts.stand.filter((p) => (p[3] || 0) <= lim), ground: pts.ground.filter((p) => (p[3] || 0) <= lim) };
-      const prior = walkPrior((live.gpsTrail || []).filter(within), (live.geoTrail || []).filter(within));
-      const loose = prior ? { T: prior.T, searchM: Math.max(15, 2 * prior.searchM), searchDeg: Math.max(25, 2 * prior.searchDeg) } : null;
-      const f = shapeFix(ref, part, loose ? { prior: loose } : {});
-      const e = f.T ? errOf(f.T) : [];
-      const confirmed = f.ok && before && sameFix(before, f.T, mid);
-      if (confirmed) { used++; if (Math.min(...e) > 60) usedBad++; }
-      console.log(`    at ${last ? `its end (${Math.round(total * FT)} ft)` : `${Math.round(upTo * FT)} ft`}: ${f.ok ? (confirmed ? 'USED (two alike)' : 'a match, waiting for the next to agree') : f.T ? 'refused' : 'nothing'}${f.landed != null ? ` (landed ${f.landed}, next best ${f.second ?? '-'}${loose ? '' : ', no GPS yet'})` : ''}${e.length ? `: corners ${e.map((x) => x.toFixed(0)).join(', ')} in out` : f.why ? `: ${f.why}` : ''}`);
-      before = f.ok ? f.T : null;
-      if (last) break;
+    // twice over: without a corner (from 60 m, a loose GPS bound), and WITH THE LATEST CORNER MARKED SO FAR as a pin
+    // (from 15 m; the corner used as the pin is then no judge of that fix: it is shown in brackets)
+    const refs = (live.marks || []).filter((m) => m?.ar && m?.map && m.kind === 'ref').sort((a, b) => a.odo - b.odo);
+    for (const withPin of [false, true]) {
+      console.log(`   ${withPin ? 'WITH ONE CORNER (the latest marked so far) as a pin, from 49 ft:' : 'WITHOUT a corner, from 197 ft:'}`);
+      let before = null, used = 0, usedBad = 0, firstUsed = null;
+      for (let upTo = withPin ? 15 : 60; ; upTo += 15) {
+        const last = upTo >= total;
+        const lim = last ? Infinity : upTo;
+        const within = (g) => (g.odo ?? 0) <= lim;
+        const pinM = withPin ? refs.filter((m) => m.odo <= lim).pop() : null;
+        if (withPin && !pinM) { if (last) break; continue; }
+        const part = { stand: pts.stand.filter((p) => (p[3] || 0) <= lim), ground: pts.ground.filter((p) => (p[3] || 0) <= lim) };
+        const prior = walkPrior((live.gpsTrail || []).filter(within), (live.geoTrail || []).filter(within));
+        const loose = pinM ? { pin: { ar: pinM.ar, map: pinM.map }, searchM: 1.5 } : prior ? { T: prior.T, searchM: Math.max(15, 2 * prior.searchM), searchDeg: Math.max(25, 2 * prior.searchDeg) } : null;
+        const f = shapeFix(ref, part, loose ? { prior: loose } : {});
+        const judges = marks.filter((m) => !pinM || m.id !== pinM.id);
+        const e = f.T ? judges.map((m) => { const p = onMap(f.T, m.ar); return Math.hypot(p[0] - m.map[0], p[1] - m.map[1]) * 39.37; }) : [];
+        const confirmed = f.ok && before && sameFix(before, f.T, mid);
+        if (confirmed) { used++; if (firstUsed == null) firstUsed = last ? total : upTo; if (e.length && Math.min(...e) > 60) usedBad++; }
+        console.log(`    at ${last ? `its end (${Math.round(total * FT)} ft)` : `${Math.round(upTo * FT)} ft`}: ${f.ok ? (confirmed ? 'USED (two alike)' : 'a match, waiting for the next to agree') : f.T ? 'refused' : 'nothing'}${f.landed != null ? ` (landed ${f.landed}, next best ${f.second ?? '-'}${loose ? '' : ', no GPS yet'})` : ''}${e.length ? `: the other corners ${e.map((x) => x.toFixed(0)).join(', ')} in out` : f.why ? `: ${f.why}` : ''}`);
+        before = f.ok ? f.T : null;
+        if (last) break;
+      }
+      console.log(`    -> used ${used} time${used === 1 ? '' : 's'}${used ? `, first at ${Math.round(firstUsed * FT)} ft, ${usedBad} of them with every judging corner over 5 ft out` : ''}.`);
     }
-    console.log(`    -> used ${used} time${used === 1 ? '' : 's'}${used ? `, ${usedBad} of them with every corner over 5 ft out` : ''}.`);
   }
 }
 

@@ -7,8 +7,8 @@
  *                                                   GPS has it ({ T, searchM, searchDeg }), a bound on the search
  * Out: { ready: { stand, ground, at } } or { error }; { fix, id } (walkref.js shapeFix's answer)
  */
-import { decodeRef, shapeFix } from '/lib/walkref.js';
-import { compose } from '/lib/refkeep.js';
+import { decodeRef, shapeFix, place } from '/lib/walkref.js';
+import { compose, invert } from '/lib/refkeep.js';
 
 let REF = null;
 
@@ -20,7 +20,11 @@ self.onmessage = ({ data }) => {
   if (data.fix) {
     let fix;
     // the walk is stretched by the reference's own `phone` inside shapeFix; a prior, when the page has one, bounds the search
-    try { fix = shapeFix(REF, data.fix, data.fix.prior ? { prior: data.fix.prior } : {}); } catch (err) { fix = { ok: false, why: `the match failed: ${err.message}` }; }
+    // a marked roof corner (prior.pin) comes with its place on the MAP; the match is to the SHAPE, so it is taken
+    // back through the reference's own place first
+    const prior = data.fix.prior || null;
+    if (prior?.pin?.map && REF?.P) prior.pin = { ar: prior.pin.ar, map: place(invert({ ...REF.P, s: 1 }), prior.pin.map[0], prior.pin.map[1]) };
+    try { fix = shapeFix(REF, data.fix, prior ? { prior } : {}); } catch (err) { fix = { ok: false, why: `the match failed: ${err.message}` }; }
     // the match is to the yard's SHAPE; where that shape is on the map is the reference's own P (walkref.js, version 2).
     // T stays what the page has always been given, the walk on the MAP; Ts is the walk on the shape.
     if (fix?.T) { fix.Ts = fix.T; fix.T = compose(REF.P, fix.T); }

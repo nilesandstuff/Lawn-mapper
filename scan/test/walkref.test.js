@@ -112,3 +112,25 @@ console.log('walkref: ok');
   const viaB = pl(B, ...p), both = pl(A, ...viaB), comp = pl(compose(A, B), ...p), back = pl(invert(A), ...pl(A, ...p));
   if (Math.hypot(both[0] - comp[0], both[1] - comp[1]) > 1e-9 || Math.hypot(back[0] - p[0], back[1] - p[1]) > 1e-9) throw new Error('compose or invert drops the scale');
   console.log(`walkref (the phone's scale kept with the reference and used): ok (a corner ${(Math.hypot(at[0] - 31, at[1] - 26) * 39.37).toFixed(0)} in out stretched, ${(Math.hypot(at1[0] - 31, at1[1] - 26) * 39.37).toFixed(0)} in as walked)`); }
+
+// ONE ROOF CORNER AS A PIN (2026-11-22): a walk that has seen only one long wall fits anywhere along it; with the
+// corner at the wall's end marked, only the placement that puts that corner in its place is found. A corner given the
+// wrong place finds nothing or something else, never the truth by luck.
+{ const { shapeFix: fix, buildRef: mk, place: pl } = await import('../lib/walkref.js');
+  let seed = 5; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const stand = [], ground = [];
+  const wall = (x0, y0, x1, y1) => { const n = Math.ceil(Math.hypot(x1 - x0, y1 - y0) / 0.1); for (let i = 0; i <= n; i++) for (let h = 0.4; h < 3; h += 0.2) stand.push([x0 + (x1 - x0) * i / n + (rnd() - 0.5) * 0.05, y0 + (y1 - y0) * i / n + (rnd() - 0.5) * 0.05, h]); };
+  wall(0, 0, 30, 0); wall(30, 0, 30, 12); wall(0, 0, 0, 12); wall(0, 12, 30, 12);
+  for (let i = 0; i < 6000; i++) ground.push([rnd() * 50 - 10, rnd() * 32 - 10, 0]);
+  const ref = mk({ stand, ground }, { theta: 0, tx: 0, ty: 0, s: 1 }, 1);
+  // the walk saw 14 m of the south wall next to the east corner, and the ground by it
+  const th = 0.9, c = Math.cos(th), s = Math.sin(th), mv = (p) => [c * (p[0] - 20) - s * (p[1] + 5), s * (p[0] - 20) + c * (p[1] + 5), p[2]];
+  const walk = { stand: stand.filter((p) => p[1] < 0.2 && p[0] > 16).map(mv), ground: ground.filter((p) => p[0] > 20 && p[0] < 32 && p[1] < 0).map(mv) };
+  const corner = mv([30, 0, 0]);
+  const pinned = fix(ref, walk, { prior: { pin: { ar: [corner[0], corner[1]], map: [30, 0] }, searchM: 1.5 }, lead: 0 });
+  const at = pinned.T ? pl(pinned.T, corner[0], corner[1]) : [NaN, NaN];
+  if (!(pinned.T && Math.hypot(at[0] - 30, at[1]) < 1.6)) throw new Error(`pinned by its corner the walk's corner lands ${Math.hypot(at[0] - 30, at[1]).toFixed(2)} m out`);
+  const wrong = fix(ref, walk, { prior: { pin: { ar: [corner[0], corner[1]], map: [10, 30] }, searchM: 1.5 }, lead: 0 });
+  const atW = wrong.T ? pl(wrong.T, corner[0], corner[1]) : null;
+  if (atW && Math.hypot(atW[0] - 30, atW[1]) < 3) throw new Error('a corner pinned to the wrong place still gave the truth');
+  console.log(`walkref (one roof corner as a pin): ok (its corner ${(Math.hypot(at[0] - 30, at[1]) * 39.37).toFixed(0)} in out)`); }

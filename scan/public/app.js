@@ -1351,13 +1351,18 @@ function frameWork(f) {
   // PLACED BY THE MAP'S EARLIER WALK (walkref.js, SCAN-H32): every PREV_EVERY, this walk's points so far against it
   /* NOT IN THE WALK'S FIRST 200 ft (2026-11-22, runs 490-491: matched on its first 100 ft a walk was placed 50-95 ft
      wrong every time, and called good; from 200 ft, stretched to the map's metres, 3-40 in). */
-  if (st.ref?.ready && !st.ref.stale && !st.prevAsk && odo >= PREV_MIN_M && f.tracking === 'normal' && Date.now() - st.prevAt > PREV_EVERY && st.prevStand.size >= REF_MIN_STAND) {
+  /* ...UNLESS A ROOF CORNER HAS BEEN MARKED (the owner, 2026-11-22: "That's actually a bit of a problem. Would 1 corner
+     reference fix that?"): the latest marked corner bounds the match to placements that put it where the map has it
+     (walkref.js prior.pin), so the match may be asked as soon as there are points enough. */
+  const cornerMark = (() => { for (let i = L.marks.length - 1; i >= 0; i--) { const m = L.marks[i]; if (m.kind === 'ref' && m.ar && m.map) return m; } return null; })();
+  if (st.ref?.ready && !st.ref.stale && !st.prevAsk && (odo >= PREV_MIN_M || cornerMark) && f.tracking === 'normal' && Date.now() - st.prevAt > PREV_EVERY && st.prevStand.size >= REF_MIN_STAND) {
     const id = `p${Date.now()}`;
     st.prevAt = Date.now(); st.prevAsk = { id, odo }; st.prevStats.asks++;
     // where GPS or Street View has the walk, as a LOOSE bound (at least 15 m and 25 degrees): tight, it shut the
     // right answer out (run 491); loose, it only forbids the far side of the yard
     const pr = walkPrior(st.gpsTrail, st.geoTrail);
-    const prior = pr ? { T: { theta: pr.T.theta, tx: pr.T.tx, ty: pr.T.ty }, searchM: Math.max(15, 2 * pr.searchM), searchDeg: Math.max(25, 2 * pr.searchDeg) } : null;
+    const prior = cornerMark ? { pin: { ar: cornerMark.ar, map: cornerMark.map }, searchM: 1.5 }
+      : pr ? { T: { theta: pr.T.theta, tx: pr.T.tx, ty: pr.T.ty }, searchM: Math.max(15, 2 * pr.searchM), searchDeg: Math.max(25, 2 * pr.searchDeg) } : null;
     st.ref.worker.postMessage({ fix: { id, stand: [...st.prevStand.values()], ground: [...st.prevGround.values()], prior } });
   }
   if (LIDAR_LIVE && !st.recordOnly && st.lid.ready && st.lid.worker && f.tracking === 'normal') {
@@ -2163,7 +2168,7 @@ async function keepReference(L, walkId) {
   const bytes = encodeRef(u.ref);
   const names = new Set(plan.use.map((m) => m.id)).size;
   const corners = !plan.ok ? 'no two roof corners'
-    : plan.agree ? `${names} roof corners agreeing within ${(plan.g.worstM * 39.37).toFixed(0)} in`
+    : plan.agree ? `${names} roof corners agreeing within ${(plan.g.worstM * 39.37).toFixed(0)} in${plan.g.T?.s && plan.g.T.s !== 1 ? `, this phone's distances scaled ${((plan.g.T.s - 1) * 100).toFixed(1)}% to the map's` : ''}`
       : `${names} roof corners, not all agreeing with the map; each part of the walk placed by the corners sighted nearest it`;
   const jumpNote = unplaced ? `; ${unplaced.toLocaleString()} points seen after the phone's tracking jumped, with no corners sighted after it, could not be placed` : '';
   const what = (u.how === 'made' ? `the first for this map: ${corners}`

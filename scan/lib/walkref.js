@@ -315,10 +315,18 @@ export function shapeFix(ref, walk, { cell = SEARCH_CELL, step = TURN_STEP, marg
   const cands = [];
   const Wre = new Float64Array(N * N), Wim = new Float64Array(N * N);
   const turnOff = (a, b) => Math.abs((((a - b) * 180) / Math.PI + 540) % 360 - 180);
-  const pc = prior?.T ? place({ s: 1, ...prior.T }, mx / K, my / K) : null, pR = prior ? Math.max(cell, prior.searchM || 8) : Infinity, pDeg = prior ? Math.max(step, prior.searchDeg || 15) : Infinity;
+  /* ONE ROOF CORNER (2026-11-22; the owner: "Asks for no fix before 200 ft walked. That's actually a bit of a problem.
+     Would 1 corner reference fix that?"). `prior.pin` { ar: [u, v], map: [e, n] }: a corner the walker has marked, in
+     the walk's frame and in the reference's. It says where one point of the walk is and nothing of how the walk is
+     turned, so the search is every turn but only the placements that put that corner within searchM (1.5 m unless
+     given) of its place: a circle of answers instead of the whole yard. */
+  const pin = prior?.pin?.ar && prior?.pin?.map ? prior.pin : null;
+  const bx = pin ? pin.ar[0] * K : mx, by = pin ? pin.ar[1] * K : my;   // the point of the walk whose landing is bounded
+  const pc = pin ? pin.map : prior?.T ? place({ s: 1, ...prior.T }, mx / K, my / K) : null;
+  const pR = prior ? Math.max(cell, prior.searchM || (pin ? 1.5 : 8)) : Infinity, pDeg = prior && !pin ? Math.max(step, prior.searchDeg || 15) : Infinity;
   for (let deg = 0; deg < 360; deg += step) {
     const th = (deg * Math.PI) / 180, c = Math.cos(th), s = Math.sin(th);
-    if (pc && turnOff(th, prior.T.theta) > pDeg + step) continue;
+    if (pc && !pin && turnOff(th, prior.T.theta) > pDeg + step) continue;
     Wre.fill(0); Wim.fill(0);
     let qx0 = Infinity, qy0 = Infinity;
     const Q = ws.map((p) => { const q = [c * p[0] - s * p[1], s * p[0] + c * p[1]]; qx0 = Math.min(qx0, q[0]); qy0 = Math.min(qy0, q[1]); return q; });
@@ -341,7 +349,7 @@ export function shapeFix(ref, walk, { cell = SEARCH_CELL, step = TURN_STEP, marg
     if (!pc) { for (let k = 0; k < N * N; k++) if (Wre[k] > best) { best = Wre[k]; bk = k; } }
     else {
       // only the offsets that put the walk's middle within pR of where the prior puts it
-      const cqx = c * mx - s * my, cqy = s * mx + c * my;
+      const cqx = c * bx - s * by, cqy = s * bx + c * by;
       const cc0 = Math.round((pc[0] - cqx - x0 + qx0) / cell), r0 = Math.round((pc[1] - cqy - y0 + qy0) / cell), R = Math.ceil(pR / cell);
       for (let dr = -R; dr <= R; dr++) for (let dc = -R; dc <= R; dc++) {
         if (dr * dr + dc * dc > R * R) continue;
@@ -401,9 +409,9 @@ export function shapeFix(ref, walk, { cell = SEARCH_CELL, step = TURN_STEP, marg
   }
   if (pc) {
     // what the refining did with it must still lie by the prior
-    for (let i = results.length - 1; i >= 0; i--) { const q = place(results[i].T, mx, my); if (Math.hypot(q[0] - pc[0], q[1] - pc[1]) > 1.5 * pR || turnOff(results[i].T.theta, prior.T.theta) > pDeg + 5) results.splice(i, 1); }
+    for (let i = results.length - 1; i >= 0; i--) { const q = place(results[i].T, bx, by); if (Math.hypot(q[0] - pc[0], q[1] - pc[1]) > 1.5 * pR || (!pin && turnOff(results[i].T.theta, prior.T.theta) > pDeg + 5)) results.splice(i, 1); }
   }
-  if (!results.length) return { ok: false, why: 'nothing of the earlier walk matches near where GPS has this one', stand: stand.length, ms: Date.now() - t0 };
+  if (!results.length) return { ok: false, why: pin ? 'nothing of the earlier walk matches with that corner where it should be' : 'nothing of the earlier walk matches near where GPS has this one', stand: stand.length, ms: Date.now() - t0 };
   results.sort((a, b) => b.landed - a.landed);
   const best = results[0];
   const other = results.find((r) => Math.hypot(r.T.tx - best.T.tx, r.T.ty - best.T.ty) > 2
