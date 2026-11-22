@@ -11,7 +11,7 @@
  */
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { buildRef, encodeRef, decodeRef, shapeFix, fitRigid, place, STAND } from '../lib/walkref.js';
+import { buildRef, encodeRef, decodeRef, shapeFix, fitRigid, place, STAND, sameFix } from '../lib/walkref.js';
 import { keepPlan, placeWalk, matchUsable, updateRef, AS_IS } from '../lib/refkeep.js';
 import { readTrack } from '../lib/twin.js';
 import { checkMarks } from '../lib/postfix.js';
@@ -283,24 +283,27 @@ async function against(dirs) {
     const g = keepPlan(live.marks || [], []).g;
     const total = Math.max(0, ...pts.stand.map((p) => p[3] || 0));
     console.log(`  walk ${meta.walk || d} (${(meta.started || '').slice(0, 10)}, ${Math.round(total * FT)} ft walked, ${marks.length} corners; its own corners ${g.ok ? `agree within ${(g.worstM * 39.37).toFixed(0)} in${g.left.length ? `, ${g.left.length} left out` : ''}` : `vouch for nothing (${g.ambiguous ? 'which is wrong cannot be told' : 'none agree'})`}):`);
-    for (const upTo of [30, 60, 120, Infinity]) {
-      if (Number.isFinite(upTo) && upTo >= total) continue;
-      const part = { stand: pts.stand.filter((p) => (p[3] || 0) <= upTo), ground: pts.ground.filter((p) => (p[3] || 0) <= upTo) };
-      const within = (g) => !Number.isFinite(upTo) || (g.odo ?? 0) <= upTo;
+    // AS THE PAGE NOW DOES, every 15 m from 60 m walked: stretched by the reference's scale, a lead over the next best,
+    // a loose GPS bound when there is one, and USED only when two in a row agree (walkref.js sameFix)
+    const errOf = (T) => marks.map((m) => { const p = onMap(T, m.ar); return Math.hypot(p[0] - m.map[0], p[1] - m.map[1]) * 39.37; });
+    const mid = (() => { let x = 0, y = 0; for (const p of pts.stand) { x += p[0]; y += p[1]; } return pts.stand.length ? [x / pts.stand.length, y / pts.stand.length] : [0, 0]; })();
+    let before = null, used = 0, usedBad = 0;
+    for (let upTo = 60; ; upTo += 15) {
+      const last = upTo >= total;
+      const lim = last ? Infinity : upTo;
+      const within = (g) => (g.odo ?? 0) <= lim;
+      const part = { stand: pts.stand.filter((p) => (p[3] || 0) <= lim), ground: pts.ground.filter((p) => (p[3] || 0) <= lim) };
       const prior = walkPrior((live.gpsTrail || []).filter(within), (live.geoTrail || []).filter(within));
-      // two ways: AS THE PAGE NOW DOES IT (the walk stretched by the reference's own scale, a lead over the next best
-      // wanted, a loose GPS bound when there is one, nothing before 60 m walked), and by shape alone as it did before
-      const K = Number(process.env.REF_SCALE) || ref.phone || 1;
       const loose = prior ? { T: prior.T, searchM: Math.max(15, 2 * prior.searchM), searchDeg: Math.max(25, 2 * prior.searchDeg) } : null;
-      const early = Number.isFinite(upTo) && upTo < 60;
-      const ways = [['as the page did before', null, 1, { lead: 0, scale: 1 }], [`AS THE PAGE NOW DOES (stretched ${((K - 1) * 100).toFixed(1)}%${loose ? ', GPS bound' : ', no GPS yet'})`, loose, K, { scale: K }]];
-      console.log(`    ${Number.isFinite(upTo) ? `its first ${Math.round(upTo * FT)} ft` : 'the whole walk'} (${part.stand.length} standing points)${early ? ' -- the page no longer asks this early' : ''}:`);
-      for (const [name, pr, , opts] of ways) {
-        const f = shapeFix(ref, part, pr ? { ...opts, prior: pr } : opts);
-        const e = f.T ? marks.map((m) => { const p = onMap(f.T, m.ar); return Math.hypot(p[0] - m.map[0], p[1] - m.map[1]) * 39.37; }) : [];
-        console.log(`      ${name}: ${f.ok ? 'PLACED' : f.T ? 'a match, not sure enough to use' : 'not placed'}${f.landed != null ? ` (landed ${f.landed}, next best ${f.second ?? '-'})` : ''}${e.length ? `: its corners land ${e.map((x) => x.toFixed(0)).join(', ')} in from the map's` : f.why ? `: ${f.why}` : ''}`);
-      }
+      const f = shapeFix(ref, part, loose ? { prior: loose } : {});
+      const e = f.T ? errOf(f.T) : [];
+      const confirmed = f.ok && before && sameFix(before, f.T, mid);
+      if (confirmed) { used++; if (Math.min(...e) > 60) usedBad++; }
+      console.log(`    at ${last ? `its end (${Math.round(total * FT)} ft)` : `${Math.round(upTo * FT)} ft`}: ${f.ok ? (confirmed ? 'USED (two alike)' : 'a match, waiting for the next to agree') : f.T ? 'refused' : 'nothing'}${f.landed != null ? ` (landed ${f.landed}, next best ${f.second ?? '-'}${loose ? '' : ', no GPS yet'})` : ''}${e.length ? `: corners ${e.map((x) => x.toFixed(0)).join(', ')} in out` : f.why ? `: ${f.why}` : ''}`);
+      before = f.ok ? f.T : null;
+      if (last) break;
     }
+    console.log(`    -> used ${used} time${used === 1 ? '' : 's'}${used ? `, ${usedBad} of them with every corner over 5 ft out` : ''}.`);
   }
 }
 

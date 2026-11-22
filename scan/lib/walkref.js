@@ -183,6 +183,19 @@ export function decodeRef(bytes) {
   return { stand: f.slice(0, ns * 3), ground: f.slice(ns * 3), at: dv.getFloat64(16, true), P: note.P || { theta: 0, tx: 0, ty: 0 }, seen: note.seen || [], pivot: note.pivot || null, walks: note.walks || 1, phone: Number.isFinite(note.phone) ? note.phone : null };
 }
 
+/* TWO IN A ROW (2026-11-22, run 493). Even stretched, with a lead and a GPS bound, a short walk was once called PLACED
+   78 ft from the truth (landed 0.43 against 0.30). A wrong answer does not last: matched again with more of the walk
+   it lands somewhere else, while a right one stays put (8, 15, 30 in; then 4, 17, 27; then 7, 13, 26). So a fix is
+   USED only when the one before it, made with less of the walk, put the walk in the same place. sameFix: two fits
+   put `at` (a point in the walk's own frame: where the phone is) within `m` of each other and turn alike. */
+export const SAME_M = 1.5, SAME_DEG = 4;
+export function sameFix(A, B, at = [0, 0], { m = SAME_M, deg = SAME_DEG } = {}) {
+  if (!A || !B) return false;
+  const a = place(A, at[0], at[1]), b = place(B, at[0], at[1]);
+  const turn = Math.abs((((A.theta - B.theta) * 180) / Math.PI + 540) % 360 - 180);
+  return Math.hypot(a[0] - b[0], a[1] - b[1]) <= m && turn <= deg;
+}
+
 /* ------------------------------------------------------------- FFT (radix 2) */
 function fft1(re, im, inverse) {
   const n = re.length;

@@ -16,7 +16,7 @@ import { snapTo } from '/lib/lidar-marks.js';
 import { levelDist, toLocal, fromLocal } from '/lib/frames.js';
 import { frameFor, bboxOf, toPx, fromPx, ringsOf, toMerc } from '/lib/photo.js';
 import { newLocate, mark, noteGround, addDepth, nextAsk, answer, fitFor, fitSource, leftOutOf, mapOf, sessionOf, checkError, nearestNamed, agreement, groundOffset, groundUnder, status as fixStatus, summaryOf } from '/lib/locate.js';
-import { STAND as REF_STAND, MIN_STAND as REF_MIN_STAND, VOX as REF_VOX, referenceFit, buildRef, encodeRef, decodeRef } from '/lib/walkref.js';
+import { STAND as REF_STAND, MIN_STAND as REF_MIN_STAND, VOX as REF_VOX, referenceFit, buildRef, encodeRef, decodeRef, sameFix } from '/lib/walkref.js';
 import { keepPlan, placeWalk, matchUsable, updateRef, cornersShort, AS_IS as REF_AS_IS } from '/lib/refkeep.js';
 import { leftOut, mapToSession } from '/lib/align.js';
 import { newTwin, addPoints, addPose, wantKey, addKey, flush, flushDue, liveOf } from '/lib/twin.js';
@@ -901,7 +901,7 @@ async function startAR(engine, { anyway = false } = {}) {
   st.dy = null; st.dyFrom = null; st.gpsTrail = []; st.anchors = newAnchors(); st.nudge = null; st.depthFill = null; st.geoTrail = []; st.geoSeen = null; st.sem = newSemCount(); st.lastSem = null; st.semDims = null; st.occ = null; st.occFull = 0; st.occAt = 0; st.walkGround = new Map(); st.spikes = { pictures: 0, cells: 0, flagged: 0 }; st.walkAsk = null; st.walkAt = 0; st.walkStats = { asks: 0, ok: 0, lastWhy: null, firstOkM: null }; st.crumbs = newCrumbs();
   st.walk.checks = [];
   st.L = newLocate(); st.L.spacing = st.lid.overlay?.picture?.marks?.spacing ?? null; st.sight = null; st.sightPaused = false; st.sightEndedAt = 0; st.roofsDone = null; st.resighted = new Set(); st.resightOf = null;
-  st.prevStand = new Map(); st.prevGround = new Map(); st.prevAsk = null; st.prevAt = 0; st.prevStats = { asks: 0, ok: 0, lastWhy: null, firstOkM: null, lastMs: null };
+  st.prevStand = new Map(); st.prevGround = new Map(); st.prevAsk = null; st.prevCand = null; st.prevAt = 0; st.prevStats = { asks: 0, ok: 0, lastWhy: null, firstOkM: null, lastMs: null };
   // the owner's choice at the start (2026-11-11): the saved walk places this one, or this one is a fresh reference
   st.refUse = st.refMeta && refChoice() === 'saved';
   if (st.refUse) loadReference(); else { st.ref?.worker?.terminate?.(); st.ref = st.map ? { map: st.map, worker: null, ready: null, none: true, error: null, fresh: !!st.refMeta } : null; log(st.refMeta ? 'earlier walk: not used (fresh chosen); this walk is kept as the new one' : 'earlier walk: none kept for this map; this walk is kept as it'); }
@@ -2000,13 +2000,20 @@ async function loadReference() {
       if (data.fix && st.prevAsk && data.id === st.prevAsk.id) {
         const a = st.prevAsk; st.prevAsk = null;
         st.prevStats.lastMs = data.fix.ms ?? null;
-        if (data.fix.ok && st.L) {
+        /* TWO IN A ROW (walkref.js sameFix): a fix is used only when the one before it, made with less of the walk,
+           put the phone in the same place; a first answer, or one that has moved, waits for the next to confirm it. */
+        const here = st.lastTracked ? [st.lastTracked.x, -st.lastTracked.z] : [0, 0];
+        const cand = data.fix.ok ? { Ts: data.fix.Ts || data.fix.T, odo: a.odo } : null;
+        const confirmed = !!cand && !!st.prevCand && a.odo - st.prevCand.odo >= 5 && sameFix(st.prevCand.Ts, cand.Ts, here);
+        if (cand && !confirmed) st.prevStats.lastWhy = st.prevCand ? 'the match moved since the last one: waiting for two alike' : 'a first match: waiting for the next to agree';
+        st.prevCand = cand;
+        if (data.fix.ok && confirmed && st.L) {
           const first = !st.L.prev?.ok;
           st.L.prev = { ok: true, T: data.fix.T, Ts: data.fix.Ts || null, tz: data.fix.tz, landed: data.fix.landed, second: data.fix.second, walkedM: a.odo, at: Date.now() };
           st.prevStats.ok++; st.prevStats.lastWhy = null;
           if (st.prevStats.firstOkM == null) st.prevStats.firstOkM = Math.round(a.odo);
           if (first) flash('Placed by your earlier walk');
-        } else st.prevStats.lastWhy = data.fix.why;
+        } else if (!data.fix.ok) st.prevStats.lastWhy = data.fix.why;
       }
     };
     w.onerror = (e) => { st.ref.error = e.message || 'the earlier walk could not be matched'; log(`earlier walk: ${st.ref.error}`); };
