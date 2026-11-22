@@ -3967,3 +3967,20 @@ NOT MEASURED: any of it on a phone. How well a thing comes back on walk 2 is the
 NOT YET: a label or a list on the page (they are coloured posts only); moving or taking a thing away by hand; the
 water map reading them (heads for irrigation, outlets for drainage). That last one writes into the map's shared
 record (docs/MAPS.md, POST /api/maps/tool) and concerns the water session: to be asked, not assumed.
+
+## 56. Tree trunks from the joined cloud: a first try (2026-11-22)
+
+scan/tools/trunks.py, task `trunks` (two files of the twin, a minute): in the joined cloud a trunk is a narrow column
+of tree-kind cells, from 2 ft or less over the ground to 4.3 ft or more, at least four height levels under 6.6 ft, in
+a footprint under 3 ft. Kept as trunks.json beside the twin; the 3D view draws each as a brown post.
+On a made-up yard: both trunks found; a hedge called tree, a hanging branch and a fence post left out.
+HARD (run 498, the big walk of 2026-11-21): 301,422 points after the start cut; 114,268 tree, 29,495 of them under
+6.6 ft over the ground, of which only 7,325 were measured by the camera (the rest from the smoothed depth). 278
+groups of low tree cells: 54 too wide, 215 too short or too few levels, 1 not reaching the ground, 8 TRUNKS. The 8:
+19 / 35 / 42 in across (least / middle / most, in cells of about 11 in); tree seen over them to 15 / 17 / 45 ft; the
+middle one seen by ONE photo; 5 of the 8 only in the smoothed depth.
+NOT CHECKED against any real tree. JUDGEMENT: weak. Seen by one photo and mostly in the smoothed depth, at 3 ft
+across, these are as likely the smoothed depth's smear round a trunk, or a shrub under a crown, as a trunk. The
+owner's eyes on the brown posts are the first judge. If they are mostly wrong, the cause is the material (11 in
+cells, three quarters of them smoothed depth), and the next try is the photos' own measured depth near the ground
+at a finer cell, tree-kind only, asking for two photos at the least.
