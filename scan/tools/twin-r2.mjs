@@ -178,6 +178,17 @@ async function main() {
   }
   if (!walkOk(walk)) throw new Error('which walk? (the number on its twin page)');
   // the later steps of workflow S2 use the walk as found here
+  // "parts <walk> <dir> <name>...": only the named parts of a twin (a study that needs two files does not read 4,000)
+  if (cmd === 'parts') {
+    if (!walkOk(walk)) throw new Error('which walk?');
+    const [dir, ...names] = rest;
+    mkdirSync(dir, { recursive: true });
+    let got = 0, bytes = 0;
+    for (const n of names) { const b = await readObject(BUCKET, `twins/${walk}/${n}`).catch(() => null); if (b) { writeFileSync(join(dir, n), b); got++; bytes += b.length; } }
+    console.log(`Twin parts read: ${got} of ${names.length}, ${(bytes / 1e6).toFixed(1)} MB.`);
+    if (!got) throw new Error('none of the parts asked for is there');
+    return;
+  }
   if (cmd === 'get' && process.env.GITHUB_ENV) (await import('node:fs')).appendFileSync(process.env.GITHUB_ENV, `WALK=${walk}\n`);
   if (cmd === 'get') {
     const dir = rest[0] || 'twin';

@@ -36,7 +36,7 @@ on:
         required: true
         default: tests
         type: choice
-        options: [tests, deploy, walks, twin, disagree, segment, view, classes, mend, jumps, corners, prunerecordings, name, learn, fix, place, depth, study, skyline, pavement, checks, repeat, register, walkfix, walkfixjs, reference, warp, marks, naip, drive, thermalindex]
+        options: [tests, deploy, walks, twin, disagree, segment, view, classes, mend, jumps, corners, trunks, prunerecordings, name, learn, fix, place, depth, study, skyline, pavement, checks, repeat, register, walkfix, walkfixjs, reference, warp, marks, naip, drive, thermalindex]
       walk:
         description: 'For twin, fix or depth: the walk id, or latest'
         default: latest
@@ -265,7 +265,7 @@ jobs:
       # CAN THE SKYLINE PLACE A WALK (scan/tools/skyline_study.py, SCAN-H11 option 1): the sky in each picture against
       # the shade map's model seen from every placement; scored against the check points. CPU, free.
       - name: Run actions/setup-python@v5 (skyline)
-        if: ${{ inputs.task == 'skyline' || inputs.task == 'pavement' || inputs.task == 'place' || inputs.task == 'checks' || inputs.task == 'register' || inputs.task == 'walkfix' || inputs.task == 'segment' || inputs.task == 'view' || inputs.task == 'classes' || inputs.task == 'mend' || inputs.task == 'jumps' || inputs.task == 'name' || inputs.task == 'learn' }}
+        if: ${{ inputs.task == 'trunks' || inputs.task == 'skyline' || inputs.task == 'pavement' || inputs.task == 'place' || inputs.task == 'checks' || inputs.task == 'register' || inputs.task == 'walkfix' || inputs.task == 'segment' || inputs.task == 'view' || inputs.task == 'classes' || inputs.task == 'mend' || inputs.task == 'jumps' || inputs.task == 'name' || inputs.task == 'learn' }}
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -319,6 +319,21 @@ jobs:
           set -o pipefail
           if [ "$WALKS" = "latest" ]; then WALKS=""; fi
           node scan/tools/corners.mjs "$WALKS" | tee corners.txt
+
+      # TREE TRUNKS IN A WALK'S JOINED CLOUD (scan/tools/trunks.py, 2026-11-22): narrow columns of tree from the ground
+      # up, kept beside the twin for the 3D view. Reads two files of the twin. CPU, a minute. Counts and sizes only.
+      - name: A walk's tree trunks
+        if: ${{ inputs.task == 'trunks' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WALK: ${{ inputs.walk }}
+        run: |
+          set -o pipefail
+          pip install --quiet numpy scipy
+          node scan/tools/twin-r2.mjs parts "$WALK" twin view-dense.bin view.json | tee trunks.txt
+          python scan/tools/trunks.py twin/view-dense.bin twin/view.json twin/trunks.json | tee -a trunks.txt
+          node scan/tools/twin-r2.mjs put "$WALK" twin/trunks.json | tee -a trunks.txt
 
       # DID THE PHONE'S OWN PLACE JUMP? (mend_study.py --jumps, 2026-11-21): the walk's poses only. Quick, free.
       - name: A walk's poses looked over for jumps
@@ -746,6 +761,8 @@ jobs:
             view) cat view.txt 2>/dev/null || echo "no 3D view: see the step above" ;;
             prunerecordings) cat prune.txt 2>/dev/null || echo "nothing listed: see the step above" ;;
             jumps) cat jumps.txt 2>/dev/null || echo "no poses read: see the step above" ;;
+            trunks) cat trunks.txt 2>/dev/null || echo "no trunks looked for: see the step above" ;;
+            corners) cat corners.txt 2>/dev/null || echo "no corners read: see the step above" ;;
             mend) cat mend.txt 2>/dev/null || echo "nothing mended: see the step above" ;;
             classes) cat classes.txt 2>/dev/null || echo "no classes: see the step above" ;;
             learn) cat learn.txt 2>/dev/null || echo "nothing learned: see the step above" ;;

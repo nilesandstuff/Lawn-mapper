@@ -27,7 +27,7 @@ const walk = new URLSearchParams(location.search).get('walk');
 const FT = 3.281;
 // A PART THAT IS MADE AGAIN (the view's files, the erasing) is never taken from the browser's own store: the site
 // let a part be kept an hour, so a walk prepared again was shown from its first, wrong file (2026-11-21).
-const FRESH = /^(view|erased|seg|study|judged)/;
+const FRESH = /^(view|erased|seg|study|judged|trunks)/;
 const part = (name, init) => fetch(`/api/scan/twin?walk=${encodeURIComponent(walk)}&part=${encodeURIComponent(name)}`, { credentials: 'same-origin', ...(FRESH.test(name) ? { cache: 'no-store' } : {}), ...init });
 const LABEL_COL = { terrain: [120, 190, 90], road: [110, 110, 125], sidewalk: [185, 185, 195], building: [215, 90, 70], structure: [235, 160, 70], tree: [40, 150, 70],
   object: [170, 110, 210], vehicle: [80, 140, 235], water: [70, 200, 230], sky: [255, 0, 255], person: [255, 255, 255], unlabeled: [150, 150, 150] };
@@ -100,6 +100,8 @@ async function main() {
   for (const n of names.filter((x) => /^track-\d+\.bin$/.test(x))) { const f = new Float32Array(await buf(n)); for (let i = 0; i + 10 <= f.length; i += 10) D.track.push([f[i], f[i + 2], f[i + 3], f[i + 4]]); }
   D.track.sort((a, b) => a[0] - b[0]);
   if (names.includes('view.json')) D.view = await (await part('view.json')).json().catch(() => null);
+  // the tree trunks found in the joined cloud (scan/tools/trunks.py): the walk's own frame, drawn as brown posts
+  if (names.includes('trunks.json')) D.trunks = (await (await part('trunks.json')).json().catch(() => null))?.trunks || [];
   if (DENSE) { D.rgb = DENSE.rgb; D.kind = DENSE.kind; U.readonly = true; }
   if (!DENSE && names.includes('view-rgb.bin')) { const u = new Uint8Array(await buf('view-rgb.bin')); if (u.length === N * 4) D.rgb = u; }
   if (!DENSE && names.includes('view-kind.bin')) { const u = new Uint8Array(await buf('view-kind.bin')); if (u.length === N) D.kind = u; }
@@ -171,6 +173,14 @@ function build() {
     fragmentShader: 'varying vec3 vC; void main() { gl_FragColor = vec4(vC, 1.0); }',
   });
   points = new THREE.Points(geo, material); points.frustumCulled = false; scene.add(points);
+  /* TREE TRUNKS (trunks.py; the goal: later walks "automatically place... trees (atleast the trunks...)"): each a
+     brown post from the ground to as high as tree was seen over it, as thick as the trunk read. For the owner's eyes:
+     is there a real tree at each, and is any real tree without one? */
+  for (const t of D.trunks || []) {
+    const h = Math.max(1, t.top || t.seenTo || 2), r = Math.max(0.08, (t.across || 0.3) / 2);
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 10), new THREE.MeshBasicMaterial({ color: 0x8b5a2b, transparent: true, opacity: 0.85 }));
+    m.position.set(t.x, t.y + h / 2, t.z); scene.add(m);
+  }
   // where the phone went: a thin line, so the walk can be found in the cloud
   if (D.track.length > 1) {
     const tp = new Float32Array(D.track.length * 3); D.track.forEach((r, i) => { tp[i * 3] = r[1]; tp[i * 3 + 1] = r[2]; tp[i * 3 + 2] = r[3]; });
@@ -268,7 +278,7 @@ function tally() {
   const ft = (j) => (shown ? Math.round((hi[j] - lo[j]) * FT) : 0);
   let tl = [Infinity, Infinity], th = [-Infinity, -Infinity];
   for (const q of D.track) { if (q[1] < tl[0]) tl[0] = q[1]; if (q[1] > th[0]) th[0] = q[1]; if (q[3] < tl[1]) tl[1] = q[3]; if (q[3] > th[1]) th[1] = q[3]; }
-  $('#tally').textContent = `Drawn now: ${shown.toLocaleString()} of ${D.n.toLocaleString()} points, lying ${ft(0)} x ${ft(2)} ft and ${ft(1)} ft high. Hidden: ${hu.toLocaleString()} unsure depth, ${hg.toLocaleString()} Google's, ${he.toLocaleString()} erased${ht ? `, ${ht.toLocaleString()} seen before the minute chosen` : ''}${bad ? `, ${bad.toLocaleString()} with no place` : ''}. `
+  $('#tally').textContent = `${D.trunks ? `Tree trunks found: ${D.trunks.length} (brown posts). ` : ''}Drawn now: ${shown.toLocaleString()} of ${D.n.toLocaleString()} points, lying ${ft(0)} x ${ft(2)} ft and ${ft(1)} ft high. Hidden: ${hu.toLocaleString()} unsure depth, ${hg.toLocaleString()} Google's, ${he.toLocaleString()} erased${ht ? `, ${ht.toLocaleString()} seen before the minute chosen` : ''}${bad ? `, ${bad.toLocaleString()} with no place` : ''}. `
     + `This walk: ${/^\d{13}$/.test(walk) ? new Date(Number(walk)).toLocaleString() : walk}, ${D.keys.length} photos. The path: ${D.track.length.toLocaleString()} poses, ${D.track.length ? Math.round((th[0] - tl[0]) * FT) : 0} x ${D.track.length ? Math.round((th[1] - tl[1]) * FT) : 0} ft. Read: ${U.read || ''}. Page of 21 Nov, c.`;
 }
 function note() {
