@@ -173,11 +173,13 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
     if (!(highRet[k] >= over)) highRet[k] = over;
   }
 
-  const st = { leaves: today ?? (leafOff ? 1 : null), roofs: true, cut: 0, active: true, erasing: false, size: SIZES_M[1], mode: 'tree', cubeVersion: 0, fine: true };
+  const st = { leaves: today ?? (leafOff ? 1 : null), roofs: true, cut: 0, active: true, erasing: false, size: SIZES_M[1], mode: 'tree', cubeVersion: 0, fine: false };
   /* THE LIDAR AT 0.5 M (fine-view.js; owner, 2026-11-09): where the laser hit, half a meter at a time, in the 1 m
-     column's colour. The default picture; the 1 m blocks (what the light uses) come back with the switch, and while
-     erasing, since the erasers work on them. */
-  try { if (localStorage.getItem('lawnmapper.shade.treesFine') === '0') st.fine = false; } catch { /* not kept */ }
+     column's colour, behind the "Laser blocks at 0.5 m" switch. THE 1 M BLOCKS ARE THE DEFAULT AGAIN (owner,
+     2026-11-22: "change the way trees are displayed in the shade map back to the size where neighboring points are
+     touching again"): they are what the light uses, and a crown reads whole. A new key, so a switch left on under
+     the old default does not keep the half-meter picture. */
+  try { if (localStorage.getItem('lawnmapper.shade.treesFine05') === '1') st.fine = true; } catch { /* not kept */ }
   const fc = fineCells(cols, grid, shift, model.ground);
   const leafyCol = new Uint8Array(grid.w * grid.h);
   for (let k = 0; k < leafyCol.length; k++) for (let l = 0; l < model.nz; l++) if (season.muOn[k * model.nz + l] > season.muOff[k * model.nz + l]) { leafyCol[k] = 1; break; }
@@ -285,7 +287,7 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
       : season.classified
         ? ` Columns: ${(c.deciduous || 0) - asFlown} deciduous, ${c.evergreen || 0} evergreen, ${asFlown ? `${asFlown} in leaf as flown, ` : ''}${c.roof || 0} building${c.structure ? `, ${c.structure} low structure` : ''}.`
         : ` Columns: ${c.deciduous || 0} tree, ${c.roof || 0} building${c.structure ? `, ${c.structure} low structure` : ''}.`;
-    say(`${showingFine() ? `${fineCount.toLocaleString()} half-meter blocks drawn, where the laser hit; where the survey was sparse, trees look speckled, because that is all the laser caught (the light is worked out on 1 m blocks: untick "Laser blocks at 0.5 m" to see those; ${runs.length.toLocaleString()} pieces).` : `${runs.length.toLocaleString()} pieces drawn.`} ${leafOff
+    say(`${showingFine() ? `${fineCount.toLocaleString()} half-meter blocks drawn, where the laser hit; where the survey was sparse, trees look speckled, because that is all the laser caught (the light is worked out on 1 m blocks: untick "Laser blocks at 0.5 m" to see those again; ${runs.length.toLocaleString()} pieces).` : `${runs.length.toLocaleString()} pieces drawn.`} ${leafOff
       ? `${flight === 'mixed' ? 'Part of the lidar here was flown with the leaves off and part in leaf; leaves are added only where the laser saw bare branches' : 'The lidar was flown with the leaves off'}${flownTo ? ` (to ${flownTo})` : ''}; ${st.leaves === 0 ? 'drawn bare, as flown' : `deciduous crowns drawn with ${Math.round(100 * st.leaves)}% of their summer leaves`}.`
       : flight === 'on' ? 'The lidar was flown in leaf: drawn as flown, no leaves added.' : 'The flight season is unknown: drawn as flown.'}${columns}`);
     eraseNote();
@@ -305,7 +307,7 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
   const applySolid = () => { ids.forEach((id, i) => { if (map.getLayer(id)) map.setPaintProperty(id, 'fill-extrusion-opacity', Math.min(1, bandAt(i).opacity * solid())); }); if (map.getLayer(FINE_ID)) map.setPaintProperty(FINE_ID, 'fill-extrusion-opacity', Math.min(1, 0.8 * solid())); };
   if ($('#tr-fine')) {
     $('#tr-fine').checked = st.fine;
-    $('#tr-fine').onchange = () => { st.fine = $('#tr-fine').checked; try { localStorage.setItem('lawnmapper.shade.treesFine', st.fine ? '1' : '0'); } catch { /* not kept */ } draw(); };
+    $('#tr-fine').onchange = () => { st.fine = $('#tr-fine').checked; try { localStorage.setItem('lawnmapper.shade.treesFine05', st.fine ? '1' : '0'); } catch { /* not kept */ } draw(); };
   }
   try { const v = localStorage.getItem('lawnmapper.shade.treesSolid'); if (v) $('#tr-solid').value = v; } catch { /* not kept */ }
   $('#tr-solid').oninput = () => { applySolid(); try { localStorage.setItem('lawnmapper.shade.treesSolid', $('#tr-solid').value); } catch { /* not kept */ } };
