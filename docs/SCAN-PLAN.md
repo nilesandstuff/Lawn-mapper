@@ -4084,3 +4084,25 @@ fit a yard in several places about as well as in the right one. More of the same
 would is something that tells places apart at a glance, which the points do not: the photos. Matching a new walk's
 first photos to the reference walk's photos (what a person does on arriving) is the lead, and the photos of a
 reference walk are kept (900 of them for the owner's lot). Not built.
+
+THE OWNER'S EYES ON THE SECOND TRUNK PASS (section 56; 2026-11-22): "it looks like theres one false match, a shrub";
+"more real trees were marked"; "a handful of real trees that were given a very good look from multiple angles were
+missed"; and for sizes, "I've got trees that are as small as 4 inches in diameter, some that are close to 2 foot, and
+several in between. Tree trunks can be even bigger than those, by a lot." So the second pass: mostly right where it
+marked, one shrub, and it MISSED well-seen trees.
+THE THIRD PASS (trunks.py find_in_walk, the same day): the footprint of all a trunk's sightings together may be 4 ft
+by 5 ft (a trunk seen from several sides at several moments is smeared by the walk's own drift); the trunk's slices
+are taken from its ONE BEST SIGHTING; something must stand 8 ft or more at it (a shrub is short); standing free is
+asked of what is round it that is not itself a column (a row of young trees are neighbours, not a thicket). On a
+made-up yard: a 4 in trunk read 5 in, a row of three young trees 3 ft apart, a 2 ft trunk seen three times a foot
+apart read 29 in, a 3 ft trunk seen twice read 31 in; a shrub, a hedge and a wall left out.
+HARD (run 505, the big walk): the same 386 column cells in 44 groups; too few points 12, too wide 4, nothing standing
+8 ft at it 7, not standing free 11, TRUNKS 10 (the second pass: 7). Each as its best sighting saw it: 15 / 23 /
+32 in across (least / middle / most), followed up to 6 / 10 / 14 ft, seen at 1 / 1 / 3 separate times; all their
+sightings together 11 / 30 / 62 in across; one trunk's sightings lie up to 2 / 18 / 21 in apart.
+WHAT THE NUMBERS SAY: (1) the least any trunk reads is 15 in, and the owner has 4 in trunks: the WIDTH IS NOT TO BE
+TRUSTED for small trunks; on the made-up yard a 4 in trunk read 5 in, so the fat is in the walk's points (the depth's
+own scatter round a thin thing), not in the method. (2) one trunk's sightings up to 18-21 in apart is the walk's
+drift measured at a fixed object: the same size as section 48's 6-20 in. (3) 11 groups fail "standing free" and 12
+have too few points: if well-seen trees are still missed, those two are where they are.
+NOT CHECKED: the owner's eyes on the third pass.
