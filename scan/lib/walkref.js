@@ -24,6 +24,10 @@ export const SEARCH_CELL = 0.5;          // m: the correlation's cells (run 224:
 export const TURN_STEP = 4;              // degrees between turns tried
 export const MARGIN = 30;                // m round the reference the walk may fall
 export const CANDIDATES = 8;             // the best turns refined
+/* THE NEXT BEST MUST BE CLEARLY WORSE (2026-11-22, runs 490-491). Of the placements the page would have used, the
+   right ones landed 0.10-0.20 more of the walk than the next best place; the wrong ones (50-95 ft out) 0.001-0.05,
+   bar one. A fix is used only with this much of a lead. */
+export const LEAD = 0.1;
 export const LAND_M = 0.3;               // m: a point this near the reference's has landed
 export const GATE = 0.3;                 // the landed share a fix needs (SCAN-H32: 0.37-0.46 good, 0.22-0.25 wrong)
 export const STAND_GATE = 0.12;          // and of the standing things alone: flat ground lands anywhere on a flat lot
@@ -149,7 +153,7 @@ export function buildRef({ stand, ground }, T, at = Date.now()) {
  */
 export function encodeRef(ref) {
   const ns = ref.stand.length / 3, ng = ref.ground.length / 3;
-  const note = new TextEncoder().encode(JSON.stringify({ P: ref.P || { theta: 0, tx: 0, ty: 0 }, seen: ref.seen || [], pivot: ref.pivot || null, walks: ref.walks || 1 }));
+  const note = new TextEncoder().encode(JSON.stringify({ P: ref.P || { theta: 0, tx: 0, ty: 0 }, seen: ref.seen || [], pivot: ref.pivot || null, walks: ref.walks || 1, phone: Number.isFinite(ref.phone) ? ref.phone : null }));
   const pad = (4 - (note.length % 4)) % 4, off = 28 + note.length + pad;
   const buf = new ArrayBuffer(off + (ns + ng) * 12), dv = new DataView(buf);
   dv.setUint32(0, MAGIC, true); dv.setUint32(4, 2, true); dv.setUint32(8, ns, true); dv.setUint32(12, ng, true);
@@ -176,7 +180,7 @@ export function decodeRef(bytes) {
   }
   if (u.length < off + (ns + ng) * 12) return null;
   const f = new Float32Array(u.buffer, u.byteOffset + off, (ns + ng) * 3);
-  return { stand: f.slice(0, ns * 3), ground: f.slice(ns * 3), at: dv.getFloat64(16, true), P: note.P || { theta: 0, tx: 0, ty: 0 }, seen: note.seen || [], pivot: note.pivot || null, walks: note.walks || 1 };
+  return { stand: f.slice(0, ns * 3), ground: f.slice(ns * 3), at: dv.getFloat64(16, true), P: note.P || { theta: 0, tx: 0, ty: 0 }, seen: note.seen || [], pivot: note.pivot || null, walks: note.walks || 1, phone: Number.isFinite(note.phone) ? note.phone : null };
 }
 
 /* ------------------------------------------------------------- FFT (radix 2) */
@@ -259,9 +263,15 @@ function lookups(points3) {
    `prior` { T, searchM, searchDeg } (walkfix.js walkPrior: where GPS or Street View has the phone's trail) keeps the
    search to turns within searchDeg of it and to placements that put the walk's middle within searchM of where the
    prior does. Without it the search is the whole reference, as before. */
-export function shapeFix(ref, walk, { cell = SEARCH_CELL, step = TURN_STEP, margin = MARGIN, gate = GATE, standGate = STAND_GATE, minStand = MIN_STAND, prior = null } = {}) {
+export function shapeFix(ref, walk, { cell = SEARCH_CELL, step = TURN_STEP, margin = MARGIN, gate = GATE, standGate = STAND_GATE, minStand = MIN_STAND, prior = null, lead = LEAD, scale = null } = {}) {
   const t0 = Date.now();
-  const stand = voxel(walk.stand || []), ground = voxel(walk.ground || []);
+  /* THE WALK IN THE REFERENCE'S METRES (2026-11-22, run 491). The reference lies in the map's metres; the phone's
+     are shorter (5-7% at the owner's lot, steady: docs/SCAN-PLAN.md 50). Matched as walked, a whole walk landed
+     2-7.5 ft out; stretched 6% first, 6-25 in. `scale` (the reference's own `phone`, kept when it was made) stretches
+     the walk on the level before the match; the answer's T carries it (T.s), so T still takes the walk AS WALKED. */
+  const K = Number.isFinite(scale) && scale > 0 ? scale : Number.isFinite(ref?.phone) && ref.phone > 0 ? ref.phone : 1;
+  const stretched = (pts) => (K === 1 ? pts : pts.map((p) => [p[0] * K, p[1] * K, p[2]]));
+  const stand = voxel(stretched(walk.stand || [])), ground = voxel(stretched(walk.ground || []));
   if (!ref || ref.stand.length < 300) return { ok: false, why: 'no reference for this map yet' };
   if (stand.length < minStand) return { ok: false, why: `${stand.length} standing points so far (${minStand} wanted): walk on, looking at walls, fences and shrubs`, stand: stand.length };
   // the reference's plan
@@ -292,7 +302,7 @@ export function shapeFix(ref, walk, { cell = SEARCH_CELL, step = TURN_STEP, marg
   const cands = [];
   const Wre = new Float64Array(N * N), Wim = new Float64Array(N * N);
   const turnOff = (a, b) => Math.abs((((a - b) * 180) / Math.PI + 540) % 360 - 180);
-  const pc = prior?.T ? place({ s: 1, ...prior.T }, mx, my) : null, pR = prior ? Math.max(cell, prior.searchM || 8) : Infinity, pDeg = prior ? Math.max(step, prior.searchDeg || 15) : Infinity;
+  const pc = prior?.T ? place({ s: 1, ...prior.T }, mx / K, my / K) : null, pR = prior ? Math.max(cell, prior.searchM || 8) : Infinity, pDeg = prior ? Math.max(step, prior.searchDeg || 15) : Infinity;
   for (let deg = 0; deg < 360; deg += step) {
     const th = (deg * Math.PI) / 180, c = Math.cos(th), s = Math.sin(th);
     if (pc && turnOff(th, prior.T.theta) > pDeg + step) continue;
@@ -385,8 +395,9 @@ export function shapeFix(ref, walk, { cell = SEARCH_CELL, step = TURN_STEP, marg
   const best = results[0];
   const other = results.find((r) => Math.hypot(r.T.tx - best.T.tx, r.T.ty - best.T.ty) > 2
     || Math.abs((((r.T.theta - best.T.theta) * 180) / Math.PI + 540) % 360 - 180) > 5);
-  const out = { T: best.T, tz: best.tz, landed: +best.landed.toFixed(3), standLanded: +best.standLanded.toFixed(3), second: other ? +other.landed.toFixed(3) : null, stand: stand.length, ms: Date.now() - t0 };
+  const out = { T: K === 1 ? best.T : { theta: best.T.theta, tx: best.T.tx, ty: best.T.ty, s: K }, tz: best.tz, landed: +best.landed.toFixed(3), standLanded: +best.standLanded.toFixed(3), second: other ? +other.landed.toFixed(3) : null, stand: stand.length, ms: Date.now() - t0 };
   if (best.landed < gate) return { ...out, ok: false, why: `only ${Math.round(best.landed * 100)}% of the walk's points land on the earlier walk's (${Math.round(gate * 100)}% wanted)` };
   if (best.standLanded < standGate) return { ...out, ok: false, why: `the ground lines up but only ${Math.round(best.standLanded * 100)}% of the walls, fences and shrubs do (${Math.round(standGate * 100)}% wanted)` };
+  if (other && best.landed - other.landed < lead) return { ...out, ok: false, why: `another place fits nearly as well (${Math.round(best.landed * 100)}% against ${Math.round(other.landed * 100)}%): walk on` };
   return { ...out, ok: true, why: null };
 }

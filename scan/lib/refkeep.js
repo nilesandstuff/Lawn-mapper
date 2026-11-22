@@ -241,8 +241,10 @@ export function mergeRef(old, add, mode = 'correct') {
    shape lacked and corrects nothing, because it reached the shape through the very thing that is uncertain. */
 const rot = (th, [x, y]) => { const c = Math.cos(th), s = Math.sin(th); return [c * x - s * y, s * x + c * y]; };
 /** A after B: the turn and shift that does B, then A. */
-export function compose(A, B) { const t = rot(A.theta, [B.tx, B.ty]); return { theta: A.theta + B.theta, tx: t[0] + A.tx, ty: t[1] + A.ty, s: 1 }; }
-export function invert(T) { const t = rot(-T.theta, [T.tx, T.ty]); return { theta: -T.theta, tx: -t[0], ty: -t[1], s: 1 }; }
+// with the scale carried (2026-11-22: a walk matched to the shape is stretched by the phone's shortfall, walkref.js
+// shapeFix, so a fit may now hold s other than 1): T(p) = s R(theta) p + t
+export function compose(A, B) { const sa = A.s ?? 1, sb = B.s ?? 1, t = rot(A.theta, [B.tx * sa, B.ty * sa]); return { theta: A.theta + B.theta, tx: t[0] + A.tx, ty: t[1] + A.ty, s: sa * sb }; }
+export function invert(T) { const k = T.s ?? 1, t = rot(-T.theta, [T.tx / k, T.ty / k]); return { theta: -T.theta, tx: -t[0], ty: -t[1], s: 1 / k }; }
 
 /** The middle of the readings of P ([{ theta, tx, ty, w }]) about the shape's pivot ([x, y]): the turn's weighted
  *  mean, and the shift that puts the pivot at the weighted mean of where the readings put it. */
@@ -264,13 +266,17 @@ const middle = (ref) => { let x = 0, y = 0, n = 0; for (const a of [ref.stand, r
  * (the shape match's Ts), or null. w: the weight of this walk's reading of P (its corners).
  * -> { ref, how, added, replaced, kept, movedM } or { ref: null, why }
  */
-export function updateRef(old, part, { C = null, F = null, w = 1, at = Date.now() } = {}) {
+export function updateRef(old, part, { C = null, F = null, w = 1, at = Date.now(), phone = null } = {}) {
+  // phone: how much longer the map's metres are than this phone's here (the corners' fit's scale); kept with the
+  // reference so the next walk can be stretched by it before it is matched (walkref.js shapeFix). The first one stays.
+  const phoneOf = () => (Number.isFinite(old?.phone) ? old.phone : Number.isFinite(phone) && phone > 0.9 && phone < 1.1 ? phone : null);
   const has = old && (old.stand.length + old.ground.length) > 0;
   if (!has) {
     if (!C) return { ref: null, why: 'the map has no reference yet, and this walk has no two roof corners that agree to make one' };
     // the first: the shape is the walk as its corners put it, and P is "as it is"
     const ref = { stand: flat(moved(part.stand, C), MAX_STAND), ground: flat(moved(part.ground, C), MAX_GROUND), at, P: { theta: 0, tx: 0, ty: 0 }, seen: [{ theta: 0, tx: 0, ty: 0, w, at }], walks: 1 };
     ref.pivot = middle(ref);
+    ref.phone = phoneOf();
     return { ref, how: 'made', added: (ref.stand.length + ref.ground.length) / 3, replaced: 0, kept: 0, movedM: 0 };
   }
   const pivot = old.pivot || middle(old);
@@ -289,6 +295,6 @@ export function updateRef(old, part, { C = null, F = null, w = 1, at = Date.now(
     const a = place(old.P, pivot[0], pivot[1]), b = place(P, pivot[0], pivot[1]);
     movedM = Math.hypot(a[0] - b[0], a[1] - b[1]);
   }
-  const ref = { ...m.ref, P: { theta: P.theta, tx: P.tx, ty: P.ty }, seen: seen.slice(-40).map((o) => ({ theta: o.theta, tx: o.tx, ty: o.ty, w: o.w, at: o.at })), pivot, walks: (old.walks || 1) + 1 };
+  const ref = { ...m.ref, P: { theta: P.theta, tx: P.tx, ty: P.ty }, seen: seen.slice(-40).map((o) => ({ theta: o.theta, tx: o.tx, ty: o.ty, w: o.w, at: o.at })), pivot, walks: (old.walks || 1) + 1, phone: phoneOf() };
   return { ref, how: F && C ? 'shape and place' : F ? 'shape only' : 'filled in through its place', added: m.added, replaced: m.replaced, kept: m.kept, movedM };
 }

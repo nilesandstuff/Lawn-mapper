@@ -138,7 +138,7 @@ async function fresh(dir) {
   console.log(`The walk: ${all.stand.length} standing and ${all.ground.length} ground points; its start left out up to ${(cutS / 60).toFixed(1)} min (${Math.round(cutOdo * FT)} ft walked): ${pts.stand.length} and ${pts.ground.length} kept.`);
   if (pts.stand.length < 200) throw new Error(`too little of the yard (${pts.stand.length} standing points)`);
   const ps = placeWalk(pts.stand, plan.use, plan.C, []), pg = placeWalk(pts.ground, plan.use, plan.C, []);
-  const u = updateRef(null, { stand: ps.pts, ground: pg.pts }, { C: AS_IS, F: null, w: g.n });
+  const u = updateRef(null, { stand: ps.pts, ground: pg.pts }, { C: AS_IS, F: null, w: g.n, phone: g.T?.s && g.T.s !== 1 ? g.T.s : null });
   if (!u.ref) throw new Error(u.why);
   const key = `refs/${meta.map}.bin`;
   const oldBytes = await readObject(BUCKET, key).catch(() => null), old = oldBytes ? decodeRef(oldBytes) : null;
@@ -151,7 +151,7 @@ async function fresh(dir) {
   if (oldBytes) await writeObject(BUCKET, `refs/backup/${meta.map}-${Date.now()}.bin`, oldBytes, 'application/octet-stream');
   const bytes = encodeRef(u.ref);
   await writeObject(BUCKET, key, bytes, 'application/octet-stream', { walk: String(meta.walk || '') });
-  console.log(`Reference MADE AFRESH from this walk alone: ${u.ref.stand.length / 3} standing and ${u.ref.ground.length / 3} ground points (${(bytes.length / 1e6).toFixed(1)} MB)${oldBytes ? '; the one it replaced is kept as a backup' : ''}.`);
+  console.log(`Reference MADE AFRESH from this walk alone: ${u.ref.stand.length / 3} standing and ${u.ref.ground.length / 3} ground points (${(bytes.length / 1e6).toFixed(1)} MB), the phone's scale kept with it ${Number.isFinite(u.ref.phone) ? `${((u.ref.phone - 1) * 100).toFixed(1)}%` : 'none'}${oldBytes ? '; the one it replaced is kept as a backup' : ''}.`);
 }
 
 /* KEEP WHAT IS GOOD (lib/refkeep.js; the owner, 2026-11-15): the part of the walk its agreeing marks vouch for, added
@@ -199,7 +199,7 @@ async function keep(dir) {
   if (!F && ps.left + pg.left) console.log(`Not placed: ${ps.left + pg.left} points seen after a tracking jump with no corners sighted after it.`);
   const part = F ? pts : { stand: ps.pts, ground: pg.pts };
   if (part.stand.length < 200) throw new Error(`too little of the yard could be placed (${part.stand.length} standing points)`);
-  const u = updateRef(old, part, { C: F ? (plan.ok && g.ok ? plan.C : null) : AS_IS, F, w: plan.agree ? g.n : 1 });
+  const u = updateRef(old, part, { C: F ? (plan.ok && g.ok ? plan.C : null) : AS_IS, F, w: plan.agree ? g.n : 1, phone: plan.agree && g.T?.s && g.T.s !== 1 ? g.T.s : null });
   if (process.env.DRY) { console.log(`A dry run: nothing written (it would be: ${u.ref ? u.how : `refused, ${u.why}`}).`); return; }
   if (!u.ref) throw new Error(u.why);
   if (oldBytes) await writeObject(BUCKET, `refs/backup/${meta.map}-${Date.now()}.bin`, oldBytes, 'application/octet-stream');
@@ -288,19 +288,16 @@ async function against(dirs) {
       const part = { stand: pts.stand.filter((p) => (p[3] || 0) <= upTo), ground: pts.ground.filter((p) => (p[3] || 0) <= upTo) };
       const within = (g) => !Number.isFinite(upTo) || (g.odo ?? 0) <= upTo;
       const prior = walkPrior((live.gpsTrail || []).filter(within), (live.geoTrail || []).filter(within));
-      // four ways: by shape alone, as the page does now; kept to where GPS has the walk; and each with the walk first
-      // stretched to the map's metres by the phone's shortfall there (REF_SCALE: the reference is in map metres, a
-      // new walk in the phone's, 5-7% smaller at the owner's lot)
-      const K = Number(process.env.REF_SCALE) || 1;
-      const ways = [['shape alone', null, 1], ['by GPS', prior, 1]];
-      if (K !== 1) ways.push([`shape alone, stretched ${((K - 1) * 100).toFixed(1)}%`, null, K], [`by GPS, stretched ${((K - 1) * 100).toFixed(1)}%`, prior, K]);
-      console.log(`    ${Number.isFinite(upTo) ? `its first ${Math.round(upTo * FT)} ft` : 'the whole walk'} (${part.stand.length} standing points; ${prior ? `prior from ${prior.from}, search ${prior.searchM.toFixed(0)} m and ${prior.searchDeg.toFixed(0)} degrees` : 'no GPS prior'}):`);
-      for (const [name, pr, k] of ways) {
-        if (name.startsWith('by GPS') && !pr) continue;
-        const sc = (pts3) => (k === 1 ? pts3 : pts3.map((p) => [p[0] * k, p[1] * k, p[2] * k, p[3]]));
-        const prK = pr && k !== 1 ? { ...pr, T: { ...pr.T, s: 1 / k } } : pr;   // the prior was fitted in the phone's metres
-        const f = shapeFix(ref, { stand: sc(part.stand), ground: sc(part.ground) }, prK ? { prior: prK } : {});
-        const e = f.T ? marks.map((m) => { const p = onMap(f.T, [m.ar[0] * k, m.ar[1] * k]); return Math.hypot(p[0] - m.map[0], p[1] - m.map[1]) * 39.37; }) : [];
+      // two ways: AS THE PAGE NOW DOES IT (the walk stretched by the reference's own scale, a lead over the next best
+      // wanted, a loose GPS bound when there is one, nothing before 60 m walked), and by shape alone as it did before
+      const K = Number(process.env.REF_SCALE) || ref.phone || 1;
+      const loose = prior ? { T: prior.T, searchM: Math.max(15, 2 * prior.searchM), searchDeg: Math.max(25, 2 * prior.searchDeg) } : null;
+      const early = Number.isFinite(upTo) && upTo < 60;
+      const ways = [['as the page did before', null, 1, { lead: 0, scale: 1 }], [`AS THE PAGE NOW DOES (stretched ${((K - 1) * 100).toFixed(1)}%${loose ? ', GPS bound' : ', no GPS yet'})`, loose, K, { scale: K }]];
+      console.log(`    ${Number.isFinite(upTo) ? `its first ${Math.round(upTo * FT)} ft` : 'the whole walk'} (${part.stand.length} standing points)${early ? ' -- the page no longer asks this early' : ''}:`);
+      for (const [name, pr, , opts] of ways) {
+        const f = shapeFix(ref, part, pr ? { ...opts, prior: pr } : opts);
+        const e = f.T ? marks.map((m) => { const p = onMap(f.T, m.ar); return Math.hypot(p[0] - m.map[0], p[1] - m.map[1]) * 39.37; }) : [];
         console.log(`      ${name}: ${f.ok ? 'PLACED' : f.T ? 'a match, not sure enough to use' : 'not placed'}${f.landed != null ? ` (landed ${f.landed}, next best ${f.second ?? '-'})` : ''}${e.length ? `: its corners land ${e.map((x) => x.toFixed(0)).join(', ')} in from the map's` : f.why ? `: ${f.why}` : ''}`);
       }
     }

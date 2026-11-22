@@ -56,6 +56,7 @@ const TWIN_WIDE_MIN = 0.05;   // the least depth confidence the twin's wider loo
 const TWIN_WIDE_EVERY = 1000; // ms between the twin's wider looks (every cell of the app's depth grid, weak ones flagged)
 const LIVE_RANGE = 30; // m: the live match and the walk's ground take depth this near, as far as the twin keeps it (track.js; 8 until 2026-11-08)
 const WALK_EVERY = 10000; // ms between placements of the whole walk (walkfix.js)
+const PREV_MIN_M = 60;      // m walked before the first match against the earlier walk is asked for
 const PREV_EVERY = 15000; // ms between matches against the map's earlier walk (walkref.js, SCAN-H32)
 const PREV_MAX = 40000;   // standing (and ground) points kept for that match
 /* A DEPTH GRID WITH EACH PICTURE (the owner, 2026-11-09, step 2 after SCAN-H32: the pictures matched between walks
@@ -1345,10 +1346,16 @@ function frameWork(f) {
   }
   lap('twin (track, pictures)');
   // PLACED BY THE MAP'S EARLIER WALK (walkref.js, SCAN-H32): every PREV_EVERY, this walk's points so far against it
-  if (st.ref?.ready && !st.ref.stale && !st.prevAsk && f.tracking === 'normal' && Date.now() - st.prevAt > PREV_EVERY && st.prevStand.size >= REF_MIN_STAND) {
+  /* NOT IN THE WALK'S FIRST 200 ft (2026-11-22, runs 490-491: matched on its first 100 ft a walk was placed 50-95 ft
+     wrong every time, and called good; from 200 ft, stretched to the map's metres, 3-40 in). */
+  if (st.ref?.ready && !st.ref.stale && !st.prevAsk && odo >= PREV_MIN_M && f.tracking === 'normal' && Date.now() - st.prevAt > PREV_EVERY && st.prevStand.size >= REF_MIN_STAND) {
     const id = `p${Date.now()}`;
     st.prevAt = Date.now(); st.prevAsk = { id, odo }; st.prevStats.asks++;
-    st.ref.worker.postMessage({ fix: { id, stand: [...st.prevStand.values()], ground: [...st.prevGround.values()] } });
+    // where GPS or Street View has the walk, as a LOOSE bound (at least 15 m and 25 degrees): tight, it shut the
+    // right answer out (run 491); loose, it only forbids the far side of the yard
+    const pr = walkPrior(st.gpsTrail, st.geoTrail);
+    const prior = pr ? { T: { theta: pr.T.theta, tx: pr.T.tx, ty: pr.T.ty }, searchM: Math.max(15, 2 * pr.searchM), searchDeg: Math.max(25, 2 * pr.searchDeg) } : null;
+    st.ref.worker.postMessage({ fix: { id, stand: [...st.prevStand.values()], ground: [...st.prevGround.values()], prior } });
   }
   if (LIDAR_LIVE && !st.recordOnly && st.lid.ready && st.lid.worker && f.tracking === 'normal') {
     const ask = nextAsk(L, odo, Date.now(), f.pose?.position || null);
@@ -2078,7 +2085,7 @@ async function keepReference(L, walkId) {
   // the map's earlier reference, to build on (none, or "Fresh" chosen at the start: this walk makes it)
   let old = null;
   if (st.refUse || !st.refMeta) { try { const r = await fetch(`/api/scan/reference?map=${encodeURIComponent(map)}`, { credentials: 'same-origin' }); if (r.ok) old = decodeRef(new Uint8Array(await r.arrayBuffer())); } catch { /* none read */ } }
-  const u = updateRef(old, part, { C, F, w: plan.agree ? plan.g.n : 1 });
+  const u = updateRef(old, part, { C, F, w: plan.agree ? plan.g.n : 1, phone: plan.agree && plan.g.T?.s && plan.g.T.s !== 1 ? plan.g.T.s : null });
   if (!u.ref) return `NOT saved as the reference: ${u.why}.`;
   if (u.how === 'shape only' && !u.added) return 'The reference already has everything this walk saw: nothing to add.';
   const bytes = encodeRef(u.ref);

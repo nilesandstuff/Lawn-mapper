@@ -87,3 +87,28 @@ console.log('walkref: ok');
   if (fix(ref, walk, P({ theta: 0.7, tx: 45, ty: 30 })).ok) throw new Error('a prior 50 m off still placed the walk');
   if (fix(ref, walk, P({ theta: 0.7 + Math.PI / 2, tx: 3, ty: -2 })).ok) throw new Error('a prior a quarter turn off still placed the walk');
   console.log('walkref (a prior keeps the search near it): ok'); }
+
+// THE PHONE'S SHORTFALL (2026-11-22): a walk 6% smaller than the reference, stretched by the reference's own `phone`
+// before the match; the answer takes the walk AS WALKED onto the reference (T.s), and its scale survives compose/invert.
+{ const { shapeFix: fix, buildRef: mk, place: pl, encodeRef: enc, decodeRef: dec } = await import('../lib/walkref.js');
+  const { compose, invert } = await import('../lib/refkeep.js');
+  let seed = 11; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const stand = [], ground = [];
+  const wall = (x0, y0, x1, y1) => { const n = Math.ceil(Math.hypot(x1 - x0, y1 - y0) / 0.1); for (let i = 0; i <= n; i++) for (let h = 0.4; h < 3; h += 0.2) stand.push([x0 + (x1 - x0) * i / n + (rnd() - 0.5) * 0.05, y0 + (y1 - y0) * i / n + (rnd() - 0.5) * 0.05, h]); };
+  wall(0, 0, 12, 0); wall(12, 0, 12, 7); wall(12, 7, 5, 7); wall(5, 7, 5, 10); wall(5, 10, 0, 10); wall(0, 10, 0, 0); wall(25, 20, 31, 20); wall(31, 20, 31, 26); wall(-10, -8, 40, -8);
+  for (let i = 0; i < 6000; i++) ground.push([rnd() * 60 - 15, rnd() * 45 - 12, 0]);
+  const ref = dec(enc({ ...mk({ stand, ground }, { theta: 0, tx: 0, ty: 0, s: 1 }, 1), phone: 1.06 }));
+  if (Math.abs(ref.phone - 1.06) > 1e-9) throw new Error('the phone\'s scale is not kept with the reference');
+  const th = -0.7, c = Math.cos(th), s = Math.sin(th), k = 1.06;
+  const mv = (p) => [(c * (p[0] - 3) - s * (p[1] + 2)) / k, (s * (p[0] - 3) + c * (p[1] + 2)) / k, p[2]];   // the phone's own, shorter, metres
+  const walk = { stand: stand.map(mv), ground: ground.map(mv) };
+  const f = fix(ref, walk);
+  const corner = mv([31, 26, 0]), at = f.T ? pl(f.T, corner[0], corner[1]) : [NaN, NaN];
+  if (!(f.ok && f.T.s === 1.06 && Math.hypot(at[0] - 31, at[1] - 26) < 0.25)) throw new Error(`stretched by the reference's scale: ${JSON.stringify(f.T)} puts a corner ${Math.hypot(at[0] - 31, at[1] - 26).toFixed(2)} m out`);
+  const plain = fix(ref, walk, { scale: 1 }), at1 = plain.T ? pl(plain.T, corner[0], corner[1]) : [NaN, NaN];
+  if (Math.hypot(at1[0] - 31, at1[1] - 26) < Math.hypot(at[0] - 31, at[1] - 26)) throw new Error('unstretched did better than stretched');
+  // compose and invert carry the scale
+  const A = { theta: 0.3, tx: 2, ty: -1, s: 1.06 }, B = { theta: -1.1, tx: 5, ty: 4, s: 0.97 }, p = [3, 7];
+  const viaB = pl(B, ...p), both = pl(A, ...viaB), comp = pl(compose(A, B), ...p), back = pl(invert(A), ...pl(A, ...p));
+  if (Math.hypot(both[0] - comp[0], both[1] - comp[1]) > 1e-9 || Math.hypot(back[0] - p[0], back[1] - p[1]) > 1e-9) throw new Error('compose or invert drops the scale');
+  console.log(`walkref (the phone's scale kept with the reference and used): ok (a corner ${(Math.hypot(at[0] - 31, at[1] - 26) * 39.37).toFixed(0)} in out stretched, ${(Math.hypot(at1[0] - 31, at1[1] - 26) * 39.37).toFixed(0)} in as walked)`); }
