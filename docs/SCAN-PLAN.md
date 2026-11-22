@@ -3739,6 +3739,21 @@ SPECULATION: a corner is marked by the depth under the crosshair. If that depth 
 corner is pulled toward where the phone stood, and pairs read short by an amount that depends on how far away the
 walker aims from, which differs by place. The marks keep that distance (`aim`); task corners now prints it.
 
+HARD (run 483, the distance kept with each mark): every corner on every map was marked from 4-13 ft away (the walker
+stands under the corner and aims up). Owner's lot 5-12 ft, work lot 6-11 ft, the others 5-13 ft. So THE GUESS ABOVE
+IS NOT BORNE OUT: the aiming distance does not differ by place, and at 7 ft a depth a few percent short moves a mark
+a few inches. A mark's flat place is very nearly where the walker stood, so a pair's length by the phone is very
+nearly the phone's own tracking between two standing places.
+  - Owner's lot, per pair, five walks whose marks hold: the 23.0 ft pair 21.6-22.0 ft by the phone (the photo:
+    22-22.5; 19-28 ft walked between the marks); the 88.7 ft pair 82.3-84.3 ft (the photo: 87.5-88; 129-178 ft
+    walked, round the house); the 76.9 ft pair 71.8-74.6 ft (155-198 ft walked).
+  - So the short pair is 0-4% short of the photo, as at the other places; the pair across the house is 4-6% short.
+NOT KNOWN: why. SPECULATION: the phone's tracking loses length on the way round a building (turning corners close
+to walls), more at the owner's house than elsewhere; or its scale is simply a few percent small and differs by
+session. A straight length walked and marked at both ends on open ground (a known length of drive or fence) would
+tell tracking-on-the-straight from tracking-round-the-house.
+WHAT IT COSTS IF LEFT: lengths 2-5% short are areas 4-10% small.
+
 WHAT IT MEANS MEANWHILE: the live fit already lets the phone's scale move up to 7% once three corners are marked
 15 m apart (walkref.js MAX_SCALE); with two corners it cannot, and a 5% difference over 90 ft is 4.5 ft of
 "disagreement between the reference points". That alone is enough to explain most of what the owner sees.
