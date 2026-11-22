@@ -3882,3 +3882,36 @@ ground points (0.7 MB). The reference it replaced (8,076 standing, 6,072 ground,
 big walk had matched to that one's shape "yes (landed 0.378, next best 0.248)".
 NOT PROVEN: a second walk fixed by this reference. The next walk at home is the test: its three corners, marked as
 usual, score where the reference's shape puts it.
+
+## 54. Walk 2 fixed by the reference, tried on walks already made (2026-11-22)
+
+Task reference, walk "<ids>:against" (reference-build.mjs against): each walk matched to its map's saved reference
+by SHAPE ALONE (walkref.js shapeFix, the page's own code and gates), and where that puts the walk's marked roof
+corners set against the map's. The corners take no part in the match. Also the walk's first 98, 197, 394 ft alone,
+since a live fix must land early. The reference: the owner's lot's, made afresh from the big walk (53).
+
+HARD (run 490; inches from the map's, per corner; "PLACED" is the page's own verdict that the fix may be used):
+  - walk of 2026-11-19 (539 ft; its corners agree within 11 in): first 98 ft PLACED, landed 0.409 against a next
+    best of 0.402: 924, 1129, 947 in off. First 197 ft PLACED (0.511 / 0.505): 102, 123, 69. First 394 ft PLACED
+    (0.455 / 0.337): 64, 89, 36. Whole walk PLACED (0.367 / 0.297): 64, 90, 38.
+  - walk of 2026-11-18 (193 ft): first 98 ft PLACED (0.501 / 0.492): 786, 1083, 570. Whole PLACED (0.534 / 0.486):
+    520, 612, 687.
+  - walk of 2026-11-20 (1,068 ft; its corners vouch for nothing): first 98 ft PLACED (0.523 / 0.415): 892, 1116,
+    964. First 197 ft PLACED (0.411 / 0.357): 82, 472, 54. First 394 ft (0.485 / 0.432): 87, 502, 80. Whole
+    (0.316 / 0.311): 24, 429, 24.
+  - the thermal walk of 2026-11-19: 112 standing points left once its Geospatial Depth points are dropped: not tried.
+WHAT IT SAYS:
+  - WALK 2 BY SHAPE ALONE DOES NOT WORK YET. In its first 100 ft every walk was called PLACED 50-95 ft from the
+    truth. The gate (landed 0.3) does not catch it and there is no test against the next best placement; even one
+    would not have caught the worst (0.523 against 0.415).
+  - With the whole walk in hand the same match lands 2-7.5 ft out on good walks: enough to find the yard, not to
+    place a sprinkler head.
+  - It does settle the 2026-11-20 walk: two corners land 24 in from the map's and the second marked sits 429 in
+    (36 ft) off. That corner was marked at the wrong place.
+  - A CORRECTION to section 53 and to what the owner was told: the short walk of 2026-11-21 that was "moved
+    675 in" may have been moved by this same early false match and not by the reference having a bad walk in it.
+    Both faults are real; which did it that day is not known.
+SPECULATION, being tried in the next run: (1) the match has the whole yard to choose from; kept to where GPS has
+the phone (a prior of 4-12 m and 6-30 degrees, walkfix.js walkPrior) the far-off answers cannot be chosen. (2) The
+reference is in the map's metres and a new walk in the phone's, 5-7% smaller here; over 100 ft that is 5-7 ft, the
+size of the whole-walk error. The walk stretched by 6% before matching is the test.
