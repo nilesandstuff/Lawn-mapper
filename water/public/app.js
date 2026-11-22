@@ -34,6 +34,7 @@ import { sectorName } from '/lib/wind.js';
 import { SPECIES, groupOf } from '/lib/roots.js';
 import { spearman } from '/lib/rank.js';
 import { walkRecords, offLawnM, ON_TRACE_M } from '/lib/walkrecords.js';
+import { offersFrom, offerWords } from '/lib/things.js';
 import { siteOf, inputsOf } from '/lib/siteof.js';
 import { MODEL_VERSION, SCORING } from '/lib/surfacenow.js';
 import { openMeteoUrls, parseOpenMeteo } from '/lib/momentweather.js';
@@ -387,7 +388,7 @@ const lawnRingsOf = () => (view.site?.lawn || []).flatMap((f) => (f.geometry?.ty
 let layersAsk = 0;
 /** The most the layers may take of the water part's 64 KB, after everything else in it. */
 function layerBudget() {
-  const rest = JSON.stringify({ data: { v: 1, downspouts: inputs.downspouts, gutters: inputs.gutters, areas: inputs.areas, topsoil: inputs.topsoil, grass: inputs.grass, species: inputs.species, mode: inputs.mode, irrigation: heads.data, wind: inputs.wind || null }, basedOn: view.site?.at }).length;
+  const rest = JSON.stringify({ data: { v: 1, downspouts: inputs.downspouts, gutters: inputs.gutters, areas: inputs.areas, topsoil: inputs.topsoil, grass: inputs.grass, species: inputs.species, mode: inputs.mode, irrigation: heads.data, wind: inputs.wind || null, walkThings: inputs.walkThings || [] }, basedOn: view.site?.at }).length;
   return Math.max(4000, Math.min(30000, MAX_TOOL_BYTES - rest - 3000));
 }
 async function loadLayers(boxDeg, kept) {
@@ -798,6 +799,7 @@ function planReport(p) {
   if (p.roofs.guessed) parts.push(`<p class="hint">${p.roofs.guessed} roof${p.roofs.guessed > 1 ? 's' : ''} on your property ${p.roofs.guessed > 1 ? 'have' : 'has'} no downspouts entered, so ${p.roofs.guessed > 1 ? 'their' : 'its'} water is assumed to come off at the low corner. Add the downspouts for a truer plan: tap <em>Add a downspout</em>, then the roof edge it comes from, then where it empties.</p>`);
   if (p.roofs.unusedDownspouts.length) parts.push(`<p class="hint">${p.roofs.unusedDownspouts.length} downspout${p.roofs.unusedDownspouts.length > 1 ? 's are' : ' is'} not on a roof: tap closer to the roof's edge.</p>`);
   $('#plan').innerHTML = parts.join('');
+  try { walkOffer(); } catch { /* the offer never stands in the plan's way */ }
   $('#save-pdf')?.addEventListener('click', savePdf);
 }
 /** The roots, in the plan's words: the species checked, their working depth, and the season's rise and fall. */
@@ -1276,6 +1278,55 @@ function replan() {
   running.postMessage({ replan: { ...inputs } });
 }
 
+/* THINGS FROM A YARD AR WALK, OFFERED (owner, 2026-11-22; lib/things.js): the sprinkler heads and downspouts placed
+   in a walk, shown above the plan with a tick each; taken ones go in as if placed by hand (a head with no model yet,
+   for the sprinkler steps to finish), and every one answered is remembered so it is not offered again. An outlet
+   with no gutter top takes the nearest roof edge within ROOF_REACH_M, and says so. */
+const ROOF_REACH_M = 8;
+function nearestRoof(p) {
+  const d = view.data, i0 = cellAt(p);
+  if (!d?.grid || !d.wall || i0 < 0) return null;
+  const { W, H, bbox } = d.grid, cw = (bbox[2] - bbox[0]) / W, k = Math.cos((p[1] * Math.PI) / 180), reach = Math.ceil(ROOF_REACH_M / (cw * k));
+  const c0 = i0 % W, r0 = Math.floor(i0 / W);
+  let best = null;
+  for (let r = Math.max(0, r0 - reach); r <= Math.min(H - 1, r0 + reach); r++) for (let c = Math.max(0, c0 - reach); c <= Math.min(W - 1, c0 + reach); c++) {
+    if (!d.wall[r * W + c]) continue;
+    const dd = (r - r0) ** 2 + (c - c0) ** 2;
+    if (!best || dd < best.dd) best = { dd, c, r };
+  }
+  if (!best || Math.sqrt(best.dd) * cw * k > ROOF_REACH_M) return null;
+  const ch = (bbox[3] - bbox[1]) / H;
+  return fromMerc([bbox[0] + (best.c + 0.5) * cw, bbox[3] - (best.r + 0.5) * ch]).map((v) => +v.toFixed(7));
+}
+function walkOffer() {
+  let el = $('#walk-offer');
+  if (!el) { $('#plan')?.insertAdjacentHTML('beforebegin', '<div id="walk-offer"></div>'); el = $('#walk-offer'); }
+  if (!el) return;
+  const o = offersFrom(view.site?.things || [], { heads: (heads.data?.heads || []).map((h) => h.at), downspouts: inputs.downspouts, answered: inputs.walkThings || [] });
+  for (const s of o.spouts) if (!s.from) { s.from = nearestRoof(s.to); s.guessed = true; }
+  const spouts = o.spouts.filter((s) => s.from), lost = o.spouts.length - spouts.length;
+  if (!o.heads.length && !spouts.length) { el.innerHTML = ''; return; }
+  const GRADE = { corners3: 'placed well', earlier: 'placed by an earlier walk\'s shape', corners2: 'placed fairly', unsure: 'the walk was not sure of its place' };
+  const row = (kind, k, x, label) => `<label style="display:block;margin:2px 0"><input type="checkbox" data-walk="${kind}:${k}" ${x.tick ? 'checked' : ''}> ${label} <span class="dim">(${GRADE[x.grade] || x.grade}${x.guessed ? '; no gutter top marked, so the nearest roof edge is taken' : ''})</span></label>`;
+  el.innerHTML = `<div class="card"><h2>From your yard walk</h2>
+    <p>${esc(offerWords({ heads: o.heads, spouts }))} placed in a Yard AR walk ${o.heads.length + spouts.length === 1 ? 'is' : 'are'} not on this map yet. Add the ticked ones?</p>
+    ${o.heads.map((h, k) => row('head', k, h, `Sprinkler head ${k + 1}`)).join('')}${spouts.map((s2, k) => row('spout', k, s2, `Downspout ${k + 1}`)).join('')}
+    <p class="dim">Each is put where the walk measured it against the lidar (good to a foot or two), not moved to suit the photo. A head goes in with no model yet: <em>Your sprinklers</em> finishes it.${lost ? ` ${lost} outlet${lost > 1 ? 's' : ''} had no roof within ${ROOF_REACH_M} m and ${lost > 1 ? 'are' : 'is'} left out.` : ''}</p>
+    <p><button id="walk-add">Add them</button> <button id="walk-skip">Not these</button></p></div>`;
+  const answer = (take) => {
+    const on = (kind, k) => take && el.querySelector(`[data-walk="${kind}:${k}"]`)?.checked;
+    const ids = [];
+    o.heads.forEach((h, k) => { ids.push(...h.ids); if (on('head', k) && heads.data) { heads.data.heads.push({ id: `h${Date.now().toString(36)}w${k}`, at: h.at, zone: null, body: null, nozzle: null, arc: null, dir: null, by: 'walk' }); heads.data.none = false; } });
+    spouts.forEach((s2, k) => { ids.push(...s2.ids); if (on('spout', k)) { inputs.downspouts.push({ from: s2.from, to: s2.to }); added.push('spout'); } });
+    inputs.walkThings = [...new Set([...(inputs.walkThings || []), ...ids])].slice(-600);
+    el.innerHTML = '';
+    heads.refresh?.();
+    changed();
+  };
+  $('#walk-add').onclick = () => answer(true);
+  $('#walk-skip').onclick = () => answer(false);
+}
+
 function changed() {
   draw();
   replan();
@@ -1311,7 +1362,7 @@ function keep() {
 }
 
 function saveBody() {
-  return JSON.stringify({ data: { v: 1, downspouts: inputs.downspouts, gutters: inputs.gutters, areas: inputs.areas, topsoil: inputs.topsoil, grass: inputs.grass, species: inputs.species, mode: inputs.mode, irrigation: heads.data, layers: inputs.layers || null, wind: inputs.wind || null }, basedOn: view.site.at });
+  return JSON.stringify({ data: { v: 1, downspouts: inputs.downspouts, gutters: inputs.gutters, areas: inputs.areas, topsoil: inputs.topsoil, grass: inputs.grass, species: inputs.species, mode: inputs.mode, irrigation: heads.data, layers: inputs.layers || null, wind: inputs.wind || null, walkThings: inputs.walkThings || [] }, basedOn: view.site.at });
 }
 const saveUrl = () => `/api/maps/tool?id=${encodeURIComponent(view.site.mapId)}&tool=water`;
 

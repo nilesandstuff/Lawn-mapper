@@ -217,6 +217,12 @@ SPECULATION), as always.
     link that opens Lawn Mapper on it to make the test map. And since 2026-11-18 (the core's makeWholeSave over MAIN)
     the sweep makes the whole-property test map of a waiting lot itself, once a day at most per lot (lot_saves), and
     lines the readings onto it at once; the link is left for a lot the county has no property line for. DONE.
+33. **Things placed in a Yard AR walk, offered on the water map** (owner, 2026-11-22: "Yes. Ask the water map how it
+    wants that"). The core keeps them in the scan part of the map's record (tools.scan.data.things). BUILT
+    (lib/things.js, app.js walkOffer): sprinkler heads and downspouts (a gutter top with its outlet) offered above the
+    plan, ticked unless the walk was unsure of its place, never over one placed by hand within a metre; places are the
+    lidar's, not moved to the photo. NOT TRIED ON A REAL WALK YET (none has placed a thing). Waiting on the core: a
+    way to take a thing away (gone), and spray or rotor if the AR ever asks.
 
 ## Rules (owner, 2026-10-27)
 

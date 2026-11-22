@@ -26,6 +26,8 @@ export function siteOf(s, id) {
     // the photo the lawn was traced on (owner 2026-10-19: a county photo if one was saved, Mapbox if Mapbox)
     tracedOn: tracedOn(s),
     water: s.tools?.water?.data || null,
+    // what the Yard AR tool placed in its walks (sprinkler heads, gutter tops and outlets): offered, lib/things.js
+    things: Array.isArray(s.tools?.scan?.data?.things) ? s.tools.scan.data.things : [],
   };
 }
 
@@ -43,6 +45,7 @@ export function inputsOf(kept = {}) {
     texture: '', // the soil is the survey's (owner 2026-10-19: no override)
     layers: k.layers && typeof k.layers === 'object' ? k.layers : null,
     wind: k.wind && typeof k.wind === 'object' ? k.wind : null,
+    walkThings: Array.isArray(k.walkThings) ? k.walkThings.filter((x) => typeof x === 'string').slice(0, 600) : [], // the walk's things already answered (lib/things.js)
     mode: ['normal', 'deficit', 'dormancy'].includes(k.mode) ? k.mode : 'normal',
   };
 }
