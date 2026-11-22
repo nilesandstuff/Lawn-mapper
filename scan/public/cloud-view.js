@@ -101,7 +101,7 @@ async function main() {
   D.track.sort((a, b) => a[0] - b[0]);
   if (names.includes('view.json')) D.view = await (await part('view.json')).json().catch(() => null);
   // the tree trunks found in the joined cloud (scan/tools/trunks.py): the walk's own frame, drawn as brown posts
-  if (names.includes('trunks.json')) D.trunks = (await (await part('trunks.json')).json().catch(() => null))?.trunks || [];
+  if (names.includes('trunks.json')) { const tj = await (await part('trunks.json')).json().catch(() => null); D.trunks = tj?.trunks || []; D.trunkSlice = tj?.sliceM || 0.25; }
   if (DENSE) { D.rgb = DENSE.rgb; D.kind = DENSE.kind; U.readonly = true; }
   if (!DENSE && names.includes('view-rgb.bin')) { const u = new Uint8Array(await buf('view-rgb.bin')); if (u.length === N * 4) D.rgb = u; }
   if (!DENSE && names.includes('view-kind.bin')) { const u = new Uint8Array(await buf('view-kind.bin')); if (u.length === N) D.kind = u; }
@@ -177,9 +177,16 @@ function build() {
      brown post from the ground to as high as tree was seen over it, as thick as the trunk read. For the owner's eyes:
      is there a real tree at each, and is any real tree without one? */
   for (const t of D.trunks || []) {
-    const h = Math.max(1, t.top || t.seenTo || 2), r = Math.max(0.08, (t.across || 0.3) / 2);
-    const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 10), new THREE.MeshBasicMaterial({ color: 0x8b5a2b, transparent: true, opacity: 0.85 }));
-    m.position.set(t.x, t.y + h / 2, t.z); scene.add(m);
+    const mat = new THREE.MeshBasicMaterial({ color: 0x8b5a2b, transparent: true, opacity: 0.8 });
+    if (Array.isArray(t.slices) && t.slices.length) {
+      // AS SEEN (trunks.json v2): a slice every 10 in of height, each with its own middle and width, so a lean, a
+      // taper and a fork's first split show (the owner, 2026-11-22: "rasterize the shapes of the actual observed trunks")
+      const sh = D.trunkSlice || 0.25;
+      for (const [h, x, z, r] of t.slices) { const m = new THREE.Mesh(new THREE.CylinderGeometry(Math.max(0.03, r), Math.max(0.03, r), sh, 10), mat); m.position.set(x, t.y + h + sh / 2, z); scene.add(m); }
+    } else {
+      const h = Math.max(1, t.top || t.seenTo || 2), r = Math.max(0.08, (t.across || 0.3) / 2);
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 10), mat); m.position.set(t.x, t.y + h / 2, t.z); scene.add(m);
+    }
   }
   // where the phone went: a thin line, so the walk can be found in the cloud
   if (D.track.length > 1) {
@@ -278,7 +285,7 @@ function tally() {
   const ft = (j) => (shown ? Math.round((hi[j] - lo[j]) * FT) : 0);
   let tl = [Infinity, Infinity], th = [-Infinity, -Infinity];
   for (const q of D.track) { if (q[1] < tl[0]) tl[0] = q[1]; if (q[1] > th[0]) th[0] = q[1]; if (q[3] < tl[1]) tl[1] = q[3]; if (q[3] > th[1]) th[1] = q[3]; }
-  $('#tally').textContent = `${D.trunks ? `Tree trunks found: ${D.trunks.length} (brown posts). ` : ''}Drawn now: ${shown.toLocaleString()} of ${D.n.toLocaleString()} points, lying ${ft(0)} x ${ft(2)} ft and ${ft(1)} ft high. Hidden: ${hu.toLocaleString()} unsure depth, ${hg.toLocaleString()} Google's, ${he.toLocaleString()} erased${ht ? `, ${ht.toLocaleString()} seen before the minute chosen` : ''}${bad ? `, ${bad.toLocaleString()} with no place` : ''}. `
+  $('#tally').textContent = `${D.trunks ? `Tree trunks found: ${D.trunks.length} (brown, drawn as seen). ` : ''}Drawn now: ${shown.toLocaleString()} of ${D.n.toLocaleString()} points, lying ${ft(0)} x ${ft(2)} ft and ${ft(1)} ft high. Hidden: ${hu.toLocaleString()} unsure depth, ${hg.toLocaleString()} Google's, ${he.toLocaleString()} erased${ht ? `, ${ht.toLocaleString()} seen before the minute chosen` : ''}${bad ? `, ${bad.toLocaleString()} with no place` : ''}. `
     + `This walk: ${/^\d{13}$/.test(walk) ? new Date(Number(walk)).toLocaleString() : walk}, ${D.keys.length} photos. The path: ${D.track.length.toLocaleString()} poses, ${D.track.length ? Math.round((th[0] - tl[0]) * FT) : 0} x ${D.track.length ? Math.round((th[1] - tl[1]) * FT) : 0} ft. Read: ${U.read || ''}. Page of 21 Nov, c.`;
 }
 function note() {

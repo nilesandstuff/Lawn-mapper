@@ -320,8 +320,9 @@ jobs:
           if [ "$WALKS" = "latest" ]; then WALKS=""; fi
           node scan/tools/corners.mjs "$WALKS" | tee corners.txt
 
-      # TREE TRUNKS IN A WALK'S JOINED CLOUD (scan/tools/trunks.py, 2026-11-22): narrow columns of tree from the ground
-      # up, kept beside the twin for the 3D view. Reads two files of the twin. CPU, a minute. Counts and sizes only.
+      # TREE TRUNKS IN A WALK'S OWN POINTS (scan/tools/trunks.py, 2026-11-22): narrow free-standing columns from the
+      # ground up, each kept as slices (its own lean and width), beside the twin for the 3D view. Reads the walk's
+      # point parts only. CPU, a few minutes. Counts and sizes only.
       - name: A walk's tree trunks
         if: ${{ inputs.task == 'trunks' }}
         env:
@@ -331,8 +332,9 @@ jobs:
         run: |
           set -o pipefail
           pip install --quiet numpy scipy
-          node scan/tools/twin-r2.mjs parts "$WALK" twin view-dense.bin view.json | tee trunks.txt
-          python scan/tools/trunks.py twin/view-dense.bin twin/view.json twin/trunks.json | tee -a trunks.txt
+          # the walk's own kept points (the second try, 2026-11-22: the joined cloud was a miss), their kinds, the start cut
+          node scan/tools/twin-r2.mjs parts "$WALK" twin 'cloud-*' 'labels-*' view-kind.bin view.json start.json | tee trunks.txt
+          python scan/tools/trunks.py twin twin/trunks.json | tee -a trunks.txt
           node scan/tools/twin-r2.mjs put "$WALK" twin/trunks.json | tee -a trunks.txt
 
       # DID THE PHONE'S OWN PLACE JUMP? (mend_study.py --jumps, 2026-11-21): the walk's poses only. Quick, free.

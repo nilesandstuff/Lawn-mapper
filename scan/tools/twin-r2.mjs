@@ -184,8 +184,22 @@ async function main() {
     const [dir, ...names] = rest;
     mkdirSync(dir, { recursive: true });
     let got = 0, bytes = 0;
-    for (const n of names) { const b = await readObject(BUCKET, `twins/${walk}/${n}`).catch(() => null); if (b) { writeFileSync(join(dir, n), b); got++; bytes += b.length; } }
-    console.log(`Twin parts read: ${got} of ${names.length}, ${(bytes / 1e6).toFixed(1)} MB.`);
+    // a name ending in * is every part beginning so ("cloud-*": the walk's own points), found by listing
+    const all = [];
+    for (const n of names) {
+      if (n.endsWith('*')) all.push(...(await list(base, token, `twins/${walk}/${n.slice(0, -1)}`)).map((o) => basename(o.key)));
+      else all.push(n);
+    }
+    let i = 0;
+    await Promise.all(Array.from({ length: 4 }, async () => {
+      while (i < all.length) {
+        const n = all[i++];
+        let b = null;
+        for (let t = 0; t < 5 && !b; t++) { if (t) await new Promise((ok) => setTimeout(ok, 3000 * 2 ** t)); b = await readObject(BUCKET, `twins/${walk}/${n}`).catch(() => undefined); if (b === null) break; }
+        if (b) { writeFileSync(join(dir, n), b); got++; bytes += b.length; }
+      }
+    }));
+    console.log(`Twin parts read: ${got} of ${all.length}, ${(bytes / 1e6).toFixed(1)} MB.`);
     if (!got) throw new Error('none of the parts asked for is there');
     return;
   }
