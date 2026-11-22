@@ -3915,3 +3915,33 @@ SPECULATION, being tried in the next run: (1) the match has the whole yard to ch
 the phone (a prior of 4-12 m and 6-30 degrees, walkfix.js walkPrior) the far-off answers cannot be chosen. (2) The
 reference is in the map's metres and a new walk in the phone's, 5-7% smaller here; over 100 ft that is 5-7 ft, the
 size of the whole-walk error. The walk stretched by 6% before matching is the test.
+
+HARD, the two fixes tried (run 491, the same three walks; four ways per stretch):
+  - STRETCHED 6% BEFORE THE MATCH, the 2026-11-19 walk's corners land 3, 16, 25 in out at 197 ft; 6, 18, 20 at
+    394 ft; 15, 6, 13 for the whole walk (as walked: 102-123, 36-89, 38-90). The 2026-11-20 walk's two good corners:
+    8 and 40, 19 and 39, 24 and 22 in. The lead over the next best grows too (0.595 against 0.439).
+  - The first 98 ft is wrong whatever is done (570-1,141 in), and there is no GPS prior that early (it wants 10
+    readings over 25 m).
+  - A TIGHT GPS bound (4 m, 6 degrees, the prior's own) made it worse where it changed anything (6, 18, 20 in became
+    37, 46, 159): it shut the right answer out. Used loosely since (15 m and 25 degrees at the least).
+  - Right answers led the next best by 0.10-0.20; wrong ones by 0.001-0.05, bar one (0.105).
+BUILT (walkref.js, the page, the reference file): the phone's scale kept with a reference when its corners all agree
+(`phone`, 6.7% for the owner's lot) and a new walk stretched by it before the match (the answer's T carries it);
+LEAD 0.1 over the next best; no match asked before 60 m walked; a loose GPS bound when there is a trail.
+HARD (run 493, those rules): the 2026-11-19 walk PLACED at 197 / 394 ft / whole with corners 8, 15, 30 / 4, 17, 27 /
+7, 13, 26 in. The 2026-11-20 walk refused at 197 ft and whole though right (leads 0.058, 0.094), PLACED at 394 ft
+(27 and 23 in). BUT the 193 ft walk of 2026-11-18 PLACED (0.43 against 0.303) 763-1,113 in out.
+BUILT ON THAT: TWO IN A ROW (walkref.js sameFix): a fix is used only when the one before it, made with less of the
+walk, put the phone within 1.5 m and 4 degrees of it.
+HARD (run 495, the page's whole way, stepped every 15 m from 60 m):
+  - 2026-11-19 walk: a first match at 197 ft, USED from 246 ft to its end (7 times), corners 3-7, 13-17, 26-31 in.
+  - 2026-11-20 walk: refused at 197 ft, a first match at 246, USED from 295 to 886 ft (13 times), its two good
+    corners 14-28 and 22-41 in; refused from 935 ft on for too small a lead (0.08-0.09) though still right. (Its
+    second-marked corner, the one marked wrong, 449-459 in throughout.)
+  - 2026-11-18 walk (193 ft): one match, 763-1,113 in out, never confirmed: NOT used.
+  - Fixes used with every corner over 5 ft out: 0 of 20.
+WHAT IT SAYS: on walks already made, walk 2 fixed by the reference's shape WORKS from about 250-300 ft walked, to
+about 0.5-2.5 ft at the roof corners, and uses no wrong fix. LIMITS: one yard, one phone, three walks, a reference
+from the same phone; two of the walks had Geospatial Depth on (fewer good points); NOT YET SEEN LIVE. About 2 ft at
+a corner is the corner marks' own size (their walks' corners agree to 11-13 in), so the match may be better than
+this can show.
