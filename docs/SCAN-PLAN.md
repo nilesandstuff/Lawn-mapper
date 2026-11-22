@@ -4146,7 +4146,11 @@ HARD (task `placed`, scan/tools/placed.mjs, runs 508 and 511; the walk's own fra
   - Its poses (task `jumps`, run 509): 1,969 poses; steps over 30 in between two poses half a second apart: 5 (the
     most 45 in). Seven steps of 36-80 in out of line with the walking round them, at 5.0, 6.2, 8.7, 9.1, 9.4, 9.5 and
     10.2 min; gaps of 1.6-1.9 s in the poses at 8.7, 9.1, 9.3, 9.5 and 10.2 min, the phone moved 2-15 in across each.
-    NOT YET JUDGED whether they are jumps at all: see the speculation below.
+  - THOSE STEPS JUDGED BY THE WALKER'S OWN PINS (run 515, mend_study.py --jumps; the three places aimed at twice, on
+    the level): 83, 75 and 67 in apart as walked; 67, 244 and 237 in with all the steps taken back. THEY ARE NOT
+    JUMPS OF THE PHONE'S TRACKING TO BE UNDONE: taking them back drives the pins apart. One by one: the steps at 5.0,
+    8.7, 9.1, 9.4 and 9.5 min each make every place worse (84-142 in); the step at 6.2 min (36 in), taken back
+    alone, makes all three BETTER (47, 43 and 38 in).
   - The reference of the owner's lot made afresh (run 510): from the walk of 2026-11-20 alone, its three corners
     within 3 in, 36,434 standing and 23,819 ground points, the phone's scale 6.7% kept with it; the one it replaced
     (2 walks, 11,312 standing and 16,832 ground points) kept as a backup.
@@ -4166,8 +4170,12 @@ SPECULATION (nothing here is measured):
   - That the seven "jumps" are the page's stalls and not the phone's tracking. A pose is stamped with the time the
     page handled it; after a stall of 1.7 s the page first handles the frame that was waiting (the phone hardly
     moved: "2 in across it") and then a fresh one, a fraction of a second later by its clock and 1.7 s of walking
-    away: about 80 in at a walker's pace, which is the size of the largest. The judge is the walker's own pins
-    (mend_study.py --jumps: each place aimed at twice, as walked and with the jumps taken back).
+    away: about 80 in at a walker's pace, which is the size of the largest. The pins say the steps are not to be
+    undone (HARD, above), which fits this; it does not prove the stalls are the cause.
+  - That the step at 6.2 min WAS a real jump of the phone's tracking, about 3 ft, and half of the walk's slide. The
+    three places all lie on either side of it, so they are one witness, not three: it says that step points along
+    the slide, which a step in a chance direction would do about one time in twelve. No stall over 1.5 s is logged
+    there.
   - That the slide is the phone's SCALE moving during the walk. The phone reads this lot 5.9% short on this walk and
     6.7% on the last one; a scale that wanders by a part in a hundred over a 1,000 ft round would not close by
     several feet, and would not be one steady slide. Nothing measures the scale along a walk yet.
@@ -4190,6 +4198,15 @@ BUILT (2026-11-22):
   - The things placed on a map are LISTED on the start page under the Start buttons, each by its id (the same id is
     on the placement map), with "Take away" (two taps; marked gone, kept, "Put back" undoes it), saved and shared
     with the map's record again. Checked in a browser with stand-in answers (page-check.mjs); NOT SEEN ON A PHONE.
+
+A DEPLOY THAT TOOK THE SITE'S BUCKET AWAY (2026-11-22, 22:38-23:08 UTC; the owner: "the studies box at the bottom of
+the AR page is gone now. And when I open the walk twins page it says 'The twin could not be read: no-bucket'"). Two
+deploys (runs 514 and 516) went out while other runs were reading walks from the bucket; the bucket's list came back
+"malformed response from the API", r2.mjs took that for "no bucket", and the site was deployed without one. Run 512
+before them and run 517 after them had it. FIXED: r2.mjs and d1.mjs ask five times, then STOP THE DEPLOY; the site
+already out keeps what it has. And the lesson again: the deploy's last lines said "Twins: NOT kept" both times and
+were not read (the status alone was). A walk made in that half hour would not have been kept by the site; none is
+known to have been made.
 
 NOT DONE: no way to say two placed things are one, or to move one (the two late gutter things from this walk stand in
 the map's record until the owner takes them away); the phone's scale is taken from the reference though it differed by 0.8% between
