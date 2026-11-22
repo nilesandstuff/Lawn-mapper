@@ -706,6 +706,13 @@ jobs:
           set -o pipefail
           # "<walk>:dry" says what would be kept and writes nothing
           if [[ "$WALK" == *:dry ]]; then export DRY=1; WALK="${WALK%:dry}"; fi
+          # "<walk>,<walk>:against": each walk matched to its map's saved reference by shape, judged by its own corners
+          if [[ "$WALK" == *:against ]]; then
+            dirs=""
+            for W in $(echo "${WALK%:against}" | tr ',' ' '); do node scan/tools/twin-r2.mjs get "$W" "w-$W" > /dev/null; dirs="$dirs w-$W"; done
+            node scan/tools/reference-build.mjs against $dirs | tee reference.txt
+            exit 0
+          fi
           # "<walk>:fresh" (or ":fresh:dry"): the map's reference made afresh from this walk alone, if it has earned it
           HOW=keep; if [[ "$WALK" == *:fresh ]]; then HOW=fresh; WALK="${WALK%:fresh}"; fi
           node scan/tools/twin-r2.mjs get "$WALK" twin | tee reference.txt

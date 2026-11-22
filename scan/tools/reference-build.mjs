@@ -260,8 +260,40 @@ function check(dirs) {
   console.log(`Placed ${meds.length}; median of their medians ${meds.length ? med(meds).toFixed(1) : '-'} ft.`);
 }
 
+/* WALK 2 BY THE REFERENCE, SCORED BY ITS OWN CORNERS (2026-11-22; the goal: walk 2 on "uses the shapes from the
+   reference to track to orient the user"). Each walk given is matched to its map's SAVED reference by its shape alone
+   (walkref.js shapeFix, the page's own), and where that puts the walk's marked roof corners is set against where the
+   map has them. The corners take no part in the match: they are the judge. Also with only the walk's first stretch,
+   since a live fix has to land early. A walk that is itself the reference's source says nothing: it is marked. */
+async function against(dirs) {
+  const first = readJson(dirs[0], 'meta.json') || {};
+  if (!first.map) throw new Error('the first walk has no map');
+  const bytes = await readObject(BUCKET, `refs/${first.map}.bin`).catch(() => null);
+  if (!bytes) throw new Error('no reference is kept for this map');
+  const ref = decodeRef(bytes);
+  console.log(`WALKS MATCHED TO THEIR MAP'S SAVED REFERENCE (${ref.stand.length / 3} standing, ${ref.ground.length / 3} ground points, from ${ref.walks} walk${ref.walks === 1 ? '' : 's'}), judged by their own roof corners:`);
+  const P = ref.P && (ref.P.theta || ref.P.tx || ref.P.ty) ? ref.P : null;
+  const onMap = (T, ar) => { const p = place(T, ...ar); return P ? place({ ...P, s: 1 }, ...p) : p; };
+  for (const d of dirs) {
+    const meta = readJson(d, 'meta.json') || {}, live = readJson(d, 'live.json') || {};
+    if (meta.map !== first.map) { console.log(`  walk ${meta.walk || d}: another map, left out.`); continue; }
+    const last = new Map(); for (const m of live.marks || []) if (m?.ar && m?.map && m.kind === 'ref') last.set(m.id, m);
+    const marks = [...last.values()], pts = twinPoints(d);
+    const g = keepPlan(live.marks || [], []).g;
+    const total = Math.max(0, ...pts.stand.map((p) => p[3] || 0));
+    console.log(`  walk ${meta.walk || d} (${(meta.started || '').slice(0, 10)}, ${Math.round(total * FT)} ft walked, ${marks.length} corners; its own corners ${g.ok ? `agree within ${(g.worstM * 39.37).toFixed(0)} in${g.left.length ? `, ${g.left.length} left out` : ''}` : `vouch for nothing (${g.ambiguous ? 'which is wrong cannot be told' : 'none agree'})`}):`);
+    for (const upTo of [30, 60, 120, Infinity]) {
+      if (Number.isFinite(upTo) && upTo >= total) continue;
+      const part = { stand: pts.stand.filter((p) => (p[3] || 0) <= upTo), ground: pts.ground.filter((p) => (p[3] || 0) <= upTo) };
+      const f = shapeFix(ref, part);
+      const e = f.T ? marks.map((m) => { const p = onMap(f.T, m.ar); return Math.hypot(p[0] - m.map[0], p[1] - m.map[1]) * 39.37; }) : [];
+      console.log(`    ${Number.isFinite(upTo) ? `its first ${Math.round(upTo * FT)} ft` : 'the whole walk'} (${part.stand.length} standing points): ${f.ok ? 'PLACED' : f.T ? 'a match, not sure enough to use' : 'not placed'}${f.landed != null ? ` (landed ${f.landed}, next best ${f.second ?? '-'}${f.T?.s && f.T.s !== 1 ? `, scaled ${((f.T.s - 1) * 100).toFixed(1)}%` : ''})` : ''}${e.length ? `: its corners land ${e.map((x) => x.toFixed(0)).join(', ')} in from the map's` : f.why ? `: ${f.why}` : ''}`);
+    }
+  }
+}
+
 const [cmd, ...rest] = process.argv.slice(2);
 if (process.argv[1]?.endsWith('reference-build.mjs')) {
-  (cmd === 'build' ? build(rest[0] || 'twin') : cmd === 'keep' ? keep(rest[0] || 'twin') : cmd === 'fresh' ? fresh(rest[0] || 'twin') : cmd === 'check' ? Promise.resolve(check(rest)) : Promise.reject(new Error('build <dir> or check <dir> <dir>...')))
+  (cmd === 'build' ? build(rest[0] || 'twin') : cmd === 'keep' ? keep(rest[0] || 'twin') : cmd === 'fresh' ? fresh(rest[0] || 'twin') : cmd === 'against' ? against(rest) : cmd === 'check' ? Promise.resolve(check(rest)) : Promise.reject(new Error('build <dir> or check <dir> <dir>...')))
     .catch((e) => { console.log(`Reference: ${e.message}`); process.exit(1); });
 }
