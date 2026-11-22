@@ -116,7 +116,15 @@ async function main() {
         const off = [...first.values()].map((m) => { const q = place(F, m.ar[0], m.ar[1]); return Math.hypot(q[0] - m.map[0], q[1] - m.map[1]); });
         if (off.length) console.log(`    BY THAT FIT (what the page drew by once it was confirmed${stand ? '; its scale was not kept, the corners\' own stands in' : ''}), this walk's ${off.length} corner marks sit ${off.map(ftIn).join(', ')} from their places on the map.`);
       }
-    } else console.log(`  The earlier walk's shape: nothing recorded in the walk's live state.`);
+      // every confirmed fix as the walk went (kept since 2026-11-22): where each put the walk's FIRST corner mark,
+      // against where the first one put it. A fit that follows a drifting walk moves; one that holds does not.
+      const fx = (P.fixes || []).filter((f) => f?.T);
+      const m0 = [...first.values()][0];
+      if (fx.length >= 2 && m0) {
+        const at0 = place(fx[0].T, m0.ar[0], m0.ar[1]);
+        console.log(`    ITS ${fx.length} CONFIRMED FIXES, by how far each moved the first corner's mark on the map from where the first fix had it: ${fx.map((f) => { const q = place(f.T, m0.ar[0], m0.ar[1]); return `${ftIn(Math.hypot(q[0] - at0[0], q[1] - at0[1]))} at ${Math.round(f.walkedM * FT)} ft`; }).join(', ')}.`);
+      }
+    } else console.log(`  The earlier walk's shape: nothing recorded in the walk's live state (walks before 2026-11-22 dropped it at the walk's end).`);
   }
   console.log(`  As it went: ${fx} lidar fixes, ${hd} holds${live.walk ? ', a whole-walk fit' : ''}.`);
 }

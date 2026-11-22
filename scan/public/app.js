@@ -1929,7 +1929,7 @@ function finish() {
   { const add = {}; document.dispatchEvent(new CustomEvent('yard-walk', { detail: { phase: 'end', walk: s.id, add, map: st.map || null, origin: st.origin || null, lawn: st.lawn || [], ground: st.lid?.overlay?.dem1 || null } })); if (Object.keys(add).length) s.extras = add; }
   try { s.perf = perfOf(st.wperf); st.upPerf = { perf: st.wperf, id: s.id }; } catch (e) { log(`speed numbers: ${e.message}`); }
   if (st.twin) {
-    sendTwin(flush(st.twin, Date.now(), liveOf(L, w, { ended: true, summary: s.id, crumbs: crumbs ? crumbs.list : null, walk: L?.walk?.ok ? { T: L.walk.T, share: L.walk.share, margin: L.walk.margin, walkedM: L.walk.walkedM, from: L.walk.from } : null, recordOnly: !!st.recordOnly, points: pointsKept(), gpsTrail: trailKept(), geoTrail: geoKept(), anchors: st.anchors ? anchorsKept(st.anchors) : null })));
+    sendTwin(flush(st.twin, Date.now(), liveOf(L, w, { ended: true, summary: s.id, crumbs: crumbs ? crumbs.list : null, walk: L?.walk?.ok ? { T: L.walk.T, share: L.walk.share, margin: L.walk.margin, walkedM: L.walk.walkedM, from: L.walk.from } : null, recordOnly: !!st.recordOnly, points: pointsKept(), gpsTrail: trailKept(), geoTrail: geoKept(), anchors: st.anchors ? anchorsKept(st.anchors) : null, prev: prevKept() })));
     s.twin = { ...st.twin.counts, camera: st.twin.camera, off: st.twinUp.off };
   }
   st.twin = null;
@@ -2160,6 +2160,9 @@ async function loadReference() {
           const first = !st.L.prev?.ok;
           st.L.prev = { ok: true, T: data.fix.T, Ts: data.fix.Ts || null, tz: data.fix.tz, landed: data.fix.landed, second: data.fix.second, walkedM: a.odo, at: Date.now() };
           st.prevStats.ok++; st.prevStats.lastWhy = null;
+          /* every confirmed fix, kept with the walk (2026-11-22: the walk in the rain drifted 6-7 ft and its live state
+             said nothing of what the earlier walk's fit did meanwhile): how far walked, how well it landed, the fit */
+          { const T = data.fix.T, r4 = (v) => +(+v).toFixed(4); (st.prevStats.fixes ||= []).push({ walkedM: +a.odo.toFixed(1), landed: data.fix.landed, T: { theta: r4(T.theta), tx: r4(T.tx), ty: r4(T.ty), s: r4(T.s ?? 1) } }); if (st.prevStats.fixes.length > 60) st.prevStats.fixes.splice(1, 1); }
           if (st.prevStats.firstOkM == null) st.prevStats.firstOkM = Math.round(a.odo);
           if (first) flash('Placed by your earlier walk');
         } else if (!data.fix.ok) st.prevStats.lastWhy = data.fix.why;
