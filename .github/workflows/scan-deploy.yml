@@ -36,7 +36,7 @@ on:
         required: true
         default: tests
         type: choice
-        options: [tests, deploy, walks, twin, disagree, segment, view, classes, mend, jumps, corners, trunks, prunerecordings, name, learn, fix, place, depth, study, skyline, pavement, checks, repeat, register, walkfix, walkfixjs, reference, warp, marks, naip, drive, thermalindex]
+        options: [tests, deploy, walks, twin, disagree, segment, view, classes, mend, jumps, corners, trunks, placed, prunerecordings, name, learn, fix, place, depth, study, skyline, pavement, checks, repeat, register, walkfix, walkfixjs, reference, warp, marks, naip, drive, thermalindex]
       walk:
         description: 'For twin, fix or depth: the walk id, or latest'
         default: latest
@@ -336,6 +336,18 @@ jobs:
           node scan/tools/twin-r2.mjs parts "$WALK" twin 'cloud-*' 'labels-*' view-kind.bin view.json start.json owner-trunks.json | tee trunks.txt
           python scan/tools/trunks.py twin twin/trunks.json | tee -a trunks.txt
           node scan/tools/twin-r2.mjs put "$WALK" twin/trunks.json | tee -a trunks.txt
+
+      # WHAT A WALK'S PINS SAY ABOUT THE WALK (scan/tools/placed.mjs, 2026-11-22): one thing pinned twice, or a plain pin
+      # on a marked corner, measured in the walk's own frame and on the map. Two small files. Distances only.
+      - name: A walk's pins, one against another
+        if: ${{ inputs.task == 'placed' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WALK: ${{ inputs.walk }}
+        run: |
+          set -o pipefail
+          node scan/tools/placed.mjs "$WALK" | tee placed.txt
 
       # DID THE PHONE'S OWN PLACE JUMP? (mend_study.py --jumps, 2026-11-21): the walk's poses only. Quick, free.
       - name: A walk's poses looked over for jumps
@@ -763,6 +775,7 @@ jobs:
             view) cat view.txt 2>/dev/null || echo "no 3D view: see the step above" ;;
             prunerecordings) cat prune.txt 2>/dev/null || echo "nothing listed: see the step above" ;;
             jumps) cat jumps.txt 2>/dev/null || echo "no poses read: see the step above" ;;
+            placed) cat placed.txt 2>/dev/null || echo "no pins read: see the step above" ;;
             trunks) cat trunks.txt 2>/dev/null || echo "no trunks looked for: see the step above" ;;
             corners) cat corners.txt 2>/dev/null || echo "no corners read: see the step above" ;;
             mend) cat mend.txt 2>/dev/null || echo "nothing mended: see the step above" ;;
