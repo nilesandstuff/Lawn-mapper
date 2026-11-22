@@ -141,7 +141,7 @@ export function summary(w, extra = {}) {
     page: 'yard AR test v1', engine: w.engine, phone: w.phone, when: new Date(w.startedAt).toISOString(), seconds: Math.round(((w.endedAt || Date.now()) - w.startedAt) / 1000),
     stats: { walkedM: +w.stats.walked.toFixed(1), losses: w.stats.losses, resets: w.stats.resets, fastTurns: w.stats.fastTurns, frames: w.stats.frames, trackedShare: w.stats.frames ? +(w.stats.trackedFrames / w.stats.frames).toFixed(3) : null, limitedS: Math.round(w.stats.limitedMs / 1000) },
     points: { ...w.points, perTrackedFrame: w.stats.trackedFrames ? +(w.points.seen / w.stats.trackedFrames).toFixed(1) : null },
-    pins: w.pins.map((p) => ({ name: p.name, type: p.type, aimM: r2(p.aim), planeOffYM: r2(p.planeOffY), planeOffLevelM: r2(p.planeOffLevel), anchored: !!p.anchorAt,
+    pins: w.pins.map((p) => ({ name: p.name, kind: p.kind || null, type: p.type, aimM: r2(p.aim), planeOffYM: r2(p.planeOffY), planeOffLevelM: r2(p.planeOffLevel), anchored: !!p.anchorAt,
       checks: p.checks.map((c) => ({ offM: r3(c.offM), offLevelM: r3(c.offLevelM), offAnchorLevelM: r3(c.offAnchorLevelM), anchorMovedM: r3(c.anchorMovedM), by: c.by, aimM: r2(c.aim), walkedSinceM: r2(c.walkedSinceM) })) })),
     measures: w.measures.map((m) => ({ metres: r3(m.m), metres3d: r3(m.m3), tapedM: m.taped, shortBy: m.taped ? r3(1 - m.m / m.taped) : null, aimAM: r2(m.aimA), aimBM: r2(m.aimB), walkedBetweenM: r2(m.walkedBetweenM) })),
     events: w.events.slice(-80),

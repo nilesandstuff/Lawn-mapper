@@ -16,6 +16,8 @@
  * walks' summaries (src/walks.js) still refuse them, because the walk listing prints those in public workflow logs.
  */
 
+import { decodeThings, encodeThings } from '../lib/things.js';
+
 const json = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 
 export const MAX_PART = 8 * 1024 * 1024;
@@ -138,6 +140,43 @@ export async function warp(request, env, url, { isAdmin }) {
 }
 
 export const refKey = (map) => `refs/${map}.bin`;
+/**
+ * THE THINGS PLACED ON A MAP (core session, 2026-11-22; scan/lib/things.js): sprinkler heads, gutter tops and
+ * outlets, each with its sightings, kept beside the map's reference as things/<map>.json. The page reads them at a
+ * walk's start and writes the merged list at its end; the list it replaces is kept as a backup.
+ *
+ *   GET /api/scan/things?map=   { v: 1, things: [...] } (an empty list when the map has none)
+ *   PUT /api/scan/things?map=   the whole list, at most 256 KB; anything that does not read as one is refused
+ *
+ * The admin only, like the reference. Places are the map's own metres, never degrees.
+ */
+export const thingsKey = (map) => `things/${map}.json`;
+const MAX_THINGS_BYTES = 256 * 1024;
+export async function things(request, env, url, { isAdmin }) {
+  if (url.pathname !== '/api/scan/things') return null;
+  if (!(await isAdmin(request, env))) return json({ error: 'Not found' }, 404);
+  if (!env.TWIN) return json({ error: 'no-bucket' }, 503);
+  const map = url.searchParams.get('map') || '';
+  if (!MAP.test(map)) return json({ error: 'which map?' }, 400);
+  if (request.method === 'GET') {
+    const o = await env.TWIN.get(thingsKey(map));
+    const list = o ? decodeThings(await new Response(o.body).text()) : [];
+    return new Response(encodeThings(list), { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'private, no-store' } });
+  }
+  if (request.method === 'PUT') {
+    const text = await request.text();
+    if (text.length > MAX_THINGS_BYTES) return json({ error: `at most ${MAX_THINGS_BYTES} bytes` }, 413);
+    let ok = false;
+    try { const j = JSON.parse(text); ok = j && j.v === 1 && Array.isArray(j.things); } catch { ok = false; }
+    if (!ok) return json({ error: 'not a list of things' }, 400);
+    const list = decodeThings(text);
+    try { const old = await env.TWIN.get(thingsKey(map)); if (old) await env.TWIN.put(`things/backup/${map}-${Date.now()}.json`, old.body); } catch { /* the new list is kept either way */ }
+    await env.TWIN.put(thingsKey(map), encodeThings(list), { httpMetadata: { contentType: 'application/json' }, customMetadata: { walk: url.searchParams.get('walk') || '' } });
+    return json({ ok: true, map, things: list.length });
+  }
+  return json({ error: 'method' }, 405);
+}
+
 export async function reference(request, env, url, { isAdmin }) {
   if (url.pathname !== '/api/scan/reference') return null;
   if (!(await isAdmin(request, env))) return json({ error: 'Not found' }, 404);

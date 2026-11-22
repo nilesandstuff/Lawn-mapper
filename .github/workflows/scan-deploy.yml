@@ -78,6 +78,7 @@ jobs:
           node scan/test/frames.test.js
           node scan/test/pin.test.js
           node scan/test/corners.test.js
+          node scan/test/things.test.js
           node scan/test/perf.test.js
           node scan/test/guide.test.js
           node scan/test/walk.test.js

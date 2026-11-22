@@ -25,6 +25,7 @@ import { surfaceOf } from '/lib/surface.js';
 import { geoReading } from '/lib/geo.js';
 import { spikesIn } from '/lib/spikes.js';
 import { walkPrior } from '/lib/walkfix.js';
+import { KINDS, kindOf, addSightings, standing, decodeThings, encodeThings } from '/lib/things.js';
 import { keepPoint, viewFromSem, newSemCount, noteSem, semSummary, newCrumbs, crumbDue, addCrumb, crumbMoves } from '/lib/semantics.js';
 import { newOutbox, idbStore, memoryStore, statusText } from '/lib/outbox.js';
 import { newPerf, resources as perfResources, perfLines } from '/lib/perf.js';
@@ -44,6 +45,7 @@ const NAME = { webxr: "Chrome's AR (WebXR)", '8thwall': '8th Wall', native: 'the
    page needing more than the installed app has says so and offers the update; otherwise the app needs nothing new. */
 const BRIDGE_NEEDED = 1;
 const COLOR = { dot: [0.3, 1, 0.6, 0.9], dotPlane: [1, 0.8, 0.2, 0.9], pin: [0.9, 0.22, 0.2, 0.95], placed: [0.9, 0.22, 0.2, 0.45], mark: [0.35, 0.6, 1, 0.95], ref: [0.25, 0.5, 1, 0.9], check: [0.75, 0.3, 0.9, 0.9], where: [1, 1, 1, 0.95] };
+const THING_COL = { sprinkler: [0.1, 0.85, 0.95, 0.95], 'gutter-top': [1, 0.75, 0.1, 0.95], 'gutter-out': [1, 0.45, 0.1, 0.95], other: [0.85, 0.85, 0.85, 0.95] };
 const CSS = { ref: '#2f7cf6', check: '#a54bd8', pin: '#e53935', lawn: '#4cc38a' };
 /* THE LIVE LIDAR FIX IS SET ASIDE (the owner, 2026-11-09: "let's go back to just placing references manually and set
    aside everything about getting a live fix from lidar and finding the best fit after a walk... it looks like automatic
@@ -904,6 +906,7 @@ async function startAR(engine, { anyway = false } = {}) {
   st.prevStand = new Map(); st.prevGround = new Map(); st.prevAsk = null; st.prevCand = null; st.prevAt = 0; st.prevStats = { asks: 0, ok: 0, lastWhy: null, firstOkM: null, lastMs: null };
   // the owner's choice at the start (2026-11-11): the saved walk places this one, or this one is a fresh reference
   st.refUse = st.refMeta && refChoice() === 'saved';
+  loadThings();
   if (st.refUse) loadReference(); else { st.ref?.worker?.terminate?.(); st.ref = st.map ? { map: st.map, worker: null, ready: null, none: true, error: null, fresh: !!st.refMeta } : null; log(st.refMeta ? 'earlier walk: not used (fresh chosen); this walk is kept as the new one' : 'earlier walk: none kept for this map; this walk is kept as it'); }
   mini.view = null; mini.mode = 'fit'; mini.locked = false; $('#arrows').innerHTML = '';
   st.surfCount = { grass: 0, pave: 0 };
@@ -1383,7 +1386,7 @@ function frameWork(f) {
       for (const p of w.pins) {
         if (p.anchor) { const a = st.tracker?.anchorAt(p.anchor); if (a) p.anchorAt = a; }
         const now = pinNow(p);
-        items.push({ kind: 'pin', at: now, color: COLOR.pin });
+        items.push({ kind: 'pin', at: now, color: p.kind ? THING_COL[p.kind] || COLOR.pin : COLOR.pin });
         if (now !== p.at) items.push({ kind: 'mark', at: p.at, color: COLOR.placed });
       }
       // the references and check points where the fit puts them: on the real corner when the fix is right
@@ -1392,6 +1395,12 @@ function frameWork(f) {
       /* EACH CORNER WHERE IT WAS MARKED (white; 2026-11-22): the phone's own place for it at that moment, moved by no
          fit and no map. Coming back to a corner, a white post off the real corner is the walk's own drift, seen. */
       if (f.pose) for (const m of L.marks) { if (!m.ar) continue; const at = { x: m.ar[0], y: m.y ?? 0, z: -m.ar[1] }; if (levelDist(at, f.pose.position) < 30) items.push({ kind: 'mark', at, color: COLOR.where }); }
+      /* THE THINGS PLACED ON EARLIER WALKS (lib/things.js), where the fit puts them now: a sprinkler head, a gutter's
+         top or outlet, each at its own height over the ground. Only once the walk has a place on the map. */
+      if (T && st.things?.length && f.pose) {
+        const gy = L.groundY ?? f.pose.position.y - 1.4;
+        for (const t of st.things) { const s = sessionOf(L, t.at, odo, gy + (t.h || 0)); if (s && levelDist(s, f.pose.position) < 30) items.push({ kind: 'pin', at: s, color: THING_COL[t.kind] || COLOR.pin }); }
+      }
       if (w.pendingMeasure) items.push({ kind: 'mark', at: w.pendingMeasure.a, color: COLOR.mark });
       if (f.hit) items.push({ kind: 'dot', at: f.hit.position, color: f.hit.type === 'DEPTH' ? COLOR.dot : COLOR.dotPlane });
       // THE LIDAR IN THE CAMERA (owner, 2026-11-03: "so that I can see how it's lining up... mostly transparent, but
@@ -1643,8 +1652,25 @@ function doPin(f, { replay = false } = {}) {
     if (!replay && far(f.hit) && Date.now() - st.farAt > FAR_AGAIN) { st.farAt = Date.now(); flash(`Aiming from ${ftIn(f.hit.distance)}: step closer, or tap again to drop it anyway`); return; }
     recordAct({ a: 'pin' });
     const p = dropPin(st.walk, f.hit);
+    if (!replay) askKind(p);
     flash(`Pin ${p.name} dropped (${ftIn(p.aim || 0)}, by ${p.type === 'DEPTH' ? 'depth' : 'plane'})`);
     if (st.tracker?.anchor) st.tracker.anchor(p.at).then((a) => { if (a && st.walk && st.walk.pins.includes(p)) { p.anchor = a; p.anchorAt = st.tracker?.anchorAt(a) || { ...p.at }; } });
+}
+/* WHAT IS IT? (lib/things.js; the goal, 2026-11-22: a walk "can place sprinkler heads, gutters (where they connect to
+   the roof and where they let out)"). After a pin is dropped a row asks; a tap gives the pin its kind, and at the
+   walk's end the pins with a kind are kept with the map. No tap: it stays a plain pin, as before. */
+function askKind(p) {
+  const el = $('#kinds'); if (!el) return;
+  clearTimeout(st.kindsTimer);
+  el.innerHTML = KINDS.map((k) => `<button type="button" data-kind="${k.id}">${esc(k.name)}</button>`).join('') + '<button type="button" data-kind="">Just a pin</button>';
+  el.hidden = false;
+  el.onclick = (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    const k = kindOf(b.dataset.kind);
+    if (k && st.walk?.pins.includes(p)) { p.kind = k.id; flash(`${k.name}: kept with the map when the walk ends`); log(`pin ${p.name} is a ${k.short}`); }
+    el.hidden = true; clearTimeout(st.kindsTimer);
+  };
+  st.kindsTimer = setTimeout(() => { el.hidden = true; }, 12000);
 }
 function doCheck(f, { replay = false } = {}) {
     if (!f?.hit || !st.walk.pins.length) return;
@@ -1900,7 +1926,7 @@ function finish() {
   if (L && !s.failed) {
     const say = (text) => { const all = kept(), mine = all.find((x) => x.id === s.id); if (mine) { mine.reference = text; keep(all); renderResults(s.id); if (text && !/^Saving/.test(text)) post(mine); } };   // posted again with the verdict, so the walks log says why (the owner, 2026-11-15)
     say('Saving this walk as the map\'s reference…');
-    keepReference(L, String(w.startedAt)).then((text) => { say(text || ''); if (text) { log(text); flash(/^Saved/.test(text) ? 'Saved as this map\'s reference' : /^Kept on the phone/.test(text) ? 'Kept as this map\'s reference: it goes up when there is signal' : /^The reference already/.test(text) ? 'The reference already had all of this walk' : 'Not saved as the reference: see the walk\'s card'); } askReference(); })
+    keepReference(L, String(w.startedAt)).then(async (text0) => { const placed = await keepThings(L, w).catch((e) => `The things placed were NOT kept: ${e.message}.`); const text = [text0, placed].filter(Boolean).join(' '); say(text || ''); if (text) { log(text); flash(/^Saved/.test(text) ? 'Saved as this map\'s reference' : /^Kept on the phone/.test(text) ? 'Kept as this map\'s reference: it goes up when there is signal' : /^The reference already/.test(text) ? 'The reference already had all of this walk' : 'Not saved as the reference: see the walk\'s card'); } askReference(); })
       .catch((e) => say(`NOT saved as the reference: ${e.message}`));
   }
 }
@@ -1959,6 +1985,45 @@ async function sendPartNow(p) {
   if (res.status === 401 || res.status === 403 || res.status === 404) return 'retry'; // signed out for now: keep it for later
   p.dropWhy = ((await res.json().catch(() => ({})))?.error || `${res.status}`).slice(0, 80);
   return 'drop';
+}
+
+/* ------------------------------------------------ the things placed on the map (lib/things.js) */
+/** The map's things, read once at a walk's start; none, or no signal, is no things. */
+async function loadThings() {
+  st.things = [];
+  const map = st.map; if (!map) return;
+  try {
+    const r = await fetch(`/api/scan/things?map=${encodeURIComponent(map)}`, { credentials: 'same-origin' });
+    if (r.ok && st.map === map) { st.things = standing(decodeThings(await r.text())); if (st.things.length) log(`things placed on earlier walks: ${st.things.length}`); }
+  } catch { /* no signal: none shown */ }
+}
+/* What vouched for the walk's place on the map (things.js GRADES): three roof corners that all agree, the earlier
+   walk's shape, two corners; anything else is unsure. Read at the walk's END, when the fit is the walk's last word. */
+function gradeOfFix(L, odo) {
+  const src = fitSource(L, odo);
+  const corners = new Set((L.marks || []).filter((m) => m.kind === 'ref').map((m) => m.id)).size, left = leftOutOf(L).length;
+  if (src === 'refs' || corners >= 2) { if (corners - left >= 3 && !left) return 'corners3'; if (src === 'earlier') return 'earlier'; if (corners - left >= 2) return 'corners2'; }
+  return src === 'earlier' ? 'earlier' : 'unsure';
+}
+/** The pins given a kind, put into the map's things. Returns what happened, in words, or null when none was placed. */
+async function keepThings(L, w) {
+  const map = st.map, pins = (w?.pins || []).filter((p) => p.kind && kindOf(p.kind));
+  if (!map || !L || !pins.length) return null;
+  const add = [];
+  for (const p of pins) {
+    const at = mapOf(L, pinNow(p), p.odo);
+    if (!at) continue;
+    const g = groundUnder(L, p.at);
+    add.push({ kind: p.kind, at, h: Number.isFinite(g) ? p.at.y - g : null, walk: String(w.startedAt), grade: gradeOfFix(L, p.odo), aimM: p.aim, t: Date.now() });
+  }
+  if (!add.length) return `The ${pins.length} thing${pins.length === 1 ? '' : 's'} placed could NOT be kept: this walk has no place on the map (mark two roof corners).`;
+  let old = [];
+  try { const r = await fetch(`/api/scan/things?map=${encodeURIComponent(map)}`, { credentials: 'same-origin' }); if (r.ok) old = decodeThings(await r.text()); else return `The things placed were NOT kept: the site answered ${r.status}.`; } catch { return 'The things placed were NOT kept: no signal. (They are in the walk\'s own record.)'; }
+  const u = addSightings(old, add);
+  const r = await fetch(`/api/scan/things?map=${encodeURIComponent(map)}&walk=${encodeURIComponent(String(w.startedAt))}`, { method: 'PUT', credentials: 'same-origin', body: encodeThings(u.things), signal: AbortSignal.timeout(SEND_TIMEOUT_MS) }).catch(() => null);
+  if (!r?.ok) return `The things placed were NOT kept: ${r ? `the site answered ${r.status}` : 'no signal'}.`;
+  const unsure = add.filter((a) => a.grade === 'unsure').length;
+  return `Things kept with the map: ${u.added} new, ${u.again} sighted again${u.moved.length ? ` (${u.moved.length} moved, the most ${Math.round(Math.max(...u.moved.map((m) => m.m)) * 39.37)} in)` : ''}${unsure ? `; ${unsure} placed while the walk's own place on the map was unsure` : ''}.`;
 }
 
 /* ------------------------------------------------ the map's earlier walk */

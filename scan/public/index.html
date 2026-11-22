@@ -73,6 +73,10 @@
   #bar button[hidden] { display: none; }
   #flash { position: absolute; left: 50%; top: 58%; transform: translateX(-50%); background: rgba(0,0,0,.7); padding: 6px 12px; border-radius: 8px; opacity: 0; transition: opacity .2s; white-space: nowrap; max-width: 92vw; }
   #flash.show { opacity: 1; }
+  /* what the pin just dropped is (lib/things.js): a row over the buttons, gone by itself after a few seconds */
+  #kinds { position: absolute; left: 8px; right: 8px; top: 64%; display: flex; flex-wrap: wrap; gap: 6px; z-index: 6; }
+  #kinds[hidden] { display: none; }
+  #kinds button { flex: 1 1 40%; padding: 12px 6px; font-size: 14px; background: rgba(0,0,0,.78); border: 1px solid rgba(255,255,255,.5); }
   /* the prompts and the flash sit over the mini map, never under it (the owner, 2026-11-12) */
   #guide, #flash { z-index: 5; }
   #hud { z-index: 3; }
@@ -162,6 +166,7 @@
   <div id="cross"></div>
   <div id="hud">Starting…</div>
   <div id="flash"></div>
+  <div id="kinds" hidden></div>
   <div id="guide" hidden><strong id="guide-say"></strong><span id="guide-detail"></span><i><b id="guide-bar"></b></i></div>
   <canvas id="mini" aria-label="Mini map: drag to move, pinch to zoom, double-tap to follow again"></canvas>
   <div id="arrows"></div>

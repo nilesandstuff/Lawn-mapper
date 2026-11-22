@@ -3945,3 +3945,25 @@ about 0.5-2.5 ft at the roof corners, and uses no wrong fix. LIMITS: one yard, o
 from the same phone; two of the walks had Geospatial Depth on (fewer good points); NOT YET SEEN LIVE. About 2 ft at
 a corner is the corner marks' own size (their walks' corners agree to 11-13 in), so the match may be better than
 this can show.
+
+## 55. Things a person places: sprinkler heads, gutter tops and outlets (2026-11-22)
+
+The goal: a walk "can place sprinkler heads, gutters (where they connect to the roof and where they let out)".
+BUILT, first part (the scan site only; no map's record is touched):
+  - After "Drop pin" a row asks what it is: Sprinkler head / Gutter, where it meets the roof / Gutter, where it lets
+    out / Something else / Just a pin. No tap in 12 s: a plain pin, as before.
+  - At the walk's end each pin with a kind becomes a SIGHTING: the map's own metres (through the walk's last fit),
+    its height over the ground, the walk, and what vouched for the walk's place then (scan/lib/things.js GRADES:
+    three agreeing roof corners > the earlier walk's shape > two corners > unsure).
+  - Kept beside the map's reference (things/<map>.json in the scan site's bucket; GET/PUT /api/scan/things?map=,
+    admin only; the list it replaces is backed up). The same kind within 1 m of a thing already there is that thing
+    SIGHTED AGAIN; every sighting is kept (the newest 12). A thing's place is the middle of its BEST-vouched
+    sightings, so a loosely placed second sighting cannot move a well placed thing, and a better-vouched one does
+    take over. Nothing is deleted; "taken away" is a mark (in the library; no button yet).
+  - On a later walk the map's things are drawn in the camera, coloured by kind, once the walk has a place on the map
+    (its corners, or the earlier walk's shape from about 250 ft).
+NOT MEASURED: any of it on a phone. How well a thing comes back on walk 2 is the fix's own error, 0.5-2.5 ft so far
+(54); for a sprinkler head that is the difference between finding it and not.
+NOT YET: a label or a list on the page (they are coloured posts only); moving or taking a thing away by hand; the
+water map reading them (heads for irrigation, outlets for drainage). That last one writes into the map's shared
+record (docs/MAPS.md, POST /api/maps/tool) and concerns the water session: to be asked, not assumed.

@@ -25,3 +25,18 @@ assert.equal((await call(`${q}&meta=1`)).status, 200, 'and its meta');
 assert.equal((await call(`map=${encodeURIComponent('a/b')}`)).status, 400, 'a slash is still refused');
 assert.equal((await call('map=')).status, 400, 'and no map');
 console.log('reference route (any map id): ok');
+
+// THE THINGS PLACED ON A MAP (src/twin.js things): none reads as an empty list; a list is kept and read back; the one
+// it replaces is backed up; rubbish is refused; not the admin: not found.
+{ const { things } = await import('../src/twin.js');
+  const at = (q, method = 'GET', body, admin = true) => things(new Request(`https://scan.example.com/api/scan/things?${q}`, { method, body }), env, new URL(`https://scan.example.com/api/scan/things?${q}`), { isAdmin: async () => admin });
+  assert.deepEqual(await (await at(q)).json(), { v: 1, things: [] });
+  const list = { v: 1, things: [{ id: 't1', kind: 'sprinkler', at: [3, 4], h: 0, grade: 'corners3', seen: [] }, { id: 't2', kind: 'nonsense', at: [1, 1] }] };
+  assert.equal((await at(`${q}&walk=1`, 'PUT', JSON.stringify(list))).status, 200);
+  const back = await (await at(q)).json();
+  assert.equal(back.things.length, 1, 'a kind the site does not know is dropped'); assert.equal(back.things[0].id, 't1');
+  assert.equal((await at(q, 'PUT', JSON.stringify({ v: 1, things: [] }))).status, 200);
+  assert.ok([...objs.keys()].some((k) => k.startsWith(`things/backup/${id}-`)), 'the list it replaced is kept');
+  assert.equal((await at(q, 'PUT', 'not json')).status, 400);
+  assert.equal((await at(q, 'GET', undefined, false)).status, 404);
+  console.log('things route: ok'); }

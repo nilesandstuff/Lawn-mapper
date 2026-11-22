@@ -15,7 +15,7 @@
  */
 
 import { walks } from './walks.js';
-import { twin, reference, warp } from './twin.js';
+import { twin, reference, warp, things } from './twin.js';
 import { recording } from './recording.js';
 import { thermal, noteWalk } from './thermal.js';
 import { noteSnap } from './thermal-snap.js';
@@ -95,6 +95,9 @@ export default {
     // the map's reference walk (src/twin.js reference): the admin only, the same way
     const referred = await reference(request, env, url, { isAdmin });
     if (referred) return referred;
+    // the things placed on the map (src/twin.js things; lib/things.js): the admin only
+    const placed = await things(request, env, url, { isAdmin });
+    if (placed) return placed;
     // the map's photo stretched onto the lidar (src/twin.js warp): the admin only
     const warped = await warp(request, env, url, { isAdmin });
     if (warped) return warped;
