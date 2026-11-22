@@ -3874,3 +3874,11 @@ CHANGED:
     with three corners all agreeing, its start left out, not cut at the phone's steps; the old one backed up.
 NOT YET: telling WHICH corner is wrong. The lengths cannot; the earlier walks' own lengths cannot either (same
 symmetry); the walk's standing points against the lidar's walls, or against a good reference's shape, could.
+
+HARD (runs 487 dry, 489 real; the owner's lot, from the big walk of 2026-11-21 alone): its 3 corners agree within
+3 in after one fit, the phone's distances scaled 6.7% to the map's; the start left out up to 1.6 min (185 ft
+walked): 72,867 of 94,427 standing and 95,275 of 107,259 ground points kept; written as 36,434 standing and 23,819
+ground points (0.7 MB). The reference it replaced (8,076 standing, 6,072 ground, 1 walk) is kept as a backup; the
+big walk had matched to that one's shape "yes (landed 0.378, next best 0.248)".
+NOT PROVEN: a second walk fixed by this reference. The next walk at home is the test: its three corners, marked as
+usual, score where the reference's shape puts it.
