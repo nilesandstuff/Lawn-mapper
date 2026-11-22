@@ -4113,3 +4113,64 @@ away; kept by itself beside the walk (owner-trunks.json, the walk's own frame). 
 owner's trunks how many it found (one within 2.5 ft on the level), how many of its own are at no marked trunk, and
 for each one missed WHAT STOOD THERE in the walk's points (too few points; voted built or fence; points but no
 column; a column a rule turned away). Until the owner has marked a walk's trunks there is no number here.
+
+## 59. The walk in the rain: a walk that agreed with its corners and did not come back to itself (2026-11-22)
+
+Walk 1795383110375, the owner's lot, a second walk on a map with a reference: 11 minutes, 1,246 ft walked, 501
+pictures, 173,814 points. The owner: "it was lightly raining"; "there were actually still some brief freezes"; "the
+live fix to the roof corners and the points I placed all shifted pretty badly. For your reference, I placed the both
+ends of the gutters for the same set twice so you can see how far away they are"; "there actually wasn't a way to
+mark a roof corner a 2nd time... So i placed a point ('just a point') on r1."
+
+HARD (task `placed`, scan/tools/placed.mjs, runs 508 and 511; the walk's own frame, no map and no lidar in it):
+  - Its three corners, all marked in the walk's first stretch, agree within 7 in after one fit; the phone's distances
+    5.9% short of the map's (the big walk of 2026-11-20: 6.7%).
+  - THE PLAIN PIN ON THE FIRST CORNER, 932 ft of walking after that corner was marked: 6 ft 11 in on the level from
+    where the phone had the corner then.
+  - The gutter outlet pinned twice, 1,022 ft of walking apart: 6 ft 3 in apart on the level, 12 in in height. The
+    gutter top pinned twice, 1,015 ft apart: 5 ft 7 in on the level, 2 ft 7 in in height.
+  - So the walk slid 6.6 to 8.9 in per 100 ft walked (0.55 to 0.75%), and up to 2 ft 7 in in height. IT IS NOT ONE
+    STEADY SLIDE: each of the three places foretold by the other two's rate leaves 14 in, 2 ft 2 in and 2 ft 11 in
+    of its 5 ft 7 in to 6 ft 11 in.
+  - ARCore's own anchors (the walk's summary): moved 0.014 m at the middle, 0.208 m at most. On the big walk the
+    anchors' steps were ARCore putting itself right by 6-20 in (48); on this walk it never did.
+  - As the page kept them: both gutter pairs as TWO things each (7 ft 2 in and 5 ft 11 in apart on the map; the same
+    kind within 1 m is one thing), all five graded "three agreeing corners", and shared to the map's record. And the
+    walk was SAVED INTO THE REFERENCE: "gained 22,014 points (45,222 corrected); where it sits on the map moved 25 in".
+    The corner rule of 53 passed it, rightly by its own lights: the corners did agree. They were all marked before
+    the walk had drifted.
+  - Freezes (the walk's own timing log): 12.2 frames a second; 550 frames over 250 ms, the worst 1,847 ms; the
+    page's own work 54% of the walk's time, of it the twin (track, pictures) 37%, the camera's picture read 25%,
+    drawing 18%, depth to points 15%. 98 MB went up over 4g while walking.
+
+WHAT IT SAYS: corners that agree prove the walk was right WHERE AND WHEN THEY WERE MARKED, and nothing about the walk
+1,000 ft later. Section 53's rule needed a second half: the walk must come back to itself.
+
+SPECULATION (nothing here is measured):
+  - Why this walk drifted and never corrected itself. Rain (drops in the depth and the picture, wet surfaces
+    shining) is the owner's first thought and fits "no corrections"; so would a walk that never looked again at
+    what it saw at the start. One walk cannot tell them apart. NOT the page's freezes, by the app's code: ARCore's
+    update runs on the drawing thread every frame whether or not the page takes the frame (ArEngine.kt) -- read from
+    the code, not measured.
+  - That the live shift the owner saw was this drift and not the earlier walk's fit moving. The walk's live state
+    kept the earlier walk's fit without its scale (fixed 2026-11-22); `placed` now prints where that fit put the
+    walk's own corners.
+
+BUILT (2026-11-22):
+  - refkeep.js closingOf: a plain pin within 4 m of a corner's first mark, 30 m or more of walking later (or a
+    corner marked again), is the walk's CLOSING: how far it had slid, in its own frame. Over CLOSE_M (1 m) the walk
+    is NOT put into the reference (the page's keepReference and the workflow's reference task both), and says so.
+    With no such pin there is no reading, and the saved message says a plain pin on the first corner at the end
+    would give one.
+  - A thing placed more than 60 m of walking from the nearest corner mark, in a walk that has not shown it closed, is
+    graded "unsure" instead of "three corners": it can no longer outrank or stand beside a well-placed one as its
+    equal. (It is still kept as a second thing when over 1 m away: see NOT DONE.)
+  - The reference of the owner's lot made afresh from the walk of 2026-11-20 (task reference, `<walk>:fresh`), to take
+    this walk back out of it.
+  - One read of the camera's picture serves the ground's colour and the twin's picture (they had fallen out of
+    step, about two reads a second); the twin's time is logged in three parts (a picture; its three depth grids;
+    what piled up made ready to send). NOT MEASURED on a walk yet.
+
+NOT DONE: no way on the page to take a placed thing away or to say two are one (the two late gutter things from this
+walk stand in the map's record); the phone's scale is taken from the reference though it differed by 0.8% between
+two walks of one lot; the height drift is not looked at by any rule; a walk that drifts is refused, not mended.
