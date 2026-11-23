@@ -53,6 +53,7 @@ import { treesModel } from './trees-model.js';
 import { Erased } from './erase.js';
 import { readSurround } from './surround.js';
 import { finishedModel, modelFiles, putModelFiles } from './model-out.js';
+import { fuseModel, openFromSeen, fusedGrid, FUSE_VERSION } from './fuse.js';
 import { lazDecoder, browserFactory } from './laz.js';
 import { nad83Correction } from './datum.js';
 import { alignToPhoto } from './align.js';
@@ -200,6 +201,20 @@ export async function rebuildModel(mapId, { onProgress = () => {}, signal = null
     const files = await modelFiles(fin);
     const put = await putModelFiles(fetchFn, base, mapId, files);
     if (!put.ok) return { ok: false, why: `the model was not saved (${put.status}${put.part ? `, overflow part ${put.part}` : ''})` };
+    /* THE FUSED MODEL (fuse.js; docs/MAPS.md): when the map's record holds a yard walk's plants, the lidar refined by
+       the walk, in a file of its own (file=fused), made from the model just saved. X-Model-Made-From names the lidar
+       file's server write time when the server answered it (the shade builder stores it itself, with its own). */
+    let fusedInfo = null;
+    const plants = site.map?.plants, origin = site.map?.origin;
+    if (plants?.boxes?.length && origin) {
+      try {
+        const open = plants.seen ? await openFromSeen(plants.seen, origin, fusedGrid(fin.meta)).catch(() => null) : null;
+        const fused = fuseModel(fin, plants, origin, { open });
+        const madeFrom = put.at ? `${put.at}|${plants.at}|${FUSE_VERSION}` : null;
+        const fp = await putModelFiles(fetchFn, base, mapId, await modelFiles(fused), 'fused', { madeFrom });
+        fusedInfo = { ok: fp.ok, walkAt: plants.at ?? null, version: FUSE_VERSION, refined: fused.meta.fused.refined, added: fused.meta.fused.added, trimmed: fused.meta.fused.trimmed, moved: fused.meta.fused.moved.length };
+      } catch (e) { fusedInfo = { ok: false, why: String(e?.message || e).slice(0, 120) }; }
+    }
     /* A first build keeps its lidar and line-up in the map's shade part, as the page does (shade.js shadePart), so
        the shade page reads the same cloud, box and shift next time and the person's edits there fit this grid. */
     let partSaved = null;
@@ -213,7 +228,7 @@ export async function rebuildModel(mapId, { onProgress = () => {}, signal = null
       const r = await fetchFn(`${base}/api/maps/tool?id=${encodeURIComponent(mapId)}&tool=shade`, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data, basedOn: site.map.at || null }) });
       partSaved = r.ok;
     }
-    return { ok: true, at: fin.meta.at, build: SHADE_BUILD, bytes: put.bytes, parts: files.parts.length, erased: fin.meta.erased, fences: fin.meta.fences.length, first: !hasKept, partSaved, lidar: { name: lidarRec.name, fit: lidarRec.fit } };
+    return { ok: true, at: fin.meta.at, build: SHADE_BUILD, bytes: put.bytes, parts: files.parts.length, erased: fin.meta.erased, fences: fin.meta.fences.length, first: !hasKept, partSaved, fused: fusedInfo, lidar: { name: lidarRec.name, fit: lidarRec.fit } };
   } catch (e) {
     return { ok: false, why: String(e?.message || e) };
   }

@@ -33,7 +33,7 @@ import { flightOf } from './shade/find.js';
 import { onePass } from './shade/passes.js';
 import { flagStrays } from './shade/structures.js';
 import { finishedModel, modelFiles, putModelFiles } from './shade/model-out.js';
-import { fuseModel, openFromSeen, fusedGrid } from './shade/fuse.js';
+import { fuseModel, openFromSeen, fusedGrid, FUSE_VERSION } from './shade/fuse.js';
 import { readSurround } from './shade/surround.js';
 import { siteFromSave, siteBounds, partFits, asFeature } from './shade/site.js';
 import { MARGIN_M, alignFrame, lotOf, lotDensity as densityOver, modelBox, fitFrom, shiftFrom, MIN_DENSITY } from './shade/lineup.js';
@@ -194,7 +194,7 @@ function saveModelFile({ now = false } = {}) {
       const files = await modelFiles(fin); // gzipped (lidar-model.js packModel); over 48 MB, overflow parts beside it
       const res = await putModelFiles(fetch, '', site.map.id, files);
       if (!res.ok) track('model', `refused ${res.status}${res.part ? ` (part ${res.part})` : ''}`); else track('model', `${Math.round(res.bytes / 1024)} KB${res.parts ? ` in ${res.parts + 1} files` : ''}`);
-      await saveFusedFile(site, fin);
+      await saveFusedFile(site, fin, res.ok ? res.at : null);
     } catch (e) { track('model', `failed: ${String(e.message).slice(0, 60)}`); }
   }, now ? 0 : 1000);
 }
@@ -205,7 +205,7 @@ function saveModelFile({ now = false } = {}) {
  * own, kept beside the lidar's (file=fused; the lidar's file is never written by this), and the light uses it
  * (sun-ui.js, with the lidar alone one tap away).
  */
-async function saveFusedFile(site, fin) {
+async function saveFusedFile(site, fin, lidarAt = null) {
   const plants = site.map?.plants, origin = site.map?.origin;
   view.fusedFor = site;
   if (!plants?.boxes?.length || !origin) { view.fused = null; return; }
@@ -217,7 +217,15 @@ async function saveFusedFile(site, fin) {
     track('fused', `${f.refined} refined, ${f.added} added, ${f.trimmed} trimmed, ${f.moved.length} trees moved`);
     view.sun?.setFused(fused);
     view.trees?.setFused?.(fused);
-    const res = await putModelFiles(fetch, '', site.map.id, await modelFiles(fused), 'fused');
+    /* WHAT IT WAS MADE FROM (docs/MAPS.md, the fused model; the same rule as the scan page's fuse-walk.js madeFromOf):
+       the lidar file's write time on the server, the walk's time, the fusing's version. Not written again when the
+       stored one says the same (the scan page may have written it). */
+    const base = `/api/maps/model?id=${encodeURIComponent(site.map.id)}&tool=shade`;
+    const at = lidarAt || (await fetch(base, { method: 'HEAD', credentials: 'same-origin' }).then((r) => (r.ok ? r.headers.get('X-Model-At') : null)).catch(() => null));
+    const want = `${at}|${plants.at}|${FUSE_VERSION ?? 0}`;
+    const stored = await fetch(`${base}&file=fused`, { method: 'HEAD', credentials: 'same-origin' }).then((r) => (r.ok ? r.headers.get('X-Model-Made-From') : null)).catch(() => null);
+    if (at && stored === want) { track('fused', 'kept: already made from this lidar and this walk'); return; }
+    const res = await putModelFiles(fetch, '', site.map.id, await modelFiles(fused), 'fused', { madeFrom: at ? want : null });
     if (!res.ok) track('fused', `refused ${res.status}`);
   } catch (e) { view.fused = null; track('fused', `failed: ${String(e.message).slice(0, 60)}`); }
 }
