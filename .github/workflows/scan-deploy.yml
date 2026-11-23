@@ -347,7 +347,13 @@ jobs:
           WALK: ${{ inputs.walk }}
         run: |
           set -o pipefail
-          node scan/tools/placed.mjs "$WALK" | tee placed.txt
+          # "<walk>:doubled" (or ":doubled:dry"): a walk shown not to have come back to itself has the things it placed
+          # twice looked over, the later of each two taken away (scan/tools/things-fix.mjs; kept, "Put back" undoes it)
+          case "$WALK" in
+            *:doubled:dry) node scan/tools/things-fix.mjs "${WALK%%:*}" dry | tee placed.txt ;;
+            *:doubled) node scan/tools/things-fix.mjs "${WALK%%:*}" | tee placed.txt ;;
+            *) node scan/tools/placed.mjs "$WALK" | tee placed.txt ;;
+          esac
 
       # DID THE PHONE'S OWN PLACE JUMP? (mend_study.py --jumps, 2026-11-21): the walk's poses only. Quick, free.
       - name: A walk's poses looked over for jumps

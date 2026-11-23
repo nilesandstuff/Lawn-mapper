@@ -56,4 +56,12 @@ assert.equal(placeOf([]), null); assert.ok(kindOf('sprinkler') && !kindOf('nope'
   assert.deepEqual(Object.keys(one).sort(), ['e', 'grade', 'h', 'id', 'kind', 'last', 'lat', 'lng', 'n', 'pair', 'seen']);
   assert.equal(one.e, 10.2); assert.equal(one.seen, 1); assert.ok(Math.abs(one.lat - (40 + 3 / 111000)) < 1e-6);
   assert.ok(JSON.stringify(forRecord(takeAway(d, 't5', 'w9'), (p) => p)).includes('"gone":true')); }
+// a walk that did not close: of two of one kind within 3 m, both seen on that walk alone, the later is the doubled one
+{ const { doubled } = await import('../tools/things-fix.mjs');
+  const one = (w) => [{ at: [0, 0], walk: w, grade: 'corners3', t: 1 }];
+  const T = [{ id: 't1', kind: 'gutter-out', at: [0, 0], seen: one('w') }, { id: 't2', kind: 'gutter-top', at: [1, 0], seen: one('w') }, { id: 't3', kind: 'other', at: [9, 9], seen: one('w') },
+    { id: 't4', kind: 'gutter-out', at: [2.1, 0.5], seen: one('w') }, { id: 't5', kind: 'gutter-top', at: [2.7, 0], seen: one('w') },
+    { id: 't6', kind: 'gutter-out', at: [0.5, 0], seen: one('v') }, { id: 't7', kind: 'gutter-out', at: [20, 0], seen: one('w') }];
+  assert.deepEqual(doubled(T, 'w').map((x) => [x.id, x.of]), [['t4', 't1'], ['t5', 't2']], 'another walk\'s thing, a far one and another kind are left');
+  assert.deepEqual(doubled(T, 'v'), []); }
 console.log('things: ok');

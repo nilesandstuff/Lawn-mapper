@@ -906,7 +906,7 @@ async function startAR(engine, { anyway = false } = {}) {
   st.walk = newWalk({ engine, phone: navigator.userAgent });
   st.dy = null; st.dyFrom = null; st.gpsTrail = []; st.anchors = newAnchors(); st.nudge = null; st.depthFill = null; st.geoTrail = []; st.geoSeen = null; st.sem = newSemCount(); st.lastSem = null; st.semDims = null; st.occ = null; st.occFull = 0; st.occAt = 0; st.walkGround = new Map(); st.spikes = { pictures: 0, cells: 0, flagged: 0 }; st.walkAsk = null; st.walkAt = 0; st.walkStats = { asks: 0, ok: 0, lastWhy: null, firstOkM: null }; st.crumbs = newCrumbs();
   st.walk.checks = [];
-  st.L = newLocate(); st.L.spacing = st.lid.overlay?.picture?.marks?.spacing ?? null; st.sight = null; st.sightPaused = false; st.sightEndedAt = 0; st.roofsDone = null; st.resighted = new Set(); st.resightOf = null;
+  st.L = newLocate(); st.L.spacing = st.lid.overlay?.picture?.marks?.spacing ?? null; st.sight = null; st.sightPaused = false; st.sightEndedAt = 0; st.roofsDone = null; st.resighted = new Set(); st.resightOf = null; st.rescan = null;
   st.prevStand = new Map(); st.prevGround = new Map(); st.prevAsk = null; st.prevCand = null; st.prevAt = 0; st.prevStats = { asks: 0, ok: 0, lastWhy: null, firstOkM: null, lastMs: null };
   // the owner's choice at the start (2026-11-11): the saved walk places this one, or this one is a fresh reference
   st.refUse = st.refMeta && refChoice() === 'saved';
@@ -1628,7 +1628,26 @@ function wireMini() {
       if (Math.hypot(p[0] - downAt.p[0], p[1] - downAt.p[1]) < 8 * (mini.dpr || 1)) {
         let best = null;
         for (const q of st.points) { const s = toScreen(mini.view, q.map, mini.w, mini.h), d = Math.hypot(s[0] - p[0], s[1] - p[1]); if (d < 28 * (mini.dpr || 1) && (!best || d < best.d)) best = { q, d }; }
-        if (best) { st.chosen = best.q.id; flash(`Next to mark: ${best.q.name}`); if (st.ar) drawMini(st.ar); }
+        if (best) {
+          /* A TAP ON A ROOF CORNER STARTS ITS SCAN, MARKED OR NOT (the owner, 2026-11-23: "make it so that tapping a
+             reference point in the mini map allows that roof corner to go through the normal corner scan, it's
+             difficult to tap the phone when pointing it up"; and 2026-11-22: "there actually wasn't a way to mark a
+             roof corner a 2nd time"). The tap is made with the phone held low; then aim up, and the corner marks
+             itself as the first time. A corner scanned again keeps its first mark (locate.js), and the two together
+             say how far the walk has slid (refkeep.js closingOf). A second tap on the same corner calls it off. */
+          const q = best.q;
+          if (q.roof && !st.tapMode) {
+            if (st.rescan === q.id && Date.now() - (st.rescanAt || 0) < 700) { /* the second tap of a double tap: not a calling off */ }
+            else if (st.rescan === q.id) { st.rescan = null; st.chosen = null; st.sight = null; $('#guide').hidden = true; flash(`${q.name}: scan called off`); }
+            else {
+              const was = st.L.marks.some((m) => m.id === q.id);
+              st.chosen = q.id; st.rescan = q.id; st.rescanAt = Date.now(); st.sight = null; st.sightPaused = false; st.sightEndedAt = 0; st.sightNow = true;
+              flash(was ? `${q.name}: scanning it again. Aim up at the roof corner.` : `${q.name} is next. Aim up at the roof corner.`);
+              log(`roof corner ${q.name} picked on the mini map${was ? ' to be scanned again' : ''}`);
+            }
+          } else { st.chosen = q.id; flash(`Next to mark: ${q.name}`); }
+          if (st.ar) drawMini(st.ar);
+        }
       }
     }
   };
@@ -1729,7 +1748,8 @@ function autoSight(f) {
   const stale = st.L.stale;
   const marked = new Set(st.L.marks.filter((m) => !stale || m.odo > stale.odo).map((m) => m.id));
   const chosen = st.chosen ? st.points.find((p) => p.id === st.chosen) : null;
-  let target = chosen?.roof && !marked.has(chosen.id) ? chosen : st.points.find((p) => p.roof && !marked.has(p.id));
+  // the corner tapped on the mini map goes first, and is scanned even when it is already marked (st.rescan)
+  let target = chosen?.roof && (!marked.has(chosen.id) || st.rescan === chosen.id) ? chosen : st.points.find((p) => p.roof && !marked.has(p.id));
   /* A CORNER THAT DISAGREES WITH THE OTHERS IS ASKED FOR AGAIN, ONCE (locate.js leftOutOf; the owner's R1 at home sat
      9 ft from where R2 and R3 put it): when every corner is marked and one was left out of the fit, it is the next
      target, so the walk ends with all of them agreeing instead of carrying a wrong one. */
@@ -1805,7 +1825,7 @@ function startOver() {
   st.startOverAt = 0;
   const n = st.L.marks.length;
   st.L.marks.length = 0; st.L.holds = []; st.L.fixes = []; st.L.streak = [];
-  st.undoMarks = []; st.sight = null; st.sightPaused = false; st.sightEndedAt = 0; st.chosen = null; st.nextHint = null; st.roofsDone = null;
+  st.undoMarks = []; st.sight = null; st.sightPaused = false; st.sightEndedAt = 0; st.chosen = null; st.nextHint = null; st.roofsDone = null; st.rescan = null;
   $('#guide').hidden = true;
   log(`start over: ${n} marks cleared`); flash('Started over: aim up at the first roof corner');
 }
@@ -1827,16 +1847,26 @@ function stepSight(f) {
   st.sight = null; st.sightEndedAt = Date.now(); if (!S.done.ok) { st.sightEndedAt += 6000; $('#guide-say').textContent = `${s.target.name} was NOT marked`; $('#guide-detail').textContent = `${S.done.why}. It will ask again in a few seconds.`; }
   setTimeout(() => { if (!st.sight && !st.guideNext) el.hidden = true; }, S.done.ok ? 1800 : 8000);
   (st.walk.roofSights ||= []).push({ name: s.target.name, ok: S.done.ok, why: S.done.why || null, sights: S.done.sights ?? S.rays.length, missM: S.done.missM != null ? +S.done.missM.toFixed(3) : null, turnDeg: S.done.turnDeg != null ? Math.round(S.done.turnDeg) : null, eaveOffM: S.done.eaveOffM != null ? +S.done.eaveOffM.toFixed(2) : null, steps: S.log });
-  if (!S.done.ok) { flash(`${s.target.name} not marked: ${S.done.why}`); log(`roof corner ${s.target.name} not marked: ${S.done.why}`); return; }
+  if (!S.done.ok) {
+    flash(`${s.target.name} not marked: ${S.done.why}`); log(`roof corner ${s.target.name} not marked: ${S.done.why}`);
+    // a corner being scanned AGAIN is not asked for over and over: it is marked already; another tap on the mini map tries again
+    if (st.rescan === s.target.id && st.L.marks.some((m) => m.id === s.target.id)) { st.rescan = null; st.chosen = null; $('#guide-detail').textContent = `${S.done.why}. It keeps its first mark; tap it on the mini map to try again.`; }
+    return;
+  }
   try { navigator.vibrate?.([60, 60, 120]); } catch { /* no buzz */ }
+  // scanned before on this walk: how far the phone now has the corner from where it had it then (the walk's own slide)
+  const before = [...st.L.marks].reverse().find((m) => m.id === s.target.id && m.kind === 'ref');
   mark(st.L, s.target, { position: S.done.position, distance: S.done.distance, type: 'ROOF' }, st.walk.odo);
+  const slid = before ? { m: Math.hypot(S.done.position.x - before.ar[0], -S.done.position.z - before.ar[1]), walkedM: st.walk.odo - before.odo } : null;
+  st.rescan = null;
   // after a tracking jump: two corners sighted afresh, and the marks from before it are let go
   if (st.L.stale) {
     const since = new Set(st.L.marks.filter((m) => m.odo > st.L.stale.odo).map((m) => m.id));
     if (since.size >= 2) { const n0 = st.L.marks.length; st.L.marks = st.L.marks.filter((m) => m.odo > st.L.stale.odo); log(`lined up afresh after the jump: ${n0 - st.L.marks.length} earlier marks let go`); st.L.stale = null; }
   }
   const n = new Set(st.L.marks.filter((m) => m.kind === 'ref').map((m) => m.id)).size;
-  flash(n >= 2 ? `${s.target.name} marked: lined up by ${n} references` : `${s.target.name} marked: one more reference lines the map up`);
+  flash(slid ? `${s.target.name} marked again: the phone has it ${ftIn(slid.m)} from where it had it ${Math.round(slid.walkedM * FT)} ft of walking ago` : n >= 2 ? `${s.target.name} marked: lined up by ${n} references` : `${s.target.name} marked: one more reference lines the map up`);
+  if (slid) log(`roof corner ${s.target.name} scanned again after ${Math.round(slid.walkedM * FT)} ft: ${ftIn(slid.m)} from its first place in the walk's own frame`);
   log(`roof corner ${s.target.name} marked: ${S.done.sights} aims ${Math.round(S.done.turnDeg)} degrees apart, lines ${(S.done.missM * 100).toFixed(0)} cm apart, ${S.done.eaveOffM.toFixed(2)} m off the lidar's eave`);
   st.undoMarks.push({ id: s.target.id, name: s.target.name, check: false, at: Date.now() });
   st.chosen = null;
@@ -2051,6 +2081,14 @@ async function askThings() {
     if (r.ok && st.map === map) st.placed = decodeThings(await r.text());
   } catch { /* no signal: none listed */ }
   drawThings(); drawMap();
+  /* THE MAP'S RECORD CAUGHT UP (2026-11-23): the list can change off the page (a walk found bad afterwards has its
+     doubled things taken away by the workflow, scan/tools/things-fix.mjs). When what the record holds is not what
+     the list says (which are there, which are gone), it is shared again, quietly. */
+  try {
+    const sig = (a) => JSON.stringify((a || []).map((t) => [t.id, t.kind, !!t.gone, t.e, t.n]).sort());
+    const rec = st.site?.tools?.scan?.data?.things;
+    if (st.map === map && st.placed.length && st.origin && sig(rec) !== sig(forRecord(st.placed, (at) => fromLocal(st.origin, at)))) { const said = await shareThings(st.placed); log(`placed things: the map's record brought up to date${said}`); }
+  } catch { /* the next walk's end shares them */ }
 }
 function drawThings(note = '') {
   const box = $('#things-list'); if (!box) return;
@@ -2097,6 +2135,10 @@ async function keepThings(L, w) {
     if (grade.startsWith('corners') && nearM > 60 && !(closing && closing.m <= CLOSE_M)) grade = 'unsure';
     add.push({ kind: p.kind, at, h: Number.isFinite(g) ? p.at.y - g : null, walk: String(w.startedAt), grade, aimM: p.aim, t: Date.now() });
   }
+  /* A WALK THAT DID NOT COME BACK TO ITSELF DOES NOT PLACE ONE THING TWICE (2026-11-23; the walk in the rain kept
+     each end of one gutter as two things 6-7 ft apart): of two pins of one kind within 3 m, the later is not kept. */
+  let twice = 0;
+  if (closing && closing.m > CLOSE_M) for (let i = add.length - 1; i > 0; i--) if (add.slice(0, i).some((a) => a.kind === add[i].kind && Math.hypot(a.at[0] - add[i].at[0], a.at[1] - add[i].at[1]) <= 3)) { add.splice(i, 1); twice++; }
   if (!add.length) return `The ${pins.length} thing${pins.length === 1 ? '' : 's'} placed could NOT be kept: this walk has no place on the map (mark two roof corners).`;
   let old = [];
   try { const r = await fetch(`/api/scan/things?map=${encodeURIComponent(map)}`, { credentials: 'same-origin' }); if (r.ok) old = decodeThings(await r.text()); else return `The things placed were NOT kept: the site answered ${r.status}.`; } catch { return 'The things placed were NOT kept: no signal. (They are in the walk\'s own record.)'; }
@@ -2107,7 +2149,7 @@ async function keepThings(L, w) {
   const unsure = add.filter((a) => a.grade === 'unsure').length;
   const shared = await shareThings(u.things);
   st.placed = u.things; drawThings();
-  return `Things kept with the map: ${u.added} new, ${u.again} sighted again${u.moved.length ? ` (${u.moved.length} moved, the most ${Math.round(Math.max(...u.moved.map((m) => m.m)) * 39.37)} in)` : ''}${unsure ? `; ${unsure} placed while the walk's own place on the map was unsure` : ''}${shared}.`;
+  return `Things kept with the map: ${u.added} new, ${u.again} sighted again${u.moved.length ? ` (${u.moved.length} moved, the most ${Math.round(Math.max(...u.moved.map((m) => m.m)) * 39.37)} in)` : ''}${unsure ? `; ${unsure} placed while the walk's own place on the map was unsure` : ''}${twice ? `; ${twice} placed a second time after the walk had slid ${ftIn(closing.m)} NOT kept` : ''}${shared}.`;
 }
 
 /* ------------------------------------------------ the map's earlier walk */
@@ -2195,7 +2237,11 @@ function drawRefChoice() {
   box.hidden = false;
   if (!M) { box.innerHTML = '<span class="dim">No walk is saved for this map: this walk, once its roof corners are marked, is saved to place the next one.</span>'; return; }
   const when = M.at ? new Date(M.at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'earlier';
-  box.innerHTML = `<span class="dim" style="flex-basis:100%">A walk saved ${esc(when)} can place this one:</span><button type="button" id="ref-saved" class="${refChoice() === 'saved' ? '' : 'plain'}">Use the saved walk</button><button type="button" id="ref-fresh" class="${refChoice() === 'fresh' ? '' : 'plain'}">Fresh: this walk replaces it</button>`;
+  /* WHICH WALK, not only when the file was written (the owner, 2026-11-23: "the ar page says 'A walk saved Nov 22,
+     5:53 PM can place this one'... despite it being determined that the walk was bad": that was the walk of Nov 20,
+     made into the reference afresh on Nov 22 to take the bad walk back out). A walk's id is when it started. */
+  const wt = Number(M.walk), walked = Number.isFinite(wt) && wt > 1.5e12 ? new Date(wt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : null;
+  box.innerHTML = `<span class="dim" style="flex-basis:100%">${walked ? `Your walk of ${esc(walked)} can place this one (kept as the reference ${esc(when)}):` : `A walk saved ${esc(when)} can place this one:`}</span><button type="button" id="ref-saved" class="${refChoice() === 'saved' ? '' : 'plain'}">Use the saved walk</button><button type="button" id="ref-fresh" class="${refChoice() === 'fresh' ? '' : 'plain'}">Fresh: this walk replaces it</button>`;
   $('#ref-saved').addEventListener('click', () => { st.refPick = 'saved'; drawRefChoice(); });
   $('#ref-fresh').addEventListener('click', () => { st.refPick = 'fresh'; drawRefChoice(); });
 }
