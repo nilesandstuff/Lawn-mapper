@@ -4286,6 +4286,14 @@ ITS TWO ASKS OF THE CORE SESSION, BOTH BUILT 2026-11-23:
       from near: a 0 is no claim either way, and nothing should be trimmed by one); 5 KB deflated; kept with the
       plants, 39 KB in all. NOT CHECKED against anything: no one has looked at where it says open.
 
+A GO FOR THE FEATURES SESSION'S FUSED MODEL (2026-11-23, head c80347d on its branch: fuse.js, the shade page fusing
+on the phone and saving `file=fused`, the light and the trees view using it with a switch). CHECKED by the core
+session before the go: its head sat directly on the default head; 11 files, all the shade map's own, its docs and
+its test; the fused save goes to `&file=fused` only, so the lidar's own file is not written; with no plants in the
+record nothing changes. NOT CHECKED by anyone: any of it on a real walk. The refined view is on by default once a
+map's record carries plants; whether the shade readings' scoring uses the fused file is the features session's and
+the owner's to settle.
+
 NOT DONE BY IT: a shape drawn twice by a walk that slid stays, a little fat; a crown is not seen; nothing is placed on
 the map or shared with any tool yet.
 
