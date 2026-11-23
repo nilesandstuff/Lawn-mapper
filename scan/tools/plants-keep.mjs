@@ -31,6 +31,7 @@ async function main() {
   const out = { ...j, walk: String(walk), at: new Date().toISOString() };
   let body = Buffer.from(JSON.stringify(out));
   // too big with where the walk saw open air (`seen`): the plants go without it, and that is said
+  if (body.length > MAX_BYTES && out.seenHigh) { delete out.seenHigh; body = Buffer.from(JSON.stringify(out)); console.log(`The air seen open above 8 ft is LEFT OUT: with it the file is over the ${MAX_BYTES / 1e3} KB there is room for.`); }
   if (body.length > MAX_BYTES && out.seen) { delete out.seen; body = Buffer.from(JSON.stringify(out)); console.log(`Where the walk saw open air is LEFT OUT: with it the file is over the ${MAX_BYTES / 1e3} KB there is room for.`); }
   if (body.length > MAX_BYTES) { console.log(`Plants NOT kept with the map: ${(body.length / 1e3).toFixed(0)} KB, over the ${MAX_BYTES / 1e3} KB there is room for in the map's record.`); process.exitCode = 1; return; }
   const key = `plants/${meta.map}.json`, old = await readObject(BUCKET, key).catch(() => null);

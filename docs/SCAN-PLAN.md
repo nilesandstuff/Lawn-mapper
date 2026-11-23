@@ -4520,6 +4520,16 @@ THE FIRST FUSED MODEL (fused-check.mjs, runs 541-543): one, the owner's lot, wri
 after the owner opened the map on the Yard AR start page: 2.27 MB gzipped beside a lidar model of 2.57 MB written
 2026-11-18. Which page made it is not known from the bucket. Nobody has looked at it.
 
+AGREED WITH THE FEATURES SESSION THE SAME DAY (its message; its commit f6f50a7, FUSE_VERSION 2, given a go): NO
+HEIGHT CAP on the walk's plants for where a thing is and how big (PLANT_TRUST_M Infinity, SHIFT_BAND_M from 1.5 m
+up); after a walk in leaf-off months (the shade map's own rule, las.js leafOfMs, 1 November to 10 May, read from
+plants.walk) a DECIDUOUS crown's cubes keep the lidar's density evenly (deciduous: the lidar's summer copy denser
+than its winter one in that column); a walk in leaf, an evergreen or a shrub is refined at every height. And open
+air above 8 ft as a SECOND grid, `plants.seenHigh` (plants.py; docs/MAPS.md): for each 2 ft square the longest band
+of air seen open above 8 ft; the fusing will trim by it only when the walk was in leaf or the lidar's cube is not a
+deciduous crown. Made-up yard: under a crown 20 ft up the band reads 8 to 18 ft (each line left unclaimed for its
+last 15%).
+
 SKY THROUGH A BARE CROWN (the owner's second point; put to the features session, not built): the walk's open air is
 capped at 8 ft for exactly this. The owner's way is better than a cap: say WHEN the walk was made (plants.walk is
 its start, in milliseconds) and let the shade map's leaf calendar decide what sky seen through a canopy means.

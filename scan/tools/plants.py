@@ -219,6 +219,7 @@ SEEN_REACH = 65.0      # m: every sight line is used (it was 8 m, the core sessi
 SEEN_SHORT = 0.15      # of a sight line's length left unclaimed before its point (and 0.4 m at the least): the depth
 #                        itself is off by 3-6% of the distance on walls seen from 10-39 ft (range_study.py, run 542)
 SEEN_PASSES = 6        # samples of sight lines through a cubic cell (a quarter metre apart), at the least
+SEEN_HIGH_BANDS = 165  # feet of height counted for the band of open air above 8 ft (to about 50 m)
 
 
 def read_track(d):
@@ -302,15 +303,19 @@ def seen_of(recs, flags, track, cut_s, fit):
     if w * h > 60000:
         return None, {"why": "the walk covers too wide a square to keep"}
 
+    NA = SEEN_HIGH_BANDS                                         # every foot of height counted, for the band above 8 ft
+
     def vox(e_, n_, hh):
         b = np.floor(hh / band).astype(np.int64)
-        inb = (b >= 0) & (b < nb)
-        return ((np.floor(n_[inb] / SEEN_CELL).astype(np.int64) - j0) * w + (np.floor(e_[inb] / SEEN_CELL).astype(np.int64) - i0)) * nb + b[inb]
-    passes = np.bincount(vox(S_e, S_n, S_h), minlength=w * h * nb).reshape(w * h, nb)
+        inb = (b >= 0) & (b < NA)
+        return ((np.floor(n_[inb] / SEEN_CELL).astype(np.int64) - j0) * w + (np.floor(e_[inb] / SEEN_CELL).astype(np.int64) - i0)) * NA + b[inb]
+    passes_all = np.bincount(vox(S_e, S_n, S_h), minlength=w * h * NA).reshape(w * h, NA)
+    passes = passes_all[:, :nb]
     # what stands in a cubic cell: points a foot or more up (the ground's own points scatter a few inches over it:
     # run 535 read 6,412 of 8,397 squares as "something from the ground up", which was the lawn itself)
     solid = he >= 0.3048
-    inside = np.bincount(vox(ee[solid], en[solid], he[solid]), minlength=w * h * nb).reshape(w * h, nb)
+    inside_all = np.bincount(vox(ee[solid], en[solid], he[solid]), minlength=w * h * NA).reshape(w * h, NA)
+    inside = inside_all[:, :nb]
     anyp = np.bincount((np.floor(en / SEEN_CELL).astype(np.int64) - j0) * w + (np.floor(ee / SEEN_CELL).astype(np.int64) - i0), minlength=w * h)
     open_ = (passes >= SEEN_PASSES) & (inside < 3)
     # THE LOWEST FOOT IS OPEN WHERE THE GROUND WAS SEEN: a sight line to the ground is only under a foot up for its
@@ -320,12 +325,38 @@ def seen_of(recs, flags, track, cut_s, fit):
     ground_seen = np.bincount((np.floor(en[low] / SEEN_CELL).astype(np.int64) - j0) * w + (np.floor(ee[low] / SEEN_CELL).astype(np.int64) - i0), minlength=w * h)
     open_[:, 0] = ground_seen >= 3
     run = np.cumprod(open_, axis=1).sum(1)                      # open cubic cells from the ground up without a break
-    covered = (passes.sum(1) > 0) | (anyp > 0)
+    covered = (passes_all.sum(1) > 0) | (anyp > 0)
     val = np.where(covered, np.minimum(np.round(run * band * 10), SEEN_TOP_FT * 3), 255).astype(np.uint8)
     st = {"squares": int(covered.sum()), "openTop": int((covered & (run >= nb)).sum()), "openNone": int((covered & (run == 0)).sum()), "lines": int(use.sum())}
+    # THE AIR SEEN OPEN ABOVE 8 FT, A BAND (agreed with the features session, 2026-11-23; the owner: sky seen through a
+    # bare crown "should not be a signal that there's no tree there. The shade map has a leaf-off/on calendar
+    # approximation, so it can probably weigh in on that based on the time of the walk"). The air under a crown is a
+    # band, not "from the ground up": for each square, the LONGEST unbroken run of open cubic cells above 8 ft, at
+    # least 2 ft of it, as lo and hi in units of 2 dm over the ground. It says nothing of the season or of what it
+    # saw through: the fusing trims by it only when the walk was in leaf, or the lidar's cube is not a deciduous crown.
+    oh = (passes_all >= SEEN_PASSES) & (inside_all < 3)
+    best_len = np.zeros(w * h, np.int64); best_lo = np.zeros(w * h, np.int64)
+    cur_len = np.zeros(w * h, np.int64)
+    for b_ in range(nb, NA):
+        cur_len = np.where(oh[:, b_], cur_len + 1, 0)
+        better = cur_len > best_len
+        best_len = np.where(better, cur_len, best_len)
+        best_lo = np.where(better, b_ - cur_len + 1, best_lo)
+    has = covered & (best_len >= 2)
+    U = 2.0                                                      # dm in a unit
+    lo_u = np.clip(np.round(best_lo * band * 10 / U), 0, 254).astype(np.uint8)
+    hi_u = np.clip(np.round((best_lo + best_len) * band * 10 / U), 0, 254).astype(np.uint8)
+    bands_ = np.zeros((w * h, 2), np.uint8)
+    bands_[has, 0] = lo_u[has]; bands_[has, 1] = hi_u[has]
+    bands_[~covered] = 255
+    st.update({"highSquares": int(has.sum()), "highMidLoFt": float(np.median(best_lo[has]) * band * FT) if has.any() else 0.0, "highMidHiFt": float(np.median((best_lo + best_len)[has]) * band * FT) if has.any() else 0.0,
+               "highTopFt": float((best_lo + best_len)[has].max() * band * FT) if has.any() else 0.0})
+    high = {"cellM": SEEN_CELL, "i0": i0, "j0": j0, "w": w, "h": h, "unitDm": 2, "notSeen": 255,
+            "what": "for each square lo then hi, in units of unitDm over the ground: the longest band of air seen open above 8 ft; 0 0 no claim, 255 255 never looked; rows south to north",
+            "enc": "zlib+base64", "bands": base64.b64encode(zlib.compress(bands_.tobytes(), 9)).decode()}
     return {"cellM": SEEN_CELL, "i0": i0, "j0": j0, "w": w, "h": h, "capDm": SEEN_TOP_FT * 3, "notSeen": 255,
             "what": "decimetres of open air seen from the ground up without a break, one byte a square, rows south to north; nothing is claimed above capDm",
-            "enc": "zlib+base64", "clearTo": base64.b64encode(zlib.compress(val.tobytes(), 9)).decode()}, st
+            "enc": "zlib+base64", "clearTo": base64.b64encode(zlib.compress(val.tobytes(), 9)).decode(), "_high": high}, st
 
 
 def phone_kinds(d, n):
@@ -473,7 +504,11 @@ def main():
         doc = {"v": 1, "cellM": CELL, "from": "a walk's points the phone or the vote called tree or plant, 3 ft up or more", "heights": "decimetres over the ground under each",
                "fit": {"corners": fit.get("n"), "worstM": fit.get("worstM"), "scale": fit["T"].get("s", 1)}, "boxes": [list(b) for b in boxes]}
         if seen:
+            high = seen.pop("_high", None)
             doc["seen"] = seen
+            if high:
+                doc["seenHigh"] = high
+                print(f"  THE AIR SEEN OPEN ABOVE 8 FT, a band for each square: {sst.get('highSquares', 0):,} squares have one of 2 ft or more; in the middle from {sst.get('highMidLoFt', 0):.0f} to {sst.get('highMidHiFt', 0):.0f} ft up, the highest to {sst.get('highTopFt', 0):.0f} ft; {len(high['bands']) / 1e3:.0f} KB. What it was seen THROUGH, and in which season, it does not say.")
             print(f"  WHERE IT LOOKED AND SAW OPEN AIR: {sst['lines']:,} sight lines, of any length (each left unclaimed for its last {SEEN_SHORT * 100:.0f}%); {sst['squares']:,} squares of 2 ft covered ({sst['squares'] * 4:,} sq ft); open all the way to {SEEN_TOP_FT} ft in {sst['openTop']:,}, not seen open from the ground in {sst['openNone']:,} (something there, or the ground not seen from near); {len(seen['clearTo']) / 1e3:.0f} KB.")
         else:
             print(f"  Where it looked and saw open air: NOT kept ({sst.get('why') or 'no camera track beside the twin, or too few points'}).")
