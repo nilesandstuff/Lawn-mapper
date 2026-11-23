@@ -239,7 +239,7 @@ export async function handleMaps(request, env, url, origin, ctx, json) {
     const file = modelFile(url.searchParams.get('file'));
     if (file == null) return reply({ error: 'bad-file', message: 'file is fused, or left out for the model itself' }, 400);
     if (request.method === 'PUT' || request.method === 'POST') {
-      const r = owner ? await putModel(env, owner, key, tool, request.body, Number(request.headers.get('Content-Length') || 0), part, file) : { error: 'no-map' };
+      const r = owner ? await putModel(env, owner, key, tool, request.body, Number(request.headers.get('Content-Length') || 0), part, file, request.headers.get('X-Model-Made-From')) : { error: 'no-map' };
       if (r.error === 'no-map') return reply({ error: 'no-map', ...who }, 404);
       if (r.error === 'no-bucket') return reply({ error: 'no-bucket', message: 'the site has no bucket for models' }, 503);
       if (r.error) return reply(r, r.error === 'too-big' ? 413 : 400);
@@ -250,6 +250,7 @@ export async function handleMaps(request, env, url, origin, ctx, json) {
       if (!obj) return reply({ error: 'no-model', ...who }, 404);
       const headers = new Headers({ 'Content-Type': 'application/octet-stream', 'Cache-Control': 'private, no-store', 'Content-Length': String(obj.size) });
       if (obj.customMetadata?.at) headers.set('X-Model-At', obj.customMetadata.at);
+      if (obj.customMetadata?.madeFrom) headers.set('X-Model-Made-From', obj.customMetadata.madeFrom);   // what it was made from (unified.js madeFromOk)
       return withCookies(new Response(request.method === 'HEAD' ? null : obj.body, { status: 200, headers }), cookies);
     }
     return reply({ error: 'GET or PUT' }, 405);

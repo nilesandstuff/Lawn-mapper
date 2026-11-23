@@ -2121,6 +2121,24 @@ async function askPlants(map) {
     if (rr.ok && st.site) st.site.tools = { ...(st.site.tools || {}), scan: { ...(st.site.tools?.scan || {}), data } };
     log(`a walk's plants (${j.boxes.length} boxes): ${rr.ok ? 'put into the map\'s record' : `NOT put into the map's record (the site answered ${rr.status})`}`);
   } catch { /* no signal: the next opening tries again */ }
+  finally { if (st.plants && st.map === map) fuseForWalk(map, st.plants).catch((e) => log(`fused model: ${e.message || e}`)); }
+}
+/* THE FUSED MODEL, MADE HERE WHEN THE WALK'S SIDE CHANGES (docs/MAPS.md "The fused model"; the owner, 2026-11-23:
+   "built from both parts, but is seperate from either... an entirely new 3D environment, so the original data is not
+   modified in the process of fusing it"; the core session in charge of it). The shade page fuses when the lidar's
+   side changes; this page does when a walk's plants are new, through the SAME module (the features session's
+   public/shade/fuse.js, copied in unchanged at /lib/shade/), so the fused file is there and fresh without the shade
+   map having been opened: the water map and this tool read it too. What is stored says what it was made from
+   (X-Model-Made-From: the lidar file's own write time, the walk's side's time, the fusing's version); when that
+   already names these three, nothing is written, so the two writers never undo each other. Neither source is
+   written. Not while a walk is on: it is a few seconds of the phone's work. */
+async function fuseForWalk(map, plants) {
+  if (st.walk || !st.origin) return;
+  const [F, { loadModel }, { modelFiles }, { fuseWalk }] = await Promise.all([import('/lib/shade/fuse.js'), import('/lib/lidar-model.js'), import('/lib/shade/model-out.js'), import('/lib/fuse-walk.js')]);
+  const t0 = performance.now();
+  const r = await fuseWalk({ fetchFn: (u, o) => fetch(u, o), map, plants, origin: st.origin, F, loadModel, modelFiles, still: () => !st.walk && st.map === map });
+  const s = r.stats || {};
+  log(`fused model: ${r.made ? `made and kept in ${Math.round(performance.now() - t0)} ms${r.withOpenAir ? ', with where the walk saw open air' : ''}: ${s.refined ?? '?'} cells refined, ${s.added ?? '?'} added, ${s.trimmed ?? '?'} trimmed, ${s.moved ?? '?'} trees moved` : `not made (${r.why})`}`);
 }
 function drawThings(note = '') {
   const box = $('#things-list'); if (!box) return;

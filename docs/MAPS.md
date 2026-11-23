@@ -128,6 +128,72 @@ So the shade map is the one place a lot's lidar is read, lined up and classified
 
 A tool that needs the lot in 3D reads that file and nothing else: no points, no readers, no rule of its own. It may post-process what it reads for its own purpose, and it says where: the yard AR tool's steps are listed in docs/SCAN-DIVERGENCES.md. A rule found wrong is fixed in the shade map; the next visit there rewrites the file, and every tool has the fix. A tool opened on a map whose file does not exist yet says so and sends the person to the shade map (the dashboard already orders it first: `scan` and `water` need `shade`).
 
+## The fused model: the lidar and a yard walk, in a file of its own (2026-11-23)
+
+The owner, 2026-11-23: the AR and the lidar are "fused in a way that's built from both parts, but is seperate from
+either. So it's an entirely new 3D environment, so the original data is not modified in the process of fusing it.
+It's meant to be our best possible representation of reality." "The water map will also work off [of] it." And to
+the features session: "I do actually want the AR to override/correct/ refine the lidar. The lidar is coarse, messes
+up the edges of canopy, and can even be off on position... AR, so far, hasn't demonstrated being good at seeing high
+up from the ground, and AR won't be very good at conveying how much light gets through a canopy in that same way
+that lidar brightness can... don't directly modify the actual lidar files... This needs to be a seperate file".
+
+**The core session is in charge of it** (the owner, 2026-11-23). This section is its contract. Agreed with the
+features session and seen by the water session, 2026-11-23.
+
+**Its two sources, neither ever written by the fusing.**
+- THE LIDAR: the finished lidar model above (`tool=shade`), joined with its overflow parts.
+- THE WALK: what a yard walk saw, on the map: today the scan tool's `plants` (boxes) and `plants.seen` (open air),
+  above under "scan". It will grow (built things, the ground, fences, more than one walk) and move to a file of its
+  own beside the map; this section changes when it does, and the sessions are told first.
+
+**What it is.** A lidar-model file (public/lib/lidar-model.js), on a grid HALF a metre square with the lidar's own
+layers. What each source is trusted for: the walk for WHERE low things are and how big (to about 13 ft); the lidar
+for what is high up and for HOW MUCH LIGHT a canopy passes. Roofs and low structures are the lidar's alone for now.
+The rules themselves are in the fusing's one home, `public/shade/fuse.js` (it moves to `public/lib/` on the day the
+water map starts reading the file).
+
+**`meta.fused`** says what it was made from, so a reader can tell a stale one three ways:
+`{ lidarAt, walk, walkAt, walkFit, version, sub, plantTrustM, refined, added, trimmed, moved, ... }`:
+`lidarAt` the lidar model's `at`; `walk`/`walkAt` the walk and when its side was made; `version` the fusing's own
+(fuse.js `FUSE_VERSION`). A fused file whose three do not match the lidar model, the walk's side and the fusing in
+hand is stale: fuse again, or use the lidar.
+
+**Where it is kept.** `PUT`/`GET`/`HEAD /api/maps/model?id=&tool=shade&file=fused` (and `&part=N`), in the API table
+above. A writer sends the header `X-Model-Made-From: <the lidar file's X-Model-At>|<plants.at>|<FUSE_VERSION>`
+(the lidar part is the SERVER's write time of the lidar model, which a `HEAD` gives, not the `meta.at` inside it,
+so a writer can know all three without downloading anything); it is kept with the file and comes back on `GET`
+and `HEAD`.
+
+**Who writes it, and when.** Any page that holds both sources, through the ONE module, on the same two inputs:
+- the shade page, when the lidar's side changes (after a model save);
+- the scan page, when the walk's side changes (when it opens a map whose walk's plants are new; app.js fuseForWalk);
+- the server's rebuild for admin saves [the features session's, to come].
+A writer first asks `HEAD`: when the stored `X-Model-Made-From` already names the same lidar, walk and version, it
+does NOT write. So two writers never undo each other, and a file is rewritten only when something it is made from
+has changed.
+
+**How a reader chooses.** Take the fused file when there is one and it is not stale; else the lidar model. A reader
+that keeps results (a score, a reading, a saved picture) RECORDS WHICH MODEL each came from: `'lidar'` or `'fused'`,
+with the fused file's `X-Model-At`. The water map keeps both scores side by side; that difference, on the thermal
+walks, is the test of whether the fused model is nearer reality than the lidar alone. A person can always switch to
+the lidar alone (the shade page: "Refined by your yard walk (untick for the lidar alone)").
+
+**For the water site's server** (worker/src/water-push.js, internal.js): `adminSaves()` gives `fusedAt` beside
+`modelAt`; `fusedOf(id, part)` gives `{ bytes, modelAt, file: 'fused', madeFrom }` as `modelOf` does the lidar's;
+and `WATER.fusedChanged(id, fusedAt)` is pushed once when a fused file is written, as `modelChanged` is.
+
+**Who may change what** (agreed 2026-11-23). In fuse.js, ASK THE FEATURES SESSION before changing the LIGHT rules:
+that a lidar cube's mean density is kept when density moves inside it; `PLANT_MU` and `BORROW_M` (the density of
+plant the lidar missed); the `SOLID_MU` cap; roofs and low structures being the lidar's alone; leaving a cube alone
+when the walk says nothing about it; the light worker's sampling; the shade page's views and switches. The core
+session's, telling the features session each time so it can rerun the light tests: how far a walk is trusted
+(`PLANT_TRUST_M`, `SHIFT_BAND_M`, `SHIFT_MAX_M`, `SHIFT_GAIN`, `CLUMP_MIN_CELLS`), how the walk's side is read
+(`plantShare`, `openFromSeen`), what a walk contributes next, and the frame.
+
+**What is not known.** None of it has been run on a real walk and looked at (2026-11-23). The walk's side is one
+walk of one yard; its heights past about 13 ft are the phone's depth at its weakest, and its open air is unchecked.
+
 ## Status, worked out on the dashboard
 
 For each tool (home/public/dashboard.js `toolState`): done when it has a part written after every tool it needs last changed (for `lawn`, the map's own `at`, once it has a lawn); needs an update when one of them changed after it; ready when every tool it needs is done and it has no part yet; locked when one is not done. A tool marked `soon` in `TOOLS` shows as coming soon. A tool's `note` is printed on its card (the water map: "Highly experimental and early in development.", owner 2026-10-23). A tool marked `admin` is still being built: `/api/tools` lists it only for an admin account, so nobody else sees it at all (the water map was, owner 2026-10-16, until it opened to everyone on 2026-10-23; the yard AR tool is, since 2026-11-01).

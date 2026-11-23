@@ -37,6 +37,15 @@ calls.length = 0; saves = [{ id: 'home', modelAt: '2026-11-16T20:00:00.000Z' }];
 const refusing = { ...env, WATER: { ...WATER, modelChanged: async () => ({ queued: false, error: 'which map?' }) } };
 assert.equal((await pushWater(refusing, t0 + 25 * 60000, list)).pushed, 0, 'a refusal is not sent');
 assert.equal((await pushWater(env, t0 + 30 * 60000, list)).pushed, 1, 'and goes again when taken');
+// THE FUSED MODEL (2026-11-23): its time is pushed once too; a water site without the method yet is tried again later
+{ const env2 = { WATER: { ...WATER }, SCAN_INTERNAL: { convertedWalks: async () => [] }, CORPUS: bucket(), DB: {} };
+  const l2 = async () => [{ id: 'home', modelAt: '2026-11-23T10:00:00.000Z', fusedAt: '2026-11-23T10:05:00.000Z' }];
+  calls.length = 0;
+  assert.equal((await pushWater(env2, t0, l2)).pushed, 1, 'the model goes; the fused waits for a water site that knows it');
+  env2.WATER.fusedChanged = async (id, at) => { calls.push(['fused', id, at]); return { queued: true }; };
+  assert.equal((await pushWater(env2, t0 + 5 * 60000, l2)).pushed, 1);
+  assert.deepEqual(calls[calls.length - 1], ['fused', 'home', '2026-11-23T10:05:00.000Z']);
+  assert.equal((await pushWater(env2, t0 + 10 * 60000, l2)).pushed, 0, 'sent once'); }
 // no water binding yet: nothing, and no error
 assert.equal((await pushWater({ CORPUS: bucket(), DB: {} }, t0, list)).pushed, 0);
 console.log('water push: ok');

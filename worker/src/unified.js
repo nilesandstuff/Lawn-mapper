@@ -386,7 +386,13 @@ export async function storedModelBytes(body, { maxIn = MODEL_MAX_UPLOAD, maxOut 
   return { bytes, gzipped: !gz };
 }
 
-export async function putModel(env, owner, key, tool, body, contentLength = 0, partOrOpts = 0, fileName = '') {
+/* WHAT A FILE WAS MADE FROM (2026-11-23; the fused model has two writers, the shade page and the scan page, and
+   the features session's rule: "Let each skip the write when the stored file's meta.fused already names the same
+   lidarAt, walkAt and FUSE_VERSION; then neither undoes the other"). A writer may send X-Model-Made-From, a short
+   plain line (the fused model's: "<lidarAt>|<walkAt>|<fusing version>"); it is kept with the object and comes back
+   on GET and HEAD, so a writer learns what is stored without downloading it. */
+export function madeFromOk(v) { const s = String(v ?? ''); return /^[\x20-\x7e]{1,200}$/.test(s) ? s : null; }
+export async function putModel(env, owner, key, tool, body, contentLength = 0, partOrOpts = 0, fileName = '', madeFrom = null) {
   if (!isTool(tool)) return { error: 'unknown-tool' };
   const part = modelPart(partOrOpts);
   if (part == null) return { error: 'bad-part', max: MODEL_MAX_PARTS };
@@ -400,7 +406,7 @@ export async function putModel(env, owner, key, tool, body, contentLength = 0, p
   const got = await storedModelBytes(body);
   if (got.error) return got;
   const t = nowIso();
-  await env.CORPUS.put(await modelKey(owner, key, tool, part, file), got.bytes, { httpMetadata: { contentType: 'application/gzip' }, customMetadata: { at: t, tool, ...(part ? { part: String(part) } : {}), ...(file ? { file } : {}) } });
+  await env.CORPUS.put(await modelKey(owner, key, tool, part, file), got.bytes, { httpMetadata: { contentType: 'application/gzip' }, customMetadata: { at: t, tool, ...(part ? { part: String(part) } : {}), ...(file ? { file } : {}), ...(madeFromOk(madeFrom) ? { madeFrom: madeFromOk(madeFrom) } : {}) } });
   return { tool, ...(file ? { file } : {}), ...(part ? { part } : {}), at: t, bytes: got.bytes.byteLength, gzippedHere: got.gzipped };
 }
 

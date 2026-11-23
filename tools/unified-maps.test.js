@@ -212,6 +212,11 @@ let guestCookie;
     const after = new Uint8Array(await (await raw(`/api/maps/model?id=${id}&tool=shade`, 'GET', gc)).arrayBuffer());
     check('writing the fused file leaves the lidar\'s own file as it was', after.length === before.length && after.every((v, i) => v === before[i]));
     check('a fused overflow part is its own object', (await raw(`/api/maps/model?id=${id}&tool=shade&file=fused&part=1`, 'PUT', gc, packed)).status === 200 && (await raw(`/api/maps/model?id=${id}&tool=shade&file=fused&part=1`, 'GET', gc)).status === 200 && (await raw(`/api/maps/model?id=${id}&tool=shade&part=1`, 'GET', gc)).status !== 200);
+    // what it was made from comes back on HEAD, so a second writer can skip a write that would change nothing
+    const mf = '2026-11-23T10:00:00.000Z|2026-11-23T11:00:00.000Z|1';
+    const mPut = await handleMaps(new Request(`${HOST}/api/maps/model?id=${id}&tool=shade&file=fused`, { method: 'PUT', headers: { Cookie: gc, 'X-Model-Made-From': mf }, body: bytes }), env3, new URL(`${HOST}/api/maps/model?id=${id}&tool=shade&file=fused`), '', ctx, json);
+    const mHead = await raw(`/api/maps/model?id=${id}&tool=shade&file=fused`, 'HEAD', gc);
+    check('what the fused file was made from is kept and read back without the file', mPut.status === 200 && mHead.status === 200 && mHead.headers.get('X-Model-Made-From') === mf, mHead.headers.get('X-Model-Made-From'));
     check('a file of any other name is refused', (await raw(`/api/maps/model?id=${id}&tool=shade&file=other`, 'GET', gc)).status === 400 && (await raw(`/api/maps/model?id=${id}&tool=shade&file=other`, 'PUT', gc, bytes)).status === 400);
   }
   const badParts = [];

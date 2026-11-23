@@ -10,9 +10,11 @@ export class Internal extends WorkerEntrypoint {
   async saveOf(id) { return (await findAdminSave(this.env, id))?.map ?? null; }
   /** { bytes (gzipped, as GET /api/maps/model?tool=shade returns), modelAt }, or null. part 1..8: an overflow part. */
   async modelOf(id, part = 0) { return modelOfSave(this.env, id, part); }
+  /** THE FUSED MODEL (docs/MAPS.md): { bytes (gzipped), modelAt (its own write time), file: 'fused', madeFrom }, or null when there is none. */
+  async fusedOf(id, part = 0) { return modelOfSave(this.env, id, part, 'fused'); }
   /** walk null: the save's walks, as GET /api/maps/thermal?id= returns; a walk: that walk, as with &walk=. */
   async thermalOf(id, walk = null) { return thermalOfSave(this.env, id, walk); }
-  /** [{ id, modelAt, at }] for every admin save (the water side's daily sweep). */
+  /** [{ id, modelAt, fusedAt, at }] for every admin save (the water side's daily sweep). */
   async adminSaves() { return adminSavesList(this.env); }
   /* DEV ONLY: SINGLE THERMAL PHOTOS (the owner, 2026-11-17; the yard AR site's src/thermal-snap.js), for the water
      site's readings page. A photo belongs to no map until the owner places it; saveId names an admin save. */

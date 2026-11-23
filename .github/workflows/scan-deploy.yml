@@ -29,6 +29,9 @@ on:
       - 'public/shade/ground.js'
       - 'public/shade/ept.js'
       - 'public/shade/las.js'
+      # the fusing's one home (docs/MAPS.md "The fused model"): the scan page runs it too, so a change redeploys this site
+      - 'public/shade/fuse.js'
+      - 'public/shade/model-out.js'
   workflow_dispatch:
     inputs:
       task:
@@ -106,6 +109,7 @@ jobs:
           node scan/test/geo.test.js
           node scan/test/semantics.test.js
           node scan/test/walkfix.test.js
+          node scan/test/fuse-walk.test.js
           node tools/lidar-model.test.js
 
       - name: The 8th Wall engine binary (pinned)
