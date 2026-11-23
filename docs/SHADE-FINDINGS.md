@@ -1811,6 +1811,15 @@ test lot). In the browser on a real lot with a made-up walk: the fused file save
 and the light drawn from it, no errors. NOT YET MEASURED: any real walk, and whether the light it gives agrees
 with the shade readings better than the lidar's. The densities given to plant the lidar missed are guesses.
 
+THE SAME DAY, LATER (FUSE_VERSION 2). The owner: no cap on what the walk saw by height or distance "unless you
+demonstrate that they're just plain wrong" (the core session's range study: far points are coarser, 3-6% of the
+distance, not wrong); and "seeing sky points through a tree canopy when the leaves are off should not be a signal
+that there's no tree there". So the walk's plants now count at every height (PLANT_TRUST_M and the moving band's
+top removed), and after a walk made in leaf-off months (las.js leafOfMs: 1 November to 10 May) a deciduous crown's
+cubes (summer copy denser than mu) keep the lidar's density evenly: the walk saw branches, not where the leaves
+will be. It may still move the tree and add plant the lidar did not have. A walk in leaf, or an evergreen, refines
+at every height. Tested on the synthetic lot: November keeps a crown cube 1.0 / 1.0, July moves it to 2.0 / 0.
+
 ## Speculation
 
 - FENCES (2026-10-27, IN USE, unmeasured; fences.js): drawn by the visitor

@@ -2273,6 +2273,18 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   check('fuse: inside a lidar cube the walk only moves the density to where it saw plant; the cube\'s mean, the light it stops, is the lidar\'s', worst < 1e-5, kept.map((v) => v.toFixed(3)).join(' '));
   check('fuse: the lidar file is not written', mu.every((v, i) => v === lidarBefore[i]) && lidar.meta.grid.w === W);
 
+  /* THE LEAVES: the same lot with its tree deciduous (summer copy denser): a walk in November saw branches, so inside
+     the crown's cubes the density stays even; a walk in July refines it; a box 8 m up counts (no height cap). */
+  const decidL = { ...lidar, arrays: { ...lidar.arrays, muOn: Float32Array.from(mu, (v) => (v > 0 && v < 4 ? v + 0.8 : v)) } };
+  const crownBox = [];
+  for (let i = 0; i < 100; i++) for (let j = 0; j < 100; j++) { const e = (i + 0.5) * cm, n = (j + 0.5) * cm; if (Math.hypot(e - 10, n - 15) <= 3 && e < 10.4) crownBox.push([i, j, 70, 85]); }
+  const nov = fuseModel(decidL, { cellM: cm, boxes: crownBox, walk: Date.UTC(2025, 10, 20) }, origin);
+  const jul = fuseModel(decidL, { cellM: cm, boxes: crownBox, walk: Date.UTC(2025, 6, 20) }, origin);
+  const at8 = (o, e, n) => o.arrays.mu[fAt(e, n) * nz + L(8)];
+  check('fuse: after a leaf-off walk a deciduous crown keeps the lidar\'s density evenly (the walk saw branches); after a walk in leaf the density moves to where it saw plant, 8 m up too',
+    at8(nov, 10.25, 15.25) === 1 && at8(nov, 10.75, 15.25) === 1 && at8(jul, 10.25, 15.25) > 1.2 && at8(jul, 10.75, 15.25) < 0.8 && nov.meta.fused.walkInLeaf === false && jul.meta.fused.walkInLeaf === true,
+    `nov ${at8(nov, 10.25, 15.25)}/${at8(nov, 10.75, 15.25)}; jul ${at8(jul, 10.25, 15.25)}/${at8(jul, 10.75, 15.25)}`);
+
   /* WHERE THE WALK SAW OPEN AIR (plants.seen): the lidar's skirt under the tree, 1.5-2.5 m up on its east side, seen open
      to 2.4 m -> emptied there; a cube seen open in half its cells keeps its density in the other half. */
   const { openFromSeen, fusedGrid } = await import('../public/shade/fuse.js');
