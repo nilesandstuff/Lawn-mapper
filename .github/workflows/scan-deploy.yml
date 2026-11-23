@@ -337,7 +337,7 @@ jobs:
           set -o pipefail
           pip install --quiet numpy scipy
           # the walk's own kept points (the second try, 2026-11-22: the joined cloud was a miss), their kinds, the start cut
-          node scan/tools/twin-r2.mjs parts "$WALK" twin 'cloud-*' 'labels-*' view-kind.bin view.json start.json owner-trunks.json live.json meta.json 'track-*' | tee trunks.txt
+          node scan/tools/twin-r2.mjs parts "$WALK" twin 'cloud-*' 'labels-*' view-kind.bin view-rgb.bin view.json start.json owner-trunks.json live.json meta.json 'track-*' | tee trunks.txt
           # the walk's own fit to its map (three agreeing corners, not known to have slid), for the plants on the map
           node scan/tools/walk-fit.mjs twin | tee -a trunks.txt || true
           python scan/tools/trunks.py twin twin/trunks.json | tee -a trunks.txt
@@ -352,7 +352,6 @@ jobs:
           # ARE THE FAR POINTS WRONG, OR ONLY FEW? AND WHICH SOLID POINTS ARE SKY? (scan/tools/range_study.py, 2026-11-23,
           # the owner: no limit by distance "unless you demonstrate that they're just plain wrong"): the walk against
           # what it saw from close. And whether a fused model has been made (fused-check.mjs). Counts and times only.
-          node scan/tools/twin-r2.mjs parts "$WALK" twin view-rgb.bin > /dev/null || true
           python scan/tools/range_study.py twin | tee -a trunks.txt
           node scan/tools/fused-check.mjs | tee -a trunks.txt || true
 

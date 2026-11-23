@@ -215,7 +215,9 @@ def shapes_of(recs, kind, flags, cut_s=0.0, fit=None, want=WANT, other_kinds=OTH
 
 SEEN_CELL = 0.6096     # m: 2 ft, the plan grid of where the walk saw open air
 SEEN_TOP_FT = 8        # ft: open air is claimed only this far up (where the phone is near what it looks at)
-SEEN_REACH = 8.0       # m: only the sight lines this short are used
+SEEN_REACH = 65.0      # m: every sight line is used (it was 8 m, the core session's caution: taken off 2026-11-23)
+SEEN_SHORT = 0.15      # of a sight line's length left unclaimed before its point (and 0.4 m at the least): the depth
+#                        itself is off by 3-6% of the distance on walls seen from 10-39 ft (range_study.py, run 542)
 SEEN_PASSES = 6        # samples of sight lines through a cubic cell (a quarter metre apart), at the least
 
 
@@ -240,8 +242,10 @@ def seen_of(recs, flags, track, cut_s, fit):
     along that line, short of the point, was open. Per 2 ft square of the map: how high the air was seen OPEN from
     the ground up without a break, in decimetres, up to SEEN_TOP_FT.
 
-    WHAT IT CLAIMS, AND WHAT IT DOES NOT. Only sight lines SEEN_REACH long or less, and only to SEEN_TOP_FT up: near
-    the phone, where its depth is good. A cubic cell is open when SEEN_PASSES samples of sight lines crossed it and
+    WHAT IT CLAIMS, AND WHAT IT DOES NOT. Every sight line, however long (the owner, 2026-11-23: no limit by distance
+    "unless you demonstrate that they're just plain wrong"; measured the same day, range_study.py: the far points
+    are not; the depth is off by a few per cent of the distance, so each line is left unclaimed for its last 15%),
+    and only to SEEN_TOP_FT up, which is NOT about distance: see below. A cubic cell is open when SEEN_PASSES samples of sight lines crossed it and
     fewer than three points were seen IN it (a foot or more up: the ground's own points do not count). Above SEEN_TOP_FT nothing is claimed either way: in leaf-off months the
     phone sees straight THROUGH a bare crown to the sky, and "the phone saw through it" is not "nothing is there".
     -> { cellM, i0, j0, w, h, capDm, notSeen, enc, clearTo (zlib then base64; one byte a square, rows south to north) } or None."""
@@ -282,8 +286,8 @@ def seen_of(recs, flags, track, cut_s, fit):
     use = (L >= 0.8) & (L <= SEEN_REACH)
     # samples along the short sight lines, from half a metre out to 0.4 m short of the point
     S_e, S_n, S_h = [], [], []
-    for s_ in np.arange(0.5, SEEN_REACH, 0.25):
-        m = use & (s_ < L - 0.4)
+    for s_ in np.arange(0.5, min(SEEN_REACH, float(L[use].max()) if use.any() else 0.0), 0.25):
+        m = use & (s_ < L - np.maximum(0.4, SEEN_SHORT * L))
         if not m.any():
             break
         q = C[m] + D[m] * (s_ / L[m])[:, None]
@@ -420,7 +424,26 @@ def main():
                        "shapes": shapes_p}, f, separators=(",", ":"))
     # THE BUILT THINGS THE WALK SAW, the same way (BUILT above): for the owner's eyes in the 3D view first. Nothing is
     # kept with the map from this yet.
-    built, bst = shapes_of(recs, kind, flags, cut, want=BUILT, other_kinds=BUILT_OTHER, min_top=BUILT_MIN_TOP)
+    # A SKY-BLUE POINT AT A ROOF'S EDGE IS SKY, NOT ROOF (the owner, 2026-11-23: "when dots on roof edges are colored by
+    # the photo, there's often a bump there of depth points. So we should be treating sky blue points for what they
+    # are, sky... Not a solid part of the roof"). The depth of a roof's edge bleeds onto the sky pixels beside it. On
+    # the walk of 2026-11-20 (range_study.py, run 542) the house's own points are grey (r g b 107 108 118) and the
+    # sky-blue ones among them 114 153 189: far apart. So a point voted built or fence whose photo colour is sky blue
+    # is counted as sky. ONLY ON A BLUE-SKY DAY: under an overcast sky the test finds nothing (a white sky is not told
+    # from a white wall by colour), and a blue house would need another witness. NOT done to the plants: a bare
+    # branch against the sky is coloured sky too, and it is a branch (27% of the plant points 8 ft up).
+    kind_b, sky_n = kind, 0
+    rgbf = os.path.join(d, "view-rgb.bin")
+    if os.path.exists(rgbf) and os.path.getsize(rgbf) >= 4 * len(recs):
+        rgb = np.fromfile(rgbf, dtype=np.uint8, count=4 * len(recs)).reshape(-1, 4).astype(np.int32)
+        sky_blue = (rgb[:, 3] == 1) & (rgb[:, 2] > 140) & (rgb[:, 2] - rgb[:, 0] >= 45) & (rgb[:, 2] - rgb[:, 1] >= 15)
+        m_ = sky_blue & np.isin(kind, [TR.KINDS.index(k_) for k_ in BUILT])
+        sky_n = int(m_.sum())
+        kind_b = np.where(m_, TR.KINDS.index("sky"), kind).astype(kind.dtype)
+    built, bst = shapes_of(recs, kind_b, flags, cut, want=BUILT, other_kinds=BUILT_OTHER, min_top=BUILT_MIN_TOP)
+    if sky_n:
+        b0, _ = shapes_of(recs, kind, flags, cut, want=BUILT, other_kinds=BUILT_OTHER, min_top=BUILT_MIN_TOP)
+        print(f"  Sky-blue points voted built or fence, counted as SKY: {sky_n:,}. With them the built shapes covered {sum(s_['areaM2'] for s_ in b0) * FT * FT:,.0f} sq ft in {sum(len(s_['cells']) for s_ in b0):,} boxes; without, as kept below.")
     if built:
         ar = sorted(s_["areaM2"] * FT * FT for s_ in built); tp = sorted(s_["top"] * FT for s_ in built)
         print(f"  BUILT THINGS AS THE WALK SAW THEM: {bst.get('plant', 0):,} points voted built or fence, {bst.get('outvoted', 0):,} outvoted by plant or the ground's kinds in their cubic foot; {len(built)} shapes, {sum(ar):,.0f} sq ft on the ground "
@@ -451,7 +474,7 @@ def main():
                "fit": {"corners": fit.get("n"), "worstM": fit.get("worstM"), "scale": fit["T"].get("s", 1)}, "boxes": [list(b) for b in boxes]}
         if seen:
             doc["seen"] = seen
-            print(f"  WHERE IT LOOKED AND SAW OPEN AIR: {sst['lines']:,} sight lines of {SEEN_REACH * FT:.0f} ft or less; {sst['squares']:,} squares of 2 ft covered ({sst['squares'] * 4:,} sq ft); open all the way to {SEEN_TOP_FT} ft in {sst['openTop']:,}, not seen open from the ground in {sst['openNone']:,} (something there, or the ground not seen from near); {len(seen['clearTo']) / 1e3:.0f} KB.")
+            print(f"  WHERE IT LOOKED AND SAW OPEN AIR: {sst['lines']:,} sight lines, of any length (each left unclaimed for its last {SEEN_SHORT * 100:.0f}%); {sst['squares']:,} squares of 2 ft covered ({sst['squares'] * 4:,} sq ft); open all the way to {SEEN_TOP_FT} ft in {sst['openTop']:,}, not seen open from the ground in {sst['openNone']:,} (something there, or the ground not seen from near); {len(seen['clearTo']) / 1e3:.0f} KB.")
         else:
             print(f"  Where it looked and saw open air: NOT kept ({sst.get('why') or 'no camera track beside the twin, or too few points'}).")
         with open(mo, "w") as f:
