@@ -107,6 +107,8 @@ async function main() {
   if (names.includes('owner-trunks.json')) { const oj = await (await part('owner-trunks.json')).json().catch(() => null); if (Array.isArray(oj?.trunks)) D.marks = oj.trunks.filter((p) => Array.isArray(p) && p.length === 3 && p.every(Number.isFinite)); }
   // THE PLANTS AT FACE VALUE (scan/tools/plants.py): every 1 ft cell where plant was seen over 3 ft, how low and how high
   if (names.includes('plants.json')) { const pj = await (await part('plants.json')).json().catch(() => null); D.plants = Array.isArray(pj?.shapes) ? pj.shapes : null; D.plantCell = pj?.cellM || 0.3048; }
+  // the same from the phone's own labels alone (plants.py): can the phone draw them by itself, with no server?
+  if (names.includes('plants-phone.json')) { const pj = await (await part('plants-phone.json')).json().catch(() => null); D.plantsPhone = Array.isArray(pj?.shapes) ? pj.shapes : null; }
   if (names.includes('trunks.json')) { const tj = await (await part('trunks.json')).json().catch(() => null); D.trunks = tj?.trunks || []; D.trunkSlice = tj?.sliceM || 0.25; }
   if (DENSE) { D.rgb = DENSE.rgb; D.kind = DENSE.kind; U.readonly = true; }
   if (!DENSE && names.includes('view-rgb.bin')) { const u = new Uint8Array(await buf('view-rgb.bin')); if (u.length === N * 4) D.rgb = u; }
@@ -197,13 +199,25 @@ function build() {
   /* THE PLANTS AT FACE VALUE (plants.py; the owner, 2026-11-23: "just mark trees in general and take their shapes at
      face value (but clean up the noise)"): a see-through green box in every 1 ft cell where the walk saw plant over
      3 ft, from the lowest it was seen there to the highest. One mesh for all of them. "Plant shapes" hides them. */
-  if (D.plants?.length) {
-    const cells = D.plants.flatMap((s) => s.cells.map((c) => [c[0], s.y + (c[2] + c[3]) / 2, c[1], Math.max(0.05, c[3] - c[2])]));
-    const im = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: 0x2faa4a, transparent: true, opacity: 0.32, depthWrite: false }), cells.length);
-    const M = new THREE.Matrix4(), cw = (D.plantCell || 0.3048) * 0.96;
-    cells.forEach(([x, y, z, h], i) => { M.makeScale(cw, h, cw); M.setPosition(x, y, z); im.setMatrixAt(i, M); });
-    im.instanceMatrix.needsUpdate = true; im.frustumCulled = false; plantMesh = im; scene.add(im);
-    const b = $('#plants-toggle'); if (b) { b.hidden = false; b.classList.add('on'); b.addEventListener('click', () => { im.visible = !im.visible; b.classList.toggle('on', im.visible); }); }
+  if (D.plants?.length || D.plantsPhone?.length) {
+    const meshOf = (shapes, color) => {
+      if (!shapes?.length) return null;
+      const cells = shapes.flatMap((s) => s.cells.map((c) => [c[0], s.y + (c[2] + c[3]) / 2, c[1], Math.max(0.05, c[3] - c[2])]));
+      const im = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.32, depthWrite: false }), cells.length);
+      const M = new THREE.Matrix4(), cw = (D.plantCell || 0.3048) * 0.96;
+      cells.forEach(([x, y, z, h], i) => { M.makeScale(cw, h, cw); M.setPosition(x, y, z); im.setMatrixAt(i, M); });
+      im.instanceMatrix.needsUpdate = true; im.frustumCulled = false; scene.add(im);
+      return im;
+    };
+    /* TWO WAYS TO THE SAME SHAPES, one button going round them: by the kinds voted from the pictures on a server
+       (green), by the PHONE'S OWN LABELS ALONE (blue-green: what the phone could draw by itself at a walk's end; the
+       roadmap, 2026-11-22: "as much processing... on the user's device as possible"), and off. */
+    const ways = [['by the pictures\' vote', meshOf(D.plants, 0x2faa4a)], ['by the phone\'s labels alone', meshOf(D.plantsPhone, 0x1f9aa8)]].filter((w) => w[1]);
+    plantMesh = ways[0]?.[1] || null;
+    let at = 0;
+    const show = () => { ways.forEach((w, i) => { w[1].visible = i === at; }); const b = $('#plants-toggle'); if (b) { b.classList.toggle('on', at < ways.length); b.textContent = at < ways.length ? `Plant shapes: ${ways[at][0]}` : 'Plant shapes: off'; } };
+    const b = $('#plants-toggle'); if (b) { b.hidden = false; b.addEventListener('click', () => { at = (at + 1) % (ways.length + 1); show(); }); }
+    show();
   }
   markGroup = new THREE.Group(); scene.add(markGroup); drawMarks();
   // where the phone went: a thin line, so the walk can be found in the cloud

@@ -342,7 +342,7 @@ jobs:
           # their shapes at face value (but clean up the noise)... anything over 3 feet that the phone calls a tree, is
           # a tree"): the same points, on a 1 ft grid, how low and how high plant was seen in each cell
           python scan/tools/plants.py twin twin/plants.json | tee -a trunks.txt
-          if [ -f twin/plants.json ]; then node scan/tools/twin-r2.mjs put "$WALK" twin/plants.json | tee -a trunks.txt; fi
+          if [ -f twin/plants.json ]; then node scan/tools/twin-r2.mjs put "$WALK" twin/plants.json twin/plants-phone.json | tee -a trunks.txt; fi
           # the same plants gridded on the map, kept with the map for the start page to put into the map's record
           node scan/tools/plants-keep.mjs "$WALK" twin | tee -a trunks.txt
 

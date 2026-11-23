@@ -295,6 +295,10 @@ def main():
               + (f" ({100 * len(A & B) / max(1, len(A | B)):.0f}% the same of all either drew)." if A or B else "."))
         if own:
             print(f"    The owner's {len(own)} trunks: {sum(1 for p in own if in_shape(shapes_p, p[0], p[2]))} stand in a shape by the phone's labels.")
+        # kept beside the vote's, for the owner's eyes in the 3D view (its "Plant shapes" button goes round both)
+        with open(os.path.join(d, "plants-phone.json"), "w") as f:
+            json.dump({"v": 1, "from": "the walk's own points the PHONE labelled tree, over 3 ft, at face value", "frame": "the walk's own (ARCore session), metres; y up", "cellM": CELL, "startCutS": cut,
+                       "shapes": shapes_p}, f, separators=(",", ":"))
     out = a[1] if len(a) > 1 else os.path.join(d, "plants.json")
     with open(out, "w") as f:
         json.dump({"v": 1, "from": "the walk's own points voted tree or plant, over 3 ft, at face value", "frame": "the walk's own (ARCore session), metres; y up", "cellM": CELL, "startCutS": cut,
