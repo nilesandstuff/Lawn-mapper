@@ -13,6 +13,8 @@ So: no judging what a thing IS beyond "a plant that stands over 3 ft". The walk'
 plan grid; each cell keeps how low and how high plant was seen in it (its 5th and 95th height over its own ground, so
 one stray point does not set either). What stays:
 
+  - a plant point only where plant outvotes everything else seen in the same cubic foot (the owner's look,
+    2026-11-23: plant "creeped up the walls of the house and consumed part of my front porch");
   - a cell with MIN_PTS points or more whose top is MIN_TOP (3 ft) or more over the ground;
   - joined to its neighbours into a shape; a shape of under MIN_CELLS cells, under MIN_SHAPE_PTS points, or seen in
     fewer than two separate seconds of the walk, is noise and is dropped.
@@ -43,6 +45,7 @@ MIN_PTS = 5            # points in a cell, at the least
 MIN_CELLS = 3          # cells in a shape, at the least (3 sq ft)
 MIN_SHAPE_PTS = 40     # points in a shape, at the least
 TOP = 20.0             # m over the ground: above this is a stray
+OTHER = ("built", "fence", "paved", "movable", "grass", "bare ground", "water")   # what outvotes a plant in a cubic foot
 
 
 def shapes_of(recs, kind, flags, cut_s=0.0):
@@ -53,8 +56,38 @@ def shapes_of(recs, kind, flags, cut_s=0.0):
     t_, x_, y_, z_, g_ = (recs[:, i].astype(np.float64) for i in (0, 2, 3, 4, 5))
     h_ = y_ - g_
     veg = np.isin(kind, [TR.KINDS.index("tree"), TR.KINDS.index("plant")])
-    ok = veg & np.isfinite(h_) & np.isfinite(x_) & np.isfinite(z_) & (t_ >= cut_s) & ((flags & 3) == 0) & (h_ >= 0.15) & (h_ <= TOP)
+    base = np.isfinite(h_) & np.isfinite(x_) & np.isfinite(z_) & (t_ >= cut_s) & ((flags & 3) == 0) & (h_ >= 0.15) & (h_ <= TOP)
+    ok = veg & base
     st.update({"plant": int(veg.sum()), "used": int(ok.sum())})
+    if ok.sum() < MIN_SHAPE_PTS:
+        return [], st
+    # NOT WHERE THE WALK SAW SOMETHING BUILT (the owner's look, 2026-11-23: "a couple plant columns that creeped up the
+    # walls of the house and consumed part of my front porch (a 2 foot high concrete slab and light tan
+    # pillars/columns)"). The phone calls a good deal that is not a plant "tree". So a plant point counts only where
+    # plant OUTVOTES everything else the walk saw in the same cubic foot (and half of the most in a cubic foot beside
+    # it on the level: a wall's points scatter across a cell's edge). By the cubic foot and not by the whole column,
+    # so a shrub against a wall keeps its own height (the wall behind it is hidden there) and loses only what was
+    # "plant" up the wall above it.
+    other = base & np.isin(kind, [TR.KINDS.index(k) for k in OTHER])
+    vi = np.stack([np.floor(x_ / CELL), np.floor(z_ / CELL), np.floor(h_ / CELL)], 1).astype(np.int64)
+    lo3 = vi[base].min(0)
+    vi -= lo3
+    d1, d2 = int(vi[base][:, 1].max()) + 3, int(vi[base][:, 2].max()) + 1
+    vkey = ((vi[:, 0] + 1) * d1 + (vi[:, 1] + 1)) * d2 + vi[:, 2]
+    ok_keys, ok_n = np.unique(vkey[ok], return_counts=True)
+    ot_keys, ot_n = np.unique(vkey[other], return_counts=True)
+
+    def others_at(keys):
+        if not len(ot_keys):
+            return np.zeros(len(keys))
+        j_ = np.clip(np.searchsorted(ot_keys, keys), 0, len(ot_keys) - 1)
+        return np.where(ot_keys[j_] == keys, ot_n[j_], 0).astype(np.float64)
+    beside = np.max(np.stack([others_at(ok_keys + dk) for dk in (d1 * d2, -d1 * d2, d2, -d2)]), axis=0)
+    wins = ok_n > others_at(ok_keys) + 0.5 * beside
+    won = np.zeros(len(recs), bool)
+    won[ok] = wins[np.searchsorted(ok_keys, vkey[ok])]
+    st.update({"outvoted": int(ok.sum() - won.sum()), "cubes": int(len(ok_keys)), "cubesOutvoted": int((~wins).sum())})
+    ok = won
     if ok.sum() < MIN_SHAPE_PTS:
         return [], st
     x, z, h, g, t = x_[ok], z_[ok], h_[ok], g_[ok], t_[ok]
@@ -131,6 +164,7 @@ def main():
         print("PLANTS: this walk has no voted kinds (view-kind.bin): run the classes task first. Nothing kept.")
         return 0
     print(f"PLANTS AS THE WALK SAW THEM: {st['points']:,} kept points, {st.get('plant', 0):,} voted tree or plant, {st.get('used', 0):,} of them used (after the start cut of {cut / 60:.1f} min, no flagged spikes, 6 in to {TOP * FT:.0f} ft over their own ground).")
+    print(f"  Outvoted by something built, paved or the like in the same cubic foot (or beside it): {st.get('outvoted', 0):,} of those points, in {st.get('cubesOutvoted', 0):,} of {st.get('cubes', 0):,} cubic feet with plant in them. Not counted as plant.")
     print(f"  1 ft cells with plant in them: {st.get('cells', 0):,}; with {MIN_PTS} points or more and a top {MIN_TOP * FT:.0f} ft or more up: {st.get('cellsOver', 0):,}; joined into {st.get('groups', 0)} shapes: "
           f"under {MIN_CELLS} cells {st.get('small', 0)}, under {MIN_SHAPE_PTS} points {st.get('thin', 0)}, seen in one second only {st.get('once', 0)}; KEPT {len(shapes)}, holding {st.get('kept', 0):,} points ({100 * st.get('kept', 0) / max(1, st.get('used', 1)):.0f}% of those used).")
     if shapes:
