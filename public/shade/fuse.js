@@ -1,0 +1,249 @@
+/**
+ * THE LIDAR REFINED BY A YARD WALK (owner, 2026-11-23): "I do actually want the AR to override/correct/refine the
+ * lidar. The lidar is coarse, messes up the edges of canopy, and can even be off on position... AR, so far, hasn't
+ * demonstrated being good at seeing high up from the ground, and AR won't be very good at conveying how much light
+ * gets through a canopy in that same way that lidar brightness can. So my thought is that we use AR to improve the
+ * existing lidar shapes (in position and dimensions), drawing over them... while maintaining the light that passes
+ * through the canopies. Note: please make some use of the finer resolution of ar. And don't directly modify the
+ * actual lidar files... This needs to be a separate file that fuses the rasterized lidar shapes AND the AR shapes."
+ *
+ * fuseModel(lidar, plants, origin) -> a NEW model file ({ meta, arrays }, lidar-model.js format) on a grid HALF a
+ * metre square (FUSE_SUB = 2 per lidar metre), the lidar's own layers (z0, dz, nz). The lidar file is read, never
+ * written. What each part is trusted for:
+ *
+ *   WHERE: the walk's plants (the scan tool's `plants`, docs/MAPS.md "scan": square-foot boxes from lo to hi
+ *   decimetres over the ground, already fitted onto the lidar's frame by the walk's roof corners) say where the plant
+ *   matter is, at a foot's grain, as high as the phone sees well (PLANT_TRUST_M, about 13 ft).
+ *
+ *   HOW DENSE: the lidar says how much light a metre of canopy stops (canopy.js mu, from what the laser got through).
+ *   Inside each lidar cube (1 m square, one layer) the walk only MOVES that density to where the plant is: each
+ *   half-metre cell takes mu x (its share of the walk's plant) / (the cube's mean share), so the cube's mean
+ *   extinction is the lidar's own. Concentrating it leaves gaps (more light through on average, as a real crown's
+ *   gaps do), it does not invent shade.
+ *
+ *   NEW SHAPE: plant the walk saw where the lidar has nothing at that height (an edge the lidar's 1 m blocks missed,
+ *   a hedge under its noise floor) takes the density of the lidar's own canopy nearest it at that height (within
+ *   BORROW_M), else PLANT_MU (a dense shrub), scaled by how much of the cell the walk filled.
+ *
+ *   POSITION: a lidar tree (a clump of tree columns, 8-neighbour) that the walk saw well (CLUMP_MIN_CELLS half-metre
+ *   cells of plant in the band both see, SHIFT_BAND_M) is moved, whole and at every height, to where its cubes best
+ *   overlap the walk's plant in that band, by up to SHIFT_MAX_M in half-metre steps, when the best overlap beats
+ *   the unmoved one by SHIFT_GAIN. A crown the lidar caught leaning or a season's growth away is put back over the
+ *   trunk and branches the walk saw.
+ *
+ *   NOT YET: a lidar cube the walk could have seen but found empty is kept, because `plants` says where plant WAS
+ *   seen, not where the phone looked and saw none; trimming over-wide lidar edges needs that (asked of the core
+ *   session, 2026-11-23). Above PLANT_TRUST_M the lidar stands as it is (moved with its tree), split evenly.
+ *
+ * muOn (the summer copy) is fused the same way; plant added from the walk gets the same density in both.
+ */
+import { toMerc, mercScale } from './ept.js';
+import { SOLID_MU } from './canopy.js';
+
+export const FUSE_SUB = 2;            // half-metre cells per lidar metre
+export const PLANT_TRUST_M = 4;       // the walk's plants are trusted for where up to here (about 13 ft)
+export const PLANT_MU = 2.3;          // a cube of plant the lidar did not see: stops 90% of the light a metre
+export const BORROW_M = 2;            // ...unless a lidar crown within this, at that height, says how dense it is
+export const SHIFT_BAND_M = [1.5, 4]; // the heights both see, for moving a tree
+export const SHIFT_MAX_M = 2;
+export const SHIFT_GAIN = 1.3;        // the best overlap must beat the unmoved one by this much
+export const CLUMP_MIN_CELLS = 12;    // half-metre cells of the walk's plant in the band, at the least, to move a tree
+const R_EARTH = 6378137;              // scan/lib/frames.js: the walk's local frame is a sphere of this radius
+
+/** A walk's local metres east/north of `origin` [lng, lat] -> [lng, lat] (scan/lib/frames.js fromLocal). */
+export function fromLocal(origin, [e, n]) {
+  const k = Math.cos((origin[1] * Math.PI) / 180);
+  return [origin[0] + (e / (R_EARTH * k)) * (180 / Math.PI), origin[1] + (n / R_EARTH) * (180 / Math.PI)];
+}
+
+/**
+ * The walk's plants on the fused grid: per half-metre cell and lidar layer, the share of it (0..1) the walk saw
+ * plant in (area x height). `grid` is the FINE grid (cell, cellY in 3857 units), `layers` the lidar's.
+ */
+export function plantShare(plants, origin, grid, layers, groundAt) {
+  const { w, h } = grid, { z0, dz, nz } = layers;
+  const share = new Float32Array(w * h * nz);
+  const cm = plants.cellM || 0.3048;
+  const cy = grid.cellY || grid.cell;
+  const cellArea = grid.cell * cy;
+  for (const [i, j, lo, hi] of plants.boxes || []) {
+    /* The box's corners in 3857, through degrees (never metres added onto toMerc: that stretches by 1/cos lat). */
+    const [x0, y0] = toMerc(fromLocal(origin, [i * cm, j * cm]));
+    const [x1, y1] = toMerc(fromLocal(origin, [(i + 1) * cm, (j + 1) * cm]));
+    const c0 = Math.floor((x0 - grid.x0) / grid.cell), c1 = Math.floor((x1 - grid.x0) / grid.cell);
+    const r0 = Math.floor((grid.y1 - y1) / cy), r1 = Math.floor((grid.y1 - y0) / cy);
+    for (let r = Math.max(0, r0); r <= Math.min(h - 1, r1); r++) for (let c = Math.max(0, c0); c <= Math.min(w - 1, c1); c++) {
+      const ox = Math.min(x1, grid.x0 + (c + 1) * grid.cell) - Math.max(x0, grid.x0 + c * grid.cell);
+      const oy = Math.min(y1, grid.y1 - r * cy) - Math.max(y0, grid.y1 - (r + 1) * cy);
+      if (!(ox > 0 && oy > 0)) continue;
+      const a = (ox * oy) / cellArea, g = groundAt(c, r);
+      const zLo = g + Math.min(lo, PLANT_TRUST_M * 10) / 10, zHi = g + Math.min(hi, PLANT_TRUST_M * 10) / 10;
+      if (!(zHi > zLo)) continue;
+      for (let l = Math.max(0, Math.floor((zLo - z0) / dz)); l < nz && z0 + l * dz < zHi; l++) {
+        const f = (Math.min(zHi, z0 + (l + 1) * dz) - Math.max(zLo, z0 + l * dz)) / dz;
+        if (f > 0) share[(r * w + c) * nz + l] = Math.min(1, share[(r * w + c) * nz + l] + a * f);
+      }
+    }
+  }
+  return share;
+}
+
+/** The lidar's tree clumps (TREE 2 or SOLID_TREE 3 columns, 8-neighbour): an id per column, -1 elsewhere. */
+function clumpsOf(kind, w, h) {
+  const id = new Int32Array(w * h).fill(-1);
+  let n = 0;
+  for (let s = 0; s < w * h; s++) {
+    if (!(kind[s] === 2 || kind[s] === 3) || id[s] >= 0) continue;
+    const q = [s]; id[s] = n;
+    for (let i = 0; i < q.length; i++) {
+      const k = q[i], x = k % w, y = (k / w) | 0;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const xx = x + dx, yy = y + dy;
+        if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+        const j = yy * w + xx;
+        if ((kind[j] === 2 || kind[j] === 3) && id[j] < 0) { id[j] = n; q.push(j); }
+      }
+    }
+    n++;
+  }
+  return { id, n };
+}
+
+/**
+ * The fused model: { meta, arrays } (lidar-model.js), the lidar file untouched. `lidar` is the shade map's file as
+ * read ({ meta, arrays }, joined with any overflow), `plants` the scan tool's record, `origin` the map's [lng, lat]
+ * (the point the walk's metres are measured from).
+ */
+export function fuseModel(lidar, plants, origin, { now = new Date() } = {}) {
+  const { meta, arrays } = lidar;
+  const G = meta.grid, { z0, dz, nz } = meta.layers;
+  const W = G.w, H = G.h, S = FUSE_SUB, w = W * S, h = H * S;
+  const grid = { w, h, x0: G.x0, y1: G.y1, cell: G.cell / S, cellY: (G.cellY || G.cell) / S, lat: G.lat };
+  const parent = (c, r) => ((r / S) | 0) * W + ((c / S) | 0);
+  const ground = new Float32Array(w * h);
+  for (let r = 0; r < h; r++) for (let c = 0; c < w; c++) ground[r * w + c] = arrays.ground[parent(c, r)];
+  const share = plantShare(plants, origin, grid, { z0, dz, nz }, (c, r) => ground[r * w + c]);
+  const layerOf = (m) => Math.floor((m - z0) / dz);
+  const kind = arrays.kind || new Uint8Array(W * H);
+
+  /* 1. POSITION: each lidar tree the walk saw well, moved (whole) to best overlap the walk's plant in the band both see. */
+  const { id: clump, n: nClumps } = clumpsOf(kind, W, H);
+  const moveOf = new Array(nClumps).fill(null).map(() => [0, 0]);
+  const steps = Math.round(SHIFT_MAX_M / (G.cell * mercScale(G.lat) / S));
+  const band = (k, l) => { const zm = z0 + (l + 0.5) * dz - arrays.ground[k]; return zm >= SHIFT_BAND_M[0] && zm <= SHIFT_BAND_M[1]; };
+  const moved = [];
+  for (let id = 0; id < nClumps; id++) {
+    /* the clump's cubes in the band, on the fine grid */
+    const cells = [];
+    for (let k = 0; k < W * H; k++) {
+      if (clump[k] !== id) continue;
+      const X = k % W, Y = (k / W) | 0;
+      for (let l = 0; l < nz; l++) if (arrays.mu[k * nz + l] > 0 && band(k, l)) for (let sy = 0; sy < S; sy++) for (let sx = 0; sx < S; sx++) cells.push((Y * S + sy) * w + X * S + sx, l);
+    }
+    if (cells.length < 2 * CLUMP_MIN_CELLS) continue;
+    const overlap = (dx, dy) => {
+      let s = 0, seen = 0;
+      for (let q = 0; q < cells.length; q += 2) {
+        const f = cells[q], l = cells[q + 1], c = (f % w) + dx, r = ((f / w) | 0) + dy;
+        if (c < 0 || r < 0 || c >= w || r >= h) continue;
+        const v = share[(r * w + c) * nz + l];
+        if (v > 0) { s += v; seen++; }
+      }
+      return { s, seen };
+    };
+    const at0 = overlap(0, 0);
+    let best = { ...at0, dx: 0, dy: 0 };
+    let near = 0;
+    for (let dy = -steps; dy <= steps; dy++) for (let dx = -steps; dx <= steps; dx++) {
+      const o = overlap(dx, dy);
+      /* the most of the walk's plant inside the tree; on a tie, the smaller move */
+      if (o.s > best.s + 1e-6 || (Math.abs(o.s - best.s) <= 1e-6 && dx * dx + dy * dy < best.dx * best.dx + best.dy * best.dy)) best = { ...o, dx, dy };
+      if (o.seen >= CLUMP_MIN_CELLS) near = Math.max(near, o.seen);
+    }
+    if (near < CLUMP_MIN_CELLS || (best.dx === 0 && best.dy === 0)) continue;
+    if (!(best.s >= SHIFT_GAIN * at0.s && best.s > 0)) continue;
+    moveOf[id] = [best.dx, best.dy];
+    moved.push({ clump: id, east: best.dx * G.cell * mercScale(G.lat) / S, north: -best.dy * G.cell * mercScale(G.lat) / S });
+  }
+
+  /* 2. The lidar on the fine grid, each tree where step 1 put it (a moved tree leaves its old place empty). */
+  const fuseOne = (src) => {
+    if (!src) return null;
+    const out = new Float32Array(w * h * nz);
+    for (let k = 0; k < W * H; k++) {
+      const X = k % W, Y = (k / W) | 0;
+      const [mx, my] = clump[k] >= 0 ? moveOf[clump[k]] : [0, 0];
+      for (let sy = 0; sy < S; sy++) for (let sx = 0; sx < S; sx++) {
+        const c = X * S + sx + mx, r = Y * S + sy + my;
+        if (c < 0 || r < 0 || c >= w || r >= h) continue;
+        const f = r * w + c;
+        for (let l = 0; l < nz; l++) { const v = src[k * nz + l]; if (v > out[f * nz + l]) out[f * nz + l] = v; }
+      }
+    }
+    return out;
+  };
+  const muL = fuseOne(arrays.mu), muOnL = fuseOne(arrays.muOn);
+  /* The lidar's kinds as placed: roofs and low structures are the lidar's alone (a walk's plant is never folded
+     into a roof, and a roof's density is never moved). */
+  const placed = new Uint8Array(w * h);
+  for (let k = 0; k < W * H; k++) {
+    if (!kind[k]) continue;
+    const X = k % W, Y = (k / W) | 0, [mx, my] = clump[k] >= 0 ? moveOf[clump[k]] : [0, 0];
+    for (let sy = 0; sy < S; sy++) for (let sx = 0; sx < S; sx++) {
+      const c = X * S + sx + mx, r = Y * S + sy + my;
+      if (c >= 0 && r >= 0 && c < w && r < h) placed[r * w + c] = kind[k];
+    }
+  }
+  const hard = (f) => placed[f] === 1 || placed[f] === 4;
+
+  /* 3. Within each lidar cube's footprint (S x S half-metre cells, one layer, as placed), the density moved to where
+     the walk saw plant, its mean kept; 4. plant the lidar did not have, at a borrowed or a shrub's density. */
+  const borrowR = Math.max(1, Math.round(BORROW_M / (G.cell * mercScale(G.lat) / S)));
+  const borrow = (mu, c, r, l) => {
+    let best = 0, bd = Infinity;
+    for (let dy = -borrowR; dy <= borrowR; dy++) for (let dx = -borrowR; dx <= borrowR; dx++) {
+      const cc = c + dx, rr = r + dy;
+      if (cc < 0 || rr < 0 || cc >= w || rr >= h) continue;
+      const v = mu[(rr * w + cc) * nz + l], d = dx * dx + dy * dy;
+      if (v > 0 && v < SOLID_MU * 0.999 && d < bd) { bd = d; best = v; }
+    }
+    return best || PLANT_MU;
+  };
+  let added = 0, refined = 0;
+  const refine = (mu) => {
+    if (!mu) return null;
+    const out = Float32Array.from(mu);
+    for (let R = 0; R < H; R++) for (let C = 0; C < W; C++) for (let l = 0; l < nz; l++) {
+      let sumShare = 0, sumMu = 0, isHard = false;
+      for (let sy = 0; sy < S; sy++) for (let sx = 0; sx < S; sx++) { const f = (R * S + sy) * w + C * S + sx; sumShare += share[f * nz + l]; sumMu += mu[f * nz + l]; if (hard(f)) isHard = true; }
+      if (!(sumShare > 0) || isHard) continue; // the walk saw nothing here, or it is a roof or a wall: the lidar as it is
+      const meanMu = sumMu / (S * S), meanShare = sumShare / (S * S);
+      for (let sy = 0; sy < S; sy++) for (let sx = 0; sx < S; sx++) {
+        const c = C * S + sx, r = R * S + sy, f = r * w + c, i = f * nz + l, sh = share[i];
+        if (meanMu > 0) { out[i] = Math.min(SOLID_MU, meanMu * sh / meanShare); if (mu === muL) refined++; }
+        else if (sh > 0) { out[i] = Math.min(SOLID_MU, sh * borrow(mu, c, r, l)); if (mu === muL) added++; }
+      }
+    }
+    return out;
+  };
+  const mu = refine(muL), muOn = refine(muOnL);
+
+  /* The fine grid's kinds and tops, from the lidar's (as placed) and the walk's plant. */
+  const kindF = Uint8Array.from(placed), top = new Float32Array(w * h).fill(NaN);
+  for (let f = 0; f < w * h; f++) {
+    let hi = -1;
+    for (let l = nz - 1; l >= 0; l--) if (mu[f * nz + l] > 0) { hi = l; break; }
+    if (hi >= 0) { top[f] = z0 + (hi + 1) * dz - ground[f]; if (!kindF[f]) kindF[f] = 2; }
+    else if (kindF[f] === 2 || kindF[f] === 3) kindF[f] = 0;
+  }
+  const out = {
+    meta: {
+      v: meta.v, tool: 'shade', build: meta.build, at: now.toISOString(), basedOn: meta.basedOn || null,
+      fused: { from: 'the shade map\'s lidar model and one yard walk\'s plants (fuse.js)', lidarAt: meta.at, walk: plants.walk ?? null, walkAt: plants.at ?? null, walkFit: plants.fit || null, sub: S, plantTrustM: PLANT_TRUST_M, refined, added, moved },
+      fences: meta.fences || [], grid, layers: { z0, dz, nz }, lidar: meta.lidar || null, photo: meta.photo || null, rule: meta.rule, leaves: meta.leaves,
+    },
+    arrays: { ground, kind: kindF, top, mu },
+  };
+  if (muOn) out.arrays.muOn = muOn;
+  return out;
+}
