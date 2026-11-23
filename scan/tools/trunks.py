@@ -234,7 +234,15 @@ def find_in_walk(recs, kind, flags, cut_s=0.0):
                 continue
         if ext[0] > NARROW or ext[1] > (NARROW if child else LONG):
             wide += 1
-            turned.append({"x": float(c0[0]), "z": float(c0[1]), "why": f"too wide ({ext[0] * 39.37:.0f} by {ext[1] * 39.37:.0f} in; {NARROW * 39.37:.0f} by {LONG * 39.37:.0f} allowed)"})
+            # along its length at stem height, points per 4 in, and how many separate times it was seen: two trunks
+            # show as two heaps with a dip between; one trunk seen twice by a drifted walk shows as two TIMES
+            a_ = proj[:, int(np.argmax(np.ptp(proj, axis=0)))]
+            st_ = (ph >= 0.3) & (ph <= 1.5)
+            prof = np.histogram(a_[st_], np.arange(a_.min(), a_.max() + 0.1, 0.1))[0] if st_.sum() else []
+            o_ = np.argsort(pt)
+            segs = np.split(o_, np.flatnonzero(np.diff(pt[o_]) > 20) + 1)
+            seen_ = "; ".join(f"{len(sg_)} points {np.median(a_[sg_]) * 39.37:+.0f} in along it" for sg_ in segs if len(sg_) >= 8)
+            turned.append({"x": float(c0[0]), "z": float(c0[1]), "why": f"too wide ({ext[0] * 39.37:.0f} by {ext[1] * 39.37:.0f} in; {NARROW * 39.37:.0f} by {(NARROW if child else LONG) * 39.37:.0f} allowed; at stem height along its length, points per 4 in: {' '.join(str(int(c_)) for c_ in prof)}; seen at {len([1 for sg_ in segs if len(sg_) >= 8])} separate times: {seen_})"})
             continue
         # a shrub is short: something stands TALL or more over the ground within a metre of it
         if not ((np.hypot(ux - c0[0], uz - c0[1]) < 1.0).sum() >= 3):
