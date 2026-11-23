@@ -31,6 +31,18 @@ tree column from its lowest measured cube down to the crown's branch floor
 the owner says so. Features session.
 
 
+### 0c. WAITING ON THE OWNER: a yard walk's low plants offered beside the lidar (core session, 2026-11-23; shade map)
+
+The scan tool's part of a map (tools.scan.data.plants, docs/MAPS.md "scan", docs/SCAN-PLAN.md 56) holds the
+shrubs, hedges, trunks and low limbs one walk saw, as boxes 1 ft square ([i, j, lo, hi]: lo..hi decimetres over
+the ground). The features session's view, nothing built: rasterise the boxes into the canopy's cubes only below
+the lidar's branch floor, never over a laser return; a hedge as solid, a shrub at a shrub's density, scored
+against the shade readings first; a third switchable layer in the trees view. THE FRAME, from the core session:
+the walk's fit is ALREADY applied (meta `fit` is a note, never a transform); i * cellM, j * cellM are LOCAL
+metres east and north of the map's point (scan/lib/frames.js fromLocal, sphere 6378137, east scaled by
+cos(lat)): go fromLocal -> degrees -> toMerc, never add metres onto toMerc of the point (1 / cos(lat) stretch).
+Refuse a walk whose fit.worstM is large. The owner decides whether and when.
+
 ### 0. Lawn Mapper's buildings and roads from the shade map's lidar rules, if needed (owner, 2026-11-03)
 
 "I'm not sure if the lawn map should get any changes, except maybe for
