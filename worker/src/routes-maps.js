@@ -20,6 +20,8 @@
  *   GET    /api/maps/thermal?id=[&walk=]  DEV ONLY: the map's thermal camera walks, from the yard AR site (admin only)
  *   PUT    /api/maps/model?id=&tool=  the finished lidar model, a binary file (public/lib/lidar-model.js), kept gzipped
  *   GET    /api/maps/model?id=&tool=  the kept (gzipped) bytes; read with unpackModel; 404 until written
+ *          &file=fused (PUT, GET, HEAD, with &part= too): a second file beside the model, the lidar's shapes refined
+ *          by a walk; the lidar's own file is never written by it
  *   GET    /api/maps/photo?id=    the photo the map was traced on, kept with it (map-photo.js); X-Photo-Frame
  *   GET    /api/tools             the tools, their order and where they open
  *
@@ -30,7 +32,7 @@ import { currentUser } from './auth.js';
 import { accountsEnabled } from './db.js';
 import {
   USER_MAX_MAPS, GUEST_MAX_MAPS, findGuest, newGuest, userOwner, guestOwner,
-  listMaps, getMap, upsertMap, deleteMap, putTool, toolsFor, putModel, getModel, modelPart,
+  listMaps, getMap, upsertMap, deleteMap, putTool, toolsFor, putModel, getModel, modelPart, modelFile,
 } from './unified.js';
 import { keepPhoto, mapPhoto } from './map-photo.js';
 
@@ -233,15 +235,18 @@ export async function handleMaps(request, env, url, origin, ctx, json) {
     // &part=N (1..64): an overflow part of a model too big for one object (unified.js MODEL_MAX_PARTS); none: the main file
     const part = modelPart(url.searchParams.get('part'));
     if (part == null) return reply({ error: 'bad-part', message: 'part is 1 to 64, or left out for the main file' }, 400);
+    // &file=fused: the second file beside the model (unified.js MODEL_FILES: the lidar's shapes refined by a walk); none: the model itself
+    const file = modelFile(url.searchParams.get('file'));
+    if (file == null) return reply({ error: 'bad-file', message: 'file is fused, or left out for the model itself' }, 400);
     if (request.method === 'PUT' || request.method === 'POST') {
-      const r = owner ? await putModel(env, owner, key, tool, request.body, Number(request.headers.get('Content-Length') || 0), part) : { error: 'no-map' };
+      const r = owner ? await putModel(env, owner, key, tool, request.body, Number(request.headers.get('Content-Length') || 0), part, file) : { error: 'no-map' };
       if (r.error === 'no-map') return reply({ error: 'no-map', ...who }, 404);
       if (r.error === 'no-bucket') return reply({ error: 'no-bucket', message: 'the site has no bucket for models' }, 503);
       if (r.error) return reply(r, r.error === 'too-big' ? 413 : 400);
       return reply({ ...r, ...who });
     }
     if (request.method === 'GET' || request.method === 'HEAD') {
-      const obj = owner ? await getModel(env, owner, key, tool, part) : null;
+      const obj = owner ? await getModel(env, owner, key, tool, part, file) : null;
       if (!obj) return reply({ error: 'no-model', ...who }, 404);
       const headers = new Headers({ 'Content-Type': 'application/octet-stream', 'Cache-Control': 'private, no-store', 'Content-Length': String(obj.size) });
       if (obj.customMetadata?.at) headers.set('X-Model-At', obj.customMetadata.at);

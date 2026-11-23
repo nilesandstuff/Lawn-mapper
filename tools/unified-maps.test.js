@@ -200,6 +200,20 @@ let guestCookie;
   const mGot = await raw(`/api/maps/model?id=${id}&tool=shade`, 'GET', gc);
   check('read back by its number, the main file untouched', pGot.status === 200 && new Uint8Array(await pGot.arrayBuffer()).byteLength === packed.byteLength && mGot.status === 200);
   check('a part not written is 404', (await raw(`/api/maps/model?id=${id}&tool=shade&part=3`, 'GET', gc)).status === 404);
+  // A SECOND FILE BESIDE THE MODEL (2026-11-23: the lidar's shapes refined by a walk, never written over the lidar's)
+  {
+    const before = new Uint8Array(await (await raw(`/api/maps/model?id=${id}&tool=shade`, 'GET', gc)).arrayBuffer());
+    check('no fused file until one is written', (await raw(`/api/maps/model?id=${id}&tool=shade&file=fused`, 'GET', gc)).status === 404);
+    const fPut = await raw(`/api/maps/model?id=${id}&tool=shade&file=fused`, 'PUT', gc, bytes);
+    const fj = await fPut.json();
+    check('the fused file is kept and says which it is', fPut.status === 200 && fj.file === 'fused' && fj.tool === 'shade', JSON.stringify(fj));
+    const fGot = await raw(`/api/maps/model?id=${id}&tool=shade&file=fused`, 'GET', gc);
+    check('the fused file reads back', fGot.status === 200 && (await fGot.arrayBuffer()).byteLength > 0);
+    const after = new Uint8Array(await (await raw(`/api/maps/model?id=${id}&tool=shade`, 'GET', gc)).arrayBuffer());
+    check('writing the fused file leaves the lidar\'s own file as it was', after.length === before.length && after.every((v, i) => v === before[i]));
+    check('a fused overflow part is its own object', (await raw(`/api/maps/model?id=${id}&tool=shade&file=fused&part=1`, 'PUT', gc, packed)).status === 200 && (await raw(`/api/maps/model?id=${id}&tool=shade&file=fused&part=1`, 'GET', gc)).status === 200 && (await raw(`/api/maps/model?id=${id}&tool=shade&part=1`, 'GET', gc)).status !== 200);
+    check('a file of any other name is refused', (await raw(`/api/maps/model?id=${id}&tool=shade&file=other`, 'GET', gc)).status === 400 && (await raw(`/api/maps/model?id=${id}&tool=shade&file=other`, 'PUT', gc, bytes)).status === 400);
+  }
   const badParts = [];
   for (const v of [65, '01', 'x', '-1']) badParts.push((await raw(`/api/maps/model?id=${id}&tool=shade&part=${v}`, 'GET', gc)).status);
   check('part 65, 01, a word or -1 is refused', badParts.every((st) => st === 400) && (await raw(`/api/maps/model?id=${id}&tool=shade&part=65`, 'PUT', gc, packed)).status === 400, badParts.join(','));

@@ -205,6 +205,108 @@ def shapes_of(recs, kind, flags, cut_s=0.0, fit=None):
     return out, st
 
 
+SEEN_CELL = 0.6096     # m: 2 ft, the plan grid of where the walk saw open air
+SEEN_TOP_FT = 8        # ft: open air is claimed only this far up (where the phone is near what it looks at)
+SEEN_REACH = 8.0       # m: only the sight lines this short are used
+SEEN_PASSES = 6        # samples of sight lines through a cubic cell (a quarter metre apart), at the least
+
+
+def read_track(d):
+    """-> (M, 4) [t, x, y, z] by time: where the camera was (track-NNNN.bin; segment_study.read_track, kept here so
+    this tool needs numpy and scipy only)."""
+    import re
+    tr = []
+    for n in sorted(x for x in os.listdir(d) if re.fullmatch(r"track-\d+\.bin", x)):
+        a = np.fromfile(os.path.join(d, n), dtype="<f4")
+        tr.append(a[: len(a) // 10 * 10].reshape(-1, 10)[:, [0, 2, 3, 4]])
+    if not tr:
+        return np.zeros((0, 4))
+    tr = np.concatenate(tr).astype(np.float64)
+    return tr[np.argsort(tr[:, 0])]
+
+
+def seen_of(recs, flags, track, cut_s, fit):
+    """WHERE THE WALK LOOKED AND SAW NOTHING (the features session's ask, 2026-11-23: `plants` "says where plant WAS
+    seen, not where the phone's depth passed through empty air. Without that I... can't trim a lidar crown that
+    sticks out past where the walk saw open air"). Every kept point was seen along a line from the camera: the air
+    along that line, short of the point, was open. Per 2 ft square of the map: how high the air was seen OPEN from
+    the ground up without a break, in decimetres, up to SEEN_TOP_FT.
+
+    WHAT IT CLAIMS, AND WHAT IT DOES NOT. Only sight lines SEEN_REACH long or less, and only to SEEN_TOP_FT up: near
+    the phone, where its depth is good. A cubic cell is open when SEEN_PASSES samples of sight lines crossed it and
+    fewer than two points were seen IN it. Above SEEN_TOP_FT nothing is claimed either way: in leaf-off months the
+    phone sees straight THROUGH a bare crown to the sky, and "the phone saw through it" is not "nothing is there".
+    -> { cellM, i0, j0, w, h, capDm, notSeen, clearTo (base64, one byte a square, rows south to north) } or None."""
+    import base64
+    if len(track) < 10 or not fit:
+        return None, {}
+    t_, x_, y_, z_, g_ = (recs[:, i].astype(np.float64) for i in (0, 2, 3, 4, 5))
+    ok = np.isfinite(x_) & np.isfinite(y_) & np.isfinite(z_) & np.isfinite(g_) & (t_ >= cut_s) & ((flags & 3) == 0)
+    if ok.sum() < 1000:
+        return None, {}
+    P = np.stack([x_[ok], y_[ok], z_[ok]], 1)
+    gp = g_[ok]
+    i_ = np.clip(np.searchsorted(track[:, 0], t_[ok]), 1, len(track) - 1)
+    i_ = np.where(np.abs(track[i_ - 1, 0] - t_[ok]) < np.abs(track[i_, 0] - t_[ok]), i_ - 1, i_)
+    C = track[i_, 1:4]
+    # the ground under any place: the middle ground height of the points in its 1 m square, the nearest square with one
+    from scipy.spatial import cKDTree
+    gij = np.floor(P[:, [0, 2]]).astype(np.int64)
+    o = np.lexsort((gij[:, 1], gij[:, 0]))
+    gs, gy = gij[o], gp[o]
+    brk = np.flatnonzero(np.r_[True, (np.diff(gs, axis=0) != 0).any(1)])
+    gcell = gs[brk].astype(np.float64)
+    gmed = np.array([np.median(gy[a:b]) for a, b in zip(brk, np.r_[brk[1:], len(gy)])])
+    gtree = cKDTree(gcell)
+    k_ = float(fit.get("s") or 1.0)
+    cth, sth = np.cos(fit["theta"]) * k_, np.sin(fit["theta"]) * k_
+
+    def on_map(X, Z):
+        return cth * X - sth * (-Z) + fit["tx"], sth * X + cth * (-Z) + fit["ty"]
+    band = 0.3048
+    nb = SEEN_TOP_FT
+    # what was seen IN each cubic cell: every kept point 6 in or more over its own ground
+    he = (P[:, 1] - gp) * k_
+    ee, en = on_map(P[:, 0], P[:, 2])
+    D = P - C
+    L = np.linalg.norm(D, axis=1)
+    use = (L >= 0.8) & (L <= SEEN_REACH)
+    # samples along the short sight lines, from half a metre out to 0.4 m short of the point
+    S_e, S_n, S_h = [], [], []
+    for s_ in np.arange(0.5, SEEN_REACH, 0.25):
+        m = use & (s_ < L - 0.4)
+        if not m.any():
+            break
+        q = C[m] + D[m] * (s_ / L[m])[:, None]
+        _, near = gtree.query(np.floor(q[:, [0, 2]]))
+        e_, n_ = on_map(q[:, 0], q[:, 2])
+        S_e.append(e_); S_n.append(n_); S_h.append((q[:, 1] - gmed[near]) * k_)
+    if not S_e:
+        return None, {}
+    S_e, S_n, S_h = np.concatenate(S_e), np.concatenate(S_n), np.concatenate(S_h)
+    i0 = int(np.floor(min(S_e.min(), ee.min()) / SEEN_CELL)); j0 = int(np.floor(min(S_n.min(), en.min()) / SEEN_CELL))
+    w = int(np.floor(max(S_e.max(), ee.max()) / SEEN_CELL)) - i0 + 1; h = int(np.floor(max(S_n.max(), en.max()) / SEEN_CELL)) - j0 + 1
+    if w * h > 60000:
+        return None, {"why": "the walk covers too wide a square to keep"}
+
+    def vox(e_, n_, hh):
+        b = np.floor(hh / band).astype(np.int64)
+        inb = (b >= 0) & (b < nb)
+        return ((np.floor(n_[inb] / SEEN_CELL).astype(np.int64) - j0) * w + (np.floor(e_[inb] / SEEN_CELL).astype(np.int64) - i0)) * nb + b[inb]
+    passes = np.bincount(vox(S_e, S_n, S_h), minlength=w * h * nb).reshape(w * h, nb)
+    solid = he >= 0.15
+    inside = np.bincount(vox(ee[solid], en[solid], he[solid]), minlength=w * h * nb).reshape(w * h, nb)
+    anyp = np.bincount((np.floor(en / SEEN_CELL).astype(np.int64) - j0) * w + (np.floor(ee / SEEN_CELL).astype(np.int64) - i0), minlength=w * h)
+    open_ = (passes >= SEEN_PASSES) & (inside < 2)
+    run = np.cumprod(open_, axis=1).sum(1)                      # open cubic cells from the ground up without a break
+    covered = (passes.sum(1) > 0) | (anyp > 0)
+    val = np.where(covered, np.minimum(np.round(run * band * 10), SEEN_TOP_FT * 3), 255).astype(np.uint8)
+    st = {"squares": int(covered.sum()), "openTop": int((covered & (run >= nb)).sum()), "openNone": int((covered & (run == 0)).sum()), "lines": int(use.sum())}
+    return {"cellM": SEEN_CELL, "i0": i0, "j0": j0, "w": w, "h": h, "capDm": SEEN_TOP_FT * 3, "notSeen": 255,
+            "what": "decimetres of open air seen from the ground up without a break, one byte a square, rows south to north; nothing is claimed above capDm",
+            "clearTo": base64.b64encode(val.tobytes()).decode()}, st
+
+
 def phone_kinds(d, n):
     """The kinds by the phone's own labels alone (labels-NNNN.bin, byte 0 = ARCore's label + 1; studies.py PHONE_KIND),
     in the cloud parts' order; None when the labels do not match the points."""
@@ -315,9 +417,16 @@ def main():
         ms, mst = shapes_of(recs, kind, flags, cut, fit["T"])
         boxes = sorted({(int(np.floor(c[0] / CELL)), int(np.floor(c[1] / CELL)), int(round(c[2] * 10)), int(round(c[3] * 10))) for s_ in ms for c in s_["cells"]})
         mo = os.path.join(d, "plants-map.json")
+        seen, sst = seen_of(recs, flags, read_track(d), cut, fit["T"])
+        doc = {"v": 1, "cellM": CELL, "from": "a walk's points the phone or the vote called tree or plant, 3 ft up or more", "heights": "decimetres over the ground under each",
+               "fit": {"corners": fit.get("n"), "worstM": fit.get("worstM"), "scale": fit["T"].get("s", 1)}, "boxes": [list(b) for b in boxes]}
+        if seen:
+            doc["seen"] = seen
+            print(f"  WHERE IT LOOKED AND SAW OPEN AIR: {sst['lines']:,} sight lines of {SEEN_REACH * FT:.0f} ft or less; {sst['squares']:,} squares of 2 ft covered ({sst['squares'] * 4:,} sq ft); open all the way to {SEEN_TOP_FT} ft in {sst['openTop']:,}, something from the ground up in {sst['openNone']:,}; {len(seen['clearTo']) / 1e3:.0f} KB.")
+        else:
+            print(f"  Where it looked and saw open air: NOT kept ({sst.get('why') or 'no camera track beside the twin, or too few points'}).")
         with open(mo, "w") as f:
-            json.dump({"v": 1, "cellM": CELL, "from": "a walk's points the phone or the vote called tree or plant, 3 ft up or more", "heights": "decimetres over the ground under each",
-                       "fit": {"corners": fit.get("n"), "worstM": fit.get("worstM"), "scale": fit["T"].get("s", 1)}, "boxes": [list(b) for b in boxes]}, f, separators=(",", ":"))
+            json.dump(doc, f, separators=(",", ":"))
         print(f"  ON THE MAP, by its {fit.get('n')} corners' one fit (within {(fit.get('worstM') or 0) * 39.37:.0f} in, the phone's distances scaled {((fit['T'].get('s', 1)) - 1) * 100:.1f}%): {len(ms)} shapes, {len({(b[0], b[1]) for b in boxes}):,} sq ft, {len(boxes):,} boxes, seen up to {max((b[3] for b in boxes), default=0) / 10 * FT:.0f} ft. Kept: plants-map.json ({os.path.getsize(mo) / 1e3:.0f} KB).")
     else:
         print(f"  NOT put on the map: {(fit or {}).get('why') or 'the walk has no fit kept beside it (fit.json)'}.")

@@ -17,7 +17,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { BUCKET, readObject, writeObject, walkOk } from './twin-r2.mjs';
 
-export const MAX_BYTES = 40000;   // of the 64 KB the scan tool's part of a map's record may hold (docs/MAPS.md)
+export const MAX_BYTES = 52000;   // of the 64 KB the scan tool's part of a map's record may hold (docs/MAPS.md); the placed things have the rest
 
 async function main() {
   const [walk, dir] = process.argv.slice(2);
@@ -29,12 +29,14 @@ async function main() {
   if (!meta?.map) throw new Error('the walk was made with no map open');
   const j = JSON.parse(readFileSync(f, 'utf8'));
   const out = { ...j, walk: String(walk), at: new Date().toISOString() };
-  const body = Buffer.from(JSON.stringify(out));
+  let body = Buffer.from(JSON.stringify(out));
+  // too big with where the walk saw open air (`seen`): the plants go without it, and that is said
+  if (body.length > MAX_BYTES && out.seen) { delete out.seen; body = Buffer.from(JSON.stringify(out)); console.log(`Where the walk saw open air is LEFT OUT: with it the file is over the ${MAX_BYTES / 1e3} KB there is room for.`); }
   if (body.length > MAX_BYTES) { console.log(`Plants NOT kept with the map: ${(body.length / 1e3).toFixed(0)} KB, over the ${MAX_BYTES / 1e3} KB there is room for in the map's record.`); process.exitCode = 1; return; }
   const key = `plants/${meta.map}.json`, old = await readObject(BUCKET, key).catch(() => null);
   if (old) await writeObject(BUCKET, `plants/backup/${meta.map}-${Date.now()}.json`, old, 'application/json');
   await writeObject(BUCKET, key, body, 'application/json', { walk: String(walk) });
-  console.log(`Plants kept with the map: ${j.boxes.length.toLocaleString()} boxes, ${(body.length / 1e3).toFixed(0)} KB${old ? '; the ones they replace are kept as a backup' : ''}. The map's record takes them when the start page next opens the map.`);
+  console.log(`Plants kept with the map: ${j.boxes.length.toLocaleString()} boxes${out.seen ? ', with where the walk saw open air' : ''}, ${(body.length / 1e3).toFixed(0)} KB${old ? '; the ones they replace are kept as a backup' : ''}. The map's record takes them when the start page next opens the map.`);
 }
 
 if (process.argv[1] && process.argv[1].endsWith('plants-keep.mjs')) main().catch((e) => { console.log(`Plants: ${e.message}`); process.exit(1); });

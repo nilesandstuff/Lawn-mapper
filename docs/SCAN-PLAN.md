@@ -4250,6 +4250,32 @@ ANSWERED by the core session: the boxes are ALREADY on the map (the walk's fit i
 `fit` is a record of how well the corners agreed, not a transform to apply again), and e, n are the scan tool's
 local metres from the map's point (scan/lib/frames.js toLocal, a plain sphere), not Mercator metres.
 
+THAT VIEW WITHDRAWN, AND THE COURSE CHANGED BY THE OWNER (the features session's message of 2026-11-23, giving the
+owner's words in ITS conversation; the core session has them only as relayed): "I do actually want the AR to
+override/correct/ refine the lidar. The lidar is coarse, messes up the edges of canopy, and can even be off on
+position. So I want the AR to be a refinement on the lidar... AR, so far, hasn't demonstrated being good at seeing
+high up from the ground, and AR won't be very good at conveying how much light gets through a canopy in that same
+way that lidar brightness can. So my thought is that we use AR to improve the existing lidar shapes (in position and
+dimensions), drawing over them... Note: please make some use of the finer resolution of ar. And don't directly modify
+the actual lidar files... This needs to be a seperate file that fuses the rasterized lidar shapes AND the AR shapes".
+THE FEATURES SESSION'S (its report, not measured here, on its branch, not merged): public/shade/fuse.js fuseModel:
+a NEW lidar-model file on a half-metre grid; the walk says WHERE and the lidar says HOW DENSE (inside each lidar
+cube the lidar's density is moved onto the half-metre cells where the walk saw plant, the cube's mean density kept);
+plant the lidar missed takes the nearest crown's density; a lidar tree the walk saw well is moved whole by up to
+2 m; roofs and walls stay the lidar's.
+ITS TWO ASKS OF THE CORE SESSION, BOTH BUILT 2026-11-23:
+  (1) WHERE TO KEEP IT: `&file=fused` on /api/maps/model (worker/src/unified.js MODEL_FILES, modelFile; docs/MAPS.md):
+      a second file beside the tool's model, `<tool>-fused.bin` and its overflow parts, the same format and limits.
+      Tested (tools/unified-maps.test.js): writing it leaves the lidar's own file byte for byte as it was.
+  (2) WHERE THE WALK LOOKED AND SAW NOTHING: `plants.seen` (plants.py seen_of; docs/MAPS.md): per 2 ft square of
+      the map, the decimetres of air seen open from the ground up without a break. Every kept point was seen along a
+      line from the camera; the air along that line, short of the point, was open. Only lines of 26 ft or less; a
+      cubic cell is open when six samples of sight lines crossed it and fewer than two points were seen in it.
+      NOTHING IS CLAIMED ABOVE 8 FT, the core session's limit and the reason for it: in leaf-off months the phone
+      sees straight through a bare crown to the sky, and a lidar crown trimmed by that would be wrong in June. And
+      in open lawn it reads about the phone's own height: the phone sees lines to surfaces, not air. Made-up yard:
+      open to 8 ft before a hedge with a wall seen over it, 0 at the hedge, 3 ft in open lawn with nothing beyond.
+
 NOT DONE BY IT: a shape drawn twice by a walk that slid stays, a little fat; a crown is not seen; nothing is placed on
 the map or shared with any tool yet.
 

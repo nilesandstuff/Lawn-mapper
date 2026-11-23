@@ -320,7 +320,19 @@ export async function deleteMap(env, owner, key) {
      MODEL_MAX_UPLOAD  what may come in: under the 100 MB request body Cloudflare takes on a Free or Pro zone
      MODEL_MAX_STORED  what is kept, gzipped: room for a lot many times the owner's, inside the Worker's memory */
 const modelPrefix = async (owner, key) => `models/${owner.kind}/${owner.id}/${await hash(key)}/`;
-export async function modelKey(owner, key, tool, part = 0) { return `${await modelPrefix(owner, key)}${tool}${part ? `.${part}` : ''}.bin`; }
+export async function modelKey(owner, key, tool, part = 0, file = '') { return `${await modelPrefix(owner, key)}${tool}${file ? `-${file}` : ''}${part ? `.${part}` : ''}.bin`; }
+/* A SECOND FILE BESIDE A TOOL'S MODEL (2026-11-23; the owner to the features session: the AR is to refine the lidar's
+   shapes, but "don't directly modify the actual lidar files... This needs to be a seperate file that fuses the
+   rasterized lidar shapes AND the AR shapes"; the roadmap of 2026-11-22: a fused model "offered... beside the lidar
+   model, never in place of it"). &file=fused names it: kept as <tool>-fused.bin (and its overflow parts
+   <tool>-fused.<N>.bin) beside <tool>.bin, the same format, limits and checks. The lidar's own file is never touched
+   by a write to it; a reader takes the fused file when there is one, else the lidar's. Deleting the map sweeps both. */
+export const MODEL_FILES = ['fused'];
+/** A file name from a request: '' for the model itself (none given), one of MODEL_FILES, or null when it is not one. */
+export function modelFile(v) {
+  if (v == null || v === '') return '';
+  return MODEL_FILES.includes(String(v)) ? String(v) : null;
+}
 /* OVERFLOW PARTS (the owner, 2026-11-16: "Id think it would be better to make an overflow file rather than remove data
    outright"): a model too big for one object keeps what does not fit in parts 1..MODEL_MAX_PARTS (64), each itself a
    lidar-model file, checked and limited like the main one, stored as <tool>.<N>.bin beside <tool>.bin. The main
@@ -374,10 +386,12 @@ export async function storedModelBytes(body, { maxIn = MODEL_MAX_UPLOAD, maxOut 
   return { bytes, gzipped: !gz };
 }
 
-export async function putModel(env, owner, key, tool, body, contentLength = 0, partOrOpts = 0) {
+export async function putModel(env, owner, key, tool, body, contentLength = 0, partOrOpts = 0, fileName = '') {
   if (!isTool(tool)) return { error: 'unknown-tool' };
   const part = modelPart(partOrOpts);
   if (part == null) return { error: 'bad-part', max: MODEL_MAX_PARTS };
+  const file = modelFile(fileName);
+  if (file == null) return { error: 'bad-file', files: MODEL_FILES };
   if (!env.CORPUS) return { error: 'no-bucket' };
   if (contentLength > MODEL_MAX_UPLOAD) return { error: 'too-big', max: MODEL_MAX_UPLOAD };
   const { table, col } = T(owner);
@@ -386,15 +400,15 @@ export async function putModel(env, owner, key, tool, body, contentLength = 0, p
   const got = await storedModelBytes(body);
   if (got.error) return got;
   const t = nowIso();
-  await env.CORPUS.put(await modelKey(owner, key, tool, part), got.bytes, { httpMetadata: { contentType: 'application/gzip' }, customMetadata: { at: t, tool, ...(part ? { part: String(part) } : {}) } });
-  return { tool, ...(part ? { part } : {}), at: t, bytes: got.bytes.byteLength, gzippedHere: got.gzipped };
+  await env.CORPUS.put(await modelKey(owner, key, tool, part, file), got.bytes, { httpMetadata: { contentType: 'application/gzip' }, customMetadata: { at: t, tool, ...(part ? { part: String(part) } : {}), ...(file ? { file } : {}) } });
+  return { tool, ...(file ? { file } : {}), ...(part ? { part } : {}), at: t, bytes: got.bytes.byteLength, gzippedHere: got.gzipped };
 }
 
 /** The model's R2 object, or null. */
-export async function getModel(env, owner, key, tool, partOrOpts = 0) {
-  const part = modelPart(partOrOpts);
-  if (!isTool(tool) || !env.CORPUS || part == null) return null;
-  return env.CORPUS.get(await modelKey(owner, key, tool, part));
+export async function getModel(env, owner, key, tool, partOrOpts = 0, fileName = '') {
+  const part = modelPart(partOrOpts), file = modelFile(fileName);
+  if (!isTool(tool) || !env.CORPUS || part == null || file == null) return null;
+  return env.CORPUS.get(await modelKey(owner, key, tool, part, file));
 }
 
 export async function deleteModels(env, owner, key) {
