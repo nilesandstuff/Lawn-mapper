@@ -4208,14 +4208,23 @@ TOO LOOSE BY ITSELF, the core session's reading: 61 ft is past what the phone's 
 and a single 3 ft cell of six stray points over a shrub is the too-tall column again, three feet wide. So A CROWN
 IS BROAD: a crown run stays only in a patch of three coarse cells or more that touch (27 sq ft). Made-up yard: ten
 strays in one 3 ft cell over a shrub are dropped, a crown of one point to the square foot over 10 by 10 ft stays.
-Its numbers on the walk follow below when read. NOT CHECKED: the owner's eyes on any of this third cut.
+HARD (run 531): 148 crown runs kept, 34 that stood alone dropped; 34 shapes, 1,936 sq ft, the middle one seen to
+16 ft, the tallest still 61 ft; 10 of the owner's 11 trunks in a shape, seen to 30, 10, 61, 24, 24, 25, 25, 20, 16,
+15 ft. On the map: 1,993 sq ft, 2,200 boxes, 33 KB. NOT CHECKED: the owner's eyes on any of this third cut; and the
+heights past about 13 ft are the phone's depth where it is weakest, kept at face value.
 
 THE PHONE'S OWN LABELS AGAINST THE VOTE (run 530; the roadmap: "as much processing... on the user's device as
 possible"). The same rules on the kinds by ARCore's own labels alone, which the phone has as it walks, instead of the
 kinds voted afterwards from the pictures by a model on a server: 74,326 points labelled tree (66,359 voted tree or
 plant); 35 shapes each way; 9 of the owner's 11 trunks in a shape by the phone's labels (10 by the vote). The square
 feet in common were MISCOUNTED in that run (cells rounded to the nearest even foot: 668 in both, 88 only the vote,
-158 only the phone, of about half the true cells); counted again in the next run.
+158 only the phone, of about half the true cells).
+HARD, COUNTED RIGHT (run 531): the phone's labels alone draw 2,157 sq ft, the vote 1,936; 1,647 sq ft IN BOTH, 289
+only by the vote, 510 only by the phone: 67% the same of all either drew; 34 shapes each way; 9 of the owner's 11
+trunks by the phone's labels (10 by the vote). WHAT IT SAYS: most of the plants can be drawn from what the phone
+already has at a walk's end, without the pictures going to a server. WHAT IT DOES NOT SAY: whether the 510 sq ft only
+the phone draws are plants (its "tree" on walls and pillars is what the first look found), or the 289 it misses
+matter. One walk; the owner's eyes have seen only the vote's.
 
 ON THE MAP (run 530; scan/tools/walk-fit.mjs, plants-keep.mjs): the same points put on the map first by the walk's
 three corners' one fit (within 3 in; the phone's distances scaled 6.7%, the heights stretched by the same, which is
