@@ -4168,6 +4168,19 @@ used; 3 / 13 / 249 sq ft each (least / middle / most), 935 sq ft in all; 22 seen
 trunks, 9 stand in a shape (seen there up to 11-35 ft) and 2 in none (the two with no column of points); all 13 of
 the trunk finder's stand in one. NOT CHECKED: the owner's eyes on the shapes; the tops over about 13 ft (the phone's
 depth is weak that far: SCAN-H7), which may be as much noise as crown.
+THE OWNER'S FIRST LOOK AT THE SHAPES (2026-11-23): "There were a couple plant columns that creeped up the walls of the
+house and consumed part of my front porched (a 2 foot high concrete slab and light tan pillars/columns). On the plus
+side, it helped the bare trees fill out a bit more."
+BUILT: a plant point counts only where plant OUTVOTES everything else the walk saw in the same cubic foot (built,
+fence, paved, movable, ground kinds), and half of the most in a cubic foot beside it on the level. By the cubic foot
+and not the column, so a shrub against a wall keeps its own height. On a made-up yard: plant taken off a wall whose
+points were 15% "tree" and off a pillar 30% "tree"; a shrub against that wall kept, to its own top.
+HARD (run 527, the same walk): 2,655 of the 48,540 plant points outvoted, in 1,295 of 10,831 cubic feet; 30 shapes
+(32 before), 813 sq ft (935 before), the largest 222 sq ft (249); the owner's 9 trunks in shapes as before, seen to
+the same heights. NOT CHECKED: the owner's eyes on whether the walls and the porch are clear. A pillar the phone
+called "tree" in nearly every picture would not be outvoted; the lidar's building outline is the next check if one
+is still drawn.
+
 NOT DONE BY IT: a shape drawn twice by a walk that slid stays, a little fat; a crown is not seen; nothing is placed on
 the map or shared with any tool yet.
 
