@@ -4511,6 +4511,15 @@ DONE: a point voted built or fence whose photo colour is sky blue (blue over 140
 counted as sky in the built shapes. ONLY ON A BLUE-SKY DAY: under an overcast sky the test finds nothing, and a blue
 house would need another witness. NOT done to the plants: a bare branch against the sky is coloured sky and is a
 branch; taking those out is what thinned the bare trees before.
+HARD, AFTER BOTH CHANGES (run 543, the same walk): 2,012 sky-blue points voted built or fence counted as sky; the
+built shapes 1,870 sq ft in 2,348 boxes (1,932 and 2,412 with them), the house 1,709 sq ft (1,769). Open air from
+212,080 sight lines of any length (190,112 of 26 ft or less before): 12,843 squares of 2 ft covered, 51,372 sq ft
+(8,397 before); open to 8 ft in 772 (408); no claim in 9,653; still 5 KB, 39 KB with the plants. NOT CHECKED: the
+owner's eyes on the roof's edge in the built shapes; where it says open, against anything.
+THE FIRST FUSED MODEL (fused-check.mjs, runs 541-543): one, the owner's lot, written 2026-11-23T21:05:59Z, minutes
+after the owner opened the map on the Yard AR start page: 2.27 MB gzipped beside a lidar model of 2.57 MB written
+2026-11-18. Which page made it is not known from the bucket. Nobody has looked at it.
+
 SKY THROUGH A BARE CROWN (the owner's second point; put to the features session, not built): the walk's open air is
 capped at 8 ft for exactly this. The owner's way is better than a cap: say WHEN the walk was made (plants.walk is
 its start, in milliseconds) and let the shade map's leaf calendar decide what sky seen through a canopy means.
