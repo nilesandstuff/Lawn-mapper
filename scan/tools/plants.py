@@ -301,6 +301,12 @@ def seen_of(recs, flags, track, cut_s, fit):
     inside = np.bincount(vox(ee[solid], en[solid], he[solid]), minlength=w * h * nb).reshape(w * h, nb)
     anyp = np.bincount((np.floor(en / SEEN_CELL).astype(np.int64) - j0) * w + (np.floor(ee / SEEN_CELL).astype(np.int64) - i0), minlength=w * h)
     open_ = (passes >= SEEN_PASSES) & (inside < 3)
+    # THE LOWEST FOOT IS OPEN WHERE THE GROUND WAS SEEN: a sight line to the ground is only under a foot up for its
+    # last few inches, which are left out as too near the point, so the lowest foot was hardly ever "crossed". Three
+    # ground points seen in a square, from near, say its lowest foot of air is open there.
+    low = use & (he < 0.3048)
+    ground_seen = np.bincount((np.floor(en[low] / SEEN_CELL).astype(np.int64) - j0) * w + (np.floor(ee[low] / SEEN_CELL).astype(np.int64) - i0), minlength=w * h)
+    open_[:, 0] = ground_seen >= 3
     run = np.cumprod(open_, axis=1).sum(1)                      # open cubic cells from the ground up without a break
     covered = (passes.sum(1) > 0) | (anyp > 0)
     val = np.where(covered, np.minimum(np.round(run * band * 10), SEEN_TOP_FT * 3), 255).astype(np.uint8)
