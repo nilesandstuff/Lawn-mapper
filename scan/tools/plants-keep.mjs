@@ -2,9 +2,9 @@
  * A WALK'S PLANTS KEPT WITH ITS MAP (core session, 2026-11-23): plants/<map>.json in the twin bucket, from the
  * plants-map.json that scan/tools/plants.py made (the walk's plants gridded in the map's own square feet). The scan
  * page reads it when the map opens (GET /api/scan/plants?map=) and puts it into the scan tool's part of the map's
- * record (docs/MAPS.md "scan", `plants`), where the shade and water maps can read it and OFFER it: never in place of
- * the lidar's own shapes (the owner, 2026-11-22: "Not directly writing over the lidar shapes... But offering a new 3d
- * environment with finer details, where it's available").
+ * record (docs/MAPS.md "scan", `plants`), where the fusing reads it: one of the two sources of the fused model (the
+ * owner, 2026-11-23: "built from both parts, but is seperate from either... an entirely new 3D environment, so the
+ * original data is not modified in the process of fusing it"). Neither this nor the lidar's file is written over.
  *
  * ONE WALK'S PLANTS AT A TIME, for now: the newest walk whose corners vouch for it replaces what was kept (the one
  * replaced is kept as a backup). Joining several walks' plants is not built.

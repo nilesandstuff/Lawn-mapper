@@ -2105,7 +2105,8 @@ async function askThings() {
    shapes at face value"; the roadmap, 2026-11-22: the AR "offering a new 3d environment with finer details, where
    it's available"). The workflow keeps one walk's plants with the map (GET /api/scan/plants); here they are drawn on
    the placement map as green squares (how high: darker is taller), and put into the scan tool's part of the map's
-   record (`plants`) when the record does not hold these yet, for the shade and water maps to OFFER. */
+   record (`plants`) when the record does not hold these yet: the walk's side of the fused model (CLAUDE.md; the
+   owner, 2026-11-23: "built from both parts, but is seperate from either"). */
 async function askPlants(map) {
   st.plants = null;
   try {

@@ -417,7 +417,7 @@ def main():
     print(f"  Kept: {os.path.basename(out)} ({len(shapes)} shapes, {os.path.getsize(out) / 1e6:.2f} MB; each cell [x, z, lowest, highest plant over the ground]; places not printed).")
     # ON THE MAP (fit.json, scan/tools/walk-fit.mjs: the walk's corners' one fit, kept only when three corners agree
     # and the walk is not known to have slid): the same, gridded in the map's own square feet. The roadmap's fused
-    # model begins here: what a walk saw of the plants, where the map is, for the shade and water maps to be OFFERED.
+    # model begins here: what a walk saw of the plants, where the map is: one of the fused model's two sources.
     try:
         fit = json.load(open(os.path.join(d, "fit.json")))
     except Exception:

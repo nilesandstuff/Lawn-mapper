@@ -246,8 +246,23 @@ ADDED TO THE ROADMAP BY THE OWNER, 2026-11-22 ("fit this in whenever and however
   - THE AR REFINES THE LIDAR'S SHAPES FOR THE SHADE MAP AND THE WATER MAP. "Not directly writing over the lidar
     shapes... But offering a new 3d environment with finer details, where it's available. And since the AR maps are
     inherently incomplete, it needs to be filled in by lidar in order for the shade map and water map to use it."
-    So: one fused model, the AR's finer shapes where a walk saw them and the lidar everywhere else, offered to the
-    other tools beside the lidar model, never in place of it. (The water session's view, for the record: the lidar's
+    THE FUSED MODEL, IN THE OWNER'S WORDS (2026-11-23, correcting the core session's own "beside the lidar model,
+    never in place of it", which was NOT the owner's wording): the AR and the lidar are "fused in a way that's built
+    from both parts, but is seperate from either. So it's an entirely new 3D environment, so the original data is
+    not modified in the process of fusing it. It's meant to be our best possible representation of reality." And to
+    the features session the same day: "I do actually want the AR to override/correct/ refine the lidar. The lidar
+    is coarse, messes up the edges of canopy, and can even be off on position... AR, so far, hasn't demonstrated
+    being good at seeing high up from the ground, and AR won't be very good at conveying how much light gets through
+    a canopy in that same way that lidar brightness can... don't directly modify the actual lidar files... This needs
+    to be a seperate file that fuses the rasterized lidar shapes AND the AR shapes". So: neither source is written
+    over, and the fused model is not "the lidar with extras": where the two disagree it takes whichever is the
+    better witness of that thing (the walk for where low things are and how big; the lidar for what is high up and
+    for how much light a canopy passes).
+    WHO HAS IT (the owner, 2026-11-23): "Note that the water map will also work off [of] it. So I think you should
+    be in charge of it? But you'll have to sort that out with the shade map session, either way you'll have to have
+    your hands on it to some extent, since you're in charge of AR and we're still developing the AR." The core
+    session is in charge of the fused model; how the work is divided with the features session (which wrote the
+    first fusing, public/shade/fuse.js) is recorded in docs/MAPS.md once agreed. (The water session's view, for the record: the lidar's
     frame is the truth for where a thing on the ground is; the aerial photo is a backdrop.)
   - RESOURCE CONSERVATION ON OUR END, "presumably a more distant goal": "Doing as much processing and storage on the
     user's device as possible. To minimize data transfer requirements, server storage costs, and CPU (gpu?) usage on

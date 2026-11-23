@@ -323,8 +323,8 @@ const modelPrefix = async (owner, key) => `models/${owner.kind}/${owner.id}/${aw
 export async function modelKey(owner, key, tool, part = 0, file = '') { return `${await modelPrefix(owner, key)}${tool}${file ? `-${file}` : ''}${part ? `.${part}` : ''}.bin`; }
 /* A SECOND FILE BESIDE A TOOL'S MODEL (2026-11-23; the owner to the features session: the AR is to refine the lidar's
    shapes, but "don't directly modify the actual lidar files... This needs to be a seperate file that fuses the
-   rasterized lidar shapes AND the AR shapes"; the roadmap of 2026-11-22: a fused model "offered... beside the lidar
-   model, never in place of it"). &file=fused names it: kept as <tool>-fused.bin (and its overflow parts
+   rasterized lidar shapes AND the AR shapes"; and to the core session: "built from both parts, but is seperate from
+   either... an entirely new 3D environment, so the original data is not modified"). &file=fused names it: kept as <tool>-fused.bin (and its overflow parts
    <tool>-fused.<N>.bin) beside <tool>.bin, the same format, limits and checks. The lidar's own file is never touched
    by a write to it; a reader takes the fused file when there is one, else the lidar's. Deleting the map sweeps both. */
 export const MODEL_FILES = ['fused'];
