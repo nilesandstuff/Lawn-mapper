@@ -4275,6 +4275,12 @@ ITS TWO ASKS OF THE CORE SESSION, BOTH BUILT 2026-11-23:
       sees straight through a bare crown to the sky, and a lidar crown trimmed by that would be wrong in June. And
       in open lawn it reads about the phone's own height: the phone sees lines to surfaces, not air. Made-up yard:
       open to 8 ft before a hedge with a wall seen over it, 0 at the hedge, 3 ft in open lawn with nothing beyond.
+      HARD (run 535, the walk of 2026-11-20): 190,112 sight lines of 26 ft or less; 8,397 squares of 2 ft covered
+      (33,588 sq ft); open to 8 ft in 347; "something from the ground up" in 6,412, which was WRONG: the lawn's own
+      points, scattered a few inches over the ground, were counted as standing things. And at a byte a square it
+      came to 45 KB and was left out of the record. Both mended: a standing thing is a foot or more up (three
+      points), and the squares are deflated before they are kept. The main site with `file=fused` is out (deploy
+      run 561, its log's end read: no warning).
 
 NOT DONE BY IT: a shape drawn twice by a walk that slid stays, a little fat; a crown is not seen; nothing is placed on
 the map or shared with any tool yet.

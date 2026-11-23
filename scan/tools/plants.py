@@ -234,10 +234,11 @@ def seen_of(recs, flags, track, cut_s, fit):
 
     WHAT IT CLAIMS, AND WHAT IT DOES NOT. Only sight lines SEEN_REACH long or less, and only to SEEN_TOP_FT up: near
     the phone, where its depth is good. A cubic cell is open when SEEN_PASSES samples of sight lines crossed it and
-    fewer than two points were seen IN it. Above SEEN_TOP_FT nothing is claimed either way: in leaf-off months the
+    fewer than three points were seen IN it (a foot or more up: the ground's own points do not count). Above SEEN_TOP_FT nothing is claimed either way: in leaf-off months the
     phone sees straight THROUGH a bare crown to the sky, and "the phone saw through it" is not "nothing is there".
-    -> { cellM, i0, j0, w, h, capDm, notSeen, clearTo (base64, one byte a square, rows south to north) } or None."""
+    -> { cellM, i0, j0, w, h, capDm, notSeen, enc, clearTo (zlib then base64; one byte a square, rows south to north) } or None."""
     import base64
+    import zlib
     if len(track) < 10 or not fit:
         return None, {}
     t_, x_, y_, z_, g_ = (recs[:, i].astype(np.float64) for i in (0, 2, 3, 4, 5))
@@ -294,17 +295,19 @@ def seen_of(recs, flags, track, cut_s, fit):
         inb = (b >= 0) & (b < nb)
         return ((np.floor(n_[inb] / SEEN_CELL).astype(np.int64) - j0) * w + (np.floor(e_[inb] / SEEN_CELL).astype(np.int64) - i0)) * nb + b[inb]
     passes = np.bincount(vox(S_e, S_n, S_h), minlength=w * h * nb).reshape(w * h, nb)
-    solid = he >= 0.15
+    # what stands in a cubic cell: points a foot or more up (the ground's own points scatter a few inches over it:
+    # run 535 read 6,412 of 8,397 squares as "something from the ground up", which was the lawn itself)
+    solid = he >= 0.3048
     inside = np.bincount(vox(ee[solid], en[solid], he[solid]), minlength=w * h * nb).reshape(w * h, nb)
     anyp = np.bincount((np.floor(en / SEEN_CELL).astype(np.int64) - j0) * w + (np.floor(ee / SEEN_CELL).astype(np.int64) - i0), minlength=w * h)
-    open_ = (passes >= SEEN_PASSES) & (inside < 2)
+    open_ = (passes >= SEEN_PASSES) & (inside < 3)
     run = np.cumprod(open_, axis=1).sum(1)                      # open cubic cells from the ground up without a break
     covered = (passes.sum(1) > 0) | (anyp > 0)
     val = np.where(covered, np.minimum(np.round(run * band * 10), SEEN_TOP_FT * 3), 255).astype(np.uint8)
     st = {"squares": int(covered.sum()), "openTop": int((covered & (run >= nb)).sum()), "openNone": int((covered & (run == 0)).sum()), "lines": int(use.sum())}
     return {"cellM": SEEN_CELL, "i0": i0, "j0": j0, "w": w, "h": h, "capDm": SEEN_TOP_FT * 3, "notSeen": 255,
             "what": "decimetres of open air seen from the ground up without a break, one byte a square, rows south to north; nothing is claimed above capDm",
-            "clearTo": base64.b64encode(val.tobytes()).decode()}, st
+            "enc": "zlib+base64", "clearTo": base64.b64encode(zlib.compress(val.tobytes(), 9)).decode()}, st
 
 
 def phone_kinds(d, n):
