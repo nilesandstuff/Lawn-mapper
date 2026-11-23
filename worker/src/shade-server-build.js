@@ -44,6 +44,22 @@ export async function buildShadeOnServer(env, owner, key, { base } = {}) {
   const bytes = b64(out.model);
   const model = await putModel(env, owner, key, 'shade', new Response(bytes).body, bytes.length);
   if (model.error) return { ok: false, why: `the model was not stored: ${model.error}` };
+  /* The lidar refined by a yard walk (fuse.js), when the builder made one: its parts, then it, as file=fused, with
+     what it was made from (docs/MAPS.md: the lidar file's write time just given | the walk's time | FUSE_VERSION). */
+  let fused = null;
+  if (out.fused) {
+    const fi = out.result?.fused || {};
+    const madeFrom = `${model.at}|${fi.walkAt ?? null}|${fi.version ?? 0}`;
+    const fparts = Array.isArray(out.fusedParts) ? out.fusedParts : [];
+    let ok = true;
+    for (let i = 0; i < fparts.length && ok; i++) {
+      const pb = b64(fparts[i]);
+      const r = await putModel(env, owner, key, 'shade', new Response(pb).body, pb.length, { part: i + 1 }, 'fused', madeFrom);
+      if (r.error) ok = false;
+    }
+    if (ok) { const fb = b64(out.fused); const r = await putModel(env, owner, key, 'shade', new Response(fb).body, fb.length, 0, 'fused', madeFrom); ok = !r.error; }
+    fused = { ok, madeFrom };
+  }
   const part = out.part?.data ? await putTool(env, owner, key, 'shade', out.part.data, out.part.basedOn) : null;
-  return { ok: true, model, part, seconds: out.seconds ?? null, build: out.result?.build ?? null, lidar: out.result?.lidar ?? null };
+  return { ok: true, model, part, fused, seconds: out.seconds ?? null, build: out.result?.build ?? null, lidar: out.result?.lidar ?? null };
 }

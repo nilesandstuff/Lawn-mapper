@@ -1808,6 +1808,12 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   check('model file: far over, the points are split over as many overflow files as they need, each within the limit, and the whole model comes back exactly',
     ptRuns >= 2 && many.parts.every((p) => p.byteLength <= cap) && sameAs(back2) && back2.arrays.ptX.length === whole.arrays.ptX.length,
     `parts ${many.parts.length} (${ptRuns} of points), largest ${Math.max(...many.parts.map((p) => p.byteLength))} of ${cap}; same ${sameAs(back2)}`);
+  /* What a fused file was made from goes with every PUT of it (X-Model-Made-From), and the main PUT's `at` comes back. */
+  const sent = [];
+  const hdrFetch = async (url, init = {}) => { sent.push([url, init.headers?.['X-Model-Made-From'] || null]); return new Response(JSON.stringify({ at: 'T1' }), { status: 200 }); };
+  const putF = await putModelFiles(hdrFetch, '', 'm3', many, 'fused', { madeFrom: 'L|W|1' });
+  check('model file: a fused file\'s PUTs (parts and main) carry what it was made from and go to file=fused; the server\'s write time comes back',
+    sent.length === many.parts.length + 1 && sent.every(([u, h]) => /&file=fused/.test(u) && h === 'L|W|1') && putF.at === 'T1', `${sent.length} PUTs; at ${putF.at}`);
   const stale = await unpackModel(many.parts[0]);
   let refused = false;
   try { mergeOverflow(await unpackModel(many.main), [{ ...stale, meta: { ...stale.meta, overflowOf: 'an older save' } }]); } catch { refused = true; }

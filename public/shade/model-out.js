@@ -315,10 +315,13 @@ export async function modelFiles(finished, { maxBytes = 48 * 1024 * 1024 } = {})
 export async function modelBytes(finished, opts) { return (await modelFiles(finished, opts)).main; }
 
 /** PUT a model's files for map `mapId` (or its `file`, e.g. 'fused'): the overflow parts first (&part=N), the main file last. { ok, status, bytes }. */
-export async function putModelFiles(fetchFn, base, mapId, { main, parts }, file = null) {
-  /* `file`: 'fused' for the lidar refined by a yard walk (fuse.js), kept beside the lidar's own (never over it) */
+export async function putModelFiles(fetchFn, base, mapId, { main, parts }, file = null, { madeFrom = null } = {}) {
+  /* `file`: 'fused' for the lidar refined by a yard walk (fuse.js), kept beside the lidar's own (never over it).
+     `madeFrom`: X-Model-Made-From, what the file was made from (docs/MAPS.md, the fused model: the lidar file's
+     X-Model-At | the walk's at | FUSE_VERSION), kept by the server so a writer can skip an unchanged one. */
   const url = `${base}/api/maps/model?id=${encodeURIComponent(mapId)}&tool=shade${file ? `&file=${encodeURIComponent(file)}` : ''}`;
-  const put = (body, part) => fetchFn(part ? `${url}&part=${part}` : url, { method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/octet-stream' }, body });
+  const headers = { 'Content-Type': 'application/octet-stream', ...(madeFrom ? { 'X-Model-Made-From': madeFrom } : {}) };
+  const put = (body, part) => fetchFn(part ? `${url}&part=${part}` : url, { method: 'PUT', credentials: 'same-origin', headers, body });
   let bytes = 0;
   for (let i = 0; i < parts.length; i++) {
     const r = await put(parts[i], i + 1);
@@ -326,5 +329,7 @@ export async function putModelFiles(fetchFn, base, mapId, { main, parts }, file 
     bytes += parts[i].byteLength;
   }
   const r = await put(main, 0);
-  return { ok: r.ok, status: r.status, bytes: bytes + main.byteLength, parts: parts.length };
+  /* the server's write time of the main file (its X-Model-At from now on) */
+  const at = r.ok ? await r.clone().json().then((j) => j?.at || null).catch(() => null) : null;
+  return { ok: r.ok, status: r.status, bytes: bytes + main.byteLength, parts: parts.length, at };
 }

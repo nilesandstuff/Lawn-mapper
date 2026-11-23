@@ -5,7 +5,8 @@
  * needs about 180 MB on a medium lot, more than a Worker's 128 MB.
  *
  *   GET  /health                 -> { ok, build } (build.js SHADE_BUILD, as baked into this image)
- *   POST /build { map, base }    -> { ok, why?, result, part: { data, basedOn } | null, model: base64 gzip, parts: [base64 gzip] (overflow, over 48 MB) }
+ *   POST /build { map, base }    -> { ok, why?, result, part: { data, basedOn } | null, model: base64 gzip, parts: [base64 gzip] (overflow, over 48 MB),
+ *                                    fused, fusedParts (the lidar refined by a yard walk, fuse.js, when the map holds one) }
  *
  * `map` is the saved map's record as the main Worker's getMap gives it (with
  * `tools`); `base` the site's origin (https://lawnmap.<home>), for the public
@@ -49,14 +50,15 @@ export async function buildMap({ map, base }, { fetchImpl = globalThis.fetch, on
   if (!/^https:\/\/[a-z0-9.-]+$/i.test(String(base || ''))) return { ok: false, why: 'no site origin' };
   /* Admin saves only (owner, 2026-11-11): the main Worker checks too; this is the second lock. */
   if (map.adminSave !== true) return { ok: false, why: 'not an admin save: the server build is for admin saves only' };
-  let model = null, part = null;
-  const parts = [];
+  let model = null, part = null, fused = null;
+  const parts = [], fusedParts = [];
   const fetchFn = async (u, init = {}) => {
     const url = String(u);
     if (url.startsWith(`${base}/api/maps/one`)) return new Response(JSON.stringify({ map }), { status: 200, headers: { 'content-type': 'application/json' } });
     if (url.startsWith(`${base}/api/maps/model`) && init.method === 'PUT') {
-      const n = Number(new URL(url).searchParams.get('part') || 0), bytes = Buffer.from(new Uint8Array(init.body));
-      if (n > 0) parts[n - 1] = bytes; else model = bytes;
+      const q = new URL(url).searchParams, n = Number(q.get('part') || 0), bytes = Buffer.from(new Uint8Array(init.body));
+      if (q.get('file') === 'fused') { if (n > 0) fusedParts[n - 1] = bytes; else fused = bytes; } // the lidar refined by a walk (fuse.js)
+      else if (n > 0) parts[n - 1] = bytes; else model = bytes;
       return new Response('{"ok":true}', { status: 200 });
     }
     if (url.startsWith(`${base}/api/maps/tool`) && init.method === 'POST') { part = JSON.parse(init.body); return new Response('{"ok":true}', { status: 200 }); }
@@ -64,7 +66,7 @@ export async function buildMap({ map, base }, { fetchImpl = globalThis.fetch, on
   };
   const result = await rebuildModel(map.id || map.key || 'map', { base, fetchFn, firstBuild: true, decompress, decodeImage, decodePng: decodeImage, onProgress });
   if (!result.ok) return { ok: false, why: result.why, result };
-  return { ok: true, result, part, model: model ? model.toString('base64') : null, parts: parts.map((b) => b.toString('base64')) };
+  return { ok: true, result, part, model: model ? model.toString('base64') : null, parts: parts.map((b) => b.toString('base64')), fused: fused ? fused.toString('base64') : null, fusedParts: fusedParts.map((b) => b.toString('base64')) };
 }
 
 let busy = Promise.resolve();
