@@ -4312,6 +4312,20 @@ and fusing version, never writes the lidar's file); the main site keeps and retu
 (X-Model-Made-From); for the water site's server, adminSaves() gives fusedAt, fusedOf() the file, and
 WATER.fusedChanged is pushed once. NOT RUN on a real map yet.
 
+THE WATER SESSION'S VIEW OF THE FUSED MODEL (its message, 2026-11-23; a view, nothing built on its side): the page
+would read the fused file from the main site and fall back to the lidar; its server scorer needs to know when it
+changes (built: fusedAt, fusedOf, fusedChanged); every walk score will record 'lidar' or 'fused' and it will keep
+BOTH side by side: on the thermal walks that is the test of whether the fused model is nearer reality (its H99,
+H100: the surface error sits in patches 2-4 m across that none of the model's factors explain). It does not read
+the shade model file yet (it reads the lidar points itself); the fused model is its reason to. WHAT IT WOULD USE,
+IN ITS ORDER: (1) plants as shade near the ground, shrubs and hedges 3-8 ft up that the lidar misses or smears:
+shade is the largest term in its surface and water-use models, and the thermal walks can score it at once; (2)
+plants in a sprinkler's way; (3) plants and walls as wind shelter near the ground; (4) walls where they stand (the
+roof-to-wall inset matters for where a downspout's water lands and for the foundation grade); (5) THE GROUND, last
+and with the most care: its low spots, flow paths and foundation grades hang on it, a few centimetres moves a
+hollow, and it wants a fused ground only with its own measure of how sure it is. Rain interception it would leave.
+Half a metre is fine. The lidar's frame stays the truth for where a thing on the ground is.
+
 BUILT THINGS AT FACE VALUE, the walk's next part (plants.py BUILT; 2026-11-23): the same rules on the points voted
 built or fence, outvoted by plant and the ground's kinds, from a foot and a half up (a 2 ft porch slab counts). The
 lidar draws a wall 2 ft in from a roof's edge by rule and hardly sees a porch or a pillar; a walk sees them where
