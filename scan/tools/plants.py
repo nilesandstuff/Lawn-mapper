@@ -431,7 +431,7 @@ def main():
                "fit": {"corners": fit.get("n"), "worstM": fit.get("worstM"), "scale": fit["T"].get("s", 1)}, "boxes": [list(b) for b in boxes]}
         if seen:
             doc["seen"] = seen
-            print(f"  WHERE IT LOOKED AND SAW OPEN AIR: {sst['lines']:,} sight lines of {SEEN_REACH * FT:.0f} ft or less; {sst['squares']:,} squares of 2 ft covered ({sst['squares'] * 4:,} sq ft); open all the way to {SEEN_TOP_FT} ft in {sst['openTop']:,}, something from the ground up in {sst['openNone']:,}; {len(seen['clearTo']) / 1e3:.0f} KB.")
+            print(f"  WHERE IT LOOKED AND SAW OPEN AIR: {sst['lines']:,} sight lines of {SEEN_REACH * FT:.0f} ft or less; {sst['squares']:,} squares of 2 ft covered ({sst['squares'] * 4:,} sq ft); open all the way to {SEEN_TOP_FT} ft in {sst['openTop']:,}, not seen open from the ground in {sst['openNone']:,} (something there, or the ground not seen from near); {len(seen['clearTo']) / 1e3:.0f} KB.")
         else:
             print(f"  Where it looked and saw open air: NOT kept ({sst.get('why') or 'no camera track beside the twin, or too few points'}).")
         with open(mo, "w") as f:

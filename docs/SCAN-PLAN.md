@@ -4281,6 +4281,10 @@ ITS TWO ASKS OF THE CORE SESSION, BOTH BUILT 2026-11-23:
       came to 45 KB and was left out of the record. Both mended: a standing thing is a foot or more up (three
       points), and the squares are deflated before they are kept. The main site with `file=fused` is out (deploy
       run 561, its log's end read: no warning).
+      HARD, AFTER (run 536): the lowest foot counted open where three ground points were seen from near; open to
+      8 ft in 408 squares, NOT seen open from the ground in 5,513 of 8,397 (something there, or the ground not seen
+      from near: a 0 is no claim either way, and nothing should be trimmed by one); 5 KB deflated; kept with the
+      plants, 39 KB in all. NOT CHECKED against anything: no one has looked at where it says open.
 
 NOT DONE BY IT: a shape drawn twice by a walk that slid stays, a little fat; a crown is not seen; nothing is placed on
 the map or shared with any tool yet.
