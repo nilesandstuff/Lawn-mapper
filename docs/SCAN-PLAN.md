@@ -4195,6 +4195,37 @@ HARD (run 528, the same walk): 5,258 runs, 912 kept in 895 cells; 4,856 points w
 owner's 9 trunks in shapes still, seen to 11, 10, 31, 24, 24, 25, 25, 16, 15 ft (two came down: 20 to 10, 35 to
 31). NOT CHECKED: the owner's eyes on the tall columns, and on whether the bare trees kept what they had gained.
 
+THE OWNER'S THIRD LOOK (2026-11-23): "Yes the 3 or 4 false columns are gone. But the sparse trees also lost a lot.
+Maybe the rule should be stricter towards the ground (and when viewed more directly from up close) and looser up high
+and far away? See if you can make any tweaks and then move on for now."
+BUILT: 8 ft up or more (where the phone is far from what it sees), the points no run took are read again on cells
+3 ft square: upward, a break of over 6 ft ends a run, and a run of 6 points or more is crown, drawn over its whole
+3 ft cell. Height stands in for distance: what is 8 ft up is never near.
+HARD (run 530, the same walk): of 3,365 points up high that no run had taken, 1,857 made 182 crown runs; strays
+2,887 (4,856 before); 35 shapes, 2,003 sq ft (747 before), seen up to 61 ft (31 before), the middle shape 20 ft; 10
+of the owner's 11 trunks now stand in a shape (9 before), seen to 15-61 ft.
+TOO LOOSE BY ITSELF, the core session's reading: 61 ft is past what the phone's depth can be trusted for (SCAN-H7),
+and a single 3 ft cell of six stray points over a shrub is the too-tall column again, three feet wide. So A CROWN
+IS BROAD: a crown run stays only in a patch of three coarse cells or more that touch (27 sq ft). Made-up yard: ten
+strays in one 3 ft cell over a shrub are dropped, a crown of one point to the square foot over 10 by 10 ft stays.
+Its numbers on the walk follow below when read. NOT CHECKED: the owner's eyes on any of this third cut.
+
+THE PHONE'S OWN LABELS AGAINST THE VOTE (run 530; the roadmap: "as much processing... on the user's device as
+possible"). The same rules on the kinds by ARCore's own labels alone, which the phone has as it walks, instead of the
+kinds voted afterwards from the pictures by a model on a server: 74,326 points labelled tree (66,359 voted tree or
+plant); 35 shapes each way; 9 of the owner's 11 trunks in a shape by the phone's labels (10 by the vote). The square
+feet in common were MISCOUNTED in that run (cells rounded to the nearest even foot: 668 in both, 88 only the vote,
+158 only the phone, of about half the true cells); counted again in the next run.
+
+ON THE MAP (run 530; scan/tools/walk-fit.mjs, plants-keep.mjs): the same points put on the map first by the walk's
+three corners' one fit (within 3 in; the phone's distances scaled 6.7%, the heights stretched by the same, which is
+measured on the level only), then gridded in the map's own square feet: 34 shapes, 2,081 sq ft, 2,309 boxes, 35 KB.
+Kept with the map (plants/<map>.json); the start page reads it when the map opens, draws the square feet green on
+the placement map, and puts it into the scan tool's part of the map's record (docs/MAPS.md `plants`). A walk gets a
+fit for this only with three agreeing corners and no sign it slid (the reference's two rules). ONE walk's plants at
+a time: the newest replaces the last. Checked in a browser with stand-in answers; NOT SEEN ON A PHONE, and no tool
+reads `plants` yet.
+
 NOT DONE BY IT: a shape drawn twice by a walk that slid stays, a little fat; a crown is not seen; nothing is placed on
 the map or shared with any tool yet.
 
