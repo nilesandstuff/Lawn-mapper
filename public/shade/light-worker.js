@@ -134,7 +134,7 @@ self.onmessage = (ev) => {
       const path = sunPath(S.m.lat, S.m.lng, m.dayMs, 10);
       const d = dayLight(modelAt(f), S.fine.xy, path, { stepMin: 10, heightM: S.m.heightM, svf: fineSky(skyAt(f)) });
       const mask = S.lawnOpen || S.lot;
-      const area = (lo, hi) => { let n = 0; for (let p = 0; p < d.sunHours.length; p++) if (mask[S.fine.cells[p]] && d.sunHours[p] >= lo && d.sunHours[p] < hi) n++; return n * 0.25; };
+      const ptM2 = S.fineM2, area = (lo, hi) => { let n = 0; for (let p = 0; p < d.sunHours.length; p++) if (mask[S.fine.cells[p]] && d.sunHours[p] >= lo && d.sunHours[p] < hi) n++; return n * ptM2; };
       self.postMessage({
         type: 'day', id: m.id, xy: S.fine.xy, w: S.grid.w, h: S.grid.h, leaves: f,
         sunHours: d.sunHours, beamHours: d.beamHours, dli: d.dli, openDli: d.openDli,
@@ -263,13 +263,32 @@ function finish(m, grid, model, season, calendar, seasonal, solidMode, leafOffFl
   let solid = 0;
   for (let k = 0; k < lot.length; k++) if (lot[k] && solidAtGrass(model, k)) { lot[k] = 0; solid++; }
   const lawn = m.lawn?.length ? union(m.lawn, grid) : null;
-  const coarse = samplePoints(model, lot, 1);
-  const fine = samplePoints(model, lot, 2);
+  /* Points: about every half metre for the maps of a day, about every metre for the months and the season, whatever
+     the grid's cell (the shade map's 1 m, or a fused model's half metre, fuse.js), so a finer model costs no more. */
+  const cm = cellMetres(model);
+  const block = cm < 0.75 ? Math.max(1, Math.round(1 / cm)) : 1;
+  const fine = samplePoints(model, lot, cm < 0.75 ? 1 : 2);
   const coarseIndex = new Int32Array(grid.w * grid.h).fill(-1);
-  coarse.cells.forEach((c, i) => { coarseIndex[c] = i; });
+  let coarse;
+  if (block === 1) {
+    coarse = samplePoints(model, lot, 1);
+    coarse.cells.forEach((c, i) => { coarseIndex[c] = i; });
+  } else {
+    /* one point at the middle of each block x block square that has lot in it; every cell of the square reads it */
+    const pts = [], cells = [];
+    for (let by = 0; by < grid.h; by += block) for (let bx = 0; bx < grid.w; bx += block) {
+      let anchor = -1;
+      for (let y = by; y < Math.min(grid.h, by + block) && anchor < 0; y++) for (let x = bx; x < Math.min(grid.w, bx + block); x++) if (lot[y * grid.w + x]) { anchor = y * grid.w + x; break; }
+      if (anchor < 0) continue;
+      const i = cells.length;
+      pts.push(Math.min(grid.w, bx + block / 2), Math.min(grid.h, by + block / 2)); cells.push(anchor);
+      for (let y = by; y < Math.min(grid.h, by + block); y++) for (let x = bx; x < Math.min(grid.w, bx + block); x++) coarseIndex[y * grid.w + x] = i;
+    }
+    coarse = { xy: Float32Array.from(pts), cells: Int32Array.from(cells) };
+  }
   const lawnOpen = lawn ? Uint8Array.from(lawn, (v, k) => v & lot[k]) : null;
   S = {
-    m, grid, model, lot, lawn, lawnOpen, coarse, fine, coarseIndex,
+    m, grid, model, lot, lawn, lawnOpen, coarse, fine, coarseIndex, fineM2: cm < 0.75 ? cm * cm : (cm / 2) * (cm / 2),
     season: seasonal ? season : null, calendar: seasonal ? calendar : null, byLeaf: new Map(),
   };
   S.svOff = skyView(seasonal ? modelAt(0) : model, coarse.xy);

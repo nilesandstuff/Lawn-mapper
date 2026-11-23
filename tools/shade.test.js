@@ -2225,6 +2225,87 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   delete globalThis.self;
 }
 
+/* THE LIDAR REFINED BY A YARD WALK (fuse.js; owner, 2026-11-23). A 30 m lot: a tree the lidar caught 1.5 m west of
+   where the walk saw its trunk and low crown, a hedge the lidar never saw, a roof the walk saw a plant over. */
+{
+  const { fuseModel, PLANT_MU } = await import('../public/shade/fuse.js');
+  const { toMerc: tm, fromMerc: fm } = await import('../public/shade/ept.js');
+  const lat = 43, k = mercScale(lat), [bx, by] = tm([-85, lat]);
+  const g = gridOver([bx, by, bx + 30 / k, by + 30 / k], 1, lat);
+  const W = g.w, H = g.h, nz = 15, z0 = 98, dz = 1;
+  const ground = new Float32Array(W * H).fill(100), kind = new Uint8Array(W * H), mu = new Float32Array(W * H * nz);
+  const colAt = (e, n) => Math.floor(H - n) * W + Math.floor(e);
+  for (let e = 0.5; e < 30; e++) for (let n = 0.5; n < 30; n++) {
+    const c = colAt(e, n);
+    if (Math.hypot(e - 10, n - 15) <= 3) { kind[c] = 2; for (let z = 1.5; z <= 9; z++) mu[c * nz + Math.floor(100 + z - z0)] = 1.0; }
+    if (e > 20 && e < 26 && n > 3 && n < 9) { kind[c] = 1; for (let z = 0; z < 5; z++) mu[c * nz + Math.floor(100 + z + 0.5 - z0)] = 4.6; }
+  }
+  const lidar = { meta: { v: 1, at: 'L', grid: { w: W, h: H, x0: g.x0, y1: g.y1, cell: g.cell, cellY: g.cellY || g.cell, lat }, layers: { z0, dz, nz }, fences: [] }, arrays: { ground, kind, mu, muOn: Float32Array.from(mu) } };
+  const lidarBefore = Float32Array.from(mu);
+  const origin = fm([g.x0, g.y1 - H * (g.cellY || g.cell)]);
+  const cm = 0.3048, boxes = [];
+  for (let i = 0; i < 100; i++) for (let j = 0; j < 100; j++) {
+    const e = (i + 0.5) * cm, n = (j + 0.5) * cm;
+    if (Math.hypot(e - 11.5, n - 15) <= 3) boxes.push([i, j, 15, 40]);
+    if (e > 2 && e < 6 && n > 24 && n < 25) boxes.push([i, j, 0, 15]);
+    if (e > 21 && e < 23 && n > 4 && n < 6) boxes.push([i, j, 10, 30]);
+  }
+  const out = fuseModel(lidar, { cellM: cm, boxes, walk: 'w1', at: 'A' }, origin);
+  const w = out.meta.grid.w, fAt = (e, n) => Math.floor((H - n) * 2) * w + Math.floor(e * 2), L = (z) => Math.floor(100 + z - z0);
+  const m = out.arrays.mu;
+  const mv = out.meta.fused.moved[0];
+  check('fuse: the walk moves a lidar tree to where it saw the trunk and low crown (1.5 m east), the whole tree, above the walk\'s reach too',
+    out.meta.fused.moved.length === 1 && Math.abs(mv.east - 1.5) < 0.01 && Math.abs(mv.north) < 0.01 && m[fAt(11.5, 15) * nz + L(6)] === 1 && m[fAt(7.25, 15) * nz + L(6)] === 0 && m[fAt(14.25, 15) * nz + L(6)] === 1,
+    JSON.stringify(out.meta.fused.moved));
+  check('fuse: a hedge the lidar never saw is added at a shrub\'s density for the share of the cell it fills; a plant over a roof is not, and the roof is the lidar\'s; the grid is half a metre',
+    m[fAt(4, 24.5) * nz + L(1)] > 0 && m[fAt(4, 24.5) * nz + L(1)] <= PLANT_MU && out.arrays.kind[fAt(4, 24.5)] === 2 && Math.abs(m[fAt(22, 5) * nz + L(2)] - 4.6) < 1e-3 && out.arrays.kind[fAt(22, 5)] === 1 && w === 2 * W,
+    `hedge ${m[fAt(4, 24.5) * nz + L(1)]}; roof ${m[fAt(22, 5) * nz + L(2)]}`);
+  /* The light kept: where the walk saw part of a lidar cube, the cube's mean density is the lidar's. */
+  const cubeMean = (e, n, z) => { let s = 0; for (const [a, b] of [[0.25, 0.25], [0.75, 0.25], [0.25, 0.75], [0.75, 0.75]]) s += m[fAt(e + a, n + b) * nz + L(z)]; return s / 4; };
+  const kept = [[11, 15, 3], [12, 16, 2], [10, 14, 3]].map(([e, n, z]) => cubeMean(e, n, z));
+  const worst = Math.max(...kept.map((v) => Math.abs(v - 1)));
+  check('fuse: inside a lidar cube the walk only moves the density to where it saw plant; the cube\'s mean, the light it stops, is the lidar\'s', worst < 1e-5, kept.map((v) => v.toFixed(3)).join(' '));
+  check('fuse: the lidar file is not written', mu.every((v, i) => v === lidarBefore[i]) && lidar.meta.grid.w === W);
+
+  /* WHERE THE WALK SAW OPEN AIR (plants.seen): the lidar's skirt under the tree, 1.5-2.5 m up on its east side, seen open
+     to 2.4 m -> emptied there; a cube seen open in half its cells keeps its density in the other half. */
+  const { openFromSeen, fusedGrid } = await import('../public/shade/fuse.js');
+  const { deflateSync: zdef } = await import('node:zlib');
+  const sc = 0.6096, sw = 60, sh2 = 60, bytes = new Uint8Array(sw * sh2).fill(255);
+  for (let r = 0; r < sh2; r++) for (let c = 0; c < sw; c++) {
+    const e = (c + 0.5) * sc, n = (r + 0.5) * sc;
+    if (e > 11.5 && e < 13.5 && n > 13 && n < 17) bytes[r * sw + c] = 24; // open to 8 ft under the lidar tree's east side
+    if (e > 1 && e < 3 && n > 1 && n < 3) bytes[r * sw + c] = 0;        // no claim
+  }
+  const seen = { cellM: sc, i0: 0, j0: 0, w: sw, h: sh2, capDm: 24, notSeen: 255, enc: 'zlib+base64', clearTo: zdef(Buffer.from(bytes)).toString('base64') };
+  const open = await openFromSeen(seen, origin, fusedGrid(lidar.meta));
+  const noBoxes = fuseModel(lidar, { cellM: cm, boxes: [] }, origin, { open });
+  const nm = noBoxes.arrays.mu;
+  const lidarAt = (e, n, z) => mu[colAt(e, n) * nz + L(z)];
+  const cubeOf = (arr, e, n, z) => [[0.25, 0.25], [0.75, 0.25], [0.25, 0.75], [0.75, 0.75]].map(([a, b]) => arr[fAt(e + a, n + b) * nz + L(z)]);
+  const whole = cubeOf(nm, 12, 15, 1.5), half = cubeOf(nm, 11, 15, 1.5), above = cubeOf(nm, 12, 15, 3);
+  const halfMean = half.reduce((a, b) => a + b, 0) / 4;
+  check('fuse: where the walk saw open air (to 8 ft) all through a lidar cube it is emptied; half open, its density moves to the other half, the mean kept; above what was seen open, and where the record makes no claim, the lidar stands',
+    lidarAt(12.5, 15.5, 1.5) === 1 && whole.every((v) => v === 0) && Math.abs(halfMean - 1) < 1e-5 && half.some((v) => v === 0) && above.every((v) => v === 1)
+      && noBoxes.meta.fused.trimmed > 0 && Number.isNaN(open[fAt(2, 2)]) && Math.abs(open[fAt(12.5, 15)] - 2.4) < 1e-6,
+    `whole ${whole}; half ${half}; above ${above}; trimmed ${noBoxes.meta.fused.trimmed}`);
+
+  /* The light worker reads a fused file as it reads the lidar's: a walk that saw nothing gives the same light. */
+  const empty = fuseModel(lidar, { cellM: cm, boxes: [] }, origin);
+  const got = [];
+  globalThis.self = { postMessage: (msg) => got.push(msg) };
+  await import('../public/shade/light-worker.js?fuse-test');
+  const ask = async (msg) => { got.length = 0; self.onmessage({ data: msg }); for (let i = 0; i < 400 && !got.some((x) => x.type === 'built' || x.type === 'error' || x.type === msg.type); i++) await new Promise((r) => setTimeout(r, 10)); return got.find((x) => x.type !== 'progress'); };
+  const day = Date.UTC(2025, 6, 1, 12), base = { lat, lng: -85, heightM: 0, canopy: 'measured' };
+  const a = await ask({ ...base, type: 'model', file: lidar }); const aDay = await ask({ type: 'day', dayMs: day });
+  const b = await ask({ ...base, type: 'model', file: empty }); const bDay = await ask({ type: 'day', dayMs: day });
+  const c = await ask({ ...base, type: 'model', file: out }); const cDay = await ask({ type: 'day', dayMs: day });
+  check('light worker: a fused file (half-metre grid) with nothing from the walk gives the lidar\'s light, on as many points; with the walk, the light follows the moved tree',
+    a.type === 'built' && b.type === 'built' && c.type === 'built' && aDay.sunHours.length === bDay.sunHours.length && Math.abs(aDay.meanSun - bDay.meanSun) < 0.05 && Math.abs(aDay.areaM2.shade - bDay.areaM2.shade) < 2 && cDay.meanSun > 0,
+    `points ${aDay.sunHours?.length}/${bDay.sunHours?.length}; mean sun ${aDay.meanSun?.toFixed(2)}/${bDay.meanSun?.toFixed(2)}/${cDay.meanSun?.toFixed(2)}; shade m2 ${aDay.areaM2?.shade}/${bDay.areaM2?.shade}; ${b.message || ''}`);
+  delete globalThis.self;
+}
+
 /* ONE LEAF STATE PER LOT (passes.js; owner, 2026-10-29). */
 {
   check('passes: a point fired 9 May or in November is leaf-off; 11 May, July and an undated one are not',

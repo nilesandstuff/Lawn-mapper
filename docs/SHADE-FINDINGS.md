@@ -1777,6 +1777,40 @@ against the owner's aerial photo: the garage's east wall now runs whole at
 and the garage's south end at -14.0 (about -14.4). Within 0.4 m everywhere
 except one stretch of the west wall, which the core session is looking at.
 
+### 38. The lidar refined by a yard walk: a fused file, the walk saying where, the lidar how dense (2026-11-23)
+
+The owner: "I do actually want the AR to override/correct/refine the lidar. The lidar is coarse, messes up the edges
+of canopy, and can even be off on position... AR won't be very good at conveying how much light gets through a
+canopy in that same way that lidar brightness can. So my thought is that we use AR to improve the existing lidar
+shapes (in position and dimensions), drawing over them... while maintaining the light that passes through the
+canopies... make some use of the finer resolution of ar... don't directly modify the actual lidar files... a
+separate file that fuses the rasterized lidar shapes AND the AR shapes."
+
+BUILT (public/shade/fuse.js; tools/shade.test.js). fuseModel(lidar file, the scan tool's `plants`, the map's point)
+makes a new model file on a HALF-METRE grid (the lidar's layers), kept beside the lidar's as file=fused (the core
+session's route, 2026-11-23); the lidar's file is never written. From the walk: where (square-foot boxes, trusted up
+to 4 m, about 13 ft) and where it saw open air (plants.seen, up to 8 ft, a 0 no claim). From the lidar: how much
+light a metre of canopy stops. The rules:
+  - inside each lidar cube, its density moves onto the half-metre cells where the walk saw plant; the cube's mean,
+    the light it stops, stays the lidar's (tested to 1e-5);
+  - plant the lidar missed takes the nearest lidar crown's density at that height (within 2 m), else a dense
+    shrub's (stops 90% a metre), scaled by how much of the cell it fills;
+  - a lidar tree the walk saw well in the 1.5-4 m band is moved whole, every height, up to 2 m, when the moved
+    overlap beats the unmoved by 30% (the phone's heights past 13 ft are its weakest, so nothing higher decides it);
+  - where the walk saw open air through a whole cube, the cube is emptied; through part of it, the density moves
+    to the rest, its mean kept; nothing above what was seen open is touched;
+  - roofs and low structures stay the lidar's (a plant over a roof is not folded into it).
+The light worker reads the fused file as it reads the lidar's ('model'), sampling a half-metre grid at the same
+spacing as the 1 m one (as many points, as fast). The shade page fuses on the phone when the map's record holds a
+walk's plants, saves it, draws it in the trees view (light green where the walk saw plant) and uses it for the light,
+each with a switch back to the lidar alone.
+
+MEASURED, synthetic only: a tree the lidar caught 1.5 m west of the walk's trunk moves back whole; a hedge the lidar
+never saw is added; the roof stays; an empty walk gives exactly the lidar's light (13.04 h mean sun both ways on the
+test lot). In the browser on a real lot with a made-up walk: the fused file saved beside the lidar's, the trees view
+and the light drawn from it, no errors. NOT YET MEASURED: any real walk, and whether the light it gives agrees
+with the shade readings better than the lidar's. The densities given to plant the lidar missed are guesses.
+
 ## Speculation
 
 - FENCES (2026-10-27, IN USE, unmeasured; fences.js): drawn by the visitor
