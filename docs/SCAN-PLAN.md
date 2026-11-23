@@ -4294,6 +4294,27 @@ record nothing changes. NOT CHECKED by anyone: any of it on a real walk. The ref
 map's record carries plants; whether the shade readings' scoring uses the fused file is the features session's and
 the owner's to settle.
 
+THE FUSED MODEL IN THE OWNER'S OWN WORDS, AND WHO HAS IT (2026-11-23, to the core session; CLAUDE.md): "fused in a
+way that's built from both parts, but is seperate from either. So it's an entirely new 3D environment, so the
+original data is not modified in the process of fusing it. It's meant to be our best possible representation of
+reality." "Note that the water map will also work off [of] it. So I think you should be in charge of it? But you'll
+have to sort that out with the shade map session". The core session's "beside the lidar model, never in place of
+it" was its own phrase, not the owner's, and is taken out wherever it stood. PROPOSED to the features session the
+same day (not yet answered): the contract in docs/MAPS.md is the core session's; the fusing has one home edited by
+both (light: theirs; what a walk contributes and the geometry that follows: the core session's); the scan page also
+fuses when a walk's side changes; the water session told, and asked how it would take the fused file.
+
+BUILT THINGS AT FACE VALUE, the walk's next part (plants.py BUILT; 2026-11-23): the same rules on the points voted
+built or fence, outvoted by plant and the ground's kinds, from a foot and a half up (a 2 ft porch slab counts). The
+lidar draws a wall 2 ft in from a roof's edge by rule and hardly sees a porch or a pillar; a walk sees them where
+they stand. Made-up yard: a wall, a pillar and a porch slab come out built, a shrub against the wall stays a plant.
+HARD (run 538, the walk of 2026-11-20): 37,231 points voted built or fence, 2,028 outvoted; 7 shapes, 1,932 sq ft,
+the largest 1,769 sq ft (the house), the middle one 10 sq ft; seen up to 27 ft; 2,412 boxes. Drawn in the 3D view
+(the "Shapes" button: tan). NOT CHECKED: the owner's eyes. A doubt already: 8 ft up and more the boxes come 3 ft
+square (the rule made for bare crowns), which fattens a wall's top and an eave; a wall is thin and the rule may
+need to be the strict one all the way up for built things. NOT kept with the map: with the plants it would not fit
+the 64 KB of the record; the walk's side needs a file of its own beside the map first.
+
 NOT DONE BY IT: a shape drawn twice by a walk that slid stays, a little fat; a crown is not seen; nothing is placed on
 the map or shared with any tool yet.
 
