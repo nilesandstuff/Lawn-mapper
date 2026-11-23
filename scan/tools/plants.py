@@ -16,6 +16,9 @@ with no plant point ends it; a cell may hold two, a shrub and a branch over it).
   - a plant point only where plant outvotes everything else seen in the same cubic foot (the owner's look,
     2026-11-23: plant "creeped up the walls of the house and consumed part of my front porch");
   - a run of MIN_PTS points or more whose top is MIN_TOP (3 ft) or more over the ground;
+  - HIGH_FT (8 ft) or more up, where the phone is far from what it sees: the points no run took, read again on 3 ft
+    cells with a 6 ft break allowed, a run of HIGH_PTS or more drawn over its whole 3 ft cell (the owner, 2026-11-23:
+    "stricter towards the ground... and looser up high and far away");
   - joined to its neighbours into a shape; a shape of under MIN_CELLS cells, under MIN_SHAPE_PTS points, or seen in
     fewer than two separate seconds of the walk, is noise and is dropped.
 
@@ -43,6 +46,10 @@ CELL = 0.3048          # m: the plan grid, 1 ft
 MIN_TOP = 0.9144       # m: 3 ft, the owner's line ("anything over 3 feet that the phone calls a tree, is a tree")
 MIN_PTS = 5            # points in a run (a cell's plant seen without a break), at the least
 GAP_FT = 2.0           # ft: a break longer than this with no plant point in it ends a run
+HIGH_FT = 8.0          # ft: from here up the phone is far from what it sees, and the rule is looser
+COARSE = 3             # the cells up high are this many feet square
+HIGH_GAP_FT = 6.0      # ft: up high, a break longer than this ends a run
+HIGH_PTS = 6           # points in a run up high (in COARSE x COARSE ft), at the least
 MIN_CELLS = 3          # cells in a shape, at the least (3 sq ft)
 MIN_SHAPE_PTS = 40     # points in a shape, at the least
 TOP = 20.0             # m over the ground: above this is a stray
@@ -112,20 +119,47 @@ def shapes_of(recs, kind, flags, cut_s=0.0):
     rn = re_ - rs
     rlo, rhi, rcell = hs[rs], hs[re_ - 1], ks[rs]
     good = (rn >= MIN_PTS) & (rhi >= MIN_TOP)
-    st.update({"cells": int(len(np.unique(ks))), "runs": int(len(rs)), "runsKept": int(good.sum()), "cellsOver": int(len(np.unique(rcell[good]))),
-               "strays": int(rn[~good & (rhi >= MIN_TOP)].sum()), "low": int(rn[rhi < MIN_TOP].sum())})
-    if not good.any():
-        return [], st
-    # each point: is it in a kept run?
     run_of = np.cumsum(newrun) - 1
-    in_run = np.zeros(len(ks), bool); in_run[:] = good[run_of]
-    used_pt = np.zeros(len(key), bool); used_pt[o] = in_run
+    used_pt = np.zeros(len(key), bool); used_pt[o] = good[run_of]
+    box_cell, box_lo, box_hi = [rcell[good]], [rlo[good]], [rhi[good]]
+    # LOOSER UP HIGH (the owner's third look, 2026-11-23: the false tall columns "are gone. But the sparse trees also
+    # lost a lot. Maybe the rule should be stricter towards the ground (and when viewed more directly from up close)
+    # and looser up high and far away?"). What is HIGH_FT or more up is far from the phone, where its depth is coarse
+    # and a bare crown gives a few points to the square foot. So the points up there that no run took are read again
+    # on cells COARSE feet square: upward, a break of over HIGH_GAP_FT ends a run, and a run of HIGH_PTS points or
+    # more is crown, drawn over the whole coarse cell. The grain is matched to what the phone can tell that far away;
+    # a stray point or two over a shrub is still no box.
+    hi_pt = ~used_pt & (h >= HIGH_FT * 0.3048)
+    st.update({"highLeft": int(hi_pt.sum())})
+    crown_runs = 0
+    if hi_pt.sum() >= HIGH_PTS:
+        H3 = H // COARSE + 1
+        ck = (ci[hi_pt] // COARSE) * H3 + (cj[hi_pt] // COARSE)
+        hh = h[hi_pt]
+        idx_hi = np.flatnonzero(hi_pt)
+        o2 = np.lexsort((hh, ck))
+        k2, h2 = ck[o2], hh[o2]
+        nr2 = np.r_[True, (np.diff(k2) != 0) | (np.diff(h2) > HIGH_GAP_FT * 0.3048)]
+        s2 = np.flatnonzero(nr2); e2 = np.r_[s2[1:], len(k2)]
+        g2 = (e2 - s2) >= HIGH_PTS
+        crown_runs = int(g2.sum())
+        used_pt[idx_hi[o2]] = g2[np.cumsum(nr2) - 1]
+        for a, b in zip(s2[g2], e2[g2]):
+            I, J = int(k2[a]) // H3, int(k2[a]) % H3
+            ii, jj = np.meshgrid(np.arange(I * COARSE, min(W, (I + 1) * COARSE)), np.arange(J * COARSE, min(H, (J + 1) * COARSE)), indexing="ij")
+            cells_ = (ii * H + jj).reshape(-1)
+            box_cell.append(cells_); box_lo.append(np.full(len(cells_), h2[a])); box_hi.append(np.full(len(cells_), h2[b - 1]))
+    box_cell, box_lo, box_hi = np.concatenate(box_cell), np.concatenate(box_lo), np.concatenate(box_hi)
+    st.update({"cells": int(len(np.unique(ks))), "runs": int(len(rs)), "runsKept": int(good.sum()), "cellsOver": int(len(np.unique(rcell[good]))), "crownRuns": crown_runs,
+               "crownPts": int(used_pt.sum() - good[run_of].sum()), "strays": int((~used_pt & (h >= MIN_TOP)).sum()), "low": int(rn[rhi < MIN_TOP].sum())})
+    if not len(box_cell):
+        return [], st
     from scipy import ndimage
-    grid = np.zeros(W * H, bool); grid[rcell[good]] = True
+    grid = np.zeros(W * H, bool); grid[box_cell] = True
     lab, ng = ndimage.label(grid.reshape(W, H), structure=np.ones((3, 3), int))
     lab = lab.reshape(-1)
     of_pt = np.where(used_pt, lab[key], 0)                  # each point's shape, 0 for none
-    run_shape = lab[rcell]
+    box_shape = lab[box_cell]
     out, small, thin, once = [], 0, 0, 0
     for k in range(1, ng + 1):
         cs = np.flatnonzero(lab == k)
@@ -140,10 +174,10 @@ def shapes_of(recs, kind, flags, cut_s=0.0):
             once += 1
             continue
         gy = float(np.median(g[m]))
-        rr = np.flatnonzero(good & (run_shape == k))
-        cx, cz = (rcell[rr] // H + i0 + 0.5) * CELL, (rcell[rr] % H + j0 + 0.5) * CELL
-        out.append({"id": len(out) + 1, "y": round(gy, 2), "top": round(float(rhi[rr].max()), 2), "areaM2": round(len(cs) * CELL * CELL, 2), "points": int(m.sum()),
-                    "cells": [[round(float(a), 2), round(float(b), 2), round(float(c), 2), round(float(d), 2)] for a, b, c, d in zip(cx, cz, rlo[rr], rhi[rr])]})
+        rr = np.flatnonzero(box_shape == k)
+        cx, cz = (box_cell[rr] // H + i0 + 0.5) * CELL, (box_cell[rr] % H + j0 + 0.5) * CELL
+        out.append({"id": len(out) + 1, "y": round(gy, 2), "top": round(float(box_hi[rr].max()), 2), "areaM2": round(len(cs) * CELL * CELL, 2), "points": int(m.sum()),
+                    "cells": [[round(float(a), 2), round(float(b), 2), round(float(c), 2), round(float(d), 2)] for a, b, c, d in zip(cx, cz, box_lo[rr], box_hi[rr])]})
     st.update({"groups": int(ng), "small": small, "thin": thin, "once": once, "kept": int(sum(s["points"] for s in out))})
     return out, st
 
@@ -177,7 +211,8 @@ def main():
     print(f"PLANTS AS THE WALK SAW THEM: {st['points']:,} kept points, {st.get('plant', 0):,} voted tree or plant, {st.get('used', 0):,} of them used (after the start cut of {cut / 60:.1f} min, no flagged spikes, 6 in to {TOP * FT:.0f} ft over their own ground).")
     print(f"  Outvoted by something built, paved or the like in the same cubic foot (or beside it): {st.get('outvoted', 0):,} of those points, in {st.get('cubesOutvoted', 0):,} of {st.get('cubes', 0):,} cubic feet with plant in them. Not counted as plant.")
     print(f"  1 ft cells with plant in them: {st.get('cells', 0):,}. Read upward, a break of over {GAP_FT:.0f} ft ending a run: {st.get('runs', 0):,} runs; {st.get('runsKept', 0):,} with {MIN_PTS} points or more and a top {MIN_TOP * FT:.0f} ft or more up, in {st.get('cellsOver', 0):,} cells; "
-          f"{st.get('strays', 0):,} points were strays (a run of under {MIN_PTS}, {MIN_TOP * FT:.0f} ft up or more) and {st.get('low', 0):,} were plant under {MIN_TOP * FT:.0f} ft. Joined into {st.get('groups', 0)} shapes: "
+          f"up high ({HIGH_FT:.0f} ft or more), of the {st.get('highLeft', 0):,} points no run took, {st.get('crownPts', 0):,} made {st.get('crownRuns', 0):,} crown runs on {COARSE} ft cells (a break of over {HIGH_GAP_FT:.0f} ft ending one, {HIGH_PTS} points or more); "
+          f"{st.get('strays', 0):,} points were strays in the end and {st.get('low', 0):,} were plant under {MIN_TOP * FT:.0f} ft. Joined into {st.get('groups', 0)} shapes: "
           f"under {MIN_CELLS} cells {st.get('small', 0)}, under {MIN_SHAPE_PTS} points {st.get('thin', 0)}, seen in one second only {st.get('once', 0)}; KEPT {len(shapes)}, holding {st.get('kept', 0):,} points ({100 * st.get('kept', 0) / max(1, st.get('used', 1)):.0f}% of those used).")
     if shapes:
         ar = sorted(s["areaM2"] * FT * FT for s in shapes); tp = sorted(s["top"] * FT for s in shapes); mid = len(shapes) // 2
