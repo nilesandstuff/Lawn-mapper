@@ -156,7 +156,7 @@ water map starts reading the file).
 **`meta.fused`** says what it was made from, so a reader can tell a stale one three ways:
 `{ lidarAt, walk, walkAt, walkFit, version, sub, plantTrustM, refined, added, trimmed, moved, ... }`:
 `lidarAt` the lidar model's `at`; `walk`/`walkAt` the walk and when its side was made; `version` the fusing's own
-(fuse.js `FUSE_VERSION`). A fused file whose three do not match the lidar model, the walk's side and the fusing in
+(fuse.js `FUSE_VERSION`, 1 since 2026-11-23). A fused file whose three do not match the lidar model, the walk's side and the fusing in
 hand is stale: fuse again, or use the lidar.
 
 **Where it is kept.** `PUT`/`GET`/`HEAD /api/maps/model?id=&tool=shade&file=fused` (and `&part=N`), in the API table
@@ -168,7 +168,9 @@ and `HEAD`.
 **Who writes it, and when.** Any page that holds both sources, through the ONE module, on the same two inputs:
 - the shade page, when the lidar's side changes (after a model save);
 - the scan page, when the walk's side changes (when it opens a map whose walk's plants are new; app.js fuseForWalk);
-- the server's rebuild for admin saves [the features session's, to come].
+- the server's rebuild for admin saves (the features session's rebuild.js and worker/src/shade-server-build.js, since
+  2026-11-23): it fuses when the record holds a walk's plants, and the Worker writes the header from the lidar file's
+  write time it has just been given.
 A writer first asks `HEAD`: when the stored `X-Model-Made-From` already names the same lidar, walk and version, it
 does NOT write. So two writers never undo each other, and a file is rewritten only when something it is made from
 has changed.
