@@ -53,7 +53,7 @@ import { treesModel } from './trees-model.js';
 import { Erased } from './erase.js';
 import { readSurround } from './surround.js';
 import { finishedModel, modelFiles, putModelFiles } from './model-out.js';
-import { fuseModel, openFromSeen, fusedGrid, FUSE_VERSION } from './fuse.js';
+import { fuseModel, openFromSeen, openHighFromSeen, fusedGrid, FUSE_VERSION } from './fuse.js';
 import { lazDecoder, browserFactory } from './laz.js';
 import { nad83Correction } from './datum.js';
 import { alignToPhoto } from './align.js';
@@ -209,7 +209,8 @@ export async function rebuildModel(mapId, { onProgress = () => {}, signal = null
     if (plants?.boxes?.length && origin) {
       try {
         const open = plants.seen ? await openFromSeen(plants.seen, origin, fusedGrid(fin.meta)).catch(() => null) : null;
-        const fused = fuseModel(fin, plants, origin, { open });
+        const openHigh = plants.seenHigh ? await openHighFromSeen(plants.seenHigh, origin, fusedGrid(fin.meta)).catch(() => null) : null;
+    const fused = fuseModel(fin, plants, origin, { open, openHigh });
         const madeFrom = put.at ? `${put.at}|${plants.at}|${FUSE_VERSION}` : null;
         const fp = await putModelFiles(fetchFn, base, mapId, await modelFiles(fused), 'fused', { madeFrom });
         fusedInfo = { ok: fp.ok, walkAt: plants.at ?? null, version: FUSE_VERSION, refined: fused.meta.fused.refined, added: fused.meta.fused.added, trimmed: fused.meta.fused.trimmed, moved: fused.meta.fused.moved.length };

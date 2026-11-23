@@ -2285,6 +2285,24 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
     at8(nov, 10.25, 15.25) === 1 && at8(nov, 10.75, 15.25) === 1 && at8(jul, 10.25, 15.25) > 1.2 && at8(jul, 10.75, 15.25) < 0.8 && nov.meta.fused.walkInLeaf === false && jul.meta.fused.walkInLeaf === true,
     `nov ${at8(nov, 10.25, 15.25)}/${at8(nov, 10.75, 15.25)}; jul ${at8(jul, 10.25, 15.25)}/${at8(jul, 10.75, 15.25)}`);
 
+  /* OPEN AIR ABOVE 8 FT (plants.seenHigh): a band seen open 3-5 m up on the tree's west side. After a leaf-off walk a
+     deciduous crown is not trimmed by it (the phone sees through bare branches); after a walk in leaf, or in an
+     evergreen, it is. */
+  const { openHighFromSeen, fusedGrid: fusedGridH } = await import('../public/shade/fuse.js');
+  const { deflateSync: zdef2 } = await import('node:zlib');
+  const hw = 60, hh = 60, hb = new Uint8Array(2 * hw * hh).fill(255);
+  for (let r = 0; r < hh; r++) for (let c = 0; c < hw; c++) { const e = (c + 0.5) * 0.6096, n = (r + 0.5) * 0.6096; if (e > 7 && e < 9 && n > 13 && n < 17) { hb[2 * (r * hw + c)] = 15; hb[2 * (r * hw + c) + 1] = 25; } }
+  const seenHigh = { cellM: 0.6096, i0: 0, j0: 0, w: hw, h: hh, unitDm: 2, notSeen: 255, enc: 'zlib+base64', bands: zdef2(Buffer.from(hb)).toString('base64') };
+  const openHigh = await openHighFromSeen(seenHigh, origin, fusedGridH(lidar.meta));
+  const hiNov = fuseModel(decidL, { cellM: cm, boxes: [], walk: Date.UTC(2025, 10, 20) }, origin, { openHigh });
+  const hiJul = fuseModel(decidL, { cellM: cm, boxes: [], walk: Date.UTC(2025, 6, 20) }, origin, { openHigh });
+  const hiEver = fuseModel(lidar, { cellM: cm, boxes: [], walk: Date.UTC(2025, 10, 20) }, origin, { openHigh });
+  const at4 = (o) => [[0.25, 0.25], [0.75, 0.25], [0.25, 0.75], [0.75, 0.75]].map(([a, b]) => o.arrays.mu[fAt(8 + a, 15 + b) * nz + L(3.5)]);
+  check('fuse: open air seen 3-5 m up trims a lidar crown after a walk in leaf, or in an evergreen; after a leaf-off walk a deciduous crown is not trimmed by it; above the band the lidar stands',
+    Math.abs(openHigh.lo[fAt(8, 15)] - 3) < 1e-6 && Math.abs(openHigh.hi[fAt(8, 15)] - 5) < 1e-6
+      && at4(hiNov).every((v) => v === 1) && at4(hiJul).every((v) => v === 0) && at4(hiEver).every((v) => v === 0) && hiJul.arrays.mu[fAt(8.25, 15.25) * nz + L(6.5)] === 1,
+    `nov ${at4(hiNov)}; jul ${at4(hiJul)}; evergreen ${at4(hiEver)}; above ${hiJul.arrays.mu[fAt(8.25, 15.25) * nz + L(6.5)]}`);
+
   /* WHERE THE WALK SAW OPEN AIR (plants.seen): the lidar's skirt under the tree, 1.5-2.5 m up on its east side, seen open
      to 2.4 m -> emptied there; a cube seen open in half its cells keeps its density in the other half. */
   const { openFromSeen, fusedGrid } = await import('../public/shade/fuse.js');

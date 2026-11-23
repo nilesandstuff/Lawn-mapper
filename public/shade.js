@@ -33,7 +33,7 @@ import { flightOf } from './shade/find.js';
 import { onePass } from './shade/passes.js';
 import { flagStrays } from './shade/structures.js';
 import { finishedModel, modelFiles, putModelFiles } from './shade/model-out.js';
-import { fuseModel, openFromSeen, fusedGrid, FUSE_VERSION } from './shade/fuse.js';
+import { fuseModel, openFromSeen, openHighFromSeen, fusedGrid, FUSE_VERSION } from './shade/fuse.js';
 import { readSurround } from './shade/surround.js';
 import { siteFromSave, siteBounds, partFits, asFeature } from './shade/site.js';
 import { MARGIN_M, alignFrame, lotOf, lotDensity as densityOver, modelBox, fitFrom, shiftFrom, MIN_DENSITY } from './shade/lineup.js';
@@ -211,7 +211,8 @@ async function saveFusedFile(site, fin, lidarAt = null) {
   if (!plants?.boxes?.length || !origin) { view.fused = null; return; }
   try {
     const open = plants.seen ? await openFromSeen(plants.seen, origin, fusedGrid(fin.meta)).catch(() => null) : null;
-    const fused = fuseModel(fin, plants, origin, { open });
+    const openHigh = plants.seenHigh ? await openHighFromSeen(plants.seenHigh, origin, fusedGrid(fin.meta)).catch(() => null) : null;
+    const fused = fuseModel(fin, plants, origin, { open, openHigh });
     view.fused = fused;
     const f = fused.meta.fused;
     track('fused', `${f.refined} refined, ${f.added} added, ${f.trimmed} trimmed, ${f.moved.length} trees moved`);
