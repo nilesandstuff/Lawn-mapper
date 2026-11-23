@@ -4225,6 +4225,9 @@ trunks by the phone's labels (10 by the vote). WHAT IT SAYS: most of the plants 
 already has at a walk's end, without the pictures going to a server. WHAT IT DOES NOT SAY: whether the 510 sq ft only
 the phone draws are plants (its "tree" on walls and pillars is what the first look found), or the 289 it misses
 matter. One walk; the owner's eyes have seen only the vote's.
+FOR THE OWNER'S EYES (run 534): the phone's-labels shapes are kept beside the vote's (plants-phone.json) and the 3D
+view's "Plant shapes" button goes round the two and off (green: the vote; blue-green: the phone alone). ASKED of the
+owner: is the phone's version good enough to be the one the phone draws by itself at a walk's end?
 
 ON THE MAP (run 530; scan/tools/walk-fit.mjs, plants-keep.mjs): the same points put on the map first by the walk's
 three corners' one fit (within 3 in; the phone's distances scaled 6.7%, the heights stretched by the same, which is
