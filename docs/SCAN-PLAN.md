@@ -4114,6 +4114,14 @@ owner's trunks how many it found (one within 2.5 ft on the level), how many of i
 for each one missed WHAT STOOD THERE in the walk's points (too few points; voted built or fence; points but no
 column; a column a rule turned away). Until the owner has marked a walk's trunks there is no number here.
 
+HARD, THE FIRST NUMBER (run 518, 2026-11-23, the walk of 2026-11-20; the owner marked 11 trunks: "I marked a few, i
+think 4, that are very sparsely visible and didn't [get] a good direct look"): the third pass found 10 trunks. Of the
+owner's 11 it FOUND 7 AND MISSED 4; of its 10, 4 ARE AT NO TRUNK THE OWNER MARKED. Where found, 18 in from the tap
+in the middle, 24 in at the most (a tap is on a point of the trunk's face, not its middle). The 4 missed: at 3 a
+column stood there and a rule turned it away, at 1 there were under 12 points. One yard, one walk, one person's taps.
+NOT KNOWN from this: whether the 4 at no marked trunk are false (a shrub, a post) or trees the owner did not mark;
+whether the 4 missed are the 4 the owner called sparsely seen.
+
 ## 59. The walk in the rain: a walk that agreed with its corners and did not come back to itself (2026-11-22)
 
 Walk 1795383110375, the owner's lot, a second walk on a map with a reference: 11 minutes, 1,246 ft walked, 501
@@ -4207,6 +4215,22 @@ before them and run 517 after them had it. FIXED: r2.mjs and d1.mjs ask five tim
 already out keeps what it has. And the lesson again: the deploy's last lines said "Twins: NOT kept" both times and
 were not read (the status alone was). A walk made in that half hour would not have been kept by the site; none is
 known to have been made.
+
+AFTER THE OWNER'S NEXT LOOK (2026-11-23: "tapping a reference point in the mini map [should allow] that roof corner to
+go through the normal corner scan, it's difficult to tap the phone when pointing it up"; "the ar page says 'A walk
+saved Nov 22, 5:53 PM can place this one:' and the gutter placements are still on the page, despite it being
+determined that the walk was bad"):
+  - A TAP ON A ROOF CORNER IN THE MINI MAP STARTS ITS SCAN, marked or not (app.js wireMini, st.rescan). The tap is made
+    with the phone low; then aim up and the corner marks itself as before. A corner scanned again keeps its first
+    mark, and the page says at once how far the phone now has it from where it had it ("R1 marked again: the phone
+    has it 6 ft 11 in from where it had it 932 ft of walking ago"); that is the closing reading closingOf uses. A
+    second tap calls it off; a scan-again that is refused is not asked for over and over. NOT SEEN ON A PHONE.
+  - The saved walk is named by ITS OWN date ("Your walk of Nov 20 ... kept as the reference Nov 22"): the date shown
+    was when the file was written, which was the day the reference was made afresh.
+  - The two late gutter things of the walk in the rain TAKEN AWAY (run 519, scan/tools/things-fix.mjs, task placed
+    `<walk>:doubled`): for a walk shown not to have come back to itself, of two things of one kind within 3 m, both
+    seen on that walk alone, the later goes (kept in the list; "Put back" undoes it). 3 stand, 2 taken away. The
+    page does the same by itself at a walk's end now, and brings the map's record up to date when it opens a map.
 
 NOT DONE: no way to say two placed things are one, or to move one (the two late gutter things from this walk stand in
 the map's record until the owner takes them away); the phone's scale is taken from the reference though it differed by 0.8% between
