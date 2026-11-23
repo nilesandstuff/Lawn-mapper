@@ -4181,6 +4181,20 @@ the same heights. NOT CHECKED: the owner's eyes on whether the walls and the por
 called "tree" in nearly every picture would not be outvoted; the lidar's building outline is the next check if one
 is still drawn.
 
+THE OWNER'S SECOND LOOK (2026-11-23): "That's pretty good. Real shrubs were mostly preserved, the wall was lost it's
+false plant columns, and a lot of the porch and pillars lost it's false plant columns. There's still 3 or 4 plant
+columns that are just too tall. Zooming in I'm not really seeing any plant points within the excessive tall columns."
+THE CAUSE (read from the code): a cell's box ran from its 5th to its 95th height; with under twenty points in a cell
+the 95th is the highest point, so ONE stray point drew a box from a shrub up to itself.
+BUILT: a cell's plant is read upward and a break of over 2 ft with no plant point ends a RUN; a run is a box only
+with 5 points or more and its top 3 ft or more up; a cell may hold two (a shrub and a branch over it). Made-up yard:
+a shrub with twelve stray points 20-30 ft over it tops at 3.9 ft; a branch over a shrub is its own box; a sparse
+crown of 400 points over 36 sq ft keeps 28 sq ft.
+HARD (run 528, the same walk): 5,258 runs, 912 kept in 895 cells; 4,856 points were strays and 4,810 plant under
+3 ft; 32 shapes, 747 sq ft (813 before), the tallest 31 ft (41 before), the middle one 12 ft (15); 764 boxes. The
+owner's 9 trunks in shapes still, seen to 11, 10, 31, 24, 24, 25, 25, 16, 15 ft (two came down: 20 to 10, 35 to
+31). NOT CHECKED: the owner's eyes on the tall columns, and on whether the bare trees kept what they had gained.
+
 NOT DONE BY IT: a shape drawn twice by a walk that slid stays, a little fat; a crown is not seen; nothing is placed on
 the map or shared with any tool yet.
 
