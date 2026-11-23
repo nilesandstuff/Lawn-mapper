@@ -177,6 +177,24 @@ export async function things(request, env, url, { isAdmin }) {
   return json({ error: 'method' }, 405);
 }
 
+/**
+ * A WALK'S PLANTS ON THE MAP (core session, 2026-11-23; scan/tools/plants.py, plants-keep.mjs): plants/<map>.json,
+ * written by the workflow, read here by the scan page when a map opens so it can put them into the scan tool's part
+ * of the map's record. Read only; the admin only.
+ *   GET /api/scan/plants?map=   the file, or { none: true }
+ */
+export async function plants(request, env, url, { isAdmin }) {
+  if (url.pathname !== '/api/scan/plants') return null;
+  if (!(await isAdmin(request, env))) return json({ error: 'Not found' }, 404);
+  if (!env.TWIN) return json({ error: 'no-bucket' }, 503);
+  const map = url.searchParams.get('map') || '';
+  if (!MAP.test(map)) return json({ error: 'which map?' }, 400);
+  if (request.method !== 'GET') return json({ error: 'method' }, 405);
+  const o = await env.TWIN.get(`plants/${map}.json`);
+  if (!o) return json({ none: true });
+  return new Response(o.body, { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'private, no-store' } });
+}
+
 export async function reference(request, env, url, { isAdmin }) {
   if (url.pathname !== '/api/scan/reference') return null;
   if (!(await isAdmin(request, env))) return json({ error: 'Not found' }, 404);

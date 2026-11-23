@@ -56,13 +56,23 @@ TOP = 20.0             # m over the ground: above this is a stray
 OTHER = ("built", "fence", "paved", "movable", "grass", "bare ground", "water")   # what outvotes a plant in a cubic foot
 
 
-def shapes_of(recs, kind, flags, cut_s=0.0):
-    """-> (shapes, stats). recs (n, 6) [t, odo, x, y, z, ground]; kind the voted kinds; flags the labels' flags byte."""
+def shapes_of(recs, kind, flags, cut_s=0.0, fit=None):
+    """-> (shapes, stats). recs (n, 6) [t, odo, x, y, z, ground]; kind the voted kinds; flags the labels' flags byte.
+    fit: { theta, tx, ty, s } (the walk's corners' one fit, scan/lib/align.js: the walk's level [x, -z] to the map's
+    [east, north], with the phone's scale s): when given, the points are put on the map FIRST and gridded there, so
+    the cells are the map's own square feet; a cell's [x, z] is then [east, north] in the map's metres, and the
+    heights are stretched by s as the distances are (the phone's scale read on the level; taken to hold upward)."""
     st = {"points": int(len(recs)), "kinds": kind is not None}
     if kind is None or not len(recs):
         return [], st
     t_, x_, y_, z_, g_ = (recs[:, i].astype(np.float64) for i in (0, 2, 3, 4, 5))
     h_ = y_ - g_
+    if fit:
+        k_ = float(fit.get("s") or 1.0)
+        c_, s_ = np.cos(fit["theta"]) * k_, np.sin(fit["theta"]) * k_
+        u_, v_ = x_, -z_
+        x_, z_ = c_ * u_ - s_ * v_ + fit["tx"], s_ * u_ + c_ * v_ + fit["ty"]
+        h_ = h_ * k_
     veg = np.isin(kind, [TR.KINDS.index("tree"), TR.KINDS.index("plant")])
     base = np.isfinite(h_) & np.isfinite(x_) & np.isfinite(z_) & (t_ >= cut_s) & ((flags & 3) == 0) & (h_ >= 0.15) & (h_ <= TOP)
     ok = veg & base
@@ -182,6 +192,26 @@ def shapes_of(recs, kind, flags, cut_s=0.0):
     return out, st
 
 
+def phone_kinds(d, n):
+    """The kinds by the phone's own labels alone (labels-NNNN.bin, byte 0 = ARCore's label + 1; studies.py PHONE_KIND),
+    in the cloud parts' order; None when the labels do not match the points."""
+    import re
+    PHONE = {3: "built", 8: "built", 4: "tree", 5: "paved", 6: "paved", 7: "grass", 9: "movable", 10: "movable", 12: "water", 2: "sky"}
+    lut = np.zeros(256, np.uint8)
+    for k_, v_ in PHONE.items():
+        lut[k_] = TR.KINDS.index(v_)
+    parts = []
+    for name in sorted(x for x in os.listdir(d) if re.fullmatch(r"cloud-\d+\.bin", x)):
+        m_ = os.path.getsize(os.path.join(d, name)) // 24
+        lp = os.path.join(d, name.replace("cloud-", "labels-"))
+        lab = np.fromfile(lp, dtype=np.uint8) if os.path.exists(lp) else np.zeros(0, np.uint8)
+        parts.append(lut[lab.reshape(-1, 4)[:, 0]] if len(lab) == 4 * m_ else np.zeros(m_, np.uint8))
+    if not parts:
+        return None
+    out = np.concatenate(parts)
+    return out if len(out) == n else None
+
+
 def in_shape(shapes, x, z, reach=CELL):
     """Is the place (x, z) in a shape, or within `reach` of one of its cells' middles? -> the shape or None."""
     for s in shapes:
@@ -239,11 +269,41 @@ def main():
         if found:
             fh = [in_shape(shapes, t_["x"], t_["z"]) for t_ in found]
             print(f"  The trunk finder's {len(found)}: {sum(1 for s in fh if s)} stand in a kept shape, {sum(1 for s in fh if not s)} in none.")
+    # THE SAME FROM THE PHONE'S OWN LABELS ALONE (ARCore's Scene Semantics, kept with every point as the walk goes;
+    # studies.py PHONE_KIND), against the kinds voted afterwards from the pictures by a model on a server (21 minutes
+    # of CPU a walk). The roadmap (2026-11-22): "Doing as much processing and storage on the user's device as
+    # possible." If the two draw the same plants, the phone can draw them by itself at a walk's end.
+    pk = phone_kinds(d, len(recs))
+    if pk is not None:
+        shapes_p, st_p = shapes_of(recs, pk, flags, cut)
+        cell = lambda ss: {(round(c[0] / CELL), round(c[1] / CELL)) for s_ in ss for c in s_["cells"]}  # noqa: E731
+        A, B = cell(shapes), cell(shapes_p)
+        print(f"  BY THE PHONE'S OWN LABELS ALONE: {st_p.get('plant', 0):,} points labelled tree, {len(shapes_p)} shapes, {len(B):,} sq ft. Against the voted kinds' {len(A):,} sq ft: {len(A & B):,} in both, {len(A - B):,} only by the vote, {len(B - A):,} only by the phone"
+              + (f" ({100 * len(A & B) / max(1, len(A | B)):.0f}% the same of all either drew)." if A or B else "."))
+        if own:
+            print(f"    The owner's {len(own)} trunks: {sum(1 for p in own if in_shape(shapes_p, p[0], p[2]))} stand in a shape by the phone's labels.")
     out = a[1] if len(a) > 1 else os.path.join(d, "plants.json")
     with open(out, "w") as f:
         json.dump({"v": 1, "from": "the walk's own points voted tree or plant, over 3 ft, at face value", "frame": "the walk's own (ARCore session), metres; y up", "cellM": CELL, "startCutS": cut,
                    "shapes": shapes, "stats": st}, f, separators=(",", ":"))
     print(f"  Kept: {os.path.basename(out)} ({len(shapes)} shapes, {os.path.getsize(out) / 1e6:.2f} MB; each cell [x, z, lowest, highest plant over the ground]; places not printed).")
+    # ON THE MAP (fit.json, scan/tools/walk-fit.mjs: the walk's corners' one fit, kept only when three corners agree
+    # and the walk is not known to have slid): the same, gridded in the map's own square feet. The roadmap's fused
+    # model begins here: what a walk saw of the plants, where the map is, for the shade and water maps to be OFFERED.
+    try:
+        fit = json.load(open(os.path.join(d, "fit.json")))
+    except Exception:
+        fit = None
+    if fit and fit.get("ok") and fit.get("T"):
+        ms, mst = shapes_of(recs, kind, flags, cut, fit["T"])
+        boxes = sorted({(int(np.floor(c[0] / CELL)), int(np.floor(c[1] / CELL)), int(round(c[2] * 10)), int(round(c[3] * 10))) for s_ in ms for c in s_["cells"]})
+        mo = os.path.join(d, "plants-map.json")
+        with open(mo, "w") as f:
+            json.dump({"v": 1, "cellM": CELL, "from": "a walk's points the phone or the vote called tree or plant, 3 ft up or more", "heights": "decimetres over the ground under each",
+                       "fit": {"corners": fit.get("n"), "worstM": fit.get("worstM"), "scale": fit["T"].get("s", 1)}, "boxes": [list(b) for b in boxes]}, f, separators=(",", ":"))
+        print(f"  ON THE MAP, by its {fit.get('n')} corners' one fit (within {(fit.get('worstM') or 0) * 39.37:.0f} in, the phone's distances scaled {((fit['T'].get('s', 1)) - 1) * 100:.1f}%): {len(ms)} shapes, {len({(b[0], b[1]) for b in boxes}):,} sq ft, {len(boxes):,} boxes, seen up to {max((b[3] for b in boxes), default=0) / 10 * FT:.0f} ft. Kept: plants-map.json ({os.path.getsize(mo) / 1e3:.0f} KB).")
+    else:
+        print(f"  NOT put on the map: {(fit or {}).get('why') or 'the walk has no fit kept beside it (fit.json)'}.")
     return 0
 
 

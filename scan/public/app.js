@@ -545,6 +545,16 @@ function drawMap() {
     if (label) { g.font = `bold ${15 * u}px system-ui, sans-serif`; g.fillStyle = '#fff'; g.strokeStyle = 'rgba(0,0,0,.85)'; g.lineWidth = 4 * u; g.strokeText(label, x + R + 4 * u, y - R * 0.4); g.fillText(label, x + R + 4 * u, y - R * 0.4); }
   };
   for (const p of st.pins) if (p.map) dot(p.map, CSS.pin, p.name, 7);
+  // a walk's plants (askPlants): each square foot where plant was seen 3 ft up or more, darker the higher it reached
+  if (st.plants?.boxes?.length && st.frame && st.origin) {
+    const c = st.plants.cellM || 0.3048, top = new Map();
+    for (const [i, j, , hi] of st.plants.boxes) { const k = `${i},${j}`; if (!(top.get(k) >= hi)) top.set(k, hi); }
+    for (const [k, hi] of top) {
+      const [i, j] = k.split(',').map(Number), a = px([i * c, (j + 1) * c]), b = px([(i + 1) * c, j * c]);
+      g.fillStyle = `rgba(30, ${hi >= 24 ? 110 : 170}, 60, ${hi >= 24 ? 0.6 : 0.42})`;
+      g.fillRect(Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(1, Math.abs(b[0] - a[0])), Math.max(1, Math.abs(b[1] - a[1])));
+    }
+  }
   // the things placed on earlier walks (things.js), by their ids, so the list under the map says which is which
   for (const t of st.placed || []) if (!t.gone && t.at) dot(t.at, THING_CSS[t.kind] || '#ddd', t.id, 7);
   roofMarks(g, u);
@@ -2089,6 +2099,27 @@ async function askThings() {
     const rec = st.site?.tools?.scan?.data?.things;
     if (st.map === map && st.placed.length && st.origin && sig(rec) !== sig(forRecord(st.placed, (at) => fromLocal(st.origin, at)))) { const said = await shareThings(st.placed); log(`placed things: the map's record brought up to date${said}`); }
   } catch { /* the next walk's end shares them */ }
+  askPlants(map);
+}
+/* A WALK'S PLANTS ON THE MAP (scan/tools/plants.py; the owner, 2026-11-23: "just mark trees in general and take their
+   shapes at face value"; the roadmap, 2026-11-22: the AR "offering a new 3d environment with finer details, where
+   it's available"). The workflow keeps one walk's plants with the map (GET /api/scan/plants); here they are drawn on
+   the placement map as green squares (how high: darker is taller), and put into the scan tool's part of the map's
+   record (`plants`) when the record does not hold these yet, for the shade and water maps to OFFER. */
+async function askPlants(map) {
+  st.plants = null;
+  try {
+    const r = await fetch(`/api/scan/plants?map=${encodeURIComponent(map)}`, { credentials: 'same-origin' });
+    const j = r.ok ? await r.json() : null;
+    if (st.map !== map || !j || j.none || !Array.isArray(j.boxes)) return;
+    st.plants = j; drawMap();
+    const had = st.site?.tools?.scan?.data && typeof st.site.tools.scan.data === 'object' ? st.site.tools.scan.data : {};
+    if (had.plants?.at === j.at) return;
+    const data = { ...had, plants: j };
+    const rr = await fetch(`/api/maps/tool?id=${encodeURIComponent(map)}&tool=scan`, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data, basedOn: st.site?.at || null }), signal: AbortSignal.timeout(SEND_TIMEOUT_MS) });
+    if (rr.ok && st.site) st.site.tools = { ...(st.site.tools || {}), scan: { ...(st.site.tools?.scan || {}), data } };
+    log(`a walk's plants (${j.boxes.length} boxes): ${rr.ok ? 'put into the map\'s record' : `NOT put into the map's record (the site answered ${rr.status})`}`);
+  } catch { /* no signal: the next opening tries again */ }
 }
 function drawThings(note = '') {
   const box = $('#things-list'); if (!box) return;

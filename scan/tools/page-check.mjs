@@ -18,6 +18,7 @@ const T = { '.js': 'text/javascript', '.html': 'text/html', '.wasm': 'applicatio
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR4nGNkYPj/n4GBgYGJAQoAHxcCAr7oQnUAAAAASUVORK5CYII=', 'base64');
 
 let THINGS = { v: 1, things: [{ id: 't1', kind: 'gutter-out', at: [1, 1], h: 0.1, grade: 'corners3', seen: [{ at: [1, 1], h: 0.1, walk: 'w', grade: 'corners3', t: 1 }] }, { id: 't4', kind: 'gutter-out', at: [3, 1], h: 0.1, grade: 'unsure', seen: [{ at: [3, 1], h: 0.1, walk: 'w', grade: 'unsure', t: 1 }] }] }, PUTS = 0;
+const TOOL = [];
 const srv = http.createServer((q, s) => {
   const u = new URL(q.url, 'http://x');
   const json = (o, code = 200) => { s.statusCode = code; s.setHeader('Content-Type', 'application/json'); s.end(JSON.stringify(o)); };
@@ -28,6 +29,9 @@ const srv = http.createServer((q, s) => {
     if (q.method === 'PUT') { let b = ''; q.on('data', (c) => { b += c; }); q.on('end', () => { THINGS = JSON.parse(b); PUTS++; json({ ok: true }); }); return; }
     return json(THINGS);
   }
+  // a walk's plants kept with the map (2026-11-23): read when the map opens, put into the scan tool's part of the record
+  if (u.pathname === '/api/scan/plants') return json({ v: 1, cellM: 0.3048, at: 'now', boxes: [[0, 0, 3, 12], [1, 0, 3, 40]] });
+  if (u.pathname === '/api/maps/tool' && q.method === 'POST') { let b = ''; q.on('data', (c) => { b += c; }); q.on('end', () => { try { TOOL.push(JSON.parse(b)); } catch { /* not json */ } json({ ok: true }); }); return; }
   if (u.pathname.startsWith('/api/')) return json({ error: 'Not found' }, 404);
   const f = join(B, u.pathname === '/' ? 'index.html' : u.pathname);
   if (!f.startsWith(B) || !existsSync(f)) { s.statusCode = 404; return s.end(); }
@@ -55,6 +59,7 @@ async function main() {
           const err = await pg.evaluate((src) => new Promise((ok) => { const k = new Worker(src, { type: 'module' }); const t = setTimeout(() => ok(null), 2500); k.onerror = (e) => { clearTimeout(t); ok(e.message || 'would not load'); }; }), w);
           if (err) faults.push(`${w}: ${err}`);
         }
+        if (!TOOL.some((t) => t?.data?.plants?.boxes?.length === 2)) faults.push(`${path}: a walk's plants were not put into the map's record (${TOOL.length} writes of the scan tool's part)`);
         // the placed things: listed, and one taken away with two taps (kept as gone, not deleted) and put back
         const rows = () => pg.evaluate(() => [...document.querySelectorAll('#things-list li')].map((li) => li.textContent.replace(/\s+/g, ' ').trim()));
         const tap = (id) => pg.evaluate((i) => document.querySelector(`#things-list button[data-thing="${i}"]`)?.click(), id);
@@ -72,6 +77,6 @@ async function main() {
     }
   } finally { await br.close(); srv.close(); }
   if (faults.length) { console.log(`The built page does NOT run in a browser; not deploying:\n  ${faults.join('\n  ')}`); process.exit(1); }
-  console.log('The built page runs in a browser: it opens with and without a map, both workers load, and a placed thing can be taken away and put back.');
+  console.log('The built page runs in a browser: it opens with and without a map, both workers load, the plants of a walk go into the record of the map, and a placed thing can be taken away and put back.');
 }
 main().catch((e) => { console.log(`Page check could not run: ${e.message}`); process.exit(1); });
