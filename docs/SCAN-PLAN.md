@@ -4140,6 +4140,29 @@ SPECULATION: "followed to under 8 ft" would turn away the four at none and one o
 four are false is the owner's to say (asked 2026-11-23), and nine and four are few to draw a line through. The
 rule was tuned on the walk it is scored on; another walk is the test.
 
+HARD, THE OWNER ON THE FOUR (2026-11-23): "The four trunks that I didn't mark, are not infact trunks. 2 are evergreen
+shrubs, 1 is a shrub hydrangea, and another is phantom that sits 16 inches from a real tree that was marked (by me,
+and the tree finder)." So of the finder's 13: 9 trees, 3 shrubs, 1 a tree drawn twice by the walk's own slide.
+
+A CHANGE OF COURSE, THE OWNER'S (2026-11-23): "Maybe marking trunks specifically is attempting to get too precise...
+Maybe we should just mark trees in general and take their shapes at face value (but clean up the noise). And I'm
+noticing that the arcore scene semantics labels basically all vegetation as tree... But for the purposes of
+calculating shade, I guess that's actually not a big deal. So maybe anything over 3 feet that the phone calls a tree,
+is a tree."
+TAKEN (the core session's reasons): what the shade and water maps need of a plant is where it stands and how high and
+low it reaches, not what it is; a shrub drawn as a shrub-sized shape is right where a shrub drawn as a trunk is wrong;
+and the fused model of the roadmap wants exactly this from a walk: the plants under about 13 ft, which the lidar
+draws coarsely, with the lidar keeping the crowns the phone cannot see. The trunk finder stays as it is, for a
+landmark later walks can be fixed by; nothing is judged by it any more.
+BUILT (scan/tools/plants.py; task `trunks` runs it after the trunks; plants.json beside the twin; the 3D view draws
+it as see-through green boxes, with a "Plant shapes" button): the walk's own kept points voted tree or plant, after
+the start cut and without flagged spikes, on a 1 ft plan grid; a cell with 5 points or more whose top is 3 ft or
+more up keeps the 5th and 95th height plant was seen at in it; cells joined into shapes; a shape of under 3 cells,
+under 40 points, or seen in one second only, is dropped. Tried on a made-up yard (a tree and a hedge kept, ground
+cover and one burst of stray points dropped). Its numbers on the walk of 2026-11-20 follow when the run is read.
+NOT DONE BY IT: a shape drawn twice by a walk that slid stays, a little fat; a crown is not seen; nothing is placed on
+the map or shared with any tool yet.
+
 ## 59. The walk in the rain: a walk that agreed with its corners and did not come back to itself (2026-11-22)
 
 Walk 1795383110375, the owner's lot, a second walk on a map with a reference: 11 minutes, 1,246 ft walked, 501

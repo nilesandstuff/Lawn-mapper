@@ -27,7 +27,7 @@ const walk = new URLSearchParams(location.search).get('walk');
 const FT = 3.281;
 // A PART THAT IS MADE AGAIN (the view's files, the erasing) is never taken from the browser's own store: the site
 // let a part be kept an hour, so a walk prepared again was shown from its first, wrong file (2026-11-21).
-const FRESH = /^(view|erased|seg|study|judged|trunks|owner-)/;
+const FRESH = /^(view|erased|seg|study|judged|trunks|plants|owner-)/;
 const part = (name, init) => fetch(`/api/scan/twin?walk=${encodeURIComponent(walk)}&part=${encodeURIComponent(name)}`, { credentials: 'same-origin', ...(FRESH.test(name) ? { cache: 'no-store' } : {}), ...init });
 const LABEL_COL = { terrain: [120, 190, 90], road: [110, 110, 125], sidewalk: [185, 185, 195], building: [215, 90, 70], structure: [235, 160, 70], tree: [40, 150, 70],
   object: [170, 110, 210], vehicle: [80, 140, 235], water: [70, 200, 230], sky: [255, 0, 255], person: [255, 255, 255], unlabeled: [150, 150, 150] };
@@ -105,6 +105,8 @@ async function main() {
   // finder is tuned against (scan/tools/trunks.py scores itself on them). The walk's own frame, like the points.
   D.marks = [];
   if (names.includes('owner-trunks.json')) { const oj = await (await part('owner-trunks.json')).json().catch(() => null); if (Array.isArray(oj?.trunks)) D.marks = oj.trunks.filter((p) => Array.isArray(p) && p.length === 3 && p.every(Number.isFinite)); }
+  // THE PLANTS AT FACE VALUE (scan/tools/plants.py): every 1 ft cell where plant was seen over 3 ft, how low and how high
+  if (names.includes('plants.json')) { const pj = await (await part('plants.json')).json().catch(() => null); D.plants = Array.isArray(pj?.shapes) ? pj.shapes : null; D.plantCell = pj?.cellM || 0.3048; }
   if (names.includes('trunks.json')) { const tj = await (await part('trunks.json')).json().catch(() => null); D.trunks = tj?.trunks || []; D.trunkSlice = tj?.sliceM || 0.25; }
   if (DENSE) { D.rgb = DENSE.rgb; D.kind = DENSE.kind; U.readonly = true; }
   if (!DENSE && names.includes('view-rgb.bin')) { const u = new Uint8Array(await buf('view-rgb.bin')); if (u.length === N * 4) D.rgb = u; }
@@ -191,6 +193,17 @@ function build() {
       const h = Math.max(1, t.top || t.seenTo || 2), r = Math.max(0.08, (t.across || 0.3) / 2);
       const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 10), mat); m.position.set(t.x, t.y + h / 2, t.z); scene.add(m);
     }
+  }
+  /* THE PLANTS AT FACE VALUE (plants.py; the owner, 2026-11-23: "just mark trees in general and take their shapes at
+     face value (but clean up the noise)"): a see-through green box in every 1 ft cell where the walk saw plant over
+     3 ft, from the lowest it was seen there to the highest. One mesh for all of them. "Plant shapes" hides them. */
+  if (D.plants?.length) {
+    const cells = D.plants.flatMap((s) => s.cells.map((c) => [c[0], s.y + (c[2] + c[3]) / 2, c[1], Math.max(0.05, c[3] - c[2])]));
+    const im = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: 0x2faa4a, transparent: true, opacity: 0.32, depthWrite: false }), cells.length);
+    const M = new THREE.Matrix4(), cw = (D.plantCell || 0.3048) * 0.96;
+    cells.forEach(([x, y, z, h], i) => { M.makeScale(cw, h, cw); M.setPosition(x, y, z); im.setMatrixAt(i, M); });
+    im.instanceMatrix.needsUpdate = true; im.frustumCulled = false; plantMesh = im; scene.add(im);
+    const b = $('#plants-toggle'); if (b) { b.hidden = false; b.classList.add('on'); b.addEventListener('click', () => { im.visible = !im.visible; b.classList.toggle('on', im.visible); }); }
   }
   markGroup = new THREE.Group(); scene.add(markGroup); drawMarks();
   // where the phone went: a thin line, so the walk can be found in the cloud
@@ -290,13 +303,13 @@ function tally() {
   const ft = (j) => (shown ? Math.round((hi[j] - lo[j]) * FT) : 0);
   let tl = [Infinity, Infinity], th = [-Infinity, -Infinity];
   for (const q of D.track) { if (q[1] < tl[0]) tl[0] = q[1]; if (q[1] > th[0]) th[0] = q[1]; if (q[3] < tl[1]) tl[1] = q[3]; if (q[3] > th[1]) th[1] = q[3]; }
-  $('#tally').textContent = `${D.trunks ? `Tree trunks found: ${D.trunks.length} (brown, drawn as seen)${(D.marks || []).length ? `; you marked ${D.marks.length} (green)` : ''}. ` : ''}Drawn now: ${shown.toLocaleString()} of ${D.n.toLocaleString()} points, lying ${ft(0)} x ${ft(2)} ft and ${ft(1)} ft high. Hidden: ${hu.toLocaleString()} unsure depth, ${hg.toLocaleString()} Google's, ${he.toLocaleString()} erased${ht ? `, ${ht.toLocaleString()} seen before the minute chosen` : ''}${bad ? `, ${bad.toLocaleString()} with no place` : ''}. `
+  $('#tally').textContent = `${D.plants?.length ? `Plant shapes: ${D.plants.length} (green boxes: where the walk saw plant over 3 ft, as low and as high as it saw it). ` : ''}${D.trunks ? `Tree trunks found: ${D.trunks.length} (brown, drawn as seen)${(D.marks || []).length ? `; you marked ${D.marks.length} (green)` : ''}. ` : ''}Drawn now: ${shown.toLocaleString()} of ${D.n.toLocaleString()} points, lying ${ft(0)} x ${ft(2)} ft and ${ft(1)} ft high. Hidden: ${hu.toLocaleString()} unsure depth, ${hg.toLocaleString()} Google's, ${he.toLocaleString()} erased${ht ? `, ${ht.toLocaleString()} seen before the minute chosen` : ''}${bad ? `, ${bad.toLocaleString()} with no place` : ''}. `
     + `This walk: ${/^\d{13}$/.test(walk) ? new Date(Number(walk)).toLocaleString() : walk}, ${D.keys.length} photos. The path: ${D.track.length.toLocaleString()} poses, ${D.track.length ? Math.round((th[0] - tl[0]) * FT) : 0} x ${D.track.length ? Math.round((th[1] - tl[1]) * FT) : 0} ft. Read: ${U.read || ''}. Page of 21 Nov, c.`;
 }
 /* MARK TRUNKS (the owner, 2026-11-22: "I can tap trunks if you need me to"). In this mode a tap on a point puts a green
    ball there: "a tree trunk stands here". A tap within 20 in of a ball takes it away. Kept by itself beside the walk
    (owner-trunks.json), in either view (the walk's own points and the joined cloud share a frame). */
-let markGroup = null;
+let markGroup = null, plantMesh = null;   // plantMesh: kept so a later mode can hide or show the shapes
 function drawMarks() {
   if (!markGroup) return;
   while (markGroup.children.length) markGroup.remove(markGroup.children[0]);

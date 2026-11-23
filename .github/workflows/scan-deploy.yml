@@ -336,6 +336,11 @@ jobs:
           node scan/tools/twin-r2.mjs parts "$WALK" twin 'cloud-*' 'labels-*' view-kind.bin view.json start.json owner-trunks.json | tee trunks.txt
           python scan/tools/trunks.py twin twin/trunks.json | tee -a trunks.txt
           node scan/tools/twin-r2.mjs put "$WALK" twin/trunks.json | tee -a trunks.txt
+          # THE PLANTS AT FACE VALUE (scan/tools/plants.py, 2026-11-23, the owner: "just mark trees in general and take
+          # their shapes at face value (but clean up the noise)... anything over 3 feet that the phone calls a tree, is
+          # a tree"): the same points, on a 1 ft grid, how low and how high plant was seen in each cell
+          python scan/tools/plants.py twin twin/plants.json | tee -a trunks.txt
+          if [ -f twin/plants.json ]; then node scan/tools/twin-r2.mjs put "$WALK" twin/plants.json | tee -a trunks.txt; fi
 
       # WHAT A WALK'S PINS SAY ABOUT THE WALK (scan/tools/placed.mjs, 2026-11-22): one thing pinned twice, or a plain pin
       # on a marked corner, measured in the walk's own frame and on the map. Two small files. Distances only.
