@@ -4453,3 +4453,64 @@ determined that the walk was bad"):
 NOT DONE: no way to say two placed things are one, or to move one (the two late gutter things from this walk stand in
 the map's record until the owner takes them away); the phone's scale is taken from the reference though it differed by 0.8% between
 two walks of one lot; the height drift is not looked at by any rule; a walk that drifts is refused, not mended.
+
+## 60. Are the far points wrong, or only few? And the sky at a roof's edge (2026-11-23)
+
+The owner, 2026-11-23: "I saw mentions of 13 feet from the shade map and 25 feet from you regarding limiting observed
+objects to that distance... I'm not sure I like that, I don't think we've demonstrated that the AR is inaccurate to
+that distance, we've just demonstrated that it delivers sparse points. I don't think we should be handicapping
+ourselves by arbitrarily ignoring distant points, unless you demonstrate that they're just plain wrong". And: "when
+dots on roof edges are colored by the photo, there's often a bump there of depth points. So we should be treating sky
+blue points for what they are, sky... Not a solid part of the roof"; "seeing sky points through a tree canopy when
+the leaves are off should not be a signal that there's no tree there. The shade map has a leaf-off/on calendar
+approximation, so it can probably weigh in on that based on the time of the walk".
+
+The two limits were the core session's caution and nobody's measurement: fuse.js PLANT_TRUST_M (4 m up: the walk
+trusted for where a plant is only that high) and plants.py SEEN_REACH (8 m: only sight lines that short counted for
+open air). The "weak past 13 ft" it rested on was SCAN-H7, measured weeks ago on raw live points, not on the points
+a walk keeps.
+
+HARD (scan/tools/range_study.py, runs 541 and 542; the walk of 2026-11-20, 212,091 kept points after the start cut;
+THE WALK AGAINST ITSELF, no lidar: what it saw from 10 ft or less is the judge, 80,414 points, 4,838 cubic feet with
+a surface in them and 5,529 of air seen open):
+  - HOW FAR OFF THE POINTS WERE SEEN FROM: 0-10 ft 80,414; 10-16 ft 65,443; 16-26 ft 44,266; 26-39 ft 12,030;
+    39-59 ft 5,377; 59-98 ft 3,632; over 98 ft 929. Most of a walk is seen from over 10 ft.
+  - NOT PLAIN WRONG. Where the judge has a view, the points seen from 10-16, 16-26, 26-39, 39-59 and 59-98 ft are
+    100, 99, 100, 99 and 99% ON a surface seen from close (within a foot), and 0-1% IN air seen open from close.
+    By height, to 13 ft: the same. (A point a foot off a surface still counts as on it; and the judge has a view of
+    fewer points the farther off: 37,934, 8,055, 1,056, 179, 144.)
+  - THE DEPTH ITSELF, ON WALLS (a wall is not seen through): the phone's distance against where that line of sight
+    first meets a built surface seen from close: seen from 10-16 ft, 4 in off in the middle and 22 in for the worst
+    tenth (3% of the distance; 81% within a foot); 16-26 ft, 11 in and 119 in (4%; 53% within a foot); 26-39 ft,
+    20 in and 97 in (6%; 48 lines only); 39-59 ft, 59 in (10%; 31 lines, the phone too NEAR by 46 in in the
+    middle). No lean either way to 26 ft. The walk's own slide between the two looks is in these numbers.
+  - On every kind of thing the same measure reads 11, 24, 42, 57 in (8-11%) with the phone too far by 7-37 in: that
+    is lines through a bare shrub or a fence to what stands behind, not the depth.
+  - NOT MEASURED: anything over 13 ft up (11,015 points 13-25 ft up and 2,197 over 25 ft, none with a close view
+    to judge them); anything past 59 ft (too few lines).
+WHAT IT SAYS: the far points are fewer and coarser, not wrong: off by 3-6% of the distance to about 39 ft. A limit
+by distance is not earned. What IS earned is drawing a thing no finer than it was seen: a foot at 20 ft, two at 40.
+DONE: plants.py uses every sight line for open air, each left unclaimed for its last 15% (SEEN_REACH 65 m,
+SEEN_SHORT). The plants' boxes never did leave far points out.
+NOT DONE, AND WHY: fuse.js PLANT_TRUST_M stays until agreed with the features session. It is not only a distance:
+above it the fusing would move a lidar crown's density onto the cells where the walk saw plant, and a walk in
+leaf-off months sees branches, not where the leaves will be. Put to the features session with these numbers.
+
+HARD, THE SKY AMONG THE SOLID (run 542; 101,721 points voted built, fence, tree or plant):
+  - The phone's own label calls none of them sky (a point labelled sky is dropped as the walk goes).
+  - By the photo's colour, 10,812 (10.6%) are sky blue, 5,808 of them 8 ft up or more, seen from 21 ft in the middle.
+  - The colours themselves (r g b, the middle of each): built seen from close under 8 ft 112 111 117; built 8 ft up
+    or more 107 108 118; plant 67 78 67; the solid points called sky blue, 8 ft up or more, 114 153 189. The house
+    is grey and the sky-blue points are far from it: on this walk colour tells them apart.
+  - Of the built points 8 ft up or more, 20% are sky blue in the photo (15% under 8 ft, by a looser test that also
+    takes shaded grey); of the tree and plant points 8 ft up or more, 27% (3% under 8 ft): bare branches against
+    the sky.
+  - The judge cannot settle it: the sky-blue points it has a view of (1,279) are all "on a surface", because a
+    point a foot past a roof's edge counts as on it.
+DONE: a point voted built or fence whose photo colour is sky blue (blue over 140, 45 over red, 15 over green) is
+counted as sky in the built shapes. ONLY ON A BLUE-SKY DAY: under an overcast sky the test finds nothing, and a blue
+house would need another witness. NOT done to the plants: a bare branch against the sky is coloured sky and is a
+branch; taking those out is what thinned the bare trees before.
+SKY THROUGH A BARE CROWN (the owner's second point; put to the features session, not built): the walk's open air is
+capped at 8 ft for exactly this. The owner's way is better than a cap: say WHEN the walk was made (plants.walk is
+its start, in milliseconds) and let the shade map's leaf calendar decide what sky seen through a canopy means.
