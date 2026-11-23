@@ -12,12 +12,12 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 
 export const BUCKET = 'lawn-scan-twins';
-const API = 'https://api.cloudflare.com/client/v4';
+export const API = 'https://api.cloudflare.com/client/v4';
 
 export const walkOk = (w) => /^[0-9a-zA-Z_-]{1,40}$/.test(w || '');
 const TYPES = { json: 'application/json', jpg: 'image/jpeg', splat: 'application/octet-stream', bin: 'application/octet-stream', png: 'image/png', npz: 'application/octet-stream' };
 
-async function account(token) {
+export async function account(token) {
   if (process.env.CLOUDFLARE_ACCOUNT_ID) return process.env.CLOUDFLARE_ACCOUNT_ID;
   const j = await (await fetch(`${API}/accounts?per_page=5`, { headers: { Authorization: `Bearer ${token}` } })).json();
   const id = j.result?.[0]?.id;
@@ -25,7 +25,7 @@ async function account(token) {
   return id;
 }
 
-async function list(base, token, prefix) {
+export async function list(base, token, prefix) {
   const out = [];
   let cursor = '';
   do {
