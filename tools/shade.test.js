@@ -2267,6 +2267,29 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   check('fuse: inside a lidar cube the walk only moves the density to where it saw plant; the cube\'s mean, the light it stops, is the lidar\'s', worst < 1e-5, kept.map((v) => v.toFixed(3)).join(' '));
   check('fuse: the lidar file is not written', mu.every((v, i) => v === lidarBefore[i]) && lidar.meta.grid.w === W);
 
+  /* WHERE THE WALK SAW OPEN AIR (plants.seen): the lidar's skirt under the tree, 1.5-2.5 m up on its east side, seen open
+     to 2.4 m -> emptied there; a cube seen open in half its cells keeps its density in the other half. */
+  const { openFromSeen, fusedGrid } = await import('../public/shade/fuse.js');
+  const { deflateSync: zdef } = await import('node:zlib');
+  const sc = 0.6096, sw = 60, sh2 = 60, bytes = new Uint8Array(sw * sh2).fill(255);
+  for (let r = 0; r < sh2; r++) for (let c = 0; c < sw; c++) {
+    const e = (c + 0.5) * sc, n = (r + 0.5) * sc;
+    if (e > 11.5 && e < 13.5 && n > 13 && n < 17) bytes[r * sw + c] = 24; // open to 8 ft under the lidar tree's east side
+    if (e > 1 && e < 3 && n > 1 && n < 3) bytes[r * sw + c] = 0;        // no claim
+  }
+  const seen = { cellM: sc, i0: 0, j0: 0, w: sw, h: sh2, capDm: 24, notSeen: 255, enc: 'zlib+base64', clearTo: zdef(Buffer.from(bytes)).toString('base64') };
+  const open = await openFromSeen(seen, origin, fusedGrid(lidar.meta));
+  const noBoxes = fuseModel(lidar, { cellM: cm, boxes: [] }, origin, { open });
+  const nm = noBoxes.arrays.mu;
+  const lidarAt = (e, n, z) => mu[colAt(e, n) * nz + L(z)];
+  const cubeOf = (arr, e, n, z) => [[0.25, 0.25], [0.75, 0.25], [0.25, 0.75], [0.75, 0.75]].map(([a, b]) => arr[fAt(e + a, n + b) * nz + L(z)]);
+  const whole = cubeOf(nm, 12, 15, 1.5), half = cubeOf(nm, 11, 15, 1.5), above = cubeOf(nm, 12, 15, 3);
+  const halfMean = half.reduce((a, b) => a + b, 0) / 4;
+  check('fuse: where the walk saw open air (to 8 ft) all through a lidar cube it is emptied; half open, its density moves to the other half, the mean kept; above what was seen open, and where the record makes no claim, the lidar stands',
+    lidarAt(12.5, 15.5, 1.5) === 1 && whole.every((v) => v === 0) && Math.abs(halfMean - 1) < 1e-5 && half.some((v) => v === 0) && above.every((v) => v === 1)
+      && noBoxes.meta.fused.trimmed > 0 && Number.isNaN(open[fAt(2, 2)]) && Math.abs(open[fAt(12.5, 15)] - 2.4) < 1e-6,
+    `whole ${whole}; half ${half}; above ${above}; trimmed ${noBoxes.meta.fused.trimmed}`);
+
   /* The light worker reads a fused file as it reads the lidar's: a walk that saw nothing gives the same light. */
   const empty = fuseModel(lidar, { cellM: cm, boxes: [] }, origin);
   const got = [];

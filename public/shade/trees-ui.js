@@ -37,8 +37,8 @@ export const BANDS = [
 const MIN_MU = 0.01; // a cube passing over 99% a meter is drawn as air
 /* Dark and apart from each other, to stand out on a sunny photo (owner, 2026-10-14: "I can hardly see any of them"). */
 /* Buildings black (owner, 2026-10-29), apart from every tree. */
-export const KIND_COLOR = { roof: '#0a0a0a', structure: '#4a4a4a', unknown: '#8a7560', evergreen: '#0d3b8c', deciduous: '#1b6e20', filled: '#7a5c00', other: '#1b6e20' };
-export const KIND_NAME = { roof: 'building (or a crown nothing got through)', structure: 'low structure: a shed, a wall, a vehicle (every pulse came back once)', unknown: 'unknown: the laser hit something here no rule could name; it stops light exactly as the laser measured it', evergreen: 'evergreen: as the laser saw it, all year', deciduous: 'deciduous', filled: 'deciduous, leaves filled in where the laser found a gap', other: 'tree, in leaf as the laser saw it (no leaves added)' };
+export const KIND_COLOR = { walk: '#7cc242', roof: '#0a0a0a', structure: '#4a4a4a', unknown: '#8a7560', evergreen: '#0d3b8c', deciduous: '#1b6e20', filled: '#7a5c00', other: '#1b6e20' };
+export const KIND_NAME = { walk: 'seen on your yard walk (the walk says where, the lidar how dense)', roof: 'building (or a crown nothing got through)', structure: 'low structure: a shed, a wall, a vehicle (every pulse came back once)', unknown: 'unknown: the laser hit something here no rule could name; it stops light exactly as the laser measured it', evergreen: 'evergreen: as the laser saw it, all year', deciduous: 'deciduous', filled: 'deciduous, leaves filled in where the laser found a gap', other: 'tree, in leaf as the laser saw it (no leaves added)' };
 
 /** 0-based day of the year, 29 Feb folded onto 28 Feb (as the light worker). */
 export function dayOfYear(ms) {
@@ -173,7 +173,7 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
     if (!(highRet[k] >= over)) highRet[k] = over;
   }
 
-  const st = { leaves: today ?? (leafOff ? 1 : null), roofs: true, cut: 0, active: true, erasing: false, size: SIZES_M[1], mode: 'tree', cubeVersion: 0, fine: false };
+  const st = { leaves: today ?? (leafOff ? 1 : null), roofs: true, cut: 0, active: true, erasing: false, size: SIZES_M[1], mode: 'tree', cubeVersion: 0, fine: false, fused: null, walk: true };
   /* THE LIDAR AT 0.5 M (fine-view.js; owner, 2026-11-09): where the laser hit, half a meter at a time, in the 1 m
      column's colour, behind the "Laser blocks at 0.5 m" switch. THE 1 M BLOCKS ARE THE DEFAULT AGAIN (owner,
      2026-11-22: "change the way trees are displayed in the shade map back to the size where neighboring points are
@@ -230,7 +230,58 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
   const removed = ids.map(() => new Set());
   const CUBE_ID = 1 << 30; // single-cube features live above the runs' ids
   const bandOf = (m) => BANDS.findIndex((b) => m < b.below);
-  const showingFine = () => st.fine && !st.erasing;
+  const showingFine = () => st.fine && !st.erasing && !showingWalk();
+  /* THE LIDAR REFINED BY THE YARD WALK (fuse.js; owner, 2026-11-23): the fused file's half-metre cells, drawn over the
+     place of the lidar's 1 m blocks while the switch is on; light green where the walk saw plant. Hidden while
+     erasing (the erasers work on the lidar's 1 m blocks). */
+  const WALK_ID = 'trees-walk';
+  const showingWalk = () => !!st.fused && st.walk && !st.erasing;
+  function drawWalk() {
+    const F = st.fused, on = showingWalk();
+    if (!on) { if (map.getLayer(WALK_ID)) map.setLayoutProperty(WALK_ID, 'visibility', 'none'); return 0; }
+    const g = F.meta.grid, { z0, dz, nz } = F.meta.layers, cy = g.cellY || g.cell;
+    const { mu, muOn, kind: fk, ground: fg, walk } = F.arrays;
+    const leaves = st.leaves ?? 1;
+    const feats = [];
+    /* roofs and low structures as the lidar has them; light green where the walk saw plant; elsewhere the colour the
+       lidar's own 1 m column under it has (evergreen or deciduous, as the trees view decides it) */
+    const S = Math.round(g.w / grid.w);
+    const colourOf = (f, c, r) => {
+      if (fk[f] === 1) return 'roof';
+      if (fk[f] === 4) return 'structure';
+      if (walk?.[f] === 1) return 'walk';
+      const k = ((r / S) | 0) * grid.w + ((c / S) | 0);
+      return k >= 0 && k < grid.w * grid.h ? kindOf(season, k, !!leafyCol[k]) : 'deciduous';
+    };
+    for (let r = 0; r < g.h; r++) for (let c = 0; c < g.w; c++) {
+      const f = r * g.w + c;
+      if (fk[f] === 1 && !st.roofs) continue;
+      let l0 = -1;
+      const ring = () => { const x0 = g.x0 + c * g.cell, y1 = g.y1 - r * cy; return [[x0, y1], [x0 + g.cell, y1], [x0 + g.cell, y1 - cy], [x0, y1 - cy], [x0, y1]].map((p) => fromMerc(p)); };
+      const liftF = baseZ === null ? 0 : fg[f] - baseZ;
+      for (let l = 0; l <= nz; l++) {
+        const v = l < nz ? mu[f * nz + l] + (muOn ? leaves * (muOn[f * nz + l] - mu[f * nz + l]) : 0) : 0;
+        const over = z0 + l * dz - fg[f];
+        const filled = l < nz && v > 0.02 && over + dz > st.cut;
+        if (filled && l0 < 0) l0 = l;
+        if (!filled && l0 >= 0) {
+          const b = Math.max(st.cut, z0 + l0 * dz - fg[f]), t = z0 + l * dz - fg[f];
+          feats.push({ type: 'Feature', id: feats.length, geometry: { type: 'Polygon', coordinates: [ring()] }, properties: { b: b + liftF, t: t + liftF, c: KIND_COLOR[colourOf(f, c, r)] } });
+          l0 = -1;
+        }
+      }
+    }
+    for (const id of ids) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'none');
+    if (map.getLayer(FINE_ID)) map.setLayoutProperty(FINE_ID, 'visibility', 'none');
+    const data = { type: 'FeatureCollection', features: feats };
+    if (map.getSource(WALK_ID)) map.getSource(WALK_ID).setData(data);
+    else {
+      map.addSource(WALK_ID, { type: 'geojson', data });
+      map.addLayer({ id: WALK_ID, type: 'fill-extrusion', source: WALK_ID, paint: { 'fill-extrusion-color': ['get', 'c'], 'fill-extrusion-base': ['get', 'b'], 'fill-extrusion-height': ['get', 't'], 'fill-extrusion-opacity': Math.min(1, 0.8 * solid()) } });
+    }
+    map.setLayoutProperty(WALK_ID, 'visibility', st.active ? 'visible' : 'none');
+    return feats.length;
+  }
   /* The half-meter picture: rebuilt with each draw and after each stroke; hidden (the 1 m blocks shown) while erasing. */
   function drawFine() {
     const on = showingFine();
@@ -280,6 +331,7 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
       map.removeFeatureState({ source: ids[i] });
     });
     const fineCount = drawFine();
+    const walkCount = drawWalk();
     for (const [id, on] of [['#tr-today', st.leaves !== null && st.leaves === today], ['#tr-full', st.leaves === 1], ['#tr-bare', st.leaves === 0]]) $(id).setAttribute('aria-pressed', String(on));
     const c = season.counts || {};
     const asFlown = season.inLeafColumns || 0;
@@ -287,7 +339,7 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
       : season.classified
         ? ` Columns: ${(c.deciduous || 0) - asFlown} deciduous, ${c.evergreen || 0} evergreen, ${asFlown ? `${asFlown} in leaf as flown, ` : ''}${c.roof || 0} building${c.structure ? `, ${c.structure} low structure` : ''}.`
         : ` Columns: ${c.deciduous || 0} tree, ${c.roof || 0} building${c.structure ? `, ${c.structure} low structure` : ''}.`;
-    say(`${showingFine() ? `${fineCount.toLocaleString()} half-meter blocks drawn, where the laser hit; where the survey was sparse, trees look speckled, because that is all the laser caught (the light is worked out on 1 m blocks: untick "Laser blocks at 0.5 m" to see those again; ${runs.length.toLocaleString()} pieces).` : `${runs.length.toLocaleString()} pieces drawn.`} ${leafOff
+    say(`${walkCount ? `Refined by your yard walk: ${walkCount.toLocaleString()} half-meter pieces drawn, light green where the walk saw plant (untick "Refined by your yard walk" for the lidar alone). ` : ''}${showingFine() ? `${fineCount.toLocaleString()} half-meter blocks drawn, where the laser hit; where the survey was sparse, trees look speckled, because that is all the laser caught (the light is worked out on 1 m blocks: untick "Laser blocks at 0.5 m" to see those again; ${runs.length.toLocaleString()} pieces).` : `${runs.length.toLocaleString()} pieces drawn.`} ${leafOff
       ? `${flight === 'mixed' ? 'Part of the lidar here was flown with the leaves off and part in leaf; leaves are added only where the laser saw bare branches' : 'The lidar was flown with the leaves off'}${flownTo ? ` (to ${flownTo})` : ''}; ${st.leaves === 0 ? 'drawn bare, as flown' : `deciduous crowns drawn with ${Math.round(100 * st.leaves)}% of their summer leaves`}.`
       : flight === 'on' ? 'The lidar was flown in leaf: drawn as flown, no leaves added.' : 'The flight season is unknown: drawn as flown.'}${columns}`);
     eraseNote();
@@ -304,14 +356,17 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
   $('#tr-cut').onchange = () => { st.cut = Number($('#tr-cut').value) || 0; draw(); };
   /* How solid the blocks are drawn, kept on this device. */
   const solid = () => Number($('#tr-solid').value) / 100;
-  const applySolid = () => { ids.forEach((id, i) => { if (map.getLayer(id)) map.setPaintProperty(id, 'fill-extrusion-opacity', Math.min(1, bandAt(i).opacity * solid())); }); if (map.getLayer(FINE_ID)) map.setPaintProperty(FINE_ID, 'fill-extrusion-opacity', Math.min(1, 0.8 * solid())); };
+  const applySolid = () => { ids.forEach((id, i) => { if (map.getLayer(id)) map.setPaintProperty(id, 'fill-extrusion-opacity', Math.min(1, bandAt(i).opacity * solid())); }); if (map.getLayer(FINE_ID)) map.setPaintProperty(FINE_ID, 'fill-extrusion-opacity', Math.min(1, 0.8 * solid())); if (map.getLayer('trees-walk')) map.setPaintProperty('trees-walk', 'fill-extrusion-opacity', Math.min(1, 0.8 * solid())); };
+  const walkRow = () => { if ($('#tr-walk-row')) $('#tr-walk-row').hidden = !st.fused; if ($('#tr-walk')) $('#tr-walk').checked = st.walk; };
+  if ($('#tr-walk')) $('#tr-walk').onchange = () => { st.walk = $('#tr-walk').checked; draw(); };
+  walkRow();
   if ($('#tr-fine')) {
     $('#tr-fine').checked = st.fine;
     $('#tr-fine').onchange = () => { st.fine = $('#tr-fine').checked; try { localStorage.setItem('lawnmapper.shade.treesFine05', st.fine ? '1' : '0'); } catch { /* not kept */ } draw(); };
   }
   try { const v = localStorage.getItem('lawnmapper.shade.treesSolid'); if (v) $('#tr-solid').value = v; } catch { /* not kept */ }
   $('#tr-solid').oninput = () => { applySolid(); try { localStorage.setItem('lawnmapper.shade.treesSolid', $('#tr-solid').value); } catch { /* not kept */ } };
-  $('#tr-legend').innerHTML = Object.entries(KIND_COLOR).filter(([k]) => (leafOff ? k !== 'other' || season.inLeafColumns > 0 : k === 'other' || k === 'roof' || k === 'structure' || k === 'unknown'))
+  $('#tr-legend').innerHTML = Object.entries(KIND_COLOR).filter(([k]) => k !== 'walk').filter(([k]) => (leafOff ? k !== 'other' || season.inLeafColumns > 0 : k === 'other' || k === 'roof' || k === 'structure' || k === 'unknown'))
     .map(([k, c]) => `<span class="sw" style="background:${c}"></span>${KIND_NAME[k]}`).join('<br>')
     + `<br><span class="dim">Faint to solid: ${BANDS.map((b) => b.name).join('; ')}.</span>`;
 
@@ -512,7 +567,7 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
     map.getContainer().classList.toggle('held', on);
     for (const h of [map.dragPan, map.touchZoomRotate, map.dragRotate]) on ? h.disable() : h.enable();
     if (!on) { hideCursor(); flush(); }
-    if (st.fine) draw(); // the 1 m blocks while erasing, the half-meter picture again after
+    if (st.fine || st.fused) draw(); // the 1 m blocks while erasing, the half-meter (or the walk's) picture again after
   };
   if (er && $('#tr-erase')) {
     for (const ev of ['touchstart', 'touchmove']) map.getContainer().addEventListener(ev, holdTouch, { passive: false });
@@ -560,10 +615,13 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
     },
     /** The blocks shown or hidden (another step may show them beside its own picture). */
     setVisible(on) {
-      const fine = showingFine();
-      for (const id of ids) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on && !fine ? 'visible' : 'none');
+      const fine = showingFine(), walk = showingWalk();
+      for (const id of ids) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on && !fine && !walk ? 'visible' : 'none');
       if (map.getLayer(FINE_ID)) map.setLayoutProperty(FINE_ID, 'visibility', on && fine ? 'visible' : 'none');
+      if (map.getLayer(WALK_ID)) map.setLayoutProperty(WALK_ID, 'visibility', on && walk ? 'visible' : 'none');
     },
+    /** The lidar refined by the yard walk (fuse.js), or null: drawn over the lidar's blocks while its switch is on. */
+    setFused(file) { st.fused = file || null; walkRow(); draw(); },
     /** Shown and listening, or hidden with the map left to another step. */
     setActive(on) {
       st.active = on;

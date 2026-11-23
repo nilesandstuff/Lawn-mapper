@@ -88,9 +88,9 @@ const WHATS = [['#w-hours', 'hours'], ['#w-dli', 'dli'], ['#w-now', 'now'], ['#w
 const WHENS = [['#p-season', 'season'], ['#p-before', 'beforeLeaves'], ['#p-leaf', 'inLeaf'], ['#p-after', 'afterLeaves'], ['#p-day', 'day']];
 const WHEN_LABEL = { season: 'the growing season', beforeLeaves: 'the growing season before leaf-out', inLeaf: 'the growing season in leaf', afterLeaves: 'the growing season after leaf-fall', day: 'one day' };
 
-export function startSun({ map, site, cols, box, shift, heightM, season, beforeLayer, ground = null, erased = null, erasedCubes = null, fences = [], green = null, onSeason = null, onChange = null }) {
+export function startSun({ map, site, cols, box, shift, heightM, season, beforeLayer, ground = null, erased = null, erasedCubes = null, fences = [], green = null, fused = null, onSeason = null, onChange = null }) {
   const st = {
-    erased, erasedCubes, fences,
+    erased, erasedCubes, fences, fused, useWalk: true, gs: 1,
     worker: null, what: 'hours', when: 'season', soilWhen: 'last5', soilData: null, soilAsked: false, soil: null, whenBefore: null, day: null, now: null, period: null, periodDays: [], calendar: null, seasonInfo: null, ids: 0, path: [],
     grid: gridOver(box, 1, site.lat),
   };
@@ -348,7 +348,27 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
       ${rows.map((r) => `<tr><td>${MONTHS[r.month]}</td><td>${r.dli.toFixed(0)}</td><td class="dim">${r.openDli.toFixed(0)}</td><td>${Math.round((100 * r.dli) / r.openDli)}%</td><td class="dim">${r.sunHours.toFixed(1)} / ${r.dayHours.toFixed(1)}</td>${st.canopy === 'seasonal' ? `<td class="dim">${Math.round(r.leaves * 100)}%</td>` : ''}</tr>`).join('')}</table>`;
   }
 
+  /* A fused model's answers, in its half-metre cells, put on the page's 1 m grid: the points' places, the lawn mask
+     and the kinds (the same corner, st.gs cells to the metre). */
+  function toOneMetre(m) {
+    const g = st.gs;
+    for (const k of ['xy']) if (m[k] && m[k].length) for (let i = 0; i < m[k].length; i++) m[k][i] /= g;
+    const down = (a, pick) => {
+      if (!a) return a;
+      const W = st.grid.w, H = st.grid.h, w = W * g, out = new Uint8Array(W * H);
+      for (let r = 0; r < H * g; r++) for (let c = 0; c < w; c++) { const k = ((r / g) | 0) * W + ((c / g) | 0); out[k] = pick(out[k], a[r * w + c]); }
+      return out;
+    };
+    if (m.type === 'built') {
+      m.lawnMask = down(m.lawnMask, (o, v) => o | v);
+      /* a 1 m cell takes its roof, else its evergreen, else its tree or low structure */
+      const kindRank = (v) => ({ 1: 4, 2: 3, 3: 2, 4: 1 }[v] || 0);
+      m.kinds = down(m.kinds, (o, v) => (kindRank(v) > kindRank(o) ? v : o));
+    }
+  }
+
   function send(msg) {
+    if (st.gs > 1 && msg.type === 'samples') { msg.pts = Float64Array.from(msg.pts, (v, i) => (i % 3 === 2 ? v : v * st.gs)); }
     msg.id = ++st.ids;
     st.worker.postMessage(msg);
     return msg.id;
@@ -693,6 +713,7 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     st.worker.onerror = (e) => { status(`The light calculation stopped: ${e.message || 'unknown error'}`); reportError('light worker', e.message || 'unknown error'); };
     st.worker.onmessage = (ev) => {
       const m = ev.data;
+      if (st.gs > 1) toOneMetre(m);
       if (m.type === 'error') { status(`The light calculation stopped: ${m.message}`); reportError('light worker', m.message); }
       else if (m.type === 'built') { st.readyWaiters.splice(0).forEach((f) => f()); st.canopy = m.canopy; status(''); st.built = true; st.kinds = m.kinds; st.calendar = m.calendar || null; st.lawnMask = m.lawnMask || null; $('#t-lawn').hidden = !st.lawnMask || st.hidden; $('#t-lawn').dataset.has = st.lawnMask ? '1' : ''; canopyNote(m); labelPeriods(); runDay(); st.monthsId = send({ type: 'months', year: new Date(dayMs()).getUTCFullYear() }); runSeason(); runPeriod(); st.soilPeriod = null; if (st.what === 'soil') runSoil(); }
       else if (m.type === 'day' && m.id === st.dayId) { st.day = m; status(''); summary(); if (st.what !== 'now' && st.when === 'day') draw(); }
@@ -707,6 +728,21 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     };
     status('Building the 3D canopy and the sky over every half meter…');
     caption('Building the 3D canopy…');
+    const lotPolys = site.area ? [[[[site.area[0], site.area[1]], [site.area[2], site.area[1]], [site.area[2], site.area[3]], [site.area[0], site.area[3]], [site.area[0], site.area[1]]]]] : polysOf(site.parcel?.geometry);
+    const canopyMode = $('#sun-canopy')?.value || 'seasonal';
+    /* THE LIDAR REFINED BY THE YARD WALK (fuse.js; owner, 2026-11-23): the fused file, half-metre cells, the light
+       worker reading it as it reads the lidar's; the lidar's own model one tap away (#sun-walk). Not for 'solid',
+       which only the points can build. Its answers come back on the 1 m grid (toOneMetre). */
+    if (st.fused && st.useWalk && canopyMode !== 'solid') {
+      st.gs = st.fused.meta.grid.w / st.grid.w;
+      send({
+        type: 'model', file: st.fused, lat: site.lat, lng: site.lng, heightM, canopy: canopyMode, fences: st.fences || [],
+        tMean: st.climate?.tMeanNow || st.climate?.tMean || null, tMeanTypical: st.climate?.tMeanNow ? st.climate.tMean : null,
+        lot: lotPolys, lawn: site.lawn.flatMap((f) => polysOf(f.geometry)),
+      });
+      return;
+    }
+    st.gs = 1;
     const pick = ['x', 'y', 'z', 'intensity', 'ret', 'nret', 'cls', 'leaf'];
     const c = { n: cols.n };
     for (const k of pick) if (cols[k]) c[k] = cols[k].slice(0, cols.n);
@@ -785,6 +821,13 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
   /* A date picked is a day asked for. */
   $('#sun-date').onchange = () => { if (st.when !== 'day' && st.what !== 'now') { st.when = 'day'; st.whenBefore = null; paintButtons(); } runDay(); onChange?.(); };
   if ($('#sun-canopy')) { $('#sun-canopy').value = 'seasonal'; $('#sun-canopy').onchange = () => build(); }
+  function walkRow() {
+    const row = $('#sun-walk-row');
+    if (row) row.hidden = !st.fused;
+    if ($('#sun-walk')) $('#sun-walk').checked = st.useWalk;
+  }
+  if ($('#sun-walk')) $('#sun-walk').onchange = () => { st.useWalk = $('#sun-walk').checked; if (st.climateDone) build(); };
+  walkRow();
   $('#sun-canopy-note').textContent = '';
   st.pending = new Map();
   st.readyWaiters = [];
@@ -810,6 +853,8 @@ export function startSun({ map, site, cols, box, shift, heightM, season, beforeL
     setVisible(on) { st.hidden = !on; drapeMode(); if (st.boxing) setBoxing(false); },
     /** The trees step erased (or put back) columns or blocks: the model is built again without them. */
     setErased(mask, cubes = null) { st.erased = mask || null; st.erasedCubes = cubes?.length ? cubes : null; if (st.climateDone) build(); },
+    /** The lidar refined by the yard walk (fuse.js), or null: the model is built again from it. */
+    setFused(file) { st.fused = file || null; walkRow(); if (st.climateDone) build(); },
     /** The fences drawn in step 1 changed: the model is built again with them. */
     setFences(list) { st.fences = list || []; st.soilPeriod = null; if (st.climateDone) build(); },
     /** What is shown: { what, when } (kept with the map), and setting it back. */

@@ -31,7 +31,7 @@ tree column from its lowest measured cube down to the crown's branch floor
 the owner says so. Features session.
 
 
-### 0c. IN PROGRESS: the lidar refined by a yard walk, in a separate fused file (owner, 2026-11-23; shade map)
+### 0c. BUILT, NOT YET SCORED: the lidar refined by a yard walk, in a separate fused file (owner, 2026-11-23; shade map)
 
 The owner: "I do actually want the AR to override/correct/refine the lidar... use AR to improve the existing lidar
 shapes (in position and dimensions), drawing over them... while maintaining the light that passes through the
@@ -45,10 +45,9 @@ nearest lidar crown's density or a dense shrub's; a lidar tree the walk saw well
 2 m); roofs and walls stay the lidar's. The light worker reads it ('model', half-metre points kept at the same
 spacing). THE FRAME (core session): the walk's fit is ALREADY applied; boxes are LOCAL metres from the map's point
 (fromLocal -> degrees -> toMerc).
-Waiting: (1) where the fused file is kept (asked of the core session: &file=fused beside the lidar model);
-(2) where the walk looked and saw NOTHING (asked of the core session), without which an over-wide lidar edge cannot
-be trimmed; (3) the shade page fusing and using it when a map has a walk's plants, with a switch; (4) scored
-against the shade readings.
+Since then: kept as file=fused (the core session's route); trimmed by plants.seen (where the walk saw open air);
+the shade page fuses, saves, draws and lights it, with switches back to the lidar (shade findings 38). Still to do:
+scored on a real walk against the shade readings; the densities for plant the lidar missed are guesses.
 
 ### 0. Lawn Mapper's buildings and roads from the shade map's lidar rules, if needed (owner, 2026-11-03)
 

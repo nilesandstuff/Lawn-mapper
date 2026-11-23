@@ -33,6 +33,7 @@ import { flightOf } from './shade/find.js';
 import { onePass } from './shade/passes.js';
 import { flagStrays } from './shade/structures.js';
 import { finishedModel, modelFiles, putModelFiles } from './shade/model-out.js';
+import { fuseModel, openFromSeen, fusedGrid } from './shade/fuse.js';
 import { readSurround } from './shade/surround.js';
 import { siteFromSave, siteBounds, partFits, asFeature } from './shade/site.js';
 import { MARGIN_M, alignFrame, lotOf, lotDensity as densityOver, modelBox, fitFrom, shiftFrom, MIN_DENSITY } from './shade/lineup.js';
@@ -193,8 +194,32 @@ function saveModelFile({ now = false } = {}) {
       const files = await modelFiles(fin); // gzipped (lidar-model.js packModel); over 48 MB, overflow parts beside it
       const res = await putModelFiles(fetch, '', site.map.id, files);
       if (!res.ok) track('model', `refused ${res.status}${res.part ? ` (part ${res.part})` : ''}`); else track('model', `${Math.round(res.bytes / 1024)} KB${res.parts ? ` in ${res.parts + 1} files` : ''}`);
+      await saveFusedFile(site, fin);
     } catch (e) { track('model', `failed: ${String(e.message).slice(0, 60)}`); }
   }, now ? 0 : 1000);
+}
+
+/**
+ * THE LIDAR REFINED BY THE YARD WALK (fuse.js; owner, 2026-11-23): when the map's record holds a walk's plants
+ * (the scan tool's part), the finished lidar model and the walk are fused here, on the phone, into a file of their
+ * own, kept beside the lidar's (file=fused; the lidar's file is never written by this), and the light uses it
+ * (sun-ui.js, with the lidar alone one tap away).
+ */
+async function saveFusedFile(site, fin) {
+  const plants = site.map?.plants, origin = site.map?.origin;
+  view.fusedFor = site;
+  if (!plants?.boxes?.length || !origin) { view.fused = null; return; }
+  try {
+    const open = plants.seen ? await openFromSeen(plants.seen, origin, fusedGrid(fin.meta)).catch(() => null) : null;
+    const fused = fuseModel(fin, plants, origin, { open });
+    view.fused = fused;
+    const f = fused.meta.fused;
+    track('fused', `${f.refined} refined, ${f.added} added, ${f.trimmed} trimmed, ${f.moved.length} trees moved`);
+    view.sun?.setFused(fused);
+    view.trees?.setFused?.(fused);
+    const res = await putModelFiles(fetch, '', site.map.id, await modelFiles(fused), 'fused');
+    if (!res.ok) track('fused', `refused ${res.status}`);
+  } catch (e) { view.fused = null; track('fused', `failed: ${String(e.message).slice(0, 60)}`); }
 }
 
 /** Do the erased cells kept on the server belong to this model's grid (the lot and the lidar unchanged)? */
@@ -693,7 +718,7 @@ function startShade() {
   }
   view.sun?.stop();
   view.sun = startSun({
-    map, site, cols: m.cols, box: m.box, shift: m.shift, heightM: m.baseZ, season: m.season, ground: m.ground, erased: mask, erasedCubes: cubes, fences: view.fences || [], green: m.green || null,
+    map, site, cols: m.cols, box: m.box, shift: m.shift, heightM: m.baseZ, season: m.season, ground: m.ground, erased: mask, erasedCubes: cubes, fences: view.fences || [], green: m.green || null, fused: view.fusedFor === site ? view.fused || null : null,
     beforeLayer: () => (map.getLayer('parcel') ? 'parcel' : undefined),
     onSeason: (se, climate) => {
       if (!STEPPED) return;
