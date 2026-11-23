@@ -124,10 +124,12 @@ def main():
     # from the camera through it; where that line first meets a cubic foot with a surface SEEN FROM CLOSE, that is
     # how far away the thing really was on that line. The phone said L. The difference is the depth's error, with no
     # lidar and no map in it (and with the walk's own slide between the two looks in it, which the nearest lines show).
-    surf_set = np.zeros(int(dims[0] * dims[1] * dims[2]), bool) if int(dims[0] * dims[1] * dims[2]) < 4e8 else None
-    if surf_set is not None:
-        surf_set[surf_k] = True
-        cand = np.flatnonzero(ok & (L > NEAR_M))
+    def along(surf_keys, cand_mask, title):
+        if int(dims[0] * dims[1] * dims[2]) >= 4e8 or not len(surf_keys):
+            return
+        surf_set = np.zeros(int(dims[0] * dims[1] * dims[2]), bool)
+        surf_set[surf_keys] = True
+        cand = np.flatnonzero(cand_mask)
         if len(cand) > 80000:
             cand = np.random.default_rng(0).choice(cand, 80000, replace=False)
         Lc, Cc, Uc = L[cand], C[cand], D[cand] / L[cand][:, None]
@@ -145,7 +147,7 @@ def main():
             alive &= s_ <= 1.6 * Lc
         got = np.isfinite(hit)
         err = Lc - hit                                           # + : the phone put it FARTHER than the thing seen from close
-        print("  1b. THE DEPTH'S OWN ERROR ALONG THE LINE OF SIGHT (the phone's distance to a point, against where that line first meets a surface seen from close; + is the phone too far):")
+        print(title)
         for lo, hi in BINS[1:]:
             m = got & (Lc >= lo) & (Lc < hi)
             n_all = int(((Lc >= lo) & (Lc < hi)).sum())
@@ -155,6 +157,13 @@ def main():
             e = err[m]; ae = np.abs(e); rel = ae / Lc[m]
             print(f"    seen from {lo * FT:.0f}-{hi * FT:.0f} ft: {n_all:,} lines, {int(m.sum()):,} meet a surface seen from close: off by {np.median(ae) * 39.37:.0f} in in the middle, {np.percentile(ae, 90) * 39.37:.0f} in for the worst tenth "
                   f"({100 * np.median(rel):.0f}% and {100 * np.percentile(rel, 90):.0f}% of the distance); within a foot {100 * (ae <= 0.3048).mean():.0f}%, within 3 ft {100 * (ae <= 0.9144).mean():.0f}%; the middle error {np.median(e) * 39.37:+.0f} in.")
+    along(surf_k, ok & (L > NEAR_M), "  1b. THE DEPTH'S OWN ERROR ALONG THE LINE OF SIGHT (the phone's distance to a point, against where that line first meets a surface seen from close; + is the phone too far). EVERY KIND: a line through a bare shrub to the wall behind it counts as an error here, so this is an upper bound:")
+    # 1c. THE SAME ON BUILT THINGS ONLY: a wall is not seen through, so what is left is the depth itself and the walk's own slide
+    if kind is not None:
+        B_ = TR.KINDS.index("built")
+        kb, ibb = key(P[near & (kind == B_)])
+        bk, bn = np.unique(kb[ibb], return_counts=True)
+        along(bk[bn >= 3], ok & (L > NEAR_M) & (kind == B_), "  1c. THE SAME ON BUILT THINGS ONLY (points voted built, against built surfaces seen from close: a wall is not seen through, so this is the depth itself and the walk's own slide between two looks):")
 
     # 2. SKY AMONG THE SOLID
     pk = PL.phone_kinds(d, len(recs))
@@ -178,6 +187,19 @@ def main():
             tests.append(("the photo's colour there is near white (an overcast sky, or a white wall)", solid & pale))
             if pk is not None:
                 tests.append(("BOTH the phone's label and a sky-blue photo", solid & (pk == SKY) & blue))
+        # THE COLOURS THEMSELVES, so "sky blue" can be told from a blue or grey wall (the middle colour of each, as r g b):
+        if rgb is not None:
+            pic = rgb[:, 3] == 1
+            med = lambda m: " ".join(str(int(v)) for v in np.median(rgb[m, :3], axis=0)) if m.sum() >= 30 else "too few"  # noqa: E731
+            B_ = TR.KINDS.index("built")
+            print(f"    The middle colours (r g b): points voted SKY {med(ok & pic & (kind == SKY))} ({int((ok & (kind == SKY)).sum()):,} points); built seen from close, under 8 ft {med(ok & pic & (kind == B_) & (L <= NEAR_M) & (h < 8 / FT))}; "
+                  f"built 8 ft up or more {med(ok & pic & (kind == B_) & (h >= 8 / FT))}; plant {med(ok & pic & np.isin(kind, [TR.KINDS.index('tree'), TR.KINDS.index('plant')]))}; the solid points called sky blue, 8 ft up or more {med(solid & blue & (h >= 8 / FT))}.")
+            # by which way the phone was looking: sky is only ever seen looking UP past a thing's edge
+            up = D[:, 1] / np.maximum(L, 1e-6)
+            for nm, mm in (("built", solid & (kind == B_)), ("tree or plant", solid & (kind != B_))):
+                tot = int((mm & (h >= 8 / FT)).sum())
+                if tot >= 30:
+                    print(f"    {nm}, 8 ft up or more ({tot:,} points): sky blue in the photo {100 * int((mm & blue & (h >= 8 / FT)).sum()) / tot:.0f}%; under 8 ft ({int((mm & (h < 8 / FT)).sum()):,}): {100 * int((mm & blue & (h < 8 / FT)).sum()) / max(1, int((mm & (h < 8 / FT)).sum())):.0f}%. Looking up at them by {np.degrees(np.arcsin(np.clip(np.median(up[mm & blue & (h >= 8 / FT)]), -1, 1))) if (mm & blue & (h >= 8 / FT)).sum() else 0:.0f} degrees in the middle.")
         for name, m in tests:
             n = int(m.sum())
             j = int((m & judged).sum())
