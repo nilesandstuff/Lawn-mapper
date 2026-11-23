@@ -4533,6 +4533,12 @@ HARD (run 544, the walk of 2026-11-20): 3,357 of 14,198 squares have a band of o
 from 9 to 14 ft up, the highest to 39 ft; 9 KB deflated; with the plants and the open air from the ground, 47 KB of
 the 52 KB allowed. NOT CHECKED against anything, and nothing reads it yet.
 
-SKY THROUGH A BARE CROWN (the owner's second point; put to the features session, not built): the walk's open air is
+ALL OF IT LIVE (2026-11-23, about 22:00 UTC): the features session's fusing versions 2 and 3 merged (PRs 47, 48) and
+the main site deployed (its report); the scan page passes plants.seenHigh to the fusing as the shade page does
+(scan/lib/fuse-walk.js), live with the scan site's own redeploy on the merge (run 546, its log's end read: live,
+twins kept). NOT RUN on a real map since: the owner's lot's fused model is still the one of 21:05 UTC, made by the
+first version from the walk's side as it then was; it is made again when the owner next opens the map.
+
+SKY THROUGH A BARE CROWN (the owner's second point; as first put to the features session, since built as above): the walk's open air is
 capped at 8 ft for exactly this. The owner's way is better than a cap: say WHEN the walk was made (plants.walk is
 its start, in milliseconds) and let the shade map's leaf calendar decide what sky seen through a canopy means.

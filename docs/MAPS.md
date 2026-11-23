@@ -148,15 +148,18 @@ features session and seen by the water session, 2026-11-23.
   own beside the map; this section changes when it does, and the sessions are told first.
 
 **What it is.** A lidar-model file (public/lib/lidar-model.js), on a grid HALF a metre square with the lidar's own
-layers. What each source is trusted for: the walk for WHERE low things are and how big (to about 13 ft); the lidar
-for what is high up and for HOW MUCH LIGHT a canopy passes. Roofs and low structures are the lidar's alone for now.
+layers. What each source is trusted for: the walk for WHERE things are and how big, at every height (no limit by
+height or distance since 2026-11-23: docs/SCAN-PLAN.md 60); the lidar
+for HOW MUCH LIGHT a canopy passes, and for a deciduous crown's density whenever the walk was made in leaf-off months. Roofs and low structures are the lidar's alone for now.
 The rules themselves are in the fusing's one home, `public/shade/fuse.js` (it moves to `public/lib/` on the day the
 water map starts reading the file).
 
 **`meta.fused`** says what it was made from, so a reader can tell a stale one three ways:
 `{ lidarAt, walk, walkAt, walkFit, version, sub, plantTrustM, refined, added, trimmed, moved, ... }`:
 `lidarAt` the lidar model's `at`; `walk`/`walkAt` the walk and when its side was made; `version` the fusing's own
-(fuse.js `FUSE_VERSION`, 1 since 2026-11-23). A fused file whose three do not match the lidar model, the walk's side and the fusing in
+(fuse.js `FUSE_VERSION`: 3 since 2026-11-23: no height cap on the walk's plants; a deciduous crown keeps the lidar's
+density after a walk in leaf-off months; open air above 8 ft, `plants.seenHigh`, trims only after a walk in leaf or
+where the lidar's cube is not a deciduous crown). A fused file whose three do not match the lidar model, the walk's side and the fusing in
 hand is stale: fuse again, or use the lidar.
 
 **Where it is kept.** `PUT`/`GET`/`HEAD /api/maps/model?id=&tool=shade&file=fused` (and `&part=N`), in the API table
