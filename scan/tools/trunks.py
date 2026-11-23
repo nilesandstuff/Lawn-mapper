@@ -116,6 +116,7 @@ PLAN = 0.15               # m: the plan grid
 SPAN = 1.2                # m of height a column's points must span
 LEVELS = 5                # of 0.25 m, at the least
 NARROW, LONG = 1.2, 1.6   # m: the footprint of ALL its sightings together, the short way and the long way, at the most
+SPLIT_OVER = 0.9            # m: a group longer than this is looked at for two trunks side by side (a dip between two heaps)
 TALL = 2.4                # m over the ground: something stands this tall at a tree; a shrub does not
 SLICE = 0.25              # m of height to a slice
 TOP = 4.0                 # m over the ground: as high as a trunk is followed
@@ -203,26 +204,33 @@ def find_in_walk(recs, kind, flags, cut_s=0.0):
         _, v_ = np.linalg.eigh(np.cov(q.T) + 1e-9 * np.eye(2))
         proj = q @ v_
         ext = np.sort(np.ptp(proj, axis=0))
-        # TWO TRUNKS A YARD APART ARE ONE GROUP TOO LONG FOR A TRUNK (run 521, 2026-11-23: two of the owner's own trunks,
-        # 16 and 19 in from one group 28 by 63 in, turned away as too wide by a fraction of an inch). A group narrow
-        # enough but too long, with an EMPTY STRETCH of a foot or more along it at stem height and a dozen points each
-        # side, is two things: each half is looked at by itself, and must then be no longer than a trunk is wide (a
-        # hedge with a hole in it leaves two lengths of hedge, not two trunks). Once only: a half is not halved again.
-        if not child and ext[0] <= NARROW and LONG < ext[1] <= 2 * LONG:
+        # TWO TRUNKS SIDE BY SIDE ARE ONE GROUP (runs 521-523, 2026-11-23: two of the owner's own trunks, 16 and 19 in
+        # from one group 28 by 63 in, turned away as too wide. Along its length at stem height, in ONE sighting, the
+        # points per 4 in ran 182 233 255 238 223 133 | 44 | 184 288 383 296: two heaps and a dip between, to 17% of
+        # the smaller heap). A group narrow enough and over SPLIT_OVER long whose best sighting shows two heaps with a
+        # dip to a quarter of the smaller or less, the heaps a foot or more apart, is two things: each half is looked
+        # at by itself and must then be no longer than a trunk is wide (a hedge with a hole in it leaves two lengths
+        # of hedge, not two trunks). ONE sighting, so one trunk seen twice by a drifted walk is not halved; and a
+        # quarter, because a wide trunk walked round shows its two faces with a dip to about 40% between. Once only.
+        if not child and ext[0] <= NARROW and SPLIT_OVER < ext[1] <= 2 * LONG:
             a = proj[:, int(np.argmax(np.ptp(proj, axis=0)))]
-            stem_a = a[(ph >= 0.3) & (ph <= 1.5)]
+            o_ = np.argsort(pt)
+            best_ = max(np.split(o_, np.flatnonzero(np.diff(pt[o_]) > 20) + 1), key=len)
+            sa = a[best_][(ph[best_] >= 0.3) & (ph[best_] <= 1.5)]
             cut_at = None
-            if len(stem_a) >= 24:
+            if len(sa) >= 24:
                 edges = np.arange(a.min(), a.max() + 0.1, 0.1)
-                cnt, _ = np.histogram(stem_a, edges)
-                empty = cnt <= max(1, 0.05 * cnt.max())
-                run, best_run = 0, (0, -1)
-                for i_, e_ in enumerate(empty):
-                    run = run + 1 if e_ else 0
-                    if run > best_run[0] and 0 < i_ - run + 1 and i_ < len(empty) - 1:
-                        best_run = (run, i_)
-                if best_run[0] >= 3:
-                    mid_a = edges[best_run[1] - best_run[0] + 1] + 0.05 * best_run[0]
+                cnt, _ = np.histogram(sa, edges)
+                best_r = (1.0, -1)
+                for i_ in range(2, len(cnt) - 2):
+                    lp, rp = cnt[:i_].max(), cnt[i_ + 1:].max()
+                    if min(lp, rp) < 12 or (i_ + 1 + int(np.argmax(cnt[i_ + 1:]))) - int(np.argmax(cnt[:i_])) < 3:
+                        continue
+                    r_ = cnt[i_] / min(lp, rp)
+                    if r_ < best_r[0]:
+                        best_r = (r_, i_)
+                if best_r[1] >= 0 and best_r[0] <= 0.25:
+                    mid_a = edges[best_r[1]] + 0.05
                     if (a < mid_a).sum() >= 12 and (a >= mid_a).sum() >= 12:
                         cut_at = mid_a
             if cut_at is not None:
@@ -336,7 +344,7 @@ def main_walk(d, out=None):
           f"{', ground, paving and building left out by the voted kinds' if st['kinds'] else ' (no voted kinds with this walk: everything standing is tried)'}.")
     print(f"  Plan cells (6 in) that are a column, {SPAN * FT:.0f} ft of height in {LEVELS} levels or more: {st.get('columnCells', 0):,}; groups of them {st.get('groups', 0)}: "
           f"too few points {st.get('thin', 0)}; too wide even for a trunk seen from all sides {st.get('tooWide', 0)}; nothing standing {TALL * FT:.0f} ft at it (a shrub) {st.get('short', 0)}; "
-          f"not standing free {st.get('crowded', 0)}; TRUNKS {len(trunks)}." + (f" ({st['split']} group{'s' if st['split'] != 1 else ''} too long for one trunk, with an empty stretch along it, looked at as two.)" if st.get('split') else ""))
+          f"not standing free {st.get('crowded', 0)}; TRUNKS {len(trunks)}." + (f" ({st['split']} group{'s' if st['split'] != 1 else ''} with two heaps and a dip between along it, looked at as two.)" if st.get('split') else ""))
     if trunks:
         mid = len(trunks) // 2
         acr = sorted(t["across"] for t in trunks); tops = sorted(t["seenTo"] for t in trunks); sg = sorted(t["sightings"] for t in trunks)
