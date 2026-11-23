@@ -4529,6 +4529,9 @@ air above 8 ft as a SECOND grid, `plants.seenHigh` (plants.py; docs/MAPS.md): fo
 of air seen open above 8 ft; the fusing will trim by it only when the walk was in leaf or the lidar's cube is not a
 deciduous crown. Made-up yard: under a crown 20 ft up the band reads 8 to 18 ft (each line left unclaimed for its
 last 15%).
+HARD (run 544, the walk of 2026-11-20): 3,357 of 14,198 squares have a band of open air above 8 ft, in the middle
+from 9 to 14 ft up, the highest to 39 ft; 9 KB deflated; with the plants and the open air from the ground, 47 KB of
+the 52 KB allowed. NOT CHECKED against anything, and nothing reads it yet.
 
 SKY THROUGH A BARE CROWN (the owner's second point; put to the features session, not built): the walk's open air is
 capped at 8 ft for exactly this. The owner's way is better than a cap: say WHEN the walk was made (plants.walk is
