@@ -4238,6 +4238,18 @@ fit for this only with three agreeing corners and no sign it slid (the reference
 a time: the newest replaces the last. Checked in a browser with stand-in answers; NOT SEEN ON A PHONE, and no tool
 reads `plants` yet.
 
+THE FEATURES SESSION'S FIRST VIEW OF `plants` (its message, 2026-11-23; SPECULATION, nothing built, "the owner's
+word decides whether anything is"): the boxes are the right grain and it asks that they stay boxes (two layers in one
+square foot is more than a height grid holds); it would rasterise each box into the light's 1 m columns of cubes as
+the share of a cube it fills; use them ONLY where the lidar's own column is open below the crown floor, never in
+place of a return the laser has (the low layer the lidar misses: hedges, shrubs, trunks, low limbs); how DENSE to
+make them is its open question (the phone sees a surface, not how much light gets through: a hedge as solid, a
+shrub at a typical shrub density, to be scored against the shade readings first); it asks that `fit.worstM` stay in
+the record so the shade map can refuse a walk that sits too far off; shown as a third layer in the trees view.
+ANSWERED by the core session: the boxes are ALREADY on the map (the walk's fit is applied before they are gridded;
+`fit` is a record of how well the corners agreed, not a transform to apply again), and e, n are the scan tool's
+local metres from the map's point (scan/lib/frames.js toLocal, a plain sphere), not Mercator metres.
+
 NOT DONE BY IT: a shape drawn twice by a walk that slid stays, a little fat; a crown is not seen; nothing is placed on
 the map or shared with any tool yet.
 
