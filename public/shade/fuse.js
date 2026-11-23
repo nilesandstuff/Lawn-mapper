@@ -37,8 +37,10 @@
  *   decimetres seen open from the ground up, up to 8 ft; openFromSeen), a lidar cube's density leaves the part seen
  *   open for the rest of the cube (its mean kept); a cube seen open all through, with no plant seen in it, is
  *   emptied: the lidar's 1 m blocks (and the pooling of a sparse flight) spread a crown's skirt, a hedge's side or a
- *   low limb over air the phone looked through. Nothing is trimmed above what was seen open (never above 8 ft: in
- *   leaf-off months the phone sees through a bare crown) or where the record says no claim (0) or not looked (255).
+ *   low limb over air the phone looked through. Nothing is trimmed above what was seen open, or where the record
+ *   says no claim (0) or not looked (255). ABOVE 8 FT (plants.seenHigh, a band of air seen open, openHighFromSeen)
+ *   a cube is trimmed only after a walk in leaf, or where the lidar's cell is not a deciduous crown: in leaf-off
+ *   months the phone sees straight through a bare crown, and that is not "no tree" (the owner, 2026-11-23).
  *
  *   THE LEAVES (owner, 2026-11-23: "seeing sky points through a tree canopy when the leaves are off should not be a
  *   signal that there's no tree there"): a walk made in leaf-off months (las.js leafOfMs: 1 November to 10 May) sees
@@ -53,7 +55,7 @@ import { leafOfMs, LEAF_ON } from './las.js';
 import { SOLID_MU } from './canopy.js';
 
 /** The fusing's own build, written into meta.fused.version: bump it whenever what fuseModel makes changes. */
-export const FUSE_VERSION = 2; // 2: no height cap; a deciduous crown's density kept even after a leaf-off walk
+export const FUSE_VERSION = 3; // 2: no height cap; a deciduous crown's density kept even after a leaf-off walk. 3: open air above 8 ft (seenHigh)
 export const FUSE_SUB = 2;            // half-metre cells per lidar metre
 export const PLANT_TRUST_M = Infinity; // no cap on the walk's heights (the owner, 2026-11-23)
 export const PLANT_MU = 2.3;          // a cube of plant the lidar did not see: stops 90% of the light a metre
@@ -128,6 +130,34 @@ export async function openFromSeen(seen, origin, grid, { inflate = null } = {}) 
   return out;
 }
 
+/**
+ * Where the walk saw open air ABOVE 8 ft (plants.seenHigh, the core session's, 2026-11-23): per 2 ft square, the
+ * biggest band of air seen open, lo..hi in units of unitDm (2 dm) over the ground. On the fused grid: { lo, hi },
+ * metres over the ground per half-metre cell, NaN where the record makes no claim (0, 0) or the walk never looked
+ * (255, 255). Async: the bytes are deflated (zlib).
+ */
+export async function openHighFromSeen(seenHigh, origin, grid, { inflate = null } = {}) {
+  const lo = new Float32Array(grid.w * grid.h).fill(NaN), hi = new Float32Array(grid.w * grid.h).fill(NaN);
+  const sh = seenHigh;
+  if (!sh?.bands || !(sh.w > 0) || !(sh.h > 0)) return { lo, hi };
+  const raw = Uint8Array.from(atob(sh.bands), (ch) => ch.charCodeAt(0));
+  const bytes = inflate ? await inflate(raw) : new Uint8Array(await new Response(new Blob([raw]).stream().pipeThrough(new DecompressionStream('deflate'))).arrayBuffer());
+  if (bytes.length < 2 * sh.w * sh.h) return { lo, hi };
+  const cm = sh.cellM || 0.6096, unit = (sh.unitDm ?? 2) / 10, notSeen = sh.notSeen ?? 255;
+  const cy = grid.cellY || grid.cell;
+  const sw = toMerc(fromLocal(origin, [sh.i0 * cm, sh.j0 * cm]));
+  const ne = toMerc(fromLocal(origin, [(sh.i0 + sh.w) * cm, (sh.j0 + sh.h) * cm]));
+  for (let r = 0; r < grid.h; r++) for (let c = 0; c < grid.w; c++) {
+    const x = grid.x0 + (c + 0.5) * grid.cell, y = grid.y1 - (r + 0.5) * cy;
+    const sc = Math.floor(((x - sw[0]) / (ne[0] - sw[0])) * sh.w), sr = Math.floor(((y - sw[1]) / (ne[1] - sw[1])) * sh.h);
+    if (sc < 0 || sr < 0 || sc >= sh.w || sr >= sh.h) continue;
+    const q = 2 * (sr * sh.w + sc), a = bytes[q], b = bytes[q + 1];
+    if ((a === notSeen && b === notSeen) || !(b > a)) continue;
+    lo[r * grid.w + c] = a * unit; hi[r * grid.w + c] = b * unit;
+  }
+  return { lo, hi };
+}
+
 /** The fused grid for a lidar file (the same corner, FUSE_SUB cells to the lidar's metre). */
 export function fusedGrid(meta) {
   const G = meta.grid;
@@ -160,7 +190,7 @@ function clumpsOf(kind, w, h) {
  * read ({ meta, arrays }, joined with any overflow), `plants` the scan tool's record, `origin` the map's [lng, lat]
  * (the point the walk's metres are measured from).
  */
-export function fuseModel(lidar, plants, origin, { now = new Date(), open = null } = {}) {
+export function fuseModel(lidar, plants, origin, { now = new Date(), open = null, openHigh = null } = {}) {
   const { meta, arrays } = lidar;
   const G = meta.grid, { z0, dz, nz } = meta.layers;
   const W = G.w, H = G.h, S = FUSE_SUB, w = W * S, h = H * S;
@@ -262,10 +292,16 @@ export function fuseModel(lidar, plants, origin, { now = new Date(), open = null
   let added = 0, refined = 0, trimmed = 0;
   /* The share of layer l of fine cell f the walk saw open (0..1), from `open` (metres open from the ground, NaN: no claim). */
   const openShare = (f, l) => {
+    const zl = z0 + l * dz;
+    let sh = 0;
     const o = open ? open[f] : NaN;
-    if (!(o > 0)) return 0;
-    const zl = z0 + l * dz, top = ground[f] + o;
-    return Math.max(0, Math.min(1, (top - zl) / dz));
+    if (o > 0) sh += Math.max(0, Math.min(1, (ground[f] + o - zl) / dz));
+    /* above 8 ft: only after a walk in leaf, or where the lidar's cell is not a deciduous crown (THE LEAVES) */
+    if (openHigh && !decid[f]) {
+      const a = openHigh.lo[f], b = openHigh.hi[f];
+      if (b > a) sh += Math.max(0, Math.min(zl + dz, ground[f] + b) - Math.max(zl, ground[f] + a)) / dz;
+    }
+    return Math.min(1, sh);
   };
   const refine = (mu) => {
     if (!mu) return null;
@@ -311,7 +347,7 @@ export function fuseModel(lidar, plants, origin, { now = new Date(), open = null
   const out = {
     meta: {
       v: meta.v, tool: 'shade', build: meta.build, at: now.toISOString(), basedOn: meta.basedOn || null,
-      fused: { version: FUSE_VERSION, from: 'the shade map\'s lidar model and one yard walk\'s plants (fuse.js)', lidarAt: meta.at, walk: plants.walk ?? null, walkAt: plants.at ?? null, walkFit: plants.fit || null, sub: S, walkInLeaf, refined, added, trimmed, seenOpen: !!open, moved },
+      fused: { version: FUSE_VERSION, from: 'the shade map\'s lidar model and one yard walk\'s plants (fuse.js)', lidarAt: meta.at, walk: plants.walk ?? null, walkAt: plants.at ?? null, walkFit: plants.fit || null, sub: S, walkInLeaf, refined, added, trimmed, seenOpen: !!open, seenOpenHigh: !!openHigh, moved },
       fences: meta.fences || [], grid, layers: { z0, dz, nz }, lidar: meta.lidar || null, photo: meta.photo || null, rule: meta.rule, leaves: meta.leaves,
     },
     arrays: { ground, kind: kindF, top, mu, walk },
