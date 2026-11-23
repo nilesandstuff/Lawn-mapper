@@ -13,7 +13,9 @@
  *
  *   WHERE: the walk's plants (the scan tool's `plants`, docs/MAPS.md "scan": square-foot boxes from lo to hi
  *   decimetres over the ground, already fitted onto the lidar's frame by the walk's roof corners) say where the plant
- *   matter is, at a foot's grain, as high as the phone sees well (PLANT_TRUST_M, about 13 ft).
+ *   matter is, at a foot's grain, at every height the walk saw it (no cap: the owner, 2026-11-23, "I don't think we
+ *   should be handicapping ourselves by arbitrarily ignoring distant points, unless you demonstrate that they're just
+ *   plain wrong"; the core session's range study the same day found them coarser, not wrong).
  *
  *   HOW DENSE: the lidar says how much light a metre of canopy stops (canopy.js mu, from what the laser got through).
  *   Inside each lidar cube (1 m square, one layer) the walk only MOVES that density to where the plant is: each
@@ -37,20 +39,26 @@
  *   emptied: the lidar's 1 m blocks (and the pooling of a sparse flight) spread a crown's skirt, a hedge's side or a
  *   low limb over air the phone looked through. Nothing is trimmed above what was seen open (never above 8 ft: in
  *   leaf-off months the phone sees through a bare crown) or where the record says no claim (0) or not looked (255).
- *   Above PLANT_TRUST_M the lidar stands as it is (moved with its tree), split evenly.
+ *
+ *   THE LEAVES (owner, 2026-11-23: "seeing sky points through a tree canopy when the leaves are off should not be a
+ *   signal that there's no tree there"): a walk made in leaf-off months (las.js leafOfMs: 1 November to 10 May) sees
+ *   a deciduous crown's BRANCHES, not where its leaves will be, so inside a lidar cube of a deciduous crown (its summer
+ *   copy muOn denser than mu) the density stays the lidar's, evenly, after such a walk; the walk may still move the
+ *   tree and add plant the lidar did not have. A walk in leaf, or an evergreen, refines at every height.
  *
  * muOn (the summer copy) is fused the same way; plant added from the walk gets the same density in both.
  */
 import { toMerc, mercScale } from './ept.js';
+import { leafOfMs, LEAF_ON } from './las.js';
 import { SOLID_MU } from './canopy.js';
 
 /** The fusing's own build, written into meta.fused.version: bump it whenever what fuseModel makes changes. */
-export const FUSE_VERSION = 1;
+export const FUSE_VERSION = 2; // 2: no height cap; a deciduous crown's density kept even after a leaf-off walk
 export const FUSE_SUB = 2;            // half-metre cells per lidar metre
-export const PLANT_TRUST_M = 4;       // the walk's plants are trusted for where up to here (about 13 ft)
+export const PLANT_TRUST_M = Infinity; // no cap on the walk's heights (the owner, 2026-11-23)
 export const PLANT_MU = 2.3;          // a cube of plant the lidar did not see: stops 90% of the light a metre
 export const BORROW_M = 2;            // ...unless a lidar crown within this, at that height, says how dense it is
-export const SHIFT_BAND_M = [1.5, 4]; // the heights both see, for moving a tree
+export const SHIFT_BAND_M = [1.5, Infinity]; // the heights both see, for moving a tree (from 5 ft up, every height)
 export const SHIFT_MAX_M = 2;
 export const SHIFT_GAIN = 1.3;        // the best overlap must beat the unmoved one by this much
 export const CLUMP_MIN_CELLS = 12;    // half-metre cells of the walk's plant in the band, at the least, to move a tree
@@ -233,6 +241,10 @@ export function fuseModel(lidar, plants, origin, { now = new Date(), open = null
     }
   }
   const hard = (f) => placed[f] === 1 || placed[f] === 4;
+  /* A deciduous crown's cell (its summer copy denser somewhere in the column) and whether the walk saw leaves. */
+  const walkInLeaf = leafOfMs(Number(plants.walk)) === LEAF_ON;
+  const decid = new Uint8Array(w * h);
+  if (muOnL && !walkInLeaf) for (let f = 0; f < w * h; f++) for (let l = 0; l < nz; l++) if (muOnL[f * nz + l] > muL[f * nz + l] + 1e-6) { decid[f] = 1; break; }
 
   /* 3. Within each lidar cube's footprint (S x S half-metre cells, one layer, as placed), the density moved to where
      the walk saw plant, its mean kept; 4. plant the lidar did not have, at a borrowed or a shrub's density. */
@@ -260,13 +272,14 @@ export function fuseModel(lidar, plants, origin, { now = new Date(), open = null
     const out = Float32Array.from(mu);
     const sh = new Float32Array(S * S), av = new Float32Array(S * S);
     for (let R = 0; R < H; R++) for (let C = 0; C < W; C++) for (let l = 0; l < nz; l++) {
-      let sumShare = 0, sumMu = 0, sumOpen = 0, isHard = false;
+      let sumShare = 0, sumMu = 0, sumOpen = 0, isHard = false, isDecid = false;
       for (let sy = 0; sy < S; sy++) for (let sx = 0; sx < S; sx++) {
         const q = sy * S + sx, f = (R * S + sy) * w + C * S + sx;
         sh[q] = share[f * nz + l]; av[q] = 1 - openShare(f, l);
-        sumShare += sh[q]; sumMu += mu[f * nz + l]; sumOpen += 1 - av[q]; if (hard(f)) isHard = true;
+        sumShare += sh[q]; sumMu += mu[f * nz + l]; sumOpen += 1 - av[q]; if (hard(f)) isHard = true; if (decid[f]) isDecid = true;
       }
       if (isHard || !(sumShare > 0 || (sumOpen > 0 && sumMu > 0))) continue; // a roof, or nothing the walk can say: the lidar as it is
+      if (isDecid && sumMu > 0 && sumShare > 0) continue; // a deciduous crown seen leaf-off: its branches, not its leaves (THE LEAVES)
       const meanMu = sumMu / (S * S);
       /* where the density goes: where the walk saw plant, else where it did not see open air */
       const wts = sumShare > 0 ? sh : av;
@@ -298,7 +311,7 @@ export function fuseModel(lidar, plants, origin, { now = new Date(), open = null
   const out = {
     meta: {
       v: meta.v, tool: 'shade', build: meta.build, at: now.toISOString(), basedOn: meta.basedOn || null,
-      fused: { version: FUSE_VERSION, from: 'the shade map\'s lidar model and one yard walk\'s plants (fuse.js)', lidarAt: meta.at, walk: plants.walk ?? null, walkAt: plants.at ?? null, walkFit: plants.fit || null, sub: S, plantTrustM: PLANT_TRUST_M, refined, added, trimmed, seenOpen: !!open, moved },
+      fused: { version: FUSE_VERSION, from: 'the shade map\'s lidar model and one yard walk\'s plants (fuse.js)', lidarAt: meta.at, walk: plants.walk ?? null, walkAt: plants.at ?? null, walkFit: plants.fit || null, sub: S, walkInLeaf, refined, added, trimmed, seenOpen: !!open, moved },
       fences: meta.fences || [], grid, layers: { z0, dz, nz }, lidar: meta.lidar || null, photo: meta.photo || null, rule: meta.rule, leaves: meta.leaves,
     },
     arrays: { ground, kind: kindF, top, mu, walk },
