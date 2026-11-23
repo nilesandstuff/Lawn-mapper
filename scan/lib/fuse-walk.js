@@ -31,12 +31,15 @@ export async function fuseWalk({ fetchFn, base = '', map, plants, origin, F, loa
   if (!lidar) return { made: false, why: 'no lidar model yet' };
   if (!still()) return { made: false, why: 'given up: the page moved on' };
   const open = plants.seen && F.openFromSeen && F.fusedGrid ? await F.openFromSeen(plants.seen, origin, F.fusedGrid(lidar.meta)).catch(() => null) : null;
-  const fused = F.fuseModel(lidar, plants, origin, { open });
+  // the air seen open above 8 ft (plants.seenHigh), read by the fusing's own reader when it has one; the fusing trims
+  // by it only where its leaf calendar allows (in leaf, or not a deciduous crown). The same call as the shade page's.
+  const openHigh = plants.seenHigh && F.openHighFromSeen && F.fusedGrid ? await F.openHighFromSeen(plants.seenHigh, origin, F.fusedGrid(lidar.meta)).catch(() => null) : null;
+  const fused = F.fuseModel(lidar, plants, origin, { open, openHigh });
   const files = await modelFiles(fused);
   const put = (u, body) => fetchFn(u, { ...init, method: 'PUT', headers: { 'Content-Type': 'application/octet-stream', 'X-Model-Made-From': want }, body });
   for (let i = 0; i < (files.parts || []).length; i++) { const r = await put(`${url}&file=fused&part=${i + 1}`, files.parts[i]); if (!r.ok) return { made: false, why: `part ${i + 1} refused (${r.status})` }; }
   const r = await put(`${url}&file=fused`, files.main);
   if (!r.ok) return { made: false, why: `the site answered ${r.status}` };
   const f = fused.meta?.fused || {};
-  return { made: true, madeFrom: want, withOpenAir: !!open, stats: { refined: f.refined ?? null, added: f.added ?? null, trimmed: f.trimmed ?? null, moved: (f.moved || []).length } };
+  return { made: true, madeFrom: want, withOpenAir: !!open, withOpenHigh: !!openHigh, stats: { refined: f.refined ?? null, added: f.added ?? null, trimmed: f.trimmed ?? null, moved: (f.moved || []).length } };
 }
