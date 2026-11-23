@@ -50,6 +50,7 @@ HIGH_FT = 8.0          # ft: from here up the phone is far from what it sees, an
 COARSE = 3             # the cells up high are this many feet square
 HIGH_GAP_FT = 6.0      # ft: up high, a break longer than this ends a run
 HIGH_PTS = 6           # points in a run up high (in COARSE x COARSE ft), at the least
+CROWN_PATCH = 3        # coarse cells that touch, at the least, for what is seen up high to be a crown
 MIN_CELLS = 3          # cells in a shape, at the least (3 sq ft)
 MIN_SHAPE_PTS = 40     # points in a shape, at the least
 TOP = 20.0             # m over the ground: above this is a stray
@@ -152,6 +153,18 @@ def shapes_of(recs, kind, flags, cut_s=0.0, fit=None):
         nr2 = np.r_[True, (np.diff(k2) != 0) | (np.diff(h2) > HIGH_GAP_FT * 0.3048)]
         s2 = np.flatnonzero(nr2); e2 = np.r_[s2[1:], len(k2)]
         g2 = (e2 - s2) >= HIGH_PTS
+        # A CROWN IS BROAD: a crown run stays only in a patch of CROWN_PATCH coarse cells or more that touch (27 sq ft).
+        # One or two alone are what the too-tall columns over the shrubs were, three feet wide this time.
+        if g2.any():
+            from scipy import ndimage as _nd
+            W3 = W // COARSE + 1
+            cg = np.zeros((W3, H3), bool)
+            cg[k2[s2[g2]] // H3, k2[s2[g2]] % H3] = True
+            cl, _ = _nd.label(cg, structure=np.ones((3, 3), int))
+            size = np.bincount(cl.reshape(-1))
+            patch = size[cl[k2[s2] // H3, k2[s2] % H3]] >= CROWN_PATCH
+            st["crownAlone"] = int((g2 & ~patch).sum())
+            g2 &= patch
         crown_runs = int(g2.sum())
         used_pt[idx_hi[o2]] = g2[np.cumsum(nr2) - 1]
         for a, b in zip(s2[g2], e2[g2]):
@@ -241,7 +254,7 @@ def main():
     print(f"PLANTS AS THE WALK SAW THEM: {st['points']:,} kept points, {st.get('plant', 0):,} voted tree or plant, {st.get('used', 0):,} of them used (after the start cut of {cut / 60:.1f} min, no flagged spikes, 6 in to {TOP * FT:.0f} ft over their own ground).")
     print(f"  Outvoted by something built, paved or the like in the same cubic foot (or beside it): {st.get('outvoted', 0):,} of those points, in {st.get('cubesOutvoted', 0):,} of {st.get('cubes', 0):,} cubic feet with plant in them. Not counted as plant.")
     print(f"  1 ft cells with plant in them: {st.get('cells', 0):,}. Read upward, a break of over {GAP_FT:.0f} ft ending a run: {st.get('runs', 0):,} runs; {st.get('runsKept', 0):,} with {MIN_PTS} points or more and a top {MIN_TOP * FT:.0f} ft or more up, in {st.get('cellsOver', 0):,} cells; "
-          f"up high ({HIGH_FT:.0f} ft or more), of the {st.get('highLeft', 0):,} points no run took, {st.get('crownPts', 0):,} made {st.get('crownRuns', 0):,} crown runs on {COARSE} ft cells (a break of over {HIGH_GAP_FT:.0f} ft ending one, {HIGH_PTS} points or more); "
+          f"up high ({HIGH_FT:.0f} ft or more), of the {st.get('highLeft', 0):,} points no run took, {st.get('crownPts', 0):,} made {st.get('crownRuns', 0):,} crown runs on {COARSE} ft cells (a break of over {HIGH_GAP_FT:.0f} ft ending one, {HIGH_PTS} points or more, in a patch of {CROWN_PATCH} such cells or more; {st.get('crownAlone', 0)} runs stood alone and were dropped); "
           f"{st.get('strays', 0):,} points were strays in the end and {st.get('low', 0):,} were plant under {MIN_TOP * FT:.0f} ft. Joined into {st.get('groups', 0)} shapes: "
           f"under {MIN_CELLS} cells {st.get('small', 0)}, under {MIN_SHAPE_PTS} points {st.get('thin', 0)}, seen in one second only {st.get('once', 0)}; KEPT {len(shapes)}, holding {st.get('kept', 0):,} points ({100 * st.get('kept', 0) / max(1, st.get('used', 1)):.0f}% of those used).")
     if shapes:
@@ -276,7 +289,7 @@ def main():
     pk = phone_kinds(d, len(recs))
     if pk is not None:
         shapes_p, st_p = shapes_of(recs, pk, flags, cut)
-        cell = lambda ss: {(round(c[0] / CELL), round(c[1] / CELL)) for s_ in ss for c in s_["cells"]}  # noqa: E731
+        cell = lambda ss: {(int(np.floor(c[0] / CELL)), int(np.floor(c[1] / CELL))) for s_ in ss for c in s_["cells"]}  # noqa: E731
         A, B = cell(shapes), cell(shapes_p)
         print(f"  BY THE PHONE'S OWN LABELS ALONE: {st_p.get('plant', 0):,} points labelled tree, {len(shapes_p)} shapes, {len(B):,} sq ft. Against the voted kinds' {len(A):,} sq ft: {len(A & B):,} in both, {len(A - B):,} only by the vote, {len(B - A):,} only by the phone"
               + (f" ({100 * len(A & B) / max(1, len(A | B)):.0f}% the same of all either drew)." if A or B else "."))
