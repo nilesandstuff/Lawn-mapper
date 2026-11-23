@@ -10,12 +10,12 @@ is a tree."
 
 So: no judging what a thing IS beyond "a plant that stands over 3 ft". The walk's own kept points voted tree or plant
 (studies.py VOTE_KINDS; view-kind.bin), after the start cut and without the flagged spikes, are gathered on a 1 ft
-plan grid; each cell keeps how low and how high plant was seen in it (its 5th and 95th height over its own ground, so
-one stray point does not set either). What stays:
+plan grid; each cell keeps how low and how high plant was seen in it WITHOUT A BREAK (a run: read upward, over 2 ft
+with no plant point ends it; a cell may hold two, a shrub and a branch over it). What stays:
 
   - a plant point only where plant outvotes everything else seen in the same cubic foot (the owner's look,
     2026-11-23: plant "creeped up the walls of the house and consumed part of my front porch");
-  - a cell with MIN_PTS points or more whose top is MIN_TOP (3 ft) or more over the ground;
+  - a run of MIN_PTS points or more whose top is MIN_TOP (3 ft) or more over the ground;
   - joined to its neighbours into a shape; a shape of under MIN_CELLS cells, under MIN_SHAPE_PTS points, or seen in
     fewer than two separate seconds of the walk, is noise and is dropped.
 
@@ -41,7 +41,8 @@ import trunks as TR  # noqa: E402
 FT = 3.28084
 CELL = 0.3048          # m: the plan grid, 1 ft
 MIN_TOP = 0.9144       # m: 3 ft, the owner's line ("anything over 3 feet that the phone calls a tree, is a tree")
-MIN_PTS = 5            # points in a cell, at the least
+MIN_PTS = 5            # points in a run (a cell's plant seen without a break), at the least
+GAP_FT = 2.0           # ft: a break longer than this with no plant point in it ends a run
 MIN_CELLS = 3          # cells in a shape, at the least (3 sq ft)
 MIN_SHAPE_PTS = 40     # points in a shape, at the least
 TOP = 20.0             # m over the ground: above this is a stray
@@ -96,26 +97,35 @@ def shapes_of(recs, kind, flags, cut_s=0.0):
     ci -= i0; cj -= j0
     W, H = int(ci.max()) + 1, int(cj.max()) + 1
     key = ci * H + cj
-    o = np.argsort(key, kind="stable")
+    # EACH CELL'S PLANT, ONLY AS HIGH AND AS LOW AS IT WAS SEEN WITHOUT A BREAK (the owner's second look, 2026-11-23:
+    # "There's still 3 or 4 plant columns that are just too tall. Zooming in I'm not really seeing any plant points
+    # within the excessive tall columns"). The first cut took a cell's 5th and 95th height; with under twenty points
+    # in a cell the 95th IS the highest, so one stray point 30 ft up drew a box from a shrub to it. Now a cell's
+    # points are read upward: a break of more than GAP_FT feet with nothing in it ends a RUN, and a run is a box only
+    # with MIN_PTS points or more and its top MIN_TOP or more up. So a stray point is no box, and a branch seen over a
+    # shrub is its own box with air between them.
+    o = np.lexsort((h, key))
     ks, hs = key[o], h[o]
-    brk = np.flatnonzero(np.r_[True, np.diff(ks) != 0])
-    ends = np.r_[brk[1:], len(ks)]
-    cells = ks[brk]
-    n = ends - brk
-    lo = np.array([np.percentile(hs[a:b], 5) for a, b in zip(brk, ends)])
-    hi = np.array([np.percentile(hs[a:b], 95) for a, b in zip(brk, ends)])
-    keep = (n >= MIN_PTS) & (hi >= MIN_TOP)
-    st.update({"cells": int(len(cells)), "cellsOver": int(keep.sum())})
-    if not keep.any():
+    newrun = np.r_[True, (np.diff(ks) != 0) | (np.diff(hs) > GAP_FT * 0.3048)]
+    rs = np.flatnonzero(newrun)
+    re_ = np.r_[rs[1:], len(ks)]
+    rn = re_ - rs
+    rlo, rhi, rcell = hs[rs], hs[re_ - 1], ks[rs]
+    good = (rn >= MIN_PTS) & (rhi >= MIN_TOP)
+    st.update({"cells": int(len(np.unique(ks))), "runs": int(len(rs)), "runsKept": int(good.sum()), "cellsOver": int(len(np.unique(rcell[good]))),
+               "strays": int(rn[~good & (rhi >= MIN_TOP)].sum()), "low": int(rn[rhi < MIN_TOP].sum())})
+    if not good.any():
         return [], st
+    # each point: is it in a kept run?
+    run_of = np.cumsum(newrun) - 1
+    in_run = np.zeros(len(ks), bool); in_run[:] = good[run_of]
+    used_pt = np.zeros(len(key), bool); used_pt[o] = in_run
     from scipy import ndimage
-    grid = np.zeros(W * H, bool); grid[cells[keep]] = True
+    grid = np.zeros(W * H, bool); grid[rcell[good]] = True
     lab, ng = ndimage.label(grid.reshape(W, H), structure=np.ones((3, 3), int))
     lab = lab.reshape(-1)
-    of_pt = lab[key]                                        # each point's shape, 0 for none
-    cell_n = np.zeros(W * H, np.int64); cell_n[cells] = n
-    cell_lo = np.zeros(W * H); cell_lo[cells] = lo
-    cell_hi = np.zeros(W * H); cell_hi[cells] = hi
+    of_pt = np.where(used_pt, lab[key], 0)                  # each point's shape, 0 for none
+    run_shape = lab[rcell]
     out, small, thin, once = [], 0, 0, 0
     for k in range(1, ng + 1):
         cs = np.flatnonzero(lab == k)
@@ -130,9 +140,10 @@ def shapes_of(recs, kind, flags, cut_s=0.0):
             once += 1
             continue
         gy = float(np.median(g[m]))
-        cx, cz = (cs // H + i0 + 0.5) * CELL, (cs % H + j0 + 0.5) * CELL
-        out.append({"id": len(out) + 1, "y": round(gy, 2), "top": round(float(cell_hi[cs].max()), 2), "areaM2": round(len(cs) * CELL * CELL, 2), "points": int(m.sum()),
-                    "cells": [[round(float(a), 2), round(float(b), 2), round(float(c), 2), round(float(d), 2)] for a, b, c, d in zip(cx, cz, cell_lo[cs], cell_hi[cs])]})
+        rr = np.flatnonzero(good & (run_shape == k))
+        cx, cz = (rcell[rr] // H + i0 + 0.5) * CELL, (rcell[rr] % H + j0 + 0.5) * CELL
+        out.append({"id": len(out) + 1, "y": round(gy, 2), "top": round(float(rhi[rr].max()), 2), "areaM2": round(len(cs) * CELL * CELL, 2), "points": int(m.sum()),
+                    "cells": [[round(float(a), 2), round(float(b), 2), round(float(c), 2), round(float(d), 2)] for a, b, c, d in zip(cx, cz, rlo[rr], rhi[rr])]})
     st.update({"groups": int(ng), "small": small, "thin": thin, "once": once, "kept": int(sum(s["points"] for s in out))})
     return out, st
 
@@ -165,13 +176,14 @@ def main():
         return 0
     print(f"PLANTS AS THE WALK SAW THEM: {st['points']:,} kept points, {st.get('plant', 0):,} voted tree or plant, {st.get('used', 0):,} of them used (after the start cut of {cut / 60:.1f} min, no flagged spikes, 6 in to {TOP * FT:.0f} ft over their own ground).")
     print(f"  Outvoted by something built, paved or the like in the same cubic foot (or beside it): {st.get('outvoted', 0):,} of those points, in {st.get('cubesOutvoted', 0):,} of {st.get('cubes', 0):,} cubic feet with plant in them. Not counted as plant.")
-    print(f"  1 ft cells with plant in them: {st.get('cells', 0):,}; with {MIN_PTS} points or more and a top {MIN_TOP * FT:.0f} ft or more up: {st.get('cellsOver', 0):,}; joined into {st.get('groups', 0)} shapes: "
+    print(f"  1 ft cells with plant in them: {st.get('cells', 0):,}. Read upward, a break of over {GAP_FT:.0f} ft ending a run: {st.get('runs', 0):,} runs; {st.get('runsKept', 0):,} with {MIN_PTS} points or more and a top {MIN_TOP * FT:.0f} ft or more up, in {st.get('cellsOver', 0):,} cells; "
+          f"{st.get('strays', 0):,} points were strays (a run of under {MIN_PTS}, {MIN_TOP * FT:.0f} ft up or more) and {st.get('low', 0):,} were plant under {MIN_TOP * FT:.0f} ft. Joined into {st.get('groups', 0)} shapes: "
           f"under {MIN_CELLS} cells {st.get('small', 0)}, under {MIN_SHAPE_PTS} points {st.get('thin', 0)}, seen in one second only {st.get('once', 0)}; KEPT {len(shapes)}, holding {st.get('kept', 0):,} points ({100 * st.get('kept', 0) / max(1, st.get('used', 1)):.0f}% of those used).")
     if shapes:
         ar = sorted(s["areaM2"] * FT * FT for s in shapes); tp = sorted(s["top"] * FT for s in shapes); mid = len(shapes) // 2
         tall = sum(1 for s in shapes if s["top"] >= 2.4384)
         print(f"  The shapes: {ar[0]:.0f} / {ar[mid]:.0f} / {ar[-1]:.0f} sq ft on the ground (least / middle / most), {sum(ar):,.0f} sq ft in all; seen up to {tp[0]:.0f} / {tp[mid]:.0f} / {tp[-1]:.0f} ft; "
-              f"{tall} seen 8 ft up or more, {len(shapes) - tall} between 3 and 8 ft; {sum(len(s['cells']) for s in shapes):,} cells in all.")
+              f"{tall} seen 8 ft up or more, {len(shapes) - tall} between 3 and 8 ft; {sum(len(s['cells']) for s in shapes):,} boxes in all.")
     # AGAINST WHAT IS KNOWN OF THIS WALK: the owner's own trunks (a tree stands at each), and the trunk finder's
     of, tf = os.path.join(d, "owner-trunks.json"), os.path.join(d, "trunks.json")
     own = []
