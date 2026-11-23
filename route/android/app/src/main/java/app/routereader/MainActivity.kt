@@ -61,7 +61,10 @@ class MainActivity : Activity() {
             onResume()
         }
         col.addView(everywhere)
-        col.addView(text("To hide the button for now, press and hold it. It comes back when you open that app again.", 14f))
+        col.addView(text("After the day's first read, the button becomes a small Planner button that opens today's route. Press and hold it for Read again, Hide today, or Hide for now.", 14f))
+        col.addView(button("Bring the button back today") {
+            getSharedPreferences(ReaderService.PREFS, MODE_PRIVATE).edit().remove(ReaderService.KEY_HIDDEN_DAY).apply()
+        })
         col.addView(button("Open the route planner") { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(BuildConfig.PLANNER_URL))) })
         col.addView(text("Version ${BuildConfig.VERSION_NAME}", 12f))
         setContentView(ScrollView(this).apply { setBackgroundColor(Color.parseColor("#F4F6F5")); addView(col) })
