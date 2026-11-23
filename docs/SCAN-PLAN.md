@@ -4304,6 +4304,14 @@ same day (not yet answered): the contract in docs/MAPS.md is the core session's;
 both (light: theirs; what a walk contributes and the geometry that follows: the core session's); the scan page also
 fuses when a walk's side changes; the water session told, and asked how it would take the fused file.
 
+AGREED (the features session's answer, 2026-11-23: "YES to 1-3"), and the water session's view the same day; both
+are in docs/MAPS.md "The fused model", which is the contract. BUILT on it by the core session: the scan page fuses
+when a walk's side changes (scan/lib/fuse-walk.js, through the features session's fuse.js unchanged; tested end to
+end against a stand-in for the main site: writes once, skips when what is stored was made from the same lidar, walk
+and fusing version, never writes the lidar's file); the main site keeps and returns what a file was made from
+(X-Model-Made-From); for the water site's server, adminSaves() gives fusedAt, fusedOf() the file, and
+WATER.fusedChanged is pushed once. NOT RUN on a real map yet.
+
 BUILT THINGS AT FACE VALUE, the walk's next part (plants.py BUILT; 2026-11-23): the same rules on the points voted
 built or fence, outvoted by plant and the ground's kinds, from a foot and a half up (a 2 ft porch slab counts). The
 lidar draws a wall 2 ft in from a roof's edge by rule and hardly sees a porch or a pillar; a walk sees them where
