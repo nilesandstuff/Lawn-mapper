@@ -4159,7 +4159,15 @@ it as see-through green boxes, with a "Plant shapes" button): the walk's own kep
 the start cut and without flagged spikes, on a 1 ft plan grid; a cell with 5 points or more whose top is 3 ft or
 more up keeps the 5th and 95th height plant was seen at in it; cells joined into shapes; a shape of under 3 cells,
 under 40 points, or seen in one second only, is dropped. Tried on a made-up yard (a tree and a hedge kept, ground
-cover and one burst of stray points dropped). Its numbers on the walk of 2026-11-20 follow when the run is read.
+cover and one burst of stray points dropped).
+HARD, ON THE WALK OF 2026-11-20 (run 525): 251,890 kept points, 66,359 voted tree or plant, 48,540 used. 4,757 one-foot
+cells with plant in them; 1,095 with 5 points or more and a top 3 ft or more up; 131 shapes, of which 83 under 3
+cells and 16 under 40 points dropped, none for being seen in one second only; 32 KEPT, holding 78% of the points
+used; 3 / 13 / 249 sq ft each (least / middle / most), 935 sq ft in all; 22 seen 8 ft up or more, 10 between 3 and
+8 ft; seen up to 41 ft at the most. The file: 0.03 MB (935 cells) for what is 48,540 points. Of the owner's 11
+trunks, 9 stand in a shape (seen there up to 11-35 ft) and 2 in none (the two with no column of points); all 13 of
+the trunk finder's stand in one. NOT CHECKED: the owner's eyes on the shapes; the tops over about 13 ft (the phone's
+depth is weak that far: SCAN-H7), which may be as much noise as crown.
 NOT DONE BY IT: a shape drawn twice by a walk that slid stays, a little fat; a crown is not seen; nothing is placed on
 the map or shared with any tool yet.
 
