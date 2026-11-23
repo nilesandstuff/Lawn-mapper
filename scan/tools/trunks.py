@@ -188,10 +188,12 @@ def find_in_walk(recs, kind, flags, cut_s=0.0):
     of = lab.reshape(-1)[key]
     in_col = grid.reshape(-1)[key]
     out, wide, crowded, short, thin = [], 0, 0, 0, 0
+    turned = []   # every group turned away: where (the walk's frame), by which rule, with the rule's own numbers
     for k in range(1, n + 1):
         m = of == k
         if m.sum() < 12:
             thin += 1
+            turned.append({"x": float(np.median(x[m])), "z": float(np.median(z[m])), "why": f"too few points ({int(m.sum())}, 12 needed)"})
             continue
         px, pz, ph, pt = x[m], z[m], h[m], t[m]
         c0 = np.array([np.median(px), np.median(pz)])
@@ -200,10 +202,12 @@ def find_in_walk(recs, kind, flags, cut_s=0.0):
         ext = np.sort(np.ptp(q @ v_, axis=0))
         if ext[0] > NARROW or ext[1] > LONG:
             wide += 1
+            turned.append({"x": float(c0[0]), "z": float(c0[1]), "why": f"too wide ({ext[0] * 39.37:.0f} by {ext[1] * 39.37:.0f} in; {NARROW * 39.37:.0f} by {LONG * 39.37:.0f} allowed)"})
             continue
         # a shrub is short: something stands TALL or more over the ground within a metre of it
         if not ((np.hypot(ux - c0[0], uz - c0[1]) < 1.0).sum() >= 3):
             short += 1
+            turned.append({"x": float(c0[0]), "z": float(c0[1]), "why": f"nothing standing {TALL * FT:.0f} ft within a metre ({int((np.hypot(ux - c0[0], uz - c0[1]) < 1.0).sum())} points, 3 needed; its own top {float(ph.max()) * FT:.1f} ft)"})
             continue
         # its sightings: the group's points in time, a new sighting after 20 s without one; the best has the most points
         o = np.argsort(pt)
@@ -212,6 +216,7 @@ def find_in_walk(recs, kind, flags, cut_s=0.0):
         best = max(seg, key=len)
         if len(best) < 8:
             thin += 1
+            turned.append({"x": float(c0[0]), "z": float(c0[1]), "why": f"its best sighting too thin ({len(best)} points of {int(m.sum())}, 8 needed)"})
             continue
         t0, t1 = pt[best].min() - 3, pt[best].max() + 3
         lowb = best[ph[best] < 1.2] if (ph[best] < 1.2).any() else best
@@ -225,6 +230,7 @@ def find_in_walk(recs, kind, flags, cut_s=0.0):
         own, ring = int((stem & (dd < r_own)).sum()), int((stem & ~in_col & (dd >= r_own + 0.15) & (dd < r_own + 0.6)).sum())
         if ring > own:
             crowded += 1
+            turned.append({"x": float(c0[0]), "z": float(c0[1]), "why": f"not standing free ({ring} points in the ring round it at stem height against its own {own}; {ext[0] * 39.37:.0f} by {ext[1] * 39.37:.0f} in)"})
             continue
         # the trunk as its best sighting saw it: every point of that moment within 0.5 m of the line, slice by slice
         now = (t >= t0) & (t <= t1)
@@ -240,12 +246,13 @@ def find_in_walk(recs, kind, flags, cut_s=0.0):
             slices.append([round(float(s0), 2), round(float(cc[0]), 2), round(float(cc[1]), 2), round(max(0.02, r), 2)])
         if len(slices) < LEVELS - 1:
             thin += 1
+            turned.append({"x": float(c0[0]), "z": float(c0[1]), "why": f"its best sighting followed over too few levels ({len(slices)}, {LEVELS - 1} needed)"})
             continue
         lean = float(np.hypot(slices[-1][1] - slices[0][1], slices[-1][2] - slices[0][2]))
         out.append({"y": round(float(np.median(g[m])), 2), "x": slices[0][1], "z": slices[0][2], "slices": slices, "seenTo": round(float(slices[-1][0] + SLICE), 2),
                     "across": round(float(2 * np.median([s_[3] for s_ in slices[: max(3, len(slices) // 2)]])), 2), "lean": round(lean, 2),
                     "points": int(m.sum()), "sightings": int(len(cents) or 1), "apart": round(apart, 2), "footprint": round(float(ext[1]), 2)})
-    st.update({"groups": int(n), "tooWide": wide, "crowded": crowded, "short": short, "thin": thin})
+    st.update({"groups": int(n), "tooWide": wide, "crowded": crowded, "short": short, "thin": thin, "_turned": turned})
     return out, st
 
 
@@ -318,9 +325,19 @@ def main_walk(d, out=None):
             if (~hit_o).any():
                 why = main_walk_why(recs, kind, flags, cut, O[~hit_o])
                 print("  The missed ones, by what stood at the owner's tap: " + ", ".join(f"{k} {v}" for k, v in sorted(why.items(), key=lambda kv: -kv[1])) + ".")
+                # WHICH RULE, with its numbers (2026-11-23: "a rule turned away" named four rules at once): the group
+                # turned away nearest each missed tap, within 3 ft
+                tn = st.get("_turned") or []
+                for i in np.flatnonzero(~hit_o):
+                    dd = [float(np.hypot(O[i, 0] - g_["x"], O[i, 1] - g_["z"])) for g_ in tn]
+                    j = int(np.argmin(dd)) if dd else -1
+                    print("    a missed one: " + (f"{tn[j]['why']}, {dd[j] * 39.37:.0f} in from the tap." if j >= 0 and dd[j] <= 0.9 else "no group of column cells within 3 ft of the tap."))
+            # each trunk found, with what it was found by: the ones at one of the owner's and the ones at none
+            for i, t_ in enumerate(trunks):
+                print(f"    found, {'at one the owner marked' if hit_f[i] else 'AT NONE the owner marked'}: {t_['across'] * 39.37:.0f} in across, followed to {t_['seenTo'] * FT:.0f} ft over {len(t_['slices'])} slices, {t_['points']} points, seen {t_['sightings']} time{'s' if t_['sightings'] != 1 else ''}, all sightings {t_['footprint'] * 39.37:.0f} in across, leaning {t_['lean'] * 39.37:.0f} in.")
     out = out or os.path.join(d, "trunks.json")
     with open(out, "w") as f:
-        json.dump({"v": 3, "from": "the walk's own points, each trunk as its best sighting saw it", "frame": "the walk's own (ARCore session), metres; y up", "startCutS": cut, "sliceM": SLICE, "trunks": trunks, "stats": st}, f)
+        json.dump({"v": 3, "from": "the walk's own points, each trunk as its best sighting saw it", "frame": "the walk's own (ARCore session), metres; y up", "startCutS": cut, "sliceM": SLICE, "trunks": trunks, "stats": {k_: v_ for k_, v_ in st.items() if not k_.startswith("_")}}, f)
     print(f"  Kept: {os.path.basename(out)} ({len(trunks)} trunks, each as slices [height over the ground, x, z, radius]; places not printed).")
 
 
