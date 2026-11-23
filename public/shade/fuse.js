@@ -44,6 +44,8 @@
 import { toMerc, mercScale } from './ept.js';
 import { SOLID_MU } from './canopy.js';
 
+/** The fusing's own build, written into meta.fused.version: bump it whenever what fuseModel makes changes. */
+export const FUSE_VERSION = 1;
 export const FUSE_SUB = 2;            // half-metre cells per lidar metre
 export const PLANT_TRUST_M = 4;       // the walk's plants are trusted for where up to here (about 13 ft)
 export const PLANT_MU = 2.3;          // a cube of plant the lidar did not see: stops 90% of the light a metre
@@ -296,7 +298,7 @@ export function fuseModel(lidar, plants, origin, { now = new Date(), open = null
   const out = {
     meta: {
       v: meta.v, tool: 'shade', build: meta.build, at: now.toISOString(), basedOn: meta.basedOn || null,
-      fused: { from: 'the shade map\'s lidar model and one yard walk\'s plants (fuse.js)', lidarAt: meta.at, walk: plants.walk ?? null, walkAt: plants.at ?? null, walkFit: plants.fit || null, sub: S, plantTrustM: PLANT_TRUST_M, refined, added, trimmed, seenOpen: !!open, moved },
+      fused: { version: FUSE_VERSION, from: 'the shade map\'s lidar model and one yard walk\'s plants (fuse.js)', lidarAt: meta.at, walk: plants.walk ?? null, walkAt: plants.at ?? null, walkFit: plants.fit || null, sub: S, plantTrustM: PLANT_TRUST_M, refined, added, trimmed, seenOpen: !!open, moved },
       fences: meta.fences || [], grid, layers: { z0, dz, nz }, lidar: meta.lidar || null, photo: meta.photo || null, rule: meta.rule, leaves: meta.leaves,
     },
     arrays: { ground, kind: kindF, top, mu, walk },
