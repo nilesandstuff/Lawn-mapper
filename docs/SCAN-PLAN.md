@@ -4122,6 +4122,24 @@ column stood there and a rule turned it away, at 1 there were under 12 points. O
 NOT KNOWN from this: whether the 4 at no marked trunk are false (a shrub, a post) or trees the owner did not mark;
 whether the 4 missed are the 4 the owner called sparsely seen.
 
+HARD, WHICH RULE (runs 521-523): two of the four missed lay 16 and 19 in from ONE group, 28 by 63 in, turned away as
+too wide by a fraction of an inch. In one sighting (3,794 of its points), along its length at stem height, the
+points per 4 in ran 9 7 6 8 182 233 255 238 223 133 | 44 | 184 288 383 296 22: two heaps and a dip to 17% of the
+smaller. The other two missed: no column cell within 3 ft of the tap (one with under 12 points there at all).
+BUILT (trunks.py, SPLIT_OVER): a group narrow enough and over 0.9 m long whose BEST SIGHTING shows two heaps a foot or
+more apart with a dip to a quarter of the smaller or less is looked at as two, each half then no longer than a trunk
+is wide. One sighting, so one trunk seen twice by a drifted walk is not halved; a quarter, because a wide trunk
+walked round shows its two faces with a dip to about 40% between (worked out, and tried on a made-up yard: two
+trunks 24 and 31 in apart come out two, a 40 in trunk walked round one, a hedge with a hole none).
+HARD, AFTER IT (run 524, the same walk and taps): 13 trunks; of the owner's 11, FOUND 9 AND MISSED 2 (both with no
+column of points at the tap); 4 of the 13 at no trunk the owner marked, the same four as before. Two groups were
+looked at as two: the pair above, and one that had stood as a single trunk 62 in across over two of the owner's.
+Where found, 12 in from the tap in the middle. The nine at the owner's: followed to 10-14 ft but for one (6 ft, 32
+points); 74 to 4,096 points but for that one. The four at none: followed to 6-7 ft, 17 to 486 points.
+SPECULATION: "followed to under 8 ft" would turn away the four at none and one of the nine. Not done: whether the
+four are false is the owner's to say (asked 2026-11-23), and nine and four are few to draw a line through. The
+rule was tuned on the walk it is scored on; another walk is the test.
+
 ## 59. The walk in the rain: a walk that agreed with its corners and did not come back to itself (2026-11-22)
 
 Walk 1795383110375, the owner's lot, a second walk on a map with a reference: 11 minutes, 1,246 ft walked, 501
