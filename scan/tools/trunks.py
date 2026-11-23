@@ -189,8 +189,10 @@ def find_in_walk(recs, kind, flags, cut_s=0.0):
     in_col = grid.reshape(-1)[key]
     out, wide, crowded, short, thin = [], 0, 0, 0, 0
     turned = []   # every group turned away: where (the walk's frame), by which rule, with the rule's own numbers
-    for k in range(1, n + 1):
-        m = of == k
+    todo = [(of == k, False) for k in range(1, n + 1)]
+    split = 0
+    while todo:
+        m, child = todo.pop(0)
         if m.sum() < 12:
             thin += 1
             turned.append({"x": float(np.median(x[m])), "z": float(np.median(z[m])), "why": f"too few points ({int(m.sum())}, 12 needed)"})
@@ -199,8 +201,38 @@ def find_in_walk(recs, kind, flags, cut_s=0.0):
         c0 = np.array([np.median(px), np.median(pz)])
         q = np.stack([px, pz], 1) - c0
         _, v_ = np.linalg.eigh(np.cov(q.T) + 1e-9 * np.eye(2))
-        ext = np.sort(np.ptp(q @ v_, axis=0))
-        if ext[0] > NARROW or ext[1] > LONG:
+        proj = q @ v_
+        ext = np.sort(np.ptp(proj, axis=0))
+        # TWO TRUNKS A YARD APART ARE ONE GROUP TOO LONG FOR A TRUNK (run 521, 2026-11-23: two of the owner's own trunks,
+        # 16 and 19 in from one group 28 by 63 in, turned away as too wide by a fraction of an inch). A group narrow
+        # enough but too long, with an EMPTY STRETCH of a foot or more along it at stem height and a dozen points each
+        # side, is two things: each half is looked at by itself, and must then be no longer than a trunk is wide (a
+        # hedge with a hole in it leaves two lengths of hedge, not two trunks). Once only: a half is not halved again.
+        if not child and ext[0] <= NARROW and LONG < ext[1] <= 2 * LONG:
+            a = proj[:, int(np.argmax(np.ptp(proj, axis=0)))]
+            stem_a = a[(ph >= 0.3) & (ph <= 1.5)]
+            cut_at = None
+            if len(stem_a) >= 24:
+                edges = np.arange(a.min(), a.max() + 0.1, 0.1)
+                cnt, _ = np.histogram(stem_a, edges)
+                empty = cnt <= max(1, 0.05 * cnt.max())
+                run, best_run = 0, (0, -1)
+                for i_, e_ in enumerate(empty):
+                    run = run + 1 if e_ else 0
+                    if run > best_run[0] and 0 < i_ - run + 1 and i_ < len(empty) - 1:
+                        best_run = (run, i_)
+                if best_run[0] >= 3:
+                    mid_a = edges[best_run[1] - best_run[0] + 1] + 0.05 * best_run[0]
+                    if (a < mid_a).sum() >= 12 and (a >= mid_a).sum() >= 12:
+                        cut_at = mid_a
+            if cut_at is not None:
+                idx = np.flatnonzero(m)
+                for side in (a < cut_at, a >= cut_at):
+                    mm = np.zeros(len(m), bool); mm[idx[side]] = True
+                    todo.append((mm, True))
+                split += 1
+                continue
+        if ext[0] > NARROW or ext[1] > (NARROW if child else LONG):
             wide += 1
             turned.append({"x": float(c0[0]), "z": float(c0[1]), "why": f"too wide ({ext[0] * 39.37:.0f} by {ext[1] * 39.37:.0f} in; {NARROW * 39.37:.0f} by {LONG * 39.37:.0f} allowed)"})
             continue
@@ -252,7 +284,7 @@ def find_in_walk(recs, kind, flags, cut_s=0.0):
         out.append({"y": round(float(np.median(g[m])), 2), "x": slices[0][1], "z": slices[0][2], "slices": slices, "seenTo": round(float(slices[-1][0] + SLICE), 2),
                     "across": round(float(2 * np.median([s_[3] for s_ in slices[: max(3, len(slices) // 2)]])), 2), "lean": round(lean, 2),
                     "points": int(m.sum()), "sightings": int(len(cents) or 1), "apart": round(apart, 2), "footprint": round(float(ext[1]), 2)})
-    st.update({"groups": int(n), "tooWide": wide, "crowded": crowded, "short": short, "thin": thin, "_turned": turned})
+    st.update({"groups": int(n), "tooWide": wide, "crowded": crowded, "short": short, "thin": thin, "split": split, "_turned": turned})
     return out, st
 
 
@@ -296,7 +328,7 @@ def main_walk(d, out=None):
           f"{', ground, paving and building left out by the voted kinds' if st['kinds'] else ' (no voted kinds with this walk: everything standing is tried)'}.")
     print(f"  Plan cells (6 in) that are a column, {SPAN * FT:.0f} ft of height in {LEVELS} levels or more: {st.get('columnCells', 0):,}; groups of them {st.get('groups', 0)}: "
           f"too few points {st.get('thin', 0)}; too wide even for a trunk seen from all sides {st.get('tooWide', 0)}; nothing standing {TALL * FT:.0f} ft at it (a shrub) {st.get('short', 0)}; "
-          f"not standing free {st.get('crowded', 0)}; TRUNKS {len(trunks)}.")
+          f"not standing free {st.get('crowded', 0)}; TRUNKS {len(trunks)}." + (f" ({st['split']} group{'s' if st['split'] != 1 else ''} too long for one trunk, with an empty stretch along it, looked at as two.)" if st.get('split') else ""))
     if trunks:
         mid = len(trunks) // 2
         acr = sorted(t["across"] for t in trunks); tops = sorted(t["seenTo"] for t in trunks); sg = sorted(t["sightings"] for t in trunks)
