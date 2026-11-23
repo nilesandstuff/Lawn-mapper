@@ -55,9 +55,17 @@ MIN_CELLS = 3          # cells in a shape, at the least (3 sq ft)
 MIN_SHAPE_PTS = 40     # points in a shape, at the least
 TOP = 20.0             # m over the ground: above this is a stray
 OTHER = ("built", "fence", "paved", "movable", "grass", "bare ground", "water")   # what outvotes a plant in a cubic foot
+WANT = ("tree", "plant")
+# BUILT THINGS AT FACE VALUE (2026-11-23, the walk's next part of the fused model: the owner's "best possible
+# representation of reality"). The lidar draws a wall 2 ft in from a roof's edge by rule (structures.js wallsOf) and
+# hardly sees a porch, a pillar or a low wall; a walk sees them where they stand. The same rules as the plants, on
+# the points voted built or fence, outvoted by plant and the rest, from BUILT_MIN_TOP up (a 2 ft porch slab counts).
+BUILT = ("built", "fence")
+BUILT_OTHER = ("tree", "plant", "paved", "movable", "grass", "bare ground", "water")
+BUILT_MIN_TOP = 0.45   # m: a foot and a half
 
 
-def shapes_of(recs, kind, flags, cut_s=0.0, fit=None):
+def shapes_of(recs, kind, flags, cut_s=0.0, fit=None, want=WANT, other_kinds=OTHER, min_top=MIN_TOP):
     """-> (shapes, stats). recs (n, 6) [t, odo, x, y, z, ground]; kind the voted kinds; flags the labels' flags byte.
     fit: { theta, tx, ty, s } (the walk's corners' one fit, scan/lib/align.js: the walk's level [x, -z] to the map's
     [east, north], with the phone's scale s): when given, the points are put on the map FIRST and gridded there, so
@@ -74,7 +82,7 @@ def shapes_of(recs, kind, flags, cut_s=0.0, fit=None):
         u_, v_ = x_, -z_
         x_, z_ = c_ * u_ - s_ * v_ + fit["tx"], s_ * u_ + c_ * v_ + fit["ty"]
         h_ = h_ * k_
-    veg = np.isin(kind, [TR.KINDS.index("tree"), TR.KINDS.index("plant")])
+    veg = np.isin(kind, [TR.KINDS.index(k) for k in want])   # "veg": the kinds asked for (plants by default; built things: BUILT)
     base = np.isfinite(h_) & np.isfinite(x_) & np.isfinite(z_) & (t_ >= cut_s) & ((flags & 3) == 0) & (h_ >= 0.15) & (h_ <= TOP)
     ok = veg & base
     st.update({"plant": int(veg.sum()), "used": int(ok.sum())})
@@ -87,7 +95,7 @@ def shapes_of(recs, kind, flags, cut_s=0.0, fit=None):
     # it on the level: a wall's points scatter across a cell's edge). By the cubic foot and not by the whole column,
     # so a shrub against a wall keeps its own height (the wall behind it is hidden there) and loses only what was
     # "plant" up the wall above it.
-    other = base & np.isin(kind, [TR.KINDS.index(k) for k in OTHER])
+    other = base & np.isin(kind, [TR.KINDS.index(k) for k in other_kinds])
     vi = np.stack([np.floor(x_ / CELL), np.floor(z_ / CELL), np.floor(h_ / CELL)], 1).astype(np.int64)
     lo3 = vi[base].min(0)
     vi -= lo3
@@ -129,7 +137,7 @@ def shapes_of(recs, kind, flags, cut_s=0.0, fit=None):
     re_ = np.r_[rs[1:], len(ks)]
     rn = re_ - rs
     rlo, rhi, rcell = hs[rs], hs[re_ - 1], ks[rs]
-    good = (rn >= MIN_PTS) & (rhi >= MIN_TOP)
+    good = (rn >= MIN_PTS) & (rhi >= min_top)
     run_of = np.cumsum(newrun) - 1
     used_pt = np.zeros(len(key), bool); used_pt[o] = good[run_of]
     box_cell, box_lo, box_hi = [rcell[good]], [rlo[good]], [rhi[good]]
@@ -174,7 +182,7 @@ def shapes_of(recs, kind, flags, cut_s=0.0, fit=None):
             box_cell.append(cells_); box_lo.append(np.full(len(cells_), h2[a])); box_hi.append(np.full(len(cells_), h2[b - 1]))
     box_cell, box_lo, box_hi = np.concatenate(box_cell), np.concatenate(box_lo), np.concatenate(box_hi)
     st.update({"cells": int(len(np.unique(ks))), "runs": int(len(rs)), "runsKept": int(good.sum()), "cellsOver": int(len(np.unique(rcell[good]))), "crownRuns": crown_runs,
-               "crownPts": int(used_pt.sum() - good[run_of].sum()), "strays": int((~used_pt & (h >= MIN_TOP)).sum()), "low": int(rn[rhi < MIN_TOP].sum())})
+               "crownPts": int(used_pt.sum() - good[run_of].sum()), "strays": int((~used_pt & (h >= min_top)).sum()), "low": int(rn[rhi < min_top].sum())})
     if not len(box_cell):
         return [], st
     from scipy import ndimage
@@ -410,6 +418,18 @@ def main():
         with open(os.path.join(d, "plants-phone.json"), "w") as f:
             json.dump({"v": 1, "from": "the walk's own points the PHONE labelled tree, over 3 ft, at face value", "frame": "the walk's own (ARCore session), metres; y up", "cellM": CELL, "startCutS": cut,
                        "shapes": shapes_p}, f, separators=(",", ":"))
+    # THE BUILT THINGS THE WALK SAW, the same way (BUILT above): for the owner's eyes in the 3D view first. Nothing is
+    # kept with the map from this yet.
+    built, bst = shapes_of(recs, kind, flags, cut, want=BUILT, other_kinds=BUILT_OTHER, min_top=BUILT_MIN_TOP)
+    if built:
+        ar = sorted(s_["areaM2"] * FT * FT for s_ in built); tp = sorted(s_["top"] * FT for s_ in built)
+        print(f"  BUILT THINGS AS THE WALK SAW THEM: {bst.get('plant', 0):,} points voted built or fence, {bst.get('outvoted', 0):,} outvoted by plant or the ground's kinds in their cubic foot; {len(built)} shapes, {sum(ar):,.0f} sq ft on the ground "
+              f"({ar[0]:.0f} / {ar[len(ar) // 2]:.0f} / {ar[-1]:.0f} least / middle / most), seen up to {tp[0]:.0f} / {tp[len(tp) // 2]:.0f} / {tp[-1]:.0f} ft; {sum(len(s_['cells']) for s_ in built):,} boxes.")
+        with open(os.path.join(d, "built.json"), "w") as f:
+            json.dump({"v": 1, "from": "the walk's own points voted built or fence, a foot and a half up or more, at face value", "frame": "the walk's own (ARCore session), metres; y up", "cellM": CELL, "startCutS": cut,
+                       "shapes": built}, f, separators=(",", ":"))
+    else:
+        print("  Built things as the walk saw them: none kept.")
     out = a[1] if len(a) > 1 else os.path.join(d, "plants.json")
     with open(out, "w") as f:
         json.dump({"v": 1, "from": "the walk's own points voted tree or plant, over 3 ft, at face value", "frame": "the walk's own (ARCore session), metres; y up", "cellM": CELL, "startCutS": cut,

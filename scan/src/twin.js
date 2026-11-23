@@ -21,7 +21,7 @@ import { decodeThings, encodeThings } from '../lib/things.js';
 const json = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 
 export const MAX_PART = 8 * 1024 * 1024;
-export const PART = /^(meta|live|end|splat|fixed|inspect|consensus|thermal-notes|thermal-placement|thermal-snap|view|seg|seg-names|mend|trunks|plants|plants-phone|start|owner-trunks)\.json$|^(inspect-points|view-rgb|view-kind|view-dense|view-mended|erased)\.bin$|^(cloud|track|labels|weak|weaklabels)-\d{4}\.bin$|^keys-\d{4}\.json$|^key-\d{4}\.(jpg|depth|sdepth|rdepth)$|^splat\.splat$|^splat-compare\.jpg$|^mesh\.bin$|^seg-\d{4}\.png$|^segments-[a-z-]{1,40}\.(png|jpg)$|^study-[a-z0-9]{1,24}(\.json|-[a-z0-9-]{1,60}\.(png|jpg))$/;
+export const PART = /^(meta|live|end|splat|fixed|inspect|consensus|thermal-notes|thermal-placement|thermal-snap|view|seg|seg-names|mend|trunks|plants|plants-phone|built|start|owner-trunks)\.json$|^(inspect-points|view-rgb|view-kind|view-dense|view-mended|erased)\.bin$|^(cloud|track|labels|weak|weaklabels)-\d{4}\.bin$|^keys-\d{4}\.json$|^key-\d{4}\.(jpg|depth|sdepth|rdepth)$|^splat\.splat$|^splat-compare\.jpg$|^mesh\.bin$|^seg-\d{4}\.png$|^segments-[a-z-]{1,40}\.(png|jpg)$|^study-[a-z0-9]{1,24}(\.json|-[a-z0-9-]{1,60}\.(png|jpg))$/;
 export const WALK = /^[0-9a-zA-Z_-]{1,40}$/;
 const TYPES = { json: 'application/json', bin: 'application/octet-stream', jpg: 'image/jpeg', png: 'image/png' };
 export const typeOf = (part) => TYPES[part.split('.').pop()] || 'application/octet-stream';
@@ -81,7 +81,7 @@ export async function twin(request, env, url, { isAdmin, noteThermal = null, not
       if (!o) return json({ error: 'Not found' }, 404);
       // a part that is made again (the 3D view's files, the erasing, the names, the studies) is never kept by the
       // browser: kept an hour, a walk prepared again was shown from its first file (2026-11-21)
-      return new Response(o.body, { headers: { 'Content-Type': typeOf(part), 'Cache-Control': /^(view|erased|seg|study|judged|live|meta|mend|trunks|plants|owner-)/.test(part) ? 'private, no-store' : 'private, max-age=3600' } });
+      return new Response(o.body, { headers: { 'Content-Type': typeOf(part), 'Cache-Control': /^(view|erased|seg|study|judged|live|meta|mend|trunks|plants|built|owner-)/.test(part) ? 'private, no-store' : 'private, max-age=3600' } });
     }
     const parts = [];
     let cursor;

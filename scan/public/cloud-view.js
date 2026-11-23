@@ -27,7 +27,7 @@ const walk = new URLSearchParams(location.search).get('walk');
 const FT = 3.281;
 // A PART THAT IS MADE AGAIN (the view's files, the erasing) is never taken from the browser's own store: the site
 // let a part be kept an hour, so a walk prepared again was shown from its first, wrong file (2026-11-21).
-const FRESH = /^(view|erased|seg|study|judged|trunks|plants|owner-)/;
+const FRESH = /^(view|erased|seg|study|judged|trunks|plants|built|owner-)/;
 const part = (name, init) => fetch(`/api/scan/twin?walk=${encodeURIComponent(walk)}&part=${encodeURIComponent(name)}`, { credentials: 'same-origin', ...(FRESH.test(name) ? { cache: 'no-store' } : {}), ...init });
 const LABEL_COL = { terrain: [120, 190, 90], road: [110, 110, 125], sidewalk: [185, 185, 195], building: [215, 90, 70], structure: [235, 160, 70], tree: [40, 150, 70],
   object: [170, 110, 210], vehicle: [80, 140, 235], water: [70, 200, 230], sky: [255, 0, 255], person: [255, 255, 255], unlabeled: [150, 150, 150] };
@@ -109,6 +109,8 @@ async function main() {
   if (names.includes('plants.json')) { const pj = await (await part('plants.json')).json().catch(() => null); D.plants = Array.isArray(pj?.shapes) ? pj.shapes : null; D.plantCell = pj?.cellM || 0.3048; }
   // the same from the phone's own labels alone (plants.py): can the phone draw them by itself, with no server?
   if (names.includes('plants-phone.json')) { const pj = await (await part('plants-phone.json')).json().catch(() => null); D.plantsPhone = Array.isArray(pj?.shapes) ? pj.shapes : null; }
+  // the built things the walk saw, the same way (plants.py BUILT): walls where they stand, a porch, pillars
+  if (names.includes('built.json')) { const bj = await (await part('built.json')).json().catch(() => null); D.built = Array.isArray(bj?.shapes) ? bj.shapes : null; }
   if (names.includes('trunks.json')) { const tj = await (await part('trunks.json')).json().catch(() => null); D.trunks = tj?.trunks || []; D.trunkSlice = tj?.sliceM || 0.25; }
   if (DENSE) { D.rgb = DENSE.rgb; D.kind = DENSE.kind; U.readonly = true; }
   if (!DENSE && names.includes('view-rgb.bin')) { const u = new Uint8Array(await buf('view-rgb.bin')); if (u.length === N * 4) D.rgb = u; }
@@ -199,7 +201,7 @@ function build() {
   /* THE PLANTS AT FACE VALUE (plants.py; the owner, 2026-11-23: "just mark trees in general and take their shapes at
      face value (but clean up the noise)"): a see-through green box in every 1 ft cell where the walk saw plant over
      3 ft, from the lowest it was seen there to the highest. One mesh for all of them. "Plant shapes" hides them. */
-  if (D.plants?.length || D.plantsPhone?.length) {
+  if (D.plants?.length || D.plantsPhone?.length || D.built?.length) {
     const meshOf = (shapes, color) => {
       if (!shapes?.length) return null;
       const cells = shapes.flatMap((s) => s.cells.map((c) => [c[0], s.y + (c[2] + c[3]) / 2, c[1], Math.max(0.05, c[3] - c[2])]));
@@ -212,10 +214,10 @@ function build() {
     /* TWO WAYS TO THE SAME SHAPES, one button going round them: by the kinds voted from the pictures on a server
        (green), by the PHONE'S OWN LABELS ALONE (blue-green: what the phone could draw by itself at a walk's end; the
        roadmap, 2026-11-22: "as much processing... on the user's device as possible"), and off. */
-    const ways = [['by the pictures\' vote', meshOf(D.plants, 0x2faa4a)], ['by the phone\'s labels alone', meshOf(D.plantsPhone, 0x1f9aa8)]].filter((w) => w[1]);
+    const ways = [['plants, by the pictures\' vote', meshOf(D.plants, 0x2faa4a)], ['plants, by the phone\'s labels alone', meshOf(D.plantsPhone, 0x1f9aa8)], ['built things (walls, porch, pillars)', meshOf(D.built, 0xb8a27a)]].filter((w) => w[1]);
     plantMesh = ways[0]?.[1] || null;
     let at = 0;
-    const show = () => { ways.forEach((w, i) => { w[1].visible = i === at; }); const b = $('#plants-toggle'); if (b) { b.classList.toggle('on', at < ways.length); b.textContent = at < ways.length ? `Plant shapes: ${ways[at][0]}` : 'Plant shapes: off'; } };
+    const show = () => { ways.forEach((w, i) => { w[1].visible = i === at; }); const b = $('#plants-toggle'); if (b) { b.classList.toggle('on', at < ways.length); b.textContent = at < ways.length ? `Shapes: ${ways[at][0]}` : 'Shapes: off'; } };
     const b = $('#plants-toggle'); if (b) { b.hidden = false; b.addEventListener('click', () => { at = (at + 1) % (ways.length + 1); show(); }); }
     show();
   }
