@@ -4558,6 +4558,14 @@ between two colours hides. So the 3D view has a fourth layer, ONLY WHERE THEY DI
 phone alone), with the square feet of each in the page's text. If the 510 sq ft only the phone draws are plants, the
 phone's own labels are enough and the pictures need not go to a server for this.
 
+THE OWNER'S VERDICT, WITH THE DISAGREEMENT LAYER (2026-11-24): "the blue shapes are actually slightly better,
+especially at seeing bare trees. So that's a nice win since it doesn't require sending photos to the server." HARD
+(the owner's eyes, one walk, leaf-off): the phone's own labels draw the plants at least as well as the pictures' vote.
+DONE: the plants put on the map (plants-map.json, so the map's record and the fused model) come from the phone's
+labels when the walk kept them (`kinds: 'phone'` in the record), the vote only when it did not. The vote is still what
+finds fences and the built things: ARCore has no label for a fence. TO TEST at the owner's next property (a fence,
+a move about 2026-12-01): pictures again there, for the fence.
+
 ## 61. "I'm not seeing the fused map at all": a walk was tied to one record of three (2026-11-24)
 
 The owner (through the features session, 2026-11-23): "I opened my property in the shade map but I'm not seeing the

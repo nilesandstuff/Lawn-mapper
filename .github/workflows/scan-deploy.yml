@@ -349,6 +349,9 @@ jobs:
           if [ -f twin/plants.json ]; then node scan/tools/twin-r2.mjs put "$WALK" twin/plants.json twin/plants-phone.json twin/built.json | tee -a trunks.txt; fi
           # the same plants gridded on the map, kept with the map for the start page to put into the map's record
           node scan/tools/plants-keep.mjs "$WALK" twin | tee -a trunks.txt
+          # CAN A LEAF-OFF WALK TAKE LIDAR BRANCHES AWAY? (scan/tools/bare_study.py, 2026-11-24, the owner's question):
+          # how often a line through a bare crown stops in it, and the walk against itself. No lidar read. Counts only.
+          python scan/tools/bare_study.py twin | tee -a trunks.txt || true
           # ARE THE FAR POINTS WRONG, OR ONLY FEW? AND WHICH SOLID POINTS ARE SKY? (scan/tools/range_study.py, 2026-11-23,
           # the owner: no limit by distance "unless you demonstrate that they're just plain wrong"): the walk against
           # what it saw from close. And whether a fused model has been made (fused-check.mjs). Counts and times only.

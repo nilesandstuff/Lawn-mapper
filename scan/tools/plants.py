@@ -402,8 +402,9 @@ def main():
         except Exception:
             pass
     shapes, st = shapes_of(recs, kind, flags, cut)
-    if not st["kinds"]:
-        print("PLANTS: this walk has no voted kinds (view-kind.bin): run the classes task first. Nothing kept.")
+    pk = phone_kinds(d, len(recs))
+    if not st["kinds"] and pk is None:
+        print("PLANTS: this walk has neither voted kinds (view-kind.bin) nor the phone's own labels. Nothing kept.")
         return 0
     print(f"PLANTS AS THE WALK SAW THEM: {st['points']:,} kept points, {st.get('plant', 0):,} voted tree or plant, {st.get('used', 0):,} of them used (after the start cut of {cut / 60:.1f} min, no flagged spikes, 6 in to {TOP * FT:.0f} ft over their own ground).")
     print(f"  Outvoted by something built, paved or the like in the same cubic foot (or beside it): {st.get('outvoted', 0):,} of those points, in {st.get('cubesOutvoted', 0):,} of {st.get('cubes', 0):,} cubic feet with plant in them. Not counted as plant.")
@@ -440,7 +441,7 @@ def main():
     # studies.py PHONE_KIND), against the kinds voted afterwards from the pictures by a model on a server (21 minutes
     # of CPU a walk). The roadmap (2026-11-22): "Doing as much processing and storage on the user's device as
     # possible." If the two draw the same plants, the phone can draw them by itself at a walk's end.
-    pk = phone_kinds(d, len(recs))
+    shapes_p = []
     if pk is not None:
         shapes_p, st_p = shapes_of(recs, pk, flags, cut)
         cell = lambda ss: {(int(np.floor(c[0] / CELL)), int(np.floor(c[1] / CELL))) for s_ in ss for c in s_["cells"]}  # noqa: E731
@@ -465,7 +466,7 @@ def main():
     # branch against the sky is coloured sky too, and it is a branch (27% of the plant points 8 ft up).
     kind_b, sky_n = kind, 0
     rgbf = os.path.join(d, "view-rgb.bin")
-    if os.path.exists(rgbf) and os.path.getsize(rgbf) >= 4 * len(recs):
+    if kind is not None and os.path.exists(rgbf) and os.path.getsize(rgbf) >= 4 * len(recs):
         rgb = np.fromfile(rgbf, dtype=np.uint8, count=4 * len(recs)).reshape(-1, 4).astype(np.int32)
         sky_blue = (rgb[:, 3] == 1) & (rgb[:, 2] > 140) & (rgb[:, 2] - rgb[:, 0] >= 45) & (rgb[:, 2] - rgb[:, 1] >= 15)
         m_ = sky_blue & np.isin(kind, [TR.KINDS.index(k_) for k_ in BUILT])
@@ -496,12 +497,18 @@ def main():
         fit = json.load(open(os.path.join(d, "fit.json")))
     except Exception:
         fit = None
+    # THE PLANTS ON THE MAP COME FROM THE PHONE'S OWN LABELS (the owner, 2026-11-24, having looked at both in the 3D
+    # view: "the blue shapes are actually slightly better, especially at seeing bare trees. So that's a nice win since
+    # it doesn't require sending photos to the server"). The pictures' vote only when the walk has no labels kept. The
+    # vote is still what finds fences and the built things (the phone has no label for a fence).
+    use_phone = pk is not None
     if fit and fit.get("ok") and fit.get("T"):
-        ms, mst = shapes_of(recs, kind, flags, cut, fit["T"])
+        ms, mst = shapes_of(recs, pk if use_phone else kind, flags, cut, fit["T"])
         boxes = sorted({(int(np.floor(c[0] / CELL)), int(np.floor(c[1] / CELL)), int(round(c[2] * 10)), int(round(c[3] * 10))) for s_ in ms for c in s_["cells"]})
         mo = os.path.join(d, "plants-map.json")
         seen, sst = seen_of(recs, flags, read_track(d), cut, fit["T"])
-        doc = {"v": 1, "cellM": CELL, "from": "a walk's points the phone or the vote called tree or plant, 3 ft up or more", "heights": "decimetres over the ground under each",
+        doc = {"v": 1, "cellM": CELL, "from": ("a walk's points the phone itself labelled tree" if use_phone else "a walk's points the pictures' vote called tree or plant") + ", 3 ft up or more",
+               "kinds": "phone" if use_phone else "vote", "heights": "decimetres over the ground under each",
                "fit": {"corners": fit.get("n"), "worstM": fit.get("worstM"), "scale": fit["T"].get("s", 1)}, "boxes": [list(b) for b in boxes]}
         if seen:
             high = seen.pop("_high", None)
@@ -514,7 +521,7 @@ def main():
             print(f"  Where it looked and saw open air: NOT kept ({sst.get('why') or 'no camera track beside the twin, or too few points'}).")
         with open(mo, "w") as f:
             json.dump(doc, f, separators=(",", ":"))
-        print(f"  ON THE MAP, by its {fit.get('n')} corners' one fit (within {(fit.get('worstM') or 0) * 39.37:.0f} in, the phone's distances scaled {((fit['T'].get('s', 1)) - 1) * 100:.1f}%): {len(ms)} shapes, {len({(b[0], b[1]) for b in boxes}):,} sq ft, {len(boxes):,} boxes, seen up to {max((b[3] for b in boxes), default=0) / 10 * FT:.0f} ft. Kept: plants-map.json ({os.path.getsize(mo) / 1e3:.0f} KB).")
+        print(f"  ON THE MAP, BY {'THE PHONE' + chr(39) + 'S OWN LABELS' if use_phone else 'THE PICTURES' + chr(39) + ' VOTE (no labels kept with this walk)'}, by its {fit.get('n')} corners' one fit (within {(fit.get('worstM') or 0) * 39.37:.0f} in, the phone's distances scaled {((fit['T'].get('s', 1)) - 1) * 100:.1f}%): {len(ms)} shapes, {len({(b[0], b[1]) for b in boxes}):,} sq ft, {len(boxes):,} boxes, seen up to {max((b[3] for b in boxes), default=0) / 10 * FT:.0f} ft. Kept: plants-map.json ({os.path.getsize(mo) / 1e3:.0f} KB).")
     else:
         print(f"  NOT put on the map: {(fit or {}).get('why') or 'the walk has no fit kept beside it (fit.json)'}.")
     return 0
